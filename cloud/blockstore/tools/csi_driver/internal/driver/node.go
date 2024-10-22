@@ -510,25 +510,25 @@ func (s *nodeService) readStageData(path string) (*StageData, error) {
 func (s *nodeService) nodeStageDiskAsVhostSocket(
 	ctx context.Context,
 	instanceId string,
-	volumeId string,
+	diskId string,
 	volumeContext map[string]string) error {
 
-	log.Printf("csi.nodeStageDiskAsVhostSocket: %s %s %+v", instanceId, volumeId, volumeContext)
+	log.Printf("csi.nodeStageDiskAsVhostSocket: %s %s %+v", instanceId, diskId, volumeContext)
 
-	endpointDir := s.getEndpointDir(instanceId, volumeId)
+	endpointDir := s.getEndpointDir(instanceId, diskId)
 	if err := os.MkdirAll(endpointDir, os.FileMode(0755)); err != nil {
 		return err
 	}
 
 	deviceName, found := volumeContext[deviceNameVolumeContextKey]
 	if !found {
-		deviceName = volumeId
+		deviceName = diskId
 	}
 
 	hostType := nbsapi.EHostType_HOST_TYPE_DEFAULT
 	_, err := s.nbsClient.StartEndpoint(ctx, &nbsapi.TStartEndpointRequest{
 		UnixSocketPath:   filepath.Join(endpointDir, nbsSocketName),
-		DiskId:           volumeId,
+		DiskId:           diskId,
 		InstanceId:       instanceId,
 		ClientId:         fmt.Sprintf("%s-%s", s.clientID, instanceId),
 		DeviceName:       deviceName,
@@ -917,11 +917,11 @@ func (s *nodeService) nodePublishFileStoreAsVhostSocket(
 func (s *nodeService) nodeStageFileStoreAsVhostSocket(
 	ctx context.Context,
 	instanceID string,
-	volumeID string) error {
+	filesystemId string) error {
 
-	log.Printf("csi.nodeStageFileStoreAsVhostSocket: %s %s", instanceID, volumeID)
+	log.Printf("csi.nodeStageFileStoreAsVhostSocket: %s %s", instanceID, filesystemId)
 
-	endpointDir := s.getEndpointDir(instanceID, volumeID)
+	endpointDir := s.getEndpointDir(instanceID, filesystemId)
 	if err := os.MkdirAll(endpointDir, os.FileMode(0755)); err != nil {
 		return err
 	}
@@ -933,7 +933,7 @@ func (s *nodeService) nodeStageFileStoreAsVhostSocket(
 	_, err := s.nfsClient.StartEndpoint(ctx, &nfsapi.TStartEndpointRequest{
 		Endpoint: &nfsapi.TEndpointConfig{
 			SocketPath:       filepath.Join(endpointDir, nfsSocketName),
-			FileSystemId:     volumeID,
+			FileSystemId:     filesystemId,
 			ClientId:         fmt.Sprintf("%s-%s", s.clientID, instanceID),
 			VhostQueuesCount: 8,
 			Persistent:       true,
