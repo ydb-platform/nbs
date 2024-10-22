@@ -55,7 +55,7 @@ jobs:
       instance-id: ${{ steps.start-runner.outputs.instance-id || steps.start-runner-nebius.outputs.instance-id }}
       runner_ipv4: ${{ steps.start-runner.outputs.external-ipv4 || steps.start-runner-nebius.outputs.external-ipv4 }}
       runner_local_ipv4: ${{ steps.start-runner.outputs.local-ipv4 || steps.start-runner-nebius.outputs.local-ipv4 }}
-      nebius: ${{ !env.nebius && 'no' || 'yes' }}
+      nebius: ${{ env.nebius == 'false' && 'no' || 'yes' }}
     steps:
       - name: checkout PR
         uses: actions/checkout@v4
@@ -79,7 +79,7 @@ jobs:
           submodules: true
       - name: Start runner
         id: start-runner
-        if: always() && !env.nebius
+        if: env.nebius == 'false' && always() || false
         uses: ./.github/actions/runner_create
         timeout-minutes: 60
         with:
@@ -100,7 +100,7 @@ jobs:
           vm_user_passwd: ${{ secrets.VM_USER_PASSWD }}
       - name: Start runner (nebius)
         id: start-runner-nebius
-        if: always() && env.nebius
+        if: env.nebius == 'true' && always() || false
         uses: ./.github/actions/nebius_runner_create
         timeout-minutes: 60
         with:
@@ -138,9 +138,9 @@ jobs:
       test_type: "unittest,clang_tidy,gtest,py3test,py2test,pytest,flake8,black,py2_flake8,go_test,gofmt"
       link_threads: "24"
       test_threads: "4"
-      sleep_after_tests: "1"
-      cache_update_build: false
-      cache_update_tests: false
+      sleep_after_tests: ${{ contains(github.event.pull_request.labels.*.name, 'sleep') && '7200' || '1' }}
+      cache_update_build: true
+      cache_update_tests: true
       upload_ya_dir: "no"
       clean_ya_dir: "no"
       use_network_cache: "yes"
@@ -177,7 +177,7 @@ jobs:
           submodules: true
       - name: Stop runner
         uses: ./.github/actions/runner_remove
-        if: always() && !env.nebius
+        if: env.nebius == 'false' && always() || false
         timeout-minutes: 60
         with:
           service_account_key: ${{ secrets.NEBIUS_SA_JSON_CREDENTIALS }}
@@ -187,7 +187,7 @@ jobs:
           vm_id: ${{ needs.provide-runner.outputs.instance-id }}
       - name: Stop runner (nebius)
         uses: ./.github/actions/nebius_runner_remove
-        if: always() && env.nebius
+        if: env.nebius == 'true' && always() || false
         timeout-minutes: 60
         with:
           service_account_key: ${{ secrets.NEW_NEBIUS_SA_JSON_CREDENTIALS }}
