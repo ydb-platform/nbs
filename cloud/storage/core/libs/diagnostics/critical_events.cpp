@@ -41,7 +41,11 @@ TString ReportCriticalEvent(
     bool verifyDebug)
 {
     if (verifyDebug) {
-        Y_DEBUG_ABORT_UNLESS(0);
+        Y_DEBUG_ABORT_UNLESS(
+            false,
+            "sensorName: \"%s\"; message: \"%s\"",
+            sensorName.c_str(),
+            message.c_str());
     }
 
     if (CriticalEvents) {
