@@ -548,7 +548,7 @@ void TIndexTabletActor::ExecuteTx_Compaction(
 
     if (!args.CompactionBlobs) {
         TIndexTabletDatabase db(tx.DB);
-        UpdateCompactionMap(args.RangeId, 0, 0, 0);
+        UpdateCompactionMap(args.RangeId, 0, 0, 0, true);
         db.WriteCompactionMap(args.RangeId, 0, 0, 0);
     }
 
