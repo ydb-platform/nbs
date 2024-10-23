@@ -13,15 +13,18 @@ Y_UNIT_TEST_SUITE(TPendingCleanupTest)
         TPendingCleanup cleanup;
 
         UNIT_ASSERT(cleanup.IsEmpty());
-        cleanup.Insert("foo", TVector<TString> {});
+        auto error = cleanup.Insert("foo", TVector<TString> {});
+        UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, error.GetCode());
         UNIT_ASSERT(cleanup.IsEmpty());
         UNIT_ASSERT(!cleanup.Contains("foo"));
 
-        cleanup.Insert("foo", "");
+        error = cleanup.Insert("foo", "");
+        UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, error.GetCode());
         UNIT_ASSERT(cleanup.IsEmpty());
         UNIT_ASSERT(!cleanup.Contains("foo"));
 
-        cleanup.Insert("foo", TVector<TString> {"x", "y"});
+        error = cleanup.Insert("foo", TVector<TString> {"x", "y"});
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
         UNIT_ASSERT(!cleanup.IsEmpty());
         UNIT_ASSERT(cleanup.Contains("foo"));
 
@@ -30,7 +33,8 @@ Y_UNIT_TEST_SUITE(TPendingCleanupTest)
         UNIT_ASSERT_VALUES_EQUAL("", cleanup.FindDiskId("z"));
         UNIT_ASSERT_VALUES_EQUAL("", cleanup.FindDiskId("w"));
 
-        cleanup.Insert("foo", "z");
+        error = cleanup.Insert("foo", "z");
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
         UNIT_ASSERT_VALUES_EQUAL("foo", cleanup.FindDiskId("z"));
 
         UNIT_ASSERT_VALUES_EQUAL("", cleanup.EraseDevice("w"));
@@ -49,9 +53,12 @@ Y_UNIT_TEST_SUITE(TPendingCleanupTest)
         UNIT_ASSERT(cleanup.IsEmpty());
         UNIT_ASSERT(!cleanup.Contains("foo"));
 
-        cleanup.Insert("bar", "x");
-        cleanup.Insert("bar", "y");
-        cleanup.Insert("bar", "z");
+        error = cleanup.Insert("bar", "x");
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
+        error = cleanup.Insert("bar", "y");
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
+        error = cleanup.Insert("bar", "z");
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
 
         UNIT_ASSERT(!cleanup.IsEmpty());
         UNIT_ASSERT(cleanup.Contains("bar"));
