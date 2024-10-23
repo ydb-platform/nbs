@@ -451,10 +451,10 @@ struct TCompactionMap::TImpl
     }
 
     TCompactionRangeInfo GetTopRange(
+        const TGroup* group,
         const TGetScore& getScore,
         bool skipCompactedRanges) const
     {
-        const auto* group = GetTopCompactionScore();
         if (group) {
             TCompactionRangeInfo best;
             for (ui32 i = 0; i < GroupSize; ++i) {
@@ -465,7 +465,7 @@ struct TCompactionMap::TImpl
                 TCompactionRangeInfo info{
                     group->GroupIndex + i,
                     group->Stats[i]};
-                if (getScore(info) > getScore(best)) {
+                if (getScore(info) < getScore(best)) {
                     best = info;
                 }
             }
@@ -484,7 +484,8 @@ struct TCompactionMap::TImpl
 
         // TODO efficient implementation for any c
         if (c == 1) {
-            return {GetTopRange(getScore, true)};
+            const auto* group = GetTopCompactionScore();
+            return {GetTopRange(group, getScore, true)};
         }
 
         return GetTopRanges(c, getScore, true);
@@ -498,7 +499,8 @@ struct TCompactionMap::TImpl
 
         // TODO efficient implementation for any c
         if (c == 1) {
-            return {GetTopRange(getScore, false)};
+            const auto* group = GetTopCleanupScore();
+            return {GetTopRange(group, getScore, false)};
         }
 
         return GetTopRanges(c, getScore, false);
@@ -512,7 +514,8 @@ struct TCompactionMap::TImpl
 
         // TODO efficient implementation for any c
         if (c == 1) {
-            return {GetTopRange(getScore, true)};
+            const auto* group = GetTopGarbageScore();
+            return {GetTopRange(group, getScore, true)};
         }
 
         return GetTopRanges(c, getScore, true);
