@@ -853,7 +853,8 @@ void TIndexTabletState::MarkMixedBlocksDeleted(
         rangeId,
         stats.BlobsCount,
         stats.DeletionsCount + blocksCount,
-        stats.GarbageBlocksCount);
+        stats.GarbageBlocksCount,
+        false /* compacted */);
 
     InvalidateReadAheadCache(nodeId);
 }
@@ -967,7 +968,8 @@ ui32 TIndexTabletState::CleanupBlockDeletions(
         rangeId,
         stats.BlobsCount,
         stats.DeletionsCount,
-        stats.GarbageBlocksCount);
+        stats.GarbageBlocksCount,
+        false /* compacted */);
 
     AddCompactionRange(
         GetCurrentCommitId(),
@@ -1216,13 +1218,15 @@ void TIndexTabletState::UpdateCompactionMap(
     ui32 rangeId,
     ui32 blobsCount,
     ui32 deletionsCount,
-    ui32 garbageBlocksCount)
+    ui32 garbageBlocksCount,
+    bool compacted)
 {
     Impl->CompactionMap.Update(
         rangeId,
         blobsCount,
         deletionsCount,
-        garbageBlocksCount);
+        garbageBlocksCount,
+        compacted);
 }
 
 TCompactionStats TIndexTabletState::GetCompactionStats(ui32 rangeId) const

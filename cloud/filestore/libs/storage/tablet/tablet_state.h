@@ -1123,7 +1123,8 @@ public:
         ui32 rangeId,
         ui32 blobsCount,
         ui32 deletionsCount,
-        ui32 garbageBlocksCount);
+        ui32 garbageBlocksCount,
+        bool compacted);
 
     TCompactionStats GetCompactionStats(ui32 rangeId) const;
     TCompactionCounter GetRangeToCompact() const;

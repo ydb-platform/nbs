@@ -1682,16 +1682,12 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
             UNIT_ASSERT_VALUES_EQUAL(
                 256,
                 stats.GetAllocatedCompactionRanges());
-            UNIT_ASSERT_VALUES_EQUAL(3, stats.CompactionRangeStatsSize());
+            // only 1 range is returned since other 2 are marked with the
+            // 'compacted' flag and thus skipped during top ranges gathering
+            UNIT_ASSERT_VALUES_EQUAL(1, stats.CompactionRangeStatsSize());
             UNIT_ASSERT_VALUES_EQUAL(
                 "r=1177944065 b=53 d=180 g=52",
                 CompactionRangeToString(stats.GetCompactionRangeStats(0)));
-            UNIT_ASSERT_VALUES_EQUAL(
-                "r=1177944064 b=1 d=193 g=0",
-                CompactionRangeToString(stats.GetCompactionRangeStats(1)));
-            UNIT_ASSERT_VALUES_EQUAL(
-                "r=1177944066 b=1 d=64 g=0",
-                CompactionRangeToString(stats.GetCompactionRangeStats(2)));
         }
 
         TString expected(1_MB, 0);
