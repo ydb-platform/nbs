@@ -1699,6 +1699,7 @@ struct TTxIndexTablet
         TSet<ui64> Nodes;
         TVector<TMixedBlobMeta> CompactionBlobs;
         ui64 CommitId = InvalidCommitId;
+        bool SkipRangeRewrite = false;
 
         TCompaction(TRequestInfoPtr requestInfo, ui32 rangeId, bool filterNodes)
             : TProfileAware(EFileStoreSystemRequest::Compaction)
@@ -1714,6 +1715,7 @@ struct TTxIndexTablet
             Nodes.clear();
             CompactionBlobs.clear();
             CommitId = InvalidCommitId;
+            SkipRangeRewrite = false;
         }
     };
 

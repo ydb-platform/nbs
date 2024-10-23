@@ -80,6 +80,8 @@ public:
     ui32 GetGarbageCompactionThreshold() const;
     ui32 GetCompactionThresholdAverage() const;
     ui32 GetGarbageCompactionThresholdAverage() const;
+    ui32 GetCompactRangeGarbagePercentageThreshold() const;
+    ui32 GetCompactRangeAverageBlobSizeThreshold() const;
     bool GetNewCompactionEnabled() const;
     bool GetUseMixedBlocksInsteadOfAliveBlocksInCompaction() const;
     ui32 GetCollectGarbageThreshold() const;
