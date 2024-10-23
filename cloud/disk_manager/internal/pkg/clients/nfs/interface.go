@@ -17,9 +17,9 @@ type CreateFilesystemParams struct {
 }
 
 type FilesystemPerformanceProfile struct {
-	MaxReadBandwidth  uint32
+	MaxReadBandwidth  uint64
 	MaxReadIops       uint32
-	MaxWriteBandwidth uint32
+	MaxWriteBandwidth uint64
 	MaxWriteIops      uint32
 }
 

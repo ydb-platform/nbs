@@ -80,8 +80,8 @@ constexpr TDuration Seconds(int s)
     xxx(RdmaEndpointListenAddress,   TString,               {}                )\
     xxx(RdmaEndpointListenPort,      ui32,                  0                 )\
     xxx(ThrottlingEnabled,           bool,                  false             )\
-    xxx(MaxReadBandwidth,            ui32,                  0                 )\
-    xxx(MaxWriteBandwidth,           ui32,                  0                 )\
+    xxx(MaxReadBandwidth,            ui64,                  0                 )\
+    xxx(MaxWriteBandwidth,           ui64,                  0                 )\
     xxx(MaxReadIops,                 ui32,                  0                 )\
     xxx(MaxWriteIops,                ui32,                  0                 )\
     xxx(MaxBurstTime,                TDuration,             Seconds(0)        )\

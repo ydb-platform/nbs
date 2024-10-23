@@ -47,9 +47,9 @@ struct TOptions
     ui32 CompactionType;
 
     ui32 MaxReadIops;
-    ui32 MaxReadBandwidth;
+    ui64 MaxReadBandwidth;
     ui32 MaxWriteIops;
-    ui32 MaxWriteBandwidth;
+    ui64 MaxWriteBandwidth;
     ui32 MaxGarbagePercentage;
 
     TOptions(int argc, const char** argv)
@@ -462,7 +462,7 @@ using TCompactionRangePtr = TIntrusivePtr<TCompactionRange>;
 
 double RequestCost(
     ui32 maxIops,
-    ui32 maxBandwidth,
+    ui64 maxBandwidth,
     double bytes,
     double count)
 {
@@ -493,16 +493,16 @@ struct TDynamicCompactionScoreCalculator final
 {
     const ui32 MaxBlobSize;
     const ui32 MaxReadIops;
-    const ui32 MaxReadBandwidth;
+    const ui64 MaxReadBandwidth;
     const ui32 MaxWriteIops;
-    const ui32 MaxWriteBandwidth;
+    const ui64 MaxWriteBandwidth;
 
     TDynamicCompactionScoreCalculator(
             ui32 maxBlobSize,
             ui32 maxReadIops,
-            ui32 maxReadBandwidth,
+            ui64 maxReadBandwidth,
             ui32 maxWriteIops,
-            ui32 maxWriteBandwidth)
+            ui64 maxWriteBandwidth)
         : MaxBlobSize(maxBlobSize)
         , MaxReadIops(maxReadIops)
         , MaxReadBandwidth(maxReadBandwidth)

@@ -57,7 +57,7 @@ Y_UNIT_TEST_SUITE(THelpersTest)
 
         // Zero IOps
         UNIT_ASSERT_VALUES_EQUAL(
-            Max<ui32>(),
+            Max<ui64>(),
             CalculateThrottlerC2(0.0, 100.0));
 
         // Random
@@ -72,15 +72,16 @@ Y_UNIT_TEST_SUITE(THelpersTest)
 
         // Very big bandwidth
         UNIT_ASSERT_VALUES_EQUAL(
-            Max<ui32>(),
+            Max<ui64>(),
             CalculateThrottlerC2(154.76, 1e9));
 
-        // Overflow
+        // Overflow with 32bit types
         // result is   7313817600d -> 110110011111100000000000000000000b
         // but returns 3018850304d ->  10110011111100000000000000000000b
         // should return Max<ui32>()
+        // Okay with 64bit
         UNIT_ASSERT_VALUES_EQUAL(
-            Max<ui32>(),
+            7313817600,
             CalculateThrottlerC2(300, 1_GB));
     }
 
