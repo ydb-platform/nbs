@@ -155,10 +155,12 @@ def setup_env(nbs, disk_agent, data_path):
 def test_multiple_endpoints(nbs):
     client = CreateClient(f"localhost:{nbs.port}")
 
+    test_disk_id = "vol0-multiple_endpoints"
+
     @retry(max_times=10, exception=ClientError)
     def create_vol0():
         client.create_volume(
-            disk_id="vol0",
+            disk_id=test_disk_id,
             block_size=4096,
             blocks_count=2 * DEVICE_SIZE//4096,
             storage_media_kind=STORAGE_MEDIA_SSD_LOCAL,
@@ -191,7 +193,7 @@ def test_multiple_endpoints(nbs):
         socket = tempfile.NamedTemporaryFile()
         client.start_endpoint_async(
             unix_socket_path=socket.name,
-            disk_id="vol0",
+            disk_id=test_disk_id,
             ipc_type=IPC_VHOST,
             access_mode=VOLUME_ACCESS_READ_ONLY,
             client_id=f"{socket.name}-id",
