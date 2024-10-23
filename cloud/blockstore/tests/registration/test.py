@@ -5,7 +5,7 @@ from cloud.blockstore.config.storage_pb2 import TStorageServiceConfig
 
 from cloud.blockstore.tests.python.lib.config import NbsConfigurator, generate_disk_agent_txt
 from cloud.blockstore.tests.python.lib.client import NbsClient
-from cloud.blockstore.tests.python.lib.daemon import start_ydb, start_nbs, start_disk_agent, restart_ydb
+from cloud.blockstore.tests.python.lib.daemon import start_ydb, start_nbs, start_disk_agent
 
 from contrib.ydb.core.protos import msgbus_pb2 as msgbus
 from contrib.ydb.public.api.protos.ydb_status_codes_pb2 import StatusIds
