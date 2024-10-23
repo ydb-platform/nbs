@@ -54,9 +54,7 @@ bool IReplayRequestGenerator::ShouldFailOnError()
 
 void IReplayRequestGenerator::Advance()
 {
-    for (EventPtr = CurrentEvent->Next(); EventPtr;
-         EventPtr = CurrentEvent->Next())
-    {
+    while (EventPtr = CurrentEvent->Next()) {
         MessagePtr = dynamic_cast<const NProto::TProfileLogRecord*>(
             EventPtr->GetProto());
 
