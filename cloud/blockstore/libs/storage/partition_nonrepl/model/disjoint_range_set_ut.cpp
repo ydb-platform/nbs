@@ -17,19 +17,15 @@ Y_UNIT_TEST_SUITE(TDisjointRangeSetTest)
         auto range3 = TBlockRange64::MakeHalfOpenInterval(4_KB * 2, 4_KB * 3);
 
         UNIT_ASSERT(set.Empty());
-        UNIT_ASSERT(!set.Contains(range2));
         UNIT_ASSERT(set.TryInsert(range2));
         UNIT_ASSERT_VALUES_EQUAL(range2, set.LeftmostRange());
         UNIT_ASSERT(!set.Empty());
-        UNIT_ASSERT(set.Contains(range2));
 
         UNIT_ASSERT(set.TryInsert(range1));
         UNIT_ASSERT_VALUES_EQUAL(range1, set.LeftmostRange());
-        UNIT_ASSERT(set.Contains(range1));
 
         UNIT_ASSERT(set.TryInsert(range3));
         UNIT_ASSERT_VALUES_EQUAL(range1, set.LeftmostRange());
-        UNIT_ASSERT(set.Contains(range3));
 
         // Already inserted.
         UNIT_ASSERT(!set.TryInsert(range1));

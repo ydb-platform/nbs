@@ -40,11 +40,6 @@ TDisjointRangeSet::~TDisjointRangeSet() = default;
     return true;
 }
 
-[[nodiscard]] bool TDisjointRangeSet::Contains(TBlockRange64 range) const
-{
-    return EndToStart.contains(range.End);
-}
-
 [[nodiscard]] bool TDisjointRangeSet::Empty() const
 {
     return EndToStart.empty();
@@ -57,18 +52,19 @@ TDisjointRangeSet::~TDisjointRangeSet() = default;
 
 [[nodiscard]] TBlockRange64 TDisjointRangeSet::LeftmostRange() const
 {
-    auto it = EndToStart.lower_bound(0);
-    if (it == EndToStart.end()) {
+    if (EndToStart.empty()) {
         Y_DEBUG_ABORT_UNLESS(false);
         return {};
     }
-    return TBlockRange64::MakeClosedInterval(it->second, it->first);
+    return TBlockRange64::MakeClosedInterval(
+        EndToStart.begin()->second,
+        EndToStart.begin()->first);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 
 TDisjointRangeSetIterator::TDisjointRangeSetIterator(
-    const TDisjointRangeSet& rangeSet)
+        const TDisjointRangeSet& rangeSet)
     : RangeSet(rangeSet)
     , Pos(RangeSet.EndToStart.cbegin())
 {}

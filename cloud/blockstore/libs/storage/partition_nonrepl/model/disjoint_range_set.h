@@ -8,6 +8,8 @@
 
 namespace NCloud::NBlockStore::NStorage {
 
+////////////////////////////////////////////////////////////////////////////////
+
 // Data structure that maintains a collection of non-overlapping intervals of
 // equal length.
 class TDisjointRangeSet
@@ -22,7 +24,6 @@ public:
 
     [[nodiscard]] bool TryInsert(TBlockRange64 range);
     [[nodiscard]] bool Remove(TBlockRange64 range);
-    [[nodiscard]] bool Contains(TBlockRange64 range) const;
     [[nodiscard]] bool Empty() const;
     [[nodiscard]] size_t Size() const;
     [[nodiscard]] TBlockRange64 LeftmostRange() const;
