@@ -1,8 +1,10 @@
 import os
-import subprocess
 import pytest
+import random
 import requests
 import stat
+import string
+import subprocess
 import tempfile
 import time
 
@@ -145,11 +147,25 @@ def setup_fake_vhost_server_script():
         yield Script(port, script.name)
 
 
+def __generate_test_disk_id(prefix):
+    return prefix + "-" + ''.join(random.choices(string.ascii_letters, k=6))
+
+
+@pytest.fixture(name='vol0_id')
+def generate_vol0_id():
+    return __generate_test_disk_id("vol0")
+
+
+@pytest.fixture(name='vol1_id')
+def generate_vol1_id():
+    return __generate_test_disk_id("vol1")
+
+
 @pytest.fixture(name='nbs')
-def start_nbs_daemon(ydb, fake_vhost_server):
+def start_nbs_daemon(vol0_id, vol1_id, ydb, fake_vhost_server):
     # run "old" external vhost-servers that serve the disks "vol0" and "vol1"
-    old_vhost_server_vol0 = run_ownerless_vhost_server("vol0")
-    old_vhost_server_vol1 = run_ownerless_vhost_server("vol1")
+    old_vhost_server_vol0 = run_ownerless_vhost_server(vol0_id)
+    old_vhost_server_vol1 = run_ownerless_vhost_server(vol1_id)
 
     cfg = NbsConfigurator(ydb)
     cfg.generate_default_nbs_configs()
@@ -180,7 +196,7 @@ def start_disk_agent_daemon(ydb, disk_agent_configurator):
 
 
 @pytest.fixture(autouse=True)
-def setup_env(nbs, disk_agent, data_path):
+def setup_env(nbs, vol0_id, vol1_id, disk_agent, data_path):
 
     client = CreateClient(f"localhost:{nbs.port}")
     client.execute_action(
@@ -212,14 +228,14 @@ def setup_env(nbs, disk_agent, data_path):
         time.sleep(1)
 
 
-def test_external_endpoint(nbs, fake_vhost_server):
+def test_external_endpoint(nbs, vol0_id, fake_vhost_server):
 
     client = CreateClient(f"localhost:{nbs.port}")
 
     @retry(max_times=10, exception=ClientError)
     def create_vol0():
         client.create_volume(
-            disk_id="vol0",
+            disk_id=vol0_id,
             block_size=4096,
             blocks_count=2 * DEVICE_SIZE//4096,
             storage_media_kind=STORAGE_MEDIA_SSD_LOCAL,
@@ -237,12 +253,12 @@ def test_external_endpoint(nbs, fake_vhost_server):
     with tempfile.NamedTemporaryFile() as unix_socket:
         r = client.start_endpoint(
             unix_socket_path=unix_socket.name,
-            disk_id="vol0",
+            disk_id=vol0_id,
             ipc_type=IPC_VHOST,
             client_id="test"
         )
 
-        assert r["Volume"].DiskId == "vol0"
+        assert r["Volume"].DiskId == vol0_id
 
         wait_for_vhost_server()
 
