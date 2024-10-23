@@ -6472,6 +6472,86 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         UNIT_ASSERT(!cleanup);
         UNIT_ASSERT(!compaction);
     }
+
+    TABLET_TEST_16K(ShouldSkipAlmostCompactRanges)
+    {
+        const auto block = tabletConfig.BlockSize;
+
+        NProto::TStorageConfig storageConfig;
+        storageConfig.SetCompactionThreshold(999'999);
+        storageConfig.SetGarbageCompactionThresholdAverage(999'999);
+        storageConfig.SetGarbageCompactionThreshold(999'999);
+        storageConfig.SetCleanupThreshold(999'999);
+        storageConfig.SetNewCompactionEnabled(true);
+        storageConfig.SetWriteBlobThreshold(block);
+        storageConfig.SetCompactRangeGarbagePercentageThreshold(99);
+        storageConfig.SetCompactRangeAverageBlobSizeThreshold(256_KB);
+
+        TTestEnv env({}, std::move(storageConfig));
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(
+            env.GetRuntime(),
+            nodeIdx,
+            tabletId,
+            tabletConfig);
+        tablet.InitSession("client", "session");
+
+        auto id = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
+        auto handle = CreateHandle(tablet, id);
+
+        ui32 rangeId = GetMixedRangeIndex(id, 0);
+        tablet.WriteData(handle, 0, 256_KB, 'a');
+        {
+            auto response = tablet.GetStorageStats(1);
+            const auto& stats = response->Record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(1, stats.CompactionRangeStatsSize());
+            UNIT_ASSERT_VALUES_EQUAL(
+                1,
+                stats.GetCompactionRangeStats(0).GetBlobCount());
+        }
+
+        tablet.Compaction(rangeId);
+
+        // no compaction should've happened since our range is almost 'compact'
+        {
+            auto response = tablet.GetStorageStats(1);
+            const auto& stats = response->Record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(1, stats.GetMixedBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(256_KB, stats.GetGarbageQueueSize());
+            // the range should be marked as 'compacted' and should be
+            // pessimized in the compaction map
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.CompactionRangeStatsSize());
+        }
+
+        tablet.WriteData(handle, 0, 256_KB, 'a');
+        {
+            auto response = tablet.GetStorageStats(1);
+            const auto& stats = response->Record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(2, stats.GetMixedBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(1, stats.CompactionRangeStatsSize());
+            UNIT_ASSERT_VALUES_EQUAL(
+                2,
+                stats.GetCompactionRangeStats(0).GetBlobCount());
+        }
+
+        tablet.Compaction(rangeId);
+        // compaction should happen now - we have enough garbage
+        // blob size is good but it's not enough to skip compaction
+        {
+            auto response = tablet.GetStorageStats(1);
+            const auto& stats = response->Record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(1, stats.GetMixedBlobsCount());
+            // 3 x new blobs + 2 x garbage blobs
+            UNIT_ASSERT_VALUES_EQUAL(5 * 256_KB, stats.GetGarbageQueueSize());
+            // the range should be marked as 'compacted' and should be
+            // pessimized in the compaction map
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.CompactionRangeStatsSize());
+        }
+    }
 }
 
 }   // namespace NCloud::NFileStore::NStorage
