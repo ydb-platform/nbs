@@ -208,6 +208,7 @@ def test_readonly_volume_mount_mode():
         env.csi.create_volume(name=volume_name, size=volume_size)
         env.csi.stage_volume(volume_name, access_type)
         env.csi.publish_volume(pod_id, volume_name, pod_name, access_type, readonly=True)
+        # check that publishing read only volume is idempotent
         env.csi.publish_volume(pod_id, volume_name, pod_name, access_type, readonly=True)
 
         mount_path = Path("/var/lib/kubelet/pods") / pod_id / "volumes/kubernetes.io~csi" / volume_name / "mount"
@@ -231,6 +232,8 @@ def test_readonly_volume_block_mode():
         access_type = "block"
         env.csi.create_volume(name=volume_name, size=volume_size)
         env.csi.stage_volume(volume_name, access_type)
+        env.csi.publish_volume(pod_id, volume_name, pod_name, access_type, readonly=True)
+        # check that publishing read only volume is idempotent
         env.csi.publish_volume(pod_id, volume_name, pod_name, access_type, readonly=True)
 
         device = Path("/var/lib/kubelet/plugins/kubernetes.io/csi/volumeDevices/publish") / pod_id / volume_name
