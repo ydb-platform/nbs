@@ -86,13 +86,14 @@ void TChecksumRangeActorCompanion::HandleChecksumResponse(
 {
     ++CalculatedChecksumsCount;
     auto* msg = ev->Get();
-    if (HasError(msg->Record.GetError())) {
+    const auto& error = msg->Record.GetError();
+    if (HasError(error)) {
         LOG_WARN(ctx, TBlockStoreComponents::PARTITION,
             "[%s] Checksum error %s",
             Replicas[0].Name.c_str(),
-            FormatError(Error).c_str());
+            FormatError(error).c_str());
 
-        Error = msg->Record.GetError();
+        Error = error;
         ChecksumDuration = ctx.Now() - ChecksumStartTs;
         return;
     }
