@@ -60,6 +60,7 @@ namespace NCloud::NBlockStore::NStorage {
     xxx(AllocateCheckpoint,                 __VA_ARGS__)                       \
     xxx(DeallocateCheckpoint,               __VA_ARGS__)                       \
     xxx(SetCheckpointDataState,             __VA_ARGS__)                       \
+    xxx(PurgeHostCms,                       __VA_ARGS__)                       \
 // BLOCKSTORE_DISK_REGISTRY_TRANSACTIONS
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -673,6 +674,37 @@ struct TTxDiskRegistry
             : RequestInfo(std::move(requestInfo))
             , Host(std::move(host))
             , State(state)
+            , DryRun(dryRun)
+        {}
+
+        void Clear()
+        {
+            AffectedDisks.clear();
+            Error.Clear();
+        }
+    };
+
+    //
+    // PurgeHostCms
+    //
+
+    struct TPurgeHostCms
+    {
+        const TRequestInfoPtr RequestInfo;
+        const TString Host;
+        const bool DryRun;
+
+        NProto::TError Error;
+        TVector<TString> AffectedDisks;
+        TInstant TxTs;
+        TDuration Timeout;
+
+        TPurgeHostCms(
+                TRequestInfoPtr requestInfo,
+                TString host,
+                bool dryRun)
+            : RequestInfo(std::move(requestInfo))
+            , Host(std::move(host))
             , DryRun(dryRun)
         {}
 

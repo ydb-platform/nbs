@@ -18,6 +18,7 @@ message TAction {
         GET_DEPENDENT_DISKS = 3;
         ADD_DEVICE = 4;
         ADD_HOST = 5;
+        PURGE_HOST = 6;
     }
 
     // Action type.

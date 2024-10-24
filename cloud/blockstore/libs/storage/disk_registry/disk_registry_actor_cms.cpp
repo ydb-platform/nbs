@@ -172,6 +172,16 @@ void TCmsRequestActor::SendNextRequest(const TActorContext& ctx)
             break;
         }
 
+        case NProto::TAction_EType::TAction_EType_PURGE_HOST: {
+            using TRequest = TEvDiskRegistryPrivate::TEvPurgeHostCmsRequest;
+            auto request = std::make_unique<TRequest>(
+                action.GetHost(),
+                action.GetDryRun());
+
+            NCloud::Send(ctx, Owner, std::move(request));
+            break;
+        }
+
         default: {
             auto& result = *Response->Record.MutableActionResults()->Add();
             *result.MutableResult() = MakeError(

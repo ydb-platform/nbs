@@ -185,6 +185,29 @@ TString MakeMirroredDiskDeviceReplacementMessage(
 
 ////////////////////////////////////////////////////////////////////////////////
 
+bool StorageQueryAllowed(
+    const TStorageConfigPtr& storageConfig,
+    NProto::EDevicePoolKind poolKind,
+    NProto::EAgentState agentState)
+{
+    if (agentState == NProto::AGENT_STATE_UNAVAILABLE) {
+        return false;
+    }
+
+    if (agentState == NProto::AGENT_STATE_ONLINE) {
+        return true;
+    }
+
+    Y_DEBUG_ABORT_UNLESS(agentState == NProto::AGENT_STATE_WARNING);
+    if (poolKind == NProto::DEVICE_POOL_KIND_LOCAL) {
+        return storageConfig->GetDiskRegistryAlwaysAllocatesLocalDisks();
+    }
+
+    return false;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 struct TDevicePoolCounters
 {
     ui64 FreeBytes = 0;
@@ -5175,7 +5198,9 @@ NProto::TError TDiskRegistryState::UpdateCmsHostState(
 
     ApplyAgentStateChange(db, *agent, now, affectedDisks);
 
-    if (newState != NProto::AGENT_STATE_ONLINE && !HasError(result)) {
+    if (newState != NProto::AGENT_STATE_ONLINE && !HasError(result) &&
+        !StorageConfig->GetDiskRegistryAlwaysAllocatesLocalDisks())
+    {
         if (StorageConfig->GetCleanupDRConfigOnCMSActions()) {
             auto error = TryToRemoveAgentDevices(db, agent->GetAgentId());
             if (!HasError(error)) {
@@ -5204,6 +5229,67 @@ NProto::TError TDiskRegistryState::UpdateCmsHostState(
     }
 
     return result;
+}
+
+NProto::TError TDiskRegistryState::PurgeHost(
+    TDiskRegistryDatabase& db,
+    const TString& agentId,
+    TInstant now,
+    bool dryRun,
+    TVector<TDiskId>& affectedDisks,
+    TDuration& timeout)
+{
+    auto* agent = AgentList.FindAgent(agentId);
+    if (!agent) {
+        return MakeError(E_NOT_FOUND, "agent not found");
+    }
+
+    // Since "PURGE_HOST" should be called after "REMOVE_HOST", we call the
+    // remove one more time to make sure. However, the result of this operation
+    // should not be visible to the caller.
+    auto removeHostError = UpdateCmsHostState(
+        db,
+        agentId,
+        NProto::AGENT_STATE_WARNING,
+        now,
+        dryRun,
+        affectedDisks,
+        timeout);
+
+    STORAGE_LOG(
+        (HasError(removeHostError) ? TLOG_WARNING : TLOG_INFO),
+        "Purge host %s requested. Remove host ended with the result: %s",
+        agent->GetAgentId().Quote().c_str(),
+        FormatError(removeHostError).c_str());
+
+    if (dryRun) {
+        return {};
+    }
+
+    CleanupAgentConfig(db, *agent);
+
+    return {};
+}
+
+void TDiskRegistryState::CleanupAgentConfig(
+    TDiskRegistryDatabase& db,
+    const NProto::TAgentConfig& agent)
+{
+    if (StorageConfig->GetCleanupDRConfigOnCMSActions()) {
+        auto error = TryToRemoveAgentDevices(db, agent.GetAgentId());
+        if (!HasError(error)) {
+            return;
+        }
+
+        // Do not return the error from "TryToRemoveAgentDevices()" since
+        // it's internal and shouldn't block node removal.
+        STORAGE_WARN(
+            "Could not remove device from agent %s: %s",
+            agent.GetAgentId().Quote().c_str(),
+            FormatError(error).c_str());
+    }
+
+    SuspendLocalDevices(db, agent);
 }
 
 NProto::TError TDiskRegistryState::RegisterUnknownDevices(
@@ -6533,8 +6619,8 @@ auto TDiskRegistryState::QueryAvailableStorage(
             "agent " << agentId.Quote() << " not found");
     }
 
-    if (agent->GetState() != NProto::AGENT_STATE_ONLINE) {
-        return TVector<TAgentStorageInfo> {};
+    if (!StorageQueryAllowed(StorageConfig, poolKind, agent->GetState())) {
+        return TVector<TAgentStorageInfo>{};
     }
 
     THashMap<ui64, ui32> chunks;

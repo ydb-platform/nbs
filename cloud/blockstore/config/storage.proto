@@ -1046,4 +1046,8 @@ message TStorageServiceConfig
 
     // Timeout between disks reallocations.
     optional uint32 DiskRegistryDisksNotificationTimeout = 387;
+
+    // Whether the disk registry is allowed to allocate local disks while agent
+    // is in warning state.
+    optional bool DiskRegistryAlwaysAllocatesLocalDisks = 387;
 }

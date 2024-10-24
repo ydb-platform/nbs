@@ -13,7 +13,7 @@ void TDiskRegistryActor::HandleUpdateCmsHostState(
     const TEvDiskRegistryPrivate::TEvUpdateCmsHostStateRequest::TPtr& ev,
     const TActorContext& ctx)
 {
-    BLOCKSTORE_DISK_REGISTRY_COUNTER(UpdateCmsHostDeviceState);
+    BLOCKSTORE_DISK_REGISTRY_COUNTER(UpdateCmsHostState);
 
     auto* msg = ev->Get();
 

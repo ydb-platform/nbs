@@ -432,6 +432,7 @@ TDuration MSeconds(ui32 value)
                                                                                \
     xxx(DiskRegistryVolumeConfigUpdatePeriod,      TDuration, Minutes(5)      )\
     xxx(CleanupDRConfigOnCMSActions,               bool,      false           )\
+    xxx(DiskRegistryAlwaysAllocatesLocalDisks,     bool,      false           )\
                                                                                \
     xxx(ReassignRequestRetryTimeout,               TDuration, Seconds(5)      )\
     xxx(ReassignChannelsPercentageThreshold,       ui32,      10              )\

@@ -462,6 +462,7 @@ public:
 
     TDuration GetDiskRegistryVolumeConfigUpdatePeriod() const;
     bool GetCleanupDRConfigOnCMSActions() const;
+    bool GetDiskRegistryAlwaysAllocatesLocalDisks() const;
     TDuration GetReassignRequestRetryTimeout() const;
     ui32 GetReassignChannelsPercentageThreshold() const;
 

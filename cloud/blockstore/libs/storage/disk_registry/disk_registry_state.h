@@ -604,6 +604,14 @@ public:
         TVector<TDiskId>& affectedDisks,
         TDuration& timeout);
 
+    NProto::TError PurgeHost(
+        TDiskRegistryDatabase& db,
+        const TString& agentId,
+        TInstant now,
+        bool dryRun,
+        TVector<TDiskId>& affectedDisks,
+        TDuration& timeout);
+
     TMaybe<NProto::EAgentState> GetAgentState(const TString& agentId) const;
     TMaybe<TInstant> GetAgentCmsTs(const TString& agentId) const;
 
@@ -1282,6 +1290,10 @@ private:
         const TString& deviceId,
         TInstant timestamp,
         TString reason);
+
+    void CleanupAgentConfig(
+        TDiskRegistryDatabase& db,
+        const NProto::TAgentConfig& agent);
 };
 
 }   // namespace NCloud::NBlockStore::NStorage
