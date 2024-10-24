@@ -14,6 +14,7 @@ enum DiskKind {
     DISK_KIND_SSD_LOCAL = 5;
     DISK_KIND_SSD_MIRROR3 = 6;
     DISK_KIND_HDD_NONREPLICATED = 7;
+    DISK_KIND_HDD_LOCAL = 8;
 }
 
 message DiskId {
