@@ -244,4 +244,11 @@ inline TBlockRange64 ConvertRangeSafe(const TBlockRange32& range)
     return TBlockRange64::MakeClosedInterval(range.Start, range.End);
 }
 
+template <typename T>
+IOutputStream& operator<<(IOutputStream& out, const TBlockRange<T>& rhs)
+{
+    out << "{" << rhs.Start << "," << rhs.End << "}";
+    return out;
+}
+
 }   // namespace NCloud::NBlockStore
