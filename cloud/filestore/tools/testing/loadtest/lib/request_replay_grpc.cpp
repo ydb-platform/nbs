@@ -78,11 +78,11 @@ private:
 
 public:
     TReplayRequestGeneratorGRPC(
-        NProto::TReplaySpec spec,
-        ILoggingServicePtr logging,
-        ISessionPtr session,
-        TString filesystemId,
-        NProto::THeaders headers)
+            NProto::TReplaySpec spec,
+            ILoggingServicePtr logging,
+            ISessionPtr session,
+            TString filesystemId,
+            NProto::THeaders headers)
         : IReplayRequestGenerator(
               std::move(spec),
               std::move(logging),
