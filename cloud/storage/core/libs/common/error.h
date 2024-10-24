@@ -435,7 +435,7 @@ TResponse SafeExecute(T&& block)
         return block();
     } catch (const TServiceError& e) {
         return TErrorResponse(e);
-    } catch (const TIoSystemError& e) {
+    } catch (const TSystemError& e) {
         return TErrorResponse(MAKE_SYSTEM_ERROR(e.Status()), e.what());
     } catch (...) {
         return TErrorResponse(E_FAIL, CurrentExceptionMessage());
