@@ -1165,10 +1165,6 @@ func (s *nodeService) mountBlockDevice(
 		return fmt.Errorf("failed to mount: %w", err)
 	}
 
-	if err := os.Chmod(target, targetPerm); err != nil {
-		return fmt.Errorf("failed to chmod target path: %w", err)
-	}
-
 	return nil
 }
 
