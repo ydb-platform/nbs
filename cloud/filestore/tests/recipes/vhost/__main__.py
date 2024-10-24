@@ -32,6 +32,8 @@ def start(argv):
     parser.add_argument("--restart-interval", action="store", default=None)
     parser.add_argument("--restart-flag", action="store", default=None)
     parser.add_argument("--storage-config-patch", action="store", default=None)
+    parser.add_argument("--direct-io", action="store_true", default=False)
+
     args = parser.parse_args(argv)
 
     vhost_binary_path = common.binary_path(
@@ -69,6 +71,7 @@ def start(argv):
         fs_root_path = common.ram_drive_path()
         if fs_root_path:
             config.VhostServiceConfig.LocalServiceConfig.RootPath = fs_root_path
+        config.VhostServiceConfig.LocalServiceConfig.DirectIoEnabled = args.direct_io
     elif service_type == "kikimr":
         kikimr_port = os.getenv("KIKIMR_SERVER_PORT")
         domain = os.getenv("NFS_DOMAIN")

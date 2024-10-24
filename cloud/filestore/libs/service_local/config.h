@@ -26,6 +26,11 @@ public:
     ui32 GetDefaultPermissions() const;
     TDuration GetIdleSessionTimeout() const;
     ui32 GetNumThreads() const;
+    TString GetStatePath() const;
+    ui32 GetMaxNodeCount() const;
+    ui32 GetMaxHandlePerSessionCount() const;
+    bool GetDirectIoEnabled() const;
+    ui32 GetDirectIoAlign() const;
 
     void Dump(IOutputStream& out) const;
     void DumpHtml(IOutputStream& out) const;

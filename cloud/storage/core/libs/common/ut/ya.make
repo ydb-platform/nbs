@@ -15,6 +15,7 @@ IF (SANITIZER_TYPE != "thread")
 ENDIF()
 
 SRCS(
+    aligned_buffer_ut.cpp
     backoff_delay_provider_ut.cpp
     block_buffer_ut.cpp
     block_data_ref_ut.cpp
@@ -24,6 +25,7 @@ SRCS(
     file_io_service_ut.cpp
     guarded_sglist_ut.cpp
     history_ut.cpp
+    persistent_table_ut.cpp
     ring_buffer_ut.cpp
     scheduler_ut.cpp
     scoped_handle_ut.cpp

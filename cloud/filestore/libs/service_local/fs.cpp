@@ -8,29 +8,34 @@ TLocalFileSystem::TLocalFileSystem(
         TLocalFileStoreConfigPtr config,
         NProto::TFileStore store,
         TFsPath root,
+        TFsPath statePath,
         ITimerPtr timer,
         ISchedulerPtr scheduler,
         ILoggingServicePtr logging,
         IFileIOServicePtr fileIOService)
     : Config(std::move(config))
     , Root(std::move(root))
+    , StatePath(std::move(statePath))
     , Timer(std::move(timer))
     , Scheduler(std::move(scheduler))
+    , Logging(std::move(logging))
     , FileIOService(std::move(fileIOService))
     , Store(std::move(store))
 {
-    Log = logging->CreateLog(Store.GetFileSystemId());
+    Log = Logging->CreateLog(Store.GetFileSystemId());
 
-    InitIndex();
+    STORAGE_INFO(
+        "LocalFileSystemId=" << Store.GetFileSystemId() <<
+        ", DirectIoEnabled=" << Config->GetDirectIoEnabled() <<
+        ", DirectIoAlign=" << Config->GetDirectIoAlign());
+
+    Index = std::make_shared<TLocalIndex>(
+        Root,
+        StatePath,
+        Config->GetMaxNodeCount(),
+        Log);
+
     ScheduleCleanupSessions();
-}
-
-void TLocalFileSystem::InitIndex()
-{
-    TLocalIndex::TNodeMap nodes;
-    nodes.insert(TIndexNode::CreateRoot(Root));
-
-    Index = std::make_shared<TLocalIndex>(std::move(nodes));
 }
 
 ////////////////////////////////////////////////////////////////////////////////

@@ -33,6 +33,7 @@ constexpr std::array SUPPORTED_HANDLE_FLAGS = {
     TFlag2Proto{O_NOFOLLOW,  TCreateHandleRequest::E_NOFOLLOW},
     TFlag2Proto{O_NONBLOCK,  TCreateHandleRequest::E_NONBLOCK},
     TFlag2Proto{O_PATH,      TCreateHandleRequest::E_PATH},
+    TFlag2Proto{O_DIRECT,    TCreateHandleRequest::E_DIRECT},
 };
 
 constexpr std::array SUPPORTED_RENAME_FLAGS = {

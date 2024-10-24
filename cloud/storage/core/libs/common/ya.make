@@ -4,6 +4,7 @@ GENERATE_ENUM_SERIALIZATION(error.h)
 
 SRCS(
     affinity.cpp
+    aligned_buffer.cpp
     alloc.cpp
     backoff_delay_provider.cpp
     block_buffer.cpp
@@ -19,6 +20,7 @@ SRCS(
     helpers.cpp
     history.cpp
     media.cpp
+    persistent_table.cpp
     proto_helpers.cpp
     random.cpp
     ring_buffer.cpp
