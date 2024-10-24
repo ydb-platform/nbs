@@ -272,6 +272,12 @@ private:
             with_lock (StateLock) {
                 HandlesLogToActual[logRequest.GetNodeInfo().GetHandle()] =
                     handle;
+                if (!NodesLogToLocal.contains(
+                        logRequest.GetNodeInfo().GetNodeId()))
+                {
+                    NodesLogToLocal[logRequest.GetNodeInfo().GetNodeId()] =
+                        response.GetNodeAttr().GetId();
+                }
             }
 
             TFuture<NProto::TSetNodeAttrResponse> setAttr;
@@ -818,7 +824,6 @@ private:
     {
         try {
             const auto& response = future.GetValue();
-            STORAGE_DEBUG("GetNodeAttr client completed");
             CheckResponse(response);
             return {NProto::ACTION_GET_NODE_ATTR, started, {}};
         } catch (const TServiceError& e) {
