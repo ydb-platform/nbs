@@ -1743,25 +1743,32 @@ bool TIndexTabletDatabase::ReadCheckpointBlobs(
 void TIndexTabletDatabase::ForceWriteCompactionMap(
     ui32 rangeId,
     ui32 blobsCount,
-    ui32 deletionsCount)
+    ui32 deletionsCount,
+    ui32 garbageBlocksCount)
 {
     using TTable = TIndexTabletSchema::CompactionMap;
 
     Table<TTable>()
         .Key(rangeId)
         .Update(NIceDb::TUpdate<TTable::BlobsCount>(blobsCount))
-        .Update(NIceDb::TUpdate<TTable::DeletionsCount>(deletionsCount));
+        .Update(NIceDb::TUpdate<TTable::DeletionsCount>(deletionsCount))
+        .Update(NIceDb::TUpdate<TTable::GarbageBlocksCount>(garbageBlocksCount));
 }
 
 void TIndexTabletDatabase::WriteCompactionMap(
     ui32 rangeId,
     ui32 blobsCount,
-    ui32 deletionsCount)
+    ui32 deletionsCount,
+    ui32 garbageBlocksCount)
 {
     using TTable = TIndexTabletSchema::CompactionMap;
 
-    if (blobsCount || deletionsCount) {
-        ForceWriteCompactionMap(rangeId, blobsCount, deletionsCount);
+    if (blobsCount || deletionsCount || garbageBlocksCount) {
+        ForceWriteCompactionMap(
+            rangeId,
+            blobsCount,
+            deletionsCount,
+            garbageBlocksCount);
     } else {
         Table<TTable>().Key(rangeId).Delete();
     }
@@ -1799,6 +1806,7 @@ bool TIndexTabletDatabase::ReadCompactionMap(
             {
                 it.GetValue<TTable::BlobsCount>(),
                 it.GetValue<TTable::DeletionsCount>(),
+                it.GetValue<TTable::GarbageBlocksCount>(),
             }
         });
 

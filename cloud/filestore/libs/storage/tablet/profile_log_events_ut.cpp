@@ -409,7 +409,7 @@ Y_UNIT_TEST_SUITE(TProfileLogEvent)
     Y_UNIT_TEST(ShouldAddCompactionRange)
     {
         NProto::TProfileLogRequestInfo profileLogRequest;
-        AddCompactionRange(100500, 500100, 100, 500, profileLogRequest);
+        AddCompactionRange(100500, 500100, 100, 500, 1000, profileLogRequest);
 
         UNIT_ASSERT(!profileLogRequest.HasTimestampMcs());
         UNIT_ASSERT(!profileLogRequest.HasDurationMcs());
@@ -429,6 +429,9 @@ Y_UNIT_TEST_SUITE(TProfileLogEvent)
         UNIT_ASSERT_VALUES_EQUAL(
             500,
             profileLogRequest.GetCompactionRanges().at(0).GetDeletionsCount());
+        UNIT_ASSERT_VALUES_EQUAL(
+            1000,
+            profileLogRequest.GetCompactionRanges().at(0).GetGarbageBlocksCount());
 
         UNIT_ASSERT(!profileLogRequest.HasNodeInfo());
         UNIT_ASSERT(!profileLogRequest.HasLockInfo());

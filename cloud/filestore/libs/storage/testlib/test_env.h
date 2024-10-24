@@ -49,10 +49,11 @@ inline auto CompactionRangeToString(
     const NProtoPrivate::TCompactionRangeStats& rs)
 {
     return Sprintf(
-        "r=%u b=%u d=%u",
+        "r=%u b=%u d=%u g=%u",
         rs.GetRangeId(),
         rs.GetBlobCount(),
-        rs.GetDeletionCount());
+        rs.GetDeletionCount(),
+        rs.GetGarbageBlockCount());
 }
 
 ////////////////////////////////////////////////////////////////////////////////

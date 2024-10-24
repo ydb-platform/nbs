@@ -908,6 +908,8 @@ public:
     ui32 GetMixedRangeIndex(const TVector<TBlock>& blocks) const;
     const IBlockLocation2RangeIndex& GetRangeIdHasher() const;
 
+    ui32 CalculateMixedIndexRangeGarbageBlockCount(ui32 rangeId) const;
+
 private:
     bool WriteMixedBlocks(
         TIndexTabletDatabase& db,
@@ -1117,11 +1119,17 @@ private:
     //
 
 public:
-    void UpdateCompactionMap(ui32 rangeId, ui32 blobsCount, ui32 deletionsCount);
+    void UpdateCompactionMap(
+        ui32 rangeId,
+        ui32 blobsCount,
+        ui32 deletionsCount,
+        ui32 garbageBlocksCount,
+        bool compacted);
 
     TCompactionStats GetCompactionStats(ui32 rangeId) const;
     TCompactionCounter GetRangeToCompact() const;
     TCompactionCounter GetRangeToCleanup() const;
+    TCompactionCounter GetRangeToCompactByGarbage() const;
     TMaybe<TPriorityRange> NextPriorityRangeForCleanup() const;
     ui32 GetPriorityRangeCount() const;
 
@@ -1129,8 +1137,12 @@ public:
 
     TVector<ui32> GetNonEmptyCompactionRanges() const;
     TVector<ui32> GetAllCompactionRanges() const;
-    TVector<TCompactionRangeInfo> GetTopRangesByCompactionScore(ui32 topSize) const;
-    TVector<TCompactionRangeInfo> GetTopRangesByCleanupScore(ui32 topSize) const;
+    TVector<TCompactionRangeInfo> GetTopRangesByCompactionScore(
+        ui32 topSize) const;
+    TVector<TCompactionRangeInfo> GetTopRangesByCleanupScore(
+        ui32 topSize) const;
+    TVector<TCompactionRangeInfo> GetTopRangesByGarbageScore(
+        ui32 topSize) const;
 
     void LoadCompactionMap(const TVector<TCompactionRangeInfo>& compactionMap);
 

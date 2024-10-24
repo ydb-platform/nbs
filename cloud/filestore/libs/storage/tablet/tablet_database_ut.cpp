@@ -364,19 +364,19 @@ Y_UNIT_TEST_SUITE(TIndexTabletDatabaseTest)
 
         using TEntries = TVector<TCompactionRangeInfo>;
         TEntries entries = {
-            {1, {50, 100}},
-            {4, {42, 10}},
-            {32, {50, 200}},
-            {65, {1, 400}},
-            {110, {2, 333}},
-            {113, {7, 444}},
-            {4233, {150, 555}},
-            {5632, {1000, 3}},
-            {6000, {30, 11}},
-            {6001, {12, 15}},
-            {6002, {2, 20}},
-            {6005, {99, 7}},
-            {7000, {1000, 5000}},
+            {1, {50, 100, 200}},
+            {4, {42, 10, 300}},
+            {32, {50, 200, 100}},
+            {65, {1, 400, 50}},
+            {110, {2, 333, 10}},
+            {113, {7, 444, 0}},
+            {4233, {150, 555, 0}},
+            {5632, {1000, 3, 500}},
+            {6000, {30, 11, 600}},
+            {6001, {12, 15, 30}},
+            {6002, {2, 20, 10}},
+            {6005, {99, 7, 55}},
+            {7000, {1000, 5000, 7000}},
         };
 
         executor.WriteTx([&] (TIndexTabletDatabase db) {
@@ -384,7 +384,8 @@ Y_UNIT_TEST_SUITE(TIndexTabletDatabaseTest)
                 db.WriteCompactionMap(
                     entry.RangeId,
                     entry.Stats.BlobsCount,
-                    entry.Stats.DeletionsCount);
+                    entry.Stats.DeletionsCount,
+                    entry.Stats.GarbageBlocksCount);
             }
         });
 
@@ -399,7 +400,8 @@ Y_UNIT_TEST_SUITE(TIndexTabletDatabaseTest)
             while (i < v.size() && processed < c) {
                 if (skipZeroes
                         && !v[i].Stats.BlobsCount
-                        && !v[i].Stats.DeletionsCount)
+                        && !v[i].Stats.DeletionsCount
+                        && !v[i].Stats.GarbageBlocksCount)
                 {
                     ++i;
                     continue;
@@ -410,7 +412,8 @@ Y_UNIT_TEST_SUITE(TIndexTabletDatabaseTest)
                 }
                 sb << v[i].RangeId
                     << "," << v[i].Stats.BlobsCount
-                    << "," << v[i].Stats.DeletionsCount;
+                    << "," << v[i].Stats.DeletionsCount
+                    << "," << v[i].Stats.GarbageBlocksCount;
                 ++processed;
                 ++i;
             }
@@ -439,7 +442,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletDatabaseTest)
 
         executor.WriteTx([&] (TIndexTabletDatabase db) {
             for (const auto i: toDelete) {
-                db.WriteCompactionMap(entries[i].RangeId, 0, 0);
+                db.WriteCompactionMap(entries[i].RangeId, 0, 0, 0);
                 entries[i].Stats = {};
             }
         });

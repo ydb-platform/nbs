@@ -14,11 +14,20 @@ namespace NCloud::NFileStore::NVhost {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+struct THandleOpsQueueConfig
+{
+    TString PathPrefix;
+    ui32 MaxQueueSize = 0;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
 IEndpointListenerPtr CreateEndpointListener(
     ILoggingServicePtr logging,
     ITimerPtr timer,
     ISchedulerPtr scheduler,
     IFileStoreEndpointsPtr filestoreEndpoints,
-    NVFS::IFileSystemLoopFactoryPtr loopFactory);
+    NVFS::IFileSystemLoopFactoryPtr loopFactory,
+    THandleOpsQueueConfig handleOpsQueueConfig);
 
 }   // namespace NCloud::NFileStore::NVhost

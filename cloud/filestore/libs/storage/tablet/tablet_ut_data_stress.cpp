@@ -450,7 +450,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data_Stress)
         // Compactions should've happened automatically
 
         {
-            auto response = tablet.GetStorageStats(1);
+            auto response = tablet.GetStorageStats(0, 1);
             const auto& stats = response->Record.GetStats();
             UNIT_ASSERT_VALUES_EQUAL(
                 expectedBlockCount,
@@ -462,10 +462,12 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data_Stress)
             UNIT_ASSERT_VALUES_EQUAL(
                 256,
                 stats.GetAllocatedCompactionRanges());
+            // CompactionRangeStatsSize is 0 since all ranges are marked with
+            // the 'compacted' flag and thus not returned
             UNIT_ASSERT_VALUES_EQUAL(1, stats.CompactionRangeStatsSize());
             UNIT_ASSERT_VALUES_EQUAL(
                 Sprintf(
-                    "r=1177944064 b=%u d=%u",
+                    "r=1177944064 b=%u d=%u g=0",
                     (compactionThreshold - 1),
                     deletionMarkers),
                 CompactionRangeToString(stats.GetCompactionRangeStats(0)));

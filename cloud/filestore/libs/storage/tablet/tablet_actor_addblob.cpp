@@ -24,7 +24,13 @@ private:
     const TString LogTag;
     TIndexTabletActor& Tablet;
     const ui32 CompactionThreshold;
-    THashMap<ui32, TCompactionStats> RangeId2CompactionStats;
+
+    struct TCompactionRangeInfo
+    {
+        TCompactionStats Stats;
+        bool Compacted = false;
+    };
+    THashMap<ui32, TCompactionRangeInfo> RangeId2CompactionStats;
 
 public:
     TAddBlobsExecutor(
@@ -146,7 +152,10 @@ private:
                 block.NodeId,
                 block.BlockIndex,
                 blob.BlocksCount);
-            AccessCompactionStats(rangeId).BlobsCount += 1;
+            AccessCompactionRangeInfo(rangeId).Stats.BlobsCount += 1;
+            // conservative estimate
+            AccessCompactionRangeInfo(rangeId).Stats.GarbageBlocksCount +=
+                blob.BlocksCount;
         }
 
         for (const auto& part: args.UnalignedDataParts) {
@@ -220,7 +229,10 @@ private:
             bool written = Tablet.WriteMixedBlocks(db, blob.BlobId, blob.Blocks);
             if (written) {
                 ui32 rangeId = Tablet.GetMixedRangeIndex(blob.Blocks);
-                AccessCompactionStats(rangeId).BlobsCount += 1;
+                AccessCompactionRangeInfo(rangeId).Stats.BlobsCount += 1;
+                // conservative estimate
+                AccessCompactionRangeInfo(rangeId).Stats.GarbageBlocksCount +=
+                    blob.Blocks.size();
             }
         }
 
@@ -254,9 +266,11 @@ private:
             Tablet.DeleteFreshBlocks(db, blob.Blocks);
 
             const auto rangeId = Tablet.GetMixedRangeIndex(blob.Blocks);
-            auto& stats = AccessCompactionStats(rangeId);
+            auto& stats = AccessCompactionRangeInfo(rangeId).Stats;
             if (Tablet.WriteMixedBlocks(db, blob.BlobId, blob.Blocks)) {
                 stats.BlobsCount += 1;
+                // conservative estimate
+                stats.GarbageBlocksCount += blob.Blocks.size();
             }
         }
     }
@@ -270,9 +284,10 @@ private:
 
         for (auto& blob: args.SrcBlobs) {
             const auto rangeId = Tablet.GetMixedRangeIndex(blob.Blocks);
-            auto& stats = AccessCompactionStats(rangeId);
+            auto& stats = AccessCompactionRangeInfo(rangeId).Stats;
             if (!Tablet.UpdateBlockLists(db, blob)) {
                 stats.BlobsCount = Max(stats.BlobsCount, 1U) - 1;
+                // no proper way to reliably decrement stats.GarbageBlocksCount
             }
         }
 
@@ -290,9 +305,11 @@ private:
 
         for (auto& blob: args.MixedBlobs) {
             const auto rangeId = Tablet.GetMixedRangeIndex(blob.Blocks);
-            auto& stats = AccessCompactionStats(rangeId);
+            auto& stats = AccessCompactionRangeInfo(rangeId).Stats;
             if (Tablet.WriteMixedBlocks(db, blob.BlobId, blob.Blocks)) {
                 stats.BlobsCount += 1;
+                // conservative estimate
+                stats.GarbageBlocksCount += blob.Blocks.size();
             }
         }
     }
@@ -304,15 +321,26 @@ private:
         TABLET_VERIFY(!args.MergedBlobs);
         TABLET_VERIFY(!args.UnalignedDataParts);
 
+        THashSet<ui32> rangeIds;
+
         for (const auto& blob: args.SrcBlobs) {
             const auto rangeId = Tablet.GetMixedRangeIndex(blob.Blocks);
-            auto& stats = AccessCompactionStats(rangeId);
+            auto& rangeInfo = AccessCompactionRangeInfo(rangeId);
             // Decrementing compaction counter for the overwritten blobs.
             // The counter is not guaranteed to be perfectly in sync with the
             // actual blob count in range so a check for moving below zero is
             // needed.
-            stats.BlobsCount = Max(1U, stats.BlobsCount) - 1;
+            rangeInfo.Stats.BlobsCount =
+                Max(1U, rangeInfo.Stats.BlobsCount) - 1;
+            if (rangeInfo.Stats.BlobsCount == 0) {
+                // this range will be fully compacted after this Compaction
+                // iteration
+                rangeInfo.Compacted = true;
+            }
+
             Tablet.DeleteMixedBlocks(db, blob.BlobId, blob.Blocks);
+
+            rangeIds.insert(rangeId);
         }
 
         THashMap<ui32, ui32> rangeId2AddedBlobsCount;
@@ -323,10 +351,12 @@ private:
             if (Tablet.WriteMixedBlocks(db, blob.BlobId, blob.Blocks)) {
                 ++rangeId2AddedBlobsCount[rangeId];
             }
+
+            rangeIds.insert(rangeId);
         }
 
         for (const auto& [rangeId, addedBlobsCount]: rangeId2AddedBlobsCount) {
-            auto& stats = AccessCompactionStats(rangeId);
+            auto& stats = AccessCompactionRangeInfo(rangeId).Stats;
 
             // If addedBlobsCount >= compactionThreshold, then Compaction will
             // enter an infinite loop
@@ -337,8 +367,13 @@ private:
             }
             stats.BlobsCount += increment;
         }
-    }
 
+        // recalculating GarbageBlocksCount for each of the affected ranges
+        for (const auto rangeId: rangeIds) {
+            AccessCompactionRangeInfo(rangeId).Stats.GarbageBlocksCount =
+                Tablet.CalculateMixedIndexRangeGarbageBlockCount(rangeId);
+        }
+    }
 
     void UpdateCompactionMap(
         TIndexTabletDatabase& db,
@@ -347,20 +382,22 @@ private:
         for (const auto& x: RangeId2CompactionStats) {
             db.WriteCompactionMap(
                 x.first,
-                x.second.BlobsCount,
-                x.second.DeletionsCount
-            );
+                x.second.Stats.BlobsCount,
+                x.second.Stats.DeletionsCount,
+                x.second.Stats.GarbageBlocksCount);
             Tablet.UpdateCompactionMap(
                 x.first,
-                x.second.BlobsCount,
-                x.second.DeletionsCount
-            );
+                x.second.Stats.BlobsCount,
+                x.second.Stats.DeletionsCount,
+                x.second.Stats.GarbageBlocksCount,
+                x.second.Compacted);
 
             AddCompactionRange(
                 args.CommitId,
                 x.first,
-                x.second.BlobsCount,
-                x.second.DeletionsCount,
+                x.second.Stats.BlobsCount,
+                x.second.Stats.DeletionsCount,
+                x.second.Stats.GarbageBlocksCount,
                 args.ProfileLogRequest);
         }
     }
@@ -388,22 +425,24 @@ private:
         }
     }
 
-    TCompactionStats& AccessCompactionStats(ui32 rangeId)
+    TCompactionRangeInfo& AccessCompactionRangeInfo(ui32 rangeId)
     {
-        THashMap<ui32, TCompactionStats>::insert_ctx ctx;
+        THashMap<ui32, TCompactionRangeInfo>::insert_ctx ctx;
         auto it = RangeId2CompactionStats.find(rangeId, ctx);
         if (it == RangeId2CompactionStats.end()) {
             it = RangeId2CompactionStats.emplace_direct(
                 ctx,
                 rangeId,
-                Tablet.GetCompactionStats(rangeId));
+                TCompactionRangeInfo{
+                    Tablet.GetCompactionStats(rangeId),
+                    false});
         }
 
         return it->second;
     }
 };
 
-}
+}   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
 
