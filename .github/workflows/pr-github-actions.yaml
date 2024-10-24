@@ -147,4 +147,6 @@ jobs:
   create-and-delete-vm:
     name: Create and delete VM
     uses: ./.github/workflows/create_and_delete_vm.yaml
+    with:
+      nebius: ${{ vars.GLOBAL_RUN_ON_NEBIUS }}
     secrets: inherit

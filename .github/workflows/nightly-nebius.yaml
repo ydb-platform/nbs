@@ -56,19 +56,6 @@ on:
         required: false
         #default: 'cloud/tasks/'
         default: 'cloud/blockstore/,cloud/filestore/,cloud/disk_manager/,cloud/tasks/'
-      nebius:
-        description: 'Run on new nebius runners'
-        type: choice
-        required: false
-        default: 'no'
-        options:
-          - 'yes'
-          - 'no'
-      test_threads:
-        description: 'Test threads count'
-        type: string
-        required: false
-        default: '32'
 
 
 jobs:
@@ -84,12 +71,12 @@ jobs:
       cache_update_build: true
       cache_update_tests: false
       sleep_after_tests: 1
-      test_threads: ${{ inputs.test_threads }}
+      test_threads: 32
       disk_type: ${{ inputs.disk_type }}
       use_network_cache: ${{ inputs.use_network_cache }}
       upload_ya_dir: ${{ inputs.upload_ya_dir }}
       clean_ya_dir: ${{ inputs.clean_ya_dir }}
-      nebius: ${{ inputs.nebius }}
+      nebius: "yes"
   build_schedule:
     name: Build/test x86_64 using YA (relwithdebinfo) (schedule)
     if: github.event_name == 'schedule'
@@ -107,4 +94,4 @@ jobs:
       use_network_cache: "yes"
       upload_ya_dir: "yes"
       clean_ya_dir: "yes"
-      nebius: ${{ vars.GLOBAL_RUN_ON_NEBIUS }}
+      nebius: "yes"

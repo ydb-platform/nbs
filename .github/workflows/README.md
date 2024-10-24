@@ -11,7 +11,7 @@ To use it you need to set up a few files in separate directories, from where you
 
 ```bash
 AWS_BUCKET=github-actions-s3
-AWS_ENDPOINT=https://storage.ai.nebius.cloud
+AWS_ENDPOINT=https://storage.eu-north1.nebius.cloud
 REMOTE_CACHE_URL_YA=http://195.242.17.155:9090
 AWS_WEBSITE_SUFFIX=website.nemax.nebius.cloud
 ```
