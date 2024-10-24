@@ -6,6 +6,7 @@ SRCS(
     dump_events.cpp
     factory.cpp
     find_bytes_access.cpp
+    mask.cpp
 )
 
 PEERDIR(

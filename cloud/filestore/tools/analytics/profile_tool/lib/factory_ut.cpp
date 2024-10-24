@@ -27,10 +27,11 @@ Y_UNIT_TEST_SUITE(TFactory)
     {
         const auto names = GetCommandNames();
 
-        UNIT_ASSERT_VALUES_EQUAL(2, names.size());
+        UNIT_ASSERT_VALUES_EQUAL(3, names.size());
 
         UNIT_ASSERT_VALUES_EQUAL("dumpevents", names[0]);
         UNIT_ASSERT_VALUES_EQUAL("findbytesaccess", names[1]);
+        UNIT_ASSERT_VALUES_EQUAL("masksensitivedata", names[2]);
     }
 }
 
