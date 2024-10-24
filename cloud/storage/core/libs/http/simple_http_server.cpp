@@ -17,7 +17,7 @@ bool TSimpleHttpServer::TRequest::Reply(void* /*threadSpecificResource*/)
     }
 
     Output() << "HTTP/1.1 200 Ok\r\n"
-             << "Content-Length: " << Response.Size() << "\r\n"
+             << "Content-Length: " << Response.size() << "\r\n"
              << "Content-Type: text/html\r\n\r\n"
              << Response;
     Output().Finish();
