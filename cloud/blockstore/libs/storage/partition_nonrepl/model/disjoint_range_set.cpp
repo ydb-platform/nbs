@@ -7,7 +7,7 @@ namespace NCloud::NBlockStore::NStorage {
 TDisjointRangeSet::TDisjointRangeSet() = default;
 TDisjointRangeSet::~TDisjointRangeSet() = default;
 
-[[nodiscard]] bool TDisjointRangeSet::TryInsert(TBlockRange64 range)
+bool TDisjointRangeSet::TryInsert(TBlockRange64 range)
 {
     if (!BlockSize.has_value()) {
         BlockSize = range.Size();
@@ -29,7 +29,7 @@ TDisjointRangeSet::~TDisjointRangeSet() = default;
     return true;
 }
 
-[[nodiscard]] bool TDisjointRangeSet::Remove(TBlockRange64 range)
+bool TDisjointRangeSet::Remove(TBlockRange64 range)
 {
     auto it = EndToStart.find(range.End);
     if (it == EndToStart.end()) {
@@ -40,17 +40,17 @@ TDisjointRangeSet::~TDisjointRangeSet() = default;
     return true;
 }
 
-[[nodiscard]] bool TDisjointRangeSet::Empty() const
+bool TDisjointRangeSet::Empty() const
 {
     return EndToStart.empty();
 }
 
-[[nodiscard]] size_t TDisjointRangeSet::Size() const
+size_t TDisjointRangeSet::Size() const
 {
     return EndToStart.size();
 }
 
-[[nodiscard]] TBlockRange64 TDisjointRangeSet::LeftmostRange() const
+TBlockRange64 TDisjointRangeSet::LeftmostRange() const
 {
     if (EndToStart.empty()) {
         Y_DEBUG_ABORT_UNLESS(false);
@@ -69,7 +69,7 @@ TDisjointRangeSetIterator::TDisjointRangeSetIterator(
     , Pos(RangeSet.EndToStart.cbegin())
 {}
 
-[[nodiscard]] bool TDisjointRangeSetIterator::HasNext() const
+bool TDisjointRangeSetIterator::HasNext() const
 {
     return RangeSet.EndToStart.end() != Pos;
 }
