@@ -15,6 +15,7 @@ IF (SANITIZER_TYPE != "thread")
 ENDIF()
 
 SRCS(
+    aligned_buffer_ut.cpp
     backoff_delay_provider_ut.cpp
     block_buffer_ut.cpp
     block_data_ref_ut.cpp

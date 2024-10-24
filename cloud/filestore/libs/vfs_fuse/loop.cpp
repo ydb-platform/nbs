@@ -843,6 +843,10 @@ private:
             features.GetAsyncDestroyHandleEnabled());
         config.SetAsyncHandleOperationPeriod(
             features.GetAsyncHandleOperationPeriod());
+
+        config.SetDirectIoEnabled(features.GetDirectIoEnabled());
+        config.SetDirectIoAlign(features.GetDirectIoAlign());
+
         return std::make_shared<TFileSystemConfig>(config);
     }
 
