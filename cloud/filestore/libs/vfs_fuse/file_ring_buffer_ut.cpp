@@ -36,7 +36,7 @@ TString PopAll(TFileRingBuffer& rb)
     TStringBuilder sb;
 
     while (!rb.Empty()) {
-        if (sb.Size()) {
+        if (sb.size()) {
             sb << ", ";
         }
 
@@ -65,11 +65,11 @@ struct TReferenceImplementation
 
     bool Push(TStringBuf data)
     {
-        if (data.Empty() || data.Size() > MaxWeight) {
+        if (data.empty() || data.size() > MaxWeight) {
             return false;
         }
 
-        const ui32 sz = EntryOverhead + data.Size();
+        const ui32 sz = EntryOverhead + data.size();
         if (sz > MaxWeight) {
             return false;
         }
@@ -115,7 +115,7 @@ struct TReferenceImplementation
             return;
         }
 
-        const ui32 sz = Q.front().Size() + EntryOverhead;
+        const ui32 sz = Q.front().size() + EntryOverhead;
         ReadPos += sz;
         if (MaxWeight - ReadPos <= SlackSpace) {
             UNIT_ASSERT_VALUES_EQUAL(SlackSpace, MaxWeight - ReadPos);
