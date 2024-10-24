@@ -45,7 +45,6 @@ type alterPlacementGroupMembershipHandlerFunc func(ctx context.Context, req *pro
 type listPlacementGroupsHandlerFunc func(ctx context.Context, req *protos.TListPlacementGroupsRequest) (*protos.TListPlacementGroupsResponse, error)
 type cmsActionHandlerFunc func(ctx context.Context, req *protos.TCmsActionRequest) (*protos.TCmsActionResponse, error)
 type queryAgentsInfoHandler func(ctx context.Context, req *protos.TQueryAgentsInfoRequest) (*protos.TQueryAgentsInfoResponse, error)
-type resizeDeviceHandler func(ctx context.Context, req *protos.TResizeDeviceRequest) (*protos.TResizeDeviceResponse, error)
 type closeHandlerFunc func() error
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -89,7 +88,6 @@ type testClient struct {
 	ListPlacementGroupsHandler           listPlacementGroupsHandlerFunc
 	CmsActionHandler                     cmsActionHandlerFunc
 	QueryAgentsInfoHandler               queryAgentsInfoHandler
-	ResizeDeviceHandler                  resizeDeviceHandler
 	CloseHandlerFunc                     closeHandlerFunc
 }
 
@@ -555,16 +553,4 @@ func (client *testClient) QueryAgentsInfo(
 	}
 
 	return &protos.TQueryAgentsInfoResponse{}, nil
-}
-
-func (client *testClient) ResizeDevice(
-	ctx context.Context,
-	req *protos.TResizeDeviceRequest,
-) (*protos.TResizeDeviceResponse, error) {
-
-	if client.ResizeDeviceHandler != nil {
-		return client.ResizeDeviceHandler(ctx, req)
-	}
-
-	return &protos.TResizeDeviceResponse{}, nil
 }
