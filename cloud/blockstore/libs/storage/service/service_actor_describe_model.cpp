@@ -33,7 +33,7 @@ void TServiceActor::HandleDescribeVolumeModel(
         request.GetBlocksCount(),
         request.GetBlockSize(),
         request.GetIsSystem(),
-        !request.GetBaseDiskId().Empty()
+        !request.GetBaseDiskId().empty()
     );
 
     TVolumeParams volumeParams;

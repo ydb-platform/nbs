@@ -203,7 +203,7 @@ TString BuildCpuWaitStatsFilename(const TString& serviceName)
 {
     static constexpr auto CpuWaitStatsFilenameTemplate =
         "/sys/fs/cgroup/cpu/system.slice/%s.service/cpuacct.wait";
-    if (!serviceName.Empty()) {
+    if (!serviceName.empty()) {
         return Sprintf(CpuWaitStatsFilenameTemplate, serviceName.c_str());
     }
     return {};

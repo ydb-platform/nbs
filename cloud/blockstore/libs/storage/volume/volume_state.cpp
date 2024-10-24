@@ -244,7 +244,7 @@ void TVolumeState::Reset()
         if (Meta.GetDevices().size()) {
             CreatePartitionStatInfo(GetDiskId(), 0);
         }
-        const bool overlay = !GetBaseDiskId().Empty();
+        const bool overlay = !GetBaseDiskId().empty();
         // TODO(drbasic)
         // For encrypted disk-registry based disks, we will continue to
         // write a map of encrypted blocks for a while.

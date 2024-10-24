@@ -355,7 +355,7 @@ TString TVolumeActor::GetVolumeStatusString(TVolumeActor::EStatus status) const
     switch (status)
     {
         case TVolumeActor::STATUS_ONLINE: {
-            return State->GetLocalMountClientId().Empty() ?
+            return State->GetLocalMountClientId().empty() ?
                 "Online":
                 "Online (preempted)";
         }
@@ -1016,9 +1016,6 @@ STFUNC(TVolumeActor::StateWork)
             HandleDiskRegistryBasedPartCounters);
         HFunc(TEvStatsService::TEvVolumePartCounters, HandlePartCounters);
         HFunc(TEvVolumePrivate::TEvPartStatsSaved, HandlePartStatsSaved);
-        HFunc(
-            TEvVolumePrivate::TEvMultipartitionWriteOrZeroCompleted,
-            HandleMultipartitionWriteOrZeroCompleted);
         HFunc(
             TEvVolumePrivate::TEvWriteOrZeroCompleted,
             HandleWriteOrZeroCompleted);

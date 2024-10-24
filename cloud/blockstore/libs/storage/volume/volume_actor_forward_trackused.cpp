@@ -29,14 +29,13 @@ bool TVolumeActor::SendRequestToPartitionWithUsedBlockTracking(
     const auto* msg = ev->Get();
 
     const bool overlayDiskRegistryBasedDisk =
-        State->IsDiskRegistryMediaKind() && !State->GetBaseDiskId().Empty();
+        State->IsDiskRegistryMediaKind() && !State->GetBaseDiskId().empty();
 
     if constexpr (IsWriteMethod<TMethod>) {
         if (State->GetTrackUsedBlocks() || State->HasCheckpointLight())
         {
             auto requestInfo =
                 CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
-
             // TODO(drbasic)
             // For encrypted disk-registry based disks, we will continue to
             // write a map of encrypted blocks for a while.

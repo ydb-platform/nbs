@@ -192,8 +192,8 @@ void TReadBlobActor::HandleGetResult(
                     Y_ABORT_UNLESS(block.Data());
                     memcpy(
                         const_cast<char*>(block.Data()),
-                        marker.Data(),
-                        Min(block.Size(), marker.Size())
+                        marker.data(),
+                        Min(block.Size(), marker.size())
                     );
                     ++sglistIndex;
 
@@ -208,8 +208,8 @@ void TReadBlobActor::HandleGetResult(
                         Y_ABORT_UNLESS(block.Data());
                         memcpy(
                             const_cast<char*>(block.Data()),
-                            marker.Data(),
-                            Min(block.Size(), marker.Size())
+                            marker.data(),
+                            Min(block.Size(), marker.size())
                         );
 
                         ++sglistIndex;
@@ -242,9 +242,9 @@ void TReadBlobActor::HandleGetResult(
                     auto block = TString::Uninitialized(BlockSize);
                     iter.ExtractPlainDataAndAdvance(block.begin(), BlockSize);
                     blockChecksums.push_back(
-                        ComputeDefaultDigest({block.Data(), BlockSize}));
+                        ComputeDefaultDigest({block.data(), BlockSize}));
 
-                    memcpy(to, block.Data(), BlockSize);
+                    memcpy(to, block.data(), BlockSize);
                 } else {
                     iter.ExtractPlainDataAndAdvance(to, BlockSize);
                 }

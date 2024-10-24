@@ -12,15 +12,15 @@ Y_UNIT_TEST_SUITE(TBlockDataRefTest)
     Y_UNIT_TEST(ConstructFromString)
     {
         TString expected = "test";
-        TBlockDataRef actual(expected.Data(), expected.Size());
+        TBlockDataRef actual(expected.data(), expected.size());
         UNIT_ASSERT_VALUES_EQUAL(expected, actual.AsStringBuf());
     }
 
     Y_UNIT_TEST(EqualityOperator)
     {
         TString expected = "test";
-        TBlockDataRef lhs(expected.Data(), expected.Size());
-        TBlockDataRef rhs(expected.Data(), expected.Size());
+        TBlockDataRef lhs(expected.data(), expected.size());
+        TBlockDataRef rhs(expected.data(), expected.size());
         UNIT_ASSERT_VALUES_EQUAL(lhs == rhs, true);
     }
 

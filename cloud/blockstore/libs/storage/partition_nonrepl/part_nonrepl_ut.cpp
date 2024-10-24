@@ -600,7 +600,7 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionTest)
 
         TString data(blockRange.Size() * DefaultBlockSize, 'A');
         TBlockChecksum checksum;
-        checksum.Extend(data.Data(), data.Size());
+        checksum.Extend(data.data(), data.size());
 
         {
             auto response = client.ChecksumBlocks(blockRange);

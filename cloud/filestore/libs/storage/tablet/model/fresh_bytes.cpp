@@ -67,7 +67,7 @@ void TFreshBytes::DeleteBytes(
             const auto shift = end - hi->second.Offset;
             hi->second.Buf = hi->second.Buf.substr(
                 shift,
-                hi->second.Buf.Size() - shift
+                hi->second.Buf.size() - shift
             );
             hi->second.Offset = end;
         }
@@ -126,7 +126,7 @@ void TFreshBytes::AddBytes(
     TKey key{nodeId, offset + storage.size()};
     TRef ref{TStringBuf(storage.data(), storage.size()), offset, commitId};
 
-    DeleteBytes(c, nodeId, offset, data.Size(), commitId);
+    DeleteBytes(c, nodeId, offset, data.size(), commitId);
 
     c.Refs[key] = ref;
 }

@@ -387,7 +387,7 @@ void TIndexTabletActor::HandleAddData(
 
     TVector<TBlockBytesMeta> unalignedDataParts;
     for (auto& part: *msg->Record.MutableUnalignedDataRanges()) {
-        if (part.GetContent().Empty()) {
+        if (part.GetContent().empty()) {
             auto response =
                 std::make_unique<TEvIndexTablet::TEvAddDataResponse>(MakeError(
                     E_ARGUMENT,
@@ -398,14 +398,14 @@ void TIndexTabletActor::HandleAddData(
 
         const ui32 blockIndex = part.GetOffset() / GetBlockSize();
         const ui32 lastBlockIndex =
-            (part.GetOffset() + part.GetContent().Size() - 1) / GetBlockSize();
+            (part.GetOffset() + part.GetContent().size() - 1) / GetBlockSize();
         if (blockIndex != lastBlockIndex) {
             auto response =
                 std::make_unique<TEvIndexTablet::TEvAddDataResponse>(MakeError(
                     E_ARGUMENT,
                     TStringBuilder() << "unaligned part spanning more than one"
                         << " block: " << part.GetOffset() << ":"
-                        << part.GetContent().Size()));
+                        << part.GetContent().size()));
             NCloud::Reply(ctx, *ev, std::move(response));
             return;
         }
@@ -423,13 +423,13 @@ void TIndexTabletActor::HandleAddData(
     auto unalignedMsg = [&] () {
         TStringBuilder sb;
         for (auto& part: unalignedDataParts) {
-            if (sb.Size()) {
+            if (sb.size()) {
                 sb << ", ";
             }
 
             sb << part.BlockIndex
                 << ":" << part.OffsetInBlock
-                << ":" << part.Data.Size();
+                << ":" << part.Data.size();
         }
         return sb;
     };

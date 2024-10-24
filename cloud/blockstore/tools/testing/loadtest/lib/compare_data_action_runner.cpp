@@ -235,7 +235,7 @@ void TCompareDataActionRunner::ReadBlocks(
             {}
         );
 
-        for (ui32 i = 0; i < response.GetMask().Size(); ++i) {
+        for (ui32 i = 0; i < response.GetMask().size(); ++i) {
             for (ui32 j = 0; j < 8; ++j) {
                 if (response.GetMask()[i] & (1 << j)) {
                     const auto idx = (i * 8 + j) * TestContext.Volume.GetBlockSize();

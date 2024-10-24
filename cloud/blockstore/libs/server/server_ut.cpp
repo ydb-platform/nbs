@@ -1184,7 +1184,7 @@ Y_UNIT_TEST_SUITE(TServerTest)
                     UNIT_ASSERT_VALUES_EQUAL(block.size(), blockSize);
                     UNIT_ASSERT_VALUES_EQUAL(
                         TString(blockSize, content),
-                        block.Data());
+                        block.data());
                 }
 
                 return MakeFuture<NProto::TWriteBlocksResponse>();
@@ -1217,7 +1217,7 @@ Y_UNIT_TEST_SUITE(TServerTest)
 
         {
             TString buffer(blocksCount * blockSize + overheadSize, 0);
-            auto sglist = TSgList{{buffer.Data(), buffer.Size()}};
+            auto sglist = TSgList{{buffer.data(), buffer.size()}};
 
             auto request = std::make_shared<NProto::TReadBlocksLocalRequest>();
             request->SetBlocksCount(blocksCount);
@@ -1230,7 +1230,7 @@ Y_UNIT_TEST_SUITE(TServerTest)
 
             const auto& response = future.GetValue(TDuration::Seconds(5));
 
-            for (size_t i = 0; i < buffer.Size(); ++i) {
+            for (size_t i = 0; i < buffer.size(); ++i) {
                 UNIT_ASSERT_VALUES_EQUAL(
                     i < blocksCount * blockSize ? content : 0,
                     buffer[i]);
@@ -1240,12 +1240,12 @@ Y_UNIT_TEST_SUITE(TServerTest)
 
         {
             TString buffer(blocksCount * blockSize + overheadSize, 0);
-            memset(const_cast<char*>(buffer.Data()), content, blocksCount * blockSize);
+            memset(const_cast<char*>(buffer.data()), content, blocksCount * blockSize);
 
             auto request = std::make_shared<NProto::TWriteBlocksLocalRequest>();
             request->BlocksCount = blocksCount;
             request->BlockSize = blockSize;
-            request->Sglist = TGuardedSgList({{buffer.Data(), buffer.Size()}});
+            request->Sglist = TGuardedSgList({{buffer.data(), buffer.size()}});
 
             auto future = endpoint->WriteBlocksLocal(
                 MakeIntrusive<TCallContext>(),

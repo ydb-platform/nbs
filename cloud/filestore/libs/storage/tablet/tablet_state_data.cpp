@@ -382,7 +382,7 @@ void TIndexTabletState::WriteFreshBytes(
         offset,
         data);
 
-    IncrementFreshBytesCount(db, data.Size());
+    IncrementFreshBytesCount(db, data.size());
 
     InvalidateReadAheadCache(nodeId);
 }

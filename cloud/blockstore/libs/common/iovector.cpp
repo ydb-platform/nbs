@@ -164,7 +164,7 @@ ui32 CountVoidBuffers(const NProto::TIOVector& iov)
 {
     ui32 result = 0;
     for (const auto& buffer: iov.GetBuffers()) {
-        if (buffer.Empty()) {
+        if (buffer.empty()) {
             ++result;
         }
     }

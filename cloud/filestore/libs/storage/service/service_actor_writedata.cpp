@@ -210,7 +210,7 @@ private:
                 request = std::make_unique<TEvBlobStorage::TEvPut>(
                     blobId,
                     TString(
-                        WriteRequest.GetBuffer().Data() + offset,
+                        WriteRequest.GetBuffer().data() + offset,
                         blobId.BlobSize()),
                     TInstant::Max(),
                     NKikimrBlobStorage::UserData);
@@ -489,7 +489,7 @@ void TStorageServiceActor::HandleWriteData(
 
     const TByteRange range(
         msg->Record.GetOffset(),
-        msg->Record.GetBuffer().Size(),
+        msg->Record.GetBuffer().size(),
         blockSize);
     const bool threeStageWriteEnabled =
         range.Length >= filestore.GetFeatures().GetThreeStageWriteThreshold()
@@ -501,7 +501,7 @@ void TStorageServiceActor::HandleWriteData(
             ctx,
             TFileStoreComponents::SERVICE,
             "Using three-stage write for request, size: %lu",
-            msg->Record.GetBuffer().Size());
+            msg->Record.GetBuffer().size());
 
         auto [cookie, inflight] = CreateInFlightRequest(
             TRequestInfo(ev->Sender, ev->Cookie, msg->CallContext),

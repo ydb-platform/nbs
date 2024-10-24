@@ -213,7 +213,7 @@ TFlushBytesActor::TFlushBytesActor(
     for (const auto& b: DstBlobs) {
         for (const auto& block: b.Blocks) {
             for (const auto& i: block.BlockBytes.Intervals) {
-                OperationSize += i.Data.Size();
+                OperationSize += i.Data.size();
             }
         }
     }
@@ -302,29 +302,29 @@ void TFlushBytesActor::WriteBlob(const TActorContext& ctx)
         for (const auto& block: blob.Blocks) {
             blobContent.append(BlockSize, 0);
             TStringBuf blockContent =
-                TStringBuf(blobContent).substr(blobContent.Size() - BlockSize);
+                TStringBuf(blobContent).substr(blobContent.size() - BlockSize);
             if (auto* ref = std::get_if<TBlockDataRef>(&block.Block)) {
                 TBlockLocationInBlob key{ref->BlobId, ref->BlobOffset};
 
                 auto& buffer = Buffers[ref->BlobId];
                 memcpy(
-                    const_cast<char*>(blockContent.Data()),
-                    buffer->GetBlock(SrcBlobOffset2DstBlobOffset[key]).Data(),
+                    const_cast<char*>(blockContent.data()),
+                    buffer->GetBlock(SrcBlobOffset2DstBlobOffset[key]).data(),
                     BlockSize
                 );
             } else if (auto* fresh = std::get_if<TOwningFreshBlock>(&block.Block)) {
                 memcpy(
-                    const_cast<char*>(blockContent.Data()),
-                    fresh->BlockData.Data(),
+                    const_cast<char*>(blockContent.data()),
+                    fresh->BlockData.data(),
                     BlockSize
                 );
             }
 
             for (const auto& interval: block.BlockBytes.Intervals) {
                 memcpy(
-                    const_cast<char*>(blockContent.Data()) + interval.OffsetInBlock,
-                    interval.Data.Data(),
-                    interval.Data.Size()
+                    const_cast<char*>(blockContent.data()) + interval.OffsetInBlock,
+                    interval.Data.data(),
+                    interval.Data.size()
                 );
             }
         }

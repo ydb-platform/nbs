@@ -80,7 +80,7 @@ TFuture<NProto::TReadDataResponse> TLocalFileSystem::ReadDataAsync(
     }
 
     auto b = TString::Uninitialized(request.GetLength());
-    NSan::Unpoison(b.Data(), b.Size());
+    NSan::Unpoison(b.data(), b.size());
 
     TArrayRef<char> data(b.begin(), b.vend());
     auto promise = NewPromise<NProto::TReadDataResponse>();

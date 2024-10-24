@@ -109,7 +109,7 @@ TString TManuallyPreemptedVolumes::Serialize() const
 NProto::TError TManuallyPreemptedVolumes::Deserialize(const TString& input)
 {
     try {
-        if (input.Empty()) {
+        if (input.empty()) {
             return {};
         }
 

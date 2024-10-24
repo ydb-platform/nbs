@@ -234,7 +234,7 @@ TEncryptionKey::TEncryptionKey(TString key)
 
 TEncryptionKey::~TEncryptionKey()
 {
-    SecureZero(Key.begin(), Key.Size());
+    SecureZero(Key.begin(), Key.size());
 }
 
 const TString& TEncryptionKey::GetKey() const

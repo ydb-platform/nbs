@@ -144,20 +144,20 @@ void TWriteBlobActor::SendPutRequest(const TActorContext& ctx)
     }
 
     STORAGE_VERIFY(
-        !blobContent.Empty(),
+        !blobContent.empty(),
         TWellKnownEntityTypes::TABLET,
         TabletId);
 
     if (Request->BlockSizeForChecksums) {
         STORAGE_VERIFY(
-            blobContent.Size() % Request->BlockSizeForChecksums == 0,
+            blobContent.size() % Request->BlockSizeForChecksums == 0,
             TWellKnownEntityTypes::TABLET,
             TabletId);
 
         ui32 offset = 0;
-        while (offset < blobContent.Size()) {
+        while (offset < blobContent.size()) {
             BlockChecksums.push_back(ComputeDefaultDigest({
-                blobContent.Data() + offset,
+                blobContent.data() + offset,
                 Request->BlockSizeForChecksums}));
 
             offset += Request->BlockSizeForChecksums;
@@ -342,7 +342,7 @@ void TPartitionActor::HandleWriteBlob(
             out.ReserveAndResize(BlobCodec->MaxCompressedLength(blobContent));
             const size_t sz = BlobCodec->Compress(blobContent, out.begin());
             auto& counters = PartCounters->Cumulative;
-            counters.UncompressedBytesWritten.Increment(blobContent.Size());
+            counters.UncompressedBytesWritten.Increment(blobContent.size());
             counters.CompressedBytesWritten.Increment(sz);
         }
     }

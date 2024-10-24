@@ -736,7 +736,7 @@ TFuture<NProto::TChecksumDeviceBlocksResponse> TDiskAgentState::Checksum(
             } else {
                 TBlockChecksum checksum;
                 for (const auto& buffer : data.GetBlocks().GetBuffers()) {
-                    checksum.Extend(buffer.Data(), buffer.Size());
+                    checksum.Extend(buffer.data(), buffer.size());
                 }
                 response.SetChecksum(checksum.GetValue());
             }

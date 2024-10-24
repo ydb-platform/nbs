@@ -29,7 +29,7 @@ TString ToString(
 {
     TStringBuilder sb;
     for (const auto& group: g.Groups) {
-        if (sb.Size()) {
+        if (sb.size()) {
             sb << "|";
         }
         sb << "GROUP:W=" << group.Weight;

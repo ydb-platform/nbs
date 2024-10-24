@@ -119,7 +119,7 @@ void TWaitDependentDisksToSwitchNodeActor::Bootstrap(const TActorContext& ctx)
         return;
     }
 
-    if (Request.GetAgentId().Empty()) {
+    if (Request.GetAgentId().empty()) {
         HandleError(ctx, MakeError(E_ARGUMENT, "Empty AgentId"));
         return;
     }

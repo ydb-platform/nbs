@@ -1701,8 +1701,8 @@ void CompleteRangeCompaction(
 
                 // fresh block will be written
                 blobContent.AddBlock({
-                    mark.BlockContent.Data(),
-                    mark.BlockContent.Size()
+                    mark.BlockContent.data(),
+                    mark.BlockContent.size()
                 });
 
                 if (args.ChecksumsEnabled) {

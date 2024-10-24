@@ -124,7 +124,7 @@ struct TRdmaClientTest::TRdmaEndpointImpl
                         GetDeviceBlocks(request->GetDeviceUUID(), minSize);
 
                     for (ui32 i = request->GetStartIndex(); i < minSize; ++i) {
-                        sglist.emplace_back(blocks[i].Data(), blocks[i].Size());
+                        sglist.emplace_back(blocks[i].data(), blocks[i].size());
                     }
                 }
 
@@ -150,7 +150,7 @@ struct TRdmaClientTest::TRdmaEndpointImpl
                     using TProto = NProto::TWriteDeviceBlocksRequest;
                     auto* request = static_cast<TProto*>(result.Proto.get());
                     const auto blockCount =
-                        result.Data.Size() / request->GetBlockSize();
+                        result.Data.size() / request->GetBlockSize();
                     const size_t minSize = request->GetStartIndex() + blockCount;
 
                     auto& blocks =
@@ -222,7 +222,7 @@ struct TRdmaClientTest::TRdmaEndpointImpl
 
                     TBlockChecksum checksum;
                     for (ui32 i = request->GetStartIndex(); i < minSize; ++i) {
-                        checksum.Extend(blocks[i].Data(), blocks[i].Size());
+                        checksum.Extend(blocks[i].data(), blocks[i].size());
                     }
                     response.SetChecksum(checksum.GetValue());
                 }

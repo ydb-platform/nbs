@@ -15,7 +15,7 @@ struct TCrcDigestCalculator final
     {
         Y_UNUSED(blockIndex);
 
-        return Crc32c(block.Data(), block.Size());
+        return Crc32c(block.data(), block.size());
     }
 };
 
