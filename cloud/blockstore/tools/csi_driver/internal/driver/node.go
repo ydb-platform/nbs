@@ -642,6 +642,10 @@ func (s *nodeService) nodePublishDiskAsFilesystem(
 		}
 	}
 
+	if req.Readonly {
+		mountOptions = append(mountOptions, "ro")
+	}
+
 	err := s.mountIfNeeded(
 		req.VolumeId,
 		req.StagingTargetPath,
@@ -802,7 +806,7 @@ func (s *nodeService) nodeStageDiskAsBlockDevice(
 	logVolume(req.VolumeId, "endpoint started with device: %q", resp.NbdDeviceFile)
 
 	devicePath := filepath.Join(req.StagingTargetPath, req.VolumeId)
-	return s.mountBlockDevice(req.VolumeId, resp.NbdDeviceFile, devicePath)
+	return s.mountBlockDevice(req.VolumeId, resp.NbdDeviceFile, devicePath, false)
 }
 
 func (s *nodeService) nodePublishDiskAsBlockDeviceDeprecated(
@@ -819,7 +823,7 @@ func (s *nodeService) nodePublishDiskAsBlockDeviceDeprecated(
 	}
 
 	logVolume(req.VolumeId, "endpoint started with device: %q", resp.NbdDeviceFile)
-	return s.mountBlockDevice(req.VolumeId, resp.NbdDeviceFile, req.TargetPath)
+	return s.mountBlockDevice(req.VolumeId, resp.NbdDeviceFile, req.TargetPath, false)
 }
 
 func (s *nodeService) nodePublishDiskAsBlockDevice(
@@ -833,7 +837,7 @@ func (s *nodeService) nodePublishDiskAsBlockDevice(
 		return s.nodePublishDiskAsBlockDeviceDeprecated(ctx, req)
 	}
 
-	return s.mountBlockDevice(req.VolumeId, devicePath, req.TargetPath)
+	return s.mountBlockDevice(req.VolumeId, devicePath, req.TargetPath, req.Readonly)
 }
 
 func (s *nodeService) startNbsEndpointForNBD(
@@ -1066,6 +1070,10 @@ func (s *nodeService) mountSocketDir(sourcePath string, req *csi.NodePublishVolu
 			mountOptions = append(mountOptions, flag)
 		}
 	}
+	if req.Readonly {
+		mountOptions = append(mountOptions, "ro")
+	}
+
 	err := s.mountIfNeeded(
 		req.VolumeId,
 		sourcePath,
@@ -1134,7 +1142,8 @@ func (s *nodeService) createDummyImgFile(dirPath string) error {
 func (s *nodeService) mountBlockDevice(
 	volumeId string,
 	source string,
-	target string) error {
+	target string,
+	readOnly bool) error {
 
 	if err := os.MkdirAll(filepath.Dir(target), os.FileMode(0750)); err != nil {
 		return fmt.Errorf("failed to create target directory: %w", err)
@@ -1148,13 +1157,12 @@ func (s *nodeService) mountBlockDevice(
 	ignoreError(file.Close())
 
 	mountOptions := []string{"bind"}
+	if readOnly {
+		mountOptions = append(mountOptions, "ro")
+	}
 	err = s.mountIfNeeded(volumeId, source, target, "", mountOptions)
 	if err != nil {
 		return fmt.Errorf("failed to mount: %w", err)
-	}
-
-	if err := os.Chmod(target, targetPerm); err != nil {
-		return fmt.Errorf("failed to chmod target path: %w", err)
 	}
 
 	return nil
