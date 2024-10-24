@@ -34,6 +34,7 @@ var stringToDiskKind = map[string]diskKind{
 	"ssd-mirror3": diskKind(disk_manager.DiskKind_DISK_KIND_SSD_MIRROR3),
 	"local":       diskKind(disk_manager.DiskKind_DISK_KIND_SSD_LOCAL),
 	"ssd-local":   diskKind(disk_manager.DiskKind_DISK_KIND_SSD_LOCAL),
+	"hdd-local":   diskKind(disk_manager.DiskKind_DISK_KIND_HDD_LOCAL),
 	"hdd-nonreplicated": diskKind(
 		disk_manager.DiskKind_DISK_KIND_HDD_NONREPLICATED,
 	),

@@ -68,6 +68,8 @@ func getStorageMediaKind(
 		return core_protos.EStorageMediaKind_STORAGE_MEDIA_SSD_MIRROR3, nil
 	case types.DiskKind_DISK_KIND_SSD_LOCAL:
 		return core_protos.EStorageMediaKind_STORAGE_MEDIA_SSD_LOCAL, nil
+	case types.DiskKind_DISK_KIND_HDD_LOCAL:
+		return core_protos.EStorageMediaKind_STORAGE_MEDIA_HDD_LOCAL, nil
 	case types.DiskKind_DISK_KIND_HDD_NONREPLICATED:
 		return core_protos.EStorageMediaKind_STORAGE_MEDIA_HDD_NONREPLICATED, nil
 	default:
@@ -100,6 +102,8 @@ func getDiskKind(
 		return types.DiskKind_DISK_KIND_SSD_MIRROR2, nil
 	case core_protos.EStorageMediaKind_STORAGE_MEDIA_SSD_LOCAL:
 		return types.DiskKind_DISK_KIND_SSD_LOCAL, nil
+	case core_protos.EStorageMediaKind_STORAGE_MEDIA_HDD_LOCAL:
+		return types.DiskKind_DISK_KIND_HDD_LOCAL, nil
 	case core_protos.EStorageMediaKind_STORAGE_MEDIA_SSD_MIRROR3:
 		return types.DiskKind_DISK_KIND_SSD_MIRROR3, nil
 	case core_protos.EStorageMediaKind_STORAGE_MEDIA_HDD_NONREPLICATED:
