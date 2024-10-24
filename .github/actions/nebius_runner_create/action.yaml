@@ -25,9 +25,6 @@ inputs:
   vm_name:
     required: true
     description: "vm name"
-  vm_zone:
-    required: true
-    description: "vm zone"
   vm_preset:
     required: true
     description: "vm cpu"
@@ -115,7 +112,6 @@ runs:
         REPO: ${{ inputs.repo }}
         VM_NAME: ${{ inputs.vm_name }}
         VM_PARENT_ID: ${{ inputs.vm_parent_id }}
-        VM_ZONE: ${{ inputs.vm_zone }}
         VM_PRESET: ${{ inputs.vm_preset }}
         VM_DISK_SIZE: ${{ inputs.vm_disk_size }}
         VM_DISK_TYPE: ${{ inputs.vm_disk_type }}
