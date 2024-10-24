@@ -19,6 +19,7 @@ target_link_libraries(cloud-storage-core-libs-common-ut PUBLIC
   core-libs-common
 )
 target_sources(cloud-storage-core-libs-common-ut PRIVATE
+  ${CMAKE_SOURCE_DIR}/cloud/storage/core/libs/common/aligned_buffer_ut.cpp
   ${CMAKE_SOURCE_DIR}/cloud/storage/core/libs/common/compressed_bitmap_ut.cpp
   ${CMAKE_SOURCE_DIR}/cloud/storage/core/libs/common/backoff_delay_provider_ut.cpp
   ${CMAKE_SOURCE_DIR}/cloud/storage/core/libs/common/block_buffer_ut.cpp
@@ -28,6 +29,7 @@ target_sources(cloud-storage-core-libs-common-ut PRIVATE
   ${CMAKE_SOURCE_DIR}/cloud/storage/core/libs/common/error_ut.cpp
   ${CMAKE_SOURCE_DIR}/cloud/storage/core/libs/common/file_io_service_ut.cpp
   ${CMAKE_SOURCE_DIR}/cloud/storage/core/libs/common/guarded_sglist_ut.cpp
+  ${CMAKE_SOURCE_DIR}/cloud/storage/core/libs/common/persistent_table_ut.cpp
   ${CMAKE_SOURCE_DIR}/cloud/storage/core/libs/common/ring_buffer_ut.cpp
   ${CMAKE_SOURCE_DIR}/cloud/storage/core/libs/common/scheduler_ut.cpp
   ${CMAKE_SOURCE_DIR}/cloud/storage/core/libs/common/scoped_handle_ut.cpp

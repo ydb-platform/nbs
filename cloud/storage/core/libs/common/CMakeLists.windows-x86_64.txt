@@ -30,6 +30,7 @@ target_link_libraries(core-libs-common PUBLIC
 )
 target_sources(core-libs-common PRIVATE
   ${CMAKE_SOURCE_DIR}/cloud/storage/core/libs/common/affinity.cpp
+  ${CMAKE_SOURCE_DIR}/cloud/storage/core/libs/common/aligned_buffer.cpp
   ${CMAKE_SOURCE_DIR}/cloud/storage/core/libs/common/alloc.cpp
   ${CMAKE_SOURCE_DIR}/cloud/storage/core/libs/common/backoff_delay_provider.cpp
   ${CMAKE_SOURCE_DIR}/cloud/storage/core/libs/common/block_buffer.cpp
@@ -44,6 +45,7 @@ target_sources(core-libs-common PRIVATE
   ${CMAKE_SOURCE_DIR}/cloud/storage/core/libs/common/guarded_sglist.cpp
   ${CMAKE_SOURCE_DIR}/cloud/storage/core/libs/common/helpers.cpp
   ${CMAKE_SOURCE_DIR}/cloud/storage/core/libs/common/media.cpp
+  ${CMAKE_SOURCE_DIR}/cloud/storage/core/libs/common/persistent_table.cpp
   ${CMAKE_SOURCE_DIR}/cloud/storage/core/libs/common/proto_helpers.cpp
   ${CMAKE_SOURCE_DIR}/cloud/storage/core/libs/common/random.cpp
   ${CMAKE_SOURCE_DIR}/cloud/storage/core/libs/common/ring_buffer.cpp
