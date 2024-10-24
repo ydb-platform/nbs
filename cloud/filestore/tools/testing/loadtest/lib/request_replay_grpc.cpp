@@ -78,11 +78,11 @@ private:
 
 public:
     TReplayRequestGeneratorGRPC(
-            NProto::TReplaySpec spec,
-            ILoggingServicePtr logging,
-            ISessionPtr session,
-            TString filesystemId,
-            NProto::THeaders headers)
+        NProto::TReplaySpec spec,
+        ILoggingServicePtr logging,
+        ISessionPtr session,
+        TString filesystemId,
+        NProto::THeaders headers)
         : IReplayRequestGenerator(
               std::move(spec),
               std::move(logging),
@@ -143,11 +143,14 @@ private:
 
         const auto request = CreateRequest<NProto::TAccessNodeRequest>();
 
-        const auto node = NodeIdMapped(logRequest.GetNodeInfo().GetNodeId());
-        if (node == InvalidNodeId) {
-            return MakeFuture(TCompletedRequest{});
+        const auto nodeId = NodeIdMapped(logRequest.GetNodeInfo().GetNodeId());
+        if (nodeId == InvalidNodeId) {
+            return MakeFuture(TCompletedRequest{
+                NProto::ACTION_ACCESS_NODE,
+                Started,
+                MakeError(E_NOT_FOUND, "node not found")});
         }
-        request->SetNodeId(node);
+        request->SetNodeId(nodeId);
         // TODO(proller): where is mask in logRequest?
         // request->SetMask(logRequest.GetNodeInfo().);
         auto self = weak_from_this();
@@ -208,7 +211,10 @@ private:
         const auto nodeId =
             NodeIdMapped(logRequest.GetNodeInfo().GetParentNodeId());
         if (nodeId == InvalidNodeId) {
-            return MakeFuture(TCompletedRequest{});
+            return MakeFuture(TCompletedRequest{
+                NProto::ACTION_CREATE_HANDLE,
+                Started,
+                MakeError(E_NOT_FOUND, "node not found")});
         }
         request->SetNodeId(nodeId);
         request->SetName(logRequest.GetNodeInfo().GetNodeName());
@@ -324,7 +330,10 @@ private:
         const auto handle =
             HandleIdMapped(logRequest.GetNodeInfo().GetHandle());
         if (handle == InvalidHandle) {
-            return MakeFuture(TCompletedRequest{});
+            return MakeFuture(TCompletedRequest{
+                NProto::ACTION_READ,
+                Started,
+                MakeError(E_NOT_FOUND, "handle not found")});
         }
         request->SetHandle(handle);
         request->SetOffset(logRequest.GetRanges().cbegin()->GetOffset());
@@ -394,7 +403,10 @@ private:
         const auto handleLocal = HandleIdMapped(handleLog);
 
         if (handleLocal == InvalidHandle) {
-            return MakeFuture(TCompletedRequest{});
+            return MakeFuture(TCompletedRequest{
+                NProto::ACTION_WRITE,
+                Started,
+                MakeError(E_NOT_FOUND, "handle not found")});
         }
         request->SetHandle(handleLocal);
 
@@ -471,7 +483,10 @@ private:
         const auto parentNode =
             NodeIdMapped(logRequest.GetNodeInfo().GetNewParentNodeId());
         if (parentNode == InvalidNodeId) {
-            return MakeFuture(TCompletedRequest{});
+            return MakeFuture(TCompletedRequest{
+                NProto::ACTION_CREATE_NODE,
+                Started,
+                MakeError(E_NOT_FOUND, "node not found")});
         }
         request->SetNodeId(parentNode);
         const auto name = logRequest.GetNodeInfo().GetNewNodeName();
@@ -649,7 +664,7 @@ private:
             return MakeFuture(TCompletedRequest{
                 NProto::ACTION_REMOVE_NODE,
                 Started,
-                MakeError(E_NOT_FOUND, "parent not found")});
+                MakeError(E_NOT_FOUND, "parent node not found")});
         }
         request->SetNodeId(node);
         const auto self = weak_from_this();
@@ -688,7 +703,7 @@ private:
     {
         //  DestroyHandle  0.05s S_OK  {node_id=10, handle=6142388172112}
 
-        auto name = logRequest.GetNodeInfo().GetNodeName();
+        const auto name = logRequest.GetNodeInfo().GetNodeName();
 
         auto request = CreateRequest<NProto::TDestroyHandleRequest>();
 
@@ -733,8 +748,10 @@ private:
             CheckResponse(response);
             return {NProto::ACTION_DESTROY_HANDLE, started, {}};
         } catch (const TServiceError& e) {
-            const auto error = MakeError(e.GetCode(), TString{e.GetMessage()});
-            return {NProto::ACTION_DESTROY_HANDLE, started, error};
+            return {
+                NProto::ACTION_DESTROY_HANDLE,
+                started,
+                MakeError(e.GetCode(), TString{e.GetMessage()})};
         }
     }
 
@@ -769,10 +786,10 @@ private:
                         logRequest.GetNodeInfo().GetParentNodeId()))});
         }
         request->SetNodeId(node);
-        auto name = logRequest.GetNodeInfo().GetNodeName();
+        const auto name = logRequest.GetNodeInfo().GetNodeName();
         request->SetName(logRequest.GetNodeInfo().GetNodeName());
         request->SetFlags(logRequest.GetNodeInfo().GetFlags());
-        auto self = weak_from_this();
+        const auto self = weak_from_this();
         STORAGE_DEBUG(
             "GetNodeAttr client started name=%s node=%lu  <- %lu",
             name.c_str(),
@@ -1033,7 +1050,7 @@ private:
             }
             return {NProto::ACTION_LIST_NODES, started, response.GetError()};
         } catch (const TServiceError& e) {
-            auto error = MakeError(e.GetCode(), TString{e.GetMessage()});
+            const auto error = MakeError(e.GetCode(), TString{e.GetMessage()});
             STORAGE_ERROR(
                 "Access node %lu has failed: %s",
                 logRequest.GetNodeInfo().GetNodeId(),
