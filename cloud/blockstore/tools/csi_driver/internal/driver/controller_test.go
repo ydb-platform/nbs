@@ -115,6 +115,7 @@ func TestGetStorageMediaKind(t *testing.T) {
 		"ssd_mirror2": storage.EStorageMediaKind_STORAGE_MEDIA_SSD_MIRROR2,
 		"ssd_mirror3": storage.EStorageMediaKind_STORAGE_MEDIA_SSD_MIRROR3,
 		"ssd_local":   storage.EStorageMediaKind_STORAGE_MEDIA_SSD_LOCAL,
+		"hdd_local":   storage.EStorageMediaKind_STORAGE_MEDIA_HDD_LOCAL,
 		"hdd_nonrepl": storage.EStorageMediaKind_STORAGE_MEDIA_HDD_NONREPLICATED,
 	}
 

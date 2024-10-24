@@ -16,8 +16,8 @@ namespace NCloud::NBlockStore::NVHostServer {
 struct TDeviceChunk
 {
     TString DevicePath;
-    i64 ByteCount = 0;
-    i64 Offset = 0;
+    ui64 ByteCount = 0;
+    ui64 Offset = 0;
 };
 
 struct TOptions
