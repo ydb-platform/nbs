@@ -23,7 +23,7 @@ protected:
     TString FileSystemIdFilter;
     const ::NCloud::NFileStore::NProto::THeaders Headers;
     NClient::ISessionPtr Session;
-
+    ssize_t EventMessageNumber = 0;
     ui64 TimestampMcs{};
     TInstant Started;
 
@@ -33,7 +33,6 @@ protected:
 private:
     THolder<NEventLog::IIterator> CurrentEvent;
     TConstEventPtr EventPtr;
-    int EventMessageNumber = 0;
     const NProto::TProfileLogRecord* MessagePtr{};
     TFuture<TCompletedRequest> ProcessRequest(
         const NProto::TProfileLogRequestInfo& request);

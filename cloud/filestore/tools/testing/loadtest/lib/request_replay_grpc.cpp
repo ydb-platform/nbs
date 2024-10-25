@@ -8,7 +8,6 @@ compare log and actual result ( S_OK E_FS_NOENT ...)
 */
 
 #include "request.h"
-
 #include "request_replay.h"
 
 #include <cloud/filestore/libs/client/session.h>
@@ -235,7 +234,10 @@ private:
         const auto future =
             Session->CreateHandle(CreateCallContext(), request)
                 .Apply(
-                    [=, started = Started, name = std::move(name)](
+                    [=,
+                     started = Started,
+                     name = std::move(name),
+                     eventMessageNumber = EventMessageNumber](
                         const TFuture<NProto::TCreateHandleResponse>& future)
                     {
                         if (auto ptr = self.lock()) {
@@ -243,6 +245,7 @@ private:
                                 future,
                                 name,
                                 started,
+                                eventMessageNumber,
                                 logRequest);
                         }
 
@@ -262,6 +265,7 @@ private:
         const TFuture<NProto::TCreateHandleResponse>& future,
         const TString& name,
         TInstant started,
+        ssize_t eventMessageNumber,
         const NCloud::NFileStore::NProto::TProfileLogRequestInfo& logRequest)
     {
         try {
@@ -272,12 +276,8 @@ private:
             with_lock (StateLock) {
                 HandlesLogToActual[logRequest.GetNodeInfo().GetHandle()] =
                     handle;
-                if (!NodesLogToLocal.contains(
-                        logRequest.GetNodeInfo().GetNodeId()))
-                {
-                    NodesLogToLocal[logRequest.GetNodeInfo().GetNodeId()] =
-                        response.GetNodeAttr().GetId();
-                }
+                NodesLogToLocal[logRequest.GetNodeInfo().GetNodeId()] =
+                    response.GetNodeAttr().GetId();
             }
 
             TFuture<NProto::TSetNodeAttrResponse> setAttr;
@@ -305,12 +305,16 @@ private:
                 {
                     // TODO(proller): return HandleResizeAfterCreateHandle(f,
                     // name, started);
-                    return MakeFuture(TCompletedRequest{});
+                    return MakeFuture(TCompletedRequest{
+                        NProto::ACTION_CREATE_HANDLE,
+                        started,
+                        f.GetValue().GetError()});
                 });
         } catch (const TServiceError& e) {
             auto error = MakeError(e.GetCode(), TString{e.GetMessage()});
             STORAGE_ERROR(
-                "create handle for %s has failed: %s",
+                "Megage=%zd create handle for %s has failed: %s",
+                eventMessageNumber,
                 name.Quote().c_str(),
                 FormatError(error).c_str());
 
@@ -373,7 +377,8 @@ private:
         } catch (const TServiceError& e) {
             auto error = MakeError(e.GetCode(), TString{e.GetMessage()});
             STORAGE_ERROR(
-                "read for %s has failed: ",
+                "read failed: message=%zd error=%s",
+                EventMessageNumber,
                 FormatError(error).c_str());
 
             return {NProto::ACTION_READ, started, error};
@@ -511,12 +516,25 @@ private:
                 request->MutableDirectory()->SetMode(
                     logRequest.GetNodeInfo().GetMode());
                 break;
-            case NProto::E_LINK_NODE:
-                // TODO(proller):
-                //  request->MutableLink()->SetTargetNode(r.GetNodeInfo().Get...);
-                //  request->MutableLink()->SetFollowerNodeName(r.GetNodeInfo().Get...);
-                return MakeFuture(TCompletedRequest{});
+            case NProto::E_LINK_NODE: {
+                // type=26 name=CreateNode data="TimestampMcs: 1729271080782158
+                // DurationMcs: 2496 RequestType: 26 ErrorCode: 0 NodeInfo {
+                // NewParentNodeId: 33 NewNodeName:
+                // \"pack-63f1.idx\" Mode:
+                // 292 NodeId: 42 Size: 5804 Type: 3 }"
+                const auto node =
+                    NodeIdMapped(logRequest.GetNodeInfo().GetNodeId());
+
+                if (node == InvalidNodeId) {
+                    return MakeFuture(TCompletedRequest{
+                        NProto::ACTION_CREATE_NODE,
+                        Started,
+                        MakeError(E_NOT_FOUND, "node not found")});
+                }
+
+                request->MutableLink()->SetTargetNode(node);
                 break;
+            }
             case NProto::E_SYMLINK_NODE:
                 // TODO(proller):
                 //  request->MutableSymlink()->SetTargetPath();
@@ -680,7 +698,10 @@ private:
                     const TFuture<NProto::TUnlinkNodeResponse>& future)
                 {
                     if (auto ptr = self.lock()) {
-                        return ptr->HandleUnlinkNode(future, started);
+                        return ptr->HandleUnlinkNode(
+                            future,
+                            started,
+                            logRequest);
                     }
 
                     return TCompletedRequest{
@@ -692,11 +713,19 @@ private:
 
     TCompletedRequest HandleUnlinkNode(
         const TFuture<NProto::TUnlinkNodeResponse>& future,
-        TInstant started)
+        TInstant started,
+        const NCloud::NFileStore::NProto::TProfileLogRequestInfo& logRequest)
     {
         try {
             const auto& response = future.GetValue();
             CheckResponse(response);
+
+            if (logRequest.GetNodeInfo().GetNodeId()) {
+                with_lock (StateLock) {
+                    NodesLogToLocal.erase(logRequest.GetNodeInfo().GetNodeId());
+                }
+            }
+
             return {NProto::ACTION_REMOVE_NODE, started, response.GetError()};
         } catch (const TServiceError& e) {
             const auto error = MakeError(e.GetCode(), TString{e.GetMessage()});
@@ -735,7 +764,10 @@ private:
                     const TFuture<NProto::TDestroyHandleResponse>& future)
                 {
                     if (auto ptr = self.lock()) {
-                        return ptr->HandleDestroyHandle(future, started);
+                        return ptr->HandleDestroyHandle(
+                            future,
+                            started,
+                            logRequest);
                     }
 
                     return TCompletedRequest{
@@ -747,11 +779,20 @@ private:
 
     TCompletedRequest HandleDestroyHandle(
         const TFuture<NProto::TDestroyHandleResponse>& future,
-        TInstant started)
+        TInstant started,
+        const NCloud::NFileStore::NProto::TProfileLogRequestInfo& logRequest)
     {
         try {
             const auto& response = future.GetValue();
             CheckResponse(response);
+
+            if (logRequest.GetNodeInfo().GetNodeId()) {
+                with_lock (StateLock) {
+                    HandlesLogToActual.erase(
+                        logRequest.GetNodeInfo().GetNodeId());
+                }
+            }
+
             return {NProto::ACTION_DESTROY_HANDLE, started, {}};
         } catch (const TServiceError& e) {
             return {

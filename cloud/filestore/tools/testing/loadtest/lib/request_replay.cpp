@@ -172,7 +172,7 @@ IReplayRequestGenerator::ExecuteNextRequest()
             }
 
             STORAGE_DEBUG(
-                "Processing message n=%d typename=%s type=%d name=%s data=%s",
+                "Processing message n=%zd typename=%s type=%d name=%s data=%s",
                 EventMessageNumber,
                 request.GetTypeName().c_str(),
                 request.GetRequestType(),
@@ -187,7 +187,7 @@ IReplayRequestGenerator::ExecuteNextRequest()
     }
 
     STORAGE_INFO(
-        "Profile log finished n=%d hasPtr=%d",
+        "Profile log finished n=%zd hasPtr=%d",
         EventMessageNumber,
         !!EventPtr);
 
