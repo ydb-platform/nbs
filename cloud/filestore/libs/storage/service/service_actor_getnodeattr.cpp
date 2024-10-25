@@ -160,7 +160,7 @@ void TGetNodeAttrActor::HandleGetNodeAttrResponse(
         msg->Record.GetNode().GetShardNodeName().Quote().c_str());
 
     if (!MultiTabletForwardingEnabled
-            || msg->Record.GetNode().GetShardFileSystemId().Empty())
+            || msg->Record.GetNode().GetShardFileSystemId().empty())
     {
         ReplyAndDie(ctx, std::move(msg->Record));
         return;
@@ -231,7 +231,7 @@ void TStorageServiceActor::HandleGetNodeAttr(
 {
     auto* msg = ev->Get();
 
-    if (msg->Record.GetName().Empty()) {
+    if (msg->Record.GetName().empty()) {
         // handle creation by NodeId can be handled directly by the shard
         ForwardRequestToShard<TEvService::TGetNodeAttrMethod>(
             ctx,

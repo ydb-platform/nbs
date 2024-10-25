@@ -261,7 +261,7 @@ void TPartitionActor::ReassignChannelsIfNeeded(const NActors::TActorContext& ctx
     {
         TStringBuilder sb;
         for (const auto channel: channels) {
-            if (sb.Size()) {
+            if (sb.size()) {
                 sb << ", ";
             }
 

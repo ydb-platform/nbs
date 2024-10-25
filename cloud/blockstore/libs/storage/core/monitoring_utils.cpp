@@ -1029,7 +1029,7 @@ void DumpDataHash(IOutputStream& out, const TString& data)
     }
 
     if (haveNonZeroes) {
-        auto digest = NOpenSsl::NSha1::Calc(data.Data(), data.Size());
+        auto digest = NOpenSsl::NSha1::Calc(data.data(), data.size());
         for (ui32 i = 0; i < NOpenSsl::NSha1::DIGEST_LENGTH; ++i) {
             out << Hex(digest[i]);
             if (i < NOpenSsl::NSha1::DIGEST_LENGTH - 1) {

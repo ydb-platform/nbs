@@ -314,7 +314,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletDatabaseTest)
             UNIT_ASSERT_VALUES_EQUAL(commitId, bytes[0].MinCommitId);
             UNIT_ASSERT_VALUES_EQUAL(offset, bytes[0].Offset);
             UNIT_ASSERT_VALUES_EQUAL(data, bytes[0].Data);
-            UNIT_ASSERT_VALUES_EQUAL(data.Size(), bytes[0].Len);
+            UNIT_ASSERT_VALUES_EQUAL(data.size(), bytes[0].Len);
 
             UNIT_ASSERT_VALUES_EQUAL(nodeId, bytes[1].NodeId);
             UNIT_ASSERT_VALUES_EQUAL(commitId + 10, bytes[1].MinCommitId);

@@ -172,7 +172,7 @@ TString DescribeResponseDebugString(
     // we need to clear user data first
     for (auto& freshRange: *response.MutableFreshDataRanges()) {
         freshRange.SetContent(
-            Sprintf("Content size: %lu", freshRange.GetContent().Size()));
+            Sprintf("Content size: %lu", freshRange.GetContent().size()));
     }
 
     return response.DebugString();
@@ -190,7 +190,7 @@ char* GetDataPtr(
     const ui64 relOffset = offset - alignedByteRange.Offset;
     const ui32 blockNo = relOffset / blockSize;
     const auto block = buffer.GetBlock(blockNo);
-    return const_cast<char*>(block.Data()) + relOffset - blockNo * blockSize;
+    return const_cast<char*>(block.data()) + relOffset - blockNo * blockSize;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

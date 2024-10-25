@@ -53,7 +53,7 @@ public:
 
 inline TSgList CreateSgList(const TString& s)
 {
-    if (s.Empty()) {
+    if (s.empty()) {
         return {{}};
     }
     return {{ s.data(), s.length() }};
