@@ -320,7 +320,7 @@ func newPublishVolumeCommand(endpoint *string) *cobra.Command {
 					StagingTargetPath: stagingTargetPath,
 					TargetPath:        getTargetPath(podId, volumeId, accessType),
 					VolumeCapability:  createVolumeCapability(accessMode, accessType),
-					Readonly:          false,
+					Readonly:          readOnly,
 					Secrets:           nil,
 					VolumeContext:     volumeContext,
 				},
