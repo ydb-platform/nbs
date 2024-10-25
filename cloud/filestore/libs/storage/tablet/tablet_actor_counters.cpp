@@ -302,6 +302,7 @@ void TIndexTabletActor::TMetrics::Register(
     REGISTER_AGGREGATABLE_SUM(FreshBlocksCount, EMetricType::MT_ABSOLUTE);
     REGISTER_AGGREGATABLE_SUM(CMMixedBlobsCount, EMetricType::MT_ABSOLUTE);
     REGISTER_AGGREGATABLE_SUM(CMDeletionMarkersCount, EMetricType::MT_ABSOLUTE);
+    REGISTER_AGGREGATABLE_SUM(CMGarbageBlocksCount, EMetricType::MT_ABSOLUTE);
 
     REGISTER_AGGREGATABLE_SUM(IdleTime, EMetricType::MT_DERIVATIVE);
     REGISTER_AGGREGATABLE_SUM(BusyTime, EMetricType::MT_DERIVATIVE);
@@ -428,6 +429,7 @@ void TIndexTabletActor::TMetrics::Update(
     Store(FreshBlocksCount, stats.GetFreshBlocksCount());
     Store(CMMixedBlobsCount, compactionStats.TotalBlobsCount);
     Store(CMDeletionMarkersCount, compactionStats.TotalDeletionsCount);
+    Store(CMGarbageBlocksCount, compactionStats.TotalGarbageBlocksCount);
 
     Store(MaxReadIops, performanceProfile.GetMaxReadIops());
     Store(MaxWriteIops, performanceProfile.GetMaxWriteIops());
