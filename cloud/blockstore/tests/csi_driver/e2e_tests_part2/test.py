@@ -8,7 +8,7 @@ def get_access_mode(mount_point: str) -> str:
     with open('/proc/mounts', 'r') as f:
         for line in f.readlines():
             mount_data = line.split()
-            if len(mount_data) < 2 or mount_data[1] != mount_point:
+            if len(mount_data) <= 3 or mount_data[1] != mount_point:
                 continue
             parameters = mount_data[3].split(',')
             if len(parameters) == 0:
