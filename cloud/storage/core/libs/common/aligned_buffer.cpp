@@ -3,6 +3,7 @@
 #include <cloud/storage/core/libs/common/error.h>
 
 #include <util/system/align.h>
+#include <util/system/sanitizers.h>
 
 namespace NCloud {
 
@@ -54,9 +55,10 @@ TAlignedBuffer::TAlignedBuffer(ui32 size, ui32 align)
     if (align) {
         Y_DEBUG_ABORT_UNLESS(IsPowerOf2(align));   // align should be power of 2
         AlignedData = AlignUp(Buffer.data(), align);
-        auto* bufferMem = Buffer.data();
+        const auto* bufferMem = Buffer.data();
         Buffer.resize(AlignedData + size - Buffer.begin());
         Y_ABORT_UNLESS(Buffer.data() == bufferMem);
+        NSan::Unpoison(bufferMem, AlignedDataOffset());
     }
 }
 
