@@ -293,6 +293,70 @@ Y_UNIT_TEST_SUITE(TStorageServiceActionsTest)
 
         service.DestroySession(headers);
     }
+
+    Y_UNIT_TEST(ShouldGetStorageStats)
+    {
+        NProto::TStorageConfig config;
+        TTestEnv env{{}, config};
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+
+        const TString fsId = "test";
+        service.CreateFileStore(fsId, 1'000);
+
+        auto headers = service.InitSession("test", "client");
+
+        const auto handle = service.CreateHandle(
+            headers,
+            fsId,
+            RootNodeId,
+            "file",
+            TCreateHandleArgs::CREATE
+        )->Record;
+        const auto nodeId = handle.GetNodeAttr().GetId();
+        const auto handleId = handle.GetHandle();
+
+        service.WriteData(
+            headers,
+            fsId,
+            nodeId,
+            handleId,
+            0,
+            TString(256_KB, 'a'));
+
+        service.WriteData(
+            headers,
+            fsId,
+            nodeId,
+            handleId,
+            256_KB,
+            TString(256_KB, 'a'));
+
+        {
+            NProtoPrivate::TGetStorageStatsRequest request;
+            request.SetFileSystemId(fsId);
+            request.SetCompactionRangeCountByCompactionScore(2);
+            TString buf;
+            google::protobuf::util::MessageToJsonString(request, &buf);
+            const auto response = service.ExecuteAction("GetStorageStats", buf);
+            NProtoPrivate::TGetStorageStatsResponse record;
+            auto status = google::protobuf::util::JsonStringToMessage(
+                response->Record.GetOutput(),
+                &record);
+            const auto& stats = record.GetStats();
+            const auto& compactionRanges = stats.GetCompactionRangeStats();
+            UNIT_ASSERT_VALUES_EQUAL(1, stats.GetUsedNodesCount());
+            UNIT_ASSERT_VALUES_EQUAL(2, stats.GetUsedCompactionRanges());
+            UNIT_ASSERT_VALUES_EQUAL(2, compactionRanges.size());
+            UNIT_ASSERT_VALUES_EQUAL(1, compactionRanges[0].GetBlobCount());
+            UNIT_ASSERT_VALUES_EQUAL(1, compactionRanges[1].GetBlobCount());
+        }
+
+        service.DestroySession(headers);
+    }
 }
 
 }   // namespace NCloud::NFileStore::NStorage
