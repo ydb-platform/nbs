@@ -13,6 +13,7 @@ SRCS(
     service_actor_actions_get_storage_config_fields.cpp
     service_actor_actions_get_storage_config.cpp
     service_actor_actions_reassign_tablet.cpp
+    service_actor_actions_stats.cpp
     service_actor_actions_unsafe_node_ops.cpp
     service_actor_actions_write_compaction_map.cpp
     service_actor_actions.cpp
@@ -40,6 +41,7 @@ SRCS(
     service_actor_update_stats.cpp
     service_actor_writedata.cpp
     service_state.cpp
+    tablet_action_actor.cpp
 )
 
 PEERDIR(
