@@ -424,6 +424,11 @@ void DumpCompactionMap(
             out << "Top ranges by cleanup score";
         }
         DumpCompactionRangeInfo(out, tabletId, stats.TopRangesByCleanupScore);
+
+        TAG(TH4) {
+            out << "Top ranges by garbage score";
+        }
+        DumpCompactionRangeInfo(out, tabletId, stats.TopRangesByGarbageScore);
     }
 }
 

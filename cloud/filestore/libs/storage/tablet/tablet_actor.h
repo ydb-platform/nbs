@@ -126,6 +126,7 @@ private:
         std::atomic<i64> FreshBlocksCount{0};
         std::atomic<i64> CMMixedBlobsCount{0};
         std::atomic<i64> CMDeletionMarkersCount{0};
+        std::atomic<i64> CMGarbageBlocksCount{0};
 
         // Throttling
         std::atomic<i64> MaxReadBandwidth{0};
