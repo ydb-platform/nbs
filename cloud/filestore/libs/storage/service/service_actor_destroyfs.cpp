@@ -112,9 +112,12 @@ void TDestroyFileStoreActor::HandleDescribeSessionsResponse(
     }
 
     if (msg->Record.SessionsSize() != 0) {
-        ReplyAndDie(
-            ctx,
-            MakeError(E_REJECTED, "FileStore has active sessions"));
+        TStringBuilder message;
+        message << "FileStore has active sessions with client ids:";
+        for (const auto& sessionInfo: msg->Record.GetSessions()) {
+            message << " " << sessionInfo.GetClientId();
+        }
+        ReplyAndDie(ctx, MakeError(E_REJECTED, message));
         return;
     }
 
