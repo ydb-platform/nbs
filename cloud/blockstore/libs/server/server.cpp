@@ -21,7 +21,7 @@
 #include <cloud/storage/core/libs/grpc/completion.h>
 #include <cloud/storage/core/libs/grpc/credentials.h>
 #include <cloud/storage/core/libs/grpc/executor.h>
-#include <cloud/storage/core/libs/grpc/initializer.h>
+#include <cloud/storage/core/libs/grpc/init.h>
 #include <cloud/storage/core/libs/grpc/keepalive.h>
 #include <cloud/storage/core/libs/grpc/time_point_specialization.h>
 #include <cloud/storage/core/libs/grpc/utils.h>

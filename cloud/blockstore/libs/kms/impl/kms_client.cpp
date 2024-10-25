@@ -5,7 +5,7 @@
 
 #include <cloud/blockstore/libs/kms/iface/kms_client.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
-#include <cloud/storage/core/libs/grpc/initializer.h>
+#include <cloud/storage/core/libs/grpc/init.h>
 #include <cloud/storage/core/libs/grpc/time_point_specialization.h>
 
 #include <contrib/libs/grpc/include/grpcpp/channel.h>
