@@ -383,7 +383,7 @@ void TIndexTabletActor::TMetrics::Register(
 
     REGISTER_LOCAL(MaxBlobsInRange, EMetricType::MT_ABSOLUTE);
     REGISTER_LOCAL(MaxDeletionsInRange, EMetricType::MT_ABSOLUTE);
-    REGISTER_LOCAL(MaxGarbageInRange, EMetricType::MT_ABSOLUTE);
+    REGISTER_LOCAL(MaxGarbageBlocksInRange, EMetricType::MT_ABSOLUTE);
 
 #undef REGISTER_REQUEST
 #undef REGISTER_LOCAL
@@ -457,10 +457,10 @@ void TIndexTabletActor::TMetrics::Update(
                 .Stats.DeletionsCount);
     }
     if (compactionStats.TopRangesByGarbageScore.empty()) {
-        Store(MaxGarbageInRange, 0);
+        Store(MaxGarbageBlocksInRange, 0);
     } else {
         Store(
-            MaxGarbageInRange,
+            MaxGarbageBlocksInRange,
             compactionStats.TopRangesByGarbageScore.front()
                 .Stats.GarbageBlocksCount);
     }

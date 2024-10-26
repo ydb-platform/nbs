@@ -567,7 +567,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Counters)
         visitor.ValidateExpectedCounters({
             {{{"sensor", "MaxBlobsInRange"}}, countrRewrites},
             {{{"sensor", "MaxDeletionsInRange"}}, deletions},
-            {{{"sensor", "MaxGarbageInRange"}}, garbage},
+            {{{"sensor", "MaxGarbageBlocksInRange"}}, garbage},
         });
         // clang-format on
     }
