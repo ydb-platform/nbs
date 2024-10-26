@@ -53,7 +53,7 @@ void AddLog(gpr_log_func_args* args)
         args->file,
         static_cast<ui32>(strlen(args->file))});
 
-    auto state = Singleton<TGrpcState>();
+    auto* state = Singleton<TGrpcState>();
 
     state->Log << LogSeverityToPriority(args->severity)
         << TSourceLocation(file.As<TStringBuf>(), args->line)
@@ -87,7 +87,7 @@ void EnableGRpcTracing()
 
 TGrpcInitializer::TGrpcInitializer()
 {
-    auto state = Singleton<TGrpcState>();
+    auto* state = Singleton<TGrpcState>();
 
     if (AtomicGetAndIncrement(state->Counter) == 0) {
         grpc_init();
@@ -96,7 +96,7 @@ TGrpcInitializer::TGrpcInitializer()
 
 TGrpcInitializer::~TGrpcInitializer()
 {
-    auto state = Singleton<TGrpcState>();
+    auto* state = Singleton<TGrpcState>();
 
     if (AtomicDecrement(state->Counter) == 0) {
         grpc_shutdown_blocking();
@@ -107,7 +107,7 @@ TGrpcInitializer::~TGrpcInitializer()
 
 void GrpcLoggerInit(const TLog& log, bool enableTracing)
 {
-    auto state = Singleton<TGrpcState>();
+    auto* state = Singleton<TGrpcState>();
     state->Log = log;
     // |gpr_set_log_verbosity| and |gpr_set_log_function| do not imply any
     // memory barrier, so we need a full barrier here.
