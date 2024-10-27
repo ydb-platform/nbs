@@ -560,11 +560,14 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Counters)
 
         TTestRegistryVisitor visitor;
 
+        const auto deletions = countrRewrites * BlockGroupSize;
+        const auto garbage = countrRewrites * BlockGroupSize;
         registry->Visit(TInstant::Zero(), visitor);
         // clang-format off
         visitor.ValidateExpectedCounters({
-            {{{"sensor", "MaxBlobsInRange"}},     countrRewrites},
-            {{{"sensor", "MaxDeletionsInRange"}}, countrRewrites * BlockGroupSize},
+            {{{"sensor", "MaxBlobsInRange"}}, countrRewrites},
+            {{{"sensor", "MaxDeletionsInRange"}}, deletions},
+            {{{"sensor", "MaxGarbageBlocksInRange"}}, garbage},
         });
         // clang-format on
     }
