@@ -11,7 +11,7 @@ namespace NCloud {
 namespace {
 
 #define UNIT_ASSERT_PTR_EQUAL(A, B) \
-    UNIT_ASSERT_VALUES_EQUAL((void*)(A), (void*)(B))
+    UNIT_ASSERT_VALUES_EQUAL(static_cast<void*>(A), static_cast<void*>(B))
 
 }   // namespace
 
@@ -29,18 +29,19 @@ Y_UNIT_TEST_SUITE(TAlignedBufferTest)
 
                 Cerr << "size=" << size << ", align=" << align
                      << ", offset=" << buffer.AlignedDataOffset()
-                     << ", begin=" << (void*)buffer.Begin() << Endl;
+                     << ", begin=" << static_cast<void*>(buffer.Begin())
+                     << Endl;
                 UNIT_ASSERT_EQUAL(size, buffer.Size());
                 UNIT_ASSERT_VALUES_EQUAL_C(
                     reinterpret_cast<uintptr_t>(buffer.Begin()) % align,
                     0,
-                    "size=" << size << " ,align=" << align
-                            << " ,buffer=" << (void*)buffer.Begin());
+                    "size=" << size << " ,align=" << align << " ,buffer="
+                            << static_cast<void*>(buffer.Begin()));
                 UNIT_ASSERT_VALUES_EQUAL_C(
                     buffer.AlignedDataOffset(),
-                    buffer.Begin() - buffer.AccessBuffer().begin(),
-                    "size=" << size << " ,align=" << align
-                            << " ,buffer=" << (void*)buffer.Begin());
+                    buffer.Begin() - buffer.GetBuffer().begin(),
+                    "size=" << size << " ,align=" << align << " ,buffer="
+                            << static_cast<void*>(buffer.Begin()));
                 buffers.push_back(std::move(buffer));
             }
         }
@@ -62,8 +63,7 @@ Y_UNIT_TEST_SUITE(TAlignedBufferTest)
 
         auto* buffer1Mem = buffer1.Begin();
 
-        TAlignedBuffer buffer2(std::move(buffer1.AccessBuffer()), align);
-        UNIT_ASSERT_VALUES_EQUAL(0, buffer1.AccessBuffer().size());
+        TAlignedBuffer buffer2(buffer1.TakeBuffer(), align);
         UNIT_ASSERT_VALUES_EQUAL(size, buffer2.Size());
 
         auto* buffer2Mem = buffer2.Begin();
@@ -116,32 +116,6 @@ Y_UNIT_TEST_SUITE(TAlignedBufferTest)
             buffer.TrimSize(5556),
             TServiceError,
             "Tried to trim to size 5556 > 5555");
-    }
-
-    Y_UNIT_TEST(ShouldExtractAlignedData)
-    {
-        ui32 align = 1 << 21;
-        ui32 size = 5678;
-
-        TAlignedBuffer buffer(size, align);
-        UNIT_ASSERT_VALUES_EQUAL(buffer.Size(), size);
-
-        auto extractedBuf =
-            TAlignedBuffer::ExtractAlignedData(buffer.AccessBuffer(), align);
-        UNIT_ASSERT_PTR_EQUAL(buffer.Begin(), extractedBuf.Data());
-        UNIT_ASSERT_VALUES_EQUAL(buffer.Size(), extractedBuf.Size());
-
-        TString buffer1 = "abcdefg";
-
-        UNIT_ASSERT_EXCEPTION_CONTAINS(
-            TAlignedBuffer::ExtractAlignedData(buffer1, align),
-            TServiceError,
-            "Extracting unaligned buffer");
-
-        UNIT_ASSERT_EXCEPTION_CONTAINS(
-            TAlignedBuffer(std::move(buffer1), align),
-            TServiceError,
-            "Initializing from unaligned buffer");
     }
 }
 
