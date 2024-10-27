@@ -217,9 +217,10 @@ def test_resize_device(with_netlink, with_endpoint_proxy):
             volume_name,
         )
 
-        result = common.execute(
-            ["umount", str(mount_dir)],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT)
+        if mount_dir is not None:
+            result = common.execute(
+                ["umount", str(mount_dir)],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT)
 
         cleanup_after_test(env)
