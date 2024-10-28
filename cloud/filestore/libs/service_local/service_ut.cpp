@@ -6,6 +6,7 @@
 #include <cloud/filestore/libs/service/filestore.h>
 
 #include <cloud/storage/core/libs/aio/service.h>
+#include <cloud/storage/core/libs/common/aligned_buffer.h>
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/common/file_io_service.h>
 #include <cloud/storage/core/libs/common/scheduler.h>
@@ -229,6 +230,9 @@ struct TCreateHandleArgs
         = ProtoFlag(NProto::TCreateHandleRequest::E_CREATE)
         | ProtoFlag(NProto::TCreateHandleRequest::E_READ)
         | ProtoFlag(NProto::TCreateHandleRequest::E_WRITE);
+
+    static constexpr ui32 DIRECT
+        = ProtoFlag(NProto::TCreateHandleRequest::E_DIRECT);
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -286,12 +290,21 @@ struct TTestBootstrap
 
     static constexpr pid_t DefaultPid = 123;
 
-    TTestBootstrap(const TTempDirectoryPtr& cwd = std::make_shared<TTempDirectory>())
+    TTestBootstrap(
+            const TTempDirectoryPtr& cwd = std::make_shared<TTempDirectory>(),
+            ui32 maxNodeCount = 1000,
+            ui32 maxHandlePerSessionCount = 100,
+            bool directIoEnabled = false,
+            ui32 directIoAlign = 4096)
         : Cwd(cwd)
     {
         AIOService->Start();
         Store = CreateLocalFileStore(
-            CreateConfig(),
+            CreateConfig(
+                maxNodeCount,
+                maxHandlePerSessionCount,
+                directIoEnabled,
+                directIoAlign),
             Timer,
             Scheduler,
             Logging,
@@ -300,12 +313,23 @@ struct TTestBootstrap
         Store->Start();
     }
 
-    TTestBootstrap(const TString& id, const TString& client = "client", const TString& session = {})
+    TTestBootstrap(
+            const TString& id,
+            const TString& client = "client",
+            const TString& session = {},
+            ui32 maxNodeCount = 1000,
+            ui32 maxHandlePerSessionCount = 100,
+            bool directIoEnabled = false,
+            ui32 directIoAlign = 4096)
         : Cwd(std::make_shared<TTempDirectory>())
     {
         AIOService->Start();
         Store = CreateLocalFileStore(
-            CreateConfig(),
+            CreateConfig(
+                maxNodeCount,
+                maxHandlePerSessionCount,
+                directIoEnabled,
+                directIoAlign),
             Timer,
             Scheduler,
             Logging,
@@ -324,10 +348,58 @@ struct TTestBootstrap
         AIOService->Stop();
     }
 
-    TLocalFileStoreConfigPtr CreateConfig()
+    std::optional<TFsPath> GetFsStateDir(const TString& id)
+    {
+        TVector<TFsPath> dirs;
+        Cwd->List(dirs);
+
+        for (auto& d: dirs) {
+            if (d.IsDirectory() && d.GetName().StartsWith(".state") &&
+                d.GetName().EndsWith(id))
+            {
+                return d;
+            }
+        }
+
+        return {};
+    }
+
+    std::optional<TFsPath> GetClientFsStateDir(
+        const TString& id,
+        const TString& client = "client")
+    {
+        auto fsStateDir = GetFsStateDir(id);
+        if (!fsStateDir) {
+            return {};
+        }
+
+        TVector<TFsPath> dirs;
+        fsStateDir->List(dirs);
+
+        for (auto& d: dirs) {
+            if (d.IsDirectory() && d.GetName().StartsWith("client_") &&
+                d.GetName().EndsWith(client))
+            {
+                return d;
+            }
+        }
+
+        return {};
+    }
+
+    TLocalFileStoreConfigPtr CreateConfig(
+        ui32 maxNodeCount,
+        ui32 maxHandlePerSessionCount,
+        bool directIoEnabled,
+        ui32 directIoAlign)
     {
         NProto::TLocalServiceConfig config;
         config.SetRootPath(Cwd->GetName());
+        config.SetStatePath(Cwd->GetName());
+        config.SetMaxNodeCount(maxNodeCount);
+        config.SetMaxHandlePerSessionCount(maxHandlePerSessionCount);
+        config.SetDirectIoEnabled(directIoEnabled);
+        config.SetDirectIoAlign(directIoAlign);
 
         return std::make_shared<TLocalFileStoreConfig>(config);
     }
@@ -645,6 +717,7 @@ struct TTestBootstrap
         return request;
     }
 
+
     auto CreateFsyncDirRequest(ui64 node, bool dataSync)
     {
         auto request = CreateRequest<NProto::TFsyncDirRequest>();
@@ -668,6 +741,15 @@ struct TTestBootstrap
     }                                                                              \
                                                                                    \
     template <typename... Args>                                                    \
+    NProto::T##name##Response NoAssert##name(Args&&... args)                       \
+    {                                                                              \
+        auto request = Create##name##Request(std::forward<Args>(args)...);         \
+        auto dbg = request->ShortDebugString();                                    \
+        auto response = Store->name(Ctx, std::move(request)).GetValueSync();       \
+        return response;                                                           \
+    }                                                                              \
+                                                                                   \
+    template <typename... Args>                                                    \
     NProto::T##name##Response Assert##name##Failed(Args&&... args)                 \
     {                                                                              \
         auto request = Create##name##Request(std::forward<Args>(args)...);         \
@@ -684,6 +766,64 @@ struct TTestBootstrap
     FILESTORE_SERVICE(FILESTORE_DECLARE_METHOD)
 
 #undef FILESTORE_DECLARE_METHOD
+
+    NProto::TWriteDataResponse WriteDataAligned(
+        ui64 handle,
+        ui64 offset,
+        const TString& buffer,
+        ui32 align)
+    {
+        auto request = CreateRequest<NProto::TWriteDataRequest>();
+        request->SetHandle(handle);
+        request->SetOffset(offset);
+
+        TAlignedBuffer alignedBuffer(buffer.size(), align);
+        memcpy(
+            (void*)(alignedBuffer.Begin()),
+            (void*)buffer.data(),
+            buffer.size());
+        request->SetBufferOffset(alignedBuffer.AlignedDataOffset());
+        request->SetBuffer(std::move(alignedBuffer.AccessBuffer()));
+
+        auto dbg = request->ShortDebugString();
+        auto response =
+            Store->WriteData(Ctx, std::move(request)).GetValueSync();
+
+        UNIT_ASSERT_C(
+            SUCCEEDED(response.GetError().GetCode()),
+            DumpMessage(response.GetError()) + "@" + dbg);
+
+        return response;
+    }
+
+    NProto::TWriteDataResponse AssertWriteDataAlignedFailed(
+        ui64 handle,
+        ui64 offset,
+        const TString& buffer,
+        ui32 align)
+    {
+        auto request = CreateRequest<NProto::TWriteDataRequest>();
+        request->SetHandle(handle);
+        request->SetOffset(offset);
+
+        TAlignedBuffer alignedBuffer(buffer.size(), align);
+        memcpy(
+            (void*)(alignedBuffer.Begin()),
+            (void*)buffer.data(),
+            buffer.size());
+        request->SetBufferOffset(alignedBuffer.AlignedDataOffset());
+        request->SetBuffer(std::move(alignedBuffer.AccessBuffer()));
+
+        auto dbg = request->ShortDebugString();
+        auto response =
+            Store->WriteData(Ctx, std::move(request)).GetValueSync();
+
+        UNIT_ASSERT_C(
+            FAILED(response.GetError().GetCode()),
+            "WriteDataAligned has not failed as expected " + dbg);
+
+        return response;
+    }
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -696,6 +836,55 @@ ui64 CreateFile(TTestBootstrap& bootstrap, ui64 parent, const TString& name, int
 ui64 CreateDirectory(TTestBootstrap& bootstrap, ui64 parent, const TString& name, int mode = 0)
 {
     return bootstrap.CreateNode(TCreateNodeArgs::Directory(parent, name, mode)).GetNode().GetId();
+}
+
+TVector<ui64> CreateDirectories(
+    TTestBootstrap& bootstrap,
+    ui64 parent,
+    const TString& path,
+    int mode = 0)
+{
+    TVector<ui64> nodes;
+
+    TFsPath fsPath(path);
+    for (auto& pathPart: fsPath.PathSplit()) {
+        auto request = bootstrap.CreateRequest<NProto::TGetNodeAttrRequest>();
+        auto rsp = bootstrap.NoAssertGetNodeAttr(parent, TString(pathPart));
+        if (STATUS_FROM_CODE(rsp.GetError().GetCode()) == NProto::E_FS_NOENT) {
+            auto nodeId =
+                bootstrap.CreateNode(TCreateNodeArgs::Directory(
+                        parent,
+                        TString(pathPart),
+                        mode)).GetNode().GetId();
+            parent = nodeId;
+            nodes.push_back(parent);
+            continue;
+        }
+
+        UNIT_ASSERT_C(
+            SUCCEEDED(rsp.GetError().GetCode()),
+            rsp.GetError().GetMessage() + "@" + request->ShortDebugString());
+
+        parent = rsp.GetNode().GetId();
+        nodes.push_back(parent);
+    }
+    return nodes;
+}
+
+void CheckDirectoryPath(
+    TTestBootstrap& bootstrap,
+    ui64 parent,
+    const TString& path,
+    TVector<ui64>& expectedNodes)
+{
+    TFsPath fsPath(path);
+    auto expectedNodeIndex = 0UL;
+    for (auto& pathPart: fsPath.PathSplit()) {
+        UNIT_ASSERT(expectedNodeIndex < expectedNodes.size());
+        auto stat = bootstrap.GetNodeAttr(parent, TString(pathPart)).GetNode();
+        UNIT_ASSERT_VALUES_EQUAL(stat.GetId(), expectedNodes[expectedNodeIndex++]);
+        parent = stat.GetId();
+    }
 }
 
 ui64 CreateHardLink(TTestBootstrap& bootstrap, ui64 parent, const TString& name, ui64 target)
@@ -767,6 +956,7 @@ Y_UNIT_TEST_SUITE(LocalFileStore)
     {
         TTestBootstrap bootstrap;
         bootstrap.CreateFileStore("fs", "cloud", "folder", 100500, 500100);
+        UNIT_ASSERT(bootstrap.GetFsStateDir("fs"));
 
         auto response = bootstrap.CreateSession("fs", "client", "");
         auto id = response.GetSession().GetSessionId();
@@ -789,6 +979,8 @@ Y_UNIT_TEST_SUITE(LocalFileStore)
 
         // restore
         bootstrap.CreateSession("fs", "client", id);
+        UNIT_ASSERT(bootstrap.GetClientFsStateDir("fs", "client"));
+
         bootstrap.AssertCreateSessionFailed("fs", "client-xxx", id);
 
         bootstrap.SwitchToSession(session);
@@ -802,6 +994,7 @@ Y_UNIT_TEST_SUITE(LocalFileStore)
 
         bootstrap.SwitchToSession(session);
         bootstrap.DestroySession();
+        UNIT_ASSERT(!bootstrap.GetClientFsStateDir("fs", "client"));
     }
 
     Y_UNIT_TEST(ShouldNotCreateTheSameStore)
@@ -813,7 +1006,11 @@ Y_UNIT_TEST_SUITE(LocalFileStore)
     Y_UNIT_TEST(ShouldDestroyStore)
     {
         TTestBootstrap bootstrap("fs");
+        UNIT_ASSERT(bootstrap.GetFsStateDir("fs"));
+
         bootstrap.DestroyFileStore("fs");
+        UNIT_ASSERT(!bootstrap.GetFsStateDir("fs"));
+
         // intentionally
         bootstrap.DestroyFileStore("fs");
     }
@@ -831,6 +1028,202 @@ Y_UNIT_TEST_SUITE(LocalFileStore)
         UNIT_ASSERT_VALUES_EQUAL(store.GetCloudId(), "cloud");
         UNIT_ASSERT_VALUES_EQUAL(store.GetBlockSize(), 100500);
         UNIT_ASSERT_VALUES_EQUAL(store.GetBlocksCount(), 500100);
+    }
+
+    Y_UNIT_TEST(ShouldRecoverFsNodes)
+    {
+        TTestBootstrap bootstrap("fs", "client");
+        auto ctx = MakeIntrusive<TCallContext>();
+
+        TVector<std::pair<TString, TVector<TString>>> testPaths = {
+            {"a/b/c/d/e", {"file1", "file2", "file3"}},
+            {"a/b/c/f/g", {"file4", "file5", "file6"}},
+        };
+
+        TVector<std::tuple<TVector<ui64>, TVector<ui64>, TVector<ui64>>>
+            testNodes;
+
+        for (auto& [dir, files]: testPaths) {
+            auto dirNodes = CreateDirectories(bootstrap, RootNodeId, dir);
+            TVector<ui64> fileNodes;
+            for (auto& file: files) {
+                auto fileNode =
+                    CreateFile(bootstrap, dirNodes.back(), file, 0755);
+                fileNodes.push_back(fileNode);
+            }
+
+            TVector<ui64> deletedNodes;
+            deletedNodes.push_back(
+                CreateFile(bootstrap, dirNodes.back(), "deletedFile", 0755));
+            deletedNodes.push_back(CreateDirectory(
+                bootstrap,
+                dirNodes.back(),
+                "deletedDir",
+                0755));
+
+            testNodes.emplace_back(
+                std::move(dirNodes),
+                std::move(fileNodes),
+                std::move(deletedNodes));
+        }
+
+        // delete nodes after all files/directories were created so nodes won't
+        // be reused then we can safely check that delete nodes were not
+        // recovered
+        for (auto& nodes: testNodes) {
+            auto& dirNodes = std::get<0>(nodes);
+            bootstrap.UnlinkNode(dirNodes.back(), "deletedFile", false);
+            bootstrap.UnlinkNode(dirNodes.back(), "deletedDir", true);
+        }
+
+        TTestBootstrap other(bootstrap.Cwd);
+
+        auto id = other.CreateSession("fs", "client", "", false, 0, true)
+                      .GetSession()
+                      .GetSessionId();
+        other.Headers.SessionId = id;
+        UNIT_ASSERT_VALUES_EQUAL(
+            bootstrap.Headers.SessionId,
+            other.Headers.SessionId);
+
+        for (ui32 testIndex = 0; testIndex < testPaths.size(); testIndex++) {
+            auto& dir = testPaths[testIndex].first;
+            auto& dirNodes = std::get<0>(testNodes[testIndex]);
+            auto& files = testPaths[testIndex].second;
+            auto& fileNodes = std::get<1>(testNodes[testIndex]);
+            auto& deletedNodes = std::get<2>(testNodes[testIndex]);
+
+            CheckDirectoryPath(other, RootNodeId, dir, dirNodes);
+
+            auto listedFiles = ListNames(other, dirNodes.back());
+            Sort(listedFiles);
+            UNIT_ASSERT_VALUES_EQUAL(listedFiles, files);
+
+            for (ui32 fileIndex = 0; fileIndex < files.size(); fileIndex++) {
+                auto stat = other.GetNodeAttr(dirNodes.back(), files[fileIndex])
+                                .GetNode();
+                UNIT_ASSERT_VALUES_EQUAL(fileNodes[fileIndex], stat.GetId());
+            }
+
+            for (auto& deletedNode: deletedNodes) {
+                auto response = other.AssertGetNodeAttrFailed(deletedNode);
+                UNIT_ASSERT_VALUES_EQUAL(
+                    E_FS_NOENT,
+                    response.GetError().GetCode());
+            }
+        }
+    }
+
+    Y_UNIT_TEST(ShouldRecoverSessionHandles)
+    {
+        TTestBootstrap bootstrap("fs", "client");
+        auto ctx = MakeIntrusive<TCallContext>();
+
+        TVector<TString> files = {"file1", "file2", "file3", "file4", "file5"};
+        TVector<ui64> handles;
+        TString expectedData = "aaaabbbbcccccdddddeeee";
+
+        for (auto& file: files) {
+            auto handle =
+                bootstrap
+                    .CreateHandle(RootNodeId, file, TCreateHandleArgs::CREATE)
+                    .GetHandle();
+
+            auto data = bootstrap.ReadData(handle, 0, 100).GetBuffer();
+            UNIT_ASSERT_VALUES_EQUAL(data.size(), 0);
+            handles.push_back(handle);
+
+            data = expectedData;
+            bootstrap.WriteData(handle, 0, data);
+
+            auto buffer = bootstrap.ReadData(handle, 0, 100).GetBuffer();
+            UNIT_ASSERT_VALUES_EQUAL(buffer, data);
+        }
+
+        // close half of the handles
+        for (ui32 i = 0; i < handles.size(); i++) {
+            if (i % 2 == 0) {
+                bootstrap.DestroyHandle(handles[i]);
+            }
+        }
+
+        TTestBootstrap other(bootstrap.Cwd);
+
+        auto id = other.CreateSession("fs", "client", "", false, 0, true)
+                      .GetSession()
+                      .GetSessionId();
+        other.Headers.SessionId = id;
+        UNIT_ASSERT_VALUES_EQUAL(
+            bootstrap.Headers.SessionId,
+            other.Headers.SessionId);
+
+        for (ui32 i = 0; i < handles.size(); i++) {
+            if (i % 2 == 0) {
+                // check closed handles
+                auto response = other.AssertReadDataFailed(handles[i], 0, 100);
+                UNIT_ASSERT_VALUES_EQUAL(
+                    E_FS_BADHANDLE,
+                    response.GetError().GetCode());
+            } else {
+                // check open handles
+                auto buffer = other.ReadData(handles[i], 0, 100).GetBuffer();
+                UNIT_ASSERT_VALUES_EQUAL(buffer, expectedData);
+            }
+        }
+    }
+
+    Y_UNIT_TEST(ShouldLimitNumberOfNodesAndHandles)
+    {
+        constexpr ui32 maxHandles = 4;
+        constexpr ui32 maxNodes = maxHandles + 2;
+
+        TTestBootstrap bootstrap("fs", "client", {}, maxNodes, maxHandles);
+
+        TVector<ui64> nodes;
+        TVector<ui64> handles;
+        for (ui32 i = 0; i < maxNodes+1; i++) {
+            auto fileName = ToString(i);
+            if (i >= maxNodes) {
+                auto response = bootstrap.AssertCreateNodeFailed(
+                    TCreateNodeArgs::File(RootNodeId, fileName, 0755));
+                UNIT_ASSERT_VALUES_EQUAL(
+                    E_FS_NOSPC,
+                    response.GetError().GetCode());
+                continue;
+            }
+
+            auto node = CreateFile(bootstrap, RootNodeId, fileName, 0755);
+            nodes.push_back(node);
+
+            if (i < maxHandles) {
+                auto handle =
+                    bootstrap.CreateHandle(node, "", TCreateHandleArgs::RDNLY)
+                        .GetHandle();
+                handles.push_back(handle);
+            } else {
+                auto response = bootstrap.AssertCreateHandleFailed(
+                    node,
+                    "",
+                    TCreateHandleArgs::RDNLY);
+                UNIT_ASSERT_VALUES_EQUAL(
+                    E_FS_NOSPC,
+                    response.GetError().GetCode());
+            }
+        }
+
+        UNIT_ASSERT_VALUES_EQUAL(maxNodes, nodes.size());
+        UNIT_ASSERT_VALUES_EQUAL(maxHandles, handles.size());
+
+        // make sure that after deleting node it's poissible to create node once
+        // again
+        bootstrap.UnlinkNode(RootNodeId, "0", false);
+        CreateFile(bootstrap, RootNodeId, "100", 0755);
+
+        // make sure that after closing handle it's poissible to open handle
+        // once again
+        bootstrap.DestroyHandle(handles[0]);
+        bootstrap.CreateHandle(nodes[1], "", TCreateHandleArgs::RDNLY)
+            .GetHandle();
     }
 
     Y_UNIT_TEST(ShouldCreateFileNode)
@@ -1292,6 +1685,16 @@ Y_UNIT_TEST_SUITE(LocalFileStore)
 
         auto response = bootstrap.CreateSession("fs", "client", "", true);
         UNIT_ASSERT_VALUES_EQUAL(response.GetSession().GetSessionState(), state);
+
+        TTestBootstrap other(bootstrap.Cwd);
+
+        auto otherResponse =
+            other.CreateSession("fs", "client", "", false, 0, true);
+        UNIT_ASSERT_VALUES_EQUAL(otherResponse.GetSession().GetSessionState(), state);
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            response.GetSession().GetSessionId(),
+            otherResponse.GetSession().GetSessionId());
     }
 
     Y_UNIT_TEST(ShouldSupportMigration)
@@ -1614,6 +2017,76 @@ Y_UNIT_TEST_SUITE(LocalFileStore)
             bootstrap.FsyncDir(dirNodeId, dataSync);
         }
     }
+
+    void CheckReadAndWriteDataWithDirectIo(ui32 directIoAlign)
+    {
+        TTestBootstrap bootstrap(
+            "fs",
+            "client",
+            {},
+            1000,
+            1000,
+            true /* direct io enabled */,
+            directIoAlign);
+
+        ui64 handle =
+            bootstrap
+                .CreateHandle(
+                    RootNodeId,
+                    "file",
+                    TCreateHandleArgs::CREATE | TCreateHandleArgs::DIRECT)
+                .GetHandle();
+        auto readRsp = bootstrap.ReadData(handle, 0, 100);
+        auto data = readRsp.GetBuffer().substr(readRsp.GetBufferOffset());
+        UNIT_ASSERT_VALUES_EQUAL(data.size(), 0);
+
+        data = "aaaabbbbcccccdddddeeee";
+        const auto response = bootstrap.AssertWriteDataAlignedFailed(
+            handle,
+            0,
+            data,
+            directIoAlign);
+        const auto& error = response.GetError();
+        UNIT_ASSERT_VALUES_EQUAL(
+            static_cast<ui32>(NProto::E_FS_INVAL),
+            STATUS_FROM_CODE(error.GetCode()));
+
+        data.append(directIoAlign-data.size(), 'x');
+        data.append(directIoAlign, 'y');
+        bootstrap.WriteDataAligned(handle, 0, data, directIoAlign);
+
+        auto readDataWithOffset =
+            [&bootstrap](ui64 handle, ui64 offset, ui32 len)
+        {
+            auto rsp = bootstrap.ReadData(handle, offset, len);
+            return rsp.GetBuffer().substr(rsp.GetBufferOffset());
+        };
+
+        // read [0, 2*align]
+        auto buffer = readDataWithOffset(handle, 0, data.size());
+        UNIT_ASSERT_VALUES_EQUAL(buffer, data);
+
+        // read [0, align]
+        buffer = readDataWithOffset(handle, 0, directIoAlign);
+        UNIT_ASSERT_VALUES_EQUAL(buffer, data.substr(0, directIoAlign));
+
+        // read [align, align]
+        buffer = readDataWithOffset(handle, directIoAlign, directIoAlign);
+        UNIT_ASSERT_VALUES_EQUAL(
+            buffer,
+            data.substr(directIoAlign, directIoAlign));
+    }
+
+    Y_UNIT_TEST(ShouldReadAndWriteDataWithDirectIoAlignedTo512)
+    {
+        CheckReadAndWriteDataWithDirectIo(512);
+    }
+
+    Y_UNIT_TEST(ShouldReadAndWriteDataWithDirectIoAlignedTo4096)
+    {
+        CheckReadAndWriteDataWithDirectIo(4096);
+    }
+
 };
 
 }   // namespace NCloud::NFileStore

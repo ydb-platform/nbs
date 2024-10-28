@@ -16,7 +16,7 @@ TEST_SRCS(
 )
 
 SET(QEMU_VIRTIO fs)
-SET(VHOST_RESTART_INTERVAL 10)
+SET(VHOST_DIRECT_IO 1)
 
 INCLUDE(${ARCADIA_ROOT}/cloud/filestore/tests/recipes/vhost-local-noserver.inc)
 INCLUDE(${ARCADIA_ROOT}/cloud/filestore/tests/recipes/vhost-endpoint.inc)

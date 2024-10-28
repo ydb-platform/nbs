@@ -2,6 +2,9 @@
 
 #include "lowlevel.h"
 
+#include <cloud/filestore/libs/diagnostics/critical_events.h>
+
+#include <cloud/storage/core/libs/common/aligned_buffer.h>
 #include <cloud/storage/core/libs/common/file_io_service.h>
 
 #include <util/string/builder.h>
@@ -28,29 +31,49 @@ NProto::TCreateHandleResponse TLocalFileSystem::CreateHandle(
         return TErrorResponse(ErrorInvalidParent(request.GetNodeId()));
     }
 
-    const int flags = HandleFlagsToSystem(request.GetFlags());
+    int flags = HandleFlagsToSystem(request.GetFlags());
+    if (!Config->GetDirectIoEnabled()) {
+        flags &= ~O_DIRECT;
+    }
     const int mode = request.GetMode()
         ? request.GetMode() : Config->GetDefaultPermissions();
 
     TFileHandle handle;
     TFileStat stat;
+    ui64 nodeId;
     if (const auto& pathname = request.GetName()) {
         handle = node->OpenHandle(pathname, flags, mode);
 
         auto newnode = TIndexNode::Create(*node, pathname);
         stat = newnode->Stat();
+        nodeId = newnode->GetNodeId();
 
-        session->TryInsertNode(std::move(newnode));
+        if (!session->TryInsertNode(
+                std::move(newnode),
+                node->GetNodeId(),
+                pathname))
+        {
+            ReportLocalFsMaxSessionNodesInUse();
+            return TErrorResponse(ErrorNoSpaceLeft());
+        }
     } else {
         handle = node->OpenHandle(flags);
         stat = node->Stat();
+        nodeId = node->GetNodeId();
     }
 
-    const FHANDLE fd = handle;
-    session->InsertHandle(std::move(handle));
+    // Don't persist flags that only make sense on initial open
+    flags = flags & ~(O_CREAT | O_EXCL | O_TRUNC);
+
+    auto [handleId, error] =
+        session->InsertHandle(std::move(handle), nodeId, flags);
+    if (HasError(error)) {
+        ReportLocalFsMaxSessionFileHandlesInUse();
+        return TErrorResponse(error);
+    }
 
     NProto::TCreateHandleResponse response;
-    response.SetHandle(fd);
+    response.SetHandle(handleId);
     ConvertStats(stat, *response.MutableNodeAttr());
 
     return response;
@@ -79,18 +102,23 @@ TFuture<NProto::TReadDataResponse> TLocalFileSystem::ReadDataAsync(
             TErrorResponse(ErrorInvalidHandle(request.GetHandle())));
     }
 
-    auto b = TString::Uninitialized(request.GetLength());
-    NSan::Unpoison(b.data(), b.size());
+    auto align = Config->GetDirectIoEnabled() ? Config->GetDirectIoAlign() : 0;
+    auto b = std::make_shared<TAlignedBuffer>(request.GetLength(), align);
+    NSan::Unpoison(b->Begin(), b->Size());
 
-    TArrayRef<char> data(b.begin(), b.vend());
+    TArrayRef<char> data(b->Begin(), b->End());
     auto promise = NewPromise<NProto::TReadDataResponse>();
     FileIOService->AsyncRead(*handle, request.GetOffset(), data).Subscribe(
         [b = std::move(b), promise] (const TFuture<ui32>& f) mutable {
             NProto::TReadDataResponse response;
             try {
                 auto bytesRead = f.GetValue();
-                b.resize(bytesRead);
-                response.SetBuffer(std::move(b));
+                b->TrimSize(bytesRead);
+                response.SetBufferOffset(b->AlignedDataOffset());
+                response.SetBuffer(std::move(b->AccessBuffer()));
+            } catch (const TServiceError& e) {
+                *response.MutableError() = MakeError(MAKE_FILESTORE_ERROR(
+                    ErrnoToFileStoreError(STATUS_FROM_CODE(e.GetCode()))));
             } catch (...) {
                 *response.MutableError() =
                     MakeError(E_IO, CurrentExceptionMessage());
@@ -113,13 +141,17 @@ TFuture<NProto::TWriteDataResponse> TLocalFileSystem::WriteDataAsync(
     }
 
     auto b = std::move(*request.MutableBuffer());
-    TArrayRef<char> data(b.begin(), b.vend());
+    auto offset = request.GetBufferOffset();
+    TArrayRef<char> data(b.begin() + offset, b.vend());
     auto promise = NewPromise<NProto::TWriteDataResponse>();
     FileIOService->AsyncWrite(*handle, request.GetOffset(), data).Subscribe(
         [b = std::move(b), promise] (const TFuture<ui32>& f) mutable {
             NProto::TWriteDataResponse response;
             try {
                 f.GetValue();
+            } catch (const TServiceError& e) {
+                *response.MutableError() = MakeError(MAKE_FILESTORE_ERROR(
+                    ErrnoToFileStoreError(STATUS_FROM_CODE(e.GetCode()))));
             } catch (...) {
                 *response.MutableError() =
                     MakeError(E_IO, CurrentExceptionMessage());
