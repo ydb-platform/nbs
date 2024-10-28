@@ -54,6 +54,7 @@ type ClusterSpec struct {
 	GenerateSeed                    bool                       `yaml:"generateSeed"`
 	Configs                         ConfigsSpec                `yaml:"configs"`
 	Values                          ValuesSpec                 `yaml:"values"`
+	CommonFolderOverride            string                 	   `yaml:"commonFolderOverride"`
 }
 
 type Clusters map[string]ClusterSpec
@@ -156,7 +157,8 @@ func (g *ConfigGenerator) loadAllOverrides(
 	cluster string,
 	zone string,
 	configMap *ConfigMap,
-	seed bool) error {
+	seed bool,
+	commonFolder string) error {
 
 	g.LogDbg(
 		ctx,
@@ -168,7 +170,7 @@ func (g *ConfigGenerator) loadAllOverrides(
 	err := g.loadOverrides(
 		ctx,
 		target,
-		path.Join(g.spec.OverridesPath, "common"),
+		path.Join(g.spec.OverridesPath, commonFolder),
 		configMap)
 	if err != nil {
 		return err
@@ -177,7 +179,7 @@ func (g *ConfigGenerator) loadAllOverrides(
 	err = g.loadOverrides(
 		ctx,
 		target,
-		path.Join(g.spec.OverridesPath, cluster, "common"),
+		path.Join(g.spec.OverridesPath, cluster, commonFolder),
 		configMap)
 	if err != nil {
 		return err
@@ -196,7 +198,7 @@ func (g *ConfigGenerator) loadAllOverrides(
 		return g.loadOverrides(
 			ctx,
 			target,
-			path.Join(g.spec.OverridesPath, "common", "seed", zone),
+			path.Join(g.spec.OverridesPath, commonFolder, "seed", zone),
 			configMap)
 	}
 
@@ -606,6 +608,7 @@ func (g *ConfigGenerator) generateConfigForCluster(
 	cluster string,
 	zone string,
 	seed bool,
+	commonFolder string,
 ) error {
 
 	g.LogInfo(
@@ -619,7 +622,14 @@ func (g *ConfigGenerator) generateConfigForCluster(
 		protobuf.Proto.Reset()
 	}
 
-	err := g.loadAllOverrides(ctx, target, cluster, zone, &g.spec.ConfigMap, seed)
+	err := g.loadAllOverrides(
+		ctx,
+		target,
+		cluster,
+		zone,
+		&g.spec.ConfigMap,
+		seed,
+		commonFolder)
 	if err != nil {
 		return fmt.Errorf(
 			"failed to apply overrides for cluster %v: %w",
@@ -666,13 +676,18 @@ func (g *ConfigGenerator) Generate(ctx context.Context, whiteListCluster []strin
 			continue
 		}
 		for _, zone := range clusterConfig.Zones {
+			commonFolder := "common"
+			if clusterConfig.CommonFolderOverride != "" {
+				commonFolder = clusterConfig.CommonFolderOverride
+			}
 			for _, target := range clusterConfig.Targets {
 				err := g.generateConfigForCluster(
 					ctx,
 					target,
 					cluster,
 					zone,
-					false)
+					false,
+					commonFolder)
 				if err != nil {
 					return fmt.Errorf(
 						"failed to generate configs for cluster %v, target %v: %w",
@@ -688,7 +703,8 @@ func (g *ConfigGenerator) Generate(ctx context.Context, whiteListCluster []strin
 					g.spec.ServiceSpec.Clusters[cluster].TargetForSeed,
 					cluster,
 					zone,
-					true)
+					true,
+					commonFolder)
 				if err != nil {
 					return fmt.Errorf(
 						"failed to generate seed configs for cluster %v: %w",
