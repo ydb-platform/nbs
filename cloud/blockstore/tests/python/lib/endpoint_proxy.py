@@ -8,7 +8,7 @@ class EndpointProxy(Daemon):
         command = [yatest_common.binary_path(
             "cloud/blockstore/apps/endpoint_proxy/blockstore-endpoint-proxy")]
         command += [
-            "--unix-socket-path", unix_socket_path
+            "--unix-socket-path", unix_socket_path, "--verbose"
         ]
 
         if with_netlink:
