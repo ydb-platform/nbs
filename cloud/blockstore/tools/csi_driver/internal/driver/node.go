@@ -39,7 +39,7 @@ const nbdIpc = nbsapi.EClientIpcType_IPC_NBD
 
 const backendVolumeContextKey = "backend"
 const deviceNameVolumeContextKey = "deviceName"
-const instanceIDKey = "instanceId"
+const instanceIdKey = "instanceId"
 
 var vmModeCapabilities = []*csi.NodeServiceCapability{
 	{
@@ -96,8 +96,8 @@ var podModeCapabilities = []*csi.NodeServiceCapability{
 type nodeService struct {
 	csi.NodeServer
 
-	nodeID              string
-	clientID            string
+	nodeId              string
+	clientId            string
 	vmMode              bool
 	socketsDir          string
 	targetFsPathRegexp  *regexp.Regexp
@@ -109,8 +109,8 @@ type nodeService struct {
 }
 
 func newNodeService(
-	nodeID string,
-	clientID string,
+	nodeId string,
+	clientId string,
 	vmMode bool,
 	socketsDir string,
 	targetFsPathPattern string,
@@ -120,8 +120,8 @@ func newNodeService(
 	mounter mounter.Interface) csi.NodeServer {
 
 	return &nodeService{
-		nodeID:              nodeID,
-		clientID:            clientID,
+		nodeId:              nodeId,
+		clientId:            clientId,
 		vmMode:              vmMode,
 		socketsDir:          socketsDir,
 		nbsClient:           nbsClient,
@@ -176,7 +176,7 @@ func (s *nodeService) NodeStageVolume(
 			nfsBackend := (req.VolumeContext[backendVolumeContextKey] == "nfs")
 
 			var err error
-			if instanceId := req.VolumeContext[instanceIDKey]; instanceId != "" {
+			if instanceId := req.VolumeContext[instanceIdKey]; instanceId != "" {
 				nbsId := req.VolumeId
 				stageRecordPath := filepath.Join(req.StagingTargetPath, nbsId+".json")
 				// Backend can be empty for old disks, in this case we use NBS
@@ -328,7 +328,7 @@ func (s *nodeService) NodePublishVolume(
 	switch req.VolumeCapability.GetAccessType().(type) {
 	case *csi.VolumeCapability_Mount:
 		if s.vmMode {
-			if instanceId := req.VolumeContext[instanceIDKey]; instanceId != "" {
+			if instanceId := req.VolumeContext[instanceIdKey]; instanceId != "" {
 				err = s.nodePublishStagedVhostSocket(req, instanceId)
 			} else {
 				if nfsBackend {
@@ -412,9 +412,9 @@ func (s *nodeService) NodeGetInfo(
 	_ *csi.NodeGetInfoRequest) (*csi.NodeGetInfoResponse, error) {
 
 	return &csi.NodeGetInfoResponse{
-		NodeId: s.nodeID,
+		NodeId: s.nodeId,
 		AccessibleTopology: &csi.Topology{
-			Segments: map[string]string{topologyNodeKey: s.nodeID},
+			Segments: map[string]string{topologyNodeKey: s.nodeId},
 		},
 	}, nil
 }
@@ -442,7 +442,7 @@ func (s *nodeService) nodePublishDiskAsVhostSocket(
 		UnixSocketPath:   filepath.Join(endpointDir, nbsSocketName),
 		DiskId:           diskId,
 		InstanceId:       podId,
-		ClientId:         fmt.Sprintf("%s-%s", s.clientID, podId),
+		ClientId:         fmt.Sprintf("%s-%s", s.clientId, podId),
 		DeviceName:       deviceName,
 		IpcType:          vhostIpc,
 		VhostQueuesCount: 8,
@@ -532,7 +532,7 @@ func (s *nodeService) nodeStageDiskAsVhostSocket(
 		UnixSocketPath:   filepath.Join(endpointDir, nbsSocketName),
 		DiskId:           diskId,
 		InstanceId:       instanceId,
-		ClientId:         fmt.Sprintf("%s-%s", s.clientID, instanceId),
+		ClientId:         fmt.Sprintf("%s-%s", s.clientId, instanceId),
 		DeviceName:       deviceName,
 		IpcType:          vhostIpc,
 		VhostQueuesCount: 8,
@@ -864,7 +864,7 @@ func (s *nodeService) startNbsEndpointForNBD(
 
 	nbsInstanceId := instanceId
 	if nbsInstanceId == "" {
-		nbsInstanceId = s.nodeID
+		nbsInstanceId = s.nodeId
 	}
 
 	hostType := nbsapi.EHostType_HOST_TYPE_DEFAULT
@@ -872,7 +872,7 @@ func (s *nodeService) startNbsEndpointForNBD(
 		UnixSocketPath:   filepath.Join(endpointDir, nbsSocketName),
 		DiskId:           diskId,
 		InstanceId:       nbsInstanceId,
-		ClientId:         fmt.Sprintf("%s-%s", s.clientID, nbsInstanceId),
+		ClientId:         fmt.Sprintf("%s-%s", s.clientId, nbsInstanceId),
 		DeviceName:       deviceName,
 		IpcType:          nbdIpc,
 		VhostQueuesCount: 8,
@@ -907,7 +907,7 @@ func (s *nodeService) nodePublishFileStoreAsVhostSocket(
 		Endpoint: &nfsapi.TEndpointConfig{
 			SocketPath:       filepath.Join(endpointDir, nfsSocketName),
 			FileSystemId:     filesystemId,
-			ClientId:         fmt.Sprintf("%s-%s", s.clientID, podId),
+			ClientId:         fmt.Sprintf("%s-%s", s.clientId, podId),
 			VhostQueuesCount: 8,
 			Persistent:       true,
 		},
@@ -943,7 +943,7 @@ func (s *nodeService) nodeStageFileStoreAsVhostSocket(
 		Endpoint: &nfsapi.TEndpointConfig{
 			SocketPath:       filepath.Join(endpointDir, nfsSocketName),
 			FileSystemId:     filesystemId,
-			ClientId:         fmt.Sprintf("%s-%s", s.clientID, instanceId),
+			ClientId:         fmt.Sprintf("%s-%s", s.clientId, instanceId),
 			VhostQueuesCount: 8,
 			Persistent:       true,
 		},
@@ -1268,9 +1268,9 @@ func (s *nodeService) parseFsTargetPath(targetPath string) (string, string, erro
 		return "", "", fmt.Errorf("failed to parse TargetPath: %q", targetPath)
 	}
 
-	podID := matches[1]
-	pvcID := matches[2]
-	return podID, pvcID, nil
+	podId := matches[1]
+	pvcId := matches[2]
+	return podId, pvcId, nil
 }
 
 func (s *nodeService) parseBlkTargetPath(targetPath string) (string, string, error) {
@@ -1280,9 +1280,9 @@ func (s *nodeService) parseBlkTargetPath(targetPath string) (string, string, err
 		return "", "", fmt.Errorf("failed to parse TargetPath: %q", targetPath)
 	}
 
-	pvcID := matches[1]
-	podID := matches[2]
-	return podID, pvcID, nil
+	pvcId := matches[1]
+	podId := matches[2]
+	return podId, pvcId, nil
 }
 
 func (s *nodeService) isMountAccessType(targetPath string) bool {
@@ -1300,7 +1300,7 @@ func (s *nodeService) parsePodId(targetPath string) (string, error) {
 }
 
 func (s *nodeService) statusError(c codes.Code, msg string) error {
-	return status.Error(c, fmt.Sprintf("[n=%s]: %s", s.nodeID, msg))
+	return status.Error(c, fmt.Sprintf("[n=%s]: %s", s.nodeId, msg))
 }
 
 func (s *nodeService) statusErrorf(c codes.Code, format string, a ...interface{}) error {

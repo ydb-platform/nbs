@@ -244,7 +244,7 @@ func doTestStagedPublishUnpublishVolumeForKubevirt(t *testing.T, backend string,
 
 	volumeContext := map[string]string{
 		backendVolumeContextKey: backend,
-		instanceIDKey:           instanceID,
+		instanceIdKey:           instanceID,
 	}
 	if deviceNameOpt != nil {
 		volumeContext[deviceNameVolumeContextKey] = *deviceNameOpt
