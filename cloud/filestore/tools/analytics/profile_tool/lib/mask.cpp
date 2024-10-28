@@ -18,6 +18,63 @@ namespace NCloud::NFileStore::NProfileTool {
 
 constexpr TStringBuf OutProfileLogLabel = "out-profile-log";
 
+namespace {
+
+////////////////////////////////////////////////////////////////////////////////
+
+class TMaskCommand final: public TCommand
+{
+private:
+    TString PathToOutProfileLog;
+    TMaskSensitiveData::EMode Mode{};
+
+public:
+    TMaskCommand()
+    {
+        Opts.AddLongOption(
+                OutProfileLogLabel.Data(),
+                "Path to output profile log")
+            .Required()
+            .RequiredArgument("STR")
+            .StoreResult(&PathToOutProfileLog);
+
+        Opts.AddLongOption("mode", "Transform mode")
+            .RequiredArgument("STR")
+            .Choices({"empty", "hash", "nodeid"})
+            .DefaultValue("nodeid");
+    }
+
+    bool Init(NLastGetopt::TOptsParseResultException& parseResult) override
+    {
+        TString modeOpt = parseResult.Get("mode");
+        if (modeOpt == "nodeid") {
+            Mode = TMaskSensitiveData::EMode::NodeId;
+            return true;
+        }
+
+        if (modeOpt == "hash") {
+            Mode = TMaskSensitiveData::EMode::Hash;
+            return true;
+        }
+
+        if (modeOpt == "empty") {
+            Mode = TMaskSensitiveData::EMode::Empty;
+            return true;
+        }
+
+        return false;
+    }
+
+    int Execute() override
+    {
+        TMaskSensitiveData mask{Mode};
+        mask.MaskSensitiveData(PathToProfileLog, PathToOutProfileLog);
+        return 0;
+    }
+};
+
+}   // namespace
+
 TMaskSensitiveData::TMaskSensitiveData(const EMode mode)
     : Mode{mode}
 {}
@@ -90,55 +147,6 @@ void TMaskSensitiveData::MaskSensitiveData(
         logFrame.LogEvent(recordOut);
     }
 }
-
-namespace {
-
-////////////////////////////////////////////////////////////////////////////////
-
-class TMaskCommand final: public TCommand
-{
-private:
-    TString PathToOutProfileLog;
-    TMaskSensitiveData::EMode Mode{};
-
-public:
-    TMaskCommand()
-    {
-        Opts.AddLongOption(
-                OutProfileLogLabel.Data(),
-                "Path to output profile log")
-            .Required()
-            .RequiredArgument("STR")
-            .StoreResult(&PathToOutProfileLog);
-
-        Opts.AddLongOption("mode", "Transform mode")
-            .RequiredArgument("STR")
-            .Choices({"empty", "hash", "nodeid"})
-            .DefaultValue("nodeid");
-    }
-
-    bool Init(NLastGetopt::TOptsParseResultException& parseResult) override
-    {
-        TString modeOpt = parseResult.Get("mode");
-        if (modeOpt == "nodeid") {
-            Mode = TMaskSensitiveData::EMode::NodeId;
-        } else if (modeOpt == "hash") {
-            Mode = TMaskSensitiveData::EMode::Hash;
-        } else if (modeOpt == "empty") {
-            Mode = TMaskSensitiveData::EMode::Empty;
-        }
-        return true;
-    }
-
-    int Execute() override
-    {
-        TMaskSensitiveData mask{Mode};
-        mask.MaskSensitiveData(PathToProfileLog, PathToOutProfileLog);
-        return 0;
-    }
-};
-
-}   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
 
