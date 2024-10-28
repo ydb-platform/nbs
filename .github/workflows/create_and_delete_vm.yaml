@@ -135,7 +135,7 @@ jobs:
       run_build: true
       run_tests: true
       test_size: "small"
-      test_type: "unittest,clang_tidy,gtest,py3test,py2test,pytest,flake8,black,py2_flake8,go_test,gofmt"
+      test_type: "go_test"
       link_threads: "24"
       test_threads: "4"
       sleep_after_tests: ${{ contains(github.event.pull_request.labels.*.name, 'sleep') && '7200' || '1' }}

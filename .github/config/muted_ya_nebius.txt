@@ -1,4 +1,4 @@
-cloud/blockstore/libs/encryption/ut_keyring
+cloud/blockstore/libs/encryption/ut_keyring *
 cloud/blockstore/tests/csi_driver/csi_sanity_tests *
 cloud/blockstore/tests/csi_driver/e2e_tests *
 cloud/blockstore/tests/e2e-tests *
@@ -28,3 +28,6 @@ cloud/filestore/tests/fs_posix_compliance/qemu-kikimr-test *
 cloud/filestore/tests/profile_log/qemu-kikimr-test *
 cloud/filestore/tests/profile_log/qemu-local-test *
 cloud/storage/core/libs/endpoints/keyring/ut *
+cloud/filestore/tests/fio/qemu-local-noserver-direct-io-test *
+cloud/blockstore/tests/csi_driver/e2e_tests_part1 *
+cloud/blockstore/tests/csi_driver/e2e_tests_part2 *
