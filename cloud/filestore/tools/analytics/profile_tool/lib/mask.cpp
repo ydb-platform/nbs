@@ -18,8 +18,9 @@ namespace NCloud::NFileStore::NProfileTool {
 
 constexpr TStringBuf OutProfileLogLabel = "out-profile-log";
 
-TMaskSensitiveData::TMaskSensitiveData(const EMode& mode)
-    : Mode{mode} {};
+TMaskSensitiveData::TMaskSensitiveData(const EMode mode)
+    : Mode{mode}
+{}
 
 bool TMaskSensitiveData::Advance()
 {
@@ -43,7 +44,7 @@ TString TMaskSensitiveData::Transform(const TString& str, const ui64 nodeId)
         case EMode::Empty: {
             return "";
         }
-        case EMode::Nodeid: {
+        case EMode::NodeId: {
             return "nodeid-" + ToString(nodeId);
         }
         case EMode::Hash: {
@@ -71,7 +72,7 @@ void TMaskSensitiveData::MaskSensitiveData(
         NProto::TProfileLogRecord recordOut;
         recordOut.SetFileSystemId(MessagePtr->GetFileSystemId());
 
-        for (; EventMessageNumber > 0;) {
+        while (EventMessageNumber > 0) {
             auto request = MessagePtr->GetRequests()[--EventMessageNumber];
 
             if (request.GetNodeInfo().HasNodeName()) {
@@ -120,7 +121,7 @@ public:
     {
         TString modeOpt = parseResult.Get("mode");
         if (modeOpt == "nodeid") {
-            Mode = TMaskSensitiveData::EMode::Nodeid;
+            Mode = TMaskSensitiveData::EMode::NodeId;
         } else if (modeOpt == "hash") {
             Mode = TMaskSensitiveData::EMode::Hash;
         } else if (modeOpt == "empty") {

@@ -22,7 +22,7 @@ class TMaskSensitiveData
 public:
     enum class EMode
     {
-        Nodeid,
+        NodeId,
         Hash,
         Empty,
     };
@@ -31,7 +31,7 @@ private:
     EMode Mode;
 
 public:
-    explicit TMaskSensitiveData(const EMode& mode);
+    explicit TMaskSensitiveData(const EMode mode);
     bool Advance();
     TString Transform(const TString& str, const ui64 nodeId);
     void MaskSensitiveData(const TString& in, const TString& out);
