@@ -12,6 +12,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"strings"
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	nbsapi "github.com/ydb-platform/nbs/cloud/blockstore/public/api/protos"
@@ -132,6 +133,13 @@ func newNodeService(
 	}
 }
 
+// nbsId - diskId for blockstore and filesystemId for filestore
+func parseVolumeId(volumeId string) (nbsId string, instanceId string) {
+	// if separator is not found then this is just legacy volume without instanceId
+	nbsId, instanceId, _ = strings.Cut(volumeId, "#")
+	return nbsId, instanceId
+}
+
 func (s *nodeService) NodeStageVolume(
 	ctx context.Context,
 	req *csi.NodeStageVolumeRequest) (*csi.NodeStageVolumeResponse, error) {
@@ -177,7 +185,8 @@ func (s *nodeService) NodeStageVolume(
 
 			var err error
 			if instanceId := req.VolumeContext[instanceIdKey]; instanceId != "" {
-				nbsId := req.VolumeId
+				nbsId, _ := parseVolumeId(req.VolumeId)
+
 				stageRecordPath := filepath.Join(req.StagingTargetPath, nbsId+".json")
 				// Backend can be empty for old disks, in this case we use NBS
 				backend := "nbs"
@@ -250,7 +259,8 @@ func (s *nodeService) NodeUnstageVolume(
 	}
 
 	if s.vmMode {
-		nbsId := req.VolumeId
+		nbsId, _ := parseVolumeId(req.VolumeId)
+
 		stageRecordPath := filepath.Join(req.StagingTargetPath, nbsId+".json")
 		if stageData, err := s.readStageData(stageRecordPath); err == nil {
 			if err := s.nodeUnstageVhostSocket(ctx, nbsId, stageData); err != nil {
@@ -956,7 +966,7 @@ func (s *nodeService) nodeStageFileStoreAsVhostSocket(
 }
 
 func (s *nodeService) nodePublishStagedVhostSocket(req *csi.NodePublishVolumeRequest, instanceId string) error {
-	nbsId := req.VolumeId
+	nbsId, _ := parseVolumeId(req.VolumeId)
 	endpointDir := s.getEndpointDir(instanceId, nbsId)
 	return s.mountSocketDir(endpointDir, req)
 }
@@ -1020,8 +1030,14 @@ func (s *nodeService) nodeUnpublishVolume(
 	// socketsDir/podId/nbsId.
 	//
 	// When all VM disks are migrated to staged volumes we can enforce non-empty
-	// instanceId for new VM disks and add early return here:
-	// if s.vmMode { return nil }
+	// instanceId for new VM disks and add early return here.
+	if s.vmMode {
+		// this is guaranteed to be a new volume that was properly staged, so rest
+		// of unpublish can be skipped.
+		if _, instanceId := parseVolumeId(req.VolumeId); instanceId != "" {
+			return nil
+		}
+	}
 
 	// no other way to get podId from NodeUnpublishVolumeRequest
 	podId, err := s.parsePodId(req.TargetPath)
