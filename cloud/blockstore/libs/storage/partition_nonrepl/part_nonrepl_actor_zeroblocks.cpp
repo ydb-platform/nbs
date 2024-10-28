@@ -28,6 +28,8 @@ class TDiskAgentZeroActor final
     : public TActorBootstrapped<TDiskAgentZeroActor>
 {
 private:
+    using EStatus = TEvNonreplPartitionPrivate::TOperationCompleted::EStatus;
+
     const TRequestInfoPtr RequestInfo;
     const NProto::TZeroBlocksRequest Request;
     const TVector<TDeviceRequest> DeviceRequests;
@@ -35,6 +37,7 @@ private:
     const TActorId Part;
     const ui32 BlockSize;
     const bool AssignVolumeRequestId;
+    const TRequestTimeoutPolicy TimeoutPolicy;
 
     TInstant StartTime;
     ui32 RequestsCompleted = 0;
@@ -45,6 +48,7 @@ public:
     TDiskAgentZeroActor(
         TRequestInfoPtr requestInfo,
         NProto::TZeroBlocksRequest request,
+        TRequestTimeoutPolicy timeoutPolicy,
         TVector<TDeviceRequest> deviceRequests,
         TNonreplicatedPartitionConfigPtr partConfig,
         const TActorId& part,
@@ -56,9 +60,12 @@ public:
 private:
     void ZeroBlocks(const TActorContext& ctx);
 
-    bool HandleError(const TActorContext& ctx, NProto::TError error);
+    bool HandleError(
+        const TActorContext& ctx,
+        NProto::TError error,
+        bool timedout);
 
-    void Done(const TActorContext& ctx, IEventBasePtr response, bool failed);
+    void Done(const TActorContext& ctx, IEventBasePtr response, EStatus status);
 
 private:
     STFUNC(StateWork);
@@ -81,6 +88,7 @@ private:
 TDiskAgentZeroActor::TDiskAgentZeroActor(
         TRequestInfoPtr requestInfo,
         NProto::TZeroBlocksRequest request,
+        TRequestTimeoutPolicy timeoutPolicy,
         TVector<TDeviceRequest> deviceRequests,
         TNonreplicatedPartitionConfigPtr partConfig,
         const TActorId& part,
@@ -93,6 +101,7 @@ TDiskAgentZeroActor::TDiskAgentZeroActor(
     , Part(part)
     , BlockSize(blockSize)
     , AssignVolumeRequestId(assignVolumeRequestId)
+    , TimeoutPolicy(std::move(timeoutPolicy))
 {}
 
 void TDiskAgentZeroActor::Bootstrap(const TActorContext& ctx)
@@ -108,6 +117,7 @@ void TDiskAgentZeroActor::Bootstrap(const TActorContext& ctx)
         RequestInfo->CallContext->RequestId);
 
     StartTime = ctx.Now();
+    ctx.Schedule(TimeoutPolicy.Timeout, new TEvents::TEvWakeup());
 
     ZeroBlocks(ctx);
 }
@@ -143,16 +153,20 @@ void TDiskAgentZeroActor::ZeroBlocks(const TActorContext& ctx)
 
 bool TDiskAgentZeroActor::HandleError(
     const TActorContext& ctx,
-    NProto::TError error)
+    NProto::TError error,
+    bool timedout)
 {
     if (FAILED(error.GetCode())) {
         ProcessError(ctx, *PartConfig, error);
 
         auto response = std::make_unique<TEvService::TEvZeroBlocksResponse>(
-            std::move(error)
-        );
+            std::move(error));
 
-        Done(ctx, std::move(response), true);
+        Done(
+            ctx,
+            std::move(response),
+            timedout ? EStatus::Timedout : EStatus::Failed);
+
         return true;
     }
 
@@ -162,7 +176,7 @@ bool TDiskAgentZeroActor::HandleError(
 void TDiskAgentZeroActor::Done(
     const TActorContext& ctx,
     IEventBasePtr response,
-    bool failed)
+    EStatus status)
 {
     LWTRACK(
         ResponseSent_VolumeWorker,
@@ -176,7 +190,8 @@ void TDiskAgentZeroActor::Done(
         std::make_unique<TEvNonreplPartitionPrivate::TEvZeroBlocksCompleted>();
     auto& counters = *completion->Stats.MutableUserWriteCounters();
     completion->TotalCycles = RequestInfo->GetTotalCycles();
-    completion->ActorSystemTime = ctx.Now() - StartTime;
+    completion->ExecCycles = RequestInfo->GetExecCycles();
+    completion->ExecutionTime = ctx.Now() - StartTime;
 
     ui32 blocks = 0;
     for (const auto& dr: DeviceRequests) {
@@ -184,8 +199,7 @@ void TDiskAgentZeroActor::Done(
         completion->DeviceIndices.push_back(dr.DeviceIdx);
     }
     counters.SetBlocksCount(blocks);
-    completion->Failed = failed;
-    completion->ExecCycles = RequestInfo->GetExecCycles();
+    completion->Status = status;
 
     NCloud::Send(
         ctx,
@@ -209,7 +223,12 @@ void TDiskAgentZeroActor::HandleZeroDeviceBlocksUndelivery(
             << GetRequestId(Request) << " undelivered. Disk id: "
             << PartConfig->GetName() << " Device: " << LogDevice(device));
 
-    // Ignore undelivered event. Wait for TEvWakeup.
+    HandleError(
+        ctx,
+        PartConfig->MakeError(
+            TimeoutPolicy.ErrorCode,
+            "ZeroBlocks request undelivered"),
+        true);
 }
 
 void TDiskAgentZeroActor::HandleTimeout(
@@ -226,7 +245,11 @@ void TDiskAgentZeroActor::HandleTimeout(
 
     HandleError(
         ctx,
-        PartConfig->MakeError(E_TIMEOUT, "ZeroBlocks request timed out"));
+        PartConfig->MakeError(
+            TimeoutPolicy.ErrorCode,
+            TimeoutPolicy.OverrideMessage ? TimeoutPolicy.OverrideMessage
+                                          : "ZeroBlocks request timed out"),
+        true);
 }
 
 void TDiskAgentZeroActor::HandleZeroDeviceBlocksResponse(
@@ -235,7 +258,7 @@ void TDiskAgentZeroActor::HandleZeroDeviceBlocksResponse(
 {
     auto* msg = ev->Get();
 
-    if (HandleError(ctx, msg->GetError())) {
+    if (HandleError(ctx, msg->GetError(), false)) {
         return;
     }
 
@@ -245,7 +268,7 @@ void TDiskAgentZeroActor::HandleZeroDeviceBlocksResponse(
 
     auto response = std::make_unique<TEvService::TEvZeroBlocksResponse>();
     response->Record = std::move(Response);
-    Done(ctx, std::move(response), false);
+    Done(ctx, std::move(response), EStatus::Success);
 }
 
 STFUNC(TDiskAgentZeroActor::StateWork)
@@ -292,15 +315,14 @@ void TNonreplicatedPartitionActor::HandleZeroBlocks(
         msg->Record.GetBlocksCount());
 
     TVector<TDeviceRequest> deviceRequests;
-    TRequest request;
+    TRequestTimeoutPolicy timeoutPolicy;
     bool ok = InitRequests<TEvService::TZeroBlocksMethod>(
         *msg,
         ctx,
         *requestInfo,
         blockRange,
         &deviceRequests,
-        &request
-    );
+        &timeoutPolicy);
 
     if (!ok) {
         return;
@@ -314,13 +336,14 @@ void TNonreplicatedPartitionActor::HandleZeroBlocks(
         ctx,
         requestInfo,
         std::move(msg->Record),
+        std::move(timeoutPolicy),
         std::move(deviceRequests),
         PartConfig,
         SelfId(),
         PartConfig->GetBlockSize(),
         assignVolumeRequestId);
 
-    RequestsInProgress.AddWriteRequest(actorId, std::move(request));
+    RequestsInProgress.AddWriteRequest(actorId);
 }
 
 void TNonreplicatedPartitionActor::HandleZeroBlocksCompleted(
@@ -342,12 +365,7 @@ void TNonreplicatedPartitionActor::HandleZeroBlocksCompleted(
     CpuUsage += CyclesToDurationSafe(msg->ExecCycles);
 
     RequestsInProgress.RemoveRequest(ev->Sender);
-    if (!msg->Failed) {
-        for (const auto i: msg->DeviceIndices) {
-            OnResponse(i, msg->ActorSystemTime);
-        }
-    }
-
+    OnRequestCompleted(*msg, ctx.Now());
     DrainActorCompanion.ProcessDrainRequests(ctx);
 
     if (RequestsInProgress.Empty() && Poisoner) {

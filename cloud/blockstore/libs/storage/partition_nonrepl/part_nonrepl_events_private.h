@@ -155,15 +155,26 @@ struct TEvNonreplPartitionPrivate
 
     struct TOperationCompleted
     {
+        enum class EStatus
+        {
+            Success,    // The request was completed successfully
+            Failed,     // The request was executed with an error
+            Timedout,   // The response from the server was not received during
+                        // the timeout.
+        };
+
         NProto::TPartitionStats Stats;
 
         ui64 TotalCycles = 0;
         ui64 ExecCycles = 0;
+        // Request execution total time.
+        TDuration ExecutionTime;
 
-        TStackVec<int, 2> DeviceIndices;
-        TDuration ActorSystemTime;
+        // Indexes of devices that participated in the request.
+        TStackVec<ui32, 2> DeviceIndices;
 
-        bool Failed = false;
+        // Request completion status
+        EStatus Status = EStatus::Success;
 
         ui32 NonVoidBlockCount = 0;
         ui32 VoidBlockCount = 0;

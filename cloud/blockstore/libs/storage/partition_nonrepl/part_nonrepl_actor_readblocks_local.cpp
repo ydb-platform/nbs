@@ -31,12 +31,15 @@ class TDiskAgentReadActor final
     : public TActorBootstrapped<TDiskAgentReadActor>
 {
 private:
+    using EStatus = TEvNonreplPartitionPrivate::TOperationCompleted::EStatus;
+
     const TRequestInfoPtr RequestInfo;
     const NProto::TReadBlocksLocalRequest Request;
     const TVector<TDeviceRequest> DeviceRequests;
     const TNonreplicatedPartitionConfigPtr PartConfig;
     const TActorId Part;
     const bool SkipVoidBlocksToOptimizeNetworkTransfer;
+    const TRequestTimeoutPolicy TimeoutPolicy;
 
     TInstant StartTime;
     ui32 RequestsCompleted = 0;
@@ -47,6 +50,7 @@ public:
     TDiskAgentReadActor(
         TRequestInfoPtr requestInfo,
         NProto::TReadBlocksLocalRequest request,
+        TRequestTimeoutPolicy timeoutPolicy,
         TVector<TDeviceRequest> deviceRequests,
         TNonreplicatedPartitionConfigPtr partConfig,
         const TActorId& part);
@@ -56,9 +60,12 @@ public:
 private:
     void ReadBlocks(const TActorContext& ctx);
 
-    bool HandleError(const TActorContext& ctx, NProto::TError error);
+    bool HandleError(
+        const TActorContext& ctx,
+        NProto::TError error,
+        bool timedout);
 
-    void Done(const TActorContext& ctx, IEventBasePtr response, bool failed);
+    void Done(const TActorContext& ctx, IEventBasePtr response, EStatus status);
 
 private:
     STFUNC(StateWork);
@@ -81,6 +88,7 @@ private:
 TDiskAgentReadActor::TDiskAgentReadActor(
         TRequestInfoPtr requestInfo,
         NProto::TReadBlocksLocalRequest request,
+        TRequestTimeoutPolicy timeoutPolicy,
         TVector<TDeviceRequest> deviceRequests,
         TNonreplicatedPartitionConfigPtr partConfig,
         const TActorId& part)
@@ -92,6 +100,7 @@ TDiskAgentReadActor::TDiskAgentReadActor(
     , SkipVoidBlocksToOptimizeNetworkTransfer(
           Request.GetHeaders().GetOptimizeNetworkTransfer() ==
           NProto::EOptimizeNetworkTransfer::SKIP_VOID_BLOCKS)
+    , TimeoutPolicy(std::move(timeoutPolicy))
 {}
 
 void TDiskAgentReadActor::Bootstrap(const TActorContext& ctx)
@@ -107,6 +116,7 @@ void TDiskAgentReadActor::Bootstrap(const TActorContext& ctx)
         RequestInfo->CallContext->RequestId);
 
     StartTime = ctx.Now();
+    ctx.Schedule(TimeoutPolicy.Timeout, new TEvents::TEvWakeup());
 
     ReadBlocks(ctx);
 }
@@ -140,16 +150,19 @@ void TDiskAgentReadActor::ReadBlocks(const TActorContext& ctx)
 
 bool TDiskAgentReadActor::HandleError(
     const TActorContext& ctx,
-    NProto::TError error)
+    NProto::TError error,
+    bool timedout)
 {
     if (FAILED(error.GetCode())) {
         ProcessError(ctx, *PartConfig, error);
 
-        auto response = std::make_unique<TEvService::TEvReadBlocksLocalResponse>(
-            std::move(error)
-        );
-
-        Done(ctx, std::move(response), true);
+        auto response =
+            std::make_unique<TEvService::TEvReadBlocksLocalResponse>(
+                std::move(error));
+        Done(
+            ctx,
+            std::move(response),
+            timedout ? EStatus::Timedout : EStatus::Failed);
         return true;
     }
 
@@ -159,7 +172,7 @@ bool TDiskAgentReadActor::HandleError(
 void TDiskAgentReadActor::Done(
     const TActorContext& ctx,
     IEventBasePtr response,
-    bool failed)
+    EStatus status)
 {
     LWTRACK(
         ResponseSent_VolumeWorker,
@@ -173,7 +186,8 @@ void TDiskAgentReadActor::Done(
         std::make_unique<TEvNonreplPartitionPrivate::TEvReadBlocksCompleted>();
     auto& counters = *completion->Stats.MutableUserReadCounters();
     completion->TotalCycles = RequestInfo->GetTotalCycles();
-    completion->ActorSystemTime = ctx.Now() - StartTime;
+    completion->ExecCycles = RequestInfo->GetExecCycles();
+    completion->ExecutionTime = ctx.Now() - StartTime;
 
     ui32 blocks = 0;
     for (const auto& dr: DeviceRequests) {
@@ -181,9 +195,7 @@ void TDiskAgentReadActor::Done(
         completion->DeviceIndices.push_back(dr.DeviceIdx);
     }
     counters.SetBlocksCount(blocks);
-    completion->Failed = failed;
-
-    completion->ExecCycles = RequestInfo->GetExecCycles();
+    completion->Status = status;
 
     completion->NonVoidBlockCount = NonVoidBlockCount;
     completion->VoidBlockCount = VoidBlockCount;
@@ -210,7 +222,12 @@ void TDiskAgentReadActor::HandleReadDeviceBlocksUndelivery(
             << GetRequestId(Request) << " undelivered. Disk id: "
             << PartConfig->GetName() << " Device: " << LogDevice(device));
 
-    // Ignore undelivered event. Wait for TEvWakeup.
+    HandleError(
+        ctx,
+        PartConfig->MakeError(
+            TimeoutPolicy.ErrorCode,
+            "ReadBlocksLocal request undelivered"),
+        true);
 }
 
 void TDiskAgentReadActor::HandleTimeout(
@@ -225,9 +242,14 @@ void TDiskAgentReadActor::HandleTimeout(
             << GetRequestId(Request) << " timed out. Disk id: "
             << PartConfig->GetName() << " Device: " << LogDevice(device));
 
-    HandleError(ctx, PartConfig->MakeError(
-        E_TIMEOUT,
-        "ReadBlocks request timed out"));
+    HandleError(
+        ctx,
+        PartConfig->MakeError(
+            TimeoutPolicy.ErrorCode,
+            TimeoutPolicy.OverrideMessage
+                ? TimeoutPolicy.OverrideMessage
+                : "ReadBlocksLocal request timed out"),
+        true);
 }
 
 void TDiskAgentReadActor::HandleReadDeviceBlocksResponse(
@@ -236,16 +258,19 @@ void TDiskAgentReadActor::HandleReadDeviceBlocksResponse(
 {
     auto* msg = ev->Get();
 
-    if (HandleError(ctx, msg->GetError())) {
+    if (HandleError(ctx, msg->GetError(), false)) {
         return;
     }
 
     auto guard = Request.Sglist.Acquire();
 
     if (!guard) {
-        HandleError(ctx, PartConfig->MakeError(
-            E_CANCELLED,
-            "failed to acquire sglist in DiskAgentReadActor"));
+        HandleError(
+            ctx,
+            PartConfig->MakeError(
+                E_CANCELLED,
+                "failed to acquire sglist in DiskAgentReadActor"),
+            false);
         return;
     }
 
@@ -274,7 +299,7 @@ void TDiskAgentReadActor::HandleReadDeviceBlocksResponse(
     auto response = std::make_unique<TEvService::TEvReadBlocksLocalResponse>();
     response->Record.SetAllZeroes(VoidBlockCount == Request.GetBlocksCount());
 
-    Done(ctx, std::move(response), false);
+    Done(ctx, std::move(response), EStatus::Success);
 }
 
 STFUNC(TDiskAgentReadActor::StateWork)
@@ -321,14 +346,14 @@ void TNonreplicatedPartitionActor::HandleReadBlocksLocal(
         msg->Record.GetBlocksCount());
 
     TVector<TDeviceRequest> deviceRequests;
-    TRequest request;
+    TRequestTimeoutPolicy timeoutPolicy;
     bool ok = InitRequests<TEvService::TReadBlocksLocalMethod>(
         *msg,
         ctx,
         *requestInfo,
         blockRange,
         &deviceRequests,
-        &request
+        &timeoutPolicy
     );
 
     if (!ok) {
@@ -344,11 +369,12 @@ void TNonreplicatedPartitionActor::HandleReadBlocksLocal(
         ctx,
         requestInfo,
         std::move(msg->Record),
+        std::move(timeoutPolicy),
         std::move(deviceRequests),
         PartConfig,
         SelfId());
 
-    RequestsInProgress.AddReadRequest(actorId, std::move(request));
+    RequestsInProgress.AddReadRequest(actorId);
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

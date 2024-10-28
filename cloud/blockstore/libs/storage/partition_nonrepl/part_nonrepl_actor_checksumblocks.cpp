@@ -39,11 +39,14 @@ class TDiskAgentChecksumActor final
     : public TActorBootstrapped<TDiskAgentChecksumActor>
 {
 private:
+    using EStatus = TEvNonreplPartitionPrivate::TOperationCompleted::EStatus;
+
     const TRequestInfoPtr RequestInfo;
     const NProto::TChecksumBlocksRequest Request;
     const TVector<TDeviceRequest> DeviceRequests;
     const TNonreplicatedPartitionConfigPtr PartConfig;
     const TActorId Part;
+    const TRequestTimeoutPolicy TimeoutPolicy;
 
     TInstant StartTime;
     TMap<ui64, TPartialChecksum> Checksums;
@@ -53,6 +56,7 @@ public:
     TDiskAgentChecksumActor(
         TRequestInfoPtr requestInfo,
         NProto::TChecksumBlocksRequest request,
+        TRequestTimeoutPolicy timeoutPolicy,
         TVector<TDeviceRequest> deviceRequests,
         TNonreplicatedPartitionConfigPtr partConfig,
         const TActorId& part);
@@ -62,9 +66,12 @@ public:
 private:
     void ChecksumBlocks(const TActorContext& ctx);
 
-    bool HandleError(const TActorContext& ctx, NProto::TError error);
+    bool HandleError(
+        const TActorContext& ctx,
+        NProto::TError error,
+        bool timedout);
 
-    void Done(const TActorContext& ctx, IEventBasePtr response, bool failed);
+    void Done(const TActorContext& ctx, IEventBasePtr response, EStatus status);
 
 private:
     STFUNC(StateWork);
@@ -87,6 +94,7 @@ private:
 TDiskAgentChecksumActor::TDiskAgentChecksumActor(
         TRequestInfoPtr requestInfo,
         NProto::TChecksumBlocksRequest request,
+        TRequestTimeoutPolicy timeoutPolicy,
         TVector<TDeviceRequest> deviceRequests,
         TNonreplicatedPartitionConfigPtr partConfig,
         const TActorId& part)
@@ -95,6 +103,7 @@ TDiskAgentChecksumActor::TDiskAgentChecksumActor(
     , DeviceRequests(std::move(deviceRequests))
     , PartConfig(std::move(partConfig))
     , Part(part)
+    , TimeoutPolicy(std::move(timeoutPolicy))
 {}
 
 void TDiskAgentChecksumActor::Bootstrap(const TActorContext& ctx)
@@ -110,6 +119,7 @@ void TDiskAgentChecksumActor::Bootstrap(const TActorContext& ctx)
         RequestInfo->CallContext->RequestId);
 
     StartTime = ctx.Now();
+    ctx.Schedule(TimeoutPolicy.Timeout, new TEvents::TEvWakeup());
 
     ChecksumBlocks(ctx);
 }
@@ -143,16 +153,19 @@ void TDiskAgentChecksumActor::ChecksumBlocks(const TActorContext& ctx)
 
 bool TDiskAgentChecksumActor::HandleError(
     const TActorContext& ctx,
-    NProto::TError error)
+    NProto::TError error,
+    bool timedout)
 {
     if (FAILED(error.GetCode())) {
         ProcessError(ctx, *PartConfig, error);
 
         auto response = std::make_unique<TEvNonreplPartitionPrivate::TEvChecksumBlocksResponse>(
-            std::move(error)
-        );
+            std::move(error));
 
-        Done(ctx, std::move(response), true);
+        Done(
+            ctx,
+            std::move(response),
+            timedout ? EStatus::Timedout : EStatus::Failed);
         return true;
     }
 
@@ -162,7 +175,7 @@ bool TDiskAgentChecksumActor::HandleError(
 void TDiskAgentChecksumActor::Done(
     const TActorContext& ctx,
     IEventBasePtr response,
-    bool failed)
+    EStatus status)
 {
     LWTRACK(
         ResponseSent_VolumeWorker,
@@ -176,7 +189,8 @@ void TDiskAgentChecksumActor::Done(
         std::make_unique<TEvNonreplPartitionPrivate::TEvChecksumBlocksCompleted>();
     auto& counters = *completion->Stats.MutableSysChecksumCounters();
     completion->TotalCycles = RequestInfo->GetTotalCycles();
-    completion->ActorSystemTime = ctx.Now() - StartTime;
+    completion->ExecCycles = RequestInfo->GetExecCycles();
+    completion->ExecutionTime = ctx.Now() - StartTime;
 
     ui32 blocks = 0;
     for (const auto& dr: DeviceRequests) {
@@ -184,10 +198,7 @@ void TDiskAgentChecksumActor::Done(
         completion->DeviceIndices.push_back(dr.DeviceIdx);
     }
     counters.SetBlocksCount(blocks);
-    completion->Failed = failed;
-
-    completion->ExecCycles = RequestInfo->GetExecCycles();
-
+    completion->Status = status;
     NCloud::Send(
         ctx,
         Part,
@@ -210,7 +221,12 @@ void TDiskAgentChecksumActor::HandleChecksumDeviceBlocksUndelivery(
             << GetRequestId(Request) << " undelivered. Disk id: "
             << PartConfig->GetName() << " Device: " << LogDevice(device));
 
-    // Ignore undelivered event. Wait for TEvWakeup.
+    HandleError(
+        ctx,
+        MakeError(
+            TimeoutPolicy.ErrorCode,
+            "ChecksumBlocks request undelivered"),
+        true);
 }
 
 void TDiskAgentChecksumActor::HandleTimeout(
@@ -225,7 +241,13 @@ void TDiskAgentChecksumActor::HandleTimeout(
             << GetRequestId(Request) << " timed out. Disk id: "
             << PartConfig->GetName() << " Device: " << LogDevice(device));
 
-    HandleError(ctx, MakeError(E_TIMEOUT, "ChecksumBlocks request timed out"));
+    HandleError(
+        ctx,
+        MakeError(
+            TimeoutPolicy.ErrorCode,
+            TimeoutPolicy.OverrideMessage ? TimeoutPolicy.OverrideMessage
+                                          : "ChecksumBlocks request timed out"),
+        true);
 }
 
 void TDiskAgentChecksumActor::HandleChecksumDeviceBlocksResponse(
@@ -234,7 +256,7 @@ void TDiskAgentChecksumActor::HandleChecksumDeviceBlocksResponse(
 {
     auto* msg = ev->Get();
 
-    if (HandleError(ctx, msg->GetError())) {
+    if (HandleError(ctx, msg->GetError(), false)) {
         return;
     }
 
@@ -255,7 +277,7 @@ void TDiskAgentChecksumActor::HandleChecksumDeviceBlocksResponse(
     auto response = std::make_unique<TEvNonreplPartitionPrivate::TEvChecksumBlocksResponse>();
     response->Record.SetChecksum(checksum.GetValue());
 
-    Done(ctx, std::move(response), false);
+    Done(ctx, std::move(response), EStatus::Success);
 }
 
 STFUNC(TDiskAgentChecksumActor::StateWork)
@@ -302,14 +324,14 @@ void TNonreplicatedPartitionActor::HandleChecksumBlocks(
         msg->Record.GetBlocksCount());
 
     TVector<TDeviceRequest> deviceRequests;
-    TRequest request;
+    TRequestTimeoutPolicy timeoutPolicy;
     bool ok = InitRequests<TEvNonreplPartitionPrivate::TChecksumBlocksMethod>(
         *msg,
         ctx,
         *requestInfo,
         blockRange,
         &deviceRequests,
-        &request
+        &timeoutPolicy
     );
 
     if (!ok) {
@@ -320,11 +342,12 @@ void TNonreplicatedPartitionActor::HandleChecksumBlocks(
         ctx,
         requestInfo,
         std::move(msg->Record),
+        std::move(timeoutPolicy),
         std::move(deviceRequests),
         PartConfig,
         SelfId());
 
-    RequestsInProgress.AddReadRequest(actorId, std::move(request));
+    RequestsInProgress.AddReadRequest(actorId);
 }
 
 void TNonreplicatedPartitionActor::HandleChecksumBlocksCompleted(
@@ -344,12 +367,7 @@ void TNonreplicatedPartitionActor::HandleChecksumBlocksCompleted(
     CpuUsage += CyclesToDurationSafe(msg->ExecCycles);
 
     RequestsInProgress.RemoveRequest(ev->Sender);
-    if (!msg->Failed) {
-        for (const auto i: msg->DeviceIndices) {
-            OnResponse(i, msg->ActorSystemTime);
-        }
-    }
-
+    OnRequestCompleted(*msg, ctx.Now());
     if (RequestsInProgress.Empty() && Poisoner) {
         ReplyAndDie(ctx);
     }
