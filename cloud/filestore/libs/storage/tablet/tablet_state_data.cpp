@@ -1,9 +1,9 @@
 #include "tablet_state_impl.h"
 
-#include "profile_log_events.h"
-
+#include <cloud/filestore/libs/diagnostics/profile_log_events.h>
 #include <cloud/filestore/libs/storage/model/utils.h>
 #include <cloud/filestore/libs/storage/tablet/model/block.h>
+#include <cloud/filestore/libs/storage/tablet/model/profile_log_events.h>
 #include <cloud/filestore/libs/storage/tablet/model/split_range.h>
 
 namespace NCloud::NFileStore::NStorage {

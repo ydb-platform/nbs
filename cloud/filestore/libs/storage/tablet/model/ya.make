@@ -6,6 +6,7 @@ GENERATE_ENUM_SERIALIZATION(alloc.h)
 GENERATE_ENUM_SERIALIZATION(range_locks.h)
 
 SRCS(
+    profile_log_events.cpp
     alloc.cpp
     binary_reader.cpp
     binary_writer.cpp
@@ -38,6 +39,7 @@ SRCS(
 )
 
 PEERDIR(
+    cloud/filestore/libs/diagnostics/events
     cloud/filestore/libs/storage/api
     cloud/filestore/libs/storage/model
     cloud/filestore/private/api/protos

@@ -6,7 +6,7 @@ Profile log fills in three places:
 
 * On client-side (vhost) [public API](https://github.com/ydb-platform/nbs/blob/main/cloud/filestore/libs/service/request.h) requests are partially filled [on request forwarding](https://github.com/ydb-platform/nbs/blob/main/cloud/filestore/libs/storage/service/service_actor_forward.cpp) in service actor and [on request completion](https://github.com/ydb-platform/nbs/blob/main/cloud/filestore/libs/storage/service/service_actor_complete.cpp). It will be dumped to profile-log [on in-flight request completion](https://github.com/ydb-platform/nbs/blob/main/cloud/filestore/libs/storage/service/service_state.cpp). Only significant requests with filled additional fields will be dumped. This profile log can be found in ```/var/log/nfs/vhost-server.log``` on hosts.
 
-* In tablet [private API](https://github.com/ydb-platform/nbs/blob/main/cloud/filestore/libs/storage/tablet/profile_log_events.h) requests are filled in several places. You can try to grep ```InitProfileLogRequestInfo``` and ```FinalizeProfileLogRequestInfo``` in ```cloud/filestore/libs/storage/tablet/*``` and find all the places. This profile log will be dumped to ```/var/log/nfs/nfs-profile.log``` on nfs-control svms.
+* In tablet [private API](https://github.com/ydb-platform/nbs/blob/main/cloud/filestore/libs/storage/tablet/model/profile_log_events.h) requests are filled in several places. You can try to grep ```InitProfileLogRequestInfo``` and ```FinalizeProfileLogRequestInfo``` in ```cloud/filestore/libs/storage/tablet/*``` and find all the places. This profile log will be dumped to ```/var/log/nfs/nfs-profile.log``` on nfs-control svms.
 
 
 ## Common options
