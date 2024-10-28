@@ -10,6 +10,22 @@ namespace NCloud::NFileStore::NStorage {
 using namespace NActors;
 
 ////////////////////////////////////////////////////////////////////////////////
+// Stats
+
+IActorPtr TStorageServiceActor::CreateGetStorageStatsActionActor(
+    TRequestInfoPtr requestInfo,
+    TString input)
+{
+    using TGetStorageStatsActor = TTabletActionActor<
+        TEvIndexTablet::TEvGetStorageStatsRequest,
+        TEvIndexTablet::TEvGetStorageStatsResponse>;
+    return std::make_unique<TGetStorageStatsActor>(
+        std::move(requestInfo),
+        std::move(input));
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// UnsafeNodeOps
 
 IActorPtr TStorageServiceActor::CreateUnsafeDeleteNodeActionActor(
     TRequestInfoPtr requestInfo,
