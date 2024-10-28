@@ -199,6 +199,7 @@ func (s *nodeService) NodeStageVolume(
 				}
 
 				if err != nil {
+					ignoreError(os.Remove(stageRecordPath))
 					return nil, s.statusErrorf(codes.Internal,
 						"Failed to stage volume: %v", err)
 				}
