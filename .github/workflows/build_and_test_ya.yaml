@@ -160,6 +160,7 @@ jobs:
         upload_ya_dir: ${{ inputs.upload_ya_dir }}
         clean_ya_dir: ${{ inputs.run_build && 'no' || inputs.clean_ya_dir }}
         use_network_cache: ${{ inputs.use_network_cache }}
+        nebius: ${{ inputs.nebius }}
 
     - id: failure
       name: set sleep_after_tests in case of failure
