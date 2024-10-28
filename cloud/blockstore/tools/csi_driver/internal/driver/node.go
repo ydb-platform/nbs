@@ -991,6 +991,10 @@ func (s *nodeService) nodeUnstageVolume(
 		}
 	}
 
+	if err := os.RemoveAll(endpointDir); err != nil {
+		return err
+	}
+
 	return nil
 }
 
