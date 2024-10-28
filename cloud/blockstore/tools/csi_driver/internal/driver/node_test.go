@@ -190,7 +190,7 @@ func TestPublishUnpublishFilestoreForKubevirt(t *testing.T) {
 	doTestPublishUnpublishVolumeForKubevirt(t, "nfs", nil)
 }
 
-func doTestStagedPublishUnpublishVolumeForKubevirt(t *testing.T, backend string, deviceNameOpt *string) {
+func doTestStagedPublishUnpublishVolumeForKubevirt(t *testing.T, backend string, deviceNameOpt *string, perInstanceVolumes bool) {
 	tempDir := t.TempDir()
 
 	nbsClient := mocks.NewNbsClientMock()
@@ -207,6 +207,10 @@ func doTestStagedPublishUnpublishVolumeForKubevirt(t *testing.T, backend string,
 	deviceName := diskID
 	if deviceNameOpt != nil {
 		deviceName = *deviceNameOpt
+	}
+	volumeId := diskID
+	if perInstanceVolumes {
+		volumeId = diskID + "#" + instanceID
 	}
 	stagingTargetPath := filepath.Join(tempDir, "testStagingTargetPath")
 	socketsDir := filepath.Join(tempDir, "sockets")
@@ -285,7 +289,7 @@ func doTestStagedPublishUnpublishVolumeForKubevirt(t *testing.T, backend string,
 	}
 
 	_, err := nodeService.NodeStageVolume(ctx, &csi.NodeStageVolumeRequest{
-		VolumeId:          diskID,
+		VolumeId:          volumeId,
 		StagingTargetPath: stagingTargetPath,
 		VolumeCapability:  &volumeCapability,
 		VolumeContext:     volumeContext,
@@ -306,7 +310,7 @@ func doTestStagedPublishUnpublishVolumeForKubevirt(t *testing.T, backend string,
 	mounter.On("Mount", sourcePath, targetPath, "", []string{"bind"}).Return(nil)
 
 	_, err = nodeService.NodePublishVolume(ctx, &csi.NodePublishVolumeRequest{
-		VolumeId:          diskID,
+		VolumeId:          volumeId,
 		StagingTargetPath: stagingTargetPath,
 		TargetPath:        targetPath,
 		VolumeCapability:  &volumeCapability,
@@ -321,16 +325,19 @@ func doTestStagedPublishUnpublishVolumeForKubevirt(t *testing.T, backend string,
 
 	mounter.On("CleanupMountPoint", targetPath).Return(nil)
 
-	nbsClient.On("StopEndpoint", ctx, &nbs.TStopEndpointRequest{
-		UnixSocketPath: filepath.Join(socketsDir, podID, diskID, nbsSocketName),
-	}).Return(&nbs.TStopEndpointResponse{}, nil)
+	if !perInstanceVolumes {
+		// Driver attempts to stop legacy endpoints only for legacy volumes.
+		nbsClient.On("StopEndpoint", ctx, &nbs.TStopEndpointRequest{
+			UnixSocketPath: filepath.Join(socketsDir, podID, diskID, nbsSocketName),
+		}).Return(&nbs.TStopEndpointResponse{}, nil)
 
-	nfsClient.On("StopEndpoint", ctx, &nfs.TStopEndpointRequest{
-		SocketPath: filepath.Join(socketsDir, podID, diskID, nfsSocketName),
-	}).Return(&nfs.TStopEndpointResponse{}, nil)
+		nfsClient.On("StopEndpoint", ctx, &nfs.TStopEndpointRequest{
+			SocketPath: filepath.Join(socketsDir, podID, diskID, nfsSocketName),
+		}).Return(&nfs.TStopEndpointResponse{}, nil)
+	}
 
 	_, err = nodeService.NodeUnpublishVolume(ctx, &csi.NodeUnpublishVolumeRequest{
-		VolumeId:   diskID,
+		VolumeId:   volumeId,
 		TargetPath: targetPath,
 	})
 	require.NoError(t, err)
@@ -348,7 +355,7 @@ func doTestStagedPublishUnpublishVolumeForKubevirt(t *testing.T, backend string,
 	}
 
 	_, err = nodeService.NodeUnstageVolume(ctx, &csi.NodeUnstageVolumeRequest{
-		VolumeId:          diskID,
+		VolumeId:          volumeId,
 		StagingTargetPath: stagingTargetPath,
 	})
 	require.NoError(t, err)
@@ -357,17 +364,30 @@ func doTestStagedPublishUnpublishVolumeForKubevirt(t *testing.T, backend string,
 	assert.True(t, os.IsNotExist(err))
 }
 
+func TestStagedPublishUnpublishDiskForKubevirtLegacy(t *testing.T) {
+	doTestStagedPublishUnpublishVolumeForKubevirt(t, "nbs", nil, false)
+}
+
+func TestStagedPublishUnpublishDiskForKubevirtSetDeviceNameLegacy(t *testing.T) {
+	deviceName := "test-disk-name-42"
+	doTestStagedPublishUnpublishVolumeForKubevirt(t, "nbs", &deviceName, false)
+}
+
+func TestStagedPublishUnpublishFilestoreForKubevirtLegacy(t *testing.T) {
+	doTestStagedPublishUnpublishVolumeForKubevirt(t, "nfs", nil, false)
+}
+
 func TestStagedPublishUnpublishDiskForKubevirt(t *testing.T) {
-	doTestStagedPublishUnpublishVolumeForKubevirt(t, "nbs", nil)
+	doTestStagedPublishUnpublishVolumeForKubevirt(t, "nbs", nil, true)
 }
 
 func TestStagedPublishUnpublishDiskForKubevirtSetDeviceName(t *testing.T) {
 	deviceName := "test-disk-name-42"
-	doTestStagedPublishUnpublishVolumeForKubevirt(t, "nbs", &deviceName)
+	doTestStagedPublishUnpublishVolumeForKubevirt(t, "nbs", &deviceName, true)
 }
 
 func TestStagedPublishUnpublishFilestoreForKubevirt(t *testing.T) {
-	doTestStagedPublishUnpublishVolumeForKubevirt(t, "nfs", nil)
+	doTestStagedPublishUnpublishVolumeForKubevirt(t, "nfs", nil, true)
 }
 
 func TestPublishUnpublishDiskForInfrakuber(t *testing.T) {
