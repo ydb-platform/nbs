@@ -268,6 +268,8 @@ def init(vm_mode: bool = False):
     server_config_patch.UnixSocketPath = str(sockets_dir / "grpc.sock")
     server_config_patch.VhostEnabled = True
     server_config_patch.NbdDevicePrefix = "/dev/nbd"
+    ep_socket = "ep-%s.sock" % hash(common.context.test_name)
+    server_config_patch.EndpointProxySocketPath = ep_socket
     server = TServerAppConfig()
     server.ServerConfig.CopyFrom(server_config_patch)
     server.ServerConfig.ThreadsCount = thread_count()
