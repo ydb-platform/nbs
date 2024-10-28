@@ -57,7 +57,7 @@ Y_UNIT_TEST_SUITE(THelpersTest)
 
         // Zero IOps
         UNIT_ASSERT_VALUES_EQUAL(
-            Max<ui64>( ),
+            Max<ui64>(),
             CalculateThrottlerC2(0.0, 100.0));
 
         // Random
