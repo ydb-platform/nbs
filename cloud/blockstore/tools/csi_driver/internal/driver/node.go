@@ -955,7 +955,7 @@ func (s *nodeService) nodeUnstageVolume(
 	req *csi.NodeUnstageVolumeRequest) error {
 
 	// Check mount points for StagingTargetPath and StagingTargetPath/VolumeId
-	// as it's not possible to distingiush mount and blok mode from request
+	// as it's not possible to distinguish mount and block mode from request
 	// parameters
 	mountPoint := req.StagingTargetPath
 	mounted, _ := s.mounter.IsMountPoint(mountPoint)
