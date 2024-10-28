@@ -9,7 +9,6 @@ SRCS(
     service_actor_actions_configure_shards.cpp
     service_actor_actions_describe_sessions.cpp
     service_actor_actions_drain_tablets.cpp
-    service_actor_actions_forced_operation.cpp
     service_actor_actions_get_storage_config_fields.cpp
     service_actor_actions_get_storage_config.cpp
     service_actor_actions_reassign_tablet.cpp

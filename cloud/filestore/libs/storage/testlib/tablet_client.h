@@ -364,7 +364,8 @@ public:
         return std::make_unique<
             TEvIndexTabletPrivate::TEvForcedRangeOperationRequest>(
             std::move(ranges),
-            mode);
+            mode,
+            CreateGuidAsString());
     }
 
     auto CreateCollectGarbageRequest()
