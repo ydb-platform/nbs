@@ -2,6 +2,8 @@
 
 #include <library/cpp/monlib/service/pages/templates.h>
 
+#include <util/generic/size_literals.h>
+
 namespace NCloud::NFileStore {
 
 namespace {
@@ -17,6 +19,8 @@ namespace {
     xxx(StatePath,                   TString,       "./"                      )\
     xxx(MaxNodeCount,                ui32,          1000000                   )\
     xxx(MaxHandlePerSessionCount,    ui32,          10000                     )\
+    xxx(DirectIoEnabled,             bool,          false                     )\
+    xxx(DirectIoAlign,               ui32,          4_KB                      )\
 // FILESTORE_SERVICE_CONFIG
 
 #define FILESTORE_SERVICE_DECLARE_CONFIG(name, type, value)                    \

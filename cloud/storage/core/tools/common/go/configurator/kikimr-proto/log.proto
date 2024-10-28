@@ -15,4 +15,6 @@ message TLogConfig {
     optional uint32 DefaultLevel = 4;
     optional string SysLogService = 5;
     optional uint64 TimeThresholdMs = 6;
+    optional string BackendFileName = 7;
+    optional bool   SysLogToStdErr = 8;
 }

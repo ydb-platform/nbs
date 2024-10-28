@@ -84,6 +84,10 @@ void TStorageServiceActor::HandleExecuteAction(
             "unsafegetnode",
             &TStorageServiceActor::CreateUnsafeGetNodeActionActor
         },
+        {
+            "getstoragestats",
+            &TStorageServiceActor::CreateGetStorageStatsActionActor
+        },
     };
 
     auto it = actions.find(action);

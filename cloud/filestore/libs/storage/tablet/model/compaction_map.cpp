@@ -5,6 +5,7 @@
 #include <library/cpp/containers/intrusive_rb_tree/rb_tree.h>
 
 #include <util/generic/algorithm.h>
+#include <util/generic/bitmap.h>
 #include <util/generic/intrlist.h>
 #include <util/system/align.h>
 
@@ -130,6 +131,8 @@ using TTreeByGarbageScore = TRbTree<
 
 ////////////////////////////////////////////////////////////////////////////////
 
+using TRangeBitMap = TBitMap<TCompactionMap::GroupSize>;
+
 struct TGroup
     : TIntrusiveListItem<TGroup>
     , TTreeItemByGroupIndex
@@ -144,8 +147,9 @@ struct TGroup
     TCompactionCounter TopGarbageScore;
 
     std::array<TCompactionStats, TCompactionMap::GroupSize> Stats = {};
+    TRangeBitMap CompactedRanges;
 
-    TGroup(ui32 groupIndex)
+    explicit TGroup(ui32 groupIndex)
         : GroupIndex(groupIndex)
     {}
 
@@ -158,9 +162,16 @@ struct TGroup
         ui32 rangeId,
         ui32 blobsCount,
         ui32 deletionsCount,
-        ui32 garbageBlocksCount)
+        ui32 garbageBlocksCount,
+        bool compacted)
     {
-        auto& stats = Stats[rangeId - GroupIndex];
+        const auto rangeIndex = rangeId - GroupIndex;
+        if (compacted) {
+            CompactedRanges.Set(rangeIndex);
+        } else {
+            CompactedRanges.Reset(rangeIndex);
+        }
+        auto& stats = Stats[rangeIndex];
 
         bool wasEmpty = stats.BlobsCount == 0
             && stats.DeletionsCount == 0
@@ -181,27 +192,30 @@ struct TGroup
         stats.DeletionsCount = deletionsCount;
         stats.GarbageBlocksCount = garbageBlocksCount;
 
-        ui32 compactionScore = GetCompactionScore(stats);
+        ui32 compactionScore = compacted ? 0 : GetCompactionScore(stats);
         if (TopCompactionScore.Score < compactionScore) {
             TopCompactionScore = { rangeId, compactionScore };
         } else if (TopCompactionScore.RangeId == rangeId) {
-            ui32 i = GetTop<TCompareByCompactionScore>();
-            TopCompactionScore = { GroupIndex + i, GetCompactionScore(Stats[i]) };
+            ui32 i = GetTop<TCompareByCompactionScore>(CompactedRanges);
+            TopCompactionScore = {
+                GroupIndex + i,
+                GetCompactionScore(Stats[i])};
         }
 
+        // 'compacted' flag is deliberately ignored for cleanup score
         ui32 cleanupScore = GetCleanupScore(stats);
         if (TopCleanupScore.Score < cleanupScore) {
             TopCleanupScore = { rangeId, cleanupScore };
         } else if (TopCleanupScore.RangeId == rangeId) {
-            ui32 i = GetTop<TCompareByCleanupScore>();
+            ui32 i = GetTop<TCompareByCleanupScore>({});
             TopCleanupScore = { GroupIndex + i, GetCleanupScore(Stats[i]) };
         }
 
-        ui32 garbageScore = GetGarbageScore(stats);
+        ui32 garbageScore = compacted ? 0 : GetGarbageScore(stats);
         if (TopGarbageScore.Score < garbageScore) {
             TopGarbageScore = { rangeId, garbageScore};
         } else if (TopGarbageScore.RangeId == rangeId) {
-            ui32 i = GetTop<TCompareByGarbageScore>();
+            ui32 i = GetTop<TCompareByGarbageScore>(CompactedRanges);
             TopGarbageScore = { GroupIndex + i, GetGarbageScore(Stats[i]) };
         }
 
@@ -209,17 +223,22 @@ struct TGroup
     }
 
     template <typename TCompare>
-    ui32 GetTop() const
+    ui32 GetTop(const TRangeBitMap& toSkip) const
     {
-        auto top = std::max_element(
-            Stats.begin(),
-            Stats.end(),
-            [] (const auto& top, const auto& next) {
-                // true if lhs < rhs
-                return TCompare::Compare(next, top);
-            });
+        TCompactionStats best;
+        ui32 bestI = 0;
+        for (ui32 i = 0; i < Stats.size(); ++i) {
+            if (toSkip.Get(i)) {
+                continue;
+            }
 
-        return top - Stats.begin();
+            // Compare(a, b) == true <=> a > b
+            if (TCompare::Compare(Stats[i], best)) {
+                best = Stats[i];
+                bestI = i;
+            }
+        }
+        return bestI;
     }
 
     bool Empty() const
@@ -300,7 +319,8 @@ struct TCompactionMap::TImpl
         ui32 rangeId,
         ui32 blobsCount,
         ui32 deletionsCount,
-        ui32 garbageBlocksCount)
+        ui32 garbageBlocksCount,
+        bool compacted)
     {
         ui32 groupIndex = GetGroupIndex(rangeId);
 
@@ -321,7 +341,8 @@ struct TCompactionMap::TImpl
             rangeId,
             blobsCount,
             deletionsCount,
-            garbageBlocksCount);
+            garbageBlocksCount,
+            compacted);
 
         if (group->Empty()) {
             UnLinkGroup(group);
@@ -358,7 +379,8 @@ struct TCompactionMap::TImpl
                 ranges[i].RangeId,
                 ranges[i].Stats.BlobsCount,
                 ranges[i].Stats.DeletionsCount,
-                ranges[i].Stats.GarbageBlocksCount);
+                ranges[i].Stats.GarbageBlocksCount,
+                false /* compacted */);
         }
 
         if (group->Empty()) {
@@ -398,7 +420,8 @@ struct TCompactionMap::TImpl
 
     TVector<TCompactionRangeInfo> GetTopRanges(
         ui32 c,
-        const TGetScore& getScore) const
+        const TGetScore& getScore,
+        bool skipCompactedRanges) const
     {
         if (!c) {
             return {};
@@ -408,6 +431,10 @@ struct TCompactionMap::TImpl
 
         for (const auto& g: Groups) {
             for (ui32 i = 0; i < GroupSize; ++i) {
+                if (skipCompactedRanges && g.CompactedRanges.Get(i)) {
+                    continue;
+                }
+
                 if (g.Stats[i].BlobsCount
                         || g.Stats[i].DeletionsCount
                         || g.Stats[i].GarbageBlocksCount)
@@ -423,85 +450,79 @@ struct TCompactionMap::TImpl
         return ranges;
     }
 
+    TVector<TCompactionRangeInfo> GetTopRange(
+        const TGroup* group,
+        const TGetScore& getScore,
+        bool skipCompactedRanges) const
+    {
+        if (group) {
+            TCompactionRangeInfo best;
+            bool selected = false;
+            for (ui32 i = 0; i < GroupSize; ++i) {
+                if (skipCompactedRanges && group->CompactedRanges.Get(i)) {
+                    continue;
+                }
+
+                TCompactionRangeInfo info{
+                    group->GroupIndex + i,
+                    group->Stats[i]};
+                if (getScore(info) < getScore(best)) {
+                    best = info;
+                    selected = true;
+                }
+            }
+
+            if (selected) {
+                return {best};
+            }
+        }
+
+        return {};
+    }
+
     TVector<TCompactionRangeInfo> GetTopRangesByCompactionScore(ui32 c) const
     {
+        const auto getScore = [] (const TCompactionRangeInfo& r) {
+            return -static_cast<double>(r.Stats.BlobsCount);
+        };
+
         // TODO efficient implementation for any c
         if (c == 1) {
             const auto* group = GetTopCompactionScore();
-            if (group) {
-                ui32 index = 0;
-                TCompactionStats best = group->Stats[0];
-                for (ui32 i = 1; i < GroupSize; ++i) {
-                    auto stats = group->Stats[i];
-                    if (stats.BlobsCount > best.BlobsCount) {
-                        index = i;
-                        best = stats;
-                    }
-                }
-
-                return {{group->GroupIndex + index, best}};
-            }
-
-            return {};
+            return GetTopRange(group, getScore, true);
         }
 
-        return GetTopRanges(c, [] (const TCompactionRangeInfo& r) {
-            return -static_cast<double>(r.Stats.BlobsCount);
-        });
+        return GetTopRanges(c, getScore, true);
     }
 
     TVector<TCompactionRangeInfo> GetTopRangesByCleanupScore(ui32 c) const
     {
+        const auto getScore = [] (const TCompactionRangeInfo& r) {
+            return -static_cast<double>(r.Stats.DeletionsCount);
+        };
+
         // TODO efficient implementation for any c
         if (c == 1) {
             const auto* group = GetTopCleanupScore();
-            if (group) {
-                ui32 index = 0;
-                TCompactionStats best = group->Stats[0];
-                for (ui32 i = 1; i < GroupSize; ++i) {
-                    auto stats = group->Stats[i];
-                    if (stats.DeletionsCount > best.DeletionsCount) {
-                        index = i;
-                        best = stats;
-                    }
-                }
-
-                return {{group->GroupIndex + index, best}};
-            }
-
-            return {};
+            return GetTopRange(group, getScore, false);
         }
 
-        return GetTopRanges(c, [] (const TCompactionRangeInfo& r) {
-            return -static_cast<double>(r.Stats.DeletionsCount);
-        });
+        return GetTopRanges(c, getScore, false);
     }
 
     TVector<TCompactionRangeInfo> GetTopRangesByGarbageScore(ui32 c) const
     {
+        const auto getScore = [] (const TCompactionRangeInfo& r) {
+            return -static_cast<double>(r.Stats.GarbageBlocksCount);
+        };
+
         // TODO efficient implementation for any c
         if (c == 1) {
             const auto* group = GetTopGarbageScore();
-            if (group) {
-                ui32 index = 0;
-                TCompactionStats best = group->Stats[0];
-                for (ui32 i = 1; i < GroupSize; ++i) {
-                    auto stats = group->Stats[i];
-                    if (stats.GarbageBlocksCount > best.GarbageBlocksCount) {
-                        index = i;
-                        best = stats;
-                    }
-                }
-
-                return {{group->GroupIndex + index, best}};
-            }
-
-            return {};
+            return GetTopRange(group, getScore, true);
         }
 
-        return GetTopRanges(c, [] (const TCompactionRangeInfo& r) {
-            return -static_cast<double>(r.Stats.GarbageBlocksCount);
-        });
+        return GetTopRanges(c, getScore, true);
     }
 
 private:
@@ -543,9 +564,15 @@ void TCompactionMap::Update(
     ui32 rangeId,
     ui32 blobsCount,
     ui32 deletionsCount,
-    ui32 garbageBlocksCount)
+    ui32 garbageBlocksCount,
+    bool compacted)
 {
-    Impl->UpdateGroup(rangeId, blobsCount, deletionsCount, garbageBlocksCount);
+    Impl->UpdateGroup(
+        rangeId,
+        blobsCount,
+        deletionsCount,
+        garbageBlocksCount,
+        compacted);
 }
 
 void TCompactionMap::Update(

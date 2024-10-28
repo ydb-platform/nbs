@@ -669,6 +669,11 @@ private:
     TIntrusivePtr<TEndpointProcess> StartProcess()
     {
         auto process = SpawnChild(BinaryPath, Args);
+
+        STORAGE_INFO(
+            "[" << ClientId
+                << "] Endpoint process has been started, PID:" << process.Pid);
+
         Y_SCOPE_EXIT(&process) {
             if (process.Pid) {
                 process.Terminate();
@@ -1158,7 +1163,8 @@ private:
         return true;
     }
 
-    void FindRunningEndpoints() {
+    void FindRunningEndpoints()
+    {
         TFsPath proc("/proc");
         TVector<TFsPath> allProcesses;
         proc.List(allProcesses);
@@ -1205,7 +1211,7 @@ private:
                 TChild child(pid);
 
                 STORAGE_WARN(
-                    "Send TERMINATE to external-vhost-server with PID:"
+                    "Send SIGKILL to external-vhost-server with PID:"
                     << pid << " for disk-id: " << diskId.Quote());
                 child.Kill();
                 child.Wait();

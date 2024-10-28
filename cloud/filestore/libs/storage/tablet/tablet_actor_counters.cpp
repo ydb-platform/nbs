@@ -302,6 +302,7 @@ void TIndexTabletActor::TMetrics::Register(
     REGISTER_AGGREGATABLE_SUM(FreshBlocksCount, EMetricType::MT_ABSOLUTE);
     REGISTER_AGGREGATABLE_SUM(CMMixedBlobsCount, EMetricType::MT_ABSOLUTE);
     REGISTER_AGGREGATABLE_SUM(CMDeletionMarkersCount, EMetricType::MT_ABSOLUTE);
+    REGISTER_AGGREGATABLE_SUM(CMGarbageBlocksCount, EMetricType::MT_ABSOLUTE);
 
     REGISTER_AGGREGATABLE_SUM(IdleTime, EMetricType::MT_DERIVATIVE);
     REGISTER_AGGREGATABLE_SUM(BusyTime, EMetricType::MT_DERIVATIVE);
@@ -382,6 +383,7 @@ void TIndexTabletActor::TMetrics::Register(
 
     REGISTER_LOCAL(MaxBlobsInRange, EMetricType::MT_ABSOLUTE);
     REGISTER_LOCAL(MaxDeletionsInRange, EMetricType::MT_ABSOLUTE);
+    REGISTER_LOCAL(MaxGarbageBlocksInRange, EMetricType::MT_ABSOLUTE);
 
 #undef REGISTER_REQUEST
 #undef REGISTER_LOCAL
@@ -428,6 +430,7 @@ void TIndexTabletActor::TMetrics::Update(
     Store(FreshBlocksCount, stats.GetFreshBlocksCount());
     Store(CMMixedBlobsCount, compactionStats.TotalBlobsCount);
     Store(CMDeletionMarkersCount, compactionStats.TotalDeletionsCount);
+    Store(CMGarbageBlocksCount, compactionStats.TotalGarbageBlocksCount);
 
     Store(MaxReadIops, performanceProfile.GetMaxReadIops());
     Store(MaxWriteIops, performanceProfile.GetMaxWriteIops());
@@ -452,6 +455,14 @@ void TIndexTabletActor::TMetrics::Update(
             MaxDeletionsInRange,
             compactionStats.TopRangesByCleanupScore.front()
                 .Stats.DeletionsCount);
+    }
+    if (compactionStats.TopRangesByGarbageScore.empty()) {
+        Store(MaxGarbageBlocksInRange, 0);
+    } else {
+        Store(
+            MaxGarbageBlocksInRange,
+            compactionStats.TopRangesByGarbageScore.front()
+                .Stats.GarbageBlocksCount);
     }
 
     Store(StatefulSessionsCount, sessionsStats.StatefulSessionsCount);

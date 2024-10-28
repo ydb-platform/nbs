@@ -412,8 +412,9 @@ void TDiskRegistryActor::SecureErase(const TActorContext& ctx)
             LOG_INFO(
                 ctx,
                 TBlockStoreComponents::DISK_REGISTRY,
-                "[%lu] Sending secure erase request",
-                TabletID());
+                "[%lu] Sending secure erase request for pool: %s",
+                TabletID(),
+                poolName.c_str());
 
             NCloud::Send(ctx, ctx.SelfID, std::move(request));
         }

@@ -201,7 +201,7 @@ struct TLegacyNodeRegistrant
     NKikimrConfig::TStaticNameserviceConfig& NsConfig;
     NKikimrConfig::TDynamicNodeConfig& DnConfig;
 
-    const TNodeLocation Location;
+    TNodeLocation Location;
 
     TLegacyNodeRegistrant(
             TString hostName,
@@ -214,8 +214,12 @@ struct TLegacyNodeRegistrant
         , Options(options)
         , NsConfig(nsConfig)
         , DnConfig(dnConfig)
-        , Location(Options.DataCenter, {}, Options.Rack, ToString(Options.Body))
     {
+        NActorsInterconnect::TNodeLocation proto;
+        proto.SetDataCenter(options.DataCenter);
+        proto.SetRack(options.Rack);
+        proto.SetUnit(ToString(options.Body));
+        Location = TNodeLocation(proto);
     }
 
     TResultOrError<TRegisterDynamicNodeResult> TryRegisterAndConfigure(
@@ -399,6 +403,7 @@ TRegisterDynamicNodeResult RegisterDynamicNode(
 
     std::unique_ptr<INodeRegistrant> registrant;
     if (options.UseNodeBrokerSsl) {
+        STORAGE_WARN("Trying to register with discovery service: ");
         registrant = std::make_unique<TDiscoveryNodeRegistrant>(
             hostName,
             hostAddress,
@@ -406,6 +411,8 @@ TRegisterDynamicNodeResult RegisterDynamicNode(
             nsConfig,
             dnConfig);
     } else {
+        const TNodeLocation location(options.DataCenter, {}, options.Rack, ToString(options.Body));
+        STORAGE_WARN("Trying to register with legacy service: " << location.ToString());
         registrant = std::make_unique<TLegacyNodeRegistrant>(
             hostName,
             hostAddress,
