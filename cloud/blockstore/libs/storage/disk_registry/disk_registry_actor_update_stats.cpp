@@ -22,7 +22,7 @@ void TDiskRegistryActor::HandleUpdateAgentStats(
 
     // TODO: delete this after NBS-4571 is deployed at disk agents
     for (auto& deviceStats: *stats.MutableDeviceStats()) {
-        if (deviceStats.GetDeviceName().Empty()) {
+        if (deviceStats.GetDeviceName().empty()) {
             if (auto* device = State->FindDevice(deviceStats.GetDeviceUUID())) {
                 deviceStats.SetDeviceName(device->GetDeviceName());
             }

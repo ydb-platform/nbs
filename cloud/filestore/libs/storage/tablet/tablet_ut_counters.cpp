@@ -570,11 +570,14 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Counters)
 
         TTestRegistryVisitor visitor;
 
+        const auto deletions = countrRewrites * BlockGroupSize;
+        const auto garbage = countrRewrites * BlockGroupSize;
         registry->Visit(TInstant::Zero(), visitor);
         // clang-format off
         visitor.ValidateExpectedCounters({
-            {{{"sensor", "MaxBlobsInRange"}},     countrRewrites},
-            {{{"sensor", "MaxDeletionsInRange"}}, countrRewrites * BlockGroupSize},
+            {{{"sensor", "MaxBlobsInRange"}}, countrRewrites},
+            {{{"sensor", "MaxDeletionsInRange"}}, deletions},
+            {{{"sensor", "MaxGarbageBlocksInRange"}}, garbage},
         });
         // clang-format on
     }
@@ -608,13 +611,14 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Counters)
         // clang-format off
         registry->Visit(TInstant::Zero(), visitor);
         visitor.ValidateExpectedCounters({
-            {{{"sensor", "FreshBytesCount"}, {"filesystem", "test"}},   DefaultBlockSize - 1},
-            {{{"sensor", "FreshBlocksCount"}, {"filesystem", "test"}},  1},
+            {{{"sensor", "FreshBytesCount"}, {"filesystem", "test"}}, DefaultBlockSize - 1},
+            {{{"sensor", "FreshBlocksCount"}, {"filesystem", "test"}}, 1},
             {{{"sensor", "MixedBlobsCount"}, {"filesystem", "test"}}, 1},
             {{{"sensor", "CMMixedBlobsCount"}, {"filesystem", "test"}}, 1},
             {{{"sensor", "DeletionMarkersCount"}, {"filesystem", "test"}}, 64},
             {{{"sensor", "CMDeletionMarkersCount"}, {"filesystem", "test"}}, 64},
             {{{"sensor", "MixedBytesCount"}, {"filesystem", "test"}}, sz},
+            {{{"sensor", "CMGarbageBlocksCount"}, {"filesystem", "test"}}, 64},
         });
         // clang-format on
 

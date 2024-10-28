@@ -50,7 +50,7 @@ void TNonreplicatedPartitionMigrationCommonActor::MirrorRequest(
         return;
     }
 
-    auto replyError = [&] (ui32 errorCode, TString errorMessage)
+    auto replyError = [&ctx, &ev] (ui32 errorCode, TString errorMessage)
     {
         auto response = std::make_unique<typename TMethod::TResponse>(
             MakeError(errorCode, std::move(errorMessage)));
@@ -61,7 +61,8 @@ void TNonreplicatedPartitionMigrationCommonActor::MirrorRequest(
 
     const auto range = BuildRequestBlockRange(*msg, BlockSize);
 
-    auto checkOverlapsWithMigration = [&](TBlockRange64 migrationRange) -> bool
+    auto checkOverlapsWithMigration = [&replyError, range](
+                                          TBlockRange64 migrationRange) -> bool
     {
         if (range.Overlaps(migrationRange)) {
             replyError(
@@ -76,14 +77,16 @@ void TNonreplicatedPartitionMigrationCommonActor::MirrorRequest(
     };
 
     // Check overlapping with inflight migrations.
-    for (const auto [_, migrationRange]: MigrationsInProgress) {
+    TDisjointRangeSetIterator inProgressIterator{MigrationsInProgress};
+    while (inProgressIterator.HasNext()) {
+        const auto migrationRange = inProgressIterator.Next();
         if (checkOverlapsWithMigration(migrationRange)) {
             return;
         }
     }
 
     // While at least one migration is in progress, we are not slowing down user requests.
-    if (MigrationsInProgress.empty()) {
+    if (MigrationsInProgress.Empty()) {
         // Check overlapping with the range that will be migrated next.
         // We need to ensure priority for the migration process, otherwise if
         // the client continuously writes to one block, the migration progress

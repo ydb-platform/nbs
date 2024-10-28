@@ -47,13 +47,13 @@ int main(int argc, char** argv)
     opts.Parse(argc, argv);
 
     auto data = TIFStream(opts.DataPath).ReadAll();
-    if (data.Size() % opts.BlockSize != 0) {
+    if (data.size() % opts.BlockSize != 0) {
         Cerr << "data size is not divisible by block size" << Endl;
         return 1;
     }
 
     ui32 i = 0;
-    while (i < data.Size()) {
+    while (i < data.size()) {
         auto csum = ComputeDefaultDigest(TBlockDataRef(
             data.begin() + i,
             opts.BlockSize));

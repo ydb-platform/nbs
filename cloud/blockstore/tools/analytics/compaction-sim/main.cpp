@@ -245,8 +245,8 @@ template <class T>
 TString Indented(const T& t, ui32 w)
 {
     auto s = ToString(t);
-    if (s.Size() < w) {
-        return TString(w - s.Size(), ' ') + s;
+    if (s.size() < w) {
+        return TString(w - s.size(), ' ') + s;
     }
 
     return s;

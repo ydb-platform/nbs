@@ -151,8 +151,9 @@ class NbsCsiDriverRunner:
             volume_id: str,
             pod_name: str,
             access_type: str,
-            fs_type: str = ""):
-        return self._node_run(
+            fs_type: str = "",
+            readonly: bool = False):
+        args = [
             "publishvolume",
             "--pod-id",
             pod_id,
@@ -164,7 +165,10 @@ class NbsCsiDriverRunner:
             fs_type,
             "--access-type",
             access_type,
-        )
+        ]
+        if readonly:
+            args += ["--readonly"]
+        return self._node_run(*args)
 
     def unpublish_volume(self, pod_id: str, volume_id: str, access_type: str):
         return self._node_run(

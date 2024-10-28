@@ -117,7 +117,7 @@ TString GetRequestDetails(const T& request)
     if constexpr (IsTWriteBlocksRequest) {
         ui64 bytes = 0;
         for (const auto& buffer: request.GetBlocks().GetBuffers()) {
-            bytes += buffer.Size();
+            bytes += buffer.size();
         }
 
         return TStringBuilder()

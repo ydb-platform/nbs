@@ -83,6 +83,12 @@ message TLocalServiceConfig
     // Maximum number of file handles which can be opened by single session
     // for single local file system
     optional uint32 MaxHandlePerSessionCount = 8;
+
+    // Enable O_DIRECT when working with files
+    optional bool DirectIoEnabled = 9;
+
+    // Aligment needed for buffers when using direct io
+    optional uint32 DirectIoAlign = 10;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
