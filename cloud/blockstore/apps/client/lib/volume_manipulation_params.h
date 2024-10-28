@@ -59,7 +59,7 @@ private:
     ui32 PerformanceProfileMaxReadIops = 0;
     ui32 PerformanceProfileMaxWriteIops = 0;
     ui32 PerformanceProfileBurstPercentage = 0;
-    ui32 PerformanceProfileMaxPostponedWeight = 0;
+    ui64 PerformanceProfileMaxPostponedWeight = 0;
     ui32 PerformanceProfileBoostTime = 0;
     ui32 PerformanceProfileBoostRefillTime = 0;
     ui32 PerformanceProfileBoostPercentage = 0;

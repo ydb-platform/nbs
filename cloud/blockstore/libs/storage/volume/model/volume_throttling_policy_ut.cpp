@@ -21,7 +21,7 @@ NProto::TVolumePerformanceProfile MakeConfig(
     ui32 boostTime,
     ui32 boostRefillTime,
     ui32 boostPercentage,
-    ui32 maxPostponedWeight)
+    ui64 maxPostponedWeight)
 {
     NProto::TVolumePerformanceProfile config;
 
@@ -45,7 +45,7 @@ NProto::TVolumePerformanceProfile MakeSimpleConfig(
     ui32 boostTime,
     ui32 boostRefillTime,
     ui32 boostPercentage,
-    ui32 maxPostponedWeight)
+    ui64 maxPostponedWeight)
 {
     return MakeConfig(
         maxBandwidth,

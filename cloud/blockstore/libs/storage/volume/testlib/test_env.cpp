@@ -161,7 +161,7 @@ TVolumeClient::CreateUpdateVolumeConfigRequest(
     ui64 maxBandwidth,
     ui32 maxIops,
     ui32 burstPercentage,
-    ui32 maxPostponedWeight,
+    ui64 maxPostponedWeight,
     bool throttlingEnabled,
     ui32 version,
     NCloud::NProto::EStorageMediaKind mediaKind,
