@@ -11136,6 +11136,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
         agent.SetNodeId(42);
         agent.SetAgentId("agent-1");
         agent.SetWorkTs(TInstant::Days(10).Seconds());
+        *agent.AddDevices() = Device("dev-1", "uuid-1.1", "rack-1");
 
         auto monitoring = CreateMonitoringServiceStub();
         auto diskRegistryGroup = monitoring->GetCounters()

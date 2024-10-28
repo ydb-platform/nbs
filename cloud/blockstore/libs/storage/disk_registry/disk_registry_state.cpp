@@ -22,6 +22,7 @@
 #include <util/generic/size_literals.h>
 #include <util/string/builder.h>
 #include <util/string/join.h>
+#include <util/string/vector.h>
 
 #include <tuple>
 
@@ -345,7 +346,8 @@ TDiskRegistryState::TDiskRegistryState(
     , DeviceList(
         CollectDirtyDeviceUUIDs(dirtyDevices),
         std::move(suspendedDevices),
-        CollectAllocatedDevices(disks))
+        CollectAllocatedDevices(disks),
+        StorageConfig->GetDiskRegistryAlwaysAllocatesLocalDisks())
     , BrokenDisks(std::move(brokenDisks))
     , AutomaticallyReplacedDevices(std::move(automaticallyReplacedDevices))
     , CurrentConfig(std::move(config))
@@ -2796,8 +2798,35 @@ NProto::TError TDiskRegistryState::DeallocateDisk(
         return {};
     }
 
+    auto dirtyDevices = DeallocateSimpleDisk(db, diskId, *disk);
+    TVector<TDeviceId> devicesAllowedToBeCleaned;
+    devicesAllowedToBeCleaned.reserve(dirtyDevices.size());
+    CopyIf(
+        dirtyDevices.begin(),
+        dirtyDevices.end(),
+        std::back_inserter(devicesAllowedToBeCleaned),
+        [this](const auto& uuid)
+        {
+            return CanSecureErase(uuid);
+        });
+
+    if (devicesAllowedToBeCleaned.empty()) {
+        // Devices are not going to be secure erased if they aren't allowed to.
+        // Don't create a PendingCleanup entry.
+        return MakeError(
+            S_ALREADY,
+            TStringBuilder() << "Disk " << diskId << " devices ["
+                             << JoinStrings(dirtyDevices, ",")
+                             << "] are not going to be secure erased.");
+    }
+
+    STORAGE_DEBUG(
+        "Disk %s is deallocated. Adding devices [%s] to pending cleanup",
+        diskId.c_str(),
+        JoinStrings(devicesAllowedToBeCleaned, ",").c_str());
+
     auto error =
-        PendingCleanup.Insert(diskId, DeallocateSimpleDisk(db, diskId, *disk));
+        PendingCleanup.Insert(diskId, std::move(devicesAllowedToBeCleaned));
     if (HasError(error)) {
         ReportDiskRegistryInsertToPendingCleanupFailed(
             TStringBuilder() << "An error occurred while deallocating disk: "
@@ -2805,6 +2834,59 @@ NProto::TError TDiskRegistryState::DeallocateDisk(
     }
 
     return {};
+}
+
+bool TDiskRegistryState::CanSecureErase(
+    const NProto::TDeviceConfig& device) const
+{
+    if (DeviceList.IsSuspendedAndNotResumingDevice(device.GetDeviceUUID())) {
+        STORAGE_DEBUG(
+            "Skip SecureErase for device '%s'. Device is suspended.",
+            device.GetDeviceUUID().c_str());
+        return false;
+    }
+
+    if (device.GetState() == NProto::DEVICE_STATE_ERROR) {
+        STORAGE_DEBUG(
+            "Skip SecureErase for device '%s'. Device in error state",
+            device.GetDeviceUUID().c_str());
+        return false;
+    }
+
+    if (IsAutomaticallyReplaced(device.GetDeviceUUID())) {
+        STORAGE_DEBUG(
+            "Skip SecureErase for device '%s'."
+            " Device was automatically replaced recently.",
+            device.GetDeviceUUID().c_str());
+        return false;
+    }
+
+    const NProto::TAgentConfig* agent = FindAgent(device.GetNodeId());
+    if (!agent) {
+        STORAGE_DEBUG(
+            "Skip SecureErase for device '%s'. Agent for node id %d not found",
+            device.GetDeviceUUID().c_str(),
+            device.GetNodeId());
+        return false;
+    }
+
+    if (agent->GetState() == NProto::AGENT_STATE_UNAVAILABLE) {
+        STORAGE_DEBUG(
+            "Skip SecureErase for device '%s'. Agent is unavailable",
+            device.GetDeviceUUID().c_str());
+        return false;
+    }
+
+    return true;
+}
+
+bool TDiskRegistryState::CanSecureErase(const TDeviceId& uuid) const
+{
+    const NProto::TDeviceConfig* device = FindDevice(uuid);
+    if (!device) {
+        return false;
+    }
+    return CanSecureErase(*device);
 }
 
 bool TDiskRegistryState::HasPendingCleanup(const TDiskId& diskId) const
@@ -4838,8 +4920,7 @@ NProto::TError TDiskRegistryState::UpdateAgentState(
     // Unavailable hosts are a problem when infra tries to request ADD_HOST on
     // an idle agent. DR waits for it to become online and blocks host
     // deployment.
-    if (StorageConfig->GetCleanupDRConfigOnCMSActions() &&
-        newState == NProto::AGENT_STATE_UNAVAILABLE &&
+    if (newState == NProto::AGENT_STATE_UNAVAILABLE &&
         agent->GetDevices().empty())
     {
         RemoveAgent(db, *agent);
@@ -5175,22 +5256,10 @@ NProto::TError TDiskRegistryState::UpdateCmsHostState(
 
     ApplyAgentStateChange(db, *agent, now, affectedDisks);
 
-    if (newState != NProto::AGENT_STATE_ONLINE && !HasError(result)) {
-        if (StorageConfig->GetCleanupDRConfigOnCMSActions()) {
-            auto error = TryToRemoveAgentDevices(db, agent->GetAgentId());
-            if (!HasError(error)) {
-                return result;
-            }
-
-            // Do not return the error from "TryToRemoveAgentDevices()" since
-            // it's internal and shouldn't block node removal.
-            STORAGE_WARN(
-                "Could not remove device from agent %s: %s",
-                agent->GetAgentId().Quote().c_str(),
-                FormatError(error).c_str());
-        }
-
-        SuspendLocalDevices(db, *agent);
+    if (newState != NProto::AGENT_STATE_ONLINE && !HasError(result) &&
+        !StorageConfig->GetDiskRegistryAlwaysAllocatesLocalDisks())
+    {
+        CleanupAgentConfig(db, *agent);
     }
 
     if (newState == NProto::AGENT_STATE_ONLINE && !HasError(result)) {
@@ -5204,6 +5273,48 @@ NProto::TError TDiskRegistryState::UpdateCmsHostState(
     }
 
     return result;
+}
+
+NProto::TError TDiskRegistryState::PurgeHost(
+    TDiskRegistryDatabase& db,
+    const TString& agentId,
+    TInstant now,
+    bool dryRun,
+    TVector<TDiskId>& affectedDisks)
+{
+    auto* agent = AgentList.FindAgent(agentId);
+    if (!agent) {
+        return MakeError(E_NOT_FOUND, "agent not found");
+    }
+
+    // Since "PURGE_HOST" should be called after "REMOVE_HOST", we call the
+    // remove one more time to make sure. However, the result of this operation
+    // should not be visible to the caller.
+    TDuration timeout;
+    auto removeHostError = UpdateCmsHostState(
+        db,
+        agentId,
+        NProto::AGENT_STATE_WARNING,
+        now,
+        dryRun,
+        affectedDisks,
+        timeout);
+
+    STORAGE_LOG(
+        (HasError(removeHostError) ? TLOG_WARNING : TLOG_INFO),
+        "Purge host %s requested. Remove host ended with the result: %s; "
+        "timeout: %lu",
+        agent->GetAgentId().Quote().c_str(),
+        FormatError(removeHostError).c_str(),
+        timeout.Seconds());
+
+    if (dryRun) {
+        return {};
+    }
+
+    CleanupAgentConfig(db, *agent);
+
+    return {};
 }
 
 NProto::TError TDiskRegistryState::RegisterUnknownDevices(
@@ -5372,16 +5483,29 @@ bool TDiskRegistryState::TryUpdateDiskState(
     return true;
 }
 
+void TDiskRegistryState::CleanupAgentConfig(
+    TDiskRegistryDatabase& db,
+    const NProto::TAgentConfig& agent)
+{
+    auto error = TryToRemoveAgentDevices(db, agent.GetAgentId());
+    if (!HasError(error)) {
+        return;
+    }
+
+    // Do not return the error from "TryToRemoveAgentDevices()" since
+    // it's internal and shouldn't block node removal.
+    STORAGE_WARN(
+        "Could not remove device from agent %s: %s",
+        agent.GetAgentId().Quote().c_str(),
+        FormatError(error).c_str());
+
+    SuspendLocalDevices(db, agent);
+}
+
 NProto::TError TDiskRegistryState::TryToRemoveAgentDevices(
     TDiskRegistryDatabase& db,
     const TAgentId& agentId)
 {
-    if (!StorageConfig->GetCleanupDRConfigOnCMSActions()) {
-        return MakeError(
-            E_INVALID_STATE,
-            "CleanupDRConfigOnCMSActions is disabled.");
-    }
-
     auto newConfig = GetConfig();
     auto* agents = newConfig.MutableKnownAgents();
     const auto agentIt = FindIf(
@@ -6533,8 +6657,8 @@ auto TDiskRegistryState::QueryAvailableStorage(
             "agent " << agentId.Quote() << " not found");
     }
 
-    if (agent->GetState() != NProto::AGENT_STATE_ONLINE) {
-        return TVector<TAgentStorageInfo> {};
+    if (!DeviceList.DevicesAllocationAllowed(poolKind, agent->GetState())) {
+        return TVector<TAgentStorageInfo>{};
     }
 
     THashMap<ui64, ui32> chunks;

@@ -23,12 +23,21 @@ from cloud.blockstore.tests.python.lib.nonreplicated_setup import setup_nonrepli
 from contrib.ydb.tests.library.harness.kikimr_cluster import kikimr_cluster_factory
 from contrib.ydb.tests.library.harness.kikimr_config import KikimrConfigGenerator
 
+from google.protobuf.json_format import MessageToDict
+
 import yatest.common as yatest_common
 
 DEFAULT_BLOCK_SIZE = 4096
 DEFAULT_DEVICE_COUNT = 4
+NRD_DEVICE_COUNT = 3
 DEFAULT_BLOCK_COUNT_PER_DEVICE = 262144
-DISK_SIZE = 1048576
+DEVICE_SIZE = DEFAULT_BLOCK_COUNT_PER_DEVICE * DEFAULT_BLOCK_SIZE
+DISK_SIZE = DEFAULT_BLOCK_COUNT_PER_DEVICE * NRD_DEVICE_COUNT
+KNOWN_DEVICE_POOLS = {
+    "KnownDevicePools": [
+        {"Name": "local-ssd", "Kind": "DEVICE_POOL_KIND_LOCAL",
+            "AllocationUnit": DEVICE_SIZE},
+    ]}
 
 
 class CMS:
@@ -56,6 +65,16 @@ class CMS:
         r = self.__nbs_client.cms_action(request)
         return r
 
+    def purge_agent(self, host):
+        logging.info('[CMS] Try to purge agent "{}"'.format(host))
+
+        request = protos.TCmsActionRequest()
+        action = request.Actions.add()
+        action.Type = protos.TAction.PURGE_HOST
+        action.Host = host
+        r = self.__nbs_client.cms_action(request)
+        return r
+
     def remove_device(self, host, path):
         logging.info('[CMS] Try to remove device "{}":"{}"'.format(host, path))
 
@@ -73,7 +92,7 @@ class TestCmsRemoveAgentNoUserDisks:
     def __init__(self, name):
         self.name = name
 
-    def run(self, storage, nbs, disk_agent, cms, devices, cleanup_dr_state):
+    def run(self, storage, nbs, disk_agent, cms, devices, always_allocate_local_ssd):
         response = cms.remove_agent("localhost")
 
         assert response.ActionResults[0].Timeout == 0
@@ -87,7 +106,7 @@ class TestCmsRemoveAgentNoUserDisks:
         assert response.ActionResults[0].Timeout == 0
 
         disk_agent.stop()
-        if cleanup_dr_state:
+        if not always_allocate_local_ssd:
             # The agent will be deleted after timeout.
             nbs.wait_for_stats(AgentsInWarningState=0)
             assert nbs.get_stats("AgentsInUnavailableState") == 0
@@ -97,7 +116,7 @@ class TestCmsRemoveAgentNoUserDisks:
 
         disk_agent.start()
         wait_for_nbs_server(disk_agent.nbs_port)
-        if cleanup_dr_state:
+        if not always_allocate_local_ssd:
             # The agent is online but all devices are unknown.
             nbs.wait_for_stats(AgentsInOnlineState=1)
             assert nbs.get_stats("UnknownDevices") == 4
@@ -122,7 +141,7 @@ class TestCmsRemoveAgent:
     def __init__(self, name):
         self.name = name
 
-    def run(self, storage, nbs, disk_agent, cms, devices, cleanup_dr_state):
+    def run(self, storage, nbs, disk_agent, cms, devices, always_allocate_local_ssd):
         nbs.create_volume("vol0")
 
         response = cms.remove_agent("localhost")
@@ -144,7 +163,7 @@ class TestCmsRemoveAgent:
         assert response.ActionResults[0].Timeout == 0
 
         disk_agent.stop()
-        if cleanup_dr_state:
+        if not always_allocate_local_ssd:
             # The agent will be deleted after timeout.
             nbs.wait_for_stats(AgentsInWarningState=0)
             assert nbs.get_stats("AgentsInUnavailableState") == 0
@@ -154,7 +173,7 @@ class TestCmsRemoveAgent:
 
         disk_agent.start()
         wait_for_nbs_server(disk_agent.nbs_port)
-        if cleanup_dr_state:
+        if not always_allocate_local_ssd:
             # The agent is online but all devices are unknown.
             nbs.wait_for_stats(AgentsInOnlineState=1)
             assert nbs.get_stats("UnknownDevices") == 4
@@ -175,12 +194,113 @@ class TestCmsRemoveAgent:
         return True
 
 
+class TestCmsPurgeAgentNoUserDisks:
+
+    def __init__(self, name):
+        self.name = name
+
+    def run(self, storage, nbs, disk_agent, cms, devices, always_allocate_local_ssd):
+        response = cms.remove_agent("localhost")
+        assert response.ActionResults[0].Result.Code == 0
+        assert response.ActionResults[0].Timeout == 0
+
+        nbs.wait_for_stats(AgentsInWarningState=1)
+
+        return_code = 0 if always_allocate_local_ssd else 1
+        nbs.create_volume("local0", blocks_count=DEFAULT_BLOCK_COUNT_PER_DEVICE,
+                          kind="ssd_local", return_code=return_code)
+        nbs.create_volume("vol0", return_code=1)
+        if always_allocate_local_ssd:
+            nbs.destroy_volume("local0", sync=True)
+
+        response = cms.purge_agent("localhost")
+        nbs.wait_for_stats(UnknownDevices=4)
+        assert nbs.get_stats("AgentsInWarningState") == 1
+
+        disk_agent.stop()
+        # The agent will be deleted after timeout.
+        nbs.wait_for_stats(AgentsInWarningState=0)
+        assert nbs.get_stats("AgentsInOnlineState") == 0
+        assert nbs.get_stats("AgentsInUnavailableState") == 0
+
+        # Should not create any disks from now.
+        nbs.create_volume("local1", blocks_count=DEFAULT_BLOCK_COUNT_PER_DEVICE,
+                          kind="ssd_local", return_code=1)
+        nbs.create_volume("vol1", return_code=1)
+
+        disk_agent.start()
+        wait_for_nbs_server(disk_agent.nbs_port)
+        # The agent is online but all devices are unknown.
+        nbs.wait_for_stats(AgentsInOnlineState=1)
+        assert nbs.get_stats("UnknownDevices") == 4
+
+        # Add agent and its devices.
+        response = cms.add_agent("localhost")
+        assert response.ActionResults[0].Result.Code == 0
+        assert response.ActionResults[0].Timeout == 0
+        nbs.wait_for_stats(UnknownDevices=0)
+        wait_for_secure_erase(nbs.mon_port)
+
+        nbs.create_volume("local1", blocks_count=DEFAULT_BLOCK_COUNT_PER_DEVICE,
+                          kind="ssd_local")
+        nbs.create_volume("vol1")
+        nbs.read_blocks("vol1", start_index=0, block_count=32)
+
+        return True
+
+
+class TestCmsPurgeAgent:
+
+    def __init__(self, name):
+        self.name = name
+
+    def run(self, storage, nbs, disk_agent, cms, devices, always_allocate_local_ssd):
+        nbs.create_volume("vol0")
+        assert nbs.get_stats("AgentsInWarningState") == 0
+
+        response = cms.purge_agent("localhost")
+
+        # Purge doesn't return error even if there is DependentDisks.
+        assert response.ActionResults[0].Result.Code == 0
+        assert response.ActionResults[0].Timeout == 0
+        assert "vol0" in response.ActionResults[0].DependentDisks
+
+        # Agent is the warning state now.
+        nbs.wait_for_stats(AgentsInWarningState=1)
+        nbs.wait_for_stats(AgentsInWarningState=1)
+        assert nbs.get_stats("UnknownDevices") == 0
+
+        # Even though all devices are knonwn, local disks allocation is
+        # forbidden since devices are in suspended state.
+        nbs.create_volume("local0", blocks_count=DEFAULT_BLOCK_COUNT_PER_DEVICE,
+                          kind="ssd_local", return_code=1)
+
+        nbs.destroy_volume("vol0", sync=True)
+
+        response = cms.purge_agent("localhost")
+        assert response.ActionResults[0].Result.Code == 0
+        assert response.ActionResults[0].Timeout == 0
+        assert len(response.ActionResults[0].DependentDisks) == 0
+
+        nbs.wait_for_stats(UnknownDevices=4)
+        assert nbs.get_stats("AgentsInWarningState") == 1
+        assert nbs.get_stats("AgentsInOnlineState") == 0
+
+        disk_agent.stop()
+
+        nbs.wait_for_stats(AgentsInWarningState=0)
+        assert nbs.get_stats("AgentsInOnlineState") == 0
+        assert nbs.get_stats("AgentsInUnavailableState") == 0
+
+        return True
+
+
 class TestCmsRemoveDevice:
 
     def __init__(self, name):
         self.name = name
 
-    def run(self, storage, nbs, disk_agent, cms, devices, cleanup_dr_state):
+    def run(self, storage, nbs, disk_agent, cms, devices, always_allocate_local_ssd):
         nbs.create_volume("vol0")
 
         device = devices[0]
@@ -218,7 +338,7 @@ class TestCmsRemoveDeviceNoUserDisks:
     def __init__(self, name):
         self.name = name
 
-    def run(self, storage, nbs, disk_agent, cms, devices, cleanup_dr_state):
+    def run(self, storage, nbs, disk_agent, cms, devices, always_allocate_local_ssd):
         device = devices[0]
 
         response = cms.remove_device("localhost", device.path)
@@ -246,6 +366,8 @@ class TestCmsRemoveDeviceNoUserDisks:
 TESTS = [
     TestCmsRemoveAgentNoUserDisks("removeagentnodisks"),
     TestCmsRemoveAgent("removeagent"),
+    TestCmsPurgeAgentNoUserDisks("purgeagentnodisks"),
+    TestCmsPurgeAgent("purgeagent"),
     TestCmsRemoveDevice("removedevice"),
     TestCmsRemoveDeviceNoUserDisks("removedevicenodisks")
 ]
@@ -254,14 +376,15 @@ TESTS = [
 class Nbs(LocalNbs):
     BINARY_PATH = yatest_common.binary_path("cloud/blockstore/apps/client/blockstore-client")
 
-    def create_volume(self, disk_id, return_code=0):
+    def create_volume(self, disk_id, blocks_count=DISK_SIZE,
+                      kind="nonreplicated", return_code=0):
         logging.info('[NBS] create volume "%s"' % disk_id)
 
         self.__rpc(
             "createvolume",
             "--disk-id", disk_id,
-            "--blocks-count", str(DISK_SIZE),
-            "--storage-media-kind", "nonreplicated",
+            "--blocks-count", str(blocks_count),
+            "--storage-media-kind", kind,
             return_code=return_code)
 
     def destroy_volume(self, disk_id, sync=False):
@@ -351,7 +474,7 @@ class Nbs(LocalNbs):
         return get_sensor_by_name(sensors, 'disk_registry', name)
 
 
-def __run_test(test_case, cleanup_dr_state):
+def __run_test(test_case, always_allocate_local_ssd):
     kikimr_binary_path = yatest_common.binary_path("contrib/ydb/apps/ydbd/ydbd")
 
     configurator = KikimrConfigGenerator(
@@ -375,6 +498,7 @@ def __run_test(test_case, cleanup_dr_state):
         DEFAULT_DEVICE_COUNT,
         DEFAULT_BLOCK_SIZE,
         DEFAULT_BLOCK_COUNT_PER_DEVICE)
+    devices[DEFAULT_DEVICE_COUNT - 1].storage_pool_name = "local-ssd"
 
     setup_nonreplicated(kikimr_cluster.client, [devices])
 
@@ -395,12 +519,13 @@ def __run_test(test_case, cleanup_dr_state):
     storage.AllocationUnitNonReplicatedSSD = 1
     storage.AcquireNonReplicatedDevices = True
     storage.ClientRemountPeriod = 1000
-    storage.NonReplicatedInfraTimeout = 60000
+    storage.NonReplicatedInfraTimeout = 30000
     storage.NonReplicatedAgentMinTimeout = 3000
     storage.NonReplicatedAgentMaxTimeout = 3000
     storage.NonReplicatedDiskRecyclingPeriod = 5000
     storage.DisableLocalService = False
-    storage.CleanupDRConfigOnCMSActions = cleanup_dr_state
+    storage.NonReplicatedDontSuspendDevices = True
+    storage.DiskRegistryAlwaysAllocatesLocalDisks = always_allocate_local_ssd
     storage.NodeType = 'main'
 
     nbs = Nbs(
@@ -424,6 +549,9 @@ def __run_test(test_case, cleanup_dr_state):
 
     nbs_client = CreateClient("localhost:{}".format(nbs.nbs_port))
 
+    config = nbs_client.describe_disk_registry_config()
+    nbs_client.update_disk_registry_config(MessageToDict(config) | KNOWN_DEVICE_POOLS)
+
     # node with DiskAgent
 
     storage.NodeType = 'disk-agent'
@@ -446,7 +574,7 @@ def __run_test(test_case, cleanup_dr_state):
 
     try:
         ret = test_case.run(storage, nbs, disk_agent, CMS(
-            nbs_client), devices, cleanup_dr_state)
+            nbs_client), devices, always_allocate_local_ssd)
     finally:
         nbs.stop()
         disk_agent.stop()
@@ -460,6 +588,6 @@ def __run_test(test_case, cleanup_dr_state):
 
 
 @pytest.mark.parametrize("test_case", TESTS, ids=[x.name for x in TESTS])
-@pytest.mark.parametrize("cleanup_dr_state", [True, False], ids=["docleanupdrstate", "dontcleanupdrstate"])
-def test_cms(test_case, cleanup_dr_state):
-    assert __run_test(test_case, cleanup_dr_state) is True
+@pytest.mark.parametrize("always_allocate_local_ssd", [True, False], ids=["locals_in_warning", "locals_in_online"])
+def test_cms(test_case, always_allocate_local_ssd):
+    assert __run_test(test_case, always_allocate_local_ssd) is True

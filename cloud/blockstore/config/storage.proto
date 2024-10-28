@@ -1013,7 +1013,7 @@ message TStorageServiceConfig
 
     // CMS actions such as "REMOVE_HOST" and "REMOVE_DEVICE" will attempt to
     // remove devices and the host from DR memory (including persistent storage).
-    optional bool CleanupDRConfigOnCMSActions = 375;
+    // optional bool CleanupDRConfigOnCMSActions = 375;  // obsolete
 
     // Resync range, if scrubbing found a mismatch.
     optional bool ResyncRangeAfterScrubbing = 376;
@@ -1046,4 +1046,8 @@ message TStorageServiceConfig
 
     // Timeout between disks reallocations.
     optional uint32 DiskRegistryDisksNotificationTimeout = 387;
+
+    // Whether the disk registry is allowed to allocate local disks while agent
+    // is in warning state.
+    optional bool DiskRegistryAlwaysAllocatesLocalDisks = 388;
 }

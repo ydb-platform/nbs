@@ -288,7 +288,9 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateCMSTest)
             db.InitSchema();
         });
 
-        const auto lostAgentConfig = AgentConfig(1, "agent-1", {});
+        const auto lostAgentConfig = AgentConfig(1, "agent-1", {
+            Device("NVMENBS01", "uuid-2.1", "rack-1"),
+        });
 
         const auto agentConfig = AgentConfig(1, "agent-2", {
             Device("NVMENBS01", "uuid-1.1", "rack-1"),
@@ -297,27 +299,32 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateCMSTest)
             Device("NVMENBS04", "uuid-1.4", "rack-1"),
         });
 
-        TDiskRegistryState state = TDiskRegistryStateBuilder().Build();
+        TDiskRegistryState state = TDiskRegistryStateBuilder()
+                                       .WithKnownAgents({lostAgentConfig})
+                                       .Build();
 
         // prepare agent-1
         executor.WriteTx([&] (TDiskRegistryDatabase db) {
-            UNIT_ASSERT_VALUES_EQUAL(0, state.GetConfig().KnownAgentsSize());
-
-            NProto::TDiskRegistryConfig config;
-            config.AddKnownAgents()->SetAgentId(lostAgentConfig.GetAgentId());
-
             TVector<TString> affectedDisks;
-            UNIT_ASSERT_SUCCESS(
-                state.UpdateConfig(db, config, true, affectedDisks));
 
             UNIT_ASSERT_SUCCESS(
                 RegisterAgent(state, db, lostAgentConfig, Now()));
 
-            UNIT_ASSERT_SUCCESS(state.UpdateConfig(
+            for (const auto& device: lostAgentConfig.GetDevices()) {
+                state.MarkDeviceAsClean(Now(), db, device.GetDeviceUUID());
+            }
+
+            TDiskRegistryState::TAllocateDiskResult result;
+            UNIT_ASSERT_SUCCESS(state.AllocateDisk(
+                Now(),
                 db,
-                NProto::TDiskRegistryConfig{},
-                true,
-                affectedDisks));
+                {
+                    .DiskId = "vol0",
+                    .BlockSize = DefaultBlockSize,
+                    .BlocksCount = DefaultDeviceSize / DefaultBlockSize,
+                    .AgentIds = {lostAgentConfig.GetAgentId()},
+                },
+                &result));
 
             UNIT_ASSERT_SUCCESS(state.UpdateAgentState(
                 db,
@@ -360,7 +367,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateCMSTest)
             UNIT_ASSERT_VALUES_EQUAL(
                 0, // agent-1 lost his nodeId
                 agents[0].GetNodeId());
-            UNIT_ASSERT_VALUES_EQUAL(0, agents[0].DevicesSize());
+            UNIT_ASSERT_VALUES_EQUAL(1, agents[0].DevicesSize());
             UNIT_ASSERT_VALUES_EQUAL(0, agents[0].UnknownDevicesSize());
 
             UNIT_ASSERT_VALUES_EQUAL(
@@ -374,8 +381,8 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateCMSTest)
                 agentConfig.DevicesSize(),
                 agents[1].UnknownDevicesSize());
 
-            UNIT_ASSERT_VALUES_EQUAL(0, state.GetConfig().KnownAgentsSize());
-            UNIT_ASSERT_VALUES_EQUAL(2, state.GetConfigVersion());
+            UNIT_ASSERT_VALUES_EQUAL(1, state.GetConfig().KnownAgentsSize());
+            UNIT_ASSERT_VALUES_EQUAL(0, state.GetConfigVersion());
         });
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) {
@@ -392,21 +399,21 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateCMSTest)
 
             auto knownAgents = state.GetConfig().GetKnownAgents();
 
-            UNIT_ASSERT_VALUES_EQUAL(1, knownAgents.size());
-            UNIT_ASSERT_VALUES_EQUAL(3, state.GetConfigVersion());
+            UNIT_ASSERT_VALUES_EQUAL(2, knownAgents.size());
+            UNIT_ASSERT_VALUES_EQUAL(1, state.GetConfigVersion());
             UNIT_ASSERT_VALUES_EQUAL(
                 agentConfig.DevicesSize(),
-                knownAgents.Get(0).DevicesSize());
+                knownAgents.Get(1).DevicesSize());
 
             SortBy(
-                *knownAgents.Mutable(0)->MutableDevices(),
+                *knownAgents.Mutable(1)->MutableDevices(),
                 [](const auto& d) {
                     return d.GetDeviceUUID();
                 });
             for (size_t i = 0; i != agentConfig.DevicesSize(); ++i) {
                 UNIT_ASSERT_VALUES_EQUAL(
                     agentConfig.GetDevices(i).GetDeviceUUID(),
-                    knownAgents.Get(0).GetDevices(i).GetDeviceUUID());
+                    knownAgents.Get(1).GetDevices(i).GetDeviceUUID());
             }
 
             ASSERT_VECTORS_EQUAL(TVector<TString>{}, affectedDisks);
@@ -430,7 +437,9 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateCMSTest)
                 lostAgentConfig.GetAgentId(),
                 agents[0].GetAgentId());
             UNIT_ASSERT_VALUES_EQUAL(0, agents[0].GetNodeId());
-            UNIT_ASSERT_VALUES_EQUAL(0, agents[0].DevicesSize());
+            UNIT_ASSERT_VALUES_EQUAL(
+                lostAgentConfig.DevicesSize(),
+                agents[0].DevicesSize());
             UNIT_ASSERT_VALUES_EQUAL(0, agents[0].UnknownDevicesSize());
 
             UNIT_ASSERT_VALUES_EQUAL(
@@ -478,13 +487,6 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateCMSTest)
 
         TDiskRegistryState state =
             TDiskRegistryStateBuilder()
-                .WithStorageConfig(
-                    []
-                    {
-                        auto config = CreateDefaultStorageConfigProto();
-                        config.SetCleanupDRConfigOnCMSActions(true);
-                        return config;
-                    }())
                 .WithConfig(agents)
                 .Build();
 
@@ -550,6 +552,18 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateCMSTest)
                     timeout));
 
                 UNIT_ASSERT_VALUES_EQUAL(
+                    3,
+                    state.GetConfig().KnownAgentsSize());
+                UNIT_ASSERT_VALUES_EQUAL(3, state.GetAgents().size());
+
+                UNIT_ASSERT_SUCCESS(state.PurgeHost(
+                    db,
+                    agents[0].GetAgentId(),
+                    Now(),
+                    false,   // dryRun
+                    affectedDisks));
+
+                UNIT_ASSERT_VALUES_EQUAL(
                     2,
                     state.GetConfig().KnownAgentsSize());
                 UNIT_ASSERT_VALUES_EQUAL(3, state.GetAgents().size());
@@ -598,6 +612,18 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateCMSTest)
                     false,   // dryRun
                     affectedDisks,
                     timeout));
+
+                UNIT_ASSERT_VALUES_EQUAL(
+                    2,
+                    state.GetConfig().KnownAgentsSize());
+                UNIT_ASSERT_VALUES_EQUAL(2, state.GetAgents().size());
+
+                UNIT_ASSERT_SUCCESS(state.PurgeHost(
+                    db,
+                    agents[1].GetAgentId(),
+                    Now(),
+                    false,   // dryRun
+                    affectedDisks));
 
                 UNIT_ASSERT_VALUES_EQUAL(
                     1,
@@ -662,6 +688,18 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateCMSTest)
                     timeout));
 
                 UNIT_ASSERT_VALUES_EQUAL(
+                    1,
+                    state.GetConfig().KnownAgentsSize());
+                UNIT_ASSERT_VALUES_EQUAL(1, state.GetAgents().size());
+
+                UNIT_ASSERT_SUCCESS(state.PurgeHost(
+                    db,
+                    agents[2].GetAgentId(),
+                    Now(),
+                    false,   // dryRun
+                    affectedDisks));
+
+                UNIT_ASSERT_VALUES_EQUAL(
                     0,
                     state.GetConfig().KnownAgentsSize());
                 UNIT_ASSERT_VALUES_EQUAL(1, state.GetAgents().size());
@@ -708,13 +746,6 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateCMSTest)
 
         TDiskRegistryState state =
             TDiskRegistryStateBuilder()
-                .WithStorageConfig(
-                    []
-                    {
-                        auto config = CreateDefaultStorageConfigProto();
-                        config.SetCleanupDRConfigOnCMSActions(true);
-                        return config;
-                    }())
                 .WithConfig(agents)
                 .Build();
 

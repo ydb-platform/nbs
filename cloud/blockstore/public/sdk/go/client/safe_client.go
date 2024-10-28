@@ -603,6 +603,29 @@ func (client *safeClient) CmsRemoveHost(
 	return resp, nil
 }
 
+func (client *safeClient) CmsPurgeHost(
+	ctx context.Context,
+	host string,
+	dryRun bool,
+) (*protos.TCmsActionResponse, error) {
+
+	t := protos.TAction_PURGE_HOST
+	req := &protos.TCmsActionRequest{
+		Actions: []*protos.TAction{{
+			Type:   &t,
+			Host:   &host,
+			DryRun: &dryRun,
+		}},
+	}
+
+	resp, err := client.Impl.CmsAction(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+
+	return resp, nil
+}
+
 func (client *safeClient) CmsAddDevices(
 	ctx context.Context,
 	host string,
