@@ -564,7 +564,7 @@ func (s *nodeService) nodePublishDiskAsFilesystemDeprecated(
 		return fmt.Errorf("failed to start NBS endpoint: %w", err)
 	}
 
-	logVolume(req.VolumeId, "endpoint started with device: %q", resp.NbdDeviceFile)
+	logVolume(diskId, "endpoint started with device: %q", resp.NbdDeviceFile)
 
 	mnt := req.VolumeCapability.GetMount()
 
@@ -576,7 +576,7 @@ func (s *nodeService) nodePublishDiskAsFilesystemDeprecated(
 		fsType = "ext4"
 	}
 
-	err = s.makeFilesystemIfNeeded(req.VolumeId, resp.NbdDeviceFile, fsType)
+	err = s.makeFilesystemIfNeeded(diskId, resp.NbdDeviceFile, fsType)
 	if err != nil {
 		return err
 	}
@@ -604,7 +604,7 @@ func (s *nodeService) nodePublishDiskAsFilesystemDeprecated(
 	}
 
 	err = s.mountIfNeeded(
-		req.VolumeId,
+		diskId,
 		resp.NbdDeviceFile,
 		req.TargetPath,
 		fsType,
@@ -647,6 +647,7 @@ func (s *nodeService) nodePublishDiskAsFilesystem(
 		}
 	}
 
+	diskId := req.VolumeId
 	mountOptions := []string{"bind"}
 	mnt := req.VolumeCapability.GetMount()
 	if mnt != nil {
@@ -660,7 +661,7 @@ func (s *nodeService) nodePublishDiskAsFilesystem(
 	}
 
 	err := s.mountIfNeeded(
-		req.VolumeId,
+		diskId,
 		req.StagingTargetPath,
 		req.TargetPath,
 		"",
@@ -737,7 +738,7 @@ func (s *nodeService) nodeStageDiskAsFilesystem(
 		return fmt.Errorf("failed to start NBS endpoint: %w", err)
 	}
 
-	logVolume(req.VolumeId, "endpoint started with device: %q", resp.NbdDeviceFile)
+	logVolume(diskId, "endpoint started with device: %q", resp.NbdDeviceFile)
 
 	mnt := req.VolumeCapability.GetMount()
 
@@ -749,7 +750,7 @@ func (s *nodeService) nodeStageDiskAsFilesystem(
 		fsType = "ext4"
 	}
 
-	err = s.makeFilesystemIfNeeded(req.VolumeId, resp.NbdDeviceFile, fsType)
+	err = s.makeFilesystemIfNeeded(diskId, resp.NbdDeviceFile, fsType)
 	if err != nil {
 		return err
 	}
@@ -767,7 +768,7 @@ func (s *nodeService) nodeStageDiskAsFilesystem(
 	}
 
 	err = s.mountIfNeeded(
-		req.VolumeId,
+		diskId,
 		resp.NbdDeviceFile,
 		req.StagingTargetPath,
 		fsType,
@@ -810,10 +811,10 @@ func (s *nodeService) nodeStageDiskAsBlockDevice(
 		return fmt.Errorf("failed to start NBS endpoint: %w", err)
 	}
 
-	logVolume(req.VolumeId, "endpoint started with device: %q", resp.NbdDeviceFile)
+	logVolume(diskId, "endpoint started with device: %q", resp.NbdDeviceFile)
 
 	devicePath := filepath.Join(req.StagingTargetPath, diskId)
-	return s.mountBlockDevice(req.VolumeId, resp.NbdDeviceFile, devicePath, false)
+	return s.mountBlockDevice(diskId, resp.NbdDeviceFile, devicePath, false)
 }
 
 func (s *nodeService) nodePublishDiskAsBlockDeviceDeprecated(
@@ -826,22 +827,23 @@ func (s *nodeService) nodePublishDiskAsBlockDeviceDeprecated(
 		return fmt.Errorf("failed to start NBS endpoint: %w", err)
 	}
 
-	logVolume(req.VolumeId, "endpoint started with device: %q", resp.NbdDeviceFile)
-	return s.mountBlockDevice(req.VolumeId, resp.NbdDeviceFile, req.TargetPath, req.Readonly)
+	logVolume(diskId, "endpoint started with device: %q", resp.NbdDeviceFile)
+	return s.mountBlockDevice(diskId, resp.NbdDeviceFile, req.TargetPath, req.Readonly)
 }
 
 func (s *nodeService) nodePublishDiskAsBlockDevice(
 	ctx context.Context,
 	req *csi.NodePublishVolumeRequest) error {
 
-	devicePath := filepath.Join(req.StagingTargetPath, req.VolumeId)
+	diskId := req.VolumeId
+	devicePath := filepath.Join(req.StagingTargetPath, diskId)
 	mounted, _ := s.mounter.IsMountPoint(devicePath)
 	if !mounted {
 		// Fallback to previous implementation for already staged volumes
 		return s.nodePublishDiskAsBlockDeviceDeprecated(ctx, req)
 	}
 
-	return s.mountBlockDevice(req.VolumeId, devicePath, req.TargetPath, req.Readonly)
+	return s.mountBlockDevice(diskId, devicePath, req.TargetPath, req.Readonly)
 }
 
 func (s *nodeService) startNbsEndpointForNBD(
@@ -964,7 +966,7 @@ func (s *nodeService) nodeUnstageVolume(
 	req *csi.NodeUnstageVolumeRequest) error {
 
 	diskId := req.VolumeId
-	// Check mount points for StagingTargetPath and StagingTargetPath/VolumeId
+	// Check mount points for StagingTargetPath and StagingTargetPath/diskId
 	// as it's not possible to distinguish mount and block mode from request
 	// parameters
 	mountPoint := req.StagingTargetPath
@@ -1014,8 +1016,8 @@ func (s *nodeService) nodeUnpublishVolume(
 	// we could return here. Unfortunately we don't have enough information
 	// to know if this is a staged volume or a legacy one.
 	// Next StopEndpoint calls have no effect for staged volumes because their
-	// endpoints were started in socketsDir/instanceId/volumeId instead of
-	// socketsDir/podId/volumeId.
+	// endpoints were started in socketsDir/instanceId/nbsId instead of
+	// socketsDir/podId/nbsId.
 	//
 	// When all VM disks are migrated to staged volumes we can enforce non-empty
 	// instanceId for new VM disks and add early return here:
@@ -1064,8 +1066,8 @@ func (s *nodeService) nodeUnpublishVolume(
 	return nil
 }
 
-func (s *nodeService) getEndpointDir(instanceId string, volumeId string) string {
-	return filepath.Join(s.socketsDir, instanceId, volumeId)
+func (s *nodeService) getEndpointDir(instanceId string, nbsId string) string {
+	return filepath.Join(s.socketsDir, instanceId, nbsId)
 }
 
 func (s *nodeService) mountSocketDir(sourcePath string, req *csi.NodePublishVolumeRequest) error {
@@ -1093,8 +1095,9 @@ func (s *nodeService) mountSocketDir(sourcePath string, req *csi.NodePublishVolu
 		mountOptions = append(mountOptions, "ro")
 	}
 
+	nbsId := req.VolumeId
 	err := s.mountIfNeeded(
-		req.VolumeId,
+		nbsId,
 		sourcePath,
 		req.TargetPath,
 		"",
@@ -1155,7 +1158,7 @@ func (s *nodeService) createDummyImgFile(dirPath string) error {
 }
 
 func (s *nodeService) mountBlockDevice(
-	volumeId string,
+	diskId string,
 	source string,
 	target string,
 	readOnly bool) error {
@@ -1182,7 +1185,7 @@ func (s *nodeService) mountBlockDevice(
 	if readOnly {
 		mountOptions = append(mountOptions, "ro")
 	}
-	err := s.mountIfNeeded(volumeId, source, target, "", mountOptions)
+	err := s.mountIfNeeded(diskId, source, target, "", mountOptions)
 	if err != nil {
 		return fmt.Errorf("failed to mount: %w", err)
 	}
@@ -1191,7 +1194,7 @@ func (s *nodeService) mountBlockDevice(
 }
 
 func (s *nodeService) mountIfNeeded(
-	volumeId string,
+	nbsId string,
 	source string,
 	target string,
 	fsType string,
@@ -1203,17 +1206,17 @@ func (s *nodeService) mountIfNeeded(
 	}
 
 	if mounted {
-		logVolume(volumeId, "target path %q is already mounted", target)
+		logVolume(nbsId, "target path %q is already mounted", target)
 		return nil
 	}
 
-	logVolume(volumeId, "mount source %q to target %q, fsType: %q, options: %v",
+	logVolume(nbsId, "mount source %q to target %q, fsType: %q, options: %v",
 		source, target, fsType, options)
 	return s.mounter.Mount(source, target, fsType, options)
 }
 
 func (s *nodeService) makeFilesystemIfNeeded(
-	volumeId string,
+	diskId string,
 	deviceName string,
 	fsType string) error {
 
@@ -1223,17 +1226,17 @@ func (s *nodeService) makeFilesystemIfNeeded(
 	}
 
 	if existed {
-		logVolume(volumeId, "filesystem exists on device: %q", deviceName)
+		logVolume(diskId, "filesystem exists on device: %q", deviceName)
 		return nil
 	}
 
-	logVolume(volumeId, "making filesystem %q on device %q", fsType, deviceName)
+	logVolume(diskId, "making filesystem %q on device %q", fsType, deviceName)
 	out, err := s.mounter.MakeFilesystem(deviceName, fsType)
 	if err != nil {
 		return fmt.Errorf("failed to make filesystem: %w, output %q", err, out)
 	}
 
-	logVolume(volumeId, "succeeded making filesystem: %q", out)
+	logVolume(diskId, "succeeded making filesystem: %q", out)
 	return nil
 }
 
@@ -1305,9 +1308,9 @@ func (s *nodeService) statusErrorf(c codes.Code, format string, a ...interface{}
 	return s.statusError(c, msg)
 }
 
-func logVolume(volumeId string, format string, v ...any) {
+func logVolume(nbsId string, format string, v ...any) {
 	msg := fmt.Sprintf(format, v...)
-	log.Printf("[v=%s]: %s", volumeId, msg)
+	log.Printf("[v=%s]: %s", nbsId, msg)
 }
 
 func (s *nodeService) NodeGetVolumeStats(
