@@ -71,9 +71,19 @@ char* TAlignedBuffer::Begin()
     return const_cast<char*>(AlignedData);
 }
 
+char* TAlignedBuffer::UnalignedBegin()
+{
+    return Buffer.begin();
+}
+
 const char* TAlignedBuffer::Begin() const
 {
     return AlignedData;
+}
+
+const char* TAlignedBuffer::UnalignedBegin() const
+{
+    return Buffer.begin();
 }
 
 char* TAlignedBuffer::End()
@@ -100,14 +110,12 @@ void TAlignedBuffer::TrimSize(size_t size)
     Buffer.resize(AlignedDataOffset() + size);
 }
 
-TString&& TAlignedBuffer::TakeBuffer()
+TString TAlignedBuffer::TakeBuffer()
 {
-    return std::move(Buffer);
-}
-
-const TString& TAlignedBuffer::GetBuffer() const
-{
-    return Buffer;
+    TString tmpBuf;
+    tmpBuf.swap(Buffer);
+    AlignedData = Buffer.begin();
+    return tmpBuf;
 }
 
 }   // namespace NCloud

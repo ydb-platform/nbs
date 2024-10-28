@@ -28,6 +28,9 @@ public:
     char* Begin();
     const char* Begin() const;
 
+    char* UnalignedBegin();
+    const char* UnalignedBegin() const;
+
     char* End();
     const char* End() const;
 
@@ -35,7 +38,6 @@ public:
     void TrimSize(size_t size);
 
     // Take ownership of the buffer. Don't use aligned buffer after calling this method.
-    TString&& TakeBuffer();
-    const TString& GetBuffer() const;
+    TString TakeBuffer();
 };
 }   // namespace NCloud

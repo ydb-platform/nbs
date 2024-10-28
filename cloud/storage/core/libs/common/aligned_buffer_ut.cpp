@@ -39,7 +39,7 @@ Y_UNIT_TEST_SUITE(TAlignedBufferTest)
                             << static_cast<void*>(buffer.Begin()));
                 UNIT_ASSERT_VALUES_EQUAL_C(
                     buffer.AlignedDataOffset(),
-                    buffer.Begin() - buffer.GetBuffer().begin(),
+                    buffer.Begin() - buffer.UnalignedBegin(),
                     "size=" << size << " ,align=" << align << " ,buffer="
                             << static_cast<void*>(buffer.Begin()));
                 buffers.push_back(std::move(buffer));
