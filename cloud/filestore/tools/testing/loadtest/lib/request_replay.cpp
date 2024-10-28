@@ -29,8 +29,6 @@ IReplayRequestGenerator::IReplayRequestGenerator(
     NEventLog::TOptions options;
     options.FileName = Spec.GetFileName();
 
-    // Sort eventlog items by timestamp
-    options.SetForceStrongOrdering(true);
     CurrentEvent = CreateIterator(options);
 }
 
@@ -172,7 +170,7 @@ IReplayRequestGenerator::ExecuteNextRequest()
             }
 
             STORAGE_DEBUG(
-                "Processing message n=%zd typename=%s type=%d name=%s data=%s",
+                "Msg=%zd: Processing typename=%s type=%d name=%s data=%s",
                 EventMessageNumber,
                 request.GetTypeName().c_str(),
                 request.GetRequestType(),
