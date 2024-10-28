@@ -176,7 +176,7 @@ func (s *nodeService) NodeStageVolume(
 			nfsBackend := (req.VolumeContext[backendVolumeContextKey] == "nfs")
 
 			var err error
-			if instanceID := req.VolumeContext[instanceIDKey]; instanceID != "" {
+			if instanceId := req.VolumeContext[instanceIDKey]; instanceId != "" {
 				nbsId := req.VolumeId
 				stageRecordPath := filepath.Join(req.StagingTargetPath, nbsId+".json")
 				// Backend can be empty for old disks, in this case we use NBS
@@ -186,17 +186,17 @@ func (s *nodeService) NodeStageVolume(
 				}
 				if err = s.writeStageData(stageRecordPath, &StageData{
 					Backend:       backend,
-					InstanceId:    instanceID,
-					RealStagePath: s.getEndpointDir(instanceID, nbsId),
+					InstanceId:    instanceId,
+					RealStagePath: s.getEndpointDir(instanceId, nbsId),
 				}); err != nil {
 					return nil, s.statusErrorf(codes.Internal,
 						"Failed to write stage record: %v", err)
 				}
 
 				if nfsBackend {
-					err = s.nodeStageFileStoreAsVhostSocket(ctx, instanceID, nbsId)
+					err = s.nodeStageFileStoreAsVhostSocket(ctx, instanceId, nbsId)
 				} else {
-					err = s.nodeStageDiskAsVhostSocket(ctx, instanceID, nbsId, req.VolumeContext)
+					err = s.nodeStageDiskAsVhostSocket(ctx, instanceId, nbsId, req.VolumeContext)
 				}
 
 				if err != nil {
@@ -328,8 +328,8 @@ func (s *nodeService) NodePublishVolume(
 	switch req.VolumeCapability.GetAccessType().(type) {
 	case *csi.VolumeCapability_Mount:
 		if s.vmMode {
-			if instanceID := req.VolumeContext[instanceIDKey]; instanceID != "" {
-				err = s.nodePublishStagedVhostSocket(req, instanceID)
+			if instanceId := req.VolumeContext[instanceIDKey]; instanceId != "" {
+				err = s.nodePublishStagedVhostSocket(req, instanceId)
 			} else {
 				if nfsBackend {
 					err = s.nodePublishFileStoreAsVhostSocket(ctx, req)
@@ -925,12 +925,12 @@ func (s *nodeService) nodePublishFileStoreAsVhostSocket(
 
 func (s *nodeService) nodeStageFileStoreAsVhostSocket(
 	ctx context.Context,
-	instanceID string,
+	instanceId string,
 	filesystemId string) error {
 
-	log.Printf("csi.nodeStageFileStoreAsVhostSocket: %s %s", instanceID, filesystemId)
+	log.Printf("csi.nodeStageFileStoreAsVhostSocket: %s %s", instanceId, filesystemId)
 
-	endpointDir := s.getEndpointDir(instanceID, filesystemId)
+	endpointDir := s.getEndpointDir(instanceId, filesystemId)
 	if err := os.MkdirAll(endpointDir, os.FileMode(0755)); err != nil {
 		return err
 	}
@@ -943,7 +943,7 @@ func (s *nodeService) nodeStageFileStoreAsVhostSocket(
 		Endpoint: &nfsapi.TEndpointConfig{
 			SocketPath:       filepath.Join(endpointDir, nfsSocketName),
 			FileSystemId:     filesystemId,
-			ClientId:         fmt.Sprintf("%s-%s", s.clientID, instanceID),
+			ClientId:         fmt.Sprintf("%s-%s", s.clientID, instanceId),
 			VhostQueuesCount: 8,
 			Persistent:       true,
 		},
