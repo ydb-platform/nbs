@@ -17,6 +17,8 @@ void TBootstrap::ParseOptions(int argc, char** argv)
 void TBootstrap::Init()
 {
     Scheduler = CreateScheduler();
+    const auto logLevel =
+        GetLogLevel(Options.VerboseLevel).GetOrElse(TLOG_INFO);
     Server = CreateServer({
         static_cast<ui16>(Options.ServerPort),
         static_cast<ui16>(Options.SecureServerPort),
@@ -30,7 +32,7 @@ void TBootstrap::Init()
     },
     CreateWallClockTimer(),
     Scheduler,
-    CreateLoggingService("console", TLogSettings{}));
+    CreateLoggingService("console", TLogSettings{logLevel}));
 }
 
 void TBootstrap::Start()
