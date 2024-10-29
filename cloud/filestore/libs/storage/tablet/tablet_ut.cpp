@@ -94,7 +94,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest)
         constexpr ui32 maxPostponedTime = 7'000; // 7 seconds
         constexpr ui32 maxPostponedCount = 128;
         constexpr ui32 burstPercentage = 35;
-        constexpr ui32 defaultPostponedRequestWeight = 3;
+        constexpr ui64 defaultPostponedRequestWeight = 3;
 
         tablet.UpdateConfig({
             .FileSystemId = "test_filesystem",

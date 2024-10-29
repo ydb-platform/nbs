@@ -22,7 +22,7 @@ TThrottlerConfig MakeConfig(
     ui64 maxPostponedWeight,
     TDuration maxPostponedTime,
     ui32 maxWriteCostMultiplier,
-    ui32 defaultPostponedRequestWeight)
+    ui64 defaultPostponedRequestWeight)
 {
     TThrottlerConfig config;
 

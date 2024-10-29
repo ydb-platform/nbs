@@ -22,7 +22,7 @@ private:
     ui32 BoostRefillTime = 0;
     ui32 BoostPercentage = 0;
     ui32 BurstPercentage = 0;
-    ui32 DefaultPostponedRequestWeight = 0;
+    ui64 DefaultPostponedRequestWeight = 0;
     ui64 MaxPostponedWeight = 0;
     ui32 MaxWriteCostMultiplier = 0;
     ui32 MaxPostponedTime = 0;

@@ -52,7 +52,7 @@ struct TThrottlingPolicy::TImpl
 
     TBoostedTimeBucket Bucket;
 
-    ui32 PostponedWeight = 0;
+    ui64 PostponedWeight = 0;
     double WriteCostMultiplier = 1.0;
 
     TImpl(const TThrottlerConfig& config, ui32 version)
@@ -232,7 +232,7 @@ ui32 TThrottlingPolicy::GetVersion() const
     return Version;
 }
 
-ui32 TThrottlingPolicy::CalculatePostponedWeight() const
+ui64 TThrottlingPolicy::CalculatePostponedWeight() const
 {
     return Impl->PostponedWeight;
 }

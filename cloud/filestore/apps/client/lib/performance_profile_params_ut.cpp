@@ -28,7 +28,7 @@ struct TAppOpts
     const ui32 BoostRefillTime = 6;
     const ui32 BoostPercentage = 7;
     const ui32 BurstPercentage = 8;
-    const ui32 DefaultPostponedRequestWeight = 9;
+    const ui64 DefaultPostponedRequestWeight = 9;
     const ui64 MaxPostponedWeight = 10;
     const ui32 MaxWriteCostMultiplier = 11;
     const ui32 MaxPostponedTime = 12;

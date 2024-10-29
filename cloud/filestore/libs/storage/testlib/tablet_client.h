@@ -63,7 +63,7 @@ struct TPerformanceProfile
     ui32 MaxPostponedCount = 0;
 
     ui32 BurstPercentage = 0;
-    ui32 DefaultPostponedRequestWeight = 0;
+    ui64 DefaultPostponedRequestWeight = 0;
 };
 
 struct TFileSystemConfig

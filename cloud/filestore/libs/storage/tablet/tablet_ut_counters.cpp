@@ -29,7 +29,7 @@ TFileSystemConfig MakeThrottlerConfig(
     ui32 maxPostponedTime,
     ui32 maxPostponedCount,
     ui32 burstPercentage,
-    ui32 defaultPostponedRequestWeight)
+    ui64 defaultPostponedRequestWeight)
 {
     TFileSystemConfig config;
     config.PerformanceProfile.ThrottlingEnabled = throttlingEnabled;

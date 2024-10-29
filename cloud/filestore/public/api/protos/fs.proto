@@ -90,7 +90,7 @@ message TFileStorePerformanceProfile
     double MaxWriteCostMultiplier = 12;
 
     // Default request weight (used for requests without payload).
-    uint32 DefaultPostponedRequestWeight = 13;
+    uint64 DefaultPostponedRequestWeight = 13;
 
     // Throttling enabled.
     bool ThrottlingEnabled = 14;

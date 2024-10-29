@@ -45,7 +45,7 @@ struct TThrottlerConfig
 {
     bool ThrottlingEnabled = false;
     ui32 BurstPercentage = 10;
-    ui32 DefaultPostponedRequestWeight = 1_KB;
+    ui64 DefaultPostponedRequestWeight = 1_KB;
 
     TDefaultParameters DefaultParameters;
     TBoostParameters BoostParameters;
@@ -91,7 +91,7 @@ public:
 
     const TThrottlerConfig& GetConfig() const;
     ui32 GetVersion() const;
-    ui32 CalculatePostponedWeight() const;
+    ui64 CalculatePostponedWeight() const;
     double GetWriteCostMultiplier() const;
     TDuration GetCurrentBoostBudget() const;
     double CalculateCurrentSpentBudgetShare(TInstant now) const;

@@ -171,7 +171,7 @@ ui32 BurstPercentage(
     return BurstPercentage(config, fileStore.GetStorageMediaKind());
 }
 
-ui32 DefaultPostponedRequestWeight(
+ui64 DefaultPostponedRequestWeight(
     const TStorageConfig& config,
     const NKikimrFileStore::TConfig& fileStore)
 {
