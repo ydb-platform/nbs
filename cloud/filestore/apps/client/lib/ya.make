@@ -11,6 +11,7 @@ SRCS(
     execute_action.cpp
     factory.cpp
     find_garbage.cpp
+    forced_compaction.cpp
     kick_endpoint.cpp
     list_cluster_nodes.cpp
     list_endpoints.cpp
