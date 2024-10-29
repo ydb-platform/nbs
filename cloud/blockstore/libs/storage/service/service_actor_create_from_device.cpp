@@ -139,7 +139,7 @@ auto TCreateVolumeFromDeviceActor::CreateVolumeConfig() const
     volume.SetProjectId(Request.GetProjectId());
     volume.SetFolderId(Request.GetFolderId());
     volume.SetCloudId(Request.GetCloudId());
-    volume.SetBlockSize(512);
+    volume.SetBlockSize(DefaultLocalSSDBlockSize);
 
     return volume;
 }

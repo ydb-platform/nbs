@@ -795,6 +795,7 @@ public:
         bool force,
         const TDiskId& diskId,
         ui32 blockSize,
+        NProto::EStorageMediaKind mediaKind,
         const TVector<NProto::TDeviceConfig>& devices,
         TAllocateDiskResult* result);
 
