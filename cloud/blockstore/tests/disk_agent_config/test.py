@@ -284,13 +284,13 @@ def test_disable_node_broker_registration(nbs, agent_ids, disk_agent_configurato
     disk_agent_configurators[0].files["disk-agent"]\
         .StorageDiscoveryConfig.PathConfigs[0].PathRegExp = "unknown_path"
     disk_agent_configurators[0].files["disk-agent"]\
-        .DisableNodeBrokerRegisterationOnDevicelessAgent = True
+        .DisableNodeBrokerRegistrationOnDevicelessAgent = True
 
     # The second agent should register, even without devices.
     disk_agent_configurators[1].files["disk-agent"]\
         .StorageDiscoveryConfig.PathConfigs[0].PathRegExp = "unknown_path"
     disk_agent_configurators[1].files["disk-agent"]\
-        .DisableNodeBrokerRegisterationOnDevicelessAgent = False
+        .DisableNodeBrokerRegistrationOnDevicelessAgent = False
 
     agents = []
     for agent_id, configurator in zip(agent_ids, disk_agent_configurators):
@@ -301,7 +301,7 @@ def test_disable_node_broker_registration(nbs, agent_ids, disk_agent_configurato
             deep_idle_agent = \
                 "Devices were not found. Skipping the node broker registration." in log_file.read()
             assert deep_idle_agent == disk_agent_configurators[idx].files[
-                "disk-agent"].DisableNodeBrokerRegisterationOnDevicelessAgent
+                "disk-agent"].DisableNodeBrokerRegistrationOnDevicelessAgent
 
     response = requests.get(f"http://localhost:{agents[0].mon_port}")
     assert response.status_code == 200
