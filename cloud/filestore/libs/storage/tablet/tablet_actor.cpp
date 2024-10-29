@@ -746,9 +746,42 @@ void TIndexTabletActor::HandleForcedOperation(
                 ? GetAllCompactionRanges()
                 : GetNonEmptyCompactionRanges();
         }
+        const auto* b =
+            LowerBound(ranges.begin(), ranges.end(), request.GetMinRangeId());
+        if (b != ranges.begin()) {
+            ranges.erase(ranges.begin(), b);
+        }
         response->Record.SetRangeCount(ranges.size());
-        EnqueueForcedRangeOperation(mode, std::move(ranges));
+        auto operationId = EnqueueForcedRangeOperation(mode, std::move(ranges));
+        response->Record.SetOperationId(std::move(operationId));
         EnqueueForcedRangeOperationIfNeeded(ctx);
+    }
+
+    NCloud::Reply(ctx, *ev, std::move(response));
+}
+
+void TIndexTabletActor::HandleForcedOperationStatus(
+    const TEvIndexTablet::TEvForcedOperationStatusRequest::TPtr& ev,
+    const TActorContext& ctx)
+{
+    const auto& request = ev->Get()->Record;
+    const auto* state = GetForcedRangeOperationState();
+
+    using TResponse = TEvIndexTablet::TEvForcedOperationStatusResponse;
+    auto response = std::make_unique<TResponse>();
+
+    if (!state) {
+        response->Record.MutableError()->CopyFrom(
+            MakeError(E_NOT_FOUND, "forced operation not running"));
+    } else if (state->OperationId != request.GetOperationId()) {
+        response->Record.MutableError()->CopyFrom(MakeError(
+            E_NOT_FOUND,
+            TStringBuilder() << "forced operation id mismatch: "
+                << state->OperationId << " != " << request.GetOperationId()));
+    } else {
+        response->Record.SetRangeCount(state->RangesToCompact.size());
+        response->Record.SetProcessedRangeCount(state->Current);
+        response->Record.SetLastProcessedRangeId(state->GetCurrentRange());
     }
 
     NCloud::Reply(ctx, *ev, std::move(response));
