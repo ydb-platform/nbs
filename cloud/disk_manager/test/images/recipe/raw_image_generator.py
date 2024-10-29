@@ -2,10 +2,11 @@ import binascii
 
 from yatest.common import process
 
+
 class RawImageGenerator():
 
     def __init__(self, image_file_path, image_size):
-        self.__image_size = image_size  # _ or __ ?
+        self.__image_size = image_size
         self.__image_file_path = image_file_path
 
         self.__batch_size = 1024 * 1024
@@ -14,7 +15,7 @@ class RawImageGenerator():
 
     def generate(self):
         # Write some zero bytes in the beginning of the file
-        # to ensure that image format will be treated as raw
+        # to ensure that image format will be treated as raw.
         process.execute([
             "dd",
             "if=/dev/zero",
@@ -23,7 +24,7 @@ class RawImageGenerator():
             "count={}".format(1),
         ])
 
-        # Fill image with random bytes
+        # Fill image with random bytes.
         batch_count = self.__image_size // self.__batch_size - 1
         process.execute([
             "dd",
