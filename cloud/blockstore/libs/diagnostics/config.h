@@ -129,6 +129,7 @@ public:
     TVolumePerfSettings GetMirror2PerfSettings() const;
     TVolumePerfSettings GetMirror3PerfSettings() const;
     TVolumePerfSettings GetLocalSSDPerfSettings() const;
+    TVolumePerfSettings GetLocalHDDPerfSettings() const;
     ui32 GetExpectedIoParallelism() const;
     TVector<TString> GetCloudIdsWithStrictSLA() const;
     TMonitoringUrlData GetMonitoringUrlData() const;
@@ -146,6 +147,7 @@ public:
     TDuration GetMirror3SSDDowntimeThreshold() const;
     TDuration GetMirror2SSDDowntimeThreshold() const;
     TDuration GetLocalSSDDowntimeThreshold() const;
+    TDuration GetLocalHDDDowntimeThreshold() const;
     bool GetReportHistogramAsMultipleCounters() const;
     bool GetReportHistogramAsSingleCounter() const;
 

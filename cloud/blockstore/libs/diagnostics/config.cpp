@@ -34,6 +34,7 @@ namespace {
     xxx(Mirror2PerfSettings,            TVolumePerfSettings,  {}                                        )\
     xxx(Mirror3PerfSettings,            TVolumePerfSettings,  {}                                        )\
     xxx(LocalSSDPerfSettings,           TVolumePerfSettings,  {}                                        )\
+    xxx(LocalHDDPerfSettings,           TVolumePerfSettings,  {}                                        )\
     xxx(ExpectedIoParallelism,          ui32,                 32                                        )\
     xxx(CloudIdsWithStrictSLA,          TVector<TString>,     {}                                        )\
     xxx(LWTraceShuttleCount,            ui32,                 2000                                      )\
@@ -51,6 +52,7 @@ namespace {
     xxx(Mirror2SSDDowntimeThreshold,         TDuration,       TDuration::Seconds(5)                     )\
     xxx(Mirror3SSDDowntimeThreshold,         TDuration,       TDuration::Seconds(5)                     )\
     xxx(LocalSSDDowntimeThreshold,           TDuration,       TDuration::Seconds(5)                     )\
+    xxx(LocalHDDDowntimeThreshold,           TDuration,       TDuration::Seconds(15)                    )\
     xxx(ReportHistogramAsMultipleCounters,   bool,            true                                      )\
     xxx(ReportHistogramAsSingleCounter,      bool,            false                                     )\
 // BLOCKSTORE_DIAGNOSTICS_CONFIG
@@ -245,6 +247,9 @@ TDuration GetDowntimeThreshold(
         }
         case NCloud::NProto::STORAGE_MEDIA_SSD_LOCAL: {
             return config.GetLocalSSDDowntimeThreshold();
+        }
+        case NCloud::NProto::STORAGE_MEDIA_HDD_LOCAL: {
+            return config.GetLocalHDDDowntimeThreshold();
         }
         default: {
             return config.GetHDDDowntimeThreshold();

@@ -170,6 +170,7 @@ private:
     TTotalCounters SsdMirror2;
     TTotalCounters SsdMirror3;
     TTotalCounters SsdLocal;
+    TTotalCounters HddLocal;
     TTotalCounters SsdSystem;
     TTotalCounters HddSystem;
 
@@ -197,6 +198,7 @@ public:
         , SsdMirror2(EPublishingPolicy::DiskRegistryBased)
         , SsdMirror3(EPublishingPolicy::DiskRegistryBased)
         , SsdLocal(EPublishingPolicy::DiskRegistryBased)
+        , HddLocal(EPublishingPolicy::DiskRegistryBased)
         , SsdSystem(EPublishingPolicy::Repl)
         , HddSystem(EPublishingPolicy::Repl)
         , SsdBlobLoadCounters(
@@ -265,6 +267,11 @@ public:
         return SsdLocal;
     }
 
+    TTotalCounters& GetHddLocalCounters()
+    {
+        return HddLocal;
+    }
+
     TTotalCounters& GetSsdSystemCounters()
     {
         return SsdSystem;
@@ -288,6 +295,7 @@ public:
             case NCloud::NProto::STORAGE_MEDIA_SSD_MIRROR2: return SsdMirror2;
             case NCloud::NProto::STORAGE_MEDIA_SSD_MIRROR3: return SsdMirror3;
             case NCloud::NProto::STORAGE_MEDIA_SSD_LOCAL: return SsdLocal;
+            case NCloud::NProto::STORAGE_MEDIA_HDD_LOCAL: return HddLocal;
             case NCloud::NProto::STORAGE_MEDIA_HDD:
             case NCloud::NProto::STORAGE_MEDIA_HYBRID:
             case NCloud::NProto::STORAGE_MEDIA_DEFAULT:

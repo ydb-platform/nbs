@@ -89,6 +89,7 @@ namespace NCloud::NBlockStore {
     xxx(FieldDescriptorNotFound)                                               \
     xxx(DiskRegistryInsertToPendingCleanupFailed)                              \
     xxx(OverlappingRangesDuringMigrationDetected)                              \
+    xxx(StartExternalEndpointError)                                            \
 // BLOCKSTORE_IMPOSSIBLE_EVENTS
 
 ////////////////////////////////////////////////////////////////////////////////

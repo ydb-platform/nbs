@@ -101,6 +101,7 @@ def create_disk_agent_configurator(ydb, data_path):
         storage_discovery_config={
             "PathConfigs": [{
                 "PathRegExp": f"{data_path}/NVMENBS([0-9]+)",
+                "BlockSize": 512,
                 "PoolConfigs": [{
                     "PoolName": "1Mb",
                     "MinSize": DEVICE_SIZE,
@@ -236,8 +237,8 @@ def test_external_endpoint(nbs, vol0_id, fake_vhost_server):
     def create_vol0():
         client.create_volume(
             disk_id=vol0_id,
-            block_size=4096,
-            blocks_count=2 * DEVICE_SIZE//4096,
+            block_size=512,
+            blocks_count=2 * DEVICE_SIZE//512,
             storage_media_kind=STORAGE_MEDIA_SSD_LOCAL,
             storage_pool_name="1Mb")
 
