@@ -17,5 +17,7 @@ target_link_libraries(storage-partition_nonrepl-model PUBLIC
   core-libs-common
 )
 target_sources(storage-partition_nonrepl-model PRIVATE
+  ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/partition_nonrepl/model/changed_ranges_map
+  ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/partition_nonrepl/model/disjoint_range_set.cpp
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/partition_nonrepl/model/processing_blocks.cpp
 )

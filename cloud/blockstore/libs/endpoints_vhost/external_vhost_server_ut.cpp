@@ -181,7 +181,7 @@ struct TFixture
 
         volume.SetDiskId("vol0");
         volume.SetBlocksCount(10'000);
-        volume.SetBlockSize(512_B);
+        volume.SetBlockSize(512);
         volume.SetStorageMediaKind(NProto::STORAGE_MEDIA_SSD_LOCAL);
 
         {
@@ -457,13 +457,13 @@ Y_UNIT_TEST_SUITE(TExternalEndpointTest)
 
             UNIT_ASSERT_VALUES_EQUAL(TStringBuilder()
                     << "/dev/disk/by-path/pci-0000:00:16.0-sas-phy2-lun-0:"
-                    << (4'000 * 512_B)
+                    << (4'000 * 512)
                     << ":32000",
                 devices[0]);
 
             UNIT_ASSERT_VALUES_EQUAL(TStringBuilder()
                     << "/dev/disk/by-path/pci-0000:00:16.0-sas-phy2-lun-0:"
-                    << (6'000 * 512_B)
+                    << (6'000 * 512)
                     << ":0",
                 devices[1]);
 
