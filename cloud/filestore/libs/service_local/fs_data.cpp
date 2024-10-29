@@ -115,7 +115,7 @@ TFuture<NProto::TReadDataResponse> TLocalFileSystem::ReadDataAsync(
                 auto bytesRead = f.GetValue();
                 b->TrimSize(bytesRead);
                 response.SetBufferOffset(b->AlignedDataOffset());
-                response.SetBuffer(std::move(b->AccessBuffer()));
+                response.SetBuffer(b->TakeBuffer());
             } catch (const TServiceError& e) {
                 *response.MutableError() = MakeError(MAKE_FILESTORE_ERROR(
                     ErrnoToFileStoreError(STATUS_FROM_CODE(e.GetCode()))));

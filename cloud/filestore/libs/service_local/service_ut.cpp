@@ -783,7 +783,7 @@ struct TTestBootstrap
             (void*)buffer.data(),
             buffer.size());
         request->SetBufferOffset(alignedBuffer.AlignedDataOffset());
-        request->SetBuffer(std::move(alignedBuffer.AccessBuffer()));
+        request->SetBuffer(alignedBuffer.TakeBuffer());
 
         auto dbg = request->ShortDebugString();
         auto response =
@@ -807,12 +807,9 @@ struct TTestBootstrap
         request->SetOffset(offset);
 
         TAlignedBuffer alignedBuffer(buffer.size(), align);
-        memcpy(
-            (void*)(alignedBuffer.Begin()),
-            (void*)buffer.data(),
-            buffer.size());
+        memcpy(alignedBuffer.Begin(), buffer.data(), buffer.size());
         request->SetBufferOffset(alignedBuffer.AlignedDataOffset());
-        request->SetBuffer(std::move(alignedBuffer.AccessBuffer()));
+        request->SetBuffer(alignedBuffer.TakeBuffer());
 
         auto dbg = request->ShortDebugString();
         auto response =
