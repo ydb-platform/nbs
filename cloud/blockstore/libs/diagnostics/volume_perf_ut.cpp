@@ -66,6 +66,10 @@ const NProto::TVolumePerfSettings& GetPerfSettings(
             return config.GetLocalSSDPerfSettings();
             break;
         }
+        case NCloud::NProto::STORAGE_MEDIA_HDD_LOCAL: {
+            return config.GetLocalHDDPerfSettings();
+            break;
+        }
         default: {
             return config.GetHddPerfSettings();
         }
@@ -463,6 +467,13 @@ void CheckServerSufferCounters(
         case NCloud::NProto::STORAGE_MEDIA_SSD_LOCAL: {
             auto perType = serverGroup
                 ->GetSubgroup("type", "ssd_local")
+                ->GetCounter("DisksSuffer", false);
+            UNIT_ASSERT_VALUES_EQUAL(cnt, perType->Val());
+            break;
+        }
+        case NCloud::NProto::STORAGE_MEDIA_HDD_LOCAL: {
+            auto perType = serverGroup
+                ->GetSubgroup("type", "hdd_local")
                 ->GetCounter("DisksSuffer", false);
             UNIT_ASSERT_VALUES_EQUAL(cnt, perType->Val());
             break;

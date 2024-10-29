@@ -46,6 +46,8 @@ func getStorageMediaKind(parameters map[string]string) storagecoreapi.EStorageMe
 			return storagecoreapi.EStorageMediaKind_STORAGE_MEDIA_SSD_MIRROR3
 		case "ssd_local":
 			return storagecoreapi.EStorageMediaKind_STORAGE_MEDIA_SSD_LOCAL
+		case "hdd_local":
+			return storagecoreapi.EStorageMediaKind_STORAGE_MEDIA_HDD_LOCAL
 		case "hdd_nonrepl":
 			return storagecoreapi.EStorageMediaKind_STORAGE_MEDIA_HDD_NONREPLICATED
 		}

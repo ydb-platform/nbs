@@ -5,6 +5,7 @@
 
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 #include <cloud/storage/core/libs/diagnostics/monitoring.h>
+#include <cloud/storage/core/libs/grpc/logging.h>
 
 #include <library/cpp/monlib/dynamic_counters/counters.h>
 #include <library/cpp/testing/unittest/env.h>
@@ -96,10 +97,14 @@ Y_UNIT_TEST_SUITE(HealthcheckTest)
     {
         TEnv env(3, TDuration::Zero(), 0);
 
+        auto logging = CreateLoggingService("console");
+        auto grpcLog = logging->CreateLog("GRPC");
+        GrpcLoggerInit(grpcLog, true /* enableTracing */);
+
         auto monitoring = CreateMonitoringServiceStub();
         auto healthChecker = CreateHealthChecker(
             env.Config,
-            CreateLoggingService("console"),
+            std::move(logging),
             monitoring,
             CreateInsecurePingClient(),
             CreateSecurePingClient(env.RootCertsPath)

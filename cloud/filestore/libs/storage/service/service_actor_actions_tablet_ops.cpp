@@ -10,6 +10,49 @@ namespace NCloud::NFileStore::NStorage {
 using namespace NActors;
 
 ////////////////////////////////////////////////////////////////////////////////
+// Background ops
+
+IActorPtr TStorageServiceActor::CreateForcedOperationActionActor(
+    TRequestInfoPtr requestInfo,
+    TString input)
+{
+    using TForcedOperationActor = TTabletActionActor<
+        TEvIndexTablet::TEvForcedOperationRequest,
+        TEvIndexTablet::TEvForcedOperationResponse>;
+    return std::make_unique<TForcedOperationActor>(
+        std::move(requestInfo),
+        std::move(input));
+}
+
+IActorPtr TStorageServiceActor::CreateForcedOperationStatusActionActor(
+    TRequestInfoPtr requestInfo,
+    TString input)
+{
+    using TForcedOperationStatusActor = TTabletActionActor<
+        TEvIndexTablet::TEvForcedOperationStatusRequest,
+        TEvIndexTablet::TEvForcedOperationStatusResponse>;
+    return std::make_unique<TForcedOperationStatusActor>(
+        std::move(requestInfo),
+        std::move(input));
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// Stats
+
+IActorPtr TStorageServiceActor::CreateGetStorageStatsActionActor(
+    TRequestInfoPtr requestInfo,
+    TString input)
+{
+    using TGetStorageStatsActor = TTabletActionActor<
+        TEvIndexTablet::TEvGetStorageStatsRequest,
+        TEvIndexTablet::TEvGetStorageStatsResponse>;
+    return std::make_unique<TGetStorageStatsActor>(
+        std::move(requestInfo),
+        std::move(input));
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// UnsafeNodeOps
 
 IActorPtr TStorageServiceActor::CreateUnsafeDeleteNodeActionActor(
     TRequestInfoPtr requestInfo,

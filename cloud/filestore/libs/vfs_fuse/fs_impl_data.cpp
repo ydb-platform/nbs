@@ -262,7 +262,7 @@ void TFileSystem::Write(
     request->SetHandle(fi->fh);
     request->SetOffset(offset);
     request->SetBufferOffset(alignedBuffer.AlignedDataOffset());
-    request->SetBuffer(std::move(alignedBuffer.AccessBuffer()));
+    request->SetBuffer(alignedBuffer.TakeBuffer());
 
     const auto handle = fi->fh;
     const auto reqId = callContext->RequestId;
@@ -327,7 +327,7 @@ void TFileSystem::WriteBuf(
     request->SetHandle(fi->fh);
     request->SetOffset(offset);
     request->SetBufferOffset(alignedBuffer.AlignedDataOffset());
-    request->SetBuffer(std::move(alignedBuffer.AccessBuffer()));
+    request->SetBuffer(alignedBuffer.TakeBuffer());
 
     const auto handle = fi->fh;
     const auto reqId = callContext->RequestId;

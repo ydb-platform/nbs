@@ -114,6 +114,7 @@ bool GetThrottlingEnabled(
 {
     switch (volumeParams.MediaKind) {
         case NCloud::NProto::EStorageMediaKind::STORAGE_MEDIA_SSD_LOCAL:
+        case NCloud::NProto::EStorageMediaKind::STORAGE_MEDIA_HDD_LOCAL:
             return false;
         case NCloud::NProto::EStorageMediaKind::STORAGE_MEDIA_SSD:
             return config.GetThrottlingEnabledSSD();
@@ -138,6 +139,7 @@ auto GetThrottlingBoostUnits(
             return config.GetThrottlingSSDBoostUnits();
 
         case NCloud::NProto::EStorageMediaKind::STORAGE_MEDIA_SSD_LOCAL:
+        case NCloud::NProto::EStorageMediaKind::STORAGE_MEDIA_HDD_LOCAL:
         case NCloud::NProto::EStorageMediaKind::STORAGE_MEDIA_SSD_NONREPLICATED:
         case NCloud::NProto::EStorageMediaKind::STORAGE_MEDIA_HDD_NONREPLICATED:
         case NCloud::NProto::EStorageMediaKind::STORAGE_MEDIA_SSD_MIRROR2:
