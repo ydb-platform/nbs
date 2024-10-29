@@ -174,27 +174,6 @@ def start(argv):
     )
     ensure_path_exists(working_dir)
 
-    big_raw_image_file_path = os.path.join(working_dir, "generated_big_raw_image")
-    other_big_raw_image_file_path = os.path.join(working_dir, "generated_other_big_raw_image")
-    big_raw_image_file_size = 536870912 # 512 MB
-    other_big_raw_image_file_size = 1073741824 # 1GB
-    raw_image_generator = RawImageGenerator(big_raw_image_file_path, big_raw_image_file_size)
-    raw_image_generator.generate()
-    other_raw_image_generator = RawImageGenerator(other_big_raw_image_file_path, other_big_raw_image_file_size)
-    other_raw_image_generator.generate()
-    big_raw_image_file_server = ImageFileServerLauncher(
-        big_raw_image_file_path,
-        big_raw_image_file_size,
-        other_big_raw_image_file_path,
-        other_big_raw_image_file_size,
-    )
-    big_raw_image_file_server.start()
-    set_env("DISK_MANAGER_RECIPE_BIG_RAW_IMAGE_FILE_SERVER_PORT", str(big_raw_image_file_server.port))
-    set_env("DISK_MANAGER_RECIPE_BIG_RAW_IMAGE_SIZE", str(big_raw_image_file_size))
-    set_env("DISK_MANAGER_RECIPE_BIG_RAW_IMAGE_CRC32", str(raw_image_generator.image_crc32))
-    set_env("DISK_MANAGER_RECIPE_OTHER_BIG_RAW_IMAGE_SIZE", str(other_big_raw_image_file_size))
-    set_env("DISK_MANAGER_RECIPE_OTHER_BIG_RAW_IMAGE_CRC32", str(other_raw_image_generator.image_crc32))
-
     invalid_qcow2_image_file_path = os.path.join(
         working_dir,
         "invalid_qcow2_image"
@@ -249,7 +228,27 @@ def start(argv):
         set_env("DISK_MANAGER_RECIPE_GENERATED_VMDK_IMAGE_CRC32", str(vmdk_image_generator.raw_image_crc32))
 
     if '--generate-big-raw-images' in argv:
-        pass
+        big_raw_image_file_path = os.path.join(working_dir, "generated_big_raw_image")
+        other_big_raw_image_file_path = os.path.join(working_dir, "generated_other_big_raw_image")
+        big_raw_image_file_size = 536870912 # 512 MB
+        other_big_raw_image_file_size = 1073741824 # 1GB
+        raw_image_generator = RawImageGenerator(big_raw_image_file_path, big_raw_image_file_size)
+        raw_image_generator.generate()
+        other_raw_image_generator = RawImageGenerator(other_big_raw_image_file_path, other_big_raw_image_file_size)
+        other_raw_image_generator.generate()
+        big_raw_image_file_server = ImageFileServerLauncher(
+            big_raw_image_file_path,
+            big_raw_image_file_size,
+            other_big_raw_image_file_path,
+            other_big_raw_image_file_size,
+        )
+        big_raw_image_file_server.start()
+        set_env("DISK_MANAGER_RECIPE_BIG_RAW_IMAGE_FILE_SERVER_PORT", str(big_raw_image_file_server.port))
+        set_env("DISK_MANAGER_RECIPE_BIG_RAW_IMAGE_SIZE", str(big_raw_image_file_size))
+        set_env("DISK_MANAGER_RECIPE_BIG_RAW_IMAGE_CRC32", str(raw_image_generator.image_crc32))
+        set_env("DISK_MANAGER_RECIPE_OTHER_BIG_RAW_IMAGE_SIZE", str(other_big_raw_image_file_size))
+        set_env("DISK_MANAGER_RECIPE_OTHER_BIG_RAW_IMAGE_CRC32", str(other_raw_image_generator.image_crc32))
+
 
 def stop(argv):
     ImageFileServerLauncher.stop()
