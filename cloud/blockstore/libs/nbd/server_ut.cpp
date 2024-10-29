@@ -690,7 +690,7 @@ Y_UNIT_TEST_SUITE(TServerTest)
         bootstrap1->Stop();
     }
 
-    Y_UNIT_TEST(ShouldGetFatalErrorIfEndpointHasInvalidSocketPath)
+    Y_UNIT_TEST(ShouldReturnNotFoundErrorIfEndpointHasInvalidSocketPath)
     {
         TUnixSocketPath socketPath("./invalid/path/to/socket");
         TNetworkAddress connectAddress(socketPath);
@@ -706,6 +706,10 @@ Y_UNIT_TEST_SUITE(TServerTest)
         UNIT_ASSERT_VALUES_EQUAL_C(
             EErrorKind::ErrorFatal,
             GetErrorKind(error),
+            error);
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            E_NOT_FOUND,
+            error.GetCode(),
             error);
 
         bootstrap->Stop();
