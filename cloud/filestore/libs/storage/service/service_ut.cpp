@@ -1541,61 +1541,6 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         UNIT_ASSERT_VALUES_EQUAL(4, sessions[1].GetMaxRwSeqNo());
     }
 
-    Y_UNIT_TEST(ShouldRunForcedOperation)
-    {
-        NProto::TStorageConfig config;
-        config.SetCompactionThreshold(1000);
-        TTestEnv env({}, config);
-        env.CreateSubDomain("nfs");
-
-        ui32 nodeIdx = env.CreateNode("nfs");
-
-        TServiceClient service(env.GetRuntime(), nodeIdx);
-        service.CreateFileStore("test", 1'000);
-
-        auto headers = service.InitSession("test", "client");
-
-        ui64 nodeId =
-            service
-                .CreateNode(headers, TCreateNodeArgs::File(RootNodeId, "file"))
-                ->Record.GetNode()
-                .GetId();
-
-        ui64 handle =
-            service
-                .CreateHandle(headers, "test", nodeId, "", TCreateHandleArgs::RDWR)
-                ->Record.GetHandle();
-
-        service.WriteData(headers, "test", nodeId, handle, 0, TString(1_MB, 'a'));
-
-        NProtoPrivate::TForcedOperationRequest request;
-        request.SetFileSystemId("test");
-        request.SetOpType(NProtoPrivate::TForcedOperationRequest::E_COMPACTION);
-
-        TString buf;
-        google::protobuf::util::MessageToJsonString(request, &buf);
-        auto jsonResponse = service.ExecuteAction("forcedoperation", buf);
-        NProtoPrivate::TForcedOperationResponse response;
-        UNIT_ASSERT(google::protobuf::util::JsonStringToMessage(
-            jsonResponse->Record.GetOutput(), &response).ok());
-        UNIT_ASSERT_VALUES_EQUAL(4, response.GetRangeCount());
-
-        env.GetRegistry()->Update(env.GetRuntime().GetCurrentTime());
-
-        const auto counters = env.GetRuntime().GetAppData().Counters;
-        auto subgroup = counters->FindSubgroup("counters", "filestore");
-        UNIT_ASSERT(subgroup);
-        subgroup = subgroup->FindSubgroup("component", "storage_fs");
-        UNIT_ASSERT(subgroup);
-        subgroup = subgroup->FindSubgroup("host", "cluster");
-        UNIT_ASSERT(subgroup);
-        subgroup = subgroup->FindSubgroup("filesystem", "test");
-        UNIT_ASSERT(subgroup);
-        UNIT_ASSERT_VALUES_EQUAL(
-            4,
-            subgroup->GetCounter("Compaction.Count")->GetAtomic());
-    }
-
     Y_UNIT_TEST(ShouldValidateBlockSize)
     {
         TTestEnv env;

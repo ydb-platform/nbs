@@ -11,6 +11,7 @@ namespace NCloud {
 
 bool IsDiskRegistryMediaKind(NProto::EStorageMediaKind mediaKind);
 bool IsReliableDiskRegistryMediaKind(NProto::EStorageMediaKind mediaKind);
+bool IsDiskRegistryLocalMediaKind(NProto::EStorageMediaKind mediaKind);
 TString MediaKindToString(NProto::EStorageMediaKind mediaKind);
 TString MediaKindToStatsString(NProto::EStorageMediaKind mediaKind);
 TString MediaKindToComputeType(NProto::EStorageMediaKind mediaKind);

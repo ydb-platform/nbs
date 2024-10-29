@@ -309,6 +309,7 @@ public:
         STORAGE_DEBUG("listen on " << localHost);
 
         return SafeExecute<NProto::TError>([&] {
+            ValidateSocketPath(ListenAddress);
             DeleteSocketIfExists(ListenAddress);
 
             Listener = std::make_unique<TContListener>(this, Executor);
@@ -413,6 +414,17 @@ private:
     {
         if (IsUnixAddress(addr)) {
             TFsPath(GetSocketPath(addr)).DeleteIfExists();
+        }
+    }
+
+    static void ValidateSocketPath(const TNetworkAddress& addr)
+    {
+        if (IsUnixAddress(addr)) {
+            const auto& socketPath = TFsPath(GetSocketPath(addr));
+            if (!socketPath.Parent().Exists()) {
+                ythrow TServiceError(E_NOT_FOUND)
+                    << "Invalid socket path " << socketPath;
+            }
         }
     }
 };

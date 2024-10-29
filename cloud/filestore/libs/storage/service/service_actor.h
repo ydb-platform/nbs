@@ -173,6 +173,10 @@ private:
         TRequestInfoPtr requestInfo,
         TString input);
 
+    NActors::IActorPtr CreateForcedOperationStatusActionActor(
+        TRequestInfoPtr requestInfo,
+        TString input);
+
     NActors::IActorPtr CreateReassignTabletActionActor(
         TRequestInfoPtr requestInfo,
         TString input);

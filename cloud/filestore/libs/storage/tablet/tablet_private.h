@@ -16,6 +16,7 @@
 #include <contrib/ydb/core/base/blobstorage.h>
 
 #include <util/datetime/base.h>
+#include <util/generic/set.h>
 #include <util/generic/string.h>
 #include <util/generic/vector.h>
 
@@ -537,12 +538,15 @@ struct TEvIndexTabletPrivate
     {
         TVector<ui32> Ranges;
         EForcedRangeOperationMode Mode;
+        TString OperationId;
 
         TForcedRangeOperationRequest(
-            TVector<ui32> ranges,
-            EForcedRangeOperationMode mode)
+                TVector<ui32> ranges,
+                EForcedRangeOperationMode mode,
+                TString operationId)
             : Ranges(std::move(ranges))
             , Mode(mode)
+            , OperationId(std::move(operationId))
         {}
     };
 
