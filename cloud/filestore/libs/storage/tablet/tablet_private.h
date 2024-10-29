@@ -16,6 +16,7 @@
 #include <contrib/ydb/core/base/blobstorage.h>
 
 #include <util/datetime/base.h>
+#include <util/generic/set.h>
 #include <util/generic/string.h>
 #include <util/generic/vector.h>
 
