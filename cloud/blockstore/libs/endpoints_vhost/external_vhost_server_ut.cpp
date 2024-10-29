@@ -565,9 +565,6 @@ Y_UNIT_TEST_SUITE(TExternalEndpointTest)
                                                23
         */
 
-        auto resultCmd = JoinStrings(create->CmdArgs, " ");
-        Cerr << "resultCmd = \n" << resultCmd << Endl;
-
         UNIT_ASSERT_VALUES_EQUAL_C(
             23,
             create->CmdArgs.size(),
