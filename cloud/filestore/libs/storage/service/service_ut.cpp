@@ -1930,7 +1930,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         service.CreateSession(headers);
     }
 
-    Y_UNIT_TEST(ShouldPerformTwoStageReads)
+    void CheckTwoStageReads(NProto::EStorageMediaKind mediaKind, bool disableForHdd)
     {
         TTestEnv env;
         env.CreateSubDomain("nfs");
@@ -1939,16 +1939,20 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
 
         TServiceClient service(env.GetRuntime(), nodeIdx);
         const TString fs = "test";
-        service.CreateFileStore(fs, 1000);
+        service.CreateFileStore(fs, 1000, DefaultBlockSize, mediaKind);
 
         {
             NProto::TStorageConfig newConfig;
             newConfig.SetTwoStageReadEnabled(true);
+            newConfig.SetTwoStageReadDisabledForHdd(disableForHdd);
             const auto response =
                 ExecuteChangeStorageConfig(std::move(newConfig), service);
             UNIT_ASSERT_VALUES_EQUAL(
                 response.GetStorageConfig().GetTwoStageReadEnabled(),
                 true);
+            UNIT_ASSERT_VALUES_EQUAL(
+                response.GetStorageConfig().GetTwoStageReadDisabledForHdd(),
+                disableForHdd);
             TDispatchOptions options;
             env.GetRuntime().DispatchEvents(options, TDuration::Seconds(1));
         }
@@ -2035,6 +2039,21 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
                 3,
                 subgroup->GetCounter("Count")->GetAtomic());
         }
+    }
+
+    Y_UNIT_TEST(ShouldPerformTwoStageReadsHdd)
+    {
+        CheckTwoStageReads(NProto::STORAGE_MEDIA_HDD, false);
+    }
+
+    Y_UNIT_TEST(ShouldPerformTwoStageReadsHybrid)
+    {
+        CheckTwoStageReads(NProto::STORAGE_MEDIA_HYBRID, false);
+    }
+
+    Y_UNIT_TEST(ShouldPerformTwoStageReadsSsd)
+    {
+        CheckTwoStageReads(NProto::STORAGE_MEDIA_SSD, false);
     }
 
     Y_UNIT_TEST(ShouldFallbackToReadDataIfDescribeDataFails)
@@ -2267,7 +2286,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         return data;
     }
 
-    Y_UNIT_TEST(ShouldPerformThreeStageWrites)
+    void CheckThreeStageWrites(NProto::EStorageMediaKind kind, bool disableForHdd)
     {
         TTestEnv env;
         env.CreateSubDomain("nfs");
@@ -2276,12 +2295,13 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
 
         TServiceClient service(env.GetRuntime(), nodeIdx);
         const TString fs = "test";
-        service.CreateFileStore(fs, 1000);
+        service.CreateFileStore(fs, 1000, DefaultBlockSize, kind);
 
         {
             NProto::TStorageConfig newConfig;
             newConfig.SetThreeStageWriteEnabled(true);
             newConfig.SetThreeStageWriteThreshold(1);
+            newConfig.SetThreeStageWriteDisabledForHdd(disableForHdd);
             const auto response =
                 ExecuteChangeStorageConfig(std::move(newConfig), service);
             UNIT_ASSERT_VALUES_EQUAL(
@@ -2290,6 +2310,9 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
             UNIT_ASSERT_VALUES_EQUAL(
                 response.GetStorageConfig().GetThreeStageWriteThreshold(),
                 1);
+            UNIT_ASSERT_VALUES_EQUAL(
+                response.GetStorageConfig().GetThreeStageWriteDisabledForHdd(),
+                disableForHdd);
             TDispatchOptions options;
             env.GetRuntime().DispatchEvents(options, TDuration::Seconds(1));
         }
@@ -2421,6 +2444,21 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
                 25,
                 subgroup->GetCounter("Count")->GetAtomic());
         }
+    }
+
+    Y_UNIT_TEST(ShouldPerformThreeStageWritesHdd)
+    {
+        CheckThreeStageWrites(NProto::STORAGE_MEDIA_HDD, false);
+    }
+
+    Y_UNIT_TEST(ShouldPerformThreeStageWritesSsd)
+    {
+        CheckThreeStageWrites(NProto::STORAGE_MEDIA_SSD, false);
+    }
+
+    Y_UNIT_TEST(ShouldPerformThreeStageWritesHybrid)
+    {
+        CheckThreeStageWrites(NProto::STORAGE_MEDIA_HYBRID, false);
     }
 
     Y_UNIT_TEST(ShouldNotUseThreeStageWriteForSmallOrUnalignedRequests)
@@ -5859,6 +5897,139 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         tablet.RebootTablet();
 
         UNIT_ASSERT_VALUES_EQUAL(lastCompactionMapRangeId, 29);
+    }
+
+    void CheckDisableMultistageReadWritesForHdd(NProto::EStorageMediaKind kind)
+    {
+        TTestEnv env;
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+        const TString fs = "test";
+        service.CreateFileStore(fs, 1000, DefaultBlockSize, kind);
+
+        {
+            NProto::TStorageConfig newConfig;
+            newConfig.SetTwoStageReadEnabled(true);
+            newConfig.SetThreeStageWriteEnabled(true);
+            newConfig.SetThreeStageWriteDisabledForHdd(true);
+            newConfig.SetThreeStageWriteThreshold(1);
+            newConfig.SetTwoStageReadDisabledForHdd(true);
+
+            const auto response =
+                ExecuteChangeStorageConfig(std::move(newConfig), service);
+
+            UNIT_ASSERT_VALUES_EQUAL(
+                response.GetStorageConfig().GetThreeStageWriteEnabled(),
+                true);
+            UNIT_ASSERT_VALUES_EQUAL(
+                response.GetStorageConfig().GetThreeStageWriteDisabledForHdd(),
+                true);
+            UNIT_ASSERT_VALUES_EQUAL(
+                response.GetStorageConfig().GetThreeStageWriteThreshold(),
+                1);
+            UNIT_ASSERT_VALUES_EQUAL(
+                response.GetStorageConfig().GetTwoStageReadEnabled(),
+                true);
+            UNIT_ASSERT_VALUES_EQUAL(
+                response.GetStorageConfig().GetTwoStageReadDisabledForHdd(),
+                true);
+
+            TDispatchOptions options;
+            env.GetRuntime().DispatchEvents(options, TDuration::Seconds(1));
+        }
+
+        auto headers = service.InitSession(fs, "client");
+        ui64 nodeId = service
+            .CreateNode(headers, TCreateNodeArgs::File(RootNodeId, "file"))
+            ->Record.GetNode()
+            .GetId();
+        ui64 handle = service
+            .CreateHandle(headers, fs, nodeId, "", TCreateHandleArgs::RDWR)
+            ->Record.GetHandle();
+
+
+        auto data = GenerateValidateData(2 * DefaultBlockSize);
+        service.WriteData(headers, fs, nodeId, handle, 0, data);
+
+        auto readDataResult =
+            service
+                .ReadData(headers, fs, nodeId, handle, 0, data.size());
+
+        UNIT_ASSERT_VALUES_EQUAL(readDataResult->Record.GetBuffer(), data);
+
+        auto counters = env.GetCounters()
+            ->FindSubgroup("component", "service_fs")
+            ->FindSubgroup("host", "cluster")
+            ->FindSubgroup("filesystem", fs)
+            ->FindSubgroup("client", "client");
+        {
+            auto subgroup = counters->FindSubgroup("request", "GenerateBlobIds");
+            UNIT_ASSERT(subgroup);
+            UNIT_ASSERT_VALUES_EQUAL(
+                0,
+                subgroup->GetCounter("Count")->GetAtomic());
+        }
+        {
+            auto subgroup = counters->FindSubgroup("request", "AddData");
+            UNIT_ASSERT(subgroup);
+            UNIT_ASSERT_VALUES_EQUAL(
+                0,
+                subgroup->GetCounter("Count")->GetAtomic());
+        }
+        {
+            auto subgroup = counters->FindSubgroup("request", "WriteData");
+            UNIT_ASSERT(subgroup);
+            UNIT_ASSERT_VALUES_EQUAL(
+                1,
+                subgroup->GetCounter("Count")->GetAtomic());
+        }
+        {
+            auto subgroup = counters->FindSubgroup("request", "WriteBlob");
+            UNIT_ASSERT(subgroup);
+            UNIT_ASSERT_VALUES_EQUAL(
+                0,
+                subgroup->GetCounter("Count")->GetAtomic());
+        }
+        {
+            auto subgroup = counters->FindSubgroup("request", "DescribeData");
+            UNIT_ASSERT(subgroup);
+            UNIT_ASSERT_VALUES_EQUAL(
+                0,
+                subgroup->GetCounter("Count")->GetAtomic());
+        }
+        {
+            auto subgroup = counters->FindSubgroup("request", "ReadBlob");
+            UNIT_ASSERT(subgroup);
+            UNIT_ASSERT_VALUES_EQUAL(
+                0,
+                subgroup->GetCounter("Count")->GetAtomic());
+        }
+        {
+            auto subgroup = counters->FindSubgroup("request", "ReadData");
+            UNIT_ASSERT(subgroup);
+            UNIT_ASSERT_VALUES_EQUAL(
+                1,
+                subgroup->GetCounter("Count")->GetAtomic());
+        }
+    }
+
+    Y_UNIT_TEST(ShouldNotPerformThreeStageWritesAndTwoStageReadsForHddIfDisabled)
+    {
+        CheckDisableMultistageReadWritesForHdd(NProto::STORAGE_MEDIA_HDD);
+    }
+
+    Y_UNIT_TEST(ShouldNotPerformThreeStageWritesAndTwoStageReadsForHybridIfDisabled)
+    {
+        CheckDisableMultistageReadWritesForHdd(NProto::STORAGE_MEDIA_HYBRID);
+    }
+
+    Y_UNIT_TEST(ShouldNotAffectSddReadWritesIfMultistageReadWritesAreOffForHdd)
+    {
+        CheckThreeStageWrites(NProto::STORAGE_MEDIA_SSD, true);
+        CheckTwoStageReads(NProto::STORAGE_MEDIA_SSD, true);
     }
 }
 

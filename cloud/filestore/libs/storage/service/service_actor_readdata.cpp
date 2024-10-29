@@ -23,6 +23,18 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+bool IsTwoStageReadEnabled(const NProto::TFileStore& fs)
+{
+    const auto isHddLike = fs.GetStorageMediaKind() == NProto::STORAGE_MEDIA_HYBRID
+        || fs.GetStorageMediaKind() == NProto::STORAGE_MEDIA_HDD;
+
+    const auto disabledAsHdd = isHddLike &&
+        fs.GetFeatures().GetTwoStageReadDisabledForHdd();
+    return !disabledAsHdd && fs.GetFeatures().GetTwoStageReadEnabled();
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 class TReadDataActor final: public TActorBootstrapped<TReadDataActor>
 {
 private:
@@ -647,7 +659,7 @@ void TStorageServiceActor::HandleReadData(
         msg->Record.SetFileSystemId(fsId);
     }
 
-    if (!filestore.GetFeatures().GetTwoStageReadEnabled()) {
+    if (!IsTwoStageReadEnabled(filestore)) {
         // If two-stage read is disabled, forward the request to the tablet in
         // the same way as all other requests.
         ForwardRequest<TEvService::TReadDataMethod>(ctx, ev);

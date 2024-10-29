@@ -24,6 +24,18 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+bool IsThreeStageWriteEnabled(const NProto::TFileStore& fs)
+{
+    const auto isHddLike = fs.GetStorageMediaKind() == NProto::STORAGE_MEDIA_HYBRID
+        || fs.GetStorageMediaKind() == NProto::STORAGE_MEDIA_HDD;
+
+    const auto disabledAsHdd = isHddLike &&
+        fs.GetFeatures().GetThreeStageWriteDisabledForHdd();
+    return !disabledAsHdd && fs.GetFeatures().GetThreeStageWriteEnabled();
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 class TWriteDataActor final: public TActorBootstrapped<TWriteDataActor>
 {
 private:
@@ -478,7 +490,9 @@ void TStorageServiceActor::HandleWriteData(
         msg->Record.SetFileSystemId(fsId);
     }
 
-    if (!filestore.GetFeatures().GetThreeStageWriteEnabled()) {
+    const auto threeStageWriteAllowed = IsThreeStageWriteEnabled(filestore);
+
+    if (!threeStageWriteAllowed) {
         // If three-stage write is disabled, forward the request to the tablet
         // in the same way as all other requests.
         ForwardRequest<TEvService::TWriteDataMethod>(ctx, ev);
@@ -493,7 +507,7 @@ void TStorageServiceActor::HandleWriteData(
         blockSize);
     const bool threeStageWriteEnabled =
         range.Length >= filestore.GetFeatures().GetThreeStageWriteThreshold()
-        && filestore.GetFeatures().GetThreeStageWriteEnabled()
+        && threeStageWriteAllowed
         && (range.IsAligned()
                 || StorageConfig->GetUnalignedThreeStageWriteEnabled());
     if (threeStageWriteEnabled) {

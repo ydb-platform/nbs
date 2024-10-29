@@ -21,12 +21,16 @@ void FillFeatures(const TStorageConfig& config, NProto::TFileStore& fileStore)
     auto* features = fileStore.MutableFeatures();
     features->SetTwoStageReadEnabled(config.GetTwoStageReadEnabled());
     features->SetThreeStageWriteEnabled(config.GetThreeStageWriteEnabled());
+    features->SetTwoStageReadDisabledForHdd(
+        config.GetTwoStageReadDisabledForHdd());
+    features->SetThreeStageWriteDisabledForHdd(
+        config.GetThreeStageWriteDisabledForHdd());
     features->SetEntryTimeout(config.GetEntryTimeout().MilliSeconds());
     features->SetNegativeEntryTimeout(
         config.GetNegativeEntryTimeout().MilliSeconds());
     features->SetAttrTimeout(config.GetAttrTimeout().MilliSeconds());
-    features->SetThreeStageWriteEnabled(config.GetThreeStageWriteEnabled());
     features->SetThreeStageWriteThreshold(config.GetThreeStageWriteThreshold());
+
 
     auto preferredBlockSizeMultiplier =
         config.GetPreferredBlockSizeMultiplier();
