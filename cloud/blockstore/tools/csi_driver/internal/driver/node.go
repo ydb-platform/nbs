@@ -560,10 +560,6 @@ func (s *nodeService) nodePublishDiskAsFilesystemDeprecated(
 		return fmt.Errorf("failed to start NBS endpoint: %w", err)
 	}
 
-	if resp.NbdDeviceFile == "" {
-		return fmt.Errorf("NbdDeviceFile shouldn't be empty")
-	}
-
 	logVolume(req.VolumeId, "endpoint started with device: %q", resp.NbdDeviceFile)
 
 	mnt := req.VolumeCapability.GetMount()
@@ -726,10 +722,6 @@ func (s *nodeService) nodeStageDiskAsFilesystem(
 		return fmt.Errorf("failed to start NBS endpoint: %w", err)
 	}
 
-	if resp.NbdDeviceFile == "" {
-		return fmt.Errorf("NbdDeviceFile shouldn't be empty")
-	}
-
 	logVolume(req.VolumeId, "endpoint started with device: %q", resp.NbdDeviceFile)
 
 	mnt := req.VolumeCapability.GetMount()
@@ -802,10 +794,6 @@ func (s *nodeService) nodeStageDiskAsBlockDevice(
 		return fmt.Errorf("failed to start NBS endpoint: %w", err)
 	}
 
-	if resp.NbdDeviceFile == "" {
-		return fmt.Errorf("NbdDeviceFile shouldn't be empty")
-	}
-
 	logVolume(req.VolumeId, "endpoint started with device: %q", resp.NbdDeviceFile)
 
 	devicePath := filepath.Join(req.StagingTargetPath, req.VolumeId)
@@ -819,10 +807,6 @@ func (s *nodeService) nodePublishDiskAsBlockDeviceDeprecated(
 	resp, err := s.startNbsEndpointForNBD(ctx, s.getPodId(req), req.VolumeId, req.VolumeContext)
 	if err != nil {
 		return fmt.Errorf("failed to start NBS endpoint: %w", err)
-	}
-
-	if resp.NbdDeviceFile == "" {
-		return fmt.Errorf("NbdDeviceFile shouldn't be empty")
 	}
 
 	logVolume(req.VolumeId, "endpoint started with device: %q", resp.NbdDeviceFile)
