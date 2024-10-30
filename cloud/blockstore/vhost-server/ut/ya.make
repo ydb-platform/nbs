@@ -15,7 +15,6 @@ SRCS(
     options_ut.cpp
 
     request_aio.cpp
-    request_aio_ut.cpp
 
     stats.cpp
     stats_ut.cpp
