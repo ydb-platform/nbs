@@ -451,10 +451,9 @@ message TStorageConfig
     optional uint32 CompactRangeGarbagePercentageThreshold = 401;
     optional uint32 CompactRangeAverageBlobSizeThreshold = 402;
 
-    // Disables GenerateBlobIds + WriteBlob + AddData instead of WriteBlob
-    // for writing on HDD filesystems.
-    optional bool ThreeStageWriteDisabledForHdd = 403;
+    // Disables ThreeStageWrite for HDD filesystems.
+    optional bool ThreeStageWriteDisabledForHDD = 403;
 
-    // Disables DescribeData + ReadBlob instead of ReadData for reading on HDD.
-    optional bool TwoStageReadDisabledForHdd = 404;
+    // Disables TwoStageRead for HDD filesystems.
+    optional bool TwoStageReadDisabledForHDD = 404;
 }

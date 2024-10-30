@@ -24,8 +24,8 @@ message TFileStoreFeatures
     uint32 AsyncHandleOperationPeriod = 9;
     bool DirectIoEnabled = 10;
     uint32 DirectIoAlign = 11;
-    bool TwoStageReadDisabledForHdd = 12;
-    bool ThreeStageWriteDisabledForHdd = 13;
+    bool TwoStageReadDisabledForHDD = 12;
+    bool ThreeStageWriteDisabledForHDD = 13;
 }
 
 message TFileStore

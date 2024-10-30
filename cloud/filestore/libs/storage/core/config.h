@@ -284,8 +284,8 @@ public:
 
     bool GetSSProxyFallbackMode() const;
 
-    bool GetTwoStageReadDisabledForHdd() const;
-    bool GetThreeStageWriteDisabledForHdd() const;
+    bool GetTwoStageReadDisabledForHDD() const;
+    bool GetThreeStageWriteDisabledForHDD() const;
 };
 
 }   // namespace NCloud::NFileStore::NStorage

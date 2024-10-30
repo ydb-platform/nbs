@@ -25,11 +25,11 @@ namespace {
 
 bool IsTwoStageReadEnabled(const NProto::TFileStore& fs)
 {
-    const auto isHddLike = fs.GetStorageMediaKind() == NProto::STORAGE_MEDIA_HYBRID
+    const auto isHdd = fs.GetStorageMediaKind() == NProto::STORAGE_MEDIA_HYBRID
         || fs.GetStorageMediaKind() == NProto::STORAGE_MEDIA_HDD;
 
-    const auto disabledAsHdd = isHddLike &&
-        fs.GetFeatures().GetTwoStageReadDisabledForHdd();
+    const auto disabledAsHdd = isHdd &&
+        fs.GetFeatures().GetTwoStageReadDisabledForHDD();
     return !disabledAsHdd && fs.GetFeatures().GetTwoStageReadEnabled();
 }
 

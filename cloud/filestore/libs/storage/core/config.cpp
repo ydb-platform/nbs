@@ -160,10 +160,10 @@ using TAliases = NProto::TStorageConfig::TFilestoreAliases;
             NCloud::NProto::AUTHORIZATION_IGNORE                              )\
                                                                                \
     xxx(TwoStageReadEnabled,             bool,      false                     )\
-    xxx(TwoStageReadDisabledForHdd,      bool,      false                     )\
+    xxx(TwoStageReadDisabledForHDD,      bool,      false                     )\
     xxx(ThreeStageWriteEnabled,          bool,      false                     )\
     xxx(ThreeStageWriteThreshold,        ui32,      64_KB                     )\
-    xxx(ThreeStageWriteDisabledForHdd,   bool,      false                     )\
+    xxx(ThreeStageWriteDisabledForHDD,   bool,      false                     )\
     xxx(UnalignedThreeStageWriteEnabled, bool,      false                     )\
     xxx(ReadAheadCacheMaxNodes,                 ui32,       1024              )\
     xxx(ReadAheadCacheMaxResultsPerNode,        ui32,       32                )\
