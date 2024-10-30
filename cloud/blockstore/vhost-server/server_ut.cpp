@@ -1029,7 +1029,7 @@ INSTANTIATE_TEST_SUITE_P(
             NProto::EEncryptionMode::NO_ENCRYPTION,
             NProto::EEncryptionMode::ENCRYPTION_AES_XTS),
         testing::Values(1, 2, 4),       // Blocks per request
-        testing::Values(512_B, 4_KB),   // Block size
+        testing::Values(512, 4_KB),   // Block size
         testing::Values(true, false)    // Unaligned
         ),
     [](const testing::TestParamInfo<TTestParams>& info)
