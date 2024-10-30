@@ -467,4 +467,7 @@ message TStorageConfig
     optional bool AutomaticShardCreationEnabled = 405;
     // Affects shard count calculation if AutomaticShardCreationEnabled is on.
     optional uint64 MaxShardSize = 406;
+
+    // Enable Writeback cache on guest (fuse client)
+    optional bool GuestWritebackCacheEnabled = 407;
 }

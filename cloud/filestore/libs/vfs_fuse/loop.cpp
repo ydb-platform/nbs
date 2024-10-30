@@ -508,6 +508,7 @@ private:
     std::shared_ptr<TCompletionQueue> CompletionQueue;
     IRequestStatsPtr RequestStats;
     IFileSystemPtr FileSystem;
+    TFileSystemConfigPtr FileSystemConfig;
 
     bool HandleOpsQueueInitialized = false;
 
@@ -785,13 +786,13 @@ private:
                 RequestStats,
                 Log,
                 StorageMediaKind);
-            auto filestoreConfig = MakeFileSystemConfig(filestore);
+            FileSystemConfig = MakeFileSystemConfig(filestore);
             std::unique_ptr<THandleOpsQueue> handleOpsQueue;
 
-            if (filestoreConfig->GetAsyncDestroyHandleEnabled()) {
+            if (FileSystemConfig->GetAsyncDestroyHandleEnabled()) {
                 TString path =
                     TFsPath(Config->GetHandleOpsQueuePath()) /
-                    filestoreConfig->GetFileSystemId() /
+                    FileSystemConfig->GetFileSystemId() /
                     response.GetSession().GetSessionId();
                 if (!NFs::MakeDirectoryRecursive(path)) {
                     TString msg = TStringBuilder()
@@ -816,7 +817,7 @@ private:
                 ProfileLog,
                 Scheduler,
                 Timer,
-                filestoreConfig,
+                FileSystemConfig,
                 Session,
                 RequestStats,
                 CompletionQueue,
@@ -834,7 +835,7 @@ private:
                 SessionState.empty() ? "new" : "existing");
 
             TStringStream filestoreConfigDump;
-            filestoreConfig->Dump(filestoreConfigDump);
+            FileSystemConfig->Dump(filestoreConfigDump);
             STORAGE_INFO(
                 "[f:%s][c:%s] new session filestore config: %s",
                 Config->GetFileSystemId().Quote().c_str(),
@@ -900,6 +901,9 @@ private:
         config.SetDirectIoEnabled(features.GetDirectIoEnabled());
         config.SetDirectIoAlign(features.GetDirectIoAlign());
 
+        config.SetGuestWritebackCacheEnabled(
+            features.GetGuestWritebackCacheEnabled());
+
         return std::make_shared<TFileSystemConfig>(config);
     }
 
@@ -930,6 +934,10 @@ private:
         // in case of newly mount we should drop any prev state
         // e.g. left from a crash or smth, paranoid mode
         ResetSessionState(SessionThread->GetSession().Dump());
+
+        if (FileSystemConfig->GetGuestWritebackCacheEnabled()) {
+            conn->want |=  FUSE_CAP_WRITEBACK_CACHE;
+        }
 
         FileSystem->Init();
     }

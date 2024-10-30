@@ -21,6 +21,7 @@ namespace {
     xxx(MaxHandlePerSessionCount,    ui32,          10000                     )\
     xxx(DirectIoEnabled,             bool,          false                     )\
     xxx(DirectIoAlign,               ui32,          4_KB                      )\
+    xxx(GuestWritebackCacheEnabled,  bool,          false                     )\
 // FILESTORE_SERVICE_CONFIG
 
 #define FILESTORE_SERVICE_DECLARE_CONFIG(name, type, value)                    \

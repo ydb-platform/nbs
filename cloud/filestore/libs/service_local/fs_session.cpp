@@ -78,6 +78,8 @@ NProto::TCreateSessionResponse TLocalFileSystem::CreateSession(
     auto* features = response.MutableFileStore()->MutableFeatures();
     features->SetDirectIoEnabled(Config->GetDirectIoEnabled());
     features->SetDirectIoAlign(Config->GetDirectIoAlign());
+    features->SetGuestWritebackCacheEnabled(
+        Config->GetGuestWritebackCacheEnabled());
 
     return response;
 }
