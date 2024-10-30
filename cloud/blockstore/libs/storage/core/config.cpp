@@ -915,6 +915,7 @@ ui64 GetAllocationUnit(
             break;
 
         case STORAGE_MEDIA_SSD_LOCAL:
+        case STORAGE_MEDIA_HDD_LOCAL:
             unit = 4_KB;    // custom pool can have any size
             break;
 

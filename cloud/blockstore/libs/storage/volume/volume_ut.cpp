@@ -1601,28 +1601,32 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
 
     void DoShouldMigrateAllBlocks(ui32 ioDepth, ui32 bandwidth)
     {
+        constexpr auto BlocksPerDevice =
+            DefaultDeviceBlockCount * DefaultDeviceBlockSize / DefaultBlockSize;
+        constexpr auto CacheMigrationIndexPerDeviceTimes = 8;
+
         NProto::TStorageServiceConfig config;
         config.SetAcquireNonReplicatedDevices(true);
         config.SetMaxMigrationBandwidth(bandwidth);
         config.SetMaxMigrationIoDepth(ioDepth);
+        config.SetMigrationIndexCachingInterval(
+            BlocksPerDevice / CacheMigrationIndexPerDeviceTimes);
         auto state = MakeIntrusive<TDiskRegistryState>();
         auto runtime = PrepareTestActorRuntime(config, state);
 
         TVolumeClient volume(*runtime);
 
-        const auto blocksPerDevice =
-            DefaultDeviceBlockCount * DefaultDeviceBlockSize / DefaultBlockSize;
-        const auto volumeBlockCount = blocksPerDevice * 2.5;
+        constexpr auto VolumeBlockCount = BlocksPerDevice * 2.5;
         // We will migrate only the first and third devices.
-        const auto migrationRangesPerDevice =
-            blocksPerDevice * DefaultBlockSize / ProcessingRangeSize;
-        const auto rangesToMigrateCount = migrationRangesPerDevice * 2;
-        const auto totalRangesInVolume = migrationRangesPerDevice * 3;
+        constexpr auto MigrationRangesPerDevice =
+            BlocksPerDevice * DefaultBlockSize / ProcessingRangeSize;
+        constexpr auto RangesToMigrateCount = MigrationRangesPerDevice * 2;
+        constexpr auto TotalRangesInVolume = MigrationRangesPerDevice * 3;
         auto getDeviceBlocks = [&](ui32 deviceIndex) -> TBlockRange64
         {
             return TBlockRange64::WithLength(
-                blocksPerDevice * deviceIndex,
-                blocksPerDevice);
+                BlocksPerDevice * deviceIndex,
+                BlocksPerDevice);
         };
         auto getMigrationRangeIndexByBlockStart = [&](ui64 start) -> ui32 {
             return start * DefaultBlockSize / ProcessingRangeSize;
@@ -1637,27 +1641,39 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
             false,
             1,
             NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
-            volumeBlockCount);
+            VolumeBlockCount);
 
         volume.WaitReady();
 
         state->MigrationMode = EMigrationMode::InProgress;
-        TVector<bool> migratedRanges(totalRangesInVolume);
+        TVector<bool> migratedRanges(TotalRangesInVolume);
         ui32 totalMigratedRangesCount = 0;
+        ui32 migrationStateUpdatedCount = 0;
 
         auto countMigratedRanges =
             [&](TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event)
         {
             using TMigratedEvent = TEvNonreplPartitionPrivate::TEvRangeMigrated;
 
-            const auto migratedEvent =
-                TEvNonreplPartitionPrivate::EvRangeMigrated;
-
-            if (event->GetTypeRewrite() == migratedEvent) {
-                auto migratedRange = event->Get<TMigratedEvent>()->Range;
-                migratedRanges[getMigrationRangeIndexByBlockStart(
-                    migratedRange.Start)] = true;
-                ++totalMigratedRangesCount;
+            switch (event->GetTypeRewrite()) {
+                case TEvNonreplPartitionPrivate::EvRangeMigrated: {
+                    auto migratedRange = event->Get<TMigratedEvent>()->Range;
+                    migratedRanges[getMigrationRangeIndexByBlockStart(
+                        migratedRange.Start)] = true;
+                    ++totalMigratedRangesCount;
+                    break;
+                }
+                case TEvVolume::EvUpdateMigrationState: {
+                    auto* ev = event->Get<TEvVolume::TEvUpdateMigrationState>();
+                    constexpr auto CacheMigrationIndexTimes =
+                        RangesToMigrateCount /
+                        CacheMigrationIndexPerDeviceTimes;
+                    auto expectedIndex = ++migrationStateUpdatedCount *
+                                         BlocksPerDevice /
+                                         CacheMigrationIndexTimes;
+                    UNIT_ASSERT_VALUES_EQUAL(expectedIndex, ev->MigrationIndex);
+                    break;
+                }
             }
 
             return TTestActorRuntime::DefaultObserverFunc(runtime, event);
@@ -1676,7 +1692,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         runtime->DispatchEvents(options);
 
         UNIT_ASSERT_VALUES_EQUAL(
-            rangesToMigrateCount,
+            RangesToMigrateCount,
             totalMigratedRangesCount);
 
         // Check that all blocks of the first and third device have been
@@ -1685,7 +1701,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         {
             auto deviceBlocks = getDeviceBlocks(deviceIndex);
             ui32 start = getMigrationRangeIndexByBlockStart(deviceBlocks.Start);
-            ui32 end = start + migrationRangesPerDevice;
+            ui32 end = start + MigrationRangesPerDevice;
             for (ui32 i = start; i != end; ++i) {
                 UNIT_ASSERT_VALUES_EQUAL_C(
                     true,

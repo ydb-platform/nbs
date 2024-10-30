@@ -30,7 +30,8 @@ target_link_options(libs-storage-partition_nonrepl-model-ut PRIVATE
   -ldl
 )
 target_sources(libs-storage-partition_nonrepl-model-ut PRIVATE
-  ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/partition_nonrepl/model/changed_ranges_map_ut
+  ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/partition_nonrepl/model/changed_ranges_map_ut.cpp
+  ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/partition_nonrepl/model/disjoint_range_set_ut.cpp
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/partition_nonrepl/model/processing_blocks_ut.cpp
 )
 set_property(

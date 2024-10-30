@@ -69,8 +69,10 @@ public:
                 ? NCloud::NProto::STORAGE_MEDIA_SSD_MIRROR2
                 : diskId.StartsWith("mirror3-")
                 ? NCloud::NProto::STORAGE_MEDIA_SSD_MIRROR3
-                : diskId.StartsWith("local-")
+                : diskId.StartsWith("ssd-local-")
                 ? NCloud::NProto::STORAGE_MEDIA_SSD_LOCAL
+                : diskId.StartsWith("hdd-local-")
+                ? NCloud::NProto::STORAGE_MEDIA_HDD_LOCAL
                 : NCloud::NProto::STORAGE_MEDIA_SSD);
         }
 

@@ -177,6 +177,7 @@ private:
     TRequestCounters TotalSSDMirror2;
     TRequestCounters TotalSSDMirror3;
     TRequestCounters TotalSSDLocal;
+    TRequestCounters TotalHDDLocal;
     TRequestCounters TotalHDDNonrepl;
 
     THdrPercentiles HdrTotal;
@@ -186,6 +187,7 @@ private:
     THdrPercentiles HdrTotalSSDMirror2;
     THdrPercentiles HdrTotalSSDMirror3;
     THdrPercentiles HdrTotalSSDLocal;
+    THdrPercentiles HdrTotalHDDLocal;
     THdrPercentiles HdrTotalHDDNonrepl;
 
 public:
@@ -235,6 +237,12 @@ public:
                 TRequestCounters::EOption::AddSpecialCounters |
                 TRequestCounters::EOption::OnlyReadWriteRequests,
             histogramCounterOptions))
+        , TotalHDDLocal(MakeRequestCounters(
+            timer,
+            TRequestCounters::EOption::ReportDataPlaneHistogram |
+                TRequestCounters::EOption::AddSpecialCounters |
+                TRequestCounters::EOption::OnlyReadWriteRequests,
+            histogramCounterOptions))
         , TotalHDDNonrepl(MakeRequestCounters(
             timer,
             TRequestCounters::EOption::ReportDataPlaneHistogram |
@@ -262,6 +270,9 @@ public:
         auto ssdLocal = Counters->GetSubgroup("type", "ssd_local");
         TotalSSDLocal.Register(*ssdLocal);
 
+        auto hddLocal = Counters->GetSubgroup("type", "hdd_local");
+        TotalHDDLocal.Register(*hddLocal);
+
         auto hddNonrepl = Counters->GetSubgroup("type", "hdd_nonrepl");
         TotalHDDNonrepl.Register(*hddNonrepl);
 
@@ -273,6 +284,7 @@ public:
             HdrTotalSSDMirror2.Register(*ssdMirror2);
             HdrTotalSSDMirror3.Register(*ssdMirror3);
             HdrTotalSSDLocal.Register(*ssdLocal);
+            HdrTotalHDDLocal.Register(*ssdLocal);
             HdrTotalHDDNonrepl.Register(*hddNonrepl);
         }
     }
@@ -490,6 +502,7 @@ public:
         TotalSSDMirror2.UpdateStats(updatePercentiles);
         TotalSSDMirror3.UpdateStats(updatePercentiles);
         TotalSSDLocal.UpdateStats(updatePercentiles);
+        TotalHDDLocal.UpdateStats(updatePercentiles);
         TotalHDDNonrepl.UpdateStats(updatePercentiles);
 
         if (updatePercentiles && IsServerSide) {
@@ -500,6 +513,7 @@ public:
             HdrTotalSSDMirror2.UpdateStats();
             HdrTotalSSDMirror3.UpdateStats();
             HdrTotalSSDLocal.UpdateStats();
+            HdrTotalHDDLocal.UpdateStats();
             HdrTotalHDDNonrepl.UpdateStats();
         }
     }
@@ -519,6 +533,8 @@ private:
                 return TotalSSDMirror3;
             case NCloud::NProto::STORAGE_MEDIA_SSD_LOCAL:
                 return TotalSSDLocal;
+            case NCloud::NProto::STORAGE_MEDIA_HDD_LOCAL:
+                return TotalHDDLocal;
             case NCloud::NProto::STORAGE_MEDIA_HDD_NONREPLICATED:
                 return TotalHDDNonrepl;
             default:
@@ -540,6 +556,8 @@ private:
                 return HdrTotalSSDMirror3;
             case NCloud::NProto::STORAGE_MEDIA_SSD_LOCAL:
                 return HdrTotalSSDLocal;
+            case NCloud::NProto::STORAGE_MEDIA_HDD_LOCAL:
+                return HdrTotalHDDLocal;
             case NCloud::NProto::STORAGE_MEDIA_HDD_NONREPLICATED:
                 return HdrTotalHDDNonrepl;
             default:

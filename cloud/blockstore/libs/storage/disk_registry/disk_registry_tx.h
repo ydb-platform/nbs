@@ -1145,6 +1145,7 @@ struct TTxDiskRegistry
         const bool Force;
         const TString DiskId;
         const ui32 BlockSize;
+        const NProto::EStorageMediaKind MediaKind;
         const TVector<NProto::TDeviceConfig> Devices;
 
         NProto::TError Error;
@@ -1155,11 +1156,13 @@ struct TTxDiskRegistry
                 bool force,
                 TString diskId,
                 ui32 blockSize,
+                NProto::EStorageMediaKind mediaKind,
                 TVector<NProto::TDeviceConfig> devices)
             : RequestInfo(std::move(requestInfo))
             , Force(force)
             , DiskId(std::move(diskId))
-            , BlockSize(std::move(blockSize))
+            , BlockSize(blockSize)
+            , MediaKind(mediaKind)
             , Devices(std::move(devices))
         {}
 

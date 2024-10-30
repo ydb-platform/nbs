@@ -402,10 +402,8 @@ void TDiskRegistryState::AllowNotifications(
         return;
     }
 
-    if (disk.MediaKind == NProto::STORAGE_MEDIA_SSD_NONREPLICATED ||
-        disk.MediaKind == NProto::STORAGE_MEDIA_HDD_NONREPLICATED ||
-        disk.MediaKind == NProto::STORAGE_MEDIA_SSD_LOCAL)
-    {
+    Y_DEBUG_ABORT_UNLESS(IsDiskRegistryMediaKind(disk.MediaKind));
+    if (!IsReliableDiskRegistryMediaKind(disk.MediaKind)) {
         NotificationSystem.AllowNotifications(diskId);
     }
 }
@@ -582,8 +580,8 @@ void TDiskRegistryState::AddMigration(
     const TString& diskId,
     const TString& sourceDeviceId)
 {
-    if (disk.MediaKind == NProto::STORAGE_MEDIA_SSD_LOCAL
-            || disk.MediaKind == NProto::STORAGE_MEDIA_HDD_NONREPLICATED)
+    if (IsDiskRegistryLocalMediaKind(disk.MediaKind) ||
+        disk.MediaKind == NProto::STORAGE_MEDIA_HDD_NONREPLICATED)
     {
         return;
     }
@@ -715,7 +713,13 @@ void TDiskRegistryState::ProcessDirtyDevices(TVector<TDirtyDevice> dirtyDevices)
 {
     for (auto&& [uuid, diskId]: dirtyDevices) {
         if (!diskId.empty()) {
-            PendingCleanup.Insert(diskId, std::move(uuid));
+            auto error = PendingCleanup.Insert(diskId, std::move(uuid));
+            if (HasError(error)) {
+                ReportDiskRegistryInsertToPendingCleanupFailed(
+                    TStringBuilder()
+                    << "An error occurred while processing dirty devices: "
+                    << FormatError(error));
+            }
         }
     }
 }
@@ -1136,6 +1140,7 @@ TResultOrError<NProto::TDeviceConfig> TDiskRegistryState::AllocateReplacementDev
 
     // replacement device can come from dirty devices list
     db.DeleteDirtyDevice(deviceReplacementId);
+    PendingCleanup.EraseDevice(deviceReplacementId);
 
     // replacement device can come from automatically replaced devices list
     if (IsAutomaticallyReplaced(deviceReplacementId)) {
@@ -1262,6 +1267,20 @@ NProto::TError TDiskRegistryState::ReplaceDeviceWithoutDiskStateUpdate(
             return MakeError(E_INVALID_STATE, "can't find device");
         }
 
+        if (!manual && !deviceReplacementId.empty()) {
+            auto cleaningDiskId =
+                PendingCleanup.FindDiskId(deviceReplacementId);
+            if (!cleaningDiskId.empty() && cleaningDiskId != diskId) {
+                return MakeError(
+                    E_ARGUMENT,
+                    TStringBuilder()
+                        << "can't allocate specific device "
+                        << deviceReplacementId.Quote() << " for disk " << diskId
+                        << " since it is in pending cleanup for disk "
+                        << cleaningDiskId);
+            }
+        }
+
         const ui64 logicalBlockCount = devicePtr->GetBlockSize() * devicePtr->GetBlocksCount()
             / disk.LogicalBlockSize;
 
@@ -1364,7 +1383,12 @@ NProto::TError TDiskRegistryState::ReplaceDeviceWithoutDiskStateUpdate(
         UpdatePlacementGroup(db, diskId, disk, "ReplaceDevice");
         UpdateAndReallocateDisk(db, diskId, disk);
 
-        PendingCleanup.Insert(diskId, deviceId);
+        error = PendingCleanup.Insert(diskId, deviceId);
+        if (HasError(error)) {
+            ReportDiskRegistryInsertToPendingCleanupFailed(
+                TStringBuilder() << "An error occurred while replacing device: "
+                                 << FormatError(error));
+        }
     } catch (const TServiceError& e) {
         return MakeError(e.GetCode(), e.what());
     }
@@ -1959,7 +1983,8 @@ NProto::TError TDiskRegistryState::ValidateDiskLocation(
     const TVector<NProto::TDeviceConfig>& diskDevices,
     const TAllocateDiskParams& params) const
 {
-    if (params.MediaKind != NProto::STORAGE_MEDIA_SSD_LOCAL || diskDevices.empty()) {
+    if (!IsDiskRegistryLocalMediaKind(params.MediaKind) || diskDevices.empty())
+    {
         return {};
     }
 
@@ -2023,7 +2048,7 @@ TResultOrError<TDeviceList::TAllocationQuery> TDiskRegistryState::PrepareAllocat
         ? NProto::DEVICE_POOL_KIND_DEFAULT
         : NProto::DEVICE_POOL_KIND_GLOBAL;
 
-    if (params.MediaKind == NProto::STORAGE_MEDIA_SSD_LOCAL) {
+    if (IsDiskRegistryLocalMediaKind(params.MediaKind)) {
         poolKind = NProto::DEVICE_POOL_KIND_LOCAL;
     }
 
@@ -2752,10 +2777,16 @@ NProto::TError TDiskRegistryState::DeallocateDisk(
 
         for (const auto& affectedDiskId: affectedDisks) {
             Y_DEBUG_ABORT_UNLESS(affectedDiskId.StartsWith(diskId + "/"));
-            PendingCleanup.Insert(
+            error = PendingCleanup.Insert(
                 diskId,
                 DeallocateSimpleDisk(db, affectedDiskId, "DeallocateDisk:Replica")
             );
+            if (HasError(error)) {
+                ReportDiskRegistryInsertToPendingCleanupFailed(
+                    TStringBuilder()
+                    << "An error occurred while deallocating disk replica: "
+                    << affectedDiskId << ". " << FormatError(error));
+            }
         }
 
         DeleteDisk(db, diskId);
@@ -2764,10 +2795,13 @@ NProto::TError TDiskRegistryState::DeallocateDisk(
         return {};
     }
 
-    PendingCleanup.Insert(
-        diskId,
-        DeallocateSimpleDisk(db, diskId, *disk)
-    );
+    auto error =
+        PendingCleanup.Insert(diskId, DeallocateSimpleDisk(db, diskId, *disk));
+    if (HasError(error)) {
+        ReportDiskRegistryInsertToPendingCleanupFailed(
+            TStringBuilder() << "An error occurred while deallocating disk: "
+                             << FormatError(error));
+    }
 
     return {};
 }
@@ -4663,7 +4697,13 @@ void TDiskRegistryState::RemoveFinishedMigrations(
 
             DeviceList.ReleaseDevice(m.DeviceId);
             db.UpdateDirtyDevice(m.DeviceId, diskId);
-            PendingCleanup.Insert(diskId, m.DeviceId);
+            auto error = PendingCleanup.Insert(diskId, m.DeviceId);
+            if (HasError(error)) {
+                ReportDiskRegistryInsertToPendingCleanupFailed(
+                    TStringBuilder()
+                    << "An error occurred while removing finished migrations: "
+                    << FormatError(error));
+            }
 
             return true;
         }
@@ -6575,13 +6615,18 @@ NProto::TError TDiskRegistryState::AllocateDiskReplicas(
         for (ui32 i = 0; i < count; ++i) {
             const size_t idx = masterDisk->ReplicaCount + i + 1;
 
-            PendingCleanup.Insert(
+            auto error = PendingCleanup.Insert(
                 masterDiskId,
                 DeallocateSimpleDisk(
                     db,
                     GetReplicaDiskId(masterDiskId, idx),
-                    "AllocateDiskReplicas:Cleanup")
-            );
+                    "AllocateDiskReplicas:Cleanup"));
+            if (HasError(error)) {
+                ReportDiskRegistryInsertToPendingCleanupFailed(
+                    TStringBuilder() << "An error occurred while allocated "
+                                        "disk replica cleanup: "
+                                     << FormatError(error));
+            }
         }
     };
 
@@ -6650,10 +6695,16 @@ NProto::TError TDiskRegistryState::DeallocateDiskReplicas(
 
     for (size_t i = masterDisk->ReplicaCount; i >= newReplicaCount + 1; --i) {
         const auto replicaDiskId = GetReplicaDiskId(masterDiskId, i);
-        PendingCleanup.Insert(
+        auto error = PendingCleanup.Insert(
             masterDiskId,
-            DeallocateSimpleDisk(db, replicaDiskId, "DeallocateDiskReplicas")
-        );
+            DeallocateSimpleDisk(db, replicaDiskId, "DeallocateDiskReplicas"));
+        if (HasError(error)) {
+            ReportDiskRegistryInsertToPendingCleanupFailed(
+                TStringBuilder()
+                << "An error occurred while deallocating "
+                   "disk replica: "
+                << replicaDiskId << ". " << FormatError(error));
+        }
 
         // TODO (NBS-3418): update ReplicaTable
     }
@@ -6965,6 +7016,7 @@ NProto::TError TDiskRegistryState::CreateDiskFromDevices(
     bool force,
     const TDiskId& diskId,
     ui32 blockSize,
+    NProto::EStorageMediaKind mediaKind,
     const TVector<NProto::TDeviceConfig>& devices,
     TAllocateDiskResult* result)
 {
@@ -7045,9 +7097,7 @@ NProto::TError TDiskRegistryState::CreateDiskFromDevices(
     disk.LogicalBlockSize = blockSize;
     disk.StateTs = now;
     disk.State = CalculateDiskState(disk);
-    if (poolKind == NProto::DEVICE_POOL_KIND_LOCAL) {
-        disk.MediaKind = NProto::STORAGE_MEDIA_SSD_LOCAL;
-    }
+    disk.MediaKind = mediaKind;
 
     for (auto& uuid: deviceIds) {
         DeviceList.MarkDeviceAllocated(diskId, uuid);

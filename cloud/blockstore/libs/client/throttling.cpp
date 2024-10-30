@@ -95,6 +95,11 @@ public:
                 break;
             }
 
+            case NCloud::NProto::STORAGE_MEDIA_SSD_LOCAL:
+            case NCloud::NProto::STORAGE_MEDIA_HDD_LOCAL:
+                Y_DEBUG_ABORT_UNLESS(false);
+                [[fallthrough]];
+
             default: {
                 mediaKindProfile = &Profile.GetHDDProfile();
                 break;

@@ -3,11 +3,12 @@
 #include <cloud/blockstore/libs/client/session_test.h>
 #include <cloud/blockstore/libs/diagnostics/server_stats.h>
 #include <cloud/blockstore/libs/endpoints/endpoint_listener.h>
-
 #include <cloud/storage/core/libs/coroutine/executor.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
 #include <library/cpp/testing/unittest/registar.h>
+
+#include <util/string/vector.h>
 
 #include <variant>
 
@@ -180,7 +181,7 @@ struct TFixture
 
         volume.SetDiskId("vol0");
         volume.SetBlocksCount(10'000);
-        volume.SetBlockSize(4_KB);
+        volume.SetBlockSize(512);
         volume.SetStorageMediaKind(NProto::STORAGE_MEDIA_SSD_LOCAL);
 
         {
@@ -417,20 +418,28 @@ Y_UNIT_TEST_SUITE(TExternalEndpointTest)
             /*
                 --serial local0                     2
                 --disk-id vol0                      2
+                --block-size 512                    2
                 --socket-path /tmp/socket.vhost     2
+                --socket-access-mode ...            2
                 -q 2                                2
                 --device ...                        2
                 --device ...                        2
                 --read-only                         1
                 --wait-after-parent-exit ...        2
-                                                   15
+                                                   19
             */
 
-            UNIT_ASSERT_VALUES_EQUAL(15, create->CmdArgs.size());
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                19,
+                create->CmdArgs.size(),
+                JoinStrings(create->CmdArgs, " "));
             UNIT_ASSERT_VALUES_EQUAL("local0", GetArg(create->CmdArgs, "--serial"));
             UNIT_ASSERT_VALUES_EQUAL(
                 "vol0",
                 GetArg(create->CmdArgs, "--disk-id"));
+            UNIT_ASSERT_VALUES_EQUAL(
+                "512",
+                GetArg(create->CmdArgs, "--block-size"));
             UNIT_ASSERT_VALUES_EQUAL(
                 "30",
                 GetArg(create->CmdArgs, "--wait-after-parent-exit"));
@@ -448,13 +457,13 @@ Y_UNIT_TEST_SUITE(TExternalEndpointTest)
 
             UNIT_ASSERT_VALUES_EQUAL(TStringBuilder()
                     << "/dev/disk/by-path/pci-0000:00:16.0-sas-phy2-lun-0:"
-                    << (4'000 * 4_KB)
+                    << (4'000 * 512)
                     << ":32000",
                 devices[0]);
 
             UNIT_ASSERT_VALUES_EQUAL(TStringBuilder()
                     << "/dev/disk/by-path/pci-0000:00:16.0-sas-phy2-lun-0:"
-                    << (6'000 * 4_KB)
+                    << (6'000 * 512)
                     << ":0",
                 devices[1]);
 
@@ -499,7 +508,9 @@ Y_UNIT_TEST_SUITE(TExternalEndpointTest)
         /*
             --serial local0                     2
             --disk-id vol0                      2
+            --block-size 512                    2
             --socket-path /tmp/socket.vhost     2
+            --socket-access-mode ...            2
             -q 2                                2
             --device ...                        2
             --device ...                        2
@@ -508,10 +519,13 @@ Y_UNIT_TEST_SUITE(TExternalEndpointTest)
             --wait-after-parent-exit ...        2
             --encryption-mode ...               2
             --encryption-key-path ...           2
-                                               19
+                                               23
         */
 
-        UNIT_ASSERT_VALUES_EQUAL(19, create->CmdArgs.size());
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            23,
+            create->CmdArgs.size(),
+            JoinStrings(create->CmdArgs, " "));
 
         UNIT_ASSERT_VALUES_EQUAL(
             "aes-xts",
@@ -537,7 +551,9 @@ Y_UNIT_TEST_SUITE(TExternalEndpointTest)
         /*
             --serial local0                     2
             --disk-id vol0                      2
+            --block-size 512                    2
             --socket-path /tmp/socket.vhost     2
+            --socket-access-mode ...            2
             -q 2                                2
             --device ...                        2
             --device ...                        2
@@ -546,10 +562,13 @@ Y_UNIT_TEST_SUITE(TExternalEndpointTest)
             --wait-after-parent-exit ...        2
             --encryption-mode ...               2
             --encryption-keyring-id ...         2
-                                               19
+                                               23
         */
 
-        UNIT_ASSERT_VALUES_EQUAL(19, create->CmdArgs.size());
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            23,
+            create->CmdArgs.size(),
+            JoinStrings(create->CmdArgs, " "));
 
         UNIT_ASSERT_VALUES_EQUAL(
             "aes-xts",
@@ -579,7 +598,9 @@ Y_UNIT_TEST_SUITE(TExternalEndpointTest)
 
             /*
                 --serial local0                     2
+                --block-size 512                    2
                 --socket-path /tmp/socket.vhost     2
+                --socket-access-mode ...            2
                 -q 2                                2
                 --client-id ...                     2
                 --disk-id ...                       2
@@ -589,10 +610,13 @@ Y_UNIT_TEST_SUITE(TExternalEndpointTest)
                 --device ...                        2
                 --read-only                         1
                 --wait-after-parent-exit ...        2
-                                                   21
+                                                   23
             */
 
-            UNIT_ASSERT_VALUES_EQUAL(21, create->CmdArgs.size());
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                23,
+                create->CmdArgs.size(),
+                JoinStrings(create->CmdArgs, " "));
             UNIT_ASSERT_VALUES_EQUAL("local0", GetArg(create->CmdArgs, "--serial"));
 
             UNIT_ASSERT_VALUES_EQUAL(
