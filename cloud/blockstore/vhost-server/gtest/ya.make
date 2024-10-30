@@ -12,6 +12,7 @@ SRCS(
     ../server.cpp
     ../stats.cpp
 
+    ../request_aio_ut.cpp
     ../server_ut.cpp
 )
 

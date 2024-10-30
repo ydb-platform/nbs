@@ -1022,7 +1022,7 @@ TEST_P(TServerTest, ShouldStatAllZeroesBlocks)
 }
 
 INSTANTIATE_TEST_SUITE_P(
-    ValueParametrized,
+    ,
     TServerTest,
     testing::Combine(
         testing::Values(
