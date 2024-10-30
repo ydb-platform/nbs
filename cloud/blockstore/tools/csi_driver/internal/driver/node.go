@@ -581,9 +581,16 @@ func (s *nodeService) nodePublishDiskAsFilesystemDeprecated(
 		return err
 	}
 
-	targetPerm := os.FileMode(0775)
-	if err := os.MkdirAll(req.TargetPath, targetPerm); err != nil {
-		return fmt.Errorf("failed to create target directory: %w", err)
+	mounted, _ := s.mounter.IsMountPoint(req.TargetPath)
+	if !mounted {
+		targetPerm := os.FileMode(0775)
+		if err := os.MkdirAll(req.TargetPath, targetPerm); err != nil {
+			return fmt.Errorf("failed to create target directory: %w", err)
+		}
+
+		if err := os.Chmod(req.TargetPath, targetPerm); err != nil {
+			return fmt.Errorf("failed to chmod target path: %w", err)
+		}
 	}
 
 	mountOptions := []string{}
@@ -614,10 +621,6 @@ func (s *nodeService) nodePublishDiskAsFilesystemDeprecated(
 		}
 	}
 
-	if err := os.Chmod(req.TargetPath, targetPerm); err != nil {
-		return fmt.Errorf("failed to chmod target path: %w", err)
-	}
-
 	return nil
 }
 
@@ -632,9 +635,16 @@ func (s *nodeService) nodePublishDiskAsFilesystem(
 		return s.nodePublishDiskAsFilesystemDeprecated(ctx, req)
 	}
 
-	targetPerm := os.FileMode(0775)
-	if err := os.MkdirAll(req.TargetPath, targetPerm); err != nil {
-		return fmt.Errorf("failed to create target directory: %w", err)
+	mounted, _ = s.mounter.IsMountPoint(req.TargetPath)
+	if !mounted {
+		targetPerm := os.FileMode(0775)
+		if err := os.MkdirAll(req.TargetPath, targetPerm); err != nil {
+			return fmt.Errorf("failed to create target directory: %w", err)
+		}
+
+		if err := os.Chmod(req.TargetPath, targetPerm); err != nil {
+			return fmt.Errorf("failed to chmod target path: %w", err)
+		}
 	}
 
 	mountOptions := []string{"bind"}
@@ -1065,9 +1075,16 @@ func (s *nodeService) getEndpointDir(instanceId string, volumeId string) string 
 
 func (s *nodeService) mountSocketDir(sourcePath string, req *csi.NodePublishVolumeRequest) error {
 
-	targetPerm := os.FileMode(0775)
-	if err := os.MkdirAll(req.TargetPath, targetPerm); err != nil {
-		return fmt.Errorf("failed to create target directory: %w", err)
+	mounted, _ := s.mounter.IsMountPoint(req.TargetPath)
+	if !mounted {
+		targetPerm := os.FileMode(0775)
+		if err := os.MkdirAll(req.TargetPath, targetPerm); err != nil {
+			return fmt.Errorf("failed to create target directory: %w", err)
+		}
+
+		if err := os.Chmod(req.TargetPath, targetPerm); err != nil {
+			return fmt.Errorf("failed to chmod target path: %w", err)
+		}
 	}
 
 	mountOptions := []string{"bind"}
@@ -1148,22 +1165,29 @@ func (s *nodeService) mountBlockDevice(
 	target string,
 	readOnly bool) error {
 
-	if err := os.MkdirAll(filepath.Dir(target), os.FileMode(0750)); err != nil {
-		return fmt.Errorf("failed to create target directory: %w", err)
-	}
+	mounted, _ := s.mounter.IsMountPoint(target)
+	if !mounted {
+		if err := os.MkdirAll(filepath.Dir(target), os.FileMode(0750)); err != nil {
+			return fmt.Errorf("failed to create target directory: %w", err)
+		}
 
-	targetPerm := os.FileMode(0660)
-	file, err := os.OpenFile(target, os.O_CREATE, targetPerm)
-	if err != nil {
-		return fmt.Errorf("failed to create target file: %w", err)
+		targetPerm := os.FileMode(0660)
+		file, err := os.OpenFile(target, os.O_CREATE, targetPerm)
+		if err != nil {
+			return fmt.Errorf("failed to create target file: %w", err)
+		}
+		ignoreError(file.Close())
+
+		if err := os.Chmod(target, targetPerm); err != nil {
+			return fmt.Errorf("failed to chmod target path: %w", err)
+		}
 	}
-	ignoreError(file.Close())
 
 	mountOptions := []string{"bind"}
 	if readOnly {
 		mountOptions = append(mountOptions, "ro")
 	}
-	err = s.mountIfNeeded(volumeId, source, target, "", mountOptions)
+	err := s.mountIfNeeded(volumeId, source, target, "", mountOptions)
 	if err != nil {
 		return fmt.Errorf("failed to mount: %w", err)
 	}
