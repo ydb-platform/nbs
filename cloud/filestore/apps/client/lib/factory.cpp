@@ -35,6 +35,7 @@ TCommandPtr NewDestroySessionCommand();
 TCommandPtr NewStatCommand();
 TCommandPtr NewSetNodeAttrCommand();
 TCommandPtr NewFindGarbageCommand();
+TCommandPtr NewForcedCompactionCommand();
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -50,6 +51,7 @@ static const TMap<TString, TFactoryFunc> Commands = {
     { "destroysession", NewDestroySessionCommand },
     { "executeaction", NewExecuteActionCommand },
     { "findgarbage", NewFindGarbageCommand },
+    { "forcedcompaction", NewForcedCompactionCommand },
     { "kickendpoint", NewKickEndpointCommand },
     { "listclusternodes", NewListClusterNodesCommand },
     { "listendpoints", NewListEndpointsCommand },

@@ -498,3 +498,34 @@ def test_large_file():
 
     ret = common.canonical_file(results_path, local=True)
     return ret
+
+
+def test_forced_compaction():
+    data_file = os.path.join(common.output_path(), "data.txt")
+    chunk_size = 128 * 1024
+    chunk = []
+    for i in range(chunk_size):
+        chunk.append("a")
+    chunk_str = "".join(chunk)
+    with open(data_file, "w") as f:
+        f.write(chunk_str)
+
+    client, results_path = __init_test()
+    client.create("fs0", "test_cloud", "test_folder")
+
+    for i in range(128):
+        client.write(
+            "fs0",
+            "/aaa",
+            "--data", data_file,
+            "--offset", str(i * chunk_size))
+
+    result = client.forced_compaction("fs0").decode("utf8")
+
+    client.destroy("fs0")
+
+    with open(results_path, "w") as results_file:
+        results_file.write(result)
+
+    ret = common.canonical_file(results_path, local=True)
+    return ret
