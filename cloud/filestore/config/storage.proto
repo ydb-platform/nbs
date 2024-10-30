@@ -449,4 +449,10 @@ message TStorageConfig
     // rewriting the data belonging to this range.
     optional uint32 CompactRangeGarbagePercentageThreshold = 401;
     optional uint32 CompactRangeAverageBlobSizeThreshold = 402;
+
+    // Disables ThreeStageWrite for HDD filesystems.
+    optional bool ThreeStageWriteDisabledForHDD = 403;
+
+    // Disables TwoStageRead for HDD filesystems.
+    optional bool TwoStageReadDisabledForHDD = 404;
 }

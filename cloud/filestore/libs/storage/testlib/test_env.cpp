@@ -899,6 +899,12 @@ TStorageConfigPtr CreateTestStorageConfig(NProto::TStorageConfig storageConfig)
     storageConfig.SetSSDFreshChannelPoolKind("pool-kind-2");
     storageConfig.SetSSDMixedChannelPoolKind("pool-kind-2");
 
+    storageConfig.SetHybridSystemChannelPoolKind("pool-kind-2");
+    storageConfig.SetHybridLogChannelPoolKind("pool-kind-2");
+    storageConfig.SetHybridIndexChannelPoolKind("pool-kind-2");
+    storageConfig.SetHybridFreshChannelPoolKind("pool-kind-2");
+    storageConfig.SetHybridMixedChannelPoolKind("pool-kind-1");
+
     return std::make_shared<TStorageConfig>(storageConfig);
 }
 
