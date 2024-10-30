@@ -302,10 +302,11 @@ void PrepareIO(
         buffers,
         [blockSize = device.BlockSize](const vhd_buffer& buffer)
         {
-            return VHD_IS_ALIGNED((uintptr_t)buffer.base, blockSize) &&
+            return VHD_IS_ALIGNED(
+                       reinterpret_cast<uintptr_t>(buffer.base),
+                       blockSize) &&
                    VHD_IS_ALIGNED(buffer.len, blockSize);
-        }
-    );
+        });
 
     const bool needToAllocateBuffer =
         !isAllBuffersAligned || (encryptor && bio->type == VHD_BDEV_WRITE);
@@ -404,9 +405,9 @@ TAioRequestHolder TAioRequest::CreateNew(
     TCpuCycles submitTs)
 {
     const size_t totalSize = sizeof(TAioRequest) + sizeof(iovec) * bufferCount;
-    return std::unique_ptr<TAioRequest, TAioRequestDeleter>(
+    return TAioRequestHolder{
         new (std::calloc(1, totalSize))
-            TAioRequest(allocatedBufferSize, blockSize, io, submitTs));
+            TAioRequest(allocatedBufferSize, blockSize, io, submitTs)};
 }
 
 // static

@@ -101,7 +101,7 @@ private:
 struct TAioCompoundRequest
 {
     std::atomic<ui32> Inflight;
-    std::atomic<int> Errors;
+    std::atomic<ui32> Errors;
     vhd_io* Io;
     TCpuCycles SubmitTs;
     std::unique_ptr<char, TFreeDeleter> Buffer;
