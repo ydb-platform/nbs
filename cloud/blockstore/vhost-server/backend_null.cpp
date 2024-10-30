@@ -17,6 +17,8 @@ private:
     const ILoggingServicePtr Logging;
     TLog Log;
 
+    ui32 BlockSize = 0;
+
 public:
     explicit TNullBackend(ILoggingServicePtr logging);
 
@@ -42,18 +44,19 @@ vhd_bdev_info TNullBackend::Init(const TOptions& options)
 {
     Y_UNUSED(options);
 
-    i64 totalBytes = 0;
+    ui64 totalBytes = 0;
 
-    for (auto& chunk: options.Layout) {
+    for (const auto& chunk: options.Layout) {
         totalBytes += chunk.ByteCount;
     }
+    BlockSize = options.BlockSize;
 
     return {
         .serial = options.Serial.c_str(),
         .socket_path = options.SocketPath.c_str(),
-        .block_size = VHD_SECTOR_SIZE,
+        .block_size = BlockSize,
         .num_queues = options.QueueCount,   // Max count of virtio queues
-        .total_blocks = totalBytes / VHD_SECTOR_SIZE,
+        .total_blocks = totalBytes / BlockSize,
         .features = options.ReadOnly ? VHD_BDEV_F_READONLY : 0};
 }
 
@@ -78,11 +81,11 @@ void TNullBackend::ProcessQueue(
 
     struct vhd_bdev_io* bio = vhd_get_bdev_io(req.io);
     STORAGE_DEBUG(
-        "%s Index=%lu, BlocksCount=%lu, BlockSize=%llu",
+        "%s Index=%lu, BlocksCount=%lu, BlockSize=%u",
         bio->type == VHD_BDEV_READ ? "READ" : "WRITE",
         bio->first_sector,
         bio->total_sectors,
-        VHD_SECTOR_SIZE);
+        BlockSize);
 
     vhd_complete_bio(req.io, VHD_BDEV_SUCCESS);
 }

@@ -6,6 +6,7 @@
 #include <cloud/contrib/vhost/include/vhost/server.h>
 #include <cloud/storage/core/libs/common/format.h>
 #include <cloud/storage/core/libs/common/thread.h>
+#include <cloud/storage/core/libs/common/verify.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
 #include <util/stream/file.h>
@@ -123,6 +124,7 @@ private:
     TVector<TAioDevice> Devices;
 
     io_context_t Io = {};
+    ui32 BlockSize = 0;
 
     ui32 BatchSize = 0;
     TVector<TVector<iocb*>> Batches;
@@ -221,9 +223,15 @@ vhd_bdev_info TAioBackend::Init(const TOptions& options)
         flags |= EOpenModeFlag::Sync;
     }
 
+    BlockSize = options.BlockSize;
+    STORAGE_VERIFY(
+        BlockSize >= 512 && IsPowerOf2(BlockSize),
+        TWellKnownEntityTypes::ENDPOINT,
+        options.ClientId);
+
     Devices.reserve(options.Layout.size());
 
-    i64 totalBytes = 0;
+    ui64 totalBytes = 0;
 
     for (const auto& chunk: options.Layout) {
         TFileHandle file{chunk.DevicePath, flags};
@@ -233,7 +241,7 @@ vhd_bdev_info TAioBackend::Init(const TOptions& options)
             Y_ABORT("can't open %s: %s", chunk.DevicePath.c_str(), strerror(ret));
         }
 
-        i64 fileLen = file.Seek(0, sEnd);
+        ui64 fileLen = file.Seek(0, sEnd);
 
         Y_ABORT_UNLESS(
             fileLen,
@@ -261,7 +269,7 @@ vhd_bdev_info TAioBackend::Init(const TOptions& options)
         }
 
         Y_ABORT_UNLESS(
-            fileLen % VHD_SECTOR_SIZE == 0,
+            fileLen % BlockSize == 0,
             "%s: file size is not a multiple of the block size.",
             chunk.DevicePath.Quote().c_str());
 
@@ -276,7 +284,8 @@ vhd_bdev_info TAioBackend::Init(const TOptions& options)
             .StartOffset = totalBytes,
             .EndOffset = totalBytes + fileLen,
             .File = std::move(file),
-            .FileOffset = chunk.Offset});
+            .FileOffset = chunk.Offset,
+            .BlockSize = BlockSize});
 
         totalBytes += fileLen;
     }
@@ -284,9 +293,9 @@ vhd_bdev_info TAioBackend::Init(const TOptions& options)
     return {
         .serial = options.Serial.c_str(),
         .socket_path = options.SocketPath.c_str(),
-        .block_size = VHD_SECTOR_SIZE,
+        .block_size = BlockSize,
         .num_queues = options.QueueCount,   // Max count of virtio queues
-        .total_blocks = totalBytes / VHD_SECTOR_SIZE,
+        .total_blocks = totalBytes / BlockSize,
         .features = options.ReadOnly ? VHD_BDEV_F_READONLY : 0};
 }
 
