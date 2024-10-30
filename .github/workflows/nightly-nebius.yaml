@@ -1,11 +1,11 @@
-name: Nightly build
+name: Nightly build (nebius)
 run-name: |
   ${{ github.event_name == 'workflow_dispatch'
       && format(
-          'Nightly build (manual) use_network_cache:{0} clean_ya_dir:{1} upload_ya_dir:{2}, disk_type:{3}, build_target:{4} test_target:{5}',
+          'Nightly build (nebius) (manual) use_network_cache:{0} clean_ya_dir:{1} upload_ya_dir:{2}, disk_type:{3}, build_target:{4} test_target:{5}',
           inputs.use_network_cache, inputs.clean_ya_dir, inputs.upload_ya_dir, inputs.disk_type, inputs.build_target, inputs.test_target
         )
-      || format('Nightly build (schedule)')
+      || format('Nightly build (nebius) (schedule)')
     }}
 on:
   schedule:
