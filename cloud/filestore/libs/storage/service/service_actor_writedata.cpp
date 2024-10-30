@@ -28,7 +28,6 @@ bool IsThreeStageWriteEnabled(const NProto::TFileStore& fs)
 {
     const auto isHdd = fs.GetStorageMediaKind() == NProto::STORAGE_MEDIA_HYBRID
         || fs.GetStorageMediaKind() == NProto::STORAGE_MEDIA_HDD;
-
     const auto disabledAsHdd = isHdd &&
         fs.GetFeatures().GetThreeStageWriteDisabledForHDD();
     return !disabledAsHdd && fs.GetFeatures().GetThreeStageWriteEnabled();
