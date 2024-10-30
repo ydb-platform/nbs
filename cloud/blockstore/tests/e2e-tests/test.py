@@ -1,5 +1,7 @@
 import logging
 import pytest
+import os
+import shutil
 import subprocess
 import tempfile
 
@@ -227,3 +229,77 @@ def test_resize_device(with_netlink, with_endpoint_proxy):
                 stderr=subprocess.STDOUT)
 
         cleanup_after_test(env)
+
+
+def test_do_not_restore_endpoint_with_missing_volume():
+    # Scenario:
+    # 1. run nbs
+    # 2. create volume and start endpoint
+    # 4. copy endpoint to backup folder
+    # 5. stop endpoint and remove volume
+    # 6. stop nbs
+    # 7. copy endpoint from backup folder to endpoints folder
+    # 8. run nbs
+    # 9. check that endpoint was removed from endpoints folder
+    env, run = init()
+
+    test_hash = hash(common.context.test_name)
+    endpoints_dir = Path(common.output_path()) / f"endpoints-{test_hash}"
+    backup_endpoints_dir = Path(common.output_path()) / f"backup-endpoints-{test_hash}"
+
+    volume_name = "example-disk"
+    block_size = 4096
+    blocks_count = 10000
+    nbd_device = "/dev/nbd0"
+    socket_path = "/tmp/nbd.sock"
+    try:
+        result = run(
+            "createvolume",
+            "--disk-id",
+            volume_name,
+            "--blocks-count",
+            str(blocks_count),
+            "--block-size",
+            str(block_size),
+        )
+        assert result.returncode == 0
+
+        result = run(
+            "startendpoint",
+            "--disk-id",
+            volume_name,
+            "--socket",
+            socket_path,
+            "--ipc-type",
+            "nbd",
+            "--persistent",
+            "--nbd-device",
+            nbd_device
+        )
+
+        shutil.copytree(endpoints_dir, backup_endpoints_dir)
+
+        result = run(
+            "stopendpoint",
+            "--socket",
+            socket_path,
+        )
+        assert result.returncode == 0
+
+        result = run(
+            *("destroyvolume", "--disk-id", volume_name),
+            **{"input": volume_name},
+        )
+        assert result.returncode == 0
+
+    except subprocess.CalledProcessError as e:
+        log_called_process_error(e)
+        raise
+
+    cleanup_after_test(env)
+
+    shutil.rmtree(endpoints_dir)
+    shutil.copytree(backup_endpoints_dir, endpoints_dir)
+    env, run = init()
+    assert not os.listdir(endpoints_dir)
+    cleanup_after_test(env)

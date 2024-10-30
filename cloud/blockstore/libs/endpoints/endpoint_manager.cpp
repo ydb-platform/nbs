@@ -629,6 +629,7 @@ private:
 
     void HandleRestoredEndpoint(
         const TString& socket,
+        const TString& endpointId,
         const NProto::TError& error);
 
     NProto::TError AddEndpointToStorage(
@@ -1533,14 +1534,17 @@ TFuture<void> TEndpointManager::DoRestoreEndpoints()
             std::move(request));
 
         auto weakPtr = weak_from_this();
-        future.Subscribe([weakPtr, socketPath] (const auto& f) {
+        future.Subscribe([weakPtr, socketPath, keyringId] (const auto& f) {
             const auto& response = f.GetValue();
             if (HasError(response)) {
                 ReportEndpointRestoringError();
             }
 
             if (auto ptr = weakPtr.lock()) {
-                ptr->HandleRestoredEndpoint(socketPath, response.GetError());
+                ptr->HandleRestoredEndpoint(
+                    socketPath,
+                    keyringId,
+                    response.GetError());
             }
         });
 
@@ -1552,11 +1556,20 @@ TFuture<void> TEndpointManager::DoRestoreEndpoints()
 
 void TEndpointManager::HandleRestoredEndpoint(
     const TString& socketPath,
+    const TString& endpointId,
     const NProto::TError& error)
 {
     if (HasError(error)) {
         STORAGE_ERROR("Failed to start endpoint " << socketPath.Quote()
             << ", error:" << FormatError(error));
+        if (FACILITY_FROM_CODE(error.GetCode()) == FACILITY_SCHEMESHARD &&
+            STATUS_FROM_CODE(error.GetCode()) == ENOENT)
+        {
+            STORAGE_INFO(
+                "Remove endpoint for non-existing volume. endpoint id: "
+                << endpointId.Quote());
+            EndpointStorage->RemoveEndpoint(endpointId);
+        }
     }
 
     Executor->Execute([socketPath, weakSelf = weak_from_this()] () mutable {
