@@ -519,15 +519,8 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateCreateTest)
             .Build();
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) {
-            TVector<TString> affectedDisks;
-            TVector<TString> disksToReallocate;
-
-            UNIT_ASSERT_SUCCESS(state.RegisterAgent(
-                db,
-                agentConfig,
-                Now(),
-                &affectedDisks,
-                &disksToReallocate));
+            UNIT_ASSERT_SUCCESS(
+                state.RegisterAgent(db, agentConfig, Now()).GetError());
 
             const auto d = state.GetDevice(testDeviceId);
             UNIT_ASSERT_C(d.GetDeviceUUID().empty(), d);
@@ -582,18 +575,17 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateCreateTest)
         });
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) {
-            TVector<TString> affectedDisks;
-            TVector<TString> disksToReallocate;
+            auto [r, error] = state.RegisterAgent(db, agentConfig, Now());
+            UNIT_ASSERT_SUCCESS(error);
 
-            UNIT_ASSERT_SUCCESS(state.RegisterAgent(
-                db,
-                agentConfig,
-                Now(),
-                &affectedDisks,
-                &disksToReallocate));
-
-            UNIT_ASSERT_VALUES_EQUAL_C(0, affectedDisks.size(), affectedDisks[0]);
-            UNIT_ASSERT_VALUES_EQUAL_C(0, disksToReallocate.size(), disksToReallocate[0]);
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                0,
+                r.AffectedDisks.size(),
+                r.AffectedDisks[0]);
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                0,
+                r.DisksToReallocate.size(),
+                r.DisksToReallocate[0]);
 
             UNIT_ASSERT_EQUAL(
                 NProto::DISK_STATE_ONLINE,

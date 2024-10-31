@@ -142,19 +142,11 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateSuspendTest)
         });
 
         WriteTx([&] (auto db) {
-            TVector<TString> affectedDisks;
-            TVector<TString> notifiedDisks;
+            auto [r, error] = state.RegisterAgent(db, Agents[1], Now());
+            UNIT_ASSERT_SUCCESS(error);
 
-            UNIT_ASSERT_SUCCESS(
-                state.RegisterAgent(
-                    db,
-                    Agents[1],
-                    Now(),
-                    &affectedDisks,
-                    &notifiedDisks));
-
-            UNIT_ASSERT_VALUES_EQUAL(0, affectedDisks.size());
-            UNIT_ASSERT_VALUES_EQUAL(0, notifiedDisks.size());
+            UNIT_ASSERT_VALUES_EQUAL(0, r.AffectedDisks.size());
+            UNIT_ASSERT_VALUES_EQUAL(0, r.DisksToReallocate.size());
             UNIT_ASSERT_VALUES_EQUAL(0, state.GetDirtyDevices().size());
 
             for (const auto& d: Agents[0].GetDevices()) {
