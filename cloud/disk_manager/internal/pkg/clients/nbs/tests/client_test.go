@@ -1530,3 +1530,7 @@ func TestReadFromProxyOverlayDiskWithMultipartitionBaseDisk(t *testing.T) {
 	err = client.ValidateCrc32(ctx, proxyOverlayDiskID, diskContentInfo)
 	require.NoError(t, err)
 }
+
+func TestXXX() {
+    time.Sleep(600*time.Second)
+}

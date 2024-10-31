@@ -28,7 +28,7 @@ struct TGrpcState
         Y_ABORT_UNLESS(AtomicGet(Counter) == 0);
     }
 
-    static TGrpcState* Instance()
+    static TGrpcState& Instance()
     {
         constexpr auto defaultPriority =
             TSingletonTraits<TGrpcState>::Priority;
@@ -36,7 +36,7 @@ struct TGrpcState
 
         // need priority less than default priority to ensure that TGrpcState
         // singleton lives longer than other singletons (like TApp)
-        return SingletonWithPriority<TGrpcState, defaultPriority - 1>();
+        return *SingletonWithPriority<TGrpcState, defaultPriority - 1>();
     }
 };
 
@@ -70,9 +70,9 @@ void AddLog(gpr_log_func_args* args)
         args->file,
         static_cast<ui32>(strlen(args->file))});
 
-    auto* state = TGrpcState::Instance();
+    auto& state = TGrpcState::Instance();
 
-    state->Log << LogSeverityToPriority(args->severity)
+    state.Log << LogSeverityToPriority(args->severity)
         << TSourceLocation(file.As<TStringBuf>(), args->line)
         << ": " << args->message;
 }
@@ -104,18 +104,18 @@ void EnableGRpcTracing()
 
 TGrpcInitializer::TGrpcInitializer()
 {
-    auto* state = TGrpcState::Instance();
+    auto& state = TGrpcState::Instance();
 
-    if (AtomicGetAndIncrement(state->Counter) == 0) {
+    if (AtomicGetAndIncrement(state.Counter) == 0) {
         grpc_init();
     }
 }
 
 TGrpcInitializer::~TGrpcInitializer()
 {
-    auto* state = TGrpcState::Instance();
+    auto& state = TGrpcState::Instance();
 
-    if (AtomicDecrement(state->Counter) == 0) {
+    if (AtomicDecrement(state.Counter) == 0) {
         grpc_shutdown_blocking();
     }
 }
@@ -124,8 +124,8 @@ TGrpcInitializer::~TGrpcInitializer()
 
 void GrpcLoggerInit(const TLog& log, bool enableTracing)
 {
-    auto* state = TGrpcState::Instance();
-    state->Log = log;
+    auto& state = TGrpcState::Instance();
+    state.Log = log;
     // |gpr_set_log_verbosity| and |gpr_set_log_function| do not imply any
     // memory barrier, so we need a full barrier here.
     std::atomic_thread_fence(std::memory_order_seq_cst);
