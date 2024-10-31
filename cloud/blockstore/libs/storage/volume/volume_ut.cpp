@@ -9054,6 +9054,111 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
     {
         DoShouldRejectRequestsWhenVolumeIsKilled(true, true);
     }
+
+    Y_UNIT_TEST(ShouldHandleAllocationErrorsWhenUpdatingConfig)
+    {
+        NProto::TStorageServiceConfig config;
+        config.SetAcquireNonReplicatedDevices(true);
+        config.SetMaxMigrationBandwidth(999'999'999);
+        auto state = MakeIntrusive<TDiskRegistryState>();
+        auto runtime = PrepareTestActorRuntime(config, state);
+
+        TVolumeClient volume(*runtime);
+
+        state->ReplicaCount = 2;
+
+        volume.UpdateVolumeConfig(
+            0,
+            0,
+            0,
+            0,
+            false,
+            1,
+            NCloud::NProto::STORAGE_MEDIA_SSD_MIRROR3,
+            32768    // block count
+        );
+
+        volume.WaitReady();
+
+        {
+            auto stat = volume.StatVolume();
+            const auto& devices = stat->Record.GetVolume().GetDevices();
+            const auto& replicas = stat->Record.GetVolume().GetReplicas();
+            UNIT_ASSERT_VALUES_EQUAL(1, devices.size());
+            UNIT_ASSERT_VALUES_EQUAL("transport0", devices[0].GetTransportId());
+
+            UNIT_ASSERT_VALUES_EQUAL(2, replicas.size());
+            UNIT_ASSERT_VALUES_EQUAL(1, replicas[0].DevicesSize());
+            UNIT_ASSERT_VALUES_EQUAL(
+                "transport1",
+                replicas[0].GetDevices(0).GetTransportId());
+            UNIT_ASSERT_VALUES_EQUAL(1, replicas[1].DevicesSize());
+            UNIT_ASSERT_VALUES_EQUAL(
+                "transport2",
+                replicas[1].GetDevices(0).GetTransportId());
+        }
+
+        int count = 0;
+        runtime->SetEventFilter(
+            [&](TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& ev)
+            {
+                if (ev->GetTypeRewrite() ==
+                        TEvDiskRegistry::EvAllocateDiskRequest &&
+                    count < 5)
+                {
+                    ++count;
+
+                    runtime->Send(new IEventHandle(
+                        ev->Sender,
+                        ev->Sender,
+                        new TEvDiskRegistry::TEvAllocateDiskResponse(
+                            MakeError(E_REJECTED, "Test #" + ToString(count))),
+                        0,
+                        ev->Cookie));
+
+                    return true;
+                }
+
+                return false;
+            });
+
+        volume.UpdateVolumeConfig(
+            0,
+            0,
+            0,
+            0,
+            false,
+            2,
+            NCloud::NProto::STORAGE_MEDIA_SSD_MIRROR3,
+            32768    // block count
+        );
+
+        UNIT_ASSERT_VALUES_EQUAL(1, count);
+
+        auto clientInfo = CreateVolumeClientInfo(
+            NProto::VOLUME_ACCESS_READ_WRITE,
+            NProto::VOLUME_MOUNT_LOCAL,
+            0);
+        {
+            auto response = volume.AddClient(clientInfo);
+            const auto& v = response->Record.GetVolume();
+            UNIT_ASSERT_VALUES_EQUAL(1, v.DevicesSize());
+            UNIT_ASSERT_VALUES_EQUAL(
+                "transport0",
+                v.GetDevices(0).GetTransportId()
+            );
+
+            UNIT_ASSERT_VALUES_EQUAL(2, v.ReplicasSize());
+            UNIT_ASSERT_VALUES_EQUAL(1, v.GetReplicas(0).DevicesSize());
+            UNIT_ASSERT_VALUES_EQUAL(
+                "transport1",
+                v.GetReplicas(0).GetDevices(0).GetTransportId());
+            UNIT_ASSERT_VALUES_EQUAL(1, v.GetReplicas(1).DevicesSize());
+            UNIT_ASSERT_VALUES_EQUAL(
+                "transport2",
+                v.GetReplicas(1).GetDevices(0).GetTransportId());
+        }
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage
