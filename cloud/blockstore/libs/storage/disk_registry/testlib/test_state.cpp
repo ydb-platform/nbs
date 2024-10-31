@@ -363,18 +363,8 @@ NProto::TError RegisterAgent(
     const NProto::TAgentConfig& config,
     TInstant timestamp)
 {
-    TVector<TString> affectedDisks;
-    TVector<TString> disksToReallocate;
-
-    auto error = state.RegisterAgent(
-        db,
-        config,
-        timestamp,
-        &affectedDisks,
-        &disksToReallocate
-    );
-    UNIT_ASSERT_VALUES_EQUAL(0, affectedDisks.size());
-    Y_UNUSED(disksToReallocate);
+    auto [r, error] = state.RegisterAgent(db, config, timestamp);
+    UNIT_ASSERT_VALUES_EQUAL(0, r.AffectedDisks.size());
 
     return error;
 }
