@@ -770,15 +770,15 @@ void TIndexTabletActor::HandleForcedOperationStatus(
     auto response = std::make_unique<TResponse>();
 
     const auto* state = FindForcedRangeOperation(request.GetOperationId());
-    if (!state) {
+    if (state) {
+        response->Record.SetRangeCount(state->RangesToCompact.size());
+        response->Record.SetProcessedRangeCount(state->Current);
+        response->Record.SetLastProcessedRangeId(state->GetCurrentRange());
+    } else {
         response->Record.MutableError()->CopyFrom(MakeError(
             E_NOT_FOUND,
             TStringBuilder() << "forced operation with id "
                 << request.GetOperationId() << "not found"));
-    } else {
-        response->Record.SetRangeCount(state->RangesToCompact.size());
-        response->Record.SetProcessedRangeCount(state->Current);
-        response->Record.SetLastProcessedRangeId(state->GetCurrentRange());
     }
 
     NCloud::Reply(ctx, *ev, std::move(response));

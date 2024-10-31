@@ -106,8 +106,8 @@ public:
             const auto processed = statusResponse.GetProcessedRangeCount();
             const auto total = statusResponse.GetRangeCount();
             if (processed >= total) {
-                Cout << "finished" << Endl;
                 // operation completed
+                Cout << "finished" << Endl;
                 break;
             }
 
