@@ -6,12 +6,11 @@ GENERATE_ENUM_SERIALIZATION(alloc.h)
 GENERATE_ENUM_SERIALIZATION(range_locks.h)
 
 SRCS(
-    profile_log_events.cpp
     alloc.cpp
     binary_reader.cpp
     binary_writer.cpp
-    blob.cpp
     blob_builder.cpp
+    blob.cpp
     block.cpp
     block_list.cpp
     block_list_decode.cpp
@@ -29,6 +28,7 @@ SRCS(
     node_index_cache.cpp
     node_session_stat.cpp
     operation.cpp
+    profile_log_events.cpp
     range_locks.cpp
     read_ahead.cpp
     sparse_segment.cpp
