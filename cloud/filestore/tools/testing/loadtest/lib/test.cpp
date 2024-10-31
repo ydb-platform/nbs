@@ -335,6 +335,9 @@ public:
 
     void SetupSession(TSetupSession& cmd)
     {
+        if (!Session) {
+            return;
+        }
         if (!ShouldStop()) {
             STORAGE_INFO("%s establishing session %lu",
                 MakeTestTag().c_str(), cmd.SessionSeqNo);
@@ -699,28 +702,27 @@ private:
             ProcessCompletedRequests();
         }
 
-        auto ctx = MakeIntrusive<TCallContext>();
+        if (Session) {
+            auto result = Session->DestroySession();
+            WaitForCompletion("destroy session", result);
 
-        auto result = Session->DestroySession();
-        WaitForCompletion("destroy session", result);
+            auto response = result.GetValue();
+            if (FAILED(response.GetError().GetCode())) {
+                STORAGE_INFO(
+                    "%s failed to destroy session: %s %lu %s",
+                    MakeTestTag().c_str(),
+                    SessionId.c_str(),
+                    SeqNo,
+                    response.GetError().GetMessage().c_str());
+                TestStats.Success = false;
+            }
 
+            if (cmd.Complete.Initialized()) {
+                cmd.Complete.SetValue(SUCCEEDED(response.GetError().GetCode()));
+            }
+        }
         if (Client) {
             Client->Stop();
-        }
-
-        auto response = result.GetValue();
-        if (FAILED(response.GetError().GetCode())) {
-            STORAGE_INFO(
-                "%s failed to destroy session: %s %lu %s",
-                MakeTestTag().c_str(),
-                SessionId.c_str(),
-                SeqNo,
-                response.GetError().GetMessage().c_str());
-             TestStats.Success = false;
-        }
-
-        if (cmd.Complete.Initialized()) {
-            cmd.Complete.SetValue(SUCCEEDED(response.GetError().GetCode()));
         }
     }
 
