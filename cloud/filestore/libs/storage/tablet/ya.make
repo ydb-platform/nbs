@@ -6,7 +6,6 @@ GENERATE_ENUM_SERIALIZATION(session.h)
 SRCS(
     checkpoint.cpp
     helpers.cpp
-    profile_log_events.cpp
     rebase_logic.cpp
     session.cpp
     shard_request_actor.cpp
