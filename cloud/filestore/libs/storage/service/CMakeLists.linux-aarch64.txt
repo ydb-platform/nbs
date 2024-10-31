@@ -37,11 +37,10 @@ target_sources(filestore-libs-storage-service PRIVATE
   ${CMAKE_SOURCE_DIR}/cloud/filestore/libs/storage/service/service_actor_actions_configure_shards.cpp
   ${CMAKE_SOURCE_DIR}/cloud/filestore/libs/storage/service/service_actor_actions_describe_sessions.cpp
   ${CMAKE_SOURCE_DIR}/cloud/filestore/libs/storage/service/service_actor_actions_drain_tablets.cpp
-  ${CMAKE_SOURCE_DIR}/cloud/filestore/libs/storage/service/service_actor_actions_forced_operation.cpp
   ${CMAKE_SOURCE_DIR}/cloud/filestore/libs/storage/service/service_actor_actions_get_storage_config.cpp
   ${CMAKE_SOURCE_DIR}/cloud/filestore/libs/storage/service/service_actor_actions_get_storage_config_fields.cpp
   ${CMAKE_SOURCE_DIR}/cloud/filestore/libs/storage/service/service_actor_actions_reassign_tablet.cpp
-  ${CMAKE_SOURCE_DIR}/cloud/filestore/libs/storage/service/service_actor_actions_unsafe_node_ops.cpp
+  ${CMAKE_SOURCE_DIR}/cloud/filestore/libs/storage/service/service_actor_actions_tablet_ops.cpp
   ${CMAKE_SOURCE_DIR}/cloud/filestore/libs/storage/service/service_actor_actions_write_compaction_map.cpp
   ${CMAKE_SOURCE_DIR}/cloud/filestore/libs/storage/service/service_actor_actions.cpp
   ${CMAKE_SOURCE_DIR}/cloud/filestore/libs/storage/service/service_actor_alterfs.cpp
@@ -67,4 +66,5 @@ target_sources(filestore-libs-storage-service PRIVATE
   ${CMAKE_SOURCE_DIR}/cloud/filestore/libs/storage/service/service_actor_update_stats.cpp
   ${CMAKE_SOURCE_DIR}/cloud/filestore/libs/storage/service/service_actor_writedata.cpp
   ${CMAKE_SOURCE_DIR}/cloud/filestore/libs/storage/service/service_state.cpp
+  ${CMAKE_SOURCE_DIR}/cloud/filestore/libs/storage/service/tablet_action_actor.cpp
 )
