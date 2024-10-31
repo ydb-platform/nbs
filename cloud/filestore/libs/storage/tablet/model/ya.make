@@ -28,6 +28,7 @@ SRCS(
     node_index_cache.cpp
     node_session_stat.cpp
     operation.cpp
+    profile_log_events.cpp
     range_locks.cpp
     read_ahead.cpp
     sparse_segment.cpp
@@ -38,6 +39,7 @@ SRCS(
 )
 
 PEERDIR(
+    cloud/filestore/libs/diagnostics/events
     cloud/filestore/libs/storage/api
     cloud/filestore/libs/storage/model
     cloud/filestore/private/api/protos

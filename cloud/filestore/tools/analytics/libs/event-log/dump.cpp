@@ -4,8 +4,8 @@
 
 #include <cloud/filestore/libs/diagnostics/events/profile_events.ev.pb.h>
 #include <cloud/filestore/libs/diagnostics/profile_log_events.h>
-#include <cloud/filestore/libs/storage/tablet/profile_log_events.h>
 #include <cloud/filestore/libs/service/request.h>
+#include <cloud/filestore/libs/storage/tablet/model/profile_log_events.h>
 
 #include <cloud/storage/core/libs/common/error.h>
 

@@ -4,7 +4,7 @@
 
 #include "command.h"
 
-#include <cloud/filestore/libs/storage/tablet/profile_log_events.h>
+#include <cloud/filestore/libs/storage/tablet/model/profile_log_events.h>
 #include <cloud/filestore/tools/analytics/libs/event-log/dump.h>
 #include <cloud/filestore/tools/analytics/libs/event-log/request_filter.h>
 #include <cloud/filestore/tools/analytics/profile_tool/lib/common_filter_params.h>

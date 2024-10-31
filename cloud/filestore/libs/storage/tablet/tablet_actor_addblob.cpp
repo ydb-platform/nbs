@@ -1,10 +1,11 @@
 #include "tablet_actor.h"
 
-#include "profile_log_events.h"
-
 #include <cloud/filestore/libs/diagnostics/critical_events.h>
 #include <cloud/filestore/libs/storage/tablet/model/group_by.h>
+#include <cloud/filestore/libs/storage/tablet/model/profile_log_events.h>
 
+#include <util/generic/hash.h>
+#include <util/generic/hash_set.h>
 #include <util/generic/set.h>
 
 namespace NCloud::NFileStore::NStorage {
@@ -23,7 +24,6 @@ class TAddBlobsExecutor
 private:
     const TString LogTag;
     TIndexTabletActor& Tablet;
-    const ui32 CompactionThreshold;
 
     struct TCompactionRangeInfo
     {
@@ -33,15 +33,10 @@ private:
     THashMap<ui32, TCompactionRangeInfo> RangeId2CompactionStats;
 
 public:
-    TAddBlobsExecutor(
-            TString logTag,
-            TIndexTabletActor& tablet,
-            ui32 compactionThreshold)
+    TAddBlobsExecutor(TString logTag, TIndexTabletActor& tablet)
         : LogTag(std::move(logTag))
         , Tablet(tablet)
-        , CompactionThreshold(compactionThreshold)
-    {
-    }
+    {}
 
 public:
     void Execute(
@@ -343,29 +338,24 @@ private:
             rangeIds.insert(rangeId);
         }
 
-        THashMap<ui32, ui32> rangeId2AddedBlobsCount;
+        THashSet<ui32> writtenRangeIds;
         for (auto& blob: args.MixedBlobs) {
             const auto rangeId = Tablet.GetMixedRangeIndex(blob.Blocks);
-            // Incrementing blobs count as there could be multiple blobs
-            // per compacted range see NBS-4424
             if (Tablet.WriteMixedBlocks(db, blob.BlobId, blob.Blocks)) {
-                ++rangeId2AddedBlobsCount[rangeId];
+                writtenRangeIds.insert(rangeId);
             }
 
             rangeIds.insert(rangeId);
         }
 
-        for (const auto& [rangeId, addedBlobsCount]: rangeId2AddedBlobsCount) {
-            auto& stats = AccessCompactionRangeInfo(rangeId).Stats;
-
-            // If addedBlobsCount >= compactionThreshold, then Compaction will
-            // enter an infinite loop
-            // A simple solution is to limit addedBlobsCount by threshold - 1
-            auto increment = addedBlobsCount;
-            if (increment >= CompactionThreshold && CompactionThreshold > 1) {
-                increment = CompactionThreshold - 1;
-            }
-            stats.BlobsCount += increment;
+        for (const auto& rangeId: writtenRangeIds) {
+            // Deliberately incrementing BlobsCount only once per range. The
+            // data belonging to a range might need to be stored in more than
+            // one blob due to hash collisions in the calculation of
+            // <nodeId, blockIndex> -> rangeId mapping. We don't want such
+            // situations to cause extra compactions and we thus treat such
+            // a group of blobs as a single "logical" blob in CompactionMap.
+            ++AccessCompactionRangeInfo(rangeId).Stats.BlobsCount;
         }
 
         // recalculating GarbageBlocksCount for each of the affected ranges
@@ -514,9 +504,7 @@ void TIndexTabletActor::ExecuteTx_AddBlob(
     TTransactionContext& tx,
     TTxIndexTablet::TAddBlob& args)
 {
-    const auto compactionThreshold =
-        ScaleCompactionThreshold(Config->GetCompactionThreshold());
-    TAddBlobsExecutor executor(LogTag, *this, compactionThreshold);
+    TAddBlobsExecutor executor(LogTag, *this);
     executor.Execute(ctx, tx, args);
 }
 

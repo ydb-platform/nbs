@@ -1,9 +1,8 @@
 #include "tablet_state_impl.h"
 
-#include "profile_log_events.h"
-
 #include <cloud/filestore/libs/storage/model/utils.h>
 #include <cloud/filestore/libs/storage/tablet/model/block.h>
+#include <cloud/filestore/libs/storage/tablet/model/profile_log_events.h>
 #include <cloud/filestore/libs/storage/tablet/model/split_range.h>
 
 #include <util/generic/guid.h>
@@ -1364,7 +1363,31 @@ void TIndexTabletState::StartForcedRangeOperation(
 
 void TIndexTabletState::CompleteForcedRangeOperation()
 {
+    Y_DEBUG_ABORT_UNLESS(ForcedRangeOperationState);
+    if (ForcedRangeOperationState && ForcedRangeOperationState->OperationId) {
+        ForcedRangeOperationState->Current =
+            ForcedRangeOperationState->RangesToCompact.size();
+        CompletedForcedRangeOperations.push_back(*ForcedRangeOperationState);
+    }
     ForcedRangeOperationState.Clear();
+}
+
+auto TIndexTabletState::FindForcedRangeOperation(
+    const TString& operationId) const -> const TForcedRangeOperationState*
+{
+    if (ForcedRangeOperationState
+            && ForcedRangeOperationState->OperationId == operationId)
+    {
+        return ForcedRangeOperationState.Get();
+    }
+
+    for (const auto& op: CompletedForcedRangeOperations) {
+        if (op.OperationId == operationId) {
+            return &op;
+        }
+    }
+
+    return nullptr;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
