@@ -4,8 +4,8 @@ import logging
 import subprocess
 import contrib.ydb.tests.library.common.yatest_common as yatest_common
 
-from contrib.ydb.tests.library.harness.daemon import Daemon
-from contrib.ydb.tests.library.harness.kikimr_runner import get_unique_path_for_current_test, ensure_path_exists
+from cloud.blockstore.pylibs.ydb.tests.library.harness.daemon import Daemon
+from cloud.blockstore.pylibs.ydb.tests.library.harness.kikimr_runner import get_unique_path_for_current_test, ensure_path_exists
 from cloud.blockstore.config.diagnostics_pb2 import TDiagnosticsConfig
 from cloud.blockstore.config.disk_pb2 import TDiskRegistryProxyConfig
 from cloud.blockstore.config.storage_pb2 import TStorageServiceConfig

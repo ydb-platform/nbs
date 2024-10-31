@@ -7,7 +7,7 @@ import uuid
 import yatest.common
 import yatest.common.network
 
-from contrib.ydb.tests.library.harness.daemon import Daemon
+from cloud.blockstore.pylibs.ydb.tests.library.harness.daemon import Daemon
 from .qmp import QmpClient
 
 logger = logging.getLogger(__name__)

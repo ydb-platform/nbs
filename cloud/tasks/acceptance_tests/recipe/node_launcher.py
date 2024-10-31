@@ -4,8 +4,8 @@ import time
 
 from yatest.common import process
 
-from contrib.ydb.tests.library.harness.daemon import Daemon
-from contrib.ydb.tests.library.harness.kikimr_runner import get_unique_path_for_current_test, ensure_path_exists
+from cloud.blockstore.pylibs.ydb.tests.library.harness.daemon import Daemon
+from cloud.blockstore.pylibs.ydb.tests.library.harness.kikimr_runner import get_unique_path_for_current_test, ensure_path_exists
 import contrib.ydb.tests.library.common.yatest_common as yatest_common
 
 from cloud.tasks.test.common.processes import register_process, kill_processes

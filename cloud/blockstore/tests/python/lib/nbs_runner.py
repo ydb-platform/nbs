@@ -21,7 +21,7 @@ from contrib.ydb.core.protos.config_pb2 import TLogConfig
 from contrib.ydb.core.protos import console_config_pb2 as console
 from contrib.ydb.core.protos import msgbus_pb2 as msgbus
 from contrib.ydb.public.api.protos.ydb_status_codes_pb2 import StatusIds
-from contrib.ydb.tests.library.harness.kikimr_runner import get_unique_path_for_current_test, ensure_path_exists
+from cloud.blockstore.pylibs.ydb.tests.library.harness.kikimr_runner import get_unique_path_for_current_test, ensure_path_exists
 
 logger = logging.getLogger(__name__)
 

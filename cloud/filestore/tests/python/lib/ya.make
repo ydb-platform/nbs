@@ -14,6 +14,7 @@ PEERDIR(
     contrib/python/retrying
 
     contrib/ydb/tests/library
+    cloud/blockstore/pylibs/ydb/tests/library
 )
 
 PY_SRCS(

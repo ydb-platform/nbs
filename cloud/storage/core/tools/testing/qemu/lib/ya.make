@@ -16,6 +16,7 @@ PEERDIR(
     library/python/retry
     library/python/testing/recipe
     contrib/ydb/tests/library
+    cloud/blockstore/pylibs/ydb/tests/library
 )
 
 END()

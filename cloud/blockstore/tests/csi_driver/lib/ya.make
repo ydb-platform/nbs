@@ -6,6 +6,7 @@ PEERDIR(
     cloud/storage/core/protos
     contrib/ydb/core/protos
     contrib/ydb/tests/library
+    cloud/blockstore/pylibs/ydb/tests/library
 )
 
 PY_SRCS(

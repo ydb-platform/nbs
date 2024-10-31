@@ -4,7 +4,7 @@ import yatest.common as common
 
 from google.protobuf.text_format import MessageToString
 
-from contrib.ydb.tests.library.harness.kikimr_runner import get_unique_path_for_current_test, ensure_path_exists
+from cloud.blockstore.pylibs.ydb.tests.library.harness.kikimr_runner import get_unique_path_for_current_test, ensure_path_exists
 from contrib.ydb.core.protos.config_pb2 import (
     TDomainsConfig,
     TStaticNameserviceConfig,

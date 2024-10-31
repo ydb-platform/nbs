@@ -15,7 +15,7 @@ from typing import List, Type
 from cloud.blockstore.pylibs import common
 from cloud.blockstore.pylibs.clusters.test_config import get_cluster_test_config
 from cloud.blockstore.pylibs.ycp import Ycp, YcpWrapper
-from contrib.ydb.tests.library.harness.kikimr_runner import (
+from cloud.blockstore.pylibs.ydb.tests.library.harness.kikimr_runner import (
     get_unique_path_for_current_test,
     ensure_path_exists
 )

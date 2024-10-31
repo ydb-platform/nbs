@@ -24,6 +24,7 @@ PEERDIR(
     contrib/python/requests/py3
     contrib/ydb/core/protos
     contrib/ydb/tests/library
+    cloud/blockstore/pylibs/ydb/tests/library
 )
 
 END()

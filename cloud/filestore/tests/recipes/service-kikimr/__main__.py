@@ -7,8 +7,8 @@ import google.protobuf.text_format as text_format
 
 from library.python.testing.recipe import declare_recipe, set_env
 
-from contrib.ydb.tests.library.harness.kikimr_cluster import kikimr_cluster_factory
-from contrib.ydb.tests.library.harness.kikimr_config import KikimrConfigGenerator
+from cloud.blockstore.pylibs.ydb.tests.library.harness.kikimr_cluster import kikimr_cluster_factory
+from cloud.blockstore.pylibs.ydb.tests.library.harness.kikimr_config import KikimrConfigGenerator
 
 from cloud.filestore.config.server_pb2 import TServerAppConfig, TKikimrServiceConfig
 from cloud.filestore.config.storage_pb2 import TStorageConfig
