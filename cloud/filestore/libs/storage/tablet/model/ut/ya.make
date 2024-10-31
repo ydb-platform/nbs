@@ -3,7 +3,6 @@ UNITTEST_FOR(cloud/filestore/libs/storage/tablet/model)
 INCLUDE(${ARCADIA_ROOT}/cloud/filestore/tests/recipes/small.inc)
 
 SRCS(
-    profile_log_events_ut.cpp
     block_list_ut.cpp
     channels_ut.cpp
     compaction_map_ut.cpp
@@ -16,6 +15,7 @@ SRCS(
     node_index_cache_ut.cpp
     node_session_stat_ut.cpp
     operation_ut.cpp
+    profile_log_events_ut.cpp
     range_locks_ut.cpp
     read_ahead_ut.cpp
     sparse_segment_ut.cpp
