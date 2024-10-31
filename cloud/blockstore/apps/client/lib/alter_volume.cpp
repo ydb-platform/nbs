@@ -79,9 +79,13 @@ protected:
 private:
     bool CheckOpts() const
     {
-        const auto* diskId = ParseResultPtr->FindLongOptParseResult("disk-id");
-        if (!diskId) {
+        if (!VolumeId) {
             STORAGE_ERROR("Disk id is required");
+            return false;
+        }
+
+        if (!ConfigVersion) {
+            STORAGE_ERROR("Config version is required");
             return false;
         }
 
