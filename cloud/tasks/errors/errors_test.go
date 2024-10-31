@@ -223,17 +223,15 @@ func TestErrorMessageWhenBothRetriableAndNonRetriableErrors(t *testing.T) {
 }
 
 func TestErrorMessageWithAndWithoutStacktrace(t *testing.T) {
-	checkError := func(err diskManagerError, hasStacktrace bool) {
-		require.Equal(t, ErrorMessage(err, true), err.CustomError(true))
-		require.Equal(t, ErrorMessage(err, false), err.CustomError(false))
-		require.Equal(t, err.Error(), err.CustomError(true))
+	checkError := func(err tasksError, hasStacktrace bool) {
+		require.Equal(t, ErrorForTracing(err), err.ErrorForTracing())
 
 		if hasStacktrace {
-			require.Contains(t, err.CustomError(true), err.CustomError(false))
-			require.Contains(t, err.CustomError(true), "runtime/debug.Stack()")
-			require.NotContains(t, err.CustomError(false), "runtime/debug.Stack()")
+			require.Contains(t, err.Error(), err.ErrorForTracing())
+			require.Contains(t, err.Error(), "runtime/debug.Stack()")
+			require.NotContains(t, err.ErrorForTracing(), "runtime/debug.Stack()")
 		} else {
-			require.Equal(t, err.CustomError(true), err.CustomError(false))
+			require.Equal(t, err.Error(), err.ErrorForTracing())
 		}
 	}
 
@@ -262,6 +260,5 @@ func TestErrorMessageWithAndWithoutStacktrace(t *testing.T) {
 	)
 
 	externalErr := fmt.Errorf("externalErr")
-	require.Equal(t, ErrorMessage(externalErr, true), externalErr.Error())
-	require.Equal(t, ErrorMessage(externalErr, false), externalErr.Error())
+	require.Equal(t, ErrorForTracing(externalErr), externalErr.Error())
 }

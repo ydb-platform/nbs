@@ -36,6 +36,6 @@ func AttributeString(key string, value string) attribute.KeyValue {
 func AttributeError(err error) attribute.KeyValue {
 	return attribute.String(
 		"error",
-		errors.ErrorMessage(err, false /*printStacktraces*/),
+		errors.ErrorForTracing(err),
 	)
 }

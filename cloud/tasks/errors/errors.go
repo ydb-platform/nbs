@@ -11,9 +11,9 @@ import (
 
 ////////////////////////////////////////////////////////////////////////////////
 
-type diskManagerError interface {
+type tasksError interface {
 	error
-	CustomError(printStacktraces bool) string
+	ErrorForTracing() string
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -49,21 +49,29 @@ func NewEmptyRetriableError() *RetriableError {
 }
 
 func (e *RetriableError) Error() string {
-	return e.CustomError(true /*printStacktraces*/)
-}
-
-func (e *RetriableError) CustomError(printStacktraces bool) string {
 	// We don't want to mention retriable errors created over non-retriable
 	// errors.
-	firstNonRetriableError := getFirstNonRetriableError(e)
-	if firstNonRetriableError != nil {
-		return firstNonRetriableError.CustomError(printStacktraces)
+	nonRetriableErr := NewEmptyNonRetriableError()
+	if errors.As(e, &nonRetriableErr) {
+		return nonRetriableErr.Error()
 	}
 
+	return fmt.Sprintf("%v: %v", e.message(), e.Err.Error())
+}
+
+func (e *RetriableError) ErrorForTracing() string {
+	nonRetriableErr := NewEmptyNonRetriableError()
+	if errors.As(e, &nonRetriableErr) {
+		return ErrorForTracing(nonRetriableErr)
+	}
+
+	return fmt.Sprintf("%v: %v", e.message(), ErrorForTracing(e.Err))
+}
+
+func (e *RetriableError) message() string {
 	return fmt.Sprintf(
-		"Retriable error, IgnoreRetryLimit=%v: %v",
+		"Retriable error, IgnoreRetryLimit=%v",
 		e.IgnoreRetryLimit,
-		ErrorMessage(e.Err, printStacktraces),
 	)
 }
 
@@ -117,20 +125,19 @@ func newNonRetriableError(err error, silent bool) *NonRetriableError {
 }
 
 func (e *NonRetriableError) Error() string {
-	return e.CustomError(true /*printStacktraces*/)
+	msg := fmt.Sprintf("%v: %v", e.message(), e.Err.Error())
+	return appendStackTrace(msg, e.stackTrace)
 }
 
-func (e *NonRetriableError) CustomError(printStacktraces bool) string {
-	msg := fmt.Sprintf(
-		"Non retriable error, Silent=%v: %v",
-		e.Silent,
-		ErrorMessage(e.Err, printStacktraces),
-	)
-	if printStacktraces {
-		msg = appendStackTrace(msg, e.stackTrace)
-	}
+func (e *NonRetriableError) ErrorForTracing() string {
+	return fmt.Sprintf("%v: %v", e.message(), ErrorForTracing(e.Err))
+}
 
-	return msg
+func (e *NonRetriableError) message() string {
+	return fmt.Sprintf(
+		"Non retriable error, Silent=%v",
+		e.Silent,
+	)
 }
 
 func (e *NonRetriableError) Unwrap() error {
@@ -166,14 +173,15 @@ func NewEmptyAbortedError() *AbortedError {
 }
 
 func (e *AbortedError) Error() string {
-	return e.CustomError(true /*printStacktraces*/)
+	return fmt.Sprintf("%v: %v", e.message(), e.Err.Error())
 }
 
-func (e *AbortedError) CustomError(printStacktraces bool) string {
-	return fmt.Sprintf(
-		"Aborted error: %v",
-		ErrorMessage(e.Err, printStacktraces),
-	)
+func (e *AbortedError) ErrorForTracing() string {
+	return fmt.Sprintf("%v: %v", e.message(), ErrorForTracing(e.Err))
+}
+
+func (e *AbortedError) message() string {
+	return "Aborted error"
 }
 
 func (e *AbortedError) Unwrap() error {
@@ -212,19 +220,16 @@ func NewEmptyNonCancellableError() *NonCancellableError {
 }
 
 func (e *NonCancellableError) Error() string {
-	return e.CustomError(true /*printStacktraces*/)
+	msg := fmt.Sprintf("%v: %v", e.message(), e.Err.Error())
+	return appendStackTrace(msg, e.stackTrace)
 }
 
-func (e *NonCancellableError) CustomError(printStacktraces bool) string {
-	msg := fmt.Sprintf(
-		"Non cancellable error: %v",
-		ErrorMessage(e.Err, printStacktraces),
-	)
-	if printStacktraces {
-		msg = appendStackTrace(msg, e.stackTrace)
-	}
+func (e *NonCancellableError) ErrorForTracing() string {
+	return fmt.Sprintf("%v: %v", e.message(), ErrorForTracing(e.Err))
+}
 
-	return msg
+func (e *NonCancellableError) message() string {
+	return "Non cancellable error"
 }
 
 func (e *NonCancellableError) Unwrap() error {
@@ -249,10 +254,14 @@ func NewWrongGenerationError() *WrongGenerationError {
 }
 
 func (e WrongGenerationError) Error() string {
-	return e.CustomError(true /*printStacktraces*/)
+	return e.message()
 }
 
-func (WrongGenerationError) CustomError( /*printStacktraces*/ bool) string {
+func (e WrongGenerationError) ErrorForTracing() string {
+	return e.message()
+}
+
+func (WrongGenerationError) message() string {
 	return "Wrong generation"
 }
 
@@ -265,10 +274,14 @@ func NewInterruptExecutionError() *InterruptExecutionError {
 }
 
 func (e InterruptExecutionError) Error() string {
-	return e.CustomError(true /*printStacktraces*/)
+	return e.message()
 }
 
-func (InterruptExecutionError) CustomError( /*printStacktraces*/ bool) string {
+func (e InterruptExecutionError) ErrorForTracing() string {
+	return e.message()
+}
+
+func (InterruptExecutionError) message() string {
 	return "Interrupt execution"
 }
 
@@ -293,16 +306,16 @@ func (e PanicError) Reraise() {
 }
 
 func (e PanicError) Error() string {
-	return e.CustomError(true /*printStacktraces*/)
+	msg := e.message()
+	return appendStackTrace(msg, e.stackTrace)
 }
 
-func (e PanicError) CustomError(printStacktraces bool) string {
-	msg := fmt.Sprintf("panic: %v", e.value)
-	if printStacktraces {
-		msg = appendStackTrace(msg, e.stackTrace)
-	}
+func (e PanicError) ErrorForTracing() string {
+	return e.message()
+}
 
-	return msg
+func (e PanicError) message() string {
+	return fmt.Sprintf("panic: %v", e.value)
 }
 
 func IsPanicError(err error) bool {
@@ -337,10 +350,14 @@ func newNotFoundError(taskID, idempotencyKey string) *NotFoundError {
 }
 
 func (e NotFoundError) Error() string {
-	return e.CustomError(true /*printStacktraces*/)
+	return e.message()
 }
 
-func (e NotFoundError) CustomError( /*printStacktraces*/ bool) string {
+func (e NotFoundError) ErrorForTracing() string {
+	return e.message()
+}
+
+func (e NotFoundError) message() string {
 	return fmt.Sprintf(
 		"No task with ID=%v, IdempotencyKey=%v",
 		e.TaskID,
@@ -392,15 +409,18 @@ func NewEmptyDetailedError() *DetailedError {
 }
 
 func (e *DetailedError) Error() string {
-	return e.CustomError(true /*printStacktraces*/)
+	return fmt.Sprintf("%v: %v", e.message(), e.Err.Error())
 }
 
-func (e *DetailedError) CustomError(printStacktraces bool) string {
+func (e *DetailedError) ErrorForTracing() string {
+	return fmt.Sprintf("%v: %v", e.message(), ErrorForTracing(e.Err))
+}
+
+func (e *DetailedError) message() string {
 	return fmt.Sprintf(
-		"Detailed error, Details=%v, Silent=%v: %v",
+		"Detailed error, Details=%v, Silent=%v",
 		e.Details,
 		e.Silent,
-		ErrorMessage(e.Err, printStacktraces),
 	)
 }
 
@@ -479,9 +499,9 @@ func IsSilent(err error) bool {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-func ErrorMessage(err error, printStacktraces bool) string {
-	if dmError, ok := err.(diskManagerError); ok {
-		return dmError.CustomError(printStacktraces)
+func ErrorForTracing(err error) string {
+	if tasksErr, ok := err.(tasksError); ok {
+		return tasksErr.ErrorForTracing()
 	}
 	return err.Error()
 }
@@ -490,12 +510,4 @@ func ErrorMessage(err error, printStacktraces bool) string {
 
 func appendStackTrace(errorMessage string, stackTrace []byte) string {
 	return fmt.Sprintf("%s\n%s", errorMessage, stackTrace)
-}
-
-func getFirstNonRetriableError(err error) *NonRetriableError {
-	nonRetriableErr := NewEmptyNonRetriableError()
-	if errors.As(err, &nonRetriableErr) {
-		return nonRetriableErr
-	}
-	return nil
 }

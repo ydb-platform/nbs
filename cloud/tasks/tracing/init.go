@@ -55,7 +55,7 @@ func SetError(span trace.Span, err *error) {
 	if *err != nil {
 		span.SetStatus(
 			codes.Error,
-			errors.ErrorMessage(*err, false /*printStacktraces*/),
+			errors.ErrorForTracing(*err),
 		)
 	}
 }
