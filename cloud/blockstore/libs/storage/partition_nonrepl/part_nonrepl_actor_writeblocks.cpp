@@ -170,7 +170,7 @@ bool TDiskAgentWriteActor::HandleError(
         Done(
             ctx,
             CreateResponse(std::move(error)),
-            timedout ? EStatus::Timedout : EStatus::Failed);
+            timedout ? EStatus::Timeout : EStatus::Fail);
 
         return true;
     }

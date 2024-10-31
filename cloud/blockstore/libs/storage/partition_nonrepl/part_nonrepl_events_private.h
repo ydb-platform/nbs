@@ -157,10 +157,10 @@ struct TEvNonreplPartitionPrivate
     {
         enum class EStatus
         {
-            Success,    // The request was completed successfully
-            Failed,     // The request was executed with an error
-            Timedout,   // The response from the server was not received during
-                        // the timeout.
+            Success,   // The request was completed successfully
+            Fail,      // The request was executed with an error
+            Timeout,   // The response from the server was not received during
+                       // the timeout.
         };
 
         NProto::TPartitionStats Stats;

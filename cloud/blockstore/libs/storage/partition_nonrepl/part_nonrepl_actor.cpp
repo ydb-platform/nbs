@@ -101,31 +101,16 @@ bool TNonreplicatedPartitionActor::HasBrokenDevice(
         return false;
     }
 
-    size_t silentBrokenCount = 0;
-    size_t brokenCount = 0;
-    for (const auto& stats: DeviceStats) {
-        switch (stats.DeviceStatus) {
-            case EDeviceStatus::Ok:
-            {
-                break;
-            }
-            case EDeviceStatus::SilentBroken: {
-                ++silentBrokenCount;
-                bool cooldownPassed = stats.CooldownPassed(
-                    ctx.Now(),
-                    Config->GetNonReplicatedAgentMaxTimeout());
-                brokenCount += cooldownPassed ? 1 : 0;
-                break;
-            }
-            case EDeviceStatus::Broken:{
-                ++silentBrokenCount;
-                ++brokenCount;
-                break;
-            }
-        }
-    }
-
-    return silent ? silentBrokenCount : brokenCount;
+    return AnyOf(
+        DeviceStats,
+        [&](const TDeviceStat& stat)
+        {
+            return stat.DeviceStatus == EDeviceStatus::Broken ||
+                   (stat.DeviceStatus == EDeviceStatus::SilentBroken &&
+                    (silent || stat.CooldownPassed(
+                                   ctx.Now(),
+                                   Config->GetNonReplicatedAgentMaxTimeout())));
+        });
 }
 
 TRequestTimeoutPolicy TNonreplicatedPartitionActor::MakeTimeoutPolicyForRequest(
@@ -238,14 +223,14 @@ template <typename TMethod>
 bool TNonreplicatedPartitionActor::InitRequests(
     const typename TMethod::TRequest& msg,
     const NActors::TActorContext& ctx,
-    TRequestInfo& requestInfo,
+    const TRequestInfo& requestInfo,
     const TBlockRange64& blockRange,
     TVector<TDeviceRequest>* deviceRequests,
     TRequestTimeoutPolicy* timeoutPolicy)
 {
     auto reply = [=] (
         const TActorContext& ctx,
-        TRequestInfo& requestInfo,
+        const TRequestInfo& requestInfo,
         NProto::TError error)
     {
         auto response = std::make_unique<typename TMethod::TResponse>(
@@ -328,13 +313,15 @@ bool TNonreplicatedPartitionActor::InitRequests(
         ctx.Now(),
         msg.Record.GetHeaders().GetIsBackgroundRequest());
 
+    Cout << "!!! set timeout " << timeoutPolicy->Timeout.ToString() << " " << timeoutPolicy->ErrorCode << Endl;
+
     return true;
 }
 
 template bool TNonreplicatedPartitionActor::InitRequests<TEvService::TWriteBlocksMethod>(
     const TEvService::TWriteBlocksMethod::TRequest& msg,
     const TActorContext& ctx,
-    TRequestInfo& requestInfo,
+    const TRequestInfo& requestInfo,
     const TBlockRange64& blockRange,
     TVector<TDeviceRequest>* deviceRequests,
     TRequestTimeoutPolicy* timeoutPolicy);
@@ -342,7 +329,7 @@ template bool TNonreplicatedPartitionActor::InitRequests<TEvService::TWriteBlock
 template bool TNonreplicatedPartitionActor::InitRequests<TEvService::TWriteBlocksLocalMethod>(
     const TEvService::TWriteBlocksLocalMethod::TRequest& msg,
     const TActorContext& ctx,
-    TRequestInfo& requestInfo,
+    const TRequestInfo& requestInfo,
     const TBlockRange64& blockRange,
     TVector<TDeviceRequest>* deviceRequests,
     TRequestTimeoutPolicy* timeoutPolicy);
@@ -350,7 +337,7 @@ template bool TNonreplicatedPartitionActor::InitRequests<TEvService::TWriteBlock
 template bool TNonreplicatedPartitionActor::InitRequests<TEvService::TZeroBlocksMethod>(
     const TEvService::TZeroBlocksMethod::TRequest& msg,
     const TActorContext& ctx,
-    TRequestInfo& requestInfo,
+    const TRequestInfo& requestInfo,
     const TBlockRange64& blockRange,
     TVector<TDeviceRequest>* deviceRequests,
     TRequestTimeoutPolicy* timeoutPolicy);
@@ -358,7 +345,7 @@ template bool TNonreplicatedPartitionActor::InitRequests<TEvService::TZeroBlocks
 template bool TNonreplicatedPartitionActor::InitRequests<TEvService::TReadBlocksMethod>(
     const TEvService::TReadBlocksMethod::TRequest& msg,
     const TActorContext& ctx,
-    TRequestInfo& requestInfo,
+    const TRequestInfo& requestInfo,
     const TBlockRange64& blockRange,
     TVector<TDeviceRequest>* deviceRequests,
     TRequestTimeoutPolicy* timeoutPolicy);
@@ -366,7 +353,7 @@ template bool TNonreplicatedPartitionActor::InitRequests<TEvService::TReadBlocks
 template bool TNonreplicatedPartitionActor::InitRequests<TEvService::TReadBlocksLocalMethod>(
     const TEvService::TReadBlocksLocalMethod::TRequest& msg,
     const TActorContext& ctx,
-    TRequestInfo& requestInfo,
+    const TRequestInfo& requestInfo,
     const TBlockRange64& blockRange,
     TVector<TDeviceRequest>* deviceRequests,
     TRequestTimeoutPolicy* timeoutPolicy);
@@ -374,7 +361,7 @@ template bool TNonreplicatedPartitionActor::InitRequests<TEvService::TReadBlocks
 template bool TNonreplicatedPartitionActor::InitRequests<TEvNonreplPartitionPrivate::TChecksumBlocksMethod>(
     const TEvNonreplPartitionPrivate::TChecksumBlocksMethod::TRequest& msg,
     const TActorContext& ctx,
-    TRequestInfo& requestInfo,
+    const TRequestInfo& requestInfo,
     const TBlockRange64& blockRange,
     TVector<TDeviceRequest>* deviceRequests,
     TRequestTimeoutPolicy* timeoutPolicy);
@@ -391,10 +378,12 @@ void TNonreplicatedPartitionActor::OnRequestCompleted(
             }
             break;
         }
-        case EStatus::Failed: {
+        case EStatus::Fail: {
             break;
         }
-        case EStatus::Timedout: {
+        case EStatus::Timeout: {
+            Cout << "!!! timeout" << operation.ExecutionTime.ToString() << Endl;
+
             for (ui32 deviceIndex: operation.DeviceIndices) {
                 OnRequestTimeout(deviceIndex, operation.ExecutionTime, now);
             }
@@ -455,6 +444,9 @@ void TNonreplicatedPartitionActor::OnRequestTimeout(
         }
     }
 
+    Cout << "!!! #" << deviceIndex << "  cumulative "
+         << stat.TimedOutStateDuration.ToString()
+         << " status=" << int(stat.DeviceStatus) << Endl;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

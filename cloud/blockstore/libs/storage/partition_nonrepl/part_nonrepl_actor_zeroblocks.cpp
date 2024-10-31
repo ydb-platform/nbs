@@ -165,7 +165,7 @@ bool TDiskAgentZeroActor::HandleError(
         Done(
             ctx,
             std::move(response),
-            timedout ? EStatus::Timedout : EStatus::Failed);
+            timedout ? EStatus::Timeout : EStatus::Fail);
 
         return true;
     }

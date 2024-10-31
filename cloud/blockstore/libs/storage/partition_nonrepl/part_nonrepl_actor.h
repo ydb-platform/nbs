@@ -136,7 +136,7 @@ private:
     bool InitRequests(
         const typename TMethod::TRequest& msg,
         const NActors::TActorContext& ctx,
-        TRequestInfo& requestInfo,
+        const TRequestInfo& requestInfo,
         const TBlockRange64& blockRange,
         TVector<TDeviceRequest>* deviceRequests,
         TRequestTimeoutPolicy* timeoutPolicy);
