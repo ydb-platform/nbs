@@ -9,8 +9,8 @@ SRCS(
     alloc.cpp
     binary_reader.cpp
     binary_writer.cpp
-    blob_builder.cpp
     blob.cpp
+    blob_builder.cpp
     block.cpp
     block_list.cpp
     block_list_decode.cpp
