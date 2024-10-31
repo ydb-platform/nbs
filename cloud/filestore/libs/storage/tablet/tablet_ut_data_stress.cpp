@@ -408,14 +408,14 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data_Stress)
             collidingBlocks.push_back(i * (BlockGroupSize << 16));
         }
 
+        const auto expectedWriteCount = nodeCount * collisions;
         // should be 140 x 64 x 4KiB == 35MiB for builds without slow sanitizers
-        const auto expectedBlockCount = nodeCount * collisions * BlockGroupSize;
+        const auto expectedBlockCount = expectedWriteCount * BlockGroupSize;
         const auto expectedBlobCount = static_cast<ui32>(ceil(
             static_cast<double>(expectedBlockCount) / (4_MB / block)));
         UNIT_ASSERT_C(
             compactionThreshold < expectedBlobCount,
             TStringBuilder() << "expectedBlobCount: " << expectedBlobCount);
-
         for (ui32 i = 0; i < nodeCount; ++i) {
             const auto id = CreateNode(
                 tablet,
@@ -455,8 +455,9 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data_Stress)
             UNIT_ASSERT_VALUES_EQUAL(
                 expectedBlockCount,
                 stats.GetMixedBlocksCount());
+            const auto expectedExcessBlobCount = compactionThreshold - 2;
             UNIT_ASSERT_VALUES_EQUAL(
-                expectedBlobCount,
+                expectedBlobCount + expectedExcessBlobCount,
                 stats.GetMixedBlobsCount());
             UNIT_ASSERT_VALUES_EQUAL(1, stats.GetUsedCompactionRanges());
             UNIT_ASSERT_VALUES_EQUAL(
@@ -467,9 +468,10 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data_Stress)
             UNIT_ASSERT_VALUES_EQUAL(1, stats.CompactionRangeStatsSize());
             UNIT_ASSERT_VALUES_EQUAL(
                 Sprintf(
-                    "r=1177944064 b=%u d=%u g=0",
+                    "r=1177944064 b=%u d=%u g=%u",
                     (compactionThreshold - 1),
-                    deletionMarkers),
+                    deletionMarkers,
+                    expectedExcessBlobCount * BlockGroupSize),
                 CompactionRangeToString(stats.GetCompactionRangeStats(0)));
         }
     }
