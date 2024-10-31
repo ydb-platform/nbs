@@ -233,7 +233,7 @@ void TBootstrap::InitHTTPServer()
         Configs->Options->MonitoringAddress,
         Configs->DiagnosticsConfig->GetNbsMonPort(),
         "This node is not registered in the NodeBroker. See "
-        "\"DisableNodeBrokerRegisterationOnDevicelessAgent\" in the disk agent "
+        "\"DisableNodeBrokerRegistrationOnDevicelessAgent\" in the disk agent "
         "config.");
 }
 
@@ -375,7 +375,7 @@ bool TBootstrap::InitKikimrService()
     STORAGE_INFO("Configs initialized");
 
     if (const auto& agentConfig = Configs->DiskAgentConfig;
-        agentConfig->GetDisableNodeBrokerRegisterationOnDevicelessAgent())
+        agentConfig->GetDisableNodeBrokerRegistrationOnDevicelessAgent())
     {
         if (!agentConfig->GetEnabled()) {
             STORAGE_INFO(

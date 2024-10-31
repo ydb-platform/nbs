@@ -1,11 +1,13 @@
 #include "logging.h"
 
-#include <library/cpp/logger/log.h>
-
 #include <contrib/libs/grpc/include/grpc/grpc.h>
 #include <contrib/libs/grpc/include/grpc/support/log.h>
 
+#include <library/cpp/logger/log.h>
+
 #include <util/system/src_location.h>
+
+#include <atomic>
 
 namespace NCloud {
 
@@ -78,6 +80,9 @@ void EnableGRpcTracing()
 void GrpcLoggerInit(const TLog& log, bool enableTracing)
 {
     Log = log;
+    // |gpr_set_log_verbosity| and |gpr_set_log_function| do not imply any
+    // memory barrier, so we need a full barrier here.
+    std::atomic_thread_fence(std::memory_order_seq_cst);
 
     gpr_set_log_verbosity(LogPriorityToSeverity(log.FiltrationLevel()));
     gpr_set_log_function(AddLog);

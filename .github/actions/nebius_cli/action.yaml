@@ -1,0 +1,55 @@
+name: Prepare nebius cli tool to display various parameters
+description: Install nebius cli and display vm IP
+inputs:
+  instance_id:
+    required: false
+    description: "runner instance-id"
+  sa_json:
+    required: true
+    description: ""
+outputs:
+  runner_ipv4:
+    value: ${{ steps.result.outputs.runner_ipv4 }}
+    description: "runner ipv4"
+
+runs:
+  using: composite
+  steps:
+    - name: env
+      shell: bash
+      run: |
+        echo "PATH=$PATH:/root/.nebius/bin" >> $GITHUB_ENV
+        echo "HOME=/root" >> $GITHUB_ENV
+    - name: install nebius cli
+      shell: bash
+      run: |
+        curl -sSL https://storage.ai.nebius.cloud/nebius/install.sh | bash
+    - name: configure nebius cli
+      shell: bash
+      run: |
+        cat <<EOF > sa.json
+        ${sa_json}
+        EOF
+
+        cat sa.json | jq -r '."subject-credentials"."private-key"' > private.pem
+        echo "::add-mask::$(cat sa.json | jq -r '."subject-credentials"."kid"')"
+        public_key_id=$(cat sa.json | jq -r '."subject-credentials"."kid"')
+        echo "::add-mask::$(cat sa.json | jq -r '."subject-credentials"."iss"')"
+        service_account_id=$(cat sa.json | jq -r '."subject-credentials"."iss"')
+        echo "::add-mask::tenant-e00en3r863f7me6wtd"
+        nebius profile create --endpoint api.eu-north1.nebius.cloud \
+                              --profile nbs-github-user-sa \
+                              --parent-id tenant-e00en3r863f7me6wtd \
+                              --public-key-id "${public_key_id}" \
+                              --private-key-file private.pem \
+                              --service-account-id "${service_account_id}"
+
+    - id: result
+      name: print ipv4 address of the vm
+      shell: bash
+      run: |
+        export GITHUB_RUNNER_IPV4=$(nebius compute instance get ${{ inputs.instance_id }} --format json | jq -r .network_interfaces[].primary_v4_address.one_to_one_nat.address)
+        export GITHUB_RUNNER_IPV4=$(nebius compute instance get --id ${{ inputs.instance_id }} --format json | jq -r '.status.network_interfaces[0].public_ip_address.address')
+        echo "GITHUB_RUNNER_IPV4=${GITHUB_RUNNER_IPV4}" >> $GITHUB_ENV
+        echo "runner_ipv4=${GITHUB_RUNNER_IPV4}" >> $GITHUB_OUTPUT
+        echo "ssh github@${GITHUB_RUNNER_IPV4}" | tee -a $GITHUB_SUMMARY

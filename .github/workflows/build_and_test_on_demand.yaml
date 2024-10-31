@@ -119,6 +119,13 @@ on:
         type: string
         default: "network-ssd-nonreplicated"
         description: "Disk type for VM"
+      nebius:
+        type: string
+        default: "no"
+        description: "Run on new nebius runners"
+
+env:
+  nebius: ${{ vars.GLOBAL_RUN_ON_NEBIUS == 'yes' || ((github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'nebius')) || inputs.nebius == 'yes') }}
 
 jobs:
   provide-runner:
@@ -127,10 +134,11 @@ jobs:
     if: always()
     runs-on: ubuntu-latest
     outputs:
-      label: ${{ steps.start-runner.outputs.label }}
-      instance-id: ${{ steps.start-runner.outputs.instance-id }}
-      runner_ipv4: ${{ steps.start-runner.outputs.external-ipv4 }}
-      runner_local_ipv4: ${{ steps.start-runner.outputs.local-ipv4 }}
+      label: ${{ steps.start-runner.outputs.label || steps.start-runner-nebius.outputs.label }}
+      instance-id: ${{ steps.start-runner.outputs.instance-id || steps.start-runner-nebius.outputs.instance-id }}
+      runner_ipv4: ${{ steps.start-runner.outputs.external-ipv4 || steps.start-runner-nebius.outputs.external-ipv4 }}
+      runner_local_ipv4: ${{ steps.start-runner.outputs.local-ipv4 || steps.start-runner-nebius.outputs.local-ipv4 }}
+      nebius: ${{ env.nebius == 'false' && 'no' || 'yes' }}
     steps:
       - name: checkout PR
         uses: actions/checkout@v4
@@ -154,7 +162,7 @@ jobs:
           submodules: true
       - name: Start runner
         id: start-runner
-        if: always()
+        if: env.nebius == 'false' && always() || false
         uses: ./.github/actions/runner_create
         timeout-minutes: 60
         with:
@@ -171,6 +179,27 @@ jobs:
           vm_disk_size: 1023
           vm_subnet: f8uh0ml4rhb45nde9p75
           vm_image: ${{ vars.IMAGE_ID_2204 }}
+          vm_labels: ${{ github.event.pull_request.number && format('pr={0},run={1}-{2},repo={3},owner={4}', github.event.pull_request.number, github.run_id, github.run_attempt, github.event.repository.name, github.repository_owner) || format('run={0}-{1},repo={2},owner={3}', github.run_id, github.run_attempt, github.event.repository.name, github.repository_owner) }}
+          vm_user_passwd: ${{ secrets.VM_USER_PASSWD }}
+      - name: Start runner (nebius)
+        id: start-runner-nebius
+        if: env.nebius == 'true' && always() || false
+        uses: ./.github/actions/nebius_runner_create
+        timeout-minutes: 60
+        with:
+          org: ydb-platform
+          team: nbs
+          repo_owner: ${{ github.repository_owner }}
+          repo: ${{ github.event.repository.name }}
+          service_account_key: ${{ secrets.NEW_NEBIUS_SA_JSON_CREDENTIALS }}
+          token: ${{ secrets.GH_PERSONAL_ACCESS_TOKEN }}
+          vm_parent_id: ${{ vars.NEBIUS_PARENT_ID }}
+          vm_name: ${{ github.event.pull_request.number && format('pr-{0}{1}-{2}-{3}', github.event.pull_request.number, inputs.vm_name_suffix, github.run_id, github.run_attempt) || format('run-{0}-{1}', github.run_id, github.run_attempt) }}
+          vm_preset: ${{ vars.NEBIUS_VM_PRESET }}
+          vm_disk_type: ${{ inputs.disk_type || 'network-ssd-nonreplicated' }}
+          vm_disk_size: 1023
+          vm_subnet: ${{ vars.NEBIUS_SUBNET_ID }}
+          vm_image: ${{ vars.NEBIUS_IMAGE_ID_2204 }}
           vm_labels: ${{ github.event.pull_request.number && format('pr={0},run={1}-{2},repo={3},owner={4}', github.event.pull_request.number, github.run_id, github.run_attempt, github.event.repository.name, github.repository_owner) || format('run={0}-{1},repo={2},owner={3}', github.run_id, github.run_attempt, github.event.repository.name, github.repository_owner) }}
           vm_user_passwd: ${{ secrets.VM_USER_PASSWD }}
 
@@ -199,6 +228,7 @@ jobs:
       upload_ya_dir: ${{ github.event == 'workflow_dispatch' && 'no' || inputs.upload_ya_dir}}
       clean_ya_dir: ${{ github.event == 'workflow_dispatch' && 'no' || inputs.clean_ya_dir }}
       use_network_cache: ${{ github.event == 'workflow_dispatch' && 'yes'|| inputs.use_network_cache }}
+      nebius: ${{ needs.provide-runner.outputs.nebius }}
     secrets: inherit
 
   sleep-if-needed:
@@ -249,11 +279,22 @@ jobs:
           submodules: true
       - name: Stop runner
         uses: ./.github/actions/runner_remove
-        if: always()
+        if: env.nebius == 'false' && always() || false
         timeout-minutes: 60
         with:
           service_account_key: ${{ secrets.NEBIUS_SA_JSON_CREDENTIALS }}
           token: ${{ secrets.GH_PERSONAL_ACCESS_TOKEN }}
           repo_owner: ${{ github.repository_owner }}
           repo: ${{ github.event.repository.name }}
+          vm_id: ${{ needs.provide-runner.outputs.instance-id }}
+      - name: Stop runner (nebius)
+        uses: ./.github/actions/nebius_runner_remove
+        if: env.nebius == 'true' && always() || false
+        timeout-minutes: 60
+        with:
+          service_account_key: ${{ secrets.NEW_NEBIUS_SA_JSON_CREDENTIALS }}
+          token: ${{ secrets.GH_PERSONAL_ACCESS_TOKEN }}
+          repo_owner: ${{ github.repository_owner }}
+          repo: ${{ github.event.repository.name }}
+          vm_parent_id: ${{ vars.NEBIUS_PARENT_ID }}
           vm_id: ${{ needs.provide-runner.outputs.instance-id }}

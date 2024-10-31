@@ -283,6 +283,9 @@ public:
     TVector<TString> GetDestroyFilestoreDenyList() const;
 
     bool GetSSProxyFallbackMode() const;
+
+    bool GetTwoStageReadDisabledForHDD() const;
+    bool GetThreeStageWriteDisabledForHDD() const;
 };
 
 }   // namespace NCloud::NFileStore::NStorage

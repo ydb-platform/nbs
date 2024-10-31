@@ -52,6 +52,10 @@ inputs:
     required: false
     default: 'yes'
     description: 'Use network cache'
+  nebius:
+    required: false
+    default: 'no'
+    description: 'Use nebius'
 
 runs:
   using: composite
@@ -201,9 +205,15 @@ runs:
     - name: postprocess junit report
       shell: bash --noprofile --norc -eo pipefail -x {0}
       run: |
+        echo "::group::muted-tests"
+        cat .github/config/muted_ya.txt
+        cat .github/config/muted_ya_nebius.txt
+        MUTED_CONFIG=".github/config/muted_ya.txt"
+        [ "${{ inputs.nebius }}" == "yes" ] && MUTED_CONFIG=".github/config/muted_ya_nebius.txt"
+        echo "::endgroup::"
         echo "::group::postprocess-junit"
         sudo -E -H -u github .github/scripts/tests/transform-ya-junit.py -i \
-          -m .github/config/muted_ya.txt \
+          -m "${MUTED_CONFIG}" \
           --ya-out "$OUT_DIR" \
           --log-url-prefix "$S3_WEBSITE_PREFIX/logs/" \
           --data-url-prefix "$S3_WEBSITE_PREFIX/test_data$GITHUB_WORKSPACE" \

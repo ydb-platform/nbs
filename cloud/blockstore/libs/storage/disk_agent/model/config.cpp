@@ -41,7 +41,7 @@ namespace {
     xxx(TemporaryAgent,                     bool,       false                 )\
     xxx(IOParserActorCount,                 ui32,       0                     )\
     xxx(OffloadAllIORequestsParsingEnabled, bool,       false                 )\
-    xxx(DisableNodeBrokerRegisterationOnDevicelessAgent, bool,         false  )\
+    xxx(DisableNodeBrokerRegistrationOnDevicelessAgent, bool,          false  )\
     xxx(MaxAIOContextEvents,                ui32,       1024                  )\
     xxx(PathsPerFileIOService,              ui32,       0                     )\
 // BLOCKSTORE_AGENT_CONFIG

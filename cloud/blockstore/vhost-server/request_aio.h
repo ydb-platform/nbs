@@ -47,10 +47,11 @@ using TAioCompoundRequestHolder = std::unique_ptr<TAioCompoundRequest>;
 
 struct TAioDevice
 {
-    i64 StartOffset = 0;
-    i64 EndOffset = 0;
+    ui64 StartOffset = 0;
+    ui64 EndOffset = 0;
     TFileHandle File;
-    i64 FileOffset = 0;
+    ui64 FileOffset = 0;
+    ui32 BlockSize = 0;
 };
 
 // Single IO request. Also map libvhost's vhd_buffer to iovec.
@@ -69,12 +70,17 @@ struct TAioRequest
     static TAioRequestHolder CreateNew(
         size_t bufferCount,
         size_t allocatedBufferSize,
+        ui32 blockSize,
         vhd_io* io,
         TCpuCycles submitTs);
     static TAioRequestHolder FromIocb(iocb* cb);
 
 private:
-    TAioRequest(size_t allocatedBufferSize, vhd_io* io, TCpuCycles submitTs);
+    TAioRequest(
+        size_t allocatedBufferSize,
+        ui32 blockSize,
+        vhd_io* io,
+        TCpuCycles submitTs);
 };
 
 // Cross-device sub IO request.
@@ -94,20 +100,22 @@ private:
 // Cross-device request shared info.
 struct TAioCompoundRequest
 {
-    std::atomic<int> Inflight;
-    std::atomic<int> Errors;
+    std::atomic<ui32> Inflight;
+    std::atomic<ui32> Errors;
     vhd_io* Io;
     TCpuCycles SubmitTs;
     std::unique_ptr<char, TFreeDeleter> Buffer;
 
     TAioCompoundRequest(
-        int inflight,
+        ui32 inflight,
+        ui32 blockSize,
         vhd_io* io,
         size_t bufferSize,
         TCpuCycles submitTs);
 
     static TAioCompoundRequestHolder CreateNew(
-        int inflight,
+        ui32 inflight,
+        ui32 blockSize,
         vhd_io* io,
         size_t bufferSize,
         TCpuCycles submitTs);
