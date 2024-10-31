@@ -22,7 +22,6 @@
 #include <util/generic/size_literals.h>
 #include <util/string/builder.h>
 #include <util/string/join.h>
-#include <util/string/vector.h>
 
 #include <tuple>
 
@@ -2820,7 +2819,7 @@ NProto::TError TDiskRegistryState::DeallocateDisk(
     STORAGE_DEBUG(
         "Disk %s is deallocated. Adding devices [%s] to pending cleanup",
         diskId.c_str(),
-        JoinStrings(devicesAllowedToBeCleaned, ",").c_str());
+        JoinSeq(", ", devicesAllowedToBeCleaned).c_str());
 
     auto error =
         PendingCleanup.Insert(diskId, std::move(devicesAllowedToBeCleaned));
@@ -5297,11 +5296,16 @@ NProto::TError TDiskRegistryState::PurgeHost(
         affectedDisks,
         timeout);
 
+    if (HasError(removeHostError)) {
+        ReportDiskRegistryPurgeHostError();
+    }
+
     STORAGE_LOG(
-        (HasError(removeHostError) ? TLOG_WARNING : TLOG_INFO),
+        (HasError(removeHostError) ? TLOG_ERR : TLOG_INFO),
         "Purge host %s requested. Remove host ended with the result: %s; "
-        "timeout: %lu",
+        "affectedDisks: [%s]; timeout: %lu",
         agent->GetAgentId().Quote().c_str(),
+        JoinSeq(", ", affectedDisks).c_str(),
         FormatError(removeHostError).c_str(),
         timeout.Seconds());
 
@@ -5491,10 +5495,10 @@ void TDiskRegistryState::CleanupAgentConfig(
 
     // Do not return the error from "TryToRemoveAgentDevices()" since
     // it's internal and shouldn't block node removal.
-    STORAGE_WARN(
-        "Could not remove device from agent %s: %s",
-        agent.GetAgentId().Quote().c_str(),
-        FormatError(error).c_str());
+    ReportDiskRegistryCleanupAgentConfigError(
+        TStringBuilder() << "Could not remove device from agent "
+                         << agent.GetAgentId().Quote() << ": "
+                         << FormatError(error));
 
     SuspendLocalDevices(db, agent);
 }

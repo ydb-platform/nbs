@@ -60,6 +60,8 @@ namespace NCloud::NBlockStore {
     xxx(BlockDigestMismatchInBlob)                                             \
     xxx(DiskRegistryResumeDeviceFailed)                                        \
     xxx(DiskRegistryAgentDevicePoolConfigMismatch)                             \
+    xxx(DiskRegistryPurgeHostError)                                            \
+    xxx(DiskRegistryCleanupAgentConfigError)                                   \
 // BLOCKSTORE_CRITICAL_EVENTS
 
 #define BLOCKSTORE_IMPOSSIBLE_EVENTS(xxx)                                      \
