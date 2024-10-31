@@ -122,6 +122,44 @@ void TFileSystem::Open(
         });
 }
 
+bool TFileSystem::ProcessAsynRelease(
+    TCallContextPtr callContext,
+    fuse_req_t req,
+    fuse_ino_t ino,
+    ui64 fh)
+{
+    with_lock(HandleOpsQueueLock) {
+        const auto& res = HandleOpsQueue->AddDestroyRequest(ino, fh);
+        if (res == THandleOpsQueue::EResult::QueueOveflow) {
+            STORAGE_DEBUG(
+                "HandleOpsQueue overflow, can't add destroy handle request to "
+                "queue #"
+                << ino << " @" << fh);
+            return false;
+        }
+        if (res == THandleOpsQueue::EResult::SerializationError) {
+            TStringBuilder msg;
+            msg << "Unable to add DestroyHandleRequest to HandleOpsQueue #"
+                << ino << " @" << fh << ". Serialization failed";
+
+            ReportHandleOpsQueueProcessError(msg);
+
+            ReplyError(
+                *callContext,
+                MakeError(
+                    E_FAIL,
+                    msg),
+                req,
+                0);
+            return true;
+        }
+    }
+    STORAGE_DEBUG(
+        "Destroy handle request added to queue #" << ino << " @" << fh);
+    ReplyError(*callContext, {}, req, 0);
+    return true;
+}
+
 void TFileSystem::Release(
     TCallContextPtr callContext,
     fuse_req_t req,
@@ -135,37 +173,12 @@ void TFileSystem::Release(
     }
 
     if (Config->GetAsyncDestroyHandleEnabled()) {
-        STORAGE_DEBUG("Add destroy handle request to queue #" << ino << " @" << fi->fh);
-        with_lock(HandleOpsQueueLock) {
-            const auto& res = HandleOpsQueue->AddDestroyRequest(ino, fi->fh);
-            if (res == THandleOpsQueue::EResult::QueueOveflow) {
-                // TODO(#1541): delay request
-                STORAGE_ERROR("Failed to add destroy handle request to queue");
-                ReplyError(
-                    *callContext,
-                    MakeError(E_FAIL, "HandleOpsQueue overflow"),
-                    req,
-                    0);
-                return;
-            }
-            if (res == THandleOpsQueue::EResult::SerializationError) {
-                TStringBuilder msg;
-                msg << "Unable to add DestroyHandleRequest to HandleOpsQueue #"
-                    << ino << " @" << fi->fh << ". Serialization failed";
-
-                ReportHandleOpsQueueProcessError(msg);
-
-                ReplyError(
-                    *callContext,
-                    MakeError(
-                        E_FAIL,
-                        msg),
-                    req,
-                    0);
-                return;
+        if (!ProcessAsynRelease(callContext, req, ino, fi->fh)) {
+            with_lock(DelayedReleaseQueueLock) {
+                DelayedReleaseQueue.push(
+                    TReleaseRequest(callContext, req, ino, fi->fh));
             }
         }
-        ReplyError(*callContext, {}, req, 0);
         return;
     }
 

@@ -313,8 +313,20 @@ void TFileSystem::ProcessHandleOpsQueue()
                     } else {
                         with_lock(HandleOpsQueueLock) {
                             HandleOpsQueue->Pop();
-                            // TODO(#1541): check if we have delayed request
-                            // due to queue overflow
+                        }
+                        with_lock(DelayedReleaseQueueLock) {
+                            if (!DelayedReleaseQueue.empty()) {
+                                const auto& nextRequest =
+                                    DelayedReleaseQueue.front();
+                                if (ProcessAsynRelease(
+                                        nextRequest.CallContext,
+                                        nextRequest.Req,
+                                        nextRequest.Ino,
+                                        nextRequest.Fh))
+                                {
+                                    DelayedReleaseQueue.pop();
+                                }
+                            }
                         }
                     }
                     ScheduleProcessHandleOpsQueue();

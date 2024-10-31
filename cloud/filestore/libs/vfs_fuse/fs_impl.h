@@ -44,6 +44,16 @@ struct TRangeLock
 
 ////////////////////////////////////////////////////////////////////////////////
 
+struct TReleaseRequest
+{
+    TCallContextPtr CallContext;
+    fuse_req_t Req;
+    fuse_ino_t Ino;
+    ui64 Fh;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
 class TFileSystem final
     : public IFileSystem
     , public std::enable_shared_from_this<TFileSystem>
@@ -74,6 +84,9 @@ private:
 
     THandleOpsQueuePtr HandleOpsQueue;
     TMutex HandleOpsQueueLock;
+
+    TQueue<TReleaseRequest> DelayedReleaseQueue;
+    TMutex DelayedReleaseQueueLock;
 
 public:
     TFileSystem(
@@ -404,6 +417,12 @@ private:
         const NCloud::NProto::TError& error,
         fuse_req_t req,
         const NProto::TNodeAttr& attrs);
+
+    bool ProcessAsynRelease(
+        TCallContextPtr callContext,
+        fuse_req_t req,
+        fuse_ino_t ino,
+        ui64 fh);
 
     void ClearDirectoryCache();
 
