@@ -24,7 +24,7 @@
 #include <cloud/storage/core/libs/common/scheduler.h>
 #include <cloud/storage/core/libs/common/timer.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
-#include <cloud/storage/core/libs/grpc/initializer.h>
+#include <cloud/storage/core/libs/grpc/init.h>
 #include <cloud/storage/core/libs/uds/client_storage.h>
 #include <cloud/storage/core/libs/uds/endpoint_poller.h>
 

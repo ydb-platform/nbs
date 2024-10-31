@@ -1600,28 +1600,32 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
 
     void DoShouldMigrateAllBlocks(ui32 ioDepth, ui32 bandwidth)
     {
+        constexpr auto BlocksPerDevice =
+            DefaultDeviceBlockCount * DefaultDeviceBlockSize / DefaultBlockSize;
+        constexpr auto CacheMigrationIndexPerDeviceTimes = 8;
+
         NProto::TStorageServiceConfig config;
         config.SetAcquireNonReplicatedDevices(true);
         config.SetMaxMigrationBandwidth(bandwidth);
         config.SetMaxMigrationIoDepth(ioDepth);
+        config.SetMigrationIndexCachingInterval(
+            BlocksPerDevice / CacheMigrationIndexPerDeviceTimes);
         auto state = MakeIntrusive<TDiskRegistryState>();
         auto runtime = PrepareTestActorRuntime(config, state);
 
         TVolumeClient volume(*runtime);
 
-        const auto blocksPerDevice =
-            DefaultDeviceBlockCount * DefaultDeviceBlockSize / DefaultBlockSize;
-        const auto volumeBlockCount = blocksPerDevice * 2.5;
+        constexpr auto VolumeBlockCount = BlocksPerDevice * 2.5;
         // We will migrate only the first and third devices.
-        const auto migrationRangesPerDevice =
-            blocksPerDevice * DefaultBlockSize / ProcessingRangeSize;
-        const auto rangesToMigrateCount = migrationRangesPerDevice * 2;
-        const auto totalRangesInVolume = migrationRangesPerDevice * 3;
+        constexpr auto MigrationRangesPerDevice =
+            BlocksPerDevice * DefaultBlockSize / ProcessingRangeSize;
+        constexpr auto RangesToMigrateCount = MigrationRangesPerDevice * 2;
+        constexpr auto TotalRangesInVolume = MigrationRangesPerDevice * 3;
         auto getDeviceBlocks = [&](ui32 deviceIndex) -> TBlockRange64
         {
             return TBlockRange64::WithLength(
-                blocksPerDevice * deviceIndex,
-                blocksPerDevice);
+                BlocksPerDevice * deviceIndex,
+                BlocksPerDevice);
         };
         auto getMigrationRangeIndexByBlockStart = [&](ui64 start) -> ui32 {
             return start * DefaultBlockSize / ProcessingRangeSize;
@@ -1636,26 +1640,38 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
             false,
             1,
             NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
-            volumeBlockCount);
+            VolumeBlockCount);
 
         volume.WaitReady();
 
         state->MigrationMode = EMigrationMode::InProgress;
-        TVector<bool> migratedRanges(totalRangesInVolume);
+        TVector<bool> migratedRanges(TotalRangesInVolume);
         ui32 totalMigratedRangesCount = 0;
+        ui32 migrationStateUpdatedCount = 0;
 
         auto countMigratedRanges = [&](TAutoPtr<IEventHandle>& event)
         {
             using TMigratedEvent = TEvNonreplPartitionPrivate::TEvRangeMigrated;
 
-            const auto migratedEvent =
-                TEvNonreplPartitionPrivate::EvRangeMigrated;
-
-            if (event->GetTypeRewrite() == migratedEvent) {
-                auto migratedRange = event->Get<TMigratedEvent>()->Range;
-                migratedRanges[getMigrationRangeIndexByBlockStart(
-                    migratedRange.Start)] = true;
-                ++totalMigratedRangesCount;
+            switch (event->GetTypeRewrite()) {
+                case TEvNonreplPartitionPrivate::EvRangeMigrated: {
+                    auto migratedRange = event->Get<TMigratedEvent>()->Range;
+                    migratedRanges[getMigrationRangeIndexByBlockStart(
+                        migratedRange.Start)] = true;
+                    ++totalMigratedRangesCount;
+                    break;
+                }
+                case TEvVolume::EvUpdateMigrationState: {
+                    auto* ev = event->Get<TEvVolume::TEvUpdateMigrationState>();
+                    constexpr auto CacheMigrationIndexTimes =
+                        RangesToMigrateCount /
+                        CacheMigrationIndexPerDeviceTimes;
+                    auto expectedIndex = ++migrationStateUpdatedCount *
+                                         BlocksPerDevice /
+                                         CacheMigrationIndexTimes;
+                    UNIT_ASSERT_VALUES_EQUAL(expectedIndex, ev->MigrationIndex);
+                    break;
+                }
             }
 
             return TTestActorRuntime::DefaultObserverFunc(event);
@@ -1674,7 +1690,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         runtime->DispatchEvents(options);
 
         UNIT_ASSERT_VALUES_EQUAL(
-            rangesToMigrateCount,
+            RangesToMigrateCount,
             totalMigratedRangesCount);
 
         // Check that all blocks of the first and third device have been
@@ -1683,7 +1699,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         {
             auto deviceBlocks = getDeviceBlocks(deviceIndex);
             ui32 start = getMigrationRangeIndexByBlockStart(deviceBlocks.Start);
-            ui32 end = start + migrationRangesPerDevice;
+            ui32 end = start + MigrationRangesPerDevice;
             for (ui32 i = start; i != end; ++i) {
                 UNIT_ASSERT_VALUES_EQUAL_C(
                     true,
@@ -9037,6 +9053,111 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
     Y_UNIT_TEST(ShouldRejectRequestsWhenTrackUsedAndMultiPartitionVolumesIsKilled)
     {
         DoShouldRejectRequestsWhenVolumeIsKilled(true, true);
+    }
+
+    Y_UNIT_TEST(ShouldHandleAllocationErrorsWhenUpdatingConfig)
+    {
+        NProto::TStorageServiceConfig config;
+        config.SetAcquireNonReplicatedDevices(true);
+        config.SetMaxMigrationBandwidth(999'999'999);
+        auto state = MakeIntrusive<TDiskRegistryState>();
+        auto runtime = PrepareTestActorRuntime(config, state);
+
+        TVolumeClient volume(*runtime);
+
+        state->ReplicaCount = 2;
+
+        volume.UpdateVolumeConfig(
+            0,
+            0,
+            0,
+            0,
+            false,
+            1,
+            NCloud::NProto::STORAGE_MEDIA_SSD_MIRROR3,
+            32768    // block count
+        );
+
+        volume.WaitReady();
+
+        {
+            auto stat = volume.StatVolume();
+            const auto& devices = stat->Record.GetVolume().GetDevices();
+            const auto& replicas = stat->Record.GetVolume().GetReplicas();
+            UNIT_ASSERT_VALUES_EQUAL(1, devices.size());
+            UNIT_ASSERT_VALUES_EQUAL("transport0", devices[0].GetTransportId());
+
+            UNIT_ASSERT_VALUES_EQUAL(2, replicas.size());
+            UNIT_ASSERT_VALUES_EQUAL(1, replicas[0].DevicesSize());
+            UNIT_ASSERT_VALUES_EQUAL(
+                "transport1",
+                replicas[0].GetDevices(0).GetTransportId());
+            UNIT_ASSERT_VALUES_EQUAL(1, replicas[1].DevicesSize());
+            UNIT_ASSERT_VALUES_EQUAL(
+                "transport2",
+                replicas[1].GetDevices(0).GetTransportId());
+        }
+
+        int count = 0;
+        runtime->SetEventFilter(
+            [&](TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& ev)
+            {
+                if (ev->GetTypeRewrite() ==
+                        TEvDiskRegistry::EvAllocateDiskRequest &&
+                    count < 5)
+                {
+                    ++count;
+
+                    runtime->Send(new IEventHandle(
+                        ev->Sender,
+                        ev->Sender,
+                        new TEvDiskRegistry::TEvAllocateDiskResponse(
+                            MakeError(E_REJECTED, "Test #" + ToString(count))),
+                        0,
+                        ev->Cookie));
+
+                    return true;
+                }
+
+                return false;
+            });
+
+        volume.UpdateVolumeConfig(
+            0,
+            0,
+            0,
+            0,
+            false,
+            2,
+            NCloud::NProto::STORAGE_MEDIA_SSD_MIRROR3,
+            32768    // block count
+        );
+
+        UNIT_ASSERT_VALUES_EQUAL(1, count);
+
+        auto clientInfo = CreateVolumeClientInfo(
+            NProto::VOLUME_ACCESS_READ_WRITE,
+            NProto::VOLUME_MOUNT_LOCAL,
+            0);
+        {
+            auto response = volume.AddClient(clientInfo);
+            const auto& v = response->Record.GetVolume();
+            UNIT_ASSERT_VALUES_EQUAL(1, v.DevicesSize());
+            UNIT_ASSERT_VALUES_EQUAL(
+                "transport0",
+                v.GetDevices(0).GetTransportId()
+            );
+
+            UNIT_ASSERT_VALUES_EQUAL(2, v.ReplicasSize());
+            UNIT_ASSERT_VALUES_EQUAL(1, v.GetReplicas(0).DevicesSize());
+            UNIT_ASSERT_VALUES_EQUAL(
+                "transport1",
+                v.GetReplicas(0).GetDevices(0).GetTransportId());
+            UNIT_ASSERT_VALUES_EQUAL(1, v.GetReplicas(1).DevicesSize());
+            UNIT_ASSERT_VALUES_EQUAL(
+                "transport2",
+                v.GetReplicas(1).GetDevices(0).GetTransportId());
+        }
     }
 }
 

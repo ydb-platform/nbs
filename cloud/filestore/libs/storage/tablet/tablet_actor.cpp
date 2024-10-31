@@ -476,9 +476,33 @@ TCompactionInfo TIndexTabletActor::GetCompactionInfo() const
         : 0;
     // TODO: use GarbageCompactionThreshold
 
-    const bool shouldCompact =
-        avgGarbagePercentage >= Config->GetGarbageCompactionThresholdAverage()
-        || avgCompactionScore >= compactionThresholdAverage;
+    bool shouldCompactByGarbage = Config->GetNewCompactionEnabled()
+        && compactionScore > 1
+        && avgGarbagePercentage
+            >= Config->GetGarbageCompactionThresholdAverage();
+
+    const bool shouldCompactByBlobs = compactionScore >= compactionThreshold
+        || Config->GetNewCompactionEnabled()
+        && compactionScore > 1
+        && avgCompactionScore >= compactionThresholdAverage;
+
+    // blobs-based compaction has priority
+    if (!shouldCompactByBlobs && shouldCompactByGarbage) {
+        // if we don't need to do compaction by blobs we need to select another
+        // range - the one with the most garbage in it
+        auto score = GetRangeToCompactByGarbage();
+        if (score.Score) {
+            compactRangeId = score.RangeId;
+            compactionScore = score.Score;
+        } else {
+            // garbage score for the top range is 0 - most probably the counter
+            // has not yet been initialized after the support for
+            // GarbageBlocksCount tracking got deployed
+            shouldCompactByGarbage = false;
+        }
+    }
+
+    const bool shouldCompact = shouldCompactByBlobs || shouldCompactByGarbage;
 
     return {
         compactionThreshold,
@@ -490,9 +514,7 @@ TCompactionInfo TIndexTabletActor::GetCompactionInfo() const
         avgGarbagePercentage,
         avgCompactionScore,
         Config->GetNewCompactionEnabled(),
-        compactionScore >= compactionThreshold
-            || Config->GetNewCompactionEnabled()
-            && compactionScore > 1 && shouldCompact,
+        shouldCompact,
     };
 }
 
@@ -724,9 +746,42 @@ void TIndexTabletActor::HandleForcedOperation(
                 ? GetAllCompactionRanges()
                 : GetNonEmptyCompactionRanges();
         }
+        const auto* b =
+            LowerBound(ranges.begin(), ranges.end(), request.GetMinRangeId());
+        if (b != ranges.begin()) {
+            ranges.erase(ranges.begin(), b);
+        }
         response->Record.SetRangeCount(ranges.size());
-        EnqueueForcedRangeOperation(mode, std::move(ranges));
+        auto operationId = EnqueueForcedRangeOperation(mode, std::move(ranges));
+        response->Record.SetOperationId(std::move(operationId));
         EnqueueForcedRangeOperationIfNeeded(ctx);
+    }
+
+    NCloud::Reply(ctx, *ev, std::move(response));
+}
+
+void TIndexTabletActor::HandleForcedOperationStatus(
+    const TEvIndexTablet::TEvForcedOperationStatusRequest::TPtr& ev,
+    const TActorContext& ctx)
+{
+    const auto& request = ev->Get()->Record;
+    const auto* state = GetForcedRangeOperationState();
+
+    using TResponse = TEvIndexTablet::TEvForcedOperationStatusResponse;
+    auto response = std::make_unique<TResponse>();
+
+    if (!state) {
+        response->Record.MutableError()->CopyFrom(
+            MakeError(E_NOT_FOUND, "forced operation not running"));
+    } else if (state->OperationId != request.GetOperationId()) {
+        response->Record.MutableError()->CopyFrom(MakeError(
+            E_NOT_FOUND,
+            TStringBuilder() << "forced operation id mismatch: "
+                << state->OperationId << " != " << request.GetOperationId()));
+    } else {
+        response->Record.SetRangeCount(state->RangesToCompact.size());
+        response->Record.SetProcessedRangeCount(state->Current);
+        response->Record.SetLastProcessedRangeId(state->GetCurrentRange());
     }
 
     NCloud::Reply(ctx, *ev, std::move(response));

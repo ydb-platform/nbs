@@ -39,6 +39,8 @@ func diskKindToString(kind types.DiskKind) string {
 		return "ssd-local"
 	case types.DiskKind_DISK_KIND_HDD_NONREPLICATED:
 		return "hdd-nonreplicated"
+	case types.DiskKind_DISK_KIND_HDD_LOCAL:
+		return "hdd-local"
 	}
 	return "unknown"
 }
@@ -61,6 +63,8 @@ func prepareDiskKind(kind disk_manager.DiskKind) (types.DiskKind, error) {
 		return types.DiskKind_DISK_KIND_SSD_LOCAL, nil
 	case disk_manager.DiskKind_DISK_KIND_HDD_NONREPLICATED:
 		return types.DiskKind_DISK_KIND_HDD_NONREPLICATED, nil
+	case disk_manager.DiskKind_DISK_KIND_HDD_LOCAL:
+		return types.DiskKind_DISK_KIND_HDD_LOCAL, nil
 	default:
 		return 0, errors.NewInvalidArgumentError(
 			"unknown disk kind %v",

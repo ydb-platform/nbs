@@ -1,45 +1,39 @@
-#include "service_actor.h"
+#pragma once
 
 #include <cloud/filestore/libs/storage/api/service.h>
-#include <cloud/filestore/libs/storage/api/tablet.h>
 #include <cloud/filestore/libs/storage/api/tablet_proxy.h>
 #include <cloud/filestore/libs/storage/core/public.h>
-#include <cloud/filestore/private/api/protos/tablet.pb.h>
 
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
+#include <contrib/ydb/library/actors/core/hfunc.h>
 
 #include <google/protobuf/util/json_util.h>
 
 namespace NCloud::NFileStore::NStorage {
 
-using namespace NActors;
-
-using namespace NKikimr;
-
-namespace {
-
 ////////////////////////////////////////////////////////////////////////////////
 
 template <typename TRequest, typename TResponse>
 class TTabletActionActor final
-    : public TActorBootstrapped<TTabletActionActor<TRequest, TResponse>>
+    : public NActors::TActorBootstrapped<TTabletActionActor<TRequest, TResponse>>
 {
 private:
     const TRequestInfoPtr RequestInfo;
     const TString Input;
 
-    using TBase = TActorBootstrapped<TTabletActionActor<TRequest, TResponse>>;
+    using TBase =
+        NActors::TActorBootstrapped<TTabletActionActor<TRequest, TResponse>>;
 
 public:
     TTabletActionActor(
         TRequestInfoPtr requestInfo,
         TString input);
 
-    void Bootstrap(const TActorContext& ctx);
+    void Bootstrap(const NActors::TActorContext& ctx);
 
 private:
     void ReplyAndDie(
-        const TActorContext& ctx,
+        const NActors::TActorContext& ctx,
         const TResponse::ProtoRecordType& responseRecord);
 
 private:
@@ -54,7 +48,9 @@ private:
         }
     }
 
-    void HandleResponse(const TResponse::TPtr& ev, const TActorContext& ctx);
+    void HandleResponse(
+        const TResponse::TPtr& ev,
+        const NActors::TActorContext& ctx);
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -69,7 +65,7 @@ TTabletActionActor<TRequest, TResponse>::TTabletActionActor(
 
 template <typename TRequest, typename TResponse>
 void TTabletActionActor<TRequest, TResponse>::Bootstrap(
-    const TActorContext& ctx)
+    const NActors::TActorContext& ctx)
 {
     typename TRequest::ProtoRecordType request;
     if (!google::protobuf::util::JsonStringToMessage(Input, &request).ok()) {
@@ -99,7 +95,7 @@ void TTabletActionActor<TRequest, TResponse>::Bootstrap(
 
 template <typename TRequest, typename TResponse>
 void TTabletActionActor<TRequest, TResponse>::ReplyAndDie(
-    const TActorContext& ctx,
+    const NActors::TActorContext& ctx,
     const TResponse::ProtoRecordType& response)
 {
     auto msg = std::make_unique<TEvService::TEvExecuteActionResponse>(
@@ -118,47 +114,9 @@ void TTabletActionActor<TRequest, TResponse>::ReplyAndDie(
 template <typename TRequest, typename TResponse>
 void TTabletActionActor<TRequest, TResponse>::HandleResponse(
     const TResponse::TPtr& ev,
-    const TActorContext& ctx)
+    const NActors::TActorContext& ctx)
 {
     ReplyAndDie(ctx, ev->Get()->Record);
-}
-
-}   // namespace
-
-IActorPtr TStorageServiceActor::CreateUnsafeDeleteNodeActionActor(
-    TRequestInfoPtr requestInfo,
-    TString input)
-{
-    using TUnsafeDeleteNodeActor = TTabletActionActor<
-        TEvIndexTablet::TEvUnsafeDeleteNodeRequest,
-        TEvIndexTablet::TEvUnsafeDeleteNodeResponse>;
-    return std::make_unique<TUnsafeDeleteNodeActor>(
-        std::move(requestInfo),
-        std::move(input));
-}
-
-IActorPtr TStorageServiceActor::CreateUnsafeUpdateNodeActionActor(
-    TRequestInfoPtr requestInfo,
-    TString input)
-{
-    using TUnsafeUpdateNodeActor = TTabletActionActor<
-        TEvIndexTablet::TEvUnsafeUpdateNodeRequest,
-        TEvIndexTablet::TEvUnsafeUpdateNodeResponse>;
-    return std::make_unique<TUnsafeUpdateNodeActor>(
-        std::move(requestInfo),
-        std::move(input));
-}
-
-IActorPtr TStorageServiceActor::CreateUnsafeGetNodeActionActor(
-    TRequestInfoPtr requestInfo,
-    TString input)
-{
-    using TUnsafeGetNodeActor = TTabletActionActor<
-        TEvIndexTablet::TEvUnsafeGetNodeRequest,
-        TEvIndexTablet::TEvUnsafeGetNodeResponse>;
-    return std::make_unique<TUnsafeGetNodeActor>(
-        std::move(requestInfo),
-        std::move(input));
 }
 
 }   // namespace NCloud::NFileStore::NStorage

@@ -464,14 +464,14 @@ private:
                 auto buffer = holder.Extract();
 
                 auto brokenDataMarker = NStorage::GetBrokenDataMarker();
-                if (brokenDataMarker.Size() > Volume.GetBlockSize()) {
+                if (brokenDataMarker.size() > Volume.GetBlockSize()) {
                     brokenDataMarker = brokenDataMarker.SubString(
                         0,
                         Volume.GetBlockSize());
                 }
-                for (ui32 i = 0; i < buffer.Size(); i += Volume.GetBlockSize()) {
+                for (ui32 i = 0; i < buffer.size(); i += Volume.GetBlockSize()) {
                     TStringBuf view(buffer);
-                    if (view.SubString(i, brokenDataMarker.Size()) == brokenDataMarker) {
+                    if (view.SubString(i, brokenDataMarker.size()) == brokenDataMarker) {
                         with_lock (OutputError) {
                             GetErrorStream()
                                 << "NODATA@"

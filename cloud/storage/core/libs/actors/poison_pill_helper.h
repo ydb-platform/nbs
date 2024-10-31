@@ -4,6 +4,9 @@
 
 #include <contrib/ydb/library/actors/core/actor.h>
 #include <contrib/ydb/library/actors/core/event.h>
+#include <contrib/ydb/library/actors/core/events.h>
+
+#include <util/generic/set.h>
 
 namespace NCloud {
 

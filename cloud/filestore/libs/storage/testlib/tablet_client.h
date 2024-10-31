@@ -211,10 +211,15 @@ public:
         return std::make_unique<TEvIndexTablet::TEvWaitReadyRequest>();
     }
 
-    auto CreateGetStorageStatsRequest(ui32 compactionRangeCount = 0)
+    auto CreateGetStorageStatsRequest(
+        ui32 compactionRangeCount = 0,
+        ui32 compactionRangeCountByCleanupScore = 0)
     {
         auto request = std::make_unique<TEvIndexTablet::TEvGetStorageStatsRequest>();
-        request->Record.SetCompactionRangeCountByCompactionScore(compactionRangeCount);
+        request->Record.SetCompactionRangeCountByCompactionScore(
+            compactionRangeCount);
+        request->Record.SetCompactionRangeCountByCleanupScore(
+            compactionRangeCountByCleanupScore);
         return request;
     }
 
@@ -359,7 +364,8 @@ public:
         return std::make_unique<
             TEvIndexTabletPrivate::TEvForcedRangeOperationRequest>(
             std::move(ranges),
-            mode);
+            mode,
+            CreateGuidAsString());
     }
 
     auto CreateCollectGarbageRequest()

@@ -11,7 +11,7 @@ jobs:
     - name: README
       run: |
         echo "This is a test of the GA scripts"
-        echo <<EOF
+        cat <<EOF > README.md
         To update the test data, run the following commands:
         export TMP_DIR=$(mktemp -d)
         export GITHUB_WORKSPACE=$(pwd)
@@ -19,7 +19,7 @@ jobs:
 
         mkdir -p $GITHUB_WORKSPACE/.github/scripts/tests/test-data/
         cd $GITHUB_WORKSPACE/.github/scripts/tests/test-data/
-        wget "https://storage.ai.nebius.cloud/github-actions-test-data/cloud-v${ACTIONS_TEST_DATA_VERSION}.tar.gz" -O cloud.tar.gz
+        wget "https://storage.eu-north1.nebius.cloud/github-actions-test-data/cloud-v${ACTIONS_TEST_DATA_VERSION}.tar.gz" -O cloud.tar.gz
         tar zxvf cloud.tar.gz
 
         python3 $GITHUB_WORKSPACE/.github/scripts/tests/transform-ya-junit.py \
@@ -35,6 +35,7 @@ jobs:
           --summary-out-env-path "$TMP_DIR/summary_env" \
           --summary-url-prefix "SUMMARY_URL_PREFIX" \
           --build-preset "linux-x64-relwithdebinfo" \
+          --is-dry-run \
           "Tests" ya-test.html "$TMP_DIR/junit.xml"
 
         python3 $GITHUB_WORKSPACE/.github/scripts/tests/fail-checker.py "$TMP_DIR/junit.xml" --paths-only | sort | tee -a "$TMP_DIR/fail-checker"
@@ -44,13 +45,14 @@ jobs:
         cp $TMP_DIR/{fail-checker,summary_env,ya-test.html} ${GITHUB_WORKSPACE}/.github/scripts/tests/test-data/
         cd ${GITHUB_WORKSPACE}/.github/scripts/tests/test-data/
         export NEW_VERSION=$(($ACTIONS_TEST_DATA_VERSION + 1))
-        tar zcvf cloud-v${NEW_VERSION}.tar.gz cloud/ MD5SUMS fail-checker  junit.xml summary_env ya-test.html
+        tar zcvf cloud-v${NEW_VERSION}.tar.gz cloud/ MD5SUMS fail-checker  junit.xml summary_env ya-test.html muted_ya.txt
 
         Upload resulting cloud-v${NEW_VERSION}.tar.gz to the storage.ai.nebius.cloud bucket github-actions-test-data
         Bump version in https://github.com/ydb-platform/nbs/settings/variables/actions
         EOF
+        cat README.md
       env:
-        ACTIONS_TEST_DATA_VERSION: ${{ vars.ACTIONS_TEST_DATA_VERSION }}
+        ACTIONS_TEST_DATA_VERSION: ${{ vars.NEBIUS_ACTIONS_TEST_DATA_VERSION }}
 
     - name: Checkout PR
       uses: actions/checkout@v4
@@ -88,10 +90,10 @@ jobs:
         set -x
         mkdir -p $GITHUB_WORKSPACE/.github/scripts/tests/test-data/
         cd $GITHUB_WORKSPACE/.github/scripts/tests/test-data/
-        wget "https://storage.ai.nebius.cloud/github-actions-test-data/cloud-v${ACTIONS_TEST_DATA_VERSION}.tar.gz" -O cloud.tar.gz
+        wget "https://storage.eu-north1.nebius.cloud/github-actions-test-data/cloud-v${ACTIONS_TEST_DATA_VERSION}.tar.gz" -O cloud.tar.gz
         tar zxvf cloud.tar.gz
       env:
-        ACTIONS_TEST_DATA_VERSION: ${{ vars.ACTIONS_TEST_DATA_VERSION }}
+        ACTIONS_TEST_DATA_VERSION: ${{ vars.NEBIUS_ACTIONS_TEST_DATA_VERSION }}
     - name: Launch transform-ya-junit.py
       shell: bash
       run: |
@@ -118,6 +120,7 @@ jobs:
           --summary-out-env-path "$TMP_DIR/summary_env" \
           --summary-url-prefix "SUMMARY_URL_PREFIX" \
           --build-preset "linux-x64-relwithdebinfo" \
+          --is-dry-run \
           "Tests" ya-test.html "$TMP_DIR/junit.xml"
         echo "::endgroup::"
       env:

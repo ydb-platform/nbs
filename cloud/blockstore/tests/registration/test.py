@@ -130,7 +130,7 @@ def setup_and_run_test_for_da(kikimr_ssl, blockstore_ssl):
     return True
 
 
-def setup_and_run_registration_migration_server(use_location=False):
+def setup_and_run_registration_migration_server(use_location=True):
     ydb = start_ydb(grpc_ssl_enable=True)
     setup_cms_configs(ydb.client)
 
@@ -152,6 +152,7 @@ def setup_and_run_registration_migration_server(use_location=False):
             use_location=use_location,
             location=location)
         nbs = start_nbs(configurator)
+
         if ic_port is not None:
             assert configurator.ic_port == ic_port
         else:
@@ -215,11 +216,11 @@ def test_da_registration(kikimr_ssl, blockstore_ssl, result):
 
 
 def test_server_registration_migration():
-    setup_and_run_registration_migration_server(True)
+    setup_and_run_registration_migration_server(False)
 
 
 def test_hw_server_registration_migration():
-    setup_and_run_registration_migration_server(False)
+    setup_and_run_registration_migration_server(True)
 
 
 def test_da_registration_migration():

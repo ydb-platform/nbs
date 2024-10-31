@@ -10,6 +10,7 @@
 #include <cloud/blockstore/libs/endpoints/endpoint_listener.h>
 #include <cloud/blockstore/vhost-server/options.h>
 #include <cloud/storage/core/libs/common/backoff_delay_provider.h>
+#include <cloud/storage/core/libs/common/media.h>
 #include <cloud/storage/core/libs/common/thread.h>
 #include <cloud/storage/core/libs/coroutine/executor.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
@@ -669,6 +670,11 @@ private:
     TIntrusivePtr<TEndpointProcess> StartProcess()
     {
         auto process = SpawnChild(BinaryPath, Args);
+
+        STORAGE_INFO(
+            "[" << ClientId
+                << "] Endpoint process has been started, PID:" << process.Pid);
+
         Y_SCOPE_EXIT(&process) {
             if (process.Pid) {
                 process.Terminate();
@@ -913,9 +919,9 @@ private:
         const NProto::TStartEndpointRequest& request,
         const NProto::TVolume& volume) const
     {
-        return volume.GetStorageMediaKind() == NProto::STORAGE_MEDIA_SSD_LOCAL
-            && request.GetVolumeMountMode() == NProto::VOLUME_MOUNT_LOCAL
-            && request.GetIpcType() == NProto::IPC_VHOST;
+        return IsDiskRegistryLocalMediaKind(volume.GetStorageMediaKind()) &&
+               request.GetVolumeMountMode() == NProto::VOLUME_MOUNT_LOCAL &&
+               request.GetIpcType() == NProto::IPC_VHOST;
     }
 
     bool IsFastPathMode(
@@ -1030,20 +1036,23 @@ private:
             ? request.GetClientId()
             : request.GetInstanceId();
 
+        if (volume.GetStorageMediaKind() == NProto::STORAGE_MEDIA_SSD_LOCAL &&
+            volume.GetBlockSize() != DefaultLocalSSDBlockSize)
+        {
+            ReportStartExternalEndpointError(
+                "Local disks should have block size of 512 bytes.");
+        }
+
         TVector<TString> args {
             "--disk-id", request.GetDiskId(),
+            "--block-size", ToString(volume.GetBlockSize()),
             "--serial", deviceName,
             "--socket-path", socketPath,
+            "--socket-access-mode", ToString(SocketAccessMode),
             "-q", ToString(request.GetVhostQueuesCount()),
             "--wait-after-parent-exit",
             ToString(VhostServerTimeoutAfterParentExit.Seconds()).c_str()
         };
-
-        // TODO: get rid of "if" (was needed for backward compatibility)
-        if (SocketAccessMode != Default<NVHostServer::TOptions>().SocketAccessMode) {
-            args.emplace_back("--socket-access-mode");
-            args.emplace_back(ToString(SocketAccessMode));
-        }
 
         if (epType == EEndpointType::Rdma) {
             args.emplace_back("--client-id");
@@ -1051,9 +1060,6 @@ private:
 
             args.emplace_back("--device-backend");
             args.emplace_back(GetDeviceBackend(epType));
-
-            args.emplace_back("--block-size");
-            args.emplace_back(ToString(volume.GetBlockSize()));
 
             if (IsAlignedDataEnabled) {
                 args.emplace_back("--rdma-aligned-data");
@@ -1158,7 +1164,8 @@ private:
         return true;
     }
 
-    void FindRunningEndpoints() {
+    void FindRunningEndpoints()
+    {
         TFsPath proc("/proc");
         TVector<TFsPath> allProcesses;
         proc.List(allProcesses);
@@ -1205,7 +1212,7 @@ private:
                 TChild child(pid);
 
                 STORAGE_WARN(
-                    "Send TERMINATE to external-vhost-server with PID:"
+                    "Send SIGKILL to external-vhost-server with PID:"
                     << pid << " for disk-id: " << diskId.Quote());
                 child.Kill();
                 child.Wait();

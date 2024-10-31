@@ -247,7 +247,7 @@ message TDiskAgentConfig
     // WARNING: CMS configs can only be retrieved after registering in the
     // NodeBroker. Enabling this option completely disables them if there were
     // no devices found.
-    optional bool DisableNodeBrokerRegisterationOnDevicelessAgent = 32;
+    optional bool DisableNodeBrokerRegistrationOnDevicelessAgent = 32;
 
     // Max. count of concurrently processing operations (io_setup).
     optional uint32 MaxAIOContextEvents = 33;

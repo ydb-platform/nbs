@@ -332,9 +332,6 @@ message TStorageConfig
     // Blob compression experiment params.
     optional uint32 BlobCompressionRate = 364;
     optional string BlobCompressionCodec = 365;
-    // Blob is divided into chunks of a certain size (in bytes) and each chunk
-    // is compressed separately.
-    optional uint32 BlobCompressionChunkSize = 400;
 
     // Enables ThreeStageWrite for unaligned requests.
     optional bool UnalignedThreeStageWriteEnabled = 366;
@@ -368,8 +365,6 @@ message TStorageConfig
     reserved 375; // InMemoryIndexCacheNodeAttrsVerCapacity
     optional uint64 InMemoryIndexCacheNodeRefsCapacity = 376;
     reserved 377; // InMemoryIndexCacheNodeRefsVerCapacity
-    optional bool InMemoryIndexCacheLoadOnTabletStart = 398;
-    optional uint64 InMemoryIndexCacheLoadOnTabletStartRowsPerTx = 399;
 
     // Used to send non-network metrics as network ones to HIVE,
     // while we use them for load balancing
@@ -439,4 +434,26 @@ message TStorageConfig
 
     // In fallback mode, all requests to SchemeShard are served from backup.
     optional bool SSProxyFallbackMode = 397;
+
+    // Enables index cache loading on tablet startup. Enables ListNodes
+    // responses from cache.
+    optional bool InMemoryIndexCacheLoadOnTabletStart = 398;
+    optional uint64 InMemoryIndexCacheLoadOnTabletStartRowsPerTx = 399;
+
+    // Blob is divided into chunks of a certain size (in bytes) and each chunk
+    // is compressed separately.
+    optional uint32 BlobCompressionChunkSize = 400;
+
+    // If Compaction encounters a range which contains <= garbage than set via
+    // these fields and whose blobs' average size is >= that set via these
+    // fields, it just marks this range as 'compacted' and moves on without
+    // rewriting the data belonging to this range.
+    optional uint32 CompactRangeGarbagePercentageThreshold = 401;
+    optional uint32 CompactRangeAverageBlobSizeThreshold = 402;
+
+    // Disables ThreeStageWrite for HDD filesystems.
+    optional bool ThreeStageWriteDisabledForHDD = 403;
+
+    // Disables TwoStageRead for HDD filesystems.
+    optional bool TwoStageReadDisabledForHDD = 404;
 }

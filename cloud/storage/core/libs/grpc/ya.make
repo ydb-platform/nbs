@@ -5,9 +5,8 @@ SRCS(
     channel_arguments.cpp
     completion.cpp
     credentials.cpp
-    initializer.cpp
+    init.cpp
     keepalive.cpp
-    logging.cpp
     request.cpp
     threadpool.cpp
     time_point_specialization.cpp

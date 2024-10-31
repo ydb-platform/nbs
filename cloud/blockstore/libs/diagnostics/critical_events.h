@@ -87,6 +87,9 @@ namespace NCloud::NBlockStore {
     xxx(ReadBlockCountMismatch)                                                \
     xxx(CancelRoutineIsNotSet)                                                 \
     xxx(FieldDescriptorNotFound)                                               \
+    xxx(DiskRegistryInsertToPendingCleanupFailed)                              \
+    xxx(OverlappingRangesDuringMigrationDetected)                              \
+    xxx(StartExternalEndpointError)                                            \
 // BLOCKSTORE_IMPOSSIBLE_EVENTS
 
 ////////////////////////////////////////////////////////////////////////////////

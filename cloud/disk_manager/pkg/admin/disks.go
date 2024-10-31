@@ -37,6 +37,7 @@ var stringToDiskKind = map[string]diskKind{
 	"hdd-nonreplicated": diskKind(
 		disk_manager.DiskKind_DISK_KIND_HDD_NONREPLICATED,
 	),
+	"hdd-local": diskKind(disk_manager.DiskKind_DISK_KIND_HDD_LOCAL),
 }
 
 func (k *diskKind) String() string {

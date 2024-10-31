@@ -19,10 +19,11 @@ void TDiskRegistryActor::HandleCreateDiskFromDevices(
     const auto& volume = record.GetVolumeConfig();
 
     LOG_INFO(ctx, TBlockStoreComponents::DISK_REGISTRY,
-        "[%lu] Received CreateDiskFromDevices %s, %d, [ %s] %s",
+        "[%lu] Received CreateDiskFromDevices %s, %u, %u, [ %s] %s",
         TabletID(),
         volume.GetDiskId().c_str(),
         volume.GetBlockSize(),
+        volume.GetStorageMediaKind(),
         [&] {
             TStringStream out;
             for (auto& d: record.GetDevices()) {
@@ -31,6 +32,18 @@ void TDiskRegistryActor::HandleCreateDiskFromDevices(
             return out.Str();
         }().c_str(),
         record.GetForce() ? "force" : "");
+
+    if (!NProto::EStorageMediaKind_IsValid(volume.GetStorageMediaKind())) {
+        auto response =
+            std::make_unique<TEvDiskRegistry::TEvCreateDiskFromDevicesResponse>(
+                MakeError(
+                    E_ARGUMENT,
+                    TStringBuilder()
+                        << "Storage Media kind %d"
+                        << volume.GetStorageMediaKind() << " is not valid."));
+        NCloud::Reply(ctx, *ev, std::move(response));
+        return;
+    }
 
     ExecuteTx<TCreateDiskFromDevices>(
         ctx,
@@ -42,6 +55,7 @@ void TDiskRegistryActor::HandleCreateDiskFromDevices(
         record.GetForce(),
         volume.GetDiskId(),
         volume.GetBlockSize(),
+        static_cast<NProto::EStorageMediaKind>(volume.GetStorageMediaKind()),
         TVector<NProto::TDeviceConfig> (
             record.GetDevices().begin(),
             record.GetDevices().end())
@@ -74,6 +88,7 @@ void TDiskRegistryActor::ExecuteCreateDiskFromDevices(
         args.Force,
         args.DiskId,
         args.BlockSize,
+        args.MediaKind,
         args.Devices,
         &result);
 

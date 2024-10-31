@@ -107,6 +107,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateCreateTest)
                 false,  // force
                 "foo",
                 4_KB,
+                NProto::STORAGE_MEDIA_SSD_LOCAL,
                 {
                     deviceByName("agent-2", "dev-3"),
                     deviceByName("agent-3", "foo-2"),
@@ -129,6 +130,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateCreateTest)
                 true,  // force
                 "foo",
                 nativeBlockSize,
+                NProto::STORAGE_MEDIA_SSD_LOCAL,
                 {deviceByName("agent-1", "dev-1")},
                 &result);
 
@@ -145,6 +147,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateCreateTest)
                 false,  // force
                 "foo",
                 nativeBlockSize,
+                NProto::STORAGE_MEDIA_SSD_LOCAL,
                 {deviceByName("agent-2", "dev-1")},
                 &result);
 
@@ -161,6 +164,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateCreateTest)
                 true,  // force
                 "disk-1",
                 nativeBlockSize,
+                NProto::STORAGE_MEDIA_SSD_LOCAL,
                 {deviceByName("agent-2", "dev-2")},
                 &result);
 
@@ -177,6 +181,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateCreateTest)
                 true,  // force
                 "bar",
                 nativeBlockSize,
+                NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
                 {deviceByName("agent-2", "dev-1")},
                 &result);
 
@@ -209,6 +214,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateCreateTest)
                 false,  // force
                 "baz",
                 nativeBlockSize,
+                NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
                 {
                     deviceByName("agent-1", "dev-2"),
                     deviceByName("agent-2", "dev-2")
@@ -244,6 +250,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateCreateTest)
                 false,  // force
                 "nonrepl",
                 nativeBlockSize,
+                NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
                 {
                     deviceByUUID("uuid-2.3"),
                     deviceByUUID("uuid-1.3")
@@ -279,6 +286,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateCreateTest)
                 false,  // force
                 "nonrepl-4K",
                 4_KB,
+                NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
                 { deviceByUUID("uuid-2.4") },
                 &result);
 
@@ -323,6 +331,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateCreateTest)
                 false,  // force
                 "local",
                 nativeBlockSize,
+                NProto::STORAGE_MEDIA_SSD_LOCAL,
                 {
                     deviceByUUID("uuid-1.4"),
                     deviceByUUID("uuid-1.5")
@@ -451,6 +460,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateCreateTest)
                 false, // force
                 "vol0",
                 nativeBlockSize,
+                NProto::STORAGE_MEDIA_SSD_LOCAL,
                 {agent.GetDevices(0)},
                 &result);
 
@@ -509,15 +519,8 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateCreateTest)
             .Build();
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) {
-            TVector<TString> affectedDisks;
-            TVector<TString> disksToReallocate;
-
-            UNIT_ASSERT_SUCCESS(state.RegisterAgent(
-                db,
-                agentConfig,
-                Now(),
-                &affectedDisks,
-                &disksToReallocate));
+            UNIT_ASSERT_SUCCESS(
+                state.RegisterAgent(db, agentConfig, Now()).GetError());
 
             const auto d = state.GetDevice(testDeviceId);
             UNIT_ASSERT_C(d.GetDeviceUUID().empty(), d);
@@ -572,18 +575,17 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateCreateTest)
         });
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) {
-            TVector<TString> affectedDisks;
-            TVector<TString> disksToReallocate;
+            auto [r, error] = state.RegisterAgent(db, agentConfig, Now());
+            UNIT_ASSERT_SUCCESS(error);
 
-            UNIT_ASSERT_SUCCESS(state.RegisterAgent(
-                db,
-                agentConfig,
-                Now(),
-                &affectedDisks,
-                &disksToReallocate));
-
-            UNIT_ASSERT_VALUES_EQUAL_C(0, affectedDisks.size(), affectedDisks[0]);
-            UNIT_ASSERT_VALUES_EQUAL_C(0, disksToReallocate.size(), disksToReallocate[0]);
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                0,
+                r.AffectedDisks.size(),
+                r.AffectedDisks[0]);
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                0,
+                r.DisksToReallocate.size(),
+                r.DisksToReallocate[0]);
 
             UNIT_ASSERT_EQUAL(
                 NProto::DISK_STATE_ONLINE,
