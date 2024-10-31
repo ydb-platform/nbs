@@ -706,7 +706,7 @@ private:
             auto result = Session->DestroySession();
             WaitForCompletion("destroy session", result);
 
-            auto response = result.GetValue();
+            const auto& response = result.GetValue();
             if (FAILED(response.GetError().GetCode())) {
                 STORAGE_INFO(
                     "%s failed to destroy session: %s %lu %s",
@@ -720,7 +720,12 @@ private:
             if (cmd.Complete.Initialized()) {
                 cmd.Complete.SetValue(SUCCEEDED(response.GetError().GetCode()));
             }
+        } else {
+            if (cmd.Complete.Initialized()) {
+                cmd.Complete.SetValue(true);
+            }
         }
+
         if (Client) {
             Client->Stop();
         }
