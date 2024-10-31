@@ -2801,14 +2801,11 @@ NProto::TError TDiskRegistryState::DeallocateDisk(
     auto dirtyDevices = DeallocateSimpleDisk(db, diskId, *disk);
     TVector<TDeviceId> devicesAllowedToBeCleaned;
     devicesAllowedToBeCleaned.reserve(dirtyDevices.size());
-    CopyIf(
-        dirtyDevices.begin(),
-        dirtyDevices.end(),
-        std::back_inserter(devicesAllowedToBeCleaned),
-        [this](const auto& uuid)
-        {
-            return CanSecureErase(uuid);
-        });
+    for (const auto& uuid: dirtyDevices) {
+        if (CanSecureErase(uuid)) {
+            devicesAllowedToBeCleaned.push_back(uuid);
+        }
+    }
 
     if (devicesAllowedToBeCleaned.empty()) {
         // Devices are not going to be secure erased if they aren't allowed to.
@@ -2816,7 +2813,7 @@ NProto::TError TDiskRegistryState::DeallocateDisk(
         return MakeError(
             S_ALREADY,
             TStringBuilder() << "Disk " << diskId << " devices ["
-                             << JoinStrings(dirtyDevices, ",")
+                             << JoinSeq(",", dirtyDevices)
                              << "] are not going to be secure erased.");
     }
 

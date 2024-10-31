@@ -1049,5 +1049,8 @@ message TStorageServiceConfig
 
     // Whether the disk registry is allowed to allocate local disks while agent
     // is in warning state.
+    // When enabled, the Disk Registry REMOVE_HOST CMS action will not "forget"
+    // agents devices and will not suspend local devices. Instead, PURGE_HOST
+    // should be used for these purposes.
     optional bool DiskRegistryAlwaysAllocatesLocalDisks = 388;
 }

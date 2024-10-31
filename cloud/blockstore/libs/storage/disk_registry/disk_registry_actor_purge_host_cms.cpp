@@ -95,9 +95,10 @@ void TDiskRegistryActor::CompletePurgeHostCms(
 
     auto response =
         std::make_unique<TEvDiskRegistryPrivate::TEvPurgeHostCmsResponse>(
-            std::move(args.Error));
-    response->Timeout = TDuration();
-    response->DependentDiskIds = std::move(args.AffectedDisks);
+            std::move(args.Error),
+            TDuration(),   // Timeout
+            std::move(args.AffectedDisks));
+
     NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
 }
 

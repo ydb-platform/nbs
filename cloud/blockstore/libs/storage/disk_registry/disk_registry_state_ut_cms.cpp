@@ -6,6 +6,7 @@
 #include <cloud/blockstore/libs/storage/disk_registry/testlib/test_state.h>
 #include <cloud/blockstore/libs/storage/testlib/test_executor.h>
 #include <cloud/blockstore/libs/storage/testlib/ut_helpers.h>
+#include <cloud/blockstore/libs/storage/testlib/ut_helpers.h>
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/diagnostics/monitoring.h>
 
@@ -716,6 +717,117 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateCMSTest)
                     0,
                     state.GetConfig().KnownAgentsSize());
                 UNIT_ASSERT_VALUES_EQUAL(0, state.GetAgents().size());
+            });
+    }
+
+    Y_UNIT_TEST(ShouldReturnAffectedDisksFromPurgeHost)
+    {
+        TTestExecutor executor;
+        executor.WriteTx([&](TDiskRegistryDatabase db) { db.InitSchema(); });
+
+        const TVector agents{AgentConfig(
+            2,
+            "agent-2",
+            {
+                Device("NVMENBS01", "uuid-1.1"),
+                Device("NVMENBS02", "uuid-1.2"),
+                Device("NVMENBS03", "uuid-1.3"),
+                Device("NVMENBS04", "uuid-1.4"),
+                Device("NVMELOCAL01", "uuid-1.5") |
+                    WithPool("local-ssd", NProto::DEVICE_POOL_KIND_LOCAL),
+                Device("NVMELOCAL02", "uuid-1.6") |
+                    WithPool("local-ssd", NProto::DEVICE_POOL_KIND_LOCAL),
+            })};
+
+        TDiskRegistryState state =
+            TDiskRegistryStateBuilder()
+                .WithConfig(
+                    MakeConfig(0, agents) | WithPoolConfig(
+                                                "local-ssd",
+                                                NProto::DEVICE_POOL_KIND_LOCAL,
+                                                DefaultDeviceSize))
+                .Build();
+
+        // Register agents.
+        executor.WriteTx(
+            [&](TDiskRegistryDatabase db)
+            {
+                for (const auto& agentConfig: agents) {
+                    UNIT_ASSERT_SUCCESS(
+                        RegisterAgent(state, db, agentConfig, Now()));
+                    for (const auto& device: agentConfig.GetDevices()) {
+                        if (!state.IsSuspendedDevice(device.GetDeviceUUID())) {
+                            state.MarkDeviceAsClean(
+                                Now(),
+                                db,
+                                device.GetDeviceUUID());
+                        }
+                    }
+                }
+            });
+
+        UNIT_ASSERT_VALUES_EQUAL(1, state.GetConfig().KnownAgentsSize());
+        UNIT_ASSERT_VALUES_EQUAL(1, state.GetAgents().size());
+        UNIT_ASSERT_VALUES_EQUAL(2, state.GetSuspendedDevices().size());
+        UNIT_ASSERT_VALUES_EQUAL(0, state.GetDirtyDevices().size());
+        UNIT_ASSERT_VALUES_EQUAL(0, state.GetBrokenDevices().size());
+
+        // Allocate disks.
+        executor.WriteTx(
+            [&](TDiskRegistryDatabase db)
+            {
+                TDiskRegistryState::TAllocateDiskResult result1;
+                UNIT_ASSERT_SUCCESS(state.AllocateDisk(
+                    TInstant::Zero(),
+                    db,
+                    TDiskRegistryState::TAllocateDiskParams{
+                        .DiskId = "nrd0",
+                        .BlockSize = DefaultLogicalBlockSize,
+                        .BlocksCount =
+                            DefaultDeviceSize / DefaultLogicalBlockSize,
+                    },
+                    &result1));
+
+                state.ResumeDevices(
+                    TInstant::Zero(),
+                    db,
+                    {"uuid-1.5", "uuid-1.6"});
+                state.MarkDeviceAsClean(Now(), db, "uuid-1.5");
+                state.MarkDeviceAsClean(Now(), db, "uuid-1.6");
+                TDiskRegistryState::TAllocateDiskResult result2;
+                UNIT_ASSERT_SUCCESS(state.AllocateDisk(
+                    Now(),
+                    db,
+                    TDiskRegistryState::TAllocateDiskParams{
+                        .DiskId = "local0",
+                        .BlockSize = DefaultLogicalBlockSize,
+                        .BlocksCount =
+                            DefaultDeviceSize / DefaultLogicalBlockSize,
+                        .MediaKind = NProto::STORAGE_MEDIA_SSD_LOCAL},
+                    &result2));
+                UNIT_ASSERT_VALUES_EQUAL(1u, result2.Devices.size());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    "NVMELOCAL01",
+                    result2.Devices[0].GetDeviceName());
+            });
+
+        // Remove the agent.
+        executor.WriteTx(
+            [&](TDiskRegistryDatabase db)
+            {
+                TVector<TString> affectedDisks;
+                UNIT_ASSERT_SUCCESS(state.PurgeHost(
+                    db,
+                    agents[0].GetAgentId(),
+                    Now(),
+                    false,   // dryRun
+                    affectedDisks));
+
+                Sort(affectedDisks);
+                const TVector<TString> expectedAffectedDisks = {
+                    "local0",
+                    "nrd0"};
+                ASSERT_VECTORS_EQUAL(expectedAffectedDisks, affectedDisks);
             });
     }
 
