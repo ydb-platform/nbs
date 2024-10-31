@@ -509,7 +509,9 @@ private:
             FileSystemId = Config.GetCreateFileStoreRequest().GetFileSystemId();
         }
 
-        CreateSession();
+        if (!FileSystemId.empty()) {
+            CreateSession();
+        }
 
         NProto::THeaders headers;
         headers.SetClientId(Config.GetName());
