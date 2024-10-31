@@ -1,7 +1,7 @@
 #include "test_server.h"
 
 #include <cloud/storage/core/libs/common/error.h>
-#include <cloud/storage/core/libs/grpc/initializer.h>
+#include <cloud/storage/core/libs/grpc/init.h>
 
 #include <cloud/blockstore/public/api/grpc/service.grpc.pb.h>
 

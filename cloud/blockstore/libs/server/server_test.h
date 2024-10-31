@@ -9,7 +9,7 @@
 #include <cloud/blockstore/libs/common/public.h>
 #include <cloud/blockstore/libs/diagnostics/public.h>
 #include <cloud/blockstore/libs/service/public.h>
-#include <cloud/storage/core/libs/grpc/initializer.h>
+#include <cloud/storage/core/libs/grpc/init.h>
 
 #include <library/cpp/logger/log.h>
 
