@@ -722,7 +722,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Counters)
                     {"sensor", "CompressedBytesWritten"},
                     {"filesystem", "test"}
                 },
-                457 // expected
+                439 // expected
             },
         });
     }

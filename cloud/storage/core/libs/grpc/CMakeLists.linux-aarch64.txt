@@ -33,9 +33,8 @@ target_sources(core-libs-grpc PRIVATE
   ${CMAKE_SOURCE_DIR}/cloud/storage/core/libs/grpc/channel_arguments.cpp
   ${CMAKE_SOURCE_DIR}/cloud/storage/core/libs/grpc/completion.cpp
   ${CMAKE_SOURCE_DIR}/cloud/storage/core/libs/grpc/credentials.cpp
-  ${CMAKE_SOURCE_DIR}/cloud/storage/core/libs/grpc/initializer.cpp
+  ${CMAKE_SOURCE_DIR}/cloud/storage/core/libs/grpc/init.cpp
   ${CMAKE_SOURCE_DIR}/cloud/storage/core/libs/grpc/keepalive.cpp
-  ${CMAKE_SOURCE_DIR}/cloud/storage/core/libs/grpc/logging.cpp
   ${CMAKE_SOURCE_DIR}/cloud/storage/core/libs/grpc/request.cpp
   ${CMAKE_SOURCE_DIR}/cloud/storage/core/libs/grpc/threadpool.cpp
   ${CMAKE_SOURCE_DIR}/cloud/storage/core/libs/grpc/time_point_specialization.cpp
