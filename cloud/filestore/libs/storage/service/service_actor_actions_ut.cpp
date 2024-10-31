@@ -460,11 +460,16 @@ Y_UNIT_TEST_SUITE(TStorageServiceActionsTest)
             TString buf;
             google::protobuf::util::MessageToJsonString(request, &buf);
             service.SendExecuteActionRequest("forcedoperationstatus", buf);
-            auto response = service.RecvExecuteActionResponse();
+            auto jsonResponse = service.RecvExecuteActionResponse();
             UNIT_ASSERT_VALUES_EQUAL_C(
-                E_NOT_FOUND,
-                response->GetStatus(),
-                response->GetErrorReason());
+                S_OK,
+                jsonResponse->GetStatus(),
+                jsonResponse->GetErrorReason());
+            NProtoPrivate::TForcedOperationStatusResponse response;
+            UNIT_ASSERT(google::protobuf::util::JsonStringToMessage(
+                jsonResponse->Record.GetOutput(), &response).ok());
+            UNIT_ASSERT_VALUES_EQUAL(4, response.GetRangeCount());
+            UNIT_ASSERT_VALUES_EQUAL(4, response.GetProcessedRangeCount());
         }
 
         env.GetRegistry()->Update(env.GetRuntime().GetCurrentTime());
