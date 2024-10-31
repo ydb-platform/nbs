@@ -765,19 +765,16 @@ void TIndexTabletActor::HandleForcedOperationStatus(
     const TActorContext& ctx)
 {
     const auto& request = ev->Get()->Record;
-    const auto* state = GetForcedRangeOperationState();
 
     using TResponse = TEvIndexTablet::TEvForcedOperationStatusResponse;
     auto response = std::make_unique<TResponse>();
 
+    const auto* state = FindForcedRangeOperation(request.GetOperationId());
     if (!state) {
-        response->Record.MutableError()->CopyFrom(
-            MakeError(E_NOT_FOUND, "forced operation not running"));
-    } else if (state->OperationId != request.GetOperationId()) {
         response->Record.MutableError()->CopyFrom(MakeError(
             E_NOT_FOUND,
-            TStringBuilder() << "forced operation id mismatch: "
-                << state->OperationId << " != " << request.GetOperationId()));
+            TStringBuilder() << "forced operation with id "
+                << request.GetOperationId() << "not found"));
     } else {
         response->Record.SetRangeCount(state->RangesToCompact.size());
         response->Record.SetProcessedRangeCount(state->Current);
