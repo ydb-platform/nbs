@@ -60,6 +60,18 @@ private:
         }
     }
 
+    auto RunCompaction()
+    {
+        NProtoPrivate::TForcedOperationRequest request;
+        request.SetFileSystemId(FileSystemId);
+        request.SetOpType(NProtoPrivate::TForcedOperationRequest::E_COMPACTION);
+        request.SetMinRangeId(MinRangeId);
+        NProtoPrivate::TForcedOperationResponse response;
+        ExecuteAction("forcedoperation", request, &response);
+        CheckResponse(response);
+        return response;
+    }
+
 public:
     TForcedCompactionCommand()
     {
@@ -73,13 +85,7 @@ public:
     {
         auto callContext = PrepareCallContext();
 
-        NProtoPrivate::TForcedOperationRequest request;
-        request.SetFileSystemId(FileSystemId);
-        request.SetOpType(NProtoPrivate::TForcedOperationRequest::E_COMPACTION);
-        request.SetMinRangeId(MinRangeId);
-        NProtoPrivate::TForcedOperationResponse response;
-        ExecuteAction("forcedoperation", request, &response);
-        CheckResponse(response);
+        auto response = RunCompaction();
 
         while (true) {
             NProtoPrivate::TForcedOperationStatusRequest statusRequest;
@@ -92,8 +98,15 @@ public:
                 &statusResponse);
 
             if (statusResponse.GetError().GetCode() == E_NOT_FOUND) {
-                // TODO: distinguish between finished operations and tablet
-                // restarts
+                // tablet rebooted
+                response = RunCompaction();
+                continue;
+            }
+
+            const auto processed = statusResponse.GetProcessedRangeCount();
+            const auto total = statusResponse.GetRangeCount();
+            if (processed >= total) {
+                // operation completed
                 Cout << "finished" << Endl;
                 break;
             }
@@ -103,6 +116,8 @@ public:
             Cout << "progress: " << statusResponse.GetProcessedRangeCount()
                 << "/" << statusResponse.GetRangeCount() << ", last="
                 << statusResponse.GetLastProcessedRangeId() << Endl;
+
+            MinRangeId = statusResponse.GetLastProcessedRangeId();
 
             Sleep(TDuration::Seconds(1));
         }

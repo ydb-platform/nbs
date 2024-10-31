@@ -1364,7 +1364,31 @@ void TIndexTabletState::StartForcedRangeOperation(
 
 void TIndexTabletState::CompleteForcedRangeOperation()
 {
+    Y_DEBUG_ABORT_UNLESS(ForcedRangeOperationState);
+    if (ForcedRangeOperationState && ForcedRangeOperationState->OperationId) {
+        ForcedRangeOperationState->Current =
+            ForcedRangeOperationState->RangesToCompact.size();
+        CompletedForcedRangeOperations.push_back(*ForcedRangeOperationState);
+    }
     ForcedRangeOperationState.Clear();
+}
+
+auto TIndexTabletState::FindForcedRangeOperation(
+    const TString& operationId) const -> const TForcedRangeOperationState*
+{
+    if (ForcedRangeOperationState
+            && ForcedRangeOperationState->OperationId == operationId)
+    {
+        return ForcedRangeOperationState.Get();
+    }
+
+    for (const auto& op: CompletedForcedRangeOperations) {
+        if (op.OperationId == operationId) {
+            return &op;
+        }
+    }
+
+    return nullptr;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
