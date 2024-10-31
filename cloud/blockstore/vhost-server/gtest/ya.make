@@ -12,6 +12,7 @@ SRCS(
     ../server.cpp
     ../stats.cpp
 
+    ../request_aio_ut.cpp
     ../server_ut.cpp
 )
 
@@ -31,7 +32,6 @@ PEERDIR(
 
     library/cpp/getopt
     library/cpp/getopt/small
-    library/cpp/testing/gtest
 
     contrib/libs/libaio
 )

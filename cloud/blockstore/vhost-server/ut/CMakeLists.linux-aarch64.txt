@@ -44,7 +44,6 @@ target_sources(cloud-blockstore-vhost-server-ut PRIVATE
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/vhost-server/options.cpp
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/vhost-server/options_ut.cpp
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/vhost-server/request_aio.cpp
-  ${CMAKE_SOURCE_DIR}/cloud/blockstore/vhost-server/request_aio_ut.cpp
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/vhost-server/server.cpp
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/vhost-server/server_ut.cpp
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/vhost-server/stats.cpp
