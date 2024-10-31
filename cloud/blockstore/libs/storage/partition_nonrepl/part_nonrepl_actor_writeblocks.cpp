@@ -207,7 +207,9 @@ void TDiskAgentWriteActor::Done(
     auto& counters = *completion->Stats.MutableUserWriteCounters();
     completion->TotalCycles = RequestInfo->GetTotalCycles();
     completion->ExecCycles = RequestInfo->GetExecCycles();
-    completion->ExecutionTime = ctx.Now() - StartTime;
+    completion->ExecutionTime = status == EStatus::Timeout
+                                    ? TimeoutPolicy.Timeout
+                                    : ctx.Now() - StartTime;
 
     ui32 blocks = 0;
     for (const auto& dr: DeviceRequests) {

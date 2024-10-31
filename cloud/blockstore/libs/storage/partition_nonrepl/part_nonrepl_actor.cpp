@@ -313,8 +313,6 @@ bool TNonreplicatedPartitionActor::InitRequests(
         ctx.Now(),
         msg.Record.GetHeaders().GetIsBackgroundRequest());
 
-    Cout << "!!! set timeout " << timeoutPolicy->Timeout.ToString() << " " << timeoutPolicy->ErrorCode << Endl;
-
     return true;
 }
 
@@ -382,8 +380,6 @@ void TNonreplicatedPartitionActor::OnRequestCompleted(
             break;
         }
         case EStatus::Timeout: {
-            Cout << "!!! timeout" << operation.ExecutionTime.ToString() << Endl;
-
             for (ui32 deviceIndex: operation.DeviceIndices) {
                 OnRequestTimeout(deviceIndex, operation.ExecutionTime, now);
             }
@@ -443,10 +439,6 @@ void TNonreplicatedPartitionActor::OnRequestTimeout(
             break;
         }
     }
-
-    Cout << "!!! #" << deviceIndex << "  cumulative "
-         << stat.TimedOutStateDuration.ToString()
-         << " status=" << int(stat.DeviceStatus) << Endl;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
