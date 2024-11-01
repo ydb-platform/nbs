@@ -7,6 +7,7 @@
 #include <library/cpp/logger/log.h>
 
 #include <util/generic/singleton.h>
+#include <util/system/sanitizers.h>
 #include <util/system/src_location.h>
 
 #include <atomic>
@@ -72,6 +73,10 @@ void AddLog(gpr_log_func_args* args)
 
     auto& state = TGrpcState::Instance();
 
+    // TSAN does not understand |std::atomic_thread_fence|, so teach it
+#if defined(_tsan_enabled_)
+    __tsan_acquire(&state.Log);
+#endif
     state.Log << LogSeverityToPriority(args->severity)
         << TSourceLocation(file.As<TStringBuf>(), args->line)
         << ": " << args->message;
@@ -127,8 +132,12 @@ void GrpcLoggerInit(const TLog& log, bool enableTracing)
     auto& state = TGrpcState::Instance();
     state.Log = log;
     // |gpr_set_log_verbosity| and |gpr_set_log_function| do not imply any
-    // memory barrier, so we need a full barrier here.
+    // memory barrier, so we need a full barrier here
     std::atomic_thread_fence(std::memory_order_seq_cst);
+    // TSAN does not understand |std::atomic_thread_fence|, so teach it
+#if defined(_tsan_enabled_)
+    __tsan_release(&state.Log);
+#endif
 
     gpr_set_log_verbosity(LogPriorityToSeverity(log.FiltrationLevel()));
     gpr_set_log_function(AddLog);
