@@ -64,6 +64,7 @@ private:
     THashMap<TDeviceId, NProto::TSuspendedDevice> SuspendedDevices;
     THashMap<NProto::EDevicePoolKind, TVector<TString>> PoolKind2PoolNames;
     THashMap<TString, ui32> PoolName2DeviceCount;
+    const bool AlwaysAllocateLocalDisks;
 
 public:
     struct TAllocationQuery
@@ -84,12 +85,13 @@ public:
         }
     };
 
-    TDeviceList() = default;
+    TDeviceList();
 
     explicit TDeviceList(
         TVector<TDeviceId> dirtyDevices,
         TVector<NProto::TSuspendedDevice> suspendedDevices,
-        TVector<std::pair<TDeviceId, TDiskId>> allocatedDevices);
+        TVector<std::pair<TDeviceId, TDiskId>> allocatedDevices,
+        bool alwaysAllocateLocalDisks);
 
     [[nodiscard]] size_t Size() const
     {
@@ -137,6 +139,10 @@ public:
     void MarkDeviceAllocated(const TDiskId& diskId, const TDeviceId& id);
     bool ReleaseDevice(const TDeviceId& id);
 
+    [[nodiscard]] bool DevicesAllocationAllowed(
+        NProto::EDevicePoolKind poolKind,
+        NProto::EAgentState agentState) const;
+
     TVector<NProto::TDeviceConfig> AllocateDevices(
         const TDiskId& diskId,
         const TAllocationQuery& query);
@@ -153,6 +159,10 @@ public:
     void ResumeDevice(const TDeviceId& id);
     void ResumeAfterErase(const TDeviceId& id);
     [[nodiscard]] bool IsSuspendedDevice(const TDeviceId& id) const;
+    // Similar to the above, but also checks that the device is not resuming
+    // from suspension.
+    [[nodiscard]] bool IsSuspendedAndNotResumingDevice(
+        const TDeviceId& id) const;
     [[nodiscard]] TVector<NProto::TSuspendedDevice> GetSuspendedDevices() const;
 
     [[nodiscard]] ui64 GetDeviceByteCount(const TDeviceId& id) const;

@@ -270,7 +270,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateSuspendTest)
                 Now(),
                 db,
                 TDiskRegistryState::TAllocateDiskParams {
-                    .DiskId = "nrd0",
+                    .DiskId = "local0",
                     .BlockSize = DefaultLogicalBlockSize,
                     .BlocksCount = DefaultDeviceSize / DefaultLogicalBlockSize,
                     .AgentIds = { Agents[1].GetAgentId() },
@@ -294,12 +294,34 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateSuspendTest)
 
                 if (d.GetDeviceUUID() == result.Devices[0].GetDeviceUUID()) {
                     UNIT_ASSERT_VALUES_EQUAL(E_TRY_AGAIN, r.Error.GetCode());
-                    ASSERT_VECTORS_EQUAL(TVector{"nrd0"}, r.AffectedDisks);
+                    ASSERT_VECTORS_EQUAL(TVector{"local0"}, r.AffectedDisks);
                 } else {
                     UNIT_ASSERT_VALUES_EQUAL(S_OK, r.Error.GetCode());
                 }
             }
         });
+
+        WriteTx(
+            [&](auto db)
+            {
+                TVector<TString> affectedDisks;
+                auto r = state.PurgeHost(
+                    db,
+                    Agents[1].GetAgentId(),
+                    TInstant::FromValue(2),
+                    false,   // dryRun
+                    affectedDisks);
+                UNIT_ASSERT_VALUES_EQUAL(S_OK, r.GetCode());
+
+                for (const auto& device: Agents[1].GetDevices()) {
+                    if (device.GetPoolKind() == NProto::DEVICE_POOL_KIND_LOCAL)
+                    {
+                        UNIT_ASSERT_C(
+                            state.IsSuspendedDevice(device.GetDeviceUUID()),
+                            device);
+                    }
+                }
+            });
 
         WriteTx([&] (auto db) {
             TVector<TString> affectedDisks;
@@ -308,19 +330,31 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateSuspendTest)
                 db,
                 Agents[2].GetAgentId(),
                 NProto::AGENT_STATE_WARNING,
-                TInstant::FromValue(2),
+                TInstant::FromValue(3),
                 false,  // dryRun
                 affectedDisks,
                 timeout));
 
-            for (const auto& d: Agents[2].GetDevices()) {
-                UNIT_ASSERT_C(state.IsSuspendedDevice(d.GetDeviceUUID()), d);
-            }
+            const auto* agent = state.FindAgent(Agents[2].GetAgentId());
+            UNIT_ASSERT_VALUES_EQUAL(4, agent->GetDevices().size());
         });
 
         for (const auto& d: Agents[0].GetDevices()) {
             UNIT_ASSERT_C(!state.IsSuspendedDevice(d.GetDeviceUUID()), d);
         }
+
+        WriteTx([&] (auto db) {
+            TVector<TString> affectedDisks;
+            UNIT_ASSERT_SUCCESS(state.PurgeHost(
+                db,
+                Agents[2].GetAgentId(),
+                TInstant::FromValue(4),
+                false,  // dryRun
+                affectedDisks));
+
+            const auto* agent = state.FindAgent(Agents[2].GetAgentId());
+            UNIT_ASSERT_VALUES_EQUAL(0, agent->GetDevices().size());
+        });
     }
 }
 

@@ -131,6 +131,15 @@ struct TFixture
         return CmsAction(action);
     }
 
+    auto PurgeHost(const TString& agentId)
+    {
+        NProto::TAction action;
+        action.SetHost(agentId);
+        action.SetType(NProto::TAction::PURGE_HOST);
+
+        return CmsAction(std::move(action));
+    }
+
     auto RemoveDevice(TString host, TString path) const
     {
         NProto::TAction action;
@@ -330,7 +339,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
 
             UNIT_ASSERT_VALUES_EQUAL(0, n1);
             UNIT_ASSERT_VALUES_EQUAL(1, n2);
-            UNIT_ASSERT_VALUES_EQUAL(0, n3);
+            UNIT_ASSERT_VALUES_EQUAL(4, n3);
         }
 
         size_t cleanDevices = 0;
@@ -359,6 +368,19 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
 
         {
             const auto result = RemoveHost("agent-3");
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, result.GetResult().GetCode());
+        }
+
+        {
+            auto [n1, n2, n3] = QueryAvailableStorage();
+
+            UNIT_ASSERT_VALUES_EQUAL(0, n1);
+            UNIT_ASSERT_VALUES_EQUAL(1, n2);
+            UNIT_ASSERT_VALUES_EQUAL(4, n3);
+        }
+
+        {
+            const auto result = PurgeHost("agent-3");
             UNIT_ASSERT_VALUES_EQUAL(S_OK, result.GetResult().GetCode());
         }
 
@@ -601,7 +623,20 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
 
             UNIT_ASSERT_VALUES_EQUAL(0, n1);
             UNIT_ASSERT_VALUES_EQUAL(2, n2);
-            UNIT_ASSERT_VALUES_EQUAL(0, n3); // devices from agent-3 were suspended
+            UNIT_ASSERT_VALUES_EQUAL(4, n3);
+        }
+
+        {
+            const auto result = PurgeHost("agent-3");
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, result.GetResult().GetCode());
+        }
+
+        {
+            auto [n1, n2, n3] = QueryAvailableStorage();
+
+            UNIT_ASSERT_VALUES_EQUAL(0, n1);
+            UNIT_ASSERT_VALUES_EQUAL(2, n2);
+            UNIT_ASSERT_VALUES_EQUAL(0, n3); // devices from agent-3 were removed
         }
 
         {
@@ -614,10 +649,11 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
 
             UNIT_ASSERT_VALUES_EQUAL(0, n1);
             UNIT_ASSERT_VALUES_EQUAL(2, n2);
-            UNIT_ASSERT_VALUES_EQUAL(0, n3); // devices from agent-3 are still suspended
+            UNIT_ASSERT_VALUES_EQUAL(0, n3); // devices from agent-3 are suspended
         }
 
         DiskRegistry->ResumeDevice("agent-3", "dev-1");
+        WaitForSecureErase(*Runtime, 1);
 
         {
             auto [n1, n2, n3] = QueryAvailableStorage();

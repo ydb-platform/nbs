@@ -323,6 +323,7 @@ NProto::TStorageServiceConfig CreateDefaultStorageConfigProto()
     config.SetNonReplicatedMigrationStartAllowed(true);
     config.SetMirroredMigrationStartAllowed(true);
     config.SetAllocationUnitNonReplicatedSSD(10);
+    config.SetDiskRegistryAlwaysAllocatesLocalDisks(true);
 
     return config;
 }

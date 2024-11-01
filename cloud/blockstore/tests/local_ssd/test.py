@@ -50,6 +50,15 @@ def _remove_host(client, agent_id):
     return client.cms_action(request).ActionResults
 
 
+def _purge_host(client, agent_id):
+    request = TCmsActionRequest()
+    action = request.Actions.add()
+    action.Type = TAction.PURGE_HOST
+    action.Host = agent_id
+
+    return client.cms_action(request).ActionResults
+
+
 def _backup(client):
     response = client.execute_action(
         action="BackupDiskRegistryState",
@@ -161,6 +170,8 @@ def test_add_host_with_legacy_local_ssd(
 
     # do not resume local devices on ADD_HOST action
     nbs_config.files["storage"].NonReplicatedDontSuspendDevices = False
+    nbs_config.files["storage"].DiskRegistryAlwaysAllocatesLocalDisks = True
+    nbs_config.files["storage"].NonReplicatedInfraTimeout = 0
 
     nbs = start_nbs(nbs_config)
 
@@ -267,27 +278,40 @@ def test_add_host_with_legacy_local_ssd(
     assert len(bkp.get("DirtyDevices", [])) == 0
     assert len(bkp.get("SuspendedDevices", [])) == 0
 
+    # Local disks still allowed for creation
     storage = client.query_available_storage([agent_id])
+    assert len(storage) == 1
+    assert storage[0].AgentId == agent_id
+    assert storage[0].ChunkCount == 4
+    assert storage[0].ChunkSize == LOCAL_DEVICE_SIZE
+
+    # REMOVE_HOST disallows creation of all disk types except locals.
+    storage = client.query_available_storage(
+        [agent_id],
+        storage_pool_name="1Mb",
+        storage_pool_kind=STORAGE_POOL_KIND_GLOBAL)
     assert len(storage) == 1
     assert storage[0].AgentId == agent_id
     assert storage[0].ChunkCount == 0
     assert storage[0].ChunkSize == 0
 
-    client.destroy_volume("vol0", sync=True)
-    client.destroy_volume("vol1", sync=True)
-
-    bkp = _backup(client)
-    assert len(bkp.get("DirtyDevices", [])) == 0
-    assert len(bkp.get("SuspendedDevices", [])) == 0
-
-    action_results = _remove_host(client, agent_id)
+    # Purge the host. This is abnormal situation. Normally infra should invoke
+    # this only when all clients and disks are gone.
+    action_results = _purge_host(client, agent_id)
     assert len(action_results) == 1
     assert action_results[0].Result.Code == EResult.S_OK.value
 
+    # All local devices should now be suspended.
     bkp = _backup(client)
-
     assert len(bkp.get("DirtyDevices", [])) == 0
     assert len(bkp["SuspendedDevices"]) == 4
+
+    # After purge we can't create any local disks.
+    storage = client.query_available_storage([agent_id])
+    assert len(storage) == 1
+    assert storage[0].AgentId == agent_id
+    assert storage[0].ChunkCount == 0
+    assert storage[0].ChunkSize == 0
 
     disk_agent.kill()
     assert not disk_agent.is_alive()
@@ -305,14 +329,19 @@ def test_add_host_with_legacy_local_ssd(
     assert bkp["Agents"][0]["State"] == 'AGENT_STATE_WARNING', json.dumps(bkp)
     assert len(bkp.get("SuspendedDevices", [])) == 4
 
+    client.destroy_volume("vol0", sync=True)
+    client.destroy_volume("vol1", sync=True)
+
+    bkp = _backup(client)
+    assert len(bkp.get("DirtyDevices", [])) == 2
+    assert len(bkp.get("SuspendedDevices", [])) == 4
+
     # put the agent back
     _add_host(client, agent_id)
 
-    _wait_for_devices_to_be_cleared(client)
-
-    # all devices are available
+    # Devices are still suspended
     bkp = _backup(client)
-    assert len(bkp.get("DirtyDevices", [])) == 0
+    assert len(bkp.get("DirtyDevices", [])) == 2
     assert len(bkp.get("SuspendedDevices", [])) == 4
 
     storage = client.query_available_storage([agent_id])
@@ -324,11 +353,25 @@ def test_add_host_with_legacy_local_ssd(
         [agent_id],
         storage_pool_name="1Mb",
         storage_pool_kind=STORAGE_POOL_KIND_GLOBAL)
-
     assert len(storage) == 1
     assert storage[0].AgentId == agent_id
     assert storage[0].ChunkCount == 6
     assert storage[0].ChunkSize == DEFAULT_DEVICE_SIZE
+
+    # Resume dirty devices
+    client.resume_device(agent_id, os.path.join(data_path, "NVMECOMPUTE01"))
+    client.resume_device(agent_id, os.path.join(data_path, "NVMECOMPUTE02"))
+    _wait_for_devices_to_be_cleared(client)
+
+    bkp = _backup(client)
+    assert len(bkp.get("DirtyDevices", [])) == 0
+    assert len(bkp.get("SuspendedDevices", [])) == 2
+
+    storage = client.query_available_storage([agent_id])
+    assert len(storage) == 1
+    assert storage[0].AgentId == agent_id
+    assert storage[0].ChunkCount == 2
+    assert storage[0].ChunkSize == LOCAL_DEVICE_SIZE
 
     disk_agent.kill()
     nbs.kill()
@@ -345,6 +388,8 @@ def test_add_host(
 
     # resume local devices on ADD_HOST action
     nbs_config.files["storage"].NonReplicatedDontSuspendDevices = True
+    nbs_config.files["storage"].DiskRegistryAlwaysAllocatesLocalDisks = True
+    nbs_config.files["storage"].NonReplicatedInfraTimeout = 0
 
     nbs = start_nbs(nbs_config)
 
@@ -412,20 +457,37 @@ def test_add_host(
     assert len(bkp.get("DirtyDevices", [])) == 0
     assert len(bkp.get("SuspendedDevices", [])) == 0
 
+    # Local disks still allowed for creation
+    storage = client.query_available_storage([agent_id])
+    assert len(storage) == 1
+    assert storage[0].AgentId == agent_id
+    assert storage[0].ChunkCount == 4
+    assert storage[0].ChunkSize == LOCAL_DEVICE_SIZE
+
+    # REMOVE_HOST disallows creation of all disk types except locals.
+    storage = client.query_available_storage(
+        [agent_id],
+        storage_pool_name="1Mb",
+        storage_pool_kind=STORAGE_POOL_KIND_GLOBAL)
+    assert len(storage) == 1
+    assert storage[0].AgentId == agent_id
+    assert storage[0].ChunkCount == 0
+    assert storage[0].ChunkSize == 0
+
+    # Purge the host. This is abnormal situation. Normally infra should invoke
+    # this only when all clients and disks are gone.
+    action_results = _purge_host(client, agent_id)
+    assert len(action_results) == 1
+    assert action_results[0].Result.Code == EResult.S_OK.value
+
+    # After purge we can't create any local disks.
     storage = client.query_available_storage([agent_id])
     assert len(storage) == 1
     assert storage[0].AgentId == agent_id
     assert storage[0].ChunkCount == 0
     assert storage[0].ChunkSize == 0
 
-    client.destroy_volume("vol0", sync=True)
-
-    action_results = _remove_host(client, agent_id)
-    assert len(action_results) == 1
-    assert action_results[0].Result.Code == EResult.S_OK.value
-
     bkp = _backup(client)
-
     assert len(bkp.get("DirtyDevices", [])) == 0
     assert len(bkp["SuspendedDevices"]) == 4
 
@@ -440,6 +502,8 @@ def test_add_host(
 
     # wait for DR to mark the agent as warning (back from unavailable)
     _wait_agent_state(client, agent_id, 'AGENT_STATE_WARNING')
+
+    client.destroy_volume("vol0", sync=True)
 
     bkp = _backup(client)
     assert bkp["Agents"][0]["State"] == 'AGENT_STATE_WARNING', json.dumps(bkp)
