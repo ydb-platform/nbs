@@ -56,6 +56,7 @@ def test_config_dispatcher():
     storage = TStorageServiceConfig()
     storage.ConfigsDispatcherServiceEnabled = True
     storage.ConfigDispatcherSettings.AllowList.Names.append('NameserviceConfigItem')
+    storage.DisableLocalService = True
 
     nbs_binary_path = yatest_common.binary_path('cloud/blockstore/apps/server/nbsd')
     nbs = LocalNbs(

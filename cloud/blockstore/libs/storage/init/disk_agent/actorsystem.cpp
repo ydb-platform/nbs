@@ -15,8 +15,10 @@
 #include <cloud/storage/core/libs/hive_proxy/hive_proxy.h>
 #include <cloud/storage/core/libs/kikimr/config_dispatcher_helpers.h>
 #include <cloud/storage/core/libs/kikimr/kikimr_initializer.h>
+#include <cloud/storage/core/libs/kikimr/tenant.h>
 
 #include <contrib/ydb/core/grpc_services/grpc_request_proxy.h>
+#include <contrib/ydb/core/mind/tenant_pool.h>
 
 namespace NCloud::NBlockStore::NStorage {
 
@@ -121,6 +123,20 @@ public:
                     diskAgent.release(),
                     TMailboxType::TinyReadAsFilled,
                     appData->UserPoolId));
+        }
+
+        if (Args.StorageConfig->GetConfigsDispatcherServiceEnabled())
+        {
+            auto localConfig = MakeIntrusive<TLocalConfig>();
+            auto tenantPoolConfig = MakeIntrusive<TTenantPoolConfig>(localConfig);
+            tenantPoolConfig->AddStaticSlot(Args.StorageConfig->GetSchemeShardDir());
+
+            setup->LocalServices.emplace_back(
+                MakeTenantPoolRootID(),
+                TActorSetupCmd(
+                    CreateTenantPool(tenantPoolConfig),
+                    TMailboxType::ReadAsFilled,
+                    appData->SystemPoolId));
         }
     }
 };

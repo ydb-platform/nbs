@@ -429,10 +429,9 @@ public:
         };
 
         const bool enableLocal = !StorageConfig->GetDisableLocalService();
+        auto localConfig = MakeIntrusive<TLocalConfig>();
 
         if (enableLocal || IsDiskRegistrySpareNode) {
-            auto localConfig = MakeIntrusive<TLocalConfig>();
-
             if (enableLocal) {
                 localConfig->TabletClassInfo[TTabletTypes::BlockStoreVolume] =
                     TLocalConfig::TTabletClassInfo(
@@ -457,7 +456,12 @@ public:
                     priority);
 
             ConfigureTenantSystemTablets(*appData, *localConfig);
+        }
 
+        if (StorageConfig->GetConfigsDispatcherServiceEnabled() ||
+            enableLocal ||
+            IsDiskRegistrySpareNode)
+        {
             auto tenantPoolConfig = MakeIntrusive<TTenantPoolConfig>(localConfig);
             tenantPoolConfig->AddStaticSlot(StorageConfig->GetSchemeShardDir());
 
