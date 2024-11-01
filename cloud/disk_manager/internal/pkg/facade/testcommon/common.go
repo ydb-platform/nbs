@@ -111,13 +111,13 @@ func GetQCOW2ImageCrc32(t *testing.T) uint32 {
 	return uint32(value)
 }
 
-func UseOtherQCOW2ImageFile(t *testing.T) {
-	_, err := http.Get(GetQCOW2ImageFileURL() + "/use_other_image")
+func UseDefaultQCOW2ImageFile(t *testing.T) {
+	_, err := http.Get(GetQCOW2ImageFileURL() + "/use_default_image")
 	require.NoError(t, err)
 }
 
-func UseDefaultQCOW2ImageFile(t *testing.T) {
-	_, err := http.Get(GetQCOW2ImageFileURL() + "/use_default_image")
+func UseOtherQCOW2ImageFile(t *testing.T) {
+	_, err := http.Get(GetQCOW2ImageFileURL() + "/use_other_image")
 	require.NoError(t, err)
 }
 
@@ -177,13 +177,13 @@ func GetBigRawImageCrc32(t *testing.T) uint32 {
 	return uint32(value)
 }
 
-func UseOtherBigRawImageFile(t *testing.T) {
-	_, err := http.Get(GetBigRawImageURL() + "/use_other_image")
+func UseDefaultBigRawImageFile(t *testing.T) {
+	_, err := http.Get(GetBigRawImageURL() + "/use_default_image")
 	require.NoError(t, err)
 }
 
-func UseDefaultBigRawImageFile(t *testing.T) {
-	_, err := http.Get(GetBigRawImageURL() + "/use_default_image")
+func UseOtherBigRawImageFile(t *testing.T) {
+	_, err := http.Get(GetBigRawImageURL() + "/use_other_image")
 	require.NoError(t, err)
 }
 

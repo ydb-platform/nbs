@@ -1,6 +1,6 @@
-import binascii
 import random
 
+from . common import file_crc32
 from yatest.common import process
 
 
@@ -53,5 +53,4 @@ class VMDKImageGenerator():
 
     @property
     def raw_image_crc32(self):
-        content = open(self.__raw_image_file_path, "rb").read()
-        return binascii.crc32(content) & 0xFFFFFFFF
+        return file_crc32(self.__raw_image_file_path, self.__chunk_size)

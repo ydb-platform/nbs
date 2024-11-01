@@ -1,5 +1,4 @@
-import binascii
-
+from . common import file_crc32
 from yatest.common import process
 
 
@@ -10,8 +9,13 @@ class RawImageGenerator():
         self.__image_file_path = image_file_path
 
         self.__batch_size = 1024 * 1024
-        if image_size % self.__batch_size != 0:
-            raise Exception("image size should be divisible by {}, image size = {}".format(self.__batch_size, image_size))
+
+        assert image_size % self.__batch_size == 0, "image size should be divisible by {}, image size = {}".format(
+            self.__batch_size, image_size,
+        )
+        assert image_size > self.__batch_size, "image size should be greater than {}, image size = {}".format(
+            self.__batch_size, image_size,
+        )
 
     def generate(self):
         # Write some zero bytes in the beginning of the file
@@ -37,9 +41,4 @@ class RawImageGenerator():
 
     @property
     def image_crc32(self):
-        crc32 = 0
-        with open(self.__image_file_path, "rb") as f:
-            for _ in range(0, self.__image_size, self.__batch_size):
-                batch = f.read(self.__batch_size)
-                crc32 = binascii.crc32(batch, crc32)
-        return crc32
+        return file_crc32(self.__image_file_path, self.__batch_size)

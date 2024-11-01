@@ -561,11 +561,11 @@ func testImageServiceCreateImageFromURLWhichIsOverwrittenInProcess(
 	t *testing.T,
 	imageID string,
 	imageURL string,
-	defaultImageSize uint64,
-	defaultImageCrc32 uint32,
-	otherImageSize uint64,
-	otherImageCrc32 uint32,
-	overwriteImage func(t *testing.T),
+	imageSize uint64,
+	imageCrc32 uint32,
+	overwrittenImageSize uint64,
+	overwrittenImageCrc32 uint32,
+	overwriteImageFile func(t *testing.T),
 ) {
 
 	ctx := testcommon.NewContext()
@@ -590,8 +590,7 @@ func testImageServiceCreateImageFromURLWhichIsOverwrittenInProcess(
 
 	// Need to add some variance for better testing.
 	common.WaitForRandomDuration(1000*time.Millisecond, 2*time.Second)
-	// Overwrites image URL contents.
-	overwriteImage(t)
+	overwriteImageFile(t)
 
 	imageResponse := disk_manager.CreateImageResponse{}
 	err = internal_client.WaitResponse(ctx, client, operation.Id, &imageResponse)
@@ -602,24 +601,24 @@ func testImageServiceCreateImageFromURLWhichIsOverwrittenInProcess(
 			return
 		}
 
-		// http code 416 might be returned if other image size is less then
-		// default image size.
+		// http code 416 might be returned if overwritten image size is less
+		// than image size.
 		if strings.Contains(err.Error(), "http code 416") {
 			testcommon.CheckErrorDetails(t, err, codes.BadSource, "", true /*internal*/)
 			return
 		}
 	}
 
-	imageSize := otherImageSize
-	imageCrc32 := otherImageCrc32
+	actualImageSize := overwrittenImageSize
+	expectedImageCrc32 := overwrittenImageCrc32
 
-	if int64(imageSize) != imageResponse.Size {
-		// Default image file is also allowed, image could have already been
-		// created before we started using 'other image'.
-		imageSize = defaultImageSize
-		imageCrc32 = defaultImageCrc32
+	if int64(actualImageSize) != imageResponse.Size {
+		// initial (non-overwritten) image file is also allowed, image could
+		// have already been created before we started using 'other image'.
+		actualImageSize = imageSize
+		expectedImageCrc32 = imageCrc32
 
-		require.Equal(t, int64(imageSize), imageResponse.Size)
+		require.Equal(t, int64(actualImageSize), imageResponse.Size)
 	}
 
 	diskID := imageID
@@ -629,7 +628,7 @@ func testImageServiceCreateImageFromURLWhichIsOverwrittenInProcess(
 		Src: &disk_manager.CreateDiskRequest_SrcImageId{
 			SrcImageId: imageID,
 		},
-		Size: int64(imageSize),
+		Size: int64(actualImageSize),
 		Kind: disk_manager.DiskKind_DISK_KIND_SSD,
 		DiskId: &disk_manager.DiskId{
 			ZoneId: "zone-a",
@@ -647,8 +646,8 @@ func testImageServiceCreateImageFromURLWhichIsOverwrittenInProcess(
 		ctx,
 		diskID,
 		nbs.DiskContentInfo{
-			ContentSize: imageSize,
-			Crc32:       imageCrc32,
+			ContentSize: actualImageSize,
+			Crc32:       expectedImageCrc32,
 		},
 	)
 	require.NoError(t, err)

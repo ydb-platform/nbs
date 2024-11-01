@@ -230,8 +230,8 @@ def start(argv):
     if '--generate-big-raw-images' in argv:
         big_raw_image_file_path = os.path.join(working_dir, "generated_big_raw_image")
         other_big_raw_image_file_path = os.path.join(working_dir, "generated_other_big_raw_image")
-        big_raw_image_file_size = 536870912 # 512 MB
-        other_big_raw_image_file_size = 1073741824 # 1GB
+        big_raw_image_file_size = 536870912  # 512 MB
+        other_big_raw_image_file_size = 1073741824  # 1GB
         raw_image_generator = RawImageGenerator(big_raw_image_file_path, big_raw_image_file_size)
         raw_image_generator.generate()
         other_raw_image_generator = RawImageGenerator(other_big_raw_image_file_path, other_big_raw_image_file_size)
