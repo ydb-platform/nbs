@@ -601,7 +601,7 @@ func testImageServiceCreateImageFromURLWhichIsOverwrittenInProcess(
 			return
 		}
 
-		// http code 416 might be returned if overwritten image size is less
+		// HTTP code 416 might be returned if overwritten image size is less
 		// than image size.
 		if strings.Contains(err.Error(), "http code 416") {
 			testcommon.CheckErrorDetails(t, err, codes.BadSource, "", true /*internal*/)
@@ -609,16 +609,24 @@ func testImageServiceCreateImageFromURLWhichIsOverwrittenInProcess(
 		}
 	}
 
-	actualImageSize := overwrittenImageSize
-	expectedImageCrc32 := overwrittenImageCrc32
+	var expectedImageCrc32 uint32
 
-	if int64(actualImageSize) != imageResponse.Size {
-		// initial (non-overwritten) image file is also allowed, image could
+	if imageResponse.Size == int64(overwrittenImageSize) {
+		expectedImageCrc32 = overwrittenImageCrc32
+	} else if imageResponse.Size == int64(imageSize) {
+		// Initial (non-overwritten) image file is also allowed, image could
 		// have already been created before we started using 'other image'.
-		actualImageSize = imageSize
 		expectedImageCrc32 = imageCrc32
-
-		require.Equal(t, int64(actualImageSize), imageResponse.Size)
+	} else {
+		messageFormat := "Image has invalid size %v. It is equal neither " +
+			"initial image size %v nor overwritten image size %v"
+		require.Fail(
+			t,
+			messageFormat,
+			imageResponse.Size,
+			imageSize,
+			overwrittenImageSize,
+		)
 	}
 
 	diskID := imageID
@@ -628,7 +636,7 @@ func testImageServiceCreateImageFromURLWhichIsOverwrittenInProcess(
 		Src: &disk_manager.CreateDiskRequest_SrcImageId{
 			SrcImageId: imageID,
 		},
-		Size: int64(actualImageSize),
+		Size: imageResponse.Size,
 		Kind: disk_manager.DiskKind_DISK_KIND_SSD,
 		DiskId: &disk_manager.DiskId{
 			ZoneId: "zone-a",
@@ -646,7 +654,7 @@ func testImageServiceCreateImageFromURLWhichIsOverwrittenInProcess(
 		ctx,
 		diskID,
 		nbs.DiskContentInfo{
-			ContentSize: actualImageSize,
+			ContentSize: uint64(imageResponse.Size),
 			Crc32:       expectedImageCrc32,
 		},
 	)
