@@ -11,7 +11,7 @@ import (
 
 ////////////////////////////////////////////////////////////////////////////////
 
-type tasksError interface {
+type errorForTracing interface {
 	error
 	ErrorForTracing() string
 }
@@ -134,10 +134,7 @@ func (e *NonRetriableError) ErrorForTracing() string {
 }
 
 func (e *NonRetriableError) message() string {
-	return fmt.Sprintf(
-		"Non retriable error, Silent=%v",
-		e.Silent,
-	)
+	return fmt.Sprintf("Non retriable error, Silent=%v", e.Silent)
 }
 
 func (e *NonRetriableError) Unwrap() error {
@@ -254,15 +251,11 @@ func NewWrongGenerationError() *WrongGenerationError {
 }
 
 func (e WrongGenerationError) Error() string {
-	return e.message()
+	return "Wrong generation"
 }
 
 func (e WrongGenerationError) ErrorForTracing() string {
-	return e.message()
-}
-
-func (WrongGenerationError) message() string {
-	return "Wrong generation"
+	return e.Error()
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -274,15 +267,11 @@ func NewInterruptExecutionError() *InterruptExecutionError {
 }
 
 func (e InterruptExecutionError) Error() string {
-	return e.message()
+	return "Interrupt execution"
 }
 
 func (e InterruptExecutionError) ErrorForTracing() string {
-	return e.message()
-}
-
-func (InterruptExecutionError) message() string {
-	return "Interrupt execution"
+	return e.Error()
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -350,19 +339,15 @@ func newNotFoundError(taskID, idempotencyKey string) *NotFoundError {
 }
 
 func (e NotFoundError) Error() string {
-	return e.message()
-}
-
-func (e NotFoundError) ErrorForTracing() string {
-	return e.message()
-}
-
-func (e NotFoundError) message() string {
 	return fmt.Sprintf(
 		"No task with ID=%v, IdempotencyKey=%v",
 		e.TaskID,
 		e.IdempotencyKey,
 	)
+}
+
+func (e NotFoundError) ErrorForTracing() string {
+	return e.Error()
 }
 
 // HACK: Need to avoid default comparator that uses inner fields.
@@ -500,8 +485,8 @@ func IsSilent(err error) bool {
 ////////////////////////////////////////////////////////////////////////////////
 
 func ErrorForTracing(err error) string {
-	if tasksErr, ok := err.(tasksError); ok {
-		return tasksErr.ErrorForTracing()
+	if errForTracing, ok := err.(errorForTracing); ok {
+		return errForTracing.ErrorForTracing()
 	}
 	return err.Error()
 }

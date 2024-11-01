@@ -223,7 +223,7 @@ func TestErrorMessageWhenBothRetriableAndNonRetriableErrors(t *testing.T) {
 }
 
 func TestErrorMessageWithAndWithoutStacktrace(t *testing.T) {
-	checkError := func(err tasksError, hasStacktrace bool) {
+	checkError := func(err errorForTracing, hasStacktrace bool) {
 		require.Equal(t, ErrorForTracing(err), err.ErrorForTracing())
 
 		if hasStacktrace {
