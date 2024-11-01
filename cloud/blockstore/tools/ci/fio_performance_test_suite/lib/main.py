@@ -100,6 +100,11 @@ def parse_args() -> argparse.Namespace:
         default=None,
         help='use image with the specified name to create disks')
     test_arguments_group.add_argument(
+        '--image-folder-id',
+        type=str,
+        default=None,
+        help='use image from the specified folder to create disks')
+    test_arguments_group.add_argument(
         '--instance-cores',
         type=int,
         default=_DEFAULT_INSTANCE_CORES,
@@ -142,8 +147,8 @@ class FioTestsRunner:
         self._logger = logger
         self._module_factories = module_factories
 
-        self._version_method_name = None
-        self._instance_image_name = None
+    def _version_method_name() -> str:
+        raise NotImplementedError()
 
     def _run_tests(
         self,
@@ -193,11 +198,12 @@ class FioTestsRunner:
                     platform_id=self._args.platform_id,
                     compute_node=self._args.compute_node,
                     placement_group_name=self._args.placement_group_name,
-                    image_name=self._instance_image_name,
+                    image_name=self._args.image_name,
+                    image_folder_id=self._args.image_folder_id,
                     description='fio performance test') as instance:
                 version = self._module_factories.fetch_server_version(
                     self._args.dry_run,
-                    self._version_method_name,
+                    self._version_method_name(),
                     instance.compute_node,
                     cluster,
                     self._logger)
@@ -335,7 +341,9 @@ class FioTestsRunnerNbs(FioTestsRunner):
         logger: logging.Logger,
     ) -> None:
         super().__init__(module_factories, args, profiler, logger)
-        self._version_method_name = 'get_current_nbs_version'
+
+    def _version_method_name() -> str:
+        return 'get_current_nbs_version'
 
     def _teardown_parallel_run(
         self,
@@ -425,6 +433,7 @@ class FioTestsRunnerNbs(FioTestsRunner):
                     type_id=translate_disk_type(self._args.cluster, test_case.type),
                     bs=test_case.device_bs,
                     image_name=self._args.image_name,
+                    image_folder_id=self._args.image_folder_id,
                     description=f'fio performance test: {test_case.name}') as disk:
                 try:
                     with ycp.attach_disk(
@@ -473,6 +482,7 @@ class FioTestsRunnerNbs(FioTestsRunner):
                     type_id=translate_disk_type(self._args.cluster, test_case.type),
                     bs=test_case.device_bs,
                     image_name=self._args.image_name,
+                    image_folder_id=self._args.image_folder_id,
                     auto_delete=False,
                     description=f'fio performance test: {test_case.name}') as disk:
                 with ycp.attach_disk(
@@ -557,8 +567,9 @@ class FioTestsRunnerNfs(FioTestsRunner):
         logger: logging.Logger,
     ) -> None:
         super().__init__(module_factories, args, profiler, logger)
-        self._version_method_name = 'get_current_nfs_version'
-        self._instance_image_name = 'ubuntu-2004-eternal'
+
+    def _version_method_name() -> str:
+        return 'get_current_nfs_version'
 
     def _mount_fs(
         self,

@@ -15,6 +15,7 @@ class FolderDesc:
     subnet_name: str
     subnet_id: str
     image_name: str
+    image_folder_id: str
     filesystem_id: str
     platform_id: str = None
     service_account_id: str = None

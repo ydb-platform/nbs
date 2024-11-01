@@ -143,6 +143,7 @@ class Ycp:
         memory: int
         folder_id: str
         image_name: str
+        image_folder_id: str
         zone_id: str
         subnet_name: str
         subnet_id: str
@@ -167,6 +168,7 @@ class Ycp:
         placement_group_partition_count: int
         zone_id: str
         image_name: str
+        image_folder_id: str
         snapshot_name: str
         description: str
         kek_id: str
@@ -315,9 +317,9 @@ class Ycp:
 
         return None
 
-    def _resolve_image_name(self, folder_id, image_name, stderr):
+    def _resolve_image_name(self, image_folder_id, image_name, stderr):
         return self._resolve_entity_name(
-            self._ycp.compute.image.list(folder_id=folder_id),
+            self._ycp.compute.image.list(folder_id=image_folder_id),
             image_name,
             stderr)
 
@@ -377,7 +379,7 @@ class Ycp:
                     placement_group_id = entity['id']
 
             image_id = self._resolve_image_name(
-                config.folder_id,
+                config.image_folder_id,
                 config.image_name,
                 stderr)
 
@@ -440,7 +442,7 @@ class Ycp:
             snapshot_id = None
             if config.image_name is not None:
                 image_id = self._resolve_image_name(
-                    config.folder_id,
+                    config.image_folder_id,
                     config.image_name,
                     stderr)
             elif config.snapshot_name is not None:
