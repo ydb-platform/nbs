@@ -1532,6 +1532,61 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionTest)
         }
     }
 
+    Y_UNIT_TEST(ShouldAccountTimeoutsFromParallelRequestsCorrectly)
+    {
+        constexpr size_t RequestCount = 10;
+
+        TTestBasicRuntime runtime;
+
+        runtime.SetRegistrationObserverFunc(
+            [] (auto& runtime, const auto& parentId, const auto& actorId)
+        {
+            Y_UNUSED(parentId);
+            runtime.EnableScheduleForActor(actorId);
+        });
+
+        TTestEnv env(runtime);
+        env.DiskAgentState->ResponseDelay = TDuration::Max();
+
+        TPartitionClient client(runtime, env.ActorId);
+
+        auto makeParallelRequests = [&](EWellKnownResultCodes expectedResponse)
+        {
+            for (size_t i = 0; i < RequestCount; ++i) {
+                client.SendReadBlocksRequest(TBlockRange64::MakeOneBlock(i));
+            }
+
+            runtime.DispatchEvents();
+
+            for (size_t i = 0; i < RequestCount; ++i) {
+                auto response = client.RecvReadBlocksResponse();
+                UNIT_ASSERT_VALUES_EQUAL(
+                    expectedResponse,
+                    response->GetStatus());
+            }
+        };
+
+        // accumulated = 0.0, timeout = 1.0
+        makeParallelRequests(E_TIMEOUT);
+        // accumulated = 1.0, timeout = 1.5,
+        makeParallelRequests(E_TIMEOUT);
+        // accumulated = 2.5, timeout = 3.0,
+        makeParallelRequests(E_TIMEOUT);
+        // accumulated = 5.5, timeout = 5.0,
+        makeParallelRequests(E_TIMEOUT);
+        // accumulated = 10.5, timeout = 5.0,
+        makeParallelRequests(E_TIMEOUT);
+        // accumulated = 15.5, timeout = 5.0,
+        makeParallelRequests(E_TIMEOUT);
+        // accumulated = 20.5, timeout = 5.0,
+        makeParallelRequests(E_IO_SILENT);
+        // accumulated = 25.5, timeout = 5.0,
+        makeParallelRequests(E_IO_SILENT);
+        // advance time to skip cooldown period
+        runtime.AdvanceCurrentTime(TDuration::Minutes(5));
+        makeParallelRequests(E_IO);
+    }
+
     Y_UNIT_TEST(ShouldUpdateStats)
     {
         TTestBasicRuntime runtime;
