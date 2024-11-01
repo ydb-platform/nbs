@@ -153,8 +153,7 @@ TRequestTimeoutPolicy TNonreplicatedPartitionActor::MakeTimeoutPolicyForRequest(
 
     policy.Timeout =
         Min(GetMaxRequestTimeout(),
-            longestTimedOutStateDuration +
-                Config->GetExpectedClientBackoffIncrement());
+            longestTimedOutStateDuration + TDuration::MilliSeconds(500));
 
     if (isBackground) {
         return policy;
@@ -293,7 +292,7 @@ bool TNonreplicatedPartitionActor::InitRequests(
 
     for (const auto& dr: *deviceRequests) {
         if (dr.Device.GetNodeId() == 0) {
-            // Accessing to a non-allocated device causes the disk to break.
+            // Accessing a non-allocated device causes the disk to break.
             DeviceStats[dr.DeviceIdx].BrokenTransitionTs = ctx.Now();
             DeviceStats[dr.DeviceIdx].DeviceStatus = EDeviceStatus::Broken;
 

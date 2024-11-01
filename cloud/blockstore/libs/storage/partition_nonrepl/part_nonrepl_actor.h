@@ -27,17 +27,17 @@ namespace NCloud::NBlockStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-// Adjusts the behavior when a response is not received from the server during
+// Adjusts the behavior when a response is not received from the server within
 // the timeout.
 struct TRequestTimeoutPolicy
 {
     // How long to wait for a response from the server.
     TDuration Timeout;
 
-    // An error that needs to be generated when a timeout occurs.
+    // The error that needs to be generated when a timeout occurs.
     EWellKnownResultCodes ErrorCode;
 
-    // Message for response.
+    // Message for the response.
     TString OverrideMessage;
 };
 

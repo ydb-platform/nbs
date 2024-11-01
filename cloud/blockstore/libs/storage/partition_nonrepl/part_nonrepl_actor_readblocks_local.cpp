@@ -63,7 +63,7 @@ private:
     bool HandleError(
         const TActorContext& ctx,
         NProto::TError error,
-        bool timedout);
+        bool timedOut);
 
     void Done(const TActorContext& ctx, IEventBasePtr response, EStatus status);
 
@@ -151,7 +151,7 @@ void TDiskAgentReadActor::ReadBlocks(const TActorContext& ctx)
 bool TDiskAgentReadActor::HandleError(
     const TActorContext& ctx,
     NProto::TError error,
-    bool timedout)
+    bool timedOut)
 {
     if (FAILED(error.GetCode())) {
         ProcessError(ctx, *PartConfig, error);
@@ -162,7 +162,7 @@ bool TDiskAgentReadActor::HandleError(
         Done(
             ctx,
             std::move(response),
-            timedout ? EStatus::Timeout : EStatus::Fail);
+            timedOut ? EStatus::Timeout : EStatus::Fail);
         return true;
     }
 

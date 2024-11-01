@@ -63,7 +63,7 @@ private:
     bool HandleError(
         const TActorContext& ctx,
         NProto::TError error,
-        bool timedout);
+        bool timedOut);
 
     void Done(const TActorContext& ctx, IEventBasePtr response, EStatus status);
 
@@ -162,7 +162,7 @@ void TDiskAgentWriteActor::WriteBlocks(const TActorContext& ctx)
 bool TDiskAgentWriteActor::HandleError(
     const TActorContext& ctx,
     NProto::TError error,
-    bool timedout)
+    bool timedOut)
 {
     if (FAILED(error.GetCode())) {
         ProcessError(ctx, *PartConfig, error);
@@ -170,7 +170,7 @@ bool TDiskAgentWriteActor::HandleError(
         Done(
             ctx,
             CreateResponse(std::move(error)),
-            timedout ? EStatus::Timeout : EStatus::Fail);
+            timedOut ? EStatus::Timeout : EStatus::Fail);
 
         return true;
     }

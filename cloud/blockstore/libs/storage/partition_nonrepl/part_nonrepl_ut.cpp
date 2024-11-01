@@ -103,7 +103,6 @@ struct TTestEnv
             storageConfig.SetNonReplicatedMinRequestTimeoutHDD(60'000);
             storageConfig.SetNonReplicatedMaxRequestTimeoutHDD(60'000);
         }
-        storageConfig.SetExpectedClientBackoffIncrement(500);
         storageConfig.SetNonReplicatedAgentMaxTimeout(300'000);
         storageConfig.SetAssignIdToWriteAndZeroRequestsEnabled(true);
 
@@ -702,9 +701,8 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionTest)
             UNIT_ASSERT(response->GetErrorReason().Contains("timed out"));
         }
 
-        // backoff = 0.5s (ExpectedClientBackoffIncrement())
         // cumulative = 1.0s
-        // timeout = 1.5s (cumulative + backoff)
+        // timeout = 1.5s (cumulative + 0.5s)
         {
             client.SendWriteBlocksRequest(
                 TBlockRange64::WithLength(1024, 3072),
@@ -716,9 +714,8 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionTest)
             UNIT_ASSERT(response->GetErrorReason().Contains("timed out"));
         }
 
-        // backoff = 0.5s (ExpectedClientBackoffIncrement())
         // cumulative = 2.5s (1.0 + 1.5)
-        // timeout = 3s (cumulative + backoff)
+        // timeout = 3s (cumulative + 0.5s)
         {
             client.SendZeroBlocksRequest(
                 TBlockRange64::WithLength(1024, 3072));
@@ -729,7 +726,6 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionTest)
             UNIT_ASSERT(response->GetErrorReason().Contains("timed out"));
         }
 
-        // backoff = 0.5s (ExpectedClientBackoffIncrement())
         // cumulative = 5.5s (1.0 + 1.5 + 3.0)
         // timeout = 5s (limited by NonReplicatedMaxRequestTimeoutSSD())
         {
@@ -741,7 +737,6 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionTest)
             UNIT_ASSERT_VALUES_EQUAL(E_TIMEOUT, response->GetStatus());
         }
 
-        // backoff = 0.5s (ExpectedClientBackoffIncrement())
         // cumulative = 10.5 (1.0 + 1.5 + 3.0 + 5.0)
         // timeout = 5s (limited by NonReplicatedMaxRequestTimeoutSSD())
         {
@@ -765,7 +760,6 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionTest)
         UNIT_ASSERT_VALUES_EQUAL(0, counters.HasBrokenDevice.Value);
         UNIT_ASSERT_VALUES_EQUAL(0, counters.HasBrokenDeviceSilent.Value);
 
-        // backoff = 0.5s (ExpectedClientBackoffIncrement())
         // cumulative = 15.5 (1.0 + 1.5 + 3.0 + 5.0 + 5.0)
         // timeout = 5s (limited by NonReplicatedMaxRequestTimeoutSSD())
         {
