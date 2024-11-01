@@ -13,9 +13,9 @@ from cloud.blockstore.tests.python.lib.test_base import \
 
 from cloud.blockstore.tests.python.lib.disk_agent_runner import LocalDiskAgent
 
-from contrib.ydb.tests.library.harness.kikimr_cluster import \
+from cloud.blockstore.pylibs.ydb.tests.library.harness.kikimr_cluster import \
     kikimr_cluster_factory
-from contrib.ydb.tests.library.harness.kikimr_config import \
+from cloud.blockstore.pylibs.ydb.tests.library.harness.kikimr_config import \
     KikimrConfigGenerator
 
 from cloud.blockstore.tests.python.lib.nonreplicated_setup import \

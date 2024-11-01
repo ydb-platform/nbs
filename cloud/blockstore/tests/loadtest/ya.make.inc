@@ -19,4 +19,5 @@ PEERDIR(
 
     contrib/ydb/core/protos
     contrib/ydb/tests/library
+    cloud/blockstore/pylibs/ydb/tests/library
 )

@@ -20,8 +20,8 @@ from cloud.blockstore.tests.python.lib.test_base import \
     thread_count, wait_for_nbs_server, wait_for_secure_erase
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
-from contrib.ydb.tests.library.harness.kikimr_cluster import kikimr_cluster_factory
-from contrib.ydb.tests.library.harness.kikimr_config import KikimrConfigGenerator
+from cloud.blockstore.pylibs.ydb.tests.library.harness.kikimr_cluster import kikimr_cluster_factory
+from cloud.blockstore.pylibs.ydb.tests.library.harness.kikimr_config import KikimrConfigGenerator
 
 DEFAULT_BLOCK_SIZE = 4096
 DEFAULT_DEVICE_COUNT = 4

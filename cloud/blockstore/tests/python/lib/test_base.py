@@ -14,7 +14,7 @@ import uuid
 
 import yatest.common as common
 import contrib.ydb.tests.library.common.yatest_common as yatest_common
-from contrib.ydb.tests.library.harness.daemon import Daemon
+from cloud.blockstore.pylibs.ydb.tests.library.harness.daemon import Daemon
 
 import cloud.blockstore.public.sdk.python.protos as protos
 

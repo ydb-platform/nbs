@@ -10,6 +10,7 @@ PEERDIR(
     library/python/testing/yatest_common
 
     contrib/ydb/tests/library
+    cloud/blockstore/pylibs/ydb/tests/library
 )
 
 DATA(

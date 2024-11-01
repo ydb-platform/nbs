@@ -2,7 +2,7 @@ import os
 
 from yatest.common import process
 
-from contrib.ydb.tests.library.harness.kikimr_runner import get_unique_path_for_current_test, ensure_path_exists
+from cloud.blockstore.pylibs.ydb.tests.library.harness.kikimr_runner import get_unique_path_for_current_test, ensure_path_exists
 import contrib.ydb.tests.library.common.yatest_common as yatest_common
 from library.python.testing.recipe import declare_recipe, set_env
 

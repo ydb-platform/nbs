@@ -4,7 +4,7 @@ import cloud.filestore.public.sdk.python.protos as protos
 
 from cloud.filestore.public.sdk.python.client.grpc_client import CreateGrpcEndpointClient
 from cloud.filestore.tests.python.lib.common import daemon_log_files, is_grpc_error
-from contrib.ydb.tests.library.harness.daemon import Daemon
+from cloud.blockstore.pylibs.ydb.tests.library.harness.daemon import Daemon
 
 
 class NfsVhost(Daemon):

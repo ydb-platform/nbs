@@ -14,6 +14,7 @@ PEERDIR(
     contrib/ydb/core/protos
     contrib/ydb/public/api/protos
     contrib/ydb/tests/library
+    cloud/blockstore/pylibs/ydb/tests/library
 
     contrib/python/requests/py3
     contrib/python/retrying

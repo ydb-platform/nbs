@@ -7,7 +7,7 @@ from cloud.blockstore.config.client_pb2 import TClientConfig
 from cloud.blockstore.config.server_pb2 import TServerAppConfig, TServerConfig, TKikimrServiceConfig
 from cloud.blockstore.tests.python.lib.loadtest_env import LocalLoadTest
 from cloud.blockstore.tests.python.lib.test_base import thread_count, run_test
-from contrib.ydb.tests.library.harness.kikimr_runner import get_unique_path_for_current_test, ensure_path_exists
+from cloud.blockstore.pylibs.ydb.tests.library.harness.kikimr_runner import get_unique_path_for_current_test, ensure_path_exists
 
 
 class TestCase(object):

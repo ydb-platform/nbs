@@ -15,9 +15,9 @@ from cloud.blockstore.tests.python.lib.nonreplicated_setup import setup_nonrepli
     create_devices, setup_disk_registry_config, \
     enable_writable_state, make_agent_node_type, make_agent_id, AgentInfo, DeviceInfo
 
-from contrib.ydb.tests.library.harness.kikimr_cluster import kikimr_cluster_factory
-from contrib.ydb.tests.library.harness.kikimr_config import KikimrConfigGenerator
-from contrib.ydb.tests.library.harness.kikimr_runner import get_unique_path_for_current_test, ensure_path_exists
+from cloud.blockstore.pylibs.ydb.tests.library.harness.kikimr_cluster import kikimr_cluster_factory
+from cloud.blockstore.pylibs.ydb.tests.library.harness.kikimr_config import KikimrConfigGenerator
+from cloud.blockstore.pylibs.ydb.tests.library.harness.kikimr_runner import get_unique_path_for_current_test, ensure_path_exists
 
 import yatest.common as yatest_common
 

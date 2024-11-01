@@ -17,8 +17,8 @@ from contrib.ydb.core.protos import msgbus_pb2 as msgbus
 
 from google.protobuf.text_format import MessageToString
 
-from contrib.ydb.tests.library.harness.kikimr_cluster import kikimr_cluster_factory
-from contrib.ydb.tests.library.harness.kikimr_config import KikimrConfigGenerator
+from cloud.blockstore.pylibs.ydb.tests.library.harness.kikimr_cluster import kikimr_cluster_factory
+from cloud.blockstore.pylibs.ydb.tests.library.harness.kikimr_config import KikimrConfigGenerator
 
 import yatest.common as yatest_common
 

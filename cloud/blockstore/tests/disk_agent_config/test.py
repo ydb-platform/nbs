@@ -16,7 +16,7 @@ from cloud.blockstore.tests.python.lib.daemon import start_ydb, start_nbs, \
 
 import yatest.common as yatest_common
 
-from contrib.ydb.tests.library.harness.kikimr_runner import \
+from cloud.blockstore.pylibs.ydb.tests.library.harness.kikimr_runner import \
     get_unique_path_for_current_test, ensure_path_exists
 
 

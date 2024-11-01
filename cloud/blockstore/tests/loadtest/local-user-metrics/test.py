@@ -13,9 +13,9 @@ from cloud.blockstore.tests.python.lib.nbs_runner import \
 from cloud.blockstore.tests.python.lib.test_base import \
     thread_count, wait_for_nbs_server
 
-from contrib.ydb.tests.library.harness.kikimr_cluster import \
+from cloud.blockstore.pylibs.ydb.tests.library.harness.kikimr_cluster import \
     kikimr_cluster_factory
-from contrib.ydb.tests.library.harness.kikimr_config import \
+from cloud.blockstore.pylibs.ydb.tests.library.harness.kikimr_config import \
     KikimrConfigGenerator
 
 from subprocess import call

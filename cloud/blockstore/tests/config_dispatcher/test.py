@@ -12,8 +12,8 @@ from cloud.blockstore.tests.python.lib.test_base import thread_count, wait_for_n
 
 from contrib.ydb.core.protos import config_pb2
 
-from contrib.ydb.tests.library.harness.kikimr_cluster import kikimr_cluster_factory
-from contrib.ydb.tests.library.harness.kikimr_config import KikimrConfigGenerator
+from cloud.blockstore.pylibs.ydb.tests.library.harness.kikimr_cluster import kikimr_cluster_factory
+from cloud.blockstore.pylibs.ydb.tests.library.harness.kikimr_config import KikimrConfigGenerator
 
 from contrib.ydb.core.protos.config_pb2 import TLogConfig
 

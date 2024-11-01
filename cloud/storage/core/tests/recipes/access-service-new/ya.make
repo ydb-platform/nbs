@@ -14,6 +14,7 @@ DATA(
 PEERDIR(
     cloud/storage/core/tools/testing/access_service_new/lib
     contrib/ydb/tests/library
+    cloud/blockstore/pylibs/ydb/tests/library
     library/python/testing/recipe
 )
 

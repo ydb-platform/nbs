@@ -26,6 +26,7 @@ PEERDIR(
     cloud/storage/core/protos
     contrib/ydb/core/protos
     contrib/ydb/tests/library
+    cloud/blockstore/pylibs/ydb/tests/library
 )
 SET_APPEND(QEMU_INVOKE_TEST YES)
 SET_APPEND(QEMU_VIRTIO none)

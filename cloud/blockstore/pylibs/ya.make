@@ -3,4 +3,5 @@ RECURSE(
     common
     sdk
     ycp
+    ydb
 )
