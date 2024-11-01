@@ -112,16 +112,21 @@ struct TFixture
     void SetUpStorage()
     {
         for (ui32 i = 0; i != PathCount; ++i) {
-            TFile fileData(
-                DevicesPath / ("NVMENBS0" + ToString(i + 1)),
-                EOpenModeFlag::CreateNew);
-            fileData.Resize(
-                HeaderSize + DeviceCountPerPath * DeviceSize +
-                (DeviceCountPerPath - 1) * PaddingSize);
+            PrepareFile("NVMENBS0" + ToString(i + 1));
         }
     }
 
-    void SetUp(NUnitTest::TTestContext& /*testContext*/) override
+    void PrepareFile(const TString& name)
+    {
+        TFile fileData(
+            DevicesPath / name,
+            EOpenModeFlag::CreateNew);
+        fileData.Resize(
+            HeaderSize + DeviceCountPerPath * DeviceSize +
+            (DeviceCountPerPath - 1) * PaddingSize);
+    }
+
+    void SetUp(NUnitTest::TTestContext&) override
     {
         DevicesPath.MkDirs();
         CachedConfigPath.MkDirs();
@@ -214,7 +219,10 @@ Y_UNIT_TEST_SUITE(TInitializerTest)
             {"NVMENBS02", "new-X"},
             {"NVMENBS03", "Z"},
             {"NVMENBS04", "Y"},
+            {"NVMENBS05", "A"},
         };
+
+        PrepareFile("NVMENBS05");
 
         auto future2 = InitializeStorage(
             Logging->CreateLog("Test"),
@@ -224,6 +232,10 @@ Y_UNIT_TEST_SUITE(TInitializerTest)
             std::make_shared<TTestNvmeManager>(newPathToSerial));
 
         const auto& r2 = future2.GetValueSync();
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            DeviceCountPerPath * (PathCount + 1),
+            r2.Configs.size());
 
         UNIT_ASSERT_VALUES_EQUAL(0, r2.ConfigMismatchErrors.size());
         UNIT_ASSERT_VALUES_EQUAL(
@@ -351,7 +363,7 @@ Y_UNIT_TEST_SUITE(TInitializerTest)
         }
     }
 
-    Y_UNIT_TEST_F(ShouldUpdateSerialNumberForMissedDevices, TFixture)
+    Y_UNIT_TEST_F(ShouldUpdateSerialNumberForMissingDevices, TFixture)
     {
         const TVector<std::pair<TString, TString>> pathToSerial{
             {"NVMENBS01", "W"},
