@@ -318,6 +318,11 @@ private:
                     Started,
                     MakeError(E_FAIL, "fail")});
             }
+
+            if (Spec.GetCreateOnRead()) {
+                fileHandle.Resize(logRequest.GetNodeInfo().GetSize());
+            }
+
             const auto fh = fileHandle.GetHandle();
             if (!fh) {
                 return MakeFuture(TCompletedRequest{
@@ -870,6 +875,50 @@ private:
 
         return MakeFuture(
             TCompletedRequest(NProto::ACTION_LIST_NODES, Started, {}));
+    }
+
+    TFuture<TCompletedRequest> DoFlush(
+        const NCloud::NFileStore::NProto::TProfileLogRequestInfo& logRequest)
+        override
+    {
+        if (Spec.GetSkipWrite()) {
+            return MakeFuture(TCompletedRequest{
+                NProto::ACTION_FLUSH,
+                Started,
+                MakeError(E_PRECONDITION_FAILED, "write disabled")});
+        }
+
+        TGuard<TMutex> guard(StateLock);
+
+        const auto logHandle = logRequest.GetNodeInfo().GetHandle();
+        const auto handle = HandleIdMapped(logHandle);
+        if (handle == InvalidHandle) {
+            STORAGE_WARN(
+                "Flush: no handle %lu map size=%zu",
+                logHandle,
+                HandlesLogToActual.size());
+            return MakeFuture(TCompletedRequest{
+                NProto::ACTION_FLUSH,
+                Started,
+                MakeError(
+                    E_FAIL,
+                    TStringBuilder{} << "No handle" << logHandle)});
+        }
+
+        if (!OpenHandles.contains(handle)) {
+            return MakeFuture(TCompletedRequest{
+                NProto::ACTION_FLUSH,
+                Started,
+                MakeError(
+                    E_FAIL,
+                    TStringBuilder{} << "No opened handle" << handle << " <- "
+                                     << logHandle)});
+        }
+
+        auto& fh = OpenHandles[handle];
+        fh.Flush();
+
+        return MakeFuture(TCompletedRequest(NProto::ACTION_FLUSH, Started, {}));
     }
 };
 

@@ -85,6 +85,9 @@ public:
     virtual TFuture<TCompletedRequest> DoListNodes(
         const NCloud::NFileStore::NProto::
             TProfileLogRequestInfo& /*unused*/) = 0;
+    virtual TFuture<TCompletedRequest> DoFlush(
+        const NCloud::NFileStore::NProto::
+            TProfileLogRequestInfo& /*unused*/) = 0;
     virtual TFuture<TCompletedRequest> DoAcquireLock(
         const NCloud::NFileStore::NProto::
             TProfileLogRequestInfo& /*unused*/) = 0;
