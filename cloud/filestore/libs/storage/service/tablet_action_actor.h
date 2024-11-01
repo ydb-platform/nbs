@@ -113,8 +113,8 @@ void TTabletActionActor<TRequest, TResponse>::ReplyAndDie(
 
 template <typename TRequest, typename TResponse>
 void TTabletActionActor<TRequest, TResponse>::HandleResponse(
-    const TResponse::TPtr& ev,
-    const typename NActors::TActorContext& ctx)
+    const typename TResponse::TPtr& ev,
+    const NActors::TActorContext& ctx)
 {
     ReplyAndDie(ctx, ev->Get()->Record);
 }
