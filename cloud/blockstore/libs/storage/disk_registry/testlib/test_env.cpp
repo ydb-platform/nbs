@@ -20,6 +20,7 @@ NProto::TStorageServiceConfig CreateDefaultStorageConfig()
     configProto.SetAllocationUnitNonReplicatedSSD(10);
     configProto.SetDiskRegistryVolumeConfigUpdatePeriod(5000);
     configProto.SetCachedAcquireRequestLifetime(1000 * 60 * 60);
+    configProto.SetDiskRegistryAlwaysAllocatesLocalDisks(true);
 
     return configProto;
 }
