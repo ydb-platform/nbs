@@ -618,8 +618,8 @@ func testImageServiceCreateImageFromURLWhichIsOverwrittenInProcess(
 		// have already been created before we started using 'other image'.
 		expectedImageCrc32 = imageCrc32
 	} else {
-		messageFormat := "Image has invalid size %v. It is equal neither " +
-			"initial image size %v nor overwritten image size %v"
+		messageFormat := "Image has invalid size %v. It equals neither " +
+			"initial image size %v nor overwritten image size %v."
 		require.Fail(
 			t,
 			messageFormat,
