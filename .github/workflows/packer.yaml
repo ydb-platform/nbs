@@ -136,7 +136,7 @@ jobs:
         version: 1.10.2
     - name: install dependencies
       run: |
-        pip install https://github.com/librarian/python-sdk/releases/download/v0.1.0/nebiusai-0.1.0-py3-none-any.whl
+        pip install https://github.com/librarian/python-sdk/releases/download/v0.1.1/nebiusai-0.1.1-py3-none-any.whl
         pip install PyGithub==2.2.0 grpcio grpcio-tools yandexcloud==0.258.0
         echo "PATH=$PATH:$HOME/nebius-cloud/bin:$HOME/.nebius/bin" >> $GITHUB_ENV
 
