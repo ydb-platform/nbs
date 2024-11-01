@@ -53,6 +53,10 @@ void TStorageServiceActor::HandleExecuteAction(
             &TStorageServiceActor::CreateForcedOperationActionActor
         },
         {
+            "forcedoperationstatus",
+            &TStorageServiceActor::CreateForcedOperationStatusActionActor
+        },
+        {
             "reassigntablet",
             &TStorageServiceActor::CreateReassignTabletActionActor
         },
@@ -83,6 +87,10 @@ void TStorageServiceActor::HandleExecuteAction(
         {
             "unsafegetnode",
             &TStorageServiceActor::CreateUnsafeGetNodeActionActor
+        },
+        {
+            "getstoragestats",
+            &TStorageServiceActor::CreateGetStorageStatsActionActor
         },
     };
 

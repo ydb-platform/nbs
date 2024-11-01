@@ -276,7 +276,8 @@ void TIndexTabletActor::EnqueueForcedRangeOperationIfNeeded(
     auto request =
         std::make_unique<TEvIndexTabletPrivate::TEvForcedRangeOperationRequest>(
             std::move(pendingRequest.Ranges),
-            pendingRequest.Mode);
+            pendingRequest.Mode,
+            std::move(pendingRequest.OperationId));
     ctx.Send(ctx.SelfID, request.release());
 }
 
@@ -313,13 +314,16 @@ void TIndexTabletActor::HandleForcedRangeOperation(
         ev->Cookie,
         msg->CallContext);
 
-    // will loose original request info in case of enqueueing external request
+    // will lose original request info in case of enqueueing external request
     if (IsForcedRangeOperationRunning()) {
         EnqueueForcedRangeOperation(msg->Mode, std::move(msg->Ranges));
         return;
     }
 
-    StartForcedRangeOperation(msg->Mode, std::move(msg->Ranges));
+    StartForcedRangeOperation(
+        msg->Mode,
+        std::move(msg->Ranges),
+        std::move(msg->OperationId));
 
     std::unique_ptr<IActor> actor;
 

@@ -9,11 +9,10 @@ SRCS(
     service_actor_actions_configure_shards.cpp
     service_actor_actions_describe_sessions.cpp
     service_actor_actions_drain_tablets.cpp
-    service_actor_actions_forced_operation.cpp
     service_actor_actions_get_storage_config_fields.cpp
     service_actor_actions_get_storage_config.cpp
     service_actor_actions_reassign_tablet.cpp
-    service_actor_actions_unsafe_node_ops.cpp
+    service_actor_actions_tablet_ops.cpp
     service_actor_actions_write_compaction_map.cpp
     service_actor_actions.cpp
     service_actor_alterfs.cpp
@@ -40,6 +39,7 @@ SRCS(
     service_actor_update_stats.cpp
     service_actor_writedata.cpp
     service_state.cpp
+    tablet_action_actor.cpp
 )
 
 PEERDIR(

@@ -6,6 +6,8 @@
 #include <cloud/filestore/libs/storage/tablet/model/block.h>
 #include <cloud/filestore/libs/storage/tablet/model/split_range.h>
 
+#include <util/generic/guid.h>
+
 namespace NCloud::NFileStore::NStorage {
 
 namespace {
@@ -1323,11 +1325,16 @@ void TIndexTabletState::LoadCompactionMap(
     Impl->CompactionMap.Update(compactionMap);
 }
 
-void TIndexTabletState::EnqueueForcedRangeOperation(
+TString TIndexTabletState::EnqueueForcedRangeOperation(
     TEvIndexTabletPrivate::EForcedRangeOperationMode mode,
     TVector<ui32> ranges)
 {
-    PendingForcedRangeOperations.emplace_back(mode, std::move(ranges));
+    auto operationId = CreateGuidAsString();
+    PendingForcedRangeOperations.emplace_back(
+        mode,
+        std::move(ranges),
+        operationId);
+    return operationId;
 }
 
 TIndexTabletState::TPendingForcedRangeOperation TIndexTabletState::
@@ -1345,15 +1352,43 @@ TIndexTabletState::TPendingForcedRangeOperation TIndexTabletState::
 
 void TIndexTabletState::StartForcedRangeOperation(
     TEvIndexTabletPrivate::EForcedRangeOperationMode mode,
-    TVector<ui32> ranges)
+    TVector<ui32> ranges,
+    TString operationId)
 {
     TABLET_VERIFY(!ForcedRangeOperationState.Defined());
-    ForcedRangeOperationState.ConstructInPlace(mode, std::move(ranges));
+    ForcedRangeOperationState.ConstructInPlace(
+        mode,
+        std::move(ranges),
+        std::move(operationId));
 }
 
 void TIndexTabletState::CompleteForcedRangeOperation()
 {
+    Y_DEBUG_ABORT_UNLESS(ForcedRangeOperationState);
+    if (ForcedRangeOperationState && ForcedRangeOperationState->OperationId) {
+        ForcedRangeOperationState->Current =
+            ForcedRangeOperationState->RangesToCompact.size();
+        CompletedForcedRangeOperations.push_back(*ForcedRangeOperationState);
+    }
     ForcedRangeOperationState.Clear();
+}
+
+auto TIndexTabletState::FindForcedRangeOperation(
+    const TString& operationId) const -> const TForcedRangeOperationState*
+{
+    if (ForcedRangeOperationState
+            && ForcedRangeOperationState->OperationId == operationId)
+    {
+        return ForcedRangeOperationState.Get();
+    }
+
+    for (const auto& op: CompletedForcedRangeOperations) {
+        if (op.OperationId == operationId) {
+            return &op;
+        }
+    }
+
+    return nullptr;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

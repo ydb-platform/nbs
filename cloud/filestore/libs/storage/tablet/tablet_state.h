@@ -1155,15 +1155,18 @@ public:
     {
         const TEvIndexTabletPrivate::EForcedRangeOperationMode Mode;
         const TVector<ui32> RangesToCompact;
+        const TString OperationId;
 
         TInstant StartTime = TInstant::Now();
         ui32 Current = 0;
 
         TForcedRangeOperationState(
                 TEvIndexTabletPrivate::EForcedRangeOperationMode mode,
-                TVector<ui32> ranges)
+                TVector<ui32> ranges,
+                TString operationId)
             : Mode(mode)
             , RangesToCompact(std::move(ranges))
+            , OperationId(std::move(operationId))
         {}
 
         TForcedRangeOperationState(const TForcedRangeOperationState&) = default;
@@ -1175,7 +1178,8 @@ public:
 
         ui32 GetCurrentRange() const
         {
-            return RangesToCompact[Current];
+            return Current < RangesToCompact.size()
+                ? RangesToCompact[Current] : 0;
         }
     };
 
@@ -1184,30 +1188,35 @@ private:
     {
         TEvIndexTabletPrivate::EForcedRangeOperationMode Mode;
         TVector<ui32> Ranges;
+        TString OperationId;
 
         TPendingForcedRangeOperation() = default;
 
         TPendingForcedRangeOperation(
                 TEvIndexTabletPrivate::EForcedRangeOperationMode mode,
-                TVector<ui32> ranges)
+                TVector<ui32> ranges,
+                TString operationId)
             : Mode(mode)
             , Ranges(std::move(ranges))
+            , OperationId(std::move(operationId))
         {
         }
     };
 
     TVector<TPendingForcedRangeOperation> PendingForcedRangeOperations;
     TMaybe<TForcedRangeOperationState> ForcedRangeOperationState;
+    TVector<TForcedRangeOperationState> CompletedForcedRangeOperations;
 
 public:
-    void EnqueueForcedRangeOperation(
+    TString EnqueueForcedRangeOperation(
         TEvIndexTabletPrivate::EForcedRangeOperationMode mode,
         TVector<ui32> ranges);
     TPendingForcedRangeOperation DequeueForcedRangeOperation();
 
     void StartForcedRangeOperation(
         TEvIndexTabletPrivate::EForcedRangeOperationMode mode,
-        TVector<ui32> ranges);
+        TVector<ui32> ranges,
+        TString operationId);
 
     void CompleteForcedRangeOperation();
 
@@ -1215,6 +1224,9 @@ public:
     {
         return ForcedRangeOperationState.Get();
     }
+
+    const TForcedRangeOperationState* FindForcedRangeOperation(
+        const TString& operationId) const;
 
     void UpdateForcedRangeOperationProgress(ui32 current)
     {

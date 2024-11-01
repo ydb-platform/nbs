@@ -11,8 +11,10 @@
 
 #include <library/cpp/eventlog/dumper/evlogdump.h>
 
-#include <util/string/join.h>
+#include <util/generic/hash.h>
+#include <util/generic/vector.h>
 #include <util/generic/xrange.h>
+#include <util/string/join.h>
 
 namespace NCloud::NFileStore::NProfileTool {
 
@@ -56,6 +58,8 @@ private:
 
     IRequestFilterPtr Filter = CreateRequestFilterAccept();
 
+    THashMap<TString, ui32> RequestName2Type;
+    TVector<TString> FilterRequestNames;
     TVector<ui32> FilterRequestTypes;
     bool FilterSystemRequests = false;
     bool FilterExternalRequests = false;
@@ -65,16 +69,29 @@ public:
         : CommonFilterParams(Opts)
     {
         const auto requestTypes = GetRequestTypes();
+        TVector<TString> requestNames;
         TVector<TString> requestDescrs;
         requestDescrs.reserve(requestTypes.size());
-        for (const auto& [id, name] : requestTypes) {
+        for (const auto& [id, name]: requestTypes) {
+            RequestName2Type[name] = id;
             requestDescrs.push_back(TStringBuilder() << id << ": " << name);
+            requestNames.push_back(name);
         }
+
+        Opts.AddLongOption(
+                "request-name",
+                TStringBuilder()
+                    << "comma separated request names, used for filtering."
+                    << " Possible request names:\n"
+                    << JoinSeq("\n", requestNames))
+            .RequiredArgument("STRINGS")
+            .SplitHandler(&FilterRequestNames, ',');
 
         Opts.AddLongOption(
                 "request-type",
                 TStringBuilder()
-                    << "comma separated request types, used for filtering. Possible request types:\n"
+                    << "comma separated request types, used for filtering."
+                    << " Possible request types:\n"
                     << JoinSeq("\n", requestDescrs))
             .RequiredArgument("NUMS")
             .SplitHandler(&FilterRequestTypes, ',');
@@ -108,6 +125,10 @@ public:
                 handle.GetRef());
         }
 
+        for (const auto& name: FilterRequestNames) {
+            FilterRequestTypes.push_back(RequestName2Type.at(name));
+        }
+
         if (!FilterRequestTypes.empty()) {
             Filter = CreateRequestFilterByRequestType(
                 std::move(Filter),
@@ -117,7 +138,8 @@ public:
         if (FilterSystemRequests) {
             TSet<ui32> systemRequests = ::xrange(
                 NStorage::FileStoreSystemRequestStart,
-                NStorage::FileStoreSystemRequestStart + NStorage::FileStoreSystemRequestCount,
+                NStorage::FileStoreSystemRequestStart
+                    + NStorage::FileStoreSystemRequestCount,
                 1);
 
             Filter = CreateRequestFilterByRequestType(
@@ -150,7 +172,8 @@ public:
                 since.GetRef().MicroSeconds());
         }
 
-        const auto fileSystemId = CommonFilterParams.GetFileSystemId(parseResult);
+        const auto fileSystemId =
+            CommonFilterParams.GetFileSystemId(parseResult);
         if (fileSystemId.Defined()) {
             Filter = CreateRequestFilterByFileSystemId(
                 std::move(Filter),

@@ -173,6 +173,10 @@ private:
         TRequestInfoPtr requestInfo,
         TString input);
 
+    NActors::IActorPtr CreateForcedOperationStatusActionActor(
+        TRequestInfoPtr requestInfo,
+        TString input);
+
     NActors::IActorPtr CreateReassignTabletActionActor(
         TRequestInfoPtr requestInfo,
         TString input);
@@ -198,6 +202,10 @@ private:
         TString input);
 
     NActors::IActorPtr CreateUnsafeGetNodeActionActor(
+        TRequestInfoPtr requestInfo,
+        TString input);
+
+    NActors::IActorPtr CreateGetStorageStatsActionActor(
         TRequestInfoPtr requestInfo,
         TString input);
 

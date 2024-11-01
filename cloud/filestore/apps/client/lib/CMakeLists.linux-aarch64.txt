@@ -36,6 +36,7 @@ target_sources(filestore-apps-client-lib PRIVATE
   ${CMAKE_SOURCE_DIR}/cloud/filestore/apps/client/lib/execute_action.cpp
   ${CMAKE_SOURCE_DIR}/cloud/filestore/apps/client/lib/factory.cpp
   ${CMAKE_SOURCE_DIR}/cloud/filestore/apps/client/lib/find_garbage.cpp
+  ${CMAKE_SOURCE_DIR}/cloud/filestore/apps/client/lib/forced_compaction.cpp
   ${CMAKE_SOURCE_DIR}/cloud/filestore/apps/client/lib/kick_endpoint.cpp
   ${CMAKE_SOURCE_DIR}/cloud/filestore/apps/client/lib/list_cluster_nodes.cpp
   ${CMAKE_SOURCE_DIR}/cloud/filestore/apps/client/lib/list_endpoints.cpp
