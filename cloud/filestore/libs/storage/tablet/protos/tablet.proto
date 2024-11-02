@@ -44,6 +44,8 @@ message TFileSystem
 
     repeated string ShardFileSystemIds = 13;
     uint32 ShardNo = 14;
+    bool AutomaticShardCreationEnabled = 15;
+    uint64 MaxShardSize = 16;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

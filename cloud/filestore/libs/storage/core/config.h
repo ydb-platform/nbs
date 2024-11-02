@@ -286,6 +286,9 @@ public:
 
     bool GetTwoStageReadDisabledForHDD() const;
     bool GetThreeStageWriteDisabledForHDD() const;
+
+    bool GetAutomaticShardCreationEnabled() const;
+    ui64 GetMaxShardSize() const;
 };
 
 }   // namespace NCloud::NFileStore::NStorage
