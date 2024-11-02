@@ -208,7 +208,7 @@ class NfsCliClient:
             "--filesystem", fs,
         ] + self.__cmd_opts()
 
-        return common.execute(cmd, env=self.__env, check_exit_code=self.__check_exit_code).stdout
+        return common.execute(cmd).stdout
 
     def execute_action(self, action, request):
         request_file = tempfile.NamedTemporaryFile(mode="w", delete=False)
