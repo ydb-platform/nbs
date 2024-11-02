@@ -223,12 +223,7 @@ void TDiskAgentChecksumActor::HandleChecksumDeviceBlocksUndelivery(
             << GetRequestId(Request) << " undelivered. Disk id: "
             << PartConfig->GetName() << " Device: " << LogDevice(device));
 
-    HandleError(
-        ctx,
-        MakeError(
-            TimeoutPolicy.ErrorCode,
-            "ChecksumBlocks request undelivered"),
-        true);
+    // Ignore undelivered event. Wait for TEvWakeup.
 }
 
 void TDiskAgentChecksumActor::HandleTimeout(

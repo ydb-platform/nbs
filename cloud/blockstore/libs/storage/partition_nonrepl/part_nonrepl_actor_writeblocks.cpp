@@ -241,12 +241,7 @@ void TDiskAgentWriteActor::HandleWriteDeviceBlocksUndelivery(
             << GetRequestId(Request) << " undelivered. Disk id: "
             << PartConfig->GetName() << " Device: " << LogDevice(device));
 
-    HandleError(
-        ctx,
-        PartConfig->MakeError(
-            TimeoutPolicy.ErrorCode,
-            "WriteBlocks request undelivered"),
-        true);
+    // Ignore undelivered event. Wait for TEvWakeup.
 }
 
 void TDiskAgentWriteActor::HandleTimeout(

@@ -225,12 +225,7 @@ void TDiskAgentZeroActor::HandleZeroDeviceBlocksUndelivery(
             << GetRequestId(Request) << " undelivered. Disk id: "
             << PartConfig->GetName() << " Device: " << LogDevice(device));
 
-    HandleError(
-        ctx,
-        PartConfig->MakeError(
-            TimeoutPolicy.ErrorCode,
-            "ZeroBlocks request undelivered"),
-        true);
+    // Ignore undelivered event. Wait for TEvWakeup.
 }
 
 void TDiskAgentZeroActor::HandleTimeout(

@@ -646,7 +646,7 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionTest)
 
             auto response = client.RecvReadBlocksResponse();
             UNIT_ASSERT_VALUES_EQUAL(E_TIMEOUT, response->GetStatus());
-            UNIT_ASSERT(response->GetErrorReason().Contains("undelivered"));
+            UNIT_ASSERT(response->GetErrorReason().Contains("request timed out"));
         }
 
         {
@@ -657,7 +657,7 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionTest)
             runtime.DispatchEvents({}, TDuration::MilliSeconds(10));
             auto response = client.RecvWriteBlocksResponse();
             UNIT_ASSERT_VALUES_EQUAL(E_TIMEOUT, response->GetStatus());
-            UNIT_ASSERT(response->GetErrorReason().Contains("undelivered"));
+            UNIT_ASSERT(response->GetErrorReason().Contains("request timed out"));
         }
 
         {
@@ -667,7 +667,7 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionTest)
             runtime.DispatchEvents({}, TDuration::MilliSeconds(10));
             auto response = client.RecvZeroBlocksResponse();
             UNIT_ASSERT_VALUES_EQUAL(E_TIMEOUT, response->GetStatus());
-            UNIT_ASSERT(response->GetErrorReason().Contains("undelivered"));
+            UNIT_ASSERT(response->GetErrorReason().Contains("request timed out"));
         }
     }
 
@@ -1016,7 +1016,7 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionTest)
         {
             client.SendReadBlocksRequest(
                 TBlockRange64::WithLength(1024, 3072));
-            runtime.AdvanceCurrentTime(TDuration::Minutes(10));
+            //runtime.AdvanceCurrentTime(TDuration::Minutes(10));
             runtime.DispatchEvents();
             auto response = client.RecvReadBlocksResponse();
             UNIT_ASSERT_VALUES_EQUAL(E_TIMEOUT, response->GetStatus());
@@ -1030,7 +1030,7 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionTest)
             client.SendWriteBlocksRequest(
                 TBlockRange64::WithLength(1024, 3072),
                 1);
-            runtime.AdvanceCurrentTime(TDuration::Minutes(10));
+            //runtime.AdvanceCurrentTime(TDuration::Minutes(10));
             runtime.DispatchEvents();
             auto response = client.RecvWriteBlocksResponse();
             UNIT_ASSERT_VALUES_EQUAL(E_TIMEOUT, response->GetStatus());
@@ -1043,7 +1043,7 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionTest)
         {
             client.SendZeroBlocksRequest(
                 TBlockRange64::WithLength(1024, 3072));
-            runtime.AdvanceCurrentTime(TDuration::Minutes(10));
+            //runtime.AdvanceCurrentTime(TDuration::Minutes(10));
             runtime.DispatchEvents();
             auto response = client.RecvZeroBlocksResponse();
             UNIT_ASSERT_VALUES_EQUAL(E_TIMEOUT, response->GetStatus());
@@ -1056,7 +1056,7 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionTest)
         {
             client.SendReadBlocksRequest(
                 TBlockRange64::WithLength(1024, 3072));
-            runtime.AdvanceCurrentTime(TDuration::Minutes(10));
+            //runtime.AdvanceCurrentTime(TDuration::Minutes(10));
             runtime.DispatchEvents();
             auto response = client.RecvReadBlocksResponse();
             UNIT_ASSERT_VALUES_EQUAL(E_TIMEOUT, response->GetStatus());
@@ -1079,7 +1079,7 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionTest)
         {
             client.SendReadBlocksRequest(
                 TBlockRange64::WithLength(1024, 3072));
-            runtime.AdvanceCurrentTime(TDuration::Minutes(10));
+            //runtime.AdvanceCurrentTime(TDuration::Minutes(10));
             runtime.DispatchEvents();
             auto response = client.RecvReadBlocksResponse();
             UNIT_ASSERT_VALUES_EQUAL(E_TIMEOUT, response->GetStatus());
@@ -1093,7 +1093,7 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionTest)
             client.SendWriteBlocksRequest(
                 TBlockRange64::WithLength(1024, 3072),
                 1);
-            runtime.AdvanceCurrentTime(TDuration::Minutes(10));
+            //runtime.AdvanceCurrentTime(TDuration::Minutes(10));
             runtime.DispatchEvents();
             auto response = client.RecvWriteBlocksResponse();
             UNIT_ASSERT_VALUES_EQUAL(E_TIMEOUT, response->GetStatus());
@@ -1106,7 +1106,7 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionTest)
         {
             client.SendZeroBlocksRequest(
                 TBlockRange64::WithLength(1024, 3072));
-            runtime.AdvanceCurrentTime(TDuration::Minutes(10));
+            //runtime.AdvanceCurrentTime(TDuration::Minutes(10));
             runtime.DispatchEvents();
             auto response = client.RecvZeroBlocksResponse();
             UNIT_ASSERT_VALUES_EQUAL(E_TIMEOUT, response->GetStatus());
@@ -1119,7 +1119,7 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionTest)
         {
             client.SendReadBlocksRequest(
                 TBlockRange64::WithLength(1024, 3072));
-            runtime.AdvanceCurrentTime(TDuration::Minutes(10));
+            //runtime.AdvanceCurrentTime(TDuration::Minutes(10));
             runtime.DispatchEvents();
             auto response = client.RecvReadBlocksResponse();
             UNIT_ASSERT_VALUES_EQUAL(E_TIMEOUT, response->GetStatus());
@@ -1131,7 +1131,7 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionTest)
         {
             client.SendReadBlocksRequest(
                 TBlockRange64::WithLength(1024, 3072));
-            runtime.AdvanceCurrentTime(TDuration::Minutes(10));
+            //runtime.AdvanceCurrentTime(TDuration::Minutes(10));
             runtime.DispatchEvents();
             auto response = client.RecvReadBlocksResponse();
             UNIT_ASSERT_VALUES_EQUAL(E_TIMEOUT, response->GetStatus());
@@ -1140,7 +1140,7 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionTest)
         {
             client.SendReadBlocksRequest(
                 TBlockRange64::WithLength(1024, 3072));
-            runtime.AdvanceCurrentTime(TDuration::Minutes(10));
+            //runtime.AdvanceCurrentTime(TDuration::Minutes(10));
             runtime.DispatchEvents();
             auto response = client.RecvReadBlocksResponse();
             UNIT_ASSERT_VALUES_EQUAL(E_TIMEOUT, response->GetStatus());
