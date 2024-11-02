@@ -14,9 +14,9 @@
 #include <cloud/blockstore/libs/storage/disk_registry/disk_registry_actor.h>
 #include <cloud/blockstore/libs/storage/testlib/common_properties.h>
 #include <cloud/blockstore/libs/storage/testlib/ss_proxy_mock.h>
-
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
+#include <ydb/core/protos/bind_channel_storage_pool.pb.h>
 #include <ydb/core/testlib/basics/runtime.h>
 #include <ydb/core/testlib/tablet_helpers.h>
 
@@ -24,6 +24,8 @@
 
 #include <util/datetime/base.h>
 #include <util/generic/size_literals.h>
+
+#include <google/protobuf/util/json_util.h>
 
 #include <atomic>
 
