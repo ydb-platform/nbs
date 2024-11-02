@@ -108,6 +108,10 @@ TFuture<TCompletedRequest> IReplayRequestGenerator::ProcessRequest(
         case EFileStoreRequest::ReleaseLock:
             return DoReleaseLock(request);
 
+        // TODO(proller): Uninmplemented action=1001 Flush
+        // case EFileStoreRequest:: ? :
+        //      DoFlush(request);
+
         case EFileStoreRequest::ReadBlob:
         case EFileStoreRequest::WriteBlob:
         case EFileStoreRequest::GenerateBlobIds:

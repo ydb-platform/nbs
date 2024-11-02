@@ -89,6 +89,8 @@ public:
         }
         NodePath.emplace(RootNodeId, Spec.GetReplayRoot());
 
+        MakeDirectoryRecursive(NodePath[RootNodeId] / LostName);
+
         AsyncIO.Start();
     }
 
@@ -282,14 +284,19 @@ private:
                 nodeName =
                     KnownLogNodes[logRequest.GetNodeInfo().GetNodeId()].Name;
             }
-            const auto parentpath = PathByNode(parentNode);
+            const auto parentpath = parentNode == InvalidNodeId
+                                        ? PathByNode(RootNodeId) / LostName
+                                        : PathByNode(parentNode);
 
             if (nodeName.empty() && parentpath.IsDirectory()) {
                 nodeName =
                     KnownLogNodes[logRequest.GetNodeInfo().GetParentNodeId()]
                         .Name;
             }
-
+            if (nodeName.empty()) {
+                nodeName =
+                    "nodeid-" + ToString(logRequest.GetNodeInfo().GetNodeId());
+            }
             relativePathName = parentpath / nodeName;
         }
         STORAGE_DEBUG(
@@ -381,7 +388,7 @@ private:
             return MakeFuture(TCompletedRequest{
                 NProto::ACTION_READ,
                 Started,
-                MakeError(E_PRECONDITION_FAILED, "disabled")});
+                MakeError(E_PRECONDITION_FAILED, "read disabled")});
         }
 
         TGuard<TMutex> guard(StateLock);
@@ -457,7 +464,7 @@ private:
             return MakeFuture(TCompletedRequest{
                 NProto::ACTION_WRITE,
                 Started,
-                MakeError(E_PRECONDITION_FAILED, "disabled")});
+                MakeError(E_PRECONDITION_FAILED, "write disabled")});
         }
         TGuard<TMutex> guard(StateLock);
 
