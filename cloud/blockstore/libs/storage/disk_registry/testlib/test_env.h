@@ -14,17 +14,18 @@
 #include <cloud/blockstore/libs/storage/disk_registry/disk_registry_actor.h>
 #include <cloud/blockstore/libs/storage/testlib/common_properties.h>
 #include <cloud/blockstore/libs/storage/testlib/ss_proxy_mock.h>
-
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
+#include <contrib/ydb/core/protos/bind_channel_storage_pool.pb.h>
 #include <contrib/ydb/core/testlib/basics/runtime.h>
 #include <contrib/ydb/core/testlib/tablet_helpers.h>
-#include <contrib/ydb/core/protos/bind_channel_storage_pool.pb.h>
 
 #include <library/cpp/testing/unittest/registar.h>
 
 #include <util/datetime/base.h>
 #include <util/generic/size_literals.h>
+
+#include <google/protobuf/util/json_util.h>
 
 #include <atomic>
 
