@@ -47,7 +47,7 @@ void TDiskAgentActor::InitAgent(const TActorContext& ctx)
         std::move(rdmaTargetConfig),
         OldRequestCounters);
 
-    auto* actorSystem = ctx.ActorSystem();
+    auto* actorSystem = TActivationContext::ActorSystem();
     auto replyTo = ctx.SelfID;
 
     State->Initialize().Subscribe([=] (auto future) {
@@ -61,7 +61,8 @@ void TDiskAgentActor::InitAgent(const TActorContext& ctx)
             auto response = std::make_unique<TCompletionEvent>(
                 std::move(r.Configs),
                 std::move(r.Errors),
-                std::move(r.ConfigMismatchErrors));
+                std::move(r.ConfigMismatchErrors),
+                std::move(r.DevicesWithNewSerialNumber));
 
             actorSystem->Send(
                 new IEventHandle(

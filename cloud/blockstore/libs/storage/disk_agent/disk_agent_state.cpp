@@ -380,7 +380,7 @@ TFuture<TInitializeResult> TDiskAgentState::InitAioStorage()
             AgentConfig,
             StorageProvider,
             NvmeManager)
-        .Apply([=] (auto future) {
+        .Apply([=, this] (auto future) {
             TInitializeStorageResult r = future.ExtractValue();
 
             InitErrorsCount = r.Errors.size();
@@ -412,12 +412,13 @@ TFuture<TInitializeResult> TDiskAgentState::InitAioStorage()
                     std::move(device));
             }
 
-            return TInitializeResult {
+            return TInitializeResult{
                 .Configs = std::move(r.Configs),
                 .Errors = std::move(r.Errors),
                 .ConfigMismatchErrors = std::move(r.ConfigMismatchErrors),
-                .Guard = std::move(r.Guard)
-            };
+                .DevicesWithNewSerialNumber =
+                    std::move(r.DevicesWithNewSerialNumber),
+                .Guard = std::move(r.Guard)};
         });
 }
 
