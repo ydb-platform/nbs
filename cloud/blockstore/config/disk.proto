@@ -57,7 +57,7 @@ message TFileDeviceArgs
     // Device pool name.
     optional string PoolName = 4;
 
-    // Serial number. For testing purposes.
+    // Serial number. For caching purposes.
     optional string SerialNumber = 5;
 
     // Data offset relative to the beginning of the file.

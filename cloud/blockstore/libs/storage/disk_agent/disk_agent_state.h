@@ -86,6 +86,8 @@ public:
         TVector<NProto::TDeviceConfig> Configs;
         TVector<TString> Errors;
         TVector<TString> ConfigMismatchErrors;
+        TVector<TString> DevicesWithNewSerialNumber;
+
         TDeviceGuard Guard;
     };
 

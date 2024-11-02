@@ -3,7 +3,6 @@
 #include <cloud/blockstore/libs/diagnostics/config.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/partition_nonrepl/config.h>
-
 #include <cloud/storage/core/libs/common/format.h>
 #include <cloud/storage/core/libs/common/media.h>
 #include <cloud/storage/core/libs/throttling/tablet_throttler.h>
@@ -13,6 +12,8 @@
 
 #include <util/stream/str.h>
 #include <util/string/join.h>
+
+#include <google/protobuf/text_format.h>
 
 namespace NCloud::NBlockStore::NStorage {
 
