@@ -130,10 +130,18 @@ void TIndexTabletActor::HandleUpdateConfig(
     Convert(msg->Record.GetConfig(), newConfig);
 
     if (!GetFileSystemId()) {
+        // autosharding params are deliberately applied upon FS creation
+        newConfig.SetAutomaticShardCreationEnabled(
+            Config->GetAutomaticShardCreationEnabled());
+        newConfig.SetMaxShardSize(Config->GetMaxShardSize());
+
         LOG_INFO(ctx,TFileStoreComponents::TABLET,
-            "%s Starting tablet config initialization [txId: %d]",
+            "%s Starting tablet config initialization [txId: %d]"
+            ", autosharding [%d, %lu]",
             LogTag.c_str(),
-            txId);
+            txId,
+            Config->GetAutomaticShardCreationEnabled(),
+            Config->GetMaxShardSize());
 
         // First config update on tablet creation. No need to validate config.
         ExecuteTx<TUpdateConfig>(
@@ -149,6 +157,9 @@ void TIndexTabletActor::HandleUpdateConfig(
     *newConfig.MutableShardFileSystemIds() =
         oldConfig.GetShardFileSystemIds();
     newConfig.SetShardNo(oldConfig.GetShardNo());
+    newConfig.SetAutomaticShardCreationEnabled(
+        oldConfig.GetAutomaticShardCreationEnabled());
+    newConfig.SetMaxShardSize(oldConfig.GetMaxShardSize());
 
     // Config update occured due to alter/resize.
     if (auto error = ValidateUpdateConfigRequest(oldConfig, newConfig)) {
