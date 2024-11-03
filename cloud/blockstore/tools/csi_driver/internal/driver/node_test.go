@@ -1,5 +1,7 @@
 package driver
 
+//lint:file-ignore ST1003 protobuf generates names that break golang naming convention
+
 import (
 	"context"
 	"io/fs"
