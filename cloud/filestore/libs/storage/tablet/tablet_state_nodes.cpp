@@ -619,4 +619,9 @@ void TIndexTabletState::MarkNodeRefsLoadComplete()
     Impl->InMemoryIndexState.MarkNodeRefsLoadComplete();
 }
 
+TInMemoryIndexStateStats TIndexTabletState::GetInMemoryIndexStateStats() const
+{
+    return Impl->InMemoryIndexState.GetStats();
+}
+
 }   // namespace NCloud::NFileStore::NStorage
