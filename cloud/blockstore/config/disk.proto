@@ -258,6 +258,10 @@ message TDiskAgentConfig
     // 2 means that one IO service will be created for every two file paths.
     // etc.
     optional uint32 PathsPerFileIOService = 34;
+
+    // List of device UUIDs with suspended I/O.
+    // I/O operations for such a device will result in errors.
+    repeated string DevicesWithSuspendedIO = 35;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

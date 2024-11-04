@@ -399,6 +399,9 @@ void TInitializer::SaveCurrentConfig()
     proto.MutableFileDevices()->Assign(
         FileDevices.cbegin(),
         FileDevices.cend());
+    proto.MutableDevicesWithSuspendedIO()->Assign(
+        DevicesWithSuspendedIO.cbegin(),
+        DevicesWithSuspendedIO.cend());
 
     auto error = SaveDiskAgentConfig(path, proto);
     if (HasError(error)) {
@@ -468,6 +471,12 @@ NProto::TError TInitializer::ProcessConfigCache()
         return error;
     }
 
+    DevicesWithSuspendedIO.insert(
+        DevicesWithSuspendedIO.end(),
+        std::make_move_iterator(
+            config.MutableDevicesWithSuspendedIO()->begin()),
+        std::make_move_iterator(config.MutableDevicesWithSuspendedIO()->end()));
+
     TVector<NProto::TFileDeviceArgs> devices{
         std::make_move_iterator(config.MutableFileDevices()->begin()),
         std::make_move_iterator(config.MutableFileDevices()->end())};
@@ -485,6 +494,8 @@ NProto::TError TInitializer::ProcessConfigCache()
             DevicesWithSuspendedIO.push_back(d.GetDeviceId());
         }
     }
+
+    SortUnique(DevicesWithSuspendedIO);
 
     ValidateCurrentConfigs(devices);
 

@@ -109,6 +109,11 @@ public:
     ui32 GetMaxAIOContextEvents() const;
     ui32 GetPathsPerFileIOService() const;
 
+    const auto& GetDevicesWithSuspendedIO() const
+    {
+        return Config.GetDevicesWithSuspendedIO();
+    }
+
     void Dump(IOutputStream& out) const;
     void DumpHtml(IOutputStream& out) const;
 };

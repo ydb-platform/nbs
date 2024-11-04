@@ -265,7 +265,11 @@ Y_UNIT_TEST_SUITE(TInitializerTest)
         const auto& r3 = future3.GetValueSync();
 
         UNIT_ASSERT_VALUES_EQUAL(0, r3.ConfigMismatchErrors.size());
-        UNIT_ASSERT_VALUES_EQUAL(0, r3.DevicesWithSuspendedIO.size());
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            r2.DevicesWithSuspendedIO.size(),
+            r3.DevicesWithSuspendedIO.size());
+
         UNIT_ASSERT_VALUES_EQUAL(r2.Configs.size(), r3.Configs.size());
         UNIT_ASSERT(std::equal(
             r2.Configs.cbegin(),
