@@ -155,6 +155,8 @@ private:
 
     TString GetSerialNumber(const TString& path);
     void SetupSerialNumbers(TVector<NProto::TFileDeviceArgs>& fileDevices);
+
+    NProto::TError ProcessConfigCache();
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -398,18 +400,10 @@ void TInitializer::SaveCurrentConfig()
         FileDevices.cbegin(),
         FileDevices.cend());
 
-    try {
-        const TString tmpPath {path + ".tmp"};
-
-        SerializeToTextFormat(proto, tmpPath);
-
-        if (!NFs::Rename(tmpPath, path)) {
-            const auto ec = errno;
-            ythrow TServiceError {MAKE_SYSTEM_ERROR(ec)} << strerror(ec);
-        }
-    } catch (...) {
+    auto error = SaveDiskAgentConfig(path, proto);
+    if (HasError(error)) {
         Errors.push_back(TStringBuilder()
-            << "can't save the current config: " << CurrentExceptionMessage());
+            << "can't save the current config: " << FormatError(error));
     }
 }
 
@@ -458,29 +452,51 @@ void TInitializer::ValidateCurrentConfigs(
         << "broken config: " << FormatError(error));
 }
 
+NProto::TError TInitializer::ProcessConfigCache()
+{
+    const auto& path = GetCachedConfigsPath();
+    if (path.empty()) {
+        return {};
+    }
+
+    auto [config, error] = LoadDiskAgentConfig(path);
+    if (HasError(error) && error.GetCode() != E_NOT_FOUND) {
+        STORAGE_WARN(
+            "Can't load Disk Agent config from the cache: "
+            << FormatError(error));
+
+        return error;
+    }
+
+    TVector<NProto::TFileDeviceArgs> devices{
+        std::make_move_iterator(config.MutableFileDevices()->begin()),
+        std::make_move_iterator(config.MutableFileDevices()->end())};
+
+    for (const auto& d: devices) {
+        const auto currentSerialNumber = GetSerialNumber(d.GetPath());
+
+        if (currentSerialNumber != d.GetSerialNumber()) {
+            STORAGE_WARN(
+                "Device " << d.GetDeviceId() << " [" << d.GetPath()
+                        << "] has new serial number "
+                        << TString(currentSerialNumber).Quote()
+                        << " (was " << d.GetSerialNumber().Quote()
+                        << ")");
+            DevicesWithSuspendedIO.push_back(d.GetDeviceId());
+        }
+    }
+
+    ValidateCurrentConfigs(devices);
+
+    return {};
+}
+
 TFuture<void> TInitializer::Initialize()
 {
     ScanFileDevices();
-
-    try {
-        const auto cachedDevices = LoadCachedConfig(GetCachedConfigsPath());
-        for (const auto& d: cachedDevices) {
-            const auto currentSerialNumber = GetSerialNumber(d.GetPath());
-
-            if (currentSerialNumber != d.GetSerialNumber()) {
-                STORAGE_WARN(
-                    "Device " << d.GetDeviceId() << " [" << d.GetPath()
-                              << "] has new serial number "
-                              << TString(currentSerialNumber).Quote()
-                              << " (was " << d.GetSerialNumber().Quote()
-                              << ")");
-                DevicesWithSuspendedIO.push_back(d.GetDeviceId());
-            }
-        }
-
-        ValidateCurrentConfigs(cachedDevices);
-    } catch (...) {
-        return MakeErrorFuture<void>(std::current_exception());
+    if (auto error = ProcessConfigCache(); HasError(error)) {
+        return MakeErrorFuture<void>(
+            std::make_exception_ptr(TServiceError(error)));
     }
 
     const auto& memoryDevices = AgentConfig->GetMemoryDevices();
