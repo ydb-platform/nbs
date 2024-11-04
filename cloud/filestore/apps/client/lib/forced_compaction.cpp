@@ -113,7 +113,7 @@ public:
 
             CheckResponse(statusResponse);
 
-            Cout << "progress: " << statusResponse.GetProcessedRangeCount()
+            Cerr << "progress: " << statusResponse.GetProcessedRangeCount()
                 << "/" << statusResponse.GetRangeCount() << ", last="
                 << statusResponse.GetLastProcessedRangeId() << Endl;
 
