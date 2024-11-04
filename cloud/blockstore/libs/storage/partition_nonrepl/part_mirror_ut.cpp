@@ -1180,14 +1180,11 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
         UNIT_ASSERT_VALUES_EQUAL(0, counters.Simple.ChecksumMismatches.Value);
     }
 
-    void WaitUntilScrubbingFinishCurrentCycle(
-        TTestEnv& testEnv)
-    {
+    void WaitUntilScrubbingFinishesCurrentCycle(TTestEnv& testEnv) {
         auto& counters = testEnv.StorageStatsServiceState->Counters;
         ui64 prevScrubbingProgress = counters.Simple.ScrubbingProgress.Value;
         ui32 iterations = 0;
-        while (iterations++ < 100)
-        {
+        while (iterations++ < 100) {
             testEnv.Runtime.AdvanceCurrentTime(UpdateCountersInterval);
             testEnv.Runtime.DispatchEvents({}, TDuration::MilliSeconds(50));
             if (prevScrubbingProgress > counters.Simple.ScrubbingProgress.Value)
@@ -1225,7 +1222,7 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
         env.WriteMirror(range2, 'A');
         env.WriteReplica(2, range2, 'B');
 
-        WaitUntilScrubbingFinishCurrentCycle(env);
+        WaitUntilScrubbingFinishesCurrentCycle(env);
 
         auto& counters = env.StorageStatsServiceState->Counters;
         auto mirroredDiskChecksumMismatch = critEventsCounters->GetCounter(
@@ -1242,16 +1239,16 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
         // at this point, scrubbing may not start from the beginning,
         // so we need to wait for 2 cycles to be sure that
         // it has scanned the entire disk at least once
-        WaitUntilScrubbingFinishCurrentCycle(env);
-        WaitUntilScrubbingFinishCurrentCycle(env);
+        WaitUntilScrubbingFinishesCurrentCycle(env);
+        WaitUntilScrubbingFinishesCurrentCycle(env);
         UNIT_ASSERT_VALUES_EQUAL(3, counters.Simple.ChecksumMismatches.Value);
         UNIT_ASSERT_VALUES_EQUAL(3, mirroredDiskChecksumMismatch->Val());
 
         // at this point, scrubbing may not start from the beginning,
         // so we need to wait for 2 cycles to be sure that
         // it has scanned the entire disk at least once
-        WaitUntilScrubbingFinishCurrentCycle(env);
-        WaitUntilScrubbingFinishCurrentCycle(env);
+        WaitUntilScrubbingFinishesCurrentCycle(env);
+        WaitUntilScrubbingFinishesCurrentCycle(env);
 
         // check that all ranges was resynced and there is no more mismatches
         UNIT_ASSERT_VALUES_EQUAL(3, counters.Simple.ChecksumMismatches.Value);
@@ -1630,7 +1627,7 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
         }
     }
 
-    Y_UNIT_TEST(ShouldStartResyncAfterScrubbingOnlyIfMajorityOfChecksumsEqual)
+    Y_UNIT_TEST(ShouldStartResyncAfterScrubbingOnlyIfMajorityOfChecksumsAreEqual)
     {
         using namespace NMonitoring;
 
@@ -1665,8 +1662,8 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
 
         // Wait util all ranges process in scrubbing at least two times.
         // We need to be sure that resync wasn't started.
-        WaitUntilScrubbingFinishCurrentCycle(env);
-        WaitUntilScrubbingFinishCurrentCycle(env);
+        WaitUntilScrubbingFinishesCurrentCycle(env);
+        WaitUntilScrubbingFinishesCurrentCycle(env);
         UNIT_ASSERT_VALUES_EQUAL(2, counters.Simple.ChecksumMismatches.Value);
         UNIT_ASSERT_VALUES_EQUAL(0, rangeResynced);
 
@@ -1675,8 +1672,8 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
 
         // Wait again until all ranges process in scrubbing at least two times.
         // Check that mismatch was found and range was resynced now
-        WaitUntilScrubbingFinishCurrentCycle(env);
-        WaitUntilScrubbingFinishCurrentCycle(env);
+        WaitUntilScrubbingFinishesCurrentCycle(env);
+        WaitUntilScrubbingFinishesCurrentCycle(env);
         UNIT_ASSERT_VALUES_EQUAL(3, counters.Simple.ChecksumMismatches.Value);
         UNIT_ASSERT_VALUES_EQUAL(1, rangeResynced);
     }
