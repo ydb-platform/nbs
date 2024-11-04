@@ -1180,7 +1180,8 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
         UNIT_ASSERT_VALUES_EQUAL(0, counters.Simple.ChecksumMismatches.Value);
     }
 
-    void WaitUntilScrubbingFinishesCurrentCycle(TTestEnv& testEnv) {
+    void WaitUntilScrubbingFinishesCurrentCycle(TTestEnv& testEnv)
+    {
         auto& counters = testEnv.StorageStatsServiceState->Counters;
         ui64 prevScrubbingProgress = counters.Simple.ScrubbingProgress.Value;
         ui32 iterations = 0;
