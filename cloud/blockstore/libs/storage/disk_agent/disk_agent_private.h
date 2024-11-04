@@ -37,7 +37,7 @@ struct TEvDiskAgentPrivate
         TVector<NProto::TDeviceConfig> Configs;
         TVector<TString> Errors;
         TVector<TString> ConfigMismatchErrors;
-        TVector<TString> DevicesWithNewSerialNumber;
+        TVector<TString> DevicesWithSuspendedIO;
 
         TInitAgentCompleted() = default;
 
@@ -45,11 +45,11 @@ struct TEvDiskAgentPrivate
                 TVector<NProto::TDeviceConfig> configs,
                 TVector<TString> errors,
                 TVector<TString> configMismatchErrors,
-                TVector<TString> devicesWithNewSerialNumber)
+                TVector<TString> devicesWithSuspendedIO)
             : Configs(std::move(configs))
             , Errors(std::move(errors))
             , ConfigMismatchErrors(std::move(configMismatchErrors))
-            , DevicesWithNewSerialNumber(std::move(devicesWithNewSerialNumber))
+            , DevicesWithSuspendedIO(std::move(devicesWithSuspendedIO))
         {}
     };
 

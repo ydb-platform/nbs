@@ -109,7 +109,7 @@ private:
 
     TVector<TString> Errors;
     TVector<TString> ConfigMismatchErrors;
-    TVector<TString> DevicesWithNewSerialNumber;
+    TVector<TString> DevicesWithSuspendedIO;
     TMutex Lock;
 
     THashMap<TString, TString> PathToSerial;
@@ -474,7 +474,7 @@ TFuture<void> TInitializer::Initialize()
                               << TString(currentSerialNumber).Quote()
                               << " (was " << d.GetSerialNumber().Quote()
                               << ")");
-                DevicesWithNewSerialNumber.push_back(d.GetDeviceId());
+                DevicesWithSuspendedIO.push_back(d.GetDeviceId());
             }
         }
 
@@ -625,7 +625,7 @@ TInitializeStorageResult TInitializer::GetResult()
 
     r.Errors = std::move(Errors);
     r.ConfigMismatchErrors = std::move(ConfigMismatchErrors);
-    r.DevicesWithNewSerialNumber = std::move(DevicesWithNewSerialNumber);
+    r.DevicesWithSuspendedIO = std::move(DevicesWithSuspendedIO);
     r.Guard = std::move(Guard);
 
     return r;

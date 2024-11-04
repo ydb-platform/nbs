@@ -180,7 +180,7 @@ Y_UNIT_TEST_SUITE(TInitializerTest)
         UNIT_ASSERT_VALUES_EQUAL(r.Configs.size(), r.Stats.size());
         UNIT_ASSERT_VALUES_EQUAL(0, r.Errors.size());
         UNIT_ASSERT_VALUES_EQUAL(0, r.ConfigMismatchErrors.size());
-        UNIT_ASSERT_VALUES_EQUAL(0, r.DevicesWithNewSerialNumber.size());
+        UNIT_ASSERT_VALUES_EQUAL(0, r.DevicesWithSuspendedIO.size());
 
         auto configs = r.Configs;
         SortBy(configs, [](const auto& d) { return d.GetDeviceName(); });
@@ -212,7 +212,7 @@ Y_UNIT_TEST_SUITE(TInitializerTest)
 
         const auto& r1 = future1.GetValueSync();
 
-        UNIT_ASSERT_VALUES_EQUAL(0, r1.DevicesWithNewSerialNumber.size());
+        UNIT_ASSERT_VALUES_EQUAL(0, r1.DevicesWithSuspendedIO.size());
 
         const TVector<std::pair<TString, TString>> newPathToSerial{
             {"NVMENBS01", "W"},
@@ -240,7 +240,7 @@ Y_UNIT_TEST_SUITE(TInitializerTest)
         UNIT_ASSERT_VALUES_EQUAL(0, r2.ConfigMismatchErrors.size());
         UNIT_ASSERT_VALUES_EQUAL(
             DeviceCountPerPath * 3,
-            r2.DevicesWithNewSerialNumber.size());
+            r2.DevicesWithSuspendedIO.size());
 
         {
             auto configs = r2.Configs;
@@ -265,7 +265,7 @@ Y_UNIT_TEST_SUITE(TInitializerTest)
         const auto& r3 = future3.GetValueSync();
 
         UNIT_ASSERT_VALUES_EQUAL(0, r3.ConfigMismatchErrors.size());
-        UNIT_ASSERT_VALUES_EQUAL(0, r3.DevicesWithNewSerialNumber.size());
+        UNIT_ASSERT_VALUES_EQUAL(0, r3.DevicesWithSuspendedIO.size());
         UNIT_ASSERT_VALUES_EQUAL(r2.Configs.size(), r3.Configs.size());
         UNIT_ASSERT(std::equal(
             r2.Configs.cbegin(),
@@ -333,7 +333,7 @@ Y_UNIT_TEST_SUITE(TInitializerTest)
         UNIT_ASSERT_VALUES_EQUAL(1, r2.ConfigMismatchErrors.size());
         UNIT_ASSERT_VALUES_EQUAL(
             DeviceCountPerPath * 3,
-            r2.DevicesWithNewSerialNumber.size());
+            r2.DevicesWithSuspendedIO.size());
         UNIT_ASSERT_VALUES_EQUAL(r1.Configs.size(), r2.Configs.size());
         UNIT_ASSERT(std::equal(
             r1.Configs.cbegin(),
@@ -405,7 +405,7 @@ Y_UNIT_TEST_SUITE(TInitializerTest)
         UNIT_ASSERT_VALUES_EQUAL(1, r2.ConfigMismatchErrors.size());
         UNIT_ASSERT_VALUES_EQUAL(
             DeviceCountPerPath * 3,
-            r2.DevicesWithNewSerialNumber.size());
+            r2.DevicesWithSuspendedIO.size());
         UNIT_ASSERT_VALUES_EQUAL(r1.Configs.size(), r2.Configs.size());
         UNIT_ASSERT(std::equal(
             r1.Configs.cbegin(),

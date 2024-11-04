@@ -86,7 +86,7 @@ public:
         TVector<NProto::TDeviceConfig> Configs;
         TVector<TString> Errors;
         TVector<TString> ConfigMismatchErrors;
-        TVector<TString> DevicesWithNewSerialNumber;
+        TVector<TString> DevicesWithSuspendedIO;
 
         TDeviceGuard Guard;
     };
