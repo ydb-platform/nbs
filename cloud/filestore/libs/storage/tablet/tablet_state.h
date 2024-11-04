@@ -1331,6 +1331,7 @@ public:
     void UpdateInMemoryIndexState(
         TVector<TInMemoryIndexState::TIndexStateRequest> nodeUpdates);
     void MarkNodeRefsLoadComplete();
+    TInMemoryIndexStateStats GetInMemoryIndexStateStats() const;
 };
 
 }   // namespace NCloud::NFileStore::NStorage

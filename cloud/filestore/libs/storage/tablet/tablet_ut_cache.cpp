@@ -18,9 +18,13 @@ namespace {
 
 struct TTxStats
 {
-    i64 ROCacheHitCount = 0;
-    i64 ROCacheMissCount = 0;
-    i64 RWCount = 0;
+    i64 ROCacheHitCount;
+    i64 ROCacheMissCount;
+    i64 RWCount;
+    i64 NodesCount;
+    i64 NodeRefsCount;
+    i64 NodeAttrsCount;
+    bool IsExhaustive;
 };
 
 TTxStats GetTxStats(TTestEnv& env, TIndexTabletClient& tablet)
@@ -51,6 +55,30 @@ TTxStats GetTxStats(TTestEnv& env, TIndexTabletClient& tablet)
          [&stats](i64 value)
          {
              stats.RWCount = value;
+             return true;
+         }},
+        {{{"filesystem", "test"}, {"sensor", "InMemoryIndexStateNodesCount"}},
+         [&stats](i64 value)
+         {
+             stats.NodesCount = value;
+             return true;
+         }},
+        {{{"filesystem", "test"}, {"sensor", "InMemoryIndexStateNodeRefsCount"}},
+         [&stats](i64 value)
+         {
+             stats.NodeRefsCount = value;
+             return true;
+         }},
+        {{{"filesystem", "test"}, {"sensor", "InMemoryIndexStateNodeAttrsCount"}},
+         [&stats](i64 value)
+         {
+             stats.NodeAttrsCount = value;
+             return true;
+         }},
+        {{{"filesystem", "test"}, {"sensor", "InMemoryIndexStateIsExhaustive"}},
+         [&stats](i64 value)
+         {
+             stats.IsExhaustive = value;
              return true;
          }},
     });
@@ -122,6 +150,8 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesCache)
             2,
             statsAfter.ROCacheMissCount - statsBefore.ROCacheMissCount);
         UNIT_ASSERT_VALUES_EQUAL(2, statsAfter.RWCount - statsBefore.RWCount);
+        UNIT_ASSERT_VALUES_EQUAL(1, statsAfter.NodeRefsCount - statsBefore.NodeRefsCount);
+        UNIT_ASSERT_VALUES_EQUAL(1, statsAfter.NodesCount - statsBefore.NodesCount);
     }
 
     // Note: this test does not check the cache eviction policy, as cache size
@@ -388,6 +418,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesCache)
             1,
             statsAfter.ROCacheMissCount - statsBefore.ROCacheMissCount);
         UNIT_ASSERT_VALUES_EQUAL(5, statsAfter.RWCount - statsBefore.RWCount);
+        UNIT_ASSERT_VALUES_EQUAL(2, statsAfter.NodeAttrsCount - statsBefore.NodeAttrsCount);
     }
 
     Y_UNIT_TEST(ShouldUpdateCacheUponRemoveNodeXAttr)
@@ -910,6 +941,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesCache)
         UNIT_ASSERT_VALUES_EQUAL(
             0,
             statsAfter.ROCacheMissCount - statsBefore.ROCacheMissCount);
+        UNIT_ASSERT(statsAfter.IsExhaustive);
 
         // Now let us ensure that the cache is evicted
         for (int i = 0; i < 100; ++i) {
@@ -928,6 +960,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesCache)
         UNIT_ASSERT_VALUES_EQUAL(
             1,
             statsAfter.ROCacheMissCount - statsBefore.ROCacheMissCount);
+        UNIT_ASSERT(!statsAfter.IsExhaustive);
     }
 }
 
