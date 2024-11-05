@@ -632,13 +632,13 @@ private:
 
             auto code = request->Error.GetCode();
             if (FAILED(code)) {
-                STORAGE_ERROR(
-                    "%s failing test %s due to: %s",
-                    MakeTestTag().c_str(),
-                    NProto::EAction_Name(request->Action).c_str(),
-                    FormatError(request->Error).c_str());
-
                 if (RequestGenerator->ShouldFailOnError()) {
+                    STORAGE_ERROR(
+                        "%s failing test %s due to: %s",
+                        MakeTestTag().c_str(),
+                        NProto::EAction_Name(request->Action).c_str(),
+                        FormatError(request->Error).c_str());
+
                     TestStats.Success = false;
                 }
             }

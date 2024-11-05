@@ -235,22 +235,29 @@ private:
         // nfs     CreateHandle    0.004161s       S_OK    {parent_node_id=65,
         // node_name=ini, flags=14, mode=436, node_id=66,
         // handle=11024287581389312, size=0}
+        // data="TimestampMcs: 1730357985685217 DurationMcs: 830 RequestType: 38
+        // ErrorCode: 0 NodeInfo { ParentNodeId: 30370 NodeName: \"\" Flags: 1
+        // Mode: 0 NodeId: 30370 Handle: 26864016645431487 Size: 8547 }"
 
         TGuard<TMutex> guard(StateLock);
 
-        TFsPath relativePathName;
+        TFsPath fullName;
         if (logRequest.GetNodeInfo().GetNodeId()) {
             if (const auto path =
                     PathByNode(logRequest.GetNodeInfo().GetNodeId()))
             {
-                relativePathName = path;
+                fullName = path;
             }
         }
 
-        if (!relativePathName.IsDefined()) {
+        if (!fullName.IsDefined()) {
             auto parentNode =
                 NodeIdMapped(logRequest.GetNodeInfo().GetParentNodeId());
-            if (parentNode == InvalidNodeId) {
+
+            if (parentNode == InvalidNodeId &&
+                KnownLogNodes.contains(
+                    logRequest.GetNodeInfo().GetParentNodeId()))
+            {
                 parentNode = NodeIdMapped(
                     KnownLogNodes[logRequest.GetNodeInfo().GetParentNodeId()]
                         .ParentLog);
@@ -264,7 +271,7 @@ private:
                     logRequest.GetNodeInfo().GetParentNodeId());
             }
 
-            if (parentNode == InvalidNodeId) {
+            if (parentNode == InvalidNodeId && !Spec.GetCreateOnRead()) {
                 return MakeFuture(TCompletedRequest{
                     NProto::ACTION_CREATE_HANDLE,
                     Started,
@@ -277,10 +284,9 @@ private:
             }
 
             auto nodeName = logRequest.GetNodeInfo().GetNodeName();
-            if (nodeName.empty() &&
-                logRequest.GetNodeInfo().GetNodeId() !=
-                    logRequest.GetNodeInfo().GetParentNodeId())
-            {
+            bool nodeEqualParent = logRequest.GetNodeInfo().GetNodeId() ==
+                                   logRequest.GetNodeInfo().GetParentNodeId();
+            if (!nodeEqualParent && nodeName.empty()) {
                 nodeName =
                     KnownLogNodes[logRequest.GetNodeInfo().GetNodeId()].Name;
             }
@@ -293,15 +299,21 @@ private:
                     KnownLogNodes[logRequest.GetNodeInfo().GetParentNodeId()]
                         .Name;
             }
-            if (nodeName.empty()) {
+
+            if (!parentNode && nodeName.empty()) {
                 nodeName =
                     "nodeid-" + ToString(logRequest.GetNodeInfo().GetNodeId());
             }
-            relativePathName = parentpath / nodeName;
+
+            if (nodeName.empty()) {
+                fullName = parentpath;
+            } else {
+                fullName = parentpath / nodeName;
+            }
         }
         STORAGE_DEBUG(
             "Open %s handle=%lu flags=%d (%s) mode=%d node=%lu",
-            relativePathName.c_str(),
+            fullName.c_str(),
             logRequest.GetNodeInfo().GetHandle(),
             logRequest.GetNodeInfo().GetFlags(),
             HandleFlagsToString(logRequest.GetNodeInfo().GetFlags()).c_str(),
@@ -316,7 +328,7 @@ private:
                 mode = OpenExisting;
             }
             TFile fileHandle(
-                relativePathName,
+                fullName,
                 FileOpenFlags(logRequest.GetNodeInfo().GetFlags(), mode));
 
             if (!fileHandle.IsOpen()) {
@@ -340,11 +352,11 @@ private:
 
             OpenHandles[fh] = fileHandle;
             HandlesLogToActual[logRequest.GetNodeInfo().GetHandle()] = fh;
-            const auto stat = TFileStat{relativePathName};
+            const auto stat = TFileStat{fullName};
             const auto inode = stat.INode;
             if (logRequest.GetNodeInfo().GetNodeId()) {
                 NodesLogToLocal[logRequest.GetNodeInfo().GetNodeId()] = inode;
-                NodePath[inode] = relativePathName;
+                NodePath[inode] = fullName;
             }
             STORAGE_DEBUG(
                 "Open %d <- %lu inode=%lu known handles=%zu opened=%zu "
