@@ -30,6 +30,12 @@ TDuration TNonreplicatedPartitionActor::TDeviceStat::WorstRequestTime() const
     return result;
 }
 
+TDuration TNonreplicatedPartitionActor::TDeviceStat::GetTimedOutStateDuration(
+    TInstant now) const
+{
+    return FirstTimeoutTs ? (now - FirstTimeoutTs) : TDuration();
+}
+
 bool TNonreplicatedPartitionActor::TDeviceStat::CooldownPassed(
     TInstant now,
     TDuration cooldownTimeout) const
@@ -126,7 +132,7 @@ TRequestTimeoutPolicy TNonreplicatedPartitionActor::MakeTimeoutPolicyForRequest(
 
         longestTimedOutStateDuration =
             Max(longestTimedOutStateDuration,
-                deviceStats.TimedOutStateDuration);
+                deviceStats.GetTimedOutStateDuration(now));
         worstRequestTime =
             Max(worstRequestTime, deviceStats.WorstRequestTime());
 
@@ -153,7 +159,7 @@ TRequestTimeoutPolicy TNonreplicatedPartitionActor::MakeTimeoutPolicyForRequest(
 
     policy.Timeout =
         Min(GetMaxRequestTimeout(),
-            longestTimedOutStateDuration + TDuration::MilliSeconds(500));
+            longestTimedOutStateDuration + GetMinRequestTimeout());
 
     if (isBackground) {
         return policy;
@@ -392,8 +398,7 @@ void TNonreplicatedPartitionActor::OnRequestSuccess(
     TDuration executionTime)
 {
     auto& stat = DeviceStats[deviceIndex];
-    stat.LastTimeoutTs = {};
-    stat.TimedOutStateDuration = {};
+    stat.FirstTimeoutTs = {};
     stat.ResponseTimes.PushBack(executionTime);
     stat.DeviceStatus = EDeviceStatus::Ok;
     stat.BrokenTransitionTs = {};
@@ -406,18 +411,13 @@ void TNonreplicatedPartitionActor::OnRequestTimeout(
 {
     auto& stat = DeviceStats[deviceIndex];
 
-    if (!stat.LastTimeoutTs) {
-        stat.TimedOutStateDuration = executionTime;
-    } else {
-        stat.TimedOutStateDuration +=
-            Min(executionTime, now - stat.LastTimeoutTs);
+    if (!stat.FirstTimeoutTs) {
+        stat.FirstTimeoutTs = now - executionTime;
     }
-
-    stat.LastTimeoutTs = now;
 
     switch (stat.DeviceStatus) {
         case EDeviceStatus::Ok: {
-            if (stat.TimedOutStateDuration >
+            if (stat.GetTimedOutStateDuration(now) >
                 GetMaxTimedOutDeviceStateDuration())
             {
                 stat.DeviceStatus = EDeviceStatus::SilentBroken;

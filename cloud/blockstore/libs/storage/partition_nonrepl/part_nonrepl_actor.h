@@ -60,11 +60,8 @@ private:
 
     struct TDeviceStat
     {
-        // When the last timeout was detected.
-        TInstant LastTimeoutTs;
-
-        // How long has it been since no response was received from the server.
-        TDuration TimedOutStateDuration;
+        // The start time of the first timed out request.
+        TInstant FirstTimeoutTs;
 
         // Execution times of the last 10 requests.
         TSimpleRingBuffer<TDuration> ResponseTimes{10};
@@ -77,6 +74,8 @@ private:
 
         // Returns the maximum request execution time among the latest.
         [[nodiscard]] TDuration WorstRequestTime() const;
+
+        [[nodiscard]] TDuration GetTimedOutStateDuration(TInstant now) const;
 
         [[nodiscard]] bool CooldownPassed(
             TInstant now,
