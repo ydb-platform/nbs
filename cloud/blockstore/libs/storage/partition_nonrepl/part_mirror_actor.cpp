@@ -162,7 +162,7 @@ void TMirrorPartitionActor::CompareChecksums(const TActorContext& ctx)
         }
     }
 
-    bool equal = (majorCount == checksums.size());
+    const bool equal = (majorCount == checksums.size());
     if (!equal && WriteIntersectsWithScrubbing) {
         LOG_DEBUG(
             ctx,
@@ -209,9 +209,8 @@ void TMirrorPartitionActor::CompareChecksums(const TActorContext& ctx)
         ++ChecksumMismatches;
         ReportMirroredDiskChecksumMismatch();
 
-        if (Config->GetResyncRangeAfterScrubbing() &&
-            majorCount > checksums.size() / 2)
-        {
+        const bool hasQuorum = majorCount > checksums.size() / 2;
+        if (Config->GetResyncRangeAfterScrubbing() && hasQuorum) {
             StartResyncRange(ctx);
             return;
         }

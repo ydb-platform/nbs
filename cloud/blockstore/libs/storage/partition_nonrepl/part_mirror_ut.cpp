@@ -291,6 +291,23 @@ struct TTestEnv
     }
 };
 
+
+void WaitUntilScrubbingFinishesCurrentCycle(TTestEnv& testEnv)
+{
+    auto& counters = testEnv.StorageStatsServiceState->Counters;
+    ui64 prevScrubbingProgress = counters.Simple.ScrubbingProgress.Value;
+    ui32 iterations = 0;
+    while (iterations++ < 100) {
+        testEnv.Runtime.AdvanceCurrentTime(UpdateCountersInterval);
+        testEnv.Runtime.DispatchEvents({}, TDuration::MilliSeconds(50));
+        if (prevScrubbingProgress > counters.Simple.ScrubbingProgress.Value)
+        {
+            break;
+        }
+        prevScrubbingProgress = counters.Simple.ScrubbingProgress.Value;
+    }
+}
+
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1178,22 +1195,6 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
             counters.Cumulative.ScrubbingThroughput.Value);
         UNIT_ASSERT_VALUES_EQUAL(33, counters.Simple.ScrubbingProgress.Value);
         UNIT_ASSERT_VALUES_EQUAL(0, counters.Simple.ChecksumMismatches.Value);
-    }
-
-    void WaitUntilScrubbingFinishesCurrentCycle(TTestEnv& testEnv)
-    {
-        auto& counters = testEnv.StorageStatsServiceState->Counters;
-        ui64 prevScrubbingProgress = counters.Simple.ScrubbingProgress.Value;
-        ui32 iterations = 0;
-        while (iterations++ < 100) {
-            testEnv.Runtime.AdvanceCurrentTime(UpdateCountersInterval);
-            testEnv.Runtime.DispatchEvents({}, TDuration::MilliSeconds(50));
-            if (prevScrubbingProgress > counters.Simple.ScrubbingProgress.Value)
-            {
-                break;
-            }
-            prevScrubbingProgress = counters.Simple.ScrubbingProgress.Value;
-        }
     }
 
     Y_UNIT_TEST(ShouldFindChecksumMismatch)
