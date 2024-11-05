@@ -13,7 +13,7 @@ void TDiskRegistryActor::HandleUpdateCmsHostState(
     const TEvDiskRegistryPrivate::TEvUpdateCmsHostStateRequest::TPtr& ev,
     const TActorContext& ctx)
 {
-    BLOCKSTORE_DISK_REGISTRY_COUNTER(UpdateCmsHostDeviceState);
+    BLOCKSTORE_DISK_REGISTRY_COUNTER(UpdateCmsHostState);
 
     auto* msg = ev->Get();
 
@@ -55,9 +55,6 @@ void TDiskRegistryActor::ExecuteUpdateCmsHostState(
     TTransactionContext& tx,
     TTxDiskRegistry::TUpdateCmsHostState& args)
 {
-    Y_UNUSED(ctx);
-    Y_UNUSED(args);
-
     TDiskRegistryDatabase db(tx.DB);
 
     args.TxTs = ctx.Now();
@@ -94,7 +91,7 @@ void TDiskRegistryActor::CompleteUpdateCmsHostState(
                 out << " " << diskId
                     << ":" << NProto::EDiskState_Name(State->GetDiskState(diskId));
             }
-            out << "]";
+            out << " ]";
             return out.Str();
         }().c_str());
 

@@ -197,6 +197,7 @@ using TVolumeConfig = NKikimrBlockStore::TVolumeConfig;
     xxx(FinishVolumeConfigUpdate,                   __VA_ARGS__)               \
     xxx(RestoreDiskRegistryPart,                    __VA_ARGS__)               \
     xxx(SwitchAgentDisksToReadOnly,                 __VA_ARGS__)               \
+    xxx(PurgeHostCms,                               __VA_ARGS__)               \
 // BLOCKSTORE_DISK_REGISTRY_REQUESTS_PRIVATE
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -563,8 +564,26 @@ struct TEvDiskRegistryPrivate
         {}
     };
 
+    //
+    // PurgeHostCms
+    //
+
+    struct TPurgeHostCmsRequest
+    {
+        TString Host;
+        bool DryRun;
+
+        TPurgeHostCmsRequest(
+                TString host,
+                bool dryRun)
+            : Host(std::move(host))
+            , DryRun(dryRun)
+        {}
+    };
+
     using TUpdateCmsHostDeviceStateResponse = TCmsActionResponse;
     using TUpdateCmsHostStateResponse = TCmsActionResponse;
+    using TPurgeHostCmsResponse = TCmsActionResponse;
 
     //
     // StartMigration

@@ -66,6 +66,15 @@ struct TFixture
         return CmsAction(std::move(action));
     }
 
+    auto PurgeHost(const TString& agentId)
+    {
+        NProto::TAction action;
+        action.SetHost(agentId);
+        action.SetType(NProto::TAction::PURGE_HOST);
+
+        return CmsAction(std::move(action));
+    }
+
     auto AddHost(const TString& agentId)
     {
         NProto::TAction action;
@@ -992,6 +1001,13 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
             UNIT_ASSERT_VALUES_EQUAL(0, timeout);
         }
 
+        {
+            auto [error, timeout] = PurgeHost("agent-1");
+
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
+            UNIT_ASSERT_VALUES_EQUAL(0, timeout);
+        }
+
         DiskRegistry->ChangeAgentState(
             "agent-1",
             NProto::EAgentState::AGENT_STATE_UNAVAILABLE);
@@ -999,9 +1015,12 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
         {
             auto [error, timeout] = AddHost("agent-1");
 
-            UNIT_ASSERT_VALUES_EQUAL(E_TRY_AGAIN, error.GetCode());
-            UNIT_ASSERT_VALUES_UNEQUAL(0, timeout);
+            UNIT_ASSERT_VALUES_EQUAL(E_NOT_FOUND, error.GetCode());
+            UNIT_ASSERT_VALUES_EQUAL(0, timeout);
         }
+
+        RegisterAgents(*Runtime, 1);
+        WaitForAgents(*Runtime, 1);
 
         DiskRegistry->ChangeAgentState(
             "agent-1",
@@ -1013,6 +1032,8 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
             UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
             UNIT_ASSERT_VALUES_EQUAL(0, timeout);
         }
+
+        WaitForSecureErase(*Runtime, agents);
 
         // Check idempotency.
         {
@@ -1122,12 +1143,9 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
         WaitForAgents(*Runtime, 1);
         WaitForSecureErase(*Runtime, agents);
 
-        {
-            auto [error, timeout] = RemoveHost("agent-1");
-
-            UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
-            UNIT_ASSERT_VALUES_EQUAL(0, timeout);
-        }
+        DiskRegistry->ChangeAgentState(
+            "agent-1",
+            NProto::EAgentState::AGENT_STATE_WARNING);
 
         Runtime->AdvanceCurrentTime(15min);
 

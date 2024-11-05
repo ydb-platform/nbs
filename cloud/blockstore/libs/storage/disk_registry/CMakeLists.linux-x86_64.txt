@@ -78,6 +78,7 @@ target_sources(libs-storage-disk_registry PRIVATE
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/disk_registry/disk_registry_actor_placement.cpp
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/disk_registry/disk_registry_actor_publish_disk_state.cpp
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/disk_registry/disk_registry_actor_writable_state.cpp
+  ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/disk_registry/disk_registry_actor_purge_host_cms.cpp
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/disk_registry/disk_registry_actor_query_agents_info.cpp
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/disk_registry/disk_registry_actor_query_available_storage.cpp
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/disk_registry/disk_registry_actor_register.cpp

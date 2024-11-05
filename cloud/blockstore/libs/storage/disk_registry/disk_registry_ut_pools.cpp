@@ -470,12 +470,12 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
             UNIT_ASSERT_VALUES_EQUAL(
                 3_GB, msg.GetAvailableStorage(0).GetChunkSize());
             UNIT_ASSERT_VALUES_EQUAL(
-                0, msg.GetAvailableStorage(1).GetChunkSize());
+                4_GB, msg.GetAvailableStorage(1).GetChunkSize());
 
             UNIT_ASSERT_VALUES_EQUAL(
                 1, msg.GetAvailableStorage(0).GetChunkCount());
             UNIT_ASSERT_VALUES_EQUAL(
-                0, msg.GetAvailableStorage(1).GetChunkCount());
+                2, msg.GetAvailableStorage(1).GetChunkCount());
         }
 
         {
