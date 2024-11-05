@@ -217,9 +217,11 @@ def test_resize_device(with_netlink, with_endpoint_proxy):
             socket_path,
         )
 
-        run(
-            *("destroyvolume", "--disk-id", volume_name),
-            **{"input": volume_name},
+        result = run(
+            "destroyvolume",
+            "--disk-id",
+            volume_name,
+            input=volume_name,
         )
 
         if mount_dir is not None:
@@ -287,8 +289,10 @@ def test_do_not_restore_endpoint_with_missing_volume():
         assert result.returncode == 0
 
         result = run(
-            *("destroyvolume", "--disk-id", volume_name),
-            **{"input": volume_name},
+            "destroyvolume",
+            "--disk-id",
+            volume_name,
+            input=volume_name,
         )
         assert result.returncode == 0
 
@@ -301,5 +305,10 @@ def test_do_not_restore_endpoint_with_missing_volume():
     shutil.rmtree(endpoints_dir)
     shutil.copytree(backup_endpoints_dir, endpoints_dir)
     env, run = init()
-    assert not os.listdir(endpoints_dir)
+    result = run(
+        "listendpoints",
+        "--wait-for-restoring",
+    )
+    assert result.returncode == 0
+    assert 0 == len(os.listdir(endpoints_dir))
     cleanup_after_test(env)
