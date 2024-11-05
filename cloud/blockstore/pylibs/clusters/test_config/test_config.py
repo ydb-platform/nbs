@@ -61,7 +61,15 @@ def get_cluster_test_config(name: str, zone_id: str, config_path: str = None) ->
     res.__dict__.update(cfg)
     folders = dict()
     for name in cfg['folder_desc']:
-        folder = FolderDesc(None, None, None, None, None, None)
+        folder = FolderDesc(
+            folder_id=None,
+            zone_id=None,
+            subnet_name=None,
+            subnet_id=None,
+            image_name=None,
+            image_folder_id=None,
+            filesystem_id=None,
+        )
         folder.__dict__.update(cfg['folder_desc'][name])
         folders[name] = folder
     res.__dict__.update({

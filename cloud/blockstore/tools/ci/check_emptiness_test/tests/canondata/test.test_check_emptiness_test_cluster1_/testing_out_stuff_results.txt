@@ -5,7 +5,7 @@
 ##teamcity[message text='|[ #0/zone1 |] sent ycp request: ycp --format json --profile fake-cluster1 compute instance list --folder-id fake-folder' status='NORMAL' ]
 ##teamcity[message text='|[ #0/zone1 |] Creating instance' status='NORMAL' ]
 ##teamcity[message text='|[ #0/zone1 |] sent ycp request: ycp --format json --profile fake-cluster1 vpc subnet list --folder-id fake-folder' status='NORMAL' ]
-##teamcity[message text='|[ #0/zone1 |] sent ycp request: ycp --format json --profile fake-cluster1 compute image list --folder-id fake-folder' status='NORMAL' ]
+##teamcity[message text='|[ #0/zone1 |] sent ycp request: ycp --format json --profile fake-cluster1 compute image list --folder-id fake-images-folder1' status='NORMAL' ]
 ##teamcity[message text='|[ #0/zone1 |] sent ycp request: ycp --format json --profile fake-cluster1 compute instance create --request -' status='NORMAL' ]
 ##teamcity[message text='|[ #0/zone1 |] Created instance <id=fake-instance-id, host=fake, ip=1:1:1:1:1:1:1:1>' status='NORMAL' ]
 ##teamcity[message text='|[ #0/zone1 |] Creating disk' status='NORMAL' ]
@@ -30,7 +30,7 @@
 ##teamcity[message text='|[ #1/zone1 |] sent ycp request: ycp --format json --profile fake-cluster1 compute instance list --folder-id fake-folder' status='NORMAL' ]
 ##teamcity[message text='|[ #1/zone1 |] Creating instance' status='NORMAL' ]
 ##teamcity[message text='|[ #1/zone1 |] sent ycp request: ycp --format json --profile fake-cluster1 vpc subnet list --folder-id fake-folder' status='NORMAL' ]
-##teamcity[message text='|[ #1/zone1 |] sent ycp request: ycp --format json --profile fake-cluster1 compute image list --folder-id fake-folder' status='NORMAL' ]
+##teamcity[message text='|[ #1/zone1 |] sent ycp request: ycp --format json --profile fake-cluster1 compute image list --folder-id fake-images-folder1' status='NORMAL' ]
 ##teamcity[message text='|[ #1/zone1 |] sent ycp request: ycp --format json --profile fake-cluster1 compute instance create --request -' status='NORMAL' ]
 ##teamcity[message text='|[ #1/zone1 |] Created instance <id=fake-instance-id, host=fake, ip=1:1:1:1:1:1:1:1>' status='NORMAL' ]
 ##teamcity[message text='|[ #1/zone1 |] Creating disk' status='NORMAL' ]
@@ -59,7 +59,7 @@ Command=ycp --format json --profile fake-cluster1 compute instance list --folder
 Input=
 Command=ycp --format json --profile fake-cluster1 vpc subnet list --folder-id fake-folder
 Input=
-Command=ycp --format json --profile fake-cluster1 compute image list --folder-id fake-folder
+Command=ycp --format json --profile fake-cluster1 compute image list --folder-id fake-images-folder1
 Input=
 Command=ycp --format json --profile fake-cluster1 compute instance create --request -
 Input=
@@ -82,7 +82,7 @@ Command=ycp --format json --profile fake-cluster1 compute instance list --folder
 Input=
 Command=ycp --format json --profile fake-cluster1 vpc subnet list --folder-id fake-folder
 Input=
-Command=ycp --format json --profile fake-cluster1 compute image list --folder-id fake-folder
+Command=ycp --format json --profile fake-cluster1 compute image list --folder-id fake-images-folder1
 Input=
 Command=ycp --format json --profile fake-cluster1 compute instance create --request -
 Input=
