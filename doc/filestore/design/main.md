@@ -1,7 +1,7 @@
 # Filestore Design
 
 ## Overview
-![diagram_png](../excalidraw/diagram.svg)
+![diagram_svg](../excalidraw/diagram.svg)
 
 ## Components
 
