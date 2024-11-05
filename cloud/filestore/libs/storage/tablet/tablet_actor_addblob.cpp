@@ -221,7 +221,11 @@ private:
                         group.size());
                 });
 
-            bool written = Tablet.WriteMixedBlocks(db, blob.BlobId, blob.Blocks);
+            bool written = Tablet.WriteMixedBlocks(
+                db,
+                blob.BlobId,
+                blob.Blocks,
+                TBlobCompressionInfo()  /* uncompressed */);
             if (written) {
                 ui32 rangeId = Tablet.GetMixedRangeIndex(blob.Blocks);
                 AccessCompactionRangeInfo(rangeId).Stats.BlobsCount += 1;
@@ -262,7 +266,12 @@ private:
 
             const auto rangeId = Tablet.GetMixedRangeIndex(blob.Blocks);
             auto& stats = AccessCompactionRangeInfo(rangeId).Stats;
-            if (Tablet.WriteMixedBlocks(db, blob.BlobId, blob.Blocks)) {
+            if (Tablet.WriteMixedBlocks(
+                    db,
+                    blob.BlobId,
+                    blob.Blocks,
+                    TBlobCompressionInfo()  /* uncompressed */)
+            ) {
                 stats.BlobsCount += 1;
                 // conservative estimate
                 stats.GarbageBlocksCount += blob.Blocks.size();
@@ -301,7 +310,12 @@ private:
         for (auto& blob: args.MixedBlobs) {
             const auto rangeId = Tablet.GetMixedRangeIndex(blob.Blocks);
             auto& stats = AccessCompactionRangeInfo(rangeId).Stats;
-            if (Tablet.WriteMixedBlocks(db, blob.BlobId, blob.Blocks)) {
+            if (Tablet.WriteMixedBlocks(
+                    db,
+                    blob.BlobId,
+                    blob.Blocks,
+                    TBlobCompressionInfo()  /* uncompressed */)
+            ) {
                 stats.BlobsCount += 1;
                 // conservative estimate
                 stats.GarbageBlocksCount += blob.Blocks.size();
@@ -341,7 +355,12 @@ private:
         THashSet<ui32> writtenRangeIds;
         for (auto& blob: args.MixedBlobs) {
             const auto rangeId = Tablet.GetMixedRangeIndex(blob.Blocks);
-            if (Tablet.WriteMixedBlocks(db, blob.BlobId, blob.Blocks)) {
+            if (Tablet.WriteMixedBlocks(
+                    db,
+                    blob.BlobId,
+                    blob.Blocks,
+                    blob.BlobCompressionInfo)
+            ) {
                 writtenRangeIds.insert(rangeId);
             }
 

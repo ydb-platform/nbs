@@ -143,7 +143,10 @@ void TFlushActor::AddBlob(const TActorContext& ctx)
     request->Mode = EAddBlobMode::Flush;
 
     for (auto& blob: Blobs) {
-        request->MixedBlobs.emplace_back(blob.BlobId, std::move(blob.Blocks));
+        request->MixedBlobs.emplace_back(
+            blob.BlobId,
+            std::move(blob.Blocks),
+            TBlobCompressionInfo());
     }
 
     NCloud::Send(ctx, Tablet, std::move(request));

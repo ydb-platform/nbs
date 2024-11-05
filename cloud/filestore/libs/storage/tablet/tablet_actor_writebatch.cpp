@@ -156,7 +156,10 @@ void TWriteBatchActor::AddBlob(const TActorContext& ctx)
     request->WriteRanges = std::move(WriteRanges);
 
     for (auto& blob: Blobs) {
-        request->MixedBlobs.emplace_back(blob.BlobId, std::move(blob.Blocks));
+        request->MixedBlobs.emplace_back(
+            blob.BlobId,
+            std::move(blob.Blocks),
+            TBlobCompressionInfo());
     }
 
     NCloud::Send(ctx, Tablet, std::move(request));

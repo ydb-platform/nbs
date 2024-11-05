@@ -1213,6 +1213,7 @@ void TIndexTabletDatabase::WriteMixedBlocks(
     ui32 rangeId,
     const TPartialBlobId& blobId,
     const TBlockList& blockList,
+    const TBlobCompressionInfo& blobCompressionInfo,
     ui32 garbageBlocks,
     ui32 checkpointBlocks)
 {
@@ -1221,6 +1222,9 @@ void TIndexTabletDatabase::WriteMixedBlocks(
     TStringBuf encodedBlocks{
         blockList.GetEncodedBlocks().begin(),
         blockList.GetEncodedBlocks().end()};
+
+    // TODO: write blobCompressionInfo if it is not empty
+    Y_UNUSED(blobCompressionInfo);
 
     TStringBuf encodedDeletionMarkers{
         blockList.GetEncodedDeletionMarkers().begin(),
@@ -1281,6 +1285,7 @@ bool TIndexTabletDatabase::ReadMixedBlocks(
         blob = TMixedBlob {
             blobId,
             std::move(blockList),
+            TBlobCompressionInfo(), // TODO
             it.GetValue<TTable::GarbageBlocksCount>(),
             it.GetValue<TTable::CheckpointBlocksCount>()
         };
@@ -1322,6 +1327,7 @@ bool TIndexTabletDatabase::ReadMixedBlocks(
         blobs.emplace_back(TMixedBlob {
             blobId,
             std::move(blockList),
+            TBlobCompressionInfo(), // TODO
             it.GetValue<TTable::GarbageBlocksCount>(),
             it.GetValue<TTable::CheckpointBlocksCount>()
         });

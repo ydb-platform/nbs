@@ -6,6 +6,7 @@
 #include "tablet_state_iface.h"
 
 #include <cloud/filestore/config/storage.pb.h>
+#include <cloud/filestore/libs/storage/tablet/model/blob.h>
 #include <cloud/filestore/libs/storage/tablet/model/block_list.h>
 #include <cloud/filestore/libs/storage/tablet/model/compaction_map.h>
 #include <cloud/filestore/libs/storage/tablet/model/deletion_markers.h>
@@ -373,6 +374,7 @@ FILESTORE_FILESYSTEM_STATS(FILESTORE_DECLARE_STATS)
         ui32 rangeId,
         const TPartialBlobId& blobId,
         const TBlockList& blockList,
+        const TBlobCompressionInfo& blobCompressionInfo,
         ui32 garbageBlocks,
         ui32 checkpointBlocks);
 
@@ -382,6 +384,7 @@ FILESTORE_FILESYSTEM_STATS(FILESTORE_DECLARE_STATS)
     {
         TPartialBlobId BlobId;
         TBlockList BlockList;
+        TBlobCompressionInfo BlobCompressionInfo;
         ui32 GarbageBlocks;
         ui32 CheckpointBlocks;
     };

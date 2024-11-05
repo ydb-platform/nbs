@@ -235,15 +235,22 @@ Y_UNIT_TEST_SUITE(TProfileLogEvent)
         const auto oldBlobFirst = TMixedBlob(
             MakePartialBlobId(1, 1),
             {TBlock(1, 3, 0, 0), TBlock(1, 5, 0, 0), TBlock(3, 6, 0, 0)},
+            TBlobCompressionInfo(),
             "content_1");
         const auto oldBlobSecond = TMixedBlob(
             MakePartialBlobId(1, 3),
             {TBlock(3, 10, 0, 0), TBlock(7, 5, 0, 0), TBlock(7, 6, 0, 0)},
+            TBlobCompressionInfo(),
             "content_2");
-        const auto emptyBlob = TMixedBlob(MakePartialBlobId(1, 3), {}, "");
+        const auto emptyBlob = TMixedBlob(
+            MakePartialBlobId(1, 3),
+            {},
+            TBlobCompressionInfo(),
+            "");
         const auto newBlob = TMixedBlob(
             MakePartialBlobId(2, 1),
             {TBlock(1, 10, 0, 0)},
+            TBlobCompressionInfo(),
             "content_3");
 
         NProto::TProfileLogRequestInfo profileLogRequest;
@@ -287,14 +294,20 @@ Y_UNIT_TEST_SUITE(TProfileLogEvent)
         const ui32 blockSize = 512;
         const auto oldBlobFirst = TMixedBlobMeta(
             MakePartialBlobId(1, 1),
-            {TBlock(1, 3, 0, 0), TBlock(1, 4, 0, 0), TBlock(1, 6, 0, 0)});
-        const auto emptyBlob = TMixedBlobMeta(MakePartialBlobId(1, 3), {});
+            {TBlock(1, 3, 0, 0), TBlock(1, 4, 0, 0), TBlock(1, 6, 0, 0)},
+            TBlobCompressionInfo());
+        const auto emptyBlob = TMixedBlobMeta(
+            MakePartialBlobId(1, 3),
+            {},
+            TBlobCompressionInfo());
         const auto oldBlobSecond = TMixedBlobMeta(
             MakePartialBlobId(1, 3),
-            {TBlock(2, 4, 0, 0), TBlock(2, 5, 0, 0), TBlock(3, 0, 0, 0)});
+            {TBlock(2, 4, 0, 0), TBlock(2, 5, 0, 0), TBlock(3, 0, 0, 0)},
+            TBlobCompressionInfo());
         const auto newBlob = TMixedBlobMeta(
             MakePartialBlobId(2, 1),
-            {TBlock(1, 10, 0, 0)});
+            {TBlock(1, 10, 0, 0)},
+            TBlobCompressionInfo());
 
         NProto::TProfileLogRequestInfo profileLogRequest;
         AddBlobsInfo(

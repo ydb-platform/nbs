@@ -35,7 +35,7 @@ private:
     const IProfileLogPtr ProfileLog;
 
     TVector<TMixedBlobMeta> SrcBlobs;
-    const TVector<TCompactionBlob> DstBlobs;
+    TVector<TCompactionBlob> DstBlobs;
     ui32 OperationSize = 0;
 
     THashMap<TPartialBlobId, IBlockBufferPtr, TPartialBlobIdHash> Buffers;
@@ -222,6 +222,13 @@ void TCompactionActor::HandleWriteBlobResponse(
         return;
     }
 
+    if (msg->BlobCompressionInfos) {
+        TABLET_VERIFY(msg->BlobCompressionInfos.size() == DstBlobs.size());
+        for (size_t i = 0; i < msg->BlobCompressionInfos.size(); i++) {
+            DstBlobs[i].BlobCompressionInfo = std::move(msg->BlobCompressionInfos[i]);
+        }
+    }
+
     AddBlob(ctx);
 }
 
@@ -239,7 +246,10 @@ void TCompactionActor::AddBlob(const TActorContext& ctx)
             blocks.emplace_back(block);
         }
 
-        request->MixedBlobs.emplace_back(blob.BlobId, std::move(blocks));
+        request->MixedBlobs.emplace_back(
+            blob.BlobId,
+            std::move(blocks),
+            std::move(blob.BlobCompressionInfo));
     }
 
     NCloud::Send(ctx, Tablet, std::move(request));

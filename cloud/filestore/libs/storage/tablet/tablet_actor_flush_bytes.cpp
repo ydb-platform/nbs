@@ -385,7 +385,10 @@ void TFlushBytesActor::AddBlob(const TActorContext& ctx)
             commitId = block.BytesMinCommitId;
         }
 
-        request->MixedBlobs.emplace_back(blob.BlobId, std::move(blocks));
+        request->MixedBlobs.emplace_back(
+            blob.BlobId,
+            std::move(blocks),
+            TBlobCompressionInfo());
     }
 
     for (auto& srcBlob: request->SrcBlobs) {

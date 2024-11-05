@@ -227,6 +227,7 @@ void TIndexTabletActor::ExecuteTx_DeleteCheckpoint(
                 TMixedBlobMeta blob {
                     args.MixedBlobs[i].BlobId,
                     args.MixedBlobs[i].BlockList.DecodeBlocks(),
+                    args.MixedBlobs[i].BlobCompressionInfo,
                 };
 
                 TMixedBlobStats stats {

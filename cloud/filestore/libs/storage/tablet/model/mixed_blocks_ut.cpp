@@ -54,7 +54,7 @@ Y_UNIT_TEST_SUITE(TMixedBlocksTest)
 
         TMixedBlocks mixedBlocks(TDefaultAllocator::Instance());
         mixedBlocks.RefRange(rangeId);
-        mixedBlocks.AddBlocks(rangeId, TPartialBlobId(), std::move(list));
+        mixedBlocks.AddBlocks(rangeId, TPartialBlobId(), std::move(list), {});
 
         {
             TMixedBlockVisitor visitor;
@@ -95,7 +95,7 @@ Y_UNIT_TEST_SUITE(TMixedBlocksTest)
 
         TMixedBlocks mixedBlocks(TDefaultAllocator::Instance());
         mixedBlocks.RefRange(rangeId);
-        mixedBlocks.AddBlocks(rangeId, TPartialBlobId(), std::move(list));
+        mixedBlocks.AddBlocks(rangeId, TPartialBlobId(), std::move(list), {});
 
         mixedBlocks.AddDeletionMarker(
             rangeId,
@@ -141,7 +141,7 @@ Y_UNIT_TEST_SUITE(TMixedBlocksTest)
 
         TMixedBlocks mixedBlocks(TDefaultAllocator::Instance());
         mixedBlocks.RefRange(rangeId);
-        mixedBlocks.AddBlocks(rangeId, TPartialBlobId(), std::move(list));
+        mixedBlocks.AddBlocks(rangeId, TPartialBlobId(), std::move(list), {});
         UNIT_ASSERT(mixedBlocks.IsLoaded(rangeId));
 
         mixedBlocks.RefRange(rangeId);

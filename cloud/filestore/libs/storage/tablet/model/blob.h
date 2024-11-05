@@ -22,16 +22,25 @@ struct TMixedBlobStats
 
 ////////////////////////////////////////////////////////////////////////////////
 
+struct TBlobCompressionInfo
+{
+};
+
 struct TMixedBlobMeta
 {
     TPartialBlobId BlobId;
     TVector<TBlock> Blocks;
+    TBlobCompressionInfo BlobCompressionInfo;
 
     TMixedBlobMeta() = default;
 
-    TMixedBlobMeta(const TPartialBlobId& blobId, TVector<TBlock> blocks)
+    TMixedBlobMeta(
+            const TPartialBlobId& blobId,
+            TVector<TBlock> blocks,
+            TBlobCompressionInfo blobCompressionInfo)
         : BlobId(blobId)
         , Blocks(std::move(blocks))
+        , BlobCompressionInfo(std::move(blobCompressionInfo))
     {}
 };
 
@@ -46,8 +55,12 @@ struct TMixedBlob: TMixedBlobMeta
     TMixedBlob(
             const TPartialBlobId& blobId,
             TVector<TBlock> blocks,
+            TBlobCompressionInfo blobCompressionInfo,
             TString blobContent)
-        : TMixedBlobMeta(blobId, std::move(blocks))
+        : TMixedBlobMeta(
+            blobId,
+            std::move(blocks),
+            std::move(blobCompressionInfo))
         , BlobContent(std::move(blobContent))
     {}
 };
@@ -96,6 +109,7 @@ struct TCompactionBlob
 {
     TPartialBlobId BlobId;
     TVector<TBlockDataRef> Blocks;
+    TBlobCompressionInfo BlobCompressionInfo;
 
     TCompactionBlob() = default;
 
