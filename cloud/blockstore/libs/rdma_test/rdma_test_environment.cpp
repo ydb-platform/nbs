@@ -22,15 +22,18 @@ TRdmaTestEnvironment::TRdmaTestEnvironment(size_t deviceSize, ui32 poolSize)
         TDuration::Zero(),   // maxRequestDuration
         TDuration::Zero()    // shutdownTimeout
     );
+
     TVector<TString> uuids;
     for (const auto& [key, value]: devices) {
         uuids.push_back(key);
     }
-    auto deviceClient = std::make_shared<TDeviceClient>(
+
+    DeviceClient = std::make_shared<TDeviceClient>(
         TDuration::MilliSeconds(100),
         uuids,
         Logging->CreateLog("BLOCKSTORE_DISK_AGENT"));
-    deviceClient->AcquireDevices(
+
+    DeviceClient->AcquireDevices(
         uuids,
         ClientId,
         TInstant::Now(),
@@ -60,7 +63,7 @@ TRdmaTestEnvironment::TRdmaTestEnvironment(size_t deviceSize, ui32 poolSize)
         std::move(oldRequestCounters),
         Logging,
         Server,
-        std::move(deviceClient),
+        DeviceClient,
         std::move(devices));
 
     RdmaTarget->Start();

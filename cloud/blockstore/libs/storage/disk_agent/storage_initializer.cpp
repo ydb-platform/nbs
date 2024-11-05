@@ -399,9 +399,12 @@ void TInitializer::SaveCurrentConfig()
     proto.MutableFileDevices()->Assign(
         FileDevices.cbegin(),
         FileDevices.cend());
-    proto.MutableDevicesWithSuspendedIO()->Assign(
-        DevicesWithSuspendedIO.cbegin(),
-        DevicesWithSuspendedIO.cend());
+
+    if (AgentConfig->GetDisableBrokenDevices()) {
+        proto.MutableDevicesWithSuspendedIO()->Assign(
+            DevicesWithSuspendedIO.cbegin(),
+            DevicesWithSuspendedIO.cend());
+    }
 
     auto error = SaveDiskAgentConfig(path, proto);
     if (HasError(error)) {
@@ -480,6 +483,9 @@ NProto::TError TInitializer::ProcessConfigCache()
     TVector<NProto::TFileDeviceArgs> devices{
         std::make_move_iterator(config.MutableFileDevices()->begin()),
         std::make_move_iterator(config.MutableFileDevices()->end())};
+    SortBy(devices, [] (const auto& d) {
+        return d.GetDeviceId();
+    });
 
     for (const auto& d: devices) {
         const auto currentSerialNumber = GetSerialNumber(d.GetPath());
@@ -504,6 +510,13 @@ NProto::TError TInitializer::ProcessConfigCache()
 
 TFuture<void> TInitializer::Initialize()
 {
+    // Setup serial numbers for the static config
+    for (auto& file: FileDevices) {
+        if (file.GetSerialNumber().empty()) {
+            file.SetSerialNumber(GetSerialNumber(file.GetPath()));
+        }
+    }
+
     ScanFileDevices();
     if (auto error = ProcessConfigCache(); HasError(error)) {
         return MakeErrorFuture<void>(

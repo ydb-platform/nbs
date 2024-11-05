@@ -86,6 +86,7 @@ struct TFixture
     const ui64 DeviceSize = 64_KB;
     const ui64 PaddingSize = 4_KB;
     const ui64 HeaderSize = 4_KB;
+    const ui32 DefaultDeviceBlockSize = 4_KB;
 
     const TTempDir TempDir;
     const TFsPath DevicesPath = TempDir.Path() / "devices";
@@ -134,6 +135,7 @@ struct TFixture
         DefaultConfig.SetCachedConfigPath(CachedConfigPath / "config.txt");
         DefaultConfig.SetBackend(NProto::DISK_AGENT_BACKEND_AIO);
         DefaultConfig.SetAcquireRequired(true);
+        DefaultConfig.SetDisableBrokenDevices(true);
 
         SetUpStorageDiscoveryConfig();
         SetUpStorage();
@@ -437,6 +439,54 @@ Y_UNIT_TEST_SUITE(TInitializerTest)
                 }
             }
         }
+    }
+
+    Y_UNIT_TEST_F(ShouldUpdateSerialNumberForStaticConfig, TFixture)
+    {
+        const TVector<std::pair<TString, TString>> pathToSerial{
+            {"NVMENBS01", "W"},
+            {"NVMENBS02", "X"},
+            {"NVMENBS03", "Y"},
+            {"NVMENBS04", "Z"},
+        };
+
+        auto staticConfig = DefaultConfig;
+        staticConfig.ClearStorageDiscoveryConfig();
+
+        for (size_t i = 0; i != pathToSerial.size(); ++i) {
+            const auto name = "NVMENBS0" + ToString(i + 1);
+            auto& file = *staticConfig.AddFileDevices();
+            file.SetFileSize(DeviceSize);
+            file.SetBlockSize(DefaultDeviceBlockSize);
+            file.SetPath(DevicesPath / name);
+            file.SetDeviceId(name);
+        }
+
+        // set a custom serial number for the NVMENBS02
+        staticConfig.MutableFileDevices(1)->SetSerialNumber("A");
+
+        auto future = InitializeStorage(
+            Logging->CreateLog("Test"),
+            StorageConfig,
+            std::make_shared<TDiskAgentConfig>(staticConfig, "rack"),
+            StorageProvider,
+            std::make_shared<TTestNvmeManager>(pathToSerial));
+
+        const auto& r = future.GetValueSync();
+
+        UNIT_ASSERT_VALUES_EQUAL(4, r.Configs.size());
+
+        UNIT_ASSERT_VALUES_EQUAL("NVMENBS01", r.Configs[0].GetDeviceUUID());
+        UNIT_ASSERT_VALUES_EQUAL("W", r.Configs[0].GetSerialNumber());
+
+        UNIT_ASSERT_VALUES_EQUAL("NVMENBS02", r.Configs[1].GetDeviceUUID());
+        UNIT_ASSERT_VALUES_EQUAL("A", r.Configs[1].GetSerialNumber());
+
+        UNIT_ASSERT_VALUES_EQUAL("NVMENBS03", r.Configs[2].GetDeviceUUID());
+        UNIT_ASSERT_VALUES_EQUAL("Y", r.Configs[2].GetSerialNumber());
+
+        UNIT_ASSERT_VALUES_EQUAL("NVMENBS04", r.Configs[3].GetDeviceUUID());
+        UNIT_ASSERT_VALUES_EQUAL("Z", r.Configs[3].GetSerialNumber());
     }
 }
 

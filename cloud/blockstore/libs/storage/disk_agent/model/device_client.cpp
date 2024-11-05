@@ -349,27 +349,43 @@ TVector<TDeviceClient::TSessionInfo> TDeviceClient::GetReaderSessions(
 
 void TDeviceClient::DisableDevice(const TString& uuid) const
 {
+    SetDeviceIOErrorCode(uuid, E_IO);
+}
+
+void TDeviceClient::SuspendDevice(const TString& uuid) const
+{
+    SetDeviceIOErrorCode(uuid, E_REJECTED);
+}
+
+void TDeviceClient::SetDeviceIOErrorCode(
+    const TString& uuid,
+    std::optional<ui32> errorCode) const
+{
     if (auto* deviceState = GetDeviceState(uuid)) {
         TWriteGuard g(deviceState->Lock);
-        deviceState->Disabled = true;
+        deviceState->IOErrorCode = errorCode;
     }
 }
 
 void TDeviceClient::EnableDevice(const TString& uuid) const
 {
+    SetDeviceIOErrorCode(uuid, std::nullopt);
+}
+
+std::optional<ui32> TDeviceClient::GetDeviceIOErrorCode(
+    const TString& uuid) const
+{
     if (auto* deviceState = GetDeviceState(uuid)) {
-        TWriteGuard g(deviceState->Lock);
-        deviceState->Disabled = false;
+        TReadGuard g(deviceState->Lock);
+        return deviceState->IOErrorCode;
     }
+
+    return {};
 }
 
 bool TDeviceClient::IsDeviceDisabled(const TString& uuid) const
 {
-    if (auto* deviceState = GetDeviceState(uuid)) {
-        TReadGuard g(deviceState->Lock);
-        return deviceState->Disabled;
-    }
-    return false;
+    return GetDeviceIOErrorCode(uuid).has_value();
 }
 
 // static
@@ -377,7 +393,7 @@ TDeviceClient::TDevicesState TDeviceClient::MakeDevices(TVector<TString> uuids)
 {
     TDevicesState result;
     for (auto& uuid: uuids) {
-        result[std::move(uuid)] = std::make_unique<TDeviceState>();
+        result.emplace(std::move(uuid), std::make_unique<TDeviceState>());
     }
     return result;
 }

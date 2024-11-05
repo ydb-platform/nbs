@@ -36,6 +36,8 @@ struct TRdmaTestEnvironment
         "console",
         TLogSettings{TLOG_RESOURCES});
 
+    std::shared_ptr<TDeviceClient> DeviceClient;
+
     TRdmaTestEnvironment(size_t deviceSize = 4_MB, ui32 poolSize = 1);
 
     virtual ~TRdmaTestEnvironment();

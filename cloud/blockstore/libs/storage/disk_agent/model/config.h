@@ -108,6 +108,7 @@ public:
     bool GetDisableNodeBrokerRegistrationOnDevicelessAgent() const;
     ui32 GetMaxAIOContextEvents() const;
     ui32 GetPathsPerFileIOService() const;
+    bool GetDisableBrokenDevices() const;
 
     const auto& GetDevicesWithSuspendedIO() const
     {
@@ -122,6 +123,10 @@ public:
 
 [[nodiscard]] auto LoadDiskAgentConfig(
     const TString& path) -> TResultOrError<NProto::TDiskAgentConfig>;
+
+[[nodiscard]] auto UpdateDevicesWithSuspendedIO(
+    const TString& path,
+    const TVector<TString>& uuids) -> NProto::TError;
 
 [[nodiscard]] auto SaveDiskAgentConfig(
     const TString& path,

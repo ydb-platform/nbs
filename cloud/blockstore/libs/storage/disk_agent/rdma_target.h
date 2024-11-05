@@ -65,7 +65,7 @@ using IRdmaTargetPtr = std::shared_ptr<IRdmaTarget>;
 
 IRdmaTargetPtr CreateRdmaTarget(
     TRdmaTargetConfigPtr rdmaTargetConfig,
-    TOldRequestCounters OldRequestCounters,
+    TOldRequestCounters oldRequestCounters,
     ILoggingServicePtr logging,
     NRdma::IServerPtr server,
     TDeviceClientPtr deviceClient,

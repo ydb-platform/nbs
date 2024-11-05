@@ -61,7 +61,9 @@ struct TEvDiskAgentPrivate
     {};
 
     struct TRegisterAgentResponse
-    {};
+    {
+        TVector<TString> DevicesToDisableIO;
+    };
 
     //
     // CollectStats

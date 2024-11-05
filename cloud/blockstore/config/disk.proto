@@ -261,7 +261,11 @@ message TDiskAgentConfig
 
     // List of device UUIDs with suspended I/O.
     // I/O operations for such a device will result in errors.
+    // Is used for the config cache file only.
     repeated string DevicesWithSuspendedIO = 35;
+
+    // Disable devices that have been recognized as broken by the DR
+    optional bool DisableBrokenDevices = 36;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

@@ -48,6 +48,7 @@ namespace {
     xxx(DisableNodeBrokerRegistrationOnDevicelessAgent, bool,          false  )\
     xxx(MaxAIOContextEvents,                ui32,       1024                  )\
     xxx(PathsPerFileIOService,              ui32,       0                     )\
+    xxx(DisableBrokenDevices,               bool,       0                     )\
 // BLOCKSTORE_AGENT_CONFIG
 
 #define BLOCKSTORE_DECLARE_CONFIG(name, type, value)                           \
@@ -221,6 +222,20 @@ NProto::TError SaveDiskAgentConfig(
     }
 
     return {};
+}
+
+[[nodiscard]] auto UpdateDevicesWithSuspendedIO(
+    const TString& path,
+    const TVector<TString>& uuids) -> NProto::TError
+{
+    auto [config, error] = LoadDiskAgentConfig(path);
+    if (HasError(error)) {
+        return error;
+    }
+
+    config.MutableDevicesWithSuspendedIO()->Assign(uuids.begin(), uuids.end());
+
+    return SaveDiskAgentConfig(path, config);
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

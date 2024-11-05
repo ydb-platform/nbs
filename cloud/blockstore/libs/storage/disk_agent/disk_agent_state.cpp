@@ -283,7 +283,7 @@ const TDiskAgentState::TDeviceState& TDiskAgentState::GetDeviceStateImpl(
     auto error = DeviceClient->AccessDevice(uuid, clientId, accessMode);
 
     if (HasError(error)) {
-        ythrow TServiceError(error);
+        ythrow TServiceError(error.GetCode()) << error.GetMessage();
     }
 
     auto d = Devices.FindPtr(uuid);
@@ -320,11 +320,23 @@ TVector<NProto::TDeviceConfig> TDiskAgentState::GetDevices() const
     TVector<NProto::TDeviceConfig> devices;
     devices.reserve(Devices.size());
 
-    for (auto& kv: Devices) {
+    for (const auto& kv: Devices) {
         devices.push_back(kv.second.Config);
     }
 
     return devices;
+}
+
+TVector<TString> TDiskAgentState::GetDeviceIds() const
+{
+    TVector<TString> uuids;
+    uuids.reserve(Devices.size());
+
+    for (const auto& [_, d]: Devices) {
+        uuids.push_back(d.Config.GetDeviceUUID());
+    }
+
+    return uuids;
 }
 
 ui32 TDiskAgentState::GetDevicesCount() const
@@ -449,9 +461,11 @@ TFuture<TInitializeResult> TDiskAgentState::Initialize()
 {
     auto future = Spdk ? InitSpdkStorage() : InitAioStorage();
 
-    return future.Subscribe(
-        [this](auto) mutable
+    return future.Apply(
+        [this](TFuture<TInitializeResult> future) mutable
         {
+            TInitializeResult r = future.ExtractValue();
+
             TVector<TString> uuids(Reserve(Devices.size()));
             for (const auto& x: Devices) {
                 uuids.push_back(x.first);
@@ -464,7 +478,15 @@ TFuture<TInitializeResult> TDiskAgentState::Initialize()
 
             InitRdmaTarget();
 
+            if (AgentConfig->GetDisableBrokenDevices()) {
+                for (const auto& uuid: r.DevicesWithSuspendedIO) {
+                    SuspendDevice(uuid);
+                }
+            }
+
             RestoreSessions(*DeviceClient);
+
+            return r;
         });
 }
 
@@ -520,10 +542,38 @@ TFuture<NProto::TAgentStats> TDiskAgentState::CollectStats()
     return context->Promise;
 }
 
+void TDiskAgentState::CheckIfDeviceIsDisabled(
+    const TString& uuid,
+    const TString& clientId)
+{
+    auto ec = DeviceClient->GetDeviceIOErrorCode(uuid);
+    if (!ec) {
+        return;
+    }
+
+    if (GetErrorKind(MakeError(*ec)) != EErrorKind::ErrorRetriable) {
+        STORAGE_ERROR(
+            "[" << uuid << "/" << clientId
+                << "] Device disabled. Drop request.");
+
+        ReportDisabledDeviceError(uuid);
+    } else {
+        STORAGE_TRACE(
+            "[" << uuid << "/" << clientId
+                << "] Device suspended. Reject request.");
+    }
+
+    ythrow TServiceError(*ec) << "Device disabled";
+}
+
 TFuture<NProto::TReadDeviceBlocksResponse> TDiskAgentState::Read(
     TInstant now,
     NProto::TReadDeviceBlocksRequest request)
 {
+    CheckIfDeviceIsDisabled(
+        request.GetDeviceUUID(),
+        request.GetHeaders().GetClientId());
+
     const auto& device = GetDeviceState(
         request.GetDeviceUUID(),
         request.GetHeaders().GetClientId(),
@@ -581,6 +631,10 @@ TFuture<NProto::TWriteDeviceBlocksResponse> TDiskAgentState::Write(
     TInstant now,
     NProto::TWriteDeviceBlocksRequest request)
 {
+    CheckIfDeviceIsDisabled(
+        request.GetDeviceUUID(),
+        request.GetHeaders().GetClientId());
+
     const auto& device = GetDeviceState(
         request.GetDeviceUUID(),
         request.GetHeaders().GetClientId(),
@@ -621,6 +675,10 @@ TFuture<NProto::TZeroDeviceBlocksResponse> TDiskAgentState::WriteZeroes(
     TInstant now,
     NProto::TZeroDeviceBlocksRequest request)
 {
+    CheckIfDeviceIsDisabled(
+        request.GetDeviceUUID(),
+        request.GetHeaders().GetClientId());
+
     const auto& device = GetDeviceState(
         request.GetDeviceUUID(),
         request.GetHeaders().GetClientId(),
@@ -803,10 +861,9 @@ void TDiskAgentState::ReleaseDevices(
     ui32 volumeGeneration)
 {
     if (PartiallySuspended) {
-        ythrow TServiceError(MakeError(
-            E_REJECTED,
-            TStringBuilder() << "Disk agent is partially suspended. Can't "
-                                "release any sessions at this state."));
+        ythrow TServiceError(E_REJECTED)
+            << "Disk agent is partially suspended. Can't "
+               "release any sessions at this state.";
     }
 
     CheckError(DeviceClient->ReleaseDevices(
@@ -819,7 +876,12 @@ void TDiskAgentState::ReleaseDevices(
 void TDiskAgentState::DisableDevice(const TString& uuid)
 {
     DeviceClient->DisableDevice(uuid);
-    ReportDisabledDeviceError(uuid);
+}
+
+void TDiskAgentState::SuspendDevice(const TString& uuid)
+{
+    STORAGE_INFO("Suspend device " << uuid);
+    DeviceClient->SuspendDevice(uuid);
 }
 
 void TDiskAgentState::EnableDevice(const TString& uuid)
@@ -832,7 +894,8 @@ bool TDiskAgentState::IsDeviceDisabled(const TString& uuid) const
     return DeviceClient->IsDeviceDisabled(uuid);
 }
 
-void TDiskAgentState::ReportDisabledDeviceError(const TString& uuid) {
+void TDiskAgentState::ReportDisabledDeviceError(const TString& uuid)
+{
     if (auto* d = Devices.FindPtr(uuid)) {
         d->Stats->OnError();
     }
@@ -936,12 +999,11 @@ void TDiskAgentState::EnsureAccessToDevices(
     for (const TString& uuid: uuids) {
         auto error = DeviceClient->AccessDevice(uuid, clientId, accessMode);
         if (HasError(error)) {
-            ythrow TServiceError(MakeError(
-                E_REJECTED,
-                TStringBuilder() << "Disk agent is partially suspended. "
-                                    "Can't acquire previously not acquired "
-                                    "devices. Access returned an error: "
-                                 << FormatError(error)));
+            ythrow TServiceError(E_REJECTED)
+                << "Disk agent is partially suspended. "
+                   "Can't acquire previously not acquired "
+                   "devices. Access returned an error: "
+                << FormatError(error);
         }
     }
 }
