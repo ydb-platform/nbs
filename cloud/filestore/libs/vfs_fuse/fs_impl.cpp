@@ -291,10 +291,12 @@ void TFileSystem::ProcessHandleOpsQueue()
         RequestStats->RequestStarted(Log, *callContext);
 
         Session->DestroyHandle(callContext, std::move(request))
-            .Subscribe([this, ptr = weak_from_this()] (const auto& future) {
+            .Subscribe([=, ptr = weak_from_this()] (const auto& future) {
                 const auto& response = future.GetValue();
                 const auto& error = response.GetError();
                 if (auto self = ptr.lock()) {
+                    RequestStats->RequestCompleted(*callContext, error);
+
                     // If destroy request failed, we need to retry it.
                     // Otherwise, remove it from queue.
                     if (HasError(error)) {
