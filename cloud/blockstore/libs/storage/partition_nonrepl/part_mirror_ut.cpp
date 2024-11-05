@@ -291,6 +291,23 @@ struct TTestEnv
     }
 };
 
+
+void WaitUntilScrubbingFinishesCurrentCycle(TTestEnv& testEnv)
+{
+    auto& counters = testEnv.StorageStatsServiceState->Counters;
+    ui64 prevScrubbingProgress = counters.Simple.ScrubbingProgress.Value;
+    ui32 iterations = 0;
+    while (iterations++ < 100) {
+        testEnv.Runtime.AdvanceCurrentTime(UpdateCountersInterval);
+        testEnv.Runtime.DispatchEvents({}, TDuration::MilliSeconds(50));
+        if (prevScrubbingProgress > counters.Simple.ScrubbingProgress.Value)
+        {
+            break;
+        }
+        prevScrubbingProgress = counters.Simple.ScrubbingProgress.Value;
+    }
+}
+
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -963,7 +980,6 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
         // TODO trigger and test migration for petya and petya#1
     }
 
-
     void DoShouldTransformAnyErrorToRetriable(NProto::TError error)
     {
         TTestBasicRuntime runtime;
@@ -1194,7 +1210,6 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
             runtime.EnableScheduleForActor(actorId);
         });
 
-
         TDynamicCountersPtr critEventsCounters = new TDynamicCounters();
         InitCriticalEventsCounter(critEventsCounters);
 
@@ -1209,21 +1224,9 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
         env.WriteMirror(range2, 'A');
         env.WriteReplica(2, range2, 'B');
 
-        auto& counters = env.StorageStatsServiceState->Counters;
-        ui64 prevScrubbingProgress = 101;
-        ui32 fullCyclesCount = 0;
-        ui32 iterations = 0;
-        while (fullCyclesCount < 2 && iterations++ < 100) {
-            if (prevScrubbingProgress != 0 &&
-                counters.Simple.ScrubbingProgress.Value == 0)
-            {
-                ++fullCyclesCount;
-            }
-            prevScrubbingProgress = counters.Simple.ScrubbingProgress.Value;
-            runtime.AdvanceCurrentTime(UpdateCountersInterval);
-            runtime.DispatchEvents({}, TDuration::MilliSeconds(50));
-        }
+        WaitUntilScrubbingFinishesCurrentCycle(env);
 
+        auto& counters = env.StorageStatsServiceState->Counters;
         auto mirroredDiskChecksumMismatch = critEventsCounters->GetCounter(
             "AppCriticalEvents/MirroredDiskChecksumMismatch",
             true);
@@ -1235,38 +1238,21 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
         env.WriteMirror(range3, 'A');
         env.WriteReplica(1, range3, 'B');
 
-        iterations = 0;
         // at this point, scrubbing may not start from the beginning,
         // so we need to wait for 2 cycles to be sure that
         // it has scanned the entire disk at least once
-        while (fullCyclesCount < 4 && iterations++ < 100) {
-            if (prevScrubbingProgress != 0 &&
-                counters.Simple.ScrubbingProgress.Value == 0)
-            {
-                ++fullCyclesCount;
-            }
-            prevScrubbingProgress = counters.Simple.ScrubbingProgress.Value;
-            runtime.AdvanceCurrentTime(UpdateCountersInterval);
-            runtime.DispatchEvents({}, TDuration::MilliSeconds(50));
-        }
+        WaitUntilScrubbingFinishesCurrentCycle(env);
+        WaitUntilScrubbingFinishesCurrentCycle(env);
         UNIT_ASSERT_VALUES_EQUAL(3, counters.Simple.ChecksumMismatches.Value);
         UNIT_ASSERT_VALUES_EQUAL(3, mirroredDiskChecksumMismatch->Val());
 
-        // check that all ranges was resynced and there is no more mismatches
-        iterations = 0;
         // at this point, scrubbing may not start from the beginning,
         // so we need to wait for 2 cycles to be sure that
         // it has scanned the entire disk at least once
-        while (fullCyclesCount < 6 && iterations++ < 100) {
-            if (prevScrubbingProgress != 0 &&
-                counters.Simple.ScrubbingProgress.Value == 0)
-            {
-                ++fullCyclesCount;
-            }
-            prevScrubbingProgress = counters.Simple.ScrubbingProgress.Value;
-            runtime.AdvanceCurrentTime(UpdateCountersInterval);
-            runtime.DispatchEvents({}, TDuration::MilliSeconds(50));
-        }
+        WaitUntilScrubbingFinishesCurrentCycle(env);
+        WaitUntilScrubbingFinishesCurrentCycle(env);
+
+        // check that all ranges was resynced and there is no more mismatches
         UNIT_ASSERT_VALUES_EQUAL(3, counters.Simple.ChecksumMismatches.Value);
         UNIT_ASSERT_VALUES_EQUAL(3, mirroredDiskChecksumMismatch->Val());
     }
@@ -1642,6 +1628,58 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
             }
         }
     }
+
+    Y_UNIT_TEST(ShouldStartResyncAfterScrubbingOnlyIfMajorityOfChecksumsAreEqual)
+    {
+        using namespace NMonitoring;
+
+        TTestBasicRuntime runtime;
+
+        runtime.SetRegistrationObserverFunc(
+            [] (auto& runtime, const auto& parentId, const auto& actorId)
+        {
+            Y_UNUSED(parentId);
+            runtime.EnableScheduleForActor(actorId);
+        });
+
+        ui32 rangeResynced = 0;
+        runtime.SetEventFilter([&] (auto& runtime, auto& event) {
+            Y_UNUSED(runtime);
+            if (event->GetTypeRewrite() ==
+                TEvNonreplPartitionPrivate::EvRangeResynced)
+            {
+                ++rangeResynced;
+            }
+            return false;
+        });
+
+        TTestEnv env(runtime);
+        auto& counters = env.StorageStatsServiceState->Counters;
+
+        // Write different data to all replicas
+        const auto range = TBlockRange64::WithLength(2049, 50);
+        env.WriteReplica(0, range, 'A');
+        env.WriteReplica(1, range, 'B');
+        env.WriteReplica(2, range, 'C');
+
+        // Wait util all ranges process in scrubbing at least two times.
+        // We need to be sure that resync wasn't started.
+        WaitUntilScrubbingFinishesCurrentCycle(env);
+        WaitUntilScrubbingFinishesCurrentCycle(env);
+        UNIT_ASSERT_VALUES_EQUAL(2, counters.Simple.ChecksumMismatches.Value);
+        UNIT_ASSERT_VALUES_EQUAL(0, rangeResynced);
+
+        // Make data in 1st and 3rd replica the same.
+        env.WriteReplica(2, range, 'A');
+
+        // Wait again until all ranges process in scrubbing at least two times.
+        // Check that mismatch was found and range was resynced now
+        WaitUntilScrubbingFinishesCurrentCycle(env);
+        WaitUntilScrubbingFinishesCurrentCycle(env);
+        UNIT_ASSERT_VALUES_EQUAL(3, counters.Simple.ChecksumMismatches.Value);
+        UNIT_ASSERT_VALUES_EQUAL(1, rangeResynced);
+    }
+
 }
 
 }   // namespace NCloud::NBlockStore::NStorage
