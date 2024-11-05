@@ -291,47 +291,52 @@ void TFileSystem::ProcessHandleOpsQueue()
         RequestStats->RequestStarted(Log, *callContext);
 
         Session->DestroyHandle(callContext, std::move(request))
-            .Subscribe([=, ptr = weak_from_this()] (const auto& future) {
-                const auto& response = future.GetValue();
-                const auto& error = response.GetError();
-                if (auto self = ptr.lock()) {
-                    RequestStats->RequestCompleted(*callContext, error);
+            .Subscribe(
+                [this, ptr = weak_from_this(), callContext](const auto& future)
+                {
+                    const auto& response = future.GetValue();
+                    const auto& error = response.GetError();
+                    if (auto self = ptr.lock()) {
+                        self->RequestStats->RequestCompleted(
+                            *callContext,
+                            error);
 
-                    // If destroy request failed, we need to retry it.
-                    // Otherwise, remove it from queue.
-                    if (HasError(error)) {
-                        STORAGE_ERROR(
-                            "DestroyHandle request failed: "
-                            << "filesystem " << Config->GetFileSystemId()
-                            << " error: " << FormatError(error));
-                        if (GetErrorKind(error) != EErrorKind::ErrorRetriable) {
-                            ReportAsyncDestroyHandleFailed();
-                            with_lock(HandleOpsQueueLock) {
-                                HandleOpsQueue->Pop();
+                        // If destroy request failed, we need to retry it.
+                        // Otherwise, remove it from queue.
+                        if (HasError(error)) {
+                            STORAGE_ERROR(
+                                "DestroyHandle request failed: "
+                                << "filesystem " << Config->GetFileSystemId()
+                                << " error: " << FormatError(error));
+                            if (GetErrorKind(error) !=
+                                EErrorKind::ErrorRetriable) {
+                                ReportAsyncDestroyHandleFailed();
+                                with_lock (self->HandleOpsQueueLock) {
+                                    self->HandleOpsQueue->Pop();
+                                }
                             }
-                        }
-                    } else {
-                        with_lock(HandleOpsQueueLock) {
-                            HandleOpsQueue->Pop();
-                        }
-                        with_lock(DelayedReleaseQueueLock) {
-                            if (!DelayedReleaseQueue.empty()) {
-                                const auto& nextRequest =
-                                    DelayedReleaseQueue.front();
-                                if (ProcessAsynRelease(
-                                        nextRequest.CallContext,
-                                        nextRequest.Req,
-                                        nextRequest.Ino,
-                                        nextRequest.Fh))
-                                {
-                                    DelayedReleaseQueue.pop();
+                        } else {
+                            with_lock (self->HandleOpsQueueLock) {
+                                self->HandleOpsQueue->Pop();
+                            }
+                            with_lock (self->DelayedReleaseQueueLock) {
+                                if (!self->DelayedReleaseQueue.empty()) {
+                                    const auto& nextRequest =
+                                        self->DelayedReleaseQueue.front();
+                                    if (self->ProcessAsynRelease(
+                                            nextRequest.CallContext,
+                                            nextRequest.Req,
+                                            nextRequest.Ino,
+                                            nextRequest.Fh))
+                                    {
+                                        self->DelayedReleaseQueue.pop();
+                                    }
                                 }
                             }
                         }
+                        ScheduleProcessHandleOpsQueue();
                     }
-                    ScheduleProcessHandleOpsQueue();
-                }
-            });
+                });
     } else {
         // TODO(#1541): process create handle
         ReportHandleOpsQueueProcessError(
