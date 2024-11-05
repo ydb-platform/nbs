@@ -2928,7 +2928,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
 #undef TEST_READ
     }
 
-    Y_UNIT_TEST(ShouldFillRequestIdInDeviceBlocksRequest)
+    void DoShouldFillRequestIdInDeviceBlocksRequest(bool encrypted)
     {
         NProto::TStorageServiceConfig config;
         config.SetAssignIdToWriteAndZeroRequestsEnabled(true);
@@ -2944,8 +2944,17 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
             false,
             1,
             NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
-            DefaultDeviceBlockSize * DefaultDeviceBlockCount /
-                DefaultBlockSize);
+            DefaultDeviceBlockSize * DefaultDeviceBlockCount / DefaultBlockSize,
+            "vol0",
+            "cloud",
+            "folder",
+            1,    // partition count
+            0,    // blocksPerStripe
+            "",   // tags
+            "",   // baseDiskId
+            "",   // baseDiskCheckpointId
+            encrypted ? NProto::EEncryptionMode::NO_ENCRYPTION
+                      : NProto::EEncryptionMode::ENCRYPTION_AES_XTS);
 
         volume.WaitReady();
 
@@ -2983,6 +2992,16 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         UNIT_ASSERT_VALUES_UNEQUAL(0, writeRequestId);
         UNIT_ASSERT_VALUES_UNEQUAL(0, zeroRequestId);
         UNIT_ASSERT_GT(zeroRequestId, writeRequestId);
+    }
+
+    Y_UNIT_TEST(ShouldFillRequestIdInDeviceBlocksRequest)
+    {
+       DoShouldFillRequestIdInDeviceBlocksRequest(false);
+    }
+
+    Y_UNIT_TEST(ShouldFillRequestIdInDeviceBlocksRequestForEncrypted)
+    {
+       DoShouldFillRequestIdInDeviceBlocksRequest(true);
     }
 
     Y_UNIT_TEST(ShouldReportMigrationProgressForReplicatingMirroredDisk)
