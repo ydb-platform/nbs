@@ -13,7 +13,7 @@ By virtiofs we mean the protocol, not the original implementation (not virtiofsd
 
 FUSE lowlevel API to filesystem backend API mapping can be found here: https://github.com/ydb-platform/nbs/blob/b6ac88b9743b9cf8f6b5c1ba989c51fe2fa96128/cloud/filestore/libs/vfs_fuse/loop.cpp#L1039
 
-Each VM<->filesystem connection is stateful represented by a "session" structure. The session is persistently stored in the filesystem backend and contains:
+Each VM<->filesystem connection is stateful and is represented by a "session" structure. The session is persistently stored in the filesystem backend and contains:
 * kernel opaque state
 * a set of open file fds (file handles)
 * a set of file locks
@@ -27,6 +27,8 @@ Runs tablet code. A non-sharded filesystem is represented by a single tablet whi
 A sharded filesystem is represented by N + 1 tablets:
 * 1 tablet (aka "main" tablet, "leader" tablet, "master" tablet) manages the directory structure of the filesystem
 * N tablets (aka "shards") manage regular file inodes and data
+
+Each filestore-server can run tablets belonging to many different logical filesystems. The diagram shows only one logical filesystem for simplicity.
 
 Shard tablets can serve the following requests:
 * GetNodeAttr (stat syscall family) by inode id
@@ -50,3 +52,12 @@ Which means that:
 * open/stat are scalable apart from the name -> shard name resolution (which is generally done via an in-memory cache in the main tablet)
 * openat which uses a long path is not really scalable since it has to perform a lot of path element resolutions which are done by the main tablet
 * readdir is not scalable
+
+### storage layer
+Currently only YDB BlobStorage-based storage is supported. We use block4+2 storage group configuration. Storage layer is represented by:
+* a set of storage nodes with physical disks
+* PDisk component which runs on top of each physical disk and allows data allocation in 128MiB chunks
+* each PDisk can host multiple (usually 8 or 16) VDisks
+* VDisks are organized into BSGroups of 8, each group consists of VDisks running on top of PDisks belonging to storage nodes in different failure domains (usually failure domain == network switch)
+* each BSGroup allows reading/writing/deleting immutable blobs, read == "EvGet", write == "EvPut", delete == "EvCollectGarbage"
+* each blob is addressed by a peculiar BlobId identifier which consists of <TabletID, CommitId, Channel, Cookie, BlobSize, PartId>, PartId is 0 on tablet level, example: 789::4288010::216::1::1232896::0
