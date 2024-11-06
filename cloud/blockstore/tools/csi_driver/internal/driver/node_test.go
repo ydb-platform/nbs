@@ -1,5 +1,7 @@
 package driver
 
+//lint:file-ignore ST1003 protobuf generates names that break golang naming convention
+
 import (
 	"context"
 	"io/fs"
@@ -31,26 +33,26 @@ func doTestPublishUnpublishVolumeForKubevirt(t *testing.T, backend string, devic
 	mounter := csimounter.NewMock()
 
 	ctx := context.Background()
-	nodeID := "testNodeId"
-	clientID := "testClientId"
-	podID := "test-pod-id-13"
+	nodeId := "testNodeId"
+	clientId := "testClientId"
+	podId := "test-pod-id-13"
 	actualClientId := "testClientId-test-pod-id-13"
-	diskID := "test-disk-id-42"
-	deviceName := diskID
+	diskId := "test-disk-id-42"
+	deviceName := diskId
 	if deviceNameOpt != nil {
 		deviceName = *deviceNameOpt
 	}
 	stagingTargetPath := "testStagingTargetPath"
 	socketsDir := filepath.Join(tempDir, "sockets")
-	sourcePath := filepath.Join(socketsDir, podID, diskID)
-	targetPath := filepath.Join(tempDir, "pods", podID, "volumes", diskID, "mount")
+	sourcePath := filepath.Join(socketsDir, podId, diskId)
+	targetPath := filepath.Join(tempDir, "pods", podId, "volumes", diskId, "mount")
 	targetFsPathPattern := filepath.Join(tempDir, "pods/([a-z0-9-]+)/volumes/([a-z0-9-]+)/mount")
 	nbsSocketPath := filepath.Join(sourcePath, "nbs.sock")
 	nfsSocketPath := filepath.Join(sourcePath, "nfs.sock")
 
 	nodeService := newNodeService(
-		nodeID,
-		clientID,
+		nodeId,
+		clientId,
 		true, // vmMode
 		socketsDir,
 		targetFsPathPattern,
@@ -82,7 +84,7 @@ func doTestPublishUnpublishVolumeForKubevirt(t *testing.T, backend string, devic
 	}
 
 	_, err := nodeService.NodeStageVolume(ctx, &csi.NodeStageVolumeRequest{
-		VolumeId:          diskID,
+		VolumeId:          diskId,
 		StagingTargetPath: stagingTargetPath,
 		VolumeCapability:  &volumeCapability,
 		VolumeContext:     volumeContext,
@@ -94,8 +96,8 @@ func doTestPublishUnpublishVolumeForKubevirt(t *testing.T, backend string, devic
 	if backend == "nbs" {
 		nbsClient.On("StartEndpoint", ctx, &nbs.TStartEndpointRequest{
 			UnixSocketPath:   nbsSocketPath,
-			DiskId:           diskID,
-			InstanceId:       podID,
+			DiskId:           diskId,
+			InstanceId:       podId,
 			ClientId:         actualClientId,
 			DeviceName:       deviceName,
 			IpcType:          nbs.EClientIpcType_IPC_VHOST,
@@ -116,7 +118,7 @@ func doTestPublishUnpublishVolumeForKubevirt(t *testing.T, backend string, devic
 		nfsClient.On("StartEndpoint", ctx, &nfs.TStartEndpointRequest{
 			Endpoint: &nfs.TEndpointConfig{
 				SocketPath:       nfsSocketPath,
-				FileSystemId:     diskID,
+				FileSystemId:     diskId,
 				ClientId:         actualClientId,
 				VhostQueuesCount: 8,
 				Persistent:       true,
@@ -128,7 +130,7 @@ func doTestPublishUnpublishVolumeForKubevirt(t *testing.T, backend string, devic
 	mounter.On("Mount", sourcePath, targetPath, "", []string{"bind"}).Return(nil)
 
 	_, err = nodeService.NodePublishVolume(ctx, &csi.NodePublishVolumeRequest{
-		VolumeId:          diskID,
+		VolumeId:          diskId,
 		StagingTargetPath: stagingTargetPath,
 		TargetPath:        targetPath,
 		VolumeCapability:  &volumeCapability,
@@ -162,16 +164,16 @@ func doTestPublishUnpublishVolumeForKubevirt(t *testing.T, backend string, devic
 	}).Return(&nfs.TStopEndpointResponse{}, nil)
 
 	_, err = nodeService.NodeUnpublishVolume(ctx, &csi.NodeUnpublishVolumeRequest{
-		VolumeId:   diskID,
+		VolumeId:   diskId,
 		TargetPath: targetPath,
 	})
 	require.NoError(t, err)
 
-	_, err = os.Stat(filepath.Join(socketsDir, podID))
+	_, err = os.Stat(filepath.Join(socketsDir, podId))
 	assert.True(t, os.IsNotExist(err))
 
 	_, err = nodeService.NodeUnstageVolume(ctx, &csi.NodeUnstageVolumeRequest{
-		VolumeId:          diskID,
+		VolumeId:          diskId,
 		StagingTargetPath: stagingTargetPath,
 	})
 	require.NoError(t, err)
@@ -190,7 +192,7 @@ func TestPublishUnpublishFilestoreForKubevirt(t *testing.T) {
 	doTestPublishUnpublishVolumeForKubevirt(t, "nfs", nil)
 }
 
-func doTestStagedPublishUnpublishVolumeForKubevirt(t *testing.T, backend string, deviceNameOpt *string) {
+func doTestStagedPublishUnpublishVolumeForKubevirt(t *testing.T, backend string, deviceNameOpt *string, perInstanceVolumes bool) {
 	tempDir := t.TempDir()
 
 	nbsClient := mocks.NewNbsClientMock()
@@ -198,27 +200,31 @@ func doTestStagedPublishUnpublishVolumeForKubevirt(t *testing.T, backend string,
 	mounter := csimounter.NewMock()
 
 	ctx := context.Background()
-	nodeID := "testNodeId"
-	clientID := "testClientId"
-	podID := "test-pod-id-13"
-	instanceID := "testInstanceId"
-	actualClientId := "testClientId-" + instanceID
-	diskID := "test-disk-id-42"
-	deviceName := diskID
+	nodeId := "testNodeId"
+	clientId := "testClientId"
+	podId := "test-pod-id-13"
+	instanceId := "testInstanceId"
+	actualClientId := "testClientId-" + instanceId
+	diskId := "test-disk-id-42"
+	deviceName := diskId
 	if deviceNameOpt != nil {
 		deviceName = *deviceNameOpt
 	}
+	volumeId := diskId
+	if perInstanceVolumes {
+		volumeId = diskId + "#" + instanceId
+	}
 	stagingTargetPath := filepath.Join(tempDir, "testStagingTargetPath")
 	socketsDir := filepath.Join(tempDir, "sockets")
-	sourcePath := filepath.Join(socketsDir, instanceID, diskID)
-	targetPath := filepath.Join(tempDir, "pods", podID, "volumes", diskID, "mount")
+	sourcePath := filepath.Join(socketsDir, instanceId, diskId)
+	targetPath := filepath.Join(tempDir, "pods", podId, "volumes", diskId, "mount")
 	targetFsPathPattern := filepath.Join(tempDir, "pods/([a-z0-9-]+)/volumes/([a-z0-9-]+)/mount")
 	nbsSocketPath := filepath.Join(sourcePath, "nbs.sock")
 	nfsSocketPath := filepath.Join(sourcePath, "nfs.sock")
 
 	nodeService := newNodeService(
-		nodeID,
-		clientID,
+		nodeId,
+		clientId,
 		true, // vmMode
 		socketsDir,
 		targetFsPathPattern,
@@ -244,7 +250,7 @@ func doTestStagedPublishUnpublishVolumeForKubevirt(t *testing.T, backend string,
 
 	volumeContext := map[string]string{
 		backendVolumeContextKey: backend,
-		instanceIDKey:           instanceID,
+		instanceIdKey:           instanceId,
 	}
 	if deviceNameOpt != nil {
 		volumeContext[deviceNameVolumeContextKey] = *deviceNameOpt
@@ -254,8 +260,8 @@ func doTestStagedPublishUnpublishVolumeForKubevirt(t *testing.T, backend string,
 	if backend == "nbs" {
 		nbsClient.On("StartEndpoint", ctx, &nbs.TStartEndpointRequest{
 			UnixSocketPath:   nbsSocketPath,
-			DiskId:           diskID,
-			InstanceId:       instanceID,
+			DiskId:           diskId,
+			InstanceId:       instanceId,
 			ClientId:         actualClientId,
 			DeviceName:       deviceName,
 			IpcType:          nbs.EClientIpcType_IPC_VHOST,
@@ -276,7 +282,7 @@ func doTestStagedPublishUnpublishVolumeForKubevirt(t *testing.T, backend string,
 		nfsClient.On("StartEndpoint", ctx, &nfs.TStartEndpointRequest{
 			Endpoint: &nfs.TEndpointConfig{
 				SocketPath:       nfsSocketPath,
-				FileSystemId:     diskID,
+				FileSystemId:     diskId,
 				ClientId:         actualClientId,
 				VhostQueuesCount: 8,
 				Persistent:       true,
@@ -285,7 +291,7 @@ func doTestStagedPublishUnpublishVolumeForKubevirt(t *testing.T, backend string,
 	}
 
 	_, err := nodeService.NodeStageVolume(ctx, &csi.NodeStageVolumeRequest{
-		VolumeId:          diskID,
+		VolumeId:          volumeId,
 		StagingTargetPath: stagingTargetPath,
 		VolumeCapability:  &volumeCapability,
 		VolumeContext:     volumeContext,
@@ -306,7 +312,7 @@ func doTestStagedPublishUnpublishVolumeForKubevirt(t *testing.T, backend string,
 	mounter.On("Mount", sourcePath, targetPath, "", []string{"bind"}).Return(nil)
 
 	_, err = nodeService.NodePublishVolume(ctx, &csi.NodePublishVolumeRequest{
-		VolumeId:          diskID,
+		VolumeId:          volumeId,
 		StagingTargetPath: stagingTargetPath,
 		TargetPath:        targetPath,
 		VolumeCapability:  &volumeCapability,
@@ -321,16 +327,19 @@ func doTestStagedPublishUnpublishVolumeForKubevirt(t *testing.T, backend string,
 
 	mounter.On("CleanupMountPoint", targetPath).Return(nil)
 
-	nbsClient.On("StopEndpoint", ctx, &nbs.TStopEndpointRequest{
-		UnixSocketPath: filepath.Join(socketsDir, podID, diskID, nbsSocketName),
-	}).Return(&nbs.TStopEndpointResponse{}, nil)
+	if !perInstanceVolumes {
+		// Driver attempts to stop legacy endpoints only for legacy volumes.
+		nbsClient.On("StopEndpoint", ctx, &nbs.TStopEndpointRequest{
+			UnixSocketPath: filepath.Join(socketsDir, podId, diskId, nbsSocketName),
+		}).Return(&nbs.TStopEndpointResponse{}, nil)
 
-	nfsClient.On("StopEndpoint", ctx, &nfs.TStopEndpointRequest{
-		SocketPath: filepath.Join(socketsDir, podID, diskID, nfsSocketName),
-	}).Return(&nfs.TStopEndpointResponse{}, nil)
+		nfsClient.On("StopEndpoint", ctx, &nfs.TStopEndpointRequest{
+			SocketPath: filepath.Join(socketsDir, podId, diskId, nfsSocketName),
+		}).Return(&nfs.TStopEndpointResponse{}, nil)
+	}
 
 	_, err = nodeService.NodeUnpublishVolume(ctx, &csi.NodeUnpublishVolumeRequest{
-		VolumeId:   diskID,
+		VolumeId:   volumeId,
 		TargetPath: targetPath,
 	})
 	require.NoError(t, err)
@@ -348,26 +357,39 @@ func doTestStagedPublishUnpublishVolumeForKubevirt(t *testing.T, backend string,
 	}
 
 	_, err = nodeService.NodeUnstageVolume(ctx, &csi.NodeUnstageVolumeRequest{
-		VolumeId:          diskID,
+		VolumeId:          volumeId,
 		StagingTargetPath: stagingTargetPath,
 	})
 	require.NoError(t, err)
 
-	_, err = os.Stat(filepath.Join(socketsDir, instanceID))
+	_, err = os.Stat(filepath.Join(socketsDir, instanceId))
 	assert.True(t, os.IsNotExist(err))
 }
 
+func TestStagedPublishUnpublishDiskForKubevirtLegacy(t *testing.T) {
+	doTestStagedPublishUnpublishVolumeForKubevirt(t, "nbs", nil, false)
+}
+
+func TestStagedPublishUnpublishDiskForKubevirtSetDeviceNameLegacy(t *testing.T) {
+	deviceName := "test-disk-name-42"
+	doTestStagedPublishUnpublishVolumeForKubevirt(t, "nbs", &deviceName, false)
+}
+
+func TestStagedPublishUnpublishFilestoreForKubevirtLegacy(t *testing.T) {
+	doTestStagedPublishUnpublishVolumeForKubevirt(t, "nfs", nil, false)
+}
+
 func TestStagedPublishUnpublishDiskForKubevirt(t *testing.T) {
-	doTestStagedPublishUnpublishVolumeForKubevirt(t, "nbs", nil)
+	doTestStagedPublishUnpublishVolumeForKubevirt(t, "nbs", nil, true)
 }
 
 func TestStagedPublishUnpublishDiskForKubevirtSetDeviceName(t *testing.T) {
 	deviceName := "test-disk-name-42"
-	doTestStagedPublishUnpublishVolumeForKubevirt(t, "nbs", &deviceName)
+	doTestStagedPublishUnpublishVolumeForKubevirt(t, "nbs", &deviceName, true)
 }
 
 func TestStagedPublishUnpublishFilestoreForKubevirt(t *testing.T) {
-	doTestStagedPublishUnpublishVolumeForKubevirt(t, "nfs", nil)
+	doTestStagedPublishUnpublishVolumeForKubevirt(t, "nfs", nil, true)
 }
 
 func TestPublishUnpublishDiskForInfrakuber(t *testing.T) {
@@ -394,22 +416,22 @@ func TestPublishUnpublishDiskForInfrakuber(t *testing.T) {
 	require.NoError(t, err)
 
 	ctx := context.Background()
-	nodeID := "testNodeId"
-	clientID := "testClientId"
-	podID := "test-pod-id-13"
-	diskID := "test-disk-id-42"
+	nodeId := "testNodeId"
+	clientId := "testClientId"
+	podId := "test-pod-id-13"
+	diskId := "test-disk-id-42"
 	actualClientId := "testClientId-testNodeId"
-	targetPath := filepath.Join(tempDir, "pods", podID, "volumes", diskID, "mount")
+	targetPath := filepath.Join(tempDir, "pods", podId, "volumes", diskId, "mount")
 	targetFsPathPattern := filepath.Join(tempDir, "pods/([a-z0-9-]+)/volumes/([a-z0-9-]+)/mount")
 	stagingTargetPath := "testStagingTargetPath"
 	socketsDir := filepath.Join(tempDir, "sockets")
-	sourcePath := filepath.Join(socketsDir, diskID)
-	socketPath := filepath.Join(socketsDir, diskID, "nbs.sock")
-	deprecatedSocketPath := filepath.Join(socketsDir, podID, diskID, "nbs.sock")
+	sourcePath := filepath.Join(socketsDir, diskId)
+	socketPath := filepath.Join(socketsDir, diskId, "nbs.sock")
+	deprecatedSocketPath := filepath.Join(socketsDir, podId, diskId, "nbs.sock")
 
 	nodeService := newNodeService(
-		nodeID,
-		clientID,
+		nodeId,
+		clientId,
 		false, // vmMode
 		socketsDir,
 		targetFsPathPattern,
@@ -435,10 +457,10 @@ func TestPublishUnpublishDiskForInfrakuber(t *testing.T) {
 	hostType := nbs.EHostType_HOST_TYPE_DEFAULT
 	nbsClient.On("StartEndpoint", ctx, &nbs.TStartEndpointRequest{
 		UnixSocketPath:   socketPath,
-		DiskId:           diskID,
-		InstanceId:       nodeID,
+		DiskId:           diskId,
+		InstanceId:       nodeId,
 		ClientId:         actualClientId,
-		DeviceName:       diskID,
+		DeviceName:       diskId,
 		IpcType:          ipcType,
 		VhostQueuesCount: 8,
 		VolumeAccessMode: nbs.EVolumeAccessMode_VOLUME_ACCESS_READ_WRITE,
@@ -463,7 +485,7 @@ func TestPublishUnpublishDiskForInfrakuber(t *testing.T) {
 	mounter.On("Mount", nbdDeviceFile, stagingTargetPath, "ext4", []string{}).Return(nil)
 
 	_, err = nodeService.NodeStageVolume(ctx, &csi.NodeStageVolumeRequest{
-		VolumeId:          diskID,
+		VolumeId:          diskId,
 		StagingTargetPath: stagingTargetPath,
 		VolumeCapability:  &volumeCapability,
 		VolumeContext:     volumeContext,
@@ -478,7 +500,7 @@ func TestPublishUnpublishDiskForInfrakuber(t *testing.T) {
 	mounter.On("Mount", stagingTargetPath, targetPath, "", []string{"bind"}).Return(nil)
 
 	_, err = nodeService.NodePublishVolume(ctx, &csi.NodePublishVolumeRequest{
-		VolumeId:          diskID,
+		VolumeId:          diskId,
 		StagingTargetPath: stagingTargetPath,
 		TargetPath:        targetPath,
 		VolumeCapability:  &volumeCapability,
@@ -509,7 +531,7 @@ func TestPublishUnpublishDiskForInfrakuber(t *testing.T) {
 	}).Return(&nbs.TStopEndpointResponse{}, nil)
 
 	_, err = nodeService.NodeUnpublishVolume(ctx, &csi.NodeUnpublishVolumeRequest{
-		VolumeId:   diskID,
+		VolumeId:   diskId,
 		TargetPath: targetPath,
 	})
 	require.NoError(t, err)
@@ -517,7 +539,7 @@ func TestPublishUnpublishDiskForInfrakuber(t *testing.T) {
 	mockCallStopEndpoint.Unset()
 	mockCallCleanupMountPoint.Unset()
 
-	_, err = os.Stat(filepath.Join(socketsDir, podID))
+	_, err = os.Stat(filepath.Join(socketsDir, podId))
 	assert.True(t, os.IsNotExist(err))
 
 	mounter.On("CleanupMountPoint", stagingTargetPath).Return(nil)
@@ -527,7 +549,7 @@ func TestPublishUnpublishDiskForInfrakuber(t *testing.T) {
 	}).Return(&nbs.TStopEndpointResponse{}, nil)
 
 	_, err = nodeService.NodeUnstageVolume(ctx, &csi.NodeUnstageVolumeRequest{
-		VolumeId:          diskID,
+		VolumeId:          diskId,
 		StagingTargetPath: stagingTargetPath,
 	})
 	require.NoError(t, err)
@@ -545,23 +567,23 @@ func TestPublishUnpublishDeviceForInfrakuber(t *testing.T) {
 	require.NoError(t, err)
 
 	ctx := context.Background()
-	nodeID := "testNodeId"
-	clientID := "testClientId"
-	podID := "test-pod-id-13"
-	diskID := "test-disk-id-42"
+	nodeId := "testNodeId"
+	clientId := "testClientId"
+	podId := "test-pod-id-13"
+	diskId := "test-disk-id-42"
 	actualClientId := "testClientId-testNodeId"
-	targetPath := filepath.Join(tempDir, "volumeDevices", "publish", diskID, podID)
+	targetPath := filepath.Join(tempDir, "volumeDevices", "publish", diskId, podId)
 	targetBlkPathPattern := filepath.Join(tempDir, "volumeDevices/publish/([a-z0-9-]+)/([a-z0-9-]+)")
 	stagingTargetPath := "testStagingTargetPath"
-	stagingDevicePath := filepath.Join(stagingTargetPath, diskID)
+	stagingDevicePath := filepath.Join(stagingTargetPath, diskId)
 	socketsDir := filepath.Join(tempDir, "sockets")
-	sourcePath := filepath.Join(socketsDir, diskID)
-	socketPath := filepath.Join(socketsDir, diskID, "nbs.sock")
-	deprecatedSocketPath := filepath.Join(socketsDir, podID, diskID, "nbs.sock")
+	sourcePath := filepath.Join(socketsDir, diskId)
+	socketPath := filepath.Join(socketsDir, diskId, "nbs.sock")
+	deprecatedSocketPath := filepath.Join(socketsDir, podId, diskId, "nbs.sock")
 
 	nodeService := newNodeService(
-		nodeID,
-		clientID,
+		nodeId,
+		clientId,
 		false, // vmMode
 		socketsDir,
 		"", // targetFsPathPattern
@@ -585,10 +607,10 @@ func TestPublishUnpublishDeviceForInfrakuber(t *testing.T) {
 	hostType := nbs.EHostType_HOST_TYPE_DEFAULT
 	nbsClient.On("StartEndpoint", ctx, &nbs.TStartEndpointRequest{
 		UnixSocketPath:   socketPath,
-		DiskId:           diskID,
-		InstanceId:       nodeID,
+		DiskId:           diskId,
+		InstanceId:       nodeId,
 		ClientId:         actualClientId,
-		DeviceName:       diskID,
+		DeviceName:       diskId,
 		IpcType:          ipcType,
 		VhostQueuesCount: 8,
 		VolumeAccessMode: nbs.EVolumeAccessMode_VOLUME_ACCESS_READ_WRITE,
@@ -608,7 +630,7 @@ func TestPublishUnpublishDeviceForInfrakuber(t *testing.T) {
 	mockCallMount := mounter.On("Mount", nbdDeviceFile, stagingDevicePath, "", []string{"bind"}).Return(nil)
 
 	_, err = nodeService.NodeStageVolume(ctx, &csi.NodeStageVolumeRequest{
-		VolumeId:          diskID,
+		VolumeId:          diskId,
 		StagingTargetPath: stagingTargetPath,
 		VolumeCapability:  &volumeCapability,
 		VolumeContext:     volumeContext,
@@ -620,7 +642,7 @@ func TestPublishUnpublishDeviceForInfrakuber(t *testing.T) {
 	mounter.On("Mount", stagingDevicePath, targetPath, "", []string{"bind"}).Return(nil)
 
 	_, err = nodeService.NodePublishVolume(ctx, &csi.NodePublishVolumeRequest{
-		VolumeId:          diskID,
+		VolumeId:          diskId,
 		StagingTargetPath: stagingTargetPath,
 		TargetPath:        targetPath,
 		VolumeCapability:  &volumeCapability,
@@ -653,12 +675,12 @@ func TestPublishUnpublishDeviceForInfrakuber(t *testing.T) {
 	}).Return(&nbs.TStopEndpointResponse{}, nil)
 
 	_, err = nodeService.NodeUnpublishVolume(ctx, &csi.NodeUnpublishVolumeRequest{
-		VolumeId:   diskID,
+		VolumeId:   diskId,
 		TargetPath: targetPath,
 	})
 	require.NoError(t, err)
 
-	_, err = os.Stat(filepath.Join(socketsDir, podID))
+	_, err = os.Stat(filepath.Join(socketsDir, podId))
 	assert.True(t, os.IsNotExist(err))
 
 	mounter.On("IsMountPoint", stagingTargetPath).Return(false, nil)
@@ -670,7 +692,7 @@ func TestPublishUnpublishDeviceForInfrakuber(t *testing.T) {
 	}).Return(&nbs.TStopEndpointResponse{}, nil)
 
 	_, err = nodeService.NodeUnstageVolume(ctx, &csi.NodeUnstageVolumeRequest{
-		VolumeId:          diskID,
+		VolumeId:          diskId,
 		StagingTargetPath: stagingTargetPath,
 	})
 	require.NoError(t, err)
@@ -682,10 +704,10 @@ func TestGetVolumeStatCapabilitiesWithoutVmMode(t *testing.T) {
 	nbsClient := mocks.NewNbsClientMock()
 	mounter := csimounter.NewMock()
 
-	podID := "test-pod-id-13"
-	diskID := "test-disk-id-42"
+	podId := "test-pod-id-13"
+	diskId := "test-disk-id-42"
 	socketsDir := filepath.Join(tempDir, "sockets")
-	targetPath := filepath.Join(tempDir, "pods", podID, "volumes", diskID, "mount")
+	targetPath := filepath.Join(tempDir, "pods", podId, "volumes", diskId, "mount")
 	targetFsPathPattern := filepath.Join(tempDir,
 		"pods/([a-z0-9-]+)/volumes/([a-z0-9-]+)/mount")
 
@@ -722,11 +744,11 @@ func TestGetVolumeStatCapabilitiesWithoutVmMode(t *testing.T) {
 		})
 	assert.NotEqual(t, -1, capabilityIndex)
 
-	nbsClient.On("DescribeVolume", ctx, &nbs.TDescribeVolumeRequest{DiskId: diskID}).Return(&nbs.TDescribeVolumeResponse{}, nil)
+	nbsClient.On("DescribeVolume", ctx, &nbs.TDescribeVolumeRequest{DiskId: diskId}).Return(&nbs.TDescribeVolumeResponse{}, nil)
 	mounter.On("IsMountPoint", targetPath).Return(true, nil)
 
 	stat, err := nodeService.NodeGetVolumeStats(ctx, &csi.NodeGetVolumeStatsRequest{
-		VolumeId:   diskID,
+		VolumeId:   diskId,
 		VolumePath: targetPath,
 	})
 	require.NoError(t, err)
@@ -749,17 +771,17 @@ func TestGetVolumeStatCapabilitiesWithVmMode(t *testing.T) {
 	nbsClient := mocks.NewNbsClientMock()
 	mounter := csimounter.NewMock()
 
-	clientID := "testClientId"
-	podID := "test-pod-id-13"
-	diskID := "test-disk-id-42"
-	targetPath := filepath.Join(tempDir, "volumeDevices", "publish", diskID, podID)
+	clientId := "testClientId"
+	podId := "test-pod-id-13"
+	diskId := "test-disk-id-42"
+	targetPath := filepath.Join(tempDir, "volumeDevices", "publish", diskId, podId)
 	targetBlkPathPattern := filepath.Join(tempDir,
 		"volumeDevices/publish/([a-z0-9-]+)/([a-z0-9-]+)")
 	socketsDir := filepath.Join(tempDir, "sockets")
 
 	nodeService := newNodeService(
 		"testNodeId",
-		clientID,
+		clientId,
 		true,
 		socketsDir,
 		"",
@@ -787,7 +809,7 @@ func TestGetVolumeStatCapabilitiesWithVmMode(t *testing.T) {
 	assert.Equal(t, -1, capabilityIndex)
 
 	_, err = nodeService.NodeGetVolumeStats(ctx, &csi.NodeGetVolumeStatsRequest{
-		VolumeId:   diskID,
+		VolumeId:   diskId,
 		VolumePath: targetPath,
 	})
 	require.Error(t, err)
@@ -800,10 +822,10 @@ func TestPublishDeviceWithReadWriteManyModeIsNotSupportedWithNBS(t *testing.T) {
 	mounter := csimounter.NewMock()
 
 	ctx := context.Background()
-	clientID := "testClientId"
-	podID := "test-pod-id-13"
-	diskID := "test-disk-id-42"
-	targetPath := filepath.Join(tempDir, "volumeDevices", "publish", diskID, podID)
+	clientId := "testClientId"
+	podId := "test-pod-id-13"
+	diskId := "test-disk-id-42"
+	targetPath := filepath.Join(tempDir, "volumeDevices", "publish", diskId, podId)
 	targetBlkPathPattern := filepath.Join(tempDir, "volumeDevices/publish/([a-z0-9-]+)/([a-z0-9-]+)")
 	socketsDir := filepath.Join(tempDir, "sockets")
 	volumeContext := map[string]string{
@@ -812,7 +834,7 @@ func TestPublishDeviceWithReadWriteManyModeIsNotSupportedWithNBS(t *testing.T) {
 
 	nodeService := newNodeService(
 		"testNodeId",
-		clientID,
+		clientId,
 		false,
 		socketsDir,
 		"",
@@ -823,7 +845,7 @@ func TestPublishDeviceWithReadWriteManyModeIsNotSupportedWithNBS(t *testing.T) {
 	)
 
 	_, err := nodeService.NodeStageVolume(ctx, &csi.NodeStageVolumeRequest{
-		VolumeId:          diskID,
+		VolumeId:          diskId,
 		StagingTargetPath: "testStagingTargetPath",
 		VolumeCapability: &csi.VolumeCapability{
 			AccessType: &csi.VolumeCapability_Block{
@@ -835,7 +857,7 @@ func TestPublishDeviceWithReadWriteManyModeIsNotSupportedWithNBS(t *testing.T) {
 
 	// NodePublishVolume without access mode should fail
 	_, err = nodeService.NodePublishVolume(ctx, &csi.NodePublishVolumeRequest{
-		VolumeId:          diskID,
+		VolumeId:          diskId,
 		StagingTargetPath: "testStagingTargetPath",
 		TargetPath:        targetPath,
 		VolumeCapability: &csi.VolumeCapability{
@@ -848,7 +870,7 @@ func TestPublishDeviceWithReadWriteManyModeIsNotSupportedWithNBS(t *testing.T) {
 	require.Error(t, err)
 
 	_, err = nodeService.NodePublishVolume(ctx, &csi.NodePublishVolumeRequest{
-		VolumeId:          diskID,
+		VolumeId:          diskId,
 		StagingTargetPath: "testStagingTargetPath",
 		TargetPath:        targetPath,
 		VolumeCapability: &csi.VolumeCapability{

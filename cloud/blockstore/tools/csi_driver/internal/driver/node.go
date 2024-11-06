@@ -1,5 +1,7 @@
 package driver
 
+//lint:file-ignore ST1003 protobuf generates names that break golang naming convention
+
 import (
 	"context"
 	"encoding/json"
@@ -12,6 +14,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"strings"
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	nbsapi "github.com/ydb-platform/nbs/cloud/blockstore/public/api/protos"
@@ -39,7 +42,7 @@ const nbdIpc = nbsapi.EClientIpcType_IPC_NBD
 
 const backendVolumeContextKey = "backend"
 const deviceNameVolumeContextKey = "deviceName"
-const instanceIDKey = "instanceId"
+const instanceIdKey = "instanceId"
 
 var vmModeCapabilities = []*csi.NodeServiceCapability{
 	{
@@ -96,8 +99,8 @@ var podModeCapabilities = []*csi.NodeServiceCapability{
 type nodeService struct {
 	csi.NodeServer
 
-	nodeID              string
-	clientID            string
+	nodeId              string
+	clientId            string
 	vmMode              bool
 	socketsDir          string
 	targetFsPathRegexp  *regexp.Regexp
@@ -109,8 +112,8 @@ type nodeService struct {
 }
 
 func newNodeService(
-	nodeID string,
-	clientID string,
+	nodeId string,
+	clientId string,
 	vmMode bool,
 	socketsDir string,
 	targetFsPathPattern string,
@@ -120,8 +123,8 @@ func newNodeService(
 	mounter mounter.Interface) csi.NodeServer {
 
 	return &nodeService{
-		nodeID:              nodeID,
-		clientID:            clientID,
+		nodeId:              nodeId,
+		clientId:            clientId,
 		vmMode:              vmMode,
 		socketsDir:          socketsDir,
 		nbsClient:           nbsClient,
@@ -130,6 +133,13 @@ func newNodeService(
 		targetFsPathRegexp:  regexp.MustCompile(targetFsPathPattern),
 		targetBlkPathRegexp: regexp.MustCompile(targetBlkPathPattern),
 	}
+}
+
+// nbsId - diskId for blockstore and filesystemId for filestore
+func parseVolumeId(volumeId string) (nbsId string, instanceId string) {
+	// if separator is not found then this is just legacy volume without instanceId
+	nbsId, instanceId, _ = strings.Cut(volumeId, "#")
+	return nbsId, instanceId
 }
 
 func (s *nodeService) NodeStageVolume(
@@ -176,8 +186,10 @@ func (s *nodeService) NodeStageVolume(
 			nfsBackend := (req.VolumeContext[backendVolumeContextKey] == "nfs")
 
 			var err error
-			if instanceID := req.VolumeContext[instanceIDKey]; instanceID != "" {
-				stageRecordPath := filepath.Join(req.StagingTargetPath, req.VolumeId+".json")
+			if instanceId := req.VolumeContext[instanceIdKey]; instanceId != "" {
+				nbsId, _ := parseVolumeId(req.VolumeId)
+
+				stageRecordPath := filepath.Join(req.StagingTargetPath, nbsId+".json")
 				// Backend can be empty for old disks, in this case we use NBS
 				backend := "nbs"
 				if nfsBackend {
@@ -185,20 +197,21 @@ func (s *nodeService) NodeStageVolume(
 				}
 				if err = s.writeStageData(stageRecordPath, &StageData{
 					Backend:       backend,
-					InstanceId:    instanceID,
-					RealStagePath: s.getEndpointDir(instanceID, req.VolumeId),
+					InstanceId:    instanceId,
+					RealStagePath: s.getEndpointDir(instanceId, nbsId),
 				}); err != nil {
 					return nil, s.statusErrorf(codes.Internal,
 						"Failed to write stage record: %v", err)
 				}
 
 				if nfsBackend {
-					err = s.nodeStageFileStoreAsVhostSocket(ctx, instanceID, req.VolumeId)
+					err = s.nodeStageFileStoreAsVhostSocket(ctx, instanceId, nbsId)
 				} else {
-					err = s.nodeStageDiskAsVhostSocket(ctx, instanceID, req.VolumeId, req.VolumeContext)
+					err = s.nodeStageDiskAsVhostSocket(ctx, instanceId, nbsId, req.VolumeContext)
 				}
 
 				if err != nil {
+					ignoreError(os.Remove(stageRecordPath))
 					return nil, s.statusErrorf(codes.Internal,
 						"Failed to stage volume: %v", err)
 				}
@@ -248,9 +261,11 @@ func (s *nodeService) NodeUnstageVolume(
 	}
 
 	if s.vmMode {
-		stageRecordPath := filepath.Join(req.StagingTargetPath, req.VolumeId+".json")
+		nbsId, _ := parseVolumeId(req.VolumeId)
+
+		stageRecordPath := filepath.Join(req.StagingTargetPath, nbsId+".json")
 		if stageData, err := s.readStageData(stageRecordPath); err == nil {
-			if err := s.nodeUnstageVhostSocket(ctx, req.VolumeId, stageData); err != nil {
+			if err := s.nodeUnstageVhostSocket(ctx, nbsId, stageData); err != nil {
 				return nil, s.statusErrorf(
 					codes.InvalidArgument,
 					"Failed to unstage volume: %v", err)
@@ -325,8 +340,8 @@ func (s *nodeService) NodePublishVolume(
 	switch req.VolumeCapability.GetAccessType().(type) {
 	case *csi.VolumeCapability_Mount:
 		if s.vmMode {
-			if instanceID := req.VolumeContext[instanceIDKey]; instanceID != "" {
-				err = s.nodePublishStagedVhostSocket(req, instanceID)
+			if instanceId := req.VolumeContext[instanceIdKey]; instanceId != "" {
+				err = s.nodePublishStagedVhostSocket(req, instanceId)
 			} else {
 				if nfsBackend {
 					err = s.nodePublishFileStoreAsVhostSocket(ctx, req)
@@ -409,9 +424,9 @@ func (s *nodeService) NodeGetInfo(
 	_ *csi.NodeGetInfoRequest) (*csi.NodeGetInfoResponse, error) {
 
 	return &csi.NodeGetInfoResponse{
-		NodeId: s.nodeID,
+		NodeId: s.nodeId,
 		AccessibleTopology: &csi.Topology{
-			Segments: map[string]string{topologyNodeKey: s.nodeID},
+			Segments: map[string]string{topologyNodeKey: s.nodeId},
 		},
 	}, nil
 }
@@ -421,25 +436,25 @@ func (s *nodeService) nodePublishDiskAsVhostSocket(
 	req *csi.NodePublishVolumeRequest) error {
 
 	podId := s.getPodId(req)
-	volumeId := req.VolumeId
+	diskId := req.VolumeId
 	volumeContext := req.VolumeContext
 
-	endpointDir := s.getEndpointDir(podId, volumeId)
+	endpointDir := s.getEndpointDir(podId, diskId)
 	if err := os.MkdirAll(endpointDir, os.FileMode(0755)); err != nil {
 		return err
 	}
 
 	deviceName, found := volumeContext[deviceNameVolumeContextKey]
 	if !found {
-		deviceName = volumeId
+		deviceName = diskId
 	}
 
 	hostType := nbsapi.EHostType_HOST_TYPE_DEFAULT
 	_, err := s.nbsClient.StartEndpoint(ctx, &nbsapi.TStartEndpointRequest{
 		UnixSocketPath:   filepath.Join(endpointDir, nbsSocketName),
-		DiskId:           volumeId,
+		DiskId:           diskId,
 		InstanceId:       podId,
-		ClientId:         fmt.Sprintf("%s-%s", s.clientID, podId),
+		ClientId:         fmt.Sprintf("%s-%s", s.clientId, podId),
 		DeviceName:       deviceName,
 		IpcType:          vhostIpc,
 		VhostQueuesCount: 8,
@@ -509,27 +524,27 @@ func (s *nodeService) readStageData(path string) (*StageData, error) {
 func (s *nodeService) nodeStageDiskAsVhostSocket(
 	ctx context.Context,
 	instanceId string,
-	volumeId string,
+	diskId string,
 	volumeContext map[string]string) error {
 
-	log.Printf("csi.nodeStageDiskAsVhostSocket: %s %s %+v", instanceId, volumeId, volumeContext)
+	log.Printf("csi.nodeStageDiskAsVhostSocket: %s %s %+v", instanceId, diskId, volumeContext)
 
-	endpointDir := s.getEndpointDir(instanceId, volumeId)
+	endpointDir := s.getEndpointDir(instanceId, diskId)
 	if err := os.MkdirAll(endpointDir, os.FileMode(0755)); err != nil {
 		return err
 	}
 
 	deviceName, found := volumeContext[deviceNameVolumeContextKey]
 	if !found {
-		deviceName = volumeId
+		deviceName = diskId
 	}
 
 	hostType := nbsapi.EHostType_HOST_TYPE_DEFAULT
 	_, err := s.nbsClient.StartEndpoint(ctx, &nbsapi.TStartEndpointRequest{
 		UnixSocketPath:   filepath.Join(endpointDir, nbsSocketName),
-		DiskId:           volumeId,
+		DiskId:           diskId,
 		InstanceId:       instanceId,
-		ClientId:         fmt.Sprintf("%s-%s", s.clientID, instanceId),
+		ClientId:         fmt.Sprintf("%s-%s", s.clientId, instanceId),
 		DeviceName:       deviceName,
 		IpcType:          vhostIpc,
 		VhostQueuesCount: 8,
@@ -555,12 +570,13 @@ func (s *nodeService) nodePublishDiskAsFilesystemDeprecated(
 	ctx context.Context,
 	req *csi.NodePublishVolumeRequest) error {
 
-	resp, err := s.startNbsEndpointForNBD(ctx, s.getPodId(req), req.VolumeId, req.VolumeContext)
+	diskId := req.VolumeId
+	resp, err := s.startNbsEndpointForNBD(ctx, s.getPodId(req), diskId, req.VolumeContext)
 	if err != nil {
 		return fmt.Errorf("failed to start NBS endpoint: %w", err)
 	}
 
-	logVolume(req.VolumeId, "endpoint started with device: %q", resp.NbdDeviceFile)
+	logVolume(diskId, "endpoint started with device: %q", resp.NbdDeviceFile)
 
 	mnt := req.VolumeCapability.GetMount()
 
@@ -572,7 +588,7 @@ func (s *nodeService) nodePublishDiskAsFilesystemDeprecated(
 		fsType = "ext4"
 	}
 
-	err = s.makeFilesystemIfNeeded(req.VolumeId, resp.NbdDeviceFile, fsType)
+	err = s.makeFilesystemIfNeeded(diskId, resp.NbdDeviceFile, fsType)
 	if err != nil {
 		return err
 	}
@@ -600,7 +616,7 @@ func (s *nodeService) nodePublishDiskAsFilesystemDeprecated(
 	}
 
 	err = s.mountIfNeeded(
-		req.VolumeId,
+		diskId,
 		resp.NbdDeviceFile,
 		req.TargetPath,
 		fsType,
@@ -643,6 +659,7 @@ func (s *nodeService) nodePublishDiskAsFilesystem(
 		}
 	}
 
+	diskId := req.VolumeId
 	mountOptions := []string{"bind"}
 	mnt := req.VolumeCapability.GetMount()
 	if mnt != nil {
@@ -656,7 +673,7 @@ func (s *nodeService) nodePublishDiskAsFilesystem(
 	}
 
 	err := s.mountIfNeeded(
-		req.VolumeId,
+		diskId,
 		req.StagingTargetPath,
 		req.TargetPath,
 		"",
@@ -691,7 +708,7 @@ func (s *nodeService) IsMountConflictError(err error) bool {
 
 func (s *nodeService) hasLocalEndpoint(
 	ctx context.Context,
-	volumeId string) (bool, error) {
+	diskId string) (bool, error) {
 
 	listEndpointsResp, err := s.nbsClient.ListEndpoints(
 		ctx, &nbsapi.TListEndpointsRequest{},
@@ -706,7 +723,7 @@ func (s *nodeService) hasLocalEndpoint(
 	}
 
 	for _, endpoint := range listEndpointsResp.Endpoints {
-		if endpoint.DiskId == volumeId {
+		if endpoint.DiskId == diskId {
 			return true, nil
 		}
 	}
@@ -718,10 +735,11 @@ func (s *nodeService) nodeStageDiskAsFilesystem(
 	ctx context.Context,
 	req *csi.NodeStageVolumeRequest) error {
 
-	resp, err := s.startNbsEndpointForNBD(ctx, "", req.VolumeId, req.VolumeContext)
+	diskId := req.VolumeId
+	resp, err := s.startNbsEndpointForNBD(ctx, "", diskId, req.VolumeContext)
 	if err != nil {
 		if s.IsMountConflictError(err) {
-			localEndpoint, err := s.hasLocalEndpoint(ctx, req.VolumeId)
+			localEndpoint, err := s.hasLocalEndpoint(ctx, diskId)
 			if err != nil {
 				return err
 			}
@@ -732,7 +750,7 @@ func (s *nodeService) nodeStageDiskAsFilesystem(
 		return fmt.Errorf("failed to start NBS endpoint: %w", err)
 	}
 
-	logVolume(req.VolumeId, "endpoint started with device: %q", resp.NbdDeviceFile)
+	logVolume(diskId, "endpoint started with device: %q", resp.NbdDeviceFile)
 
 	mnt := req.VolumeCapability.GetMount()
 
@@ -744,7 +762,7 @@ func (s *nodeService) nodeStageDiskAsFilesystem(
 		fsType = "ext4"
 	}
 
-	err = s.makeFilesystemIfNeeded(req.VolumeId, resp.NbdDeviceFile, fsType)
+	err = s.makeFilesystemIfNeeded(diskId, resp.NbdDeviceFile, fsType)
 	if err != nil {
 		return err
 	}
@@ -762,7 +780,7 @@ func (s *nodeService) nodeStageDiskAsFilesystem(
 	}
 
 	err = s.mountIfNeeded(
-		req.VolumeId,
+		diskId,
 		resp.NbdDeviceFile,
 		req.StagingTargetPath,
 		fsType,
@@ -790,10 +808,11 @@ func (s *nodeService) nodeStageDiskAsBlockDevice(
 	ctx context.Context,
 	req *csi.NodeStageVolumeRequest) error {
 
-	resp, err := s.startNbsEndpointForNBD(ctx, "", req.VolumeId, req.VolumeContext)
+	diskId := req.VolumeId
+	resp, err := s.startNbsEndpointForNBD(ctx, "", diskId, req.VolumeContext)
 	if err != nil {
 		if s.IsMountConflictError(err) {
-			localEndpoint, err := s.hasLocalEndpoint(ctx, req.VolumeId)
+			localEndpoint, err := s.hasLocalEndpoint(ctx, diskId)
 			if err != nil {
 				return err
 			}
@@ -804,66 +823,68 @@ func (s *nodeService) nodeStageDiskAsBlockDevice(
 		return fmt.Errorf("failed to start NBS endpoint: %w", err)
 	}
 
-	logVolume(req.VolumeId, "endpoint started with device: %q", resp.NbdDeviceFile)
+	logVolume(diskId, "endpoint started with device: %q", resp.NbdDeviceFile)
 
-	devicePath := filepath.Join(req.StagingTargetPath, req.VolumeId)
-	return s.mountBlockDevice(req.VolumeId, resp.NbdDeviceFile, devicePath, false)
+	devicePath := filepath.Join(req.StagingTargetPath, diskId)
+	return s.mountBlockDevice(diskId, resp.NbdDeviceFile, devicePath, false)
 }
 
 func (s *nodeService) nodePublishDiskAsBlockDeviceDeprecated(
 	ctx context.Context,
 	req *csi.NodePublishVolumeRequest) error {
 
-	resp, err := s.startNbsEndpointForNBD(ctx, s.getPodId(req), req.VolumeId, req.VolumeContext)
+	diskId := req.VolumeId
+	resp, err := s.startNbsEndpointForNBD(ctx, s.getPodId(req), diskId, req.VolumeContext)
 	if err != nil {
 		return fmt.Errorf("failed to start NBS endpoint: %w", err)
 	}
 
-	logVolume(req.VolumeId, "endpoint started with device: %q", resp.NbdDeviceFile)
-	return s.mountBlockDevice(req.VolumeId, resp.NbdDeviceFile, req.TargetPath, req.Readonly)
+	logVolume(diskId, "endpoint started with device: %q", resp.NbdDeviceFile)
+	return s.mountBlockDevice(diskId, resp.NbdDeviceFile, req.TargetPath, req.Readonly)
 }
 
 func (s *nodeService) nodePublishDiskAsBlockDevice(
 	ctx context.Context,
 	req *csi.NodePublishVolumeRequest) error {
 
-	devicePath := filepath.Join(req.StagingTargetPath, req.VolumeId)
+	diskId := req.VolumeId
+	devicePath := filepath.Join(req.StagingTargetPath, diskId)
 	mounted, _ := s.mounter.IsMountPoint(devicePath)
 	if !mounted {
 		// Fallback to previous implementation for already staged volumes
 		return s.nodePublishDiskAsBlockDeviceDeprecated(ctx, req)
 	}
 
-	return s.mountBlockDevice(req.VolumeId, devicePath, req.TargetPath, req.Readonly)
+	return s.mountBlockDevice(diskId, devicePath, req.TargetPath, req.Readonly)
 }
 
 func (s *nodeService) startNbsEndpointForNBD(
 	ctx context.Context,
 	instanceId string,
-	volumeId string,
+	diskId string,
 	volumeContext map[string]string) (*nbsapi.TStartEndpointResponse, error) {
 
-	endpointDir := s.getEndpointDir(instanceId, volumeId)
+	endpointDir := s.getEndpointDir(instanceId, diskId)
 	if err := os.MkdirAll(endpointDir, os.FileMode(0755)); err != nil {
 		return nil, err
 	}
 
 	deviceName, found := volumeContext[deviceNameVolumeContextKey]
 	if !found {
-		deviceName = volumeId
+		deviceName = diskId
 	}
 
 	nbsInstanceId := instanceId
 	if nbsInstanceId == "" {
-		nbsInstanceId = s.nodeID
+		nbsInstanceId = s.nodeId
 	}
 
 	hostType := nbsapi.EHostType_HOST_TYPE_DEFAULT
 	return s.nbsClient.StartEndpoint(ctx, &nbsapi.TStartEndpointRequest{
 		UnixSocketPath:   filepath.Join(endpointDir, nbsSocketName),
-		DiskId:           volumeId,
+		DiskId:           diskId,
 		InstanceId:       nbsInstanceId,
-		ClientId:         fmt.Sprintf("%s-%s", s.clientID, nbsInstanceId),
+		ClientId:         fmt.Sprintf("%s-%s", s.clientId, nbsInstanceId),
 		DeviceName:       deviceName,
 		IpcType:          nbdIpc,
 		VhostQueuesCount: 8,
@@ -883,8 +904,9 @@ func (s *nodeService) nodePublishFileStoreAsVhostSocket(
 	ctx context.Context,
 	req *csi.NodePublishVolumeRequest) error {
 
+	filesystemId := req.VolumeId
 	podId := s.getPodId(req)
-	endpointDir := s.getEndpointDir(podId, req.VolumeId)
+	endpointDir := s.getEndpointDir(podId, filesystemId)
 	if err := os.MkdirAll(endpointDir, os.FileMode(0755)); err != nil {
 		return err
 	}
@@ -896,8 +918,8 @@ func (s *nodeService) nodePublishFileStoreAsVhostSocket(
 	_, err := s.nfsClient.StartEndpoint(ctx, &nfsapi.TStartEndpointRequest{
 		Endpoint: &nfsapi.TEndpointConfig{
 			SocketPath:       filepath.Join(endpointDir, nfsSocketName),
-			FileSystemId:     req.VolumeId,
-			ClientId:         fmt.Sprintf("%s-%s", s.clientID, podId),
+			FileSystemId:     filesystemId,
+			ClientId:         fmt.Sprintf("%s-%s", s.clientId, podId),
 			VhostQueuesCount: 8,
 			Persistent:       true,
 		},
@@ -915,12 +937,12 @@ func (s *nodeService) nodePublishFileStoreAsVhostSocket(
 
 func (s *nodeService) nodeStageFileStoreAsVhostSocket(
 	ctx context.Context,
-	instanceID string,
-	volumeID string) error {
+	instanceId string,
+	filesystemId string) error {
 
-	log.Printf("csi.nodeStageFileStoreAsVhostSocket: %s %s", instanceID, volumeID)
+	log.Printf("csi.nodeStageFileStoreAsVhostSocket: %s %s", instanceId, filesystemId)
 
-	endpointDir := s.getEndpointDir(instanceID, volumeID)
+	endpointDir := s.getEndpointDir(instanceId, filesystemId)
 	if err := os.MkdirAll(endpointDir, os.FileMode(0755)); err != nil {
 		return err
 	}
@@ -932,8 +954,8 @@ func (s *nodeService) nodeStageFileStoreAsVhostSocket(
 	_, err := s.nfsClient.StartEndpoint(ctx, &nfsapi.TStartEndpointRequest{
 		Endpoint: &nfsapi.TEndpointConfig{
 			SocketPath:       filepath.Join(endpointDir, nfsSocketName),
-			FileSystemId:     volumeID,
-			ClientId:         fmt.Sprintf("%s-%s", s.clientID, instanceID),
+			FileSystemId:     filesystemId,
+			ClientId:         fmt.Sprintf("%s-%s", s.clientId, instanceId),
 			VhostQueuesCount: 8,
 			Persistent:       true,
 		},
@@ -946,7 +968,8 @@ func (s *nodeService) nodeStageFileStoreAsVhostSocket(
 }
 
 func (s *nodeService) nodePublishStagedVhostSocket(req *csi.NodePublishVolumeRequest, instanceId string) error {
-	endpointDir := s.getEndpointDir(instanceId, req.VolumeId)
+	nbsId, _ := parseVolumeId(req.VolumeId)
+	endpointDir := s.getEndpointDir(instanceId, nbsId)
 	return s.mountSocketDir(endpointDir, req)
 }
 
@@ -954,13 +977,14 @@ func (s *nodeService) nodeUnstageVolume(
 	ctx context.Context,
 	req *csi.NodeUnstageVolumeRequest) error {
 
-	// Check mount points for StagingTargetPath and StagingTargetPath/VolumeId
-	// as it's not possible to distingiush mount and blok mode from request
+	diskId := req.VolumeId
+	// Check mount points for StagingTargetPath and StagingTargetPath/diskId
+	// as it's not possible to distinguish mount and block mode from request
 	// parameters
 	mountPoint := req.StagingTargetPath
 	mounted, _ := s.mounter.IsMountPoint(mountPoint)
 	if !mounted {
-		mountPoint = filepath.Join(req.StagingTargetPath, req.VolumeId)
+		mountPoint = filepath.Join(req.StagingTargetPath, diskId)
 		mounted, _ = s.mounter.IsMountPoint(mountPoint)
 	}
 
@@ -975,7 +999,7 @@ func (s *nodeService) nodeUnstageVolume(
 		return err
 	}
 
-	endpointDir := s.getEndpointDir("", req.VolumeId)
+	endpointDir := s.getEndpointDir("", diskId)
 	if s.nbsClient != nil {
 		_, err := s.nbsClient.StopEndpoint(ctx, &nbsapi.TStopEndpointRequest{
 			UnixSocketPath: filepath.Join(endpointDir, nbsSocketName),
@@ -1004,12 +1028,18 @@ func (s *nodeService) nodeUnpublishVolume(
 	// we could return here. Unfortunately we don't have enough information
 	// to know if this is a staged volume or a legacy one.
 	// Next StopEndpoint calls have no effect for staged volumes because their
-	// endpoints were started in socketsDir/instanceId/volumeId instead of
-	// socketsDir/podId/volumeId.
+	// endpoints were started in socketsDir/instanceId/nbsId instead of
+	// socketsDir/podId/nbsId.
 	//
 	// When all VM disks are migrated to staged volumes we can enforce non-empty
-	// instanceId for new VM disks and add early return here:
-	// if s.vmMode { return nil }
+	// instanceId for new VM disks and add early return here.
+	if s.vmMode {
+		// this is guaranteed to be a new volume that was properly staged, so rest
+		// of unpublish can be skipped.
+		if _, instanceId := parseVolumeId(req.VolumeId); instanceId != "" {
+			return nil
+		}
+	}
 
 	// no other way to get podId from NodeUnpublishVolumeRequest
 	podId, err := s.parsePodId(req.TargetPath)
@@ -1017,7 +1047,8 @@ func (s *nodeService) nodeUnpublishVolume(
 		return err
 	}
 
-	endpointDir := s.getEndpointDir(podId, req.VolumeId)
+	nbsId := req.VolumeId
+	endpointDir := s.getEndpointDir(podId, nbsId)
 
 	// Trying to stop both NBS and NFS endpoints,
 	// because the endpoint's backend service is unknown here.
@@ -1053,8 +1084,8 @@ func (s *nodeService) nodeUnpublishVolume(
 	return nil
 }
 
-func (s *nodeService) getEndpointDir(instanceId string, volumeId string) string {
-	return filepath.Join(s.socketsDir, instanceId, volumeId)
+func (s *nodeService) getEndpointDir(instanceId string, nbsId string) string {
+	return filepath.Join(s.socketsDir, instanceId, nbsId)
 }
 
 func (s *nodeService) mountSocketDir(sourcePath string, req *csi.NodePublishVolumeRequest) error {
@@ -1082,8 +1113,9 @@ func (s *nodeService) mountSocketDir(sourcePath string, req *csi.NodePublishVolu
 		mountOptions = append(mountOptions, "ro")
 	}
 
+	nbsId := req.VolumeId
 	err := s.mountIfNeeded(
-		req.VolumeId,
+		nbsId,
 		sourcePath,
 		req.TargetPath,
 		"",
@@ -1097,11 +1129,11 @@ func (s *nodeService) mountSocketDir(sourcePath string, req *csi.NodePublishVolu
 
 func (s *nodeService) nodeUnstageVhostSocket(
 	ctx context.Context,
-	volumeID string,
+	nbsId string,
 	stageData *StageData) error {
 
 	log.Printf("csi.nodeUnstageVhostSocket[%s]: %s %s %s", stageData.Backend, stageData.InstanceId,
-		volumeID, stageData.RealStagePath)
+		nbsId, stageData.RealStagePath)
 
 	if stageData.Backend == "nbs" {
 		_, err := s.nbsClient.StopEndpoint(ctx, &nbsapi.TStopEndpointRequest{
@@ -1144,7 +1176,7 @@ func (s *nodeService) createDummyImgFile(dirPath string) error {
 }
 
 func (s *nodeService) mountBlockDevice(
-	volumeId string,
+	diskId string,
 	source string,
 	target string,
 	readOnly bool) error {
@@ -1171,7 +1203,7 @@ func (s *nodeService) mountBlockDevice(
 	if readOnly {
 		mountOptions = append(mountOptions, "ro")
 	}
-	err := s.mountIfNeeded(volumeId, source, target, "", mountOptions)
+	err := s.mountIfNeeded(diskId, source, target, "", mountOptions)
 	if err != nil {
 		return fmt.Errorf("failed to mount: %w", err)
 	}
@@ -1180,7 +1212,7 @@ func (s *nodeService) mountBlockDevice(
 }
 
 func (s *nodeService) mountIfNeeded(
-	volumeId string,
+	nbsId string,
 	source string,
 	target string,
 	fsType string,
@@ -1192,17 +1224,17 @@ func (s *nodeService) mountIfNeeded(
 	}
 
 	if mounted {
-		logVolume(volumeId, "target path %q is already mounted", target)
+		logVolume(nbsId, "target path %q is already mounted", target)
 		return nil
 	}
 
-	logVolume(volumeId, "mount source %q to target %q, fsType: %q, options: %v",
+	logVolume(nbsId, "mount source %q to target %q, fsType: %q, options: %v",
 		source, target, fsType, options)
 	return s.mounter.Mount(source, target, fsType, options)
 }
 
 func (s *nodeService) makeFilesystemIfNeeded(
-	volumeId string,
+	diskId string,
 	deviceName string,
 	fsType string) error {
 
@@ -1212,17 +1244,17 @@ func (s *nodeService) makeFilesystemIfNeeded(
 	}
 
 	if existed {
-		logVolume(volumeId, "filesystem exists on device: %q", deviceName)
+		logVolume(diskId, "filesystem exists on device: %q", deviceName)
 		return nil
 	}
 
-	logVolume(volumeId, "making filesystem %q on device %q", fsType, deviceName)
+	logVolume(diskId, "making filesystem %q on device %q", fsType, deviceName)
 	out, err := s.mounter.MakeFilesystem(deviceName, fsType)
 	if err != nil {
 		return fmt.Errorf("failed to make filesystem: %w, output %q", err, out)
 	}
 
-	logVolume(volumeId, "succeeded making filesystem: %q", out)
+	logVolume(diskId, "succeeded making filesystem: %q", out)
 	return nil
 }
 
@@ -1254,9 +1286,9 @@ func (s *nodeService) parseFsTargetPath(targetPath string) (string, string, erro
 		return "", "", fmt.Errorf("failed to parse TargetPath: %q", targetPath)
 	}
 
-	podID := matches[1]
-	pvcID := matches[2]
-	return podID, pvcID, nil
+	podId := matches[1]
+	pvcId := matches[2]
+	return podId, pvcId, nil
 }
 
 func (s *nodeService) parseBlkTargetPath(targetPath string) (string, string, error) {
@@ -1266,9 +1298,9 @@ func (s *nodeService) parseBlkTargetPath(targetPath string) (string, string, err
 		return "", "", fmt.Errorf("failed to parse TargetPath: %q", targetPath)
 	}
 
-	pvcID := matches[1]
-	podID := matches[2]
-	return podID, pvcID, nil
+	pvcId := matches[1]
+	podId := matches[2]
+	return podId, pvcId, nil
 }
 
 func (s *nodeService) isMountAccessType(targetPath string) bool {
@@ -1286,7 +1318,7 @@ func (s *nodeService) parsePodId(targetPath string) (string, error) {
 }
 
 func (s *nodeService) statusError(c codes.Code, msg string) error {
-	return status.Error(c, fmt.Sprintf("[n=%s]: %s", s.nodeID, msg))
+	return status.Error(c, fmt.Sprintf("[n=%s]: %s", s.nodeId, msg))
 }
 
 func (s *nodeService) statusErrorf(c codes.Code, format string, a ...interface{}) error {
@@ -1294,9 +1326,9 @@ func (s *nodeService) statusErrorf(c codes.Code, format string, a ...interface{}
 	return s.statusError(c, msg)
 }
 
-func logVolume(volumeId string, format string, v ...any) {
+func logVolume(nbsId string, format string, v ...any) {
 	msg := fmt.Sprintf(format, v...)
-	log.Printf("[v=%s]: %s", volumeId, msg)
+	log.Printf("[v=%s]: %s", nbsId, msg)
 }
 
 func (s *nodeService) NodeGetVolumeStats(
@@ -1395,9 +1427,10 @@ func (s *nodeService) NodeExpandVolume(
 		return nil, fmt.Errorf("NodeExpandVolume is not supported")
 	}
 
+	diskId := req.VolumeId
 	resp, err := s.nbsClient.DescribeVolume(
 		ctx, &nbsapi.TDescribeVolumeRequest{
-			DiskId: req.VolumeId,
+			DiskId: diskId,
 		},
 	)
 
@@ -1438,10 +1471,10 @@ func (s *nodeService) NodeExpandVolume(
 		return nil, err
 	}
 
-	endpointDirOld := s.getEndpointDir(podId, req.VolumeId)
+	endpointDirOld := s.getEndpointDir(podId, diskId)
 	unixSocketPathOld := filepath.Join(endpointDirOld, nbsSocketName)
 
-	endpointDirNew := s.getEndpointDir("", req.VolumeId)
+	endpointDirNew := s.getEndpointDir("", diskId)
 	unixSocketPathNew := filepath.Join(endpointDirNew, nbsSocketName)
 
 	listEndpointsResp, err := s.nbsClient.ListEndpoints(
@@ -1476,9 +1509,9 @@ func (s *nodeService) NodeExpandVolume(
 			"Failed to determine NBD Device filename")
 	}
 
-	log.Printf("Resize volume id %v blocks count %v", req.VolumeId, newBlocksCount)
+	log.Printf("Resize volume id %v blocks count %v", diskId, newBlocksCount)
 	_, err = s.nbsClient.ResizeVolume(ctx, &nbsapi.TResizeVolumeRequest{
-		DiskId:        req.VolumeId,
+		DiskId:        diskId,
 		BlocksCount:   newBlocksCount,
 		ConfigVersion: resp.Volume.ConfigVersion,
 	})
@@ -1488,9 +1521,8 @@ func (s *nodeService) NodeExpandVolume(
 		return nil, err
 	}
 
-	_, err = s.nbsClient.ResizeDevice(ctx, &nbsapi.TResizeDeviceRequest{
-		UnixSocketPath:    unixSocketPath,
-		DeviceSizeInBytes: newBlocksCount * uint64(resp.Volume.BlockSize),
+	_, err = s.nbsClient.RefreshEndpoint(ctx, &nbsapi.TRefreshEndpointRequest{
+		UnixSocketPath: unixSocketPath,
 	})
 
 	if err != nil {

@@ -59,6 +59,39 @@ void RejectVolumeRequest(
     NCloud::Send(ctx, caller, std::move(response), callerCookie);
 }
 
+////////////////////////////////////////////////////////////////////////////////
+
+void CopyDataBuffer(TEvService::TEvWriteBlocksLocalRequest& request)
+{
+    auto& record = request.Record;
+    auto g = record.Sglist.Acquire();
+    if (!g) {
+        return;
+    }
+
+    const auto& sgList = g.Get();
+    STORAGE_VERIFY_C(
+        record.GetBlocks().BuffersSize() == 0,
+        TWellKnownEntityTypes::DISK,
+        record.GetDiskId(),
+        TStringBuilder() << "Buffers: " << record.GetBlocks().BuffersSize());
+    TSgList newSgList;
+    newSgList.reserve(sgList.size());
+    for (const auto& block: sgList) {
+        auto& buffer = *record.MutableBlocks()->AddBuffers();
+        buffer.ReserveAndResize(block.Size());
+        memcpy(buffer.begin(), block.Data(), block.Size());
+        newSgList.emplace_back(buffer.data(), buffer.size());
+    }
+    record.Sglist.SetSgList(std::move(newSgList));
+}
+
+template <typename T>
+void CopyDataBuffer(T& t)
+{
+    Y_UNUSED(t);
+}
+
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -241,7 +274,7 @@ void TVolumeActor::SendRequestToPartition(
             ctx,
             wrappedRequest,
             partActorId,
-            TabletID()))
+            volumeRequestId))
     {
         // The request was sent to the partition with tracking of used blocks.
         return;
@@ -719,6 +752,10 @@ void TVolumeActor::ForwardRequest(
      *  to the underlying (storage) layer.
      */
     if constexpr (IsWriteMethod<TMethod>) {
+        if (State->GetUseIntermediateWriteBuffer()) {
+            CopyDataBuffer(*msg);
+        }
+
         const auto range = BuildRequestBlockRange(
             *msg,
             State->GetBlockSize());

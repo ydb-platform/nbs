@@ -226,6 +226,7 @@ private:
     bool UseRdmaForThisVolume = false;
     bool RdmaUnavailable = false;
     TDuration MaxTimedOutDeviceStateDuration;
+    bool UseIntermediateWriteBuffer = false;
 
     bool UseMirrorResync = false;
     bool ForceMirrorResync = false;
@@ -675,6 +676,11 @@ public:
     TDuration GetMaxTimedOutDeviceStateDuration() const
     {
         return MaxTimedOutDeviceStateDuration;
+    }
+
+    bool GetUseIntermediateWriteBuffer() const
+    {
+        return UseIntermediateWriteBuffer;
     }
 
     size_t GetUsedBlockCount() const

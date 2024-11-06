@@ -66,7 +66,6 @@ def init(with_netlink=True, with_endpoint_proxy=True):
     client_config_path = Path(yatest_common.output_path()) / "client-config.txt"
     client_config = TClientAppConfig()
     client_config.ClientConfig.CopyFrom(TClientConfig())
-    client_config.ClientConfig.RetryTimeout = 1
     client_config.ClientConfig.Host = "localhost"
     client_config.ClientConfig.InsecurePort = env.nbs_port
     client_config_path.write_text(MessageToString(client_config))

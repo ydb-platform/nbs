@@ -226,8 +226,8 @@ void TFileSystem::Read(
                     *callContext,
                     response.GetError(),
                     req,
-                    buffer.Data() + bufferOffset,
-                    buffer.Size() - bufferOffset);
+                    buffer.data() + bufferOffset,
+                    buffer.size() - bufferOffset);
             }
         });
 }

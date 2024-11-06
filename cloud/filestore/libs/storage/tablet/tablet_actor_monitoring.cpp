@@ -1078,7 +1078,7 @@ void TIndexTabletActor::HandleHttpInfo_Default(
             }
         } else {
             DIV_CLASS("alert") {
-                out << "Write allowed: " << message;
+                out << "Write allowed";
             }
         }
         if (BackpressurePeriodStart || BackpressureErrorCount) {

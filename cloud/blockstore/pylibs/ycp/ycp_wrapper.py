@@ -57,6 +57,7 @@ class YcpWrapper:
                         placement_group_name: str = None,
                         host_group: str = None,
                         image_name: str = None,
+                        image_folder_id: str = None,
                         name: str = None,
                         platform_id: str = None,
                         auto_delete: bool = True,
@@ -69,6 +70,7 @@ class YcpWrapper:
             cores=cores,
             memory=memory * 1024 ** 3,
             image_name=image_name or self._folder_desc.image_name,
+            image_folder_id=image_folder_id or self._folder_desc.image_folder_id or self._folder_desc.folder_id,
             zone_id=self._folder_desc.zone_id,
             subnet_name=self._folder_desc.subnet_name,
             subnet_id=self._folder_desc.subnet_id,
@@ -113,6 +115,7 @@ class YcpWrapper:
                     name: str = None,
                     kek_id: str = None,
                     image_name: str = None,
+                    image_folder_id: str = None,
                     snapshot_name: str = None,
                     auto_delete: bool = True,
                     description: str = None) -> Ycp.Disk:
@@ -129,6 +132,7 @@ class YcpWrapper:
             folder_id=self._folder_desc.folder_id,
             kek_id=kek_id,
             image_name=image_name,
+            image_folder_id=image_folder_id or self._folder_desc.image_folder_id or self._folder_desc.folder_id,
             snapshot_name=snapshot_name,
             description=description,
         )

@@ -182,4 +182,24 @@ TMiscNodeStats TIndexTabletState::GetMiscNodeStats() const
     };
 }
 
+bool TIndexTabletState::CalculateExpectedShardCount() const
+{
+    if (FileSystem.GetShardNo()) {
+        // sharding is flat
+        return 0;
+    }
+
+    const auto currentShardCount = FileSystem.ShardFileSystemIdsSize();
+    ui64 autoShardCount = 0;
+    if (FileSystem.GetAutomaticShardCreationEnabled()
+            && FileSystem.GetMaxShardSize())
+    {
+        const double fsSize =
+            FileSystem.GetBlockSize() * FileSystem.GetBlocksCount();
+        autoShardCount = ceil(fsSize / FileSystem.GetMaxShardSize());
+    }
+
+    return Max(currentShardCount, autoShardCount);
+}
+
 }   // namespace NCloud::NFileStore::NStorage

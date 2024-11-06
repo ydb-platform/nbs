@@ -2,6 +2,7 @@ package tests
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 
@@ -556,8 +557,15 @@ func TestImageServiceCreateQCOW2ImageFromURL(t *testing.T) {
 	testCreateQCOW2ImageFromURL(t)
 }
 
-func TestImageServiceCreateQCOW2ImageFromURLWhichIsOverwrittenInProcess(
+func testImageServiceCreateImageFromURLWhichIsOverwrittenInProcess(
 	t *testing.T,
+	imageID string,
+	imageURL string,
+	imageSize uint64,
+	imageCrc32 uint32,
+	overwrittenImageSize uint64,
+	overwrittenImageCrc32 uint32,
+	overwriteImageFile func(t *testing.T),
 ) {
 
 	ctx := testcommon.NewContext()
@@ -566,13 +574,11 @@ func TestImageServiceCreateQCOW2ImageFromURLWhichIsOverwrittenInProcess(
 	require.NoError(t, err)
 	defer client.Close()
 
-	imageID := t.Name()
-
 	reqCtx := testcommon.GetRequestContext(t, ctx)
 	operation, err := client.CreateImage(reqCtx, &disk_manager.CreateImageRequest{
 		Src: &disk_manager.CreateImageRequest_SrcUrl{
 			SrcUrl: &disk_manager.ImageUrl{
-				Url: testcommon.GetQCOW2ImageFileURL(),
+				Url: imageURL,
 			},
 		},
 		DstImageId: imageID,
@@ -584,37 +590,53 @@ func TestImageServiceCreateQCOW2ImageFromURLWhichIsOverwrittenInProcess(
 
 	// Need to add some variance for better testing.
 	common.WaitForRandomDuration(1000*time.Millisecond, 2*time.Second)
-	// Overwrites image URL contents.
-	testcommon.UseOtherQCOW2ImageFile(t)
+	overwriteImageFile(t)
 
 	imageResponse := disk_manager.CreateImageResponse{}
 	err = internal_client.WaitResponse(ctx, client, operation.Id, &imageResponse)
+
 	if err != nil {
-		// TODO: remove this branch after NBS-4002.
-		require.Contains(t, err.Error(), "wrong ETag")
-		return
+		if strings.Contains(err.Error(), "wrong ETag") {
+			testcommon.CheckErrorDetails(t, err, codes.Aborted, "", true /*internal*/)
+			return
+		}
+
+		// HTTP code 416 might be returned if overwritten image size is less
+		// than image size.
+		if strings.Contains(err.Error(), "http code 416") {
+			testcommon.CheckErrorDetails(t, err, codes.BadSource, "", true /*internal*/)
+			return
+		}
 	}
 
-	imageSize := testcommon.GetOtherQCOW2ImageSize(t)
-	imageCrc32 := testcommon.GetOtherQCOW2ImageCrc32(t)
+	var expectedImageCrc32 uint32
 
-	if int64(imageSize) != imageResponse.Size {
-		// Default image file is also allowed, image could have already been
-		// created before we started using 'other image'.
-		imageSize = testcommon.GetQCOW2ImageSize(t)
-		imageCrc32 = testcommon.GetQCOW2ImageCrc32(t)
-
-		require.Equal(t, int64(imageSize), imageResponse.Size)
+	if imageResponse.Size == int64(overwrittenImageSize) {
+		expectedImageCrc32 = overwrittenImageCrc32
+	} else if imageResponse.Size == int64(imageSize) {
+		// Initial (non-overwritten) image file is also allowed, image could
+		// have already been created before we started using 'other image'.
+		expectedImageCrc32 = imageCrc32
+	} else {
+		messageFormat := "Image has invalid size %v. It equals neither " +
+			"initial image size %v nor overwritten image size %v."
+		require.Fail(
+			t,
+			messageFormat,
+			imageResponse.Size,
+			imageSize,
+			overwrittenImageSize,
+		)
 	}
 
-	diskID := t.Name()
+	diskID := imageID
 
 	reqCtx = testcommon.GetRequestContext(t, ctx)
 	operation, err = client.CreateDisk(reqCtx, &disk_manager.CreateDiskRequest{
 		Src: &disk_manager.CreateDiskRequest_SrcImageId{
 			SrcImageId: imageID,
 		},
-		Size: int64(imageSize),
+		Size: imageResponse.Size,
 		Kind: disk_manager.DiskKind_DISK_KIND_SSD,
 		DiskId: &disk_manager.DiskId{
 			ZoneId: "zone-a",
@@ -632,13 +654,66 @@ func TestImageServiceCreateQCOW2ImageFromURLWhichIsOverwrittenInProcess(
 		ctx,
 		diskID,
 		nbs.DiskContentInfo{
-			ContentSize: imageSize,
-			Crc32:       imageCrc32,
+			ContentSize: uint64(imageResponse.Size),
+			Crc32:       expectedImageCrc32,
 		},
 	)
 	require.NoError(t, err)
 
 	testcommon.CheckConsistency(t, ctx)
+}
+
+func TestImageServiceCreateImageFromURLWhichIsOverwrittenInProcess(
+	t *testing.T,
+) {
+
+	testcommon.UseDefaultQCOW2ImageFile(t)
+	testImageServiceCreateImageFromURLWhichIsOverwrittenInProcess(
+		t,
+		t.Name()+"_qcow_1",
+		testcommon.GetQCOW2ImageFileURL(),
+		testcommon.GetQCOW2ImageSize(t),
+		testcommon.GetQCOW2ImageCrc32(t),
+		testcommon.GetOtherQCOW2ImageSize(t),
+		testcommon.GetOtherQCOW2ImageCrc32(t),
+		testcommon.UseOtherQCOW2ImageFile,
+	)
+
+	testcommon.UseOtherQCOW2ImageFile(t)
+	testImageServiceCreateImageFromURLWhichIsOverwrittenInProcess(
+		t,
+		t.Name()+"_qcow_2",
+		testcommon.GetQCOW2ImageFileURL(),
+		testcommon.GetOtherQCOW2ImageSize(t),
+		testcommon.GetOtherQCOW2ImageCrc32(t),
+		testcommon.GetQCOW2ImageSize(t),
+		testcommon.GetQCOW2ImageCrc32(t),
+		testcommon.UseDefaultQCOW2ImageFile,
+	)
+
+	testcommon.UseDefaultBigRawImageFile(t)
+	testImageServiceCreateImageFromURLWhichIsOverwrittenInProcess(
+		t,
+		t.Name()+"_raw_1",
+		testcommon.GetBigRawImageURL(),
+		testcommon.GetBigRawImageSize(t),
+		testcommon.GetBigRawImageCrc32(t),
+		testcommon.GetOtherBigRawImageSize(t),
+		testcommon.GetOtherBigRawImageCrc32(t),
+		testcommon.UseOtherBigRawImageFile,
+	)
+
+	testcommon.UseOtherBigRawImageFile(t)
+	testImageServiceCreateImageFromURLWhichIsOverwrittenInProcess(
+		t,
+		t.Name()+"_raw_2",
+		testcommon.GetBigRawImageURL(),
+		testcommon.GetOtherBigRawImageSize(t),
+		testcommon.GetOtherBigRawImageCrc32(t),
+		testcommon.GetBigRawImageSize(t),
+		testcommon.GetBigRawImageCrc32(t),
+		testcommon.UseDefaultBigRawImageFile,
+	)
 }
 
 ////////////////////////////////////////////////////////////////////////////////

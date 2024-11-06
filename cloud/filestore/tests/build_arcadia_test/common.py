@@ -104,6 +104,7 @@ def create_instance(
     memory: int,
     compute_node: str,
     image_name: str,
+    image_folder_id: str,
     platform_ids: list[str],
     description: str,
     logger
@@ -119,6 +120,7 @@ def create_instance(
                     memory=memory,
                     compute_node=compute_node,
                     image_name=image_name,
+                    image_folder_id=image_folder_id,
                     platform_id=platform_id,
                     description=description) as instance:
                 created = True

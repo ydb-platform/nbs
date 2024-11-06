@@ -296,6 +296,8 @@ public:
         return AllocatorRegistry.GetAllocator(tag);
     }
 
+    bool CalculateExpectedShardCount() const;
+
     //
     // FileSystem Stats
     //
@@ -1319,6 +1321,7 @@ public:
     void UpdateInMemoryIndexState(
         TVector<TInMemoryIndexState::TIndexStateRequest> nodeUpdates);
     void MarkNodeRefsLoadComplete();
+    TInMemoryIndexStateStats GetInMemoryIndexStateStats() const;
 };
 
 }   // namespace NCloud::NFileStore::NStorage
