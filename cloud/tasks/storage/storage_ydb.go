@@ -22,6 +22,7 @@ type storageYDB struct {
 	exceptHangingTaskTypes            []string
 	hangingTaskTimeout                time.Duration
 	missedEstimatesUntilTaskIsHanging uint64
+	regularTaskTraceExpirationTimeout time.Duration
 }
 
 func (s *storageYDB) CreateTask(

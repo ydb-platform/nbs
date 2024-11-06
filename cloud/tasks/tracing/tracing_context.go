@@ -10,21 +10,14 @@ import (
 
 ////////////////////////////////////////////////////////////////////////////////
 
-const (
-	traceparentHeaderKey = "traceparent"
-	tracestateHeaderKey  = "tracestate"
-)
-
-////////////////////////////////////////////////////////////////////////////////
-
 // Gets traceparent and tracestate headers from incoming grpc metadata.
 func GetTracingContext(ctx context.Context) context.Context {
 	tracingContext := headers.GetFromIncomingContext(ctx, []string{
-		traceparentHeaderKey,
-		tracestateHeaderKey,
+		headers.TraceparentHeaderKey,
+		headers.TracestateHeaderKey,
 	})
 
-	traceparent, ok := tracingContext[traceparentHeaderKey]
+	traceparent, ok := tracingContext[headers.TraceparentHeaderKey]
 	if !ok || len(traceparent) == 0 {
 		return ctx
 	}
@@ -43,15 +36,15 @@ func SetTracingContext(ctx context.Context) context.Context {
 
 	tracingContextHeaders := make(map[string]string)
 
-	traceparent, ok := mapCarrier[traceparentHeaderKey]
+	traceparent, ok := mapCarrier[headers.TraceparentHeaderKey]
 	if !ok {
 		return ctx
 	}
-	tracingContextHeaders[traceparentHeaderKey] = traceparent
+	tracingContextHeaders[headers.TraceparentHeaderKey] = traceparent
 
-	tracestate, ok := mapCarrier[tracestateHeaderKey]
+	tracestate, ok := mapCarrier[headers.TracestateHeaderKey]
 	if ok {
-		tracingContextHeaders[tracestateHeaderKey] = tracestate
+		tracingContextHeaders[headers.TracestateHeaderKey] = tracestate
 	}
 	return headers.Replace(ctx, tracingContextHeaders)
 }

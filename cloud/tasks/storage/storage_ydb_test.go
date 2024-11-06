@@ -13,6 +13,7 @@ import (
 	"github.com/stretchr/testify/require"
 	tasks_config "github.com/ydb-platform/nbs/cloud/tasks/config"
 	"github.com/ydb-platform/nbs/cloud/tasks/errors"
+	"github.com/ydb-platform/nbs/cloud/tasks/headers"
 	"github.com/ydb-platform/nbs/cloud/tasks/logging"
 	"github.com/ydb-platform/nbs/cloud/tasks/metrics"
 	"github.com/ydb-platform/nbs/cloud/tasks/metrics/empty"
@@ -4380,6 +4381,173 @@ func TestStorageYDBCancelRegularTask(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, TaskStatusCancelled, taskState.Status)
 	require.Equal(t, generationID+2, taskState.GenerationID)
+}
+
+func TestStorageYDBUpdateTracingContextInRegularTasks(t *testing.T) {
+	ctx, cancel := context.WithCancel(newContext())
+	defer cancel()
+
+	db, err := newYDB(ctx)
+	require.NoError(t, err)
+	defer db.Close(ctx)
+
+	metricsRegistry := mocks.NewRegistryMock()
+
+	taskStallingTimeout := "1s"
+	regularTaskTraceExpirationTimeout := "3s"
+	storage, err := newStorage(t, ctx, db, &tasks_config.TasksConfig{
+		TaskStallingTimeout:               &taskStallingTimeout,
+		RegularTaskTraceExpirationTimeout: &regularTaskTraceExpirationTimeout,
+	}, metricsRegistry)
+	require.NoError(t, err)
+
+	createdAt := time.Now()
+	timeLayout := time.RFC3339Nano
+	metadata := NewMetadata(map[string]string{
+		"key":                        "value",
+		headers.TraceparentHeaderKey: "traceparent",
+		headers.TracestateHeaderKey:  createdAt.Format(timeLayout),
+	})
+	metadataAnother := NewMetadata(map[string]string{
+		"key":                        "value_another",
+		headers.TraceparentHeaderKey: "traceparent_another",
+		headers.TracestateHeaderKey:  createdAt.Format(timeLayout),
+	})
+
+	task := TaskState{
+		IdempotencyKey: getIdempotencyKeyForTest(t),
+		TaskType:       "task",
+		Description:    "Some task",
+		CreatedAt:      createdAt,
+		CreatedBy:      "some_user",
+		ModifiedAt:     createdAt,
+		GenerationID:   0,
+		Status:         TaskStatusReadyToRun,
+		State:          []byte{},
+		LastRunner:     "runner",
+		LastHost:       "host",
+		Metadata:       metadata,
+	}
+	taskAnother := TaskState{
+		IdempotencyKey: getIdempotencyKeyForTest(t),
+		TaskType:       "task_another",
+		Description:    "Another task",
+		CreatedAt:      createdAt,
+		CreatedBy:      "some_user",
+		ModifiedAt:     createdAt,
+		GenerationID:   0,
+		Status:         TaskStatusReadyToRun,
+		State:          []byte{},
+		LastRunner:     "runner",
+		LastHost:       "host",
+		Metadata:       metadataAnother,
+	}
+
+	taskCount := 2
+	taskAnotherCount := 1
+	taskTotalCount := taskCount + taskAnotherCount
+
+	checkTasks := func(
+		taskInfos []TaskInfo,
+		expectedMetadata Metadata,
+		expectedMetadataAnother Metadata,
+	) {
+		require.Equal(t, taskTotalCount, len(taskInfos))
+
+		actualTaskCount := 0
+		actualTaskAnotherCount := 0
+
+		for _, taskInfo := range taskInfos {
+			taskActual, err := storage.GetTask(ctx, taskInfo.ID)
+			require.NoError(t, err)
+			// Everything except metadata should not be changed.
+			require.True(t, taskActual.CreatedAt.Before(createdAt.Add(time.Millisecond)))
+			require.True(t, createdAt.Before(taskActual.CreatedAt.Add(time.Millisecond)))
+
+			if taskActual.TaskType == "task" {
+				actualTaskCount++
+				require.Equal(t, expectedMetadata, taskActual.Metadata)
+			} else if taskActual.TaskType == "task_another" {
+				actualTaskAnotherCount++
+				require.Equal(t, expectedMetadataAnother, taskActual.Metadata)
+			} else {
+				require.Fail(t, "Unexpected task type %v", taskActual.TaskType)
+			}
+		}
+
+		require.Equal(t, taskCount, actualTaskCount)
+		require.Equal(t, taskAnotherCount, actualTaskAnotherCount)
+	}
+
+	metricsRegistry.GetCounter(
+		"created",
+		map[string]string{"type": task.TaskType},
+	).On("Add", int64(taskCount)).Once()
+	metricsRegistry.GetCounter(
+		"created",
+		map[string]string{"type": taskAnother.TaskType},
+	).On("Add", int64(taskAnotherCount)).Once()
+
+	schedule := TaskSchedule{
+		ScheduleInterval: time.Second,
+		MaxTasksInflight: taskCount,
+	}
+	scheduleAnother := TaskSchedule{
+		ScheduleInterval: time.Second,
+		MaxTasksInflight: taskAnotherCount,
+	}
+
+	err = storage.CreateRegularTasks(ctx, task, schedule)
+	require.NoError(t, err)
+	err = storage.CreateRegularTasks(ctx, taskAnother, scheduleAnother)
+	require.NoError(t, err)
+	metricsRegistry.AssertAllExpectations(t)
+
+	taskInfos, err := storage.ListTasksReadyToRun(ctx, 100500, nil)
+	require.NoError(t, err)
+	checkTasks(taskInfos, metadata, metadataAnother)
+
+	// Should not update tracing context yet.
+	task.CreatedAt = createdAt.Add(2 * time.Second)
+	task.Metadata = NewMetadata(map[string]string{
+		"key":                        "value_2",
+		headers.TraceparentHeaderKey: "traceparent_2",
+		headers.TracestateHeaderKey:  task.CreatedAt.Format(timeLayout),
+	})
+
+	err = storage.CreateRegularTasks(ctx, task, schedule)
+	require.NoError(t, err)
+
+	taskInfos, err = storage.ListTasksReadyToRun(ctx, 100500, nil)
+	require.NoError(t, err)
+	checkTasks(taskInfos, metadata, metadataAnother)
+
+	// Should update tracing context for all tasks of the given type.
+	task.CreatedAt = createdAt.Add(4 * time.Second)
+	metadata3 := NewMetadata(map[string]string{
+		"key":                        "value_3",
+		headers.TraceparentHeaderKey: "traceparent_3",
+		headers.TracestateHeaderKey:  task.CreatedAt.Format(timeLayout),
+	})
+	task.Metadata = metadata3
+
+	err = storage.CreateRegularTasks(ctx, task, schedule)
+	require.NoError(t, err)
+
+	taskInfos, err = storage.ListTasksReadyToRun(ctx, 100500, nil)
+	require.NoError(t, err)
+	// Everything except tracing context should not be changed.
+	checkTasks(
+		taskInfos,
+		NewMetadata(map[string]string{
+			"key":                        metadata.Vals()["key"],
+			headers.TraceparentHeaderKey: metadata3.Vals()[headers.TraceparentHeaderKey],
+			headers.TracestateHeaderKey:  metadata3.Vals()[headers.TracestateHeaderKey],
+		}),
+		metadataAnother,
+	)
+
+	metricsRegistry.AssertAllExpectations(t)
 }
 
 func TestStorageYDBClearEndedTasks(t *testing.T) {

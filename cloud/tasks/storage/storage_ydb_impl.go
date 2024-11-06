@@ -8,6 +8,7 @@ import (
 
 	"github.com/ydb-platform/nbs/cloud/tasks/common"
 	"github.com/ydb-platform/nbs/cloud/tasks/errors"
+	"github.com/ydb-platform/nbs/cloud/tasks/headers"
 	"github.com/ydb-platform/nbs/cloud/tasks/logging"
 	"github.com/ydb-platform/nbs/cloud/tasks/persistence"
 	grpc_codes "google.golang.org/grpc/codes"
@@ -682,6 +683,104 @@ func (s *storageYDB) addRegularTasks(
 	return s.updateTaskStates(ctx, tx, transitions)
 }
 
+func (s *storageYDB) updateTracingContextInRegularTasks(
+	ctx context.Context,
+	tx *persistence.Transaction,
+	state TaskState,
+) error {
+
+	stateTraceparent, ok := state.Metadata.Vals()[headers.TraceparentHeaderKey]
+	if !ok {
+		// No tracing context in the task state, nothing to do.
+		return nil
+	}
+
+	res, err := tx.Execute(ctx, fmt.Sprintf(`
+		--!syntax_v1
+		pragma TablePathPrefix = "%v";
+		declare $task_type as Utf8;
+
+		select *
+		from tasks
+		where task_type = $task_type
+	`, s.tablesPath),
+		persistence.ValueParam("$task_type", persistence.UTF8Value(state.TaskType)),
+	)
+	if err != nil {
+		return err
+	}
+	defer res.Close()
+
+	taskStates, err := s.scanTaskStates(ctx, res)
+	if err != nil {
+		return err
+	}
+
+	timeLayout := time.RFC3339Nano
+
+	metadataUpdates := make([]persistence.Value, 0)
+	addMetadataUpdate := func(taskID string, oldMetadata Metadata) {
+		newMetadata := oldMetadata.DeepCopy()
+		newMetadata.Put(headers.TraceparentHeaderKey, stateTraceparent)
+		newMetadata.Put(
+			headers.TracestateHeaderKey,
+			state.CreatedAt.Format(timeLayout),
+		)
+
+		metadataUpdates = append(
+			metadataUpdates,
+			persistence.StructValue(
+				persistence.StructFieldValue("id", persistence.UTF8Value(taskID)),
+				persistence.StructFieldValue(
+					"metadata",
+					persistence.BytesValue(common.MarshalStringMap(
+						newMetadata.Vals(),
+					)),
+				),
+			),
+		)
+	}
+
+	for _, taskState := range taskStates {
+		traceState, ok := taskState.Metadata.Vals()[headers.TracestateHeaderKey]
+		if !ok || len(traceState) == 0 {
+			addMetadataUpdate(taskState.ID, taskState.Metadata)
+			continue
+		} else {
+			previousTraceTimestamp, err := time.Parse(timeLayout, traceState)
+			if err != nil {
+				addMetadataUpdate(taskState.ID, taskState.Metadata)
+				continue
+			}
+
+			if previousTraceTimestamp.Add(
+				s.regularTaskTraceExpirationTimeout,
+			).Before(state.CreatedAt) {
+				addMetadataUpdate(taskState.ID, taskState.Metadata)
+				continue
+			}
+		}
+	}
+
+	if len(metadataUpdates) == 0 {
+		// Nothing to do.
+		return nil
+	}
+
+	_, err = tx.Execute(ctx, fmt.Sprintf(`
+		--!syntax_v1
+		pragma TablePathPrefix = "%v";
+		declare $metadataUpdates as List<Struct<id: Utf8, metadata: String>>;
+
+		update tasks on
+		select *
+		from AS_TABLE($metadataUpdates)
+	`, s.tablesPath),
+		persistence.ValueParam("$metadataUpdates", persistence.ListValue(metadataUpdates...)),
+	)
+	return err
+}
+
 func (s *storageYDB) createRegularTasks(
 	ctx context.Context,
 	session *persistence.Session,
@@ -731,7 +830,12 @@ func (s *storageYDB) createRegularTasks(
 	}
 
 	if schState != nil && schState.tasksInflight != 0 {
-		// Some tasks are in-flight, nothing to do.
+		// Some tasks are in-flight: update their tracing context if needed
+		// and return.
+		err = s.updateTracingContextInRegularTasks(ctx, tx, state)
+		if err != nil {
+			return err
+		}
 		return tx.Commit(ctx)
 	}
 
@@ -769,6 +873,11 @@ func (s *storageYDB) createRegularTasks(
 
 	if shouldSchedule {
 		err := s.addRegularTasks(ctx, tx, state, schedule.MaxTasksInflight)
+		if err != nil {
+			return err
+		}
+
+		err = s.updateTracingContextInRegularTasks(ctx, tx, state)
 		if err != nil {
 			return err
 		}

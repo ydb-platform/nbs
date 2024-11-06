@@ -8,6 +8,13 @@ import (
 
 ////////////////////////////////////////////////////////////////////////////////
 
+const (
+	TraceparentHeaderKey = "traceparent"
+	TracestateHeaderKey  = "tracestate"
+)
+
+////////////////////////////////////////////////////////////////////////////////
+
 func appendToIncomingContext(
 	ctx context.Context,
 	metadata grpc_metadata.MD,
@@ -130,8 +137,8 @@ func GetTracingHeaders(ctx context.Context) map[string]string {
 		"x-operation-id",
 		"x-request-id",
 		"x-request-uid",
-		"traceparent",
-		"tracestate",
+		TraceparentHeaderKey,
+		TracestateHeaderKey,
 	}
 	return GetFromIncomingContext(ctx, allowedKeys)
 }
