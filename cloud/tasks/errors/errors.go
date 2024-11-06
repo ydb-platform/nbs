@@ -485,8 +485,8 @@ func IsSilent(err error) bool {
 ////////////////////////////////////////////////////////////////////////////////
 
 func ErrorForTracing(err error) string {
-	if errForTracing, ok := err.(errorForTracing); ok {
-		return errForTracing.ErrorForTracing()
+	if e, ok := err.(errorForTracing); ok {
+		return e.ErrorForTracing()
 	}
 	return err.Error()
 }
