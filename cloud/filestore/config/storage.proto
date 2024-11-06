@@ -458,4 +458,15 @@ message TStorageConfig
 
     // Enable Writeback cache on guest (fuse client)
     optional bool GuestWritebackCacheEnabled = 405;
+
+    // Enables automatic shard creation for new filesystems upon create/resize
+    // operations. Shard count is calculated based on FS size. If this flag is
+    // enabled, new filesystems will have this feature enabled and will create
+    // extra shards upon resize if needed. Existing filesystems are not
+    // affected. Filesystems created with this flag enabled will maintain the
+    // autosharding feature even if this flag is disabled in the global storage
+    // config.
+    optional bool AutomaticShardCreationEnabled = 405;
+    // Affects shard count calculation if AutomaticShardCreationEnabled is on.
+    optional uint64 MaxShardSize = 406;
 }

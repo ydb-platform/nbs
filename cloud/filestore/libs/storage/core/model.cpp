@@ -1,10 +1,11 @@
 #include "model.h"
 
+#include <cloud/filestore/libs/service/filestore.h>
 #include <cloud/filestore/libs/storage/model/channel_data_kind.h>
 
 #include <cloud/storage/core/protos/media.pb.h>
 
-#include <ydb/core/protos/filestore_config.pb.h>
+#include <util/string/printf.h>
 
 namespace NCloud::NFileStore::NStorage {
 
@@ -277,6 +278,23 @@ TPoolKinds GetPoolKinds(
 
 ////////////////////////////////////////////////////////////////////////////////
 
+ui32 ComputeShardCount(
+    const TStorageConfig& config,
+    const NKikimrFileStore::TConfig& fileStore)
+{
+    const double fileStoreSize =
+        fileStore.GetBlocksCount() * fileStore.GetBlockSize();
+
+    ui32 shardCount = std::ceil(fileStoreSize / config.GetMaxShardSize());
+    Y_DEBUG_ABORT_UNLESS(
+        shardCount >= 1,
+        "size %f shard %lu",
+        fileStoreSize,
+        config.GetMaxShardSize());
+
+    return Min(shardCount, MaxShardCount);
+}
+
 ui32 ComputeAllocationUnitCount(
     const TStorageConfig& config,
     const NKikimrFileStore::TConfig& fileStore)
@@ -285,7 +303,7 @@ ui32 ComputeAllocationUnitCount(
         return 1;
     }
 
-    double fileStoreSize =
+    const double fileStoreSize =
         fileStore.GetBlocksCount() * fileStore.GetBlockSize() / double(1_GB);
 
     const auto unit = GetAllocationUnit(
@@ -437,10 +455,6 @@ ui32 NodesLimit(
     return Max(limit, static_cast<ui64>(config.GetDefaultNodesLimit()));
 }
 
-}   // namespace
-
-////////////////////////////////////////////////////////////////////////////////
-
 #define PERFORMANCE_PROFILE_PARAMETERS_SIMPLE(xxx, ...)                        \
     xxx(ThrottlingEnabled,                      __VA_ARGS__)                   \
     xxx(BoostTime,                              __VA_ARGS__)                   \
@@ -463,13 +477,11 @@ ui32 NodesLimit(
 
 void SetupFileStorePerformanceAndChannels(
     bool allocateMixed0Channel,
+    const ui32 allocationUnitCount,
     const TStorageConfig& config,
     NKikimrFileStore::TConfig& fileStore,
     const NProto::TFileStorePerformanceProfile& clientProfile)
 {
-    const auto allocationUnitCount =
-        ComputeAllocationUnitCount(config, fileStore);
-
     OverrideStorageMediaKind(config, fileStore);
 
 #define SETUP_PARAMETER_SIMPLE(name, ...)                                      \
@@ -499,6 +511,56 @@ void SetupFileStorePerformanceAndChannels(
         allocateMixed0Channel,
         config,
         fileStore);
+}
+
+}   // namespace
+
+////////////////////////////////////////////////////////////////////////////////
+
+void SetupFileStorePerformanceAndChannels(
+    bool allocateMixed0Channel,
+    const TStorageConfig& config,
+    NKikimrFileStore::TConfig& fileStore,
+    const NProto::TFileStorePerformanceProfile& clientProfile)
+{
+    SetupFileStorePerformanceAndChannels(
+        allocateMixed0Channel,
+        ComputeAllocationUnitCount(config, fileStore),
+        config,
+        fileStore,
+        clientProfile);
+}
+
+TMultiShardFileStoreConfig SetupMultiShardFileStorePerformanceAndChannels(
+    const TStorageConfig& config,
+    const NKikimrFileStore::TConfig& fileStore,
+    const NProto::TFileStorePerformanceProfile& clientProfile)
+{
+    TMultiShardFileStoreConfig result;
+    result.MainFileSystemConfig = fileStore;
+    SetupFileStorePerformanceAndChannels(
+        false, // allocateMixed0Channel
+        1, // allocationUnitCount
+        config,
+        result.MainFileSystemConfig,
+        clientProfile);
+
+    const auto shardCount = ComputeShardCount(config, fileStore);
+    result.ShardConfigs.resize(shardCount);
+    for (ui32 i = 0; i < shardCount; ++i) {
+        result.ShardConfigs[i] = fileStore;
+        result.ShardConfigs[i].SetBlocksCount(
+            config.GetMaxShardSize() / fileStore.GetBlockSize());
+        result.ShardConfigs[i].SetFileSystemId(
+            Sprintf("%s_s%u", fileStore.GetFileSystemId().c_str(), i + 1));
+        SetupFileStorePerformanceAndChannels(
+            false, // allocateMixed0Channel
+            config,
+            result.ShardConfigs[i],
+            clientProfile);
+    }
+
+    return result;
 }
 
 }   // namespace NCloud::NFileStore::NStorage
