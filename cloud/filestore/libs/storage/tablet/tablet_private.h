@@ -313,7 +313,6 @@ struct TEvIndexTabletPrivate
 
     struct TWriteBlobResponse
     {
-        TVector<TBlobCompressionInfo> BlobCompressionInfos;
     };
 
     struct TWriteBlobCompleted: TDataOperationCompleted

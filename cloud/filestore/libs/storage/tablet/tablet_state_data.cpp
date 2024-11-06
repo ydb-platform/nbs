@@ -883,7 +883,7 @@ bool TIndexTabletState::UpdateBlockLists(
         rangeId,
         blob.BlobId,
         blob.Blocks,
-        TBlobCompressionInfo()  /* compression info remains unchanged */);
+        TBlobCompressionInfo()  /* remains unchanged */);
 }
 
 ui32 TIndexTabletState::CleanupBlockDeletions(
@@ -916,7 +916,7 @@ ui32 TIndexTabletState::CleanupBlockDeletions(
             rangeId,
             blob.BlobMeta.BlobId,
             blob.BlobMeta.Blocks,
-            TBlobCompressionInfo()  /* compression info remains unchanged */);
+            TBlobCompressionInfo()  /* remains unchanged */);
         if (!written) {
             ++removedBlobs;
         }
@@ -1044,7 +1044,7 @@ void TIndexTabletState::RewriteMixedBlocks(
         rangeId,
         blob.BlobId,
         blockList,
-        TBlobCompressionInfo(), // compression info remains unchanged
+        TBlobCompressionInfo(), // remains unchanged
         rebaseResult.GarbageBlocks,
         rebaseResult.CheckpointBlocks);
 

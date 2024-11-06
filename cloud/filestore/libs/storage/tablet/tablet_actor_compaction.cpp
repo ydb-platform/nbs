@@ -32,6 +32,7 @@ private:
     const ui64 CommitId;
     const ui32 RangeId;
     const ui32 BlockSize;
+    const bool BlobCompressionEnabled;
     const IProfileLogPtr ProfileLog;
 
     TVector<TMixedBlobMeta> SrcBlobs;
@@ -53,6 +54,7 @@ public:
         ui64 commitId,
         ui32 rangeId,
         ui32 blockSize,
+        bool blobCompressionEnabled,
         IProfileLogPtr profileLog,
         TVector<TMixedBlobMeta> srcBlobs,
         TVector<TCompactionBlob> dstBlobs,
@@ -97,6 +99,7 @@ TCompactionActor::TCompactionActor(
         ui64 commitId,
         ui32 rangeId,
         ui32 blockSize,
+        bool blobCompressionEnabled,
         IProfileLogPtr profileLog,
         TVector<TMixedBlobMeta> srcBlobs,
         TVector<TCompactionBlob> dstBlobs,
@@ -108,6 +111,7 @@ TCompactionActor::TCompactionActor(
     , CommitId(commitId)
     , RangeId(rangeId)
     , BlockSize(blockSize)
+    , BlobCompressionEnabled(blobCompressionEnabled)
     , ProfileLog(std::move(profileLog))
     , SrcBlobs(std::move(srcBlobs))
     , DstBlobs(std::move(dstBlobs))
@@ -196,12 +200,16 @@ void TCompactionActor::WriteBlob(const TActorContext& ctx)
         RequestInfo->CallContext
     );
 
-    for (const auto& blob: DstBlobs) {
+    for (auto& blob: DstBlobs) {
         TString blobContent(Reserve(BlockSize * blob.Blocks.size()));
 
         for (const auto& block: blob.Blocks) {
             auto& buffer = Buffers[block.BlobId];
             blobContent.append(buffer->GetBlock(block.BlobOffset));
+        }
+
+        if (BlobCompressionEnabled) {
+            blob.BlobCompressionInfo = TryCompressBlob(/* BlobCodec ,*/ &blobContent);
         }
 
         request->Blobs.emplace_back(blob.BlobId, std::move(blobContent));
@@ -220,13 +228,6 @@ void TCompactionActor::HandleWriteBlobResponse(
     if (FAILED(msg->GetStatus())) {
         ReplyAndDie(ctx, msg->GetError());
         return;
-    }
-
-    if (msg->BlobCompressionInfos) {
-        TABLET_VERIFY(msg->BlobCompressionInfos.size() == DstBlobs.size());
-        for (size_t i = 0; i < msg->BlobCompressionInfos.size(); i++) {
-            DstBlobs[i].BlobCompressionInfo = std::move(msg->BlobCompressionInfos[i]);
-        }
     }
 
     AddBlob(ctx);
@@ -717,6 +718,7 @@ void TIndexTabletActor::CompleteTx_Compaction(
         args.CommitId,
         args.RangeId,
         GetBlockSize(),
+        Config->GetBlobCompressionEnabled(),
         ProfileLog,
         std::move(args.CompactionBlobs),
         std::move(dstBlobs),

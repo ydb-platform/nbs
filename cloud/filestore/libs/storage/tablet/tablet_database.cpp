@@ -1223,21 +1223,26 @@ void TIndexTabletDatabase::WriteMixedBlocks(
         blockList.GetEncodedBlocks().begin(),
         blockList.GetEncodedBlocks().end()};
 
-    // TODO: write blobCompressionInfo if it is not empty
-    Y_UNUSED(blobCompressionInfo);
-
     TStringBuf encodedDeletionMarkers{
         blockList.GetEncodedDeletionMarkers().begin(),
         blockList.GetEncodedDeletionMarkers().end()};
 
-    Table<TTable>()
-        .Key(rangeId, blobId.CommitId(), blobId.UniqueId())
-        .Update(
-            NIceDb::TUpdate<TTable::Blocks>(encodedBlocks),
-            NIceDb::TUpdate<TTable::DeletionMarkers>(encodedDeletionMarkers),
-            NIceDb::TUpdate<TTable::GarbageBlocksCount>(garbageBlocks),
-            NIceDb::TUpdate<TTable::CheckpointBlocksCount>(checkpointBlocks)
+    auto value = Table<TTable>()
+        .Key(rangeId, blobId.CommitId(), blobId.UniqueId());
+
+    value.Update(
+        NIceDb::TUpdate<TTable::Blocks>(encodedBlocks),
+        NIceDb::TUpdate<TTable::DeletionMarkers>(encodedDeletionMarkers),
+        NIceDb::TUpdate<TTable::GarbageBlocksCount>(garbageBlocks),
+        NIceDb::TUpdate<TTable::CheckpointBlocksCount>(checkpointBlocks)
+    );
+
+    if (blobCompressionInfo) {
+        value.Update(
+            NIceDb::TUpdate<TTable::BlobCompressionInfo>(
+                blobCompressionInfo.Encode())
         );
+    }
 }
 
 void TIndexTabletDatabase::DeleteMixedBlocks(

@@ -292,6 +292,7 @@ struct TIndexTabletSchema
         struct DeletionMarkers          : Column<5, NKikimr::NScheme::NTypeIds::String> { using Type = TStringBuf; };
         struct GarbageBlocksCount       : Column<6, NKikimr::NScheme::NTypeIds::Uint32> {};
         struct CheckpointBlocksCount    : Column<7, NKikimr::NScheme::NTypeIds::Uint32> {};
+        struct BlobCompressionInfo      : Column<8, NKikimr::NScheme::NTypeIds::String> { using Type = TStringBuf; };
 
         using TKey = TableKey<RangeId, BlobCommitId, BlobUniqueId>;
 
@@ -302,7 +303,8 @@ struct TIndexTabletSchema
             Blocks,
             DeletionMarkers,
             GarbageBlocksCount,
-            CheckpointBlocksCount
+            CheckpointBlocksCount,
+            BlobCompressionInfo
         >;
 
         using StoragePolicy = TStoragePolicy<IndexChannel>;
