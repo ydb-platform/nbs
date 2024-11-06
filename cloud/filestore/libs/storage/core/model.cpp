@@ -1,5 +1,6 @@
 #include "model.h"
 
+#include <cloud/filestore/libs/service/filestore.h>
 #include <cloud/filestore/libs/storage/model/channel_data_kind.h>
 
 #include <cloud/storage/core/protos/media.pb.h>
@@ -291,7 +292,7 @@ ui32 ComputeShardCount(
         fileStoreSize,
         config.GetMaxShardSize());
 
-    return shardCount;
+    return Min(shardCount, MaxShardCount);
 }
 
 ui32 ComputeAllocationUnitCount(

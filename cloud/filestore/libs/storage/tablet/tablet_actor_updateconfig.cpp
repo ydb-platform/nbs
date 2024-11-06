@@ -275,6 +275,11 @@ void TIndexTabletActor::HandleConfigureShards(
             " is smaller than prev shard list: "
             << msg->Record.GetShardFileSystemIds().size() << " < "
             << shardIds.size());
+    } else if (msg->Record.GetShardFileSystemIds().size() > MaxShardCount) {
+        error = MakeError(E_ARGUMENT, TStringBuilder() << "new shard list"
+            " is bigger than limit: "
+            << msg->Record.GetShardFileSystemIds().size() << " > "
+            << MaxShardCount);
     } else {
         for (int i = 0; i < shardIds.size(); ++i) {
             if (shardIds[i] != msg->Record.GetShardFileSystemIds(i)) {

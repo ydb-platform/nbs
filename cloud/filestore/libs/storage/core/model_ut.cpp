@@ -423,7 +423,7 @@ Y_UNIT_TEST_SUITE(TModel)
     }                                                                          \
 // CHECK_CHANNEL
 
-    struct ChannelState final
+    struct TChannelState final
     {
         ui32 DataType;
         TString PoolType;
@@ -441,7 +441,7 @@ Y_UNIT_TEST_SUITE(TModel)
         ui32 minChannelsCount,
         bool allocateMixed0,
         ui32 channelsCount,
-        TVector<ChannelState> channels,
+        TVector<TChannelState> channels,
         NKikimrFileStore::TConfig& kikimrConfig,
         NProto::TStorageConfig& storageConfig)
     {
@@ -482,8 +482,8 @@ Y_UNIT_TEST_SUITE(TModel)
     Y_UNIT_TEST_F(ShouldCorrectlySetupChannelsHDDMinGreater, TConfigs)
     {
         using namespace ::NCloud::NProto;
-        TVector<ChannelState> channels = {
-            ChannelState{
+        TVector<TChannelState> channels = {
+            TChannelState{
                 .DataType = static_cast<ui32>(EChannelDataKind::System),
                 .PoolType = "rot",
                 .Size = 128_MB,
@@ -492,7 +492,7 @@ Y_UNIT_TEST_SUITE(TModel)
                 .WriteIops = 300,
                 .WriteBandwidth = 31'457'280,
             },
-            ChannelState{
+            TChannelState{
                 .DataType = static_cast<ui32>(EChannelDataKind::Index),
                 .PoolType = "rot",
                 .Size = 16_MB,
@@ -501,7 +501,7 @@ Y_UNIT_TEST_SUITE(TModel)
                 .WriteIops = 300,
                 .WriteBandwidth = 31'457'280,
             },
-            ChannelState{
+            TChannelState{
                 .DataType = static_cast<ui32>(EChannelDataKind::Fresh),
                 .PoolType = "rot",
                 .Size = 128_MB,
@@ -513,7 +513,7 @@ Y_UNIT_TEST_SUITE(TModel)
         };
         for (size_t i = 3; i < 7; ++i) {
             channels.push_back(
-                ChannelState{
+                TChannelState{
                     .DataType = static_cast<ui32>(EChannelDataKind::Mixed),
                     .PoolType = "rot",
                     .Size = 4_GB,
@@ -538,8 +538,8 @@ Y_UNIT_TEST_SUITE(TModel)
     Y_UNIT_TEST_F(ShouldCorrectlySetupChannelsHDDMinLower, TConfigs)
     {
         using namespace ::NCloud::NProto;
-        TVector<ChannelState> channels = {
-            ChannelState{
+        TVector<TChannelState> channels = {
+            TChannelState{
                 .DataType = static_cast<ui32>(EChannelDataKind::System),
                 .PoolType = "rot",
                 .Size = 128_MB,
@@ -548,7 +548,7 @@ Y_UNIT_TEST_SUITE(TModel)
                 .WriteIops = 300,
                 .WriteBandwidth = 31'457'280,
             },
-            ChannelState{
+            TChannelState{
                 .DataType = static_cast<ui32>(EChannelDataKind::Index),
                 .PoolType = "rot",
                 .Size = 16_MB,
@@ -557,7 +557,7 @@ Y_UNIT_TEST_SUITE(TModel)
                 .WriteIops = 300,
                 .WriteBandwidth = 31'457'280,
             },
-            ChannelState{
+            TChannelState{
                 .DataType = static_cast<ui32>(EChannelDataKind::Fresh),
                 .PoolType = "rot",
                 .Size = 128_MB,
@@ -569,7 +569,7 @@ Y_UNIT_TEST_SUITE(TModel)
         };
         for (size_t i = 3; i < 6; ++i) {
             channels.push_back(
-                ChannelState{
+                TChannelState{
                     .DataType = static_cast<ui32>(EChannelDataKind::Mixed),
                     .PoolType = "rot",
                     .Size = 4_GB,
@@ -594,8 +594,8 @@ Y_UNIT_TEST_SUITE(TModel)
     Y_UNIT_TEST_F(ShouldCorrectlySetupChannelsHDDEnormousSize, TConfigs)
     {
         using namespace ::NCloud::NProto;
-        TVector<ChannelState> channels = {
-            ChannelState{
+        TVector<TChannelState> channels = {
+            TChannelState{
                 .DataType = static_cast<ui32>(EChannelDataKind::System),
                 .PoolType = "rot",
                 .Size = 128_MB,
@@ -604,7 +604,7 @@ Y_UNIT_TEST_SUITE(TModel)
                 .WriteIops = 4'800,
                 .WriteBandwidth = 251'658'240,
             },
-            ChannelState{
+            TChannelState{
                 .DataType = static_cast<ui32>(EChannelDataKind::Index),
                 .PoolType = "rot",
                 .Size = 16_MB,
@@ -613,7 +613,7 @@ Y_UNIT_TEST_SUITE(TModel)
                 .WriteIops = 4'800,
                 .WriteBandwidth = 251'658'240,
             },
-            ChannelState{
+            TChannelState{
                 .DataType = static_cast<ui32>(EChannelDataKind::Fresh),
                 .PoolType = "rot",
                 .Size = 128_MB,
@@ -625,7 +625,7 @@ Y_UNIT_TEST_SUITE(TModel)
         };
         for (size_t i = 3; i < 19; ++i) {
             channels.push_back(
-                ChannelState{
+                TChannelState{
                     .DataType = static_cast<ui32>(EChannelDataKind::Mixed),
                     .PoolType = "rot",
                     .Size = 4_GB,
@@ -653,8 +653,8 @@ Y_UNIT_TEST_SUITE(TModel)
     Y_UNIT_TEST_F(ShouldCorrectlySetupChannelsSSDMinGreater, TConfigs)
     {
         using namespace ::NCloud::NProto;
-        TVector<ChannelState> channels = {
-            ChannelState{
+        TVector<TChannelState> channels = {
+            TChannelState{
                 .DataType = static_cast<ui32>(EChannelDataKind::System),
                 .PoolType = "ssd",
                 .Size = 128_MB,
@@ -663,7 +663,7 @@ Y_UNIT_TEST_SUITE(TModel)
                 .WriteIops = 1'000,
                 .WriteBandwidth = 15'728'640,
             },
-            ChannelState{
+            TChannelState{
                 .DataType = static_cast<ui32>(EChannelDataKind::Index),
                 .PoolType = "ssd",
                 .Size = 16_MB,
@@ -672,7 +672,7 @@ Y_UNIT_TEST_SUITE(TModel)
                 .WriteIops = 1'000,
                 .WriteBandwidth = 15'728'640,
             },
-            ChannelState{
+            TChannelState{
                 .DataType = static_cast<ui32>(EChannelDataKind::Fresh),
                 .PoolType = "ssd",
                 .Size = 128_MB,
@@ -684,7 +684,7 @@ Y_UNIT_TEST_SUITE(TModel)
         };
         for (size_t i = 3; i < 7; ++i) {
             channels.push_back(
-                ChannelState{
+                TChannelState{
                     .DataType = static_cast<ui32>(EChannelDataKind::Mixed),
                     .PoolType = "ssd",
                     .Size = 2_GB,
@@ -709,8 +709,8 @@ Y_UNIT_TEST_SUITE(TModel)
     Y_UNIT_TEST_F(ShouldCorrectlySetupChannelsSSDMinLower, TConfigs)
     {
         using namespace ::NCloud::NProto;
-        TVector<ChannelState> channels = {
-            ChannelState{
+        TVector<TChannelState> channels = {
+            TChannelState{
                 .DataType = static_cast<ui32>(EChannelDataKind::System),
                 .PoolType = "ssd",
                 .Size = 128_MB,
@@ -719,7 +719,7 @@ Y_UNIT_TEST_SUITE(TModel)
                 .WriteIops = 1'000,
                 .WriteBandwidth = 15'728'640,
             },
-            ChannelState{
+            TChannelState{
                 .DataType = static_cast<ui32>(EChannelDataKind::Index),
                 .PoolType = "ssd",
                 .Size = 16_MB,
@@ -728,7 +728,7 @@ Y_UNIT_TEST_SUITE(TModel)
                 .WriteIops = 1'000,
                 .WriteBandwidth = 15'728'640,
             },
-            ChannelState{
+            TChannelState{
                 .DataType = static_cast<ui32>(EChannelDataKind::Fresh),
                 .PoolType = "ssd",
                 .Size = 128_MB,
@@ -740,7 +740,7 @@ Y_UNIT_TEST_SUITE(TModel)
         };
         for (size_t i = 3; i < 6; ++i) {
             channels.push_back(
-                ChannelState{
+                TChannelState{
                     .DataType = static_cast<ui32>(EChannelDataKind::Mixed),
                     .PoolType = "ssd",
                     .Size = 2_GB,
@@ -765,8 +765,8 @@ Y_UNIT_TEST_SUITE(TModel)
     Y_UNIT_TEST_F(ShouldCorrectlySetupChannelsSSDEnormousSize, TConfigs)
     {
         using namespace ::NCloud::NProto;
-        TVector<ChannelState> channels = {
-            ChannelState{
+        TVector<TChannelState> channels = {
+            TChannelState{
                 .DataType = static_cast<ui32>(EChannelDataKind::System),
                 .PoolType = "ssd",
                 .Size = 128_MB,
@@ -775,7 +775,7 @@ Y_UNIT_TEST_SUITE(TModel)
                 .WriteIops = 31'000,
                 .WriteBandwidth = 471'859'200,
             },
-            ChannelState{
+            TChannelState{
                 .DataType = static_cast<ui32>(EChannelDataKind::Index),
                 .PoolType = "ssd",
                 .Size = 16_MB,
@@ -784,7 +784,7 @@ Y_UNIT_TEST_SUITE(TModel)
                 .WriteIops = 31'000,
                 .WriteBandwidth = 471'859'200,
             },
-            ChannelState{
+            TChannelState{
                 .DataType = static_cast<ui32>(EChannelDataKind::Fresh),
                 .PoolType = "ssd",
                 .Size = 128_MB,
@@ -796,7 +796,7 @@ Y_UNIT_TEST_SUITE(TModel)
         };
         for (size_t i = 3; i < 34; ++i) {
             channels.push_back(
-                ChannelState{
+                TChannelState{
                     .DataType = static_cast<ui32>(EChannelDataKind::Mixed),
                     .PoolType = "ssd",
                     .Size = 2_GB,
@@ -824,8 +824,8 @@ Y_UNIT_TEST_SUITE(TModel)
     Y_UNIT_TEST_F(ShouldCorrectlySetupChannelsHybridMinGreater, TConfigs)
     {
         using namespace ::NCloud::NProto;
-        TVector<ChannelState> channels = {
-            ChannelState{
+        TVector<TChannelState> channels = {
+            TChannelState{
                 .DataType = static_cast<ui32>(EChannelDataKind::System),
                 .PoolType = "ssd",
                 .Size = 128_MB,
@@ -834,7 +834,7 @@ Y_UNIT_TEST_SUITE(TModel)
                 .WriteIops = 300,
                 .WriteBandwidth = 31'457'280,
             },
-            ChannelState{
+            TChannelState{
                 .DataType = static_cast<ui32>(EChannelDataKind::Index),
                 .PoolType = "ssd",
                 .Size = 16_MB,
@@ -843,7 +843,7 @@ Y_UNIT_TEST_SUITE(TModel)
                 .WriteIops = 300,
                 .WriteBandwidth = 31'457'280,
             },
-            ChannelState{
+            TChannelState{
                 .DataType = static_cast<ui32>(EChannelDataKind::Fresh),
                 .PoolType = "ssd",
                 .Size = 128_MB,
@@ -855,7 +855,7 @@ Y_UNIT_TEST_SUITE(TModel)
         };
         for (size_t i = 3; i < 7; ++i) {
             channels.push_back(
-                ChannelState{
+                TChannelState{
                     .DataType = static_cast<ui32>(EChannelDataKind::Mixed),
                     .PoolType = "rot",
                     .Size = 4_GB,
@@ -880,8 +880,8 @@ Y_UNIT_TEST_SUITE(TModel)
     Y_UNIT_TEST_F(ShouldCorrectlySetupChannelsHybridMinLower, TConfigs)
     {
         using namespace ::NCloud::NProto;
-        TVector<ChannelState> channels = {
-            ChannelState{
+        TVector<TChannelState> channels = {
+            TChannelState{
                 .DataType = static_cast<ui32>(EChannelDataKind::System),
                 .PoolType = "ssd",
                 .Size = 128_MB,
@@ -890,7 +890,7 @@ Y_UNIT_TEST_SUITE(TModel)
                 .WriteIops = 300,
                 .WriteBandwidth = 31'457'280,
             },
-            ChannelState{
+            TChannelState{
                 .DataType = static_cast<ui32>(EChannelDataKind::Index),
                 .PoolType = "ssd",
                 .Size = 16_MB,
@@ -899,7 +899,7 @@ Y_UNIT_TEST_SUITE(TModel)
                 .WriteIops = 300,
                 .WriteBandwidth = 31'457'280,
             },
-            ChannelState{
+            TChannelState{
                 .DataType = static_cast<ui32>(EChannelDataKind::Fresh),
                 .PoolType = "ssd",
                 .Size = 128_MB,
@@ -911,7 +911,7 @@ Y_UNIT_TEST_SUITE(TModel)
         };
         for (size_t i = 3; i < 6; ++i) {
             channels.push_back(
-                ChannelState{
+                TChannelState{
                     .DataType = static_cast<ui32>(EChannelDataKind::Mixed),
                     .PoolType = "rot",
                     .Size = 4_GB,
@@ -936,8 +936,8 @@ Y_UNIT_TEST_SUITE(TModel)
     Y_UNIT_TEST_F(ShouldCorrectlySetupChannelsHybridEnormousSize, TConfigs)
     {
         using namespace ::NCloud::NProto;
-        TVector<ChannelState> channels = {
-            ChannelState{
+        TVector<TChannelState> channels = {
+            TChannelState{
                 .DataType = static_cast<ui32>(EChannelDataKind::System),
                 .PoolType = "ssd",
                 .Size = 128_MB,
@@ -946,7 +946,7 @@ Y_UNIT_TEST_SUITE(TModel)
                 .WriteIops = 4'800,
                 .WriteBandwidth = 251'658'240,
             },
-            ChannelState{
+            TChannelState{
                 .DataType = static_cast<ui32>(EChannelDataKind::Index),
                 .PoolType = "ssd",
                 .Size = 16_MB,
@@ -955,7 +955,7 @@ Y_UNIT_TEST_SUITE(TModel)
                 .WriteIops = 4'800,
                 .WriteBandwidth = 251'658'240,
             },
-            ChannelState{
+            TChannelState{
                 .DataType = static_cast<ui32>(EChannelDataKind::Fresh),
                 .PoolType = "ssd",
                 .Size = 128_MB,
@@ -967,7 +967,7 @@ Y_UNIT_TEST_SUITE(TModel)
         };
         for (size_t i = 3; i < 19; ++i) {
             channels.push_back(
-                ChannelState{
+                TChannelState{
                     .DataType = static_cast<ui32>(EChannelDataKind::Mixed),
                     .PoolType = "rot",
                     .Size = 4_GB,
@@ -995,8 +995,8 @@ Y_UNIT_TEST_SUITE(TModel)
     Y_UNIT_TEST_F(ShouldCorrectlySetupChannelsHDDMinGreaterDefault, TConfigs)
     {
         using namespace ::NCloud::NProto;
-        TVector<ChannelState> channels = {
-            ChannelState{
+        TVector<TChannelState> channels = {
+            TChannelState{
                 .DataType = static_cast<ui32>(EChannelDataKind::System),
                 .PoolType = "rot",
                 .Size = 128_MB,
@@ -1005,7 +1005,7 @@ Y_UNIT_TEST_SUITE(TModel)
                 .WriteIops = 300,
                 .WriteBandwidth = 31'457'280,
             },
-            ChannelState{
+            TChannelState{
                 .DataType = static_cast<ui32>(EChannelDataKind::Index),
                 .PoolType = "rot",
                 .Size = 16_MB,
@@ -1014,7 +1014,7 @@ Y_UNIT_TEST_SUITE(TModel)
                 .WriteIops = 300,
                 .WriteBandwidth = 31'457'280,
             },
-            ChannelState{
+            TChannelState{
                 .DataType = static_cast<ui32>(EChannelDataKind::Fresh),
                 .PoolType = "rot",
                 .Size = 128_MB,
@@ -1023,7 +1023,7 @@ Y_UNIT_TEST_SUITE(TModel)
                 .WriteIops = 300,
                 .WriteBandwidth = 31'457'280,
             },
-            ChannelState{
+            TChannelState{
                 .DataType = static_cast<ui32>(EChannelDataKind::Mixed0),
                 .PoolType = "rot",
                 .Size = 4_GB,
@@ -1035,7 +1035,7 @@ Y_UNIT_TEST_SUITE(TModel)
         };
         for (size_t i = 4; i < 8; ++i) {
             channels.push_back(
-                ChannelState{
+                TChannelState{
                     .DataType = static_cast<ui32>(EChannelDataKind::Mixed),
                     .PoolType = "rot",
                     .Size = 4_GB,
@@ -1060,8 +1060,8 @@ Y_UNIT_TEST_SUITE(TModel)
     Y_UNIT_TEST_F(ShouldCorrectlySetupChannelsHDDMinLowerDefault, TConfigs)
     {
         using namespace ::NCloud::NProto;
-        TVector<ChannelState> channels = {
-            ChannelState{
+        TVector<TChannelState> channels = {
+            TChannelState{
                 .DataType = static_cast<ui32>(EChannelDataKind::System),
                 .PoolType = "rot",
                 .Size = 128_MB,
@@ -1070,7 +1070,7 @@ Y_UNIT_TEST_SUITE(TModel)
                 .WriteIops = 300,
                 .WriteBandwidth = 31'457'280,
             },
-            ChannelState{
+            TChannelState{
                 .DataType = static_cast<ui32>(EChannelDataKind::Index),
                 .PoolType = "rot",
                 .Size = 16_MB,
@@ -1079,7 +1079,7 @@ Y_UNIT_TEST_SUITE(TModel)
                 .WriteIops = 300,
                 .WriteBandwidth = 31'457'280,
             },
-            ChannelState{
+            TChannelState{
                 .DataType = static_cast<ui32>(EChannelDataKind::Fresh),
                 .PoolType = "rot",
                 .Size = 128_MB,
@@ -1088,7 +1088,7 @@ Y_UNIT_TEST_SUITE(TModel)
                 .WriteIops = 300,
                 .WriteBandwidth = 31'457'280,
             },
-            ChannelState{
+            TChannelState{
                 .DataType = static_cast<ui32>(EChannelDataKind::Mixed0),
                 .PoolType = "rot",
                 .Size = 4_GB,
@@ -1100,7 +1100,7 @@ Y_UNIT_TEST_SUITE(TModel)
         };
         for (size_t i = 4; i < 7; ++i) {
             channels.push_back(
-                ChannelState{
+                TChannelState{
                     .DataType = static_cast<ui32>(EChannelDataKind::Mixed),
                     .PoolType = "rot",
                     .Size = 4_GB,
@@ -1125,8 +1125,8 @@ Y_UNIT_TEST_SUITE(TModel)
     Y_UNIT_TEST_F(ShouldCorrectlySetupChannelsHDDEnormousSizeDefault, TConfigs)
     {
         using namespace ::NCloud::NProto;
-        TVector<ChannelState> channels = {
-            ChannelState{
+        TVector<TChannelState> channels = {
+            TChannelState{
                 .DataType = static_cast<ui32>(EChannelDataKind::System),
                 .PoolType = "rot",
                 .Size = 128_MB,
@@ -1135,7 +1135,7 @@ Y_UNIT_TEST_SUITE(TModel)
                 .WriteIops = 4'800,
                 .WriteBandwidth = 251'658'240,
             },
-            ChannelState{
+            TChannelState{
                 .DataType = static_cast<ui32>(EChannelDataKind::Index),
                 .PoolType = "rot",
                 .Size = 16_MB,
@@ -1144,7 +1144,7 @@ Y_UNIT_TEST_SUITE(TModel)
                 .WriteIops = 4'800,
                 .WriteBandwidth = 251'658'240,
             },
-            ChannelState{
+            TChannelState{
                 .DataType = static_cast<ui32>(EChannelDataKind::Fresh),
                 .PoolType = "rot",
                 .Size = 128_MB,
@@ -1153,7 +1153,7 @@ Y_UNIT_TEST_SUITE(TModel)
                 .WriteIops = 4'800,
                 .WriteBandwidth = 251'658'240,
             },
-            ChannelState{
+            TChannelState{
                 .DataType = static_cast<ui32>(EChannelDataKind::Mixed0),
                 .PoolType = "rot",
                 .Size = 4_GB,
@@ -1165,7 +1165,7 @@ Y_UNIT_TEST_SUITE(TModel)
         };
         for (size_t i = 4; i < 20; ++i) {
             channels.push_back(
-                ChannelState{
+                TChannelState{
                     .DataType = static_cast<ui32>(EChannelDataKind::Mixed),
                     .PoolType = "rot",
                     .Size = 4_GB,
@@ -1193,8 +1193,8 @@ Y_UNIT_TEST_SUITE(TModel)
     Y_UNIT_TEST_F(ShouldCorrectlySetupChannelsSSDMinGreaterDefault, TConfigs)
     {
         using namespace ::NCloud::NProto;
-        TVector<ChannelState> channels = {
-            ChannelState{
+        TVector<TChannelState> channels = {
+            TChannelState{
                 .DataType = static_cast<ui32>(EChannelDataKind::System),
                 .PoolType = "ssd",
                 .Size = 128_MB,
@@ -1203,7 +1203,7 @@ Y_UNIT_TEST_SUITE(TModel)
                 .WriteIops = 1'000,
                 .WriteBandwidth = 15'728'640,
             },
-            ChannelState{
+            TChannelState{
                 .DataType = static_cast<ui32>(EChannelDataKind::Index),
                 .PoolType = "ssd",
                 .Size = 16_MB,
@@ -1212,7 +1212,7 @@ Y_UNIT_TEST_SUITE(TModel)
                 .WriteIops = 1'000,
                 .WriteBandwidth = 15'728'640,
             },
-            ChannelState{
+            TChannelState{
                 .DataType = static_cast<ui32>(EChannelDataKind::Fresh),
                 .PoolType = "ssd",
                 .Size = 128_MB,
@@ -1221,7 +1221,7 @@ Y_UNIT_TEST_SUITE(TModel)
                 .WriteIops = 1'000,
                 .WriteBandwidth = 15'728'640,
             },
-            ChannelState{
+            TChannelState{
                 .DataType = static_cast<ui32>(EChannelDataKind::Mixed0),
                 .PoolType = "ssd",
                 .Size = 2_GB,
@@ -1233,7 +1233,7 @@ Y_UNIT_TEST_SUITE(TModel)
         };
         for (size_t i = 4; i < 8; ++i) {
             channels.push_back(
-                ChannelState{
+                TChannelState{
                     .DataType = static_cast<ui32>(EChannelDataKind::Mixed),
                     .PoolType = "ssd",
                     .Size = 2_GB,
@@ -1258,8 +1258,8 @@ Y_UNIT_TEST_SUITE(TModel)
     Y_UNIT_TEST_F(ShouldCorrectlySetupChannelsSSDMinLowerDefault, TConfigs)
     {
         using namespace ::NCloud::NProto;
-        TVector<ChannelState> channels = {
-            ChannelState{
+        TVector<TChannelState> channels = {
+            TChannelState{
                 .DataType = static_cast<ui32>(EChannelDataKind::System),
                 .PoolType = "ssd",
                 .Size = 128_MB,
@@ -1268,7 +1268,7 @@ Y_UNIT_TEST_SUITE(TModel)
                 .WriteIops = 1'000,
                 .WriteBandwidth = 15'728'640,
             },
-            ChannelState{
+            TChannelState{
                 .DataType = static_cast<ui32>(EChannelDataKind::Index),
                 .PoolType = "ssd",
                 .Size = 16_MB,
@@ -1277,7 +1277,7 @@ Y_UNIT_TEST_SUITE(TModel)
                 .WriteIops = 1'000,
                 .WriteBandwidth = 15'728'640,
             },
-            ChannelState{
+            TChannelState{
                 .DataType = static_cast<ui32>(EChannelDataKind::Fresh),
                 .PoolType = "ssd",
                 .Size = 128_MB,
@@ -1286,7 +1286,7 @@ Y_UNIT_TEST_SUITE(TModel)
                 .WriteIops = 1'000,
                 .WriteBandwidth = 15'728'640,
             },
-            ChannelState{
+            TChannelState{
                 .DataType = static_cast<ui32>(EChannelDataKind::Mixed0),
                 .PoolType = "ssd",
                 .Size = 2_GB,
@@ -1298,7 +1298,7 @@ Y_UNIT_TEST_SUITE(TModel)
         };
         for (size_t i = 3; i < 6; ++i) {
             channels.push_back(
-                ChannelState{
+                TChannelState{
                     .DataType = static_cast<ui32>(EChannelDataKind::Mixed),
                     .PoolType = "ssd",
                     .Size = 2_GB,
@@ -1323,8 +1323,8 @@ Y_UNIT_TEST_SUITE(TModel)
     Y_UNIT_TEST_F(ShouldCorrectlySetupChannelsSSDEnormousSizeDefault, TConfigs)
     {
         using namespace ::NCloud::NProto;
-        TVector<ChannelState> channels = {
-            ChannelState{
+        TVector<TChannelState> channels = {
+            TChannelState{
                 .DataType = static_cast<ui32>(EChannelDataKind::System),
                 .PoolType = "ssd",
                 .Size = 128_MB,
@@ -1333,7 +1333,7 @@ Y_UNIT_TEST_SUITE(TModel)
                 .WriteIops = 31'000,
                 .WriteBandwidth = 471'859'200,
             },
-            ChannelState{
+            TChannelState{
                 .DataType = static_cast<ui32>(EChannelDataKind::Index),
                 .PoolType = "ssd",
                 .Size = 16_MB,
@@ -1342,7 +1342,7 @@ Y_UNIT_TEST_SUITE(TModel)
                 .WriteIops = 31'000,
                 .WriteBandwidth = 471'859'200,
             },
-            ChannelState{
+            TChannelState{
                 .DataType = static_cast<ui32>(EChannelDataKind::Fresh),
                 .PoolType = "ssd",
                 .Size = 128_MB,
@@ -1351,7 +1351,7 @@ Y_UNIT_TEST_SUITE(TModel)
                 .WriteIops = 31'000,
                 .WriteBandwidth = 471'859'200,
             },
-            ChannelState{
+            TChannelState{
                 .DataType = static_cast<ui32>(EChannelDataKind::Mixed0),
                 .PoolType = "ssd",
                 .Size = 2_GB,
@@ -1363,7 +1363,7 @@ Y_UNIT_TEST_SUITE(TModel)
         };
         for (size_t i = 3; i < 34; ++i) {
             channels.push_back(
-                ChannelState{
+                TChannelState{
                     .DataType = static_cast<ui32>(EChannelDataKind::Mixed),
                     .PoolType = "ssd",
                     .Size = 2_GB,
@@ -1391,8 +1391,8 @@ Y_UNIT_TEST_SUITE(TModel)
     Y_UNIT_TEST_F(ShouldCorrectlySetupChannelsHybridMinGreaterDefault, TConfigs)
     {
         using namespace ::NCloud::NProto;
-        TVector<ChannelState> channels = {
-            ChannelState{
+        TVector<TChannelState> channels = {
+            TChannelState{
                 .DataType = static_cast<ui32>(EChannelDataKind::System),
                 .PoolType = "ssd",
                 .Size = 128_MB,
@@ -1401,7 +1401,7 @@ Y_UNIT_TEST_SUITE(TModel)
                 .WriteIops = 300,
                 .WriteBandwidth = 31'457'280,
             },
-            ChannelState{
+            TChannelState{
                 .DataType = static_cast<ui32>(EChannelDataKind::Index),
                 .PoolType = "ssd",
                 .Size = 16_MB,
@@ -1410,7 +1410,7 @@ Y_UNIT_TEST_SUITE(TModel)
                 .WriteIops = 300,
                 .WriteBandwidth = 31'457'280,
             },
-            ChannelState{
+            TChannelState{
                 .DataType = static_cast<ui32>(EChannelDataKind::Fresh),
                 .PoolType = "ssd",
                 .Size = 128_MB,
@@ -1419,7 +1419,7 @@ Y_UNIT_TEST_SUITE(TModel)
                 .WriteIops = 300,
                 .WriteBandwidth = 31'457'280,
             },
-            ChannelState{
+            TChannelState{
                 .DataType = static_cast<ui32>(EChannelDataKind::Mixed0),
                 .PoolType = "rot",
                 .Size = 4_GB,
@@ -1431,7 +1431,7 @@ Y_UNIT_TEST_SUITE(TModel)
         };
         for (size_t i = 4; i < 8; ++i) {
             channels.push_back(
-                ChannelState{
+                TChannelState{
                     .DataType = static_cast<ui32>(EChannelDataKind::Mixed),
                     .PoolType = "rot",
                     .Size = 4_GB,
@@ -1456,8 +1456,8 @@ Y_UNIT_TEST_SUITE(TModel)
     Y_UNIT_TEST_F(ShouldCorrectlySetupChannelsHybridMinLowerDefault, TConfigs)
     {
         using namespace ::NCloud::NProto;
-        TVector<ChannelState> channels = {
-            ChannelState{
+        TVector<TChannelState> channels = {
+            TChannelState{
                 .DataType = static_cast<ui32>(EChannelDataKind::System),
                 .PoolType = "ssd",
                 .Size = 128_MB,
@@ -1466,7 +1466,7 @@ Y_UNIT_TEST_SUITE(TModel)
                 .WriteIops = 300,
                 .WriteBandwidth = 31'457'280,
             },
-            ChannelState{
+            TChannelState{
                 .DataType = static_cast<ui32>(EChannelDataKind::Index),
                 .PoolType = "ssd",
                 .Size = 16_MB,
@@ -1475,7 +1475,7 @@ Y_UNIT_TEST_SUITE(TModel)
                 .WriteIops = 300,
                 .WriteBandwidth = 31'457'280,
             },
-            ChannelState{
+            TChannelState{
                 .DataType = static_cast<ui32>(EChannelDataKind::Fresh),
                 .PoolType = "ssd",
                 .Size = 128_MB,
@@ -1484,7 +1484,7 @@ Y_UNIT_TEST_SUITE(TModel)
                 .WriteIops = 300,
                 .WriteBandwidth = 31'457'280,
             },
-            ChannelState{
+            TChannelState{
                 .DataType = static_cast<ui32>(EChannelDataKind::Mixed0),
                 .PoolType = "rot",
                 .Size = 4_GB,
@@ -1496,7 +1496,7 @@ Y_UNIT_TEST_SUITE(TModel)
         };
         for (size_t i = 4; i < 7; ++i) {
             channels.push_back(
-                ChannelState{
+                TChannelState{
                     .DataType = static_cast<ui32>(EChannelDataKind::Mixed),
                     .PoolType = "rot",
                     .Size = 4_GB,
@@ -1521,8 +1521,8 @@ Y_UNIT_TEST_SUITE(TModel)
     Y_UNIT_TEST_F(ShouldCorrectlySetupChannelsHybridEnormousSizeDefault, TConfigs)
     {
         using namespace ::NCloud::NProto;
-        TVector<ChannelState> channels = {
-            ChannelState{
+        TVector<TChannelState> channels = {
+            TChannelState{
                 .DataType = static_cast<ui32>(EChannelDataKind::System),
                 .PoolType = "ssd",
                 .Size = 128_MB,
@@ -1531,7 +1531,7 @@ Y_UNIT_TEST_SUITE(TModel)
                 .WriteIops = 4'800,
                 .WriteBandwidth = 251'658'240,
             },
-            ChannelState{
+            TChannelState{
                 .DataType = static_cast<ui32>(EChannelDataKind::Index),
                 .PoolType = "ssd",
                 .Size = 16_MB,
@@ -1540,7 +1540,7 @@ Y_UNIT_TEST_SUITE(TModel)
                 .WriteIops = 4'800,
                 .WriteBandwidth = 251'658'240,
             },
-            ChannelState{
+            TChannelState{
                 .DataType = static_cast<ui32>(EChannelDataKind::Fresh),
                 .PoolType = "ssd",
                 .Size = 128_MB,
@@ -1549,7 +1549,7 @@ Y_UNIT_TEST_SUITE(TModel)
                 .WriteIops = 4'800,
                 .WriteBandwidth = 251'658'240,
             },
-            ChannelState{
+            TChannelState{
                 .DataType = static_cast<ui32>(EChannelDataKind::Mixed0),
                 .PoolType = "rot",
                 .Size = 4_GB,
@@ -1561,7 +1561,7 @@ Y_UNIT_TEST_SUITE(TModel)
         };
         for (size_t i = 4; i < 20; ++i) {
             channels.push_back(
-                ChannelState{
+                TChannelState{
                     .DataType = static_cast<ui32>(EChannelDataKind::Mixed),
                     .PoolType = "rot",
                     .Size = 4_GB,
@@ -2288,6 +2288,44 @@ Y_UNIT_TEST_SUITE(TModel)
     }
 
 #undef DO_TEST
+
+    Y_UNIT_TEST_F(ShouldCreateProperNumberOfShards, TConfigs)
+    {
+        using namespace ::NCloud::NProto;
+        KikimrConfig.SetBlockSize(4_KB);
+        KikimrConfig.SetBlocksCount(4_TB / 4_KB);
+
+        // Disable media type override.
+        StorageConfig.SetAutomaticShardCreationEnabled(true);
+        StorageConfig.SetMaxShardSize(4_TB);
+
+        auto fs = SetupMultiShardFileStorePerformanceAndChannels(
+            StorageConfig,
+            KikimrConfig,
+            ClientPerformanceProfile);
+        UNIT_ASSERT_VALUES_EQUAL(1, fs.ShardConfigs.size());
+
+        KikimrConfig.SetBlocksCount(16_TB / 4_KB);
+        fs = SetupMultiShardFileStorePerformanceAndChannels(
+            StorageConfig,
+            KikimrConfig,
+            ClientPerformanceProfile);
+        UNIT_ASSERT_VALUES_EQUAL(4, fs.ShardConfigs.size());
+
+        KikimrConfig.SetBlocksCount(512_TB / 4_KB);
+        fs = SetupMultiShardFileStorePerformanceAndChannels(
+            StorageConfig,
+            KikimrConfig,
+            ClientPerformanceProfile);
+        UNIT_ASSERT_VALUES_EQUAL(128, fs.ShardConfigs.size());
+
+        KikimrConfig.SetBlocksCount(1_PB / 4_KB);
+        fs = SetupMultiShardFileStorePerformanceAndChannels(
+            StorageConfig,
+            KikimrConfig,
+            ClientPerformanceProfile);
+        UNIT_ASSERT_VALUES_EQUAL(254, fs.ShardConfigs.size());
+    }
 }
 
 }   // namespace NCloud::NFileStore::NStorage
