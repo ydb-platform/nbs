@@ -68,7 +68,6 @@ public:
                 VolatileYamlConfigHashes[id] = THash<TString>()(config);
             }
         }
-        Y_UNUSED(explicitNodeInfo);
 
         if (explicitNodeInfo) {
             if (explicitNodeInfo->Tenant) {
