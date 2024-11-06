@@ -34,8 +34,10 @@ void TNonreplicatedPartitionActor::SendStats(const TActorContext& ctx)
         PartConfig->GetBlockCount() * PartConfig->GetBlockSize()
     );
 
-    PartCounters->Simple.HasBrokenDevice.Set(HasBrokenDevice(ctx, false));
-    PartCounters->Simple.HasBrokenDeviceSilent.Set(HasBrokenDevice(ctx, true));
+    PartCounters->Simple.HasBrokenDevice.Set(
+        CalculateHasBrokenDeviceCounterValue(ctx, false));
+    PartCounters->Simple.HasBrokenDeviceSilent.Set(
+        CalculateHasBrokenDeviceCounterValue(ctx, true));
 
     auto request =
         std::make_unique<TEvVolume::TEvDiskRegistryBasedPartitionCounters>(

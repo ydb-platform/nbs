@@ -183,29 +183,24 @@ void TDiskAgentReadActor::Done(
     NCloud::Reply(ctx, *RequestInfo, std::move(response));
 
     auto completion =
-        std::make_unique<TEvNonreplPartitionPrivate::TEvReadBlocksCompleted>();
-    auto& counters = *completion->Stats.MutableUserReadCounters();
-    completion->TotalCycles = RequestInfo->GetTotalCycles();
-    completion->ExecCycles = RequestInfo->GetExecCycles();
-    completion->ExecutionTime = status == EStatus::Timeout
-                                    ? TimeoutPolicy.Timeout
-                                    : ctx.Now() - StartTime;
+        std::make_unique<TEvNonreplPartitionPrivate::TEvReadBlocksCompleted>(
+            status,
+            RequestInfo->GetTotalCycles(),
+            RequestInfo->GetExecCycles(),
+            status == EStatus::Timeout ? TimeoutPolicy.Timeout
+                                       : ctx.Now() - StartTime);
 
     ui32 blocks = 0;
     for (const auto& dr: DeviceRequests) {
         blocks += dr.BlockRange.Size();
         completion->DeviceIndices.push_back(dr.DeviceIdx);
     }
-    counters.SetBlocksCount(blocks);
-    completion->Status = status;
+    completion->Stats.MutableUserReadCounters()->SetBlocksCount(blocks);
 
     completion->NonVoidBlockCount = NonVoidBlockCount;
     completion->VoidBlockCount = VoidBlockCount;
 
-    NCloud::Send(
-        ctx,
-        Part,
-        std::move(completion));
+    NCloud::Send(ctx, Part, std::move(completion));
 
     Die(ctx);
 }

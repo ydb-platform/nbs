@@ -124,7 +124,9 @@ private:
     TDuration GetMinRequestTimeout() const;
     TDuration GetMaxRequestTimeout() const;
     TDuration GetMaxTimedOutDeviceStateDuration() const;
-    bool HasBrokenDevice(const NActors::TActorContext& ctx, bool silent) const;
+    bool CalculateHasBrokenDeviceCounterValue(
+        const NActors::TActorContext& ctx,
+        bool silent) const;
 
     TRequestTimeoutPolicy MakeTimeoutPolicyForRequest(
         const TVector<TDeviceRequest>& deviceRequests,

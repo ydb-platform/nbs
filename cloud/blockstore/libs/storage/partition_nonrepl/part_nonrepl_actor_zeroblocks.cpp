@@ -187,26 +187,21 @@ void TDiskAgentZeroActor::Done(
     NCloud::Reply(ctx, *RequestInfo, std::move(response));
 
     auto completion =
-        std::make_unique<TEvNonreplPartitionPrivate::TEvZeroBlocksCompleted>();
-    auto& counters = *completion->Stats.MutableUserWriteCounters();
-    completion->TotalCycles = RequestInfo->GetTotalCycles();
-    completion->ExecCycles = RequestInfo->GetExecCycles();
-    completion->ExecutionTime = status == EStatus::Timeout
-                                    ? TimeoutPolicy.Timeout
-                                    : ctx.Now() - StartTime;
+        std::make_unique<TEvNonreplPartitionPrivate::TEvZeroBlocksCompleted>(
+            status,
+            RequestInfo->GetTotalCycles(),
+            RequestInfo->GetExecCycles(),
+            status == EStatus::Timeout ? TimeoutPolicy.Timeout
+                                       : ctx.Now() - StartTime);
 
     ui32 blocks = 0;
     for (const auto& dr: DeviceRequests) {
         blocks += dr.BlockRange.Size();
         completion->DeviceIndices.push_back(dr.DeviceIdx);
     }
-    counters.SetBlocksCount(blocks);
-    completion->Status = status;
+    completion->Stats.MutableUserWriteCounters()->SetBlocksCount(blocks);
 
-    NCloud::Send(
-        ctx,
-        Part,
-        std::move(completion));
+    NCloud::Send(ctx, Part, std::move(completion));
 
     Die(ctx);
 }

@@ -163,6 +163,9 @@ struct TEvNonreplPartitionPrivate
                        // the timeout.
         };
 
+        // Request completion status
+        EStatus Status = EStatus::Fail;
+
         NProto::TPartitionStats Stats;
 
         ui64 TotalCycles = 0;
@@ -173,11 +176,23 @@ struct TEvNonreplPartitionPrivate
         // Indexes of devices that participated in the request.
         TStackVec<ui32, 2> DeviceIndices;
 
-        // Request completion status
-        EStatus Status = EStatus::Success;
-
         ui32 NonVoidBlockCount = 0;
         ui32 VoidBlockCount = 0;
+
+        // TODO(drbasic) remove and use non-default constructor in
+        // TNonreplicatedPartitionRdmaActor
+        TOperationCompleted() = default;
+
+        TOperationCompleted(
+                EStatus status,
+                ui64 totalCycles,
+                ui64 execCycles,
+                TDuration executionTime)
+            : Status(status)
+            , TotalCycles(totalCycles)
+            , ExecCycles(execCycles)
+            , ExecutionTime(executionTime)
+        {}
     };
 
     //

@@ -99,7 +99,7 @@ TNonreplicatedPartitionActor::GetMaxTimedOutDeviceStateDuration() const
     return maxTimedOutDeviceStateDuration;
 }
 
-bool TNonreplicatedPartitionActor::HasBrokenDevice(
+bool TNonreplicatedPartitionActor::CalculateHasBrokenDeviceCounterValue(
     const NActors::TActorContext& ctx,
     bool silent) const
 {
