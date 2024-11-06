@@ -1,6 +1,6 @@
 #pragma once
 
-#include "testlib/test_env.h"
+#include <cloud/blockstore/libs/storage/volume/testlib/test_env.h>
 
 namespace NCloud::NBlockStore::NStorage::NTestVolumeHelpers {
 
