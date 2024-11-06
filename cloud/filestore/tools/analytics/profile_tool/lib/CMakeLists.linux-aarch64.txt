@@ -24,4 +24,5 @@ target_sources(analytics-profile_tool-lib PRIVATE
   ${CMAKE_SOURCE_DIR}/cloud/filestore/tools/analytics/profile_tool/lib/dump_events.cpp
   ${CMAKE_SOURCE_DIR}/cloud/filestore/tools/analytics/profile_tool/lib/factory.cpp
   ${CMAKE_SOURCE_DIR}/cloud/filestore/tools/analytics/profile_tool/lib/find_bytes_access.cpp
+  ${CMAKE_SOURCE_DIR}/cloud/filestore/tools/analytics/profile_tool/lib/mask.cpp
 )
