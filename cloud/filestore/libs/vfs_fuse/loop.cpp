@@ -936,7 +936,7 @@ private:
         ResetSessionState(SessionThread->GetSession().Dump());
 
         if (FileSystemConfig->GetGuestWritebackCacheEnabled()) {
-            conn->want |=  FUSE_CAP_WRITEBACK_CACHE;
+            conn->want |= FUSE_CAP_WRITEBACK_CACHE;
         }
 
         FileSystem->Init();
