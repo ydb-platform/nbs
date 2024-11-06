@@ -335,6 +335,7 @@ class EternalTestHelper:
                     placement_group_name=placement_group_name,
                     placement_group_partition_count=config.placement_group_partition_count,
                     image_name=config.image_name,
+                    image_folder_id=config.image_folder_id,
                     auto_delete=False,
                     description=f"Eternal test: {self.args.test_case}") as disk:
 
@@ -414,6 +415,7 @@ class EternalTestHelper:
                 cores=8,
                 memory=8,
                 image_name=self.test_config.ycp_config.image_name,
+                image_folder_id=self.test_config.ycp_config.folder.image_folder_id,
                 platform_id=self.test_config.ycp_config.folder.platform_id,
                 compute_node=self.args.compute_node,
                 placement_group_name=placement_group_name,

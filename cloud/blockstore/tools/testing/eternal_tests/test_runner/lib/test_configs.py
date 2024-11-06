@@ -30,6 +30,7 @@ class DiskCreateConfig(ITestCreateConfig):
     encrypted: bool
     placement_group_name: str
     image_name: str
+    image_folder_id: str
     initial_size: int
     block_count: int
 
@@ -43,6 +44,7 @@ class DiskCreateConfig(ITestCreateConfig):
             placement_group_name=None,
             placement_group_partition_count=None,
             image_name=None,
+            image_folder_id=None,
             initial_size=None,
             block_count=None,
             preferred_platform_id=None):
@@ -59,6 +61,7 @@ class DiskCreateConfig(ITestCreateConfig):
         self.placement_group_name = placement_group_name
         self.placement_group_partition_count = placement_group_partition_count
         self.image_name = image_name
+        self.image_folder_id = image_folder_id
         self.initial_size = initial_size or size
         self.preferred_platform_id = preferred_platform_id
 

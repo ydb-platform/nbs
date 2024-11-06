@@ -8,6 +8,7 @@
             "folder_id": "fake-folder",
             "hot_attach_fs": true,
             "image_name": "fake-name1",
+            "image_folder_id": "fake-images-folder1",
             "platform_id": null,
             "service_account_id": null,
             "subnet_id": null,
@@ -20,6 +21,7 @@
             "folder_id": "fake-folder",
             "hot_attach_fs": true,
             "image_name": "fake-name2",
+            "image_folder_id": "fake-images-folder2",
             "platform_id": null,
             "service_account_id": null,
             "subnet_id": null,
@@ -32,6 +34,7 @@
             "folder_id": "nbs.tests.folder",
             "hot_attach_fs": true,
             "image_name": "fake-name3",
+            "image_folder_id": "fake-images-folder3",
             "platform_id": null,
             "service_account_id": null,
             "subnet_id": null,
@@ -48,3 +51,4 @@
     "name": "fake-cluster1",
     "solomon_cluster": "fake-cluster1"
 }
+
