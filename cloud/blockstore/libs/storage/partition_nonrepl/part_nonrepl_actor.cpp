@@ -148,23 +148,33 @@ TRequestTimeoutPolicy TNonreplicatedPartitionActor::MakeTimeoutPolicyForRequest(
         }
     }
 
+    const bool hasTimeouts = worstDeviceStatus != EDeviceStatus::Ok ||
+                             longestTimedOutStateDuration != TDuration();
+    if (!hasTimeouts) {
+        // If there were no timeouts, then we slightly increase the timeout for
+        // the time of the longest response among the last ones.
+        return TRequestTimeoutPolicy{
+            .Timeout = GetMinRequestTimeout() + worstRequestTime,
+            .ErrorCode = E_TIMEOUT,
+            .OverrideMessage = {}};
+    }
+
+    // If there was a timeout, then add more time as long as we are in the
+    // timed out state.
     TRequestTimeoutPolicy policy{
-        .Timeout = GetMinRequestTimeout() + worstRequestTime,
+        .Timeout =
+            Min(GetMaxRequestTimeout(),
+                GetMinRequestTimeout() + longestTimedOutStateDuration),
         .ErrorCode = E_TIMEOUT,
         .OverrideMessage = {}};
 
-    if (!longestTimedOutStateDuration) {
-        return policy;
-    }
-
-    policy.Timeout =
-        Min(GetMaxRequestTimeout(),
-            longestTimedOutStateDuration + GetMinRequestTimeout());
-
     if (isBackground) {
+        // For background requests always response with E_TIMEOUT.
         return policy;
     }
 
+    // Setting up which error to respond to the request in case of a timeout for
+    // user requests.
     auto makeMessage = [&]()
     {
         TString devices;
