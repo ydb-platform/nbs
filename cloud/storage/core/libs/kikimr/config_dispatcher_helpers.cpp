@@ -8,10 +8,18 @@ using namespace NKikimr::NConfig;
 
 ////////////////////////////////////////////////////////////////////////////////
 
+static const TString tenantLabel = "tenant";
+static const TString nodeNameLabel = "node_type";
+
 void SetupConfigDispatcher(
     const NProto::TConfigDispatcherSettings& settings,
+    const TString& tenantName,
+    const TString& nodeType,
     NKikimr::NConfig::TConfigsDispatcherInitInfo* config)
 {
+    config->Labels.emplace(tenantLabel, tenantName);
+    config->Labels.emplace(nodeNameLabel, nodeType);
+
     if (!settings.HasAllowList() && !settings.HasDenyList()) {
         return;
     }
