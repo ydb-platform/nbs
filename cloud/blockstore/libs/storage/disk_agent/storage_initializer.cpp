@@ -173,6 +173,10 @@ TInitializer::TInitializer(
     , StorageProvider(std::move(storageProvider))
     , NvmeManager(std::move(nvmeManager))
 {
+    for (const auto& m: AgentConfig->GetPathToSerialNumberMapping()) {
+        PathToSerial.emplace(m.GetPath(), m.GetSerialNumber());
+    }
+
     auto fileDevices = AgentConfig->GetFileDevices();
 
     FileDevices.assign(

@@ -266,6 +266,15 @@ message TDiskAgentConfig
 
     // Disable devices that have been recognized as broken by the DR
     optional bool DisableBrokenDevices = 36;
+
+    // Path to serial number mapping. For testing purposes only.
+    message TPathToSerialNumber
+    {
+        required string Path = 1;
+        required string SerialNumber = 2;
+    }
+
+    repeated TPathToSerialNumber PathToSerialNumberMapping = 37;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

@@ -115,6 +115,11 @@ public:
         return Config.GetDevicesWithSuspendedIO();
     }
 
+    const auto& GetPathToSerialNumberMapping() const
+    {
+        return Config.GetPathToSerialNumberMapping();
+    }
+
     void Dump(IOutputStream& out) const;
     void DumpHtml(IOutputStream& out) const;
 };
