@@ -8,6 +8,7 @@ from library.python.testing.recipe import declare_recipe, set_env
 
 from cloud.disk_manager.test.images.recipe.image_file_server_launcher import ImageFileServerLauncher
 from cloud.disk_manager.test.images.recipe.vmdk_image_generator import VMDKImageGenerator
+from cloud.disk_manager.test.images.recipe.raw_image_generator import RawImageGenerator
 
 
 def start(argv):
@@ -225,6 +226,28 @@ def start(argv):
         # size and crc32 after converting to raw image
         set_env("DISK_MANAGER_RECIPE_GENERATED_VMDK_IMAGE_SIZE", str(vmdk_image_generator.raw_image_size))
         set_env("DISK_MANAGER_RECIPE_GENERATED_VMDK_IMAGE_CRC32", str(vmdk_image_generator.raw_image_crc32))
+
+    if '--generate-big-raw-images' in argv:
+        big_raw_image_file_path = os.path.join(working_dir, "generated_big_raw_image")
+        other_big_raw_image_file_path = os.path.join(working_dir, "generated_other_big_raw_image")
+        big_raw_image_file_size = 536870912  # 512 MiB
+        other_big_raw_image_file_size = 1073741824  # 1 GiB
+        raw_image_generator = RawImageGenerator(big_raw_image_file_path, big_raw_image_file_size)
+        raw_image_generator.generate()
+        other_raw_image_generator = RawImageGenerator(other_big_raw_image_file_path, other_big_raw_image_file_size)
+        other_raw_image_generator.generate()
+        big_raw_image_file_server = ImageFileServerLauncher(
+            big_raw_image_file_path,
+            big_raw_image_file_size,
+            other_big_raw_image_file_path,
+            other_big_raw_image_file_size,
+        )
+        big_raw_image_file_server.start()
+        set_env("DISK_MANAGER_RECIPE_BIG_RAW_IMAGE_FILE_SERVER_PORT", str(big_raw_image_file_server.port))
+        set_env("DISK_MANAGER_RECIPE_BIG_RAW_IMAGE_SIZE", str(big_raw_image_file_size))
+        set_env("DISK_MANAGER_RECIPE_BIG_RAW_IMAGE_CRC32", str(raw_image_generator.image_crc32))
+        set_env("DISK_MANAGER_RECIPE_OTHER_BIG_RAW_IMAGE_SIZE", str(other_big_raw_image_file_size))
+        set_env("DISK_MANAGER_RECIPE_OTHER_BIG_RAW_IMAGE_CRC32", str(other_raw_image_generator.image_crc32))
 
 
 def stop(argv):
