@@ -239,6 +239,7 @@ void TVolumeState::Reset()
     UseFastPath = false;
     UseRdmaForThisVolume = false;
     AcceptInvalidDiskAllocationResponse = false;
+    UseIntermediateWriteBuffer = false;
 
     if (IsDiskRegistryMediaKind()) {
         if (Meta.GetDevices().size()) {
@@ -297,6 +298,8 @@ void TVolumeState::Reset()
             TDuration::TryParse(value, MaxTimedOutDeviceStateDuration);
         } else if (tag == "use-fastpath") {
             UseFastPath = true;
+        } else if (tag == "use-intermediate-write-buffer") {
+            UseIntermediateWriteBuffer = true;
         }
     }
 
