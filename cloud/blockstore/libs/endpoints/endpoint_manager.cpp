@@ -1417,7 +1417,7 @@ TResultOrError<NBD::IDevicePtr> TEndpointManager::StartNbdDevice(
     }
 
     if (!request->HasNbdDeviceFile() || !request->GetNbdDeviceFile()) {
-        return MakeError(E_ARGUMENT, "NBD device file is missing");
+        return NBD::CreateDeviceStub();
     }
 
     if (!restoring) {

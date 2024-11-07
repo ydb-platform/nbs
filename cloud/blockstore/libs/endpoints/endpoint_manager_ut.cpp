@@ -649,18 +649,9 @@ Y_UNIT_TEST_SUITE(TEndpointManagerTest)
 
     Y_UNIT_TEST(ShouldHandleListEndpoints)
     {
-        TString nbdDevPrefix = CreateGuidAsString() + "_nbd";
-        TString nbdDevice = nbdDevPrefix + "0";
-        TFsPath(nbdDevice).Touch();
-        Y_DEFER {
-            TFsPath(nbdDevice).DeleteIfExists();
-        };
-
         TBootstrap bootstrap;
-        bootstrap.NbdDeviceFactory = std::make_shared<TTestDeviceFactory>();
         TMap<TString, NProto::TMountVolumeRequest> mountedVolumes;
         bootstrap.Service = CreateTestService(mountedVolumes);
-        bootstrap.Options.NbdDevicePrefix = nbdDevPrefix;
 
         bootstrap.EndpointListeners = {
             { NProto::IPC_GRPC, std::make_shared<TTestEndpointListener>() },
@@ -688,8 +679,6 @@ Y_UNIT_TEST_SUITE(TEndpointManagerTest)
         request2.SetDiskId("testDiskId2");
         request2.SetClientId(TestClientId);
         request2.SetIpcType(NProto::IPC_NBD);
-        request2.SetNbdDeviceFile(nbdDevice);
-        request2.SetPersistent(true);
 
         {
             auto future = StartEndpoint(*manager, request1);
@@ -700,7 +689,7 @@ Y_UNIT_TEST_SUITE(TEndpointManagerTest)
         {
             auto future = StartEndpoint(*manager, request2);
             auto response = future.GetValue(TDuration::Seconds(5));
-            UNIT_ASSERT_C(!HasError(response), response.GetError());
+            UNIT_ASSERT(!HasError(response));
         }
 
         {
@@ -1504,11 +1493,16 @@ Y_UNIT_TEST_SUITE(TEndpointManagerTest)
             request.SetNbdDeviceFile("");
             auto future = StartEndpoint(*manager, request);
             auto response = future.GetValue(TDuration::Seconds(5));
-            UNIT_ASSERT_C(HasError(response), response.GetError());
-            UNIT_ASSERT_VALUES_EQUAL_C(
-                E_ARGUMENT,
-                response.GetError().GetCode(),
-                response.GetError());
+            UNIT_ASSERT_C(!HasError(response), response.GetError());
+        }
+
+        {
+            auto request = baseRequest;
+            request.SetNbdDeviceFile("");
+            auto future = StartEndpoint(*manager, request);
+            auto response = future.GetValue(TDuration::Seconds(5));
+            UNIT_ASSERT(response.GetError().GetCode() == S_ALREADY);
+            UNIT_ASSERT_VALUES_EQUAL("", response.GetNbdDeviceFile());
         }
 
         {
@@ -1516,7 +1510,7 @@ Y_UNIT_TEST_SUITE(TEndpointManagerTest)
             request.SetUseFreeNbdDeviceFile(true);
             auto future = StartEndpoint(*manager, request);
             auto response = future.GetValue(TDuration::Seconds(5));
-            UNIT_ASSERT_C(!HasError(response), response.GetError());
+            UNIT_ASSERT(response.GetError().GetCode() == E_INVALID_STATE);
         }
 
         {
