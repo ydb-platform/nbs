@@ -53,6 +53,7 @@ class LocalNbs(Daemon):
             compute_config=None,
             kms_config=None,
             ping_path='/blockstore',
+            ping_attempts=3,
             rack="the_rack",
             use_ic_version_check=False,
             use_secure_registration=False,
@@ -159,6 +160,7 @@ class LocalNbs(Daemon):
         self.__use_ic_version_check = use_ic_version_check
         self.__restart_interval = restart_interval
         self.__ping_path = ping_path
+        self.__ping_attempts = ping_attempts
         self.__use_secure_registration = use_secure_registration
 
         self.__init_daemon()
@@ -183,7 +185,7 @@ class LocalNbs(Daemon):
             restart_allowed=restart_allowed,
             restart_interval=self.__restart_interval, ping_port=self.__mon_port,
             ping_path=self.__ping_path, ping_success_codes=[200],
-            core_pattern=cp)
+            ping_attempts=self.__ping_attempts, core_pattern=cp)
 
     @staticmethod
     def __get_service_type(server_app_config):
