@@ -200,6 +200,7 @@ done
 """
 
     cloud_init = {"runcmd": [script]}
+    cloud_init["manage_etc_hosts"] = True
     # cloud_init["ssh_pwauth"] = False
     cloud_init["users"] = [
         {
