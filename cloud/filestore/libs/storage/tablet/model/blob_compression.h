@@ -5,6 +5,14 @@
 #include <util/generic/string.h>
 #include <util/generic/vector.h>
 
+namespace NBlockCodecs {
+
+////////////////////////////////////////////////////////////////////////////////
+
+struct ICodec;
+
+}   // namespace NBlockCodecs
+
 namespace NCloud::NFileStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -25,6 +33,9 @@ public:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TBlobCompressionInfo TryCompressBlob(TString* content);
+TBlobCompressionInfo TryCompressBlob(
+    ui32 chunkSize,
+    const NBlockCodecs::ICodec* codec,
+    TString* content);
 
 }   // namespace NCloud::NFileStore::NStorage

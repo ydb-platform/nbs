@@ -241,7 +241,11 @@ void TMixedBlocks::FindBlocks(
             range->DeletionMarkers.Apply(block);
 
             if (commitId < block.MaxCommitId) {
-                visitor.Accept(block, blob.BlobId, iter->BlobOffset);
+                visitor.Accept(
+                    block,
+                    blob.BlobId,
+                    iter->BlobOffset,
+                    blob.BlobCompressionInfo);
             }
         }
     }

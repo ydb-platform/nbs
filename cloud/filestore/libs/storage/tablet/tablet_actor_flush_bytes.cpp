@@ -58,8 +58,10 @@ public:
     void Accept(
         const TBlock& block,
         const TPartialBlobId& blobId,
-        ui32 blobOffset) override
+        ui32 blobOffset,
+        const TBlobCompressionInfo& blobCompressionInfo) override
     {
+        TABLET_VERIFY(!blobCompressionInfo);
         TABLET_VERIFY(!ApplyingByteLayer);
 
         if (block.MinCommitId > BlockMinCommitId) {
@@ -261,7 +263,10 @@ void TFlushBytesActor::ReadBlobs(const TActorContext& ctx)
                 blocks.size() * BlockSize,
                 BlockSize
             ));
-            request->Blobs.emplace_back(blobToRead.BlobId, std::move(blocks));
+            request->Blobs.emplace_back(
+                blobToRead.BlobId,
+                std::move(blocks),
+                TBlobCompressionInfo()  /* uncompressed */);
             request->Blobs.back().Async = true;
 
             Buffers[blobToRead.BlobId] = request->Buffer;

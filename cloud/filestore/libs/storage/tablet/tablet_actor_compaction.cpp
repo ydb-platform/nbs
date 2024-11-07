@@ -33,6 +33,8 @@ private:
     const ui32 RangeId;
     const ui32 BlockSize;
     const bool BlobCompressionEnabled;
+    const ui32 BlobCompressionChunkSize;
+    const NBlockCodecs::ICodec* BlobCodec;
     const IProfileLogPtr ProfileLog;
 
     TVector<TMixedBlobMeta> SrcBlobs;
@@ -55,6 +57,8 @@ public:
         ui32 rangeId,
         ui32 blockSize,
         bool blobCompressionEnabled,
+        ui32 blobCompressionChunkSize,
+        const NBlockCodecs::ICodec* blobCodec,
         IProfileLogPtr profileLog,
         TVector<TMixedBlobMeta> srcBlobs,
         TVector<TCompactionBlob> dstBlobs,
@@ -100,6 +104,8 @@ TCompactionActor::TCompactionActor(
         ui32 rangeId,
         ui32 blockSize,
         bool blobCompressionEnabled,
+        ui32 blobCompressionChunkSize,
+        const NBlockCodecs::ICodec* blobCodec,
         IProfileLogPtr profileLog,
         TVector<TMixedBlobMeta> srcBlobs,
         TVector<TCompactionBlob> dstBlobs,
@@ -112,6 +118,8 @@ TCompactionActor::TCompactionActor(
     , RangeId(rangeId)
     , BlockSize(blockSize)
     , BlobCompressionEnabled(blobCompressionEnabled)
+    , BlobCompressionChunkSize(blobCompressionChunkSize)
+    , BlobCodec(blobCodec)
     , ProfileLog(std::move(profileLog))
     , SrcBlobs(std::move(srcBlobs))
     , DstBlobs(std::move(dstBlobs))
@@ -166,7 +174,10 @@ void TCompactionActor::ReadBlob(const TActorContext& ctx)
                 blocks.size() * BlockSize,
                 BlockSize
             ));
-            request->Blobs.emplace_back(blob.BlobId, std::move(blocks));
+            request->Blobs.emplace_back(
+                blob.BlobId,
+                std::move(blocks),
+                std::move(blob.BlobCompressionInfo));
             request->Blobs.back().Async = true;
 
             Buffers[blob.BlobId] = request->Buffer;
@@ -209,7 +220,11 @@ void TCompactionActor::WriteBlob(const TActorContext& ctx)
         }
 
         if (BlobCompressionEnabled) {
-            blob.BlobCompressionInfo = TryCompressBlob(/* BlobCodec ,*/ &blobContent);
+            blob.BlobCompressionInfo = TryCompressBlob(
+                BlobCompressionChunkSize,
+                BlobCodec,
+                &blobContent);
+            // TODO: fix blob.BlobId BlobSize
         }
 
         request->Blobs.emplace_back(blob.BlobId, std::move(blobContent));
@@ -665,7 +680,12 @@ void TIndexTabletActor::CompleteTx_Compaction(
                 }
 
                 blocks.emplace_back(
-                    TBlockDataRef { block, blob.BlobId, blockOffset++ });
+                    TBlockDataRef {
+                        block,
+                        blob.BlobId,
+                        blockOffset++,
+                        blob.BlobCompressionInfo
+                    });
             }
         }
     }
@@ -719,6 +739,8 @@ void TIndexTabletActor::CompleteTx_Compaction(
         args.RangeId,
         GetBlockSize(),
         Config->GetBlobCompressionEnabled(),
+        Config->GetBlobCompressionChunkSize(),
+        BlobCodec,
         ProfileLog,
         std::move(args.CompactionBlobs),
         std::move(dstBlobs),
