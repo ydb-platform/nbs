@@ -155,18 +155,44 @@ struct TEvNonreplPartitionPrivate
 
     struct TOperationCompleted
     {
+        enum class EStatus
+        {
+            Success,   // The request was completed successfully
+            Fail,      // The request was executed with an error
+            Timeout,   // The response from the server was not received during
+                       // the timeout.
+        };
+
+        // Request completion status
+        EStatus Status = EStatus::Fail;
+
         NProto::TPartitionStats Stats;
 
         ui64 TotalCycles = 0;
         ui64 ExecCycles = 0;
+        // Request execution total time.
+        TDuration ExecutionTime;
 
-        TStackVec<int, 2> DeviceIndices;
-        TDuration ActorSystemTime;
-
-        bool Failed = false;
+        // Indexes of devices that participated in the request.
+        TStackVec<ui32, 2> DeviceIndices;
 
         ui32 NonVoidBlockCount = 0;
         ui32 VoidBlockCount = 0;
+
+        // TODO(drbasic) remove and use non-default constructor in
+        // TNonreplicatedPartitionRdmaActor
+        TOperationCompleted() = default;
+
+        TOperationCompleted(
+                EStatus status,
+                ui64 totalCycles,
+                ui64 execCycles,
+                TDuration executionTime)
+            : Status(status)
+            , TotalCycles(totalCycles)
+            , ExecCycles(execCycles)
+            , ExecutionTime(executionTime)
+        {}
     };
 
     //
