@@ -576,7 +576,11 @@ func (s *nodeService) nodePublishDiskAsFilesystemDeprecated(
 		return fmt.Errorf("failed to start NBS endpoint: %w", err)
 	}
 
-	logVolume(diskId, "endpoint started with device: %q", resp.NbdDeviceFile)
+	if resp.NbdDeviceFile == "" {
+		return fmt.Errorf("NbdDeviceFile shouldn't be empty")
+	}
+
+	logVolume(req.VolumeId, "endpoint started with device: %q", resp.NbdDeviceFile)
 
 	mnt := req.VolumeCapability.GetMount()
 
@@ -750,7 +754,11 @@ func (s *nodeService) nodeStageDiskAsFilesystem(
 		return fmt.Errorf("failed to start NBS endpoint: %w", err)
 	}
 
-	logVolume(diskId, "endpoint started with device: %q", resp.NbdDeviceFile)
+	if resp.NbdDeviceFile == "" {
+		return fmt.Errorf("NbdDeviceFile shouldn't be empty")
+	}
+
+	logVolume(req.VolumeId, "endpoint started with device: %q", resp.NbdDeviceFile)
 
 	mnt := req.VolumeCapability.GetMount()
 
@@ -823,7 +831,11 @@ func (s *nodeService) nodeStageDiskAsBlockDevice(
 		return fmt.Errorf("failed to start NBS endpoint: %w", err)
 	}
 
-	logVolume(diskId, "endpoint started with device: %q", resp.NbdDeviceFile)
+	if resp.NbdDeviceFile == "" {
+		return fmt.Errorf("NbdDeviceFile shouldn't be empty")
+	}
+
+	logVolume(req.VolumeId, "endpoint started with device: %q", resp.NbdDeviceFile)
 
 	devicePath := filepath.Join(req.StagingTargetPath, diskId)
 	return s.mountBlockDevice(diskId, resp.NbdDeviceFile, devicePath, false)
@@ -839,8 +851,12 @@ func (s *nodeService) nodePublishDiskAsBlockDeviceDeprecated(
 		return fmt.Errorf("failed to start NBS endpoint: %w", err)
 	}
 
-	logVolume(diskId, "endpoint started with device: %q", resp.NbdDeviceFile)
-	return s.mountBlockDevice(diskId, resp.NbdDeviceFile, req.TargetPath, req.Readonly)
+	if resp.NbdDeviceFile == "" {
+		return fmt.Errorf("NbdDeviceFile shouldn't be empty")
+	}
+
+	logVolume(req.VolumeId, "endpoint started with device: %q", resp.NbdDeviceFile)
+	return s.mountBlockDevice(req.VolumeId, resp.NbdDeviceFile, req.TargetPath, req.Readonly)
 }
 
 func (s *nodeService) nodePublishDiskAsBlockDevice(

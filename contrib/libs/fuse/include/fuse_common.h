@@ -100,6 +100,7 @@ struct fuse_file_info {
  * FUSE_CAP_SPLICE_MOVE: ability to move data to the fuse device with splice()
  * FUSE_CAP_SPLICE_READ: ability to use splice() to read from the fuse device
  * FUSE_CAP_IOCTL_DIR: ioctl support on directories
+ * FUSE_CAP_WRITEBACK_CACHE: writeback caching should be enabled
  */
 #define FUSE_CAP_ASYNC_READ	(1 << 0)
 #define FUSE_CAP_POSIX_LOCKS	(1 << 1)
@@ -112,6 +113,7 @@ struct fuse_file_info {
 #define FUSE_CAP_SPLICE_READ	(1 << 9)
 #define FUSE_CAP_FLOCK_LOCKS	(1 << 10)
 #define FUSE_CAP_IOCTL_DIR	(1 << 11)
+#define FUSE_CAP_WRITEBACK_CACHE	(1 << 16)
 
 /**
  * Ioctl flags
