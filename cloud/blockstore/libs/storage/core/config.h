@@ -418,7 +418,6 @@ public:
     TDuration GetNonReplicatedMaxRequestTimeoutSSD() const;
     TDuration GetNonReplicatedMinRequestTimeoutHDD() const;
     TDuration GetNonReplicatedMaxRequestTimeoutHDD() const;
-    TDuration GetExpectedClientBackoffIncrement() const;
 
     TDuration GetDeletedCheckpointHistoryLifetime() const;
     bool GetNonReplicatedMigrationStartAllowed() const;

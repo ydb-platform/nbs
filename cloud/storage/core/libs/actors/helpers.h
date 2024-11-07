@@ -107,7 +107,7 @@ inline void Send(
 template <typename T>
 inline void Reply(
     const NActors::TActorContext& ctx,
-    T& request,
+    const T& request,
     NActors::IEventBasePtr response)
 {
     ctx.Send(

@@ -13,6 +13,7 @@
 #include <cloud/blockstore/libs/storage/model/requests_in_progress.h>
 #include <cloud/blockstore/libs/storage/partition_common/drain_actor_companion.h>
 #include <cloud/blockstore/libs/storage/partition_common/get_changed_blocks_companion.h>
+#include <cloud/blockstore/libs/storage/partition_nonrepl/part_nonrepl_events_private.h>
 
 #include <library/cpp/actors/core/actor_bootstrapped.h>
 #include <library/cpp/actors/core/events.h>
@@ -25,6 +26,22 @@ namespace NCloud::NBlockStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+// Adjusts the behavior when a response is not received from the server within
+// the timeout.
+struct TRequestTimeoutPolicy
+{
+    // How long to wait for a response from the server.
+    TDuration Timeout;
+
+    // The error that needs to be generated when a timeout occurs.
+    EWellKnownResultCodes ErrorCode;
+
+    // Message for the response.
+    TString OverrideMessage;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
 class TNonreplicatedPartitionActor final
     : public NActors::TActorBootstrapped<TNonreplicatedPartitionActor>
 {
@@ -33,27 +50,39 @@ private:
     const TNonreplicatedPartitionConfigPtr PartConfig;
     const NActors::TActorId StatActorId;
 
+    enum class EDeviceStatus
+    {
+        Ok,
+        SilentBroken,
+        Broken,
+    };
+
     struct TDeviceStat
     {
-        TInstant LastTimeoutTs;
-        TDuration TimedOutStateDuration;
-        TDuration CurrentTimeout;
-        TDuration ExpectedClientBackoff;
+        // The start time of the first timed out request.
+        TInstant FirstTimeoutTs;
 
+        // Execution times of the last 10 requests.
         TSimpleRingBuffer<TDuration> ResponseTimes{10};
+
+        // The current status of the device.
+        EDeviceStatus DeviceStatus = EDeviceStatus::Ok;
+
+        // When the device was considered broken.
+        TInstant BrokenTransitionTs;
+
+        // Returns the maximum request execution time among the latest.
+        [[nodiscard]] TDuration WorstRequestTime() const;
+
+        [[nodiscard]] TDuration GetTimedOutStateDuration(TInstant now) const;
+
+        [[nodiscard]] bool CooldownPassed(
+            TInstant now,
+            TDuration cooldownTimeout) const;
     };
     TVector<TDeviceStat> DeviceStats;
-    bool HasBrokenDevice = false;
-    TInstant BrokenTransitionTs;
 
-    struct TRequest
-    {
-        TInstant Ts;
-        TStackVec<int, 2> DeviceIndices;
-        TDuration Timeout;
-    };
-
-    TRequestsInProgress<NActors::TActorId, TRequest> RequestsInProgress{
+    TRequestsInProgress<NActors::TActorId> RequestsInProgress{
         EAllowedRequests::ReadWrite};
     TDrainActorCompanion DrainActorCompanion{
         RequestsInProgress,
@@ -93,26 +122,36 @@ private:
 
     TDuration GetMinRequestTimeout() const;
     TDuration GetMaxRequestTimeout() const;
+    TDuration GetMaxTimedOutDeviceStateDuration() const;
+    bool CalculateHasBrokenDeviceCounterValue(
+        const NActors::TActorContext& ctx,
+        bool silent) const;
+
+    TRequestTimeoutPolicy MakeTimeoutPolicyForRequest(
+        const TVector<TDeviceRequest>& deviceRequests,
+        TInstant now,
+        bool isBackground) const;
 
     template <typename TMethod>
     bool InitRequests(
         const typename TMethod::TRequest& msg,
         const NActors::TActorContext& ctx,
-        TRequestInfo& requestInfo,
+        const TRequestInfo& requestInfo,
         const TBlockRange64& blockRange,
         TVector<TDeviceRequest>* deviceRequests,
-        TRequest* request);
+        TRequestTimeoutPolicy* timeoutPolicy);
 
-    void OnResponse(ui32 deviceIndex, TDuration responseTime);
-
-    bool IOErrorCooldownPassed(const TInstant now) const;
+    void OnRequestCompleted(
+        const TEvNonreplPartitionPrivate::TOperationCompleted& operation,
+        TInstant now);
+    void OnRequestSuccess(ui32 deviceIndex, TDuration executionTime);
+    void OnRequestTimeout(
+        ui32 deviceIndex,
+        TDuration executionTime,
+        TInstant now);
 
     void HandleUpdateCounters(
         const TEvNonreplPartitionPrivate::TEvUpdateCounters::TPtr& ev,
-        const NActors::TActorContext& ctx);
-
-    void HandleWakeup(
-        const NActors::TEvents::TEvWakeup::TPtr& ev,
         const NActors::TActorContext& ctx);
 
     void HandlePoisonPill(

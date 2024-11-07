@@ -731,7 +731,7 @@ message TStorageServiceConfig
 
     // Expected client backoff timeout increment in milliseconds - used to
     // calculate some internal timeouts.
-    optional uint32 ExpectedClientBackoffIncrement = 280;
+    // optional uint32 ExpectedClientBackoffIncrement = 280; // obsolete
 
     // Maximum number of pending deallocation requests per one disk.
     optional uint32 MaxNonReplicatedDiskDeallocationRequests = 281;
