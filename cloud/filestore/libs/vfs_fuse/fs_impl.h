@@ -418,11 +418,15 @@ private:
         fuse_req_t req,
         const NProto::TNodeAttr& attrs);
 
-    bool ProcessAsynRelease(
+    bool ProcessAsyncRelease(
         TCallContextPtr callContext,
         fuse_req_t req,
         fuse_ino_t ino,
         ui64 fh);
+    void CompleteAsyncDestroyHandle(
+        TCallContextPtr callContext,
+        const NProto::TDestroyHandleResponse& response
+    );
 
     void ClearDirectoryCache();
 

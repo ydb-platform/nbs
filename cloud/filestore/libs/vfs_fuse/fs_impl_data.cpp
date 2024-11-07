@@ -122,14 +122,14 @@ void TFileSystem::Open(
         });
 }
 
-bool TFileSystem::ProcessAsynRelease(
+bool TFileSystem::ProcessAsyncRelease(
     TCallContextPtr callContext,
     fuse_req_t req,
     fuse_ino_t ino,
     ui64 fh)
 {
     with_lock(HandleOpsQueueLock) {
-        const auto& res = HandleOpsQueue->AddDestroyRequest(ino, fh);
+        const auto res = HandleOpsQueue->AddDestroyRequest(ino, fh);
         if (res == THandleOpsQueue::EResult::QueueOveflow) {
             STORAGE_DEBUG(
                 "HandleOpsQueue overflow, can't add destroy handle request to "
@@ -144,16 +144,11 @@ bool TFileSystem::ProcessAsynRelease(
 
             ReportHandleOpsQueueProcessError(msg);
 
-            ReplyError(
-                *callContext,
-                MakeError(
-                    E_FAIL,
-                    msg),
-                req,
-                0);
+            ReplyError(*callContext, MakeError(E_FAIL, msg), req, 0);
             return true;
         }
     }
+
     STORAGE_DEBUG(
         "Destroy handle request added to queue #" << ino << " @" << fh);
     ReplyError(*callContext, {}, req, 0);
@@ -173,7 +168,7 @@ void TFileSystem::Release(
     }
 
     if (Config->GetAsyncDestroyHandleEnabled()) {
-        if (!ProcessAsynRelease(callContext, req, ino, fi->fh)) {
+        if (!ProcessAsyncRelease(callContext, req, ino, fi->fh)) {
             with_lock(DelayedReleaseQueueLock) {
                 DelayedReleaseQueue.push(
                     TReleaseRequest(callContext, req, ino, fi->fh));
