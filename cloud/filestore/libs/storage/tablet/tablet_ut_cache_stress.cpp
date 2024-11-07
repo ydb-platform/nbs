@@ -27,7 +27,9 @@ class TRequestGenerator
         SET_NODE_XATTR,
         CREATE_NODE,
         UNLINK_NODE,
-        // TODO(debnatkh): open/close file, rename
+        CREATE_HANDLE,
+        DESTROY_HANDLE,
+        REBOOT_TABLET,
 
         OPERATION_COUNT
     };
@@ -89,6 +91,15 @@ public:
                 case UNLINK_NODE:
                     response = DoUnlinkNode();
                     break;
+                case CREATE_HANDLE:
+                    response = DoCreateHandle();
+                    break;
+                case DESTROY_HANDLE:
+                    response = DoDestroyHandle();
+                    break;
+                case REBOOT_TABLET:
+                    response = DoRebootTablet();
+                    break;
                 default:
                     break;
             }
@@ -100,7 +111,7 @@ public:
 
         STORAGE_INFO(
             "Storage stats: %s",
-            Tablet->GetStorageStats()->Record.DebugString().Quote().c_str());
+            Tablet->GetStorageStats()->Record.ShortDebugString().c_str());
 
         return responses;
     }
@@ -121,7 +132,7 @@ private:
         } else {
             response = Tablet->SendAndRecvGetNodeAttr(node.NodeId, "")->Record;
         }
-        EraseTimes(response.MutableNode());
+        RectifyTimes(response.MutableNode());
 
         return response.DebugString();
     }
@@ -155,7 +166,7 @@ private:
         }
 
         auto result = Tablet->SendAndRecvSetNodeAttr(args)->Record;
-        EraseTimes(result.MutableNode());
+        RectifyTimes(result.MutableNode());
         return result.DebugString();
     }
 
@@ -212,7 +223,7 @@ private:
                 .Name = name,
             });
         }
-        EraseTimes(response->Record.MutableNode());
+        RectifyTimes(response->Record.MutableNode());
 
         return response->Record.DebugString();
     }
@@ -240,6 +251,64 @@ private:
         }
 
         return response->Record.DebugString();
+    }
+
+    TString DoCreateHandle()
+    {
+        const TNode node = PickRandomNode();
+        ui32 mode;
+        switch (Random->GenRand() % 4) {
+            case 0:
+                mode = TCreateHandleArgs::RDNLY;
+                break;
+            case 1:
+                mode = TCreateHandleArgs::WRNLY;
+                break;
+            case 2:
+                mode = TCreateHandleArgs::RDWR;
+                break;
+            case 3:
+                mode = TCreateHandleArgs::CREATE;
+                break;
+            default:
+                Y_ASSERT(false);
+        }
+
+        auto response = Tablet->SendAndRecvCreateHandle(node.NodeId, mode);
+
+        if (SUCCEEDED(response->GetError().GetCode())) {
+            Handles.push_back(response->Record.GetHandle());
+            AllHandles.push_back(response->Record.GetHandle());
+        }
+        RectifyTimes(response->Record.MutableNodeAttr());
+        RectifyHandle(response->Record);
+
+        return response->Record.DebugString();
+    }
+
+    TString DoDestroyHandle()
+    {
+        if (Handles.empty()) {
+            return "";
+        }
+
+        const ui64 handle = Handles[Random->GenRand() % Handles.size()];
+        auto response = Tablet->SendAndRecvDestroyHandle(handle);
+
+        if (SUCCEEDED(response->GetError().GetCode())) {
+            auto* it = std::find(Handles.begin(), Handles.end(), handle);
+            Y_ASSERT(it != Handles.end());
+            Handles.erase(it);
+        }
+
+        return response->Record.DebugString();
+    }
+
+    TString DoRebootTablet()
+    {
+        Tablet->RebootTablet();
+        Tablet->RecoverSession();
+        return "Tablet rebooted";
     }
 
     ////////////////////////////////////////////////////////////////////////////////
@@ -289,19 +358,39 @@ private:
     /**
      * Some timestamps in the node attributes are not deterministic and
      * are dependent on the timestamp of the test execution. Thus, all
-     * reasonably large timestamps are pruned
+     * reasonably large timestamps are replaced with incrementing counter
+     * starting from 1
      */
-    static void EraseTimes(NProto::TNodeAttr* node)
+    void RectifyTimes(NProto::TNodeAttr* node)
     {
         if (TInstant::Seconds(node->GetATime()) > TimestampPivot) {
-            node->ClearATime();
+            node->SetATime(++TimeCounter);
         }
         if (TInstant::Seconds(node->GetMTime()) > TimestampPivot) {
-            node->ClearMTime();
+            node->SetMTime(++TimeCounter);
         }
         if (TInstant::Seconds(node->GetCTime()) > TimestampPivot) {
-            node->ClearCTime();
+            node->SetCTime(++TimeCounter);
         }
+    }
+
+    /**
+     * @brief Handles are assigned randomly. To be able to compare the results
+     * of two runs they are replaced mapping that always selects the lowest
+     * unused value for the handle that has not been observed yet.
+     */
+    template <typename T>
+    void RectifyHandle(T& response)
+    {
+        auto handle = response.GetHandle();
+        if (handle == InvalidHandle) {
+            return;
+        }
+        if (HandleMapping.find(handle) == HandleMapping.end()) {
+            ui64 newHandle = HandleMapping.size() + 1;
+            HandleMapping[handle] = newHandle;
+        }
+        response.SetHandle(HandleMapping[handle]);
     }
 
     TInstant GenerateRandomTime()
@@ -318,6 +407,11 @@ private:
 
     TVector<ui64> Handles;
     TVector<ui64> AllHandles;
+
+    // See description of RectifyHandle for details
+    THashMap<ui64, ui64> HandleMapping;
+    // See description of RectifyTimes for details
+    ui64 TimeCounter = 1;
 
     struct TNode
     {
@@ -349,8 +443,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Cache_Stress)
         storageConfig.SetInMemoryIndexCacheNodeAttrsCapacity(100);
         storageConfig.SetInMemoryIndexCacheNodeRefsCapacity(100);
 
-        std::random_device rd;
-        auto seed = rd();
+        ui64 seed = Now().GetValue();
         auto responses1 =
             TRequestGenerator(storageConfig, seed).RunRandomIndexLoad();
         auto responses2 = TRequestGenerator({}, seed).RunRandomIndexLoad();
