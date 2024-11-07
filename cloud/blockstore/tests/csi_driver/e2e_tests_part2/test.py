@@ -17,11 +17,11 @@ def get_access_mode(mount_point: str) -> str:
     return ""
 
 
-@pytest.mark.parametrize('mount_path,access_type,vm_mode',
-                         [("/var/lib/kubelet/pods/123/volumes/kubernetes.io~csi/example-disk/mount", "mount", False),
-                          ("/var/lib/kubelet/plugins/kubernetes.io/csi/volumeDevices/publish/123/example-disk", "block", False),
-                          ("/var/lib/kubelet/pods/123/volumes/kubernetes.io~csi/example-disk/mount", "mount", True)])
-def test_readonly_volume(mount_path, access_type, vm_mode):
+@pytest.mark.parametrize('mount_path,access_type,vm_mode,gid',
+                         [("/var/lib/kubelet/pods/123/volumes/kubernetes.io~csi/example-disk/mount", "mount", False, "1010"),
+                          ("/var/lib/kubelet/plugins/kubernetes.io/csi/volumeDevices/publish/123/example-disk", "block", False, "1011"),
+                          ("/var/lib/kubelet/pods/123/volumes/kubernetes.io~csi/example-disk/mount", "mount", True, "1012")])
+def test_readonly_volume(mount_path, access_type, vm_mode, gid):
     env, run = csi.init(vm_mode)
     try:
         volume_name = "example-disk"
@@ -33,6 +33,23 @@ def test_readonly_volume(mount_path, access_type, vm_mode):
         env.csi.publish_volume(pod_id, volume_name, pod_name, access_type, readonly=True)
         # check that publishing read only volume is idempotent
         env.csi.publish_volume(pod_id, volume_name, pod_name, access_type, readonly=True)
+        assert "ro" == get_access_mode(mount_path)
+
+        env.csi.unpublish_volume(pod_id, volume_name, access_type)
+        result = subprocess.run(
+            ["groupadd", "-g", gid, "test_group_" + gid],
+            capture_output=True,
+        )
+        assert result.returncode == 0
+
+        env.csi.publish_volume(
+            pod_id,
+            volume_name,
+            pod_name,
+            access_type,
+            readonly=True,
+            volume_mount_group=gid
+        )
         assert "ro" == get_access_mode(mount_path)
 
     except subprocess.CalledProcessError as e:
