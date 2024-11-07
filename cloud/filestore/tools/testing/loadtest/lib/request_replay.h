@@ -23,10 +23,10 @@ protected:
     const ::NCloud::NFileStore::NProto::THeaders Headers;
     NClient::ISessionPtr Session;
 
-    ui64 TimestampMcs{};
+    ui64 TimestampMcs = 0;
     TInstant Started;
 
-    // Do not sleep too much if timestamps in log is broken
+    // Do not sleep too much if timestamps in log are broken
     constexpr static auto MaxSleepMcs = 1000000;
 
 private:

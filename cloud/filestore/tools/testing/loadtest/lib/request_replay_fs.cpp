@@ -78,11 +78,11 @@ public:
             TString filesystemId,
             NProto::THeaders headers)
         : IReplayRequestGenerator(
-              std::move(spec),
-              std::move(logging),
-              std::move(session),
-              std::move(filesystemId),
-              std::move(headers))
+        std::move(spec),
+        std::move(logging),
+        std::move(session),
+        std::move(filesystemId),
+        std::move(headers))
     {
         if (Spec.GetReplayRoot().empty()) {
             ythrow yexception() << "ReplayRoot is not defined";
@@ -133,7 +133,7 @@ private:
         const NCloud::NFileStore::NProto::TProfileLogRequestInfo& logRequest)
         override
     {
-        // nfs     AccessNode      0.002297s       S_OK    {mask=4, node_id=36}
+        // {mask=4, node_id=36}
 
         if (Spec.GetSkipRead()) {
             return MakeFuture(TCompletedRequest{
@@ -230,14 +230,12 @@ private:
         const NCloud::NFileStore::NProto::TProfileLogRequestInfo& logRequest)
         override
     {
-        // json={"TimestampMcs":1726503808715698,"DurationMcs":2622,"RequestType":38,"ErrorCode":0,"NodeInfo":{"ParentNodeId":13882,"NodeName":"compile_commands.json.tmpdf020","Flags":38,"Mode":436,"NodeId":15553,"Handle":46923415058768564,"Size":0}}
-        // {"TimestampMcs":1725895168384258,"DurationMcs":2561,"RequestType":38,"ErrorCode":0,"NodeInfo":{"ParentNodeId":12527,"NodeName":"index.lock","Flags":15,"Mode":436,"NodeId":12584,"Handle":65382484937735195,"Size":0}}
-        // nfs     CreateHandle    0.004161s       S_OK    {parent_node_id=65,
-        // node_name=ini, flags=14, mode=436, node_id=66,
-        // handle=11024287581389312, size=0}
-        // data="TimestampMcs: 1730357985685217 DurationMcs: 830 RequestType: 38
-        // ErrorCode: 0 NodeInfo { ParentNodeId: 30370 NodeName: \"\" Flags: 1
-        // Mode: 0 NodeId: 30370 Handle: 26864016645431487 Size: 8547 }"
+        // {"TimestampMcs":1726,"DurationMcs":2622,"RequestType":38,"ErrorCode":0,"NodeInfo":{"ParentNodeId":13882,"NodeName":"compile_commands.json.tmpdf020","Flags":38,"Mode":436,"NodeId":15553,"Handle":4692,"Size":0}}
+        // {"TimestampMcs":1725,"DurationMcs":2561,"RequestType":38,"ErrorCode":0,"NodeInfo":{"ParentNodeId":12527,"NodeName":"index.lock","Flags":15,"Mode":436,"NodeId":12584,"Handle":6538,"Size":0}}
+        // {parent_node_id=65, node_name=ini, flags=14, mode=436, node_id=66,
+        // handle=1102, size=0} data="TimestampMcs: 1730 DurationMcs: 830
+        // RequestType: 38 ErrorCode: 0 NodeInfo { ParentNodeId: 30370 NodeName:
+        // \"\" Flags: 1 Mode: 0 NodeId: 30370 Handle: 2686 Size: 8547 }"
 
         TGuard<TMutex> guard(StateLock);
 
@@ -470,7 +468,7 @@ private:
         const NCloud::NFileStore::NProto::TProfileLogRequestInfo& logRequest)
         override
     {
-        //{"TimestampMcs":1465489895000,"DurationMcs":2790,"RequestType":44,"Ranges":[{"NodeId":2,"Handle":20680158862113389,"Offset":13,"Bytes":12}]}
+        // {"TimestampMcs":123,"DurationMcs":2790,"RequestType":44,"Ranges":[{"NodeId":2,"Handle":2068,"Offset":13,"Bytes":12}]}
 
         if (Spec.GetSkipWrite()) {
             return MakeFuture(TCompletedRequest{
@@ -490,8 +488,8 @@ private:
                 Started,
                 MakeError(
                     E_CANCELLED,
-                    TStringBuilder{} << "write cancelled: no handle ="
-                                     << handleLog)));
+                    TStringBuilder()
+                        << "write cancelled: no handle =" << handleLog)));
         }
         const auto bytes = logRequest.GetRanges(0).GetBytes();
         const auto offset = logRequest.GetRanges(0).GetOffset();
@@ -507,7 +505,7 @@ private:
             buffer = MakeBuffer(
                 bytes,
                 offset,
-                TStringBuilder{} << "handle=" << handleLog << " node="
+                TStringBuilder() << "handle=" << handleLog << " node="
                                  << logRequest.GetNodeInfo().GetNodeId()
                                  << " bytes=" << bytes << " offset=" << offset);
         }
@@ -521,12 +519,8 @@ private:
             fh.GetPosition());
         // TODO(proller): TEST USE AFTER FREE on buffer
         TFileHandle FileHandle{fh.GetHandle()};
-        const auto writeFuture = AsyncIO.Write(
-            // fh,
-            FileHandle,
-            buffer.data(),
-            bytes,
-            offset);
+        const auto writeFuture =
+            AsyncIO.Write(FileHandle, buffer.data(), bytes, offset);
         FileHandle.Release();
         return writeFuture.Apply(
             [started = Started]([[maybe_unused]] const auto& future) mutable
@@ -537,7 +531,7 @@ private:
                 return TCompletedRequest(
                     NProto::ACTION_WRITE,
                     started,
-                    MakeError(E_IO, TStringBuilder{} << "nothing written"));
+                    MakeError(E_IO, TStringBuilder() << "nothing written"));
             });
     }
 
@@ -560,9 +554,9 @@ private:
         const NCloud::NFileStore::NProto::TProfileLogRequestInfo& logRequest)
         override
     {
-        // {"TimestampMcs":1725895166478218,"DurationMcs":6328,"RequestType":26,"ErrorCode":0,"NodeInfo":{"NewParentNodeId":1,"NewNodeName":"home","Mode":509,"NodeId":12526,"Size":0}}
-        // nfs     CreateNode      0.006404s       S_OK {new_parent_node_id=1,
-        // new_node_name=home, mode=509, node_id=12526, size=0}
+        // {"TimestampMcs":1725,"DurationMcs":6328,"RequestType":26,"ErrorCode":0,"NodeInfo":{"NewParentNodeId":1,"NewNodeName":"home","Mode":509,"NodeId":12526,"Size":0}}
+        // {new_parent_node_id=1, new_node_name=home, mode=509, node_id=12526,
+        // size=0}
 
         if (Spec.GetSkipWrite()) {
             return MakeFuture(TCompletedRequest{
@@ -600,7 +594,7 @@ private:
                 break;
             }
             case NProto::E_LINK_NODE: {
-                // {"TimestampMcs":1000000000000000,"DurationMcs":2432,"RequestType":26,"ErrorCode":0,"NodeInfo":{"NewParentNodeId":267,"NewNodeName":"name.ext","Mode":292,"Type":3,"NodeId":274,"Size":245792}}
+                // {"TimestampMcs":1000,"DurationMcs":2432,"RequestType":26,"ErrorCode":0,"NodeInfo":{"NewParentNodeId":267,"NewNodeName":"name.ext","Mode":292,"Type":3,"NodeId":274,"Size":245792}}
 
                 const auto targetNode =
                     NodeIdMapped(logRequest.GetNodeInfo().GetNodeId());
@@ -645,7 +639,7 @@ private:
         const NCloud::NFileStore::NProto::TProfileLogRequestInfo& logRequest)
         override
     {
-        // {"TimestampMcs":895166000,"DurationMcs":2949,"RequestType":28,"NodeInfo":{"ParentNodeId":3,"NodeName":"HEAD.lock","NewParentNodeId":3,"NewNodeName":"HEAD"}}
+        // {"TimestampMcs":8951,"DurationMcs":2949,"RequestType":28,"NodeInfo":{"ParentNodeId":3,"NodeName":"HEAD.lock","NewParentNodeId":3,"NewNodeName":"HEAD"}}
         // nfs     RenameNode      0.002569s       S_OK {parent_node_id=12527,
         // node_name=HEAD.lock, new_parent_node_id=12527, new_node_name=HEAD}
         // request->SetNodeId(NodesLogToActual[r.GetNodeInfo().GetNodeId()]);
@@ -694,8 +688,7 @@ private:
         const NCloud::NFileStore::NProto::TProfileLogRequestInfo& logRequest)
         override
     {
-        // UnlinkNode      0.002605s       S_OK    {parent_node_id=3,
-        // node_name=tfrgYZ1}
+        // {parent_node_id=3, node_name=tfrgYZ1}
 
         if (Spec.GetSkipWrite()) {
             return MakeFuture(TCompletedRequest{
@@ -732,8 +725,7 @@ private:
         const NCloud::NFileStore::NProto::TProfileLogRequestInfo& logRequest)
         override
     {
-        //  DestroyHandle   0.002475s       S_OK    {node_id=10,
-        // handle=61465562388172112}
+        //  {node_id=10, handle=6146}
         TGuard<TMutex> guard(StateLock);
 
         const auto handleid =
@@ -746,10 +738,10 @@ private:
                 Started,
                 MakeError(
                     E_CANCELLED,
-                    TStringBuilder{} << "close " << handleid << " <- "
-                                     << logRequest.GetNodeInfo().GetHandle()
-                                     << " fail: not found in "
-                                     << OpenHandles.size())));
+                    TStringBuilder()
+                        << "close " << handleid << " <- "
+                        << logRequest.GetNodeInfo().GetHandle()
+                        << " fail: not found in " << OpenHandles.size())));
         }
 
         auto& fhandle = it->second;
@@ -784,10 +776,10 @@ private:
         TGuard<TMutex> guard(StateLock);
 
         // TODO(proller): by ParentNodeId + NodeName
-        // {"TimestampMcs":1726503153650998,"DurationMcs":7163,"RequestType":35,"ErrorCode":2147942422,"NodeInfo":{"NodeName":"security.capability","NewNodeName":"","NodeId":5,"Size":0}}
-        // {"TimestampMcs":1726615533406265,"DurationMcs":192,"RequestType":33,"ErrorCode":2147942402,"NodeInfo":{"ParentNodeId":17033,"NodeName":"CPackSourceConfig.cmake","Flags":0,"Mode":0,"NodeId":0,"Handle":0,"Size":0}}
-        // {"TimestampMcs":240399000,"DurationMcs":163,"RequestType":33,"NodeInfo":{"ParentNodeId":3,"NodeName":"branches","Flags":0,"Mode":0,"NodeId":0,"Handle":0,"Size":0}}
-        // {"TimestampMcs":1727464381415468,"DurationMcs":1982,"RequestType":33,"ErrorCode":2147942402,"NodeInfo":{"ParentNodeId":2,"NodeName":"libc.so.6","Flags":0,"Mode":0,"NodeId":0,"Handle":0,"Size":0}}
+        // {"TimestampMcs":1726,"DurationMcs":7163,"RequestType":35,"ErrorCode":2147942422,"NodeInfo":{"NodeName":"security.capability","NewNodeName":"","NodeId":5,"Size":0}}
+        // {"TimestampMcs":1726,"DurationMcs":192,"RequestType":33,"ErrorCode":2147942402,"NodeInfo":{"ParentNodeId":17033,"NodeName":"CPackSourceConfig.cmake","Flags":0,"Mode":0,"NodeId":0,"Handle":0,"Size":0}}
+        // {"TimestampMcs":2403,"DurationMcs":163,"RequestType":33,"NodeInfo":{"ParentNodeId":3,"NodeName":"branches","Flags":0,"Mode":0,"NodeId":0,"Handle":0,"Size":0}}
+        // {"TimestampMcs":1727,"DurationMcs":1982,"RequestType":33,"ErrorCode":2147942402,"NodeInfo":{"ParentNodeId":2,"NodeName":"libc.so.6","Flags":0,"Mode":0,"NodeId":0,"Handle":0,"Size":0}}
         // nfs     GetNodeAttr     0.006847s       S_OK    {parent_node_id=1,
         // node_name=freeminer, flags=0, mode=509, node_id=2, handle=0, size=0}
 
@@ -813,7 +805,7 @@ private:
                 Started,
                 MakeError(
                     E_NOT_FOUND,
-                    TStringBuilder{} << "Node not found "
+                    TStringBuilder() << "Node not found "
                                      << logRequest.GetNodeInfo().GetNodeId()
                                      << " in " << NodesLogToLocal.size())});
         }
@@ -848,7 +840,7 @@ private:
         const NCloud::NFileStore::NProto::TProfileLogRequestInfo& logRequest)
         override
     {
-        // json={"TimestampMcs":1726615510721016,"DurationMcs":3329,"RequestType":30,"ErrorCode":0,"NodeInfo":{"NodeId":164,"Size":10}}
+        // {"TimestampMcs":1726,"DurationMcs":3329,"RequestType":30,"ErrorCode":0,"NodeInfo":{"NodeId":164,"Size":10}}
 
         TGuard<TMutex> guard(StateLock);
 
@@ -859,8 +851,8 @@ private:
                 Started,
                 MakeError(
                     E_CANCELLED,
-                    TStringBuilder{} << "Node not found in mapping"
-                                     << nodeid)});
+                    TStringBuilder()
+                        << "Node not found in mapping" << nodeid)});
         }
 
         if (!Spec.GetSkipWrite()) {
@@ -874,7 +866,7 @@ private:
                 Started,
                 MakeError(
                     E_NOT_FOUND,
-                    TStringBuilder{} << "Local dir not found " << path)});
+                    TStringBuilder() << "Local dir not found " << path)});
         }
         TFileHandle dir{path, RdOnly};
         if (!dir.IsOpen()) {
@@ -921,7 +913,7 @@ private:
                 Started,
                 MakeError(
                     E_FAIL,
-                    TStringBuilder{} << "No handle" << logHandle)});
+                    TStringBuilder() << "No handle" << logHandle)});
         }
 
         if (!OpenHandles.contains(handle)) {
@@ -930,7 +922,7 @@ private:
                 Started,
                 MakeError(
                     E_FAIL,
-                    TStringBuilder{} << "No opened handle" << handle << " <- "
+                    TStringBuilder() << "No opened handle" << handle << " <- "
                                      << logHandle)});
         }
 
