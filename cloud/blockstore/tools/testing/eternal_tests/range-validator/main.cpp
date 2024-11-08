@@ -140,7 +140,7 @@ TBlockData ReadBlockData(TFile& file, ui64 offset)
     // using O_DIRECT imposes some alignment restrictions:
     //   - offset should be sector aligned
     //   - buffer should be page aligned
-    //   - size should be a multiple the page size
+    //   - size should be a multiple of a page size
     size_t len = (sizeof(TBlockData) + PAGE_SIZE - 1) / PAGE_SIZE * PAGE_SIZE;
     alignas(PAGE_SIZE) char buf[len];
     file.Seek(offset, sSet);
