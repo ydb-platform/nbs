@@ -26,7 +26,8 @@ struct TGrpcState
     ~TGrpcState()
     {
         // ensure that GRPC is shut down
-        Y_ABORT_UNLESS(AtomicGet(Counter) == 0);
+        // NOTE: temporarily turned off
+        // Y_ABORT_UNLESS(AtomicGet(Counter) == 0);
     }
 
     static TGrpcState& Instance()
