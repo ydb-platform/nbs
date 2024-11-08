@@ -10,7 +10,7 @@ using namespace NCloud::NBlockStore;
 
 ////////////////////////////////////////////////////////////////////////////////
 
-constexpr ui64 MAX_MIRROR_REPLICAS = 3;
+constexpr ui64 MaxMirrorReplicas = 3;
 constexpr ui64 PAGE_SIZE = 4096;
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -23,13 +23,28 @@ enum class EValidationMode
 
 ////////////////////////////////////////////////////////////////////////////////
 
+inline IOutputStream& operator<<(IOutputStream& out, const TBlockData& data)
+{
+    out << "{"
+        << " " << data.RequestNumber
+        << " " << data.PartNumber
+        << " " << data.BlockIndex
+        << " " << data.RangeIdx
+        << " " << TInstant::MicroSeconds(data.RequestTimestamp)
+        << " " << TInstant::MicroSeconds(data.TestTimestamp)
+        << " " << data.TestId
+        << " " << data.Checksum
+        << " }";
+
+    return out;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 struct TOptions
 {
-
     TString ConfigPath;
     TString DevicePath;
-    TString RangesStr;
-    TString BlocksStr;
     TString LogPath;
     TVector<ui32> Ranges;
     TVector<ui64> Blocks;
@@ -62,9 +77,8 @@ struct TOptions
             "ranges",
             "specify range indexes for validation, separated by comma")
             .RequiredArgument("STR")
-            .StoreResult(&RangesStr)
-            .Handler0([this] {
-                TStringBuf buf(RangesStr);
+            .Handler1T<TString>([this] (const auto& s) {
+                TStringBuf buf(s);
                 TStringBuf arg;
                 while (buf.NextTok(',', arg)) {
                     Ranges.push_back(FromString<ui32>(arg));
@@ -75,9 +89,8 @@ struct TOptions
             "blocks",
             "specify individual blocks NUM or ranges NUM-NUM for validation, separated by comma")
             .RequiredArgument("STR")
-            .StoreResult(&BlocksStr)
-            .Handler0([this] {
-                TStringBuf buf(BlocksStr);
+            .Handler1T<TString>([this] (const auto& s) {
+                TStringBuf buf(s);
                 TStringBuf firstStr;
                 while (buf.NextTok(',', firstStr)) {
                     TStringBuf lastStr = firstStr.SplitOff('-');
@@ -111,20 +124,47 @@ struct TOptions
         TOptsParseResultException(&opts, argc, argv);
 
         if (Mode == EValidationMode::Checksum) {
-            Y_ENSURE(ConfigPath.size(), "you must specify config-path in checksum validation mode");
-            Y_ENSURE(Ranges.size(), "you must specify ranges in checksum validation mode");
-            Y_ENSURE(LogPath.size(), "you must specify log-path in checksum validation mode");
+            Y_ENSURE(
+                ConfigPath.size(),
+                "you must specify config-path in checksum validation mode");
+
+            Y_ENSURE(
+                Ranges.size(),
+                "you must specify ranges in checksum validation mode");
+
+            Y_ENSURE(
+                LogPath.size(),
+                "you must specify log-path in checksum validation mode");
         }
 
         if (Mode == EValidationMode::Mirror) {
-            Y_ENSURE(Blocks.size(), "you must specify blocks in mirror validation mode");
+            Y_ENSURE(
+                Blocks.size(),
+                "you must specify blocks in mirror validation mode");
+
+            Y_ENSURE(
+                BlockSize % PAGE_SIZE == 0,
+                TStringBuilder() << "block-size should be a multiple of " << PAGE_SIZE);
         }
     }
 };
 
+TBlockData ReadBlockData(TFile& file, ui64 offset)
+{
+    // using O_DIRECT imposes some alignment restrictions:
+    //   - offset should be sector aligned
+    //   - buffer should be page aligned
+    //   - size should be a multiple the page size
+    size_t len = (sizeof(TBlockData) + PAGE_SIZE - 1) / PAGE_SIZE * PAGE_SIZE;
+    alignas(PAGE_SIZE) char buf[len];
+    file.Seek(offset, sSet);
+    file.Read(buf, len);
+    return *reinterpret_cast<TBlockData*>(buf);
+}
+
 void ValidateRanges(TOptions options)
 {
-    TFile File(options.DevicePath, EOpenModeFlag::RdOnly | EOpenModeFlag::DirectAligned);
+    TFile file(options.DevicePath, EOpenModeFlag::RdOnly | EOpenModeFlag::DirectAligned);
 
     const auto& configHolder = CreateTestConfig(options.ConfigPath);
     for (ui32 rangeIdx: options.Ranges) {
@@ -152,23 +192,13 @@ void ValidateRanges(TOptions options)
         TFileOutput out(TFile(path, EOpenModeFlag::CreateAlways | EOpenModeFlag::WrOnly));
 
         for (ui64 i = 0; i < len; ++i) {
-            alignas(PAGE_SIZE) char buf[PAGE_SIZE];
-            File.Seek((i + startOffset) * requestSize, sSet);
-            File.Read(buf, PAGE_SIZE);
-            TBlockData blockData = *reinterpret_cast<TBlockData*>(buf);
+            auto blockData = ReadBlockData(file, (i + startOffset) * requestSize);
             if (blockData.RequestNumber != expected[i]) {
-                out <<
-                    "[" << rangeIdx << "] Wrong data in block "
-                    << (i + startOffset)
+                out << "[" << rangeIdx << "]"
+                    << " Wrong data in block " << (i + startOffset)
                     << " expected " << expected[i]
-                    << " actual { " << blockData.RequestNumber
-                    << " " << blockData.BlockIndex
-                    << " " << blockData.RangeIdx
-                    << " " << TInstant::MicroSeconds(blockData.RequestTimestamp)
-                    << " " << TInstant::MicroSeconds(blockData.TestTimestamp)
-                    << " " << blockData.TestId
-                    << " " << blockData.Checksum
-                    << " }\n";
+                    << " actual " << blockData
+                    << Endl;
             }
         }
 
@@ -181,36 +211,20 @@ void ValidateBlocks(TOptions options)
 {
     TFile file(options.DevicePath, EOpenModeFlag::RdOnly | EOpenModeFlag::DirectAligned);
 
-    auto compare = [](auto& x, auto& y) {
-        return memcmp(&x, &y, sizeof(TBlockData));
-    };
-
     for (ui64 blockIndex: options.Blocks) {
-        std::set<TBlockData, decltype(compare)> uniqueBlocks(compare);
+        std::set<TBlockData> blocks;
 
-        for (ui64 i = 0; i < MAX_MIRROR_REPLICAS; i++) {
-            alignas(PAGE_SIZE) char buf[PAGE_SIZE];
-            file.Seek(blockIndex * options.BlockSize, sSet);
-            file.Read(buf, PAGE_SIZE);
-            uniqueBlocks.emplace(*reinterpret_cast<TBlockData*>(buf));
+        for (ui64 i = 0; i < MaxMirrorReplicas; i++) {
+            auto blockData = ReadBlockData(file, blockIndex * options.BlockSize);
+            blocks.emplace(blockData);
         }
 
-        if (uniqueBlocks.size() == 1) {
+        if (blocks.size() == 1) {
             continue;
         }
 
-        for (const auto& block: uniqueBlocks) {
-            Cout
-                << "mismatch in block data {"
-                << " " << block.RequestNumber
-                << " " << block.PartNumber
-                << " " << block.BlockIndex
-                << " " << block.RangeIdx
-                << " " << TInstant::MicroSeconds(block.RequestTimestamp)
-                << " " << TInstant::MicroSeconds(block.TestTimestamp)
-                << " " << block.TestId
-                << " " << block.Checksum
-                << " }\n";
+        for (const auto& block: blocks) {
+            Cout << "mismatch in block data " << block << Endl;
         }
     }
 }
