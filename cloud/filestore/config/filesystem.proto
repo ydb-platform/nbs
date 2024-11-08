@@ -48,4 +48,7 @@ message TFileSystemConfig
 
     // Aligment needed for buffers when using direct io
     optional uint32 DirectIoAlign = 14;
+
+    // Enable Writeback cache on guest (fuse client)
+    optional bool GuestWritebackCacheEnabled = 15;
 }

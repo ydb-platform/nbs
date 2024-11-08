@@ -43,6 +43,7 @@ using TAliases = NProto::TStorageConfig::TFilestoreAliases;
     xxx(GarbageCompactionThresholdAverage,  ui32,   20                        )\
     xxx(CompactRangeGarbagePercentageThreshold, ui32,    0                    )\
     xxx(CompactRangeAverageBlobSizeThreshold,   ui32,    0                    )\
+    xxx(GuestWritebackCacheEnabled,         bool,   false                     )\
     xxx(NewCompactionEnabled,               bool,   false                     )\
     xxx(UseMixedBlocksInsteadOfAliveBlocksInCompaction, bool,   false         )\
     xxx(CollectGarbageThreshold,            ui32,   4_MB                      )\

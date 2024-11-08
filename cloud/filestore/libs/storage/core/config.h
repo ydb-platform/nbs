@@ -289,6 +289,8 @@ public:
 
     bool GetAutomaticShardCreationEnabled() const;
     ui64 GetMaxShardSize() const;
+
+    bool GetGuestWritebackCacheEnabled() const;
 };
 
 }   // namespace NCloud::NFileStore::NStorage
