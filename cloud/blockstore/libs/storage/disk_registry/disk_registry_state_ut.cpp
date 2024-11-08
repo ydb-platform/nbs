@@ -8677,7 +8677,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
         });
 
         const auto agent1b = AgentConfig(1000, {
-            Device("dev-1", "uuid-1.2", "rack-1"),
+            Device("dev-2", "uuid-1.2", "rack-1"),
         });
 
         TDiskRegistryState state = TDiskRegistryStateBuilder()
@@ -11775,7 +11775,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
         UNIT_ASSERT_VALUES_EQUAL(0, dirtyBytes->Val());
     }
 
-    Y_UNIT_TEST(ShouldDirtyDevicesWithNewSerialNumber)
+    Y_UNIT_TEST(ShouldCleanAvailableDevicesWithNewSerialNumber)
     {
         const TString oldSerialNumber = "OldSerialNumber";
         const TString newSerialNumber = "NewSerialNumber";

@@ -963,7 +963,10 @@ auto TDiskRegistryState::RegisterAgent(
             auto* oldConfig = r.OldConfigs.FindPtr(uuid);
             const auto diskId = FindDisk(uuid);
 
-            if (diskId && oldConfig && IsChangeDestructive(d, *oldConfig)) {
+            const bool isChangeDestructive =
+                oldConfig && IsChangeDestructive(d, *oldConfig);
+
+            if (diskId && isChangeDestructive) {
                 TString message =
                     TStringBuilder()
                     << "Device configuration has changed: " << *oldConfig
@@ -979,12 +982,9 @@ auto TDiskRegistryState::RegisterAgent(
                 continue;
             }
 
-            // To prevent data leakage we should clean the device if its serial
-            // number has been changed.
-            if (diskId.empty() && oldConfig && oldConfig->GetSerialNumber() &&
-                oldConfig->GetSerialNumber() != d.GetSerialNumber() &&
-                !IsDirtyDevice(uuid))
-            {
+            // To prevent data leakage we should clean the available device if
+            // its configuration has been changed
+            if (diskId.empty() && isChangeDestructive && !IsDirtyDevice(uuid)) {
                 DeviceList.MarkDeviceAsDirty(uuid);
                 db.UpdateDirtyDevice(uuid, {});
             }
