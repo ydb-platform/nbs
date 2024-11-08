@@ -253,7 +253,7 @@ def cleanup_after_test(
     env.tear_down()
 
 
-def init(vm_mode: bool = False):
+def init(vm_mode: bool = False, retry_timeout_ms: int | None = None):
     server_config_patch = TServerConfig()
     server_config_patch.NbdEnabled = True
     endpoints_dir = Path(common.output_path()) / f"endpoints-{hash(common.context.test_name)}"
@@ -291,6 +291,8 @@ def init(vm_mode: bool = False):
     client_config_path = Path(yatest_common.output_path()) / "client-config.txt"
     client_config = TClientAppConfig()
     client_config.ClientConfig.CopyFrom(TClientConfig())
+    if retry_timeout_ms:
+        client_config.ClientConfig.RetryTimeout = retry_timeout_ms
     client_config.ClientConfig.Host = "localhost"
     client_config.ClientConfig.InsecurePort = env.nbs_port
     client_config_path.write_text(MessageToString(client_config))

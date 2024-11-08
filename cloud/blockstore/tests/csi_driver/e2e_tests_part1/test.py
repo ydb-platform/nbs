@@ -8,7 +8,7 @@ import cloud.blockstore.tests.csi_driver.lib.csi_runner as csi
 
 
 def test_nbs_csi_driver_mounted_disk_protected_from_deletion():
-    env, run = csi.init()
+    env, run = csi.init(retry_timeout_ms=5000)
     try:
         volume_name = "example-disk"
         volume_size = 10 * 1024 ** 3
