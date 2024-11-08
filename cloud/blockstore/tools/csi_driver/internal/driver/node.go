@@ -780,7 +780,7 @@ func (s *nodeService) nodeStageDiskAsFilesystem(
 		return fmt.Errorf("failed to create staging directory: %w", err)
 	}
 
-	mountOptions := []string{}
+	mountOptions := []string{"grpid"}
 	if mnt != nil {
 		for _, flag := range mnt.MountFlags {
 			mountOptions = append(mountOptions, flag)
