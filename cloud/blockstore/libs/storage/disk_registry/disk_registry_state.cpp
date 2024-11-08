@@ -971,6 +971,9 @@ auto TDiskRegistryState::RegisterAgent(
 
                 STORAGE_ERROR(message);
 
+                ReportDiskRegistryOccupiedDeviceConfigurationHasChanged(
+                    message);
+
                 SetDeviceErrorState(d, timestamp, std::move(message));
 
                 continue;

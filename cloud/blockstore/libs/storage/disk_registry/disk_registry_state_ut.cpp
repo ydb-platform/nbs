@@ -11780,6 +11780,19 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
         const TString oldSerialNumber = "OldSerialNumber";
         const TString newSerialNumber = "NewSerialNumber";
 
+        auto monitoring = CreateMonitoringServiceStub();
+        auto rootGroup = monitoring->GetCounters()
+            ->GetSubgroup("counters", "blockstore");
+
+        auto serverGroup = rootGroup->GetSubgroup("component", "server");
+        InitCriticalEventsCounter(serverGroup);
+
+        auto criticalEvents = serverGroup->FindCounter(
+            "AppCriticalEvents/"
+            "DiskRegistryOccupiedDeviceConfigurationHasChanged");
+
+        UNIT_ASSERT_VALUES_EQUAL(0, criticalEvents->Val());
+
         TTestExecutor executor;
         executor.WriteTx([&] (TDiskRegistryDatabase db) {
             db.InitSchema();
@@ -11797,60 +11810,49 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
             })
             .Build();
 
-        executor.WriteTx([&] (TDiskRegistryDatabase db) {
-            TVector<TString> affectedDisks;
-            TVector<TString> disksToReallocate;
-            auto error = state.RegisterAgent(
-                db,
-                agentConfig,
-                Now(),
-                &affectedDisks,
-                &disksToReallocate);
+        executor.WriteTx(
+            [&](TDiskRegistryDatabase db)
+            {
+                auto [r, error] = state.RegisterAgent(db, agentConfig, Now());
 
-            UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
-            UNIT_ASSERT_VALUES_EQUAL(0, affectedDisks.size());
-            UNIT_ASSERT_VALUES_EQUAL(0, state.GetDirtyDevices().size());
-        });
+                UNIT_ASSERT_SUCCESS(error);
+                UNIT_ASSERT_VALUES_EQUAL(0, r.AffectedDisks.size());
+                UNIT_ASSERT_VALUES_EQUAL(0, state.GetDirtyDevices().size());
+            });
 
         agentConfig.MutableDevices(0)->SetSerialNumber(oldSerialNumber);
         agentConfig.MutableDevices(1)->SetSerialNumber(oldSerialNumber);
 
-        executor.WriteTx([&] (TDiskRegistryDatabase db) {
-            TVector<TString> affectedDisks;
-            TVector<TString> disksToReallocate;
-            auto error = state.RegisterAgent(
-                db,
-                agentConfig,
-                Now(),
-                &affectedDisks,
-                &disksToReallocate);
+        executor.WriteTx(
+            [&](TDiskRegistryDatabase db)
+            {
+                auto [r, error] = state.RegisterAgent(db, agentConfig, Now());
 
-            UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
-            UNIT_ASSERT_VALUES_EQUAL(0, affectedDisks.size());
-            UNIT_ASSERT_VALUES_EQUAL(0, state.GetDirtyDevices().size());
-        });
+                UNIT_ASSERT_SUCCESS(error);
+                UNIT_ASSERT_VALUES_EQUAL(0, r.AffectedDisks.size());
+                UNIT_ASSERT_VALUES_EQUAL(0, state.GetDirtyDevices().size());
+            });
 
         agentConfig.MutableDevices(0)->SetSerialNumber(newSerialNumber);
         agentConfig.MutableDevices(1)->SetSerialNumber(newSerialNumber);
 
-        executor.WriteTx([&] (TDiskRegistryDatabase db) {
-            TVector<TString> affectedDisks;
-            TVector<TString> disksToReallocate;
-            auto error = state.RegisterAgent(
-                db,
-                agentConfig,
-                Now(),
-                &affectedDisks,
-                &disksToReallocate);
+        executor.WriteTx(
+            [&](TDiskRegistryDatabase db)
+            {
+                auto [r, error] = state.RegisterAgent(db, agentConfig, Now());
 
-            UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
-            UNIT_ASSERT_VALUES_EQUAL(1, affectedDisks.size());
-            UNIT_ASSERT_VALUES_EQUAL("disk-1", affectedDisks[0]);
-            const auto& dd = state.GetDirtyDevices();
-            UNIT_ASSERT_VALUES_EQUAL(1, dd.size());
-            UNIT_ASSERT_VALUES_EQUAL("uuid-1.1", dd[0].GetDeviceUUID());
-            UNIT_ASSERT_VALUES_EQUAL(newSerialNumber, dd[0].GetSerialNumber());
-        });
+                UNIT_ASSERT_SUCCESS(error);
+                UNIT_ASSERT_VALUES_EQUAL(1, r.AffectedDisks.size());
+                UNIT_ASSERT_VALUES_EQUAL("disk-1", r.AffectedDisks[0]);
+                const auto& dd = state.GetDirtyDevices();
+                UNIT_ASSERT_VALUES_EQUAL(1, dd.size());
+                UNIT_ASSERT_VALUES_EQUAL("uuid-1.1", dd[0].GetDeviceUUID());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    newSerialNumber,
+                    dd[0].GetSerialNumber());
+            });
+
+        UNIT_ASSERT_VALUES_EQUAL(1, criticalEvents->Val());
     }
 }
 
