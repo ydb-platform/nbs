@@ -16,6 +16,7 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/facade/testcommon"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/disks"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/pkg/client/codes"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -49,40 +50,37 @@ func TestDiskServiceCreateEmptyDisk(t *testing.T) {
 	testcommon.CheckConsistency(t, ctx)
 }
 
-// NBS-3424: TODO: enable this test.
 func TestDiskServiceShouldFailCreateDiskFromNonExistingImage(t *testing.T) {
-	/*
-		ctx := testcommon.NewContext()
+	ctx := testcommon.NewContext()
 
-		client, err := testcommon.NewClient(ctx)
-		require.NoError(t, err)
-		defer client.Close()
+	client, err := testcommon.NewClient(ctx)
+	require.NoError(t, err)
+	defer client.Close()
 
-		diskID := t.Name()
+	diskID := t.Name()
 
-		reqCtx := testcommon.GetRequestContext(t, ctx)
-		operation, err := client.CreateDisk(reqCtx, &disk_manager.CreateDiskRequest{
-			Src: &disk_manager.CreateDiskRequest_SrcImageId{
-				SrcImageId: "xxx",
-			},
-			Size: 134217728,
-			Kind: disk_manager.DiskKind_DISK_KIND_SSD,
-			DiskId: &disk_manager.DiskId{
-				ZoneId: "zone-a",
-				DiskId: diskID,
-			},
-		})
-		require.NoError(t, err)
-		require.NotEmpty(t, operation)
+	reqCtx := testcommon.GetRequestContext(t, ctx)
+	operation, err := client.CreateDisk(reqCtx, &disk_manager.CreateDiskRequest{
+		Src: &disk_manager.CreateDiskRequest_SrcImageId{
+			SrcImageId: "xxx",
+		},
+		Size: 134217728,
+		Kind: disk_manager.DiskKind_DISK_KIND_SSD,
+		DiskId: &disk_manager.DiskId{
+			ZoneId: "zone-a",
+			DiskId: diskID,
+		},
+	})
+	require.NoError(t, err)
+	require.NotEmpty(t, operation)
 
-		err = internal_client.WaitOperation(ctx, client, operation.Id)
-		require.Error(t, err)
-		require.Contains(t, err.Error(), "not found")
+	err = internal_client.WaitOperation(ctx, client, operation.Id)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "not found")
 
-		testcommon.CheckErrorDetails(t, err, codes.BadSource, "", false)
+	testcommon.CheckErrorDetails(t, err, codes.BadSource, "", false)
 
-		testcommon.CheckConsistency(t, ctx)
-	*/
+	testcommon.CheckConsistency(t, ctx)
 }
 
 func TestDiskServiceCreateDiskFromImageWithForceNotLayered(t *testing.T) {
