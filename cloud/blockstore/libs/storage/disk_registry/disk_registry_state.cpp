@@ -269,7 +269,7 @@ auto CollectAllocatedDevices(const TVector<NProto::TDiskConfig>& disks)
     return r;
 }
 
-bool IsChangeDestructive(
+bool HasNewLayout(
     const NProto::TDeviceConfig& newConfig,
     const NProto::TDeviceConfig& oldConfig)
 {
@@ -283,10 +283,16 @@ bool IsChangeDestructive(
     };
 
     return key(oldConfig) != key(newConfig) ||
-           (oldConfig.GetSerialNumber() &&
-            oldConfig.GetSerialNumber() != newConfig.GetSerialNumber()) ||
            (oldConfig.GetPhysicalOffset() &&
             oldConfig.GetPhysicalOffset() != newConfig.GetPhysicalOffset());
+}
+
+bool HasNewSerialNumber(
+    const NProto::TDeviceConfig& newConfig,
+    const NProto::TDeviceConfig& oldConfig)
+{
+    return oldConfig.GetSerialNumber() &&
+           oldConfig.GetSerialNumber() != newConfig.GetSerialNumber();
 }
 
 }   // namespace
@@ -964,7 +970,8 @@ auto TDiskRegistryState::RegisterAgent(
             const auto diskId = FindDisk(uuid);
 
             const bool isChangeDestructive =
-                oldConfig && IsChangeDestructive(d, *oldConfig);
+                oldConfig && (HasNewLayout(d, *oldConfig) ||
+                              HasNewSerialNumber(d, *oldConfig));
 
             if (diskId && isChangeDestructive) {
                 TString message =
@@ -972,8 +979,14 @@ auto TDiskRegistryState::RegisterAgent(
                     << "Device configuration has changed: " << *oldConfig
                     << " -> " << d << ". Affected disk: " << diskId;
 
-                ReportDiskRegistryOccupiedDeviceConfigurationHasChanged(
-                    message);
+                if (d.GetState() != NProto::DEVICE_STATE_ERROR ||
+                    HasNewLayout(d, *oldConfig))
+                {
+                    ReportDiskRegistryOccupiedDeviceConfigurationHasChanged(
+                        message);
+                } else {
+                    STORAGE_WARN(message);
+                }
 
                 SetDeviceErrorState(d, timestamp, std::move(message));
 
