@@ -972,8 +972,6 @@ auto TDiskRegistryState::RegisterAgent(
                     << "Device configuration has changed: " << *oldConfig
                     << " -> " << d << ". Affected disk: " << diskId;
 
-                STORAGE_ERROR(message);
-
                 ReportDiskRegistryOccupiedDeviceConfigurationHasChanged(
                     message);
 
