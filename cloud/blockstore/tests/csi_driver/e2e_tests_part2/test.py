@@ -1,6 +1,8 @@
 import pytest
 import subprocess
 
+from pathlib import Path
+
 import cloud.blockstore.tests.csi_driver.lib.csi_runner as csi
 
 
@@ -17,11 +19,11 @@ def get_access_mode(mount_point: str) -> str:
     return ""
 
 
-@pytest.mark.parametrize('mount_path,access_type,vm_mode',
-                         [("/var/lib/kubelet/pods/123/volumes/kubernetes.io~csi/example-disk/mount", "mount", False),
-                          ("/var/lib/kubelet/plugins/kubernetes.io/csi/volumeDevices/publish/123/example-disk", "block", False),
-                          ("/var/lib/kubelet/pods/123/volumes/kubernetes.io~csi/example-disk/mount", "mount", True)])
-def test_readonly_volume(mount_path, access_type, vm_mode):
+@pytest.mark.parametrize('mount_path,access_type,vm_mode,gid',
+                         [("/var/lib/kubelet/pods/123/volumes/kubernetes.io~csi/example-disk/mount", "mount", False, "1010"),
+                          ("/var/lib/kubelet/plugins/kubernetes.io/csi/volumeDevices/publish/123/example-disk", "block", False, "1011"),
+                          ("/var/lib/kubelet/pods/123/volumes/kubernetes.io~csi/example-disk/mount", "mount", True, "1012")])
+def test_readonly_volume(mount_path, access_type, vm_mode, gid):
     env, run = csi.init(vm_mode)
     try:
         volume_name = "example-disk"
@@ -34,6 +36,91 @@ def test_readonly_volume(mount_path, access_type, vm_mode):
         # check that publishing read only volume is idempotent
         env.csi.publish_volume(pod_id, volume_name, pod_name, access_type, readonly=True)
         assert "ro" == get_access_mode(mount_path)
+
+        env.csi.unpublish_volume(pod_id, volume_name, access_type)
+        result = subprocess.run(
+            ["groupadd", "-g", gid, "test_group_" + gid],
+            capture_output=True,
+        )
+        assert result.returncode == 0
+
+        env.csi.publish_volume(
+            pod_id,
+            volume_name,
+            pod_name,
+            access_type,
+            readonly=True,
+            volume_mount_group=gid
+        )
+        assert "ro" == get_access_mode(mount_path)
+
+    except subprocess.CalledProcessError as e:
+        csi.log_called_process_error(e)
+        raise
+    finally:
+        csi.cleanup_after_test(env, volume_name, access_type, [pod_id])
+
+
+def test_mount_volume_group():
+    # Scenario
+    # 1. create volume and publish volume without mount volume group
+    # 2. create directory and file
+    # 3. unpublish volume
+    # 4. create new group with specified GID
+    # 5. publish volume with mount volume group GID
+    # 6. check that mounted dir and existing files have specified GID
+    # 7. create new directory and file
+    # 8. check that new directory and file have specified GID
+    env, run = csi.init()
+    try:
+        volume_name = "example-disk"
+        volume_size = 1024 ** 3
+        pod_name = "example-pod"
+        pod_id = "deadbeef1"
+        access_type = "mount"
+        env.csi.create_volume(name=volume_name, size=volume_size)
+        env.csi.stage_volume(volume_name, access_type)
+
+        gid = 1013
+        result = subprocess.run(
+            ["groupadd", "-g", str(gid), "test_group_" + str(gid)],
+            capture_output=True,
+        )
+        assert result.returncode == 0
+
+        env.csi.publish_volume(
+            pod_id,
+            volume_name,
+            pod_name,
+            access_type
+        )
+
+        mount_path = Path("/var/lib/kubelet/pods") / pod_id / "volumes/kubernetes.io~csi" / volume_name / "mount"
+        test_dir1 = mount_path / "testdir1"
+        test_dir1.mkdir()
+        test_file1 = test_dir1 / "testfile1"
+        test_file1.touch()
+
+        env.csi.unpublish_volume(pod_id, volume_name, access_type)
+        env.csi.publish_volume(
+            pod_id,
+            volume_name,
+            pod_name,
+            access_type,
+            volume_mount_group=str(gid)
+        )
+
+        assert gid == mount_path.stat().st_gid
+        assert gid == test_dir1.stat().st_gid
+        assert gid == test_file1.stat().st_gid
+
+        test_file2 = mount_path / "testfile2"
+        test_file2.touch()
+        assert gid == test_file2.stat().st_gid
+
+        test_dir2 = mount_path / "testdir2"
+        test_dir2.mkdir()
+        assert gid == test_dir2.stat().st_gid
 
     except subprocess.CalledProcessError as e:
         csi.log_called_process_error(e)

@@ -103,6 +103,8 @@ public:
                 continue;
             }
 
+            CheckResponse(statusResponse);
+
             const auto processed = statusResponse.GetProcessedRangeCount();
             const auto total = statusResponse.GetRangeCount();
             if (processed >= total) {
@@ -110,8 +112,6 @@ public:
                 Cout << "finished" << Endl;
                 break;
             }
-
-            CheckResponse(statusResponse);
 
             Cerr << "progress: " << statusResponse.GetProcessedRangeCount()
                 << "/" << statusResponse.GetRangeCount() << ", last="

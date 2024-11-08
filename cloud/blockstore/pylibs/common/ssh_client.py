@@ -163,7 +163,7 @@ class SshClient:
         self,
         command: str | list[str],
     ) -> tuple[None, '_StdoutStub', '_StdoutStub']:
-        result = self._exec_command(command)
+        result = self._exec_command(command, check=True)
         return (
             None,
             self._StdoutStub(self, result.stdout, result.returncode),
