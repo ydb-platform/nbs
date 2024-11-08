@@ -6102,6 +6102,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         NProto::TError configureShardError;
         NProto::TError configureShardsError;
 
+        TAutoPtr<IEventHandle> toSend;
+
         env.GetRuntime().SetEventFilter(
             [&] (TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& event) {
                 switch (event->GetTypeRewrite()) {
@@ -6121,12 +6123,12 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
                         auto response = std::make_unique<TResponse>(
                             createShardError);
 
-                        env.GetRuntime().Send(new IEventHandle(
+                        toSend = new IEventHandle(
                             event->Sender,
                             event->Recipient,
                             response.release(),
                             0, // flags
-                            event->Cookie), nodeIdx);
+                            event->Cookie);
 
                         return true;
                     }
@@ -6148,12 +6150,12 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
                         auto response = std::make_unique<TResponse>(
                             configureShardError);
 
-                        env.GetRuntime().Send(new IEventHandle(
+                        toSend = new IEventHandle(
                             event->Sender,
                             event->Recipient,
                             response.release(),
                             0, // flags
-                            event->Cookie), nodeIdx);
+                            event->Cookie);
 
                         return true;
                     }
@@ -6169,12 +6171,12 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
                         auto response = std::make_unique<TResponse>(
                             configureShardsError);
 
-                        env.GetRuntime().Send(new IEventHandle(
+                        toSend = new IEventHandle(
                             event->Sender,
                             event->Recipient,
                             response.release(),
                             0, // flags
-                            event->Cookie), nodeIdx);
+                            event->Cookie);
 
                         return true;
                     }
@@ -6185,6 +6187,9 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
 
         createShardError = MakeError(E_REJECTED, "failed to create shard");
         service.SendCreateFileStoreRequest(fsId, blockCount);
+        env.GetRuntime().DispatchEvents({}, TDuration::MilliSeconds(100));
+        UNIT_ASSERT(toSend);
+        env.GetRuntime().Send(toSend, nodeIdx);
         {
             auto response = service.RecvCreateFileStoreResponse();
             UNIT_ASSERT_VALUES_EQUAL(
@@ -6196,6 +6201,9 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         configureShardError =
             MakeError(E_REJECTED, "failed to configure shard");
         service.SendCreateFileStoreRequest(fsId, blockCount);
+        env.GetRuntime().DispatchEvents({}, TDuration::MilliSeconds(100));
+        UNIT_ASSERT(toSend);
+        env.GetRuntime().Send(toSend, nodeIdx);
         {
             auto response = service.RecvCreateFileStoreResponse();
             UNIT_ASSERT_VALUES_EQUAL(
@@ -6207,6 +6215,9 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         configureShardsError =
             MakeError(E_REJECTED, "failed to configure shards");
         service.SendCreateFileStoreRequest(fsId, blockCount);
+        env.GetRuntime().DispatchEvents({}, TDuration::MilliSeconds(100));
+        UNIT_ASSERT(toSend);
+        env.GetRuntime().Send(toSend, nodeIdx);
         {
             auto response = service.RecvCreateFileStoreResponse();
             UNIT_ASSERT_VALUES_EQUAL(

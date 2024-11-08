@@ -152,7 +152,8 @@ void TDestroyFileStoreActor::ReplyAndDie(
     const TActorContext& ctx,
     const NProto::TError& error)
 {
-    auto response = std::make_unique<TEvService::TEvDestroyFileStoreResponse>(error);
+    auto response =
+        std::make_unique<TEvService::TEvDestroyFileStoreResponse>(error);
     NCloud::Reply(ctx, *RequestInfo, std::move(response));
 
     Die(ctx);
@@ -167,7 +168,9 @@ STFUNC(TDestroyFileStoreActor::StateWork)
             TEvIndexTablet::TEvDescribeSessionsResponse,
             HandleDescribeSessionsResponse);
 
-        HFunc(TEvSSProxy::TEvDestroyFileStoreResponse, HandleDestroyFileStoreResponse);
+        HFunc(
+            TEvSSProxy::TEvDestroyFileStoreResponse,
+            HandleDestroyFileStoreResponse);
 
         default:
             HandleUnexpectedEvent(ev, TFileStoreComponents::SERVICE_WORKER);
