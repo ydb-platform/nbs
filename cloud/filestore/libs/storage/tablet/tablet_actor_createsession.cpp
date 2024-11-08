@@ -43,6 +43,9 @@ void FillFeatures(const TStorageConfig& config, NProto::TFileStore& fileStore)
         config.GetAsyncDestroyHandleEnabled());
     features->SetAsyncHandleOperationPeriod(
         config.GetAsyncHandleOperationPeriod().MilliSeconds());
+
+    features->SetGuestWritebackCacheEnabled(
+        config.GetGuestWritebackCacheEnabled());
 }
 
 ////////////////////////////////////////////////////////////////////////////////

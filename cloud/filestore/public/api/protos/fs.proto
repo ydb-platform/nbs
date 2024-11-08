@@ -26,6 +26,7 @@ message TFileStoreFeatures
     uint32 DirectIoAlign = 11;
     bool TwoStageReadDisabledForHDD = 12;
     bool ThreeStageWriteDisabledForHDD = 13;
+    bool GuestWritebackCacheEnabled = 14;
 }
 
 message TFileStore

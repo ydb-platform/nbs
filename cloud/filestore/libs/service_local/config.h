@@ -31,6 +31,7 @@ public:
     ui32 GetMaxHandlePerSessionCount() const;
     bool GetDirectIoEnabled() const;
     ui32 GetDirectIoAlign() const;
+    bool GetGuestWritebackCacheEnabled() const;
 
     void Dump(IOutputStream& out) const;
     void DumpHtml(IOutputStream& out) const;
