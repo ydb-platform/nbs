@@ -16,6 +16,8 @@ namespace NCloud::NStorage {
 
 void SetupConfigDispatcher(
     const NProto::TConfigDispatcherSettings& settings,
+    const TString& tenantName,
+    const TString& nodeType,
     NKikimr::NConfig::TConfigsDispatcherInitInfo* config);
 
 }   // namespace NCloud::NStorage
