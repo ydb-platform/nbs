@@ -191,11 +191,14 @@ func newDeleteVolumeCommand(endpoint *string) *cobra.Command {
 
 func createVolumeCapability(
 	accessMode csi.VolumeCapability_AccessMode_Mode,
-	accessType string) *csi.VolumeCapability {
+	accessType string,
+	volumeMountGroup string) *csi.VolumeCapability {
 	volumeCapability := &csi.VolumeCapability{
 		AccessMode: &csi.VolumeCapability_AccessMode{Mode: accessMode},
 		AccessType: &csi.VolumeCapability_Mount{
-			Mount: &csi.VolumeCapability_MountVolume{},
+			Mount: &csi.VolumeCapability_MountVolume{
+				VolumeMountGroup: volumeMountGroup,
+			},
 		},
 	}
 	if accessType == "block" {
@@ -245,7 +248,7 @@ func newNodeStageVolumeCommand(endpoint *string) *cobra.Command {
 				&csi.NodeStageVolumeRequest{
 					VolumeId:          volumeId,
 					StagingTargetPath: stagingTargetPath,
-					VolumeCapability:  createVolumeCapability(accessMode, accessType),
+					VolumeCapability:  createVolumeCapability(accessMode, accessType, ""),
 					VolumeContext:     volumeContext,
 				},
 			)
@@ -286,6 +289,7 @@ func newPublishVolumeCommand(endpoint *string) *cobra.Command {
 	var volumeId, podId, stagingTargetPath, podName, fsType string
 	var accessType string
 	var readOnly bool
+	var volumeMountGroup string
 	cmd := cobra.Command{
 		Use:   "publishvolume",
 		Short: "Send publish volume request to the CSI node",
@@ -319,7 +323,7 @@ func newPublishVolumeCommand(endpoint *string) *cobra.Command {
 					PublishContext:    nil,
 					StagingTargetPath: stagingTargetPath,
 					TargetPath:        getTargetPath(podId, volumeId, accessType),
-					VolumeCapability:  createVolumeCapability(accessMode, accessType),
+					VolumeCapability:  createVolumeCapability(accessMode, accessType, volumeMountGroup),
 					Readonly:          readOnly,
 					Secrets:           nil,
 					VolumeContext:     volumeContext,
@@ -369,6 +373,12 @@ func newPublishVolumeCommand(endpoint *string) *cobra.Command {
 		"access-type",
 		"mount",
 		"mount or block access type",
+	)
+	cmd.Flags().StringVar(
+		&volumeMountGroup,
+		"volume-mount-group",
+		"",
+		"fs group id",
 	)
 
 	err := cmd.MarkFlagRequired("volume-id")
@@ -565,7 +575,7 @@ func newNodeExpandVolumeCommand(endpoint *string) *cobra.Command {
 					CapacityRange: &csi.CapacityRange{
 						RequiredBytes: size,
 					},
-					VolumeCapability: createVolumeCapability(accessMode, accessType),
+					VolumeCapability: createVolumeCapability(accessMode, accessType, ""),
 				},
 			)
 			if err != nil {

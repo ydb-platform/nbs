@@ -152,7 +152,8 @@ class NbsCsiDriverRunner:
             pod_name: str,
             access_type: str,
             fs_type: str = "",
-            readonly: bool = False):
+            readonly: bool = False,
+            volume_mount_group: str = ""):
         args = [
             "publishvolume",
             "--pod-id",
@@ -168,6 +169,9 @@ class NbsCsiDriverRunner:
         ]
         if readonly:
             args += ["--readonly"]
+
+        if len(volume_mount_group) != 0:
+            args += ["--volume-mount-group", volume_mount_group]
         return self._node_run(*args)
 
     def unpublish_volume(self, pod_id: str, volume_id: str, access_type: str):
