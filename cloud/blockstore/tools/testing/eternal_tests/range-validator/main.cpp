@@ -124,27 +124,13 @@ struct TOptions
         TOptsParseResultException(&opts, argc, argv);
 
         if (Mode == EValidationMode::Checksum) {
-            Y_ENSURE(
-                ConfigPath.size(),
-                "you must specify config-path in checksum validation mode");
-
-            Y_ENSURE(
-                Ranges.size(),
-                "you must specify ranges in checksum validation mode");
-
-            Y_ENSURE(
-                LogPath.size(),
-                "you must specify log-path in checksum validation mode");
+            Y_ENSURE(ConfigPath.size(), "you must specify config-path in checksum validation mode");
+            Y_ENSURE(Ranges.size(), "you must specify ranges in checksum validation mode");
+            Y_ENSURE(LogPath.size(), "you must specify log-path in checksum validation mode");
         }
 
         if (Mode == EValidationMode::Mirror) {
-            Y_ENSURE(
-                Blocks.size(),
-                "you must specify blocks in mirror validation mode");
-
-            Y_ENSURE(
-                BlockSize % PAGE_SIZE == 0,
-                TStringBuilder() << "block-size should be a multiple of " << PAGE_SIZE);
+            Y_ENSURE(Blocks.size(), "you must specify blocks in mirror validation mode");
         }
     }
 };
