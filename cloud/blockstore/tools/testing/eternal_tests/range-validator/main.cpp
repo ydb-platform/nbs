@@ -15,7 +15,8 @@ constexpr ui64 PAGE_SIZE = 4096;
 
 ////////////////////////////////////////////////////////////////////////////////
 
-enum class EValidationMode {
+enum class EValidationMode
+{
     Checksum,
     Mirror,
 };
@@ -77,13 +78,9 @@ struct TOptions
             .StoreResult(&BlocksStr)
             .Handler0([this] {
                 TStringBuf buf(BlocksStr);
-                TStringBuf range;
-                while (buf.NextTok(',', range)) {
-                    TStringBuf buf2(range);
-                    TStringBuf firstStr;
-                    TStringBuf lastStr;
-                    buf2.NextTok('-', firstStr);
-                    buf2.NextTok('-', lastStr);
+                TStringBuf firstStr;
+                while (buf.NextTok(',', firstStr)) {
+                    TStringBuf lastStr = firstStr.SplitOff('-');
                     ui64 first = FromString<ui64>(firstStr);
                     ui64 last = lastStr.empty() ? first : FromString<ui64>(lastStr);
                     for (ui64 block = first; block <= last; block++) {
@@ -127,7 +124,7 @@ struct TOptions
 
 void ValidateRanges(TOptions options)
 {
-    TFile File(options.DevicePath, EOpenModeFlag::RdOnly);
+    TFile File(options.DevicePath, EOpenModeFlag::RdOnly | EOpenModeFlag::DirectAligned);
 
     const auto& configHolder = CreateTestConfig(options.ConfigPath);
     for (ui32 rangeIdx: options.Ranges) {
@@ -155,9 +152,10 @@ void ValidateRanges(TOptions options)
         TFileOutput out(TFile(path, EOpenModeFlag::CreateAlways | EOpenModeFlag::WrOnly));
 
         for (ui64 i = 0; i < len; ++i) {
-            TBlockData blockData;
+            alignas(PAGE_SIZE) char buf[PAGE_SIZE];
             File.Seek((i + startOffset) * requestSize, sSet);
-            File.Read(&blockData, sizeof(blockData));
+            File.Read(buf, PAGE_SIZE);
+            TBlockData blockData = *reinterpret_cast<TBlockData*>(buf);
             if (blockData.RequestNumber != expected[i]) {
                 out <<
                     "[" << rangeIdx << "] Wrong data in block "
@@ -191,10 +189,10 @@ void ValidateBlocks(TOptions options)
         std::set<TBlockData, decltype(compare)> uniqueBlocks(compare);
 
         for (ui64 i = 0; i < MAX_MIRROR_REPLICAS; i++) {
-            alignas(PAGE_SIZE) TBlockData buf;
+            alignas(PAGE_SIZE) char buf[PAGE_SIZE];
             file.Seek(blockIndex * options.BlockSize, sSet);
-            file.Read(&buf, options.BlockSize);
-            uniqueBlocks.emplace(std::move(buf));
+            file.Read(buf, PAGE_SIZE);
+            uniqueBlocks.emplace(*reinterpret_cast<TBlockData*>(buf));
         }
 
         if (uniqueBlocks.size() == 1) {
