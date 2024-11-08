@@ -435,13 +435,14 @@ private:
 
         const auto future = AsyncIO.Read(
             fileHandle,
-            {},
+            buffer.get(),
             logRequest.GetRanges().cbegin()->GetBytes(),
             logRequest.GetRanges().cbegin()->GetOffset());
         fileHandle.Release();
 
         return future.Apply(
-            [started = Started]([[maybe_unused]] const auto& future) mutable
+            [started = Started, buffer = std::move(buffer)](
+                [[maybe_unused]] const auto& future) mutable
             {
                 if (future.GetValue()) {
                     return TCompletedRequest(NProto::ACTION_READ, started, {});
@@ -494,15 +495,15 @@ private:
         const auto bytes = logRequest.GetRanges(0).GetBytes();
         const auto offset = logRequest.GetRanges(0).GetOffset();
 
-        TString buffer;
+        auto buffer = std::make_shared<TString>();
 
         if (Spec.GetWriteFill() == NProto::TReplaySpec_EWriteFill_Random) {
-            buffer = NUnitTest::RandomString(bytes, handleLog);
+            *buffer = NUnitTest::RandomString(bytes, handleLog);
         } else if (Spec.GetWriteFill() == NProto::TReplaySpec_EWriteFill_Empty)
         {
-            buffer = TString{bytes, ' '};
+            *buffer = TString{bytes, ' '};
         } else {
-            buffer = MakeBuffer(
+            *buffer = MakeBuffer(
                 bytes,
                 offset,
                 TStringBuilder() << "handle=" << handleLog << " node="
@@ -517,13 +518,14 @@ private:
             handleLocal,
             fh.GetLength(),
             fh.GetPosition());
-        // TODO(proller): TEST USE AFTER FREE on buffer
+
         TFileHandle FileHandle{fh.GetHandle()};
         const auto writeFuture =
-            AsyncIO.Write(FileHandle, buffer.data(), bytes, offset);
+            AsyncIO.Write(FileHandle, buffer->data(), bytes, offset);
         FileHandle.Release();
         return writeFuture.Apply(
-            [started = Started]([[maybe_unused]] const auto& future) mutable
+            [started = Started, buffer = std::move(buffer)](
+                [[maybe_unused]] const auto& future) mutable
             {
                 if (future.GetValue()) {
                     return TCompletedRequest(NProto::ACTION_WRITE, started, {});
