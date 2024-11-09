@@ -72,17 +72,17 @@ private:
 
 public:
     TReplayRequestGeneratorFs(
-            NProto::TReplaySpec spec,
-            ILoggingServicePtr logging,
-            ISessionPtr session,
-            TString filesystemId,
-            NProto::THeaders headers)
+        NProto::TReplaySpec spec,
+        ILoggingServicePtr logging,
+        ISessionPtr session,
+        TString filesystemId,
+        NProto::THeaders headers)
         : IReplayRequestGenerator(
-        std::move(spec),
-        std::move(logging),
-        std::move(session),
-        std::move(filesystemId),
-        std::move(headers))
+              std::move(spec),
+              std::move(logging),
+              std::move(session),
+              std::move(filesystemId),
+              std::move(headers))
     {
         if (Spec.GetReplayRoot().empty()) {
             ythrow yexception() << "ReplayRoot is not defined";
@@ -99,7 +99,7 @@ public:
         AsyncIO.Stop();
     }
 
-    TNodeLocal NodeIdMapped(const TNodeLog id)
+    TNodeLocal GetLocalNodeId(const TNodeLog id)
     {
         if (const auto it = NodesLogToLocal.find(id);
             it != NodesLogToLocal.end())
@@ -114,13 +114,14 @@ public:
         return InvalidNodeId;
     }
 
-    THandleLocal HandleIdMapped(const THandleLog id)
+    THandleLocal GetLocalHandleId(const THandleLog id)
     {
         if (const auto it = HandlesLogToActual.find(id);
             it != HandlesLogToActual.end())
         {
             return it->second;
         }
+
         STORAGE_DEBUG(
             "Handle not found id=%lu map size=%zu",
             id,
@@ -144,7 +145,7 @@ private:
 
         TGuard<TMutex> guard(StateLock);
 
-        const auto node = NodeIdMapped(logRequest.GetNodeInfo().GetNodeId());
+        const auto node = GetLocalNodeId(logRequest.GetNodeInfo().GetNodeId());
 
         if (node == InvalidNodeId) {
             STORAGE_ERROR(
@@ -167,10 +168,11 @@ private:
             TCompletedRequest{NProto::ACTION_ACCESS_NODE, Started, {}});
     }
 
+    // Create missing parents dirs, return parent node id
     // Recursive, no infinity loop check
     TNodeLocal CreateDirIfMissingByNodeLog(TNodeLog nodeIdLog)
     {
-        if (const auto& nodeIdLocal = NodeIdMapped(nodeIdLog);
+        if (const auto& nodeIdLocal = GetLocalNodeId(nodeIdLog);
             nodeIdLocal != InvalidNodeId)
         {
             return nodeIdLocal;
@@ -178,18 +180,18 @@ private:
 
         const auto& it = KnownLogNodes.find(nodeIdLog);
         if (it == KnownLogNodes.end()) {
-            return 0;
+            return InvalidNodeId;
         }
-        auto parent = NodeIdMapped(it->second.ParentLog);
+        auto parent = GetLocalNodeId(it->second.ParentLog);
 
-        if (parent == InvalidNodeId && it->second.ParentLog &&
+        if (parent == InvalidNodeId && it->second.ParentLog != InvalidNodeId &&
             nodeIdLog != it->second.ParentLog)
         {
             parent = CreateDirIfMissingByNodeLog(it->second.ParentLog);
         }
 
         {
-            auto parentPath = PathByNode(NodeIdMapped(it->second.ParentLog));
+            auto parentPath = PathByNode(GetLocalNodeId(it->second.ParentLog));
             if (!parentPath.IsDefined() && parent != InvalidNodeId) {
                 parentPath = PathByNode(parent);
             }
@@ -250,13 +252,13 @@ private:
 
         if (!fullName.IsDefined()) {
             auto parentNode =
-                NodeIdMapped(logRequest.GetNodeInfo().GetParentNodeId());
+                GetLocalNodeId(logRequest.GetNodeInfo().GetParentNodeId());
 
             if (parentNode == InvalidNodeId &&
                 KnownLogNodes.contains(
                     logRequest.GetNodeInfo().GetParentNodeId()))
             {
-                parentNode = NodeIdMapped(
+                parentNode = GetLocalNodeId(
                     KnownLogNodes[logRequest.GetNodeInfo().GetParentNodeId()]
                         .ParentLog);
             }
@@ -403,7 +405,8 @@ private:
 
         TGuard<TMutex> guard(StateLock);
 
-        const auto handle = HandleIdMapped(logRequest.GetRanges(0).GetHandle());
+        const auto handle =
+            GetLocalHandleId(logRequest.GetRanges(0).GetHandle());
         if (handle == InvalidHandle) {
             STORAGE_WARN(
                 "Read: no handle %lu ranges size=%d map size=%zu",
@@ -422,14 +425,6 @@ private:
             fh.GetLength(),
             fh.GetPosition());
         auto buffer = Acalloc(logRequest.GetRanges().cbegin()->GetBytes());
-
-        /*
-                if (!fh.GetLength()) {
-                    // incorrect aligned to read size, should use size from
-           nodeattr fh.Reserve( logRequest.GetRanges().cbegin()->GetOffset() +
-                        logRequest.GetRanges().cbegin()->GetBytes());
-                }
-        */
 
         TFileHandle fileHandle{fh.GetHandle()};
 
@@ -480,7 +475,7 @@ private:
         TGuard<TMutex> guard(StateLock);
 
         const auto handleLog = logRequest.GetRanges(0).GetHandle();
-        const auto handleLocal = HandleIdMapped(handleLog);
+        const auto handleLocal = GetLocalHandleId(handleLog);
         if (handleLocal == InvalidHandle) {
             // TODO(proller): Suggest filename, place in __lost__ if unknown,
             // create and open file, continue to write
@@ -599,14 +594,14 @@ private:
                 // {"TimestampMcs":1000,"DurationMcs":2432,"RequestType":26,"ErrorCode":0,"NodeInfo":{"NewParentNodeId":267,"NewNodeName":"name.ext","Mode":292,"Type":3,"NodeId":274,"Size":245792}}
 
                 const auto targetNode =
-                    NodeIdMapped(logRequest.GetNodeInfo().GetNodeId());
+                    GetLocalNodeId(logRequest.GetNodeInfo().GetNodeId());
                 const auto targetFullName = PathByNode(targetNode);
                 NFs::HardLink(targetFullName, fullName);
                 break;
             }
             case NProto::E_SYMLINK_NODE: {
                 const auto targetNode =
-                    NodeIdMapped(logRequest.GetNodeInfo().GetNodeId());
+                    GetLocalNodeId(logRequest.GetNodeInfo().GetNodeId());
                 const auto targetFullName = PathByNode(targetNode);
                 NFs::SymLink(targetFullName, fullName);
                 break;
@@ -655,13 +650,13 @@ private:
         TGuard<TMutex> guard(StateLock);
 
         const auto parentNodeId =
-            NodeIdMapped(logRequest.GetNodeInfo().GetParentNodeId());
+            GetLocalNodeId(logRequest.GetNodeInfo().GetParentNodeId());
 
         auto fullName =
             PathByNode(parentNodeId) / logRequest.GetNodeInfo().GetNodeName();
 
         const auto newParentNodeId =
-            NodeIdMapped(logRequest.GetNodeInfo().GetNewParentNodeId());
+            GetLocalNodeId(logRequest.GetNodeInfo().GetNewParentNodeId());
 
         auto newFullName = PathByNode(newParentNodeId) /
                            logRequest.GetNodeInfo().GetNewNodeName();
@@ -702,7 +697,7 @@ private:
         TGuard<TMutex> guard(StateLock);
 
         const auto parentNodeId =
-            NodeIdMapped(logRequest.GetNodeInfo().GetParentNodeId());
+            GetLocalNodeId(logRequest.GetNodeInfo().GetParentNodeId());
         if (parentNodeId == InvalidNodeId) {
             STORAGE_WARN(
                 "Unlink : no parent orig=%lu",
@@ -731,7 +726,7 @@ private:
         TGuard<TMutex> guard(StateLock);
 
         const auto handleid =
-            HandleIdMapped(logRequest.GetNodeInfo().GetHandle());
+            GetLocalHandleId(logRequest.GetNodeInfo().GetHandle());
 
         const auto& it = OpenHandles.find(handleid);
         if (it == OpenHandles.end()) {
@@ -799,7 +794,8 @@ private:
 
         // TODO(proller): can create and truncate to size here missing files
 
-        const auto nodeid = NodeIdMapped(logRequest.GetNodeInfo().GetNodeId());
+        const auto nodeid =
+            GetLocalNodeId(logRequest.GetNodeInfo().GetNodeId());
 
         if (nodeid == InvalidNodeId) {
             return MakeFuture(TCompletedRequest{
@@ -846,7 +842,8 @@ private:
 
         TGuard<TMutex> guard(StateLock);
 
-        const auto nodeid = NodeIdMapped(logRequest.GetNodeInfo().GetNodeId());
+        const auto nodeid =
+            GetLocalNodeId(logRequest.GetNodeInfo().GetNodeId());
         if (nodeid == InvalidNodeId) {
             return MakeFuture(TCompletedRequest{
                 NProto::ACTION_LIST_NODES,
@@ -904,7 +901,7 @@ private:
         TGuard<TMutex> guard(StateLock);
 
         const auto logHandle = logRequest.GetNodeInfo().GetHandle();
-        const auto handle = HandleIdMapped(logHandle);
+        const auto handle = GetLocalHandleId(logHandle);
         if (handle == InvalidHandle) {
             STORAGE_WARN(
                 "Flush: no handle %lu map size=%zu",
