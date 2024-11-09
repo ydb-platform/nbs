@@ -304,6 +304,22 @@ Y_UNIT_TEST_SUITE(TCompactionMapTest)
         UNIT_ASSERT_VALUES_EQUAL(10, topRanges[1].Stats.BlobsCount);
         UNIT_ASSERT_VALUES_EQUAL(100, topRanges[1].Stats.DeletionsCount);
         UNIT_ASSERT_VALUES_EQUAL(1000, topRanges[1].Stats.GarbageBlocksCount);
+
+        compactionMap.Update(1, 20, 200, 2000, true);
+        compactionMap.Update(0, 10, 100, 1000, true);
+
+        topRanges = compactionMap.GetTopRangesByCompactionScore(3);
+        UNIT_ASSERT_VALUES_EQUAL(0, topRanges.size());
+
+        counter = compactionMap.GetTopCompactionScore();
+        UNIT_ASSERT_VALUES_EQUAL(0, counter.Score);
+
+        counter = compactionMap.GetTopCleanupScore();
+        UNIT_ASSERT_VALUES_EQUAL(10001, counter.RangeId);
+        UNIT_ASSERT_VALUES_EQUAL(400, counter.Score);
+
+        counter = compactionMap.GetTopGarbageScore();
+        UNIT_ASSERT_VALUES_EQUAL(0, counter.Score);
     }
 
     Y_UNIT_TEST(ShouldReturnNonEmptyRanges)
