@@ -9307,7 +9307,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
             NCloud::NProto::STORAGE_MEDIA_SSD_MIRROR3,
             // 1 - to volume
             // 1 - to mirror actor
-            // 3 - to 3 replicas
+            // 3 - to 3 replicas (nonrepl part actors)
             1 + 1 + 3,
             "");
         const TString adata(4_KB, 'a');
@@ -9321,7 +9321,9 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
     {
         auto results = WriteToDiskWithInflightDataCorruptionAndReadResults(
             NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
-            2,
+            // 1 - to volume
+            // 1 - to nonrepl part actor
+            1 + 1,
             "use-intermediate-write-buffer");
         const TString adata(4_KB, 'a');
         UNIT_ASSERT_VALUES_EQUAL(adata, results[0]);
@@ -9333,7 +9335,9 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
     {
         auto results = WriteToDiskWithInflightDataCorruptionAndReadResults(
             NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
-            2,
+            // 1 - to volume
+            // 1 - to nonrepl part actor
+            1 + 1,
             "");
         const TString bdata(4_KB, 'b');
         UNIT_ASSERT_VALUES_EQUAL(bdata, results[0]);
