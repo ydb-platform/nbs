@@ -19,29 +19,21 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TReadBlockRange
-{
-    ui32 BlockOffset = 0;
-    ui32 Count = 0;
-};
-
-////////////////////////////////////////////////////////////////////////////////
-
 struct TReadBlobRequest
 {
     TActorId Proxy;
     TLogoBlobID BlobId;
-    TVector<TReadBlockRange> Ranges;
+    TVector<ui32> BlockOffsets;
     std::unique_ptr<TEvBlobStorage::TEvGet> Request;
 
     TReadBlobRequest(
             const TActorId& proxy,
             const TLogoBlobID& blobId,
-            TVector<TReadBlockRange> ranges,
+            TVector<ui32> blockOffsets,
             std::unique_ptr<TEvBlobStorage::TEvGet> request)
         : Proxy(proxy)
         , BlobId(blobId)
-        , Ranges(std::move(ranges))
+        , BlockOffsets(std::move(blockOffsets))
         , Request(std::move(request))
     {}
 };
@@ -179,8 +171,8 @@ void TReadBlobActor::HandleGetResult(
 
     const auto& request = Requests[requestIndex];
 
-    const auto* rangeIt = request.Ranges.begin();
-    TABLET_VERIFY(rangeIt != request.Ranges.end());
+    auto blockOffsetsIter = request.BlockOffsets.begin();
+    TABLET_VERIFY(blockOffsetsIter != request.BlockOffsets.end());
 
     for (size_t i = 0; i < msg->ResponseSz; ++i) {
         auto& response = msg->Responses[i];
@@ -199,20 +191,15 @@ void TReadBlobActor::HandleGetResult(
         }
 
         TotalSize += response.Buffer.size();
-        ui32 blocksCount = response.Buffer.size() / BlockSize;
-        ui32 rangeOffset = 0;
+        const auto blocksCount = response.Buffer.size() / BlockSize;
 
         char buffer[BlockSize];
         auto iter = response.Buffer.begin();
 
-        for (size_t j = 0; j < blocksCount; ++j) {
-            size_t inRange = j - rangeOffset;
-            if (inRange >= rangeIt->Count) {
-                ++rangeIt;
-                rangeOffset = j;
-                inRange = 0;
-            }
+        TABLET_VERIFY(
+            blockOffsetsIter + blocksCount <= request.BlockOffsets.end());
 
+        for (size_t j = 0; j < blocksCount; ++j) {
             TStringBuf view;
 
             if (iter.ContiguousSize() >= BlockSize) {
@@ -223,16 +210,12 @@ void TReadBlobActor::HandleGetResult(
                 view = TStringBuf(buffer, BlockSize);
             }
 
-            Buffer->SetBlock(
-                rangeIt->BlockOffset + inRange,
-                view);
+            Buffer->SetBlock(*blockOffsetsIter, view);
+            ++blockOffsetsIter;
         }
-
-        TABLET_VERIFY(blocksCount - rangeOffset == rangeIt->Count);
-        ++rangeIt;
     }
 
-    TABLET_VERIFY(rangeIt == request.Ranges.end());
+    TABLET_VERIFY(blockOffsetsIter == request.BlockOffsets.end());
 
     TABLET_VERIFY(RequestsCompleted < Requests.size());
     if (++RequestsCompleted == Requests.size()) {
@@ -340,7 +323,7 @@ void TIndexTabletActor::HandleReadBlob(
         msg->CallContext,
         "ReadBlob");
 
-    ui32 blockSize = GetBlockSize();
+    const auto blockSize = GetBlockSize();
 
     TVector<TReadBlobRequest> requests(Reserve(msg->Blobs.size()));
     for (auto& blob: msg->Blobs) {
@@ -350,50 +333,57 @@ void TIndexTabletActor::HandleReadBlob(
             blob.BlobId.Channel(),
             blob.BlobId.Generation());
 
-        ui32 blocksCount = blob.Blocks.size();
+        const auto blocksCount = blob.Blocks.size();
 
         using TEvGetQuery = TEvBlobStorage::TEvGet::TQuery;
 
         TArrayHolder<TEvGetQuery> queries(new TEvGetQuery[blocksCount]);
         size_t queriesCount = 0;
 
-        TVector<TReadBlockRange> ranges;
-        ranges.reserve(blocksCount);
+        struct TBlockRange
+        {
+            ui32 BlockOffset = 0;
+            ui32 Count = 0;
+        };
+
+        auto addRangeToProfileLog = [&](const TBlockRange& range) {
+            if (range.Count) {
+                AddRange(
+                    blob.BlobId.CommitId(),
+                    static_cast<ui64>(range.BlockOffset) * blockSize,
+                    static_cast<ui64>(range.Count) * blockSize,
+                    profileLogRequest);
+            }
+        };
+
+        TVector<ui32> blockOffsets(Reserve(blocksCount));
+        TBlockRange curBlockRange;
 
         for (size_t i = 0; i < blocksCount; ++i) {
             const auto& curBlock = blob.Blocks[i];
+            blockOffsets.push_back(curBlock.BlockOffset);
+
             if (i && curBlock.BlobOffset == blob.Blocks[i - 1].BlobOffset + 1) {
                 const auto& prevBlock = blob.Blocks[i - 1];
 
                 // extend range
                 queries[queriesCount - 1].Size += blockSize;
+
                 if (curBlock.BlockOffset == prevBlock.BlockOffset + 1) {
-                    ++ranges.back().Count;
+                    ++curBlockRange.Count;
                 } else {
-                    ranges.push_back({
-                        curBlock.BlockOffset,
-                        1
-                    });
+                    addRangeToProfileLog(curBlockRange);
+                    curBlockRange = { curBlock.BlockOffset, 1 };
                 }
             } else {
                 queries[queriesCount++].Set(
                     blobId,
-                    blob.Blocks[i].BlobOffset * blockSize,
+                    curBlock.BlobOffset * blockSize,
                     blockSize);
 
-                ranges.push_back({
-                    blob.Blocks[i].BlockOffset,
-                    1
-                });
+                addRangeToProfileLog(curBlockRange);
+                curBlockRange = { curBlock.BlockOffset, 1 };
             }
-        }
-
-        for (const auto& range : ranges) {
-            AddRange(
-                blob.BlobId.CommitId(),
-                static_cast<ui64>(range.BlockOffset) * blockSize,
-                static_cast<ui64>(range.Count) * blockSize,
-                profileLogRequest);
         }
 
         auto request = std::make_unique<TEvBlobStorage::TEvGet>(
@@ -414,7 +404,7 @@ void TIndexTabletActor::HandleReadBlob(
         requests.emplace_back(
             proxy,
             blobId,
-            std::move(ranges),
+            std::move(blockOffsets),
             std::move(request));
     }
 
