@@ -199,7 +199,7 @@ struct TGroup
             ui32 i = GetTop<TCompareByCompactionScore>(CompactedRanges);
             TopCompactionScore = {
                 GroupIndex + i,
-                GetCompactionScore(Stats[i])};
+                CompactedRanges.Get(i) ? 0 : GetCompactionScore(Stats[i])};
         }
 
         // 'compacted' flag is deliberately ignored for cleanup score
@@ -216,7 +216,9 @@ struct TGroup
             TopGarbageScore = { rangeId, garbageScore};
         } else if (TopGarbageScore.RangeId == rangeId) {
             ui32 i = GetTop<TCompareByGarbageScore>(CompactedRanges);
-            TopGarbageScore = { GroupIndex + i, GetGarbageScore(Stats[i]) };
+            TopGarbageScore = {
+                GroupIndex + i,
+                CompactedRanges.Get(i) ? 0 : GetGarbageScore(Stats[i])};
         }
 
         return diff;
