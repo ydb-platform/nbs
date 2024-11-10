@@ -23,17 +23,17 @@ struct TReadBlobRequest
 {
     TActorId Proxy;
     TLogoBlobID BlobId;
-    TVector<ui32> BlockOffsets;
+    TVector<TReadBlob::TBlock> Blocks;
     std::unique_ptr<TEvBlobStorage::TEvGet> Request;
 
     TReadBlobRequest(
             const TActorId& proxy,
             const TLogoBlobID& blobId,
-            TVector<ui32> blockOffsets,
+            TVector<TReadBlob::TBlock> blocks,
             std::unique_ptr<TEvBlobStorage::TEvGet> request)
         : Proxy(proxy)
         , BlobId(blobId)
-        , BlockOffsets(std::move(blockOffsets))
+        , Blocks(std::move(blocks))
         , Request(std::move(request))
     {}
 };
@@ -171,8 +171,8 @@ void TReadBlobActor::HandleGetResult(
 
     const auto& request = Requests[requestIndex];
 
-    auto blockOffsetsIter = request.BlockOffsets.begin();
-    TABLET_VERIFY(blockOffsetsIter != request.BlockOffsets.end());
+    auto blockIter = request.Blocks.begin();
+    TABLET_VERIFY(blockIter != request.Blocks.end());
 
     for (size_t i = 0; i < msg->ResponseSz; ++i) {
         auto& response = msg->Responses[i];
@@ -196,8 +196,7 @@ void TReadBlobActor::HandleGetResult(
         char buffer[BlockSize];
         auto iter = response.Buffer.begin();
 
-        TABLET_VERIFY(
-            blockOffsetsIter + blocksCount <= request.BlockOffsets.end());
+        TABLET_VERIFY(blockIter + blocksCount <= request.Blocks.end());
 
         for (size_t j = 0; j < blocksCount; ++j) {
             TStringBuf view;
@@ -210,12 +209,12 @@ void TReadBlobActor::HandleGetResult(
                 view = TStringBuf(buffer, BlockSize);
             }
 
-            Buffer->SetBlock(*blockOffsetsIter, view);
-            ++blockOffsetsIter;
+            Buffer->SetBlock(blockIter->BlockOffset, view);
+            ++blockIter;
         }
     }
 
-    TABLET_VERIFY(blockOffsetsIter == request.BlockOffsets.end());
+    TABLET_VERIFY(blockIter == request.Blocks.end());
 
     TABLET_VERIFY(RequestsCompleted < Requests.size());
     if (++RequestsCompleted == Requests.size()) {
@@ -356,12 +355,10 @@ void TIndexTabletActor::HandleReadBlob(
             }
         };
 
-        TVector<ui32> blockOffsets(Reserve(blocksCount));
         TBlockRange curBlockRange;
 
         for (size_t i = 0; i < blocksCount; ++i) {
             const auto& curBlock = blob.Blocks[i];
-            blockOffsets.push_back(curBlock.BlockOffset);
 
             if (i && curBlock.BlobOffset == blob.Blocks[i - 1].BlobOffset + 1) {
                 const auto& prevBlock = blob.Blocks[i - 1];
@@ -404,7 +401,7 @@ void TIndexTabletActor::HandleReadBlob(
         requests.emplace_back(
             proxy,
             blobId,
-            std::move(blockOffsets),
+            std::move(blob.Blocks),
             std::move(request));
     }
 
