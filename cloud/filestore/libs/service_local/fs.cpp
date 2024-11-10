@@ -29,12 +29,6 @@ TLocalFileSystem::TLocalFileSystem(
         ", DirectIoEnabled=" << Config->GetDirectIoEnabled() <<
         ", DirectIoAlign=" << Config->GetDirectIoAlign());
 
-    Index = std::make_shared<TLocalIndex>(
-        Root,
-        StatePath,
-        Config->GetMaxNodeCount(),
-        Log);
-
     ScheduleCleanupSessions();
 }
 

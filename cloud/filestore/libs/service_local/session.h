@@ -14,8 +14,8 @@
 #include <util/generic/guid.h>
 #include <util/generic/hash.h>
 #include <util/generic/map.h>
-#include <util/string/builder.h>
 #include <util/stream/file.h>
+#include <util/string/builder.h>
 #include <util/system/file.h>
 #include <util/system/rwlock.h>
 #include <util/system/tempfile.h>
@@ -31,7 +31,6 @@ public:
     const TFsPath StatePath;
     const TString ClientId;
     TString SessionId;
-    const TLocalIndexPtr Index;
 
 private:
     struct THandle
@@ -64,6 +63,10 @@ private:
     const ILoggingServicePtr Logging;
     TLog Log;
 
+    const ui32 MaxNodeCount;
+    const ui32 MaxHandleCount;
+
+    TLocalIndex Index;
     THashMap<ui64, std::pair<bool, TInstant>> SubSessions;
 public:
     TSession(
@@ -71,19 +74,22 @@ public:
             const TFsPath& root,
             const TFsPath& statePath,
             TString clientId,
-            TLocalIndexPtr index,
+            ui32 maxNodeCount,
+            ui32 maxHandleCount,
             ILoggingServicePtr logging)
         : Root(root.RealPath())
         , StatePath(statePath.RealPath())
         , ClientId(std::move(clientId))
-        , Index(std::move(index))
         , Logging(std::move(logging))
-    {
-        Log = Logging->CreateLog(fileSystemId + "." + ClientId);
-    }
+        , Log(Logging->CreateLog(fileSystemId + "." + ClientId))
+        , MaxNodeCount(maxNodeCount)
+        , MaxHandleCount(maxHandleCount)
+        , Index(Root, StatePath, MaxNodeCount, Log)
+    {}
 
-    void Init(bool restoreClientSession, ui32 maxHandlesPerSessionCount)
+    void Init(bool restoreClientSession)
     {
+        bool isSessionRestored = false;
         auto handlesPath = StatePath / "handles";
 
         if (!restoreClientSession || !HasStateFile("session") ||
@@ -95,26 +101,25 @@ public:
 
             SessionId = CreateGuidAsString();
 
-            STORAGE_INFO(
-                "Create session, StatePath=" << StatePath <<
-                ", SessionId=" << SessionId <<
-                ", MaxHandlesPerSessionCount=" << maxHandlesPerSessionCount);
-
             WriteStateFile("session", SessionId);
             WriteStateFile("fuse_state", "");
         } else {
+            isSessionRestored = true;
             SessionId = ReadStateFile("session");
             FuseState = ReadStateFile("fuse_state");
-
-            STORAGE_INFO(
-                "Restore existing session, StatePath=" << StatePath <<
-                ", SessionId=" << SessionId <<
-                ", MaxHandlesPerSessionCount=" << maxHandlesPerSessionCount);
         }
+
+        STORAGE_INFO(
+            (isSessionRestored ? "Restore" : "Create") << " session" <<
+            ", StatePath=" << StatePath <<
+            ", SessionId=" << SessionId <<
+            ", MaxNodeCount=" << MaxNodeCount <<
+            ", MaxHandleCount=" << MaxHandleCount);
+
 
         HandleTable = std::make_unique<THandleTable>(
             handlesPath.GetPath(),
-            maxHandlesPerSessionCount);
+            MaxHandleCount);
 
         ui64 maxHandleId = 0;
         for (auto it = HandleTable->begin(); it != HandleTable->end(); it++) {
@@ -211,7 +216,7 @@ public:
 
     TIndexNodePtr LookupNode(ui64 nodeId)
     {
-        return Index->LookupNode(nodeId);
+        return Index.LookupNode(nodeId);
     }
 
     [[nodiscard]] bool TryInsertNode(
@@ -219,12 +224,12 @@ public:
         ui64 parentNodeId,
         const TString& name)
     {
-        return Index->TryInsertNode(std::move(node), parentNodeId, name);
+        return Index.TryInsertNode(std::move(node), parentNodeId, name);
     }
 
     void ForgetNode(ui64 nodeId)
     {
-        Index->ForgetNode(nodeId);
+        Index.ForgetNode(nodeId);
     }
 
     void Ping(ui64 sessionSeqNo)
