@@ -238,8 +238,8 @@ void TReadBlobActor::ReplyError(
     LOG_ERROR(ctx, TFileStoreComponents::TABLET,
         "%s TEvBlobStorage::TEvGet failed: %s\n%s",
         LogTag.c_str(),
-        message.data(),
-        response.Print(false).data());
+        message.c_str(),
+        response.Print(false).c_str());
 
     auto error = MakeError(E_REJECTED, "TEvBlobStorage::TEvGet failed: " + message);
     ReplyAndDie(ctx, error);
