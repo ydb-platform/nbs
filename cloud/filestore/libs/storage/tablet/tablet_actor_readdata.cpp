@@ -423,7 +423,7 @@ void TReadDataActor::ReadBlob(const TActorContext& ctx)
         blocksByBlobId[block.BlobId].emplace_back(
             block.BlobOffset,
             blockOffset - 1);
-        if (block.BlobCompressionInfo) {
+        if (block.BlobCompressionInfo.BlobCompressed()) {
             blobCompressionInfoByBlobId[block.BlobId] =
                 std::move(block.BlobCompressionInfo);
         }

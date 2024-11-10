@@ -20,7 +20,7 @@ namespace NCloud::NFileStore::NStorage {
 class TBlobCompressionInfo
 {
 public:
-    explicit operator bool() const
+    bool BlobCompressed() const
     {
         return false;
     }

@@ -1237,7 +1237,7 @@ void TIndexTabletDatabase::WriteMixedBlocks(
         NIceDb::TUpdate<TTable::CheckpointBlocksCount>(checkpointBlocks)
     );
 
-    if (blobCompressionInfo) {
+    if (blobCompressionInfo.BlobCompressed()) {
         value.Update(
             NIceDb::TUpdate<TTable::BlobCompressionInfo>(
                 blobCompressionInfo.Encode())
