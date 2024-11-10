@@ -423,6 +423,32 @@ Y_UNIT_TEST_SUITE(TPersistentTableTest)
             UNIT_ASSERT_VALUES_EQUAL(ri.CountRecords(), table->CountRecords());
         }
     }
+
+    Y_UNIT_TEST(ShouldClearRecords)
+    {
+        TTempDir dir;
+        auto tablePath = dir.Path() / "table";
+
+        auto tableSize = 32;
+
+        TPersistentTable<THeader, TRecord> table(tablePath, tableSize);
+        UNIT_ASSERT_VALUES_EQUAL(table.CountRecords(), 0);
+
+        for (auto i = 0; i < tableSize; ++i) {
+            auto index = table.AllocRecord();
+            UNIT_ASSERT_VALUES_UNEQUAL(table.InvalidIndex, index);
+            UNIT_ASSERT_VALUES_EQUAL(table.CountRecords(), index + 1);
+        }
+
+        table.Clear();
+        UNIT_ASSERT_VALUES_EQUAL(table.CountRecords(), 0);
+
+        for (auto i = 0; i < tableSize; ++i) {
+            auto index = table.AllocRecord();
+            UNIT_ASSERT_VALUES_UNEQUAL(table.InvalidIndex, index);
+            UNIT_ASSERT_VALUES_EQUAL(table.CountRecords(), index + 1);
+        }
+    }
 }
 
 }   // namespace NCloud

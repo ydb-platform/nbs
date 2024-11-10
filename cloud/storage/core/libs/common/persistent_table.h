@@ -145,48 +145,7 @@ public:
         : FileName(fileName)
         , RecordCount(initialRecordCount)
     {
-        // if file doesn't exist create file with zeroed header
-        TFile file(FileName, OpenAlways | WrOnly);
-        if (file.GetLength() == 0) {
-            file.Resize(CalcFileSize(0));
-        }
-        file.Close();
-
-        FileMap = std::make_unique<TFileMap>(FileName, TMemoryMapCommon::oRdWr);
-        FileMap->Map(0, sizeof(THeader));
-
-        auto* header = reinterpret_cast<THeader*>(FileMap->Ptr());
-        if (header->RecordCount == 0) {
-            header->Version = Version;
-            header->RecordCount = RecordCount;
-            header->HeaderSize = sizeof(THeader);
-            header->RecordSize = sizeof(TRecord);
-            header->CompactedRecordSrcIndex = InvalidIndex;
-            header->CompactedRecordDstIndex = InvalidIndex;
-        }
-
-        Y_ABORT_UNLESS(
-            header->Version == Version,
-            "Invalid header version %d",
-            header->Version);
-        Y_ABORT_UNLESS(
-            header->HeaderSize == sizeof(THeader),
-            "Invalid header size %lu != %lu",
-            header->HeaderSize,
-            sizeof(THeader));
-        Y_ABORT_UNLESS(
-            header->RecordSize == sizeof(TRecord),
-            "Invalid record size %lu != %lu",
-            header->RecordSize,
-            sizeof(TRecord));
-
-        RecordCount = header->RecordCount;
-
-        FileMap->ResizeAndRemap(0, CalcFileSize(RecordCount));
-        HeaderPtr = reinterpret_cast<THeader*>(FileMap->Ptr());
-        RecordsPtr = reinterpret_cast<TRecord*>(HeaderPtr + 1);
-
-        CompactRecords();
+        Init();
     }
 
     H* HeaderData()
@@ -240,7 +199,61 @@ public:
         return NextFreeRecord - FreeRecords.size();
     }
 
+    void Clear()
+    {
+        NextFreeRecord = 0;
+        FileMap.reset();
+        FreeRecords.clear();
+        Init();
+    }
+
 private:
+    void Init()
+    {
+        // if file doesn't exist create file with zeroed header
+        TFile file(FileName, OpenAlways | WrOnly);
+        if (file.GetLength() == 0) {
+            file.Resize(CalcFileSize(0));
+        }
+        file.Close();
+
+        FileMap = std::make_unique<TFileMap>(FileName, TMemoryMapCommon::oRdWr);
+        FileMap->Map(0, sizeof(THeader));
+
+        auto* header = reinterpret_cast<THeader*>(FileMap->Ptr());
+        if (header->RecordCount == 0) {
+            header->Version = Version;
+            header->RecordCount = RecordCount;
+            header->HeaderSize = sizeof(THeader);
+            header->RecordSize = sizeof(TRecord);
+            header->CompactedRecordSrcIndex = InvalidIndex;
+            header->CompactedRecordDstIndex = InvalidIndex;
+        }
+
+        Y_ABORT_UNLESS(
+            header->Version == Version,
+            "Invalid header version %d",
+            header->Version);
+        Y_ABORT_UNLESS(
+            header->HeaderSize == sizeof(THeader),
+            "Invalid header size %lu != %lu",
+            header->HeaderSize,
+            sizeof(THeader));
+        Y_ABORT_UNLESS(
+            header->RecordSize == sizeof(TRecord),
+            "Invalid record size %lu != %lu",
+            header->RecordSize,
+            sizeof(TRecord));
+
+        RecordCount = header->RecordCount;
+
+        FileMap->ResizeAndRemap(0, CalcFileSize(RecordCount));
+        HeaderPtr = reinterpret_cast<THeader*>(FileMap->Ptr());
+        RecordsPtr = reinterpret_cast<TRecord*>(HeaderPtr + 1);
+
+        CompactRecords();
+    }
+
     size_t CalcFileSize(size_t recordCount)
     {
         return sizeof(THeader) + recordCount * sizeof(TRecord);
