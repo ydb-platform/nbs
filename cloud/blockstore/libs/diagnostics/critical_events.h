@@ -92,6 +92,7 @@ namespace NCloud::NBlockStore {
     xxx(DiskRegistryInsertToPendingCleanupFailed)                              \
     xxx(OverlappingRangesDuringMigrationDetected)                              \
     xxx(StartExternalEndpointError)                                            \
+    xxx(EmptyRequestSgList)                                                    \
 // BLOCKSTORE_IMPOSSIBLE_EVENTS
 
 ////////////////////////////////////////////////////////////////////////////////

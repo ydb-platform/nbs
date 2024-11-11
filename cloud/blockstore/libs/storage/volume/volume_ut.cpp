@@ -9181,7 +9181,9 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         }
     }
 
-    TVector<TString> WriteToM3DiskWithInflightDataCorruptionAndReadResults(
+    TVector<TString> WriteToDiskWithInflightDataCorruptionAndReadResults(
+        NCloud::NProto::EStorageMediaKind mediaKind,
+        ui32 writeNumberToIntercept,
         const TString& tags)
     {
         NProto::TStorageServiceConfig config;
@@ -9200,7 +9202,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
             0,
             false,
             1,
-            NCloud::NProto::STORAGE_MEDIA_SSD_MIRROR3,
+            mediaKind,
             1024,
             "vol0",
             "cloud",
@@ -9219,15 +9221,13 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
 
         // intercepting write request to one of the replicas
         TAutoPtr<IEventHandle> writeToReplica;
-        THashMap<TActorId, ui32> sender2WriteCount;
+        ui32 writeNo = 0;
         auto obs = [&] (TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& event) {
             if (event->GetTypeRewrite()
                     == TEvService::EvWriteBlocksLocalRequest)
             {
-                auto& writeCount = sender2WriteCount[event->Sender];
-                ++writeCount;
-                // intercepting write request to the 3rd replica
-                if (writeCount == 3) {
+                ++writeNo;
+                if (writeNo == writeNumberToIntercept) {
                     writeToReplica = event.Release();
                     return true;
                 }
@@ -9288,25 +9288,62 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         return results;
     }
 
-    Y_UNIT_TEST(ShouldCopyWriteRequestDataBeforeWritingToStorageIfTagIsSet)
+    Y_UNIT_TEST(ShouldCopyWriteRequestDataBeforeWritingToStorageIfTagIsSetM3)
     {
-        auto results = WriteToM3DiskWithInflightDataCorruptionAndReadResults(
+        auto results = WriteToDiskWithInflightDataCorruptionAndReadResults(
+            NCloud::NProto::STORAGE_MEDIA_SSD_MIRROR3,
+            // 1 - to volume
+            // 1 - to mirror actor
+            // 3 - to 3 replicas
+            1 + 1 + 3,
             "use-intermediate-write-buffer");
         const TString adata(4_KB, 'a');
-        const TString bdata(4_KB, 'b');
         UNIT_ASSERT_VALUES_EQUAL(adata, results[0]);
         UNIT_ASSERT_VALUES_EQUAL(adata, results[1]);
         UNIT_ASSERT_VALUES_EQUAL(adata, results[2]);
     }
 
-    Y_UNIT_TEST(ShouldHaveDifferentDataInReplicasUponInflightBufferCorruption)
+    Y_UNIT_TEST(ShouldHaveDifferentDataInReplicasUponInflightBufferCorruptionM3)
     {
-        auto results =
-            WriteToM3DiskWithInflightDataCorruptionAndReadResults("");
+        auto results = WriteToDiskWithInflightDataCorruptionAndReadResults(
+            NCloud::NProto::STORAGE_MEDIA_SSD_MIRROR3,
+            // 1 - to volume
+            // 1 - to mirror actor
+            // 3 - to 3 replicas (nonrepl part actors)
+            1 + 1 + 3,
+            "");
         const TString adata(4_KB, 'a');
         const TString bdata(4_KB, 'b');
         UNIT_ASSERT_VALUES_EQUAL(adata, results[0]);
         UNIT_ASSERT_VALUES_EQUAL(adata, results[1]);
+        UNIT_ASSERT_VALUES_EQUAL(bdata, results[2]);
+    }
+
+    Y_UNIT_TEST(ShouldCopyWriteRequestDataBeforeWritingToStorageIfTagIsSetNonrepl)
+    {
+        auto results = WriteToDiskWithInflightDataCorruptionAndReadResults(
+            NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
+            // 1 - to volume
+            // 1 - to nonrepl part actor
+            1 + 1,
+            "use-intermediate-write-buffer");
+        const TString adata(4_KB, 'a');
+        UNIT_ASSERT_VALUES_EQUAL(adata, results[0]);
+        UNIT_ASSERT_VALUES_EQUAL(adata, results[1]);
+        UNIT_ASSERT_VALUES_EQUAL(adata, results[2]);
+    }
+
+    Y_UNIT_TEST(ShouldHaveChangedDataInStorageUponInflightBufferCorruptionNonrepl)
+    {
+        auto results = WriteToDiskWithInflightDataCorruptionAndReadResults(
+            NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
+            // 1 - to volume
+            // 1 - to nonrepl part actor
+            1 + 1,
+            "");
+        const TString bdata(4_KB, 'b');
+        UNIT_ASSERT_VALUES_EQUAL(bdata, results[0]);
+        UNIT_ASSERT_VALUES_EQUAL(bdata, results[1]);
         UNIT_ASSERT_VALUES_EQUAL(bdata, results[2]);
     }
 }
