@@ -344,7 +344,7 @@ Y_UNIT_TEST_SUITE(TPersistentTableTest)
 
         {
             TPersistentTable<THeader, TRecord> table(tablePath, tableSize);
-            UNIT_ASSERT_VALUES_EQUAL(table.CountRecords(), 0);
+            UNIT_ASSERT_VALUES_EQUAL(0, table.CountRecords());
 
             for (auto i = 0; i < tableSize; ++i) {
                 auto index = table.AllocRecord();
@@ -431,22 +431,17 @@ Y_UNIT_TEST_SUITE(TPersistentTableTest)
 
         auto tableSize = 32;
 
-        TPersistentTable<THeader, TRecord> table(tablePath, tableSize);
-        UNIT_ASSERT_VALUES_EQUAL(table.CountRecords(), 0);
+        for (int i=0; i < 5; i++) {
+            TPersistentTable<THeader, TRecord> table(tablePath, tableSize);
+            UNIT_ASSERT_VALUES_EQUAL(0, table.CountRecords());
 
-        for (auto i = 0; i < tableSize; ++i) {
-            auto index = table.AllocRecord();
-            UNIT_ASSERT_VALUES_UNEQUAL(table.InvalidIndex, index);
-            UNIT_ASSERT_VALUES_EQUAL(table.CountRecords(), index + 1);
-        }
-
-        table.Clear();
-        UNIT_ASSERT_VALUES_EQUAL(table.CountRecords(), 0);
-
-        for (auto i = 0; i < tableSize; ++i) {
-            auto index = table.AllocRecord();
-            UNIT_ASSERT_VALUES_UNEQUAL(table.InvalidIndex, index);
-            UNIT_ASSERT_VALUES_EQUAL(table.CountRecords(), index + 1);
+            for (auto i = 0; i < tableSize; ++i) {
+                auto index = table.AllocRecord();
+                UNIT_ASSERT_VALUES_UNEQUAL(table.InvalidIndex, index);
+                UNIT_ASSERT_VALUES_EQUAL(table.CountRecords(), index + 1);
+                table.CommitRecord(index);
+            }
+            table.Clear();
         }
     }
 }

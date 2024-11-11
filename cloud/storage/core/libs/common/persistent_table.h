@@ -202,6 +202,7 @@ public:
     void Clear()
     {
         NextFreeRecord = 0;
+        FileMap->ResizeAndRemap(0, 0);
         FileMap.reset();
         FreeRecords.clear();
         Init();
