@@ -393,7 +393,6 @@ TDuration MSeconds(ui32 value)
     xxx(NonReplicatedMaxRequestTimeoutSSD,         TDuration, Seconds(30)     )\
     xxx(NonReplicatedMinRequestTimeoutHDD,         TDuration, Seconds(5)      )\
     xxx(NonReplicatedMaxRequestTimeoutHDD,         TDuration, Seconds(30)     )\
-    xxx(ExpectedClientBackoffIncrement,            TDuration, MSeconds(500)   )\
     xxx(NonReplicatedMigrationStartAllowed,        bool,      false           )\
     xxx(NonReplicatedVolumeMigrationDisabled,      bool,      false           )\
     xxx(MigrationIndexCachingInterval,             ui32,      65536           )\

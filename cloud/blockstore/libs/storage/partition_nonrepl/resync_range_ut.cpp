@@ -93,7 +93,6 @@ struct TTestEnv
         storageConfig.SetMaxTimedOutDeviceStateDuration(20'000);
         storageConfig.SetNonReplicatedMinRequestTimeoutSSD(1'000);
         storageConfig.SetNonReplicatedMaxRequestTimeoutSSD(5'000);
-        storageConfig.SetExpectedClientBackoffIncrement(500);
 
         auto config = std::make_shared<TStorageConfig>(
             std::move(storageConfig),

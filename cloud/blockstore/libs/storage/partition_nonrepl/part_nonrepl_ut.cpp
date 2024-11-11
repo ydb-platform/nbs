@@ -103,7 +103,6 @@ struct TTestEnv
             storageConfig.SetNonReplicatedMinRequestTimeoutHDD(60'000);
             storageConfig.SetNonReplicatedMaxRequestTimeoutHDD(60'000);
         }
-        storageConfig.SetExpectedClientBackoffIncrement(500);
         storageConfig.SetNonReplicatedAgentMaxTimeout(300'000);
         storageConfig.SetAssignIdToWriteAndZeroRequestsEnabled(true);
 
@@ -690,68 +689,62 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionTest)
 
         TPartitionClient client(runtime, env.ActorId);
 
-        // timeout = 1s
+        // cumulative = 0.0s
+        // timeout = 1s (NonReplicatedMinRequestTimeoutSSD())
         {
             client.SendReadBlocksRequest(
                 TBlockRange64::WithLength(1024, 3072));
-            runtime.AdvanceCurrentTime(TDuration::Minutes(10));
             runtime.DispatchEvents();
             auto response = client.RecvReadBlocksResponse();
             UNIT_ASSERT_VALUES_EQUAL(E_TIMEOUT, response->GetStatus());
             UNIT_ASSERT(response->GetErrorReason().Contains("timed out"));
         }
 
-        // backoff = 0.5s
-        // cumulative = 1.5s
-        // timeout = 2s
+        // cumulative = 1.0s
+        // timeout = 1.5s (cumulative + 0.5s)
         {
             client.SendWriteBlocksRequest(
                 TBlockRange64::WithLength(1024, 3072),
                 1);
-            runtime.AdvanceCurrentTime(TDuration::Minutes(10));
             runtime.DispatchEvents();
             auto response = client.RecvWriteBlocksResponse();
             UNIT_ASSERT_VALUES_EQUAL(E_TIMEOUT, response->GetStatus());
             UNIT_ASSERT(response->GetErrorReason().Contains("timed out"));
         }
 
-        // backoff = 1s
-        // cumulative = 4.5s
-        // timeout = 4s
+        // cumulative = 2.5s (1.0 + 1.5)
+        // timeout = 3s (cumulative + 0.5s)
         {
             client.SendZeroBlocksRequest(
                 TBlockRange64::WithLength(1024, 3072));
-            runtime.AdvanceCurrentTime(TDuration::Minutes(10));
             runtime.DispatchEvents();
             auto response = client.RecvZeroBlocksResponse();
             UNIT_ASSERT_VALUES_EQUAL(E_TIMEOUT, response->GetStatus());
             UNIT_ASSERT(response->GetErrorReason().Contains("timed out"));
         }
 
-        // backoff = 1.5s
-        // cumulative = 10s
-        // timeout = 5s
+        // cumulative = 5.5s (1.0 + 1.5 + 3.0)
+        // timeout = 5s (limited by NonReplicatedMaxRequestTimeoutSSD())
         {
             client.SendReadBlocksRequest(
                 TBlockRange64::WithLength(1024, 3072));
-            runtime.AdvanceCurrentTime(TDuration::Minutes(10));
             runtime.DispatchEvents();
             auto response = client.RecvReadBlocksResponse();
             UNIT_ASSERT_VALUES_EQUAL(E_TIMEOUT, response->GetStatus());
         }
 
-        // backoff = 2s
-        // cumulative = 17s
-        // timeout = 5s
+        // cumulative = 10.5 (1.0 + 1.5 + 3.0 + 5.0)
+        // timeout = 5s (limited by NonReplicatedMaxRequestTimeoutSSD())
         {
             client.SendReadBlocksRequest(
                 TBlockRange64::WithLength(1024, 3072));
-            runtime.AdvanceCurrentTime(TDuration::Minutes(10));
             runtime.DispatchEvents();
             auto response = client.RecvReadBlocksResponse();
             UNIT_ASSERT_VALUES_EQUAL(E_TIMEOUT, response->GetStatus());
         }
 
+        // cumulative not exceeds MaxTimedOutDeviceStateDuration(), and the disk
+        // is not considered broken yet
         client.SendRequest(
             env.ActorId,
             std::make_unique<TEvNonreplPartitionPrivate::TEvUpdateCounters>()
@@ -762,18 +755,18 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionTest)
         UNIT_ASSERT_VALUES_EQUAL(0, counters.HasBrokenDevice.Value);
         UNIT_ASSERT_VALUES_EQUAL(0, counters.HasBrokenDeviceSilent.Value);
 
-        // the following attempts should get E_IO / E_IO_SILENT
-        // backoff = 2.5s
-        // cumulative = 24.5s
-        // timeout = 5s
+        // cumulative = 15.5 (1.0 + 1.5 + 3.0 + 5.0 + 5.0)
+        // timeout = 5s (limited by NonReplicatedMaxRequestTimeoutSSD())
         {
             client.SendReadBlocksRequest(
                 TBlockRange64::WithLength(1024, 3072));
             runtime.DispatchEvents();
             auto response = client.RecvReadBlocksResponse();
-            UNIT_ASSERT_VALUES_EQUAL(E_IO_SILENT, response->GetStatus());
+            UNIT_ASSERT_VALUES_EQUAL(E_TIMEOUT, response->GetStatus());
         }
 
+        // cumulative is now 20.5 and it exceeds MaxTimedOutDeviceStateDuration(), the disk
+        // is considered as silently broken
         client.SendRequest(
             env.ActorId,
             std::make_unique<TEvNonreplPartitionPrivate::TEvUpdateCounters>()
@@ -782,6 +775,32 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionTest)
         runtime.DispatchEvents({}, TDuration::Seconds(1));
 
         UNIT_ASSERT_VALUES_EQUAL(0, counters.HasBrokenDevice.Value);
+        UNIT_ASSERT_VALUES_EQUAL(1, counters.HasBrokenDeviceSilent.Value);
+
+        // the following attempts should get E_IO / E_IO_SILENT
+        // since cumulative value exceeded MaxTimedOutDeviceStateDuration()
+        // cumulative = 20.5 (1.0 + 1.5 + 3.0 + 5.0 + 5.0)
+        // timeout = 5s (limited by NonReplicatedMaxRequestTimeoutSSD())
+        {
+            client.SendReadBlocksRequest(
+                TBlockRange64::WithLength(1024, 3072));
+            runtime.DispatchEvents();
+            auto response = client.RecvReadBlocksResponse();
+            UNIT_ASSERT_VALUES_EQUAL(E_IO_SILENT, response->GetStatus());
+        }
+
+        // after a cooldown the error shouldn't be silent anymore and the disk
+        // is considered as broken
+        runtime.AdvanceCurrentTime(TDuration::Minutes(5));
+
+        client.SendRequest(
+            env.ActorId,
+            std::make_unique<TEvNonreplPartitionPrivate::TEvUpdateCounters>()
+        );
+
+        runtime.DispatchEvents({}, TDuration::Seconds(1));
+
+        UNIT_ASSERT_VALUES_EQUAL(1, counters.HasBrokenDevice.Value);
         UNIT_ASSERT_VALUES_EQUAL(1, counters.HasBrokenDeviceSilent.Value);
 
         // after a cooldown the error shouldn't be silent anymore
@@ -793,16 +812,6 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionTest)
             auto response = client.RecvReadBlocksResponse();
             UNIT_ASSERT_VALUES_EQUAL(E_IO, response->GetStatus());
         }
-
-        client.SendRequest(
-            env.ActorId,
-            std::make_unique<TEvNonreplPartitionPrivate::TEvUpdateCounters>()
-        );
-
-        runtime.DispatchEvents({}, TDuration::Seconds(1));
-
-        UNIT_ASSERT_VALUES_EQUAL(1, counters.HasBrokenDevice.Value);
-        UNIT_ASSERT_VALUES_EQUAL(1, counters.HasBrokenDeviceSilent.Value);
 
         {
             client.SendWriteBlocksRequest(
@@ -854,7 +863,7 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionTest)
         });
 
         TTestEnv env(runtime, {.MediaKind = mediaKind});
-        env.DiskAgentState->ResponseDelay = TDuration::MilliSeconds(1'500);
+        env.DiskAgentState->ResponseDelay = TDuration::MilliSeconds(1'200);
 
         TPartitionClient client(runtime, env.ActorId);
 
@@ -967,26 +976,18 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionTest)
 
         runtime.DispatchEvents({}, TDuration::Seconds(1));
 
-        UNIT_ASSERT_VALUES_EQUAL(0, counters.HasBrokenDevice.Value);
-        UNIT_ASSERT_VALUES_EQUAL(0, counters.HasBrokenDeviceSilent.Value);
+        // Background requests transfer the device into an error state, despite
+        // the fact that they themselves receive timeouts.
+        UNIT_ASSERT_VALUES_EQUAL(1, counters.HasBrokenDevice.Value);
+        UNIT_ASSERT_VALUES_EQUAL(1, counters.HasBrokenDeviceSilent.Value);
 
         {
             client.SendReadBlocksRequest(
                 TBlockRange64::WithLength(1024, 3072));
             runtime.DispatchEvents();
             auto response = client.RecvReadBlocksResponse();
-            UNIT_ASSERT_VALUES_EQUAL(E_IO_SILENT, response->GetStatus());
+            UNIT_ASSERT_VALUES_EQUAL(E_IO, response->GetStatus());
         }
-
-        client.SendRequest(
-            env.ActorId,
-            std::make_unique<TEvNonreplPartitionPrivate::TEvUpdateCounters>()
-        );
-
-        runtime.DispatchEvents({}, TDuration::Seconds(1));
-
-        UNIT_ASSERT_VALUES_EQUAL(0, counters.HasBrokenDevice.Value);
-        UNIT_ASSERT_VALUES_EQUAL(1, counters.HasBrokenDeviceSilent.Value);
     }
 
     Y_UNIT_TEST(ShouldRecoverFromShortTimeoutStreak)
@@ -1009,7 +1010,7 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionTest)
         {
             client.SendReadBlocksRequest(
                 TBlockRange64::WithLength(1024, 3072));
-            runtime.AdvanceCurrentTime(TDuration::Minutes(10));
+            //runtime.AdvanceCurrentTime(TDuration::Minutes(10));
             runtime.DispatchEvents();
             auto response = client.RecvReadBlocksResponse();
             UNIT_ASSERT_VALUES_EQUAL(E_TIMEOUT, response->GetStatus());
@@ -1023,7 +1024,7 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionTest)
             client.SendWriteBlocksRequest(
                 TBlockRange64::WithLength(1024, 3072),
                 1);
-            runtime.AdvanceCurrentTime(TDuration::Minutes(10));
+            //runtime.AdvanceCurrentTime(TDuration::Minutes(10));
             runtime.DispatchEvents();
             auto response = client.RecvWriteBlocksResponse();
             UNIT_ASSERT_VALUES_EQUAL(E_TIMEOUT, response->GetStatus());
@@ -1036,7 +1037,7 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionTest)
         {
             client.SendZeroBlocksRequest(
                 TBlockRange64::WithLength(1024, 3072));
-            runtime.AdvanceCurrentTime(TDuration::Minutes(10));
+            //runtime.AdvanceCurrentTime(TDuration::Minutes(10));
             runtime.DispatchEvents();
             auto response = client.RecvZeroBlocksResponse();
             UNIT_ASSERT_VALUES_EQUAL(E_TIMEOUT, response->GetStatus());
@@ -1049,7 +1050,7 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionTest)
         {
             client.SendReadBlocksRequest(
                 TBlockRange64::WithLength(1024, 3072));
-            runtime.AdvanceCurrentTime(TDuration::Minutes(10));
+            //runtime.AdvanceCurrentTime(TDuration::Minutes(10));
             runtime.DispatchEvents();
             auto response = client.RecvReadBlocksResponse();
             UNIT_ASSERT_VALUES_EQUAL(E_TIMEOUT, response->GetStatus());
@@ -1072,7 +1073,7 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionTest)
         {
             client.SendReadBlocksRequest(
                 TBlockRange64::WithLength(1024, 3072));
-            runtime.AdvanceCurrentTime(TDuration::Minutes(10));
+            //runtime.AdvanceCurrentTime(TDuration::Minutes(10));
             runtime.DispatchEvents();
             auto response = client.RecvReadBlocksResponse();
             UNIT_ASSERT_VALUES_EQUAL(E_TIMEOUT, response->GetStatus());
@@ -1086,7 +1087,7 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionTest)
             client.SendWriteBlocksRequest(
                 TBlockRange64::WithLength(1024, 3072),
                 1);
-            runtime.AdvanceCurrentTime(TDuration::Minutes(10));
+            //runtime.AdvanceCurrentTime(TDuration::Minutes(10));
             runtime.DispatchEvents();
             auto response = client.RecvWriteBlocksResponse();
             UNIT_ASSERT_VALUES_EQUAL(E_TIMEOUT, response->GetStatus());
@@ -1099,7 +1100,7 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionTest)
         {
             client.SendZeroBlocksRequest(
                 TBlockRange64::WithLength(1024, 3072));
-            runtime.AdvanceCurrentTime(TDuration::Minutes(10));
+            //runtime.AdvanceCurrentTime(TDuration::Minutes(10));
             runtime.DispatchEvents();
             auto response = client.RecvZeroBlocksResponse();
             UNIT_ASSERT_VALUES_EQUAL(E_TIMEOUT, response->GetStatus());
@@ -1112,7 +1113,7 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionTest)
         {
             client.SendReadBlocksRequest(
                 TBlockRange64::WithLength(1024, 3072));
-            runtime.AdvanceCurrentTime(TDuration::Minutes(10));
+            //runtime.AdvanceCurrentTime(TDuration::Minutes(10));
             runtime.DispatchEvents();
             auto response = client.RecvReadBlocksResponse();
             UNIT_ASSERT_VALUES_EQUAL(E_TIMEOUT, response->GetStatus());
@@ -1124,7 +1125,16 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionTest)
         {
             client.SendReadBlocksRequest(
                 TBlockRange64::WithLength(1024, 3072));
-            runtime.AdvanceCurrentTime(TDuration::Minutes(10));
+            //runtime.AdvanceCurrentTime(TDuration::Minutes(10));
+            runtime.DispatchEvents();
+            auto response = client.RecvReadBlocksResponse();
+            UNIT_ASSERT_VALUES_EQUAL(E_TIMEOUT, response->GetStatus());
+        }
+
+        {
+            client.SendReadBlocksRequest(
+                TBlockRange64::WithLength(1024, 3072));
+            //runtime.AdvanceCurrentTime(TDuration::Minutes(10));
             runtime.DispatchEvents();
             auto response = client.RecvReadBlocksResponse();
             UNIT_ASSERT_VALUES_EQUAL(E_TIMEOUT, response->GetStatus());
@@ -1437,7 +1447,7 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionTest)
         }
     }
 
-    Y_UNIT_TEST(ShouldEnforceWritableStateWithUnavailableAgent)
+    Y_UNIT_TEST(ShouldRecoverWithAgentBackFromUnavailable)
     {
         TTestBasicRuntime runtime;
 
@@ -1457,7 +1467,7 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionTest)
         for (;;) {
             client.SendReadBlocksRequest(
                 TBlockRange64::MakeClosedInterval(0, 1024));
-            runtime.AdvanceCurrentTime(TDuration::Minutes(10));
+            runtime.AdvanceCurrentTime(TDuration::Seconds(10));
             runtime.DispatchEvents();
             auto response = client.RecvReadBlocksResponse();
             if (response->GetStatus() == E_IO_SILENT) {
@@ -1477,16 +1487,98 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionTest)
             UNIT_ASSERT(response->GetErrorReason().Contains("timed out"));
         }
 
-        // can't write to petya
+        // Get timeout from petya since device is not in an error state.
         {
             client.SendWriteBlocksRequest(
                 TBlockRange64::MakeClosedInterval(2048, 3072),
                 1);
             runtime.DispatchEvents();
             auto response = client.RecvWriteBlocksResponse();
-            UNIT_ASSERT_VALUES_EQUAL(E_IO_SILENT, response->GetStatus());
-            UNIT_ASSERT(response->GetErrorReason().Contains("disk has broken device"));
+            UNIT_ASSERT_VALUES_EQUAL(E_TIMEOUT, response->GetStatus());
+            UNIT_ASSERT(response->GetErrorReason().Contains("timed out"));
         }
+
+        // Back from unavailable
+        env.DiskAgentState->ResponseDelay = TDuration::MilliSeconds(10);
+
+        // Read OK.
+        {
+            auto response =
+                client.ReadBlocks(TBlockRange64::WithLength(0, 1024));
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
+        }
+        {
+            auto response =
+                client.ReadBlocks(TBlockRange64::WithLength(2048, 1024));
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
+        }
+
+        // Write OK.
+        {
+            auto response =
+                client.WriteBlocks(TBlockRange64::WithLength(0, 1024), 1);
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
+        }
+        {
+            auto response =
+                client.WriteBlocks(TBlockRange64::WithLength(2048, 1024), 1);
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
+        }
+    }
+
+    Y_UNIT_TEST(ShouldAccountTimeoutsFromParallelRequestsCorrectly)
+    {
+        constexpr size_t RequestCount = 10;
+
+        TTestBasicRuntime runtime;
+
+        runtime.SetRegistrationObserverFunc(
+            [] (auto& runtime, const auto& parentId, const auto& actorId)
+        {
+            Y_UNUSED(parentId);
+            runtime.EnableScheduleForActor(actorId);
+        });
+
+        TTestEnv env(runtime);
+        env.DiskAgentState->ResponseDelay = TDuration::Max();
+
+        TPartitionClient client(runtime, env.ActorId);
+
+        auto makeParallelRequests = [&](EWellKnownResultCodes expectedResponse)
+        {
+            for (size_t i = 0; i < RequestCount; ++i) {
+                client.SendReadBlocksRequest(TBlockRange64::MakeOneBlock(i));
+            }
+
+            runtime.DispatchEvents();
+
+            for (size_t i = 0; i < RequestCount; ++i) {
+                auto response = client.RecvReadBlocksResponse();
+                UNIT_ASSERT_VALUES_EQUAL(
+                    expectedResponse,
+                    response->GetStatus());
+            }
+        };
+
+        // accumulated = 0.0, timeout = 1.0
+        makeParallelRequests(E_TIMEOUT);
+        // accumulated = 1.0, timeout = 1.5,
+        makeParallelRequests(E_TIMEOUT);
+        // accumulated = 2.5, timeout = 3.0,
+        makeParallelRequests(E_TIMEOUT);
+        // accumulated = 5.5, timeout = 5.0,
+        makeParallelRequests(E_TIMEOUT);
+        // accumulated = 10.5, timeout = 5.0,
+        makeParallelRequests(E_TIMEOUT);
+        // accumulated = 15.5, timeout = 5.0,
+        makeParallelRequests(E_TIMEOUT);
+        // accumulated = 20.5, timeout = 5.0,
+        makeParallelRequests(E_IO_SILENT);
+        // accumulated = 25.5, timeout = 5.0,
+        makeParallelRequests(E_IO_SILENT);
+        // advance time to skip cooldown period
+        runtime.AdvanceCurrentTime(TDuration::Minutes(5));
+        makeParallelRequests(E_IO);
     }
 
     Y_UNIT_TEST(ShouldUpdateStats)

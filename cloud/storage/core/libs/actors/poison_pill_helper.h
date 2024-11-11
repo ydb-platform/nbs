@@ -5,6 +5,8 @@
 #include <library/cpp/actors/core/actor.h>
 #include <library/cpp/actors/core/event.h>
 
+#include <util/generic/set.h>
+
 namespace NCloud {
 
 ////////////////////////////////////////////////////////////////////////////////

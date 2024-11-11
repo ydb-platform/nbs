@@ -13,6 +13,8 @@
 #include <util/string/join.h>
 #include <util/system/file.h>
 
+#include <google/protobuf/util/json_util.h>
+
 namespace NCloud::NBlockStore::NStorage {
 
 using namespace NActors;
