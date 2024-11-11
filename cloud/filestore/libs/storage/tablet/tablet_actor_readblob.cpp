@@ -205,7 +205,6 @@ void TReadBlobActor::HandleGetResult(
             return;
         }
 
-        TotalSize += response.Buffer.size();
         ReadQueryResponseUncompressed(response.Buffer, queryInfo);
     }
 
@@ -219,6 +218,8 @@ void TReadBlobActor::ReadQueryResponseUncompressed(
     const TRope& responseBuffer,
     const TEvGetQueryInfo& info)
 {
+    TotalSize += responseBuffer.size();
+
     char buffer[BlockSize];
     auto iter = responseBuffer.begin();
 
