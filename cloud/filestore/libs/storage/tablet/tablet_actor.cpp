@@ -231,17 +231,19 @@ void TIndexTabletActor::OnTabletDead(
 {
     Y_UNUSED(ev);
 
-    TerminateTransactions(ctx);
+    //TerminateTransactions(ctx);
 
     for (const auto& actor: WorkerActors) {
         ctx.Send(actor, new TEvents::TEvPoisonPill());
     }
 
+    /*
     auto writeBatch = DequeueWriteBatch();
     for (const auto& request: writeBatch) {
         TRequestInfo& requestInfo = *request.RequestInfo;
         requestInfo.CancelRoutine(ctx, requestInfo);
     }
+    */
 
     WorkerActors.clear();
     UnregisterFileStore(ctx);
