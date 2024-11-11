@@ -651,29 +651,34 @@ func CheckErrorDetails(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-func GetMetrics(name string) (*prometheuse_client.MetricFamily, error) {
+func GetCounter(
+	t *testing.T,
+	name string,
+	labels map[string]string,
+) float64 {
 	resp, err := http.Get(
 		fmt.Sprintf(
 			"http://localhost:%s/metrics/",
 			os.Getenv("DISK_MANAGER_RECIPE_DISK_MANAGER_MON_PORT"),
 		),
 	)
-	if err != nil {
-		return nil, err
-	}
+	require.NoError(t, err)
 	defer resp.Body.Close()
 
 	parser := expfmt.TextParser{}
 	metricFamilies, err := parser.TextToMetricFamilies(resp.Body)
-	if err != nil {
-		return nil, err
-	}
+	require.NoError(t, err)
 
 	retrievedMetrics, ok := metricFamilies[name]
-	if !ok {
-		return nil, fmt.Errorf("metric '%s' not found", name)
+	require.True(t, ok)
+	for _, metricValue := range retrievedMetrics.GetMetric() {
+		if metricMatchesLabel(labels, metricValue) {
+			return metricValue.GetCounter().GetValue()
+		}
 	}
-	return retrievedMetrics, nil
+
+	require.Failf(t, "No counter with name %s", name)
+	return 0
 }
 
 func metricMatchesLabel(
@@ -698,23 +703,4 @@ func metricMatchesLabel(
 	}
 
 	return true
-}
-
-func FilterMetrics(
-	labels map[string]string,
-	metricFamily *prometheuse_client.MetricFamily,
-) []*prometheuse_client.Metric {
-
-	filteredMetrics := make(
-		[]*prometheuse_client.Metric,
-		0,
-		len(metricFamily.Metric),
-	)
-	for _, metricValue := range metricFamily.GetMetric() {
-		if metricMatchesLabel(labels, metricValue) {
-			filteredMetrics = append(filteredMetrics, metricValue)
-		}
-	}
-
-	return filteredMetrics
 }

@@ -51,20 +51,16 @@ func TestFacadeErrorDetails(t *testing.T) {
 	check()
 }
 
-func getRequestErrorCount(t *testing.T, requestName string) float64 {
-	metricFamily, err := testcommon.GetMetrics("errors")
-	require.NoError(t, err)
-	metrics := testcommon.FilterMetrics(
-		map[string]string{"component": "grpc_facade", "request": requestName},
-		metricFamily,
-	)
-	require.Equal(t, len(metrics), 1)
-	return metrics[0].GetCounter().GetValue()
-}
-
 func TestDiskServiceInvalidCreateEmptyDisk(t *testing.T) {
 	ctx := testcommon.NewContext()
-	requestCount := getRequestErrorCount(t, "DiskService.Create")
+	errorsCount := testcommon.GetCounter(
+		t,
+		"errors",
+		map[string]string{
+			"component": "grpc_facade",
+			"request":   "DiskService.Create",
+		},
+	)
 	client, err := testcommon.NewClient(ctx)
 	require.NoError(t, err)
 	defer client.Close()
@@ -84,9 +80,17 @@ func TestDiskServiceInvalidCreateEmptyDisk(t *testing.T) {
 		},
 	})
 	require.Error(t, err)
+	newErrorsCount := testcommon.GetCounter(
+		t,
+		"errors",
+		map[string]string{
+			"component": "grpc_facade",
+			"request":   "DiskService.Create",
+		},
+	)
 	require.GreaterOrEqual(
 		t,
-		getRequestErrorCount(t, "DiskService.Create")-requestCount,
+		newErrorsCount-errorsCount,
 		float64(1),
 	)
 }
