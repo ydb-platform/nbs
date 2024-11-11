@@ -21,26 +21,23 @@ namespace {
 
 struct TEvGetQueryInfo
 {
-    ui32 BlocksCount = 0;
+    TVector<ui32> BlockOffsets;
 };
 
 struct TReadBlobRequest
 {
     TActorId Proxy;
     TLogoBlobID BlobId;
-    TVector<TReadBlob::TBlock> Blocks;
     TVector<TEvGetQueryInfo> QueryInfos;
     std::unique_ptr<TEvBlobStorage::TEvGet> Request;
 
     TReadBlobRequest(
             const TActorId& proxy,
             const TLogoBlobID& blobId,
-            TVector<TReadBlob::TBlock> blocks,
             TVector<TEvGetQueryInfo> queryInfos,
             std::unique_ptr<TEvBlobStorage::TEvGet> request)
         : Proxy(proxy)
         , BlobId(blobId)
-        , Blocks(std::move(blocks))
         , QueryInfos(std::move(queryInfos))
         , Request(std::move(request))
     {}
@@ -100,10 +97,9 @@ private:
     void HandleGetResult(
         const TEvBlobStorage::TEvGetResult::TPtr& ev,
         const TActorContext& ctx);
-    void ReadUncompressedResponse(
+    void ReadQueryResponseUncompressed(
         const TRope& responseBuffer,
-        auto blockIter,
-        ui32 blocksCount);
+        const TEvGetQueryInfo& info);
 
     void HandlePoisonPill(
         const TEvents::TEvPoisonPill::TPtr& ev,
@@ -183,9 +179,6 @@ void TReadBlobActor::HandleGetResult(
 
     const auto& request = Requests[requestIndex];
 
-    auto blockIter = request.Blocks.begin();
-    TABLET_VERIFY(blockIter != request.Blocks.end());
-
     if (msg->ResponseSz != request.QueryInfos.size()) {
         ReplyError(ctx, *msg, "invalid number of responses");
         return;
@@ -204,19 +197,17 @@ void TReadBlobActor::HandleGetResult(
             return;
         }
 
-        const auto blocksCount = request.QueryInfos[i].BlocksCount;
-        TABLET_VERIFY(blockIter + blocksCount <= request.Blocks.end());
+        const auto& queryInfo = request.QueryInfos[i];
+        const auto blocksCount = queryInfo.BlockOffsets.size();
 
         if (response.Buffer.size() / BlockSize != blocksCount) {
             ReplyError(ctx, *msg, "invalid response buffer size");
             return;
         }
 
-        ReadUncompressedResponse(response.Buffer, blockIter, blocksCount);
-        blockIter += blocksCount;
+        TotalSize += response.Buffer.size();
+        ReadQueryResponseUncompressed(response.Buffer, queryInfo);
     }
-
-    TABLET_VERIFY(blockIter == request.Blocks.end());
 
     TABLET_VERIFY(RequestsCompleted < Requests.size());
     if (++RequestsCompleted == Requests.size()) {
@@ -224,17 +215,14 @@ void TReadBlobActor::HandleGetResult(
     }
 }
 
-void TReadBlobActor::ReadUncompressedResponse(
+void TReadBlobActor::ReadQueryResponseUncompressed(
     const TRope& responseBuffer,
-    auto blockIter,
-    ui32 blocksCount)
+    const TEvGetQueryInfo& info)
 {
-    TotalSize += responseBuffer.size();
-
     char buffer[BlockSize];
     auto iter = responseBuffer.begin();
 
-    for (size_t j = 0; j < blocksCount; ++j) {
+    for (size_t i = 0; i < info.BlockOffsets.size(); ++i) {
         TStringBuf view;
 
         if (iter.ContiguousSize() >= BlockSize) {
@@ -245,8 +233,7 @@ void TReadBlobActor::ReadUncompressedResponse(
             view = TStringBuf(buffer, BlockSize);
         }
 
-        Buffer->SetBlock(blockIter->BlockOffset, view);
-        ++blockIter;
+        Buffer->SetBlock(info.BlockOffsets[i], view);
     }
 }
 
@@ -394,22 +381,28 @@ void TIndexTabletActor::HandleReadBlob(
 
                 // extend range
                 queries[queriesCount - 1].Size += blockSize;
-                ++queryInfos.back().BlocksCount;
+                queryInfos.back().BlockOffsets.push_back(curBlock.BlockOffset);
 
                 if (curBlock.BlockOffset == prevBlock.BlockOffset + 1) {
+                    // extend range
                     ++curBlockRange.BlocksCount;
                 } else {
                     addRangeToProfileLog(curBlockRange);
+                    // new range
                     curBlockRange = { curBlock.BlockOffset, 1 };
                 }
             } else {
+                // new query
                 queries[queriesCount++].Set(
                     blobId,
                     curBlock.BlobOffset * blockSize,
                     blockSize);
-                queryInfos.push_back(TEvGetQueryInfo{ .BlocksCount = 1 });
+                queryInfos.push_back(TEvGetQueryInfo {
+                    .BlockOffsets = { curBlock.BlockOffset }
+                });
 
                 addRangeToProfileLog(curBlockRange);
+                // new range
                 curBlockRange = { curBlock.BlockOffset, 1 };
             }
         }
@@ -432,7 +425,6 @@ void TIndexTabletActor::HandleReadBlob(
         requests.emplace_back(
             proxy,
             blobId,
-            std::move(blob.Blocks),
             std::move(queryInfos),
             std::move(request));
     }
