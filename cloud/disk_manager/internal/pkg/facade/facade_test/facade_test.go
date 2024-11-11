@@ -3,8 +3,10 @@ package facade_test
 import (
 	"testing"
 
+	"github.com/golang/protobuf/ptypes/empty"
 	"github.com/stretchr/testify/require"
 	disk_manager "github.com/ydb-platform/nbs/cloud/disk_manager/api"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/facade/testcommon"
 	"github.com/ydb-platform/nbs/cloud/tasks/errors"
 	"google.golang.org/protobuf/proto"
 )
@@ -47,4 +49,39 @@ func TestFacadeErrorDetails(t *testing.T) {
 	errorDetails1.Code = 321
 	errorDetails1.Message = "ZYX"
 	check()
+}
+
+func getRequestErrorCount(t *testing.T, requestName string) float64 {
+	metricFamily, err := testcommon.GetMetrics("errors")
+	require.NoError(t, err)
+	metrics := testcommon.FilterMetrics(
+		map[string]string{"component": "grpc_facade", "request": requestName},
+		metricFamily,
+	)
+	require.Equal(t, len(metrics), 1)
+	return metrics[0].GetCounter().GetValue()
+}
+
+func TestDiskServiceInvalidCreateEmptyDisk(t *testing.T) {
+	ctx := testcommon.NewContext()
+	require.Equal(t, getRequestErrorCount(t, "DiskService.Create"), float64(0))
+	client, err := testcommon.NewClient(ctx)
+	require.NoError(t, err)
+	defer client.Close()
+
+	diskID := t.Name()
+	reqCtx := testcommon.GetRequestContext(t, ctx)
+	_, err = client.CreateDisk(reqCtx, &disk_manager.CreateDiskRequest{
+		Src: &disk_manager.CreateDiskRequest_SrcEmpty{
+			SrcEmpty: &empty.Empty{},
+		},
+		Size: 1,
+		Kind: disk_manager.DiskKind_DISK_KIND_SSD,
+		DiskId: &disk_manager.DiskId{
+			ZoneId: "zone-a",
+			DiskId: diskID,
+		},
+	})
+	require.Error(t, err)
+	require.Equal(t, getRequestErrorCount(t, "DiskService.Create"), float64(1))
 }

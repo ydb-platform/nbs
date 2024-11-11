@@ -11,6 +11,8 @@ import (
 	"time"
 
 	"github.com/golang/protobuf/ptypes/empty"
+	prometheuse_client "github.com/prometheus/client_model/go"
+	"github.com/prometheus/common/expfmt"
 	"github.com/stretchr/testify/require"
 	disk_manager "github.com/ydb-platform/nbs/cloud/disk_manager/api"
 	internal_client "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/client"
@@ -645,4 +647,78 @@ func CheckErrorDetails(
 	if len(message) != 0 {
 		require.Equal(t, message, errorDetails.Message)
 	}
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+func GetMetrics(name string) (*prometheuse_client.MetricFamily, error) {
+	monitoringPorts := strings.Split(
+		os.Getenv("DISK_MANAGER_MONITORING_PORTS"),
+		",",
+	)
+	resp, err := http.Get(
+		fmt.Sprintf(
+			"localhost:%s/metrics/",
+			monitoringPorts[0],
+		),
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	parser := expfmt.TextParser{}
+	metricFamilies, err := parser.TextToMetricFamilies(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+
+	retrievedMetrics, ok := metricFamilies[name]
+	if !ok {
+		return nil, fmt.Errorf("metric '%s' not found", name)
+	}
+	return retrievedMetrics, nil
+}
+
+func metricMatchesLabel(
+	labels map[string]string,
+	metric *prometheuse_client.Metric,
+) bool {
+
+	metricsLabels := make(map[string]string)
+	for _, label := range metric.GetLabel() {
+		metricsLabels[label.GetName()] = label.GetValue()
+	}
+
+	for name, value := range labels {
+		metricLabelValue, ok := metricsLabels[name]
+		if !ok {
+			return false
+		}
+
+		if metricLabelValue != value {
+			return false
+		}
+	}
+
+	return true
+}
+
+func FilterMetrics(
+	labels map[string]string,
+	metricFamily *prometheuse_client.MetricFamily,
+) []*prometheuse_client.Metric {
+
+	filteredMetrics := make(
+		[]*prometheuse_client.Metric,
+		0,
+		len(metricFamily.Metric),
+	)
+	for _, metricValue := range metricFamily.GetMetric() {
+		if metricMatchesLabel(labels, metricValue) {
+			filteredMetrics = append(filteredMetrics, metricValue)
+		}
+	}
+
+	return filteredMetrics
 }
