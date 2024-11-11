@@ -256,11 +256,11 @@ void TFileSystem::CancelRequest(TCallContextPtr callContext, fuse_req_t req)
 }
 
 void TFileSystem::CompleteAsyncDestroyHandle(
-    TCallContextPtr callContext,
+    TCallContext& callContext,
     const NProto::TDestroyHandleResponse& response)
 {
     const auto& error = response.GetError();
-    RequestStats->RequestCompleted(*callContext, error);
+    RequestStats->RequestCompleted(callContext, error);
 
     // If destroy request failed, we need to retry it.
     // Otherwise, remove it from queue.
@@ -337,7 +337,7 @@ void TFileSystem::ProcessHandleOpsQueue()
                 {
                     const auto& response = future.GetValue();
                     if (auto self = ptr.lock()) {
-                        self->CompleteAsyncDestroyHandle(callContext, response);
+                        self->CompleteAsyncDestroyHandle(*callContext, response);
                     }
                 });
     } else {

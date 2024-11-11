@@ -21,7 +21,7 @@ public:
     enum class EResult
     {
         Ok,
-        QueueOveflow,
+        QueueOverflow,
         SerializationError,
     };
 

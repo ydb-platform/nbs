@@ -424,9 +424,8 @@ private:
         fuse_ino_t ino,
         ui64 fh);
     void CompleteAsyncDestroyHandle(
-        TCallContextPtr callContext,
-        const NProto::TDestroyHandleResponse& response
-    );
+        TCallContext& callContext,
+        const NProto::TDestroyHandleResponse& response);
 
     void ClearDirectoryCache();
 

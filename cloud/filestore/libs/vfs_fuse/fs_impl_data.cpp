@@ -128,9 +128,9 @@ bool TFileSystem::ProcessAsyncRelease(
     fuse_ino_t ino,
     ui64 fh)
 {
-    with_lock(HandleOpsQueueLock) {
+    with_lock (HandleOpsQueueLock) {
         const auto res = HandleOpsQueue->AddDestroyRequest(ino, fh);
-        if (res == THandleOpsQueue::EResult::QueueOveflow) {
+        if (res == THandleOpsQueue::EResult::QueueOverflow) {
             STORAGE_DEBUG(
                 "HandleOpsQueue overflow, can't add destroy handle request to "
                 "queue #"
@@ -169,7 +169,7 @@ void TFileSystem::Release(
 
     if (Config->GetAsyncDestroyHandleEnabled()) {
         if (!ProcessAsyncRelease(callContext, req, ino, fi->fh)) {
-            with_lock(DelayedReleaseQueueLock) {
+            with_lock (DelayedReleaseQueueLock) {
                 DelayedReleaseQueue.push(
                     TReleaseRequest(callContext, req, ino, fi->fh));
             }
