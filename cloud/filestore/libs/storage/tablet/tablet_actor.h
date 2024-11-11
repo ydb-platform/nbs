@@ -114,6 +114,11 @@ private:
         // Read-write transactions
         std::atomic<i64> InMemoryIndexStateRWCount{0};
 
+        std::atomic<i64> InMemoryIndexStateNodesCount;
+        std::atomic<i64> InMemoryIndexStateNodeRefsCount;
+        std::atomic<i64> InMemoryIndexStateNodeAttrsCount;
+        std::atomic<i64> InMemoryIndexStateIsExhaustive;
+
         // Data stats
         std::atomic<i64> FreshBytesCount{0};
         std::atomic<i64> DeletedFreshBytesCount{0};
@@ -221,7 +226,8 @@ private:
             const TReadAheadCacheStats& readAheadStats,
             const TNodeIndexCacheStats& nodeIndexCacheStats,
             const TNodeToSessionCounters& nodeToSessionCounters,
-            const TMiscNodeStats& miscNodeStats);
+            const TMiscNodeStats& miscNodeStats,
+            const TInMemoryIndexStateStats& inMemoryIndexStateStats);
     } Metrics;
 
     const IProfileLogPtr ProfileLog;
