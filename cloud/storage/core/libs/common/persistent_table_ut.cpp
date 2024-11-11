@@ -431,18 +431,32 @@ Y_UNIT_TEST_SUITE(TPersistentTableTest)
 
         auto tableSize = 32;
 
-        for (int i=0; i < 5; i++) {
-            TPersistentTable<THeader, TRecord> table(tablePath, tableSize);
-            UNIT_ASSERT_VALUES_EQUAL(0, table.CountRecords());
+        auto validateFillEmptyTable = [&](auto table) {
+            UNIT_ASSERT_VALUES_EQUAL(0, table->CountRecords());
 
             for (auto i = 0; i < tableSize; ++i) {
-                auto index = table.AllocRecord();
-                UNIT_ASSERT_VALUES_UNEQUAL(table.InvalidIndex, index);
-                UNIT_ASSERT_VALUES_EQUAL(table.CountRecords(), index + 1);
-                table.CommitRecord(index);
+                auto index = table->AllocRecord();
+                UNIT_ASSERT_VALUES_UNEQUAL(table->InvalidIndex, index);
+                UNIT_ASSERT_VALUES_EQUAL(table->CountRecords(), index + 1);
+                table->CommitRecord(index);
             }
-            table.Clear();
-        }
+        };
+
+        using TTable = TPersistentTable<THeader, TRecord>;
+
+        // validate non existing table can be filled
+        auto table = std::make_shared<TTable>(tablePath, tableSize);
+        validateFillEmptyTable(table);
+
+        // validate cleared table can be filled
+        table->Clear();
+        validateFillEmptyTable(table);
+
+        // validate new instance of cleared table can be filled
+        table->Clear();
+        table.reset();
+        table = std::make_shared<TTable>(tablePath, tableSize);
+        validateFillEmptyTable(table);
     }
 }
 
