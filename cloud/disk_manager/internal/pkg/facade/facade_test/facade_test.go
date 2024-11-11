@@ -64,7 +64,7 @@ func getRequestErrorCount(t *testing.T, requestName string) float64 {
 
 func TestDiskServiceInvalidCreateEmptyDisk(t *testing.T) {
 	ctx := testcommon.NewContext()
-	require.Equal(t, getRequestErrorCount(t, "DiskService.Create"), float64(0))
+	requestCount := getRequestErrorCount(t, "DiskService.Create")
 	client, err := testcommon.NewClient(ctx)
 	require.NoError(t, err)
 	defer client.Close()
@@ -83,5 +83,9 @@ func TestDiskServiceInvalidCreateEmptyDisk(t *testing.T) {
 		},
 	})
 	require.Error(t, err)
-	require.Equal(t, getRequestErrorCount(t, "DiskService.Create"), float64(1))
+	require.Equal(
+		t,
+		float64(1),
+		getRequestErrorCount(t, "DiskService.Create")-requestCount,
+	)
 }
