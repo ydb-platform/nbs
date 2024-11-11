@@ -51,7 +51,7 @@ func TestFacadeErrorDetails(t *testing.T) {
 	check()
 }
 
-func TestDiskServiceInvalidCreateEmptyDisk(t *testing.T) {
+func TestFacadeShouldSendErrorMetrics(t *testing.T) {
 	ctx := testcommon.NewContext()
 	errorsCount := testcommon.GetCounter(
 		t,
