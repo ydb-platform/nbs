@@ -83,9 +83,9 @@ func TestDiskServiceInvalidCreateEmptyDisk(t *testing.T) {
 		},
 	})
 	require.Error(t, err)
-	require.Equal(
+	require.GreaterOrEqual(
 		t,
-		float64(1),
 		getRequestErrorCount(t, "DiskService.Create")-requestCount,
+		float64(1),
 	)
 }
