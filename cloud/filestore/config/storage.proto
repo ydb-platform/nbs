@@ -455,4 +455,7 @@ message TStorageConfig
 
     // Disables TwoStageRead for HDD filesystems.
     optional bool TwoStageReadDisabledForHDD = 404;
+
+    // Enable Writeback cache on guest (fuse client)
+    optional bool GuestWritebackCacheEnabled = 405;
 }
