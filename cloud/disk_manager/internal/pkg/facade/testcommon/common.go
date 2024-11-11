@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"github.com/golang/protobuf/ptypes/empty"
-	prometheuse_client "github.com/prometheus/client_model/go"
+	prometheus_client "github.com/prometheus/client_model/go"
 	"github.com/prometheus/common/expfmt"
 	"github.com/stretchr/testify/require"
 	disk_manager "github.com/ydb-platform/nbs/cloud/disk_manager/api"
@@ -651,11 +651,7 @@ func CheckErrorDetails(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-func GetCounter(
-	t *testing.T,
-	name string,
-	labels map[string]string,
-) float64 {
+func GetCounter(t *testing.T, name string, labels map[string]string) float64 {
 	resp, err := http.Get(
 		fmt.Sprintf(
 			"http://localhost:%s/metrics/",
@@ -683,7 +679,7 @@ func GetCounter(
 
 func metricMatchesLabel(
 	labels map[string]string,
-	metric *prometheuse_client.Metric,
+	metric *prometheus_client.Metric,
 ) bool {
 
 	metricLabels := make(map[string]string)
