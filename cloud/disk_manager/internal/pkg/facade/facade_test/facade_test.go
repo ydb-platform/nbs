@@ -75,6 +75,7 @@ func TestDiskServiceInvalidCreateEmptyDisk(t *testing.T) {
 		Src: &disk_manager.CreateDiskRequest_SrcEmpty{
 			SrcEmpty: &empty.Empty{},
 		},
+		// Incorrect size to trigger errors
 		Size: 1,
 		Kind: disk_manager.DiskKind_DISK_KIND_SSD,
 		DiskId: &disk_manager.DiskId{

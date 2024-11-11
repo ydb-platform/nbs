@@ -652,14 +652,10 @@ func CheckErrorDetails(
 ////////////////////////////////////////////////////////////////////////////////
 
 func GetMetrics(name string) (*prometheuse_client.MetricFamily, error) {
-	monitoringPorts := strings.Split(
-		os.Getenv("DISK_MANAGER_RECIPE_DISK_MANAGER_MON_PORTS"),
-		",",
-	)
 	resp, err := http.Get(
 		fmt.Sprintf(
 			"http://localhost:%s/metrics/",
-			monitoringPorts[0],
+			os.Getenv("DISK_MANAGER_RECIPE_DISK_MANAGER_MON_PORT"),
 		),
 	)
 	if err != nil {
@@ -685,18 +681,18 @@ func metricMatchesLabel(
 	metric *prometheuse_client.Metric,
 ) bool {
 
-	metricsLabels := make(map[string]string)
+	metricLabels := make(map[string]string)
 	for _, label := range metric.GetLabel() {
-		metricsLabels[label.GetName()] = label.GetValue()
+		metricLabels[label.GetName()] = label.GetValue()
 	}
 
 	for name, value := range labels {
-		metricLabelValue, ok := metricsLabels[name]
+		foundValue, ok := metricLabels[name]
 		if !ok {
 			return false
 		}
 
-		if metricLabelValue != value {
+		if foundValue != value {
 			return false
 		}
 	}
