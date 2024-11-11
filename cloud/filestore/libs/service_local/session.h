@@ -256,11 +256,10 @@ public:
     {
         TWriteGuard guard(Lock);
 
-        for (auto& [_, handle]: Handles) {
-            HandleTable->DeleteRecord(handle.RecordIndex);
-        }
-
+        HandleTable->Clear();
         Handles.clear();
+
+        Index.Clear();
 
         FuseState = std::move(state);
         WriteStateFile("fuse_state", FuseState);
