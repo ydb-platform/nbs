@@ -225,7 +225,7 @@ def start(argv):
         )
         disk_managers.append(disk_manager)
         disk_manager.start()
-    set_env("DISK_MANAGER_MONITORING_PORTS", ",".join([str(dm.monitoring_port) for dm in disk_managers]))
+    set_env("DISK_MANAGER_RECIPE_DISK_MANAGER_MON_PORTS", ",".join([str(dm.monitoring_port) for dm in disk_managers]))
 
     dataplane_disk_managers_count = 1
     for _ in range(0, dataplane_disk_managers_count):

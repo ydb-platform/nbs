@@ -653,7 +653,7 @@ func CheckErrorDetails(
 
 func GetMetrics(name string) (*prometheuse_client.MetricFamily, error) {
 	monitoringPorts := strings.Split(
-		os.Getenv("DISK_MANAGER_MONITORING_PORTS"),
+		os.Getenv("DISK_MANAGER_RECIPE_DISK_MANAGER_MON_PORTS"),
 		",",
 	)
 	resp, err := http.Get(
