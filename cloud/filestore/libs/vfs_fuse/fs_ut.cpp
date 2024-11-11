@@ -1584,7 +1584,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         UNIT_ASSERT_VALUES_EQUAL(1, static_cast<int>(*errorCounter));
     }
 
-    Y_UNIT_TEST(ShouldFailDestroyHandleRequestIfHandleOpsQueueOverflows)
+    Y_UNIT_TEST(ShouldPostponeDestroyHandleRequestIfHandleOpsQueueOverflows)
     {
         NProto::TFileStoreFeatures features;
         features.SetAsyncDestroyHandleEnabled(true);
@@ -1604,33 +1604,55 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
                 Y_UNUSED(request);
 
                 if (++handlerCalled == 1) {
+                    UNIT_ASSERT_VALUES_EQUAL(handle1, request->GetHandle());
+                    UNIT_ASSERT_VALUES_EQUAL(nodeId1, request->GetNodeId());
                     return responsePromise;
                 }
 
-                UNIT_ASSERT_C(false, "Handler should not be called 2nd time");
+                if (handlerCalled == 2) {
+                    UNIT_ASSERT_VALUES_EQUAL(handle2, request->GetHandle());
+                    UNIT_ASSERT_VALUES_EQUAL(nodeId2, request->GetNodeId());
+                }
+
                 return NewPromise<NProto::TDestroyHandleResponse>();
             });
 
         bootstrap.Start();
 
-        auto future =
-            bootstrap.Fuse->SendRequest<TReleaseRequest>(nodeId1, handle1);
-        UNIT_ASSERT_NO_EXCEPTION(future.GetValue(WaitTimeout));
-        future =
-            bootstrap.Fuse->SendRequest<TReleaseRequest>(nodeId2, handle2);
-        UNIT_ASSERT_NO_EXCEPTION(future.GetValue(WaitTimeout));
-
-        scheduler->RunAllScheduledTasks();
-        responsePromise.SetValue(NProto::TDestroyHandleResponse{});
-
-        scheduler->RunAllScheduledTasks();
-
-        UNIT_ASSERT_EQUAL(1, handlerCalled);
-
         auto counters = bootstrap.Counters
             ->FindSubgroup("component", "fs_ut")
             ->FindSubgroup("request", "DestroyHandle");
-        UNIT_ASSERT_EQUAL(1, counters->GetCounter("Errors")->GetAtomic());
+        auto future =
+            bootstrap.Fuse->SendRequest<TReleaseRequest>(nodeId1, handle1);
+        UNIT_ASSERT_NO_EXCEPTION(future.GetValue(WaitTimeout));
+        UNIT_ASSERT_EQUAL(
+            0,
+            AtomicGet(counters->GetCounter("InProgress")->GetAtomic()));
+
+        future =
+            bootstrap.Fuse->SendRequest<TReleaseRequest>(nodeId2, handle2);
+
+        // Second request should wait until the first request is processed.
+        UNIT_ASSERT_EXCEPTION(future.GetValue(WaitTimeout), yexception);
+        UNIT_ASSERT_EQUAL(
+            1,
+            AtomicGet(counters->GetCounter("InProgress")->GetAtomic()));
+
+        // Process first request.
+        scheduler->RunAllScheduledTasks();
+        responsePromise.SetValue(NProto::TDestroyHandleResponse{});
+        UNIT_ASSERT_EQUAL(1, handlerCalled);
+
+        // After the first request is processed, the second request should be
+        // completed and added to the HandleOpsQueue.
+        UNIT_ASSERT_NO_EXCEPTION(future.GetValue(WaitTimeout));
+        UNIT_ASSERT_EQUAL(
+            0,
+            AtomicGet(counters->GetCounter("InProgress")->GetAtomic()));
+
+        // Check that second request was added to the queue and processed later.
+        scheduler->RunAllScheduledTasks();
+        UNIT_ASSERT_EQUAL(2, handlerCalled);
     }
 }
 
