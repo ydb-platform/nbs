@@ -1,6 +1,7 @@
 package tracing
 
 import (
+	"github.com/ydb-platform/nbs/cloud/tasks/errors"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 )
@@ -30,4 +31,11 @@ func AttributeInt64(key string, value int64) attribute.KeyValue {
 
 func AttributeString(key string, value string) attribute.KeyValue {
 	return attribute.String(key, value)
+}
+
+func AttributeError(err error) attribute.KeyValue {
+	return attribute.String(
+		"error",
+		errors.ErrorForTracing(err),
+	)
 }

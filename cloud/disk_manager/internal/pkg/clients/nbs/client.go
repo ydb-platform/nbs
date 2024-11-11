@@ -466,7 +466,7 @@ func (c *client) updateVolume(
 				"Retry in blockstore client",
 				tracing.WithAttributes(
 					tracing.AttributeInt("failed_attempts", retries),
-					tracing.AttributeString("error", err.Error()),
+					tracing.AttributeError(err),
 				),
 			)
 			continue
@@ -519,7 +519,7 @@ func (c *client) updatePlacementGroup(
 				"Retry in blockstore client",
 				tracing.WithAttributes(
 					tracing.AttributeInt("failed_attempts", retries),
-					tracing.AttributeString("error", err.Error()),
+					tracing.AttributeError(err),
 				),
 			)
 			continue
