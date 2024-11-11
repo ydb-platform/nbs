@@ -658,7 +658,7 @@ func GetMetrics(name string) (*prometheuse_client.MetricFamily, error) {
 	)
 	resp, err := http.Get(
 		fmt.Sprintf(
-			"localhost:%s/metrics/",
+			"http://localhost:%s/metrics/",
 			monitoringPorts[0],
 		),
 	)
