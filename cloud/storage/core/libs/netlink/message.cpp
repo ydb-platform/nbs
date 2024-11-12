@@ -30,7 +30,7 @@ TMessage::TMessage(int family, int command)
         0,   // hdrlen
         0,   // flags
         command,
-        0);  // version
+        1);  // version
 }
 
 TMessage::~TMessage()
