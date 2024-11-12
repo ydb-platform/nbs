@@ -72,17 +72,17 @@ private:
 
 public:
     TReplayRequestGeneratorFs(
-        NProto::TReplaySpec spec,
-        ILoggingServicePtr logging,
-        ISessionPtr session,
-        TString filesystemId,
-        NProto::THeaders headers)
+            NProto::TReplaySpec spec,
+            ILoggingServicePtr logging,
+            ISessionPtr session,
+            TString filesystemId,
+            NProto::THeaders headers)
         : IReplayRequestGenerator(
-              std::move(spec),
-              std::move(logging),
-              std::move(session),
-              std::move(filesystemId),
-              std::move(headers))
+        std::move(spec),
+        std::move(logging),
+        std::move(session),
+        std::move(filesystemId),
+        std::move(headers))
     {
         if (Spec.GetReplayRoot().empty()) {
             ythrow yexception() << "ReplayRoot is not defined";
@@ -140,7 +140,7 @@ private:
             return MakeFuture(TCompletedRequest{
                 NProto::ACTION_ACCESS_NODE,
                 Started,
-                MakeError(E_PRECONDITION_FAILED, "disabled")});
+                MakeError(E_PRECONDITION_FAILED, "disabled by SkipRead")});
         }
 
         TGuard<TMutex> guard(StateLock);
@@ -242,7 +242,9 @@ private:
         TGuard<TMutex> guard(StateLock);
 
         TFsPath fullName;
-        if (logRequest.GetNodeInfo().GetNodeId()) {
+
+        // case 1 : by nodeid with already known name
+        if (logRequest.GetNodeInfo().GetNodeId() != InvalidNodeId) {
             if (const auto path =
                     PathByNode(logRequest.GetNodeInfo().GetNodeId()))
             {
@@ -250,6 +252,7 @@ private:
             }
         }
 
+        // case 2: parent node id + name
         if (!fullName.IsDefined()) {
             auto parentNode =
                 GetLocalNodeId(logRequest.GetNodeInfo().GetParentNodeId());
@@ -300,7 +303,7 @@ private:
                         .Name;
             }
 
-            if (!parentNode && nodeName.empty()) {
+            if (parentNode == InvalidNodeId && nodeName.empty()) {
                 nodeName =
                     "nodeid-" + ToString(logRequest.GetNodeInfo().GetNodeId());
             }
@@ -354,7 +357,7 @@ private:
             HandlesLogToActual[logRequest.GetNodeInfo().GetHandle()] = fh;
             const auto stat = TFileStat{fullName};
             const auto inode = stat.INode;
-            if (logRequest.GetNodeInfo().GetNodeId()) {
+            if (logRequest.GetNodeInfo().GetNodeId() != InvalidNodeId) {
                 NodesLogToLocal[logRequest.GetNodeInfo().GetNodeId()] = inode;
                 NodePath[inode] = fullName;
             }
@@ -400,7 +403,7 @@ private:
             return MakeFuture(TCompletedRequest{
                 NProto::ACTION_READ,
                 Started,
-                MakeError(E_PRECONDITION_FAILED, "read disabled")});
+                MakeError(E_PRECONDITION_FAILED, "disabled by SkipRead")});
         }
 
         TGuard<TMutex> guard(StateLock);
@@ -470,7 +473,7 @@ private:
             return MakeFuture(TCompletedRequest{
                 NProto::ACTION_WRITE,
                 Started,
-                MakeError(E_PRECONDITION_FAILED, "write disabled")});
+                MakeError(E_PRECONDITION_FAILED, "disabled by SkipWrite")});
         }
         TGuard<TMutex> guard(StateLock);
 
@@ -559,7 +562,7 @@ private:
             return MakeFuture(TCompletedRequest{
                 NProto::ACTION_CREATE_NODE,
                 Started,
-                MakeError(E_PRECONDITION_FAILED, "disabled")});
+                MakeError(E_PRECONDITION_FAILED, "disabled by SkipWrite")});
         }
 
         TGuard<TMutex> guard(StateLock);
@@ -644,7 +647,7 @@ private:
             return MakeFuture(TCompletedRequest{
                 NProto::ACTION_RENAME_NODE,
                 Started,
-                MakeError(E_PRECONDITION_FAILED, "disabled")});
+                MakeError(E_PRECONDITION_FAILED, "disabled by SkipWrite")});
         }
 
         TGuard<TMutex> guard(StateLock);
@@ -691,7 +694,7 @@ private:
             return MakeFuture(TCompletedRequest{
                 NProto::ACTION_REMOVE_NODE,
                 Started,
-                MakeError(E_PRECONDITION_FAILED, "disabled")});
+                MakeError(E_PRECONDITION_FAILED, "disabled by SkipWrite")});
         }
 
         TGuard<TMutex> guard(StateLock);
@@ -767,7 +770,7 @@ private:
             return MakeFuture(TCompletedRequest{
                 NProto::ACTION_GET_NODE_ATTR,
                 Started,
-                MakeError(E_PRECONDITION_FAILED, "disabled")});
+                MakeError(E_PRECONDITION_FAILED, "disabled by SkipRead")});
         }
 
         TGuard<TMutex> guard(StateLock);
@@ -895,7 +898,7 @@ private:
             return MakeFuture(TCompletedRequest{
                 NProto::ACTION_FLUSH,
                 Started,
-                MakeError(E_PRECONDITION_FAILED, "write disabled")});
+                MakeError(E_PRECONDITION_FAILED, "disabled by SkipWrite")});
         }
 
         TGuard<TMutex> guard(StateLock);
