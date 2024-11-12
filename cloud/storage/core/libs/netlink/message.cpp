@@ -16,7 +16,7 @@ TNestedAttribute::~TNestedAttribute()
     nla_nest_end(Message, Attribute);
 }
 
-TMessage::TMessage(int family, int command, int flags, int version)
+TMessage::TMessage(int family, int command)
 {
     Message = nlmsg_alloc();
     if (Message == nullptr) {
@@ -28,9 +28,9 @@ TMessage::TMessage(int family, int command, int flags, int version)
         NL_AUTO_SEQ,
         family,
         0,   // hdrlen
-        flags,
+        0,   // flags
         command,
-        version);
+        0);  // version
 }
 
 TMessage::~TMessage()

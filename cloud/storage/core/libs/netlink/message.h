@@ -26,7 +26,7 @@ private:
     nl_msg* Message;
 
 public:
-    TMessage(int family, int command, int flags = 0, int version = 0);
+    TMessage(int family, int command);
     ~TMessage();
 
     operator nl_msg*() const
