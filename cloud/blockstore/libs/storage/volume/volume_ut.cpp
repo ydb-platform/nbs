@@ -21,9 +21,9 @@ using namespace NTestVolume;
 
 using namespace NTestVolumeHelpers;
 
-////////////////////////////////////////////////////////////////////////////////
-
 namespace NTestVolumeHelpers {
+
+////////////////////////////////////////////////////////////////////////////////
 
 TBlockRange64 GetBlockRangeById(ui32 blockIndex)
 {
@@ -9179,6 +9179,172 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
                 "transport2",
                 v.GetReplicas(1).GetDevices(0).GetTransportId());
         }
+    }
+
+    TVector<TString> WriteToDiskWithInflightDataCorruptionAndReadResults(
+        NCloud::NProto::EStorageMediaKind mediaKind,
+        ui32 writeNumberToIntercept,
+        const TString& tags)
+    {
+        NProto::TStorageServiceConfig config;
+        config.SetAcquireNonReplicatedDevices(true);
+        auto state = MakeIntrusive<TDiskRegistryState>();
+        auto runtime = PrepareTestActorRuntime(config, state);
+
+        TVolumeClient volume(*runtime);
+
+        state->ReplicaCount = 2;
+
+        volume.UpdateVolumeConfig(
+            0,
+            0,
+            0,
+            0,
+            false,
+            1,
+            mediaKind,
+            1024,
+            "vol0",
+            "cloud",
+            "folder",
+            1, // partition count
+            0, // blocksPerStripe
+            tags);
+
+        volume.WaitReady();
+
+        auto clientInfo = CreateVolumeClientInfo(
+            NProto::VOLUME_ACCESS_READ_WRITE,
+            NProto::VOLUME_MOUNT_LOCAL,
+            0);
+        volume.AddClient(clientInfo);
+
+        // intercepting write request to one of the replicas
+        TAutoPtr<IEventHandle> writeToReplica;
+        ui32 writeNo = 0;
+        auto obs = [&] (TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& event) {
+            if (event->GetTypeRewrite()
+                    == TEvService::EvWriteBlocksLocalRequest)
+            {
+                ++writeNo;
+                if (writeNo == writeNumberToIntercept) {
+                    writeToReplica = event.Release();
+                    return true;
+                }
+            }
+
+            return false;
+        };
+
+        runtime->SetEventFilter(obs);
+
+        const auto range = TBlockRange64::WithLength(0, 1);
+        const TString adata(4_KB, 'a');
+        const TString bdata(4_KB, 'b');
+        TString blockData;
+        // using explicit memcpy to avoid COW
+        blockData.ReserveAndResize(adata.size());
+        memcpy(blockData.begin(), adata.c_str(), adata.size());
+
+        // sending write request to the volume - the request should hang
+        {
+            volume.SendWriteBlocksLocalRequest(
+                range,
+                clientInfo.GetClientId(),
+                blockData);
+
+            runtime->DispatchEvents({}, TDuration::MilliSeconds(100));
+            UNIT_ASSERT(writeToReplica);
+            TEST_NO_RESPONSE(runtime, WriteBlocksLocal);
+
+        }
+
+        // replacing block data
+        memcpy(blockData.begin(), bdata.c_str(), bdata.size());
+
+        // releasing the intercepted request
+        runtime->Send(writeToReplica.Release());
+        runtime->DispatchEvents({}, TDuration::MilliSeconds(100));
+        {
+            auto response = volume.RecvWriteBlocksLocalResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                response->GetStatus(),
+                response->GetErrorReason());
+        }
+
+        // the data in all replicas should be the same and should be equal to
+        // the version before the replacement
+        TVector<TString> results;
+        for (ui32 i = 0; i < 3; ++i) {
+            auto response = volume.ReadBlocks(range, clientInfo.GetClientId());
+            const auto& bufs = response->Record.GetBlocks().GetBuffers();
+            UNIT_ASSERT_VALUES_EQUAL(1, bufs.size());
+            results.push_back(bufs[0]);
+        }
+
+        volume.RemoveClient(clientInfo.GetClientId());
+
+        return results;
+    }
+
+    Y_UNIT_TEST(ShouldCopyWriteRequestDataBeforeWritingToStorageIfTagIsSetM3)
+    {
+        auto results = WriteToDiskWithInflightDataCorruptionAndReadResults(
+            NCloud::NProto::STORAGE_MEDIA_SSD_MIRROR3,
+            // 1 - to volume
+            // 1 - to mirror actor
+            // 3 - to 3 replicas
+            1 + 1 + 3,
+            "use-intermediate-write-buffer");
+        const TString adata(4_KB, 'a');
+        UNIT_ASSERT_VALUES_EQUAL(adata, results[0]);
+        UNIT_ASSERT_VALUES_EQUAL(adata, results[1]);
+        UNIT_ASSERT_VALUES_EQUAL(adata, results[2]);
+    }
+
+    Y_UNIT_TEST(ShouldHaveDifferentDataInReplicasUponInflightBufferCorruptionM3)
+    {
+        auto results = WriteToDiskWithInflightDataCorruptionAndReadResults(
+            NCloud::NProto::STORAGE_MEDIA_SSD_MIRROR3,
+            // 1 - to volume
+            // 1 - to mirror actor
+            // 3 - to 3 replicas (nonrepl part actors)
+            1 + 1 + 3,
+            "");
+        const TString adata(4_KB, 'a');
+        const TString bdata(4_KB, 'b');
+        UNIT_ASSERT_VALUES_EQUAL(adata, results[0]);
+        UNIT_ASSERT_VALUES_EQUAL(adata, results[1]);
+        UNIT_ASSERT_VALUES_EQUAL(bdata, results[2]);
+    }
+
+    Y_UNIT_TEST(ShouldCopyWriteRequestDataBeforeWritingToStorageIfTagIsSetNonrepl)
+    {
+        auto results = WriteToDiskWithInflightDataCorruptionAndReadResults(
+            NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
+            // 1 - to volume
+            // 1 - to nonrepl part actor
+            1 + 1,
+            "use-intermediate-write-buffer");
+        const TString adata(4_KB, 'a');
+        UNIT_ASSERT_VALUES_EQUAL(adata, results[0]);
+        UNIT_ASSERT_VALUES_EQUAL(adata, results[1]);
+        UNIT_ASSERT_VALUES_EQUAL(adata, results[2]);
+    }
+
+    Y_UNIT_TEST(ShouldHaveChangedDataInStorageUponInflightBufferCorruptionNonrepl)
+    {
+        auto results = WriteToDiskWithInflightDataCorruptionAndReadResults(
+            NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
+            // 1 - to volume
+            // 1 - to nonrepl part actor
+            1 + 1,
+            "");
+        const TString bdata(4_KB, 'b');
+        UNIT_ASSERT_VALUES_EQUAL(bdata, results[0]);
+        UNIT_ASSERT_VALUES_EQUAL(bdata, results[1]);
+        UNIT_ASSERT_VALUES_EQUAL(bdata, results[2]);
     }
 }
 

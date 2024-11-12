@@ -78,4 +78,10 @@ enum EFilestoreLimits
 
     // Maximum number of inodes.
     E_FS_LIMITS_INODES = -2; // 0xFFFFFFFE
+
+    // Shard number is encoded in the highest 8 bits of nodeId and handleId and
+    // 0 is reserved for the main tablet
+    // so 1 <= shardNo <= 255
+    // so shardCount <= 254
+    E_FS_LIMITS_MAX_SHARDS = 254;
 };

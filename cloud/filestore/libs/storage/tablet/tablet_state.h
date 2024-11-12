@@ -296,6 +296,8 @@ public:
         return AllocatorRegistry.GetAllocator(tag);
     }
 
+    bool CalculateExpectedShardCount() const;
+
     //
     // FileSystem Stats
     //

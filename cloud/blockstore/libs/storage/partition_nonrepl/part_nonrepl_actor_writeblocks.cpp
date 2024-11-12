@@ -454,14 +454,35 @@ void TNonreplicatedPartitionActor::HandleWriteBlocksLocal(
         return;
     }
 
+    if (guard.Get().empty()) {
+        // can happen only if there is a bug in the code of the layers above
+        // this one
+        ReportEmptyRequestSgList();
+        replyError(
+            ctx,
+            *requestInfo,
+            E_ARGUMENT,
+            "empty SgList in request");
+        return;
+    }
+
     // convert local request to remote
 
+    // copying request data into a new TIOVector and moving it to msg->Record
+    // afterwards since msg->Record.Blocks can be holding current request data
+    // or parts of it
+    NProto::TIOVector blocks;
     SgListCopy(
         guard.Get(),
         ResizeIOVector(
-            *msg->Record.MutableBlocks(),
+            blocks,
             msg->Record.BlocksCount,
             PartConfig->GetBlockSize()));
+    *msg->Record.MutableBlocks() = std::move(blocks);
+
+    // explicitly clearing request data (SgList) just in case anyone adds some
+    // code to TDiskAgentWriteActor that tries to use it
+    msg->Record.Sglist.SetSgList({});
 
     const bool assignVolumeRequestId =
         Config->GetAssignIdToWriteAndZeroRequestsEnabled() &&

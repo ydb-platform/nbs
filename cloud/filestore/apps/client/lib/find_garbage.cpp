@@ -145,11 +145,16 @@ public:
             auto shardSessionGuard =
                 CreateCustomSession(shard, shard + "::" + ClientId);
             auto& shardSession = shardSessionGuard.AccessSession();
-            FetchAll(shardSession, shard, RootNodeId, &shard2Nodes[shard]);
+            auto& shardNodes = shard2Nodes[shard];
+            STORAGE_INFO("Fetching nodes for shard " << shard);
+            FetchAll(shardSession, shard, RootNodeId, &shardNodes);
+            STORAGE_INFO("Fetched " << shardNodes.size() << " nodes");
         }
 
+        STORAGE_INFO("Fetching nodes for leader");
         TVector<TNode> leaderNodes;
         FetchAll(session, FileSystemId, RootNodeId, &leaderNodes);
+        STORAGE_INFO("Fetched " << leaderNodes.size() << " nodes");
 
         THashSet<TString> shardNames;
         for (const auto& node: leaderNodes) {
@@ -183,8 +188,11 @@ public:
             auto& shardSession = shardSessionGuard.AccessSession();
             for (const auto& node: nodes) {
                 if (!shardNames.contains(node.Name)) {
+                    STORAGE_INFO("Node " << node.Name << " not found in shard"
+                        ", calling stat");
                     auto stat =
                         Stat(shardSession, shard, RootNodeId, node.Name);
+                    STORAGE_INFO("Stat done");
 
                     if (stat) {
                         results.push_back({shard, node.Name, stat->GetSize()});

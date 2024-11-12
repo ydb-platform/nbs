@@ -59,6 +59,40 @@ void RejectVolumeRequest(
     NCloud::Send(ctx, caller, std::move(response), callerCookie);
 }
 
+////////////////////////////////////////////////////////////////////////////////
+
+void CopySgListIntoRequestBuffers(
+    TEvService::TEvWriteBlocksLocalRequest& request)
+{
+    auto& record = request.Record;
+    auto g = record.Sglist.Acquire();
+    if (!g) {
+        return;
+    }
+
+    const auto& sgList = g.Get();
+    STORAGE_VERIFY_C(
+        record.GetBlocks().BuffersSize() == 0,
+        TWellKnownEntityTypes::DISK,
+        record.GetDiskId(),
+        TStringBuilder() << "Buffers: " << record.GetBlocks().BuffersSize());
+    TSgList newSgList;
+    newSgList.reserve(sgList.size());
+    for (const auto& block: sgList) {
+        auto& buffer = *record.MutableBlocks()->AddBuffers();
+        buffer.ReserveAndResize(block.Size());
+        memcpy(buffer.begin(), block.Data(), block.Size());
+        newSgList.emplace_back(buffer.data(), buffer.size());
+    }
+    record.Sglist.SetSgList(std::move(newSgList));
+}
+
+template <typename T>
+void CopySgListIntoRequestBuffers(T& t)
+{
+    Y_UNUSED(t);
+}
+
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -711,6 +745,22 @@ void TVolumeActor::ForwardRequest(
                 TStringBuilder()
                     << "invalid block range " << DescribeRange(range)));
             return;
+        }
+    }
+
+    /*
+     *  Support for copying request data from the user-supplied buffer to some
+     *  buffers which we own to protect the layer below Volume from bugged
+     *  guests which modify buffer contents before receiving write response.
+     *
+     *  Impacts performance (due to extra copying) and is thus not switched on
+     *  by default.
+     *
+     *  See https://github.com/ydb-platform/nbs/issues/2421
+     */
+    if constexpr (IsWriteMethod<TMethod>) {
+        if (State->GetUseIntermediateWriteBuffer()) {
+            CopySgListIntoRequestBuffers(*msg);
         }
     }
 

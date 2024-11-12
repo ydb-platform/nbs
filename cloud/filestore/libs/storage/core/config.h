@@ -284,6 +284,9 @@ public:
     bool GetTwoStageReadDisabledForHDD() const;
     bool GetThreeStageWriteDisabledForHDD() const;
 
+    bool GetAutomaticShardCreationEnabled() const;
+    ui64 GetMaxShardSize() const;
+
     bool GetGuestWritebackCacheEnabled() const;
 };
 

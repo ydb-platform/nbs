@@ -53,6 +53,9 @@ using TAliases = NProto::TStorageConfig::TFilestoreAliases;
     xxx(MaxBlocksPerTruncateTx,             ui32,   0 /*TODO: 32GiB/4KiB*/    )\
     xxx(MaxTruncateTxInflight,              ui32,   10                        )\
                                                                                \
+    xxx(AutomaticShardCreationEnabled,                  bool,   false         )\
+    xxx(MaxShardSize,                                   ui64,   4_TB          )\
+                                                                               \
     xxx(MaxFileBlocks,                                  ui32,   300_GB / 4_KB )\
     xxx(LargeDeletionMarkersEnabled,                    bool,   false         )\
     xxx(LargeDeletionMarkerBlocks,                      ui64,   1_GB / 4_KB   )\

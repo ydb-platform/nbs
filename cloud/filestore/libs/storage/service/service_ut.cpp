@@ -5978,6 +5978,264 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         CheckThreeStageWrites(NProto::STORAGE_MEDIA_SSD, true);
         CheckTwoStageReads(NProto::STORAGE_MEDIA_SSD, true);
     }
+
+    void DoTestShardedFileSystemConfigured(
+        const TString& fsId,
+        TServiceClient& service)
+    {
+        TVector<TString> expected = {fsId, fsId + "_s1", fsId + "_s2"};
+
+        auto response = service.ListFileStores();
+        const auto& fsIds = response->Record.GetFileStores();
+        TVector<TString> ids(fsIds.begin(), fsIds.end());
+        Sort(ids);
+
+        UNIT_ASSERT_VALUES_EQUAL(expected, ids);
+
+        auto headers = service.InitSession(fsId, "client");
+
+        for (const auto& id: ids) {
+            NProtoPrivate::TDescribeSessionsRequest request;
+            request.SetFileSystemId(id);
+
+            TString buf;
+            google::protobuf::util::MessageToJsonString(request, &buf);
+            auto jsonResponse = service.ExecuteAction("describesessions", buf);
+            NProtoPrivate::TDescribeSessionsResponse response;
+            UNIT_ASSERT(google::protobuf::util::JsonStringToMessage(
+                jsonResponse->Record.GetOutput(), &response).ok());
+
+            const auto& sessions = response.GetSessions();
+            UNIT_ASSERT_VALUES_EQUAL(1, sessions.size());
+
+            UNIT_ASSERT_VALUES_EQUAL(
+                headers.SessionId,
+                sessions[0].GetSessionId());
+            UNIT_ASSERT_VALUES_EQUAL(
+                headers.ClientId,
+                sessions[0].GetClientId());
+            UNIT_ASSERT_VALUES_EQUAL("", sessions[0].GetSessionState());
+        }
+
+        const TString sessionState = "some_state";
+        service.ResetSession(headers, sessionState);
+
+        for (const auto& id: ids) {
+            NProtoPrivate::TDescribeSessionsRequest request;
+            request.SetFileSystemId(id);
+
+            TString buf;
+            google::protobuf::util::MessageToJsonString(request, &buf);
+            auto jsonResponse = service.ExecuteAction("describesessions", buf);
+            NProtoPrivate::TDescribeSessionsResponse response;
+            UNIT_ASSERT(google::protobuf::util::JsonStringToMessage(
+                jsonResponse->Record.GetOutput(), &response).ok());
+
+            const auto& sessions = response.GetSessions();
+            UNIT_ASSERT_VALUES_EQUAL(1, sessions.size());
+
+            UNIT_ASSERT_VALUES_EQUAL(
+                headers.SessionId,
+                sessions[0].GetSessionId());
+            UNIT_ASSERT_VALUES_EQUAL(
+                headers.ClientId,
+                sessions[0].GetClientId());
+            UNIT_ASSERT_VALUES_EQUAL(
+                sessionState,
+                sessions[0].GetSessionState());
+        }
+
+        service.DestroySession(headers);
+
+        for (const auto& id: ids) {
+            NProtoPrivate::TDescribeSessionsRequest request;
+            request.SetFileSystemId(id);
+
+            TString buf;
+            google::protobuf::util::MessageToJsonString(request, &buf);
+            auto jsonResponse = service.ExecuteAction("describesessions", buf);
+            NProtoPrivate::TDescribeSessionsResponse response;
+            UNIT_ASSERT(google::protobuf::util::JsonStringToMessage(
+                jsonResponse->Record.GetOutput(), &response).ok());
+
+            const auto& sessions = response.GetSessions();
+            UNIT_ASSERT_VALUES_EQUAL(0, sessions.size());
+        }
+    }
+
+    Y_UNIT_TEST(ShouldConfigureShardsAutomatically)
+    {
+        NProto::TStorageConfig config;
+        config.SetAutomaticShardCreationEnabled(true);
+        config.SetMaxShardSize(1_GB);
+        TTestEnv env({}, config);
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+
+        const TString fsId = "test";
+
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+        service.CreateFileStore(fsId, 2_GB / 4_KB);
+
+        DoTestShardedFileSystemConfigured(fsId, service);
+    }
+
+    Y_UNIT_TEST(ShouldHandleErrorsDuringShardedFileSystemCreation)
+    {
+        NProto::TStorageConfig config;
+        config.SetAutomaticShardCreationEnabled(true);
+        config.SetMaxShardSize(1_GB);
+        TTestEnv env({}, config);
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+
+        const TString fsId = "test";
+        const auto blockCount = 2_GB / 4_KB;
+
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+
+        TVector<TString> expected = {fsId, fsId + "_s1", fsId + "_s2"};
+
+        NProto::TError createShardError;
+        NProto::TError configureShardError;
+        NProto::TError configureShardsError;
+
+        TAutoPtr<IEventHandle> toSend;
+
+        env.GetRuntime().SetEventFilter(
+            [&] (TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& event) {
+                switch (event->GetTypeRewrite()) {
+                    case TEvSSProxy::EvCreateFileStoreRequest: {
+                        using TRequest = TEvSSProxy::TEvCreateFileStoreRequest;
+                        using TResponse =
+                            TEvSSProxy::TEvCreateFileStoreResponse;
+                        const auto* msg = event->Get<TRequest>();
+                        if (msg->Config.GetFileSystemId() != expected[1]) {
+                            break;
+                        }
+
+                        if (!HasError(createShardError)) {
+                            break;
+                        }
+
+                        auto response = std::make_unique<TResponse>(
+                            createShardError);
+
+                        toSend = new IEventHandle(
+                            event->Sender,
+                            event->Recipient,
+                            response.release(),
+                            0, // flags
+                            event->Cookie);
+
+                        return true;
+                    }
+
+                    case TEvIndexTablet::EvConfigureAsShardRequest: {
+                        using TRequest =
+                            TEvIndexTablet::TEvConfigureAsShardRequest;
+                        using TResponse =
+                            TEvIndexTablet::TEvConfigureAsShardResponse;
+                        const auto* msg = event->Get<TRequest>();
+                        if (msg->Record.GetFileSystemId() != expected[1]) {
+                            break;
+                        }
+
+                        if (!HasError(configureShardError)) {
+                            break;
+                        }
+
+                        auto response = std::make_unique<TResponse>(
+                            configureShardError);
+
+                        toSend = new IEventHandle(
+                            event->Sender,
+                            event->Recipient,
+                            response.release(),
+                            0, // flags
+                            event->Cookie);
+
+                        return true;
+                    }
+
+                    case TEvIndexTablet::EvConfigureShardsRequest: {
+                        using TResponse =
+                            TEvIndexTablet::TEvConfigureShardsResponse;
+
+                        if (!HasError(configureShardsError)) {
+                            break;
+                        }
+
+                        auto response = std::make_unique<TResponse>(
+                            configureShardsError);
+
+                        toSend = new IEventHandle(
+                            event->Sender,
+                            event->Recipient,
+                            response.release(),
+                            0, // flags
+                            event->Cookie);
+
+                        return true;
+                    }
+                }
+
+                return false;
+            });
+
+        createShardError = MakeError(E_REJECTED, "failed to create shard");
+        service.SendCreateFileStoreRequest(fsId, blockCount);
+        env.GetRuntime().DispatchEvents({}, TDuration::MilliSeconds(100));
+        UNIT_ASSERT(toSend);
+        env.GetRuntime().Send(toSend, nodeIdx);
+        {
+            auto response = service.RecvCreateFileStoreResponse();
+            UNIT_ASSERT_VALUES_EQUAL(
+                FormatError(createShardError),
+                FormatError(response->GetError()));
+        }
+
+        createShardError = {};
+        configureShardError =
+            MakeError(E_REJECTED, "failed to configure shard");
+        service.SendCreateFileStoreRequest(fsId, blockCount);
+        env.GetRuntime().DispatchEvents({}, TDuration::MilliSeconds(100));
+        UNIT_ASSERT(toSend);
+        env.GetRuntime().Send(toSend, nodeIdx);
+        {
+            auto response = service.RecvCreateFileStoreResponse();
+            UNIT_ASSERT_VALUES_EQUAL(
+                FormatError(configureShardError),
+                FormatError(response->GetError()));
+        }
+
+        configureShardError = {};
+        configureShardsError =
+            MakeError(E_REJECTED, "failed to configure shards");
+        service.SendCreateFileStoreRequest(fsId, blockCount);
+        env.GetRuntime().DispatchEvents({}, TDuration::MilliSeconds(100));
+        UNIT_ASSERT(toSend);
+        env.GetRuntime().Send(toSend, nodeIdx);
+        {
+            auto response = service.RecvCreateFileStoreResponse();
+            UNIT_ASSERT_VALUES_EQUAL(
+                FormatError(configureShardsError),
+                FormatError(response->GetError()));
+        }
+
+        configureShardsError = {};
+        service.SendCreateFileStoreRequest(fsId, blockCount);
+        {
+            auto response = service.RecvCreateFileStoreResponse();
+            UNIT_ASSERT_VALUES_EQUAL(
+                FormatError(MakeError(S_OK)),
+                FormatError(response->GetError()));
+        }
+
+        DoTestShardedFileSystemConfigured(fsId, service);
+    }
 }
 
 }   // namespace NCloud::NFileStore::NStorage
