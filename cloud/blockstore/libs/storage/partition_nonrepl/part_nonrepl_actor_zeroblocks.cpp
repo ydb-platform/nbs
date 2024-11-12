@@ -161,22 +161,16 @@ void TDiskAgentZeroActor::HandleZeroDeviceBlocksResponse(
 bool TDiskAgentZeroActor::OnMessage(TAutoPtr<NActors::IEventHandle>& ev)
 {
     switch (ev->GetTypeRewrite()) {
-        case TEvDiskAgent::TEvZeroDeviceBlocksRequest::EventType: {
-            HandleZeroDeviceBlocksUndelivery(
-                *reinterpret_cast<
-                    TEvDiskAgent::TEvZeroDeviceBlocksRequest::TPtr*>(&ev),
-                this->ActorContext());
-            return true;
-        };
-        case TEvDiskAgent::TEvZeroDeviceBlocksResponse::EventType: {
-            HandleZeroDeviceBlocksResponse(
-                *reinterpret_cast<
-                    TEvDiskAgent::TEvZeroDeviceBlocksResponse::TPtr*>(&ev),
-                this->ActorContext());
-            return true;
-        };
+        HFunc(
+            TEvDiskAgent::TEvZeroDeviceBlocksRequest,
+            HandleZeroDeviceBlocksUndelivery);
+        HFunc(
+            TEvDiskAgent::TEvZeroDeviceBlocksResponse,
+            HandleZeroDeviceBlocksResponse);
+        default:
+            return false;
     }
-    return false;
+    return true;
 }
 
 }   // namespace

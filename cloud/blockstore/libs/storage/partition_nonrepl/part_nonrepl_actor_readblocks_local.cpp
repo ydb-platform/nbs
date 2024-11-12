@@ -197,22 +197,16 @@ void TDiskAgentReadLocalActor::HandleReadDeviceBlocksResponse(
 bool TDiskAgentReadLocalActor::OnMessage(TAutoPtr<NActors::IEventHandle>& ev)
 {
     switch (ev->GetTypeRewrite()) {
-        case TEvDiskAgent::TEvReadDeviceBlocksRequest::EventType: {
-            HandleReadDeviceBlocksUndelivery(
-                *reinterpret_cast<
-                    TEvDiskAgent::TEvReadDeviceBlocksRequest::TPtr*>(&ev),
-                this->ActorContext());
-            return true;
-        };
-        case TEvDiskAgent::TEvReadDeviceBlocksResponse::EventType: {
-            HandleReadDeviceBlocksResponse(
-                *reinterpret_cast<
-                    TEvDiskAgent::TEvReadDeviceBlocksResponse::TPtr*>(&ev),
-                this->ActorContext());
-            return true;
-        };
+        HFunc(
+            TEvDiskAgent::TEvReadDeviceBlocksRequest,
+            HandleReadDeviceBlocksUndelivery);
+        HFunc(
+            TEvDiskAgent::TEvReadDeviceBlocksResponse,
+            HandleReadDeviceBlocksResponse);
+        default:
+            return false;
     }
-    return false;
+    return true;
 }
 
 }   // namespace

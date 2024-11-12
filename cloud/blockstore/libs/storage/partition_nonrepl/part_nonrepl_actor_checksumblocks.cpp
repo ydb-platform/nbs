@@ -175,22 +175,16 @@ void TDiskAgentChecksumActor::HandleChecksumDeviceBlocksResponse(
 bool TDiskAgentChecksumActor::OnMessage(TAutoPtr<NActors::IEventHandle>& ev)
 {
     switch (ev->GetTypeRewrite()) {
-        case TEvDiskAgent::TEvChecksumDeviceBlocksRequest::EventType: {
-            HandleChecksumDeviceBlocksUndelivery(
-                *reinterpret_cast<
-                    TEvDiskAgent::TEvChecksumDeviceBlocksRequest::TPtr*>(&ev),
-                this->ActorContext());
-            return true;
-        };
-        case TEvDiskAgent::TEvChecksumDeviceBlocksResponse::EventType: {
-            HandleChecksumDeviceBlocksResponse(
-                *reinterpret_cast<
-                    TEvDiskAgent::TEvChecksumDeviceBlocksResponse::TPtr*>(&ev),
-                this->ActorContext());
-            return true;
-        };
+        HFunc(
+            TEvDiskAgent::TEvChecksumDeviceBlocksRequest,
+            HandleChecksumDeviceBlocksUndelivery);
+        HFunc(
+            TEvDiskAgent::TEvChecksumDeviceBlocksResponse,
+            HandleChecksumDeviceBlocksResponse);
+        default:
+            return false;
     }
-    return false;
+    return true;
 }
 
 }   // namespace

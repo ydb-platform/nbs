@@ -172,22 +172,16 @@ void TDiskAgentWriteActor::HandleWriteDeviceBlocksResponse(
 bool TDiskAgentWriteActor::OnMessage(TAutoPtr<NActors::IEventHandle>& ev)
 {
     switch (ev->GetTypeRewrite()) {
-        case TEvDiskAgent::TEvWriteDeviceBlocksRequest::EventType: {
-            HandleWriteDeviceBlocksUndelivery(
-                *reinterpret_cast<
-                    TEvDiskAgent::TEvWriteDeviceBlocksRequest::TPtr*>(&ev),
-                this->ActorContext());
-            return true;
-        };
-        case TEvDiskAgent::TEvWriteDeviceBlocksResponse::EventType: {
-            HandleWriteDeviceBlocksResponse(
-                *reinterpret_cast<
-                    TEvDiskAgent::TEvWriteDeviceBlocksResponse::TPtr*>(&ev),
-                this->ActorContext());
-            return true;
-        };
+        HFunc(
+            TEvDiskAgent::TEvWriteDeviceBlocksRequest,
+            HandleWriteDeviceBlocksUndelivery);
+        HFunc(
+            TEvDiskAgent::TEvWriteDeviceBlocksResponse,
+            HandleWriteDeviceBlocksResponse);
+        default:
+            return false;
     }
-    return false;
+    return true;
 }
 
 }   // namespace
