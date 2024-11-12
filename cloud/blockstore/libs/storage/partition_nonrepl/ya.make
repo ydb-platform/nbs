@@ -28,6 +28,7 @@ SRCS(
 
     part_nonrepl.cpp
     part_nonrepl_actor.cpp
+    part_nonrepl_actor_base_request.cpp
     part_nonrepl_actor_checksumblocks.cpp
     part_nonrepl_actor_readblocks.cpp
     part_nonrepl_actor_readblocks_local.cpp

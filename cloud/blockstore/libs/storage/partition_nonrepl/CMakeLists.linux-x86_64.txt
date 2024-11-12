@@ -55,6 +55,7 @@ target_sources(libs-storage-partition_nonrepl PRIVATE
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/partition_nonrepl/part_mirror_resync_util.cpp
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/partition_nonrepl/part_nonrepl.cpp
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/partition_nonrepl/part_nonrepl_actor.cpp
+  ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/partition_nonrepl/part_nonrepl_actor_base_request.cpp
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/partition_nonrepl/part_nonrepl_actor_checksumblocks.cpp
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/partition_nonrepl/part_nonrepl_actor_readblocks.cpp
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/partition_nonrepl/part_nonrepl_actor_readblocks_local.cpp

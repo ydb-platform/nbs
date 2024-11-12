@@ -1,4 +1,5 @@
 #include "part_nonrepl_actor.h"
+#include "part_nonrepl_actor_base_request.h"
 #include "part_nonrepl_common.h"
 
 #include <cloud/blockstore/libs/service/request_helpers.h>
@@ -7,16 +8,9 @@
 #include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/core/probes.h>
 
-#include <library/cpp/actors/core/actor_bootstrapped.h>
-
-#include <util/generic/string.h>
-#include <util/string/builder.h>
-
 namespace NCloud::NBlockStore::NStorage {
 
 using namespace NActors;
-
-using namespace NKikimr;
 
 LWTRACE_USING(BLOCKSTORE_STORAGE_PROVIDER);
 
@@ -24,25 +18,14 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TDiskAgentZeroActor final
-    : public TActorBootstrapped<TDiskAgentZeroActor>
+class TDiskAgentZeroActor final: public TDiskAgentBaseRequestActor
 {
 private:
-    using EStatus = TEvNonreplPartitionPrivate::TOperationCompleted::EStatus;
-
-    const TRequestInfoPtr RequestInfo;
     const NProto::TZeroBlocksRequest Request;
-    const TVector<TDeviceRequest> DeviceRequests;
-    const TNonreplicatedPartitionConfigPtr PartConfig;
-    const TActorId Part;
     const ui32 BlockSize;
     const bool AssignVolumeRequestId;
-    const TRequestTimeoutPolicy TimeoutPolicy;
 
-    TInstant StartTime;
     ui32 RequestsCompleted = 0;
-
-    NProto::TZeroBlocksResponse Response;
 
 public:
     TDiskAgentZeroActor(
@@ -55,31 +38,19 @@ public:
         ui32 blockSize,
         bool assignVolumeRequestId);
 
-    void Bootstrap(const TActorContext& ctx);
+protected:
+    void SendRequest(const NActors::TActorContext& ctx) override;
+    NActors::IEventBasePtr MakeResponse(NProto::TError error) override;
+    TCompletionEventAndBody MakeCompletionResponse(ui32 blocks) override;
+    bool OnMessage(TAutoPtr<NActors::IEventHandle>& ev) override;
 
 private:
-    void ZeroBlocks(const TActorContext& ctx);
-
-    bool HandleError(
-        const TActorContext& ctx,
-        NProto::TError error,
-        bool timedOut);
-
-    void Done(const TActorContext& ctx, IEventBasePtr response, EStatus status);
-
-private:
-    STFUNC(StateWork);
-
     void HandleZeroDeviceBlocksResponse(
         const TEvDiskAgent::TEvZeroDeviceBlocksResponse::TPtr& ev,
         const TActorContext& ctx);
 
     void HandleZeroDeviceBlocksUndelivery(
         const TEvDiskAgent::TEvZeroDeviceBlocksRequest::TPtr& ev,
-        const TActorContext& ctx);
-
-    void HandleTimeout(
-        const TEvents::TEvWakeup::TPtr& ev,
         const TActorContext& ctx);
 };
 
@@ -94,35 +65,20 @@ TDiskAgentZeroActor::TDiskAgentZeroActor(
         const TActorId& part,
         ui32 blockSize,
         bool assignVolumeRequestId)
-    : RequestInfo(std::move(requestInfo))
+    :TDiskAgentBaseRequestActor(
+          std::move(requestInfo),
+          GetRequestId(request),
+          "ZeroBlocks",
+          std::move(timeoutPolicy),
+          std::move(deviceRequests),
+          std::move(partConfig),
+          part)
     , Request(std::move(request))
-    , DeviceRequests(std::move(deviceRequests))
-    , PartConfig(std::move(partConfig))
-    , Part(part)
     , BlockSize(blockSize)
     , AssignVolumeRequestId(assignVolumeRequestId)
-    , TimeoutPolicy(std::move(timeoutPolicy))
 {}
 
-void TDiskAgentZeroActor::Bootstrap(const TActorContext& ctx)
-{
-    TRequestScope timer(*RequestInfo);
-
-    Become(&TThis::StateWork);
-
-    LWTRACK(
-        RequestReceived_VolumeWorker,
-        RequestInfo->CallContext->LWOrbit,
-        "DiskAgentZero",
-        RequestInfo->CallContext->RequestId);
-
-    StartTime = ctx.Now();
-    ctx.Schedule(TimeoutPolicy.Timeout, new TEvents::TEvWakeup());
-
-    ZeroBlocks(ctx);
-}
-
-void TDiskAgentZeroActor::ZeroBlocks(const TActorContext& ctx)
+void TDiskAgentZeroActor::SendRequest(const TActorContext& ctx)
 {
     ui32 cookie = 0;
     for (const auto& deviceRequest: DeviceRequests) {
@@ -151,62 +107,23 @@ void TDiskAgentZeroActor::ZeroBlocks(const TActorContext& ctx)
     }
 }
 
-bool TDiskAgentZeroActor::HandleError(
-    const TActorContext& ctx,
-    NProto::TError error,
-    bool timedOut)
+NActors::IEventBasePtr TDiskAgentZeroActor::MakeResponse(
+    NProto::TError error)
 {
-    if (FAILED(error.GetCode())) {
-        ProcessError(ctx, *PartConfig, error);
-
-        auto response = std::make_unique<TEvService::TEvZeroBlocksResponse>(
-            std::move(error));
-
-        Done(
-            ctx,
-            std::move(response),
-            timedOut ? EStatus::Timeout : EStatus::Fail);
-
-        return true;
-    }
-
-    return false;
+    return std::make_unique<TEvService::TEvZeroBlocksResponse>(
+        std::move(error));
 }
 
-void TDiskAgentZeroActor::Done(
-    const TActorContext& ctx,
-    IEventBasePtr response,
-    EStatus status)
+TDiskAgentBaseRequestActor::TCompletionEventAndBody
+TDiskAgentZeroActor::MakeCompletionResponse(ui32 blocks)
 {
-    LWTRACK(
-        ResponseSent_VolumeWorker,
-        RequestInfo->CallContext->LWOrbit,
-        "ZeroBlocks",
-        RequestInfo->CallContext->RequestId);
-
-    NCloud::Reply(ctx, *RequestInfo, std::move(response));
-
     auto completion =
-        std::make_unique<TEvNonreplPartitionPrivate::TEvZeroBlocksCompleted>(
-            status,
-            RequestInfo->GetTotalCycles(),
-            RequestInfo->GetExecCycles(),
-            status == EStatus::Timeout ? TimeoutPolicy.Timeout
-                                       : ctx.Now() - StartTime);
+        std::make_unique<TEvNonreplPartitionPrivate::TEvZeroBlocksCompleted>();
 
-    ui32 blocks = 0;
-    for (const auto& dr: DeviceRequests) {
-        blocks += dr.BlockRange.Size();
-        completion->DeviceIndices.push_back(dr.DeviceIdx);
-    }
     completion->Stats.MutableUserWriteCounters()->SetBlocksCount(blocks);
 
-    NCloud::Send(ctx, Part, std::move(completion));
-
-    Die(ctx);
+    return TCompletionEventAndBody(std::move(completion));
 }
-
-////////////////////////////////////////////////////////////////////////////////
 
 void TDiskAgentZeroActor::HandleZeroDeviceBlocksUndelivery(
     const TEvDiskAgent::TEvZeroDeviceBlocksRequest::TPtr& ev,
@@ -221,27 +138,6 @@ void TDiskAgentZeroActor::HandleZeroDeviceBlocksUndelivery(
             << PartConfig->GetName() << " Device: " << LogDevice(device));
 
     // Ignore undelivered event. Wait for TEvWakeup.
-}
-
-void TDiskAgentZeroActor::HandleTimeout(
-    const TEvents::TEvWakeup::TPtr& ev,
-    const TActorContext& ctx)
-{
-    const auto& device = DeviceRequests[ev->Cookie].Device;
-    LOG_WARN_S(
-        ctx,
-        TBlockStoreComponents::PARTITION_WORKER,
-        "ZeroBlocks request #"
-            << GetRequestId(Request) << " timed out. Disk id: "
-            << PartConfig->GetName() << " Device: " << LogDevice(device));
-
-    HandleError(
-        ctx,
-        PartConfig->MakeError(
-            TimeoutPolicy.ErrorCode,
-            TimeoutPolicy.OverrideMessage ? TimeoutPolicy.OverrideMessage
-                                          : "ZeroBlocks request timed out"),
-        true);
 }
 
 void TDiskAgentZeroActor::HandleZeroDeviceBlocksResponse(
@@ -259,24 +155,22 @@ void TDiskAgentZeroActor::HandleZeroDeviceBlocksResponse(
     }
 
     auto response = std::make_unique<TEvService::TEvZeroBlocksResponse>();
-    response->Record = std::move(Response);
     Done(ctx, std::move(response), EStatus::Success);
 }
 
-STFUNC(TDiskAgentZeroActor::StateWork)
+bool TDiskAgentZeroActor::OnMessage(TAutoPtr<NActors::IEventHandle>& ev)
 {
-    TRequestScope timer(*RequestInfo);
-
     switch (ev->GetTypeRewrite()) {
-        HFunc(TEvents::TEvWakeup, HandleTimeout);
-
-        HFunc(TEvDiskAgent::TEvZeroDeviceBlocksRequest, HandleZeroDeviceBlocksUndelivery);
-        HFunc(TEvDiskAgent::TEvZeroDeviceBlocksResponse, HandleZeroDeviceBlocksResponse);
-
+        HFunc(
+            TEvDiskAgent::TEvZeroDeviceBlocksRequest,
+            HandleZeroDeviceBlocksUndelivery);
+        HFunc(
+            TEvDiskAgent::TEvZeroDeviceBlocksResponse,
+            HandleZeroDeviceBlocksResponse);
         default:
-            HandleUnexpectedEvent(ev, TBlockStoreComponents::PARTITION_WORKER);
-            break;
+            return false;
     }
+    return true;
 }
 
 }   // namespace
