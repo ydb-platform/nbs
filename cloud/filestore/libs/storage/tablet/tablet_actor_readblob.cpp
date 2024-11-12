@@ -28,16 +28,19 @@ struct TReadBlobRequest
 {
     TActorId Proxy;
     TLogoBlobID BlobId;
+    TBlobCompressionInfo BlobCompressionInfo;
     TVector<TEvGetQueryInfo> QueryInfos;
     std::unique_ptr<TEvBlobStorage::TEvGet> Request;
 
     TReadBlobRequest(
             const TActorId& proxy,
             const TLogoBlobID& blobId,
+            TBlobCompressionInfo blobCompressionInfo,
             TVector<TEvGetQueryInfo> queryInfos,
             std::unique_ptr<TEvBlobStorage::TEvGet> request)
         : Proxy(proxy)
         , BlobId(blobId)
+        , BlobCompressionInfo(std::move(blobCompressionInfo))
         , QueryInfos(std::move(queryInfos))
         , Request(std::move(request))
     {}
@@ -425,6 +428,7 @@ void TIndexTabletActor::HandleReadBlob(
         requests.emplace_back(
             proxy,
             blobId,
+            std::move(blob.BlobCompressionInfo),
             std::move(queryInfos),
             std::move(request));
     }
