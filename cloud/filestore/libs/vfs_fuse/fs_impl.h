@@ -50,6 +50,17 @@ struct TReleaseRequest
     fuse_req_t Req;
     fuse_ino_t Ino;
     ui64 Fh;
+
+    TReleaseRequest(
+            TCallContextPtr callContext,
+            fuse_req_t req,
+            fuse_ino_t ino,
+            ui64 fh)
+        : CallContext(callContext)
+        , Req(req)
+        , Ino(ino)
+        , Fh(fh)
+    {}
 };
 
 ////////////////////////////////////////////////////////////////////////////////
