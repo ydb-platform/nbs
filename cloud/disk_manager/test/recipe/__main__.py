@@ -1,4 +1,5 @@
 import argparse
+import logging
 import os
 
 import contrib.ydb.tests.library.common.yatest_common as yatest_common
@@ -256,6 +257,8 @@ def start(argv):
 
 
 def stop(argv):
+    logging.info(os.system("ss -tpn"))
+
     DiskManagerLauncher.stop()
     MetadataServiceLauncher.stop()
     NfsLauncher.stop()
