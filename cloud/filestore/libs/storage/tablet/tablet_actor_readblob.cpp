@@ -21,7 +21,7 @@ namespace {
 
 struct TEvGetQueryInfo
 {
-    TVector<ui32> BlockOffsets;
+    TVector<TReadBlob::TBlock> Blocks;
 };
 
 struct TReadBlobRequest
@@ -198,9 +198,8 @@ void TReadBlobActor::HandleGetResult(
         }
 
         const auto& queryInfo = request.QueryInfos[i];
-        const auto blocksCount = queryInfo.BlockOffsets.size();
 
-        if (response.Buffer.size() / BlockSize != blocksCount) {
+        if (response.Buffer.size() / BlockSize != queryInfo.Blocks.size()) {
             ReplyError(ctx, *msg, "invalid response buffer size");
             return;
         }
@@ -223,7 +222,7 @@ void TReadBlobActor::ReadQueryResponseUncompressed(
     char buffer[BlockSize];
     auto iter = responseBuffer.begin();
 
-    for (size_t i = 0; i < info.BlockOffsets.size(); ++i) {
+    for (const auto& block : info.Blocks) {
         TStringBuf view;
 
         if (iter.ContiguousSize() >= BlockSize) {
@@ -234,7 +233,7 @@ void TReadBlobActor::ReadQueryResponseUncompressed(
             view = TStringBuf(buffer, BlockSize);
         }
 
-        Buffer->SetBlock(info.BlockOffsets[i], view);
+        Buffer->SetBlock(block.BlockOffset, view);
     }
 }
 
@@ -382,7 +381,7 @@ void TIndexTabletActor::HandleReadBlob(
 
                 // extend range
                 queries[queriesCount - 1].Size += blockSize;
-                queryInfos.back().BlockOffsets.push_back(curBlock.BlockOffset);
+                queryInfos.back().Blocks.push_back(curBlock);
 
                 if (curBlock.BlockOffset == prevBlock.BlockOffset + 1) {
                     // extend range
@@ -399,7 +398,7 @@ void TIndexTabletActor::HandleReadBlob(
                     curBlock.BlobOffset * blockSize,
                     blockSize);
                 queryInfos.push_back(TEvGetQueryInfo {
-                    .BlockOffsets = { curBlock.BlockOffset }
+                    .Blocks = { curBlock }
                 });
 
                 addRangeToProfileLog(curBlockRange);
