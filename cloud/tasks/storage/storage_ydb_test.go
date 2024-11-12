@@ -4394,10 +4394,10 @@ func TestStorageYDBUpdateTracingContextInRegularTasks(t *testing.T) {
 	metricsRegistry := mocks.NewRegistryMock()
 
 	taskStallingTimeout := "1s"
-	regularTaskTraceExpirationTimeout := "3s"
+	regularTasksTracesRotationPeriod := "3s"
 	storage, err := newStorage(t, ctx, db, &tasks_config.TasksConfig{
-		TaskStallingTimeout:               &taskStallingTimeout,
-		RegularTaskTraceExpirationTimeout: &regularTaskTraceExpirationTimeout,
+		TaskStallingTimeout:              &taskStallingTimeout,
+		RegularTasksTracesRotationPeriod: &regularTasksTracesRotationPeriod,
 	}, metricsRegistry)
 	require.NoError(t, err)
 
@@ -4536,11 +4536,10 @@ func TestStorageYDBUpdateTracingContextInRegularTasks(t *testing.T) {
 
 	taskInfos, err = storage.ListTasksReadyToRun(ctx, 100500, nil)
 	require.NoError(t, err)
-	// Everything except tracing context should not be changed.
 	checkTasks(
 		taskInfos,
 		NewMetadata(map[string]string{
-			"key":                        metadata.Vals()["key"],
+			"key":                        metadata.Vals()["key"], // Should not be changed.
 			headers.TraceparentHeaderKey: metadata3.Vals()[headers.TraceparentHeaderKey],
 			headers.TracestateHeaderKey:  metadata3.Vals()[headers.TracestateHeaderKey],
 		}),

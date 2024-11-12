@@ -460,8 +460,8 @@ func NewStorage(
 		return nil, err
 	}
 
-	regularTaskTraceExpirationTimeout, err := time.ParseDuration(
-		config.GetRegularTaskTraceExpirationTimeout(),
+	regularTasksTracesRotationPeriod, err := time.ParseDuration(
+		config.GetRegularTasksTracesRotationPeriod(),
 	)
 	if err != nil {
 		return nil, err
@@ -481,7 +481,7 @@ func NewStorage(
 			exceptHangingTaskTypes:            config.GetExceptHangingTaskTypes(),
 			hangingTaskTimeout:                hangingTaskTimeout,
 			missedEstimatesUntilTaskIsHanging: config.GetMissedEstimatesUntilTaskIsHanging(),
-			regularTaskTraceExpirationTimeout: regularTaskTraceExpirationTimeout,
+			regularTasksTracesRotationPeriod:  regularTasksTracesRotationPeriod,
 		}
 	}
 

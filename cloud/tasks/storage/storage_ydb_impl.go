@@ -754,7 +754,7 @@ func (s *storageYDB) updateTracingContextInRegularTasks(
 			}
 
 			if previousTraceTimestamp.Add(
-				s.regularTaskTraceExpirationTimeout,
+				s.regularTasksTracesRotationPeriod,
 			).Before(state.CreatedAt) {
 				addMetadataUpdate(taskState.ID, taskState.Metadata)
 				continue

@@ -57,6 +57,6 @@ message TasksConfig {
     // Spans of tasks with greater generation id will not be sampled.
     optional uint64 MaxSampledTaskGeneration = 32 [default = 100];
     // Needed for tracing.
-    // After this timeout regular task's snaps will be created in another trace.
-    optional string RegularTaskTraceExpirationTimeout = 33 [default = "72h"];
+    // Rotation period of parent span for regular tasks.
+    optional string RegularTasksTracesRotationPeriod = 33 [default = "72h"];
 }
