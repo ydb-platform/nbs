@@ -48,10 +48,7 @@ public:
 protected:
     void SendRequest(const NActors::TActorContext& ctx) override;
     NActors::IEventBasePtr MakeResponse(NProto::TError error) override;
-    void SendCompletionEvent(
-        const TActorContext& ctx,
-        TEvNonreplPartitionPrivate::TOperationCompleted completed,
-        ui32 blocks) override;
+     TCompletionEventAndBody MakeCompletionResponse(ui32 blocks) override;
     bool OnMessage(TAutoPtr<NActors::IEventHandle>& ev) override;
 
 private:
@@ -132,21 +129,17 @@ NActors::IEventBasePtr TDiskAgentReadActor::MakeResponse(
         std::move(error));
 }
 
-void TDiskAgentReadActor::SendCompletionEvent(
-    const TActorContext& ctx,
-    TEvNonreplPartitionPrivate::TOperationCompleted completed,
-    ui32 blocks)
+TDiskAgentBaseRequestActor::TCompletionEventAndBody
+TDiskAgentReadActor::MakeCompletionResponse(ui32 blocks)
 {
     auto completion =
-        std::make_unique<TEvNonreplPartitionPrivate::TEvReadBlocksCompleted>(
-            std::move(completed));
+        std::make_unique<TEvNonreplPartitionPrivate::TEvReadBlocksCompleted>();
 
     completion->Stats.MutableUserReadCounters()->SetBlocksCount(blocks);
-
     completion->NonVoidBlockCount = NonVoidBlockCount;
     completion->VoidBlockCount = VoidBlockCount;
 
-    NCloud::Send(ctx, Part, std::move(completion));
+    return TCompletionEventAndBody(std::move(completion));
 }
 
 void TDiskAgentReadActor::HandleReadDeviceBlocksUndelivery(

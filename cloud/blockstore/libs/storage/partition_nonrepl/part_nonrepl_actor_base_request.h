@@ -46,13 +46,22 @@ public:
     void Bootstrap(const NActors::TActorContext& ctx);
 
 protected:
+    struct TCompletionEventAndBody
+    {
+        template <typename T>
+        explicit TCompletionEventAndBody(T event)
+            : Body(event.get())
+            , Event(std::move(event))
+        {}
+
+        TEvNonreplPartitionPrivate::TOperationCompleted* Body = nullptr;
+        NActors::IEventBasePtr Event;
+    };
+
     virtual bool OnMessage(TAutoPtr<NActors::IEventHandle>& ev) = 0;
     virtual void SendRequest(const NActors::TActorContext& ctx) = 0;
     virtual NActors::IEventBasePtr MakeResponse(NProto::TError error) = 0;
-    virtual void SendCompletionEvent(
-        const NActors::TActorContext& ctx,
-        TEvNonreplPartitionPrivate::TOperationCompleted completed,
-        ui32 blocks) = 0;
+    virtual TCompletionEventAndBody MakeCompletionResponse(ui32 blocks) = 0;
 
     bool HandleError(
         const NActors::TActorContext& ctx,

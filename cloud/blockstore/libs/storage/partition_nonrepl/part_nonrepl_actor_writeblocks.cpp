@@ -42,10 +42,7 @@ public:
 protected:
     void SendRequest(const NActors::TActorContext& ctx) override;
     NActors::IEventBasePtr MakeResponse(NProto::TError error) override;
-    void SendCompletionEvent(
-        const TActorContext& ctx,
-        TEvNonreplPartitionPrivate::TOperationCompleted completed,
-        ui32 blocks) override;
+    TCompletionEventAndBody MakeCompletionResponse(ui32 blocks) override;
     bool OnMessage(TAutoPtr<NActors::IEventHandle>& ev) override;
 
 private:
@@ -129,20 +126,16 @@ NActors::IEventBasePtr TDiskAgentWriteActor::MakeResponse(
         std::move(error));
 }
 
-void TDiskAgentWriteActor::SendCompletionEvent(
-    const TActorContext& ctx,
-    TEvNonreplPartitionPrivate::TOperationCompleted completed,
-    ui32 blocks)
+TDiskAgentBaseRequestActor::TCompletionEventAndBody
+TDiskAgentWriteActor::MakeCompletionResponse(ui32 blocks)
 {
     auto completion =
-        std::make_unique<TEvNonreplPartitionPrivate::TEvWriteBlocksCompleted>(
-            std::move(completed));
+        std::make_unique<TEvNonreplPartitionPrivate::TEvWriteBlocksCompleted>();
 
     completion->Stats.MutableUserWriteCounters()->SetBlocksCount(blocks);
 
-    NCloud::Send(ctx, Part, std::move(completion));
+    return TCompletionEventAndBody(std::move(completion));
 }
-
 
 void TDiskAgentWriteActor::HandleWriteDeviceBlocksUndelivery(
     const TEvDiskAgent::TEvWriteDeviceBlocksRequest::TPtr& ev,

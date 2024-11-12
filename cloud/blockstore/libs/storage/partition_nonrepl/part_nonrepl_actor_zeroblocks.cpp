@@ -41,10 +41,7 @@ public:
 protected:
     void SendRequest(const NActors::TActorContext& ctx) override;
     NActors::IEventBasePtr MakeResponse(NProto::TError error) override;
-    void SendCompletionEvent(
-        const TActorContext& ctx,
-        TEvNonreplPartitionPrivate::TOperationCompleted completed,
-        ui32 blocks) override;
+    TCompletionEventAndBody MakeCompletionResponse(ui32 blocks) override;
     bool OnMessage(TAutoPtr<NActors::IEventHandle>& ev) override;
 
 private:
@@ -117,18 +114,15 @@ NActors::IEventBasePtr TDiskAgentZeroActor::MakeResponse(
         std::move(error));
 }
 
-void TDiskAgentZeroActor::SendCompletionEvent(
-    const TActorContext& ctx,
-    TEvNonreplPartitionPrivate::TOperationCompleted completed,
-    ui32 blocks)
+TDiskAgentBaseRequestActor::TCompletionEventAndBody
+TDiskAgentZeroActor::MakeCompletionResponse(ui32 blocks)
 {
     auto completion =
-        std::make_unique<TEvNonreplPartitionPrivate::TEvZeroBlocksCompleted>(
-            std::move(completed));
+        std::make_unique<TEvNonreplPartitionPrivate::TEvZeroBlocksCompleted>();
 
     completion->Stats.MutableUserWriteCounters()->SetBlocksCount(blocks);
 
-    NCloud::Send(ctx, Part, std::move(completion));
+    return TCompletionEventAndBody(std::move(completion));
 }
 
 void TDiskAgentZeroActor::HandleZeroDeviceBlocksUndelivery(

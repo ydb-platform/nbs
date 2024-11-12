@@ -79,20 +79,25 @@ void TDiskAgentBaseRequestActor::Done(
 
     NCloud::Reply(ctx, *RequestInfo, std::move(response));
 
-    TEvNonreplPartitionPrivate::TOperationCompleted completion(
-        status,
-        RequestInfo->GetTotalCycles(),
-        RequestInfo->GetExecCycles(),
-        status == EStatus::Timeout ? TimeoutPolicy.Timeout
-                                   : ctx.Now() - StartTime);
-
     ui32 blockCount = 0;
     for (const auto& dr: DeviceRequests) {
         blockCount += dr.BlockRange.Size();
-        completion.DeviceIndices.push_back(dr.DeviceIdx);
     }
 
-    SendCompletionEvent(ctx, std::move(completion), blockCount);
+    auto completion = MakeCompletionResponse(blockCount);
+
+    completion.Body->Status = status;
+    completion.Body->TotalCycles = RequestInfo->GetTotalCycles();
+    completion.Body->ExecCycles = RequestInfo->GetExecCycles();
+    completion.Body->ExecutionTime = status == EStatus::Timeout
+                                         ? TimeoutPolicy.Timeout
+                                         : ctx.Now() - StartTime;
+
+    for (const auto& dr: DeviceRequests) {
+        completion.Body->DeviceIndices.push_back(dr.DeviceIdx);
+    }
+
+    NCloud::Send(ctx, Part, std::move(completion.Event));
 
     Die(ctx);
 }
