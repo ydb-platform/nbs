@@ -89,12 +89,12 @@ public:
 
     void Init(bool restoreClientSession)
     {
-        bool isSessionRestored = false;
         auto handlesPath = StatePath / "handles";
 
-        if (!restoreClientSession || !HasStateFile("session") ||
-            !HasStateFile("fuse_state"))
-        {
+        bool isNewSession = !restoreClientSession || !HasStateFile("session") ||
+                            !HasStateFile("fuse_state");
+
+        if (isNewSession) {
             DeleteStateFile("session");
             DeleteStateFile("fuse_state");
             handlesPath.DeleteIfExists();
@@ -104,13 +104,12 @@ public:
             WriteStateFile("session", SessionId);
             WriteStateFile("fuse_state", "");
         } else {
-            isSessionRestored = true;
             SessionId = ReadStateFile("session");
             FuseState = ReadStateFile("fuse_state");
         }
 
         STORAGE_INFO(
-            (isSessionRestored ? "Restore" : "Create") << " session" <<
+            (isNewSession ? "Create" : "Restore") << " session" <<
             ", StatePath=" << StatePath <<
             ", SessionId=" << SessionId <<
             ", MaxNodeCount=" << MaxNodeCount <<
