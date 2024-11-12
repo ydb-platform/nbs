@@ -244,6 +244,7 @@ func run(
 			taskRegistry,
 			taskScheduler,
 			nbsFactory,
+			taskMetricsRegistry,
 		)
 		if err != nil {
 			logging.Error(ctx, "Failed to initialize GRPC services: %v", err)

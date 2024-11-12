@@ -7,6 +7,7 @@ SRCS(
     controller.go
     execution_context.go
     lister.go
+    register.go
     registry.go
     runner.go
     runner_metrics.go

@@ -355,6 +355,7 @@ func initControlplane(
 	taskRegistry *tasks.Registry,
 	taskScheduler tasks.Scheduler,
 	nbsFactory nbs.Factory,
+	taskMetricsRegistry metrics.Registry,
 ) (serve func() error, err error) {
 
 	logging.Info(ctx, "Initializing pool storage")
@@ -426,6 +427,18 @@ func initControlplane(
 		poolService,
 		filesystemService,
 		resourceStorage,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	err = tasks.RegisterCollectListerMetricsTaskForExecution(
+		ctx,
+		taskRegistry,
+		taskStorage,
+		config.GetTasksConfig(),
+		taskMetricsRegistry,
+		taskScheduler,
 	)
 	if err != nil {
 		return nil, err

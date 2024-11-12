@@ -18,18 +18,26 @@ type Registry struct {
 	taskFactoriesMutex sync.RWMutex
 }
 
-func (r *Registry) TaskTypesForExecution() []string {
+func (r *Registry) getTaskTypes(forExecutionOnly bool) []string {
 	r.taskFactoriesMutex.RLock()
 	defer r.taskFactoriesMutex.RUnlock()
 
 	var taskTypes []string
 	for taskType, taskFactory := range r.taskFactories {
-		if taskFactory.canBeExecuted {
+		if !forExecutionOnly || taskFactory.canBeExecuted {
 			taskTypes = append(taskTypes, taskType)
 		}
 	}
 
 	return taskTypes
+}
+
+func (r *Registry) TaskTypes() []string {
+	return r.getTaskTypes(false /* forExecutionOnly */)
+}
+
+func (r *Registry) TaskTypesForExecution() []string {
+	return r.getTaskTypes(true /* forExecutionOnly */)
 }
 
 func (r *Registry) Register(
