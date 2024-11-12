@@ -781,6 +781,10 @@ func (s *nodeService) nodeStageDiskAsFilesystem(
 	}
 
 	mountOptions := []string{"grpid"}
+	if fsType == "ext4" {
+		mountOptions = append(mountOptions, "errors=remount-ro")
+	}
+
 	if mnt != nil {
 		for _, flag := range mnt.MountFlags {
 			mountOptions = append(mountOptions, flag)

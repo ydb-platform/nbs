@@ -111,6 +111,7 @@ TDevicePoolConfigs CreateDevicePoolConfigs(
     const TStorageConfig& storageConfig)
 {
     NProto::TDevicePoolConfig nonrepl;
+    nonrepl.SetKind(NProto::DEVICE_POOL_KIND_DEFAULT);
     nonrepl.SetAllocationUnit(
         storageConfig.GetAllocationUnitNonReplicatedSSD() * 1_GB);
 
@@ -3598,7 +3599,9 @@ NProto::TError TDiskRegistryState::UpdateConfig(
 
     if (Counters) {
         for (const auto& pool: newConfig.GetDevicePoolConfigs()) {
-            SelfCounters.RegisterPool(pool.GetName(), Counters);
+            SelfCounters.RegisterPool(
+                GetPoolNameForCounters(pool.GetName(), pool.GetKind()),
+                Counters);
         }
     }
 

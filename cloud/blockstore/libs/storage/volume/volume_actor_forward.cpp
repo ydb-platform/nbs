@@ -61,7 +61,8 @@ void RejectVolumeRequest(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void CopyDataBuffer(TEvService::TEvWriteBlocksLocalRequest& request)
+void CopySgListIntoRequestBuffers(
+    TEvService::TEvWriteBlocksLocalRequest& request)
 {
     auto& record = request.Record;
     auto g = record.Sglist.Acquire();
@@ -87,7 +88,7 @@ void CopyDataBuffer(TEvService::TEvWriteBlocksLocalRequest& request)
 }
 
 template <typename T>
-void CopyDataBuffer(T& t)
+void CopySgListIntoRequestBuffers(T& t)
 {
     Y_UNUSED(t);
 }
@@ -748,14 +749,26 @@ void TVolumeActor::ForwardRequest(
     }
 
     /*
+     *  Support for copying request data from the user-supplied buffer to some
+     *  buffers which we own to protect the layer below Volume from bugged
+     *  guests which modify buffer contents before receiving write response.
+     *
+     *  Impacts performance (due to extra copying) and is thus not switched on
+     *  by default.
+     *
+     *  See https://github.com/ydb-platform/nbs/issues/2421
+     */
+    if constexpr (IsWriteMethod<TMethod>) {
+        if (State->GetUseIntermediateWriteBuffer()) {
+            CopySgListIntoRequestBuffers(*msg);
+        }
+    }
+
+    /*
      *  Processing overlapping writes. Overlapping writes should not be sent
      *  to the underlying (storage) layer.
      */
     if constexpr (IsWriteMethod<TMethod>) {
-        if (State->GetUseIntermediateWriteBuffer()) {
-            CopyDataBuffer(*msg);
-        }
-
         const auto range = BuildRequestBlockRange(
             *msg,
             State->GetBlockSize());

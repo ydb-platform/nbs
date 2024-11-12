@@ -11,6 +11,13 @@ import (
 
 ////////////////////////////////////////////////////////////////////////////////
 
+type errorForTracing interface {
+	error
+	ErrorForTracing() string
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 type RetriableError struct {
 	Err              error
 	IgnoreRetryLimit bool
@@ -42,7 +49,30 @@ func NewEmptyRetriableError() *RetriableError {
 }
 
 func (e *RetriableError) Error() string {
-	return fmt.Sprintf("Retriable error, IgnoreRetryLimit=%v: %v", e.IgnoreRetryLimit, e.Err)
+	// We don't want to mention retriable errors created over non-retriable
+	// errors.
+	nonRetriableErr := NewEmptyNonRetriableError()
+	if errors.As(e, &nonRetriableErr) {
+		return nonRetriableErr.Error()
+	}
+
+	return fmt.Sprintf("%v: %v", e.message(), e.Err.Error())
+}
+
+func (e *RetriableError) ErrorForTracing() string {
+	nonRetriableErr := NewEmptyNonRetriableError()
+	if errors.As(e, &nonRetriableErr) {
+		return ErrorForTracing(nonRetriableErr)
+	}
+
+	return fmt.Sprintf("%v: %v", e.message(), ErrorForTracing(e.Err))
+}
+
+func (e *RetriableError) message() string {
+	return fmt.Sprintf(
+		"Retriable error, IgnoreRetryLimit=%v",
+		e.IgnoreRetryLimit,
+	)
 }
 
 func (e *RetriableError) Unwrap() error {
@@ -95,8 +125,16 @@ func newNonRetriableError(err error, silent bool) *NonRetriableError {
 }
 
 func (e *NonRetriableError) Error() string {
-	msg := fmt.Sprintf("Non retriable error, Silent=%v: %v", e.Silent, e.Err)
+	msg := fmt.Sprintf("%v: %v", e.message(), e.Err.Error())
 	return appendStackTrace(msg, e.stackTrace)
+}
+
+func (e *NonRetriableError) ErrorForTracing() string {
+	return fmt.Sprintf("%v: %v", e.message(), ErrorForTracing(e.Err))
+}
+
+func (e *NonRetriableError) message() string {
+	return fmt.Sprintf("Non retriable error, Silent=%v", e.Silent)
 }
 
 func (e *NonRetriableError) Unwrap() error {
@@ -132,7 +170,15 @@ func NewEmptyAbortedError() *AbortedError {
 }
 
 func (e *AbortedError) Error() string {
-	return fmt.Sprintf("Aborted error: %v", e.Err)
+	return fmt.Sprintf("%v: %v", e.message(), e.Err.Error())
+}
+
+func (e *AbortedError) ErrorForTracing() string {
+	return fmt.Sprintf("%v: %v", e.message(), ErrorForTracing(e.Err))
+}
+
+func (e *AbortedError) message() string {
+	return "Aborted error"
 }
 
 func (e *AbortedError) Unwrap() error {
@@ -171,8 +217,16 @@ func NewEmptyNonCancellableError() *NonCancellableError {
 }
 
 func (e *NonCancellableError) Error() string {
-	msg := fmt.Sprintf("Non cancellable error: %v", e.Err)
+	msg := fmt.Sprintf("%v: %v", e.message(), e.Err.Error())
 	return appendStackTrace(msg, e.stackTrace)
+}
+
+func (e *NonCancellableError) ErrorForTracing() string {
+	return fmt.Sprintf("%v: %v", e.message(), ErrorForTracing(e.Err))
+}
+
+func (e *NonCancellableError) message() string {
+	return "Non cancellable error"
 }
 
 func (e *NonCancellableError) Unwrap() error {
@@ -196,8 +250,12 @@ func NewWrongGenerationError() *WrongGenerationError {
 	return &WrongGenerationError{}
 }
 
-func (WrongGenerationError) Error() string {
+func (e WrongGenerationError) Error() string {
 	return "Wrong generation"
+}
+
+func (e WrongGenerationError) ErrorForTracing() string {
+	return e.Error()
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -208,8 +266,12 @@ func NewInterruptExecutionError() *InterruptExecutionError {
 	return &InterruptExecutionError{}
 }
 
-func (InterruptExecutionError) Error() string {
+func (e InterruptExecutionError) Error() string {
 	return "Interrupt execution"
+}
+
+func (e InterruptExecutionError) ErrorForTracing() string {
+	return e.Error()
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -233,8 +295,16 @@ func (e PanicError) Reraise() {
 }
 
 func (e PanicError) Error() string {
-	msg := fmt.Sprintf("panic: %v", e.value)
+	msg := e.message()
 	return appendStackTrace(msg, e.stackTrace)
+}
+
+func (e PanicError) ErrorForTracing() string {
+	return e.message()
+}
+
+func (e PanicError) message() string {
+	return fmt.Sprintf("panic: %v", e.value)
 }
 
 func IsPanicError(err error) bool {
@@ -274,6 +344,10 @@ func (e NotFoundError) Error() string {
 		e.TaskID,
 		e.IdempotencyKey,
 	)
+}
+
+func (e NotFoundError) ErrorForTracing() string {
+	return e.Error()
 }
 
 // HACK: Need to avoid default comparator that uses inner fields.
@@ -320,11 +394,18 @@ func NewEmptyDetailedError() *DetailedError {
 }
 
 func (e *DetailedError) Error() string {
+	return fmt.Sprintf("%v: %v", e.message(), e.Err.Error())
+}
+
+func (e *DetailedError) ErrorForTracing() string {
+	return fmt.Sprintf("%v: %v", e.message(), ErrorForTracing(e.Err))
+}
+
+func (e *DetailedError) message() string {
 	return fmt.Sprintf(
-		"Detailed error, Details=%v, Silent=%v: %v",
+		"Detailed error, Details=%v, Silent=%v",
 		e.Details,
 		e.Silent,
-		e.Err,
 	)
 }
 
@@ -399,6 +480,15 @@ func IsSilent(err error) bool {
 	}
 
 	return false
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+func ErrorForTracing(err error) string {
+	if e, ok := err.(errorForTracing); ok {
+		return e.ErrorForTracing()
+	}
+	return err.Error()
 }
 
 ////////////////////////////////////////////////////////////////////////////////
