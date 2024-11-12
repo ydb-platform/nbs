@@ -7,9 +7,9 @@ from cloud.filestore.tests.python.lib.common import daemon_log_files, is_grpc_er
 from contrib.ydb.tests.library.harness.daemon import Daemon
 
 
-class NfsServer(Daemon):
+class FilestoreServer(Daemon):
     def __init__(self, configurator):
-        super(NfsServer, self).__init__(
+        super(FilestoreServer, self).__init__(
             command=configurator.generate_command(),
             cwd=configurator.working_dir,
             timeout=180,
@@ -17,11 +17,11 @@ class NfsServer(Daemon):
 
     @property
     def pid(self):
-        return super(NfsServer, self).daemon.process.pid
+        return super(FilestoreServer, self).daemon.process.pid
 
 
 @retrying.retry(stop_max_delay=60000, wait_fixed=1000, retry_on_exception=is_grpc_error)
-def wait_for_nfs_server(daemon, port):
+def wait_for_filestore_server(daemon, port):
     '''
     Ping filestore server with delay between attempts to ensure
     it is running and listening by the moment the actual test execution begins

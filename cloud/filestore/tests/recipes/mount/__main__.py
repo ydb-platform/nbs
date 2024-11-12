@@ -5,7 +5,7 @@ import yatest.common as common
 
 from library.python.testing.recipe import declare_recipe, set_env
 
-from cloud.filestore.tests.python.lib.client import NfsCliClient
+from cloud.filestore.tests.python.lib.client import FilestoreCliClient
 from cloud.filestore.tests.python.lib.common import shutdown
 
 
@@ -24,7 +24,7 @@ def start(argv):
     client_path = common.binary_path(
         "cloud/filestore/apps/client/filestore-client")
 
-    client = NfsCliClient(
+    client = FilestoreCliClient(
         binary_path=client_path,
         port=port,
         verbose=args.verbose,
