@@ -1469,7 +1469,7 @@ TFuture<NProto::TError> TEndpointManager::SwitchEndpointIfNeeded(
 
 TFuture<void> TEndpointManager::DoRestoreEndpoints()
 {
-    auto [storedIds, error] = EndpointStorage->GetEndpointIds();
+    auto [endpointIds, error] = EndpointStorage->GetEndpointIds();
     if (HasError(error) && !HasProtoFlag(error.GetFlags(), NProto::EF_SILENT)) {
         STORAGE_ERROR("Failed to get endpoints from storage: "
             << FormatError(error));
@@ -1477,19 +1477,19 @@ TFuture<void> TEndpointManager::DoRestoreEndpoints()
         return MakeFuture();
     }
 
-    STORAGE_INFO("Found " << storedIds.size() << " endpoints in storage");
+    STORAGE_INFO("Found " << endpointIds.size() << " endpoints in storage");
 
     TString clientId = CreateGuidAsString() + "_bootstrap";
 
     TVector<TFuture<void>> futures;
 
-    for (const auto& keyringId: storedIds) {
-        auto [str, error] = EndpointStorage->GetEndpoint(keyringId);
+    for (const auto& endpointId: endpointIds) {
+        auto [str, error] = EndpointStorage->GetEndpoint(endpointId);
         if (HasError(error)
                 && !HasProtoFlag(error.GetFlags(), NProto::EF_SILENT))
         {
             // NBS-3678
-            STORAGE_WARN("Failed to restore endpoint. ID: " << keyringId
+            STORAGE_WARN("Failed to restore endpoint. ID: " << endpointId
                 << ", error: " << FormatError(error));
             continue;
         }
@@ -1498,7 +1498,7 @@ TFuture<void> TEndpointManager::DoRestoreEndpoints()
 
         if (!request) {
             ReportEndpointRestoringError();
-            STORAGE_ERROR("Failed to deserialize request. ID: " << keyringId);
+            STORAGE_ERROR("Failed to deserialize request. ID: " << endpointId);
             continue;
         }
 
@@ -1534,7 +1534,7 @@ TFuture<void> TEndpointManager::DoRestoreEndpoints()
             std::move(request));
 
         auto weakPtr = weak_from_this();
-        future.Subscribe([weakPtr, socketPath, keyringId] (const auto& f) {
+        future.Subscribe([weakPtr, socketPath, endpointId] (const auto& f) {
             const auto& response = f.GetValue();
             if (HasError(response)) {
                 ReportEndpointRestoringError();
@@ -1543,7 +1543,7 @@ TFuture<void> TEndpointManager::DoRestoreEndpoints()
             if (auto ptr = weakPtr.lock()) {
                 ptr->HandleRestoredEndpoint(
                     socketPath,
-                    keyringId,
+                    endpointId,
                     response.GetError());
             }
         });
