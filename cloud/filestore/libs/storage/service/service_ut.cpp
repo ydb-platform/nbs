@@ -1496,6 +1496,25 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
 
         ui32 nodeIdx = env.CreateNode("nfs");
 
+        // delaying pipe creation response
+        ui64 tabletId = -1;
+        env.GetRuntime().SetEventFilter(
+            [&] (TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& event) {
+                switch (event->GetTypeRewrite()) {
+                    case TEvSSProxy::EvDescribeFileStoreResponse: {
+                        using TResponse =
+                            TEvSSProxy::TEvDescribeFileStoreResponse;
+                        const auto* msg = event->Get<TResponse>();
+                        const auto& desc =
+                            msg->PathDescription.GetFileStoreDescription();
+                        tabletId = desc.GetIndexTabletId();
+                        break;
+                    }
+                }
+
+                return false;
+            });
+
         TServiceClient service(env.GetRuntime(), nodeIdx);
         service.CreateFileStore("test", 1'000);
 
@@ -1518,27 +1537,69 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         NProtoPrivate::TDescribeSessionsRequest request;
         request.SetFileSystemId("test");
 
-        TString buf;
-        google::protobuf::util::MessageToJsonString(request, &buf);
-        auto jsonResponse = service.ExecuteAction("describesessions", buf);
-        NProtoPrivate::TDescribeSessionsResponse response;
-        UNIT_ASSERT(google::protobuf::util::JsonStringToMessage(
-            jsonResponse->Record.GetOutput(), &response).ok());
+        {
+            TString buf;
+            google::protobuf::util::MessageToJsonString(request, &buf);
+            auto jsonResponse = service.ExecuteAction("describesessions", buf);
+            NProtoPrivate::TDescribeSessionsResponse response;
+            UNIT_ASSERT(google::protobuf::util::JsonStringToMessage(
+                jsonResponse->Record.GetOutput(), &response).ok());
 
-        const auto& sessions = response.GetSessions();
-        UNIT_ASSERT_VALUES_EQUAL(2, sessions.size());
+            const auto& sessions = response.GetSessions();
+            UNIT_ASSERT_VALUES_EQUAL(2, sessions.size());
 
-        UNIT_ASSERT_VALUES_EQUAL("session", sessions[0].GetSessionId());
-        UNIT_ASSERT_VALUES_EQUAL("client", sessions[0].GetClientId());
-        UNIT_ASSERT_VALUES_EQUAL("some_state", sessions[0].GetSessionState());
-        UNIT_ASSERT_VALUES_EQUAL(3, sessions[0].GetMaxSeqNo());
-        UNIT_ASSERT_VALUES_EQUAL(3, sessions[0].GetMaxRwSeqNo());
+            UNIT_ASSERT_VALUES_EQUAL("session", sessions[0].GetSessionId());
+            UNIT_ASSERT_VALUES_EQUAL("client", sessions[0].GetClientId());
+            UNIT_ASSERT_VALUES_EQUAL(
+                "some_state",
+                sessions[0].GetSessionState());
+            UNIT_ASSERT_VALUES_EQUAL(3, sessions[0].GetMaxSeqNo());
+            UNIT_ASSERT_VALUES_EQUAL(3, sessions[0].GetMaxRwSeqNo());
+            UNIT_ASSERT(!sessions[0].GetIsOrphan());
 
-        UNIT_ASSERT_VALUES_EQUAL("session2", sessions[1].GetSessionId());
-        UNIT_ASSERT_VALUES_EQUAL("client2", sessions[1].GetClientId());
-        UNIT_ASSERT_VALUES_EQUAL("some_state2", sessions[1].GetSessionState());
-        UNIT_ASSERT_VALUES_EQUAL(4, sessions[1].GetMaxSeqNo());
-        UNIT_ASSERT_VALUES_EQUAL(4, sessions[1].GetMaxRwSeqNo());
+            UNIT_ASSERT_VALUES_EQUAL("session2", sessions[1].GetSessionId());
+            UNIT_ASSERT_VALUES_EQUAL("client2", sessions[1].GetClientId());
+            UNIT_ASSERT_VALUES_EQUAL(
+                "some_state2",
+                sessions[1].GetSessionState());
+            UNIT_ASSERT_VALUES_EQUAL(4, sessions[1].GetMaxSeqNo());
+            UNIT_ASSERT_VALUES_EQUAL(4, sessions[1].GetMaxRwSeqNo());
+            UNIT_ASSERT(!sessions[1].GetIsOrphan());
+        }
+
+        TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
+        // rebooting tablet to destroy the pipe
+        tablet.RebootTablet();
+
+        {
+            TString buf;
+            google::protobuf::util::MessageToJsonString(request, &buf);
+            auto jsonResponse = service.ExecuteAction("describesessions", buf);
+            NProtoPrivate::TDescribeSessionsResponse response;
+            UNIT_ASSERT(google::protobuf::util::JsonStringToMessage(
+                jsonResponse->Record.GetOutput(), &response).ok());
+
+            const auto& sessions = response.GetSessions();
+            UNIT_ASSERT_VALUES_EQUAL(2, sessions.size());
+
+            UNIT_ASSERT_VALUES_EQUAL("session", sessions[0].GetSessionId());
+            UNIT_ASSERT_VALUES_EQUAL("client", sessions[0].GetClientId());
+            UNIT_ASSERT_VALUES_EQUAL(
+                "some_state",
+                sessions[0].GetSessionState());
+            UNIT_ASSERT_VALUES_EQUAL(3, sessions[0].GetMaxSeqNo());
+            UNIT_ASSERT_VALUES_EQUAL(3, sessions[0].GetMaxRwSeqNo());
+            UNIT_ASSERT(sessions[0].GetIsOrphan());
+
+            UNIT_ASSERT_VALUES_EQUAL("session2", sessions[1].GetSessionId());
+            UNIT_ASSERT_VALUES_EQUAL("client2", sessions[1].GetClientId());
+            UNIT_ASSERT_VALUES_EQUAL(
+                "some_state2",
+                sessions[1].GetSessionState());
+            UNIT_ASSERT_VALUES_EQUAL(4, sessions[1].GetMaxSeqNo());
+            UNIT_ASSERT_VALUES_EQUAL(4, sessions[1].GetMaxRwSeqNo());
+            UNIT_ASSERT(sessions[1].GetIsOrphan());
+        }
     }
 
     Y_UNIT_TEST(ShouldValidateBlockSize)
