@@ -1,22 +1,27 @@
-#include "netlink_socket.h"
+#pragma once
+
+#include "message.h"
+
+#include <cloud/storage/core/libs/common/error.h>
+
+#include <util/generic/string.h>
 
 #include <netlink/genl/ctrl.h>
 #include <netlink/genl/genl.h>
+#include <netlink/netlink.h>
 
 namespace NCloud::NNetlink {
 
-namespace {
-
 using TResponseHandler = std::function<int(nl_msg*)>;
 
-class TNetlinkSocket: public INetlinkSocket
+class TSocket
 {
 private:
     nl_sock* Socket;
     int Family;
 
 public:
-    explicit TNetlinkSocket(TString netlinkFamily)
+    explicit TSocket(TString family)
     {
         Socket = nl_socket_alloc();
 
@@ -31,7 +36,7 @@ public:
                 << nl_geterror(err);
         }
 
-        Family = genl_ctrl_resolve(Socket, netlinkFamily.c_str());
+        Family = genl_ctrl_resolve(Socket, family.c_str());
 
         if (Family < 0) {
             nl_socket_free(Socket);
@@ -40,17 +45,17 @@ public:
         }
     }
 
-    ~TNetlinkSocket() override
+    ~TSocket()
     {
         nl_socket_free(Socket);
     }
 
-    [[nodiscard]] int GetFamily() const override
+    [[nodiscard]] int GetFamily() const
     {
         return Family;
     }
 
-    void SetCallback(nl_cb_type type, TNetlinkSocketCallback func) override
+    void SetCallback(nl_cb_type type, TResponseHandler func)
     {
         auto arg = std::make_unique<TResponseHandler>(std::move(func));
 
@@ -58,7 +63,7 @@ public:
                 Socket,
                 type,
                 NL_CB_CUSTOM,
-                TNetlinkSocket::ResponseHandler,
+                TSocket::ResponseHandler,
                 arg.get()))
         {
             throw TServiceError(E_FAIL)
@@ -75,7 +80,7 @@ public:
         return (*func)(msg);
     }
 
-    void Send(nl_msg* message) override
+    void Send(nl_msg* message)
     {
         if (int err = nl_send_auto(Socket, message); err < 0) {
             throw TServiceError(E_FAIL) << "send error: " << nl_geterror(err);
@@ -87,12 +92,5 @@ public:
         }
     }
 };
-
-}   // namespace
-
-INetlinkSocketPtr CreateNetlinkSocket(TString netlinkFamily)
-{
-    return std::make_unique<TNetlinkSocket>(std::move(netlinkFamily));
-}
 
 }   // namespace NCloud::NNetlink

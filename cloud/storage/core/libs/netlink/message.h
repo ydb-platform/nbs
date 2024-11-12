@@ -31,13 +31,13 @@ public:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TNetlinkMessage
+class TMessage
 {
 private:
     nl_msg* Message;
 
 public:
-    TNetlinkMessage(int family, int command, int flags = 0, int version = 0)
+    TMessage(int family, int command, int flags = 0, int version = 0)
     {
         Message = nlmsg_alloc();
         if (Message == nullptr) {
@@ -54,7 +54,7 @@ public:
             version);
     }
 
-    ~TNetlinkMessage()
+    ~TMessage()
     {
         nlmsg_free(Message);
     }

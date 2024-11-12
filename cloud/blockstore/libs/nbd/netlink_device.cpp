@@ -3,7 +3,7 @@
 #include "utils.h"
 
 #include <cloud/storage/core/libs/diagnostics/logging.h>
-#include <cloud/storage/core/libs/netlink/netlink_socket.h>
+#include <cloud/storage/core/libs/netlink/socket.h>
 
 #include <linux/nbd-netlink.h>
 
@@ -26,7 +26,8 @@ class TNetlinkDevice final
     : public IDevice
     , public std::enable_shared_from_this<TNetlinkDevice>
 {
-    using TNetlinkMessage = NCloud::NNetlink::TNetlinkMessage;
+    using TNetlinkMessage = NCloud::NNetlink::TMessage;
+    using TNetlinkSocket = NCloud::NNetlink::TSocket;
 private:
     const ILoggingServicePtr Logging;
     const TNetworkAddress ConnectAddress;
@@ -146,8 +147,8 @@ TFuture<NProto::TError> TNetlinkDevice::Stop(bool deleteDevice)
 TFuture<NProto::TError> TNetlinkDevice::Resize(ui64 deviceSizeInBytes)
 {
     try {
-        auto socket = NCloud::NNetlink::CreateNetlinkSocket("nbd");
-        TNetlinkMessage message(socket->GetFamily(), NBD_CMD_RECONFIGURE);
+        TNetlinkSocket socket("nbd");
+        TNetlinkMessage message(socket.GetFamily(), NBD_CMD_RECONFIGURE);
 
         message.Put(NBD_ATTR_INDEX, DeviceIndex);
         message.Put(NBD_ATTR_SIZE_BYTES, deviceSizeInBytes);
@@ -158,7 +159,7 @@ TFuture<NProto::TError> TNetlinkDevice::Resize(ui64 deviceSizeInBytes)
             message.Put(NBD_SOCK_FD, static_cast<ui32>(Socket));
         }
 
-        socket->Send(message);
+        socket.Send(message);
 
     } catch (const TServiceError& e) {
         return MakeFuture(MakeError(
@@ -210,25 +211,26 @@ void TNetlinkDevice::DisconnectSocket()
 // or reconfigure (if Reconfigure == true) specified device
 void TNetlinkDevice::Connect()
 {
-    auto socket = NCloud::NNetlink::CreateNetlinkSocket("nbd");
-    socket->SetCallback(
+    TNetlinkSocket socket("nbd");
+    socket.SetCallback(
         NL_CB_VALID,
-        [device = shared_from_this()](nl_msg* nlmsg)
-        { return device->StatusHandler(nlmsg); });
+        [device = shared_from_this()](auto* nlmsg) {
+            return device->StatusHandler(nlmsg);
+        });
 
-    TNetlinkMessage message(socket->GetFamily(), NBD_CMD_STATUS);
+    TNetlinkMessage message(socket.GetFamily(), NBD_CMD_STATUS);
     message.Put(NBD_ATTR_INDEX, DeviceIndex);
-    socket->Send(message);
+    socket.Send(message);
 }
 
 void TNetlinkDevice::Disconnect()
 {
     STORAGE_INFO("disconnect " << DeviceName);
 
-    auto socket = NCloud::NNetlink::CreateNetlinkSocket("nbd");
-    TNetlinkMessage message(socket->GetFamily(), NBD_CMD_DISCONNECT);
+    TNetlinkSocket socket("nbd");
+    TNetlinkMessage message(socket.GetFamily(), NBD_CMD_DISCONNECT);
     message.Put(NBD_ATTR_INDEX, DeviceIndex);
-    socket->Send(message);
+    socket.Send(message);
     StopResult.SetValue(MakeError(S_OK));
 }
 
@@ -246,8 +248,8 @@ void TNetlinkDevice::DoConnect(bool connected)
             STORAGE_INFO("connect " << DeviceName);
         }
 
-        auto socket = NCloud::NNetlink::CreateNetlinkSocket("nbd");
-        TNetlinkMessage message(socket->GetFamily(), command);
+        TNetlinkSocket socket("nbd");
+        TNetlinkMessage message(socket.GetFamily(), command);
 
         const auto& info = Handler->GetExportInfo();
         message.Put(NBD_ATTR_INDEX, DeviceIndex);
@@ -273,7 +275,7 @@ void TNetlinkDevice::DoConnect(bool connected)
             message.Put(NBD_SOCK_FD, static_cast<ui32>(Socket));
         }
 
-        socket->Send(message);
+        socket.Send(message);
         StartResult.SetValue(MakeError(S_OK));
 
     } catch (const TServiceError& e) {
