@@ -8,8 +8,8 @@ from library.python.testing.recipe import declare_recipe, set_env
 from cloud.filestore.config.server_pb2 import \
     TServerAppConfig, TLocalServiceConfig
 from cloud.filestore.tests.python.lib.common import shutdown
-from cloud.filestore.tests.python.lib.server import NfsServer, wait_for_nfs_server
-from cloud.filestore.tests.python.lib.daemon_config import NfsServerConfigGenerator
+from cloud.filestore.tests.python.lib.server import FilestoreServer, wait_for_filestore_server
+from cloud.filestore.tests.python.lib.daemon_config import FilestoreServerConfigGenerator
 
 
 PID_FILE_NAME = "local_service_nfs_server_recipe.pid"
@@ -22,11 +22,11 @@ def start(argv):
     parser.add_argument("--service", action="store", default="null")
     args = parser.parse_args(argv)
 
-    nfs_binary_path = common.binary_path(
+    filestore_binary_path = common.binary_path(
         "cloud/filestore/apps/server/filestore-server")
 
     if args.nfs_package_path is not None:
-        nfs_binary_path = common.build_path(
+        filestore_binary_path = common.build_path(
             "{}/usr/bin/filestore-server".format(args.nfs_package_path)
         )
 
@@ -37,22 +37,22 @@ def start(argv):
     if fs_root_path:
         server_config.LocalServiceConfig.RootPath = fs_root_path
 
-    nfs_configurator = NfsServerConfigGenerator(
-        binary_path=nfs_binary_path,
+    filestore_configurator = FilestoreServerConfigGenerator(
+        binary_path=filestore_binary_path,
         app_config=server_config,
         service_type=args.service,
         verbose=args.verbose)
 
-    nfs_server = NfsServer(configurator=nfs_configurator)
-    nfs_server.start()
+    filestore_server = FilestoreServer(configurator=filestore_configurator)
+    filestore_server.start()
 
     with open(PID_FILE_NAME, "w") as f:
-        f.write(str(nfs_server.pid))
+        f.write(str(filestore_server.pid))
 
-    wait_for_nfs_server(nfs_server, nfs_configurator.port)
+    wait_for_filestore_server(filestore_server, filestore_configurator.port)
 
-    set_env("NFS_SERVER_PORT", str(nfs_configurator.port))
-    set_env("NFS_MON_PORT", str(nfs_configurator.mon_port))
+    set_env("NFS_SERVER_PORT", str(filestore_configurator.port))
+    set_env("NFS_MON_PORT", str(filestore_configurator.mon_port))
 
 
 def stop(argv):

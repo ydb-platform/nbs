@@ -3,10 +3,10 @@ import time
 
 from cloud.filestore.config.server_pb2 import TServerAppConfig
 from cloud.filestore.config.storage_pb2 import TStorageConfig
-from cloud.filestore.tests.python.lib.server import NfsServer, wait_for_nfs_server
+from cloud.filestore.tests.python.lib.server import FilestoreServer, wait_for_filestore_server
 from cloud.filestore.tests.python.lib.server import wait_for_filestore_vhost
-from cloud.filestore.tests.python.lib.daemon_config import NfsServerConfigGenerator
-from cloud.filestore.tests.python.lib.daemon_config import NfsVhostConfigGenerator
+from cloud.filestore.tests.python.lib.daemon_config import FilestoreServerConfigGenerator
+from cloud.filestore.tests.python.lib.daemon_config import FilestoreVhostConfigGenerator
 
 from contrib.ydb.core.protos import config_pb2
 from contrib.ydb.core.protos.config_pb2 import TLogConfig
@@ -119,7 +119,7 @@ def setup_and_run_test(filestore_binary_path, filestore_config_generator, wait_f
         kikimr_configurator.domains_txt,
         kikimr_configurator.names_txt)
 
-    filestore_process = NfsServer(configurator=filestore_configurator)
+    filestore_process = FilestoreServer(configurator=filestore_configurator)
     filestore_process.start()
 
     try:
@@ -136,9 +136,9 @@ def setup_and_run_test(filestore_binary_path, filestore_config_generator, wait_f
 
 def test_server():
     filestore_binary_path = yatest_common.binary_path("cloud/filestore/apps/server/filestore-server")
-    assert setup_and_run_test(filestore_binary_path, NfsServerConfigGenerator, wait_for_nfs_server)
+    assert setup_and_run_test(filestore_binary_path, FilestoreServerConfigGenerator, wait_for_filestore_server)
 
 
 def test_vhost():
     filestore_binary_path = yatest_common.binary_path("cloud/filestore/apps/vhost/filestore-vhost")
-    assert setup_and_run_test(filestore_binary_path, NfsVhostConfigGenerator, wait_for_filestore_vhost)
+    assert setup_and_run_test(filestore_binary_path, FilestoreVhostConfigGenerator, wait_for_filestore_vhost)

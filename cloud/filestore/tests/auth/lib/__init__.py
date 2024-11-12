@@ -7,7 +7,7 @@ from pathlib import Path
 from google.protobuf.text_format import MessageToString
 
 from cloud.filestore.config.client_pb2 import TClientAppConfig, TClientConfig
-from cloud.filestore.tests.python.lib.client import NfsCliClient
+from cloud.filestore.tests.python.lib.client import FilestoreCliClient
 from cloud.storage.core.tools.testing.access_service.lib import AccessService
 from cloud.storage.core.tools.testing.access_service_new.lib import NewAccessService
 
@@ -40,7 +40,7 @@ class TestFixture:
         self.__client_config_path.write_text(MessageToString(client_config))
 
     def get_client(self, auth_token):
-        client = NfsCliClient(
+        client = FilestoreCliClient(
             self.__binary_path,
             self.__port,
             cwd=common.output_path(),

@@ -39,7 +39,7 @@ def get_directories():
     return (cwd, configs_dir)
 
 
-class NfsDaemonConfigGenerator:
+class FilestoreDaemonConfigGenerator:
     def __init__(
         self,
         binary_path,
@@ -158,7 +158,7 @@ class NfsDaemonConfigGenerator:
             "TX_PROXY",
         ]
 
-        nfs_services = [
+        filestore_services = [
             "NFS_HIVE_PROXY",
             "NFS_SS_PROXY",
             # "NFS_TABLET_PROXY",
@@ -172,12 +172,12 @@ class NfsDaemonConfigGenerator:
             "NFS_TRACE",
         ]
 
-        nfs_level = LOG_DEBUG if self.__verbose else LOG_INFO
+        filestore_level = LOG_DEBUG if self.__verbose else LOG_INFO
         kikimr_level = LOG_NOTICE if self.__verbose else LOG_WARN
 
         config = TLogConfig()
-        for service_name in nfs_services:
-            config.Entry.add(Component=service_name.encode(), Level=nfs_level)
+        for service_name in filestore_services:
+            config.Entry.add(Component=service_name.encode(), Level=filestore_level)
 
         for service_name in kikimr_services:
             config.Entry.add(Component=service_name.encode(), Level=kikimr_level)
@@ -375,7 +375,7 @@ class NfsDaemonConfigGenerator:
         return command
 
 
-class NfsServerConfigGenerator(NfsDaemonConfigGenerator):
+class FilestoreServerConfigGenerator(FilestoreDaemonConfigGenerator):
     def __init__(
         self,
         binary_path,
@@ -413,7 +413,7 @@ class NfsServerConfigGenerator(NfsDaemonConfigGenerator):
         )
 
 
-class NfsVhostConfigGenerator(NfsDaemonConfigGenerator):
+class FilestoreVhostConfigGenerator(FilestoreDaemonConfigGenerator):
     def __init__(
         self,
         binary_path,
