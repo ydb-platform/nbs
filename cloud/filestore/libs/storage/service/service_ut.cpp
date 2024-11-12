@@ -5985,8 +5985,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
     {
         TVector<TString> expected = {fsId, fsId + "_s1", fsId + "_s2"};
 
-        auto response = service.ListFileStores();
-        const auto& fsIds = response->Record.GetFileStores();
+        auto listing = service.ListFileStores();
+        const auto& fsIds = listing->Record.GetFileStores();
         TVector<TString> ids(fsIds.begin(), fsIds.end());
         Sort(ids);
 
@@ -6235,6 +6235,193 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         }
 
         DoTestShardedFileSystemConfigured(fsId, service);
+    }
+
+    Y_UNIT_TEST(ShouldDeleteShardsAutomatically)
+    {
+        NProto::TStorageConfig config;
+        config.SetAutomaticShardCreationEnabled(true);
+        config.SetMaxShardSize(1_GB);
+        TTestEnv env({}, config);
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+
+        const TString fsId1 = "test1";
+        const TString fsId2 = "test2";
+
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+        service.CreateFileStore(fsId1, 2_GB / 4_KB);
+        service.CreateFileStore(fsId2, 4_GB / 4_KB);
+
+        TVector<TString> expected = {
+            fsId1, fsId1 + "_s1", fsId1 + "_s2",
+            fsId2, fsId2 + "_s1", fsId2 + "_s2", fsId2 + "_s3", fsId2 + "_s4",
+        };
+
+        auto listing = service.ListFileStores();
+        auto fsIds = listing->Record.GetFileStores();
+        TVector<TString> ids(fsIds.begin(), fsIds.end());
+        Sort(ids);
+        UNIT_ASSERT_VALUES_EQUAL(expected, ids);
+
+        service.DestroyFileStore(fsId1);
+
+        expected = {
+            fsId2, fsId2 + "_s1", fsId2 + "_s2", fsId2 + "_s3", fsId2 + "_s4",
+        };
+
+        listing = service.ListFileStores();
+        fsIds = listing->Record.GetFileStores();
+        ids = TVector<TString>(fsIds.begin(), fsIds.end());
+        Sort(ids);
+        UNIT_ASSERT_VALUES_EQUAL(expected, ids);
+
+        service.DestroyFileStore(fsId2);
+
+        expected = {};
+
+        listing = service.ListFileStores();
+        fsIds = listing->Record.GetFileStores();
+        ids = TVector<TString>(fsIds.begin(), fsIds.end());
+        Sort(ids);
+        UNIT_ASSERT_VALUES_EQUAL(expected, ids);
+    }
+
+    Y_UNIT_TEST(ShouldHandleErrorsDuringShardedFileSystemDestruction)
+    {
+        NProto::TStorageConfig config;
+        config.SetAutomaticShardCreationEnabled(true);
+        config.SetMaxShardSize(1_GB);
+        TTestEnv env({}, config);
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+
+        const TString fsId = "test";
+
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+        service.CreateFileStore(fsId, 2_GB / 4_KB);
+
+        TVector<TString> expected = {fsId, fsId + "_s1", fsId + "_s2"};
+        auto listing = service.ListFileStores();
+        auto fsIds = listing->Record.GetFileStores();
+        TVector<TString> ids(fsIds.begin(), fsIds.end());
+        Sort(ids);
+        UNIT_ASSERT_VALUES_EQUAL(expected, ids);
+
+        NProto::TError getTopologyError;
+        NProto::TError destroyShardError;
+
+        TAutoPtr<IEventHandle> toSend;
+
+        env.GetRuntime().SetEventFilter(
+            [&] (TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& event) {
+                switch (event->GetTypeRewrite()) {
+                    case TEvIndexTablet::EvGetFileSystemTopologyRequest: {
+                        using TResponse =
+                            TEvIndexTablet::TEvGetFileSystemTopologyResponse;
+
+                        if (!HasError(getTopologyError)) {
+                            break;
+                        }
+
+                        auto response = std::make_unique<TResponse>(
+                            getTopologyError);
+
+                        toSend = new IEventHandle(
+                            event->Sender,
+                            event->Recipient,
+                            response.release(),
+                            0, // flags
+                            event->Cookie);
+
+                        return true;
+                    }
+
+                    case TEvSSProxy::EvDestroyFileStoreRequest: {
+                        using TRequest = TEvSSProxy::TEvDestroyFileStoreRequest;
+                        using TResponse =
+                            TEvSSProxy::TEvDestroyFileStoreResponse;
+                        const auto* msg = event->Get<TRequest>();
+                        if (msg->FileSystemId != expected[1]) {
+                            break;
+                        }
+
+                        if (!HasError(destroyShardError)) {
+                            break;
+                        }
+
+                        auto response = std::make_unique<TResponse>(
+                            destroyShardError);
+
+                        toSend = new IEventHandle(
+                            event->Sender,
+                            event->Recipient,
+                            response.release(),
+                            0, // flags
+                            event->Cookie);
+
+                        return true;
+                    }
+                }
+
+                return false;
+            });
+
+        getTopologyError = MakeError(E_REJECTED, "failed to get topology");
+        service.SendDestroyFileStoreRequest(fsId);
+        env.GetRuntime().DispatchEvents({}, TDuration::MilliSeconds(100));
+        UNIT_ASSERT(toSend);
+        env.GetRuntime().Send(toSend, nodeIdx);
+        {
+            auto response = service.RecvDestroyFileStoreResponse();
+            UNIT_ASSERT_VALUES_EQUAL(
+                FormatError(getTopologyError),
+                FormatError(response->GetError()));
+        }
+
+        listing = service.ListFileStores();
+        fsIds = listing->Record.GetFileStores();
+        ids = TVector<TString>(fsIds.begin(), fsIds.end());
+        Sort(ids);
+        UNIT_ASSERT_VALUES_EQUAL(expected, ids);
+
+        getTopologyError = {};
+        destroyShardError = MakeError(E_REJECTED, "failed to destroy shard");
+        service.SendDestroyFileStoreRequest(fsId);
+        env.GetRuntime().DispatchEvents({}, TDuration::MilliSeconds(100));
+        UNIT_ASSERT(toSend);
+        env.GetRuntime().Send(toSend, nodeIdx);
+        {
+            auto response = service.RecvDestroyFileStoreResponse();
+            UNIT_ASSERT_VALUES_EQUAL(
+                FormatError(destroyShardError),
+                FormatError(response->GetError()));
+        }
+
+        expected = {fsId, fsId + "_s1"};
+        listing = service.ListFileStores();
+        fsIds = listing->Record.GetFileStores();
+        ids = TVector<TString>(fsIds.begin(), fsIds.end());
+        Sort(ids);
+        UNIT_ASSERT_VALUES_EQUAL(expected, ids);
+
+        destroyShardError = {};
+        service.SendDestroyFileStoreRequest(fsId);
+        {
+            auto response = service.RecvDestroyFileStoreResponse();
+            UNIT_ASSERT_VALUES_EQUAL(
+                FormatError(MakeError(S_OK)),
+                FormatError(response->GetError()));
+        }
+
+        expected = {};
+        listing = service.ListFileStores();
+        fsIds = listing->Record.GetFileStores();
+        ids = TVector<TString>(fsIds.begin(), fsIds.end());
+        Sort(ids);
+        UNIT_ASSERT_VALUES_EQUAL(expected, ids);
     }
 }
 

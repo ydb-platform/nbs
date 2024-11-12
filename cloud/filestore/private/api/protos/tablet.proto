@@ -678,3 +678,24 @@ message TUnsafeGetNodeResponse
     NCloud.NProto.TError Error = 1;
     NProto.TNodeAttr Node = 2;
 }
+
+////////////////////////////////////////////////////////////////////////////////
+// GetFileSystemTopology request/response.
+
+message TGetFileSystemTopologyRequest
+{
+    // Optional request headers.
+    NProto.THeaders Headers = 1;
+
+    // FileSystem identifier to query its topology.
+    string FileSystemId = 2;
+}
+
+message TGetFileSystemTopologyResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+
+    // Shard FileSystem identifiers.
+    repeated string ShardFileSystemIds = 2;
+}
