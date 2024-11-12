@@ -93,6 +93,7 @@ public:
     void EnableDevice(const TString& uuid) const;
 
     bool IsDeviceDisabled(const TString& uuid) const;
+    bool IsDeviceSuspended(const TString& uuid) const;
     std::optional<ui32> GetDeviceIOErrorCode(const TString& uuid) const;
 
     TVector<NProto::TDiskAgentDeviceSession> GetSessions() const;

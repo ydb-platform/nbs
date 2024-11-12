@@ -791,6 +791,31 @@ Y_UNIT_TEST_SUITE(TDeviceClientTest)
             UNIT_ASSERT(updated);   // new read session
         }
     }
+
+    Y_UNIT_TEST_F(TestShouldDisableDevice, TFixture)
+    {
+        auto client = CreateClient({
+            .Devices = {"uuid1", "uuid2"}
+        });
+
+        UNIT_ASSERT(!client.IsDeviceDisabled("uuid1"));
+        UNIT_ASSERT(!client.IsDeviceDisabled("uuid2"));
+
+        client.DisableDevice("uuid1");
+        client.SuspendDevice("uuid2");
+
+        UNIT_ASSERT(client.IsDeviceDisabled("uuid1"));
+        UNIT_ASSERT(!client.IsDeviceSuspended("uuid1"));
+        UNIT_ASSERT_VALUES_EQUAL(
+            E_IO,
+            client.GetDeviceIOErrorCode("uuid1").value());
+
+        UNIT_ASSERT(!client.IsDeviceDisabled("uuid2"));
+        UNIT_ASSERT(client.IsDeviceSuspended("uuid2"));
+        UNIT_ASSERT_VALUES_EQUAL(
+            E_REJECTED,
+            client.GetDeviceIOErrorCode("uuid2").value());
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

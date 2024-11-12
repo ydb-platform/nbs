@@ -894,6 +894,11 @@ bool TDiskAgentState::IsDeviceDisabled(const TString& uuid) const
     return DeviceClient->IsDeviceDisabled(uuid);
 }
 
+bool TDiskAgentState::IsDeviceSuspended(const TString& uuid) const
+{
+    return DeviceClient->IsDeviceSuspended(uuid);
+}
+
 void TDiskAgentState::ReportDisabledDeviceError(const TString& uuid)
 {
     if (auto* d = Devices.FindPtr(uuid)) {

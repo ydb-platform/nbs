@@ -385,7 +385,12 @@ std::optional<ui32> TDeviceClient::GetDeviceIOErrorCode(
 
 bool TDeviceClient::IsDeviceDisabled(const TString& uuid) const
 {
-    return GetDeviceIOErrorCode(uuid).has_value();
+    return GetDeviceIOErrorCode(uuid).value_or(S_OK) == E_IO;
+}
+
+bool TDeviceClient::IsDeviceSuspended(const TString& uuid) const
+{
+    return GetDeviceIOErrorCode(uuid).value_or(S_OK) == E_REJECTED;
 }
 
 // static
