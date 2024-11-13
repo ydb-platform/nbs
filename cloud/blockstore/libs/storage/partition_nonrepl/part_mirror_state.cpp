@@ -157,6 +157,10 @@ bool TMirrorPartitionState::PrepareMigrationConfigForFreshDevices()
 
     // we need to find corresponding good device from some other replica
     for (auto& anotherReplica: ReplicaInfos) {
+        if (anotherReplica.Config.get() == replicaInfo->Config.get()) {
+            continue;
+        }
+
         const auto& anotherFreshDevices =
             anotherReplica.Config->GetFreshDeviceIds();
         auto& anotherDevices = anotherReplica.Config->AccessDevices();
