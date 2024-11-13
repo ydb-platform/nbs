@@ -243,7 +243,6 @@ private:
 
         TFsPath fullName;
 
-        // case 1 : by nodeid with already known name
         if (logRequest.GetNodeInfo().GetNodeId() != InvalidNodeId) {
             if (const auto path =
                     PathByNode(logRequest.GetNodeInfo().GetNodeId()))
@@ -252,7 +251,6 @@ private:
             }
         }
 
-        // case 2: parent node id + name
         if (!fullName.IsDefined()) {
             auto parentNode =
                 GetLocalNodeId(logRequest.GetNodeInfo().GetParentNodeId());
