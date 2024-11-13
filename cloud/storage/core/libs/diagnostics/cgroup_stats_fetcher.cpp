@@ -75,11 +75,10 @@ public:
             return;
         }
 
-        auto ret = GetCpuWait();
-        if (ret.HasError()) {
-            STORAGE_ERROR("Failed to get cpu stats: " << ret.GetError());
+        if (auto [cpuWait, error] = GetCpuWait(); HasError(error)) {
+            STORAGE_ERROR("Failed to get CpuWait stats: " << error);
         } else {
-            Last = ret.GetResult();
+            Last = cpuWait;
         }
     }
 
@@ -118,7 +117,7 @@ public:
                     TStringBuilder() << StatsFile << " : new value " << value
                                      << " is less than previous " << Last);
                 Last = value;
-                return MakeError(E_FAIL, std::move(errorMessage));
+                return MakeError(E_INVALID_STATE, std::move(errorMessage));
             }
             auto retval = value - Last;
             Last = value;

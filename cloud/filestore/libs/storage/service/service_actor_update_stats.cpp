@@ -36,9 +36,10 @@ void TStorageServiceActor::HandleUpdateStats(
         auto now = ctx.Now();
 
         auto interval = (now - LastCpuWaitQuery).MicroSeconds();
-        auto cpuWait = CgroupStatsFetcher->GetCpuWait();
-        if (!HasError(cpuWait)) {
-            auto cpuWaitValue = cpuWait.GetResult().MicroSeconds();
+        if (auto [cpuWait, error] = CgroupStatsFetcher->GetCpuWait();
+            !HasError(error))
+        {
+            auto cpuWaitValue = cpuWait.MicroSeconds();
             auto cpuLack = CpuLackPercentsMultiplier * cpuWaitValue / interval;
 
             LOG_DEBUG_S(
@@ -61,7 +62,7 @@ void TStorageServiceActor::HandleUpdateStats(
             LOG_ERROR_S(
                 ctx,
                 TFileStoreComponents::SERVICE,
-                "Failed to get CpuWait stats: " << cpuWait.GetError());
+                "Failed to get CpuWait stats: " << error);
         }
     }
 
