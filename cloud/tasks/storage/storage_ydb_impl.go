@@ -3,6 +3,7 @@ package storage
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"fmt"
 	"time"
 
@@ -557,9 +558,9 @@ func (s *storageYDB) prepareCreateTask(
 			return []stateTransition{}, errors.NewNonRetriableErrorf(
 				`cannot create task with request=%s, because task with same id=%v,
 				 but different request=%s already exists`,
-				state.Request,
+				base64.StdEncoding.EncodeToString(state.Request),
 				state.ID,
-				existingState.Request,
+				base64.StdEncoding.EncodeToString(existingState.Request),
 			)
 		}
 
