@@ -553,8 +553,7 @@ private:
         override
     {
         // {"TimestampMcs":1725,"DurationMcs":6328,"RequestType":26,"ErrorCode":0,"NodeInfo":{"NewParentNodeId":1,"NewNodeName":"home","Mode":509,"NodeId":12526,"Size":0}}
-        // {new_parent_node_id=1, new_node_name=home, mode=509, node_id=12526,
-        // size=0}
+        // {new_parent_node_id=1, new_node_name=home, mode=509, node_id=12526, size=0}
 
         if (Spec.GetSkipWrite()) {
             return MakeFuture(TCompletedRequest{
