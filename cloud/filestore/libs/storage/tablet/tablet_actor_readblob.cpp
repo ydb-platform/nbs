@@ -19,8 +19,12 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TEvGetQueryInfo
+struct TQuery
 {
+    // in bytes
+    ui32 Offset = 0;
+    // in bytes
+    ui32 Size = 0;
     TVector<TReadBlob::TBlock> Blocks;
 };
 
@@ -29,22 +33,46 @@ struct TReadBlobRequest
     TActorId Proxy;
     TLogoBlobID BlobId;
     TBlobCompressionInfo BlobCompressionInfo;
-    TVector<TEvGetQueryInfo> QueryInfos;
+    TVector<TQuery> Queries;
     std::unique_ptr<TEvBlobStorage::TEvGet> Request;
 
     TReadBlobRequest(
             const TActorId& proxy,
             const TLogoBlobID& blobId,
             TBlobCompressionInfo blobCompressionInfo,
-            TVector<TEvGetQueryInfo> queryInfos,
+            TVector<TQuery> queries,
             std::unique_ptr<TEvBlobStorage::TEvGet> request)
         : Proxy(proxy)
         , BlobId(blobId)
         , BlobCompressionInfo(std::move(blobCompressionInfo))
-        , QueryInfos(std::move(queryInfos))
+        , Queries(std::move(queries))
         , Request(std::move(request))
     {}
 };
+
+////////////////////////////////////////////////////////////////////////////////
+
+std::unique_ptr<TEvBlobStorage::TEvGet> CreateGetRequest(
+    const TLogoBlobID& blobId,
+    const TVector<TQuery>& queries,
+    TInstant deadline,
+    bool async
+) {
+    using TEvGetQuery = TEvBlobStorage::TEvGet::TQuery;
+    TArrayHolder<TEvGetQuery> qs(new TEvGetQuery[queries.size()]);
+
+    size_t queryIndex = 0;
+    for (const auto& query : queries) {
+        qs[queryIndex++].Set(blobId, query.Offset, query.Size);
+    }
+
+    return std::make_unique<TEvBlobStorage::TEvGet>(
+        qs,
+        queries.size(),
+        deadline,
+        async ? NKikimrBlobStorage::AsyncRead : NKikimrBlobStorage::FastRead
+    );
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -102,7 +130,7 @@ private:
         const TActorContext& ctx);
     void ReadQueryResponseUncompressed(
         const TRope& responseBuffer,
-        const TEvGetQueryInfo& info);
+        const TQuery& query);
 
     void HandlePoisonPill(
         const TEvents::TEvPoisonPill::TPtr& ev,
@@ -182,7 +210,7 @@ void TReadBlobActor::HandleGetResult(
 
     const auto& request = Requests[requestIndex];
 
-    if (msg->ResponseSz != request.QueryInfos.size()) {
+    if (msg->ResponseSz != request.Queries.size()) {
         ReplyError(ctx, *msg, "invalid number of responses");
         return;
     }
@@ -200,14 +228,14 @@ void TReadBlobActor::HandleGetResult(
             return;
         }
 
-        const auto& queryInfo = request.QueryInfos[i];
+        const auto& query = request.Queries[i];
 
-        if (response.Buffer.size() / BlockSize != queryInfo.Blocks.size()) {
+        if (response.Buffer.size() / BlockSize != query.Blocks.size()) {
             ReplyError(ctx, *msg, "invalid response buffer size");
             return;
         }
 
-        ReadQueryResponseUncompressed(response.Buffer, queryInfo);
+        ReadQueryResponseUncompressed(response.Buffer, query);
     }
 
     TABLET_VERIFY(RequestsCompleted < Requests.size());
@@ -218,14 +246,14 @@ void TReadBlobActor::HandleGetResult(
 
 void TReadBlobActor::ReadQueryResponseUncompressed(
     const TRope& responseBuffer,
-    const TEvGetQueryInfo& info)
+    const TQuery& query)
 {
     TotalSize += responseBuffer.size();
 
     char buffer[BlockSize];
     auto iter = responseBuffer.begin();
 
-    for (const auto& block : info.Blocks) {
+    for (const auto& block : query.Blocks) {
         TStringBuf view;
 
         if (iter.ContiguousSize() >= BlockSize) {
@@ -344,20 +372,6 @@ void TIndexTabletActor::HandleReadBlob(
 
     TVector<TReadBlobRequest> requests(Reserve(msg->Blobs.size()));
     for (auto& blob: msg->Blobs) {
-        auto blobId = MakeBlobId(TabletID(), blob.BlobId);
-
-        auto proxy = Info()->BSProxyIDForChannel(
-            blob.BlobId.Channel(),
-            blob.BlobId.Generation());
-
-        const auto blocksCount = blob.Blocks.size();
-
-        using TEvGetQuery = TEvBlobStorage::TEvGet::TQuery;
-
-        TArrayHolder<TEvGetQuery> queries(new TEvGetQuery[blocksCount]);
-        size_t queriesCount = 0;
-        TVector<TEvGetQueryInfo> queryInfos;
-
         struct TBlockRange
         {
             ui32 BlockOffset = 0;
@@ -374,8 +388,10 @@ void TIndexTabletActor::HandleReadBlob(
             }
         };
 
+        TVector<TQuery> queries;
         TBlockRange curBlockRange;
 
+        const auto blocksCount = blob.Blocks.size();
         for (size_t i = 0; i < blocksCount; ++i) {
             const auto& curBlock = blob.Blocks[i];
 
@@ -383,8 +399,8 @@ void TIndexTabletActor::HandleReadBlob(
                 const auto& prevBlock = blob.Blocks[i - 1];
 
                 // extend range
-                queries[queriesCount - 1].Size += blockSize;
-                queryInfos.back().Blocks.push_back(curBlock);
+                queries.back().Size += blockSize;
+                queries.back().Blocks.push_back(curBlock);
 
                 if (curBlock.BlockOffset == prevBlock.BlockOffset + 1) {
                     // extend range
@@ -395,13 +411,10 @@ void TIndexTabletActor::HandleReadBlob(
                     curBlockRange = { curBlock.BlockOffset, 1 };
                 }
             } else {
-                // new query
-                queries[queriesCount++].Set(
-                    blobId,
-                    curBlock.BlobOffset * blockSize,
-                    blockSize);
-                queryInfos.push_back(TEvGetQueryInfo {
-                    .Blocks = { curBlock }
+                queries.push_back(TQuery {
+                    .Offset = curBlock.BlobOffset * blockSize,
+                    .Size = blockSize,
+                    .Blocks = { curBlock },
                 });
 
                 addRangeToProfileLog(curBlockRange);
@@ -410,13 +423,13 @@ void TIndexTabletActor::HandleReadBlob(
             }
         }
 
-        auto request = std::make_unique<TEvBlobStorage::TEvGet>(
+
+        auto blobId = MakeBlobId(TabletID(), blob.BlobId);
+        auto request = CreateGetRequest(
+            blobId,
             queries,
-            queriesCount,
             blob.Deadline,
-            blob.Async
-                ? NKikimrBlobStorage::AsyncRead
-                : NKikimrBlobStorage::FastRead);
+            blob.Async);
 
         if (!msg->CallContext->LWOrbit.Fork(request->Orbit)) {
             FILESTORE_TRACK(
@@ -425,11 +438,15 @@ void TIndexTabletActor::HandleReadBlob(
                 "TEvBlobStorage::TEvGet");
         }
 
+        auto proxy = Info()->BSProxyIDForChannel(
+            blob.BlobId.Channel(),
+            blob.BlobId.Generation());
+
         requests.emplace_back(
             proxy,
             blobId,
             std::move(blob.BlobCompressionInfo),
-            std::move(queryInfos),
+            std::move(queries),
             std::move(request));
     }
 
