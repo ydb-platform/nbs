@@ -72,17 +72,17 @@ private:
 
 public:
     TReplayRequestGeneratorFs(
-            NProto::TReplaySpec spec,
-            ILoggingServicePtr logging,
-            ISessionPtr session,
-            TString filesystemId,
-            NProto::THeaders headers)
+        NProto::TReplaySpec spec,
+        ILoggingServicePtr logging,
+        ISessionPtr session,
+        TString filesystemId,
+        NProto::THeaders headers)
         : IReplayRequestGenerator(
-        std::move(spec),
-        std::move(logging),
-        std::move(session),
-        std::move(filesystemId),
-        std::move(headers))
+              std::move(spec),
+              std::move(logging),
+              std::move(session),
+              std::move(filesystemId),
+              std::move(headers))
     {
         if (Spec.GetReplayRoot().empty()) {
             ythrow yexception() << "ReplayRoot is not defined";
@@ -606,17 +606,18 @@ private:
                 NFs::SymLink(targetFullName, fullName);
                 break;
             }
-            case NProto::E_SOCK_NODE:
+            case NProto::E_SOCK_NODE: {
                 return MakeFuture(TCompletedRequest{
                     NProto::ACTION_CREATE_NODE,
                     Started,
                     MakeError(E_NOT_IMPLEMENTED, "sock not implemented")});
-
-            case NProto::E_INVALID_NODE:
+            }
+            case NProto::E_INVALID_NODE: {
                 return MakeFuture(TCompletedRequest{
                     NProto::ACTION_CREATE_NODE,
                     Started,
                     MakeError(E_NOT_IMPLEMENTED, "invalid not implemented")});
+            }
         }
 
         if (!nodeid) {
