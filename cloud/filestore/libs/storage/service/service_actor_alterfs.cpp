@@ -2,6 +2,8 @@
 
 #include <cloud/filestore/libs/diagnostics/profile_log_events.h>
 #include <cloud/filestore/libs/storage/api/ss_proxy.h>
+#include <cloud/filestore/libs/storage/api/tablet.h>
+#include <cloud/filestore/libs/storage/api/tablet_proxy.h>
 #include <cloud/filestore/libs/storage/core/model.h>
 #include <cloud/filestore/libs/storage/model/channel_data_kind.h>
 
@@ -30,6 +32,11 @@ private:
 
     NKikimrFileStore::TConfig Config;
 
+    TMultiShardFileStoreConfig FileStoreConfig;
+
+    ui32 ShardsToCreate = 0;
+    ui32 ShardsToConfigure = 0;
+
 public:
     TAlterFileStoreActor(
         TStorageConfigPtr storageConfig,
@@ -49,14 +56,34 @@ private:
 
     void DescribeFileStore(const TActorContext& ctx);
     void AlterFileStore(const TActorContext& ctx);
+    void GetFileSystemTopology(const TActorContext& ctx);
+    void CreateShards(const TActorContext& ctx);
+    void ConfigureShards(const TActorContext& ctx);
+    void ConfigureMainFileStore(const TActorContext& ctx);
 
     void HandleDescribeFileStoreResponse(
         const TEvSSProxy::TEvDescribeFileStoreResponse::TPtr& ev,
         const TActorContext& ctx);
+
+    void HandleGetFileSystemTopologyResponse(
+        const TEvIndexTablet::TEvGetFileSystemTopologyResponse::TPtr& ev,
+        const TActorContext& ctx);
+
+    void HandleCreateFileStoreResponse(
+        const TEvSSProxy::TEvCreateFileStoreResponse::TPtr& ev,
+        const TActorContext& ctx);
+
+    void HandleConfigureShardResponse(
+        const TEvIndexTablet::TEvConfigureAsShardResponse::TPtr& ev,
+        const TActorContext& ctx);
+
+    void HandleConfigureMainFileStoreResponse(
+        const TEvIndexTablet::TEvConfigureShardsResponse::TPtr& ev,
+        const TActorContext& ctx);
+
     void HandleAlterFileStoreResponse(
         const TEvSSProxy::TEvAlterFileStoreResponse::TPtr& ev,
         const TActorContext& ctx);
-
 
     void HandlePoisonPill(
         const TEvents::TEvPoisonPill::TPtr& ev,
@@ -154,11 +181,30 @@ void TAlterFileStoreActor::HandleDescribeFileStoreResponse(
             Config.GetProjectId().empty());
 
         config.SetBlocksCount(Config.GetBlocksCount());
-        SetupFileStorePerformanceAndChannels(
-            allocateMixed0,
-            *StorageConfig,
-            config,
-            PerformanceProfile);
+        if (!allocateMixed0
+                && StorageConfig->GetAutomaticShardCreationEnabled())
+        {
+            FileStoreConfig = SetupMultiShardFileStorePerformanceAndChannels(
+                *StorageConfig,
+                config,
+                PerformanceProfile);
+            ShardsToCreate = FileStoreConfig.ShardConfigs.size();
+            ShardsToConfigure = ShardsToCreate;
+            config = FileStoreConfig.MainFileSystemConfig;
+
+            LOG_INFO(
+                ctx,
+                TFileStoreComponents::SERVICE,
+                "[%s] Will resize filesystem to have %u shards",
+                FileSystemId.c_str(),
+                FileStoreConfig.ShardConfigs.size());
+        } else {
+            SetupFileStorePerformanceAndChannels(
+                allocateMixed0,
+                *StorageConfig,
+                config,
+                PerformanceProfile);
+        }
     } else {
         if (const auto& cloud = Config.GetCloudId()) {
             config.SetCloudId(cloud);
@@ -197,15 +243,19 @@ void TAlterFileStoreActor::HandleAlterFileStoreResponse(
     const auto* msg = ev->Get();
 
     NProto::TError error = msg->GetError();
-    ui32 errorCode = error.GetCode();
-    if (FAILED(errorCode)) {
+    if (HasError(error)) {
         LOG_ERROR(ctx, TFileStoreComponents::SERVICE,
             "%s of filestore %s failed: %s",
             GetOperationString(),
             Config.GetFileSystemId().Quote().c_str(),
             msg->GetErrorReason().c_str());
 
-        ReplyAndDie(ctx, MakeError(errorCode, error.GetMessage()));
+        ReplyAndDie(ctx, error);
+        return;
+    }
+
+    if (ShardsToCreate) {
+        CreateShards(ctx);
         return;
     }
 
