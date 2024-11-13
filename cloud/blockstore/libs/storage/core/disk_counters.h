@@ -207,6 +207,10 @@ struct TSimpleDiskCounters
         EPublishingPolicy::Repl,
         TSimpleCounter::ECounterType::Generic,
         ECounterExpirationPolicy::Permanent};
+    TCounter ReadBlobDeadlineCount{
+        EPublishingPolicy::Repl,
+        TSimpleCounter::ECounterType::Generic,
+        ECounterExpirationPolicy::Expiring};
 
     // DiskRegistry based
     TCounter HasBrokenDevice{
@@ -251,6 +255,7 @@ struct TSimpleDiskCounters
         MakeMeta<&TSimpleDiskCounters::CompactionRangeCountPerRun>(),
         MakeMeta<&TSimpleDiskCounters::UnconfirmedBlobCount>(),
         MakeMeta<&TSimpleDiskCounters::ConfirmedBlobCount>(),
+        MakeMeta<&TSimpleDiskCounters::ReadBlobDeadlineCount>(),
 
         MakeMeta<&TSimpleDiskCounters::HasBrokenDevice>(),
         MakeMeta<&TSimpleDiskCounters::HasBrokenDeviceSilent>(),

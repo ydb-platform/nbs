@@ -25,6 +25,7 @@
 #include <cloud/storage/core/libs/tablet/blob_id.h>
 
 #include <contrib/ydb/core/base/blobstorage.h>
+#include <contrib/ydb/core/blobstorage/vdisk/common/vdisk_events.h>
 #include <contrib/ydb/core/testlib/basics/storage.h>
 
 #include <library/cpp/testing/unittest/registar.h>
@@ -7025,6 +7026,51 @@ Y_UNIT_TEST_SUITE(TPartition2Test)
         UNIT_ASSERT_VALUES_EQUAL(
             "tablet is shutting down",
             response->GetErrorReason());
+    }
+
+    Y_UNIT_TEST(ShouldAbortCompactionIfReadBlobFailsWithDeadlineExceeded)
+    {
+        NProto::TStorageServiceConfig config;
+        config.SetBlobStorageAsyncGetTimeoutHDD(TDuration::Seconds(1).MilliSeconds());
+        auto runtime = PrepareTestActorRuntime(config);
+
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+
+        partition.WriteBlocks(1, 1);
+        partition.WriteBlocks(2, 2);
+        partition.WriteBlocks(3, 3);
+        partition.Flush();
+
+        partition.WriteBlocks(1, 11);
+        partition.Flush();
+
+        partition.WriteBlocks(2, 22);
+        partition.Flush();
+
+        partition.WriteBlocks(3, 33);
+        partition.Flush();
+
+        runtime->SetEventFilter([&]
+            (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& ev)
+        {
+            Y_UNUSED(runtime);
+
+            if (ev->GetTypeRewrite() == TEvBlobStorage::EvVGet) {
+                const auto* msg = ev->Get<TEvBlobStorage::TEvVGet>();
+                if (msg->Record.GetHandleClass() == NKikimrBlobStorage::AsyncRead &&
+                    msg->Record.GetMsgQoS().HasDeadlineSeconds())
+                {
+                    return true;
+                }
+            }
+            return false;
+        });
+
+        partition.SendCompactionRequest();
+        runtime->AdvanceCurrentTime(TDuration::Seconds(1));
+        auto response = partition.RecvCompactionResponse();
+        UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, response->GetError().GetCode());
     }
 }
 

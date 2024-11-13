@@ -512,7 +512,8 @@ TDuration MSeconds(ui32 value)
     xxx(IdleAgentDeployByCmsDelay,                      TDuration, Hours(1)      )\
     xxx(AllowLiteDiskReallocations,                     bool,      false         )\
     xxx(DiskRegistryDisksNotificationTimeout,           TDuration, Seconds(5)    )\
-
+    xxx(BlobStorageAsyncGetTimeoutHDD,                  TDuration, Seconds(0)    )\
+    xxx(BlobStorageAsyncGetTimeoutSSD,                  TDuration, Seconds(0)    )\
 
 // BLOCKSTORE_STORAGE_CONFIG_RW
 

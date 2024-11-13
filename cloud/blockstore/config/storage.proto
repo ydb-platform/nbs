@@ -1053,4 +1053,7 @@ message TStorageServiceConfig
     // agents devices and will not suspend local devices. Instead, PURGE_HOST
     // should be used for these purposes.
     optional bool DiskRegistryAlwaysAllocatesLocalDisks = 388;
+
+    optional uint32 BlobStorageAsyncGetTimeoutHDD = 389;
+    optional uint32 BlobStorageAsyncGetTimeoutSSD = 390;
 }
