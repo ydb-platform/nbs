@@ -32,6 +32,7 @@ PY_SRCS(
     nbs_runner.py
     nonreplicated_setup.py
     rdma.py
+    root_kms.py
     stats.py
     test_base.py
     test_with_plugin.py
