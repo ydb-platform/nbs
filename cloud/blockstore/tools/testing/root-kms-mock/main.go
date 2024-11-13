@@ -8,9 +8,9 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/json"
-	"encoding/pem"
+	_ "encoding/pem"
 	"fmt"
-	"io/ioutil"
+	_ "io/ioutil"
 	"log"
 	"net"
 	"os"
@@ -29,9 +29,9 @@ import (
 ////////////////////////////////////////////////////////////////////////////////
 
 type MockConfig struct {
-	Port uint32                `json:"port"`
-	TLS  TLSConfig             `json:"tls"`
-	Keys map[string]KeysConfig `json:"keys"`
+	Port uint32    `json:"port"`
+	TLS  TLSConfig `json:"tls"`
+	Keys []string  `json:"keys"`
 }
 
 type TLSConfig struct {
@@ -40,64 +40,21 @@ type TLSConfig struct {
 	CAFile   string `json:"ca_path"`
 }
 
-type KeysConfig struct {
-	PrivateKeyPath string `json:"private_key_path"`
-	PublicKeyPath  string `json:"public_key_path"`
-}
-
 ////////////////////////////////////////////////////////////////////////////////
 
 type rootKmsService struct {
-	privateKeys map[string]*rsa.PrivateKey
-	publicKeys  map[string]*rsa.PublicKey
-	mtx         sync.RWMutex
+	keys map[string]*rsa.PrivateKey
+	mtx  sync.RWMutex
 }
 
-func (s *rootKmsService) loadKeys(config MockConfig) error {
-
-	for keyID, keyConfig := range config.Keys {
-		privateKeyPEM, err := ioutil.ReadFile(keyConfig.PrivateKeyPath)
+func (s *rootKmsService) generateKeys(keys []string) error {
+	for _, keyID := range keys {
+		log.Printf("generating RSA 4096 for %q", keyID)
+		privateKey, err := rsa.GenerateKey(rand.Reader, 4096)
 		if err != nil {
-			return fmt.Errorf("failed to read private key %q: %v", keyID, err)
+			return fmt.Errorf("error generating key: %v\n", err)
 		}
-
-		block, _ := pem.Decode(privateKeyPEM)
-		if block == nil {
-			return fmt.Errorf("failed to decode private key PEM for %q", keyID)
-		}
-
-		privateKeyInterface, err := x509.ParsePKCS8PrivateKey(block.Bytes)
-		if err != nil {
-			return fmt.Errorf("failed to parse private key for %q: %v", keyID, err)
-		}
-
-		privateKey, ok := privateKeyInterface.(*rsa.PrivateKey)
-		if !ok {
-			return fmt.Errorf("private key for %q is not an RSA private key", keyID)
-		}
-
-		publicKeyPEM, err := ioutil.ReadFile(keyConfig.PublicKeyPath)
-		if err != nil {
-			return fmt.Errorf("failed to read public key %q: %v", keyID, err)
-		}
-
-		block, _ = pem.Decode(publicKeyPEM)
-		if block == nil {
-			return fmt.Errorf("failed to decode public key PEM for %q", keyID)
-		}
-
-		publicKeyInterface, err := x509.ParsePKIXPublicKey(block.Bytes)
-		if err != nil {
-			return fmt.Errorf("failed to parse public key for %q: %v", keyID, err)
-		}
-
-		publicKey, ok := publicKeyInterface.(*rsa.PublicKey)
-		if !ok {
-			return fmt.Errorf("public key for %q is not an ECDSA key", keyID)
-		}
-
-		s.privateKeys[keyID] = privateKey
-		s.publicKeys[keyID] = publicKey
+		s.keys[keyID] = privateKey
 	}
 
 	return nil
@@ -174,13 +131,13 @@ func (s *rootKmsService) Decrypt(
 	log.Printf("Decrypt request: %v", req)
 
 	s.mtx.RLock()
-	privateKey, exists := s.privateKeys[req.KeyId]
+	privateKey, exists := s.keys[req.KeyId]
 	s.mtx.RUnlock()
 
 	if !exists {
 		return nil, grpc_status.Error(
 			grpc_codes.NotFound,
-			fmt.Sprintf("KEK %q not found", req.KeyId),
+			fmt.Sprintf("Key %q not found", req.KeyId),
 		)
 	}
 
@@ -256,17 +213,17 @@ func (s *rootKmsService) GenerateDataKey(
 	}
 
 	s.mtx.RLock()
-	publicKey, exists := s.publicKeys[req.KeyId]
+	privateKey, exists := s.keys[req.KeyId]
 	s.mtx.RUnlock()
 
 	if !exists {
 		return nil, grpc_status.Error(
 			grpc_codes.NotFound,
-			fmt.Sprintf("KEK %q not found", req.KeyId),
+			fmt.Sprintf("Key %q not found", req.KeyId),
 		)
 	}
 
-	ciphertext, err := generateAndEncryptDEK(publicKey)
+	ciphertext, err := generateAndEncryptDEK(&privateKey.PublicKey)
 	if err != nil {
 		return nil, grpc_status.Error(
 			grpc_codes.Internal,
@@ -364,11 +321,10 @@ func run(configPath string) error {
 	)
 
 	rootKms := &rootKmsService{
-		privateKeys: make(map[string]*rsa.PrivateKey),
-		publicKeys:  make(map[string]*rsa.PublicKey),
+		keys: make(map[string]*rsa.PrivateKey),
 	}
-	if err := rootKms.loadKeys(config); err != nil {
-		return fmt.Errorf("failed to load keys: %v", err)
+	if err := rootKms.generateKeys(config.Keys); err != nil {
+		return fmt.Errorf("failed to generate keys: %v", err)
 	}
 
 	kms.RegisterSymmetricCryptoServiceServer(s, rootKms)
