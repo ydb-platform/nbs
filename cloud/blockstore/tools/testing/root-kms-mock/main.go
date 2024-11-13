@@ -7,14 +7,17 @@ import (
 	"crypto/sha256"
 	"crypto/tls"
 	"crypto/x509"
+	"crypto/x509/pkix"
 	"encoding/json"
-	_ "encoding/pem"
+	"encoding/pem"
 	"fmt"
-	_ "io/ioutil"
 	"log"
+	"math/big"
 	"net"
 	"os"
+	"path/filepath"
 	"sync"
+	"time"
 
 	"github.com/spf13/cobra"
 	"github.com/ydb-platform/nbs/contrib/ydb/public/api/client/yc_private/kms"
@@ -29,27 +32,23 @@ import (
 ////////////////////////////////////////////////////////////////////////////////
 
 type MockConfig struct {
-	Port uint32    `json:"port"`
-	TLS  TLSConfig `json:"tls"`
-	Keys []string  `json:"keys"`
-}
-
-type TLSConfig struct {
-	CertFile string `json:"cert_path"`
-	KeyFile  string `json:"key_path"`
-	CAFile   string `json:"ca_path"`
+	Port           uint32   `json:"port"`
+	Keys           []string `json:"keys"`
+	CertsOutputDir string   `json:"certs_output_dir"`
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 
 type rootKmsService struct {
+	kms.UnimplementedSymmetricCryptoServiceServer
 	keys map[string]*rsa.PrivateKey
 	mtx  sync.RWMutex
 }
 
 func (s *rootKmsService) generateKeys(keys []string) error {
+
 	for _, keyID := range keys {
-		log.Printf("generating RSA 4096 for %q", keyID)
+		log.Printf("generating RSA-4096 for %q", keyID)
 		privateKey, err := rsa.GenerateKey(rand.Reader, 4096)
 		if err != nil {
 			return fmt.Errorf("error generating key: %v\n", err)
@@ -112,17 +111,6 @@ func decryptDEK(
 	return symmetricKey, nil
 }
 
-func (s *rootKmsService) Encrypt(
-	ctx context.Context,
-	req *kms.SymmetricEncryptRequest,
-) (*kms.SymmetricEncryptResponse, error) {
-
-	return nil, grpc_status.Error(
-		grpc_codes.Unimplemented,
-		"Encrypt not implemented",
-	)
-}
-
 func (s *rootKmsService) Decrypt(
 	ctx context.Context,
 	req *kms.SymmetricDecryptRequest,
@@ -156,39 +144,6 @@ func (s *rootKmsService) Decrypt(
 		KeyId:     req.KeyId,
 		Plaintext: symmetricKey,
 	}, nil
-}
-
-func (s *rootKmsService) BatchEncrypt(
-	ctx context.Context,
-	req *kms.SymmetricBatchEncryptRequest,
-) (*kms.SymmetricBatchEncryptResponse, error) {
-
-	return nil, grpc_status.Error(
-		grpc_codes.Unimplemented,
-		"BatchEncrypt not implemented",
-	)
-}
-
-func (s *rootKmsService) BatchDecrypt(
-	ctx context.Context,
-	req *kms.SymmetricBatchDecryptRequest,
-) (*kms.SymmetricBatchDecryptResponse, error) {
-
-	return nil, grpc_status.Error(
-		grpc_codes.Unimplemented,
-		"BatchDecrypt not implemented",
-	)
-}
-
-func (s *rootKmsService) ReEncrypt(
-	ctx context.Context,
-	req *kms.SymmetricReEncryptRequest,
-) (*kms.SymmetricReEncryptResponse, error) {
-
-	return nil, grpc_status.Error(
-		grpc_codes.Unimplemented,
-		"ReEncrypt not implemented",
-	)
 }
 
 func (s *rootKmsService) GenerateDataKey(
@@ -237,55 +192,197 @@ func (s *rootKmsService) GenerateDataKey(
 	}, nil
 }
 
-func (s *rootKmsService) GenerateRandom(
-	ctx context.Context,
-	req *kms.GenerateRandomRequest,
-) (*kms.GenerateRandomResponse, error) {
-
-	return nil, grpc_status.Error(
-		grpc_codes.Unimplemented,
-		"GenerateRandom not implemented",
-	)
-}
-
-func (s *rootKmsService) GenerateAsymmetricDataKey(
-	ctx context.Context,
-	req *kms.GenerateAsymmetricDataKeyRequest,
-) (*kms.GenerateAsymmetricDataKeyResponse, error) {
-
-	return nil, grpc_status.Error(
-		grpc_codes.Unimplemented,
-		"GenerateAsymmetricDataKey not implemented",
-	)
-}
-
 ////////////////////////////////////////////////////////////////////////////////
 
-func loadTLSCredentials(config TLSConfig) (*tls.Config, error) {
+func generateCA(outputDir string) (
+	*rsa.PrivateKey,
+	*x509.Certificate,
+	[]byte,
+	error,
+) {
 
-	certificate, err := tls.LoadX509KeyPair(config.CertFile, config.KeyFile)
+	log.Println("generating CA")
+
+	caKey, err := rsa.GenerateKey(rand.Reader, 4096)
 	if err != nil {
-		return nil, fmt.Errorf("could not load server key pair: %v", err)
+		return nil, nil, nil, fmt.Errorf("failed to generate CA key: %w", err)
+	}
+
+	caTemplate := &x509.Certificate{
+		SerialNumber: big.NewInt(1),
+		Subject: pkix.Name{
+			Organization: []string{"Root KMS CA"},
+		},
+		NotBefore:             time.Now(),
+		NotAfter:              time.Now().Add(24 * time.Hour),
+		KeyUsage:              x509.KeyUsageCertSign | x509.KeyUsageDigitalSignature,
+		BasicConstraintsValid: true,
+		IsCA:                  true,
+	}
+
+	caCertDER, err := x509.CreateCertificate(
+		rand.Reader,
+		caTemplate,
+		caTemplate,
+		&caKey.PublicKey,
+		caKey,
+	)
+	if err != nil {
+		return nil, nil, nil, fmt.Errorf("failed to create CA cert: %w", err)
+	}
+
+	caCertPEM := pem.EncodeToMemory(&pem.Block{
+		Type:  "CERTIFICATE",
+		Bytes: caCertDER,
+	})
+
+	caPath := filepath.Join(outputDir, "ca.crt")
+	log.Printf("store CA to %s\n", caPath)
+
+	if err := os.WriteFile(caPath, caCertPEM, 0644); err != nil {
+		return nil, nil, nil, fmt.Errorf("failed to save CA cert: %w", err)
+	}
+
+	return caKey, caTemplate, caCertPEM, nil
+}
+
+func generateServerTLSCredentials(
+	caKey *rsa.PrivateKey,
+	caTemplate *x509.Certificate,
+	caCert []byte,
+) (*tls.Config, error) {
+
+	log.Println("generating server credentials")
+
+	key, err := rsa.GenerateKey(rand.Reader, 4096)
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate key: %w", err)
+	}
+
+	keyPEM := pem.EncodeToMemory(&pem.Block{
+		Type:  "RSA PRIVATE KEY",
+		Bytes: x509.MarshalPKCS1PrivateKey(key),
+	})
+
+	template := &x509.Certificate{
+		SerialNumber: big.NewInt(2),
+		Subject: pkix.Name{
+			Organization: []string{"Root KMS server"},
+		},
+		NotBefore: time.Now(),
+		NotAfter:  time.Now().Add(24 * time.Hour),
+		KeyUsage:  x509.KeyUsageDigitalSignature,
+		ExtKeyUsage: []x509.ExtKeyUsage{
+			x509.ExtKeyUsageClientAuth,
+			x509.ExtKeyUsageServerAuth,
+		},
+		BasicConstraintsValid: true,
+		DNSNames:              []string{"localhost"}, // fqdn?
+		IPAddresses: []net.IP{
+			net.ParseIP("127.0.0.1"),
+			net.ParseIP("::1"),
+		},
+	}
+
+	certDER, err := x509.CreateCertificate(
+		rand.Reader,
+		template,
+		caTemplate,
+		&key.PublicKey,
+		caKey,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create certificate: %w", err)
+	}
+
+	certPEM := pem.EncodeToMemory(&pem.Block{
+		Type:  "CERTIFICATE",
+		Bytes: certDER,
+	})
+
+	cert, err := tls.X509KeyPair(certPEM, keyPEM)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load server cert/key: %w", err)
 	}
 
 	certPool := x509.NewCertPool()
-	ca, err := os.ReadFile(config.CAFile)
-	if err != nil {
-		return nil, fmt.Errorf("could not read CA certificate: %v", err)
-	}
-
-	if ok := certPool.AppendCertsFromPEM(ca); !ok {
-		return nil, fmt.Errorf("failed to append CA certificate")
+	if !certPool.AppendCertsFromPEM(caCert) {
+		return nil, fmt.Errorf("failed to add CA cert")
 	}
 
 	tlsConfig := &tls.Config{
-		Certificates: []tls.Certificate{certificate},
 		ClientAuth:   tls.RequireAndVerifyClientCert,
+		Certificates: []tls.Certificate{cert},
 		ClientCAs:    certPool,
-		MinVersion:   tls.VersionTLS13,
 	}
 
 	return tlsConfig, nil
+}
+
+func generateClientCerts(
+	outputDir string,
+	caKey *rsa.PrivateKey,
+	caTemplate *x509.Certificate,
+) error {
+	log.Println("generating client credentials")
+
+	key, err := rsa.GenerateKey(rand.Reader, 4096)
+	if err != nil {
+		return fmt.Errorf("failed to generate key: %w", err)
+	}
+
+	keyPEM := pem.EncodeToMemory(&pem.Block{
+		Type:  "RSA PRIVATE KEY",
+		Bytes: x509.MarshalPKCS1PrivateKey(key),
+	})
+
+	template := &x509.Certificate{
+		SerialNumber: big.NewInt(2),
+		Subject: pkix.Name{
+			Organization: []string{"Root KMS client"},
+		},
+		NotBefore: time.Now(),
+		NotAfter:  time.Now().Add(24 * time.Hour),
+		KeyUsage:  x509.KeyUsageDigitalSignature,
+		ExtKeyUsage: []x509.ExtKeyUsage{
+			x509.ExtKeyUsageClientAuth,
+			x509.ExtKeyUsageServerAuth,
+		},
+		BasicConstraintsValid: true,
+	}
+
+	certDER, err := x509.CreateCertificate(
+		rand.Reader,
+		template,
+		caTemplate,
+		&key.PublicKey,
+		caKey,
+	)
+	if err != nil {
+		return fmt.Errorf("failed to create certificate: %w", err)
+	}
+
+	certPEM := pem.EncodeToMemory(&pem.Block{
+		Type:  "CERTIFICATE",
+		Bytes: certDER,
+	})
+
+	certPath := filepath.Join(outputDir, "client.crt")
+	keyPath := filepath.Join(outputDir, "client.key")
+
+	log.Printf("store the client certificate to %s\n", certPath)
+
+	if err := os.WriteFile(certPath, certPEM, 0644); err != nil {
+		return fmt.Errorf("failed to save client cert: %w", err)
+	}
+
+	log.Printf("store the client key to %s\n", keyPath)
+
+	if err := os.WriteFile(keyPath, keyPEM, 0600); err != nil {
+		return fmt.Errorf("failed to save client key: %w", err)
+	}
+
+	return nil
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -302,12 +399,20 @@ func run(configPath string) error {
 		return err
 	}
 
-	tlsCreds, err := loadTLSCredentials(config.TLS)
+	caKey, caTemplate, caCert, err := generateCA(config.CertsOutputDir)
 	if err != nil {
-		log.Fatalf("failed to load TLS credentials: %v", err)
+		log.Fatalf("failed to generate CA: %v", err)
 	}
 
-	log.Printf("launching Root KMS mock on port %d\n", config.Port)
+	tlsCreds, err := generateServerTLSCredentials(caKey, caTemplate, caCert)
+	if err != nil {
+		log.Fatalf("failed to generate server TLS credentials: %v", err)
+	}
+
+	err = generateClientCerts(config.CertsOutputDir, caKey, caTemplate)
+	if err != nil {
+		log.Fatalf("failed to generate client TLS credentials: %v", err)
+	}
 
 	lis, err := net.Listen("tcp", fmt.Sprintf(":%d", config.Port))
 	if err != nil {
