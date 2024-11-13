@@ -68,7 +68,7 @@ def create_nfs_http_proxy(insecure_port, nfs_port):
 
 def wait_for_nfs_server_proxy(port):
     '''
-    Ping NFS server proxy with delay between attempts to ensure
+    Ping filestore server proxy with delay between attempts to ensure
     it is running and listening by the moment the actual test execution begins
     '''
 
