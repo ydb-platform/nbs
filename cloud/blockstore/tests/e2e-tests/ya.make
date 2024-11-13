@@ -1,12 +1,7 @@
 PY3TEST()
 
-SIZE(MEDIUM)
-TIMEOUT(600)
-REQUIREMENTS(
-    cpu:4
-    ram:16
-)
-
+INCLUDE(${ARCADIA_ROOT}/cloud/storage/core/tests/recipes/medium.inc)
+SPLIT_FACTOR(1)
 
 TEST_SRCS(
     test.py
