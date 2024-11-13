@@ -23,7 +23,7 @@ THandleOpsQueue::EResult THandleOpsQueue::AddDestroyRequest(
     }
 
     if (!RequestsToProcess.Push(result)) {
-        return THandleOpsQueue::EResult::QueueOveflow;
+        return THandleOpsQueue::EResult::QueueOverflow;
     }
 
     return THandleOpsQueue::EResult::Ok;
