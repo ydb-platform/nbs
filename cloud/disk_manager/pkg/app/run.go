@@ -154,7 +154,6 @@ func run(
 		taskRegistry,
 		taskStorage,
 		config.TasksConfig,
-		taskMetricsRegistry,
 	)
 	if err != nil {
 		logging.Error(ctx, "Failed to create task scheduler: %v", err)

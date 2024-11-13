@@ -16,7 +16,6 @@ func RegisterForExecution(
 	registry *Registry,
 	storage tasks_storage.Storage,
 	config *tasks_config.TasksConfig,
-	metricsRegistry metrics.Registry,
 	taskScheduler Scheduler,
 ) error {
 
@@ -69,7 +68,7 @@ func RegisterCollectListerMetricsTaskForExecution(
 	registry *Registry,
 	storage tasks_storage.Storage,
 	config *tasks_config.TasksConfig,
-	metricsRegistry metrics.Registry,
+	tasksMetricsRegistry metrics.Registry,
 	taskScheduler Scheduler,
 ) error {
 
@@ -83,10 +82,12 @@ func RegisterCollectListerMetricsTaskForExecution(
 	err = registry.RegisterForExecution(
 		"tasks.CollectListerMetrics", func() Task {
 			return &collectListerMetricsTask{
-				registry:                  metricsRegistry,
+				registry:                  tasksMetricsRegistry,
 				storage:                   storage,
 				metricsCollectionInterval: listerMetricsCollectionInterval,
 
+				// This task is registered in control plane and collects metrics
+				// for all types of tasks.
 				taskTypes:                 registry.TaskTypes(),
 				hangingTaskGaugesByID:     make(map[string]metrics.Gauge),
 				maxHangingTaskIDsToReport: config.GetMaxHangingTaskIDsToReport(),

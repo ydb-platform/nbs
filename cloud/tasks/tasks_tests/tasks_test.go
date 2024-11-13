@@ -149,7 +149,7 @@ func createServicesWithConfig(
 	ctx context.Context,
 	db *persistence.YDBClient,
 	config *tasks_config.TasksConfig,
-	schedulerRegistry metrics.Registry,
+	listerRegistry metrics.Registry,
 ) services {
 
 	registry := tasks.NewRegistry()
@@ -167,7 +167,16 @@ func createServicesWithConfig(
 		registry,
 		storage,
 		config,
-		schedulerRegistry,
+	)
+	require.NoError(t, err)
+
+	err = tasks.RegisterCollectListerMetricsTaskForExecution(
+		ctx,
+		registry,
+		storage,
+		config,
+		listerRegistry,
+		scheduler,
 	)
 	require.NoError(t, err)
 
@@ -206,6 +215,21 @@ func (s *services) startRunners(ctx context.Context) error {
 		metrics_empty.NewRegistry(),
 		s.config,
 		"localhost",
+	)
+}
+
+func (s *services) registerCollectListerMetricsTaskForExecution(
+	ctx context.Context,
+	tasksMetricsRegistry metrics.Registry,
+) error {
+
+	return tasks.RegisterCollectListerMetricsTaskForExecution(
+		ctx,
+		s.registry,
+		s.storage,
+		s.config,
+		tasksMetricsRegistry,
+		s.scheduler,
 	)
 }
 

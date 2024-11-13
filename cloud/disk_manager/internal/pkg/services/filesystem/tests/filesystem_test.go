@@ -181,7 +181,6 @@ func createServices(
 		taskRegistry,
 		taskStorage,
 		tasksConfig,
-		metrics.NewEmptyRegistry(),
 	)
 	require.NoError(t, err)
 

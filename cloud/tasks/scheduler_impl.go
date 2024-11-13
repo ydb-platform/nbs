@@ -13,7 +13,6 @@ import (
 	"github.com/ydb-platform/nbs/cloud/tasks/errors"
 	"github.com/ydb-platform/nbs/cloud/tasks/headers"
 	"github.com/ydb-platform/nbs/cloud/tasks/logging"
-	"github.com/ydb-platform/nbs/cloud/tasks/metrics"
 	"github.com/ydb-platform/nbs/cloud/tasks/operation"
 	tasks_storage "github.com/ydb-platform/nbs/cloud/tasks/storage"
 	"github.com/ydb-platform/nbs/cloud/tasks/tracing"
@@ -534,7 +533,6 @@ func NewScheduler(
 	registry *Registry,
 	storage tasks_storage.Storage,
 	config *tasks_config.TasksConfig,
-	metricsRegistry metrics.Registry,
 ) (Scheduler, error) {
 
 	pollForTaskUpdatesPeriod, err := time.ParseDuration(
@@ -572,7 +570,6 @@ func NewScheduler(
 		registry,
 		storage,
 		config,
-		metricsRegistry,
 		s,
 	)
 	if err != nil {

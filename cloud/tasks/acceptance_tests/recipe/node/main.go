@@ -77,7 +77,6 @@ func run(config *node_config.Config) error {
 		registry,
 		storage,
 		config.GetTasksConfig(),
-		empty.NewRegistry(),
 	)
 	if err != nil {
 		return err
