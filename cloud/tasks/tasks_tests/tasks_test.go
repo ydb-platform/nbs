@@ -218,21 +218,6 @@ func (s *services) startRunners(ctx context.Context) error {
 	)
 }
 
-func (s *services) registerCollectListerMetricsTaskForExecution(
-	ctx context.Context,
-	tasksMetricsRegistry metrics.Registry,
-) error {
-
-	return tasks.RegisterCollectListerMetricsTaskForExecution(
-		ctx,
-		s.registry,
-		s.storage,
-		s.config,
-		tasksMetricsRegistry,
-		s.scheduler,
-	)
-}
-
 ////////////////////////////////////////////////////////////////////////////////
 
 type doublerTask struct {
