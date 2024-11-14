@@ -17,12 +17,12 @@ using TResponseHandler = std::function<int(nl_msg*)>;
 class TSocket
 {
 private:
-    nl_sock* Socket;
+    std::unique_ptr<nl_sock, void(*)(nl_sock*)> Socket;
     int Family;
 
 public:
     explicit TSocket(TString family);
-    ~TSocket();
+    ~TSocket() = default;
 
     [[nodiscard]] int GetFamily() const
     {
