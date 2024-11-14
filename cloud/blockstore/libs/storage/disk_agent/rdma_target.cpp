@@ -293,31 +293,49 @@ private:
         }
     }
 
+    void CheckIfDeviceIsDisabled(
+        const TString& uuid,
+        const TString& clientId) const
+    {
+        auto ec = DeviceClient->GetDeviceIOErrorCode(uuid);
+        if (!ec) {
+            return;
+        }
+
+        if (GetErrorKind(MakeError(*ec)) != EErrorKind::ErrorRetriable) {
+            STORAGE_ERROR_T(
+                LogThrottler,
+                "[" << uuid << "/" << clientId
+                    << "] Device disabled. Drop request.");
+
+            if (const auto* deviceData = Devices.FindPtr(uuid)) {
+                deviceData->Device->ReportIOError();
+            }
+        } else {
+            STORAGE_TRACE_T(
+                LogThrottler,
+                "[" << uuid << "/" << clientId
+                    << "] Device suspended. Reject request.");
+        }
+
+        ythrow TServiceError(*ec) << "Device disabled";
+    }
+
     TStorageAdapterPtr GetDevice(
         const TString& uuid,
         const TString& clientId,
         NProto::EVolumeAccessMode accessMode) const
     {
-        if (DeviceClient->IsDeviceDisabled(uuid)) {
-            STORAGE_ERROR_T(
-                LogThrottler,
-                "[" << uuid << "/" << clientId << "] Device disabled. Drop request.");
-
-            if (auto* deviceData = Devices.FindPtr(uuid)) {
-                deviceData->Device->ReportIOError();
-            }
-            ythrow TServiceError(MakeError(E_IO, "Device disabled"));
-        }
+        CheckIfDeviceIsDisabled(uuid, clientId);
 
         NProto::TError error =
             DeviceClient->AccessDevice(uuid, clientId, accessMode);
 
         if (HasError(error)) {
-            ythrow TServiceError(error);
+            ythrow TServiceError(error.GetCode()) << error.GetMessage();
         }
 
         auto it = Devices.find(uuid);
-
         if (it == Devices.cend()) {
             ythrow TServiceError(E_NOT_FOUND);
         }
@@ -333,16 +351,16 @@ private:
         ythrow TServiceError(E_NOT_FOUND);
     }
 
-    template <typename Future, typename THandleResponseMethod>
+    template <typename TFuture, typename THandleResponseMethod>
     void SubscribeForResponse(
-        Future future,
+        TFuture future,
         TRequestDetails requestDetails,
         THandleResponseMethod handleResponseMethod) const
     {
         auto handleResponse =
             [self = shared_from_this(),
              requestDetails = std::move(requestDetails),
-             handleResponseMethod = handleResponseMethod](Future future) mutable
+             handleResponseMethod = handleResponseMethod](TFuture future) mutable
         {
             self->TaskQueue->ExecuteSimple(
                 [self = self,

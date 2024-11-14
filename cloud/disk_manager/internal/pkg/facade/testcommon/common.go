@@ -11,6 +11,8 @@ import (
 	"time"
 
 	"github.com/golang/protobuf/ptypes/empty"
+	prometheus_client "github.com/prometheus/client_model/go"
+	"github.com/prometheus/common/expfmt"
 	"github.com/stretchr/testify/require"
 	disk_manager "github.com/ydb-platform/nbs/cloud/disk_manager/api"
 	internal_client "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/client"
@@ -645,4 +647,56 @@ func CheckErrorDetails(
 	if len(message) != 0 {
 		require.Equal(t, message, errorDetails.Message)
 	}
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+func GetCounter(t *testing.T, name string, labels map[string]string) float64 {
+	resp, err := http.Get(
+		fmt.Sprintf(
+			"http://localhost:%s/metrics/",
+			os.Getenv("DISK_MANAGER_RECIPE_DISK_MANAGER_MON_PORT"),
+		),
+	)
+	require.NoError(t, err)
+	defer resp.Body.Close()
+
+	parser := expfmt.TextParser{}
+	metricFamilies, err := parser.TextToMetricFamilies(resp.Body)
+	require.NoError(t, err)
+
+	retrievedMetrics, ok := metricFamilies[name]
+	require.True(t, ok)
+	for _, metricValue := range retrievedMetrics.GetMetric() {
+		if metricMatchesLabel(labels, metricValue) {
+			return metricValue.GetCounter().GetValue()
+		}
+	}
+
+	require.Failf(t, "No counter with name %s", name)
+	return 0
+}
+
+func metricMatchesLabel(
+	labels map[string]string,
+	metric *prometheus_client.Metric,
+) bool {
+
+	metricLabels := make(map[string]string)
+	for _, label := range metric.GetLabel() {
+		metricLabels[label.GetName()] = label.GetValue()
+	}
+
+	for name, value := range labels {
+		foundValue, ok := metricLabels[name]
+		if !ok {
+			return false
+		}
+
+		if foundValue != value {
+			return false
+		}
+	}
+
+	return true
 }

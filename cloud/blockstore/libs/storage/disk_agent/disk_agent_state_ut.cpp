@@ -1855,6 +1855,170 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
             UNIT_ASSERT_VALUES_EQUAL_C(S_OK, error.GetCode(), error);
         }
     }
+
+    Y_UNIT_TEST_F(ShouldDisableDevice, TFiles)
+    {
+        auto state = CreateDiskAgentStateNull(
+            CreateNullConfig({ .Files = Nvme3s, .AcquireRequired = true })
+        );
+
+        auto read = [&]
+        {
+            NProto::TReadDeviceBlocksRequest request;
+            request.SetDeviceUUID("uuid-1");
+            request.SetStartIndex(1);
+            request.SetBlockSize(4096);
+            request.SetBlocksCount(10);
+            request.MutableHeaders()->SetClientId("writer-1");
+
+            return state->Read(Now(), std::move(request))
+                .GetValueSync()
+                .GetError();
+        };
+
+        auto write = [&]
+        {
+            NProto::TWriteDeviceBlocksRequest request;
+            request.SetDeviceUUID("uuid-1");
+            request.SetStartIndex(1);
+            request.SetBlockSize(4096);
+            request.MutableHeaders()->SetClientId("writer-1");
+
+            ResizeIOVector(*request.MutableBlocks(), 10, 4096);
+
+            return state->Write(Now(), std::move(request))
+                .GetValueSync()
+                .GetError();
+        };
+
+        auto zero = [&]
+        {
+            NProto::TZeroDeviceBlocksRequest request;
+            request.SetDeviceUUID("uuid-1");
+            request.SetStartIndex(1);
+            request.SetBlockSize(4096);
+            request.SetBlocksCount(10);
+            request.MutableHeaders()->SetClientId("writer-1");
+
+            return state->WriteZeroes(Now(), std::move(request))
+                .GetValueSync()
+                .GetError();
+        };
+
+        auto future = state->Initialize();
+        const auto& r = future.GetValueSync();
+
+        UNIT_ASSERT(r.Errors.empty());
+        UNIT_ASSERT_VALUES_EQUAL(3, r.Configs.size());
+
+        state->AcquireDevices(
+            {"uuid-1"},
+            "writer-1",
+            TInstant::FromValue(1),
+            NProto::VOLUME_ACCESS_READ_WRITE,
+            42,   // MountSeqNumber
+            "vol0",
+            1000);   // VolumeGeneration
+
+        state->DisableDevice("uuid-1");
+
+        auto stats = state->CollectStats().GetValueSync();
+        UNIT_ASSERT_VALUES_EQUAL(3, stats.DeviceStatsSize());
+        UNIT_ASSERT_VALUES_EQUAL(0, stats.GetDeviceStats(0).GetErrors());
+        UNIT_ASSERT_VALUES_EQUAL(0, stats.GetDeviceStats(1).GetErrors());
+        UNIT_ASSERT_VALUES_EQUAL(0, stats.GetDeviceStats(2).GetErrors());
+
+        UNIT_ASSERT_EXCEPTION_SATISFIES(
+            read(),
+            TServiceError,
+            [](auto& e) { return e.GetCode() == E_IO; });
+
+        UNIT_ASSERT_EXCEPTION_SATISFIES(
+            write(),
+            TServiceError,
+            [](auto& e) { return e.GetCode() == E_IO; });
+
+        UNIT_ASSERT_EXCEPTION_SATISFIES(
+            zero(),
+            TServiceError,
+            [](auto& e) { return e.GetCode() == E_IO; });
+
+        stats = state->CollectStats().GetValueSync();
+        SortBy(
+            *stats.MutableDeviceStats(),
+            [](const auto& s) { return s.GetDeviceUUID(); });
+
+        UNIT_ASSERT_VALUES_EQUAL(3, stats.DeviceStatsSize());
+        UNIT_ASSERT_VALUES_EQUAL(3, stats.GetDeviceStats(0).GetErrors()); // uuid-1
+        UNIT_ASSERT_VALUES_EQUAL(0, stats.GetDeviceStats(1).GetErrors());
+        UNIT_ASSERT_VALUES_EQUAL(0, stats.GetDeviceStats(2).GetErrors());
+
+        state->SuspendDevice("uuid-1");
+
+        UNIT_ASSERT_EXCEPTION_SATISFIES(
+            read(),
+            TServiceError,
+            [](auto& e) { return e.GetCode() == E_REJECTED; });
+
+        UNIT_ASSERT_EXCEPTION_SATISFIES(
+            write(),
+            TServiceError,
+            [](auto& e) { return e.GetCode() == E_REJECTED; });
+
+        UNIT_ASSERT_EXCEPTION_SATISFIES(
+            zero(),
+            TServiceError,
+            [](auto& e) { return e.GetCode() == E_REJECTED; });
+
+        stats = state->CollectStats().GetValueSync();
+        SortBy(
+            *stats.MutableDeviceStats(),
+            [](const auto& s) { return s.GetDeviceUUID(); });
+
+        UNIT_ASSERT_VALUES_EQUAL(3, stats.DeviceStatsSize());
+        UNIT_ASSERT_VALUES_EQUAL(3, stats.GetDeviceStats(0).GetErrors()); // uuid-1
+        UNIT_ASSERT_VALUES_EQUAL(0, stats.GetDeviceStats(1).GetErrors());
+        UNIT_ASSERT_VALUES_EQUAL(0, stats.GetDeviceStats(2).GetErrors());
+
+        state->EnableDevice("uuid-1");
+
+        {
+            auto error = read();
+
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                error.GetCode(),
+                error.GetMessage());
+        }
+
+        {
+            auto error = write();
+
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                error.GetCode(),
+                error.GetMessage());
+        }
+
+        {
+            auto error = zero();
+
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                error.GetCode(),
+                error.GetMessage());
+        }
+
+        stats = state->CollectStats().GetValueSync();
+        SortBy(
+            *stats.MutableDeviceStats(),
+            [](const auto& s) { return s.GetDeviceUUID(); });
+
+        UNIT_ASSERT_VALUES_EQUAL(3, stats.DeviceStatsSize());
+        UNIT_ASSERT_VALUES_EQUAL(3, stats.GetDeviceStats(0).GetErrors()); // uuid-1
+        UNIT_ASSERT_VALUES_EQUAL(0, stats.GetDeviceStats(1).GetErrors());
+        UNIT_ASSERT_VALUES_EQUAL(0, stats.GetDeviceStats(2).GetErrors());
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

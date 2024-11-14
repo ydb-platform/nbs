@@ -2,7 +2,6 @@
 
 #include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/disk_agent/model/config.h>
-#include <cloud/storage/core/libs/common/proto_helpers.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
 #include <util/generic/algorithm.h>
@@ -160,26 +159,6 @@ NProto::TError FindDevices(
     }
 
     return {};
-}
-
-TVector<NProto::TFileDeviceArgs> LoadCachedConfig(const TString& path)
-{
-    if (path.empty()) {
-        return {};
-    }
-
-    if (!NFs::Exists(path)) {
-        return {};
-    }
-
-    NProto::TDiskAgentConfig proto;
-    ParseProtoTextFromFileRobust(path, proto);
-
-    auto& devices = *proto.MutableFileDevices();
-
-    return {
-        std::make_move_iterator(devices.begin()),
-        std::make_move_iterator(devices.end())};
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

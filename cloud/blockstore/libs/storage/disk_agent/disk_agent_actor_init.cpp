@@ -62,7 +62,7 @@ void TDiskAgentActor::InitAgent(const TActorContext& ctx)
                 std::move(r.Configs),
                 std::move(r.Errors),
                 std::move(r.ConfigMismatchErrors),
-                std::move(r.DevicesWithNewSerialNumber));
+                std::move(r.DevicesWithSuspendedIO));
 
             actorSystem->Send(
                 new IEventHandle(

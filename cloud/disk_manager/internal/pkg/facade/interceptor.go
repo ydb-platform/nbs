@@ -216,7 +216,7 @@ func (i *interceptor) intercept(
 	if err != nil {
 		logging.Warn(ctx, "%v failed, err=%v", requestName, err)
 		// Don't report errors when ctx is cancelled.
-		if ctx.Err() != nil {
+		if ctx.Err() == nil {
 			requestStats.onError(err)
 		}
 	}

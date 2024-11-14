@@ -3,8 +3,10 @@ package facade_test
 import (
 	"testing"
 
+	"github.com/golang/protobuf/ptypes/empty"
 	"github.com/stretchr/testify/require"
 	disk_manager "github.com/ydb-platform/nbs/cloud/disk_manager/api"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/facade/testcommon"
 	"github.com/ydb-platform/nbs/cloud/tasks/errors"
 	"google.golang.org/protobuf/proto"
 )
@@ -47,4 +49,48 @@ func TestFacadeErrorDetails(t *testing.T) {
 	errorDetails1.Code = 321
 	errorDetails1.Message = "ZYX"
 	check()
+}
+
+func TestFacadeShouldSendErrorMetrics(t *testing.T) {
+	ctx := testcommon.NewContext()
+	errorsCount := testcommon.GetCounter(
+		t,
+		"errors",
+		map[string]string{
+			"component": "grpc_facade",
+			"request":   "DiskService.Create",
+		},
+	)
+	client, err := testcommon.NewClient(ctx)
+	require.NoError(t, err)
+	defer client.Close()
+
+	diskID := t.Name()
+	reqCtx := testcommon.GetRequestContext(t, ctx)
+	_, err = client.CreateDisk(reqCtx, &disk_manager.CreateDiskRequest{
+		Src: &disk_manager.CreateDiskRequest_SrcEmpty{
+			SrcEmpty: &empty.Empty{},
+		},
+		// Incorrect size to trigger errors
+		Size: 1,
+		Kind: disk_manager.DiskKind_DISK_KIND_SSD,
+		DiskId: &disk_manager.DiskId{
+			ZoneId: "zone-a",
+			DiskId: diskID,
+		},
+	})
+	require.Error(t, err)
+	newErrorsCount := testcommon.GetCounter(
+		t,
+		"errors",
+		map[string]string{
+			"component": "grpc_facade",
+			"request":   "DiskService.Create",
+		},
+	)
+	require.GreaterOrEqual(
+		t,
+		newErrorsCount-errorsCount,
+		float64(1),
+	)
 }
