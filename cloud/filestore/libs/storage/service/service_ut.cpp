@@ -4247,11 +4247,17 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         TServiceClient service(env.GetRuntime(), nodeIdx);
         service.CreateFileStore(fsId, initialBlockCount);
 
-        auto destroyFileStoreResponse = service.AssertDestroyFileStoreFailed(fsId);
+        service.SendDestroyFileStoreRequest(fsId);
+        auto destroyFileStoreResponse = service.RecvDestroyFileStoreResponse();
         UNIT_ASSERT_VALUES_EQUAL_C(
-            E_ARGUMENT,
+            S_FALSE,
             destroyFileStoreResponse->GetStatus(),
             destroyFileStoreResponse->GetErrorReason());
+
+        auto listing = service.ListFileStores();
+        const auto& fsIds = listing->Record.GetFileStores();
+        UNIT_ASSERT_VALUES_EQUAL(1, fsIds.size());
+        UNIT_ASSERT_VALUES_EQUAL(fsId, fsIds[0]);
     }
 
     Y_UNIT_TEST(ShouldValidateRequestsWithShardId)

@@ -327,11 +327,11 @@ void TStorageServiceActor::HandleDestroyFileStore(
         LOG_INFO(
             ctx,
             TFileStoreComponents::SERVICE,
-            "FileStore %s is in deny list",
+            "FileStore %s is in deny list, responding with S_FALSE",
             msg->Record.GetFileSystemId().c_str());
         auto response =
             std::make_unique<TEvService::TEvDestroyFileStoreResponse>(MakeError(
-                E_ARGUMENT,
+                S_FALSE,
                 Sprintf(
                     "FileStore %s is in deny list",
                     msg->Record.GetFileSystemId().c_str())));
