@@ -67,7 +67,13 @@ public:
     TVector<TString> RunRandomIndexLoad()
     {
         TVector<TString> responses;
-        const size_t numRequests = 5000;
+
+        const auto sanitizerType = GetEnv("SANITIZER_TYPE");
+        STORAGE_INFO("Sanitizer: %s", sanitizerType.c_str());
+        const THashSet<TString> slowSanitizers({"thread", "undefined", "address"});
+        const ui32 d = slowSanitizers.contains(sanitizerType) ? 20 : 1;
+
+        const size_t numRequests = 5000 / d;
 
         while (responses.size() < numRequests) {
             auto operation = GetRandomOperation();
