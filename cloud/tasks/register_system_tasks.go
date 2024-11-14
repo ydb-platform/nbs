@@ -68,6 +68,13 @@ func RegisterSystemTasks(
 		return err
 	}
 
+	collectListerMetricsTaskScheduleInterval, err := time.ParseDuration(
+		config.GetCollectListerMetricsTaskScheduleInterval(),
+	)
+	if err != nil {
+		return err
+	}
+
 	err = registry.RegisterForExecution(
 		"tasks.CollectListerMetrics", func() Task {
 			return &collectListerMetricsTask{
@@ -75,20 +82,11 @@ func RegisterSystemTasks(
 				storage:                   storage,
 				metricsCollectionInterval: listerMetricsCollectionInterval,
 
-				// This task is registered in control plane and collects metrics
-				// for all types of tasks.
 				taskTypes:                 registry.TaskTypes(),
 				hangingTaskGaugesByID:     make(map[string]metrics.Gauge),
 				maxHangingTaskIDsToReport: config.GetMaxHangingTaskIDsToReport(),
 			}
 		},
-	)
-	if err != nil {
-		return err
-	}
-
-	collectListerMetricsTaskScheduleInterval, err := time.ParseDuration(
-		config.GetCollectListerMetricsTaskScheduleInterval(),
 	)
 	if err != nil {
 		return err
