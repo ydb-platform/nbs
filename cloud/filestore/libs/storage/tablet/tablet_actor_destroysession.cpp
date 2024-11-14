@@ -49,15 +49,17 @@ void TIndexTabletActor::HandleDestroySession(
 
     auto* session = FindSession(sessionId);
     if (!session) {
-        auto response = std::make_unique<TEvIndexTablet::TEvDestroySessionResponse>();
+        auto response =
+            std::make_unique<TEvIndexTablet::TEvDestroySessionResponse>();
 
         NCloud::Reply(ctx, *ev, std::move(response));
         return;
     }
 
     if (session->GetClientId() != clientId) {
-        auto response = std::make_unique<TEvIndexTablet::TEvDestroySessionResponse>(
-            ErrorInvalidSession(clientId, sessionId, sessionSeqNo));
+        auto response =
+            std::make_unique<TEvIndexTablet::TEvDestroySessionResponse>(
+                ErrorInvalidSession(clientId, sessionId, sessionSeqNo));
 
         NCloud::Reply(ctx, *ev, std::move(response));
         return;
