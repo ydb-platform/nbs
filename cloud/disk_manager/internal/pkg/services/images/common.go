@@ -61,15 +61,17 @@ func deleteImage(
 		)
 	}
 
-	err = scheduleRetireBaseDisks(
-		ctx,
-		execCtx,
-		config,
-		scheduler,
-		*imageMeta,
-	)
-	if err != nil {
-		return err
+	if imageMeta.Size > 0 {
+		err = scheduleRetireBaseDisks(
+			ctx,
+			execCtx,
+			config,
+			scheduler,
+			*imageMeta,
+		)
+		if err != nil {
+			return err
+		}
 	}
 
 	// Hack for NBS-2225.
