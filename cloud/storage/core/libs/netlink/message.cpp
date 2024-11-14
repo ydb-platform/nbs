@@ -43,4 +43,13 @@ TNestedAttribute TMessage::Nest(int attribute)
     return TNestedAttribute(Message, attribute);
 }
 
+void TMessage::Put(int attribute, void* data, size_t size)
+{
+    if (int err = nla_put(Message, attribute, size, data)) {
+        throw TServiceError(E_FAIL)
+            << "unable to put attribute " << attribute << ": "
+            << nl_geterror(err);
+    }
+}
+
 }   // namespace NCloud::NNetlink

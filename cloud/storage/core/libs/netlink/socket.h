@@ -31,13 +31,7 @@ public:
 
     void SetCallback(nl_cb_type type, TResponseHandler func);
 
-    static int ResponseHandler(nl_msg* msg, void* arg)
-    {
-        auto func = std::unique_ptr<TResponseHandler>(
-            static_cast<TResponseHandler*>(arg));
-
-        return (*func)(msg);
-    }
+    static int ResponseHandler(nl_msg* msg, void* arg);
 
     void Send(nl_msg* message);
 };

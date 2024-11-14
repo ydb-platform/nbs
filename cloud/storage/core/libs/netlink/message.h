@@ -36,14 +36,12 @@ public:
 
     TNestedAttribute Nest(int attribute);
 
+    void Put(int attribute, void* data, size_t size);
+
     template <typename T>
     void Put(int attribute, T data)
     {
-        if (int err = nla_put(Message, attribute, sizeof(T), &data)) {
-            throw TServiceError(E_FAIL)
-                << "unable to put attribute " << attribute << ": "
-                << nl_geterror(err);
-        }
+        Put(attribute, &data, sizeof(T));
     }
 };
 

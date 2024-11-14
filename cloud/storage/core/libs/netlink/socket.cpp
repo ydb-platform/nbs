@@ -60,4 +60,12 @@ void TSocket::Send(nl_msg* message)
     }
 }
 
+int TSocket::ResponseHandler(nl_msg* msg, void* arg)
+{
+    auto func = std::unique_ptr<TResponseHandler>(
+        static_cast<TResponseHandler*>(arg));
+
+    return (*func)(msg);
+}
+
 }   // namespace NCloud::NNetlink
