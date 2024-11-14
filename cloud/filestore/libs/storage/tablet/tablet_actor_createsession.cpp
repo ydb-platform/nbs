@@ -367,7 +367,9 @@ void TIndexTabletActor::HandleSyncShardSessions(
 {
     THashSet<TString> filter;
     for (auto& s: *ev->Get()->Sessions.MutableSessions()) {
-        filter.insert(*s.MutableSessionId());
+        if (!s.GetIsOrphan()) {
+            filter.insert(*s.MutableSessionId());
+        }
     }
     TEvIndexTabletPrivate::TShardSessionsInfo info;
     info.ShardId = std::move(ev->Get()->ShardId);

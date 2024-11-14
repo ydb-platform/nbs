@@ -365,6 +365,7 @@ message TTabletSessionInfo
     bytes SessionState = 3;
     uint64 MaxSeqNo = 4;
     uint64 MaxRwSeqNo = 5;
+    bool IsOrphan = 6;
 }
 
 message TDescribeSessionsResponse
