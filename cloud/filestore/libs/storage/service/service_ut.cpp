@@ -4149,7 +4149,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         TServiceClient service(env.GetRuntime(), nodeIdx);
         service.CreateFileStore(fsId, initialBlockCount);
 
-        auto destroyFileStoreResponse = service.AssertDestroyFileStoreFailed(fsId);
+        service.SendDestroyFileStoreRequest(fsId);
+        auto destroyFileStoreResponse = service.RecvDestroyFileStoreResponse();
         UNIT_ASSERT_VALUES_EQUAL_C(
             S_FALSE,
             destroyFileStoreResponse->GetStatus(),
