@@ -100,7 +100,7 @@ public:
             if (CpuAcctWait.GetLength() >= bufSize - 1) {
                 ReportCpuWaitFatalError();
                 CpuAcctWait.Close();
-                return MakeError(E_FAIL, StatsFile + " is too large");
+                return MakeError(E_INVALID_STATE, StatsFile + " is too large");
             }
 
             char buf[bufSize];
@@ -127,7 +127,7 @@ public:
             ReportCpuWaitFatalError();
             auto errorMessage = BuildErrorMessageFromException();
             CpuAcctWait.Close();
-            return MakeError(E_INVALID_STATE, std::move(errorMessage));
+            return MakeError(E_FAIL, std::move(errorMessage));
         }
     }
 
