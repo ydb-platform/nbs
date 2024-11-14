@@ -336,6 +336,7 @@ public:
     void SetupSession(TSetupSession& cmd)
     {
         if (!Session) {
+            cmd.Complete.SetValue(true);
             return;
         }
         if (!ShouldStop()) {
