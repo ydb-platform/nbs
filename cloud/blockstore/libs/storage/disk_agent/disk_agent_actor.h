@@ -157,6 +157,10 @@ private:
 
     bool ShouldOffloadRequest(ui32 eventType) const;
 
+    void ProcessDevicesToDisableIO(
+        const NActors::TActorContext& ctx,
+        TVector<TString> devicesToDisableIO);
+
 private:
     STFUNC(StateInit);
     STFUNC(StateWork);

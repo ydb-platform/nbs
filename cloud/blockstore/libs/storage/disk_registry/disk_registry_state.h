@@ -356,6 +356,7 @@ public:
     {
         TVector<TDiskId> AffectedDisks;
         TVector<TDiskId> DisksToReallocate;
+        TVector<TString> DevicesToDisableIO;
     };
 
     auto RegisterAgent(

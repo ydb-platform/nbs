@@ -215,6 +215,7 @@ struct TTxDiskRegistry
         NProto::TError Error;
         TVector<TString> AffectedDisks;
         TVector<TString> NotifiedDisks;
+        TVector<TString> DevicesToDisableIO;
 
         TAddAgent(
                 TRequestInfoPtr requestInfo,
@@ -232,6 +233,7 @@ struct TTxDiskRegistry
             Error.Clear();
             AffectedDisks.clear();
             NotifiedDisks.clear();
+            DevicesToDisableIO.clear();
         }
     };
 

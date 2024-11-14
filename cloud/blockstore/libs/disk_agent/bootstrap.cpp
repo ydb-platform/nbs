@@ -106,8 +106,10 @@ bool AgentHasDevices(
     const TString storagePath = storageConfig->GetCachedDiskAgentConfigPath();
     const TString diskAgentPath = agentConfig->GetCachedConfigPath();
     const TString& path = diskAgentPath.empty() ? storagePath : diskAgentPath;
-    auto cachedDevices = NStorage::LoadCachedConfig(path);
-    if (!cachedDevices.empty()) {
+
+    if (auto [config, _] = NStorage::LoadDiskAgentConfig(path);
+        config.FileDevicesSize() != 0)
+    {
         return true;
     }
 

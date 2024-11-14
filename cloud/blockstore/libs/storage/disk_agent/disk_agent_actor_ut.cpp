@@ -5,6 +5,7 @@
 #include <cloud/blockstore/libs/common/block_checksum.h>
 #include <cloud/blockstore/libs/common/iovector.h>
 #include <cloud/blockstore/libs/diagnostics/critical_events.h>
+#include <cloud/blockstore/libs/nvme/nvme.h>
 #include <cloud/blockstore/libs/storage/disk_agent/testlib/test_env.h>
 #include <cloud/blockstore/libs/storage/model/composite_id.h>
 #include <cloud/blockstore/libs/storage/testlib/ut_helpers.h>
@@ -56,6 +57,60 @@ TFsPath TryGetRamDrivePath()
         ? GetSystemTempDir()
         : p;
 }
+
+////////////////////////////////////////////////////////////////////////////////
+
+struct TTestNvmeManager
+    : NNvme::INvmeManager
+{
+    THashMap<TString, TString> PathToSerial;
+
+    explicit TTestNvmeManager(
+            const TVector<std::pair<TString, TString>>& pathToSerial)
+        : PathToSerial{pathToSerial.cbegin(), pathToSerial.cend()}
+    {
+    }
+
+    TFuture<NProto::TError> Format(
+        const TString& path,
+        NNvme::nvme_secure_erase_setting ses) override
+    {
+        Y_UNUSED(path);
+        Y_UNUSED(ses);
+
+        return MakeFuture<NProto::TError>();
+    }
+
+    TFuture<NProto::TError> Deallocate(
+        const TString& path,
+        ui64 offsetBytes,
+        ui64 sizeBytes) override
+    {
+        Y_UNUSED(path);
+        Y_UNUSED(offsetBytes);
+        Y_UNUSED(sizeBytes);
+
+        return MakeFuture<NProto::TError>();
+    }
+
+    TResultOrError<TString> GetSerialNumber(const TString& path) override
+    {
+        const auto filename = TFsPath{path}.Basename();
+        auto it = PathToSerial.find(filename);
+        if (it == PathToSerial.end()) {
+            return MakeError(MAKE_SYSTEM_ERROR(42), filename);
+        }
+
+        return it->second;
+    }
+
+    TResultOrError<bool> IsSsd(const TString& path) override
+    {
+        Y_UNUSED(path);
+
+        return true;
+    }
+};
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -113,10 +168,12 @@ struct TFixture
     const TTempDir TempDir;
     const TString CachedSessionsPath =
         TempDir.Path() / "nbs-disk-agent-sessions.txt";
+    const TString CachedConfigPath = TempDir.Path() / "nbs-disk-agent.txt";
     const TDuration ReleaseInactiveSessionsTimeout = 10s;
 
     TTestBasicRuntime Runtime;
-    NMonitoring::TDynamicCountersPtr Counters = MakeIntrusive<NMonitoring::TDynamicCounters>();
+    NMonitoring::TDynamicCountersPtr Counters =
+        MakeIntrusive<NMonitoring::TDynamicCounters>();
 
     TVector<TFsPath> Files;
 
@@ -141,10 +198,12 @@ struct TFixture
         pool.SetMaxSize(DefaultFileSize);
 
         config.SetCachedSessionsPath(CachedSessionsPath);
+        config.SetCachedConfigPath(CachedConfigPath);
         config.SetBackend(NProto::DISK_AGENT_BACKEND_AIO);
         config.SetAcquireRequired(true);
         config.SetReleaseInactiveSessionsTimeout(
             ReleaseInactiveSessionsTimeout.MilliSeconds());
+        config.SetDisableBrokenDevices(true);
 
         return config;
     }
@@ -1053,7 +1112,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
 
         // Return all stolen request - write/zero request will be completed
         // after this
-        for (auto& request : stolenWriteCompletedRequests) {
+        for (auto& request: stolenWriteCompletedRequests) {
             runtime.Send(request.release());
         }
 
@@ -1256,7 +1315,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
 
         // Return all stolen request - write/zero request will be completed
         // after this
-        for (auto& request : stolenWriteCompletedRequests) {
+        for (auto& request: stolenWriteCompletedRequests) {
             runtime.Send(request.release());
         }
         {
@@ -4558,6 +4617,176 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
         UNIT_ASSERT_VALUES_EQUAL(1, parsedZeroes);
         UNIT_ASSERT_VALUES_EQUAL(1, parsedZeroes);
         UNIT_ASSERT_VALUES_EQUAL(5, actors.size());
+    }
+
+    Y_UNIT_TEST_F(ShouldDisableDevicesAfterRegistration, TFixture)
+    {
+        const TString uuids[] {
+            "79955ae90189fe8a89ab832a8b0cb57d", // NVMENBS01
+            "657dabaf3d224c9177b00c437716dfb1", // NVMENBS02
+            "e85cd1d217c3239507fc0cd180a075fd", // NVMENBS03
+            "5ea2fcdce0a180a63db2b5f6a5b34221"  // NVMENBS04
+        };
+
+        TVector<std::pair<TString, TString>> pathToSerial{
+            {"NVMENBS01", "W"},
+            {"NVMENBS02", "X"},
+            {"NVMENBS03", "Y"},
+            {"NVMENBS04", "Z"},
+        };
+
+        // build the config cache
+        {
+            NProto::TDiskAgentConfig config;
+
+            size_t i = 0;
+            for (const auto& [filename, sn]: pathToSerial) {
+                auto& file = *config.AddFileDevices();
+                file.SetPath(TempDir.Path() / filename);
+                file.SetSerialNumber(sn);
+                file.SetDeviceId(uuids[i]);
+                file.SetBlockSize(4_KB);
+
+                ++i;
+            }
+
+            auto error = SaveDiskAgentConfig(CachedConfigPath, config);
+            UNIT_ASSERT_C(!HasError(error), FormatError(error));
+        }
+
+        // change serial numbers of NVMENBS02 & NVMENBS04
+        pathToSerial[1].second = "new-X";   // NVMENBS02
+        pathToSerial[3].second = "new-Z";   // NVMENBS04
+
+        auto diskregistryState = MakeIntrusive<TDiskRegistryState>();
+
+        // Disable only NVMENBS02
+        diskregistryState->DisabledDevices = {uuids[1]};
+
+        // Postpone the registration in DR
+        auto oldEventFilterFn = Runtime.SetEventFilter(
+            [](auto& runtime, TAutoPtr<IEventHandle>& event)
+            {
+                if (event->GetTypeRewrite() ==
+                    TEvDiskRegistry::EvRegisterAgentRequest)
+                {
+                    auto response = std::make_unique<
+                        TEvDiskRegistry::TEvRegisterAgentResponse>(
+                        MakeError(E_REJECTED));
+
+                    runtime.Send(new NActors::IEventHandle(
+                        event->Sender,
+                        event->GetRecipientRewrite(),
+                        response.release()));
+
+                    return true;
+                }
+
+                return false;
+            });
+
+        auto env = TTestEnvBuilder(Runtime)
+            .With(CreateDiskAgentConfig())
+            .With(std::make_shared<TTestNvmeManager>(pathToSerial))
+            .With(diskregistryState)
+            .Build();
+
+        Runtime.UpdateCurrentTime(Now());
+
+        TDiskAgentClient diskAgent(Runtime);
+        diskAgent.WaitReady();
+
+        diskAgent.AcquireDevices(
+            TVector{
+                uuids[0],   // NVMENBS01
+                uuids[1],   // NVMENBS02
+                uuids[3],   // NVMENBS04
+            },
+            "reader-1",
+            NProto::VOLUME_ACCESS_READ_ONLY,
+            -1,   // MountSeqNumber
+            "vol0",
+            1000);   // VolumeGeneration
+
+        // NVMENBS01 is OK
+        {
+            auto error = Read(diskAgent, "reader-1", uuids[0]);
+            UNIT_ASSERT_EQUAL_C(S_OK, error.GetCode(), error);
+        }
+
+        // Before the registration in DR NVMENBS02 & NVMENBS04 should be
+        // suspended
+        {
+            auto error = Read(diskAgent, "reader-1", uuids[1]);
+            UNIT_ASSERT_EQUAL_C(E_REJECTED, error.GetCode(), error);
+            UNIT_ASSERT_C(
+                error.GetMessage().Contains("Device disabled"),
+                error);
+        }
+
+        {
+            auto error = Read(diskAgent, "reader-1", uuids[3]);
+            UNIT_ASSERT_EQUAL_C(E_REJECTED, error.GetCode(), error);
+            UNIT_ASSERT_C(
+                error.GetMessage().Contains("Device disabled"),
+                error);
+        }
+
+        // check the config cache
+        {
+            auto [config, error] = LoadDiskAgentConfig(CachedConfigPath);
+            UNIT_ASSERT_EQUAL_C(S_OK, error.GetCode(), error);
+            UNIT_ASSERT_VALUES_EQUAL(4, config.FileDevicesSize());
+            UNIT_ASSERT_VALUES_EQUAL(2, config.DevicesWithSuspendedIOSize());
+
+            Sort(*config.MutableDevicesWithSuspendedIO());
+
+            UNIT_ASSERT_VALUES_EQUAL(
+                uuids[3],   // NVMENBS04
+                config.GetDevicesWithSuspendedIO(0));
+
+            UNIT_ASSERT_VALUES_EQUAL(
+                uuids[1],   // NVMENBS02
+                config.GetDevicesWithSuspendedIO(1));
+        }
+
+        Runtime.SetEventFilter(oldEventFilterFn);
+        Runtime.AdvanceCurrentTime(5s);
+        Runtime.DispatchEvents(TDispatchOptions{
+            .FinalEvents = {TDispatchOptions::TFinalEventCondition(
+                TEvDiskRegistry::EvRegisterAgentResponse)}});
+
+        // NVMENBS01 is OK
+        {
+            auto error = Read(diskAgent, "reader-1", uuids[0]);
+            UNIT_ASSERT_EQUAL_C(S_OK, error.GetCode(), error);
+        }
+
+        // After the registartion in DR NVMENBS02 should be disabled
+        {
+            auto error = Read(diskAgent, "reader-1", uuids[1]);
+            UNIT_ASSERT_EQUAL_C(E_IO, error.GetCode(), error);
+            UNIT_ASSERT_C(
+                error.GetMessage().Contains("Device disabled"),
+                error);
+        }
+
+        // NVMENBS04 should be OK
+        {
+            auto error = Read(diskAgent, "reader-1", uuids[3]);
+            UNIT_ASSERT_EQUAL_C(S_OK, error.GetCode(), error);
+        }
+
+        // check the config cache
+        {
+            auto [config, error] = LoadDiskAgentConfig(CachedConfigPath);
+            UNIT_ASSERT_EQUAL_C(S_OK, error.GetCode(), error);
+            UNIT_ASSERT_VALUES_EQUAL(4, config.FileDevicesSize());
+            UNIT_ASSERT_VALUES_EQUAL(1, config.DevicesWithSuspendedIOSize());
+            UNIT_ASSERT_VALUES_EQUAL(
+                uuids[1],   // NVMENBS02
+                config.GetDevicesWithSuspendedIO(0));
+        }
     }
 }
 

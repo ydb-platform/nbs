@@ -165,7 +165,7 @@ TTestRuntimeBuilder& TTestRuntimeBuilder::WithAgents(
     const TVector<NProto::TAgentConfig>& configs)
 {
     DiskAgents.clear();
-    for (auto& config: configs) {
+    for (const auto& config: configs) {
         DiskAgents.push_back(CreateTestDiskAgent(config));
     }
 

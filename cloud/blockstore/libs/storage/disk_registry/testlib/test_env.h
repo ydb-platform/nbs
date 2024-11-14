@@ -309,6 +309,34 @@ inline TTestDiskAgent* CreateSuspendedTestDiskAgent(
     return agent;
 }
 
+struct TCreateDeviceConfigParams
+{
+    TString Name;
+    TString Id;
+    TString SerialNum;
+    TString Rack = "the-rack";
+    ui64 TotalSize = 10_GB;
+    ui32 BlockSize = DefaultBlockSize;
+};
+
+inline NProto::TDeviceConfig CreateDeviceConfig(
+    TCreateDeviceConfigParams params)
+{
+    NProto::TDeviceConfig device;
+
+    device.SetDeviceName(std::move(params.Name));
+    device.SetDeviceUUID(params.Id);
+    device.SetSerialNumber(std::move(params.SerialNum));
+    device.SetRack(std::move(params.Rack));
+    device.SetBlocksCount(params.TotalSize / params.BlockSize);
+    device.SetBlockSize(params.BlockSize);
+    device.SetTransportId(params.Id);
+    device.MutableRdmaEndpoint()->SetHost(std::move(params.Id));
+    device.MutableRdmaEndpoint()->SetPort(10020);
+
+    return device;
+}
+
 inline NProto::TDeviceConfig Device(
     TString name,
     TString uuid,
@@ -316,18 +344,13 @@ inline NProto::TDeviceConfig Device(
     ui64 totalSize = 10_GB,
     ui32 blockSize = DefaultBlockSize)
 {
-    NProto::TDeviceConfig device;
-
-    device.SetDeviceName(std::move(name));
-    device.SetDeviceUUID(uuid);
-    device.SetRack(std::move(rack));
-    device.SetBlocksCount(totalSize / blockSize);
-    device.SetBlockSize(blockSize);
-    device.SetTransportId(uuid);
-    device.MutableRdmaEndpoint()->SetHost(std::move(uuid));
-    device.MutableRdmaEndpoint()->SetPort(10020);
-
-    return device;
+    return CreateDeviceConfig({
+        .Name = std::move(name),
+        .Id = std::move(uuid),
+        .Rack = std::move(rack),
+        .TotalSize = totalSize,
+        .BlockSize = blockSize
+    });
 }
 
 inline auto CreateAgentConfig(

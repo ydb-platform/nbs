@@ -110,35 +110,38 @@ void TDiskRegistryActor::ExecuteAddAgent(
     args.Error = std::move(error);
     args.AffectedDisks = std::move(r.AffectedDisks);
     args.NotifiedDisks = std::move(r.DisksToReallocate);
+    args.DevicesToDisableIO = std::move(r.DevicesToDisableIO);
 
-    if (!HasError(args.Error)) {
-        for (auto it = ServerToAgentId.begin(); it != ServerToAgentId.end(); ) {
-            const auto& agentId = it->second;
-
-            if (agentId == args.Config.GetAgentId()) {
-                const auto& serverId = it->first;
-                NCloud::Send<TEvents::TEvPoisonPill>(ctx, serverId);
-
-                ServerToAgentId.erase(it++);
-            } else {
-                ++it;
-            }
-        }
-
-        ServerToAgentId[args.RegisterActorId] = args.Config.GetAgentId();
-
-        auto& info = AgentRegInfo[args.Config.GetAgentId()];
-        info.Connected = true;
-        info.SeqNo += 1;
-
-        LOG_DEBUG(ctx, TBlockStoreComponents::DISK_REGISTRY,
-            "[%lu] Execute register agent: NodeId=%u, AgentId=%s"
-            ", SeqNo=%lu",
-            TabletID(),
-            args.Config.GetNodeId(),
-            args.Config.GetAgentId().c_str(),
-            info.SeqNo);
+    if (HasError(args.Error)) {
+        return;
     }
+
+    for (auto it = ServerToAgentId.begin(); it != ServerToAgentId.end(); ) {
+        const auto& agentId = it->second;
+
+        if (agentId == args.Config.GetAgentId()) {
+            const auto& serverId = it->first;
+            NCloud::Send<TEvents::TEvPoisonPill>(ctx, serverId);
+
+            ServerToAgentId.erase(it++);
+        } else {
+            ++it;
+        }
+    }
+
+    ServerToAgentId[args.RegisterActorId] = args.Config.GetAgentId();
+
+    auto& info = AgentRegInfo[args.Config.GetAgentId()];
+    info.Connected = true;
+    info.SeqNo += 1;
+
+    LOG_DEBUG(ctx, TBlockStoreComponents::DISK_REGISTRY,
+        "[%lu] Execute register agent: NodeId=%u, AgentId=%s"
+        ", SeqNo=%lu",
+        TabletID(),
+        args.Config.GetNodeId(),
+        args.Config.GetAgentId().c_str(),
+        info.SeqNo);
 }
 
 void TDiskRegistryActor::CompleteAddAgent(
@@ -176,6 +179,9 @@ void TDiskRegistryActor::CompleteAddAgent(
 
     auto response = std::make_unique<TEvDiskRegistry::TEvRegisterAgentResponse>();
     *response->Record.MutableError() = std::move(args.Error);
+    response->Record.MutableDevicesToDisableIO()->Assign(
+        args.DevicesToDisableIO.begin(),
+        args.DevicesToDisableIO.end());
 
     NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
 

@@ -266,7 +266,7 @@ bool HasError(const T& response)
 inline void CheckError(const NProto::TError& error)
 {
     if (HasError(error)) {
-        ythrow TServiceError(error);
+        ythrow TServiceError(error.GetCode()) << error.GetMessage();
     }
 }
 
@@ -274,7 +274,8 @@ template <typename T>
 void CheckError(const T& response)
 {
     if (HasError(response)) {
-        ythrow TServiceError(response.GetError());
+        ythrow TServiceError(response.GetError().GetCode())
+            << response.GetError().GetMessage();
     }
 }
 

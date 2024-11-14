@@ -72,10 +72,14 @@ void TDiskRegistryMock::HandleRegisterAgent(
         State->Devices[device.GetDeviceName()].CopyFrom(device);
     }
 
-    NCloud::Reply(
-        ctx,
-        *ev,
-        std::make_unique<TEvDiskRegistry::TEvRegisterAgentResponse>());
+    auto response =
+        std::make_unique<TEvDiskRegistry::TEvRegisterAgentResponse>();
+
+    response->Record.MutableDevicesToDisableIO()->Assign(
+        State->DisabledDevices.cbegin(),
+        State->DisabledDevices.cend());
+
+    NCloud::Reply(ctx, *ev, std::move(response));
 }
 
 void TDiskRegistryMock::HandleUpdateAgentStats(
@@ -293,6 +297,12 @@ TTestEnvBuilder& TTestEnvBuilder::With(NProto::TStorageServiceConfig storageServ
     return *this;
 }
 
+TTestEnvBuilder& TTestEnvBuilder::With(TDiskRegistryState::TPtr diskRegistryState)
+{
+    DiskRegistryState = std::move(diskRegistryState);
+    return *this;
+}
+
 TTestEnv TTestEnvBuilder::Build()
 {
     Runtime.AppendToLogSettings(
@@ -314,11 +324,16 @@ TTestEnv TTestEnvBuilder::Build()
         runtime.EnableScheduleForActor(actorId);
     });
 
-    auto diskRegistryState = MakeIntrusive<TDiskRegistryState>();
+    if (!DiskRegistryState) {
+        DiskRegistryState = MakeIntrusive<TDiskRegistryState>();
+    }
 
     Runtime.AddLocalService(
         MakeDiskRegistryProxyServiceId(),
-        TActorSetupCmd(new TDiskRegistryMock(diskRegistryState), TMailboxType::Simple, 0));
+        TActorSetupCmd(
+            new TDiskRegistryMock(DiskRegistryState),
+            TMailboxType::Simple,
+            0));
 
     auto allocator = CreateCachingAllocator(
         TDefaultAllocator::Instance(), 0, 0, 0);
@@ -383,7 +398,7 @@ TTestEnv TTestEnvBuilder::Build()
 
     return TTestEnv{
         .Runtime = Runtime,
-        .DiskRegistryState = diskRegistryState,
+        .DiskRegistryState = std::move(DiskRegistryState),
         .FileIOService = FileIOService,
         .NvmeManager = NvmeManager,
     };

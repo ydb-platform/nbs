@@ -26,6 +26,7 @@ void TDiskAgentActor::HandleDisableConcreteAgent(
     if (record.DeviceUUIDsSize()) {
         for (const auto& d: record.GetDeviceUUIDs()) {
             State->DisableDevice(d);
+            State->ReportDisabledDeviceError(d);
         }
     } else {
         HandlePoisonPill(nullptr, ctx);

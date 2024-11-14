@@ -906,6 +906,7 @@ auto TDiskRegistryState::RegisterAgent(
 
     TVector<TDiskId> affectedDisks;
     TVector<TDiskId> disksToReallocate;
+    TVector<TString> devicesToDisableIO;
 
     try {
         if (auto* buddy = AgentList.FindAgent(config.GetNodeId());
@@ -969,6 +970,11 @@ auto TDiskRegistryState::RegisterAgent(
 
         for (const auto& d: agent.GetDevices()) {
             const auto& uuid = d.GetDeviceUUID();
+
+            if (d.GetState() == NProto::DEVICE_STATE_ERROR) {
+                devicesToDisableIO.push_back(uuid);
+            }
+
             auto diskId = DeviceList.FindDiskId(uuid);
 
             if (diskId.empty()) {
@@ -996,7 +1002,7 @@ auto TDiskRegistryState::RegisterAgent(
             diskIds.emplace(std::move(diskId));
         }
 
-        for (auto& id: diskIds) {
+        for (const auto& id: diskIds) {
             if (TryUpdateDiskState(db, id, timestamp)) {
                 affectedDisks.push_back(id);
             }
@@ -1031,7 +1037,8 @@ auto TDiskRegistryState::RegisterAgent(
 
     return TAgentRegistrationResult{
         .AffectedDisks = std::move(affectedDisks),
-        .DisksToReallocate = std::move(disksToReallocate)};
+        .DisksToReallocate = std::move(disksToReallocate),
+        .DevicesToDisableIO = std::move(devicesToDisableIO)};
 }
 
 NProto::TError TDiskRegistryState::CheckDestructiveConfigurationChange(

@@ -53,6 +53,8 @@ struct TDiskRegistryState
 
     THashMap<TString, NProto::TDeviceConfig> Devices;
     THashMap<ui32, NProto::TAgentStats> Stats;
+
+    TVector<TString> DisabledDevices;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -454,6 +456,7 @@ struct TTestEnvBuilder
     NNvme::INvmeManagerPtr NvmeManager;
     NSpdk::ISpdkEnvPtr Spdk;
     NProto::TStorageServiceConfig StorageServiceConfig;
+    TDiskRegistryState::TPtr DiskRegistryState;
 
     explicit TTestEnvBuilder(NActors::TTestActorRuntime& runtime);
 
@@ -463,6 +466,7 @@ struct TTestEnvBuilder
     TTestEnvBuilder& With(NNvme::INvmeManagerPtr nvmeManager);
     TTestEnvBuilder& With(NProto::TDiskAgentConfig config);
     TTestEnvBuilder& With(NProto::TStorageServiceConfig storageServiceConfig);
+    TTestEnvBuilder& With(TDiskRegistryState::TPtr diskRegistryState);
 
     TTestEnv Build();
 };

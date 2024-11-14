@@ -86,7 +86,7 @@ public:
         TVector<NProto::TDeviceConfig> Configs;
         TVector<TString> Errors;
         TVector<TString> ConfigMismatchErrors;
-        TVector<TString> DevicesWithNewSerialNumber;
+        TVector<TString> DevicesWithSuspendedIO;
 
         TDeviceGuard Guard;
     };
@@ -118,6 +118,7 @@ public:
     TString GetDeviceName(const TString& uuid) const;
 
     TVector<NProto::TDeviceConfig> GetDevices() const;
+    TVector<TString> GetDeviceIds() const;
 
     ui32 GetDevicesCount() const;
 
@@ -145,8 +146,10 @@ public:
     TVector<NProto::TDiskAgentDeviceSession> GetSessions() const;
 
     void DisableDevice(const TString& uuid);
+    void SuspendDevice(const TString& uuid);
     void EnableDevice(const TString& uuid);
     bool IsDeviceDisabled(const TString& uuid) const;
+    bool IsDeviceSuspended(const TString& uuid) const;
     void ReportDisabledDeviceError(const TString& uuid);
 
     void StopTarget();
@@ -185,6 +188,8 @@ private:
     void InitRdmaTarget();
 
     void RestoreSessions(TDeviceClient& client) const;
+
+    void CheckIfDeviceIsDisabled(const TString& uuid, const TString& clientId);
 };
 
 }   // namespace NCloud::NBlockStore::NStorage
