@@ -39,6 +39,24 @@ def ping(port, path, success_codes):
     return False
 
 
+def dump_backtrace(pid):
+    bt = subprocess.getoutput(f'sudo gdb --batch -p {pid} -ex "thread apply all bt"')
+    logging.info(f"PID {pid}: backtrace:\n{bt}")
+
+
+def terminate(process, check_timeout=None):
+    process.terminate()
+
+    while True:
+        try:
+            process.wait(timeout=check_timeout)
+        except subprocess.TimeoutExpired:
+            logging.info(f'wait for pid {process.pid} timed out after {check_timeout} seconds')
+            dump_backtrace(process.pid)
+            continue
+        break
+
+
 def main():
     signal.signal(signal.SIGTERM, sighandler)
 
@@ -57,6 +75,7 @@ def main():
     parser.add_argument('--ping-success-codes', help='', nargs='*')
     parser.add_argument('--allow-restart-flag', help='file to look for before restart', type=str, default=None)
     parser.add_argument('-v', '--verbose', help='verbose mode', default=0, action='count')
+    parser.add_argument('--terminate-check-timeout', help='the timeout in seconds between wait attempts for terminated process', type=int, default=60)
 
     args = parser.parse_args()
 
@@ -91,8 +110,7 @@ def main():
                     process.kill()
                 else:
                     logging.info(f'terminating process {cmdline}')
-                    process.terminate()
-                    process.wait()
+                    terminate(process, check_timeout=args.terminate_check_timeout)
 
             def start_process():
                 logging.info(f'starting process {cmdline}')
