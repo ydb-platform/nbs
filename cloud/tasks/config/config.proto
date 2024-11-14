@@ -56,4 +56,6 @@ message TasksConfig {
     // Needed for tracing.
     // Spans of tasks with greater generation id will not be sampled.
     optional uint64 MaxSampledTaskGeneration = 32 [default = 100];
+
+    optional bool RunSystemTasks = 33 [default = true];
 }

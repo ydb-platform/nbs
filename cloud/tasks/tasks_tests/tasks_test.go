@@ -312,6 +312,12 @@ func registerLongTask(registry *tasks.Registry) error {
 	})
 }
 
+func registerLongTaskNotForExecution(registry *tasks.Registry) error {
+	return registry.Register("long", func() tasks.Task {
+		return &longTask{}
+	})
+}
+
 func scheduleLongTask(
 	ctx context.Context,
 	scheduler tasks.Scheduler,
@@ -1304,6 +1310,141 @@ func TestHangingTasksMetrics(t *testing.T) {
 	_, err = s.scheduler.CancelTask(ctx, taskID)
 	require.NoError(t, err)
 	_ = s.scheduler.WaitTaskEnded(ctx, taskID)
+	gaugeUnsetWg.Wait()
+	registry.AssertAllExpectations(t)
+}
+
+func TestHangingMetricsInitialization(t *testing.T) {
+	ctx, cancel := context.WithCancel(newContext())
+	defer cancel()
+
+	db, err := newYDB(ctx)
+	require.NoError(t, err)
+	defer db.Close(ctx)
+
+	registry := mocks.NewIgnoreUnknownCallsRegistryMock()
+
+	config := newHangingTaskTestConfig()
+
+	s := createServicesWithConfig(t, ctx, db, config, registry)
+	err = registerHangingTask(s.registry)
+	require.NoError(t, err)
+	err = registerLongTaskNotForExecution(s.registry)
+	require.NoError(t, err)
+
+	err = s.startRunners(ctx)
+	require.NoError(t, err)
+
+	gaugeSetForExecutingTask := make(chan struct{}, 1)
+	gaugeSetForNonExecutingTask := make(chan struct{}, 1)
+
+	registry.GetGauge(
+		"totalHangingTaskCount",
+		map[string]string{"type": "tasks.hanging"},
+	).On("Set", float64(0)).Return(mock.Anything).Run(
+		func(args mock.Arguments) {
+			select {
+			case gaugeSetForExecutingTask <- struct{}{}:
+			default:
+			}
+		},
+	)
+
+	registry.GetGauge(
+		"totalHangingTaskCount",
+		map[string]string{"type": "long"},
+	).On("Set", float64(0)).Return(mock.Anything).Run(
+		func(args mock.Arguments) {
+			select {
+			case gaugeSetForNonExecutingTask <- struct{}{}:
+			default:
+			}
+		},
+	)
+
+	select {
+	case <-gaugeSetForExecutingTask:
+	}
+	select {
+	case <-gaugeSetForNonExecutingTask:
+	}
+
+	registry.AssertAllExpectations(t)
+}
+
+func TestHangingTasksMetricsCleanup(t *testing.T) {
+	ctx, cancel := context.WithCancel(newContext())
+	defer cancel()
+
+	db, err := newYDB(ctx)
+	require.NoError(t, err)
+	// Do not defer db.Close(ctx) in this test.
+
+	registry := mocks.NewIgnoreUnknownCallsRegistryMock()
+
+	config := newHangingTaskTestConfig()
+
+	s := createServicesWithConfig(t, ctx, db, config, registry)
+	err = registerHangingTask(s.registry)
+	require.NoError(t, err)
+
+	err = s.startRunners(ctx)
+	require.NoError(t, err)
+
+	reqCtx := getRequestContext(t, ctx)
+	taskID, err := scheduleHangingTask(reqCtx, s.scheduler)
+	require.NoError(t, err)
+
+	gaugeSetWg := sync.WaitGroup{}
+	gaugeUnsetWg := sync.WaitGroup{}
+
+	totalHangingTaskCountGaugeSetCall := registry.GetGauge(
+		"totalHangingTaskCount",
+		map[string]string{"type": "tasks.hanging"},
+	).On(
+		"Set",
+		float64(1),
+	).Return(mock.Anything)
+
+	gaugeSetWg.Add(1)
+	hangingTasksGaugeSetCall := registry.GetGauge(
+		"hangingTasks",
+		map[string]string{"type": "tasks.hanging", "id": taskID},
+	).On("Set", float64(1)).Return(mock.Anything).Run(
+		func(args mock.Arguments) {
+			gaugeSetWg.Done()
+		},
+	)
+
+	registry.GetGauge(
+		"totalHangingTaskCount",
+		map[string]string{"type": "tasks.hanging"},
+	).On(
+		"Set",
+		float64(0),
+	).NotBefore(
+		totalHangingTaskCountGaugeSetCall,
+	).Return(mock.Anything)
+
+	gaugeUnsetWg.Add(1)
+	registry.GetGauge(
+		"hangingTasks",
+		map[string]string{"type": "tasks.hanging", "id": taskID},
+	).On(
+		"Set",
+		float64(0),
+	).NotBefore(
+		hangingTasksGaugeSetCall,
+	).Return(mock.Anything).Run(
+		func(args mock.Arguments) {
+			gaugeUnsetWg.Done()
+		},
+	)
+
+	gaugeSetWg.Wait()
+	// Close connection to YDB to enforce collectListerMetricsTask failure.
+	err = db.Close(ctx)
+	require.NoError(t, err)
 	gaugeUnsetWg.Wait()
 	registry.AssertAllExpectations(t)
 }

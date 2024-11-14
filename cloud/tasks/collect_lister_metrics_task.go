@@ -44,6 +44,9 @@ func (c *collectListerMetricsTask) Run(
 	defer ticker.Stop()
 
 	for range ticker.C {
+		defer c.cleanupTasksMetrics(
+			storage.TaskStatusToString(storage.TaskStatusReadyToRun),
+		)
 		err := c.collectTasksMetrics(
 			ctx,
 			func(context.Context) ([]storage.TaskInfo, error) {
@@ -59,6 +62,9 @@ func (c *collectListerMetricsTask) Run(
 			return err
 		}
 
+		defer c.cleanupTasksMetrics(
+			storage.TaskStatusToString(storage.TaskStatusRunning),
+		)
 		err = c.collectTasksMetrics(
 			ctx,
 			func(context.Context) ([]storage.TaskInfo, error) {
@@ -73,6 +79,9 @@ func (c *collectListerMetricsTask) Run(
 			return err
 		}
 
+		defer c.cleanupTasksMetrics(
+			storage.TaskStatusToString(storage.TaskStatusReadyToCancel),
+		)
 		err = c.collectTasksMetrics(
 			ctx,
 			func(context.Context) ([]storage.TaskInfo, error) {
@@ -88,6 +97,9 @@ func (c *collectListerMetricsTask) Run(
 			return err
 		}
 
+		defer c.cleanupTasksMetrics(
+			storage.TaskStatusToString(storage.TaskStatusCancelling),
+		)
 		err = c.collectTasksMetrics(
 			ctx,
 			func(context.Context) ([]storage.TaskInfo, error) {
@@ -102,6 +114,7 @@ func (c *collectListerMetricsTask) Run(
 			return err
 		}
 
+		defer c.cleanupHangingTasksMetrics()
 		err = c.collectHangingTasksMetrics(ctx)
 		if err != nil {
 			return err
@@ -195,7 +208,7 @@ func (c *collectListerMetricsTask) collectHangingTasksMetrics(
 				"Task with id %s is not hanging anymore",
 				id,
 			)
-			gauge.Set(0)
+			gauge.Set(float64(0))
 			delete(c.hangingTaskGaugesByID, id)
 		}
 	}
@@ -227,4 +240,21 @@ func (c *collectListerMetricsTask) collectHangingTasksMetrics(
 	}
 
 	return nil
+}
+
+func (c *collectListerMetricsTask) cleanupTasksMetrics(sensor string) {
+	for _, taskType := range c.taskTypes {
+		subRegistry := c.registry.WithTags(map[string]string{
+			"type": taskType,
+		})
+		subRegistry.Gauge(sensor).Set(float64(0))
+	}
+}
+
+func (c *collectListerMetricsTask) cleanupHangingTasksMetrics() {
+	c.cleanupTasksMetrics(totalHangingTaskCountGaugeName)
+
+	for _, gauge := range c.hangingTaskGaugesByID {
+		gauge.Set(float64(0))
+	}
 }
