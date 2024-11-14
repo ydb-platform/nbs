@@ -232,12 +232,9 @@ private:
         const NCloud::NFileStore::NProto::TProfileLogRequestInfo& logRequest)
         override
     {
+        // Log samples:
         // {"TimestampMcs":1726,"DurationMcs":2622,"RequestType":38,"ErrorCode":0,"NodeInfo":{"ParentNodeId":13882,"NodeName":"compile_commands.json.tmpdf020","Flags":38,"Mode":436,"NodeId":15553,"Handle":4692,"Size":0}}
-        // {"TimestampMcs":1725,"DurationMcs":2561,"RequestType":38,"ErrorCode":0,"NodeInfo":{"ParentNodeId":12527,"NodeName":"index.lock","Flags":15,"Mode":436,"NodeId":12584,"Handle":6538,"Size":0}}
-        // {parent_node_id=65, node_name=ini, flags=14, mode=436, node_id=66,
-        // handle=1102, size=0} data="TimestampMcs: 1730 DurationMcs: 830
-        // RequestType: 38 ErrorCode: 0 NodeInfo { ParentNodeId: 30370 NodeName:
-        // \"\" Flags: 1 Mode: 0 NodeId: 30370 Handle: 2686 Size: 8547 }"
+        // {"TimestampMcs":1730,"DurationMcs":830,"RequestType":38,"ErrorCode":0,"NodeInfo":{"ParentNodeId":30370,"NodeName":\"\","Flags":1,"Mode":0,"NodeId":30370,"Handle":2686,"Size":8547}}
 
         TGuard<TMutex> guard(StateLock);
 
@@ -465,6 +462,7 @@ private:
         const NCloud::NFileStore::NProto::TProfileLogRequestInfo& logRequest)
         override
     {
+        // Log sample:
         // {"TimestampMcs":123,"DurationMcs":2790,"RequestType":44,"Ranges":[{"NodeId":2,"Handle":2068,"Offset":13,"Bytes":12}]}
 
         if (Spec.GetSkipWrite()) {
@@ -552,8 +550,8 @@ private:
         const NCloud::NFileStore::NProto::TProfileLogRequestInfo& logRequest)
         override
     {
+        // Log sample:
         // {"TimestampMcs":1725,"DurationMcs":6328,"RequestType":26,"ErrorCode":0,"NodeInfo":{"NewParentNodeId":1,"NewNodeName":"home","Mode":509,"NodeId":12526,"Size":0}}
-        // {new_parent_node_id=1, new_node_name=home, mode=509, node_id=12526, size=0}
 
         if (Spec.GetSkipWrite()) {
             return MakeFuture(TCompletedRequest{
@@ -591,6 +589,7 @@ private:
                 break;
             }
             case NProto::E_LINK_NODE: {
+                // Log sample:
                 // {"TimestampMcs":1000,"DurationMcs":2432,"RequestType":26,"ErrorCode":0,"NodeInfo":{"NewParentNodeId":267,"NewNodeName":"name.ext","Mode":292,"Type":3,"NodeId":274,"Size":245792}}
 
                 const auto targetNode =
@@ -637,10 +636,9 @@ private:
         const NCloud::NFileStore::NProto::TProfileLogRequestInfo& logRequest)
         override
     {
+        // Log sample:
         // {"TimestampMcs":8951,"DurationMcs":2949,"RequestType":28,"NodeInfo":{"ParentNodeId":3,"NodeName":"HEAD.lock","NewParentNodeId":3,"NewNodeName":"HEAD"}}
-        // nfs     RenameNode      0.002569s       S_OK {parent_node_id=12527,
-        // node_name=HEAD.lock, new_parent_node_id=12527, new_node_name=HEAD}
-        // request->SetNodeId(NodesLogToActual[r.GetNodeInfo().GetNodeId()]);
+
         if (Spec.GetSkipWrite()) {
             return MakeFuture(TCompletedRequest{
                 NProto::ACTION_RENAME_NODE,
@@ -686,6 +684,7 @@ private:
         const NCloud::NFileStore::NProto::TProfileLogRequestInfo& logRequest)
         override
     {
+        // Log sample:
         // {parent_node_id=3, node_name=tfrgYZ1}
 
         if (Spec.GetSkipWrite()) {
@@ -723,7 +722,9 @@ private:
         const NCloud::NFileStore::NProto::TProfileLogRequestInfo& logRequest)
         override
     {
-        //  {node_id=10, handle=6146}
+        // Log sample:
+        // {node_id=10, handle=6146}
+
         TGuard<TMutex> guard(StateLock);
 
         const auto handleid =
@@ -773,19 +774,17 @@ private:
 
         TGuard<TMutex> guard(StateLock);
 
-        // TODO(proller): by ParentNodeId + NodeName
+        // Log sample:
         // {"TimestampMcs":1726,"DurationMcs":7163,"RequestType":35,"ErrorCode":2147942422,"NodeInfo":{"NodeName":"security.capability","NewNodeName":"","NodeId":5,"Size":0}}
         // {"TimestampMcs":1726,"DurationMcs":192,"RequestType":33,"ErrorCode":2147942402,"NodeInfo":{"ParentNodeId":17033,"NodeName":"CPackSourceConfig.cmake","Flags":0,"Mode":0,"NodeId":0,"Handle":0,"Size":0}}
-        // {"TimestampMcs":2403,"DurationMcs":163,"RequestType":33,"NodeInfo":{"ParentNodeId":3,"NodeName":"branches","Flags":0,"Mode":0,"NodeId":0,"Handle":0,"Size":0}}
-        // {"TimestampMcs":1727,"DurationMcs":1982,"RequestType":33,"ErrorCode":2147942402,"NodeInfo":{"ParentNodeId":2,"NodeName":"libc.so.6","Flags":0,"Mode":0,"NodeId":0,"Handle":0,"Size":0}}
-        // nfs     GetNodeAttr     0.006847s       S_OK    {parent_node_id=1,
-        // node_name=freeminer, flags=0, mode=509, node_id=2, handle=0, size=0}
+        // {parent_node_id=1, node_name=name, flags=0, mode=509, node_id=2, handle=0, size=0}
+
 
         if (logRequest.GetNodeInfo().GetNodeName()) {
             KnownLogNodes[logRequest.GetNodeInfo().GetNodeId()].Name =
                 logRequest.GetNodeInfo().GetNodeName();
         }
-        if (logRequest.GetNodeInfo().GetParentNodeId() &&
+        if (logRequest.GetNodeInfo().GetParentNodeId() != InvalidNodeId &&
             logRequest.GetNodeInfo().GetParentNodeId() !=
                 logRequest.GetNodeInfo().GetNodeId())
         {
@@ -793,7 +792,8 @@ private:
                 logRequest.GetNodeInfo().GetParentNodeId();
         }
 
-        // TODO(proller): can create and truncate to size here missing files
+        // TODO(proller): guess path by ParentNodeId + NodeName
+        // TODO(proller): can create and truncate to known size missing file by flag
 
         const auto nodeid =
             GetLocalNodeId(logRequest.GetNodeInfo().GetNodeId());
@@ -839,6 +839,7 @@ private:
         const NCloud::NFileStore::NProto::TProfileLogRequestInfo& logRequest)
         override
     {
+        // Log sample:
         // {"TimestampMcs":1726,"DurationMcs":3329,"RequestType":30,"ErrorCode":0,"NodeInfo":{"NodeId":164,"Size":10}}
 
         TGuard<TMutex> guard(StateLock);
@@ -892,6 +893,9 @@ private:
         const NCloud::NFileStore::NProto::TProfileLogRequestInfo& logRequest)
         override
     {
+        // Log sample:
+        // {data_only=1, node_id=2, handle=64388080629789657}
+
         if (Spec.GetSkipWrite()) {
             return MakeFuture(TCompletedRequest{
                 NProto::ACTION_FLUSH,
