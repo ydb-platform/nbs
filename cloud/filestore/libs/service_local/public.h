@@ -15,9 +15,6 @@ using TLocalFileStoreConfigPtr = std::shared_ptr<TLocalFileStoreConfig>;
 class TLocalFileSystem;
 using TLocalFileSystemPtr = std::shared_ptr<TLocalFileSystem>;
 
-class TLocalIndex;
-using TLocalIndexPtr = std::shared_ptr<TLocalIndex>;
-
 class TSession;
 using TSessionPtr = std::shared_ptr<TSession>;
 
