@@ -1,9 +1,9 @@
 LIBRARY()
 
 SRCS(
+    endpoint_manager.cpp
     listener.cpp
     service_auth.cpp
-    service.cpp
 )
 
 PEERDIR(

@@ -11,7 +11,7 @@
 #include <cloud/filestore/libs/diagnostics/profile_log.h>
 #include <cloud/filestore/libs/diagnostics/request_stats.h>
 #include <cloud/filestore/libs/endpoint/listener.h>
-#include <cloud/filestore/libs/endpoint/service.h>
+#include <cloud/filestore/libs/endpoint/endpoint_manager.h>
 #include <cloud/filestore/libs/endpoint/service_auth.h>
 #include <cloud/filestore/libs/endpoint_vhost/config.h>
 #include <cloud/filestore/libs/endpoint_vhost/listener.h>
@@ -53,11 +53,9 @@
 #include <library/cpp/monlib/dynamic_counters/counters.h>
 #include <library/cpp/protobuf/util/pb_io.h>
 
-#include <util/generic/guid.h>
 #include <util/generic/map.h>
 #include <util/stream/file.h>
 #include <util/system/fs.h>
-#include <util/system/hostname.h>
 
 namespace NCloud::NFileStore::NDaemon {
 
@@ -385,8 +383,6 @@ void TBootstrapVhost::StartComponents()
     FILESTORE_LOG_START_COMPONENT(EndpointManager);
     FILESTORE_LOG_START_COMPONENT(Server);
     FILESTORE_LOG_START_COMPONENT(LocalServiceServer);
-
-    RestoreKeyringEndpoints();
 }
 
 void TBootstrapVhost::StopComponents()
@@ -405,66 +401,6 @@ void TBootstrapVhost::Drain()
 {
     if (EndpointManager) {
         EndpointManager->Drain();
-    }
-}
-
-void TBootstrapVhost::RestoreKeyringEndpoints()
-{
-    auto idsOrError = EndpointStorage->GetEndpointIds();
-
-    if (HasError(idsOrError)) {
-        auto logLevel = TLOG_INFO;
-
-        if (Configs->VhostServiceConfig->GetRequireEndpointsKeyring()) {
-            logLevel = TLOG_ERR;
-            // TODO: report critical error
-        }
-
-        STORAGE_LOG(logLevel, "Failed to get endpoints from storage: "
-            << FormatError(idsOrError.GetError()));
-        return;
-    }
-
-    const auto& storedIds = idsOrError.GetResult();
-    STORAGE_INFO("Found " << storedIds.size() << " endpoints in storage");
-
-    auto clientId = CreateGuidAsString();
-    auto originFqdn = GetFQDNHostName();
-
-    for (auto keyringId: storedIds) {
-        auto requestOrError = EndpointStorage->GetEndpoint(keyringId);
-        if (HasError(requestOrError)) {
-            STORAGE_WARN("Failed to restore endpoint. ID: " << keyringId
-                << ", error: " << FormatError(requestOrError.GetError()));
-            continue;
-        }
-
-        auto request = DeserializeEndpoint<NProto::TStartEndpointRequest>(
-            requestOrError.GetResult());
-
-        if (!request) {
-            // TODO: report critical error
-            STORAGE_ERROR("Failed to deserialize request. ID: " << keyringId);
-            continue;
-        }
-
-        auto requestId = CreateRequestId();
-        request->MutableHeaders()->SetRequestId(requestId);
-        request->MutableHeaders()->SetClientId(clientId);
-        request->MutableHeaders()->SetOriginFqdn(originFqdn);
-
-        auto future = EndpointManager->StartEndpoint(
-            MakeIntrusive<TCallContext>(requestId),
-            std::move(request));
-
-        future.Subscribe([=] (const auto& f) {
-            const auto& response = f.GetValue();
-            if (HasError(response)) {
-                // TODO: report critical error
-                STORAGE_ERROR("Failed to start endpoint: "
-                    << FormatError(response.GetError()));
-            }
-        });
     }
 }
 
