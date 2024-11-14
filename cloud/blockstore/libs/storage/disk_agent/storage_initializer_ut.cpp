@@ -86,6 +86,7 @@ struct TFixture
     const ui64 DeviceSize = 64_KB;
     const ui64 PaddingSize = 4_KB;
     const ui64 HeaderSize = 4_KB;
+    const ui32 DefaultDeviceBlockSize = 4_KB;
 
     const TTempDir TempDir;
     const TFsPath DevicesPath = TempDir.Path() / "devices";
@@ -134,6 +135,7 @@ struct TFixture
         DefaultConfig.SetCachedConfigPath(CachedConfigPath / "config.txt");
         DefaultConfig.SetBackend(NProto::DISK_AGENT_BACKEND_AIO);
         DefaultConfig.SetAcquireRequired(true);
+        DefaultConfig.SetDisableBrokenDevices(true);
 
         SetUpStorageDiscoveryConfig();
         SetUpStorage();
@@ -180,7 +182,7 @@ Y_UNIT_TEST_SUITE(TInitializerTest)
         UNIT_ASSERT_VALUES_EQUAL(r.Configs.size(), r.Stats.size());
         UNIT_ASSERT_VALUES_EQUAL(0, r.Errors.size());
         UNIT_ASSERT_VALUES_EQUAL(0, r.ConfigMismatchErrors.size());
-        UNIT_ASSERT_VALUES_EQUAL(0, r.DevicesWithNewSerialNumber.size());
+        UNIT_ASSERT_VALUES_EQUAL(0, r.DevicesWithSuspendedIO.size());
 
         auto configs = r.Configs;
         SortBy(configs, [](const auto& d) { return d.GetDeviceName(); });
@@ -212,7 +214,7 @@ Y_UNIT_TEST_SUITE(TInitializerTest)
 
         const auto& r1 = future1.GetValueSync();
 
-        UNIT_ASSERT_VALUES_EQUAL(0, r1.DevicesWithNewSerialNumber.size());
+        UNIT_ASSERT_VALUES_EQUAL(0, r1.DevicesWithSuspendedIO.size());
 
         const TVector<std::pair<TString, TString>> newPathToSerial{
             {"NVMENBS01", "W"},
@@ -240,7 +242,7 @@ Y_UNIT_TEST_SUITE(TInitializerTest)
         UNIT_ASSERT_VALUES_EQUAL(0, r2.ConfigMismatchErrors.size());
         UNIT_ASSERT_VALUES_EQUAL(
             DeviceCountPerPath * 3,
-            r2.DevicesWithNewSerialNumber.size());
+            r2.DevicesWithSuspendedIO.size());
 
         {
             auto configs = r2.Configs;
@@ -265,7 +267,11 @@ Y_UNIT_TEST_SUITE(TInitializerTest)
         const auto& r3 = future3.GetValueSync();
 
         UNIT_ASSERT_VALUES_EQUAL(0, r3.ConfigMismatchErrors.size());
-        UNIT_ASSERT_VALUES_EQUAL(0, r3.DevicesWithNewSerialNumber.size());
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            r2.DevicesWithSuspendedIO.size(),
+            r3.DevicesWithSuspendedIO.size());
+
         UNIT_ASSERT_VALUES_EQUAL(r2.Configs.size(), r3.Configs.size());
         UNIT_ASSERT(std::equal(
             r2.Configs.cbegin(),
@@ -333,7 +339,7 @@ Y_UNIT_TEST_SUITE(TInitializerTest)
         UNIT_ASSERT_VALUES_EQUAL(1, r2.ConfigMismatchErrors.size());
         UNIT_ASSERT_VALUES_EQUAL(
             DeviceCountPerPath * 3,
-            r2.DevicesWithNewSerialNumber.size());
+            r2.DevicesWithSuspendedIO.size());
         UNIT_ASSERT_VALUES_EQUAL(r1.Configs.size(), r2.Configs.size());
         UNIT_ASSERT(std::equal(
             r1.Configs.cbegin(),
@@ -405,7 +411,7 @@ Y_UNIT_TEST_SUITE(TInitializerTest)
         UNIT_ASSERT_VALUES_EQUAL(1, r2.ConfigMismatchErrors.size());
         UNIT_ASSERT_VALUES_EQUAL(
             DeviceCountPerPath * 3,
-            r2.DevicesWithNewSerialNumber.size());
+            r2.DevicesWithSuspendedIO.size());
         UNIT_ASSERT_VALUES_EQUAL(r1.Configs.size(), r2.Configs.size());
         UNIT_ASSERT(std::equal(
             r1.Configs.cbegin(),
@@ -433,6 +439,54 @@ Y_UNIT_TEST_SUITE(TInitializerTest)
                 }
             }
         }
+    }
+
+    Y_UNIT_TEST_F(ShouldUpdateSerialNumberForStaticConfig, TFixture)
+    {
+        const TVector<std::pair<TString, TString>> pathToSerial{
+            {"NVMENBS01", "W"},
+            {"NVMENBS02", "X"},
+            {"NVMENBS03", "Y"},
+            {"NVMENBS04", "Z"},
+        };
+
+        auto staticConfig = DefaultConfig;
+        staticConfig.ClearStorageDiscoveryConfig();
+
+        for (size_t i = 0; i != pathToSerial.size(); ++i) {
+            const auto name = "NVMENBS0" + ToString(i + 1);
+            auto& file = *staticConfig.AddFileDevices();
+            file.SetFileSize(DeviceSize);
+            file.SetBlockSize(DefaultDeviceBlockSize);
+            file.SetPath(DevicesPath / name);
+            file.SetDeviceId(name);
+        }
+
+        // set a custom serial number for the NVMENBS02
+        staticConfig.MutableFileDevices(1)->SetSerialNumber("A");
+
+        auto future = InitializeStorage(
+            Logging->CreateLog("Test"),
+            StorageConfig,
+            std::make_shared<TDiskAgentConfig>(staticConfig, "rack"),
+            StorageProvider,
+            std::make_shared<TTestNvmeManager>(pathToSerial));
+
+        const auto& r = future.GetValueSync();
+
+        UNIT_ASSERT_VALUES_EQUAL(4, r.Configs.size());
+
+        UNIT_ASSERT_VALUES_EQUAL("NVMENBS01", r.Configs[0].GetDeviceUUID());
+        UNIT_ASSERT_VALUES_EQUAL("W", r.Configs[0].GetSerialNumber());
+
+        UNIT_ASSERT_VALUES_EQUAL("NVMENBS02", r.Configs[1].GetDeviceUUID());
+        UNIT_ASSERT_VALUES_EQUAL("A", r.Configs[1].GetSerialNumber());
+
+        UNIT_ASSERT_VALUES_EQUAL("NVMENBS03", r.Configs[2].GetDeviceUUID());
+        UNIT_ASSERT_VALUES_EQUAL("Y", r.Configs[2].GetSerialNumber());
+
+        UNIT_ASSERT_VALUES_EQUAL("NVMENBS04", r.Configs[3].GetDeviceUUID());
+        UNIT_ASSERT_VALUES_EQUAL("Z", r.Configs[3].GetSerialNumber());
     }
 }
 

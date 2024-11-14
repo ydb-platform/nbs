@@ -96,9 +96,10 @@ class Nbs(Daemon):
 
 class DiskAgent(Daemon):
 
-    def __init__(self, mon_port, server_port, commands, cwd):
+    def __init__(self, mon_port, server_port, commands, cwd, config_path):
         self.__mon_port = mon_port
         self.__port = server_port
+        self.__config_path = config_path
 
         super(DiskAgent, self).__init__(
             commands=commands,
@@ -115,6 +116,10 @@ class DiskAgent(Daemon):
     @property
     def mon_port(self):
         return self.__mon_port
+
+    @property
+    def config_path(self):
+        return self.__config_path
 
     @property
     def counters(self):
@@ -194,6 +199,7 @@ def start_disk_agent(config: NbsConfigurator, name='disk-agent'):
         server_port=config.server_port,
         commands=[commands],
         cwd=cwd,
+        config_path=config_path,
     )
 
     agent.start()

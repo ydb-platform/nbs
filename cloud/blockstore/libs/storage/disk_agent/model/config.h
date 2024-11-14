@@ -4,6 +4,8 @@
 
 #include <cloud/blockstore/config/disk.pb.h>
 
+#include <cloud/storage/core/libs/common/error.h>
+
 #include <util/datetime/base.h>
 #include <util/generic/string.h>
 #include <util/stream/output.h>
@@ -22,9 +24,9 @@ public:
     TDiskAgentConfig() = default;
 
     TDiskAgentConfig(
-            const NProto::TDiskAgentConfig& config,
+            NProto::TDiskAgentConfig config,
             TString rack)
-        : Config(config)
+        : Config(std::move(config))
         , Rack(std::move(rack))
     {}
 
@@ -32,8 +34,6 @@ public:
     TString GetAgentId() const;
     ui64 GetSeqNumber() const;
     bool GetDedicatedDiskAgent() const;
-
-    // TODO
 
     const auto& GetMemoryDevices() const
     {
@@ -108,9 +108,33 @@ public:
     bool GetDisableNodeBrokerRegistrationOnDevicelessAgent() const;
     ui32 GetMaxAIOContextEvents() const;
     ui32 GetPathsPerFileIOService() const;
+    bool GetDisableBrokenDevices() const;
+
+    const auto& GetDevicesWithSuspendedIO() const
+    {
+        return Config.GetDevicesWithSuspendedIO();
+    }
+
+    const auto& GetPathToSerialNumberMapping() const
+    {
+        return Config.GetPathToSerialNumberMapping();
+    }
 
     void Dump(IOutputStream& out) const;
     void DumpHtml(IOutputStream& out) const;
 };
+
+////////////////////////////////////////////////////////////////////////////////
+
+[[nodiscard]] auto LoadDiskAgentConfig(
+    const TString& path) -> TResultOrError<NProto::TDiskAgentConfig>;
+
+[[nodiscard]] auto UpdateDevicesWithSuspendedIO(
+    const TString& path,
+    const TVector<TString>& uuids) -> NProto::TError;
+
+[[nodiscard]] auto SaveDiskAgentConfig(
+    const TString& path,
+    const NProto::TDiskAgentConfig& proto) -> NProto::TError;
 
 }   // namespace NCloud::NBlockStore::NStorage
