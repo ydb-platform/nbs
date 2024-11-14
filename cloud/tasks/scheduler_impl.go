@@ -535,95 +535,88 @@ func (s *scheduler) registerSystemTasks(
 	metricsRegistry metrics.Registry,
 ) error {
 
-	if config.GetUseBlankTask() {
-		err := s.registry.RegisterForExecution("tasks.Blank", func() Task {
-			return &blankTask{}
-		})
-		if err != nil {
-			return err
-		}
+	err := s.registry.RegisterForExecution("tasks.Blank", func() Task {
+		return &blankTask{}
+	})
+	if err != nil {
+		return err
 	}
 
-	if config.GetUseClearEndedTasksTask() {
-		endedTaskExpirationTimeout, err := time.ParseDuration(
-			config.GetEndedTaskExpirationTimeout(),
-		)
-		if err != nil {
-			return err
-		}
-
-		clearEndedTasksTaskScheduleInterval, err := time.ParseDuration(
-			config.GetClearEndedTasksTaskScheduleInterval(),
-		)
-		if err != nil {
-			return err
-		}
-
-		err = s.registry.RegisterForExecution(
-			"tasks.ClearEndedTasks",
-			func() Task {
-				return &clearEndedTasksTask{
-					storage:           s.storage,
-					expirationTimeout: endedTaskExpirationTimeout,
-					limit:             int(config.GetClearEndedTasksLimit()),
-				}
-			},
-		)
-		if err != nil {
-			return err
-		}
-
-		s.ScheduleRegularTasks(
-			ctx,
-			"tasks.ClearEndedTasks",
-			TaskSchedule{
-				ScheduleInterval: clearEndedTasksTaskScheduleInterval,
-				MaxTasksInflight: 1,
-			},
-		)
+	endedTaskExpirationTimeout, err := time.ParseDuration(
+		config.GetEndedTaskExpirationTimeout(),
+	)
+	if err != nil {
+		return err
 	}
 
-	if config.GetUseCollectListerMetricsTask() {
-		listerMetricsCollectionInterval, err := time.ParseDuration(
-			config.GetListerMetricsCollectionInterval(),
-		)
-		if err != nil {
-			return err
-		}
-
-		collectListerMetricsTaskScheduleInterval, err := time.ParseDuration(
-			config.GetCollectListerMetricsTaskScheduleInterval(),
-		)
-		if err != nil {
-			return err
-		}
-
-		err = s.registry.RegisterForExecution(
-			"tasks.CollectListerMetrics", func() Task {
-				return &collectListerMetricsTask{
-					registry:                  metricsRegistry,
-					storage:                   s.storage,
-					metricsCollectionInterval: listerMetricsCollectionInterval,
-
-					taskTypes:                 s.registry.TaskTypes(),
-					hangingTaskGaugesByID:     make(map[string]metrics.Gauge),
-					maxHangingTaskIDsToReport: config.GetMaxHangingTaskIDsToReport(),
-				}
-			},
-		)
-		if err != nil {
-			return err
-		}
-
-		s.ScheduleRegularTasks(
-			ctx,
-			"tasks.CollectListerMetrics",
-			TaskSchedule{
-				ScheduleInterval: collectListerMetricsTaskScheduleInterval,
-				MaxTasksInflight: 1,
-			},
-		)
+	clearEndedTasksTaskScheduleInterval, err := time.ParseDuration(
+		config.GetClearEndedTasksTaskScheduleInterval(),
+	)
+	if err != nil {
+		return err
 	}
+
+	err = s.registry.RegisterForExecution(
+		"tasks.ClearEndedTasks", func() Task {
+			return &clearEndedTasksTask{
+				storage:           s.storage,
+				expirationTimeout: endedTaskExpirationTimeout,
+				limit:             int(config.GetClearEndedTasksLimit()),
+			}
+		},
+	)
+	if err != nil {
+		return err
+	}
+
+	s.ScheduleRegularTasks(
+		ctx,
+		"tasks.ClearEndedTasks",
+		TaskSchedule{
+			ScheduleInterval: clearEndedTasksTaskScheduleInterval,
+			MaxTasksInflight: 1,
+		},
+	)
+
+	listerMetricsCollectionInterval, err := time.ParseDuration(
+		config.GetListerMetricsCollectionInterval(),
+	)
+	if err != nil {
+		return err
+	}
+
+	collectListerMetricsTaskScheduleInterval, err := time.ParseDuration(
+		config.GetCollectListerMetricsTaskScheduleInterval(),
+	)
+	if err != nil {
+		return err
+	}
+
+	err = s.registry.RegisterForExecution(
+		"tasks.CollectListerMetrics", func() Task {
+			return &collectListerMetricsTask{
+				registry:                  metricsRegistry,
+				storage:                   s.storage,
+				metricsCollectionInterval: listerMetricsCollectionInterval,
+
+				taskTypes:                 s.registry.TaskTypes(),
+				hangingTaskGaugesByID:     make(map[string]metrics.Gauge),
+				maxHangingTaskIDsToReport: config.GetMaxHangingTaskIDsToReport(),
+			}
+		},
+	)
+	if err != nil {
+		return err
+	}
+
+	s.ScheduleRegularTasks(
+		ctx,
+		"tasks.CollectListerMetrics",
+		TaskSchedule{
+			ScheduleInterval: collectListerMetricsTaskScheduleInterval,
+			MaxTasksInflight: 1,
+		},
+	)
 
 	return nil
 }
@@ -668,13 +661,15 @@ func NewScheduler(
 		scheduleRegularTasksPeriodMax: scheduleRegularTasksPeriodMax,
 	}
 
-	err = s.registerSystemTasks(
-		ctx,
-		config,
-		metricsRegistry,
-	)
-	if err != nil {
-		return nil, err
+	if config.GetUseSystemTasks() {
+		err = s.registerSystemTasks(
+			ctx,
+			config,
+			metricsRegistry,
+		)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	return s, nil

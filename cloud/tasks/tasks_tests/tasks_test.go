@@ -1314,7 +1314,7 @@ func TestHangingTasksMetrics(t *testing.T) {
 	registry.AssertAllExpectations(t)
 }
 
-func TestHangingMetricsInitialization(t *testing.T) {
+func TestHangingTasksMetricsAreSetEvenForTasksNotRegisteredForExecution(t *testing.T) {
 	ctx, cancel := context.WithCancel(newContext())
 	defer cancel()
 
@@ -1327,28 +1327,13 @@ func TestHangingMetricsInitialization(t *testing.T) {
 	config := newHangingTaskTestConfig()
 
 	s := createServicesWithConfig(t, ctx, db, config, registry)
-	err = registerHangingTask(s.registry)
-	require.NoError(t, err)
 	err = registerLongTaskNotForExecution(s.registry)
 	require.NoError(t, err)
 
 	err = s.startRunners(ctx)
 	require.NoError(t, err)
 
-	gaugeSetForExecutingTask := make(chan struct{}, 1)
-	gaugeSetForNonExecutingTask := make(chan struct{}, 1)
-
-	registry.GetGauge(
-		"totalHangingTaskCount",
-		map[string]string{"type": "tasks.hanging"},
-	).On("Set", float64(0)).Return(mock.Anything).Run(
-		func(args mock.Arguments) {
-			select {
-			case gaugeSetForExecutingTask <- struct{}{}:
-			default:
-			}
-		},
-	)
+	gaugeSetChannel := make(chan struct{}, 1)
 
 	registry.GetGauge(
 		"totalHangingTaskCount",
@@ -1356,18 +1341,12 @@ func TestHangingMetricsInitialization(t *testing.T) {
 	).On("Set", float64(0)).Return(mock.Anything).Run(
 		func(args mock.Arguments) {
 			select {
-			case gaugeSetForNonExecutingTask <- struct{}{}:
+			case gaugeSetChannel <- struct{}{}:
 			default:
 			}
 		},
 	)
 
-	select {
-	case <-gaugeSetForExecutingTask:
-	}
-	select {
-	case <-gaugeSetForNonExecutingTask:
-	}
-
+	_ = <-gaugeSetChannel
 	registry.AssertAllExpectations(t)
 }

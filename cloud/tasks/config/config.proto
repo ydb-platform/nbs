@@ -57,10 +57,9 @@ message TasksConfig {
     // Spans of tasks with greater generation id will not be sampled.
     optional uint64 MaxSampledTaskGeneration = 32 [default = 100];
 
-    // Flags for system tasks, i.e. tasks registered by `tasks` library. If
-    // the flag is true, then the corresponding task will be registered for
-    // execution (and if the task is regular, then it will also be scheduled).
-    optional bool UseBlankTask = 33 [default = true];
-    optional bool UseClearEndedTasksTask = 34 [default = true];
-    optional bool UseCollectListerMetricsTask = 35 [default = true];
+    // System tasks are tasks implemented by `tasks` library, like tasks.Blank,
+    // tasks.ClearEndedTasks, tasks.CollectListerMetricsTask. If this flag is
+    // true, then system tasks will be automatically registered for execution
+    // (and regular system tasks will be also scheduled).
+    optional bool UseSystemTasks = 33 [default = true];
 }
