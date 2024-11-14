@@ -265,10 +265,8 @@ NActors::TActorId TVolumeActor::WrapNonreplActorIfNeeded(
     for (const auto& [checkpointId, checkpointInfo]:
          State->GetCheckpointStore().GetActiveCheckpoints())
     {
-        if (checkpointInfo.Data == ECheckpointData::DataDeleted ||
-            !checkpointInfo.IsShadowDiskBased() ||
-            checkpointInfo.ShadowDiskState == EShadowDiskState::Error ||
-            checkpointInfo.HasShadowActor)
+        if (checkpointInfo.HasShadowActor ||
+            !State->GetCheckpointStore().NeedShadowActor(checkpointId))
         {
             continue;
         }

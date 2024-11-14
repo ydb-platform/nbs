@@ -4986,6 +4986,55 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
         runtime->DispatchEvents({}, TDuration::MilliSeconds(10));
         UNIT_ASSERT_VALUES_EQUAL(2, registerSourceCounter);
     }
+
+    Y_UNIT_TEST(ShouldDestroyShadowActorBeforeShadowDiskDeallocation)
+    {
+        NProto::TStorageServiceConfig config;
+        config.SetUseShadowDisksForNonreplDiskCheckpoints(true);
+        auto runtime = PrepareTestActorRuntime(config);
+
+        TVolumeClient volume(*runtime);
+        volume.UpdateVolumeConfig(
+            0,
+            0,
+            0,
+            0,
+            false,
+            1,
+            NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
+            32768);
+
+        volume.WaitReady();
+
+        volume.CreateCheckpoint("c1");
+
+        bool seenPoisonPillEvent = false;
+        bool seenDeallocateCheckpointEvent = false;
+        auto filter = [&](TTestActorRuntimeBase& runtime,
+                          TAutoPtr<IEventHandle>& event) -> bool
+        {
+            Y_UNUSED(runtime);
+            if (event->GetTypeRewrite() == NActors::TEvents::TSystem::Poison) {
+                seenPoisonPillEvent = true;
+            }
+            if (event->GetTypeRewrite() ==
+                TEvDiskRegistry::EvDeallocateCheckpointRequest)
+            {
+                seenDeallocateCheckpointEvent = true;
+                UNIT_ASSERT_C(
+                    seenPoisonPillEvent,
+                    "Should catch deallocation event after poison pill");
+            }
+
+            return false;
+        };
+        runtime->SetEventFilter(filter);
+
+        volume.DeleteCheckpointData("c1");
+
+        UNIT_ASSERT(seenPoisonPillEvent);
+        UNIT_ASSERT(seenDeallocateCheckpointEvent);
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

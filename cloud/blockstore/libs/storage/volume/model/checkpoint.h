@@ -184,6 +184,7 @@ public:
     void ShadowActorCreated(const TString& checkpointId);
     void ShadowActorDestroyed(const TString& checkpointId);
     [[nodiscard]] bool HasShadowActor(const TString& checkpointId) const;
+    [[nodiscard]] bool NeedShadowActor(const TString& checkpointId) const;
 
     [[nodiscard]] bool IsRequestInProgress() const;
     [[nodiscard]] bool IsCheckpointBeingCreated() const;

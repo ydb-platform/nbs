@@ -1227,6 +1227,20 @@ void TVolumeActor::ExecuteCheckpointRequest(const TActorContext& ctx, ui64 reque
     }
 
     State->GetCheckpointStore().SetCheckpointRequestInProgress(requestId);
+    const bool needToDestroyShadowActor =
+        (request.ReqType == ECheckpointRequestType::Delete ||
+         request.ReqType == ECheckpointRequestType::DeleteData) &&
+        State->GetCheckpointStore().HasShadowActor(request.CheckpointId);
+
+    if (needToDestroyShadowActor) {
+        auto checkpointInfo =
+            State->GetCheckpointStore().GetCheckpoint(request.CheckpointId);
+        if (checkpointInfo && checkpointInfo->ShadowDiskId) {
+            DoUnregisterVolume(ctx, checkpointInfo->ShadowDiskId);
+        }
+        Cout << "RestartDiskRegistryBasedPartition\n";
+        RestartDiskRegistryBasedPartition(ctx);
+    }
 
     TActorId actorId;
     switch (request.ReqType) {
@@ -1429,19 +1443,6 @@ void TVolumeActor::CompleteUpdateCheckpointRequest(
         args.ShadowDiskId.Quote().c_str(),
         args.ErrorMessage.value_or("").c_str());
 
-    const bool needToDestroyShadowActor =
-        (request.ReqType == ECheckpointRequestType::Delete ||
-         request.ReqType == ECheckpointRequestType::DeleteData) &&
-         State->GetCheckpointStore().HasShadowActor(request.CheckpointId);
-
-    if (needToDestroyShadowActor) {
-        auto checkpointInfo =
-            State->GetCheckpointStore().GetCheckpoint(request.CheckpointId);
-        if (checkpointInfo && checkpointInfo->ShadowDiskId) {
-            DoUnregisterVolume(ctx, checkpointInfo->ShadowDiskId);
-        }
-    }
-
     State->SetCheckpointRequestFinished(
         request,
         args.Completed,
@@ -1455,7 +1456,7 @@ void TVolumeActor::CompleteUpdateCheckpointRequest(
         !request.ShadowDiskId.empty() &&
         !State->GetCheckpointStore().HasShadowActor(request.CheckpointId);
 
-    if (needToDestroyShadowActor || needToCreateShadowActor) {
+    if (needToCreateShadowActor) {
         RestartDiskRegistryBasedPartition(ctx);
     }
 
