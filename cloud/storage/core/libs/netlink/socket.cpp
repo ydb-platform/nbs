@@ -3,7 +3,7 @@
 namespace NCloud::NNetlink {
 
 TSocket::TSocket(TString family)
-    : Socket(nl_socket_alloc(), [](auto socket) { nl_socket_free(socket); })
+    : Socket(nl_socket_alloc(), [](auto* socket) { nl_socket_free(socket); })
 {
     if (!Socket) {
         throw TServiceError(E_FAIL) << "unable to allocate netlink socket";
