@@ -263,11 +263,11 @@ auto InitTestActorRuntime(
 void InitLogSettings(TTestActorRuntime& runtime)
 {
     for (ui32 i = TBlockStoreComponents::START; i < TBlockStoreComponents::END; ++i) {
-        //runtime.SetLogPriority(i, NLog::PRI_INFO);
-        runtime.SetLogPriority(i, NLog::PRI_DEBUG);
+        runtime.SetLogPriority(i, NLog::PRI_INFO);
+        // runtime.SetLogPriority(i, NLog::PRI_DEBUG);
     }
-    runtime.SetLogPriority(NLog::InvalidComponent, NLog::PRI_DEBUG);
-    //runtime.SetLogPriority(NKikimrServices::BS_NODE, NLog::PRI_ERROR);
+    // runtime.SetLogPriority(NLog::InvalidComponent, NLog::PRI_DEBUG);
+    runtime.SetLogPriority(NKikimrServices::BS_NODE, NLog::PRI_ERROR);
 }
 
 std::unique_ptr<TTestActorRuntime> PrepareTestActorRuntime(
@@ -11173,20 +11173,10 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         TPartitionClient partition(*runtime);
         partition.WaitReady();
 
-        partition.WriteBlocks(1, 1);
-        partition.WriteBlocks(2, 2);
-        partition.WriteBlocks(3, 3);
-        partition.Flush();
-
-        partition.WriteBlocks(1, 11);
-        partition.Flush();
-
-        partition.WriteBlocks(2, 22);
-        partition.Flush();
-
         partition.WriteBlocks(3, 33);
         partition.Flush();
 
+        ui32 failedReadBlob = 0;
         runtime->SetEventFilter([&]
             (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& ev)
         {
@@ -11199,6 +11189,11 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
                 {
                     return true;
                 }
+            } else if (ev->GetTypeRewrite() == TEvStatsService::EvVolumePartCounters) {
+                auto* msg =
+                    ev->Get<TEvStatsService::TEvVolumePartCounters>();
+                failedReadBlob =
+                    msg->DiskCounters->Simple.ReadBlobDeadlineCount.Value;
             }
             return false;
         });
@@ -11207,6 +11202,17 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         runtime->AdvanceCurrentTime(TDuration::Seconds(1));
         auto response = partition.RecvCompactionResponse();
         UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, response->GetError().GetCode());
+
+        runtime->AdvanceCurrentTime(TDuration::Seconds(15));
+
+        partition.SendToPipe(
+            std::make_unique<TEvPartitionPrivate::TEvUpdateCounters>());
+        {
+            TDispatchOptions options;
+            options.FinalEvents.emplace_back(TEvStatsService::EvVolumePartCounters);
+            runtime->DispatchEvents(options);
+        }
+        UNIT_ASSERT_VALUES_EQUAL(1, failedReadBlob);
     }
 }
 
