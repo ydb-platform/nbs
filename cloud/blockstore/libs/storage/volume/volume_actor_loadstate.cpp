@@ -6,6 +6,8 @@
 
 #include <cloud/storage/core/libs/common/media.h>
 
+#include "volume_actor_scandisk.cpp"
+
 namespace NCloud::NBlockStore::NStorage {
 
 using namespace NActors;
@@ -155,6 +157,10 @@ void TVolumeActor::CompleteLoadState(
         RegisterCounters(ctx);
         RegisterVolume(ctx);
 
+        LOG_ERROR(ctx, TBlockStoreComponents::VOLUME, "starting partition for use");
+
+        StartPartitionsForUse(ctx);
+    /*
         if (State->IsDiskRegistryMediaKind() || PendingRequests.size()) {
             StartPartitionsForUse(ctx);
         } else if (State->GetShouldStartPartitionsForGc(ctx.Now())
@@ -162,6 +168,10 @@ void TVolumeActor::CompleteLoadState(
         {
             StartPartitionsForGc(ctx);
         }
+    */
+
+    LOG_ERROR(ctx, TBlockStoreComponents::VOLUME, "Partition started");
+
     }
 
     if (args.UsedBlocks) {
@@ -184,6 +194,20 @@ void TVolumeActor::CompleteLoadState(
     SignalTabletActive(ctx);
     ScheduleProcessUpdateVolumeConfig(ctx);
     ScheduleAllocateDiskIfNeeded(ctx);
+
+    LOG_ERROR(ctx, TBlockStoreComponents::VOLUME, "Volume registrations started");
+
+    ScanDiskId = NCloud::Register(
+        ctx,
+        CreateScanDiskActor(
+            SelfId(),
+            100,
+            0,
+            Config->GetCompactionRetryTimeout())
+
+    );
+
+    Actors.insert(ScanDiskId);
 
     if (State) {
         ProcessNextPendingClientRequest(ctx);

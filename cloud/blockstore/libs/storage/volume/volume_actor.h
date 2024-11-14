@@ -356,6 +356,8 @@ private:
 
     TVector<ui64> GCCompletedPartitions;
 
+    NActors::TActorId ScanDiskId;
+
 public:
     TVolumeActor(
         const NActors::TActorId& owner,
@@ -997,6 +999,14 @@ private:
     BLOCKSTORE_VOLUME_REQUESTS_FWD_SERVICE(BLOCKSTORE_IMPLEMENT_REQUEST, TEvService)
 
     BLOCKSTORE_VOLUME_TRANSACTIONS(BLOCKSTORE_IMPLEMENT_TRANSACTION, TTxVolume)
+
+    ////////////////////////////////////////////////////////////////////////////
+
+    NActors::IActorPtr CreateScanDiskActor(
+        NActors::TActorId tablet,
+        ui64 blobsPerBatch,
+        ui64 finalCommitId,
+        TDuration retryTimeout);
 };
 
 ////////////////////////////////////////////////////////////////////////////////

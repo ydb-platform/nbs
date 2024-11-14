@@ -238,6 +238,41 @@ struct TEvVolume
     };
 
     //
+    // CheckRangeResponce
+    //
+    struct TCheckRangeResponse
+    {
+    };
+
+    //
+    // TCheckRange
+    //
+    struct TCheckRange
+    {
+        ui64 BlockId;
+        ui64 BlocksCount;
+
+        TCheckRange(ui64 blockId, ui64 blocksCount)
+            : BlockId(blockId)
+            , BlocksCount(blocksCount)
+        {}
+    };
+
+    //
+    // CheckRangeReportStatus
+    //
+    struct TCheckRangeReportStatus
+    {
+        ui64 CurentBlockId;
+        bool IsFinished;
+
+        TCheckRangeReportStatus(ui64 curentBlockId, bool isFinished)
+            : CurentBlockId(curentBlockId)
+            , IsFinished(isFinished)
+        {}
+    };
+
+    //
     // Events declaration
     //
 
@@ -331,6 +366,10 @@ struct TEvVolume
         EvGetStorageConfigRequest = EvBegin + 58,
         EvGetStorageConfigResponse = EvBegin + 59,
 
+        EvCheckRange = EvBegin + 60,
+        EvCheckRangeResponse = EvBegin + 61,
+        EvCheckRangeReportStatus = EvBegin + 62,
+
         EvEnd
     };
 
@@ -402,6 +441,21 @@ struct TEvVolume
     using TEvPreparePartitionMigrationResponse = TRequestEvent<
         TPreparePartitionMigrationResponse,
         EvPreparePartitionMigrationResponse
+    >;
+
+    using TEvCheckRange = TRequestEvent<
+        TCheckRange,
+        EvCheckRange
+    >;
+
+    using TEvCheckRangeResponse = TRequestEvent<
+        TCheckRangeResponse,
+        EvCheckRangeResponse
+    >;
+
+    using TEvCheckRangeReportStatus = TRequestEvent<
+        TCheckRangeReportStatus,
+        EvCheckRangeReportStatus
     >;
 };
 

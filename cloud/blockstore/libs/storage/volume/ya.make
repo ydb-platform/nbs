@@ -39,6 +39,7 @@ SRCS(
     volume_counters.cpp
     volume_database.cpp
     volume_state.cpp
+    volume_actor_scandisk.cpp
 )
 
 PEERDIR(
