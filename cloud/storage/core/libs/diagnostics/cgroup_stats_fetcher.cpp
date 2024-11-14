@@ -89,7 +89,7 @@ public:
     TResultOrError<TDuration> GetCpuWait() override
     {
         if (!CpuAcctWait.IsOpen()) {
-            return MakeError(E_FAIL, "Failed to open " + StatsFile);
+            return MakeError(E_INVALID_STATE, "Failed to open " + StatsFile);
         }
 
         try {
@@ -127,10 +127,8 @@ public:
             ReportCpuWaitFatalError();
             auto errorMessage = BuildErrorMessageFromException();
             CpuAcctWait.Close();
-            return MakeError(E_FAIL, std::move(errorMessage));
+            return MakeError(E_INVALID_STATE, std::move(errorMessage));
         }
-
-        return MakeError(E_FAIL);
     }
 
     TString BuildErrorMessageFromException()
