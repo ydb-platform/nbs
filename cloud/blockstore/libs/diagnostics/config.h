@@ -155,6 +155,8 @@ public:
     TRequestThresholds GetRequestThresholds() const;
     EHistogramCounterOptions GetHistogramCounterOptions() const;
 
+    NCloud::NProto::EStatsFetcherType GetStatsFetcherType() const;
+
     void Dump(IOutputStream& out) const;
     void DumpHtml(IOutputStream& out) const;
 };

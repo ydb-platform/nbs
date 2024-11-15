@@ -137,6 +137,8 @@ public:
     TFileSystemPerformanceProfile GetHDDFileSystemPerformanceProfile() const;
     TFileSystemPerformanceProfile GetSSDFileSystemPerformanceProfile() const;
 
+    NCloud::NProto::EStatsFetcherType GetStatsFetcherType() const;
+
     void Dump(IOutputStream& out) const;
     void DumpHtml(IOutputStream& out) const;
 };

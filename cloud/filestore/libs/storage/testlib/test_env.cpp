@@ -17,7 +17,7 @@
 
 #include <cloud/storage/core/libs/api/hive_proxy.h>
 #include <cloud/storage/core/libs/common/timer.h>
-#include <cloud/storage/core/libs/diagnostics/cgroup_stats_fetcher.h>
+#include <cloud/storage/core/libs/diagnostics/stats_fetcher.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 #include <cloud/storage/core/libs/diagnostics/trace_serializer.h>
 #include <cloud/storage/core/libs/hive_proxy/hive_proxy.h>
@@ -226,7 +226,7 @@ ui32 TTestEnv::CreateNode(const TString& name)
         StatsRegistry,
         ProfileLog,
         TraceSerializer,
-        CreateCgroupStatsFetcherStub());
+        CreateStatsFetcherStub());
     auto indexServiceId = Runtime.Register(
         indexService.release(),
         nodeIdx,

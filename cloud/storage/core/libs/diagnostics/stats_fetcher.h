@@ -4,6 +4,7 @@
 
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/common/startable.h>
+#include <cloud/storage/core/protos/diagnostics.pb.h>
 
 #include <util/datetime/base.h>
 
@@ -17,31 +18,37 @@ namespace NCloud::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct ICgroupStatsFetcher
+struct IStatsFetcher
     : public IStartable
 {
-    virtual ~ICgroupStatsFetcher() = default;
+    virtual ~IStatsFetcher() = default;
 
     virtual TResultOrError<TDuration> GetCpuWait() = 0;
 };
 
-using ICgroupStatsFetcherPtr = std::shared_ptr<ICgroupStatsFetcher>;
+using IStatsFetcherPtr = std::shared_ptr<IStatsFetcher>;
 
 ////////////////////////////////////////////////////////////////////////////////
 
-ICgroupStatsFetcherPtr CreateCgroupStatsFetcher(
+IStatsFetcherPtr CreateCgroupStatsFetcher(
     TString componentName,
     ILoggingServicePtr logging,
     TString statsFile);
 
-ICgroupStatsFetcherPtr CreateCgroupStatsFetcherStub();
+IStatsFetcherPtr CreateTaskStatsFetcher(
+    TString componentName,
+    ILoggingServicePtr logging,
+    IMonitoringServicePtr monitoring,
+    int pid);
+
+IStatsFetcherPtr CreateStatsFetcherStub();
 
 TString BuildCpuWaitStatsFilename(const TString& serviceName);
 
-ICgroupStatsFetcherPtr BuildCgroupStatsFetcher(
-    TString cpuWaitFilename,
+NCloud::NStorage::IStatsFetcherPtr BuildStatsFetcher(
+    NProto::EStatsFetcherType statsFetcherType,
+    const TString& cpuWaitFilename,
     const TLog& log,
-    ILoggingServicePtr logging,
-    TString componentName);
+    ILoggingServicePtr logging);
 
 }   // namespace NCloud::NStorage

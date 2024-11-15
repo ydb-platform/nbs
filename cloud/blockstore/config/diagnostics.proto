@@ -4,6 +4,7 @@ package NCloud.NBlockStore.NProto;
 
 option go_package = "github.com/ydb-platform/nbs/cloud/blockstore/config";
 
+import "cloud/storage/core/protos/diagnostics.proto";
 import "cloud/storage/core/protos/trace.proto";
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -216,4 +217,7 @@ message TDiagnosticsConfig
 
     // Performance measurements coefficients for local HDD disks.
     optional TVolumePerfSettings LocalHDDPerfSettings = 51;
+
+    // Type of fetching CPU stats
+    optional NCloud.NProto.EStatsFetcherType StatsFetcherType = 52;
 }

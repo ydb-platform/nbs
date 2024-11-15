@@ -36,7 +36,7 @@ private:
     const TStorageConfigPtr StorageConfig;
     const IProfileLogPtr ProfileLog;
     const ITraceSerializerPtr TraceSerializer;
-    const NCloud::NStorage::ICgroupStatsFetcherPtr CgroupStatsFetcher;
+    const NCloud::NStorage::IStatsFetcherPtr StatsFetcher;
 
     std::unique_ptr<TStorageServiceState> State;
     ui64 ProxyCounter = 0;
@@ -54,7 +54,7 @@ public:
         IRequestStatsRegistryPtr statsRegistry,
         IProfileLogPtr profileLog,
         ITraceSerializerPtr traceSerializer,
-        NCloud::NStorage::ICgroupStatsFetcherPtr cgroupStatsFetcher);
+        NCloud::NStorage::IStatsFetcherPtr statsFetcher);
     ~TStorageServiceActor();
 
     void Bootstrap(const NActors::TActorContext& ctx);

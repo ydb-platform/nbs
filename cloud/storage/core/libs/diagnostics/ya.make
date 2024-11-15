@@ -2,7 +2,6 @@ LIBRARY()
 
 SRCS(
     busy_idle_calculator.cpp
-    cgroup_stats_fetcher.cpp
     counters_helper.cpp
     critical_events.cpp
     executor_counters.cpp
@@ -15,6 +14,7 @@ SRCS(
     postpone_time_predictor.cpp
     request_counters.cpp
     solomon_counters.cpp
+    stats_fetcher.cpp
     stats_updater.cpp
     trace_processor_mon.cpp
     trace_processor.cpp
@@ -25,10 +25,13 @@ SRCS(
 
 PEERDIR(
     cloud/storage/core/libs/common
+    cloud/storage/core/libs/netlink
     cloud/storage/core/protos
 
     library/cpp/lwtrace/mon
 
+    contrib/restricted/libnl/lib/nl-3
+    contrib/restricted/libnl/lib/nl-genl-3
     contrib/ydb/library/actors/prof
     library/cpp/containers/ring_buffer
     library/cpp/deprecated/atomic
@@ -46,4 +49,5 @@ PEERDIR(
 
 END()
 
+RECURSE_FOR_TESTS(qemu_ut)
 RECURSE_FOR_TESTS(ut)

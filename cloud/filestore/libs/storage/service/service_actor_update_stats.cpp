@@ -2,7 +2,7 @@
 
 #include <cloud/filestore/libs/diagnostics/incomplete_requests.h>
 
-#include <cloud/storage/core/libs/diagnostics/cgroup_stats_fetcher.h>
+#include <cloud/storage/core/libs/diagnostics/stats_fetcher.h>
 
 namespace NCloud::NFileStore::NStorage {
 
@@ -32,11 +32,12 @@ void TStorageServiceActor::HandleUpdateStats(
             InFlightRequests.erase(it++);
         }
     }
-    if (CgroupStatsFetcher) {
+
+    if (StatsFetcher) {
         auto now = ctx.Now();
 
         auto interval = (now - LastCpuWaitQuery).MicroSeconds();
-        if (auto [cpuWait, error] = CgroupStatsFetcher->GetCpuWait();
+        if (auto [cpuWait, error] = StatsFetcher->GetCpuWait();
             !HasError(error))
         {
             *CpuWaitFailure = 0;
