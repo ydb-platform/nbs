@@ -3,12 +3,9 @@
 #include "utils.h"
 
 #include <cloud/storage/core/libs/diagnostics/logging.h>
+#include <cloud/storage/core/libs/netlink/socket.h>
 
 #include <linux/nbd-netlink.h>
-
-#include <netlink/genl/ctrl.h>
-#include <netlink/genl/genl.h>
-#include <netlink/netlink.h>
 
 #include <util/generic/scope.h>
 #include <util/stream/mem.h>
@@ -19,170 +16,9 @@ namespace {
 
 using namespace NThreading;
 
-using TResponseHandler = std::function<int(genlmsghdr*)>;
-
 ////////////////////////////////////////////////////////////////////////////////
 
 constexpr TStringBuf NBD_DEVICE_SUFFIX = "/dev/nbd";
-
-////////////////////////////////////////////////////////////////////////////////
-
-class TNetlinkSocket
-{
-private:
-    nl_sock* Socket;
-    int Family;
-
-public:
-    TNetlinkSocket()
-    {
-        Socket = nl_socket_alloc();
-
-        if (Socket == nullptr) {
-            throw TServiceError(E_FAIL) << "unable to allocate netlink socket";
-        }
-
-        if (int err = genl_connect(Socket)) {
-            nl_socket_free(Socket);
-            throw TServiceError(E_FAIL)
-                << "unable to connect to generic netlink socket: "
-                << nl_geterror(err);
-        }
-
-        Family = genl_ctrl_resolve(Socket, "nbd");
-
-        if (Family < 0) {
-            nl_socket_free(Socket);
-            throw TServiceError(E_FAIL)
-                << "unable to resolve nbd netlink family: "
-                << nl_geterror(Family);
-        }
-    }
-
-    ~TNetlinkSocket()
-    {
-        nl_socket_free(Socket);
-    }
-
-    int GetFamily() const
-    {
-        return Family;
-    }
-
-    template <typename F>
-    void SetCallback(nl_cb_type type, F func)
-    {
-        auto arg = std::make_unique<TResponseHandler>(std::move(func));
-
-        if (int err = nl_socket_modify_cb(
-                Socket,
-                type,
-                NL_CB_CUSTOM,
-                TNetlinkSocket::ResponseHandler,
-                arg.get()))
-        {
-            throw TServiceError(E_FAIL)
-                << "unable to set socket callback: " << nl_geterror(err);
-        }
-        arg.release();
-    }
-
-    static int ResponseHandler(nl_msg* msg, void* arg)
-    {
-        auto func = std::unique_ptr<TResponseHandler>(
-            static_cast<TResponseHandler*>(arg));
-
-        return (*func)(static_cast<genlmsghdr*>(nlmsg_data(nlmsg_hdr(msg))));
-    }
-
-    void Send(nl_msg* message)
-    {
-        if (int err = nl_send_auto(Socket, message); err < 0) {
-            throw TServiceError(E_FAIL)
-                << "send error: " << nl_geterror(err);
-        }
-        if (int err = nl_wait_for_ack(Socket)) {
-            // this is either recv error, or an actual error message received
-            // from the kernel
-            throw TServiceError(E_FAIL)
-                << "recv error: " << nl_geterror(err);
-        }
-    }
-};
-
-////////////////////////////////////////////////////////////////////////////////
-
-class TNestedAttribute
-{
-private:
-    nl_msg* Message;
-    nlattr* Attribute;
-
-public:
-    TNestedAttribute(nl_msg* message, int attribute)
-        : Message(message)
-    {
-        Attribute = nla_nest_start(message, attribute);
-        if (!Attribute) {
-            throw TServiceError(E_FAIL) << "unable to nest attribute";
-        }
-    }
-
-    ~TNestedAttribute()
-    {
-        nla_nest_end(Message, Attribute);
-    }
-};
-
-////////////////////////////////////////////////////////////////////////////////
-
-class TNetlinkMessage
-{
-private:
-    nl_msg* Message;
-
-public:
-    TNetlinkMessage(int family, int command)
-    {
-        Message = nlmsg_alloc();
-        if (Message == nullptr) {
-            throw TServiceError(E_FAIL) << "unable to allocate message";
-        }
-        genlmsg_put(
-            Message,
-            NL_AUTO_PORT,
-            NL_AUTO_SEQ,
-            family,
-            0,          // hdrlen
-            0,          // flags
-            command,
-            0);         // version
-    }
-
-    ~TNetlinkMessage()
-    {
-        nlmsg_free(Message);
-    }
-
-    operator nl_msg*() const
-    {
-        return Message;
-    }
-
-    template <typename T>
-    void Put(int attribute, T data)
-    {
-        if (int err = nla_put(Message, attribute, sizeof(T), &data)) {
-            throw TServiceError(E_FAIL) << "unable to put attribute "
-                << attribute << ": " << nl_geterror(err);
-        }
-    }
-
-    TNestedAttribute Nest(int attribute)
-    {
-        return TNestedAttribute(Message, attribute);
-    }
-};
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -190,6 +26,8 @@ class TNetlinkDevice final
     : public IDevice
     , public std::enable_shared_from_this<TNetlinkDevice>
 {
+    using TNetlinkMessage = NCloud::NNetlink::TMessage;
+    using TNetlinkSocket = NCloud::NNetlink::TSocket;
 private:
     const ILoggingServicePtr Logging;
     const TNetworkAddress ConnectAddress;
@@ -231,7 +69,7 @@ private:
     void Disconnect();
     void DoConnect(bool connected);
 
-    int StatusHandler(genlmsghdr* header);
+    int StatusHandler(nl_msg* nlmsg);
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -309,7 +147,7 @@ TFuture<NProto::TError> TNetlinkDevice::Stop(bool deleteDevice)
 TFuture<NProto::TError> TNetlinkDevice::Resize(ui64 deviceSizeInBytes)
 {
     try {
-        TNetlinkSocket socket;
+        TNetlinkSocket socket("nbd");
         TNetlinkMessage message(socket.GetFamily(), NBD_CMD_RECONFIGURE);
 
         message.Put(NBD_ATTR_INDEX, DeviceIndex);
@@ -373,11 +211,11 @@ void TNetlinkDevice::DisconnectSocket()
 // or reconfigure (if Reconfigure == true) specified device
 void TNetlinkDevice::Connect()
 {
-    TNetlinkSocket socket;
+    TNetlinkSocket socket("nbd");
     socket.SetCallback(
         NL_CB_VALID,
-        [device = shared_from_this()] (auto* header) {
-            return device->StatusHandler(header);
+        [device = shared_from_this()](auto* nlmsg) {
+            return device->StatusHandler(nlmsg);
         });
 
     TNetlinkMessage message(socket.GetFamily(), NBD_CMD_STATUS);
@@ -389,7 +227,7 @@ void TNetlinkDevice::Disconnect()
 {
     STORAGE_INFO("disconnect " << DeviceName);
 
-    TNetlinkSocket socket;
+    TNetlinkSocket socket("nbd");
     TNetlinkMessage message(socket.GetFamily(), NBD_CMD_DISCONNECT);
     message.Put(NBD_ATTR_INDEX, DeviceIndex);
     socket.Send(message);
@@ -410,7 +248,7 @@ void TNetlinkDevice::DoConnect(bool connected)
             STORAGE_INFO("connect " << DeviceName);
         }
 
-        TNetlinkSocket socket;
+        TNetlinkSocket socket("nbd");
         TNetlinkMessage message(socket.GetFamily(), command);
 
         const auto& info = Handler->GetExportInfo();
@@ -448,8 +286,9 @@ void TNetlinkDevice::DoConnect(bool connected)
     }
 }
 
-int TNetlinkDevice::StatusHandler(genlmsghdr* header)
+int TNetlinkDevice::StatusHandler(nl_msg* nlmsg)
 {
+    auto header = static_cast<genlmsghdr*>(nlmsg_data(nlmsg_hdr(nlmsg)));
     nlattr* attr[NBD_ATTR_MAX + 1] = {};
     nlattr* deviceItem[NBD_DEVICE_ITEM_MAX + 1] = {};
     nlattr* device[NBD_DEVICE_ATTR_MAX + 1] = {};
