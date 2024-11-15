@@ -2,6 +2,7 @@ import datetime
 import logging
 import os
 import requests
+import subprocess
 import tempfile
 import threading
 import time
@@ -87,7 +88,7 @@ class Daemon(object):
         self.__verify_process()
         logger.info("terminating process")
         self.__process.terminate()
-        self.__process.wait(check_exit_code=False)
+        process_wait_and_check(self.__process, check_timeout=60, check_exit_code=False)
         self.__process = None
 
     # Should be guarded by self.__lock.
@@ -238,3 +239,19 @@ class Daemon(object):
                     self.__process.process.pid))
                 return False
         return True
+
+
+def process_wait_and_check(process, check_timeout=60, **kwargs):
+    while True:
+        try:
+            process.wait(timeout=check_timeout, **kwargs)
+        except subprocess.TimeoutExpired:
+            logger.info(
+                f"wait for pid {process.pid} timed out after {check_timeout} seconds"
+            )
+            bt = subprocess.getoutput(
+                f'sudo gdb --batch -p {process.pid} -ex "thread apply all bt"'
+            )
+            logger.info(f"PID {process.pid}: backtrace:\n{bt}")
+            continue
+        break

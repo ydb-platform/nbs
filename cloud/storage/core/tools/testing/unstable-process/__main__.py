@@ -9,6 +9,8 @@ import subprocess
 import sys
 import time
 
+from cloud.storage.core.tools.common.python.daemon import process_wait_and_check
+
 process = None
 
 
@@ -37,24 +39,6 @@ def ping(port, path, success_codes):
         logging.info(f'ping attempt has failed: {e}')
 
     return False
-
-
-def dump_backtrace(pid):
-    bt = subprocess.getoutput(f'sudo gdb --batch -p {pid} -ex "thread apply all bt"')
-    logging.info(f"PID {pid}: backtrace:\n{bt}")
-
-
-def terminate(process, check_timeout=None):
-    process.terminate()
-
-    while True:
-        try:
-            process.wait(timeout=check_timeout)
-        except subprocess.TimeoutExpired:
-            logging.info(f'wait for pid {process.pid} timed out after {check_timeout} seconds')
-            dump_backtrace(process.pid)
-            continue
-        break
 
 
 def main():
@@ -110,7 +94,9 @@ def main():
                     process.kill()
                 else:
                     logging.info(f'terminating process {cmdline}')
-                    terminate(process, check_timeout=args.terminate_check_timeout)
+                    process.terminate()
+                    process_wait_and_check(process,
+                                           check_timeout=args.terminate_check_timeout)
 
             def start_process():
                 logging.info(f'starting process {cmdline}')
