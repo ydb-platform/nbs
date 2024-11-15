@@ -529,18 +529,11 @@ func (s *scheduler) ScheduleBlankTask(ctx context.Context) (string, error) {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-func (s *scheduler) registerSystemTasks(
+func (s *scheduler) registerAndScheduleRegularSystemTasks(
 	ctx context.Context,
 	config *tasks_config.TasksConfig,
 	metricsRegistry metrics.Registry,
 ) error {
-
-	err := s.registry.RegisterForExecution("tasks.Blank", func() Task {
-		return &blankTask{}
-	})
-	if err != nil {
-		return err
-	}
 
 	endedTaskExpirationTimeout, err := time.ParseDuration(
 		config.GetEndedTaskExpirationTimeout(),
@@ -661,8 +654,15 @@ func NewScheduler(
 		scheduleRegularTasksPeriodMax: scheduleRegularTasksPeriodMax,
 	}
 
-	if config.GetUseSystemTasks() {
-		err = s.registerSystemTasks(
+	err = registry.RegisterForExecution("tasks.Blank", func() Task {
+		return &blankTask{}
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	if config.GetRegularSystemTasksEnabled() {
+		err = s.registerAndScheduleRegularSystemTasks(
 			ctx,
 			config,
 			metricsRegistry,

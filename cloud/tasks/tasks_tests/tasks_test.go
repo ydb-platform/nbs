@@ -1333,7 +1333,7 @@ func TestHangingTasksMetricsAreSetEvenForTasksNotRegisteredForExecution(t *testi
 	err = s.startRunners(ctx)
 	require.NoError(t, err)
 
-	gaugeSetChannel := make(chan struct{}, 1)
+	gaugeSetChannel := make(chan int)
 
 	registry.GetGauge(
 		"totalHangingTaskCount",
@@ -1341,7 +1341,7 @@ func TestHangingTasksMetricsAreSetEvenForTasksNotRegisteredForExecution(t *testi
 	).On("Set", float64(0)).Return(mock.Anything).Run(
 		func(args mock.Arguments) {
 			select {
-			case gaugeSetChannel <- struct{}{}:
+			case gaugeSetChannel <- 0:
 			default:
 			}
 		},
