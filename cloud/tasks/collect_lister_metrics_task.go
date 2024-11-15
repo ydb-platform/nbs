@@ -24,6 +24,7 @@ type collectListerMetricsTask struct {
 
 	taskTypes                 []string
 	hangingTaskGaugesByID     map[string]metrics.Gauge
+	taskGaugesBySensorAndType map[string]map[string]metrics.Gauge
 	maxHangingTaskIDsToReport int64
 }
 
@@ -39,6 +40,8 @@ func (c *collectListerMetricsTask) Run(
 	ctx context.Context,
 	execCtx ExecutionContext,
 ) error {
+
+	defer c.cleanupMetrics()
 
 	ticker := time.NewTicker(c.metricsCollectionInterval)
 	defer ticker.Stop()
@@ -153,10 +156,7 @@ func (c *collectListerMetricsTask) collectTasksMetrics(
 	}
 
 	for taskType, count := range tasksByType {
-		subRegistry := c.registry.WithTags(map[string]string{
-			"type": taskType,
-		})
-		subRegistry.Gauge(sensor).Set(float64(count))
+		c.setTasksCount(sensor, taskType, count)
 	}
 
 	return nil
@@ -227,4 +227,38 @@ func (c *collectListerMetricsTask) collectHangingTasksMetrics(
 	}
 
 	return nil
+}
+
+func (c *collectListerMetricsTask) setTasksCount(
+	sensor string,
+	taskType string,
+	count uint64,
+) {
+	gauges, ok := c.taskGaugesBySensorAndType[sensor]
+	if !ok {
+		gauges = make(map[string]metrics.Gauge)
+		c.taskGaugesBySensorAndType[sensor] = gauges
+	}
+
+	gauge, ok := gauges[taskType]
+	if !ok {
+		gauge = c.registry.WithTags(map[string]string{
+			"type": taskType,
+		}).Gauge(sensor)
+		gauges[taskType] = gauge
+	}
+
+	gauge.Set(float64(count))
+}
+
+func (c *collectListerMetricsTask) cleanupMetrics() {
+	for _, gauges := range c.taskGaugesBySensorAndType {
+		for _, gauge := range gauges {
+			gauge.Set(float64(0))
+		}
+	}
+
+	for _, gauge := range c.hangingTaskGaugesByID {
+		gauge.Set(float64(0))
+	}
 }
