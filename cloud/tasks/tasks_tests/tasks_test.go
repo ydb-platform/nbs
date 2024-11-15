@@ -312,6 +312,12 @@ func registerLongTask(registry *tasks.Registry) error {
 	})
 }
 
+func registerLongTaskNotForExecution(registry *tasks.Registry) error {
+	return registry.Register("long", func() tasks.Task {
+		return &longTask{}
+	})
+}
+
 func scheduleLongTask(
 	ctx context.Context,
 	scheduler tasks.Scheduler,
@@ -1305,5 +1311,42 @@ func TestHangingTasksMetrics(t *testing.T) {
 	require.NoError(t, err)
 	_ = s.scheduler.WaitTaskEnded(ctx, taskID)
 	gaugeUnsetWg.Wait()
+	registry.AssertAllExpectations(t)
+}
+
+func TestHangingTasksMetricsAreSetEvenForTasksNotRegisteredForExecution(t *testing.T) {
+	ctx, cancel := context.WithCancel(newContext())
+	defer cancel()
+
+	db, err := newYDB(ctx)
+	require.NoError(t, err)
+	defer db.Close(ctx)
+
+	registry := mocks.NewIgnoreUnknownCallsRegistryMock()
+
+	config := newHangingTaskTestConfig()
+
+	s := createServicesWithConfig(t, ctx, db, config, registry)
+	err = registerLongTaskNotForExecution(s.registry)
+	require.NoError(t, err)
+
+	err = s.startRunners(ctx)
+	require.NoError(t, err)
+
+	gaugeSetChannel := make(chan int)
+
+	registry.GetGauge(
+		"totalHangingTaskCount",
+		map[string]string{"type": "long"},
+	).On("Set", float64(0)).Return(mock.Anything).Run(
+		func(args mock.Arguments) {
+			select {
+			case gaugeSetChannel <- 0:
+			default:
+			}
+		},
+	)
+
+	_ = <-gaugeSetChannel
 	registry.AssertAllExpectations(t)
 }
