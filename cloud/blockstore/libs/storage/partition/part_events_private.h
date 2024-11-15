@@ -773,6 +773,17 @@ struct TEvPartitionPrivate
     {
     };
 
+
+    //
+    // CompactionCompleted
+    //
+
+    struct TCompactionCompleted
+        : TOperationCompleted
+    {
+        bool IsExternalCompaction = false;
+    };
+
     //
     // MetadataRebuildCompleted
     //
@@ -880,7 +891,7 @@ struct TEvPartitionPrivate
     using TEvWriteBlocksCompleted = TResponseEvent<TWriteBlocksCompleted, EvWriteBlocksCompleted>;
     using TEvZeroBlocksCompleted = TResponseEvent<TOperationCompleted, EvZeroBlocksCompleted>;
     using TEvFlushCompleted = TResponseEvent<TFlushCompleted, EvFlushCompleted>;
-    using TEvCompactionCompleted = TResponseEvent<TOperationCompleted, EvCompactionCompleted>;
+    using TEvCompactionCompleted = TResponseEvent<TCompactionCompleted, EvCompactionCompleted>;
     using TEvCollectGarbageCompleted = TResponseEvent<TOperationCompleted, EvCollectGarbageCompleted>;
     using TEvForcedCompactionCompleted = TResponseEvent<TForcedCompactionCompleted, EvForcedCompactionCompleted>;
     using TEvMetadataRebuildCompleted = TResponseEvent<TOperationCompleted, EvMetadataRebuildCompleted>;

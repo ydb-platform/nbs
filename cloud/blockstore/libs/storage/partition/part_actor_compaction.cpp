@@ -736,6 +736,7 @@ void TCompactionActor::NotifyCompleted(
         request->AffectedRanges.push_back(ConvertRangeSafe(rc.BlockRange));
     }
     request->AffectedBlockInfos = std::move(AffectedBlockInfos);
+    request->IsExternalCompaction = false;
 
     NCloud::Send(ctx, Tablet, std::move(request));
 }
@@ -1245,15 +1246,20 @@ void TPartitionActor::HandleCompaction(
         NCloud::Reply(ctx, requestInfo, std::move(response));
     };
 
-    if (State->GetCompactionState().Status == EOperationStatus::Started) {
-        replyError(ctx, *requestInfo, E_TRY_AGAIN, "compaction already started");
-        return;
-    }
-
     if (!State->IsCompactionAllowed()) {
         State->GetCompactionState().SetStatus(EOperationStatus::Idle);
 
         replyError(ctx, *requestInfo, E_BS_OUT_OF_SPACE, "all channels readonly");
+        return;
+    }
+
+    if (Actors.AccessActors().contains(ev->Sender)) {
+        if (!State->SetExternalCompactionRequestRunning(true)) {
+            replyError(ctx, *requestInfo, E_TRY_AGAIN, "compaction already started");
+            return;
+        }
+    } else if (State->GetCompactionState().Status == EOperationStatus::Started) {
+        replyError(ctx, *requestInfo, E_TRY_AGAIN, "compaction already started");
         return;
     }
 
@@ -1287,7 +1293,11 @@ void TPartitionActor::HandleCompaction(
     }
 
     if (tops.empty() || !tops.front().Stat.BlobCount) {
-        State->GetCompactionState().SetStatus(EOperationStatus::Idle);
+        if (Actors.AccessActors().contains(ev->Sender)) {
+            State->SetExternalCompactionRequestRunning(false);
+        } else {
+            State->GetCompactionState().SetStatus(EOperationStatus::Idle);
+        }
 
         replyError(ctx, *requestInfo, S_ALREADY, "nothing to compact");
         return;
@@ -1401,7 +1411,11 @@ void TPartitionActor::HandleCompactionCompleted(
     State->GetCleanupQueue().ReleaseBarrier(commitId);
     State->GetGarbageQueue().ReleaseBarrier(commitId);
 
-    State->GetCompactionState().SetStatus(EOperationStatus::Idle);
+    if (msg->IsExternalCompaction) {
+        State->SetExternalCompactionRequestRunning(false);
+    } else {
+        State->GetCompactionState().SetStatus(EOperationStatus::Idle);
+    }
 
     Actors.Erase(ev->Sender);
 

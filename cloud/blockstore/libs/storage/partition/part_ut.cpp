@@ -263,8 +263,8 @@ auto InitTestActorRuntime(
 void InitLogSettings(TTestActorRuntime& runtime)
 {
     for (ui32 i = TBlockStoreComponents::START; i < TBlockStoreComponents::END; ++i) {
-        runtime.SetLogPriority(i, NLog::PRI_INFO);
-        // runtime.SetLogPriority(i, NLog::PRI_DEBUG);
+        //runtime.SetLogPriority(i, NLog::PRI_INFO);
+        runtime.SetLogPriority(i, NLog::PRI_DEBUG);
     }
     // runtime.SetLogPriority(NLog::InvalidComponent, NLog::PRI_DEBUG);
     runtime.SetLogPriority(NKikimrServices::BS_NODE, NLog::PRI_ERROR);
@@ -7204,12 +7204,15 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         {
             partition.WriteBlocks(0, 100);
             auto compResponse = partition.CompactRange(0, 100);
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, compResponse->GetStatus());
             op.push_back(compResponse->Record.GetOperationId());
         }
 
         for (ui32 i = 0; i < 4; ++i)
         {
-            partition.GetCompactionStatus(op[i]);
+            auto response = partition.GetCompactionStatus(op[i]);
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
+            UNIT_ASSERT_VALUES_EQUAL(true, response->Record.GetIsCompleted());
         }
 
         runtime->AdvanceCurrentTime(CompactOpHistoryDuration + TDuration::Seconds(1));
