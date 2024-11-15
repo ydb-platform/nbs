@@ -126,7 +126,7 @@ func checkHTTPStatus(statusCode int) error {
 		return errors.NewRetriableErrorf(errorMessage)
 	}
 	if statusCode == http.StatusRequestedRangeNotSatisfiable {
-		return errors.NewNonRetriableErrorf(errorMessage)
+		return NewRequestedRangeNotSatisfiableError(errorMessage)
 	}
 	if statusCode == http.StatusForbidden {
 		return NewSourceForbiddenError(errorMessage)
