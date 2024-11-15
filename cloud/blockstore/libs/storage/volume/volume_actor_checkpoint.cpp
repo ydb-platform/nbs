@@ -23,6 +23,11 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+// The time during which we expect the disk-registry based partition with shadow
+// actor to stop. It should stop much faster, this timeout is a fuse against
+// hanging requests for deleting checkpoints.
+constexpr auto ExternalDrainTimeout = TDuration::Seconds(30);
+
 struct TPartitionDescr
 {
     ui64 TabletId = 0;
@@ -142,6 +147,7 @@ private:
     const TRequestTraceInfo TraceInfo;
     const ECheckpointRequestType RequestType;
     const bool CreateCheckpointShadowDisk;
+    const bool WaitForExternalDrain;
 
     ui32 DrainResponses = 0;
     ui32 Responses = 0;
@@ -160,10 +166,12 @@ public:
         TPartitionDescrs partitionDescrs,
         TRequestTraceInfo traceInfo,
         ECheckpointRequestType requestType,
-        bool createCheckpointShadowDisk);
+        bool createCheckpointShadowDisk,
+        bool waitForExternalDrain);
 
     void Bootstrap(const TActorContext& ctx);
     void Drain(const TActorContext& ctx);
+    void ExternalDrain(const TActorContext& ctx);
     void DoAction(const TActorContext& ctx);
     void UpdateCheckpointRequest(
         const TActorContext& ctx,
@@ -212,6 +220,14 @@ private:
         const TEvPartition::TEvDrainRequest::TPtr& ev,
         const TActorContext& ctx);
 
+    void HandleExternalDrainDone(
+        const TEvVolumePrivate::TEvExternalDrainDone::TPtr& ev,
+        const TActorContext& ctx);
+
+    void HandleDrainTimeout(
+        const TEvents::TEvWakeup::TPtr& ev,
+        const TActorContext& ctx);
+
     void HandleUpdateCheckpointRequestResponse(
         const TEvVolumePrivate::TEvUpdateCheckpointRequestResponse::TPtr& ev,
         const TActorContext& ctx);
@@ -234,7 +250,8 @@ TCheckpointActor<TMethod>::TCheckpointActor(
         TPartitionDescrs partitionDescrs,
         TRequestTraceInfo traceInfo,
         ECheckpointRequestType requestType,
-        bool createCheckpointShadowDisk)
+        bool createCheckpointShadowDisk,
+        bool waitForExternalDrain)
     : RequestInfo(std::move(requestInfo))
     , RequestId(requestId)
     , DiskId(std::move(diskId))
@@ -245,6 +262,7 @@ TCheckpointActor<TMethod>::TCheckpointActor(
     , TraceInfo(std::move(traceInfo))
     , RequestType(requestType)
     , CreateCheckpointShadowDisk(createCheckpointShadowDisk)
+    , WaitForExternalDrain(waitForExternalDrain)
     , ChildCallContexts(Reserve(PartitionDescrs.size()))
 {}
 
@@ -274,6 +292,18 @@ void TCheckpointActor<TMethod>::Drain(const TActorContext& ctx)
 
         ctx.Send(event.release());
     }
+
+    TBase::Become(&TThis::StateDrain);
+}
+
+template <typename TMethod>
+void TCheckpointActor<TMethod>::ExternalDrain(const TActorContext& ctx)
+{
+    LOG_DEBUG(ctx, TBlockStoreComponents::VOLUME,
+        "[%lu] Wait for external drain event",
+        VolumeTabletId);
+
+    ctx.Schedule(ExternalDrainTimeout, new TEvents::TEvWakeup());
 
     TBase::Become(&TThis::StateDrain);
 }
@@ -415,6 +445,46 @@ void TCheckpointActor<TMethod>::HandleDrainUndelivery(
     );
 
     ReplyAndDie(ctx);
+}
+
+template <typename TMethod>
+void TCheckpointActor<TMethod>::HandleExternalDrainDone(
+    const TEvVolumePrivate::TEvExternalDrainDone::TPtr& ev,
+    const TActorContext& ctx)
+{
+    Y_UNUSED(ev);
+
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::VOLUME,
+        "[%lu] External drain done",
+        VolumeTabletId);
+
+    if (DrainResponses) {
+        return;
+    }
+    DrainResponses = 1;
+    DoAction(ctx);
+}
+
+template <typename TMethod>
+void TCheckpointActor<TMethod>::HandleDrainTimeout(
+    const TEvents::TEvWakeup::TPtr& ev,
+    const TActorContext& ctx)
+{
+    Y_UNUSED(ev);
+
+    LOG_WARN(
+        ctx,
+        TBlockStoreComponents::VOLUME,
+        "[%lu] External drain timedout",
+        VolumeTabletId);
+
+    if (DrainResponses) {
+        return;
+    }
+    DrainResponses = 1;
+    DoAction(ctx);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -568,6 +638,8 @@ STFUNC(TCheckpointActor<TMethod>::StateDrain)
     switch (ev->GetTypeRewrite()) {
         HFunc(TEvPartition::TEvDrainResponse, HandleDrainResponse);
         HFunc(TEvPartition::TEvDrainRequest, HandleDrainUndelivery);
+        HFunc(TEvVolumePrivate::TEvExternalDrainDone, HandleExternalDrainDone)
+        HFunc(TEvents::TEvWakeup, HandleDrainTimeout);
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
 
         default:
@@ -590,6 +662,9 @@ STFUNC(TCheckpointActor<TMethod>::StateDoAction)
             HandleDeallocateCheckpointResponse);
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
 
+        IgnoreFunc(TEvVolumePrivate::TEvExternalDrainDone);
+        IgnoreFunc(TEvents::TEvWakeup);
+
         default:
             HandleUnexpectedEvent(ev, TBlockStoreComponents::VOLUME);
             break;
@@ -605,6 +680,9 @@ STFUNC(TCheckpointActor<TMethod>::StateUpdateCheckpointRequest)
             HandleUpdateCheckpointRequestResponse
         );
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
+
+        IgnoreFunc(TEvVolumePrivate::TEvExternalDrainDone);
+        IgnoreFunc(TEvents::TEvWakeup);
 
         default:
             HandleUnexpectedEvent(ev, TBlockStoreComponents::VOLUME);
@@ -727,7 +805,11 @@ void TCheckpointActor<TMethod>::DoActionForBlobStorageBasedPartition(
 template <typename TMethod>
 void TCheckpointActor<TMethod>::Bootstrap(const TActorContext& ctx)
 {
-    DoAction(ctx);
+    if (WaitForExternalDrain) {
+        ExternalDrain(ctx);
+    } else {
+        DoAction(ctx);
+    }
 }
 
 template <>
@@ -1227,20 +1309,13 @@ void TVolumeActor::ExecuteCheckpointRequest(const TActorContext& ctx, ui64 reque
     }
 
     State->GetCheckpointStore().SetCheckpointRequestInProgress(requestId);
+
+    auto checkpointInfo =
+        State->GetCheckpointStore().GetCheckpoint(request.CheckpointId);
     const bool needToDestroyShadowActor =
         (request.ReqType == ECheckpointRequestType::Delete ||
          request.ReqType == ECheckpointRequestType::DeleteData) &&
-        State->GetCheckpointStore().HasShadowActor(request.CheckpointId);
-
-    if (needToDestroyShadowActor) {
-        auto checkpointInfo =
-            State->GetCheckpointStore().GetCheckpoint(request.CheckpointId);
-        if (checkpointInfo && checkpointInfo->ShadowDiskId) {
-            DoUnregisterVolume(ctx, checkpointInfo->ShadowDiskId);
-        }
-        Cout << "RestartDiskRegistryBasedPartition\n";
-        RestartDiskRegistryBasedPartition(ctx);
-    }
+        checkpointInfo && checkpointInfo->HasShadowActor;
 
     TActorId actorId;
     switch (request.ReqType) {
@@ -1267,7 +1342,8 @@ void TVolumeActor::ExecuteCheckpointRequest(const TActorContext& ctx, ui64 reque
                         requestInfo->TraceTs,
                         TraceSerializer),
                     request.ReqType,
-                    Config->GetUseShadowDisksForNonreplDiskCheckpoints());
+                    Config->GetUseShadowDisksForNonreplDiskCheckpoints(),
+                    false);
             break;
         }
         case ECheckpointRequestType::Delete: {
@@ -1292,7 +1368,8 @@ void TVolumeActor::ExecuteCheckpointRequest(const TActorContext& ctx, ui64 reque
                         requestInfo->TraceTs,
                         TraceSerializer),
                     request.ReqType,
-                    Config->GetUseShadowDisksForNonreplDiskCheckpoints());
+                    Config->GetUseShadowDisksForNonreplDiskCheckpoints(),
+                    needToDestroyShadowActor);
             break;
         }
         case ECheckpointRequestType::DeleteData: {
@@ -1311,7 +1388,8 @@ void TVolumeActor::ExecuteCheckpointRequest(const TActorContext& ctx, ui64 reque
                         requestInfo->TraceTs,
                         TraceSerializer),
                     request.ReqType,
-                    Config->GetUseShadowDisksForNonreplDiskCheckpoints());
+                    Config->GetUseShadowDisksForNonreplDiskCheckpoints(),
+                    needToDestroyShadowActor);
             break;
         }
         default:
@@ -1319,6 +1397,18 @@ void TVolumeActor::ExecuteCheckpointRequest(const TActorContext& ctx, ui64 reque
     }
 
     Actors.insert(actorId);
+
+    if (needToDestroyShadowActor) {
+        DoUnregisterVolume(ctx, checkpointInfo->ShadowDiskId);
+
+        auto onPartitionStopped = [actorId](const NActors::TActorContext& ctx)
+        {
+            auto event =
+                std::make_unique<TEvVolumePrivate::TEvExternalDrainDone>();
+            NCloud::Send(ctx, actorId, std::move(event));
+        };
+        RestartDiskRegistryBasedPartition(ctx, std::move(onPartitionStopped));
+    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1457,7 +1547,7 @@ void TVolumeActor::CompleteUpdateCheckpointRequest(
         !State->GetCheckpointStore().HasShadowActor(request.CheckpointId);
 
     if (needToCreateShadowActor) {
-        RestartDiskRegistryBasedPartition(ctx);
+        RestartDiskRegistryBasedPartition(ctx, {});
     }
 
     if (request.Type == ECheckpointType::Light) {

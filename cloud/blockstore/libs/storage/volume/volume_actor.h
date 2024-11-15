@@ -354,6 +354,10 @@ private:
 
     TDeque<std::pair<NActors::TActorId, TPoisonCallback>> WaitForPartitions;
 
+    using TDiskRegistryBasedPartitionStoppedCallback =
+        std::function<void(const NActors::TActorContext&)>;
+    THashMap<ui64, TDiskRegistryBasedPartitionStoppedCallback> OnPartitionStopped;
+
     TVector<ui64> GCCompletedPartitions;
 
 public:
@@ -465,6 +469,9 @@ private:
     void StartPartitionsForUse(const NActors::TActorContext& ctx);
     void StartPartitionsForGc(const NActors::TActorContext& ctx);
     void StopPartitions(const NActors::TActorContext& ctx);
+    void StopPartitionsWithCallback(
+        const NActors::TActorContext& ctx,
+        TDiskRegistryBasedPartitionStoppedCallback onPartitionStopped);
 
     void SetupDiskRegistryBasedPartitions(const NActors::TActorContext& ctx);
 
@@ -989,7 +996,9 @@ private:
         NActors::TActorId nonreplicatedActorId,
         std::shared_ptr<TNonreplicatedPartitionConfig> srcConfig);
 
-    void RestartDiskRegistryBasedPartition(const NActors::TActorContext& ctx);
+    void RestartDiskRegistryBasedPartition(
+        const NActors::TActorContext& ctx,
+        TDiskRegistryBasedPartitionStoppedCallback onPartitionStopped);
     void StartPartitionsImpl(const NActors::TActorContext& ctx);
 
     BLOCKSTORE_VOLUME_REQUESTS(BLOCKSTORE_IMPLEMENT_REQUEST, TEvVolume)

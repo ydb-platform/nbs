@@ -295,6 +295,11 @@ void TVolumeActor::BeforeDie(const TActorContext& ctx)
     KillActors(ctx);
     CancelRequests(ctx);
 
+    for (auto& [_, handler]: OnPartitionStopped) {
+        std::invoke(handler, ctx);
+    }
+    OnPartitionStopped.clear();
+
     for (auto& [part, handler]: WaitForPartitions) {
         if (handler) {
             std::invoke(handler, ctx, MakeError(E_REJECTED, "tablet is shutting down"));
@@ -583,6 +588,11 @@ void TVolumeActor::HandlePoisonTaken(
         "[%lu] Partition %s stopped",
         TabletID(),
         ev->Sender.ToString().c_str());
+
+    if (auto* callback = OnPartitionStopped.FindPtr(ev->Cookie)) {
+        std::invoke(*callback, ctx);
+        OnPartitionStopped.erase(ev->Cookie);
+    }
 
     if (WaitForPartitions.empty()) {
         return;

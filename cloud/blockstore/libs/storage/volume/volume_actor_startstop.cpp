@@ -291,13 +291,18 @@ NActors::TActorId TVolumeActor::WrapNonreplActorIfNeeded(
     return nonreplicatedActorId;
 }
 
-void TVolumeActor::RestartDiskRegistryBasedPartition(const TActorContext& ctx)
+void TVolumeActor::RestartDiskRegistryBasedPartition(
+    const TActorContext& ctx,
+    TDiskRegistryBasedPartitionStoppedCallback onPartitionStopped)
 {
     if (!State->IsDiskRegistryMediaKind()) {
+        if (onPartitionStopped) {
+            std::invoke(onPartitionStopped, ctx);
+        }
         return;
     }
 
-    StopPartitions(ctx);
+    StopPartitionsWithCallback(ctx, std::move(onPartitionStopped));
     StartPartitionsForUse(ctx);
     ResetServicePipes(ctx);
 }
@@ -338,8 +343,24 @@ void TVolumeActor::StartPartitionsForGc(const TActorContext& ctx)
 
 void TVolumeActor::StopPartitions(const TActorContext& ctx)
 {
+    StopPartitionsWithCallback(ctx, {});
+}
+
+void TVolumeActor::StopPartitionsWithCallback(
+    const TActorContext& ctx,
+    TDiskRegistryBasedPartitionStoppedCallback onPartitionStopped)
+{
     if (!State) {
+        if (onPartitionStopped) {
+            std::invoke(onPartitionStopped, ctx);
+        }
         return;
+    }
+
+    ui64 requestId = 0;
+    if (onPartitionStopped) {
+        requestId = VolumeRequestIdGenerator->GetValue();
+        OnPartitionStopped[requestId] = std::move(onPartitionStopped);
     }
 
     for (const auto& [checkpointId, _]:
@@ -372,7 +393,7 @@ void TVolumeActor::StopPartitions(const TActorContext& ctx)
             TabletID(),
             actorId.ToString().c_str());
 
-        NCloud::Send<TEvents::TEvPoisonPill>(ctx, actorId);
+        NCloud::Send<TEvents::TEvPoisonPill>(ctx, actorId, requestId);
         State->SetDiskRegistryBasedPartitionActor({}, nullptr);
     }
 }
