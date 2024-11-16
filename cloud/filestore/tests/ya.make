@@ -7,6 +7,7 @@ RECURSE_FOR_TESTS(
     auth
     build_arcadia_test
     client
+    client_sharded
     config_dispatcher
     fio
     fio_index
