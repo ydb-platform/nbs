@@ -123,6 +123,7 @@ message TSession
     uint64 MaxSeqNo = 6;
     uint64 MaxRwSeqNo = 7;
     string OriginFqdn = 8;
+    uint64 RecoveryTimestampUs = 9;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
