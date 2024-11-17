@@ -15,4 +15,20 @@ TBlobCompressionInfo TryCompressBlob(
     return {};
 }
 
+void Decompress(
+    const TBlobCompressionInfo& blobCompressionInfo,
+    ui32 blockSize,
+    const TRope& compressedData,
+    ui32 compressedDataOffset,
+    const TVector<TUncompressedBlock>& blocks,
+    IBlockBuffer* out)
+{
+    Y_UNUSED(blobCompressionInfo);
+    Y_UNUSED(blockSize);
+    Y_UNUSED(compressedData);
+    Y_UNUSED(compressedDataOffset);
+    Y_UNUSED(blocks);
+    Y_UNUSED(out);
+}
+
 }   // namespace NCloud::NFileStore::NStorage

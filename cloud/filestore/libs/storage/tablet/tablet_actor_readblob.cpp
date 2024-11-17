@@ -21,12 +21,44 @@ namespace {
 
 struct TQuery
 {
-    // in bytes
-    ui32 Offset = 0;
-    // in bytes
-    ui32 Size = 0;
-    TVector<TReadBlob::TBlock> Blocks;
+    bool Compressed = false;
+    TUncompressedRange UncompressedRange;
+    TCompressedRange CompressedRange;
+    TVector<TUncompressedBlock> Blocks;
 };
+
+void MergeOverlappingCompressedQueries(TVector<TQuery>& queries)
+{
+    Sort(queries, [] (const auto& l, const auto& r) {
+        return l.CompressedRange.Offset < r.CompressedRange.Offset
+            || (l.CompressedRange.Offset == r.CompressedRange.Offset
+                && l.CompressedRange.Length < r.CompressedRange.Length);
+    });
+
+    auto pivotQueryIter = queries.begin();
+    for (size_t i = 1; i < queries.size(); i++) {
+        auto& curQuery = queries[i];
+        auto& pivotQuery = *pivotQueryIter;
+
+        if (pivotQuery.CompressedRange.Overlaps(curQuery.CompressedRange)) {
+            pivotQuery.CompressedRange.Merge(curQuery.CompressedRange);
+
+            for (auto& block : curQuery.Blocks) {
+                pivotQuery.Blocks.push_back(std::move(block));
+            }
+            curQuery.Blocks.clear();
+
+            pivotQuery.Compressed =
+                pivotQuery.Compressed || curQuery.Compressed;
+        } else {
+            ++pivotQueryIter;
+        }
+    }
+
+    EraseIf(queries, [] (const auto& query) { return query.Blocks.empty(); });
+}
+
+////////////////////////////////////////////////////////////////////////////////
 
 struct TReadBlobRequest
 {
@@ -63,7 +95,18 @@ std::unique_ptr<TEvBlobStorage::TEvGet> CreateGetRequest(
 
     size_t queryIndex = 0;
     for (const auto& query : queries) {
-        qs[queryIndex++].Set(blobId, query.Offset, query.Size);
+        if (query.Compressed) {
+            qs[queryIndex].Set(
+                blobId,
+                query.CompressedRange.Offset,
+                query.CompressedRange.Length);
+        } else {
+            qs[queryIndex].Set(
+                blobId,
+                query.UncompressedRange.Offset,
+                query.UncompressedRange.Length);
+        }
+        ++queryIndex;
     }
 
     return std::make_unique<TEvBlobStorage::TEvGet>(
@@ -97,7 +140,7 @@ private:
     const TString LogTag;
     const TActorId Tablet;
     const TRequestInfoPtr RequestInfo;
-    const IBlockBufferPtr Buffer;
+    const IBlockBufferPtr BlockBuffer;
     const ui32 BlockSize;
     const TString FileSystemId;
     const IProfileLogPtr ProfileLog;
@@ -161,7 +204,7 @@ TReadBlobActor::TReadBlobActor(
     : LogTag(std::move(logTag))
     , Tablet(tablet)
     , RequestInfo(std::move(requestInfo))
-    , Buffer(std::move(buffer))
+    , BlockBuffer(std::move(buffer))
     , BlockSize(blockSize)
     , FileSystemId(std::move(fileSystemId))
     , ProfileLog(std::move(profileLog))
@@ -228,14 +271,34 @@ void TReadBlobActor::HandleGetResult(
             return;
         }
 
+        TotalSize += response.Buffer.size();
+
         const auto& query = request.Queries[i];
 
-        if (response.Buffer.size() / BlockSize != query.Blocks.size()) {
-            ReplyError(ctx, *msg, "invalid response buffer size");
-            return;
-        }
+        if (query.Compressed) {
+            if (response.Buffer.size() != query.CompressedRange.Length) {
+                ReplyError(
+                    ctx,
+                    *msg,
+                    "invalid compressed response buffer size");
+                return;
+            }
 
-        ReadQueryResponseUncompressed(response.Buffer, query);
+            Decompress(
+                request.BlobCompressionInfo,
+                BlockSize,
+                response.Buffer,
+                query.CompressedRange.Offset,
+                query.Blocks,
+                BlockBuffer.get());
+        } else {
+            if (response.Buffer.size() / BlockSize != query.Blocks.size()) {
+                ReplyError(ctx, *msg, "invalid response buffer size");
+                return;
+            }
+
+            ReadQueryResponseUncompressed(response.Buffer, query);
+        }
     }
 
     TABLET_VERIFY(RequestsCompleted < Requests.size());
@@ -248,8 +311,6 @@ void TReadBlobActor::ReadQueryResponseUncompressed(
     const TRope& responseBuffer,
     const TQuery& query)
 {
-    TotalSize += responseBuffer.size();
-
     char buffer[BlockSize];
     auto iter = responseBuffer.begin();
 
@@ -264,7 +325,7 @@ void TReadBlobActor::ReadQueryResponseUncompressed(
             view = TStringBuf(buffer, BlockSize);
         }
 
-        Buffer->SetBlock(block.BlockOffset, view);
+        BlockBuffer->SetBlock(block.BlockOffset, view);
     }
 }
 
@@ -398,9 +459,11 @@ void TIndexTabletActor::HandleReadBlob(
             if (i && curBlock.BlobOffset == blob.Blocks[i - 1].BlobOffset + 1) {
                 const auto& prevBlock = blob.Blocks[i - 1];
 
-                // extend range
-                queries.back().Size += blockSize;
-                queries.back().Blocks.push_back(curBlock);
+                queries.back().UncompressedRange.Extend(blockSize);
+                queries.back().Blocks.push_back(
+                    TUncompressedBlock(
+                        curBlock.BlobOffset,
+                        curBlock.BlockOffset));
 
                 if (curBlock.BlockOffset == prevBlock.BlockOffset + 1) {
                     // extend range
@@ -412,9 +475,10 @@ void TIndexTabletActor::HandleReadBlob(
                 }
             } else {
                 queries.push_back(TQuery {
-                    .Offset = curBlock.BlobOffset * blockSize,
-                    .Size = blockSize,
-                    .Blocks = { curBlock },
+                    .UncompressedRange = TUncompressedRange(
+                        curBlock.BlobOffset * blockSize,
+                        blockSize),
+                    .Blocks = {{ curBlock.BlobOffset, curBlock.BlockOffset }},
                 });
 
                 addRangeToProfileLog(curBlockRange);
@@ -423,6 +487,15 @@ void TIndexTabletActor::HandleReadBlob(
             }
         }
 
+        if (blob.BlobCompressionInfo.BlobCompressed()) {
+            for (auto& query : queries) {
+                query.CompressedRange = blob.BlobCompressionInfo.CompressedRange(
+                    query.UncompressedRange);
+                query.Compressed = true;
+            }
+
+            MergeOverlappingCompressedQueries(queries);
+        }
 
         auto blobId = MakeBlobId(TabletID(), blob.BlobId);
         auto request = CreateGetRequest(
