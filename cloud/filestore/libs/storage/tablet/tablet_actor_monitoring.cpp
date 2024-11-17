@@ -720,6 +720,7 @@ void DumpSessions(IOutputStream& out, const TVector<TMonSessionInfo>& sessions)
             TABLEHEAD() {
                 TABLER() {
                     TABLEH() { out << "ClientId";}
+                    TABLEH() { out << "FQDN";}
                     TABLEH() { out << "SessionId"; }
                     TABLEH() { out << "SeqNo"; }
                     TABLEH() { out << "ReadOnly"; }
@@ -730,6 +731,7 @@ void DumpSessions(IOutputStream& out, const TVector<TMonSessionInfo>& sessions)
                 for (const auto& ss: session.SubSessions) {
                     TABLER() {
                         TABLED() { out << session.ProtoInfo.GetClientId(); }
+                        TABLED() { out << session.ProtoInfo.GetOriginFqdn(); }
                         TABLED() { out << session.ProtoInfo.GetSessionId(); }
                         TABLED() { out << ss.SeqNo; }
                         TABLED() { out << (ss.ReadOnly ? "True" : "False"); }
