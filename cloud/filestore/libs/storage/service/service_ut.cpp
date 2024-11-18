@@ -6083,16 +6083,15 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
 
     void DoTestShardedFileSystemConfigured(
         const TString& fsId,
-        TServiceClient& service)
+        TServiceClient& service,
+        TVector<TString> fsList)
     {
-        TVector<TString> expected = {fsId, fsId + "_s1", fsId + "_s2"};
-
         auto listing = service.ListFileStores();
         const auto& fsIds = listing->Record.GetFileStores();
         TVector<TString> ids(fsIds.begin(), fsIds.end());
         Sort(ids);
 
-        UNIT_ASSERT_VALUES_EQUAL(expected, ids);
+        UNIT_ASSERT_VALUES_EQUAL(fsList, ids);
 
         auto headers = service.InitSession(fsId, "client");
 
@@ -6180,7 +6179,10 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         TServiceClient service(env.GetRuntime(), nodeIdx);
         service.CreateFileStore(fsId, 2_GB / 4_KB);
 
-        DoTestShardedFileSystemConfigured(fsId, service);
+        DoTestShardedFileSystemConfigured(
+            fsId,
+            service,
+            {fsId, fsId + "_s1", fsId + "_s2"});
     }
 
     Y_UNIT_TEST(ShouldHandleErrorsDuringShardedFileSystemCreation)
@@ -6336,7 +6338,10 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
                 FormatError(response->GetError()));
         }
 
-        DoTestShardedFileSystemConfigured(fsId, service);
+        DoTestShardedFileSystemConfigured(
+            fsId,
+            service,
+            {fsId, fsId + "_s1", fsId + "_s2"});
     }
 
     Y_UNIT_TEST(ShouldDeleteShardsAutomatically)
@@ -6524,6 +6529,261 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         ids = TVector<TString>(fsIds.begin(), fsIds.end());
         Sort(ids);
         UNIT_ASSERT_VALUES_EQUAL(expected, ids);
+    }
+
+    Y_UNIT_TEST(ShouldAddShardsAutomaticallyUponResize)
+    {
+        NProto::TStorageConfig config;
+        config.SetAutomaticShardCreationEnabled(true);
+        config.SetMaxShardSize(1_GB);
+        TTestEnv env({}, config);
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+
+        const TString fsId = "test";
+
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+        service.CreateFileStore(fsId, 1_GB / 4_KB);
+
+        TVector<TString> expected = {fsId, fsId + "_s1"};
+        auto listing = service.ListFileStores();
+        auto fsIds = listing->Record.GetFileStores();
+        TVector<TString> ids(fsIds.begin(), fsIds.end());
+        Sort(ids);
+        UNIT_ASSERT_VALUES_EQUAL(expected, ids);
+
+        service.ResizeFileStore(fsId, 3_GB / 4_KB);
+
+        expected = TVector<TString>{
+            fsId, fsId + "_s1", fsId + "_s2", fsId + "_s3",
+        };
+        listing = service.ListFileStores();
+        fsIds = listing->Record.GetFileStores();
+        ids = TVector<TString>(fsIds.begin(), fsIds.end());
+        Sort(ids);
+        UNIT_ASSERT_VALUES_EQUAL(expected, ids);
+
+        service.ResizeFileStore(fsId, (3_GB + 4_KB) / 4_KB);
+
+        expected = TVector<TString>{
+            fsId, fsId + "_s1", fsId + "_s2", fsId + "_s3", fsId + "_s4"
+        };
+        listing = service.ListFileStores();
+        fsIds = listing->Record.GetFileStores();
+        ids = TVector<TString>(fsIds.begin(), fsIds.end());
+        Sort(ids);
+        UNIT_ASSERT_VALUES_EQUAL(expected, ids);
+
+        service.ResizeFileStore(fsId, 4_GB / 4_KB);
+
+        listing = service.ListFileStores();
+        fsIds = listing->Record.GetFileStores();
+        ids = TVector<TString>(fsIds.begin(), fsIds.end());
+        Sort(ids);
+        UNIT_ASSERT_VALUES_EQUAL(expected, ids);
+    }
+
+    Y_UNIT_TEST(ShouldHandleErrorsDuringShardedFileSystemResize)
+    {
+        NProto::TStorageConfig config;
+        config.SetAutomaticShardCreationEnabled(true);
+        config.SetMaxShardSize(1_GB);
+        TTestEnv env({}, config);
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+
+        const TString fsId = "test";
+        const auto newBlockCount = 4_GB / 4_KB;
+
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+
+        TVector<TString> expected = {fsId, fsId + "_s1", fsId + "_s2"};
+
+        service.CreateFileStore(fsId, 2_GB / 4_KB);
+        auto listing = service.ListFileStores();
+        auto fsIds = listing->Record.GetFileStores();
+        TVector<TString> ids(fsIds.begin(), fsIds.end());
+        Sort(ids);
+        UNIT_ASSERT_VALUES_EQUAL(expected, ids);
+
+        expected = {
+            fsId, fsId + "_s1", fsId + "_s2", fsId + "_s3", fsId + "_s4",
+        };
+
+        NProto::TError getTopologyError;
+        NProto::TError createShardError;
+        NProto::TError configureShardError;
+        NProto::TError configureShardsError;
+
+        TAutoPtr<IEventHandle> toSend;
+
+        env.GetRuntime().SetEventFilter(
+            [&] (TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& event) {
+                switch (event->GetTypeRewrite()) {
+                    case TEvIndexTablet::EvGetFileSystemTopologyRequest: {
+                        using TResponse =
+                            TEvIndexTablet::TEvGetFileSystemTopologyResponse;
+
+                        if (!HasError(getTopologyError)) {
+                            break;
+                        }
+
+                        auto response = std::make_unique<TResponse>(
+                            getTopologyError);
+
+                        toSend = new IEventHandle(
+                            event->Sender,
+                            event->Recipient,
+                            response.release(),
+                            0, // flags
+                            event->Cookie);
+
+                        return true;
+                    }
+
+                    case TEvSSProxy::EvCreateFileStoreRequest: {
+                        using TRequest = TEvSSProxy::TEvCreateFileStoreRequest;
+                        using TResponse =
+                            TEvSSProxy::TEvCreateFileStoreResponse;
+                        const auto* msg = event->Get<TRequest>();
+                        if (msg->Config.GetFileSystemId() != expected[3]) {
+                            break;
+                        }
+
+                        if (!HasError(createShardError)) {
+                            break;
+                        }
+
+                        auto response = std::make_unique<TResponse>(
+                            createShardError);
+
+                        toSend = new IEventHandle(
+                            event->Sender,
+                            event->Recipient,
+                            response.release(),
+                            0, // flags
+                            event->Cookie);
+
+                        return true;
+                    }
+
+                    case TEvIndexTablet::EvConfigureAsShardRequest: {
+                        using TRequest =
+                            TEvIndexTablet::TEvConfigureAsShardRequest;
+                        using TResponse =
+                            TEvIndexTablet::TEvConfigureAsShardResponse;
+                        const auto* msg = event->Get<TRequest>();
+                        if (msg->Record.GetFileSystemId() != expected[3]) {
+                            break;
+                        }
+
+                        if (!HasError(configureShardError)) {
+                            break;
+                        }
+
+                        auto response = std::make_unique<TResponse>(
+                            configureShardError);
+
+                        toSend = new IEventHandle(
+                            event->Sender,
+                            event->Recipient,
+                            response.release(),
+                            0, // flags
+                            event->Cookie);
+
+                        return true;
+                    }
+
+                    case TEvIndexTablet::EvConfigureShardsRequest: {
+                        using TResponse =
+                            TEvIndexTablet::TEvConfigureShardsResponse;
+
+                        if (!HasError(configureShardsError)) {
+                            break;
+                        }
+
+                        auto response = std::make_unique<TResponse>(
+                            configureShardsError);
+
+                        toSend = new IEventHandle(
+                            event->Sender,
+                            event->Recipient,
+                            response.release(),
+                            0, // flags
+                            event->Cookie);
+
+                        return true;
+                    }
+                }
+
+                return false;
+            });
+
+        getTopologyError = MakeError(E_REJECTED, "failed to get topology");
+        service.SendResizeFileStoreRequest(fsId, newBlockCount);
+        env.GetRuntime().DispatchEvents({}, TDuration::MilliSeconds(100));
+        UNIT_ASSERT(toSend);
+        env.GetRuntime().Send(toSend, nodeIdx);
+        {
+            auto response = service.RecvResizeFileStoreResponse();
+            UNIT_ASSERT_VALUES_EQUAL(
+                FormatError(getTopologyError),
+                FormatError(response->GetError()));
+        }
+
+        getTopologyError = {};
+        createShardError = MakeError(E_REJECTED, "failed to create shard");
+        service.SendResizeFileStoreRequest(fsId, newBlockCount);
+        env.GetRuntime().DispatchEvents({}, TDuration::MilliSeconds(100));
+        UNIT_ASSERT(toSend);
+        env.GetRuntime().Send(toSend, nodeIdx);
+        {
+            auto response = service.RecvResizeFileStoreResponse();
+            UNIT_ASSERT_VALUES_EQUAL(
+                FormatError(createShardError),
+                FormatError(response->GetError()));
+        }
+
+        createShardError = {};
+        configureShardError =
+            MakeError(E_REJECTED, "failed to configure shard");
+        service.SendResizeFileStoreRequest(fsId, newBlockCount);
+        env.GetRuntime().DispatchEvents({}, TDuration::MilliSeconds(100));
+        UNIT_ASSERT(toSend);
+        env.GetRuntime().Send(toSend, nodeIdx);
+        {
+            auto response = service.RecvResizeFileStoreResponse();
+            UNIT_ASSERT_VALUES_EQUAL(
+                FormatError(configureShardError),
+                FormatError(response->GetError()));
+        }
+
+        configureShardError = {};
+        configureShardsError =
+            MakeError(E_REJECTED, "failed to configure shards");
+        service.SendResizeFileStoreRequest(fsId, newBlockCount);
+        env.GetRuntime().DispatchEvents({}, TDuration::MilliSeconds(100));
+        UNIT_ASSERT(toSend);
+        env.GetRuntime().Send(toSend, nodeIdx);
+        {
+            auto response = service.RecvResizeFileStoreResponse();
+            UNIT_ASSERT_VALUES_EQUAL(
+                FormatError(configureShardsError),
+                FormatError(response->GetError()));
+        }
+
+        configureShardsError = {};
+        service.SendResizeFileStoreRequest(fsId, newBlockCount);
+        {
+            auto response = service.RecvResizeFileStoreResponse();
+            UNIT_ASSERT_VALUES_EQUAL(
+                FormatError(MakeError(S_OK)),
+                FormatError(response->GetError()));
+        }
+
+        DoTestShardedFileSystemConfigured(fsId, service, expected);
     }
 }
 
