@@ -75,7 +75,7 @@ struct TSchemaInitializer<NKikimr::NIceDb::Schema::SchemaTables<Type>>
             Type::TableId,
             Type::StoragePolicy::Room,
             Type::StoragePolicy::Channel,
-            Type::StoragePolicy::Channel,
+            {Type::StoragePolicy::Channel},
             Type::StoragePolicy::Channel);
 
         alter.SetFamily(

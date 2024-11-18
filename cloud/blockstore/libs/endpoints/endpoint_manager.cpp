@@ -1589,25 +1589,6 @@ void TEndpointManager::ReleaseNbdDevice(const TString& device, bool restoring)
 }
 
 
-NProto::TResizeDeviceResponse TEndpointManager::DoResizeDevice(
-    TCallContextPtr ctx,
-    std::shared_ptr<NProto::TResizeDeviceRequest> request)
-{
-    Y_UNUSED(ctx);
-    const auto& socketPath = request->GetUnixSocketPath();
-    const auto& deviceSize = request->GetDeviceSizeInBytes();
-
-    auto it = Endpoints.find(socketPath);
-    if (it == Endpoints.end()) {
-        return TErrorResponse(
-            E_NOT_FOUND,
-            TStringBuilder()
-                << "endpoint " << socketPath.Quote() << " not started");
-    }
-
-    return TErrorResponse(it->second.Device->Resize(deviceSize).GetValueSync());
-}
-
 ////////////////////////////////////////////////////////////////////////////////
 
 TFuture<NProto::TStartEndpointResponse> TRestoringClient::StartEndpoint(

@@ -9,6 +9,8 @@ import subprocess
 import sys
 import time
 
+from cloud.storage.core.tools.common.python.daemon import process_wait_and_check
+
 process = None
 
 
@@ -57,6 +59,7 @@ def main():
     parser.add_argument('--ping-success-codes', help='', nargs='*')
     parser.add_argument('--allow-restart-flag', help='file to look for before restart', type=str, default=None)
     parser.add_argument('-v', '--verbose', help='verbose mode', default=0, action='count')
+    parser.add_argument('--terminate-check-timeout', help='the timeout in seconds between wait attempts for terminated process', type=int, default=60)
 
     args = parser.parse_args()
 
@@ -92,7 +95,8 @@ def main():
                 else:
                     logging.info(f'terminating process {cmdline}')
                     process.terminate()
-                    process.wait()
+                    process_wait_and_check(process,
+                                           check_timeout=args.terminate_check_timeout)
 
             def start_process():
                 logging.info(f'starting process {cmdline}')
