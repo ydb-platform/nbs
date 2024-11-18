@@ -12,6 +12,11 @@ import (
 	internal_client "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/client"
 	client_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/configs/client/config"
 	server_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/configs/server/config"
+	dataplane_protos "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/protos"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/monitoring/metrics"
+	"github.com/ydb-platform/nbs/cloud/tasks"
+	"github.com/ydb-platform/nbs/cloud/tasks/headers"
+	"github.com/ydb-platform/nbs/cloud/tasks/logging"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -255,7 +260,7 @@ func newDeleteSnapshotCmd(clientConfig *client_config.ClientConfig) *cobra.Comma
 ////////////////////////////////////////////////////////////////////////////////
 
 type scheduleCreateSnapshotFromLegacySnapshotTask struct {
-	clientConfig *client_config.ServerConfig
+	clientConfig *client_config.ClientConfig
 	serverConfig *server_config.ServerConfig
 	snapshotID   string
 }
@@ -275,7 +280,7 @@ func (c *scheduleCreateSnapshotFromLegacySnapshotTask) run() error {
 		ctx,
 		taskRegistry,
 		taskStorage,
-		config.TasksConfig,
+		c.serverConfig.TasksConfig,
 		metrics.NewEmptyRegistry(),
 	)
 	if err != nil {
@@ -283,13 +288,16 @@ func (c *scheduleCreateSnapshotFromLegacySnapshotTask) run() error {
 		return err
 	}
 
-	taskID, err := t.scheduler.ScheduleTask(
-		headers.SetIncomingIdempotencyKey(ctx, selfTaskID+"_run"),
+	taskID, err := taskScheduler.ScheduleTask(
+		headers.SetIncomingIdempotencyKey(
+			ctx,
+			"CreateSnapshotFromLegacySnapshot_"+c.snapshotID+"_"+generateID(),
+		),
 		"dataplane.CreateSnapshotFromLegacySnapshot",
 		"",
 		&dataplane_protos.CreateSnapshotFromLegacySnapshotRequest{
-			SrcSnapshotId: snapshotID,
-			DstSnapshotId: snapshotID,
+			SrcSnapshotId: c.snapshotID,
+			DstSnapshotId: c.snapshotID,
 			UseS3:         true,
 		},
 	)
@@ -298,6 +306,7 @@ func (c *scheduleCreateSnapshotFromLegacySnapshotTask) run() error {
 	}
 
 	fmt.Printf("Task: %v\n", taskID)
+	return nil
 }
 
 func newScheduleCreateSnapshotFromLegacySnapshotTaskCmd(
@@ -342,6 +351,7 @@ func newSnapshotsCmd(
 		newListSnapshotsCmd(clientConfig, serverConfig),
 		newCreateSnapshotCmd(clientConfig),
 		newDeleteSnapshotCmd(clientConfig),
+		// Remove this command after getting rid of legacy snapshot storage.
 		newScheduleCreateSnapshotFromLegacySnapshotTaskCmd(
 			clientConfig,
 			serverConfig,
