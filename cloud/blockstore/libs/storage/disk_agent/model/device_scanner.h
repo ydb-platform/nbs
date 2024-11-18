@@ -26,6 +26,4 @@ NProto::TError FindDevices(
     const NProto::TStorageDiscoveryConfig& config,
     TDeviceCallback callback);
 
-TVector<NProto::TFileDeviceArgs> LoadCachedConfig(const TString& path);
-
 }   // namespace NCloud::NBlockStore::NStorage

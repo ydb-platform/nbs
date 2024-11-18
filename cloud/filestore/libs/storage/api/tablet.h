@@ -35,6 +35,8 @@ namespace NCloud::NFileStore::NStorage {
     xxx(UnsafeDeleteNode,           __VA_ARGS__)                               \
     xxx(UnsafeUpdateNode,           __VA_ARGS__)                               \
     xxx(UnsafeGetNode,              __VA_ARGS__)                               \
+    xxx(ForcedOperationStatus,      __VA_ARGS__)                               \
+    xxx(GetFileSystemTopology,      __VA_ARGS__)                               \
 // FILESTORE_TABLET_REQUESTS
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -108,6 +110,12 @@ struct TEvIndexTablet
 
         EvUnsafeGetNodeRequest = EvBegin + 39,
         EvUnsafeGetNodeResponse,
+
+        EvForcedOperationStatusRequest = EvBegin + 41,
+        EvForcedOperationStatusResponse,
+
+        EvGetFileSystemTopologyRequest = EvBegin + 43,
+        EvGetFileSystemTopologyResponse,
 
         EvEnd
     };

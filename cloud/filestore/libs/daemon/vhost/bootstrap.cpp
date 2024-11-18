@@ -339,9 +339,10 @@ void TBootstrapVhost::InitEndpoints()
             Scheduler,
             StatsRegistry,
             ProfileLog),
-        THandleOpsQueueConfig(
-            Configs->VhostServiceConfig->GetHandleOpsQueuePath(),
-            Configs->VhostServiceConfig->GetHandleOpsQueueSize()));
+        THandleOpsQueueConfig{
+            .PathPrefix = Configs->VhostServiceConfig->GetHandleOpsQueuePath(),
+            .MaxQueueSize = Configs->VhostServiceConfig->GetHandleOpsQueueSize(),
+        });
 
     EndpointManager = CreateEndpointManager(
         Logging,

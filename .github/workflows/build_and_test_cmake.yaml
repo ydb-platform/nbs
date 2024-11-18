@@ -33,6 +33,10 @@ on:
         type: string
         default: "0"
         description: "Amount of time to sleep after tests"
+      nebius:
+        type: string
+        default: "no"
+        description: "Run on nebius runners"
     outputs:
       sleep_after_tests:
         description: "sleep_after_tests"
@@ -71,10 +75,10 @@ jobs:
       uses: ./.github/actions/s3cmd
       with:
         s3_bucket: ${{ vars.AWS_BUCKET }}
-        s3_endpoint: ${{ vars.AWS_ENDPOINT }}
-        s3_website_suffix: ${{ vars.AWS_WEBSITE_SUFFIX }}
-        s3_key_id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-        s3_key_secret: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        s3_endpoint: ${{ inputs.nebius == 'yes' && vars.NEBIUS_AWS_ENDPOINT || vars.AWS_ENDPOINT }}
+        s3_website_suffix: ${{ inputs.nebius == 'yes' && vars.NEBIUS_AWS_WEBSITE_SUFFIX || vars.AWS_WEBSITE_SUFFIX }}
+        s3_key_id: ${{ inputs.nebius == 'yes' && secrets.NEBIUS_AWS_ACCESS_KEY_ID || secrets.AWS_ACCESS_KEY_ID }}
+        s3_key_secret: ${{ inputs.nebius == 'yes' && secrets.NEBIUS_AWS_SECRET_ACCESS_KEY || secrets.AWS_SECRET_ACCESS_KEY }}
         folder_prefix: nebius-
         build_preset: ${{ inputs.build_preset }}
         install: false
@@ -83,7 +87,7 @@ jobs:
       uses: ./.github/actions/build_cmake
       if: inputs.run_build
       with:
-        bazel_remote_uri: ${{ vars.REMOTE_CACHE_URL_YA || '' }}
+        bazel_remote_uri: ${{ inputs.nebius == 'yes' && vars.NEBIUS_BAZEL_REMOTE_CACHE_URL || vars.REMOTE_CACHE_URL_YA }}
         bazel_remote_username: ${{ secrets.REMOTE_CACHE_USERNAME }}
         bazel_remote_password: ${{ secrets.REMOTE_CACHE_PASSWORD }}
 

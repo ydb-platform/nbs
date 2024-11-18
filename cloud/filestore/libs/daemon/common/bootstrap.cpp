@@ -65,7 +65,7 @@ NCloud::NStorage::ICgroupStatsFetcherPtr BuildCgroupStatsFetcher(
     IMonitoringServicePtr monitoring,
     const TString& metricsComponent)
 {
-    if (cpuWaitServiceName.Empty() && cpuWaitFilename.Empty()) {
+    if (cpuWaitServiceName.empty() && cpuWaitFilename.empty()) {
         const auto& Log = log;
         STORAGE_INFO(
             "CpuWaitServiceName and CpuWaitFilename are empty, can't build "
@@ -79,7 +79,7 @@ NCloud::NStorage::ICgroupStatsFetcherPtr BuildCgroupStatsFetcher(
             .CounterName = "CpuWaitFailure",
         };
     TString statsFile =
-        cpuWaitFilename.Empty()
+        cpuWaitFilename.empty()
             ? NCloud::NStorage::BuildCpuWaitStatsFilename(cpuWaitServiceName)
             : cpuWaitFilename;
 

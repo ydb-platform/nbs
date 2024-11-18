@@ -2,7 +2,6 @@
 
 #include "public.h"
 
-#include "profile_log_events.h"
 #include "tablet_database.h"
 #include "tablet_private.h"
 #include "tablet_state_cache.h"
@@ -15,6 +14,7 @@
 #include <cloud/filestore/libs/storage/model/public.h>
 #include <cloud/filestore/libs/storage/model/range.h>
 #include <cloud/filestore/libs/storage/tablet/model/block.h>
+#include <cloud/filestore/libs/storage/tablet/model/profile_log_events.h>
 #include <cloud/filestore/libs/storage/tablet/model/range_locks.h>
 #include <cloud/filestore/libs/storage/tablet/protos/tablet.pb.h>
 
@@ -1699,6 +1699,7 @@ struct TTxIndexTablet
         TSet<ui64> Nodes;
         TVector<TMixedBlobMeta> CompactionBlobs;
         ui64 CommitId = InvalidCommitId;
+        bool SkipRangeRewrite = false;
 
         TCompaction(TRequestInfoPtr requestInfo, ui32 rangeId, bool filterNodes)
             : TProfileAware(EFileStoreSystemRequest::Compaction)
@@ -1714,6 +1715,7 @@ struct TTxIndexTablet
             Nodes.clear();
             CompactionBlobs.clear();
             CommitId = InvalidCommitId;
+            SkipRangeRewrite = false;
         }
     };
 

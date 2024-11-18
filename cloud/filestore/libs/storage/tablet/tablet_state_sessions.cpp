@@ -392,18 +392,26 @@ TVector<TSession*> TIndexTabletState::GetSessionsToNotify(
     return result;
 }
 
-TVector<NProtoPrivate::TTabletSessionInfo> TIndexTabletState::DescribeSessions() const
+auto TIndexTabletState::DescribeSessions() const
+    -> TVector<NProtoPrivate::TTabletSessionInfo>
 {
     TVector<NProtoPrivate::TTabletSessionInfo> sessionInfos;
-    for (const auto& session: Impl->Sessions) {
-        NProtoPrivate::TTabletSessionInfo sessionInfo;
-        sessionInfo.SetSessionId(session.GetSessionId());
-        sessionInfo.SetClientId(session.GetClientId());
-        sessionInfo.SetSessionState(session.GetSessionState());
-        sessionInfo.SetMaxSeqNo(session.GetMaxSeqNo());
-        sessionInfo.SetMaxRwSeqNo(session.GetMaxRwSeqNo());
-        sessionInfos.push_back(std::move(sessionInfo));
-    }
+    auto addSessionInfos = [&] (const TSessionList& sessions, bool isOrphan) {
+        for (const auto& session: sessions) {
+            NProtoPrivate::TTabletSessionInfo sessionInfo;
+            sessionInfo.SetSessionId(session.GetSessionId());
+            sessionInfo.SetClientId(session.GetClientId());
+            sessionInfo.SetSessionState(session.GetSessionState());
+            sessionInfo.SetMaxSeqNo(session.GetMaxSeqNo());
+            sessionInfo.SetMaxRwSeqNo(session.GetMaxRwSeqNo());
+            sessionInfo.SetIsOrphan(isOrphan);
+            sessionInfos.push_back(std::move(sessionInfo));
+        }
+    };
+
+    addSessionInfos(Impl->Sessions, false);
+    addSessionInfos(Impl->OrphanSessions, true);
+
     return sessionInfos;
 }
 

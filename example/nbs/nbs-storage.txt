@@ -11,4 +11,5 @@ MaxShadowDiskFillIoDepth: 4
 OptimizeVoidBuffersTransferForReadsEnabled: true
 MaxShadowDiskFillBandwidth: 1000
 MaxMigrationBandwidth: 1000
-CleanupDRConfigOnCMSActions: true
+AssignIdToWriteAndZeroRequestsEnabled: true
+RejectLateRequestsAtDiskAgentEnabled: true

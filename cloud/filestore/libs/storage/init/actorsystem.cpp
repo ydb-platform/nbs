@@ -321,6 +321,8 @@ void TActorSystem::Init()
     if (Args.StorageConfig->GetConfigsDispatcherServiceEnabled()) {
         SetupConfigDispatcher(
             Args.StorageConfig->GetConfigDispatcherSettings(),
+            Args.StorageConfig->GetSchemeShardDir(),
+            Args.StorageConfig->GetNodeType(),
             &runConfig.ConfigsDispatcherInitInfo);
         runConfig.ConfigsDispatcherInitInfo.InitialConfig = runConfig.AppConfig;
     }

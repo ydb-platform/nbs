@@ -76,6 +76,11 @@ def parse_args():
         type=str,
         default=_DEFAULT_IMAGE_NAME)
     test_arguments_group.add_argument(
+        '--image-folder-id',
+        type=str,
+        default=None,
+        help='use image from the specified folder to create disks')
+    test_arguments_group.add_argument(
         '--cores',
         type=int,
         default=_DEFAULT_INSTANCE_CORES)
@@ -215,7 +220,8 @@ def run(module_factories, parser, args, logger):
             cores=args.cores,
             memory=args.memory,
             compute_node=args.compute_node,
-            image_name=args.image_name) as instance:
+            image_name=args.image_name,
+            image_folder_id=args.image_folder_id) as instance:
         logger.info(
             f'Waiting until instance <id={instance.id}> becomes available via ssh')
         helpers.wait_until_instance_becomes_available_via_ssh(instance.ip)

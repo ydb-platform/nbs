@@ -62,7 +62,8 @@ public:
         ui32 rangeId,
         ui32 blobsCount,
         ui32 deletionsCount,
-        ui32 garbageBlocksCount);
+        ui32 garbageBlocksCount,
+        bool compacted);
     void Update(const TVector<TCompactionRangeInfo>& ranges);
 
     TCompactionStats Get(ui32 rangeId) const;

@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 KEYRING_FILE_NAME = "vhost-endpoint-keyring-name.txt"
 
 
-class NfsCliClient:
+class FilestoreCliClient:
     def __init__(
         self,
         binary_path,
@@ -62,7 +62,7 @@ class NfsCliClient:
             "--blocks-count", str(blk_count)
         ] + self.__cmd_opts()
 
-        logger.info("creating nfs: " + " ".join(cmd))
+        logger.info("creating filestore: " + " ".join(cmd))
         result = common.execute(cmd, env=self.__env, check_exit_code=self.__check_exit_code)
         if return_stdout:
             return result.stdout
@@ -75,7 +75,7 @@ class NfsCliClient:
             "--filesystem", fs,
         ] + self.__cmd_opts()
 
-        logger.info("destroying nfs: " + " ".join(cmd))
+        logger.info("destroying filestore: " + " ".join(cmd))
         return common.execute(cmd, env=self.__env, check_exit_code=self.__check_exit_code).stdout
 
     def mount(self, fs, path, mount_seqno=0, readonly=False):
@@ -89,7 +89,7 @@ class NfsCliClient:
         if readonly:
             cmd.append("--mount-readonly")
 
-        logger.info("mounting nfs: " + " ".join(cmd))
+        logger.info("mounting filestore: " + " ".join(cmd))
         mount = Daemon(
             cmd,
             cwd=self.__cwd,
@@ -117,7 +117,7 @@ class NfsCliClient:
         if force:
             cmd.append("--force")
 
-        logger.info("resizing nfs: " + " ".join(cmd))
+        logger.info("resizing filestore: " + " ".join(cmd))
         return common.execute(cmd, env=self.__env, check_exit_code=self.__check_exit_code).stdout
 
     def list_filestores(self):
@@ -232,6 +232,14 @@ class NfsCliClient:
 
         return common.execute(cmd, env=self.__env, check_exit_code=self.__check_exit_code).stdout
 
+    def forced_compaction(self, fs):
+        cmd = [
+            self.__binary_path, "forcedcompaction",
+            "--filesystem", fs,
+        ] + self.__cmd_opts()
+
+        return common.execute(cmd, env=self.__env, check_exit_code=self.__check_exit_code).stdout
+
     def execute_action(self, action, request):
         request_file = tempfile.NamedTemporaryFile(mode="w", delete=False)
         json.dump(request, request_file)
@@ -322,7 +330,7 @@ def create_endpoint(client, filesystem, socket_path, socket_prefix, endpoint_sto
 
 
 def make_socket_generator(
-        nfs_port,
+        filestore_port,
         vhost_port,
         filesystem="nfs_test",
         socket_path="/tmp",
@@ -332,16 +340,16 @@ def make_socket_generator(
     client_path = common.binary_path(
         "cloud/filestore/apps/client/filestore-client")
 
-    nfs_client = NfsCliClient(
+    filestore_client = FilestoreCliClient(
         client_path,
-        nfs_port,
+        filestore_port,
         vhost_port=vhost_port,
         verbose=True,
         cwd=common.output_path())
 
     def socket_generator(mount_seqno=0, readonly=False):
         return create_endpoint(
-            nfs_client,
+            filestore_client,
             filesystem,
             socket_path,
             socket_prefix,

@@ -4,6 +4,8 @@
 #include <cloud/blockstore/libs/storage/stats_service/stats_service_events_private.h>
 #include <cloud/storage/core/libs/common/media.h>
 
+#include <bit>
+
 namespace NCloud::NBlockStore::NStorage {
 
 using namespace NTestVolume;
@@ -49,7 +51,7 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
         auto popCountStr = [](const TString& s) {
             ui64 count = 0;
             for (char c : s) {
-                count += PopCount(c);
+                count += std::popcount(static_cast<unsigned char>(c));
             }
             return count;
         };
@@ -2237,7 +2239,7 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
         auto popCountStr = [](const TString& s) {
             ui64 count = 0;
             for (char c : s) {
-                count += PopCount(c);
+                count += std::popcount(static_cast<unsigned char>(c));
             }
             return count;
         };

@@ -151,8 +151,10 @@ class NbsCsiDriverRunner:
             volume_id: str,
             pod_name: str,
             access_type: str,
-            fs_type: str = ""):
-        return self._node_run(
+            fs_type: str = "",
+            readonly: bool = False,
+            volume_mount_group: str = ""):
+        args = [
             "publishvolume",
             "--pod-id",
             pod_id,
@@ -164,7 +166,13 @@ class NbsCsiDriverRunner:
             fs_type,
             "--access-type",
             access_type,
-        )
+        ]
+        if readonly:
+            args += ["--readonly"]
+
+        if len(volume_mount_group) != 0:
+            args += ["--volume-mount-group", volume_mount_group]
+        return self._node_run(*args)
 
     def unpublish_volume(self, pod_id: str, volume_id: str, access_type: str):
         return self._node_run(
@@ -249,7 +257,7 @@ def cleanup_after_test(
     env.tear_down()
 
 
-def init(vm_mode: bool = False):
+def init(vm_mode: bool = False, retry_timeout_ms: int | None = None):
     server_config_patch = TServerConfig()
     server_config_patch.NbdEnabled = True
     endpoints_dir = Path(common.output_path()) / f"endpoints-{hash(common.context.test_name)}"
@@ -264,6 +272,8 @@ def init(vm_mode: bool = False):
     server_config_patch.UnixSocketPath = str(sockets_dir / "grpc.sock")
     server_config_patch.VhostEnabled = True
     server_config_patch.NbdDevicePrefix = "/dev/nbd"
+    ep_socket = "ep-%s.sock" % hash(common.context.test_name)
+    server_config_patch.EndpointProxySocketPath = ep_socket
     server = TServerAppConfig()
     server.ServerConfig.CopyFrom(server_config_patch)
     server.ServerConfig.ThreadsCount = thread_count()
@@ -285,7 +295,8 @@ def init(vm_mode: bool = False):
     client_config_path = Path(yatest_common.output_path()) / "client-config.txt"
     client_config = TClientAppConfig()
     client_config.ClientConfig.CopyFrom(TClientConfig())
-    client_config.ClientConfig.RetryTimeout = 1
+    if retry_timeout_ms:
+        client_config.ClientConfig.RetryTimeout = retry_timeout_ms
     client_config.ClientConfig.Host = "localhost"
     client_config.ClientConfig.InsecurePort = env.nbs_port
     client_config_path.write_text(MessageToString(client_config))

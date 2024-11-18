@@ -163,6 +163,13 @@ def main():
     parser.add_argument("--disk-id", type=str, metavar="STR", help="disk id")
 
     parser.add_argument(
+        "--socket-access-mode",
+        help="access mode for endpoint socket files",
+        type=int,
+        metavar="INT",
+        default=432)
+
+    parser.add_argument(
         "--client-id",
         type=str,
         metavar="STR",

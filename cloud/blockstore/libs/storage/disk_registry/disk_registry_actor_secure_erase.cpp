@@ -300,54 +300,14 @@ void TDiskRegistryActor::CompleteCleanupDevices(
 void TDiskRegistryActor::SecureErase(const TActorContext& ctx)
 {
     auto dirtyDevices = State->GetDirtyDevices();
-    EraseIf(dirtyDevices, [&] (auto& d) {
-        if (d.GetState() == NProto::DEVICE_STATE_ERROR) {
-            LOG_DEBUG(ctx, TBlockStoreComponents::DISK_REGISTRY,
-                "[%lu] Skip SecureErase for device '%s'. Device in error state",
-                TabletID(),
-                d.GetDeviceUUID().c_str());
-
-            return true;
-        }
-
-        if (State->IsAutomaticallyReplaced(d.GetDeviceUUID())) {
-            LOG_DEBUG(ctx, TBlockStoreComponents::DISK_REGISTRY,
-                "[%lu] Skip SecureErase for device '%s'."
-                " Device was automatically replaced recently.",
-                TabletID(),
-                d.GetDeviceUUID().c_str(),
-                d.GetNodeId());
-
-            return true;
-        }
-
-        auto* agent = State->FindAgent(d.GetNodeId());
-        if (!agent) {
-            LOG_DEBUG(ctx, TBlockStoreComponents::DISK_REGISTRY,
-                "[%lu] Skip SecureErase for device '%s'."
-                " Agent for node id %d not found",
-                TabletID(),
-                d.GetDeviceUUID().c_str(),
-                d.GetNodeId());
-
-            return true;
-        }
-
-        if (agent->GetState() == NProto::AGENT_STATE_UNAVAILABLE) {
-            LOG_DEBUG(ctx, TBlockStoreComponents::DISK_REGISTRY,
-                "[%lu] Skip SecureErase for device '%s'."
-                " Agent is unavailable",
-                TabletID(),
-                d.GetDeviceUUID().c_str());
-
-            return true;
-        }
-
-        return false;
-    });
+    EraseIf(
+        dirtyDevices,
+        [this](auto& device) { return !State->CanSecureErase(device); });
 
     if (!dirtyDevices) {
-        LOG_DEBUG(ctx, TBlockStoreComponents::DISK_REGISTRY,
+        LOG_DEBUG(
+            ctx,
+            TBlockStoreComponents::DISK_REGISTRY,
             "[%lu] Nothing to erase",
             TabletID());
 
@@ -412,8 +372,9 @@ void TDiskRegistryActor::SecureErase(const TActorContext& ctx)
             LOG_INFO(
                 ctx,
                 TBlockStoreComponents::DISK_REGISTRY,
-                "[%lu] Sending secure erase request",
-                TabletID());
+                "[%lu] Sending secure erase request for pool: %s",
+                TabletID(),
+                poolName.c_str());
 
             NCloud::Send(ctx, ctx.SelfID, std::move(request));
         }

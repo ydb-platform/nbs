@@ -42,16 +42,8 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateConfigTest)
         const auto agentConfig = AgentConfig(1, { Device("dev-1", uuid) });
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) {
-            TVector<TString> affectedDisks;
-            TVector<TString> disksToReallocate;
-
-            UNIT_ASSERT_SUCCESS(state.RegisterAgent(
-                db,
-                agentConfig,
-                Now(),
-                &affectedDisks,
-                &disksToReallocate
-            ));
+            UNIT_ASSERT_SUCCESS(
+                state.RegisterAgent(db, agentConfig, Now()).GetError());
         });
 
         auto agentCounters = counters->FindSubgroup(
@@ -115,14 +107,8 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateConfigTest)
             .Build();
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) {
-            TVector<TString> affectedDisks;
-            TVector<TString> disksToReallocate;
-            UNIT_ASSERT_SUCCESS(state.RegisterAgent(
-                db,
-                agents[0],
-                Now(),
-                &affectedDisks,
-                &disksToReallocate));
+            UNIT_ASSERT_SUCCESS(
+                state.RegisterAgent(db, agents[0], Now()).GetError());
 
             UNIT_ASSERT_VALUES_EQUAL(2, state.GetDirtyDevices().size());
 

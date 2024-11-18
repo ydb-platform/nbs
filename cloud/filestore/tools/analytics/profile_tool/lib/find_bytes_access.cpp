@@ -5,7 +5,7 @@
 
 #include <cloud/filestore/libs/diagnostics/events/profile_events.ev.pb.h>
 #include <cloud/filestore/libs/service/request.h>
-#include <cloud/filestore/libs/storage/tablet/profile_log_events.h>
+#include <cloud/filestore/libs/storage/tablet/model/profile_log_events.h>
 #include <cloud/filestore/tools/analytics/libs/event-log/dump.h>
 #include <cloud/filestore/tools/analytics/libs/event-log/request_filter.h>
 
@@ -78,21 +78,21 @@ public:
         : CommonFilterParams(Opts)
     {
         Opts.AddLongOption(
-                StartLabel.Data(),
+                StartLabel.data(),
                 "Start of the semi-interval (index of the first block)")
             .Required()
             .RequiredArgument("NUM")
             .StoreResult(&Start);
 
         Opts.AddLongOption(
-                CountLabel.Data(),
+                CountLabel.data(),
                 "Size of the semi-interval (number of blocks)")
             .Required()
             .RequiredArgument("NUM")
             .StoreResult(&Count);
 
         Opts.AddLongOption(
-                BlockSizeLabel.Data(),
+                BlockSizeLabel.data(),
                 "Block size (in bytes)")
             .RequiredArgument("NUM")
             .StoreResult(&BlockSize)

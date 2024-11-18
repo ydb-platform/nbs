@@ -546,10 +546,49 @@ void TIndexTabletActor::ExecuteTx_Compaction(
     Y_UNUSED(ctx);
     Y_UNUSED(tx);
 
+    const auto garbageThreshold =
+        Config->GetCompactRangeGarbagePercentageThreshold();
+    const auto blobSizeThreshold =
+        Config->GetCompactRangeAverageBlobSizeThreshold();
+
+    const auto stats = GetCompactionStats(args.RangeId);
+
     if (!args.CompactionBlobs) {
         TIndexTabletDatabase db(tx.DB);
-        UpdateCompactionMap(args.RangeId, 0, 0, 0);
-        db.WriteCompactionMap(args.RangeId, 0, 0, 0);
+        UpdateCompactionMap(args.RangeId, 0, stats.DeletionsCount, 0, true);
+        db.WriteCompactionMap(args.RangeId, 0, stats.DeletionsCount, 0);
+        args.SkipRangeRewrite = true;
+    } else if (garbageThreshold && blobSizeThreshold) {
+        ui32 storedBlocks = 0;
+        ui32 garbageBlocks = 0;
+        for (const auto& blob: args.CompactionBlobs) {
+            storedBlocks += blob.Blocks.size();
+            for (const auto& block: blob.Blocks) {
+                if (block.MaxCommitId != InvalidCommitId) {
+                    ++garbageBlocks;
+                }
+            }
+        }
+
+        const ui32 usedBlocks = storedBlocks - garbageBlocks;
+        const ui32 garbagePercentage =
+            usedBlocks ? 100 * garbageBlocks / usedBlocks : Max<ui32>();
+        const ui32 averageBlobSize = static_cast<ui64>(GetBlockSize())
+            * storedBlocks / args.CompactionBlobs.size();
+
+        if (garbagePercentage <= garbageThreshold
+                && averageBlobSize >= blobSizeThreshold)
+        {
+            // updating only the 'compacted' flag
+            UpdateCompactionMap(
+                args.RangeId,
+                stats.BlobsCount,
+                stats.DeletionsCount,
+                stats.GarbageBlocksCount,
+                true);
+
+            args.SkipRangeRewrite = true;
+        }
     }
 
     for (const ui64 nodeId: args.Nodes) {
@@ -587,7 +626,7 @@ void TIndexTabletActor::CompleteTx_Compaction(
         }
     };
 
-    if (!args.CompactionBlobs) {
+    if (args.SkipRangeRewrite) {
         LOG_DEBUG(ctx, TFileStoreComponents::TABLET,
             "%s Compaction completed, nothing to do (range: #%u)",
             LogTag.c_str(), args.RangeId);

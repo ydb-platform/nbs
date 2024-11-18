@@ -16,8 +16,8 @@ from cloud.filestore.config.vhost_pb2 import \
 from cloud.filestore.tests.python.lib.common import \
     shutdown, get_restart_interval, get_restart_flag
 
-from cloud.filestore.tests.python.lib.daemon_config import NfsVhostConfigGenerator
-from cloud.filestore.tests.python.lib.vhost import NfsVhost, wait_for_nfs_vhost
+from cloud.filestore.tests.python.lib.daemon_config import FilestoreVhostConfigGenerator
+from cloud.filestore.tests.python.lib.vhost import FilestoreVhost, wait_for_filestore_vhost
 from cloud.storage.core.protos.endpoints_pb2 import EEndpointStorageType
 
 
@@ -32,6 +32,8 @@ def start(argv):
     parser.add_argument("--restart-interval", action="store", default=None)
     parser.add_argument("--restart-flag", action="store", default=None)
     parser.add_argument("--storage-config-patch", action="store", default=None)
+    parser.add_argument("--direct-io", action="store_true", default=False)
+
     args = parser.parse_args(argv)
 
     vhost_binary_path = common.binary_path(
@@ -69,6 +71,7 @@ def start(argv):
         fs_root_path = common.ram_drive_path()
         if fs_root_path:
             config.VhostServiceConfig.LocalServiceConfig.RootPath = fs_root_path
+        config.VhostServiceConfig.LocalServiceConfig.DirectIoEnabled = args.direct_io
     elif service_type == "kikimr":
         kikimr_port = os.getenv("KIKIMR_SERVER_PORT")
         domain = os.getenv("NFS_DOMAIN")
@@ -82,7 +85,7 @@ def start(argv):
                 p.read(),
                 TStorageConfig())
 
-    vhost_configurator = NfsVhostConfigGenerator(
+    vhost_configurator = FilestoreVhostConfigGenerator(
         binary_path=vhost_binary_path,
         app_config=config,
         service_type="local" if service_type == "local-noserver" else service_type,
@@ -94,13 +97,13 @@ def start(argv):
         storage_config=storage_config,
     )
 
-    nfs_vhost = NfsVhost(vhost_configurator)
-    nfs_vhost.start()
+    filestore_vhost = FilestoreVhost(vhost_configurator)
+    filestore_vhost.start()
 
     with open(PID_FILE_NAME, "w") as f:
-        f.write(str(nfs_vhost.pid))
+        f.write(str(filestore_vhost.pid))
 
-    wait_for_nfs_vhost(nfs_vhost, vhost_configurator.port)
+    wait_for_filestore_vhost(filestore_vhost, vhost_configurator.port)
 
     if restart_interval:
         set_env("NFS_VHOST_ENDPOINT_STORAGE_DIR", endpoint_storage_dir)

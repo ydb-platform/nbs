@@ -396,7 +396,6 @@ TDuration MSeconds(ui32 value)
     xxx(NonReplicatedMaxRequestTimeoutSSD,         TDuration, Seconds(30)     )\
     xxx(NonReplicatedMinRequestTimeoutHDD,         TDuration, Seconds(5)      )\
     xxx(NonReplicatedMaxRequestTimeoutHDD,         TDuration, Seconds(30)     )\
-    xxx(ExpectedClientBackoffIncrement,            TDuration, MSeconds(500)   )\
     xxx(NonReplicatedMigrationStartAllowed,        bool,      false           )\
     xxx(NonReplicatedVolumeMigrationDisabled,      bool,      false           )\
     xxx(MigrationIndexCachingInterval,             ui32,      65536           )\
@@ -431,7 +430,7 @@ TDuration MSeconds(ui32 value)
     xxx(MaxLocalVolumes,                           ui32,      100             )\
                                                                                \
     xxx(DiskRegistryVolumeConfigUpdatePeriod,      TDuration, Minutes(5)      )\
-    xxx(CleanupDRConfigOnCMSActions,               bool,      false           )\
+    xxx(DiskRegistryAlwaysAllocatesLocalDisks,     bool,      false           )\
                                                                                \
     xxx(ReassignRequestRetryTimeout,               TDuration, Seconds(5)      )\
     xxx(ReassignChannelsPercentageThreshold,       ui32,      10              )\
@@ -924,6 +923,7 @@ ui64 GetAllocationUnit(
             break;
 
         case STORAGE_MEDIA_SSD_LOCAL:
+        case STORAGE_MEDIA_HDD_LOCAL:
             unit = 4_KB;    // custom pool can have any size
             break;
 

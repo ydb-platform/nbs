@@ -476,9 +476,33 @@ TCompactionInfo TIndexTabletActor::GetCompactionInfo() const
         : 0;
     // TODO: use GarbageCompactionThreshold
 
-    const bool shouldCompact =
-        avgGarbagePercentage >= Config->GetGarbageCompactionThresholdAverage()
-        || avgCompactionScore >= compactionThresholdAverage;
+    bool shouldCompactByGarbage = Config->GetNewCompactionEnabled()
+        && compactionScore > 1
+        && avgGarbagePercentage
+            >= Config->GetGarbageCompactionThresholdAverage();
+
+    const bool shouldCompactByBlobs = compactionScore >= compactionThreshold
+        || Config->GetNewCompactionEnabled()
+        && compactionScore > 1
+        && avgCompactionScore >= compactionThresholdAverage;
+
+    // blobs-based compaction has priority
+    if (!shouldCompactByBlobs && shouldCompactByGarbage) {
+        // if we don't need to do compaction by blobs we need to select another
+        // range - the one with the most garbage in it
+        auto score = GetRangeToCompactByGarbage();
+        if (score.Score) {
+            compactRangeId = score.RangeId;
+            compactionScore = score.Score;
+        } else {
+            // garbage score for the top range is 0 - most probably the counter
+            // has not yet been initialized after the support for
+            // GarbageBlocksCount tracking got deployed
+            shouldCompactByGarbage = false;
+        }
+    }
+
+    const bool shouldCompact = shouldCompactByBlobs || shouldCompactByGarbage;
 
     return {
         compactionThreshold,
@@ -490,9 +514,7 @@ TCompactionInfo TIndexTabletActor::GetCompactionInfo() const
         avgGarbagePercentage,
         avgCompactionScore,
         Config->GetNewCompactionEnabled(),
-        compactionScore >= compactionThreshold
-            || Config->GetNewCompactionEnabled()
-            && compactionScore > 1 && shouldCompact,
+        shouldCompact,
     };
 }
 
@@ -636,8 +658,24 @@ void TIndexTabletActor::HandleGetStorageConfig(
     const TEvIndexTablet::TEvGetStorageConfigRequest::TPtr& ev,
     const TActorContext& ctx)
 {
-    auto response = std::make_unique<TEvIndexTablet::TEvGetStorageConfigResponse>();
+    auto response =
+        std::make_unique<TEvIndexTablet::TEvGetStorageConfigResponse>();
     *response->Record.MutableStorageConfig() = Config->GetStorageConfigProto();
+
+    NCloud::Reply(
+        ctx,
+        *ev,
+        std::move(response));
+}
+
+void TIndexTabletActor::HandleGetFileSystemTopology(
+    const TEvIndexTablet::TEvGetFileSystemTopologyRequest::TPtr& ev,
+    const TActorContext& ctx)
+{
+    auto response =
+        std::make_unique<TEvIndexTablet::TEvGetFileSystemTopologyResponse>();
+    *response->Record.MutableShardFileSystemIds() =
+        GetFileSystem().GetShardFileSystemIds();
 
     NCloud::Reply(
         ctx,
@@ -659,6 +697,8 @@ void TIndexTabletActor::HandleDescribeSessions(
 
     NCloud::Reply(ctx, *ev, std::move(response));
 }
+
+////////////////////////////////////////////////////////////////////////////////
 
 TVector<ui32> TIndexTabletActor::GenerateForceDeleteZeroCompactionRanges() const
 {
@@ -724,9 +764,39 @@ void TIndexTabletActor::HandleForcedOperation(
                 ? GetAllCompactionRanges()
                 : GetNonEmptyCompactionRanges();
         }
+        const auto* b =
+            LowerBound(ranges.begin(), ranges.end(), request.GetMinRangeId());
+        if (b != ranges.begin()) {
+            ranges.erase(ranges.begin(), b);
+        }
         response->Record.SetRangeCount(ranges.size());
-        EnqueueForcedRangeOperation(mode, std::move(ranges));
+        auto operationId = EnqueueForcedRangeOperation(mode, std::move(ranges));
+        response->Record.SetOperationId(std::move(operationId));
         EnqueueForcedRangeOperationIfNeeded(ctx);
+    }
+
+    NCloud::Reply(ctx, *ev, std::move(response));
+}
+
+void TIndexTabletActor::HandleForcedOperationStatus(
+    const TEvIndexTablet::TEvForcedOperationStatusRequest::TPtr& ev,
+    const TActorContext& ctx)
+{
+    const auto& request = ev->Get()->Record;
+
+    using TResponse = TEvIndexTablet::TEvForcedOperationStatusResponse;
+    auto response = std::make_unique<TResponse>();
+
+    const auto* state = FindForcedRangeOperation(request.GetOperationId());
+    if (state) {
+        response->Record.SetRangeCount(state->RangesToCompact.size());
+        response->Record.SetProcessedRangeCount(state->Current);
+        response->Record.SetLastProcessedRangeId(state->GetCurrentRange());
+    } else {
+        response->Record.MutableError()->CopyFrom(MakeError(
+            E_NOT_FOUND,
+            TStringBuilder() << "forced operation with id "
+                << request.GetOperationId() << "not found"));
     }
 
     NCloud::Reply(ctx, *ev, std::move(response));

@@ -114,6 +114,11 @@ private:
         // Read-write transactions
         std::atomic<i64> InMemoryIndexStateRWCount{0};
 
+        std::atomic<i64> InMemoryIndexStateNodesCount;
+        std::atomic<i64> InMemoryIndexStateNodeRefsCount;
+        std::atomic<i64> InMemoryIndexStateNodeAttrsCount;
+        std::atomic<i64> InMemoryIndexStateIsExhaustive;
+
         // Data stats
         std::atomic<i64> FreshBytesCount{0};
         std::atomic<i64> DeletedFreshBytesCount{0};
@@ -126,6 +131,7 @@ private:
         std::atomic<i64> FreshBlocksCount{0};
         std::atomic<i64> CMMixedBlobsCount{0};
         std::atomic<i64> CMDeletionMarkersCount{0};
+        std::atomic<i64> CMGarbageBlocksCount{0};
 
         // Throttling
         std::atomic<i64> MaxReadBandwidth{0};
@@ -199,6 +205,7 @@ private:
         // Compaction/cleanup stats
         std::atomic<i64> MaxBlobsInRange{0};
         std::atomic<i64> MaxDeletionsInRange{0};
+        std::atomic<i64> MaxGarbageBlocksInRange{0};
 
         const NMetrics::IMetricsRegistryPtr StorageRegistry;
         const NMetrics::IMetricsRegistryPtr StorageFsRegistry;
@@ -219,7 +226,8 @@ private:
             const TReadAheadCacheStats& readAheadStats,
             const TNodeIndexCacheStats& nodeIndexCacheStats,
             const TNodeToSessionCounters& nodeToSessionCounters,
-            const TMiscNodeStats& miscNodeStats);
+            const TMiscNodeStats& miscNodeStats,
+            const TInMemoryIndexStateStats& inMemoryIndexStateStats);
     } Metrics;
 
     const IProfileLogPtr ProfileLog;

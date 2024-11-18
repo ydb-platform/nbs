@@ -488,6 +488,8 @@ IActorSystemPtr CreateActorSystem(const TServerActorSystemArgs& sArgs)
         if (sArgs.StorageConfig->GetConfigsDispatcherServiceEnabled()) {
             SetupConfigDispatcher(
                 sArgs.StorageConfig->GetConfigDispatcherSettings(),
+                sArgs.StorageConfig->GetSchemeShardDir(),
+                sArgs.StorageConfig->GetNodeType(),
                 &runConfig.ConfigsDispatcherInitInfo);
             runConfig.ConfigsDispatcherInitInfo.InitialConfig = runConfig.AppConfig;
         }

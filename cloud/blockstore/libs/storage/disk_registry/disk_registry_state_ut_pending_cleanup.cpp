@@ -175,6 +175,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStatePendingCleanupTest)
                     /*force=*/true,
                     "vol0",
                     4_KB,
+                    NProto::STORAGE_MEDIA_SSD_LOCAL,
                     {device},
                     &result);
 

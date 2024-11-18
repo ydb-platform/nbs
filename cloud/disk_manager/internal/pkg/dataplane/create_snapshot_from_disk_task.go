@@ -50,6 +50,22 @@ func (t *createSnapshotFromDiskTask) Run(
 		return err
 	}
 
+	nbsClient, err := t.getNbsClient(ctx)
+	if err != nil {
+		return err
+	}
+
+	if len(t.state.BaseSnapshotId) != 0 {
+		err = nbsClient.DeleteCheckpoint(
+			ctx,
+			t.request.SrcDisk.DiskId,
+			t.state.BaseCheckpointId,
+		)
+		if err != nil {
+			return err
+		}
+	}
+
 	return t.deleteProxyOverlayDiskIfNeeded(ctx)
 }
 
@@ -69,23 +85,7 @@ func (t *createSnapshotFromDiskTask) Cancel(
 	}
 
 	// NBS-3192.
-	if len(t.state.BaseSnapshotId) != 0 {
-		err := t.storage.UnlockSnapshot(
-			ctx,
-			t.state.BaseSnapshotId,
-			execCtx.GetTaskID(),
-		)
-		if err != nil {
-			return err
-		}
-		logging.Info(
-			ctx,
-			"Unlocked snapshot with id %v",
-			t.state.BaseSnapshotId,
-		)
-	}
-
-	return nil
+	return t.unlockBaseSnapshot(ctx, execCtx)
 }
 
 func (t *createSnapshotFromDiskTask) GetMetadata(
@@ -121,13 +121,20 @@ func (t *createSnapshotFromDiskTask) saveProgress(
 	return execCtx.SaveState(ctx)
 }
 
+func (t *createSnapshotFromDiskTask) getNbsClient(
+	ctx context.Context,
+) (nbs_client.Client, error) {
+
+	return t.nbsFactory.GetClient(ctx, t.request.SrcDisk.ZoneId)
+}
+
 func (t *createSnapshotFromDiskTask) lockBaseSnapshot(
 	ctx context.Context,
 	execCtx tasks.ExecutionContext,
 	snapshotMeta storage.SnapshotMeta,
 ) (string, string, error) {
 
-	nbsClient, err := t.nbsFactory.GetClient(ctx, t.request.SrcDisk.ZoneId)
+	nbsClient, err := t.getNbsClient(ctx)
 	if err != nil {
 		return "", "", err
 	}
@@ -192,7 +199,6 @@ func (t *createSnapshotFromDiskTask) lockBaseSnapshot(
 func (t *createSnapshotFromDiskTask) unlockBaseSnapshot(
 	ctx context.Context,
 	execCtx tasks.ExecutionContext,
-	client nbs_client.Client,
 ) error {
 
 	if len(t.state.BaseSnapshotId) != 0 {
@@ -209,15 +215,6 @@ func (t *createSnapshotFromDiskTask) unlockBaseSnapshot(
 			"Unlocked snapshot with id %v",
 			t.state.BaseSnapshotId,
 		)
-
-		err = client.DeleteCheckpoint(
-			ctx,
-			t.request.SrcDisk.DiskId,
-			t.state.BaseCheckpointId,
-		)
-		if err != nil {
-			return err
-		}
 	}
 
 	return nil
@@ -255,21 +252,17 @@ func (t *createSnapshotFromDiskTask) run(
 	t.state.BaseSnapshotId = baseSnapshotID
 	t.state.BaseCheckpointId = baseCheckpointID
 
-	client, err := t.nbsFactory.GetClient(ctx, t.request.SrcDisk.ZoneId)
+	nbsClient, err := t.getNbsClient(ctx)
 	if err != nil {
 		return err
 	}
 
-	proxyOverlayDiskID, err := t.createProxyOverlayDiskIfNeeded(
-		ctx,
-		execCtx,
-		client,
-	)
+	proxyOverlayDiskID, err := t.createProxyOverlayDiskIfNeeded(ctx, execCtx)
 	if err != nil {
 		return err
 	}
 
-	diskParams, err := client.Describe(ctx, t.request.SrcDisk.DiskId)
+	diskParams, err := nbsClient.Describe(ctx, t.request.SrcDisk.DiskId)
 	if err != nil {
 		return err
 	}
@@ -278,7 +271,7 @@ func (t *createSnapshotFromDiskTask) run(
 
 	source, err := nbs.NewDiskSource(
 		ctx,
-		client,
+		nbsClient,
 		t.request.SrcDisk.DiskId,
 		proxyOverlayDiskID,
 		t.state.BaseCheckpointId,
@@ -396,7 +389,7 @@ func (t *createSnapshotFromDiskTask) run(
 		return err
 	}
 
-	err = t.unlockBaseSnapshot(ctx, execCtx, client)
+	err = t.unlockBaseSnapshot(ctx, execCtx)
 	if err != nil {
 		return err
 	}
@@ -414,7 +407,6 @@ func (t *createSnapshotFromDiskTask) run(
 func (t *createSnapshotFromDiskTask) createProxyOverlayDiskIfNeeded(
 	ctx context.Context,
 	execCtx tasks.ExecutionContext,
-	client nbs_client.Client,
 ) (string, error) {
 
 	if !t.request.UseProxyOverlayDisk {
@@ -432,7 +424,12 @@ func (t *createSnapshotFromDiskTask) createProxyOverlayDiskIfNeeded(
 		return "", nil
 	}
 
-	created, err := client.CreateProxyOverlayDisk(
+	nbsClient, err := t.getNbsClient(ctx)
+	if err != nil {
+		return "", err
+	}
+
+	created, err := nbsClient.CreateProxyOverlayDisk(
 		ctx,
 		proxyOverlayDiskID,
 		diskID, // baseDiskID
@@ -464,12 +461,12 @@ func (t *createSnapshotFromDiskTask) deleteProxyOverlayDiskIfNeeded(
 		return nil
 	}
 
-	client, err := t.nbsFactory.GetClient(ctx, t.request.SrcDisk.ZoneId)
+	nbsClient, err := t.getNbsClient(ctx)
 	if err != nil {
 		return err
 	}
 
-	return client.Delete(ctx, t.getProxyOverlayDiskID())
+	return nbsClient.Delete(ctx, t.getProxyOverlayDiskID())
 }
 
 func (t *createSnapshotFromDiskTask) getProxyOverlayDiskID() string {

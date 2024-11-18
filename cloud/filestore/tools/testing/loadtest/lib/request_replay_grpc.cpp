@@ -1192,6 +1192,76 @@ private:
         }
     }
 
+    TFuture<TCompletedRequest> DoFlush(
+        [[maybe_unused]] const NCloud::NFileStore::NProto::
+            TProfileLogRequestInfo& logRequest) override
+    {
+        constexpr auto CurrentAction = NProto::ACTION_FLUSH;
+
+        if (Spec.GetSkipWrite()) {
+            return MakeFuture(TCompletedRequest{
+                CurrentAction,
+                Started,
+                MakeError(
+                    E_PRECONDITION_FAILED,
+                    "write disabled by SkipWrite")});
+        }
+
+        const auto handle =
+            HandleIdMapped(logRequest.GetNodeInfo().GetHandle());
+        if (handle == InvalidHandle) {
+            return MakeFuture(TCompletedRequest{
+                CurrentAction,
+                Started,
+                MakeError(E_NOT_FOUND, "handle not found")});
+        }
+
+        auto request = CreateRequest<NProto::TFsyncRequest>();
+        request->SetHandle(handle);
+        const auto self = weak_from_this();
+        return Session->Fsync(CreateCallContext(), std::move(request))
+            .Apply(
+                [self,
+                 info =
+                     TRequestInfo{
+                         Started,
+                         EventMessageNumber,
+                         logRequest,
+                         ToString(handle)}](
+                    const TFuture<NProto::TFsyncResponse>& future)
+                {
+                    if (auto ptr = self.lock()) {
+                        return ptr->HandleFlush(future, info);
+                    }
+
+                    return TCompletedRequest{
+                        CurrentAction,
+                        info.Started,
+                        MakeError(E_INVALID_STATE, "cancelled")};
+                });
+    }
+
+    TCompletedRequest HandleFlush(
+        const TFuture<NProto::TFsyncResponse>& future,
+        const TRequestInfo& info)
+    {
+        try {
+            const auto& response = future.GetValue();
+            CompareResponse(info, response.GetError().GetCode());
+            CheckResponse(response);
+            return {NProto::ACTION_FLUSH, info.Started, response.GetError()};
+        } catch (const TServiceError& e) {
+            CompareResponse(info, e.GetCode());
+            const auto error = MakeError(e.GetCode(), TString{e.GetMessage()});
+            STORAGE_ERROR(
+                "Flush %lu has failed: %s",
+                info.LogRequest.GetNodeInfo().GetHandle(),
+                FormatError(error).c_str());
+
+            return {NProto::ACTION_FLUSH, info.Started, error};
+        }
+    }
+
     template <typename T>
     std::shared_ptr<T> CreateRequest()
     {

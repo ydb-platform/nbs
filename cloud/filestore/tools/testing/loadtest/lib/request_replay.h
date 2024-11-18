@@ -24,10 +24,10 @@ protected:
     const ::NCloud::NFileStore::NProto::THeaders Headers;
     NClient::ISessionPtr Session;
     ssize_t EventMessageNumber = 0;
-    ui64 TimestampMcs{};
+    ui64 TimestampMcs = 0;
     TInstant Started;
 
-    // Do not sleep too much if timestamps in log is broken
+    // Do not sleep too much if timestamps in log are broken
     constexpr static auto MaxSleepMcs = 1000000;
 
 private:
@@ -83,6 +83,9 @@ public:
         const NCloud::NFileStore::NProto::
             TProfileLogRequestInfo& /*unused*/) = 0;
     virtual TFuture<TCompletedRequest> DoListNodes(
+        const NCloud::NFileStore::NProto::
+            TProfileLogRequestInfo& /*unused*/) = 0;
+    virtual TFuture<TCompletedRequest> DoFlush(
         const NCloud::NFileStore::NProto::
             TProfileLogRequestInfo& /*unused*/) = 0;
     virtual TFuture<TCompletedRequest> DoAcquireLock(

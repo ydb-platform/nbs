@@ -81,16 +81,22 @@ auto FindDeviceRange(
 
 ////////////////////////////////////////////////////////////////////////////////
 
+TDeviceList::TDeviceList()
+    : AlwaysAllocateLocalDisks(false)
+{}
+
 TDeviceList::TDeviceList(
         TVector<TDeviceId> dirtyDevices,
         TVector<NProto::TSuspendedDevice> suspendedDevices,
-        TVector<std::pair<TDeviceId, TDiskId>> allocatedDevices)
+        TVector<std::pair<TDeviceId, TDiskId>> allocatedDevices,
+        bool alwaysAllocateLocalDisks)
     : AllocatedDevices(
-        std::make_move_iterator(allocatedDevices.begin()),
-        std::make_move_iterator(allocatedDevices.end()))
+          std::make_move_iterator(allocatedDevices.begin()),
+          std::make_move_iterator(allocatedDevices.end()))
     , DirtyDevices(
-        std::make_move_iterator(dirtyDevices.begin()),
-        std::make_move_iterator(dirtyDevices.end()))
+          std::make_move_iterator(dirtyDevices.begin()),
+          std::make_move_iterator(dirtyDevices.end()))
+    , AlwaysAllocateLocalDisks(alwaysAllocateLocalDisks)
 {
     for (auto& device: suspendedDevices) {
         auto id = device.GetId();
@@ -156,11 +162,11 @@ void TDeviceList::UpdateDevices(
 
         const ui64 deviceSize = device.GetBlockSize() * device.GetBlocksCount();
 
-        const bool isFree = agent.GetState() == NProto::AGENT_STATE_ONLINE &&
-                            device.GetState() == NProto::DEVICE_STATE_ONLINE &&
-                            !AllocatedDevices.contains(uuid) &&
-                            !DirtyDevices.contains(uuid) &&
-                            !SuspendedDevices.contains(uuid);
+        const bool isFree =
+            DevicesAllocationAllowed(device.GetPoolKind(), agent.GetState()) &&
+            device.GetState() == NProto::DEVICE_STATE_ONLINE &&
+            !AllocatedDevices.contains(uuid) && !DirtyDevices.contains(uuid) &&
+            !SuspendedDevices.contains(uuid);
 
         const auto* poolConfig = poolConfigs.FindPtr(device.GetPoolName());
         if (!poolConfig || poolConfig->GetKind() != device.GetPoolKind() ||
@@ -243,6 +249,26 @@ TDeviceList::TDiskId TDeviceList::FindDiskId(const TDeviceId& id) const
         return it->second;
     }
     return {};
+}
+
+bool TDeviceList::DevicesAllocationAllowed(
+    NProto::EDevicePoolKind poolKind,
+    NProto::EAgentState agentState) const
+{
+    if (agentState == NProto::AGENT_STATE_UNAVAILABLE) {
+        return false;
+    }
+
+    if (agentState == NProto::AGENT_STATE_ONLINE) {
+        return true;
+    }
+
+    Y_DEBUG_ABORT_UNLESS(agentState == NProto::AGENT_STATE_WARNING);
+    if (poolKind == NProto::DEVICE_POOL_KIND_LOCAL) {
+        return AlwaysAllocateLocalDisks;
+    }
+
+    return false;
 }
 
 NProto::TDeviceConfig TDeviceList::AllocateDevice(
@@ -787,6 +813,16 @@ void TDeviceList::ResumeAfterErase(const TDeviceId& id)
 bool TDeviceList::IsSuspendedDevice(const TDeviceId& id) const
 {
     return SuspendedDevices.contains(id);
+}
+
+bool TDeviceList::IsSuspendedAndNotResumingDevice(const TDeviceId& id) const
+{
+    auto it = SuspendedDevices.find(id);
+    if (it == SuspendedDevices.end()) {
+        return false;
+    }
+
+    return !it->second.GetResumeAfterErase();
 }
 
 bool TDeviceList::IsAllocatedDevice(const TDeviceId& id) const

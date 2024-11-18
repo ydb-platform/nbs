@@ -7,9 +7,9 @@ from cloud.filestore.tests.python.lib.common import daemon_log_files, is_grpc_er
 from contrib.ydb.tests.library.harness.daemon import Daemon
 
 
-class NfsVhost(Daemon):
+class FilestoreVhost(Daemon):
     def __init__(self, configurator):
-        super(NfsVhost, self).__init__(
+        super(FilestoreVhost, self).__init__(
             command=configurator.generate_command(),
             cwd=configurator.working_dir,
             timeout=180,
@@ -17,13 +17,13 @@ class NfsVhost(Daemon):
 
     @property
     def pid(self):
-        return super(NfsVhost, self).daemon.process.pid
+        return super(FilestoreVhost, self).daemon.process.pid
 
 
 @retrying.retry(stop_max_delay=60000, wait_fixed=1000, retry_on_exception=is_grpc_error)
-def wait_for_nfs_vhost(daemon, port):
+def wait_for_filestore_vhost(daemon, port):
     '''
-    Ping NFS vhost with delay between attempts to ensure
+    Ping filestore vhost with delay between attempts to ensure
     it is running and listening by the moment the actual test execution begins
     '''
     if not daemon.is_alive():

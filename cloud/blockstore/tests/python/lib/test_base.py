@@ -426,6 +426,8 @@ def wait_for_free_bytes(mon_port, pool='default'):
 
 # wait for DA & secure erase of all available devices
 def wait_for_secure_erase(mon_port, pool='default'):
+    seen_zero_free_bytes = False
+
     while True:
         logging.info("Wait for agents ...")
         time.sleep(1)
@@ -450,6 +452,14 @@ def wait_for_secure_erase(mon_port, pool='default'):
                 "There is no free space in '%s'. Sensors: %s",
                 pool,
                 json.dumps(sensors, indent=4))
+
+            # Since counters are incremented one by one, there can be a
+            # situation where the dirty device counter "dd" is already 0, but
+            # the free bytes counter "bytes" is still 0. To ensure all counters
+            # are published, we need to do one more loop.
+            if not seen_zero_free_bytes:
+                seen_zero_free_bytes = True
+                continue
 
         assert bytes != 0
 

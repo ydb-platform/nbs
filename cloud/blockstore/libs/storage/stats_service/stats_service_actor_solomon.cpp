@@ -96,6 +96,8 @@ void TStatsServiceActor::UpdateVolumeSelfCounters(const TActorContext& ctx)
         &State.GetSsdMirror3Counters(),
         &State.GetSsdSystemCounters(),
         &State.GetHddSystemCounters(),
+        &State.GetHddLocalCounters(),
+        &State.GetSsdLocalCounters(),
     };
 
     for (auto* tc: totalCounters) {

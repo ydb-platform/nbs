@@ -191,6 +191,7 @@ def run_corruption_test(module_factories: common.ModuleFactories, args, logger):
             memory=_TEST_INSTANCE_MEMORY,
             compute_node=args.compute_node,
             image_name=image,
+            image_folder_id=folder.image_folder_id,
             description="Corruption test") as instance:
 
         server_version = module_factories.fetch_server_version(

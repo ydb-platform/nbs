@@ -60,6 +60,7 @@ namespace NCloud::NBlockStore::NStorage {
     xxx(AllocateCheckpoint,                 __VA_ARGS__)                       \
     xxx(DeallocateCheckpoint,               __VA_ARGS__)                       \
     xxx(SetCheckpointDataState,             __VA_ARGS__)                       \
+    xxx(PurgeHostCms,                       __VA_ARGS__)                       \
 // BLOCKSTORE_DISK_REGISTRY_TRANSACTIONS
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -214,6 +215,7 @@ struct TTxDiskRegistry
         NProto::TError Error;
         TVector<TString> AffectedDisks;
         TVector<TString> NotifiedDisks;
+        TVector<TString> DevicesToDisableIO;
 
         TAddAgent(
                 TRequestInfoPtr requestInfo,
@@ -231,6 +233,7 @@ struct TTxDiskRegistry
             Error.Clear();
             AffectedDisks.clear();
             NotifiedDisks.clear();
+            DevicesToDisableIO.clear();
         }
     };
 
@@ -673,6 +676,35 @@ struct TTxDiskRegistry
             : RequestInfo(std::move(requestInfo))
             , Host(std::move(host))
             , State(state)
+            , DryRun(dryRun)
+        {}
+
+        void Clear()
+        {
+            AffectedDisks.clear();
+            Error.Clear();
+        }
+    };
+
+    //
+    // PurgeHostCms
+    //
+
+    struct TPurgeHostCms
+    {
+        const TRequestInfoPtr RequestInfo;
+        const TString Host;
+        const bool DryRun;
+
+        NProto::TError Error;
+        TVector<TString> AffectedDisks;
+
+        TPurgeHostCms(
+                TRequestInfoPtr requestInfo,
+                TString host,
+                bool dryRun)
+            : RequestInfo(std::move(requestInfo))
+            , Host(std::move(host))
             , DryRun(dryRun)
         {}
 
@@ -1145,6 +1177,7 @@ struct TTxDiskRegistry
         const bool Force;
         const TString DiskId;
         const ui32 BlockSize;
+        const NProto::EStorageMediaKind MediaKind;
         const TVector<NProto::TDeviceConfig> Devices;
 
         NProto::TError Error;
@@ -1155,11 +1188,13 @@ struct TTxDiskRegistry
                 bool force,
                 TString diskId,
                 ui32 blockSize,
+                NProto::EStorageMediaKind mediaKind,
                 TVector<NProto::TDeviceConfig> devices)
             : RequestInfo(std::move(requestInfo))
             , Force(force)
             , DiskId(std::move(diskId))
-            , BlockSize(std::move(blockSize))
+            , BlockSize(blockSize)
+            , MediaKind(mediaKind)
             , Devices(std::move(devices))
         {}
 

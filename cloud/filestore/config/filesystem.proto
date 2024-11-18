@@ -42,4 +42,13 @@ message TFileSystemConfig
 
     // Period of processing create/destroy handle requests.
     optional uint32 AsyncHandleOperationPeriod = 12;
+
+    // Enable O_DIRECT when working with files
+    optional bool DirectIoEnabled = 13;
+
+    // Aligment needed for buffers when using direct io
+    optional uint32 DirectIoAlign = 14;
+
+    // Enable Writeback cache on guest (fuse client)
+    optional bool GuestWritebackCacheEnabled = 15;
 }

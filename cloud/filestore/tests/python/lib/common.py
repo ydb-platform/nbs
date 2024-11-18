@@ -63,7 +63,7 @@ def daemon_log_files(prefix, cwd):
     return ret
 
 
-def get_nfs_mount_paths(paths=None):
+def get_filestore_mount_paths(paths=None):
     if paths is None:
         paths = os.getenv("NFS_MOUNT_PATH").split(",")
 
@@ -80,8 +80,8 @@ def get_nfs_mount_paths(paths=None):
     return paths
 
 
-def get_nfs_mount_path(path=None):
-    return get_nfs_mount_paths([path] if path is not None else None)[0]
+def get_filestore_mount_path(path=None):
+    return get_filestore_mount_paths([path] if path is not None else None)[0]
 
 
 def is_grpc_error(exception):

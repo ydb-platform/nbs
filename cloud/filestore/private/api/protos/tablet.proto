@@ -365,6 +365,7 @@ message TTabletSessionInfo
     bytes SessionState = 3;
     uint64 MaxSeqNo = 4;
     uint64 MaxRwSeqNo = 5;
+    bool IsOrphan = 6;
 }
 
 message TDescribeSessionsResponse
@@ -471,7 +472,7 @@ message TAddDataResponse
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-// ForcedOperation request/response.
+// ForcedOperation[Status] request/response.
 
 message TForcedOperationRequest
 {
@@ -494,6 +495,9 @@ message TForcedOperationRequest
     // Enables processing of all ranges - even the ranges whose compaction
     // stats are zero.
     bool ProcessAllRanges = 4;
+
+    // Starts from the min RangeId whose value is >= MinRangeId.
+    uint32 MinRangeId = 5;
 }
 
 message TForcedOperationResponse
@@ -503,6 +507,37 @@ message TForcedOperationResponse
 
     // Affected range count.
     uint64 RangeCount = 2;
+
+    // Can be used to query operation status.
+    string OperationId = 3;
+}
+
+message TForcedOperationStatusRequest
+{
+    // Optional request headers.
+    NProto.THeaders Headers = 1;
+
+    // FileSystem identifier.
+    string FileSystemId = 2;
+
+    // Operation id.
+    string OperationId = 3;
+}
+
+message TForcedOperationStatusResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+
+    // Affected range count.
+    uint64 RangeCount = 2;
+
+    // Processed range count.
+    uint64 ProcessedRangeCount = 3;
+
+    // Last processed range id. Can be used to skip processed range ids upon
+    // operation restart via the MinRangeId parameter.
+    uint32 LastProcessedRangeId = 4;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -643,4 +678,25 @@ message TUnsafeGetNodeResponse
     // Optional error, set only if error happened.
     NCloud.NProto.TError Error = 1;
     NProto.TNodeAttr Node = 2;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// GetFileSystemTopology request/response.
+
+message TGetFileSystemTopologyRequest
+{
+    // Optional request headers.
+    NProto.THeaders Headers = 1;
+
+    // FileSystem identifier to query its topology.
+    string FileSystemId = 2;
+}
+
+message TGetFileSystemTopologyResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+
+    // Shard FileSystem identifiers.
+    repeated string ShardFileSystemIds = 2;
 }

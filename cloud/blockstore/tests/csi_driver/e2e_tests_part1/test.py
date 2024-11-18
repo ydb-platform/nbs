@@ -8,7 +8,7 @@ import cloud.blockstore.tests.csi_driver.lib.csi_runner as csi
 
 
 def test_nbs_csi_driver_mounted_disk_protected_from_deletion():
-    env, run = csi.init()
+    env, run = csi.init(retry_timeout_ms=5000)
     try:
         volume_name = "example-disk"
         volume_size = 10 * 1024 ** 3
@@ -184,12 +184,17 @@ def test_restart_kubelet_with_new_format_endpoint(access_type):
         volume_size = 1024 ** 3
         pod_name1 = "example-pod-1"
         pod_id1 = "deadbeef1"
+        endpoint_dir = Path(env.csi._sockets_dir) / "example-disk"
         env.csi.create_volume(name=volume_name, size=volume_size)
         env.csi.stage_volume(volume_name, access_type)
+        assert endpoint_dir.exists()
         env.csi.publish_volume(pod_id1, volume_name, pod_name1, access_type)
         # run stage/publish again to simulate kubelet restart
         env.csi.stage_volume(volume_name, access_type)
         env.csi.publish_volume(pod_id1, volume_name, pod_name1, access_type)
+        env.csi.unpublish_volume(pod_id1, volume_name, access_type)
+        env.csi.unstage_volume(volume_name)
+        assert not endpoint_dir.exists()
     except subprocess.CalledProcessError as e:
         csi.log_called_process_error(e)
         raise

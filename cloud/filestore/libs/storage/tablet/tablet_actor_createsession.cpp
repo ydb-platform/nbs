@@ -21,11 +21,14 @@ void FillFeatures(const TStorageConfig& config, NProto::TFileStore& fileStore)
     auto* features = fileStore.MutableFeatures();
     features->SetTwoStageReadEnabled(config.GetTwoStageReadEnabled());
     features->SetThreeStageWriteEnabled(config.GetThreeStageWriteEnabled());
+    features->SetTwoStageReadDisabledForHDD(
+        config.GetTwoStageReadDisabledForHDD());
+    features->SetThreeStageWriteDisabledForHDD(
+        config.GetThreeStageWriteDisabledForHDD());
     features->SetEntryTimeout(config.GetEntryTimeout().MilliSeconds());
     features->SetNegativeEntryTimeout(
         config.GetNegativeEntryTimeout().MilliSeconds());
     features->SetAttrTimeout(config.GetAttrTimeout().MilliSeconds());
-    features->SetThreeStageWriteEnabled(config.GetThreeStageWriteEnabled());
     features->SetThreeStageWriteThreshold(config.GetThreeStageWriteThreshold());
 
     auto preferredBlockSizeMultiplier =
@@ -40,6 +43,9 @@ void FillFeatures(const TStorageConfig& config, NProto::TFileStore& fileStore)
         config.GetAsyncDestroyHandleEnabled());
     features->SetAsyncHandleOperationPeriod(
         config.GetAsyncHandleOperationPeriod().MilliSeconds());
+
+    features->SetGuestWritebackCacheEnabled(
+        config.GetGuestWritebackCacheEnabled());
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -135,6 +141,23 @@ void TIndexTabletActor::HandleCreateSession(
         ev->Sender,
         ev->Cookie,
         msg->CallContext);
+
+    const auto expectedShardCount = CalculateExpectedShardCount();
+    const auto actualShardCount = GetFileSystem().ShardFileSystemIdsSize();
+    if (actualShardCount < expectedShardCount) {
+        auto message = TStringBuilder() << "Shard count smaller than expected: "
+            << actualShardCount << " < " << expectedShardCount;
+        LOG_INFO(ctx, TFileStoreComponents::TABLET,
+            "%s CreateSession rejected: %s",
+            LogTag.c_str(),
+            message.c_str());
+
+        using TResponse = TEvIndexTablet::TEvCreateSessionResponse;
+        auto response = std::make_unique<TResponse>(
+            MakeError(E_REJECTED, std::move(message)));
+        NCloud::Reply(ctx, *requestInfo, std::move(response));
+        return;
+    }
 
     AddTransaction<TEvIndexTablet::TCreateSessionMethod>(*requestInfo);
 
@@ -344,7 +367,9 @@ void TIndexTabletActor::HandleSyncShardSessions(
 {
     THashSet<TString> filter;
     for (auto& s: *ev->Get()->Sessions.MutableSessions()) {
-        filter.insert(*s.MutableSessionId());
+        if (!s.GetIsOrphan()) {
+            filter.insert(*s.MutableSessionId());
+        }
     }
     TEvIndexTabletPrivate::TShardSessionsInfo info;
     info.ShardId = std::move(ev->Get()->ShardId);

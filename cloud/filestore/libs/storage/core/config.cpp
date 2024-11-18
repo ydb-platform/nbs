@@ -41,6 +41,9 @@ using TAliases = NProto::TStorageConfig::TFilestoreAliases;
     xxx(GarbageCompactionThreshold,         ui32,   100                       )\
     xxx(CompactionThresholdAverage,         ui32,   4                         )\
     xxx(GarbageCompactionThresholdAverage,  ui32,   20                        )\
+    xxx(CompactRangeGarbagePercentageThreshold, ui32,    0                    )\
+    xxx(CompactRangeAverageBlobSizeThreshold,   ui32,    0                    )\
+    xxx(GuestWritebackCacheEnabled,         bool,   false                     )\
     xxx(NewCompactionEnabled,               bool,   false                     )\
     xxx(UseMixedBlocksInsteadOfAliveBlocksInCompaction, bool,   false         )\
     xxx(CollectGarbageThreshold,            ui32,   4_MB                      )\
@@ -49,6 +52,9 @@ using TAliases = NProto::TStorageConfig::TFilestoreAliases;
     xxx(LoadedCompactionRangesPerTx,        ui32,   10 * 1024 * 1024          )\
     xxx(MaxBlocksPerTruncateTx,             ui32,   0 /*TODO: 32GiB/4KiB*/    )\
     xxx(MaxTruncateTxInflight,              ui32,   10                        )\
+                                                                               \
+    xxx(AutomaticShardCreationEnabled,                  bool,   false         )\
+    xxx(MaxShardSize,                                   ui64,   4_TB          )\
                                                                                \
     xxx(MaxFileBlocks,                                  ui32,   300_GB / 4_KB )\
     xxx(LargeDeletionMarkersEnabled,                    bool,   false         )\
@@ -158,8 +164,10 @@ using TAliases = NProto::TStorageConfig::TFilestoreAliases;
             NCloud::NProto::AUTHORIZATION_IGNORE                              )\
                                                                                \
     xxx(TwoStageReadEnabled,             bool,      false                     )\
+    xxx(TwoStageReadDisabledForHDD,      bool,      false                     )\
     xxx(ThreeStageWriteEnabled,          bool,      false                     )\
     xxx(ThreeStageWriteThreshold,        ui32,      64_KB                     )\
+    xxx(ThreeStageWriteDisabledForHDD,   bool,      false                     )\
     xxx(UnalignedThreeStageWriteEnabled, bool,      false                     )\
     xxx(ReadAheadCacheMaxNodes,                 ui32,       1024              )\
     xxx(ReadAheadCacheMaxResultsPerNode,        ui32,       32                )\
@@ -190,7 +198,7 @@ using TAliases = NProto::TStorageConfig::TFilestoreAliases;
     xxx(NodeType,                        TString,               {}            )\
     xxx(BlobCompressionRate,             ui32,                  0             )\
     xxx(BlobCompressionCodec,            TString,               "lz4"         )\
-    xxx(BlobCompressionChunkSize,        ui32,                  40_KB         )\
+    xxx(BlobCompressionChunkSize,        ui32,                  80_KB         )\
                                                                                \
     xxx(MaxZeroCompactionRangesToDeletePerTx,           ui32,      10000      )\
     xxx(ChannelFreeSpaceThreshold,                      ui32,      25         )\

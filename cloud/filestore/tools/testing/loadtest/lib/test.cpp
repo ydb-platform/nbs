@@ -335,6 +335,10 @@ public:
 
     void SetupSession(TSetupSession& cmd)
     {
+        if (!Session) {
+            cmd.Complete.SetValue(true);
+            return;
+        }
         if (!ShouldStop()) {
             STORAGE_INFO("%s establishing session %lu",
                 MakeTestTag().c_str(), cmd.SessionSeqNo);
@@ -509,7 +513,9 @@ private:
             FileSystemId = Config.GetCreateFileStoreRequest().GetFileSystemId();
         }
 
-        CreateSession();
+        if (!FileSystemId.empty()) {
+            CreateSession();
+        }
 
         NProto::THeaders headers;
         headers.SetClientId(Config.GetName());
@@ -635,13 +641,13 @@ private:
 
             auto code = request->Error.GetCode();
             if (FAILED(code)) {
-                STORAGE_ERROR(
-                    "%s failing test %s due to: %s",
-                    MakeTestTag().c_str(),
-                    NProto::EAction_Name(request->Action).c_str(),
-                    FormatError(request->Error).c_str());
-
                 if (RequestGenerator->ShouldFailOnError()) {
+                    STORAGE_ERROR(
+                        "%s failing test %s due to: %s",
+                        MakeTestTag().c_str(),
+                        NProto::EAction_Name(request->Action).c_str(),
+                        FormatError(request->Error).c_str());
+
                     TestStats.Success = false;
                 }
             }
@@ -705,28 +711,32 @@ private:
             ProcessCompletedRequests();
         }
 
-        auto ctx = MakeIntrusive<TCallContext>();
+        if (Session) {
+            auto result = Session->DestroySession();
+            WaitForCompletion("destroy session", result);
 
-        auto result = Session->DestroySession();
-        WaitForCompletion("destroy session", result);
+            const auto& response = result.GetValue();
+            if (FAILED(response.GetError().GetCode())) {
+                STORAGE_INFO(
+                    "%s failed to destroy session: %s %lu %s",
+                    MakeTestTag().c_str(),
+                    SessionId.c_str(),
+                    SeqNo,
+                    response.GetError().GetMessage().c_str());
+                TestStats.Success = false;
+            }
+
+            if (cmd.Complete.Initialized()) {
+                cmd.Complete.SetValue(SUCCEEDED(response.GetError().GetCode()));
+            }
+        } else {
+            if (cmd.Complete.Initialized()) {
+                cmd.Complete.SetValue(true);
+            }
+        }
 
         if (Client) {
             Client->Stop();
-        }
-
-        auto response = result.GetValue();
-        if (FAILED(response.GetError().GetCode())) {
-            STORAGE_INFO(
-                "%s failed to destroy session: %s %lu %s",
-                MakeTestTag().c_str(),
-                SessionId.c_str(),
-                SeqNo,
-                response.GetError().GetMessage().c_str());
-             TestStats.Success = false;
-        }
-
-        if (cmd.Complete.Initialized()) {
-            cmd.Complete.SetValue(SUCCEEDED(response.GetError().GetCode()));
         }
     }
 

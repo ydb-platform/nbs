@@ -130,10 +130,18 @@ void TIndexTabletActor::HandleUpdateConfig(
     Convert(msg->Record.GetConfig(), newConfig);
 
     if (!GetFileSystemId()) {
+        // autosharding params are deliberately applied upon FS creation
+        newConfig.SetAutomaticShardCreationEnabled(
+            Config->GetAutomaticShardCreationEnabled());
+        newConfig.SetMaxShardSize(Config->GetMaxShardSize());
+
         LOG_INFO(ctx,TFileStoreComponents::TABLET,
-            "%s Starting tablet config initialization [txId: %d]",
+            "%s Starting tablet config initialization [txId: %d]"
+            ", autosharding [%d, %lu]",
             LogTag.c_str(),
-            txId);
+            txId,
+            Config->GetAutomaticShardCreationEnabled(),
+            Config->GetMaxShardSize());
 
         // First config update on tablet creation. No need to validate config.
         ExecuteTx<TUpdateConfig>(
@@ -149,6 +157,9 @@ void TIndexTabletActor::HandleUpdateConfig(
     *newConfig.MutableShardFileSystemIds() =
         oldConfig.GetShardFileSystemIds();
     newConfig.SetShardNo(oldConfig.GetShardNo());
+    newConfig.SetAutomaticShardCreationEnabled(
+        oldConfig.GetAutomaticShardCreationEnabled());
+    newConfig.SetMaxShardSize(oldConfig.GetMaxShardSize());
 
     // Config update occured due to alter/resize.
     if (auto error = ValidateUpdateConfigRequest(oldConfig, newConfig)) {
@@ -264,6 +275,11 @@ void TIndexTabletActor::HandleConfigureShards(
             " is smaller than prev shard list: "
             << msg->Record.GetShardFileSystemIds().size() << " < "
             << shardIds.size());
+    } else if (msg->Record.ShardFileSystemIdsSize() > MaxShardCount) {
+        error = MakeError(E_ARGUMENT, TStringBuilder() << "new shard list"
+            " is bigger than limit: "
+            << msg->Record.GetShardFileSystemIds().size() << " > "
+            << MaxShardCount);
     } else {
         for (int i = 0; i < shardIds.size(); ++i) {
             if (shardIds[i] != msg->Record.GetShardFileSystemIds(i)) {

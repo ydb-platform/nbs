@@ -1,9 +1,13 @@
 #include "config.h"
 
+#include <cloud/storage/core/libs/common/proto_helpers.h>
+
 #include <library/cpp/monlib/service/pages/templates.h>
 #include <library/cpp/protobuf/util/pb_io.h>
 
 #include <util/generic/size_literals.h>
+#include <util/string/builder.h>
+#include <util/system/fs.h>
 
 namespace NCloud::NBlockStore::NStorage {
 
@@ -41,9 +45,10 @@ namespace {
     xxx(TemporaryAgent,                     bool,       false                 )\
     xxx(IOParserActorCount,                 ui32,       0                     )\
     xxx(OffloadAllIORequestsParsingEnabled, bool,       false                 )\
-    xxx(DisableNodeBrokerRegisterationOnDevicelessAgent, bool,         false  )\
+    xxx(DisableNodeBrokerRegistrationOnDevicelessAgent, bool,          false  )\
     xxx(MaxAIOContextEvents,                ui32,       1024                  )\
     xxx(PathsPerFileIOService,              ui32,       0                     )\
+    xxx(DisableBrokenDevices,               bool,       0                     )\
 // BLOCKSTORE_AGENT_CONFIG
 
 #define BLOCKSTORE_DECLARE_CONFIG(name, type, value)                           \
@@ -157,6 +162,80 @@ void TDiskAgentConfig::DumpHtml(IOutputStream& out) const
     }
 
 #undef BLOCKSTORE_CONFIG_DUMP
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+auto LoadDiskAgentConfig(
+    const TString& path) -> TResultOrError<NProto::TDiskAgentConfig>
+{
+    if (path.empty()) {
+        return MakeError(E_ARGUMENT, "empty path");
+    }
+
+    if (!NFs::Exists(path)) {
+        return MakeError(E_NOT_FOUND, "file doesn't exist");
+    }
+
+    NProto::TDiskAgentConfig proto;
+
+    try {
+        ParseProtoTextFromFileRobust(path, proto);
+    } catch (...) {
+        return MakeError(
+            E_FAIL,
+            TStringBuilder() << "can't load Disk Agent config from a file "
+                             << path << ": " << CurrentExceptionMessage());
+    }
+
+    return proto;
+}
+
+NProto::TError SaveDiskAgentConfig(
+    const TString& path,
+    const NProto::TDiskAgentConfig& proto)
+{
+    if (path.empty()) {
+        return MakeError(E_ARGUMENT, "empty path");
+    }
+
+    const TString tmpPath {path + ".tmp"};
+
+    try {
+        SerializeToTextFormat(proto, tmpPath);
+    } catch (...) {
+        return MakeError(
+            E_FAIL,
+            TStringBuilder() << "can't save Disk Agent config to a file "
+                             << tmpPath << ": " << CurrentExceptionMessage());
+    }
+
+    if (!NFs::Rename(tmpPath, path)) {
+        const auto ec = errno;
+        char buf[64]{};
+
+        return MakeError(
+            MAKE_SYSTEM_ERROR(ec),
+            TStringBuilder()
+                << "can't rename a file from " << tmpPath << " to " << path
+                << ::strerror_r(ec, buf, sizeof(buf)));
+    }
+
+    return {};
+}
+
+[[nodiscard]] auto UpdateDevicesWithSuspendedIO(
+    const TString& path,
+    const TVector<TString>& uuids) -> NProto::TError
+{
+    auto [config, error] = LoadDiskAgentConfig(path);
+    if (HasError(error)) {
+        return error;
+    }
+
+    config.MutableDevicesWithSuspendedIO()->Assign(uuids.begin(), uuids.end());
+
+    return SaveDiskAgentConfig(path, config);
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

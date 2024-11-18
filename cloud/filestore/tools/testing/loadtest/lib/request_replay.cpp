@@ -1,6 +1,7 @@
 #include "request_replay.h"
 
 #include <cloud/filestore/libs/diagnostics/events/profile_events.ev.pb.h>
+#include <cloud/filestore/libs/diagnostics/profile_log_events.h>
 #include <cloud/filestore/libs/service/request.h>
 #include <cloud/filestore/tools/analytics/libs/event-log/dump.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
@@ -117,15 +118,27 @@ TFuture<TCompletedRequest> IReplayRequestGenerator::ProcessRequest(
         case EFileStoreRequest::GenerateBlobIds:
         case EFileStoreRequest::PingSession:
         case EFileStoreRequest::Ping:
+        case EFileStoreRequest::DescribeData:
             return {};
 
         default:
-            STORAGE_INFO(
-                "Uninmplemented action=%u %s",
-                action,
-                RequestName(request.GetRequestType()).c_str());
-            return {};
+            break;
     }
+
+    switch (static_cast<NFuse::EFileStoreFuseRequest>(action)) {
+        case NFuse::EFileStoreFuseRequest::Flush:
+            return DoFlush(request);
+
+        default:
+            break;
+    }
+
+    STORAGE_INFO(
+        "Uninmplemented action=%u %s",
+        action,
+        RequestName(request.GetRequestType()).c_str());
+
+    return {};
 }
 
 NThreading::TFuture<TCompletedRequest>

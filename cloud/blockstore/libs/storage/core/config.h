@@ -418,7 +418,6 @@ public:
     TDuration GetNonReplicatedMaxRequestTimeoutSSD() const;
     TDuration GetNonReplicatedMinRequestTimeoutHDD() const;
     TDuration GetNonReplicatedMaxRequestTimeoutHDD() const;
-    TDuration GetExpectedClientBackoffIncrement() const;
 
     TDuration GetDeletedCheckpointHistoryLifetime() const;
     bool GetNonReplicatedMigrationStartAllowed() const;
@@ -461,7 +460,7 @@ public:
     ui32 GetMaxLocalVolumes() const;
 
     TDuration GetDiskRegistryVolumeConfigUpdatePeriod() const;
-    bool GetCleanupDRConfigOnCMSActions() const;
+    bool GetDiskRegistryAlwaysAllocatesLocalDisks() const;
     TDuration GetReassignRequestRetryTimeout() const;
     ui32 GetReassignChannelsPercentageThreshold() const;
 

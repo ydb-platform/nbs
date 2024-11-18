@@ -20,6 +20,7 @@ enum EAction
     ACTION_GET_NODE_ATTR = 7;
     ACTION_ACCESS_NODE = 8;
     ACTION_LIST_NODES = 9;
+    ACTION_FLUSH = 10;
 
     // DATA
     ACTION_WRITE = 101;
@@ -71,7 +72,7 @@ message TReplaySpec
     bool SkipWrite = 5;
 
     // Factor for sleeps for respect timings from log
-    // Example: 0: disable sleep; 0.5: try be 2x faster; 1: keep as in log; 2: 2x times slower; 
+    // Example: 0: disable sleep; 0.5: try to be 2x faster; 1: keep as in log; 2: 2x times slower; 
     double TimeScale = 7;
 
     enum EWriteFill

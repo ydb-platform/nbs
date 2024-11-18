@@ -37,6 +37,16 @@ def _parse_args():
         default=None,
         help='run test at the specified compute node')
     test_arguments_group.add_argument(
+        '--image-name',
+        type=str,
+        default=_IMAGE_NAME,
+        help='use image with the specified name to create disks')
+    test_arguments_group.add_argument(
+        '--image-folder-id',
+        type=str,
+        default=None,
+        help='use image from the specified folder to create disks')
+    test_arguments_group.add_argument(
         '--test-case',
         type=str,
         required=True,
@@ -91,7 +101,8 @@ def _run_build_test(parser, args, logger, modes: tp.Dict[tp.Callable[..., tp.Any
             _TEST_INSTANCE_CORES,
             _TEST_INSTANCE_MEMORY,
             args.compute_node,
-            _IMAGE_NAME,
+            args.image_name,
+            args.image_folder_id,
             args.platform_ids,
             None if args.dry_run else f'build arcadia test at {datetime.now()}',
             logger) as instance:

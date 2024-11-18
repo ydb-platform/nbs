@@ -153,14 +153,16 @@ void TMirrorPartitionActor::StartScrubbingRange(
 void TMirrorPartitionActor::CompareChecksums(const TActorContext& ctx)
 {
     const auto& checksums = ChecksumRangeActorCompanion.GetChecksums();
-    bool equal = true;
-    for (size_t i = 1; i < checksums.size(); i++) {
-        if (checksums[i] != checksums[0]) {
-            equal = false;
-            break;
+    THashMap<ui64, ui32> checksumCount;
+    ui32 majorCount = 0;
+    for (size_t i = 0; i < checksums.size(); i++) {
+        ui64 checksum = checksums[i];
+        if (++checksumCount[checksum] > majorCount) {
+            majorCount = checksumCount[checksum];
         }
     }
 
+    const bool equal = (majorCount == checksums.size());
     if (!equal && WriteIntersectsWithScrubbing) {
         LOG_DEBUG(
             ctx,
@@ -207,7 +209,8 @@ void TMirrorPartitionActor::CompareChecksums(const TActorContext& ctx)
         ++ChecksumMismatches;
         ReportMirroredDiskChecksumMismatch();
 
-        if (Config->GetResyncRangeAfterScrubbing()) {
+        const bool hasQuorum = majorCount > checksums.size() / 2;
+        if (Config->GetResyncRangeAfterScrubbing() && hasQuorum) {
             StartResyncRange(ctx);
             return;
         }

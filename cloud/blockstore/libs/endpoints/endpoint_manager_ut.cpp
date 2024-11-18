@@ -32,6 +32,7 @@
 #include <cloud/storage/core/libs/diagnostics/monitoring.h>
 #include <cloud/storage/core/libs/endpoints/fs/fs_endpoints.h>
 
+#include <library/cpp/testing/gmock_in_unittest/gmock.h>
 #include <library/cpp/testing/unittest/registar.h>
 
 #include <google/protobuf/util/message_differencer.h>
@@ -124,6 +125,42 @@ struct TTestSessionManager final
         Y_UNUSED(socketPath);
         return NProto::TClientPerformanceProfile();
     }
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+struct TMockSessionManager final: public ISessionManager
+{
+    MOCK_METHOD(
+        TFuture<TSessionOrError>,
+        CreateSession,
+        (TCallContextPtr, const NProto::TStartEndpointRequest&),
+        (override));
+    MOCK_METHOD(
+        TFuture<NProto::TError>,
+        RemoveSession,
+        (TCallContextPtr, const TString&, const NProto::THeaders&),
+        (override));
+    MOCK_METHOD(
+        TFuture<NProto::TError>,
+        AlterSession,
+        (TCallContextPtr,
+         const TString&,
+         NProto::EVolumeAccessMode,
+         NProto::EVolumeMountMode,
+         ui64,
+         const NProto::THeaders&),
+        (override));
+    MOCK_METHOD(
+        TFuture<TSessionOrError>,
+        GetSession,
+        (TCallContextPtr, const TString&, const NProto::THeaders&),
+        (override));
+    MOCK_METHOD(
+        TResultOrError<NProto::TClientPerformanceProfile>,
+        GetProfile,
+        (const TString&),
+        (override));
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1694,6 +1731,72 @@ Y_UNIT_TEST_SUITE(TEndpointManagerTest)
 
         UNIT_ASSERT(wrongCount != correctCount);
         UNIT_ASSERT_VALUES_EQUAL(wrongCount, static_cast<int>(*configCounter));
+    }
+
+    Y_UNIT_TEST(ShouldRemoveEndpointForNotFoundVolume)
+    {
+        using namespace ::testing;
+
+        TString nbdDevPrefix = CreateGuidAsString() + "_nbd";
+        TFsPath(nbdDevPrefix + "0").Touch();
+        Y_DEFER {
+            TFsPath(nbdDevPrefix +"0").DeleteIfExists();
+        };
+
+        TBootstrap bootstrap;
+        auto sessionManager =
+            std::make_shared<TMockSessionManager>();
+        bootstrap.SessionManager = sessionManager;
+        TMap<TString, NProto::TMountVolumeRequest> mountedVolumes;
+        bootstrap.Service = CreateTestService(mountedVolumes);
+
+        auto listener = std::make_shared<TTestEndpointListener>();
+        bootstrap.EndpointListeners = {{ NProto::IPC_NBD, listener }};
+
+        auto deviceFactory = std::make_shared<TTestDeviceFactory>();
+        bootstrap.NbdDeviceFactory = deviceFactory;
+
+        bootstrap.Options.NbdDevicePrefix = nbdDevPrefix;
+
+        auto manager = CreateEndpointManager(bootstrap);
+        bootstrap.Start();
+        Y_DEFER {
+            bootstrap.Stop();
+        };
+
+        TTempDir dir;
+        TString unixSocket = (dir.Path() / "testSocket").GetPath();
+        TString diskId = "testDiskId";
+
+        NProto::TStartEndpointRequest request;
+        SetDefaultHeaders(request);
+        request.SetDiskId(diskId);
+        request.SetClientId(TestClientId);
+        request.SetIpcType(NProto::IPC_NBD);
+        request.SetUnixSocketPath(unixSocket + "0");
+        request.SetNbdDeviceFile(nbdDevPrefix + "0");
+        auto [str, error] = SerializeEndpoint(request);
+        UNIT_ASSERT_C(!HasError(error), error);
+        auto ret = bootstrap.EndpointStorage->AddEndpoint(
+            request.GetUnixSocketPath(),
+            str);
+        UNIT_ASSERT_EQUAL_C(S_OK, ret.GetCode(), ret.GetMessage());
+
+        NMonitoring::TDynamicCountersPtr counters = new NMonitoring::TDynamicCounters();
+        InitCriticalEventsCounter(counters);
+        auto configCounter = counters->GetCounter("AppCriticalEvents/EndpointRestoringError", true);
+        UNIT_ASSERT_VALUES_EQUAL(0, static_cast<int>(*configCounter));
+
+        EXPECT_CALL(*sessionManager, CreateSession(_, _))
+            .WillOnce(Return(MakeFuture<TMockSessionManager::TSessionOrError>(
+                MakeError(MAKE_SCHEMESHARD_ERROR(ENOENT)))));
+        manager->RestoreEndpoints().Wait();
+
+        UNIT_ASSERT_VALUES_EQUAL(1, static_cast<int>(*configCounter));
+
+        auto endpoints = bootstrap.EndpointStorage->GetEndpointIds();
+        UNIT_ASSERT_C(!HasError(endpoints.GetError()), endpoints.GetError());
+        UNIT_ASSERT(endpoints.GetResult().empty());
     }
 
     Y_UNIT_TEST(ShouldNotUseRestoringNbdDevices)

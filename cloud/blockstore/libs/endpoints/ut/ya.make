@@ -11,6 +11,7 @@ SRCS(
 PEERDIR(
     cloud/blockstore/libs/endpoints_grpc
     cloud/blockstore/libs/server
+    library/cpp/testing/gmock_in_unittest
 )
 
 END()

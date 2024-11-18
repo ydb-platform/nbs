@@ -11,6 +11,7 @@ namespace NCloud::NFileStore::NProfileTool {
 
 TCommandPtr NewDumpEventsCommand();
 TCommandPtr NewFindBytesAccessCommand();
+TCommandPtr NewMaskSensitiveData();
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -18,8 +19,9 @@ using TFactoryFunc = std::function<TCommandPtr()>;
 using TFactoryMap = TMap<TString, TFactoryFunc>;
 
 static const TFactoryMap Commands = {
-    { "dumpevents", NewDumpEventsCommand },
-    { "findbytesaccess", NewFindBytesAccessCommand },
+    {"dumpevents", NewDumpEventsCommand},
+    {"findbytesaccess", NewFindBytesAccessCommand},
+    {"masksensitivedata", NewMaskSensitiveData},
 };
 
 ////////////////////////////////////////////////////////////////////////////////

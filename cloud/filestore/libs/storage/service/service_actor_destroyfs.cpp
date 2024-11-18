@@ -25,6 +25,8 @@ private:
     const TRequestInfoPtr RequestInfo;
     const TString FileSystemId;
     const bool ForceDestroy;
+    TVector<TString> ShardIds;
+    ui32 DestroyedShardCount = 0;
 
 public:
     TDestroyFileStoreActor(
@@ -42,6 +44,12 @@ private:
         const TEvIndexTablet::TEvDescribeSessionsResponse::TPtr& ev,
         const TActorContext& ctx);
 
+    void GetFileSystemTopology(const TActorContext& ctx);
+    void HandleGetFileSystemTopologyResponse(
+        const TEvIndexTablet::TEvGetFileSystemTopologyResponse::TPtr& ev,
+        const TActorContext& ctx);
+
+    void DestroyShards(const TActorContext& ctx);
     void DestroyFileStore(const TActorContext& ctx);
     void HandleDestroyFileStoreResponse(
         const TEvSSProxy::TEvDestroyFileStoreResponse::TPtr& ev,
@@ -70,25 +78,25 @@ TDestroyFileStoreActor::TDestroyFileStoreActor(
 void TDestroyFileStoreActor::Bootstrap(const TActorContext& ctx)
 {
     if (ForceDestroy) {
-        DestroyFileStore(ctx);
+        GetFileSystemTopology(ctx);
     } else {
         DescribeSessions(ctx);
     }
     Become(&TThis::StateWork);
 }
 
+////////////////////////////////////////////////////////////////////////////////
+
 void TDestroyFileStoreActor::DescribeSessions(const TActorContext& ctx)
 {
-    auto requestToTablet =
+    auto request =
         std::make_unique<TEvIndexTablet::TEvDescribeSessionsRequest>();
-    requestToTablet->Record.SetFileSystemId(FileSystemId);
+    request->Record.SetFileSystemId(FileSystemId);
 
     NCloud::Send(
         ctx,
         MakeIndexTabletProxyServiceId(),
-        std::move(requestToTablet));
-
-    Become(&TThis::StateWork);
+        std::move(request));
 }
 
 void TDestroyFileStoreActor::HandleDescribeSessionsResponse(
@@ -112,13 +120,79 @@ void TDestroyFileStoreActor::HandleDescribeSessionsResponse(
     }
 
     if (msg->Record.SessionsSize() != 0) {
-        ReplyAndDie(
-            ctx,
-            MakeError(E_REJECTED, "FileStore has active sessions"));
+        TStringBuilder message;
+        message << "FileStore has active sessions with client ids:";
+        for (const auto& sessionInfo: msg->Record.GetSessions()) {
+            message << " " << sessionInfo.GetClientId();
+        }
+        ReplyAndDie(ctx, MakeError(E_REJECTED, message));
         return;
     }
 
-    DestroyFileStore(ctx);
+    GetFileSystemTopology(ctx);
+}
+
+void TDestroyFileStoreActor::GetFileSystemTopology(const TActorContext& ctx)
+{
+    auto request =
+        std::make_unique<TEvIndexTablet::TEvGetFileSystemTopologyRequest>();
+    request->Record.SetFileSystemId(FileSystemId);
+
+    NCloud::Send(
+        ctx,
+        MakeIndexTabletProxyServiceId(),
+        std::move(request));
+}
+
+void TDestroyFileStoreActor::HandleGetFileSystemTopologyResponse(
+    const TEvIndexTablet::TEvGetFileSystemTopologyResponse::TPtr& ev,
+    const TActorContext& ctx)
+{
+    auto* msg = ev->Get();
+    if (HasError(msg->GetError())) {
+        LOG_WARN(
+            ctx,
+            TFileStoreComponents::SERVICE,
+            "[%s] GetFileSystemTopology error: %s",
+            FileSystemId.c_str(),
+            FormatError(msg->GetError()).Quote().c_str());
+
+        ReplyAndDie(ctx, msg->GetError());
+        return;
+    }
+
+    LOG_INFO(
+        ctx,
+        TFileStoreComponents::SERVICE,
+        "[%s] DestroyFileStore GetFileSystemTopology response: %s",
+        FileSystemId.c_str(),
+        msg->Record.Utf8DebugString().Quote().c_str());
+
+    for (auto& shardId: *msg->Record.MutableShardFileSystemIds()) {
+        ShardIds.push_back(std::move(shardId));
+    }
+
+    if (ShardIds) {
+        DestroyShards(ctx);
+    } else {
+        DestroyFileStore(ctx);
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+void TDestroyFileStoreActor::DestroyShards(const TActorContext& ctx)
+{
+    for (ui32 i = 0; i < ShardIds.size(); ++i) {
+        auto request = std::make_unique<TEvSSProxy::TEvDestroyFileStoreRequest>(
+            ShardIds[i]);
+
+        NCloud::Send(
+            ctx,
+            MakeSSProxyServiceId(),
+            std::move(request),
+            i + 1);
+    }
 }
 
 void TDestroyFileStoreActor::DestroyFileStore(const TActorContext& ctx)
@@ -133,9 +207,51 @@ void TDestroyFileStoreActor::HandleDestroyFileStoreResponse(
     const TEvSSProxy::TEvDestroyFileStoreResponse::TPtr& ev,
     const TActorContext& ctx)
 {
+    Y_DEBUG_ABORT_UNLESS(ev->Cookie <= ShardIds.size());
+
     const auto* msg = ev->Get();
+    TString fsId = "<undefined>";
+    if (ev->Cookie == 0) {
+        fsId = FileSystemId;
+    } else if (ev->Cookie <= ShardIds.size()) {
+        fsId = ShardIds[ev->Cookie - 1];
+    }
+
+    if (HasError(msg->GetError())) {
+        LOG_WARN(
+            ctx,
+            TFileStoreComponents::SERVICE,
+            "[%s] DestroyFileStore error for %s, %s",
+            FileSystemId.c_str(),
+            fsId.c_str(),
+            FormatError(msg->GetError()).Quote().c_str());
+
+        ReplyAndDie(ctx, msg->GetError());
+        return;
+    }
+
+    LOG_INFO(
+        ctx,
+        TFileStoreComponents::SERVICE,
+        "[%s] DestroyFileStore success for %s",
+        FileSystemId.c_str(),
+        fsId.c_str());
+
+    if (ev->Cookie) {
+        ++DestroyedShardCount;
+        Y_DEBUG_ABORT_UNLESS(DestroyedShardCount <= ShardIds.size());
+
+        if (DestroyedShardCount == ShardIds.size()) {
+            DestroyFileStore(ctx);
+        }
+
+        return;
+    }
+
     ReplyAndDie(ctx, msg->GetError());
 }
+
+////////////////////////////////////////////////////////////////////////////////
 
 void TDestroyFileStoreActor::HandlePoisonPill(
     const TEvents::TEvPoisonPill::TPtr& ev,
@@ -149,11 +265,14 @@ void TDestroyFileStoreActor::ReplyAndDie(
     const TActorContext& ctx,
     const NProto::TError& error)
 {
-    auto response = std::make_unique<TEvService::TEvDestroyFileStoreResponse>(error);
+    auto response =
+        std::make_unique<TEvService::TEvDestroyFileStoreResponse>(error);
     NCloud::Reply(ctx, *RequestInfo, std::move(response));
 
     Die(ctx);
 }
+
+////////////////////////////////////////////////////////////////////////////////
 
 STFUNC(TDestroyFileStoreActor::StateWork)
 {
@@ -164,7 +283,13 @@ STFUNC(TDestroyFileStoreActor::StateWork)
             TEvIndexTablet::TEvDescribeSessionsResponse,
             HandleDescribeSessionsResponse);
 
-        HFunc(TEvSSProxy::TEvDestroyFileStoreResponse, HandleDestroyFileStoreResponse);
+        HFunc(
+            TEvIndexTablet::TEvGetFileSystemTopologyResponse,
+            HandleGetFileSystemTopologyResponse);
+
+        HFunc(
+            TEvSSProxy::TEvDestroyFileStoreResponse,
+            HandleDestroyFileStoreResponse);
 
         default:
             HandleUnexpectedEvent(ev, TFileStoreComponents::SERVICE_WORKER);
@@ -202,11 +327,11 @@ void TStorageServiceActor::HandleDestroyFileStore(
         LOG_INFO(
             ctx,
             TFileStoreComponents::SERVICE,
-            "FileStore %s is in deny list",
+            "FileStore %s is in deny list, responding with S_FALSE",
             msg->Record.GetFileSystemId().c_str());
         auto response =
             std::make_unique<TEvService::TEvDestroyFileStoreResponse>(MakeError(
-                E_ARGUMENT,
+                S_FALSE,
                 Sprintf(
                     "FileStore %s is in deny list",
                     msg->Record.GetFileSystemId().c_str())));

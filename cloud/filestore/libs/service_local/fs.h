@@ -89,14 +89,14 @@ class TLocalFileSystem final
 private:
     const TLocalFileStoreConfigPtr Config;
     const TFsPath Root;
+    const TFsPath StatePath;
     const ITimerPtr Timer;
     const ISchedulerPtr Scheduler;
+    const ILoggingServicePtr Logging;
     const IFileIOServicePtr FileIOService;
 
     NProto::TFileStore Store;
     TLog Log;
-
-    TLocalIndexPtr Index;
 
     TSessionList SessionsList;
     THashMap<TString, TSessionList::iterator> SessionsById;
@@ -111,6 +111,7 @@ public:
         TLocalFileStoreConfigPtr config,
         NProto::TFileStore store,
         TFsPath root,
+        TFsPath statePath,
         ITimerPtr timer,
         ISchedulerPtr scheduler,
         ILoggingServicePtr logging,
@@ -144,7 +145,6 @@ public:
     }
 
 private:
-    void InitIndex();
 
     void ScheduleCleanupSessions();
     void CleanupSessions();
