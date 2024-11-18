@@ -2,6 +2,7 @@
 
 #include "public.h"
 
+#include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/common/startable.h>
 
 #include <util/datetime/base.h>
@@ -21,7 +22,7 @@ struct ICgroupStatsFetcher
 {
     virtual ~ICgroupStatsFetcher() = default;
 
-    virtual TDuration GetCpuWait() = 0;
+    virtual TResultOrError<TDuration> GetCpuWait() = 0;
 };
 
 using ICgroupStatsFetcherPtr = std::shared_ptr<ICgroupStatsFetcher>;

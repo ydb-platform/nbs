@@ -66,14 +66,26 @@ Y_UNIT_TEST_SUITE(TCGroupStatFetcherTest)
             });
         fetcher->Start();
 
-        UNIT_ASSERT_VALUES_EQUAL(TDuration(), fetcher->GetCpuWait());
+        auto cpuWait = fetcher->GetCpuWait();
+        UNIT_ASSERT_C(!HasError(cpuWait), cpuWait.GetError());
+        UNIT_ASSERT_VALUES_EQUAL(
+            TDuration::MicroSeconds(0),
+            cpuWait.GetResult());
 
         UpdateCGroupWaitDuration(statsFile, TDuration::MicroSeconds(20));
-        UNIT_ASSERT_VALUES_EQUAL(TDuration::MicroSeconds(10), fetcher->GetCpuWait());
+        cpuWait = fetcher->GetCpuWait();
+        UNIT_ASSERT_C(!HasError(cpuWait), cpuWait.GetError());
+        UNIT_ASSERT_VALUES_EQUAL(
+            TDuration::MicroSeconds(10),
+            cpuWait.GetResult());
 
         fetcher->Stop();
 
-        UNIT_ASSERT_VALUES_EQUAL(0, serverGroup->GetCounter("AppCriticalEvents/CpuWaitCounterReadError", true)->Val());
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            serverGroup
+                ->GetCounter("AppCriticalEvents/CpuWaitCounterReadError", true)
+                ->Val());
     }
 
     Y_UNIT_TEST(ShouldReportErrorIfFileIsMissing)
@@ -100,8 +112,10 @@ Y_UNIT_TEST_SUITE(TCGroupStatFetcherTest)
 
         UNIT_ASSERT_VALUES_EQUAL(1, failCounter->Val());
 
-        UNIT_ASSERT_VALUES_EQUAL(TDuration(), fetcher->GetCpuWait());
-        UNIT_ASSERT_VALUES_EQUAL(TDuration(), fetcher->GetCpuWait());
+        auto cpuWait = fetcher->GetCpuWait();
+        UNIT_ASSERT_C(HasError(cpuWait), cpuWait.GetError());
+        cpuWait = fetcher->GetCpuWait();
+        UNIT_ASSERT_C(HasError(cpuWait), cpuWait.GetError());
 
         fetcher->Stop();
     }
@@ -127,12 +141,25 @@ Y_UNIT_TEST_SUITE(TCGroupStatFetcherTest)
         fetcher->Start();
 
         UpdateCGroupWaitDuration(statsFile, TDuration::MicroSeconds(80));
-        UNIT_ASSERT_VALUES_EQUAL(TDuration(), fetcher->GetCpuWait());
-        UNIT_ASSERT_VALUES_EQUAL(1, serverGroup->GetCounter("AppCriticalEvents/CpuWaitCounterReadError", true)->Val());
+        auto cpuWait = fetcher->GetCpuWait();
+        UNIT_ASSERT_C(HasError(cpuWait), cpuWait.GetError());
+        UNIT_ASSERT_VALUES_EQUAL(
+            1,
+            serverGroup
+                ->GetCounter("AppCriticalEvents/CpuWaitCounterReadError", true)
+                ->Val());
 
         UpdateCGroupWaitDuration(statsFile, TDuration::MicroSeconds(100));
-        UNIT_ASSERT_VALUES_EQUAL(TDuration::MicroSeconds(20), fetcher->GetCpuWait());
-        UNIT_ASSERT_VALUES_EQUAL(1, serverGroup->GetCounter("AppCriticalEvents/CpuWaitCounterReadError", true)->Val());
+        cpuWait = fetcher->GetCpuWait();
+        UNIT_ASSERT_C(!HasError(cpuWait), cpuWait.GetError());
+        UNIT_ASSERT_VALUES_EQUAL(
+            TDuration::MicroSeconds(20),
+            cpuWait.GetResult());
+        UNIT_ASSERT_VALUES_EQUAL(
+            1,
+            serverGroup
+                ->GetCounter("AppCriticalEvents/CpuWaitCounterReadError", true)
+                ->Val());
 
         fetcher->Stop();
     }

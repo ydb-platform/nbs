@@ -80,10 +80,14 @@ int main(int argc, const char** argv)
     while (!options.SampleCount || numSamples--) {
         Sleep(pollInterval);
 
-        auto waitTime = 100 * statsFetcher->GetCpuWait().MicroSeconds();
-        auto interval = pollInterval.MicroSeconds();
-
-        Cout << (waitTime / interval) << Endl;
+        auto cpuWait = statsFetcher->GetCpuWait();
+        if (!HasError(cpuWait)) {
+            auto waitTime = 100 * cpuWait.GetResult().MicroSeconds();
+            auto interval = pollInterval.MicroSeconds();
+            Cout << (waitTime / interval) << Endl;
+        } else {
+            Cout << cpuWait.GetError() << Endl;
+        }
     }
 
     return 0;
