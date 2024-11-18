@@ -41,12 +41,16 @@ const TString FolderId = "TestFolderName";
 
 TEvTicketParser::TError FatalError()
 {
-    return TEvTicketParser::TError{"Fatal error", false};
+    return TEvTicketParser::TError{
+        .Message = "Fatal error",
+        .Retryable = false};
 }
 
 TEvTicketParser::TError RetriableError()
 {
-    return TEvTicketParser::TError{"Retriable error", true};
+    return TEvTicketParser::TError{
+        .Message = "Retriable error",
+        .Retryable = true};
 }
 
 ////////////////////////////////////////////////////////////////////////////////

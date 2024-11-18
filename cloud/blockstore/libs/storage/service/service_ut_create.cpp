@@ -104,8 +104,7 @@ Y_UNIT_TEST_SUITE(TServiceCreateVolumeTest)
         runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
                 switch (event->GetTypeRewrite()) {
                     case NSchemeShard::TEvSchemeShard::EvDescribeSchemeResult: {
-                        using NSchemeShard::TEvSchemeShard;
-                        auto record = event->Get<NSchemeShard::TEvSchemeShard::TEvDescribeSchemeResult>()->MutableRecord();
+                        auto *record = event->Get<NSchemeShard::TEvSchemeShard::TEvDescribeSchemeResult>()->MutableRecord();
                         auto path = record->GetPathDescription().GetSelf().GetName();
                         if (path == "path_to_test_volume" && describeRequested) {
                             record->SetStatus(notFoundStatus);
