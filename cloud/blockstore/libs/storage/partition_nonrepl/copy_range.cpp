@@ -59,6 +59,7 @@ void TCopyRangeActor::ReadBlocks(const TActorContext& ctx)
     auto* headers = request->Record.MutableHeaders();
     headers->SetIsBackgroundRequest(true);
     headers->SetClientId(TString(BackgroundOpsClientId));
+    headers->SetRequestId(RequestInfo->CallContext->RequestId);
 
     auto event = std::make_unique<IEventHandle>(
         Source,
@@ -85,6 +86,7 @@ void TCopyRangeActor::WriteBlocks(const TActorContext& ctx, NProto::TIOVector bl
     auto* headers = request->Record.MutableHeaders();
     headers->SetIsBackgroundRequest(true);
     headers->SetClientId(std::move(clientId));
+    headers->SetRequestId(RequestInfo->CallContext->RequestId);
 
     const auto& buffers = request->Record.GetBlocks().GetBuffers();
     for (int i = 0; i < buffers.size();++i) {
@@ -125,6 +127,7 @@ void TCopyRangeActor::ZeroBlocks(const TActorContext& ctx)
     auto* headers = request->Record.MutableHeaders();
     headers->SetIsBackgroundRequest(true);
     headers->SetClientId(std::move(clientId));
+    headers->SetRequestId(RequestInfo->CallContext->RequestId);
 
     for (const auto blockIndex: xrange(Range)) {
         const auto digest = BlockDigestGenerator->ComputeDigest(

@@ -272,8 +272,49 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionMigrationTest)
 
         env.Rdma().InitAllEndpoints();
 
+        struct TTrace
+        {
+            TVector<ui32> Events;
+        };
+
+        const int expectedRequestCount = 3;
+
+        THashMap<ui64, TTrace> traces;
+
+        runtime.SetEventFilter([&] (auto&, auto& event) {
+            switch (event->GetTypeRewrite()) {
+                case TEvService::EvReadBlocksRequest: {
+                    auto* msg =
+                        event->template Get<TEvService::TEvReadBlocksRequest>();
+                    const ui64 reqId = msg->Record.GetHeaders().GetRequestId();
+                    UNIT_ASSERT_VALUES_UNEQUAL(0, reqId);
+                    traces[reqId].Events.push_back(event->GetTypeRewrite());
+                }
+                break;
+
+                case TEvService::EvWriteBlocksRequest: {
+                    auto* msg =
+                        event->template Get<TEvService::TEvWriteBlocksRequest>();
+                    const ui64 reqId = msg->Record.GetHeaders().GetRequestId();
+                    UNIT_ASSERT_VALUES_UNEQUAL(0, reqId);
+                    traces[reqId].Events.push_back(event->GetTypeRewrite());
+                }
+                break;
+            }
+            return false;
+        });
+
         // petya should be migrated => 3 ranges
-        WaitForMigrations(runtime, 3);
+        WaitForMigrations(runtime, expectedRequestCount);
+
+        UNIT_ASSERT_VALUES_EQUAL(expectedRequestCount, traces.size());
+        for (auto [_, trace]: traces) {
+            UNIT_ASSERT_VALUES_EQUAL(2, trace.Events.size());
+            UNIT_ASSERT_EQUAL(TEvService::EvReadBlocksRequest, trace.Events[0]);
+            UNIT_ASSERT_EQUAL(
+                TEvService::EvWriteBlocksRequest,
+                trace.Events[1]);
+        }
     }
 
     Y_UNIT_TEST(ShouldDoMigrationEvenInReadOnlyMode)
@@ -290,7 +331,7 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionMigrationTest)
         );
 
         // petya should be migrated => 3 ranges
-        WaitForMigrations(runtime, 3);
+        WaitForMigrations(runtime,  3);
     }
 
     Y_UNIT_TEST(ShouldReportSimpleCounters)

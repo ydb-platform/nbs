@@ -94,7 +94,8 @@ void TNonreplicatedPartitionMigrationCommonActor::MigrateRange(
         CreateRequestInfo(
             SelfId(),
             0,   // cookie
-            MakeIntrusive<TCallContext>()),
+            MakeIntrusive<TCallContext>(
+                LastRangeMigrationStartTs.MicroSeconds())),
         BlockSize,
         range,
         SrcActorId,
