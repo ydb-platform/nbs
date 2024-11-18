@@ -254,6 +254,79 @@ func newDeleteSnapshotCmd(clientConfig *client_config.ClientConfig) *cobra.Comma
 
 ////////////////////////////////////////////////////////////////////////////////
 
+type scheduleCreateSnapshotFromLegacySnapshotTask struct {
+	clientConfig *client_config.ServerConfig
+	serverConfig *server_config.ServerConfig
+	snapshotID   string
+}
+
+func (c *scheduleCreateSnapshotFromLegacySnapshotTask) run() error {
+	ctx := newContext(c.clientConfig)
+
+	taskStorage, db, err := newTaskStorage(ctx, c.serverConfig)
+	if err != nil {
+		return err
+	}
+	defer db.Close(ctx)
+
+	logging.Info(ctx, "Creating task scheduler")
+	taskRegistry := tasks.NewRegistry()
+	taskScheduler, err := tasks.NewScheduler(
+		ctx,
+		taskRegistry,
+		taskStorage,
+		config.TasksConfig,
+		metrics.NewEmptyRegistry(),
+	)
+	if err != nil {
+		logging.Error(ctx, "Failed to create task scheduler: %v", err)
+		return err
+	}
+
+	taskID, err := t.scheduler.ScheduleTask(
+		headers.SetIncomingIdempotencyKey(ctx, selfTaskID+"_run"),
+		"dataplane.CreateSnapshotFromLegacySnapshot",
+		"",
+		&dataplane_protos.CreateSnapshotFromLegacySnapshotRequest{
+			SrcSnapshotId: snapshotID,
+			DstSnapshotId: snapshotID,
+			UseS3:         true,
+		},
+	)
+	if err != nil {
+		return err
+	}
+
+	fmt.Printf("Task: %v\n", taskID)
+}
+
+func newScheduleCreateSnapshotFromLegacySnapshotTaskCmd(
+	clientConfig *client_config.ClientConfig,
+	serverConfig *server_config.ServerConfig,
+) *cobra.Command {
+
+	c := &scheduleCreateSnapshotFromLegacySnapshotTask{
+		clientConfig: clientConfig,
+		serverConfig: serverConfig,
+	}
+
+	cmd := &cobra.Command{
+		Use: "schedule_CreateSnapshotFromLegacySnapshot_task",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return c.run()
+		},
+	}
+
+	cmd.Flags().StringVar(&c.snapshotID, "id", "", "ID of snapshot to delete; required")
+	if err := cmd.MarkFlagRequired("id"); err != nil {
+		log.Fatalf("Error setting flag id as required: %v", err)
+	}
+
+	return cmd
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 func newSnapshotsCmd(
 	clientConfig *client_config.ClientConfig,
 	serverConfig *server_config.ServerConfig,
@@ -269,6 +342,10 @@ func newSnapshotsCmd(
 		newListSnapshotsCmd(clientConfig, serverConfig),
 		newCreateSnapshotCmd(clientConfig),
 		newDeleteSnapshotCmd(clientConfig),
+		newScheduleCreateSnapshotFromLegacySnapshotTaskCmd(
+			clientConfig,
+			serverConfig,
+		),
 	)
 
 	return cmd
