@@ -1347,6 +1347,6 @@ func TestHangingTasksMetricsAreSetEvenForTasksNotRegisteredForExecution(t *testi
 		},
 	)
 
-	_ = <-gaugeSetChannel
+	<-gaugeSetChannel
 	registry.AssertAllExpectations(t)
 }
