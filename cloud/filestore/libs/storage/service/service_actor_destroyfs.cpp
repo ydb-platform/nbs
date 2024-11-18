@@ -40,17 +40,18 @@ private:
     STFUNC(StateWork);
 
     void DescribeSessions(const TActorContext& ctx);
+    void GetFileSystemTopology(const TActorContext& ctx);
+    void DestroyShards(const TActorContext& ctx);
+    void DestroyFileStore(const TActorContext& ctx);
+
     void HandleDescribeSessionsResponse(
         const TEvIndexTablet::TEvDescribeSessionsResponse::TPtr& ev,
         const TActorContext& ctx);
 
-    void GetFileSystemTopology(const TActorContext& ctx);
     void HandleGetFileSystemTopologyResponse(
         const TEvIndexTablet::TEvGetFileSystemTopologyResponse::TPtr& ev,
         const TActorContext& ctx);
 
-    void DestroyShards(const TActorContext& ctx);
-    void DestroyFileStore(const TActorContext& ctx);
     void HandleDestroyFileStoreResponse(
         const TEvSSProxy::TEvDestroyFileStoreResponse::TPtr& ev,
         const TActorContext& ctx);
