@@ -291,7 +291,7 @@ func (c *scheduleCreateSnapshotFromLegacySnapshotTask) run() error {
 	taskID, err := taskScheduler.ScheduleTask(
 		headers.SetIncomingIdempotencyKey(
 			ctx,
-			"CreateSnapshotFromLegacySnapshot_"+c.snapshotID+"_"+generateID(),
+			"dataplane.CreateSnapshotFromLegacySnapshot_"+c.snapshotID+"_"+generateID(),
 		),
 		"dataplane.CreateSnapshotFromLegacySnapshot",
 		"",
@@ -320,7 +320,7 @@ func newScheduleCreateSnapshotFromLegacySnapshotTaskCmd(
 	}
 
 	cmd := &cobra.Command{
-		Use: "schedule_CreateSnapshotFromLegacySnapshot_task",
+		Use: "schedule_create_snapshot_from_legacy_snapshot_task",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return c.run()
 		},
