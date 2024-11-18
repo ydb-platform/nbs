@@ -242,6 +242,25 @@ func (s *service) prepareCreateDiskParams(
 	}, nil
 }
 
+func (s *service) checkCreateDiskPermission(req *protos.CreateDiskParams) error {
+
+	if !nbs.IsDiskRegistryBasedDisk(kind) {
+		return nil
+	}
+
+	if s.config.GetEnableDiskRegistryBasedDiskCreation() {
+		return nil
+	}
+
+	for _, folderID := range s.config.GetDiskRegistryBasedDisksFolderIdAllowList() {
+		if folderID == req.FolderId {
+			return nil
+		}
+	}
+
+	return errors.New("allocation of DiskRegistry based disks is disallowed")
+}
+
 func (s *service) areOverlayDisksSupportedForDiskKind(kind types.DiskKind) bool {
 	return kind == types.DiskKind_DISK_KIND_SSD ||
 		kind == types.DiskKind_DISK_KIND_HDD ||
@@ -316,6 +335,11 @@ func (s *service) CreateDisk(
 ) (string, error) {
 
 	params, err := s.prepareCreateDiskParams(req)
+	if err != nil {
+		return "", err
+	}
+
+	err = s.checkCreateDiskPermission(params)
 	if err != nil {
 		return "", err
 	}
