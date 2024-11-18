@@ -10,4 +10,5 @@ message TAuthConfig {
     optional bool UseStaff = 5;
     optional bool UseUserAccountService = 6;
     optional string PathToRootCA = 7;
+    optional string AccessServiceType = 8 [default = "Yandex_v2"];
 }
