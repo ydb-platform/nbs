@@ -212,11 +212,11 @@ func (c *collectListerMetricsTask) cleanupMetrics() {
 	}
 	sensors = append(sensors, totalHangingTaskCountGaugeName)
 
-	for _, sensor := range sensors {
-		for _, taskType := range c.taskTypes {
-			subRegistry := c.registry.WithTags(map[string]string{
-				"type": taskType,
-			})
+	for _, taskType := range c.taskTypes {
+		subRegistry := c.registry.WithTags(map[string]string{
+			"type": taskType,
+		})
+		for _, sensor := range sensors {
 			subRegistry.Gauge(sensor).Set(float64(0))
 		}
 	}
