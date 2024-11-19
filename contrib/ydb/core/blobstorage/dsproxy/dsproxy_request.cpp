@@ -13,10 +13,6 @@ namespace NKikimr {
             ActiveRequests.try_emplace(actorId);
         }
     }
-<<<<<<< HEAD
-
-=======
->>>>>>> add ydb patch
     void TBlobStorageGroupProxy::CheckDeadlines() {
         const TInstant now = TActivationContext::Now();
         std::multimap<TInstant, TActorId>::iterator it;
