@@ -68,6 +68,9 @@ void TStorageServiceActor::HandleHttpInfo(
 
             TAG(TH3) { out << "Local Filesystems"; }
             RenderLocalFileStores(out);
+
+            TAG(TH3) { out << "Config"; }
+            StorageConfig->DumpHtml(out);
         }
     } else {
         out << "State not ready yet" << Endl;
