@@ -16,5 +16,10 @@ SSH 1:1:1:1:1:1:1:1: pkill pgbench
 SSH 1:1:1:1:1:1:1:1: pgrep pgbench
 Execute command nohup sh -c "pgbench -U postgres -p 5432 pgbench -P 30 -T 999999999 --debug -j 32 -c 32 >> /tmp/report.txt 2>&1" &>/dev/null &Command=ycp --format json --profile cluster1 compute instance list --folder-id fake-folder
 Input=
-Command=ycp --format json --profile cluster1 compute instance list --folder-id fake-folder
+SSH 1:1:1:1:1:1:1:1: pkill pgbench
+SSH 1:1:1:1:1:1:1:1: pgrep pgbench
+Execute command nohup sh -c "pgbench -U postgres -p 5432 pgbench -P 30 -T 999999999 --debug -j 32 -c 32 >> /tmp/report.txt 2>&1" &>/dev/null &Command=ycp --format json --profile cluster1 compute instance list --folder-id fake-folder
 Input=
+SSH 1:1:1:1:1:1:1:1: pkill sysbench
+SSH 1:1:1:1:1:1:1:1: pgrep sysbench
+Execute command nohup sh -c "sysbench --db-driver=mysql --mysql-user=root --mysql-db=sbtest --tables=10 --table-size=300000000 /usr/share/sysbench/oltp-custom.lua run --threads=32 --time=999999999 --report-interval=30 >> /tmp/report.txt 2>&1" &>/dev/null &

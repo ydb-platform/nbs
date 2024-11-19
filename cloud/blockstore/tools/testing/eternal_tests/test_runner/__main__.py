@@ -28,7 +28,7 @@ def main():
         ).run()
         logger.info(f'Successfully execute command: {parser.get_args().command}')
     except Error as e:
-        logger.fatal(f'Failed to run vm or/and create disk: {e}')
+        logger.fatal(f'Failed to execute command [{parser.get_args().command}]: {e}')
         sys.exit(1)
 
 
