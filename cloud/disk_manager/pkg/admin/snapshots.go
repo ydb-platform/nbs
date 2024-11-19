@@ -259,6 +259,7 @@ func newDeleteSnapshotCmd(clientConfig *client_config.ClientConfig) *cobra.Comma
 
 ////////////////////////////////////////////////////////////////////////////////
 
+// TODO: Remove this command after getting rid of legacy snapshot storage.
 type scheduleCreateSnapshotFromLegacySnapshotTask struct {
 	clientConfig *client_config.ClientConfig
 	serverConfig *server_config.ServerConfig
@@ -276,6 +277,8 @@ func (c *scheduleCreateSnapshotFromLegacySnapshotTask) run() error {
 
 	logging.Info(ctx, "Creating task scheduler")
 	taskRegistry := tasks.NewRegistry()
+
+	*(c.serverConfig.TasksConfig).RegularSystemTasksEnabled = false
 	taskScheduler, err := tasks.NewScheduler(
 		ctx,
 		taskRegistry,
@@ -326,7 +329,12 @@ func newScheduleCreateSnapshotFromLegacySnapshotTaskCmd(
 		},
 	}
 
-	cmd.Flags().StringVar(&c.snapshotID, "id", "", "ID of snapshot to delete; required")
+	cmd.Flags().StringVar(
+		&c.snapshotID,
+		"id",
+		"",
+		"ID of snapshot to create from legacy snapshot; required",
+	)
 	if err := cmd.MarkFlagRequired("id"); err != nil {
 		log.Fatalf("Error setting flag id as required: %v", err)
 	}
@@ -351,7 +359,7 @@ func newSnapshotsCmd(
 		newListSnapshotsCmd(clientConfig, serverConfig),
 		newCreateSnapshotCmd(clientConfig),
 		newDeleteSnapshotCmd(clientConfig),
-		// Remove this command after getting rid of legacy snapshot storage.
+		// TODO: Remove this command after getting rid of legacy snapshot storage.
 		newScheduleCreateSnapshotFromLegacySnapshotTaskCmd(
 			clientConfig,
 			serverConfig,
