@@ -54,12 +54,11 @@ NProto::TCreateSessionResponse TLocalFileSystem::CreateSession(
         Root,
         clientSessionStatePath,
         clientId,
-        Index,
+        Config->GetMaxNodeCount(),
+        Config->GetMaxHandlePerSessionCount(),
         Logging);
 
-    session->Init(
-        request.GetRestoreClientSession(),
-        Config->GetMaxHandlePerSessionCount());
+    session->Init(request.GetRestoreClientSession());
     session->AddSubSession(sessionSeqNo, readOnly);
 
     SessionsList.push_front(session);

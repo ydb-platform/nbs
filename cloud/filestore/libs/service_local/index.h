@@ -2,6 +2,8 @@
 
 #include "public.h"
 
+#include <cloud/filestore/libs/service/filestore.h>
+
 #include <cloud/storage/core/libs/common/persistent_table.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
@@ -33,7 +35,7 @@ public:
         , NodeFd(std::move(node))
     {}
 
-    ui64 GetRecordIndex() const
+    [[nodiscard]] ui64 GetRecordIndex() const
     {
         return RecordIndex;
     }
@@ -46,7 +48,7 @@ public:
     static TIndexNodePtr CreateRoot(const TFsPath& path);
     static TIndexNodePtr Create(const TIndexNode& parent, const TString& name);
 
-    ui64 GetNodeId() const
+    [[nodiscard]] ui64 GetNodeId() const
     {
         return NodeId;
     }
@@ -66,7 +68,7 @@ public:
         unsigned int flags);
     void Unlink(const TString& name, bool directory);
 
-    TString ReadLink() const;
+    [[nodiscard]] TString ReadLink() const;
 
     TFileStat Stat();
     TFileStat Stat(const TString& name);
@@ -128,10 +130,12 @@ private:
         char Name[NAME_MAX + 1] = {};
     };
 
-private:
     using TNodeMap = THashSet<TIndexNodePtr, THash, TEqual>;
     using TNodeTable = TPersistentTable<TNodeTableHeader, TNodeTableRecord>;
 
+    const TFsPath Root;
+    const TFsPath StatePath;
+    ui32 MaxNodeCount;
     TNodeMap Nodes;
     std::unique_ptr<TNodeTable> NodeTable;
     TRWMutex NodesLock;
@@ -139,13 +143,16 @@ private:
 
 public:
     TLocalIndex(
-            const TFsPath& root,
-            const TFsPath& statePath,
+            TFsPath root,
+            TFsPath statePath,
             ui32 maxNodeCount,
             TLog log)
-        : Log(std::move(log))
+        : Root(std::move(root))
+        , StatePath(std::move(statePath))
+        , MaxNodeCount(maxNodeCount)
+        , Log(std::move(log))
     {
-        Init(root, statePath, maxNodeCount);
+        Init();
     }
 
     TIndexNodePtr LookupNode(ui64 nodeId)
@@ -208,19 +215,28 @@ public:
         return node;
     }
 
+    void Clear()
+    {
+        TWriteGuard guard(NodesLock);
+
+        NodeTable->Clear();
+        Nodes.clear();
+        Nodes.insert(TIndexNode::CreateRoot(Root));
+    }
+
 private:
-    void Init(const TFsPath& root, const TFsPath& statePath, ui32 maxNodeCount)
+    void Init()
     {
         STORAGE_INFO(
-            "Init index, Root=" << root <<
-            ", StatePath=" << statePath
-            << ", MaxNodeCount=" << maxNodeCount);
+            "Init index, Root=" << Root <<
+            ", StatePath=" << StatePath
+            << ", MaxNodeCount=" << MaxNodeCount);
 
-        Nodes.insert(TIndexNode::CreateRoot(root));
+        Nodes.insert(TIndexNode::CreateRoot(Root));
 
         NodeTable = std::make_unique<TNodeTable>(
-            (statePath / "nodes").GetPath(),
-            maxNodeCount);
+            (StatePath / "nodes").GetPath(),
+            MaxNodeCount);
 
         RecoverNodesFromPersistentTable();
     }
@@ -297,7 +313,7 @@ private:
                     TIndexNode::Create(**parentNodeIt, pathElemRecord->Name);
                 node->SetRecordIndex(pathElemIndex);
 
-                Nodes.insert(std::move(node));
+                Nodes.insert(node);
 
                 unresolvedPath.pop();
                 unresolvedRecords.erase(pathElemRecord->NodeId);

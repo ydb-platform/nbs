@@ -98,8 +98,6 @@ private:
     NProto::TFileStore Store;
     TLog Log;
 
-    TLocalIndexPtr Index;
-
     TSessionList SessionsList;
     THashMap<TString, TSessionList::iterator> SessionsById;
     THashMap<TString, TSessionList::iterator> SessionsByClient;
