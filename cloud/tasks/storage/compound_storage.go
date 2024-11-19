@@ -222,11 +222,12 @@ func (s *compoundStorage) ListTasksStallingWhileCancelling(
 func (s *compoundStorage) ListTasksRunning(
 	ctx context.Context,
 	limit uint64,
+	taskTypeWhitelist []string,
 ) ([]TaskInfo, error) {
 
 	tasks := []TaskInfo{}
 	err := s.visit(ctx, func(storage Storage) error {
-		values, err := storage.ListTasksRunning(ctx, limit)
+		values, err := storage.ListTasksRunning(ctx, limit, taskTypeWhitelist)
 		tasks = append(tasks, values...)
 		return err
 	})
@@ -236,11 +237,16 @@ func (s *compoundStorage) ListTasksRunning(
 func (s *compoundStorage) ListTasksCancelling(
 	ctx context.Context,
 	limit uint64,
+	taskTypeWhitelist []string,
 ) ([]TaskInfo, error) {
 
 	tasks := []TaskInfo{}
 	err := s.visit(ctx, func(storage Storage) error {
-		values, err := storage.ListTasksCancelling(ctx, limit)
+		values, err := storage.ListTasksCancelling(
+			ctx,
+			limit,
+			taskTypeWhitelist,
+		)
 		tasks = append(tasks, values...)
 		return err
 	})

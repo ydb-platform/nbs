@@ -17,6 +17,14 @@ const totalHangingTaskCountGaugeName = "totalHangingTaskCount"
 
 ////////////////////////////////////////////////////////////////////////////////
 
+type listTasksWithTypeWhitelistFunc = func(
+	ctx context.Context,
+	limit uint64,
+	taskTypeWhitelist []string,
+) ([]storage.TaskInfo, error)
+
+////////////////////////////////////////////////////////////////////////////////
+
 type collectListerMetricsTask struct {
 	registry                  metrics.Registry
 	storage                   storage.Storage
@@ -24,8 +32,8 @@ type collectListerMetricsTask struct {
 
 	taskTypes                 []string
 	hangingTaskGaugesByID     map[string]metrics.Gauge
-	taskGaugesBySensorAndType map[string]map[string]metrics.Gauge
 	maxHangingTaskIDsToReport int64
+	taskStatus2ListTasksFunc  map[string]listTasksWithTypeWhitelistFunc
 }
 
 func (c *collectListerMetricsTask) Save() ([]byte, error) {
@@ -41,71 +49,36 @@ func (c *collectListerMetricsTask) Run(
 	execCtx ExecutionContext,
 ) error {
 
+	c.taskStatus2ListTasksFunc = map[string]listTasksWithTypeWhitelistFunc{
+		storage.TaskStatusToString(storage.TaskStatusReadyToRun):    c.storage.ListTasksReadyToRun,
+		storage.TaskStatusToString(storage.TaskStatusRunning):       c.storage.ListTasksRunning,
+		storage.TaskStatusToString(storage.TaskStatusReadyToCancel): c.storage.ListTasksReadyToCancel,
+		storage.TaskStatusToString(storage.TaskStatusCancelling):    c.storage.ListTasksCancelling,
+	}
 	defer c.cleanupMetrics()
 
 	ticker := time.NewTicker(c.metricsCollectionInterval)
 	defer ticker.Stop()
 
 	for range ticker.C {
-		err := c.collectTasksMetrics(
-			ctx,
-			func(context.Context) ([]storage.TaskInfo, error) {
-				return c.storage.ListTasksReadyToRun(
-					ctx,
-					^uint64(0), // limit
-					nil,
-				)
-			},
-			storage.TaskStatusToString(storage.TaskStatusReadyToRun),
-		)
-		if err != nil {
-			return err
+		for taskStatus, listTasksFunc := range c.taskStatus2ListTasksFunc {
+			err := c.collectTasksMetrics(
+				ctx,
+				func(context.Context) ([]storage.TaskInfo, error) {
+					return listTasksFunc(
+						ctx,
+						^uint64(0), // limit
+						nil,        // taskTypeWhitelist
+					)
+				},
+				taskStatus,
+			)
+			if err != nil {
+				return err
+			}
 		}
 
-		err = c.collectTasksMetrics(
-			ctx,
-			func(context.Context) ([]storage.TaskInfo, error) {
-				return c.storage.ListTasksRunning(
-					ctx,
-					^uint64(0), // limit
-				)
-			},
-			storage.TaskStatusToString(storage.TaskStatusRunning),
-		)
-		if err != nil {
-			return err
-		}
-
-		err = c.collectTasksMetrics(
-			ctx,
-			func(context.Context) ([]storage.TaskInfo, error) {
-				return c.storage.ListTasksReadyToCancel(
-					ctx,
-					^uint64(0), // limit
-					nil,
-				)
-			},
-			storage.TaskStatusToString(storage.TaskStatusReadyToCancel),
-		)
-		if err != nil {
-			return err
-		}
-
-		err = c.collectTasksMetrics(
-			ctx,
-			func(context.Context) ([]storage.TaskInfo, error) {
-				return c.storage.ListTasksCancelling(
-					ctx,
-					^uint64(0), // limit
-				)
-			},
-			storage.TaskStatusToString(storage.TaskStatusCancelling),
-		)
-		if err != nil {
-			return err
-		}
-
-		err = c.collectHangingTasksMetrics(ctx)
+		err := c.collectHangingTasksMetrics(ctx)
 		if err != nil {
 			return err
 		}
@@ -156,7 +129,10 @@ func (c *collectListerMetricsTask) collectTasksMetrics(
 	}
 
 	for taskType, count := range tasksByType {
-		c.setTasksCount(sensor, taskType, count)
+		subRegistry := c.registry.WithTags(map[string]string{
+			"type": taskType,
+		})
+		subRegistry.Gauge(sensor).Set(float64(count))
 	}
 
 	return nil
@@ -229,32 +205,19 @@ func (c *collectListerMetricsTask) collectHangingTasksMetrics(
 	return nil
 }
 
-func (c *collectListerMetricsTask) setTasksCount(
-	sensor string,
-	taskType string,
-	count uint64,
-) {
-	gauges, ok := c.taskGaugesBySensorAndType[sensor]
-	if !ok {
-		gauges = make(map[string]metrics.Gauge)
-		c.taskGaugesBySensorAndType[sensor] = gauges
-	}
-
-	gauge, ok := gauges[taskType]
-	if !ok {
-		gauge = c.registry.WithTags(map[string]string{
-			"type": taskType,
-		}).Gauge(sensor)
-		gauges[taskType] = gauge
-	}
-
-	gauge.Set(float64(count))
-}
-
 func (c *collectListerMetricsTask) cleanupMetrics() {
-	for _, gauges := range c.taskGaugesBySensorAndType {
-		for _, gauge := range gauges {
-			gauge.Set(float64(0))
+	var sensors []string
+	for taskStatus := range c.taskStatus2ListTasksFunc {
+		sensors = append(sensors, taskStatus)
+	}
+	sensors = append(sensors, totalHangingTaskCountGaugeName)
+
+	for _, sensor := range sensors {
+		for _, taskType := range c.taskTypes {
+			subRegistry := c.registry.WithTags(map[string]string{
+				"type": taskType,
+			})
+			subRegistry.Gauge(sensor).Set(float64(0))
 		}
 	}
 
