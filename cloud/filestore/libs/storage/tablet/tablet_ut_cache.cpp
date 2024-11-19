@@ -313,6 +313,60 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesCache)
         UNIT_ASSERT_VALUES_EQUAL(5, statsAfter.RWCount - statsBefore.RWCount);
     }
 
+    Y_UNIT_TEST(ShouldUpdateCacheUponResetSession)
+    {
+        NProto::TStorageConfig storageConfig;
+        storageConfig.SetInMemoryIndexCacheEnabled(true);
+        storageConfig.SetInMemoryIndexCacheNodesCapacity(2);
+        storageConfig.SetInMemoryIndexCacheNodeRefsCapacity(2);
+        TTestEnv env({}, storageConfig);
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
+        tablet.InitSession("client", "session");
+
+        auto statsBefore = GetTxStats(env, tablet);
+
+        auto id = tablet.CreateNode(TCreateNodeArgs::File(RootNodeId, "test"))
+                      ->Record.GetNode()
+                      .GetId();
+        auto handle = tablet.CreateHandle(id, TCreateHandleArgs::RDWR);
+
+        // Cache hit
+        tablet.GetNodeAttr(id, "")->Record.GetNode();
+
+        tablet.UnlinkNode(RootNodeId, "test", false);
+        // Should work as there is an existing handle
+        tablet.GetNodeAttr(id, "");
+
+        // Upon reset session the node should be removed from the cache as well
+        // as the localDB
+        tablet.ResetSession("");
+
+        tablet.InitSession("client", "session2");
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            E_FS_NOENT,
+            tablet.AssertGetNodeAttrFailed(id, "")->GetError().GetCode());
+
+        auto statsAfter = GetTxStats(env, tablet);
+        // First two GetNodeAttr calls should have been performed with the cache
+        UNIT_ASSERT_VALUES_EQUAL(
+            2,
+            statsAfter.ROCacheHitCount - statsBefore.ROCacheHitCount);
+        // Last GetNodeAttr call should have been a cache miss as it is not
+        // supposed to be present in the cache
+        UNIT_ASSERT_VALUES_EQUAL(
+            1,
+            statsAfter.ROCacheMissCount - statsBefore.ROCacheMissCount);
+        // CreateNode, CreateHandle, UnlinkNode, DestroySession and InitSession
+        // are RW txs
+        UNIT_ASSERT_VALUES_EQUAL(5, statsAfter.RWCount - statsBefore.RWCount);
+    }
+
     Y_UNIT_TEST(ShouldUpdateCacheUponSetNodeAttr)
     {
         NProto::TStorageConfig storageConfig;
