@@ -54,6 +54,7 @@ bool IReplayRequestGenerator::ShouldFailOnError()
 void IReplayRequestGenerator::Advance()
 {
     while (EventPtr = CurrentEvent->Next()) {
+        ++EventsProcessed;
         MessagePtr = dynamic_cast<const NProto::TProfileLogRecord*>(
             EventPtr->GetProto());
 
@@ -133,7 +134,7 @@ TFuture<TCompletedRequest> IReplayRequestGenerator::ProcessRequest(
             break;
     }
 
-    STORAGE_INFO(
+    STORAGE_DEBUG(
         "Uninmplemented action=%u %s",
         action,
         RequestName(request.GetRequestType()).c_str());
@@ -153,10 +154,11 @@ IReplayRequestGenerator::ExecuteNextRequest()
             continue;
         }
 
-        for (; EventMessageNumber > 0;) {
+        while (EventMessageNumber > 0) {
             NProto::TProfileLogRequestInfo request =
                 MessagePtr->GetRequests()[--EventMessageNumber];
             {
+                ++MessagesProcessed;
                 auto timediff = (request.GetTimestampMcs() - TimestampMcs) *
                                 Spec.GetTimeScale();
                 TimestampMcs = request.GetTimestampMcs();
@@ -165,6 +167,16 @@ IReplayRequestGenerator::ExecuteNextRequest()
                 }
 
                 const auto current = TInstant::Now();
+
+                if (nextStatusAt <= current) {
+                    nextStatusAt = current + statusEverySeconds;
+                    STORAGE_INFO(
+                        "Current event=%zu Msg=%zd TotalMsg=%zu",
+                        EventsProcessed,
+                        EventMessageNumber,
+                        MessagesProcessed)
+                }
+
                 auto diff = current - Started;
 
                 if (timediff > diff.MicroSeconds()) {
@@ -183,7 +195,9 @@ IReplayRequestGenerator::ExecuteNextRequest()
             }
 
             STORAGE_DEBUG(
-                "Msg=%zd: Processing typename=%s type=%d name=%s data=%s",
+                "Event=%zu Msg=%zd: Processing typename=%s type=%d name=%s "
+                "data=%s",
+                EventsProcessed,
                 EventMessageNumber,
                 request.GetTypeName().c_str(),
                 request.GetRequestType(),

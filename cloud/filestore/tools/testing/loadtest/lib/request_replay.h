@@ -34,6 +34,11 @@ private:
     THolder<NEventLog::IIterator> CurrentEvent;
     TConstEventPtr EventPtr;
     const NProto::TProfileLogRecord* MessagePtr{};
+    size_t EventsProcessed = 0;
+    size_t MessagesProcessed = 0;
+    static constexpr TDuration statusEverySeconds = TDuration::Seconds(10);
+    TInstant nextStatusAt = TInstant::Now() + statusEverySeconds;
+
     TFuture<TCompletedRequest> ProcessRequest(
         const NProto::TProfileLogRequestInfo& request);
 
