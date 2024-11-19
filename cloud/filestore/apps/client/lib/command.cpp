@@ -98,6 +98,10 @@ TCommand::TCommand()
         .RequiredArgument("NUM")
         .StoreResult(&SecurePort);
 
+    Opts.AddLongOption("server-unix-socket-path")
+        .RequiredArgument("STR")
+        .StoreResult(&ServerUnixSocketPath);
+
     Opts.AddLongOption("skip-cert-verification", "skip server certificate verification")
         .StoreTrue(&SkipCertVerification);
 
@@ -196,6 +200,9 @@ void TCommand::Init()
     }
     if (SecurePort) {
         config.SetSecurePort(SecurePort);
+    }
+    if (ServerUnixSocketPath){
+        config.SetUnixSocketPath(ServerUnixSocketPath);
     }
     if (config.GetHost() == "localhost" &&
         config.GetSecurePort() != 0)

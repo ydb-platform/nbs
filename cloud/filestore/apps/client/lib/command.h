@@ -52,6 +52,7 @@ protected:
     TString ServerAddress;
     ui32 ServerPort = 0;
     ui32 SecurePort = 0;
+    TString ServerUnixSocketPath;
     bool SkipCertVerification = false;
     TString IamTokenFile;
     TString ConfigFile;
