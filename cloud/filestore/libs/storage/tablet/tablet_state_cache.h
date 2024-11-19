@@ -13,8 +13,11 @@ namespace NCloud::NFileStore::NStorage {
 struct TInMemoryIndexStateStats
 {
     ui64 NodesCount;
+    ui64 NodesCapacity;
     ui64 NodeRefsCount;
+    ui64 NodeRefsCapacity;
     ui64 NodeAttrsCount;
+    ui64 NodeAttrsCapacity;
     bool IsNodeRefsExhaustive;
 };
 

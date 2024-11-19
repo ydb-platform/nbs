@@ -360,11 +360,15 @@ message TStorageConfig
     optional bool InMemoryIndexCacheEnabled = 371;
     // Capacity of in-memory index cache, in number of entries per each table
     optional uint64 InMemoryIndexCacheNodesCapacity = 372;
-    reserved 373; // InMemoryIndexCacheNodesVerCapacity
+    // Ratio of maximal number of nodes in the fs to the in-memory index cache
+    // capacity. I. e., if there are max 1000 nodes and ratio is set to 10,
+    // then there can be max 100 entries in cache. If both capacity and ratio
+    // are set, the greater value is used.
+    optional uint64 InMemoryIndexCacheNodesToNodesCapacityRatio = 373;
     optional uint64 InMemoryIndexCacheNodeAttrsCapacity = 374;
-    reserved 375; // InMemoryIndexCacheNodeAttrsVerCapacity
+    optional uint64 InMemoryIndexCacheNodesToNodeAttrsCapacityRatio = 375;
     optional uint64 InMemoryIndexCacheNodeRefsCapacity = 376;
-    reserved 377; // InMemoryIndexCacheNodeRefsVerCapacity
+    optional uint64 InMemoryIndexCacheNodesToNodeRefsCapacityRatio = 377;
 
     // Used to send non-network metrics as network ones to HIVE,
     // while we use them for load balancing
