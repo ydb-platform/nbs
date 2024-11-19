@@ -26,10 +26,6 @@ private:
     TTimeoutsStat StatForFinishedActors{};
 
 public:
-    THashMap<NActors::TActorId, TActorInfo>& AccessActors()
-    {
-        return Actors;
-    }
     void Insert(const NActors::TActorId& actorId);
     void Erase(const NActors::TActorId& actorId);
     void MarkLongRunning(
