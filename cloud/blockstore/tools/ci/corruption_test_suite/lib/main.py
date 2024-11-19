@@ -17,6 +17,7 @@ _DEFAULT_ZONE_ID = 'ru-central1-b'
 _NFS_DEVICE = 'nfs'
 _NFS_MOUNT_PATH = '/test'
 _NFS_TEST_FILE = '/test/test.txt'
+_NBS_MOUNT_PATH = '/dev/vdb'
 
 
 def parse_args():
@@ -81,13 +82,17 @@ def parse_args():
     return parser.parse_args()
 
 
+def _verify_cmd(test_case: TestCase, service: str) -> str:
+    file: str = _NBS_MOUNT_PATH if service == 'nbs' else _NFS_TEST_FILE
+    return f'{_VERIFY_TEST_REMOTE_PATH} {test_case.verify_test_cmd_args} --file {file} 2>&1'
+
+
 def _run_test_case(
     module_factories: common.ModuleFactories,
     ycp: YcpWrapper,
     test_case: TestCase,
     instance: Ycp.Instance,
     disk_type: str,
-    file: str,
     args,
     logger,
     results_processor
@@ -96,8 +101,7 @@ def _run_test_case(
     logger.info(f'Running verify-test at instance <id={instance.id}>')
     exception = None
     with module_factories.make_ssh_client(args.dry_run, instance.ip, ssh_key_path=args.ssh_key_path) as ssh:
-        _, stdout, _ = ssh.exec_command(
-            f'{_VERIFY_TEST_REMOTE_PATH} {test_case.verify_test_cmd_args} --file {file} 2>&1')
+        _, stdout, _ = ssh.exec_command(_verify_cmd(test_case, args.service))
         exit_code = stdout.channel.recv_exit_status()
         if exit_code != 0:
             logger.error(f'Failed to execute verify-test with exit code {exit_code}:\n'
@@ -170,11 +174,6 @@ def run_corruption_test(module_factories: common.ModuleFactories, args, logger):
         args.generate_ycp_config,
         args.ycp_requests_template_path)
 
-    image = folder.image_name
-    # TODO: remove after NBSOPS-2015
-    if args.service == 'nfs' and image == 'ubuntu1604-stable':
-        image = 'ubuntu2004'
-
     results_processor = None
     if args.results_path is not None:
         results_processor = common.ResultsProcessorFsBase(
@@ -190,7 +189,7 @@ def run_corruption_test(module_factories: common.ModuleFactories, args, logger):
             cores=_TEST_INSTANCE_CORES,
             memory=_TEST_INSTANCE_MEMORY,
             compute_node=args.compute_node,
-            image_name=image,
+            image_name=folder.image_name,
             image_folder_id=folder.image_folder_id,
             description="Corruption test") as instance:
 
@@ -232,14 +231,13 @@ def run_corruption_test(module_factories: common.ModuleFactories, args, logger):
                     with ycp.attach_disk(instance, disk):
                         logger.info(f'Waiting until secondary disk appears'
                                     f' as a block device at instance <id={instance.id}>')
-                        helpers.wait_for_block_device_to_appear(instance.ip, '/dev/vdb', ssh_key_path=args.ssh_key_path)
+                        helpers.wait_for_block_device_to_appear(instance.ip, _NBS_MOUNT_PATH, ssh_key_path=args.ssh_key_path)
                         _run_test_case(
                             module_factories,
                             ycp,
                             test_case,
                             instance,
                             disk_type,
-                            '/dev/vdb',
                             args,
                             logger,
                             results_processor)
@@ -258,7 +256,6 @@ def run_corruption_test(module_factories: common.ModuleFactories, args, logger):
                             test_case,
                             instance,
                             disk_type,
-                            _NFS_TEST_FILE,
                             args,
                             logger,
                             results_processor)
