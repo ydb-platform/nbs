@@ -478,7 +478,7 @@ struct TTxIndexTablet
     // ResetSession
     //
 
-    struct TResetSession
+    struct TResetSession : TIndexStateNodeUpdates
     {
         /* const */ TRequestInfoPtr RequestInfo;
         const TString SessionId;
@@ -500,6 +500,7 @@ struct TTxIndexTablet
 
         void Clear()
         {
+            TIndexStateNodeUpdates::Clear();
             Nodes.clear();
         }
     };
