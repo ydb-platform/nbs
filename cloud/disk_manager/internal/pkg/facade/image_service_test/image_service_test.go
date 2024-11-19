@@ -597,14 +597,14 @@ func testImageServiceCreateImageFromURLWhichIsOverwrittenInProcess(
 
 	if err != nil {
 		if strings.Contains(err.Error(), "wrong ETag") {
-			testcommon.CheckErrorDetails(t, err, codes.Aborted, "", true /*internal*/)
+			testcommon.CheckErrorDetails(t, err, codes.Aborted, "", false /*internal*/)
 			return
 		}
 
 		// HTTP code 416 might be returned if overwritten image size is less
 		// than image size.
 		if strings.Contains(err.Error(), "http code 416") {
-			testcommon.CheckErrorDetails(t, err, codes.BadSource, "", true /*internal*/)
+			testcommon.CheckErrorDetails(t, err, codes.Aborted, "", false /*internal*/)
 			return
 		}
 	}
@@ -752,7 +752,7 @@ func testShouldFailCreateImageFromImageFileURL(
 		err,
 		codes.BadSource,
 		errorDetailsMessage,
-		true, // internal
+		false, // internal
 	)
 
 	testcommon.CheckConsistency(t, ctx)
