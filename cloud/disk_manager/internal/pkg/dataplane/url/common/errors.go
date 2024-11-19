@@ -42,22 +42,7 @@ func NewSourceForbiddenError(format string, args ...interface{}) error {
 	)
 }
 
-func NewWrongETagError(format string, args ...interface{}) error {
-	return errors.NewDetailedError(
-		fmt.Errorf(format, args...),
-		&errors.ErrorDetails{
-			Code:     error_codes.Aborted,
-			Message:  "data from url source was changed during image creation",
-			Internal: false,
-		},
-	)
-}
-
-func NewRequestedRangeNotSatisfiableError(
-	format string,
-	args ...interface{},
-) error {
-
+func NewSourceOverwrittenError(format string, args ...interface{}) error {
 	return errors.NewDetailedError(
 		fmt.Errorf(format, args...),
 		&errors.ErrorDetails{

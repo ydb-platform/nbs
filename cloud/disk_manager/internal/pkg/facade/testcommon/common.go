@@ -641,7 +641,7 @@ func CheckErrorDetails(
 	require.True(t, ok)
 
 	require.Equal(t, int64(code), errorDetails.Code)
-	require.False(t, errorDetails.Internal)
+	require.Equal(t, internal, errorDetails.Internal)
 	if len(message) != 0 {
 		require.Equal(t, message, errorDetails.Message)
 	}
