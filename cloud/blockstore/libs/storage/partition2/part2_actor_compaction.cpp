@@ -73,6 +73,7 @@ private:
     const ui64 CommitId;
     const TBlockRange32 BlockRange;
     const TDuration ReadBlobTimeout;
+    const bool ExternalCompaction;
     TGarbageInfo GarbageInfo;
     TAffectedBlobInfos AffectedBlobInfos;
     ui32 BlobsSkipped;
@@ -109,6 +110,7 @@ public:
         ui64 commitId,
         const TBlockRange32& blockRange,
         TDuration readBlobTimeout,
+        bool externalCompaction,
         TGarbageInfo garbageInfo,
         TAffectedBlobInfos affectedBlobInfos,
         ui32 blobsSkipped,
@@ -165,6 +167,7 @@ TCompactionActor::TCompactionActor(
         ui64 commitId,
         const TBlockRange32& blockRange,
         TDuration readBlobTimeout,
+        const bool externalCompaction,
         TGarbageInfo garbageInfo,
         TAffectedBlobInfos affectedBlobInfos,
         ui32 blobsSkipped,
@@ -179,6 +182,7 @@ TCompactionActor::TCompactionActor(
     , CommitId(commitId)
     , BlockRange(blockRange)
     , ReadBlobTimeout(readBlobTimeout)
+    , ExternalCompaction(externalCompaction)
     , GarbageInfo(std::move(garbageInfo))
     , AffectedBlobInfos(std::move(affectedBlobInfos))
     , BlobsSkipped(blobsSkipped)
@@ -420,6 +424,7 @@ void TCompactionActor::NotifyCompleted(
     request->AffectedRanges = std::move(AffectedRanges);
     request->AffectedBlockInfos = std::move(AffectedBlockInfos);
     request->BlockCommitIds = std::move(BlockCommitIds);
+    request->ExternalCompaction = ExternalCompaction;
 
     NCloud::Send(ctx, Tablet, std::move(request));
 }
@@ -747,15 +752,20 @@ void TPartitionActor::HandleCompaction(
         NCloud::Reply(ctx, requestInfo, std::move(response));
     };
 
-    if (State->GetCompactionStatus() == EOperationStatus::Started) {
-        replyError(ctx, *requestInfo, E_TRY_AGAIN, "compaction already in progress");
-        return;
-    }
-
     if (!State->IsCompactionAllowed()) {
         State->SetCompactionStatus(EOperationStatus::Idle);
 
         replyError(ctx, *requestInfo, E_BS_OUT_OF_SPACE, "all channels readonly");
+        return;
+    }
+
+    if (msg->CompactionOptions.test(ExternalCompaction)) {
+        if (!State->SetExternalCompactionRequestRunning(true)) {
+            replyError(ctx, *requestInfo, E_TRY_AGAIN, "external compaction already started");
+            return;
+        }
+    } else if (State->GetCompactionStatus() == EOperationStatus::Started) {
+        replyError(ctx, *requestInfo, E_TRY_AGAIN, "compaction already started");
         return;
     }
 
@@ -788,7 +798,11 @@ void TPartitionActor::HandleCompaction(
     }
 
     if (!rangeStat.BlobCount && !garbageInfo.BlobCounters) {
-        State->SetCompactionStatus(EOperationStatus::Idle);
+        if (msg->CompactionOptions.test(ExternalCompaction)) {
+            State->SetExternalCompactionRequestRunning(false);
+        } else {
+            State->SetCompactionStatus(EOperationStatus::Idle);
+        }
 
         replyError(ctx, *requestInfo, S_ALREADY, "nothing to compact");
         return;
@@ -817,14 +831,13 @@ void TPartitionActor::HandleCompaction(
             rangeStat.ReadRequestBlobCount,
             rangeStat.ReadRequestBlockCount,
             rangeStat.CompactionScore.Score,
-            msg->ForceFullCompaction
+            msg->CompactionOptions.test(ForceFullCompaction)
         );
 
         tx = CreateTx<TCompaction>(
             requestInfo,
             blockRange,
-            msg->ForceFullCompaction
-        );
+            msg->CompactionOptions.test(ForceFullCompaction));
     } else {
         LOG_DEBUG(ctx, TBlockStoreComponents::PARTITION,
             "[%lu] Start compaction (blobs: %s)",
@@ -868,7 +881,12 @@ void TPartitionActor::HandleCompactionCompleted(
     PartCounters->RequestCounters.Compaction.AddRequest(d.MicroSeconds());
 
     State->ReleaseCollectBarrier(msg->CommitId);
-    State->SetCompactionStatus(EOperationStatus::Idle);
+
+    if (msg->ExternalCompaction) {
+        State->SetExternalCompactionRequestRunning(false);
+    } else {
+        State->SetCompactionStatus(EOperationStatus::Idle);
+    }
 
     Actors.erase(ev->Sender);
 
@@ -955,7 +973,7 @@ bool TPartitionActor::PrepareCompaction(
 
     visitor.Finish();
 
-    if (!args.ForceFullCompaction) {
+    if (!args.CompactionOptions.test(ForceFullCompaction)) {
         Sort(
             args.Blobs.begin(),
             args.Blobs.end(),
@@ -1187,6 +1205,7 @@ void TPartitionActor::CompleteCompaction(
         args.CommitId,
         args.BlockRange,
         readBlobTimeout,
+        args.CompactionOptions.test(ExternalCompaction),
         std::move(args.GarbageInfo),
         std::move(args.AffectedBlobInfos),
         args.BlobsSkipped,

@@ -896,8 +896,18 @@ private:
     TOperationState CompactionState;
 
     TCompactionMap CompactionMap;
+    bool ExternalCompactionRequestRunning = false;
 
 public:
+    bool SetExternalCompactionRequestRunning(bool running)
+    {
+        if (ExternalCompactionRequestRunning && running) {
+            return false;
+        }
+        ExternalCompactionRequestRunning = running;
+        return true;
+    }
+
     EOperationStatus GetCompactionStatus() const
     {
         return CompactionState.GetStatus();

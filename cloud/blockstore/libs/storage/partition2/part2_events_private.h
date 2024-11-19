@@ -7,6 +7,7 @@
 #include <cloud/blockstore/libs/kikimr/components.h>
 #include <cloud/blockstore/libs/kikimr/events.h>
 #include <cloud/blockstore/libs/storage/core/request_info.h>
+#include <cloud/blockstore/libs/storage/core/compaction_options.h>
 #include <cloud/blockstore/libs/storage/model/channel_data_kind.h>
 #include <cloud/blockstore/libs/storage/model/channel_permissions.h>
 #include <cloud/blockstore/libs/storage/partition2/model/blob.h>
@@ -295,20 +296,26 @@ struct TEvPartitionPrivate
     {
         ECompactionMode Mode = RangeCompaction;
         TMaybe<ui32> BlockIndex;
-        bool ForceFullCompaction = false;
+        TCompactionOptions CompactionOptions;
         TGarbageInfo GarbageInfo;
 
         TCompactionRequest() = default;
+
+        TCompactionRequest(
+                ui32 blockIndex,
+                TCompactionOptions compactionOptions)
+            : BlockIndex(blockIndex)
+            , CompactionOptions(compactionOptions)
+        {}
+
+        TCompactionRequest(ui32 blockIndex)
+            : TCompactionRequest(blockIndex, {})
+        {}
 
         TCompactionRequest(ECompactionMode mode)
             : Mode(mode)
         {}
 
-        TCompactionRequest(ui32 blockIndex, bool forceFullCompaction)
-            : Mode(RangeCompaction)
-            , BlockIndex(blockIndex)
-            , ForceFullCompaction(forceFullCompaction)
-        {}
 
         TCompactionRequest(TGarbageInfo garbageInfo)
             : Mode(GarbageCompaction)
@@ -517,6 +524,16 @@ struct TEvPartitionPrivate
     };
 
     //
+    // CompactionCompleted
+    //
+
+    struct TCompactionCompleted
+        : TOperationCompleted
+    {
+        bool ExternalCompaction = false;
+    };
+
+    //
     // ForcedCleanupCompleted
     //
 
@@ -571,7 +588,7 @@ struct TEvPartitionPrivate
     using TEvWriteBlocksCompleted = TResponseEvent<TWriteBlocksCompleted, EvWriteBlocksCompleted>;
     using TEvZeroBlocksCompleted = TResponseEvent<TOperationCompleted, EvZeroBlocksCompleted>;
     using TEvFlushCompleted = TResponseEvent<TOperationCompleted, EvFlushCompleted>;
-    using TEvCompactionCompleted = TResponseEvent<TOperationCompleted, EvCompactionCompleted>;
+    using TEvCompactionCompleted = TResponseEvent<TCompactionCompleted, EvCompactionCompleted>;
     using TEvCollectGarbageCompleted = TResponseEvent<TOperationCompleted, EvCollectGarbageCompleted>;
     using TEvForcedCompactionCompleted = TResponseEvent<TForcedCompactionCompleted, EvForcedCompactionCompleted>;
     using TEvForcedCleanupCompleted = TResponseEvent<TForcedCleanupCompleted, EvForcedCleanupCompleted>;

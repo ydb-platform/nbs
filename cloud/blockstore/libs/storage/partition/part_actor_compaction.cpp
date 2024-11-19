@@ -149,6 +149,7 @@ private:
     const ui32 MaxAffectedBlocksPerCompaction;
     const IBlockDigestGeneratorPtr BlockDigestGenerator;
     const TDuration ReadBlobTimeout;
+    const bool ExternalCompaction;
 
     const ui64 CommitId;
 
@@ -181,6 +182,7 @@ public:
         ui32 maxAffectedBlocksPerCompaction,
         IBlockDigestGeneratorPtr blockDigestGenerator,
         TDuration readBlobTimeout,
+        bool externalCompaction,
         ui64 commitId,
         TVector<TRangeCompactionInfo> rangeCompactionInfos,
         TVector<TRequest> requests);
@@ -242,6 +244,7 @@ TCompactionActor::TCompactionActor(
         ui32 maxAffectedBlocksPerCompaction,
         IBlockDigestGeneratorPtr blockDigestGenerator,
         TDuration readBlobTimeout,
+        bool externalCompaction,
         ui64 commitId,
         TVector<TRangeCompactionInfo> rangeCompactionInfos,
         TVector<TRequest> requests)
@@ -253,6 +256,7 @@ TCompactionActor::TCompactionActor(
     , MaxAffectedBlocksPerCompaction(maxAffectedBlocksPerCompaction)
     , BlockDigestGenerator(std::move(blockDigestGenerator))
     , ReadBlobTimeout(readBlobTimeout)
+    , ExternalCompaction(externalCompaction)
     , CommitId(commitId)
     , RangeCompactionInfos(std::move(rangeCompactionInfos))
     , Requests(std::move(requests))
@@ -736,7 +740,7 @@ void TCompactionActor::NotifyCompleted(
         request->AffectedRanges.push_back(ConvertRangeSafe(rc.BlockRange));
     }
     request->AffectedBlockInfos = std::move(AffectedBlockInfos);
-    request->IsExternalCompaction = false;
+    request->ExternalCompaction = ExternalCompaction;
 
     NCloud::Send(ctx, Tablet, std::move(request));
 }
@@ -1177,7 +1181,7 @@ void TPartitionActor::EnqueueCompactionIfNeeded(const TActorContext& ctx)
     if (mode == TEvPartitionPrivate::GarbageCompaction
             || !diskGarbageBelowThreshold)
     {
-        request->ForceFullCompaction = true;
+        request->CompactionOptions.set(ForceFullCompaction);
     }
 
     if (throttlingAllowed && Config->GetMaxCompactionDelay()) {
@@ -1253,9 +1257,9 @@ void TPartitionActor::HandleCompaction(
         return;
     }
 
-    if (Actors.AccessActors().contains(ev->Sender)) {
+    if (msg->CompactionOptions.test(ExternalCompaction)) {
         if (!State->SetExternalCompactionRequestRunning(true)) {
-            replyError(ctx, *requestInfo, E_TRY_AGAIN, "compaction already started");
+            replyError(ctx, *requestInfo, E_TRY_AGAIN, "external compaction already started");
             return;
         }
     } else if (State->GetCompactionState().Status == EOperationStatus::Started) {
@@ -1293,7 +1297,7 @@ void TPartitionActor::HandleCompaction(
     }
 
     if (tops.empty() || !tops.front().Stat.BlobCount) {
-        if (Actors.AccessActors().contains(ev->Sender)) {
+        if (msg->CompactionOptions.test(ExternalCompaction)) {
             State->SetExternalCompactionRequestRunning(false);
         } else {
             State->GetCompactionState().SetStatus(EOperationStatus::Idle);
@@ -1346,7 +1350,7 @@ void TPartitionActor::HandleCompaction(
     auto tx = CreateTx<TCompaction>(
         requestInfo,
         commitId,
-        msg->ForceFullCompaction,
+        msg->CompactionOptions,
         std::move(ranges));
 
     ui64 minCommitId = State->GetCommitQueue().GetMinCommitId();
@@ -1411,7 +1415,7 @@ void TPartitionActor::HandleCompactionCompleted(
     State->GetCleanupQueue().ReleaseBarrier(commitId);
     State->GetGarbageQueue().ReleaseBarrier(commitId);
 
-    if (msg->IsExternalCompaction) {
+    if (msg->ExternalCompaction) {
         State->SetExternalCompactionRequestRunning(false);
     } else {
         State->GetCompactionState().SetStatus(EOperationStatus::Idle);
@@ -1899,7 +1903,7 @@ bool TPartitionActor::PrepareCompaction(
             PartitionConfig.GetFolderId(),
             PartitionConfig.GetDiskId(),
             args.CommitId,
-            args.ForceFullCompaction,
+            args.CompactionOptions.test(ForceFullCompaction),
             ctx,
             TabletID(),
             affectedBlobIds,
@@ -1986,6 +1990,7 @@ void TPartitionActor::CompleteCompaction(
         Config->GetMaxAffectedBlocksPerCompaction(),
         BlockDigestGenerator,
         readBlobTimeout,
+        args.CompactionOptions.test(ExternalCompaction),
         args.CommitId,
         std::move(rangeCompactionInfos),
         std::move(requests));

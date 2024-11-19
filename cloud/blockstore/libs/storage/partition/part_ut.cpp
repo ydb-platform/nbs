@@ -15,11 +15,13 @@
 #include <cloud/blockstore/libs/storage/api/volume.h>
 #include <cloud/blockstore/libs/storage/api/volume_proxy.h>
 #include <cloud/blockstore/libs/storage/core/block_handler.h>
+#include <cloud/blockstore/libs/storage/core/compaction_options.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/model/channel_data_kind.h>
 #include <cloud/blockstore/libs/storage/partition/model/fresh_blob_test.h>
 #include <cloud/blockstore/libs/storage/partition/model/fresh_blob.h>
 #include <cloud/blockstore/libs/storage/partition/part.h>
+#include <cloud/blockstore/libs/storage/partition/part_events_private.h>
 #include <cloud/blockstore/libs/storage/partition_common/events_private.h>
 #include <cloud/blockstore/libs/storage/testlib/test_env.h>
 #include <cloud/blockstore/libs/storage/testlib/test_runtime.h>
@@ -728,14 +730,10 @@ public:
         return std::make_unique<TEvPartitionCommonPrivate::TEvTrimFreshLogRequest>();
     }
 
-    std::unique_ptr<TEvPartitionPrivate::TEvCompactionRequest> CreateCompactionRequest()
+    template <typename... TArgs>
+    std::unique_ptr<TEvPartitionPrivate::TEvCompactionRequest> CreateCompactionRequest(TArgs&&... args)
     {
-        return std::make_unique<TEvPartitionPrivate::TEvCompactionRequest>();
-    }
-
-    std::unique_ptr<TEvPartitionPrivate::TEvCompactionRequest> CreateCompactionRequest(ui32 blockIndex, bool forceFullCompaction = false)
-    {
-        return std::make_unique<TEvPartitionPrivate::TEvCompactionRequest>(blockIndex, forceFullCompaction);
+        return std::make_unique<TEvPartitionPrivate::TEvCompactionRequest>(std::forward<TArgs>(args)...);
     }
 
     std::unique_ptr<TEvPartitionPrivate::TEvMetadataRebuildBlockCountRequest> CreateMetadataRebuildBlockCountRequest(
@@ -4090,7 +4088,11 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         auto oldStats = response->Record.GetStats();
 
         for (ui32 range = 0; range < rangesCount; ++range) {
-            partition.Compaction(range * 1024);
+            partition.Compaction(
+                range * 1024,
+                TCompactionOptions().
+                    set(ForceFullCompaction).
+                    set(ExternalCompaction));
         }
 
         response = partition.StatPartition();
@@ -4125,7 +4127,11 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         auto oldStats = response->Record.GetStats();
 
         for (ui32 range = 0; range < rangesCount; ++range) {
-            partition.Compaction(range * 1024);
+            partition.Compaction(
+                range * 1024,
+                TCompactionOptions().
+                    set(ForceFullCompaction).
+                    set(ExternalCompaction));
         }
 
         response = partition.StatPartition();
@@ -5066,7 +5072,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
                                 event->Get<TEvPartitionPrivate::TEvCompactionRequest>();
                             UNIT_ASSERT_VALUES_EQUAL(
                                 incrementalCompactionExpected,
-                                !request->ForceFullCompaction
+                                !request->CompactionOptions.test(ForceFullCompaction)
                             );
 
                             compactionRequest.reset(event.Release());
@@ -7203,16 +7209,19 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         for (ui32 i = 0; i < 4; ++i)
         {
             partition.WriteBlocks(0, 100);
-            auto compResponse = partition.CompactRange(0, 100);
+            partition.SendCompactRangeRequest(0, 100);
+
+            {
+                TDispatchOptions options;
+                options.FinalEvents.emplace_back(
+                    TEvPartitionPrivate::EvForcedCompactionCompleted,
+                    1);
+                runtime->DispatchEvents(options);
+            }
+
+            auto compResponse = partition.RecvCompactRangeResponse();
             UNIT_ASSERT_VALUES_EQUAL(S_OK, compResponse->GetStatus());
             op.push_back(compResponse->Record.GetOperationId());
-        }
-
-        for (ui32 i = 0; i < 4; ++i)
-        {
-            auto response = partition.GetCompactionStatus(op[i]);
-            UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
-            UNIT_ASSERT_VALUES_EQUAL(true, response->Record.GetIsCompleted());
         }
 
         runtime->AdvanceCurrentTime(CompactOpHistoryDuration + TDuration::Seconds(1));
@@ -11216,6 +11225,95 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
             runtime->DispatchEvents(options);
         }
         UNIT_ASSERT_VALUES_EQUAL(1, failedReadBlob);
+    }
+
+    Y_UNIT_TEST(ShouldAllowExternalCompactionRequestsInPresenseOfTabletCompaction)
+    {
+        constexpr ui32 rangesCount = 5;
+        auto runtime = PrepareTestActorRuntime(DefaultConfig(), rangesCount * 1024);
+
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+
+        for (ui32 range = 0; range < rangesCount; ++range) {
+            partition.WriteBlocks(
+                TBlockRange32::MakeClosedInterval(
+                    range * 1024,
+                    (range + 1) * 1024 - 1),
+                1);
+        }
+        partition.Flush();
+
+        bool consumeResponse = true;
+        runtime->SetEventFilter([&]
+            (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& ev)
+        {
+            Y_UNUSED(runtime);
+
+            if (ev->GetTypeRewrite() == TEvPartitionPrivate::EvCompactionCompleted &&
+                consumeResponse)
+            {
+                consumeResponse = !consumeResponse;
+                return !consumeResponse;
+            }
+            return false;
+        });
+
+        partition.SendCompactionRequest(
+            0,
+            TCompactionOptions().set(ForceFullCompaction));
+        partition.Compaction(
+            0,
+            TCompactionOptions().
+                set(ForceFullCompaction).
+                set(ExternalCompaction));
+    }
+
+    Y_UNIT_TEST(ShouldAllowOnlyOneExternalCompactionRequestsAtATime)
+    {
+        constexpr ui32 rangesCount = 5;
+        auto runtime = PrepareTestActorRuntime(DefaultConfig(), rangesCount * 1024);
+
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+
+        for (ui32 range = 0; range < rangesCount; ++range) {
+            partition.WriteBlocks(
+                TBlockRange32::MakeClosedInterval(
+                    range * 1024 + 100,
+                    range * 1024 + 1000),
+                1);
+        }
+        partition.Flush();
+
+        bool consumeResponse = true;
+        runtime->SetEventFilter([&]
+            (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& ev)
+        {
+            Y_UNUSED(runtime);
+
+            if (ev->GetTypeRewrite() == TEvPartitionPrivate::EvCompactionCompleted &&
+                consumeResponse)
+            {
+                consumeResponse = !consumeResponse;
+                return !consumeResponse;
+            }
+            return false;
+        });
+
+        partition.SendCompactionRequest(
+            0,
+            TCompactionOptions().
+                set(ForceFullCompaction).
+                set(ExternalCompaction));
+        partition.SendCompactionRequest(
+            0,
+            TCompactionOptions().
+                set(ForceFullCompaction).
+                set(ExternalCompaction));
+
+        auto response = partition.RecvCompactionResponse();
+        UNIT_ASSERT_VALUES_EQUAL(E_TRY_AGAIN, response->GetStatus());
     }
 }
 

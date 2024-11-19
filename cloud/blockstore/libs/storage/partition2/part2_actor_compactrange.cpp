@@ -93,7 +93,9 @@ void TForcedCompactionActor::SendCompactionRequest(const TActorContext& ctx)
     auto request = std::make_unique<TEvPartitionPrivate::TEvCompactionRequest>(
         MakeIntrusive<TCallContext>(),
         RangesToCompact[CurrentBlock],
-        true    // forceFullCompaction
+        TCompactionOptions().
+            set(ExternalCompaction).
+            set(ForceFullCompaction)
     );
 
     NCloud::Send(ctx, Tablet, std::move(request));
