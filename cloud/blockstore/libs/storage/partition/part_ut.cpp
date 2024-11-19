@@ -265,8 +265,8 @@ auto InitTestActorRuntime(
 void InitLogSettings(TTestActorRuntime& runtime)
 {
     for (ui32 i = TBlockStoreComponents::START; i < TBlockStoreComponents::END; ++i) {
-        //runtime.SetLogPriority(i, NLog::PRI_INFO);
-        runtime.SetLogPriority(i, NLog::PRI_DEBUG);
+        runtime.SetLogPriority(i, NLog::PRI_INFO);
+        // runtime.SetLogPriority(i, NLog::PRI_DEBUG);
     }
     // runtime.SetLogPriority(NLog::InvalidComponent, NLog::PRI_DEBUG);
     runtime.SetLogPriority(NKikimrServices::BS_NODE, NLog::PRI_ERROR);
