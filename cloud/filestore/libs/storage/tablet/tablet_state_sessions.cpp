@@ -214,6 +214,8 @@ NActors::TActorId TIndexTabletState::RecoverSession(
         Impl->SessionByOwner.emplace(owner, session);
     }
 
+    session->SetRecoveryTimestampUs(Now().MicroSeconds());
+
     return oldOwner;
 }
 
