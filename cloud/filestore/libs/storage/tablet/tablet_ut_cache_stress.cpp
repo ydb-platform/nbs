@@ -30,6 +30,7 @@ class TRequestGenerator
         CREATE_HANDLE,
         DESTROY_HANDLE,
         REBOOT_TABLET,
+        RESET_SESSION,
 
         OPERATION_COUNT
     };
@@ -100,8 +101,11 @@ public:
                 case REBOOT_TABLET:
                     response = DoRebootTablet();
                     break;
-                default:
+                case RESET_SESSION:
+                    response = DoResetSession();
                     break;
+                default:
+                    ythrow yexception() << "must be unreachable";
             }
 
             if (!response.empty()) {
@@ -309,6 +313,11 @@ private:
         Tablet->RebootTablet();
         Tablet->RecoverSession();
         return "Tablet rebooted";
+    }
+
+    TString DoResetSession()
+    {
+        return Tablet->ResetSession("")->Record.DebugString();
     }
 
     ////////////////////////////////////////////////////////////////////////////////
