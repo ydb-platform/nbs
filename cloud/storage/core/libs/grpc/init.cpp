@@ -3,13 +3,10 @@
 #include <contrib/libs/grpc/include/grpc/grpc.h>
 #include <contrib/libs/grpc/include/grpc/support/log.h>
 
-#include <library/cpp/deprecated/atomic/atomic.h>
 #include <library/cpp/logger/log.h>
 
 #include <util/system/mutex.h>
 #include <util/system/src_location.h>
-
-#include <atomic>
 
 namespace NCloud {
 
@@ -19,7 +16,7 @@ namespace {
 
 struct TGrpcState
 {
-    TAtomic Counter = 0;
+    ui32 Refs = 0;
     TLog Log;
 };
 
@@ -97,7 +94,7 @@ TGrpcInitializer::TGrpcInitializer()
             GrpcState = new TGrpcState;
         }
 
-        if (AtomicGetAndIncrement(GrpcState->Counter) == 0) {
+        if (GrpcState->Refs++ == 0) {
             grpc_init();
         }
     }
@@ -107,8 +104,9 @@ TGrpcInitializer::~TGrpcInitializer()
 {
     with_lock (GrpcStateMutex) {
         Y_ABORT_UNLESS(GrpcState);
+        Y_ABORT_UNLESS(GrpcState->Refs);
 
-        if (AtomicDecrement(GrpcState->Counter) == 0) {
+        if (--GrpcState->Refs == 0) {
             grpc_shutdown_blocking();
 
             delete GrpcState;
