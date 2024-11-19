@@ -144,6 +144,11 @@ TCommand::TCommand(IBlockStorePtr client)
         .RequiredArgument("NUM")
         .StoreResult(&SecurePort);
 
+    // server-unix-socket-path to avoid collision with endpoint-proxy parameter
+    Opts.AddLongOption("server-unix-socket-path")
+        .RequiredArgument("STR")
+        .StoreResult(&ServerUnixSocketPath);
+
     Opts.AddLongOption("endpoint-proxy-host", "endpoint proxy host")
         .RequiredArgument("STR")
         .StoreResult(&EndpointProxyHost);
@@ -626,6 +631,9 @@ void TCommand::InitClientConfig()
     }
     if (SecurePort) {
         clientConfig.SetSecurePort(SecurePort);
+    }
+    if (ServerUnixSocketPath){
+        clientConfig.SetUnixSocketPath(ServerUnixSocketPath);
     }
     if (clientConfig.GetHost() == "localhost" &&
         clientConfig.GetSecurePort() != 0)

@@ -45,6 +45,7 @@ protected:
     TString Host;
     ui32 InsecurePort = 0;
     ui32 SecurePort = 0;
+    TString ServerUnixSocketPath;
     bool SkipCertVerification = false;
 
     TString EndpointProxyHost;
