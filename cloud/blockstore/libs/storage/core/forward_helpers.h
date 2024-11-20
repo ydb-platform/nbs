@@ -114,4 +114,23 @@ inline TGuardedSgList GetSglist(const NProto::TWriteBlocksLocalRequest& request)
     return request.Sglist;
 }
 
+template <typename TEvent>
+void ForwardMessageToActor(
+    TEvent& ev,
+    const NActors::TActorContext& ctx,
+    NActors::TActorId destActor)
+{
+    NActors::TActorId nondeliveryActor = ev->GetForwardOnNondeliveryRecipient();
+    auto message = std::make_unique<NActors::IEventHandle>(
+        destActor,
+        ev->Sender,
+        ev->ReleaseBase().Release(),
+        ev->Flags,
+        ev->Cookie,
+        ev->Flags & NActors::IEventHandle::FlagForwardOnNondelivery
+            ? &nondeliveryActor
+            : nullptr);
+    ctx.Send(std::move(message));
+}
+
 }   // namespace NCloud::NBlockStore::NStorage

@@ -11,6 +11,7 @@ SRCS(
 
     part_mirror.cpp
     part_mirror_actor.cpp
+    part_mirror_actor_get_device_for_range.cpp
     part_mirror_actor_mirror.cpp
     part_mirror_actor_readblocks.cpp
     part_mirror_actor_stats.cpp

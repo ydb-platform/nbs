@@ -299,4 +299,17 @@ void TMirrorPartitionResyncActor::HandleReadResyncFastPathResponse(
     FastPathRecords.erase(ev->Cookie);
 }
 
+void TMirrorPartitionResyncActor::HandleGetDeviceForRange(
+    const TEvNonreplPartitionPrivate::TEvGetDeviceForRangeRequest::TPtr& ev,
+    const NActors::TActorContext& ctx)
+{
+    auto* msg = ev->Get();
+    bool canUseDirectCopy = ResyncFinished || State.IsResynced(msg->BlockRange);
+    if (canUseDirectCopy) {
+        GetDeviceForRangeCompanion.HandleGetDeviceForRange(ev, ctx);
+    } else {
+        GetDeviceForRangeCompanion.ReplyCanNotUseDirectCopy(ev, ctx);
+    }
+}
+
 }   // namespace NCloud::NBlockStore::NStorage
