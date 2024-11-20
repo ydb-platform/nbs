@@ -299,8 +299,8 @@ private:
             }
 
             if (parentNode == InvalidNodeId && nodeName.empty()) {
-                nodeName =
-                    "nodeid-" + ToString(logRequest.GetNodeInfo().GetNodeId());
+                nodeName = UnknownNodeNamePrefix +
+                           ToString(logRequest.GetNodeInfo().GetNodeId());
             }
 
             if (nodeName.empty()) {
@@ -792,13 +792,31 @@ private:
                 logRequest.GetNodeInfo().GetParentNodeId();
         }
 
-        // TODO(proller): guess path by ParentNodeId + NodeName
         // TODO(proller): can create and truncate to known size missing file by flag
 
-        const auto nodeid =
-            GetLocalNodeId(logRequest.GetNodeInfo().GetNodeId());
+        TFsPath fullname;
+        if (logRequest.GetNodeInfo().GetNodeId() != InvalidNodeId) {
+            const auto nodeId =
+                GetLocalNodeId(logRequest.GetNodeInfo().GetNodeId());
 
-        if (nodeid == InvalidNodeId) {
+            if (nodeId != InvalidNodeId) {
+                fullname = PathByNode(nodeId);
+            }
+        }
+
+        if (!fullname.IsDefined() &&
+            logRequest.GetNodeInfo().GetParentNodeId() != InvalidNodeId &&
+            !logRequest.GetNodeInfo().GetNodeName().empty())
+        {
+            if (const auto parentPath =
+                    PathByNode(logRequest.GetNodeInfo().GetParentNodeId());
+                parentPath.IsDefined())
+            {
+                fullname = parentPath / logRequest.GetNodeInfo().GetNodeName();
+            }
+        }
+
+        if (!fullname.IsDefined()) {
             return MakeFuture(TCompletedRequest{
                 NProto::ACTION_GET_NODE_ATTR,
                 Started,
@@ -809,7 +827,6 @@ private:
                                      << " in " << NodesLogToLocal.size())});
         }
 
-        auto fullname = PathByNode(nodeid);
         [[maybe_unused]] const auto stat = TFileStat{fullname};
         return MakeFuture(
             TCompletedRequest(NProto::ACTION_GET_NODE_ATTR, Started, {}));
