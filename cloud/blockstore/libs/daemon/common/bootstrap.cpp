@@ -843,6 +843,7 @@ void TBootstrapBase::Start()
 {
 #define START_COMMON_COMPONENT(c)                                              \
     if (c) {                                                                   \
+        STORAGE_INFO("Starting " << #c << " ...");                             \
         c->Start();                                                            \
         STORAGE_INFO("Started " << #c);                                        \
     }                                                                          \
@@ -850,6 +851,7 @@ void TBootstrapBase::Start()
 
 #define START_KIKIMR_COMPONENT(c)                                              \
     if (Get##c()) {                                                            \
+        STORAGE_INFO("Starting " << #c << " ...");                             \
         Get##c()->Start();                                                     \
         STORAGE_INFO("Started " << #c);                                        \
     }                                                                          \
@@ -946,6 +948,7 @@ void TBootstrapBase::Stop()
     STOP_COMMON_COMPONENT(Service);
     STOP_COMMON_COMPONENT(EndpointManager);
     STOP_COMMON_COMPONENT(EndpointProxyClient);
+
 
     STOP_KIKIMR_COMPONENT(ActorSystem);
 
