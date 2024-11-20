@@ -31,7 +31,6 @@ def create_server_app_config():
     server.KikimrServiceConfig.CopyFrom(TKikimrServiceConfig())
     return server
 
-
 def create_storage_service_config(folder_id="test_folder_id"):
     storage = TStorageServiceConfig()
     storage.AuthorizationMode = EAuthorizationMode.Value("AUTHORIZATION_REQUIRE")
@@ -90,12 +89,20 @@ def create_client_config():
 class TestFixture:
     __binary_path = common.binary_path("cloud/blockstore/apps/client/blockstore-client")
 
-    def __init__(self, access_service_type=AccessService, folder_id="test_folder_id"):
-        server = create_server_app_config()
+    def __init__(
+        self,
+        access_service_type=AccessService,
+        folder_id="test_folder_id",
+        unix_socket_path: str | None = None,
+    ):
+        server_app_config = create_server_app_config()
+        if unix_socket_path is not None:
+            server_app_config.ServerConfig.UnixSocketPath = unix_socket_path
+        self.unix_socket_path = unix_socket_path
         storage = create_storage_service_config(folder_id)
         self.__local_load_test = LocalLoadTest(
             "",
-            server_app_config=server,
+            server_app_config=server_app_config,
             enable_access_service=True,
             storage_config_patches=[storage],
             enable_tls=True,
@@ -116,8 +123,14 @@ class TestFixture:
         self.__local_load_test.tear_down()
 
     def run(self, *args, **kwargs):
-        args = [self.__binary_path, *args, "--config", str(self.__client_config_path)]
-
+        args = [
+            self.__binary_path,
+            *args,
+            "--config",
+            str(self.__client_config_path),
+        ]
+        if self.unix_socket_path is not None:
+            args += ["--server-unix-socket-path", self.unix_socket_path]
         env = {}
         if self.__auth_token is not None:
             env['IAM_TOKEN'] = self.__auth_token
@@ -220,3 +233,18 @@ def test_new_auth_unknown_subject():
         result = env.create_volume()
         assert result.returncode != 0
         assert json.loads(result.stdout)["Error"]["CodeString"] == "E_UNAUTHORIZED"
+
+def test_unix_socket_does_not_require_auth():
+    unix_socket_path = common.work_path("nbs.sock")
+    with TestFixture(NewAccessService, unix_socket_path=unix_socket_path) as env:
+        token = "some_token"
+        env.access_service.create_account(
+            "test_user",
+            token,
+            is_unknown_subject=True,
+            permissions=[
+                {"permission": "nbsInternal.disks.create", "resource": env.folder_id},
+            ],
+        )
+        result = env.create_volume()
+        assert result.returncode == 0
