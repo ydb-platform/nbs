@@ -59,8 +59,6 @@ func (c *collectListerMetricsTask) Run(
 					return c.storage.ListTasksWithStatus(
 						ctx,
 						taskStatus,
-						^uint64(0), // limit
-						nil,        // taskTypeWhitelist
 					)
 				},
 				taskStatus,
