@@ -110,8 +110,6 @@ void TMirrorPartitionResyncActor::SetupPartitions(const TActorContext& ctx)
             SelfId(),
             SelfId()));
 
-    GetChangedBlocksCompanion.SetDelegate(MirrorActorId);
-
     const auto& replicaInfos = State.GetReplicaInfos();
     for (ui32 i = 0; i < replicaInfos.size(); i++) {
         IActorPtr actor = CreateNonreplicatedPartition(
@@ -308,6 +306,9 @@ STFUNC(TMirrorPartitionResyncActor::StateZombie)
         HFunc(TEvService::TEvWriteBlocksLocalRequest, RejectWriteBlocksLocal);
 
         HFunc(NPartition::TEvPartition::TEvDrainRequest, RejectDrain);
+        HFunc(
+            TEvService::TEvGetChangedBlocksRequest,
+            GetChangedBlocksCompanion.RejectGetChangedBlocks);
 
         HFunc(TEvVolume::TEvDescribeBlocksRequest, RejectDescribeBlocks);
         HFunc(TEvVolume::TEvGetCompactionStatusRequest, RejectGetCompactionStatus);

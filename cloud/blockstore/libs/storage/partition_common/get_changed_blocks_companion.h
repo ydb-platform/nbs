@@ -8,19 +8,19 @@ namespace NCloud::NBlockStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-// Helps to process the TEvGetChangedBlocksRequest message. It can either
-// respond to it with an error, or redirect it to another actor.
+// Helps to process the TEvGetChangedBlocksRequest message. It respond to
+// request with an error.
 class TGetChangedBlocksCompanion
 {
-private:
-    NActors::TActorId Delegate;
 
 public:
     TGetChangedBlocksCompanion() = default;
 
-    void SetDelegate(NActors::TActorId delegate);
-
     void HandleGetChangedBlocks(
+        const TEvService::TEvGetChangedBlocksRequest::TPtr& ev,
+        const NActors::TActorContext& ctx) const;
+
+    void RejectGetChangedBlocks(
         const TEvService::TEvGetChangedBlocksRequest::TPtr& ev,
         const NActors::TActorContext& ctx) const;
 
