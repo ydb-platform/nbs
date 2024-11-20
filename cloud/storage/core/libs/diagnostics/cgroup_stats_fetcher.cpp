@@ -1,5 +1,6 @@
 #include "cgroup_stats_fetcher.h"
 
+#include <cloud/storage/core/libs/diagnostics/critical_events.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
 #include <util/datetime/cputimer.h>
