@@ -1378,7 +1378,7 @@ func TestStorageYDBListTasksRunning(t *testing.T) {
 		},
 	}
 
-	tasks, err := storage.ListTasksRunning(ctx, 100500, nil)
+	tasks, err := storage.ListTasksRunning(ctx, 100500)
 	require.NoError(t, err)
 	require.ElementsMatch(t, expectedTasks, tasks)
 }
@@ -1556,7 +1556,7 @@ func TestStorageYDBListTasksCancelling(t *testing.T) {
 		},
 	}
 
-	tasks, err := storage.ListTasksCancelling(ctx, 100500, nil)
+	tasks, err := storage.ListTasksCancelling(ctx, 100500)
 	require.NoError(t, err)
 	require.ElementsMatch(t, expectedTasks, tasks)
 }

@@ -747,7 +747,6 @@ func TestTasksRunningLimit(t *testing.T) {
 			runningTasks, _ := s.storage.ListTasksRunning(
 				ctx,
 				uint64(scheduledLongTaskCount),
-				nil,
 			)
 			require.NoError(t, err)
 

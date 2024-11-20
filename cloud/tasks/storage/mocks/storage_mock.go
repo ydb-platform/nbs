@@ -102,20 +102,18 @@ func (s *StorageMock) ListTasksStallingWhileCancelling(
 func (s *StorageMock) ListTasksRunning(
 	ctx context.Context,
 	limit uint64,
-	taskTypeWhitelist []string,
 ) ([]tasks_storage.TaskInfo, error) {
 
-	args := s.Called(ctx, limit, taskTypeWhitelist)
+	args := s.Called(ctx, limit)
 	res, _ := args.Get(0).([]tasks_storage.TaskInfo)
 	return res, args.Error(1)
 }
 func (s *StorageMock) ListTasksCancelling(
 	ctx context.Context,
 	limit uint64,
-	taskTypeWhitelist []string,
 ) ([]tasks_storage.TaskInfo, error) {
 
-	args := s.Called(ctx, limit, taskTypeWhitelist)
+	args := s.Called(ctx, limit)
 	res, _ := args.Get(0).([]tasks_storage.TaskInfo)
 	return res, args.Error(1)
 }

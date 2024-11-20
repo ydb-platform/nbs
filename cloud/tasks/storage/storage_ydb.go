@@ -206,7 +206,6 @@ func (s *storageYDB) ListTasksStallingWhileCancelling(
 func (s *storageYDB) ListTasksRunning(
 	ctx context.Context,
 	limit uint64,
-	taskTypeWhitelist []string,
 ) ([]TaskInfo, error) {
 
 	var tasks []TaskInfo
@@ -220,7 +219,7 @@ func (s *storageYDB) ListTasksRunning(
 				session,
 				"running",
 				limit,
-				taskTypeWhitelist,
+				nil, // taskTypeWhitelist
 			)
 			return err
 		},
@@ -231,7 +230,6 @@ func (s *storageYDB) ListTasksRunning(
 func (s *storageYDB) ListTasksCancelling(
 	ctx context.Context,
 	limit uint64,
-	taskTypeWhitelist []string,
 ) ([]TaskInfo, error) {
 
 	var tasks []TaskInfo
@@ -245,7 +243,7 @@ func (s *storageYDB) ListTasksCancelling(
 				session,
 				"cancelling",
 				limit,
-				taskTypeWhitelist,
+				nil, // taskTypeWhitelist
 			)
 			return err
 		},
@@ -262,13 +260,13 @@ func (s *storageYDB) ListTasksWithStatus(
 
 	switch status {
 	case TaskStatusToString(TaskStatusReadyToRun):
-		return s.ListTasksReadyToRun(ctx, limit, nil)
+		return s.ListTasksReadyToRun(ctx, limit, nil /* taskTypeWhitelist */)
 	case TaskStatusToString(TaskStatusReadyToCancel):
-		return s.ListTasksReadyToCancel(ctx, limit, nil)
+		return s.ListTasksReadyToCancel(ctx, limit, nil /* taskTypeWhitelist */)
 	case TaskStatusToString(TaskStatusRunning):
-		return s.ListTasksRunning(ctx, limit, nil)
+		return s.ListTasksRunning(ctx, limit)
 	case TaskStatusToString(TaskStatusCancelling):
-		return s.ListTasksCancelling(ctx, limit, nil)
+		return s.ListTasksCancelling(ctx, limit)
 	default:
 		return nil, errors.NewNonRetriableErrorf(
 			"listing of tasks with status %s is not supported",
