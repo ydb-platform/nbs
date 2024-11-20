@@ -875,8 +875,8 @@ void TBootstrapBase::Start()
     START_KIKIMR_COMPONENT(YdbStorage);
     START_KIKIMR_COMPONENT(StatsUploader);
     START_COMMON_COMPONENT(Spdk);
-    START_KIKIMR_COMPONENT(ActorSystem);
     START_COMMON_COMPONENT(FileIOServiceProvider);
+    START_KIKIMR_COMPONENT(ActorSystem);
     START_COMMON_COMPONENT(EndpointProxyClient);
     START_COMMON_COMPONENT(EndpointManager);
     START_COMMON_COMPONENT(Service);
