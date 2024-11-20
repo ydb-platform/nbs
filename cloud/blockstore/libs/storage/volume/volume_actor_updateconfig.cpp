@@ -321,7 +321,7 @@ void TVolumeActor::CompleteUpdateConfig(
     }
 
     // stop partitions that might have been using old configuration
-    StopPartitions(ctx);
+    StopPartitions(ctx, {});
 
     if (State) {
         State->ResetMeta(args.Meta);

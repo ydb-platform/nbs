@@ -9,7 +9,6 @@ import subprocess
 import sys
 import time
 
-from cloud.storage.core.tools.common.python.daemon import process_wait_and_check
 
 process = None
 
@@ -23,6 +22,23 @@ def sighandler(sig, frame):
 
 def should_kill_process() -> bool:
     return bool(random.getrandbits(1))
+
+
+def _process_wait_and_check(process, check_timeout):
+    while True:
+        try:
+            process.wait(timeout=check_timeout)
+        except subprocess.TimeoutExpired:
+            logger.warning(
+                f"wait for pid {process.pid} timed out after {timeout} seconds"
+            )
+
+            bt = subprocess.getoutput(
+                f'sudo gdb --batch -p {process.pid} -ex "thread apply all bt"'
+            )
+            logger.warning(f"PID {process.pid}: backtrace:\n{bt}")
+            continue
+        break
 
 
 def ping(port, path, success_codes):
@@ -95,8 +111,8 @@ def main():
                 else:
                     logging.info(f'terminating process {cmdline}')
                     process.terminate()
-                    process_wait_and_check(process,
-                                           check_timeout=args.terminate_check_timeout)
+                    _process_wait_and_check(process,
+                                            check_timeout=args.terminate_check_timeout)
 
             def start_process():
                 logging.info(f'starting process {cmdline}')
@@ -118,7 +134,7 @@ def main():
                     if process.poll() is not None:
                         if process.poll() in [0, 1, 100]:
                             logging.info(f'subprocess failed to start, code {process.poll()}')
-                            logging.info(os.system("ss -tpn"))
+                            logging.info(os.system("ss -tpna"))
                             process = start_process()
                         else:
                             logging.fatal(f'unexpected exit code {process.poll()}')

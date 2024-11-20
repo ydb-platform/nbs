@@ -127,7 +127,7 @@ void TVolumeActor::CompleteUpdateVolumeParams(
     auto response = std::make_unique<TEvVolume::TEvUpdateVolumeParamsResponse>();
     NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
 
-    StopPartitions(ctx);
+    StopPartitions(ctx, {});
     SendVolumeConfigUpdated(ctx);
     StartPartitionsForUse(ctx);
     ResetServicePipes(ctx);
@@ -164,7 +164,7 @@ void TVolumeActor::CompleteDeleteVolumeParams(
 {
     Y_UNUSED(args);
 
-    StopPartitions(ctx);
+    StopPartitions(ctx, {});
     SendVolumeConfigUpdated(ctx);
     StartPartitionsForUse(ctx);
     ResetServicePipes(ctx);

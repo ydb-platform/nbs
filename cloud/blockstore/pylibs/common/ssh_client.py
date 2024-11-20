@@ -40,6 +40,7 @@ class SshClient:
         def exec_command(
             self,
             command: list[str] | str,
+            check: bool = True,
         ) -> tuple[None, 'SshClient._StdoutStub', 'SshClient._StdoutStub']:
             if self._received_return_code is not None:
                 # Channel is not actually closed,
@@ -49,7 +50,7 @@ class SshClient:
                 # See: https://docs.paramiko.org/en/3.3/api/channel.html.
                 raise SshException(
                     "Trying to execute command in the closed channel")
-            return self._client.exec_command(command)
+            return self._client.exec_command(command, check=check)
 
         def recv_exit_status(self) -> int:
             if self._received_return_code is None:
@@ -146,7 +147,7 @@ class SshClient:
         command_line = [
             'scp',
             '-o', 'ServerAliveInterval=60',
-            '-o', 'StrictHostKeyChecking no',
+            '-o', 'StrictHostKeyChecking=no',
             "-o", "UserKnownHostsFile=/dev/null",
             *self._key_path_cmd_argument,
             f'{self._scp_authorization_string}:{remote_path}',
@@ -162,8 +163,9 @@ class SshClient:
     def exec_command(
         self,
         command: str | list[str],
+        check: bool = True,
     ) -> tuple[None, '_StdoutStub', '_StdoutStub']:
-        result = self._exec_command(command, check=True)
+        result = self._exec_command(command, check=check)
         return (
             None,
             self._StdoutStub(self, result.stdout, result.returncode),
@@ -216,7 +218,7 @@ class SshClient:
         command_line = [
             'scp',
             '-o', 'ServerAliveInterval=60',
-            '-o', 'StrictHostKeyChecking no',
+            '-o', 'StrictHostKeyChecking=no',
             '-o', 'UserKnownHostsFile=/dev/null',
             *self._key_path_cmd_argument,
             local_path,
@@ -231,7 +233,7 @@ class SshClient:
         return [
             'ssh',
             '-o', 'ServerAliveInterval=60',
-            '-o', 'StrictHostKeyChecking no',
+            '-o', 'StrictHostKeyChecking=no',
             "-o", "UserKnownHostsFile=/dev/null",
             *self._key_path_cmd_argument,
             '-T',  # Disable pseudo-terminal allocation.

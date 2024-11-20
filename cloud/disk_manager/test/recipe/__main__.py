@@ -258,7 +258,7 @@ def start(argv):
 
 
 def stop(argv):
-    logging.info(os.system("ss -tpn"))
+    logging.info(os.system("ss -tpna"))
 
     DiskManagerLauncher.stop()
     MetadataServiceLauncher.stop()
