@@ -590,7 +590,7 @@ void TVolumeActor::CompleteUpdateDevices(
         }
     }
 
-    StopPartitions(ctx);
+    StopPartitions(ctx, {});
     SendVolumeConfigUpdated(ctx);
     StartPartitionsForUse(ctx);
     ResetServicePipes(ctx);

@@ -303,6 +303,11 @@ struct TEvVolumePrivate
         {}
     };
 
+    struct TExternalDrainDone
+    {
+        TExternalDrainDone() = default;
+    };
+
     //
     // Events declaration
     //
@@ -324,6 +329,7 @@ struct TEvVolumePrivate
         EvUpdateReadWriteClientInfo,
         EvRemoveExpiredVolumeParams,
         EvShadowDiskAcquired,
+        EvExternalDrainDone,
 
         EvEnd
     };
@@ -380,6 +386,11 @@ struct TEvVolumePrivate
     using TEvShadowDiskAcquired = TRequestEvent<
         TShadowDiskAcquired,
         EvShadowDiskAcquired
+    >;
+
+    using TEvExternalDrainDone = TRequestEvent<
+        TExternalDrainDone,
+        EvExternalDrainDone
     >;
 };
 

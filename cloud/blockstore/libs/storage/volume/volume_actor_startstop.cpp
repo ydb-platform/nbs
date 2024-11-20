@@ -265,10 +265,8 @@ NActors::TActorId TVolumeActor::WrapNonreplActorIfNeeded(
     for (const auto& [checkpointId, checkpointInfo]:
          State->GetCheckpointStore().GetActiveCheckpoints())
     {
-        if (checkpointInfo.Data == ECheckpointData::DataDeleted ||
-            !checkpointInfo.IsShadowDiskBased() ||
-            checkpointInfo.ShadowDiskState == EShadowDiskState::Error ||
-            checkpointInfo.HasShadowActor)
+        if (checkpointInfo.HasShadowActor ||
+            !State->GetCheckpointStore().NeedShadowActor(checkpointId))
         {
             continue;
         }
@@ -293,13 +291,18 @@ NActors::TActorId TVolumeActor::WrapNonreplActorIfNeeded(
     return nonreplicatedActorId;
 }
 
-void TVolumeActor::RestartDiskRegistryBasedPartition(const TActorContext& ctx)
+void TVolumeActor::RestartDiskRegistryBasedPartition(
+    const TActorContext& ctx,
+    TDiskRegistryBasedPartitionStoppedCallback onPartitionStopped)
 {
     if (!State->IsDiskRegistryMediaKind()) {
+        if (onPartitionStopped) {
+            std::invoke(onPartitionStopped, ctx);
+        }
         return;
     }
 
-    StopPartitions(ctx);
+    StopPartitions(ctx, std::move(onPartitionStopped));
     StartPartitionsForUse(ctx);
     ResetServicePipes(ctx);
 }
@@ -338,10 +341,21 @@ void TVolumeActor::StartPartitionsForGc(const TActorContext& ctx)
     PartitionsStartedReason = EPartitionsStartedReason::STARTED_FOR_GC;
 }
 
-void TVolumeActor::StopPartitions(const TActorContext& ctx)
+void TVolumeActor::StopPartitions(
+    const TActorContext& ctx,
+    TDiskRegistryBasedPartitionStoppedCallback onPartitionStopped)
 {
     if (!State) {
+        if (onPartitionStopped) {
+            std::invoke(onPartitionStopped, ctx);
+        }
         return;
+    }
+
+    ui64 requestId = 0;
+    if (onPartitionStopped) {
+        requestId = VolumeRequestIdGenerator->GetValue();
+        OnPartitionStopped[requestId] = std::move(onPartitionStopped);
     }
 
     for (const auto& [checkpointId, _]:
@@ -374,7 +388,7 @@ void TVolumeActor::StopPartitions(const TActorContext& ctx)
             TabletID(),
             actorId.ToString().c_str());
 
-        NCloud::Send<TEvents::TEvPoisonPill>(ctx, actorId);
+        NCloud::Send<TEvents::TEvPoisonPill>(ctx, actorId, requestId);
         State->SetDiskRegistryBasedPartitionActor({}, nullptr);
     }
 }
@@ -389,7 +403,7 @@ void TVolumeActor::HandleRdmaUnavailable(
         "[%lu] Rdma unavailable, restarting without rdma",
         TabletID());
 
-    StopPartitions(ctx);
+    StopPartitions(ctx, {});
     State->SetRdmaUnavailable();
     StartPartitionsForUse(ctx);
 }
