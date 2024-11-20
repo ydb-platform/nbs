@@ -37,7 +37,7 @@ def start(argv):
     parser.add_argument("--restart-interval", action="store", default=None)
     parser.add_argument("--storage-config-patch", action="store", default=None)
     parser.add_argument("--bs-cache-file-path", action="store", default=None)
-    parser.add_argument("--use-unix-socket", action="store_true", default=None)
+    parser.add_argument("--use-unix-socket", action="store_true", default=False)
     args = parser.parse_args(argv)
 
     kikimr_binary_path = common.binary_path("cloud/storage/core/tools/testing/ydb/bin/ydbd")
@@ -77,8 +77,8 @@ def start(argv):
                 p.read(),
                 TStorageConfig())
     if args.use_unix_socket:
-        # Create in temp directory because we would like a shorted path
-        unix_socket_path = pathlib.Path(tempfile.mkdtemp(dir="/tmp"))
+        # Create in temp directory because we would like a shorter path
+        unix_socket_path = str(pathlib.Path(tempfile.mkdtemp(dir="/tmp")) / "filestore.sock")
         set_env("FILESTORE_RECIPE_UNIX_SOCKET_PATH", unix_socket_path)
         server_config.ServerConfig.UnixSocketPath = unix_socket_path
 
