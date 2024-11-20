@@ -215,6 +215,15 @@ public:
         return node;
     }
 
+    void Clear()
+    {
+        TWriteGuard guard(NodesLock);
+
+        NodeTable->Clear();
+        Nodes.clear();
+        Nodes.insert(TIndexNode::CreateRoot(Root));
+    }
+
 private:
     void Init()
     {

@@ -94,7 +94,7 @@ func (t *createSnapshotFromURLTask) Run(
 	}
 
 	if t.state.ETag != source.ETag() {
-		return url_common.NewWrongETagError(
+		return url_common.NewSourceOverwrittenError(
 			"task with id %v has wrong ETag, expected %v, actual %v",
 			selfTaskID,
 			t.state.ETag,

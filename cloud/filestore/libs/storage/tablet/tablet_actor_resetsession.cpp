@@ -89,7 +89,7 @@ bool TIndexTabletActor::PrepareTx_ResetSession(
         args.SessionSeqNo,
         args.Request.GetSessionState().size());
 
-    TIndexTabletDatabase db(tx.DB);
+    TIndexTabletDatabaseProxy db(tx.DB, args.NodeUpdates);
 
     bool ready = true;
     auto commitId = GetCurrentCommitId();
@@ -119,7 +119,7 @@ void TIndexTabletActor::ExecuteTx_ResetSession(
     TTransactionContext& tx,
     TTxIndexTablet::TResetSession& args)
 {
-    TIndexTabletDatabase db(tx.DB);
+    TIndexTabletDatabaseProxy db(tx.DB, args.NodeUpdates);
 
     auto* session = FindSession(args.SessionId);
     if (!session) {
