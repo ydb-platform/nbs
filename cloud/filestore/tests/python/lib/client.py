@@ -30,6 +30,7 @@ class FilestoreCliClient:
         auth_token=None,
         check_exit_code=True,
         return_json=False,
+        use_unix_socket=False,
     ):
         self.__binary_path = binary_path
         self.__port = port
@@ -41,6 +42,10 @@ class FilestoreCliClient:
         self.__env = {}
         self.__check_exit_code = check_exit_code
         self.__return_json = return_json
+        if use_unix_socket:
+            self.__unix_socket_path = os.getenv("FILESTORE_RECIPE_UNIX_SOCKET_PATH")
+        else:
+            self.__unix_socket_path = None
         if auth_token is not None:
             self.__env = {"IAM_TOKEN": auth_token}
 
@@ -273,6 +278,8 @@ class FilestoreCliClient:
             opts += ["--verbose", "trace"]
         if self.__return_json:
             opts += ["--json"]
+        if self.__unix_socket_path is not None:
+            opts += ["--server-unix-socket-path", self.__unix_socket_path]
         return opts
 
     def standard_command(input_arg):

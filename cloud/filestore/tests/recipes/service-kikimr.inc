@@ -33,3 +33,7 @@ USE_RECIPE(
     cloud/filestore/tests/recipes/service-kikimr/service-kikimr-recipe
     ${RECIPE_ARGS}
 )
+
+IF (USE_UNIX_SOCKET)
+    SET_APPEND(RECIPE_ARGS --use-unix-socket)
+ENDIF()
