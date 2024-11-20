@@ -49,6 +49,35 @@ func TestDiskServiceCreateEmptyDisk(t *testing.T) {
 	testcommon.CheckConsistency(t, ctx)
 }
 
+func TestDiskServiceFailToCreateSsdNonreplIfNotAllowed(t *testing.T) {
+	ctx := testcommon.NewContext()
+
+	client, err := testcommon.NewClient(ctx)
+	require.NoError(t, err)
+	defer client.Close()
+
+	diskID := t.Name()
+
+	reqCtx := testcommon.GetRequestContext(t, ctx)
+	operation, err := client.CreateDisk(reqCtx, &disk_manager.CreateDiskRequest{
+		Src: &disk_manager.CreateDiskRequest_SrcEmpty{
+			SrcEmpty: &empty.Empty{},
+		},
+		Size: 4096,
+		Kind: disk_manager.DiskKind_DISK_KIND_SSD_NONREPLICATED,
+		DiskId: &disk_manager.DiskId{
+			ZoneId: "zone-a",
+			DiskId: diskID,
+		},
+		FolderId: "unallowed",
+	})
+	require.Error(t, err)
+	require.Empty(t, operation)
+	require.ErrorContains(t, err, "not allowed for the \"unallowed\" folder")
+
+	testcommon.CheckConsistency(t, ctx)
+}
+
 // NBS-3424: TODO: enable this test.
 func TestDiskServiceShouldFailCreateDiskFromNonExistingImage(t *testing.T) {
 	/*
@@ -369,6 +398,7 @@ func testCreateDiskFromIncrementalSnapshot(
 			ZoneId: "zone-a",
 			DiskId: diskID1,
 		},
+		FolderId: "folder",
 	})
 	require.NoError(t, err)
 	require.NotEmpty(t, operation)
@@ -427,6 +457,7 @@ func testCreateDiskFromIncrementalSnapshot(
 			ZoneId: "zone-a",
 			DiskId: diskID2,
 		},
+		FolderId: "another-folder",
 	})
 	require.NoError(t, err)
 	require.NotEmpty(t, operation)
@@ -588,6 +619,7 @@ func testCreateDiskFromImage(
 			ZoneId: "zone-a",
 			DiskId: diskID,
 		},
+		FolderId: "folder",
 	})
 	require.NoError(t, err)
 	require.NotEmpty(t, operation)

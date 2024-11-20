@@ -234,8 +234,9 @@ func (s *service) prepareCreateDiskParams(
 
 		if !allowed {
 			return nil, errors.NewInvalidArgumentError(
-				"can't create a DisdRegistry based disk with id %q, because " +
+				"can't create a DiskRegistry based disk with id %q, because " +
 				"it is not allowed for the %q folder",
+				req.DiskId.DiskId,
 				req.FolderId,
 			)
 		}

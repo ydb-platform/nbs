@@ -114,6 +114,9 @@ DisksConfig: <
     EndedMigrationExpirationTimeout: "30s"
     EnableOverlayDiskRegistryBasedDisks: true
     CreationAndDeletionAllowedOnlyForDisksWithIdPrefix: "{creation_and_deletion_allowed_only_for_disks_with_id_prefix}"
+    DisableDiskRegistryBasedDisks: true
+    DiskRegistryBasedDisksFolderIdAllowList: "folder"
+    DiskRegistryBasedDisksFolderIdAllowList: "another-folder"
 >
 PoolsConfig: <
     MaxActiveSlots: 10
