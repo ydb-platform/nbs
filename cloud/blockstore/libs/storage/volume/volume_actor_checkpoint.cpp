@@ -8,6 +8,7 @@
 #include <cloud/blockstore/libs/storage/volume/actors/shadow_disk_actor.h>
 #include <cloud/blockstore/libs/storage/volume/tracing.h>
 #include <cloud/storage/core/libs/common/verify.h>
+#include <cloud/storage/core/libs/diagnostics/critical_events.h>
 #include <cloud/storage/core/libs/diagnostics/trace_serializer.h>
 
 namespace NCloud::NBlockStore::NStorage {
@@ -136,6 +137,13 @@ private:
     using TThis = TCheckpointActor<TMethod>;
     using TBase = TActor<TThis>;
 
+    enum class EDrainSource
+    {
+        None,
+        Internal,
+        External,
+    };
+
 private:
     const TRequestInfoPtr RequestInfo;
     const ui64 RequestId;
@@ -147,8 +155,9 @@ private:
     const TRequestTraceInfo TraceInfo;
     const ECheckpointRequestType RequestType;
     const bool CreateCheckpointShadowDisk;
-    const bool WaitForExternalDrain;
 
+    EDrainSource DrainSource = EDrainSource::None;
+    bool ExternalDrainDone = false;
     ui32 DrainResponses = 0;
     ui32 Responses = 0;
     NProto::TError Error;
@@ -224,7 +233,7 @@ private:
         const TEvVolumePrivate::TEvExternalDrainDone::TPtr& ev,
         const TActorContext& ctx);
 
-    void HandleDrainTimeout(
+    void HandleExternalDrainTimeout(
         const TEvents::TEvWakeup::TPtr& ev,
         const TActorContext& ctx);
 
@@ -262,13 +271,17 @@ TCheckpointActor<TMethod>::TCheckpointActor(
     , TraceInfo(std::move(traceInfo))
     , RequestType(requestType)
     , CreateCheckpointShadowDisk(createCheckpointShadowDisk)
-    , WaitForExternalDrain(waitForExternalDrain)
+    , DrainSource(
+          waitForExternalDrain ? EDrainSource::External
+                               : EDrainSource::None)
     , ChildCallContexts(Reserve(PartitionDescrs.size()))
 {}
 
 template <typename TMethod>
 void TCheckpointActor<TMethod>::Drain(const TActorContext& ctx)
 {
+    STORAGE_CHECK_PRECONDITION(DrainSource == EDrainSource::Internal);
+
     ui32 cookie = 0;
     for (const auto& x: PartitionDescrs) {
         LOG_DEBUG(ctx, TBlockStoreComponents::VOLUME,
@@ -299,6 +312,8 @@ void TCheckpointActor<TMethod>::Drain(const TActorContext& ctx)
 template <typename TMethod>
 void TCheckpointActor<TMethod>::ExternalDrain(const TActorContext& ctx)
 {
+    STORAGE_CHECK_PRECONDITION(DrainSource == EDrainSource::External);
+
     LOG_DEBUG(ctx, TBlockStoreComponents::VOLUME,
         "[%lu] Wait for external drain event",
         VolumeTabletId);
@@ -403,6 +418,8 @@ void TCheckpointActor<TMethod>::HandleDrainResponse(
     const TEvPartition::TEvDrainResponse::TPtr& ev,
     const TActorContext& ctx)
 {
+    STORAGE_CHECK_PRECONDITION(DrainSource == EDrainSource::Internal);
+
     auto* msg = ev->Get();
 
     JoinTraces(ev->Cookie);
@@ -431,6 +448,8 @@ void TCheckpointActor<TMethod>::HandleDrainUndelivery(
     const TEvPartition::TEvDrainRequest::TPtr& ev,
     const TActorContext& ctx)
 {
+    STORAGE_CHECK_PRECONDITION(DrainSource == EDrainSource::Internal);
+
     Y_UNUSED(ev);
 
     Error = MakeError(
@@ -452,6 +471,8 @@ void TCheckpointActor<TMethod>::HandleExternalDrainDone(
     const TEvVolumePrivate::TEvExternalDrainDone::TPtr& ev,
     const TActorContext& ctx)
 {
+    STORAGE_CHECK_PRECONDITION(DrainSource == EDrainSource::External);
+
     Y_UNUSED(ev);
 
     LOG_INFO(
@@ -460,31 +481,31 @@ void TCheckpointActor<TMethod>::HandleExternalDrainDone(
         "[%lu] External drain done",
         VolumeTabletId);
 
-    if (DrainResponses) {
-        return;
+    if (!ExternalDrainDone) {
+        ExternalDrainDone = true;
+        DoAction(ctx);
     }
-    DrainResponses = 1;
-    DoAction(ctx);
 }
 
 template <typename TMethod>
-void TCheckpointActor<TMethod>::HandleDrainTimeout(
+void TCheckpointActor<TMethod>::HandleExternalDrainTimeout(
     const TEvents::TEvWakeup::TPtr& ev,
     const TActorContext& ctx)
 {
+    STORAGE_CHECK_PRECONDITION(DrainSource == EDrainSource::External);
+
     Y_UNUSED(ev);
 
     LOG_WARN(
         ctx,
         TBlockStoreComponents::VOLUME,
-        "[%lu] External drain timedout",
+        "[%lu] External drain timed out",
         VolumeTabletId);
 
-    if (DrainResponses) {
-        return;
+    if (!ExternalDrainDone) {
+        ExternalDrainDone = true;
+        DoAction(ctx);
     }
-    DrainResponses = 1;
-    DoAction(ctx);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -639,7 +660,7 @@ STFUNC(TCheckpointActor<TMethod>::StateDrain)
         HFunc(TEvPartition::TEvDrainResponse, HandleDrainResponse);
         HFunc(TEvPartition::TEvDrainRequest, HandleDrainUndelivery);
         HFunc(TEvVolumePrivate::TEvExternalDrainDone, HandleExternalDrainDone)
-        HFunc(TEvents::TEvWakeup, HandleDrainTimeout);
+        HFunc(TEvents::TEvWakeup, HandleExternalDrainTimeout);
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
 
         default:
@@ -695,6 +716,13 @@ STFUNC(TCheckpointActor<TMethod>::StateUpdateCheckpointRequest)
 template <typename TMethod>
 void TCheckpointActor<TMethod>::DoAction(const TActorContext& ctx)
 {
+    STORAGE_CHECK_PRECONDITION(
+        (DrainSource == EDrainSource::None && DrainResponses == 0 &&
+         !ExternalDrainDone) ||
+        (DrainSource == EDrainSource::Internal &&
+         DrainResponses == PartitionDescrs.size()) ||
+        (DrainSource == EDrainSource::External && ExternalDrainDone));
+
     ui32 partitionIndex = 0;
     for (const auto& x: PartitionDescrs) {
         if (x.DiskRegistryBasedDisk) {
@@ -805,7 +833,7 @@ void TCheckpointActor<TMethod>::DoActionForBlobStorageBasedPartition(
 template <typename TMethod>
 void TCheckpointActor<TMethod>::Bootstrap(const TActorContext& ctx)
 {
-    if (WaitForExternalDrain) {
+    if (DrainSource == EDrainSource::External) {
         ExternalDrain(ctx);
     } else {
         DoAction(ctx);
@@ -828,6 +856,7 @@ void TCheckpointActor<TCreateCheckpointMethod>::Bootstrap(
         (isDiskRegistryBased && !CreateCheckpointShadowDisk);
 
     if (shouldDrain) {
+        DrainSource = EDrainSource::Internal;
         Drain(ctx);
     } else {
         DoAction(ctx);

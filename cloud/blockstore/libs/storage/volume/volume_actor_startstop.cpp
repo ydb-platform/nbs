@@ -302,7 +302,7 @@ void TVolumeActor::RestartDiskRegistryBasedPartition(
         return;
     }
 
-    StopPartitionsWithCallback(ctx, std::move(onPartitionStopped));
+    StopPartitions(ctx, std::move(onPartitionStopped));
     StartPartitionsForUse(ctx);
     ResetServicePipes(ctx);
 }
@@ -341,12 +341,7 @@ void TVolumeActor::StartPartitionsForGc(const TActorContext& ctx)
     PartitionsStartedReason = EPartitionsStartedReason::STARTED_FOR_GC;
 }
 
-void TVolumeActor::StopPartitions(const TActorContext& ctx)
-{
-    StopPartitionsWithCallback(ctx, {});
-}
-
-void TVolumeActor::StopPartitionsWithCallback(
+void TVolumeActor::StopPartitions(
     const TActorContext& ctx,
     TDiskRegistryBasedPartitionStoppedCallback onPartitionStopped)
 {
@@ -408,7 +403,7 @@ void TVolumeActor::HandleRdmaUnavailable(
         "[%lu] Rdma unavailable, restarting without rdma",
         TabletID());
 
-    StopPartitions(ctx);
+    StopPartitions(ctx, {});
     State->SetRdmaUnavailable();
     StartPartitionsForUse(ctx);
 }

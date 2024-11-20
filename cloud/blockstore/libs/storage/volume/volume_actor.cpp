@@ -290,7 +290,7 @@ void TVolumeActor::OnTabletDead(
 void TVolumeActor::BeforeDie(const TActorContext& ctx)
 {
     UnregisterVolume(ctx);
-    StopPartitions(ctx);
+    StopPartitions(ctx, {});
     TerminateTransactions(ctx);
     KillActors(ctx);
     CancelRequests(ctx);

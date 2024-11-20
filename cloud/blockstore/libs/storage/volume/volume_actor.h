@@ -468,8 +468,7 @@ private:
     void StartPartitionsIfNeeded(const NActors::TActorContext& ctx);
     void StartPartitionsForUse(const NActors::TActorContext& ctx);
     void StartPartitionsForGc(const NActors::TActorContext& ctx);
-    void StopPartitions(const NActors::TActorContext& ctx);
-    void StopPartitionsWithCallback(
+    void StopPartitions(
         const NActors::TActorContext& ctx,
         TDiskRegistryBasedPartitionStoppedCallback onPartitionStopped);
 
