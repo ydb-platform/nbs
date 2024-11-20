@@ -32,6 +32,7 @@ def create_server_app_config():
     server.KikimrServiceConfig.CopyFrom(TKikimrServiceConfig())
     return server
 
+
 def create_storage_service_config(folder_id="test_folder_id"):
     storage = TStorageServiceConfig()
     storage.AuthorizationMode = EAuthorizationMode.Value("AUTHORIZATION_REQUIRE")
@@ -235,6 +236,7 @@ def test_new_auth_unknown_subject():
         result = env.create_volume()
         assert result.returncode != 0
         assert json.loads(result.stdout)["Error"]["CodeString"] == "E_UNAUTHORIZED"
+
 
 def test_unix_socket_does_not_require_auth():
     with TemporaryDirectory(dir="/tmp") as temp_dir:
