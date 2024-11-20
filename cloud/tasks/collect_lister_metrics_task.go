@@ -58,9 +58,9 @@ func (c *collectListerMetricsTask) Run(
 				func(context.Context) ([]storage.TaskInfo, error) {
 					return c.storage.ListTasksWithStatus(
 						ctx,
+						taskStatus,
 						^uint64(0), // limit
 						nil,        // taskTypeWhitelist
-						taskStatus,
 					)
 				},
 				taskStatus,

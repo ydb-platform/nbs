@@ -55,12 +55,12 @@ func (s *StorageMock) GetTaskByIdempotencyKey(
 
 func (s *StorageMock) ListTasksWithStatus(
 	ctx context.Context,
+	status string,
 	limit uint64,
 	taskTypeWhitelist []string,
-	status string,
 ) ([]tasks_storage.TaskInfo, error) {
 
-	args := s.Called(ctx, limit, taskTypeWhitelist, status)
+	args := s.Called(ctx, status, limit, taskTypeWhitelist)
 	res, _ := args.Get(0).([]tasks_storage.TaskInfo)
 	return res, args.Error(1)
 }

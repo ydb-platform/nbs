@@ -290,9 +290,9 @@ type Storage interface {
 
 	ListTasksWithStatus(
 		ctx context.Context,
+		status string,
 		limit uint64,
 		taskTypeWhitelist []string,
-		status string,
 	) ([]TaskInfo, error)
 
 	// Used in task execution workflow.

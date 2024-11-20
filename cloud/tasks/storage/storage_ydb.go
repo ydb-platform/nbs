@@ -101,9 +101,9 @@ func (s *storageYDB) GetTaskByIdempotencyKey(
 
 func (s *storageYDB) ListTasksWithStatus(
 	ctx context.Context,
+	status string,
 	limit uint64,
 	taskTypeWhitelist []string,
-	status string,
 ) ([]TaskInfo, error) {
 
 	switch status {

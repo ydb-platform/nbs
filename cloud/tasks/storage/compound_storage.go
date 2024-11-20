@@ -145,18 +145,18 @@ func (s *compoundStorage) GetTaskByIdempotencyKey(
 
 func (s *compoundStorage) ListTasksWithStatus(
 	ctx context.Context,
+	status string,
 	limit uint64,
 	taskTypeWhitelist []string,
-	status string,
 ) ([]TaskInfo, error) {
 
 	tasks := []TaskInfo{}
 	err := s.visit(ctx, func(storage Storage) error {
 		values, err := storage.ListTasksWithStatus(
 			ctx,
+			status,
 			limit,
 			taskTypeWhitelist,
-			status,
 		)
 		tasks = append(tasks, values...)
 		return err
