@@ -1,5 +1,8 @@
 #include "cgroup_stats_fetcher.h"
 
+#include "critical_events.h"
+
+#include <cloud/storage/core/libs/diagnostics/monitoring.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
 #include <library/cpp/monlib/dynamic_counters/counters.h>
@@ -14,6 +17,17 @@ namespace {
 ////////////////////////////////////////////////////////////////////////////////
 
 const TString ComponentName = "STORAGE_CGROUPS";
+
+auto SetupCriticalEvents(IMonitoringServicePtr monitoring)
+{
+    auto rootGroup = monitoring->GetCounters()
+        ->GetSubgroup("counters", "storage");
+
+    auto serverGroup = rootGroup->GetSubgroup("component", "server");
+    InitCriticalEventsCounter(serverGroup);
+
+    return serverGroup;
+}
 
 void UpdateCGroupWaitDuration(TTempFileHandle& file, TDuration value)
 {
@@ -34,6 +48,8 @@ Y_UNIT_TEST_SUITE(TCGroupStatFetcherTest)
 {
     Y_UNIT_TEST(ShouldReadStats)
     {
+        auto monitoring = CreateMonitoringServiceStub();
+        auto serverGroup = SetupCriticalEvents(monitoring);
         TTempFileHandle statsFile("test");
 
         UpdateCGroupWaitDuration(statsFile, TDuration::MicroSeconds(10));
@@ -58,10 +74,19 @@ Y_UNIT_TEST_SUITE(TCGroupStatFetcherTest)
             cpuWait.GetResult());
 
         fetcher->Stop();
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            serverGroup
+                ->GetCounter("AppCriticalEvents/CpuWaitCounterReadError", true)
+                ->Val());
     }
 
     Y_UNIT_TEST(ShouldReportErrorIfFileIsMissing)
     {
+        auto monitoring = CreateMonitoringServiceStub();
+        auto serverGroup = SetupCriticalEvents(monitoring);
+
         auto fetcher = CreateCgroupStatsFetcher(
             ComponentName,
             CreateLoggingService("console"),
@@ -78,7 +103,10 @@ Y_UNIT_TEST_SUITE(TCGroupStatFetcherTest)
 
     Y_UNIT_TEST(ShouldReportErrorIfNewValueIsLowerThanPrevious)
     {
+        auto monitoring = CreateMonitoringServiceStub();
+        auto serverGroup = SetupCriticalEvents(monitoring);
         TTempFileHandle statsFile("test");
+
         UpdateCGroupWaitDuration(statsFile, TDuration::MicroSeconds(100));
 
         auto fetcher = CreateCgroupStatsFetcher(
@@ -90,6 +118,11 @@ Y_UNIT_TEST_SUITE(TCGroupStatFetcherTest)
         UpdateCGroupWaitDuration(statsFile, TDuration::MicroSeconds(80));
         auto cpuWait = fetcher->GetCpuWait();
         UNIT_ASSERT_C(HasError(cpuWait), cpuWait.GetError());
+        UNIT_ASSERT_VALUES_EQUAL(
+            1,
+            serverGroup
+                ->GetCounter("AppCriticalEvents/CpuWaitCounterReadError", true)
+                ->Val());
 
         UpdateCGroupWaitDuration(statsFile, TDuration::MicroSeconds(100));
         cpuWait = fetcher->GetCpuWait();
@@ -97,6 +130,11 @@ Y_UNIT_TEST_SUITE(TCGroupStatFetcherTest)
         UNIT_ASSERT_VALUES_EQUAL(
             TDuration::MicroSeconds(20),
             cpuWait.GetResult());
+        UNIT_ASSERT_VALUES_EQUAL(
+            1,
+            serverGroup
+                ->GetCounter("AppCriticalEvents/CpuWaitCounterReadError", true)
+                ->Val());
 
         fetcher->Stop();
     }
