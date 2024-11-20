@@ -40,69 +40,35 @@ func (c *collectListerMetricsTask) Run(
 	execCtx ExecutionContext,
 ) error {
 
+	taskStatuses := []string{
+		storage.TaskStatusToString(storage.TaskStatusReadyToRun),
+		storage.TaskStatusToString(storage.TaskStatusRunning),
+		storage.TaskStatusToString(storage.TaskStatusReadyToCancel),
+		storage.TaskStatusToString(storage.TaskStatusCancelling),
+	}
+	defer c.cleanupMetrics(taskStatuses)
+
 	ticker := time.NewTicker(c.metricsCollectionInterval)
 	defer ticker.Stop()
 
 	for range ticker.C {
-		err := c.collectTasksMetrics(
-			ctx,
-			func(context.Context) ([]storage.TaskInfo, error) {
-				return c.storage.ListTasksReadyToRun(
-					ctx,
-					^uint64(0), // limit
-					nil,
-				)
-			},
-			storage.TaskStatusToString(storage.TaskStatusReadyToRun),
-		)
-		if err != nil {
-			return err
+		for _, taskStatus := range taskStatuses {
+			err := c.collectTasksMetrics(
+				ctx,
+				func(context.Context) ([]storage.TaskInfo, error) {
+					return c.storage.ListTasksWithStatus(
+						ctx,
+						taskStatus,
+					)
+				},
+				taskStatus,
+			)
+			if err != nil {
+				return err
+			}
 		}
 
-		err = c.collectTasksMetrics(
-			ctx,
-			func(context.Context) ([]storage.TaskInfo, error) {
-				return c.storage.ListTasksRunning(
-					ctx,
-					^uint64(0), // limit
-				)
-			},
-			storage.TaskStatusToString(storage.TaskStatusRunning),
-		)
-		if err != nil {
-			return err
-		}
-
-		err = c.collectTasksMetrics(
-			ctx,
-			func(context.Context) ([]storage.TaskInfo, error) {
-				return c.storage.ListTasksReadyToCancel(
-					ctx,
-					^uint64(0), // limit
-					nil,
-				)
-			},
-			storage.TaskStatusToString(storage.TaskStatusReadyToCancel),
-		)
-		if err != nil {
-			return err
-		}
-
-		err = c.collectTasksMetrics(
-			ctx,
-			func(context.Context) ([]storage.TaskInfo, error) {
-				return c.storage.ListTasksCancelling(
-					ctx,
-					^uint64(0), // limit
-				)
-			},
-			storage.TaskStatusToString(storage.TaskStatusCancelling),
-		)
-		if err != nil {
-			return err
-		}
-
-		err = c.collectHangingTasksMetrics(ctx)
+		err := c.collectHangingTasksMetrics(ctx)
 		if err != nil {
 			return err
 		}
@@ -227,4 +193,21 @@ func (c *collectListerMetricsTask) collectHangingTasksMetrics(
 	}
 
 	return nil
+}
+
+func (c *collectListerMetricsTask) cleanupMetrics(taskStatuses []string) {
+	sensors := append(taskStatuses, totalHangingTaskCountGaugeName)
+
+	for _, taskType := range c.taskTypes {
+		subRegistry := c.registry.WithTags(map[string]string{
+			"type": taskType,
+		})
+		for _, sensor := range sensors {
+			subRegistry.Gauge(sensor).Set(float64(0))
+		}
+	}
+
+	for _, gauge := range c.hangingTaskGaugesByID {
+		gauge.Set(float64(0))
+	}
 }

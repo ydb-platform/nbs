@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/ydb-platform/nbs/cloud/tasks/errors"
 	"github.com/ydb-platform/nbs/cloud/tasks/persistence"
 )
 
@@ -248,6 +249,30 @@ func (s *storageYDB) ListTasksCancelling(
 		},
 	)
 	return tasks, err
+}
+
+func (s *storageYDB) ListTasksWithStatus(
+	ctx context.Context,
+	status string,
+) ([]TaskInfo, error) {
+
+	limit := ^uint64(0)
+
+	switch status {
+	case TaskStatusToString(TaskStatusReadyToRun):
+		return s.ListTasksReadyToRun(ctx, limit, nil /* taskTypeWhitelist */)
+	case TaskStatusToString(TaskStatusReadyToCancel):
+		return s.ListTasksReadyToCancel(ctx, limit, nil /* taskTypeWhitelist */)
+	case TaskStatusToString(TaskStatusRunning):
+		return s.ListTasksRunning(ctx, limit)
+	case TaskStatusToString(TaskStatusCancelling):
+		return s.ListTasksCancelling(ctx, limit)
+	default:
+		return nil, errors.NewNonRetriableErrorf(
+			"listing of tasks with status %s is not supported",
+			status,
+		)
+	}
 }
 
 func (s *storageYDB) ListHangingTasks(
