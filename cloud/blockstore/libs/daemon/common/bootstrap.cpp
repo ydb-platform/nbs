@@ -526,6 +526,8 @@ void TBootstrapBase::Init()
         .NbdDevicePrefix = Configs->ServerConfig->GetNbdDevicePrefix(),
     };
 
+    NBD::IDeviceFactoryPtr nbdDeviceFactory;
+
     if (Configs->ServerConfig->GetEndpointProxySocketPath()) {
         EndpointProxyClient = NClient::CreateClient(
             {
@@ -539,24 +541,20 @@ void TBootstrapBase::Init()
             Scheduler,
             Timer,
             Logging);
-    }
 
-    NBD::IDeviceFactoryPtr nbdDeviceFactory;
-
-    if (Configs->ServerConfig->GetNbdNetlink()) {
-        nbdDeviceFactory = NBD::CreateNetlinkDeviceFactory(
-            Logging,
-            Configs->ServerConfig->GetNbdRequestTimeout(),
-            Configs->ServerConfig->GetNbdConnectionTimeout(),
-            true);  // reconfigure
-    }
-
-    if (!nbdDeviceFactory && EndpointProxyClient) {
         const ui32 defaultSectorSize = 4_KB;
 
         nbdDeviceFactory = NClient::CreateProxyDeviceFactory(
             {defaultSectorSize},
             EndpointProxyClient);
+    }
+
+    if (!nbdDeviceFactory && Configs->ServerConfig->GetNbdNetlink()) {
+        nbdDeviceFactory = NBD::CreateNetlinkDeviceFactory(
+            Logging,
+            Configs->ServerConfig->GetNbdRequestTimeout(),
+            Configs->ServerConfig->GetNbdConnectionTimeout(),
+            true);  // reconfigure
     }
 
     // The only case we want kernel to retry requests is when the socket is dead
