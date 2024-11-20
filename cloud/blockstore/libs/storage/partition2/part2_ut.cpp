@@ -10,6 +10,7 @@
 #include <cloud/blockstore/libs/kikimr/helpers.h>
 #include <cloud/blockstore/libs/storage/api/partition2.h>
 #include <cloud/blockstore/libs/storage/api/service.h>
+#include <cloud/blockstore/libs/storage/api/stats_service.h>
 #include <cloud/blockstore/libs/storage/api/volume.h>
 #include <cloud/blockstore/libs/storage/api/volume_proxy.h>
 #include <cloud/blockstore/libs/storage/core/block_handler.h>
@@ -79,6 +80,7 @@ private:
 
 constexpr TDuration WaitTimeout = TDuration::Seconds(5);
 constexpr ui32 DataChannelOffset = 3;
+const TActorId VolumeActorId(0, "VVV");
 
 TString GetBlockContent(char fill = 0, size_t size = DefaultBlockSize)
 {
@@ -192,7 +194,7 @@ void InitTestActorRuntime(
                 partConfig,
                 storageAccessMode,
                 1,  // siblingCount
-                {}  // volumeActorId
+                VolumeActorId
             );
             return tablet.release();
         };
@@ -263,6 +265,10 @@ std::unique_ptr<TTestActorRuntime> PrepareTestActorRuntime(
             MakeVolumeProxyServiceId(),
             TActorSetupCmd(volumeProxy.release(), TMailboxType::Simple, 0));
     }
+
+    runtime->AddLocalService(
+        VolumeActorId,
+        TActorSetupCmd(new TDummyActor, TMailboxType::Simple, 0));
 
     runtime->AddLocalService(
         MakeHiveProxyServiceId(),
@@ -7037,20 +7043,10 @@ Y_UNIT_TEST_SUITE(TPartition2Test)
         TPartitionClient partition(*runtime);
         partition.WaitReady();
 
-        partition.WriteBlocks(1, 1);
-        partition.WriteBlocks(2, 2);
-        partition.WriteBlocks(3, 3);
-        partition.Flush();
-
-        partition.WriteBlocks(1, 11);
-        partition.Flush();
-
-        partition.WriteBlocks(2, 22);
-        partition.Flush();
-
         partition.WriteBlocks(3, 33);
         partition.Flush();
 
+        ui32 failedReadBlob = 0;
         runtime->SetEventFilter([&]
             (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& ev)
         {
@@ -7063,6 +7059,11 @@ Y_UNIT_TEST_SUITE(TPartition2Test)
                 {
                     return true;
                 }
+            } else if (ev->GetTypeRewrite() == TEvStatsService::EvVolumePartCounters) {
+                auto* msg =
+                    ev->Get<TEvStatsService::TEvVolumePartCounters>();
+                failedReadBlob =
+                    msg->DiskCounters->Simple.ReadBlobDeadlineCount.Value;
             }
             return false;
         });
@@ -7071,6 +7072,17 @@ Y_UNIT_TEST_SUITE(TPartition2Test)
         runtime->AdvanceCurrentTime(TDuration::Seconds(1));
         auto response = partition.RecvCompactionResponse();
         UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, response->GetError().GetCode());
+
+        runtime->AdvanceCurrentTime(TDuration::Seconds(15));
+
+        partition.SendToPipe(
+            std::make_unique<TEvPartitionPrivate::TEvUpdateCounters>());
+        {
+            TDispatchOptions options;
+            options.FinalEvents.emplace_back(TEvStatsService::EvVolumePartCounters);
+            runtime->DispatchEvents(options);
+        }
+        UNIT_ASSERT_VALUES_EQUAL(1, failedReadBlob);
     }
 }
 
