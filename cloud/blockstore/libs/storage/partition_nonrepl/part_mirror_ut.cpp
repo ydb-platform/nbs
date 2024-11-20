@@ -99,14 +99,19 @@ struct TTestEnv
         return migrations;
     }
 
-    TTestEnv(TTestActorRuntime& runtime)
+    explicit TTestEnv(
+            TTestActorRuntime& runtime,
+            NProto::TStorageServiceConfig configBase = {})
         : TTestEnv(
             runtime,
             DefaultDevices(runtime.GetNodeId(0)),
             TVector<TDevices>{
                 DefaultReplica(runtime.GetNodeId(0), 1),
                 DefaultReplica(runtime.GetNodeId(0), 2),
-            }
+            },
+            {}, // migrations
+            {}, // freshDeviceIds
+            std::move(configBase)
         )
     {
     }
@@ -116,7 +121,8 @@ struct TTestEnv
             TDevices devices,
             TVector<TDevices> replicas,
             TMigrations migrations = {},
-            THashSet<TString> freshDeviceIds = {})
+            THashSet<TString> freshDeviceIds = {},
+            NProto::TStorageServiceConfig configBase = {})
         : Runtime(runtime)
         , ActorId(0, "YYY")
         , VolumeActorId(0, "VVV")
@@ -125,7 +131,7 @@ struct TTestEnv
     {
         SetupLogging();
 
-        NProto::TStorageServiceConfig storageConfig;
+        NProto::TStorageServiceConfig storageConfig = std::move(configBase);
         storageConfig.SetMaxTimedOutDeviceStateDuration(20'000);
         storageConfig.SetNonReplicatedMinRequestTimeoutSSD(1'000);
         storageConfig.SetNonReplicatedMaxRequestTimeoutSSD(5'000);
@@ -1680,6 +1686,75 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
         UNIT_ASSERT_VALUES_EQUAL(1, rangeResynced);
     }
 
+    Y_UNIT_TEST(ShouldRejectReadAndForceRangeScrubbingUponChecksumMismatchIfRead2IsEnabled)
+    {
+        using namespace NMonitoring;
+
+        TTestBasicRuntime runtime;
+
+        runtime.SetRegistrationObserverFunc(
+            [] (auto& runtime, const auto& parentId, const auto& actorId)
+        {
+            Y_UNUSED(parentId);
+            runtime.EnableScheduleForActor(actorId);
+        });
+
+        ui32 rangeResynced = 0;
+        runtime.SetEventFilter([&] (auto& runtime, auto& event) {
+            Y_UNUSED(runtime);
+            if (event->GetTypeRewrite() ==
+                TEvNonreplPartitionPrivate::EvRangeResynced)
+            {
+                ++rangeResynced;
+            }
+            return false;
+        });
+
+        TDynamicCountersPtr critEventsCounters = new TDynamicCounters();
+        InitCriticalEventsCounter(critEventsCounters);
+
+        auto mirroredDiskChecksumMismatchUponRead =
+            critEventsCounters->GetCounter(
+                "AppCriticalEvents/MirroredDiskChecksumMismatchUponRead",
+                true);
+
+        NProto::TStorageServiceConfig config;
+        config.SetMirrorReadReplicaCount(2);
+        TTestEnv env(runtime, config);
+
+        // Write different data to all replicas.
+        const auto range = TBlockRange64::WithLength(2049, 50);
+        env.WriteReplica(0, range, 'A');
+        env.WriteReplica(1, range, 'B');
+        env.WriteReplica(2, range, 'B');
+
+        // Read request should cause E_REJECTED error since data checksums in
+        // replicas 0 and 1 are different.
+        TPartitionClient client(runtime, env.ActorId);
+        {
+            TVector<TString> blocks;
+            client.SendReadBlocksLocalRequest(
+                range,
+                TGuardedSgList(ResizeBlocks(
+                    blocks,
+                    range.Size(),
+                    TString(DefaultBlockSize, '\0')
+                )));
+            auto response = client.RecvReadBlocksLocalResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_REJECTED,
+                response->GetStatus(),
+                response->GetErrorReason());
+        }
+
+        // TODO: check nonlocal requests as well
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            1,
+            mirroredDiskChecksumMismatchUponRead->Val());
+
+        // TODO: check that consistency was restored and that ReadBlocks returns S_OK
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

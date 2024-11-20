@@ -524,6 +524,7 @@ public:
     bool GetForceMirrorResync() const;
     ui32 GetResyncIndexCachingInterval() const;
     TDuration GetResyncAfterClientInactivityInterval() const;
+    ui32 GetMirrorReadReplicaCount() const;
 
     TString GetManuallyPreemptedVolumesFile() const;
     TDuration GetManuallyPreemptedVolumeLivenessCheckPeriod() const;

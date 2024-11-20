@@ -22,6 +22,7 @@ void TMirrorPartitionActor::HandleWriteOrZeroCompleted(
     const auto requestIdentityKey = ev->Get()->RequestCounter;
     RequestsInProgress.RemoveRequest(requestIdentityKey);
     DrainActorCompanion.ProcessDrainRequests(ctx);
+    // TODO: invalidate read lock
 
     if (ResyncActorId) {
         ForwardRequestWithNondeliveryTracking(
