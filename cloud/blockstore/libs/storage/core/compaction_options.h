@@ -8,7 +8,6 @@ namespace NCloud::NBlockStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-
 enum ECompactionOptions: ui32
 {
     ForceFullCompaction,
