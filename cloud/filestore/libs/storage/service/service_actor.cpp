@@ -63,6 +63,8 @@ void TStorageServiceActor::RegisterCounters(const NActors::TActorContext& ctx)
     auto serverCounters = rootGroup->GetSubgroup("component", "server");
 
     CpuWait = serverCounters->GetCounter("CpuWait", false);
+    CpuWaitFailure = serverCounters->GetCounter("CpuWaitFailure", false);
+
 }
 
 void TStorageServiceActor::ScheduleUpdateStats(const NActors::TActorContext& ctx)

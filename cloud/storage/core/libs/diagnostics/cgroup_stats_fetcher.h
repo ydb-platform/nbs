@@ -29,22 +29,20 @@ using ICgroupStatsFetcherPtr = std::shared_ptr<ICgroupStatsFetcher>;
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TCgroupStatsFetcherMonitoringSettings
-{
-    TString CountersGroupName;
-    TString ComponentGroupName;
-    TString CounterName;
-};
-
 ICgroupStatsFetcherPtr CreateCgroupStatsFetcher(
     TString componentName,
     ILoggingServicePtr logging,
-    IMonitoringServicePtr monitoring,
-    TString statsFile,
-    TCgroupStatsFetcherMonitoringSettings settings);
+    TString statsFile);
 
 ICgroupStatsFetcherPtr CreateCgroupStatsFetcherStub();
 
 TString BuildCpuWaitStatsFilename(const TString& serviceName);
+
+ICgroupStatsFetcherPtr BuildCgroupStatsFetcher(
+    const TString& cpuWaitServiceName,
+    const TString& cpuWaitFilename,
+    const TLog& log,
+    ILoggingServicePtr logging,
+    TString componentName);
 
 }   // namespace NCloud::NStorage

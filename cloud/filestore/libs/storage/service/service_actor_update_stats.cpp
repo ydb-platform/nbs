@@ -59,10 +59,15 @@ void TStorageServiceActor::HandleUpdateStats(
                     "Cpu wait is " << cpuLack);
             }
         } else {
+            if (CpuWaitFailure) {
+                *CpuWaitFailure = 1;
+            }
+            else {
             LOG_ERROR_S(
                 ctx,
                 TFileStoreComponents::SERVICE,
                 "Failed to get CpuWait stats: " << error);
+            }
         }
     }
 

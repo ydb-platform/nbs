@@ -45,6 +45,7 @@ private:
     THashMap<ui64, TInFlightRequest> InFlightRequests;
 
     NMonitoring::TDynamicCounters::TCounterPtr CpuWait;
+    NMonitoring::TDynamicCounters::TCounterPtr CpuWaitFailure;
     TInstant LastCpuWaitQuery;
 
 public:
