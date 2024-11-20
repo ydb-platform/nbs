@@ -7,6 +7,7 @@ namespace NCloud::NFileStore::NStorage {
 ////////////////////////////////////////////////////////////////////////////////
 
 TInMemoryIndexState::TInMemoryIndexState(IAllocator* allocator)
+    : Nodes(0), NodeAttrs(0)
 {
     Y_UNUSED(allocator);
 }
@@ -16,8 +17,8 @@ void TInMemoryIndexState::Reset(
     ui64 nodeAttrsCapacity,
     ui64 nodeRefsCapacity)
 {
-    NodesCapacity = nodesCapacity;
-    NodeAttrsCapacity = nodeAttrsCapacity;
+    Nodes.SetMaxSize(nodesCapacity);
+    NodeAttrs.SetMaxSize(nodeAttrsCapacity);
     NodeRefsCapacity = nodeRefsCapacity;
 }
 
@@ -44,9 +45,9 @@ void TInMemoryIndexState::MarkNodeRefsLoadComplete()
 TInMemoryIndexStateStats TInMemoryIndexState::GetStats() const
 {
     return TInMemoryIndexStateStats{
-        .NodesCount = Nodes.size(),
+        .NodesCount = Nodes.Size(),
         .NodeRefsCount = NodeRefs.size(),
-        .NodeAttrsCount = NodeAttrs.size(),
+        .NodeAttrsCount = NodeAttrs.Size(),
         .IsNodeRefsExhaustive = IsNodeRefsExhaustive,
     };
 }
@@ -60,16 +61,16 @@ bool TInMemoryIndexState::ReadNode(
     ui64 commitId,
     TMaybe<TNode>& node)
 {
-    auto it = Nodes.find(nodeId);
-    if (it == Nodes.end()) {
+    auto it = Nodes.Find(nodeId);
+    if (it == Nodes.End()) {
         return false;
     }
 
-    ui64 minCommitId = it->second.CommitId;
+    ui64 minCommitId = it.Value().CommitId;
     ui64 maxCommitId = InvalidCommitId;
 
     if (VisibleCommitId(commitId, minCommitId, maxCommitId)) {
-        node = TNode{nodeId, it->second.Node, minCommitId, maxCommitId};
+        node = TNode{nodeId, it.Value().Node, minCommitId, maxCommitId};
     }
 
     // We found the entry in table. There is at most one entry matching the key,
@@ -83,15 +84,15 @@ void TInMemoryIndexState::WriteNode(
     ui64 commitId,
     const NProto::TNode& attrs)
 {
-    if (Nodes.size() == NodesCapacity && !Nodes.contains(nodeId)) {
-        Nodes.clear();
-    }
-    Nodes[nodeId] = TNodeRow{.CommitId = commitId, .Node = attrs};
+    Nodes.Update(nodeId, TNodeRow{.CommitId = commitId, .Node = attrs});
 }
 
 void TInMemoryIndexState::DeleteNode(ui64 nodeId)
 {
-    Nodes.erase(nodeId);
+    auto it = Nodes.Find(nodeId);
+    if (it != Nodes.End()) {
+        Nodes.Erase(it);
+    }
 }
 
 //
@@ -118,22 +119,22 @@ bool TInMemoryIndexState::ReadNodeAttr(
     const TString& name,
     TMaybe<TNodeAttr>& attr)
 {
-    auto it = NodeAttrs.find(TNodeAttrsKey(nodeId, name));
-    if (it == NodeAttrs.end()) {
+    auto it = NodeAttrs.Find(TNodeAttrsKey(nodeId, name));
+    if (it == NodeAttrs.End()) {
         return false;
     }
 
-    ui64 minCommitId = it->second.CommitId;
+    ui64 minCommitId = it.Value().CommitId;
     ui64 maxCommitId = InvalidCommitId;
 
     if (VisibleCommitId(commitId, minCommitId, maxCommitId)) {
         attr = TNodeAttr{
             nodeId,
             name,
-            it->second.Value,
+            it.Value().Value,
             minCommitId,
             maxCommitId,
-            it->second.Version};
+            it.Value().Version};
     }
     // We found the entry in table. There is at most one entry matching the key,
     // meaning that cache lookup was successful, independent of whether the
@@ -160,16 +161,15 @@ void TInMemoryIndexState::WriteNodeAttr(
     ui64 version)
 {
     const auto key = TNodeAttrsKey(nodeId, name);
-    if (NodeAttrs.size() == NodeAttrsCapacity && !NodeAttrs.contains(key)) {
-        NodeAttrs.clear();
-    }
-    NodeAttrs[key] =
-        TNodeAttrsRow{.CommitId = commitId, .Value = value, .Version = version};
+    NodeAttrs.Update(key, TNodeAttrsRow{.CommitId = commitId, .Value = value, .Version = version});
 }
 
 void TInMemoryIndexState::DeleteNodeAttr(ui64 nodeId, const TString& name)
 {
-    NodeAttrs.erase(TNodeAttrsKey(nodeId, name));
+    auto it = NodeAttrs.Find(TNodeAttrsKey(nodeId, name));
+    if (it != NodeAttrs.End()) {
+        NodeAttrs.Erase(it);
+    }
 }
 
 //
