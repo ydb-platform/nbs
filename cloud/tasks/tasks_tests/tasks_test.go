@@ -1352,7 +1352,7 @@ func TestHangingTasksMetricsAreSetEvenForTasksNotRegisteredForExecution(t *testi
 	registry.AssertAllExpectations(t)
 }
 
-func TestHangingTasksMetricsCleanup(t *testing.T) {
+func TestListerMetricsCleanup(t *testing.T) {
 	ctx, cancel := context.WithCancel(newContext())
 	defer cancel()
 
@@ -1378,6 +1378,14 @@ func TestHangingTasksMetricsCleanup(t *testing.T) {
 	gaugeSetWg := sync.WaitGroup{}
 	gaugeUnsetWg := sync.WaitGroup{}
 
+	runningTaskCountGaugeSetCall := registry.GetGauge(
+		"running",
+		map[string]string{"type": "tasks.hanging"},
+	).On(
+		"Set",
+		float64(1),
+	).Return(mock.Anything)
+
 	totalHangingTaskCountGaugeSetCall := registry.GetGauge(
 		"totalHangingTaskCount",
 		map[string]string{"type": "tasks.hanging"},
@@ -1395,6 +1403,16 @@ func TestHangingTasksMetricsCleanup(t *testing.T) {
 			gaugeSetWg.Done()
 		},
 	)
+
+	registry.GetGauge(
+		"running",
+		map[string]string{"type": "tasks.hanging"},
+	).On(
+		"Set",
+		float64(0),
+	).NotBefore(
+		runningTaskCountGaugeSetCall,
+	).Return(mock.Anything)
 
 	registry.GetGauge(
 		"totalHangingTaskCount",

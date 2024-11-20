@@ -288,6 +288,13 @@ type Storage interface {
 		accountID string,
 	) (TaskState, error)
 
+	ListTasksWithStatus(
+		ctx context.Context,
+		limit uint64,
+		taskTypeWhitelist []string,
+		status string,
+	) ([]TaskInfo, error)
+
 	// Used in task execution workflow.
 	ListTasksReadyToRun(
 		ctx context.Context,
@@ -320,12 +327,14 @@ type Storage interface {
 		taskTypeWhitelist []string,
 	) ([]TaskInfo, error)
 
+	// Used for metrics collection.
 	ListTasksRunning(
 		ctx context.Context,
 		limit uint64,
 		taskTypeWhitelist []string,
 	) ([]TaskInfo, error)
 
+	// Used for metrics collection.
 	ListTasksCancelling(
 		ctx context.Context,
 		limit uint64,

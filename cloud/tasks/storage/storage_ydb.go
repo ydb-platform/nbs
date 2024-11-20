@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/ydb-platform/nbs/cloud/tasks/errors"
 	"github.com/ydb-platform/nbs/cloud/tasks/persistence"
 )
 
@@ -96,6 +97,30 @@ func (s *storageYDB) GetTaskByIdempotencyKey(
 		},
 	)
 	return task, err
+}
+
+func (s *storageYDB) ListTasksWithStatus(
+	ctx context.Context,
+	limit uint64,
+	taskTypeWhitelist []string,
+	status string,
+) ([]TaskInfo, error) {
+
+	switch status {
+	case TaskStatusToString(TaskStatusReadyToRun):
+		return s.ListTasksReadyToRun(ctx, limit, taskTypeWhitelist)
+	case TaskStatusToString(TaskStatusReadyToCancel):
+		return s.ListTasksReadyToCancel(ctx, limit, taskTypeWhitelist)
+	case TaskStatusToString(TaskStatusRunning):
+		return s.ListTasksRunning(ctx, limit, taskTypeWhitelist)
+	case TaskStatusToString(TaskStatusCancelling):
+		return s.ListTasksCancelling(ctx, limit, taskTypeWhitelist)
+	default:
+		return nil, errors.NewNonRetriableErrorf(
+			"listing of tasks with status %s is not supported",
+			status,
+		)
+	}
 }
 
 func (s *storageYDB) ListTasksReadyToRun(

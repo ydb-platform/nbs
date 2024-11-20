@@ -595,9 +595,6 @@ func (s *scheduler) registerAndScheduleRegularSystemTasks(
 				taskTypes:                 s.registry.TaskTypes(),
 				hangingTaskGaugesByID:     make(map[string]metrics.Gauge),
 				maxHangingTaskIDsToReport: config.GetMaxHangingTaskIDsToReport(),
-				taskStatus2ListTasksFunc: make(
-					map[string]listTasksWithTypeWhitelistFunc,
-				),
 			}
 		},
 	)

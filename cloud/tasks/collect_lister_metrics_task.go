@@ -17,14 +17,6 @@ const totalHangingTaskCountGaugeName = "totalHangingTaskCount"
 
 ////////////////////////////////////////////////////////////////////////////////
 
-type listTasksWithTypeWhitelistFunc = func(
-	ctx context.Context,
-	limit uint64,
-	taskTypeWhitelist []string,
-) ([]storage.TaskInfo, error)
-
-////////////////////////////////////////////////////////////////////////////////
-
 type collectListerMetricsTask struct {
 	registry                  metrics.Registry
 	storage                   storage.Storage
@@ -33,7 +25,6 @@ type collectListerMetricsTask struct {
 	taskTypes                 []string
 	hangingTaskGaugesByID     map[string]metrics.Gauge
 	maxHangingTaskIDsToReport int64
-	taskStatus2ListTasksFunc  map[string]listTasksWithTypeWhitelistFunc
 }
 
 func (c *collectListerMetricsTask) Save() ([]byte, error) {
@@ -49,26 +40,27 @@ func (c *collectListerMetricsTask) Run(
 	execCtx ExecutionContext,
 ) error {
 
-	c.taskStatus2ListTasksFunc = map[string]listTasksWithTypeWhitelistFunc{
-		storage.TaskStatusToString(storage.TaskStatusReadyToRun):    c.storage.ListTasksReadyToRun,
-		storage.TaskStatusToString(storage.TaskStatusRunning):       c.storage.ListTasksRunning,
-		storage.TaskStatusToString(storage.TaskStatusReadyToCancel): c.storage.ListTasksReadyToCancel,
-		storage.TaskStatusToString(storage.TaskStatusCancelling):    c.storage.ListTasksCancelling,
+	taskStatuses := []string{
+		storage.TaskStatusToString(storage.TaskStatusReadyToRun),
+		storage.TaskStatusToString(storage.TaskStatusRunning),
+		storage.TaskStatusToString(storage.TaskStatusReadyToCancel),
+		storage.TaskStatusToString(storage.TaskStatusCancelling),
 	}
-	defer c.cleanupMetrics()
+	defer c.cleanupMetrics(taskStatuses)
 
 	ticker := time.NewTicker(c.metricsCollectionInterval)
 	defer ticker.Stop()
 
 	for range ticker.C {
-		for taskStatus, listTasksFunc := range c.taskStatus2ListTasksFunc {
+		for _, taskStatus := range taskStatuses {
 			err := c.collectTasksMetrics(
 				ctx,
 				func(context.Context) ([]storage.TaskInfo, error) {
-					return listTasksFunc(
+					return c.storage.ListTasksWithStatus(
 						ctx,
 						^uint64(0), // limit
 						nil,        // taskTypeWhitelist
+						taskStatus,
 					)
 				},
 				taskStatus,
@@ -205,12 +197,8 @@ func (c *collectListerMetricsTask) collectHangingTasksMetrics(
 	return nil
 }
 
-func (c *collectListerMetricsTask) cleanupMetrics() {
-	var sensors []string
-	for taskStatus := range c.taskStatus2ListTasksFunc {
-		sensors = append(sensors, taskStatus)
-	}
-	sensors = append(sensors, totalHangingTaskCountGaugeName)
+func (c *collectListerMetricsTask) cleanupMetrics(taskStatuses []string) {
+	sensors := append(taskStatuses, totalHangingTaskCountGaugeName)
 
 	for _, taskType := range c.taskTypes {
 		subRegistry := c.registry.WithTags(map[string]string{
