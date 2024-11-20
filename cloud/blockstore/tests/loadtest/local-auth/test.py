@@ -5,6 +5,7 @@ import subprocess
 import yatest.common as common
 
 from pathlib import Path
+from tempfile import TemporaryDirectory
 
 from google.protobuf.text_format import MessageToString
 
@@ -98,6 +99,7 @@ class TestFixture:
         server_app_config = create_server_app_config()
         if unix_socket_path is not None:
             server_app_config.ServerConfig.UnixSocketPath = unix_socket_path
+            server_app_config.ServerConfig.AllowAllRequestsViaUDS = True
         self.unix_socket_path = unix_socket_path
         storage = create_storage_service_config(folder_id)
         self.__local_load_test = LocalLoadTest(
@@ -235,16 +237,17 @@ def test_new_auth_unknown_subject():
         assert json.loads(result.stdout)["Error"]["CodeString"] == "E_UNAUTHORIZED"
 
 def test_unix_socket_does_not_require_auth():
-    unix_socket_path = common.work_path("nbs.sock")
-    with TestFixture(NewAccessService, unix_socket_path=unix_socket_path) as env:
-        token = "some_token"
-        env.access_service.create_account(
-            "test_user",
-            token,
-            is_unknown_subject=True,
-            permissions=[
-                {"permission": "nbsInternal.disks.create", "resource": env.folder_id},
-            ],
-        )
-        result = env.create_volume()
-        assert result.returncode == 0
+    with TemporaryDirectory(dir="/tmp") as temp_dir:
+        unix_socket_path = str(Path(temp_dir) / "nbs.sock")
+        with TestFixture(NewAccessService, unix_socket_path=unix_socket_path) as env:
+            token = "some_token"
+            env.access_service.create_account(
+                "test_user",
+                token,
+                is_unknown_subject=True,
+                permissions=[
+                    {"permission": "nbsInternal.disks.create", "resource": env.folder_id},
+                ],
+            )
+            result = env.create_volume()
+            assert result.returncode == 0
