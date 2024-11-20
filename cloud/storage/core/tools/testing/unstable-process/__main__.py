@@ -33,9 +33,6 @@ def _process_wait_and_check(process, check_timeout):
                 f"wait for pid {process.pid} timed out after {timeout} seconds"
             )
 
-            if not os.path.exists(runtime.gdb_path()):
-                return
-
             bt = subprocess.getoutput(
                 f'sudo gdb --batch -p {process.pid} -ex "thread apply all bt"'
             )
