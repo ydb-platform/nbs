@@ -37,7 +37,7 @@ def test_new_auth_authorization_ok():
 
 def test_unix_socket_does_not_require_auth():
     fixture = TestFixture()
-    client = fixture.get_client("", use_unix_socket=True)
+    client = fixture.get_client("some-token", use_unix_socket=True)
     result = client.create(
         "test_new_auth_unauthorized",
         "some_cloud",
