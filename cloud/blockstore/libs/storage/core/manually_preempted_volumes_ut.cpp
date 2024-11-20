@@ -176,12 +176,40 @@ Y_UNIT_TEST_SUITE(TManuallyPreemptedVolumesTest)
         UNIT_ASSERT_VALUES_EQUAL(criticalEvents.size(), 1);
     }
 
-    Y_UNIT_TEST(ShouldRaiseCriticalEventIfFileDoesNotExist)
+    Y_UNIT_TEST(ShouldCreateManuallyPreemptedVolumesFileIfItDoesNotExist)
     {
         TTempDir dir;
 
         NProto::TStorageServiceConfig config;
-        config.SetManuallyPreemptedVolumesFile(dir.Path().GetPath() + "/abc.json");
+        auto fpath = dir.Path() / "abc.json";
+        config.SetManuallyPreemptedVolumesFile(fpath.GetPath());
+        config.SetDisableManuallyPreemptedVolumesTracking(false);
+
+        auto storageConfig = std::make_shared<TStorageConfig>(
+            std::move(config),
+            std::make_shared<NFeatures::TFeaturesConfig>());
+
+        UNIT_ASSERT(!fpath.IsFile());
+
+        TLog log;
+        TVector<TString> criticalEvents;
+        auto loaded = CreateManuallyPreemptedVolumes(
+            storageConfig,
+            log,
+            criticalEvents);
+
+        UNIT_ASSERT_VALUES_EQUAL(loaded->GetSize(), 0);
+        UNIT_ASSERT_VALUES_EQUAL(criticalEvents.size(), 0);
+        UNIT_ASSERT(fpath.IsFile());
+    }
+
+    Y_UNIT_TEST(ShouldRaiseCriticalEventIfFileDoesNotExistAndCannotBeCreated)
+    {
+        TTempDir dir;
+
+        NProto::TStorageServiceConfig config;
+        auto fpath = dir.Path() / "nosuchdir" / "abc.json";
+        config.SetManuallyPreemptedVolumesFile(fpath.GetPath());
         config.SetDisableManuallyPreemptedVolumesTracking(false);
 
         auto storageConfig = std::make_shared<TStorageConfig>(
@@ -197,6 +225,7 @@ Y_UNIT_TEST_SUITE(TManuallyPreemptedVolumesTest)
 
         UNIT_ASSERT_VALUES_EQUAL(loaded->GetSize(), 0);
         UNIT_ASSERT_VALUES_EQUAL(criticalEvents.size(), 1);
+        UNIT_ASSERT(!fpath.IsFile());
     }
 
     Y_UNIT_TEST(ShouldLoadEmptyPreemptedVolumesFile)
