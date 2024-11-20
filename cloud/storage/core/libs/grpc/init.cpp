@@ -120,7 +120,9 @@ TGrpcInitializer::~TGrpcInitializer()
 void GrpcLoggerInit(const TLog& log, bool enableTracing)
 {
     with_lock (GrpcStateMutex) {
-        Y_ABORT_UNLESS(GrpcState);
+        if (!GrpcState) {
+            GrpcState = new TGrpcState;
+        }
 
         GrpcState->Log = log;
     }
