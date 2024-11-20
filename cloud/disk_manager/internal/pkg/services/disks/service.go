@@ -223,6 +223,24 @@ func (s *service) prepareCreateDiskParams(
 
 	tabletVersion := uint32(req.TabletVersion)
 
+	if nbs.IsDiskRegistryBasedDisk(kind) && s.config.GetDisableDiskRegistryBasedDisks() {
+		allowed := false
+		for _, folderID := range s.config.GetDiskRegistryBasedDisksFolderIdAllowList() {
+			if folderID == req.FolderId {
+				allowed = true
+				break
+			}
+		}
+
+		if !allowed {
+			return nil, errors.NewInvalidArgumentError(
+				"can't create a DisdRegistry based disk with id %q, because " +
+				"it is not allowed for the %q folder",
+				req.FolderId,
+			)
+		}
+	}
+
 	return &protos.CreateDiskParams{
 		BlocksCount: blocksCount,
 		Disk: &types.Disk{
@@ -240,25 +258,6 @@ func (s *service) prepareCreateDiskParams(
 		AgentIds:                req.AgentIds,
 		EncryptionDesc:          encryptionDesc,
 	}, nil
-}
-
-func (s *service) checkCreateDiskPermission(req *protos.CreateDiskParams) error {
-
-	if !nbs.IsDiskRegistryBasedDisk(kind) {
-		return nil
-	}
-
-	if s.config.GetEnableDiskRegistryBasedDiskCreation() {
-		return nil
-	}
-
-	for _, folderID := range s.config.GetDiskRegistryBasedDisksFolderIdAllowList() {
-		if folderID == req.FolderId {
-			return nil
-		}
-	}
-
-	return errors.New("allocation of DiskRegistry based disks is disallowed")
 }
 
 func (s *service) areOverlayDisksSupportedForDiskKind(kind types.DiskKind) bool {
@@ -335,11 +334,6 @@ func (s *service) CreateDisk(
 ) (string, error) {
 
 	params, err := s.prepareCreateDiskParams(req)
-	if err != nil {
-		return "", err
-	}
-
-	err = s.checkCreateDiskPermission(params)
 	if err != nil {
 		return "", err
 	}
