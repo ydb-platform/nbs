@@ -843,6 +843,7 @@ void TBootstrapBase::Start()
 {
 #define START_COMMON_COMPONENT(c)                                              \
     if (c) {                                                                   \
+        STORAGE_INFO("Starting " << #c << " ...");                             \
         c->Start();                                                            \
         STORAGE_INFO("Started " << #c);                                        \
     }                                                                          \
@@ -850,6 +851,7 @@ void TBootstrapBase::Start()
 
 #define START_KIKIMR_COMPONENT(c)                                              \
     if (Get##c()) {                                                            \
+        STORAGE_INFO("Starting " << #c << " ...");                             \
         Get##c()->Start();                                                     \
         STORAGE_INFO("Started " << #c);                                        \
     }                                                                          \
@@ -873,8 +875,8 @@ void TBootstrapBase::Start()
     START_KIKIMR_COMPONENT(YdbStorage);
     START_KIKIMR_COMPONENT(StatsUploader);
     START_COMMON_COMPONENT(Spdk);
-    START_KIKIMR_COMPONENT(ActorSystem);
     START_COMMON_COMPONENT(FileIOServiceProvider);
+    START_KIKIMR_COMPONENT(ActorSystem);
     START_COMMON_COMPONENT(EndpointProxyClient);
     START_COMMON_COMPONENT(EndpointManager);
     START_COMMON_COMPONENT(Service);
@@ -917,6 +919,7 @@ void TBootstrapBase::Stop()
 {
 #define STOP_COMMON_COMPONENT(c)                                               \
     if (c) {                                                                   \
+        STORAGE_INFO("Stopping " << #c << "...");                              \
         c->Stop();                                                             \
         STORAGE_INFO("Stopped " << #c);                                        \
     }                                                                          \
@@ -924,6 +927,7 @@ void TBootstrapBase::Stop()
 
 #define STOP_KIKIMR_COMPONENT(c)                                               \
     if (Get##c()) {                                                            \
+        STORAGE_INFO("Stopping " << #c << "...");                              \
         Get##c()->Stop();                                                      \
         STORAGE_INFO("Stopped " << #c);                                        \
     }                                                                          \
@@ -944,8 +948,14 @@ void TBootstrapBase::Stop()
     STOP_COMMON_COMPONENT(Service);
     STOP_COMMON_COMPONENT(EndpointManager);
     STOP_COMMON_COMPONENT(EndpointProxyClient);
-    STOP_COMMON_COMPONENT(FileIOServiceProvider);
+
+
     STOP_KIKIMR_COMPONENT(ActorSystem);
+
+    // stop FileIOServiceProvider after ActorSystem to ensure that there are no
+    // in-flight I/O requests from TDiskAgentActor
+    STOP_COMMON_COMPONENT(FileIOServiceProvider);
+
     STOP_COMMON_COMPONENT(Spdk);
     STOP_KIKIMR_COMPONENT(StatsUploader);
     STOP_KIKIMR_COMPONENT(YdbStorage);

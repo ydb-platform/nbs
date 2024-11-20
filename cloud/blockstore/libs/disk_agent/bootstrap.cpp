@@ -607,6 +607,7 @@ void TBootstrap::Start()
     }
 #define START_COMPONENT(c)                                                     \
     if (c) {                                                                   \
+        STORAGE_INFO("Starting " << #c << " ...");                             \
         c->Start();                                                            \
         STORAGE_INFO("Started " << #c);                                        \
     }                                                                          \
@@ -647,6 +648,7 @@ void TBootstrap::Stop()
     }
 #define STOP_COMPONENT(c)                                                      \
     if (c) {                                                                   \
+        STORAGE_INFO("Stopping " << #c << " ...");                             \
         c->Stop();                                                             \
         STORAGE_INFO("Stopped " << #c);                                        \
     }                                                                          \
