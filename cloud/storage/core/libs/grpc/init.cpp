@@ -16,7 +16,8 @@ namespace NCloud {
 namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
-
+// We have to manage the lifetime of the GRPC custom logger to make sure it is
+// alive as long as the GRPC is running.
 TLog* GrpcLog;
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -95,16 +96,30 @@ TGrpcInitializer::TGrpcInitializer()
 TGrpcInitializer::~TGrpcInitializer()
 {
     grpc_shutdown_blocking();
+
+    if (!grpc_is_initialized()) {
+        // Restore the default log function. Just in case
+        gpr_set_log_function(nullptr);
+
+        std::atomic_thread_fence(std::memory_order_seq_cst);
+    // TSAN does not understand |std::atomic_thread_fence|, so teach it
+#if defined(_tsan_enabled_)
+    __tsan_release(GrpcLog);
+#endif
+        // Now we can safely destroy the custom logger
+        delete GrpcLog;
+        GrpcLog = nullptr;
+    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void GrpcLoggerInit(TLog& log, bool enableTracing)
+void GrpcLoggerInit(const TLog& log, bool enableTracing)
 {
     // Logger should only be initialized once
     Y_ABORT_UNLESS(!GrpcLog);
 
-    GrpcLog = &log;
+    GrpcLog = new TLog(log);
     // |gpr_set_log_verbosity| and |gpr_set_log_function| do not imply any
     // memory barrier, so we need a full barrier here
     std::atomic_thread_fence(std::memory_order_seq_cst);
@@ -120,6 +135,5 @@ void GrpcLoggerInit(TLog& log, bool enableTracing)
         EnableGrpcTracing();
     }
 }
-
 
 }   // namespace NCloud
