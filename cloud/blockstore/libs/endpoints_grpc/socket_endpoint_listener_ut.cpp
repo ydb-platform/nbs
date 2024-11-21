@@ -262,7 +262,7 @@ NProto::TMountVolumeResponse CreateMountVolumeResponse(TOptions options)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TBootstrap CreateBootstrap(TOptions options)
+TBootstrap CreateBootstrap(const TOptions& options)
 {
     auto testSession = std::make_shared<TTestSession>();
 
@@ -337,6 +337,21 @@ NProto::TError ReadBlocksLocal(IBlockStorePtr client, const TString& diskId)
     const auto& response = future.GetValue(TDuration::Seconds(5));
     return response.GetError();
 }
+
+////////////////////////////////////////////////////////////////////////////////
+
+struct TGrpcLogFixture
+    : public NUnitTest::TBaseFixture
+{
+    ILoggingServicePtr Logging = CreateLoggingService("console");
+    TLog GrpcLog;
+
+    void SetUp(NUnitTest::TTestContext&) override
+    {
+        GrpcLog = Logging->CreateLog("GRPC");
+        GrpcLoggerInit(GrpcLog, false /* enableTracing */);
+    }
+};
 
 }   // namespace
 
@@ -498,7 +513,9 @@ Y_UNIT_TEST_SUITE(TSocketEndpointListenerTest)
         endpointListener->Stop();
     }
 
-    Y_UNIT_TEST(ShouldEmulateMountUnmountResponseForSocketEndpoints)
+    Y_UNIT_TEST_F(
+        ShouldEmulateMountUnmountResponseForSocketEndpoints,
+        TGrpcLogFixture)
     {
         TOptions options;
         auto bootstrap = CreateBootstrap(options);
@@ -544,7 +561,9 @@ Y_UNIT_TEST_SUITE(TSocketEndpointListenerTest)
         }
     }
 
-    Y_UNIT_TEST(ShouldHandleStorageRequestsForSocketEndpoints)
+    Y_UNIT_TEST_F(
+        ShouldHandleStorageRequestsForSocketEndpoints,
+        TGrpcLogFixture)
     {
         TOptions options;
         auto bootstrap = CreateBootstrap(options);
@@ -648,7 +667,9 @@ Y_UNIT_TEST_SUITE(TSocketEndpointListenerTest)
         }
     }
 
-    Y_UNIT_TEST(ShouldNotHandleControlRequestsForSocketEndpoints)
+    Y_UNIT_TEST_F(
+        ShouldNotHandleControlRequestsForSocketEndpoints,
+        TGrpcLogFixture)
     {
         TOptions options;
         auto bootstrap = CreateBootstrap(options);
@@ -672,7 +693,7 @@ Y_UNIT_TEST_SUITE(TSocketEndpointListenerTest)
         }
     }
 
-    Y_UNIT_TEST(ShouldHandleOnlyLastSocketEndpointClient)
+    Y_UNIT_TEST_F(ShouldHandleOnlyLastSocketEndpointClient, TGrpcLogFixture)
     {
         TOptions options;
         auto bootstrap = CreateBootstrap(options);
@@ -767,7 +788,7 @@ Y_UNIT_TEST_SUITE(TSocketEndpointListenerTest)
         clientEndpoint2->Stop();
     }
 
-    Y_UNIT_TEST(ShouldRejectRequestsAfterStopEndpoint)
+    Y_UNIT_TEST_F(ShouldRejectRequestsAfterStopEndpoint, TGrpcLogFixture)
     {
         TOptions options;
         auto bootstrap = CreateBootstrap(options);
@@ -835,10 +856,8 @@ Y_UNIT_TEST_SUITE(TSocketEndpointListenerTest)
         }
     }
 
-    Y_UNIT_TEST(ShouldReconnectAfterRestartEndpoint)
+    Y_UNIT_TEST_F(ShouldReconnectAfterRestartEndpoint, TGrpcLogFixture)
     {
-        auto logging = CreateLoggingService("console");
-
         TOptions options;
         auto bootstrap = CreateBootstrap(options);
         bootstrap.Start();
@@ -854,7 +873,7 @@ Y_UNIT_TEST_SUITE(TSocketEndpointListenerTest)
             config,
             bootstrap.GetClientEndpoint(),
             CreateRetryPolicy(config),
-            logging,
+            Logging,
             bootstrap.GetTimer(),
             bootstrap.GetScheduler(),
             CreateRequestStatsStub(),
@@ -938,7 +957,7 @@ Y_UNIT_TEST_SUITE(TSocketEndpointListenerTest)
         UNIT_ASSERT_C(!HasError(response), response.GetError());
     }
 
-    Y_UNIT_TEST(ShouldStartEndpointIfSocketAlreadyExists)
+    Y_UNIT_TEST_F(ShouldStartEndpointIfSocketAlreadyExists, TGrpcLogFixture)
     {
         TFsPath unixSocket(CreateGuidAsString() + ".sock");
         unixSocket.Touch();
@@ -971,7 +990,7 @@ Y_UNIT_TEST_SUITE(TSocketEndpointListenerTest)
         UNIT_ASSERT_C(!HasError(error), error);
     }
 
-    Y_UNIT_TEST(ShouldRemoveUnixSocketAfterStopEndpoint)
+    Y_UNIT_TEST_F(ShouldRemoveUnixSocketAfterStopEndpoint, TGrpcLogFixture)
     {
         TOptions options;
         auto bootstrap = CreateBootstrap(options);
@@ -999,7 +1018,7 @@ Y_UNIT_TEST_SUITE(TSocketEndpointListenerTest)
         UNIT_ASSERT(!TFsPath(options.UnixSocketPath).Exists());
     }
 
-    Y_UNIT_TEST(ShouldNotRemoveUnixSocketAfterStopServer)
+    Y_UNIT_TEST_F(ShouldNotRemoveUnixSocketAfterStopServer, TGrpcLogFixture)
     {
         auto serverCode1 = E_FAIL;
         auto serverCode2 = E_ARGUMENT;
@@ -1068,7 +1087,9 @@ Y_UNIT_TEST_SUITE(TSocketEndpointListenerTest)
         }
     }
 
-    Y_UNIT_TEST(ShouldReturnLastSuccessfulMountVolumeResponse)
+    Y_UNIT_TEST_F(
+        ShouldReturnLastSuccessfulMountVolumeResponse,
+        TGrpcLogFixture)
     {
         TOptions options;
         auto bootstrap = CreateBootstrap(options);
