@@ -52,5 +52,6 @@ class TestFixture:
             check_exit_code=False,
             return_json=True,
             use_unix_socket=use_unix_socket,
+            verbose=True,
         )
         return client
