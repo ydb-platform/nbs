@@ -12,6 +12,8 @@ import time
 
 process = None
 
+logger = logging.getLogger(__name__)
+
 
 def sighandler(sig, frame):
     if process is not None:
@@ -30,7 +32,7 @@ def _process_wait_and_check(process, check_timeout):
             process.wait(timeout=check_timeout)
         except subprocess.TimeoutExpired:
             logger.warning(
-                f"wait for pid {process.pid} timed out after {timeout} seconds"
+                f"wait for pid {process.pid} timed out after {check_timeout} seconds"
             )
 
             bt = subprocess.getoutput(
