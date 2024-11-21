@@ -30,6 +30,10 @@ IReplayRequestGenerator::IReplayRequestGenerator(
     NEventLog::TOptions options;
     options.FileName = Spec.GetFileName();
 
+    if (const auto sleep = Spec.GetMaxSleepMcs()) {
+        MaxSleepMcs = sleep;
+    }
+
     CurrentEvent = CreateIterator(options);
 }
 
@@ -159,10 +163,15 @@ IReplayRequestGenerator::ExecuteNextRequest()
                 MessagePtr->GetRequests()[--EventMessageNumber];
             {
                 ++MessagesProcessed;
-                auto timediff = (request.GetTimestampMcs() - TimestampMcs) *
+                ui64 timediff = (request.GetTimestampMcs() - TimestampMcs) *
                                 Spec.GetTimeScale();
                 TimestampMcs = request.GetTimestampMcs();
                 if (timediff > MaxSleepMcs) {
+                    STORAGE_DEBUG(
+                        "Ignore too long timediff=%lu MaxSleepMcs=%lu ",
+                        timediff,
+                        MaxSleepMcs);
+
                     timediff = 0;
                 }
 
@@ -183,7 +192,7 @@ IReplayRequestGenerator::ExecuteNextRequest()
                     auto sleep =
                         TDuration::MicroSeconds(timediff - diff.MicroSeconds());
                     STORAGE_DEBUG(
-                        "Sleep=%lu timediff=%f diff=%lu",
+                        "Sleep=%lu timediff=%lu diff=%lu",
                         sleep.MicroSeconds(),
                         timediff,
                         diff.MicroSeconds());

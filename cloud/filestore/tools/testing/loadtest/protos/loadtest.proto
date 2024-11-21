@@ -89,6 +89,9 @@ message TReplaySpec
 
     // Create missing files in CreateHandle requests
     bool CreateOnRead = 9;
+
+    // Ignore too long pauses in log, in microseconds
+    uint64 MaxSleepMcs = 10;
 }
 
 message TMigrationSpec
