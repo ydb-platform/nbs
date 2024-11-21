@@ -3,6 +3,7 @@
 #include <cloud/blockstore/libs/rdma_test/memory_test_storage.h>
 #include <cloud/blockstore/libs/rdma_test/rdma_test_environment.h>
 #include <cloud/blockstore/libs/rdma_test/server_test_async.h>
+#include <cloud/blockstore/libs/storage/disk_agent/model/device_client.h>
 
 #include <library/cpp/testing/unittest/registar.h>
 
@@ -324,7 +325,6 @@ Y_UNIT_TEST_SUITE(TRdmaTargetTest)
                 response.GetError().GetCode(),
                 response.GetError().GetMessage());
         }
-
     }
 
     Y_UNIT_TEST(ShouldRejectSecureEraseDuringIo)
@@ -356,6 +356,42 @@ Y_UNIT_TEST_SUITE(TRdmaTargetTest)
         UNIT_ASSERT_C(!HasError(error), error);
     }
 
+    Y_UNIT_TEST(ShouldDisableDevice)
+    {
+        TRdmaTestEnvironment env(8_MB, 2);
+
+        const auto blockRange = TBlockRange64::WithLength(0, 1024);
+
+        env.DeviceClient->DisableDevice(env.Device_1);
+
+        UNIT_ASSERT_VALUES_EQUAL(0, env.Storage->ErrorCount);
+
+        {
+            auto responseFuture =
+                env.Run(env.MakeWriteRequest(blockRange, 'A', 100));
+            const auto& response = responseFuture.GetValueSync();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_IO,
+                response.GetError().GetCode(),
+                response.GetError().GetMessage());
+        }
+
+        UNIT_ASSERT_VALUES_EQUAL(1, env.Storage->ErrorCount);
+
+        env.DeviceClient->SuspendDevice(env.Device_1);
+
+        {
+            auto responseFuture =
+                env.Run(env.MakeWriteRequest(blockRange, 'A', 100));
+            const auto& response = responseFuture.GetValueSync();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_REJECTED,
+                response.GetError().GetCode(),
+                response.GetError().GetMessage());
+        }
+
+        UNIT_ASSERT_VALUES_EQUAL(1, env.Storage->ErrorCount);
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

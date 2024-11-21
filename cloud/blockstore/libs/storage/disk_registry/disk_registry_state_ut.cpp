@@ -8677,7 +8677,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
         });
 
         const auto agent1b = AgentConfig(1000, {
-            Device("dev-1", "uuid-1.2", "rack-1"),
+            Device("dev-2", "uuid-1.2", "rack-1"),
         });
 
         TDiskRegistryState state = TDiskRegistryStateBuilder()
@@ -11773,6 +11773,114 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
         UNIT_ASSERT_VALUES_EQUAL(30_GB, decommissionedBytes->Val());
         UNIT_ASSERT_VALUES_EQUAL(10_GB, allocatedBytes->Val());
         UNIT_ASSERT_VALUES_EQUAL(0, dirtyBytes->Val());
+    }
+
+    Y_UNIT_TEST(ShouldCleanUnoccupiedDevicesWithNewSerialNumber)
+    {
+        auto monitoring = CreateMonitoringServiceStub();
+        auto rootGroup = monitoring->GetCounters()
+            ->GetSubgroup("counters", "blockstore");
+
+        auto serverGroup = rootGroup->GetSubgroup("component", "server");
+        InitCriticalEventsCounter(serverGroup);
+
+        auto criticalEvents = serverGroup->FindCounter(
+            "AppCriticalEvents/"
+            "DiskRegistryOccupiedDeviceConfigurationHasChanged");
+
+        UNIT_ASSERT_VALUES_EQUAL(0, criticalEvents->Val());
+
+        TTestExecutor executor;
+        executor.WriteTx([&] (TDiskRegistryDatabase db) {
+            db.InitSchema();
+        });
+
+        auto agentConfig = AgentConfig(1, {
+            Device("NVMENBS01", "uuid-1.1"),
+            Device("NVMENBS02", "uuid-1.2"),
+        });
+
+        TDiskRegistryState state = TDiskRegistryStateBuilder()
+            .WithKnownAgents({agentConfig})
+            .WithDisks({
+                Disk("disk-1", {"uuid-1.2"}),
+            })
+            .Build();
+
+        executor.WriteTx(
+            [&](TDiskRegistryDatabase db)
+            {
+                auto [r, error] = state.RegisterAgent(db, agentConfig, Now());
+
+                UNIT_ASSERT_SUCCESS(error);
+                UNIT_ASSERT_VALUES_EQUAL(0, r.AffectedDisks.size());
+                UNIT_ASSERT_VALUES_EQUAL(0, state.GetDirtyDevices().size());
+            });
+
+        agentConfig.MutableDevices(0)->SetSerialNumber("SN-X-1");
+        agentConfig.MutableDevices(1)->SetSerialNumber("SN-Y-1");
+        agentConfig.MutableDevices(0)->SetPhysicalOffset(1000);
+        agentConfig.MutableDevices(1)->SetPhysicalOffset(1000);
+
+        executor.WriteTx(
+            [&](TDiskRegistryDatabase db)
+            {
+                auto [r, error] = state.RegisterAgent(db, agentConfig, Now());
+
+                UNIT_ASSERT_SUCCESS(error);
+                UNIT_ASSERT_VALUES_EQUAL(0, r.AffectedDisks.size());
+                UNIT_ASSERT_VALUES_EQUAL(0, state.GetDirtyDevices().size());
+            });
+
+        agentConfig.MutableDevices(0)->SetSerialNumber("SN-X-2");
+        agentConfig.MutableDevices(1)->SetSerialNumber("SN-Y-2");
+
+        executor.WriteTx(
+            [&](TDiskRegistryDatabase db)
+            {
+                auto [r, error] = state.RegisterAgent(db, agentConfig, Now());
+
+                UNIT_ASSERT_SUCCESS(error);
+                UNIT_ASSERT_VALUES_EQUAL(1, r.AffectedDisks.size());
+                UNIT_ASSERT_VALUES_EQUAL("disk-1", r.AffectedDisks[0]);
+                const auto& dd = state.GetDirtyDevices();
+                UNIT_ASSERT_VALUES_EQUAL(1, dd.size());
+                UNIT_ASSERT_VALUES_EQUAL("uuid-1.1", dd[0].GetDeviceUUID());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    agentConfig.GetDevices(0).GetSerialNumber(),
+                    dd[0].GetSerialNumber());
+            });
+
+        UNIT_ASSERT_VALUES_EQUAL(1, criticalEvents->Val());
+
+        // Change the PhysicalOffset for uuid-1.2
+        agentConfig.MutableDevices(1)->SetPhysicalOffset(42);
+
+        executor.WriteTx(
+            [&](TDiskRegistryDatabase db)
+            {
+                auto [r, error] = state.RegisterAgent(db, agentConfig, Now());
+
+                UNIT_ASSERT_SUCCESS(error);
+                UNIT_ASSERT_VALUES_EQUAL(0, r.AffectedDisks.size());
+            });
+
+        UNIT_ASSERT_VALUES_EQUAL(2, criticalEvents->Val());
+
+        // Change the SN for uuid-1.2 once more
+        agentConfig.MutableDevices(1)->SetSerialNumber("SN-Y-3");
+
+        executor.WriteTx(
+            [&](TDiskRegistryDatabase db)
+            {
+                auto [r, error] = state.RegisterAgent(db, agentConfig, Now());
+
+                UNIT_ASSERT_SUCCESS(error);
+                UNIT_ASSERT_VALUES_EQUAL(0, r.AffectedDisks.size());
+            });
+
+        // Crit event shouldn't be reported
+        UNIT_ASSERT_VALUES_EQUAL(2, criticalEvents->Val());
     }
 }
 

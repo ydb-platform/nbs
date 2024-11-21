@@ -4,6 +4,8 @@
 #include <cloud/blockstore/libs/storage/stats_service/stats_service_events_private.h>
 #include <cloud/storage/core/libs/common/media.h>
 
+#include <bit>
+
 namespace NCloud::NBlockStore::NStorage {
 
 using namespace NTestVolume;
@@ -49,7 +51,7 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
         auto popCountStr = [](const TString& s) {
             ui64 count = 0;
             for (char c : s) {
-                count += PopCount(c);
+                count += std::popcount(static_cast<unsigned char>(c));
             }
             return count;
         };
@@ -2237,7 +2239,7 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
         auto popCountStr = [](const TString& s) {
             ui64 count = 0;
             for (char c : s) {
-                count += PopCount(c);
+                count += std::popcount(static_cast<unsigned char>(c));
             }
             return count;
         };
@@ -4985,6 +4987,124 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
         runtime->AdvanceCurrentTime(TDuration::Seconds(1));
         runtime->DispatchEvents({}, TDuration::MilliSeconds(10));
         UNIT_ASSERT_VALUES_EQUAL(2, registerSourceCounter);
+    }
+
+    Y_UNIT_TEST(ShouldDestroyShadowActorBeforeShadowDiskDeallocation)
+    {
+        NProto::TStorageServiceConfig config;
+        config.SetUseShadowDisksForNonreplDiskCheckpoints(true);
+        auto runtime = PrepareTestActorRuntime(config);
+
+        TVolumeClient volume(*runtime);
+        volume.UpdateVolumeConfig(
+            0,
+            0,
+            0,
+            0,
+            false,
+            1,
+            NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
+            32768);
+
+        volume.WaitReady();
+
+        volume.CreateCheckpoint("c1");
+
+        bool seenDrainDoneEvent = false;
+        bool seenDeallocateCheckpointEvent = false;
+        auto filter = [&](TTestActorRuntimeBase& runtime,
+                          TAutoPtr<IEventHandle>& event) -> bool
+        {
+            Y_UNUSED(runtime);
+            if (event->GetTypeRewrite() ==
+                TEvVolumePrivate::EvExternalDrainDone)
+            {
+                seenDrainDoneEvent = true;
+                UNIT_ASSERT_C(
+                    !seenDeallocateCheckpointEvent,
+                    "Should catch deallocation event after drain");
+            }
+            if (event->GetTypeRewrite() ==
+                TEvDiskRegistry::EvDeallocateCheckpointRequest)
+            {
+                seenDeallocateCheckpointEvent = true;
+                UNIT_ASSERT_C(
+                    seenDrainDoneEvent,
+                    "Should catch deallocation event after drain");
+            }
+
+            return false;
+        };
+        runtime->SetEventFilter(filter);
+
+        volume.DeleteCheckpointData("c1");
+
+        UNIT_ASSERT(seenDrainDoneEvent);
+        UNIT_ASSERT(seenDeallocateCheckpointEvent);
+    }
+
+    Y_UNIT_TEST(ShouldDeallocateShadowDiskEvenShadowActorDrainHang)
+    {
+        NProto::TStorageServiceConfig config;
+        config.SetUseShadowDisksForNonreplDiskCheckpoints(true);
+        auto runtime = PrepareTestActorRuntime(config);
+
+        TVolumeClient volume(*runtime);
+        volume.UpdateVolumeConfig(
+            0,
+            0,
+            0,
+            0,
+            false,
+            1,
+            NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
+            32768);
+
+        volume.WaitReady();
+
+        volume.CreateCheckpoint("c1");
+
+        bool seenDrainDoneEvent = false;
+        bool seenDeallocateCheckpointEvent = false;
+        auto filter = [&](TTestActorRuntimeBase& runtime,
+                          TAutoPtr<IEventHandle>& event) -> bool
+        {
+            Y_UNUSED(runtime);
+            if (event->GetTypeRewrite() ==
+                TEvVolumePrivate::EvExternalDrainDone)
+            {
+                seenDrainDoneEvent = true;
+                UNIT_ASSERT_C(
+                    !seenDeallocateCheckpointEvent,
+                    "Should catch deallocation event after drain");
+                // Drop EvExternalDrainDone event.
+                return true;
+            }
+            if (event->GetTypeRewrite() ==
+                TEvDiskRegistry::EvDeallocateCheckpointRequest)
+            {
+                seenDeallocateCheckpointEvent = true;
+                UNIT_ASSERT_C(
+                    seenDrainDoneEvent,
+                    "Should catch deallocation event after drain");
+            }
+
+            return false;
+        };
+        runtime->SetEventFilter(filter);
+
+        volume.SendDeleteCheckpointDataRequest("c1");
+        runtime->DispatchEvents({}, TDuration::Seconds(1));
+        UNIT_ASSERT(seenDrainDoneEvent);
+        UNIT_ASSERT(!seenDeallocateCheckpointEvent);
+
+        runtime->AdvanceCurrentTime(TDuration::Seconds(30));
+        runtime->DispatchEvents({}, TDuration::Seconds(1));
+
+        auto response = volume.RecvDeleteCheckpointDataResponse();
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
+        UNIT_ASSERT(seenDeallocateCheckpointEvent);
+
     }
 }
 

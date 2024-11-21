@@ -16,7 +16,6 @@ import (
 	persistence_config "github.com/ydb-platform/nbs/cloud/tasks/persistence/config"
 	"github.com/ydb-platform/ydb-go-sdk/v3"
 	ydb_credentials "github.com/ydb-platform/ydb-go-sdk/v3/credentials"
-	"github.com/ydb-platform/ydb-go-sdk/v3/sugar"
 	ydb_table "github.com/ydb-platform/ydb-go-sdk/v3/table"
 	ydb_options "github.com/ydb-platform/ydb-go-sdk/v3/table/options"
 	ydb_result "github.com/ydb-platform/ydb-go-sdk/v3/table/result"
@@ -691,6 +690,17 @@ func (c *YDBClient) makeDirs(ctx context.Context, absolutePath string) (err erro
 
 ////////////////////////////////////////////////////////////////////////////////
 
+func getDSN(config *persistence_config.PersistenceConfig) string {
+	var protocol string
+	if config.GetSecure() {
+		protocol = "grpcs"
+	} else {
+		protocol = "grpc"
+	}
+
+	return protocol + "://" + config.GetEndpoint() + "/" + config.GetDatabase()
+}
+
 func NewYDBClient(
 	ctx context.Context,
 	config *persistence_config.PersistenceConfig,
@@ -758,7 +768,7 @@ func NewYDBClient(
 
 	driver, err := ydb.Open(
 		ctx,
-		sugar.DSN(config.GetEndpoint(), config.GetDatabase(), config.GetSecure()),
+		getDSN(config),
 		options...,
 	)
 	if err != nil {

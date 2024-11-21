@@ -18,6 +18,9 @@ enum EAction
     ACTION_ACQUIRE_LOCK = 5;
     ACTION_RELEASE_LOCK = 6;
     ACTION_GET_NODE_ATTR = 7;
+    ACTION_ACCESS_NODE = 8;
+    ACTION_LIST_NODES = 9;
+    ACTION_FLUSH = 10;
 
     // DATA
     ACTION_WRITE = 101;
@@ -54,6 +57,39 @@ message TDataLoadSpec
     repeated TAction Actions = 8;
 }
 
+message TReplaySpec
+{
+    string FileName = 1;
+    string ReplayRoot = 2; // not used in grpc
+
+    // Use profile log messages only with this FileSystemId  
+    string FileSystemIdFilter = 3;
+
+    // Skip read operations: AccessNode ReadData GetNodeAttr
+    bool SkipRead = 4;
+
+    // Skip write operations: CreateNode CreateHandle Write RenameNode UnlinkNode
+    bool SkipWrite = 5;
+
+    // Factor for sleeps for respect timings from log
+    // Example: 0: disable sleep; 0.5: try to be 2x faster; 1: keep as in log; 2: 2x times slower; 
+    double TimeScale = 7;
+
+    enum EWriteFill
+    {
+        // Write info about chunk (handle, size, offset, ...)
+        Info = 0;
+        // Write random data
+        Random = 1;
+        // Write empty data
+        Empty = 2;
+    }
+
+    EWriteFill WriteFill = 8;
+
+    // Create missing files in CreateHandle requests
+    bool CreateOnRead = 9;
+}
 
 message TMigrationSpec
 {
@@ -78,6 +114,8 @@ message TLoadTest
     {
         TIndexLoadSpec IndexLoadSpec = 4;
         TDataLoadSpec DataLoadSpec = 5;
+        TReplaySpec ReplayFsSpec = 17;
+        TReplaySpec ReplayGrpcSpec = 18;
     }
 
     uint32 IODepth = 10;

@@ -49,7 +49,7 @@ void TVolumeActor::ExecuteResetStartPartitionsNeeded(
                 "[%lu] Stopping partitions after gc finished",
                 TabletID());
 
-            StopPartitions(ctx);
+            StopPartitions(ctx, {});
             State->Reset();
             PartitionsStartedReason = EPartitionsStartedReason::NOT_STARTED;
         }

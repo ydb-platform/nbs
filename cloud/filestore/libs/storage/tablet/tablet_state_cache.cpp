@@ -46,8 +46,11 @@ TInMemoryIndexStateStats TInMemoryIndexState::GetStats() const
 {
     return TInMemoryIndexStateStats{
         .NodesCount = Nodes.Size(),
+        .NodesCapacity = Nodes.GetMaxSize(),
         .NodeRefsCount = NodeRefs.size(),
+        .NodeRefsCapacity = NodeRefsCapacity,
         .NodeAttrsCount = NodeAttrs.Size(),
+        .NodeAttrsCapacity = NodeAttrs.GetMaxSize(),
         .IsNodeRefsExhaustive = IsNodeRefsExhaustive,
     };
 }

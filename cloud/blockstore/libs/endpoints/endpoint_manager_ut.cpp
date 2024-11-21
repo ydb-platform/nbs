@@ -535,16 +535,6 @@ TFuture<NProto::TListEndpointsResponse> ListEndpoints(
         std::make_shared<NProto::TListEndpointsRequest>());
 }
 
-TFuture<NProto::TResizeDeviceResponse> ResizeDevice(
-    IEndpointManager& endpointManager, const TString& unixSocketPath, ui64 deviceSize)
-{
-    auto request = std::make_shared<NProto::TResizeDeviceRequest>();
-    request->SetUnixSocketPath(unixSocketPath);
-    request->SetDeviceSizeInBytes(deviceSize);
-    return endpointManager.ResizeDevice(
-        MakeIntrusive<TCallContext>(), request);
-}
-
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1947,61 +1937,6 @@ Y_UNIT_TEST_SUITE(TEndpointManagerTest)
             auto future = StopEndpoint(*manager, socketPath.GetPath());
             auto response = future.GetValue(TDuration::Seconds(5));
             UNIT_ASSERT(!HasError(response));
-        }
-    }
-
-    Y_UNIT_TEST(ShouldResizeDevice)
-    {
-        TTempDir dir;
-        auto socketPath = dir.Path() / "testSocket";
-        TString diskId = "testDiskId";
-        auto ipcType = NProto::IPC_GRPC;
-
-        TBootstrap bootstrap;
-        TMap<TString, NProto::TMountVolumeRequest> mountedVolumes;
-        bootstrap.Service = CreateTestService(mountedVolumes);
-
-        auto grpcListener =
-            CreateSocketEndpointListener(bootstrap.Logging, 16, MODE0660);
-        grpcListener->SetClientStorageFactory(CreateClientStorageFactoryStub());
-        bootstrap.EndpointListeners = {{NProto::IPC_GRPC, grpcListener}};
-
-        auto manager = CreateEndpointManager(bootstrap);
-        bootstrap.Start();
-
-        NProto::TStartEndpointRequest request;
-        SetDefaultHeaders(request);
-        request.SetUnixSocketPath(socketPath.GetPath());
-        request.SetDiskId(diskId);
-        request.SetClientId(TestClientId);
-        request.SetIpcType(ipcType);
-
-        socketPath.DeleteIfExists();
-        UNIT_ASSERT(!socketPath.Exists());
-
-        {
-            auto future = StartEndpoint(*manager, request);
-            auto response = future.GetValue(TDuration::Seconds(5));
-            UNIT_ASSERT_C(!HasError(response), response.GetError());
-        }
-
-        const auto deviceSize = 1000u;
-        {
-            auto future =
-                ResizeDevice(*manager, "invalid/path/socket", deviceSize);
-            auto response = future.GetValue(TDuration::Seconds(5));
-            UNIT_ASSERT(HasError(response));
-            const auto& resizeError = response.GetError();
-            UNIT_ASSERT_EQUAL_C(
-                E_NOT_FOUND,
-                resizeError.GetCode(),
-                resizeError.GetMessage());
-        }
-
-        {
-            auto future = ResizeDevice(*manager, socketPath, deviceSize);
-            auto response = future.GetValue(TDuration::Seconds(5));
-            UNIT_ASSERT_C(!HasError(response), response.GetError());
         }
     }
 }

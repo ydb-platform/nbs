@@ -115,8 +115,11 @@ private:
         std::atomic<i64> InMemoryIndexStateRWCount{0};
 
         std::atomic<i64> InMemoryIndexStateNodesCount;
+        std::atomic<i64> InMemoryIndexStateNodesCapacity;
         std::atomic<i64> InMemoryIndexStateNodeRefsCount;
+        std::atomic<i64> InMemoryIndexStateNodeRefsCapacity;
         std::atomic<i64> InMemoryIndexStateNodeAttrsCount;
+        std::atomic<i64> InMemoryIndexStateNodeAttrsCapacity;
         std::atomic<i64> InMemoryIndexStateIsExhaustive;
 
         // Data stats

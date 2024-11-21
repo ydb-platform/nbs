@@ -240,10 +240,31 @@ func (s *compoundStorage) ListTasksCancelling(
 
 	tasks := []TaskInfo{}
 	err := s.visit(ctx, func(storage Storage) error {
-		values, err := storage.ListTasksCancelling(ctx, limit)
+		values, err := storage.ListTasksCancelling(
+			ctx,
+			limit,
+		)
 		tasks = append(tasks, values...)
 		return err
 	})
+	return tasks, err
+}
+
+func (s *compoundStorage) ListTasksWithStatus(
+	ctx context.Context,
+	status string,
+) ([]TaskInfo, error) {
+
+	tasks := []TaskInfo{}
+	err := s.visit(ctx, func(storage Storage) error {
+		values, err := storage.ListTasksWithStatus(
+			ctx,
+			status,
+		)
+		tasks = append(tasks, values...)
+		return err
+	})
+
 	return tasks, err
 }
 

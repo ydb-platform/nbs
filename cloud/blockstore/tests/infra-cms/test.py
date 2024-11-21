@@ -87,7 +87,7 @@ class CMS:
         return r
 
 
-class TestCmsRemoveAgentNoUserDisks:
+class _TestCmsRemoveAgentNoUserDisks:
 
     def __init__(self, name):
         self.name = name
@@ -136,7 +136,7 @@ class TestCmsRemoveAgentNoUserDisks:
         return True
 
 
-class TestCmsRemoveAgent:
+class _TestCmsRemoveAgent:
 
     def __init__(self, name):
         self.name = name
@@ -194,7 +194,7 @@ class TestCmsRemoveAgent:
         return True
 
 
-class TestCmsPurgeAgentNoUserDisks:
+class _TestCmsPurgeAgentNoUserDisks:
 
     def __init__(self, name):
         self.name = name
@@ -249,7 +249,7 @@ class TestCmsPurgeAgentNoUserDisks:
         return True
 
 
-class TestCmsPurgeAgent:
+class _TestCmsPurgeAgent:
 
     def __init__(self, name):
         self.name = name
@@ -295,7 +295,7 @@ class TestCmsPurgeAgent:
         return True
 
 
-class TestCmsRemoveDevice:
+class _TestCmsRemoveDevice:
 
     def __init__(self, name):
         self.name = name
@@ -333,7 +333,7 @@ class TestCmsRemoveDevice:
         return True
 
 
-class TestCmsRemoveDeviceNoUserDisks:
+class _TestCmsRemoveDeviceNoUserDisks:
 
     def __init__(self, name):
         self.name = name
@@ -364,12 +364,12 @@ class TestCmsRemoveDeviceNoUserDisks:
 
 
 TESTS = [
-    TestCmsRemoveAgentNoUserDisks("removeagentnodisks"),
-    TestCmsRemoveAgent("removeagent"),
-    TestCmsPurgeAgentNoUserDisks("purgeagentnodisks"),
-    TestCmsPurgeAgent("purgeagent"),
-    TestCmsRemoveDevice("removedevice"),
-    TestCmsRemoveDeviceNoUserDisks("removedevicenodisks")
+    _TestCmsRemoveAgentNoUserDisks("removeagentnodisks"),
+    _TestCmsRemoveAgent("removeagent"),
+    _TestCmsPurgeAgentNoUserDisks("purgeagentnodisks"),
+    _TestCmsPurgeAgent("purgeagent"),
+    _TestCmsRemoveDevice("removedevice"),
+    _TestCmsRemoveDeviceNoUserDisks("removedevicenodisks")
 ]
 
 

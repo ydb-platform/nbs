@@ -10,6 +10,7 @@
 #include <library/cpp/json/json_reader.h>
 #include <library/cpp/json/json_writer.h>
 
+#include <util/folder/path.h>
 #include <util/generic/hash.h>
 #include <util/stream/str.h>
 #include <util/stream/file.h>
@@ -27,20 +28,34 @@ TString ReadFile(const TString& name)
     return TFileInput(file).ReadAll();
 }
 
-NProto::TError ReadFromFile(
+NProto::TError InitializeFromFile(
     const TString& filePath,
     TManuallyPreemptedVolumes& volumes)
 {
     if (filePath.empty()) {
         return {};
     }
+
+    TFsPath fpath(filePath);
+    if (!fpath.IsFile()) {
+        try {
+            TOFStream os(filePath);
+            os.Write("{}");
+        } catch (...) {
+            return MakeError(
+                E_INVALID_STATE,
+                TStringBuilder() << "failed to initialize preempted volumes"
+                    << " file with error: " << CurrentExceptionMessage());
+        }
+    }
+
     try {
         return volumes.Deserialize(ReadFile(filePath));
     } catch (...) {
         return MakeError(
-            E_FAIL,
+            E_INVALID_STATE,
             TStringBuilder()
-                << "Failed to read preempted volumes list with error: "
+                << "Failed to parse preempted volumes list with error: "
                 << CurrentExceptionMessage());
     }
 }
@@ -145,7 +160,7 @@ TManuallyPreemptedVolumesPtr CreateManuallyPreemptedVolumes(
 
     auto& Log = log;
 
-    auto status = ReadFromFile(filePath, *result);
+    auto status = InitializeFromFile(filePath, *result);
 
     if (FAILED(status.GetCode())) {
         criticalEventsStorage.emplace_back(

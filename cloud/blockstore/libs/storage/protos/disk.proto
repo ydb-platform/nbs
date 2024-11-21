@@ -541,6 +541,9 @@ message TRegisterAgentResponse
 {
     // Optional error, set only if error happened.
     NCloud.NProto.TError Error = 1;
+
+    // List of device IDs to which Disk Agent should disable IO operations.
+    repeated string DevicesToDisableIO = 2;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

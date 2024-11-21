@@ -549,6 +549,7 @@ TMultiShardFileStoreConfig SetupMultiShardFileStorePerformanceAndChannels(
     result.ShardConfigs.resize(shardCount);
     for (ui32 i = 0; i < shardCount; ++i) {
         result.ShardConfigs[i] = fileStore;
+        result.ShardConfigs[i].ClearVersion();
         result.ShardConfigs[i].SetBlocksCount(
             config.GetMaxShardSize() / fileStore.GetBlockSize());
         result.ShardConfigs[i].SetFileSystemId(

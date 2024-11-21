@@ -228,7 +228,7 @@ class EternalTestHelper:
     @common.retry(tries=5, delay=5, exception=Error)
     def _wait_until_killing(self, instance_ip: str, command: str):
         with self.module_factories.make_ssh_client(self.args.dry_run, instance_ip, ssh_key_path=self.args.ssh_key_path) as ssh:
-            _, stdout, _ = ssh.exec_command(f'pgrep {command}')
+            _, stdout, _ = ssh.exec_command(f'pgrep {command}', check=False)
             stdout.channel.recv_exit_status()
 
             out = "".join(stdout.readlines())
@@ -238,7 +238,7 @@ class EternalTestHelper:
     def exec_pkill_on_instance(self, instance_ip: str, command: str):
         self.logger.info(f'Running pkill {command} on instance <{instance_ip}>')
         with self.module_factories.make_ssh_client(self.args.dry_run, instance_ip, ssh_key_path=self.args.ssh_key_path) as ssh:
-            _, stdout, _ = ssh.exec_command(f'pkill {command}')
+            _, stdout, _ = ssh.exec_command(f'pkill {command}', check=False)
             stdout.channel.recv_exit_status()
             self._wait_until_killing(instance_ip, command)
 
@@ -426,7 +426,7 @@ class EternalTestHelper:
                 underlay_vm=self.test_config.ycp_config.folder.create_underlay_vms) as instance:
 
             self.logger.info(f'Waiting until instance ip=<{instance.ip}> becomes available via ssh')
-            self.helpers.wait_until_instance_becomes_available_via_ssh(instance.ip)
+            self.helpers.wait_until_instance_becomes_available_via_ssh(instance.ip, ssh_key_path=self.args.ssh_key_path)
 
             if self.test_config.is_disk_config():
                 for disk_index, (disk_config, _) in enumerate(self.test_config.all_tests()):
@@ -644,16 +644,18 @@ class EternalTestHelper:
     def rerun_db_load_script_on_instance(self, instance: Ycp.Instance):
         self.logger.info(f'Rerun load script for test case <{self.args.test_case}>')
 
-        if self.test_config.db == 'mysql':
+        if self.test_config.db in ['mysql', 'mysql-nfs']:
             self.exec_pkill_on_instance(instance.ip, 'sysbench')
             self.run_command_in_background(
                 instance.ip,
                 self._SYSBENCH_TEST_CMD)
-        elif self.test_config.db == 'postgresql':
+        elif self.test_config.db in ['postgresql', 'postgresql-nfs']:
             self.exec_pkill_on_instance(instance.ip, 'pgbench')
             self.run_command_in_background(
                 instance.ip,
                 self._PGBENCH_TEST_CMD)
+        else:
+            raise Error(f'Invalid db: {self.test_config.db}')
 
     def handle_rerun_db_load(self):
         if self.args.test_case == 'all':

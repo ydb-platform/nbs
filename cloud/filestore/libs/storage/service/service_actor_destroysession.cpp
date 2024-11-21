@@ -116,7 +116,9 @@ void TDestroySessionActor::HandleDestroySessionResponse(
     if (msg->GetStatus() == E_REJECTED) {
         // Pipe error
         if (ctx.Now() < Deadline) {
-            return ctx.Schedule(TDuration::Seconds(1), new TEvents::TEvWakeup());
+            return ctx.Schedule(
+                TDuration::Seconds(1),
+                new TEvents::TEvWakeup());
         }
     }
 
@@ -161,7 +163,8 @@ void TDestroySessionActor::Notify(
         SessionId.Quote().c_str(),
         FormatError(error).c_str());
 
-    auto response = std::make_unique<TEvServicePrivate::TEvSessionDestroyed>(error);
+    auto response =
+        std::make_unique<TEvServicePrivate::TEvSessionDestroyed>(error);
     response->SessionId = SessionId;
     response->SeqNo = SeqNo;
 
@@ -174,7 +177,9 @@ STFUNC(TDestroySessionActor::StateWork)
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
         HFunc(TEvents::TEvWakeup, HandleWakeUp);
 
-        HFunc(TEvIndexTablet::TEvDestroySessionResponse, HandleDestroySessionResponse);
+        HFunc(
+            TEvIndexTablet::TEvDestroySessionResponse,
+            HandleDestroySessionResponse);
         IgnoreFunc(TEvServicePrivate::TEvPingSession);
 
         default:
@@ -215,7 +220,27 @@ void TStorageServiceActor::HandleDestroySession(
 
     auto* session = State->FindSession(sessionId, seqNo);
     if (!session) {
-        return reply(MakeError(S_ALREADY, "session doesn't exist"));
+        // session still needs to be destroyed in index tablet
+        LOG_INFO(ctx, TFileStoreComponents::SERVICE,
+            "%s DestroySession - tablet only",
+            LogTag(fsId, clientId, sessionId, seqNo).c_str());
+
+        auto requestInfo = CreateRequestInfo(
+            SelfId(),
+            cookie,
+            msg->CallContext);
+
+        auto actor = std::make_unique<TDestroySessionActor>(
+            StorageConfig,
+            std::move(requestInfo),
+            clientId,
+            fsId,
+            sessionId,
+            seqNo);
+
+        NCloud::Register(ctx, std::move(actor));
+
+        return;
     }
 
     if (session->CreateDestroyState != ESessionCreateDestroyState::STATE_NONE) {
@@ -231,7 +256,8 @@ void TStorageServiceActor::HandleDestroySession(
     }
 
     if (session->ShouldStop) {
-        return reply(MakeError(E_REJECTED, "session destruction is in progress"));
+        return reply(
+            MakeError(E_REJECTED, "session destruction is in progress"));
     }
 
     LOG_INFO(ctx, TFileStoreComponents::SERVICE,
@@ -254,7 +280,8 @@ void TStorageServiceActor::HandleDestroySession(
         session->ShouldStop = true;
     }
 
-    session->CreateDestroyState = ESessionCreateDestroyState::STATE_DESTROY_SESSION;
+    session->CreateDestroyState =
+        ESessionCreateDestroyState::STATE_DESTROY_SESSION;
 
     auto requestInfo = CreateRequestInfo(
         SelfId(),
@@ -290,7 +317,7 @@ void TStorageServiceActor::HandleSessionDestroyed(
         // shutdown or stop before start
     }
 
-    auto inflight = FindInFlightRequest(ev->Cookie);
+    auto* inflight = FindInFlightRequest(ev->Cookie);
     if (!inflight) {
         LOG_CRIT(ctx, TFileStoreComponents::SERVICE,
             "[%s] failed to complete DestroySession: invalid cookie (%lu)",
@@ -304,7 +331,8 @@ void TStorageServiceActor::HandleSessionDestroyed(
         msg->SessionId.Quote().c_str(),
         FormatError(msg->GetError()).c_str());
 
-    auto response = std::make_unique<TEvService::TEvDestroySessionResponse>(msg->GetError());
+    auto response = std::make_unique<TEvService::TEvDestroySessionResponse>(
+        msg->GetError());
     NCloud::Reply(ctx, *inflight, std::move(response));
 
     inflight->Complete(ctx.Now(), msg->GetError());

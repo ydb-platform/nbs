@@ -461,7 +461,7 @@ private:
         with_lock (SessionLock) {
             if (!HasError(response)) {
                 STORAGE_INFO(LogTag(GetSessionId(response), GetSessionSeqNo(response))
-                    << " session established" << GetSessionState(response).size());
+                    << " session established " << GetSessionState(response).size());
 
                 SessionState = SessionEstablished;
 

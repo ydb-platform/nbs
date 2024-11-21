@@ -40,17 +40,18 @@ private:
     STFUNC(StateWork);
 
     void DescribeSessions(const TActorContext& ctx);
+    void GetFileSystemTopology(const TActorContext& ctx);
+    void DestroyShards(const TActorContext& ctx);
+    void DestroyFileStore(const TActorContext& ctx);
+
     void HandleDescribeSessionsResponse(
         const TEvIndexTablet::TEvDescribeSessionsResponse::TPtr& ev,
         const TActorContext& ctx);
 
-    void GetFileSystemTopology(const TActorContext& ctx);
     void HandleGetFileSystemTopologyResponse(
         const TEvIndexTablet::TEvGetFileSystemTopologyResponse::TPtr& ev,
         const TActorContext& ctx);
 
-    void DestroyShards(const TActorContext& ctx);
-    void DestroyFileStore(const TActorContext& ctx);
     void HandleDestroyFileStoreResponse(
         const TEvSSProxy::TEvDestroyFileStoreResponse::TPtr& ev,
         const TActorContext& ctx);
@@ -327,11 +328,11 @@ void TStorageServiceActor::HandleDestroyFileStore(
         LOG_INFO(
             ctx,
             TFileStoreComponents::SERVICE,
-            "FileStore %s is in deny list",
+            "FileStore %s is in deny list, responding with S_FALSE",
             msg->Record.GetFileSystemId().c_str());
         auto response =
             std::make_unique<TEvService::TEvDestroyFileStoreResponse>(MakeError(
-                E_ARGUMENT,
+                S_FALSE,
                 Sprintf(
                     "FileStore %s is in deny list",
                     msg->Record.GetFileSystemId().c_str())));

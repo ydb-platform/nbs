@@ -98,7 +98,9 @@ void TDiskAgentActor::RenderDevices(IOutputStream& out) const
                             config.GetState(),
                             State->IsDeviceDisabled(uuid)
                                 ? EDeviceStateFlags::DISABLED
-                                : EDeviceStateFlags::NONE);
+                                : (State->IsDeviceSuspended(uuid)
+                                       ? EDeviceStateFlags::SUSPENDED
+                                       : EDeviceStateFlags::NONE));
                     }
                     TABLED() {
                         if (config.GetStateTs()) {

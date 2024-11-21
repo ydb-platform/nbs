@@ -107,8 +107,10 @@ bool AgentHasDevices(
     const TString storagePath = storageConfig->GetCachedDiskAgentConfigPath();
     const TString diskAgentPath = agentConfig->GetCachedConfigPath();
     const TString& path = diskAgentPath.empty() ? storagePath : diskAgentPath;
-    auto cachedDevices = NStorage::LoadCachedConfig(path);
-    if (!cachedDevices.empty()) {
+
+    if (auto [config, _] = NStorage::LoadDiskAgentConfig(path);
+        config.FileDevicesSize() != 0)
+    {
         return true;
     }
 
@@ -605,6 +607,7 @@ void TBootstrap::Start()
     }
 #define START_COMPONENT(c)                                                     \
     if (c) {                                                                   \
+        STORAGE_INFO("Starting " << #c << " ...");                             \
         c->Start();                                                            \
         STORAGE_INFO("Started " << #c);                                        \
     }                                                                          \
@@ -645,6 +648,7 @@ void TBootstrap::Stop()
     }
 #define STOP_COMPONENT(c)                                                      \
     if (c) {                                                                   \
+        STORAGE_INFO("Stopping " << #c << " ...");                             \
         c->Stop();                                                             \
         STORAGE_INFO("Stopped " << #c);                                        \
     }                                                                          \

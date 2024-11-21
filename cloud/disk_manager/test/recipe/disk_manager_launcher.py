@@ -472,3 +472,7 @@ class DiskManagerLauncher:
     @property
     def server_config(self):
         return self.__server_config
+
+    @property
+    def monitoring_port(self):
+        return self.__monitoring_port

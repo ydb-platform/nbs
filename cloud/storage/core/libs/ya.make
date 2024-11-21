@@ -13,6 +13,7 @@ RECURSE(
     hive_proxy
     http
     kikimr
+    netlink
     ss_proxy
     tablet
     throttling
