@@ -144,7 +144,6 @@ TCommand::TCommand(IBlockStorePtr client)
         .RequiredArgument("NUM")
         .StoreResult(&SecurePort);
 
-    // server-unix-socket-path to avoid collision with endpoint-proxy parameter
     Opts.AddLongOption("server-unix-socket-path")
         .RequiredArgument("STR")
         .StoreResult(&ServerUnixSocketPath);

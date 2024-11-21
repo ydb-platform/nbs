@@ -78,9 +78,10 @@ def start(argv):
                 TStorageConfig())
     if args.use_unix_socket:
         # Create in temp directory because we would like a shorter path
-        unix_socket_path = str(pathlib.Path(tempfile.mkdtemp(dir="/tmp")) / "filestore.sock")
-        set_env("FILESTORE_RECIPE_UNIX_SOCKET_PATH", unix_socket_path)
-        server_config.ServerConfig.UnixSocketPath = unix_socket_path
+        server_unix_socket_path = str(
+            pathlib.Path(tempfile.mkdtemp(dir="/tmp")) / "filestore.sock")
+        set_env("NFS_SERVER_UNIX_SOCKET_PATH", server_unix_socket_path)
+        server_config.ServerConfig.UnixSocketPath = server_unix_socket_path
 
     secure = False
     if access_service_port:

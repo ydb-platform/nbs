@@ -95,13 +95,13 @@ class TestFixture:
         self,
         access_service_type=AccessService,
         folder_id="test_folder_id",
-        unix_socket_path: str | None = None,
+        server_unix_socket_path: str | None = None,
     ):
         server_app_config = create_server_app_config()
-        if unix_socket_path is not None:
-            server_app_config.ServerConfig.UnixSocketPath = unix_socket_path
+        if server_unix_socket_path is not None:
+            server_app_config.ServerConfig.UnixSocketPath = server_unix_socket_path
             server_app_config.ServerConfig.AllowAllRequestsViaUDS = True
-        self.unix_socket_path = unix_socket_path
+        self.server_unix_socket_path = server_unix_socket_path
         storage = create_storage_service_config(folder_id)
         self.__local_load_test = LocalLoadTest(
             "",
@@ -132,8 +132,8 @@ class TestFixture:
             "--config",
             str(self.__client_config_path),
         ]
-        if self.unix_socket_path is not None:
-            args += ["--server-unix-socket-path", self.unix_socket_path]
+        if self.server_unix_socket_path is not None:
+            args += ["--server-unix-socket-path", self.server_unix_socket_path]
         env = {}
         if self.__auth_token is not None:
             env['IAM_TOKEN'] = self.__auth_token
