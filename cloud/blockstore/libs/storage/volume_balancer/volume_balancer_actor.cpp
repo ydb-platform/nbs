@@ -240,7 +240,7 @@ void TVolumeBalancerActor::HandleGetVolumeStatsResponse(
     const TEvService::TEvGetVolumeStatsResponse::TPtr& ev,
     const TActorContext& ctx)
 {
-    if (State) {
+    if (State && CgroupStatsFetcher && CpuWait && CpuWaitFailure) {
         const auto *msg = ev->Get();
 
         auto now = ctx.Now();
@@ -248,15 +248,15 @@ void TVolumeBalancerActor::HandleGetVolumeStatsResponse(
         auto interval = (now - LastCpuWaitQuery).MicroSeconds();
         auto [cpuWait, error] = CgroupStatsFetcher->GetCpuWait();
         if (HasError(error)) {
-            if (CpuWaitFailure) {
-                *CpuWaitFailure = 1;
-            } else {
-                LOG_ERROR_S(
-                    ctx,
-                    TBlockStoreComponents::VOLUME_BALANCER,
-                    "Failed to get CpuWait stats: " << error);
-            }
+            *CpuWaitFailure = 1;
+            LOG_ERROR_S(
+                ctx,
+                TBlockStoreComponents::VOLUME_BALANCER,
+                "Failed to get CpuWait stats: " << error);
+        } else {
+            *CpuWaitFailure = 0;
         }
+
         auto cpuLack =
             CpuLackPercentsMultiplier * cpuWait.MicroSeconds();
         cpuLack /= interval;
