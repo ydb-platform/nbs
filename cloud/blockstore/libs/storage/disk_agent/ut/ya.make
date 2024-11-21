@@ -11,6 +11,7 @@ SRCS(
     rdma_target_ut.cpp
     recent_blocks_tracker_ut.cpp
     spdk_initializer_ut.cpp
+    storage_initializer_ut.cpp
     storage_with_stats_ut.cpp
 )
 

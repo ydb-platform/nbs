@@ -270,6 +270,32 @@ auto CollectAllocatedDevices(const TVector<NProto::TDiskConfig>& disks)
     return r;
 }
 
+bool HasNewLayout(
+    const NProto::TDeviceConfig& newConfig,
+    const NProto::TDeviceConfig& oldConfig)
+{
+    auto key = [] (const NProto::TDeviceConfig& device) {
+        return std::make_tuple(
+            device.GetBlockSize(),
+            device.GetBlocksCount(),
+            device.GetUnadjustedBlockCount(),
+            TStringBuf {device.GetDeviceName()}
+        );
+    };
+
+    return key(oldConfig) != key(newConfig) ||
+           (oldConfig.GetPhysicalOffset() &&
+            oldConfig.GetPhysicalOffset() != newConfig.GetPhysicalOffset());
+}
+
+bool HasNewSerialNumber(
+    const NProto::TDeviceConfig& newConfig,
+    const NProto::TDeviceConfig& oldConfig)
+{
+    return oldConfig.GetSerialNumber() &&
+           oldConfig.GetSerialNumber() != newConfig.GetSerialNumber();
+}
+
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -906,6 +932,7 @@ auto TDiskRegistryState::RegisterAgent(
 
     TVector<TDiskId> affectedDisks;
     TVector<TDiskId> disksToReallocate;
+    TVector<TString> devicesToDisableIO;
 
     try {
         if (auto* buddy = AgentList.FindAgent(config.GetNodeId());
@@ -941,13 +968,38 @@ auto TDiskRegistryState::RegisterAgent(
         for (auto& d: *agent.MutableDevices()) {
             const auto& uuid = d.GetDeviceUUID();
 
-            auto error = CheckDestructiveConfigurationChange(d, r.OldConfigs);
-            if (HasError(error)) {
-                STORAGE_ERROR(error.GetMessage());
+            auto* oldConfig = r.OldConfigs.FindPtr(uuid);
+            const auto diskId = FindDisk(uuid);
 
-                SetDeviceErrorState(d, timestamp, error.GetMessage());
+            const bool isChangeDestructive =
+                oldConfig && (HasNewLayout(d, *oldConfig) ||
+                              HasNewSerialNumber(d, *oldConfig));
+
+            if (diskId && isChangeDestructive) {
+                TString message =
+                    TStringBuilder()
+                    << "Device configuration has changed: " << *oldConfig
+                    << " -> " << d << ". Affected disk: " << diskId;
+
+                if (d.GetState() != NProto::DEVICE_STATE_ERROR ||
+                    HasNewLayout(d, *oldConfig))
+                {
+                    ReportDiskRegistryOccupiedDeviceConfigurationHasChanged(
+                        message);
+                } else {
+                    STORAGE_WARN(message);
+                }
+
+                SetDeviceErrorState(d, timestamp, std::move(message));
 
                 continue;
+            }
+
+            // To prevent data leakage we should clean the available device if
+            // its configuration has been changed
+            if (diskId.empty() && isChangeDestructive && !IsDirtyDevice(uuid)) {
+                DeviceList.MarkDeviceAsDirty(uuid);
+                db.UpdateDirtyDevice(uuid, {});
             }
 
             AdjustDeviceIfNeeded(d, timestamp);
@@ -969,6 +1021,11 @@ auto TDiskRegistryState::RegisterAgent(
 
         for (const auto& d: agent.GetDevices()) {
             const auto& uuid = d.GetDeviceUUID();
+
+            if (d.GetState() == NProto::DEVICE_STATE_ERROR) {
+                devicesToDisableIO.push_back(uuid);
+            }
+
             auto diskId = DeviceList.FindDiskId(uuid);
 
             if (diskId.empty()) {
@@ -996,7 +1053,7 @@ auto TDiskRegistryState::RegisterAgent(
             diskIds.emplace(std::move(diskId));
         }
 
-        for (auto& id: diskIds) {
+        for (const auto& id: diskIds) {
             if (TryUpdateDiskState(db, id, timestamp)) {
                 affectedDisks.push_back(id);
             }
@@ -1031,47 +1088,8 @@ auto TDiskRegistryState::RegisterAgent(
 
     return TAgentRegistrationResult{
         .AffectedDisks = std::move(affectedDisks),
-        .DisksToReallocate = std::move(disksToReallocate)};
-}
-
-NProto::TError TDiskRegistryState::CheckDestructiveConfigurationChange(
-    const NProto::TDeviceConfig& device,
-    const THashMap<TDeviceId, NProto::TDeviceConfig>& oldConfigs) const
-{
-    auto* oldConfig = oldConfigs.FindPtr(device.GetDeviceUUID());
-    if (!oldConfig) {
-        return {};
-    }
-
-    const auto diskId = FindDisk(device.GetDeviceUUID());
-
-    if (diskId.empty()) {
-        return {};
-    }
-
-    auto key = [] (const NProto::TDeviceConfig& d) {
-        return std::make_tuple(
-            d.GetBlockSize(),
-            d.GetBlocksCount(),
-            d.GetUnadjustedBlockCount(),
-            TStringBuf {d.GetDeviceName()}
-        );
-    };
-
-    const auto oldKey = key(*oldConfig);
-    const auto newKey = key(device);
-
-    if (oldKey == newKey && (oldConfig->GetSerialNumber().empty()
-            || oldConfig->GetSerialNumber() == device.GetSerialNumber())
-            && (oldConfig->GetPhysicalOffset() == 0
-                || oldConfig->GetPhysicalOffset() == device.GetPhysicalOffset()))
-    {
-        return {};
-    }
-
-    return MakeError(E_ARGUMENT, TStringBuilder()
-        << "Device configuration has changed: "
-        << *oldConfig << " -> " << device << ". Affected disk: " << diskId);
+        .DisksToReallocate = std::move(disksToReallocate),
+        .DevicesToDisableIO = std::move(devicesToDisableIO)};
 }
 
 NProto::TError TDiskRegistryState::UnregisterAgent(

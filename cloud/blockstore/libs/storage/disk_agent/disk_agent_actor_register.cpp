@@ -3,6 +3,8 @@
 #include <cloud/blockstore/libs/storage/api/disk_registry_proxy.h>
 #include <cloud/blockstore/libs/storage/core/request_info.h>
 
+#include <ydb/core/base/appdata.h>
+
 namespace NCloud::NBlockStore::NStorage {
 
 using namespace NActors;
@@ -87,6 +89,9 @@ void TRegisterActor::HandleRegisterAgentResponse(
 
     auto response = std::make_unique<TEvDiskAgentPrivate::TEvRegisterAgentResponse>(
         msg->GetError());
+    response->DevicesToDisableIO.assign(
+        msg->Record.GetDevicesToDisableIO().cbegin(),
+        msg->Record.GetDevicesToDisableIO().cend());
     NCloud::Reply(ctx, *RequestInfo, std::move(response));
 }
 
@@ -100,6 +105,47 @@ STFUNC(TRegisterActor::StateWork)
             break;
     }
 }
+
+////////////////////////////////////////////////////////////////////////////////
+
+class TUpdateDevicesWithSuspendedIOActor
+    : public TActorBootstrapped<TUpdateDevicesWithSuspendedIOActor>
+{
+private:
+    const TString CachePath;
+    const TVector<TString> DevicesToDisableIO;
+
+public:
+    TUpdateDevicesWithSuspendedIOActor(
+            TString cachePath,
+            TVector<TString> devicesToSuspendIO)
+        : CachePath{std::move(cachePath)}
+        , DevicesToDisableIO{std::move(devicesToSuspendIO)}
+    {}
+
+    void Bootstrap(const TActorContext& ctx)
+    {
+        auto error = NStorage::UpdateDevicesWithSuspendedIO(
+            CachePath,
+            DevicesToDisableIO);
+
+        if (HasError(error)) {
+            LOG_ERROR_S(
+                ctx,
+                TBlockStoreComponents::DISK_AGENT,
+                "Can't update DevicesWithSuspendedIO in the config cache "
+                "file: "
+                    << FormatError(error));
+        } else {
+            LOG_INFO(
+                ctx,
+                TBlockStoreComponents::DISK_AGENT,
+                "DevicesWithSuspendedIO has been successfully updated");
+        }
+
+        Die(ctx);
+    }
+};
 
 }   // namespace
 
@@ -135,15 +181,60 @@ void TDiskAgentActor::HandleRegisterAgent(
         std::move(config));
 }
 
+void TDiskAgentActor::ProcessDevicesToDisableIO(
+    const NActors::TActorContext& ctx,
+    TVector<TString> devicesToDisableIO)
+{
+    if (!AgentConfig->GetDisableBrokenDevices()) {
+        return;
+    }
+
+    const THashSet<TString> uuids(
+        devicesToDisableIO.cbegin(),
+        devicesToDisableIO.cend());
+
+    for (const auto& uuid: State->GetDeviceIds()) {
+        if (uuids.contains(uuid)) {
+            LOG_INFO_S(
+                ctx,
+                TBlockStoreComponents::DISK_AGENT,
+                "Disable device " << uuid);
+            State->DisableDevice(uuid);
+        } else {
+            State->EnableDevice(uuid);
+        }
+    }
+
+    TString cachePath = Config->GetCachedDiskAgentConfigPath().empty()
+                            ? AgentConfig->GetCachedConfigPath()
+                            : Config->GetCachedDiskAgentConfigPath();
+
+    if (cachePath.empty()) {
+        return;
+    }
+
+    auto actor = std::make_unique<TUpdateDevicesWithSuspendedIOActor>(
+        std::move(cachePath),
+        std::move(devicesToDisableIO));
+
+    // Starting an actor on the IO pool to avoid file operations in the User
+    // pool
+    ctx.Register(
+        actor.release(),
+        TMailboxType::HTSwap,
+        NKikimr::AppData()->IOPoolId);
+}
+
 void TDiskAgentActor::HandleRegisterAgentResponse(
     const TEvDiskAgentPrivate::TEvRegisterAgentResponse::TPtr& ev,
     const TActorContext& ctx)
 {
-    const auto* msg = ev->Get();
+    auto* msg = ev->Get();
 
     if (!HasError(msg->GetError())) {
         RegistrationState = ERegistrationState::Registered;
         LOG_INFO(ctx, TBlockStoreComponents::DISK_AGENT, "Register completed");
+        ProcessDevicesToDisableIO(ctx, std::move(msg->DevicesToDisableIO));
     } else {
         LOG_WARN(ctx, TBlockStoreComponents::DISK_AGENT,
             "Register failed: %s. Try later", FormatError(msg->GetError()).c_str());

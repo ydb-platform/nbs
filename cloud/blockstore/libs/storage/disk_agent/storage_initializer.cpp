@@ -109,7 +109,10 @@ private:
 
     TVector<TString> Errors;
     TVector<TString> ConfigMismatchErrors;
+    TVector<TString> DevicesWithSuspendedIO;
     TMutex Lock;
+
+    THashMap<TString, TString> PathToSerial;
 
 public:
     TInitializer(
@@ -141,11 +144,19 @@ private:
     void ScanFileDevices();
     bool ValidateGeneratedConfigs(const TVector<NProto::TFileDeviceArgs>& fileDevices);
     bool ValidateStorageDiscoveryConfig() const;
-    void ValidateCurrentConfigs();
+    void ValidateCurrentConfigs(
+        const TVector<NProto::TFileDeviceArgs>& cachedDevices);
 
     void SaveCurrentConfig();
 
     void ReportDiskAgentConfigMismatchEvent(const TString& error);
+
+    [[nodiscard]] TString GetCachedConfigsPath() const;
+
+    TString GetSerialNumber(const TString& path);
+    void SetupSerialNumbers(TVector<NProto::TFileDeviceArgs>& fileDevices);
+
+    NProto::TError ProcessConfigCache();
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -162,6 +173,10 @@ TInitializer::TInitializer(
     , StorageProvider(std::move(storageProvider))
     , NvmeManager(std::move(nvmeManager))
 {
+    for (const auto& m: AgentConfig->GetPathToSerialNumberMapping()) {
+        PathToSerial.emplace(m.GetPath(), m.GetSerialNumber());
+    }
+
     auto fileDevices = AgentConfig->GetFileDevices();
 
     FileDevices.assign(
@@ -291,6 +306,33 @@ bool TInitializer::ValidateGeneratedConfigs(
     return true;
 }
 
+TString TInitializer::GetSerialNumber(const TString& path)
+{
+    auto it = PathToSerial.find(path);
+    if (it == PathToSerial.end()) {
+        auto [sn, error] = NvmeManager->GetSerialNumber(path);
+        it = PathToSerial.emplace(path, sn).first;
+        if (HasError(error)) {
+            with_lock (Lock) {
+                Errors.push_back(
+                    TStringBuilder()
+                    << "Can't get serial number for " << path.Quote() << ": "
+                    << FormatError(error));
+            }
+        }
+    }
+
+    return it->second;
+}
+
+void TInitializer::SetupSerialNumbers(
+    TVector<NProto::TFileDeviceArgs>& fileDevices)
+{
+    for (auto& file: fileDevices) {
+        file.SetSerialNumber(GetSerialNumber(file.GetPath()));
+    }
+}
+
 void TInitializer::ScanFileDevices()
 {
     if (!ValidateStorageDiscoveryConfig()) {
@@ -310,12 +352,12 @@ void TInitializer::ScanFileDevices()
     }
 
     TVector<NProto::TFileDeviceArgs> files = gen.ExtractResult();
-
     if (files.empty()) {
         return;
     }
 
     SortBy(files, GetDeviceId);
+    SetupSerialNumbers(files);
 
     if (!ValidateGeneratedConfigs(files)) {
         ReportDiskAgentConfigMismatchEvent("Bad generated config");
@@ -350,8 +392,7 @@ void TInitializer::ScanFileDevices()
 
 void TInitializer::SaveCurrentConfig()
 {
-    const auto path = AgentConfig->GetCachedConfigPath();
-
+    const auto path = GetCachedConfigsPath();
     if (path.empty()) {
         return;
     }
@@ -363,31 +404,32 @@ void TInitializer::SaveCurrentConfig()
         FileDevices.cbegin(),
         FileDevices.cend());
 
-    try {
-        const TString tmpPath {path + ".tmp"};
+    if (AgentConfig->GetDisableBrokenDevices()) {
+        proto.MutableDevicesWithSuspendedIO()->Assign(
+            DevicesWithSuspendedIO.cbegin(),
+            DevicesWithSuspendedIO.cend());
+    }
 
-        SerializeToTextFormat(proto, tmpPath);
-
-        if (!NFs::Rename(tmpPath, path)) {
-            const auto ec = errno;
-            ythrow TServiceError {MAKE_SYSTEM_ERROR(ec)} << strerror(ec);
-        }
-    } catch (...) {
+    auto error = SaveDiskAgentConfig(path, proto);
+    if (HasError(error)) {
         Errors.push_back(TStringBuilder()
-            << "can't save the current config: " << CurrentExceptionMessage());
+            << "can't save the current config: " << FormatError(error));
     }
 }
 
-void TInitializer::ValidateCurrentConfigs()
+TString TInitializer::GetCachedConfigsPath() const
 {
     const TString storagePath = StorageConfig->GetCachedDiskAgentConfigPath();
     const TString diskAgentPath = AgentConfig->GetCachedConfigPath();
-    const TString& path = diskAgentPath.empty() ? storagePath : diskAgentPath;
-    auto cachedDevices = LoadCachedConfig(path);
+    return diskAgentPath.empty() ? storagePath : diskAgentPath;
+}
+
+void TInitializer::ValidateCurrentConfigs(
+    const TVector<NProto::TFileDeviceArgs>& cachedDevices)
+{
     if (cachedDevices.empty()) {
         STORAGE_INFO("There is no cached config");
         SaveCurrentConfig();
-
         return;
     }
 
@@ -406,27 +448,83 @@ void TInitializer::ValidateCurrentConfigs()
         ss << d << "\n";
     }
     ss << "\nCached:\n";
-    for (auto& d: cachedDevices) {
+    for (const auto& d: cachedDevices) {
         ss << d << "\n";
     }
 
     ReportDiskAgentConfigMismatchEvent(ss.Str());
 
     STORAGE_WARN("Current config is broken, fallback to the cached one.");
-    FileDevices.swap(cachedDevices);
+    FileDevices = cachedDevices;
+    SetupSerialNumbers(FileDevices);
 
     Errors.push_back(TStringBuilder()
         << "broken config: " << FormatError(error));
 }
 
+NProto::TError TInitializer::ProcessConfigCache()
+{
+    const auto& path = GetCachedConfigsPath();
+    if (path.empty()) {
+        return {};
+    }
+
+    auto [config, error] = LoadDiskAgentConfig(path);
+    if (HasError(error) && error.GetCode() != E_NOT_FOUND) {
+        STORAGE_WARN(
+            "Can't load Disk Agent config from the cache: "
+            << FormatError(error));
+
+        return error;
+    }
+
+    DevicesWithSuspendedIO.insert(
+        DevicesWithSuspendedIO.end(),
+        std::make_move_iterator(
+            config.MutableDevicesWithSuspendedIO()->begin()),
+        std::make_move_iterator(config.MutableDevicesWithSuspendedIO()->end()));
+
+    TVector<NProto::TFileDeviceArgs> devices{
+        std::make_move_iterator(config.MutableFileDevices()->begin()),
+        std::make_move_iterator(config.MutableFileDevices()->end())};
+    SortBy(devices, [] (const auto& d) {
+        return d.GetDeviceId();
+    });
+
+    for (const auto& d: devices) {
+        const auto currentSerialNumber = GetSerialNumber(d.GetPath());
+
+        if (currentSerialNumber != d.GetSerialNumber()) {
+            STORAGE_WARN(
+                "Device " << d.GetDeviceId() << " [" << d.GetPath()
+                        << "] has new serial number "
+                        << TString(currentSerialNumber).Quote()
+                        << " (was " << d.GetSerialNumber().Quote()
+                        << ")");
+            DevicesWithSuspendedIO.push_back(d.GetDeviceId());
+        }
+    }
+
+    SortUnique(DevicesWithSuspendedIO);
+
+    ValidateCurrentConfigs(devices);
+
+    return {};
+}
+
 TFuture<void> TInitializer::Initialize()
 {
-    ScanFileDevices();
+    // Setup serial numbers for the static config
+    for (auto& file: FileDevices) {
+        if (file.GetSerialNumber().empty()) {
+            file.SetSerialNumber(GetSerialNumber(file.GetPath()));
+        }
+    }
 
-    try {
-        ValidateCurrentConfigs();
-    } catch (...) {
-        return MakeErrorFuture<void>(std::current_exception());
+    ScanFileDevices();
+    if (auto error = ProcessConfigCache(); HasError(error)) {
+        return MakeErrorFuture<void>(
+            std::make_exception_ptr(TServiceError(error)));
     }
 
     const auto& memoryDevices = AgentConfig->GetMemoryDevices();
@@ -470,7 +568,7 @@ TFuture<void> TInitializer::Initialize()
                 device.GetOffset() / device.GetBlockSize(),
                 Configs[i],
                 Stats[i]
-            ).Subscribe([=] (const auto& future) {
+            ).Subscribe([=, this] (const auto& future) {
                     try {
                         Devices[i] = future.GetValue();
                     } catch (...) {
@@ -498,7 +596,7 @@ TFuture<void> TInitializer::Initialize()
 
         try {
             auto result = CreateMemoryStorage(Configs[i], Stats[i])
-                .Subscribe([=] (const auto& future) {
+                .Subscribe([=, this] (const auto& future) {
                     try {
                         Devices[i] = future.GetValue();
                     } catch (...) {
@@ -520,31 +618,15 @@ TFuture<void> TInitializer::Initialize()
 NProto::TDeviceConfig TInitializer::CreateConfig(
     const NProto::TFileDeviceArgs& device)
 {
-    const auto& path = device.GetPath();
-    const ui32 blockSize = device.GetBlockSize();
-
     NProto::TDeviceConfig config;
 
-    config.SetDeviceName(path);
+    config.SetDeviceName(device.GetPath());
     config.SetDeviceUUID(device.GetDeviceId());
-    config.SetBlockSize(blockSize);
+    config.SetBlockSize(device.GetBlockSize());
     config.SetRack(AgentConfig->GetRack());
     config.SetPoolName(device.GetPoolName());
     config.SetSerialNumber(device.GetSerialNumber());
     config.SetPhysicalOffset(device.GetOffset());
-
-    if (!config.GetSerialNumber()) {
-        auto [sn, error] = NvmeManager->GetSerialNumber(path);
-        if (!HasError(error)) {
-            config.SetSerialNumber(sn);
-        } else {
-            with_lock (Lock) {
-                Errors.push_back(TStringBuilder()
-                    << "Can't get serial number for " << path.Quote() << ": "
-                    << FormatError(error));
-            }
-        }
-    }
 
     return config;
 }
@@ -587,6 +669,7 @@ TInitializeStorageResult TInitializer::GetResult()
 
     r.Errors = std::move(Errors);
     r.ConfigMismatchErrors = std::move(ConfigMismatchErrors);
+    r.DevicesWithSuspendedIO = std::move(DevicesWithSuspendedIO);
     r.Guard = std::move(Guard);
 
     return r;

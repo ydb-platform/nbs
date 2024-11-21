@@ -356,6 +356,7 @@ public:
     {
         TVector<TDiskId> AffectedDisks;
         TVector<TDiskId> DisksToReallocate;
+        TVector<TString> DevicesToDisableIO;
     };
 
     auto RegisterAgent(
@@ -1267,10 +1268,6 @@ private:
         bool dryRun,
         TDiskId& affectedDisk,
         TDuration& timeout);
-
-    NProto::TError CheckDestructiveConfigurationChange(
-        const NProto::TDeviceConfig& device,
-        const THashMap<TDeviceId, NProto::TDeviceConfig>& oldConfigs) const;
 
     void ResetMigrationStartTsIfNeeded(TDiskState& disk);
 

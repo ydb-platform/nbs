@@ -57,7 +57,7 @@ message TFileDeviceArgs
     // Device pool name.
     optional string PoolName = 4;
 
-    // Serial number. For testing purposes.
+    // Serial number. For caching purposes.
     optional string SerialNumber = 5;
 
     // Data offset relative to the beginning of the file.
@@ -258,6 +258,23 @@ message TDiskAgentConfig
     // 2 means that one IO service will be created for every two file paths.
     // etc.
     optional uint32 PathsPerFileIOService = 34;
+
+    // List of device UUIDs with suspended I/O.
+    // I/O operations for such a device will result in errors.
+    // Is used for the config cache file only.
+    repeated string DevicesWithSuspendedIO = 35;
+
+    // Disable devices that have been recognized as broken by the DR
+    optional bool DisableBrokenDevices = 36;
+
+    // Path to serial number mapping. For testing purposes only.
+    message TPathToSerialNumber
+    {
+        required string Path = 1;
+        required string SerialNumber = 2;
+    }
+
+    repeated TPathToSerialNumber PathToSerialNumberMapping = 37;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
