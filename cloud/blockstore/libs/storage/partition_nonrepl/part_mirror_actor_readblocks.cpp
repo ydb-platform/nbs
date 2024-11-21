@@ -192,13 +192,13 @@ template <typename TMethod>
 void TRequestActor<TMethod>::CompareChecksums(const TActorContext& ctx)
 {
     ui32 firstChecksum = ResponseChecksums[0];
+    if (!firstChecksum) {
+        // zero is a special value meaning "checksum couldn't be calculated"
+        return;
+    }
+
     for (ui32 i = 1; i < ResponseChecksums.size(); ++i) {
         const auto checksum = ResponseChecksums[i];
-        if (!checksum) {
-            // zero is a special value meaning "checksum couldn't be calculated"
-            continue;
-        }
-
         if (firstChecksum != checksum) {
             LOG_INFO(
                 ctx,
