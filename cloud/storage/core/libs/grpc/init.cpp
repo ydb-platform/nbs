@@ -6,7 +6,6 @@
 #include <library/cpp/deprecated/atomic/atomic.h>
 #include <library/cpp/logger/log.h>
 
-#include <util/generic/singleton.h>
 #include <util/system/sanitizers.h>
 #include <util/system/src_location.h>
 
@@ -18,39 +17,21 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TGrpcState
-{
-    TAtomic Counter = 0;
-    TLog Log;
+TLog* GrpcLog;
 
-    ~TGrpcState()
-    {
-        // ensure that GRPC is shut down
-        // NOTE: temporarily turned off
-        // Y_ABORT_UNLESS(AtomicGet(Counter) == 0);
-    }
-
-    static TGrpcState& Instance()
-    {
-        constexpr auto defaultPriority =
-            TSingletonTraits<TGrpcState>::Priority;
-        static_assert(defaultPriority > 0);
-
-        // need priority less than default priority to ensure that TGrpcState
-        // singleton lives longer than other singletons (like TApp)
-        return *SingletonWithPriority<TGrpcState, defaultPriority - 1>();
-    }
-};
+////////////////////////////////////////////////////////////////////////////////
 
 gpr_log_severity LogPriorityToSeverity(ELogPriority priority)
 {
     if (priority <= TLOG_ERR) {
         return GPR_LOG_SEVERITY_ERROR;
-    } else if (priority <= TLOG_INFO) {
-        return GPR_LOG_SEVERITY_INFO;
-    } else {
-        return GPR_LOG_SEVERITY_DEBUG;
     }
+
+    if (priority <= TLOG_INFO) {
+        return GPR_LOG_SEVERITY_INFO;
+    }
+
+    return GPR_LOG_SEVERITY_DEBUG;
 }
 
 ELogPriority LogSeverityToPriority(gpr_log_severity severity)
@@ -72,20 +53,18 @@ void AddLog(gpr_log_func_args* args)
         args->file,
         static_cast<ui32>(strlen(args->file))});
 
-    auto& state = TGrpcState::Instance();
-
     // TSAN does not understand |std::atomic_thread_fence|, so teach it
 #if defined(_tsan_enabled_)
-    __tsan_acquire(&state.Log);
+    __tsan_acquire(GrpcLog);
 #endif
-    state.Log << LogSeverityToPriority(args->severity)
+    *GrpcLog << LogSeverityToPriority(args->severity)
         << TSourceLocation(file.As<TStringBuf>(), args->line)
         << ": " << args->message;
 }
 
-void EnableGRpcTracing()
+void EnableGrpcTracing()
 {
-    static const char* tracers[] = {
+    const char* tracers[] = {
         "api",
         "channel",
         "client_channel_call",
@@ -99,8 +78,8 @@ void EnableGRpcTracing()
         "timer",
     };
 
-    for (size_t i = 0; i < Y_ARRAY_SIZE(tracers); ++i) {
-        grpc_tracer_set_enabled(tracers[i], 1);
+    for (const char* tracer: tracers) {
+        grpc_tracer_set_enabled(tracer, 1);
     }
 }
 
@@ -110,42 +89,37 @@ void EnableGRpcTracing()
 
 TGrpcInitializer::TGrpcInitializer()
 {
-    auto& state = TGrpcState::Instance();
-
-    if (AtomicGetAndIncrement(state.Counter) == 0) {
-        grpc_init();
-    }
+    grpc_init();
 }
 
 TGrpcInitializer::~TGrpcInitializer()
 {
-    auto& state = TGrpcState::Instance();
-
-    if (AtomicDecrement(state.Counter) == 0) {
-        grpc_shutdown_blocking();
-    }
+    grpc_shutdown_blocking();
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void GrpcLoggerInit(const TLog& log, bool enableTracing)
+void GrpcLoggerInit(TLog& log, bool enableTracing)
 {
-    auto& state = TGrpcState::Instance();
-    state.Log = log;
+    // Logger should only be initialized once
+    Y_ABORT_UNLESS(!GrpcLog);
+
+    GrpcLog = &log;
     // |gpr_set_log_verbosity| and |gpr_set_log_function| do not imply any
     // memory barrier, so we need a full barrier here
     std::atomic_thread_fence(std::memory_order_seq_cst);
     // TSAN does not understand |std::atomic_thread_fence|, so teach it
 #if defined(_tsan_enabled_)
-    __tsan_release(&state.Log);
+    __tsan_release(GrpcLog);
 #endif
 
     gpr_set_log_verbosity(LogPriorityToSeverity(log.FiltrationLevel()));
     gpr_set_log_function(AddLog);
 
     if (enableTracing) {
-        EnableGRpcTracing();
+        EnableGrpcTracing();
     }
 }
+
 
 }   // namespace NCloud

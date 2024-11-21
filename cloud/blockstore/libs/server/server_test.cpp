@@ -222,7 +222,7 @@ TTestFactory::TTestFactory()
     VolumeStats = CreateVolumeStatsStub();
     GrpcLog = Logging->CreateLog("GRPC");
 
-    GrpcLoggerInit(GrpcLog);
+    GrpcLoggerInit(GrpcLog, false /* enableTracing */);
 }
 
 TTestServerBuilder TTestFactory::CreateServerBuilder()
