@@ -195,8 +195,7 @@ void TRequestActor<TMethod>::CompareChecksums(const TActorContext& ctx)
             LOG_INFO(
                 ctx,
                 TBlockStoreComponents::PARTITION,
-                "[%s] Read range %s: checksum mismatch, %u (%s) != %u (%s)"
-                ", fast path reading is not available",
+                "[%s] Read range %s: checksum mismatch, %u (%s) != %u (%s)",
                 DiskId.c_str(),
                 DescribeRange(Range).c_str(),
                 firstChecksum,
@@ -329,6 +328,8 @@ void TRequestActor<TMethod>::HandleResponse(
         ResponseCount < ResponseChecksums.size(),
         TWellKnownEntityTypes::DISK,
         DiskId);
+
+    Response = std::move(record);
 
     if (++ResponseCount == ResponseChecksums.size()) {
         CompareChecksums(ctx);
