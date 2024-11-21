@@ -7,14 +7,11 @@
 #include <library/cpp/testing/unittest/registar.h>
 
 #include <atomic>
-#include <chrono>
 #include <latch>
 #include <optional>
 #include <thread>
 
 namespace NCloud::NStorage::NGrpc {
-
-using namespace std::chrono_literals;
 
 namespace {
 

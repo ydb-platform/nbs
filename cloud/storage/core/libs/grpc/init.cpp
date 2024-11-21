@@ -3,10 +3,8 @@
 #include <contrib/libs/grpc/include/grpc/grpc.h>
 #include <contrib/libs/grpc/include/grpc/support/log.h>
 
-#include <library/cpp/deprecated/atomic/atomic.h>
 #include <library/cpp/logger/log.h>
 
-#include <util/system/sanitizers.h>
 #include <util/system/src_location.h>
 
 #include <atomic>
