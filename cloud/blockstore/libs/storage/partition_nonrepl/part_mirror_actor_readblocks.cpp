@@ -3,7 +3,6 @@
 #include "mirror_request_actor.h"
 
 #include <cloud/blockstore/libs/common/block_checksum.h>
-#include <cloud/blockstore/libs/diagnostics/critical_events.h>
 #include <cloud/blockstore/libs/storage/api/undelivered.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
 
@@ -61,6 +60,8 @@ private:
     typename TMethod::TRequest::ProtoRecordType Request;
     const TBlockRange64 Range;
     const TString DiskId;
+    const NActors::TActorId ParentActorId;
+    const ui64 RequestIdentityKey;
 
     using TResponseProto = typename TMethod::TResponse::ProtoRecordType;
     using TBase = TActorBootstrapped<TRequestActor<TMethod>>;
@@ -68,6 +69,7 @@ private:
     TVector<ui32> ResponseChecksums;
     ui32 ResponseCount = 0;
     TResponseProto Response;
+    bool ChecksumMismatchObserved = false;
 
 public:
     TRequestActor(
@@ -75,7 +77,9 @@ public:
         const TVector<TActorId>& partitions,
         typename TMethod::TRequest::ProtoRecordType request,
         const TBlockRange64 range,
-        TString diskId);
+        TString diskId,
+        TActorId parentActorId,
+        ui64 requestIdentityKey);
 
     void Bootstrap(const TActorContext& ctx);
 
@@ -117,12 +121,16 @@ TRequestActor<TMethod>::TRequestActor(
         const TVector<TActorId>& partitions,
         typename TMethod::TRequest::ProtoRecordType request,
         const TBlockRange64 range,
-        TString diskId)
+        TString diskId,
+        TActorId parentActorId,
+        ui64 requestIdentityKey)
     : RequestInfo(std::move(requestInfo))
     , Partitions(partitions)
     , Request(std::move(request))
     , Range(range)
     , DiskId(std::move(diskId))
+    , ParentActorId(parentActorId)
+    , RequestIdentityKey(requestIdentityKey)
     , ResponseChecksums(Partitions.size(), 0)
 {}
 
@@ -204,7 +212,7 @@ void TRequestActor<TMethod>::CompareChecksums(const TActorContext& ctx)
                 Partitions[i].ToString().c_str());
             *Response.MutableError() =
                 MakeError(E_REJECTED, "Checksum mismatch detected");
-            ReportMirroredDiskChecksumMismatchUponRead();
+            ChecksumMismatchObserved = true;
             break;
         }
     }
@@ -217,6 +225,12 @@ void TRequestActor<TMethod>::Done(const TActorContext& ctx)
     response->Record = std::move(Response);
 
     NCloud::Reply(ctx, *RequestInfo, std::move(response));
+
+    auto completion =
+        std::make_unique<TEvNonreplPartitionPrivate::TEvMirroredReadCompleted>(
+            RequestIdentityKey,
+            ChecksumMismatchObserved);
+    NCloud::Send(ctx, ParentActorId, std::move(completion));
 
     TBase::Die(ctx);
 }
@@ -413,11 +427,6 @@ void TMirrorPartitionActor::ReadBlocks(
         return;
     }
 
-    // TODO:
-    // 1. take 2 replicas
-    // 2. acquire optimistic read lock
-    // 3. send response to TMirrorPartitionActor upon read completion - if read lock is still in place and data checksums differ, report critical event, respond with E_REJECTED and do out-of-order range scrubbing for this range
-
     TVector<TActorId> replicaActorIds;
     const ui32 readReplicaCount = Min<ui32>(
         Max<ui32>(1, Config->GetMirrorReadReplicaCount()),
@@ -451,13 +460,19 @@ void TMirrorPartitionActor::ReadBlocks(
         DescribeRange(blockRange).c_str(),
         replicaActorIds.size());
 
+    const auto requestIdentityKey = ev->Cookie;
+    RequestsInProgress.AddReadRequest(requestIdentityKey, blockRange);
+    ReadRequestIdentityKey2DirtyFlag[requestIdentityKey] = false;
+
     NCloud::Register<TRequestActor<TMethod>>(
         ctx,
         std::move(requestInfo),
         replicaActorIds,
         std::move(record),
         blockRange,
-        State.GetReplicaInfos()[0].Config->GetName());
+        State.GetReplicaInfos()[0].Config->GetName(),
+        SelfId(),
+        requestIdentityKey);
 }
 
 ////////////////////////////////////////////////////////////////////////////////

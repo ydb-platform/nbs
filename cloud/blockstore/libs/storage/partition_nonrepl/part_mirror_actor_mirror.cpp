@@ -2,6 +2,7 @@
 
 #include "mirror_request_actor.h"
 
+#include <cloud/blockstore/libs/diagnostics/critical_events.h>
 #include <cloud/blockstore/libs/service/request_helpers.h>
 #include <cloud/blockstore/libs/storage/api/undelivered.h>
 #include <cloud/blockstore/libs/storage/core/probes.h>
@@ -20,15 +21,39 @@ void TMirrorPartitionActor::HandleWriteOrZeroCompleted(
     const TActorContext& ctx)
 {
     const auto requestIdentityKey = ev->Get()->RequestCounter;
-    RequestsInProgress.RemoveRequest(requestIdentityKey);
+    TBlockRange64 range;
+    RequestsInProgress.ExtractRequest(requestIdentityKey, &range);
     DrainActorCompanion.ProcessDrainRequests(ctx);
-    // TODO: invalidate read lock
+    for (const auto& request: RequestsInProgress.AllRequests()) {
+        if (range.Overlaps(request.second.Value)) {
+            ReadRequestIdentityKey2DirtyFlag[request.first] = true;
+        }
+    }
 
     if (ResyncActorId) {
         ForwardRequestWithNondeliveryTracking(
             ctx,
             ResyncActorId,
             *ev);
+    }
+}
+
+void TMirrorPartitionActor::HandleMirroredReadCompleted(
+    const TEvNonreplPartitionPrivate::TEvMirroredReadCompleted::TPtr& ev,
+    const TActorContext& ctx)
+{
+    Y_UNUSED(ctx);
+
+    const auto requestIdentityKey = ev->Get()->RequestCounter;
+    RequestsInProgress.RemoveRequest(requestIdentityKey);
+    auto it = ReadRequestIdentityKey2DirtyFlag.find(requestIdentityKey);
+    if (it != ReadRequestIdentityKey2DirtyFlag.end()) {
+        if (!it->second && ev->Get()->ChecksumMismatchObserved) {
+            ReportMirroredDiskChecksumMismatchUponRead();
+        }
+        ReadRequestIdentityKey2DirtyFlag.erase(it);
+    } else {
+        Y_DEBUG_ABORT_UNLESS(0);
     }
 }
 
@@ -72,6 +97,11 @@ void TMirrorPartitionActor::MirrorRequest(
             return;
         }
         WriteIntersectsWithScrubbing = true;
+    }
+    for (const auto& request: RequestsInProgress.AllRequests()) {
+        if (range.Overlaps(request.second.Value)) {
+            ReadRequestIdentityKey2DirtyFlag[request.first] = true;
+        }
     }
     RequestsInProgress.AddWriteRequest(requestIdentityKey, range);
 

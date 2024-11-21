@@ -58,6 +58,7 @@ private:
     ui64 NetworkBytes = 0;
     TDuration CpuUsage;
 
+    THashMap<ui64, bool> ReadRequestIdentityKey2DirtyFlag;
     TRequestsInProgress<ui64, TBlockRange64> RequestsInProgress{
         EAllowedRequests::ReadWrite};
     TDrainActorCompanion DrainActorCompanion{
@@ -116,6 +117,10 @@ private:
 
     void HandleWriteOrZeroCompleted(
         const TEvNonreplPartitionPrivate::TEvWriteOrZeroCompleted::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleMirroredReadCompleted(
+        const TEvNonreplPartitionPrivate::TEvMirroredReadCompleted::TPtr& ev,
         const NActors::TActorContext& ctx);
 
     void HandleRWClientIdChanged(

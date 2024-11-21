@@ -1699,14 +1699,17 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
             runtime.EnableScheduleForActor(actorId);
         });
 
-        ui32 rangeResynced = 0;
+        TAutoPtr<IEventHandle> toSend;
+        bool interceptReadDeviceBlocks = false;
         runtime.SetEventFilter([&] (auto& runtime, auto& event) {
             Y_UNUSED(runtime);
-            if (event->GetTypeRewrite() ==
-                TEvNonreplPartitionPrivate::EvRangeResynced)
+            if (!toSend && interceptReadDeviceBlocks && event->GetTypeRewrite()
+                    == TEvDiskAgent::EvReadDeviceBlocksRequest)
             {
-                ++rangeResynced;
+                toSend = event;
+                return true;
             }
+
             return false;
         });
 
@@ -1731,6 +1734,8 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
         // Read request should cause E_REJECTED error since data checksums in
         // replicas 0 and 1 are different.
         TPartitionClient client(runtime, env.ActorId);
+
+        // hits replicas 0 and 1
         {
             TVector<TString> blocks;
             client.SendReadBlocksLocalRequest(
@@ -1747,13 +1752,54 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
                 response->GetErrorReason());
         }
 
-        // TODO: check nonlocal requests as well
+        // hits replicas 2 and 0
+        {
+            client.SendReadBlocksRequest(range);
+            auto response = client.RecvReadBlocksResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_REJECTED,
+                response->GetStatus(),
+                response->GetErrorReason());
+        }
+
+        // hits replicas 1 and 2 and thus succeeds
+        {
+            client.SendReadBlocksRequest(range);
+            auto response = client.RecvReadBlocksResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                response->GetStatus(),
+                response->GetErrorReason());
+            for (ui32 i = 0; i < range.Size(); ++i) {
+                UNIT_ASSERT_VALUES_EQUAL_C(
+                    TString(4_KB, 'B'),
+                    response->Record.GetBlocks().GetBuffers(i),
+                    TStringBuilder() << "block " << (range.Start + i));
+            }
+        }
 
         UNIT_ASSERT_VALUES_EQUAL(
-            1,
+            2,
             mirroredDiskChecksumMismatchUponRead->Val());
 
-        // TODO: check that consistency was restored and that ReadBlocks returns S_OK
+        interceptReadDeviceBlocks = true;
+        client.SendReadBlocksRequest(range);
+        client.WriteBlocks(range, 'C');
+        UNIT_ASSERT(toSend);
+        runtime.Send(toSend);
+        {
+            // checksum mismatch => E_REJECTED
+            auto response = client.RecvReadBlocksResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_REJECTED,
+                response->GetStatus(),
+                response->GetErrorReason());
+        }
+
+        // write request made block range dirty => no crit event
+        UNIT_ASSERT_VALUES_EQUAL(
+            2,
+            mirroredDiskChecksumMismatchUponRead->Val());
     }
 }
 
