@@ -233,8 +233,11 @@ public:
 
     bool GetInMemoryIndexCacheEnabled() const;
     ui64 GetInMemoryIndexCacheNodesCapacity() const;
+    ui64 GetInMemoryIndexCacheNodesToNodesCapacityRatio() const;
     ui64 GetInMemoryIndexCacheNodeAttrsCapacity() const;
+    ui64 GetInMemoryIndexCacheNodesToNodeAttrsCapacityRatio() const;
     ui64 GetInMemoryIndexCacheNodeRefsCapacity() const;
+    ui64 GetInMemoryIndexCacheNodesToNodeRefsCapacityRatio() const;
     bool GetInMemoryIndexCacheLoadOnTabletStart() const;
     ui64 GetInMemoryIndexCacheLoadOnTabletStartRowsPerTx() const;
 

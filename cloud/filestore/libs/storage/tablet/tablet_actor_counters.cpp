@@ -292,10 +292,19 @@ void TIndexTabletActor::TMetrics::Register(
         InMemoryIndexStateNodesCount,
         EMetricType::MT_ABSOLUTE);
     REGISTER_AGGREGATABLE_SUM(
+        InMemoryIndexStateNodesCapacity,
+        EMetricType::MT_ABSOLUTE);
+    REGISTER_AGGREGATABLE_SUM(
         InMemoryIndexStateNodeRefsCount,
         EMetricType::MT_ABSOLUTE);
     REGISTER_AGGREGATABLE_SUM(
+        InMemoryIndexStateNodeRefsCapacity,
+        EMetricType::MT_ABSOLUTE);
+    REGISTER_AGGREGATABLE_SUM(
         InMemoryIndexStateNodeAttrsCount,
+        EMetricType::MT_ABSOLUTE);
+    REGISTER_AGGREGATABLE_SUM(
+        InMemoryIndexStateNodeAttrsCapacity,
         EMetricType::MT_ABSOLUTE);
     REGISTER_AGGREGATABLE_SUM(
         InMemoryIndexStateIsExhaustive,
@@ -487,8 +496,11 @@ void TIndexTabletActor::TMetrics::Update(
     Store(NodeIndexCacheNodeCount, nodeIndexCacheStats.NodeCount);
 
     Store(InMemoryIndexStateNodesCount, inMemoryIndexStateStats.NodesCount);
+    Store(InMemoryIndexStateNodesCapacity, inMemoryIndexStateStats.NodesCapacity);
     Store(InMemoryIndexStateNodeRefsCount, inMemoryIndexStateStats.NodeRefsCount);
+    Store(InMemoryIndexStateNodeRefsCapacity, inMemoryIndexStateStats.NodeRefsCapacity);
     Store(InMemoryIndexStateNodeAttrsCount, inMemoryIndexStateStats.NodeAttrsCount);
+    Store(InMemoryIndexStateNodeAttrsCapacity, inMemoryIndexStateStats.NodeAttrsCapacity);
     Store(InMemoryIndexStateIsExhaustive, inMemoryIndexStateStats.IsNodeRefsExhaustive);
 
     Store(
