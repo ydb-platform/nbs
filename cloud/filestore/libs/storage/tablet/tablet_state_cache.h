@@ -10,6 +10,19 @@ namespace NCloud::NFileStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+struct TInMemoryIndexStateStats
+{
+    ui64 NodesCount;
+    ui64 NodesCapacity;
+    ui64 NodeRefsCount;
+    ui64 NodeRefsCapacity;
+    ui64 NodeAttrsCount;
+    ui64 NodeAttrsCapacity;
+    bool IsNodeRefsExhaustive;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
 /**
  * @brief Stores the state of the index tables in memory. Can be used to perform
  * read-only operations.
@@ -27,6 +40,8 @@ public:
     void LoadNodeRefs(const TVector<TNodeRef>& nodeRefs);
 
     void MarkNodeRefsLoadComplete();
+
+    [[nodiscard]] TInMemoryIndexStateStats GetStats() const;
 
     //
     // Nodes

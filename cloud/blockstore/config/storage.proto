@@ -732,7 +732,7 @@ message TStorageServiceConfig
 
     // Expected client backoff timeout increment in milliseconds - used to
     // calculate some internal timeouts.
-    optional uint32 ExpectedClientBackoffIncrement = 280;
+    // optional uint32 ExpectedClientBackoffIncrement = 280; // obsolete
 
     // Maximum number of pending deallocation requests per one disk.
     optional uint32 MaxNonReplicatedDiskDeallocationRequests = 281;
@@ -1013,7 +1013,7 @@ message TStorageServiceConfig
 
     // CMS actions such as "REMOVE_HOST" and "REMOVE_DEVICE" will attempt to
     // remove devices and the host from DR memory (including persistent storage).
-    optional bool CleanupDRConfigOnCMSActions = 375;
+    // optional bool CleanupDRConfigOnCMSActions = 375;  // obsolete
 
     // Resync range, if scrubbing found a mismatch.
     optional bool ResyncRangeAfterScrubbing = 376;
@@ -1046,4 +1046,14 @@ message TStorageServiceConfig
 
     // Timeout between disks reallocations.
     optional uint32 DiskRegistryDisksNotificationTimeout = 387;
+
+    // Whether the disk registry is allowed to allocate local disks while agent
+    // is in warning state.
+    // When enabled, the Disk Registry REMOVE_HOST CMS action will not "forget"
+    // agents devices and will not suspend local devices. Instead, PURGE_HOST
+    // should be used for these purposes.
+    optional bool DiskRegistryAlwaysAllocatesLocalDisks = 388;
+
+    optional uint32 BlobStorageAsyncGetTimeoutHDD = 389;
+    optional uint32 BlobStorageAsyncGetTimeoutSSD = 390;
 }

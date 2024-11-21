@@ -238,6 +238,9 @@ public:
         if (MuteIOErrors) {
             SetErrorProtoFlag(error, NCloud::NProto::EF_HW_PROBLEMS_DETECTED);
         }
+        if (error.GetCode() == E_IO_SILENT) {
+            SetErrorProtoFlag(error, NCloud::NProto::EF_SILENT);
+        }
     }
 
     NCloud::NProto::TError MakeError(

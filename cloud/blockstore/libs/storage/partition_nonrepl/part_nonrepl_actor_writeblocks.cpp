@@ -1,4 +1,6 @@
 #include "part_nonrepl_actor.h"
+
+#include "part_nonrepl_actor_base_request.h"
 #include "part_nonrepl_common.h"
 
 #include <cloud/blockstore/libs/common/iovector.h>
@@ -7,17 +9,9 @@
 #include <cloud/blockstore/libs/storage/core/block_handler.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/core/probes.h>
-
-#include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
-
-#include <util/generic/string.h>
-#include <util/string/builder.h>
-
 namespace NCloud::NBlockStore::NStorage {
 
 using namespace NActors;
-
-using namespace NKikimr;
 
 LWTRACE_USING(BLOCKSTORE_STORAGE_PROVIDER);
 
@@ -25,56 +19,39 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TDiskAgentWriteActor final
-    : public TActorBootstrapped<TDiskAgentWriteActor>
+class TDiskAgentWriteActor final: public TDiskAgentBaseRequestActor
 {
 private:
-    const TRequestInfoPtr RequestInfo;
-    NProto::TWriteBlocksRequest Request;
-    const TVector<TDeviceRequest> DeviceRequests;
-    const TNonreplicatedPartitionConfigPtr PartConfig;
-    const TActorId Part;
     const bool AssignVolumeRequestId;
+    const bool ReplyLocal;
 
-    TInstant StartTime;
+    NProto::TWriteBlocksRequest Request;
     ui32 RequestsCompleted = 0;
-
-    bool ReplyLocal;
 
 public:
     TDiskAgentWriteActor(
         TRequestInfoPtr requestInfo,
         NProto::TWriteBlocksRequest request,
+        TRequestTimeoutPolicy timeoutPolicy,
         TVector<TDeviceRequest> deviceRequests,
         TNonreplicatedPartitionConfigPtr partConfig,
         const TActorId& part,
         bool assignVolumeRequestId,
         bool replyLocal);
 
-    void Bootstrap(const TActorContext& ctx);
+protected:
+    void SendRequest(const NActors::TActorContext& ctx) override;
+    NActors::IEventBasePtr MakeResponse(NProto::TError error) override;
+    TCompletionEventAndBody MakeCompletionResponse(ui32 blocks) override;
+    bool OnMessage(TAutoPtr<NActors::IEventHandle>& ev) override;
 
 private:
-    void WriteBlocks(const TActorContext& ctx);
-
-    bool HandleError(const TActorContext& ctx, NProto::TError error);
-
-    void Done(const TActorContext& ctx, IEventBasePtr response, bool failed);
-
-    IEventBasePtr CreateResponse(NProto::TError error);
-
-private:
-    STFUNC(StateWork);
-
     void HandleWriteDeviceBlocksResponse(
         const TEvDiskAgent::TEvWriteDeviceBlocksResponse::TPtr& ev,
         const TActorContext& ctx);
 
     void HandleWriteDeviceBlocksUndelivery(
         const TEvDiskAgent::TEvWriteDeviceBlocksRequest::TPtr& ev,
-        const TActorContext& ctx);
-
-    void HandleTimeout(
-        const TEvents::TEvWakeup::TPtr& ev,
         const TActorContext& ctx);
 };
 
@@ -83,38 +60,26 @@ private:
 TDiskAgentWriteActor::TDiskAgentWriteActor(
         TRequestInfoPtr requestInfo,
         NProto::TWriteBlocksRequest request,
+        TRequestTimeoutPolicy timeoutPolicy,
         TVector<TDeviceRequest> deviceRequests,
         TNonreplicatedPartitionConfigPtr partConfig,
         const TActorId& part,
         bool assignVolumeRequestId,
         bool replyLocal)
-    : RequestInfo(std::move(requestInfo))
-    , Request(std::move(request))
-    , DeviceRequests(std::move(deviceRequests))
-    , PartConfig(std::move(partConfig))
-    , Part(part)
+    : TDiskAgentBaseRequestActor(
+          std::move(requestInfo),
+          GetRequestId(request),
+          "WriteBlocks",
+          std::move(timeoutPolicy),
+          std::move(deviceRequests),
+          std::move(partConfig),
+          part)
     , AssignVolumeRequestId(assignVolumeRequestId)
     , ReplyLocal(replyLocal)
+    , Request(std::move(request))
 {}
 
-void TDiskAgentWriteActor::Bootstrap(const TActorContext& ctx)
-{
-    TRequestScope timer(*RequestInfo);
-
-    Become(&TThis::StateWork);
-
-    LWTRACK(
-        RequestReceived_VolumeWorker,
-        RequestInfo->CallContext->LWOrbit,
-        "DiskAgentWrite",
-        RequestInfo->CallContext->RequestId);
-
-    StartTime = ctx.Now();
-
-    WriteBlocks(ctx);
-}
-
-void TDiskAgentWriteActor::WriteBlocks(const TActorContext& ctx)
+void TDiskAgentWriteActor::SendRequest(const TActorContext& ctx)
 {
     TDeviceRequestBuilder builder(
         DeviceRequests,
@@ -149,21 +114,8 @@ void TDiskAgentWriteActor::WriteBlocks(const TActorContext& ctx)
     }
 }
 
-bool TDiskAgentWriteActor::HandleError(
-    const TActorContext& ctx,
+NActors::IEventBasePtr TDiskAgentWriteActor::MakeResponse(
     NProto::TError error)
-{
-    if (FAILED(error.GetCode())) {
-        ProcessError(ctx, *PartConfig, error);
-
-        Done(ctx, CreateResponse(std::move(error)), true);
-        return true;
-    }
-
-    return false;
-}
-
-IEventBasePtr TDiskAgentWriteActor::CreateResponse(NProto::TError error)
 {
     if (ReplyLocal) {
         return std::make_unique<TEvService::TEvWriteBlocksLocalResponse>(
@@ -174,43 +126,16 @@ IEventBasePtr TDiskAgentWriteActor::CreateResponse(NProto::TError error)
         std::move(error));
 }
 
-void TDiskAgentWriteActor::Done(
-    const TActorContext& ctx,
-    IEventBasePtr response,
-    bool failed)
+TDiskAgentBaseRequestActor::TCompletionEventAndBody
+TDiskAgentWriteActor::MakeCompletionResponse(ui32 blocks)
 {
-    LWTRACK(
-        ResponseSent_VolumeWorker,
-        RequestInfo->CallContext->LWOrbit,
-        "WriteBlocks",
-        RequestInfo->CallContext->RequestId);
-
-    NCloud::Reply(ctx, *RequestInfo, std::move(response));
-
     auto completion =
         std::make_unique<TEvNonreplPartitionPrivate::TEvWriteBlocksCompleted>();
-    auto& counters = *completion->Stats.MutableUserWriteCounters();
-    completion->TotalCycles = RequestInfo->GetTotalCycles();
-    completion->ActorSystemTime = ctx.Now() - StartTime;
 
-    ui32 blocks = 0;
-    for (const auto& dr: DeviceRequests) {
-        blocks += dr.BlockRange.Size();
-        completion->DeviceIndices.push_back(dr.DeviceIdx);
-    }
-    counters.SetBlocksCount(blocks);
-    completion->Failed = failed;
-    completion->ExecCycles = RequestInfo->GetExecCycles();
+    completion->Stats.MutableUserWriteCounters()->SetBlocksCount(blocks);
 
-    NCloud::Send(
-        ctx,
-        Part,
-        std::move(completion));
-
-    Die(ctx);
+    return TCompletionEventAndBody(std::move(completion));
 }
-
-////////////////////////////////////////////////////////////////////////////////
 
 void TDiskAgentWriteActor::HandleWriteDeviceBlocksUndelivery(
     const TEvDiskAgent::TEvWriteDeviceBlocksRequest::TPtr& ev,
@@ -227,30 +152,13 @@ void TDiskAgentWriteActor::HandleWriteDeviceBlocksUndelivery(
     // Ignore undelivered event. Wait for TEvWakeup.
 }
 
-void TDiskAgentWriteActor::HandleTimeout(
-    const TEvents::TEvWakeup::TPtr& ev,
-    const TActorContext& ctx)
-{
-    const auto& device = DeviceRequests[ev->Cookie].Device;
-    LOG_WARN_S(
-        ctx,
-        TBlockStoreComponents::PARTITION_WORKER,
-        "WriteBlocks request #"
-            << GetRequestId(Request) << " timed out. Disk id: "
-            << PartConfig->GetName() << " Device: " << LogDevice(device));
-
-    HandleError(
-        ctx,
-        PartConfig->MakeError(E_TIMEOUT, "WriteBlocks request timed out"));
-}
-
 void TDiskAgentWriteActor::HandleWriteDeviceBlocksResponse(
     const TEvDiskAgent::TEvWriteDeviceBlocksResponse::TPtr& ev,
     const TActorContext& ctx)
 {
     auto* msg = ev->Get();
 
-    if (HandleError(ctx, msg->GetError())) {
+    if (HandleError(ctx, msg->GetError(), false)) {
         return;
     }
 
@@ -258,27 +166,22 @@ void TDiskAgentWriteActor::HandleWriteDeviceBlocksResponse(
         return;
     }
 
-    Done(ctx, CreateResponse(NProto::TError()), false);
+    Done(ctx, MakeResponse(NProto::TError()), EStatus::Success);
 }
 
-STFUNC(TDiskAgentWriteActor::StateWork)
+bool TDiskAgentWriteActor::OnMessage(TAutoPtr<NActors::IEventHandle>& ev)
 {
-    TRequestScope timer(*RequestInfo);
-
     switch (ev->GetTypeRewrite()) {
-        HFunc(TEvents::TEvWakeup, HandleTimeout);
-
         HFunc(
             TEvDiskAgent::TEvWriteDeviceBlocksRequest,
             HandleWriteDeviceBlocksUndelivery);
         HFunc(
             TEvDiskAgent::TEvWriteDeviceBlocksResponse,
             HandleWriteDeviceBlocksResponse);
-
         default:
-            HandleUnexpectedEvent(ev, TBlockStoreComponents::PARTITION_WORKER);
-            break;
+            return false;
     }
+    return true;
 }
 
 }   // namespace
@@ -341,15 +244,14 @@ void TNonreplicatedPartitionActor::HandleWriteBlocks(
     );
 
     TVector<TDeviceRequest> deviceRequests;
-    TRequest request;
+    TRequestTimeoutPolicy timeoutPolicy;
     bool ok = InitRequests<TEvService::TWriteBlocksMethod>(
         *msg,
         ctx,
         *requestInfo,
         blockRange,
         &deviceRequests,
-        &request
-    );
+        &timeoutPolicy);
 
     if (!ok) {
         return;
@@ -363,13 +265,14 @@ void TNonreplicatedPartitionActor::HandleWriteBlocks(
         ctx,
         requestInfo,
         std::move(msg->Record),
+        std::move(timeoutPolicy),
         std::move(deviceRequests),
         PartConfig,
         SelfId(),
         assignVolumeRequestId,
         false); // replyLocal
 
-    RequestsInProgress.AddWriteRequest(actorId, std::move(request));
+    RequestsInProgress.AddWriteRequest(actorId);
 }
 
 void TNonreplicatedPartitionActor::HandleWriteBlocksLocal(
@@ -425,28 +328,48 @@ void TNonreplicatedPartitionActor::HandleWriteBlocksLocal(
         msg->Record.BlocksCount);
 
     TVector<TDeviceRequest> deviceRequests;
-    TRequest request;
+    TRequestTimeoutPolicy timeoutPolicy;
     bool ok = InitRequests<TEvService::TWriteBlocksLocalMethod>(
         *msg,
         ctx,
         *requestInfo,
         blockRange,
         &deviceRequests,
-        &request
-    );
+        &timeoutPolicy);
 
     if (!ok) {
         return;
     }
 
+    if (guard.Get().empty()) {
+        // can happen only if there is a bug in the code of the layers above
+        // this one
+        ReportEmptyRequestSgList();
+        replyError(
+            ctx,
+            *requestInfo,
+            E_ARGUMENT,
+            "empty SgList in request");
+        return;
+    }
+
     // convert local request to remote
 
+    // copying request data into a new TIOVector and moving it to msg->Record
+    // afterwards since msg->Record.Blocks can be holding current request data
+    // or parts of it
+    NProto::TIOVector blocks;
     SgListCopy(
         guard.Get(),
         ResizeIOVector(
-            *msg->Record.MutableBlocks(),
+            blocks,
             msg->Record.BlocksCount,
             PartConfig->GetBlockSize()));
+    *msg->Record.MutableBlocks() = std::move(blocks);
+
+    // explicitly clearing request data (SgList) just in case anyone adds some
+    // code to TDiskAgentWriteActor that tries to use it
+    msg->Record.Sglist.SetSgList({});
 
     const bool assignVolumeRequestId =
         Config->GetAssignIdToWriteAndZeroRequestsEnabled() &&
@@ -456,13 +379,14 @@ void TNonreplicatedPartitionActor::HandleWriteBlocksLocal(
         ctx,
         requestInfo,
         std::move(msg->Record),
+        std::move(timeoutPolicy),
         std::move(deviceRequests),
         PartConfig,
         SelfId(),
         assignVolumeRequestId,
         true); // replyLocal
 
-    RequestsInProgress.AddWriteRequest(actorId, std::move(request));
+    RequestsInProgress.AddWriteRequest(actorId);
 }
 
 void TNonreplicatedPartitionActor::HandleWriteBlocksCompleted(
@@ -487,11 +411,7 @@ void TNonreplicatedPartitionActor::HandleWriteBlocksCompleted(
     CpuUsage += CyclesToDurationSafe(msg->ExecCycles);
 
     RequestsInProgress.RemoveRequest(ev->Sender);
-    if (!msg->Failed) {
-        for (const auto i: msg->DeviceIndices) {
-            OnResponse(i, msg->ActorSystemTime);
-        }
-    }
+    OnRequestCompleted(*msg, ctx.Now());
 
     DrainActorCompanion.ProcessDrainRequests(ctx);
 

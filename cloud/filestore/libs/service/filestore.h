@@ -37,6 +37,7 @@ constexpr ui32 MaxSymlink = NProto::E_FS_LIMITS_SYMLINK;
 constexpr ui64 MaxNodes = static_cast<ui64>(NProto::E_FS_LIMITS_INODES);
 constexpr ui64 MaxXAttrName = NProto::E_FS_LIMITS_XATTR_NAME;
 constexpr ui64 MaxXAttrValue = NProto::E_FS_LIMITS_XATTR_VALUE;
+constexpr ui32 MaxShardCount = NProto::E_FS_LIMITS_MAX_SHARDS;
 
 ////////////////////////////////////////////////////////////////////////////////
 

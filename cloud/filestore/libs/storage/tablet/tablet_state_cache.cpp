@@ -41,6 +41,19 @@ void TInMemoryIndexState::MarkNodeRefsLoadComplete()
     IsNodeRefsExhaustive = !IsNodeRefsEvictionObserved;
 }
 
+TInMemoryIndexStateStats TInMemoryIndexState::GetStats() const
+{
+    return TInMemoryIndexStateStats{
+        .NodesCount = Nodes.size(),
+        .NodesCapacity = NodesCapacity,
+        .NodeRefsCount = NodeRefs.size(),
+        .NodeRefsCapacity = NodeRefsCapacity,
+        .NodeAttrsCount = NodeAttrs.size(),
+        .NodeAttrsCapacity = NodeAttrsCapacity,
+        .IsNodeRefsExhaustive = IsNodeRefsExhaustive,
+    };
+}
+
 //
 // Nodes
 //

@@ -78,14 +78,14 @@ void PrepareCompoundIO(
     TSimpleStats& queueStats)
 {
     auto* bio = vhd_get_bdev_io(io);
-    const i64 logicalOffset = bio->first_sector * VHD_SECTOR_SIZE;
-    i64 totalBytes = bio->total_sectors * VHD_SECTOR_SIZE;
+    const ui64 logicalOffset = bio->first_sector * VHD_SECTOR_SIZE;
+    ui64 totalBytes = bio->total_sectors * VHD_SECTOR_SIZE;
 
     auto it = std::lower_bound(
         devices.begin(),
         devices.end(),
         logicalOffset,
-        [] (const TAioDevice& device, i64 offset) {
+        [] (const TAioDevice& device, ui64 offset) {
             return device.EndOffset <= offset;
         });
 
@@ -93,22 +93,30 @@ void PrepareCompoundIO(
         it,
         devices.end(),
         logicalOffset + totalBytes,
-        [] (const TAioDevice& device, i64 offset) {
+        [] (const TAioDevice& device, ui64 offset) {
             return device.StartOffset < offset;
         });
 
-    const ui32 n = static_cast<ui32>(std::distance(it, end));
-
-    Y_DEBUG_ABORT_UNLESS(n > 1);
+    const ui32 deviceCount = std::distance(it, end);
+    Y_DEBUG_ABORT_UNLESS(deviceCount > 1);
 
     STORAGE_DEBUG(
-        "%s compound request, %u parts: start block %" PRIu64 ", blocks count %" PRIu64,
+        "%s compound request, %u parts, %u buffers: start sector %lu, start "
+        "block %lu, block count %lu, block size %u",
         bio->type == VHD_BDEV_READ ? "Read" : "Write",
-        n,
+        deviceCount,
+        bio->sglist.nbuffers,
         bio->first_sector,
-        bio->total_sectors);
+        logicalOffset / it->BlockSize,
+        totalBytes / it->BlockSize,
+        it->BlockSize);
 
-    auto req = TAioCompoundRequest::CreateNew(n, io, totalBytes, now);
+    auto req = TAioCompoundRequest::CreateNew(
+        deviceCount,
+        it->BlockSize,
+        io,
+        totalBytes,
+        now);
 
     if (bio->type == VHD_BDEV_WRITE) {
         const bool success = SgListCopyWithOptionalEncryption(
@@ -252,31 +260,35 @@ void PrepareIO(
     TSimpleStats& queueStats)
 {
     auto* bio = vhd_get_bdev_io(io);
-    const i64 logicalOffset = bio->first_sector * VHD_SECTOR_SIZE;
-    const i64 totalBytes = bio->total_sectors * VHD_SECTOR_SIZE;
+    const ui64 logicalOffset = bio->first_sector * VHD_SECTOR_SIZE;
+    const ui64 totalBytes = bio->total_sectors * VHD_SECTOR_SIZE;
 
     const auto *it = std::lower_bound(
         devices.begin(),
         devices.end(),
         logicalOffset,
-        [] (const TAioDevice& device, i64 offset) {
+        [] (const TAioDevice& device, ui64 offset) {
             return device.EndOffset <= offset;
         });
 
     Y_ABORT_UNLESS(it != devices.end());
+    const TAioDevice& device = *it;
 
-    if (it->EndOffset < logicalOffset + totalBytes) {
+    if (device.EndOffset < logicalOffset + totalBytes) {
         // The request is cross-device, so we split it into two.
         PrepareCompoundIO(encryptor, Log, devices, io, batch, now, queueStats);
         return;
     }
 
     STORAGE_DEBUG(
-        "%s request, %u parts: start block %" PRIu64 ", blocks count %" PRIu64,
+        "%s request, %u buffers: start sector %lu, start block %lu, block "
+        "count %lu, block size %u",
         bio->type == VHD_BDEV_READ ? "Read" : "Write",
         bio->sglist.nbuffers,
         bio->first_sector,
-        bio->total_sectors);
+        logicalOffset / device.BlockSize,
+        totalBytes / device.BlockSize,
+        device.BlockSize);
 
     auto buffers =
         std::span<vhd_buffer>{bio->sglist.buffers, bio->sglist.nbuffers};
@@ -288,12 +300,13 @@ void PrepareIO(
     // requires sector-granular i/o anyway.
     const bool isAllBuffersAligned = AllOf(
         buffers,
-        [](const vhd_buffer& buffer)
+        [blockSize = device.BlockSize](const vhd_buffer& buffer)
         {
-            return VHD_IS_ALIGNED((uintptr_t)buffer.base, VHD_SECTOR_SIZE) &&
-                   VHD_IS_ALIGNED(buffer.len, VHD_SECTOR_SIZE);
-        }
-    );
+            return VHD_IS_ALIGNED(
+                       reinterpret_cast<uintptr_t>(buffer.base),
+                       blockSize) &&
+                   VHD_IS_ALIGNED(buffer.len, blockSize);
+        });
 
     const bool needToAllocateBuffer =
         !isAllBuffersAligned || (encryptor && bio->type == VHD_BDEV_WRITE);
@@ -301,6 +314,7 @@ void PrepareIO(
     auto req = TAioRequest::CreateNew(
         needToAllocateBuffer ? 1 : buffers.size(),
         needToAllocateBuffer ? totalBytes : 0,
+        device.BlockSize,
         io,
         now);
 
@@ -328,12 +342,21 @@ void PrepareIO(
         }
     }
 
-    const auto offset = it->FileOffset + logicalOffset - it->StartOffset;
-
+    const auto offset = device.FileOffset + logicalOffset - device.StartOffset;
     if (bio->type == VHD_BDEV_READ) {
-        io_prep_preadv(req.get(), it->File, req->Data, buffers.size(), offset);
+        io_prep_preadv(
+            req.get(),
+            device.File,
+            req->Data,
+            buffers.size(),
+            offset);
     } else {
-        io_prep_pwritev(req.get(), it->File, req->Data, buffers.size(), offset);
+        io_prep_pwritev(
+            req.get(),
+            device.File,
+            req->Data,
+            buffers.size(),
+            offset);
     }
 
     STORAGE_DEBUG("Prepared IO request with addr: %p", req.get());
@@ -359,6 +382,7 @@ void TAioRequestDeleter::operator()(TAioRequest* obj)
 
 TAioRequest::TAioRequest(
         size_t allocatedBufferSize,
+        ui32 blockSize,
         vhd_io* io,
         TCpuCycles submitTs)
     : iocb()
@@ -368,8 +392,7 @@ TAioRequest::TAioRequest(
 {
     if (allocatedBufferSize) {
         Data[0].iov_len = allocatedBufferSize;
-        Data[0].iov_base =
-            std::aligned_alloc(VHD_SECTOR_SIZE, allocatedBufferSize);
+        Data[0].iov_base = std::aligned_alloc(blockSize, allocatedBufferSize);
     }
 }
 
@@ -377,13 +400,14 @@ TAioRequest::TAioRequest(
 TAioRequestHolder TAioRequest::CreateNew(
     size_t bufferCount,
     size_t allocatedBufferSize,
+    ui32 blockSize,
     vhd_io* io,
     TCpuCycles submitTs)
 {
     const size_t totalSize = sizeof(TAioRequest) + sizeof(iovec) * bufferCount;
     return TAioRequestHolder{
         new (std::calloc(1, totalSize))
-            TAioRequest(allocatedBufferSize, io, submitTs)};
+            TAioRequest(allocatedBufferSize, blockSize, io, submitTs)};
 }
 
 // static
@@ -428,7 +452,8 @@ TAioCompoundRequestHolder TAioSubRequest::TakeParentRequest()
 ////////////////////////////////////////////////////////////////////////////////
 
 TAioCompoundRequest::TAioCompoundRequest(
-        int inflight,
+        ui32 inflight,
+        ui32 blockSize,
         vhd_io* io,
         size_t bufferSize,
         TCpuCycles submitTs)
@@ -436,19 +461,21 @@ TAioCompoundRequest::TAioCompoundRequest(
     , Io(io)
     , SubmitTs(submitTs)
     , Buffer{
-          static_cast<char*>(std::aligned_alloc(VHD_SECTOR_SIZE, bufferSize)),
+          static_cast<char*>(std::aligned_alloc(blockSize, bufferSize)),
       }
 {}
 
 // static
 std::unique_ptr<TAioCompoundRequest> TAioCompoundRequest::CreateNew(
-    int inflight,
+    ui32 inflight,
+    ui32 blockSize,
     vhd_io* io,
     size_t bufferSize,
     TCpuCycles submitTs)
 {
     return std::make_unique<TAioCompoundRequest>(
         inflight,
+        blockSize,
         io,
         bufferSize,
         submitTs);

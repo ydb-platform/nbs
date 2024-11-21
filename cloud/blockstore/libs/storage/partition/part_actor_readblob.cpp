@@ -99,6 +99,10 @@ void TPartitionActor::HandleReadBlobCompleted(
             return;
         }
 
+        if (msg->DeadlineSeen) {
+            PartCounters->Simple.ReadBlobDeadlineCount.Increment(1);
+        }
+
         if (State->IncrementReadBlobErrorCount()
                 >= Config->GetMaxReadBlobErrorsBeforeSuicide())
         {

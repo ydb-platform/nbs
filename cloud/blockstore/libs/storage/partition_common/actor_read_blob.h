@@ -35,6 +35,8 @@ private:
     TInstant RequestSent;
     TInstant ResponseReceived;
 
+    bool DeadlineSeen = false;
+
 public:
     TReadBlobActor(
         TRequestInfoPtr requestInfo,

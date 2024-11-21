@@ -306,6 +306,21 @@ void TVolumeActor::HandleAllocateDiskResponse(
             FormatError(error).c_str(),
             GetNewestConfig().GetDiskId().Quote().c_str());
 
+        if (UpdateVolumeConfigInProgress && State) {
+            UnfinishedUpdateVolumeConfig.Devices = State->GetMeta().GetDevices();
+            UnfinishedUpdateVolumeConfig.Migrations =
+                State->GetMeta().GetMigrations();
+
+            UnfinishedUpdateVolumeConfig.Replicas.clear();
+            for (auto& r: State->GetMeta().GetReplicas()) {
+                UnfinishedUpdateVolumeConfig.Replicas.push_back(r.GetDevices());
+            }
+
+            UnfinishedUpdateVolumeConfig.FreshDeviceIds.assign(
+                State->GetMeta().GetFreshDeviceIds().begin(),
+                State->GetMeta().GetFreshDeviceIds().end());
+        }
+
         if (GetErrorKind(error) == EErrorKind::ErrorRetriable) {
             ScheduleAllocateDiskIfNeeded(ctx);
         } else {
@@ -575,7 +590,7 @@ void TVolumeActor::CompleteUpdateDevices(
         }
     }
 
-    StopPartitions(ctx);
+    StopPartitions(ctx, {});
     SendVolumeConfigUpdated(ctx);
     StartPartitionsForUse(ctx);
     ResetServicePipes(ctx);

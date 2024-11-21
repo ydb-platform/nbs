@@ -50,6 +50,11 @@ on:
         required: false
         default: false
         type: boolean
+      nebius:
+        description: "Run on new nebius runners"
+        required: false
+        default: "no"
+        type: string
   workflow_dispatch:
     inputs:
       build:
@@ -97,6 +102,14 @@ on:
         required: false
         default: false
         type: boolean
+      nebius:
+        description: "Run on new nebius runners"
+        required: false
+        default: "no"
+        type: choice
+        options:
+          - "yes"
+          - "no"
 
 env:
   build: ${{ github.event_name == 'schedule' && 'true' || inputs.build }}
@@ -117,15 +130,18 @@ jobs:
       uses: actions/checkout@v4
 
     - name: Set up Packer
+      if: inputs.nebius == 'no'
       uses: hashicorp/setup-packer@v3
       with:
         version: 1.10.2
     - name: install dependencies
       run: |
+        pip install https://github.com/librarian/python-sdk/releases/download/v0.1.1/nebiusai-0.1.1-py3-none-any.whl
         pip install PyGithub==2.2.0 grpcio grpcio-tools yandexcloud==0.258.0
-        echo "PATH=$PATH:$HOME/nebius-cloud/bin" >> $GITHUB_ENV
+        echo "PATH=$PATH:$HOME/nebius-cloud/bin:$HOME/.nebius/bin" >> $GITHUB_ENV
 
     - name: Set up NCP
+      if: inputs.nebius == 'no'
       run: |
         curl -sSL https://storage.ai.nebius.cloud/ncp/install.sh | bash
         cat <<EOF > sa.json
@@ -138,15 +154,41 @@ jobs:
       env:
         sa_json: ${{ secrets.NEBIUS_SA_JSON_CREDENTIALS }}
 
+    - name: Set up Nebius CLI
+      if: inputs.nebius == 'yes'
+      run: |
+        curl -sSL https://storage.ai.nebius.cloud/nebius/install.sh | bash
+        cat <<EOF > sa.json
+        ${sa_json}
+        EOF
+
+        cat sa.json | jq -r '."subject-credentials"."private-key"' > private.pem
+        echo "::add-mask::$(cat sa.json | jq -r '."subject-credentials"."kid"')"
+        public_key_id=$(cat sa.json | jq -r '."subject-credentials"."kid"')
+        echo "::add-mask::$(cat sa.json | jq -r '."subject-credentials"."iss"')"
+        service_account_id=$(cat sa.json | jq -r '."subject-credentials"."iss"')
+        echo "::add-mask::tenant-e00en3r863f7me6wtd"
+        nebius profile create --endpoint api.eu-north1.nebius.cloud \
+                              --profile nbs-github-user-sa \
+                              --parent-id tenant-e00en3r863f7me6wtd \
+                              --public-key-id "${public_key_id}" \
+                              --private-key-file private.pem \
+                              --service-account-id "${service_account_id}"
+      env:
+        sa_json: ${{ secrets.NEW_NEBIUS_SA_JSON_CREDENTIALS }}
+
     - name: Get IAM token
+      if: inputs.nebius == 'no'
       id: get-iam-token
       run: |
         YC_TOKEN=$(ncp --profile=nbs-github-user-sa iam create-token --format=json | jq -r .iam_token)
         echo "::add-mask::$YC_TOKEN"
         echo "YC_TOKEN=$YC_TOKEN" >> $GITHUB_ENV
 
+
+
     - name: Get .ya archive url
-      if: inputs.download_ya_archive == true
+      if: inputs.download_ya_archive == true && inputs.nebius == 'no'
       id: get-ya-archive-url
       run: |
         python .github/scripts/workflow-artifact-download.py \
@@ -159,7 +201,7 @@ jobs:
 
 
     - name: Check whether we have image with this workflow_run_id
-      if: inputs.download_ya_archive == true
+      if: inputs.download_ya_archive == true && inputs.nebius == 'no'
       id: check-image
       run: |
         ncp --profile=nbs-github-user-sa compute images list --folder-id "${FOLDER_ID}" --format=json | tee -a images.txt
@@ -189,7 +231,7 @@ jobs:
         FOLDER_ID: bjeuq5o166dq4ukv3eec
 
     - name: Run `packer init` and create variables file
-      if: steps.check-image.outputs.image_already_exists != 'true'
+      if: steps.check-image.outputs.image_already_exists != 'true' && inputs.nebius == 'no'
       id: init
       run: |
         VARIABLES_FILE=$(mktemp XXXXXXX.hcl)
@@ -241,7 +283,7 @@ jobs:
           }}
 
     - name: Run `packer validate`
-      if: steps.check-image.outputs.image_already_exists != 'true'
+      if: steps.check-image.outputs.image_already_exists != 'true' && inputs.nebius == 'no'
       id: validate
       run: |
         packer validate -var-file=$VARIABLES_FILE .github/packer/github-runner.pkr.hcl
@@ -250,7 +292,7 @@ jobs:
 
     - name: Run `packer build`
       id: build
-      if: env.build == 'true' && steps.check-image.outputs.image_already_exists != 'true'
+      if: env.build == 'true' && steps.check-image.outputs.image_already_exists != 'true' && inputs.nebius == 'no'
       timeout-minutes: 120
       run: |
         packer build -timestamp-ui -var-file=$VARIABLES_FILE .github/packer/github-runner.pkr.hcl
@@ -259,14 +301,13 @@ jobs:
       env:
         PACKER_GITHUB_API_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-
     - name: Print IMAGE_ID_2204
-      if: env.build == 'true' && steps.check-image.outputs.image_already_exists != 'true'
+      if: env.build == 'true' && steps.check-image.outputs.image_already_exists != 'true' && inputs.nebius == 'no'
       run: echo ${{ steps.build.outputs.IMAGE_ID_2204 }}
 
     - name: Start runner
       id: start-runner
-      if: env.build == 'true' && steps.check-image.outputs.image_already_exists != 'true'
+      if: env.build == 'true' && steps.check-image.outputs.image_already_exists != 'true' && inputs.nebius == 'no'
       uses: ./.github/actions/runner_create
       timeout-minutes: 60
       with:
@@ -285,9 +326,10 @@ jobs:
         vm_image: ${{ steps.build.outputs.IMAGE_ID_2204 }}
         vm_labels: ${{ format('run={0}-{1},repo={2},owner={3}', github.run_id, github.run_attempt, github.event.repository.name, github.repository_owner) }}
         vm_user_passwd: ${{ secrets.VM_USER_PASSWD }}
+
     - name: Stop runner
       uses: ./.github/actions/runner_remove
-      if: always() && env.build == 'true' && steps.check-image.outputs.image_already_exists != 'true'
+      if: always() && env.build == 'true' && steps.check-image.outputs.image_already_exists != 'true' && inputs.nebius == 'no'
       timeout-minutes: 60
       with:
         service_account_key: ${{ secrets.NEBIUS_SA_JSON_CREDENTIALS }}
@@ -297,7 +339,7 @@ jobs:
         vm_id: ${{ steps.start-runner.outputs.instance-id  }}
 
     - name: Set new image id
-      if: env.build == 'true' && steps.check-image.outputs.image_already_exists != 'true'
+      if: env.build == 'true' && steps.check-image.outputs.image_already_exists != 'true' && inputs.nebius == 'no'
       run: |
         python ./.github/scripts/manage-images.py \
           --service-account-key sa.json \
@@ -311,3 +353,57 @@ jobs:
         IMAGES_TO_KEEP: ${{ inputs.images_to_keep }}
         UPDATE_IMAGE_ID: ${{ inputs.update_image_id && '--update-image-id' || '' }}
         REMOVE_OLD_IMAGES: ${{ inputs.remove_old_images && '--remove-old-images' || '' }}
+
+    - name: Get latest image ID from Nebius
+      if: inputs.nebius == 'yes' && env.build == 'true'
+      id: get-image-id-nebius
+      run: |
+        image_id=$(nebius compute image get-latest-by-family --image-family ubuntu22.04-nbs-github-ci --parent-id ${{ vars.NEBIUS_PARENT_ID }} --format json | jq -r .metadata.id)
+        echo "IMAGE_ID_2204=$image_id" >> $GITHUB_OUTPUT
+
+    - name: Start runner (nebius)
+      id: start-runner-nebius
+      if: inputs.nebius == 'yes'  && env.build == 'true'  && steps.get-image-id-nebius.outputs.IMAGE_ID_2204 != vars.NEBIUS_IMAGE_ID_2204
+      uses: ./.github/actions/nebius_runner_create
+      timeout-minutes: 60
+      with:
+        org: ydb-platform
+        team: nbs
+        repo_owner: ${{ github.repository_owner }}
+        repo: ${{ github.event.repository.name }}
+        service_account_key: ${{ secrets.NEW_NEBIUS_SA_JSON_CREDENTIALS }}
+        token: ${{ secrets.GH_PERSONAL_ACCESS_TOKEN }}
+        vm_parent_id: ${{ vars.NEBIUS_PARENT_ID }}
+        vm_name: ${{ format('packer-run-{0}-{1}', github.run_id, github.run_attempt) }}
+        vm_preset: "2vcpu-8gb"
+        vm_disk_type: 'network-ssd-nonreplicated'
+        vm_disk_size: 93
+        vm_subnet: ${{ vars.NEBIUS_SUBNET_ID }}
+        vm_image: ${{ steps.get-image-id-nebius.outputs.IMAGE_ID_2204 }}
+        vm_labels: ${{ format('run={0}-{1},repo={2},owner={3}', github.run_id, github.run_attempt, github.event.repository.name, github.repository_owner) }}
+        vm_user_passwd: ${{ secrets.VM_USER_PASSWD }}
+
+    - name: Stop runner (nebius)
+      uses: ./.github/actions/nebius_runner_remove
+      if: always() && inputs.nebius == 'yes'  && env.build == 'true'  && steps.get-image-id-nebius.outputs.IMAGE_ID_2204 != vars.NEBIUS_IMAGE_ID_2204
+      timeout-minutes: 60
+      with:
+        service_account_key: ${{ secrets.NEW_NEBIUS_SA_JSON_CREDENTIALS }}
+        token: ${{ secrets.GH_PERSONAL_ACCESS_TOKEN }}
+        repo_owner: ${{ github.repository_owner }}
+        repo: ${{ github.event.repository.name }}
+        vm_parent_id: ${{ vars.NEBIUS_PARENT_ID }}
+        vm_id: ${{ steps.start-runner-nebius.outputs.instance-id }}
+
+    - name: Set new image id (nebius)
+      if: env.build == 'true' && steps.check-image.outputs.image_already_exists != 'true' && inputs.nebius == 'yes'
+      run: |
+        python ./.github/scripts/nebius-manage-images.py \
+          --service-account-key sa.json \
+          --new-image-id ${NEW_IMAGE_ID} \
+          --image-variable-name ${IMAGE_VARIABLE_NAME} ${UPDATE_IMAGE_ID}
+      env:
+        GITHUB_TOKEN: ${{ secrets.GH_PERSONAL_ACCESS_TOKEN }}
+        IMAGE_VARIABLE_NAME: NEBIUS_IMAGE_ID_2204
+        NEW_IMAGE_ID: ${{ steps.get-image-id-nebius.outputs.IMAGE_ID_2204 }}
+        UPDATE_IMAGE_ID: ${{ inputs.update_image_id && '--update-image-id' || '' }}

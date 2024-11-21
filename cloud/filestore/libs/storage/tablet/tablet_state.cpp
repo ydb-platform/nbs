@@ -59,6 +59,17 @@ bool IsValid(const NProto::TFileStorePerformanceProfile& profile)
         && profile.GetDefaultPostponedRequestWeight();
 }
 
+ui64 CalculateInMemoryIndexCacheCapacity(
+    const ui64 capacity,
+    const ui64 maxNodes,
+    const ui64 nodesToCapacityRatio)
+{
+    if (nodesToCapacityRatio == 0) {
+        return capacity;
+    }
+    return Max(capacity, maxNodes / nodesToCapacityRatio);
+}
+
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -126,9 +137,18 @@ void TIndexTabletState::LoadState(
         config.GetReadAheadCacheMaxHandlesPerNode());
     Impl->NodeIndexCache.Reset(config.GetNodeIndexCacheMaxNodes());
     Impl->InMemoryIndexState.Reset(
-        config.GetInMemoryIndexCacheNodesCapacity(),
-        config.GetInMemoryIndexCacheNodeAttrsCapacity(),
-        config.GetInMemoryIndexCacheNodeRefsCapacity());
+        CalculateInMemoryIndexCacheCapacity(
+            config.GetInMemoryIndexCacheNodesCapacity(),
+            GetNodesCount(),
+            config.GetInMemoryIndexCacheNodesToNodesCapacityRatio()),
+        CalculateInMemoryIndexCacheCapacity(
+            config.GetInMemoryIndexCacheNodeAttrsCapacity(),
+            GetNodesCount(),
+            config.GetInMemoryIndexCacheNodesToNodeAttrsCapacityRatio()),
+        CalculateInMemoryIndexCacheCapacity(
+            config.GetInMemoryIndexCacheNodeRefsCapacity(),
+            GetNodesCount(),
+            config.GetInMemoryIndexCacheNodesToNodeRefsCapacityRatio()));
 
     for (const auto& deletionMarker: largeDeletionMarkers) {
         Impl->LargeBlocks.AddDeletionMarker(deletionMarker);
@@ -180,6 +200,26 @@ TMiscNodeStats TIndexTabletState::GetMiscNodeStats() const
     return {
         .OrphanNodesCount = static_cast<i64>(Impl->OrphanNodeIds.size()),
     };
+}
+
+bool TIndexTabletState::CalculateExpectedShardCount() const
+{
+    if (FileSystem.GetShardNo()) {
+        // sharding is flat
+        return 0;
+    }
+
+    const auto currentShardCount = FileSystem.ShardFileSystemIdsSize();
+    ui64 autoShardCount = 0;
+    if (FileSystem.GetAutomaticShardCreationEnabled()
+            && FileSystem.GetMaxShardSize())
+    {
+        const double fsSize =
+            FileSystem.GetBlockSize() * FileSystem.GetBlocksCount();
+        autoShardCount = ceil(fsSize / FileSystem.GetMaxShardSize());
+    }
+
+    return Max(currentShardCount, autoShardCount);
 }
 
 }   // namespace NCloud::NFileStore::NStorage

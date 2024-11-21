@@ -4,7 +4,7 @@ import re
 
 import yatest.common as common
 
-from cloud.filestore.tests.python.lib.client import NfsCliClient
+from cloud.filestore.tests.python.lib.client import FilestoreCliClient
 
 BLOCK_SIZE = 4 * 1024
 BLOCKS_COUNT = 1000
@@ -13,7 +13,7 @@ BLOCKS_COUNT = 1000
 def __init_test():
     port = os.getenv("NFS_SERVER_PORT")
     binary_path = common.binary_path("cloud/filestore/apps/client/filestore-client")
-    client = NfsCliClient(binary_path, port, cwd=common.output_path())
+    client = FilestoreCliClient(binary_path, port, cwd=common.output_path())
 
     results_path = common.output_path() + "/results.txt"
     return client, results_path
@@ -490,6 +490,37 @@ def test_large_file():
     result += "\n"
 
     client.rm("fs0", "/aaa/bbb")
+
+    client.destroy("fs0")
+
+    with open(results_path, "w") as results_file:
+        results_file.write(result)
+
+    ret = common.canonical_file(results_path, local=True)
+    return ret
+
+
+def test_forced_compaction():
+    data_file = os.path.join(common.output_path(), "data.txt")
+    chunk_size = 128 * 1024
+    chunk = []
+    for i in range(chunk_size):
+        chunk.append("a")
+    chunk_str = "".join(chunk)
+    with open(data_file, "w") as f:
+        f.write(chunk_str)
+
+    client, results_path = __init_test()
+    client.create("fs0", "test_cloud", "test_folder")
+
+    for i in range(128):
+        client.write(
+            "fs0",
+            "/aaa",
+            "--data", data_file,
+            "--offset", str(i * chunk_size))
+
+    result = client.forced_compaction("fs0").decode("utf8")
 
     client.destroy("fs0")
 

@@ -27,6 +27,11 @@ public:
     {
         request.SetDiskId(DiskId);
     }
+
+    explicit operator bool() const
+    {
+        return !!DiskId;
+    }
 };
 
 class TVolumeParams

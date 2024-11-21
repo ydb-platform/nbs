@@ -296,6 +296,8 @@ public:
         return AllocatorRegistry.GetAllocator(tag);
     }
 
+    bool CalculateExpectedShardCount() const;
+
     //
     // FileSystem Stats
     //
@@ -1178,7 +1180,8 @@ public:
 
         ui32 GetCurrentRange() const
         {
-            return RangesToCompact[Current];
+            return Current < RangesToCompact.size()
+                ? RangesToCompact[Current] : 0;
         }
     };
 
@@ -1192,6 +1195,7 @@ private:
 
     TVector<TPendingForcedRangeOperation> PendingForcedRangeOperations;
     TMaybe<TForcedRangeOperationState> ForcedRangeOperationState;
+    TVector<TForcedRangeOperationState> CompletedForcedRangeOperations;
 
 public:
     TString EnqueueForcedRangeOperation(
@@ -1210,6 +1214,9 @@ public:
     {
         return ForcedRangeOperationState.Get();
     }
+
+    const TForcedRangeOperationState* FindForcedRangeOperation(
+        const TString& operationId) const;
 
     void UpdateForcedRangeOperationProgress(ui32 current)
     {
@@ -1314,6 +1321,7 @@ public:
     void UpdateInMemoryIndexState(
         TVector<TInMemoryIndexState::TIndexStateRequest> nodeUpdates);
     void MarkNodeRefsLoadComplete();
+    TInMemoryIndexStateStats GetInMemoryIndexStateStats() const;
 };
 
 }   // namespace NCloud::NFileStore::NStorage

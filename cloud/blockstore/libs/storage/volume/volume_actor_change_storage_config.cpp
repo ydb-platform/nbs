@@ -61,7 +61,7 @@ void TVolumeActor::CompleteChangeStorageConfig(
     if (State->GetPartitionsState() == TPartitionInfo::READY ||
         State->GetPartitionsState() == TPartitionInfo::STARTED)
     {
-        StopPartitions(ctx);
+        StopPartitions(ctx, {});
         StartPartitionsForUse(ctx);
     }
 

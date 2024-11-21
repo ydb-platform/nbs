@@ -1,4 +1,5 @@
 import argparse
+import logging
 import os
 
 import contrib.ydb.tests.library.common.yatest_common as yatest_common
@@ -225,6 +226,7 @@ def start(argv):
         )
         disk_managers.append(disk_manager)
         disk_manager.start()
+    set_env("DISK_MANAGER_RECIPE_DISK_MANAGER_MON_PORT", str(disk_managers[0].monitoring_port))
 
     dataplane_disk_managers_count = 1
     for _ in range(0, dataplane_disk_managers_count):
@@ -256,6 +258,8 @@ def start(argv):
 
 
 def stop(argv):
+    logging.info(os.system("ss -tpna"))
+
     DiskManagerLauncher.stop()
     MetadataServiceLauncher.stop()
     NfsLauncher.stop()

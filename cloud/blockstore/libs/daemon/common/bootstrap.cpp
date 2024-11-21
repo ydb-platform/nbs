@@ -94,7 +94,7 @@
 #include <cloud/storage/core/libs/diagnostics/trace_processor_mon.h>
 #include <cloud/storage/core/libs/diagnostics/trace_processor.h>
 #include <cloud/storage/core/libs/diagnostics/trace_serializer.h>
-#include <cloud/storage/core/libs/grpc/logging.h>
+#include <cloud/storage/core/libs/grpc/init.h>
 #include <cloud/storage/core/libs/grpc/threadpool.h>
 #include <cloud/storage/core/libs/endpoints/fs/fs_endpoints.h>
 #include <cloud/storage/core/libs/endpoints/keyring/keyring_endpoints.h>
@@ -526,6 +526,8 @@ void TBootstrapBase::Init()
         .NbdDevicePrefix = Configs->ServerConfig->GetNbdDevicePrefix(),
     };
 
+    NBD::IDeviceFactoryPtr nbdDeviceFactory;
+
     if (Configs->ServerConfig->GetEndpointProxySocketPath()) {
         EndpointProxyClient = NClient::CreateClient(
             {
@@ -539,24 +541,20 @@ void TBootstrapBase::Init()
             Scheduler,
             Timer,
             Logging);
-    }
 
-    NBD::IDeviceFactoryPtr nbdDeviceFactory;
-
-    if (Configs->ServerConfig->GetNbdNetlink()) {
-        nbdDeviceFactory = NBD::CreateNetlinkDeviceFactory(
-            Logging,
-            Configs->ServerConfig->GetNbdRequestTimeout(),
-            Configs->ServerConfig->GetNbdConnectionTimeout(),
-            true);  // reconfigure
-    }
-
-    if (!nbdDeviceFactory && EndpointProxyClient) {
         const ui32 defaultSectorSize = 4_KB;
 
         nbdDeviceFactory = NClient::CreateProxyDeviceFactory(
             {defaultSectorSize},
             EndpointProxyClient);
+    }
+
+    if (!nbdDeviceFactory && Configs->ServerConfig->GetNbdNetlink()) {
+        nbdDeviceFactory = NBD::CreateNetlinkDeviceFactory(
+            Logging,
+            Configs->ServerConfig->GetNbdRequestTimeout(),
+            Configs->ServerConfig->GetNbdConnectionTimeout(),
+            true);  // reconfigure
     }
 
     // The only case we want kernel to retry requests is when the socket is dead
@@ -843,6 +841,7 @@ void TBootstrapBase::Start()
 {
 #define START_COMMON_COMPONENT(c)                                              \
     if (c) {                                                                   \
+        STORAGE_INFO("Starting " << #c << " ...");                             \
         c->Start();                                                            \
         STORAGE_INFO("Started " << #c);                                        \
     }                                                                          \
@@ -850,6 +849,7 @@ void TBootstrapBase::Start()
 
 #define START_KIKIMR_COMPONENT(c)                                              \
     if (Get##c()) {                                                            \
+        STORAGE_INFO("Starting " << #c << " ...");                             \
         Get##c()->Start();                                                     \
         STORAGE_INFO("Started " << #c);                                        \
     }                                                                          \
@@ -873,8 +873,8 @@ void TBootstrapBase::Start()
     START_KIKIMR_COMPONENT(YdbStorage);
     START_KIKIMR_COMPONENT(StatsUploader);
     START_COMMON_COMPONENT(Spdk);
-    START_KIKIMR_COMPONENT(ActorSystem);
     START_COMMON_COMPONENT(FileIOServiceProvider);
+    START_KIKIMR_COMPONENT(ActorSystem);
     START_COMMON_COMPONENT(EndpointProxyClient);
     START_COMMON_COMPONENT(EndpointManager);
     START_COMMON_COMPONENT(Service);
@@ -917,6 +917,7 @@ void TBootstrapBase::Stop()
 {
 #define STOP_COMMON_COMPONENT(c)                                               \
     if (c) {                                                                   \
+        STORAGE_INFO("Stopping " << #c << "...");                              \
         c->Stop();                                                             \
         STORAGE_INFO("Stopped " << #c);                                        \
     }                                                                          \
@@ -924,6 +925,7 @@ void TBootstrapBase::Stop()
 
 #define STOP_KIKIMR_COMPONENT(c)                                               \
     if (Get##c()) {                                                            \
+        STORAGE_INFO("Stopping " << #c << "...");                              \
         Get##c()->Stop();                                                      \
         STORAGE_INFO("Stopped " << #c);                                        \
     }                                                                          \
@@ -944,8 +946,14 @@ void TBootstrapBase::Stop()
     STOP_COMMON_COMPONENT(Service);
     STOP_COMMON_COMPONENT(EndpointManager);
     STOP_COMMON_COMPONENT(EndpointProxyClient);
-    STOP_COMMON_COMPONENT(FileIOServiceProvider);
+
+
     STOP_KIKIMR_COMPONENT(ActorSystem);
+
+    // stop FileIOServiceProvider after ActorSystem to ensure that there are no
+    // in-flight I/O requests from TDiskAgentActor
+    STOP_COMMON_COMPONENT(FileIOServiceProvider);
+
     STOP_COMMON_COMPONENT(Spdk);
     STOP_KIKIMR_COMPONENT(StatsUploader);
     STOP_KIKIMR_COMPONENT(YdbStorage);

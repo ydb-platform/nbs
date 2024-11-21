@@ -352,12 +352,17 @@ public:
         TDeque<TAutomaticallyReplacedDeviceInfo> automaticallyReplacedDevices,
         THashMap<TString, NProto::TDiskRegistryAgentParams> diskRegistryAgentListParams);
 
-    NProto::TError RegisterAgent(
+    struct TAgentRegistrationResult
+    {
+        TVector<TDiskId> AffectedDisks;
+        TVector<TDiskId> DisksToReallocate;
+        TVector<TString> DevicesToDisableIO;
+    };
+
+    auto RegisterAgent(
         TDiskRegistryDatabase& db,
         NProto::TAgentConfig config,
-        TInstant timestamp,
-        TVector<TDiskId>* affectedDisks,
-        TVector<TDiskId>* disksToReallocate);
+        TInstant timestamp) -> TResultOrError<TAgentRegistrationResult>;
 
     NProto::TError UnregisterAgent(
         TDiskRegistryDatabase& db,
@@ -604,6 +609,13 @@ public:
         TVector<TDiskId>& affectedDisks,
         TDuration& timeout);
 
+    NProto::TError PurgeHost(
+        TDiskRegistryDatabase& db,
+        const TString& agentId,
+        TInstant now,
+        bool dryRun,
+        TVector<TDiskId>& affectedDisks);
+
     TMaybe<NProto::EAgentState> GetAgentState(const TString& agentId) const;
     TMaybe<TInstant> GetAgentCmsTs(const TString& agentId) const;
 
@@ -701,6 +713,9 @@ public:
     }
 
     bool IsReadyForCleanup(const TDiskId& diskId) const;
+
+    bool CanSecureErase(const TDeviceId& uuid) const;
+    bool CanSecureErase(const NProto::TDeviceConfig& device) const;
 
     NProto::TError SetUserId(
         TDiskRegistryDatabase& db,
@@ -1254,10 +1269,6 @@ private:
         TDiskId& affectedDisk,
         TDuration& timeout);
 
-    NProto::TError CheckDestructiveConfigurationChange(
-        const NProto::TDeviceConfig& device,
-        const THashMap<TDeviceId, NProto::TDeviceConfig>& oldConfigs) const;
-
     void ResetMigrationStartTsIfNeeded(TDiskState& disk);
 
     struct TConfigUpdateEffect;
@@ -1283,6 +1294,10 @@ private:
         const TString& deviceId,
         TInstant timestamp,
         TString reason);
+
+    void CleanupAgentConfig(
+        TDiskRegistryDatabase& db,
+        const NProto::TAgentConfig& agent);
 };
 
 }   // namespace NCloud::NBlockStore::NStorage

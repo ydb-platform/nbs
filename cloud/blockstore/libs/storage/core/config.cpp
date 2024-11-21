@@ -396,7 +396,6 @@ TDuration MSeconds(ui32 value)
     xxx(NonReplicatedMaxRequestTimeoutSSD,         TDuration, Seconds(30)     )\
     xxx(NonReplicatedMinRequestTimeoutHDD,         TDuration, Seconds(5)      )\
     xxx(NonReplicatedMaxRequestTimeoutHDD,         TDuration, Seconds(30)     )\
-    xxx(ExpectedClientBackoffIncrement,            TDuration, MSeconds(500)   )\
     xxx(NonReplicatedMigrationStartAllowed,        bool,      false           )\
     xxx(NonReplicatedVolumeMigrationDisabled,      bool,      false           )\
     xxx(MigrationIndexCachingInterval,             ui32,      65536           )\
@@ -431,7 +430,7 @@ TDuration MSeconds(ui32 value)
     xxx(MaxLocalVolumes,                           ui32,      100             )\
                                                                                \
     xxx(DiskRegistryVolumeConfigUpdatePeriod,      TDuration, Minutes(5)      )\
-    xxx(CleanupDRConfigOnCMSActions,               bool,      false           )\
+    xxx(DiskRegistryAlwaysAllocatesLocalDisks,     bool,      false           )\
                                                                                \
     xxx(ReassignRequestRetryTimeout,               TDuration, Seconds(5)      )\
     xxx(ReassignChannelsPercentageThreshold,       ui32,      10              )\
@@ -513,7 +512,8 @@ TDuration MSeconds(ui32 value)
     xxx(IdleAgentDeployByCmsDelay,                      TDuration, Hours(1)      )\
     xxx(AllowLiteDiskReallocations,                     bool,      false         )\
     xxx(DiskRegistryDisksNotificationTimeout,           TDuration, Seconds(5)    )\
-
+    xxx(BlobStorageAsyncGetTimeoutHDD,                  TDuration, Seconds(0)    )\
+    xxx(BlobStorageAsyncGetTimeoutSSD,                  TDuration, Seconds(0)    )\
 
 // BLOCKSTORE_STORAGE_CONFIG_RW
 

@@ -54,12 +54,11 @@ NProto::TCreateSessionResponse TLocalFileSystem::CreateSession(
         Root,
         clientSessionStatePath,
         clientId,
-        Index,
+        Config->GetMaxNodeCount(),
+        Config->GetMaxHandlePerSessionCount(),
         Logging);
 
-    session->Init(
-        request.GetRestoreClientSession(),
-        Config->GetMaxHandlePerSessionCount());
+    session->Init(request.GetRestoreClientSession());
     session->AddSubSession(sessionSeqNo, readOnly);
 
     SessionsList.push_front(session);
@@ -78,6 +77,8 @@ NProto::TCreateSessionResponse TLocalFileSystem::CreateSession(
     auto* features = response.MutableFileStore()->MutableFeatures();
     features->SetDirectIoEnabled(Config->GetDirectIoEnabled());
     features->SetDirectIoAlign(Config->GetDirectIoAlign());
+    features->SetGuestWritebackCacheEnabled(
+        Config->GetGuestWritebackCacheEnabled());
 
     return response;
 }

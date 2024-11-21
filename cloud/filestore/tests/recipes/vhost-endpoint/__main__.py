@@ -6,7 +6,7 @@ import yatest.common as common
 
 from library.python.testing.recipe import declare_recipe, set_env
 
-from cloud.filestore.tests.python.lib.client import NfsCliClient, create_endpoint
+from cloud.filestore.tests.python.lib.client import FilestoreCliClient, create_endpoint
 
 
 logger = logging.getLogger(__name__)
@@ -30,7 +30,7 @@ def start(argv):
     client_path = common.binary_path(
         "cloud/filestore/apps/client/filestore-client")
 
-    client = NfsCliClient(
+    client = FilestoreCliClient(
         client_path,
         port,
         vhost_port=vhost_port,
@@ -77,7 +77,7 @@ def stop(argv):
     client_path = common.binary_path(
         "cloud/filestore/apps/client/filestore-client")
 
-    client = NfsCliClient(
+    client = FilestoreCliClient(
         client_path, port=None,
         vhost_port=vhost_port,
         verbose=True,

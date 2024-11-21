@@ -22,8 +22,8 @@ New format of UnixSocketPath: socketsDir/volumeId
 Current format of InstanceId: podId
 New format of InstanceId: nodeId
 
-Current format of ClientId: clientID-podId
-New format of ClientId: clientID-nodeId
+Current format of ClientId: clientId-podId
+New format of ClientId: clientId-nodeId
 
 Possible scenarios:
 

@@ -211,7 +211,7 @@ struct TCgroupStatsFetcherMock: public NCloud::NStorage::ICgroupStatsFetcher
     {
     }
 
-    TDuration GetCpuWait() override
+    TResultOrError<TDuration> GetCpuWait() override
     {
         return Value;
     };

@@ -56,6 +56,10 @@ private:
         const TEvDiskRegistryPrivate::TEvUpdateCmsHostStateResponse::TPtr& ev,
         const TActorContext& ctx);
 
+    void HandlePurgeHostCmsResponse(
+        const TEvDiskRegistryPrivate::TEvPurgeHostCmsResponse::TPtr& ev,
+        const TActorContext& ctx);
+
     void HandleGetDependentDisksResponse(
         const TEvDiskRegistry::TEvGetDependentDisksResponse::TPtr& ev,
         const TActorContext& ctx);
@@ -172,6 +176,16 @@ void TCmsRequestActor::SendNextRequest(const TActorContext& ctx)
             break;
         }
 
+        case NProto::TAction_EType::TAction_EType_PURGE_HOST: {
+            using TRequest = TEvDiskRegistryPrivate::TEvPurgeHostCmsRequest;
+            auto request = std::make_unique<TRequest>(
+                action.GetHost(),
+                action.GetDryRun());
+
+            NCloud::Send(ctx, Owner, std::move(request));
+            break;
+        }
+
         default: {
             auto& result = *Response->Record.MutableActionResults()->Add();
             *result.MutableResult() = MakeError(
@@ -210,6 +224,13 @@ void TCmsRequestActor::HandleCmsActionResponse(
 
     ++CurrentRequest;
     SendNextRequest(ctx);
+}
+
+void TCmsRequestActor::HandlePurgeHostCmsResponse(
+    const TEvDiskRegistryPrivate::TEvPurgeHostCmsResponse::TPtr& ev,
+    const TActorContext& ctx)
+{
+    HandleCmsActionResponse(*ev->Get(), ctx);
 }
 
 void TCmsRequestActor::HandleCmsActionResponseProto(
@@ -271,6 +292,10 @@ STFUNC(TCmsRequestActor::StateWork)
         HFunc(
             TEvDiskRegistryPrivate::TEvUpdateCmsHostStateResponse,
             HandleUpdateCmsHostStateResponse);
+
+        HFunc(
+            TEvDiskRegistryPrivate::TEvPurgeHostCmsResponse,
+            HandlePurgeHostCmsResponse);
 
         HFunc(
             TEvDiskRegistry::TEvGetDependentDisksResponse,

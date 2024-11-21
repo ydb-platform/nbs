@@ -658,8 +658,24 @@ void TIndexTabletActor::HandleGetStorageConfig(
     const TEvIndexTablet::TEvGetStorageConfigRequest::TPtr& ev,
     const TActorContext& ctx)
 {
-    auto response = std::make_unique<TEvIndexTablet::TEvGetStorageConfigResponse>();
+    auto response =
+        std::make_unique<TEvIndexTablet::TEvGetStorageConfigResponse>();
     *response->Record.MutableStorageConfig() = Config->GetStorageConfigProto();
+
+    NCloud::Reply(
+        ctx,
+        *ev,
+        std::move(response));
+}
+
+void TIndexTabletActor::HandleGetFileSystemTopology(
+    const TEvIndexTablet::TEvGetFileSystemTopologyRequest::TPtr& ev,
+    const TActorContext& ctx)
+{
+    auto response =
+        std::make_unique<TEvIndexTablet::TEvGetFileSystemTopologyResponse>();
+    *response->Record.MutableShardFileSystemIds() =
+        GetFileSystem().GetShardFileSystemIds();
 
     NCloud::Reply(
         ctx,
@@ -681,6 +697,8 @@ void TIndexTabletActor::HandleDescribeSessions(
 
     NCloud::Reply(ctx, *ev, std::move(response));
 }
+
+////////////////////////////////////////////////////////////////////////////////
 
 TVector<ui32> TIndexTabletActor::GenerateForceDeleteZeroCompactionRanges() const
 {
@@ -765,23 +783,20 @@ void TIndexTabletActor::HandleForcedOperationStatus(
     const TActorContext& ctx)
 {
     const auto& request = ev->Get()->Record;
-    const auto* state = GetForcedRangeOperationState();
 
     using TResponse = TEvIndexTablet::TEvForcedOperationStatusResponse;
     auto response = std::make_unique<TResponse>();
 
-    if (!state) {
-        response->Record.MutableError()->CopyFrom(
-            MakeError(E_NOT_FOUND, "forced operation not running"));
-    } else if (state->OperationId != request.GetOperationId()) {
-        response->Record.MutableError()->CopyFrom(MakeError(
-            E_NOT_FOUND,
-            TStringBuilder() << "forced operation id mismatch: "
-                << state->OperationId << " != " << request.GetOperationId()));
-    } else {
+    const auto* state = FindForcedRangeOperation(request.GetOperationId());
+    if (state) {
         response->Record.SetRangeCount(state->RangesToCompact.size());
         response->Record.SetProcessedRangeCount(state->Current);
         response->Record.SetLastProcessedRangeId(state->GetCurrentRange());
+    } else {
+        response->Record.MutableError()->CopyFrom(MakeError(
+            E_NOT_FOUND,
+            TStringBuilder() << "forced operation with id "
+                << request.GetOperationId() << "not found"));
     }
 
     NCloud::Reply(ctx, *ev, std::move(response));

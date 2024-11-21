@@ -73,6 +73,7 @@ PEERDIR(
     library/cpp/monlib/service/pages
 
     contrib/ydb/core/base
+    contrib/ydb/core/blobstorage
     contrib/ydb/core/node_whiteboard
     contrib/ydb/core/scheme
     contrib/ydb/core/tablet

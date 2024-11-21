@@ -629,6 +629,7 @@ private:
 
     void HandleRestoredEndpoint(
         const TString& socket,
+        const TString& endpointId,
         const NProto::TError& error);
 
     NProto::TError AddEndpointToStorage(
@@ -1468,7 +1469,7 @@ TFuture<NProto::TError> TEndpointManager::SwitchEndpointIfNeeded(
 
 TFuture<void> TEndpointManager::DoRestoreEndpoints()
 {
-    auto [storedIds, error] = EndpointStorage->GetEndpointIds();
+    auto [endpointIds, error] = EndpointStorage->GetEndpointIds();
     if (HasError(error) && !HasProtoFlag(error.GetFlags(), NProto::EF_SILENT)) {
         STORAGE_ERROR("Failed to get endpoints from storage: "
             << FormatError(error));
@@ -1476,19 +1477,19 @@ TFuture<void> TEndpointManager::DoRestoreEndpoints()
         return MakeFuture();
     }
 
-    STORAGE_INFO("Found " << storedIds.size() << " endpoints in storage");
+    STORAGE_INFO("Found " << endpointIds.size() << " endpoints in storage");
 
     TString clientId = CreateGuidAsString() + "_bootstrap";
 
     TVector<TFuture<void>> futures;
 
-    for (const auto& keyringId: storedIds) {
-        auto [str, error] = EndpointStorage->GetEndpoint(keyringId);
+    for (const auto& endpointId: endpointIds) {
+        auto [str, error] = EndpointStorage->GetEndpoint(endpointId);
         if (HasError(error)
                 && !HasProtoFlag(error.GetFlags(), NProto::EF_SILENT))
         {
             // NBS-3678
-            STORAGE_WARN("Failed to restore endpoint. ID: " << keyringId
+            STORAGE_WARN("Failed to restore endpoint. ID: " << endpointId
                 << ", error: " << FormatError(error));
             continue;
         }
@@ -1497,7 +1498,7 @@ TFuture<void> TEndpointManager::DoRestoreEndpoints()
 
         if (!request) {
             ReportEndpointRestoringError();
-            STORAGE_ERROR("Failed to deserialize request. ID: " << keyringId);
+            STORAGE_ERROR("Failed to deserialize request. ID: " << endpointId);
             continue;
         }
 
@@ -1533,14 +1534,17 @@ TFuture<void> TEndpointManager::DoRestoreEndpoints()
             std::move(request));
 
         auto weakPtr = weak_from_this();
-        future.Subscribe([weakPtr, socketPath] (const auto& f) {
+        future.Subscribe([weakPtr, socketPath, endpointId] (const auto& f) {
             const auto& response = f.GetValue();
             if (HasError(response)) {
                 ReportEndpointRestoringError();
             }
 
             if (auto ptr = weakPtr.lock()) {
-                ptr->HandleRestoredEndpoint(socketPath, response.GetError());
+                ptr->HandleRestoredEndpoint(
+                    socketPath,
+                    endpointId,
+                    response.GetError());
             }
         });
 
@@ -1552,11 +1556,20 @@ TFuture<void> TEndpointManager::DoRestoreEndpoints()
 
 void TEndpointManager::HandleRestoredEndpoint(
     const TString& socketPath,
+    const TString& endpointId,
     const NProto::TError& error)
 {
     if (HasError(error)) {
         STORAGE_ERROR("Failed to start endpoint " << socketPath.Quote()
             << ", error:" << FormatError(error));
+        if (FACILITY_FROM_CODE(error.GetCode()) == FACILITY_SCHEMESHARD &&
+            STATUS_FROM_CODE(error.GetCode()) == ENOENT)
+        {
+            STORAGE_INFO(
+                "Remove endpoint for non-existing volume. endpoint id: "
+                << endpointId.Quote());
+            EndpointStorage->RemoveEndpoint(endpointId);
+        }
     }
 
     Executor->Execute([socketPath, weakSelf = weak_from_this()] () mutable {
@@ -1575,25 +1588,6 @@ void TEndpointManager::ReleaseNbdDevice(const TString& device, bool restoring)
     NbdDeviceManager.ReleaseDevice(device);
 }
 
-
-NProto::TResizeDeviceResponse TEndpointManager::DoResizeDevice(
-    TCallContextPtr ctx,
-    std::shared_ptr<NProto::TResizeDeviceRequest> request)
-{
-    Y_UNUSED(ctx);
-    const auto& socketPath = request->GetUnixSocketPath();
-    const auto& deviceSize = request->GetDeviceSizeInBytes();
-
-    auto it = Endpoints.find(socketPath);
-    if (it == Endpoints.end()) {
-        return TErrorResponse(
-            E_NOT_FOUND,
-            TStringBuilder()
-                << "endpoint " << socketPath.Quote() << " not started");
-    }
-
-    return TErrorResponse(it->second.Device->Resize(deviceSize).GetValueSync());
-}
 
 ////////////////////////////////////////////////////////////////////////////////
 

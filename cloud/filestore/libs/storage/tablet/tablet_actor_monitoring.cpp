@@ -720,17 +720,27 @@ void DumpSessions(IOutputStream& out, const TVector<TMonSessionInfo>& sessions)
             TABLEHEAD() {
                 TABLER() {
                     TABLEH() { out << "ClientId";}
+                    TABLEH() { out << "FQDN";}
                     TABLEH() { out << "SessionId"; }
+                    TABLEH() { out << "Recovery"; }
                     TABLEH() { out << "SeqNo"; }
                     TABLEH() { out << "ReadOnly"; }
                     TABLEH() { out << "Owner"; }
                 }
             }
             for (const auto& session: sessions) {
+                const auto recoveryTimestamp = TInstant::MicroSeconds(
+                    session.ProtoInfo.GetRecoveryTimestampUs());
                 for (const auto& ss: session.SubSessions) {
                     TABLER() {
                         TABLED() { out << session.ProtoInfo.GetClientId(); }
+                        TABLED() { out << session.ProtoInfo.GetOriginFqdn(); }
                         TABLED() { out << session.ProtoInfo.GetSessionId(); }
+                        if (recoveryTimestamp) {
+                            TABLED() { out << recoveryTimestamp; }
+                        } else {
+                            TABLED() { out << ""; }
+                        }
                         TABLED() { out << ss.SeqNo; }
                         TABLED() { out << (ss.ReadOnly ? "True" : "False"); }
                         TABLED() { out << ToString(ss.Owner); }
@@ -1078,7 +1088,7 @@ void TIndexTabletActor::HandleHttpInfo_Default(
             }
         } else {
             DIV_CLASS("alert") {
-                out << "Write allowed: " << message;
+                out << "Write allowed";
             }
         }
         if (BackpressurePeriodStart || BackpressureErrorCount) {

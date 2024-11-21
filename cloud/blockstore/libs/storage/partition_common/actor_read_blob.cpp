@@ -105,6 +105,10 @@ void TReadBlobActor::NotifyCompleted(
     request->RequestTime = ResponseReceived - RequestSent;
     request->GroupId = Request->GroupId;
 
+    if (DeadlineSeen) {
+        request->DeadlineSeen = true;
+    }
+
     NCloud::Send(ctx, PartitionActorId, std::move(request));
 }
 
@@ -144,6 +148,10 @@ void TReadBlobActor::ReplyError(
         PartitionTabletId,
         description.data(),
         response.Print(false).data());
+
+    if (response.Status == NKikimrProto::DEADLINE) {
+        DeadlineSeen = true;
+    }
 
     auto error = MakeError(E_REJECTED, "TEvBlobStorage::TEvGet failed: " + description);
     ReplyAndDie(ctx, std::make_unique<TResponse>(error));

@@ -2476,6 +2476,132 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
         UNIT_ASSERT_VALUES_EQUAL(5, secureEraseRequests.size());
         UNIT_ASSERT_VALUES_EQUAL(rotPool, getPoolName(secureEraseRequests[4]));
     }
+
+    Y_UNIT_TEST(ShouldDisableIOForBrokenDevices)
+    {
+        auto agentConfig = CreateAgentConfig("agent-1", {
+            CreateDeviceConfig({.Name = "NVMENBS01", .Id = "uuid-1", .SerialNum = "W"}),
+            CreateDeviceConfig({.Name = "NVMENBS02", .Id = "uuid-2", .SerialNum = "X"}),
+            CreateDeviceConfig({.Name = "NVMENBS03", .Id = "uuid-3", .SerialNum = "Y"}),
+            CreateDeviceConfig({.Name = "NVMENBS04", .Id = "uuid-4", .SerialNum = "Z"}),
+        });
+
+        auto runtime = TTestRuntimeBuilder()
+            .WithAgents({ agentConfig })
+            .Build();
+
+        int registrationCount = 0;
+
+        runtime->SetEventFilter([&](auto&, TAutoPtr<IEventHandle>& event) {
+            if (event->GetTypeRewrite() ==
+                TEvDiskRegistry::EvRegisterAgentResponse)
+            {
+                ++registrationCount;
+
+                auto& msg =
+                    *event->Get<TEvDiskRegistry::TEvRegisterAgentResponse>();
+
+                UNIT_ASSERT_VALUES_EQUAL(
+                    0,
+                    msg.Record.DevicesToDisableIOSize());
+            }
+
+            return false;
+        });
+
+        TDiskRegistryClient diskRegistry(*runtime);
+        diskRegistry.WaitReady();
+        diskRegistry.SetWritableState(true);
+
+        diskRegistry.UpdateConfig(CreateRegistryConfig(0, {agentConfig}));
+
+        UNIT_ASSERT_VALUES_EQUAL(0, registrationCount);
+
+        RegisterAgents(*runtime, 1);
+
+        UNIT_ASSERT_VALUES_EQUAL(1, registrationCount);
+
+        WaitForAgents(*runtime, 1);
+        WaitForSecureErase(*runtime, {agentConfig});
+
+        // Allocate a disk on two devices.
+        diskRegistry.AllocateDisk("vol0", 20_GB, DefaultLogicalBlockSize);
+
+        THashSet<TString> allocatedDevices;
+        {
+            auto response = diskRegistry.AllocateDisk(
+                "vol0",
+                20_GB,
+                DefaultLogicalBlockSize);
+            auto& r = response->Record;
+            UNIT_ASSERT_VALUES_EQUAL(2, r.DevicesSize());
+            allocatedDevices = {
+                r.GetDevices(0).GetDeviceUUID(),
+                r.GetDevices(1).GetDeviceUUID()};
+        }
+
+        // change the serial number of an allocated device
+        auto* x = FindIfPtr(
+            *agentConfig.MutableDevices(),
+            [&](const auto& d)
+            { return allocatedDevices.contains(d.GetDeviceUUID()); });
+        UNIT_ASSERT(x);
+        x->SetSerialNumber("A");
+
+        // change the serial number of an unallocated device
+        auto* y = FindIfPtr(
+            *agentConfig.MutableDevices(),
+            [&](const auto& d)
+            { return !allocatedDevices.contains(d.GetDeviceUUID()); });
+        UNIT_ASSERT(y);
+        y->SetSerialNumber("N");
+
+        UNIT_ASSERT_VALUES_EQUAL(1, registrationCount);
+
+        TVector<TString> devicesToSuspendIO;
+
+        runtime->SetEventFilter([&](auto&, TAutoPtr<IEventHandle>& event) {
+            if (event->GetTypeRewrite() ==
+                TEvDiskRegistry::EvRegisterAgentRequest)
+            {
+                auto& msg =
+                    *event->Get<TEvDiskRegistry::TEvRegisterAgentRequest>();
+
+                // override the config to apply the SN changes
+                msg.Record.MutableAgentConfig()->MutableDevices()->CopyFrom(
+                    agentConfig.GetDevices());
+            }
+
+            if (event->GetTypeRewrite() ==
+                TEvDiskRegistry::EvRegisterAgentResponse)
+            {
+                ++registrationCount;
+
+                auto& msg =
+                    *event->Get<TEvDiskRegistry::TEvRegisterAgentResponse>();
+
+                devicesToSuspendIO.assign(
+                    msg.Record.GetDevicesToDisableIO().begin(),
+                    msg.Record.GetDevicesToDisableIO().end());
+            }
+
+            return false;
+        });
+
+        RegisterAgents(*runtime, 1);
+        UNIT_ASSERT_VALUES_EQUAL(2, registrationCount);
+
+        // DevicesToDisableIO should contain only the allocated device
+
+        UNIT_ASSERT_VALUES_EQUAL(1, devicesToSuspendIO.size());
+        UNIT_ASSERT_VALUES_EQUAL(x->GetDeviceUUID(), devicesToSuspendIO[0]);
+
+        devicesToSuspendIO.clear();
+        RegisterAgents(*runtime, 1);
+        UNIT_ASSERT_VALUES_EQUAL(3, registrationCount);
+        UNIT_ASSERT_VALUES_EQUAL(1, devicesToSuspendIO.size());
+        UNIT_ASSERT_VALUES_EQUAL(x->GetDeviceUUID(), devicesToSuspendIO[0]);
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

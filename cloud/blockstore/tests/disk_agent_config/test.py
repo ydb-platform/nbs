@@ -1,10 +1,13 @@
 import json
+import logging
 import os
 import pytest
 import requests
 import time
 
 from cloud.blockstore.public.sdk.python.client import CreateClient, Session
+from cloud.blockstore.public.sdk.python.client.error import ClientError
+from cloud.blockstore.public.sdk.python.client.error_codes import EResult
 from cloud.blockstore.public.sdk.python.protos import TCmsActionRequest, \
     TAction, STORAGE_MEDIA_SSD_NONREPLICATED
 from cloud.blockstore.config.disk_pb2 import DISK_AGENT_BACKEND_NULL
@@ -21,6 +24,7 @@ from contrib.ydb.tests.library.harness.kikimr_runner import \
 
 
 DEVICE_SIZE = 1024 ** 3  # 1 GiB
+DEVICES_PER_PATH = 6
 
 KNOWN_DEVICE_POOLS = {
     "KnownDevicePools": [
@@ -91,7 +95,7 @@ def create_device_files(data_path, agent_ids):
     for agent_id in agent_ids:
         p = _get_agent_data_path(agent_id, data_path)
         with open(os.path.join(p, 'NVMENBS01'), 'wb') as f:
-            os.truncate(f.fileno(), 6 * (DEVICE_SIZE + 4096))
+            os.truncate(f.fileno(), DEVICES_PER_PATH * (DEVICE_SIZE + 4096))
 
 
 def _create_disk_agent_configurator(ydb, agent_id, data_path):
@@ -115,6 +119,16 @@ def _create_disk_agent_configurator(ydb, agent_id, data_path):
                     }
                 }]}
             ]})
+
+    caches = os.path.join(
+        get_unique_path_for_current_test(
+            output_path=yatest_common.output_path(),
+            sub_folder="caches"),
+        agent_id)
+    ensure_path_exists(caches)
+
+    disk_agent_config.CachedConfigPath = os.path.join(caches, 'config.txt')
+    disk_agent_config.DisableBrokenDevices = True
 
     configurator.files["disk-agent"] = disk_agent_config
     configurator.files["location"].Rack = 'c:RACK'
@@ -170,7 +184,7 @@ def test_change_rack(nbs, agent_ids, disk_agent_configurators):
 
     assert len(bkp['Agents']) == len(agent_ids)
     for agent in bkp['Agents']:
-        assert len(agent['Devices']) == 6
+        assert len(agent['Devices']) == DEVICES_PER_PATH
         assert agent.get('State') is None  # online
         for d in agent['Devices']:
             assert d.get('State') is None  # online
@@ -224,7 +238,7 @@ def test_change_rack(nbs, agent_ids, disk_agent_configurators):
 
     for agent_id, agent in zip(agent_ids, bkp['Agents']):
         assert agent_id == agent['AgentId']
-        assert len(agent['Devices']) == 6
+        assert len(agent['Devices']) == DEVICES_PER_PATH
         assert agent.get('State') is None  # online
 
         for d in agent['Devices']:
@@ -284,13 +298,13 @@ def test_disable_node_broker_registration(nbs, agent_ids, disk_agent_configurato
     disk_agent_configurators[0].files["disk-agent"]\
         .StorageDiscoveryConfig.PathConfigs[0].PathRegExp = "unknown_path"
     disk_agent_configurators[0].files["disk-agent"]\
-        .DisableNodeBrokerRegisterationOnDevicelessAgent = True
+        .DisableNodeBrokerRegistrationOnDevicelessAgent = True
 
     # The second agent should register, even without devices.
     disk_agent_configurators[1].files["disk-agent"]\
         .StorageDiscoveryConfig.PathConfigs[0].PathRegExp = "unknown_path"
     disk_agent_configurators[1].files["disk-agent"]\
-        .DisableNodeBrokerRegisterationOnDevicelessAgent = False
+        .DisableNodeBrokerRegistrationOnDevicelessAgent = False
 
     agents = []
     for agent_id, configurator in zip(agent_ids, disk_agent_configurators):
@@ -301,7 +315,7 @@ def test_disable_node_broker_registration(nbs, agent_ids, disk_agent_configurato
             deep_idle_agent = \
                 "Devices were not found. Skipping the node broker registration." in log_file.read()
             assert deep_idle_agent == disk_agent_configurators[idx].files[
-                "disk-agent"].DisableNodeBrokerRegisterationOnDevicelessAgent
+                "disk-agent"].DisableNodeBrokerRegistrationOnDevicelessAgent
 
     response = requests.get(f"http://localhost:{agents[0].mon_port}")
     assert response.status_code == 200
@@ -309,3 +323,84 @@ def test_disable_node_broker_registration(nbs, agent_ids, disk_agent_configurato
 
     for agent in agents:
         agent.kill()
+
+
+def test_disable_io_for_broken_devices(
+        nbs,
+        data_path,
+        agent_ids,
+        disk_agent_configurators):
+
+    agent_id = agent_ids[0]
+    configurator = disk_agent_configurators[0]
+
+    # setup a serial number for NVMENBS01
+    m = configurator.files["disk-agent"].PathToSerialNumberMapping.add()
+    m.Path = os.path.join(_get_agent_data_path(agent_id, data_path), 'NVMENBS01')
+    m.SerialNumber = 'SN'
+
+    logger = logging.getLogger("client")
+    logger.setLevel(logging.DEBUG)
+
+    client = CreateClient(f"localhost:{nbs.port}", log=logger)
+
+    # run an agent
+    agent = start_disk_agent(configurator, name=agent_id)
+
+    agent.wait_for_registration()
+    r = _add_host(client, agent_id)
+    assert len(r.ActionResults) == 1
+    assert r.ActionResults[0].Result.Code == 0
+
+    # create a volume
+    client.create_volume(
+        disk_id="vol1",
+        block_size=4096,
+        blocks_count=DEVICE_SIZE//4096,
+        storage_media_kind=STORAGE_MEDIA_SSD_NONREPLICATED,
+        cloud_id="test")
+
+    bkp = _backup(client)
+    assert len(bkp['Disks']) == 1
+    assert len(bkp['Disks'][0]['DeviceUUIDs']) == 1
+    assert len(bkp['Agents']) == 1
+    for d in bkp['Agents'][0]['Devices']:
+        assert d.get('SerialNumber') == 'SN'
+
+    session = Session(client, "vol1", "")
+    session.mount_volume()
+
+    # IO should work
+    session.write_blocks(0, [b'\1' * 4096])
+    blocks = session.read_blocks(0, 1, checkpoint_id="")
+    assert len(blocks) == 1
+
+    # stop the agent
+    agent.kill()
+
+    # start an IO operation
+    future = session.read_blocks_async(0, 1, checkpoint_id="")
+
+    assert not future.done()
+    time.sleep(5)
+    assert not future.done()
+
+    # change NVMENBS01's serial number
+    m.SerialNumber = 'XXX'
+
+    # restart the agent
+    agent = start_disk_agent(configurator, name=agent_id+'.new')
+    agent.wait_for_registration()
+
+    # IO should result in E_IO_SILENT now
+    try:
+        _ = future.result()
+        assert False
+    except ClientError as e:
+        assert e.code == EResult.E_IO_SILENT.value
+
+    session.unmount_volume()
+
+    bkp = _backup(client)
+    for d in bkp['Agents'][0]['Devices']:
+        assert d.get('SerialNumber') == 'XXX'

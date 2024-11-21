@@ -5,7 +5,9 @@
 #include <library/cpp/monlib/dynamic_counters/counters.h>
 #include <library/cpp/testing/unittest/registar.h>
 
+#include <util/generic/guid.h>
 #include <util/generic/string.h>
+
 
 #include <variant>
 
@@ -42,7 +44,7 @@ Y_UNIT_TEST_SUITE(TConfigDispatcherHelpersTest)
             NKikimr::NConfig::TConfigsDispatcherInitInfo config;
             NProto::TConfigDispatcherSettings settings;
             settings.MutableAllowList()->AddNames("xyz");
-            SetupConfigDispatcher(settings, &config);
+            SetupConfigDispatcher(settings, {}, {}, &config);
 
             UNIT_ASSERT(
                 std::holds_alternative<TAllowList>(config.ItemsServeRules));
@@ -56,7 +58,7 @@ Y_UNIT_TEST_SUITE(TConfigDispatcherHelpersTest)
             NKikimr::NConfig::TConfigsDispatcherInitInfo config;
             NProto::TConfigDispatcherSettings settings;
             settings.MutableDenyList()->AddNames("xyz");
-            SetupConfigDispatcher(settings, &config);
+            SetupConfigDispatcher(settings, {}, {}, &config);
 
             UNIT_ASSERT(
                 std::holds_alternative<TDenyList>(config.ItemsServeRules));
@@ -71,7 +73,7 @@ Y_UNIT_TEST_SUITE(TConfigDispatcherHelpersTest)
 
         NKikimr::NConfig::TConfigsDispatcherInitInfo config;
         NProto::TConfigDispatcherSettings settings;
-        SetupConfigDispatcher(settings, &config);
+        SetupConfigDispatcher(settings, {}, {}, &config);
 
         UNIT_ASSERT(
             std::holds_alternative<std::monostate>(config.ItemsServeRules));
@@ -97,7 +99,7 @@ Y_UNIT_TEST_SUITE(TConfigDispatcherHelpersTest)
                 NKikimrConsole::TConfigItem_EKind_Name(id));
         }
 
-        SetupConfigDispatcher(settings, &config);
+        SetupConfigDispatcher(settings, {}, {}, &config);
 
         UNIT_ASSERT(
             std::holds_alternative<TAllowList>(config.ItemsServeRules));
@@ -105,6 +107,24 @@ Y_UNIT_TEST_SUITE(TConfigDispatcherHelpersTest)
             cnt,
             std::get<TAllowList>(config.ItemsServeRules).Items.size());
         UNIT_ASSERT_VALUES_EQUAL(0, counter->Val());
+    }
+
+    Y_UNIT_TEST(ShouldFillTenantAndNodeTypeLabels)
+    {
+        auto counter = SetupCriticalEvent();
+
+        const TString tenant = CreateGuidAsString();
+        const TString node = CreateGuidAsString();
+
+        NKikimr::NConfig::TConfigsDispatcherInitInfo config;
+        NProto::TConfigDispatcherSettings settings;
+        SetupConfigDispatcher(settings, tenant, node, &config);
+
+        UNIT_ASSERT(
+            std::holds_alternative<std::monostate>(config.ItemsServeRules));
+        UNIT_ASSERT_VALUES_EQUAL(0, counter->Val());
+        UNIT_ASSERT_VALUES_EQUAL(tenant, config.Labels["tenant"]);
+        UNIT_ASSERT_VALUES_EQUAL(node, config.Labels["node_type"]);
     }
 }
 

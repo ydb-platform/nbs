@@ -13,7 +13,7 @@ class SshTestClient:
     class FakeStdout:
 
         class FakeChannel:
-            def exec_command(self, command):
+            def exec_command(self, command, *args, **kwargs):
                 sys.stdout.write(f'Execute command {command}')
 
             def recv_exit_status(self):
@@ -45,7 +45,7 @@ class SshTestClient:
     def __init__(self, ip: str):
         self.ip = ip
 
-    def exec_command(self, command):
+    def exec_command(self, command, *args, **kwargs):
         sys.stdout.write(f'SSH {self.ip}: {command}\n')
         return None, SshTestClient.FakeStdout(), SshTestClient.FakeStdout()
 

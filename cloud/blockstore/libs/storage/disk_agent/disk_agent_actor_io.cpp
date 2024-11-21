@@ -178,17 +178,6 @@ void TDiskAgentActor::PerformIO(
             started);
     };
 
-    if (State->IsDeviceDisabled(deviceUUID)) {
-        LOG_INFO(ctx, TBlockStoreComponents::DISK_AGENT,
-            "Dropped %s request to device %s, session %s",
-            TMethod::Name,
-            deviceUUID.c_str(),
-            clientId.c_str());
-        State->ReportDisabledDeviceError(deviceUUID);
-        replyError(E_IO, "Device disabled");
-        return;
-    }
-
     LOG_TRACE(ctx, TBlockStoreComponents::DISK_AGENT,
         "%s [%s / %s]",
         TMethod::Name,

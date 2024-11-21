@@ -1,6 +1,6 @@
 #include "tablet_actor.h"
 
-#include "profile_log_events.h"
+#include <cloud/filestore/libs/diagnostics/profile_log_events.h>
 
 namespace NCloud::NFileStore::NStorage {
 

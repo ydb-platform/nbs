@@ -1,10 +1,5 @@
 LIBRARY()
 
-LICENSE_RESTRICTION_EXCEPTIONS(
-    contrib/restricted/libnl/lib/nl-3
-    contrib/restricted/libnl/lib/nl-genl-3
-)
-
 SRCS(
     binary_reader.cpp
     binary_writer.cpp
@@ -30,9 +25,8 @@ PEERDIR(
     cloud/blockstore/libs/diagnostics
     cloud/blockstore/libs/service
     cloud/storage/core/libs/coroutine
+    cloud/storage/core/libs/netlink
     contrib/libs/linux-headers
-    contrib/restricted/libnl/lib/nl-3
-    contrib/restricted/libnl/lib/nl-genl-3
     library/cpp/coroutine/engine
     library/cpp/coroutine/listener
     library/cpp/deprecated/atomic

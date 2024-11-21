@@ -18,6 +18,11 @@ struct TBlockData
     ui64 TestTimestamp = 0;
     ui64 TestId = 0;
     ui64 Checksum = 0;
+
+    bool operator<(const TBlockData& r) const
+    {
+        return memcmp(this, &r, sizeof(TBlockData)) < 0;
+    }
 };
 
 ////////////////////////////////////////////////////////////////////////////////

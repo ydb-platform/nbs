@@ -33,27 +33,36 @@ void TStorageServiceActor::HandleUpdateStats(
         }
     }
     if (CgroupStatsFetcher && CpuWait) {
-
         auto now = ctx.Now();
 
         auto interval = (now - LastCpuWaitQuery).MicroSeconds();
-        auto cpuWaitValue = CgroupStatsFetcher->GetCpuWait().MicroSeconds();
-        auto cpuLack = CpuLackPercentsMultiplier * cpuWaitValue / interval;
+        if (auto [cpuWait, error] = CgroupStatsFetcher->GetCpuWait();
+            !HasError(error))
+        {
+            auto cpuWaitValue = cpuWait.MicroSeconds();
+            auto cpuLack = CpuLackPercentsMultiplier * cpuWaitValue / interval;
 
-        LOG_DEBUG_S(
-            ctx,
-            TFileStoreComponents::SERVICE,
-            "CpuWait stats: lack = " << cpuLack << "; interval = " << interval
-                                     << "; wait = " << cpuWaitValue);
-
-        *CpuWait = cpuLack;
-        LastCpuWaitQuery = now;
-
-        if (cpuLack >= StorageConfig->GetCpuLackThreshold()) {
-            LOG_WARN_S(
+            LOG_DEBUG_S(
                 ctx,
                 TFileStoreComponents::SERVICE,
-                "Cpu wait is " << cpuLack);
+                "CpuWait stats: lack = " << cpuLack
+                                         << "; interval = " << interval
+                                         << "; wait = " << cpuWaitValue);
+
+            *CpuWait = cpuLack;
+            LastCpuWaitQuery = now;
+
+            if (cpuLack >= StorageConfig->GetCpuLackThreshold()) {
+                LOG_WARN_S(
+                    ctx,
+                    TFileStoreComponents::SERVICE,
+                    "Cpu wait is " << cpuLack);
+            }
+        } else {
+            LOG_ERROR_S(
+                ctx,
+                TFileStoreComponents::SERVICE,
+                "Failed to get CpuWait stats: " << error);
         }
     }
 

@@ -23,6 +23,17 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+bool IsTwoStageReadEnabled(const NProto::TFileStore& fs)
+{
+    const auto isHdd = fs.GetStorageMediaKind() == NProto::STORAGE_MEDIA_HYBRID
+        || fs.GetStorageMediaKind() == NProto::STORAGE_MEDIA_HDD;
+    const auto disabledAsHdd = isHdd &&
+        fs.GetFeatures().GetTwoStageReadDisabledForHDD();
+    return !disabledAsHdd && fs.GetFeatures().GetTwoStageReadEnabled();
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 class TReadDataActor final: public TActorBootstrapped<TReadDataActor>
 {
 private:
@@ -316,7 +327,7 @@ void TReadDataActor::ReadBlobIfNeeded(const TActorContext& ctx)
             ctx,
             TFileStoreComponents::SERVICE,
             "Processing blob piece: %s, size: %lu",
-            blobPiece.DebugString().c_str(),
+            blobPiece.DebugString().Quote().c_str(),
             blobId.BlobSize());
         NKikimr::TActorId proxy =
             MakeBlobStorageProxyID(blobPiece.GetBSGroupId());
@@ -440,7 +451,7 @@ void TReadDataActor::HandleReadBlobResponse(
             TFileStoreComponents::SERVICE,
             "ReadBlobResponse: blobId: %s, offset: %lu, length: %lu, size: "
             "%lu, target: %s",
-            blobPiece.GetBlobId().DebugString().c_str(),
+            blobPiece.GetBlobId().DebugString().Quote().c_str(),
             blobRange.GetBlobOffset(),
             blobRange.GetLength(),
             response.Buffer.size(),
@@ -449,7 +460,7 @@ void TReadDataActor::HandleReadBlobResponse(
             blobRange.GetLength() == response.Buffer.size(),
             "Blob range length mismatch: all requested ranges: %s, response: "
             "#%lu, size is %lu",
-            DescribeResponse.DebugString().c_str(),
+            DescribeResponse.DebugString().Quote().c_str(),
             i,
             response.Buffer.size());
         TABLET_VERIFY(blobRange.GetOffset() >= AlignedByteRange.Offset);
@@ -647,7 +658,7 @@ void TStorageServiceActor::HandleReadData(
         msg->Record.SetFileSystemId(fsId);
     }
 
-    if (!filestore.GetFeatures().GetTwoStageReadEnabled()) {
+    if (!IsTwoStageReadEnabled(filestore)) {
         // If two-stage read is disabled, forward the request to the tablet in
         // the same way as all other requests.
         ForwardRequest<TEvService::TReadDataMethod>(ctx, ev);
@@ -658,7 +669,7 @@ void TStorageServiceActor::HandleReadData(
         ctx,
         TFileStoreComponents::SERVICE,
         "read data %s",
-        msg->Record.DebugString().c_str());
+        msg->Record.DebugString().Quote().c_str());
 
     auto [cookie, inflight] = CreateInFlightRequest(
         TRequestInfo(ev->Sender, ev->Cookie, msg->CallContext),

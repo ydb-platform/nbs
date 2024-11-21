@@ -2,7 +2,6 @@
 
 #include "public.h"
 
-#include "profile_log_events.h"
 #include "tablet_database.h"
 #include "tablet_private.h"
 #include "tablet_state_cache.h"
@@ -15,6 +14,7 @@
 #include <cloud/filestore/libs/storage/model/public.h>
 #include <cloud/filestore/libs/storage/model/range.h>
 #include <cloud/filestore/libs/storage/tablet/model/block.h>
+#include <cloud/filestore/libs/storage/tablet/model/profile_log_events.h>
 #include <cloud/filestore/libs/storage/tablet/model/range_locks.h>
 #include <cloud/filestore/libs/storage/tablet/protos/tablet.pb.h>
 
@@ -478,7 +478,7 @@ struct TTxIndexTablet
     // ResetSession
     //
 
-    struct TResetSession
+    struct TResetSession : TIndexStateNodeUpdates
     {
         /* const */ TRequestInfoPtr RequestInfo;
         const TString SessionId;
@@ -500,6 +500,7 @@ struct TTxIndexTablet
 
         void Clear()
         {
+            TIndexStateNodeUpdates::Clear();
             Nodes.clear();
         }
     };

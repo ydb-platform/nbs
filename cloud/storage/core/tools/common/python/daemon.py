@@ -2,13 +2,37 @@ import datetime
 import logging
 import os
 import requests
+import subprocess
 import tempfile
 import threading
 import time
 
 import yatest.common as common
 
+
 logger = logging.getLogger(__name__)
+
+
+def _on_wait_timeout(ex, timeout):
+    logger.warning(
+        f"wait for pid {ex.process.pid} timed out after {timeout} seconds"
+    )
+
+    bt = subprocess.getoutput(
+        f'sudo gdb --batch -p {ex.process.pid} -ex "thread apply all bt"'
+    )
+    logger.warning(f"PID {ex.process.pid}: backtrace:\n{bt}")
+
+
+def _wait_process(ex):
+    while True:
+        try:
+            return ex.wait(
+                check_exit_code=False,
+                timeout=60,
+                on_timeout=_on_wait_timeout)
+        except common.ExecutionTimeoutError:
+            pass
 
 
 class DaemonError(RuntimeError):
@@ -87,7 +111,7 @@ class Daemon(object):
         self.__verify_process()
         logger.info("terminating process")
         self.__process.terminate()
-        self.__process.wait(check_exit_code=False)
+        _wait_process(self.__process)
         self.__process = None
 
     # Should be guarded by self.__lock.

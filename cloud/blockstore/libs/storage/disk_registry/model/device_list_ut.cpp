@@ -1257,7 +1257,9 @@ Y_UNIT_TEST_SUITE(TDeviceListTest)
             TDeviceList deviceList{
                 {},   // dirtyDevices
                 {},   // suspendedDevices
-                {{device.GetDeviceUUID(), diskId}}};
+                {{device.GetDeviceUUID(), diskId}},
+                false   // alwaysAllocateLocalDisks
+            };
 
             deviceList.UpdateDevices(agent, poolConfigs);
         }
@@ -1266,9 +1268,10 @@ Y_UNIT_TEST_SUITE(TDeviceListTest)
 
         {
             TDeviceList deviceList{
-                {},   // dirtyDevices
-                {},   // suspendedDevices
-                {}    // allocatedDevices
+                {},     // dirtyDevices
+                {},     // suspendedDevices
+                {},     // allocatedDevices
+                false   // alwaysAllocateLocalDisks
             };
 
             deviceList.UpdateDevices(agent, poolConfigs);

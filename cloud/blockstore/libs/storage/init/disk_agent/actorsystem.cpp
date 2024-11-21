@@ -138,6 +138,8 @@ IActorSystemPtr CreateDiskAgentActorSystem(const TDiskAgentActorSystemArgs& daAr
         if (daArgs.StorageConfig->GetConfigsDispatcherServiceEnabled()) {
             SetupConfigDispatcher(
                 daArgs.StorageConfig->GetConfigDispatcherSettings(),
+                daArgs.StorageConfig->GetSchemeShardDir(),
+                daArgs.StorageConfig->GetNodeType(),
                 &runConfig.ConfigsDispatcherInitInfo);
             runConfig.ConfigsDispatcherInitInfo.InitialConfig = runConfig.AppConfig;
         }

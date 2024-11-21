@@ -11,6 +11,8 @@ import (
 	"time"
 
 	"github.com/golang/protobuf/ptypes/empty"
+	prometheus_client "github.com/prometheus/client_model/go"
+	"github.com/prometheus/common/expfmt"
 	"github.com/stretchr/testify/require"
 	disk_manager "github.com/ydb-platform/nbs/cloud/disk_manager/api"
 	internal_client "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/client"
@@ -111,6 +113,11 @@ func GetQCOW2ImageCrc32(t *testing.T) uint32 {
 	return uint32(value)
 }
 
+func UseDefaultQCOW2ImageFile(t *testing.T) {
+	_, err := http.Get(GetQCOW2ImageFileURL() + "/use_default_image")
+	require.NoError(t, err)
+}
+
 func UseOtherQCOW2ImageFile(t *testing.T) {
 	_, err := http.Get(GetQCOW2ImageFileURL() + "/use_other_image")
 	require.NoError(t, err)
@@ -151,6 +158,45 @@ func GetGeneratedVMDKImageSize(t *testing.T) uint64 {
 
 func GetGeneratedVMDKImageCrc32(t *testing.T) uint32 {
 	value, err := strconv.ParseUint(os.Getenv("DISK_MANAGER_RECIPE_GENERATED_VMDK_IMAGE_CRC32"), 10, 32)
+	require.NoError(t, err)
+	return uint32(value)
+}
+
+func GetBigRawImageURL() string {
+	port := os.Getenv("DISK_MANAGER_RECIPE_BIG_RAW_IMAGE_FILE_SERVER_PORT")
+	return fmt.Sprintf("http://localhost:%v", port)
+}
+
+func GetBigRawImageSize(t *testing.T) uint64 {
+	value, err := strconv.ParseUint(os.Getenv("DISK_MANAGER_RECIPE_BIG_RAW_IMAGE_SIZE"), 10, 64)
+	require.NoError(t, err)
+	return uint64(value)
+}
+
+func GetBigRawImageCrc32(t *testing.T) uint32 {
+	value, err := strconv.ParseUint(os.Getenv("DISK_MANAGER_RECIPE_BIG_RAW_IMAGE_CRC32"), 10, 32)
+	require.NoError(t, err)
+	return uint32(value)
+}
+
+func UseDefaultBigRawImageFile(t *testing.T) {
+	_, err := http.Get(GetBigRawImageURL() + "/use_default_image")
+	require.NoError(t, err)
+}
+
+func UseOtherBigRawImageFile(t *testing.T) {
+	_, err := http.Get(GetBigRawImageURL() + "/use_other_image")
+	require.NoError(t, err)
+}
+
+func GetOtherBigRawImageSize(t *testing.T) uint64 {
+	value, err := strconv.ParseUint(os.Getenv("DISK_MANAGER_RECIPE_OTHER_BIG_RAW_IMAGE_SIZE"), 10, 64)
+	require.NoError(t, err)
+	return uint64(value)
+}
+
+func GetOtherBigRawImageCrc32(t *testing.T) uint32 {
+	value, err := strconv.ParseUint(os.Getenv("DISK_MANAGER_RECIPE_OTHER_BIG_RAW_IMAGE_CRC32"), 10, 32)
 	require.NoError(t, err)
 	return uint32(value)
 }
@@ -597,8 +643,60 @@ func CheckErrorDetails(
 	require.True(t, ok)
 
 	require.Equal(t, int64(code), errorDetails.Code)
-	require.False(t, errorDetails.Internal)
+	require.Equal(t, internal, errorDetails.Internal)
 	if len(message) != 0 {
 		require.Equal(t, message, errorDetails.Message)
 	}
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+func GetCounter(t *testing.T, name string, labels map[string]string) float64 {
+	resp, err := http.Get(
+		fmt.Sprintf(
+			"http://localhost:%s/metrics/",
+			os.Getenv("DISK_MANAGER_RECIPE_DISK_MANAGER_MON_PORT"),
+		),
+	)
+	require.NoError(t, err)
+	defer resp.Body.Close()
+
+	parser := expfmt.TextParser{}
+	metricFamilies, err := parser.TextToMetricFamilies(resp.Body)
+	require.NoError(t, err)
+
+	retrievedMetrics, ok := metricFamilies[name]
+	require.True(t, ok)
+	for _, metricValue := range retrievedMetrics.GetMetric() {
+		if metricMatchesLabel(labels, metricValue) {
+			return metricValue.GetCounter().GetValue()
+		}
+	}
+
+	require.Failf(t, "No counter with name %s", name)
+	return 0
+}
+
+func metricMatchesLabel(
+	labels map[string]string,
+	metric *prometheus_client.Metric,
+) bool {
+
+	metricLabels := make(map[string]string)
+	for _, label := range metric.GetLabel() {
+		metricLabels[label.GetName()] = label.GetValue()
+	}
+
+	for name, value := range labels {
+		foundValue, ok := metricLabels[name]
+		if !ok {
+			return false
+		}
+
+		if foundValue != value {
+			return false
+		}
+	}
+
+	return true
 }

@@ -12,6 +12,11 @@ import (
 	internal_client "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/client"
 	client_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/configs/client/config"
 	server_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/configs/server/config"
+	dataplane_protos "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/protos"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/monitoring/metrics"
+	"github.com/ydb-platform/nbs/cloud/tasks"
+	"github.com/ydb-platform/nbs/cloud/tasks/headers"
+	"github.com/ydb-platform/nbs/cloud/tasks/logging"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -254,6 +259,91 @@ func newDeleteSnapshotCmd(clientConfig *client_config.ClientConfig) *cobra.Comma
 
 ////////////////////////////////////////////////////////////////////////////////
 
+// TODO: Remove this command after getting rid of legacy snapshot storage.
+type scheduleCreateSnapshotFromLegacySnapshotTask struct {
+	clientConfig *client_config.ClientConfig
+	serverConfig *server_config.ServerConfig
+	snapshotID   string
+}
+
+func (c *scheduleCreateSnapshotFromLegacySnapshotTask) run() error {
+	ctx := newContext(c.clientConfig)
+
+	taskStorage, db, err := newTaskStorage(ctx, c.serverConfig)
+	if err != nil {
+		return err
+	}
+	defer db.Close(ctx)
+
+	logging.Info(ctx, "Creating task scheduler")
+	taskRegistry := tasks.NewRegistry()
+
+	*(c.serverConfig.TasksConfig).RegularSystemTasksEnabled = false
+	taskScheduler, err := tasks.NewScheduler(
+		ctx,
+		taskRegistry,
+		taskStorage,
+		c.serverConfig.TasksConfig,
+		metrics.NewEmptyRegistry(),
+	)
+	if err != nil {
+		logging.Error(ctx, "Failed to create task scheduler: %v", err)
+		return err
+	}
+
+	taskID, err := taskScheduler.ScheduleTask(
+		headers.SetIncomingIdempotencyKey(
+			ctx,
+			"dataplane.CreateSnapshotFromLegacySnapshot_"+c.snapshotID+"_"+generateID(),
+		),
+		"dataplane.CreateSnapshotFromLegacySnapshot",
+		"",
+		&dataplane_protos.CreateSnapshotFromLegacySnapshotRequest{
+			SrcSnapshotId: c.snapshotID,
+			DstSnapshotId: c.snapshotID,
+			UseS3:         true,
+		},
+	)
+	if err != nil {
+		return err
+	}
+
+	fmt.Printf("Task: %v\n", taskID)
+	return nil
+}
+
+func newScheduleCreateSnapshotFromLegacySnapshotTaskCmd(
+	clientConfig *client_config.ClientConfig,
+	serverConfig *server_config.ServerConfig,
+) *cobra.Command {
+
+	c := &scheduleCreateSnapshotFromLegacySnapshotTask{
+		clientConfig: clientConfig,
+		serverConfig: serverConfig,
+	}
+
+	cmd := &cobra.Command{
+		Use: "schedule_create_snapshot_from_legacy_snapshot_task",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return c.run()
+		},
+	}
+
+	cmd.Flags().StringVar(
+		&c.snapshotID,
+		"id",
+		"",
+		"ID of snapshot to create from legacy snapshot; required",
+	)
+	if err := cmd.MarkFlagRequired("id"); err != nil {
+		log.Fatalf("Error setting flag id as required: %v", err)
+	}
+
+	return cmd
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 func newSnapshotsCmd(
 	clientConfig *client_config.ClientConfig,
 	serverConfig *server_config.ServerConfig,
@@ -269,6 +359,11 @@ func newSnapshotsCmd(
 		newListSnapshotsCmd(clientConfig, serverConfig),
 		newCreateSnapshotCmd(clientConfig),
 		newDeleteSnapshotCmd(clientConfig),
+		// TODO: Remove this command after getting rid of legacy snapshot storage.
+		newScheduleCreateSnapshotFromLegacySnapshotTaskCmd(
+			clientConfig,
+			serverConfig,
+		),
 	)
 
 	return cmd

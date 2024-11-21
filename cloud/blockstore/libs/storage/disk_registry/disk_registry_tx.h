@@ -60,6 +60,7 @@ namespace NCloud::NBlockStore::NStorage {
     xxx(AllocateCheckpoint,                 __VA_ARGS__)                       \
     xxx(DeallocateCheckpoint,               __VA_ARGS__)                       \
     xxx(SetCheckpointDataState,             __VA_ARGS__)                       \
+    xxx(PurgeHostCms,                       __VA_ARGS__)                       \
 // BLOCKSTORE_DISK_REGISTRY_TRANSACTIONS
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -214,6 +215,7 @@ struct TTxDiskRegistry
         NProto::TError Error;
         TVector<TString> AffectedDisks;
         TVector<TString> NotifiedDisks;
+        TVector<TString> DevicesToDisableIO;
 
         TAddAgent(
                 TRequestInfoPtr requestInfo,
@@ -231,6 +233,7 @@ struct TTxDiskRegistry
             Error.Clear();
             AffectedDisks.clear();
             NotifiedDisks.clear();
+            DevicesToDisableIO.clear();
         }
     };
 
@@ -673,6 +676,35 @@ struct TTxDiskRegistry
             : RequestInfo(std::move(requestInfo))
             , Host(std::move(host))
             , State(state)
+            , DryRun(dryRun)
+        {}
+
+        void Clear()
+        {
+            AffectedDisks.clear();
+            Error.Clear();
+        }
+    };
+
+    //
+    // PurgeHostCms
+    //
+
+    struct TPurgeHostCms
+    {
+        const TRequestInfoPtr RequestInfo;
+        const TString Host;
+        const bool DryRun;
+
+        NProto::TError Error;
+        TVector<TString> AffectedDisks;
+
+        TPurgeHostCms(
+                TRequestInfoPtr requestInfo,
+                TString host,
+                bool dryRun)
+            : RequestInfo(std::move(requestInfo))
+            , Host(std::move(host))
             , DryRun(dryRun)
         {}
 

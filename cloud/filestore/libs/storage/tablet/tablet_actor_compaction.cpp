@@ -572,7 +572,7 @@ void TIndexTabletActor::ExecuteTx_Compaction(
 
         const ui32 usedBlocks = storedBlocks - garbageBlocks;
         const ui32 garbagePercentage =
-            usedBlocks ? 100 * garbageBlocks / usedBlocks : 0;
+            usedBlocks ? 100 * garbageBlocks / usedBlocks : Max<ui32>();
         const ui32 averageBlobSize = static_cast<ui64>(GetBlockSize())
             * storedBlocks / args.CompactionBlobs.size();
 

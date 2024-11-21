@@ -14,8 +14,8 @@ from cloud.filestore.config.server_pb2 import TServerAppConfig, TKikimrServiceCo
 from cloud.filestore.config.storage_pb2 import TStorageConfig
 from cloud.storage.core.protos.authorization_mode_pb2 import EAuthorizationMode
 from cloud.filestore.tests.python.lib.common import shutdown, get_restart_interval
-from cloud.filestore.tests.python.lib.server import NfsServer, wait_for_nfs_server
-from cloud.filestore.tests.python.lib.daemon_config import NfsServerConfigGenerator
+from cloud.filestore.tests.python.lib.server import FilestoreServer, wait_for_filestore_server
+from cloud.filestore.tests.python.lib.daemon_config import FilestoreServerConfigGenerator
 from cloud.storage.core.tools.testing.access_service.lib import AccessService
 from cloud.storage.core.tools.testing.access_service_new.lib import NewAccessService
 
@@ -58,10 +58,10 @@ def start(argv):
     set_env("KIKIMR_ROOT", kikimr_configurator.domain_name)
     set_env("KIKIMR_SERVER_PORT", str(kikimr_port))
 
-    nfs_binary_path = common.binary_path("cloud/filestore/apps/server/filestore-server")
+    filestore_binary_path = common.binary_path("cloud/filestore/apps/server/filestore-server")
 
     if args.nfs_package_path is not None:
-        nfs_binary_path = common.build_path("{}/usr/bin/filestore-server".format(args.nfs_package_path))
+        filestore_binary_path = common.build_path("{}/usr/bin/filestore-server".format(args.nfs_package_path))
 
     access_service_port = int(os.getenv("ACCESS_SERVICE_PORT") or 0)
 
@@ -95,8 +95,8 @@ def start(argv):
     access_service_type = AccessService
     if os.getenv("ACCESS_SERVICE_TYPE") == "new":
         access_service_type = NewAccessService
-    nfs_configurator = NfsServerConfigGenerator(
-        binary_path=nfs_binary_path,
+    filestore_configurator = FilestoreServerConfigGenerator(
+        binary_path=filestore_binary_path,
         app_config=server_config,
         service_type="kikimr",
         verbose=args.verbose,
@@ -108,22 +108,22 @@ def start(argv):
         secure=secure,
         access_service_type=access_service_type,
     )
-    nfs_configurator.generate_configs(kikimr_configurator.domains_txt, kikimr_configurator.names_txt)
+    filestore_configurator.generate_configs(kikimr_configurator.domains_txt, kikimr_configurator.names_txt)
 
-    nfs_server = NfsServer(configurator=nfs_configurator)
-    nfs_server.start()
+    filestore_server = FilestoreServer(configurator=filestore_configurator)
+    filestore_server.start()
 
     with open(PID_FILE_NAME, "w") as f:
-        f.write(str(nfs_server.pid))
+        f.write(str(filestore_server.pid))
 
-    wait_for_nfs_server(nfs_server, nfs_configurator.port)
+    wait_for_filestore_server(filestore_server, filestore_configurator.port)
 
-    set_env("NFS_SERVER_PORT", str(nfs_configurator.port))
-    set_env("NFS_MON_PORT", str(nfs_configurator.mon_port))
+    set_env("NFS_SERVER_PORT", str(filestore_configurator.port))
+    set_env("NFS_MON_PORT", str(filestore_configurator.mon_port))
     set_env("NFS_DOMAIN", str(domain))
-    set_env("NFS_CONFIG_DIR", str(nfs_configurator.configs_dir))
+    set_env("NFS_CONFIG_DIR", str(filestore_configurator.configs_dir))
     if secure:
-        set_env("NFS_SERVER_SECURE_PORT", str(nfs_configurator.secure_port))
+        set_env("NFS_SERVER_SECURE_PORT", str(filestore_configurator.secure_port))
 
 
 def stop(argv):

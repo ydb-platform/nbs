@@ -704,22 +704,6 @@ func (client *durableClient) QueryAgentsInfo(
 	return resp.(*protos.TQueryAgentsInfoResponse), err
 }
 
-func (client *durableClient) ResizeDevice(
-	ctx context.Context,
-	req *protos.TResizeDeviceRequest,
-) (*protos.TResizeDeviceResponse, error) {
-
-	resp, err := client.executeRequest(
-		ctx,
-		req,
-		func(ctx context.Context) (response, error) {
-			return client.impl.ResizeDevice(ctx, req)
-		},
-	)
-
-	return resp.(*protos.TResizeDeviceResponse), err
-}
-
 ////////////////////////////////////////////////////////////////////////////////
 
 type DurableClientOpts struct {

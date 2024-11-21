@@ -34,7 +34,11 @@ private:
         ui32 VolumeGeneration = 0;
         TSessionInfo WriterSession;
         TVector<TSessionInfo> ReaderSessions;
-        bool Disabled = false;
+
+        // If the value is set, it is returned as the result of IO
+        // operations and the device is considered to be disabled.
+        std::optional<ui32> IOErrorCode;
+
         TRWMutex Lock;
     };
     using TDevicesState = THashMap<TString, std::unique_ptr<TDeviceState>>;
@@ -80,15 +84,27 @@ public:
     TSessionInfo GetWriterSession(const TString& uuid) const;
     TVector<TSessionInfo> GetReaderSessions(const TString& uuid) const;
 
+    // Return E_IO error on I/O operations.
     void DisableDevice(const TString& uuid) const;
+
+    // Same as DisableDevice but return E_REJECTED.
+    void SuspendDevice(const TString& uuid) const;
+
     void EnableDevice(const TString& uuid) const;
+
     bool IsDeviceDisabled(const TString& uuid) const;
+    bool IsDeviceSuspended(const TString& uuid) const;
+    std::optional<ui32> GetDeviceIOErrorCode(const TString& uuid) const;
 
     TVector<NProto::TDiskAgentDeviceSession> GetSessions() const;
 
 private:
     static TDevicesState MakeDevices(TVector<TString> uuids);
     [[nodiscard]] TDeviceState* GetDeviceState(const TString& uuid) const;
+
+    void SetDeviceIOErrorCode(
+        const TString& uuid,
+        std::optional<ui32> errorCode) const;
 };
 
 }   // namespace NCloud::NBlockStore::NStorage

@@ -66,8 +66,8 @@ void TOptions::Parse(int argc, char** argv)
                 auto j = s.find_last_of(':', i - 1);
                 Y_ENSURE(j != s.npos, "invalid format");
 
-                const i64 offset = FromString<i64>(s.substr(i + 1));
-                const i64 size = FromString<i64>(s.substr(j + 1, i - j - 1));
+                const ui64 offset = FromString<i64>(s.substr(i + 1));
+                const ui64 size = FromString<i64>(s.substr(j + 1, i - j - 1));
 
                 Layout.push_back(TDeviceChunk{
                     .DevicePath = ToString(s.substr(0, j)),

@@ -231,8 +231,9 @@ void TVolumeActor::FinishUpdateVolumeConfig(const TActorContext& ctx)
         State ? State->GetMeta() : NProto::TVolumeMeta()
     );
 
-    *newMeta.MutableDevices() = UnfinishedUpdateVolumeConfig.Devices;
-    *newMeta.MutableMigrations() = UnfinishedUpdateVolumeConfig.Migrations;
+    *newMeta.MutableDevices() = std::move(UnfinishedUpdateVolumeConfig.Devices);
+    *newMeta.MutableMigrations() =
+        std::move(UnfinishedUpdateVolumeConfig.Migrations);
     newMeta.ClearReplicas();
     for (auto& devices: UnfinishedUpdateVolumeConfig.Replicas) {
         auto* replica = newMeta.AddReplicas();
@@ -242,6 +243,11 @@ void TVolumeActor::FinishUpdateVolumeConfig(const TActorContext& ctx)
     for (auto& freshDeviceId: UnfinishedUpdateVolumeConfig.FreshDeviceIds) {
         *newMeta.AddFreshDeviceIds() = std::move(freshDeviceId);
     }
+
+    UnfinishedUpdateVolumeConfig.Devices = {};
+    UnfinishedUpdateVolumeConfig.Migrations = {};
+    UnfinishedUpdateVolumeConfig.Replicas = {};
+    UnfinishedUpdateVolumeConfig.FreshDeviceIds = {};
 
     LOG_DEBUG(ctx, TBlockStoreComponents::VOLUME,
         "[%lu] Updating volume config to version %u",
@@ -315,7 +321,7 @@ void TVolumeActor::CompleteUpdateConfig(
     }
 
     // stop partitions that might have been using old configuration
-    StopPartitions(ctx);
+    StopPartitions(ctx, {});
 
     if (State) {
         State->ResetMeta(args.Meta);

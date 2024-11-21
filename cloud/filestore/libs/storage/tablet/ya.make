@@ -6,7 +6,6 @@ GENERATE_ENUM_SERIALIZATION(session.h)
 SRCS(
     checkpoint.cpp
     helpers.cpp
-    profile_log_events.cpp
     rebase_logic.cpp
     session.cpp
     shard_request_actor.cpp
@@ -129,6 +128,7 @@ RECURSE(
 
 RECURSE_FOR_TESTS(
     ut
+    ut_cache_stress
     ut_counters
     ut_stress
 )

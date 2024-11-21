@@ -1,4 +1,4 @@
-from cloud.filestore.tests.python.lib.common import get_nfs_mount_path
+from cloud.filestore.tests.python.lib.common import get_filestore_mount_path
 import os
 import pytest
 import shutil
@@ -17,7 +17,7 @@ def pytest_addoption(parser):
 def target_dir_path(pytestconfig):
     tmp_dir = None
     try:
-        tmp_dir = tempfile.mkdtemp(dir=get_nfs_mount_path())
+        tmp_dir = tempfile.mkdtemp(dir=get_filestore_mount_path())
         yield tmp_dir
     finally:
         if tmp_dir is not None:

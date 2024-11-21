@@ -126,7 +126,7 @@ func checkHTTPStatus(statusCode int) error {
 		return errors.NewRetriableErrorf(errorMessage)
 	}
 	if statusCode == http.StatusRequestedRangeNotSatisfiable {
-		return errors.NewNonRetriableErrorf(errorMessage)
+		return NewSourceOverwrittenError(errorMessage)
 	}
 	if statusCode == http.StatusForbidden {
 		return NewSourceForbiddenError(errorMessage)
@@ -265,7 +265,7 @@ func (c *httpClient) body(
 	}
 
 	if resp.Header.Get("Etag") != etag {
-		return nil, NewWrongETagError(
+		return nil, NewSourceOverwrittenError(
 			"wrong ETag: requested %v, actual %v",
 			etag,
 			resp.Header.Get("Etag"),
