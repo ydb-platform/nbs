@@ -54,10 +54,7 @@ void AddLog(gpr_log_func_args* args)
         args->file,
         static_cast<ui32>(strlen(args->file))});
 
-#if defined(_tsan_enabled_)
-    __tsan_acquire(GrpcLog);
-#endif
-    *GrpcLog.load(std::memory_order_relaxed)
+    *GrpcLog.load(std::memory_order_acquire)
         << LogSeverityToPriority(args->severity)
         << TSourceLocation(file.As<TStringBuf>(), args->line) << ": "
         << args->message;

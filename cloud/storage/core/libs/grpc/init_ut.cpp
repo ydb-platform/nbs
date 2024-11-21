@@ -1,15 +1,20 @@
 #include "init.h"
 
-#include <library/cpp/testing/unittest/registar.h>
-#include <library/cpp/logger/backend.h>
-#include <library/cpp/logger/log.h>
-
 #include <contrib/libs/grpc/include/grpc/support/log.h>
 
+#include <library/cpp/logger/backend.h>
+#include <library/cpp/logger/log.h>
+#include <library/cpp/testing/unittest/registar.h>
+
 #include <atomic>
+#include <chrono>
+#include <latch>
 #include <optional>
+#include <thread>
 
 namespace NCloud::NStorage::NGrpc {
+
+using namespace std::chrono_literals;
 
 namespace {
 
@@ -29,6 +34,11 @@ struct TTestLogBackend
     ~TTestLogBackend() override
     {
         --Alive;
+    }
+
+    [[nodiscard]] ELogPriority FiltrationLevel() const override
+    {
+        return TLOG_DEBUG;
     }
 
     void WriteData(const TLogRecord& rec) override
@@ -100,6 +110,41 @@ Y_UNIT_TEST_SUITE(TInitTest)
         gpr_log("ut", 4, GPR_LOG_SEVERITY_INFO, "default logger again");
 
         UNIT_ASSERT_VALUES_EQUAL(expectedWrites, TTestLogBackend::Writes.load());
+    }
+
+    Y_UNIT_TEST(ShouldDestroyLoggerInMultithreadEnvironment)
+    {
+        constexpr int threadCount = 10;
+        std::latch start{threadCount + 1};
+        std::latch stop{threadCount};
+
+        TVector<std::thread> threads;
+        threads.reserve(threadCount);
+
+        for (int i = 0; i != threadCount; ++i) {
+            threads.emplace_back([&start, &stop, i] {
+                TGrpcInitializer grpcInitializer;
+
+                if (!i) {
+                    GrpcLoggerInit(TLog{MakeHolder<TTestLogBackend>()}, true);
+                }
+
+                start.arrive_and_wait();
+
+                gpr_log("ut", i, GPR_LOG_SEVERITY_INFO, "custom logger");
+
+                stop.arrive_and_wait();
+            });
+        }
+
+        start.arrive_and_wait();
+
+        for (auto& t: threads) {
+            t.join();
+        }
+
+        UNIT_ASSERT_VALUES_EQUAL(0, TTestLogBackend::Alive.load());
+        UNIT_ASSERT_LE(threadCount, TTestLogBackend::Writes.load());
     }
 }
 
