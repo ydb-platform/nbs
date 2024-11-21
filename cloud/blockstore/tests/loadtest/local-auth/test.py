@@ -240,8 +240,8 @@ def test_new_auth_unknown_subject():
 
 def test_unix_socket_does_not_require_auth():
     with TemporaryDirectory(dir="/tmp") as temp_dir:
-        unix_socket_path = str(Path(temp_dir) / "nbs.sock")
-        with TestFixture(NewAccessService, unix_socket_path=unix_socket_path) as env:
+        server_unix_socket_path = str(Path(temp_dir) / "nbs.sock")
+        with TestFixture(NewAccessService, server_unix_socket_path=server_unix_socket_path) as env:
             token = "some_token"
             env.access_service.create_account(
                 "test_user",
