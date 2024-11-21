@@ -40,6 +40,8 @@ private:
     TInstant RequestSent;
     TInstant ResponseReceived;
 
+    bool DeadlineSeen = false;
+
 public:
     TReadBlobActor(
         TRequestInfoPtr requestInfo,
@@ -159,6 +161,10 @@ void TReadBlobActor::NotifyCompleted(
     request->RequestTime = ResponseReceived - RequestSent;
     request->GroupId = Request->GroupId;
 
+    if (DeadlineSeen) {
+        request->DeadlineSeen = true;
+    }
+
     NCloud::Send(ctx, Tablet, std::move(request));
 }
 
@@ -190,6 +196,10 @@ void TReadBlobActor::ReplyError(
         TabletId,
         description.data(),
         response.Print(false).data());
+
+    if (response.Status == NKikimrProto::DEADLINE) {
+        DeadlineSeen = true;
+    }
 
     auto error = MakeError(E_REJECTED, "TEvBlobStorage::TEvGet failed: " + description);
     ReplyAndDie(ctx, std::make_unique<TResponse>(error));
@@ -409,6 +419,10 @@ void TPartitionActor::HandleReadBlobCompleted(
                 blobTabletId,
                 FormatError(msg->GetError()).data());
             return;
+        }
+
+        if (msg->DeadlineSeen) {
+            PartCounters->Simple.ReadBlobDeadlineCount.Increment(1);
         }
 
         if (State->IncrementReadBlobErrorCount()

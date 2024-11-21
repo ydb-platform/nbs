@@ -72,6 +72,7 @@ private:
     const TActorId Tablet;
     const ui64 CommitId;
     const TBlockRange32 BlockRange;
+    const TDuration ReadBlobTimeout;
     TGarbageInfo GarbageInfo;
     TAffectedBlobInfos AffectedBlobInfos;
     ui32 BlobsSkipped;
@@ -107,6 +108,7 @@ public:
         const TActorId& tablet,
         ui64 commitId,
         const TBlockRange32& blockRange,
+        TDuration readBlobTimeout,
         TGarbageInfo garbageInfo,
         TAffectedBlobInfos affectedBlobInfos,
         ui32 blobsSkipped,
@@ -162,6 +164,7 @@ TCompactionActor::TCompactionActor(
         const TActorId& tablet,
         ui64 commitId,
         const TBlockRange32& blockRange,
+        TDuration readBlobTimeout,
         TGarbageInfo garbageInfo,
         TAffectedBlobInfos affectedBlobInfos,
         ui32 blobsSkipped,
@@ -175,6 +178,7 @@ TCompactionActor::TCompactionActor(
     , Tablet(tablet)
     , CommitId(commitId)
     , BlockRange(blockRange)
+    , ReadBlobTimeout(readBlobTimeout)
     , GarbageInfo(std::move(garbageInfo))
     , AffectedBlobInfos(std::move(affectedBlobInfos))
     , BlobsSkipped(blobsSkipped)
@@ -269,6 +273,10 @@ void TCompactionActor::ReadBlocks(const TActorContext& ctx)
 {
     bool readBlobSent = false;
 
+    const auto readBlobDeadline = ReadBlobTimeout ?
+        ctx.Now() + ReadBlobTimeout :
+        TInstant::Max();
+
     ui32 requestIndex = 0;
     for (auto& req: ReadRequests) {
         if (req.DataBlobOffsets) {
@@ -285,7 +293,7 @@ void TCompactionActor::ReadBlocks(const TActorContext& ctx)
                 req.BlobContent.GetGuardedSgList(),
                 req.GroupId,
                 true,           // async
-                TInstant::Max() // deadline
+                readBlobDeadline // deadline
             );
 
             if (!RequestInfo->CallContext->LWOrbit.Fork(request->CallContext->LWOrbit)) {
@@ -1164,6 +1172,11 @@ void TPartitionActor::CompleteCompaction(
             blobIndex++);
     }
 
+    auto readBlobTimeout =
+        PartitionConfig.GetStorageMediaKind() == NProto::STORAGE_MEDIA_SSD ?
+        Config->GetBlobStorageAsyncGetTimeoutSSD() :
+        Config->GetBlobStorageAsyncGetTimeoutHDD();
+
     auto actor = NCloud::Register<TCompactionActor>(
         ctx,
         args.RequestInfo,
@@ -1173,6 +1186,7 @@ void TPartitionActor::CompleteCompaction(
         SelfId(),
         args.CommitId,
         args.BlockRange,
+        readBlobTimeout,
         std::move(args.GarbageInfo),
         std::move(args.AffectedBlobInfos),
         args.BlobsSkipped,
