@@ -114,7 +114,7 @@ DisksConfig: <
     EndedMigrationExpirationTimeout: "30s"
     EnableOverlayDiskRegistryBasedDisks: true
     CreationAndDeletionAllowedOnlyForDisksWithIdPrefix: "{creation_and_deletion_allowed_only_for_disks_with_id_prefix}"
-    DisableDiskRegistryBasedDisks: true
+    DisableDiskRegistryBasedDisks: {disable_disk_registry_based_disks}
     DiskRegistryBasedDisksFolderIdAllowList: "folder"
     DiskRegistryBasedDisksFolderIdAllowList: "another-folder"
 >
@@ -361,7 +361,8 @@ class DiskManagerLauncher:
         max_restart_period_sec: int = 30,
         base_disk_id_prefix="",
         proxy_overlay_disk_id_prefix="",
-        creation_and_deletion_allowed_only_for_disks_with_id_prefix=""
+        creation_and_deletion_allowed_only_for_disks_with_id_prefix="",
+        disable_disk_registry_based_disks=False,
     ):
         self.__idx = idx
 
@@ -424,6 +425,7 @@ class DiskManagerLauncher:
                     ydb_port=ydb_port,
                     base_disk_id_prefix=base_disk_id_prefix,
                     creation_and_deletion_allowed_only_for_disks_with_id_prefix=creation_and_deletion_allowed_only_for_disks_with_id_prefix,
+                    disable_disk_registry_based_disks="true" if disable_disk_registry_based_disks else "false",
                 )
                 f.write(self.__server_config)
 

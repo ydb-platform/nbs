@@ -63,7 +63,7 @@ func TestDiskServiceShouldCreateSsdNonreplIfFolderIsInAllowedList(t *testing.T) 
 		Src: &disk_manager.CreateDiskRequest_SrcEmpty{
 			SrcEmpty: &empty.Empty{},
 		},
-		Size: 4096,
+		Size: 262144 * 4096,
 		Kind: disk_manager.DiskKind_DISK_KIND_SSD_NONREPLICATED,
 		DiskId: &disk_manager.DiskId{
 			ZoneId: "zone-a",
@@ -93,7 +93,7 @@ func TestDiskServiceShouldFailToCreateSsdNonreplIfNotAllowed(t *testing.T) {
 		Src: &disk_manager.CreateDiskRequest_SrcEmpty{
 			SrcEmpty: &empty.Empty{},
 		},
-		Size: 4096,
+		Size: 262144 * 4096,
 		Kind: disk_manager.DiskKind_DISK_KIND_SSD_NONREPLICATED,
 		DiskId: &disk_manager.DiskId{
 			ZoneId: "zone-a",
