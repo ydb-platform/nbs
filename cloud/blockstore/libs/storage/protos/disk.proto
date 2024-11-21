@@ -937,6 +937,48 @@ message TZeroDeviceBlocksResponse
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+// Blocks direct copy request/response.
+
+message TDirectCopyBlocksRequest
+{
+    // Optional request headers.
+    THeaders Headers = 1;
+
+    // ClientId for reading.
+    string SourceClientId = 2;
+
+    // UUID of source device to read from.
+    string SourceDeviceUUID = 3;
+
+    // Start block index on source id.
+    uint64 SourceStartIndex = 4;
+
+    // Logical block size
+    uint32 BlockSize = 5;
+
+    // Number of blocks to copy.
+    uint32 BlocksCount = 6;
+
+    // NodeId of target host.
+    uint32 TargetNodeId = 7;
+
+    // ClientId for writing.
+    string TargetClientId = 8;
+
+    // UUID of target device to write.
+    string TargetDeviceUUID = 9;
+
+    // Start block index on target device.
+    uint64 TargetStartIndex = 10;
+}
+
+message TDirectCopyBlocksResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+}
+
+////////////////////////////////////////////////////////////////////////////////
 // Update Disk Registry config
 
 message TUpdateConfigRequest

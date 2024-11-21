@@ -1,0 +1,216 @@
+#include "disk_agent_actor.h"
+
+#include <cloud/storage/core/libs/kikimr/helpers.h>
+
+#include <util/string/join.h>
+
+#include <utility>
+
+namespace NCloud::NBlockStore::NStorage {
+
+using namespace NActors;
+using namespace NKikimr;
+
+namespace {
+
+////////////////////////////////////////////////////////////////////////////////
+
+class TDirectCopyActor final: public TActorBootstrapped<TDirectCopyActor>
+{
+private:
+    const TActorId Owner;
+    TRequestInfoPtr RequestInfo;
+    NProto::TDirectCopyBlocksRequest Request;
+
+public:
+    TDirectCopyActor(
+        const TActorId& owner,
+        TRequestInfoPtr requestInfo,
+        NProto::TDirectCopyBlocksRequest request);
+
+    void Bootstrap(const TActorContext& ctx);
+
+private:
+    bool HandleError(const NActors::TActorContext& ctx, NProto::TError error);
+
+    void Done(const NActors::TActorContext& ctx);
+
+private:
+    STFUNC(StateWork);
+
+    void HandleReadBlocksResponse(
+        const TEvDiskAgent::TEvReadDeviceBlocksResponse::TPtr& ev,
+        const TActorContext& ctx);
+
+    void HandleWriteBlocksUndelivery(
+        const TEvDiskAgent::TEvWriteDeviceBlocksRequest::TPtr& ev,
+        const TActorContext& ctx);
+
+    void HandleWriteBlocksResponse(
+        const TEvDiskAgent::TEvWriteDeviceBlocksResponse::TPtr& ev,
+        const TActorContext& ctx);
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+TDirectCopyActor::TDirectCopyActor(
+    const TActorId& owner,
+    TRequestInfoPtr requestInfo,
+    NProto::TDirectCopyBlocksRequest request)
+    : Owner(owner)
+    , RequestInfo(std::move(requestInfo))
+    , Request(std::move(request))
+{}
+
+void TDirectCopyActor::Bootstrap(const TActorContext& ctx)
+{
+    Become(&TThis::StateWork);
+
+    auto readRequest =
+        std::make_unique<TEvDiskAgent::TEvReadDeviceBlocksRequest>();
+
+    auto& rec = readRequest->Record;
+    auto* headers = rec.MutableHeaders();
+    headers->SetIsBackgroundRequest(Request.GetHeaders().GetIsBackgroundRequest());
+    headers->SetClientId(TString(Request.GetSourceClientId()));
+
+    rec.SetDeviceUUID(Request.GetSourceDeviceUUID());
+    rec.SetStartIndex(Request.GetSourceStartIndex());
+    rec.SetBlockSize(Request.GetBlockSize());
+    rec.SetBlocksCount(Request.GetBlocksCount());
+
+    ctx.Send(Owner, std::move(readRequest));
+}
+
+bool TDirectCopyActor::HandleError(
+    const NActors::TActorContext& ctx,
+    NProto::TError error)
+{
+    if (SUCCEEDED(error.GetCode())) {
+        return false;
+    }
+
+    NCloud::Reply(
+        ctx,
+        *RequestInfo,
+        std::make_unique<TEvDiskAgent::TEvDirectCopyBlocksResponse>(
+            std::move(error)));
+
+    Die(ctx);
+    return true;
+}
+
+void TDirectCopyActor::Done(const NActors::TActorContext& ctx)
+{
+    NCloud::Reply(
+        ctx,
+        *RequestInfo,
+        std::make_unique<TEvDiskAgent::TEvDirectCopyBlocksResponse>(
+            MakeError(S_OK)));
+
+    Die(ctx);
+}
+
+void TDirectCopyActor::HandleReadBlocksResponse(
+    const TEvDiskAgent::TEvReadDeviceBlocksResponse::TPtr& ev,
+    const TActorContext& ctx)
+{
+    auto* msg = ev->Get();
+
+    if (HandleError(ctx, msg->GetError())) {
+        return;
+    }
+
+    auto writeRequest =
+        std::make_unique<TEvDiskAgent::TEvWriteDeviceBlocksRequest>();
+
+    auto& rec = writeRequest->Record;
+    auto* headers = rec.MutableHeaders();
+    headers->SetIsBackgroundRequest(Request.GetHeaders().GetIsBackgroundRequest());
+    headers->SetClientId(TString(Request.GetTargetClientId()));
+
+    rec.MutableBlocks()->Swap(msg->Record.MutableBlocks());
+    rec.SetDeviceUUID(Request.GetTargetDeviceUUID());
+    rec.SetStartIndex(Request.GetTargetStartIndex());
+    rec.SetBlockSize(Request.GetBlockSize());
+
+    auto event = std::make_unique<IEventHandle>(
+        MakeDiskAgentServiceId(Request.GetTargetNodeId()),
+        ctx.SelfID,
+        writeRequest.release(),
+        IEventHandle::FlagForwardOnNondelivery,
+        0,            // Cookie
+        &ctx.SelfID   // forwardOnNondelivery
+    );
+
+    ctx.Send(event.release());
+}
+
+void TDirectCopyActor::HandleWriteBlocksResponse(
+    const TEvDiskAgent::TEvWriteDeviceBlocksResponse::TPtr& ev,
+    const TActorContext& ctx)
+{
+    auto* msg = ev->Get();
+
+    if (HandleError(ctx, msg->GetError())) {
+        return;
+    }
+
+    Done(ctx);
+}
+
+void TDirectCopyActor::HandleWriteBlocksUndelivery(
+    const TEvDiskAgent::TEvWriteDeviceBlocksRequest::TPtr& ev,
+    const TActorContext& ctx)
+{
+    Y_UNUSED(ev);
+
+    HandleError(ctx, MakeError(E_REJECTED, "WriteBlocks request undelivered"));
+}
+
+STFUNC(TDirectCopyActor::StateWork)
+{
+    switch (ev->GetTypeRewrite()) {
+        HFunc(
+            TEvDiskAgent::TEvReadDeviceBlocksResponse,
+            HandleReadBlocksResponse);
+
+        HFunc(
+            TEvDiskAgent::TEvWriteDeviceBlocksResponse,
+            HandleWriteBlocksResponse);
+        HFunc(
+            TEvDiskAgent::TEvWriteDeviceBlocksRequest,
+            HandleWriteBlocksUndelivery);
+
+        default:
+            HandleUnexpectedEvent(ev, TBlockStoreComponents::DISK_AGENT_WORKER);
+            break;
+    }
+}
+
+}   // namespace
+
+////////////////////////////////////////////////////////////////////////////////
+
+void TDiskAgentActor::HandleDirectCopyBlocks(
+    const TEvDiskAgent::TEvDirectCopyBlocksRequest::TPtr& ev,
+    const TActorContext& ctx)
+{
+    const auto* msg = ev->Get();
+    const auto& record = msg->Record;
+
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::DISK_AGENT,
+        "DirectCopyBlocks received, SourceDeviceUUID=%s TargetDeviceUUID=%s",
+        record.GetSourceDeviceUUID().Quote().c_str(),
+        record.GetTargetDeviceUUID().Quote().c_str());
+
+    NCloud::Register<TDirectCopyActor>(
+        ctx,
+        SelfId(),
+        CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext),
+        record);
+}
+
+}   // namespace NCloud::NBlockStore::NStorage

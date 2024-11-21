@@ -363,6 +363,9 @@ STFUNC(TDiskAgentActor::StateWork)
                     &ev),
                 ActorContext());
             break;
+        HFunc(
+            TEvDiskAgent::TEvDirectCopyBlocksRequest,
+            HandleDirectCopyBlocks);
 
         default:
             if (!HandleRequests(ev)) {
