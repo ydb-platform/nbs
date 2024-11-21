@@ -1350,3 +1350,98 @@ func TestHangingTasksMetricsAreSetEvenForTasksNotRegisteredForExecution(t *testi
 	<-gaugeSetChannel
 	registry.AssertAllExpectations(t)
 }
+
+func TestListerMetricsCleanup(t *testing.T) {
+	ctx, cancel := context.WithCancel(newContext())
+	defer cancel()
+
+	db, err := newYDB(ctx)
+	require.NoError(t, err)
+	// Do not defer db.Close(ctx) in this test.
+
+	registry := mocks.NewIgnoreUnknownCallsRegistryMock()
+
+	config := newHangingTaskTestConfig()
+
+	s := createServicesWithConfig(t, ctx, db, config, registry)
+	err = registerHangingTask(s.registry)
+	require.NoError(t, err)
+
+	err = s.startRunners(ctx)
+	require.NoError(t, err)
+
+	reqCtx := getRequestContext(t, ctx)
+	taskID, err := scheduleHangingTask(reqCtx, s.scheduler)
+	require.NoError(t, err)
+
+	gaugeSetWg := sync.WaitGroup{}
+	gaugeUnsetWg := sync.WaitGroup{}
+
+	runningTaskCountGaugeSetCall := registry.GetGauge(
+		"running",
+		map[string]string{"type": "tasks.hanging"},
+	).On(
+		"Set",
+		float64(1),
+	).Return(mock.Anything)
+
+	totalHangingTaskCountGaugeSetCall := registry.GetGauge(
+		"totalHangingTaskCount",
+		map[string]string{"type": "tasks.hanging"},
+	).On(
+		"Set",
+		float64(1),
+	).Return(mock.Anything)
+
+	gaugeSetWg.Add(1)
+	hangingTasksGaugeSetCall := registry.GetGauge(
+		"hangingTasks",
+		map[string]string{"type": "tasks.hanging", "id": taskID},
+	).On("Set", float64(1)).Return(mock.Anything).Run(
+		func(args mock.Arguments) {
+			gaugeSetWg.Done()
+		},
+	)
+
+	registry.GetGauge(
+		"running",
+		map[string]string{"type": "tasks.hanging"},
+	).On(
+		"Set",
+		float64(0),
+	).NotBefore(
+		runningTaskCountGaugeSetCall,
+	).Return(mock.Anything)
+
+	registry.GetGauge(
+		"totalHangingTaskCount",
+		map[string]string{"type": "tasks.hanging"},
+	).On(
+		"Set",
+		float64(0),
+	).NotBefore(
+		totalHangingTaskCountGaugeSetCall,
+	).Return(mock.Anything)
+
+	gaugeUnsetWg.Add(1)
+	registry.GetGauge(
+		"hangingTasks",
+		map[string]string{"type": "tasks.hanging", "id": taskID},
+	).On(
+		"Set",
+		float64(0),
+	).NotBefore(
+		hangingTasksGaugeSetCall,
+	).Return(mock.Anything).Run(
+		func(args mock.Arguments) {
+			gaugeUnsetWg.Done()
+		},
+	)
+
+	gaugeSetWg.Wait()
+	// Close connection to YDB to enforce collectListerMetricsTask failure.
+	err = db.Close(ctx)
+	require.NoError(t, err)
+	gaugeUnsetWg.Wait()
+	registry.AssertAllExpectations(t)
+}

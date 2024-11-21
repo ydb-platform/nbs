@@ -608,6 +608,9 @@ public:
     TString GetNodeType() const;
 
     NCloud::NProto::TConfigDispatcherSettings GetConfigDispatcherSettings() const;
+
+    TDuration GetBlobStorageAsyncGetTimeoutHDD() const;
+    TDuration GetBlobStorageAsyncGetTimeoutSSD() const;
 };
 
 ui64 GetAllocationUnit(

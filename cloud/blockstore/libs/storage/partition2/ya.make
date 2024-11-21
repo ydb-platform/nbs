@@ -55,19 +55,20 @@ PEERDIR(
     cloud/blockstore/libs/storage/core
     cloud/blockstore/libs/storage/partition2/model
     cloud/blockstore/libs/storage/protos
-    
+
     cloud/storage/core/libs/api
     cloud/storage/core/libs/common
     cloud/storage/core/libs/tablet
-    
+
     library/cpp/cgiparam
     library/cpp/containers/dense_hash
     library/cpp/containers/intrusive_rb_tree
     library/cpp/containers/stack_vector
     library/cpp/lwtrace
     library/cpp/monlib/service/pages
-    
+
     contrib/ydb/core/base
+    contrib/ydb/core/blobstorage
     contrib/ydb/core/node_whiteboard
     contrib/ydb/core/scheme
     contrib/ydb/core/tablet

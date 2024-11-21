@@ -1016,6 +1016,52 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesCache)
             statsAfter.ROCacheMissCount - statsBefore.ROCacheMissCount);
         UNIT_ASSERT(!statsAfter.IsExhaustive);
     }
+
+    Y_UNIT_TEST(ShouldCalculateCacheCapacityBasedOnRatio)
+    {
+        NProto::TStorageConfig storageConfig;
+        storageConfig.SetInMemoryIndexCacheEnabled(true);
+        // max(1000, 1024 / 10) = 1000
+        storageConfig.SetInMemoryIndexCacheNodesCapacity(1000);
+        storageConfig.SetInMemoryIndexCacheNodesToNodesCapacityRatio(10);
+
+        storageConfig.SetInMemoryIndexCacheNodeRefsCapacity(20);
+        storageConfig.SetInMemoryIndexCacheNodesToNodeRefsCapacityRatio(0);
+
+        // max(100, 1024 / 8) = 128
+        storageConfig.SetInMemoryIndexCacheNodeAttrsCapacity(100);
+        storageConfig.SetInMemoryIndexCacheNodesToNodeAttrsCapacityRatio(8);
+
+        TTestEnv env({}, storageConfig);
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(
+            env.GetRuntime(),
+            nodeIdx,
+            tabletId,
+            TFileSystemConfig{.NodeCount = 1024});
+        tablet.RebootTablet();
+
+        tablet.SendRequest(tablet.CreateUpdateCounters());
+        env.GetRuntime().DispatchEvents({}, TDuration::Seconds(1));
+
+        TTestRegistryVisitor visitor;
+        env.GetRegistry()->Visit(TInstant::Zero(), visitor);
+        visitor.ValidateExpectedCounters({
+            {{{"filesystem", "test"},
+              {"sensor", "InMemoryIndexStateNodesCapacity"}},
+             1000},
+            {{{"filesystem", "test"},
+              {"sensor", "InMemoryIndexStateNodeRefsCapacity"}},
+             20},
+            {{{"filesystem", "test"},
+              {"sensor", "InMemoryIndexStateNodeAttrsCapacity"}},
+             128},
+        });
+    }
 }
 
 }   // namespace NCloud::NFileStore::NStorage

@@ -31,7 +31,7 @@ def _wait_process(ex):
                 check_exit_code=False,
                 timeout=60,
                 on_timeout=_on_wait_timeout)
-        except common.ExecutionTimeoutError as _:
+        except common.ExecutionTimeoutError:
             pass
 
 
