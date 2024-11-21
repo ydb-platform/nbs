@@ -500,7 +500,6 @@ void TBootstrapYdb::InitKikimrService()
     STORAGE_INFO("ProfileLog initialized");
 
     CgroupStatsFetcher = BuildCgroupStatsFetcher(
-        "",
         Configs->DiagnosticsConfig->GetCpuWaitFilename(),
         Log,
         logging,

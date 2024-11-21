@@ -39,8 +39,7 @@ ICgroupStatsFetcherPtr CreateCgroupStatsFetcherStub();
 TString BuildCpuWaitStatsFilename(const TString& serviceName);
 
 ICgroupStatsFetcherPtr BuildCgroupStatsFetcher(
-    const TString& cpuWaitServiceName,
-    const TString& cpuWaitFilename,
+    TString cpuWaitFilename,
     const TLog& log,
     ILoggingServicePtr logging,
     TString componentName);

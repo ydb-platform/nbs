@@ -270,9 +270,12 @@ void TBootstrapCommon::InitActorSystem()
 
     STORAGE_INFO("TraceSerializer initialized");
 
+    auto cpuWaitFilename = Configs->DiagnosticsConfig->GetCpuWaitFilename();
     CgroupStatsFetcher = BuildCgroupStatsFetcher(
-        Configs->DiagnosticsConfig->GetCpuWaitServiceName(),
-        Configs->DiagnosticsConfig->GetCpuWaitFilename(),
+        cpuWaitFilename.empty()
+            ? NCloud::NStorage::BuildCpuWaitStatsFilename(
+                  Configs->DiagnosticsConfig->GetCpuWaitServiceName())
+            : std::move(cpuWaitFilename),
         Log,
         logging,
         "FILESTORE_CGROUPS");

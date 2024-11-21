@@ -171,16 +171,13 @@ TString BuildCpuWaitStatsFilename(const TString& serviceName)
     return {};
 }
 
-// One can use either a service name and have the stats file inferred from it,
-// or provide the stats file explicitly.
 NCloud::NStorage::ICgroupStatsFetcherPtr BuildCgroupStatsFetcher(
-    const TString& cpuWaitServiceName,
-    const TString& cpuWaitFilename,
+    TString cpuWaitFilename,
     const TLog& log,
     ILoggingServicePtr logging,
     TString componentName)
 {
-    if (cpuWaitServiceName.empty() && cpuWaitFilename.empty()) {
+    if (cpuWaitFilename.empty()) {
         const auto& Log = log;
         STORAGE_INFO(
             "CpuWaitServiceName and CpuWaitFilename are empty, can't build "
@@ -188,15 +185,10 @@ NCloud::NStorage::ICgroupStatsFetcherPtr BuildCgroupStatsFetcher(
         return CreateCgroupStatsFetcherStub();
     }
 
-    TString statsFile =
-        cpuWaitFilename.empty()
-            ? NCloud::NStorage::BuildCpuWaitStatsFilename(cpuWaitServiceName)
-            : cpuWaitFilename;
-
     return CreateCgroupStatsFetcher(
         std::move(componentName),
         std::move(logging),
-        statsFile);
+        std::move(cpuWaitFilename));
 };
 
 }   // namespace NCloud::NStorage
