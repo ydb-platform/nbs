@@ -4,7 +4,6 @@
 #include <cloud/blockstore/libs/client/client.h>
 #include <cloud/blockstore/libs/service/service_test.h>
 #include <cloud/storage/core/libs/common/error.h>
-#include <cloud/storage/core/libs/grpc/init.h>
 
 #include <library/cpp/protobuf/util/pb_io.h>
 #include <library/cpp/testing/unittest/registar.h>
@@ -52,10 +51,6 @@ bool ExecuteRequest(
     const TVector<TString>& argv,
     IBlockStorePtr client)
 {
-    // Here we need to initialize GRPC to destroy the custom GRPC logger after
-    // the command is completed.
-    TGrpcInitializer grpcInitializer;
-
     TVector<const char*> args;
     args.reserve(argv.size());
 
@@ -63,7 +58,7 @@ bool ExecuteRequest(
         args.push_back(arg.data());
     }
 
-    auto handler = GetHandler(command, client);
+    auto handler = GetHandler(command, std::move(client));
     if (!handler) {
         Cerr << "Failed to find handler for command " << command << Endl;
         return false;

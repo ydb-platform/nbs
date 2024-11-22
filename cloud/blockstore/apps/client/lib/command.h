@@ -64,7 +64,6 @@ protected:
 
     NCloud::NIamClient::IIamTokenClientPtr IamClient;
 
-    mutable TLog GrpcLog;
     mutable TLog Log;
 
     IMonitoringServicePtr Monitoring;
