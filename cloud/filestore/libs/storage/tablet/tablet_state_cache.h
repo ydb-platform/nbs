@@ -180,8 +180,6 @@ public:
 
 private:
     // TODO(#1146): use LRU cache / something with better eviction policy
-    ui64 NodesCapacity = 0;
-    ui64 NodeAttrsCapacity = 0;
     ui64 NodeRefsCapacity = 0;
 
     //
@@ -194,12 +192,13 @@ private:
         NProto::TNode Node;
     };
 
-    THashMap<ui64, TNodeRow> Nodes;
+    TLRUCache<ui64, TNodeRow> Nodes;
 
     //
     // NodeAttrs
     //
 
+public:
     struct TNodeAttrsKey
     {
         TNodeAttrsKey(ui64 nodeId, const TString& name)
@@ -216,14 +215,7 @@ private:
         }
     };
 
-    struct TNodeAttrsKeyHash
-    {
-        size_t operator()(const TNodeAttrsKey& key) const
-        {
-            return MultiHash(key.NodeId, key.Name);
-        }
-    };
-
+private:
     struct TNodeAttrsRow
     {
         ui64 CommitId = 0;
@@ -231,7 +223,7 @@ private:
         ui64 Version = 0;
     };
 
-    THashMap<TNodeAttrsKey, TNodeAttrsRow, TNodeAttrsKeyHash> NodeAttrs;
+    TLRUCache<TNodeAttrsKey, TNodeAttrsRow> NodeAttrs;
 
     //
     // NodeRefs
@@ -305,3 +297,16 @@ public:
 };
 
 }   // namespace NCloud::NFileStore::NStorage
+
+////////////////////////////////////////////////////////////////////////////////
+
+template <>
+struct THash<NCloud::NFileStore::NStorage::TInMemoryIndexState::TNodeAttrsKey>
+{
+    inline size_t operator()(
+        const NCloud::NFileStore::NStorage::TInMemoryIndexState::TNodeAttrsKey&
+            key) const
+    {
+        return MultiHash(key.NodeId, key.Name);
+    }
+};
