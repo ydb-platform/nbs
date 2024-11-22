@@ -42,6 +42,11 @@ struct TEndpointManagerTest
 
     void Drain() override
     {}
+
+    NThreading::TFuture<void> RestoreEndpoints() override
+    {
+        return NThreading::MakeFuture();
+    }
 };
 
 }   // namespace NCloud::NFileStore
