@@ -196,11 +196,11 @@ struct TVolumeStatsTestMock final
 
 struct TCgroupStatsFetcherMock: public NCloud::NStorage::ICgroupStatsFetcher
 {
-    TDuration Value;
+    TResultOrError<TDuration> Value;
 
-    void SetCpuWaitValue(TDuration value)
+    void SetCpuWaitValue(TResultOrError<TDuration> value)
     {
-        Value = value;
+        Value = std::move(value);
     }
 
     void Start() override
@@ -779,13 +779,17 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerTest)
 
         UNIT_ASSERT_VALUES_EQUAL("vol0", diskId);
 
-        auto counter = testEnv.GetRuntime().GetAppData(0).Counters
+        auto counters = testEnv.GetRuntime().GetAppData(0).Counters
             ->GetSubgroup("counters", "blockstore")
-            ->GetSubgroup("component", "server")
-            ->GetCounter("CpuWait", false);
+            ->GetSubgroup("component", "server");
+        auto cpuWaitCounter = counters->GetCounter("CpuWait", false);
 
-        UNIT_ASSERT_VALUES_UNEQUAL(0, counter->Val());
-        UNIT_ASSERT(counter->Val() <= 90);
+        UNIT_ASSERT_VALUES_UNEQUAL(0, cpuWaitCounter->Val());
+        UNIT_ASSERT(cpuWaitCounter->Val() <= 90);
+
+        auto cpuWaitFailureCounter =
+            counters->GetCounter("CpuWaitFailure", false);
+        UNIT_ASSERT_VALUES_EQUAL(0, cpuWaitFailureCounter->Val());
     }
 
     Y_UNIT_TEST(ShouldNotDoAnythingIfBalancerIsNotActivated)
