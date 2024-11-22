@@ -18,4 +18,6 @@ message DisksConfig {
     optional string EndedMigrationExpirationTimeout = 9 [default="30m"];
     optional bool EnableOverlayDiskRegistryBasedDisks = 10;
     optional string CreationAndDeletionAllowedOnlyForDisksWithIdPrefix = 11;
+    optional bool DisableDiskRegistryBasedDisks = 12;
+    repeated string DiskRegistryBasedDisksFolderIdAllowList = 13;
 }
