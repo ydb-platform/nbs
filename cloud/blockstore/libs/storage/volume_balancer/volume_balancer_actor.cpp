@@ -256,7 +256,6 @@ void TVolumeBalancerActor::HandleGetVolumeStatsResponse(
         } else {
             *CpuWaitFailure = 0;
         }
-
         auto cpuLack =
             CpuLackPercentsMultiplier * cpuWait.MicroSeconds();
         cpuLack /= interval;

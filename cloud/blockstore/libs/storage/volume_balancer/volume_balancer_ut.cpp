@@ -753,8 +753,8 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerTest)
         auto counters = testEnv.GetRuntime().GetAppData(0).Counters
             ->GetSubgroup("counters", "blockstore")
             ->GetSubgroup("component", "server");
-        auto cpuWaitCounter = counters->GetCounter("CpuWait", false);
 
+        auto cpuWaitCounter = counters->GetCounter("CpuWait", false);
         UNIT_ASSERT_VALUES_UNEQUAL(0, cpuWaitCounter->Val());
         UNIT_ASSERT(cpuWaitCounter->Val() <= 90);
 
@@ -878,8 +878,8 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerTest)
         auto counters = testEnv.GetRuntime().GetAppData(0).Counters
             ->GetSubgroup("counters", "blockstore")
             ->GetSubgroup("component", "server");
-        auto cpuWaitCounter = counters->GetCounter("CpuWait", false);
 
+        auto cpuWaitCounter = counters->GetCounter("CpuWait", false);
         UNIT_ASSERT_VALUES_EQUAL(0, cpuWaitCounter->Val());
 
         auto cpuWaitFailureCounter =
