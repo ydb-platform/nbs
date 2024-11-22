@@ -227,53 +227,22 @@ struct TAppContext
     TAppContext()
         : SessionStorage(std::make_shared<TSessionStorage>(*this))
     {}
+
+    void ValidateRequest(
+        const grpc::ServerContext& context,
+        NProto::THeaders& headers);
 };
 
 struct TFileStoreContext: TAppContext
 {
     NProto::TFileStoreService::AsyncService Service;
     IFileStoreServicePtr ServiceImpl;
-
-    void ValidateRequest(
-        const grpc::ServerContext& context,
-        NProto::THeaders& headers)
-    {
-        auto authContext = context.auth_context();
-        Y_ABORT_UNLESS(authContext);
-
-        auto source = GetRequestSource(
-            *authContext,
-            RequestSourceKinds);
-
-        if (!source) {
-            source = NProto::SOURCE_SECURE_CONTROL_CHANNEL;
-        }
-
-        if (headers.HasInternal()) {
-            ythrow TServiceError(E_ARGUMENT)
-                << "internal field should not be set by client";
-        }
-
-        auto& internal = *headers.MutableInternal();
-
-        internal.Clear();
-        internal.SetRequestSource(*source);
-
-        // we will only get token from secure control channel
-        if (source == NProto::SOURCE_SECURE_CONTROL_CHANNEL) {
-            internal.SetAuthToken(GetAuthToken(context.client_metadata()));
-        }
-    }
 };
 
 struct TEndpointManagerContext : TAppContext
 {
     NProto::TEndpointManagerService::AsyncService Service;
     IEndpointManagerPtr ServiceImpl;
-
-    void ValidateRequest(
-        const grpc::ServerContext& context,
-        NProto::THeaders& headers);
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -436,7 +405,7 @@ IClientStoragePtr TSessionStorage::CreateClientStorage()
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void TEndpointManagerContext::ValidateRequest(
+void TAppContext::ValidateRequest(
     const grpc::ServerContext& context,
     NProto::THeaders& headers)
 {
@@ -1288,11 +1257,7 @@ public:
 
         STORAGE_INFO("Shutting down");
 
-        // UDS endpoints are allowed at nfs-vhost only
-        if constexpr (std::is_same<TAppContext, TEndpointManagerContext>::value)
-        {
-            StopListenUnixSocket();
-        }
+        StopListenUnixSocket();
 
         AppCtx.Stats->Reset();
 
