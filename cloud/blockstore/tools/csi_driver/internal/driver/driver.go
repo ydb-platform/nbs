@@ -22,11 +22,11 @@ import (
 
 ////////////////////////////////////////////////////////////////////////////////
 
-func getEndpoint(unixSocket string, port uint) string {
+func getEndpoint(unixSocket, host string, port uint) string {
 	if unixSocket != "" {
 		return fmt.Sprintf("unix://%s", unixSocket)
 	} else {
-		return fmt.Sprintf("localhost:%d", port)
+		return fmt.Sprintf("%s:%d", host, port)
 	}
 }
 
@@ -48,10 +48,13 @@ type Config struct {
 	VendorVersion   string
 	VMMode          bool
 	MonPort         uint
+	NbsHost         string
 	NbsPort         uint
 	NbsSocket       string
+	NfsServerHost   string
 	NfsServerPort   uint
 	NfsServerSocket string
+	NfsVhostHost    string
 	NfsVhostPort    uint
 	NfsVhostSocket  string
 	SocketsDir      string
@@ -68,7 +71,7 @@ func NewDriver(cfg Config) (*Driver, error) {
 	nbsClientID := fmt.Sprintf("%s-%s", cfg.DriverName, cfg.NodeID)
 	nbsClient, err := nbsclient.NewGrpcClient(
 		&nbsclient.GrpcClientOpts{
-			Endpoint: getEndpoint(cfg.NbsSocket, cfg.NbsPort),
+			Endpoint: getEndpoint(cfg.NbsSocket, cfg.NbsHost, cfg.NbsPort),
 			ClientId: nbsClientID,
 		}, nbsclient.NewStderrLog(nbsclient.LOG_DEBUG),
 	)
@@ -80,7 +83,7 @@ func NewDriver(cfg Config) (*Driver, error) {
 	if cfg.NfsServerPort != 0 {
 		nfsClient, err = nfsclient.NewGrpcClient(
 			&nfsclient.GrpcClientOpts{
-				Endpoint: getEndpoint(cfg.NfsServerSocket, cfg.NfsServerPort),
+				Endpoint: getEndpoint(cfg.NfsServerSocket, cfg.NfsServerHost, cfg.NfsServerPort),
 			}, nfsclient.NewStderrLog(nfsclient.LOG_DEBUG),
 		)
 		if err != nil {
@@ -92,7 +95,7 @@ func NewDriver(cfg Config) (*Driver, error) {
 	if cfg.NfsVhostPort != 0 {
 		nfsEndpointClient, err = nfsclient.NewGrpcEndpointClient(
 			&nfsclient.GrpcClientOpts{
-				Endpoint: getEndpoint(cfg.NfsVhostSocket, cfg.NfsVhostPort),
+				Endpoint: getEndpoint(cfg.NfsVhostSocket, cfg.NfsVhostHost, cfg.NfsVhostPort),
 			}, nfsclient.NewStderrLog(nfsclient.LOG_DEBUG),
 		)
 		if err != nil {
