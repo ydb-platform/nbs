@@ -105,19 +105,27 @@ TGrpcInitializer::~TGrpcInitializer()
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void GrpcLoggerInit(const TLog& log, bool enableTracing)
+bool GrpcLoggerInit(TLog log, bool enableTracing)
 {
-    // Logger should only be initialized once
-    Y_ABORT_UNLESS(!GrpcLog);
+    const auto severity = LogPriorityToSeverity(log.FiltrationLevel());
 
-    GrpcLog.store(new TLog(log));
+    // Logger should only be initialized once.
+    // Some tests call `GrpcLoggerInit` multiply times, just reject late
+    // invocations. We do not expect the race condition here.
+    if (GrpcLog) {
+        return false;
+    }
 
-    gpr_set_log_verbosity(LogPriorityToSeverity(log.FiltrationLevel()));
+    GrpcLog.store(new TLog(std::move(log)));
+
+    gpr_set_log_verbosity(severity);
     gpr_set_log_function(AddLog);
 
     if (enableTracing) {
         EnableGrpcTracing();
     }
+
+    return true;
 }
 
 }   // namespace NCloud
