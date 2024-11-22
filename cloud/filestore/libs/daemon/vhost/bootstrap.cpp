@@ -383,6 +383,10 @@ void TBootstrapVhost::StartComponents()
     FILESTORE_LOG_START_COMPONENT(EndpointManager);
     FILESTORE_LOG_START_COMPONENT(Server);
     FILESTORE_LOG_START_COMPONENT(LocalServiceServer);
+
+    if (EndpointManager) {
+        EndpointManager->RestoreEndpoints();
+    }
 }
 
 void TBootstrapVhost::StopComponents()

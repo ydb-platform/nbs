@@ -127,7 +127,6 @@ public:
     void Start() override
     {
         Executor->Start();
-        RestoreEndpoints();
     }
 
     void Stop() override
@@ -168,7 +167,7 @@ private:                                                                       \
 #undef FILESTORE_IMPLEMENT_METHOD
 
 private:
-    TFuture<void> RestoreEndpoints()
+    TFuture<void> RestoreEndpoints() override
     {
         return Executor->Execute([weakSelf = weak_from_this()] () mutable {
             if (auto self = weakSelf.lock()) {
@@ -503,6 +502,11 @@ class TNullEndpointManager final
 
     void Drain() override
     {}
+
+    NThreading::TFuture<void> RestoreEndpoints() override
+    {
+        return MakeFuture();
+    }
 
 #define FILESTORE_IMPLEMENT_METHOD(name, ...)                                  \
     TFuture<NProto::T##name##Response> name(                                   \
