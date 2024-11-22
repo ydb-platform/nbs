@@ -151,7 +151,9 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesCache)
             statsAfter.ROCacheMissCount - statsBefore.ROCacheMissCount);
         UNIT_ASSERT_VALUES_EQUAL(2, statsAfter.RWCount - statsBefore.RWCount);
         UNIT_ASSERT_VALUES_EQUAL(1, statsAfter.NodeRefsCount - statsBefore.NodeRefsCount);
-        UNIT_ASSERT_VALUES_EQUAL(1, statsAfter.NodesCount - statsBefore.NodesCount);
+        UNIT_ASSERT_VALUES_EQUAL(
+            2,
+            statsAfter.NodesCount - statsBefore.NodesCount);
     }
 
     // Note: this test does not check the cache eviction policy, as cache size
@@ -313,6 +315,60 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesCache)
         UNIT_ASSERT_VALUES_EQUAL(5, statsAfter.RWCount - statsBefore.RWCount);
     }
 
+    Y_UNIT_TEST(ShouldUpdateCacheUponResetSession)
+    {
+        NProto::TStorageConfig storageConfig;
+        storageConfig.SetInMemoryIndexCacheEnabled(true);
+        storageConfig.SetInMemoryIndexCacheNodesCapacity(2);
+        storageConfig.SetInMemoryIndexCacheNodeRefsCapacity(2);
+        TTestEnv env({}, storageConfig);
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
+        tablet.InitSession("client", "session");
+
+        auto statsBefore = GetTxStats(env, tablet);
+
+        auto id = tablet.CreateNode(TCreateNodeArgs::File(RootNodeId, "test"))
+                      ->Record.GetNode()
+                      .GetId();
+        auto handle = tablet.CreateHandle(id, TCreateHandleArgs::RDWR);
+
+        // Cache hit
+        tablet.GetNodeAttr(id, "")->Record.GetNode();
+
+        tablet.UnlinkNode(RootNodeId, "test", false);
+        // Should work as there is an existing handle
+        tablet.GetNodeAttr(id, "");
+
+        // Upon reset session the node should be removed from the cache as well
+        // as the localDB
+        tablet.ResetSession("");
+
+        tablet.InitSession("client", "session2");
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            E_FS_NOENT,
+            tablet.AssertGetNodeAttrFailed(id, "")->GetError().GetCode());
+
+        auto statsAfter = GetTxStats(env, tablet);
+        // First two GetNodeAttr calls should have been performed with the cache
+        UNIT_ASSERT_VALUES_EQUAL(
+            2,
+            statsAfter.ROCacheHitCount - statsBefore.ROCacheHitCount);
+        // Last GetNodeAttr call should have been a cache miss as it is not
+        // supposed to be present in the cache
+        UNIT_ASSERT_VALUES_EQUAL(
+            1,
+            statsAfter.ROCacheMissCount - statsBefore.ROCacheMissCount);
+        // CreateNode, CreateHandle, UnlinkNode, DestroySession and InitSession
+        // are RW txs
+        UNIT_ASSERT_VALUES_EQUAL(5, statsAfter.RWCount - statsBefore.RWCount);
+    }
+
     Y_UNIT_TEST(ShouldUpdateCacheUponSetNodeAttr)
     {
         NProto::TStorageConfig storageConfig;
@@ -401,13 +457,14 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesCache)
             "value",
             tablet.GetNodeXAttr(id, "user.test2")->Record.GetValue());
 
-        // RW transaction, evicts the cache
+        // RW transaction, evicts the first entry from the cache (because of the
+        // LRU policy)
         tablet.SetNodeXAttr(id, "user.test3", "value");
 
         // RO transaction, cache miss
         UNIT_ASSERT_VALUES_EQUAL(
-            "value",
-            tablet.GetNodeXAttr(id, "user.test2")->Record.GetValue());
+            "value2",
+            tablet.GetNodeXAttr(id, "user.test")->Record.GetValue());
 
         auto statsAfter = GetTxStats(env, tablet);
 
@@ -961,6 +1018,52 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesCache)
             1,
             statsAfter.ROCacheMissCount - statsBefore.ROCacheMissCount);
         UNIT_ASSERT(!statsAfter.IsExhaustive);
+    }
+
+    Y_UNIT_TEST(ShouldCalculateCacheCapacityBasedOnRatio)
+    {
+        NProto::TStorageConfig storageConfig;
+        storageConfig.SetInMemoryIndexCacheEnabled(true);
+        // max(1000, 1024 / 10) = 1000
+        storageConfig.SetInMemoryIndexCacheNodesCapacity(1000);
+        storageConfig.SetInMemoryIndexCacheNodesToNodesCapacityRatio(10);
+
+        storageConfig.SetInMemoryIndexCacheNodeRefsCapacity(20);
+        storageConfig.SetInMemoryIndexCacheNodesToNodeRefsCapacityRatio(0);
+
+        // max(100, 1024 / 8) = 128
+        storageConfig.SetInMemoryIndexCacheNodeAttrsCapacity(100);
+        storageConfig.SetInMemoryIndexCacheNodesToNodeAttrsCapacityRatio(8);
+
+        TTestEnv env({}, storageConfig);
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(
+            env.GetRuntime(),
+            nodeIdx,
+            tabletId,
+            TFileSystemConfig{.NodeCount = 1024});
+        tablet.RebootTablet();
+
+        tablet.SendRequest(tablet.CreateUpdateCounters());
+        env.GetRuntime().DispatchEvents({}, TDuration::Seconds(1));
+
+        TTestRegistryVisitor visitor;
+        env.GetRegistry()->Visit(TInstant::Zero(), visitor);
+        visitor.ValidateExpectedCounters({
+            {{{"filesystem", "test"},
+              {"sensor", "InMemoryIndexStateNodesCapacity"}},
+             1000},
+            {{{"filesystem", "test"},
+              {"sensor", "InMemoryIndexStateNodeRefsCapacity"}},
+             20},
+            {{{"filesystem", "test"},
+              {"sensor", "InMemoryIndexStateNodeAttrsCapacity"}},
+             128},
+        });
     }
 }
 
