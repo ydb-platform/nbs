@@ -420,7 +420,7 @@ Y_UNIT_TEST_SUITE(TServiceEndpointTest)
             MODE0660);
         service->Start();
 
-        Sleep(TDuration::Seconds(5));
+        service->RestoreEndpoints().GetValueSync();
         UNIT_ASSERT_VALUES_EQUAL(1, listener->Endpoints.size());
     }
 }
