@@ -837,6 +837,8 @@ Y_UNIT_TEST_SUITE(TSocketEndpointListenerTest)
 
     Y_UNIT_TEST(ShouldReconnectAfterRestartEndpoint)
     {
+        auto logging = CreateLoggingService("console");
+
         TOptions options;
         auto bootstrap = CreateBootstrap(options);
         bootstrap.Start();
@@ -847,7 +849,6 @@ Y_UNIT_TEST_SUITE(TSocketEndpointListenerTest)
         NProto::TClientAppConfig clientConfig;
         clientConfig.MutableClientConfig()->SetRetryTimeoutIncrement(100);
         auto config = std::make_shared<TClientAppConfig>(std::move(clientConfig));
-        auto logging = CreateLoggingService("console");
 
         auto clientEndpoint = CreateDurableClient(
             config,

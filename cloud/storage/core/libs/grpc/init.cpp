@@ -8,6 +8,7 @@
 #include <util/system/src_location.h>
 
 #include <atomic>
+#include <memory>
 
 namespace NCloud {
 
@@ -93,30 +94,27 @@ TGrpcInitializer::~TGrpcInitializer()
     grpc_shutdown_blocking();
 
     if (!grpc_is_initialized()) {
-        // Now we can safely destroy the custom logger
-        if (auto* log = GrpcLog.exchange(nullptr)) {
-            // Restore the default log function. Just in case
-            gpr_set_log_function(nullptr);
+        // Restore the default log function. Just in case.
+        gpr_set_log_function(nullptr);
 
-            delete log;
-        }
+        // Once GRPC is stopped, we can safely destroy the custom logger
+        delete GrpcLog.exchange(nullptr);
     }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 
-bool GrpcLoggerInit(TLog log, bool enableTracing)
+void GrpcLoggerInit(TLog log, bool enableTracing)
 {
     const auto severity = LogPriorityToSeverity(log.FiltrationLevel());
 
-    // Logger should only be initialized once.
-    // Some tests call `GrpcLoggerInit` multiply times, just reject late
-    // invocations. We do not expect the race condition here.
-    if (GrpcLog) {
-        return false;
+    auto tmp = std::make_unique<TLog>(std::move(log));
+    TLog* expected = nullptr;
+    if (!GrpcLog.compare_exchange_strong(expected, tmp.get())) {
+        // Logger already initialized. Ignore subsequent invocations.
+        return;
     }
-
-    GrpcLog.store(new TLog(std::move(log)));
+    Y_UNUSED(tmp.release());
 
     gpr_set_log_verbosity(severity);
     gpr_set_log_function(AddLog);
@@ -124,8 +122,6 @@ bool GrpcLoggerInit(TLog log, bool enableTracing)
     if (enableTracing) {
         EnableGrpcTracing();
     }
-
-    return true;
 }
 
 }   // namespace NCloud
