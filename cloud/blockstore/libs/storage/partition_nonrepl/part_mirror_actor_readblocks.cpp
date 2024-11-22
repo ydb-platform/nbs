@@ -427,7 +427,7 @@ void TMirrorPartitionActor::ReadBlocks(
         return;
     }
 
-    TVector<TActorId> replicaActorIds;
+    TSet<TActorId> replicaActorIds;
     const ui32 readReplicaCount = Min<ui32>(
         Max<ui32>(1, Config->GetMirrorReadReplicaCount()),
         State.GetReplicaInfos().size());
@@ -443,15 +443,9 @@ void TMirrorPartitionActor::ReadBlocks(
             return;
         }
 
-        const auto* it = Find(
-            replicaActorIds.begin(),
-            replicaActorIds.end(),
-            replicaActorId);
-        if (it != replicaActorIds.end()) {
+        if (!replicaActorIds.insert(replicaActorId).second) {
             break;
         }
-
-        replicaActorIds.push_back(replicaActorId);
     }
 
     LOG_DEBUG(ctx, TBlockStoreComponents::PARTITION_WORKER,
@@ -462,12 +456,11 @@ void TMirrorPartitionActor::ReadBlocks(
 
     const auto requestIdentityKey = ev->Cookie;
     RequestsInProgress.AddReadRequest(requestIdentityKey, blockRange);
-    ReadRequestIdentityKey2DirtyFlag[requestIdentityKey] = false;
 
     NCloud::Register<TRequestActor<TMethod>>(
         ctx,
         std::move(requestInfo),
-        replicaActorIds,
+        TVector<TActorId>(replicaActorIds.begin(), replicaActorIds.end()),
         std::move(record),
         blockRange,
         State.GetReplicaInfos()[0].Config->GetName(),

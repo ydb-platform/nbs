@@ -25,6 +25,7 @@
 #include <contrib/ydb/library/actors/core/mon.h>
 
 #include <util/generic/deque.h>
+#include <util/generic/hash_set.h>
 
 namespace NCloud::NBlockStore::NStorage {
 
@@ -58,7 +59,7 @@ private:
     ui64 NetworkBytes = 0;
     TDuration CpuUsage;
 
-    THashMap<ui64, bool> ReadRequestIdentityKey2DirtyFlag;
+    THashSet<ui64> DirtyReadRequestIds;
     TRequestsInProgress<ui64, TBlockRange64> RequestsInProgress{
         EAllowedRequests::ReadWrite};
     TDrainActorCompanion DrainActorCompanion{

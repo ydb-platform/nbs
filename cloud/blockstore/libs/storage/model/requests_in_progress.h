@@ -124,7 +124,7 @@ public:
         if (it->second.Write) {
             --WriteRequestCount;
         }
-        *value = it->second.Value;
+        *value = std::move(it->second.Value);
         RequestsInProgress.erase(it);
         return true;
     }

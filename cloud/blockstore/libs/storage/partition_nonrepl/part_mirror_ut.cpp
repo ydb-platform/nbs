@@ -1686,7 +1686,7 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
         UNIT_ASSERT_VALUES_EQUAL(1, rangeResynced);
     }
 
-    Y_UNIT_TEST(ShouldRejectReadAndForceRangeScrubbingUponChecksumMismatchIfRead2IsEnabled)
+    Y_UNIT_TEST(ShouldRejectReadUponChecksumMismatchIfRead2IsEnabled)
     {
         using namespace NMonitoring;
 
@@ -1784,8 +1784,9 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
 
         interceptReadDeviceBlocks = true;
         client.SendReadBlocksRequest(range);
-        client.WriteBlocks(range, 'C');
+        runtime.DispatchEvents({}, TDuration::MilliSeconds(100));
         UNIT_ASSERT(toSend);
+        client.WriteBlocks(range, 'C');
         runtime.Send(toSend);
         {
             // checksum mismatch => E_REJECTED

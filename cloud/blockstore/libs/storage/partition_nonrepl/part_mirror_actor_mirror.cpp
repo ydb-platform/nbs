@@ -24,9 +24,9 @@ void TMirrorPartitionActor::HandleWriteOrZeroCompleted(
     TBlockRange64 range;
     RequestsInProgress.ExtractRequest(requestIdentityKey, &range);
     DrainActorCompanion.ProcessDrainRequests(ctx);
-    for (const auto& request: RequestsInProgress.AllRequests()) {
-        if (range.Overlaps(request.second.Value)) {
-            ReadRequestIdentityKey2DirtyFlag[request.first] = true;
+    for (const auto& [id, request]: RequestsInProgress.AllRequests()) {
+        if (range.Overlaps(request.Value)) {
+            DirtyReadRequestIds.insert(id);
         }
     }
 
@@ -46,14 +46,13 @@ void TMirrorPartitionActor::HandleMirroredReadCompleted(
 
     const auto requestIdentityKey = ev->Get()->RequestCounter;
     RequestsInProgress.RemoveRequest(requestIdentityKey);
-    auto it = ReadRequestIdentityKey2DirtyFlag.find(requestIdentityKey);
-    if (it != ReadRequestIdentityKey2DirtyFlag.end()) {
-        if (!it->second && ev->Get()->ChecksumMismatchObserved) {
+    auto it = DirtyReadRequestIds.find(requestIdentityKey);
+    if (it == DirtyReadRequestIds.end()) {
+        if (ev->Get()->ChecksumMismatchObserved) {
             ReportMirroredDiskChecksumMismatchUponRead();
         }
-        ReadRequestIdentityKey2DirtyFlag.erase(it);
     } else {
-        Y_DEBUG_ABORT_UNLESS(0);
+        DirtyReadRequestIds.erase(it);
     }
 }
 
@@ -98,9 +97,9 @@ void TMirrorPartitionActor::MirrorRequest(
         }
         WriteIntersectsWithScrubbing = true;
     }
-    for (const auto& request: RequestsInProgress.AllRequests()) {
-        if (range.Overlaps(request.second.Value)) {
-            ReadRequestIdentityKey2DirtyFlag[request.first] = true;
+    for (const auto& [id, request]: RequestsInProgress.AllRequests()) {
+        if (range.Overlaps(request.Value)) {
+            DirtyReadRequestIds.insert(id);
         }
     }
     RequestsInProgress.AddWriteRequest(requestIdentityKey, range);
