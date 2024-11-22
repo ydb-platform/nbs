@@ -151,7 +151,9 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesCache)
             statsAfter.ROCacheMissCount - statsBefore.ROCacheMissCount);
         UNIT_ASSERT_VALUES_EQUAL(2, statsAfter.RWCount - statsBefore.RWCount);
         UNIT_ASSERT_VALUES_EQUAL(1, statsAfter.NodeRefsCount - statsBefore.NodeRefsCount);
-        UNIT_ASSERT_VALUES_EQUAL(1, statsAfter.NodesCount - statsBefore.NodesCount);
+        UNIT_ASSERT_VALUES_EQUAL(
+            2,
+            statsAfter.NodesCount - statsBefore.NodesCount);
     }
 
     // Note: this test does not check the cache eviction policy, as cache size
@@ -455,13 +457,14 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesCache)
             "value",
             tablet.GetNodeXAttr(id, "user.test2")->Record.GetValue());
 
-        // RW transaction, evicts the cache
+        // RW transaction, evicts the first entry from the cache (because of the
+        // LRU policy)
         tablet.SetNodeXAttr(id, "user.test3", "value");
 
         // RO transaction, cache miss
         UNIT_ASSERT_VALUES_EQUAL(
-            "value",
-            tablet.GetNodeXAttr(id, "user.test2")->Record.GetValue());
+            "value2",
+            tablet.GetNodeXAttr(id, "user.test")->Record.GetValue());
 
         auto statsAfter = GetTxStats(env, tablet);
 
