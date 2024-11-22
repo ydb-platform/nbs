@@ -6434,6 +6434,10 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         TServiceClient service(env.GetRuntime(), nodeIdx);
         service.CreateFileStore(fsId, 2_GB / 4_KB);
 
+        // waiting for IndexTablet start after the restart triggered by
+        // configureshards
+        WaitForTabletStart(service);
+
         TVector<TString> expected = {fsId, fsId + "_s1", fsId + "_s2"};
         auto listing = service.ListFileStores();
         auto fsIds = listing->Record.GetFileStores();
