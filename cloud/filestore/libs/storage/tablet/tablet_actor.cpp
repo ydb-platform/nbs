@@ -376,7 +376,7 @@ NProto::TError TIndexTabletActor::ValidateWriteRequest(
         {
             LOG_WARN(
                 ctx,
-                TFileStoreComponents::TABLET_WORKER,
+                TFileStoreComponents::TABLET,
                 "%s Suiciding after %u backpressure errors",
                 LogTag.c_str(),
                 BackpressureErrorCount);

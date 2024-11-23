@@ -2845,6 +2845,15 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
             addData.GetApproximateFreeSpaceShares(0));
     }
 
+    void WaitForTabletStart(TServiceClient& service)
+    {
+        TDispatchOptions options;
+        options.FinalEvents = {
+            TDispatchOptions::TFinalEventCondition(
+                TEvIndexTabletPrivate::EvLoadCompactionMapChunkRequest)};
+        service.AccessRuntime().DispatchEvents(options);
+    }
+
     void ConfigureShards(
         TServiceClient& service,
         const TString& fsId,
@@ -2890,6 +2899,10 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
             UNIT_ASSERT(google::protobuf::util::JsonStringToMessage(
                 jsonResponse->Record.GetOutput(), &response).ok());
         }
+
+        // waiting for IndexTablet start after the restart triggered by
+        // configureshards
+        WaitForTabletStart(service);
     }
 
     Y_UNIT_TEST(ShouldCreateSessionInShards)
@@ -3103,6 +3116,9 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         service.CreateFileStore(shard1Id, 1'000);
         service.CreateFileStore(shard2Id, 1'000);
 
+        // leaderActorId should be re-captured after the restart triggered by
+        // configureshards
+        leaderActorId = {};
         ConfigureShards(service, fsId, shard1Id, shard2Id);
 
         auto headers = service.InitSession(fsId, "client");
@@ -6180,6 +6196,10 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         TServiceClient service(env.GetRuntime(), nodeIdx);
         service.CreateFileStore(fsId, 2_GB / 4_KB);
 
+        // waiting for IndexTablet start after the restart triggered by
+        // configureshards
+        WaitForTabletStart(service);
+
         DoTestShardedFileSystemConfigured(
             fsId,
             service,
@@ -6339,6 +6359,10 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
                 FormatError(response->GetError()));
         }
 
+        // waiting for IndexTablet start after the restart triggered by
+        // configureshards
+        WaitForTabletStart(service);
+
         DoTestShardedFileSystemConfigured(
             fsId,
             service,
@@ -6410,6 +6434,10 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
 
         TServiceClient service(env.GetRuntime(), nodeIdx);
         service.CreateFileStore(fsId, 2_GB / 4_KB);
+
+        // waiting for IndexTablet start after the restart triggered by
+        // configureshards
+        WaitForTabletStart(service);
 
         TVector<TString> expected = {fsId, fsId + "_s1", fsId + "_s2"};
         auto listing = service.ListFileStores();
@@ -6783,6 +6811,10 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
                 FormatError(MakeError(S_OK)),
                 FormatError(response->GetError()));
         }
+
+        // waiting for IndexTablet start after the restart triggered by
+        // configureshards
+        WaitForTabletStart(service);
 
         DoTestShardedFileSystemConfigured(fsId, service, expected);
     }
