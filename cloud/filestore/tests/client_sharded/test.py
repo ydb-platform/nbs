@@ -67,7 +67,11 @@ def test_shard_autoaddition():
     out += client.execute_action("describesessions", {"FileSystemId": "fs0_s4"})
     client.destroy_session("fs0", "session0", "client0")
 
+    client.create_session("fs0", "session0", "client0")
     out += client.resize("fs0", 3 * int(SHARD_SIZE / BLOCK_SIZE))
+    # session should become orphaned after resize
+    out += client.execute_action("describesessions", {"FileSystemId": "fs0"})
+    client.destroy_session("fs0", "session0", "client0")
 
     client.write("fs0", "/xxx3", "--data", data_file)
     client.write("fs0", "/xxx4", "--data", data_file)
