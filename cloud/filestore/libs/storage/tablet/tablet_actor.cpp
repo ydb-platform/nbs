@@ -376,7 +376,7 @@ NProto::TError TIndexTabletActor::ValidateWriteRequest(
         {
             LOG_WARN(
                 ctx,
-                TFileStoreComponents::TABLET_WORKER,
+                TFileStoreComponents::TABLET,
                 "%s Suiciding after %u backpressure errors",
                 LogTag.c_str(),
                 BackpressureErrorCount);
@@ -658,8 +658,24 @@ void TIndexTabletActor::HandleGetStorageConfig(
     const TEvIndexTablet::TEvGetStorageConfigRequest::TPtr& ev,
     const TActorContext& ctx)
 {
-    auto response = std::make_unique<TEvIndexTablet::TEvGetStorageConfigResponse>();
+    auto response =
+        std::make_unique<TEvIndexTablet::TEvGetStorageConfigResponse>();
     *response->Record.MutableStorageConfig() = Config->GetStorageConfigProto();
+
+    NCloud::Reply(
+        ctx,
+        *ev,
+        std::move(response));
+}
+
+void TIndexTabletActor::HandleGetFileSystemTopology(
+    const TEvIndexTablet::TEvGetFileSystemTopologyRequest::TPtr& ev,
+    const TActorContext& ctx)
+{
+    auto response =
+        std::make_unique<TEvIndexTablet::TEvGetFileSystemTopologyResponse>();
+    *response->Record.MutableShardFileSystemIds() =
+        GetFileSystem().GetShardFileSystemIds();
 
     NCloud::Reply(
         ctx,
@@ -681,6 +697,8 @@ void TIndexTabletActor::HandleDescribeSessions(
 
     NCloud::Reply(ctx, *ev, std::move(response));
 }
+
+////////////////////////////////////////////////////////////////////////////////
 
 TVector<ui32> TIndexTabletActor::GenerateForceDeleteZeroCompactionRanges() const
 {

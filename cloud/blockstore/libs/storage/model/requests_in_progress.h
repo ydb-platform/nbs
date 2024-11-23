@@ -108,6 +108,12 @@ public:
 
     bool RemoveRequest(const TKey& key)
     {
+        TValue v;
+        return ExtractRequest(key, &v);
+    }
+
+    bool ExtractRequest(const TKey& key, TValue* value)
+    {
         auto it = RequestsInProgress.find(key);
 
         if (it == RequestsInProgress.end()) {
@@ -118,6 +124,7 @@ public:
         if (it->second.Write) {
             --WriteRequestCount;
         }
+        *value = std::move(it->second.Value);
         RequestsInProgress.erase(it);
         return true;
     }

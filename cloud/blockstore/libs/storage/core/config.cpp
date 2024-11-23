@@ -458,6 +458,7 @@ TDuration MSeconds(ui32 value)
     xxx(ForceMirrorResync,                         bool,      false           )\
     xxx(ResyncIndexCachingInterval,                ui32,      65536           )\
     xxx(ResyncAfterClientInactivityInterval,       TDuration, Minutes(1)      )\
+    xxx(MirrorReadReplicaCount,                    ui32,      0               )\
                                                                                \
     xxx(PingMetricsHalfDecayInterval,              TDuration, Seconds(15)     )\
     xxx(DisableManuallyPreemptedVolumesTracking,   bool,      false           )\

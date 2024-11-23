@@ -242,6 +242,7 @@ private:
     NActors::TActorId ActorId;
     NActors::TActorId Sender;
     const ui32 BlockSize;
+    ui64 RequestId = 0;
 
 public:
     TPartitionClient(
@@ -367,7 +368,7 @@ public:
     void Send##name##Request(Args&&... args)                                   \
     {                                                                          \
         auto request = Create##name##Request(std::forward<Args>(args)...);     \
-        SendRequest(ActorId, std::move(request));                              \
+        SendRequest(ActorId, std::move(request), ++RequestId);                 \
     }                                                                          \
                                                                                \
     std::unique_ptr<ns::TEv##name##Response> Recv##name##Response()            \
@@ -379,7 +380,7 @@ public:
     std::unique_ptr<ns::TEv##name##Response> name(Args&&... args)              \
     {                                                                          \
         auto request = Create##name##Request(std::forward<Args>(args)...);     \
-        SendRequest(ActorId, std::move(request));                              \
+        SendRequest(ActorId, std::move(request), ++RequestId);                 \
                                                                                \
         auto response = RecvResponse<ns::TEv##name##Response>();               \
         UNIT_ASSERT_C(                                                         \

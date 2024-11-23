@@ -1,0 +1,114 @@
+[
+    {
+        "Type": 1,
+        "Links": 1,
+        "Size": 9,
+        "Name": "xxx1",
+        "Id": 72057594037927938
+    },
+    {
+        "Type": 1,
+        "Links": 1,
+        "Size": 9,
+        "Name": "xxx2",
+        "Id": 72057594037927939
+    }
+][
+    {
+        "ShardFileSystemId": "fs0_s1",
+        "Name": "xxx1"
+    },
+    {
+        "ShardFileSystemId": "fs0_s1",
+        "Name": "xxx2"
+    }
+]{"Sessions":[{"SessionId":"session0","ClientId":"client0"}]}
+{"Sessions":[{"SessionId":"session0","ClientId":"client0"}]}
+SEVERITY_ERROR | FACILITY_SCHEMESHARD | 2 Path not found
+SEVERITY_ERROR | FACILITY_SCHEMESHARD | 2 Path not found
+SEVERITY_ERROR | FACILITY_SCHEMESHARD | 2 Path not found
+{"Sessions":[{"SessionId":"session0","ClientId":"client0","IsOrphan":true}]}
+[
+    {
+        "Type": 1,
+        "Links": 1,
+        "Size": 9,
+        "Name": "xxx1",
+        "Id": 72057594037927938
+    },
+    {
+        "Type": 1,
+        "Links": 1,
+        "Size": 9,
+        "Name": "xxx2",
+        "Id": 72057594037927939
+    },
+    {
+        "Type": 1,
+        "Links": 1,
+        "Size": 9,
+        "Name": "xxx3",
+        "Id": 72057594037927940
+    },
+    {
+        "Type": 1,
+        "Links": 1,
+        "Size": 9,
+        "Name": "xxx4",
+        "Id": 72057594037927941
+    },
+    {
+        "Type": 1,
+        "Links": 1,
+        "Size": 9,
+        "Name": "xxx5",
+        "Id": 72057594037927942
+    },
+    {
+        "Type": 1,
+        "Links": 1,
+        "Size": 9,
+        "Name": "xxx6",
+        "Id": 72057594037927943
+    },
+    {
+        "Type": 1,
+        "Links": 1,
+        "Size": 9,
+        "Name": "xxx7",
+        "Id": 72057594037927944
+    }
+][
+    {
+        "ShardFileSystemId": "fs0_s1",
+        "Name": "xxx1"
+    },
+    {
+        "ShardFileSystemId": "fs0_s1",
+        "Name": "xxx2"
+    },
+    {
+        "ShardFileSystemId": "fs0_s1",
+        "Name": "xxx3"
+    },
+    {
+        "ShardFileSystemId": "fs0_s1",
+        "Name": "xxx4"
+    },
+    {
+        "ShardFileSystemId": "fs0_s1",
+        "Name": "xxx5"
+    },
+    {
+        "ShardFileSystemId": "fs0_s1",
+        "Name": "xxx6"
+    },
+    {
+        "ShardFileSystemId": "fs0_s1",
+        "Name": "xxx7"
+    }
+]{"Sessions":[{"SessionId":"session0","ClientId":"client0"}]}
+{"Sessions":[{"SessionId":"session0","ClientId":"client0"}]}
+{"Sessions":[{"SessionId":"session0","ClientId":"client0"}]}
+{"Sessions":[{"SessionId":"session0","ClientId":"client0"}]}
+SEVERITY_ERROR | FACILITY_SCHEMESHARD | 2 Path not found
