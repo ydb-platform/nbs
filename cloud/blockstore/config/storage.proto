@@ -1038,15 +1038,25 @@ message TStorageServiceConfig
 
     // The volume actor will compare meta before and after reallocation and
     // decide whether a lite reallocation is possible.
-    optional bool AllowLiteDiskReallocations = 385;
+    optional bool AllowLiteDiskReallocations = 386;
 
     // Timeout between disks reallocations.
-    optional uint32 DiskRegistryDisksNotificationTimeout = 386;
+    optional uint32 DiskRegistryDisksNotificationTimeout = 387;
 
     // Whether the disk registry is allowed to allocate local disks while agent
     // is in warning state.
     // When enabled, the Disk Registry REMOVE_HOST CMS action will not "forget"
     // agents devices and will not suspend local devices. Instead, PURGE_HOST
     // should be used for these purposes.
-    optional bool DiskRegistryAlwaysAllocatesLocalDisks = 387;
+    optional bool DiskRegistryAlwaysAllocatesLocalDisks = 388;
+
+    optional uint32 BlobStorageAsyncGetTimeoutHDD = 389;
+    optional uint32 BlobStorageAsyncGetTimeoutSSD = 390;
+
+    // Specifies the minimum number of replicas to read from in a mirrored disk
+    // for every read request.
+    // Values 0 and 1 mean the same thing - read from 1 replica.
+    // Values greater than disk replica count also mean the same thing - read
+    // from all replicas.
+    optional uint32 MirrorReadReplicaCount = 391;
 }

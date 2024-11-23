@@ -562,6 +562,10 @@ STFUNC(TMirrorPartitionActor::StateWork)
             HandleWriteOrZeroCompleted);
 
         HFunc(
+            TEvNonreplPartitionPrivate::TEvMirroredReadCompleted,
+            HandleMirroredReadCompleted);
+
+        HFunc(
             TEvVolume::TEvRWClientIdChanged,
             HandleRWClientIdChanged);
         HFunc(
@@ -603,6 +607,7 @@ STFUNC(TMirrorPartitionActor::StateZombie)
         HFunc(TEvVolume::TEvGetScanDiskStatusRequest, RejectGetScanDiskStatus);
 
         IgnoreFunc(TEvNonreplPartitionPrivate::TEvWriteOrZeroCompleted);
+        IgnoreFunc(TEvNonreplPartitionPrivate::TEvMirroredReadCompleted);
 
         IgnoreFunc(TEvVolume::TEvRWClientIdChanged);
         IgnoreFunc(TEvVolume::TEvDiskRegistryBasedPartitionCounters);
