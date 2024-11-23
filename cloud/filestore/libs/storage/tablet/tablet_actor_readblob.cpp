@@ -21,7 +21,6 @@ namespace {
 
 struct TQuery
 {
-    bool Compressed = false;
     TUncompressedRange UncompressedRange;
     TCompressedRange CompressedRange;
     TVector<TUncompressedBlock> Blocks;
@@ -47,9 +46,6 @@ void MergeOverlappingCompressedQueries(TVector<TQuery>& queries)
                 pivotQuery.Blocks.push_back(std::move(block));
             }
             curQuery.Blocks.clear();
-
-            pivotQuery.Compressed =
-                pivotQuery.Compressed || curQuery.Compressed;
         } else {
             ++pivotQueryIter;
         }
@@ -88,14 +84,15 @@ std::unique_ptr<TEvBlobStorage::TEvGet> CreateGetRequest(
     const TLogoBlobID& blobId,
     const TVector<TQuery>& queries,
     TInstant deadline,
-    bool async
+    bool async,
+    bool blobCompressed
 ) {
     using TEvGetQuery = TEvBlobStorage::TEvGet::TQuery;
     TArrayHolder<TEvGetQuery> qs(new TEvGetQuery[queries.size()]);
 
     size_t queryIndex = 0;
     for (const auto& query : queries) {
-        if (query.Compressed) {
+        if (blobCompressed) {
             qs[queryIndex].Set(
                 blobId,
                 query.CompressedRange.Offset,
@@ -275,7 +272,7 @@ void TReadBlobActor::HandleGetResult(
 
         const auto& query = request.Queries[i];
 
-        if (query.Compressed) {
+        if (request.BlobCompressionInfo.BlobCompressed()) {
             if (response.Buffer.size() != query.CompressedRange.Length) {
                 ReplyError(
                     ctx,
@@ -491,7 +488,6 @@ void TIndexTabletActor::HandleReadBlob(
             for (auto& query : queries) {
                 query.CompressedRange = blob.BlobCompressionInfo.CompressedRange(
                     query.UncompressedRange);
-                query.Compressed = true;
             }
 
             MergeOverlappingCompressedQueries(queries);
@@ -502,7 +498,8 @@ void TIndexTabletActor::HandleReadBlob(
             blobId,
             queries,
             blob.Deadline,
-            blob.Async);
+            blob.Async,
+            blob.BlobCompressionInfo.BlobCompressed());
 
         if (!msg->CallContext->LWOrbit.Fork(request->Orbit)) {
             FILESTORE_TRACK(
