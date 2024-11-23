@@ -14,7 +14,7 @@ RECURSE(
     pd-metadata-bench
     plugintest
     rdma-test
-    root-kms-mock
+    fake-root-kms
     stable-plugin
     verify-test
 )
