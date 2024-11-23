@@ -9,6 +9,8 @@
 #include <util/generic/string.h>
 #include <util/generic/vector.h>
 
+#include <memory>
+
 namespace NBlockCodecs {
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -64,22 +66,24 @@ using TCompressedRange = TUncompressedRange;
 
 class TBlobCompressionInfo
 {
+private:
+    struct TImpl;
+    std::unique_ptr<TImpl> Impl;
+
 public:
-    bool BlobCompressed() const
-    {
-        return false;
-    }
+    TBlobCompressionInfo();
 
-    TString Encode() const
-    {
-        return "";
-    }
+    TBlobCompressionInfo(const TBlobCompressionInfo& other);
 
-    TCompressedRange CompressedRange(TUncompressedRange range) const
-    {
-        Y_UNUSED(range);
-        return {};
-    }
+    TBlobCompressionInfo& operator=(TBlobCompressionInfo other);
+
+    ~TBlobCompressionInfo();
+
+    bool BlobCompressed() const;
+
+    TCompressedRange CompressedRange(TUncompressedRange range) const;
+
+    TString Encode() const;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
