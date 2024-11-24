@@ -3,7 +3,7 @@ import os
 
 import yatest.common as common
 
-from cloud.filestore.tests.python.lib.client import FilestoreCliClient
+from cloud.filestore.tests.python.lib.client import NfsCliClient
 
 BLOCK_SIZE = 4 * 1024
 SHARD_SIZE = 1024 * 1024 * 1024
@@ -12,7 +12,7 @@ SHARD_SIZE = 1024 * 1024 * 1024
 def __init_test():
     port = os.getenv("NFS_SERVER_PORT")
     binary_path = common.binary_path("cloud/filestore/apps/client/filestore-client")
-    client = FilestoreCliClient(binary_path, port, cwd=common.output_path())
+    client = NfsCliClient(binary_path, port, cwd=common.output_path())
 
     results_path = common.output_path() + "/results.txt"
     return client, results_path
