@@ -81,7 +81,10 @@ void TConfigInitializerYdbBase::InitKikimrConfig()
         );
     }
 
-    if (Options->SuppressVersionCheck) {
+    if (Options->EnableVersionCheck) {
+        nameServiceConfig.SetSuppressVersionCheck(false);
+    } else {
+        // We would like to have SuppressVersionCheck enabled by default.
         nameServiceConfig.SetSuppressVersionCheck(true);
     }
 

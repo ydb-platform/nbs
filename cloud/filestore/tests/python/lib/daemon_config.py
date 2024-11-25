@@ -340,7 +340,6 @@ class FilestoreDaemonConfigGenerator:
                 self.__storage_config_file_path,
                 "--dynamic-naming-file",
                 self.__config_file_path("dyn_ns.txt"),
-                "--suppress-version-check",
                 "--load-configs-from-cms",
                 "--node-broker",
                 "localhost:{}".format(self.__kikimr_port),

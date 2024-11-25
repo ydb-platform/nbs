@@ -18,9 +18,9 @@ TOptionsYdbBase::TOptionsYdbBase()
         .RequiredArgument("PATH")
         .StoreResult(&RestartsCountFile);
 
-    Opts.AddLongOption("suppress-version-check", "Suppress version compatibility checking via IC")
+    Opts.AddLongOption("enable-version-check", "Enables version compatibility checking via IC")
         .NoArgument()
-        .StoreTrue(&SuppressVersionCheck);
+        .StoreTrue(&EnableVersionCheck);
 
     Opts.AddLongOption("log-file")
         .RequiredArgument("FILE")

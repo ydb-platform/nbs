@@ -54,7 +54,6 @@ class LocalNbs(Daemon):
             kms_config=None,
             ping_path='/blockstore',
             rack="the_rack",
-            use_ic_version_check=False,
             use_secure_registration=False,
             grpc_ssl_port=None,
             access_service_type=AccessService,
@@ -156,7 +155,6 @@ class LocalNbs(Daemon):
             self.__proto_configs["auth.txt"] = self.__generate_auth_txt(port)
 
         self.__load_configs_from_cms = load_configs_from_cms
-        self.__use_ic_version_check = use_ic_version_check
         self.__restart_interval = restart_interval
         self.__ping_path = ping_path
         self.__use_secure_registration = use_secure_registration
@@ -566,9 +564,6 @@ ModifyScheme {
                 "--node-broker", "localhost:" + str(self.__grpc_ssl_port),
                 "--use-secure-registration",
             ]
-
-        if not self.__use_ic_version_check:
-            command.append("--suppress-version-check")
 
         if self.ydbstats_config is not None:
             command += [

@@ -35,7 +35,7 @@ struct TOptionsYdbBase
     TString LocationFile;
 
     TString RestartsCountFile;
-    bool SuppressVersionCheck = false;
+    bool EnableVersionCheck = false;
 
     bool LoadCmsConfigs = false;
 

@@ -91,8 +91,7 @@ def start(argv):
         nbs_secure_port=nbs_secure_port,
         nbs_port=nbs_port,
         kikimr_binary_path=kikimr_binary_path,
-        nbs_binary_path=nbs_binary_path,
-        use_ic_version_check=args.use_ic_version_check)
+        nbs_binary_path=nbs_binary_path)
 
     nbs.setup_cms(kikimr_cluster.client)
 
