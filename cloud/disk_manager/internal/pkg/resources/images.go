@@ -645,13 +645,12 @@ func (s *storageYDB) deleteImage(
 		return nil, err
 	}
 
-	var state imageState
-
 	if len(states) == 0 {
+		// Should be idempotent.
 		return nil, nil
 	}
 
-	state = states[0]
+	state := states[0]
 
 	if state.status >= imageStatusDeleting {
 		// Image already marked as deleting/deleted.
@@ -945,13 +944,7 @@ func (s *storageYDB) DeleteImage(
 		ctx,
 		func(ctx context.Context, session *persistence.Session) error {
 			var err error
-			image, err = s.deleteImage(
-				ctx,
-				session,
-				imageID,
-				taskID,
-				deletingAt,
-			)
+			image, err = s.deleteImage(ctx, session, imageID, taskID, deletingAt)
 			return err
 		},
 	)

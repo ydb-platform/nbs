@@ -264,7 +264,8 @@ func TestImagesCreateImageShouldFailIfSnapshotAlreadyExists(t *testing.T) {
 	require.NoError(t, err)
 
 	created, err := storage.CreateImage(ctx, ImageMeta{ID: snapshot.ID})
-	require.NoError(t, err)
+	require.Error(t, err)
+	require.True(t, errors.Is(err, NewEmptyImageIDIsNotAcceptedError()))
 	require.Nil(t, created)
 }
 
