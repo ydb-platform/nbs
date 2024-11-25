@@ -557,7 +557,7 @@ STFUNC(TNonreplicatedPartitionRdmaActor::StateWork)
         HFunc(NPartition::TEvPartition::TEvDrainRequest, DrainActorCompanion.HandleDrain);
         HFunc(
             TEvService::TEvGetChangedBlocksRequest,
-            GetChangedBlocksCompanion.HandleGetChangedBlocks);
+            GetChangedBlocksCompanion.DeclineGetChangedBlocks);
 
         HFunc(TEvService::TEvReadBlocksLocalRequest, HandleReadBlocksLocal);
         HFunc(TEvService::TEvWriteBlocksLocalRequest, HandleWriteBlocksLocal);
@@ -616,7 +616,7 @@ STFUNC(TNonreplicatedPartitionRdmaActor::StateZombie)
         HFunc(NPartition::TEvPartition::TEvDrainRequest, RejectDrain);
         HFunc(
             TEvService::TEvGetChangedBlocksRequest,
-            GetChangedBlocksCompanion.RejectGetChangedBlocks);
+            GetChangedBlocksCompanion.DeclineGetChangedBlocks);
 
         HFunc(TEvNonreplPartitionPrivate::TEvChecksumBlocksRequest, RejectChecksumBlocks);
 

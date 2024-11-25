@@ -9,21 +9,7 @@ using namespace NActors;
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void TGetChangedBlocksCompanion::HandleGetChangedBlocks(
-    const TEvService::TEvGetChangedBlocksRequest::TPtr& ev,
-    const NActors::TActorContext& ctx) const
-{
-    DoReplyError(ev, ctx);
-}
-
-void TGetChangedBlocksCompanion::RejectGetChangedBlocks(
-    const TEvService::TEvGetChangedBlocksRequest::TPtr& ev,
-    const NActors::TActorContext& ctx) const
-{
-    DoReplyError(ev, ctx);
-}
-
-void TGetChangedBlocksCompanion::DoReplyError(
+void TGetChangedBlocksCompanion::DeclineGetChangedBlocks(
     const TEvService::TEvGetChangedBlocksRequest::TPtr& ev,
     const NActors::TActorContext& ctx) const
 {

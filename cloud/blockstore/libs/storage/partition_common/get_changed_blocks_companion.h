@@ -16,19 +16,7 @@ class TGetChangedBlocksCompanion
 public:
     TGetChangedBlocksCompanion() = default;
 
-    void HandleGetChangedBlocks(
-        const TEvService::TEvGetChangedBlocksRequest::TPtr& ev,
-        const NActors::TActorContext& ctx) const;
-
-    void RejectGetChangedBlocks(
-        const TEvService::TEvGetChangedBlocksRequest::TPtr& ev,
-        const NActors::TActorContext& ctx) const;
-
-private:
-    void DoReplyError(
-        const TEvService::TEvGetChangedBlocksRequest::TPtr& ev,
-        const NActors::TActorContext& ctx) const;
-    void DoDelegateRequest(
+    void DeclineGetChangedBlocks(
         const TEvService::TEvGetChangedBlocksRequest::TPtr& ev,
         const NActors::TActorContext& ctx) const;
 };

@@ -547,7 +547,7 @@ STFUNC(TMirrorPartitionActor::StateWork)
         HFunc(NPartition::TEvPartition::TEvDrainRequest, DrainActorCompanion.HandleDrain);
         HFunc(
             TEvService::TEvGetChangedBlocksRequest,
-            GetChangedBlocksCompanion.HandleGetChangedBlocks);
+            GetChangedBlocksCompanion.DeclineGetChangedBlocks);
 
         HFunc(TEvVolume::TEvDescribeBlocksRequest, HandleDescribeBlocks);
         HFunc(TEvVolume::TEvGetCompactionStatusRequest, HandleGetCompactionStatus);
@@ -595,7 +595,7 @@ STFUNC(TMirrorPartitionActor::StateZombie)
         HFunc(NPartition::TEvPartition::TEvDrainRequest, RejectDrain);
         HFunc(
             TEvService::TEvGetChangedBlocksRequest,
-            GetChangedBlocksCompanion.RejectGetChangedBlocks);
+            GetChangedBlocksCompanion.DeclineGetChangedBlocks);
 
         HFunc(TEvVolume::TEvDescribeBlocksRequest, RejectDescribeBlocks);
         HFunc(TEvVolume::TEvGetCompactionStatusRequest, RejectGetCompactionStatus);
