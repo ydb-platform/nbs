@@ -20,6 +20,47 @@ def get_template(name: str) -> Template:
     return Template(resource.find(name).decode('utf8'))
 
 
+def get_restore_load_command(load_config: LoadConfig) -> str:
+    return EternalTestHelper._START_LOAD_WITH_CONFIG_CMD.format(
+        file=load_config.test_file,
+        config_path=load_config.config_path,
+        log_path=load_config.log_path,
+    )
+
+
+def get_generate_load_command(load_config: LoadConfig) -> str:
+    return EternalTestHelper._START_LOAD_CMD.format(
+        file=load_config.test_file,
+        dump_config_path=load_config.config_path,
+        log_path=load_config.log_path,
+        blocksize=load_config.bs,
+        filesize=load_config.size,
+        io_depth=load_config.io_depth,
+        write_rate=load_config.write_rate,
+        write_parts=load_config.write_parts,
+    )
+
+
+def render_load_config(load_config: LoadConfig):
+    return get_template('test-config.json').substitute(
+        ioDepth=load_config.io_depth,
+        fileSize=load_config.size * 1024**3,
+        writeRate=load_config.write_rate,
+        blockSize=load_config.bs,
+        filePath=load_config.test_file,
+    )
+
+
+def render_load_service_config(load_config: LoadConfig):
+    restore_cmd = get_restore_load_command(load_config)
+    generate_cmd = get_generate_load_command(load_config)
+    command = f'[[ -f {load_config.config_path} ]] && ' f'{restore_cmd} || ' f'{generate_cmd}'
+    return get_template('eternal_load_template.service').substitute(
+        deviceName=load_config.device_name,
+        command=command,
+    )
+
+
 class EternalTestHelper:
     _VM_PREFIX = '%s-test-vm-%s'
     _DISK_NAME = '%s-test-disk-%s-%s'
@@ -147,30 +188,14 @@ class EternalTestHelper:
         raise RuntimeError(f'no instance matching prefix {prefix} found')
 
     def copy_load_config_to_instance(self, instance_ip: str, load_config: LoadConfig):
-        json = get_template('test-config.json').substitute(
-            ioDepth=load_config.io_depth,
-            fileSize=load_config.size * 1024 ** 3,
-            writeRate=load_config.write_rate,
-            blockSize=load_config.bs,
-            filePath=load_config.test_file,
-        )
+        json = render_load_config(load_config)
         with self.module_factories.make_sftp_client(self.args.dry_run, instance_ip, ssh_key_path=self.args.ssh_key_path) as sftp:
             file = sftp.file(load_config.config_path, 'w')
             file.write(json)
             file.flush()
 
     def create_systemd_load_service_on_instance(self, instance_ip: str, load_config: LoadConfig):
-        restore_cmd = self.get_restore_load_command(load_config)
-        generate_cmd = self.get_generate_load_command(load_config)
-        command = (
-            f'[[ -f {load_config.config_path} ]] && '
-            f'{restore_cmd} || '
-            f'{generate_cmd}'
-        )
-        service_config = get_template('eternal_load_template.service').substitute(
-            deviceName=load_config.device_name,
-            command=command,
-        )
+        service_config = render_load_service_config(load_config)
 
         with self.module_factories.make_sftp_client(self.args.dry_run, instance_ip, ssh_key_path=self.args.ssh_key_path) as sftp:
             file = sftp.file(f'/etc/systemd/system/{load_config.service_name}', 'w')
@@ -182,30 +207,11 @@ class EternalTestHelper:
             f'systemctl daemon-reload && systemctl enable {load_config.service_name}',
         )
 
-    def get_restore_load_command(self, load_config: LoadConfig) -> str:
-        return self._START_LOAD_WITH_CONFIG_CMD.format(
-            file=load_config.test_file,
-            config_path=load_config.config_path,
-            log_path=load_config.log_path,
-        )
-
-    def get_generate_load_command(self, load_config: LoadConfig) -> str:
-        return self._START_LOAD_CMD.format(
-            file=load_config.test_file,
-            dump_config_path=load_config.config_path,
-            log_path=load_config.log_path,
-            blocksize=load_config.bs,
-            filesize=load_config.size,
-            io_depth=load_config.io_depth,
-            write_rate=load_config.write_rate,
-            write_parts=load_config.write_parts,
-        )
-
     def generate_run_load_command_from_test_config(self, load_config: LoadConfig, fill_disk: bool) -> str:
         load_command = ''
 
         if fill_disk:
-            load_command = self._FIO_CMD_TO_FILL_DISK.format(
+            load_command = EternalTestHelper._FIO_CMD_TO_FILL_DISK.format(
                 filename=load_config.test_file,
                 log_path=load_config.log_path,
             ) + ' && '
@@ -213,9 +219,9 @@ class EternalTestHelper:
         if load_config.run_in_systemd:
             load_command += f'systemctl start {load_config.service_name}'
         elif load_config.use_requests_with_different_sizes:
-            load_command += self.get_restore_load_command(load_config)
+            load_command += get_restore_load_command(load_config)
         else:
-            load_command += self.get_generate_load_command(load_config)
+            load_command += get_generate_load_command(load_config)
 
         return load_command
 
@@ -510,7 +516,7 @@ class EternalTestHelper:
             if load_config.run_in_systemd:
                 cmd = f'systemctl start {load_config.service_name}'
             else:
-                cmd = self.get_restore_load_command(load_config)
+                cmd = get_restore_load_command(load_config)
 
             self.run_command_in_background(
                 instance.ip,
