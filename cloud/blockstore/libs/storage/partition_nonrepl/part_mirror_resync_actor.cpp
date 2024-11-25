@@ -2,9 +2,9 @@
 
 #include "part_mirror.h"
 #include "part_nonrepl.h"
+#include "part_nonrepl_common.h"
 
 #include <cloud/blockstore/libs/diagnostics/critical_events.h>
-
 #include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/core/forward_helpers.h>
 #include <cloud/blockstore/libs/storage/core/probes.h>
@@ -253,9 +253,7 @@ STFUNC(TMirrorPartitionResyncActor::StateWork)
         HFunc(TEvService::TEvWriteBlocksLocalRequest, HandleWriteBlocksLocal);
 
         HFunc(NPartition::TEvPartition::TEvDrainRequest, DrainActorCompanion.HandleDrain);
-        HFunc(
-            TEvService::TEvGetChangedBlocksRequest,
-            GetChangedBlocksCompanion.DeclineGetChangedBlocks);
+        HFunc(TEvService::TEvGetChangedBlocksRequest, DeclineGetChangedBlocks);
 
         HFunc(TEvVolume::TEvDescribeBlocksRequest, HandleDescribeBlocks);
         HFunc(TEvVolume::TEvGetCompactionStatusRequest, HandleGetCompactionStatus);
@@ -306,9 +304,7 @@ STFUNC(TMirrorPartitionResyncActor::StateZombie)
         HFunc(TEvService::TEvWriteBlocksLocalRequest, RejectWriteBlocksLocal);
 
         HFunc(NPartition::TEvPartition::TEvDrainRequest, RejectDrain);
-        HFunc(
-            TEvService::TEvGetChangedBlocksRequest,
-            GetChangedBlocksCompanion.DeclineGetChangedBlocks);
+        HFunc(TEvService::TEvGetChangedBlocksRequest, DeclineGetChangedBlocks);
 
         HFunc(TEvVolume::TEvDescribeBlocksRequest, RejectDescribeBlocks);
         HFunc(TEvVolume::TEvGetCompactionStatusRequest, RejectGetCompactionStatus);

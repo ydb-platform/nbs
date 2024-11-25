@@ -17,7 +17,6 @@
 #include <cloud/blockstore/libs/storage/core/request_info.h>
 #include <cloud/blockstore/libs/storage/model/requests_in_progress.h>
 #include <cloud/blockstore/libs/storage/partition_common/drain_actor_companion.h>
-#include <cloud/blockstore/libs/storage/partition_common/get_changed_blocks_companion.h>
 
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 #include <contrib/ydb/library/actors/core/events.h>
@@ -63,7 +62,6 @@ private:
     TDrainActorCompanion DrainActorCompanion{
         RequestsInProgress,
         DiskId};
-    TGetChangedBlocksCompanion GetChangedBlocksCompanion;
 
     TRequestInfoPtr Poisoner;
     size_t AliveReplicas = 0;
