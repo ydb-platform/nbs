@@ -196,21 +196,6 @@ struct TEvNonreplPartitionPrivate
 
         ui32 NonVoidBlockCount = 0;
         ui32 VoidBlockCount = 0;
-
-        // TODO(drbasic) remove and use non-default constructor in
-        // TNonreplicatedPartitionRdmaActor
-        TOperationCompleted() = default;
-
-        TOperationCompleted(
-                EStatus status,
-                ui64 totalCycles,
-                ui64 execCycles,
-                TDuration executionTime)
-            : Status(status)
-            , TotalCycles(totalCycles)
-            , ExecCycles(execCycles)
-            , ExecutionTime(executionTime)
-        {}
     };
 
     //

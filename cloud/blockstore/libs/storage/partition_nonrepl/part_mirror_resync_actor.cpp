@@ -2,9 +2,9 @@
 
 #include "part_mirror.h"
 #include "part_nonrepl.h"
+#include "part_nonrepl_common.h"
 
 #include <cloud/blockstore/libs/diagnostics/critical_events.h>
-
 #include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/core/forward_helpers.h>
 #include <cloud/blockstore/libs/storage/core/probes.h>
@@ -109,8 +109,6 @@ void TMirrorPartitionResyncActor::SetupPartitions(const TActorContext& ctx)
             RdmaClient,
             SelfId(),
             SelfId()));
-
-    GetChangedBlocksCompanion.SetDelegate(MirrorActorId);
 
     const auto& replicaInfos = State.GetReplicaInfos();
     for (ui32 i = 0; i < replicaInfos.size(); i++) {
@@ -255,9 +253,7 @@ STFUNC(TMirrorPartitionResyncActor::StateWork)
         HFunc(TEvService::TEvWriteBlocksLocalRequest, HandleWriteBlocksLocal);
 
         HFunc(NPartition::TEvPartition::TEvDrainRequest, DrainActorCompanion.HandleDrain);
-        HFunc(
-            TEvService::TEvGetChangedBlocksRequest,
-            GetChangedBlocksCompanion.HandleGetChangedBlocks);
+        HFunc(TEvService::TEvGetChangedBlocksRequest, DeclineGetChangedBlocks);
 
         HFunc(TEvVolume::TEvDescribeBlocksRequest, HandleDescribeBlocks);
         HFunc(TEvVolume::TEvGetCompactionStatusRequest, HandleGetCompactionStatus);
@@ -308,6 +304,7 @@ STFUNC(TMirrorPartitionResyncActor::StateZombie)
         HFunc(TEvService::TEvWriteBlocksLocalRequest, RejectWriteBlocksLocal);
 
         HFunc(NPartition::TEvPartition::TEvDrainRequest, RejectDrain);
+        HFunc(TEvService::TEvGetChangedBlocksRequest, DeclineGetChangedBlocks);
 
         HFunc(TEvVolume::TEvDescribeBlocksRequest, RejectDescribeBlocks);
         HFunc(TEvVolume::TEvGetCompactionStatusRequest, RejectGetCompactionStatus);
