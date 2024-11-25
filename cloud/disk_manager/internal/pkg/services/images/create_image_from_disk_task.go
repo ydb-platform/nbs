@@ -74,14 +74,11 @@ func (t *createImageFromDiskTask) run(
 		Encryption:        diskParams.EncryptionDesc,
 	})
 	if err != nil {
-		return err
-	}
+		if errors.Is(err, resources.NewEmptyImageIDIsNotAcceptedError()) {
+			return errors.NewNonCancellableError(err)
+		}
 
-	if imageMeta == nil {
-		return errors.NewNonCancellableErrorf(
-			"id %v is not accepted",
-			t.request.DstImageId,
-		)
+		return err
 	}
 
 	if imageMeta.Ready {

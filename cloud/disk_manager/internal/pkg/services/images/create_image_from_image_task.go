@@ -63,7 +63,7 @@ func (t *createImageFromImageTask) Run(
 		srcImageEncryption = srcImageMeta.Encryption
 	}
 
-	imageMeta, err := t.storage.CreateImage(ctx, resources.ImageMeta{
+	_, err = t.storage.CreateImage(ctx, resources.ImageMeta{
 		ID:                t.request.DstImageId,
 		FolderID:          t.request.FolderId,
 		SrcImageID:        t.request.SrcImageId,
@@ -75,14 +75,11 @@ func (t *createImageFromImageTask) Run(
 		Encryption:        srcImageEncryption,
 	})
 	if err != nil {
-		return err
-	}
+		if errors.Is(err, resources.NewEmptyImageIDIsNotAcceptedError()) {
+			return errors.NewNonCancellableError(err)
+		}
 
-	if imageMeta == nil {
-		return errors.NewNonCancellableErrorf(
-			"id %v is not accepted",
-			t.request.DstImageId,
-		)
+		return err
 	}
 
 	srcIsDataplane := srcImageMeta != nil && srcImageMeta.UseDataplaneTasks

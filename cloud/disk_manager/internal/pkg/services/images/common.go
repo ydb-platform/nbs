@@ -51,14 +51,16 @@ func deleteImage(
 		time.Now(),
 	)
 	if err != nil {
+		if errors.Is(err, resources.NewEmptyImageIDIsNotAcceptedError()) {
+			return errors.NewNonCancellableError(err)
+		}
+
 		return err
 	}
 
 	if imageMeta == nil {
-		return errors.NewNonCancellableErrorf(
-			"id %v is not accepted",
-			imageID,
-		)
+		// Should be idempotent.
+		return nil
 	}
 
 	if imageMeta.Size > 0 {

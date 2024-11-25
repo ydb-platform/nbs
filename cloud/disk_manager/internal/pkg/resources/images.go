@@ -217,6 +217,50 @@ func imageStateTableDescription() persistence.CreateTableDescription {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+type ImageIDIsNotAcceptedError struct {
+	err     error
+	imageID string
+}
+
+func (e *ImageIDIsNotAcceptedError) Error() string {
+	return fmt.Sprintf(
+		"image id %v is not accepted: %v",
+		e.imageID,
+		e.err.Error(),
+	)
+}
+
+func (e *ImageIDIsNotAcceptedError) Unwrap() error {
+	return e.err
+}
+
+func (e *ImageIDIsNotAcceptedError) Is(target error) bool {
+	t, ok := target.(*ImageIDIsNotAcceptedError)
+	if !ok {
+		return false
+	}
+
+	return t.err == nil || (e.err == t.err)
+}
+
+func NewEmptyImageIDIsNotAcceptedError() *ImageIDIsNotAcceptedError {
+	return &ImageIDIsNotAcceptedError{err: nil, imageID: ""}
+}
+
+func NewImageIDIsNotAcceptedErrorf(
+	imageID string,
+	format string,
+	a ...any,
+) *ImageIDIsNotAcceptedError {
+
+	return &ImageIDIsNotAcceptedError{
+		err:     fmt.Errorf(format, a...),
+		imageID: imageID,
+	}
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 func (s *storageYDB) imageExists(
 	ctx context.Context,
 	tx *persistence.Transaction,
@@ -330,13 +374,12 @@ func (s *storageYDB) createImage(
 			return nil, err
 		}
 
-		logging.Info(
-			ctx,
+		return nil, NewImageIDIsNotAcceptedErrorf(
+			image.ID,
 			"image with id %v can't be created, because snapshot with id %v already exists",
 			image.ID,
 			image.ID,
 		)
-		return nil, nil
 	}
 
 	createRequest, err := proto.Marshal(image.CreateRequest)
@@ -572,13 +615,12 @@ func (s *storageYDB) deleteImage(
 			return nil, err
 		}
 
-		logging.Info(
-			ctx,
+		return nil, NewImageIDIsNotAcceptedErrorf(
+			imageID,
 			"image with id %v can't be deleted, because snapshot with id %v already exists",
 			imageID,
 			imageID,
 		)
-		return nil, nil
 	}
 
 	res, err := tx.Execute(ctx, fmt.Sprintf(`
@@ -605,19 +647,21 @@ func (s *storageYDB) deleteImage(
 
 	var state imageState
 
-	if len(states) != 0 {
-		state = states[0]
+	if len(states) == 0 {
+		return nil, nil
+	}
 
-		if state.status >= imageStatusDeleting {
-			// Image already marked as deleting/deleted.
+	state = states[0]
 
-			err = tx.Commit(ctx)
-			if err != nil {
-				return nil, err
-			}
+	if state.status >= imageStatusDeleting {
+		// Image already marked as deleting/deleted.
 
-			return state.toImageMeta(), nil
+		err = tx.Commit(ctx)
+		if err != nil {
+			return nil, err
 		}
+
+		return state.toImageMeta(), nil
 	}
 
 	state.id = imageID
@@ -901,7 +945,13 @@ func (s *storageYDB) DeleteImage(
 		ctx,
 		func(ctx context.Context, session *persistence.Session) error {
 			var err error
-			image, err = s.deleteImage(ctx, session, imageID, taskID, deletingAt)
+			image, err = s.deleteImage(
+				ctx,
+				session,
+				imageID,
+				taskID,
+				deletingAt,
+			)
 			return err
 		},
 	)
