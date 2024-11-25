@@ -5512,7 +5512,7 @@ void TDiskRegistryState::CleanupAgentConfig(
     const NProto::TAgentConfig& agent)
 {
     auto error = TryToRemoveAgentDevices(db, agent.GetAgentId());
-    if (!HasError(error)) {
+    if (!HasError(error) || error.GetCode() == E_NOT_FOUND) {
         return;
     }
 
