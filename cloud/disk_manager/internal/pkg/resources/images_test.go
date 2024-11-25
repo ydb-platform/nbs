@@ -170,13 +170,13 @@ func TestImagesDeleteNonexistentImage(t *testing.T) {
 	deletingAt := time.Now()
 	actual, err := storage.DeleteImage(ctx, image.ID, "delete", deletingAt)
 	require.NoError(t, err)
-	requireImagesAreEqual(t, image, *actual)
+	require.Nil(t, actual)
 
 	// Check idempotency.
 	deletingAt = deletingAt.Add(time.Second)
 	actual, err = storage.DeleteImage(ctx, image.ID, "delete", deletingAt)
 	require.NoError(t, err)
-	requireImagesAreEqual(t, image, *actual)
+	require.Nil(t, actual)
 
 	_, err = storage.CreateImage(ctx, image)
 	require.Error(t, err)
