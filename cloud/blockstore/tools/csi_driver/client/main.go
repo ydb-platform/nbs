@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"net"
@@ -14,6 +15,28 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 )
+
+////////////////////////////////////////////////////////////////////////////////
+
+type BackendValue string
+
+func (b *BackendValue) String() string {
+	return string(*b)
+}
+
+func (b *BackendValue) Set(val string) error {
+	switch val {
+	case "nbs", "nfs":
+		*b = BackendValue(val)
+		return nil
+	default:
+		return errors.New(`must be one of "nbs", "nfs"`)
+	}
+}
+
+func (b *BackendValue) Type() string {
+	return "string"
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -67,7 +90,7 @@ func newControllerClient(
 func newCreateVolumeCommand(endpoint *string) *cobra.Command {
 	var name string
 	var size int64
-	var nfsBackend bool
+	backend := BackendValue("nbs")
 	cmd := cobra.Command{
 		Use:   "createvolume",
 		Short: "Send create volume request to the controller",
@@ -93,9 +116,8 @@ func newCreateVolumeCommand(endpoint *string) *cobra.Command {
 					},
 				},
 			}
-			parameters := make(map[string]string)
-			if nfsBackend {
-				parameters["backend"] = "nfs"
+			parameters := map[string]string{
+				"backend": string(backend),
 			}
 
 			response, err := client.CreateVolume(
@@ -146,11 +168,10 @@ func newCreateVolumeCommand(endpoint *string) *cobra.Command {
 		0,
 		"The size of the disk in bytes",
 	)
-	cmd.Flags().BoolVar(
-		&nfsBackend,
-		"nfs-backend",
-		false,
-		"Use nfs backend",
+	cmd.Flags().Var(
+		&backend,
+		"backend",
+		"Specify backend to use [nfs, nbs]",
 	)
 	err := cmd.MarkFlagRequired("name")
 	if err != nil {
@@ -238,7 +259,7 @@ func getTargetPath(podId string, volumeId string, accessType string) string {
 
 func newNodeStageVolumeCommand(endpoint *string) *cobra.Command {
 	var volumeId, stagingTargetPath, accessType string
-	var nfsBackend bool
+	backend := BackendValue("nbs")
 	cmd := cobra.Command{
 		Use:   "stagevolume",
 		Short: "Send stage volume request to the CSI node",
@@ -255,9 +276,7 @@ func newNodeStageVolumeCommand(endpoint *string) *cobra.Command {
 
 			volumeContext := map[string]string{
 				"instanceId": "example-instance-id",
-			}
-			if nfsBackend {
-				volumeContext["backend"] = "nfs"
+				"backend":    string(backend),
 			}
 
 			accessMode := csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER
@@ -296,11 +315,10 @@ func newNodeStageVolumeCommand(endpoint *string) *cobra.Command {
 		"mount",
 		"mount or block access type",
 	)
-	cmd.Flags().BoolVar(
-		&nfsBackend,
-		"nfs-backend",
-		false,
-		"Use nfs backend",
+	cmd.Flags().Var(
+		&backend,
+		"backend",
+		"Specify backend to use [nfs, nbs]",
 	)
 	err := cmd.MarkFlagRequired("volume-id")
 	if err != nil {
@@ -314,7 +332,7 @@ func newPublishVolumeCommand(endpoint *string) *cobra.Command {
 	var accessType string
 	var readOnly bool
 	var volumeMountGroup string
-	var nfsBackend bool
+	backend := BackendValue("nbs")
 	cmd := cobra.Command{
 		Use:   "publishvolume",
 		Short: "Send publish volume request to the CSI node",
@@ -338,9 +356,7 @@ func newPublishVolumeCommand(endpoint *string) *cobra.Command {
 				"storage.kubernetes.io/csiProvisionerIdentity": "someIdentity",
 				"instanceId": "example-instance-id",
 				"fsType":     fsType,
-			}
-			if nfsBackend {
-				volumeContext["backend"] = "nfs"
+				"backend":    string(backend),
 			}
 
 			accessMode := csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER
@@ -409,11 +425,10 @@ func newPublishVolumeCommand(endpoint *string) *cobra.Command {
 		"",
 		"fs group id",
 	)
-	cmd.Flags().BoolVar(
-		&nfsBackend,
-		"nfs-backend",
-		false,
-		"Use nfs bacend",
+	cmd.Flags().Var(
+		&backend,
+		"backend",
+		"Specify backend to use [nfs, nbs]",
 	)
 
 	err := cmd.MarkFlagRequired("volume-id")

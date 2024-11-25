@@ -10,7 +10,7 @@ def test_volume_lifecycle_local_fs():
     pod_names = ["example-pod-1", "example-pod-2"]
     pod_ids = ["deadbeef1", "deadbeef2"]
 
-    env, run = csi.init(vm_mode="mount", local_fs_ids=[fs_name])
+    env, run = csi.init(vm_mode=True, local_fs_ids=[fs_name])
     try:
         env.csi.create_volume(name=fs_name, size=fs_size, is_nfs=True)
         env.csi.stage_volume(fs_name, "mount", is_nfs=True)

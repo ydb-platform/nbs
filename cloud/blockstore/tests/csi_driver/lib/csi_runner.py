@@ -167,7 +167,7 @@ class NbsCsiDriverRunner:
     def create_volume(self, name: str, size: int, is_nfs: bool = False):
         args = ["createvolume", "--name", name, "--size", str(size)]
         if is_nfs:
-            args += ["--nfs-backend"]
+            args += ["--backend", "nfs"]
 
         return self._controller_run(*args)
 
@@ -177,7 +177,7 @@ class NbsCsiDriverRunner:
     def stage_volume(self, volume_id: str, access_type: str, is_nfs: bool = False):
         args = ["stagevolume", "--volume-id", volume_id, "--access-type", access_type]
         if is_nfs:
-            args += ["--nfs-backend"]
+            args += ["--backend", "nfs"]
 
         return self._node_run(*args)
 
@@ -218,7 +218,7 @@ class NbsCsiDriverRunner:
             args += ["--volume-mount-group", volume_mount_group]
 
         if is_nfs:
-            args += ["--nfs-backend"]
+            args += ["--backend", "nfs"]
 
         return self._node_run(*args)
 
