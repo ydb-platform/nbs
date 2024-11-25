@@ -437,8 +437,12 @@ func (s *storageYDB) createImage(
 			return state.toImageMeta(), nil
 		}
 
-		logging.Info(ctx, "image with different params already exists, old=%v, new=%v", state, image)
-		return nil, nil
+		return nil, NewImageIDIsNotAcceptedErrorf(
+			image.ID,
+			"image with different params already exists, old=%v, new=%v",
+			state,
+			image,
+		)
 	}
 
 	state := imageState{

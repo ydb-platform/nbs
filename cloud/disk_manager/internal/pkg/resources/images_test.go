@@ -78,7 +78,8 @@ func TestImagesCreateImage(t *testing.T) {
 
 	image.CreateTaskID = "other"
 	created, err = storage.CreateImage(ctx, image)
-	require.NoError(t, err)
+	require.Error(t, err)
+	require.True(t, errors.Is(err, NewEmptyImageIDIsNotAcceptedError()))
 	require.Nil(t, created)
 }
 
