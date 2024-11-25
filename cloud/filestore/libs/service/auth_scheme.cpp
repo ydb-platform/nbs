@@ -121,6 +121,7 @@ TPermissionList GetRequestPermissions(
 
         // Update
         perms("draintablets", CreatePermissionList({EPermission::Update})),
+        perms("restartlocalfilestores", CreatePermissionList({EPermission::Update})),
 
         // Admin
         perms("changestorageconfig", TPermissionList().Flip())

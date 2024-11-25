@@ -700,3 +700,22 @@ message TGetFileSystemTopologyResponse
     // Shard FileSystem identifiers.
     repeated string ShardFileSystemIds = 2;
 }
+
+////////////////////////////////////////////////////////////////////////////////
+// RestartLocalFileStores request/response.
+
+message TRestartLocalFileStoresRequest
+{
+    // Optional request headers.
+    NProto.THeaders Headers = 1;
+
+    // Seed to randomize which filestores to restart.
+    uint64 Seed = 2;
+}
+
+
+message TRestartLocalFileStoresResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+}

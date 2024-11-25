@@ -92,6 +92,10 @@ void TStorageServiceActor::HandleExecuteAction(
             "getstoragestats",
             &TStorageServiceActor::CreateGetStorageStatsActionActor
         },
+        {
+            "restartlocalfilestores",
+            &TStorageServiceActor::CreateRestartLocalFileStoresActionActor,
+        },
     };
 
     auto it = actions.find(action);

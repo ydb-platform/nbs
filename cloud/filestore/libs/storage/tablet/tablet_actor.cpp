@@ -994,6 +994,12 @@ STFUNC(TIndexTabletActor::StateZombie)
         HFunc(TEvTablet::TEvTabletDead, HandleTabletDead);
         HFunc(TEvTabletPipe::TEvServerDisconnected, HandleSessionDisconnected);
 
+        // If compaction/cleanup/collectgarbage started before the tablet reload
+        // and completed during the init state, we should ignore it.
+        IgnoreFunc(TEvIndexTabletPrivate::TEvCompactionResponse);
+        IgnoreFunc(TEvIndexTabletPrivate::TEvCleanupResponse);
+        IgnoreFunc(TEvIndexTabletPrivate::TEvCollectGarbageResponse);
+
         IgnoreFunc(TEvFileStore::TEvUpdateConfig);
 
         // private api
@@ -1022,7 +1028,9 @@ STFUNC(TIndexTabletActor::StateZombie)
             HandleNodeUnlinkedInShard);
 
         default:
-            HandleUnexpectedEvent(ev, TFileStoreComponents::TABLET);
+            if (!HandleDefaultEvents(ev, SelfId())) {
+                HandleUnexpectedEvent(ev, TFileStoreComponents::TABLET);
+            }
             break;
     }
 }

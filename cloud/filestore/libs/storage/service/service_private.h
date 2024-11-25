@@ -11,13 +11,6 @@
 
 namespace NCloud::NFileStore::NStorage {
 
-////////////////////////////////////////////////////////////////////////////////
-
-#define FILESTORE_SERVICE_REQUESTS_PRIVATE(xxx, ...)                           \
-// FILESTORE_SERVICE_REQUESTS_PRIVATE
-
-////////////////////////////////////////////////////////////////////////////////
-
 struct TEvServicePrivate
 {
     //
@@ -64,8 +57,6 @@ struct TEvServicePrivate
     {
         EvBegin = TFileStoreEventsPrivate::SERVICE_WORKER_START,
 
-        FILESTORE_SERVICE_REQUESTS_PRIVATE(FILESTORE_DECLARE_EVENT_IDS)
-
         EvPingSession,
         EvCreateSession,
         EvSessionCreated,
@@ -77,8 +68,6 @@ struct TEvServicePrivate
 
     static_assert(EvEnd < (int)TFileStoreEventsPrivate::SERVICE_WORKER_END,
         "EvEnd expected to be < TFileStoreEventsPrivate::SERVICE_WORKER_END");
-
-    FILESTORE_SERVICE_REQUESTS_PRIVATE(FILESTORE_DECLARE_EVENTS)
 
     using TEvPingSession = TRequestEvent<TEmpty, EvPingSession>;
     using TEvCreateSession = TRequestEvent<TCreateSession, EvCreateSession>;
