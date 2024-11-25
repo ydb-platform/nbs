@@ -16,8 +16,8 @@ namespace NCloud::NBlockStore::NStorage {
 ////////////////////////////////////////////////////////////////////////////////
 
 void ProcessError(
-    NActors::TActorSystem& system,
-    TNonreplicatedPartitionConfig& config,
+    const NActors::TActorSystem& system,
+    const TNonreplicatedPartitionConfig& config,
     NProto::TError& error);
 
 void DeclineGetChangedBlocks(
@@ -27,6 +27,7 @@ void DeclineGetChangedBlocks(
 TString LogDevice(const NProto::TDeviceConfig& device);
 
 ////////////////////////////////////////////////////////////////////////////////
+
 class TDeviceRequestBuilder
 {
 private:
@@ -52,6 +53,5 @@ private:
 };
 
 ////////////////////////////////////////////////////////////////////////////////
-
 
 }   // namespace NCloud::NBlockStore::NStorage

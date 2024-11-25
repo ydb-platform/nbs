@@ -7,12 +7,12 @@
 
 namespace NCloud::NBlockStore::NStorage {
 
-////////////////////////////////////////////////////////////////////////////////
-
 namespace {
 
+////////////////////////////////////////////////////////////////////////////////
+
 void SendEvReacquireDisk(
-    NActors::TActorSystem& system,
+    const NActors::TActorSystem& system,
     const NActors::TActorId& recipient)
 {
     auto event = std::make_unique<NActors::IEventHandle>(
@@ -28,8 +28,8 @@ void SendEvReacquireDisk(
 }   // namespace
 
 void ProcessError(
-    NActors::TActorSystem& system,
-    TNonreplicatedPartitionConfig& config,
+    const NActors::TActorSystem& system,
+    const TNonreplicatedPartitionConfig& config,
     NProto::TError& error)
 {
     if (error.GetCode() == E_BS_INVALID_SESSION) {
