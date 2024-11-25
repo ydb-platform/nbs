@@ -379,18 +379,18 @@ Y_UNIT_TEST_SUITE(TIndexTabletThrottlingPolicyTest)
     {
         // From SeparateReadAndWriteLimits
         const auto config = MakeConfig(
-            10_GB,    // maxReadBandwidth
-            20_GB,    // maxWriteBandwidth
-            100000,   // maxReadIops
-            500000,   // maxWriteIops
-            100,      // burstPercentage
-            0,        // boostTime
-            0,        // boostRefillTime
-            0,        // boostPercentage
-            1_GB,     // maxPostponedWeight
+            10_GB,                   // maxReadBandwidth
+            20_GB,                   // maxWriteBandwidth
+            100000,                  // maxReadIops
+            500000,                  // maxWriteIops
+            100,                     // burstPercentage
+            0,                       // boostTime
+            0,                       // boostRefillTime
+            0,                       // boostPercentage
+            1_GB,                    // maxPostponedWeight
             TDuration::Seconds(1),   // maxPostponedTime
             Max<ui32>(),             // maxWriteCostMultiplier
-            1                        // defaultPostponedRequestWeight
+            1_GB                     // defaultPostponedRequestWeight
         );
         TThrottlingPolicy tp(config);
         for (ui32 i = 0; i < 10; ++i) {
