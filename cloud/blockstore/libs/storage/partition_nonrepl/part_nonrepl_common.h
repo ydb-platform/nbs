@@ -5,9 +5,9 @@
 #include "config.h"
 
 #include <cloud/blockstore/libs/common/block_range.h>
+#include <cloud/blockstore/libs/storage/api/service.h>
 #include <cloud/blockstore/libs/storage/api/volume.h>
 #include <cloud/blockstore/libs/storage/protos/disk.pb.h>
-
 #include <cloud/storage/core/libs/kikimr/helpers.h>
 
 #include <library/cpp/actors/core/actorsystem.h>
@@ -44,6 +44,10 @@ inline void SendEvReacquireDisk(
 
     system.Send(event.release());
 }
+
+void DeclineGetChangedBlocks(
+    const TEvService::TEvGetChangedBlocksRequest::TPtr& ev,
+    const NActors::TActorContext& ctx);
 
 ////////////////////////////////////////////////////////////////////////////////
 
