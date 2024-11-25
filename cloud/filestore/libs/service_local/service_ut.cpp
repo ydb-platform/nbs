@@ -43,6 +43,15 @@ struct THeaders
         headers->SetSessionId(SessionId);
         headers->SetSessionSeqNo(SessionSeqNo);
     }
+
+    template <>
+    void Fill(NProto::TListFileStoresRequest& request) const
+    {
+        auto* headers = request.MutableHeaders();
+        headers->SetClientId(ClientId);
+        headers->SetSessionId(SessionId);
+        headers->SetSessionSeqNo(SessionSeqNo);
+    }
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -425,6 +434,12 @@ struct TTestBootstrap
         request->SetFolderId(folder);
         request->SetBlockSize(size);
         request->SetBlocksCount(count);
+        return request;
+    }
+
+    auto CreateListFileStoresRequest()
+    {
+        auto request = CreateRequest<NProto::TListFileStoresRequest>();
         return request;
     }
 
@@ -933,6 +948,21 @@ Y_UNIT_TEST_SUITE(LocalFileStore)
         UNIT_ASSERT_VALUES_EQUAL(store.GetBlocksCount(), 500100);
     }
 
+    Y_UNIT_TEST(ShouldListExternallyCreatedStores)
+    {
+        TTestBootstrap bootstrapExt;
+        TTestBootstrap bootstrap(bootstrapExt.Cwd);
+
+        bootstrapExt.CreateFileStore("fs", "cloud", "folder", 100500, 500100);
+
+        for (auto* bs : {&bootstrapExt, &bootstrap}) {
+            auto response = bs->ListFileStores();
+            const auto& fsIds = response.GetFileStores();
+            UNIT_ASSERT_VALUES_EQUAL(1, fsIds.size());
+            UNIT_ASSERT_VALUES_EQUAL("fs", fsIds[0]);
+        }
+    }
+
     Y_UNIT_TEST(ShouldAlterStore)
     {
         TTestBootstrap bootstrap;
@@ -949,12 +979,8 @@ Y_UNIT_TEST_SUITE(LocalFileStore)
         UNIT_ASSERT_VALUES_EQUAL(store.GetBlocksCount(), 500100);
     }
 
-    Y_UNIT_TEST(ShouldCreateSession)
+    void ValidateCreateSession(auto& bootstrap)
     {
-        TTestBootstrap bootstrap;
-        bootstrap.CreateFileStore("fs", "cloud", "folder", 100500, 500100);
-        UNIT_ASSERT(bootstrap.GetFsStateDir("fs"));
-
         auto response = bootstrap.CreateSession("fs", "client", "");
         auto id = response.GetSession().GetSessionId();
         UNIT_ASSERT(id != "");
@@ -994,6 +1020,26 @@ Y_UNIT_TEST_SUITE(LocalFileStore)
         UNIT_ASSERT(!bootstrap.GetClientFsStateDir("fs", "client"));
     }
 
+    Y_UNIT_TEST(ShouldCreateSession)
+    {
+        TTestBootstrap bootstrap;
+        bootstrap.CreateFileStore("fs", "cloud", "folder", 100500, 500100);
+        UNIT_ASSERT(bootstrap.GetFsStateDir("fs"));
+
+        ValidateCreateSession(bootstrap);
+    }
+
+    Y_UNIT_TEST(ShouldCreateSessionOnExternallyCreatedFilestore)
+    {
+        TTestBootstrap bootstrapExt;
+        TTestBootstrap bootstrap(bootstrapExt.Cwd);
+
+        bootstrapExt.CreateFileStore("fs", "cloud", "folder", 100500, 500100);
+        UNIT_ASSERT(bootstrapExt.GetFsStateDir("fs"));
+
+        ValidateCreateSession(bootstrap);
+    }
+
     Y_UNIT_TEST(ShouldNotCreateTheSameStore)
     {
         TTestBootstrap bootstrap("fs");
@@ -1010,6 +1056,60 @@ Y_UNIT_TEST_SUITE(LocalFileStore)
 
         // intentionally
         bootstrap.DestroyFileStore("fs");
+    }
+
+    Y_UNIT_TEST(ShouldNotListExternallyDestroyedStores)
+    {
+        TTestBootstrap bootstrapExt;
+        TTestBootstrap bootstrap(bootstrapExt.Cwd);
+
+        bootstrapExt.CreateFileStore("fs1", "cloud", "folder", 100500, 500100);
+        bootstrapExt.CreateFileStore("fs2", "cloud", "folder", 100500, 500100);
+
+        for (auto* bs : {&bootstrapExt, &bootstrap}) {
+            auto response = bs->ListFileStores();
+
+            const auto& fsIds = response.GetFileStores();
+            TVector<TString> ids(fsIds.begin(), fsIds.end());
+            Sort(ids);
+            TVector<TString> expectedIds = {"fs1", "fs2"};
+            UNIT_ASSERT_VALUES_EQUAL(expectedIds, ids);
+        }
+
+        bootstrapExt.DestroyFileStore("fs1");
+
+        for (auto* bs : {&bootstrapExt, &bootstrap}) {
+            auto response = bs->ListFileStores();
+
+            const auto& fsIds = response.GetFileStores();
+            UNIT_ASSERT_VALUES_EQUAL(1, fsIds.size());
+            UNIT_ASSERT_VALUES_EQUAL("fs2", fsIds[0]);
+            UNIT_ASSERT(!bootstrap.GetFsStateDir("fs1"));
+        }
+    }
+
+    Y_UNIT_TEST(ShouldNotCreateSessionOnExternallyDestroyedFilestore)
+    {
+        TTestBootstrap bootstrapExt;
+        TTestBootstrap bootstrap(bootstrapExt.Cwd);
+
+        bootstrapExt.CreateFileStore("fs", "cloud", "folder", 100500, 500100);
+        UNIT_ASSERT(bootstrapExt.GetFsStateDir("fs"));
+
+        {
+            auto response = bootstrap.ListFileStores();
+            const auto& fsIds = response.GetFileStores();
+            UNIT_ASSERT_VALUES_EQUAL(1, fsIds.size());
+            UNIT_ASSERT_VALUES_EQUAL("fs", fsIds[0]);
+        }
+
+        bootstrapExt.DestroyFileStore("fs");
+
+        {
+            auto response = bootstrap.AssertCreateSessionFailed("fs", "client", "");
+            UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, response.GetError().GetCode());
+        }
+
     }
 
     Y_UNIT_TEST(ShouldRecoverLocalStores)
