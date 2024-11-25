@@ -262,7 +262,7 @@ NProto::TMountVolumeResponse CreateMountVolumeResponse(TOptions options)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TBootstrap CreateBootstrap(TOptions options)
+TBootstrap CreateBootstrap(const TOptions& options)
 {
     auto testSession = std::make_shared<TTestSession>();
 

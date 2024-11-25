@@ -14,6 +14,7 @@
  * ```--input``` - path to a file from which request data should be read: buffers for ```WriteBlocks``` request or whole request protobuf if ```--proto``` option is specified
  * ```--output``` - path to a file where response data should be written: buffers for ```ReadBlocks``` request or whole response protobuf if ```--proto``` option is specified
  * free argument: the name of request to execute; can be written either in camel case (i.e. ```WriteBlocks```) or as a single lowercase or uppercase word (i.e. ```writeblocks```) or with words separated by hyphens or underscores (i.e. ```write-blocks```).
+ * ```--server-unix-socket-path``` - path to a socket on which the NBS server contacted by the client is listening; not mandatory
 
 ## Options for particular commands
 

@@ -27,6 +27,7 @@ type migrationTestParams struct {
 	DiskKind  disk_manager.DiskKind
 	DiskSize  int64
 	FillDisk  bool
+	FolderID  string
 }
 
 func setupMigrationTest(
@@ -50,6 +51,7 @@ func setupMigrationTest(
 			DiskId: params.DiskID,
 			ZoneId: params.SrcZoneID,
 		},
+		FolderId: params.FolderID,
 	})
 	require.NoError(t, err)
 	require.NotEmpty(t, operation)
@@ -550,6 +552,7 @@ func TestDiskServiceMigrateNonreplDisk(t *testing.T) {
 		DiskKind:  disk_manager.DiskKind_DISK_KIND_SSD_NONREPLICATED,
 		DiskSize:  1073741824,
 		FillDisk:  false,
+		FolderID:  "folder",
 	}
 
 	ctx, client := setupMigrationTest(t, params)
@@ -568,6 +571,7 @@ func TestDiskServiceMigrateHddNonreplDisk(t *testing.T) {
 		DiskKind:  disk_manager.DiskKind_DISK_KIND_HDD_NONREPLICATED,
 		DiskSize:  1073741824,
 		FillDisk:  false,
+		FolderID:  "folder",
 	}
 
 	ctx, client := setupMigrationTest(t, params)

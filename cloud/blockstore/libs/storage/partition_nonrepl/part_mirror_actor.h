@@ -17,7 +17,6 @@
 #include <cloud/blockstore/libs/storage/core/request_info.h>
 #include <cloud/blockstore/libs/storage/model/requests_in_progress.h>
 #include <cloud/blockstore/libs/storage/partition_common/drain_actor_companion.h>
-#include <cloud/blockstore/libs/storage/partition_common/get_changed_blocks_companion.h>
 
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 #include <contrib/ydb/library/actors/core/events.h>
@@ -25,6 +24,7 @@
 #include <contrib/ydb/library/actors/core/mon.h>
 
 #include <util/generic/deque.h>
+#include <util/generic/hash_set.h>
 
 namespace NCloud::NBlockStore::NStorage {
 
@@ -58,12 +58,12 @@ private:
     ui64 NetworkBytes = 0;
     TDuration CpuUsage;
 
+    THashSet<ui64> DirtyReadRequestIds;
     TRequestsInProgress<ui64, TBlockRange64> RequestsInProgress{
         EAllowedRequests::ReadWrite};
     TDrainActorCompanion DrainActorCompanion{
         RequestsInProgress,
         DiskId};
-    TGetChangedBlocksCompanion GetChangedBlocksCompanion;
 
     TRequestInfoPtr Poisoner;
     size_t AliveReplicas = 0;
@@ -116,6 +116,10 @@ private:
 
     void HandleWriteOrZeroCompleted(
         const TEvNonreplPartitionPrivate::TEvWriteOrZeroCompleted::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleMirroredReadCompleted(
+        const TEvNonreplPartitionPrivate::TEvMirroredReadCompleted::TPtr& ev,
         const NActors::TActorContext& ctx);
 
     void HandleRWClientIdChanged(

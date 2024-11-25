@@ -25,7 +25,6 @@
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 #include <cloud/storage/core/libs/diagnostics/monitoring.h>
 #include <cloud/storage/core/libs/diagnostics/stats_updater.h>
-#include <cloud/storage/core/libs/grpc/init.h>
 #include <cloud/storage/core/libs/grpc/threadpool.h>
 #include <cloud/storage/core/libs/grpc/utils.h>
 #include <cloud/storage/core/libs/version/version.h>
@@ -143,6 +142,10 @@ TCommand::TCommand(IBlockStorePtr client)
     Opts.AddLongOption("secure-port", "connect secure port (overrides --port)")
         .RequiredArgument("NUM")
         .StoreResult(&SecurePort);
+
+    Opts.AddLongOption("server-unix-socket-path")
+        .RequiredArgument("STR")
+        .StoreResult(&ServerUnixSocketPath);
 
     Opts.AddLongOption("endpoint-proxy-host", "endpoint proxy host")
         .RequiredArgument("STR")
@@ -440,12 +443,7 @@ void TCommand::Init()
     }
 
     Logging = CreateLoggingService("console", logSettings);
-    GrpcLog = Logging->CreateLog("GRPC");
     Log = Logging->CreateLog("BLOCKSTORE_CLIENT");
-
-    GrpcLoggerInit(
-        GrpcLog,
-        logConfig.GetEnableGrpcTracing());
 
     ui32 maxThreads = ClientConfig->GetGrpcThreadsLimit();
     SetExecutorThreadsLimit(maxThreads);
@@ -626,6 +624,9 @@ void TCommand::InitClientConfig()
     }
     if (SecurePort) {
         clientConfig.SetSecurePort(SecurePort);
+    }
+    if (ServerUnixSocketPath){
+        clientConfig.SetUnixSocketPath(ServerUnixSocketPath);
     }
     if (clientConfig.GetHost() == "localhost" &&
         clientConfig.GetSecurePort() != 0)

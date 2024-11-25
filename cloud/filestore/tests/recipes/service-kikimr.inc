@@ -29,6 +29,10 @@ IF (NOT OPENSOURCE OR NFS_FORCE_VERBOSE)
     SET_APPEND(RECIPE_ARGS --verbose)
 ENDIF()
 
+IF (USE_UNIX_SOCKET)
+    SET_APPEND(RECIPE_ARGS --use-unix-socket)
+ENDIF()
+
 USE_RECIPE(
     cloud/filestore/tests/recipes/service-kikimr/service-kikimr-recipe
     ${RECIPE_ARGS}

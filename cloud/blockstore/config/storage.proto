@@ -1056,4 +1056,11 @@ message TStorageServiceConfig
 
     optional uint32 BlobStorageAsyncGetTimeoutHDD = 389;
     optional uint32 BlobStorageAsyncGetTimeoutSSD = 390;
+
+    // Specifies the minimum number of replicas to read from in a mirrored disk
+    // for every read request.
+    // Values 0 and 1 mean the same thing - read from 1 replica.
+    // Values greater than disk replica count also mean the same thing - read
+    // from all replicas.
+    optional uint32 MirrorReadReplicaCount = 391;
 }

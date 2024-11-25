@@ -2,6 +2,7 @@
 
 #include "mirror_request_actor.h"
 
+#include <cloud/blockstore/libs/diagnostics/critical_events.h>
 #include <cloud/blockstore/libs/service/request_helpers.h>
 #include <cloud/blockstore/libs/storage/api/undelivered.h>
 #include <cloud/blockstore/libs/storage/core/probes.h>
@@ -20,14 +21,38 @@ void TMirrorPartitionActor::HandleWriteOrZeroCompleted(
     const TActorContext& ctx)
 {
     const auto requestIdentityKey = ev->Get()->RequestCounter;
-    RequestsInProgress.RemoveRequest(requestIdentityKey);
+    TBlockRange64 range;
+    RequestsInProgress.ExtractRequest(requestIdentityKey, &range);
     DrainActorCompanion.ProcessDrainRequests(ctx);
+    for (const auto& [id, request]: RequestsInProgress.AllRequests()) {
+        if (range.Overlaps(request.Value)) {
+            DirtyReadRequestIds.insert(id);
+        }
+    }
 
     if (ResyncActorId) {
         ForwardRequestWithNondeliveryTracking(
             ctx,
             ResyncActorId,
             *ev);
+    }
+}
+
+void TMirrorPartitionActor::HandleMirroredReadCompleted(
+    const TEvNonreplPartitionPrivate::TEvMirroredReadCompleted::TPtr& ev,
+    const TActorContext& ctx)
+{
+    Y_UNUSED(ctx);
+
+    const auto requestIdentityKey = ev->Get()->RequestCounter;
+    RequestsInProgress.RemoveRequest(requestIdentityKey);
+    auto it = DirtyReadRequestIds.find(requestIdentityKey);
+    if (it == DirtyReadRequestIds.end()) {
+        if (ev->Get()->ChecksumMismatchObserved) {
+            ReportMirroredDiskChecksumMismatchUponRead();
+        }
+    } else {
+        DirtyReadRequestIds.erase(it);
     }
 }
 
@@ -71,6 +96,11 @@ void TMirrorPartitionActor::MirrorRequest(
             return;
         }
         WriteIntersectsWithScrubbing = true;
+    }
+    for (const auto& [id, request]: RequestsInProgress.AllRequests()) {
+        if (range.Overlaps(request.Value)) {
+            DirtyReadRequestIds.insert(id);
+        }
     }
     RequestsInProgress.AddWriteRequest(requestIdentityKey, range);
 

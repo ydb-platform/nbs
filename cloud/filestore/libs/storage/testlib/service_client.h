@@ -64,6 +64,11 @@ public:
         return std::unique_ptr<TResponse>(handle->Release<TResponse>().Release());
     }
 
+    auto& AccessRuntime()
+    {
+        return Runtime;
+    }
+
     THeaders InitSession(
         const TString& fileSystemId,
         const TString& clientId,

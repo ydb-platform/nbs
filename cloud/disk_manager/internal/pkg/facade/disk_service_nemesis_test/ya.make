@@ -5,6 +5,7 @@ SET_APPEND(RECIPE_ARGS --multiple-nbs)
 SET_APPEND(RECIPE_ARGS --encryption)
 SET_APPEND(RECIPE_ARGS --min-restart-period-sec 30)
 SET_APPEND(RECIPE_ARGS --max-restart-period-sec 60)
+SET_APPEND(RECIPE_ARGS --disable-disk-registry-based-disks)
 INCLUDE(${ARCADIA_ROOT}/cloud/disk_manager/internal/pkg/facade/testcommon/common.inc)
 
 FORK_SUBTESTS()
