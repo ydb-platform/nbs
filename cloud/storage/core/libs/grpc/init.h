@@ -17,9 +17,14 @@ public:
     ~TGrpcInitializer();
 };
 
+////////////////////////////////////////////////////////////////////////////////
+
 // TLog is saved to the global variable, which is used by grpc logging callback.
 // This means it also has to be stored somewhere else in case grpc lifetime is
-// bound to some other global
-void GrpcLoggerInit(const TLog& log, bool enableTracing = false);
+// bound to some other global.
+// Logger should only be initialized once. Some tests call `GrpcLoggerInit`
+// several times but the logger will be initialized only once, other calls will
+// be ignored.
+void GrpcLoggerInit(TLog log, bool enableTracing);
 
 }   // namespace NCloud

@@ -6,8 +6,8 @@
 #include <cloud/storage/core/libs/common/error.h>
 
 #include <library/cpp/protobuf/util/pb_io.h>
-#include <library/cpp/threading/future/future.h>
 #include <library/cpp/testing/unittest/registar.h>
+#include <library/cpp/threading/future/future.h>
 
 #include <util/generic/guid.h>
 #include <util/stream/file.h>
@@ -58,7 +58,7 @@ bool ExecuteRequest(
         args.push_back(arg.data());
     }
 
-    auto handler = GetHandler(command, client);
+    auto handler = GetHandler(command, std::move(client));
     if (!handler) {
         Cerr << "Failed to find handler for command " << command << Endl;
         return false;

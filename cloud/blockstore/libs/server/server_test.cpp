@@ -220,9 +220,6 @@ TTestFactory::TTestFactory()
     ProfileLog = CreateProfileLogStub();
     RequestStats = CreateRequestStatsStub();
     VolumeStats = CreateVolumeStatsStub();
-    GrpcLog = Logging->CreateLog("GRPC");
-
-    GrpcLoggerInit(GrpcLog);
 }
 
 TTestServerBuilder TTestFactory::CreateServerBuilder()
