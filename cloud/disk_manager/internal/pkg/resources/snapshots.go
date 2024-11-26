@@ -316,13 +316,11 @@ func (s *storageYDB) createSnapshot(
 			return nil, err
 		}
 
-		logging.Info(
-			ctx,
+		return nil, errors.NewNonCancellableErrorf(
 			"snapshot with id %v can't be created, because image with id %v already exists",
 			snapshot.ID,
 			snapshot.ID,
 		)
-		return nil, nil
 	}
 
 	createRequest, err := proto.Marshal(snapshot.CreateRequest)
@@ -379,13 +377,11 @@ func (s *storageYDB) createSnapshot(
 			return state.toSnapshotMeta(), nil
 		}
 
-		logging.Info(
-			ctx,
+		return nil, errors.NewNonCancellableErrorf(
 			"snapshot with different params already exists, old=%v, new=%v",
 			state,
 			snapshot,
 		)
-		return nil, nil
 	}
 
 	state := snapshotState{
@@ -554,13 +550,11 @@ func (s *storageYDB) deleteSnapshot(
 			return nil, err
 		}
 
-		logging.Info(
-			ctx,
+		return nil, errors.NewNonCancellableErrorf(
 			"snapshot with id %v can't be deleted, because image with id %v already exists",
 			snapshotID,
 			snapshotID,
 		)
-		return nil, nil
 	}
 
 	res, err := tx.Execute(ctx, fmt.Sprintf(`

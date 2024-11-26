@@ -75,10 +75,6 @@ func (t *createImageFromSnapshotTask) Run(
 		Encryption:        srcSnapshotEncryption,
 	})
 	if err != nil {
-		if errors.Is(err, resources.NewEmptyImageIDIsNotAcceptedError()) {
-			return errors.NewNonCancellableError(err)
-		}
-
 		return err
 	}
 

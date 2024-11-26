@@ -82,7 +82,8 @@ func TestSnapshotsCreateSnapshot(t *testing.T) {
 
 	snapshot.CreateTaskID = "other"
 	created, err = storage.CreateSnapshot(ctx, snapshot)
-	require.NoError(t, err)
+	require.Error(t, err)
+	require.True(t, errors.Is(err, errors.NewEmptyNonCancellableError()))
 	require.Nil(t, created)
 }
 
@@ -275,7 +276,8 @@ func TestSnapshotsCreateSnapshotShouldFailIfImageAlreadyExists(t *testing.T) {
 	require.NoError(t, err)
 
 	created, err := storage.CreateSnapshot(ctx, SnapshotMeta{ID: image.ID})
-	require.NoError(t, err)
+	require.Error(t, err)
+	require.True(t, errors.Is(err, errors.NewEmptyNonCancellableError()))
 	require.Nil(t, created)
 }
 
@@ -300,7 +302,8 @@ func TestSnapshotsDeleteSnapshotShouldFailIfImageAlreadyExists(t *testing.T) {
 	require.NoError(t, err)
 
 	created, err := storage.DeleteSnapshot(ctx, image.ID, "delete", time.Now())
-	require.NoError(t, err)
+	require.Error(t, err)
+	require.True(t, errors.Is(err, errors.NewEmptyNonCancellableError()))
 	require.Nil(t, created)
 }
 

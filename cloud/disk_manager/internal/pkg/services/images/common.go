@@ -11,7 +11,6 @@ import (
 	pools_protos "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/pools/protos"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
 	"github.com/ydb-platform/nbs/cloud/tasks"
-	"github.com/ydb-platform/nbs/cloud/tasks/errors"
 	"github.com/ydb-platform/nbs/cloud/tasks/headers"
 )
 
@@ -51,10 +50,6 @@ func deleteImage(
 		time.Now(),
 	)
 	if err != nil {
-		if errors.Is(err, resources.NewEmptyImageIDIsNotAcceptedError()) {
-			return errors.NewNonCancellableError(err)
-		}
-
 		return err
 	}
 

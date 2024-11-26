@@ -217,50 +217,6 @@ func imageStateTableDescription() persistence.CreateTableDescription {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-type ImageIDIsNotAcceptedError struct {
-	err     error
-	imageID string
-}
-
-func (e *ImageIDIsNotAcceptedError) Error() string {
-	return fmt.Sprintf(
-		"image id %v is not accepted: %v",
-		e.imageID,
-		e.err.Error(),
-	)
-}
-
-func (e *ImageIDIsNotAcceptedError) Unwrap() error {
-	return e.err
-}
-
-func (e *ImageIDIsNotAcceptedError) Is(target error) bool {
-	t, ok := target.(*ImageIDIsNotAcceptedError)
-	if !ok {
-		return false
-	}
-
-	return t.err == nil || (e.err == t.err)
-}
-
-func NewEmptyImageIDIsNotAcceptedError() *ImageIDIsNotAcceptedError {
-	return &ImageIDIsNotAcceptedError{err: nil, imageID: ""}
-}
-
-func NewImageIDIsNotAcceptedErrorf(
-	imageID string,
-	format string,
-	a ...any,
-) *ImageIDIsNotAcceptedError {
-
-	return &ImageIDIsNotAcceptedError{
-		err:     fmt.Errorf(format, a...),
-		imageID: imageID,
-	}
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
 func (s *storageYDB) imageExists(
 	ctx context.Context,
 	tx *persistence.Transaction,
@@ -374,8 +330,7 @@ func (s *storageYDB) createImage(
 			return nil, err
 		}
 
-		return nil, NewImageIDIsNotAcceptedErrorf(
-			image.ID,
+		return nil, errors.NewNonCancellableErrorf(
 			"image with id %v can't be created, because snapshot with id %v already exists",
 			image.ID,
 			image.ID,
@@ -437,7 +392,7 @@ func (s *storageYDB) createImage(
 			return state.toImageMeta(), nil
 		}
 
-		return nil, NewImageIDIsNotAcceptedErrorf(
+		return nil, errors.NewNonCancellableErrorf(
 			image.ID,
 			"image with different params already exists, old=%v, new=%v",
 			state,
@@ -619,7 +574,7 @@ func (s *storageYDB) deleteImage(
 			return nil, err
 		}
 
-		return nil, NewImageIDIsNotAcceptedErrorf(
+		return nil, errors.NewNonCancellableErrorf(
 			imageID,
 			"image with id %v can't be deleted, because snapshot with id %v already exists",
 			imageID,
