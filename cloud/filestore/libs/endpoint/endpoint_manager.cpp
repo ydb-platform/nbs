@@ -13,9 +13,9 @@
 #include <cloud/storage/core/libs/endpoints/iface/endpoints.h>
 
 #include <util/generic/guid.h>
+#include <util/system/hostname.h>
 #include <util/generic/map.h>
 #include <util/system/sysstat.h>
-#include <util/system/hostname.h>
 
 namespace NCloud::NFileStore {
 

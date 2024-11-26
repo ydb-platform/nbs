@@ -272,7 +272,8 @@ class TDurableEndpointManagerClient final
         Client->Drain();
     }
 
-    NThreading::TFuture<void> RestoreEndpoints() override {
+    NThreading::TFuture<void> RestoreEndpoints() override
+    {
         return Client->RestoreEndpoints();
     }
 
