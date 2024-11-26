@@ -311,11 +311,9 @@ func (s *storageYDB) createImage(
 	image ImageMeta,
 ) (ImageMeta, error) {
 
-	var emptyImageMeta ImageMeta
-
 	tx, err := session.BeginRWTransaction(ctx)
 	if err != nil {
-		return emptyImageMeta, err
+		return ImageMeta{}, err
 	}
 
 	defer tx.Rollback(ctx)
@@ -323,16 +321,16 @@ func (s *storageYDB) createImage(
 	// HACK: see NBS-974 for details.
 	snapshotExists, err := s.snapshotExists(ctx, tx, image.ID)
 	if err != nil {
-		return emptyImageMeta, err
+		return ImageMeta{}, err
 	}
 
 	if snapshotExists {
 		err = tx.Commit(ctx)
 		if err != nil {
-			return emptyImageMeta, err
+			return ImageMeta{}, err
 		}
 
-		return emptyImageMeta, errors.NewNonCancellableErrorf(
+		return ImageMeta{}, errors.NewNonCancellableErrorf(
 			"image with id %v can't be created, because snapshot with id %v already exists",
 			image.ID,
 			image.ID,
@@ -341,7 +339,7 @@ func (s *storageYDB) createImage(
 
 	createRequest, err := proto.Marshal(image.CreateRequest)
 	if err != nil {
-		return emptyImageMeta, errors.NewNonRetriableErrorf(
+		return ImageMeta{}, errors.NewNonRetriableErrorf(
 			"failed to marshal create request for image with id %v: %w",
 			image.ID,
 			err,
@@ -360,27 +358,27 @@ func (s *storageYDB) createImage(
 		persistence.ValueParam("$id", persistence.UTF8Value(image.ID)),
 	)
 	if err != nil {
-		return emptyImageMeta, err
+		return ImageMeta{}, err
 	}
 
 	defer res.Close()
 
 	states, err := scanImageStates(ctx, res)
 	if err != nil {
-		return emptyImageMeta, err
+		return ImageMeta{}, err
 	}
 
 	if len(states) != 0 {
 		err = tx.Commit(ctx)
 		if err != nil {
-			return emptyImageMeta, err
+			return ImageMeta{}, err
 		}
 
 		state := states[0]
 
 		if state.status >= imageStatusDeleting {
 			logging.Info(ctx, "can't create already deleting/deleted image with id %v", image.ID)
-			return emptyImageMeta, errors.NewSilentNonRetriableErrorf(
+			return ImageMeta{}, errors.NewSilentNonRetriableErrorf(
 				"can't create already deleting/deleted image with id %v",
 				image.ID,
 			)
@@ -394,7 +392,7 @@ func (s *storageYDB) createImage(
 			return *state.toImageMeta(), nil
 		}
 
-		return emptyImageMeta, errors.NewNonCancellableErrorf(
+		return ImageMeta{}, errors.NewNonCancellableErrorf(
 			"image with different params already exists, old=%v, new=%v",
 			state,
 			image,
@@ -425,7 +423,7 @@ func (s *storageYDB) createImage(
 		case nil:
 			state.encryptionKeyHash = nil
 		default:
-			return emptyImageMeta, errors.NewNonRetriableErrorf(
+			return ImageMeta{}, errors.NewNonRetriableErrorf(
 				"unknown key %s",
 				key,
 			)
@@ -447,12 +445,12 @@ func (s *storageYDB) createImage(
 		persistence.ValueParam("$states", persistence.ListValue(state.structValue())),
 	)
 	if err != nil {
-		return emptyImageMeta, err
+		return ImageMeta{}, err
 	}
 
 	err = tx.Commit(ctx)
 	if err != nil {
-		return emptyImageMeta, err
+		return ImageMeta{}, err
 	}
 
 	return *state.toImageMeta(), nil

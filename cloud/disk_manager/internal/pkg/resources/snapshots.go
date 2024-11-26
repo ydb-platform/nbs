@@ -298,27 +298,25 @@ func (s *storageYDB) createSnapshot(
 	snapshot SnapshotMeta,
 ) (SnapshotMeta, error) {
 
-	var emptySnapshotMeta SnapshotMeta
-
 	tx, err := session.BeginRWTransaction(ctx)
 	if err != nil {
-		return emptySnapshotMeta, err
+		return SnapshotMeta{}, err
 	}
 	defer tx.Rollback(ctx)
 
 	// HACK: see NBS-974 for details.
 	imageExists, err := s.imageExists(ctx, tx, snapshot.ID)
 	if err != nil {
-		return emptySnapshotMeta, err
+		return SnapshotMeta{}, err
 	}
 
 	if imageExists {
 		err = tx.Commit(ctx)
 		if err != nil {
-			return emptySnapshotMeta, err
+			return SnapshotMeta{}, err
 		}
 
-		return emptySnapshotMeta, errors.NewNonCancellableErrorf(
+		return SnapshotMeta{}, errors.NewNonCancellableErrorf(
 			"snapshot with id %v can't be created, because image with id %v already exists",
 			snapshot.ID,
 			snapshot.ID,
@@ -327,7 +325,7 @@ func (s *storageYDB) createSnapshot(
 
 	createRequest, err := proto.Marshal(snapshot.CreateRequest)
 	if err != nil {
-		return emptySnapshotMeta, errors.NewNonRetriableErrorf(
+		return SnapshotMeta{}, errors.NewNonRetriableErrorf(
 			"failed to marshal create request for snapshot with id %v: %w",
 			snapshot.ID,
 			err,
@@ -346,26 +344,26 @@ func (s *storageYDB) createSnapshot(
 		persistence.ValueParam("$id", persistence.UTF8Value(snapshot.ID)),
 	)
 	if err != nil {
-		return emptySnapshotMeta, err
+		return SnapshotMeta{}, err
 	}
 	defer res.Close()
 
 	states, err := scanSnapshotStates(ctx, res)
 	if err != nil {
-		return emptySnapshotMeta, err
+		return SnapshotMeta{}, err
 	}
 
 	if len(states) != 0 {
 		err = tx.Commit(ctx)
 		if err != nil {
-			return emptySnapshotMeta, err
+			return SnapshotMeta{}, err
 		}
 
 		state := states[0]
 
 		if state.status >= snapshotStatusDeleting {
 			logging.Info(ctx, "can't create already deleting/deleted snapshot with id %v", snapshot.ID)
-			return emptySnapshotMeta, errors.NewSilentNonRetriableErrorf(
+			return SnapshotMeta{}, errors.NewSilentNonRetriableErrorf(
 				"can't create already deleting/deleted snapshot with id %v",
 				snapshot.ID,
 			)
@@ -379,7 +377,7 @@ func (s *storageYDB) createSnapshot(
 			return *state.toSnapshotMeta(), nil
 		}
 
-		return emptySnapshotMeta, errors.NewNonCancellableErrorf(
+		return SnapshotMeta{}, errors.NewNonCancellableErrorf(
 			"snapshot with different params already exists, old=%v, new=%v",
 			state,
 			snapshot,
@@ -410,7 +408,7 @@ func (s *storageYDB) createSnapshot(
 		case nil:
 			state.encryptionKeyHash = nil
 		default:
-			return emptySnapshotMeta, errors.NewNonRetriableErrorf(
+			return SnapshotMeta{}, errors.NewNonRetriableErrorf(
 				"unknown key %s",
 				key,
 			)
@@ -432,12 +430,12 @@ func (s *storageYDB) createSnapshot(
 		persistence.ValueParam("$states", persistence.ListValue(state.structValue())),
 	)
 	if err != nil {
-		return emptySnapshotMeta, err
+		return SnapshotMeta{}, err
 	}
 
 	err = tx.Commit(ctx)
 	if err != nil {
-		return emptySnapshotMeta, err
+		return SnapshotMeta{}, err
 	}
 
 	return *state.toSnapshotMeta(), nil
