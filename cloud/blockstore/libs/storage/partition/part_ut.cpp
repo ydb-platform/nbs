@@ -7220,9 +7220,9 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
                 runtime->DispatchEvents(options);
             }
 
-            auto compResponse = partition.RecvCompactRangeResponse();
-            UNIT_ASSERT_VALUES_EQUAL(S_OK, compResponse->GetStatus());
-            op.push_back(compResponse->Record.GetOperationId());
+            auto response = partition.RecvCompactRangeResponse();
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
+            op.push_back(response->Record.GetOperationId());
         }
 
         runtime->AdvanceCurrentTime(CompactOpHistoryDuration + TDuration::Seconds(1));
