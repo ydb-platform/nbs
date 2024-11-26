@@ -604,8 +604,10 @@ func TestSnapshotServiceDeleteIncrementalSnapshotWhileCreating(t *testing.T) {
 	if creationErr == nil {
 		testcommon.RequireCheckpointsAreEmpty(t, ctx, diskID)
 	} else {
-		// Checkpoint of base snapshot should not be deleted.
-		// TODO: enable this check after resolving issue #2008.
+		// Checkpoint that corresponds to base snapshot should not be deleted.
+		// NOTE: we use snapshot id as checkpoint id.
+		// TODO: enable this check after resolving issue
+		// https://github.com/ydb-platform/nbs/issues/2008.
 		// testcommon.RequireCheckpoint(t, ctx, diskID, baseSnapshotID)
 	}
 
