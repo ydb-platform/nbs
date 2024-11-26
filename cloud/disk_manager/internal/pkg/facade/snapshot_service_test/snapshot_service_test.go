@@ -596,11 +596,18 @@ func TestSnapshotServiceDeleteIncrementalSnapshotWhileCreating(t *testing.T) {
 	require.NoError(t, err)
 	require.NotEmpty(t, deleteOperation)
 
-	// Don't check error, because we have race condition here.
-	_ = internal_client.WaitOperation(ctx, client, createOperation.Id)
+	creationErr := internal_client.WaitOperation(ctx, client, createOperation.Id)
 
 	err = internal_client.WaitOperation(ctx, client, deleteOperation.Id)
 	require.NoError(t, err)
+
+	if creationErr == nil {
+		testcommon.RequireCheckpointsAreEmpty(t, ctx, diskID)
+	} else {
+		// Checkpoint of base snapshot should not be deleted.
+		// TODO: enable this check after resolving issue #2008.
+		// testcommon.RequireCheckpoint(t, ctx, diskID, baseSnapshotID)
+	}
 
 	snapshotID2 := t.Name() + "2"
 
