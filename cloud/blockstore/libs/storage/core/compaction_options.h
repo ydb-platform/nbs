@@ -8,14 +8,19 @@ namespace NCloud::NBlockStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-enum ECompactionOptions: ui32
+enum class ECompactionOption: size_t
 {
-    ForceFullCompaction,
-    ExternalCompaction,
+    Forced,
+    External,
     MaxFieldNumber
 };
 
+constexpr size_t ToBit(ECompactionOption option)
+{
+    return static_cast<size_t>(option);
+}
+
 using TCompactionOptions =
-    std::bitset<ECompactionOptions::MaxFieldNumber>;
+    std::bitset<ToBit(ECompactionOption::MaxFieldNumber)>;
 
 }   // namespace NCloud::NBlockStore::NStorage

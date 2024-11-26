@@ -896,16 +896,17 @@ private:
     TOperationState CompactionState;
 
     TCompactionMap CompactionMap;
-    bool ExternalCompactionRequestRunning = false;
+    bool ExternalCompactionRunning = false;
 
 public:
-    bool SetExternalCompactionRequestRunning(bool running)
+    void SetExternalCompactionRunning(bool running)
     {
-        if (ExternalCompactionRequestRunning && running) {
-            return false;
-        }
-        ExternalCompactionRequestRunning = running;
-        return true;
+        ExternalCompactionRunning = running;
+    }
+
+    bool GetExternalCompactionRunning() const
+    {
+        return ExternalCompactionRunning;
     }
 
     EOperationStatus GetCompactionStatus() const

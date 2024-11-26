@@ -7116,12 +7116,12 @@ Y_UNIT_TEST_SUITE(TPartition2Test)
 
         partition.SendCompactionRequest(
             0,
-            TCompactionOptions().set(ForceFullCompaction));
+            TCompactionOptions().set(ToBit(ECompactionOption::Forced)));
         partition.Compaction(
             0,
             TCompactionOptions().
-                set(ForceFullCompaction).
-                set(ExternalCompaction));
+                set(ToBit(ECompactionOption::Forced)).
+                set(ToBit(ECompactionOption::External)));
     }
 
     Y_UNIT_TEST(ShouldAllowOnlyOneExternalCompactionRequestsAtATime)
@@ -7159,13 +7159,13 @@ Y_UNIT_TEST_SUITE(TPartition2Test)
         partition.SendCompactionRequest(
             0,
             TCompactionOptions().
-                set(ForceFullCompaction).
-                set(ExternalCompaction));
+                set(ToBit(ECompactionOption::Forced)).
+                set(ToBit(ECompactionOption::External)));
         partition.SendCompactionRequest(
             0,
             TCompactionOptions().
-                set(ForceFullCompaction).
-                set(ExternalCompaction));
+                set(ToBit(ECompactionOption::Forced)).
+                set(ToBit(ECompactionOption::External)));
 
         auto response = partition.RecvCompactionResponse();
         UNIT_ASSERT_VALUES_EQUAL(E_TRY_AGAIN, response->GetStatus());

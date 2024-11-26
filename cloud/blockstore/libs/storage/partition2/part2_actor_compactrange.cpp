@@ -94,9 +94,8 @@ void TForcedCompactionActor::SendCompactionRequest(const TActorContext& ctx)
         MakeIntrusive<TCallContext>(),
         RangesToCompact[CurrentBlock],
         TCompactionOptions().
-            set(ExternalCompaction).
-            set(ForceFullCompaction)
-    );
+            set(ToBit(ECompactionOption::External)).
+            set(ToBit(ECompactionOption::Forced)));
 
     NCloud::Send(ctx, Tablet, std::move(request));
 }

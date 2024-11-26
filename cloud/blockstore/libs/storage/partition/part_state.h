@@ -798,18 +798,18 @@ private:
     const ui32 MaxBlobsPerRange;
     ui32 CompactionRangeCountPerRun;
     TInstant LastCompactionRangeCountPerRunTs;
-    bool ExternalCompactionRequestRunning = false;
+    bool ExternalCompactionRunning = false;
 
 public:
-    bool SetExternalCompactionRequestRunning(bool running)
+    void SetExternalCompactionRunning(bool running)
     {
-        if (ExternalCompactionRequestRunning && running) {
-            return false;
-        }
-        ExternalCompactionRequestRunning = running;
-        return true;
+        ExternalCompactionRunning = running;
     }
 
+    bool GetExternalCompactionRinning() const
+    {
+        return ExternalCompactionRunning;
+    }
 
     TOperationState& GetCompactionState()
     {

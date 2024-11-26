@@ -1181,7 +1181,7 @@ void TPartitionActor::EnqueueCompactionIfNeeded(const TActorContext& ctx)
     if (mode == TEvPartitionPrivate::GarbageCompaction
             || !diskGarbageBelowThreshold)
     {
-        request->CompactionOptions.set(ForceFullCompaction);
+        request->CompactionOptions.set(ToBit(ECompactionOption::Forced));
     }
 
     if (throttlingAllowed && Config->GetMaxCompactionDelay()) {
@@ -1257,11 +1257,12 @@ void TPartitionActor::HandleCompaction(
         return;
     }
 
-    if (msg->CompactionOptions.test(ExternalCompaction)) {
-        if (!State->SetExternalCompactionRequestRunning(true)) {
+    if (msg->CompactionOptions.test(ToBit(ECompactionOption::External))) {
+        if (State->GetExternalCompactionRinning()) {
             replyError(ctx, *requestInfo, E_TRY_AGAIN, "external compaction already started");
             return;
         }
+        State->SetExternalCompactionRunning(true);
     } else if (State->GetCompactionState().Status == EOperationStatus::Started) {
         replyError(ctx, *requestInfo, E_TRY_AGAIN, "compaction already started");
         return;
@@ -1297,8 +1298,9 @@ void TPartitionActor::HandleCompaction(
     }
 
     if (tops.empty() || !tops.front().Stat.BlobCount) {
-        if (msg->CompactionOptions.test(ExternalCompaction)) {
-            State->SetExternalCompactionRequestRunning(false);
+        if (msg->CompactionOptions.test(ToBit(ECompactionOption::External)))
+        {
+            State->SetExternalCompactionRunning(false);
         } else {
             State->GetCompactionState().SetStatus(EOperationStatus::Idle);
         }
@@ -1416,7 +1418,7 @@ void TPartitionActor::HandleCompactionCompleted(
     State->GetGarbageQueue().ReleaseBarrier(commitId);
 
     if (msg->ExternalCompaction) {
-        State->SetExternalCompactionRequestRunning(false);
+        State->SetExternalCompactionRunning(false);
     } else {
         State->GetCompactionState().SetStatus(EOperationStatus::Idle);
     }
@@ -1903,7 +1905,7 @@ bool TPartitionActor::PrepareCompaction(
             PartitionConfig.GetFolderId(),
             PartitionConfig.GetDiskId(),
             args.CommitId,
-            args.CompactionOptions.test(ForceFullCompaction),
+            args.CompactionOptions.test(ToBit(ECompactionOption::Forced)),
             ctx,
             TabletID(),
             affectedBlobIds,
@@ -1990,7 +1992,7 @@ void TPartitionActor::CompleteCompaction(
         Config->GetMaxAffectedBlocksPerCompaction(),
         BlockDigestGenerator,
         readBlobTimeout,
-        args.CompactionOptions.test(ExternalCompaction),
+        args.CompactionOptions.test(ToBit(ECompactionOption::External)),
         args.CommitId,
         std::move(rangeCompactionInfos),
         std::move(requests));

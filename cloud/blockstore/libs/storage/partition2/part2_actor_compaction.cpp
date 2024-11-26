@@ -759,11 +759,12 @@ void TPartitionActor::HandleCompaction(
         return;
     }
 
-    if (msg->CompactionOptions.test(ExternalCompaction)) {
-        if (!State->SetExternalCompactionRequestRunning(true)) {
+    if (msg->CompactionOptions.test(ToBit(ECompactionOption::External))) {
+        if (State->GetExternalCompactionRunning()) {
             replyError(ctx, *requestInfo, E_TRY_AGAIN, "external compaction already started");
             return;
         }
+        State->SetExternalCompactionRunning(true);
     } else if (State->GetCompactionStatus() == EOperationStatus::Started) {
         replyError(ctx, *requestInfo, E_TRY_AGAIN, "compaction already started");
         return;
@@ -798,8 +799,8 @@ void TPartitionActor::HandleCompaction(
     }
 
     if (!rangeStat.BlobCount && !garbageInfo.BlobCounters) {
-        if (msg->CompactionOptions.test(ExternalCompaction)) {
-            State->SetExternalCompactionRequestRunning(false);
+        if (msg->CompactionOptions.test(ToBit(ECompactionOption::External))) {
+            State->SetExternalCompactionRunning(false);
         } else {
             State->SetCompactionStatus(EOperationStatus::Idle);
         }
@@ -831,13 +832,13 @@ void TPartitionActor::HandleCompaction(
             rangeStat.ReadRequestBlobCount,
             rangeStat.ReadRequestBlockCount,
             rangeStat.CompactionScore.Score,
-            msg->CompactionOptions.test(ForceFullCompaction)
+            msg->CompactionOptions.test(ToBit(ECompactionOption::Forced))
         );
 
         tx = CreateTx<TCompaction>(
             requestInfo,
             blockRange,
-            msg->CompactionOptions.test(ForceFullCompaction));
+            msg->CompactionOptions.test(ToBit(ECompactionOption::Forced)));
     } else {
         LOG_DEBUG(ctx, TBlockStoreComponents::PARTITION,
             "[%lu] Start compaction (blobs: %s)",
@@ -883,7 +884,7 @@ void TPartitionActor::HandleCompactionCompleted(
     State->ReleaseCollectBarrier(msg->CommitId);
 
     if (msg->ExternalCompaction) {
-        State->SetExternalCompactionRequestRunning(false);
+        State->SetExternalCompactionRunning(false);
     } else {
         State->SetCompactionStatus(EOperationStatus::Idle);
     }
@@ -973,7 +974,7 @@ bool TPartitionActor::PrepareCompaction(
 
     visitor.Finish();
 
-    if (!args.CompactionOptions.test(ForceFullCompaction)) {
+    if (!args.CompactionOptions.test(ToBit(ECompactionOption::Forced))) {
         Sort(
             args.Blobs.begin(),
             args.Blobs.end(),
@@ -1205,7 +1206,7 @@ void TPartitionActor::CompleteCompaction(
         args.CommitId,
         args.BlockRange,
         readBlobTimeout,
-        args.CompactionOptions.test(ExternalCompaction),
+        args.CompactionOptions.test(ToBit(ECompactionOption::External)),
         std::move(args.GarbageInfo),
         std::move(args.AffectedBlobInfos),
         args.BlobsSkipped,
