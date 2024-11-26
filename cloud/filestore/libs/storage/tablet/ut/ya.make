@@ -1,6 +1,6 @@
 UNITTEST_FOR(cloud/filestore/libs/storage/tablet)
 
-INCLUDE(${ARCADIA_ROOT}/cloud/filestore/tests/recipes/medium.inc)
+INCLUDE(${ARCADIA_ROOT}/cloud/filestore/tests/recipes/small.inc)
 
 SRCS(
     helpers_ut.cpp
