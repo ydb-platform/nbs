@@ -589,6 +589,9 @@ func TestSnapshotServiceDeleteIncrementalSnapshotWhileCreating(t *testing.T) {
 	require.NoError(t, err)
 	require.NotEmpty(t, createOperation)
 
+	// Need to add some variance for better testing.
+	common.WaitForRandomDuration(1*time.Second, 3*time.Second)
+
 	reqCtx = testcommon.GetRequestContext(t, ctx)
 	deleteOperation, err := client.DeleteSnapshot(reqCtx, &disk_manager.DeleteSnapshotRequest{
 		SnapshotId: snapshotID1,
@@ -629,6 +632,9 @@ func TestSnapshotServiceDeleteIncrementalSnapshotWhileCreating(t *testing.T) {
 	err = internal_client.WaitOperation(ctx, client, operation.Id)
 	require.NoError(t, err)
 
+	if creationErr != nil {
+		testcommon.CheckBaseSnapshot(t, ctx, snapshotID2, baseSnapshotID)
+	}
 	testcommon.CheckConsistency(t, ctx)
 }
 
