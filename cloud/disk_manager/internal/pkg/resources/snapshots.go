@@ -578,21 +578,22 @@ func (s *storageYDB) deleteSnapshot(
 		return nil, err
 	}
 
-	var state snapshotState
+	if len(states) == 0 {
+		// Should be idempotent.
+		return nil, nil
+	}
 
-	if len(states) != 0 {
-		state = states[0]
+	state := states[0]
 
-		if state.status >= snapshotStatusDeleting {
-			// Snapshot already marked as deleting/deleted.
+	if state.status >= snapshotStatusDeleting {
+		// Snapshot already marked as deleting/deleted.
 
-			err = tx.Commit(ctx)
-			if err != nil {
-				return nil, err
-			}
-
-			return state.toSnapshotMeta(), nil
+		err = tx.Commit(ctx)
+		if err != nil {
+			return nil, err
 		}
+
+		return state.toSnapshotMeta(), nil
 	}
 
 	state.id = snapshotID

@@ -181,13 +181,13 @@ func TestSnapshotsDeleteNonexistentSnapshot(t *testing.T) {
 	deletingAt := time.Now()
 	actual, err := storage.DeleteSnapshot(ctx, snapshot.ID, "delete", deletingAt)
 	require.NoError(t, err)
-	requireSnapshotsAreEqual(t, snapshot, *actual)
+	require.Nil(t, actual)
 
 	// Check idempotency.
 	deletingAt = deletingAt.Add(time.Second)
 	actual, err = storage.DeleteSnapshot(ctx, snapshot.ID, "delete", deletingAt)
 	require.NoError(t, err)
-	requireSnapshotsAreEqual(t, snapshot, *actual)
+	require.Nil(t, actual)
 
 	_, err = storage.CreateSnapshot(ctx, snapshot)
 	require.Error(t, err)

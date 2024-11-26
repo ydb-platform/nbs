@@ -393,7 +393,6 @@ func (s *storageYDB) createImage(
 		}
 
 		return nil, errors.NewNonCancellableErrorf(
-			image.ID,
 			"image with different params already exists, old=%v, new=%v",
 			state,
 			image,
@@ -575,7 +574,6 @@ func (s *storageYDB) deleteImage(
 		}
 
 		return nil, errors.NewNonCancellableErrorf(
-			imageID,
 			"image with id %v can't be deleted, because snapshot with id %v already exists",
 			imageID,
 			imageID,
