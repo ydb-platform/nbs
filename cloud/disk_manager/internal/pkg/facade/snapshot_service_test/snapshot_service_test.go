@@ -589,6 +589,9 @@ func TestSnapshotServiceDeleteIncrementalSnapshotWhileCreating(t *testing.T) {
 	require.NoError(t, err)
 	require.NotEmpty(t, createOperation)
 
+	// Need to add some variance for better testing.
+	common.WaitForRandomDuration(1*time.Second, 3*time.Second)
+
 	reqCtx = testcommon.GetRequestContext(t, ctx)
 	deleteOperation, err := client.DeleteSnapshot(reqCtx, &disk_manager.DeleteSnapshotRequest{
 		SnapshotId: snapshotID1,
@@ -596,11 +599,20 @@ func TestSnapshotServiceDeleteIncrementalSnapshotWhileCreating(t *testing.T) {
 	require.NoError(t, err)
 	require.NotEmpty(t, deleteOperation)
 
-	// Don't check error, because we have race condition here.
-	_ = internal_client.WaitOperation(ctx, client, createOperation.Id)
+	creationErr := internal_client.WaitOperation(ctx, client, createOperation.Id)
 
 	err = internal_client.WaitOperation(ctx, client, deleteOperation.Id)
 	require.NoError(t, err)
+
+	if creationErr == nil {
+		testcommon.RequireCheckpointsAreEmpty(t, ctx, diskID)
+	} else {
+		// Checkpoint that corresponds to base snapshot should not be deleted.
+		// NOTE: we use snapshot id as checkpoint id.
+		// TODO: enable this check after resolving issue
+		// https://github.com/ydb-platform/nbs/issues/2008.
+		// testcommon.RequireCheckpoint(t, ctx, diskID, baseSnapshotID)
+	}
 
 	snapshotID2 := t.Name() + "2"
 
