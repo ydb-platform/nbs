@@ -67,6 +67,7 @@ func newControllerClient(
 func newCreateVolumeCommand(endpoint *string) *cobra.Command {
 	var name string
 	var size int64
+	var nfsBackend bool
 	cmd := cobra.Command{
 		Use:   "createvolume",
 		Short: "Send create volume request to the controller",
@@ -92,6 +93,11 @@ func newCreateVolumeCommand(endpoint *string) *cobra.Command {
 					},
 				},
 			}
+			parameters := make(map[string]string)
+			if nfsBackend {
+				parameters["backend"] = "nfs"
+			}
+
 			response, err := client.CreateVolume(
 				ctx,
 				&csi.CreateVolumeRequest{
@@ -117,6 +123,7 @@ func newCreateVolumeCommand(endpoint *string) *cobra.Command {
 							},
 						},
 					},
+					Parameters: parameters,
 				},
 			)
 
@@ -138,6 +145,12 @@ func newCreateVolumeCommand(endpoint *string) *cobra.Command {
 		"size",
 		0,
 		"The size of the disk in bytes",
+	)
+	cmd.Flags().BoolVar(
+		&nfsBackend,
+		"nfs-backend",
+		false,
+		"Use nfs backend",
 	)
 	err := cmd.MarkFlagRequired("name")
 	if err != nil {
@@ -225,6 +238,7 @@ func getTargetPath(podId string, volumeId string, accessType string) string {
 
 func newNodeStageVolumeCommand(endpoint *string) *cobra.Command {
 	var volumeId, stagingTargetPath, accessType string
+	var nfsBackend bool
 	cmd := cobra.Command{
 		Use:   "stagevolume",
 		Short: "Send stage volume request to the CSI node",
@@ -242,6 +256,10 @@ func newNodeStageVolumeCommand(endpoint *string) *cobra.Command {
 			volumeContext := map[string]string{
 				"instanceId": "example-instance-id",
 			}
+			if nfsBackend {
+				volumeContext["backend"] = "nfs"
+			}
+
 			accessMode := csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER
 			response, err := client.NodeStageVolume(
 				ctx,
@@ -278,6 +296,12 @@ func newNodeStageVolumeCommand(endpoint *string) *cobra.Command {
 		"mount",
 		"mount or block access type",
 	)
+	cmd.Flags().BoolVar(
+		&nfsBackend,
+		"nfs-backend",
+		false,
+		"Use nfs backend",
+	)
 	err := cmd.MarkFlagRequired("volume-id")
 	if err != nil {
 		log.Fatal(err)
@@ -290,6 +314,7 @@ func newPublishVolumeCommand(endpoint *string) *cobra.Command {
 	var accessType string
 	var readOnly bool
 	var volumeMountGroup string
+	var nfsBackend bool
 	cmd := cobra.Command{
 		Use:   "publishvolume",
 		Short: "Send publish volume request to the CSI node",
@@ -314,6 +339,10 @@ func newPublishVolumeCommand(endpoint *string) *cobra.Command {
 				"instanceId": "example-instance-id",
 				"fsType":     fsType,
 			}
+			if nfsBackend {
+				volumeContext["backend"] = "nfs"
+			}
+
 			accessMode := csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER
 
 			response, err := client.NodePublishVolume(
@@ -379,6 +408,12 @@ func newPublishVolumeCommand(endpoint *string) *cobra.Command {
 		"volume-mount-group",
 		"",
 		"fs group id",
+	)
+	cmd.Flags().BoolVar(
+		&nfsBackend,
+		"nfs-backend",
+		false,
+		"Use nfs bacend",
 	)
 
 	err := cmd.MarkFlagRequired("volume-id")

@@ -28,6 +28,10 @@ func main() {
 	flag.UintVar(&cfg.NfsVhostPort, "nfs-vhost-port", 9022, "NFS vhost port")
 	flag.StringVar(&cfg.NfsVhostSocket, "nfs-vhost-socket", "", "NFS vhost unix socket path")
 	flag.StringVar(&cfg.SocketsDir, "sockets-dir", "/run/nbsd/sockets", "Path to folder with disk sockets")
+	flag.StringVar(&cfg.LocalFilestoreOverridePath, "local-filestore-override", "", "Path to file with local filestore override entries")
+	flag.StringVar(&cfg.NfsLocalHost, "nfs-local-host", "localhost", "NFS local host")
+	flag.UintVar(&cfg.NfsLocalFilestorePort, "nfs-local-filestore-port", 9023, "NFS local filestore port")
+	flag.UintVar(&cfg.NfsLocalEndpointPort, "nfs-local-endpoint-port", 9024, "NFS local endpoint port")
 
 	flag.Parse()
 
