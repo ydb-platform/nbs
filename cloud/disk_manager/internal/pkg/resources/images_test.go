@@ -55,12 +55,12 @@ func TestImagesCreateImage(t *testing.T) {
 
 	created, err := storage.CreateImage(ctx, image)
 	require.NoError(t, err)
-	require.NotNil(t, created)
+	require.Equal(t, image.ID, created.ID)
 
 	// Check idempotency.
 	created, err = storage.CreateImage(ctx, image)
 	require.NoError(t, err)
-	require.NotNil(t, created)
+	require.Equal(t, image.ID, created.ID)
 
 	err = storage.ImageCreated(ctx, image.ID, time.Now(), 0, 0)
 	require.NoError(t, err)
@@ -72,15 +72,14 @@ func TestImagesCreateImage(t *testing.T) {
 	// Check idempotency.
 	created, err = storage.CreateImage(ctx, image)
 	require.NoError(t, err)
-	require.NotNil(t, created)
+	require.Equal(t, image.ID, created.ID)
 
 	require.EqualValues(t, "disk", created.SrcDiskID)
 
 	image.CreateTaskID = "other"
-	created, err = storage.CreateImage(ctx, image)
+	_, err = storage.CreateImage(ctx, image)
 	require.Error(t, err)
 	require.True(t, errors.Is(err, errors.NewEmptyNonCancellableError()))
-	require.Nil(t, created)
 }
 
 func TestImagesDeleteImage(t *testing.T) {
@@ -106,7 +105,7 @@ func TestImagesDeleteImage(t *testing.T) {
 
 	created, err := storage.CreateImage(ctx, image)
 	require.NoError(t, err)
-	require.NotNil(t, created)
+	require.Equal(t, image.ID, created.ID)
 
 	expected := image
 	expected.CreateRequest = nil
@@ -216,7 +215,7 @@ func TestImagesClearDeletedImages(t *testing.T) {
 
 	created, err := storage.CreateImage(ctx, image)
 	require.NoError(t, err)
-	require.NotNil(t, created)
+	require.Equal(t, image.ID, created.ID)
 
 	_, err = storage.DeleteImage(ctx, image.ID, "delete", deletedAt)
 	require.NoError(t, err)
@@ -237,7 +236,7 @@ func TestImagesClearDeletedImages(t *testing.T) {
 
 	created, err = storage.CreateImage(ctx, image)
 	require.NoError(t, err)
-	require.NotNil(t, created)
+	require.Equal(t, image.ID, created.ID)
 }
 
 func TestImagesCreateImageShouldFailIfSnapshotAlreadyExists(t *testing.T) {
@@ -264,10 +263,9 @@ func TestImagesCreateImageShouldFailIfSnapshotAlreadyExists(t *testing.T) {
 	_, err = storage.CreateSnapshot(ctx, snapshot)
 	require.NoError(t, err)
 
-	created, err := storage.CreateImage(ctx, ImageMeta{ID: snapshot.ID})
+	_, err = storage.CreateImage(ctx, ImageMeta{ID: snapshot.ID})
 	require.Error(t, err)
 	require.True(t, errors.Is(err, errors.NewEmptyNonCancellableError()))
-	require.Nil(t, created)
 }
 
 func TestImagesDeleteImageShouldFailIfSnapshotAlreadyExists(t *testing.T) {
@@ -331,7 +329,7 @@ func TestImagesGetImage(t *testing.T) {
 
 	created, err := storage.CreateImage(ctx, image)
 	require.NoError(t, err)
-	require.NotNil(t, created)
+	require.Equal(t, image.ID, created.ID)
 
 	image.CreateRequest = nil
 
