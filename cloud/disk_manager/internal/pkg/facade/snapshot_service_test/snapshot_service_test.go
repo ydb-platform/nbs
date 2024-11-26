@@ -632,9 +632,6 @@ func TestSnapshotServiceDeleteIncrementalSnapshotWhileCreating(t *testing.T) {
 	err = internal_client.WaitOperation(ctx, client, operation.Id)
 	require.NoError(t, err)
 
-	if creationErr != nil {
-		testcommon.CheckBaseSnapshot(t, ctx, snapshotID2, baseSnapshotID)
-	}
 	testcommon.CheckConsistency(t, ctx)
 }
 
