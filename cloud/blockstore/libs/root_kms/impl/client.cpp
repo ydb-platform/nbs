@@ -180,10 +180,7 @@ private:
 
     const ILoggingServicePtr Logging;
 
-    const TString Address;
-    const TString RootCAPath;
-    const TString CertKeyPath;
-    const TString PrivateKeyPath;
+    const TCreateRootKmsClientParams Params;
 
     TLog Log;
 
@@ -195,10 +192,7 @@ private:
 public:
     TRootKmsClient(
         ILoggingServicePtr logging,
-        TString address,
-        TString rootCAPath,
-        TString certKeyPath,
-        TString privateKeyPath);
+        TCreateRootKmsClientParams params);
 
     ~TRootKmsClient() override;
 
@@ -219,15 +213,9 @@ private:
 
 TRootKmsClient::TRootKmsClient(
         ILoggingServicePtr logging,
-        TString address,
-        TString rootCAPath,
-        TString certKeyPath,
-        TString privateKeyPath)
+        TCreateRootKmsClientParams params)
     : Logging(std::move(logging))
-    , Address(std::move(address))
-    , RootCAPath(std::move(rootCAPath))
-    , CertKeyPath(std::move(certKeyPath))
-    , PrivateKeyPath(std::move(privateKeyPath))
+    , Params(std::move(params))
     , Log(Logging->CreateLog("ROOT_KMS_CLIENT"))
 {
 }
@@ -240,14 +228,20 @@ TRootKmsClient::~TRootKmsClient()
 void TRootKmsClient::Start()
 {
     grpc::SslCredentialsOptions sslOpts{
-        .pem_root_certs = ReadFile(RootCAPath),
-        .pem_private_key = ReadFile(PrivateKeyPath),
-        .pem_cert_chain = ReadFile(CertKeyPath)
+        .pem_root_certs = ReadFile(Params.RootCAPath),
+        .pem_private_key = ReadFile(Params.PrivateKeyPath),
+        .pem_cert_chain = ReadFile(Params.CertChainPath)
     };
 
-    STORAGE_INFO("Connect to " << Address);
+    STORAGE_INFO("Connect to " << Params.Address);
 
-    auto channel = grpc::CreateChannel(Address, grpc::SslCredentials(sslOpts));
+    grpc::ChannelArguments channelArgs;
+    channelArgs.SetLoadBalancingPolicyName("round_robin");
+
+    auto channel = grpc::CreateCustomChannel(
+        Params.Address,
+        grpc::SslCredentials(sslOpts),
+        channelArgs);
 
     Service = std::shared_ptr<kms::SymmetricCryptoService::Stub>(
         kms::SymmetricCryptoService::NewStub(std::move(channel)));
@@ -325,17 +319,11 @@ void TRootKmsClient::ThreadFn()
 
 IRootKmsClientPtr CreateRootKmsClient(
     ILoggingServicePtr logging,
-    TString address,
-    TString rootCAPath,
-    TString certKeyPath,
-    TString privateKeyPath)
+    TCreateRootKmsClientParams params)
 {
     return std::make_shared<TRootKmsClient>(
         std::move(logging),
-        std::move(address),
-        std::move(rootCAPath),
-        std::move(certKeyPath),
-        std::move(privateKeyPath));
+        std::move(params));
 }
 
 }   // namespace NCloud::NBlockStore

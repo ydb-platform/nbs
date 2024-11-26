@@ -28,11 +28,10 @@ struct TFixture
     {
         Client = CreateRootKmsClient(
             Logging,
-            "localhost:" + GetEnv("FAKE_ROOT_KMS_PORT"),
-            GetEnv("FAKE_ROOT_KMS_CA"),
-            GetEnv("FAKE_ROOT_KMS_CLIENT_CRT"),
-            GetEnv("FAKE_ROOT_KMS_CLIENT_KEY")
-        );
+            {.Address = "localhost:" + GetEnv("FAKE_ROOT_KMS_PORT"),
+             .RootCAPath = GetEnv("FAKE_ROOT_KMS_CA"),
+             .CertChainPath = GetEnv("FAKE_ROOT_KMS_CLIENT_CRT"),
+             .PrivateKeyPath = GetEnv("FAKE_ROOT_KMS_CLIENT_KEY")});
         Client->Start();
     }
 
@@ -81,7 +80,7 @@ Y_UNIT_TEST_SUITE(TRootKmsClientTest)
         }
 
         {
-            auto future = Client->Decrypt("unknown", "xxxxxxxxxxxxxxxxxxxxxxx");
+            auto future = Client->Decrypt("unknown", "ciphertext");
 
             const auto& [key, error] = future.GetValueSync();
             UNIT_ASSERT_VALUES_EQUAL_C(

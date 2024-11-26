@@ -8,11 +8,16 @@ namespace NCloud::NBlockStore {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+struct TCreateRootKmsClientParams
+{
+    TString Address;
+    TString RootCAPath;
+    TString CertChainPath;
+    TString PrivateKeyPath;
+};
+
 IRootKmsClientPtr CreateRootKmsClient(
     ILoggingServicePtr logging,
-    TString address,
-    TString rootCAPath,
-    TString certKeyPath,
-    TString privateKeyPath);
+    TCreateRootKmsClientParams params);
 
 }   // namespace NCloud::NBlockStore
