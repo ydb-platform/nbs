@@ -93,6 +93,12 @@ type Storage interface {
 
 	OverlayDiskRebasing(ctx context.Context, info RebaseInfo) error
 
+	OverlayDiskRebasedTx(
+		ctx context.Context,
+		tx *persistence.Transaction,
+		info RebaseInfo,
+	) error
+
 	OverlayDiskRebased(ctx context.Context, info RebaseInfo) error
 
 	BaseDiskCreated(ctx context.Context, baseDisk BaseDisk) error
