@@ -11,9 +11,9 @@ namespace NCloud::NBlockStore {
 struct TCreateRootKmsClientParams
 {
     TString Address;
-    TString RootCAPath;
-    TString CertChainPath;
-    TString PrivateKeyPath;
+    TString RootCertsFile;
+    TString CertChainFile;
+    TString PrivateKeyFile;
 };
 
 IRootKmsClientPtr CreateRootKmsClient(

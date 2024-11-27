@@ -12,6 +12,7 @@ PEERDIR(
     cloud/blockstore/libs/kms/impl
     cloud/blockstore/libs/logbroker/iface
     cloud/blockstore/libs/rdma/impl
+    cloud/blockstore/libs/root_kms/impl
     cloud/blockstore/libs/service
     cloud/blockstore/libs/spdk/iface
 

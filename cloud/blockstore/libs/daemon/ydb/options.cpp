@@ -37,6 +37,10 @@ TOptionsYdb::TOptionsYdb()
         .RequiredArgument("PATH")
         .StoreResult(&KmsConfig);
 
+    Opts.AddLongOption("root-kms-file")
+        .RequiredArgument("PATH")
+        .StoreResult(&RootKmsConfig);
+
     Opts.AddLongOption("compute-file")
         .RequiredArgument("PATH")
         .StoreResult(&ComputeConfig);

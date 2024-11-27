@@ -1,0 +1,21 @@
+syntax = "proto3";
+
+package NCloud.NBlockStore.NProto;
+
+option go_package = "github.com/ydb-platform/nbs/cloud/blockstore/config";
+
+////////////////////////////////////////////////////////////////////////////////
+
+message TRootKmsConfig
+{
+    // Address of the RootKMS server.
+    optional string Address = 1;
+
+    // Key encryption key identifier.
+    optional string KeyId = 2;
+
+    // mTLS.
+    optional string RootCertsFile = 3;
+    optional string CertChainFile = 4;
+    optional string PrivateKeyFile = 5;
+}
