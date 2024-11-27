@@ -82,6 +82,7 @@
 #include <contrib/ydb/core/mind/tenant_node_enumeration.h>
 #include <contrib/ydb/core/mind/node_broker.h>
 #include <contrib/ydb/core/kesus/tablet/events.h>
+#include <contrib/ydb/core/protos/schemeshard/operations.pb.h>
 #include <contrib/ydb/core/sys_view/service/sysview_service.h>
 #include <contrib/ydb/library/yql/minikql/mkql_function_registry.h>
 #include <contrib/ydb/library/yql/minikql/invoke_builtins/mkql_builtins.h>

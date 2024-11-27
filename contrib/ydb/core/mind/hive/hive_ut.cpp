@@ -9,6 +9,7 @@
 #include <contrib/ydb/core/blobstorage/base/blobstorage_events.h>
 #include <contrib/ydb/core/blobstorage/pdisk/blobstorage_pdisk_tools.h>
 #include <contrib/ydb/core/protos/counters_hive.pb.h>
+#include <contrib/ydb/core/protos/schemeshard/operations.pb.h>
 #include <contrib/ydb/core/mind/bscontroller/bsc.h>
 #include <contrib/ydb/core/mind/tenant_pool.h>
 #include <contrib/ydb/core/tablet_flat/tablet_flat_executed.h>

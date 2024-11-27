@@ -1,6 +1,7 @@
 #pragma once
 
 #include <contrib/ydb/core/base/tablet_resolver.h>
+#include <contrib/ydb/core/protos/schemeshard/operations.pb.h>
 #include <contrib/ydb/core/testlib/test_client.h>
 #include <contrib/ydb/core/tx/tx_proxy/proxy.h>
 #include <contrib/ydb/public/lib/deprecated/kicli/kicli.h>

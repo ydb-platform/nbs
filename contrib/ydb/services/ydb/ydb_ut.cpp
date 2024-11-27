@@ -6,6 +6,7 @@
 
 #include <contrib/ydb/core/base/storage_pools.h>
 #include <contrib/ydb/core/protos/flat_scheme_op.pb.h>
+#include <contrib/ydb/core/protos/schemeshard/operations.pb.h>
 #include <contrib/ydb/core/scheme/scheme_tablecell.h>
 #include <contrib/ydb/core/testlib/test_client.h>
 

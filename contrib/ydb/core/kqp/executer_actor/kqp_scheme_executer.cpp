@@ -5,6 +5,7 @@
 #include <contrib/ydb/core/kqp/gateway/local_rpc/helper.h>
 #include <contrib/ydb/core/tx/tx_proxy/proxy.h>
 #include <contrib/ydb/core/kqp/session_actor/kqp_worker_common.h>
+#include <contrib/ydb/core/protos/schemeshard/operations.pb.h>
 #include <contrib/ydb/core/tx/schemeshard/schemeshard_build_index.h>
 #include <contrib/ydb/services/metadata/abstract/kqp_common.h>
 

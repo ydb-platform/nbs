@@ -6,6 +6,7 @@
 #include <contrib/ydb/core/base/path.h>
 #include <contrib/ydb/core/blobstorage/base/blobstorage_events.h>
 #include <contrib/ydb/core/protos/msgbus.pb.h>
+#include <contrib/ydb/core/protos/schemeshard/operations.pb.h>
 #include <contrib/ydb/core/util/pb.h>
 #include <contrib/ydb/public/lib/operation_id/operation_id.h>
 

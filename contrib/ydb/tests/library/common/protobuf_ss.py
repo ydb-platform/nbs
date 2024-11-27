@@ -7,6 +7,7 @@ from os.path import basename, dirname, join
 
 from contrib.ydb.core.protos import msgbus_pb2
 from contrib.ydb.core.protos import flat_scheme_op_pb2
+from contrib.ydb.core.protos.schemeshard import operations_pb2 as schemeshard_pb2
 from contrib.ydb.tests.library.common.protobuf import AbstractProtobufBuilder, build_protobuf_if_necessary
 
 
@@ -93,7 +94,7 @@ class CreatePath(AbstractProtobufBuilder):
             name = basename(work_dir)
             work_dir = dirname(work_dir)
         self.protobuf.Transaction.ModifyScheme.WorkingDir = work_dir
-        self.protobuf.Transaction.ModifyScheme.OperationType = flat_scheme_op_pb2.ESchemeOpMkDir
+        self.protobuf.Transaction.ModifyScheme.OperationType = schemeshard_pb2.ESchemeOpMkDir
         self.protobuf.Transaction.ModifyScheme.MkDir.Name = name
 
 
@@ -148,7 +149,7 @@ class RegisterTenant(AbstractProtobufBuilder):
             name = basename(work_dir)
             work_dir = dirname(work_dir)
 
-        self.__modify_scheme.OperationType = flat_scheme_op_pb2.ESchemeOpCreateSubDomain
+        self.__modify_scheme.OperationType = schemeshard_pb2.ESchemeOpCreateSubDomain
         self.__modify_scheme.WorkingDir = work_dir
 
         self.__tenant_settings.Name = name
@@ -232,7 +233,7 @@ class DropTenantRequest(AbstractTSchemeOperationRequest):
 
     def __init__(self, path, name=None, drop_policy=flat_scheme_op_pb2.EDropFailOnChanges, options=None):
         super(DropTenantRequest, self).__init__()
-        self.protobuf.Transaction.ModifyScheme.OperationType = flat_scheme_op_pb2.ESchemeOpDropSubDomain
+        self.protobuf.Transaction.ModifyScheme.OperationType = schemeshard_pb2.ESchemeOpDropSubDomain
 
         if name is None:
             name = basename(path)
@@ -257,7 +258,7 @@ class DropTenantRequest(AbstractTSchemeOperationRequest):
 class ForceDropTenantRequest(DropTenantRequest):
     def __init__(self, path, name=None, drop_policy=flat_scheme_op_pb2.EDropFailOnChanges, options=None):
         super(ForceDropTenantRequest, self).__init__(path, name, drop_policy, options)
-        self.protobuf.Transaction.ModifyScheme.OperationType = flat_scheme_op_pb2.ESchemeOpForceDropSubDomain
+        self.protobuf.Transaction.ModifyScheme.OperationType = schemeshard_pb2.ESchemeOpForceDropSubDomain
 
 
 class DropPathRequest(AbstractTSchemeOperationRequest):
@@ -266,7 +267,7 @@ class DropPathRequest(AbstractTSchemeOperationRequest):
 
     def __init__(self, path, name=None, drop_policy=flat_scheme_op_pb2.EDropFailOnChanges, options=None):
         super(DropPathRequest, self).__init__()
-        self.protobuf.Transaction.ModifyScheme.OperationType = flat_scheme_op_pb2.ESchemeOpRmDir
+        self.protobuf.Transaction.ModifyScheme.OperationType = schemeshard_pb2.ESchemeOpRmDir
 
         if name is None:
             name = basename(path)
@@ -299,7 +300,7 @@ class DropTopicRequest(AbstractTSchemeOperationRequest):
             topic_name = basename(path)
             path = dirname(path)
 
-        self.__modify_scheme_transaction.OperationType = flat_scheme_op_pb2.ESchemeOpDropPersQueueGroup
+        self.__modify_scheme_transaction.OperationType = schemeshard_pb2.ESchemeOpDropPersQueueGroup
         self.__modify_scheme_transaction.WorkingDir = path
         self.__drop.Name = topic_name
         self.with_options(options or self.Options())
@@ -401,7 +402,7 @@ class CreateTopicRequest(AbstractTSchemeOperationRequest):
 
     @property
     def _operation(self):
-        return flat_scheme_op_pb2.ESchemeOpCreatePersQueueGroup
+        return schemeshard_pb2.ESchemeOpCreatePersQueueGroup
 
     @property
     def _modify_scheme_transaction(self):
@@ -443,7 +444,7 @@ class AlterTopicRequest(CreateTopicRequest):
 
     @property
     def _operation(self):
-        return flat_scheme_op_pb2.ESchemeOpAlterPersQueueGroup
+        return schemeshard_pb2.ESchemeOpAlterPersQueueGroup
 
     @property
     def _pers_queue(self):
@@ -457,7 +458,7 @@ class DropPath(AbstractProtobufBuilder):
             name = basename(work_dir)
             work_dir = dirname(work_dir)
         self.protobuf.Transaction.ModifyScheme.WorkingDir = work_dir
-        self.protobuf.Transaction.ModifyScheme.OperationType = flat_scheme_op_pb2.ESchemeOpRmDir
+        self.protobuf.Transaction.ModifyScheme.OperationType = schemeshard_pb2.ESchemeOpRmDir
         self.protobuf.Transaction.ModifyScheme.Drop.Name = name
         self.protobuf.Transaction.ModifyScheme.Drop.WaitPolicy = drop_policy
 
@@ -590,7 +591,7 @@ class CreateTableRequest(AbstractTSchemeOperationRequest):
             table_name = basename(path)
             path = dirname(path)
 
-        self.protobuf.Transaction.ModifyScheme.OperationType = flat_scheme_op_pb2.ESchemeOpCreateTable
+        self.protobuf.Transaction.ModifyScheme.OperationType = schemeshard_pb2.ESchemeOpCreateTable
 
         self.protobuf.Transaction.ModifyScheme.WorkingDir = path
         self.__create_table_protobuf.Name = table_name
@@ -655,7 +656,7 @@ class AlterTableRequest(AbstractTSchemeOperationRequest):
         super(AlterTableRequest, self).__init__()
         self.__column_ids = itertools.count(start=1)
 
-        self.protobuf.Transaction.ModifyScheme.OperationType = flat_scheme_op_pb2.ESchemeOpAlterTable
+        self.protobuf.Transaction.ModifyScheme.OperationType = schemeshard_pb2.ESchemeOpAlterTable
 
         self.protobuf.Transaction.ModifyScheme.WorkingDir = path
         self.__alter_table_protobuf.Name = table_name
@@ -697,7 +698,7 @@ class DropTableRequest(AbstractTSchemeOperationRequest):
 
     def __init__(self, path, table_name=None, drop_policy=flat_scheme_op_pb2.EDropFailOnChanges, options=None):
         super(DropTableRequest, self).__init__()
-        self.protobuf.Transaction.ModifyScheme.OperationType = flat_scheme_op_pb2.ESchemeOpDropTable
+        self.protobuf.Transaction.ModifyScheme.OperationType = schemeshard_pb2.ESchemeOpDropTable
 
         if table_name is None:
             table_name = basename(path)
@@ -734,7 +735,7 @@ TSchemeOperationStatus = SchemeOperationStatus
 class CopyTableRequest(AbstractTSchemeOperationRequest):
     def __init__(self, source_table_full_name, destination_path, destination_name):
         super(CopyTableRequest, self).__init__()
-        self.protobuf.Transaction.ModifyScheme.OperationType = flat_scheme_op_pb2.ESchemeOpCreateTable
+        self.protobuf.Transaction.ModifyScheme.OperationType = schemeshard_pb2.ESchemeOpCreateTable
         self.__create_table_protobuf.CopyFromTable = source_table_full_name
         self.protobuf.Transaction.ModifyScheme.WorkingDir = destination_path
         self.__create_table_protobuf.Name = destination_name

@@ -5,6 +5,7 @@
 #include "queue_schema.h"
 #include "serviceid.h"
 
+#include <contrib/ydb/core/protos/schemeshard/operations.pb.h>
 #include <contrib/ydb/core/ymq/base/limits.h>
 #include <contrib/ydb/core/ymq/queues/common/db_queries_maker.h>
 #include <contrib/ydb/core/ymq/queues/common/key_hashes.h>

@@ -8,6 +8,7 @@
 #include <contrib/ydb/core/mind/labels_maintainer.h>
 #include <contrib/ydb/core/mind/tenant_pool.h>
 #include <contrib/ydb/core/mind/tenant_slot_broker.h>
+#include <contrib/ydb/core/protos/schemeshard/operations.pb.h>
 #include <contrib/ydb/core/tablet/bootstrapper.h>
 #include <contrib/ydb/core/tablet/tablet_monitoring_proxy.h>
 #include <contrib/ydb/core/tablet_flat/tablet_flat_executed.h>
@@ -22,9 +23,6 @@
 #include <contrib/ydb/core/tx/sequenceshard/sequenceshard.h>
 #include <contrib/ydb/core/tx/tx_allocator/txallocator.h>
 #include <contrib/ydb/core/tx/tx_proxy/proxy.h>
-#include <contrib/ydb/core/sys_view/processor/processor.h>
-#include <contrib/ydb/core/persqueue/pq.h>
-#include <contrib/ydb/core/statistics/aggregator/aggregator.h>
 
 #include <contrib/ydb/library/actors/core/interconnect.h>
 #include <contrib/ydb/library/actors/interconnect/interconnect.h>

@@ -2,6 +2,7 @@
 #include <contrib/ydb/public/sdk/cpp/client/ydb_table/table.h>
 #include <contrib/ydb/public/sdk/cpp/client/ydb_types/status_codes.h>
 
+#include <contrib/ydb/core/protos/schemeshard/operations.pb.h>
 #include <contrib/ydb/core/tx/datashard/datashard.h>
 #include <contrib/ydb/core/client/flat_ut_client.h>
 

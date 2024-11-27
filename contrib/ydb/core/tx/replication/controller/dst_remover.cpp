@@ -6,6 +6,7 @@
 #include <contrib/ydb/library/actors/core/hfunc.h>
 
 #include <contrib/ydb/core/base/tablet_pipecache.h>
+#include <contrib/ydb/core/protos/schemeshard/operations.pb.h>
 #include <contrib/ydb/core/tx/schemeshard/schemeshard.h>
 #include <contrib/ydb/core/tx/tx_proxy/proxy.h>
 

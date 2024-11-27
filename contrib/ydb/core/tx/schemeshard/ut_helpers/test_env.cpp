@@ -5,6 +5,7 @@
 #include <contrib/ydb/core/base/tablet_resolver.h>
 #include <contrib/ydb/core/cms/console/configs_dispatcher.h>
 #include <contrib/ydb/core/metering/metering.h>
+#include <contrib/ydb/core/protos/schemeshard/operations.pb.h>
 #include <contrib/ydb/core/tablet_flat/tablet_flat_executed.h>
 #include <contrib/ydb/core/tx/datashard/datashard.h>
 #include <contrib/ydb/core/tx/schemeshard/schemeshard_private.h>

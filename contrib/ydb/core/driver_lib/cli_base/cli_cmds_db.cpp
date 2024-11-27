@@ -2,6 +2,7 @@
 #include "cli_cmds.h"
 
 #include <contrib/ydb/core/tx/schemeshard/schemeshard_user_attr_limits.h>
+#include <contrib/ydb/core/protos/schemeshard/operations.pb.h>
 
 #include <contrib/ydb/library/aclib/aclib.h>
 

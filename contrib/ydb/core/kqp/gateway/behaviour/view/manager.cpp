@@ -2,6 +2,7 @@
 
 #include <contrib/ydb/core/base/path.h>
 #include <contrib/ydb/core/kqp/gateway/actors/scheme.h>
+#include <contrib/ydb/core/protos/schemeshard/operations.pb.h>
 #include <contrib/ydb/core/tx/tx_proxy/proxy.h>
 
 namespace NKikimr::NKqp {

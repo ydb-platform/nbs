@@ -8,6 +8,7 @@
 
 #include <contrib/ydb/core/base/path.h>
 #include <contrib/ydb/core/mon/mon.h>
+#include <contrib/ydb/core/protos/schemeshard/operations.pb.h>
 
 #include <contrib/ydb/library/services/services.pb.h>
 

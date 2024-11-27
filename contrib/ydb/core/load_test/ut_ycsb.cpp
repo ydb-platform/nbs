@@ -1,4 +1,5 @@
 #include <contrib/ydb/core/kqp/ut/common/kqp_ut_common.h> // Y_UNIT_TEST_(TWIN|QUAD), Q_
+#include <contrib/ydb/core/protos/schemeshard/operations.pb.h>
 #include <contrib/ydb/core/load_test/events.h>
 #include <contrib/ydb/core/load_test/ycsb/common.h>
 #include <contrib/ydb/core/load_test/ycsb/test_load_actor.h>

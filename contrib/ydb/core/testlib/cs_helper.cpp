@@ -1,5 +1,6 @@
 #include "cs_helper.h"
 #include <contrib/ydb/core/tx/tx_proxy/proxy.h>
+#include <contrib/ydb/core/protos/schemeshard/operations.pb.h>
 #include <contrib/ydb/core/formats/arrow/arrow_helpers.h>
 #include <contrib/ydb/core/grpc_services/local_rpc/local_rpc.h>
 #include <contrib/ydb/library/binary_json/write.h>

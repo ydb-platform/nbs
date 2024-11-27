@@ -3,6 +3,7 @@
 #include <contrib/ydb/core/docapi/traits.h>
 #include <contrib/ydb/core/tx/schemeshard/schemeshard.h>
 #include <contrib/ydb/core/protos/flat_scheme_op.pb.h>
+#include <contrib/ydb/core/protos/schemeshard/operations.pb.h>
 #include <contrib/ydb/core/base/tablet_pipe.h>
 #include <contrib/ydb/core/base/appdata.h>
 #include <contrib/ydb/core/base/tx_processing.h>

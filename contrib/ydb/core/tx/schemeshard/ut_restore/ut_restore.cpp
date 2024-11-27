@@ -4,6 +4,7 @@
 
 #include <contrib/ydb/core/base/localdb.h>
 #include <contrib/ydb/core/kqp/ut/common/kqp_ut_common.h>
+#include <contrib/ydb/core/protos/schemeshard/operations.pb.h>
 #include <contrib/ydb/core/tablet/resource_broker.h>
 #include <contrib/ydb/core/tx/schemeshard/ut_helpers/helpers.h>
 #include <contrib/ydb/core/tx/schemeshard/schemeshard_private.h>

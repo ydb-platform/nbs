@@ -2,6 +2,7 @@
 
 #include <contrib/ydb/core/engine/mkql_proto.h>
 #include <contrib/ydb/core/engine/minikql/flat_local_tx_factory.h>
+#include <contrib/ydb/core/protos/schemeshard/operations.pb.h>
 #include <contrib/ydb/core/tx/data_events/events.h>
 #include <contrib/ydb/core/tx/data_events/payload_helper.h>
 #include <contrib/ydb/core/tx/schemeshard/schemeshard.h>

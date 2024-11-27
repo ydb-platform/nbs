@@ -8,6 +8,7 @@
 #include <contrib/ydb/core/cms/console/configs_dispatcher.h>
 #include <contrib/ydb/core/engine/mkql_proto.h>
 #include <contrib/ydb/core/protos/console_config.pb.h>
+#include <contrib/ydb/core/protos/schemeshard/operations.pb.h>
 #include <contrib/ydb/core/ydb_convert/column_families.h>
 #include <contrib/ydb/core/ydb_convert/table_description.h>
 #include <contrib/ydb/core/ydb_convert/table_profiles.h>

@@ -2,6 +2,7 @@
 
 #include <contrib/ydb/core/base/path.h>
 #include <contrib/ydb/core/protos/flat_scheme_op.pb.h>
+#include <contrib/ydb/core/protos/schemeshard/operations.pb.h>
 #include <contrib/ydb/library/aclib/aclib.h>
 
 #include <util/string/builder.h>

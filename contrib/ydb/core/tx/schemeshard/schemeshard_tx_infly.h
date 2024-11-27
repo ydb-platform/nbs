@@ -3,11 +3,12 @@
 #include "schemeshard_types.h"
 
 #include <contrib/ydb/core/protos/counters_schemeshard.pb.h>
+#include <contrib/ydb/core/protos/schemeshard/operations.pb.h>
 #include <contrib/ydb/core/protos/tx_datashard.pb.h>
-
 #include <contrib/ydb/core/tx/datashard/datashard.h>
 
 #include <contrib/ydb/library/actors/core/actorid.h>
+
 #include <util/generic/hash.h>
 #include <util/generic/hash_set.h>
 

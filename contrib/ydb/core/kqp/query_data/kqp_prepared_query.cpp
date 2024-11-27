@@ -10,6 +10,7 @@
 #include <contrib/ydb/library/mkql_proto/mkql_proto.h>
 #include <contrib/ydb/core/kqp/common/simple/helpers.h>
 #include <contrib/ydb/core/protos/kqp_physical.pb.h>
+#include <contrib/ydb/core/protos/schemeshard/operations.pb.h>
 #include <contrib/ydb/library/services/services.pb.h>
 
 #include <contrib/ydb/library/actors/core/log.h>

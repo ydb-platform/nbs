@@ -14,6 +14,7 @@
 #include <contrib/ydb/core/base/statestorage_impl.h>
 #include <contrib/ydb/core/blobstorage/crypto/default.h>
 #include <contrib/ydb/core/blobstorage/pdisk/blobstorage_pdisk_tools.h>
+#include <contrib/ydb/core/protos/schemeshard/operations.pb.h>
 #include <contrib/ydb/core/tablet_flat/shared_cache_events.h>
 #include <contrib/ydb/core/tablet_flat/shared_sausagecache.h>
 #include <contrib/ydb/core/tx/schemeshard/schemeshard.h>

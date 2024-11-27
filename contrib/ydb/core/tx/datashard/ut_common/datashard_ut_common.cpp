@@ -3,6 +3,7 @@
 #include <contrib/ydb/core/base/tablet.h>
 #include <contrib/ydb/core/base/tablet_pipecache.h>
 #include <contrib/ydb/core/base/tablet_resolver.h>
+#include <contrib/ydb/core/protos/schemeshard/operations.pb.h>
 #include <contrib/ydb/core/scheme/scheme_types_defs.h>
 #include <contrib/ydb/core/scheme/scheme_types_proto.h>
 #include <contrib/ydb/core/tablet_flat/flat_bio_events.h>

@@ -1,6 +1,7 @@
 #include "kicli.h"
 
 #include <contrib/ydb/public/lib/deprecated/client/msgbus_client.h>
+#include <contrib/ydb/core/protos/schemeshard/operations.pb.h>
 #include <util/string/builder.h>
 
 namespace NKikimr {

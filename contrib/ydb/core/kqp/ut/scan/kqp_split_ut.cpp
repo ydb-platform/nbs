@@ -11,6 +11,7 @@
 #include <contrib/ydb/core/kqp/common/kqp.h>
 #include <contrib/ydb/core/kqp/executer_actor/kqp_executer.h>
 
+#include <contrib/ydb/core/protos/schemeshard/operations.pb.h>
 #include <contrib/ydb/core/tx/tx_proxy/proxy.h>
 #include <contrib/ydb/core/tx/schemeshard/schemeshard.h>
 

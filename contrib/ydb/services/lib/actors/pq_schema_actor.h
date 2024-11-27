@@ -1,6 +1,7 @@
 #pragma once
 
 #include <contrib/ydb/core/grpc_services/rpc_scheme_base.h>
+#include <contrib/ydb/core/protos/schemeshard/operations.pb.h>
 
 #include <contrib/ydb/public/api/grpc/draft/ydb_persqueue_v1.grpc.pb.h>
 #include <contrib/ydb/public/api/protos/persqueue_error_codes_v1.pb.h>
