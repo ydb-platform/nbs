@@ -77,16 +77,15 @@ public:
         }
 
         Request.set_key_id(keyId);
-        Request.set_ciphertext(ciphertext.data(), ciphertext.size());
+        Request.set_ciphertext(ciphertext);
     }
 
     TFuture<TResult> Execute(
         kms::SymmetricCryptoService::Stub& service,
-        grpc::CompletionQueue* cq,
-        void* tag)
+        grpc::CompletionQueue& cq)
     {
-        Reader = service.AsyncDecrypt(&ClientContext, Request, cq);
-        Reader->Finish(&Response, &Status, tag);
+        Reader = service.AsyncDecrypt(&ClientContext, Request, &cq);
+        Reader->Finish(&Response, &Status, this);
         return Promise;
     }
 
@@ -128,7 +127,7 @@ public:
         const TString& keyId)
     {
         if (timeout) {
-            ClientContext.set_deadline(TInstant::Now() + timeout);
+            ClientContext.set_deadline(timeout.ToDeadLine());
         }
 
         Request.set_key_id(keyId);
@@ -138,11 +137,10 @@ public:
 
     TFuture<TResult> Execute(
         kms::SymmetricCryptoService::Stub& service,
-        grpc::CompletionQueue* cq,
-        void* tag)
+        grpc::CompletionQueue& cq)
     {
-        Reader = service.AsyncGenerateDataKey(&ClientContext, Request, cq);
-        Reader->Finish(&Response, &Status, tag);
+        Reader = service.AsyncGenerateDataKey(&ClientContext, Request, &cq);
+        Reader->Finish(&Response, &Status, this);
         return Promise;
     }
 
@@ -273,12 +271,11 @@ auto TRootKmsClient::Decrypt(const TString& keyId, const TString& ciphertext)
         keyId,
         ciphertext);
 
-    auto future = requestHandler->Execute(
-        *Service,
-        &CQ,
-        requestHandler.get());
+    auto future = requestHandler->Execute(*Service, CQ);
 
-    [[maybe_unused]] auto* _ = requestHandler.release();
+    // ownership transferred to grpc
+    Y_UNUSED(requestHandler.release());
+
     return future;
 }
 
@@ -291,12 +288,11 @@ auto TRootKmsClient::GenerateDataEncryptionKey(const TString& keyId)
         DefaultTimeout,
         keyId);
 
-    auto future = requestHandler->Execute(
-        *Service,
-        &CQ,
-        requestHandler.get());
+    auto future = requestHandler->Execute(*Service, CQ);
 
-    [[maybe_unused]] auto* _ = requestHandler.release();
+    // ownership transferred to grpc
+    Y_UNUSED(requestHandler.release());
+
     return future;
 }
 
