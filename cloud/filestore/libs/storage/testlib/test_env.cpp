@@ -27,6 +27,7 @@
 #include <contrib/ydb/core/mind/bscontroller/bsc.h>
 #include <contrib/ydb/core/mind/hive/hive.h>
 #include <contrib/ydb/core/mind/tenant_pool.h>
+#include <contrib/ydb/core/protos/schemeshard/operations.pb.h>
 #include <contrib/ydb/core/security/ticket_parser.h>
 #include <contrib/ydb/core/testlib/tx_helpers.h>
 #include <contrib/ydb/core/tx/coordinator/coordinator.h>

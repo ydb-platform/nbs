@@ -15,4 +15,5 @@ CHECK_DEPENDENT_DIRS(
     EXCEPT GLOB contrib/ydb/**/proto
     EXCEPT GLOB contrib/ydb/**/protos
     EXCEPT GLOB contrib/ydb/**/protos/annotations
+    EXCEPT GLOB contrib/ydb/**/protos/schemeshard
 )
