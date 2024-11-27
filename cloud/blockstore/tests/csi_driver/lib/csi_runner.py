@@ -1,6 +1,7 @@
 import contextlib
 import logging
 import os
+import pathlib
 import subprocess
 import tempfile
 import time
@@ -14,10 +15,13 @@ import contrib.ydb.tests.library.common.yatest_common as yatest_common
 from contrib.ydb.tests.library.harness.kikimr_runner import get_unique_path_for_current_test
 from cloud.blockstore.config.server_pb2 import TServerAppConfig, TServerConfig, TKikimrServiceConfig
 from cloud.blockstore.config.client_pb2 import TClientConfig, TClientAppConfig
+from cloud.filestore.config.vhost_pb2 import TVhostAppConfig, TVhostServiceConfig, TServiceEndpoint
 from cloud.blockstore.tests.python.lib.loadtest_env import LocalLoadTest
 from cloud.blockstore.tests.python.lib.test_base import (
     thread_count
 )
+from cloud.filestore.tests.python.lib.daemon_config import FilestoreVhostConfigGenerator
+from cloud.filestore.tests.python.lib.vhost import FilestoreVhost, wait_for_filestore_vhost
 from cloud.storage.core.protos.endpoints_pb2 import (
     EEndpointStorageType,
 )
@@ -36,23 +40,38 @@ class CsiLoadTest(LocalLoadTest):
             grpc_unix_socket_path: str,
             sockets_temporary_directory: tempfile.TemporaryDirectory,
             vm_mode: bool,
+            local_fs_ids: list[str],
             *args,
             **kwargs,
     ):
         super(CsiLoadTest, self).__init__(*args, **kwargs)
+        self.local_nfs_vhost = LocalNfsVhostRunner(local_fs_ids)
+        self.local_nfs_vhost.start()
         self.sockets_temporary_directory = sockets_temporary_directory
-        self.csi = NbsCsiDriverRunner(sockets_dir, grpc_unix_socket_path, vm_mode)
+        self.csi = NbsCsiDriverRunner(
+            sockets_dir,
+            grpc_unix_socket_path,
+            vm_mode,
+            self.local_nfs_vhost.get_config(),
+        )
         self.csi.start()
 
     def tear_down(self):
         self.csi.stop()
+        if self.local_nfs_vhost:
+            self.local_nfs_vhost.stop()
         super(CsiLoadTest, self).tear_down()
         self.sockets_temporary_directory.cleanup()
 
 
 class NbsCsiDriverRunner:
 
-    def __init__(self, sockets_dir: str, grpc_unix_socket_path: str, vm_mode: bool):
+    def __init__(
+            self,
+            sockets_dir: str,
+            grpc_unix_socket_path: str,
+            vm_mode: bool,
+            local_fs_config: dict[str, int] | None):
         csi_driver_dir = Path(
             common.binary_path("cloud/blockstore/tools/csi_driver/"),
         )
@@ -67,6 +86,7 @@ class NbsCsiDriverRunner:
             sub_folder=""), "driver_output.txt")
         self._log_file = None
         self._vm_mode = vm_mode
+        self._local_fs_config = local_fs_config
 
     def start(self):
         self._log_file = open(self._csi_driver_output, "w")
@@ -82,9 +102,28 @@ class NbsCsiDriverRunner:
             "--nfs-vhost-port=0",
             "--nfs-server-port=0",
         ]
+
+        if self._local_fs_config:
+            fs_override_path = (
+                Path(yatest_common.output_path()) / "local-filestore-override.txt"
+            )
+            fs_config = [
+                {"fs_id": fs_id, "local_mount_path": "/mnt/local_fs"}
+                for fs_id in self._local_fs_config["local_fs_ids"]
+            ]
+
+            fs_override_path.write_text(json.dumps(fs_config))
+
+            args += [
+                f"--local-filestore-override={str(fs_override_path)}",
+                f'--nfs-local-filestore-port={self._local_fs_config["filestore_port"]}',
+                f'--nfs-local-endpoint-port={self._local_fs_config["endpoint_port"]}',
+            ]
+
         if self._vm_mode:
             args += ["--vm-mode=true"]
 
+        logging.info("Exec: %s", " ".join(args))
         self._proc = subprocess.Popen(
             args,
             stdout=self._log_file,
@@ -93,13 +132,15 @@ class NbsCsiDriverRunner:
         self._wait_socket()
 
     def _client_run(self, *args):
+        args = [
+            str(self._client_binary_path),
+            *args,
+            "--endpoint",
+            str(self._endpoint),
+        ]
+        logging.info("Exec: %s", " ".join(args))
         result = subprocess.run(
-            [
-                str(self._client_binary_path),
-                *args,
-                "--endpoint",
-                str(self._endpoint),
-            ],
+            args,
             capture_output=True,
             text=True,
             check=True,
@@ -123,20 +164,22 @@ class NbsCsiDriverRunner:
     def _controller_run(self, *args):
         return self._client_run("controller", *args)
 
-    def create_volume(self, name: str, size: int):
-        return self._controller_run("createvolume", "--name", name, "--size", str(size))
+    def create_volume(self, name: str, size: int, is_nfs: bool = False):
+        args = ["createvolume", "--name", name, "--size", str(size)]
+        if is_nfs:
+            args += ["--backend", "nfs"]
+
+        return self._controller_run(*args)
 
     def delete_volume(self, name: str):
         return self._controller_run("deletevolume", "--id", name)
 
-    def stage_volume(self, volume_id: str, access_type: str):
-        return self._node_run(
-            "stagevolume",
-            "--volume-id",
-            volume_id,
-            "--access-type",
-            access_type,
-        )
+    def stage_volume(self, volume_id: str, access_type: str, is_nfs: bool = False):
+        args = ["stagevolume", "--volume-id", volume_id, "--access-type", access_type]
+        if is_nfs:
+            args += ["--backend", "nfs"]
+
+        return self._node_run(*args)
 
     def unstage_volume(self, volume_id: str):
         return self._node_run(
@@ -153,7 +196,8 @@ class NbsCsiDriverRunner:
             access_type: str,
             fs_type: str = "",
             readonly: bool = False,
-            volume_mount_group: str = ""):
+            volume_mount_group: str = "",
+            is_nfs: bool = False):
         args = [
             "publishvolume",
             "--pod-id",
@@ -172,6 +216,10 @@ class NbsCsiDriverRunner:
 
         if len(volume_mount_group) != 0:
             args += ["--volume-mount-group", volume_mount_group]
+
+        if is_nfs:
+            args += ["--backend", "nfs"]
+
         return self._node_run(*args)
 
     def unpublish_volume(self, pod_id: str, volume_id: str, access_type: str):
@@ -257,7 +305,7 @@ def cleanup_after_test(
     env.tear_down()
 
 
-def init(vm_mode: bool = False, retry_timeout_ms: int | None = None):
+def init(vm_mode: bool = False, retry_timeout_ms: int | None = None, local_fs_ids: list[str] = []):
     server_config_patch = TServerConfig()
     server_config_patch.NbdEnabled = True
     endpoints_dir = Path(common.output_path()) / f"endpoints-{hash(common.context.test_name)}"
@@ -285,6 +333,7 @@ def init(vm_mode: bool = False, retry_timeout_ms: int | None = None):
         grpc_unix_socket_path=server_config_patch.UnixSocketPath,
         sockets_temporary_directory=temp_dir,
         vm_mode=vm_mode,
+        local_fs_ids=local_fs_ids,
         endpoint="",
         server_app_config=server,
         storage_config_patches=None,
@@ -318,3 +367,59 @@ def init(vm_mode: bool = False, retry_timeout_ms: int | None = None):
         )
         return result
     return env, run
+
+
+class LocalNfsVhostRunner:
+    def __init__(self, local_fs_ids: list[str]):
+        self.local_fs_ids = local_fs_ids
+        self.daemon = None
+
+    def start(self):
+        if not self.local_fs_ids:
+            return
+
+        endpoint_storage_dir = common.work_path() + '/local_nfs_endpoints'
+        pathlib.Path(endpoint_storage_dir).mkdir(parents=True, exist_ok=True)
+
+        root_dir = common.work_path() + '/local_nfs_root'
+        pathlib.Path(root_dir).mkdir(parents=True, exist_ok=True)
+
+        config = TVhostAppConfig()
+        config.VhostServiceConfig.CopyFrom(TVhostServiceConfig())
+        config.VhostServiceConfig.EndpointStorageType = EEndpointStorageType.ENDPOINT_STORAGE_FILE
+        config.VhostServiceConfig.EndpointStorageDir = endpoint_storage_dir
+
+        service_endpoint = TServiceEndpoint()
+        config.VhostServiceConfig.ServiceEndpoints.append(service_endpoint)
+        config.VhostServiceConfig.LocalServiceConfig.RootPath = root_dir
+
+        vhost_configurator = FilestoreVhostConfigGenerator(
+            binary_path=common.binary_path(
+                "cloud/filestore/apps/vhost/filestore-vhost"),
+            app_config=config,
+            service_type="local",
+            verbose=True,
+            kikimr_port=0,
+            domain=None,
+        )
+
+        self.daemon = FilestoreVhost(vhost_configurator)
+        self.daemon.start()
+
+        self.endpoint_port = vhost_configurator.port
+        wait_for_filestore_vhost(self.daemon, self.endpoint_port, port_type="endpoint")
+
+        self.filestore_port = vhost_configurator.local_service_port
+        wait_for_filestore_vhost(self.daemon, self.filestore_port, port_type="filestore")
+
+    def get_config(self):
+        if not self.daemon:
+            return None
+
+        return dict(local_fs_ids=self.local_fs_ids,
+                    endpoint_port=self.endpoint_port,
+                    filestore_port=self.filestore_port)
+
+    def stop(self):
+        if self.daemon:
+            self.daemon.stop()
