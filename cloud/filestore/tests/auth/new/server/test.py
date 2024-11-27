@@ -1,16 +1,6 @@
 import json
-import logging
 
-from cloud.filestore.tests.auth.lib import TestFixture
-
-
-def log_result(test_name, result):
-    logging.info(
-        "[%s] Filestore create stdout=%s, stderr=%s",
-        test_name,
-        result.stdout.decode(),
-        result.stderr.decode(),
-    )
+from cloud.filestore.tests.auth.lib import TestFixture, log_result
 
 
 def test_new_auth_authorization_ok():

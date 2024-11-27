@@ -83,6 +83,7 @@ class FilestoreDaemonConfigGenerator:
         self.__ic_port = self._port_manager.get_port() if ic_port is None else ic_port
         self.__access_service_type = access_service_type
         self.__access_service_port = access_service_port
+        self.__access_service_type = access_service_type
 
         self.__use_secure_registration = use_secure_registration
 
@@ -409,7 +410,7 @@ class FilestoreServerConfigGenerator(FilestoreDaemonConfigGenerator):
             use_secure_registration=use_secure_registration,
             secure=secure,
             access_service_type=access_service_type,
-            ic_port=ic_port
+            ic_port=ic_port,
         )
 
 
@@ -428,6 +429,8 @@ class FilestoreVhostConfigGenerator(FilestoreDaemonConfigGenerator):
         storage_config=None,
         use_secure_registration=False,
         ic_port=None,
+        access_service_type=AccessService,
+        secure=False,
     ):
         super().__init__(
             binary_path,
@@ -444,7 +447,9 @@ class FilestoreVhostConfigGenerator(FilestoreDaemonConfigGenerator):
             access_service_port=access_service_port,
             storage_config=storage_config,
             use_secure_registration=use_secure_registration,
-            ic_port=ic_port
+            ic_port=ic_port,
+            access_service_type=access_service_type,
+            secure=secure
         )
 
         self.__local_service_port = self._port_manager.get_port()

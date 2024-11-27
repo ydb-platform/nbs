@@ -1,3 +1,4 @@
+import logging
 import os
 
 import yatest.common as common
@@ -10,6 +11,15 @@ from cloud.filestore.config.client_pb2 import TClientAppConfig, TClientConfig
 from cloud.filestore.tests.python.lib.client import FilestoreCliClient
 from cloud.storage.core.tools.testing.access_service.lib import AccessService
 from cloud.storage.core.tools.testing.access_service_new.lib import NewAccessService
+
+
+def log_result(test_name, result):
+    logging.info(
+        "[%s] Filestore create stdout=%s, stderr=%s",
+        test_name,
+        result.stdout.decode(),
+        result.stderr.decode(),
+    )
 
 
 class TestFixture:
