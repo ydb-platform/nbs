@@ -238,7 +238,7 @@ void TIndexTabletActor::CompleteTx_UpdateConfig(
     // update tablet id and stat counters w proper volume information
     UpdateLogTag();
     RegisterFileStore(ctx);
-    RegisterStatCounters();
+    RegisterStatCounters(ctx.Now());
     ResetThrottlingPolicy();
 
     LOG_DEBUG(ctx, TFileStoreComponents::TABLET,

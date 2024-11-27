@@ -170,15 +170,55 @@ private:
 
         struct TRequestMetrics
         {
-            std::atomic<i64> Count{0};
-            std::atomic<i64> RequestBytes{0};
+            std::atomic<i64> Count = 0;
+            std::atomic<i64> RequestBytes = 0;
             TLatHistogram Time;
+
+            ui64 PrevCount = 0;
+            ui64 PrevRequestBytes = 0;
+            TInstant PrevTs;
 
             void Update(ui64 requestCount, ui64 requestBytes, TDuration d)
             {
                 Count.fetch_add(requestCount, std::memory_order_relaxed);
                 RequestBytes.fetch_add(requestBytes, std::memory_order_relaxed);
                 Time.Record(d);
+            }
+
+            void UpdatePrev(TInstant now)
+            {
+                PrevCount = Count.load(std::memory_order_relaxed);
+                PrevRequestBytes = RequestBytes.load(std::memory_order_relaxed);
+                PrevTs = now;
+            }
+
+            double RPS(TInstant now) const
+            {
+                return Rate(now, Count, PrevCount);
+            }
+
+            double Throughput(TInstant now) const
+            {
+                return Rate(now, RequestBytes, PrevRequestBytes);
+            }
+
+        private:
+            double Rate(
+                TInstant now,
+                const std::atomic<i64>& counter,
+                ui64 prevCounter) const
+            {
+                if (!PrevTs) {
+                    return 0;
+                }
+
+                auto micros = (now - PrevTs).MicroSeconds();
+                if (!micros) {
+                    return 0;
+                }
+
+                auto cur = counter.load(std::memory_order_relaxed);
+                return (cur - prevCounter) / 1'000'000;
             }
         };
 
@@ -187,14 +227,27 @@ private:
             std::atomic<i64> DudCount{0};
         };
 
+        // private requests
         TRequestMetrics ReadBlob;
         TRequestMetrics WriteBlob;
         TRequestMetrics PatchBlob;
+
+        // public requests
         TRequestMetrics ReadData;
         TRequestMetrics DescribeData;
         TRequestMetrics WriteData;
         TRequestMetrics AddData;
         TRequestMetrics GenerateBlobIds;
+        TRequestMetrics ListNodes;
+        TRequestMetrics GetNodeAttr;
+        TRequestMetrics CreateHandle;
+        TRequestMetrics DestroyHandle;
+        TRequestMetrics CreateNode;
+        TRequestMetrics RenameNode;
+        TRequestMetrics UnlinkNode;
+        TRequestMetrics StatFileStore;
+
+        // background requests
         TCompactionMetrics Compaction;
         TRequestMetrics Cleanup;
         TRequestMetrics Flush;
@@ -220,6 +273,7 @@ private:
 
         void Register(const TString& fsId, const TString& mediaKind);
         void Update(
+            TInstant now,
             const NProto::TFileSystem& fileSystem,
             const NProto::TFileSystemStats& stats,
             const NProto::TFileStorePerformanceProfile& performanceProfile,
@@ -256,6 +310,7 @@ private:
     ITabletThrottlerPtr Throttler;
 
     TStorageConfigPtr Config;
+    TDiagnosticsConfigPtr DiagConfig;
 
     const bool UseNoneCompactionPolicy;
 
@@ -283,6 +338,7 @@ public:
         const NActors::TActorId& owner,
         NKikimr::TTabletStorageInfoPtr storage,
         TStorageConfigPtr config,
+        TDiagnosticsConfigPtr diagConfig,
         IProfileLogPtr profileLog,
         ITraceSerializerPtr traceSerializer,
         NMetrics::IMetricsRegistryPtr metricsRegistry,
@@ -322,7 +378,7 @@ private:
     void BecomeAux(const NActors::TActorContext& ctx, EState state);
     void ReportTabletState(const NActors::TActorContext& ctx);
 
-    void RegisterStatCounters();
+    void RegisterStatCounters(TInstant now);
     void RegisterCounters(const NActors::TActorContext& ctx);
     void ScheduleUpdateCounters(const NActors::TActorContext& ctx);
     void UpdateCounters();
@@ -622,6 +678,10 @@ private:
 
     void HandleNodeUnlinkedInShard(
         const TEvIndexTabletPrivate::TEvNodeUnlinkedInShard::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleGetShardStatsCompleted(
+        const TEvIndexTabletPrivate::TEvGetShardStatsCompleted::TPtr& ev,
         const NActors::TActorContext& ctx);
 
     void HandleLoadCompactionMapChunkResponse(

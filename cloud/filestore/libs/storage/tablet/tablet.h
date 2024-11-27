@@ -18,6 +18,7 @@ NActors::IActorPtr CreateIndexTablet(
     const NActors::TActorId& owner,
     NKikimr::TTabletStorageInfoPtr storage,
     TStorageConfigPtr config,
+    TDiagnosticsConfigPtr diagConfig,
     IProfileLogPtr profileLog,
     ITraceSerializerPtr traceSerializer,
     NMetrics::IMetricsRegistryPtr metricsRegistry,

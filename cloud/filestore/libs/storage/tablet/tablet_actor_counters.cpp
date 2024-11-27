@@ -21,6 +21,7 @@ class TGetShardStatsActor final
 {
 private:
     const TString LogTag;
+    const TActorId Tablet;
     const TRequestInfoPtr RequestInfo;
     const NProtoPrivate::TGetStorageStatsRequest Request;
     const google::protobuf::RepeatedPtrField<TString> ShardIds;
@@ -30,6 +31,7 @@ private:
 public:
     TGetShardStatsActor(
         TString logTag,
+        TActorId tablet,
         TRequestInfoPtr requestInfo,
         NProtoPrivate::TGetStorageStatsRequest request,
         google::protobuf::RepeatedPtrField<TString> shardIds,
@@ -59,11 +61,13 @@ private:
 
 TGetShardStatsActor::TGetShardStatsActor(
         TString logTag,
+        TActorId tablet,
         TRequestInfoPtr requestInfo,
         NProtoPrivate::TGetStorageStatsRequest request,
         google::protobuf::RepeatedPtrField<TString> shardIds,
         std::unique_ptr<TEvIndexTablet::TEvGetStorageStatsResponse> response)
     : LogTag(std::move(logTag))
+    , Tablet(tablet)
     , RequestInfo(std::move(requestInfo))
     , Request(std::move(request))
     , ShardIds(std::move(shardIds))
@@ -157,6 +161,12 @@ void TGetShardStatsActor::ReplyAndDie(
     if (HasError(error)) {
         Response =
             std::make_unique<TEvIndexTablet::TEvGetStorageStatsResponse>(error);
+    } else {
+        using TCompletion = TEvIndexTabletPrivate::TEvGetShardStatsCompleted;
+        auto response = std::make_unique<TCompletion>(
+            error,
+            RequestInfo->StartedTs);
+        NCloud::Send(ctx, Tablet, std::move(response));
     }
     NCloud::Reply(ctx, *RequestInfo, std::move(Response));
 
@@ -389,11 +399,21 @@ void TIndexTabletActor::TMetrics::Register(
     REGISTER_REQUEST(ReadBlob);
     REGISTER_REQUEST(WriteBlob);
     REGISTER_REQUEST(PatchBlob);
+
     REGISTER_REQUEST(ReadData);
     REGISTER_REQUEST(DescribeData);
     REGISTER_REQUEST(WriteData);
     REGISTER_REQUEST(AddData);
     REGISTER_REQUEST(GenerateBlobIds);
+    REGISTER_REQUEST(ListNodes);
+    REGISTER_REQUEST(GetNodeAttr);
+    REGISTER_REQUEST(CreateHandle);
+    REGISTER_REQUEST(DestroyHandle);
+    REGISTER_REQUEST(CreateNode);
+    REGISTER_REQUEST(RenameNode);
+    REGISTER_REQUEST(UnlinkNode);
+    REGISTER_REQUEST(StatFileStore);
+
     REGISTER_REQUEST(Compaction);
     REGISTER_AGGREGATABLE_SUM(Compaction.DudCount, EMetricType::MT_DERIVATIVE);
     REGISTER_REQUEST(Cleanup);
@@ -417,6 +437,7 @@ void TIndexTabletActor::TMetrics::Register(
 }
 
 void TIndexTabletActor::TMetrics::Update(
+    TInstant now,
     const NProto::TFileSystem& fileSystem,
     const NProto::TFileSystemStats& stats,
     const NProto::TFileStorePerformanceProfile& performanceProfile,
@@ -519,6 +540,30 @@ void TIndexTabletActor::TMetrics::Update(
     Store(OrphanNodesCount, miscNodeStats.OrphanNodesCount);
 
     BusyIdleCalc.OnUpdateStats();
+
+    ReadBlob.UpdatePrev(now);
+    WriteBlob.UpdatePrev(now);
+    PatchBlob.UpdatePrev(now);
+
+    ReadData.UpdatePrev(now);
+    DescribeData.UpdatePrev(now);
+    WriteData.UpdatePrev(now);
+    AddData.UpdatePrev(now);
+    GenerateBlobIds.UpdatePrev(now);
+    ListNodes.UpdatePrev(now);
+    GetNodeAttr.UpdatePrev(now);
+    CreateHandle.UpdatePrev(now);
+    DestroyHandle.UpdatePrev(now);
+    CreateNode.UpdatePrev(now);
+    RenameNode.UpdatePrev(now);
+    UnlinkNode.UpdatePrev(now);
+    StatFileStore.UpdatePrev(now);
+
+    Cleanup.UpdatePrev(now);
+    Flush.UpdatePrev(now);
+    FlushBytes.UpdatePrev(now);
+    TrimBytes.UpdatePrev(now);
+    CollectGarbage.UpdatePrev(now);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -540,7 +585,7 @@ void TIndexTabletActor::RegisterCounters(const TActorContext& ctx)
     }
 }
 
-void TIndexTabletActor::RegisterStatCounters()
+void TIndexTabletActor::RegisterStatCounters(TInstant now)
 {
     const auto& fsId = GetFileSystemId();
     if (!fsId) {
@@ -558,6 +603,7 @@ void TIndexTabletActor::RegisterStatCounters()
     // aggregate zero values, in the middle of the registration (or right after
     // registration, before update).
     Metrics.Update(
+        now,
         fs,
         GetFileSystemStats(),
         GetPerformanceProfile(),
@@ -606,6 +652,7 @@ void TIndexTabletActor::HandleUpdateCounters(
 
     UpdateCounters();
     Metrics.Update(
+        ctx.Now(),
         GetFileSystem(),
         GetFileSystemStats(),
         GetPerformanceProfile(),
@@ -711,6 +758,7 @@ void TIndexTabletActor::HandleGetStorageStats(
     const auto& shardIds = GetFileSystem().GetShardFileSystemIds();
 
     if (shardIds.empty()) {
+        Metrics.StatFileStore.Update(1, 0, TDuration::Zero());
         NCloud::Reply(ctx, *ev, std::move(response));
         return;
     }
@@ -722,6 +770,7 @@ void TIndexTabletActor::HandleGetStorageStats(
 
     auto actor = std::make_unique<TGetShardStatsActor>(
         LogTag,
+        SelfId(),
         std::move(requestInfo),
         std::move(req),
         shardIds,
@@ -731,6 +780,15 @@ void TIndexTabletActor::HandleGetStorageStats(
 
     Y_UNUSED(actorId);
     // TODO(#1350): register actorId in WorkerActors, erase upon completion
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+void TIndexTabletActor::HandleGetShardStatsCompleted(
+    const TEvIndexTabletPrivate::TEvGetShardStatsCompleted::TPtr& ev,
+    const TActorContext& ctx)
+{
+    Metrics.StatFileStore.Update(1, 0, ctx.Now() - ev->Get()->StartedTs);
 }
 
 }   // namespace NCloud::NFileStore::NStorage

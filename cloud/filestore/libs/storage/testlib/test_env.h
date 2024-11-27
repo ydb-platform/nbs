@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cloud/filestore/libs/diagnostics/config.h>
 #include <cloud/filestore/libs/diagnostics/metrics/public.h>
 #include <cloud/filestore/libs/diagnostics/metrics/registry.h>
 #include <cloud/filestore/libs/diagnostics/metrics/visitor.h>
@@ -82,6 +83,7 @@ private:
     TTestEnvConfig Config;
     ILoggingServicePtr Logging;
     TStorageConfigPtr StorageConfig;
+    TDiagnosticsConfigPtr DiagConfig;
     IProfileLogPtr ProfileLog;
     ITraceSerializerPtr TraceSerializer;
 
@@ -102,7 +104,8 @@ public:
         const TTestEnvConfig& config = {},
         NProto::TStorageConfig storageConfig = {},
         NKikimr::NFake::TCaches cachesConfig = {},
-        IProfileLogPtr profileLog = CreateProfileLogStub());
+        IProfileLogPtr profileLog = CreateProfileLogStub(),
+        NProto::TDiagnosticsConfig diagConfig = {});
 
     NActors::TTestActorRuntime& GetRuntime()
     {

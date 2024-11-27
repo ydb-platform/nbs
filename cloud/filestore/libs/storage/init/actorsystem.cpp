@@ -201,9 +201,11 @@ public:
         const TAppData* appData) override
     {
         auto config = Args.StorageConfig;
+        auto diagConfig = Args.DiagnosticsConfig;
 
         auto tabletFactory =
             [config,
+             diagConfig,
              profileLog = Args.ProfileLog,
              traceSerializer = Args.TraceSerializer,
              metricsRegistry = MetricsRegistry] (
@@ -219,6 +221,7 @@ public:
                     owner,
                     storage,
                     config,
+                    diagConfig,
                     std::move(profileLog),
                     std::move(traceSerializer),
                     std::move(metricsRegistry),

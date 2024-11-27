@@ -128,7 +128,15 @@ void TIndexTabletActor::CompleteTx_DestroyHandle(
 {
     RemoveTransaction(*args.RequestInfo);
 
-    auto response = std::make_unique<TEvService::TEvDestroyHandleResponse>(args.Error);
+    if (!HasError(args.Error)) {
+        Metrics.DestroyHandle.Update(
+            1,
+            0,
+            ctx.Now() - args.RequestInfo->StartedTs);
+    }
+
+    auto response =
+        std::make_unique<TEvService::TEvDestroyHandleResponse>(args.Error);
     CompleteResponse<TEvService::TDestroyHandleMethod>(
         response->Record,
         args.RequestInfo->CallContext,
