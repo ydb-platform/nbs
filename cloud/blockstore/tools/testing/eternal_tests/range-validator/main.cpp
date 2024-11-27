@@ -6,6 +6,8 @@
 #include <util/generic/size_literals.h>
 #include <util/generic/vector.h>
 
+#include <numeric>
+
 using namespace NCloud::NBlockStore;
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -162,11 +164,47 @@ void ValidateRanges(TOptions options)
         ui64 startOffset = config.GetStartOffset();
         ui64 requestSize = config.GetRequestBlockCount() * 4_KB;
 
-        TVector<ui64> expected(len);
+        TVector<TBlockData> actual(len);
+        for (ui64 i = 0; i < len; ++i) {
+            actual[i] = ReadBlockData(file, (i + startOffset) * requestSize);
+        }
 
-        ui64 step = config.GetStep();
-        ui64 curBlockIdx = config.GetLastBlockIdx();
-        ui64 curNum = config.GetNumberToWrite();
+        Cout << "Guessing NumberToWrite, LastBlockIdx, Step from actual data"
+             << Endl;
+
+        const auto maxIt = MaxElementBy(
+            actual,
+            [](const auto& d) { return d.RequestNumber; });
+
+        auto secondMaxIt = actual.begin();
+        for (auto it = actual.begin() + 1; it < actual.end(); ++it) {
+            if (it != maxIt &&
+                it->RequestNumber > secondMaxIt->RequestNumber
+            ) {
+                secondMaxIt = it;
+            }
+        }
+
+        ui64 step = 0;
+        if (maxIt >= secondMaxIt) {
+            step = maxIt - secondMaxIt;
+        } else {
+            step = len - (secondMaxIt - maxIt);
+        }
+
+        ui64 curNum = maxIt->RequestNumber;
+        ui64 curBlockIdx = maxIt - actual.begin();
+
+        Cout << "Step: " << step
+             << " NumberToWrite: " << curNum
+             << " LastBlockIdx: " << curBlockIdx << Endl;
+
+        Y_ENSURE(step != 0, "Step should not be zero");
+        Y_ENSURE(
+            std::gcd(step, len) == 1,
+            "Step and RequestCount should be coprime");
+
+        TVector<ui64> expected(len);
         ui64 cnt = 0;
         while (cnt < len && curNum != 0) {
             curBlockIdx = (curBlockIdx + len - step) % len;
@@ -178,12 +216,11 @@ void ValidateRanges(TOptions options)
         TFileOutput out(TFile(path, EOpenModeFlag::CreateAlways | EOpenModeFlag::WrOnly));
 
         for (ui64 i = 0; i < len; ++i) {
-            auto blockData = ReadBlockData(file, (i + startOffset) * requestSize);
-            if (blockData.RequestNumber != expected[i]) {
+            if (expected[i] != actual[i].RequestNumber) {
                 out << "[" << rangeIdx << "]"
                     << " Wrong data in block " << (i + startOffset)
                     << " expected " << expected[i]
-                    << " actual " << blockData
+                    << " actual " << actual[i]
                     << Endl;
             }
         }
