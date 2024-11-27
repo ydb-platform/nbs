@@ -605,7 +605,8 @@ func TestSnapshotServiceDeleteIncrementalSnapshotWhileCreating(t *testing.T) {
 	require.NoError(t, err)
 
 	//nolint:sa9003
-	// TODO: remove line above after https://a.yandex-team.ru/issues/2008
+	// TODO: remove line above after
+	// https://github.com/ydb-platform/nbs/issues/2008
 	if creationErr == nil {
 		testcommon.RequireCheckpointsAreEmpty(t, ctx, diskID)
 	} else {
