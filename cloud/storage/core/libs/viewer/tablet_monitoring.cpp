@@ -10,6 +10,26 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+void setWritable(TStringBuf& label, TStringBuf& color, bool writable, bool systemWritable) {
+    if (systemWritable) {
+        if (writable) {
+            color = "green";
+            label = "Writable";
+        } else {
+            color = "yellow";
+            label = "SystemWritable";
+        }
+    } else {
+        if (writable) {
+            color = "pink";
+            label = "WeirdState";
+        } else {
+            color = "orange";
+            label = "Readonly";
+        }
+    }
+}
+
 void DumpChannel(
     IOutputStream& out,
     const TChannelMonInfo& channelInfo,
@@ -36,23 +56,7 @@ void DumpChannel(
             TABLED() {
                 TStringBuf label;
                 TStringBuf color;
-                if (channelInfo.SystemWritable) {
-                    if (channelInfo.Writable) {
-                        color = "green";
-                        label = "Writable";
-                    } else {
-                        color = "yellow";
-                        label = "SystemWritable";
-                    }
-                } else {
-                    if (channelInfo.Writable) {
-                        color = "pink";
-                        label = "WeirdState";
-                    } else {
-                        color = "orange";
-                        label = "Readonly";
-                    }
-                }
+                setWritable(label, color, channelInfo.Writable, channelInfo.SystemWritable);
 
                 SPAN_CLASS_STYLE(
                     "label",
@@ -131,6 +135,55 @@ void DumpChannels(
                 }
             }
         }
+    }
+}
+
+void DumpChannelsXml(
+    NXml::TNode& root,
+    const TVector<TChannelMonInfo>& channelInfos,
+    const NKikimr::TTabletStorageInfo& storage,
+    const TGetMonitoringYDBGroupUrl& getGroupUrl,
+    const TBuildReassignChannelButtonXml& buildReassignButton,
+    ui64 hiveTabletId)
+{
+    root.AddChild("hive_tablet_id", hiveTabletId);
+    root.AddChild("storage_tablet_id", storage.TabletID);
+    auto channels = root.AddChild("channels", " ");
+    for (const auto& channel : storage.Channels) {
+        TChannelMonInfo channelInfo;
+        // we need this check for legacy volumes
+        // see NBS-752
+        if (channel.Channel < channelInfos.size()) {
+            channelInfo = channelInfos[channel.Channel];
+        }
+
+        auto latestEntry = channel.LatestEntry();
+        if (!latestEntry) {
+            continue;
+        }
+
+        auto cd = channels.AddChild("cd", " ");
+        cd.AddChild("channel", channel.Channel);
+        cd.AddChild("storage_pool", channel.StoragePool);
+        cd.AddChild("group_id", latestEntry->GroupID);
+        cd.AddChild("generation", latestEntry->FromGeneration);
+        cd.AddChild("pool_kind", channelInfo.PoolKind);
+        cd.AddChild("data_kind", channelInfo.DataKind);
+        TStringBuf label;
+        TStringBuf color;
+        setWritable(label, color, channelInfo.Writable, channelInfo.SystemWritable);
+        cd.AddChild("color", color);
+        cd.AddChild("label", label);
+        cd.AddChild("free", static_cast<ui32>(channelInfo.FreeSpaceShare * 100));
+        const auto groupUrl = getGroupUrl(latestEntry->GroupID, channel.StoragePool);
+        if (groupUrl) {
+            cd.AddChild("group_url", groupUrl);
+        }
+        buildReassignButton(
+                    cd,
+                    hiveTabletId,
+                    storage.TabletID,
+                    channel.Channel);
     }
 }
 

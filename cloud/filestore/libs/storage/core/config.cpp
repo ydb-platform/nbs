@@ -421,6 +421,25 @@ void TStorageConfig::DumpHtml(IOutputStream& out) const
 #undef FILESTORE_DUMP_CONFIG
 }
 
+void TStorageConfig::DumpXml(NXml::TNode& root) const
+{
+    auto props = root.AddChild("config_propertiries", " ");
+    TStringStream out;
+    NXml::TNode cd;
+#define FILESTORE_DUMP_CONFIG(name, ...)                                       \
+    cd = props.AddChild("cd", " ");                                            \
+    cd.AddChild("name", #name);                                                \
+    DumpImpl(Get##name(), out);                                                \
+    cd.AddChild("value", out.Str());                                           \
+    out.Clear();                                                               \
+// FILESTORE_DUMP_CONFIG
+
+    FILESTORE_STORAGE_CONFIG(FILESTORE_DUMP_CONFIG)
+    FILESTORE_STORAGE_CONFIG_REF(FILESTORE_DUMP_CONFIG)
+
+#undef FILESTORE_DUMP_CONFIG
+}
+
 void TStorageConfig::DumpOverridesHtml(IOutputStream& out) const
 {
 #define FILESTORE_DUMP_CONFIG(name, type, ...) {                               \
@@ -442,6 +461,29 @@ void TStorageConfig::DumpOverridesHtml(IOutputStream& out) const
             }
         }
     }
+
+#undef FILESTORE_DUMP_CONFIG
+}
+
+void TStorageConfig::DumpOverridesXml(NXml::TNode& root) const
+{
+    auto props = root.AddChild("config_propertiries", " ");
+    TStringStream out;
+    NXml::TNode cd;
+#define FILESTORE_DUMP_CONFIG(name, ...) {                                     \
+    const auto value = ProtoConfig.Get##name();                                \
+    if (!IsEmpty(value)) {                                                     \
+        cd = props.AddChild("cd", " ");                                        \
+        cd.AddChild("name", #name);                                            \
+        DumpImpl(Get##name(), out);                                            \
+        cd.AddChild("value", out.Str());                                       \
+        out.Clear();                                                           \
+    }                                                                          \
+}                                                                              \
+// FILESTORE_DUMP_CONFIG
+
+    FILESTORE_STORAGE_CONFIG(FILESTORE_DUMP_CONFIG)
+    FILESTORE_STORAGE_CONFIG_REF(FILESTORE_DUMP_CONFIG)
 
 #undef FILESTORE_DUMP_CONFIG
 }

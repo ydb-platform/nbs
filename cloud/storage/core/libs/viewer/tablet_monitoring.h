@@ -1,5 +1,18 @@
 #pragma once
 
+#ifdef THROW
+#define THROW_OLD THROW
+#undef THROW
+#endif
+
+#include <library/cpp/xml/document/xml-document.h>
+#undef THROW
+
+#ifdef THROW_OLD
+#define THROW THROW_OLD
+#undef THROW_OLD
+#endif
+
 #include <contrib/ydb/core/base/blobstorage.h>
 
 #include <util/generic/vector.h>
@@ -28,12 +41,26 @@ using TBuildReassignChannelButton = std::function<void(
     ui64 tabletId,
     ui32 channel)>;
 
+using TBuildReassignChannelButtonXml = std::function<void(
+    NXml::TNode& root,
+    ui64 hiveTabletId,
+    ui64 tabletId,
+    ui32 channel)>;
+
 void DumpChannels(
     IOutputStream& out,
     const TVector<TChannelMonInfo>& channelInfos,
     const NKikimr::TTabletStorageInfo& storage,
     const TGetMonitoringYDBGroupUrl& getGroupUrl,
     const TBuildReassignChannelButton& buildReassignButton,
+    ui64 hiveTabletId);
+
+void DumpChannelsXml(
+    NXml::TNode& root,
+    const TVector<TChannelMonInfo>& channelInfos,
+    const NKikimr::TTabletStorageInfo& storage,
+    const TGetMonitoringYDBGroupUrl& getGroupUrl,
+    const TBuildReassignChannelButtonXml& buildReassignButton,
     ui64 hiveTabletId);
 
 }   // namespace NCloud::NStorage

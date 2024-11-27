@@ -21,6 +21,19 @@
 #include <contrib/ydb/library/actors/core/log.h>
 #include <contrib/ydb/library/actors/core/mon.h>
 
+#ifdef THROW
+#define THROW_OLD THROW
+#undef THROW
+#endif
+
+#include <library/cpp/xml/document/xml-document.h>
+#undef THROW
+
+#ifdef THROW_OLD
+#define THROW THROW_OLD
+#undef THROW_OLD
+#endif
+
 namespace NCloud::NFileStore::NProto {
     class TProfileLogRequestInfo;
 }   // namespace NCloud::NFileStore::NProto
@@ -211,8 +224,8 @@ private:
         TString input);
 
 private:
-    void RenderSessions(IOutputStream& out);
-    void RenderLocalFileStores(IOutputStream& out);
+    void RenderSessions(NXml::TNode& root);
+    void RenderLocalFileStores(NXml::TNode& root);
 
     TString LogTag(
         const TString& fsId,

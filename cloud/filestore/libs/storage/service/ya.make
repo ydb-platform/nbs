@@ -47,6 +47,7 @@ PEERDIR(
     cloud/filestore/libs/storage/api
     cloud/filestore/libs/storage/core
     cloud/filestore/libs/storage/model
+    cloud/filestore/libs/xsl
 
     cloud/storage/core/libs/common
     cloud/storage/core/libs/diagnostics
@@ -54,6 +55,7 @@ PEERDIR(
     contrib/ydb/library/actors/core
     library/cpp/monlib/service/pages
     library/cpp/string_utils/quote
+    library/cpp/xml/document
 
     contrib/ydb/core/base
     contrib/ydb/core/mind

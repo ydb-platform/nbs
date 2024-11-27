@@ -178,6 +178,24 @@ void TDiagnosticsConfig::DumpHtml(IOutputStream& out) const
 #undef FILESTORE_CONFIG_DUMP
 }
 
+void TDiagnosticsConfig::DumpXml(NXml::TNode& root) const
+{
+    auto props = root.AddChild("config_propertiries", " ");
+    TStringStream out;
+    NXml::TNode cd;
+#define FILESTORE_CONFIG_DUMP(name, ...)                                       \
+    cd = props.AddChild("cd", " ");                                            \
+    cd.AddChild("name", #name);                                                \
+    out << Get##name();                                                        \
+    cd.AddChild("value", out.Str());                                           \
+    out.Clear();                                                               \
+// FILESTORE_CONFIG_DUMP
+
+    FILESTORE_DIAGNOSTICS_CONFIG(FILESTORE_CONFIG_DUMP);
+
+#undef FILESTORE_CONFIG_DUMP
+}
+
 }   // namespace NCloud::NFileStore
 
 template <>

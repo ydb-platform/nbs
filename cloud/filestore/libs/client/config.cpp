@@ -150,6 +150,24 @@ void TClientConfig::DumpHtml(IOutputStream& out) const
 #undef FILESTORE_CONFIG_DUMP
 }
 
+void TClientConfig::DumpXml(NXml::TNode& root) const
+{
+    auto props = root.AddChild("config_propertiries", " ");
+    TStringStream out;
+    NXml::TNode cd;
+#define FILESTORE_CONFIG_DUMP(name, ...)                                       \
+    cd = props.AddChild("cd", " ");                                            \
+    cd.AddChild("name", #name);                                                \
+    DumpImpl(Get##name(), out);                                                \
+    cd.AddChild("value", out.Str());                                           \
+    out.Clear();                                                               \
+// FILESTORE_CONFIG_DUMP
+
+    FILESTORE_CLIENT_CONFIG(FILESTORE_CONFIG_DUMP);
+
+#undef FILESTORE_CONFIG_DUMP
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 #define FILESTORE_CONFIG_GETTER(name, type, ...)                               \
@@ -196,4 +214,23 @@ void TSessionConfig::DumpHtml(IOutputStream& out) const
 
 #undef FILESTORE_CONFIG_DUMP
 }
+
+void TSessionConfig::DumpXml(NXml::TNode& root) const
+{
+    auto props = root.AddChild("config_propertiries", " ");
+    TStringStream out;
+    NXml::TNode cd;
+#define FILESTORE_CONFIG_DUMP(name, ...)                                       \
+    cd = props.AddChild("cd", " ");                                            \
+    cd.AddChild("name", #name);                                                \
+    DumpImpl(Get##name(), out);                                                \
+    cd.AddChild("value", out.Str());                                           \
+    out.Clear();                                                               \
+// FILESTORE_CONFIG_DUMP
+
+    FILESTORE_SESSION_CONFIG(FILESTORE_CONFIG_DUMP);
+
+#undef FILESTORE_CONFIG_DUMP
+}
+
 }   // namespace NCloud::NFileStore::NClient

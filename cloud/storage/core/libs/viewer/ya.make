@@ -6,6 +6,7 @@ SRCS(
 
 PEERDIR(
     library/cpp/monlib/service/pages
+    library/cpp/xml/document
 
     contrib/ydb/core/base
 )

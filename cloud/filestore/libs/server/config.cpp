@@ -178,4 +178,22 @@ void TServerConfig::DumpHtml(IOutputStream& out) const
 #undef FILESTORE_CONFIG_DUMP
 }
 
+void TServerConfig::DumpXml(NXml::TNode& root) const
+{
+    auto props = root.AddChild("config_propertiries", " ");
+    TStringStream out;
+    NXml::TNode cd;
+#define FILESTORE_CONFIG_DUMP(name, ...)                                       \
+    cd = props.AddChild("cd", " ");                                            \
+    cd.AddChild("name", #name);                                                \
+    DumpImpl(Get##name(), out);                                                \
+    cd.AddChild("value", out.Str());                                           \
+    out.Clear();                                                               \
+// FILESTORE_CONFIG_DUMP
+
+    FILESTORE_SERVER_CONFIG(FILESTORE_CONFIG_DUMP)
+
+#undef FILESTORE_CONFIG_DUMP
+}
+
 }   // namespace NCloud::NFileStore::NServer

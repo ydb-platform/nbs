@@ -7,35 +7,18 @@
 
 #include <util/stream/str.h>
 
+#include <cloud/filestore/libs/xsl/xsl_render.h>
+
+namespace {
+    const char* xslTemplate =
+    {
+        #include "xsl_templates/service_actor_monitoring.xsl"
+    };
+};
+
 namespace NCloud::NFileStore::NStorage {
 
 using namespace NActors;
-
-namespace {
-
-////////////////////////////////////////////////////////////////////////////////
-
-void BuildSearchButton(IOutputStream& out)
-{
-    out <<
-        "<form method=\"GET\" id=\"fsSearch\" name=\"fsSearch\">\n"
-        "Filesystem: <input type=\"text\" id=\"Filesystem\" name=\"Filesystem\"/>\n"
-        "<input class=\"btn btn-primary\" type=\"submit\" value=\"Search\"/>\n"
-        "<input type='hidden' name='action' value='search'/>"
-        "</form>\n";
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
-void DumpFsLink(IOutputStream& out, const ui64 tabletId, const TString& fsId)
-{
-    out << "<a href='../tablets?TabletID=" << tabletId << "'>"
-        << fsId << "</a>";
-}
-
-}   // namespace
-
-////////////////////////////////////////////////////////////////////////////////
 
 void TStorageServiceActor::HandleHttpInfo(
     const NMon::TEvHttpInfo::TPtr& ev,
@@ -58,23 +41,25 @@ void TStorageServiceActor::HandleHttpInfo(
     }
 
     TStringStream out;
+
+    NXml::TDocument data("root", NXml::TDocument::RootName);
+    
+    auto root = data.Root();
+
     if (State) {
-        HTML(out) {
-            TAG(TH3) { out << "Search Filesystem by id"; }
-            BuildSearchButton(out);
+        root.AddChild("has_data", " ");
 
-            TAG(TH3) { out << "Local Sessions"; }
-            RenderSessions(out);
+        RenderSessions(root);
 
-            TAG(TH3) { out << "Local Filesystems"; }
-            RenderLocalFileStores(out);
+        RenderLocalFileStores(root);
 
-            TAG(TH3) { out << "Config"; }
-            StorageConfig->DumpHtml(out);
+        if (StorageConfig) {
+            auto configNode = root.AddChild("config_table", " ");
+            StorageConfig->DumpXml(configNode);
         }
-    } else {
-        out << "State not ready yet" << Endl;
     }
+
+    NCloud::NFileStore::NXSLRender::NXSLRender(xslTemplate, data, out);
 
     NCloud::Reply(
         ctx,
@@ -82,76 +67,29 @@ void TStorageServiceActor::HandleHttpInfo(
         std::make_unique<NMon::TEvHttpInfoRes>(out.Str()));
 }
 
-void TStorageServiceActor::RenderSessions(IOutputStream& out)
+void TStorageServiceActor::RenderSessions(NXml::TNode& root)
 {
-    HTML(out) {
-        TABLE_SORTABLE_CLASS("table table-bordered") {
-            TABLEHEAD() {
-                TABLER() {
-                    TABLEH() { out << "ClientId"; }
-                    TABLEH() { out << "FileSystemId"; }
-                    TABLEH() { out << "SessionId"; }
-                }
-            }
-
-            State->VisitSessions([&] (const TSessionInfo& session) {
-                TABLER() {
-                    TABLED() { out << session.ClientId; }
-                    TABLED() {
-                        DumpFsLink(
-                            out,
-                            session.TabletId,
-                            session.FileStore.GetFileSystemId()
-                        );
-                    }
-                    TABLED() { out << session.SessionId; }
-                }
-            });
-        }
-    }
+    auto sessions = root.AddChild("sessions", " ");
+    State->VisitSessions([&] (const TSessionInfo& session) {
+        auto cd = sessions.AddChild("cd", " ");
+        cd.AddChild("client_id", session.ClientId);
+        cd.AddChild("tablet_id", session.TabletId);
+        cd.AddChild("fs_id", session.FileStore.GetFileSystemId());
+        cd.AddChild("session_id", session.SessionId);
+    });
 }
 
-void TStorageServiceActor::RenderLocalFileStores(IOutputStream& out)
+void TStorageServiceActor::RenderLocalFileStores(NXml::TNode& root)
 {
-    HTML(out) {
-        TABLE_SORTABLE_CLASS("table table-bordered") {
-            TABLEHEAD() {
-                TABLER() {
-                    TABLEH() { out << "FileStore"; }
-                    TABLEH() { out << "Tablet"; }
-                    TABLEH() { out << "Size"; }
-                    TABLEH() { out << "Media kind"; }
-                }
-            }
-
-            for (const auto& [_, info]: State->GetLocalFileStores()) {
-                TABLER() {
-                    TABLED() {
-                        out << "<a href='../tablets?TabletID="
-                            << info.TabletId
-                            << "'>"
-                            << info.FileStoreId
-                            << "</a>";
-                    }
-                    TABLED() {
-                        out << "<a href='../tablets?TabletID="
-                            << info.TabletId
-                            << "'>"
-                            << info.TabletId
-                            << "</a>";
-                    }
-                    TABLED() {
-                        out << FormatByteSize(
-                            info.Config.GetBlocksCount() * info.Config.GetBlockSize());
-                    }
-                    TABLED() {
-                        out << MediaKindToString(
-                            static_cast<NProto::EStorageMediaKind>(
-                                info.Config.GetStorageMediaKind()));
-                    }
-                }
-            }
-        }
+    auto localFs = root.AddChild("local_filesystems", " ");
+    for (const auto& [_, info]: State->GetLocalFileStores()) {
+        auto cd = localFs.AddChild("cd", " ");
+        cd.AddChild("tablet_id", info.TabletId);
+        cd.AddChild("fs_id", info.FileStoreId);
+        cd.AddChild("size", FormatByteSize(
+            info.Config.GetBlocksCount() * info.Config.GetBlockSize()));
+        cd.AddChild("media_kind", MediaKindToString(
+            static_cast<NProto::EStorageMediaKind>(info.Config.GetStorageMediaKind())));
     }
 }
 

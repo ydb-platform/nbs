@@ -29,6 +29,7 @@ PEERDIR(
     library/cpp/monlib/dynamic_counters
     library/cpp/monlib/service/pages
     library/cpp/protobuf/util
+    library/cpp/xml/document
 )
 
 END()

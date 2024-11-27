@@ -21,6 +21,7 @@ PEERDIR(
     contrib/ydb/library/actors/core
     library/cpp/deprecated/atomic
     library/cpp/lwtrace
+    library/cpp/xml/document
 
     contrib/ydb/core/base
     contrib/ydb/core/engine/minikql

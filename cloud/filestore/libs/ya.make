@@ -13,4 +13,5 @@ RECURSE(
     vfs
     vfs_fuse
     vhost
+    xsl
 )

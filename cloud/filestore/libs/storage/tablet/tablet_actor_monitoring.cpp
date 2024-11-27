@@ -1,4 +1,5 @@
 #include "tablet_actor.h"
+#include "cloud/filestore/libs/xsl/xsl_render.h"
 
 #include <cloud/filestore/libs/diagnostics/config.h>
 #include <cloud/filestore/libs/storage/tablet/tablet_state.h>
@@ -26,6 +27,9 @@ using namespace NActors::NMon;
 using namespace NKikimr;
 
 namespace {
+    const char* xslTemplate = {
+        #include "xsl_templates/tablet_actor_monitoring.xsl"
+    };
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -138,14 +142,6 @@ void BuildTabletNotifyPageWithRedirect(
         alertLevel);
 }
 
-void BuildMenuButton(IOutputStream& out, const TString& menuItems)
-{
-    out << "<span class='glyphicon glyphicon-list'"
-        << " data-toggle='collapse' data-target='#"
-        << menuItems << "' style='padding-right: 5px'>"
-        << "</span>";
-}
-
 void SendHttpResponse(
     const TActorContext& ctx,
     ui64 tablet,
@@ -167,127 +163,6 @@ void RejectHttpRequest(
 {
     LOG_ERROR_S(ctx, TFileStoreComponents::TABLET, message);
     SendHttpResponse(ctx, tablet, requestInfo, std::move(message), EAlertLevel::DANGER);
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
-void BuildConfirmActionDialog(
-    IOutputStream& out,
-    const TString& id,
-    const TString& title,
-    const TString& message,
-    const TString& onClickScript)
-{
-    out << "<div class='modal fade' id='" << id << "' role='dialog'>";
-    out << R"___(
-                <div class='modal-dialog'>
-                    <div class='modal-content'>
-                        <div class='modal-header'>
-                            <button type='button' class='close' data-dismiss='modal'>&times;</button>
-                            <h4 class='modal-title'>
-            )___";
-
-    out << title;
-
-    out << R"___(
-                            </h4>
-                        </div>
-                        <div class='modal-body'>
-                            <div class='row'>
-                                <div class='col-sm-6 col-md-6'>
-            )___";
-
-    out << message;
-
-    out << R"___(
-                                </div>
-                            </div>
-                        </div>
-                        <div class='modal-footer'>
-                            <button type='submit' class='btn btn-default' data-dismiss='modal' onclick='
-            )___";
-
-    out << onClickScript << "'>Confirm</button>";
-
-    out << R"___(
-                            <button type='button' class='btn btn-default' data-dismiss='modal'>Cancel</button>
-                        </div>
-                    </div>
-                </div>
-            </div>
-            )___";
-}
-
-void BuildForceCompactionButton(IOutputStream& out, ui64 tabletId)
-{
-    out << "<p><a href='' data-toggle='modal' data-target='#force-compaction'>Force Full Compaction</a></p>"
-        << "<form method='POST' name='ForceCompaction' style='display:none'>"
-        << "<input type='hidden' name='TabletID' value='" << tabletId << "'/>"
-        << "<input type='hidden' name='action' value='forceOperationAll'/>"
-        << "<input type='hidden' name='mode' value='compaction'/>"
-        << "<input class='btn btn-primary' type='button' value='Compact ALL ranges'"
-        << " data-toggle='modal' data-target='#force-compaction'/>"
-        << "</form>";
-
-    BuildConfirmActionDialog(
-        out,
-        "force-compaction",
-        "Force compaction",
-        "Are you sure you want to force compaction for ALL ranges?",
-        "forceCompactionAll();");
-
-    out << "<p><a href='' data-toggle='modal' "
-           "data-target='#force-cleanup'>Force Full Cleanup</a></p>"
-        << "<form method='POST' name='ForceCleanup' style='display:none'>"
-        << "<input type='hidden' name='TabletID' value='" << tabletId << "'/>"
-        << "<input type='hidden' name='action' value='forceOperationAll'/>"
-        << "<input type='hidden' name='mode' value='cleanup'/>"
-        << "<input class='btn btn-primary' type='button' value='Cleanup ALL "
-           "ranges'"
-        << " data-toggle='modal' data-target='#force-cleanup'/>"
-        << "</form>";
-
-    BuildConfirmActionDialog(
-        out,
-        "force-cleanup",
-        "Force cleanup",
-        "Are you sure you want to force cleanup for ALL ranges?",
-        "forceCleanupAll();");
-
-    out << "<p><a href='' data-toggle='modal' "
-           "data-target='#force-delete-zero-compaction-ranges'>Force Delete zero compaction ranges</a></p>"
-        << "<form method='POST' name='ForceDeleteZeroCompactionRanges' style='display:none'>"
-        << "<input type='hidden' name='TabletID' value='" << tabletId << "'/>"
-        << "<input type='hidden' name='action' value='forceOperationAll'/>"
-        << "<input type='hidden' name='mode' value='deleteZeroCompactionRanges'/>"
-        << "<input class='btn btn-primary' type='button' value='Delete zero "
-           "compaction ranges'"
-        << " data-toggle='modal' data-target='#force-delete-zero-compaction-ranges'/>"
-        << "</form>";
-
-    BuildConfirmActionDialog(
-        out,
-        "force-delete-zero-compaction-ranges",
-        "Force delete zero compaction ranges",
-        "Are you sure you want to delete ALL zero compaction ranges?",
-        "forceDeleteZeroCompactionRanges();");
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
-void DumpProgress(IOutputStream& out, ui64 progress, ui64 total)
-{
-    HTML(out) {
-        DIV_CLASS("progress") {
-            ui32 percents = (progress * 100 / total);
-            out << "<div class='progress-bar' role='progressbar' aria-valuemin='0'"
-                << " style='width: " << percents << "%'"
-                << " aria-valuenow='" << progress
-                << "' aria-valuemax='" << total << "'>"
-                << percents << "%</div>";
-        }
-        out << progress << " of " << total;
-    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -326,24 +201,18 @@ void DumpTabletNotReady(
 void DumpOperationState(
     const TString& opName,
     const TOperationState& state,
-    IOutputStream& out)
+    NXml::TNode& root)
 {
-    out << opName
-        << " state: " << static_cast<ui32>(state.GetOperationState())
-        << ", Timestamp: " << state.GetStateChanged()
-        << ", Completed: " << state.GetCompleted()
-        << ", Failed: " << state.GetFailed()
-        << ", Backoff: " << state.GetBackoffTimeout().ToString();
+    auto cd = root.AddChild("cd", " ");
+    cd.AddChild("name", opName);
+    cd.AddChild("state", static_cast<ui32>(state.GetOperationState()));
+    cd.AddChild("timestamp", state.GetStateChanged());
+    cd.AddChild("completed", state.GetCompleted());
+    cd.AddChild("failed", state.GetFailed());
+    cd.AddChild("backoff", state.GetBackoffTimeout().ToString());
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-
-void DumpCompactionInfo(
-    IOutputStream& out,
-    const TIndexTabletState::TForcedRangeOperationState& state)
-{
-    DumpProgress(out, state.Current, state.RangesToCompact.size());
-}
 
 void DumpRangeId(IOutputStream& out, ui64 tabletId, ui32 rangeId)
 {
@@ -357,109 +226,67 @@ void DumpRangeId(IOutputStream& out, ui64 tabletId, ui32 rangeId)
 }
 
 void DumpCompactionRangeInfo(
-    IOutputStream& out,
+    NXml::TNode& root,
     ui64 tabletId,
     const TVector<TCompactionRangeInfo>& ranges)
 {
-    HTML(out) {
-        TABLE_SORTABLE_CLASS("table table-bordered") {
-            TABLEHEAD() {
-                TABLER() {
-                    TABLEH() { out << "Range"; }
-                    TABLEH() { out << "Blobs"; }
-                    TABLEH() { out << "Deletions"; }
-                }
-            }
-
-            for (const auto& range: ranges) {
-                TABLER() {
-                    TABLED() { DumpRangeId(out, tabletId, range.RangeId); }
-                    TABLED() { out << range.Stats.BlobsCount; }
-                    TABLED() { out << range.Stats.DeletionsCount; }
-                }
-            }
-        }
+    auto rangesXml = root.AddChild("ranges", " ");
+    for (const auto& range: ranges) {
+        auto cd = rangesXml.AddChild("cd", " ");
+        TStringStream out;
+        DumpRangeId(out, tabletId, range.RangeId);
+        cd.AddChild("id", out.Str());
+        cd.AddChild("blobs", range.Stats.BlobsCount);
+        cd.AddChild("deletions", range.Stats.DeletionsCount);
     }
 }
 
 void DumpCompactionMap(
-    IOutputStream& out,
+    NXml::TNode& root,
     ui64 tabletId,
     const TCompactionMapStats& stats)
 {
-    HTML(out) {
-        TABLE_CLASS("table table-bordered") {
-            TABLEHEAD() {
-                TABLER() {
-                    TABLEH() { out << "Used ranges count"; }
-                    TABLEH() { out << "Allocated ranges count"; }
-                    TABLEH() { out << "Compaction map density"; }
-                }
-            }
-
-            TABLER() {
-                TABLED() { out << stats.UsedRangesCount; }
-                TABLED() { out << stats.AllocatedRangesCount; }
-                TABLED() {
-                    DIV_CLASS("progress") {
-                        ui32 percents = 0;
-                        if (stats.AllocatedRangesCount) {
-                            percents = (stats.UsedRangesCount * 100 / stats.AllocatedRangesCount);
-                        }
-
-                        out << "<div class='progress-bar' role='progressbar' aria-valuemin='0'"
-                            << " style='width: " << percents << "%'"
-                            << " aria-valuenow='" << stats.UsedRangesCount
-                            << "' aria-valuemax='" << stats.AllocatedRangesCount << "'>"
-                            << percents << "%</div>";
-                    }
-                }
-            }
-        }
-
-        TAG(TH4) {
-            out << "Top ranges by compaction score";
-        }
-        DumpCompactionRangeInfo(out, tabletId, stats.TopRangesByCompactionScore);
-
-        TAG(TH4) {
-            out << "Top ranges by cleanup score";
-        }
-        DumpCompactionRangeInfo(out, tabletId, stats.TopRangesByCleanupScore);
-
-        TAG(TH4) {
-            out << "Top ranges by garbage score";
-        }
-        DumpCompactionRangeInfo(out, tabletId, stats.TopRangesByGarbageScore);
+    root.AddChild("used_ranges_count", stats.UsedRangesCount);
+    root.AddChild("allocated_ranges_count", stats.AllocatedRangesCount);
+    ui32 percents = 0;
+    if (stats.AllocatedRangesCount) {
+        percents = (stats.UsedRangesCount * 100 / stats.AllocatedRangesCount);
     }
+    root.AddChild("ranges_percents", percents);
+
+    auto info = root.AddChild("compaction_range_info", " ");
+    auto compaction = info.AddChild("cd", " ");
+    compaction.AddChild("name", "Top ranges by compaction score");
+    DumpCompactionRangeInfo(compaction, tabletId, stats.TopRangesByCompactionScore);
+
+    auto cleanup = info.AddChild("cd", " ");
+    cleanup.AddChild("name", "Top ranges by cleanup score");
+    DumpCompactionRangeInfo(cleanup, tabletId, stats.TopRangesByCleanupScore);
+
+    auto garbage = info.AddChild("cd", " ");
+    garbage.AddChild("name", "Top ranges by garbage score");
+    DumpCompactionRangeInfo(garbage, tabletId, stats.TopRangesByGarbageScore);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 
 void DumpProfillingAllocatorStats(
     const TFileStoreAllocRegistry& registry,
-    IOutputStream& out)
+    NXml::TNode& root)
 {
-    HTML(out) {
-        TABLE_CLASS("table table-condensed") {
-            TABLEBODY() {
-                ui64 allBytes = 0;
-                for (ui32 i = 0; i < static_cast<ui32>(EAllocatorTag::Max); ++i) {
-                    EAllocatorTag tag = static_cast<EAllocatorTag>(i);
-                    const ui64 bytes = registry.GetAllocator(tag)->GetBytesAllocated();
-                    TABLER() {
-                        TABLED() { out << tag; }
-                        TABLED() { out << FormatByteSize(bytes); }
-                    }
-                    allBytes += bytes;
-                }
-                TABLER() {
-                    TABLED() { out << "Summary"; }
-                    TABLED() { out << FormatByteSize(allBytes); }
-                }
-            }
-        }
+    auto alloc_stats = root.AddChild("alloc_stats", " ");
+    ui64 allBytes = 0;
+    for (ui32 i = 0; i < static_cast<ui32>(EAllocatorTag::Max); ++i) {
+        auto tag = static_cast<EAllocatorTag>(i);
+        const ui64 bytes = registry.GetAllocator(tag)->GetBytesAllocated();
+        auto cd = alloc_stats.AddChild("cd", " ");
+        cd.AddChild("name", tag);
+        cd.AddChild("value", FormatByteSize(bytes));
+        allBytes += bytes;
     }
+    auto cd = alloc_stats.AddChild("cd", " ");
+    cd.AddChild("name", "Summary");
+    cd.AddChild("value", FormatByteSize(allBytes));
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -467,74 +294,39 @@ void DumpProfillingAllocatorStats(
 void DumpPerformanceProfile(
     bool storageThrottlingEnabled,
     const NProto::TFileStorePerformanceProfile& profile,
-    IOutputStream& out)
+    NXml::TNode& root)
 {
-    HTML(out) {
-        TABLE_CLASS("table table-condensed") {
-            TABLEBODY() {
-                TABLER() {
-                    TABLED() { out << "StorageThrottlingEnabled"; }
-                    TABLED() { out << storageThrottlingEnabled; }
-                }
-                TABLER() {
-                    TABLED() { out << "ThrottlingEnabled"; }
-                    TABLED() { out << profile.GetThrottlingEnabled(); }
-                }
-                TABLER() {
-                    TABLED() { out << "MaxReadIops"; }
-                    TABLED() { out << profile.GetMaxReadIops(); }
-                }
-                TABLER() {
-                    TABLED() { out << "MaxWriteIops"; }
-                    TABLED() { out << profile.GetMaxWriteIops(); }
-                }
-                TABLER() {
-                    TABLED() { out << "MaxReadBandwidth"; }
-                    TABLED() { out << profile.GetMaxReadBandwidth(); }
-                }
-                TABLER() {
-                    TABLED() { out << "MaxWriteBandwidth"; }
-                    TABLED() { out << profile.GetMaxWriteBandwidth(); }
-                }
-                TABLER() {
-                    TABLED() { out << "BoostTime"; }
-                    TABLED() { out << profile.GetBoostTime(); }
-                }
-                TABLER() {
-                    TABLED() { out << "BoostRefillTime"; }
-                    TABLED() { out << profile.GetBoostRefillTime(); }
-                }
-                TABLER() {
-                    TABLED() { out << "BoostPercentage"; }
-                    TABLED() { out << profile.GetBoostPercentage(); }
-                }
-                TABLER() {
-                    TABLED() { out << "BurstPercentage"; }
-                    TABLED() { out << profile.GetBurstPercentage(); }
-                }
-                TABLER() {
-                    TABLED() { out << "DefaultPostponedRequestWeight"; }
-                    TABLED() { out << profile.GetDefaultPostponedRequestWeight(); }
-                }
-                TABLER() {
-                    TABLED() { out << "MaxPostponedWeight"; }
-                    TABLED() { out << profile.GetMaxPostponedWeight(); }
-                }
-                TABLER() {
-                    TABLED() { out << "MaxWriteCostMultiplier"; }
-                    TABLED() { out << profile.GetMaxWriteCostMultiplier(); }
-                }
-                TABLER() {
-                    TABLED() { out << "MaxPostponedTime"; }
-                    TABLED() { out << profile.GetMaxPostponedTime(); }
-                }
-                TABLER() {
-                    TABLED() { out << "MaxPostponedCount"; }
-                    TABLED() { out << profile.GetMaxPostponedCount(); }
-                }
-            }
-        }
-    }
+#define DUMP_PROFILE_STAT(name, value)                                      \
+    {                                                                       \
+        auto cd = root.AddChild("cd", " ");                                 \
+        cd.AddChild("name", name);                                          \
+        cd.AddChild("value", value);                                        \
+    }                                                                       \
+// DUMP_PROFILE_STAT
+
+    DUMP_PROFILE_STAT("StorageThrottlingEnabled", storageThrottlingEnabled)
+    DUMP_PROFILE_STAT("ThrottlingEnabled", profile.GetThrottlingEnabled())
+    DUMP_PROFILE_STAT("MaxReadIops", profile.GetMaxReadIops())
+    DUMP_PROFILE_STAT("MaxWriteIops", profile.GetMaxWriteIops())
+    DUMP_PROFILE_STAT("MaxReadBandwidth", profile.GetMaxReadBandwidth())
+    DUMP_PROFILE_STAT("MaxWriteBandwidth", profile.GetMaxWriteBandwidth())
+    DUMP_PROFILE_STAT("BoostTime", profile.GetBoostTime())
+    DUMP_PROFILE_STAT("BoostRefillTime", profile.GetBoostRefillTime())
+    DUMP_PROFILE_STAT("BoostPercentage", profile.GetBoostPercentage())
+    DUMP_PROFILE_STAT("BurstPercentage", profile.GetBurstPercentage())
+    DUMP_PROFILE_STAT("DefaultPostponedRequestWeight", profile.GetDefaultPostponedRequestWeight())
+    DUMP_PROFILE_STAT("MaxPostponedWeight", profile.GetMaxPostponedWeight())
+    DUMP_PROFILE_STAT("MaxWriteCostMultiplier", profile.GetMaxWriteCostMultiplier())
+    DUMP_PROFILE_STAT("MaxPostponedTime", profile.GetMaxPostponedTime())
+    DUMP_PROFILE_STAT("MaxPostponedCount", profile.GetMaxPostponedCount())
+    DUMP_PROFILE_STAT("StorageThrottlingEnabled", storageThrottlingEnabled)
+    DUMP_PROFILE_STAT("StorageThrottlingEnabled", storageThrottlingEnabled)
+    DUMP_PROFILE_STAT("StorageThrottlingEnabled", storageThrottlingEnabled)
+    DUMP_PROFILE_STAT("StorageThrottlingEnabled", storageThrottlingEnabled)
+    DUMP_PROFILE_STAT("StorageThrottlingEnabled", storageThrottlingEnabled)
+    DUMP_PROFILE_STAT("StorageThrottlingEnabled", storageThrottlingEnabled)
+
+#undef DUMP_PROFILE_STAT
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -542,130 +334,67 @@ void DumpPerformanceProfile(
 void DumpThrottlingState(
     const ITabletThrottler* throttler,
     const TThrottlingPolicy& policy,
-    IOutputStream& out)
+    NXml::TNode& root)
 {
     const auto& config = policy.GetConfig();
-    HTML(out) {
-        TABLE_CLASS("table table-condensed") {
-            TABLEBODY() {
-                TABLER() {
-                    TABLED() { out << "Throttling enabled"; }
-                    TABLED() { out << config.ThrottlingEnabled; }
-                }
-                TABLER() {
-                    TABLED() { out << "Config version"; }
-                    TABLED() { out << policy.GetVersion(); }
-                }
-                {
-                    // Default parameters.
-                    const auto& p = config.DefaultParameters;
-                    TABLER() {
-                        TABLED() { out << "MaxReadIops"; }
-                        TABLED() { out << p.MaxReadIops; }
-                    }
-                    TABLER() {
-                        TABLED() { out << "MaxWriteIops"; }
-                        TABLED() { out << p.MaxWriteIops; }
-                    }
-                    TABLER() {
-                        TABLED() { out << "MaxReadBandwidth"; }
-                        TABLED() { out << p.MaxReadBandwidth; }
-                    }
-                    TABLER() {
-                        TABLED() { out << "MaxWriteBandwidth"; }
-                        TABLED() { out << p.MaxWriteBandwidth; }
-                    }
-                }
-                {
-                    // Boost parameters.
-                    const auto& p = config.BoostParameters;
-                    TABLER() {
-                        TABLED() { out << "BoostTime"; }
-                        TABLED() { out << p.BoostTime.MilliSeconds(); }
-                    }
-                    TABLER() {
-                        TABLED() { out << "BoostRefillTime"; }
-                        TABLED() { out << p.BoostRefillTime.MilliSeconds(); }
-                    }
-                    TABLER() {
-                        TABLED() { out << "BoostPercentage"; }
-                        TABLED() { out << p.BoostPercentage; }
-                    }
-                }
-                TABLER() {
-                    TABLED() { out << "BurstPercentage"; }
-                    TABLED() { out << config.BurstPercentage; }
-                }
-                TABLER() {
-                    TABLED() { out << "DefaultPostponedRequestWeight"; }
-                    TABLED() { out << config.DefaultPostponedRequestWeight; }
-                }
-                {
-                    // Default limits.
-                    const auto& l = config.DefaultThresholds;
-                    TABLER() {
-                        TABLED() { out << "MaxPostponedWeight"; }
-                        TABLED() { out << l.MaxPostponedWeight; }
-                    }
-                    TABLER() {
-                        TABLED() { out << "MaxWriteCostMultiplier"; }
-                        TABLED() { out << l.MaxWriteCostMultiplier; }
-                    }
-                    TABLER() {
-                        TABLED() { out << "MaxPostponedTime"; }
-                        TABLED() { out << l.MaxPostponedTime.MilliSeconds(); }
-                    }
-                    TABLER() {
-                        TABLED() { out << "MaxPostponedCount"; }
-                        TABLED() { out << l.MaxPostponedCount; }
-                    }
-                }
-                if (throttler) {
-                    TABLER() {
-                        TABLED() { out << "PostponedQueueSize"; }
-                        TABLED() { out << throttler->GetPostponedRequestsCount(); }
-                    }
-                }
-                TABLER() {
-                    TABLED() { out << "PostponedQueueWeight"; }
-                    TABLED() { out << policy.CalculatePostponedWeight(); }
-                }
-                TABLER() {
-                    TABLED() { out << "WriteCostMultiplier"; }
-                    TABLED() { out << policy.GetWriteCostMultiplier(); }
-                }
-                TABLER() {
-                    TABLED() { out << "CurrentBoostBudget"; }
-                    TABLED() { out << policy.GetCurrentBoostBudget(); }
-                }
-                TABLER() {
-                    TABLED() { out << "ThrottlerParams"; }
-                    TABLED() {
-                        TABLE_CLASS("table table-condensed") {
-                            TABLEBODY() {
-                                TABLER() {
-                                    TABLED() { out << "ReadC1"; }
-                                    TABLED() { out << policy.C1(TThrottlingPolicy::EOpType::Read); }
-                                }
-                                TABLER() {
-                                    TABLED() { out << "ReadC2"; }
-                                    TABLED() { out << FormatByteSize(policy.C2(TThrottlingPolicy::EOpType::Read)); }
-                                }
-                                TABLER() {
-                                    TABLED() { out << "WriteC1"; }
-                                    TABLED() { out << policy.C1(TThrottlingPolicy::EOpType::Write); }
-                                }
-                                TABLER() {
-                                    TABLED() { out << "WriteC2"; }
-                                    TABLED() { out << FormatByteSize(policy.C2(TThrottlingPolicy::EOpType::Write)); }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
+    auto state = root.AddChild("throttler_state", " ");
+
+#define DUMP_THROTTING_STAT(name, value)                                    \
+    {                                                                       \
+        auto cd = state.AddChild("cd", " ");                                \
+        cd.AddChild("name", name);                                          \
+        cd.AddChild("value", value);                                        \
+    }                                                                       \
+// DUMP_THROTTING_STAT
+
+    DUMP_THROTTING_STAT("Throttling enabled", config.ThrottlingEnabled)
+    DUMP_THROTTING_STAT("Config version", policy.GetVersion())
+    {
+        const auto& p = config.DefaultParameters;
+        DUMP_THROTTING_STAT("MaxReadIops", p.MaxReadIops)
+        DUMP_THROTTING_STAT("MaxWriteIops", p.MaxWriteIops)
+        DUMP_THROTTING_STAT("MaxReadBandwidth", p.MaxReadBandwidth)
+        DUMP_THROTTING_STAT("MaxWriteBandwidth", p.MaxWriteBandwidth)
     }
+    {
+        const auto& p = config.BoostParameters;
+        DUMP_THROTTING_STAT("BoostTime", p.BoostTime.MilliSeconds())
+        DUMP_THROTTING_STAT("BoostRefillTime", p.BoostRefillTime.MilliSeconds())
+        DUMP_THROTTING_STAT("BoostPercentage", p.BoostPercentage)
+    }
+    DUMP_THROTTING_STAT("BurstPercentage", config.BurstPercentage)
+    DUMP_THROTTING_STAT("DefaultPostponedRequestWeight", config.DefaultPostponedRequestWeight)
+    {
+        const auto& l = config.DefaultThresholds;
+        DUMP_THROTTING_STAT("MaxPostponedWeight", l.MaxPostponedWeight)
+        DUMP_THROTTING_STAT("MaxWriteCostMultiplier", l.MaxWriteCostMultiplier)
+        DUMP_THROTTING_STAT("MaxPostponedTime", l.MaxPostponedTime.MilliSeconds())
+        DUMP_THROTTING_STAT("MaxPostponedCount", l.MaxPostponedCount)
+    }
+    if (throttler) {
+        DUMP_THROTTING_STAT("PostponedQueueSize", throttler->GetPostponedRequestsCount())
+    }
+    DUMP_THROTTING_STAT("PostponedQueueWeight", policy.CalculatePostponedWeight())
+    DUMP_THROTTING_STAT("WriteCostMultiplier", policy.GetWriteCostMultiplier())
+    DUMP_THROTTING_STAT("CurrentBoostBudget", policy.GetCurrentBoostBudget())
+    
+#undef DUMP_THROTTING_STAT
+
+    auto params = root.AddChild("throttler_params", " ");
+
+#define DUMP_THROTTING_STAT(name, value)                                    \
+    {                                                                       \
+        auto cd = params.AddChild("cd", " ");                               \
+        cd.AddChild("name", name);                                          \
+        cd.AddChild("value", value);                                        \
+    }                                                                       \
+// DUMP_THROTTING_STAT
+    DUMP_THROTTING_STAT("ReadC1", policy.C1(TThrottlingPolicy::EOpType::Read))
+    DUMP_THROTTING_STAT("ReadC2", FormatByteSize(policy.C2(TThrottlingPolicy::EOpType::Read)))
+    DUMP_THROTTING_STAT("WriteC1", policy.C1(TThrottlingPolicy::EOpType::Write))
+    DUMP_THROTTING_STAT("WriteC2", FormatByteSize(policy.C2(TThrottlingPolicy::EOpType::Write)))
+
+#undef DUMP_THROTTING_STAT
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -674,37 +403,21 @@ void DumpThrottlingState(
  * @brief Display last `limit` lines of `sessionHistory`
  */
 void DumpSessionHistory(
-    IOutputStream& out,
+    NXml::TNode& root,
     const TSessionHistoryList& sessionHistory,
     size_t limit = 100)
 {
-    HTML(out) {
-        TABLE_SORTABLE_CLASS("table table-bordered") {
-            TABLEHEAD() {
-                TABLER() {
-                    TABLEH() { out << "ClientId";}
-                    TABLEH() { out << "FQDN"; }
-                    TABLEH() { out << "Timestamp"; }
-                    TABLEH() { out << "SessionId"; }
-                    TABLEH() { out << "ActionType"; }
-                }
-            }
-            for (auto it = sessionHistory.rbegin();
+    auto sessionsNode = root.AddChild("session_history", " ");
+    for (auto it = sessionHistory.rbegin();
                  it != sessionHistory.rend() && limit;
                  ++it, --limit)
             {
-                TABLER() {
-                    TABLED() { out << it->GetClientId(); }
-                    TABLED()
-                    {
-                        out << it->GetOriginFqdn();
-                    }
-                    TABLED() { out << TInstant::MicroSeconds(it->GetTimestampUs()); }
-                    TABLED() { out << it->GetSessionId(); }
-                    TABLED() { out << it->GetEntryTypeString(); }
-                }
-            }
-        }
+            auto cd = sessionsNode.AddChild("cd", " ");
+            cd.AddChild("client_id", it->GetClientId());
+            cd.AddChild("fqdn", it->GetOriginFqdn());
+            cd.AddChild("timestamp", TInstant::MicroSeconds(it->GetTimestampUs()));
+            cd.AddChild("session_id", it->GetSessionId());
+            cd.AddChild("action_type", it->GetEntryTypeString());
     }
 }
 
@@ -713,40 +426,25 @@ void DumpSessionHistory(
 /**
  * @brief Display sessions the tablet knows
  */
-void DumpSessions(IOutputStream& out, const TVector<TMonSessionInfo>& sessions)
+void DumpSessions(NXml::TNode& root, const TVector<TMonSessionInfo>& sessions)
 {
-    HTML(out) {
-        TABLE_SORTABLE_CLASS("table table-bordered") {
-            TABLEHEAD() {
-                TABLER() {
-                    TABLEH() { out << "ClientId";}
-                    TABLEH() { out << "FQDN";}
-                    TABLEH() { out << "SessionId"; }
-                    TABLEH() { out << "Recovery"; }
-                    TABLEH() { out << "SeqNo"; }
-                    TABLEH() { out << "ReadOnly"; }
-                    TABLEH() { out << "Owner"; }
-                }
-            }
-            for (const auto& session: sessions) {
-                const auto recoveryTimestamp = TInstant::MicroSeconds(
-                    session.ProtoInfo.GetRecoveryTimestampUs());
-                for (const auto& ss: session.SubSessions) {
-                    TABLER() {
-                        TABLED() { out << session.ProtoInfo.GetClientId(); }
-                        TABLED() { out << session.ProtoInfo.GetOriginFqdn(); }
-                        TABLED() { out << session.ProtoInfo.GetSessionId(); }
-                        if (recoveryTimestamp) {
-                            TABLED() { out << recoveryTimestamp; }
-                        } else {
-                            TABLED() { out << ""; }
-                        }
-                        TABLED() { out << ss.SeqNo; }
-                        TABLED() { out << (ss.ReadOnly ? "True" : "False"); }
-                        TABLED() { out << ToString(ss.Owner); }
-                    }
-                }
-            }
+    auto sessionsNode = root.AddChild("sessions", " ");
+    for (const auto& session: sessions) {
+        const auto recoveryTimestamp = TInstant::MicroSeconds(
+            session.ProtoInfo.GetRecoveryTimestampUs());
+        TStringStream recovery;
+        if (recoveryTimestamp) {
+            recovery << recoveryTimestamp;
+        }
+        for (const auto& ss: session.SubSessions) {
+            auto cd = sessionsNode.AddChild("cd", " ");
+            cd.AddChild("client_id", session.ProtoInfo.GetClientId());
+            cd.AddChild("fqdn", session.ProtoInfo.GetOriginFqdn());
+            cd.AddChild("session_id", session.ProtoInfo.GetSessionId());
+            cd.AddChild("recovery", recovery.Str());
+            cd.AddChild("seq_no", ss.SeqNo);
+            cd.AddChild("readonly", ss.ReadOnly ? "True" : "False");
+            cd.AddChild("owner", ToString(ss.Owner));
         }
     }
 }
@@ -754,13 +452,13 @@ void DumpSessions(IOutputStream& out, const TVector<TMonSessionInfo>& sessions)
 ////////////////////////////////////////////////////////////////////////////////
 
 void DumpChannels(
-    IOutputStream& out,
+    NXml::TNode& root,
     const TVector<NCloud::NStorage::TChannelMonInfo>& channelInfos,
     const TTabletStorageInfo& storage,
     ui64 hiveTabletId)
 {
-    NCloud::NStorage::DumpChannels(
-        out,
+    NCloud::NStorage::DumpChannelsXml(
+        root,
         channelInfos,
         storage,
         [&] (ui32 groupId, const TString& storagePool) {
@@ -769,43 +467,14 @@ void DumpChannels(
             Y_UNUSED(storagePool);
             return TString();
         },
-        [&] (IOutputStream& out, ui64 hiveTabletId, ui64 tabletId, ui32 c) {
+        [&] (NXml::TNode& cd, ui64 hiveTabletId, ui64 tabletId, ui32 c) {
             // TODO: reassign button
-            Y_UNUSED(out);
+            Y_UNUSED(cd);
             Y_UNUSED(hiveTabletId);
             Y_UNUSED(tabletId);
             Y_UNUSED(c);
         },
         hiveTabletId);
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
-void GenerateActionsJS(IOutputStream& out)
-{
-    out << R"___(
-        <script type='text/javascript'>
-        function forceCompactionAll() {
-            document.forms['ForceCompaction'].submit();
-        }
-        </script>
-    )___";
-
-    out << R"___(
-        <script type='text/javascript'>
-        function forceCleanupAll() {
-            document.forms['ForceCleanup'].submit();
-        }
-        </script>
-    )___";
-
-    out << R"___(
-        <script type='text/javascript'>
-        function forceDeleteZeroCompactionRanges() {
-            document.forms['ForceDeleteZeroCompactionRanges'].submit();
-        }
-        </script>
-    )___";
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1024,239 +693,172 @@ void TIndexTabletActor::HandleHttpInfo_Default(
     const TCgiParameters& params,
     TRequestInfoPtr requestInfo)
 {
+    Y_UNUSED(params);
     TStringStream out;
 
-    HTML(out) {
-        DumpDefaultHeader(out, TabletID(), SelfId().NodeId());
-
-        TAG(TH3) { out << "Info"; }
-        DIV() { out << "Filesystem Id: " << GetFileSystemId(); }
-        DIV() { out << "Block size: " << GetBlockSize(); }
-        DIV() { out << "Blocks: " << GetBlocksCount() << " (" <<
+    NXml::TDocument data("root", NXml::TDocument::RootName);
+    
+    auto root = data.Root();
+    root.AddChild("tablet_id", TabletID());
+    root.AddChild("node_id", SelfId().NodeId());
+    root.AddChild("header_hostname", HostName());
+    root.AddChild("fs_id", GetFileSystemId());
+    root.AddChild("block_size", GetBlockSize());
+    out << GetBlocksCount() << " (" <<
             FormatByteSize(GetBlocksCount() * GetBlockSize()) << ")";
+    root.AddChild("blocks_count", out.Str());
+    out.Clear();
+    root.AddChild("tablet_host", FQDNHostName());
+    const auto& shardIds = GetFileSystem().GetShardFileSystemIds();
+    if (shardIds.size()) {
+        auto shards = root.AddChild("shards", " ");
+        ui32 shardNo = 0;
+        for (const auto& shardId: shardIds) {
+            auto cd = shards.AddChild("cd", " ");
+            cd.AddChild("shard_no", ++shardNo);
+            cd.AddChild("shard_id", shardId);
         }
-        DIV() { out << "Tablet host: " << FQDNHostName(); }
-
-        const auto& shardIds = GetFileSystem().GetShardFileSystemIds();
-        if (shardIds.size()) {
-            TAG(TH3) { out << "Shards"; }
-            TABLE_CLASS("table table-bordered") {
-                TABLEHEAD() {
-                    TABLER() {
-                        TABLEH() { out << "ShardNo"; }
-                        TABLEH() { out << "FileSystemId"; }
-                    }
-                }
-
-                ui32 shardNo = 0;
-                for (const auto& shardId: shardIds) {
-                    TABLER() {
-                        TABLED() { out << ++shardNo; }
-                        TABLED() {
-                            out << "<a href='../filestore/service?action=search"
-                                << "&Filesystem=" << shardId << "'>"
-                                << shardId << "</a>";
-                        }
-                    }
-                }
-            }
-        }
-
-        TAG(TH3) { out << "State"; }
-        DIV() { out << "Current commitId: " << GetCurrentCommitId(); }
-        DIV() { DumpOperationState("Flush", FlushState, out); }
-        DIV() { DumpOperationState("BlobIndexOp", BlobIndexOpState, out); }
-        DIV() { DumpOperationState("CollectGarbage", CollectGarbageState, out); }
-
-        TAG(TH3) { out << "Stats"; }
-        PRE() { DumpStats(out); }
-
+    }
+    root.AddChild("curr_commit_id", GetCurrentCommitId());
+    {
+        auto ops_state = root.AddChild("ops_state", " ");
+        DumpOperationState("Flush", FlushState, ops_state);
+        DumpOperationState("BlobIndexOp", BlobIndexOpState, ops_state);
+        DumpOperationState("CollectGarbage", CollectGarbageState, ops_state);
+    }
+    DumpStats(out);
+    root.AddChild("stats", out.Str());
+    out.Clear();
+    {
         const ui32 topSize = FromStringWithDefault(params.Get("top-size"), 1);
-        TAG(TH3) { out << "CompactionMap"; }
-        DumpCompactionMap(out, TabletID(), GetCompactionMapStats(topSize));
+        DumpCompactionMap(root, TabletID(), GetCompactionMapStats(topSize));
+    }
+    const auto backpressureThresholds = BuildBackpressureThresholds();
+    const auto backpressureValues = GetBackpressureValues();
+    TString message;
+    bool isWriteAllowed = IsWriteAllowed(
+        backpressureThresholds,
+        backpressureValues,
+        &message);
+    
+    if (isWriteAllowed) {
+        root.AddChild("write");
+    } else {
+        root.AddChild("write_msg", message);
+    }
+    root.AddChild("backpressure_period_start", BackpressurePeriodStart);
+    root.AddChild("backpressure_error_count", BackpressureErrorCount);
+    root.AddChild("backpressure_period", ctx.Now() - BackpressurePeriodStart);
 
-        const auto backpressureThresholds = BuildBackpressureThresholds();
-        const auto backpressureValues = GetBackpressureValues();
-        TString message;
-        bool isWriteAllowed = IsWriteAllowed(
-            backpressureThresholds,
-            backpressureValues,
-            &message);
-        TAG(TH3) { out << "Backpressure"; }
-        if (!isWriteAllowed) {
-            DIV_CLASS("alert alert-danger") {
-                out << "Write NOT allowed: " << message;
-            }
-        } else {
-            DIV_CLASS("alert") {
-                out << "Write allowed";
-            }
-        }
-        if (BackpressurePeriodStart || BackpressureErrorCount) {
-            DIV_CLASS("alert") {
-                out << "Backpressure errors: " << BackpressureErrorCount;
-            }
-            DIV_CLASS("alert") {
-                out << "Backpressure period start: " << BackpressurePeriodStart;
-            }
-            DIV_CLASS("alert") {
-                out << "Backpressure period: "
-                    << (ctx.Now() - BackpressurePeriodStart);
-            }
-        }
+    {
+        auto backpressure = root.AddChild("backpressure", " ");
 
-        TABLE_CLASS("table table-bordered") {
-            TABLEHEAD() {
-                TABLER() {
-                    TABLEH() { out << "Name"; }
-                    TABLEH() { out << "Value"; }
-                    TABLEH() { out << "Threshold"; }
-                }
-            }
 #define DUMP_BACKPRESSURE_FIELD(name)                                          \
-            TABLER() {                                                         \
-                TABLED() { out << #name; }                                     \
-                TABLED() { out << backpressureValues.name; }                   \
-                TABLED() { out << backpressureThresholds.name; }               \
-            }                                                                  \
+    {                                                                          \
+        auto cd = backpressure.AddChild("cd", " ");                            \
+        cd.AddChild("name", #name);                                            \
+        cd.AddChild("value", backpressureValues.name);                         \
+        cd.AddChild("threshold", backpressureThresholds.name);                 \
+    }                                                                          \
 // DUMP_BACKPRESSURE_FIELD
 
-            DUMP_BACKPRESSURE_FIELD(Flush);
-            DUMP_BACKPRESSURE_FIELD(FlushBytes);
-            DUMP_BACKPRESSURE_FIELD(CompactionScore);
-            DUMP_BACKPRESSURE_FIELD(CleanupScore);
+        DUMP_BACKPRESSURE_FIELD(Flush);
+        DUMP_BACKPRESSURE_FIELD(FlushBytes);
+        DUMP_BACKPRESSURE_FIELD(CompactionScore);
+        DUMP_BACKPRESSURE_FIELD(CleanupScore);
 
 #undef DUMP_BACKPRESSURE_FIELD
-        }
+    }
 
-#define DUMP_INFO_FIELD(info, name)                                            \
-        TABLER() {                                                             \
-            TABLED() { out << #name; }                                         \
-            TABLED() { out << info.name; }                                     \
-        }                                                                      \
+    {
+        const auto compactionInfo = GetCompactionInfo();
+        auto compaction = root.AddChild("compaction", " ");
+
+        const auto cleanupInfo = GetCleanupInfo();
+        auto cleanup = root.AddChild("cleanup", " ");
+
+#define DUMP_INFO_FIELD(root, info, name)                                      \
+    {                                                                          \
+        auto cd = root.AddChild("cd", " ");                                    \
+        cd.AddChild("name", #name);                                            \
+        cd.AddChild("value", info.name);                                       \
+    }                                                                          \
 // DUMP_INFO_FIELD
 
-        TAG(TH3) { out << "CompactionInfo"; }
-        TABLE_CLASS("table table-bordered") {
-            TABLEHEAD() {
-                TABLER() {
-                    TABLEH() { out << "Parameter"; }
-                    TABLEH() { out << "Value"; }
-                }
-            }
+        DUMP_INFO_FIELD(compaction, compactionInfo, Threshold);
+        DUMP_INFO_FIELD(compaction, compactionInfo, ThresholdAverage);
+        DUMP_INFO_FIELD(compaction, compactionInfo, GarbageThreshold);
+        DUMP_INFO_FIELD(compaction, compactionInfo, GarbageThresholdAverage);
+        DUMP_INFO_FIELD(compaction, compactionInfo, Score);
+        DUMP_INFO_FIELD(compaction, compactionInfo, RangeId);
+        DUMP_INFO_FIELD(compaction, compactionInfo, GarbagePercentage);
+        DUMP_INFO_FIELD(compaction, compactionInfo, AverageScore);
+        DUMP_INFO_FIELD(compaction, compactionInfo, NewCompactionEnabled);
+        DUMP_INFO_FIELD(compaction, compactionInfo, ShouldCompact);
 
-            const auto compactionInfo = GetCompactionInfo();
-            DUMP_INFO_FIELD(compactionInfo, Threshold);
-            DUMP_INFO_FIELD(compactionInfo, ThresholdAverage);
-            DUMP_INFO_FIELD(compactionInfo, GarbageThreshold);
-            DUMP_INFO_FIELD(compactionInfo, GarbageThresholdAverage);
-            DUMP_INFO_FIELD(compactionInfo, Score);
-            DUMP_INFO_FIELD(compactionInfo, RangeId);
-            DUMP_INFO_FIELD(compactionInfo, GarbagePercentage);
-            DUMP_INFO_FIELD(compactionInfo, AverageScore);
-            DUMP_INFO_FIELD(compactionInfo, NewCompactionEnabled);
-            DUMP_INFO_FIELD(compactionInfo, ShouldCompact);
-        }
-
-        TAG(TH3) { out << "CleanupInfo"; }
-        TABLE_CLASS("table table-bordered") {
-            TABLEHEAD() {
-                TABLER() {
-                    TABLEH() { out << "Parameter"; }
-                    TABLEH() { out << "Value"; }
-                }
-            }
-
-            const auto cleanupInfo = GetCleanupInfo();
-            DUMP_INFO_FIELD(cleanupInfo, Threshold);
-            DUMP_INFO_FIELD(cleanupInfo, ThresholdAverage);
-            DUMP_INFO_FIELD(cleanupInfo, Score);
-            DUMP_INFO_FIELD(cleanupInfo, RangeId);
-            DUMP_INFO_FIELD(cleanupInfo, AverageScore);
-            DUMP_INFO_FIELD(cleanupInfo, LargeDeletionMarkersThreshold);
-            DUMP_INFO_FIELD(cleanupInfo, LargeDeletionMarkerCount);
-            DUMP_INFO_FIELD(cleanupInfo, PriorityRangeIdCount);
-            DUMP_INFO_FIELD(cleanupInfo, IsPriority);
-            DUMP_INFO_FIELD(cleanupInfo, NewCleanupEnabled);
-            DUMP_INFO_FIELD(cleanupInfo, ShouldCleanup);
-        }
+        DUMP_INFO_FIELD(cleanup, cleanupInfo, Threshold);
+        DUMP_INFO_FIELD(cleanup, cleanupInfo, ThresholdAverage);
+        DUMP_INFO_FIELD(cleanup, cleanupInfo, Score);
+        DUMP_INFO_FIELD(cleanup, cleanupInfo, RangeId);
+        DUMP_INFO_FIELD(cleanup, cleanupInfo, AverageScore);
+        DUMP_INFO_FIELD(cleanup, cleanupInfo, LargeDeletionMarkersThreshold);
+        DUMP_INFO_FIELD(cleanup, cleanupInfo, LargeDeletionMarkerCount);
+        DUMP_INFO_FIELD(cleanup, cleanupInfo, PriorityRangeIdCount);
+        DUMP_INFO_FIELD(cleanup, cleanupInfo, IsPriority);
+        DUMP_INFO_FIELD(cleanup, cleanupInfo, NewCleanupEnabled);
+        DUMP_INFO_FIELD(cleanup, cleanupInfo, ShouldCleanup);
 
 #undef DUMP_INFO_FIELD
-
-        TAG(TH3) {
-            if (!IsForcedRangeOperationRunning()) {
-                BuildMenuButton(out, "compact-all");
-            }
-            out << "CompactionQueue";
-        }
-
-        if (IsForcedRangeOperationRunning()) {
-            DumpCompactionInfo(out, *GetForcedRangeOperationState());
-        } else {
-            out << "<div class='collapse form-group' id='compact-all'>";
-            BuildForceCompactionButton(out, TabletID());
-            out << "</div>";
-        }
-
-        TAG(TH3) {
-            out << "Channels";
-        }
-
-        ui64 hiveTabletId = Config->GetTenantHiveTabletId();
-        if (!hiveTabletId) {
-            hiveTabletId = NCloud::NStorage::GetHiveTabletId(ctx);
-        }
-
-        DumpChannels(
-            out,
-            MakeChannelMonInfos(),
-            *Info(),
-            hiveTabletId);
-
-        TAG(TH3) { out << "Profiling allocator stats"; }
-        DumpProfillingAllocatorStats(GetFileStoreProfilingRegistry(), out);
-
-        TAG(TH3) { out << "Blob index stats"; }
-
-        const auto storageThrottlingEnabled = Config->GetThrottlingEnabled();
-
-        const auto& fsPerfProfile = GetFileSystem().GetPerformanceProfile();
-        TAG(TH3) { out << "Performance profile"; }
-        DumpPerformanceProfile(storageThrottlingEnabled, fsPerfProfile, out);
-
-        const auto& usedPerfProfile = GetPerformanceProfile();
-        if (!NProtoBuf::IsEqual(fsPerfProfile, usedPerfProfile)) {
-            TAG(TH3) { out << "Used performance profile"; }
-            DumpPerformanceProfile(
-                storageThrottlingEnabled,
-                usedPerfProfile,
-                out
-            );
-        }
-
-        TAG(TH3) { out << "Throttler state"; }
-        DumpThrottlingState(Throttler.get(), GetThrottlingPolicy(), out);
-
-        if (StorageConfigOverride.ByteSize()) {
-            TAG(TH3) { out << "StorageConfig overrides"; }
-            TStorageConfig config(StorageConfigOverride);
-            config.DumpOverridesHtml(out);
-        }
-
-        TAG(TH3)
-        {
-            out << "Active Sessions";
-        }
-        DumpSessions(out, GetActiveSessions());
-
-        TAG(TH3)
-        {
-            out << "Session history";
-        }
-        DumpSessionHistory(out, GetSessionHistoryList());
-
-        GenerateActionsJS(out);
     }
+
+    if (IsForcedRangeOperationRunning()) {
+        root.AddChild("forced_op");
+        auto state = GetForcedRangeOperationState();
+        ui32 curr = state->Current, max = state->RangesToCompact.size();
+        root.AddChild("curr_compact", curr);
+        root.AddChild("max_compact", max);
+        root.AddChild("compact_percents", (curr * 100) / max);
+    }
+
+    ui64 hiveTabletId = Config->GetTenantHiveTabletId();
+    if (!hiveTabletId) {
+        hiveTabletId = NCloud::NStorage::GetHiveTabletId(ctx);
+    }
+
+    DumpChannels(
+        root,
+        MakeChannelMonInfos(),
+        *Info(),
+        hiveTabletId);
+
+    DumpProfillingAllocatorStats(GetFileStoreProfilingRegistry(), root);
+
+    const auto storageThrottlingEnabled = Config->GetThrottlingEnabled();
+    const auto& fsPerfProfile = GetFileSystem().GetPerformanceProfile();
+    {
+        auto profileStats = root.AddChild("profile_stats", " ");
+        DumpPerformanceProfile(storageThrottlingEnabled, fsPerfProfile, profileStats);
+    }
+    const auto& usedPerfProfile = GetPerformanceProfile();
+    if (!NProtoBuf::IsEqual(fsPerfProfile, usedPerfProfile)) {
+        auto userProfileStats = root.AddChild("used_profile_stats", " ");
+        DumpPerformanceProfile(
+            storageThrottlingEnabled,
+            usedPerfProfile,
+            userProfileStats
+        );
+    }
+    DumpThrottlingState(Throttler.get(), GetThrottlingPolicy(), root);
+
+    if (StorageConfigOverride.ByteSize()) {
+        auto storageConfig = root.AddChild("storage_config", " ");
+        TStorageConfig config(StorageConfigOverride);
+        config.DumpOverridesXml(storageConfig);
+    }
+    DumpSessions(root, GetActiveSessions());
+    DumpSessionHistory(root, GetSessionHistoryList());
+
+    NCloud::NFileStore::NXSLRender::NXSLRender(xslTemplate, data, out);
 
     NCloud::Reply(
         ctx,

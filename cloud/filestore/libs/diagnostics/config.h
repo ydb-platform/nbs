@@ -6,6 +6,19 @@
 #include "cloud/storage/core/libs/diagnostics/histogram_counter_options.h"
 #include <cloud/storage/core/libs/diagnostics/trace_reader.h>
 
+#ifdef THROW
+#define THROW_OLD THROW
+#undef THROW
+#endif
+
+#include <library/cpp/xml/document/xml-document.h>
+#undef THROW
+
+#ifdef THROW_OLD
+#define THROW THROW_OLD
+#undef THROW_OLD
+#endif
+
 #include <util/datetime/base.h>
 #include <util/generic/string.h>
 #include <util/stream/output.h>
@@ -139,6 +152,7 @@ public:
 
     void Dump(IOutputStream& out) const;
     void DumpHtml(IOutputStream& out) const;
+    void DumpXml(NXml::TNode& out) const;
 };
 
 }   // namespace NCloud::NFileStore

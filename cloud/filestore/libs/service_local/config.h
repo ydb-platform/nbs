@@ -4,6 +4,19 @@
 
 #include <cloud/filestore/config/server.pb.h>
 
+#ifdef THROW
+#define THROW_OLD THROW
+#undef THROW
+#endif
+
+#include <library/cpp/xml/document/xml-document.h>
+#undef THROW
+
+#ifdef THROW_OLD
+#define THROW THROW_OLD
+#undef THROW_OLD
+#endif
+
 #include <util/datetime/base.h>
 #include <util/generic/string.h>
 
@@ -34,7 +47,7 @@ public:
     bool GetGuestWritebackCacheEnabled() const;
 
     void Dump(IOutputStream& out) const;
-    void DumpHtml(IOutputStream& out) const;
+    void DumpXml(NXml::TNode& root) const;
 
     bool GetAsyncDestroyHandleEnabled() const;
     TDuration GetAsyncHandleOperationPeriod() const;

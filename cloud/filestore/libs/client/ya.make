@@ -21,6 +21,7 @@ PEERDIR(
     cloud/storage/core/libs/grpc
 
     library/cpp/lwtrace
+    library/cpp/xml/document
 
     contrib/libs/grpc
 )

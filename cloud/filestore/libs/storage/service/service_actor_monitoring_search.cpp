@@ -1,6 +1,7 @@
 #include "service_actor.h"
 
 #include <cloud/filestore/libs/storage/api/ss_proxy.h>
+#include <cloud/filestore/libs/xsl/xsl_render.h>
 
 #include <library/cpp/monlib/service/pages/templates.h>
 
@@ -12,6 +13,10 @@ namespace NCloud::NFileStore::NStorage {
 using namespace NActors;
 
 namespace {
+    const char* xslTemplate =
+    {
+        #include "xsl_templates/service_actor_monitoring_search.xsl"
+    };
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -96,30 +101,13 @@ private:
     {
         TStringStream out;
 
-        HTML(out) {
-            TAG(TH3) { out << "FileSystem"; }
-            TABLE_CLASS("table table-bordered") {
-                TABLEHEAD() {
-                    TABLER() {
-                        TABLEH() { out << "FileSystem"; }
-                        TABLEH() { out << "Tablet ID"; }
-                    }
-                }
-                TABLER() {
-                    TABLED() {
-                        out << path;
-                    }
+        NXml::TDocument data("root", NXml::TDocument::RootName);
+    
+        auto root = data.Root();
+        root.AddChild("path", path);
+        root.AddChild("tablet_id", tabletId);
 
-                    TABLED() {
-                        out << "<a href='../tablets?TabletID="
-                            << tabletId
-                            << "'>"
-                            << tabletId
-                            << "</a>";
-                    }
-                }
-            }
-        }
+        NCloud::NFileStore::NXSLRender::NXSLRender(xslTemplate, data, out);
 
         return out.Str();
     }
