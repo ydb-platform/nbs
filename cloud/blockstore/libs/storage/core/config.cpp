@@ -516,6 +516,8 @@ TDuration MSeconds(ui32 value)
     xxx(DiskRegistryDisksNotificationTimeout,           TDuration, Seconds(5)    )\
     xxx(BlobStorageAsyncGetTimeoutHDD,                  TDuration, Seconds(0)    )\
     xxx(BlobStorageAsyncGetTimeoutSSD,                  TDuration, Seconds(0)    )\
+                                                                               \
+    xxx(EncryptionAtRestForDiskRegistryBasedDisksEnabled, bool,    false     ) \
 
 // BLOCKSTORE_STORAGE_CONFIG_RW
 
@@ -546,6 +548,7 @@ BLOCKSTORE_STORAGE_CONFIG(BLOCKSTORE_STORAGE_DECLARE_CONFIG)
     xxx(ReplaceDevice)                                                         \
     xxx(UseNonReplicatedHDDInsteadOfReplicated)                                \
     xxx(AddingUnconfirmedBlobs)                                                \
+    xxx(EncryptionAtRestForDiskRegistryBasedDisks)                             \
 
 // BLOCKSTORE_BINARY_FEATURES
 

@@ -561,18 +561,19 @@ void TBootstrapYdb::InitKikimrService()
     args.NvmeManager = NvmeManager;
     args.UserCounterProviders = {VolumeStats->GetUserCounters()};
     args.IsDiskRegistrySpareNode = [&] {
-            if (!Configs->StorageConfig->GetDisableLocalService()) {
-                return false;
-            }
+        if (!Configs->StorageConfig->GetDisableLocalService()) {
+            return false;
+        }
 
-            const auto& nodes = Configs->StorageConfig->GetKnownSpareNodes();
-            const auto& fqdn = FQDNHostName();
-            const ui32 p = Configs->StorageConfig->GetSpareNodeProbability();
+        const auto& nodes = Configs->StorageConfig->GetKnownSpareNodes();
+        const auto& fqdn = FQDNHostName();
+        const ui32 p = Configs->StorageConfig->GetSpareNodeProbability();
 
-            return FindPtr(nodes, fqdn) || CityHash64(fqdn) % 100 < p;
-        }();
+        return FindPtr(nodes, fqdn) || CityHash64(fqdn) % 100 < p;
+    }();
     args.VolumeBalancerSwitch = VolumeBalancerSwitch;
     args.EndpointEventHandler = EndpointEventHandler;
+    args.RootKmsKeyProvider = RootKmsKeyProvider;
 
     ActorSystem = NStorage::CreateActorSystem(args);
 

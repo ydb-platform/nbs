@@ -6,12 +6,16 @@ import time
 import yatest.common as yatest_common
 import cloud.blockstore.tests.python.lib.daemon as daemon
 
+from cloud.blockstore.public.api.protos.encryption_pb2 import \
+    ENCRYPTION_DEFAULT_AES_XTS
+
 from cloud.blockstore.public.sdk.python.client import CreateClient
 from cloud.blockstore.public.sdk.python.protos import TCmsActionRequest, \
     TAction, STORAGE_MEDIA_SSD_NONREPLICATED
 from cloud.blockstore.config.root_kms_pb2 import TRootKmsConfig
 from cloud.blockstore.tests.python.lib.config import NbsConfigurator, \
     generate_disk_agent_txt
+from cloud.storage.core.config.features_pb2 import TFeaturesConfig
 
 from contrib.ydb.tests.library.harness.kikimr_runner import \
     get_unique_path_for_current_test, ensure_path_exists
@@ -21,6 +25,7 @@ DEVICE_SIZE = 1024**3   # 1 GiB
 DEVICE_COUNT = 6
 DEVICE_PADDING = 4096
 DEVICE_HEADER = 4096
+KEK_ID = 'nbs'
 
 
 @pytest.fixture(name='agent_id')
@@ -60,20 +65,27 @@ def start_ydb_cluster():
 @pytest.fixture(name='nbs')
 def start_nbs_daemon(ydb):
 
-    nbs_configurator = NbsConfigurator(ydb)
-    nbs_configurator.generate_default_nbs_configs()
-    nbs_configurator.files["storage"].AllocationUnitNonReplicatedSSD = 1  # 1 GiB
+    cfg = NbsConfigurator(ydb)
+    cfg.generate_default_nbs_configs()
+    cfg.files['storage'].AllocationUnitNonReplicatedSSD = 1  # 1 GiB
+
+    features = TFeaturesConfig()
+    feature = features.Features.add()
+    feature.Name = 'EncryptionAtRestForDiskRegistryBasedDisks'
+    feature.Whitelist.EntityIds.append("vol0")
+
+    cfg.files['features'] = features
 
     root_kms = TRootKmsConfig()
     root_kms.Address = f'localhost:{os.environ.get("FAKE_ROOT_KMS_PORT")}'
-    root_kms.KeyId = 'nbs'
+    root_kms.KeyId = KEK_ID
     root_kms.RootCertsFile = os.environ.get("FAKE_ROOT_KMS_CA")
     root_kms.CertChainFile = os.environ.get("FAKE_ROOT_KMS_CLIENT_CRT")
     root_kms.PrivateKeyFile = os.environ.get("FAKE_ROOT_KMS_CLIENT_KEY")
 
-    nbs_configurator.files['root-kms'] = root_kms
+    cfg.files['root-kms'] = root_kms
 
-    nbs = daemon.start_nbs(nbs_configurator)
+    nbs = daemon.start_nbs(cfg)
 
     client = CreateClient(f"localhost:{nbs.port}")
     client.execute_action(
@@ -115,9 +127,9 @@ def _wait_for_devices_to_be_cleared(client, expected_dirty_count=0):
 @pytest.fixture(name='disk_agent')
 def start_disk_agent(ydb, nbs, agent_id, data_path):
 
-    configurator = NbsConfigurator(ydb, 'disk-agent')
-    configurator.generate_default_nbs_configs()
-    configurator.files["disk-agent"] = generate_disk_agent_txt(
+    cfg = NbsConfigurator(ydb, 'disk-agent')
+    cfg.generate_default_nbs_configs()
+    cfg.files["disk-agent"] = generate_disk_agent_txt(
         agent_id='',
         device_erase_method='DEVICE_ERASE_METHOD_NONE',  # speed up tests
         storage_discovery_config={
@@ -132,7 +144,7 @@ def start_disk_agent(ydb, nbs, agent_id, data_path):
                 }]}
             ]})
 
-    disk_agent = daemon.start_disk_agent(configurator)
+    disk_agent = daemon.start_disk_agent(cfg)
     disk_agent.wait_for_registration()
 
     client = CreateClient(f"localhost:{nbs.port}")
@@ -145,7 +157,7 @@ def start_disk_agent(ydb, nbs, agent_id, data_path):
     disk_agent.stop()
 
 
-def test_create_encrypted_volume(nbs, disk_agent):
+def test_create_volume_with_default_ecnryption(nbs, disk_agent):
 
     client = CreateClient(f"localhost:{nbs.port}")
 
@@ -158,3 +170,6 @@ def test_create_encrypted_volume(nbs, disk_agent):
     vol0 = client.stat_volume("vol0")["Volume"]
 
     assert len(vol0.Devices) == 2
+    assert vol0.EncryptionDesc.Mode == ENCRYPTION_DEFAULT_AES_XTS
+    # assert vol0.EncryptionDesc.EncryptionKey.KekId == KEK_ID
+    # assert len(vol0.EncryptionDesc.EncryptionKey.EncryptedDEK) > 0

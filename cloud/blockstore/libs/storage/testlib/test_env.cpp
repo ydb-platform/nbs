@@ -376,7 +376,9 @@ ui32 TTestEnv::CreateBlockStoreNode(
         NServer::CreateEndpointEventProxy(),
         nullptr, // rdmaClient
         CreateVolumeStatsStub(),
-        std::move(manuallyPreemptedVolumes));
+        std::move(manuallyPreemptedVolumes),
+        CreateRootKmsKeyProviderStub());
+
     auto storageServiceId = Runtime.Register(
         storageService.release(),
         nodeIdx,

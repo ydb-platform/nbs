@@ -361,6 +361,11 @@ public:
         const TString& folderId,
         const TString& diskId) const;
 
+    [[nodiscard]] bool IsEncryptionAtRestForDiskRegistryBasedDisksFeatureEnabled(
+        const TString& cloudId,
+        const TString& folderId,
+        const TString& diskId) const;
+
     TDuration GetMaxTimedOutDeviceStateDurationFeatureValue(
         const TString& cloudId,
         const TString& folderId,
@@ -613,6 +618,8 @@ public:
 
     TDuration GetBlobStorageAsyncGetTimeoutHDD() const;
     TDuration GetBlobStorageAsyncGetTimeoutSSD() const;
+
+    [[nodiscard]] bool GetEncryptionAtRestForDiskRegistryBasedDisksEnabled() const;
 };
 
 ui64 GetAllocationUnit(
