@@ -1,5 +1,6 @@
 #include "tablet_actor.h"
 
+#include <cloud/filestore/libs/diagnostics/config.h>
 #include <cloud/filestore/libs/diagnostics/metrics/label.h>
 #include <cloud/filestore/libs/diagnostics/metrics/operations.h>
 #include <cloud/filestore/libs/diagnostics/metrics/registry.h>
@@ -390,6 +391,10 @@ void TIndexTabletActor::TMetrics::Register(
         name.RequestBytes,                                                     \
         EMetricType::MT_DERIVATIVE);                                           \
                                                                                \
+    REGISTER_AGGREGATABLE_SUM(                                                 \
+        name.TimeSumUs,                                                        \
+        EMetricType::MT_DERIVATIVE);                                           \
+                                                                               \
     name.Time.Register(                                                        \
         AggregatableFsRegistry,                                                \
         {CreateLabel("request", #name), CreateLabel("histogram", "Time")});    \
@@ -425,6 +430,9 @@ void TIndexTabletActor::TMetrics::Register(
     REGISTER_LOCAL(MaxDeletionsInRange, EMetricType::MT_ABSOLUTE);
     REGISTER_LOCAL(MaxGarbageBlocksInRange, EMetricType::MT_ABSOLUTE);
 
+    REGISTER_LOCAL(CurrentLoad, EMetricType::MT_ABSOLUTE);
+    REGISTER_LOCAL(Suffer, EMetricType::MT_ABSOLUTE);
+
 #undef REGISTER_REQUEST
 #undef REGISTER_LOCAL
 #undef REGISTER_AGGREGATABLE_SUM
@@ -437,6 +445,7 @@ void TIndexTabletActor::TMetrics::Register(
 
 void TIndexTabletActor::TMetrics::Update(
     TInstant now,
+    const TDiagnosticsConfig& diagConfig,
     const NProto::TFileSystem& fileSystem,
     const NProto::TFileSystemStats& stats,
     const NProto::TFileStorePerformanceProfile& performanceProfile,
@@ -539,6 +548,7 @@ void TIndexTabletActor::TMetrics::Update(
     Store(OrphanNodesCount, miscNodeStats.OrphanNodesCount);
 
     BusyIdleCalc.OnUpdateStats();
+    UpdatePerformanceMetrics(now, diagConfig, fileSystem);
 
     ReadBlob.UpdatePrev(now);
     WriteBlob.UpdatePrev(now);
@@ -563,6 +573,57 @@ void TIndexTabletActor::TMetrics::Update(
     FlushBytes.UpdatePrev(now);
     TrimBytes.UpdatePrev(now);
     CollectGarbage.UpdatePrev(now);
+}
+
+void TIndexTabletActor::TMetrics::UpdatePerformanceMetrics(
+    TInstant now,
+    const TDiagnosticsConfig& diagConfig,
+    const NProto::TFileSystem& fileSystem)
+{
+    const ui32 expectedParallelism = 32;
+    double load = 0;
+    bool suffer = false;
+    auto calcSufferAndLoad = [&] (
+        const TRequestPerformanceProfile& rpp,
+        const TRequestMetrics& rm)
+    {
+        if (!rpp.RPS) {
+            return;
+        }
+
+        load += rm.RPS(now) / rpp.RPS;
+        ui64 expectedLatencyUs = 1'000'000 / rpp.RPS;
+        if (rpp.Throughput) {
+            expectedLatencyUs +=
+                1'000'000 * rm.AverageRequestSize() / rpp.Throughput;
+            load += rm.Throughput(now) / rpp.Throughput;
+        }
+
+        const auto averageLatency = rm.AverageLatency();
+        suffer |= TDuration::MicroSeconds(expectedLatencyUs)
+            < averageLatency / expectedParallelism;
+    };
+
+    const auto& pp =
+        fileSystem.GetStorageMediaKind() == NProto::STORAGE_MEDIA_SSD
+        ? diagConfig.GetSSDFileSystemPerformanceProfile()
+        : diagConfig.GetHDDFileSystemPerformanceProfile();
+
+    calcSufferAndLoad(pp.Read, ReadData);
+    calcSufferAndLoad(pp.Read, DescribeData);
+    calcSufferAndLoad(pp.Write, WriteData);
+    calcSufferAndLoad(pp.Write, AddData);
+    calcSufferAndLoad(pp.ListNodes, ListNodes);
+    calcSufferAndLoad(pp.GetNodeAttr, GetNodeAttr);
+    calcSufferAndLoad(pp.CreateHandle, CreateHandle);
+    calcSufferAndLoad(pp.DestroyHandle, DestroyHandle);
+    calcSufferAndLoad(pp.CreateNode, CreateNode);
+    calcSufferAndLoad(pp.RenameNode, RenameNode);
+    calcSufferAndLoad(pp.UnlinkNode, UnlinkNode);
+    calcSufferAndLoad(pp.StatFileStore, StatFileStore);
+
+    Store(CurrentLoad, load * 1000);
+    Store(Suffer, load < 1 ? suffer : 0);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -603,6 +664,7 @@ void TIndexTabletActor::RegisterStatCounters(TInstant now)
     // registration, before update).
     Metrics.Update(
         now,
+        *DiagConfig,
         fs,
         GetFileSystemStats(),
         GetPerformanceProfile(),
@@ -652,6 +714,7 @@ void TIndexTabletActor::HandleUpdateCounters(
     UpdateCounters();
     Metrics.Update(
         ctx.Now(),
+        *DiagConfig,
         GetFileSystem(),
         GetFileSystemStats(),
         GetPerformanceProfile(),

@@ -172,16 +172,21 @@ private:
         {
             std::atomic<i64> Count = 0;
             std::atomic<i64> RequestBytes = 0;
+            std::atomic<i64> TimeSumUs = 0;
             TLatHistogram Time;
 
             ui64 PrevCount = 0;
             ui64 PrevRequestBytes = 0;
+            ui64 PrevTimeSumUs = 0;
             TInstant PrevTs;
 
             void Update(ui64 requestCount, ui64 requestBytes, TDuration d)
             {
                 Count.fetch_add(requestCount, std::memory_order_relaxed);
                 RequestBytes.fetch_add(requestBytes, std::memory_order_relaxed);
+                TimeSumUs.fetch_add(
+                    d.MicroSeconds(),
+                    std::memory_order_relaxed);
                 Time.Record(d);
             }
 
@@ -189,6 +194,7 @@ private:
             {
                 PrevCount = Count.load(std::memory_order_relaxed);
                 PrevRequestBytes = RequestBytes.load(std::memory_order_relaxed);
+                PrevTimeSumUs = TimeSumUs.load(std::memory_order_relaxed);
                 PrevTs = now;
             }
 
@@ -200,6 +206,33 @@ private:
             double Throughput(TInstant now) const
             {
                 return Rate(now, RequestBytes, PrevRequestBytes);
+            }
+
+            ui64 AverageRequestSize() const
+            {
+                const auto requestCount =
+                    Count.load(std::memory_order_relaxed) - PrevCount;
+                if (!requestCount) {
+                    return 0;
+                }
+
+                const auto requestBytes =
+                    RequestBytes.load(std::memory_order_relaxed)
+                    - PrevRequestBytes;
+                return requestBytes / requestCount;
+            }
+
+            TDuration AverageLatency() const
+            {
+                const auto requestCount =
+                    Count.load(std::memory_order_relaxed) - PrevCount;
+                if (!requestCount) {
+                    return TDuration::Zero();
+                }
+
+                const auto timeSumUs =
+                    TimeSumUs.load(std::memory_order_relaxed) - PrevTimeSumUs;
+                return TDuration::MicroSeconds(timeSumUs / requestCount);
             }
 
         private:
@@ -218,7 +251,7 @@ private:
                 }
 
                 auto cur = counter.load(std::memory_order_relaxed);
-                return (cur - prevCounter) / 1'000'000;
+                return (cur - prevCounter) * 1'000'000. / micros;
             }
         };
 
@@ -258,10 +291,14 @@ private:
         i64 LastNetworkMetric = 0;
 
         i64 CalculateNetworkRequestBytes(ui32 nonNetworkMetricsBalancingFactor);
-        // Compaction/cleanup stats
+        // Compaction/Cleanup stats
         std::atomic<i64> MaxBlobsInRange{0};
         std::atomic<i64> MaxDeletionsInRange{0};
         std::atomic<i64> MaxGarbageBlocksInRange{0};
+
+        // performance evaluation
+        std::atomic<i64> CurrentLoad{0};
+        std::atomic<i64> Suffer{0};
 
         const NMetrics::IMetricsRegistryPtr StorageRegistry;
         const NMetrics::IMetricsRegistryPtr StorageFsRegistry;
@@ -274,6 +311,7 @@ private:
         void Register(const TString& fsId, const TString& mediaKind);
         void Update(
             TInstant now,
+            const TDiagnosticsConfig& diagConfig,
             const NProto::TFileSystem& fileSystem,
             const NProto::TFileSystemStats& stats,
             const NProto::TFileStorePerformanceProfile& performanceProfile,
@@ -285,6 +323,10 @@ private:
             const TNodeToSessionCounters& nodeToSessionCounters,
             const TMiscNodeStats& miscNodeStats,
             const TInMemoryIndexStateStats& inMemoryIndexStateStats);
+        void UpdatePerformanceMetrics(
+            TInstant now,
+            const TDiagnosticsConfig& diagConfig,
+            const NProto::TFileSystem& fileSystem);
     } Metrics;
 
     const IProfileLogPtr ProfileLog;
