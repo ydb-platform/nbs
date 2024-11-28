@@ -130,7 +130,7 @@ type Storage interface {
 	) ([]string, error)
 
 	// Returns image if action has been accepted by storage and nil otherwise.
-	CreateImage(ctx context.Context, image ImageMeta) (*ImageMeta, error)
+	CreateImage(ctx context.Context, image ImageMeta) (ImageMeta, error)
 
 	ImageCreated(
 		ctx context.Context,
@@ -163,7 +163,7 @@ type Storage interface {
 	) ([]string, error)
 
 	// Returns snapshot if action has been accepted by storage and nil otherwise.
-	CreateSnapshot(ctx context.Context, snapshot SnapshotMeta) (*SnapshotMeta, error)
+	CreateSnapshot(ctx context.Context, snapshot SnapshotMeta) (SnapshotMeta, error)
 
 	SnapshotCreated(
 		ctx context.Context,

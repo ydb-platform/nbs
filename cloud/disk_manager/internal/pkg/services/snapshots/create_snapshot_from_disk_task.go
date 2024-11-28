@@ -75,13 +75,6 @@ func (t *createSnapshotFromDiskTask) run(
 		return err
 	}
 
-	if snapshotMeta == nil {
-		return errors.NewNonCancellableErrorf(
-			"id %v is not accepted",
-			t.request.DstSnapshotId,
-		)
-	}
-
 	if snapshotMeta.Ready {
 		// Already created.
 		return nil
@@ -219,10 +212,8 @@ func (t *createSnapshotFromDiskTask) Cancel(
 	}
 
 	if snapshotMeta == nil {
-		return errors.NewNonCancellableErrorf(
-			"id %v is not accepted",
-			t.request.DstSnapshotId,
-		)
+		// Nothing to do.
+		return nil
 	}
 
 	// Hack for NBS-2225.

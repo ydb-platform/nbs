@@ -120,7 +120,7 @@ func (s *rootKmsService) Decrypt(
 	if err != nil {
 		return nil, grpc_status.Error(
 			grpc_codes.Internal,
-			fmt.Sprintf("symmetric key decryption error: %w", err),
+			fmt.Sprintf("symmetric key decryption error: %v", err),
 		)
 	}
 
