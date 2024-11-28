@@ -1250,21 +1250,23 @@ void TPartitionActor::HandleCompaction(
         NCloud::Reply(ctx, requestInfo, std::move(response));
     };
 
+    bool isExternalCompactionRequest =
+        msg->CompactionOptions.test(ToBit(ECompactionOption::External));
+
+    if (isExternalCompactionRequest) {
+        if (State->GetExternalCompactionRunning()) {
+            replyError(ctx, *requestInfo, E_TRY_AGAIN, "external compaction already started");
+            return;
+        }
+    } else if (State->GetCompactionState().Status == EOperationStatus::Started) {
+        replyError(ctx, *requestInfo, E_TRY_AGAIN, "compaction already started");
+        return;
+    }
+
     if (!State->IsCompactionAllowed()) {
         State->GetCompactionState().SetStatus(EOperationStatus::Idle);
 
         replyError(ctx, *requestInfo, E_BS_OUT_OF_SPACE, "all channels readonly");
-        return;
-    }
-
-    if (msg->CompactionOptions.test(ToBit(ECompactionOption::External))) {
-        if (State->GetExternalCompactionRinning()) {
-            replyError(ctx, *requestInfo, E_TRY_AGAIN, "external compaction already started");
-            return;
-        }
-        State->SetExternalCompactionRunning(true);
-    } else if (State->GetCompactionState().Status == EOperationStatus::Started) {
-        replyError(ctx, *requestInfo, E_TRY_AGAIN, "compaction already started");
         return;
     }
 
@@ -1298,10 +1300,7 @@ void TPartitionActor::HandleCompaction(
     }
 
     if (tops.empty() || !tops.front().Stat.BlobCount) {
-        if (msg->CompactionOptions.test(ToBit(ECompactionOption::External)))
-        {
-            State->SetExternalCompactionRunning(false);
-        } else {
+        if (!isExternalCompactionRequest) {
             State->GetCompactionState().SetStatus(EOperationStatus::Idle);
         }
 
@@ -1326,9 +1325,10 @@ void TPartitionActor::HandleCompaction(
             State->GetBlocksCount() - 1);
 
         LOG_DEBUG(ctx, TBlockStoreComponents::PARTITION,
-            "[%lu] Start compaction @%lu (range: %s, blobs: %u, blocks: %u"
+            "[%lu] Start %s compaction @%lu (range: %s, blobs: %u, blocks: %u"
             ", reads: %u, blobsread: %u, blocksread: %u, score: %f)",
             TabletID(),
+            isExternalCompactionRequest ? "external" : "tablet",
             commitId,
             DescribeRange(blockRange).c_str(),
             x.Stat.BlobCount,
@@ -1341,7 +1341,11 @@ void TPartitionActor::HandleCompaction(
         ranges.emplace_back(rangeIdx, blockRange);
     }
 
-    State->GetCompactionState().SetStatus(EOperationStatus::Started);
+    if (isExternalCompactionRequest) {
+        State->SetExternalCompactionRunning(true);
+    } else {
+        State->GetCompactionState().SetStatus(EOperationStatus::Started);
+    }
 
     State->GetCommitQueue().AcquireBarrier(commitId);
     State->GetCleanupQueue().AcquireBarrier(commitId);

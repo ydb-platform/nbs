@@ -752,21 +752,23 @@ void TPartitionActor::HandleCompaction(
         NCloud::Reply(ctx, requestInfo, std::move(response));
     };
 
-    if (!State->IsCompactionAllowed()) {
-        State->SetCompactionStatus(EOperationStatus::Idle);
+    bool isExternalCompactionRequest =
+        msg->CompactionOptions.test(ToBit(ECompactionOption::External));
 
-        replyError(ctx, *requestInfo, E_BS_OUT_OF_SPACE, "all channels readonly");
-        return;
-    }
-
-    if (msg->CompactionOptions.test(ToBit(ECompactionOption::External))) {
+    if (isExternalCompactionRequest) {
         if (State->GetExternalCompactionRunning()) {
             replyError(ctx, *requestInfo, E_TRY_AGAIN, "external compaction already started");
             return;
         }
-        State->SetExternalCompactionRunning(true);
     } else if (State->GetCompactionStatus() == EOperationStatus::Started) {
         replyError(ctx, *requestInfo, E_TRY_AGAIN, "compaction already started");
+        return;
+    }
+
+    if (!State->IsCompactionAllowed()) {
+        State->SetCompactionStatus(EOperationStatus::Idle);
+
+        replyError(ctx, *requestInfo, E_BS_OUT_OF_SPACE, "all channels readonly");
         return;
     }
 
@@ -799,9 +801,7 @@ void TPartitionActor::HandleCompaction(
     }
 
     if (!rangeStat.BlobCount && !garbageInfo.BlobCounters) {
-        if (msg->CompactionOptions.test(ToBit(ECompactionOption::External))) {
-            State->SetExternalCompactionRunning(false);
-        } else {
+        if (!isExternalCompactionRequest) {
             State->SetCompactionStatus(EOperationStatus::Idle);
         }
 
@@ -848,7 +848,11 @@ void TPartitionActor::HandleCompaction(
         tx = CreateTx<TCompaction>(requestInfo, std::move(garbageInfo));
     }
 
-    State->SetCompactionStatus(EOperationStatus::Started);
+    if (isExternalCompactionRequest) {
+        State->SetExternalCompactionRunning(true);
+    } else {
+        State->SetCompactionStatus(EOperationStatus::Started);
+    }
 
     AddTransaction<TEvPartitionPrivate::TCompactionMethod>(*requestInfo);
 

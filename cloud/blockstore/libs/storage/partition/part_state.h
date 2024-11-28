@@ -806,7 +806,7 @@ public:
         ExternalCompactionRunning = running;
     }
 
-    bool GetExternalCompactionRinning() const
+    bool GetExternalCompactionRunning() const
     {
         return ExternalCompactionRunning;
     }
