@@ -543,7 +543,7 @@ private:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TClient
+class TClient final
     : public TAppContext
     , public IClient
     , public std::enable_shared_from_this<TClient>
@@ -567,7 +567,7 @@ public:
         IMonitoringServicePtr monitoring,
         IServerStatsPtr clientStats);
 
-    ~TClient()
+    ~TClient() override
     {
         Stop();
     }
@@ -625,6 +625,10 @@ TClient::TClient(
     ClientStats = std::move(clientStats);
 
     Y_ABORT_UNLESS(Config->GetClientId());
+
+    GrpcLoggerInit(
+        logging->CreateLog("GRPC"),
+        Config->GetLogConfig().GetEnableGrpcTracing());
 }
 
 void TClient::Start()

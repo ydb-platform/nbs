@@ -39,7 +39,9 @@ class TestFixture:
         client_config.ClientConfig.SecurePort = int(self.__port)
         self.__client_config_path.write_text(MessageToString(client_config))
 
-    def get_client(self, auth_token):
+    def get_client(self, auth_token, use_unix_socket=False):
+        # auth_token MUST be a non-empty string; otherwise, the client will look
+        # for the IAM token config at the default path, which does not exist.
         client = FilestoreCliClient(
             self.__binary_path,
             self.__port,
@@ -48,5 +50,7 @@ class TestFixture:
             config_path=str(self.__client_config_path),
             check_exit_code=False,
             return_json=True,
+            use_unix_socket=use_unix_socket,
+            verbose=True,
         )
         return client

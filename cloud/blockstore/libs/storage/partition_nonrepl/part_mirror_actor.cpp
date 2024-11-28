@@ -1,11 +1,12 @@
 #include "part_mirror_actor.h"
+
 #include "part_mirror_resync_util.h"
 #include "part_nonrepl.h"
+#include "part_nonrepl_common.h"
 #include "part_nonrepl_migration.h"
 #include "resync_range.h"
 
 #include <cloud/blockstore/libs/diagnostics/critical_events.h>
-
 #include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/core/forward_helpers.h>
 #include <cloud/blockstore/libs/storage/core/probes.h>
@@ -545,9 +546,7 @@ STFUNC(TMirrorPartitionActor::StateWork)
         HFunc(TEvService::TEvWriteBlocksLocalRequest, HandleWriteBlocksLocal);
 
         HFunc(NPartition::TEvPartition::TEvDrainRequest, DrainActorCompanion.HandleDrain);
-        HFunc(
-            TEvService::TEvGetChangedBlocksRequest,
-            GetChangedBlocksCompanion.HandleGetChangedBlocks);
+        HFunc(TEvService::TEvGetChangedBlocksRequest, DeclineGetChangedBlocks);
 
         HFunc(TEvVolume::TEvDescribeBlocksRequest, HandleDescribeBlocks);
         HFunc(TEvVolume::TEvGetCompactionStatusRequest, HandleGetCompactionStatus);
@@ -560,6 +559,10 @@ STFUNC(TMirrorPartitionActor::StateWork)
         HFunc(
             TEvNonreplPartitionPrivate::TEvWriteOrZeroCompleted,
             HandleWriteOrZeroCompleted);
+
+        HFunc(
+            TEvNonreplPartitionPrivate::TEvMirroredReadCompleted,
+            HandleMirroredReadCompleted);
 
         HFunc(
             TEvVolume::TEvRWClientIdChanged,
@@ -593,6 +596,7 @@ STFUNC(TMirrorPartitionActor::StateZombie)
         HFunc(TEvService::TEvWriteBlocksLocalRequest, RejectWriteBlocksLocal);
 
         HFunc(NPartition::TEvPartition::TEvDrainRequest, RejectDrain);
+        HFunc(TEvService::TEvGetChangedBlocksRequest, DeclineGetChangedBlocks);
 
         HFunc(TEvVolume::TEvDescribeBlocksRequest, RejectDescribeBlocks);
         HFunc(TEvVolume::TEvGetCompactionStatusRequest, RejectGetCompactionStatus);
@@ -603,6 +607,7 @@ STFUNC(TMirrorPartitionActor::StateZombie)
         HFunc(TEvVolume::TEvGetScanDiskStatusRequest, RejectGetScanDiskStatus);
 
         IgnoreFunc(TEvNonreplPartitionPrivate::TEvWriteOrZeroCompleted);
+        IgnoreFunc(TEvNonreplPartitionPrivate::TEvMirroredReadCompleted);
 
         IgnoreFunc(TEvVolume::TEvRWClientIdChanged);
         IgnoreFunc(TEvVolume::TEvDiskRegistryBasedPartitionCounters);

@@ -22,7 +22,6 @@ struct TTestContext
     ITimerPtr Timer;
     ISchedulerPtr Scheduler;
     ILoggingServicePtr Logging;
-    TLog GrpcLog;
     IMonitoringServicePtr Monitoring;
     IProfileLogPtr ProfileLog;
     IRequestStatsPtr RequestStats;
@@ -38,7 +37,7 @@ private:
     NProto::TServerAppConfig ServerAppConfig;
 
 public:
-    TTestServerBuilder(TTestContext testContext);
+    explicit TTestServerBuilder(TTestContext testContext);
 
     TTestServerBuilder& SetPort(ui16 port);
 
@@ -72,7 +71,7 @@ private:
     NProto::TClientAppConfig ClientAppConfig;
 
 public:
-    TTestClientBuilder(TTestContext testContext);
+    explicit TTestClientBuilder(TTestContext testContext);
 
     TTestClientBuilder& SetPort(ui16 port);
 

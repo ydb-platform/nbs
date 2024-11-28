@@ -350,6 +350,15 @@ void TIndexTabletActor::CompleteTx_ConfigureShards(
         std::make_unique<TEvIndexTablet::TEvConfigureShardsResponse>();
 
     NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
+
+    LOG_INFO(
+        ctx,
+        TFileStoreComponents::TABLET,
+        "%s Suiciding after shard reconfiguration to force clients to fetch"
+        " a new shard list via CreateSession method",
+        LogTag.c_str());
+
+    Suicide(ctx);
 }
 
 ////////////////////////////////////////////////////////////////////////////////

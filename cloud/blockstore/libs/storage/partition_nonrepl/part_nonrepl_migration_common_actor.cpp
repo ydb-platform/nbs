@@ -1,5 +1,7 @@
 #include "part_nonrepl_migration_common_actor.h"
 
+#include "part_nonrepl_common.h"
+
 #include <cloud/blockstore/libs/diagnostics/critical_events.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/core/forward_helpers.h>
@@ -164,9 +166,7 @@ STFUNC(TNonreplicatedPartitionMigrationCommonActor::StateWork)
         HFunc(
             NPartition::TEvPartition::TEvDrainRequest,
             DrainActorCompanion.HandleDrain);
-        HFunc(
-            TEvService::TEvGetChangedBlocksRequest,
-            GetChangedBlocksCompanion.HandleGetChangedBlocks);
+        HFunc(TEvService::TEvGetChangedBlocksRequest, DeclineGetChangedBlocks);
 
         HFunc(TEvVolume::TEvDescribeBlocksRequest, HandleDescribeBlocks);
         HFunc(

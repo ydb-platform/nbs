@@ -100,6 +100,15 @@ func (s *storageYDB) OverlayDiskRebasing(
 	)
 }
 
+func (s *storageYDB) OverlayDiskRebasedTx(
+	ctx context.Context,
+	tx *persistence.Transaction,
+	info RebaseInfo,
+) error {
+
+	return s.overlayDiskRebasedTx(ctx, tx, info)
+}
+
 func (s *storageYDB) OverlayDiskRebased(
 	ctx context.Context,
 	info RebaseInfo,

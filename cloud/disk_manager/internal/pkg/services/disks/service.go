@@ -223,6 +223,25 @@ func (s *service) prepareCreateDiskParams(
 
 	tabletVersion := uint32(req.TabletVersion)
 
+	if nbs.IsDiskRegistryBasedDisk(kind) && s.config.GetDisableDiskRegistryBasedDisks() {
+		allowed := false
+		for _, folderID := range s.config.GetDiskRegistryBasedDisksFolderIdAllowList() {
+			if folderID == req.FolderId {
+				allowed = true
+				break
+			}
+		}
+
+		if !allowed {
+			return nil, errors.NewInvalidArgumentError(
+				"can't create a DiskRegistry based disk with id %q, because "+
+					"it is not allowed for the %q folder",
+				req.DiskId.DiskId,
+				req.FolderId,
+			)
+		}
+	}
+
 	return &protos.CreateDiskParams{
 		BlocksCount: blocksCount,
 		Disk: &types.Disk{

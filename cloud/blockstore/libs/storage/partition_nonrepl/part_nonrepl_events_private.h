@@ -81,9 +81,9 @@ struct TEvNonreplPartitionPrivate
 
     struct TWriteOrZeroCompleted
     {
-        ui64 RequestCounter;
-        ui64 TotalCycles;
-        bool FollowerGotNonRetriableError;
+        const ui64 RequestCounter;
+        const ui64 TotalCycles;
+        const bool FollowerGotNonRetriableError;
 
         TWriteOrZeroCompleted(
                 ui64 requestCounter,
@@ -92,6 +92,24 @@ struct TEvNonreplPartitionPrivate
             : RequestCounter(requestCounter)
             , TotalCycles(totalCycles)
             , FollowerGotNonRetriableError(followerGotNonRetriableError)
+        {
+        }
+    };
+
+    //
+    // MirroredReadCompleted
+    //
+
+    struct TMirroredReadCompleted
+    {
+        const ui64 RequestCounter;
+        const bool ChecksumMismatchObserved;
+
+        TMirroredReadCompleted(
+                ui64 requestCounter,
+                bool checksumMismatchObserved)
+            : RequestCounter(requestCounter)
+            , ChecksumMismatchObserved(checksumMismatchObserved)
         {
         }
     };
@@ -178,21 +196,6 @@ struct TEvNonreplPartitionPrivate
 
         ui32 NonVoidBlockCount = 0;
         ui32 VoidBlockCount = 0;
-
-        // TODO(drbasic) remove and use non-default constructor in
-        // TNonreplicatedPartitionRdmaActor
-        TOperationCompleted() = default;
-
-        TOperationCompleted(
-                EStatus status,
-                ui64 totalCycles,
-                ui64 execCycles,
-                TDuration executionTime)
-            : Status(status)
-            , TotalCycles(totalCycles)
-            , ExecCycles(execCycles)
-            , ExecutionTime(executionTime)
-        {}
     };
 
     //
@@ -211,6 +214,7 @@ struct TEvNonreplPartitionPrivate
         EvRangeMigrated,
         EvMigrateNextRange,
         EvWriteOrZeroCompleted,
+        EvMirroredReadCompleted,
         EvChecksumBlocksCompleted,
         EvResyncNextRange,
         EvRangeResynced,
@@ -244,6 +248,11 @@ struct TEvNonreplPartitionPrivate
     using TEvWriteOrZeroCompleted = TResponseEvent<
         TWriteOrZeroCompleted,
         EvWriteOrZeroCompleted
+    >;
+
+    using TEvMirroredReadCompleted = TResponseEvent<
+        TMirroredReadCompleted,
+        EvMirroredReadCompleted
     >;
 
     using TEvResyncNextRange = TResponseEvent<

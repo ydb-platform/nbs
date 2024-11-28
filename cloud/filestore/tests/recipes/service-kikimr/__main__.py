@@ -1,6 +1,8 @@
 import argparse
 import logging
 import os
+import pathlib
+import tempfile
 
 import yatest.common as common
 import google.protobuf.text_format as text_format
@@ -35,6 +37,7 @@ def start(argv):
     parser.add_argument("--restart-interval", action="store", default=None)
     parser.add_argument("--storage-config-patch", action="store", default=None)
     parser.add_argument("--bs-cache-file-path", action="store", default=None)
+    parser.add_argument("--use-unix-socket", action="store_true", default=False)
     args = parser.parse_args(argv)
 
     kikimr_binary_path = common.binary_path("cloud/storage/core/tools/testing/ydb/bin/ydbd")
@@ -73,6 +76,12 @@ def start(argv):
             storage_config = text_format.Parse(
                 p.read(),
                 TStorageConfig())
+    if args.use_unix_socket:
+        # Create in temp directory because we would like a shorter path
+        server_unix_socket_path = str(
+            pathlib.Path(tempfile.mkdtemp(dir="/tmp")) / "filestore.sock")
+        set_env("NFS_SERVER_UNIX_SOCKET_PATH", server_unix_socket_path)
+        server_config.ServerConfig.UnixSocketPath = server_unix_socket_path
 
     secure = False
     if access_service_port:

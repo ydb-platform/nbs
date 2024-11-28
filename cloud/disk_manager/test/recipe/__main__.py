@@ -54,6 +54,7 @@ def parse_args(args):
         type=str,
         default="cloud/disk_manager/cmd/disk-manager/disk-manager")
     parser.add_argument("--creation-and-deletion-allowed-only-for-disks-with-id-prefix", type=str, default="")
+    parser.add_argument("--disable-disk-registry-based-disks", action='store_true', default=False)
 
     args, _ = parser.parse_known_args(args=args)
     return args
@@ -223,6 +224,7 @@ def start(argv):
             max_restart_period_sec=args.max_restart_period_sec,
             base_disk_id_prefix=base_disk_id_prefix,
             creation_and_deletion_allowed_only_for_disks_with_id_prefix=args.creation_and_deletion_allowed_only_for_disks_with_id_prefix,
+            disable_disk_registry_based_disks=args.disable_disk_registry_based_disks,
         )
         disk_managers.append(disk_manager)
         disk_manager.start()
