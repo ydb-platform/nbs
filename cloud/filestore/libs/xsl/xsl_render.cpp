@@ -27,29 +27,32 @@ void NCloud::NFileStore::NXSLRender::NXSLRender(const char* xsl, const NXml::TDo
     xmlDocPtr sourceDoc = xmlReadDoc(
         BAD_CAST
         document_str.data(),
-        nullptr, nullptr, 0
+        nullptr, "utf-8", 0
     );
     xmlDocPtr styleDoc = xmlReadDoc(
         BAD_CAST
         xsl,
-        nullptr, nullptr, 0
+        nullptr, "utf-8", 0
     );
 
     xsltStylesheetPtr style = xsltParseStylesheetDoc(styleDoc);
     
-    xmlDocPtr result = xsltApplyStylesheet(style, sourceDoc, {});
+    xmlDocPtr result;
+    if ((result = xsltApplyStylesheet(style, sourceDoc, {})) != NULL) {
+        xmlChar* buffer;
+        int buffer_size;
 
-    xmlChar* buffer;
-    int buffer_size;
-
-    if (!xsltSaveResultToString(&buffer, &buffer_size, result, style)) {
-        out << (char*)buffer;
+        if (!xsltSaveResultToString(&buffer, &buffer_size, result, style)) {
+            out << (char*)buffer;
+        } else {
+            out << "Error returning page";
+        }
+        xmlFree(buffer);
     } else {
-        out << "Error rendering page";
+        out << "Error rendering page: " << document_str;
     }
 
     xsltFreeStylesheet(style);
 	xmlFreeDoc(result);
 	xmlFreeDoc(sourceDoc);
-    xmlFree(buffer);
 }

@@ -259,9 +259,7 @@ public:
     TDuration GetAsyncHandleOperationPeriod() const;
 
     void Dump(IOutputStream& out) const;
-    void DumpHtml(IOutputStream& out) const;
     void DumpXml(NXml::TNode& root) const;
-    void DumpOverridesHtml(IOutputStream& out) const;
     void DumpOverridesXml(NXml::TNode& root) const;
 
     TString GetNodeRegistrationToken() const;

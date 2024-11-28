@@ -7,7 +7,8 @@ R"(<?xml version="1.0" encoding="UTF-8"?>
     <h3>Tablet <a>
         <xsl:attribute name="href">../tablets?TabletID=<xsl:value-of select="tablet_id"/></xsl:attribute>
         <xsl:value-of select="tablet_id"/>
-    </a> running on node <xsl:value-of select="header_hostname"/><xsl:text>[</xsl:text><xsl:value-of select="node_id"/><xsl:text>]</xsl:text></h3>
+        </a> running on node <xsl:value-of select="header_hostname"/><xsl:text>[</xsl:text><xsl:value-of select="node_id"/><xsl:text>]</xsl:text>
+    </h3>
     <h3>Info</h3>
     <div>Filesystem Id: <xsl:value-of select="fs_id"/></div>
     <div>Block size: <xsl:value-of select="block_size"/></div>
@@ -18,8 +19,8 @@ R"(<?xml version="1.0" encoding="UTF-8"?>
         <table class="table table-bordered">
             <thead>
                 <tr>
-                    <td>ShardNo</td>
-                    <td>FileSystemId</td>
+                    <th>ShardNo</th>
+                    <th>FileSystemId</th>
                 </tr>
             </thead>
             <xsl:for-each select="shards/cd">
@@ -48,39 +49,48 @@ R"(<?xml version="1.0" encoding="UTF-8"?>
     <table class="table table-bordered">
         <thead>
             <tr>
-                <td>Used ranges count</td>
-                <td>Allocated ranges count</td>
-                <td>Compaction map density</td>
+                <th>Used ranges count</th>
+                <th>Allocated ranges count</th>
+                <th>Compaction map density</th>
             </tr>
         </thead>
-        <tr>
-            <td><xsl:value-of select="used_ranges_count"/></td>
-            <td><xsl:value-of select="allocated_ranges_count"/></td>
-            <td>
-                <div class="progress">
-                    <div class='progress-bar' role='progressbar' aria-valuemin='0'>
-                        <xsl:attribute name="style">width: <xsl:value-of select="ranges_percents"/>%</xsl:attribute>
-                        <xsl:attribute name="aria-valuenow"><xsl:value-of select="used_ranges_count"/></xsl:attribute>
-                        <xsl:attribute name="aria-valuemax"><xsl:value-of select="allocated_ranges_count"/></xsl:attribute>
-                        <xsl:value-of select="ranges_percents"/>%
+        <tbody>
+            <tr>
+                <td><xsl:value-of select="used_ranges_count"/></td>
+                <td><xsl:value-of select="allocated_ranges_count"/></td>
+                <td>
+                    <div class="progress">
+                        <div class='progress-bar' role='progressbar' aria-valuemin='0'>
+                            <xsl:attribute name="style">width: <xsl:value-of select="ranges_percents"/>%</xsl:attribute>
+                            <xsl:attribute name="aria-valuenow"><xsl:value-of select="used_ranges_count"/></xsl:attribute>
+                            <xsl:attribute name="aria-valuemax"><xsl:value-of select="allocated_ranges_count"/></xsl:attribute>
+                            <xsl:value-of select="ranges_percents"/>%
+                        </div>
                     </div>
-                </div>
-            </td>
-        </tr>
+                </td>
+            </tr>
+        </tbody>
     </table>
     <xsl:for-each select="compaction_range_info/cd">
         <h4><xsl:value-of select="name"/></h4>
         <table class="table table-bordered table-sortable">
             <thead>
                 <tr>
-                    <td>Range</td>
-                    <td>Blobs</td>
-                    <td>Deletions</td>
+                    <th>Range</th>
+                    <th>Blobs</th>
+                    <th>Deletions</th>
                 </tr>
             </thead>
             <xsl:for-each select="ranges/cd">
                 <tr>
-                    <td><xsl:value-of select="id"/></td>
+                    <td>
+                        <div class="col-lg-9">
+                            <a>
+                                <xsl:attribute name="href">../tablets/app?TabletID=<xsl:value-of select="../../../../tablet_id"/>&amp;action=dumpRange&amp;rangeId=<xsl:value-of select="id"/></xsl:attribute>
+                                <xsl:value-of select="id"/>
+                            </a>
+                        </div>
+                    </td>
                     <td><xsl:value-of select="blobs"/></td>
                     <td><xsl:value-of select="deletions"/></td>
                 </tr>
@@ -105,9 +115,9 @@ R"(<?xml version="1.0" encoding="UTF-8"?>
     <table class="table table-bordered">
         <thead>
             <tr>
-                <td>Name</td>
-                <td>Value</td>
-                <td>Threshold</td>
+                <th>Name</th>
+                <th>Value</th>
+                <th>Threshold</th>
             </tr>
         </thead>
         <xsl:for-each select="backpressure/cd">
@@ -122,8 +132,8 @@ R"(<?xml version="1.0" encoding="UTF-8"?>
     <table class="table table-bordered">
         <thead>
             <tr>
-                <td>Parameter</td>
-                <td>Value</td>
+                <th>Parameter</th>
+                <th>Value</th>
             </tr>
         </thead>
         <xsl:for-each select="compaction/cd">
@@ -137,8 +147,8 @@ R"(<?xml version="1.0" encoding="UTF-8"?>
     <table class="table table-bordered">
         <thead>
             <tr>
-                <td>Parameter</td>
-                <td>Value</td>
+                <th>Parameter</th>
+                <th>Value</th>
             </tr>
         </thead>
         <xsl:for-each select="cleanup/cd">
@@ -289,7 +299,7 @@ R"(<?xml version="1.0" encoding="UTF-8"?>
                         <td>
                             <span class="label">
                                 <xsl:attribute name="style">background-color: <xsl:value-of select="color"/></xsl:attribute>
-                                <xsl:value-of select="label"/> free=<xsl:value-of select="free"/>
+                                <xsl:value-of select="label"/><xsl:if test="free != 0"> free=<xsl:value-of select="free"/></xsl:if>
                             </span>
                         </td>
                         <td>
@@ -360,7 +370,7 @@ R"(<?xml version="1.0" encoding="UTF-8"?>
         <tr>
             <td>ThrottlerParams</td>
             <td>
-                <table>
+                <table class="table table-condensed">
                     <tbody>
                         <xsl:for-each select="throttler_params/cd">
                             <tr>
@@ -389,13 +399,13 @@ R"(<?xml version="1.0" encoding="UTF-8"?>
     <table class="table table-bordered table-sortable">
         <thead>
             <tr>
-                <td>ClientId</td>
-                <td>FQDN</td>
-                <td>SessionId</td>
-                <td>Recovery</td>
-                <td>SeqNo</td>
-                <td>ReadOnly</td>
-                <td>Owner</td>
+                <th>ClientId</th>
+                <th>FQDN</th>
+                <th>SessionId</th>
+                <th>Recovery</th>
+                <th>SeqNo</th>
+                <th>ReadOnly</th>
+                <th>Owner</th>
             </tr>
         </thead>
         <xsl:for-each select="sessions/cd">
@@ -414,11 +424,11 @@ R"(<?xml version="1.0" encoding="UTF-8"?>
     <table class="table table-bordered table-sortable">
         <thead>
             <tr>
-                <td>ClientId</td>
-                <td>FQDN</td>
-                <td>Timestamp</td>
-                <td>SessionId</td>
-                <td>ActionType</td>
+                <th>ClientId</th>
+                <th>FQDN</th>
+                <th>Timestamp</th>
+                <th>SessionId</th>
+                <th>ActionType</th>
             </tr>
         </thead>
         <xsl:for-each select="session_history/cd">

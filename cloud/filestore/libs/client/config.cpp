@@ -130,26 +130,6 @@ void TClientConfig::Dump(IOutputStream& out) const
 #undef FILESTORE_CONFIG_DUMP
 }
 
-void TClientConfig::DumpHtml(IOutputStream& out) const
-{
-#define FILESTORE_CONFIG_DUMP(name, ...)                                       \
-    TABLER() {                                                                 \
-        TABLED() { out << #name; }                                             \
-        TABLED() { DumpImpl(Get##name(), out); }                               \
-    }                                                                          \
-// FILESTORE_CONFIG_DUMP
-
-    HTML(out) {
-        TABLE_CLASS("table table-condensed") {
-            TABLEBODY() {
-                FILESTORE_CLIENT_CONFIG(FILESTORE_CONFIG_DUMP);
-            }
-        }
-    }
-
-#undef FILESTORE_CONFIG_DUMP
-}
-
 void TClientConfig::DumpXml(NXml::TNode& root) const
 {
     auto props = root.AddChild("config_propertiries", " ");
@@ -191,26 +171,6 @@ void TSessionConfig::Dump(IOutputStream& out) const
 // FILESTORE_CONFIG_DUMP
 
     FILESTORE_SESSION_CONFIG(FILESTORE_CONFIG_DUMP);
-
-#undef FILESTORE_CONFIG_DUMP
-}
-
-void TSessionConfig::DumpHtml(IOutputStream& out) const
-{
-#define FILESTORE_CONFIG_DUMP(name, ...)                                       \
-    TABLER() {                                                                 \
-        TABLED() { out << #name; }                                             \
-        TABLED() { DumpImpl(Get##name(), out); }                               \
-    }                                                                          \
-// FILESTORE_CONFIG_DUMP
-
-    HTML(out) {
-        TABLE_CLASS("table table-condensed") {
-            TABLEBODY() {
-                FILESTORE_SESSION_CONFIG(FILESTORE_CONFIG_DUMP);
-            }
-        }
-    }
 
 #undef FILESTORE_CONFIG_DUMP
 }

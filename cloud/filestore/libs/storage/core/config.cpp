@@ -400,27 +400,6 @@ void TStorageConfig::Dump(IOutputStream& out) const
 #undef FILESTORE_DUMP_CONFIG
 }
 
-void TStorageConfig::DumpHtml(IOutputStream& out) const
-{
-#define FILESTORE_DUMP_CONFIG(name, ...)                                       \
-    TABLER() {                                                                 \
-        TABLED() { out << #name; }                                             \
-        TABLED() { DumpImpl(Get##name(), out); }                               \
-    }                                                                          \
-// FILESTORE_DUMP_CONFIG
-
-    HTML(out) {
-        TABLE_CLASS("table table-condensed") {
-            TABLEBODY() {
-                FILESTORE_STORAGE_CONFIG(FILESTORE_DUMP_CONFIG);
-                FILESTORE_STORAGE_CONFIG_REF(FILESTORE_DUMP_CONFIG);
-            }
-        }
-    }
-
-#undef FILESTORE_DUMP_CONFIG
-}
-
 void TStorageConfig::DumpXml(NXml::TNode& root) const
 {
     auto props = root.AddChild("config_propertiries", " ");
@@ -436,31 +415,6 @@ void TStorageConfig::DumpXml(NXml::TNode& root) const
 
     FILESTORE_STORAGE_CONFIG(FILESTORE_DUMP_CONFIG)
     FILESTORE_STORAGE_CONFIG_REF(FILESTORE_DUMP_CONFIG)
-
-#undef FILESTORE_DUMP_CONFIG
-}
-
-void TStorageConfig::DumpOverridesHtml(IOutputStream& out) const
-{
-#define FILESTORE_DUMP_CONFIG(name, type, ...) {                               \
-    const auto value = ProtoConfig.Get##name();                                \
-    if (!IsEmpty(value)) {                                                     \
-        TABLER() {                                                             \
-            TABLED() { out << #name; }                                         \
-            TABLED() { DumpImpl(ConvertValue<type>(value), out); }             \
-        }                                                                      \
-    }                                                                          \
-}                                                                              \
-// FILESTORE_DUMP_CONFIG
-
-    HTML(out) {
-        TABLE_CLASS("table table-condensed") {
-            TABLEBODY() {
-                FILESTORE_STORAGE_CONFIG(FILESTORE_DUMP_CONFIG);
-                FILESTORE_STORAGE_CONFIG_REF(FILESTORE_DUMP_CONFIG);
-            }
-        }
-    }
 
 #undef FILESTORE_DUMP_CONFIG
 }

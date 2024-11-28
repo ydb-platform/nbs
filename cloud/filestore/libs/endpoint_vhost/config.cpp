@@ -135,26 +135,6 @@ void TVhostServiceConfig::Dump(IOutputStream& out) const
 #undef VHOST_CONFIG_DUMP
 }
 
-void TVhostServiceConfig::DumpHtml(IOutputStream& out) const
-{
-#define VHOST_CONFIG_DUMP(name, ...)                                           \
-    TABLER() {                                                                 \
-        TABLED() { out << #name; }                                             \
-        TABLED() { DumpImpl(Get##name(), out); }                               \
-    }                                                                          \
-// VHOST_CONFIG_DUMP
-
-    HTML(out) {
-        TABLE_CLASS("table table-condensed") {
-            TABLEBODY() {
-                VHOST_SERVICE_CONFIG(VHOST_CONFIG_DUMP);
-            }
-        }
-    }
-
-#undef VHOST_CONFIG_DUMP
-}
-
 void TVhostServiceConfig::DumpXml(NXml::TNode& root) const
 {
     auto props = root.AddChild("config_propertiries", " ");

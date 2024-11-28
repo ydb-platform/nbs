@@ -9,7 +9,7 @@ R"(<?xml version="1.0" encoding="UTF-8"?>
         <h3>Search Filesystem by id</h3>
         <form method="GET" id="fsSearch" name="fsSearch">
             Filesystem: <input type="text" id="Filesystem" name="Filesystem"/>
-            <input class="btn btn-primary" type="submit" value="Search"/>
+            <input class="btn btn-primary" type="submit" value="Search"/> 
             <input type='hidden' name='action' value='search'/>
         </form>
         <h3>Local Sessions</h3>
@@ -64,13 +64,15 @@ R"(<?xml version="1.0" encoding="UTF-8"?>
             </xsl:for-each>
         </table>
         <h3>Config</h3>
-        <table class="table table-bordered table-sortable">
-            <xsl:for-each select="config_table/config_propertiries/cd">
-                <tr>
-                    <td><xsl:value-of select="name"/></td>
-                    <td><xsl:value-of select="value"/></td>
-                </tr>
-            </xsl:for-each>
+        <table class="table table-condensed">
+            <tbody>
+                <xsl:for-each select="config_table/config_propertiries/cd">
+                    <tr>
+                        <td><xsl:value-of select="name"/></td>
+                        <td><xsl:value-of select="value"/></td>
+                    </tr>
+                </xsl:for-each>
+            </tbody>
         </table>
     </xsl:when>
     <xsl:otherwise>

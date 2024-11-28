@@ -93,26 +93,4 @@ void TVFSConfig::Dump(IOutputStream& out) const
 
 #undef FILESTORE_CONFIG_DUMP
 
-////////////////////////////////////////////////////////////////////////////////
-
-#define FILESTORE_CONFIG_DUMP(name, ...)                                       \
-    TABLER() {                                                                 \
-        TABLED() { out << #name; }                                             \
-        TABLED() { DumpImpl(Get##name(), out); }                               \
-    }                                                                          \
-// FILESTORE_CONFIG_DUMP
-
-void TVFSConfig::DumpHtml(IOutputStream& out) const
-{
-    HTML(out) {
-        TABLE_CLASS("table table-condensed") {
-            TABLEBODY() {
-                FILESTORE_VFS_CONFIG(FILESTORE_CONFIG_DUMP);
-            }
-        }
-    }
-}
-
-#undef FILESTORE_CONFIG_DUMP
-
 }   // namespace NCloud::NFileStore::NVFS

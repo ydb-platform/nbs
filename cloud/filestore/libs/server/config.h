@@ -76,7 +76,6 @@ public:
     }
 
     void Dump(IOutputStream& out) const;
-    void DumpHtml(IOutputStream& out) const;
     void DumpXml(NXml::TNode& root) const;
 };
 

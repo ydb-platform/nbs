@@ -106,26 +106,4 @@ void TFileSystemConfig::Dump(IOutputStream& out) const
 
 #undef FILESTORE_CONFIG_DUMP
 
-////////////////////////////////////////////////////////////////////////////////
-
-#define FILESTORE_CONFIG_DUMP(name, ...)                                       \
-    TABLER() {                                                                 \
-        TABLED() { out << #name; }                                             \
-        TABLED() { DumpImpl(Get##name(), out); }                               \
-    }                                                                          \
-// FILESTORE_CONFIG_DUMP
-
-void TFileSystemConfig::DumpHtml(IOutputStream& out) const
-{
-    HTML(out) {
-        TABLE_CLASS("table table-condensed") {
-            TABLEBODY() {
-                FILESTORE_FILESYSTEM_CONFIG(FILESTORE_CONFIG_DUMP);
-            }
-        }
-    }
-}
-
-#undef FILESTORE_CONFIG_DUMP
-
 }   // namespace NCloud::NFileStore::NFuse

@@ -27,8 +27,12 @@ using namespace NActors::NMon;
 using namespace NKikimr;
 
 namespace {
-    const char* xslTemplate = {
+    const char* const xslTemplate = {
         #include "xsl_templates/tablet_actor_monitoring.xsl"
+    };
+
+    const char* const xslTemplateRange = {
+        #include "xsl_templates/tablet_actor_monitoring_range.xsl"
     };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -167,23 +171,6 @@ void RejectHttpRequest(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void DumpDefaultHeader(
-    IOutputStream& out,
-    ui64 tabletId,
-    ui32 nodeId)
-{
-    TString hostname = HostName();
-
-    HTML(out) {
-        TAG(TH3) {
-            out << "Tablet <a href='../tablets?TabletID=" << tabletId
-                << "'>" << tabletId << "</a>"
-                << " running on node " << hostname << "[" << nodeId << "]"
-                ;
-        }
-    }
-}
-
 void DumpTabletNotReady(
     IOutputStream& out,
     const TTabletStorageInfo& storage)
@@ -214,28 +201,14 @@ void DumpOperationState(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void DumpRangeId(IOutputStream& out, ui64 tabletId, ui32 rangeId)
-{
-    HTML(out) {
-        DIV_CLASS("col-lg-9") {
-            out << "<a href='../tablets/app?TabletID=" << tabletId
-                << "&action=dumpRange&rangeId=" << rangeId
-                << "'>" << rangeId << "</a>";
-        }
-    }
-}
-
 void DumpCompactionRangeInfo(
     NXml::TNode& root,
-    ui64 tabletId,
     const TVector<TCompactionRangeInfo>& ranges)
 {
     auto rangesXml = root.AddChild("ranges", " ");
     for (const auto& range: ranges) {
         auto cd = rangesXml.AddChild("cd", " ");
-        TStringStream out;
-        DumpRangeId(out, tabletId, range.RangeId);
-        cd.AddChild("id", out.Str());
+        cd.AddChild("id", range.RangeId);
         cd.AddChild("blobs", range.Stats.BlobsCount);
         cd.AddChild("deletions", range.Stats.DeletionsCount);
     }
@@ -243,7 +216,6 @@ void DumpCompactionRangeInfo(
 
 void DumpCompactionMap(
     NXml::TNode& root,
-    ui64 tabletId,
     const TCompactionMapStats& stats)
 {
     root.AddChild("used_ranges_count", stats.UsedRangesCount);
@@ -257,15 +229,15 @@ void DumpCompactionMap(
     auto info = root.AddChild("compaction_range_info", " ");
     auto compaction = info.AddChild("cd", " ");
     compaction.AddChild("name", "Top ranges by compaction score");
-    DumpCompactionRangeInfo(compaction, tabletId, stats.TopRangesByCompactionScore);
+    DumpCompactionRangeInfo(compaction, stats.TopRangesByCompactionScore);
 
     auto cleanup = info.AddChild("cd", " ");
     cleanup.AddChild("name", "Top ranges by cleanup score");
-    DumpCompactionRangeInfo(cleanup, tabletId, stats.TopRangesByCleanupScore);
+    DumpCompactionRangeInfo(cleanup, stats.TopRangesByCleanupScore);
 
     auto garbage = info.AddChild("cd", " ");
     garbage.AddChild("name", "Top ranges by garbage score");
-    DumpCompactionRangeInfo(garbage, tabletId, stats.TopRangesByGarbageScore);
+    DumpCompactionRangeInfo(garbage, stats.TopRangesByGarbageScore);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -319,12 +291,6 @@ void DumpPerformanceProfile(
     DUMP_PROFILE_STAT("MaxWriteCostMultiplier", profile.GetMaxWriteCostMultiplier())
     DUMP_PROFILE_STAT("MaxPostponedTime", profile.GetMaxPostponedTime())
     DUMP_PROFILE_STAT("MaxPostponedCount", profile.GetMaxPostponedCount())
-    DUMP_PROFILE_STAT("StorageThrottlingEnabled", storageThrottlingEnabled)
-    DUMP_PROFILE_STAT("StorageThrottlingEnabled", storageThrottlingEnabled)
-    DUMP_PROFILE_STAT("StorageThrottlingEnabled", storageThrottlingEnabled)
-    DUMP_PROFILE_STAT("StorageThrottlingEnabled", storageThrottlingEnabled)
-    DUMP_PROFILE_STAT("StorageThrottlingEnabled", storageThrottlingEnabled)
-    DUMP_PROFILE_STAT("StorageThrottlingEnabled", storageThrottlingEnabled)
 
 #undef DUMP_PROFILE_STAT
 }
@@ -536,34 +502,25 @@ struct TIndexTabletMonitoringActor
         IOutputStream& out,
         const TEvIndexTabletPrivate::TEvDumpCompactionRangeResponse& msg)
     {
-        HTML(out) {
-            DumpDefaultHeader(out, TabletId, Owner.NodeId());
-            TAG(TH3) { out << "RangeId: " << msg.RangeId; }
-            TABLE_SORTABLE() {
-                TABLEHEAD() {
-                    TABLER() {
-                        TABLED() { out << "# NodeId"; }
-                        TABLED() { out << "BlockIndex"; }
-                        TABLED() { out << "BlobId"; }
-                        TABLED() { out << "MinCommitId"; }
-                        TABLED() { out << "MaxCommitId"; }
-                    }
-                }
-                TABLEBODY() {
-                    for (const auto& blob: msg.Blobs) {
-                        for (const auto& block: blob.Blocks) {
-                            TABLER() {
-                                TABLED() { out << block.NodeId; }
-                                TABLED() { out << block.BlockIndex; }
-                                TABLED() { out << blob.BlobId; }
-                                TABLED() { out << block.MinCommitId; }
-                                TABLED() { out << block.MaxCommitId; }
-                            }
-                        }
-                    }
-                }
+        NXml::TDocument data("root", NXml::TDocument::RootName);
+        auto root = data.Root();
+        root.AddChild("tablet_id", TabletId);
+        root.AddChild("node_id", Owner.NodeId());
+        root.AddChild("hostname", HostName());
+        root.AddChild("range_id", msg.RangeId);
+        auto blocks = root.AddChild("blocks", " ");
+        for (const auto& blob: msg.Blobs) {
+            for (const auto& block: blob.Blocks) {
+                auto cd = blocks.AddChild("cd", " ");
+                cd.AddChild("node_id", block.NodeId);
+                cd.AddChild("block_index", block.BlockIndex);
+                cd.AddChild("blob_id", blob.BlobId);
+                cd.AddChild("min_commit_id", block.MinCommitId);
+                cd.AddChild("max_commit_id", block.MaxCommitId);
             }
         }
+
+        NCloud::NFileStore::NXSLRender::NXSLRender(xslTemplateRange, data, out);
     }
 
     void HandlePoisonPill(
@@ -731,7 +688,7 @@ void TIndexTabletActor::HandleHttpInfo_Default(
     out.Clear();
     {
         const ui32 topSize = FromStringWithDefault(params.Get("top-size"), 1);
-        DumpCompactionMap(root, TabletID(), GetCompactionMapStats(topSize));
+        DumpCompactionMap(root, GetCompactionMapStats(topSize));
     }
     const auto backpressureThresholds = BuildBackpressureThresholds();
     const auto backpressureValues = GetBackpressureValues();

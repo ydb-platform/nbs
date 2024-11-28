@@ -158,26 +158,6 @@ void TDiagnosticsConfig::Dump(IOutputStream& out) const
 #undef FILESTORE_CONFIG_DUMP
 }
 
-void TDiagnosticsConfig::DumpHtml(IOutputStream& out) const
-{
-#define FILESTORE_CONFIG_DUMP(name, ...)                                       \
-    TABLER() {                                                                 \
-        TABLED() { out << #name; }                                             \
-        TABLED() { out << Get##name(); }                                       \
-    }                                                                          \
-// FILESTORE_CONFIG_DUMP
-
-    HTML(out) {
-        TABLE_CLASS("table table-condensed") {
-            TABLEBODY() {
-                FILESTORE_DIAGNOSTICS_CONFIG(FILESTORE_CONFIG_DUMP);
-            }
-        }
-    }
-
-#undef FILESTORE_CONFIG_DUMP
-}
-
 void TDiagnosticsConfig::DumpXml(NXml::TNode& root) const
 {
     auto props = root.AddChild("config_propertiries", " ");
