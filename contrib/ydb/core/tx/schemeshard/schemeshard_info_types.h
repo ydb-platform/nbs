@@ -14,6 +14,7 @@
 #include <contrib/ydb/core/control/immediate_control_board_impl.h>
 
 #include <contrib/ydb/core/base/feature_flags.h>
+#include <contrib/ydb/core/protos/schemeshard/operations.pb.h>
 #include <contrib/ydb/core/tablet_flat/flat_cxx_database.h>
 #include <contrib/ydb/core/tablet_flat/flat_dbase_scheme.h>
 #include <contrib/ydb/core/tablet_flat/flat_table_column.h>
