@@ -28,7 +28,7 @@ private:
     EMode Mode;
 
     // Some random string but stable in one session
-    TString Seed;
+    const TString Seed;
 
 public:
     TMaskSensitiveData(const EMode mode, const TString& seed);
