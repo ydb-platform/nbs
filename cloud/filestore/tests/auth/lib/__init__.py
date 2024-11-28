@@ -15,7 +15,7 @@ from cloud.storage.core.tools.testing.access_service_new.lib import NewAccessSer
 
 def log_result(test_name, result):
     logging.info(
-        "[%s] Filestore create stdout=%s, stderr=%s",
+        "[%s] Filestore stdout=%s, stderr=%s",
         test_name,
         result.stdout.decode(),
         result.stderr.decode(),
@@ -49,7 +49,7 @@ class TestFixture:
         client_config.ClientConfig.SecurePort = int(self.__port)
         self.__client_config_path.write_text(MessageToString(client_config))
 
-    def get_client(self, auth_token, use_unix_socket=False):
+    def get_client(self, auth_token, use_unix_socket=None):
         # auth_token MUST be a non-empty string; otherwise, the client will look
         # for the IAM token config at the default path, which does not exist.
         client = FilestoreCliClient(
