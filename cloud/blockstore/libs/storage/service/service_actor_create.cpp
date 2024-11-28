@@ -56,10 +56,6 @@ private:
 
     void DescribeBaseVolume(const TActorContext& ctx);
     void CreateVolume(const TActorContext& ctx);
-    void HandleCreateEncryptionKeyResponse(
-    const TEvServicePrivate::TEvCreateEncryptionKeyResponse::TPtr& ev,
-    const TActorContext& ctx);
-
     void CreateVolumeImpl(
         const TActorContext& ctx,
         std::optional<NKikimrBlockStore::TEncryptionDesc> encryptionDesc);
@@ -74,6 +70,10 @@ private:
 
     void HandleWaitReadyResponse(
         const TEvVolume::TEvWaitReadyResponse::TPtr& ev,
+        const TActorContext& ctx);
+
+    void HandleCreateEncryptionKeyResponse(
+        const TEvServicePrivate::TEvCreateEncryptionKeyResponse::TPtr& ev,
         const TActorContext& ctx);
 
     void ReplyAndDie(
