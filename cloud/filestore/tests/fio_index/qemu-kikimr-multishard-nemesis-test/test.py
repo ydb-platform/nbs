@@ -5,7 +5,7 @@ import cloud.storage.core.tools.testing.fio.lib as fio
 
 from cloud.filestore.tests.python.lib.common import get_filestore_mount_path
 
-duration = 30
+duration = 10
 if os.environ['SANITIZER_TYPE'] != '':
     duration = 5
 

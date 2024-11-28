@@ -16,9 +16,6 @@ class TMaskSensitiveData
     int EventMessageNumber = 0;
     const NProto::TProfileLogRecord* MessagePtr{};
 
-    // Some random string but stable in one session
-    TString Seed;
-
 public:
     enum class EMode
     {
@@ -30,8 +27,11 @@ public:
 private:
     EMode Mode;
 
+    // Some random string but stable in one session
+    TString Seed;
+
 public:
-    explicit TMaskSensitiveData(const EMode mode);
+    explicit TMaskSensitiveData(const EMode mode, const TString& seed);
     bool Advance();
     TString Transform(const TString& str, const ui64 nodeId);
     void MaskSensitiveData(const TString& in, const TString& out);
