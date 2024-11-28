@@ -870,6 +870,7 @@ void TBootstrapBase::Start()
     START_KIKIMR_COMPONENT(IamTokenClient);
     START_KIKIMR_COMPONENT(ComputeClient);
     START_KIKIMR_COMPONENT(KmsClient);
+    START_KIKIMR_COMPONENT(RootKmsClient);
     START_KIKIMR_COMPONENT(YdbStorage);
     START_KIKIMR_COMPONENT(StatsUploader);
     START_COMMON_COMPONENT(Spdk);
@@ -957,6 +958,7 @@ void TBootstrapBase::Stop()
     STOP_COMMON_COMPONENT(Spdk);
     STOP_KIKIMR_COMPONENT(StatsUploader);
     STOP_KIKIMR_COMPONENT(YdbStorage);
+    STOP_KIKIMR_COMPONENT(RootKmsClient);
     STOP_KIKIMR_COMPONENT(KmsClient);
     STOP_KIKIMR_COMPONENT(ComputeClient);
     STOP_KIKIMR_COMPONENT(IamTokenClient);

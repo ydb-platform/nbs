@@ -29,9 +29,9 @@ struct TFixture
         Client = CreateRootKmsClient(
             Logging,
             {.Address = "localhost:" + GetEnv("FAKE_ROOT_KMS_PORT"),
-             .RootCAPath = GetEnv("FAKE_ROOT_KMS_CA"),
-             .CertChainPath = GetEnv("FAKE_ROOT_KMS_CLIENT_CRT"),
-             .PrivateKeyPath = GetEnv("FAKE_ROOT_KMS_CLIENT_KEY")});
+             .RootCertsFile = GetEnv("FAKE_ROOT_KMS_CA"),
+             .CertChainFile = GetEnv("FAKE_ROOT_KMS_CLIENT_CRT"),
+             .PrivateKeyFile = GetEnv("FAKE_ROOT_KMS_CLIENT_KEY")});
         Client->Start();
     }
 

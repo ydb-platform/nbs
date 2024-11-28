@@ -112,6 +112,7 @@ protected:
     virtual IStartable* GetIamTokenClient() = 0;
     virtual IStartable* GetComputeClient() = 0;
     virtual IStartable* GetKmsClient() = 0;
+    virtual IStartable* GetRootKmsClient() = 0;
 
     virtual void InitSpdk() = 0;
     virtual void InitRdmaClient() = 0;
