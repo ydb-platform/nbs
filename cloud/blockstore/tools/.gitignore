@@ -57,6 +57,7 @@ testing/eternal_tests/test_runner/tests/eternal_tests-test_runner-tests
 testing/eternal_tests/test_runner/yc-nbs-run-eternal-load-tests
 testing/fake-conductor/blockstore-fake-conductor
 testing/fake-nbs/blockstore-fake-nbs
+testing/fake-root-kms/fake-root-kms
 testing/fake-vhost-server/fake-vhost-server
 testing/generate-agents/generate-agents
 testing/infra-client/blockstore-infra-client
