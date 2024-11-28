@@ -11,7 +11,6 @@ import (
 	pools_protos "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/pools/protos"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
 	"github.com/ydb-platform/nbs/cloud/tasks"
-	"github.com/ydb-platform/nbs/cloud/tasks/errors"
 	"github.com/ydb-platform/nbs/cloud/tasks/headers"
 )
 
@@ -55,10 +54,8 @@ func deleteImage(
 	}
 
 	if imageMeta == nil {
-		return errors.NewNonCancellableErrorf(
-			"id %v is not accepted",
-			imageID,
-		)
+		// Should be idempotent.
+		return nil
 	}
 
 	err = scheduleRetireBaseDisks(

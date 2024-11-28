@@ -58,10 +58,8 @@ func (t *deleteSnapshotTask) deleteSnapshot(
 	}
 
 	if snapshotMeta == nil {
-		return errors.NewNonCancellableErrorf(
-			"id %v is not accepted",
-			t.request.SnapshotId,
-		)
+		// Should be idempotent.
+		return nil
 	}
 
 	// Hack for NBS-2225.

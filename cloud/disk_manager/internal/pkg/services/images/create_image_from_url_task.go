@@ -67,7 +67,7 @@ func (t *createImageFromURLTask) Run(
 		)
 	}
 
-	imageMeta, err := t.storage.CreateImage(ctx, resources.ImageMeta{
+	_, err = t.storage.CreateImage(ctx, resources.ImageMeta{
 		ID:                t.request.DstImageId,
 		FolderID:          t.request.FolderId,
 		CreateRequest:     t.request,
@@ -78,13 +78,6 @@ func (t *createImageFromURLTask) Run(
 	})
 	if err != nil {
 		return err
-	}
-
-	if imageMeta == nil {
-		return errors.NewNonCancellableErrorf(
-			"id %v is not accepted",
-			t.request.DstImageId,
-		)
 	}
 
 	taskID, err := t.scheduler.ScheduleTask(
