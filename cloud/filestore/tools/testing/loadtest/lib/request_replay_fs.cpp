@@ -406,7 +406,7 @@ private:
         const auto handle =
             GetLocalHandleId(logRequest.GetRanges(0).GetHandle());
         if (handle == InvalidHandle) {
-            STORAGE_WARN(
+            STORAGE_DEBUG(
                 "Read: no handle %lu ranges size=%d map size=%zu",
                 logRequest.GetRanges(0).GetHandle(),
                 logRequest.GetRanges().size(),
@@ -925,7 +925,7 @@ private:
         const auto logHandle = logRequest.GetNodeInfo().GetHandle();
         const auto handle = GetLocalHandleId(logHandle);
         if (handle == InvalidHandle) {
-            STORAGE_WARN(
+            STORAGE_DEBUG(
                 "Flush: no handle %lu map size=%zu",
                 logHandle,
                 HandlesLogToActual.size());
