@@ -13,6 +13,10 @@ SRCS(
     service.go
 )
 
+GO_TEST_SRCS(
+    delete_image_task_test.go
+)
+
 END()
 
 RECURSE(
@@ -22,4 +26,5 @@ RECURSE(
 
 RECURSE_FOR_TESTS(
     mocks
+    tests
 )
