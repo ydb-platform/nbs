@@ -31,7 +31,7 @@ private:
     TString Seed;
 
 public:
-    explicit TMaskSensitiveData(const EMode mode, const TString& seed);
+    TMaskSensitiveData(const EMode mode, const TString& seed);
     bool Advance();
     TString Transform(const TString& str, const ui64 nodeId);
     void MaskSensitiveData(const TString& in, const TString& out);

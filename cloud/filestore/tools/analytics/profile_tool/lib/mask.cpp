@@ -80,7 +80,7 @@ public:
 
 TMaskSensitiveData::TMaskSensitiveData(const EMode mode, const TString& seed)
     : Mode{mode}
-    , Seed{seed}
+    , Seed{seed ? seed : CreateGuidAsString()}
 {}
 
 bool TMaskSensitiveData::Advance()
@@ -118,10 +118,6 @@ void TMaskSensitiveData::MaskSensitiveData(
     const TString& in,
     const TString& out)
 {
-    if (Seed.empty()) {
-        Seed = CreateGuidAsString();
-    }
-
     NEventLog::TOptions options;
     options.FileName = in;
 
