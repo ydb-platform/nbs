@@ -161,13 +161,12 @@ void TGetShardStatsActor::ReplyAndDie(
     if (HasError(error)) {
         Response =
             std::make_unique<TEvIndexTablet::TEvGetStorageStatsResponse>(error);
-    } else {
-        using TCompletion = TEvIndexTabletPrivate::TEvGetShardStatsCompleted;
-        auto response = std::make_unique<TCompletion>(
-            error,
-            RequestInfo->StartedTs);
-        NCloud::Send(ctx, Tablet, std::move(response));
     }
+    using TCompletion = TEvIndexTabletPrivate::TEvGetShardStatsCompleted;
+    auto response = std::make_unique<TCompletion>(
+        error,
+        RequestInfo->StartedTs);
+    NCloud::Send(ctx, Tablet, std::move(response));
     NCloud::Reply(ctx, *RequestInfo, std::move(Response));
 
     Die(ctx);
@@ -777,9 +776,7 @@ void TIndexTabletActor::HandleGetStorageStats(
         std::move(response));
 
     auto actorId = NCloud::Register(ctx, std::move(actor));
-
-    Y_UNUSED(actorId);
-    // TODO(#1350): register actorId in WorkerActors, erase upon completion
+    WorkerActors.insert(actorId);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -788,7 +785,10 @@ void TIndexTabletActor::HandleGetShardStatsCompleted(
     const TEvIndexTabletPrivate::TEvGetShardStatsCompleted::TPtr& ev,
     const TActorContext& ctx)
 {
-    Metrics.StatFileStore.Update(1, 0, ctx.Now() - ev->Get()->StartedTs);
+    if (!HasError(ev->Get()->Error)) {
+        Metrics.StatFileStore.Update(1, 0, ctx.Now() - ev->Get()->StartedTs);
+    }
+    WorkerActors.erase(ev->Sender);
 }
 
 }   // namespace NCloud::NFileStore::NStorage

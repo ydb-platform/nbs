@@ -58,15 +58,12 @@ message TDiagnosticsConfig
     optional string BastionNameSuffix = 1;
 
     // [obsolete]
-    // Solomon cluster name (e.g. yandexcloud_prod_vla).
     // optional string SolomonClusterName = 2;
 
     // [obsolete]
-    // Solomon host url.
     // optional string SolomonUrl = 3;
 
     // [obsolete]
-    // Project name in solomon.
     // optional string SolomonProject = 4;
 
     // Monserver will listen on this port.
