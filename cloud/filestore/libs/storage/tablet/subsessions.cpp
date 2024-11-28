@@ -21,9 +21,16 @@ NActors::TActorId TSubSessions::AddSubSession(
     bool readOnly,
     const NActors::TActorId& owner)
 {
-    MaxSeenSeqNo = std::max(MaxSeenSeqNo, seqNo);
+    if (readOnly && seqNo < MaxRoSeqNo) {
+        return owner;
+    }
+    if (!readOnly && seqNo < MaxRwSeqNo) {
+        return owner;
+    }
+
+    MaxRoSeqNo = std::max(MaxRoSeqNo, seqNo);
     if (!readOnly) {
-        MaxSeenRwSeqNo = std::max(MaxSeenRwSeqNo, seqNo);
+        MaxRwSeqNo = std::max(MaxRwSeqNo, seqNo);
     }
     SubSessions.push_back({seqNo, readOnly, owner});
     if (SubSessions.size() > MaxSubSessions) {
@@ -45,83 +52,83 @@ NActors::TActorId TSubSessions::UpdateSubSession(
     bool readOnly,
     const NActors::TActorId& owner)
 {
-    MaxSeenSeqNo = std::max(MaxSeenSeqNo, seqNo);
-    if (!readOnly) {
-        MaxSeenRwSeqNo = std::max(MaxSeenRwSeqNo, seqNo);
-    }
     auto* subsession = FindIf(
         SubSessions,
         [&] (const auto& subsession) {
             return subsession.SeqNo == seqNo;
         });
     if (subsession != SubSessions.end()) {
+        TActorId toKill;
         subsession->ReadOnly = readOnly;
         if (subsession->Owner != owner) {
-            auto toKill = subsession->Owner;
+            toKill = subsession->Owner;
             subsession->Owner = owner;
-            return toKill;
         }
-        return {};
+
+        MaxRoSeqNo = 0;
+        MaxRwSeqNo = 0;
+        for (auto subsession: SubSessions) {
+            if (subsession.ReadOnly) {
+                MaxRoSeqNo = std::max(MaxRoSeqNo, subsession.SeqNo);
+            } else {
+                MaxRwSeqNo = std::max(MaxRwSeqNo, subsession.SeqNo);
+            }
+        }
+
+        return toKill;
     }
     return AddSubSession(seqNo, readOnly, owner);
 }
 
 ui32 TSubSessions::DeleteSubSession(const NActors::TActorId& owner)
 {
-    auto subsession = FindIf(
+    auto* subsession = FindIf(
         SubSessions,
         [&] (const auto& subsession) {
             return subsession.Owner == owner;
         });
     if (subsession == SubSessions.end()) {
-        return true;
+        return MaxRoSeqNo != 0 || MaxRwSeqNo != 0;
     }
 
-    auto sessionSeqNo = subsession->SeqNo;
+    auto toDelete = subsession->SeqNo;
+    bool writerAlive = toDelete < MaxRwSeqNo;
+    bool migrationInProgress = MaxRwSeqNo && (MaxRoSeqNo > MaxRwSeqNo);
+
+    UpdateSeqNoAfterDelete(toDelete);
     SubSessions.erase(subsession);
 
-    auto alive = !ReadyToDestroy(sessionSeqNo);
-    if (!alive) {
-        return false;
-    }
-
-    if (sessionSeqNo == MaxSeenRwSeqNo) {
-        MaxSeenRwSeqNo = 0;
-    }
-    if (sessionSeqNo == MaxSeenSeqNo) {
-        MaxSeenSeqNo = MaxSeenRwSeqNo;
-    }
-
-    return true;
+    return SubSessions.size() || writerAlive || migrationInProgress;
 }
 
 ui32 TSubSessions::DeleteSubSession(ui64 sessionSeqNo)
 {
-    auto subsession = FindIf(
+    auto* subsession = FindIf(
         SubSessions,
         [&] (const auto& subsession) {
             return subsession.SeqNo == sessionSeqNo;
         });
 
-    if (subsession == SubSessions.end()) {
-        return !ReadyToDestroy(sessionSeqNo);
+    bool writerAlive = sessionSeqNo < MaxRwSeqNo;
+    bool migrationInProgress = MaxRwSeqNo && (MaxRoSeqNo > MaxRwSeqNo);
+
+    UpdateSeqNoAfterDelete(sessionSeqNo);
+    if (subsession != SubSessions.end()) {
+        SubSessions.erase(subsession);
     }
 
-    SubSessions.erase(subsession);
+    return SubSessions.size() || writerAlive || migrationInProgress;
+}
 
-    auto alive = !ReadyToDestroy(sessionSeqNo);
-    if (!alive) {
-        return false;
+void TSubSessions::UpdateSeqNoAfterDelete(ui64 seqNo)
+{
+    if (seqNo == MaxRoSeqNo) {
+        MaxRoSeqNo = 0;
+        return;
     }
-
-    if (sessionSeqNo == MaxSeenRwSeqNo) {
-        MaxSeenRwSeqNo = 0;
+    if (seqNo == MaxRwSeqNo) {
+        MaxRwSeqNo = 0;
     }
-    if (sessionSeqNo == MaxSeenSeqNo) {
-        MaxSeenSeqNo = MaxSeenRwSeqNo;
-    }
-
-    return true;
 }
 
 TVector<NActors::TActorId> TSubSessions::GetSubSessions() const
@@ -140,15 +147,12 @@ TVector<TSubSession> TSubSessions::GetAllSubSessions() const
 
 bool TSubSessions::HasSeqNo(ui64 seqNo) const
 {
-    auto subsession = FindIf(
+    auto* subsession = FindIf(
         SubSessions,
         [&] (const auto& subsession) {
             return subsession.SeqNo == seqNo;
         });
-    if (subsession != SubSessions.end()) {
-        return true;
-    }
-    return false;
+    return subsession != SubSessions.end();
 }
 
 bool TSubSessions::IsValid() const
@@ -165,7 +169,7 @@ bool TSubSessions::IsValid() const
 
 std::optional<TSubSession> TSubSessions::GetSubSessionBySeqNo(ui64 seqNo) const
 {
-    auto subsession = FindIf(
+    auto* subsession = FindIf(
         SubSessions,
         [&] (const auto& subsession) {
             return subsession.SeqNo == seqNo;
@@ -174,13 +178,6 @@ std::optional<TSubSession> TSubSessions::GetSubSessionBySeqNo(ui64 seqNo) const
         return *subsession;
     }
     return std::nullopt;
-}
-
-bool TSubSessions::ReadyToDestroy(ui64 seqNo) const
-{
-    bool isHighestSeqNo = !MaxSeenSeqNo || (seqNo >= MaxSeenSeqNo);
-    bool isWriter = !MaxSeenRwSeqNo || (MaxSeenRwSeqNo == seqNo);
-    return isHighestSeqNo && isWriter;
 }
 
 }   // namespace NCloud::NFileStore::NStorage
