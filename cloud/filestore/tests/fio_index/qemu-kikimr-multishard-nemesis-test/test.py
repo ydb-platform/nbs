@@ -1,16 +1,11 @@
 import pytest
-import os
 
 import cloud.storage.core.tools.testing.fio.lib as fio
 
 from cloud.filestore.tests.python.lib.common import get_filestore_mount_path
 
-duration = 10
-if os.environ['SANITIZER_TYPE'] != '':
-    duration = 5
 
-TESTS = fio.generate_index_tests(duration=duration)
-
+TESTS = fio.generate_index_tests(duration=20)
 
 @pytest.mark.parametrize("name", TESTS.keys())
 def test_fio(name):
