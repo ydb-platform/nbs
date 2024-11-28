@@ -151,7 +151,9 @@ void TMaskSensitiveData::MaskSensitiveData(
             *recordOut.AddRequests() = std::move(request);
         }
         logFrame.LogEvent(recordOut);
+        logFrame.Flush();
     }
+    eventLog.CloseLog();
 }
 
 ////////////////////////////////////////////////////////////////////////////////
