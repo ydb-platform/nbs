@@ -32,7 +32,7 @@ void TStorageServiceActor::HandleUpdateStats(
             InFlightRequests.erase(it++);
         }
     }
-    if (CgroupStatsFetcher && CpuWait && CpuWaitFailure) {
+    if (CgroupStatsFetcher) {
         auto now = ctx.Now();
 
         auto interval = (now - LastCpuWaitQuery).MicroSeconds();
@@ -61,7 +61,7 @@ void TStorageServiceActor::HandleUpdateStats(
             }
         } else {
             *CpuWaitFailure = 1;
-            LOG_ERROR_S(
+            LOG_TRACE_S(
                 ctx,
                 TFileStoreComponents::SERVICE,
                 "Failed to get CpuWait stats: " << error);

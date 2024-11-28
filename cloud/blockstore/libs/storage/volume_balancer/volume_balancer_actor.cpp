@@ -240,7 +240,7 @@ void TVolumeBalancerActor::HandleGetVolumeStatsResponse(
     const TEvService::TEvGetVolumeStatsResponse::TPtr& ev,
     const TActorContext& ctx)
 {
-    if (State && CgroupStatsFetcher && CpuWait && CpuWaitFailure) {
+    if (State) {
         const auto *msg = ev->Get();
 
         auto now = ctx.Now();
@@ -249,7 +249,7 @@ void TVolumeBalancerActor::HandleGetVolumeStatsResponse(
         auto [cpuWait, error] = CgroupStatsFetcher->GetCpuWait();
         if (HasError(error)) {
             *CpuWaitFailure = 1;
-            LOG_ERROR_S(
+            LOG_TRACE_S(
                 ctx,
                 TBlockStoreComponents::VOLUME_BALANCER,
                 "Failed to get CpuWait stats: " << error);
