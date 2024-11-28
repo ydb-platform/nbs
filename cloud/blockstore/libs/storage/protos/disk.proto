@@ -944,32 +944,29 @@ message TDirectCopyBlocksRequest
     // Optional request headers.
     THeaders Headers = 1;
 
-    // ClientId for reading.
-    string SourceClientId = 2;
-
     // UUID of source device to read from.
-    string SourceDeviceUUID = 3;
+    string SourceDeviceUUID = 2;
 
     // Start block index on source id.
-    uint64 SourceStartIndex = 4;
+    uint64 SourceStartIndex = 3;
 
     // Logical block size
-    uint32 BlockSize = 5;
+    uint32 BlockSize = 4;
 
     // Number of blocks to copy.
-    uint32 BlocksCount = 6;
+    uint32 BlockCount = 5;
 
     // NodeId of target host.
-    uint32 TargetNodeId = 7;
+    uint32 TargetNodeId = 6;
 
     // ClientId for writing.
-    string TargetClientId = 8;
+    string TargetClientId = 7;
 
     // UUID of target device to write.
-    string TargetDeviceUUID = 9;
+    string TargetDeviceUUID = 8;
 
     // Start block index on target device.
-    uint64 TargetStartIndex = 10;
+    uint64 TargetStartIndex = 9;
 }
 
 message TDirectCopyBlocksResponse

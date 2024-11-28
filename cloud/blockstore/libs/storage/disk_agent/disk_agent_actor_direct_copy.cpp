@@ -54,9 +54,9 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 TDirectCopyActor::TDirectCopyActor(
-    const TActorId& owner,
-    TRequestInfoPtr requestInfo,
-    NProto::TDirectCopyBlocksRequest request)
+        const TActorId& owner,
+        TRequestInfoPtr requestInfo,
+        NProto::TDirectCopyBlocksRequest request)
     : Owner(owner)
     , RequestInfo(std::move(requestInfo))
     , Request(std::move(request))
@@ -70,14 +70,12 @@ void TDirectCopyActor::Bootstrap(const TActorContext& ctx)
         std::make_unique<TEvDiskAgent::TEvReadDeviceBlocksRequest>();
 
     auto& rec = readRequest->Record;
-    auto* headers = rec.MutableHeaders();
-    headers->SetIsBackgroundRequest(Request.GetHeaders().GetIsBackgroundRequest());
-    headers->SetClientId(TString(Request.GetSourceClientId()));
+    *rec.MutableHeaders() = Request.GetHeaders();
 
     rec.SetDeviceUUID(Request.GetSourceDeviceUUID());
     rec.SetStartIndex(Request.GetSourceStartIndex());
     rec.SetBlockSize(Request.GetBlockSize());
-    rec.SetBlocksCount(Request.GetBlocksCount());
+    rec.SetBlocksCount(Request.GetBlockCount());
 
     ctx.Send(Owner, std::move(readRequest));
 }
@@ -134,8 +132,12 @@ void TDirectCopyActor::HandleReadBlocksResponse(
     rec.SetStartIndex(Request.GetTargetStartIndex());
     rec.SetBlockSize(Request.GetBlockSize());
 
+    auto targetActorId =
+        ctx.SelfID.NodeId() == Request.GetTargetNodeId()
+            ? MakeDiskAgentServiceId()
+            : MakeDiskAgentServiceId(Request.GetTargetNodeId());
     auto event = std::make_unique<IEventHandle>(
-        MakeDiskAgentServiceId(Request.GetTargetNodeId()),
+        targetActorId,
         ctx.SelfID,
         writeRequest.release(),
         IEventHandle::FlagForwardOnNondelivery,

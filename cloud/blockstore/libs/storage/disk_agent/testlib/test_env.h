@@ -100,6 +100,12 @@ public:
         , Sender(runtime.AllocateEdgeActor(nodeIdx))
     {}
 
+    NActors::TActorId DiskAgentActorId() const
+    {
+        ui32 nodeId = NodeIdx ? Runtime.GetNodeId(NodeIdx) : 0;
+        return MakeDiskAgentServiceId(nodeId);
+    }
+
     template <typename TRequest>
     void SendRequest(
         const NActors::TActorId& recipient,
@@ -307,7 +313,7 @@ public:
     void Send##name##Request(Args&&... args)                                   \
     {                                                                          \
         auto request = Create##name##Request(std::forward<Args>(args)...);     \
-        SendRequest(MakeDiskAgentServiceId(), std::move(request));             \
+        SendRequest(DiskAgentActorId(), std::move(request));                   \
     }                                                                          \
                                                                                \
     std::unique_ptr<ns::TEv##name##Response> Recv##name##Response(             \
@@ -320,7 +326,7 @@ public:
     std::unique_ptr<ns::TEv##name##Response> name(Args&&... args)              \
     {                                                                          \
         auto request = Create##name##Request(std::forward<Args>(args)...);     \
-        SendRequest(MakeDiskAgentServiceId(), std::move(request));             \
+        SendRequest(DiskAgentActorId(), std::move(request));                   \
                                                                                \
         auto response = RecvResponse<ns::TEv##name##Response>();               \
         UNIT_ASSERT_C(                                                         \
@@ -451,6 +457,7 @@ struct TTestEnvBuilder
     NActors::TTestActorRuntime& Runtime;
 
     NProto::TDiskAgentConfig AgentConfigProto;
+    NProto::TDiskAgentConfig SecondAgentConfigProto;
     IStorageProviderPtr StorageProvider;
     IFileIOServicePtr FileIOService;
     NNvme::INvmeManagerPtr NvmeManager;
@@ -465,6 +472,7 @@ struct TTestEnvBuilder
     TTestEnvBuilder& With(IFileIOServicePtr fileIO);
     TTestEnvBuilder& With(NNvme::INvmeManagerPtr nvmeManager);
     TTestEnvBuilder& With(NProto::TDiskAgentConfig config);
+    TTestEnvBuilder& WithSecondAgent(NProto::TDiskAgentConfig config);
     TTestEnvBuilder& With(NProto::TStorageServiceConfig storageServiceConfig);
     TTestEnvBuilder& With(TDiskRegistryState::TPtr diskRegistryState);
 
