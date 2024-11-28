@@ -67,7 +67,7 @@ TString ReportCriticalEvent(
         fullMessage << ":" << message;
     }
 
-    if (Log.IsNotNullLog()) {
+    if (!Log.IsNullLog()) {
         Log.AddLog("%s", fullMessage.c_str());
     } else {
         // Write message and \n in one call. This will reduce the chance of
