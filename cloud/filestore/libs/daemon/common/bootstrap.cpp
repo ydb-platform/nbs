@@ -20,6 +20,7 @@
 #include <cloud/storage/core/libs/common/timer.h>
 #include <cloud/storage/core/libs/daemon/mlock.h>
 #include <cloud/storage/core/libs/diagnostics/cgroup_stats_fetcher.h>
+#include <cloud/storage/core/libs/diagnostics/critical_events.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 #include <cloud/storage/core/libs/diagnostics/monitoring.h>
 #include <cloud/storage/core/libs/diagnostics/stats_updater.h>
@@ -107,6 +108,7 @@ TBootstrapCommon::TBootstrapCommon(
     BootstrapLogging->Start();
 
     Log = BootstrapLogging->CreateLog(logComponent);
+    SetCriticalEventsLog(Log);
 }
 
 TBootstrapCommon::~TBootstrapCommon()
