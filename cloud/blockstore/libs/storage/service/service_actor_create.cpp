@@ -333,6 +333,7 @@ void TCreateVolumeActor::HandleCreateEncryptionKeyResponse(
 
         auto& desc = encryptionDesc.emplace();
         desc.SetMode(NProto::ENCRYPTION_DEFAULT_AES_XTS);
+        // XXX
         // desc.MutableEncryptionKey()->CopyFrom(msg.KmsKey);
     }
 

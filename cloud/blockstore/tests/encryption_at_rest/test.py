@@ -33,25 +33,6 @@ def get_agent_id():
     return daemon.get_fqdn()
 
 
-@pytest.fixture(name='data_path')
-def create_data_path():
-
-    p = get_unique_path_for_current_test(
-        output_path=yatest_common.output_path(),
-        sub_folder="data")
-
-    p = os.path.join(p, "dev", "disk", "by-partlabel")
-    ensure_path_exists(p)
-
-    return p
-
-
-@pytest.fixture(autouse=True)
-def create_device_storage(data_path):
-    with open(os.path.join(data_path, 'NVMENBS01'), 'wb') as f:
-        os.truncate(f.fileno(), DEVICE_HEADER + DEVICE_SIZE * DEVICE_COUNT + (DEVICE_COUNT - 1) * DEVICE_PADDING)
-
-
 @pytest.fixture(name='ydb')
 def start_ydb_cluster():
 
@@ -125,7 +106,20 @@ def _wait_for_devices_to_be_cleared(client, expected_dirty_count=0):
 
 
 @pytest.fixture(name='disk_agent')
-def start_disk_agent(ydb, nbs, agent_id, data_path):
+def start_disk_agent(ydb, nbs, agent_id):
+
+    data_path = get_unique_path_for_current_test(
+        output_path=yatest_common.output_path(),
+        sub_folder="data")
+
+    data_path = os.path.join(data_path, "dev", "disk", "by-partlabel")
+    ensure_path_exists(data_path)
+
+    with open(os.path.join(data_path, 'NVMENBS01'), 'wb') as f:
+        os.truncate(
+            f.fileno(),
+            DEVICE_HEADER + DEVICE_SIZE * DEVICE_COUNT + (DEVICE_COUNT - 1) *
+            DEVICE_PADDING)
 
     cfg = NbsConfigurator(ydb, 'disk-agent')
     cfg.generate_default_nbs_configs()
@@ -171,5 +165,6 @@ def test_create_volume_with_default_ecnryption(nbs, disk_agent):
 
     assert len(vol0.Devices) == 2
     assert vol0.EncryptionDesc.Mode == ENCRYPTION_DEFAULT_AES_XTS
+    # XXX
     # assert vol0.EncryptionDesc.EncryptionKey.KekId == KEK_ID
-    # assert len(vol0.EncryptionDesc.EncryptionKey.EncryptedDEK) > 0
+    # assert len(vol0.EncryptionDesc.EncryptionKey.EncryptedDEK) == 32
