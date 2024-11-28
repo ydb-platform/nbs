@@ -27,6 +27,7 @@ class TMaskCommand final: public TCommand
 private:
     TString PathToOutProfileLog;
     TMaskSensitiveData::EMode Mode{};
+    TString Seed;
 
 public:
     TMaskCommand()
@@ -42,6 +43,8 @@ public:
             .RequiredArgument("STR")
             .Choices({"empty", "hash", "nodeid"})
             .DefaultValue("nodeid");
+
+        Opts.AddLongOption("seed", "Seed for hash mode").StoreResult(&Seed);
     }
 
     bool Init(NLastGetopt::TOptsParseResultException& parseResult) override
@@ -67,7 +70,7 @@ public:
 
     int Execute() override
     {
-        TMaskSensitiveData mask{Mode};
+        TMaskSensitiveData mask{Mode, Seed};
         mask.MaskSensitiveData(PathToProfileLog, PathToOutProfileLog);
         return 0;
     }
@@ -75,8 +78,9 @@ public:
 
 }   // namespace
 
-TMaskSensitiveData::TMaskSensitiveData(const EMode mode)
+TMaskSensitiveData::TMaskSensitiveData(const EMode mode, const TString& seed)
     : Mode{mode}
+    , Seed{seed}
 {}
 
 bool TMaskSensitiveData::Advance()
@@ -114,7 +118,9 @@ void TMaskSensitiveData::MaskSensitiveData(
     const TString& in,
     const TString& out)
 {
-    Seed = CreateGuidAsString();
+    if (Seed.empty()) {
+        Seed = CreateGuidAsString();
+    }
 
     NEventLog::TOptions options;
     options.FileName = in;
@@ -145,7 +151,9 @@ void TMaskSensitiveData::MaskSensitiveData(
             *recordOut.AddRequests() = std::move(request);
         }
         logFrame.LogEvent(recordOut);
+        logFrame.Flush();
     }
+    eventLog.CloseLog();
 }
 
 ////////////////////////////////////////////////////////////////////////////////
