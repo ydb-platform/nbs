@@ -7,6 +7,7 @@ from cloud.filestore.tests.python.lib.common import get_filestore_mount_path
 
 TESTS = fio.generate_index_tests(duration=20)
 
+
 @pytest.mark.parametrize("name", TESTS.keys())
 def test_fio(name):
     mount_dir = get_filestore_mount_path()
