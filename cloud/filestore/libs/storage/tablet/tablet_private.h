@@ -815,6 +815,15 @@ struct TEvIndexTabletPrivate
     };
 
     //
+    // GetShardStats
+    //
+
+    struct TGetShardStatsCompleted
+    {
+        TInstant StartedTs;
+    };
+
+    //
     // Events declaration
     //
 
@@ -838,6 +847,8 @@ struct TEvIndexTabletPrivate
 
         EvNodeCreatedInShard,
         EvNodeUnlinkedInShard,
+
+        EvGetShardStatsCompleted,
 
         EvEnd
     };
@@ -866,6 +877,9 @@ struct TEvIndexTabletPrivate
 
     using TEvNodeUnlinkedInShard =
         TRequestEvent<TNodeUnlinkedInShard, EvNodeUnlinkedInShard>;
+
+    using TEvGetShardStatsCompleted =
+        TResponseEvent<TGetShardStatsCompleted, EvGetShardStatsCompleted>;
 };
 
 }   // namespace NCloud::NFileStore::NStorage

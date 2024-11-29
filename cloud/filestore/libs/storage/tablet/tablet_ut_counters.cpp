@@ -53,6 +53,30 @@ TFileSystemConfig MakeThrottlerConfig(
 
 ////////////////////////////////////////////////////////////////////////////////
 
+NProto::TDiagnosticsConfig MakeDiagConfig()
+{
+    NProto::TDiagnosticsConfig config;
+    NProto::TFileSystemPerformanceProfile pp;
+    pp.MutableRead()->SetRPS(1000);
+    pp.MutableRead()->SetThroughput(100_MB);
+    pp.MutableWrite()->SetRPS(2000);
+    pp.MutableWrite()->SetThroughput(200_MB);
+    pp.MutableListNodes()->SetRPS(10);
+    pp.MutableGetNodeAttr()->SetRPS(5000);
+    pp.MutableCreateHandle()->SetRPS(100);
+    pp.MutableDestroyHandle()->SetRPS(40);
+    pp.MutableCreateNode()->SetRPS(50);
+    pp.MutableRenameNode()->SetRPS(70);
+    pp.MutableUnlinkNode()->SetRPS(80);
+    pp.MutableStatFileStore()->SetRPS(15);
+
+    *config.MutableSSDFileSystemPerformanceProfile() = pp;
+    *config.MutableHDDFileSystemPerformanceProfile() = pp;
+    return config;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 struct TEnv
     : public NUnitTest::TBaseFixture
 {
@@ -60,6 +84,15 @@ struct TEnv
     std::unique_ptr<TIndexTabletClient> Tablet;
 
     TTestRegistryVisitor Visitor;
+
+    TEnv()
+        : Env(
+            TTestEnvConfig{},
+            NProto::TStorageConfig{},
+            NKikimr::NFake::TCaches{},
+            CreateProfileLogStub(),
+            MakeDiagConfig())
+    {}
 
     void SetUp(NUnitTest::TTestContext& /*context*/) override
     {
@@ -390,7 +423,8 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Counters)
 
         Tablet->InitSession("client", "session");
 
-        auto id = CreateNode(*Tablet, TCreateNodeArgs::File(RootNodeId, "test"));
+        auto id =
+            CreateNode(*Tablet, TCreateNodeArgs::File(RootNodeId, "test"));
         auto handle = CreateHandle(*Tablet, id);
 
         const auto sz = 256_KB;
@@ -515,9 +549,70 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Counters)
             {{
                 {"sensor", "AddData.RequestBytes"},
                 {"filesystem", "test"}}, sz},
+            {{
+                {"sensor", "CurrentLoad"},
+                {"filesystem", "test"}}, 0},
+        });
+
+        Tablet->AdvanceTime(TDuration::Seconds(15));
+        Env.GetRuntime().DispatchEvents({}, TDuration::Seconds(5));
+        registry->Visit(TInstant::Zero(), Visitor);
+        Visitor.ValidateExpectedCounters({
+            {{
+                {"sensor", "CurrentLoad"},
+                {"filesystem", "test"}}, 7},
+            {{
+                {"sensor", "Suffer"},
+                {"filesystem", "test"}}, 0},
         });
 
         Tablet->DestroyHandle(handle);
+    }
+
+    Y_UNIT_TEST_F(ShouldCalculateLoadAndSuffer, TEnv)
+    {
+        auto registry = Env.GetRegistry();
+
+        Tablet->InitSession("client", "session");
+
+        auto id =
+            CreateNode(*Tablet, TCreateNodeArgs::File(RootNodeId, "test"));
+        auto handle = CreateHandle(*Tablet, id);
+
+        const auto sz = 256_KB;
+
+        Tablet->WriteData(handle, 0, sz, 'a');
+        Tablet->ListNodes(RootNodeId);
+        Tablet->GetNodeAttr(id);
+        Tablet->RenameNode(RootNodeId, "test", RootNodeId, "test2");
+        Tablet->UnlinkNode(RootNodeId, "test2", false);
+        Tablet->GetStorageStats();
+
+        {
+            auto response = Tablet->ReadData(handle, 0, sz);
+            const auto& buffer = response->Record.GetBuffer();
+            UNIT_ASSERT(CompareBuffer(buffer, sz, 'a'));
+        }
+
+        {
+            auto response = Tablet->DescribeData(handle, 0, sz);
+            const auto& blobs = response->Record.GetBlobPieces();
+            UNIT_ASSERT_VALUES_EQUAL(1, blobs.size());
+        }
+
+        Tablet->DestroyHandle(handle);
+
+        Tablet->AdvanceTime(TDuration::Seconds(15));
+        Env.GetRuntime().DispatchEvents({}, TDuration::Seconds(5));
+        registry->Visit(TInstant::Zero(), Visitor);
+        Visitor.ValidateExpectedCounters({
+            {{
+                {"sensor", "CurrentLoad"},
+                {"filesystem", "test"}}, 17},
+            {{
+                {"sensor", "Suffer"},
+                {"filesystem", "test"}}, 1},
+        });
     }
 
     Y_UNIT_TEST(ShouldCorrectlyWriteCompactionStats)

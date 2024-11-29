@@ -14,6 +14,69 @@ namespace NCloud::NFileStore {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+struct TRequestPerformanceProfile
+{
+    ui64 RPS = 0;
+    ui64 Throughput = 0;
+
+    TRequestPerformanceProfile() = default;
+
+    TRequestPerformanceProfile(ui64 rps, ui64 throughput)
+        : RPS(rps)
+        , Throughput(throughput)
+    {}
+
+    TRequestPerformanceProfile(const TRequestPerformanceProfile& rhs) = default;
+    TRequestPerformanceProfile& operator=(
+        const TRequestPerformanceProfile& rhs) = default;
+};
+
+struct TFileSystemPerformanceProfile
+{
+    TRequestPerformanceProfile Read;
+    TRequestPerformanceProfile Write;
+    TRequestPerformanceProfile ListNodes;
+    TRequestPerformanceProfile GetNodeAttr;
+    TRequestPerformanceProfile CreateHandle;
+    TRequestPerformanceProfile DestroyHandle;
+    TRequestPerformanceProfile CreateNode;
+    TRequestPerformanceProfile RenameNode;
+    TRequestPerformanceProfile UnlinkNode;
+    TRequestPerformanceProfile StatFileStore;
+
+    TFileSystemPerformanceProfile() = default;
+
+    TFileSystemPerformanceProfile(
+            TRequestPerformanceProfile read,
+            TRequestPerformanceProfile write,
+            TRequestPerformanceProfile listNodes,
+            TRequestPerformanceProfile getNodeAttr,
+            TRequestPerformanceProfile createHandle,
+            TRequestPerformanceProfile destroyHandle,
+            TRequestPerformanceProfile createNode,
+            TRequestPerformanceProfile renameNode,
+            TRequestPerformanceProfile unlinkNode,
+            TRequestPerformanceProfile statFileStore)
+        : Read(read)
+        , Write(write)
+        , ListNodes(listNodes)
+        , GetNodeAttr(getNodeAttr)
+        , CreateHandle(createHandle)
+        , DestroyHandle(destroyHandle)
+        , CreateNode(createNode)
+        , RenameNode(renameNode)
+        , UnlinkNode(unlinkNode)
+        , StatFileStore(statFileStore)
+    {}
+
+    TFileSystemPerformanceProfile(
+        const TFileSystemPerformanceProfile& rhs) = default;
+    TFileSystemPerformanceProfile& operator=(
+        const TFileSystemPerformanceProfile& rhs) = default;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
 struct TMonitoringUrlData: public TAtomicRefCount<TMonitoringUrlData>
 {
     TString MonitoringClusterName;
@@ -70,6 +133,9 @@ public:
     bool GetReportHistogramAsMultipleCounters() const;
     bool GetReportHistogramAsSingleCounter() const;
     EHistogramCounterOptions GetHistogramCounterOptions() const;
+
+    TFileSystemPerformanceProfile GetHDDFileSystemPerformanceProfile() const;
+    TFileSystemPerformanceProfile GetSSDFileSystemPerformanceProfile() const;
 
     void Dump(IOutputStream& out) const;
     void DumpHtml(IOutputStream& out) const;
