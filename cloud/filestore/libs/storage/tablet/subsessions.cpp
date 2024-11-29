@@ -67,7 +67,7 @@ NActors::TActorId TSubSessions::UpdateSubSession(
 
         MaxRoSeqNo = 0;
         MaxRwSeqNo = 0;
-        for (auto subsession: SubSessions) {
+        for (const auto& subsession: SubSessions) {
             if (subsession.ReadOnly) {
                 MaxRoSeqNo = std::max(MaxRoSeqNo, subsession.SeqNo);
             } else {
