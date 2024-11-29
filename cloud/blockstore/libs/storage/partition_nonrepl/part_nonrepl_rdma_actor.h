@@ -56,7 +56,9 @@ private:
     TDrainActorCompanion DrainActorCompanion{
         RequestsInProgress,
         PartConfig->GetName()};
-    TGetDeviceForRangeCompanion GetDeviceForRangeCompanion{PartConfig};
+    TGetDeviceForRangeCompanion GetDeviceForRangeCompanion{
+        TGetDeviceForRangeCompanion::EAllowedOperation::ReadWrite,
+        PartConfig};
 
     bool UpdateCountersScheduled = false;
     TPartitionDiskCountersPtr PartCounters;

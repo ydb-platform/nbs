@@ -63,7 +63,8 @@ private:
     TDrainActorCompanion DrainActorCompanion{
         WriteAndZeroRequestsInProgress,
         PartConfig->GetName()};
-    TGetDeviceForRangeCompanion GetDeviceForRangeCompanion;
+    TGetDeviceForRangeCompanion GetDeviceForRangeCompanion{
+        TGetDeviceForRangeCompanion::EAllowedOperation::Read};
 
     TRequestInfoPtr Poisoner;
 

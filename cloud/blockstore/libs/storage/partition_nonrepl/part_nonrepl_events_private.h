@@ -205,7 +205,19 @@ struct TEvNonreplPartitionPrivate
 
     struct TGetDeviceForRangeRequest
     {
+        enum class EPurpose
+        {
+            ForReading,
+            ForWriting
+        };
+
+        EPurpose Purpose;
         TBlockRange64 BlockRange;
+
+        TGetDeviceForRangeRequest(EPurpose purpose, TBlockRange64 blockRange)
+            : Purpose(purpose)
+            , BlockRange(blockRange)
+        {}
     };
 
     struct TGetDeviceForRangeResponse

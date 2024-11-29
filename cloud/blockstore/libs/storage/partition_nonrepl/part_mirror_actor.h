@@ -65,7 +65,8 @@ private:
     TDrainActorCompanion DrainActorCompanion{
         RequestsInProgress,
         DiskId};
-    TGetDeviceForRangeCompanion GetDeviceForRangeCompanion;
+    TGetDeviceForRangeCompanion GetDeviceForRangeCompanion{
+        TGetDeviceForRangeCompanion::EAllowedOperation::Read};
 
     TRequestInfoPtr Poisoner;
     size_t AliveReplicas = 0;

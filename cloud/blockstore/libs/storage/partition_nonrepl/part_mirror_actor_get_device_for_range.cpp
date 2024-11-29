@@ -40,7 +40,8 @@ void TMirrorPartitionActor::HandleGetDeviceForRange(
         return;
     }
 
-    ForwardMessageToActor(ev, ctx, replicaActorId);
+    GetDeviceForRangeCompanion.SetDelegate(replicaActorId);
+    GetDeviceForRangeCompanion.HandleGetDeviceForRange(ev, ctx);
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

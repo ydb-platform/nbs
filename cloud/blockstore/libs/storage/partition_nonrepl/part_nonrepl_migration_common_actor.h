@@ -118,7 +118,8 @@ private:
     TDrainActorCompanion DrainActorCompanion{
         WriteAndZeroRequestsInProgress,
         DiskId};
-    TGetDeviceForRangeCompanion GetDeviceForRangeCompanion;
+    TGetDeviceForRangeCompanion GetDeviceForRangeCompanion{
+        TGetDeviceForRangeCompanion::EAllowedOperation::ReadWrite};
 
     // Statistics
     const NActors::TActorId StatActorId;

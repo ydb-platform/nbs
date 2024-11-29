@@ -7,8 +7,6 @@
 #include <cloud/blockstore/libs/storage/partition_common/model/blob_markers.h>
 #include <cloud/storage/core/libs/common/compressed_bitmap.h>
 
-#include <util/generic/hash_set.h>
-
 namespace NCloud::NBlockStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -114,15 +112,17 @@ inline TGuardedSgList GetSglist(const NProto::TWriteBlocksLocalRequest& request)
     return request.Sglist;
 }
 
+////////////////////////////////////////////////////////////////////////////////
+
 template <typename TEvent>
 void ForwardMessageToActor(
     TEvent& ev,
     const NActors::TActorContext& ctx,
-    NActors::TActorId destActor)
+    NActors::TActorId dstActor)
 {
     NActors::TActorId nondeliveryActor = ev->GetForwardOnNondeliveryRecipient();
     auto message = std::make_unique<NActors::IEventHandle>(
-        destActor,
+        dstActor,
         ev->Sender,
         ev->ReleaseBase().Release(),
         ev->Flags,
@@ -132,5 +132,7 @@ void ForwardMessageToActor(
             : nullptr);
     ctx.Send(std::move(message));
 }
+
+////////////////////////////////////////////////////////////////////////////////
 
 }   // namespace NCloud::NBlockStore::NStorage

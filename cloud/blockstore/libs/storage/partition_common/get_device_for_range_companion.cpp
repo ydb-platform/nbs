@@ -11,11 +11,16 @@ using namespace NActors;
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TGetDeviceForRangeCompanion::TGetDeviceForRangeCompanion() = default;
+TGetDeviceForRangeCompanion::TGetDeviceForRangeCompanion(
+        EAllowedOperation allowedOperation)
+    : AllowedOperation(allowedOperation)
+{}
 
 TGetDeviceForRangeCompanion::TGetDeviceForRangeCompanion(
+        EAllowedOperation allowedOperation,
         TNonreplicatedPartitionConfigPtr partConfig)
-    : PartConfig(std::move(partConfig))
+    : AllowedOperation(allowedOperation)
+    , PartConfig(std::move(partConfig))
 {}
 
 void TGetDeviceForRangeCompanion::SetDelegate(NActors::TActorId delegate)
@@ -27,7 +32,24 @@ void TGetDeviceForRangeCompanion::HandleGetDeviceForRange(
     const TEvNonreplPartitionPrivate::TEvGetDeviceForRangeRequest::TPtr& ev,
     const NActors::TActorContext& ctx) const
 {
+    using EPurpose =
+        TEvNonreplPartitionPrivate::TGetDeviceForRangeRequest::EPurpose;
+
     const auto* msg = ev->Get();
+
+    bool operationAllowed = false;
+    switch (AllowedOperation) {
+        case EAllowedOperation::Read:
+            operationAllowed = msg->Purpose == EPurpose::ForReading;
+            break;
+        case EAllowedOperation::ReadWrite:
+            operationAllowed = true;
+            break;
+    }
+    if (!operationAllowed) {
+        ReplyCanNotUseDirectCopy(ev, ctx);
+        return;
+    }
 
     if (Delegate) {
         ForwardMessageToActor(ev, ctx, Delegate);

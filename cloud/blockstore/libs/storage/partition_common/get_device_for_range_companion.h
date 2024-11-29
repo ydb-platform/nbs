@@ -18,14 +18,23 @@ namespace NCloud::NBlockStore::NStorage {
 // responds to requests with an error.
 class TGetDeviceForRangeCompanion
 {
+public:
+    enum class EAllowedOperation
+    {
+        Read,       // Reply with an error to requests intended for writing
+        ReadWrite   // Requests with any purpose are allowed
+    };
+
 private:
+    EAllowedOperation AllowedOperation = EAllowedOperation::Read;
     const TNonreplicatedPartitionConfigPtr PartConfig;
     NActors::TActorId Delegate;
 
 public:
-    TGetDeviceForRangeCompanion();
+    explicit TGetDeviceForRangeCompanion(EAllowedOperation allowedOperation);
 
-    explicit TGetDeviceForRangeCompanion(
+    TGetDeviceForRangeCompanion(
+        EAllowedOperation allowedOperation,
         TNonreplicatedPartitionConfigPtr partConfig);
 
     void SetDelegate(NActors::TActorId delegate);
