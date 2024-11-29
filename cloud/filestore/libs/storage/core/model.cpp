@@ -508,12 +508,6 @@ ui32 ComputeShardCount(
     const double fileStoreSize = blocksCount * blockSize;
 
     const ui32 shardCount = std::floor(fileStoreSize / shardAllocationUnit);
-    Y_DEBUG_ABORT_UNLESS(
-        shardCount >= 1,
-        "size %f shard %lu",
-        fileStoreSize,
-        shardAllocationUnit);
-
     return Min(shardCount, MaxShardCount);
 }
 

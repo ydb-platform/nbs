@@ -6206,6 +6206,25 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
             {fsId, fsId + "_s1", fsId + "_s2"});
     }
 
+    Y_UNIT_TEST(ShouldNotConfigureShardsAutomaticallyForSmallFileSystems)
+    {
+        NProto::TStorageConfig config;
+        config.SetAutomaticShardCreationEnabled(true);
+        config.SetShardAllocationUnit(1_GB);
+        config.SetAutomaticallyCreatedShardSize(2_GB);
+        TTestEnv env({}, config);
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+
+        const TString fsId = "test";
+
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+        service.CreateFileStore(fsId, (1_GB - 4_KB) / 4_KB);
+
+        DoTestShardedFileSystemConfigured(fsId, service, {fsId});
+    }
+
     Y_UNIT_TEST(ShouldHandleErrorsDuringShardedFileSystemCreation)
     {
         NProto::TStorageConfig config;
