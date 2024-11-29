@@ -48,8 +48,8 @@ struct TOptions
     TString ConfigPath;
     TString DevicePath;
     TString LogPath;
-    TVector<ui32> Ranges;
-    TVector<ui64> Blocks;
+    TVector<ui32> RangeIndices;
+    TVector<ui64> BlockIndices;
     EValidationMode Mode = EValidationMode::Checksum;
     ui64 BlockSize = 4096;
 
@@ -77,19 +77,19 @@ struct TOptions
 
         opts.AddLongOption(
             "ranges",
-            "specify range indexes for validation, separated by comma")
+            "specify range indices for validation, separated by comma")
             .RequiredArgument("STR")
             .Handler1T<TString>([this] (const auto& s) {
                 TStringBuf buf(s);
                 TStringBuf arg;
                 while (buf.NextTok(',', arg)) {
-                    Ranges.push_back(FromString<ui32>(arg));
+                    RangeIndices.push_back(FromString<ui32>(arg));
                 }
             });
 
         opts.AddLongOption(
             "blocks",
-            "specify individual blocks NUM or ranges NUM-NUM for validation, separated by comma")
+            "specify individual block indices NUM or ranges NUM-NUM for validation, separated by comma")
             .RequiredArgument("STR")
             .Handler1T<TString>([this] (const auto& s) {
                 TStringBuf buf(s);
@@ -98,8 +98,8 @@ struct TOptions
                     TStringBuf lastStr = firstStr.SplitOff('-');
                     ui64 first = FromString<ui64>(firstStr);
                     ui64 last = lastStr.empty() ? first : FromString<ui64>(lastStr);
-                    for (ui64 block = first; block <= last; block++) {
-                        Blocks.push_back(block);
+                    for (ui64 idx = first; idx <= last; idx++) {
+                        BlockIndices.push_back(idx);
                     }
                 }
             });
@@ -127,12 +127,12 @@ struct TOptions
 
         if (Mode == EValidationMode::Checksum) {
             Y_ENSURE(ConfigPath.size(), "you must specify config-path in checksum validation mode");
-            Y_ENSURE(Ranges.size(), "you must specify ranges in checksum validation mode");
+            Y_ENSURE(RangeIndices.size(), "you must specify ranges in checksum validation mode");
             Y_ENSURE(LogPath.size(), "you must specify log-path in checksum validation mode");
         }
 
         if (Mode == EValidationMode::Mirror) {
-            Y_ENSURE(Blocks.size(), "you must specify blocks in mirror validation mode");
+            Y_ENSURE(BlockIndices.size(), "you must specify blocks in mirror validation mode");
         }
     }
 };
@@ -150,99 +150,100 @@ TBlockData ReadBlockData(TFile& file, ui64 offset)
     return *reinterpret_cast<TBlockData*>(buf);
 }
 
-void ValidateRanges(TOptions options)
+////////////////////////////////////////////////////////////////////////////////
+
+struct TBlockValidationResult
 {
-    TFile file(options.DevicePath, EOpenModeFlag::RdOnly | EOpenModeFlag::DirectAligned);
+    ui64 BlockIdx = 0;
+    ui64 Expected = 0;
+    ui64 Actual = 0;
+};
 
-    const auto& configHolder = CreateTestConfig(options.ConfigPath);
-    for (ui32 rangeIdx: options.Ranges) {
-        Cout << "Start validation of " << rangeIdx << " range" << Endl;
+TVector<TBlockValidationResult> ValidateRange(
+    TFile& file,
+    IConfigHolderPtr configHolder,
+    ui32 rangeIdx)
+{
+    const auto& config = configHolder->GetConfig().GetRanges()[rangeIdx];
 
-        const auto& config = configHolder->GetConfig().GetRanges()[rangeIdx];
+    ui64 len = config.GetRequestCount();
+    ui64 startOffset = config.GetStartOffset();
+    ui64 requestSize = config.GetRequestBlockCount() * 4_KB;
 
-        ui64 len = config.GetRequestCount();
-        ui64 startOffset = config.GetStartOffset();
-        ui64 requestSize = config.GetRequestBlockCount() * 4_KB;
-
-        TVector<TBlockData> actual(len);
-        for (ui64 i = 0; i < len; ++i) {
-            actual[i] = ReadBlockData(file, (i + startOffset) * requestSize);
-        }
-
-        Cout << "Guessing NumberToWrite, LastBlockIdx, Step from actual data"
-             << Endl;
-
-        const auto maxIt = MaxElementBy(
-            actual,
-            [](const auto& d) { return d.RequestNumber; });
-
-        auto secondMaxIt = actual.begin();
-        for (auto it = actual.begin() + 1; it < actual.end(); ++it) {
-            if (it != maxIt &&
-                it->RequestNumber > secondMaxIt->RequestNumber
-            ) {
-                secondMaxIt = it;
-            }
-        }
-
-        ui64 step = 0;
-        if (maxIt >= secondMaxIt) {
-            step = maxIt - secondMaxIt;
-        } else {
-            step = len - (secondMaxIt - maxIt);
-        }
-
-        ui64 curNum = maxIt->RequestNumber;
-        ui64 curBlockIdx = maxIt - actual.begin();
-
-        Cout << "Step: " << step
-             << " NumberToWrite: " << curNum
-             << " LastBlockIdx: " << curBlockIdx << Endl;
-
-        Y_ENSURE(step != 0, "Step should not be zero");
-        Y_ENSURE(
-            std::gcd(step, len) == 1,
-            "Step and RequestCount should be coprime");
-
-        TVector<ui64> expected(len);
-        ui64 cnt = 0;
-        while (cnt < len && curNum != 0) {
-            curBlockIdx = (curBlockIdx + len - step) % len;
-            expected[curBlockIdx] = --curNum;
-            ++cnt;
-        }
-
-        TString path = options.LogPath + "range_" + ToString(rangeIdx) + ".log";
-        TFileOutput out(TFile(path, EOpenModeFlag::CreateAlways | EOpenModeFlag::WrOnly));
-
-        for (ui64 i = 0; i < len; ++i) {
-            if (expected[i] != actual[i].RequestNumber) {
-                out << "[" << rangeIdx << "]"
-                    << " Wrong data in block " << (i + startOffset)
-                    << " expected " << expected[i]
-                    << " actual " << actual[i]
-                    << Endl;
-            }
-        }
-
-        Cout << "Finish validation of " << rangeIdx << " range" << Endl;
-        Cout << "Log written to " << path.Quote() << Endl;
+    TVector<TBlockData> actual(len);
+    for (ui64 i = 0; i < len; ++i) {
+        actual[i] = ReadBlockData(file, (i + startOffset) * requestSize);
     }
+
+    Cout << "Guessing Step, NumberToWrite, LastBlockIdx from actual data"
+            << Endl;
+
+    const auto maxIt = MaxElementBy(
+        actual,
+        [](const auto& d) { return d.RequestNumber; });
+
+    auto secondMaxIt = actual.begin();
+    for (auto it = actual.begin() + 1; it < actual.end(); ++it) {
+        if (it != maxIt &&
+            it->RequestNumber > secondMaxIt->RequestNumber
+        ) {
+            secondMaxIt = it;
+        }
+    }
+
+    ui64 step = 0;
+    if (maxIt >= secondMaxIt) {
+        step = maxIt - secondMaxIt;
+    } else {
+        step = len - (secondMaxIt - maxIt);
+    }
+
+    ui64 curNum = maxIt->RequestNumber;
+    ui64 curBlockIdx = maxIt - actual.begin();
+
+    Cout << "Step: " << step
+            << " NumberToWrite: " << curNum
+            << " LastBlockIdx: " << curBlockIdx << Endl;
+
+    Y_ENSURE(step != 0, "Step should not be zero");
+    Y_ENSURE(
+        std::gcd(step, len) == 1,
+        "Step and RequestCount should be coprime");
+
+    TVector<ui64> expected(len);
+    ui64 cnt = 0;
+    while (cnt < len && curNum != 0) {
+        curBlockIdx = (curBlockIdx + len - step) % len;
+        expected[curBlockIdx] = --curNum;
+        ++cnt;
+    }
+
+    TVector<TBlockValidationResult> results;
+
+    for (ui64 i = 0; i < len; ++i) {
+        if (expected[i] != actual[i].RequestNumber) {
+            results.push_back(TBlockValidationResult {
+                .BlockIdx = (i + startOffset),
+                .Expected = expected[i],
+                .Actual = actual[i].RequestNumber,
+            });
+        }
+    }
+
+    return results;
 }
 
-void ValidateBlocks(TOptions options)
+void ValidateBlocks(TFile file, ui64 blockSize, TVector<ui64> blockIndices)
 {
-    TFile file(options.DevicePath, EOpenModeFlag::RdOnly | EOpenModeFlag::DirectAligned);
-
-    for (ui64 blockIndex: options.Blocks) {
+    for (ui64 blockIndex: blockIndices) {
         std::set<TBlockData> blocks;
 
         for (ui64 i = 0; i < MaxMirrorReplicas; i++) {
-            auto blockData = ReadBlockData(file, blockIndex * options.BlockSize);
+            auto blockData = ReadBlockData(file, blockIndex * blockSize);
             blocks.emplace(blockData);
         }
 
-        if (blocks.size() == 1) {
+        if (blockIndices.size() == 1) {
             continue;
         }
 
@@ -262,10 +263,37 @@ int main(int argc, const char** argv)
         return 1;
     }
 
+    TFile file(options.DevicePath, EOpenModeFlag::RdOnly | EOpenModeFlag::DirectAligned);
+
     if (options.Mode == EValidationMode::Checksum) {
-        ValidateRanges(std::move(options));
+        auto configHolder = CreateTestConfig(options.ConfigPath);
+        for (ui32 rangeIdx : options.RangeIndices) {
+            Cout << "Start validation of " << rangeIdx << " range" << Endl;
+
+            auto results = ValidateRange(
+                file,
+                std::move(configHolder),
+                rangeIdx);
+
+            TString path = options.LogPath + "range_" + ToString(rangeIdx) + ".log";
+            TFileOutput out(TFile(path, EOpenModeFlag::CreateAlways | EOpenModeFlag::WrOnly));
+
+            for (const auto& result : results) {
+                out << "[" << rangeIdx << "]"
+                    << " Wrong data in block " << result.BlockIdx
+                    << " expected " << result.Expected
+                    << " actual " << result.Actual
+                    << Endl;
+            }
+
+            Cout << "Finish validation of " << rangeIdx << " range" << Endl;
+            Cout << "Log written to " << path.Quote() << Endl;
+        }
     } else {
-        ValidateBlocks(std::move(options));
+        ValidateBlocks(
+            std::move(file),
+            options.BlockSize,
+            std::move(options.BlockIndices));
     }
 
     return 0;
