@@ -292,7 +292,8 @@ public:
     bool GetThreeStageWriteDisabledForHDD() const;
 
     bool GetAutomaticShardCreationEnabled() const;
-    ui64 GetMaxShardSize() const;
+    ui64 GetShardAllocationUnit() const;
+    ui64 GetAutomaticallyCreatedShardSize() const;
 
     bool GetGuestWritebackCacheEnabled() const;
 };
