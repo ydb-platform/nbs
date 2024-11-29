@@ -24,7 +24,7 @@ SET(VHOST_RESTART_INTERVAL 10)
 SET(VHOST_RESTART_FLAG 1)
 SET(
     NFS_STORAGE_CONFIG_PATCH
-    cloud/filestore/tests/nfs-storage-migration-patch.txt
+    cloud/filestore/tests/common_configs/nfs-storage-migration-patch.txt
 )
 
 INCLUDE(${ARCADIA_ROOT}/cloud/filestore/tests/recipes/service-kikimr.inc)

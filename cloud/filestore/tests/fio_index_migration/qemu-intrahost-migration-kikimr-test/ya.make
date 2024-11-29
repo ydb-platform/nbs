@@ -24,7 +24,7 @@ TEST_SRCS(
 SET(QEMU_VIRTIO fs)
 SET(
     NFS_STORAGE_CONFIG_PATCH
-    cloud/filestore/tests/nfs-storage-migration-patch.txt
+    cloud/filestore/tests/common_configs/nfs-storage-migration-patch.txt
 )
 
 INCLUDE(${ARCADIA_ROOT}/cloud/filestore/tests/recipes/service-kikimr.inc)
