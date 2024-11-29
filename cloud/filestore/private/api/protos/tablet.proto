@@ -702,19 +702,15 @@ message TGetFileSystemTopologyResponse
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-// RestartLocalFileStores request/response.
+// RestartTablet request/response.
 
-message TRestartLocalFileStoresRequest
+message TRestartTabletRequest
 {
-    // Optional request headers.
-    NProto.THeaders Headers = 1;
-
-    // Seed to randomize which filestores to restart.
-    uint64 Seed = 2;
+    // FileSystem identifier.
+    string FileSystemId = 1;
 }
 
-
-message TRestartLocalFileStoresResponse
+message TRestartTabletResponse
 {
     // Optional error, set only if error happened.
     NCloud.NProto.TError Error = 1;
