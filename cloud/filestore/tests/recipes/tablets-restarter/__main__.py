@@ -27,7 +27,16 @@ def get_client():
 
 
 def restart_tablets(client: FilestoreCliClient, seed: int):
-    client.execute_action("restartlocalfilestores", {"Seed": seed})
+    response = client.execute_action("listlocalfilestores", {})
+    local_filestores = json.loads(response)["FileSystemIds"]
+
+    logger.info(f"Local filestores: {local_filestores}, seed: {seed}")
+    random.seed(seed)
+    filestores_to_restart = [fs for fs in local_filestores if random.randint(0, 1) == 0]
+    logger.info(f"Filestores to restart: {filestores_to_restart}")
+    for fs in filestores_to_restart:
+        logger.info(f"Restarting filestore {fs}")
+        client.execute_action("restarttablet", {"FileSystemId": fs})
 
 
 def start(argv):

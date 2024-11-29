@@ -209,7 +209,11 @@ private:
         TRequestInfoPtr requestInfo,
         TString input);
 
-    NActors::IActorPtr CreateRestartLocalFileStoresActionActor(
+    NActors::IActorPtr CreateListLocalFileStoresActionActor(
+        TRequestInfoPtr requestInfo,
+        TString input);
+
+    NActors::IActorPtr CreateRestartTabletActionActor(
         TRequestInfoPtr requestInfo,
         TString input);
 

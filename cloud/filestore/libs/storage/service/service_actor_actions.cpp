@@ -93,9 +93,13 @@ void TStorageServiceActor::HandleExecuteAction(
             &TStorageServiceActor::CreateGetStorageStatsActionActor
         },
         {
-            "restartlocalfilestores",
-            &TStorageServiceActor::CreateRestartLocalFileStoresActionActor,
+            "listlocalfilestores",
+            &TStorageServiceActor::CreateListLocalFileStoresActionActor,
         },
+        {
+            "restarttablet",
+            &TStorageServiceActor::CreateRestartTabletActionActor
+        }
     };
 
     auto it = actions.find(action);
