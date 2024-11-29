@@ -31,3 +31,4 @@ cloud/storage/core/libs/endpoints/keyring/ut *
 cloud/filestore/tests/fio/qemu-local-noserver-direct-io-test *
 cloud/blockstore/tests/csi_driver/e2e_tests_part1 *
 cloud/blockstore/tests/csi_driver/e2e_tests_part2 *
+cloud/blockstore/tests/csi_driver/e2e_tests_nfs *
