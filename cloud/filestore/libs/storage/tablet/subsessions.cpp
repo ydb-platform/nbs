@@ -12,7 +12,7 @@ namespace {
 
 constexpr size_t MaxSubSessions = 2;
 
-}
+} // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -28,13 +28,14 @@ NActors::TActorId TSubSessions::AddSubSession(
         return owner;
     }
 
+    // update sequence number fir ro and rw clients
     MaxRoSeqNo = std::max(MaxRoSeqNo, seqNo);
     if (!readOnly) {
         MaxRwSeqNo = std::max(MaxRwSeqNo, seqNo);
     }
     SubSessions.push_back({seqNo, readOnly, owner});
     if (SubSessions.size() > MaxSubSessions) {
-        auto loSeqNo = std::min_element(
+        const auto* loSeqNo = std::min_element(
             SubSessions.begin(),
             SubSessions.end(),
             [] (const auto& a, const auto& b) {
@@ -58,6 +59,7 @@ NActors::TActorId TSubSessions::UpdateSubSession(
             return subsession.SeqNo == seqNo;
         });
     if (subsession != SubSessions.end()) {
+        // here we update session information for existing client
         TActorId toKill;
         subsession->ReadOnly = readOnly;
         if (subsession->Owner != owner) {
@@ -65,6 +67,8 @@ NActors::TActorId TSubSessions::UpdateSubSession(
             subsession->Owner = owner;
         }
 
+        // session settings changed, loop through the subsessions and
+        // calculate new rw and ro sequence numbers
         MaxRoSeqNo = 0;
         MaxRwSeqNo = 0;
         for (const auto& subsession: SubSessions) {
@@ -80,7 +84,7 @@ NActors::TActorId TSubSessions::UpdateSubSession(
     return AddSubSession(seqNo, readOnly, owner);
 }
 
-ui32 TSubSessions::DeleteSubSession(const NActors::TActorId& owner)
+bool TSubSessions::DeleteSubSession(const NActors::TActorId& owner)
 {
     auto* subsession = FindIf(
         SubSessions,
@@ -91,17 +95,19 @@ ui32 TSubSessions::DeleteSubSession(const NActors::TActorId& owner)
         return MaxRoSeqNo != 0 || MaxRwSeqNo != 0;
     }
 
-    auto toDelete = subsession->SeqNo;
-    bool writerAlive = toDelete < MaxRwSeqNo;
+    // check if writer is deleted
+    bool writerAlive = subsession->SeqNo < MaxRwSeqNo;
+    // during migration ro sequence number becomes greater than
+    // rw sequence number
     bool migrationInProgress = MaxRwSeqNo && (MaxRoSeqNo > MaxRwSeqNo);
 
-    UpdateSeqNoAfterDelete(toDelete);
+    UpdateSeqNoAfterDelete(subsession->SeqNo);
     SubSessions.erase(subsession);
 
     return SubSessions.size() || writerAlive || migrationInProgress;
 }
 
-ui32 TSubSessions::DeleteSubSession(ui64 sessionSeqNo)
+bool TSubSessions::DeleteSubSession(ui64 sessionSeqNo)
 {
     auto* subsession = FindIf(
         SubSessions,
@@ -109,7 +115,10 @@ ui32 TSubSessions::DeleteSubSession(ui64 sessionSeqNo)
             return subsession.SeqNo == sessionSeqNo;
         });
 
+    // check if writer is deleted
     bool writerAlive = sessionSeqNo < MaxRwSeqNo;
+    // during migration ro sequence number becomes greater than
+    // rw sequence number
     bool migrationInProgress = MaxRwSeqNo && (MaxRoSeqNo > MaxRwSeqNo);
 
     UpdateSeqNoAfterDelete(sessionSeqNo);
@@ -147,7 +156,7 @@ TVector<TSubSession> TSubSessions::GetAllSubSessions() const
 
 bool TSubSessions::HasSeqNo(ui64 seqNo) const
 {
-    auto* subsession = FindIf(
+    const auto* subsession = FindIf(
         SubSessions,
         [&] (const auto& subsession) {
             return subsession.SeqNo == seqNo;
@@ -169,7 +178,7 @@ bool TSubSessions::IsValid() const
 
 std::optional<TSubSession> TSubSessions::GetSubSessionBySeqNo(ui64 seqNo) const
 {
-    auto* subsession = FindIf(
+    const auto* subsession = FindIf(
         SubSessions,
         [&] (const auto& subsession) {
             return subsession.SeqNo == seqNo;

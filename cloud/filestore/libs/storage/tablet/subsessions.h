@@ -25,8 +25,8 @@ struct TSubSession
 class TSubSessions
 {
     TVector<TSubSession> SubSessions;
-    ui64 MaxRoSeqNo = 0;
-    ui64 MaxRwSeqNo = 0;
+    ui64 MaxRoSeqNo = 0; // ro sequence number (set during vm migration)
+    ui64 MaxRwSeqNo = 0; // rw sequence number
 
 public:
     explicit TSubSessions(ui64 maxRoSeqNo, ui64 maxRwSeqNo)
@@ -44,8 +44,8 @@ public:
         bool readOnly,
         const NActors::TActorId& owner);
 
-    ui32 DeleteSubSession(const NActors::TActorId& owner);
-    ui32 DeleteSubSession(ui64 sessionSeqNo);
+    bool DeleteSubSession(const NActors::TActorId& owner);
+    bool DeleteSubSession(ui64 sessionSeqNo);
     void UpdateSeqNoAfterDelete(ui64 seqNo);
 
     TVector<NActors::TActorId> GetSubSessions() const;
