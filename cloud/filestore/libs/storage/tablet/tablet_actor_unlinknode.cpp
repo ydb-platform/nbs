@@ -482,6 +482,11 @@ void TIndexTabletActor::CompleteTx_UnlinkNode(
     RemoveTransaction(*args.RequestInfo);
     EnqueueBlobIndexOpIfNeeded(ctx);
 
+    Metrics.UnlinkNode.Update(
+        1,
+        0,
+        ctx.Now() - args.RequestInfo->StartedTs);
+
     auto response =
         std::make_unique<TEvService::TEvUnlinkNodeResponse>(args.Error);
     CompleteResponse<TEvService::TUnlinkNodeMethod>(
@@ -515,6 +520,11 @@ void TIndexTabletActor::HandleNodeUnlinkedInShard(
                 msg->RequestInfo->CallContext,
                 ctx);
 
+            Metrics.RenameNode.Update(
+                1,
+                0,
+                ctx.Now() - msg->RequestInfo->StartedTs);
+
             NCloud::Reply(ctx, *msg->RequestInfo, std::move(response));
         } else if (auto* x = std::get_if<NProto::TUnlinkNodeResponse>(&res)) {
             auto response =
@@ -525,6 +535,11 @@ void TIndexTabletActor::HandleNodeUnlinkedInShard(
                 response->Record,
                 msg->RequestInfo->CallContext,
                 ctx);
+
+            Metrics.UnlinkNode.Update(
+                1,
+                0,
+                ctx.Now() - msg->RequestInfo->StartedTs);
 
             NCloud::Reply(ctx, *msg->RequestInfo, std::move(response));
         } else {

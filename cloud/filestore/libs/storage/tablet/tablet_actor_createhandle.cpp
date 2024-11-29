@@ -444,6 +444,11 @@ void TIndexTabletActor::CompleteTx_CreateHandle(
     if (!HasError(args.Error)) {
         CommitDupCacheEntry(args.SessionId, args.RequestId);
         response->Record = std::move(args.Response);
+
+        Metrics.CreateHandle.Update(
+            1,
+            0,
+            ctx.Now() - args.RequestInfo->StartedTs);
     }
 
     CompleteResponse<TEvService::TCreateHandleMethod>(

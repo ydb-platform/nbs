@@ -187,9 +187,12 @@ void TIndexTabletActor::CompleteTx_ListNodes(
         record.MutableNames()->Reserve(args.ChildRefs.size());
         record.MutableNodes()->Reserve(args.ChildRefs.size());
 
+        ui64 requestBytes = 0;
+
         size_t j = 0;
         for (size_t i = 0; i < args.ChildRefs.size(); ++i) {
             const auto& ref = args.ChildRefs[i];
+            requestBytes += ref.Name.size();
             if (ref.ShardId) {
                 AddExternalNode(
                     record,
@@ -211,6 +214,11 @@ void TIndexTabletActor::CompleteTx_ListNodes(
         if (args.Next) {
             record.SetCookie(args.Next);
         }
+
+        Metrics.ListNodes.Update(
+            1,
+            requestBytes,
+            ctx.Now() - args.RequestInfo->StartedTs);
     }
 
     CompleteResponse<TEvService::TListNodesMethod>(

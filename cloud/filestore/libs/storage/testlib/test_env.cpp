@@ -75,7 +75,8 @@ TTestEnv::TTestEnv(
         const TTestEnvConfig& config,
         NProto::TStorageConfig storageConfig,
         NKikimr::NFake::TCaches cachesConfig,
-        IProfileLogPtr profileLog)
+        IProfileLogPtr profileLog,
+        NProto::TDiagnosticsConfig diagConfig)
     : Config(config)
     , Logging(CreateLoggingService("console", { TLOG_DEBUG }))
     , ProfileLog(std::move(profileLog))
@@ -91,6 +92,8 @@ TTestEnv::TTestEnv(
     storageConfig.SetSchemeShardDir(Config.DomainName);
 
     StorageConfig = CreateTestStorageConfig(std::move(storageConfig));
+
+    DiagConfig = std::make_shared<TDiagnosticsConfig>(std::move(diagConfig));
 
     TAppPrepare app;
     // app.SetEnableSchemeBoard(true);
@@ -108,7 +111,7 @@ TTestEnv::TTestEnv(
 
     StatsRegistry = CreateRequestStatsRegistry(
         "service",
-        std::make_shared<TDiagnosticsConfig>(),
+        DiagConfig,
         Counters,
         CreateWallClockTimer(),
         NCloud::NStorage::NUserStats::CreateUserCounterSupplierStub());
@@ -458,6 +461,7 @@ ui64 TTestEnv::BootIndexTablet(ui32 nodeIdx)
             owner,
             storage,
             StorageConfig,
+            DiagConfig,
             ProfileLog,
             TraceSerializer,
             Registry,
@@ -619,6 +623,7 @@ void TTestEnv::SetupLocalServiceConfig(
             owner,
             storage,
             StorageConfig,
+            DiagConfig,
             ProfileLog,
             TraceSerializer,
             Registry,

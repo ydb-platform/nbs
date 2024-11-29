@@ -660,11 +660,9 @@ void TIndexTabletActor::HandleDescribeData(
         NCloud::Reply(ctx, *requestInfo, std::move(response));
 
         Metrics.ReadAheadCacheHitCount.fetch_add(1, std::memory_order_relaxed);
-        Metrics.DescribeData.Count.fetch_add(1, std::memory_order_relaxed);
-        Metrics.DescribeData.RequestBytes.fetch_add(
+        Metrics.DescribeData.Update(
+            1,
             byteRange.Length,
-            std::memory_order_relaxed);
-        Metrics.DescribeData.Time.Record(
             ctx.Now() - requestInfo->StartedTs);
 
         return;
@@ -870,11 +868,9 @@ void TIndexTabletActor::CompleteTx_ReadData(
 
         NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
 
-        Metrics.DescribeData.Count.fetch_add(1, std::memory_order_relaxed);
-        Metrics.DescribeData.RequestBytes.fetch_add(
+        Metrics.DescribeData.Update(
+            1,
             args.OriginByteRange.Length,
-            std::memory_order_relaxed);
-        Metrics.DescribeData.Time.Record(
             ctx.Now() - args.RequestInfo->StartedTs);
 
         return;

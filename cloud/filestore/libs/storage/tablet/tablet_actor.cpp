@@ -37,6 +37,7 @@ TIndexTabletActor::TIndexTabletActor(
         const TActorId& owner,
         TTabletStorageInfoPtr storage,
         TStorageConfigPtr config,
+        TDiagnosticsConfigPtr diagConfig,
         IProfileLogPtr profileLog,
         ITraceSerializerPtr traceSerializer,
         NMetrics::IMetricsRegistryPtr metricsRegistry,
@@ -54,6 +55,7 @@ TIndexTabletActor::TIndexTabletActor(
         }
     )
     , Config(std::move(config))
+    , DiagConfig(std::move(diagConfig))
     , UseNoneCompactionPolicy(useNoneCompactionPolicy)
     , BlobCodec(NBlockCodecs::Codec(Config->GetBlobCompressionCodec()))
 {
@@ -921,6 +923,9 @@ STFUNC(TIndexTabletActor::StateInit)
         HFunc(
             TEvIndexTabletPrivate::TEvNodeUnlinkedInShard,
             HandleNodeUnlinkedInShard);
+        HFunc(
+            TEvIndexTabletPrivate::TEvGetShardStatsCompleted,
+            HandleGetShardStatsCompleted);
 
         FILESTORE_HANDLE_REQUEST(WaitReady, TEvIndexTablet)
 
@@ -962,6 +967,9 @@ STFUNC(TIndexTabletActor::StateWork)
         HFunc(
             TEvIndexTabletPrivate::TEvNodeUnlinkedInShard,
             HandleNodeUnlinkedInShard);
+        HFunc(
+            TEvIndexTabletPrivate::TEvGetShardStatsCompleted,
+            HandleGetShardStatsCompleted);
 
         HFunc(TEvents::TEvWakeup, HandleWakeup);
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
@@ -1020,6 +1028,9 @@ STFUNC(TIndexTabletActor::StateZombie)
         HFunc(
             TEvIndexTabletPrivate::TEvNodeUnlinkedInShard,
             HandleNodeUnlinkedInShard);
+        HFunc(
+            TEvIndexTabletPrivate::TEvGetShardStatsCompleted,
+            HandleGetShardStatsCompleted);
 
         default:
             HandleUnexpectedEvent(ev, TFileStoreComponents::TABLET);
@@ -1060,6 +1071,9 @@ STFUNC(TIndexTabletActor::StateBroken)
         HFunc(
             TEvIndexTabletPrivate::TEvNodeUnlinkedInShard,
             HandleNodeUnlinkedInShard);
+        HFunc(
+            TEvIndexTabletPrivate::TEvGetShardStatsCompleted,
+            HandleGetShardStatsCompleted);
 
         default:
             HandleUnexpectedEvent(ev, TFileStoreComponents::TABLET);

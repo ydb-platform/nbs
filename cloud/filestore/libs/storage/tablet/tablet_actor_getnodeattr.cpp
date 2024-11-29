@@ -84,6 +84,7 @@ void TIndexTabletActor::HandleGetNodeAttr(
             Metrics.NodeIndexCacheHitCount.fetch_add(
                 1,
                 std::memory_order_relaxed);
+            Metrics.GetNodeAttr.Update(1, 0, TDuration::Zero());
 
             NCloud::Reply(ctx, *requestInfo, std::move(response));
             return;
@@ -216,6 +217,11 @@ void TIndexTabletActor::CompleteTx_GetNodeAttr(
                 args.Name,
                 *node);
         }
+
+        Metrics.GetNodeAttr.Update(
+            1,
+            0,
+            ctx.Now() - args.RequestInfo->StartedTs);
     }
 
     CompleteResponse<TEvService::TGetNodeAttrMethod>(
@@ -273,6 +279,8 @@ void TIndexTabletActor::HandleGetNodeAttrBatch(
             response->Record,
             msg->CallContext,
             ctx);
+
+        Metrics.GetNodeAttr.Update(cacheHits, 0, TDuration::Zero());
 
         NCloud::Reply(ctx, *requestInfo, std::move(response));
         return;
@@ -437,6 +445,11 @@ void TIndexTabletActor::CompleteTx_GetNodeAttrBatch(
         }
 
         response->Record = std::move(args.Response);
+
+        Metrics.GetNodeAttr.Update(
+            args.Request.NamesSize(),
+            0,
+            ctx.Now() - args.RequestInfo->StartedTs);
     }
 
     CompleteResponse<TEvIndexTablet::TGetNodeAttrBatchMethod>(
