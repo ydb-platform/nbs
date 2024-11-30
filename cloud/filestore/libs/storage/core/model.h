@@ -1,3 +1,5 @@
+#pragma once
+
 #include "config.h"
 
 #include <cloud/filestore/public/api/protos/fs.pb.h>
@@ -15,6 +17,11 @@ struct TMultiShardFileStoreConfig
     NKikimrFileStore::TConfig MainFileSystemConfig;
     TVector<NKikimrFileStore::TConfig> ShardConfigs;
 };
+
+ui32 ComputeShardCount(
+    const ui64 blocksCount,
+    const ui32 blockSize,
+    const ui64 shardAllocationUnit);
 
 TMultiShardFileStoreConfig SetupMultiShardFileStorePerformanceAndChannels(
     const TStorageConfig& config,
