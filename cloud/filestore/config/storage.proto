@@ -473,4 +473,8 @@ message TStorageConfig
 
     // Enable Writeback cache on guest (fuse client)
     optional bool GuestWritebackCacheEnabled = 407;
+
+    // Ignore orphan sessions upon filestore sessions check during destruction
+    // attempts.
+    optional bool AllowFileStoreDestroyWithOrphanSessions = 408;
 }

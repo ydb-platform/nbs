@@ -226,6 +226,7 @@ public:
     NProto::EBlobIndexOpsPriority GetBlobIndexOpsPriority() const;
 
     bool GetAllowFileStoreForceDestroy() const;
+    bool GetAllowFileStoreDestroyWithOrphanSessions() const;
 
     ui32 GetMaxZeroCompactionRangesToDeletePerTx() const;
     ui64 GetTrimBytesItemCount() const;
