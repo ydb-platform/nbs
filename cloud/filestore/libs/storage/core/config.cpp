@@ -191,6 +191,7 @@ using TAliases = NProto::TStorageConfig::TFilestoreAliases;
     xxx(MultiTabletForwardingEnabled,                   bool,      false      )\
     xxx(GetNodeAttrBatchEnabled,                        bool,      false      )\
     xxx(AllowFileStoreForceDestroy,                     bool,      false      )\
+    xxx(AllowFileStoreDestroyWithOrphanSessions,        bool,      false      )\
     xxx(TrimBytesItemCount,                             ui64,      100'000    )\
     xxx(NodeRegistrationRootCertsFile,   TString,               {}            )\
     xxx(NodeRegistrationCert,            TCertificate,          {}            )\
