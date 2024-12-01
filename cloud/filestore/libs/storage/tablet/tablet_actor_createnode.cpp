@@ -78,7 +78,7 @@ private:
     const TString LogTag;
     TRequestInfoPtr RequestInfo;
     const TActorId ParentId;
-    const NProto::TCreateNodeRequest Request;
+    NProto::TCreateNodeRequest Request;
     const ui64 RequestId;
     const ui64 OpLogEntryId;
     TCreateNodeInShardResult Result;
@@ -263,6 +263,7 @@ void TCreateNodeInShardActor::ReplyAndDie(
         Request.GetHeaders().GetSessionId(),
         RequestId,
         OpLogEntryId,
+        std::move(*Request.MutableName()),
         std::move(Result)));
 
     Die(ctx);
@@ -649,6 +650,8 @@ void TIndexTabletActor::HandleNodeCreatedInShard(
 
     WorkerActors.erase(ev->Sender);
 
+    EndNodeCreateInShard(msg->NodeName);
+
     if (auto* x = std::get_if<NProto::TCreateNodeResponse>(&res)) {
         if (msg->RequestInfo) {
             auto response =
@@ -759,6 +762,8 @@ void TIndexTabletActor::RegisterCreateNodeInShardActor(
     ui64 opLogEntryId,
     TCreateNodeInShardResult result)
 {
+    StartNodeCreateInShard(request.GetName());
+
     auto actor = std::make_unique<TCreateNodeInShardActor>(
         LogTag,
         std::move(requestInfo),

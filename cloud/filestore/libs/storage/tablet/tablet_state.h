@@ -439,6 +439,12 @@ public:
         const TString& message,
         ui64 nodeId);
 
+    bool HasPendingNodeCreateInShard(const TString& nodeName) const;
+
+    void StartNodeCreateInShard(const TString& nodeName);
+
+    void EndNodeCreateInShard(const TString& nodeName);
+
 private:
     void UpdateUsedBlocksCount(
         TIndexTabletDatabase& db,
