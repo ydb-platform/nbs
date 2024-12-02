@@ -900,6 +900,7 @@ func StartRunners(
 
 	listerReadyToRun := newLister(
 		ctx,
+		config.GetTasksToListLimit(),
 		func(ctx context.Context, limit uint64) ([]storage.TaskInfo, error) {
 			return taskStorage.ListTasksReadyToRun(
 				ctx,
@@ -914,6 +915,7 @@ func StartRunners(
 	)
 	listerReadyToCancel := newLister(
 		ctx,
+		config.GetTasksToListLimit(),
 		func(ctx context.Context, limit uint64) ([]storage.TaskInfo, error) {
 			return taskStorage.ListTasksReadyToCancel(
 				ctx,
@@ -951,6 +953,7 @@ func StartRunners(
 
 	listerStallingWhileRunning := newLister(
 		ctx,
+		config.GetTasksToListLimit(),
 		func(ctx context.Context, limit uint64) ([]storage.TaskInfo, error) {
 			return taskStorage.ListTasksStallingWhileRunning(
 				ctx,
@@ -966,6 +969,7 @@ func StartRunners(
 	)
 	listerStallingWhileCancelling := newLister(
 		ctx,
+		config.GetTasksToListLimit(),
 		func(ctx context.Context, limit uint64) ([]storage.TaskInfo, error) {
 			return taskStorage.ListTasksStallingWhileCancelling(
 				ctx,

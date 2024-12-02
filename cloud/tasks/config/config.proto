@@ -64,4 +64,6 @@ message TasksConfig {
     // Warning: if this flag is false, then information about ended tasks
     // will not be cleared from the database.
     optional bool RegularSystemTasksEnabled = 33 [default = true];
+
+    optional uint64 TasksToListLimit = 34 [default = 10000];
 }
