@@ -5,6 +5,7 @@
 #include <cloud/blockstore/libs/diagnostics/profile_log.h>
 #include <cloud/blockstore/libs/kikimr/components.h>
 #include <cloud/blockstore/libs/kikimr/events.h>
+#include <cloud/blockstore/libs/storage/partition_nonrepl/config.h>
 #include <cloud/blockstore/libs/storage/protos/disk.pb.h>
 #include <cloud/blockstore/libs/storage/protos/part.pb.h>
 
@@ -199,6 +200,33 @@ struct TEvNonreplPartitionPrivate
     };
 
     //
+    // GetDeviceForRange
+    //
+
+    struct TGetDeviceForRangeRequest
+    {
+        enum class EPurpose
+        {
+            ForReading,
+            ForWriting
+        };
+
+        EPurpose Purpose;
+        TBlockRange64 BlockRange;
+
+        TGetDeviceForRangeRequest(EPurpose purpose, TBlockRange64 blockRange)
+            : Purpose(purpose)
+            , BlockRange(blockRange)
+        {}
+    };
+
+    struct TGetDeviceForRangeResponse
+    {
+        NProto::TDeviceConfig Device;
+        TBlockRange64 DeviceBlockRange;
+    };
+
+    //
     // Events declaration
     //
 
@@ -219,6 +247,8 @@ struct TEvNonreplPartitionPrivate
         EvResyncNextRange,
         EvRangeResynced,
         EvReadResyncFastPathResponse,
+        EvGetDeviceForRangeRequest,
+        EvGetDeviceForRangeResponse,
 
         BLOCKSTORE_PARTITION_NONREPL_REQUESTS_PRIVATE(BLOCKSTORE_DECLARE_EVENT_IDS)
 
@@ -268,6 +298,15 @@ struct TEvNonreplPartitionPrivate
     using TEvReadResyncFastPathResponse = TResponseEvent<
         TReadResyncFastPathResponse,
         EvReadResyncFastPathResponse
+    >;
+
+    using TEvGetDeviceForRangeRequest = TResponseEvent<
+        TGetDeviceForRangeRequest,
+        EvGetDeviceForRangeRequest
+    >;
+    using TEvGetDeviceForRangeResponse = TResponseEvent<
+        TGetDeviceForRangeResponse,
+        EvGetDeviceForRangeResponse
     >;
 
     BLOCKSTORE_PARTITION_NONREPL_REQUESTS_PRIVATE(BLOCKSTORE_DECLARE_PROTO_EVENTS)

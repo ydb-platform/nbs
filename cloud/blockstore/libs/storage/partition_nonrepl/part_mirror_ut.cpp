@@ -1,6 +1,5 @@
 #include "part_mirror.h"
 #include "part_mirror_actor.h"
-#include "part_mirror_resync_util.h"
 #include "part_nonrepl_actor.h"
 #include "ut_env.h"
 
@@ -27,11 +26,24 @@
 namespace NCloud::NBlockStore::NStorage {
 
 using namespace NActors;
-using namespace NKikimr;
 
 namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
+
+class TTestRuntime: public TTestBasicRuntime
+{
+public:
+    TTestRuntime()
+    {
+        SetRegistrationObserverFunc(
+            [](auto& runtime, const auto& parentId, const auto& actorId)
+            {
+                Y_UNUSED(parentId);
+                runtime.EnableScheduleForActor(actorId);
+            });
+    }
+};
 
 struct TTestEnv
 {
@@ -245,7 +257,7 @@ struct TTestEnv
             )
         );
 
-        SetupTabletServices(Runtime);
+        NKikimr::SetupTabletServices(Runtime);
     }
 
     void AddReplica(
@@ -324,14 +336,7 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
 
     Y_UNIT_TEST(ShouldReadWriteZero)
     {
-        TTestBasicRuntime runtime;
-
-        runtime.SetRegistrationObserverFunc(
-            [] (auto& runtime, const auto& parentId, const auto& actorId)
-        {
-            Y_UNUSED(parentId);
-            runtime.EnableScheduleForActor(actorId);
-        });
+        TTestRuntime runtime;
 
         TTestEnv env(runtime);
 
@@ -486,14 +491,7 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
 
     Y_UNIT_TEST(ShouldLocalReadWrite)
     {
-        TTestBasicRuntime runtime;
-
-        runtime.SetRegistrationObserverFunc(
-            [] (auto& runtime, const auto& parentId, const auto& actorId)
-        {
-            Y_UNUSED(parentId);
-            runtime.EnableScheduleForActor(actorId);
-        });
+        TTestRuntime runtime;
 
         TTestEnv env(runtime);
 
@@ -587,14 +585,7 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
 
     Y_UNIT_TEST(ShouldMirrorWriteAndZeroRequests)
     {
-        TTestBasicRuntime runtime;
-
-        runtime.SetRegistrationObserverFunc(
-            [] (auto& runtime, const auto& parentId, const auto& actorId)
-        {
-            Y_UNUSED(parentId);
-            runtime.EnableScheduleForActor(actorId);
-        });
+        TTestRuntime runtime;
 
         THashMap<TString, TBlockRange64> device2WriteRange;
         THashMap<TString, TBlockRange64> device2ZeroRange;
@@ -706,14 +697,7 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
 
     Y_UNIT_TEST(ShouldNotReadFromFreshDevices)
     {
-        TTestBasicRuntime runtime;
-
-        runtime.SetRegistrationObserverFunc(
-            [] (auto& runtime, const auto& parentId, const auto& actorId)
-        {
-            Y_UNUSED(parentId);
-            runtime.EnableScheduleForActor(actorId);
-        });
+        TTestRuntime runtime;
 
         const THashSet<TString> freshDeviceIds{"vasya", "vasya#1", "petya#2"};
         TTestEnv env(
@@ -799,7 +783,7 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
 
     struct TMigrationTestRuntime
     {
-        TTestBasicRuntime Runtime;
+        TTestRuntime Runtime;
 
         TString DiskId;
         TString SourceDeviceId;
@@ -988,14 +972,7 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
 
     void DoShouldTransformAnyErrorToRetriable(NProto::TError error)
     {
-        TTestBasicRuntime runtime;
-
-        runtime.SetRegistrationObserverFunc(
-            [] (auto& runtime, const auto& parentId, const auto& actorId)
-        {
-            Y_UNUSED(parentId);
-            runtime.EnableScheduleForActor(actorId);
-        });
+        TTestRuntime runtime;
 
         TTestEnv env(runtime);
 
@@ -1133,14 +1110,7 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
 
     Y_UNIT_TEST(ShouldReportSimpleCounters)
     {
-        TTestBasicRuntime runtime;
-
-        runtime.SetRegistrationObserverFunc(
-            [] (auto& runtime, const auto& parentId, const auto& actorId)
-        {
-            Y_UNUSED(parentId);
-            runtime.EnableScheduleForActor(actorId);
-        });
+        TTestRuntime runtime;
 
         TTestEnv env(runtime);
 
@@ -1180,13 +1150,7 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
     {
         using namespace NMonitoring;
 
-        TTestBasicRuntime runtime;
-        runtime.SetRegistrationObserverFunc(
-            [] (auto& runtime, const auto& parentId, const auto& actorId)
-        {
-            Y_UNUSED(parentId);
-            runtime.EnableScheduleForActor(actorId);
-        });
+        TTestRuntime runtime;
 
         TTestEnv env(runtime);
 
@@ -1207,14 +1171,7 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
     {
         using namespace NMonitoring;
 
-        TTestBasicRuntime runtime;
-
-        runtime.SetRegistrationObserverFunc(
-            [] (auto& runtime, const auto& parentId, const auto& actorId)
-        {
-            Y_UNUSED(parentId);
-            runtime.EnableScheduleForActor(actorId);
-        });
+        TTestRuntime runtime;
 
         TDynamicCountersPtr critEventsCounters = new TDynamicCounters();
         InitCriticalEventsCounter(critEventsCounters);
@@ -1270,13 +1227,7 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
         TDynamicCountersPtr counters = new TDynamicCounters();
         InitCriticalEventsCounter(counters);
 
-        TTestBasicRuntime runtime;
-        runtime.SetRegistrationObserverFunc(
-            [] (auto& runtime, const auto& parentId, const auto& actorId)
-        {
-            Y_UNUSED(parentId);
-            runtime.EnableScheduleForActor(actorId);
-        });
+        TTestRuntime runtime;
 
         TTestEnv env(runtime);
 
@@ -1341,13 +1292,7 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
         TDynamicCountersPtr counters = new TDynamicCounters();
         InitCriticalEventsCounter(counters);
 
-        TTestBasicRuntime runtime;
-        runtime.SetRegistrationObserverFunc(
-            [] (auto& runtime, const auto& parentId, const auto& actorId)
-        {
-            Y_UNUSED(parentId);
-            runtime.EnableScheduleForActor(actorId);
-        });
+        TTestRuntime runtime;
 
         TTestEnv env(runtime);
 
@@ -1451,13 +1396,7 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
         TDynamicCountersPtr critEventsCounters = new TDynamicCounters();
         InitCriticalEventsCounter(critEventsCounters);
 
-        TTestBasicRuntime runtime;
-        runtime.SetRegistrationObserverFunc(
-            [] (auto& runtime, const auto& parentId, const auto& actorId)
-            {
-                Y_UNUSED(parentId);
-                runtime.EnableScheduleForActor(actorId);
-            });
+        TTestRuntime runtime;
 
         TTestEnv env(runtime);
 
@@ -1532,14 +1471,7 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
     {
         using namespace NMonitoring;
 
-        TTestBasicRuntime runtime;
-
-        runtime.SetRegistrationObserverFunc(
-            [] (auto& runtime, const auto& parentId, const auto& actorId)
-        {
-            Y_UNUSED(parentId);
-            runtime.EnableScheduleForActor(actorId);
-        });
+        TTestRuntime runtime;
 
         TAutoPtr<IEventHandle> delayedRangeResynced;
         runtime.SetEventFilter([&] (auto& runtime, auto& event) {
@@ -1639,14 +1571,7 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
     {
         using namespace NMonitoring;
 
-        TTestBasicRuntime runtime;
-
-        runtime.SetRegistrationObserverFunc(
-            [] (auto& runtime, const auto& parentId, const auto& actorId)
-        {
-            Y_UNUSED(parentId);
-            runtime.EnableScheduleForActor(actorId);
-        });
+        TTestRuntime runtime;
 
         ui32 rangeResynced = 0;
         runtime.SetEventFilter([&] (auto& runtime, auto& event) {
@@ -1802,6 +1727,181 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
             2,
             mirroredDiskChecksumMismatchUponRead->Val());
     }
+
+    Y_UNIT_TEST(ShouldHandleGetDeviceForRangeRequest)
+    {
+        using TEvGetDeviceForRangeRequest =
+            TEvNonreplPartitionPrivate::TEvGetDeviceForRangeRequest;
+        using TEvGetDeviceForRangeResponse =
+            TEvNonreplPartitionPrivate::TEvGetDeviceForRangeResponse;
+        using EPurpose = TEvGetDeviceForRangeRequest::EPurpose;
+
+        TTestRuntime runtime;
+        TTestEnv env(runtime);
+        TPartitionClient client(runtime, env.ActorId);
+
+        {   // Request to first device #1
+            client.SendRequest(
+                env.ActorId,
+                std::make_unique<TEvGetDeviceForRangeRequest>(
+                    EPurpose::ForReading,
+                    TBlockRange64::WithLength(2040, 8)));
+            auto response1 = client.RecvResponse<
+                TEvNonreplPartitionPrivate::TEvGetDeviceForRangeResponse>();
+            UNIT_ASSERT_C(
+                SUCCEEDED(response1->GetStatus()),
+                response1->GetErrorReason());
+            UNIT_ASSERT_STRING_CONTAINS(
+                response1->Device.GetDeviceUUID(),
+                "vasya");
+
+            // Request to first device #2
+            client.SendRequest(
+                env.ActorId,
+                std::make_unique<TEvGetDeviceForRangeRequest>(
+                    EPurpose::ForReading,
+                    TBlockRange64::WithLength(2040, 8)));
+            auto response2 =
+                client.RecvResponse<TEvGetDeviceForRangeResponse>();
+            UNIT_ASSERT_C(
+                SUCCEEDED(response2->GetStatus()),
+                response2->GetErrorReason());
+            UNIT_ASSERT_STRING_CONTAINS(
+                response2->Device.GetDeviceUUID(),
+                "vasya");
+
+            // Replicas are rotated and requests should return different
+            // devices.
+            UNIT_ASSERT_STRINGS_UNEQUAL(
+                response1->Device.GetDeviceUUID(),
+                response2->Device.GetDeviceUUID());
+        }
+        {
+            // Request to second device
+            client.SendRequest(
+                env.ActorId,
+                std::make_unique<TEvGetDeviceForRangeRequest>(
+                    EPurpose::ForReading,
+                    TBlockRange64::WithLength(2048, 8)));
+            auto response = client.RecvResponse<TEvGetDeviceForRangeResponse>();
+            UNIT_ASSERT_C(
+                SUCCEEDED(response->GetStatus()),
+                response->GetErrorReason());
+            UNIT_ASSERT_STRING_CONTAINS(
+                response->Device.GetDeviceUUID(),
+                "petya");
+        }
+
+        {   // Request on the border of two devices
+            client.SendRequest(
+                env.ActorId,
+                std::make_unique<TEvGetDeviceForRangeRequest>(
+                    EPurpose::ForReading,
+                    TBlockRange64::WithLength(2040, 16)));
+            auto response = client.RecvResponse<TEvGetDeviceForRangeResponse>();
+            UNIT_ASSERT_VALUES_EQUAL(E_ABORTED, response->Error.GetCode());
+        }
+
+        {   // Request for writing purpose
+            client.SendRequest(
+                env.ActorId,
+                std::make_unique<TEvGetDeviceForRangeRequest>(
+                    EPurpose::ForWriting,
+                    TBlockRange64::WithLength(0, 16)));
+            auto response = client.RecvResponse<TEvGetDeviceForRangeResponse>();
+            UNIT_ASSERT_VALUES_EQUAL(E_ABORTED, response->Error.GetCode());
+        }
+    }
+
+    Y_UNIT_TEST(ShouldHandleGetDeviceForRangeRequestWhenResync)
+    {
+        using TEvGetDeviceForRangeRequest =
+            TEvNonreplPartitionPrivate::TEvGetDeviceForRangeRequest;
+        using TEvGetDeviceForRangeResponse =
+            TEvNonreplPartitionPrivate::TEvGetDeviceForRangeResponse;
+        using EPurpose = TEvGetDeviceForRangeRequest::EPurpose;
+
+        TTestRuntime runtime;
+
+        // Block range resync finish.
+        bool rangeResyncedCatched = false;
+        runtime.SetEventFilter(
+            [&](auto& runtime, auto& event)
+            {
+                Y_UNUSED(runtime);
+                if (event->GetTypeRewrite() ==
+                    TEvNonreplPartitionPrivate::EvRangeResynced)
+                {
+                    rangeResyncedCatched = true;
+                    return true;
+                }
+                return false;
+            });
+
+        TTestEnv env(runtime);
+        TPartitionClient client(runtime, env.ActorId);
+
+        const auto range = TBlockRange64::WithLength(0, 1024);
+
+        env.WriteReplica(0, range, 'A');
+        env.WriteReplica(1, range, 'B');
+        env.WriteReplica(2, range, 'B');
+
+        // Start resync of range [0..1023]
+        runtime.AdvanceCurrentTime(
+            env.Config->GetScrubbingChecksumMismatchTimeout());
+        TDispatchOptions options;
+        options.CustomFinalCondition = [&]
+        {
+            return rangeResyncedCatched;
+        };
+        runtime.DispatchEvents(options, TDuration::Seconds(1));
+        UNIT_ASSERT(rangeResyncedCatched);
+
+        {   // Request overlaps with resyncing range. Range resyncing due to the
+            // scrubber found replicas mismatch.
+            client.SendRequest(
+                env.ActorId,
+                std::make_unique<TEvGetDeviceForRangeRequest>(
+                    EPurpose::ForReading,
+                    TBlockRange64::WithLength(1020, 8)));
+            auto response = client.RecvResponse<TEvGetDeviceForRangeResponse>();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_REJECTED,
+                response->GetError().GetCode(),
+                response->GetErrorReason());
+        }
+        {   // Request to not resyncing range
+            client.SendRequest(
+                env.ActorId,
+                std::make_unique<TEvGetDeviceForRangeRequest>(
+                    EPurpose::ForReading,
+                    TBlockRange64::WithLength(1024, 8)));
+            auto response = client.RecvResponse<TEvGetDeviceForRangeResponse>();
+            UNIT_ASSERT_C(
+                SUCCEEDED(response->GetStatus()),
+                response->GetErrorReason());
+            UNIT_ASSERT_STRING_CONTAINS(
+                response->Device.GetDeviceUUID(),
+                "vasya");
+            UNIT_ASSERT_VALUES_EQUAL(
+                TBlockRange64::WithLength(1024, 8),
+                response->DeviceBlockRange);
+        }
+        {   // Request with writing purpose
+            client.SendRequest(
+                env.ActorId,
+                std::make_unique<TEvGetDeviceForRangeRequest>(
+                    EPurpose::ForWriting,
+                    TBlockRange64::WithLength(1024, 8)));
+            auto response = client.RecvResponse<TEvGetDeviceForRangeResponse>();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_ABORTED,
+                response->GetError().GetCode(),
+                response->GetErrorReason());
+        }
+    }
+
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

@@ -34,6 +34,8 @@ void TNonreplicatedPartitionMigrationCommonActor::InitWork(
     PoisonPillHelper.TakeOwnership(ctx, SrcActorId);
     PoisonPillHelper.TakeOwnership(ctx, DstActorId);
 
+    GetDeviceForRangeCompanion.SetDelegate(SrcActorId);
+
     if (DstActorId == NActors::TActorId{}) {
         ProcessingBlocks.AbortProcessing();
     } else {

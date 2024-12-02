@@ -94,9 +94,12 @@ struct TResyncController
 
     void WaitForResyncedRangeCount(ui32 count)
     {
-        while (ResyncedRanges.size() < count) {
-            Runtime.DispatchEvents({}, ResyncNextRangeInterval);
-        }
+        TDispatchOptions options;
+        options.CustomFinalCondition = [&]
+        {
+            return ResyncedRanges.size() >= count;
+        };
+        Runtime.DispatchEvents(options, ResyncNextRangeInterval);
     }
 
     void WaitForResyncFinished()
@@ -1299,6 +1302,7 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionResyncTest)
 
         if (afterResync) {
             env.ResyncController.WaitForResyncedRangeCount(5);
+            env.ResyncController.WaitForResyncFinished();
             UNIT_ASSERT(env.ResyncController.ResyncFinished);
         }
 
@@ -1344,6 +1348,105 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionResyncTest)
     Y_UNIT_TEST(ShouldTreatFreshDevicesProperlyDuringResync)
     {
         DoTestShouldTreatFreshDevicesProperly(false);
+    }
+
+    Y_UNIT_TEST(ShouldHandleGetDeviceForRangeRequest)
+    {
+        using TEvGetDeviceForRangeRequest =
+            TEvNonreplPartitionPrivate::TEvGetDeviceForRangeRequest;
+        using TEvGetDeviceForRangeResponse =
+            TEvNonreplPartitionPrivate::TEvGetDeviceForRangeResponse;
+        using EPurpose = TEvGetDeviceForRangeRequest::EPurpose;
+
+        TTestBasicRuntime runtime;
+        TTestEnv env(runtime);
+
+        TPartitionClient client(runtime, env.ActorId);
+
+        // Resync first range [0..1023]
+        env.CatchEvents(TEvNonreplPartitionPrivate::EvResyncNextRange);
+        env.StartResync();
+        env.ReleaseEvents();
+        env.ResyncController.WaitForResyncedRangeCount(1);
+
+        {   // Request to first device over an already resynchronized range
+            client.SendRequest(
+                env.ActorId,
+                std::make_unique<TEvGetDeviceForRangeRequest>(
+                    EPurpose::ForReading,
+                    TBlockRange64::WithLength(0, 10)));
+            auto response = client.RecvResponse<TEvGetDeviceForRangeResponse>();
+            UNIT_ASSERT_C(
+                SUCCEEDED(response->GetStatus()),
+                response->GetErrorReason());
+            UNIT_ASSERT_STRING_CONTAINS(
+                response->Device.GetDeviceUUID(),
+                "vasya");
+        }
+        {   // Request over not synced range
+            client.SendRequest(
+                env.ActorId,
+                std::make_unique<TEvGetDeviceForRangeRequest>(
+                    EPurpose::ForReading,
+                    TBlockRange64::WithLength(1024, 8)));
+            auto response = client.RecvResponse<TEvGetDeviceForRangeResponse>();
+            UNIT_ASSERT_VALUES_EQUAL(E_ABORTED, response->Error.GetCode());
+        }
+
+        // Resync second range [1024..2047].
+        env.ResyncController.WaitForResyncedRangeCount(2);
+
+        {
+            // Request to first device over an already resynchronized range
+            client.SendRequest(
+                env.ActorId,
+                std::make_unique<TEvGetDeviceForRangeRequest>(
+                    EPurpose::ForReading,
+                    TBlockRange64::WithLength(1024, 8)));
+            auto response = client.RecvResponse<TEvGetDeviceForRangeResponse>();
+            UNIT_ASSERT_C(
+                SUCCEEDED(response->GetStatus()),
+                response->GetErrorReason());
+            UNIT_ASSERT_STRING_CONTAINS(
+                response->Device.GetDeviceUUID(),
+                "vasya");
+        }
+
+        // Resync range [2048..3095].
+        env.ResyncController.WaitForResyncedRangeCount(3);
+
+        {   // Request to second device
+            client.SendRequest(
+                env.ActorId,
+                std::make_unique<TEvGetDeviceForRangeRequest>(
+                    EPurpose::ForReading,
+                    TBlockRange64::WithLength(2048, 8)));
+            auto response = client.RecvResponse<TEvGetDeviceForRangeResponse>();
+            UNIT_ASSERT_C(
+                SUCCEEDED(response->GetStatus()),
+                response->GetErrorReason());
+            UNIT_ASSERT_STRING_CONTAINS(
+                response->Device.GetDeviceUUID(),
+                "petya");
+        }
+        {   // Request on the border of two devices
+            client.SendRequest(
+                env.ActorId,
+                std::make_unique<TEvGetDeviceForRangeRequest>(
+                    EPurpose::ForReading,
+                    TBlockRange64::WithLength(2040, 16)));
+            auto response = client.RecvResponse<TEvGetDeviceForRangeResponse>();
+            UNIT_ASSERT_VALUES_EQUAL(E_ABORTED, response->Error.GetCode());
+        }
+        {   // Request with write purpose
+            client.SendRequest(
+                env.ActorId,
+                std::make_unique<TEvGetDeviceForRangeRequest>(
+                    EPurpose::ForWriting,
+                    TBlockRange64::WithLength(0, 16)));
+            auto response = client.RecvResponse<TEvGetDeviceForRangeResponse>();
+            UNIT_ASSERT_VALUES_EQUAL(E_ABORTED, response->Error.GetCode());
+        }
     }
 }
 
