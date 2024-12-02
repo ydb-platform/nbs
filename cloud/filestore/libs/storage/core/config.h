@@ -294,6 +294,7 @@ public:
     bool GetAutomaticShardCreationEnabled() const;
     ui64 GetShardAllocationUnit() const;
     ui64 GetAutomaticallyCreatedShardSize() const;
+    bool GetEnforceCorrectFileSystemShardCountUponSessionCreation() const;
 
     bool GetGuestWritebackCacheEnabled() const;
 };
