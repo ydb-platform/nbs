@@ -481,4 +481,11 @@ message TStorageConfig
 
     // Automatically created shards will be of this size.
     optional uint64 AutomaticallyCreatedShardSize = 409;
+
+    // Forbids session creation (forces E_REJECTED) if filesystem shard count
+    // calculated based on the filesystem's size is too small.
+    // We can't enable this logic by default yet since we need to maintain
+    // backward compatibility during the update which enables automatic
+    // sharding.
+    optional bool EnforceCorrectFileSystemShardCountUponSessionCreation = 410;
 }
