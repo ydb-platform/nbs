@@ -30,7 +30,7 @@ class FilestoreCliClient:
         auth_token=None,
         check_exit_code=True,
         return_json=False,
-        use_unix_socket=None,
+        unix_socket=None,
     ):
         self.__binary_path = binary_path
         self.__port = port
@@ -42,10 +42,7 @@ class FilestoreCliClient:
         self.__env = {}
         self.__check_exit_code = check_exit_code
         self.__return_json = return_json
-        if use_unix_socket is None:
-            self.__server_unix_socket_path = None
-        else:
-            self.__server_unix_socket_path = use_unix_socket
+        self.__server_unix_socket_path = unix_socket
         if auth_token is not None:
             self.__env = {"IAM_TOKEN": auth_token}
 

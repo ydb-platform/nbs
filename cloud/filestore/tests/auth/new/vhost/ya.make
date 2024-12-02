@@ -6,7 +6,6 @@ TEST_SRCS(
     test.py
 )
 
-
 DEPENDS(
     cloud/filestore/apps/client
     cloud/storage/core/tools/testing/access_service_new/mock
