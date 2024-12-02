@@ -87,6 +87,7 @@ void TIndexTabletActor::HandleAllocateData(
         ev->Sender,
         ev->Cookie,
         msg->CallContext);
+    requestInfo->StartedTs = ctx.Now();
 
     AddTransaction<TEvService::TAllocateDataMethod>(*requestInfo);
 

@@ -974,6 +974,7 @@ void TIndexTabletActor::HandleHttpInfo(
         ev->Sender,
         ev->Cookie,
         MakeIntrusive<TCallContext>());
+    requestInfo->StartedTs = ctx.Now();
 
     if (IsStateLoaded()) {
         auto methodType = GetHttpMethodType(*msg);

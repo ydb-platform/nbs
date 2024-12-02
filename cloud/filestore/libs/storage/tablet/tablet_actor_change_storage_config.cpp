@@ -63,6 +63,7 @@ void TIndexTabletActor::HandleChangeStorageConfig(
         ev->Sender,
         ev->Cookie,
         MakeIntrusive<TCallContext>());
+    requestInfo->StartedTs = ctx.Now();
 
     AddTransaction<TEvIndexTablet::TChangeStorageConfigMethod>(*requestInfo);
 
