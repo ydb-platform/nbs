@@ -999,9 +999,11 @@ TEST_P(TServerTest, ShouldStatAllZeroesBlocks)
     }
 
     // validate stats
-    const auto completeStats =
-        GetStats([](const TCompleteStats& stats)
-                 { return stats.CriticalEvents.size() != 0; });
+    const auto completeStats = GetStats(
+        [](const TCompleteStats& stats) {
+            return stats.CriticalEvents.size() != 0 &&
+                   stats.SimpleStats.EncryptorErrors != 0;
+        });
     const auto& stats = completeStats.SimpleStats;
 
     EXPECT_EQ(0u, stats.CompFailed);
@@ -1013,7 +1015,7 @@ TEST_P(TServerTest, ShouldStatAllZeroesBlocks)
 
     // validate crit events
     EXPECT_EQ(writeCount, completeStats.CriticalEvents.size());
-    for (auto& [sensorName, message]: completeStats.CriticalEvents) {
+    for (const auto& [sensorName, message]: completeStats.CriticalEvents) {
         EXPECT_EQ("EncryptorGeneratedZeroBlock", sensorName);
         EXPECT_EQ(
             true,
