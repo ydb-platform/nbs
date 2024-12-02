@@ -61,6 +61,7 @@ void TIndexTabletActor::HandleGetNodeAttr(
         ev->Sender,
         ev->Cookie,
         msg->CallContext);
+    requestInfo->StartedTs = ctx.Now();
 
     if (msg->Record.GetName()) {
         // access by parentId/name is a more common case. Try to get the result
@@ -251,6 +252,7 @@ void TIndexTabletActor::HandleGetNodeAttrBatch(
         ev->Sender,
         ev->Cookie,
         msg->CallContext);
+    requestInfo->StartedTs = ctx.Now();
 
     ui32 cacheHits = 0;
     NProtoPrivate::TGetNodeAttrBatchResponse result;

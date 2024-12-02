@@ -829,6 +829,7 @@ void TIndexTabletActor::HandleGetStorageStats(
         ev->Sender,
         ev->Cookie,
         ev->Get()->CallContext);
+    requestInfo->StartedTs = ctx.Now();
 
     auto actor = std::make_unique<TGetShardStatsActor>(
         LogTag,

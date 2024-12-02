@@ -141,6 +141,7 @@ void TIndexTabletActor::HandleCreateSession(
         ev->Sender,
         ev->Cookie,
         msg->CallContext);
+    requestInfo->StartedTs = ctx.Now();
 
     const auto expectedShardCount = CalculateExpectedShardCount();
     const auto actualShardCount = GetFileSystem().ShardFileSystemIdsSize();

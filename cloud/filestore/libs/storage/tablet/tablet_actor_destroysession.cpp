@@ -69,6 +69,7 @@ void TIndexTabletActor::HandleDestroySession(
         ev->Sender,
         ev->Cookie,
         msg->CallContext);
+    requestInfo->StartedTs = ctx.Now();
 
     AddTransaction<TEvIndexTablet::TDestroySessionMethod>(*requestInfo);
 
