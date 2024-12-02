@@ -83,7 +83,6 @@ class FilestoreDaemonConfigGenerator:
         self.__ic_port = self._port_manager.get_port() if ic_port is None else ic_port
         self.__access_service_type = access_service_type
         self.__access_service_port = access_service_port
-        self.__access_service_type = access_service_type
 
         self.__use_secure_registration = use_secure_registration
 
@@ -410,7 +409,7 @@ class FilestoreServerConfigGenerator(FilestoreDaemonConfigGenerator):
             use_secure_registration=use_secure_registration,
             secure=secure,
             access_service_type=access_service_type,
-            ic_port=ic_port,
+            ic_port=ic_port
         )
 
 

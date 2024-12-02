@@ -243,7 +243,7 @@ void TBootstrapVhost::InitComponents()
 
     if (Configs->Options->Service == EServiceKind::Kikimr) {
         EndpointManager = CreateAuthService(
-            EndpointManager,
+            std::move(EndpointManager),
             CreateKikimrAuthProvider(ActorSystem));
     }
 
