@@ -19,7 +19,6 @@ static constexpr int MODE0660 = S_IRGRP | S_IWGRP | S_IRUSR | S_IWUSR;
     xxx(ServiceEndpoints,           TVector<NProto::TServiceEndpoint>,  {}    )\
     xxx(RootKeyringName,            TString,                "nfs"             )\
     xxx(EndpointsKeyringName,       TString,                "nfs-endpoints"   )\
-    xxx(RequireEndpointsKeyring,    bool,                   false             )\
     xxx(EndpointStorageType,                                                   \
         NCloud::NProto::EEndpointStorageType,                                  \
         NCloud::NProto::ENDPOINT_STORAGE_KEYRING                              )\

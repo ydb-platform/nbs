@@ -1,5 +1,5 @@
+#include "endpoint_manager.h"
 #include "listener.h"
-#include "service.h"
 
 #include <cloud/filestore/libs/service/context.h>
 #include <cloud/filestore/libs/service/endpoint.h>
@@ -381,6 +381,47 @@ Y_UNIT_TEST_SUITE(TServiceEndpointTest)
         idsOrError = endpointStorage->GetEndpointIds();
         UNIT_ASSERT_C(!HasError(idsOrError), idsOrError.GetError());
         UNIT_ASSERT_VALUES_EQUAL(idsOrError.GetResult().size(), 1);
+    }
+
+    Y_UNIT_TEST(ShouldRestoreEndpoint)
+    {
+        TString id = "id";
+        TString unixSocket = "testSocket";
+
+        NProto::TStartEndpointRequest request;
+        auto* config = request.MutableEndpoint();
+        config->SetFileSystemId(id);
+        config->SetSocketPath(unixSocket);
+        config->SetClientId("client");
+        config->SetPersistent(true);
+
+        auto [endpointData, error] = SerializeEndpoint(request);
+        UNIT_ASSERT_C(!HasError(error), error);
+
+        const TString dirPath = "./" + CreateGuidAsString();
+        TTempDir endpointDir(dirPath);
+        auto endpointStorage = CreateFileEndpointStorage(dirPath);
+        auto endpoint = std::make_shared<TTestEndpoint>(*config, false);
+        endpoint->Start.SetValue(NProto::TError{});
+        endpointStorage->AddEndpoint(unixSocket, endpointData);
+
+        auto listener = std::make_shared<TTestEndpointListener>();
+
+        listener->CreateEndpointHandler =
+            [&] (const NProto::TEndpointConfig&) {
+                listener->Endpoints.push_back(endpoint);
+                return endpoint;
+            };
+
+        auto service = CreateEndpointManager(
+            CreateLoggingService("console"),
+            endpointStorage,
+            listener,
+            MODE0660);
+        service->Start();
+
+        service->RestoreEndpoints().GetValueSync();
+        UNIT_ASSERT_VALUES_EQUAL(1, listener->Endpoints.size());
     }
 }
 
