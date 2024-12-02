@@ -23,6 +23,10 @@ IF (NOT OPENSOURCE)
     SET_APPEND(RECIPE_ARGS --verbose)
 ENDIF()
 
+IF (USE_VHOST_UNIX_SOCKET)
+    SET_APPEND(RECIPE_ARGS --use-unix-socket)
+ENDIF()
+
 USE_RECIPE(
     cloud/filestore/tests/recipes/vhost/vhost-recipe
     ${RECIPE_ARGS}
