@@ -216,7 +216,6 @@ void TIndexTabletActor::CompleteTx_ListNodes(
             record.SetCookie(args.Next);
         }
 
-        Cerr << "ListNodes latency: " << (ctx.Now() - args.RequestInfo->StartedTs) << Endl;
         Metrics.ListNodes.Update(
             1,
             requestBytes,
