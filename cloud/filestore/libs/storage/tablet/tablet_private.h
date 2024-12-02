@@ -821,6 +821,10 @@ struct TEvIndexTabletPrivate
     struct TGetShardStatsCompleted
     {
         TInstant StartedTs;
+
+        TGetShardStatsCompleted(TInstant startedTs)
+            : StartedTs(startedTs)
+        {}
     };
 
     //
