@@ -21,6 +21,7 @@ void TIndexTabletActor::HandleUnsafeDeleteNode(
         ev->Sender,
         ev->Cookie,
         msg->CallContext);
+    requestInfo->StartedTs = ctx.Now();
 
     AddTransaction<TEvIndexTablet::TUnsafeDeleteNodeMethod>(*requestInfo);
 
@@ -104,6 +105,7 @@ void TIndexTabletActor::HandleUnsafeUpdateNode(
         ev->Sender,
         ev->Cookie,
         msg->CallContext);
+    requestInfo->StartedTs = ctx.Now();
 
     AddTransaction<TEvIndexTablet::TUnsafeUpdateNodeMethod>(*requestInfo);
 
@@ -207,6 +209,7 @@ void TIndexTabletActor::HandleUnsafeGetNode(
         ev->Sender,
         ev->Cookie,
         msg->CallContext);
+    requestInfo->StartedTs = ctx.Now();
 
     AddTransaction<TEvIndexTablet::TUnsafeGetNodeMethod>(*requestInfo);
 

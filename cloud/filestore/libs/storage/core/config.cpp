@@ -53,8 +53,10 @@ using TAliases = NProto::TStorageConfig::TFilestoreAliases;
     xxx(MaxBlocksPerTruncateTx,             ui32,   0 /*TODO: 32GiB/4KiB*/    )\
     xxx(MaxTruncateTxInflight,              ui32,   10                        )\
                                                                                \
-    xxx(AutomaticShardCreationEnabled,                  bool,   false         )\
-    xxx(MaxShardSize,                                   ui64,   4_TB          )\
+    xxx(AutomaticShardCreationEnabled,                          bool,   false )\
+    xxx(ShardAllocationUnit,                                    ui64,   4_TB  )\
+    xxx(AutomaticallyCreatedShardSize,                          ui64,   5_TB  )\
+    xxx(EnforceCorrectFileSystemShardCountUponSessionCreation,  bool,   false )\
                                                                                \
     xxx(MaxFileBlocks,                                  ui32,   300_GB / 4_KB )\
     xxx(LargeDeletionMarkersEnabled,                    bool,   false         )\
@@ -191,6 +193,7 @@ using TAliases = NProto::TStorageConfig::TFilestoreAliases;
     xxx(MultiTabletForwardingEnabled,                   bool,      false      )\
     xxx(GetNodeAttrBatchEnabled,                        bool,      false      )\
     xxx(AllowFileStoreForceDestroy,                     bool,      false      )\
+    xxx(AllowFileStoreDestroyWithOrphanSessions,        bool,      false      )\
     xxx(TrimBytesItemCount,                             ui64,      100'000    )\
     xxx(NodeRegistrationRootCertsFile,   TString,               {}            )\
     xxx(NodeRegistrationCert,            TCertificate,          {}            )\

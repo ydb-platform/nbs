@@ -335,6 +335,7 @@ void TIndexTabletActor::HandleCreateNode(
         ev->Sender,
         ev->Cookie,
         msg->CallContext);
+    requestInfo->StartedTs = ctx.Now();
 
     AddTransaction<TEvService::TCreateNodeMethod>(*requestInfo);
 
@@ -625,6 +626,11 @@ void TIndexTabletActor::CompleteTx_CreateNode(
         args.RequestInfo->CallContext,
         ctx);
 
+    Metrics.CreateNode.Update(
+        1,
+        0,
+        ctx.Now() - args.RequestInfo->StartedTs);
+
     NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
 }
 
@@ -654,6 +660,11 @@ void TIndexTabletActor::HandleNodeCreatedInShard(
                 msg->RequestInfo->CallContext,
                 ctx);
 
+            Metrics.CreateNode.Update(
+                1,
+                0,
+                ctx.Now() - msg->RequestInfo->StartedTs);
+
             // replying before DupCacheEntry is committed to reduce response
             // latency
             NCloud::Reply(ctx, *msg->RequestInfo, std::move(response));
@@ -677,6 +688,11 @@ void TIndexTabletActor::HandleNodeCreatedInShard(
                 response->Record,
                 msg->RequestInfo->CallContext,
                 ctx);
+
+            Metrics.CreateHandle.Update(
+                1,
+                0,
+                ctx.Now() - msg->RequestInfo->StartedTs);
 
             NCloud::Reply(ctx, *msg->RequestInfo, std::move(response));
         }

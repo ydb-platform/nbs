@@ -469,8 +469,22 @@ message TStorageConfig
     // config.
     optional bool AutomaticShardCreationEnabled = 405;
     // Affects shard count calculation if AutomaticShardCreationEnabled is on.
-    optional uint64 MaxShardSize = 406;
+    optional uint64 ShardAllocationUnit = 406;
 
     // Enable Writeback cache on guest (fuse client)
     optional bool GuestWritebackCacheEnabled = 407;
+
+    // Ignore orphan sessions upon filestore sessions check during destruction
+    // attempts.
+    optional bool AllowFileStoreDestroyWithOrphanSessions = 408;
+
+    // Automatically created shards will be of this size.
+    optional uint64 AutomaticallyCreatedShardSize = 409;
+
+    // Forbids session creation (forces E_REJECTED) if filesystem shard count
+    // calculated based on the filesystem's size is too small.
+    // We can't enable this logic by default yet since we need to maintain
+    // backward compatibility during the update which enables automatic
+    // sharding.
+    optional bool EnforceCorrectFileSystemShardCountUponSessionCreation = 410;
 }

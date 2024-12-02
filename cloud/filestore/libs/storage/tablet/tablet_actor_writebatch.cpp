@@ -263,6 +263,7 @@ void TIndexTabletActor::HandleWriteBatch(
         ev->Sender,
         ev->Cookie,
         msg->CallContext);
+    requestInfo->StartedTs = ctx.Now();
 
     bool skipFresh = batchInfo.Size >= Config->GetWriteBlobThreshold()
         && batchInfo.IsAligned;

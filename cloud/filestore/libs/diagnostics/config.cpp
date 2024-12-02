@@ -37,6 +37,9 @@ namespace {
     xxx(MonitoringUrlData,               TMonitoringUrlData,  {}              )\
     xxx(ReportHistogramAsMultipleCounters,  bool,            true             )\
     xxx(ReportHistogramAsSingleCounter,     bool,            false            )\
+                                                                               \
+    xxx(HDDFileSystemPerformanceProfile,    TFileSystemPerformanceProfile, {} )\
+    xxx(SSDFileSystemPerformanceProfile,    TFileSystemPerformanceProfile, {} )\
 // FILESTORE_DIAGNOSTICS_CONFIG
 
 #define FILESTORE_DIAGNOSTICS_DECLARE_CONFIG(name, type, value)                \
@@ -75,6 +78,32 @@ ConvertValue<TMonitoringUrlData, NProto::TMonitoringUrlData>(
     const NProto::TMonitoringUrlData& value)
 {
     return TMonitoringUrlData(value);
+}
+
+TRequestPerformanceProfile ConvertValue(
+    const NProto::TRequestPerformanceProfile& value)
+{
+    return {value.GetRPS(), value.GetThroughput()};
+}
+
+template <>
+TFileSystemPerformanceProfile ConvertValue<
+    TFileSystemPerformanceProfile,
+    NProto::TFileSystemPerformanceProfile>
+(
+    const NProto::TFileSystemPerformanceProfile& value)
+{
+    return {
+        ConvertValue(value.GetRead()),
+        ConvertValue(value.GetWrite()),
+        ConvertValue(value.GetListNodes()),
+        ConvertValue(value.GetGetNodeAttr()),
+        ConvertValue(value.GetCreateHandle()),
+        ConvertValue(value.GetDestroyHandle()),
+        ConvertValue(value.GetCreateNode()),
+        ConvertValue(value.GetRenameNode()),
+        ConvertValue(value.GetUnlinkNode()),
+        ConvertValue(value.GetStatFileStore())};
 }
 
 }   // namespace
@@ -168,5 +197,33 @@ void Out<NCloud::NFileStore::TMonitoringUrlData>(
     v.SetMonitoringClusterName(value.MonitoringClusterName);
     v.SetMonitoringUrl(value.MonitoringUrl);
     v.SetMonitoringProject(value.MonitoringProject);
+    SerializeToTextFormat(v, out);
+}
+
+void ConvertFromValue(
+    const NCloud::NFileStore::TRequestPerformanceProfile& v,
+    NCloud::NFileStore::NProto::TRequestPerformanceProfile* p)
+{
+    p->SetRPS(v.RPS);
+    p->SetThroughput(v.Throughput);
+}
+
+template <>
+void Out<NCloud::NFileStore::TFileSystemPerformanceProfile>(
+    IOutputStream& out,
+    const NCloud::NFileStore::TFileSystemPerformanceProfile& value)
+{
+    NCloud::NFileStore::NProto::TFileSystemPerformanceProfile v;
+    ConvertFromValue(value.Read, v.MutableRead());
+    ConvertFromValue(value.Write, v.MutableWrite());
+    ConvertFromValue(value.ListNodes, v.MutableListNodes());
+    ConvertFromValue(value.GetNodeAttr, v.MutableGetNodeAttr());
+    ConvertFromValue(value.CreateHandle, v.MutableCreateHandle());
+    ConvertFromValue(value.DestroyHandle, v.MutableDestroyHandle());
+    ConvertFromValue(value.CreateNode, v.MutableCreateNode());
+    ConvertFromValue(value.RenameNode, v.MutableRenameNode());
+    ConvertFromValue(value.UnlinkNode, v.MutableUnlinkNode());
+    ConvertFromValue(value.StatFileStore, v.MutableStatFileStore());
+
     SerializeToTextFormat(v, out);
 }

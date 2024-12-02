@@ -122,6 +122,7 @@ void TIndexTabletActor::HandleUpdateConfig(
         ev->Cookie,
         // external event
         MakeIntrusive<TCallContext>(GetFileSystemId()));
+    requestInfo->StartedTs = ctx.Now();
 
     const ui64 txId = msg->Record.GetTxId();
 
@@ -133,7 +134,7 @@ void TIndexTabletActor::HandleUpdateConfig(
         // autosharding params are deliberately applied upon FS creation
         newConfig.SetAutomaticShardCreationEnabled(
             Config->GetAutomaticShardCreationEnabled());
-        newConfig.SetMaxShardSize(Config->GetMaxShardSize());
+        newConfig.SetShardAllocationUnit(Config->GetShardAllocationUnit());
 
         LOG_INFO(ctx,TFileStoreComponents::TABLET,
             "%s Starting tablet config initialization [txId: %d]"
@@ -141,7 +142,7 @@ void TIndexTabletActor::HandleUpdateConfig(
             LogTag.c_str(),
             txId,
             Config->GetAutomaticShardCreationEnabled(),
-            Config->GetMaxShardSize());
+            Config->GetShardAllocationUnit());
 
         // First config update on tablet creation. No need to validate config.
         ExecuteTx<TUpdateConfig>(
@@ -159,7 +160,7 @@ void TIndexTabletActor::HandleUpdateConfig(
     newConfig.SetShardNo(oldConfig.GetShardNo());
     newConfig.SetAutomaticShardCreationEnabled(
         oldConfig.GetAutomaticShardCreationEnabled());
-    newConfig.SetMaxShardSize(oldConfig.GetMaxShardSize());
+    newConfig.SetShardAllocationUnit(oldConfig.GetShardAllocationUnit());
 
     // Config update occured due to alter/resize.
     if (auto error = ValidateUpdateConfigRequest(oldConfig, newConfig)) {
@@ -238,7 +239,7 @@ void TIndexTabletActor::CompleteTx_UpdateConfig(
     // update tablet id and stat counters w proper volume information
     UpdateLogTag();
     RegisterFileStore(ctx);
-    RegisterStatCounters();
+    RegisterStatCounters(ctx.Now());
     ResetThrottlingPolicy();
 
     LOG_DEBUG(ctx, TFileStoreComponents::TABLET,
@@ -267,6 +268,7 @@ void TIndexTabletActor::HandleConfigureShards(
         ev->Cookie,
         // external event
         MakeIntrusive<TCallContext>(GetFileSystemId()));
+    requestInfo->StartedTs = ctx.Now();
 
     const auto& shardIds = GetFileSystem().GetShardFileSystemIds();
     NProto::TError error;
@@ -374,6 +376,7 @@ void TIndexTabletActor::HandleConfigureAsShard(
         ev->Cookie,
         // external event
         MakeIntrusive<TCallContext>(GetFileSystemId()));
+    requestInfo->StartedTs = ctx.Now();
 
     const auto currentShardNo = GetFileSystem().GetShardNo();
     if (currentShardNo && currentShardNo != msg->Record.GetShardNo()) {

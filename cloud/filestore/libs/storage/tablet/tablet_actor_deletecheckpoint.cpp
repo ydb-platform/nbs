@@ -40,6 +40,7 @@ void TIndexTabletActor::HandleDeleteCheckpoint(
         ev->Sender,
         ev->Cookie,
         msg->CallContext);
+    requestInfo->StartedTs = ctx.Now();
 
     AddTransaction<TEvIndexTabletPrivate::TDeleteCheckpointMethod>(*requestInfo);
 

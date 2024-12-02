@@ -25,11 +25,11 @@ void TIndexTabletActor::HandleDumpCompactionRange(
         msg->CallContext,
         "DumpCompactionRange");
 
-    auto requestInfo =
-        CreateRequestInfo(
-            ev->Sender,
-            ev->Cookie,
-            msg->CallContext);
+    auto requestInfo = CreateRequestInfo(
+        ev->Sender,
+        ev->Cookie,
+        msg->CallContext);
+    requestInfo->StartedTs = ctx.Now();
 
     ExecuteTx<TDumpCompactionRange>(
         ctx,

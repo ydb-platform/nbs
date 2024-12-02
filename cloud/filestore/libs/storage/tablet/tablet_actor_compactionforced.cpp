@@ -313,6 +313,7 @@ void TIndexTabletActor::HandleForcedRangeOperation(
         ev->Sender,
         ev->Cookie,
         msg->CallContext);
+    requestInfo->StartedTs = ctx.Now();
 
     // will lose original request info in case of enqueueing external request
     if (IsForcedRangeOperationRunning()) {

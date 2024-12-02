@@ -226,6 +226,7 @@ public:
     NProto::EBlobIndexOpsPriority GetBlobIndexOpsPriority() const;
 
     bool GetAllowFileStoreForceDestroy() const;
+    bool GetAllowFileStoreDestroyWithOrphanSessions() const;
 
     ui32 GetMaxZeroCompactionRangesToDeletePerTx() const;
     ui64 GetTrimBytesItemCount() const;
@@ -288,7 +289,9 @@ public:
     bool GetThreeStageWriteDisabledForHDD() const;
 
     bool GetAutomaticShardCreationEnabled() const;
-    ui64 GetMaxShardSize() const;
+    ui64 GetShardAllocationUnit() const;
+    ui64 GetAutomaticallyCreatedShardSize() const;
+    bool GetEnforceCorrectFileSystemShardCountUponSessionCreation() const;
 
     bool GetGuestWritebackCacheEnabled() const;
 };

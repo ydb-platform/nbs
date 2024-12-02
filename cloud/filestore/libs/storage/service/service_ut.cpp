@@ -6185,7 +6185,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
     {
         NProto::TStorageConfig config;
         config.SetAutomaticShardCreationEnabled(true);
-        config.SetMaxShardSize(1_GB);
+        config.SetShardAllocationUnit(1_GB);
+        config.SetAutomaticallyCreatedShardSize(2_GB);
         TTestEnv env({}, config);
         env.CreateSubDomain("nfs");
 
@@ -6206,11 +6207,31 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
             {fsId, fsId + "_s1", fsId + "_s2"});
     }
 
+    Y_UNIT_TEST(ShouldNotConfigureShardsAutomaticallyForSmallFileSystems)
+    {
+        NProto::TStorageConfig config;
+        config.SetAutomaticShardCreationEnabled(true);
+        config.SetShardAllocationUnit(1_GB);
+        config.SetAutomaticallyCreatedShardSize(2_GB);
+        TTestEnv env({}, config);
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+
+        const TString fsId = "test";
+
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+        service.CreateFileStore(fsId, (1_GB - 4_KB) / 4_KB);
+
+        DoTestShardedFileSystemConfigured(fsId, service, {fsId});
+    }
+
     Y_UNIT_TEST(ShouldHandleErrorsDuringShardedFileSystemCreation)
     {
         NProto::TStorageConfig config;
         config.SetAutomaticShardCreationEnabled(true);
-        config.SetMaxShardSize(1_GB);
+        config.SetShardAllocationUnit(1_GB);
+        config.SetAutomaticallyCreatedShardSize(2_GB);
         TTestEnv env({}, config);
         env.CreateSubDomain("nfs");
 
@@ -6373,7 +6394,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
     {
         NProto::TStorageConfig config;
         config.SetAutomaticShardCreationEnabled(true);
-        config.SetMaxShardSize(1_GB);
+        config.SetShardAllocationUnit(1_GB);
+        config.SetAutomaticallyCreatedShardSize(2_GB);
         TTestEnv env({}, config);
         env.CreateSubDomain("nfs");
 
@@ -6424,7 +6446,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
     {
         NProto::TStorageConfig config;
         config.SetAutomaticShardCreationEnabled(true);
-        config.SetMaxShardSize(1_GB);
+        config.SetShardAllocationUnit(1_GB);
+        config.SetAutomaticallyCreatedShardSize(2_GB);
         TTestEnv env({}, config);
         env.CreateSubDomain("nfs");
 
@@ -6564,7 +6587,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
     {
         NProto::TStorageConfig config;
         config.SetAutomaticShardCreationEnabled(true);
-        config.SetMaxShardSize(1_GB);
+        config.SetShardAllocationUnit(1_GB);
+        config.SetAutomaticallyCreatedShardSize(2_GB);
         TTestEnv env({}, config);
         env.CreateSubDomain("nfs");
 
@@ -6593,11 +6617,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         Sort(ids);
         UNIT_ASSERT_VALUES_EQUAL(expected, ids);
 
-        service.ResizeFileStore(fsId, (3_GB + 4_KB) / 4_KB);
+        service.ResizeFileStore(fsId, (4_GB - 4_KB) / 4_KB);
 
-        expected = TVector<TString>{
-            fsId, fsId + "_s1", fsId + "_s2", fsId + "_s3", fsId + "_s4"
-        };
         listing = service.ListFileStores();
         fsIds = listing->Record.GetFileStores();
         ids = TVector<TString>(fsIds.begin(), fsIds.end());
@@ -6606,6 +6627,9 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
 
         service.ResizeFileStore(fsId, 4_GB / 4_KB);
 
+        expected = TVector<TString>{
+            fsId, fsId + "_s1", fsId + "_s2", fsId + "_s3", fsId + "_s4"
+        };
         listing = service.ListFileStores();
         fsIds = listing->Record.GetFileStores();
         ids = TVector<TString>(fsIds.begin(), fsIds.end());
@@ -6617,7 +6641,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
     {
         NProto::TStorageConfig config;
         config.SetAutomaticShardCreationEnabled(true);
-        config.SetMaxShardSize(1_GB);
+        config.SetShardAllocationUnit(1_GB);
+        config.SetAutomaticallyCreatedShardSize(2_GB);
         TTestEnv env({}, config);
         env.CreateSubDomain("nfs");
 

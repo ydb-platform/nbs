@@ -563,6 +563,7 @@ void TIndexTabletActor::HandleFlushBytes(
         ev->Sender,
         ev->Cookie,
         msg->CallContext);
+    requestInfo->StartedTs = ctx.Now();
 
     TVector<TBytes> bytes;
     // deletionMarkers won't be needed in the transactions - the actual localdb
@@ -888,6 +889,7 @@ void TIndexTabletActor::HandleFlushBytesCompleted(
         ev->Sender,
         ev->Cookie,
         msg->CallContext);
+    requestInfo->StartedTs = ctx.Now();
 
     FILESTORE_TRACK(
         BackgroundRequestReceived_Tablet,

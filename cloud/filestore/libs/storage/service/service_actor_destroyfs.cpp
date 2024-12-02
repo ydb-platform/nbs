@@ -25,6 +25,7 @@ private:
     const TRequestInfoPtr RequestInfo;
     const TString FileSystemId;
     const bool ForceDestroy;
+    const bool AllowFileStoreDestroyWithOrphanSessions;
     TVector<TString> ShardIds;
     ui32 DestroyedShardCount = 0;
 
@@ -32,7 +33,8 @@ public:
     TDestroyFileStoreActor(
         TRequestInfoPtr requestInfo,
         TString fileSystemId,
-        bool forceDestroy);
+        bool forceDestroy,
+        bool allowFileStoreDestroyWithOrphanSessions);
 
     void Bootstrap(const TActorContext& ctx);
 
@@ -70,10 +72,13 @@ private:
 TDestroyFileStoreActor::TDestroyFileStoreActor(
         TRequestInfoPtr requestInfo,
         TString fileSystemId,
-        bool forceDestroy)
+        bool forceDestroy,
+        bool allowFileStoreDestroyWithOrphanSessions)
     : RequestInfo(std::move(requestInfo))
     , FileSystemId(std::move(fileSystemId))
     , ForceDestroy(forceDestroy)
+    , AllowFileStoreDestroyWithOrphanSessions(
+        allowFileStoreDestroyWithOrphanSessions)
 {}
 
 void TDestroyFileStoreActor::Bootstrap(const TActorContext& ctx)
@@ -120,7 +125,18 @@ void TDestroyFileStoreActor::HandleDescribeSessionsResponse(
         return;
     }
 
-    if (msg->Record.SessionsSize() != 0) {
+    bool haveSessions = msg->Record.SessionsSize() != 0;
+    if (AllowFileStoreDestroyWithOrphanSessions) {
+        haveSessions = false;
+        for (const auto& s: msg->Record.GetSessions()) {
+            if (!s.GetIsOrphan()) {
+                haveSessions = true;
+                break;
+            }
+        }
+    }
+
+    if (haveSessions) {
         TStringBuilder message;
         message << "FileStore has active sessions with client ids:";
         for (const auto& sessionInfo: msg->Record.GetSessions()) {
@@ -345,7 +361,8 @@ void TStorageServiceActor::HandleDestroyFileStore(
     auto actor = std::make_unique<TDestroyFileStoreActor>(
         std::move(requestInfo),
         msg->Record.GetFileSystemId(),
-        forceDestroy);
+        forceDestroy,
+        StorageConfig->GetAllowFileStoreDestroyWithOrphanSessions());
 
     NCloud::Register(ctx, std::move(actor));
 }

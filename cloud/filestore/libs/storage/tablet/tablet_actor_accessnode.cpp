@@ -37,6 +37,7 @@ void TIndexTabletActor::HandleAccessNode(
         ev->Sender,
         ev->Cookie,
         msg->CallContext);
+    requestInfo->StartedTs = ctx.Now();
 
     AddTransaction<TEvService::TAccessNodeMethod>(*requestInfo);
 
