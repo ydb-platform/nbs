@@ -7,7 +7,7 @@
 
 #include <util/stream/str.h>
 
-#include <cloud/filestore/libs/xsl/xsl_render.h>
+#include <cloud/storage/core/libs/xsl_render/xsl_render.h>
 
 namespace {
     const char* xslTemplate =

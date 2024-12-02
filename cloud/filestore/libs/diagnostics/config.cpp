@@ -160,7 +160,7 @@ void TDiagnosticsConfig::Dump(IOutputStream& out) const
 
 void TDiagnosticsConfig::DumpXml(NXml::TNode& root) const
 {
-    auto props = root.AddChild("config_propertiries", " ");
+    auto props = root.AddChild("config_properties", " ");
     TStringStream out;
     NXml::TNode cd;
 #define FILESTORE_CONFIG_DUMP(name, ...)                                       \

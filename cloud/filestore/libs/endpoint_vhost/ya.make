@@ -13,8 +13,7 @@ PEERDIR(
 
     cloud/storage/core/libs/common
     cloud/storage/core/libs/diagnostics
-
-    library/cpp/xml/document
+    cloud/storage/core/libs/xsl_render
 
     cloud/contrib/vhost
 )

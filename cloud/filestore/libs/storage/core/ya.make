@@ -17,11 +17,11 @@ PEERDIR(
     cloud/filestore/public/api/protos
 
     cloud/storage/core/libs/common
+    cloud/storage/core/libs/xsl_render
 
     contrib/ydb/library/actors/core
     library/cpp/deprecated/atomic
     library/cpp/lwtrace
-    library/cpp/xml/document
 
     contrib/ydb/core/base
     contrib/ydb/core/engine/minikql

@@ -19,6 +19,7 @@ PEERDIR(
     cloud/storage/core/libs/grpc
     cloud/storage/core/libs/uds
     cloud/storage/core/protos
+    cloud/storage/core/libs/xsl_render
 
     library/cpp/deprecated/atomic
     library/cpp/lwtrace

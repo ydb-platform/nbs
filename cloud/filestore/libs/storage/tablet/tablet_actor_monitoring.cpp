@@ -1,5 +1,4 @@
 #include "tablet_actor.h"
-#include "cloud/filestore/libs/xsl/xsl_render.h"
 
 #include <cloud/filestore/libs/diagnostics/config.h>
 #include <cloud/filestore/libs/storage/tablet/tablet_state.h>
@@ -8,6 +7,7 @@
 #include <cloud/storage/core/libs/kikimr/tenant.h>
 #include <cloud/storage/core/libs/throttling/tablet_throttler.h>
 #include <cloud/storage/core/libs/viewer/tablet_monitoring.h>
+#include <cloud/storage/core/libs/xsl_render/xsl_render.h>
 
 #include <library/cpp/monlib/service/pages/templates.h>
 #include <library/cpp/protobuf/util/is_equal.h>

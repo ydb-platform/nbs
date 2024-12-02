@@ -28,9 +28,9 @@ PEERDIR(
 
     cloud/storage/core/libs/common
     cloud/storage/core/libs/diagnostics
+    cloud/storage/core/libs/xsl_render
 
     library/cpp/protobuf/util
-    library/cpp/xml/document
 
     contrib/libs/protobuf
 )

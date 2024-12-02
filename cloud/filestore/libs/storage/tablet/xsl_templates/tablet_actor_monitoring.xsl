@@ -297,10 +297,28 @@ R"(<?xml version="1.0" encoding="UTF-8"?>
                         <td>PoolKind: <xsl:value-of select="pool_kind"/></td>
                         <td>DataKind: <xsl:value-of select="data_kind"/></td>
                         <td>
-                            <span class="label">
-                                <xsl:attribute name="style">background-color: <xsl:value-of select="color"/></xsl:attribute>
-                                <xsl:value-of select="label"/><xsl:if test="free != 0"> free=<xsl:value-of select="free"/></xsl:if>
-                            </span>
+                            <xsl:choose>
+                                <xsl:when test="system_writable">
+                                    <xsl:choose>
+                                        <xsl:when test="writable">
+                                            <span class="label" style="background-color: green">Writable<xsl:if test="free != 0"> free=<xsl:value-of select="free"/>%</xsl:if></span>
+                                        </xsl:when>
+                                        <xsl:otherwise>
+                                            <span class="label" style="background-color: yellow">SystemWritable<xsl:if test="free != 0"> free=<xsl:value-of select="free"/>%</xsl:if></span>
+                                        </xsl:otherwise>
+                                    </xsl:choose>
+                                </xsl:when>
+                                <xsl:otherwise>
+                                    <xsl:choose>
+                                        <xsl:when test="writable">
+                                            <span class="label" style="background-color: pink">WeirdState<xsl:if test="free != 0"> free=<xsl:value-of select="free"/>%</xsl:if></span>
+                                        </xsl:when>
+                                        <xsl:otherwise>
+                                            <span class="label" style="background-color: orange">Readonly<xsl:if test="free != 0"> free=<xsl:value-of select="free"/>%</xsl:if></span>
+                                        </xsl:otherwise>
+                                    </xsl:choose>
+                                </xsl:otherwise>
+                            </xsl:choose>
                         </td>
                         <td>
                             <a>
@@ -387,7 +405,7 @@ R"(<?xml version="1.0" encoding="UTF-8"?>
     <xsl:if test="storage_config">
         <h3>StorageConfig overrides</h3>
         <table class="table table-bordered table-sortable">
-            <xsl:for-each select="storage_config/config_propertiries/cd">
+            <xsl:for-each select="storage_config/config_properties/cd">
                 <tr>
                     <td><xsl:value-of select="name"/></td>
                     <td><xsl:value-of select="value"/></td>

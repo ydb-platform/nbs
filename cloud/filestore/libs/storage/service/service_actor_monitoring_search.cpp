@@ -1,7 +1,7 @@
 #include "service_actor.h"
 
 #include <cloud/filestore/libs/storage/api/ss_proxy.h>
-#include <cloud/filestore/libs/xsl/xsl_render.h>
+#include <cloud/storage/core/libs/xsl_render/xsl_render.h>
 
 #include <library/cpp/monlib/service/pages/templates.h>
 

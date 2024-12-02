@@ -99,19 +99,17 @@ PEERDIR(
     cloud/filestore/libs/storage/tablet/model
     cloud/filestore/libs/storage/tablet/protos
 
-    cloud/filestore/libs/xsl
-
     cloud/storage/core/libs/api
     cloud/storage/core/libs/common
     cloud/storage/core/libs/diagnostics
     cloud/storage/core/libs/tablet
     cloud/storage/core/libs/tablet/model
     cloud/storage/core/libs/viewer
+    cloud/storage/core/libs/xsl_render
     cloud/storage/core/protos
 
     contrib/ydb/library/actors/core
     library/cpp/protobuf/json
-    library/cpp/xml/document
 
     contrib/ydb/core/base
     contrib/ydb/core/filestore/core

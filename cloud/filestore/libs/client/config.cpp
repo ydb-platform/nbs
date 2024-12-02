@@ -132,7 +132,7 @@ void TClientConfig::Dump(IOutputStream& out) const
 
 void TClientConfig::DumpXml(NXml::TNode& root) const
 {
-    auto props = root.AddChild("config_propertiries", " ");
+    auto props = root.AddChild("config_properties", " ");
     TStringStream out;
     NXml::TNode cd;
 #define FILESTORE_CONFIG_DUMP(name, ...)                                       \
@@ -177,7 +177,7 @@ void TSessionConfig::Dump(IOutputStream& out) const
 
 void TSessionConfig::DumpXml(NXml::TNode& root) const
 {
-    auto props = root.AddChild("config_propertiries", " ");
+    auto props = root.AddChild("config_properties", " ");
     TStringStream out;
     NXml::TNode cd;
 #define FILESTORE_CONFIG_DUMP(name, ...)                                       \

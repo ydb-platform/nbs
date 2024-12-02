@@ -137,7 +137,7 @@ void TVhostServiceConfig::Dump(IOutputStream& out) const
 
 void TVhostServiceConfig::DumpXml(NXml::TNode& root) const
 {
-    auto props = root.AddChild("config_propertiries", " ");
+    auto props = root.AddChild("config_properties", " ");
     TStringStream out;
     NXml::TNode cd;
 #define VHOST_CONFIG_DUMP(name, ...)                                           \

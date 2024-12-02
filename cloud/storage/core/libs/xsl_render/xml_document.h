@@ -1,0 +1,14 @@
+#pragma once
+
+#ifdef THROW
+#define THROW_OLD THROW
+#undef THROW
+#endif
+
+#include <library/cpp/xml/document/xml-document.h>
+#undef THROW
+
+#ifdef THROW_OLD
+#define THROW THROW_OLD
+#undef THROW_OLD
+#endif

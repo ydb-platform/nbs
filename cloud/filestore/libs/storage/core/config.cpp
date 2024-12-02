@@ -402,7 +402,7 @@ void TStorageConfig::Dump(IOutputStream& out) const
 
 void TStorageConfig::DumpXml(NXml::TNode& root) const
 {
-    auto props = root.AddChild("config_propertiries", " ");
+    auto props = root.AddChild("config_properties", " ");
     TStringStream out;
     NXml::TNode cd;
 #define FILESTORE_DUMP_CONFIG(name, ...)                                       \
@@ -421,7 +421,7 @@ void TStorageConfig::DumpXml(NXml::TNode& root) const
 
 void TStorageConfig::DumpOverridesXml(NXml::TNode& root) const
 {
-    auto props = root.AddChild("config_propertiries", " ");
+    auto props = root.AddChild("config_properties", " ");
     TStringStream out;
     NXml::TNode cd;
 #define FILESTORE_DUMP_CONFIG(name, ...) {                                     \

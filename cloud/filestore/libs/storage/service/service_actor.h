@@ -21,18 +21,7 @@
 #include <contrib/ydb/library/actors/core/log.h>
 #include <contrib/ydb/library/actors/core/mon.h>
 
-#ifdef THROW
-#define THROW_OLD THROW
-#undef THROW
-#endif
-
-#include <library/cpp/xml/document/xml-document.h>
-#undef THROW
-
-#ifdef THROW_OLD
-#define THROW THROW_OLD
-#undef THROW_OLD
-#endif
+#include <cloud/storage/core/libs/xsl_render/xml_document.h>
 
 namespace NCloud::NFileStore::NProto {
     class TProfileLogRequestInfo;

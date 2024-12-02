@@ -66,7 +66,7 @@ R"(<?xml version="1.0" encoding="UTF-8"?>
         <h3>Config</h3>
         <table class="table table-condensed">
             <tbody>
-                <xsl:for-each select="config_table/config_propertiries/cd">
+                <xsl:for-each select="config_table/config_properties/cd">
                     <tr>
                         <td><xsl:value-of select="name"/></td>
                         <td><xsl:value-of select="value"/></td>

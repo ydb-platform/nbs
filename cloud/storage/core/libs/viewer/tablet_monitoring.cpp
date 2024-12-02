@@ -169,11 +169,12 @@ void DumpChannelsXml(
         cd.AddChild("generation", latestEntry->FromGeneration);
         cd.AddChild("pool_kind", channelInfo.PoolKind);
         cd.AddChild("data_kind", channelInfo.DataKind);
-        TStringBuf label;
-        TStringBuf color;
-        setWritable(label, color, channelInfo.Writable, channelInfo.SystemWritable);
-        cd.AddChild("color", color);
-        cd.AddChild("label", label);
+        if (channelInfo.SystemWritable) {
+            cd.AddChild("system_writable");
+        }
+        if (channelInfo.Writable) {
+            cd.AddChild("writable");
+        }
         cd.AddChild("free", static_cast<ui32>(channelInfo.FreeSpaceShare * 100));
         const auto groupUrl = getGroupUrl(latestEntry->GroupID, channel.StoragePool);
         if (groupUrl) {
