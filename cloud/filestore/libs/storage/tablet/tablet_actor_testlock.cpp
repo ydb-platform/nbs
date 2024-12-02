@@ -54,6 +54,7 @@ void TIndexTabletActor::HandleTestLock(
         ev->Sender,
         ev->Cookie,
         msg->CallContext);
+    requestInfo->StartedTs = ctx.Now();
 
     AddTransaction<TEvService::TTestLockMethod>(*requestInfo);
 

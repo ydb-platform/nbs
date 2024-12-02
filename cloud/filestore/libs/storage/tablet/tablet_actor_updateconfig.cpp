@@ -122,6 +122,7 @@ void TIndexTabletActor::HandleUpdateConfig(
         ev->Cookie,
         // external event
         MakeIntrusive<TCallContext>(GetFileSystemId()));
+    requestInfo->StartedTs = ctx.Now();
 
     const ui64 txId = msg->Record.GetTxId();
 
@@ -267,6 +268,7 @@ void TIndexTabletActor::HandleConfigureShards(
         ev->Cookie,
         // external event
         MakeIntrusive<TCallContext>(GetFileSystemId()));
+    requestInfo->StartedTs = ctx.Now();
 
     const auto& shardIds = GetFileSystem().GetShardFileSystemIds();
     NProto::TError error;
@@ -374,6 +376,7 @@ void TIndexTabletActor::HandleConfigureAsShard(
         ev->Cookie,
         // external event
         MakeIntrusive<TCallContext>(GetFileSystemId()));
+    requestInfo->StartedTs = ctx.Now();
 
     const auto currentShardNo = GetFileSystem().GetShardNo();
     if (currentShardNo && currentShardNo != msg->Record.GetShardNo()) {

@@ -352,6 +352,7 @@ void TIndexTabletActor::HandleLoadCompactionMapChunk(
         ev->Sender,
         ev->Cookie,
         msg->CallContext);
+    requestInfo->StartedTs = ctx.Now();
 
     ExecuteTx<TLoadCompactionMapChunk>(
         ctx,

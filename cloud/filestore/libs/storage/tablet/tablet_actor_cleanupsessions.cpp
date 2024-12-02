@@ -403,6 +403,7 @@ void TIndexTabletActor::HandleSyncSessions(
         ev->Sender,
         ev->Cookie,
         msg->CallContext);
+    requestInfo->StartedTs = ctx.Now();
 
     auto actor = std::make_unique<TSyncShardSessionsActor>(
         LogTag,
@@ -481,6 +482,7 @@ void TIndexTabletActor::HandleCleanupSessions(
         ev->Sender,
         ev->Cookie,
         msg->CallContext);
+    requestInfo->StartedTs = ctx.Now();
 
     auto actor = std::make_unique<TCleanupSessionsActor>(
         LogTag,

@@ -180,6 +180,7 @@ void TIndexTabletActor::HandleTruncate(
         ev->Sender,
         ev->Cookie,
         msg->CallContext);
+    requestInfo->StartedTs = ctx.Now();
 
     FILESTORE_TRACK(
         BackgroundTaskStarted_Tablet,
@@ -215,6 +216,7 @@ void TIndexTabletActor::HandleTruncateCompleted(
         ev->Sender,
         ev->Cookie,
         MakeIntrusive<TCallContext>(GetFileSystemId()));
+    requestInfo->StartedTs = ctx.Now();
 
     ExecuteTx<TTruncateCompleted>(
         ctx,
@@ -275,6 +277,7 @@ void TIndexTabletActor::HandleTruncateRange(
         ev->Sender,
         ev->Cookie,
         msg->CallContext);
+    requestInfo->StartedTs = ctx.Now();
 
     FILESTORE_TRACK(
         BackgroundRequestReceived_Tablet,

@@ -333,6 +333,7 @@ void TIndexTabletActor::HandleReadBlob(
         ev->Sender,
         ev->Cookie,
         msg->CallContext);
+    requestInfo->StartedTs = ctx.Now();
 
     FILESTORE_TRACK(
         BackgroundRequestReceived_Tablet,
