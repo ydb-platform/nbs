@@ -63,7 +63,7 @@ func (t *createImageFromSnapshotTask) Run(
 		srcSnapshotEncryption = srcSnapshotMeta.Encryption
 	}
 
-	imageMeta, err := t.storage.CreateImage(ctx, resources.ImageMeta{
+	_, err = t.storage.CreateImage(ctx, resources.ImageMeta{
 		ID:                t.request.DstImageId,
 		FolderID:          t.request.FolderId,
 		SrcSnapshotID:     t.request.SrcSnapshotId,
@@ -76,13 +76,6 @@ func (t *createImageFromSnapshotTask) Run(
 	})
 	if err != nil {
 		return err
-	}
-
-	if imageMeta == nil {
-		return errors.NewNonCancellableErrorf(
-			"id %v is not accepted",
-			t.request.DstImageId,
-		)
 	}
 
 	srcIsDataplane := srcSnapshotMeta != nil && srcSnapshotMeta.UseDataplaneTasks

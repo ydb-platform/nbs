@@ -88,10 +88,10 @@ func (s *StorageMock) ListDisks(
 func (s *StorageMock) CreateImage(
 	ctx context.Context,
 	image resources.ImageMeta,
-) (*resources.ImageMeta, error) {
+) (resources.ImageMeta, error) {
 
 	args := s.Called(ctx, image)
-	return args.Get(0).(*resources.ImageMeta), args.Error(1)
+	return args.Get(0).(resources.ImageMeta), args.Error(1)
 }
 
 func (s *StorageMock) ImageCreated(
@@ -161,10 +161,10 @@ func (s *StorageMock) ListImages(
 func (s *StorageMock) CreateSnapshot(
 	ctx context.Context,
 	snapshot resources.SnapshotMeta,
-) (*resources.SnapshotMeta, error) {
+) (resources.SnapshotMeta, error) {
 
 	args := s.Called(ctx, snapshot)
-	return args.Get(0).(*resources.SnapshotMeta), args.Error(1)
+	return args.Get(0).(resources.SnapshotMeta), args.Error(1)
 }
 
 func (s *StorageMock) SnapshotCreated(

@@ -1,4 +1,4 @@
-#include "service.h"
+#include "endpoint_manager.h"
 
 #include "listener.h"
 
@@ -12,6 +12,8 @@
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 #include <cloud/storage/core/libs/endpoints/iface/endpoints.h>
 
+#include <util/generic/guid.h>
+#include <util/system/hostname.h>
 #include <util/generic/map.h>
 #include <util/system/sysstat.h>
 
@@ -165,6 +167,73 @@ private:                                                                       \
 #undef FILESTORE_IMPLEMENT_METHOD
 
 private:
+    TFuture<void> RestoreEndpoints() override
+    {
+        return Executor->Execute([weakSelf = weak_from_this()] () mutable {
+            if (auto self = weakSelf.lock()) {
+                auto future = self->DoRestoreEndpoints();
+                self->Executor->WaitFor(future);
+            }
+        });
+    }
+
+    TFuture<void> DoRestoreEndpoints()
+    {
+        auto idsOrError = Storage->GetEndpointIds();
+
+        if (HasError(idsOrError)) {
+            STORAGE_ERROR("Failed to get endpoints from storage: "
+                << FormatError(idsOrError.GetError()));
+            return MakeFuture();
+        }
+
+        const auto& storedIds = idsOrError.GetResult();
+        STORAGE_INFO("Found " << storedIds.size() << " endpoints in storage");
+
+        auto clientId = CreateGuidAsString();
+        auto originFqdn = GetFQDNHostName();
+
+        TVector<TFuture<void>> futures;
+        for (auto keyringId: storedIds) {
+            auto requestOrError = Storage->GetEndpoint(keyringId);
+            if (HasError(requestOrError)) {
+                STORAGE_WARN("Failed to restore endpoint. ID: " << keyringId
+                    << ", error: " << FormatError(requestOrError.GetError()));
+                continue;
+            }
+
+            auto request = DeserializeEndpoint<NProto::TStartEndpointRequest>(
+                requestOrError.GetResult());
+
+            if (!request) {
+                // TODO: report critical error
+                STORAGE_ERROR("Failed to deserialize request. ID: " << keyringId);
+                continue;
+            }
+
+            auto requestId = CreateRequestId();
+            request->MutableHeaders()->SetRequestId(requestId);
+            request->MutableHeaders()->SetClientId(clientId);
+            request->MutableHeaders()->SetOriginFqdn(originFqdn);
+
+            auto future = StartEndpoint(
+                MakeIntrusive<TCallContext>(requestId),
+                std::move(request));
+
+            future.Subscribe([=] (const auto& f) {
+                const auto& response = f.GetValue();
+                if (HasError(response)) {
+                    // TODO: report critical error
+                    STORAGE_ERROR("Failed to start endpoint: "
+                        << FormatError(response.GetError()));
+                }
+            });
+            futures.push_back(future.IgnoreResult());
+        }
+
+        return WaitAll(futures);
+    }
+
     void AddStartingSocket(
         const TString& socketPath,
         const NProto::TStartEndpointRequest& request,
@@ -433,6 +502,11 @@ class TNullEndpointManager final
 
     void Drain() override
     {}
+
+    NThreading::TFuture<void> RestoreEndpoints() override
+    {
+        return MakeFuture();
+    }
 
 #define FILESTORE_IMPLEMENT_METHOD(name, ...)                                  \
     TFuture<NProto::T##name##Response> name(                                   \

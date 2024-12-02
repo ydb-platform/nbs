@@ -226,9 +226,9 @@ TRootKmsClient::~TRootKmsClient()
 void TRootKmsClient::Start()
 {
     grpc::SslCredentialsOptions sslOpts{
-        .pem_root_certs = ReadFile(Params.RootCAPath),
-        .pem_private_key = ReadFile(Params.PrivateKeyPath),
-        .pem_cert_chain = ReadFile(Params.CertChainPath)
+        .pem_root_certs = ReadFile(Params.RootCertsFile),
+        .pem_private_key = ReadFile(Params.PrivateKeyFile),
+        .pem_cert_chain = ReadFile(Params.CertChainFile)
     };
 
     STORAGE_INFO("Connect to " << Params.Address);

@@ -462,6 +462,11 @@ void TIndexTabletActor::CompleteTx_RenameNode(
 
     RemoveTransaction(*args.RequestInfo);
 
+    Metrics.RenameNode.Update(
+        1,
+        0,
+        ctx.Now() - args.RequestInfo->StartedTs);
+
     auto response = std::make_unique<TEvService::TEvRenameNodeResponse>(args.Error);
     CompleteResponse<TEvService::TRenameNodeMethod>(
         response->Record,

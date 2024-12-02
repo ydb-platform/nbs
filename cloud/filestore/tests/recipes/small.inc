@@ -16,3 +16,5 @@ REQUIREMENTS(
     cpu:2
     ram:8
 )
+
+DATA(arcadia/cloud/filestore/tests/common_configs)

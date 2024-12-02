@@ -77,13 +77,6 @@ func (t *createImageFromDiskTask) run(
 		return err
 	}
 
-	if imageMeta == nil {
-		return errors.NewNonCancellableErrorf(
-			"id %v is not accepted",
-			t.request.DstImageId,
-		)
-	}
-
 	if imageMeta.Ready {
 		// Already created.
 		return nil

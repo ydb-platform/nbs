@@ -1409,6 +1409,11 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionTest)
         UNIT_ASSERT_C(
             HasProtoFlag(response->GetError().GetFlags(), NProto::EF_SILENT),
             FormatError(response->GetError()));
+        UNIT_ASSERT_C(
+            HasProtoFlag(
+                response->GetError().GetFlags(),
+                NProto::EF_HW_PROBLEMS_DETECTED),
+            FormatError(response->GetError()));
     }
 
     Y_UNIT_TEST(ShouldSendStatsToVolume)
@@ -1915,6 +1920,61 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionTest)
         // Verify that the data read by the first and second requests are
         // identical.
         UNIT_ASSERT_EQUAL(buffer, buffer2);
+    }
+
+    Y_UNIT_TEST(ShouldHandleGetDeviceForRangeRequest)
+    {
+        using TEvGetDeviceForRangeRequest =
+            TEvNonreplPartitionPrivate::TEvGetDeviceForRangeRequest;
+        using TEvGetDeviceForRangeResponse =
+            TEvNonreplPartitionPrivate::TEvGetDeviceForRangeResponse;
+        using EPurpose = TEvGetDeviceForRangeRequest::EPurpose;
+
+        TTestBasicRuntime runtime;
+        TTestEnv env(runtime);
+        TPartitionClient client(runtime, env.ActorId);
+
+        {   // Request to first device
+            client.SendRequest(
+                env.ActorId,
+                std::make_unique<TEvGetDeviceForRangeRequest>(
+                    EPurpose::ForReading,
+                    TBlockRange64::WithLength(2040, 8)));
+            auto response = client.RecvResponse<TEvGetDeviceForRangeResponse>();
+            UNIT_ASSERT_C(
+                SUCCEEDED(response->GetStatus()),
+                response->GetErrorReason());
+            UNIT_ASSERT_VALUES_EQUAL("vasya", response->Device.GetDeviceUUID());
+            UNIT_ASSERT_VALUES_EQUAL(
+                TBlockRange64::WithLength(2040, 8),
+                response->DeviceBlockRange);
+        }
+        {
+            // Request to second device
+            client.SendRequest(
+                env.ActorId,
+                std::make_unique<TEvGetDeviceForRangeRequest>(
+                    EPurpose::ForWriting,
+                    TBlockRange64::WithLength(2048, 8)));
+            auto response = client.RecvResponse<
+                TEvNonreplPartitionPrivate::TEvGetDeviceForRangeResponse>();
+            UNIT_ASSERT_C(
+                SUCCEEDED(response->GetStatus()),
+                response->GetErrorReason());
+            UNIT_ASSERT_VALUES_EQUAL("petya", response->Device.GetDeviceUUID());
+            UNIT_ASSERT_VALUES_EQUAL(
+                TBlockRange64::WithLength(0, 8),
+                response->DeviceBlockRange);
+        }
+        {   // Request on the border of two devices
+            client.SendRequest(
+                env.ActorId,
+                std::make_unique<TEvGetDeviceForRangeRequest>(
+                    EPurpose::ForWriting,
+                    TBlockRange64::WithLength(2040, 16)));
+            auto response = client.RecvResponse<TEvGetDeviceForRangeResponse>();
+            UNIT_ASSERT_VALUES_EQUAL(E_ABORTED, response->Error.GetCode());
+        }
     }
 }
 

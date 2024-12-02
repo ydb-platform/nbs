@@ -278,23 +278,6 @@ TPoolKinds GetPoolKinds(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-ui32 ComputeShardCount(
-    const TStorageConfig& config,
-    const NKikimrFileStore::TConfig& fileStore)
-{
-    const double fileStoreSize =
-        fileStore.GetBlocksCount() * fileStore.GetBlockSize();
-
-    ui32 shardCount = std::ceil(fileStoreSize / config.GetMaxShardSize());
-    Y_DEBUG_ABORT_UNLESS(
-        shardCount >= 1,
-        "size %f shard %lu",
-        fileStoreSize,
-        config.GetMaxShardSize());
-
-    return Min(shardCount, MaxShardCount);
-}
-
 ui32 ComputeAllocationUnitCount(
     const TStorageConfig& config,
     const NKikimrFileStore::TConfig& fileStore)
@@ -517,6 +500,17 @@ void SetupFileStorePerformanceAndChannels(
 
 ////////////////////////////////////////////////////////////////////////////////
 
+ui32 ComputeShardCount(
+    const ui64 blocksCount,
+    const ui32 blockSize,
+    const ui64 shardAllocationUnit)
+{
+    const double fileStoreSize = blocksCount * blockSize;
+
+    const ui32 shardCount = std::floor(fileStoreSize / shardAllocationUnit);
+    return Min(shardCount, MaxShardCount);
+}
+
 void SetupFileStorePerformanceAndChannels(
     bool allocateMixed0Channel,
     const TStorageConfig& config,
@@ -545,13 +539,17 @@ TMultiShardFileStoreConfig SetupMultiShardFileStorePerformanceAndChannels(
         result.MainFileSystemConfig,
         clientProfile);
 
-    const auto shardCount = ComputeShardCount(config, fileStore);
+    const auto shardCount = ComputeShardCount(
+        fileStore.GetBlocksCount(),
+        fileStore.GetBlockSize(),
+        config.GetShardAllocationUnit());
     result.ShardConfigs.resize(shardCount);
     for (ui32 i = 0; i < shardCount; ++i) {
         result.ShardConfigs[i] = fileStore;
         result.ShardConfigs[i].ClearVersion();
         result.ShardConfigs[i].SetBlocksCount(
-            config.GetMaxShardSize() / fileStore.GetBlockSize());
+            config.GetAutomaticallyCreatedShardSize()
+            / fileStore.GetBlockSize());
         result.ShardConfigs[i].SetFileSystemId(
             Sprintf("%s_s%u", fileStore.GetFileSystemId().c_str(), i + 1));
         SetupFileStorePerformanceAndChannels(

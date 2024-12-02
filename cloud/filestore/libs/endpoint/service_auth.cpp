@@ -47,6 +47,11 @@ public:
         Service->Drain();
     }
 
+    NThreading::TFuture<void> RestoreEndpoints() override
+    {
+        return Service->RestoreEndpoints();
+    }
+
 #define FILESTORE_IMPLEMENT_METHOD(name, ...)                                  \
     TFuture<NProto::T##name##Response> name(                                   \
         TCallContextPtr ctx,                                                   \

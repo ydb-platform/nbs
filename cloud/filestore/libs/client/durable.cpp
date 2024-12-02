@@ -272,6 +272,11 @@ class TDurableEndpointManagerClient final
         Client->Drain();
     }
 
+    NThreading::TFuture<void> RestoreEndpoints() override
+    {
+        return Client->RestoreEndpoints();
+    }
+
 #define FILESTORE_IMPLEMENT_METHOD(name, ...)                                  \
     TFuture<NProto::T##name##Response> name(                                   \
         TCallContextPtr callContext,                                           \

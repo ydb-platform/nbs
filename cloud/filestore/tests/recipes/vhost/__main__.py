@@ -1,6 +1,7 @@
 import argparse
 import os
 import pathlib
+import tempfile
 import uuid
 
 import yatest.common as common
@@ -8,7 +9,7 @@ import google.protobuf.text_format as text_format
 
 from library.python.testing.recipe import declare_recipe, set_env
 
-from cloud.filestore.config.server_pb2 import TLocalServiceConfig
+from cloud.filestore.config.server_pb2 import TLocalServiceConfig, TServerConfig
 from cloud.filestore.config.storage_pb2 import TStorageConfig
 from cloud.filestore.config.vhost_pb2 import \
     TVhostAppConfig, TVhostServiceConfig, TServiceEndpoint
@@ -17,8 +18,12 @@ from cloud.filestore.tests.python.lib.common import \
     shutdown, get_restart_interval, get_restart_flag
 
 from cloud.filestore.tests.python.lib.daemon_config import FilestoreVhostConfigGenerator
+from cloud.storage.core.protos.authorization_mode_pb2 import EAuthorizationMode
 from cloud.filestore.tests.python.lib.vhost import FilestoreVhost, wait_for_filestore_vhost
 from cloud.storage.core.protos.endpoints_pb2 import EEndpointStorageType
+
+from cloud.storage.core.tools.testing.access_service.lib import AccessService
+from cloud.storage.core.tools.testing.access_service_new.lib import NewAccessService
 
 
 PID_FILE_NAME = "nfs_vhost_recipe.pid"
@@ -33,6 +38,7 @@ def start(argv):
     parser.add_argument("--restart-flag", action="store", default=None)
     parser.add_argument("--storage-config-patch", action="store", default=None)
     parser.add_argument("--direct-io", action="store_true", default=False)
+    parser.add_argument("--use-unix-socket", action="store_true", default=False)
 
     args = parser.parse_args(argv)
 
@@ -78,12 +84,43 @@ def start(argv):
 
     config.VhostServiceConfig.ServiceEndpoints.append(service_endpoint)
 
+    server_config = TServerConfig()
+
     storage_config = TStorageConfig()
     if args.storage_config_patch:
         with open(common.source_path(args.storage_config_patch)) as p:
             storage_config = text_format.Parse(
                 p.read(),
                 TStorageConfig())
+    if args.use_unix_socket:
+        # Create in temp directory because we would like a shorter path
+        server_unix_socket_path = str(
+            pathlib.Path(tempfile.mkdtemp(dir="/tmp")) / "vhost.sock")
+        set_env("NFS_VHOST_UNIX_SOCKET_PATH", server_unix_socket_path)
+        server_config.UnixSocketPath = server_unix_socket_path
+
+    access_service_port = int(os.getenv("ACCESS_SERVICE_PORT") or 0)
+    secure = False
+    if access_service_port:
+        secure = True
+
+        server_config.RootCertsFile = common.source_path("cloud/filestore/tests/certs/server.crt")
+        server_config.Certs.add()
+        server_config.Certs[0].CertFile = common.source_path("cloud/filestore/tests/certs/server.crt")
+        server_config.Certs[0].CertPrivateKeyFile = common.source_path(
+            "cloud/filestore/tests/certs/server.key"
+        )
+
+        storage_config.AuthorizationMode = EAuthorizationMode.Value("AUTHORIZATION_REQUIRE")
+        folder_id = "test_folder"
+        storage_config.FolderId = folder_id
+        set_env("TEST_FOLDER_ID", folder_id)
+
+    access_service_type = AccessService
+    if os.getenv("ACCESS_SERVICE_TYPE") == "new":
+        access_service_type = NewAccessService
+
+    config.ServerConfig.CopyFrom(server_config)
 
     vhost_configurator = FilestoreVhostConfigGenerator(
         binary_path=vhost_binary_path,
@@ -92,9 +129,11 @@ def start(argv):
         verbose=args.verbose,
         kikimr_port=kikimr_port,
         domain=domain,
+        secure=secure,
         restart_interval=restart_interval,
         restart_flag=restart_flag,
         storage_config=storage_config,
+        access_service_type=access_service_type,
     )
 
     filestore_vhost = FilestoreVhost(vhost_configurator)
