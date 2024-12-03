@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"io/ioutil"
+	"log"
 	"os"
 	"time"
 
@@ -232,6 +233,30 @@ func (c *S3Client) PutObject(
 	return nil
 }
 
+func (c *S3Client) List(
+	ctx context.Context,
+	bucket string,
+	key string,
+) (uploadIds []*aws_s3.MultipartUpload, err error) {
+
+	ctx = withComponentLoggingField(ctx)
+	logging.Info(ctx, "list to s3, bucket %v, key %v", bucket, key)
+
+	ctx, cancel := context.WithTimeout(ctx, c.callTimeout)
+	defer cancel()
+
+	defer c.metrics.StatCall(ctx, "List", bucket, key)(&err)
+
+	response, err := c.s3.ListMultipartUploadsWithContext(ctx, &aws_s3.ListMultipartUploadsInput{
+		Bucket: &bucket,
+	})
+	if err != nil {
+		return []*aws_s3.MultipartUpload{}, errors.NewRetriableError(err)
+	}
+
+	return response.Uploads, nil
+}
+
 func (c *S3Client) CreateMultipartUpload(
 	ctx context.Context,
 	bucket string,
@@ -255,6 +280,8 @@ func (c *S3Client) CreateMultipartUpload(
 		return "", errors.NewRetriableError(err)
 	}
 
+	logging.Info(ctx, "response c is %+v", response)
+
 	return *response.UploadId, nil
 }
 
@@ -277,12 +304,14 @@ func (c *S3Client) UploadPart(
 
 	logging.Info(ctx, "in upload upload id is %v", uploadId)
 
+	aboba := int64(4194304)
 	response, err := c.s3.UploadPartWithContext(ctx, &aws_s3.UploadPartInput{
-		Bucket:     &bucket,
-		Key:        &key,
-		PartNumber: &partNumber,
-		Body:       bytes.NewReader(data),
-		UploadId:   &uploadId,
+		Bucket:        &bucket,
+		Key:           &key,
+		PartNumber:    &partNumber,
+		Body:          bytes.NewReader(data),
+		UploadId:      &uploadId,
+		ContentLength: &aboba,
 	})
 	if err != nil {
 		return nil, errors.NewRetriableError(err)
@@ -323,6 +352,34 @@ func (c *S3Client) CompleteMultipartUpload(
 	}
 
 	return nil
+}
+
+func (c *S3Client) Presign(
+	ctx context.Context,
+	bucket string,
+	key string,
+) (url string, err error) {
+
+	ctx = withComponentLoggingField(ctx)
+	logging.Info(ctx, "complete multipart upload to s3, bucket %v, key %v", bucket, key)
+
+	ctx, cancel := context.WithTimeout(ctx, c.callTimeout)
+	defer cancel()
+
+	defer c.metrics.StatCall(ctx, "CompleteMultipartUpload", bucket, key)(&err)
+
+	req, _ := c.s3.GetObjectRequest(&aws_s3.GetObjectInput{
+		Bucket: &bucket,
+		Key:    &key,
+	})
+
+	// Generate the Presigned URL
+	urlStr, err := req.Presign(10 * time.Minute)
+	if err != nil {
+		log.Fatalf("failed to sign request, %v", err)
+	}
+
+	return urlStr, nil
 }
 
 func (c *S3Client) DeleteObject(

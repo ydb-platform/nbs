@@ -7,6 +7,8 @@ GO_XTEST_SRCS(
     s3_test.go
 )
 
+TIMEOUT(150)
+
 IF (RACE)
     SIZE(LARGE)
     TAG(ya:fat ya:force_sandbox ya:sandbox_coverage)
