@@ -320,7 +320,7 @@ TString BuildCpuWaitStatsFilename(const TString& serviceName)
     return {};
 }
 
-NCloud::NStorage::IStatsFetcherPtr BuildStatsFetcher(
+IStatsFetcherPtr BuildStatsFetcher(
     NProto::EStatsFetcherType statsFetcherType,
     const TString& cpuWaitFilename,
     const TLog& log,

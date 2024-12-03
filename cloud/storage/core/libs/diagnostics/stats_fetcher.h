@@ -45,7 +45,7 @@ IStatsFetcherPtr CreateStatsFetcherStub();
 
 TString BuildCpuWaitStatsFilename(const TString& serviceName);
 
-NCloud::NStorage::IStatsFetcherPtr BuildStatsFetcher(
+IStatsFetcherPtr BuildStatsFetcher(
     NProto::EStatsFetcherType statsFetcherType,
     const TString& cpuWaitFilename,
     const TLog& log,
