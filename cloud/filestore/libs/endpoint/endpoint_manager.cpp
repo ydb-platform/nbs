@@ -194,10 +194,10 @@ private:
         auto originFqdn = GetFQDNHostName();
 
         TVector<TFuture<void>> futures;
-        for (auto keyringId: storedIds) {
-            auto requestOrError = Storage->GetEndpoint(keyringId);
+        for (auto endpointId: storedIds) {
+            auto requestOrError = Storage->GetEndpoint(endpointId);
             if (HasError(requestOrError)) {
-                STORAGE_WARN("Failed to restore endpoint. ID: " << keyringId
+                STORAGE_WARN("Failed to restore endpoint. ID: " << endpointId
                     << ", error: " << FormatError(requestOrError.GetError()));
                 continue;
             }
@@ -207,7 +207,7 @@ private:
 
             if (!request) {
                 // TODO: report critical error
-                STORAGE_ERROR("Failed to deserialize request. ID: " << keyringId);
+                STORAGE_ERROR("Failed to deserialize request. ID: " << endpointId);
                 continue;
             }
 
@@ -220,18 +220,37 @@ private:
                 MakeIntrusive<TCallContext>(requestId),
                 std::move(request));
 
-            future.Subscribe([=] (const auto& f) {
-                const auto& response = f.GetValue();
-                if (HasError(response)) {
-                    // TODO: report critical error
-                    STORAGE_ERROR("Failed to start endpoint: "
-                        << FormatError(response.GetError()));
-                }
-            });
+            future.Subscribe(
+                [weakPtr = weak_from_this(), endpointId](const auto& f) {
+                    if (auto ptr = weakPtr.lock()) {
+                        const auto& response = f.GetValue();
+                        ptr->HandleRestoredEndpoint(
+                            endpointId,
+                            response.GetError());
+                    }
+                });
             futures.push_back(future.IgnoreResult());
         }
 
         return WaitAll(futures);
+    }
+
+    void HandleRestoredEndpoint(
+        const TString& endpointId,
+        const NProto::TError& error)
+    {
+        if (HasError(error)) {
+            STORAGE_ERROR("Failed to start endpoint: "
+                << FormatError(error));
+            if (FACILITY_FROM_CODE(error.GetCode()) == FACILITY_SCHEMESHARD &&
+                STATUS_FROM_CODE(error.GetCode()) == ENOENT)
+            {
+                STORAGE_INFO(
+                    "Remove endpoint for non-existing filesystem. endpoint id: "
+                    << endpointId.Quote());
+                Storage->RemoveEndpoint(endpointId);
+            }
+        }
     }
 
     void AddStartingSocket(
