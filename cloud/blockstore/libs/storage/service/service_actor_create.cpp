@@ -140,7 +140,7 @@ void TCreateVolumeActor::DescribeBaseVolume(const TActorContext& ctx)
 bool TCreateVolumeActor::ShouldCreateVolumeWithEncryptionAtRest() const
 {
     if (GetStorageMediaKind() == NProto::STORAGE_MEDIA_SSD_LOCAL) {
-        // Encryption at rest for local disks is not implemented. TODO: issue
+        // Encryption at rest for local disks is not implemented (#2598)
         return false;
     }
 
@@ -162,18 +162,17 @@ void TCreateVolumeActor::CreateVolume(const TActorContext& ctx)
             TBlockStoreComponents::SERVICE,
             "Generate DEK for " << Request.GetDiskId().Quote());
 
-        auto* actorSystem = TActivationContext::ActorSystem();
-        auto selfId = ctx.SelfID;
-
         KeyProvider->GenerateDataEncryptionKey(Request.GetDiskId())
             .Subscribe(
-                [=](const auto& future) {
-                    auto [key, error] = future.GetValue();
+                [actorSystem = TActivationContext::ActorSystem(),
+                 selfId = ctx.SelfID](const auto& future)
+                {
+                    const auto& [key, error] = future.GetValue();
 
                     auto response = std::make_unique<
                         TEvServicePrivate::TEvCreateEncryptionKeyResponse>(
-                        std::move(error),
-                        std::move(key));
+                        error,
+                        key);
 
                     actorSystem->Send(selfId, response.release());
                 });
@@ -333,8 +332,10 @@ void TCreateVolumeActor::HandleCreateEncryptionKeyResponse(
 
         auto& desc = encryptionDesc.emplace();
         desc.SetMode(NProto::ENCRYPTION_DEFAULT_AES_XTS);
-        // XXX
-        // desc.MutableEncryptionKey()->CopyFrom(msg.KmsKey);
+
+        auto& dek = *desc.MutableEncryptedDataKey();
+        dek.SetKekId(msg.KmsKey.GetKekId());
+        dek.SetCiphertext(msg.KmsKey.GetEncryptedDEK());
     }
 
     CreateVolumeImpl(ctx, std::move(encryptionDesc));
