@@ -1,9 +1,7 @@
 #include <cloud/storage/core/libs/diagnostics/cgroup_stats_fetcher.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
-#include <cloud/storage/core/libs/diagnostics/monitoring.h>
 
 #include <library/cpp/getopt/small/last_getopt.h>
-#include <library/cpp/monlib/dynamic_counters/counters.h>
 
 namespace {
 
@@ -59,7 +57,6 @@ int main(int argc, const char** argv)
     auto logging =
         NCloud::CreateLoggingService("console", NCloud::TLogSettings{});
     auto Log = logging->CreateLog(options.ComponentName);
-    auto monitoring = NCloud::CreateMonitoringServiceStub();
     auto statsFetcher = NCloud::NStorage::CreateCgroupStatsFetcher(
         options.ComponentName,
         logging,
