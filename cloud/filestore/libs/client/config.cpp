@@ -130,17 +130,11 @@ void TClientConfig::Dump(IOutputStream& out) const
 #undef FILESTORE_CONFIG_DUMP
 }
 
-void TClientConfig::DumpXml(NXml::TNode& root) const
+void TClientConfig::DumpXml(NXml::TNode root) const
 {
-    auto props = root.AddChild("config_properties", " ");
-    TStringStream out;
-    NXml::TNode cd;
-#define FILESTORE_CONFIG_DUMP(name, ...)                                       \
-    cd = props.AddChild("cd", " ");                                            \
-    cd.AddChild("name", #name);                                                \
-    DumpImpl(Get##name(), out);                                                \
-    cd.AddChild("value", out.Str());                                           \
-    out.Clear();                                                               \
+    auto adder = NStorage::NTNodeWrapper::TFieldAdder(root.AddChild("config_properties", " "));
+#define FILESTORE_CONFIG_DUMP(name, ...)                                        \
+    adder.AddFieldIn("cd", " ")("name", #name)("value", Get##name());           \
 // FILESTORE_CONFIG_DUMP
 
     FILESTORE_CLIENT_CONFIG(FILESTORE_CONFIG_DUMP);
@@ -175,17 +169,11 @@ void TSessionConfig::Dump(IOutputStream& out) const
 #undef FILESTORE_CONFIG_DUMP
 }
 
-void TSessionConfig::DumpXml(NXml::TNode& root) const
+void TSessionConfig::DumpXml(NXml::TNode root) const
 {
-    auto props = root.AddChild("config_properties", " ");
-    TStringStream out;
-    NXml::TNode cd;
-#define FILESTORE_CONFIG_DUMP(name, ...)                                       \
-    cd = props.AddChild("cd", " ");                                            \
-    cd.AddChild("name", #name);                                                \
-    DumpImpl(Get##name(), out);                                                \
-    cd.AddChild("value", out.Str());                                           \
-    out.Clear();                                                               \
+    auto adder = NStorage::NTNodeWrapper::TFieldAdder(root.AddChild("config_properties", " "));
+#define FILESTORE_CONFIG_DUMP(name, ...)                                        \
+    adder.AddFieldIn("cd", " ")("name", #name)("value", Get##name());           \
 // FILESTORE_CONFIG_DUMP
 
     FILESTORE_SESSION_CONFIG(FILESTORE_CONFIG_DUMP);

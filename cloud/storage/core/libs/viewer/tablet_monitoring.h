@@ -31,7 +31,7 @@ using TBuildReassignChannelButton = std::function<void(
     ui32 channel)>;
 
 using TBuildReassignChannelButtonXml = std::function<void(
-    NXml::TNode& root,
+    NXml::TNode root,
     ui64 hiveTabletId,
     ui64 tabletId,
     ui32 channel)>;
@@ -45,7 +45,7 @@ void DumpChannels(
     ui64 hiveTabletId);
 
 void DumpChannelsXml(
-    NXml::TNode& root,
+    NXml::TNode root,
     const TVector<TChannelMonInfo>& channelInfos,
     const NKikimr::TTabletStorageInfo& storage,
     const TGetMonitoringYDBGroupUrl& getGroupUrl,

@@ -107,7 +107,7 @@ private:
         root.AddChild("path", path);
         root.AddChild("tablet_id", tabletId);
 
-        NCloud::NFileStore::NXSLRender::NXSLRender(xslTemplate, data, out);
+        NCloud::NStorage::NXSLRender::NXSLRender(xslTemplate, data, out);
 
         return out.Str();
     }

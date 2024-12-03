@@ -47,7 +47,7 @@ public:
     TString GetUnixSocketPath() const;
 
     void Dump(IOutputStream& out) const;
-    void DumpXml(NXml::TNode& root) const;
+    void DumpXml(NXml::TNode root) const;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -69,7 +69,7 @@ public:
     TDuration GetSessionRetryTimeout() const;
 
     void Dump(IOutputStream& out) const;
-    void DumpXml(NXml::TNode& root) const;
+    void DumpXml(NXml::TNode root) const;
 
 };
 

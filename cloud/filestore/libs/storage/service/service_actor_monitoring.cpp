@@ -59,7 +59,7 @@ void TStorageServiceActor::HandleHttpInfo(
         }
     }
 
-    NCloud::NFileStore::NXSLRender::NXSLRender(xslTemplate, data, out);
+    NCloud::NStorage::NXSLRender::NXSLRender(xslTemplate, data, out);
 
     NCloud::Reply(
         ctx,
@@ -69,27 +69,27 @@ void TStorageServiceActor::HandleHttpInfo(
 
 void TStorageServiceActor::RenderSessions(NXml::TNode& root)
 {
-    auto sessions = root.AddChild("sessions", " ");
+    auto sessions = NCloud::NStorage::NTNodeWrapper::TFieldAdder(root.AddChild("sessions", " "));
     State->VisitSessions([&] (const TSessionInfo& session) {
-        auto cd = sessions.AddChild("cd", " ");
-        cd.AddChild("client_id", session.ClientId);
-        cd.AddChild("tablet_id", session.TabletId);
-        cd.AddChild("fs_id", session.FileStore.GetFileSystemId());
-        cd.AddChild("session_id", session.SessionId);
+        sessions.AddFieldIn("cd", " ")
+            ("client_id", session.ClientId)
+            ("tablet_id", session.TabletId)
+            ("fs_id", session.FileStore.GetFileSystemId())
+            ("session_id", session.SessionId);
     });
 }
 
 void TStorageServiceActor::RenderLocalFileStores(NXml::TNode& root)
 {
-    auto localFs = root.AddChild("local_filesystems", " ");
+    auto localFs = NCloud::NStorage::NTNodeWrapper::TFieldAdder(root.AddChild("local_filesystems", " "));
     for (const auto& [_, info]: State->GetLocalFileStores()) {
-        auto cd = localFs.AddChild("cd", " ");
-        cd.AddChild("tablet_id", info.TabletId);
-        cd.AddChild("fs_id", info.FileStoreId);
-        cd.AddChild("size", FormatByteSize(
-            info.Config.GetBlocksCount() * info.Config.GetBlockSize()));
-        cd.AddChild("media_kind", MediaKindToString(
-            static_cast<NProto::EStorageMediaKind>(info.Config.GetStorageMediaKind())));
+        localFs.AddFieldIn("cd", " ")
+            ("tablet_id", info.TabletId)
+            ("fs_id", info.FileStoreId)
+            ("size", FormatByteSize(
+                info.Config.GetBlocksCount() * info.Config.GetBlockSize()))
+            ("media_kind", MediaKindToString(
+                static_cast<NProto::EStorageMediaKind>(info.Config.GetStorageMediaKind())));
     }
 }
 

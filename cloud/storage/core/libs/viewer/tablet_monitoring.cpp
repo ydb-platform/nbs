@@ -139,7 +139,7 @@ void DumpChannels(
 }
 
 void DumpChannelsXml(
-    NXml::TNode& root,
+    NXml::TNode root,
     const TVector<TChannelMonInfo>& channelInfos,
     const NKikimr::TTabletStorageInfo& storage,
     const TGetMonitoringYDBGroupUrl& getGroupUrl,

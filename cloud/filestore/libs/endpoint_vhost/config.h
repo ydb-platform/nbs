@@ -37,7 +37,7 @@ public:
     ui32 GetHandleOpsQueueSize() const;
 
     void Dump(IOutputStream& out) const;
-    void DumpXml(NXml::TNode& out) const;
+    void DumpXml(NXml::TNode out) const;
 };
 
 }   // namespace NCloud::NFileStore::NVhost

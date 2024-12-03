@@ -21,12 +21,12 @@ struct TXslInitializer {
 TXslInitializer xslInit;
 }  // namespace
 
-void NCloud::NFileStore::NXSLRender::NXSLRender(const char* xsl, const NXml::TDocument& document, IOutputStream& out) {
-    auto document_str = document.ToString("utf-8");
+void NCloud::NStorage::NXSLRender::NXSLRender(const char* xsl, const NXml::TDocument& document, IOutputStream& out) {
+    auto documentStr = document.ToString("utf-8");
 
     xmlDocPtr sourceDoc = xmlReadDoc(
         BAD_CAST
-        document_str.data(),
+        documentStr.data(),
         nullptr, "utf-8", 0
     );
     xmlDocPtr styleDoc = xmlReadDoc(
@@ -49,7 +49,7 @@ void NCloud::NFileStore::NXSLRender::NXSLRender(const char* xsl, const NXml::TDo
         }
         xmlFree(buffer);
     } else {
-        out << "Error rendering page: " << document_str;
+        out << "Error rendering page: " << documentStr;
     }
 
     xsltFreeStylesheet(style);

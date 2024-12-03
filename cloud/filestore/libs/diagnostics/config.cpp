@@ -158,17 +158,11 @@ void TDiagnosticsConfig::Dump(IOutputStream& out) const
 #undef FILESTORE_CONFIG_DUMP
 }
 
-void TDiagnosticsConfig::DumpXml(NXml::TNode& root) const
+void TDiagnosticsConfig::DumpXml(NXml::TNode root) const
 {
-    auto props = root.AddChild("config_properties", " ");
-    TStringStream out;
-    NXml::TNode cd;
-#define FILESTORE_CONFIG_DUMP(name, ...)                                       \
-    cd = props.AddChild("cd", " ");                                            \
-    cd.AddChild("name", #name);                                                \
-    out << Get##name();                                                        \
-    cd.AddChild("value", out.Str());                                           \
-    out.Clear();                                                               \
+    auto adder = NStorage::NTNodeWrapper::TFieldAdder(root.AddChild("config_properties", " "));
+#define FILESTORE_CONFIG_DUMP(name, ...)                                        \
+    adder.AddFieldIn("cd", " ")("name", #name)("value", Get##name());           \
 // FILESTORE_CONFIG_DUMP
 
     FILESTORE_DIAGNOSTICS_CONFIG(FILESTORE_CONFIG_DUMP);

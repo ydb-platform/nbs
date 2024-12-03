@@ -359,6 +359,13 @@ void DumpImpl(const TVector<TString>& value, IOutputStream& os)
     }
 }
 
+template <typename T>
+TString DumpImpl(const T& value) {
+    TStringStream out;
+    DumpImpl(value, out);
+    return out.Str();
+}
+
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -400,17 +407,11 @@ void TStorageConfig::Dump(IOutputStream& out) const
 #undef FILESTORE_DUMP_CONFIG
 }
 
-void TStorageConfig::DumpXml(NXml::TNode& root) const
+void TStorageConfig::DumpXml(NXml::TNode root) const
 {
-    auto props = root.AddChild("config_properties", " ");
-    TStringStream out;
-    NXml::TNode cd;
-#define FILESTORE_DUMP_CONFIG(name, ...)                                       \
-    cd = props.AddChild("cd", " ");                                            \
-    cd.AddChild("name", #name);                                                \
-    DumpImpl(Get##name(), out);                                                \
-    cd.AddChild("value", out.Str());                                           \
-    out.Clear();                                                               \
+    auto adder = NCloud::NStorage::NTNodeWrapper::TFieldAdder(root.AddChild("config_properties", " "));
+#define FILESTORE_DUMP_CONFIG(name, ...)                                        \
+    adder.AddFieldIn("cd", " ")("name", #name)("value", DumpImpl(Get##name()));  \
 // FILESTORE_DUMP_CONFIG
 
     FILESTORE_STORAGE_CONFIG(FILESTORE_DUMP_CONFIG)
@@ -419,21 +420,16 @@ void TStorageConfig::DumpXml(NXml::TNode& root) const
 #undef FILESTORE_DUMP_CONFIG
 }
 
-void TStorageConfig::DumpOverridesXml(NXml::TNode& root) const
+void TStorageConfig::DumpOverridesXml(NXml::TNode root) const
 {
-    auto props = root.AddChild("config_properties", " ");
-    TStringStream out;
-    NXml::TNode cd;
-#define FILESTORE_DUMP_CONFIG(name, ...) {                                     \
-    const auto value = ProtoConfig.Get##name();                                \
-    if (!IsEmpty(value)) {                                                     \
-        cd = props.AddChild("cd", " ");                                        \
-        cd.AddChild("name", #name);                                            \
-        DumpImpl(Get##name(), out);                                            \
-        cd.AddChild("value", out.Str());                                       \
-        out.Clear();                                                           \
-    }                                                                          \
-}                                                                              \
+    auto adder = NCloud::NStorage::NTNodeWrapper::TFieldAdder(root.AddChild("config_properties", " "));
+#define FILESTORE_DUMP_CONFIG(name, ...)                                            \
+    {                                                                               \
+        const auto value = ProtoConfig.Get##name();                                 \
+        if (!IsEmpty(value)) {                                                      \
+            adder.AddFieldIn("cd", " ")("name", #name)("value", DumpImpl(value));    \
+        }                                                                           \
+    }                                                                               \
 // FILESTORE_DUMP_CONFIG
 
     FILESTORE_STORAGE_CONFIG(FILESTORE_DUMP_CONFIG)

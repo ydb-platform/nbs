@@ -65,7 +65,7 @@ public:
     }
 
     void Dump(IOutputStream& out) const;
-    void DumpXml(NXml::TNode& root) const;
+    void DumpXml(NXml::TNode root) const;
 };
 
 }   // namespace NCloud::NFileStore::NServer

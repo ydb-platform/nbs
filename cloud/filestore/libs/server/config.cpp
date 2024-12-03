@@ -129,6 +129,13 @@ void DumpImpl(const TVector<TString>& value, IOutputStream& os)
     }
 }
 
+template <typename T>
+TString DumpImpl(const T& value) {
+    TStringStream out;
+    DumpImpl(value, out);
+    return out.Str();
+}
+
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -158,17 +165,11 @@ void TServerConfig::Dump(IOutputStream& out) const
 #undef FILESTORE_CONFIG_DUMP
 }
 
-void TServerConfig::DumpXml(NXml::TNode& root) const
+void TServerConfig::DumpXml(NXml::TNode root) const
 {
-    auto props = root.AddChild("config_properties", " ");
-    TStringStream out;
-    NXml::TNode cd;
-#define FILESTORE_CONFIG_DUMP(name, ...)                                       \
-    cd = props.AddChild("cd", " ");                                            \
-    cd.AddChild("name", #name);                                                \
-    DumpImpl(Get##name(), out);                                                \
-    cd.AddChild("value", out.Str());                                           \
-    out.Clear();                                                               \
+    auto adder = NStorage::NTNodeWrapper::TFieldAdder(root.AddChild("config_properties", " "));
+#define FILESTORE_CONFIG_DUMP(name, ...)                                        \
+    adder.AddFieldIn("cd", " ")("name", #name)("value", DumpImpl(Get##name()));           \
 // FILESTORE_CONFIG_DUMP
 
     FILESTORE_SERVER_CONFIG(FILESTORE_CONFIG_DUMP)
