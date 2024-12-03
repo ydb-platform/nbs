@@ -26,11 +26,9 @@ Y_UNIT_TEST_SUITE(TaskStatsFetcherTest)
 {
     Y_UNIT_TEST(ShouldGetCpuWait)
     {
-        auto monitoring = CreateMonitoringServiceStub();
         auto fetcher = CreateTaskStatsFetcher(
             ComponentName,
             CreateLoggingService("console"),
-            monitoring,
             getpid());
         fetcher->Start();
         auto [cpuWait, error] = fetcher->GetCpuWait();

@@ -160,7 +160,6 @@ struct TTaskStatsFetcher final: public IStatsFetcher
 private:
     const TString ComponentName;
     const ILoggingServicePtr Logging;
-    const IMonitoringServicePtr Monitoring;
     int Pid;
     TLog Log;
     const TDuration NetlinkSocketTimeout = TDuration::Seconds(1);
@@ -170,11 +169,9 @@ public:
     TTaskStatsFetcher(
             TString componentName,
             ILoggingServicePtr logging,
-            IMonitoringServicePtr monitoring,
             int pid)
         : ComponentName(std::move(componentName))
         , Logging(std::move(logging))
-        , Monitoring(std::move(monitoring))
         , Pid(pid)
     {
     }
@@ -295,13 +292,11 @@ IStatsFetcherPtr CreateCgroupStatsFetcher(
 IStatsFetcherPtr CreateTaskStatsFetcher(
     TString componentName,
     ILoggingServicePtr logging,
-    IMonitoringServicePtr monitoring,
     int pid)
 {
     return std::make_shared<TTaskStatsFetcher>(
         std::move(componentName),
         std::move(logging),
-        std::move(monitoring),
         pid);
 }
 
@@ -333,7 +328,7 @@ IStatsFetcherPtr BuildStatsFetcher(
                 STORAGE_INFO(
                     "CpuWaitFilename is empty, can't build "
                     "CgroupStatsFetcher");
-                return CreateCgroupStatsFetcherStub();
+                return CreateStatsFetcherStub();
             }
 
             return CreateCgroupStatsFetcher(

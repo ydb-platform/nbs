@@ -38,7 +38,6 @@ IStatsFetcherPtr CreateCgroupStatsFetcher(
 IStatsFetcherPtr CreateTaskStatsFetcher(
     TString componentName,
     ILoggingServicePtr logging,
-    IMonitoringServicePtr monitoring,
     int pid);
 
 IStatsFetcherPtr CreateStatsFetcherStub();
