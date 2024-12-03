@@ -79,6 +79,10 @@ NProto::TCreateSessionResponse TLocalFileSystem::CreateSession(
     features->SetDirectIoAlign(Config->GetDirectIoAlign());
     features->SetGuestWritebackCacheEnabled(
         Config->GetGuestWritebackCacheEnabled());
+    features->SetAsyncDestroyHandleEnabled(
+        Config->GetAsyncDestroyHandleEnabled());
+    features->SetAsyncHandleOperationPeriod(
+        Config->GetAsyncHandleOperationPeriod().MilliSeconds());
 
     return response;
 }
