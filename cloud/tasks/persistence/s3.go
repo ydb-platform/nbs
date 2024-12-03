@@ -265,7 +265,7 @@ func (c *S3Client) UploadPart(
 	partNumber int64,
 	uploadId string,
 	data []byte,
-) (partResp types.CompletedPart, err error) {
+) (completedPart *aws_s3.CompletedPart, err error) {
 
 	ctx = withComponentLoggingField(ctx)
 	logging.Info(ctx, "upload part to s3, bucket %v, key %v", bucket, key)
@@ -275,18 +275,18 @@ func (c *S3Client) UploadPart(
 
 	defer c.metrics.StatCall(ctx, "UploadPart", bucket, key)(&err)
 
-	partResp, err = c.s3.UploadPartWithContext(ctx, &aws_s3.UploadPartInput{
+	response, err := c.s3.UploadPartWithContext(ctx, &aws_s3.UploadPartInput{
 		Bucket:     &bucket,
 		Key:        &key,
 		PartNumber: &partNumber,
 		Body:       bytes.NewReader(data),
 	})
 	if err != nil {
-		return aws_s3.CompletedPart{}, errors.NewRetriableError(err)
+		return nil, errors.NewRetriableError(err)
 	}
 
-	return aws_s3.CompletedPart{
-		ETag:       partResp.ETag,
+	return &aws_s3.CompletedPart{
+		ETag:       response.ETag,
 		PartNumber: &partNumber,
 	}, nil
 }
