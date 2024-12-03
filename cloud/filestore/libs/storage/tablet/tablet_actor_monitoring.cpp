@@ -190,13 +190,13 @@ void DumpOperationState(
     const TOperationState& state,
     NXml::TNode root)
 {
-    NCloud::NStorage::NTNodeWrapper::TFieldAdder(root.AddChild("cd", " "))
-        ("name", opName)
-        ("state", static_cast<ui32>(state.GetOperationState()))
-        ("timestamp", state.GetStateChanged())
-        ("completed", state.GetCompleted())
-        ("failed", state.GetFailed())
-        ("backoff", state.GetBackoffTimeout().ToString());
+    auto cd = root.AddChild("cd", " ");
+    cd.AddChild("name", opName);
+    cd.AddChild("state", static_cast<ui32>(state.GetOperationState()));
+    cd.AddChild("timestamp", state.GetStateChanged());
+    cd.AddChild("completed", state.GetCompleted());
+    cd.AddChild("failed", state.GetFailed());
+    cd.AddChild("backoff", state.GetBackoffTimeout().ToString());
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -205,12 +205,12 @@ void DumpCompactionRangeInfo(
     NXml::TNode root,
     const TVector<TCompactionRangeInfo>& ranges)
 {
-    auto rangesXml = NCloud::NStorage::NTNodeWrapper::TFieldAdder(root.AddChild("ranges", " "));
+    auto rangesXml = root.AddChild("ranges", " ");
     for (const auto& range: ranges) {
-        rangesXml.AddFieldIn("cd", " ")
-            ("id", range.RangeId)
-            ("blobs", range.Stats.BlobsCount)
-            ("deletions", range.Stats.DeletionsCount);
+        auto cd = rangesXml.AddChild("cd", " ");
+        cd.AddChild("id", range.RangeId);
+        cd.AddChild("blobs", range.Stats.BlobsCount);
+        cd.AddChild("deletions", range.Stats.DeletionsCount);
     }
 }
 
@@ -246,19 +246,15 @@ void DumpProfillingAllocatorStats(
     const TFileStoreAllocRegistry& registry,
     NXml::TNode root)
 {
-    auto allocStats = NCloud::NStorage::NTNodeWrapper::TFieldAdder(root.AddChild("alloc_stats", " "));
+    NCloud::NStorage::NTNodeWrapper::TNodeWrapper allocStats(root.AddChild("alloc_stats", " "));
     ui64 allBytes = 0;
     for (ui32 i = 0; i < static_cast<ui32>(EAllocatorTag::Max); ++i) {
         auto tag = static_cast<EAllocatorTag>(i);
         const ui64 bytes = registry.GetAllocator(tag)->GetBytesAllocated();
-        allocStats.AddFieldIn("cd", " ")
-            ("name", tag)
-            ("value", FormatByteSize(bytes));
+        allocStats.AddNamedElement(tag, FormatByteSize(bytes));
         allBytes += bytes;
     }
-    allocStats.AddFieldIn("cd", " ")
-        ("name", "Summary")
-        ("value", FormatByteSize(allBytes));
+    allocStats.AddNamedElement("Summary", FormatByteSize(allBytes));
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -268,9 +264,9 @@ void DumpPerformanceProfile(
     const NProto::TFileStorePerformanceProfile& profile,
     NXml::TNode root)
 {
-    NCloud::NStorage::NTNodeWrapper::TFieldAdder adder(root);
+    NCloud::NStorage::NTNodeWrapper::TNodeWrapper wrapper(root);
 #define DUMP_PROFILE_STAT(name, value)                                      \
-    adder.AddFieldIn("cd", " ")("name", name)("value", value);              \
+    wrapper.AddNamedElement(name, value);                                   \
 // DUMP_PROFILE_STAT
 
     DUMP_PROFILE_STAT("StorageThrottlingEnabled", storageThrottlingEnabled)
@@ -300,10 +296,10 @@ void DumpThrottlingState(
     NXml::TNode root)
 {
     const auto& config = policy.GetConfig();
-    auto state = NCloud::NStorage::NTNodeWrapper::TFieldAdder(root.AddChild("throttler_state", " "));
+    NCloud::NStorage::NTNodeWrapper::TNodeWrapper wrapper(root.AddChild("throttler_state", " "));
 
 #define DUMP_THROTTING_STAT(name, value)                                    \
-    state.AddFieldIn("cd", " ")("name", name)("value", value);              \
+    wrapper.AddNamedElement(name, value);                                   \
 // DUMP_THROTTING_STAT
 
     DUMP_THROTTING_STAT("Throttling enabled", config.ThrottlingEnabled)
@@ -339,10 +335,10 @@ void DumpThrottlingState(
     
 #undef DUMP_THROTTING_STAT
 
-    auto params = NCloud::NStorage::NTNodeWrapper::TFieldAdder(root.AddChild("throttler_params", " "));
+    wrapper = {root.AddChild("throttler_params", " ")};
 
 #define DUMP_THROTTING_STAT(name, value)                                    \
-    params.AddFieldIn("cd", " ")("name", name)("value", value);             \
+    wrapper.AddNamedElement(name, value);                                   \
 // DUMP_THROTTING_STAT
     DUMP_THROTTING_STAT("ReadC1", policy.C1(TThrottlingPolicy::EOpType::Read))
     DUMP_THROTTING_STAT("ReadC2", FormatByteSize(policy.C2(TThrottlingPolicy::EOpType::Read)))
@@ -362,17 +358,17 @@ void DumpSessionHistory(
     const TSessionHistoryList& sessionHistory,
     size_t limit = 100)
 {
-    NCloud::NStorage::NTNodeWrapper::TFieldAdder sessionsAdder(root.AddChild("session_history", " "));
+    auto sessions = root.AddChild("session_history", " ");
     for (auto it = sessionHistory.rbegin();
                  it != sessionHistory.rend() && limit;
                  ++it, --limit)
     {
-        sessionsAdder.AddFieldIn("cd", " ")
-            ("client_id", it->GetClientId())
-            ("fqdn", it->GetOriginFqdn())
-            ("timestamp", TInstant::MicroSeconds(it->GetTimestampUs()))
-            ("session_id", it->GetSessionId())
-            ("action_type", it->GetEntryTypeString());
+        auto cd = sessions.AddChild("cd", " ");
+        cd.AddChild("client_id", it->GetClientId());
+        cd.AddChild("fqdn", it->GetOriginFqdn());
+        cd.AddChild("timestamp", TInstant::MicroSeconds(it->GetTimestampUs()));
+        cd.AddChild("session_id", it->GetSessionId());
+        cd.AddChild("action_type", it->GetEntryTypeString());
     }
 }
 
@@ -383,7 +379,7 @@ void DumpSessionHistory(
  */
 void DumpSessions(NXml::TNode root, const TVector<TMonSessionInfo>& sessions)
 {
-    NCloud::NStorage::NTNodeWrapper::TFieldAdder sessionsAdder(root.AddChild("sessions", " "));
+    auto sessionsNode = root.AddChild("sessions", " ");
     for (const auto& session: sessions) {
         const auto recoveryTimestamp = TInstant::MicroSeconds(
             session.ProtoInfo.GetRecoveryTimestampUs());
@@ -392,14 +388,14 @@ void DumpSessions(NXml::TNode root, const TVector<TMonSessionInfo>& sessions)
             recovery << recoveryTimestamp;
         }
         for (const auto& ss: session.SubSessions) {
-            sessionsAdder.AddFieldIn("cd", " ")
-                ("client_id", session.ProtoInfo.GetClientId())
-                ("fqdn", session.ProtoInfo.GetOriginFqdn())
-                ("session_id", session.ProtoInfo.GetSessionId())
-                ("recovery", recovery.Str())
-                ("seq_no", ss.SeqNo)
-                ("readonly", ss.ReadOnly ? "True" : "False")
-                ("owner", ToString(ss.Owner));
+            auto cd = sessionsNode.AddChild("cd", " ");
+            cd.AddChild("client_id", session.ProtoInfo.GetClientId());
+            cd.AddChild("fqdn", session.ProtoInfo.GetOriginFqdn());
+            cd.AddChild("session_id", session.ProtoInfo.GetSessionId());
+            cd.AddChild("recovery", recovery.Str());
+            cd.AddChild("seq_no", ss.SeqNo);
+            cd.AddChild("readonly", ss.ReadOnly ? "True" : "False");
+            cd.AddChild("owner", ToString(ss.Owner));
         }
     }
 }
@@ -492,20 +488,20 @@ struct TIndexTabletMonitoringActor
         const TEvIndexTabletPrivate::TEvDumpCompactionRangeResponse& msg)
     {
         NXml::TDocument data("root", NXml::TDocument::RootName);
-        NCloud::NStorage::NTNodeWrapper::TFieldAdder root = data.Root();
-        root("tablet_id", TabletId)
-            ("node_id", Owner.NodeId())
-            ("hostname", HostName())
-            ("range_id", msg.RangeId);
-        auto blocks = root.AddFieldIn("blocks", " ");
+        auto root = data.Root();
+        root.AddChild("tablet_id", TabletId);
+        root.AddChild("node_id", Owner.NodeId());
+        root.AddChild("hostname", HostName());
+        root.AddChild("range_id", msg.RangeId);
+        auto blocks = root.AddChild("blocks", " ");
         for (const auto& blob: msg.Blobs) {
             for (const auto& block: blob.Blocks) {
-                blocks.AddFieldIn("cd", " ")
-                    ("node_id", block.NodeId)
-                    ("block_index", block.BlockIndex)
-                    ("blob_id", blob.BlobId)
-                    ("min_commit_id", block.MinCommitId)
-                    ("max_commit_id", block.MaxCommitId);
+                auto cd = blocks.AddChild("cd", " ");
+                cd.AddChild("node_id", block.NodeId);
+                cd.AddChild("block_index", block.BlockIndex);
+                cd.AddChild("blob_id", blob.BlobId);
+                cd.AddChild("min_commit_id", block.MinCommitId);
+                cd.AddChild("max_commit_id", block.MaxCommitId);
             }
         }
 
@@ -657,10 +653,12 @@ void TIndexTabletActor::HandleHttpInfo_Default(
     root.AddChild("tablet_host", FQDNHostName());
     const auto& shardIds = GetFileSystem().GetShardFileSystemIds();
     if (shardIds.size()) {
-        NCloud::NStorage::NTNodeWrapper::TFieldAdder shards = root.AddChild("shards", " ");
+        auto shards = root.AddChild("shards", " ");
         ui32 shardNo = 0;
         for (const auto& shardId: shardIds) {
-            shards.AddFieldIn("cd", " ")("shard_no", ++shardNo)("shard_id", shardId);
+            auto cd = shards.AddChild("cd", " ");
+            cd.AddChild("shard_no", ++shardNo);
+            cd.AddChild("shard_id", shardId);
         }
     }
     root.AddChild("curr_commit_id", GetCurrentCommitId());
@@ -695,13 +693,15 @@ void TIndexTabletActor::HandleHttpInfo_Default(
     root.AddChild("backpressure_period", ctx.Now() - BackpressurePeriodStart);
 
     {
-        NCloud::NStorage::NTNodeWrapper::TFieldAdder backpressure = root.AddChild("backpressure", " ");
+        auto backpressure = root.AddChild("backpressure", " ");
 
 #define DUMP_BACKPRESSURE_FIELD(name)                                   \
-        backpressure.AddFieldIn("cd", " ")                              \
-            ("name", #name)                                             \
-            ("value", backpressureValues.name)                          \
-            ("threshold", backpressureThresholds.name);                 \
+        {                                                               \
+            auto cd = backpressure.AddChild("cd", " ");                 \
+            cd.AddChild("name", #name);                                 \
+            cd.AddChild("value", backpressureValues.name);              \
+            cd.AddChild("threshold", backpressureThresholds.name);      \
+        }                                                               \
 // DUMP_BACKPRESSURE_FIELD
 
         DUMP_BACKPRESSURE_FIELD(Flush);
@@ -714,13 +714,13 @@ void TIndexTabletActor::HandleHttpInfo_Default(
 
     {
         const auto compactionInfo = GetCompactionInfo();
-        NCloud::NStorage::NTNodeWrapper::TFieldAdder compaction = root.AddChild("compaction", " ");
+        NCloud::NStorage::NTNodeWrapper::TNodeWrapper compaction = root.AddChild("compaction", " ");
 
         const auto cleanupInfo = GetCleanupInfo();
-        NCloud::NStorage::NTNodeWrapper::TFieldAdder cleanup = root.AddChild("cleanup", " ");
+        NCloud::NStorage::NTNodeWrapper::TNodeWrapper cleanup = root.AddChild("cleanup", " ");
 
 #define DUMP_INFO_FIELD(adder, info, name)                                      \
-        adder.AddFieldIn("cd", " ")("name", #name)("value", info.name);           \
+        adder.AddNamedElement(#name, info.name);           \
 // DUMP_INFO_FIELD
 
         DUMP_INFO_FIELD(compaction, compactionInfo, Threshold);

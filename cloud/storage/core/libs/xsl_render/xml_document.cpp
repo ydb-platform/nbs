@@ -1,3 +1,3 @@
 #include "xml_document.h"
 
-NCloud::NStorage::NTNodeWrapper::TFieldAdder::TFieldAdder(NXml::TNode root) : Root(root) {}
+NCloud::NStorage::NTNodeWrapper::TNodeWrapper::TNodeWrapper(NXml::TNode root) : Root(root) {}

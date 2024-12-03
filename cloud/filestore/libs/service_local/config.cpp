@@ -95,9 +95,9 @@ void TLocalFileStoreConfig::Dump(IOutputStream& out) const
 
 void TLocalFileStoreConfig::DumpXml(NXml::TNode root) const
 {
-    auto adder = NStorage::NTNodeWrapper::TFieldAdder(root.AddChild("config_properties", " "));
+    NStorage::NTNodeWrapper::TNodeWrapper wrapper(root.AddChild("config_properties", " "));
 #define FILESTORE_CONFIG_DUMP(name, ...)                                        \
-    adder.AddFieldIn("cd", " ")("name", #name)("value", Get##name());           \
+    wrapper.AddNamedElement(#name, Get##name());                                \
 // FILESTORE_CONFIG_DUMP
 
     FILESTORE_SERVICE_CONFIG(FILESTORE_CONFIG_DUMP)

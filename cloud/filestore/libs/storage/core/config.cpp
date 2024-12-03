@@ -409,9 +409,9 @@ void TStorageConfig::Dump(IOutputStream& out) const
 
 void TStorageConfig::DumpXml(NXml::TNode root) const
 {
-    auto adder = NCloud::NStorage::NTNodeWrapper::TFieldAdder(root.AddChild("config_properties", " "));
+    NCloud::NStorage::NTNodeWrapper::TNodeWrapper wrapper(root.AddChild("config_properties", " "));
 #define FILESTORE_DUMP_CONFIG(name, ...)                                        \
-    adder.AddFieldIn("cd", " ")("name", #name)("value", DumpImpl(Get##name()));  \
+    wrapper.AddNamedElement(#name, DumpImpl(Get##name()));  \
 // FILESTORE_DUMP_CONFIG
 
     FILESTORE_STORAGE_CONFIG(FILESTORE_DUMP_CONFIG)
@@ -422,12 +422,12 @@ void TStorageConfig::DumpXml(NXml::TNode root) const
 
 void TStorageConfig::DumpOverridesXml(NXml::TNode root) const
 {
-    auto adder = NCloud::NStorage::NTNodeWrapper::TFieldAdder(root.AddChild("config_properties", " "));
+    NCloud::NStorage::NTNodeWrapper::TNodeWrapper wrapper(root.AddChild("config_properties", " "));
 #define FILESTORE_DUMP_CONFIG(name, ...)                                            \
     {                                                                               \
         const auto value = ProtoConfig.Get##name();                                 \
         if (!IsEmpty(value)) {                                                      \
-            adder.AddFieldIn("cd", " ")("name", #name)("value", DumpImpl(value));    \
+            wrapper.AddNamedElement(#name, DumpImpl(value));                        \
         }                                                                           \
     }                                                                               \
 // FILESTORE_DUMP_CONFIG

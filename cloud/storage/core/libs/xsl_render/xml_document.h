@@ -15,19 +15,15 @@
 
 namespace NCloud::NStorage::NTNodeWrapper {
 
-class TFieldAdder {
+class TNodeWrapper {
 public:
-    TFieldAdder(NXml::TNode root);
+    TNodeWrapper(NXml::TNode root);
 
-    template <typename T>
-    TFieldAdder AddFieldIn(TZtStringBuf name, T&& value) {
-        return TFieldAdder(Root.AddChild(name, std::forward<T>(value)));
-    }
-
-    template <typename T>
-    TFieldAdder& operator()(TZtStringBuf name, T&& value) {
-        Root.AddChild(name, std::forward<T>(value));
-        return *this;
+    template <typename T, typename P>
+    void AddNamedElement(T&& name, P&& value) {
+        auto cd = Root.AddChild("cd ", " ");
+        cd.AddChild("name", std::forward<T>(name));
+        cd.AddChild("value", std::forward<P>(value));
     }
 
 private:

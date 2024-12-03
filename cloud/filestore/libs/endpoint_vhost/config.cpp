@@ -144,9 +144,9 @@ void TVhostServiceConfig::Dump(IOutputStream& out) const
 
 void TVhostServiceConfig::DumpXml(NXml::TNode root) const
 {
-    auto adder = NStorage::NTNodeWrapper::TFieldAdder(root.AddChild("config_properties", " "));
+    NStorage::NTNodeWrapper::TNodeWrapper wrapper(root.AddChild("config_properties", " "));
 #define VHOST_CONFIG_DUMP(name, ...)                                            \
-    adder.AddFieldIn("cd", " ")("name", #name)("value", DumpImpl(Get##name())); \
+    wrapper.AddNamedElement(#name, DumpImpl(Get##name()));                      \
 // VHOST_CONFIG_DUMP
 
     VHOST_SERVICE_CONFIG(VHOST_CONFIG_DUMP);

@@ -160,9 +160,9 @@ void TDiagnosticsConfig::Dump(IOutputStream& out) const
 
 void TDiagnosticsConfig::DumpXml(NXml::TNode root) const
 {
-    auto adder = NStorage::NTNodeWrapper::TFieldAdder(root.AddChild("config_properties", " "));
+    NStorage::NTNodeWrapper::TNodeWrapper wrapper(root.AddChild("config_properties", " "));
 #define FILESTORE_CONFIG_DUMP(name, ...)                                        \
-    adder.AddFieldIn("cd", " ")("name", #name)("value", Get##name());           \
+    wrapper.AddNamedElement(#name, Get##name());                                \
 // FILESTORE_CONFIG_DUMP
 
     FILESTORE_DIAGNOSTICS_CONFIG(FILESTORE_CONFIG_DUMP);

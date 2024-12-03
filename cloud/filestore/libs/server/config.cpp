@@ -167,9 +167,9 @@ void TServerConfig::Dump(IOutputStream& out) const
 
 void TServerConfig::DumpXml(NXml::TNode root) const
 {
-    auto adder = NStorage::NTNodeWrapper::TFieldAdder(root.AddChild("config_properties", " "));
+    NStorage::NTNodeWrapper::TNodeWrapper wrapper(root.AddChild("config_properties", " "));
 #define FILESTORE_CONFIG_DUMP(name, ...)                                        \
-    adder.AddFieldIn("cd", " ")("name", #name)("value", DumpImpl(Get##name()));           \
+    wrapper.AddNamedElement(#name, DumpImpl(Get##name()));                      \
 // FILESTORE_CONFIG_DUMP
 
     FILESTORE_SERVER_CONFIG(FILESTORE_CONFIG_DUMP)
