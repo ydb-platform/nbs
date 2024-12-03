@@ -1409,6 +1409,11 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionTest)
         UNIT_ASSERT_C(
             HasProtoFlag(response->GetError().GetFlags(), NProto::EF_SILENT),
             FormatError(response->GetError()));
+        UNIT_ASSERT_C(
+            HasProtoFlag(
+                response->GetError().GetFlags(),
+                NProto::EF_HW_PROBLEMS_DETECTED),
+            FormatError(response->GetError()));
     }
 
     Y_UNIT_TEST(ShouldSendStatsToVolume)

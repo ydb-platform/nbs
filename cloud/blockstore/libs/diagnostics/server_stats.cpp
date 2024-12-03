@@ -507,6 +507,7 @@ void TServerStats::RequestCompleted(
 
     ELogPriority logPriority;
     TString message;
+    const bool controlRequest = IsControlRequest(req.RequestType);
 
     if (execTime >= RequestTimeWarnThreshold) {
         logPriority = TLOG_WARNING;
@@ -518,10 +519,13 @@ void TServerStats::RequestCompleted(
                errorKind == EDiagnosticsErrorKind::ErrorAborted) {
         logPriority = TLOG_ERR;
         message = "request failed";
+    } else if (
+        controlRequest && errorKind == EDiagnosticsErrorKind::ErrorRetriable)
+    {
+        logPriority = TLOG_WARNING;
+        message = "request rejected";
     } else {
-        logPriority = IsControlRequest(req.RequestType)
-            ? TLOG_INFO
-            : TLOG_RESOURCES;
+        logPriority = controlRequest ? TLOG_INFO : TLOG_RESOURCES;
         message = "request completed";
     }
 
