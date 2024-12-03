@@ -32,13 +32,6 @@ struct TDeviceReadRequestContext: public NRdma::TNullContext
     ui64 BlockCount = 0;
 };
 
-///////////////////////////////////////////////////////////////////////////////
-
-void HandleError(
-    const TNonreplicatedPartitionConfigPtr& partConfig,
-    TStringBuf responseBuffer,
-    NProto::TError& error);
-
 ////////////////////////////////////////////////////////////////////////////////
 
 class TNonreplicatedPartitionRdmaActor final

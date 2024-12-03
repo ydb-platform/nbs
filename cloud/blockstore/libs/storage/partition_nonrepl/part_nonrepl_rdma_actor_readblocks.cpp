@@ -129,7 +129,7 @@ public:
         if (status == NRdma::RDMA_PROTO_OK) {
             HandleResult(*dr, buffer);
         } else {
-            HandleError(PartConfig, buffer, *Response.MutableError());
+            *Response.MutableError() = NRdma::ParseError(buffer);
         }
 
         if (--ResponseCount != 0) {
