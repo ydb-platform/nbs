@@ -232,6 +232,96 @@ func (c *S3Client) PutObject(
 	return nil
 }
 
+func (c *S3Client) CreateMultipartUpload(
+	ctx context.Context,
+	bucket string,
+	key string,
+) (err error) {
+
+	ctx = withComponentLoggingField(ctx)
+	logging.Info(ctx, "create multipart upload to s3, bucket %v, key %v", bucket, key)
+
+	ctx, cancel := context.WithTimeout(ctx, c.callTimeout)
+	defer cancel()
+
+	defer c.metrics.StatCall(ctx, "CreateMultipartUpload", bucket, key)(&err)
+
+	_, err = c.s3.CreateMultipartUploadWithContext(ctx, &aws_s3.CreateMultipartUploadInput{
+		Bucket:          &bucket,
+		Key:             &key,
+		ContentEncoding: aws.String("application/octet-stream"),
+	})
+	if err != nil {
+		return errors.NewRetriableError(err)
+	}
+
+	return nil
+}
+
+func (c *S3Client) UploadPart(
+	ctx context.Context,
+	bucket string,
+	key string,
+	partNumber int64,
+	uploadId string,
+	data []byte,
+) (partResp types.CompletedPart, err error) {
+
+	ctx = withComponentLoggingField(ctx)
+	logging.Info(ctx, "upload part to s3, bucket %v, key %v", bucket, key)
+
+	ctx, cancel := context.WithTimeout(ctx, c.callTimeout)
+	defer cancel()
+
+	defer c.metrics.StatCall(ctx, "UploadPart", bucket, key)(&err)
+
+	partResp, err = c.s3.UploadPartWithContext(ctx, &aws_s3.UploadPartInput{
+		Bucket:     &bucket,
+		Key:        &key,
+		PartNumber: &partNumber,
+		Body:       bytes.NewReader(data),
+	})
+	if err != nil {
+		return aws_s3.CompletedPart{}, errors.NewRetriableError(err)
+	}
+
+	return aws_s3.CompletedPart{
+		ETag:       partResp.ETag,
+		PartNumber: &partNumber,
+	}, nil
+}
+
+func (c *S3Client) CompleteMultipartUpload(
+	ctx context.Context,
+	bucket string,
+	key string,
+	uploadId string,
+	completedParts []*aws_s3.CompletedPart,
+) (err error) {
+
+	ctx = withComponentLoggingField(ctx)
+	logging.Info(ctx, "complete multipart upload to s3, bucket %v, key %v", bucket, key)
+
+	ctx, cancel := context.WithTimeout(ctx, c.callTimeout)
+	defer cancel()
+
+	defer c.metrics.StatCall(ctx, "CompleteMultipartUpload", bucket, key)(&err)
+
+	_, err = c.s3.CompleteMultipartUploadWithContext(ctx, &aws_s3.CompleteMultipartUploadInput{
+		Bucket:   &bucket,
+		Key:      &key,
+		UploadId: &uploadId,
+		MultipartUpload: &aws_s3.CompletedMultipartUpload{
+			Parts: completedParts,
+		},
+	})
+	if err != nil {
+		return errors.NewRetriableError(err)
+	}
+
+	return nil
+}
+
 func (c *S3Client) DeleteObject(
 	ctx context.Context,
 	bucket string,
