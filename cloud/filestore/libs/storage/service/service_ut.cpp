@@ -4976,7 +4976,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         service.WriteData(headers, fsId, nodeId2, handle2, 0, data2);
 
         // waiting for async stats aggregation from shards
-        // doing it before triggering another event to avoid DispatchEvent call
+        // doing it before triggering another event to avoid DispatchEvents call
         // which does a long busy-wait loop
         env.GetRuntime().AdvanceCurrentTime(TDuration::Seconds(15));
 
@@ -5015,7 +5015,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         service.WriteData(headers, fsId, nodeId2, handle2, 0, data2);
 
         // waiting for async stats aggregation from shards
-        // doing it before triggering another event to avoid DispatchEvent call
+        // doing it before triggering another event to avoid DispatchEvents call
         // which does a long busy-wait loop
         env.GetRuntime().AdvanceCurrentTime(TDuration::Seconds(15));
         // just triggering another event chain - doesn't matter which one
