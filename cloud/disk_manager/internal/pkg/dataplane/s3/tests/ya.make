@@ -1,10 +1,10 @@
-GO_TEST_FOR(cloud/disk_manager/internal/pkg/dataplane/nbs)
+GO_TEST_FOR(cloud/disk_manager/internal/pkg/dataplane/s3)
 
 SET_APPEND(RECIPE_ARGS --nbs-only)
 INCLUDE(${ARCADIA_ROOT}/cloud/disk_manager/test/recipe/recipe.inc)
 
 GO_XTEST_SRCS(
-    nbs_test.go
+    s3_test.go
 )
 
 IF (RACE)
@@ -13,5 +13,12 @@ IF (RACE)
 ELSE()
     SIZE(MEDIUM)
 ENDIF()
+
+TAG(sb:ssd)
+
+REQUIREMENTS(
+    cpu:4
+    ram:32
+)
 
 END()

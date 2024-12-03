@@ -236,7 +236,7 @@ func (c *S3Client) CreateMultipartUpload(
 	ctx context.Context,
 	bucket string,
 	key string,
-) (err error) {
+) (uploadId string, err error) {
 
 	ctx = withComponentLoggingField(ctx)
 	logging.Info(ctx, "create multipart upload to s3, bucket %v, key %v", bucket, key)
@@ -246,16 +246,16 @@ func (c *S3Client) CreateMultipartUpload(
 
 	defer c.metrics.StatCall(ctx, "CreateMultipartUpload", bucket, key)(&err)
 
-	_, err = c.s3.CreateMultipartUploadWithContext(ctx, &aws_s3.CreateMultipartUploadInput{
+	response, err := c.s3.CreateMultipartUploadWithContext(ctx, &aws_s3.CreateMultipartUploadInput{
 		Bucket:          &bucket,
 		Key:             &key,
 		ContentEncoding: aws.String("application/octet-stream"),
 	})
 	if err != nil {
-		return errors.NewRetriableError(err)
+		return "", errors.NewRetriableError(err)
 	}
 
-	return nil
+	return *response.UploadId, nil
 }
 
 func (c *S3Client) UploadPart(
@@ -275,11 +275,14 @@ func (c *S3Client) UploadPart(
 
 	defer c.metrics.StatCall(ctx, "UploadPart", bucket, key)(&err)
 
+	logging.Info(ctx, "in upload upload id is %v", uploadId)
+
 	response, err := c.s3.UploadPartWithContext(ctx, &aws_s3.UploadPartInput{
 		Bucket:     &bucket,
 		Key:        &key,
 		PartNumber: &partNumber,
 		Body:       bytes.NewReader(data),
+		UploadId:   &uploadId,
 	})
 	if err != nil {
 		return nil, errors.NewRetriableError(err)
