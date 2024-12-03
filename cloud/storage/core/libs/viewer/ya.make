@@ -5,8 +5,9 @@ SRCS(
 )
 
 PEERDIR(
+    cloud/storage/core/libs/xsl_render
+
     library/cpp/monlib/service/pages
-    library/cpp/xml/document
 
     contrib/ydb/core/base
 )
