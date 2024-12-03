@@ -499,19 +499,11 @@ void TBootstrapYdb::InitKikimrService()
 
     STORAGE_INFO("ProfileLog initialized");
 
-    auto cgroupStatsFetcherMonitoringSettings =
-        TCgroupStatsFetcherMonitoringSettings{
-            .CountersGroupName = "blockstore",
-            .ComponentGroupName = "server",
-            .CounterName = "CpuWaitFailure",
-        };
-
-    CgroupStatsFetcher = CreateCgroupStatsFetcher(
-        "BLOCKSTORE_CGROUPS",
-        logging,
-        monitoring,
+    CgroupStatsFetcher = BuildCgroupStatsFetcher(
         Configs->DiagnosticsConfig->GetCpuWaitFilename(),
-        std::move(cgroupStatsFetcherMonitoringSettings));
+        Log,
+        logging,
+        "BLOCKSTORE_CGROUPS");
 
     if (Configs->StorageConfig->GetBlockDigestsEnabled()) {
         if (Configs->StorageConfig->GetUseTestBlockDigestGenerator()) {
