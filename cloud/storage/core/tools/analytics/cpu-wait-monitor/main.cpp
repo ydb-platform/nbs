@@ -63,13 +63,7 @@ int main(int argc, const char** argv)
     auto statsFetcher = NCloud::NStorage::CreateCgroupStatsFetcher(
         options.ComponentName,
         logging,
-        monitoring,
-        options.Path,
-        {
-            .CountersGroupName = options.ComponentName,
-            .ComponentGroupName = "server",
-            .CounterName = "CpuWaitFailure",
-        });
+        options.Path);
 
     statsFetcher->Start();
 
