@@ -91,7 +91,7 @@ func (t *createSnapshotFromDiskTask) run(
 		return err
 	}
 
-	err = t.ensureCheckpointReady(ctx, nbsClient, disk.DiskId, checkpointID)
+	err = nbsClient.EnsureCheckpointReady(ctx, disk.DiskId, checkpointID)
 	if err != nil {
 		return err
 	}

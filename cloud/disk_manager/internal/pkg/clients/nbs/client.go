@@ -865,6 +865,43 @@ func (c *client) DeleteCheckpointData(
 	return err
 }
 
+func (c *client) EnsureCheckpointReady(
+	ctx context.Context,
+	diskID string,
+	checkpointID string,
+) error {
+
+	unparserStatus, err := c.getCheckpointStatus(ctx, diskID, checkpointID)
+	if err != nil {
+		return err
+	}
+
+	status := parseCheckpointStatus(unparserStatus)
+
+	logging.Info(
+		ctx,
+		"Current CheckpointStatus: %v",
+		status,
+	)
+
+	switch status {
+	case CheckpointStatusNotReady:
+		return errors.NewInterruptExecutionError()
+
+	case CheckpointStatusError:
+		_ = c.DeleteCheckpoint(ctx, diskID, checkpointID)
+		return errors.NewRetriableErrorf(
+			"Creating checkpoint for disk with id %v ended with an error.",
+			diskID,
+		)
+
+	case CheckpointStatusReady:
+		// Nothing to do.
+	}
+
+	return nil
+}
+
 func (c *client) Resize(
 	ctx context.Context,
 	checkpoint func() error,
