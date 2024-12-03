@@ -164,11 +164,17 @@ void TGetShardStatsActor::ReplyAndDie(
             std::make_unique<TEvIndexTablet::TEvGetStorageStatsResponse>(error);
     }
     using TCompletion = TEvIndexTabletPrivate::TEvGetShardStatsCompleted;
+    TInstant startedTs;
+    auto stats = Response->Record.GetStats();
+    if (RequestInfo) {
+        startedTs = RequestInfo->StartedTs;
+        NCloud::Reply(ctx, *RequestInfo, std::move(Response));
+    }
     auto response = std::make_unique<TCompletion>(
         error,
-        RequestInfo->StartedTs);
+        std::move(stats),
+        startedTs);
     NCloud::Send(ctx, Tablet, std::move(response));
-    NCloud::Reply(ctx, *RequestInfo, std::move(Response));
 
     Die(ctx);
 }
@@ -730,6 +736,30 @@ void TIndexTabletActor::HandleUpdateCounters(
 
     UpdateCountersScheduled = false;
     ScheduleUpdateCounters(ctx);
+
+    if (!AggregateStatsFetchingInProgress) {
+        auto response =
+            std::make_unique<TEvIndexTablet::TEvGetStorageStatsResponse>();
+        auto* stats = response->Record.MutableStats();
+        FillSelfStorageStats(stats);
+        const auto& shardIds = GetFileSystem().GetShardFileSystemIds();
+        if (shardIds.empty()) {
+            CachedAggregateStats = std::move(*stats);
+            return;
+        }
+
+        auto actor = std::make_unique<TGetShardStatsActor>(
+            LogTag,
+            SelfId(),
+            TRequestInfoPtr(),
+            NProtoPrivate::TGetStorageStatsRequest(),
+            shardIds,
+            std::move(response));
+
+        auto actorId = NCloud::Register(ctx, std::move(actor));
+        WorkerActors.insert(actorId);
+        AggregateStatsFetchingInProgress = true;
+    }
 }
 
 void TIndexTabletActor::UpdateCounters()
@@ -749,15 +779,9 @@ void TIndexTabletActor::UpdateCounters()
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void TIndexTabletActor::HandleGetStorageStats(
-    const TEvIndexTablet::TEvGetStorageStatsRequest::TPtr& ev,
-    const TActorContext& ctx)
+void TIndexTabletActor::FillSelfStorageStats(
+    NProtoPrivate::TStorageStats* stats)
 {
-    auto response =
-        std::make_unique<TEvIndexTablet::TEvGetStorageStatsResponse>();
-
-    auto* stats = response->Record.MutableStats();
-
 #define FILESTORE_TABLET_UPDATE_COUNTER(name, ...)                             \
     stats->Set##name(Get##name());                                             \
 // FILESTORE_TABLET_UPDATE_COUNTER
@@ -775,13 +799,31 @@ void TIndexTabletActor::HandleGetStorageStats(
     ).Get();
     stats->SetTxDeleteGarbageRwCompleted(txDeleteGarbageRwCompleted);
 
-    response->Record.SetMediaKind(GetFileSystem().GetStorageMediaKind());
-
     auto cmStats = GetCompactionMapStats(0);
     stats->SetUsedCompactionRanges(cmStats.UsedRangesCount);
     stats->SetAllocatedCompactionRanges(cmStats.AllocatedRangesCount);
 
+    stats->SetFlushState(static_cast<ui32>(FlushState.GetOperationState()));
+    stats->SetBlobIndexOpState(static_cast<ui32>(
+        BlobIndexOpState.GetOperationState()));
+    stats->SetCollectGarbageState(static_cast<ui32>(
+        CollectGarbageState.GetOperationState()));
+}
+
+void TIndexTabletActor::HandleGetStorageStats(
+    const TEvIndexTablet::TEvGetStorageStatsRequest::TPtr& ev,
+    const TActorContext& ctx)
+{
+    auto response =
+        std::make_unique<TEvIndexTablet::TEvGetStorageStatsResponse>();
+    response->Record.SetMediaKind(GetFileSystem().GetStorageMediaKind());
     auto& req = ev->Get()->Record;
+    auto* stats = response->Record.MutableStats();
+    if (req.GetAllowCache()) {
+        *stats = CachedAggregateStats;
+    } else {
+        FillSelfStorageStats(stats);
+    }
 
     TVector<TCompactionRangeInfo> topRanges;
 
@@ -811,15 +853,9 @@ void TIndexTabletActor::HandleGetStorageStats(
         out->SetGarbageBlockCount(r.Stats.GarbageBlocksCount);
     }
 
-    stats->SetFlushState(static_cast<ui32>(FlushState.GetOperationState()));
-    stats->SetBlobIndexOpState(static_cast<ui32>(
-        BlobIndexOpState.GetOperationState()));
-    stats->SetCollectGarbageState(static_cast<ui32>(
-        CollectGarbageState.GetOperationState()));
-
     const auto& shardIds = GetFileSystem().GetShardFileSystemIds();
 
-    if (shardIds.empty()) {
+    if (req.GetAllowCache() || shardIds.empty()) {
         Metrics.StatFileStore.Update(1, 0, TDuration::Zero());
         NCloud::Reply(ctx, *ev, std::move(response));
         return;
@@ -849,8 +885,15 @@ void TIndexTabletActor::HandleGetShardStatsCompleted(
     const TEvIndexTabletPrivate::TEvGetShardStatsCompleted::TPtr& ev,
     const TActorContext& ctx)
 {
-    if (!HasError(ev->Get()->Error)) {
-        Metrics.StatFileStore.Update(1, 0, ctx.Now() - ev->Get()->StartedTs);
+    auto* msg = ev->Get();
+    const bool isBackgroundRequest = msg->StartedTs.GetValue() == 0;
+    if (!HasError(msg->Error)) {
+        if (isBackgroundRequest) {
+            AggregateStatsFetchingInProgress = false;
+        } else {
+            Metrics.StatFileStore.Update(1, 0, ctx.Now() - msg->StartedTs);
+        }
+        CachedAggregateStats = std::move(msg->AggregateStats);
     }
     WorkerActors.erase(ev->Sender);
 }

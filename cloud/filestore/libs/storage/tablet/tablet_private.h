@@ -820,6 +820,7 @@ struct TEvIndexTabletPrivate
 
     struct TGetShardStatsCompleted
     {
+        NProtoPrivate::TStorageStats AggregateStats;
         TInstant StartedTs;
     };
 
