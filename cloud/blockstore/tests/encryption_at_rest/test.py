@@ -9,7 +9,7 @@ import cloud.blockstore.tests.python.lib.daemon as daemon
 from cloud.blockstore.public.api.protos.encryption_pb2 import \
     ENCRYPTION_DEFAULT_AES_XTS
 
-from cloud.blockstore.public.sdk.python.client import CreateClient
+from cloud.blockstore.public.sdk.python.client import CreateClient, Session
 from cloud.blockstore.public.sdk.python.protos import TCmsActionRequest, \
     TAction, STORAGE_MEDIA_SSD_NONREPLICATED
 from cloud.blockstore.config.root_kms_pb2 import TRootKmsConfig
@@ -161,10 +161,34 @@ def test_create_volume_with_default_ecnryption(nbs, disk_agent):
         blocks_count=2*DEVICE_SIZE//4096,
         storage_media_kind=STORAGE_MEDIA_SSD_NONREPLICATED)
 
-    vol0 = client.stat_volume("vol0")["Volume"]
+    session = Session(client, "vol0", "")
+    vol0 = session.mount_volume()['Volume']
+
+    def read_first_block():
+        with open(vol0.Devices[0].DeviceName, 'rb') as f:
+            f.seek(vol0.Devices[0].PhysicalOffset)
+            return f.read(4096)
+
+    # check that the first block is clean
+    raw_data = read_first_block()
+    assert raw_data.count(0) == 4096
 
     assert len(vol0.Devices) == 2
     assert vol0.EncryptionDesc.Mode == ENCRYPTION_DEFAULT_AES_XTS
 
     assert vol0.EncryptionDesc.EncryptionKey.KekId == KEK_ID
     assert len(vol0.EncryptionDesc.EncryptionKey.EncryptedDEK) == 512
+
+    expected_data = os.urandom(4096)
+
+    session.write_blocks(0, [expected_data])
+    blocks = session.read_blocks(0, 1, checkpoint_id="")
+    assert len(blocks) == 1
+    assert expected_data == blocks[0]
+
+    # check that the first block is encrypted
+    raw_data = read_first_block()
+    assert raw_data.count(0) != 4096
+    assert raw_data != expected_data
+
+    session.unmount_volume()
