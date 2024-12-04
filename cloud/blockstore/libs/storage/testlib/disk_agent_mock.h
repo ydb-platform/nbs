@@ -14,10 +14,16 @@ namespace NCloud::NBlockStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+using TCreateDirectCopyActorFunc = std::function<void(
+    const TEvDiskAgent::TEvDirectCopyBlocksRequest::TPtr& ev,
+    const NActors::TActorContext& ctx,
+    NActors::TActorId owner)>;
+
 struct TDiskAgentState
 {
     TDuration ResponseDelay;
     NProto::TError Error;
+    TCreateDirectCopyActorFunc CreateDirectCopyActorFunc;
 };
 
 using TDiskAgentStatePtr = std::shared_ptr<TDiskAgentState>;
@@ -93,6 +99,7 @@ private:
             HFunc(TEvDiskAgent::TEvWriteDeviceBlocksRequest, HandleWriteDeviceBlocks);
             HFunc(TEvDiskAgent::TEvZeroDeviceBlocksRequest, HandleZeroDeviceBlocks);
             HFunc(TEvDiskAgent::TEvChecksumDeviceBlocksRequest, HandleChecksumDeviceBlocks);
+            HFunc(TEvDiskAgent::TEvDirectCopyBlocksRequest, HandleDirectCopyBlocks);
 
             default:
                 Y_ABORT("Unexpected event %x", ev->GetTypeRewrite());
@@ -300,6 +307,13 @@ private:
         response->Record.SetChecksum(checksum.GetValue());
 
         Reply(ctx, *ev, std::move(response));
+    }
+
+    void HandleDirectCopyBlocks(
+        const TEvDiskAgent::TEvDirectCopyBlocksRequest::TPtr& ev,
+        const NActors::TActorContext& ctx)
+    {
+        State->CreateDirectCopyActorFunc(ev, ctx, SelfId());
     }
 };
 

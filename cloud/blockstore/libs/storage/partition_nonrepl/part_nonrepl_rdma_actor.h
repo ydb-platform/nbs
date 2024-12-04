@@ -51,6 +51,7 @@ private:
         PartConfig->GetName()};
     TGetDeviceForRangeCompanion GetDeviceForRangeCompanion{
         TGetDeviceForRangeCompanion::EAllowedOperation::ReadWrite,
+        Config,
         PartConfig};
 
     bool UpdateCountersScheduled = false;

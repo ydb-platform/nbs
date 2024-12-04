@@ -26,7 +26,8 @@ public:
     };
 
 private:
-    EAllowedOperation AllowedOperation = EAllowedOperation::Read;
+    const EAllowedOperation AllowedOperation;
+    const TStorageConfigPtr Config;
     const TNonreplicatedPartitionConfigPtr PartConfig;
     NActors::TActorId Delegate;
 
@@ -35,6 +36,7 @@ public:
 
     TGetDeviceForRangeCompanion(
         EAllowedOperation allowedOperation,
+        TStorageConfigPtr config,
         TNonreplicatedPartitionConfigPtr partConfig);
 
     void SetDelegate(NActors::TActorId delegate);
@@ -48,6 +50,9 @@ public:
     void ReplyCanNotUseDirectCopy(
         const TEvNonreplPartitionPrivate::TEvGetDeviceForRangeRequest::TPtr& ev,
         const NActors::TActorContext& ctx) const;
+
+private:
+    [[nodiscard]] TDuration GetMinRequestTimeout() const;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
