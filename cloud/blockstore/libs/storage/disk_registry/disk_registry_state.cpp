@@ -425,10 +425,15 @@ void TDiskRegistryState::AllowNotifications(
 {
     // currently we don't want to notify users about mirrored disks since they are not
     // supposed to break
-
     if (disk.MasterDiskId) {
         return;
     }
+
+    // We do not want to notify the user about the breakdowns of the shadow disks.
+    if (disk.CheckpointReplica.GetCheckpointId()) {
+        return;
+    }
+
 
     Y_DEBUG_ABORT_UNLESS(IsDiskRegistryMediaKind(disk.MediaKind));
     if (!IsReliableDiskRegistryMediaKind(disk.MediaKind)) {
@@ -608,6 +613,11 @@ void TDiskRegistryState::AddMigration(
     const TString& diskId,
     const TString& sourceDeviceId)
 {
+    if (disk.CheckpointReplica.GetCheckpointId()) {
+        // Don't start migrations for shadow disks.
+        return;
+    }
+
     if (IsDiskRegistryLocalMediaKind(disk.MediaKind) ||
         disk.MediaKind == NProto::STORAGE_MEDIA_HDD_NONREPLICATED)
     {
@@ -4741,6 +4751,9 @@ ui64 TDiskRegistryState::AddReallocateRequest(
 
     if (disk && disk->MasterDiskId) {
         diskId = disk->MasterDiskId;
+    }
+    if (disk && disk->CheckpointReplica.GetCheckpointId()) {
+        diskId = disk->CheckpointReplica.GetSourceDiskId();
     }
 
     return NotificationSystem.AddReallocateRequest(db, diskId);
