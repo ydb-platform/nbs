@@ -22,17 +22,6 @@ LWTRACE_USING(BLOCKSTORE_STORAGE_PROVIDER);
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void HandleError(
-    const TNonreplicatedPartitionConfigPtr& partConfig,
-    TStringBuf responseBuffer,
-    NProto::TError& error)
-{
-    error = NRdma::ParseError(responseBuffer);
-    partConfig->AugmentErrorFlags(error);
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
 TNonreplicatedPartitionRdmaActor::TNonreplicatedPartitionRdmaActor(
         TStorageConfigPtr config,
         TNonreplicatedPartitionConfigPtr partConfig,
