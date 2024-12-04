@@ -101,6 +101,8 @@ void TStatFileStoreActor::HandleDescribeFileStoreResponse(
     Convert(config, FileStore);
 
     auto request = std::make_unique<TEvIndexTablet::TEvGetStorageStatsRequest>();
+    // explicitly stating the intent
+    request->Record.SetAllowCache(false);
     request->Record.SetFileSystemId(FileSystemId);
 
     // forward request through tablet proxy
@@ -121,7 +123,7 @@ void TStatFileStoreActor::HandleStorageStats(
     auto response = std::make_unique<TEvService::TEvStatFileStoreResponse>();
     response->Record.MutableFileStore()->CopyFrom(FileStore);
 
-    auto stats = response->Record.MutableStats();
+    auto* stats = response->Record.MutableStats();
     stats->SetUsedNodesCount(msg->Record.GetStats().GetUsedNodesCount());
     stats->SetUsedBlocksCount(msg->Record.GetStats().GetUsedBlocksCount());
 

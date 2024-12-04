@@ -329,6 +329,9 @@ private:
             const NProto::TFileSystem& fileSystem);
     } Metrics;
 
+    NProtoPrivate::TStorageStats CachedAggregateStats;
+    bool AggregateStatsFetchingInProgress = false;
+
     const IProfileLogPtr ProfileLog;
     const ITraceSerializerPtr TraceSerializer;
 
@@ -612,6 +615,8 @@ private:
         const TVector<NProto::TOpLogEntry>& opLog);
 
     bool IsShard() const;
+
+    void FillSelfStorageStats(NProtoPrivate::TStorageStats* stats);
 
 private:
     template <typename TMethod>
