@@ -253,13 +253,11 @@ public:
         return error;
     }
 
-    NCloud::NProto::TError MakeIOError(
-        TString message,
-        bool ioErrorCooldownPassed) const
+    NCloud::NProto::TError MakeIOError(TString message) const
     {
         ui32 flags = 0;
         ui32 code = E_IO;
-        if (MuteIOErrors || !ioErrorCooldownPassed) {
+        if (MuteIOErrors) {
             SetProtoFlag(flags, NCloud::NProto::EF_SILENT);
             // for legacy clients
             code = E_IO_SILENT;

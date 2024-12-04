@@ -123,19 +123,14 @@ bool TNonreplicatedPartitionRdmaActor::InitRequests(
         return false;
     }
 
-    if (!msg.Record.GetHeaders().GetIsBackgroundRequest()
-            && RequiresReadWriteAccess<TMethod>
-            && PartConfig->IsReadOnly())
+    if (!msg.Record.GetHeaders().GetIsBackgroundRequest() &&
+        RequiresReadWriteAccess<TMethod> && PartConfig->IsReadOnly())
     {
-        reply(
-            ctx,
-            requestInfo,
-            PartConfig->MakeIOError(
-                "disk in error state",
-                true // cooldown passed
-                ));
+        reply(ctx, requestInfo, PartConfig->MakeIOError("disk in error state"));
         return false;
-    } else if (RequiresCheckpointSupport(msg.Record)) {
+    }
+
+    if (RequiresCheckpointSupport(msg.Record)) {
         reply(
             ctx,
             requestInfo,
