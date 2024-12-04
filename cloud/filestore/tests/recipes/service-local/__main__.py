@@ -1,4 +1,5 @@
 import argparse
+import logging
 import os
 
 import yatest.common as common
@@ -56,6 +57,8 @@ def start(argv):
 
 
 def stop(argv):
+    logging.info(os.system("ss -tpna"))
+
     if not os.path.exists(PID_FILE_NAME):
         return
 
