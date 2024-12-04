@@ -995,7 +995,7 @@ STFUNC(TIndexTabletActor::StateZombie)
         HFunc(TEvTabletPipe::TEvServerDisconnected, HandleSessionDisconnected);
 
         // If compaction/cleanup/collectgarbage started before the tablet reload
-        // and completed during the init state, we should ignore it.
+        // and completed during the zombie state, we should ignore it.
         IgnoreFunc(TEvIndexTabletPrivate::TEvCompactionResponse);
         IgnoreFunc(TEvIndexTabletPrivate::TEvCleanupResponse);
         IgnoreFunc(TEvIndexTabletPrivate::TEvCollectGarbageResponse);
