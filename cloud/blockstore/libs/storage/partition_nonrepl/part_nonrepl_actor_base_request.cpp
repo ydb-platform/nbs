@@ -54,8 +54,7 @@ bool TDiskAgentBaseRequestActor::HandleError(
     bool timedOut)
 {
     if (FAILED(error.GetCode())) {
-        PartConfig->AugmentErrorFlags(error);
-        ProcessError(ctx, *PartConfig, error);
+        ProcessError(*TActorContext::ActorSystem(), *PartConfig, error);
 
         Done(
             ctx,
