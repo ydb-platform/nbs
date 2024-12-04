@@ -2,7 +2,6 @@ DEPENDS(
     cloud/filestore/tests/recipes/tablets-restarter
 )
 
-
 IF (FILESTORE_TABLETS_RESTART_INTERVAL)
     SET(RECIPE_ARGS --restart-interval $FILESTORE_TABLETS_RESTART_INTERVAL)
 ELSE()

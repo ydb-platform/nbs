@@ -34,7 +34,6 @@ public:
 
     void Bootstrap(const TActorContext& ctx)
     {
-        Y_UNUSED(ctx);
         NProtoPrivate::TListLocalFileStoresRequest request;
         if (!google::protobuf::util::JsonStringToMessage(Input, &request).ok())
         {
