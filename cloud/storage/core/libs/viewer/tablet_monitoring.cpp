@@ -10,7 +10,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void setWritable(TStringBuf& label, TStringBuf& color, bool writable, bool systemWritable) {
+void setWritable(TString& label, TString& color, bool writable, bool systemWritable) {
     if (systemWritable) {
         if (writable) {
             color = "green";
@@ -54,8 +54,8 @@ void DumpChannel(
             TABLED() { out << "PoolKind: " << channelInfo.PoolKind; }
             TABLED() { out << "DataKind: " << channelInfo.DataKind; }
             TABLED() {
-                TStringBuf label;
-                TStringBuf color;
+                TString label;
+                TString color;
                 setWritable(label, color, channelInfo.Writable, channelInfo.SystemWritable);
 
                 SPAN_CLASS_STYLE(
