@@ -15,6 +15,7 @@ class TShardRequestActor final
 {
 private:
     const TString LogTag;
+    const NActors::TActorId Tablet;
     const TRequestInfoPtr RequestInfo;
     const TRequest::ProtoRecordType Request;
     const TVector<TString> ShardIds;
@@ -29,6 +30,7 @@ private:
 public:
     TShardRequestActor(
         TString logTag,
+        NActors::TActorId tablet,
         TRequestInfoPtr requestInfo,
         TRequest::ProtoRecordType request,
         TVector<TString> shardIds,
@@ -70,11 +72,13 @@ private:
 template <typename TRequest, typename TResponse>
 TShardRequestActor<TRequest, TResponse>::TShardRequestActor(
         TString logTag,
+        NActors::TActorId tablet,
         TRequestInfoPtr requestInfo,
         TRequest::ProtoRecordType request,
         TVector<TString> shardIds,
         std::unique_ptr<TResponse> response)
     : LogTag(std::move(logTag))
+    , Tablet(tablet)
     , RequestInfo(std::move(requestInfo))
     , Request(std::move(request))
     , ShardIds(std::move(shardIds))
