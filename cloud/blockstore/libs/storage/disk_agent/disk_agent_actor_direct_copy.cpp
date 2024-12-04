@@ -2,8 +2,6 @@
 
 #include <cloud/storage/core/libs/kikimr/helpers.h>
 
-#include <util/string/join.h>
-
 #include <utility>
 
 namespace NCloud::NBlockStore::NStorage {
@@ -31,7 +29,9 @@ public:
     void Bootstrap(const TActorContext& ctx);
 
 private:
-    bool HandleError(const NActors::TActorContext& ctx, NProto::TError error);
+    bool HandleError(
+        const NActors::TActorContext& ctx,
+        const NProto::TError& error);
 
     void Done(const NActors::TActorContext& ctx);
 
@@ -77,12 +77,12 @@ void TDirectCopyActor::Bootstrap(const TActorContext& ctx)
     rec.SetBlockSize(Request.GetBlockSize());
     rec.SetBlocksCount(Request.GetBlockCount());
 
-    ctx.Send(Owner, std::move(readRequest));
+    ctx.Send(Owner, std::move(readRequest), 0, RequestInfo->Cookie);
 }
 
 bool TDirectCopyActor::HandleError(
     const NActors::TActorContext& ctx,
-    NProto::TError error)
+    const NProto::TError& error)
 {
     if (SUCCEEDED(error.GetCode())) {
         return false;
@@ -91,8 +91,7 @@ bool TDirectCopyActor::HandleError(
     NCloud::Reply(
         ctx,
         *RequestInfo,
-        std::make_unique<TEvDiskAgent::TEvDirectCopyBlocksResponse>(
-            std::move(error)));
+        std::make_unique<TEvDiskAgent::TEvDirectCopyBlocksResponse>(error));
 
     Die(ctx);
     return true;
@@ -124,7 +123,8 @@ void TDirectCopyActor::HandleReadBlocksResponse(
 
     auto& rec = writeRequest->Record;
     auto* headers = rec.MutableHeaders();
-    headers->SetIsBackgroundRequest(Request.GetHeaders().GetIsBackgroundRequest());
+    headers->SetIsBackgroundRequest(
+        Request.GetHeaders().GetIsBackgroundRequest());
     headers->SetClientId(TString(Request.GetTargetClientId()));
 
     rec.MutableBlocks()->Swap(msg->Record.MutableBlocks());
@@ -141,7 +141,7 @@ void TDirectCopyActor::HandleReadBlocksResponse(
         ctx.SelfID,
         writeRequest.release(),
         IEventHandle::FlagForwardOnNondelivery,
-        0,            // Cookie
+        ev->Cookie,
         &ctx.SelfID   // forwardOnNondelivery
     );
 
@@ -198,21 +198,29 @@ void TDiskAgentActor::HandleDirectCopyBlocks(
     const TEvDiskAgent::TEvDirectCopyBlocksRequest::TPtr& ev,
     const TActorContext& ctx)
 {
-    const auto* msg = ev->Get();
-    const auto& record = msg->Record;
+    auto* msg = ev->Get();
+    auto& record = msg->Record;
 
-    LOG_INFO(
+    LOG_TRACE(
         ctx,
         TBlockStoreComponents::DISK_AGENT,
-        "DirectCopyBlocks received, SourceDeviceUUID=%s TargetDeviceUUID=%s",
+        "DirectCopyBlocks received, SourceUUID=%s %s, TargetUUID=%s %s",
         record.GetSourceDeviceUUID().Quote().c_str(),
-        record.GetTargetDeviceUUID().Quote().c_str());
+        DescribeRange(TBlockRange64::WithLength(
+                          record.GetSourceStartIndex(),
+                          record.GetBlockCount()))
+            .c_str(),
+        record.GetTargetDeviceUUID().Quote().c_str(),
+        DescribeRange(TBlockRange64::WithLength(
+                          record.GetTargetStartIndex(),
+                          record.GetBlockCount()))
+            .c_str());
 
     NCloud::Register<TDirectCopyActor>(
         ctx,
         SelfId(),
         CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext),
-        record);
+        std::move(record));
 }
 
 }   // namespace NCloud::NBlockStore::NStorage
