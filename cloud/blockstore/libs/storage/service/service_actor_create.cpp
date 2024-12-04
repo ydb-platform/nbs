@@ -321,22 +321,26 @@ void TCreateVolumeActor::HandleCreateEncryptionKeyResponse(
         LOG_ERROR_S(
             ctx,
             TBlockStoreComponents::SERVICE,
-            "Failed to generate encryption key: "
-                << FormatError(error) << ". Create an unencrypted volume.");
-    } else {
-        LOG_INFO_S(
+            "Failed to generate encryption key: " << FormatError(error));
+        ReplyAndDie(
             ctx,
-            TBlockStoreComponents::SERVICE,
-            "Create volume " << Request.GetDiskId().Quote()
-                             << " with default AES XTS encryption");
+            std::make_unique<TEvService::TEvCreateVolumeResponse>(error));
 
-        auto& desc = encryptionDesc.emplace();
-        desc.SetMode(NProto::ENCRYPTION_DEFAULT_AES_XTS);
-
-        auto& dek = *desc.MutableEncryptedDataKey();
-        dek.SetKekId(msg.KmsKey.GetKekId());
-        dek.SetCiphertext(msg.KmsKey.GetEncryptedDEK());
+        return;
     }
+
+    LOG_INFO_S(
+        ctx,
+        TBlockStoreComponents::SERVICE,
+        "Create volume " << Request.GetDiskId().Quote()
+                            << " with default AES XTS encryption");
+
+    auto& desc = encryptionDesc.emplace();
+    desc.SetMode(NProto::ENCRYPTION_DEFAULT_AES_XTS);
+
+    auto& dek = *desc.MutableEncryptedDataKey();
+    dek.SetKekId(msg.KmsKey.GetKekId());
+    dek.SetCiphertext(msg.KmsKey.GetEncryptedDEK());
 
     CreateVolumeImpl(ctx, std::move(encryptionDesc));
 }
