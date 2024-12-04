@@ -285,6 +285,13 @@ TTestEnvBuilder& TTestEnvBuilder::With(NProto::TDiskAgentConfig config)
     return *this;
 }
 
+TTestEnvBuilder& TTestEnvBuilder::WithSecondAgent(
+    NProto::TDiskAgentConfig config)
+{
+    SecondAgentConfigProto = std::move(config);
+    return *this;
+}
+
 TTestEnvBuilder& TTestEnvBuilder::With(INvmeManagerPtr nvmeManager)
 {
     NvmeManager = nvmeManager;
@@ -384,6 +391,29 @@ TTestEnv TTestEnvBuilder::Build()
     Runtime.AddLocalService(
         MakeDiskAgentServiceId(),
         TActorSetupCmd(diskAgent.release(), TMailboxType::Simple, 0));
+
+    if (SecondAgentConfigProto.GetEnabled()) {
+        auto diskAgent2 = CreateDiskAgent(
+            config,
+            std::make_shared<TDiskAgentConfig>(
+                std::move(SecondAgentConfigProto),
+                "the-rack"),
+            nullptr,   // rdmaConfig
+            Spdk,
+            allocator,
+            StorageProvider,
+            CreateProfileLogStub(),
+            CreateBlockDigestGeneratorStub(),
+            CreateLoggingService("console"),
+            nullptr,   // rdmaServer
+            NvmeManager);
+
+        auto nodeId = Runtime.GetNodeId(1);
+        Runtime.AddLocalService(
+            MakeDiskAgentServiceId(nodeId),
+            TActorSetupCmd(diskAgent2.release(), TMailboxType::Simple, 0),
+            1);
+    }
 
     SetupTabletServices(Runtime);
 
