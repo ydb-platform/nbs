@@ -1047,7 +1047,8 @@ message TStorageServiceConfig
     // is in warning state.
     // When enabled, the Disk Registry REMOVE_HOST CMS action will not "forget"
     // agents devices and will not suspend local devices. Instead, PURGE_HOST
-    // should be used for these purposes.
+    // should be used for these purposes. To override this see
+    // "DiskRegistryCleanupConfigOnRemoveHost"
     optional bool DiskRegistryAlwaysAllocatesLocalDisks = 388;
 
     optional uint32 BlobStorageAsyncGetTimeoutHDD = 389;
@@ -1059,4 +1060,8 @@ message TStorageServiceConfig
     // Values greater than disk replica count also mean the same thing - read
     // from all replicas.
     optional uint32 MirrorReadReplicaCount = 391;
+
+    // When enabled, the Disk Registry REMOVE_HOST CMS action will "forget"
+    // agents devices and suspend local devices.
+    optional bool DiskRegistryCleanupConfigOnRemoveHost = 392;
 }

@@ -5276,7 +5276,8 @@ NProto::TError TDiskRegistryState::UpdateCmsHostState(
     ApplyAgentStateChange(db, *agent, now, affectedDisks);
 
     if (newState != NProto::AGENT_STATE_ONLINE && !HasError(result) &&
-        !StorageConfig->GetDiskRegistryAlwaysAllocatesLocalDisks())
+        (!StorageConfig->GetDiskRegistryAlwaysAllocatesLocalDisks() ||
+         StorageConfig->GetDiskRegistryCleanupConfigOnRemoveHost()))
     {
         CleanupAgentConfig(db, *agent);
     }
