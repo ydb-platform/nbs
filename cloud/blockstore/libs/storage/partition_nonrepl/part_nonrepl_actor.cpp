@@ -304,7 +304,7 @@ bool TNonreplicatedPartitionActor::InitRequests(
         reply(
             ctx,
             requestInfo,
-            PartConfig->MakeIOError("disk in error state", true));
+            PartConfig->MakeIOError("disk in error state"));
         return false;
     }
 
@@ -319,8 +319,7 @@ bool TNonreplicatedPartitionActor::InitRequests(
                 requestInfo,
                 PartConfig->MakeIOError(
                     TStringBuilder() << "unavailable device requested: "
-                                     << dr.Device.GetDeviceUUID(),
-                    true));
+                                     << dr.Device.GetDeviceUUID()));
             return false;
         }
     }

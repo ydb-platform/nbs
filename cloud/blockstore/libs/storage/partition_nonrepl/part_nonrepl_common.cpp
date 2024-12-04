@@ -39,7 +39,7 @@ void ProcessError(
     }
 
     if (error.GetCode() == E_IO || error.GetCode() == MAKE_SYSTEM_ERROR(EIO)) {
-        error = config.MakeIOError(std::move(*error.MutableMessage()), true);
+        error = config.MakeIOError(std::move(*error.MutableMessage()));
     }
 }
 
