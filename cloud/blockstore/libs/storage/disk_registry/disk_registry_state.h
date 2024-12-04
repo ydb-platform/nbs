@@ -258,6 +258,8 @@ class TDiskRegistryState
 
         ui32 ReplicaCount = 0;
         TString MasterDiskId;
+
+        // Filled if the disk is a shadow disk for the checkpoint.
         NProto::TCheckpointReplica CheckpointReplica;
 
         TVector<TDeviceId> DeviceReplacementIds;
