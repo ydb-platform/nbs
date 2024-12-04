@@ -894,29 +894,19 @@ public:
 
 private:
     TOperationState CompactionState;
+    TOperationState ExternalCompactionState;
 
     TCompactionMap CompactionMap;
-    bool ExternalCompactionRunning = false;
 
 public:
-    void SetExternalCompactionRunning(bool running)
+    EOperationStatus GetCompactionStatus(bool external) const
     {
-        ExternalCompactionRunning = running;
+        return (external ? ExternalCompactionState : CompactionState).GetStatus();
     }
 
-    bool GetExternalCompactionRunning() const
+    void SetCompactionStatus(bool external, EOperationStatus status)
     {
-        return ExternalCompactionRunning;
-    }
-
-    EOperationStatus GetCompactionStatus() const
-    {
-        return CompactionState.GetStatus();
-    }
-
-    void SetCompactionStatus(EOperationStatus status)
-    {
-        CompactionState.SetStatus(status);
+        (external ? ExternalCompactionState : CompactionState).SetStatus(status);
     }
 
     TCompactionMap& GetCompactionMap()

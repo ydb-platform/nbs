@@ -787,6 +787,7 @@ public:
 
 private:
     TOperationState CompactionState;
+    TOperationState ExternalCompactionState;
     TCompactionMap CompactionMap;
     TTsRingBuffer<TCompactionScores> CompactionScoreHistory;
     TCompressedBitmap UsedBlocks;
@@ -798,22 +799,11 @@ private:
     const ui32 MaxBlobsPerRange;
     ui32 CompactionRangeCountPerRun;
     TInstant LastCompactionRangeCountPerRunTs;
-    bool ExternalCompactionRunning = false;
 
 public:
-    void SetExternalCompactionRunning(bool running)
+    TOperationState& GetCompactionState(bool external)
     {
-        ExternalCompactionRunning = running;
-    }
-
-    bool GetExternalCompactionRunning() const
-    {
-        return ExternalCompactionRunning;
-    }
-
-    TOperationState& GetCompactionState()
-    {
-        return CompactionState;
+        return external ? ExternalCompactionState : CompactionState;
     }
 
     TCompactionMap& GetCompactionMap()

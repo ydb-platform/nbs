@@ -633,7 +633,7 @@ public:
 
 void TPartitionActor::EnqueueCompactionIfNeeded(const TActorContext& ctx)
 {
-    if (State->GetCompactionStatus() != EOperationStatus::Idle) {
+    if (State->GetCompactionStatus(false) != EOperationStatus::Idle) {
         // compaction already enqueued
         return;
     }
@@ -701,7 +701,7 @@ void TPartitionActor::EnqueueCompactionIfNeeded(const TActorContext& ctx)
         return;
     }
 
-    State->SetCompactionStatus(EOperationStatus::Enqueued);
+    State->SetCompactionStatus(false, EOperationStatus::Enqueued);
 
     auto request = std::make_unique<TEvPartitionPrivate::TEvCompactionRequest>(
         MakeIntrusive<TCallContext>(CreateRequestId()),
@@ -752,21 +752,16 @@ void TPartitionActor::HandleCompaction(
         NCloud::Reply(ctx, requestInfo, std::move(response));
     };
 
-    bool isExternalCompactionRequest =
+    bool isExternal =
         msg->CompactionOptions.test(ToBit(ECompactionOption::External));
 
-    if (isExternalCompactionRequest) {
-        if (State->GetExternalCompactionRunning()) {
-            replyError(ctx, *requestInfo, E_TRY_AGAIN, "external compaction already started");
-            return;
-        }
-    } else if (State->GetCompactionStatus() == EOperationStatus::Started) {
+    if (State->GetCompactionStatus(isExternal) == EOperationStatus::Started) {
         replyError(ctx, *requestInfo, E_TRY_AGAIN, "compaction already started");
         return;
     }
 
     if (!State->IsCompactionAllowed()) {
-        State->SetCompactionStatus(EOperationStatus::Idle);
+        State->SetCompactionStatus(isExternal, EOperationStatus::Idle);
 
         replyError(ctx, *requestInfo, E_BS_OUT_OF_SPACE, "all channels readonly");
         return;
@@ -801,9 +796,7 @@ void TPartitionActor::HandleCompaction(
     }
 
     if (!rangeStat.BlobCount && !garbageInfo.BlobCounters) {
-        if (!isExternalCompactionRequest) {
-            State->SetCompactionStatus(EOperationStatus::Idle);
-        }
+        State->SetCompactionStatus(isExternal, EOperationStatus::Idle);
 
         replyError(ctx, *requestInfo, S_ALREADY, "nothing to compact");
         return;
@@ -848,11 +841,8 @@ void TPartitionActor::HandleCompaction(
         tx = CreateTx<TCompaction>(requestInfo, std::move(garbageInfo));
     }
 
-    if (isExternalCompactionRequest) {
-        State->SetExternalCompactionRunning(true);
-    } else {
-        State->SetCompactionStatus(EOperationStatus::Started);
-    }
+
+    State->SetCompactionStatus(isExternal, EOperationStatus::Started);
 
     AddTransaction<TEvPartitionPrivate::TCompactionMethod>(*requestInfo);
 
@@ -887,11 +877,7 @@ void TPartitionActor::HandleCompactionCompleted(
 
     State->ReleaseCollectBarrier(msg->CommitId);
 
-    if (msg->ExternalCompaction) {
-        State->SetExternalCompactionRunning(false);
-    } else {
-        State->SetCompactionStatus(EOperationStatus::Idle);
-    }
+    State->SetCompactionStatus(msg->ExternalCompaction, EOperationStatus::Idle);
 
     Actors.erase(ev->Sender);
 
