@@ -153,6 +153,9 @@ message TGetStorageStatsRequest
     uint32 CompactionRangeCountByCleanupScore = 4;
     // The same but for garbage score.
     uint32 CompactionRangeCountByGarbageScore = 5;
+
+    // Use cached data, don't require up-to-date stats.
+    bool AllowCache = 6;
 }
 
 message TGetStorageStatsResponse

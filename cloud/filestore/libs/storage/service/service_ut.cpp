@@ -4975,6 +4975,11 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         auto data2 = GenerateValidateData(512_KB);
         service.WriteData(headers, fsId, nodeId2, handle2, 0, data2);
 
+        // waiting for async stats aggregation from shards
+        // doing it before triggering another event to avoid DispatchEvents call
+        // which does a long busy-wait loop
+        env.GetRuntime().AdvanceCurrentTime(TDuration::Seconds(15));
+
         const auto fsStat = service.StatFileStore(headers, fsId)->Record;
         const auto& fileStore = fsStat.GetFileStore();
         UNIT_ASSERT_VALUES_EQUAL(fsId, fileStore.GetFileSystemId());
@@ -4986,6 +4991,55 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         UNIT_ASSERT_VALUES_EQUAL(
             768_KB / 4_KB,
             fileStoreStats.GetUsedBlocksCount());
+
+        {
+            NProtoPrivate::TGetStorageStatsRequest request;
+            request.SetFileSystemId(fsId);
+            request.SetAllowCache(true);
+            TString buf;
+            google::protobuf::util::MessageToJsonString(request, &buf);
+            const auto response = service.ExecuteAction("GetStorageStats", buf);
+            NProtoPrivate::TGetStorageStatsResponse record;
+            auto status = google::protobuf::util::JsonStringToMessage(
+                response->Record.GetOutput(),
+                &record);
+            const auto& stats = record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(
+                (data1.size() + data2.size()) / 4_KB,
+                stats.GetUsedBlocksCount());
+            UNIT_ASSERT_VALUES_EQUAL(
+                (data1.size() + data2.size()) / 4_KB,
+                stats.GetMixedBlocksCount());
+        }
+
+        service.WriteData(headers, fsId, nodeId2, handle2, 0, data2);
+
+        // waiting for async stats aggregation from shards
+        // doing it before triggering another event to avoid DispatchEvents call
+        // which does a long busy-wait loop
+        env.GetRuntime().AdvanceCurrentTime(TDuration::Seconds(15));
+        // just triggering another event chain - doesn't matter which one
+        service.StatFileStore(headers, fsId);
+
+        {
+            NProtoPrivate::TGetStorageStatsRequest request;
+            request.SetFileSystemId(fsId);
+            request.SetAllowCache(true);
+            TString buf;
+            google::protobuf::util::MessageToJsonString(request, &buf);
+            const auto response = service.ExecuteAction("GetStorageStats", buf);
+            NProtoPrivate::TGetStorageStatsResponse record;
+            auto status = google::protobuf::util::JsonStringToMessage(
+                response->Record.GetOutput(),
+                &record);
+            const auto& stats = record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(
+                (data1.size() + data2.size()) / 4_KB,
+                stats.GetUsedBlocksCount());
+            UNIT_ASSERT_VALUES_EQUAL(
+                (data1.size() + 2 * data2.size()) / 4_KB,
+                stats.GetMixedBlocksCount());
+        }
     }
 
     Y_UNIT_TEST(ShouldRetryUnlinkingInShard)

@@ -614,7 +614,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Counters)
                 {"filesystem", "test"}}, 0},
         });
 
-        // hard to guarantee something better than the absense of overflows
+        // hard to guarantee something better than the absence of overflows
         const auto latencySensorPredicate = [] (i64 val) {
             return val < 1e9;
         };
