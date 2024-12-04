@@ -4,17 +4,11 @@
 #include <cloud/storage/core/libs/common/media.h>
 
 #include <library/cpp/monlib/service/pages/templates.h>
+#include <library/cpp/resource/resource.h>
 
 #include <util/stream/str.h>
 
 #include <cloud/storage/core/libs/xsl_render/xsl_render.h>
-
-namespace {
-    const char* xslTemplate =
-    {
-        #include "xsl_templates/service_actor_monitoring.xsl"
-    };
-};
 
 namespace NCloud::NFileStore::NStorage {
 
@@ -24,6 +18,8 @@ void TStorageServiceActor::HandleHttpInfo(
     const NMon::TEvHttpInfo::TPtr& ev,
     const TActorContext& ctx)
 {
+    using namespace NCloud::NStorage::NXSLRender;
+
     const auto& request = ev->Get()->Request;
     TString uri{request.GetUri()};
     LOG_DEBUG(ctx, TFileStoreComponents::SERVICE,
@@ -59,7 +55,7 @@ void TStorageServiceActor::HandleHttpInfo(
         }
     }
 
-    NCloud::NStorage::NXSLRender::NXSLRender(xslTemplate, data, out);
+    NXSLRender(NResource::Find("xslt/filestore/storage/service/main").c_str(), data, out);
 
     NCloud::Reply(
         ctx,

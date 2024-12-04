@@ -409,7 +409,8 @@ void TStorageConfig::Dump(IOutputStream& out) const
 
 void TStorageConfig::DumpXml(NXml::TNode root) const
 {
-    NCloud::NStorage::NTNodeWrapper::TNodeWrapper wrapper(root.AddChild("config_properties", " "));
+    using namespace NCloud::NStorage::NTNodeWrapper;
+    TNodeWrapper wrapper(root.AddChild("config_properties", " "));
 #define FILESTORE_DUMP_CONFIG(name, ...)                                        \
     wrapper.AddNamedElement(#name, DumpImpl(Get##name()));  \
 // FILESTORE_DUMP_CONFIG
@@ -422,7 +423,8 @@ void TStorageConfig::DumpXml(NXml::TNode root) const
 
 void TStorageConfig::DumpOverridesXml(NXml::TNode root) const
 {
-    NCloud::NStorage::NTNodeWrapper::TNodeWrapper wrapper(root.AddChild("config_properties", " "));
+    using namespace NCloud::NStorage::NTNodeWrapper;
+    TNodeWrapper wrapper(root.AddChild("config_properties", " "));
 #define FILESTORE_DUMP_CONFIG(name, ...)                                            \
     {                                                                               \
         const auto value = ProtoConfig.Get##name();                                 \

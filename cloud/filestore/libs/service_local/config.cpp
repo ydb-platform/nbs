@@ -95,7 +95,8 @@ void TLocalFileStoreConfig::Dump(IOutputStream& out) const
 
 void TLocalFileStoreConfig::DumpXml(NXml::TNode root) const
 {
-    NStorage::NTNodeWrapper::TNodeWrapper wrapper(root.AddChild("config_properties", " "));
+    using namespace NStorage::NTNodeWrapper;
+    TNodeWrapper wrapper(root.AddChild("config_properties", " "));
 #define FILESTORE_CONFIG_DUMP(name, ...)                                        \
     wrapper.AddNamedElement(#name, Get##name());                                \
 // FILESTORE_CONFIG_DUMP

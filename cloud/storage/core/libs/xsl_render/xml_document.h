@@ -19,11 +19,11 @@ class TNodeWrapper {
 public:
     TNodeWrapper(NXml::TNode root);
 
-    template <typename T, typename P>
-    void AddNamedElement(T&& name, P&& value) {
+    TNodeWrapper& AddNamedElement(auto&& name, auto&& value) {
         auto cd = Root.AddChild("cd ", " ");
-        cd.AddChild("name", std::forward<T>(name));
-        cd.AddChild("value", std::forward<P>(value));
+        cd.AddChild("name", std::forward<decltype(name)>(name));
+        cd.AddChild("value", std::forward<decltype(value)>(value));
+        return *this;
     }
 
 private:

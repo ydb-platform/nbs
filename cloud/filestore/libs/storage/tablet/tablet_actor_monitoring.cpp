@@ -12,6 +12,7 @@
 #include <library/cpp/monlib/service/pages/templates.h>
 #include <library/cpp/protobuf/util/is_equal.h>
 #include <library/cpp/protobuf/util/pb_io.h>
+#include <library/cpp/resource/resource.h>
 
 #include <contrib/ydb/library/actors/protos/actors.pb.h>
 
@@ -25,17 +26,10 @@ namespace NCloud::NFileStore::NStorage {
 using namespace NActors;
 using namespace NActors::NMon;
 using namespace NKikimr;
+using namespace NCloud::NStorage::NTNodeWrapper;
+using namespace NCloud::NStorage::NXSLRender;
 
 namespace {
-    const char* const xslTemplate = {
-        #include "xsl_templates/tablet_actor_monitoring.xsl"
-    };
-
-    const char* const xslTemplateRange = {
-        #include "xsl_templates/tablet_actor_monitoring_range.xsl"
-    };
-
-////////////////////////////////////////////////////////////////////////////////
 
 enum class EAlertLevel
 {
@@ -246,7 +240,7 @@ void DumpProfillingAllocatorStats(
     const TFileStoreAllocRegistry& registry,
     NXml::TNode root)
 {
-    NCloud::NStorage::NTNodeWrapper::TNodeWrapper allocStats(root.AddChild("alloc_stats", " "));
+    TNodeWrapper allocStats(root.AddChild("alloc_stats", " "));
     ui64 allBytes = 0;
     for (ui32 i = 0; i < static_cast<ui32>(EAllocatorTag::Max); ++i) {
         auto tag = static_cast<EAllocatorTag>(i);
@@ -264,7 +258,7 @@ void DumpPerformanceProfile(
     const NProto::TFileStorePerformanceProfile& profile,
     NXml::TNode root)
 {
-    NCloud::NStorage::NTNodeWrapper::TNodeWrapper wrapper(root);
+    TNodeWrapper wrapper(root);
 #define DUMP_PROFILE_STAT(name, value)                                      \
     wrapper.AddNamedElement(name, value);                                   \
 // DUMP_PROFILE_STAT
@@ -296,7 +290,7 @@ void DumpThrottlingState(
     NXml::TNode root)
 {
     const auto& config = policy.GetConfig();
-    NCloud::NStorage::NTNodeWrapper::TNodeWrapper wrapper(root.AddChild("throttler_state", " "));
+    TNodeWrapper wrapper(root.AddChild("throttler_state", " "));
 
 #define DUMP_THROTTING_STAT(name, value)                                    \
     wrapper.AddNamedElement(name, value);                                   \
@@ -505,7 +499,7 @@ struct TIndexTabletMonitoringActor
             }
         }
 
-        NCloud::NStorage::NXSLRender::NXSLRender(xslTemplateRange, data, out);
+        NXSLRender(NResource::Find("xslt/filestore/storage/tablet/range").c_str(), data, out);
     }
 
     void HandlePoisonPill(
@@ -714,10 +708,10 @@ void TIndexTabletActor::HandleHttpInfo_Default(
 
     {
         const auto compactionInfo = GetCompactionInfo();
-        NCloud::NStorage::NTNodeWrapper::TNodeWrapper compaction = root.AddChild("compaction", " ");
+        TNodeWrapper compaction = root.AddChild("compaction", " ");
 
         const auto cleanupInfo = GetCleanupInfo();
-        NCloud::NStorage::NTNodeWrapper::TNodeWrapper cleanup = root.AddChild("cleanup", " ");
+        TNodeWrapper cleanup = root.AddChild("cleanup", " ");
 
 #define DUMP_INFO_FIELD(adder, info, name)                                      \
         adder.AddNamedElement(#name, info.name);           \
@@ -796,7 +790,7 @@ void TIndexTabletActor::HandleHttpInfo_Default(
     DumpSessions(root, GetActiveSessions());
     DumpSessionHistory(root, GetSessionHistoryList());
 
-    NCloud::NStorage::NXSLRender::NXSLRender(xslTemplate, data, out);
+    NXSLRender(NResource::Find("xslt/filestore/storage/tablet/main").c_str(), data, out);
 
     NCloud::Reply(
         ctx,

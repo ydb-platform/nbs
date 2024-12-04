@@ -4,6 +4,7 @@
 #include <cloud/storage/core/libs/xsl_render/xsl_render.h>
 
 #include <library/cpp/monlib/service/pages/templates.h>
+#include <library/cpp/resource/resource.h>
 
 #include <util/stream/str.h>
 #include <util/string/cast.h>
@@ -13,12 +14,6 @@ namespace NCloud::NFileStore::NStorage {
 using namespace NActors;
 
 namespace {
-    const char* xslTemplate =
-    {
-        #include "xsl_templates/service_actor_monitoring_search.xsl"
-    };
-
-////////////////////////////////////////////////////////////////////////////////
 
 class THttpFindFileSystemActor final
     : public TActorBootstrapped<THttpFindFileSystemActor>
@@ -99,6 +94,8 @@ private:
 
     TString BuildHtmlResponse(ui64 tabletId, const TString& path)
     {
+        using namespace NCloud::NStorage::NXSLRender;
+
         TStringStream out;
 
         NXml::TDocument data("root", NXml::TDocument::RootName);
@@ -107,7 +104,7 @@ private:
         root.AddChild("path", path);
         root.AddChild("tablet_id", tabletId);
 
-        NCloud::NStorage::NXSLRender::NXSLRender(xslTemplate, data, out);
+        NXSLRender(NResource::Find("xslt/filestore/storage/service/search").c_str(), data, out);
 
         return out.Str();
     }
