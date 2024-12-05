@@ -973,6 +973,16 @@ message TDirectCopyBlocksResponse
 {
     // Optional error, set only if error happened.
     NCloud.NProto.TError Error = 1;
+
+    // If true, it means that all the data read was zeros.
+    // It's a hint, false negatives are allowed.
+    bool AllZeroes = 2;
+
+    // The time spent reading the data (in microseconds).
+    uint64 ReadDuration = 3;
+
+    // The time spent writing the data (in microseconds).
+    uint64 WriteDuration = 4;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
