@@ -45,7 +45,6 @@ func TestCreateSnapshotFromDiskTaskFailure(t *testing.T) {
 	)
 
 	diskParams := nbs.DiskParams{}
-
 	request := &protos.CreateSnapshotFromDiskRequest{
 		SrcDisk: &types.Disk{
 			ZoneId: zoneID,

@@ -871,7 +871,7 @@ func (c *client) EnsureCheckpointReady(
 	checkpointID string,
 ) (err error) {
 
-	defer c.metrics.StatRequest("DeleteCheckpointData")(&err)
+	defer c.metrics.StatRequest("EnsureCheckpointReady")(&err)
 
 	unparserStatus, err := c.getCheckpointStatus(ctx, diskID, checkpointID)
 	if err != nil {
