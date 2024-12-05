@@ -202,12 +202,14 @@ void TIndexTabletActor::CompleteTx_ResetSession(
 
     auto actor = std::make_unique<TResetShardSessionsActor>(
         LogTag,
+        SelfId(),
         std::move(args.RequestInfo),
         std::move(args.Request),
         TVector<TString>(shardIds.begin(), shardIds.end()),
         std::move(response));
 
-    NCloud::Register(ctx, std::move(actor));
+    auto actorId = NCloud::Register(ctx, std::move(actor));
+    WorkerActors.insert(actorId);
 }
 
 }   // namespace NCloud::NFileStore::NStorage

@@ -418,15 +418,14 @@ void TIndexTabletActor::CreateSessionsInShards(
 
     auto actor = std::make_unique<TCreateShardSessionsActor>(
         std::move(logTag),
+        SelfId(),
         std::move(requestInfo),
         std::move(request),
         std::move(shardIds),
         std::move(response));
 
     auto actorId = NCloud::Register(ctx, std::move(actor));
-
-    Y_UNUSED(actorId);
-    // TODO(#1350): register actorId in WorkerActors, erase upon completion
+    WorkerActors.insert(actorId);
 }
 
 }   // namespace NCloud::NFileStore::NStorage
