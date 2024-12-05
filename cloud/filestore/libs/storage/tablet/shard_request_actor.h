@@ -179,6 +179,10 @@ void TShardRequestActor<TRequest, TResponse>::ReplyAndDie(
         }
     }
 
+    using TCompletion = TEvIndexTabletPrivate::TEvShardRequestCompleted;
+    auto completion = std::make_unique<TCompletion>(error);
+    NCloud::Send(ctx, Tablet, std::move(completion));
+
     TBase::Die(ctx);
 }
 
