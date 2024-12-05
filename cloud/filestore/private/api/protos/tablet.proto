@@ -703,3 +703,18 @@ message TGetFileSystemTopologyResponse
     // Shard FileSystem identifiers.
     repeated string ShardFileSystemIds = 2;
 }
+
+////////////////////////////////////////////////////////////////////////////////
+// RestartTablet request/response.
+
+message TRestartTabletRequest
+{
+    // FileSystem identifier.
+    string FileSystemId = 1;
+}
+
+message TRestartTabletResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+}
