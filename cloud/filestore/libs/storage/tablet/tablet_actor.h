@@ -731,6 +731,10 @@ private:
         const TEvIndexTabletPrivate::TEvGetShardStatsCompleted::TPtr& ev,
         const NActors::TActorContext& ctx);
 
+    void HandleShardRequestCompleted(
+        const TEvIndexTabletPrivate::TEvShardRequestCompleted::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
     void HandleLoadCompactionMapChunkResponse(
         const TEvIndexTabletPrivate::TEvLoadCompactionMapChunkResponse::TPtr& ev,
         const NActors::TActorContext& ctx);
