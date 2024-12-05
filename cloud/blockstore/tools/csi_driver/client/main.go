@@ -604,7 +604,7 @@ func newNodeGetVolumeStatsCommand(endpoint *string) *cobra.Command {
 ////////////////////////////////////////////////////////////////////////////////
 
 func newNodeExpandVolumeCommand(endpoint *string) *cobra.Command {
-	var volumeId, podId, accessType string
+	var volumeId, podId, accessType, stagingTargetPath string
 	var size int64
 	cmd := cobra.Command{
 		Use:   "expandvolume",
@@ -620,8 +620,9 @@ func newNodeExpandVolumeCommand(endpoint *string) *cobra.Command {
 			_, err = client.NodeExpandVolume(
 				ctx,
 				&csi.NodeExpandVolumeRequest{
-					VolumeId:   volumeId,
-					VolumePath: getTargetPath(podId, volumeId, accessType),
+					VolumeId:          volumeId,
+					VolumePath:        getTargetPath(podId, volumeId, accessType),
+					StagingTargetPath: stagingTargetPath,
 					CapacityRange: &csi.CapacityRange{
 						RequiredBytes: size,
 					},
@@ -640,6 +641,13 @@ func newNodeExpandVolumeCommand(endpoint *string) *cobra.Command {
 		"volume id",
 	)
 	cmd.Flags().StringVar(&podId, "pod-id", "", "pod id")
+	cmd.Flags().StringVar(
+		&stagingTargetPath,
+		"staging-target-path",
+		"/var/lib/kubelet/plugins/kubernetes.io/csi/nbs.csi.nebius.ai/"+
+			"a/globalmount",
+		"staging target path",
+	)
 	cmd.Flags().Int64Var(
 		&size,
 		"size",

@@ -108,8 +108,6 @@ def test_node_volume_expand(fs_type):
         env.csi.create_volume(name=volume_name, size=volume_size)
 
         env.csi.stage_volume(volume_name, access_type)
-        env.csi.publish_volume(pod_id, volume_name, pod_name, fs_type)
-        env.csi.stage_volume(volume_name, access_type)
         env.csi.publish_volume(pod_id, volume_name, pod_name, access_type, fs_type)
 
         new_volume_size = 2 * volume_size
