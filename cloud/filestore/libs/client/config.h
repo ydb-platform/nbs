@@ -4,6 +4,8 @@
 
 #include <cloud/filestore/config/client.pb.h>
 
+#include <cloud/storage/core/libs/xsl_render/xml_document.h>
+
 #include <util/datetime/base.h>
 #include <util/generic/string.h>
 
@@ -45,7 +47,7 @@ public:
     TString GetUnixSocketPath() const;
 
     void Dump(IOutputStream& out) const;
-    void DumpHtml(IOutputStream& out) const;
+    void DumpXml(NXml::TNode root) const;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -67,7 +69,7 @@ public:
     TDuration GetSessionRetryTimeout() const;
 
     void Dump(IOutputStream& out) const;
-    void DumpHtml(IOutputStream& out) const;
+    void DumpXml(NXml::TNode root) const;
 
 };
 

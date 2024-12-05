@@ -130,22 +130,15 @@ void TClientConfig::Dump(IOutputStream& out) const
 #undef FILESTORE_CONFIG_DUMP
 }
 
-void TClientConfig::DumpHtml(IOutputStream& out) const
+void TClientConfig::DumpXml(NXml::TNode root) const
 {
-#define FILESTORE_CONFIG_DUMP(name, ...)                                       \
-    TABLER() {                                                                 \
-        TABLED() { out << #name; }                                             \
-        TABLED() { DumpImpl(Get##name(), out); }                               \
-    }                                                                          \
+    using namespace NStorage::NTNodeWrapper;
+    TNodeWrapper wrapper(root.AddChild("config_properties", " "));
+#define FILESTORE_CONFIG_DUMP(name, ...)                                        \
+    wrapper.AddNamedElement(#name, Get##name());                                \
 // FILESTORE_CONFIG_DUMP
 
-    HTML(out) {
-        TABLE_CLASS("table table-condensed") {
-            TABLEBODY() {
-                FILESTORE_CLIENT_CONFIG(FILESTORE_CONFIG_DUMP);
-            }
-        }
-    }
+    FILESTORE_CLIENT_CONFIG(FILESTORE_CONFIG_DUMP);
 
 #undef FILESTORE_CONFIG_DUMP
 }
@@ -177,23 +170,17 @@ void TSessionConfig::Dump(IOutputStream& out) const
 #undef FILESTORE_CONFIG_DUMP
 }
 
-void TSessionConfig::DumpHtml(IOutputStream& out) const
+void TSessionConfig::DumpXml(NXml::TNode root) const
 {
-#define FILESTORE_CONFIG_DUMP(name, ...)                                       \
-    TABLER() {                                                                 \
-        TABLED() { out << #name; }                                             \
-        TABLED() { DumpImpl(Get##name(), out); }                               \
-    }                                                                          \
+    using namespace NStorage::NTNodeWrapper;
+    TNodeWrapper wrapper(root.AddChild("config_properties", " "));
+#define FILESTORE_CONFIG_DUMP(name, ...)                                        \
+    wrapper.AddNamedElement(#name, Get##name());                                \
 // FILESTORE_CONFIG_DUMP
 
-    HTML(out) {
-        TABLE_CLASS("table table-condensed") {
-            TABLEBODY() {
-                FILESTORE_SESSION_CONFIG(FILESTORE_CONFIG_DUMP);
-            }
-        }
-    }
+    FILESTORE_SESSION_CONFIG(FILESTORE_CONFIG_DUMP);
 
 #undef FILESTORE_CONFIG_DUMP
 }
+
 }   // namespace NCloud::NFileStore::NClient

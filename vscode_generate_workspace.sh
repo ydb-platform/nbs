@@ -7,5 +7,6 @@
    cloud/contrib              \
    cloud/disk_manager         \
    contrib/ydb/library/actors \
+   contrib/libs/libxslt       \
    example                    \
    library                    \

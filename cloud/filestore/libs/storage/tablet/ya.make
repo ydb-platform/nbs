@@ -106,10 +106,12 @@ PEERDIR(
     cloud/storage/core/libs/tablet
     cloud/storage/core/libs/tablet/model
     cloud/storage/core/libs/viewer
+    cloud/storage/core/libs/xsl_render
     cloud/storage/core/protos
 
     contrib/ydb/library/actors/core
     library/cpp/protobuf/json
+    library/cpp/resource
 
     contrib/ydb/core/base
     contrib/ydb/core/filestore/core
@@ -118,6 +120,11 @@ PEERDIR(
     contrib/ydb/core/scheme
     contrib/ydb/core/tablet
     contrib/ydb/core/tablet_flat
+)
+
+RESOURCE(
+    xsl_templates/tablet_actor_monitoring.xsl       xslt/filestore/storage/tablet/main
+    xsl_templates/tablet_actor_monitoring_range.xsl xslt/filestore/storage/tablet/range
 )
 
 END()

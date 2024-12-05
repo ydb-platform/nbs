@@ -21,6 +21,8 @@
 #include <contrib/ydb/library/actors/core/log.h>
 #include <contrib/ydb/library/actors/core/mon.h>
 
+#include <cloud/storage/core/libs/xsl_render/xml_document.h>
+
 namespace NCloud::NFileStore::NProto {
     class TProfileLogRequestInfo;
 }   // namespace NCloud::NFileStore::NProto
@@ -219,8 +221,8 @@ private:
         TString input);
 
 private:
-    void RenderSessions(IOutputStream& out);
-    void RenderLocalFileStores(IOutputStream& out);
+    void RenderSessions(NXml::TNode& root);
+    void RenderLocalFileStores(NXml::TNode& root);
 
     TString LogTag(
         const TString& fsId,

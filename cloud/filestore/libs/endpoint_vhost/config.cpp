@@ -106,6 +106,13 @@ void DumpImpl(
     }
 }
 
+template <typename T>
+TString DumpImpl(const T& value) {
+    TStringStream out;
+    DumpImpl(value, out);
+    return out.Str();
+}
+
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -135,22 +142,15 @@ void TVhostServiceConfig::Dump(IOutputStream& out) const
 #undef VHOST_CONFIG_DUMP
 }
 
-void TVhostServiceConfig::DumpHtml(IOutputStream& out) const
+void TVhostServiceConfig::DumpXml(NXml::TNode root) const
 {
-#define VHOST_CONFIG_DUMP(name, ...)                                           \
-    TABLER() {                                                                 \
-        TABLED() { out << #name; }                                             \
-        TABLED() { DumpImpl(Get##name(), out); }                               \
-    }                                                                          \
+    using namespace NStorage::NTNodeWrapper;
+    TNodeWrapper wrapper(root.AddChild("config_properties", " "));
+#define VHOST_CONFIG_DUMP(name, ...)                                            \
+    wrapper.AddNamedElement(#name, DumpImpl(Get##name()));                      \
 // VHOST_CONFIG_DUMP
 
-    HTML(out) {
-        TABLE_CLASS("table table-condensed") {
-            TABLEBODY() {
-                VHOST_SERVICE_CONFIG(VHOST_CONFIG_DUMP);
-            }
-        }
-    }
+    VHOST_SERVICE_CONFIG(VHOST_CONFIG_DUMP);
 
 #undef VHOST_CONFIG_DUMP
 }

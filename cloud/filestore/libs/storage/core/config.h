@@ -4,6 +4,8 @@
 
 #include <cloud/filestore/config/storage.pb.h>
 
+#include <cloud/storage/core/libs/xsl_render/xml_document.h>
+
 #include <util/datetime/base.h>
 #include <util/generic/string.h>
 
@@ -246,8 +248,8 @@ public:
     TDuration GetAsyncHandleOperationPeriod() const;
 
     void Dump(IOutputStream& out) const;
-    void DumpHtml(IOutputStream& out) const;
-    void DumpOverridesHtml(IOutputStream& out) const;
+    void DumpXml(NXml::TNode root) const;
+    void DumpOverridesXml(NXml::TNode root) const;
 
     TString GetNodeRegistrationToken() const;
     TString GetNodeType() const;

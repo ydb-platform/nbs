@@ -5,6 +5,8 @@
 #include <cloud/filestore/config/server.pb.h>
 #include <cloud/filestore/config/vhost.pb.h>
 
+#include <cloud/storage/core/libs/xsl_render/xml_document.h>
+
 #include <util/datetime/base.h>
 #include <util/generic/vector.h>
 
@@ -35,7 +37,7 @@ public:
     ui32 GetHandleOpsQueueSize() const;
 
     void Dump(IOutputStream& out) const;
-    void DumpHtml(IOutputStream& out) const;
+    void DumpXml(NXml::TNode out) const;
 };
 
 }   // namespace NCloud::NFileStore::NVhost

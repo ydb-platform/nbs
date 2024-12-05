@@ -5,6 +5,8 @@
 #include <cloud/filestore/config/server.pb.h>
 #include <cloud/storage/core/protos/certificate.pb.h>
 
+#include <cloud/storage/core/libs/xsl_render/xml_document.h>
+
 #include <util/datetime/base.h>
 #include <util/generic/string.h>
 
@@ -63,7 +65,7 @@ public:
     }
 
     void Dump(IOutputStream& out) const;
-    void DumpHtml(IOutputStream& out) const;
+    void DumpXml(NXml::TNode root) const;
 };
 
 }   // namespace NCloud::NFileStore::NServer

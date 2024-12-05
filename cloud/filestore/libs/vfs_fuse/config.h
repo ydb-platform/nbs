@@ -45,7 +45,6 @@ public:
     bool GetGuestWritebackCacheEnabled() const;
 
     void Dump(IOutputStream& out) const;
-    void DumpHtml(IOutputStream& out) const;
 };
 
 }   // namespace NCloud::NFileStore::NFuse

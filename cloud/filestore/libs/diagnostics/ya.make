@@ -24,6 +24,7 @@ PEERDIR(
     cloud/storage/core/libs/diagnostics
     cloud/storage/core/libs/user_stats
     cloud/storage/core/libs/version
+    cloud/storage/core/libs/xsl_render
 
     library/cpp/eventlog
     library/cpp/monlib/dynamic_counters

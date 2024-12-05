@@ -158,22 +158,15 @@ void TDiagnosticsConfig::Dump(IOutputStream& out) const
 #undef FILESTORE_CONFIG_DUMP
 }
 
-void TDiagnosticsConfig::DumpHtml(IOutputStream& out) const
+void TDiagnosticsConfig::DumpXml(NXml::TNode root) const
 {
-#define FILESTORE_CONFIG_DUMP(name, ...)                                       \
-    TABLER() {                                                                 \
-        TABLED() { out << #name; }                                             \
-        TABLED() { out << Get##name(); }                                       \
-    }                                                                          \
+    using namespace NStorage::NTNodeWrapper;
+    TNodeWrapper wrapper(root.AddChild("config_properties", " "));
+#define FILESTORE_CONFIG_DUMP(name, ...)                                        \
+    wrapper.AddNamedElement(#name, Get##name());                                \
 // FILESTORE_CONFIG_DUMP
 
-    HTML(out) {
-        TABLE_CLASS("table table-condensed") {
-            TABLEBODY() {
-                FILESTORE_DIAGNOSTICS_CONFIG(FILESTORE_CONFIG_DUMP);
-            }
-        }
-    }
+    FILESTORE_DIAGNOSTICS_CONFIG(FILESTORE_CONFIG_DUMP);
 
 #undef FILESTORE_CONFIG_DUMP
 }

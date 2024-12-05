@@ -359,6 +359,13 @@ void DumpImpl(const TVector<TString>& value, IOutputStream& os)
     }
 }
 
+template <typename T>
+TString DumpImpl(const T& value) {
+    TStringStream out;
+    DumpImpl(value, out);
+    return out.Str();
+}
+
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -400,48 +407,35 @@ void TStorageConfig::Dump(IOutputStream& out) const
 #undef FILESTORE_DUMP_CONFIG
 }
 
-void TStorageConfig::DumpHtml(IOutputStream& out) const
+void TStorageConfig::DumpXml(NXml::TNode root) const
 {
-#define FILESTORE_DUMP_CONFIG(name, ...)                                       \
-    TABLER() {                                                                 \
-        TABLED() { out << #name; }                                             \
-        TABLED() { DumpImpl(Get##name(), out); }                               \
-    }                                                                          \
+    using namespace NCloud::NStorage::NTNodeWrapper;
+    TNodeWrapper wrapper(root.AddChild("config_properties", " "));
+#define FILESTORE_DUMP_CONFIG(name, ...)                                        \
+    wrapper.AddNamedElement(#name, DumpImpl(Get##name()));  \
 // FILESTORE_DUMP_CONFIG
 
-    HTML(out) {
-        TABLE_CLASS("table table-condensed") {
-            TABLEBODY() {
-                FILESTORE_STORAGE_CONFIG(FILESTORE_DUMP_CONFIG);
-                FILESTORE_STORAGE_CONFIG_REF(FILESTORE_DUMP_CONFIG);
-            }
-        }
-    }
+    FILESTORE_STORAGE_CONFIG(FILESTORE_DUMP_CONFIG)
+    FILESTORE_STORAGE_CONFIG_REF(FILESTORE_DUMP_CONFIG)
 
 #undef FILESTORE_DUMP_CONFIG
 }
 
-void TStorageConfig::DumpOverridesHtml(IOutputStream& out) const
+void TStorageConfig::DumpOverridesXml(NXml::TNode root) const
 {
-#define FILESTORE_DUMP_CONFIG(name, type, ...) {                               \
-    const auto value = ProtoConfig.Get##name();                                \
-    if (!IsEmpty(value)) {                                                     \
-        TABLER() {                                                             \
-            TABLED() { out << #name; }                                         \
-            TABLED() { DumpImpl(ConvertValue<type>(value), out); }             \
-        }                                                                      \
-    }                                                                          \
-}                                                                              \
+    using namespace NCloud::NStorage::NTNodeWrapper;
+    TNodeWrapper wrapper(root.AddChild("config_properties", " "));
+#define FILESTORE_DUMP_CONFIG(name, ...)                                            \
+    {                                                                               \
+        const auto value = ProtoConfig.Get##name();                                 \
+        if (!IsEmpty(value)) {                                                      \
+            wrapper.AddNamedElement(#name, DumpImpl(value));                        \
+        }                                                                           \
+    }                                                                               \
 // FILESTORE_DUMP_CONFIG
 
-    HTML(out) {
-        TABLE_CLASS("table table-condensed") {
-            TABLEBODY() {
-                FILESTORE_STORAGE_CONFIG(FILESTORE_DUMP_CONFIG);
-                FILESTORE_STORAGE_CONFIG_REF(FILESTORE_DUMP_CONFIG);
-            }
-        }
-    }
+    FILESTORE_STORAGE_CONFIG(FILESTORE_DUMP_CONFIG)
+    FILESTORE_STORAGE_CONFIG_REF(FILESTORE_DUMP_CONFIG)
 
 #undef FILESTORE_DUMP_CONFIG
 }

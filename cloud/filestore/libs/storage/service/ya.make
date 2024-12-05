@@ -51,16 +51,23 @@ PEERDIR(
 
     cloud/storage/core/libs/common
     cloud/storage/core/libs/diagnostics
+    cloud/storage/core/libs/xsl_render
 
     contrib/ydb/library/actors/core
     library/cpp/monlib/service/pages
     library/cpp/string_utils/quote
+    library/cpp/resource
 
     contrib/ydb/core/base
     contrib/ydb/core/mind
     contrib/ydb/core/mon
     contrib/ydb/core/protos
     contrib/ydb/core/tablet
+)
+
+RESOURCE(
+    xsl_templates/service_actor_monitoring_search.xsl   xslt/filestore/storage/service/search
+    xsl_templates/service_actor_monitoring.xsl          xslt/filestore/storage/service/main
 )
 
 END()
