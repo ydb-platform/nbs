@@ -44,14 +44,7 @@ func TestCreateSnapshotFromDiskTaskFailure(t *testing.T) {
 		diskID,
 	)
 
-	diskParams := nbs.DiskParams{
-		EncryptionDesc: &types.EncryptionDesc{
-			Mode: types.EncryptionMode(0),
-			Key: &types.EncryptionDesc_KeyHash{
-				KeyHash: []byte{1, 2, 3, 4},
-			},
-		},
-	}
+	diskParams := nbs.DiskParams{}
 
 	request := &protos.CreateSnapshotFromDiskRequest{
 		SrcDisk: &types.Disk{
@@ -71,22 +64,24 @@ func TestCreateSnapshotFromDiskTaskFailure(t *testing.T) {
 	}
 
 	nbsFactory.On("GetClient", ctx, zoneID).Return(nbsClient, nil)
-
-	nbsClient.On("GetCheckpointStatus", ctx, diskID, snapshotID).Return(
-		nbs.CheckpointStatusError,
-	)
 	nbsClient.On("Describe", ctx, diskID).Return(diskParams, nil)
+
+	storage.On("CreateSnapshot", ctx, mock.Anything).Return(
+		resources.SnapshotMeta{
+			Ready: false,
+		},
+		nil,
+	)
+
 	nbsClient.On("CreateCheckpoint", ctx, nbs.CheckpointParams{
 		DiskID:       diskID,
 		CheckpointID: snapshotID,
 	}).Return(nil)
+
 	nbsClient.On("EnsureCheckpointReady", ctx, diskID, snapshotID).Return(checkpointEnsuringError)
-	storage.On("CreateSnapshot", ctx, mock.Anything).Return(
-		resources.SnapshotMeta{
-			Ready: false,
-		}, nil)
 
 	err := task.Run(ctx, execCtx)
 
 	require.Equal(t, err, checkpointEnsuringError)
+	mock.AssertExpectationsForObjects(t, storage, scheduler, nbsFactory, nbsClient, execCtx)
 }

@@ -869,7 +869,9 @@ func (c *client) EnsureCheckpointReady(
 	ctx context.Context,
 	diskID string,
 	checkpointID string,
-) error {
+) (err error) {
+
+	defer c.metrics.StatRequest("DeleteCheckpointData")(&err)
 
 	unparserStatus, err := c.getCheckpointStatus(ctx, diskID, checkpointID)
 	if err != nil {
