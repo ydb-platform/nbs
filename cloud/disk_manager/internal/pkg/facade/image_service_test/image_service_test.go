@@ -905,7 +905,14 @@ func TestImageServiceCancelCreateImageFromSnapshot(t *testing.T) {
 	testcommon.CheckConsistency(t, ctx)
 }
 
-func TestImageServiceCreateImageFromDisk(t *testing.T) {
+////////////////////////////////////////////////////////////////////////////////
+
+func testImageServiceCreateImageFromDiskKind(
+	t *testing.T,
+	diskKind disk_manager.DiskKind,
+	diskSize uint64,
+) {
+
 	ctx := testcommon.NewContext()
 
 	client, err := testcommon.NewClient(ctx)
@@ -913,7 +920,6 @@ func TestImageServiceCreateImageFromDisk(t *testing.T) {
 	defer client.Close()
 
 	diskID := t.Name()
-	diskSize := uint64(4194304)
 
 	reqCtx := testcommon.GetRequestContext(t, ctx)
 	operation, err := client.CreateDisk(reqCtx, &disk_manager.CreateDiskRequest{
@@ -921,7 +927,7 @@ func TestImageServiceCreateImageFromDisk(t *testing.T) {
 			SrcEmpty: &empty.Empty{},
 		},
 		Size: int64(diskSize),
-		Kind: disk_manager.DiskKind_DISK_KIND_SSD,
+		Kind: diskKind,
 		DiskId: &disk_manager.DiskId{
 			ZoneId: "zone-a",
 			DiskId: diskID,
@@ -985,6 +991,24 @@ func TestImageServiceCreateImageFromDisk(t *testing.T) {
 
 	testcommon.CheckConsistency(t, ctx)
 }
+
+func TestImageServiceCreateImageFromDisk(t *testing.T) {
+	testImageServiceCreateImageFromDiskKind(
+		t,
+		disk_manager.DiskKind_DISK_KIND_SSD,
+		uint64(4194304),
+	)
+}
+
+func TestImageServiceCreateImageFromNonReplicatedDisk(t *testing.T) {
+	testImageServiceCreateImageFromDiskKind(
+		t,
+		disk_manager.DiskKind_DISK_KIND_SSD_NONREPLICATED,
+		uint64(1073741824),
+	)
+}
+
+////////////////////////////////////////////////////////////////////////////////
 
 func TestImageServiceCancelCreateImageFromDisk(t *testing.T) {
 	ctx := testcommon.NewContext()
