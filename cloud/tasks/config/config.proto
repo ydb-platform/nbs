@@ -65,5 +65,8 @@ message TasksConfig {
     // will not be cleared from the database.
     optional bool RegularSystemTasksEnabled = 33 [default = true];
 
+    // Number of tasks from database that will be listed. We use this parameter
+    // to avoid situation when all tasks from front of `ready_to_run` table can
+    // not be executed due to inflightTasksByType limit.
     optional uint64 TasksToListLimit = 34 [default = 10000];
 }

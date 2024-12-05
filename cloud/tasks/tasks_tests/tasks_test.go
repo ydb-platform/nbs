@@ -722,38 +722,38 @@ func TestTasksRunningLimit(t *testing.T) {
 	err = s.startRunners(ctx)
 	require.NoError(t, err)
 
-	longTasksIds := []string{}
+	longTaskIDs := []string{}
 	scheduledLongTaskCount := 6 * inflightLongTaskPerNodeLimit
 	for i := 0; i < scheduledLongTaskCount; i++ {
 		reqCtx := getRequestContext(t, ctx)
 		id, err := scheduleLongTask(reqCtx, s.scheduler)
 		require.NoError(t, err)
 
-		longTasksIds = append(longTasksIds, id)
+		longTaskIDs = append(longTaskIDs, id)
 	}
 
 	endedLongTaskCount := 0
-	longTasksErrs := make(chan error)
-	for _, id := range longTasksIds {
+	longTaskErrs := make(chan error)
+	for _, id := range longTaskIDs {
 		go func(id string) {
 			_, err := waitTask(ctx, s.scheduler, id)
-			longTasksErrs <- err
+			longTaskErrs <- err
 		}(id)
 	}
 
-	doublerTasksIds := []string{}
+	doublerTaskIDs := []string{}
 	scheduledDoublerTaskCount := 2 * inflightLongTaskPerNodeLimit
 	for i := 0; i < scheduledDoublerTaskCount; i++ {
 		reqCtx := getRequestContext(t, ctx)
 		id, err := scheduleDoublerTask(reqCtx, s.scheduler, 1)
 		require.NoError(t, err)
 
-		doublerTasksIds = append(doublerTasksIds, id)
+		doublerTaskIDs = append(doublerTaskIDs, id)
 	}
 
 	endedDoublerTaskCount := 0
 	doublerTaskErrs := make(chan error)
-	for _, id := range doublerTasksIds {
+	for _, id := range doublerTaskIDs {
 		go func(id string) {
 			_, err := waitTaskWithTimeout(
 				ctx,
@@ -792,7 +792,7 @@ func TestTasksRunningLimit(t *testing.T) {
 		case err := <-doublerTaskErrs:
 			require.NoError(t, err)
 			endedDoublerTaskCount++
-		case err := <-longTasksErrs:
+		case err := <-longTaskErrs:
 			require.NoError(t, err)
 			endedLongTaskCount++
 

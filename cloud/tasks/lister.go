@@ -20,9 +20,9 @@ type listTasksFunc = func(
 ) ([]storage.TaskInfo, error)
 
 type lister struct {
-	tasksToListLimit      uint64
 	listTasks             listTasksFunc
 	channels              []*channel
+	tasksToListLimit      uint64
 	pollForTasksPeriodMin time.Duration
 	pollForTasksPeriodMax time.Duration
 	inflightTasks         sync.Map
@@ -169,18 +169,18 @@ func (l *lister) getInflightTaskCount() uint32 {
 
 func newLister(
 	ctx context.Context,
-	tasksToListLimit uint64,
 	listTasks listTasksFunc,
 	channelsCount uint64,
+	tasksToListLimit uint64,
 	pollForTasksPeriodMin time.Duration,
 	pollForTasksPeriodMax time.Duration,
 	inflightTaskLimits map[string]int64,
 ) *lister {
 
 	lister := &lister{
-		tasksToListLimit:      tasksToListLimit,
 		listTasks:             listTasks,
 		channels:              make([]*channel, channelsCount),
+		tasksToListLimit:      tasksToListLimit,
 		pollForTasksPeriodMin: pollForTasksPeriodMin,
 		pollForTasksPeriodMax: pollForTasksPeriodMax,
 		inflightTaskLimits:    inflightTaskLimits,
