@@ -12,6 +12,8 @@
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 #include <cloud/storage/core/libs/endpoints/iface/endpoints.h>
 
+#include <contrib/ydb/core/protos/flat_tx_scheme.pb.h>
+
 #include <util/generic/guid.h>
 #include <util/system/hostname.h>
 #include <util/generic/map.h>
@@ -242,8 +244,8 @@ private:
         if (HasError(error)) {
             STORAGE_ERROR("Failed to start endpoint: "
                 << FormatError(error));
-            if (FACILITY_FROM_CODE(error.GetCode()) == FACILITY_SCHEMESHARD &&
-                STATUS_FROM_CODE(error.GetCode()) == ENOENT)
+            if (error.GetCode() ==
+                MAKE_SCHEMESHARD_ERROR(NKikimrScheme::StatusPathDoesNotExist))
             {
                 STORAGE_INFO(
                     "Remove endpoint for non-existing filesystem. endpoint id: "
