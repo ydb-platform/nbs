@@ -1425,3 +1425,73 @@ func TestMountUnmountRequestSerialization(t *testing.T) {
 			maxInFlightCounter)
 	}
 }
+
+func TestRemountsStopAfterUnmount(t *testing.T) {
+	var mounted atomic.Bool
+
+	client := &testClient{
+		MountVolumeHandler: func(
+			ctx context.Context,
+			req *protos.TMountVolumeRequest,
+		) (*protos.TMountVolumeResponse, error) {
+			if !mounted.CompareAndSwap(false, true) {
+				t.Errorf("Mount conflict")
+			}
+
+			if req.DiskId != DefaultDiskId {
+				t.Errorf("Wrong disk id (expected: %s, actual: %s)",
+					DefaultDiskId, req.DiskId)
+			}
+			response := &protos.TMountVolumeResponse{
+				SessionId: "1",
+				Volume: &protos.TVolume{
+					DiskId:      req.DiskId,
+					BlockSize:   DefaultBlockSize,
+					BlocksCount: DefaultBlocksCount,
+				},
+				InactiveClientsTimeout: uint32(500), // 500 milliseconds
+			}
+			return response, nil
+		},
+		UnmountVolumeHandler: func(
+			ctx context.Context,
+			req *protos.TUnmountVolumeRequest,
+		) (*protos.TUnmountVolumeResponse, error) {
+			mounted.Store(false)
+
+			// Waiting for a remounter tick in order to provoke race condition.
+			time.Sleep(time.Second)
+
+			if req.DiskId != DefaultDiskId {
+				t.Errorf("Wrong disk id (expected: %s, actual: %s)",
+					DefaultDiskId, req.DiskId)
+			}
+			if req.SessionId != "1" {
+				t.Errorf("Wrong session id (expected: 1, actual: %s)",
+					req.SessionId)
+			}
+			return &protos.TUnmountVolumeResponse{}, nil
+		},
+	}
+
+	for i := 0; i < 2; i++ {
+		session := createSession(client, nil)
+		ctx := context.TODO()
+
+		err := session.MountVolume(ctx, DefaultDiskId, nil)
+		if err != nil {
+			t.Error(err)
+		}
+
+		err = session.UnmountVolume(ctx)
+		if err != nil {
+			t.Error(err)
+		}
+
+		// Volume should not be remounted during this sleep.
+		time.Sleep(time.Second)
+		session.Close()
+		// Volume should not be remounted during this sleep.
+		time.Sleep(time.Second)
+	}
+}

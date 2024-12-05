@@ -463,7 +463,6 @@ func (s *Session) stopRemounter() {
 }
 
 func (s *Session) startRemounter(ctx context.Context) {
-
 	s.remounter = &remounter{
 		Ticker:     s.makeTicker(s.info.InactiveClientsTimeout),
 		Done:       make(chan bool, 1),
@@ -478,9 +477,15 @@ func (s *Session) startRemounter(ctx context.Context) {
 				return
 			case <-r.Ticker.TickChan():
 				s.mountLock.Lock()
-				if !s.closed {
-					_, _ = s.remountVolume(r.remountCtx)
+
+				select {
+				case <-r.Done:
+				default:
+					if !s.closed {
+						_, _ = s.remountVolume(r.remountCtx)
+					}
 				}
+
 				s.mountLock.Unlock()
 				r.Ticker.TickProcessed()
 			}
