@@ -48,7 +48,7 @@ size_t CopyAndTrimVoidBuffers(
 // Checks that the buffer contains only zeros.
 [[nodiscard]] bool IsAllZeroes(const char* src, size_t size);
 
-// Checks that the all buffers in TIOVector contains only zeros.
+// Checks that all buffers in the TIOVector contain only zeros.
 [[nodiscard]] bool IsAllZeroes(const NProto::TIOVector& iov);
 
 }   // namespace NCloud::NBlockStore
