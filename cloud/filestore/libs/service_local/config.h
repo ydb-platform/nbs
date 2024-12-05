@@ -36,7 +36,7 @@ public:
     bool GetGuestWritebackCacheEnabled() const;
 
     void Dump(IOutputStream& out) const;
-    void DumpXml(NXml::TNode& root) const;
+    void DumpXml(NXml::TNode root) const;
 
     bool GetAsyncDestroyHandleEnabled() const;
     TDuration GetAsyncHandleOperationPeriod() const;
