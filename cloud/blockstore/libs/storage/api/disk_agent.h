@@ -109,6 +109,6 @@ struct TEvDiskAgent
 
 ////////////////////////////////////////////////////////////////////////////////
 
-NActors::TActorId MakeDiskAgentServiceId(ui32 nodeId = 0);
+NActors::TActorId MakeDiskAgentServiceId(ui32 nodeId);
 
 }   // namespace NCloud::NBlockStore::NStorage

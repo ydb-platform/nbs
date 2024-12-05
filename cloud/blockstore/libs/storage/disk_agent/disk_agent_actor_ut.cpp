@@ -223,7 +223,7 @@ struct TFixture
             memset(const_cast<char*>(buffer.Data()), 'Y', buffer.Size());
         }
 
-        diskAgent.SendRequest(MakeDiskAgentServiceId(), std::move(request));
+        diskAgent.SendRequest(std::move(request));
         Runtime.DispatchEvents({});
         auto response = diskAgent.RecvWriteDeviceBlocksResponse();
 
@@ -391,7 +391,7 @@ struct TCopyRangeFixture: public NUnitTest::TBaseFixture
         request->Record.SetBlockSize(BlockSize);
         request->Record.SetBlocksCount(1);
 
-        diskAgent.SendRequest(diskAgent.DiskAgentActorId(), std::move(request));
+        diskAgent.SendRequest(std::move(request));
         const auto response = diskAgent.RecvReadDeviceBlocksResponse();
         UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
 
@@ -1002,7 +1002,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
                 memset(const_cast<char*>(buffer.Data()), 'Y', buffer.Size());
             }
 
-            diskAgent.SendRequest(MakeDiskAgentServiceId(), std::move(request));
+            diskAgent.SendRequest(std::move(request));
             runtime.DispatchEvents(NActors::TDispatchOptions());
             auto response = diskAgent.RecvWriteDeviceBlocksResponse();
             UNIT_ASSERT_VALUES_EQUAL(response->GetStatus(), S_OK);
@@ -1059,7 +1059,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
                 memset(const_cast<char*>(buffer.Data()), 'Y', buffer.Size());
             }
 
-            diskAgent.SendRequest(MakeDiskAgentServiceId(), std::move(request));
+            diskAgent.SendRequest(std::move(request));
             runtime.DispatchEvents(NActors::TDispatchOptions());
             auto response = diskAgent.RecvWriteDeviceBlocksResponse();
             UNIT_ASSERT_VALUES_EQUAL(expected, response->GetStatus());
@@ -1078,7 +1078,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
             request->Record.SetBlocksCount(blockCount);
             request->Record.SetVolumeRequestId(volumeRequestId);
 
-            diskAgent.SendRequest(MakeDiskAgentServiceId(), std::move(request));
+            diskAgent.SendRequest(std::move(request));
             runtime.DispatchEvents(NActors::TDispatchOptions());
             auto response = diskAgent.RecvZeroDeviceBlocksResponse();
             UNIT_ASSERT_VALUES_EQUAL(expected, response->GetStatus());
@@ -1179,7 +1179,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
                 memset(const_cast<char*>(buffer.Data()), 'Y', buffer.Size());
             }
 
-            diskAgent.SendRequest(MakeDiskAgentServiceId(), std::move(request));
+            diskAgent.SendRequest(std::move(request));
         };
 
         auto sendZeroRequest = [&](ui64 volumeRequestId,
@@ -1194,7 +1194,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
             request->Record.SetBlocksCount(blockCount);
             request->Record.SetVolumeRequestId(volumeRequestId);
 
-            diskAgent.SendRequest(MakeDiskAgentServiceId(), std::move(request));
+            diskAgent.SendRequest(std::move(request));
         };
 
         // Send write and zero requests. Their messages TWriteOrZeroCompleted will be stolen.
@@ -1358,7 +1358,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
                 memset(const_cast<char*>(buffer.Data()), 'Y', buffer.Size());
             }
 
-            diskAgent.SendRequest(MakeDiskAgentServiceId(), std::move(request));
+            diskAgent.SendRequest(std::move(request));
         };
 
         // Send write request. It's message TWriteOrZeroCompleted will be stolen.
@@ -1446,7 +1446,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
             request->Record.SetMultideviceRequest(
                 true); // This will lead to E_REJECT
 
-            diskAgent.SendRequest(MakeDiskAgentServiceId(), std::move(request));
+            diskAgent.SendRequest(std::move(request));
         };
 
         // Send zero request. The TWriteOrZeroCompleted message from this request will
@@ -1548,7 +1548,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
             request->Record.SetBlocksCount(blockCount);
             request->Record.SetVolumeRequestId(volumeRequestId);
 
-            diskAgent.SendRequest(MakeDiskAgentServiceId(), std::move(request));
+            diskAgent.SendRequest(std::move(request));
         };
 
         // Send zero request. The TWriteOrZeroCompleted message from this request will
@@ -1626,7 +1626,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
             request->Record.SetBlocksCount(blockCount);
             request->Record.SetVolumeRequestId(volumeRequestId);
 
-            diskAgent.SendRequest(MakeDiskAgentServiceId(), std::move(request));
+            diskAgent.SendRequest(std::move(request));
         };
 
         {
@@ -1720,7 +1720,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
             request->Record.SetBlocksCount(blockCount);
             request->Record.SetVolumeRequestId(volumeRequestId);
 
-            diskAgent.SendRequest(MakeDiskAgentServiceId(), std::move(request));
+            diskAgent.SendRequest(std::move(request));
         };
 
         {
@@ -2161,7 +2161,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
 
             const ui64 cookie = 42;
 
-            diskAgent.SendRequest(MakeDiskAgentServiceId(), std::move(request), cookie);
+            diskAgent.SendRequest(std::move(request), cookie);
 
             TAutoPtr<IEventHandle> handle;
             runtime.GrabEdgeEventRethrow<TEvDiskAgent::TEvWriteDeviceBlocksResponse>(
@@ -2177,7 +2177,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
 
             const ui64 cookie = 42;
 
-            diskAgent.SendRequest(MakeDiskAgentServiceId(), std::move(request), cookie);
+            diskAgent.SendRequest(std::move(request), cookie);
 
             TAutoPtr<IEventHandle> handle;
             runtime.GrabEdgeEventRethrow<TEvDiskAgent::TEvSecureEraseDeviceResponse>(
@@ -2196,7 +2196,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
 
             const ui64 cookie = 42;
 
-            diskAgent.SendRequest(MakeDiskAgentServiceId(), std::move(request), cookie);
+            diskAgent.SendRequest(std::move(request), cookie);
 
             TAutoPtr<IEventHandle> handle;
             runtime.GrabEdgeEventRethrow<TEvDiskAgent::TEvAcquireDevicesResponse>(
@@ -3191,7 +3191,6 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
         UNIT_ASSERT_VALUES_EQUAL(1, registrationCount);
 
         diskAgent.SendRequest(
-            MakeDiskAgentServiceId(),
             std::make_unique<TEvDiskRegistryProxy::TEvConnectionLost>());
 
         runtime.DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
@@ -3213,7 +3212,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
                             TEvDiskRegistryProxy::TEvSubscribeResponse>(
                             /*connected=*/false);
                         auto event = std::make_unique<IEventHandle>(
-                            MakeDiskAgentServiceId(),
+                            MakeDiskAgentServiceId(runtime.GetNodeId(0)),
                             MakeDiskRegistryProxyServiceId(),
                             response.release());
                         runtime.SendAsync(event.release());
@@ -3244,7 +3243,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
         diskAgent.WaitReady();
         runtime.DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
 
-        diskAgent.SendRequest(MakeDiskAgentServiceId(),
+        diskAgent.SendRequest(
             std::make_unique<TEvDiskRegistryProxy::TEvConnectionEstablished>());
         runtime.DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
     }
@@ -3488,9 +3487,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
             diskAgent.SendSecureEraseDeviceRequest("uuid");
         }
 
-        diskAgent.SendRequest(
-            MakeDiskAgentServiceId(),
-            std::make_unique<TEvents::TEvPoisonPill>());
+        diskAgent.SendRequest(std::make_unique<TEvents::TEvPoisonPill>());
 
         for (int i = 0; i != 100; ++i) {
             auto response = diskAgent.RecvSecureEraseDeviceResponse();
@@ -4644,7 +4641,6 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
             nullptr};
 
         diskAgent.SendRequest(
-            MakeDiskAgentServiceId(),
             std::make_unique<NMon::TEvHttpInfo>(monService2HttpRequest));
 
         auto response = diskAgent.RecvResponse<NMon::TEvHttpInfoRes>();
@@ -4703,38 +4699,38 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
         runtime.SetEventFilter([&](auto&, TAutoPtr<IEventHandle>& ev) {
             switch (ev->GetTypeRewrite()) {
                 case TEvDiskAgentPrivate::EvParsedReadDeviceBlocksRequest:
-                    UNIT_ASSERT_EQUAL(MakeDiskAgentServiceId(), ev->Recipient);
+                    UNIT_ASSERT_EQUAL(env.DiskAgentActorId, ev->Recipient);
                     UNIT_ASSERT_EQUAL(
                         diskAgentActorId,
                         ev->GetRecipientRewrite());
                     ++parsedReads;
                     break;
                 case TEvDiskAgentPrivate::EvParsedWriteDeviceBlocksRequest:
-                    UNIT_ASSERT_EQUAL(MakeDiskAgentServiceId(), ev->Recipient);
+                    UNIT_ASSERT_EQUAL(env.DiskAgentActorId, ev->Recipient);
                     UNIT_ASSERT_EQUAL(
                         diskAgentActorId,
                         ev->GetRecipientRewrite());
                     ++parsedWrites;
                     break;
                 case TEvDiskAgentPrivate::EvParsedZeroDeviceBlocksRequest:
-                    UNIT_ASSERT_EQUAL(MakeDiskAgentServiceId(), ev->Recipient);
+                    UNIT_ASSERT_EQUAL(env.DiskAgentActorId, ev->Recipient);
                     UNIT_ASSERT_EQUAL(
                         diskAgentActorId,
                         ev->GetRecipientRewrite());
                     ++parsedZeroes;
                     break;
                 case TEvDiskAgent::EvReadDeviceBlocksRequest:
-                    UNIT_ASSERT_EQUAL(MakeDiskAgentServiceId(), ev->Recipient);
+                    UNIT_ASSERT_EQUAL(env.DiskAgentActorId, ev->Recipient);
                     ++reads;
                     actors.insert(ev->GetRecipientRewrite());
                     break;
                 case TEvDiskAgent::EvWriteDeviceBlocksRequest:
-                    UNIT_ASSERT_EQUAL(MakeDiskAgentServiceId(), ev->Recipient);
+                    UNIT_ASSERT_EQUAL(env.DiskAgentActorId, ev->Recipient);
                     ++writes;
                     actors.insert(ev->GetRecipientRewrite());
                     break;
                 case TEvDiskAgent::EvZeroDeviceBlocksRequest:
-                    UNIT_ASSERT_EQUAL(MakeDiskAgentServiceId(), ev->Recipient);
+                    UNIT_ASSERT_EQUAL(env.DiskAgentActorId, ev->Recipient);
                     ++zeroes;
                     actors.insert(ev->GetRecipientRewrite());
                     break;
@@ -5024,7 +5020,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
         request->Record.SetTargetDeviceUUID("DA2-2");
         request->Record.SetTargetStartIndex(TargetStartIndex);
 
-        DiskAgent1.SendRequest(MakeDiskAgentServiceId(), std::move(request));
+        DiskAgent1.SendRequest(std::move(request));
         Runtime.DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
         auto response =
             DiskAgent1
@@ -5126,9 +5122,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
         request->Record.SetTargetDeviceUUID("DA1-2");
         request->Record.SetTargetStartIndex(TargetStartIndex);
 
-        DiskAgent1.SendRequest(
-            DiskAgent1.DiskAgentActorId(),
-            std::move(request));
+        DiskAgent1.SendRequest(std::move(request));
         Runtime.DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
         auto response =
             DiskAgent1
@@ -5205,9 +5199,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
         request->Record.SetTargetDeviceUUID("DA2-2");
         request->Record.SetTargetStartIndex(TargetStartIndex);
 
-        DiskAgent1.SendRequest(
-            DiskAgent1.DiskAgentActorId(),
-            std::move(request));
+        DiskAgent1.SendRequest(std::move(request));
         Runtime.DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
         auto response =
             DiskAgent1
@@ -5257,9 +5249,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
         request->Record.SetTargetDeviceUUID("DA2-2");
         request->Record.SetTargetStartIndex(TargetStartIndex);
 
-        DiskAgent1.SendRequest(
-            DiskAgent1.DiskAgentActorId(),
-            std::move(request));
+        DiskAgent1.SendRequest(std::move(request));
         Runtime.DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
         auto response =
             DiskAgent1
@@ -5309,9 +5299,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
         request->Record.SetTargetDeviceUUID("DA2-2");
         request->Record.SetTargetStartIndex(TargetStartIndex);
 
-        DiskAgent1.SendRequest(
-            DiskAgent1.DiskAgentActorId(),
-            std::move(request));
+        DiskAgent1.SendRequest(std::move(request));
         Runtime.DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
         auto response =
             DiskAgent1

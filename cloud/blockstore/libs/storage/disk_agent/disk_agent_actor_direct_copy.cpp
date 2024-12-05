@@ -132,12 +132,8 @@ void TDirectCopyActor::HandleReadBlocksResponse(
     rec.SetStartIndex(Request.GetTargetStartIndex());
     rec.SetBlockSize(Request.GetBlockSize());
 
-    auto targetActorId =
-        ctx.SelfID.NodeId() == Request.GetTargetNodeId()
-            ? MakeDiskAgentServiceId()
-            : MakeDiskAgentServiceId(Request.GetTargetNodeId());
     auto event = std::make_unique<IEventHandle>(
-        targetActorId,
+        MakeDiskAgentServiceId(Request.GetTargetNodeId()),
         ctx.SelfID,
         writeRequest.release(),
         IEventHandle::FlagForwardOnNondelivery,
