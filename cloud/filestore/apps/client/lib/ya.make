@@ -2,6 +2,7 @@ LIBRARY(filestore-apps-client-lib)
 
 SRCS(
     add_cluster_node.cpp
+    app.cpp
     command.cpp
     create.cpp
     create_session.cpp
