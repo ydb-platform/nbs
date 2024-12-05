@@ -9,3 +9,5 @@ src:*contrib/python/matplotlib/py3/src/*
 # DTCC-1909: issues use-of-uninitialized-value on msan on Clang16
 # uninitialized variable size in function add_metadata_from_side_data
 src:*contrib/libs/ffmpeg-3/libavcodec/utils.c
+
+src:*
