@@ -147,7 +147,6 @@ class LocalNbs(Daemon):
         if self.__server_app_config is None or self.__server_app_config.HasField('KikimrServiceConfig'):
             self.init_scheme()
 
-        self.__has_root_kms = False
         root_kms_port = os.environ.get("FAKE_ROOT_KMS_PORT")
         if root_kms_port is not None:
             root_kms = TRootKmsConfig()
@@ -157,7 +156,6 @@ class LocalNbs(Daemon):
             root_kms.CertChainFile = os.environ.get("FAKE_ROOT_KMS_CLIENT_CRT")
             root_kms.PrivateKeyFile = os.environ.get("FAKE_ROOT_KMS_CLIENT_KEY")
             self.__proto_configs['root-kms.txt'] = root_kms
-            self.__has_root_kms = True
 
         self.__access_service = None
         if enable_access_service:
@@ -595,7 +593,7 @@ ModifyScheme {
         if self.kms_config is not None:
             command += ["--kms-file", os.path.join(self.config_path(), "kms.txt")]
 
-        if self.__has_root_kms:
+        if 'root-kms.txt' in self.__proto_configs:
             command += ["--root-kms-file", os.path.join(self.config_path(), "root-kms.txt")]
 
         append_conf_file_arg(command, self.config_path(),
