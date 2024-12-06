@@ -33,13 +33,21 @@ bool TBlockRange<TBlockIndex>::TryParse(
 template bool TBlockRange32::TryParse(TStringBuf s, TBlockRange32& range);
 template bool TBlockRange64::TryParse(TStringBuf s, TBlockRange64& range);
 
+template <std::unsigned_integral TBlockIndex>
+TString TBlockRange<TBlockIndex>::Print() const
+{
+    return TStringBuilder() << "[" << Start << ".." << End << "]";
+}
+
+template TString TBlockRange32::Print() const;
+template TString TBlockRange64::Print() const;
+
 ////////////////////////////////////////////////////////////////////////////////
 
 template <std::unsigned_integral TBlockIndex>
 TString DescribeRange(const TBlockRange<TBlockIndex>& blockRange)
 {
-    return TStringBuilder()
-        << "[" << blockRange.Start << ".." << blockRange.End << "]";
+    return blockRange.Print();
 }
 
 template TString DescribeRange(const TBlockRange32& blockRange);
