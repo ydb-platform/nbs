@@ -5247,9 +5247,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
             request->Record.SetTargetDeviceUUID("DA2-2");
             request->Record.SetTargetStartIndex(TargetStartIndex + 2);
 
-            DiskAgent1.SendRequest(
-                MakeDiskAgentServiceId(),
-                std::move(request));
+            DiskAgent1.SendRequest(std::move(request));
             Runtime.DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
             auto response =
                 DiskAgent1.RecvResponse<TEvDirectCopyBlocksResponse>();
@@ -5285,9 +5283,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
             request->Record.SetTargetDeviceUUID("DA2-2");
             request->Record.SetTargetStartIndex(TargetStartIndex - 1);
 
-            DiskAgent1.SendRequest(
-                MakeDiskAgentServiceId(),
-                std::move(request));
+            DiskAgent1.SendRequest(std::move(request));
             Runtime.DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
             auto response =
                 DiskAgent1.RecvResponse<TEvDirectCopyBlocksResponse>();
@@ -5491,9 +5487,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
         request->Record.SetTargetDeviceUUID("DA1-2");
         request->Record.SetTargetStartIndex(TargetStartIndex);
 
-        DiskAgent1.SendRequest(
-            DiskAgent1.DiskAgentActorId(),
-            std::move(request));
+        DiskAgent1.SendRequest(std::move(request));
         Runtime.DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
         auto response =
             DiskAgent1
