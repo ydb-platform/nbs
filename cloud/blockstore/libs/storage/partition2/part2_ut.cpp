@@ -7099,17 +7099,17 @@ Y_UNIT_TEST_SUITE(TPartition2Test)
         }
         partition.Flush();
 
-        bool consumeResponse = true;
+        bool steal = true;
         runtime->SetEventFilter([&]
             (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& ev)
         {
             Y_UNUSED(runtime);
 
             if (ev->GetTypeRewrite() == TEvPartitionPrivate::EvCompactionCompleted &&
-                consumeResponse)
+                steal)
             {
-                consumeResponse = !consumeResponse;
-                return !consumeResponse;
+                steal = false;
+                return true;
             }
             return false;
         });
@@ -7141,17 +7141,17 @@ Y_UNIT_TEST_SUITE(TPartition2Test)
         }
         partition.Flush();
 
-        bool consumeResponse = true;
+        bool steal = true;
         runtime->SetEventFilter([&]
             (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& ev)
         {
             Y_UNUSED(runtime);
 
             if (ev->GetTypeRewrite() == TEvPartitionPrivate::EvCompactionCompleted &&
-                consumeResponse)
+                steal)
             {
-                consumeResponse = !consumeResponse;
-                return !consumeResponse;
+                steal = false;
+                return true;
             }
             return false;
         });
