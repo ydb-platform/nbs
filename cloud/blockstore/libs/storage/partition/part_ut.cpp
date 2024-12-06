@@ -4088,7 +4088,9 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         auto oldStats = response->Record.GetStats();
 
         for (ui32 range = 0; range < rangesCount; ++range) {
-            partition.Compaction(range * 1024, options);
+            partition.Compaction(
+                range * 1024,
+                options.set(ToBit(ECompactionOption::Forced)));
         }
 
         response = partition.StatPartition();
@@ -4101,18 +4103,16 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
 
     Y_UNIT_TEST(ShouldCreateBlobsForEveryWrittenRangeDuringForcedCompaction)
     {
-        DoTestForcedCompaction(TCompactionOptions().
-            set(ToBit(ECompactionOption::Forced)));
+        DoTestForcedCompaction(TCompactionOptions());
     }
 
     Y_UNIT_TEST(ShouldCreateBlobsForEveryWrittenRangeDuringExternalForcedCompaction)
     {
         DoTestForcedCompaction(TCompactionOptions().
-            set(ToBit(ECompactionOption::Forced)).
             set(ToBit(ECompactionOption::External)));
     }
 
-    void DoTestEmtyRangesForcedCompaction(TCompactionOptions options)
+    void DoTestEmptyRangesForcedCompaction(TCompactionOptions options)
     {
         constexpr ui32 rangesCount = 5;
         constexpr ui32 emptyRange = 2;
@@ -4136,7 +4136,9 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         auto oldStats = response->Record.GetStats();
 
         for (ui32 range = 0; range < rangesCount; ++range) {
-            partition.Compaction(range * 1024, options);
+            partition.Compaction(
+                range * 1024,
+                options.set(ToBit(ECompactionOption::Forced)));
         }
 
         response = partition.StatPartition();
@@ -4149,13 +4151,12 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
 
     Y_UNIT_TEST(ShouldNotCreateBlobsForEmptyRangesDuringForcedCompaction)
     {
-        DoTestEmtyRangesForcedCompaction(TCompactionOptions().set(ToBit(
-            ECompactionOption::Forced)));
+        DoTestEmptyRangesForcedCompaction(TCompactionOptions());
     }
 
     Y_UNIT_TEST(ShouldNotCreateBlobsForEmptyRangesDuringExternalForcedCompaction)
     {
-        DoTestEmtyRangesForcedCompaction(TCompactionOptions().
+        DoTestEmptyRangesForcedCompaction(TCompactionOptions().
             set(ToBit(ECompactionOption::Forced)).
             set(ToBit(ECompactionOption::External)));
     }
