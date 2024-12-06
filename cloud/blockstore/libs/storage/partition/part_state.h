@@ -82,6 +82,14 @@ struct TForcedCompactionState
 
 ////////////////////////////////////////////////////////////////////////////////
 
+enum class ECompactionType: ui32
+{
+    External,
+    Tablet
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
 enum class EMetadataRebuildType
 {
     NoOperation,
@@ -801,9 +809,11 @@ private:
     TInstant LastCompactionRangeCountPerRunTs;
 
 public:
-    TOperationState& GetCompactionState(bool external)
+    TOperationState& GetCompactionState(ECompactionType type)
     {
-        return external ? ExternalCompactionState : CompactionState;
+        return type == ECompactionType::External ?
+            ExternalCompactionState :
+            CompactionState;
     }
 
     TCompactionMap& GetCompactionMap()

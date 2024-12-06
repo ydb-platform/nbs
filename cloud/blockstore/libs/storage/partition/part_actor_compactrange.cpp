@@ -105,7 +105,7 @@ void TForcedCompactionActor::ReplyAndDie(
     const NProto::TError& error)
 {
     {
-        auto response = std::make_unique<TEvPartitionPrivate::TEvForcedCompactionCompleted>(error);
+        auto response = std::make_unique<TEvPartitionPrivate::TEvExternalCompactionCompleted>(error);
         NCloud::Send(ctx, Tablet, std::move(response));
     }
 
@@ -209,8 +209,8 @@ void TPartitionActor::HandleGetCompactionStatus(
     NCloud::Send(ctx, ev->Sender, std::move(response), ev->Cookie);
 }
 
-void TPartitionActor::HandleForcedCompactionCompleted(
-    const TEvPartitionPrivate::TEvForcedCompactionCompleted::TPtr& ev,
+void TPartitionActor::HandleExternalCompactionCompleted(
+    const TEvPartitionPrivate::TEvExternalCompactionCompleted::TPtr& ev,
     const TActorContext& ctx)
 {
     Y_UNUSED(ev);

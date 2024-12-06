@@ -113,6 +113,14 @@ struct TForcedCleanupState
 
 ////////////////////////////////////////////////////////////////////////////////
 
+enum class ECompactionType: ui32
+{
+    External,
+    Tablet
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
 struct TChannelState
 {
     EChannelPermissions Permissions = EChannelPermission::UserWritesAllowed
@@ -899,14 +907,20 @@ private:
     TCompactionMap CompactionMap;
 
 public:
-    EOperationStatus GetCompactionStatus(bool external) const
+    EOperationStatus GetCompactionStatus(ECompactionType type) const
     {
-        return (external ? ExternalCompactionState : CompactionState).GetStatus();
+        const auto& state = type == ECompactionType::External ?
+            ExternalCompactionState :
+            CompactionState;
+        return state.GetStatus();
     }
 
-    void SetCompactionStatus(bool external, EOperationStatus status)
+    void SetCompactionStatus(ECompactionType type, EOperationStatus status)
     {
-        (external ? ExternalCompactionState : CompactionState).SetStatus(status);
+        auto& state =  type == ECompactionType::External ?
+            ExternalCompactionState :
+            CompactionState;
+        state.SetStatus(status);
     }
 
     TCompactionMap& GetCompactionMap()

@@ -4993,7 +4993,7 @@ Y_UNIT_TEST_SUITE(TPartition2Test)
             {
                 TDispatchOptions options;
                 options.FinalEvents.emplace_back(
-                    TEvPartitionPrivate::EvForcedCompactionCompleted,
+                    TEvPartitionPrivate::EvExternalCompactionCompleted,
                     1);
                 runtime->DispatchEvents(options);
             }

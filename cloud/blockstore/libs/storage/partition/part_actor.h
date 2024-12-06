@@ -600,8 +600,8 @@ private:
         const TEvPartitionPrivate::TEvCollectGarbageCompleted::TPtr& ev,
         const NActors::TActorContext& ctx);
 
-    void HandleForcedCompactionCompleted(
-        const TEvPartitionPrivate::TEvForcedCompactionCompleted::TPtr& ev,
+    void HandleExternalCompactionCompleted(
+        const TEvPartitionPrivate::TEvExternalCompactionCompleted::TPtr& ev,
         const NActors::TActorContext& ctx);
 
     void HandleTrimFreshLogCompleted(

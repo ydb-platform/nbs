@@ -4067,19 +4067,19 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         }
     }
 
-    Y_UNIT_TEST(ShouldCreateBlobsForEveryWrittenRangeDuringForcedCompaction)
+    void DoTestForcedCompaction(TCompactionOptions options)
     {
         constexpr ui32 rangesCount = 5;
-        auto runtime = PrepareTestActorRuntime(DefaultConfig(), rangesCount * 1024);
+        auto storageConfig = DefaultConfig();
+        storageConfig.SetWriteBlobThreshold(1_MB);
+        auto runtime = PrepareTestActorRuntime(storageConfig, rangesCount * 1024);
 
         TPartitionClient partition(*runtime);
         partition.WaitReady();
 
         for (ui32 range = 0; range < rangesCount; ++range) {
             partition.WriteBlocks(
-                TBlockRange32::MakeClosedInterval(
-                    range * 1024 + 100,
-                    range * 1024 + 1000),
+                TBlockRange32::WithLength(range * 1024, 1024),
                 1);
         }
         partition.Flush();
@@ -4088,11 +4088,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         auto oldStats = response->Record.GetStats();
 
         for (ui32 range = 0; range < rangesCount; ++range) {
-            partition.Compaction(
-                range * 1024,
-                TCompactionOptions().
-                    set(ToBit(ECompactionOption::Forced)).
-                    set(ToBit(ECompactionOption::External)));
+            partition.Compaction(range * 1024, options);
         }
 
         response = partition.StatPartition();
@@ -4103,11 +4099,26 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         );
     }
 
-    Y_UNIT_TEST(ShouldNotCreateBlobsForEmptyRangesDuringForcedCompaction)
+    Y_UNIT_TEST(ShouldCreateBlobsForEveryWrittenRangeDuringForcedCompaction)
+    {
+        DoTestForcedCompaction(TCompactionOptions().
+            set(ToBit(ECompactionOption::Forced)));
+    }
+
+    Y_UNIT_TEST(ShouldCreateBlobsForEveryWrittenRangeDuringExternalForcedCompaction)
+    {
+        DoTestForcedCompaction(TCompactionOptions().
+            set(ToBit(ECompactionOption::Forced)).
+            set(ToBit(ECompactionOption::External)));
+    }
+
+    void DoTestEmtyRangesForcedCompaction(TCompactionOptions options)
     {
         constexpr ui32 rangesCount = 5;
         constexpr ui32 emptyRange = 2;
-        auto runtime = PrepareTestActorRuntime(DefaultConfig(), rangesCount * 1024);
+        auto storageConfig = DefaultConfig();
+        storageConfig.SetWriteBlobThreshold(1_MB);
+        auto runtime = PrepareTestActorRuntime(storageConfig, rangesCount * 1024);
 
         TPartitionClient partition(*runtime);
         partition.WaitReady();
@@ -4115,9 +4126,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         for (ui32 range = 0; range < rangesCount; ++range) {
             if (range != emptyRange) {
                 partition.WriteBlocks(
-                    TBlockRange32::MakeClosedInterval(
-                        range * 1024 + 100,
-                        range * 1024 + 1000),
+                    TBlockRange32::WithLength(range * 1024, 900),
                     1);
             }
         }
@@ -4127,11 +4136,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         auto oldStats = response->Record.GetStats();
 
         for (ui32 range = 0; range < rangesCount; ++range) {
-            partition.Compaction(
-                range * 1024,
-                TCompactionOptions().
-                    set(ToBit(ECompactionOption::Forced)).
-                    set(ToBit(ECompactionOption::External)));
+            partition.Compaction(range * 1024, options);
         }
 
         response = partition.StatPartition();
@@ -4140,6 +4145,19 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
             oldStats.GetMixedBlobsCount() + oldStats.GetMergedBlobsCount() + rangesCount - 1,
             newStats.GetMixedBlobsCount() + newStats.GetMergedBlobsCount()
         );
+    }
+
+    Y_UNIT_TEST(ShouldNotCreateBlobsForEmptyRangesDuringForcedCompaction)
+    {
+        DoTestEmtyRangesForcedCompaction(TCompactionOptions().set(ToBit(
+            ECompactionOption::Forced)));
+    }
+
+    Y_UNIT_TEST(ShouldNotCreateBlobsForEmptyRangesDuringExternalForcedCompaction)
+    {
+        DoTestEmtyRangesForcedCompaction(TCompactionOptions().
+            set(ToBit(ECompactionOption::Forced)).
+            set(ToBit(ECompactionOption::External)));
     }
 
     Y_UNIT_TEST(ShouldCorrectlyMarkFirstBlockInBlobIfItIsTheSameAsLastBlockInPreviousBlob)
@@ -7215,7 +7233,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
             {
                 TDispatchOptions options;
                 options.FinalEvents.emplace_back(
-                    TEvPartitionPrivate::EvForcedCompactionCompleted,
+                    TEvPartitionPrivate::EvExternalCompactionCompleted,
                     1);
                 runtime->DispatchEvents(options);
             }
@@ -11238,9 +11256,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
 
         for (ui32 range = 0; range < rangesCount; ++range) {
             partition.WriteBlocks(
-                TBlockRange32::MakeClosedInterval(
-                    range * 1024,
-                    (range + 1) * 1024 - 1),
+                TBlockRange32::WithLength(range * 1024, 1024),
                 1);
         }
         partition.Flush();
@@ -11280,24 +11296,22 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
 
         for (ui32 range = 0; range < rangesCount; ++range) {
             partition.WriteBlocks(
-                TBlockRange32::MakeClosedInterval(
-                    range * 1024 + 100,
-                    range * 1024 + 1000),
+                TBlockRange32::WithLength(range * 1024, 1024),
                 1);
         }
         partition.Flush();
 
-        bool consumeResponse = true;
+        bool stealResponse = true;
         runtime->SetEventFilter([&]
             (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& ev)
         {
             Y_UNUSED(runtime);
 
             if (ev->GetTypeRewrite() == TEvPartitionPrivate::EvCompactionCompleted &&
-                consumeResponse)
+                stealResponse)
             {
-                consumeResponse = !consumeResponse;
-                return !consumeResponse;
+                stealResponse = false;
+                return true;
             }
             return false;
         });

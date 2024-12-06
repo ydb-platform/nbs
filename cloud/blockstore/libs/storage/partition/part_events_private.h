@@ -775,7 +775,7 @@ struct TEvPartitionPrivate
     // ForcedCompactionCompleted
     //
 
-    struct TForcedCompactionCompleted
+    struct TExternalCompactionCompleted
     {
     };
 
@@ -870,7 +870,7 @@ struct TEvPartitionPrivate
         EvFlushCompleted,
         EvCompactionCompleted,
         EvCollectGarbageCompleted,
-        EvForcedCompactionCompleted,
+        EvExternalCompactionCompleted,
         EvMetadataRebuildCompleted,
         EvScanDiskCompleted,
         EvLoadStateCompleted,
@@ -899,7 +899,7 @@ struct TEvPartitionPrivate
     using TEvFlushCompleted = TResponseEvent<TFlushCompleted, EvFlushCompleted>;
     using TEvCompactionCompleted = TResponseEvent<TCompactionCompleted, EvCompactionCompleted>;
     using TEvCollectGarbageCompleted = TResponseEvent<TOperationCompleted, EvCollectGarbageCompleted>;
-    using TEvForcedCompactionCompleted = TResponseEvent<TForcedCompactionCompleted, EvForcedCompactionCompleted>;
+    using TEvExternalCompactionCompleted = TResponseEvent<TExternalCompactionCompleted, EvExternalCompactionCompleted>;
     using TEvMetadataRebuildCompleted = TResponseEvent<TOperationCompleted, EvMetadataRebuildCompleted>;
     using TEvScanDiskCompleted = TResponseEvent<TScanDiskCompleted, EvScanDiskCompleted>;
     using TEvLoadStateCompleted = TResponseEvent<TLoadStateCompleted, EvLoadStateCompleted>;

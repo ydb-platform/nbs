@@ -564,7 +564,7 @@ struct TEvPartitionPrivate
         EvFlushCompleted,
         EvCompactionCompleted,
         EvCollectGarbageCompleted,
-        EvForcedCompactionCompleted,
+        EvExternalCompactionCompleted,
         EvForcedCleanupCompleted,
         EvInitFreshZonesCompleted,
         EvGetChangedBlocksCompleted,
@@ -590,7 +590,7 @@ struct TEvPartitionPrivate
     using TEvFlushCompleted = TResponseEvent<TOperationCompleted, EvFlushCompleted>;
     using TEvCompactionCompleted = TResponseEvent<TCompactionCompleted, EvCompactionCompleted>;
     using TEvCollectGarbageCompleted = TResponseEvent<TOperationCompleted, EvCollectGarbageCompleted>;
-    using TEvForcedCompactionCompleted = TResponseEvent<TForcedCompactionCompleted, EvForcedCompactionCompleted>;
+    using TEvExternalCompactionCompleted = TResponseEvent<TForcedCompactionCompleted, EvExternalCompactionCompleted>;
     using TEvForcedCleanupCompleted = TResponseEvent<TForcedCleanupCompleted, EvForcedCleanupCompleted>;
     using TEvInitFreshZonesCompleted = TResponseEvent<TEmpty, EvInitFreshZonesCompleted>;
     using TEvGetChangedBlocksCompleted = TResponseEvent<TOperationCompleted, EvGetChangedBlocksCompleted>;

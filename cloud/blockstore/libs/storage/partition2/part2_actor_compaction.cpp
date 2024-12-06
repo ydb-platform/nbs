@@ -633,7 +633,9 @@ public:
 
 void TPartitionActor::EnqueueCompactionIfNeeded(const TActorContext& ctx)
 {
-    if (State->GetCompactionStatus(false) != EOperationStatus::Idle) {
+    if (State->GetCompactionStatus(ECompactionType::Tablet) !=
+        EOperationStatus::Idle)
+    {
         // compaction already enqueued
         return;
     }
@@ -690,7 +692,6 @@ void TPartitionActor::EnqueueCompactionIfNeeded(const TActorContext& ctx)
         return;
     }
 
-
     TEvPartitionPrivate::ECompactionMode compactionMode;
     if (rangeScore > 0) {
         compactionMode = TEvPartitionPrivate::RangeCompaction;
@@ -701,7 +702,9 @@ void TPartitionActor::EnqueueCompactionIfNeeded(const TActorContext& ctx)
         return;
     }
 
-    State->SetCompactionStatus(false, EOperationStatus::Enqueued);
+    State->SetCompactionStatus(
+        ECompactionType::Tablet,
+        EOperationStatus::Enqueued);
 
     auto request = std::make_unique<TEvPartitionPrivate::TEvCompactionRequest>(
         MakeIntrusive<TCallContext>(CreateRequestId()),
@@ -752,16 +755,18 @@ void TPartitionActor::HandleCompaction(
         NCloud::Reply(ctx, requestInfo, std::move(response));
     };
 
-    bool isExternal =
-        msg->CompactionOptions.test(ToBit(ECompactionOption::External));
+    const auto compactionType =
+        msg->CompactionOptions.test(ToBit(ECompactionOption::External)) ?
+        ECompactionType::External:
+        ECompactionType::Tablet;
 
-    if (State->GetCompactionStatus(isExternal) == EOperationStatus::Started) {
+    if (State->GetCompactionStatus(compactionType) == EOperationStatus::Started) {
         replyError(ctx, *requestInfo, E_TRY_AGAIN, "compaction already started");
         return;
     }
 
     if (!State->IsCompactionAllowed()) {
-        State->SetCompactionStatus(isExternal, EOperationStatus::Idle);
+        State->SetCompactionStatus(compactionType, EOperationStatus::Idle);
 
         replyError(ctx, *requestInfo, E_BS_OUT_OF_SPACE, "all channels readonly");
         return;
@@ -796,7 +801,7 @@ void TPartitionActor::HandleCompaction(
     }
 
     if (!rangeStat.BlobCount && !garbageInfo.BlobCounters) {
-        State->SetCompactionStatus(isExternal, EOperationStatus::Idle);
+        State->SetCompactionStatus(compactionType, EOperationStatus::Idle);
 
         replyError(ctx, *requestInfo, S_ALREADY, "nothing to compact");
         return;
@@ -842,7 +847,7 @@ void TPartitionActor::HandleCompaction(
     }
 
 
-    State->SetCompactionStatus(isExternal, EOperationStatus::Started);
+    State->SetCompactionStatus(compactionType, EOperationStatus::Started);
 
     AddTransaction<TEvPartitionPrivate::TCompactionMethod>(*requestInfo);
 
@@ -877,7 +882,11 @@ void TPartitionActor::HandleCompactionCompleted(
 
     State->ReleaseCollectBarrier(msg->CommitId);
 
-    State->SetCompactionStatus(msg->ExternalCompaction, EOperationStatus::Idle);
+    const auto compactionType =
+        msg->ExternalCompaction ?
+        ECompactionType::External:
+        ECompactionType::Tablet;
+    State->SetCompactionStatus(compactionType, EOperationStatus::Idle);
 
     Actors.erase(ev->Sender);
 

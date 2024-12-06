@@ -869,7 +869,7 @@ STFUNC(TPartitionActor::StateWork)
         HFunc(TEvPartitionPrivate::TEvMetadataRebuildCompleted, HandleMetadataRebuildCompleted);
         HFunc(TEvPartitionPrivate::TEvScanDiskCompleted, HandleScanDiskCompleted);
         HFunc(TEvPartitionPrivate::TEvCollectGarbageCompleted, HandleCollectGarbageCompleted);
-        HFunc(TEvPartitionPrivate::TEvForcedCompactionCompleted, HandleForcedCompactionCompleted);
+        HFunc(TEvPartitionPrivate::TEvExternalCompactionCompleted, HandleExternalCompactionCompleted);
         HFunc(TEvPartitionPrivate::TEvGetChangedBlocksCompleted, HandleGetChangedBlocksCompleted);
         HFunc(TEvPartitionPrivate::TEvAddConfirmedBlobsCompleted, HandleAddConfirmedBlobsCompleted);
         HFunc(TEvPartitionCommonPrivate::TEvDescribeBlocksCompleted, HandleDescribeBlocksCompleted);
@@ -922,7 +922,7 @@ STFUNC(TPartitionActor::StateZombie)
         IgnoreFunc(TEvPartitionPrivate::TEvMetadataRebuildCompleted);
         IgnoreFunc(TEvPartitionPrivate::TEvScanDiskCompleted);
         IgnoreFunc(TEvPartitionPrivate::TEvCollectGarbageCompleted);
-        IgnoreFunc(TEvPartitionPrivate::TEvForcedCompactionCompleted);
+        IgnoreFunc(TEvPartitionPrivate::TEvExternalCompactionCompleted);
         IgnoreFunc(TEvPartitionPrivate::TEvGetChangedBlocksCompleted);
 
         IgnoreFunc(TEvPartitionPrivate::TEvCleanupResponse);
