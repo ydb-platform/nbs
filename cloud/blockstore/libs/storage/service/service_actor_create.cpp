@@ -137,7 +137,7 @@ void TCreateVolumeActor::DescribeBaseVolume(const TActorContext& ctx)
 
 bool TCreateVolumeActor::ShouldCreateVolumeWithEncryptionAtRest() const
 {
-    if (GetStorageMediaKind() == NProto::STORAGE_MEDIA_SSD_LOCAL) {
+    if (IsDiskRegistryLocalMediaKind(GetStorageMediaKind())) {
         // Encryption at rest for local disks is not implemented (#2598)
         return false;
     }
