@@ -28,41 +28,33 @@ TApp& TApp::Instance()
 int TApp::Run(int argc, char** argv)
 {
     TOpts opts;
+    opts.AllowUnknownLongOptions_ = true;
+    opts.AllowUnknownCharOptions_ = true;
     opts.AddHelpOption('h');
     opts.AddVersionOption();
     opts.SetFreeArgsNum(1);
 
-    opts.SetTitle("Command line NFS client");
+    opts.SetTitle("Command line filestore client");
     opts.SetFreeArgTitle(0, "<command>", JoinSeq(" | ", GetCommandNames()));
 
-    // skip program name
-    --argc; ++argv;
-
     try {
-        if (argc < 1) {
+        if (argc < 2) {
             ythrow TUsageException() << "not enough arguments";
         }
 
-        if (argc == 1) {
-            TStringBuf arg(argv[0]);
-            if (arg == "-h" || arg == "--help") {
-                opts.PrintUsage(GetProgramName());
-                return 0;
-            } else if (arg == "-V" || arg == "--svnrevision") {
-                // TODO: do not exit
-                NLastGetopt::PrintVersionAndExit(nullptr);
-                return 0;
-            }
+        if (argc == 2) {
+            NLastGetopt::TOptsParseResult parsedOpts(&opts, argc, argv);
+            return 0;
         }
 
-        auto name = NormalizeCommand(argv[0]);
+        auto name = NormalizeCommand(*std::next(argv));
 
         Command = GetCommand(name);
         if (!Command) {
             ythrow yexception() << "unknown command: " << name;
         }
 
-        return Command->Run(argc, argv);
+        return Command->Run(argc - 1, std::next(argv));
 
     } catch (const TUsageException& e) {
         Cerr << FormatCmdLine(argc, argv)
