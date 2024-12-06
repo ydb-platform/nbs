@@ -146,6 +146,7 @@ struct TIndexTabletSchema
         >;
 
         using StoragePolicy = TStoragePolicy<IndexChannel>;
+        using CompactionPolicy = TCompactionPolicy<ECompactionPolicy::IndexTable>;
     };
 
     struct Nodes_Ver: TTableSchema<6>
@@ -232,6 +233,7 @@ struct TIndexTabletSchema
         >;
 
         using StoragePolicy = TStoragePolicy<IndexChannel>;
+        using CompactionPolicy = TCompactionPolicy<ECompactionPolicy::IndexTable>;
     };
 
     struct NodeRefs_Ver: TTableSchema<10>
