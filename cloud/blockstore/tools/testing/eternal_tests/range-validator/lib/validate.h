@@ -1,3 +1,5 @@
+#pragma once
+
 #include <cloud/blockstore/tools/testing/eternal_tests/eternal-load/lib/config.h>
 
 #include <util/stream/file.h>

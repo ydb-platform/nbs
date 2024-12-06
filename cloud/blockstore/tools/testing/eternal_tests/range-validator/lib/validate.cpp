@@ -49,20 +49,33 @@ TVector<TBlockValidationResult> ValidateRange(
     }
 
     Cout << "Guessing Step, NumberToWrite, LastBlockIdx from actual data"
-            << Endl;
+         << Endl;
 
-    const auto maxIt = MaxElementBy(
-        actual,
-        [](const auto& d) { return d.RequestNumber; });
+    auto sortedActual = actual;
+    Sort(
+        sortedActual,
+        [](const auto& l, const auto& r) {
+            return l.RequestNumber > r.RequestNumber;
+        });
 
-    auto secondMaxIt = actual.begin();
-    for (auto it = actual.begin() + 1; it < actual.end(); ++it) {
-        if (it != maxIt &&
-            it->RequestNumber > secondMaxIt->RequestNumber
-        ) {
-            secondMaxIt = it;
-        }
+    {
+        auto unique = UniqueBy(
+            sortedActual.begin(),
+            sortedActual.end(),
+            [](const auto& x) { return x.RequestNumber; });
+        Y_ENSURE(unique == sortedActual.end(), "All elements must be unique");
     }
+    Y_ENSURE(len > 1, "RequestCount should be greater than 1");
+
+    const auto maxRequestNumber = sortedActual[0].RequestNumber;
+    const auto secondMaxRequestNumber = sortedActual[1].RequestNumber;
+
+    const auto maxIt = FindIf(
+        actual,
+        [=](const auto& x) { return x.RequestNumber == maxRequestNumber; });
+    const auto secondMaxIt = FindIf(
+        actual,
+        [=](const auto& x) { return x.RequestNumber == secondMaxRequestNumber; });
 
     ui64 step = 0;
     if (maxIt >= secondMaxIt) {
@@ -75,8 +88,8 @@ TVector<TBlockValidationResult> ValidateRange(
     ui64 curBlockIdx = maxIt - actual.begin();
 
     Cout << "Step: " << step
-            << " NumberToWrite: " << curNum
-            << " LastBlockIdx: " << curBlockIdx << Endl;
+         << " NumberToWrite: " << curNum
+         << " LastBlockIdx: " << curBlockIdx << Endl;
 
     Y_ENSURE(step != 0, "Step should not be zero");
     Y_ENSURE(
@@ -85,6 +98,8 @@ TVector<TBlockValidationResult> ValidateRange(
 
     TVector<ui64> expected(len);
     ui64 cnt = 0;
+
+    expected[curBlockIdx] = curNum;
     while (cnt < len && curNum != 0) {
         curBlockIdx = (curBlockIdx + len - step) % len;
         expected[curBlockIdx] = --curNum;

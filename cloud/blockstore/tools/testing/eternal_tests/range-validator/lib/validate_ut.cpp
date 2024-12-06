@@ -2,6 +2,7 @@
 
 #include <cloud/blockstore/tools/testing/eternal_tests/eternal-load/lib/config.h>
 #include <cloud/blockstore/tools/testing/eternal_tests/eternal-load/lib/test_executor.h>
+#include <cloud/blockstore/tools/testing/eternal_tests/range-validator/lib/validate.h>
 
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
@@ -34,13 +35,17 @@ Y_UNIT_TEST_SUITE(ValidateTest)
             1,    // requestBlockCount
             1,    // writeParts
             0,    // alternatingPhase
-            256); // maxWriteRequestCount
+            255); // maxWriteRequestCount
 
         auto executor = CreateTestExecutor(
             configHolder,
             logging->CreateLog("ETERNAL_EXECUTOR")
         );
         UNIT_ASSERT(executor->Run());
+
+        TFile file(filePath, EOpenModeFlag::RdOnly | EOpenModeFlag::DirectAligned);
+        auto results = ValidateRange(file, configHolder, 0 /* rangeIdx */);
+        UNIT_ASSERT_VALUES_EQUAL(0, results.size());
     }
 }
 
