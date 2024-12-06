@@ -116,7 +116,7 @@ struct TForcedCleanupState
 enum class ECompactionType: ui32
 {
     External,
-    Tablet
+    Tablet  // compaction initiated by tablet
 };
 
 ////////////////////////////////////////////////////////////////////////////////
