@@ -1421,11 +1421,11 @@ func testListerLoop(
 	}
 	lister := newLister(
 		ctx,
-		100, // tasksToListLimit
 		func(ctx context.Context, limit uint64) ([]storage.TaskInfo, error) {
 			return tasks, nil
 		},
 		uint64(channelCount),   // channelsCount
+		100,                    // tasksToListLimit
 		50*time.Millisecond,    // pollForTasksPeriodMin
 		100*time.Millisecond,   // pollForTasksPeriodMax
 		make(map[string]int64), // inflightTaskLimits
@@ -1498,11 +1498,11 @@ func TestListerLoopCancellingWhileReceiving(t *testing.T) {
 	}
 	lister := newLister(
 		ctx,
-		100, // tasksToListLimit
 		func(ctx context.Context, limit uint64) ([]storage.TaskInfo, error) {
 			return tasks, nil
 		},
 		uint64(channelCount),   // channelsCount
+		100,                    // tasksToListLimit
 		50*time.Millisecond,    // pollForTasksPeriodMin
 		100*time.Millisecond,   // pollForTasksPeriodMax
 		make(map[string]int64), // inflightTaskLimits
