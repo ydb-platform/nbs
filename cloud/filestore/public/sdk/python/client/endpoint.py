@@ -97,7 +97,8 @@ class EndpointClient(object):
             idempotence_id=None,
             timestamp=None,
             trace_id=None,
-            request_timeout=None):
+            request_timeout=None,
+            persistent=False):
         endpoint = protos.TEndpointConfig(
             FileSystemId=filesystem_id,
             ClientId=client_id,
@@ -105,7 +106,8 @@ class EndpointClient(object):
             ReadOnly=read_only,
             SessionRetryTimeout=retry_timeout,
             SessionPingTimeout=ping_timeout,
-            ServiceEndpoint=service_endpoint
+            ServiceEndpoint=service_endpoint,
+            Persistent=persistent,
         )
 
         request = protos.TStartEndpointRequest(
