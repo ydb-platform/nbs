@@ -1,5 +1,7 @@
 #include "part_nonrepl_actor.h"
 
+#include "part_nonrepl_common.h"
+
 #include <cloud/blockstore/libs/diagnostics/public.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/core/forward_helpers.h>
@@ -302,7 +304,7 @@ bool TNonreplicatedPartitionActor::InitRequests(
         reply(
             ctx,
             requestInfo,
-            PartConfig->MakeIOError("disk in error state", true));
+            PartConfig->MakeIOError("disk in error state"));
         return false;
     }
 
@@ -317,8 +319,7 @@ bool TNonreplicatedPartitionActor::InitRequests(
                 requestInfo,
                 PartConfig->MakeIOError(
                     TStringBuilder() << "unavailable device requested: "
-                                     << dr.Device.GetDeviceUUID(),
-                    true));
+                                     << dr.Device.GetDeviceUUID()));
             return false;
         }
     }
@@ -535,9 +536,7 @@ STFUNC(TNonreplicatedPartitionActor::StateWork)
         HFunc(TEvService::TEvWriteBlocksLocalRequest, HandleWriteBlocksLocal);
 
         HFunc(NPartition::TEvPartition::TEvDrainRequest, DrainActorCompanion.HandleDrain);
-        HFunc(
-            TEvService::TEvGetChangedBlocksRequest,
-            GetChangedBlocksCompanion.HandleGetChangedBlocks);
+        HFunc(TEvService::TEvGetChangedBlocksRequest, DeclineGetChangedBlocks);
 
         HFunc(TEvNonreplPartitionPrivate::TEvReadBlocksCompleted, HandleReadBlocksCompleted);
         HFunc(TEvNonreplPartitionPrivate::TEvWriteBlocksCompleted, HandleWriteBlocksCompleted);
@@ -579,6 +578,7 @@ STFUNC(TNonreplicatedPartitionActor::StateZombie)
         HFunc(TEvService::TEvWriteBlocksLocalRequest, RejectWriteBlocksLocal);
 
         HFunc(NPartition::TEvPartition::TEvDrainRequest, RejectDrain);
+        HFunc(TEvService::TEvGetChangedBlocksRequest, DeclineGetChangedBlocks);
 
         HFunc(TEvNonreplPartitionPrivate::TEvReadBlocksCompleted, HandleReadBlocksCompleted);
         HFunc(TEvNonreplPartitionPrivate::TEvWriteBlocksCompleted, HandleWriteBlocksCompleted);

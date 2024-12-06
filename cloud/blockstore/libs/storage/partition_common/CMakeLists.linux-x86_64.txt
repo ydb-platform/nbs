@@ -36,7 +36,6 @@ target_sources(libs-storage-partition_common PRIVATE
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/partition_common/actor_loadfreshblobs.cpp
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/partition_common/actor_trimfreshlog.cpp
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/partition_common/drain_actor_companion.cpp
-  ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/partition_common/get_changed_blocks_companion.cpp
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/partition_common/long_running_operation_companion.cpp
 )
 generate_enum_serilization(libs-storage-partition_common
