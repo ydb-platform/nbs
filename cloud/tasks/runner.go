@@ -900,7 +900,6 @@ func StartRunners(
 
 	listerReadyToRun := newLister(
 		ctx,
-		config.GetTasksToListLimit(),
 		func(ctx context.Context, limit uint64) ([]storage.TaskInfo, error) {
 			return taskStorage.ListTasksReadyToRun(
 				ctx,
@@ -909,13 +908,13 @@ func StartRunners(
 			)
 		},
 		config.GetRunnersCount(),
+		config.GetTasksToListLimit(),
 		pollForTasksPeriodMin,
 		pollForTasksPeriodMax,
 		inflightTaskLimits,
 	)
 	listerReadyToCancel := newLister(
 		ctx,
-		config.GetTasksToListLimit(),
 		func(ctx context.Context, limit uint64) ([]storage.TaskInfo, error) {
 			return taskStorage.ListTasksReadyToCancel(
 				ctx,
@@ -924,6 +923,7 @@ func StartRunners(
 			)
 		},
 		config.GetRunnersCount(),
+		config.GetTasksToListLimit(),
 		pollForTasksPeriodMin,
 		pollForTasksPeriodMax,
 		inflightTaskLimits,
@@ -953,7 +953,6 @@ func StartRunners(
 
 	listerStallingWhileRunning := newLister(
 		ctx,
-		config.GetTasksToListLimit(),
 		func(ctx context.Context, limit uint64) ([]storage.TaskInfo, error) {
 			return taskStorage.ListTasksStallingWhileRunning(
 				ctx,
@@ -963,13 +962,13 @@ func StartRunners(
 			)
 		},
 		config.GetStalkingRunnersCount(),
+		config.GetTasksToListLimit(),
 		pollForStallingTasksPeriodMin,
 		pollForStallingTasksPeriodMax,
 		inflightTaskLimits,
 	)
 	listerStallingWhileCancelling := newLister(
 		ctx,
-		config.GetTasksToListLimit(),
 		func(ctx context.Context, limit uint64) ([]storage.TaskInfo, error) {
 			return taskStorage.ListTasksStallingWhileCancelling(
 				ctx,
@@ -979,6 +978,7 @@ func StartRunners(
 			)
 		},
 		config.GetStalkingRunnersCount(),
+		config.GetTasksToListLimit(),
 		pollForStallingTasksPeriodMin,
 		pollForStallingTasksPeriodMax,
 		inflightTaskLimits,
