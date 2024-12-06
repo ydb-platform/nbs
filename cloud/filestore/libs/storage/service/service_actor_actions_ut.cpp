@@ -294,10 +294,34 @@ Y_UNIT_TEST_SUITE(TStorageServiceActionsTest)
         service.DestroySession(headers);
     }
 
+    void WaitForTabletStart(TServiceClient& service)
+    {
+        TDispatchOptions options;
+        options.FinalEvents = {
+            TDispatchOptions::TFinalEventCondition(
+                TEvIndexTabletPrivate::EvLoadCompactionMapChunkRequest)};
+        service.AccessRuntime().DispatchEvents(options);
+    }
+
     Y_UNIT_TEST(ShouldGetStorageStats)
     {
-        NProto::TStorageConfig config;
-        TTestEnv env{{}, config};
+        NProto::TStorageConfig storageConfig;
+        storageConfig.SetAutomaticShardCreationEnabled(true);
+        storageConfig.SetShardAllocationUnit(1_GB);
+        storageConfig.SetAutomaticallyCreatedShardSize(1_GB);
+        storageConfig.SetMultiTabletForwardingEnabled(true);
+
+        NProto::TDiagnosticsConfig diagConfig;
+        NProto::TFileSystemPerformanceProfile pp;
+        pp.MutableRead()->SetRPS(10);
+        pp.MutableRead()->SetThroughput(1_MB);
+        pp.MutableWrite()->SetRPS(20);
+        pp.MutableWrite()->SetThroughput(2_MB);
+
+        *diagConfig.MutableSSDFileSystemPerformanceProfile() = pp;
+        *diagConfig.MutableHDDFileSystemPerformanceProfile() = pp;
+
+        TTestEnv env{{}, storageConfig, {}, CreateProfileLogStub(), diagConfig};
         env.CreateSubDomain("nfs");
 
         ui32 nodeIdx = env.CreateNode("nfs");
@@ -305,7 +329,10 @@ Y_UNIT_TEST_SUITE(TStorageServiceActionsTest)
         TServiceClient service(env.GetRuntime(), nodeIdx);
 
         const TString fsId = "test";
-        service.CreateFileStore(fsId, 1'000);
+        service.CreateFileStore(fsId, 2_GB / 4_KB);
+        // waiting for IndexTablet start after the restart triggered by
+        // configureshards
+        WaitForTabletStart(service);
 
         auto headers = service.InitSession("test", "client");
 
@@ -335,9 +362,58 @@ Y_UNIT_TEST_SUITE(TStorageServiceActionsTest)
             256_KB,
             TString(256_KB, 'a'));
 
+        // waiting for async stats calculation
+        env.GetRuntime().AdvanceCurrentTime(TDuration::Seconds(15));
+        TDispatchOptions options;
+        options.FinalEvents = {
+            TDispatchOptions::TFinalEventCondition(
+                TEvIndexTabletPrivate::EvGetShardStatsCompleted)
+        };
+        env.GetRuntime().DispatchEvents(options);
+
         {
             NProtoPrivate::TGetStorageStatsRequest request;
             request.SetFileSystemId(fsId);
+            request.SetAllowCache(true);
+            TString buf;
+            google::protobuf::util::MessageToJsonString(request, &buf);
+            const auto response = service.ExecuteAction("GetStorageStats", buf);
+            NProtoPrivate::TGetStorageStatsResponse record;
+            auto status = google::protobuf::util::JsonStringToMessage(
+                response->Record.GetOutput(),
+                &record);
+            const auto& stats = record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(2, stats.ShardStatsSize());
+            UNIT_ASSERT_VALUES_EQUAL(
+                fsId + "_s1",
+                stats.GetShardStats(0).GetShardId());
+            UNIT_ASSERT_VALUES_EQUAL(
+                1_GB / 4_KB,
+                stats.GetShardStats(0).GetTotalBlocksCount());
+            UNIT_ASSERT_VALUES_EQUAL(
+                512_KB / 4_KB,
+                stats.GetShardStats(0).GetUsedBlocksCount());
+            UNIT_ASSERT_VALUES_UNEQUAL(
+                0,
+                stats.GetShardStats(0).GetCurrentLoad());
+            UNIT_ASSERT_VALUES_EQUAL(
+                fsId + "_s2",
+                stats.GetShardStats(1).GetShardId());
+            UNIT_ASSERT_VALUES_EQUAL(
+                1_GB / 4_KB,
+                stats.GetShardStats(1).GetTotalBlocksCount());
+            UNIT_ASSERT_VALUES_EQUAL(
+                0,
+                stats.GetShardStats(1).GetUsedBlocksCount());
+            UNIT_ASSERT_VALUES_EQUAL(
+                0,
+                stats.GetShardStats(1).GetCurrentLoad());
+        }
+
+
+        {
+            NProtoPrivate::TGetStorageStatsRequest request;
+            request.SetFileSystemId(fsId + "_s1");
             request.SetCompactionRangeCountByCompactionScore(2);
             TString buf;
             google::protobuf::util::MessageToJsonString(request, &buf);
@@ -349,11 +425,30 @@ Y_UNIT_TEST_SUITE(TStorageServiceActionsTest)
             const auto& stats = record.GetStats();
             const auto& compactionRanges = stats.GetCompactionRangeStats();
             UNIT_ASSERT_VALUES_EQUAL(1, stats.GetUsedNodesCount());
+            UNIT_ASSERT_VALUES_UNEQUAL(0, stats.GetCurrentLoad());
             UNIT_ASSERT_VALUES_EQUAL(2, stats.GetUsedCompactionRanges());
             UNIT_ASSERT_VALUES_EQUAL(2, compactionRanges.size());
             UNIT_ASSERT_VALUES_EQUAL(1, compactionRanges[0].GetBlobCount());
             UNIT_ASSERT_VALUES_EQUAL(1, compactionRanges[1].GetBlobCount());
         }
+
+        env.GetRegistry()->Update(env.GetRuntime().GetCurrentTime());
+
+        const auto counters = env.GetRuntime().GetAppData().Counters;
+        auto subgroup = counters->FindSubgroup("counters", "filestore");
+        UNIT_ASSERT(subgroup);
+        subgroup = subgroup->FindSubgroup("component", "storage_fs");
+        UNIT_ASSERT(subgroup);
+        subgroup = subgroup->FindSubgroup("host", "cluster");
+        UNIT_ASSERT(subgroup);
+        subgroup = subgroup->FindSubgroup("filesystem", fsId);
+        UNIT_ASSERT(subgroup);
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            subgroup->GetCounter("UsedBytesCount")->GetAtomic());
+        UNIT_ASSERT_VALUES_EQUAL(
+            512_KB,
+            subgroup->GetCounter("AggregateUsedBytesCount")->GetAtomic());
 
         service.DestroySession(headers);
     }
