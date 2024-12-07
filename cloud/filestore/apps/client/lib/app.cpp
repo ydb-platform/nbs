@@ -28,8 +28,6 @@ TApp& TApp::Instance()
 int TApp::Run(int argc, char** argv)
 {
     TOpts opts;
-    opts.AllowUnknownLongOptions_ = true;
-    opts.AllowUnknownCharOptions_ = true;
     opts.AddHelpOption('h');
     opts.AddVersionOption();
     opts.SetFreeArgsNum(1);
