@@ -53,7 +53,6 @@ int TApp::Run(int argc, char** argv)
         }
 
         return Command->Run(argc - 1, std::next(argv));
-
     } catch (const TUsageException& e) {
         Cerr << FormatCmdLine(argc, argv)
             << " failed: " << CurrentExceptionMessage()
