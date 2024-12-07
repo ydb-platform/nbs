@@ -206,7 +206,7 @@ bool TIndexTabletActor::PrepareTx_CreateHandle(
 
             if (args.RequestShardId) {
                 args.ShardId = args.RequestShardId;
-                args.ShardName = CreateGuidAsString();
+                args.ShardNodeName = CreateGuidAsString();
                 args.IsNewShardNode = true;
             }
         } else {
@@ -218,7 +218,7 @@ bool TIndexTabletActor::PrepareTx_CreateHandle(
 
             args.TargetNodeId = ref->ChildNodeId;
             args.ShardId = ref->ShardId;
-            args.ShardName = ref->ShardName;
+            args.ShardNodeName = ref->ShardNodeName;
         }
     } else {
         args.TargetNodeId = args.NodeId;
@@ -317,7 +317,7 @@ void TIndexTabletActor::ExecuteTx_CreateHandle(
             args.Name,
             args.TargetNodeId,
             args.ShardId,
-            args.ShardName);
+            args.ShardNodeName);
 
         // update parent cmtime as we created a new entry
         auto parent = CopyAttrs(args.ParentNode->Attrs, E_CM_CMTIME);
@@ -375,7 +375,7 @@ void TIndexTabletActor::ExecuteTx_CreateHandle(
         ConvertNodeFromAttrs(*node, args.TargetNodeId, args.TargetNode->Attrs);
     } else {
         args.Response.SetShardFileSystemId(args.ShardId);
-        args.Response.SetShardNodeName(args.ShardName);
+        args.Response.SetShardNodeName(args.ShardNodeName);
     }
 
     if (args.IsNewShardNode) {
@@ -389,7 +389,7 @@ void TIndexTabletActor::ExecuteTx_CreateHandle(
         shardRequest->SetGid(args.Gid);
         shardRequest->SetFileSystemId(args.ShardId);
         shardRequest->SetNodeId(RootNodeId);
-        shardRequest->SetName(args.ShardName);
+        shardRequest->SetName(args.ShardNodeName);
         shardRequest->ClearShardFileSystemId();
 
         db.WriteOpLogEntry(args.OpLogEntry);
@@ -424,7 +424,7 @@ void TIndexTabletActor::CompleteTx_CreateHandle(
             "%s Creating node in shard upon CreateHandle: %s, %s",
             LogTag.c_str(),
             args.ShardId.c_str(),
-            args.ShardName.c_str());
+            args.ShardNodeName.c_str());
 
         RegisterCreateNodeInShardActor(
             ctx,

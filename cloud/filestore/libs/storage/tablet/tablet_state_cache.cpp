@@ -31,7 +31,7 @@ void TInMemoryIndexState::LoadNodeRefs(const TVector<TNodeRef>& nodeRefs)
             nodeRef.Name,
             nodeRef.ChildNodeId,
             nodeRef.ShardId,
-            nodeRef.ShardName);
+            nodeRef.ShardNodeName);
     }
 }
 
@@ -225,7 +225,7 @@ bool TInMemoryIndexState::ReadNodeRef(
             name,
             it->second.ChildId,
             it->second.ShardId,
-            it->second.ShardName,
+            it->second.ShardNodeName,
             minCommitId,
             maxCommitId};
     }
@@ -263,7 +263,7 @@ bool TInMemoryIndexState::ReadNodeRefs(
                 it->first.Name,
                 it->second.ChildId,
                 it->second.ShardId,
-                it->second.ShardName,
+                it->second.ShardNodeName,
                 minCommitId,
                 maxCommitId});
 
@@ -316,7 +316,7 @@ void TInMemoryIndexState::WriteNodeRef(
     const TString& name,
     ui64 childNode,
     const TString& shardId,
-    const TString& shardName)
+    const TString& shardNodeName)
 {
     const auto key = TNodeRefsKey(nodeId, name);
     if (NodeRefs.size() == NodeRefsCapacity && !NodeRefs.contains(key)) {
@@ -329,7 +329,7 @@ void TInMemoryIndexState::WriteNodeRef(
         .CommitId = commitId,
         .ChildId = childNode,
         .ShardId = shardId,
-        .ShardName = shardName};
+        .ShardNodeName = shardNodeName};
 }
 
 void TInMemoryIndexState::DeleteNodeRef(ui64 nodeId, const TString& name)
@@ -415,7 +415,7 @@ void TInMemoryIndexState::UpdateState(
                 request->NodeRefsKey.Name,
                 request->NodeRefsRow.ChildId,
                 request->NodeRefsRow.ShardId,
-                request->NodeRefsRow.ShardName);
+                request->NodeRefsRow.ShardNodeName);
         } else if (
             const auto* request = std::get_if<TDeleteNodeRefsRequest>(&update))
         {

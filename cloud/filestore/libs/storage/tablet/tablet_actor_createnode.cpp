@@ -491,7 +491,7 @@ void TIndexTabletActor::ExecuteTx_CreateNode(
             shardRequest->CopyFrom(args.Request);
             shardRequest->SetFileSystemId(args.ShardId);
             shardRequest->SetNodeId(RootNodeId);
-            shardRequest->SetName(args.ShardName);
+            shardRequest->SetName(args.ShardNodeName);
             shardRequest->ClearShardFileSystemId();
 
             db.WriteOpLogEntry(args.OpLogEntry);
@@ -533,7 +533,7 @@ void TIndexTabletActor::ExecuteTx_CreateNode(
         args.Name,
         args.ChildNodeId,
         args.ShardId,
-        args.ShardName);
+        args.ShardNodeName);
 
     if (args.ShardId.empty()) {
         if (args.ChildNodeId == InvalidNodeId) {
@@ -572,7 +572,7 @@ void TIndexTabletActor::CompleteTx_CreateNode(
             "%s Creating node in shard upon CreateNode: %s, %s",
             LogTag.c_str(),
             args.ShardId.c_str(),
-            args.ShardName.c_str());
+            args.ShardNodeName.c_str());
 
         RegisterCreateNodeInShardActor(
             ctx,

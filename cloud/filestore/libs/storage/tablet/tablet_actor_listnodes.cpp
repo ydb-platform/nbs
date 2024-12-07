@@ -27,12 +27,12 @@ void AddExternalNode(
     NProto::TListNodesResponse& record,
     TString name,
     const TString& shardId,
-    const TString& shardName)
+    const TString& shardNodeName)
 {
     record.AddNames(std::move(name));
     auto* node = record.AddNodes();
     node->SetShardFileSystemId(shardId);
-    node->SetShardNodeName(shardName);
+    node->SetShardNodeName(shardNodeName);
 }
 
 NProto::TError ValidateRequest(const NProto::TListNodesRequest& request)
@@ -199,7 +199,7 @@ void TIndexTabletActor::CompleteTx_ListNodes(
                     record,
                     ref.Name,
                     ref.ShardId,
-                    ref.ShardName);
+                    ref.ShardNodeName);
 
                 continue;
             }

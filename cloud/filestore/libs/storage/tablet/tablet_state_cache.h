@@ -149,7 +149,7 @@ private:
         const TString& name,
         ui64 childNode,
         const TString& shardId,
-        const TString& shardName);
+        const TString& shardNodeName);
 
     void DeleteNodeRef(ui64 nodeId, const TString& name);
 
@@ -250,7 +250,7 @@ private:
         ui64 CommitId = 0;
         ui64 ChildId = 0;
         TString ShardId;
-        TString ShardName;
+        TString ShardNodeName;
     };
 
     TMap<TNodeRefsKey, TNodeRefsRow> NodeRefs;
