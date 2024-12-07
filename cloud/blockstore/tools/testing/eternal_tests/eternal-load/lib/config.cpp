@@ -96,7 +96,9 @@ TConfigHolder::TConfigHolder(
         Config.SetAlternatingPhase(alternatingPhase);
     }
 
-    Config.SetMaxWriteRequestCount(maxWriteRequestCount);
+    if (maxWriteRequestCount) {
+        Config.SetMaxWriteRequestCount(maxWriteRequestCount);
+    }
 
     GenerateMissingFields();
 }
