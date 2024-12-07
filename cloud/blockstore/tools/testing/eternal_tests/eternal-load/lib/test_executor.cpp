@@ -285,16 +285,8 @@ void TTestExecutor::DoReadRequest(ui16 rangeIdx)
                 STORAGE_ERROR(
                     "[" << rangeIdx << "] Wrong data in block "
                     << blockIdx
-                    << " expected " << expected
-                    << " actual { " << blockData.RequestNumber
-                    << " " << blockData.PartNumber
-                    << " " << blockData.BlockIndex
-                    << " " << blockData.RangeIdx
-                    << " " << TInstant::MicroSeconds(blockData.RequestTimestamp)
-                    << " " << TInstant::MicroSeconds(blockData.TestTimestamp)
-                    << " " << blockData.TestId
-                    << " " << blockData.Checksum
-                    << " }");
+                    << " expected RequestNumber " << expected
+                    << " actual TBlockData " << blockData);
                 AtomicSet(Failed, 1);
                 Stop();
                 return;

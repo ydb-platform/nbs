@@ -29,7 +29,7 @@ struct TBlockData
 
 inline IOutputStream& operator<<(IOutputStream& out, const TBlockData& data)
 {
-    out << "{"
+    out << "{ "
         << "RequestNumber " << data.RequestNumber
         << "PartNumber " << data.PartNumber
         << "BlockIndex " << data.BlockIndex
