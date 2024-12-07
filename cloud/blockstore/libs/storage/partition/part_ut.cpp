@@ -4067,7 +4067,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         }
     }
 
-    void DoTestForcedCompaction(TCompactionOptions options)
+    void DoTestForcedCompaction(bool external)
     {
         constexpr ui32 rangesCount = 5;
         auto storageConfig = DefaultConfig();
@@ -4087,10 +4087,13 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         auto response = partition.StatPartition();
         auto oldStats = response->Record.GetStats();
 
+        TCompactionOptions options;
+        options.set(ToBit(ECompactionOption::Forced));
+        if (external) {
+            options.set(ToBit(ECompactionOption::External));
+        }
         for (ui32 range = 0; range < rangesCount; ++range) {
-            partition.Compaction(
-                range * 1024,
-                options.set(ToBit(ECompactionOption::Forced)));
+            partition.Compaction(range * 1024, options);
         }
 
         response = partition.StatPartition();
@@ -4103,13 +4106,12 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
 
     Y_UNIT_TEST(ShouldCreateBlobsForEveryWrittenRangeDuringForcedCompaction)
     {
-        DoTestForcedCompaction(TCompactionOptions());
+        DoTestForcedCompaction(false);
     }
 
     Y_UNIT_TEST(ShouldCreateBlobsForEveryWrittenRangeDuringExternalForcedCompaction)
     {
-        DoTestForcedCompaction(TCompactionOptions().
-            set(ToBit(ECompactionOption::External)));
+        DoTestForcedCompaction(true);
     }
 
     void DoTestEmptyRangesForcedCompaction(TCompactionOptions options)
