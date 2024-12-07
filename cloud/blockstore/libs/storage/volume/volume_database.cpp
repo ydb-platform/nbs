@@ -119,7 +119,7 @@ bool TVolumeDatabase::ReadStorageConfig(
         return false;   // not ready
     }
 
-    if (it.IsValid()) {
+    if (it.IsValid() && it.HaveValue<TTable::StorageConfig>()) {
         storageConfig = it.GetValue<TTable::StorageConfig>();
     }
 

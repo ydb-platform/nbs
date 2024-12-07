@@ -57,6 +57,9 @@ void TVolumeActor::CompleteChangeStorageConfig(
     Config = std::make_shared<TStorageConfig>(*GlobalStorageConfig);
     Config->Merge(std::move(args.ResultStorageConfig));
     HasStorageConfigPatch = !Config->Equals(*GlobalStorageConfig);
+    if (!HasStorageConfigPatch) {
+        Config = GlobalStorageConfig;
+    }
 
     if (State->GetPartitionsState() == TPartitionInfo::READY ||
         State->GetPartitionsState() == TPartitionInfo::STARTED)
