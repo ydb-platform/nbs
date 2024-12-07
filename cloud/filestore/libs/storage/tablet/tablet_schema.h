@@ -219,7 +219,7 @@ struct TIndexTabletSchema
         struct Name         : Column<3, NKikimr::NScheme::NTypeIds::String> {};
         struct ChildId      : Column<4, NKikimr::NScheme::NTypeIds::Uint64> {};
         struct ShardId      : Column<5, NKikimr::NScheme::NTypeIds::String> {};
-        struct ShardName    : Column<6, NKikimr::NScheme::NTypeIds::String> {};
+        struct ShardNodeName: Column<6, NKikimr::NScheme::NTypeIds::String> {};
 
         using TKey = TableKey<NodeId, Name>;
 
@@ -229,7 +229,7 @@ struct TIndexTabletSchema
             Name,
             ChildId,
             ShardId,
-            ShardName
+            ShardNodeName
         >;
 
         using StoragePolicy = TStoragePolicy<IndexChannel>;
@@ -244,7 +244,7 @@ struct TIndexTabletSchema
         struct Name         : Column<4, NKikimr::NScheme::NTypeIds::String> {};
         struct ChildId      : Column<5, NKikimr::NScheme::NTypeIds::Uint64> {};
         struct ShardId      : Column<6, NKikimr::NScheme::NTypeIds::String> {};
-        struct ShardName    : Column<7, NKikimr::NScheme::NTypeIds::String> {};
+        struct ShardNodeName: Column<7, NKikimr::NScheme::NTypeIds::String> {};
 
         using TKey = TableKey<NodeId, Name, MinCommitId>;
 
@@ -255,7 +255,7 @@ struct TIndexTabletSchema
             Name,
             ChildId,
             ShardId,
-            ShardName
+            ShardNodeName
         >;
 
         using StoragePolicy = TStoragePolicy<IndexChannel>;

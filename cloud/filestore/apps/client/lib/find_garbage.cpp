@@ -156,13 +156,13 @@ public:
         FetchAll(session, FileSystemId, RootNodeId, &leaderNodes);
         STORAGE_INFO("Fetched " << leaderNodes.size() << " nodes");
 
-        THashSet<TString> shardNames;
+        THashSet<TString> shardNodeNames;
         for (const auto& node: leaderNodes) {
             if (!node.ShardFileSystemId) {
                 continue;
             }
 
-            shardNames.insert(node.ShardNodeName);
+            shardNodeNames.insert(node.ShardNodeName);
         }
 
         struct TResult
@@ -187,7 +187,7 @@ public:
                 CreateCustomSession(shard, shard + "::" + ClientId);
             auto& shardSession = shardSessionGuard.AccessSession();
             for (const auto& node: nodes) {
-                if (!shardNames.contains(node.Name)) {
+                if (!shardNodeNames.contains(node.Name)) {
                     STORAGE_INFO("Node " << node.Name << " not found in shard"
                         ", calling stat");
                     auto stat =
