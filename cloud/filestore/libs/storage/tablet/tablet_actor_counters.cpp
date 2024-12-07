@@ -148,6 +148,7 @@ void TGetShardStatsActor::HandleGetStorageStatsResponse(
     TABLET_VERIFY(ev->Cookie < ShardStats.size());
     auto& ss = ShardStats[ev->Cookie];
     ss.CurrentLoad = src.GetCurrentLoad();
+    ss.Suffer = src.GetSuffer();
     ss.TotalBlocksCount = src.GetTotalBlocksCount();
     ss.UsedBlocksCount = src.GetUsedBlocksCount();
 
@@ -823,6 +824,7 @@ void TIndexTabletActor::FillSelfStorageStats(
         CollectGarbageState.GetOperationState()));
 
     stats->SetCurrentLoad(Metrics.CurrentLoad.load(std::memory_order_relaxed));
+    stats->SetSuffer(Metrics.Suffer.load(std::memory_order_relaxed));
 
     stats->SetTotalBlocksCount(GetFileSystem().GetBlocksCount());
 }
@@ -847,6 +849,7 @@ void TIndexTabletActor::HandleGetStorageStats(
             ss->SetTotalBlocksCount(CachedShardStats[i].TotalBlocksCount);
             ss->SetUsedBlocksCount(CachedShardStats[i].UsedBlocksCount);
             ss->SetCurrentLoad(CachedShardStats[i].CurrentLoad);
+            ss->SetSuffer(CachedShardStats[i].Suffer);
         }
     } else {
         FillSelfStorageStats(stats);

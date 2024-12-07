@@ -1046,6 +1046,7 @@ void TIndexTabletActor::HandleHttpInfo_Default(
                         TABLEH() { out << "UsedBytesCount"; }
                         TABLEH() { out << "FreeBytesCount"; }
                         TABLEH() { out << "CurrentLoad"; }
+                        TABLEH() { out << "Suffer"; }
                     }
                 }
 
@@ -1070,6 +1071,7 @@ void TIndexTabletActor::HandleHttpInfo_Default(
                                 * GetBlockSize();
                         }
                         TABLED() { out << ss.CurrentLoad; }
+                        TABLED() { out << ss.Suffer; }
                     }
                 }
             }
