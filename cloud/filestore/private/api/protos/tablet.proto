@@ -103,6 +103,7 @@ message TShardStats
     uint64 UsedBlocksCount = 2;
     uint64 TotalBlocksCount = 3;
     uint64 CurrentLoad = 4;
+    uint32 Suffer = 5;
 }
 
 message TStorageStats
@@ -149,6 +150,7 @@ message TStorageStats
 
     // load stats
     uint64 CurrentLoad = 5001;
+    uint64 Suffer = 5002;
 
     // shard stats
     repeated TShardStats ShardStats = 6001;
