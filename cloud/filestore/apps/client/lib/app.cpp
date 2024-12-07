@@ -51,7 +51,6 @@ int TApp::Run(int argc, char** argv)
         if (!Command) {
             ythrow yexception() << "unknown command: " << name;
         }
-
         return Command->Run(argc - 1, std::next(argv));
     } catch (const TUsageException& e) {
         Cerr << FormatCmdLine(argc, argv)
