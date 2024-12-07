@@ -832,8 +832,13 @@ struct TEvIndexTabletPrivate
         TVector<TShardStats> ShardStats;
         TInstant StartedTs;
 
-        TGetShardStatsCompleted(TInstant startedTs)
-            : StartedTs(startedTs)
+        TGetShardStatsCompleted(
+                NProtoPrivate::TStorageStats aggregateStats,
+                TVector<TShardStats> shardStats,
+                TInstant startedTs)
+            : AggregateStats(std::move(aggregateStats))
+            , ShardStats(std::move(shardStats))
+            , StartedTs(startedTs)
         {}
     };
 
