@@ -568,6 +568,9 @@ message TConfigureShardsRequest
 
     // Shard FileSystem identifiers.
     repeated string ShardFileSystemIds = 2;
+
+    // Override shard list validation.
+    bool Force = 3;
 }
 
 message TConfigureShardsResponse
@@ -717,6 +720,9 @@ message TGetFileSystemTopologyResponse
 
     // Shard FileSystem identifiers.
     repeated string ShardFileSystemIds = 2;
+
+    // Shard no (if this fs is a shard itself).
+    uint32 ShardNo = 3;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
