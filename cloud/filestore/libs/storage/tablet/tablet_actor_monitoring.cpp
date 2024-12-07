@@ -1038,16 +1038,23 @@ void TIndexTabletActor::HandleHttpInfo_Default(
         const auto& shardIds = GetFileSystem().GetShardFileSystemIds();
         if (shardIds.size()) {
             TAG(TH3) { out << "Shards"; }
-            TABLE_CLASS("table table-bordered") {
+            TABLE_SORTABLE_CLASS("table table-bordered") {
                 TABLEHEAD() {
                     TABLER() {
                         TABLEH() { out << "ShardNo"; }
                         TABLEH() { out << "FileSystemId"; }
+                        TABLEH() { out << "UsedBytesCount"; }
+                        TABLEH() { out << "FreeBytesCount"; }
+                        TABLEH() { out << "CurrentLoad"; }
                     }
                 }
 
                 ui32 shardNo = 0;
                 for (const auto& shardId: shardIds) {
+                    TEvIndexTabletPrivate::TShardStats ss;
+                    if (shardNo < CachedShardStats.size()) {
+                        ss = CachedShardStats[shardNo];
+                    }
                     TABLER() {
                         TABLED() { out << ++shardNo; }
                         TABLED() {
@@ -1055,6 +1062,14 @@ void TIndexTabletActor::HandleHttpInfo_Default(
                                 << "&Filesystem=" << shardId << "'>"
                                 << shardId << "</a>";
                         }
+                        TABLED() {
+                            out << ss.UsedBlocksCount * GetBlockSize();
+                        }
+                        TABLED() {
+                            out << (ss.TotalBlocksCount - ss.UsedBlocksCount)
+                                * GetBlockSize();
+                        }
+                        TABLED() { out << ss.CurrentLoad; }
                     }
                 }
             }
