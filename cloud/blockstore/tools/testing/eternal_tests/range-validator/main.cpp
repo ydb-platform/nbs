@@ -4,14 +4,9 @@
 
 #include <library/cpp/getopt/small/last_getopt.h>
 
-#include <util/datetime/base.h>
 #include <util/generic/vector.h>
 
 using namespace NCloud::NBlockStore;
-
-////////////////////////////////////////////////////////////////////////////////
-
-constexpr ui64 MaxMirrorReplicas = 3;
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -20,24 +15,6 @@ enum class EValidationMode
     Checksum,
     Mirror,
 };
-
-////////////////////////////////////////////////////////////////////////////////
-
-inline IOutputStream& operator<<(IOutputStream& out, const TBlockData& data)
-{
-    out << "{"
-        << " " << data.RequestNumber
-        << " " << data.PartNumber
-        << " " << data.BlockIndex
-        << " " << data.RangeIdx
-        << " " << TInstant::MicroSeconds(data.RequestTimestamp)
-        << " " << TInstant::MicroSeconds(data.TestTimestamp)
-        << " " << data.TestId
-        << " " << data.Checksum
-        << " }";
-
-    return out;
-}
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -135,26 +112,6 @@ struct TOptions
     }
 };
 
-void ValidateBlocks(TFile file, ui64 blockSize, TVector<ui64> blockIndices)
-{
-    for (ui64 blockIndex: blockIndices) {
-        std::set<TBlockData> blocks;
-
-        for (ui64 i = 0; i < MaxMirrorReplicas; i++) {
-            auto blockData = ReadBlockData(file, blockIndex * blockSize);
-            blocks.emplace(blockData);
-        }
-
-        if (blockIndices.size() == 1) {
-            continue;
-        }
-
-        for (const auto& block: blocks) {
-            Cout << "mismatch in block data " << block << Endl;
-        }
-    }
-}
-
 int main(int argc, const char** argv)
 {
     TOptions options;
@@ -172,19 +129,18 @@ int main(int argc, const char** argv)
         for (ui32 rangeIdx : options.RangeIndices) {
             Cout << "Start validation of " << rangeIdx << " range" << Endl;
 
-            auto results = ValidateRange(
-                file,
-                std::move(configHolder),
-                rangeIdx);
+            auto res = ValidateRange(file, std::move(configHolder), rangeIdx);
+            Cout << "GuessedStep " << res.GuessedStep
+                 << "GuessedLastBlockIdx " << res.GuessedLastBlockIdx
+                 << "GuessedNumberToWrite " << res.GuessedNumberToWrite
+                 << Endl;
 
             TString path = options.LogPath + "range_" + ToString(rangeIdx) + ".log";
             TFileOutput out(TFile(path, EOpenModeFlag::CreateAlways | EOpenModeFlag::WrOnly));
 
-            for (const auto& result : results) {
+            for (const auto& block : res.InvalidBlocks) {
                 out << "[" << rangeIdx << "]"
-                    << " Wrong data in block " << result.BlockIdx
-                    << " expected " << result.Expected
-                    << " actual " << result.Actual
+                    << " Wrong data in block " << block
                     << Endl;
             }
 
@@ -192,10 +148,14 @@ int main(int argc, const char** argv)
             Cout << "Log written to " << path.Quote() << Endl;
         }
     } else {
-        ValidateBlocks(
+        auto res = ValidateBlocks(
             std::move(file),
             options.BlockSize,
             std::move(options.BlockIndices));
+
+        for (const auto& block : res) {
+            Cout << "mismatch in block data " << block << Endl;
+        }
     }
 
     return 0;

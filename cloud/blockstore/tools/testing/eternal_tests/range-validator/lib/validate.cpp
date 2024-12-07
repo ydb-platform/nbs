@@ -13,12 +13,9 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-constexpr ui64 PageSize = 4096;
-
-}   //  namespace
-
 TBlockData ReadBlockData(TFile& file, ui64 offset)
 {
+    constexpr ui64 PageSize = 4096;
     // using O_DIRECT imposes some alignment restrictions:
     //   - offset should be sector aligned
     //   - buffer should be page aligned
@@ -30,9 +27,11 @@ TBlockData ReadBlockData(TFile& file, ui64 offset)
     return *reinterpret_cast<TBlockData*>(buf);
 }
 
+}   //  namespace
+
 ////////////////////////////////////////////////////////////////////////////////
 
-TVector<TBlockValidationResult> ValidateRange(
+TRangeValidationResult ValidateRange(
     TFile& file,
     IConfigHolderPtr configHolder,
     ui32 rangeIdx)
@@ -47,9 +46,6 @@ TVector<TBlockValidationResult> ValidateRange(
     for (ui64 i = 0; i < len; ++i) {
         actual[i] = ReadBlockData(file, (i + startOffset) * requestSize);
     }
-
-    Cout << "Guessing Step, NumberToWrite, LastBlockIdx from actual data"
-         << Endl;
 
     auto sortedActual = actual;
     Sort(
@@ -77,48 +73,87 @@ TVector<TBlockValidationResult> ValidateRange(
         actual,
         [=](const auto& x) { return x.RequestNumber == secondMaxRequestNumber; });
 
-    ui64 step = 0;
+    TRangeValidationResult res;
     if (maxIt >= secondMaxIt) {
-        step = maxIt - secondMaxIt;
+        res.GuessedStep = maxIt - secondMaxIt;
     } else {
-        step = len - (secondMaxIt - maxIt);
+        res.GuessedStep = len - (secondMaxIt - maxIt);
     }
 
-    ui64 curNum = maxIt->RequestNumber;
-    ui64 curBlockIdx = maxIt - actual.begin();
-
-    Cout << "Step: " << step
-         << " NumberToWrite: " << curNum
-         << " LastBlockIdx: " << curBlockIdx << Endl;
-
-    Y_ENSURE(step != 0, "Step should not be zero");
+    const auto step = res.GuessedStep;
+    Y_ENSURE(step != 0, "GuessedStep should not be zero");
     Y_ENSURE(
         std::gcd(step, len) == 1,
-        "Step and RequestCount should be coprime");
+        "GuessedStep and RequestCount should be coprime");
 
-    TVector<ui64> expected(len);
-    ui64 cnt = 0;
+    res.GuessedLastBlockIdx = maxIt - actual.begin();
+    res.GuessedNumberToWrite = maxRequestNumber;
 
-    expected[curBlockIdx] = curNum;
-    while (cnt < len && curNum != 0) {
-        curBlockIdx = (curBlockIdx + len - step) % len;
-        expected[curBlockIdx] = --curNum;
-        ++cnt;
+    TVector<ui64> expectedRequestNumbers(len);
+    {
+        Y_ENSURE(
+            res.GuessedNumberToWrite != 0,
+            "GuessedNumberToWrite should not be zero");
+
+        expectedRequestNumbers[res.GuessedLastBlockIdx] =
+            res.GuessedNumberToWrite;
+
+        ui64 num = res.GuessedNumberToWrite;
+        ui64 blockIdx = res.GuessedLastBlockIdx;
+        ui64 cnt = 0;
+        while (cnt < len) {
+            blockIdx = (blockIdx + len - step) % len;
+            if (blockIdx == res.GuessedLastBlockIdx) {
+                break;
+            }
+
+            expectedRequestNumbers[blockIdx] = --num;
+            ++cnt;
+        }
     }
 
-    TVector<TBlockValidationResult> results;
-
     for (ui64 i = 0; i < len; ++i) {
-        if (expected[i] != actual[i].RequestNumber) {
-            results.push_back(TBlockValidationResult {
+        if (expectedRequestNumbers[i] != actual[i].RequestNumber) {
+            res.InvalidBlocks.push_back(TInvalidBlock {
                 .BlockIdx = (i + startOffset),
-                .Expected = expected[i],
-                .Actual = actual[i].RequestNumber,
+                .ExpectedRequestNumber = expectedRequestNumbers[i],
+                .ActualRequestNumber = actual[i].RequestNumber,
             });
         }
     }
 
-    return results;
+    return res;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+TVector<TBlockData> ValidateBlocks(
+    TFile file,
+    ui64 blockSize,
+    TVector<ui64> blockIndices)
+{
+    constexpr ui64 MaxMirrorReplicas = 3;
+
+    TVector<TBlockData> res;
+
+    for (ui64 blockIndex: blockIndices) {
+        std::set<TBlockData> blocks;
+
+        for (ui64 i = 0; i < MaxMirrorReplicas; i++) {
+            auto blockData = ReadBlockData(file, blockIndex * blockSize);
+            blocks.emplace(blockData);
+        }
+
+        if (blockIndices.size() == 1) {
+            continue;
+        }
+
+        for (const auto& block: blocks) {
+            res.push_back(block);
+        }
+    }
+
+    return res;
 }
 
 }   // namespace NCloud::NBlockStore

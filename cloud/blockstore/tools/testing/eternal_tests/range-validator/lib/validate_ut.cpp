@@ -19,7 +19,7 @@ namespace NCloud::NBlockStore {
 
 Y_UNIT_TEST_SUITE(ValidateTest)
 {
-    Y_UNIT_TEST(ValidateRange)
+    void ValidateRange(ui64 maxWriteRequestCount)
     {
         auto logging = CreateLoggingService("console", TLogSettings{});
         logging->Start();
@@ -35,7 +35,7 @@ Y_UNIT_TEST_SUITE(ValidateTest)
             1,    // requestBlockCount
             1,    // writeParts
             0,    // alternatingPhase
-            255); // maxWriteRequestCount
+            maxWriteRequestCount);
 
         auto executor = CreateTestExecutor(
             configHolder,
@@ -44,8 +44,14 @@ Y_UNIT_TEST_SUITE(ValidateTest)
         UNIT_ASSERT(executor->Run());
 
         TFile file(filePath, EOpenModeFlag::RdOnly | EOpenModeFlag::DirectAligned);
-        auto results = ValidateRange(file, configHolder, 0 /* rangeIdx */);
-        UNIT_ASSERT_VALUES_EQUAL(0, results.size());
+        auto res = ValidateRange(file, configHolder, 0 /* rangeIdx */);
+        UNIT_ASSERT_VALUES_EQUAL(0, res.InvalidBlocks.size());
+    }
+
+    Y_UNIT_TEST(ValidateRange) {
+        for (int i = 0; i < 5; ++i) {
+            ValidateRange(255 + i);
+        }
     }
 }
 
