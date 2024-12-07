@@ -95,19 +95,13 @@ TRangeValidationResult ValidateRange(
             res.GuessedNumberToWrite != 0,
             "GuessedNumberToWrite should not be zero");
 
-        expectedRequestNumbers[res.GuessedLastBlockIdx] =
-            res.GuessedNumberToWrite;
-
         ui64 num = res.GuessedNumberToWrite;
         ui64 blockIdx = res.GuessedLastBlockIdx;
         ui64 cnt = 0;
-        while (cnt < len) {
+        while (cnt < len && num != 0) {
+            expectedRequestNumbers[blockIdx] = num;
             blockIdx = (blockIdx + len - step) % len;
-            if (blockIdx == res.GuessedLastBlockIdx) {
-                break;
-            }
-
-            expectedRequestNumbers[blockIdx] = --num;
+            num--;
             ++cnt;
         }
     }
