@@ -678,6 +678,7 @@ void TIndexTabletActor::HandleGetFileSystemTopology(
         std::make_unique<TEvIndexTablet::TEvGetFileSystemTopologyResponse>();
     *response->Record.MutableShardFileSystemIds() =
         GetFileSystem().GetShardFileSystemIds();
+    response->Record.SetShardNo(GetFileSystem().GetShardNo());
 
     NCloud::Reply(
         ctx,

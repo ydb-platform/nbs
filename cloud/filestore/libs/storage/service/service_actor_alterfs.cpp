@@ -318,8 +318,20 @@ void TAlterFileStoreActor::HandleGetFileSystemTopologyResponse(
         }
     }
 
-    ShardsToCreate -= Min<ui32>(ShardsToCreate, ShardIds.size());
-    ShardsToConfigure = ShardsToCreate;
+    if (msg->Record.GetShardNo()) {
+        LOG_WARN(
+            ctx,
+            TFileStoreComponents::SERVICE,
+            "[%s] GetFileSystemTopology - resized a shard (%u), no subshards"
+            " will be added",
+            FileSystemId.c_str(),
+            msg->Record.GetShardNo());
+        ShardsToCreate = 0;
+        ShardsToConfigure = 0;
+    } else {
+        ShardsToCreate -= Min<ui32>(ShardsToCreate, ShardIds.size());
+        ShardsToConfigure = ShardsToCreate;
+    }
 
     if (ShardsToCreate) {
         CreateShards(ctx);

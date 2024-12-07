@@ -6897,6 +6897,178 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
 
         DoTestShardedFileSystemConfigured(fsId, service, expected);
     }
+
+    Y_UNIT_TEST(ShouldValidateShardList)
+    {
+        NProto::TStorageConfig config;
+        TTestEnv env({}, config);
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+
+        const TString fsId = "test";
+        const auto shard1Id = fsId + "-f1";
+        const auto shard2Id = fsId + "-f2";
+
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+        service.CreateFileStore(fsId, 1'000);
+        service.CreateFileStore(shard1Id, 1'000);
+        service.CreateFileStore(shard2Id, 1'000);
+
+        ui32 shardNo = 0;
+        for (const auto& shardId: {shard1Id, shard2Id}) {
+            NProtoPrivate::TConfigureAsShardRequest request;
+            request.SetFileSystemId(shardId);
+            request.SetShardNo(++shardNo);
+
+            TString buf;
+            google::protobuf::util::MessageToJsonString(request, &buf);
+            auto jsonResponse = service.ExecuteAction("configureasshard", buf);
+            NProtoPrivate::TConfigureAsShardResponse response;
+            UNIT_ASSERT(google::protobuf::util::JsonStringToMessage(
+                jsonResponse->Record.GetOutput(), &response).ok());
+        }
+
+        {
+            NProtoPrivate::TConfigureShardsRequest request;
+            request.SetFileSystemId(fsId);
+            *request.AddShardFileSystemIds() = shard1Id;
+            *request.AddShardFileSystemIds() = shard2Id;
+
+            TString buf;
+            google::protobuf::util::MessageToJsonString(request, &buf);
+            auto jsonResponse = service.ExecuteAction("configureshards", buf);
+            NProtoPrivate::TConfigureShardsResponse response;
+            UNIT_ASSERT(google::protobuf::util::JsonStringToMessage(
+                jsonResponse->Record.GetOutput(), &response).ok());
+        }
+
+        // waiting for IndexTablet start after the restart triggered by
+        // configureshards
+        WaitForTabletStart(service);
+
+        {
+            auto response = service.CreateSession(THeaders{fsId, "client", ""});
+            const auto& fileStore = response->Record.GetFileStore();
+            UNIT_ASSERT_VALUES_EQUAL(2, fileStore.ShardFileSystemIdsSize());
+            UNIT_ASSERT_VALUES_EQUAL(
+                shard1Id,
+                fileStore.GetShardFileSystemIds(0));
+            UNIT_ASSERT_VALUES_EQUAL(
+                shard2Id,
+                fileStore.GetShardFileSystemIds(1));
+        }
+
+        // shard order change not allowed
+        {
+            NProtoPrivate::TConfigureShardsRequest request;
+            request.SetFileSystemId(fsId);
+            *request.AddShardFileSystemIds() = shard2Id;
+            *request.AddShardFileSystemIds() = shard1Id;
+
+            TString buf;
+            google::protobuf::util::MessageToJsonString(request, &buf);
+            service.SendExecuteActionRequest("configureshards", buf);
+            auto response = service.RecvExecuteActionResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_ARGUMENT,
+                response->GetStatus(),
+                response->GetErrorReason());
+        }
+
+        // shard list cropping not allowed
+        {
+            NProtoPrivate::TConfigureShardsRequest request;
+            request.SetFileSystemId(fsId);
+            *request.AddShardFileSystemIds() = shard1Id;
+
+            TString buf;
+            google::protobuf::util::MessageToJsonString(request, &buf);
+            service.SendExecuteActionRequest("configureshards", buf);
+            auto response = service.RecvExecuteActionResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_ARGUMENT,
+                response->GetStatus(),
+                response->GetErrorReason());
+        }
+
+        // force flag should override checks
+        {
+            NProtoPrivate::TConfigureShardsRequest request;
+            request.SetFileSystemId(fsId);
+            request.SetForce(true);
+
+            TString buf;
+            google::protobuf::util::MessageToJsonString(request, &buf);
+            service.SendExecuteActionRequest("configureshards", buf);
+            auto response = service.RecvExecuteActionResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                response->GetStatus(),
+                response->GetErrorReason());
+        }
+
+        // waiting for IndexTablet start after the restart triggered by
+        // configureshards
+        WaitForTabletStart(service);
+
+        {
+            auto response = service.CreateSession(THeaders{fsId, "client", ""});
+            const auto& fileStore = response->Record.GetFileStore();
+            UNIT_ASSERT_VALUES_EQUAL(0, fileStore.ShardFileSystemIdsSize());
+        }
+
+        // configureshards for a shard should fail
+        {
+            NProtoPrivate::TConfigureShardsRequest request;
+            request.SetFileSystemId(shard1Id);
+            *request.AddShardFileSystemIds() = shard2Id;
+
+            TString buf;
+            google::protobuf::util::MessageToJsonString(request, &buf);
+            service.SendExecuteActionRequest("configureshards", buf);
+            auto response = service.RecvExecuteActionResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_INVALID_STATE,
+                response->GetStatus(),
+                response->GetErrorReason());
+        }
+    }
+
+    Y_UNIT_TEST(ShouldNotAutomaticallyAddShardsToShards)
+    {
+        NProto::TStorageConfig config;
+        config.SetAutomaticShardCreationEnabled(true);
+        config.SetShardAllocationUnit(1_GB);
+        config.SetAutomaticallyCreatedShardSize(2_GB);
+        TTestEnv env({}, config);
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+
+        const TString fsId = "test";
+        const TString shard1Id = fsId + "_s1";
+
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+        service.CreateFileStore(fsId, 1_GB / 4_KB);
+
+        TVector<TString> expected = {fsId, shard1Id};
+        auto listing = service.ListFileStores();
+        auto fsIds = listing->Record.GetFileStores();
+        TVector<TString> ids(fsIds.begin(), fsIds.end());
+        Sort(ids);
+        UNIT_ASSERT_VALUES_EQUAL(expected, ids);
+
+        service.ResizeFileStore(shard1Id, 4_GB / 4_KB);
+
+        // subshards shouldn't have been created for shard1
+        expected = TVector<TString>{fsId, shard1Id};
+        listing = service.ListFileStores();
+        fsIds = listing->Record.GetFileStores();
+        ids = TVector<TString>(fsIds.begin(), fsIds.end());
+        Sort(ids);
+        UNIT_ASSERT_VALUES_EQUAL(expected, ids);
+    }
 }
 
 }   // namespace NCloud::NFileStore::NStorage
