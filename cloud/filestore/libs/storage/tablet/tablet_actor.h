@@ -82,6 +82,7 @@ private:
 
         std::atomic<i64> TotalBytesCount{0};
         std::atomic<i64> UsedBytesCount{0};
+        std::atomic<i64> AggregateUsedBytesCount{0};
 
         std::atomic<i64> TotalNodesCount{0};
         std::atomic<i64> UsedNodesCount{0};
@@ -330,7 +331,8 @@ private:
     } Metrics;
 
     NProtoPrivate::TStorageStats CachedAggregateStats;
-    bool AggregateStatsFetchingInProgress = false;
+    TVector<TEvIndexTabletPrivate::TShardStats> CachedShardStats;
+    bool CachedStatsFetchingInProgress = false;
 
     const IProfileLogPtr ProfileLog;
     const ITraceSerializerPtr TraceSerializer;

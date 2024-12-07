@@ -818,9 +818,17 @@ struct TEvIndexTabletPrivate
     // GetShardStats
     //
 
+    struct TShardStats
+    {
+        ui64 TotalBlocksCount{0};
+        ui64 UsedBlocksCount{0};
+        ui64 CurrentLoad{0};
+    };
+
     struct TGetShardStatsCompleted
     {
         NProtoPrivate::TStorageStats AggregateStats;
+        TVector<TShardStats> ShardStats;
         TInstant StartedTs;
     };
 
