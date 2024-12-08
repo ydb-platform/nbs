@@ -915,10 +915,11 @@ void TIndexTabletActor::HandleGetShardStatsCompleted(
 {
     auto* msg = ev->Get();
     const bool isBackgroundRequest = msg->StartedTs.GetValue() == 0;
+    if (isBackgroundRequest) {
+        CachedStatsFetchingInProgress = false;
+    }
     if (!HasError(msg->Error)) {
-        if (isBackgroundRequest) {
-            CachedStatsFetchingInProgress = false;
-        } else {
+        if (!isBackgroundRequest) {
             Metrics.StatFileStore.Update(1, 0, ctx.Now() - msg->StartedTs);
         }
         CachedAggregateStats = std::move(msg->AggregateStats);
