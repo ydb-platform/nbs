@@ -818,12 +818,27 @@ struct TEvIndexTabletPrivate
     // GetShardStats
     //
 
+    struct TShardStats
+    {
+        ui64 TotalBlocksCount{0};
+        ui64 UsedBlocksCount{0};
+        ui64 CurrentLoad{0};
+        ui64 Suffer{0};
+    };
+
     struct TGetShardStatsCompleted
     {
+        NProtoPrivate::TStorageStats AggregateStats;
+        TVector<TShardStats> ShardStats;
         TInstant StartedTs;
 
-        TGetShardStatsCompleted(TInstant startedTs)
-            : StartedTs(startedTs)
+        TGetShardStatsCompleted(
+                NProtoPrivate::TStorageStats aggregateStats,
+                TVector<TShardStats> shardStats,
+                TInstant startedTs)
+            : AggregateStats(std::move(aggregateStats))
+            , ShardStats(std::move(shardStats))
+            , StartedTs(startedTs)
         {}
     };
 
@@ -854,6 +869,8 @@ struct TEvIndexTabletPrivate
 
         EvGetShardStatsCompleted,
 
+        EvShardRequestCompleted,
+
         EvEnd
     };
 
@@ -864,17 +881,22 @@ struct TEvIndexTabletPrivate
     FILESTORE_TABLET_REQUESTS_PRIVATE_SYNC(FILESTORE_DECLARE_EVENTS)
 
     using TEvUpdateCounters = TRequestEvent<TEmpty, EvUpdateCounters>;
-    using TEvUpdateLeakyBucketCounters = TRequestEvent<TEmpty, EvUpdateLeakyBucketCounters>;
+    using TEvUpdateLeakyBucketCounters =
+        TRequestEvent<TEmpty, EvUpdateLeakyBucketCounters>;
 
     using TEvReleaseCollectBarrier =
         TRequestEvent<TReleaseCollectBarrier, EvReleaseCollectBarrier>;
 
-    using TEvReadDataCompleted = TResponseEvent<TReadWriteCompleted, EvReadDataCompleted>;
-    using TEvWriteDataCompleted = TResponseEvent<TReadWriteCompleted, EvWriteDataCompleted>;
-    using TEvAddDataCompleted = TResponseEvent<TAddDataCompleted, EvAddDataCompleted>;
+    using TEvReadDataCompleted =
+        TResponseEvent<TReadWriteCompleted, EvReadDataCompleted>;
+    using TEvWriteDataCompleted =
+        TResponseEvent<TReadWriteCompleted, EvWriteDataCompleted>;
+    using TEvAddDataCompleted =
+        TResponseEvent<TAddDataCompleted, EvAddDataCompleted>;
 
-    using TEvForcedRangeOperationProgress =
-        TRequestEvent<TForcedRangeOperationProgress, EvForcedRangeOperationProgress>;
+    using TEvForcedRangeOperationProgress = TRequestEvent<
+        TForcedRangeOperationProgress,
+        EvForcedRangeOperationProgress>;
 
     using TEvNodeCreatedInShard =
         TRequestEvent<TNodeCreatedInShard, EvNodeCreatedInShard>;
@@ -884,6 +906,9 @@ struct TEvIndexTabletPrivate
 
     using TEvGetShardStatsCompleted =
         TResponseEvent<TGetShardStatsCompleted, EvGetShardStatsCompleted>;
+
+    using TEvShardRequestCompleted =
+        TResponseEvent<TEmpty, EvShardRequestCompleted>;
 };
 
 }   // namespace NCloud::NFileStore::NStorage

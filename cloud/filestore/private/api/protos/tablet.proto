@@ -97,6 +97,15 @@ message TCompactionRangeStats
     uint32 GarbageBlockCount = 4;
 }
 
+message TShardStats
+{
+    string ShardId = 1;
+    uint64 UsedBlocksCount = 2;
+    uint64 TotalBlocksCount = 3;
+    uint64 CurrentLoad = 4;
+    uint32 Suffer = 5;
+}
+
 message TStorageStats
 {
     // index stats
@@ -105,6 +114,7 @@ message TStorageStats
     uint64 UsedHandlesCount = 3;
     uint64 UsedLocksCount = 4;
     uint64 UsedBlocksCount = 5;
+    uint64 TotalBlocksCount = 6;
 
     // data stats
     uint64 FreshBlocksCount = 100;
@@ -137,6 +147,13 @@ message TStorageStats
     uint32 FlushState = 4001;
     uint32 BlobIndexOpState = 4002;
     uint32 CollectGarbageState = 4003;
+
+    // load stats
+    uint64 CurrentLoad = 5001;
+    uint64 Suffer = 5002;
+
+    // shard stats
+    repeated TShardStats ShardStats = 6001;
 }
 
 message TGetStorageStatsRequest
@@ -153,6 +170,9 @@ message TGetStorageStatsRequest
     uint32 CompactionRangeCountByCleanupScore = 4;
     // The same but for garbage score.
     uint32 CompactionRangeCountByGarbageScore = 5;
+
+    // Use cached data, don't require up-to-date stats.
+    bool AllowCache = 6;
 }
 
 message TGetStorageStatsResponse
@@ -550,6 +570,9 @@ message TConfigureShardsRequest
 
     // Shard FileSystem identifiers.
     repeated string ShardFileSystemIds = 2;
+
+    // Override shard list validation.
+    bool Force = 3;
 }
 
 message TConfigureShardsResponse
@@ -699,4 +722,7 @@ message TGetFileSystemTopologyResponse
 
     // Shard FileSystem identifiers.
     repeated string ShardFileSystemIds = 2;
+
+    // Shard no (if this fs is a shard itself).
+    uint32 ShardNo = 3;
 }

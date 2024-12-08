@@ -189,7 +189,7 @@ FILESTORE_FILESYSTEM_STATS(FILESTORE_DECLARE_STATS)
         const TString& name,
         ui64 childNode,
         const TString& shardId,
-        const TString& shardName);
+        const TString& shardNodeName);
 
     virtual void DeleteNodeRef(ui64 nodeId, const TString& name);
 
@@ -231,7 +231,7 @@ FILESTORE_FILESYSTEM_STATS(FILESTORE_DECLARE_STATS)
         const TString& name,
         ui64 childNode,
         const TString& shardId,
-        const TString& shardName);
+        const TString& shardNodeName);
 
     virtual void DeleteNodeRefVer(
         ui64 nodeId,
@@ -641,7 +641,7 @@ public:
         const TString& name,
         ui64 childNode,
         const TString& shardId,
-        const TString& shardName) override;
+        const TString& shardNodeName) override;
 
     void DeleteNodeRef(ui64 nodeId, const TString& name) override;
 
@@ -656,7 +656,7 @@ public:
         const TString& name,
         ui64 childNode,
         const TString& shardId,
-        const TString& shardName) override;
+        const TString& shardNodeName) override;
 
     void DeleteNodeRefVer(
         ui64 nodeId,

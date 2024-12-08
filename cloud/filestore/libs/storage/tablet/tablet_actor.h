@@ -82,6 +82,7 @@ private:
 
         std::atomic<i64> TotalBytesCount{0};
         std::atomic<i64> UsedBytesCount{0};
+        std::atomic<i64> AggregateUsedBytesCount{0};
 
         std::atomic<i64> TotalNodesCount{0};
         std::atomic<i64> UsedNodesCount{0};
@@ -328,6 +329,10 @@ private:
             const TDiagnosticsConfig& diagConfig,
             const NProto::TFileSystem& fileSystem);
     } Metrics;
+
+    NProtoPrivate::TStorageStats CachedAggregateStats;
+    TVector<TEvIndexTabletPrivate::TShardStats> CachedShardStats;
+    bool CachedStatsFetchingInProgress = false;
 
     const IProfileLogPtr ProfileLog;
     const ITraceSerializerPtr TraceSerializer;
@@ -613,6 +618,8 @@ private:
 
     bool IsShard() const;
 
+    void FillSelfStorageStats(NProtoPrivate::TStorageStats* stats);
+
 private:
     template <typename TMethod>
     TSession* AcceptRequest(
@@ -724,6 +731,10 @@ private:
 
     void HandleGetShardStatsCompleted(
         const TEvIndexTabletPrivate::TEvGetShardStatsCompleted::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleShardRequestCompleted(
+        const TEvIndexTabletPrivate::TEvShardRequestCompleted::TPtr& ev,
         const NActors::TActorContext& ctx);
 
     void HandleLoadCompactionMapChunkResponse(
