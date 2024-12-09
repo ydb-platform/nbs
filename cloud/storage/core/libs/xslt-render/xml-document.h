@@ -13,14 +13,15 @@
 #undef THROW_OLD
 #endif
 
-namespace NCloud::NStorage::NTNodeWrapper {
+namespace NCloud::NNodeWrapper {
 
 class TNodeWrapper
 {
 public:
     explicit TNodeWrapper(NXml::TNode root);
 
-    TNodeWrapper& AddNamedElement(auto&& name, auto&& value) {
+    TNodeWrapper& AddNamedElement(auto&& name, auto&& value)
+    {
         auto cd = Root.AddChild("cd");
         cd.AddChild("name", std::forward<decltype(name)>(name));
         cd.AddChild("value", std::forward<decltype(value)>(value));
@@ -31,4 +32,4 @@ private:
     NXml::TNode Root;
 };
 
-}  // namespace NCloud::NStorage::NTNodeWrapper
+}   // namespace NCloud::NNodeWrapper

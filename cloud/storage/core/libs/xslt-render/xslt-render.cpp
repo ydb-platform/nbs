@@ -4,49 +4,46 @@ namespace {
 
 struct TXslInitializer
 {
-    TXslInitializer() {
+    TXslInitializer()
+    {
         xmlInitParser();
         xmlInitGlobals();
     }
 
-    ~TXslInitializer() {
+    ~TXslInitializer()
+    {
         xmlCleanupGlobals();
         xmlCleanupParser();
     }
 };
+}   // namespace
 
-const TXslInitializer xslInit;
-} // namespace
-
-namespace NCloud::NStorage::NXslRender {
+namespace NCloud::NXslRender {
 
 //////////////////////////////////////////////////////////////
 
-TXslRenderer::TXslRenderer(const char* xsl) {
-    xmlDocPtr styleDoc = xmlReadDoc(
-        BAD_CAST
-        xsl,
-        nullptr, "utf-8", 0
-    );
+TXslRenderer::TXslRenderer(const char* xsl)
+{
+    static const TXslInitializer XslInit;
+    xmlDocPtr styleDoc = xmlReadDoc(BAD_CAST xsl, nullptr, "utf-8", 0);
 
     Stylesheet = xsltParseStylesheetDoc(styleDoc);
 }
 
-void TXslRenderer::Render(const NXml::TDocument& document, IOutputStream& out) {
+void TXslRenderer::Render(const NXml::TDocument& document, IOutputStream& out)
+{
     auto documentStr = document.ToString("utf-8");
 
-    xmlDocPtr sourceDoc = xmlReadDoc(
-        BAD_CAST
-        documentStr.data(),
-        nullptr, "utf-8", 0
-    );
+    xmlDocPtr sourceDoc =
+        xmlReadDoc(BAD_CAST documentStr.data(), nullptr, "utf-8", 0);
 
-    xmlDocPtr result;
-    if ((result = xsltApplyStylesheet(Stylesheet, sourceDoc, {})) != NULL) {
+    xmlDocPtr result = xsltApplyStylesheet(Stylesheet, sourceDoc, {});
+    if (result != nullptr) {
         xmlChar* buffer;
         int buffer_size;
 
-        if (!xsltSaveResultToString(&buffer, &buffer_size, result, Stylesheet)) {
+        if (!xsltSaveResultToString(&buffer, &buffer_size, result, Stylesheet))
+        {
             out << (char*)buffer;
         } else {
             out << "Error returning page";
@@ -56,12 +53,13 @@ void TXslRenderer::Render(const NXml::TDocument& document, IOutputStream& out) {
         out << "Error rendering page: " << documentStr;
     }
 
-	xmlFreeDoc(result);
-	xmlFreeDoc(sourceDoc);
+    xmlFreeDoc(result);
+    xmlFreeDoc(sourceDoc);
 }
 
-TXslRenderer::~TXslRenderer() {
+TXslRenderer::~TXslRenderer()
+{
     xsltFreeStylesheet(Stylesheet);
 }
 
-} // namespace NCloud::NStorage::NXslRender
+}   // namespace NCloud::NXslRender

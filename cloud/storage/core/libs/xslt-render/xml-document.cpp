@@ -1,9 +1,11 @@
 #include "xml-document.h"
 
-namespace NCloud::NStorage::NTNodeWrapper {
+namespace NCloud::NNodeWrapper {
 
 ///////////////////////////////////////////////////////////////////////////
 
-TNodeWrapper::TNodeWrapper(NXml::TNode root) : Root(root) {}
+TNodeWrapper::TNodeWrapper(NXml::TNode root)
+    : Root(root)
+{}
 
-} // namespace NCloud::NStorage::NTNodeWrapper
+}   // namespace NCloud::NNodeWrapper
