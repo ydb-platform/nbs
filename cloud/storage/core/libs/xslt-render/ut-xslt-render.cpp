@@ -20,8 +20,8 @@ Y_UNIT_TEST_SUITE(XsltRenderTest)
         TStringStream result;
         renderer.Render(document, result);
         UNIT_ASSERT_VALUES_EQUAL(
-            result.Str(),
-            NResource::Find("xslt-render/ut/result1"));
+            NResource::Find("xslt-render/ut/result1"),
+            result.Str());
     }
 
     Y_UNIT_TEST(ShouldSupportMultithreading)
@@ -37,7 +37,7 @@ Y_UNIT_TEST_SUITE(XsltRenderTest)
                     NXml::TDocument document(data, NXml::TDocument::String);
                     TStringStream result;
                     renderer.Render(document, result);
-                    UNIT_ASSERT_VALUES_EQUAL(result.Str(), resultStr);
+                    UNIT_ASSERT_VALUES_EQUAL(resultStr, result.Str());
                 }));
         }
         for (auto& thread: threads) {

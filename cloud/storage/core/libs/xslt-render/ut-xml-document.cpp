@@ -21,7 +21,7 @@ void TestAddChilds(auto&& name, auto&& value)
     auto root = data.Root();
     NCloud::TXmlNodeWrapper wrapper(root);
     wrapper.AddNamedElement(name, value);
-    UNIT_ASSERT_VALUES_EQUAL(root.ToString(), Content(name, value));
+    UNIT_ASSERT_VALUES_EQUAL(Content(name, value), root.ToString());
 }
 
 }   // namespace
