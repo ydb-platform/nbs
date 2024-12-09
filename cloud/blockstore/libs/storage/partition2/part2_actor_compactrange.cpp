@@ -185,11 +185,11 @@ void TPartitionActor::HandleGetCompactionStatus(
     NProto::TError result;
 
     const auto& operationId = msg->Record.GetOperationId();
-    const auto& state = State->GetForcedCompactionState();
+    const auto& stateRunning = State->GetForcedCompactionState();
 
-    if (operationId == state.OperationId) {
-        progress = state.Progress;
-        total = state.RangeCount;
+    if (operationId == stateRunning.OperationId) {
+        progress = stateRunning.Progress;
+        total = stateRunning.RangeCount;
     }  else if (GetCompletedForcedCompactionRanges(operationId, ctx.Now(), total)) {
         progress = total;
         isCompleted = true;
