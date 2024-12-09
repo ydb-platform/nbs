@@ -1008,10 +1008,13 @@ ui64 TPartitionState::GetMixedIndexCacheMemSize() const
     return MixedIndexCacheAllocator.GetBytesAllocated();
 }
 
+////////////////////////////////////////////////////////////////////////////////
+// Compaction
+
 TOperationState& TPartitionState::GetCompactionState(ECompactionType type)
 {
     return type == ECompactionType::Forced ?
-        ForcedCompactionState.CompactionState :
+        ForcedCompactionState.State :
         CompactionState;
 }
 

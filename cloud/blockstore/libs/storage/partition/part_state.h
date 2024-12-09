@@ -79,7 +79,7 @@ struct TForcedCompactionState
     ui32 Progress = 0;
     ui32 RangesCount = 0;
     TString OperationId;
-    TOperationState CompactionState;
+    TOperationState State;
 };
 
 ////////////////////////////////////////////////////////////////////////////////

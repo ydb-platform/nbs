@@ -10,8 +10,8 @@ namespace NCloud::NBlockStore::NStorage {
 
 enum class ECompactionOption: size_t
 {
-    Full,  // non-incremental compaction
-    Forced,  // compaction initiated externally
+    Full,            // non-incremental compaction
+    Forced,          // compaction initiated externally
     MaxFieldNumber,
 };
 

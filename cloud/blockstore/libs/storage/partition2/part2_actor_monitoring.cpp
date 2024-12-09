@@ -195,21 +195,19 @@ void DumpGarbageQueue(
 
 void DumpCompactionInfo(
     IOutputStream& out,
-    const TForcedCompactionProgress& progress)
+    const TForcedCompactionState& state)
 {
-    if (progress.IsRunning &&
-        progress.OperationId == "partition-monitoring-compaction")
-    {
+    if (state.IsRunning && (state.OperationId == "partition-monitoring-compaction")) {
         HTML(out) {
             DIV_CLASS("progress") {
-                ui32 percents = (progress.Progress * 100 / progress.RangeCount);
+                ui32 percents = (state.Progress * 100 / state.RangeCount);
                 out << "<div class='progress-bar' role='progressbar' aria-valuemin='0'"
                     << " style='width: " << percents << "%'"
-                    << " aria-valuenow='" << progress.Progress
-                    << "' aria-valuemax='" << progress.RangeCount << "'>"
+                    << " aria-valuenow='" << state.Progress
+                    << "' aria-valuemax='" << state.RangeCount << "'>"
                     << percents << "%</div>";
             }
-            out << progress.Progress << " of " << progress.RangeCount;
+            out << state.Progress << " of " << state.RangeCount;
         }
     }
 }
@@ -377,7 +375,7 @@ void TPartitionActor::HandleHttpInfo_Default(
                     }
 
                     if (State->IsForcedCompactionRunning()) {
-                        DumpCompactionInfo(out, State->GetForcedCompactionProgress());
+                        DumpCompactionInfo(out, State->GetForcedCompactionState());
                     } else {
                         out << "<div class='collapse form-group' id='compact-all'>";
                         BuildForceCompactionButton(out, TabletID());
