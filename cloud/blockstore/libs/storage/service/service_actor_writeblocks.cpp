@@ -28,18 +28,15 @@ class TWriteBlocksRemoteRequestActor final
 private:
     const TEvService::TEvWriteBlocksLocalRequest::TPtr Request;
     const ui64 BlockSize;
-    const ui64 MaxBlocksCount;
     const TActorId VolumeClient;
 
 public:
     TWriteBlocksRemoteRequestActor(
             TEvService::TEvWriteBlocksLocalRequest::TPtr request,
             ui64 blockSize,
-            ui64 maxBlocksCount,
             TActorId volumeClient)
         : Request(request)
         , BlockSize(blockSize)
-        , MaxBlocksCount(maxBlocksCount)
         , VolumeClient(volumeClient)
     {}
 
@@ -59,9 +56,7 @@ private:
         const ui64 startIndex = msg->Record.GetStartIndex();
         ui32 blocksCount = msg->Record.BlocksCount;
 
-        if (!blocksCount ||
-            MaxBlocksCount <= startIndex ||
-            MaxBlocksCount - startIndex < blocksCount)
+        if (!blocksCount)
         {
             auto error = MakeError(E_ARGUMENT, TStringBuilder()
                 << "invalid block range [index" << startIndex
@@ -168,13 +163,11 @@ private:
 IActorPtr CreateWriteBlocksRemoteActor(
     TEvService::TEvWriteBlocksLocalRequest::TPtr request,
     ui64 blockSize,
-    ui64 maxBlocksCount,
     TActorId volumeClient)
 {
     return std::make_unique<TWriteBlocksRemoteRequestActor>(
         std::move(request),
         blockSize,
-        maxBlocksCount,
         volumeClient);
 }
 
