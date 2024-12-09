@@ -38,8 +38,6 @@ private:
     TDuration WriteDuration;
     bool AllZeroes = false;
 
-    NActors::TActorId FallbackActorId;
-
     TDeviceInfoResponse SourceInfo;
     TDeviceInfoResponse TargetInfo;
 
@@ -76,10 +74,6 @@ private:
 
     void HandleDirectCopyBlocksResponse(
         const TEvDiskAgent::TEvDirectCopyBlocksResponse::TPtr& ev,
-        const NActors::TActorContext& ctx);
-
-    void HandleRangeMigratedByFallbackActor(
-        const TEvNonreplPartitionPrivate::TEvRangeMigrated::TPtr& ev,
         const NActors::TActorContext& ctx);
 
     void HandleRangeMigrationTimeout(

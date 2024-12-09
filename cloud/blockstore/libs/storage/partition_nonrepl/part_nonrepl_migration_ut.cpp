@@ -926,6 +926,67 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionMigrationTest)
         runtime.DispatchEvents(options, TDuration::Seconds(1));
         UNIT_ASSERT_VALUES_EQUAL(true, gotTimeout);
     }
+
+    Y_UNIT_TEST(ShouldFallbackFromDirectCopy)
+    {
+        using TEvGetDeviceForRangeResponse =
+            TEvNonreplPartitionPrivate::TEvGetDeviceForRangeResponse;
+
+        const size_t migratedRangeCount = 3;
+
+        TTestBasicRuntime runtime;
+
+        auto migrationState = std::make_shared<TMigrationState>();
+        migrationState->IsMigrationAllowed = false;
+
+        TTestEnv env(
+            runtime,
+            TTestEnv::DefaultDevices(runtime.GetNodeId(0)),
+            TTestEnv::DefaultMigrations(runtime.GetNodeId(0)),
+            NProto::VOLUME_IO_OK,
+            false,
+            migrationState,
+            true);
+        TPartitionClient client(runtime, env.ActorId);
+
+        // Abort TEvGetDeviceForRangeRequest requests. In this case, the
+        // migrator will fallback to normal reading and writing.
+        auto abortGetDeviceForRange = [&](TTestActorRuntimeBase& runtime,
+                                          TAutoPtr<IEventHandle>& event) -> bool
+        {
+            if (event->GetTypeRewrite() ==
+                TEvNonreplPartitionPrivate::EvGetDeviceForRangeRequest)
+            {
+                runtime.Send(new IEventHandle(
+                    event->Sender,
+                    event->Recipient,
+                    new TEvGetDeviceForRangeResponse(MakeError(E_ABORTED)),
+                    0,
+                    event->Cookie,
+                    nullptr));
+
+                return true;
+            }
+            return false;
+        };
+        runtime.SetEventFilter(abortGetDeviceForRange);
+
+        migrationState->IsMigrationAllowed = true;
+        WaitForMigrations(runtime, migratedRangeCount);
+
+        runtime.AdvanceCurrentTime(UpdateCountersInterval);
+        runtime.DispatchEvents({}, TDuration::Seconds(1));
+        runtime.AdvanceCurrentTime(UpdateCountersInterval);
+        runtime.DispatchEvents({}, TDuration::Seconds(1));
+
+        auto& counters = env.StorageStatsServiceState->Counters.RequestCounters;
+        UNIT_ASSERT_VALUES_EQUAL(
+            migratedRangeCount,
+            counters.WriteBlocks.Count);
+        UNIT_ASSERT_VALUES_EQUAL(
+            (migratedRangeCount * 1024) * DefaultBlockSize,
+            counters.WriteBlocks.RequestBytes);
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

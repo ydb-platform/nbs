@@ -117,14 +117,10 @@ void TDirectCopyRangeActor::DirectCopy(const NActors::TActorContext& ctx)
 
 void TDirectCopyRangeActor::Fallback(const TActorContext& ctx)
 {
-    if (FallbackActorId) {
-        return;
-    }
-
-    FallbackActorId = NCloud::Register<TCopyRangeActor>(
+    NCloud::Register<TCopyRangeActor>(
         ctx,
         CreateRequestInfo(
-            SelfId(),
+            RequestInfo->Sender,
             RequestInfo->Cookie,
             RequestInfo->CallContext),
         BlockSize,
@@ -133,6 +129,8 @@ void TDirectCopyRangeActor::Fallback(const TActorContext& ctx)
         TargetActor,
         WriterClientId,
         BlockDigestGenerator);
+
+    Die(ctx);
 }
 
 void TDirectCopyRangeActor::Done(const TActorContext& ctx, NProto::TError error)
@@ -216,14 +214,6 @@ void TDirectCopyRangeActor::HandleDirectCopyBlocksResponse(
     Done(ctx, msg->GetError());
 }
 
-void TDirectCopyRangeActor::HandleRangeMigratedByFallbackActor(
-    const TEvNonreplPartitionPrivate::TEvRangeMigrated::TPtr& ev,
-    const TActorContext& ctx)
-{
-    ForwardMessageToActor(ev, ctx, RequestInfo->Sender);
-    Die(ctx);
-}
-
 void TDirectCopyRangeActor::HandleRangeMigrationTimeout(
     const NActors::TEvents::TEvWakeup::TPtr& ev,
     const NActors::TActorContext& ctx)
@@ -262,9 +252,6 @@ STFUNC(TDirectCopyRangeActor::StateWork)
         HFunc(
             TEvDiskAgent::TEvDirectCopyBlocksRequest,
             HandleDirectCopyUndelivered);
-        HFunc(
-            TEvNonreplPartitionPrivate::TEvRangeMigrated,
-            HandleRangeMigratedByFallbackActor);
 
         HFunc(TEvents::TEvWakeup, HandleRangeMigrationTimeout);
 
