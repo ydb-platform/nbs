@@ -488,4 +488,9 @@ message TStorageConfig
     // backward compatibility during the update which enables automatic
     // sharding.
     optional bool EnforceCorrectFileSystemShardCountUponSessionCreation = 410;
+
+    // Enables ShardId selection in Leader for CreateNode and CreateHandle
+    // requests. ShardIds selected in Leader have priority over ShardIds
+    // selected at the StorageServiceActor level.
+    optional bool ShardIdSelectionInLeaderEnabled = 411;
 }
