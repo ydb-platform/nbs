@@ -340,6 +340,10 @@ STFUNC(TDiskAgentActor::StateWork)
             TEvDiskAgentPrivate::TEvCancelSuspensionRequest,
             HandleCancelSuspension);
 
+        HFunc(
+            TEvDiskAgent::TEvDisableConcreteAgentRequest,
+            HandleDisableConcreteAgent);
+
         case TEvDiskAgentPrivate::EvParsedWriteDeviceBlocksRequest:
             HandleWriteDeviceBlocks(
                 *reinterpret_cast<
