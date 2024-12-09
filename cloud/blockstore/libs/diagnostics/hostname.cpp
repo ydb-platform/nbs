@@ -121,10 +121,10 @@ TString GetMonitoringYDBGroupUrl(
     const TString& storagePool)
 {
     constexpr TStringBuf GetFast =
-        R"(q.0.s=histogram_percentile(99, {project="kikimr", cluster="*", storagePool="%s", group="%)" PRIu32
+        R"(q.0.s=histogram_percentile(100, {project="kikimr", cluster="*", storagePool="%s", group="%)" PRIu32
         R"(", host="*", service="vdisks", subsystem="latency_histo", handleclass="GetFast"})&q.0.name=A)";
     constexpr TStringBuf PutUserData =
-        R"(q.1.s=histogram_percentile(99, {project="kikimr", cluster="*", storagePool="%s", group="%)" PRIu32
+        R"(q.1.s=histogram_percentile(100, {project="kikimr", cluster="*", storagePool="%s", group="%)" PRIu32
         R"(", host="*", service="vdisks", subsystem="latency_histo", handleclass="PutUserData"})&q.1.name=B)";
     constexpr TStringBuf Url =
         "%s/projects/kikimr/explorer/"
@@ -134,6 +134,26 @@ TString GetMonitoringYDBGroupUrl(
         config.GetMonitoringUrlData().MonitoringUrl.c_str(),
         Sprintf(GetFast.data(), storagePool.c_str(), groupId).c_str(),
         Sprintf(PutUserData.data(), storagePool.c_str(), groupId).c_str());
+}
+
+TString GetMonitoringDashboardYDBGroupUrl(
+    const TDiagnosticsConfig& config,
+    ui32 groupId)
+{
+    const auto& monitoringDashboardUrl =
+        config.GetMonitoringUrlData().MonitoringDashboardUrl;
+    if (monitoringDashboardUrl.empty()) {
+        return "";
+    }
+    constexpr TStringBuf Url =
+        R"(%s/projects/kikimr/dashboards/%s?from=now-1d&to=now&refresh=60000&p.cluster="*"&p.group="%)" PRIu32
+        ")";
+
+    return Sprintf(
+        Url.data(),
+        monitoringDashboardUrl.c_str(),
+        config.GetMonitoringUrlData().MonitoringDashboardId.c_str(),
+        groupId);
 }
 
 }   // namespace NCloud::NBlockStore
