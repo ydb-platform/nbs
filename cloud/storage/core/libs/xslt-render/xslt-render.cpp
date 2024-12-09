@@ -18,7 +18,7 @@ struct TXslInitializer
 };
 }   // namespace
 
-namespace NCloud::NXslRender {
+namespace NCloud {
 
 //////////////////////////////////////////////////////////////
 
@@ -28,6 +28,9 @@ TXslRenderer::TXslRenderer(const char* xsl)
     xmlDocPtr styleDoc = xmlReadDoc(BAD_CAST xsl, nullptr, "utf-8", 0);
 
     Stylesheet = xsltParseStylesheetDoc(styleDoc);
+    if (Stylesheet == nullptr) {
+        xmlFreeDoc(styleDoc);
+    }
 }
 
 void TXslRenderer::Render(const NXml::TDocument& document, IOutputStream& out)
@@ -62,4 +65,4 @@ TXslRenderer::~TXslRenderer()
     xsltFreeStylesheet(Stylesheet);
 }
 
-}   // namespace NCloud::NXslRender
+}   // namespace NCloud

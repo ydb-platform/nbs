@@ -7,9 +7,9 @@
 #include <contrib/libs/libxslt/libxslt/transform.h>
 #include <contrib/libs/libxslt/libxslt/xsltutils.h>
 
-namespace NCloud::NXslRender {
+namespace NCloud {
 
-class TXslRenderer
+class TXslRenderer final
 {
 public:
     explicit TXslRenderer(const char* xsl);
@@ -21,4 +21,4 @@ private:
     xsltStylesheetPtr Stylesheet = nullptr;
 };
 
-}   // namespace NCloud::NXslRender
+}   // namespace NCloud

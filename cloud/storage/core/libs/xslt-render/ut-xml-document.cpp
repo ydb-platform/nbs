@@ -15,22 +15,20 @@ TString Content(auto&& name, auto&& value)
 
 void TestAddChilds(auto&& name, auto&& value)
 {
-    using namespace NCloud::NNodeWrapper;
-
     NXml::TDocument data("root", NXml::TDocument::RootName);
     auto root = data.Root();
-    TNodeWrapper wrapper(root);
+    NCloud::TXmlNodeWrapper wrapper(root);
     wrapper.AddNamedElement(name, value);
     UNIT_ASSERT_VALUES_EQUAL(root.ToString(), Content(name, value));
 }
 
 }   // namespace
 
-namespace NCloud::NNodeWrapper {
+namespace NCloud {
 
 ///////////////////////////////////////////////////////////////////////////
 
-Y_UNIT_TEST_SUITE(NodeWrapperTest)
+Y_UNIT_TEST_SUITE(TXmlNodeWrapperTest)
 {
     Y_UNIT_TEST(ShouldAddElemWithNameAndValue)
     {
@@ -40,4 +38,4 @@ Y_UNIT_TEST_SUITE(NodeWrapperTest)
     }
 }
 
-}   // namespace NCloud::NNodeWrapper
+}   // namespace NCloud

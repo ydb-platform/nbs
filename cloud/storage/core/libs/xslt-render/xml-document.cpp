@@ -1,11 +1,11 @@
 #include "xml-document.h"
 
-namespace NCloud::NNodeWrapper {
+namespace NCloud {
 
 ///////////////////////////////////////////////////////////////////////////
 
-TNodeWrapper::TNodeWrapper(NXml::TNode root)
+TXmlNodeWrapper::TXmlNodeWrapper(NXml::TNode root)
     : Root(root)
 {}
 
-}   // namespace NCloud::NNodeWrapper
+}   // namespace NCloud

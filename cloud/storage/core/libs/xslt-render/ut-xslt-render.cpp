@@ -5,7 +5,7 @@
 
 #include <thread>
 
-namespace NCloud::NXslRender {
+namespace NCloud {
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -46,4 +46,4 @@ Y_UNIT_TEST_SUITE(XsltRenderTest)
     }
 }
 
-}   // namespace NCloud::NXslRender
+}   // namespace NCloud
