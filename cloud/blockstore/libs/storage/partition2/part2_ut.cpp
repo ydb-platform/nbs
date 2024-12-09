@@ -7092,9 +7092,7 @@ Y_UNIT_TEST_SUITE(TPartition2Test)
 
         for (ui32 range = 0; range < rangesCount; ++range) {
             partition.WriteBlocks(
-                TBlockRange32::MakeClosedInterval(
-                    range * 1024,
-                    (range + 1) * 1024 - 1),
+                TBlockRange32::WithLength(range * 1024, 1024),
                 1);
         }
         partition.Flush();
@@ -7133,9 +7131,7 @@ Y_UNIT_TEST_SUITE(TPartition2Test)
 
         for (ui32 range = 0; range < rangesCount; ++range) {
             partition.WriteBlocks(
-                TBlockRange32::MakeClosedInterval(
-                    range * 1024 + 100,
-                    range * 1024 + 1000),
+                TBlockRange32::WithLength(range * 1024, 1024),
                 1);
         }
         partition.Flush();
