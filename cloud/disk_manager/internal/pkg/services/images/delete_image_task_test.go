@@ -16,8 +16,10 @@ import (
 	tasks_mocks "github.com/ydb-platform/nbs/cloud/tasks/mocks"
 )
 
-func TestDeleteImageTaskSchedulesRetireBaseDisksTaskProperly(t *testing.T) {
-	zoneID := "zone"
+////////////////////////////////////////////////////////////////////////////////
+
+func TestRetireBaseDisksTaskSchedulingIdempotency(t *testing.T) {
+	zoneID := "zone-a"
 
 	ctx := logging.SetLogger(
 		context.Background(),
@@ -27,7 +29,11 @@ func TestDeleteImageTaskSchedulesRetireBaseDisksTaskProperly(t *testing.T) {
 	storage := resources_storage_mocks.NewStorageMock()
 	poolService := pools_service_mocks.NewServiceMock()
 	execCtx := tasks_mocks.NewExecutionContextMock()
-	config := &config.ImagesConfig{DefaultDiskPoolConfigs: []*config.DiskPoolConfig{&config.DiskPoolConfig{ZoneId: &zoneID}}}
+	config := &config.ImagesConfig{
+		DefaultDiskPoolConfigs: []*config.DiskPoolConfig{
+			&config.DiskPoolConfig{ZoneId: &zoneID},
+		},
+	}
 
 	request := &protos.DeleteImageRequest{
 		ImageId: "image",
@@ -48,7 +54,13 @@ func TestDeleteImageTaskSchedulesRetireBaseDisksTaskProperly(t *testing.T) {
 	poolService.On("ImageDeleting", mock.Anything, mock.Anything).Return(mock.Anything, nil)
 	scheduler.On("WaitTask", mock.Anything, mock.Anything).Return(mock.Anything, nil)
 	scheduler.On("WaitTaskEnded", mock.Anything, mock.Anything).Maybe().Return(nil)
-	scheduler.On("ScheduleTask", mock.Anything, "dataplane.DeleteSnapshot", mock.Anything, mock.Anything).Return(mock.Anything, nil)
+	scheduler.On(
+		"ScheduleTask",
+		mock.Anything,
+		"dataplane.DeleteSnapshot",
+		mock.Anything,
+		mock.Anything,
+	).Return(mock.Anything, nil)
 	storage.On("ImageDeleted", mock.Anything, mock.Anything, mock.Anything).Return(nil)
 
 	storage.On(
@@ -57,7 +69,11 @@ func TestDeleteImageTaskSchedulesRetireBaseDisksTaskProperly(t *testing.T) {
 		"image",
 		"delete_image_task", // taskID
 		mock.Anything,       // deletingAt
-	).Return(&resources.ImageMeta{ID: "image", Size: imageSize, DeleteTaskID: "delete_image_task"}, nil)
+	).Return(&resources.ImageMeta{
+		ID:           "image",
+		Size:         imageSize,
+		DeleteTaskID: "delete_image_task",
+	}, nil)
 
 	// Should schedule retire base disks task only during the first run.
 	scheduler.On(
