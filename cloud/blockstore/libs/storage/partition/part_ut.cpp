@@ -11290,7 +11290,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
                 set(ToBit(ECompactionOption::Forced)));
     }
 
-    Y_UNIT_TEST(ShouldAllowOnlyOneForcedCompactionRequestsAtATime)
+    Y_UNIT_TEST(ShouldAllowOnlyOneForcedCompactionRequestAtATime)
     {
         constexpr ui32 rangesCount = 5;
         auto runtime = PrepareTestActorRuntime(DefaultConfig(), rangesCount * 1024);
