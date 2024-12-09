@@ -7013,6 +7013,35 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
         }
     }
 
+    Y_UNIT_TEST(ShouldReturnDependentDisksForShadowDisk)
+    {
+        TTestExecutor executor;
+        executor.WriteTx([&](TDiskRegistryDatabase db) { db.InitSchema(); });
+
+        const auto agent1 =
+            AgentConfig(1, {Device("dev-1", "uuid-1", "rack-1")});
+
+        const auto agent2 =
+            AgentConfig(2, {Device("dev-2", "uuid-2", "rack-1")});
+
+        TDiskRegistryState state =
+            TDiskRegistryStateBuilder()
+                .WithKnownAgents({agent1, agent2})
+                .WithDisks({
+                    Disk("disk-1", {"uuid-1"}),
+                    ShadowDisk("disk-1", "cp-1", {"uuid-2"}),
+                })
+                .Build();
+
+        TVector<TString> diskIds;
+        auto error =
+            state.GetDependentDisks(agent2.GetAgentId(), {}, false, &diskIds);
+
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
+        UNIT_ASSERT_VALUES_EQUAL(1, diskIds.size());
+        UNIT_ASSERT_VALUES_EQUAL("disk-1", diskIds[0]);
+    }
+
     Y_UNIT_TEST(ShouldNotRestoreOnlineStateAutomatically)
     {
         const auto agent1 = AgentConfig(1, {
