@@ -4067,7 +4067,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         }
     }
 
-    void DoTestForcedCompaction(bool external)
+    void DoTestFullCompaction(bool forced)
     {
         constexpr ui32 rangesCount = 5;
         auto storageConfig = DefaultConfig();
@@ -4088,9 +4088,9 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         auto oldStats = response->Record.GetStats();
 
         TCompactionOptions options;
-        options.set(ToBit(ECompactionOption::Forced));
-        if (external) {
-            options.set(ToBit(ECompactionOption::External));
+        options.set(ToBit(ECompactionOption::Full));
+        if (forced) {
+            options.set(ToBit(ECompactionOption::Forced));
         }
         for (ui32 range = 0; range < rangesCount; ++range) {
             partition.Compaction(range * 1024, options);
@@ -4104,17 +4104,17 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         );
     }
 
-    Y_UNIT_TEST(ShouldCreateBlobsForEveryWrittenRangeDuringForcedCompaction)
+    Y_UNIT_TEST(ShouldCreateBlobsForEveryWrittenRangeDuringFullCompaction)
     {
-        DoTestForcedCompaction(false);
+        DoTestFullCompaction(false);
     }
 
     Y_UNIT_TEST(ShouldCreateBlobsForEveryWrittenRangeDuringExternalForcedCompaction)
     {
-        DoTestForcedCompaction(true);
+        DoTestFullCompaction(true);
     }
 
-    void DoTestEmptyRangesForcedCompaction(TCompactionOptions options)
+    void DoTestEmptyRangesFullCompaction(bool forced)
     {
         constexpr ui32 rangesCount = 5;
         constexpr ui32 emptyRange = 2;
@@ -4137,10 +4137,14 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         auto response = partition.StatPartition();
         auto oldStats = response->Record.GetStats();
 
+        TCompactionOptions options;
+        options.set(ToBit(ECompactionOption::Full));
+        if (forced) {
+            options.set(ToBit(ECompactionOption::Forced));
+        }
+
         for (ui32 range = 0; range < rangesCount; ++range) {
-            partition.Compaction(
-                range * 1024,
-                options.set(ToBit(ECompactionOption::Forced)));
+            partition.Compaction(range * 1024, options);
         }
 
         response = partition.StatPartition();
@@ -4153,14 +4157,12 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
 
     Y_UNIT_TEST(ShouldNotCreateBlobsForEmptyRangesDuringForcedCompaction)
     {
-        DoTestEmptyRangesForcedCompaction(TCompactionOptions());
+        DoTestEmptyRangesFullCompaction(false);
     }
 
     Y_UNIT_TEST(ShouldNotCreateBlobsForEmptyRangesDuringExternalForcedCompaction)
     {
-        DoTestEmptyRangesForcedCompaction(TCompactionOptions().
-            set(ToBit(ECompactionOption::Forced)).
-            set(ToBit(ECompactionOption::External)));
+        DoTestEmptyRangesFullCompaction(true);
     }
 
     Y_UNIT_TEST(ShouldCorrectlyMarkFirstBlockInBlobIfItIsTheSameAsLastBlockInPreviousBlob)
@@ -5094,7 +5096,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
                             UNIT_ASSERT_VALUES_EQUAL(
                                 incrementalCompactionExpected,
                                 !request->CompactionOptions.test(
-                                    ToBit(ECompactionOption::Forced))
+                                    ToBit(ECompactionOption::Full))
                             );
 
                             compactionRequest.reset(event.Release());
@@ -7236,7 +7238,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
             {
                 TDispatchOptions options;
                 options.FinalEvents.emplace_back(
-                    TEvPartitionPrivate::EvExternalCompactionCompleted,
+                    TEvPartitionPrivate::EvForcedCompactionCompleted,
                     1);
                 runtime->DispatchEvents(options);
             }
@@ -11249,7 +11251,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         UNIT_ASSERT_VALUES_EQUAL(1, failedReadBlob);
     }
 
-    Y_UNIT_TEST(ShouldAllowExternalCompactionRequestsInPresenseOfTabletCompaction)
+    Y_UNIT_TEST(ShouldAllowForcedCompactionRequestsInPresenseOfTabletCompaction)
     {
         constexpr ui32 rangesCount = 5;
         auto runtime = PrepareTestActorRuntime(DefaultConfig(), rangesCount * 1024);
@@ -11281,15 +11283,15 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
 
         partition.SendCompactionRequest(
             0,
-            TCompactionOptions().set(ToBit(ECompactionOption::Forced)));
+            TCompactionOptions().set(ToBit(ECompactionOption::Full)));
         partition.Compaction(
             0,
             TCompactionOptions().
                 set(ToBit(ECompactionOption::Forced)).
-                set(ToBit(ECompactionOption::External)));
+                set(ToBit(ECompactionOption::Full)));
     }
 
-    Y_UNIT_TEST(ShouldAllowOnlyOneExternalCompactionRequestsAtATime)
+    Y_UNIT_TEST(ShouldAllowOnlyOneForcedCompactionRequestsAtATime)
     {
         constexpr ui32 rangesCount = 5;
         auto runtime = PrepareTestActorRuntime(DefaultConfig(), rangesCount * 1024);
@@ -11323,12 +11325,12 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
             0,
             TCompactionOptions().
                 set(ToBit(ECompactionOption::Forced)).
-                set(ToBit(ECompactionOption::External)));
+                set(ToBit(ECompactionOption::Full)));
         partition.SendCompactionRequest(
             0,
             TCompactionOptions().
                 set(ToBit(ECompactionOption::Forced)).
-                set(ToBit(ECompactionOption::External)));
+                set(ToBit(ECompactionOption::Full)));
 
         auto response = partition.RecvCompactionResponse();
         UNIT_ASSERT_VALUES_EQUAL(E_TRY_AGAIN, response->GetStatus());

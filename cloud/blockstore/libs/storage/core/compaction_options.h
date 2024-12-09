@@ -10,8 +10,8 @@ namespace NCloud::NBlockStore::NStorage {
 
 enum class ECompactionOption: size_t
 {
+    Full,
     Forced,
-    External,
     MaxFieldNumber
 };
 

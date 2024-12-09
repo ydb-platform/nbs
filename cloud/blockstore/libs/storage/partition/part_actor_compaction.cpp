@@ -149,7 +149,7 @@ private:
     const ui32 MaxAffectedBlocksPerCompaction;
     const IBlockDigestGeneratorPtr BlockDigestGenerator;
     const TDuration ReadBlobTimeout;
-    const bool ExternalCompaction;
+    const ECompactionType CompactionType;
 
     const ui64 CommitId;
 
@@ -182,7 +182,7 @@ public:
         ui32 maxAffectedBlocksPerCompaction,
         IBlockDigestGeneratorPtr blockDigestGenerator,
         TDuration readBlobTimeout,
-        bool externalCompaction,
+        ECompactionType compactionType,
         ui64 commitId,
         TVector<TRangeCompactionInfo> rangeCompactionInfos,
         TVector<TRequest> requests);
@@ -244,7 +244,7 @@ TCompactionActor::TCompactionActor(
         ui32 maxAffectedBlocksPerCompaction,
         IBlockDigestGeneratorPtr blockDigestGenerator,
         TDuration readBlobTimeout,
-        bool externalCompaction,
+        ECompactionType compactionType,
         ui64 commitId,
         TVector<TRangeCompactionInfo> rangeCompactionInfos,
         TVector<TRequest> requests)
@@ -256,7 +256,7 @@ TCompactionActor::TCompactionActor(
     , MaxAffectedBlocksPerCompaction(maxAffectedBlocksPerCompaction)
     , BlockDigestGenerator(std::move(blockDigestGenerator))
     , ReadBlobTimeout(readBlobTimeout)
-    , ExternalCompaction(externalCompaction)
+    , CompactionType(compactionType)
     , CommitId(commitId)
     , RangeCompactionInfos(std::move(rangeCompactionInfos))
     , Requests(std::move(requests))
@@ -740,7 +740,7 @@ void TCompactionActor::NotifyCompleted(
         request->AffectedRanges.push_back(ConvertRangeSafe(rc.BlockRange));
     }
     request->AffectedBlockInfos = std::move(AffectedBlockInfos);
-    request->ExternalCompaction = ExternalCompaction;
+    request->CompactionType = CompactionType;
 
     NCloud::Send(ctx, Tablet, std::move(request));
 }
@@ -1184,7 +1184,7 @@ void TPartitionActor::EnqueueCompactionIfNeeded(const TActorContext& ctx)
     if (mode == TEvPartitionPrivate::GarbageCompaction
             || !diskGarbageBelowThreshold)
     {
-        request->CompactionOptions.set(ToBit(ECompactionOption::Forced));
+        request->CompactionOptions.set(ToBit(ECompactionOption::Full));
     }
 
     if (throttlingAllowed && Config->GetMaxCompactionDelay()) {
@@ -1254,8 +1254,8 @@ void TPartitionActor::HandleCompaction(
     };
 
     const auto compactionType =
-        msg->CompactionOptions.test(ToBit(ECompactionOption::External)) ?
-        ECompactionType::External:
+        msg->CompactionOptions.test(ToBit(ECompactionOption::Forced)) ?
+        ECompactionType::Forced:
         ECompactionType::Tablet;
 
     if (State->GetCompactionState(compactionType).Status ==
@@ -1330,7 +1330,7 @@ void TPartitionActor::HandleCompaction(
             "[%lu] Start %s compaction @%lu (range: %s, blobs: %u, blocks: %u"
             ", reads: %u, blobsread: %u, blocksread: %u, score: %f)",
             TabletID(),
-            compactionType == ECompactionType::External ? "external" : "tablet",
+            compactionType == ECompactionType::Forced ? "forced" : "tablet",
             commitId,
             DescribeRange(blockRange).c_str(),
             x.Stat.BlobCount,
@@ -1419,10 +1419,8 @@ void TPartitionActor::HandleCompactionCompleted(
     State->GetCleanupQueue().ReleaseBarrier(commitId);
     State->GetGarbageQueue().ReleaseBarrier(commitId);
 
-    auto compactionType = msg->ExternalCompaction ?
-        ECompactionType::External:
-        ECompactionType::Tablet;
-    State->GetCompactionState(compactionType).SetStatus(EOperationStatus::Idle);
+    State->GetCompactionState(msg->CompactionType).SetStatus(
+        EOperationStatus::Idle);
 
     Actors.Erase(ev->Sender);
 
@@ -1479,7 +1477,7 @@ void PrepareRangeCompaction(
     const TString& folderId,
     const TString& diskId,
     const ui64 commitId,
-    const bool forceFullCompaction,
+    const bool fullCompaction,
     const TActorContext& ctx,
     const ui64 tabletId,
     THashSet<TPartialBlobId, TPartialBlobIdHash>& affectedBlobIds,
@@ -1524,7 +1522,7 @@ void PrepareRangeCompaction(
 
     if (ready
             && incrementalCompactionEnabled
-            && !forceFullCompaction)
+            && !fullCompaction)
     {
         THashMap<TPartialBlobId, ui32, TPartialBlobIdHash> liveBlocks;
         for (const auto& m: args.BlockMarks) {
@@ -1906,7 +1904,7 @@ bool TPartitionActor::PrepareCompaction(
             PartitionConfig.GetFolderId(),
             PartitionConfig.GetDiskId(),
             args.CommitId,
-            args.CompactionOptions.test(ToBit(ECompactionOption::Forced)),
+            args.CompactionOptions.test(ToBit(ECompactionOption::Full)),
             ctx,
             TabletID(),
             affectedBlobIds,
@@ -1983,6 +1981,11 @@ void TPartitionActor::CompleteCompaction(
         Config->GetBlobStorageAsyncGetTimeoutSSD() :
         Config->GetBlobStorageAsyncGetTimeoutHDD();
 
+    const auto compactionType =
+        args.CompactionOptions.test(ToBit(ECompactionOption::Forced)) ?
+            ECompactionType::Forced:
+            ECompactionType::Tablet;
+
     auto actor = NCloud::Register<TCompactionActor>(
         ctx,
         args.RequestInfo,
@@ -1993,7 +1996,7 @@ void TPartitionActor::CompleteCompaction(
         Config->GetMaxAffectedBlocksPerCompaction(),
         BlockDigestGenerator,
         readBlobTimeout,
-        args.CompactionOptions.test(ToBit(ECompactionOption::External)),
+        compactionType,
         args.CommitId,
         std::move(rangeCompactionInfos),
         std::move(requests));

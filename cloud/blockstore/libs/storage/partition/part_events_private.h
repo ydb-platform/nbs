@@ -7,6 +7,7 @@
 #include <cloud/blockstore/libs/kikimr/components.h>
 #include <cloud/blockstore/libs/kikimr/events.h>
 #include <cloud/blockstore/libs/storage/core/compaction_options.h>
+#include <cloud/blockstore/libs/storage/core/compaction_type.h>
 #include <cloud/blockstore/libs/storage/core/request_info.h>
 #include <cloud/blockstore/libs/storage/model/channel_data_kind.h>
 #include <cloud/blockstore/libs/storage/model/channel_permissions.h>
@@ -775,7 +776,7 @@ struct TEvPartitionPrivate
     // ForcedCompactionCompleted
     //
 
-    struct TExternalCompactionCompleted
+    struct TForcedCompactionCompleted
     {
     };
 
@@ -787,7 +788,7 @@ struct TEvPartitionPrivate
     struct TCompactionCompleted
         : TOperationCompleted
     {
-        bool ExternalCompaction = false;
+        ECompactionType CompactionType;
     };
 
     //
@@ -870,7 +871,7 @@ struct TEvPartitionPrivate
         EvFlushCompleted,
         EvCompactionCompleted,
         EvCollectGarbageCompleted,
-        EvExternalCompactionCompleted,
+        EvForcedCompactionCompleted,
         EvMetadataRebuildCompleted,
         EvScanDiskCompleted,
         EvLoadStateCompleted,
@@ -899,7 +900,7 @@ struct TEvPartitionPrivate
     using TEvFlushCompleted = TResponseEvent<TFlushCompleted, EvFlushCompleted>;
     using TEvCompactionCompleted = TResponseEvent<TCompactionCompleted, EvCompactionCompleted>;
     using TEvCollectGarbageCompleted = TResponseEvent<TOperationCompleted, EvCollectGarbageCompleted>;
-    using TEvExternalCompactionCompleted = TResponseEvent<TExternalCompactionCompleted, EvExternalCompactionCompleted>;
+    using TEvForcedCompactionCompleted = TResponseEvent<TForcedCompactionCompleted, EvForcedCompactionCompleted>;
     using TEvMetadataRebuildCompleted = TResponseEvent<TOperationCompleted, EvMetadataRebuildCompleted>;
     using TEvScanDiskCompleted = TResponseEvent<TScanDiskCompleted, EvScanDiskCompleted>;
     using TEvLoadStateCompleted = TResponseEvent<TLoadStateCompleted, EvLoadStateCompleted>;

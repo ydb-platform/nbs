@@ -94,7 +94,7 @@ void TForcedCompactionActor::SendCompactionRequest(const TActorContext& ctx)
         MakeIntrusive<TCallContext>(),
         RangesToCompact[CurrentBlock],
         TCompactionOptions().
-            set(ToBit(ECompactionOption::External)).
+            set(ToBit(ECompactionOption::Full)).
             set(ToBit(ECompactionOption::Forced)));
 
     NCloud::Send(ctx, Tablet, std::move(request));
@@ -104,7 +104,7 @@ void TForcedCompactionActor::ReplyAndDie(
     const TActorContext& ctx,
     const NProto::TError& error)
 {
-    auto response = std::make_unique<TEvPartitionPrivate::TEvExternalCompactionCompleted>(error);
+    auto response = std::make_unique<TEvPartitionPrivate::TEvForcedCompactionCompleted>(error);
     NCloud::Send(ctx, Tablet, std::move(response));
     Die(ctx);
 }
@@ -185,11 +185,11 @@ void TPartitionActor::HandleGetCompactionStatus(
     NProto::TError result;
 
     const auto& operationId = msg->Record.GetOperationId();
-    const auto& stateRunning = State->GetForcedCompactionState();
+    const auto& compactionProgress = State->GetForcedCompactionProgress();
 
-    if (operationId == stateRunning.OperationId) {
-        progress = stateRunning.Progress;
-        total = stateRunning.RangeCount;
+    if (operationId == compactionProgress.OperationId) {
+        progress = compactionProgress.Progress;
+        total = compactionProgress.RangeCount;
     }  else if (GetCompletedForcedCompactionRanges(operationId, ctx.Now(), total)) {
         progress = total;
         isCompleted = true;
@@ -206,17 +206,17 @@ void TPartitionActor::HandleGetCompactionStatus(
     NCloud::Send(ctx, ev->Sender, std::move(response), ev->Cookie);
 }
 
-void TPartitionActor::HandleExternalCompactionCompleted(
-    const TEvPartitionPrivate::TEvExternalCompactionCompleted::TPtr& ev,
+void TPartitionActor::HandleForcedCompactionCompleted(
+    const TEvPartitionPrivate::TEvForcedCompactionCompleted::TPtr& ev,
     const TActorContext& ctx)
 {
     Y_UNUSED(ev);
     Y_UNUSED(ctx);
 
-    const auto& state = State->GetForcedCompactionState();
+    const auto& progress = State->GetForcedCompactionProgress();
     CompletedForcedCompactionRequests.emplace(
-        state.OperationId,
-        TForcedCompactionResult(state.RangeCount, ctx.Now()));
+        progress.OperationId,
+        TForcedCompactionResult(progress.RangeCount, ctx.Now()));
     State->ResetForcedCompaction();
     Actors.erase(ev->Sender);
     EnqueueForcedCompaction(ctx);
@@ -308,7 +308,7 @@ void TPartitionActor::AddForcedCompaction(
 void TPartitionActor::EnqueueForcedCompaction(const TActorContext& ctx)
 {
     if (State && State->IsLoadStateFinished()) {
-        if (State->GetForcedCompactionState().IsRunning ||
+        if (State->GetForcedCompactionProgress().IsRunning ||
             PendingForcedCompactionRequests.empty())
         {
             return;

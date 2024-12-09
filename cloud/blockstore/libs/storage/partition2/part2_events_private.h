@@ -8,6 +8,7 @@
 #include <cloud/blockstore/libs/kikimr/events.h>
 #include <cloud/blockstore/libs/storage/core/request_info.h>
 #include <cloud/blockstore/libs/storage/core/compaction_options.h>
+#include <cloud/blockstore/libs/storage/core/compaction_type.h>
 #include <cloud/blockstore/libs/storage/model/channel_data_kind.h>
 #include <cloud/blockstore/libs/storage/model/channel_permissions.h>
 #include <cloud/blockstore/libs/storage/partition2/model/blob.h>
@@ -530,7 +531,7 @@ struct TEvPartitionPrivate
     struct TCompactionCompleted
         : TOperationCompleted
     {
-        bool ExternalCompaction = false;
+        ECompactionType CompactionType;
     };
 
     //
@@ -564,7 +565,7 @@ struct TEvPartitionPrivate
         EvFlushCompleted,
         EvCompactionCompleted,
         EvCollectGarbageCompleted,
-        EvExternalCompactionCompleted,
+        EvForcedCompactionCompleted,
         EvForcedCleanupCompleted,
         EvInitFreshZonesCompleted,
         EvGetChangedBlocksCompleted,
@@ -590,7 +591,7 @@ struct TEvPartitionPrivate
     using TEvFlushCompleted = TResponseEvent<TOperationCompleted, EvFlushCompleted>;
     using TEvCompactionCompleted = TResponseEvent<TCompactionCompleted, EvCompactionCompleted>;
     using TEvCollectGarbageCompleted = TResponseEvent<TOperationCompleted, EvCollectGarbageCompleted>;
-    using TEvExternalCompactionCompleted = TResponseEvent<TForcedCompactionCompleted, EvExternalCompactionCompleted>;
+    using TEvForcedCompactionCompleted = TResponseEvent<TForcedCompactionCompleted, EvForcedCompactionCompleted>;
     using TEvForcedCleanupCompleted = TResponseEvent<TForcedCleanupCompleted, EvForcedCleanupCompleted>;
     using TEvInitFreshZonesCompleted = TResponseEvent<TEmpty, EvInitFreshZonesCompleted>;
     using TEvGetChangedBlocksCompleted = TResponseEvent<TOperationCompleted, EvGetChangedBlocksCompleted>;

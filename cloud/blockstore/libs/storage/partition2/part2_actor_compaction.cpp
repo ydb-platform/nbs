@@ -73,7 +73,7 @@ private:
     const ui64 CommitId;
     const TBlockRange32 BlockRange;
     const TDuration ReadBlobTimeout;
-    const bool ExternalCompaction;
+    const ECompactionType CompactionType;
     TGarbageInfo GarbageInfo;
     TAffectedBlobInfos AffectedBlobInfos;
     ui32 BlobsSkipped;
@@ -110,7 +110,7 @@ public:
         ui64 commitId,
         const TBlockRange32& blockRange,
         TDuration readBlobTimeout,
-        bool externalCompaction,
+        ECompactionType compactionType,
         TGarbageInfo garbageInfo,
         TAffectedBlobInfos affectedBlobInfos,
         ui32 blobsSkipped,
@@ -167,7 +167,7 @@ TCompactionActor::TCompactionActor(
         ui64 commitId,
         const TBlockRange32& blockRange,
         TDuration readBlobTimeout,
-        const bool externalCompaction,
+        ECompactionType compactionType,
         TGarbageInfo garbageInfo,
         TAffectedBlobInfos affectedBlobInfos,
         ui32 blobsSkipped,
@@ -182,7 +182,7 @@ TCompactionActor::TCompactionActor(
     , CommitId(commitId)
     , BlockRange(blockRange)
     , ReadBlobTimeout(readBlobTimeout)
-    , ExternalCompaction(externalCompaction)
+    , CompactionType(compactionType)
     , GarbageInfo(std::move(garbageInfo))
     , AffectedBlobInfos(std::move(affectedBlobInfos))
     , BlobsSkipped(blobsSkipped)
@@ -424,7 +424,7 @@ void TCompactionActor::NotifyCompleted(
     request->AffectedRanges = std::move(AffectedRanges);
     request->AffectedBlockInfos = std::move(AffectedBlockInfos);
     request->BlockCommitIds = std::move(BlockCommitIds);
-    request->ExternalCompaction = ExternalCompaction;
+    request->CompactionType = CompactionType;
 
     NCloud::Send(ctx, Tablet, std::move(request));
 }
@@ -756,8 +756,8 @@ void TPartitionActor::HandleCompaction(
     };
 
     const auto compactionType =
-        msg->CompactionOptions.test(ToBit(ECompactionOption::External)) ?
-        ECompactionType::External:
+        msg->CompactionOptions.test(ToBit(ECompactionOption::Forced)) ?
+        ECompactionType::Forced:
         ECompactionType::Tablet;
 
     if (State->GetCompactionStatus(compactionType) == EOperationStatus::Started) {
@@ -836,7 +836,7 @@ void TPartitionActor::HandleCompaction(
         tx = CreateTx<TCompaction>(
             requestInfo,
             blockRange,
-            msg->CompactionOptions.test(ToBit(ECompactionOption::Forced)));
+            msg->CompactionOptions);
     } else {
         LOG_DEBUG(ctx, TBlockStoreComponents::PARTITION,
             "[%lu] Start compaction (blobs: %s)",
@@ -882,11 +882,7 @@ void TPartitionActor::HandleCompactionCompleted(
 
     State->ReleaseCollectBarrier(msg->CommitId);
 
-    const auto compactionType =
-        msg->ExternalCompaction ?
-        ECompactionType::External:
-        ECompactionType::Tablet;
-    State->SetCompactionStatus(compactionType, EOperationStatus::Idle);
+    State->SetCompactionStatus(msg->CompactionType, EOperationStatus::Idle);
 
     Actors.erase(ev->Sender);
 
@@ -973,7 +969,7 @@ bool TPartitionActor::PrepareCompaction(
 
     visitor.Finish();
 
-    if (!args.CompactionOptions.test(ToBit(ECompactionOption::Forced))) {
+    if (!args.CompactionOptions.test(ToBit(ECompactionOption::Full))) {
         Sort(
             args.Blobs.begin(),
             args.Blobs.end(),
@@ -1195,6 +1191,12 @@ void TPartitionActor::CompleteCompaction(
         Config->GetBlobStorageAsyncGetTimeoutSSD() :
         Config->GetBlobStorageAsyncGetTimeoutHDD();
 
+
+    const auto compactionType =
+        args.CompactionOptions.test(ToBit(ECompactionOption::Forced)) ?
+            ECompactionType::Forced:
+            ECompactionType::Tablet;
+
     auto actor = NCloud::Register<TCompactionActor>(
         ctx,
         args.RequestInfo,
@@ -1205,7 +1207,7 @@ void TPartitionActor::CompleteCompaction(
         args.CommitId,
         args.BlockRange,
         readBlobTimeout,
-        args.CompactionOptions.test(ToBit(ECompactionOption::External)),
+        compactionType,
         std::move(args.GarbageInfo),
         std::move(args.AffectedBlobInfos),
         args.BlobsSkipped,

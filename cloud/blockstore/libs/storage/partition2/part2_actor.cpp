@@ -830,7 +830,7 @@ STFUNC(TPartitionActor::StateWork)
         HFunc(TEvPartitionPrivate::TEvFlushCompleted, HandleFlushCompleted);
         HFunc(TEvPartitionPrivate::TEvCompactionCompleted, HandleCompactionCompleted);
         HFunc(TEvPartitionPrivate::TEvCollectGarbageCompleted, HandleCollectGarbageCompleted);
-        HFunc(TEvPartitionPrivate::TEvExternalCompactionCompleted, HandleExternalCompactionCompleted);
+        HFunc(TEvPartitionPrivate::TEvForcedCompactionCompleted, HandleForcedCompactionCompleted);
         HFunc(TEvPartitionCommonPrivate::TEvTrimFreshLogCompleted, HandleTrimFreshLogCompleted);
         HFunc(TEvPartitionPrivate::TEvGetChangedBlocksCompleted, HandleGetChangedBlocksCompleted);
 
@@ -875,7 +875,7 @@ STFUNC(TPartitionActor::StateZombie)
         IgnoreFunc(TEvPartitionPrivate::TEvFlushCompleted);
         IgnoreFunc(TEvPartitionPrivate::TEvCompactionCompleted);
         IgnoreFunc(TEvPartitionPrivate::TEvCollectGarbageCompleted);
-        IgnoreFunc(TEvPartitionPrivate::TEvExternalCompactionCompleted);
+        IgnoreFunc(TEvPartitionPrivate::TEvForcedCompactionCompleted);
         IgnoreFunc(TEvPartitionPrivate::TEvGetChangedBlocksCompleted);
 
         IgnoreFunc(TEvPartitionPrivate::TEvCleanupResponse);

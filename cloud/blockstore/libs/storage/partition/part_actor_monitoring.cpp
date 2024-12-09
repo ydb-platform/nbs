@@ -291,10 +291,14 @@ void DumpProgress(IOutputStream& out, ui64 progress, ui64 total)
     }
 }
 
-void DumpCompactionInfo(IOutputStream& out, const TForcedCompactionState& state)
+void DumpCompactionInfo(
+    IOutputStream& out,
+    const TForcedCompactionProgress& progress)
 {
-    if (state.IsRunning && (state.OperationId == "partition-monitoring-compaction")) {
-        DumpProgress(out, state.Progress, state.RangesCount);
+    if (progress.IsRunning &&
+        progress.OperationId == "partition-monitoring-compaction")
+    {
+        DumpProgress(out, progress.Progress, progress.RangesCount);
     }
 }
 
@@ -514,7 +518,7 @@ void TPartitionActor::HandleHttpInfo_Default(
                     }
 
                     if (State->IsForcedCompactionRunning()) {
-                        DumpCompactionInfo(out, State->GetForcedCompactionState());
+                        DumpCompactionInfo(out, State->GetForcedCompactionProgress());
                     } else {
                         out << "<div class='collapse form-group' id='compact-all'>";
                         BuildForceCompactionButton(out, TabletID());

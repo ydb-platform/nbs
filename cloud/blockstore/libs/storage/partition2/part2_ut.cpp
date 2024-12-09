@@ -4993,7 +4993,7 @@ Y_UNIT_TEST_SUITE(TPartition2Test)
             {
                 TDispatchOptions options;
                 options.FinalEvents.emplace_back(
-                    TEvPartitionPrivate::EvExternalCompactionCompleted,
+                    TEvPartitionPrivate::EvForcedCompactionCompleted,
                     1);
                 runtime->DispatchEvents(options);
             }
@@ -7082,7 +7082,7 @@ Y_UNIT_TEST_SUITE(TPartition2Test)
         UNIT_ASSERT_VALUES_EQUAL(1, failedReadBlob);
     }
 
-    Y_UNIT_TEST(ShouldAllowExternalCompactionRequestsInPresenseOfTabletCompaction)
+    Y_UNIT_TEST(ShouldAllowForcedFullCompactionRequestsInPresenseOfTabletCompaction)
     {
         constexpr ui32 rangesCount = 5;
         auto runtime = PrepareTestActorRuntime(DefaultConfig(), rangesCount * 1024);
@@ -7116,15 +7116,15 @@ Y_UNIT_TEST_SUITE(TPartition2Test)
 
         partition.SendCompactionRequest(
             0,
-            TCompactionOptions().set(ToBit(ECompactionOption::Forced)));
+            TCompactionOptions().set(ToBit(ECompactionOption::Full)));
         partition.Compaction(
             0,
             TCompactionOptions().
                 set(ToBit(ECompactionOption::Forced)).
-                set(ToBit(ECompactionOption::External)));
+                set(ToBit(ECompactionOption::Full)));
     }
 
-    Y_UNIT_TEST(ShouldAllowOnlyOneExternalCompactionRequestsAtATime)
+    Y_UNIT_TEST(ShouldAllowOnlyOneForcedFullCompactionRequestsAtATime)
     {
         constexpr ui32 rangesCount = 5;
         auto runtime = PrepareTestActorRuntime(DefaultConfig(), rangesCount * 1024);
@@ -7160,12 +7160,12 @@ Y_UNIT_TEST_SUITE(TPartition2Test)
             0,
             TCompactionOptions().
                 set(ToBit(ECompactionOption::Forced)).
-                set(ToBit(ECompactionOption::External)));
+                set(ToBit(ECompactionOption::Full)));
         partition.SendCompactionRequest(
             0,
             TCompactionOptions().
                 set(ToBit(ECompactionOption::Forced)).
-                set(ToBit(ECompactionOption::External)));
+                set(ToBit(ECompactionOption::Full)));
 
         auto response = partition.RecvCompactionResponse();
         UNIT_ASSERT_VALUES_EQUAL(E_TRY_AGAIN, response->GetStatus());

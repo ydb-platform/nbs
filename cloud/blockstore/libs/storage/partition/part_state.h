@@ -9,6 +9,7 @@
 #include <cloud/blockstore/libs/diagnostics/downtime_history.h>
 #include <cloud/blockstore/libs/storage/api/partition.h>
 #include <cloud/blockstore/libs/storage/core/compaction_map.h>
+#include <cloud/blockstore/libs/storage/core/compaction_type.h>
 #include <cloud/blockstore/libs/storage/core/request_buffer.h>
 #include <cloud/blockstore/libs/storage/core/request_info.h>
 #include <cloud/blockstore/libs/storage/core/ts_ring_buffer.h>
@@ -72,20 +73,12 @@ struct TOperationState
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TForcedCompactionState
+struct TForcedCompactionProgress
 {
     bool IsRunning = false;
     ui32 Progress = 0;
     ui32 RangesCount = 0;
     TString OperationId;
-};
-
-////////////////////////////////////////////////////////////////////////////////
-
-enum class ECompactionType: ui32
-{
-    External,
-    Tablet  // compaction initiated by tablet
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -795,7 +788,7 @@ public:
 
 private:
     TOperationState CompactionState;
-    TOperationState ExternalCompactionState;
+    TOperationState ForcedCompactionState;
     TCompactionMap CompactionMap;
     TTsRingBuffer<TCompactionScores> CompactionScoreHistory;
     TCompressedBitmap UsedBlocks;
@@ -811,8 +804,8 @@ private:
 public:
     TOperationState& GetCompactionState(ECompactionType type)
     {
-        return type == ECompactionType::External ?
-            ExternalCompactionState :
+        return type == ECompactionType::Forced ?
+            ForcedCompactionState :
             CompactionState;
     }
 
@@ -925,38 +918,38 @@ private:
     //
 
 private:
-    TForcedCompactionState ForcedCompactionState;
+    TForcedCompactionProgress ForcedCompactionProgress;
 
 public:
     bool IsForcedCompactionRunning() const
     {
-        return ForcedCompactionState.IsRunning;
+        return ForcedCompactionProgress.IsRunning;
     }
 
     void StartForcedCompaction(const TString& operationId, ui32 blocksCount)
     {
-        ForcedCompactionState.IsRunning = true;
-        ForcedCompactionState.Progress = 0;
-        ForcedCompactionState.RangesCount = blocksCount;
-        ForcedCompactionState.OperationId = operationId;
+        ForcedCompactionProgress.IsRunning = true;
+        ForcedCompactionProgress.Progress = 0;
+        ForcedCompactionProgress.RangesCount = blocksCount;
+        ForcedCompactionProgress.OperationId = operationId;
     }
 
     void OnNewCompactionRange()
     {
-        ++ForcedCompactionState.Progress;
+        ++ForcedCompactionProgress.Progress;
     }
 
     void ResetForcedCompaction()
     {
-        ForcedCompactionState.IsRunning = false;
-        ForcedCompactionState.Progress = 0;
-        ForcedCompactionState.RangesCount = 0;
-        ForcedCompactionState.OperationId.clear();
+        ForcedCompactionProgress.IsRunning = false;
+        ForcedCompactionProgress.Progress = 0;
+        ForcedCompactionProgress.RangesCount = 0;
+        ForcedCompactionProgress.OperationId.clear();
     }
 
-    const TForcedCompactionState& GetForcedCompactionState() const
+    const TForcedCompactionProgress& GetForcedCompactionProgress() const
     {
-        return ForcedCompactionState;
+        return ForcedCompactionProgress;
     }
 
     //
