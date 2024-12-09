@@ -12,7 +12,6 @@ TEST_SRCS(
 
 INCLUDE(${ARCADIA_ROOT}/cloud/filestore/tests/recipes/vhost-restore-endpoint.inc)
 INCLUDE(${ARCADIA_ROOT}/cloud/filestore/tests/recipes/service-kikimr.inc)
-INCLUDE(${ARCADIA_ROOT}/cloud/filestore/tests/recipes/service-kikimr.inc)
 INCLUDE(${ARCADIA_ROOT}/cloud/filestore/tests/recipes/vhost-kikimr.inc)
 
 END()
