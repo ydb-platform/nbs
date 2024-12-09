@@ -214,9 +214,7 @@ TRootKmsClient::TRootKmsClient(
         TCreateRootKmsClientParams params)
     : Logging(std::move(logging))
     , Params(std::move(params))
-    , Log(Logging->CreateLog("ROOT_KMS_CLIENT"))
-{
-}
+{}
 
 TRootKmsClient::~TRootKmsClient()
 {
@@ -225,6 +223,8 @@ TRootKmsClient::~TRootKmsClient()
 
 void TRootKmsClient::Start()
 {
+    Log = Logging->CreateLog("ROOT_KMS_CLIENT");
+
     grpc::SslCredentialsOptions sslOpts{
         .pem_root_certs = ReadFile(Params.RootCertsFile),
         .pem_private_key = ReadFile(Params.PrivateKeyFile),

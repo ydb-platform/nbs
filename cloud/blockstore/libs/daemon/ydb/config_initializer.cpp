@@ -37,7 +37,7 @@ using namespace NCloud::NBlockStore::NDiscovery;
 ////////////////////////////////////////////////////////////////////////////////
 
 TConfigInitializerYdb::TConfigInitializerYdb(TOptionsYdbPtr options)
-        : TConfigInitializerCommon(options)
+    : TConfigInitializerCommon(options)
     , NCloud::NStorage::TConfigInitializerYdbBase(options)
     , Options(options)
 {}

@@ -1068,4 +1068,7 @@ message TStorageServiceConfig
     // When enabled, the Disk Registry REMOVE_HOST CMS action will "forget"
     // agents devices and suspend local devices.
     optional bool DiskRegistryCleanupConfigOnRemoveHost = 392;
+
+    // Enables the encryption at rest for Disk Registry based disks.
+    optional bool EncryptionAtRestForDiskRegistryBasedDisksEnabled = 393;
 }
