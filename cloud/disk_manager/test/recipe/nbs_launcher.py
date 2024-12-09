@@ -6,14 +6,17 @@ from cloud.blockstore.config.discovery_pb2 import TDiscoveryServiceConfig
 from cloud.blockstore.config.grpc_client_pb2 import TGrpcClientConfig
 from cloud.blockstore.config.server_pb2 import TServerConfig, TServerAppConfig, TKikimrServiceConfig
 from cloud.blockstore.config.storage_pb2 import TStorageServiceConfig
+from cloud.blockstore.tests.python.lib.disk_agent_runner import LocalDiskAgent
 from cloud.blockstore.tests.python.lib.nbs_runner import LocalNbs
 from cloud.blockstore.tests.python.lib.test_base import thread_count, wait_for_nbs_server, \
-    wait_for_secure_erase
+    wait_for_secure_erase, wait_for_disk_agent
 from cloud.blockstore.tests.python.lib.nonreplicated_setup import enable_writable_state, \
-    create_devices, setup_nonreplicated, setup_disk_registry_config, make_agent_id, AgentInfo, DeviceInfo
+    create_devices, setup_nonreplicated, setup_disk_registry_config, make_agent_id, AgentInfo, \
+    DeviceInfo, make_agent_node_type
 from cloud.tasks.test.common.processes import register_process, kill_processes
 
 SERVICE_NAME = "nbs"
+DISK_AGENT_SERVICE_NAME = "nbs"
 DEFAULT_BLOCK_SIZE = 4096
 DEFAULT_BLOCK_COUNT_PER_DEVICE = 262144
 
@@ -30,15 +33,18 @@ class NbsLauncher:
         cert_key_file,
         ydb_binary_path,
         nbs_binary_path,
+        disk_agent_binary_path,
         ydb_client,
         compute_port=0,
         kms_port=0,
-        destruction_allowed_only_for_disks_with_id_prefixes=[]
+        destruction_allowed_only_for_disks_with_id_prefixes=[],
+        disk_agents_count=1
     ):
         self.__ydb_port = ydb_port
         self.__domains_txt = domains_txt
         self.__ydb_binary_path = ydb_binary_path
         self.__nbs_binary_path = nbs_binary_path
+        self.__disk_agent_binary_path = disk_agent_binary_path
 
         self.__port_manager = yatest_common.PortManager()
         nbs_port = self.__port_manager.get_port()
@@ -69,21 +75,32 @@ class NbsLauncher:
         storage_config_patch.DisableLocalService = False
         storage_config_patch.InactiveClientsTimeout = 60000  # 1 min
         storage_config_patch.AgentRequestTimeout = 5000      # 5 sec
+        storage_config_patch.UseShadowDisksForNonreplDiskCheckpoints = True
         if destruction_allowed_only_for_disks_with_id_prefixes:
             storage_config_patch.DestructionAllowedOnlyForDisksWithIdPrefixes.extend(destruction_allowed_only_for_disks_with_id_prefixes)
 
         self.__storage_config_patch = storage_config_patch
 
-        self.__devices = create_devices(
+        self.__disk_agents_count = disk_agents_count
+        self.__devices_per_agent = []
+        device_count_per_agent = 3
+
+        devices = create_devices(
             use_memory_devices=True,
-            device_count=3,
+            device_count=device_count_per_agent*self.__disk_agents_count,
             block_size=DEFAULT_BLOCK_SIZE,
             block_count_per_device=DEFAULT_BLOCK_COUNT_PER_DEVICE,
             ram_drive_path=None
         )
-        self.__devices[1].storage_pool_name = "rot"
-
-        setup_nonreplicated(ydb_client, [self.__devices])
+        for i in range(0, len(devices), device_count_per_agent):
+            agent_devices = [devices[j] for j in range(i, i + device_count_per_agent)]
+            agent_devices[1].storage_pool_name = "rot"
+            self.__devices_per_agent.append(agent_devices)
+        setup_nonreplicated(
+            ydb_client,
+            self.__devices_per_agent,
+            dedicated_disk_agent=True,
+            agent_count=self.__disk_agents_count)
 
         instance_list_file = os.path.join(yatest_common.output_path(),
                                           "static_instances_%s.txt" % nbs_port)
@@ -131,29 +148,48 @@ class NbsLauncher:
 
         register_process(SERVICE_NAME, self.__nbs.pid)
 
-        # Start disk-agent
+        # Start disk agents
+        agent_infos = []
+        for i in range(self.__disk_agents_count):
+            agent_infos.append(AgentInfo(
+                make_agent_id(i),
+                [DeviceInfo(d.uuid) for d in self.__devices_per_agent[i]]))
+
         setup_disk_registry_config(
-            [AgentInfo(make_agent_id(0), [DeviceInfo(d.uuid) for d in self.__devices])],
+            agent_infos,
             self.__nbs.nbs_port,
             nbs_client_binary_path,
         )
 
+        for i in range(self.__disk_agents_count):
+            self.__run_disk_agent(i)
+        wait_for_secure_erase(self.__nbs.mon_port)
+
+    def __run_disk_agent(self, index):
+        server_app_config = TServerAppConfig()
+        server_app_config.CopyFrom(self.__server_app_config)
         self.__server_app_config.ServerConfig.NodeType = 'disk-agent'
-        self.__storage_config_patch.DisableLocalService = True
-        disk_agent = LocalNbs(
+
+        storage_config_patch = TStorageServiceConfig()
+        storage_config_patch.CopyFrom(self.__storage_config_patch)
+        storage_config_patch.DisableLocalService = True
+
+        disk_agent = LocalDiskAgent(
             self.__ydb_port,
             self.__domains_txt,
             server_app_config=self.__server_app_config,
-            storage_config_patches=[self.__storage_config_patch],
-            enable_tls=True,
+            storage_config_patches=[storage_config_patch],
+            config_sub_folder="disk_agent_configs_%s" % index,
+            log_sub_folder="disk_agent_logs_%s" % index,
             kikimr_binary_path=self.__ydb_binary_path,
-            nbs_binary_path=self.__nbs_binary_path,
-            ping_path='/blockstore/disk_agent')
+            disk_agent_binary_path=self.__disk_agent_binary_path,
+            rack="rack-%s" % index,
+            node_type=make_agent_node_type(index))
 
         disk_agent.start()
-        wait_for_nbs_server(disk_agent.nbs_port)
-        wait_for_secure_erase(self.__nbs.mon_port)
-        register_process(SERVICE_NAME, disk_agent.pid)
+        wait_for_disk_agent(disk_agent.mon_port)
+        register_process(DISK_AGENT_SERVICE_NAME, disk_agent.pid)
+        return disk_agent
 
     @staticmethod
     def stop():

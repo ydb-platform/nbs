@@ -55,6 +55,7 @@ def parse_args(args):
         default="cloud/disk_manager/cmd/disk-manager/disk-manager")
     parser.add_argument("--creation-and-deletion-allowed-only-for-disks-with-id-prefix", type=str, default="")
     parser.add_argument("--disable-disk-registry-based-disks", action='store_true', default=False)
+    parser.add_argument("--disk-agents-count", type=int, default=1)
 
     args, _ = parser.parse_known_args(args=args)
     return args
@@ -82,6 +83,7 @@ def start(argv):
     if ydb_binary_path is None:
         ydb_binary_path = yatest_common.binary_path("contrib/ydb/apps/ydbd/ydbd")
     nbs_binary_path = yatest_common.binary_path("cloud/blockstore/apps/server/nbsd")
+    disk_agent_binary_path = yatest_common.binary_path("cloud/blockstore/apps/disk_agent/diskagentd")
     nfs_binary_path = yatest_common.binary_path("cloud/filestore/apps/server/filestore-server")
     disk_manager_binary_path = yatest_common.binary_path(args.disk_manager_binary_path)
 
@@ -122,10 +124,12 @@ def start(argv):
         cert_key_file,
         ydb_binary_path=ydb_binary_path,
         nbs_binary_path=nbs_binary_path,
+        disk_agent_binary_path=disk_agent_binary_path,
         ydb_client=ydb.client,
         compute_port=compute_port,
         kms_port=kms_port,
-        destruction_allowed_only_for_disks_with_id_prefixes=destruction_allowed_only_for_disks_with_id_prefixes)
+        destruction_allowed_only_for_disks_with_id_prefixes=destruction_allowed_only_for_disks_with_id_prefixes,
+        disk_agents_count=args.disk_agents_count)
     nbs.start()
     set_env("DISK_MANAGER_RECIPE_NBS_PORT", str(nbs.port))
 
@@ -142,6 +146,7 @@ def start(argv):
             cert_key_file,
             ydb_binary_path=ydb_binary_path,
             nbs_binary_path=nbs_binary_path,
+            disk_agent_binary_path=disk_agent_binary_path,
             ydb_client=ydb2.client,
             compute_port=compute_port,
             kms_port=kms_port,
@@ -160,6 +165,7 @@ def start(argv):
             cert_key_file,
             ydb_binary_path=ydb_binary_path,
             nbs_binary_path=nbs_binary_path,
+            disk_agent_binary_path=disk_agent_binary_path,
             ydb_client=ydb3.client,
             compute_port=compute_port,
             kms_port=kms_port,
