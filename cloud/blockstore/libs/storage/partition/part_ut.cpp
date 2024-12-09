@@ -4109,7 +4109,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         DoTestFullCompaction(false);
     }
 
-    Y_UNIT_TEST(ShouldCreateBlobsForEveryWrittenRangeDuringExternalForcedCompaction)
+    Y_UNIT_TEST(ShouldCreateBlobsForEveryWrittenRangeDuringForcedFullCompaction)
     {
         DoTestFullCompaction(true);
     }
@@ -4155,12 +4155,12 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         );
     }
 
-    Y_UNIT_TEST(ShouldNotCreateBlobsForEmptyRangesDuringForcedCompaction)
+    Y_UNIT_TEST(ShouldNotCreateBlobsForEmptyRangesDuringFullCompaction)
     {
         DoTestEmptyRangesFullCompaction(false);
     }
 
-    Y_UNIT_TEST(ShouldNotCreateBlobsForEmptyRangesDuringExternalForcedCompaction)
+    Y_UNIT_TEST(ShouldNotCreateBlobsForEmptyRangesDuringForcedFullCompaction)
     {
         DoTestEmptyRangesFullCompaction(true);
     }

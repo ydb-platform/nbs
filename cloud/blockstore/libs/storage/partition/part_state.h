@@ -73,12 +73,13 @@ struct TOperationState
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TForcedCompactionProgress
+struct TForcedCompactionState
 {
     bool IsRunning = false;
     ui32 Progress = 0;
     ui32 RangesCount = 0;
     TString OperationId;
+    TOperationState CompactionState;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -788,7 +789,6 @@ public:
 
 private:
     TOperationState CompactionState;
-    TOperationState ForcedCompactionState;
     TCompactionMap CompactionMap;
     TTsRingBuffer<TCompactionScores> CompactionScoreHistory;
     TCompressedBitmap UsedBlocks;
@@ -802,12 +802,7 @@ private:
     TInstant LastCompactionRangeCountPerRunTs;
 
 public:
-    TOperationState& GetCompactionState(ECompactionType type)
-    {
-        return type == ECompactionType::Forced ?
-            ForcedCompactionState :
-            CompactionState;
-    }
+    TOperationState& GetCompactionState(ECompactionType type);
 
     TCompactionMap& GetCompactionMap()
     {
@@ -918,38 +913,38 @@ private:
     //
 
 private:
-    TForcedCompactionProgress ForcedCompactionProgress;
+    TForcedCompactionState ForcedCompactionState;
 
 public:
     bool IsForcedCompactionRunning() const
     {
-        return ForcedCompactionProgress.IsRunning;
+        return ForcedCompactionState.IsRunning;
     }
 
     void StartForcedCompaction(const TString& operationId, ui32 blocksCount)
     {
-        ForcedCompactionProgress.IsRunning = true;
-        ForcedCompactionProgress.Progress = 0;
-        ForcedCompactionProgress.RangesCount = blocksCount;
-        ForcedCompactionProgress.OperationId = operationId;
+        ForcedCompactionState.IsRunning = true;
+        ForcedCompactionState.Progress = 0;
+        ForcedCompactionState.RangesCount = blocksCount;
+        ForcedCompactionState.OperationId = operationId;
     }
 
     void OnNewCompactionRange()
     {
-        ++ForcedCompactionProgress.Progress;
+        ++ForcedCompactionState.Progress;
     }
 
     void ResetForcedCompaction()
     {
-        ForcedCompactionProgress.IsRunning = false;
-        ForcedCompactionProgress.Progress = 0;
-        ForcedCompactionProgress.RangesCount = 0;
-        ForcedCompactionProgress.OperationId.clear();
+        ForcedCompactionState.IsRunning = false;
+        ForcedCompactionState.Progress = 0;
+        ForcedCompactionState.RangesCount = 0;
+        ForcedCompactionState.OperationId.clear();
     }
 
-    const TForcedCompactionProgress& GetForcedCompactionProgress() const
+    const TForcedCompactionState& GetForcedCompactionState() const
     {
-        return ForcedCompactionProgress;
+        return ForcedCompactionState;
     }
 
     //

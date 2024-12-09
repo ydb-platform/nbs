@@ -188,7 +188,7 @@ void TPartitionActor::HandleGetCompactionStatus(
     NProto::TError result;
 
     const auto& operationId = msg->Record.GetOperationId();
-    const auto& stateRunning = State->GetForcedCompactionProgress();
+    const auto& stateRunning = State->GetForcedCompactionState();
 
     if (operationId == stateRunning.OperationId) {
         progress = stateRunning.Progress;
@@ -216,10 +216,10 @@ void TPartitionActor::HandleForcedCompactionCompleted(
     Y_UNUSED(ev);
     Y_UNUSED(ctx);
 
-    const auto& progress = State->GetForcedCompactionProgress();
+    const auto& state = State->GetForcedCompactionState();
     CompletedForcedCompactionRequests.emplace(
-        progress.OperationId,
-        TForcedCompactionResult(progress.RangesCount, ctx.Now()));
+        state.OperationId,
+        TForcedCompactionResult(state.RangesCount, ctx.Now()));
     State->ResetForcedCompaction();
     Actors.Erase(ev->Sender);
     EnqueueForcedCompaction(ctx);
@@ -310,7 +310,7 @@ void TPartitionActor::AddForcedCompaction(
 void TPartitionActor::EnqueueForcedCompaction(const TActorContext& ctx)
 {
     if (State && State->IsLoadStateFinished()) {
-        if (State->GetForcedCompactionProgress().IsRunning ||
+        if (State->GetForcedCompactionState().IsRunning ||
             PendingForcedCompactionRequests.empty())
         {
             return;
