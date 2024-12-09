@@ -70,6 +70,9 @@ private:
     const TString LostName = "__lost__";
     const TString UnknownNodeNamePrefix = "_nodeid_";
 
+    constexpr static auto GreedyMinimumAlwaysCreateBytes = 1000000;
+    constexpr static auto GreedyincreaseBy = 1.1;
+
 public:
     TReplayRequestGeneratorFs(
         NProto::TReplaySpec spec,
@@ -335,8 +338,15 @@ private:
                     Started,
                     MakeError(E_FAIL, "fail")});
             }
-
-            if (Spec.GetCreateOnRead()) {
+            if (Spec.GetCreateOnRead() ==
+                    NProto::TReplaySpec_ECreateOnRead::
+                        TReplaySpec_ECreateOnRead_FullSize ||
+                (Spec.GetCreateOnRead() ==
+                     NProto::TReplaySpec_ECreateOnRead::
+                         TReplaySpec_ECreateOnRead_Greedy &&
+                 logRequest.GetNodeInfo().GetSize() <
+                     GreedyMinimumAlwaysCreateBytes))
+            {
                 fileHandle.Resize(logRequest.GetNodeInfo().GetSize());
             }
 
@@ -422,6 +432,18 @@ private:
             handle,
             fh.GetLength(),
             fh.GetPosition());
+
+        const auto& offset = logRequest.GetRanges().cbegin()->GetOffset();
+        const auto& bytes = logRequest.GetRanges().cbegin()->GetBytes();
+        const i64 lastByte = offset + bytes;
+
+        if (Spec.GetCreateOnRead() == NProto::TReplaySpec_ECreateOnRead::
+                                          TReplaySpec_ECreateOnRead_Greedy &&
+            fh.GetLength() < lastByte)
+        {
+            fh.Resize(lastByte * GreedyincreaseBy);
+        }
+
         auto buffer = Acalloc(logRequest.GetRanges().cbegin()->GetBytes());
 
         TFileHandle fileHandle{fh.GetHandle()};
