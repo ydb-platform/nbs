@@ -55,7 +55,7 @@ def parse_args(args):
         default="cloud/disk_manager/cmd/disk-manager/disk-manager")
     parser.add_argument("--creation-and-deletion-allowed-only-for-disks-with-id-prefix", type=str, default="")
     parser.add_argument("--disable-disk-registry-based-disks", action='store_true', default=False)
-    parser.add_argument("--disk-agents-count", type=int, default=1)
+    parser.add_argument("--disk-agent-count", type=int, default=1)
 
     args, _ = parser.parse_known_args(args=args)
     return args
@@ -129,7 +129,7 @@ def start(argv):
         compute_port=compute_port,
         kms_port=kms_port,
         destruction_allowed_only_for_disks_with_id_prefixes=destruction_allowed_only_for_disks_with_id_prefixes,
-        disk_agents_count=args.disk_agents_count)
+        disk_agent_count=args.disk_agent_count)
     nbs.start()
     set_env("DISK_MANAGER_RECIPE_NBS_PORT", str(nbs.port))
 

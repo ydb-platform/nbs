@@ -38,7 +38,7 @@ class NbsLauncher:
         compute_port=0,
         kms_port=0,
         destruction_allowed_only_for_disks_with_id_prefixes=[],
-        disk_agents_count=1
+        disk_agent_count=1
     ):
         self.__ydb_port = ydb_port
         self.__domains_txt = domains_txt
@@ -80,13 +80,13 @@ class NbsLauncher:
 
         self.__storage_config_patch = storage_config_patch
 
-        self.__disk_agents_count = disk_agents_count
+        self.__disk_agent_count = disk_agent_count
         self.__devices_per_agent = []
         device_count_per_agent = 3
 
         devices = create_devices(
             use_memory_devices=True,
-            device_count=device_count_per_agent*self.__disk_agents_count,
+            device_count=device_count_per_agent*self.__disk_agent_count,
             block_size=DEFAULT_BLOCK_SIZE,
             block_count_per_device=DEFAULT_BLOCK_COUNT_PER_DEVICE,
             ram_drive_path=None
@@ -99,7 +99,7 @@ class NbsLauncher:
             ydb_client,
             self.__devices_per_agent,
             dedicated_disk_agent=True,
-            agent_count=self.__disk_agents_count)
+            agent_count=self.__disk_agent_count)
 
         instance_list_file = os.path.join(yatest_common.output_path(),
                                           "static_instances_%s.txt" % nbs_port)
@@ -149,7 +149,7 @@ class NbsLauncher:
 
         # Start disk agents
         agent_infos = []
-        for i in range(self.__disk_agents_count):
+        for i in range(self.__disk_agent_count):
             agent_infos.append(AgentInfo(
                 make_agent_id(i),
                 [DeviceInfo(d.uuid) for d in self.__devices_per_agent[i]]))
@@ -160,7 +160,7 @@ class NbsLauncher:
             nbs_client_binary_path,
         )
 
-        for i in range(self.__disk_agents_count):
+        for i in range(self.__disk_agent_count):
             self.__run_disk_agent(i)
         wait_for_secure_erase(self.__nbs.mon_port)
 
