@@ -15,8 +15,8 @@ from cloud.blockstore.tests.python.lib.nonreplicated_setup import enable_writabl
     DeviceInfo, make_agent_node_type
 from cloud.tasks.test.common.processes import register_process, kill_processes
 
-SERVICE_NAME = "nbs"
-DISK_AGENT_SERVICE_NAME = "nbs"
+NBS_SERVICE_NAME = "nbs"
+DISK_AGENT_SERVICE_NAME = "disk_agent"
 DEFAULT_BLOCK_SIZE = 4096
 DEFAULT_BLOCK_COUNT_PER_DEVICE = 262144
 
@@ -75,7 +75,6 @@ class NbsLauncher:
         storage_config_patch.DisableLocalService = False
         storage_config_patch.InactiveClientsTimeout = 60000  # 1 min
         storage_config_patch.AgentRequestTimeout = 5000      # 5 sec
-        storage_config_patch.UseShadowDisksForNonreplDiskCheckpoints = True
         if destruction_allowed_only_for_disks_with_id_prefixes:
             storage_config_patch.DestructionAllowedOnlyForDisksWithIdPrefixes.extend(destruction_allowed_only_for_disks_with_id_prefixes)
 
@@ -146,7 +145,7 @@ class NbsLauncher:
         nbs_client_binary_path = yatest_common.binary_path("cloud/blockstore/apps/client/blockstore-client")
         enable_writable_state(self.__nbs.nbs_port, nbs_client_binary_path)
 
-        register_process(SERVICE_NAME, self.__nbs.pid)
+        register_process(NBS_SERVICE_NAME, self.__nbs.pid)
 
         # Start disk agents
         agent_infos = []
@@ -193,7 +192,8 @@ class NbsLauncher:
 
     @staticmethod
     def stop():
-        kill_processes(SERVICE_NAME)
+        kill_processes(NBS_SERVICE_NAME)
+        kill_processes(DISK_AGENT_SERVICE_NAME)
 
     @property
     def port(self):
