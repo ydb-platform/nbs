@@ -547,9 +547,7 @@ void TDiskRegistryState::ProcessDisks(TVector<NProto::TDiskConfig> configs)
         }
 
         if (!config.GetFinishedMigrations().empty()) {
-            const auto& notifiedDiskId = disk.MasterDiskId
-                ? disk.MasterDiskId
-                : diskId;
+            const auto notifiedDiskId = GetDiskIdToNotify(diskId);
 
             ui64 seqNo = NotificationSystem.GetDiskSeqNo(notifiedDiskId);
 
@@ -3180,7 +3178,7 @@ NProto::TError TDiskRegistryState::GetDependentDisks(
     TVector<TDiskId>* diskIds) const
 {
     diskIds->clear();
-    auto* agent = AgentList.FindAgent(agentId);
+    const auto* agent = AgentList.FindAgent(agentId);
     if (!agent) {
         return MakeError(E_NOT_FOUND, agentId);
     }
@@ -3197,23 +3195,32 @@ NProto::TError TDiskRegistryState::GetDependentDisks(
         }
 
         const TDiskState* state = FindDiskState(diskId);
-        if (state && state->MasterDiskId) {
-            if (ignoreReplicatedDisks) {
-                continue;
-            }
-            // for mirrored disks return master diskId
-            diskId = state->MasterDiskId;
-        }
-
-        // linear search on every iteration is ok here, diskIds size is small
-        if (Find(*diskIds, diskId) != diskIds->end()) {
+        if (state && state->MasterDiskId && ignoreReplicatedDisks) {
             continue;
         }
 
-        diskIds->push_back(std::move(diskId));
+        // linear search on every iteration is ok here, diskIds size is small
+        auto diskIdToNotify = GetDiskIdToNotify(diskId);
+        if (Find(*diskIds, diskIdToNotify) == diskIds->end()) {
+            diskIds->push_back(std::move(diskIdToNotify));
+        }
     }
 
     return {};
+}
+
+TString TDiskRegistryState::GetDiskIdToNotify(const TString& diskId) const
+{
+    const auto* disk = Disks.FindPtr(diskId);
+    Y_DEBUG_ABORT_UNLESS(disk, "unknown disk: %s", diskId.c_str());
+
+    if (disk && disk->MasterDiskId) {
+        return disk->MasterDiskId;
+    }
+    if (disk && disk->CheckpointReplica.GetCheckpointId()) {
+        return disk->CheckpointReplica.GetSourceDiskId();
+    }
+    return diskId;
 }
 
 NProto::TError TDiskRegistryState::GetDiskDevices(
@@ -4744,19 +4751,11 @@ void TDiskRegistryState::UpdateAndReallocateDisk(
 
 ui64 TDiskRegistryState::AddReallocateRequest(
     TDiskRegistryDatabase& db,
-    TString diskId)
+    const TString& diskId)
 {
-    const auto* disk = Disks.FindPtr(diskId);
-    Y_DEBUG_ABORT_UNLESS(disk, "unknown disk: %s", diskId.c_str());
-
-    if (disk && disk->MasterDiskId) {
-        diskId = disk->MasterDiskId;
-    }
-    if (disk && disk->CheckpointReplica.GetCheckpointId()) {
-        diskId = disk->CheckpointReplica.GetSourceDiskId();
-    }
-
-    return NotificationSystem.AddReallocateRequest(db, diskId);
+    return NotificationSystem.AddReallocateRequest(
+        db,
+        GetDiskIdToNotify(diskId));
 }
 
 const THashMap<TString, ui64>& TDiskRegistryState::GetDisksToReallocate() const

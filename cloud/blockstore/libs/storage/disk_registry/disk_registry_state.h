@@ -555,7 +555,7 @@ public:
         TVector<TDiskId> ids);
 
     const THashMap<TString, ui64>& GetDisksToReallocate() const;
-    ui64 AddReallocateRequest(TDiskRegistryDatabase& db, TString diskId);
+    ui64 AddReallocateRequest(TDiskRegistryDatabase& db, const TString& diskId);
 
     void DeleteDiskToReallocate(
         TDiskRegistryDatabase& db,
@@ -897,6 +897,8 @@ private:
         TInstant timestamp,
         TVector<TDiskId>* affectedDisks,
         TVector<TDiskId>* disksToReallocate);
+
+    [[nodiscard]] TString GetDiskIdToNotify(const TString& diskId) const;
 
     [[nodiscard]] NProto::TError GetDiskDevices(
         const TDiskId& diskId,
