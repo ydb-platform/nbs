@@ -8,6 +8,7 @@
 #include <cloud/blockstore/libs/storage/api/partition.h>
 #include <cloud/blockstore/libs/storage/core/block_handler.h>
 #include <cloud/blockstore/libs/storage/core/compaction_map.h>
+#include <cloud/blockstore/libs/storage/core/compaction_options.h>
 #include <cloud/blockstore/libs/storage/core/request_info.h>
 #include <cloud/blockstore/libs/storage/partition/model/blob_to_confirm.h>
 #include <cloud/blockstore/libs/storage/partition/model/block.h>
@@ -430,18 +431,18 @@ struct TTxPartition
     {
         const TRequestInfoPtr RequestInfo;
         const ui64 CommitId;
-        const bool ForceFullCompaction;
+        const TCompactionOptions CompactionOptions;
 
         TVector<TRangeCompaction> RangeCompactions;
 
         TCompaction(
                 TRequestInfoPtr requestInfo,
                 ui64 commitId,
-                bool forceFullCompaction,
+                TCompactionOptions compactionOptions,
                 const TVector<std::pair<ui32, TBlockRange32>>& ranges)
             : RequestInfo(std::move(requestInfo))
             , CommitId(commitId)
-            , ForceFullCompaction(forceFullCompaction)
+            , CompactionOptions(compactionOptions)
         {
             RangeCompactions.reserve(ranges.size());
             for (const auto& range: ranges) {
