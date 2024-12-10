@@ -5,6 +5,7 @@ NonReplicatedDiskRecyclingPeriod: 5000
 NonReplicatedMigrationStartAllowed: true
 AllocationUnitMirror2SSD: 1
 AllocationUnitMirror3SSD: 1
+MirroredMigrationStartAllowed: true
 NonReplicatedDontSuspendDevices: true
 UseShadowDisksForNonreplDiskCheckpoints: true
 MaxShadowDiskFillIoDepth: 4
@@ -13,3 +14,4 @@ MaxShadowDiskFillBandwidth: 1000
 MaxMigrationBandwidth: 1000
 AssignIdToWriteAndZeroRequestsEnabled: true
 RejectLateRequestsAtDiskAgentEnabled: true
+UseDirectCopyRange: true

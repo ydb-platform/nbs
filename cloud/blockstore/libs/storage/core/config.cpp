@@ -490,6 +490,7 @@ TDuration MSeconds(ui32 value)
                                                                                \
     xxx(VolumeProxyCacheRetryDuration,             TDuration, Seconds(15)     )\
                                                                                \
+    xxx(UseDirectCopyRange,                             bool,      false         )\
     xxx(MaxShadowDiskFillBandwidth,                     ui32,      512           )\
     xxx(MaxShadowDiskFillIoDepth,                       ui32,      1             )\
     xxx(BackgroundOperationsTotalBandwidth,             ui32,      1024          )\
@@ -517,7 +518,7 @@ TDuration MSeconds(ui32 value)
     xxx(BlobStorageAsyncGetTimeoutHDD,                  TDuration, Seconds(0)    )\
     xxx(BlobStorageAsyncGetTimeoutSSD,                  TDuration, Seconds(0)    )\
                                                                                \
-    xxx(EncryptionAtRestForDiskRegistryBasedDisksEnabled, bool,    false     ) \
+    xxx(EncryptionAtRestForDiskRegistryBasedDisksEnabled, bool,    false      )\
 
 // BLOCKSTORE_STORAGE_CONFIG_RW
 

@@ -1,6 +1,7 @@
 #include "get_device_for_range_companion.h"
 
 #include <cloud/blockstore/libs/common/block_range.h>
+#include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/core/forward_helpers.h>
 #include <cloud/blockstore/libs/storage/partition_nonrepl/config.h>
 #include <cloud/storage/core/libs/actors/helpers.h>
@@ -18,8 +19,10 @@ TGetDeviceForRangeCompanion::TGetDeviceForRangeCompanion(
 
 TGetDeviceForRangeCompanion::TGetDeviceForRangeCompanion(
         EAllowedOperation allowedOperation,
+        TStorageConfigPtr config,
         TNonreplicatedPartitionConfigPtr partConfig)
     : AllowedOperation(allowedOperation)
+    , Config(std::move(config))
     , PartConfig(std::move(partConfig))
 {}
 
@@ -76,6 +79,8 @@ void TGetDeviceForRangeCompanion::HandleGetDeviceForRange(
 
     response->Device = requests[0].Device;
     response->DeviceBlockRange = requests[0].DeviceBlockRange;
+    response->RequestTimeout = GetMinRequestTimeout();
+    response->PartConfig = PartConfig;
 
     NCloud::Reply(ctx, *ev, std::move(response));
 }
@@ -104,6 +109,14 @@ void TGetDeviceForRangeCompanion::ReplyCanNotUseDirectCopy(
             E_ABORTED,
             TStringBuilder() << "Can't use direct range copying for "
                              << DescribeRange(msg->BlockRange))));
+}
+
+TDuration TGetDeviceForRangeCompanion::GetMinRequestTimeout() const
+{
+    return PartConfig->GetVolumeInfo().MediaKind ==
+                   NProto::STORAGE_MEDIA_HDD_NONREPLICATED
+               ? Config->GetNonReplicatedMinRequestTimeoutHDD()
+               : Config->GetNonReplicatedMinRequestTimeoutSSD();
 }
 
 ////////////////////////////////////////////////////////////////////////////////

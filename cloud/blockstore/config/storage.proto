@@ -1071,4 +1071,7 @@ message TStorageServiceConfig
 
     // Enables the encryption at rest for Disk Registry based disks.
     optional bool EncryptionAtRestForDiskRegistryBasedDisksEnabled = 393;
+
+    // Enabling direct copying of data between disk agents.
+    optional bool UseDirectCopyRange = 394;
 }

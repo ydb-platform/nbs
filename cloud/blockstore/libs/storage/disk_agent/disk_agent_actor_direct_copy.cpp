@@ -1,12 +1,9 @@
 #include "disk_agent_actor.h"
 
 #include <cloud/blockstore/libs/storage/disk_agent/actors/direct_copy_actor.h>
-#include <cloud/storage/core/libs/kikimr/helpers.h>
-
 namespace NCloud::NBlockStore::NStorage {
 
 using namespace NActors;
-using namespace NKikimr;
 
 ////////////////////////////////////////////////////////////////////////////////
 
