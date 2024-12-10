@@ -948,7 +948,7 @@ Y_UNIT_TEST_SUITE(LocalFileStore)
         UNIT_ASSERT_VALUES_EQUAL(store.GetBlocksCount(), 500100);
     }
 
-    Y_UNIT_TEST(ShouldListExternallyCreatedStores)
+    Y_UNIT_TEST(ShouldListExternallyCreatedFilestores)
     {
         TTestBootstrap bootstrapExt;
         TTestBootstrap bootstrap(bootstrapExt.Cwd);
@@ -1058,7 +1058,7 @@ Y_UNIT_TEST_SUITE(LocalFileStore)
         bootstrap.DestroyFileStore("fs");
     }
 
-    Y_UNIT_TEST(ShouldNotListExternallyDestroyedStores)
+    Y_UNIT_TEST(ShouldNotListExternallyDestroyedFilestores)
     {
         TTestBootstrap bootstrapExt;
         TTestBootstrap bootstrap(bootstrapExt.Cwd);
@@ -1109,7 +1109,6 @@ Y_UNIT_TEST_SUITE(LocalFileStore)
             auto response = bootstrap.AssertCreateSessionFailed("fs", "client", "");
             UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, response.GetError().GetCode());
         }
-
     }
 
     Y_UNIT_TEST(ShouldRecoverLocalStores)
