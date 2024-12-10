@@ -50,18 +50,17 @@ jobs:
       - name: generate shellscripts from github actions
         run: |
           python .github/scripts/shell-extractor.py
-          find .github/temporary/ -type f -name "*.sh";
+          find .temporary/ -type f -name "*.sh";
 
-      - name: shellcheck
-        uses: reviewdog/action-shellcheck@v1.28.0
+      - name: shellcheck for .github dir
+        uses: ludeeus/action-shellcheck@master
         with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          reporter: ${{ steps.reporter.outputs.value }}
-          path: |
-            .github/
-            .temporary/
-          pattern: "*.sh"
-          level: "error"
+          scandir: .github
+
+      - name: shellcheck for github actions shell scripts in .temporary dir
+        uses: ludeeus/action-shellcheck@master
+        with:
+          scandir: .temporary
 
       - name: shfmt
         uses: librarian/action-shfmt@v0.0.1
