@@ -163,4 +163,4 @@ def process_actions():
 if __name__ == "__main__":
     process_workflows()
     process_actions()
-    print("Run commands have been extracted and saved in .github/temporary/")
+    print("Run commands have been extracted and saved in .temporary/")
