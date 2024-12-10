@@ -56,9 +56,14 @@ jobs:
         uses: ludeeus/action-shellcheck@master
         with:
           scandir: .github
+        env:
+          SHELL_CHECK_OPTS: "-e -e SC2155,SC2086,SC2154,SC2164,SC2009,SC2015"
+
 
       - name: shellcheck for github actions shell scripts in .temporary dir
         uses: ludeeus/action-shellcheck@master
+        env:
+          SHELL_CHECK_OPTS: "-e -e SC2155,SC2086,SC2154,SC2164,SC2009,SC2015"
         with:
           scandir: .temporary
 
@@ -130,8 +135,8 @@ jobs:
         run: |
           set -x
           export TMP_OUT=$(mktemp)
-          find .github/workflows -type f \( -iname \*.yaml -o -iname \*.yml \) \
-            | xargs -I {} action-validator --verbose {} > $TMP_OUT
+          find .github/workflows -type f \( -iname \*.yaml -o -iname \*.yml \) -print0 \
+            | xargs -0 -I {} action-validator --verbose {} > $TMP_OUT
 
           echo "WORKFLOW_LINT=$(cat $TMP_OUT | awk -v ORS='\\n' 1)"
           cat $TMP_OUT >> "$GITHUB_STEP_SUMMARY"

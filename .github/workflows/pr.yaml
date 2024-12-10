@@ -203,17 +203,19 @@ jobs:
           fi
 
           # Output to GitHub environment file
-          echo "build_target=\"$build_target\"" >> $GITHUB_OUTPUT
-          echo "build_target_asan=\"$build_target_asan\"" >> $GITHUB_OUTPUT
-          echo "build_target_tsan=\"$build_target_tsan\"" >> $GITHUB_OUTPUT
-          echo "build_target_msan=\"$build_target_msan\"" >> $GITHUB_OUTPUT
-          echo "build_target_ubsan=\"$build_target_ubsan\"" >> $GITHUB_OUTPUT
+          {
+            echo "build_target=\"$build_target\""
+            echo "build_target_asan=\"$build_target_asan\""
+            echo "build_target_tsan=\"$build_target_tsan\""
+            echo "build_target_msan=\"$build_target_msan\""
+            echo "build_target_ubsan=\"$build_target_ubsan\""
 
-          echo "test_target=\"$test_target\"" >> $GITHUB_OUTPUT
-          echo "test_target_asan=\"$test_target_asan\"" >> $GITHUB_OUTPUT
-          echo "test_target_tsan=\"$test_target_tsan\"" >> $GITHUB_OUTPUT
-          echo "test_target_msan=\"$test_target_msan\"" >> $GITHUB_OUTPUT
-          echo "test_target_ubsan=\"$test_target_ubsan\"" >> $GITHUB_OUTPUT
+            echo "test_target=\"$test_target\""
+            echo "test_target_asan=\"$test_target_asan\""
+            echo "test_target_tsan=\"$test_target_tsan\""
+            echo "test_target_msan=\"$test_target_msan\""
+            echo "test_target_ubsan=\"$test_target_ubsan\""
+          } >> $GITHUB_OUTPUT
 
         env:
           contains_blockstore: ${{ contains(github.event.pull_request.labels.*.name, 'blockstore') && 'true' || 'false' }}

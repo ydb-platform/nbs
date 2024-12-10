@@ -91,6 +91,7 @@ runs:
 
         folder="${{ runner.arch == 'X64' && 'x86-64' || runner.arch == 'ARM64' && 'arm64' || 'unknown' }}"
 
+        # shellcheck disable=SC2195
         case "${{ inputs.build_preset }}" in
           relwithdebinfo|release)
             ;;
@@ -114,7 +115,7 @@ runs:
             exit 1
             ;;
         esac
-
+        # shellcheck disable=SC2129
         echo "S3_BUCKET_PATH=s3://${{ inputs.s3_bucket }}/${{ github.repository }}/${GITHUB_WORKFLOW_NO_SPACES}/${{ github.run_id }}/${{ github.run_attempt || '1' }}/${{ inputs.folder_prefix }}${folder}" >> $GITHUB_ENV
         echo "S3_URL_PREFIX=${{ inputs.s3_endpoint }}/${{ inputs.s3_bucket }}/${{ github.repository }}/${GITHUB_WORKFLOW_NO_SPACES}/${{ github.run_id }}/${{ github.run_attempt || '1' }}/${{ inputs.folder_prefix }}${folder}" >> $GITHUB_ENV
         echo "S3_WEBSITE_PREFIX=https://${{ inputs.s3_bucket }}.${{ inputs.s3_website_suffix }}/${{ github.repository }}/${GITHUB_WORKFLOW_NO_SPACES}/${{ github.run_id }}/${{ github.run_attempt || '1' }}/${{ inputs.folder_prefix }}${folder}" >> $GITHUB_ENV

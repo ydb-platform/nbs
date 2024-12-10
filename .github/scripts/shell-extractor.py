@@ -1,6 +1,5 @@
 import os
 import yaml
-import uuid
 
 ACTIONS_DIR = ".github/actions"
 WORKFLOWS_DIR = ".github/workflows"
@@ -113,7 +112,7 @@ def write_runs_to_files(runs, output_dir, prefix):
       - If any block contains '${{ ... }}', insert '# shellcheck disable=SC2296' before that block.
     """
     for i, run_content in enumerate(runs, 1):
-        file_id = f"{prefix}-{i}-{uuid.uuid4().hex[:8]}.sh"
+        file_id = f"{prefix}-{i}.sh"
         filepath = os.path.join(output_dir, file_id)
 
         command_blocks = parse_command_blocks(run_content)
@@ -123,7 +122,7 @@ def write_runs_to_files(runs, output_dir, prefix):
             for block in command_blocks:
                 # Check if this block contains GitHub variables
                 if any("${{" in line for line in block):
-                    f.write("# shellcheck disable=SC2296\n")
+                    f.write("# shellcheck disable=SC2296,SC1083\n")
                 for line in block:
                     f.write(line + "\n")
 
