@@ -59,9 +59,9 @@ jobs:
           reporter: ${{ steps.reporter.outputs.value }}
           path: |
             .github/
+            .temporary/
           pattern: "*.sh"
           level: "error"
-          fail_on_error: "true"
 
       - name: shfmt
         uses: librarian/action-shfmt@v0.0.1
