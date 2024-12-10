@@ -4,8 +4,8 @@ import uuid
 
 ACTIONS_DIR = ".github/actions"
 WORKFLOWS_DIR = ".github/workflows"
-TEMP_ACTIONS_DIR = ".github/temporary/actions"
-TEMP_WORKFLOWS_DIR = ".github/temporary/workflows"
+TEMP_ACTIONS_DIR = ".temporary/actions"
+TEMP_WORKFLOWS_DIR = ".temporary/workflows"
 
 os.makedirs(TEMP_ACTIONS_DIR, exist_ok=True)
 os.makedirs(TEMP_WORKFLOWS_DIR, exist_ok=True)
