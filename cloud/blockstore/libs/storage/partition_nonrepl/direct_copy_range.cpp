@@ -35,13 +35,13 @@ TDirectCopyRangeActor::TDirectCopyRangeActor(
         TActorId target,
         TString writerClientId,
         IBlockDigestGeneratorPtr blockDigestGenerator)
-    : RequestInfo(std::move(requestInfo))
-    , BlockSize(blockSize)
+    : BlockSize(blockSize)
     , Range(range)
     , SourceActor(source)
     , TargetActor(target)
     , WriterClientId(std::move(writerClientId))
     , BlockDigestGenerator(std::move(blockDigestGenerator))
+    , RequestInfo(std::move(requestInfo))
 {}
 
 void TDirectCopyRangeActor::Bootstrap(const TActorContext& ctx)
@@ -119,10 +119,7 @@ void TDirectCopyRangeActor::Fallback(const TActorContext& ctx)
 {
     NCloud::Register<TCopyRangeActor>(
         ctx,
-        CreateRequestInfo(
-            RequestInfo->Sender,
-            RequestInfo->Cookie,
-            RequestInfo->CallContext),
+        std::move(RequestInfo),
         BlockSize,
         Range,
         SourceActor,
