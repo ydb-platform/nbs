@@ -137,7 +137,7 @@ private:
 
     TLog Log;
 
-    ui64 WriteRequestsCompleted = 0;
+    TAtomic WriteRequestsCompleted = 0;
 
 private:
     void DoWriteRequest(ui16 rangeIdx);
@@ -219,13 +219,13 @@ void TTestExecutor::OnResponse(
     TStringBuf reqType)
 {
     if (reqType == "write") {
-        const auto maxRequestCount =
+        const i64 maxRequestCount =
             ConfigHolder->GetConfig().GetMaxWriteRequestCount();
-        if (maxRequestCount && WriteRequestsCompleted >= maxRequestCount) {
+        if (maxRequestCount &&
+            AtomicIncrement(WriteRequestsCompleted) >= maxRequestCount)
+        {
             Stop();
         }
-
-        WriteRequestsCompleted++;
     }
 
     const auto now = Now();
