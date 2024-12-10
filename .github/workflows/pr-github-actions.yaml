@@ -48,16 +48,20 @@ jobs:
         run: pip install pyyaml
 
       - name: generate shellscripts from github actions
-        run: python .github/scripts/shell-extractor.py
+        run: |
+          python .github/scripts/shell-extractor.py
+          find .github/temporary/ -type f -name "*.sh";
 
       - name: shellcheck
-        uses: reviewdog/action-shellcheck@v1.19.0
+        uses: reviewdog/action-shellcheck@v1.28.0
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           reporter: ${{ steps.reporter.outputs.value }}
           path: |
             .github/
           pattern: "*.sh"
+          level: "error"
+          fail_on_error: "true"
 
       - name: shfmt
         uses: librarian/action-shfmt@v0.0.1
