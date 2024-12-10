@@ -29,6 +29,9 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+// The block count migrated at a time.
+constexpr ui64 ProcessingBlockCount = ProcessingRangeSize / DefaultBlockSize;
+
 auto MakeLeaderFollowerFilter(
     TActorId* leaderPartition,
     TActorId* followerPartition)
@@ -43,24 +46,27 @@ auto MakeLeaderFollowerFilter(
                                      TAutoPtr<IEventHandle>& event) -> bool
     {
         Y_UNUSED(runtime);
-        if (event->GetTypeRewrite() == TEvService::EvReadBlocksRequest) {
-            *leaderPartition = event->Recipient;
-        }
-        if (event->GetTypeRewrite() == TEvService::EvWriteBlocksRequest) {
-            *followerPartition = event->Recipient;
-        }
-        if (event->GetTypeRewrite() ==
-            TEvNonreplPartitionPrivate::EvGetDeviceForRangeRequest)
-        {
-            auto& msg = *event->Get<TEvGetDeviceForRangeRequest>();
-            switch (msg.Purpose) {
-                case EPurpose::ForReading:
-                    *leaderPartition = event->Recipient;
-                    break;
-                case EPurpose::ForWriting:
-                    *followerPartition = event->Recipient;
-                    break;
-            }
+
+        switch (event->GetTypeRewrite()) {
+            case TEvService::EvReadBlocksRequest: {
+                *leaderPartition = event->Recipient;
+            } break;
+
+            case TEvService::EvWriteBlocksRequest: {
+                *followerPartition = event->Recipient;
+            } break;
+
+            case TEvNonreplPartitionPrivate::EvGetDeviceForRangeRequest: {
+                auto& msg = *event->Get<TEvGetDeviceForRangeRequest>();
+                switch (msg.Purpose) {
+                    case EPurpose::ForReading:
+                        *leaderPartition = event->Recipient;
+                        break;
+                    case EPurpose::ForWriting:
+                        *followerPartition = event->Recipient;
+                        break;
+                }
+            } break;
         }
 
         return false;
@@ -308,7 +314,7 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionMigrationTest)
         auto& counters = env.StorageStatsServiceState->Counters.RequestCounters;
         UNIT_ASSERT_VALUES_EQUAL(2 + migrationWrites, counters.WriteBlocks.Count);
         UNIT_ASSERT_VALUES_EQUAL(
-            (2 + migrationWrites * 1024) * DefaultBlockSize,
+            (2 + migrationWrites * ProcessingBlockCount) * DefaultBlockSize,
             counters.WriteBlocks.RequestBytes
         );
     }
@@ -397,7 +403,7 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionMigrationTest)
 
         auto& counters = env.StorageStatsServiceState->Counters.Simple;
         UNIT_ASSERT_VALUES_EQUAL(
-            5 * 1024 * DefaultBlockSize,
+            5 * ProcessingBlockCount * DefaultBlockSize,
             counters.BytesCount.Value);
     }
 
@@ -984,7 +990,7 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionMigrationTest)
             migratedRangeCount,
             counters.WriteBlocks.Count);
         UNIT_ASSERT_VALUES_EQUAL(
-            (migratedRangeCount * 1024) * DefaultBlockSize,
+            (migratedRangeCount * ProcessingBlockCount) * DefaultBlockSize,
             counters.WriteBlocks.RequestBytes);
     }
 }
