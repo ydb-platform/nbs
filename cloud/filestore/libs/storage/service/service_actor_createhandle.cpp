@@ -115,7 +115,7 @@ void TCreateHandleActor::CreateHandleInShard(const TActorContext& ctx)
         LogTag.c_str(),
         CreateHandleRequest.GetNodeId(),
         CreateHandleRequest.GetName().Quote().c_str(),
-        CreateHandleRequest.GetShardFileSystemId().c_str());
+        LeaderResponse.GetShardFileSystemId().c_str());
 
     auto request = std::make_unique<TEvService::TEvCreateHandleRequest>();
     request->Record = CreateHandleRequest;
