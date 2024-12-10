@@ -59,6 +59,13 @@ var vmModeCapabilities = []*csi.NodeServiceCapability{
 			},
 		},
 	},
+	{
+		Type: &csi.NodeServiceCapability_Rpc{
+			Rpc: &csi.NodeServiceCapability_RPC{
+				Type: csi.NodeServiceCapability_RPC_EXPAND_VOLUME,
+			},
+		},
+	},
 }
 
 // CSI driver provides RPC_GET_VOLUME_STATS capability only in podMode
@@ -194,7 +201,6 @@ func (s *nodeService) NodeStageVolume(
 			var err error
 			if instanceId := req.VolumeContext[instanceIdKey]; instanceId != "" {
 				nbsId, _ := parseVolumeId(req.VolumeId)
-
 				stageRecordPath := filepath.Join(req.StagingTargetPath, nbsId+".json")
 				// Backend can be empty for old disks, in this case we use NBS
 				backend := "nbs"
@@ -1451,6 +1457,75 @@ func (s *nodeService) NodeGetVolumeStats(
 	}}, nil
 }
 
+func (s *nodeService) nodeExpandVolumeVmMode(
+	ctx context.Context,
+	req *csi.NodeExpandVolumeRequest) (*csi.NodeExpandVolumeResponse, error) {
+
+	// support expand volume only for volumes with instance id
+	diskId, _ := parseVolumeId(req.VolumeId)
+
+	stageRecordPath := filepath.Join(req.StagingTargetPath, diskId+".json")
+	stageData, err := s.readStageData(stageRecordPath)
+	if err != nil || stageData.InstanceId == "" {
+		return nil, s.statusErrorf(
+			codes.NotFound,
+			"NodeExpandVolume is not supported for volumes without instance id")
+	}
+
+	if stageData.Backend == "nfs" {
+		// expanding volumes with nfs backend works without refresh endpoint
+		return &csi.NodeExpandVolumeResponse{
+			CapacityBytes: req.CapacityRange.RequiredBytes,
+		}, nil
+	}
+
+	if s.nbsClient == nil {
+		return nil, fmt.Errorf("NodeExpandVolume is not supported")
+	}
+
+	resp, err := s.nbsClient.DescribeVolume(
+		ctx, &nbsapi.TDescribeVolumeRequest{
+			DiskId: diskId,
+		},
+	)
+
+	if err != nil {
+		if nbsclient.IsDiskNotFoundError(err) {
+			return nil, s.statusError(
+				codes.NotFound,
+				"Volume is not found")
+		}
+
+		log.Printf("Failed to describe volume %v", err)
+		return nil, s.statusErrorf(
+			codes.Internal,
+			"Failed to describe volume %v", err)
+	}
+
+	volumeSize := int64(resp.Volume.BlocksCount * uint64(resp.Volume.BlockSize))
+	if req.CapacityRange.RequiredBytes > volumeSize {
+		return nil, s.statusError(
+			codes.OutOfRange,
+			"Requested size is more than volume size")
+	}
+
+	endpointDir := s.getEndpointDir(stageData.InstanceId, diskId)
+	_, err = s.nbsClient.RefreshEndpoint(ctx, &nbsapi.TRefreshEndpointRequest{
+		UnixSocketPath: filepath.Join(endpointDir, nbsSocketName),
+	})
+
+	if err != nil {
+		log.Printf("Failed to resize device %v", err)
+		return nil, s.statusErrorf(
+			codes.Internal,
+			"Failed to resize device %v", err)
+	}
+
+	return &csi.NodeExpandVolumeResponse{
+		CapacityBytes: int64(resp.Volume.BlocksCount * uint64(resp.Volume.BlockSize)),
+	}, nil
+}
+
 func (s *nodeService) NodeExpandVolume(
 	ctx context.Context,
 	req *csi.NodeExpandVolumeRequest) (*csi.NodeExpandVolumeResponse, error) {
@@ -1467,6 +1542,10 @@ func (s *nodeService) NodeExpandVolume(
 		return nil, status.Error(
 			codes.InvalidArgument,
 			"VolumePath is missing in NodeExpandVolumeRequest")
+	}
+
+	if s.vmMode {
+		return s.nodeExpandVolumeVmMode(ctx, req)
 	}
 
 	if s.nbsClient == nil {
