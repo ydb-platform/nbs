@@ -10,38 +10,42 @@ TEMP_WORKFLOWS_DIR = ".github/temporary/workflows"
 os.makedirs(TEMP_ACTIONS_DIR, exist_ok=True)
 os.makedirs(TEMP_WORKFLOWS_DIR, exist_ok=True)
 
+
 def load_yaml_file(filepath):
-    with open(filepath, 'r') as f:
+    with open(filepath, "r") as f:
         return yaml.safe_load(f)
+
 
 def extract_runs_from_workflow(data):
     """Extract run commands from a workflow YAML structure."""
     runs = []
-    if not data or 'jobs' not in data:
+    if not data or "jobs" not in data:
         return runs
 
-    for job_id, job_data in data['jobs'].items():
-        steps = job_data.get('steps', [])
+    for job_id, job_data in data["jobs"].items():
+        steps = job_data.get("steps", [])
         if steps and isinstance(steps, list):
             for step in steps:
-                if 'run' in step:
-                    runs.append(step['run'])
+                if "run" in step:
+                    runs.append(step["run"])
     return runs
+
 
 def extract_runs_from_action(data):
     """Extract run commands from a composite action YAML structure."""
     runs = []
-    if not data or 'runs' not in data:
+    if not data or "runs" not in data:
         return runs
 
-    runs_data = data['runs']
-    if runs_data.get('using') == 'composite':
-        steps = runs_data.get('steps', [])
+    runs_data = data["runs"]
+    if runs_data.get("using") == "composite":
+        steps = runs_data.get("steps", [])
         if steps and isinstance(steps, list):
             for step in steps:
-                if 'run' in step:
-                    runs.append(step['run'])
+                if "run" in step:
+                    runs.append(step["run"])
     return runs
+
 
 def parse_command_blocks(run_content):
     """
@@ -87,7 +91,7 @@ def parse_command_blocks(run_content):
         # If not heredoc, check if line ends with a backslash
         stripped = line.strip()
         current_block.append(line)
-        if not stripped.endswith('\\'):
+        if not stripped.endswith("\\"):
             # This block ends here
             command_blocks.append(current_block)
             current_block = []
@@ -97,6 +101,7 @@ def parse_command_blocks(run_content):
         command_blocks.append(current_block)
 
     return command_blocks
+
 
 def write_runs_to_files(runs, output_dir, prefix):
     """
@@ -113,7 +118,7 @@ def write_runs_to_files(runs, output_dir, prefix):
 
         command_blocks = parse_command_blocks(run_content)
 
-        with open(filepath, 'w') as f:
+        with open(filepath, "w") as f:
             f.write("#!/usr/bin/env bash\n\n")
             for block in command_blocks:
                 # Check if this block contains GitHub variables
@@ -122,16 +127,18 @@ def write_runs_to_files(runs, output_dir, prefix):
                 for line in block:
                     f.write(line + "\n")
 
+
 def process_workflows():
     for root, dirs, files in os.walk(WORKFLOWS_DIR):
         for file in files:
-            if file.endswith(('.yml', '.yaml')):
+            if file.endswith((".yml", ".yaml")):
                 filepath = os.path.join(root, file)
                 data = load_yaml_file(filepath)
                 runs = extract_runs_from_workflow(data)
                 if runs:
                     base_name = os.path.splitext(file)[0]
                     write_runs_to_files(runs, TEMP_WORKFLOWS_DIR, base_name)
+
 
 def process_actions():
     # For actions, we assume each action directory under .github/actions contains an action.yml or action.yaml
@@ -140,7 +147,7 @@ def process_actions():
         if os.path.isdir(full_path):
             # Look for action.yml or action.yaml
             action_file = None
-            for candidate in ['action.yml', 'action.yaml']:
+            for candidate in ["action.yml", "action.yaml"]:
                 candidate_path = os.path.join(full_path, candidate)
                 if os.path.exists(candidate_path):
                     action_file = candidate_path
@@ -151,6 +158,7 @@ def process_actions():
                 runs = extract_runs_from_action(data)
                 if runs:
                     write_runs_to_files(runs, TEMP_ACTIONS_DIR, action_dir)
+
 
 if __name__ == "__main__":
     process_workflows()
