@@ -74,7 +74,7 @@ message TMonitoringUrlData
     optional string MonitoringNBSAlertsDashboard = 6;
     optional string MonitoringNBSTVDashboard = 7;
 
-    optional string MonitoringKikimrProject = 8;
+    optional string MonitoringYDBProject = 8;
     optional string MonitoringYDBGroupDashboard = 9;
 };
 

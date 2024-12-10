@@ -140,9 +140,9 @@ TString GetMonitoringDashboardYDBGroupUrl(
     const TDiagnosticsConfig& config,
     ui32 groupId)
 {
-    const auto& monitoringKikimrProject =
-        config.GetMonitoringUrlData().MonitoringKikimrProject;
-    if (monitoringKikimrProject.empty()) {
+    const auto& monitoringYDBProject =
+        config.GetMonitoringUrlData().MonitoringYDBProject;
+    if (monitoringYDBProject.empty()) {
         return "";
     }
 
@@ -153,7 +153,7 @@ TString GetMonitoringDashboardYDBGroupUrl(
     return Sprintf(
         Url.data(),
         config.GetMonitoringUrlData().MonitoringUrl.c_str(),
-        monitoringKikimrProject.c_str(),
+        monitoringYDBProject.c_str(),
         config.GetMonitoringUrlData().MonitoringYDBGroupDashboard.c_str(),
         groupId);
 }
