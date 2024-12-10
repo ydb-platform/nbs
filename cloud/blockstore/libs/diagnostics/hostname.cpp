@@ -140,19 +140,21 @@ TString GetMonitoringDashboardYDBGroupUrl(
     const TDiagnosticsConfig& config,
     ui32 groupId)
 {
-    const auto& monitoringDashboardUrl =
-        config.GetMonitoringUrlData().MonitoringDashboardUrl;
-    if (monitoringDashboardUrl.empty()) {
+    const auto& monitoringKikimrProject =
+        config.GetMonitoringUrlData().MonitoringKikimrProject;
+    if (monitoringKikimrProject.empty()) {
         return "";
     }
+
     constexpr TStringBuf Url =
-        R"(%s/projects/kikimr/dashboards/%s?from=now-1d&to=now&refresh=60000&p.cluster="*"&p.group="%)" PRIu32
-        ")";
+        "%s/projects/%s/dashboards/"
+        "%s?from=now-1d&to=now&refresh=60000&p.cluster=*&p.group=%" PRIu32;
 
     return Sprintf(
         Url.data(),
-        monitoringDashboardUrl.c_str(),
-        config.GetMonitoringUrlData().MonitoringDashboardId.c_str(),
+        config.GetMonitoringUrlData().MonitoringUrl.c_str(),
+        monitoringKikimrProject.c_str(),
+        config.GetMonitoringUrlData().MonitoringYDBGroupDashboard.c_str(),
         groupId);
 }
 

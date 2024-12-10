@@ -80,8 +80,8 @@ struct TMonitoringUrlData: public TAtomicRefCount<TMonitoringUrlData>
     TString MonitoringPartitionDashboard;
     TString MonitoringNBSAlertsDashboard;
     TString MonitoringNBSTVDashboard;
-    TString MonitoringDashboardUrl;
-    TString MonitoringDashboardId;
+    TString MonitoringKikimrProject;
+    TString MonitoringYDBGroupDashboard;
 
     TMonitoringUrlData()
         : MonitoringProject("nbs")
@@ -96,8 +96,8 @@ struct TMonitoringUrlData: public TAtomicRefCount<TMonitoringUrlData>
         , MonitoringPartitionDashboard(data.GetMonitoringPartitionDashboard())
         , MonitoringNBSAlertsDashboard(data.GetMonitoringNBSAlertsDashboard())
         , MonitoringNBSTVDashboard(data.GetMonitoringNBSTVDashboard())
-        , MonitoringDashboardUrl(data.GetMonitoringDashboardUrl())
-        , MonitoringDashboardId(data.GetMonitoringDashboardId())
+        , MonitoringKikimrProject(data.GetMonitoringKikimrProject())
+        , MonitoringYDBGroupDashboard(data.GetMonitoringYDBGroupDashboard())
     {}
 };
 

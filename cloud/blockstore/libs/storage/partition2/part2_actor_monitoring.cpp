@@ -111,7 +111,10 @@ void DumpChannels(
                                            latestEntry->GroupID,
                                            channel.StoragePool)
                                     << "'>Graphs</a>";
-                                auto monitoringDashboardUrl = GetMonitoringDashboardYDBGroupUrl(config, latestEntry->GroupID);
+                                auto monitoringDashboardUrl =
+                                    GetMonitoringDashboardYDBGroupUrl(
+                                        config,
+                                        latestEntry->GroupID);
                                 if (!monitoringDashboardUrl.empty()) {
                                     out << "<br>" << "<a href='"
                                         << monitoringDashboardUrl
