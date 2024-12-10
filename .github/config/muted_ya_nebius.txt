@@ -12,6 +12,7 @@ cloud/filestore/tests/fio/qemu-kikimr-test *
 cloud/filestore/tests/fio/qemu-local-noserver-test *
 cloud/filestore/tests/fio/qemu-local-test *
 cloud/filestore/tests/fio_index/qemu-kikimr-multishard-nemesis-test *
+cloud/filestore/tests/fio_index/qemu-kikimr-multishard-tablets-restart-test *
 cloud/filestore/tests/fio_index/qemu-kikimr-multishard-test *
 cloud/filestore/tests/fio_index/qemu-kikimr-nemesis-test *
 cloud/filestore/tests/fio_index/qemu-kikimr-test *
