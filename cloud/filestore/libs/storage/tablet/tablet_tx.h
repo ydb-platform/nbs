@@ -659,8 +659,9 @@ struct TTxIndexTablet
         const ui64 TargetNodeId;
         const TString Name;
         const NProto::TNode Attrs;
-        const TString ShardId;
-        const TString ShardNodeName;
+        const TString RequestShardId;
+        TString ShardId;
+        TString ShardNodeName;
         NProto::TCreateNodeRequest Request;
 
         ui64 CommitId = InvalidCommitId;
@@ -684,14 +685,8 @@ struct TTxIndexTablet
             , TargetNodeId(targetNodeId)
             , Name(request.GetName())
             , Attrs(std::move(attrs))
-            , ShardId(request.GetShardFileSystemId())
-            // For multishard filestore, selection of the shard node name for
-            // hard links is done by the client, not the leader. Thus, the
-            // client is able to provide the shard node name explicitly:
-            , ShardNodeName(
-                  request.HasLink() && request.GetLink().GetShardNodeName()
-                      ? request.GetLink().GetShardNodeName()
-                      : ShardId ? CreateGuidAsString() : TString())
+            , RequestShardId(request.GetShardFileSystemId())
+            , ShardId(RequestShardId)
             , Request(std::move(request))
         {
         }
