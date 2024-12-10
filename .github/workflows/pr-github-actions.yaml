@@ -44,6 +44,12 @@ jobs:
           if_true: "github-pr-review"
           if_false: "github-check"
 
+      - name: set up dependencies
+        run: pip install pyyaml
+
+      - name: generate shellscripts from github actions
+        run: python .github/scripts/shell-extractor.py
+
       - name: shellcheck
         uses: reviewdog/action-shellcheck@v1.19.0
         with:
