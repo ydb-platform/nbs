@@ -481,9 +481,7 @@ func (s *Session) startRemounter(ctx context.Context) {
 				select {
 				case <-r.Done:
 				default:
-					if !s.closed {
-						_, _ = s.remountVolume(r.remountCtx)
-					}
+					_, _ = s.remountVolume(r.remountCtx)
 				}
 
 				s.mountLock.Unlock()
