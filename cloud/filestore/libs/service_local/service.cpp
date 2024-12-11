@@ -458,6 +458,8 @@ NProto::TDestroyFileStoreResponse TLocalFileStore::DestroyFileStore(
         return TErrorResponse(E_ARGUMENT, "invalid file system identifier");
     }
 
+    RefreshFileSystems();
+
     TWriteGuard guard(Lock);
 
     auto it = FileSystems.find(id);
