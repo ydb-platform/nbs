@@ -14,7 +14,7 @@ TLocalFileSystem::TLocalFileSystem(
         ILoggingServicePtr logging,
         IFileIOServicePtr fileIOService)
     : Config(std::move(config))
-    , Root(std::move(root))
+    , RootPath(std::move(root))
     , StatePath(std::move(statePath))
     , Timer(std::move(timer))
     , Scheduler(std::move(scheduler))

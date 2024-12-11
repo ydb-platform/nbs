@@ -88,7 +88,7 @@ class TLocalFileSystem final
 
 private:
     const TLocalFileStoreConfigPtr Config;
-    const TFsPath Root;
+    const TFsPath RootPath;
     const TFsPath StatePath;
     const ITimerPtr Timer;
     const ISchedulerPtr Scheduler;

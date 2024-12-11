@@ -51,7 +51,7 @@ NProto::TCreateSessionResponse TLocalFileSystem::CreateSession(
 
     session = std::make_shared<TSession>(
         Store.GetFileSystemId(),
-        Root,
+        RootPath,
         clientSessionStatePath,
         clientId,
         Config->GetMaxNodeCount(),

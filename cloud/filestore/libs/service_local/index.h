@@ -133,7 +133,7 @@ private:
     using TNodeMap = THashSet<TIndexNodePtr, THash, TEqual>;
     using TNodeTable = TPersistentTable<TNodeTableHeader, TNodeTableRecord>;
 
-    const TFsPath Root;
+    const TFsPath RootPath;
     const TFsPath StatePath;
     ui32 MaxNodeCount;
     TNodeMap Nodes;
@@ -147,7 +147,7 @@ public:
             TFsPath statePath,
             ui32 maxNodeCount,
             TLog log)
-        : Root(std::move(root))
+        : RootPath(std::move(root))
         , StatePath(std::move(statePath))
         , MaxNodeCount(maxNodeCount)
         , Log(std::move(log))
@@ -221,18 +221,18 @@ public:
 
         NodeTable->Clear();
         Nodes.clear();
-        Nodes.insert(TIndexNode::CreateRoot(Root));
+        Nodes.insert(TIndexNode::CreateRoot(RootPath));
     }
 
 private:
     void Init()
     {
         STORAGE_INFO(
-            "Init index, Root=" << Root <<
+            "Init index, Root=" << RootPath <<
             ", StatePath=" << StatePath
             << ", MaxNodeCount=" << MaxNodeCount);
 
-        Nodes.insert(TIndexNode::CreateRoot(Root));
+        Nodes.insert(TIndexNode::CreateRoot(RootPath));
 
         NodeTable = std::make_unique<TNodeTable>(
             (StatePath / "nodes").GetPath(),
