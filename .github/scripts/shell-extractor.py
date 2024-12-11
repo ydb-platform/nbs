@@ -57,6 +57,8 @@ def parse_command_blocks(run_content):
     - Otherwise, each line not ending with a backslash or not part of a heredoc is its own block.
 
     Returns a list of command blocks, where each block is a list of lines.
+
+    We need this to place shellcheck commands before blocks that contain GitHub variables.
     """
     lines = run_content.splitlines()
     command_blocks = []
@@ -104,12 +106,15 @@ def parse_command_blocks(run_content):
 
 def write_runs_to_files(runs, output_dir, prefix):
     """
-    Write each run command to a unique .sh file in the given output_dir.
-    Adds a #!/usr/bin/env bash shebang at the start of each script.
+    Write each run command to a .sh file with template {action name}-{index inside of action file}
+    in the given output_dir.
+
+    Also adds a #!/usr/bin/env bash shebang at the start of each script.
 
     For each run:
       - Parse into command blocks.
-      - If any block contains '${{ ... }}', insert '# shellcheck disable=SC2296' before that block.
+      - If any block contains '${{ ... }}', insert shellcheck disable instructions
+        before that block.
     """
     for i, run_content in enumerate(runs, 1):
         file_id = f"{prefix}-{i}.sh"
@@ -122,6 +127,8 @@ def write_runs_to_files(runs, output_dir, prefix):
             for block in command_blocks:
                 # Check if this block contains GitHub variables
                 if any("${{" in line for line in block):
+                    # SC2296 is about that github variables are not valid shell variables
+                    # SC1083 about basically the same thing
                     f.write("# shellcheck disable=SC2296,SC1083\n")
                 for line in block:
                     f.write(line + "\n")
