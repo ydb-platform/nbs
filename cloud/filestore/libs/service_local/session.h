@@ -27,7 +27,7 @@ namespace NCloud::NFileStore {
 class TSession
 {
 public:
-    const TFsPath Root;
+    const TFsPath RootPath;
     const TFsPath StatePath;
     const TString ClientId;
     TString SessionId;
@@ -77,14 +77,14 @@ public:
             ui32 maxNodeCount,
             ui32 maxHandleCount,
             ILoggingServicePtr logging)
-        : Root(root.RealPath())
+        : RootPath(root.RealPath())
         , StatePath(statePath.RealPath())
         , ClientId(std::move(clientId))
         , Logging(std::move(logging))
         , Log(Logging->CreateLog(fileSystemId + "." + ClientId))
         , MaxNodeCount(maxNodeCount)
         , MaxHandleCount(maxHandleCount)
-        , Index(Root, StatePath, MaxNodeCount, Log)
+        , Index(RootPath, StatePath, MaxNodeCount, Log)
     {}
 
     void Init(bool restoreClientSession)
