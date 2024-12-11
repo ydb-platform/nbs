@@ -67,7 +67,6 @@ TString GetIamTokenFromFile(const TString& iamTokenFile)
     return Strip(TFileInput(file).ReadAll());
 }
 
-
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
