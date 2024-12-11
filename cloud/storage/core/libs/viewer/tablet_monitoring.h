@@ -22,6 +22,8 @@ using TGetMonitoringYDBGroupUrl = std::function<TString(
     ui32 groupId,
     const TString& storagePool)>;
 
+using TGetMonitoringDashboardYDBGroupUrl = std::function<TString(ui32 groupId)>;
+
 using TBuildReassignChannelButton = std::function<void(
     IOutputStream& out,
     ui64 hiveTabletId,
@@ -33,6 +35,7 @@ void DumpChannels(
     const TVector<TChannelMonInfo>& channelInfos,
     const NKikimr::TTabletStorageInfo& storage,
     const TGetMonitoringYDBGroupUrl& getGroupUrl,
+    const TGetMonitoringDashboardYDBGroupUrl& getDashboardUrl,
     const TBuildReassignChannelButton& buildReassignButton,
     ui64 hiveTabletId);
 

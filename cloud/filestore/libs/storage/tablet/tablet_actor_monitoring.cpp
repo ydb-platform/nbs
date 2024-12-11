@@ -769,6 +769,11 @@ void DumpChannels(
             Y_UNUSED(storagePool);
             return TString();
         },
+        [&] (ui32 groupId) {
+            // TODO: dashboard url
+            Y_UNUSED(groupId);
+            return TString();
+        },
         [&] (IOutputStream& out, ui64 hiveTabletId, ui64 tabletId, ui32 c) {
             // TODO: reassign button
             Y_UNUSED(out);
