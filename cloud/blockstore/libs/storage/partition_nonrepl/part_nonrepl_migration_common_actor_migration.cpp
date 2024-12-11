@@ -232,40 +232,51 @@ void TNonreplicatedPartitionMigrationCommonActor::HandleRangeMigrated(
     }
 
     auto* msg = ev->Get();
+    if (msg->ExecutionSide == EExecutionSide::Local) {
+        NetworkBytes += 2 * msg->Range.Size() * BlockSize;
+        CpuUsage += CyclesToDurationSafe(msg->ExecCycles);
 
-    NetworkBytes += 2 * msg->Range.Size() * BlockSize;
-    CpuUsage += CyclesToDurationSafe(msg->ExecCycles);
+        ProfileLog->Write({
+            .DiskId = DiskId,
+            .Ts = msg->ReadStartTs,
+            .Request =
+                IProfileLog::TSysReadWriteRequest{
+                    .RequestType = ESysRequestType::Migration,
+                    .Duration = msg->ReadDuration,
+                    .Ranges = {msg->Range},
+                },
+        });
 
-    ProfileLog->Write({
-        .DiskId = DiskId,
-        .Ts = msg->ReadStartTs,
-        .Request = IProfileLog::TSysReadWriteRequest{
-            .RequestType = ESysRequestType::Migration,
-            .Duration = msg->ReadDuration,
-            .Ranges = {msg->Range},
-        },
-    });
-
-    ProfileLog->Write({
-        .DiskId = DiskId,
-        .Ts = msg->WriteStartTs,
-        .Request = IProfileLog::TSysReadWriteRequest{
-            .RequestType = ESysRequestType::Migration,
-            .Duration = msg->WriteDuration,
-            .Ranges = {msg->Range},
-        },
-    });
-
-    if (msg->AffectedBlockInfos) {
         ProfileLog->Write({
             .DiskId = DiskId,
             .Ts = msg->WriteStartTs,
-            .Request = IProfileLog::TSysReadWriteRequestBlockInfos{
-                .RequestType = ESysRequestType::Migration,
-                .BlockInfos = std::move(msg->AffectedBlockInfos),
-                .CommitId = 0,
-            },
+            .Request =
+                IProfileLog::TSysReadWriteRequest{
+                    .RequestType = ESysRequestType::Migration,
+                    .Duration = msg->WriteDuration,
+                    .Ranges = {msg->Range},
+                },
         });
+
+        if (msg->AffectedBlockInfos) {
+            ProfileLog->Write({
+                .DiskId = DiskId,
+                .Ts = msg->WriteStartTs,
+                .Request =
+                    IProfileLog::TSysReadWriteRequestBlockInfos{
+                        .RequestType = ESysRequestType::Migration,
+                        .BlockInfos = std::move(msg->AffectedBlockInfos),
+                        .CommitId = 0,
+                    },
+            });
+        }
+    } else {
+        const auto networkBytes = msg->Range.Size() * BlockSize;
+        const auto execTime = msg->ReadDuration + msg->WriteDuration;
+
+        MigrationCounters->RequestCounters.CopyBlocks.AddRequest(
+            execTime.MicroSeconds(),
+            networkBytes);
     }
 
     const bool erased = MigrationsInProgress.Remove(msg->Range);
