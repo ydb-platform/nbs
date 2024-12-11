@@ -25,7 +25,6 @@ private:
     using TDeviceInfoResponse = std::unique_ptr<
         TEvNonreplPartitionPrivate::TEvGetDeviceForRangeResponse>;
 
-    const TRequestInfoPtr RequestInfo;
     const ui32 BlockSize;
     const TBlockRange64 Range;
     const NActors::TActorId SourceActor;
@@ -33,6 +32,7 @@ private:
     const TString WriterClientId;
     const IBlockDigestGeneratorPtr BlockDigestGenerator;
 
+    TRequestInfoPtr RequestInfo;
     TInstant StartTs;
     TDuration ReadDuration;
     TDuration WriteDuration;

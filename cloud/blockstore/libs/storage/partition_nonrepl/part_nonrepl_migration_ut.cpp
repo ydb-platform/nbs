@@ -963,13 +963,15 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionMigrationTest)
             if (event->GetTypeRewrite() ==
                 TEvNonreplPartitionPrivate::EvGetDeviceForRangeRequest)
             {
-                runtime.Send(new IEventHandle(
-                    event->Sender,
-                    event->Recipient,
-                    new TEvGetDeviceForRangeResponse(MakeError(E_ABORTED)),
-                    0,
-                    event->Cookie,
-                    nullptr));
+                runtime.Schedule(
+                    new IEventHandle(
+                        event->Sender,
+                        event->Recipient,
+                        new TEvGetDeviceForRangeResponse(MakeError(E_ABORTED)),
+                        0,
+                        event->Cookie,
+                        nullptr),
+                    TDuration::MilliSeconds(1));
 
                 return true;
             }
