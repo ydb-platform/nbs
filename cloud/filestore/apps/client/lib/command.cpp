@@ -339,7 +339,6 @@ TString TCommand::GetIamTokenFromClient()
     return iamToken;
 }
 
-
 ////////////////////////////////////////////////////////////////////////////////
 
 void TFileStoreServiceCommand::Init()
