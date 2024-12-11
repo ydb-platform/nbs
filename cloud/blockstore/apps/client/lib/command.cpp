@@ -574,15 +574,16 @@ void TCommand::InitIamTokenClient()
         return;
     }
 
-    NProto::TIamClientConfig iamConfig;
+    NProto::TIamClientConfig iamClientProtoConfig;
     if (IamConfigFile) {
-        ParseFromTextFormat(IamConfigFile, iamConfig);
+        ParseFromTextFormat(IamConfigFile, iamClientProtoConfig);
     } else if (NFs::Exists(DefaultIamConfigFile)) {
-        ParseFromTextFormat(DefaultIamConfigFile, iamConfig);
+        ParseFromTextFormat(DefaultIamConfigFile, iamClientProtoConfig);
     }
 
     auto iamClientConfig =
-        std::make_shared<NCloud::NIamClient::TIamClientConfig>(iamConfig);
+        std::make_shared<NCloud::NIamClient::TIamClientConfig>(
+            iamClientProtoConfig);
 
     IamClient = ClientFactories->IamClientFactory(
         std::move(iamClientConfig),
