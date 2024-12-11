@@ -50,7 +50,7 @@ Y_UNIT_TEST_SUITE(ValidateTest)
 
     Y_UNIT_TEST(ValidateRange) {
         for (int i = 0; i < 5; ++i) {
-            ValidateRange(255 + i);
+            ValidateRange(256 + i);
         }
     }
 }
