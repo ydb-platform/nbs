@@ -11,7 +11,10 @@ private:
 
 public:
     static TApp& Instance();
-    int Run(int argc, char** argv);
+    int Run(
+        std::shared_ptr<TClientFactories> clientFactories,
+        int argc,
+        char** argv);
     void Stop(int exitCode);
 
 private:
