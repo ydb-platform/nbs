@@ -298,7 +298,9 @@ public:
 
     bool CalculateExpectedShardCount() const;
 
-    TString SelectShard(ui64 fileSize);
+    NProto::TError SelectShard(ui64 fileSize, TString* shardId);
+
+    void UpdateShardStats(const TVector<TShardStats>& stats);
 
     //
     // FileSystem Stats

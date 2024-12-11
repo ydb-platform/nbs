@@ -27,7 +27,7 @@ private:
     const NProtoPrivate::TGetStorageStatsRequest Request;
     const google::protobuf::RepeatedPtrField<TString> ShardIds;
     std::unique_ptr<TEvIndexTablet::TEvGetStorageStatsResponse> Response;
-    TVector<TEvIndexTabletPrivate::TShardStats> ShardStats;
+    TVector<TShardStats> ShardStats;
     int Responses = 0;
 
 public:
@@ -924,6 +924,7 @@ void TIndexTabletActor::HandleGetShardStatsCompleted(
         }
         CachedAggregateStats = std::move(msg->AggregateStats);
         CachedShardStats = std::move(msg->ShardStats);
+        UpdateShardStats(CachedShardStats);
 
         Store(
             Metrics.AggregateUsedBytesCount,

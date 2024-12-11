@@ -11,6 +11,7 @@
 #include <cloud/filestore/libs/storage/model/range.h>
 #include <cloud/filestore/libs/storage/tablet/model/blob.h>
 #include <cloud/filestore/libs/storage/tablet/model/block.h>
+#include <cloud/filestore/libs/storage/tablet/model/shard_balancer.h>
 #include <cloud/filestore/private/api/protos/tablet.pb.h>
 
 #include <contrib/ydb/core/base/blobstorage.h>
@@ -817,14 +818,6 @@ struct TEvIndexTabletPrivate
     //
     // GetShardStats
     //
-
-    struct TShardStats
-    {
-        ui64 TotalBlocksCount{0};
-        ui64 UsedBlocksCount{0};
-        ui64 CurrentLoad{0};
-        ui64 Suffer{0};
-    };
 
     struct TGetShardStatsCompleted
     {

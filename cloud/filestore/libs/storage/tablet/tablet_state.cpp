@@ -157,6 +157,9 @@ void TIndexTabletState::LoadState(
 
     Impl->OrphanNodeIds.insert(orphanNodeIds.begin(), orphanNodeIds.end());
 
+    Impl->ShardBalancer.SetParameters(
+        config.GetShardBalancerDesiredFreeSpaceReserve(),
+        config.GetShardBalancerMinFreeSpaceReserve());
     const auto& shardIds = GetFileSystem().GetShardFileSystemIds();
     Impl->ShardBalancer.UpdateShards({shardIds.begin(), shardIds.end()});
 }
