@@ -34,12 +34,13 @@ void ProcessError(
 {
     if (error.GetCode() == E_BS_INVALID_SESSION) {
         SendEvReacquireDisk(system, config.GetParentActorId());
-
         error.SetCode(E_REJECTED);
     }
 
     if (error.GetCode() == E_IO || error.GetCode() == MAKE_SYSTEM_ERROR(EIO)) {
-        error = config.MakeIOError(std::move(*error.MutableMessage()), true);
+        error = config.MakeIOError(std::move(*error.MutableMessage()));
+    } else {
+        config.AugmentErrorFlags(error);
     }
 }
 

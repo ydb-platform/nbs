@@ -1,6 +1,7 @@
 LIBRARY()
 
 SRCS(
+    direct_copy_actor.cpp
     io_request_parser.cpp
     session_cache_actor.cpp
 )

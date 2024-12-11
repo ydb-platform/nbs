@@ -361,6 +361,11 @@ public:
         const TString& folderId,
         const TString& diskId) const;
 
+    [[nodiscard]] bool IsEncryptionAtRestForDiskRegistryBasedDisksFeatureEnabled(
+        const TString& cloudId,
+        const TString& folderId,
+        const TString& diskId) const;
+
     TDuration GetMaxTimedOutDeviceStateDurationFeatureValue(
         const TString& cloudId,
         const TString& folderId,
@@ -461,6 +466,7 @@ public:
 
     TDuration GetDiskRegistryVolumeConfigUpdatePeriod() const;
     bool GetDiskRegistryAlwaysAllocatesLocalDisks() const;
+    bool GetDiskRegistryCleanupConfigOnRemoveHost() const;
     TDuration GetReassignRequestRetryTimeout() const;
     ui32 GetReassignChannelsPercentageThreshold() const;
 
@@ -565,6 +571,7 @@ public:
     TString GetCachedDiskAgentConfigPath() const;
     TString GetCachedDiskAgentSessionsPath() const;
 
+    bool GetUseDirectCopyRange() const;
     ui32 GetMaxShadowDiskFillBandwidth() const;
     ui32 GetMaxShadowDiskFillIoDepth() const;
     ui32 GetBackgroundOperationsTotalBandwidth() const;
@@ -612,6 +619,8 @@ public:
 
     TDuration GetBlobStorageAsyncGetTimeoutHDD() const;
     TDuration GetBlobStorageAsyncGetTimeoutSSD() const;
+
+    [[nodiscard]] bool GetEncryptionAtRestForDiskRegistryBasedDisksEnabled() const;
 };
 
 ui64 GetAllocationUnit(

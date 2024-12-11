@@ -191,15 +191,15 @@ Y_UNIT_TEST_SUITE(TInMemoryIndexStateTest)
 
     const TString nodeName1 = "node1";
     const TString nodeName2 = "node2";
-    const TString shardName1 = "shard1";
-    const TString shardName2 = "shard2";
+    const TString shardNodeName1 = "shard1";
+    const TString shardNodeName2 = "shard2";
     const TString shardId1 = "shardId1";
     const TString shardId2 = "shardId2";
 
     //
     // NodeRefs
     //
-    Y_UNIT_TEST(ShoulPopulateNodeRefs)
+    Y_UNIT_TEST(ShouldPopulateNodeRefs)
     {
         // For now
         TInMemoryIndexState state(TDefaultAllocator::Instance());
@@ -214,7 +214,7 @@ Y_UNIT_TEST_SUITE(TInMemoryIndexStateTest)
                 .CommitId = commitId2,
                 .ChildId = nodeId1,
                 .ShardId = shardId1,
-                .ShardName = shardName1}}});
+                .ShardNodeName = shardNodeName1}}});
 
         UNIT_ASSERT(state.ReadNodeRef(RootNodeId, commitId2, nodeName1, ref));
         UNIT_ASSERT_VALUES_EQUAL(RootNodeId, ref->NodeId);
@@ -223,7 +223,7 @@ Y_UNIT_TEST_SUITE(TInMemoryIndexStateTest)
         UNIT_ASSERT_VALUES_EQUAL(commitId2, ref->MinCommitId);
         UNIT_ASSERT_VALUES_EQUAL(InvalidCommitId, ref->MaxCommitId);
         UNIT_ASSERT_VALUES_EQUAL(shardId1, ref->ShardId);
-        UNIT_ASSERT_VALUES_EQUAL(shardName1, ref->ShardName);
+        UNIT_ASSERT_VALUES_EQUAL(shardNodeName1, ref->ShardNodeName);
 
         // The cache is preemptive, so the listing should not be possible for
         // now
@@ -260,7 +260,7 @@ Y_UNIT_TEST_SUITE(TInMemoryIndexStateTest)
                          .CommitId = commitId1,
                          .ChildId = nodeId1,
                          .ShardId = shardId1,
-                         .ShardName = shardName1,
+                         .ShardNodeName = shardNodeName1,
                      }},
              TInMemoryIndexState::TWriteNodeRefsRequest{
                  .NodeRefsKey = {RootNodeId, nodeName2},
@@ -268,7 +268,7 @@ Y_UNIT_TEST_SUITE(TInMemoryIndexStateTest)
                      .CommitId = commitId1,
                      .ChildId = nodeId2,
                      .ShardId = shardId2,
-                     .ShardName = shardName2,
+                     .ShardNodeName = shardNodeName2,
                  }}});
 
         TMaybe<IIndexTabletDatabase::TNodeRef> ref;
@@ -287,7 +287,7 @@ Y_UNIT_TEST_SUITE(TInMemoryIndexStateTest)
                 .CommitId = commitId1,
                 .ChildId = nodeId1,
                 .ShardId = shardId1,
-                .ShardName = shardName1,
+                .ShardNodeName = shardNodeName1,
             }}});
 
         TMaybe<IIndexTabletDatabase::TNodeRef> ref;

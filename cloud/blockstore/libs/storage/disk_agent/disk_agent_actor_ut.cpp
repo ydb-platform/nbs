@@ -9,19 +9,16 @@
 #include <cloud/blockstore/libs/storage/disk_agent/testlib/test_env.h>
 #include <cloud/blockstore/libs/storage/model/composite_id.h>
 #include <cloud/blockstore/libs/storage/testlib/ut_helpers.h>
-
 #include <cloud/storage/core/libs/common/proto_helpers.h>
+
+#include <contrib/ydb/library/actors/core/mon.h>
 
 #include <library/cpp/lwtrace/all.h>
 #include <library/cpp/monlib/dynamic_counters/counters.h>
 #include <library/cpp/protobuf/util/pb_io.h>
 #include <library/cpp/testing/gmock_in_unittest/gmock.h>
 
-#include <contrib/ydb/library/actors/core/mon.h>
-
 #include <util/folder/tempdir.h>
-
-#include <chrono>
 
 namespace NCloud::NBlockStore::NStorage {
 
@@ -226,7 +223,7 @@ struct TFixture
             memset(const_cast<char*>(buffer.Data()), 'Y', buffer.Size());
         }
 
-        diskAgent.SendRequest(MakeDiskAgentServiceId(), std::move(request));
+        diskAgent.SendRequest(std::move(request));
         Runtime.DispatchEvents({});
         auto response = diskAgent.RecvWriteDeviceBlocksResponse();
 
@@ -280,6 +277,198 @@ struct TFixture
         for (const auto& path: Files) {
             path.DeleteIfExists();
         }
+    }
+};
+
+struct TCopyRangeFixture: public NUnitTest::TBaseFixture
+{
+    using TEvDirectCopyBlocksRequest = TEvDiskAgent::TEvDirectCopyBlocksRequest;
+    using TEvDirectCopyBlocksResponse =
+        TEvDiskAgent::TEvDirectCopyBlocksResponse;
+
+    const ui32 BlockSize = DefaultBlockSize;
+    const ui32 BlockCount = 5;
+    const ui64 SourceStartIndex = 5;
+    const ui64 TargetStartIndex = 7;
+
+    const TString ClientId = "client-id";
+    const TString SourceClientId = "client-reader";
+    const TString TargetClientId = "client-writer";
+
+    TTestBasicRuntime Runtime{2};
+    TTestEnv Environment;
+    TDiskAgentClient DiskAgent1{Runtime, 0};
+    TDiskAgentClient DiskAgent2{Runtime, 1};
+
+    TCopyRangeFixture()
+        : Environment(TTestEnvBuilder(Runtime)
+                          .With(DiskAgentConfig1())
+                          .WithSecondAgent(DiskAgentConfig2())
+                          .Build())
+    {
+        DiskAgent1.WaitReady();
+        DiskAgent2.WaitReady();
+
+        DiskAgent1.AcquireDevices(
+            TVector<TString>({"DA1-1"}),
+            ClientId,
+            NProto::VOLUME_ACCESS_READ_WRITE);
+        DiskAgent1.AcquireDevices(
+            TVector<TString>({"DA1-1"}),
+            SourceClientId,
+            NProto::VOLUME_ACCESS_READ_ONLY);
+        DiskAgent1.AcquireDevices(
+            TVector<TString>({"DA1-2"}),
+            TargetClientId,
+            NProto::VOLUME_ACCESS_READ_WRITE);
+
+        DiskAgent2.AcquireDevices(
+            TVector<TString>({"DA2-1", "DA2-2"}),
+            TargetClientId,
+            NProto::VOLUME_ACCESS_READ_WRITE);
+
+        PrepareContent();
+    }
+
+    static NProto::TDiskAgentConfig DiskAgentConfig1()
+    {
+        auto config = DiskAgentConfig({
+            "DA1-1",
+            "DA1-2",
+        });
+        config.SetOffloadAllIORequestsParsingEnabled(false);
+        config.SetIOParserActorCount(0);
+        config.SetBackend(NProto::DISK_AGENT_BACKEND_AIO);
+
+        for (const auto& memDevice: config.GetMemoryDevices()) {
+            *config.AddMemoryDevices() = PrepareMemoryDevice(
+                memDevice.GetDeviceId(),
+                DefaultBlockSize,
+                100 * DefaultBlockSize);
+        }
+
+        return config;
+    }
+
+    static NProto::TDiskAgentConfig DiskAgentConfig2()
+    {
+        auto config = DiskAgentConfig({
+            "DA2-1",
+            "DA2-2",
+        });
+        config.SetOffloadAllIORequestsParsingEnabled(false);
+        config.SetIOParserActorCount(0);
+        config.SetBackend(NProto::DISK_AGENT_BACKEND_AIO);
+
+        for (const auto& memDevice: config.GetMemoryDevices()) {
+            *config.AddMemoryDevices() = PrepareMemoryDevice(
+                memDevice.GetDeviceId(),
+                DefaultBlockSize,
+                100 * DefaultBlockSize);
+        }
+
+        return config;
+    }
+
+    void WriteBlocks(
+        TDiskAgentClient& diskAgent,
+        const TString& clientId,
+        const TString& deviceId,
+        TBlockRange64 range,
+        char pattern) const
+    {
+        TVector<TString> blocks;
+        auto sglist =
+            ResizeBlocks(blocks, range.Size(), TString(BlockSize, pattern));
+        diskAgent.WriteDeviceBlocks(deviceId, range.Start, sglist, clientId);
+    }
+
+    TString ReadBlock(
+        TDiskAgentClient& diskAgent,
+        const TString& deviceId,
+        ui64 startIndex) const
+    {
+        auto request = std::make_unique<TEvDiskAgent::TEvReadDeviceBlocksRequest>();
+        request->Record.MutableHeaders()->SetClientId(TString(BackgroundOpsClientId));
+        request->Record.SetDeviceUUID(deviceId);
+        request->Record.SetStartIndex(startIndex);
+        request->Record.SetBlockSize(BlockSize);
+        request->Record.SetBlocksCount(1);
+
+        diskAgent.SendRequest(std::move(request));
+        const auto response = diskAgent.RecvReadDeviceBlocksResponse();
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
+
+        return response->Record.GetBlocks().GetBuffers(0);
+    }
+
+    TString ReadBlocks(
+        TDiskAgentClient& diskAgent,
+        const TString& deviceId,
+        ui64 blockCount = 12) const
+    {
+        TString data;
+        for (size_t i = 0; i < blockCount; ++i) {
+            auto buffer = ReadBlock(diskAgent, deviceId, i);
+            char c = buffer ? buffer[0] : 0;
+            data.push_back(c == 0 ? '.' : c);
+        }
+        return data;
+    }
+
+    void PrepareContent()
+    {
+        // DiskAgent 1
+        //   DA1-1: .....XY..... (. - mean \0)
+        //   DA1-2: ffffffffffff
+        // DiskAgent 2
+        //   DA2-1: ............
+        //   DA2-2: ffffffffffff
+
+
+        // Prepare content on source device DA1-1
+        WriteBlocks(
+            DiskAgent1,
+            ClientId,
+            "DA1-1",
+            TBlockRange64::MakeOneBlock(SourceStartIndex),
+            'X');
+        WriteBlocks(
+            DiskAgent1,
+            ClientId,
+            "DA1-1",
+            TBlockRange64::MakeOneBlock(SourceStartIndex + 1),
+            'Y');
+
+        // Prepare content on target devices
+        WriteBlocks(
+            DiskAgent1,
+            TargetClientId,
+            "DA1-2",
+            TBlockRange64::WithLength(0, 12),
+            'f');
+        WriteBlocks(
+            DiskAgent2,
+            TargetClientId,
+            "DA2-2",
+            TBlockRange64::WithLength(0, 12),
+            'f');
+
+        // Check content on DiskAgent 1
+        UNIT_ASSERT_VALUES_EQUAL(
+            ".....XY.....",
+            ReadBlocks(DiskAgent1, "DA1-1"));
+        UNIT_ASSERT_VALUES_EQUAL(
+            "ffffffffffff",
+            ReadBlocks(DiskAgent2, "DA2-2"));
+
+        // Check content on DiskAgent 2
+        UNIT_ASSERT_VALUES_EQUAL(
+            "............",
+            ReadBlocks(DiskAgent2, "DA2-1"));
+        UNIT_ASSERT_VALUES_EQUAL(
+            "ffffffffffff",
+            ReadBlocks(DiskAgent2, "DA2-2"));
     }
 };
 
@@ -839,7 +1028,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
                 memset(const_cast<char*>(buffer.Data()), 'Y', buffer.Size());
             }
 
-            diskAgent.SendRequest(MakeDiskAgentServiceId(), std::move(request));
+            diskAgent.SendRequest(std::move(request));
             runtime.DispatchEvents(NActors::TDispatchOptions());
             auto response = diskAgent.RecvWriteDeviceBlocksResponse();
             UNIT_ASSERT_VALUES_EQUAL(response->GetStatus(), S_OK);
@@ -896,7 +1085,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
                 memset(const_cast<char*>(buffer.Data()), 'Y', buffer.Size());
             }
 
-            diskAgent.SendRequest(MakeDiskAgentServiceId(), std::move(request));
+            diskAgent.SendRequest(std::move(request));
             runtime.DispatchEvents(NActors::TDispatchOptions());
             auto response = diskAgent.RecvWriteDeviceBlocksResponse();
             UNIT_ASSERT_VALUES_EQUAL(expected, response->GetStatus());
@@ -915,7 +1104,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
             request->Record.SetBlocksCount(blockCount);
             request->Record.SetVolumeRequestId(volumeRequestId);
 
-            diskAgent.SendRequest(MakeDiskAgentServiceId(), std::move(request));
+            diskAgent.SendRequest(std::move(request));
             runtime.DispatchEvents(NActors::TDispatchOptions());
             auto response = diskAgent.RecvZeroDeviceBlocksResponse();
             UNIT_ASSERT_VALUES_EQUAL(expected, response->GetStatus());
@@ -1016,7 +1205,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
                 memset(const_cast<char*>(buffer.Data()), 'Y', buffer.Size());
             }
 
-            diskAgent.SendRequest(MakeDiskAgentServiceId(), std::move(request));
+            diskAgent.SendRequest(std::move(request));
         };
 
         auto sendZeroRequest = [&](ui64 volumeRequestId,
@@ -1031,7 +1220,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
             request->Record.SetBlocksCount(blockCount);
             request->Record.SetVolumeRequestId(volumeRequestId);
 
-            diskAgent.SendRequest(MakeDiskAgentServiceId(), std::move(request));
+            diskAgent.SendRequest(std::move(request));
         };
 
         // Send write and zero requests. Their messages TWriteOrZeroCompleted will be stolen.
@@ -1195,7 +1384,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
                 memset(const_cast<char*>(buffer.Data()), 'Y', buffer.Size());
             }
 
-            diskAgent.SendRequest(MakeDiskAgentServiceId(), std::move(request));
+            diskAgent.SendRequest(std::move(request));
         };
 
         // Send write request. It's message TWriteOrZeroCompleted will be stolen.
@@ -1283,7 +1472,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
             request->Record.SetMultideviceRequest(
                 true); // This will lead to E_REJECT
 
-            diskAgent.SendRequest(MakeDiskAgentServiceId(), std::move(request));
+            diskAgent.SendRequest(std::move(request));
         };
 
         // Send zero request. The TWriteOrZeroCompleted message from this request will
@@ -1385,7 +1574,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
             request->Record.SetBlocksCount(blockCount);
             request->Record.SetVolumeRequestId(volumeRequestId);
 
-            diskAgent.SendRequest(MakeDiskAgentServiceId(), std::move(request));
+            diskAgent.SendRequest(std::move(request));
         };
 
         // Send zero request. The TWriteOrZeroCompleted message from this request will
@@ -1463,7 +1652,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
             request->Record.SetBlocksCount(blockCount);
             request->Record.SetVolumeRequestId(volumeRequestId);
 
-            diskAgent.SendRequest(MakeDiskAgentServiceId(), std::move(request));
+            diskAgent.SendRequest(std::move(request));
         };
 
         {
@@ -1557,7 +1746,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
             request->Record.SetBlocksCount(blockCount);
             request->Record.SetVolumeRequestId(volumeRequestId);
 
-            diskAgent.SendRequest(MakeDiskAgentServiceId(), std::move(request));
+            diskAgent.SendRequest(std::move(request));
         };
 
         {
@@ -1998,7 +2187,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
 
             const ui64 cookie = 42;
 
-            diskAgent.SendRequest(MakeDiskAgentServiceId(), std::move(request), cookie);
+            diskAgent.SendRequest(std::move(request), cookie);
 
             TAutoPtr<IEventHandle> handle;
             runtime.GrabEdgeEventRethrow<TEvDiskAgent::TEvWriteDeviceBlocksResponse>(
@@ -2014,7 +2203,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
 
             const ui64 cookie = 42;
 
-            diskAgent.SendRequest(MakeDiskAgentServiceId(), std::move(request), cookie);
+            diskAgent.SendRequest(std::move(request), cookie);
 
             TAutoPtr<IEventHandle> handle;
             runtime.GrabEdgeEventRethrow<TEvDiskAgent::TEvSecureEraseDeviceResponse>(
@@ -2033,7 +2222,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
 
             const ui64 cookie = 42;
 
-            diskAgent.SendRequest(MakeDiskAgentServiceId(), std::move(request), cookie);
+            diskAgent.SendRequest(std::move(request), cookie);
 
             TAutoPtr<IEventHandle> handle;
             runtime.GrabEdgeEventRethrow<TEvDiskAgent::TEvAcquireDevicesResponse>(
@@ -3028,7 +3217,6 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
         UNIT_ASSERT_VALUES_EQUAL(1, registrationCount);
 
         diskAgent.SendRequest(
-            MakeDiskAgentServiceId(),
             std::make_unique<TEvDiskRegistryProxy::TEvConnectionLost>());
 
         runtime.DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
@@ -3050,7 +3238,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
                             TEvDiskRegistryProxy::TEvSubscribeResponse>(
                             /*connected=*/false);
                         auto event = std::make_unique<IEventHandle>(
-                            MakeDiskAgentServiceId(),
+                            MakeDiskAgentServiceId(runtime.GetNodeId(0)),
                             MakeDiskRegistryProxyServiceId(),
                             response.release());
                         runtime.SendAsync(event.release());
@@ -3081,7 +3269,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
         diskAgent.WaitReady();
         runtime.DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
 
-        diskAgent.SendRequest(MakeDiskAgentServiceId(),
+        diskAgent.SendRequest(
             std::make_unique<TEvDiskRegistryProxy::TEvConnectionEstablished>());
         runtime.DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
     }
@@ -3325,9 +3513,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
             diskAgent.SendSecureEraseDeviceRequest("uuid");
         }
 
-        diskAgent.SendRequest(
-            MakeDiskAgentServiceId(),
-            std::make_unique<TEvents::TEvPoisonPill>());
+        diskAgent.SendRequest(std::make_unique<TEvents::TEvPoisonPill>());
 
         for (int i = 0; i != 100; ++i) {
             auto response = diskAgent.RecvSecureEraseDeviceResponse();
@@ -4481,7 +4667,6 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
             nullptr};
 
         diskAgent.SendRequest(
-            MakeDiskAgentServiceId(),
             std::make_unique<NMon::TEvHttpInfo>(monService2HttpRequest));
 
         auto response = diskAgent.RecvResponse<NMon::TEvHttpInfoRes>();
@@ -4540,38 +4725,38 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
         runtime.SetEventFilter([&](auto&, TAutoPtr<IEventHandle>& ev) {
             switch (ev->GetTypeRewrite()) {
                 case TEvDiskAgentPrivate::EvParsedReadDeviceBlocksRequest:
-                    UNIT_ASSERT_EQUAL(MakeDiskAgentServiceId(), ev->Recipient);
+                    UNIT_ASSERT_EQUAL(env.DiskAgentActorId, ev->Recipient);
                     UNIT_ASSERT_EQUAL(
                         diskAgentActorId,
                         ev->GetRecipientRewrite());
                     ++parsedReads;
                     break;
                 case TEvDiskAgentPrivate::EvParsedWriteDeviceBlocksRequest:
-                    UNIT_ASSERT_EQUAL(MakeDiskAgentServiceId(), ev->Recipient);
+                    UNIT_ASSERT_EQUAL(env.DiskAgentActorId, ev->Recipient);
                     UNIT_ASSERT_EQUAL(
                         diskAgentActorId,
                         ev->GetRecipientRewrite());
                     ++parsedWrites;
                     break;
                 case TEvDiskAgentPrivate::EvParsedZeroDeviceBlocksRequest:
-                    UNIT_ASSERT_EQUAL(MakeDiskAgentServiceId(), ev->Recipient);
+                    UNIT_ASSERT_EQUAL(env.DiskAgentActorId, ev->Recipient);
                     UNIT_ASSERT_EQUAL(
                         diskAgentActorId,
                         ev->GetRecipientRewrite());
                     ++parsedZeroes;
                     break;
                 case TEvDiskAgent::EvReadDeviceBlocksRequest:
-                    UNIT_ASSERT_EQUAL(MakeDiskAgentServiceId(), ev->Recipient);
+                    UNIT_ASSERT_EQUAL(env.DiskAgentActorId, ev->Recipient);
                     ++reads;
                     actors.insert(ev->GetRecipientRewrite());
                     break;
                 case TEvDiskAgent::EvWriteDeviceBlocksRequest:
-                    UNIT_ASSERT_EQUAL(MakeDiskAgentServiceId(), ev->Recipient);
+                    UNIT_ASSERT_EQUAL(env.DiskAgentActorId, ev->Recipient);
                     ++writes;
                     actors.insert(ev->GetRecipientRewrite());
                     break;
                 case TEvDiskAgent::EvZeroDeviceBlocksRequest:
-                    UNIT_ASSERT_EQUAL(MakeDiskAgentServiceId(), ev->Recipient);
+                    UNIT_ASSERT_EQUAL(env.DiskAgentActorId, ev->Recipient);
                     ++zeroes;
                     actors.insert(ev->GetRecipientRewrite());
                     break;
@@ -4763,7 +4948,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
             UNIT_ASSERT_EQUAL_C(S_OK, error.GetCode(), error);
         }
 
-        // After the registartion in DR NVMENBS02 should be disabled
+        // After the registration in DR NVMENBS02 should be disabled
         {
             auto error = Read(diskAgent, "reader-1", uuids[1]);
             UNIT_ASSERT_EQUAL_C(E_IO, error.GetCode(), error);
@@ -4788,6 +4973,536 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
                 uuids[1],   // NVMENBS02
                 config.GetDevicesWithSuspendedIO(0));
         }
+    }
+
+    Y_UNIT_TEST_F(ShouldPerformDirectCopyToRemoteDiskAgent, TCopyRangeFixture)
+    {
+        // Setup message filter for checking reads and writes.
+        ui32 readRequestCount = 0;
+        ui32 writeRequestCount = 0;
+        auto checkRequests = [&](auto& runtime, TAutoPtr<IEventHandle>& event)
+        {
+            Y_UNUSED(runtime);
+            if (event->GetTypeRewrite() ==
+                TEvDiskAgent::EvReadDeviceBlocksRequest)
+            {
+                ++readRequestCount;
+                auto* msg =
+                    event->Get<TEvDiskAgent::TEvReadDeviceBlocksRequest>();
+                UNIT_ASSERT_VALUES_EQUAL(
+                    SourceClientId,
+                    msg->Record.GetHeaders().GetClientId());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    true,
+                    msg->Record.GetHeaders().GetIsBackgroundRequest());
+                UNIT_ASSERT_VALUES_EQUAL(BlockSize, msg->Record.GetBlockSize());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    BlockCount,
+                    msg->Record.GetBlocksCount());
+                UNIT_ASSERT_VALUES_EQUAL("DA1-1", msg->Record.GetDeviceUUID());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    SourceStartIndex,
+                    msg->Record.GetStartIndex());
+            }
+            if (event->GetTypeRewrite() ==
+                TEvDiskAgent::EvWriteDeviceBlocksRequest)
+            {
+                ++writeRequestCount;
+                auto* msg =
+                    event->Get<TEvDiskAgent::TEvWriteDeviceBlocksRequest>();
+                UNIT_ASSERT_VALUES_EQUAL(
+                    TargetClientId,
+                    msg->Record.GetHeaders().GetClientId());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    true,
+                    msg->Record.GetHeaders().GetIsBackgroundRequest());
+                UNIT_ASSERT_VALUES_EQUAL(BlockSize, msg->Record.GetBlockSize());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    BlockCount,
+                    msg->Record.GetBlocks().BuffersSize());
+                UNIT_ASSERT_VALUES_EQUAL("DA2-2", msg->Record.GetDeviceUUID());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    TargetStartIndex,
+                    msg->Record.GetStartIndex());
+            }
+            return false;
+        };
+        auto oldFilter = Runtime.SetEventFilter(checkRequests);
+
+        // We send a request to the first disk agent, it must do the reading
+        // itself, and write blocks to the second disk agent.
+        //   DA1-1: .....XY.....
+        //               |||||
+        //                \\\\\
+        //                 vvvvv
+        //   DA2-2: fffffffXY...
+        auto request =
+            std::make_unique<TEvDiskAgent::TEvDirectCopyBlocksRequest>();
+        request->Record.MutableHeaders()->SetClientId(SourceClientId);
+        request->Record.MutableHeaders()->SetIsBackgroundRequest(true);
+
+        request->Record.SetSourceDeviceUUID("DA1-1");
+        request->Record.SetSourceStartIndex(SourceStartIndex);
+        request->Record.SetBlockSize(BlockSize);
+        request->Record.SetBlockCount(BlockCount);
+
+        request->Record.SetTargetNodeId(Runtime.GetNodeId(1));
+        request->Record.SetTargetClientId(TargetClientId);
+        request->Record.SetTargetDeviceUUID("DA2-2");
+        request->Record.SetTargetStartIndex(TargetStartIndex);
+
+        DiskAgent1.SendRequest(std::move(request));
+        Runtime.DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
+        auto response =
+            DiskAgent1
+                .RecvResponse<TEvDiskAgent::TEvDirectCopyBlocksResponse>();
+        UNIT_ASSERT(!HasError(response->GetError()));
+        UNIT_ASSERT_VALUES_EQUAL(1, readRequestCount);
+        UNIT_ASSERT_VALUES_EQUAL(1, writeRequestCount);
+
+        Runtime.SetEventFilter(oldFilter);
+
+        // Check that content on source device is not changed
+        UNIT_ASSERT_VALUES_EQUAL(
+            ".....XY.....",
+            ReadBlocks(DiskAgent1, "DA1-1"));
+
+        // Check that the content on the target device meets the expectations
+        UNIT_ASSERT_VALUES_EQUAL(
+            "fffffffXY...",
+            ReadBlocks(DiskAgent2, "DA2-2"));
+    }
+
+    Y_UNIT_TEST_F(ShouldPerformDirectCopyOnSameDiskAgent, TCopyRangeFixture)
+    {
+        // Setup message filter for checking reads and writes.
+        ui32 readRequestCount = 0;
+        ui32 writeRequestCount = 0;
+        auto checkRequests = [&](auto& runtime, TAutoPtr<IEventHandle>& event)
+        {
+            Y_UNUSED(runtime);
+            if (event->GetTypeRewrite() ==
+                TEvDiskAgent::EvReadDeviceBlocksRequest)
+            {
+                ++readRequestCount;
+                auto* msg =
+                    event->Get<TEvDiskAgent::TEvReadDeviceBlocksRequest>();
+                UNIT_ASSERT_VALUES_EQUAL(
+                    SourceClientId,
+                    msg->Record.GetHeaders().GetClientId());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    false,
+                    msg->Record.GetHeaders().GetIsBackgroundRequest());
+                UNIT_ASSERT_VALUES_EQUAL(BlockSize, msg->Record.GetBlockSize());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    BlockCount,
+                    msg->Record.GetBlocksCount());
+                UNIT_ASSERT_VALUES_EQUAL("DA1-1", msg->Record.GetDeviceUUID());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    SourceStartIndex,
+                    msg->Record.GetStartIndex());
+            }
+            if (event->GetTypeRewrite() ==
+                TEvDiskAgent::EvWriteDeviceBlocksRequest)
+            {
+                ++writeRequestCount;
+                auto* msg =
+                    event->Get<TEvDiskAgent::TEvWriteDeviceBlocksRequest>();
+                UNIT_ASSERT_VALUES_EQUAL(
+                    TargetClientId,
+                    msg->Record.GetHeaders().GetClientId());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    false,
+                    msg->Record.GetHeaders().GetIsBackgroundRequest());
+                UNIT_ASSERT_VALUES_EQUAL(BlockSize, msg->Record.GetBlockSize());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    BlockCount,
+                    msg->Record.GetBlocks().BuffersSize());
+                UNIT_ASSERT_VALUES_EQUAL("DA1-2", msg->Record.GetDeviceUUID());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    TargetStartIndex,
+                    msg->Record.GetStartIndex());
+            }
+            return false;
+        };
+        auto oldFilter = Runtime.SetEventFilter(checkRequests);
+
+        // We send a request to the first disk agent, it must do the reading
+        // from device DA1-1, and write blocks to device DA1-2.
+        //   DA1-1: .....XY.....
+        //               |||||
+        //                \\\\\
+        //                 vvvvv
+        //   DA1-2: fffffffXY...
+        auto request =
+            std::make_unique<TEvDiskAgent::TEvDirectCopyBlocksRequest>();
+        request->Record.MutableHeaders()->SetClientId(SourceClientId);
+        request->Record.MutableHeaders()->SetIsBackgroundRequest(false);
+
+        request->Record.SetSourceDeviceUUID("DA1-1");
+        request->Record.SetSourceStartIndex(SourceStartIndex);
+        request->Record.SetBlockSize(BlockSize);
+        request->Record.SetBlockCount(BlockCount);
+
+        request->Record.SetTargetNodeId(Runtime.GetNodeId(0));
+        request->Record.SetTargetClientId(TargetClientId);
+        request->Record.SetTargetDeviceUUID("DA1-2");
+        request->Record.SetTargetStartIndex(TargetStartIndex);
+
+        DiskAgent1.SendRequest(std::move(request));
+        Runtime.DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
+        auto response =
+            DiskAgent1
+                .RecvResponse<TEvDiskAgent::TEvDirectCopyBlocksResponse>();
+        UNIT_ASSERT(!HasError(response->GetError()));
+        UNIT_ASSERT_VALUES_EQUAL(1, readRequestCount);
+        UNIT_ASSERT_VALUES_EQUAL(1, writeRequestCount);
+
+        Runtime.SetEventFilter(oldFilter);
+
+        // Check that content on source device is not changed
+        UNIT_ASSERT_VALUES_EQUAL(
+            ".....XY.....",
+            ReadBlocks(DiskAgent1, "DA1-1"));
+
+        // Check that the content on the target device meets the expectations
+        UNIT_ASSERT_VALUES_EQUAL(
+            "fffffffXY...",
+            ReadBlocks(DiskAgent1, "DA1-2"));
+    }
+
+    Y_UNIT_TEST_F(ShouldPerformDirectCopyAsZeroRequest, TCopyRangeFixture)
+    {
+        // Setup message filter for checking writes and zeroes.
+        ui32 zeroRequestCount = 0;
+        ui32 writeRequestCount = 0;
+        auto checkRequests = [&](auto& runtime, TAutoPtr<IEventHandle>& event)
+        {
+            Y_UNUSED(runtime);
+
+            if (event->GetTypeRewrite() ==
+                TEvDiskAgent::EvZeroDeviceBlocksRequest)
+            {
+                ++zeroRequestCount;
+                auto* msg =
+                    event->Get<TEvDiskAgent::TEvZeroDeviceBlocksRequest>();
+                UNIT_ASSERT_VALUES_EQUAL(
+                    TargetClientId,
+                    msg->Record.GetHeaders().GetClientId());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    true,
+                    msg->Record.GetHeaders().GetIsBackgroundRequest());
+                UNIT_ASSERT_VALUES_EQUAL(BlockSize, msg->Record.GetBlockSize());
+                UNIT_ASSERT_VALUES_EQUAL(2, msg->Record.GetBlocksCount());
+                UNIT_ASSERT_VALUES_EQUAL("DA2-2", msg->Record.GetDeviceUUID());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    TargetStartIndex + 2,
+                    msg->Record.GetStartIndex());
+            }
+
+            if (event->GetTypeRewrite() ==
+                TEvDiskAgent::EvWriteDeviceBlocksRequest)
+            {
+                ++writeRequestCount;
+                auto* msg =
+                    event->Get<TEvDiskAgent::TEvWriteDeviceBlocksRequest>();
+                UNIT_ASSERT_VALUES_EQUAL(
+                    TargetClientId,
+                    msg->Record.GetHeaders().GetClientId());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    true,
+                    msg->Record.GetHeaders().GetIsBackgroundRequest());
+                UNIT_ASSERT_VALUES_EQUAL(BlockSize, msg->Record.GetBlockSize());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    2,
+                    msg->Record.GetBlocks().BuffersSize());
+                UNIT_ASSERT_VALUES_EQUAL("DA2-2", msg->Record.GetDeviceUUID());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    TargetStartIndex - 1,
+                    msg->Record.GetStartIndex());
+            }
+            return false;
+        };
+        auto oldFilter = Runtime.SetEventFilter(checkRequests);
+
+        {
+            // Source data contains only zeroes
+            //   DA1-1: .....XY.....
+            //                 ||
+            //                  \\
+            //                   vv
+            //   DA1-2: fffffffff..f
+
+            auto request = std::make_unique<TEvDirectCopyBlocksRequest>();
+            request->Record.MutableHeaders()->SetClientId(SourceClientId);
+            request->Record.MutableHeaders()->SetIsBackgroundRequest(true);
+
+            request->Record.SetSourceDeviceUUID("DA1-1");
+            request->Record.SetSourceStartIndex(SourceStartIndex + 2);
+            request->Record.SetBlockSize(BlockSize);
+            request->Record.SetBlockCount(2);
+
+            request->Record.SetTargetNodeId(Runtime.GetNodeId(1));
+            request->Record.SetTargetClientId(TargetClientId);
+            request->Record.SetTargetDeviceUUID("DA2-2");
+            request->Record.SetTargetStartIndex(TargetStartIndex + 2);
+
+            DiskAgent1.SendRequest(std::move(request));
+            Runtime.DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
+            auto response =
+                DiskAgent1.RecvResponse<TEvDirectCopyBlocksResponse>();
+            UNIT_ASSERT(!HasError(response->GetError()));
+            UNIT_ASSERT_VALUES_EQUAL(true, response->Record.GetAllZeroes());
+
+            UNIT_ASSERT_VALUES_EQUAL(1, zeroRequestCount);
+            UNIT_ASSERT_VALUES_EQUAL(0, writeRequestCount);
+            zeroRequestCount = 0;
+
+            UNIT_ASSERT_VALUES_EQUAL(
+                "fffffffff..f",
+                ReadBlocks(DiskAgent2, "DA2-2"));
+        }
+        {
+            // Second request contains zeroes and data
+            //   DA1-1: .....XY.....
+            //              ||
+            //               \\
+            //                vv
+            //   DA2-2: ffffff.Xf..f
+            auto request = std::make_unique<TEvDirectCopyBlocksRequest>();
+            request->Record.MutableHeaders()->SetClientId(SourceClientId);
+            request->Record.MutableHeaders()->SetIsBackgroundRequest(true);
+
+            request->Record.SetSourceDeviceUUID("DA1-1");
+            request->Record.SetSourceStartIndex(SourceStartIndex - 1);
+            request->Record.SetBlockSize(BlockSize);
+            request->Record.SetBlockCount(2);
+
+            request->Record.SetTargetNodeId(Runtime.GetNodeId(1));
+            request->Record.SetTargetClientId(TargetClientId);
+            request->Record.SetTargetDeviceUUID("DA2-2");
+            request->Record.SetTargetStartIndex(TargetStartIndex - 1);
+
+            DiskAgent1.SendRequest(std::move(request));
+            Runtime.DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
+            auto response =
+                DiskAgent1.RecvResponse<TEvDirectCopyBlocksResponse>();
+            UNIT_ASSERT(!HasError(response->GetError()));
+            UNIT_ASSERT_VALUES_EQUAL(false, response->Record.GetAllZeroes());
+            UNIT_ASSERT_VALUES_EQUAL(0, zeroRequestCount);
+            UNIT_ASSERT_VALUES_EQUAL(1, writeRequestCount);
+
+            UNIT_ASSERT_VALUES_EQUAL(
+                "ffffff.Xf..f",
+                ReadBlocks(DiskAgent2, "DA2-2"));
+        }
+    }
+
+    Y_UNIT_TEST_F(ShouldHandleUndeliveryForDirectCopy, TCopyRangeFixture)
+    {
+        // Setup message filter for intercepting write.
+        auto undeliverWrite = [&](auto& runtime, TAutoPtr<IEventHandle>& event)
+        {
+            if (event->GetTypeRewrite() ==
+                TEvDiskAgent::EvWriteDeviceBlocksRequest)
+            {
+                auto sendTo = event->Sender;
+                auto extractedEvent =
+                    event->Release<TEvDiskAgent::TEvWriteDeviceBlocksRequest>();
+                runtime.Send(
+                    new IEventHandle(
+                        sendTo,
+                        sendTo,
+                        extractedEvent.Release(),
+                        0,
+                        event->Cookie,
+                        nullptr),
+                    0);
+
+                return true;
+            }
+            return false;
+        };
+
+        Runtime.SetEventFilter(undeliverWrite);
+
+        // We send a request to the first disk agent, it must do the reading
+        // from device DA1-1, and write blocks to device DA2-2 on second disk
+        // agent.
+        auto request =
+            std::make_unique<TEvDiskAgent::TEvDirectCopyBlocksRequest>();
+        request->Record.MutableHeaders()->SetClientId(SourceClientId);
+        request->Record.MutableHeaders()->SetIsBackgroundRequest(false);
+
+        request->Record.SetSourceDeviceUUID("DA1-1");
+        request->Record.SetSourceStartIndex(SourceStartIndex);
+        request->Record.SetBlockSize(BlockSize);
+        request->Record.SetBlockCount(BlockCount);
+
+        request->Record.SetTargetNodeId(Runtime.GetNodeId(1));
+        request->Record.SetTargetClientId(TargetClientId);
+        request->Record.SetTargetDeviceUUID("DA2-2");
+        request->Record.SetTargetStartIndex(TargetStartIndex);
+
+        DiskAgent1.SendRequest(std::move(request));
+        Runtime.DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
+        auto response =
+            DiskAgent1
+                .RecvResponse<TEvDiskAgent::TEvDirectCopyBlocksResponse>();
+        UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, response->GetError().GetCode());
+    }
+
+    Y_UNIT_TEST_F(ShouldHandleReadingErrorForDirectCopy, TCopyRangeFixture)
+    {
+        // Setup message filter for intercepting read.
+        auto interceptRead = [&](auto& runtime, TAutoPtr<IEventHandle>& event)
+        {
+            if (event->GetTypeRewrite() ==
+                TEvDiskAgent::EvReadDeviceBlocksRequest)
+            {
+                auto response =
+                    std::make_unique<TEvDiskAgent::TEvReadDeviceBlocksResponse>(
+                        MakeError(E_IO, "io error"));
+
+                runtime.Send(
+                    new IEventHandle(
+                        event->Sender,
+                        event->Recipient,
+                        response.release(),
+                        0,   // flags
+                        event->Cookie),
+                    0);
+                return true;
+            }
+            return false;
+        };
+
+        Runtime.SetEventFilter(interceptRead);
+
+        auto request =
+            std::make_unique<TEvDiskAgent::TEvDirectCopyBlocksRequest>();
+        request->Record.MutableHeaders()->SetClientId(SourceClientId);
+        request->Record.MutableHeaders()->SetIsBackgroundRequest(false);
+
+        request->Record.SetSourceDeviceUUID("DA1-1");
+        request->Record.SetSourceStartIndex(SourceStartIndex);
+        request->Record.SetBlockSize(BlockSize);
+        request->Record.SetBlockCount(BlockCount);
+
+        request->Record.SetTargetNodeId(Runtime.GetNodeId(1));
+        request->Record.SetTargetClientId(TargetClientId);
+        request->Record.SetTargetDeviceUUID("DA2-2");
+        request->Record.SetTargetStartIndex(TargetStartIndex);
+
+        DiskAgent1.SendRequest(std::move(request));
+        Runtime.DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
+        auto response =
+            DiskAgent1
+                .RecvResponse<TEvDiskAgent::TEvDirectCopyBlocksResponse>();
+        UNIT_ASSERT_VALUES_EQUAL(E_IO, response->GetError().GetCode());
+    }
+
+    Y_UNIT_TEST_F(ShouldHandleWriteErrorForDirectCopy, TCopyRangeFixture)
+    {
+        // Setup message filter for intercepting write.
+        auto interceptWrite = [&](auto& runtime, TAutoPtr<IEventHandle>& event)
+        {
+            if (event->GetTypeRewrite() ==
+                TEvDiskAgent::EvWriteDeviceBlocksRequest)
+            {
+                auto response =
+                    std::make_unique<TEvDiskAgent::TEvWriteDeviceBlocksResponse>(
+                        MakeError(E_IO, "io error"));
+
+                runtime.Send(
+                    new IEventHandle(
+                        event->Sender,
+                        event->Recipient,
+                        response.release(),
+                        0,   // flags
+                        event->Cookie),
+                    0);
+                return true;
+            }
+            return false;
+        };
+
+        Runtime.SetEventFilter(interceptWrite);
+
+        auto request =
+            std::make_unique<TEvDiskAgent::TEvDirectCopyBlocksRequest>();
+        request->Record.MutableHeaders()->SetClientId(SourceClientId);
+        request->Record.MutableHeaders()->SetIsBackgroundRequest(false);
+
+        request->Record.SetSourceDeviceUUID("DA1-1");
+        request->Record.SetSourceStartIndex(SourceStartIndex);
+        request->Record.SetBlockSize(BlockSize);
+        request->Record.SetBlockCount(BlockCount);
+
+        request->Record.SetTargetNodeId(Runtime.GetNodeId(1));
+        request->Record.SetTargetClientId(TargetClientId);
+        request->Record.SetTargetDeviceUUID("DA2-2");
+        request->Record.SetTargetStartIndex(TargetStartIndex);
+
+        DiskAgent1.SendRequest(std::move(request));
+        Runtime.DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
+        auto response =
+            DiskAgent1
+                .RecvResponse<TEvDiskAgent::TEvDirectCopyBlocksResponse>();
+        UNIT_ASSERT_VALUES_EQUAL(E_IO, response->GetError().GetCode());
+    }
+
+    Y_UNIT_TEST_F(ShouldPerformDirectCopyAndCalcTime, TCopyRangeFixture)
+    {
+        // Setup message filter for checking reads and writes.
+        auto checkRequests = [&](auto& runtime, TAutoPtr<IEventHandle>& event)
+        {
+            Y_UNUSED(runtime);
+            if (event->GetTypeRewrite() ==
+                TEvDiskAgent::EvReadDeviceBlocksRequest)
+            {
+                Runtime.AdvanceCurrentTime(5s);
+            }
+            if (event->GetTypeRewrite() ==
+                TEvDiskAgent::EvWriteDeviceBlocksRequest)
+            {
+                Runtime.AdvanceCurrentTime(10s);
+            }
+            return false;
+        };
+        auto oldFilter = Runtime.SetEventFilter(checkRequests);
+
+        auto request =
+            std::make_unique<TEvDiskAgent::TEvDirectCopyBlocksRequest>();
+        request->Record.MutableHeaders()->SetClientId(SourceClientId);
+        request->Record.MutableHeaders()->SetIsBackgroundRequest(false);
+
+        request->Record.SetSourceDeviceUUID("DA1-1");
+        request->Record.SetSourceStartIndex(SourceStartIndex);
+        request->Record.SetBlockSize(BlockSize);
+        request->Record.SetBlockCount(BlockCount);
+
+        request->Record.SetTargetNodeId(Runtime.GetNodeId(0));
+        request->Record.SetTargetClientId(TargetClientId);
+        request->Record.SetTargetDeviceUUID("DA1-2");
+        request->Record.SetTargetStartIndex(TargetStartIndex);
+
+        DiskAgent1.SendRequest(std::move(request));
+        Runtime.DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
+        auto response =
+            DiskAgent1
+                .RecvResponse<TEvDiskAgent::TEvDirectCopyBlocksResponse>();
+        UNIT_ASSERT(!HasError(response->GetError()));
+        UNIT_ASSERT_DOUBLES_EQUAL(
+            5000.0,
+            TDuration::MicroSeconds(response->Record.GetReadDuration())
+                .MilliSeconds(),
+            10);
+        UNIT_ASSERT_DOUBLES_EQUAL(
+            10000.0,
+            TDuration::MicroSeconds(response->Record.GetWriteDuration())
+                .MilliSeconds(),
+            10);
     }
 }
 

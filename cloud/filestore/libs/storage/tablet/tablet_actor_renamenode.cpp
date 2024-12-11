@@ -68,6 +68,7 @@ void TIndexTabletActor::HandleRenameNode(
         ev->Sender,
         ev->Cookie,
         msg->CallContext);
+    requestInfo->StartedTs = ctx.Now();
 
     AddTransaction<TEvService::TRenameNodeMethod>(*requestInfo);
 
@@ -203,7 +204,7 @@ bool TIndexTabletActor::PrepareTx_RenameNode(
         const bool isSameExternalNode = args.ChildRef->ShardId
             && args.NewChildRef->ShardId
             && args.ChildRef->ShardId == args.NewChildRef->ShardId
-            && args.ChildRef->ShardName == args.NewChildRef->ShardName;
+            && args.ChildRef->ShardNodeName == args.NewChildRef->ShardNodeName;
         if (isSameNode || isSameExternalNode) {
             args.Error = MakeError(S_ALREADY, "is the same file");
             return true;
@@ -289,7 +290,7 @@ void TIndexTabletActor::ExecuteTx_RenameNode(
         args.Name,
         args.ChildRef->ChildNodeId,
         args.ChildRef->ShardId,
-        args.ChildRef->ShardName);
+        args.ChildRef->ShardNodeName);
 
     if (args.NewChildRef) {
         if (HasFlag(args.Flags, NProto::TRenameNodeRequest::F_EXCHANGE)) {
@@ -302,7 +303,7 @@ void TIndexTabletActor::ExecuteTx_RenameNode(
                 args.NewName,
                 args.NewChildRef->NodeId,
                 args.NewChildRef->ShardId,
-                args.NewChildRef->ShardName);
+                args.NewChildRef->ShardNodeName);
 
             // create source ref to target node
             CreateNodeRef(
@@ -312,7 +313,7 @@ void TIndexTabletActor::ExecuteTx_RenameNode(
                 args.Name,
                 args.NewChildRef->ChildNodeId,
                 args.NewChildRef->ShardId,
-                args.NewChildRef->ShardName);
+                args.NewChildRef->ShardNodeName);
         } else if (args.NewChildRef->ShardId.empty()) {
             if (!args.NewChildNode) {
                 auto message = ReportNewChildNodeIsNull(TStringBuilder()
@@ -345,7 +346,7 @@ void TIndexTabletActor::ExecuteTx_RenameNode(
                 args.NewParentNode->NodeId,
                 args.NewName,
                 args.NewChildRef->ShardId,
-                args.NewChildRef->ShardName,
+                args.NewChildRef->ShardNodeName,
                 args.NewChildRef->MinCommitId,
                 args.CommitId);
 
@@ -358,7 +359,7 @@ void TIndexTabletActor::ExecuteTx_RenameNode(
                 args.Request.GetHeaders());
             shardRequest->SetFileSystemId(args.NewChildRef->ShardId);
             shardRequest->SetNodeId(RootNodeId);
-            shardRequest->SetName(args.NewChildRef->ShardName);
+            shardRequest->SetName(args.NewChildRef->ShardNodeName);
 
             db.WriteOpLogEntry(args.OpLogEntry);
         }
@@ -382,7 +383,7 @@ void TIndexTabletActor::ExecuteTx_RenameNode(
         args.NewName,
         args.ChildRef->ChildNodeId,
         args.ChildRef->ShardId,
-        args.ChildRef->ShardName);
+        args.ChildRef->ShardNodeName);
 
     auto newParent = CopyAttrs(args.NewParentNode->Attrs, E_CM_CMTIME);
     UpdateNode(

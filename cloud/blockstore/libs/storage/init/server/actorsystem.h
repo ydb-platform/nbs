@@ -5,6 +5,7 @@
 #include <cloud/blockstore/libs/common/public.h>
 #include <cloud/blockstore/libs/diagnostics/public.h>
 #include <cloud/blockstore/libs/discovery/public.h>
+#include <cloud/blockstore/libs/encryption/public.h>
 #include <cloud/blockstore/libs/endpoints/public.h>
 #include <cloud/blockstore/libs/kikimr/public.h>
 #include <cloud/blockstore/libs/nvme/public.h>
@@ -65,6 +66,7 @@ struct TServerActorSystemArgs
     NNvme::INvmeManagerPtr NvmeManager;
     IVolumeBalancerSwitchPtr VolumeBalancerSwitch;
     NServer::IEndpointEventHandlerPtr EndpointEventHandler;
+    IRootKmsKeyProviderPtr RootKmsKeyProvider;
 
     TVector<NCloud::NStorage::IUserMetricsSupplierPtr> UserCounterProviders;
 

@@ -37,11 +37,11 @@ void TIndexTabletActor::HandleFilterAliveNodes(
         LogTag.c_str(),
         DescribeNodes(msg->Nodes).c_str());
 
-    auto requestInfo =
-        CreateRequestInfo(
-            ev->Sender,
-            ev->Cookie,
-            msg->CallContext);
+    auto requestInfo = CreateRequestInfo(
+        ev->Sender,
+        ev->Cookie,
+        msg->CallContext);
+    requestInfo->StartedTs = ctx.Now();
 
     FILESTORE_TRACK(
         BackgroundRequestReceived_Tablet,

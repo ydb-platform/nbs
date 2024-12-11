@@ -19,6 +19,7 @@ void TIndexTabletActor::HandleDeleteZeroCompactionRanges(
         ev->Sender,
         ev->Cookie,
         msg->CallContext);
+    requestInfo->StartedTs = ctx.Now();
 
     ExecuteTx<TDeleteZeroCompactionRanges>(
         ctx,

@@ -27,6 +27,7 @@ private:
     const NProtoPrivate::TGetStorageStatsRequest Request;
     const google::protobuf::RepeatedPtrField<TString> ShardIds;
     std::unique_ptr<TEvIndexTablet::TEvGetStorageStatsResponse> Response;
+    TVector<TEvIndexTabletPrivate::TShardStats> ShardStats;
     int Responses = 0;
 
 public:
@@ -73,6 +74,7 @@ TGetShardStatsActor::TGetShardStatsActor(
     , Request(std::move(request))
     , ShardIds(std::move(shardIds))
     , Response(std::move(response))
+    , ShardStats(ShardIds.size())
 {}
 
 void TGetShardStatsActor::Bootstrap(const TActorContext& ctx)
@@ -110,6 +112,7 @@ void TGetShardStatsActor::HandleGetStorageStatsResponse(
     const TActorContext& ctx)
 {
     const auto* msg = ev->Get();
+    TABLET_VERIFY(ev->Cookie < static_cast<ui32>(ShardIds.size()));
 
     if (HasError(msg->GetError())) {
         LOG_ERROR(
@@ -142,6 +145,13 @@ void TGetShardStatsActor::HandleGetStorageStatsResponse(
         LogTag.c_str(),
         ShardIds[ev->Cookie].c_str());
 
+    TABLET_VERIFY(ev->Cookie < ShardStats.size());
+    auto& ss = ShardStats[ev->Cookie];
+    ss.CurrentLoad = src.GetCurrentLoad();
+    ss.Suffer = src.GetSuffer();
+    ss.TotalBlocksCount = src.GetTotalBlocksCount();
+    ss.UsedBlocksCount = src.GetUsedBlocksCount();
+
     if (++Responses == ShardIds.size()) {
         ReplyAndDie(ctx, {});
     }
@@ -164,11 +174,18 @@ void TGetShardStatsActor::ReplyAndDie(
             std::make_unique<TEvIndexTablet::TEvGetStorageStatsResponse>(error);
     }
     using TCompletion = TEvIndexTabletPrivate::TEvGetShardStatsCompleted;
+    TInstant startedTs;
+    auto stats = Response->Record.GetStats();
+    if (RequestInfo) {
+        startedTs = RequestInfo->StartedTs;
+        NCloud::Reply(ctx, *RequestInfo, std::move(Response));
+    }
     auto response = std::make_unique<TCompletion>(
         error,
-        RequestInfo->StartedTs);
+        std::move(stats),
+        std::move(ShardStats),
+        startedTs);
     NCloud::Send(ctx, Tablet, std::move(response));
-    NCloud::Reply(ctx, *RequestInfo, std::move(Response));
 
     Die(ctx);
 }
@@ -260,6 +277,9 @@ void TIndexTabletActor::TMetrics::Register(
 
     REGISTER_AGGREGATABLE_SUM(TotalBytesCount, EMetricType::MT_ABSOLUTE);
     REGISTER_AGGREGATABLE_SUM(UsedBytesCount, EMetricType::MT_ABSOLUTE);
+    REGISTER_AGGREGATABLE_SUM(
+        AggregateUsedBytesCount,
+        EMetricType::MT_ABSOLUTE);
 
     REGISTER_AGGREGATABLE_SUM(TotalNodesCount, EMetricType::MT_ABSOLUTE);
     REGISTER_AGGREGATABLE_SUM(UsedNodesCount, EMetricType::MT_ABSOLUTE);
@@ -730,6 +750,30 @@ void TIndexTabletActor::HandleUpdateCounters(
 
     UpdateCountersScheduled = false;
     ScheduleUpdateCounters(ctx);
+
+    if (!CachedStatsFetchingInProgress) {
+        auto response =
+            std::make_unique<TEvIndexTablet::TEvGetStorageStatsResponse>();
+        auto* stats = response->Record.MutableStats();
+        FillSelfStorageStats(stats);
+        const auto& shardIds = GetFileSystem().GetShardFileSystemIds();
+        if (shardIds.empty()) {
+            CachedAggregateStats = std::move(*stats);
+            return;
+        }
+
+        auto actor = std::make_unique<TGetShardStatsActor>(
+            LogTag,
+            SelfId(),
+            TRequestInfoPtr(),
+            NProtoPrivate::TGetStorageStatsRequest(),
+            shardIds,
+            std::move(response));
+
+        auto actorId = NCloud::Register(ctx, std::move(actor));
+        WorkerActors.insert(actorId);
+        CachedStatsFetchingInProgress = true;
+    }
 }
 
 void TIndexTabletActor::UpdateCounters()
@@ -749,15 +793,9 @@ void TIndexTabletActor::UpdateCounters()
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void TIndexTabletActor::HandleGetStorageStats(
-    const TEvIndexTablet::TEvGetStorageStatsRequest::TPtr& ev,
-    const TActorContext& ctx)
+void TIndexTabletActor::FillSelfStorageStats(
+    NProtoPrivate::TStorageStats* stats)
 {
-    auto response =
-        std::make_unique<TEvIndexTablet::TEvGetStorageStatsResponse>();
-
-    auto* stats = response->Record.MutableStats();
-
 #define FILESTORE_TABLET_UPDATE_COUNTER(name, ...)                             \
     stats->Set##name(Get##name());                                             \
 // FILESTORE_TABLET_UPDATE_COUNTER
@@ -775,13 +813,47 @@ void TIndexTabletActor::HandleGetStorageStats(
     ).Get();
     stats->SetTxDeleteGarbageRwCompleted(txDeleteGarbageRwCompleted);
 
-    response->Record.SetMediaKind(GetFileSystem().GetStorageMediaKind());
-
     auto cmStats = GetCompactionMapStats(0);
     stats->SetUsedCompactionRanges(cmStats.UsedRangesCount);
     stats->SetAllocatedCompactionRanges(cmStats.AllocatedRangesCount);
 
+    stats->SetFlushState(static_cast<ui32>(FlushState.GetOperationState()));
+    stats->SetBlobIndexOpState(static_cast<ui32>(
+        BlobIndexOpState.GetOperationState()));
+    stats->SetCollectGarbageState(static_cast<ui32>(
+        CollectGarbageState.GetOperationState()));
+
+    stats->SetCurrentLoad(Metrics.CurrentLoad.load(std::memory_order_relaxed));
+    stats->SetSuffer(Metrics.Suffer.load(std::memory_order_relaxed));
+
+    stats->SetTotalBlocksCount(GetFileSystem().GetBlocksCount());
+}
+
+void TIndexTabletActor::HandleGetStorageStats(
+    const TEvIndexTablet::TEvGetStorageStatsRequest::TPtr& ev,
+    const TActorContext& ctx)
+{
+    auto response =
+        std::make_unique<TEvIndexTablet::TEvGetStorageStatsResponse>();
+    response->Record.SetMediaKind(GetFileSystem().GetStorageMediaKind());
     auto& req = ev->Get()->Record;
+    auto* stats = response->Record.MutableStats();
+    const auto& shardIds = GetFileSystem().GetShardFileSystemIds();
+    if (req.GetAllowCache()) {
+        *stats = CachedAggregateStats;
+        const ui32 shardMetricsCount =
+            Min<ui32>(shardIds.size(), CachedShardStats.size());
+        for (ui32 i = 0; i < shardMetricsCount; ++i) {
+            auto* ss = stats->AddShardStats();
+            ss->SetShardId(shardIds[i]);
+            ss->SetTotalBlocksCount(CachedShardStats[i].TotalBlocksCount);
+            ss->SetUsedBlocksCount(CachedShardStats[i].UsedBlocksCount);
+            ss->SetCurrentLoad(CachedShardStats[i].CurrentLoad);
+            ss->SetSuffer(CachedShardStats[i].Suffer);
+        }
+    } else {
+        FillSelfStorageStats(stats);
+    }
 
     TVector<TCompactionRangeInfo> topRanges;
 
@@ -811,15 +883,7 @@ void TIndexTabletActor::HandleGetStorageStats(
         out->SetGarbageBlockCount(r.Stats.GarbageBlocksCount);
     }
 
-    stats->SetFlushState(static_cast<ui32>(FlushState.GetOperationState()));
-    stats->SetBlobIndexOpState(static_cast<ui32>(
-        BlobIndexOpState.GetOperationState()));
-    stats->SetCollectGarbageState(static_cast<ui32>(
-        CollectGarbageState.GetOperationState()));
-
-    const auto& shardIds = GetFileSystem().GetShardFileSystemIds();
-
-    if (shardIds.empty()) {
+    if (req.GetAllowCache() || shardIds.empty()) {
         Metrics.StatFileStore.Update(1, 0, TDuration::Zero());
         NCloud::Reply(ctx, *ev, std::move(response));
         return;
@@ -829,6 +893,7 @@ void TIndexTabletActor::HandleGetStorageStats(
         ev->Sender,
         ev->Cookie,
         ev->Get()->CallContext);
+    requestInfo->StartedTs = ctx.Now();
 
     auto actor = std::make_unique<TGetShardStatsActor>(
         LogTag,
@@ -848,8 +913,21 @@ void TIndexTabletActor::HandleGetShardStatsCompleted(
     const TEvIndexTabletPrivate::TEvGetShardStatsCompleted::TPtr& ev,
     const TActorContext& ctx)
 {
-    if (!HasError(ev->Get()->Error)) {
-        Metrics.StatFileStore.Update(1, 0, ctx.Now() - ev->Get()->StartedTs);
+    auto* msg = ev->Get();
+    const bool isBackgroundRequest = msg->StartedTs.GetValue() == 0;
+    if (isBackgroundRequest) {
+        CachedStatsFetchingInProgress = false;
+    }
+    if (!HasError(msg->Error)) {
+        if (!isBackgroundRequest) {
+            Metrics.StatFileStore.Update(1, 0, ctx.Now() - msg->StartedTs);
+        }
+        CachedAggregateStats = std::move(msg->AggregateStats);
+        CachedShardStats = std::move(msg->ShardStats);
+
+        Store(
+            Metrics.AggregateUsedBytesCount,
+            CachedAggregateStats.GetUsedBlocksCount() * GetBlockSize());
     }
     WorkerActors.erase(ev->Sender);
 }

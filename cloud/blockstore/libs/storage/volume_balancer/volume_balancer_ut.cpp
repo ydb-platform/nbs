@@ -196,11 +196,11 @@ struct TVolumeStatsTestMock final
 
 struct TCgroupStatsFetcherMock: public NCloud::NStorage::ICgroupStatsFetcher
 {
-    TDuration Value;
+    TResultOrError<TDuration> Value = TDuration::Zero();
 
-    void SetCpuWaitValue(TDuration value)
+    void SetCpuWaitValue(TResultOrError<TDuration> value)
     {
-        Value = value;
+        Value = std::move(value);
     }
 
     void Start() override
@@ -435,8 +435,8 @@ TString RunState(
     TActorId actorId,
     TVector<TVolumeState> volumes,
     TVolumePerfStatuses perfStats,
-    double cpuWait,
-    EChangeBindingOp expected,
+    TResultOrError<double> cpuWait,
+    TMaybe<EChangeBindingOp> expected,
     TDuration runFor)
 {
     auto now = testEnv.GetRuntime().GetCurrentTime();
@@ -461,7 +461,11 @@ TString RunState(
         }
 
         testEnv.VolumeStats->SetPerfStats(std::move(perfStats));
-        testEnv.Fetcher->SetCpuWaitValue(cpuWait * TDuration::Seconds(15));
+        testEnv.Fetcher->SetCpuWaitValue(
+            HasError(cpuWait)
+                ? TResultOrError<TDuration>(cpuWait.GetError())
+                : TResultOrError<TDuration>(
+                      cpuWait.GetResult() * TDuration::Seconds(15)));
 
         testEnv.SendVolumesStatsResponse(actorId, stats);
 
@@ -469,50 +473,14 @@ TString RunState(
     }
 
     auto ev = testEnv.GrabBindingRequest();
-    UNIT_ASSERT(ev);
-    UNIT_ASSERT(ev->Action == expected);
-    return ev->DiskId;
-}
-
-void RunStateNoAction(
-    TVolumeBalancerTestEnv& testEnv,
-    TActorId actorId,
-    TVector<TVolumeState> volumes,
-    TVolumePerfStatuses perfStats,
-    double cpuWait,
-    TDuration runFor)
-{
-    auto now = testEnv.GetRuntime().GetCurrentTime();
-    while (testEnv.GetRuntime().GetCurrentTime() - now < runFor) {
-        testEnv.AdjustTime();
-
-        auto ev = testEnv.GrabBindingRequest();
-        UNIT_ASSERT(!ev);
-
-        testEnv.GrabVolumesStatsRequest();
-
-        TVector<NProto::TVolumeBalancerDiskStats> stats;
-        for (const auto& v: volumes) {
-            auto stat = CreateVolumeStats(
-                v.DiskId,
-                "",
-                "",
-                v.IsLocal,
-                v.Source);
-
-            stats.push_back(stat);
-        }
-
-        testEnv.VolumeStats->SetPerfStats(std::move(perfStats));
-        testEnv.Fetcher->SetCpuWaitValue(cpuWait * TDuration::Seconds(15));
-
-        testEnv.SendVolumesStatsResponse(actorId, stats);
-
-        testEnv.DispatchEvents(TDuration::Seconds(1));
+    if (expected) {
+        UNIT_ASSERT(ev);
+        UNIT_ASSERT(ev->Action == expected);
+        return ev->DiskId;
     }
 
-    auto ev = testEnv.GrabBindingRequest();
     UNIT_ASSERT(!ev);
+    return {};
 }
 
 } // namespace
@@ -669,7 +637,7 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerTest)
 
         UNIT_ASSERT_VALUES_EQUAL("vol0", diskId);
 
-        RunStateNoAction(
+        RunState(
             testEnv,
             volumeBindingActorID,
             {
@@ -681,6 +649,7 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerTest)
                 {"vol1", 1}
             },
             0.1,
+            {},
             TDuration::Seconds(15) + TDuration::Seconds(20));
 
         UNIT_ASSERT_VALUES_EQUAL("vol0", diskId);
@@ -699,7 +668,7 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerTest)
 
         testEnv.DispatchEvents();
 
-        RunStateNoAction(
+        RunState(
             testEnv,
             volumeBindingActorID,
             {
@@ -711,6 +680,7 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerTest)
                 {"vol1", 1}
             },
             1,
+            {},
             TDuration::Seconds(15));
     }
 
@@ -734,7 +704,7 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerTest)
 
         UNIT_ASSERT_VALUES_EQUAL(EBalancerStatus::ENABLE, response->Record.GetOpStatus());
 
-        RunStateNoAction(
+        RunState(
             testEnv,
             volumeBindingActorID,
             {
@@ -746,6 +716,7 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerTest)
                 {"vol1", 1}
             },
             1,
+            {},
             TDuration::Seconds(15));
     }
 
@@ -779,13 +750,17 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerTest)
 
         UNIT_ASSERT_VALUES_EQUAL("vol0", diskId);
 
-        auto counter = testEnv.GetRuntime().GetAppData(0).Counters
+        auto counters = testEnv.GetRuntime().GetAppData(0).Counters
             ->GetSubgroup("counters", "blockstore")
-            ->GetSubgroup("component", "server")
-            ->GetCounter("CpuWait", false);
+            ->GetSubgroup("component", "server");
 
-        UNIT_ASSERT_VALUES_UNEQUAL(0, counter->Val());
-        UNIT_ASSERT(counter->Val() <= 90);
+        auto cpuWaitCounter = counters->GetCounter("CpuWait", false);
+        UNIT_ASSERT_VALUES_UNEQUAL(0, cpuWaitCounter->Val());
+        UNIT_ASSERT(cpuWaitCounter->Val() <= 90);
+
+        auto cpuWaitFailureCounter =
+            counters->GetCounter("CpuWaitFailure", false);
+        UNIT_ASSERT_VALUES_EQUAL(0, cpuWaitFailureCounter->Val());
     }
 
     Y_UNIT_TEST(ShouldNotDoAnythingIfBalancerIsNotActivated)
@@ -805,7 +780,7 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerTest)
 
         testEnv.DispatchEvents();
 
-        RunStateNoAction(
+        RunState(
             testEnv,
             volumeBindingActorID,
             {
@@ -817,6 +792,7 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerTest)
                 {"vol1", 1}
             },
             1,
+            {},
             TDuration::Seconds(15));
     }
 
@@ -869,6 +845,46 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerTest)
         UNIT_ASSERT_VALUES_EQUAL(2, manuallyPreempted->Val());
         UNIT_ASSERT_VALUES_EQUAL(3, balancerPreempted->Val());
         UNIT_ASSERT_VALUES_EQUAL(4, initiallyPreempted->Val());
+    }
+
+    Y_UNIT_TEST(ShouldSetCpuWaitFailure)
+    {
+        TVolumeBalancerTestEnv testEnv;
+        TVolumeBalancerConfigBuilder config;
+
+        auto volumeBindingActorID = testEnv.Register(CreateVolumeBalancerActor(
+            config.WithType(NProto::PREEMPTION_MOVE_MOST_HEAVY),
+            testEnv.VolumeStats,
+            testEnv.Fetcher,
+            testEnv.GetEdgeActor()));
+
+        testEnv.DispatchEvents();
+
+        auto diskId = RunState(
+            testEnv,
+            volumeBindingActorID,
+            {
+                {"vol0", true, NProto::EPreemptionSource::SOURCE_NONE},
+                {"vol1", true, NProto::EPreemptionSource::SOURCE_NONE},
+            },
+            {
+                {"vol0", 10},
+                {"vol1", 1}
+            },
+            MakeError(E_INVALID_STATE),
+            {},
+            TDuration::Seconds(15));
+
+        auto counters = testEnv.GetRuntime().GetAppData(0).Counters
+            ->GetSubgroup("counters", "blockstore")
+            ->GetSubgroup("component", "server");
+
+        auto cpuWaitCounter = counters->GetCounter("CpuWait", false);
+        UNIT_ASSERT_VALUES_EQUAL(0, cpuWaitCounter->Val());
+
+        auto cpuWaitFailureCounter =
+            counters->GetCounter("CpuWaitFailure", false);
+        UNIT_ASSERT_VALUES_EQUAL(1, cpuWaitFailureCounter->Val());
     }
 }
 

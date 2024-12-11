@@ -703,9 +703,9 @@ Y_UNIT_TEST_SUITE(TServerTest)
         UNIT_ASSERT_VALUES_EQUAL(1, static_cast<int>(*errorCounter));
     }
 
-    Y_UNIT_TEST(ShouldNotStartUnixSocketEndpointForNonVHostServer)
+    Y_UNIT_TEST(ShouldStartUnixSocketEndpointForFilestoreServer)
     {
-        TFsPath unixSocket("./invalid/path/test_socket");
+        TFsPath unixSocket(CreateGuidAsString() + ".sock");
 
         TTestServerBuilder serverConfigBuilder;
         serverConfigBuilder.SetUnixSocketPath(unixSocket.GetPath());
@@ -713,22 +713,24 @@ Y_UNIT_TEST_SUITE(TServerTest)
         TBootstrap<TServerSetup> bootstrap(
             serverConfigBuilder.BuildServerConfig());
 
-        bootstrap.Start();
+        bootstrap.Service->PingHandler = [] (auto, auto) {
+            return MakeFuture<NProto::TPingResponse>();
+        };
 
         TTestClientBuilder clientConfigBuilder;
         clientConfigBuilder.SetUnixSocketPath(unixSocket.GetPath());
-        auto client = bootstrap.CreateClient(clientConfigBuilder.BuildClientConfig());
+        auto client =
+            bootstrap.CreateClient(clientConfigBuilder.BuildClientConfig());
 
-        bool gotException = false;
-        try {
-            client->Start();
-        } catch (const TServiceError& ex) {
-            gotException = true;
-        }
+        bootstrap.Start();
 
-        UNIT_ASSERT_C(
-            gotException,
-            "Client connected to socket that should not be listened");
+        auto insecureFuture = bootstrap.Clients[0]->Ping(
+            MakeIntrusive<TCallContext>(),
+            std::make_shared<NProto::TPingRequest>()
+        );
+
+        const auto& response = insecureFuture.GetValue(TDuration::Seconds(5));
+        UNIT_ASSERT_C(!HasError(response), response.GetError());
     }
 }
 

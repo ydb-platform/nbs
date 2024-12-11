@@ -64,4 +64,10 @@ message TasksConfig {
     // Warning: if this flag is false, then information about ended tasks
     // will not be cleared from the database.
     optional bool RegularSystemTasksEnabled = 33 [default = true];
+
+    // Lister retrieves tasks from the front of the tasks table and sends them
+    // to workers if possible.
+    // This parameter limits the number of tasks that will be retrieved from the
+    // database.
+    optional uint64 TasksToListLimit = 34 [default = 10000];
 }

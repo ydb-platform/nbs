@@ -284,7 +284,7 @@ func (t *longTask) Run(ctx context.Context, execCtx tasks.ExecutionContext) erro
 	select {
 	case <-ctx.Done():
 		return ctx.Err()
-	case <-time.After(1 * time.Second):
+	case <-time.After(10 * time.Second):
 		return nil
 	}
 }
@@ -711,7 +711,10 @@ func TestTasksRunningLimit(t *testing.T) {
 	require.NoError(t, err)
 	defer db.Close(ctx)
 
-	s := createServices(t, ctx, db, 10*inflightLongTaskPerNodeLimit)
+	s := createServices(t, ctx, db, 3*inflightLongTaskPerNodeLimit)
+
+	err = registerDoublerTask(s.registry)
+	require.NoError(t, err)
 
 	err = registerLongTask(s.registry)
 	require.NoError(t, err)
@@ -719,28 +722,50 @@ func TestTasksRunningLimit(t *testing.T) {
 	err = s.startRunners(ctx)
 	require.NoError(t, err)
 
-	tasksIds := []string{}
+	longTaskIDs := []string{}
 	scheduledLongTaskCount := 6 * inflightLongTaskPerNodeLimit
 	for i := 0; i < scheduledLongTaskCount; i++ {
 		reqCtx := getRequestContext(t, ctx)
 		id, err := scheduleLongTask(reqCtx, s.scheduler)
 		require.NoError(t, err)
 
-		tasksIds = append(tasksIds, id)
+		longTaskIDs = append(longTaskIDs, id)
 	}
 
 	endedLongTaskCount := 0
-	errs := make(chan error)
-	for _, id := range tasksIds {
+	longTaskErrs := make(chan error)
+	for _, id := range longTaskIDs {
 		go func(id string) {
 			_, err := waitTask(ctx, s.scheduler, id)
+			longTaskErrs <- err
+		}(id)
+	}
 
-			errs <- err
+	doublerTaskIDs := []string{}
+	scheduledDoublerTaskCount := 2 * inflightLongTaskPerNodeLimit
+	for i := 0; i < scheduledDoublerTaskCount; i++ {
+		reqCtx := getRequestContext(t, ctx)
+		id, err := scheduleDoublerTask(reqCtx, s.scheduler, 1)
+		require.NoError(t, err)
+
+		doublerTaskIDs = append(doublerTaskIDs, id)
+	}
+
+	endedDoublerTaskCount := 0
+	doublerTaskErrs := make(chan error)
+	for _, id := range doublerTaskIDs {
+		go func(id string) {
+			_, err := waitTaskWithTimeout(
+				ctx,
+				s.scheduler,
+				id,
+				2*time.Second,
+			)
+			doublerTaskErrs <- err
 		}(id)
 	}
 
 	ticker := time.NewTicker(20 * time.Millisecond)
-
 	for {
 		select {
 		case <-ticker.C:
@@ -764,11 +789,15 @@ func TestTasksRunningLimit(t *testing.T) {
 			// listerStallingWhileRunning lister.
 			// Thus we need to compare runningLongTaskCount with doubled inflightLongTaskPerNodeLimit.
 			require.LessOrEqual(t, runningLongTaskCount, 2*inflightLongTaskPerNodeLimit)
-		case err := <-errs:
+		case err := <-doublerTaskErrs:
+			require.NoError(t, err)
+			endedDoublerTaskCount++
+		case err := <-longTaskErrs:
 			require.NoError(t, err)
 			endedLongTaskCount++
 
 			if endedLongTaskCount == scheduledLongTaskCount {
+				require.EqualValues(t, scheduledDoublerTaskCount, endedDoublerTaskCount)
 				return
 			}
 		}

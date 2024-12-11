@@ -56,6 +56,26 @@ TDiskRegistryState MakeDiskRegistryState()
         .Build();
 }
 
+auto ChangeAgentState(
+    TDiskRegistryState& state,
+    TDiskRegistryDatabase db,
+    const NProto::TAgentConfig& config,
+    NProto::EAgentState newState)
+{
+    TVector<TString> affectedDisks;
+
+    auto error = state.UpdateAgentState(
+        db,
+        config.GetAgentId(),
+        newState,
+        TInstant::Now(),
+        "test",
+        affectedDisks);
+    UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
+
+    return affectedDisks;
+}
+
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -607,6 +627,203 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateCheckpointTest)
                     NProto::ECheckpointState::CHECKPOINT_STATE_OK);
                 UNIT_ASSERT_VALUES_EQUAL(E_NOT_FOUND, error.GetCode());
             });
+    }
+
+    Y_UNIT_TEST(ShouldNotMigrateShadowDiskDevices)
+    {
+        TTestExecutor executor;
+        executor.WriteTx([&](TDiskRegistryDatabase db) { db.InitSchema(); });
+
+        TDiskRegistryState state = MakeDiskRegistryState();
+
+        // Create source disk
+        executor.WriteTx(
+            [&](TDiskRegistryDatabase db)
+            {
+                TVector<TDeviceConfig> devices;
+                TVector<TVector<TDeviceConfig>> replicas;
+                TVector<NProto::TDeviceMigration> migrations;
+                TVector<TString> deviceReplacementIds;
+                auto error = AllocateDisk(
+                    db,
+                    state,
+                    "disk-1",
+                    "",   // placementGroupId
+                    0,    // placementPartitionIndex
+                    40_GB,
+                    devices);
+                UNIT_ASSERT_SUCCESS(error);
+            });
+
+        // create checkpoint
+        executor.WriteTx(
+            [&](TDiskRegistryDatabase db)
+            {
+                TString shadowDiskId;
+                TVector<TDeviceConfig> devices;
+                auto error = AllocateCheckpoint(
+                    Now(),
+                    db,
+                    state,
+                    "disk-1",
+                    "checkpoint-1",
+                    &shadowDiskId,
+                    &devices);
+                UNIT_ASSERT_SUCCESS(error);
+            });
+
+        const auto checkpointId =
+            TCheckpointInfo::MakeId("disk-1", "checkpoint-1");
+        const auto& secondAgent = state.GetAgents()[1];
+
+        // Change state of second agent where shadow disk
+        executor.WriteTx(
+            [&](TDiskRegistryDatabase db) mutable
+            {
+                auto affectedDisks = ChangeAgentState(
+                    state,
+                    db,
+                    secondAgent,
+                    NProto::AGENT_STATE_WARNING);
+
+                // State of shadow disk changed to "warning"
+                UNIT_ASSERT_VALUES_EQUAL(1, affectedDisks.size());
+                UNIT_ASSERT_VALUES_EQUAL(checkpointId, affectedDisks[0]);
+            });
+
+        // No migrations started
+        UNIT_ASSERT(state.IsMigrationListEmpty());
+
+        // Source disk notified.
+        UNIT_ASSERT(state.GetDisksToReallocate().FindPtr("disk-1"));
+        UNIT_ASSERT(!state.GetDisksToReallocate().FindPtr(checkpointId));
+    }
+
+    Y_UNIT_TEST(ShouldNotifySourceDiskWhenNodeIdForShadowDiskChanged)
+    {
+        TTestExecutor executor;
+        executor.WriteTx([&](TDiskRegistryDatabase db) { db.InitSchema(); });
+
+        TDiskRegistryState state = MakeDiskRegistryState();
+
+        // Create source disk
+        executor.WriteTx(
+            [&](TDiskRegistryDatabase db)
+            {
+                TVector<TDeviceConfig> devices;
+                TVector<TVector<TDeviceConfig>> replicas;
+                TVector<NProto::TDeviceMigration> migrations;
+                TVector<TString> deviceReplacementIds;
+                auto error = AllocateDisk(
+                    db,
+                    state,
+                    "disk-1",
+                    "",   // placementGroupId
+                    0,    // placementPartitionIndex
+                    40_GB,
+                    devices);
+                UNIT_ASSERT_SUCCESS(error);
+            });
+
+        // create checkpoint
+        executor.WriteTx(
+            [&](TDiskRegistryDatabase db)
+            {
+                TString shadowDiskId;
+                TVector<TDeviceConfig> devices;
+                auto error = AllocateCheckpoint(
+                    Now(),
+                    db,
+                    state,
+                    "disk-1",
+                    "checkpoint-1",
+                    &shadowDiskId,
+                    &devices);
+                UNIT_ASSERT_SUCCESS(error);
+            });
+        const auto checkpointId =
+            TCheckpointInfo::MakeId("disk-1", "checkpoint-1");
+
+        // Change NodeId for second disk agent
+        auto secondAgent = state.GetAgents()[1];
+        secondAgent.SetNodeId(42);
+        executor.WriteTx(
+            [&](TDiskRegistryDatabase db) mutable
+            {
+                UNIT_ASSERT_SUCCESS(
+                    state.RegisterAgent(db, secondAgent, Now()).GetError());
+            });
+
+        // Source disk notified.
+        UNIT_ASSERT(state.GetDisksToReallocate().FindPtr("disk-1"));
+        UNIT_ASSERT(!state.GetDisksToReallocate().FindPtr(checkpointId));
+    }
+
+    Y_UNIT_TEST(ShouldNotifyVolumeOnce)
+    {
+        TTestExecutor executor;
+        executor.WriteTx([&](TDiskRegistryDatabase db) { db.InitSchema(); });
+
+        auto agentConfig = AgentConfig(
+            1,
+            {
+                Device("dev-1", "uuid-1", "rack-1"),
+                Device("dev-2", "uuid-2", "rack-1"),
+            });
+
+        TDiskRegistryState state =
+            TDiskRegistryStateBuilder().WithKnownAgents({agentConfig}).Build();
+
+        // Create source disk
+        executor.WriteTx(
+            [&](TDiskRegistryDatabase db)
+            {
+                TVector<TDeviceConfig> devices;
+                TVector<TVector<TDeviceConfig>> replicas;
+                TVector<NProto::TDeviceMigration> migrations;
+                TVector<TString> deviceReplacementIds;
+                auto error = AllocateDisk(
+                    db,
+                    state,
+                    "disk-1",
+                    "",   // placementGroupId
+                    0,    // placementPartitionIndex
+                    10_GB,
+                    devices);
+                UNIT_ASSERT_SUCCESS(error);
+            });
+
+        // create checkpoint
+        executor.WriteTx(
+            [&](TDiskRegistryDatabase db)
+            {
+                TString shadowDiskId;
+                TVector<TDeviceConfig> devices;
+                auto error = AllocateCheckpoint(
+                    Now(),
+                    db,
+                    state,
+                    "disk-1",
+                    "checkpoint-1",
+                    &shadowDiskId,
+                    &devices);
+                UNIT_ASSERT_SUCCESS(error);
+            });
+        const auto checkpointId =
+            TCheckpointInfo::MakeId("disk-1", "checkpoint-1");
+
+        // Change NodeId for disk agent
+        auto agent = state.GetAgents()[0];
+        agent.SetNodeId(42);
+        executor.WriteTx(
+            [&](TDiskRegistryDatabase db) mutable {
+                UNIT_ASSERT_SUCCESS(
+                    state.RegisterAgent(db, agent, Now()).GetError());
+            });
+
+        // Source disk notified.
+        UNIT_ASSERT(state.GetDisksToReallocate().FindPtr("disk-1"));
+        UNIT_ASSERT(!state.GetDisksToReallocate().FindPtr(checkpointId));
     }
 }
 

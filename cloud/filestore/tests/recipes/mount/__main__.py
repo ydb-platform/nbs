@@ -33,7 +33,8 @@ def start(argv):
     client.create(
         args.filesystem,
         "test_cloud",
-        "test_folder")
+        "test_folder",
+        verbose=True)
 
     if len(args.mount_path) == 0:
         args.mount_path = ["nfs_mount"]

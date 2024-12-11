@@ -122,6 +122,7 @@ void TIndexTabletActor::HandleUpdateConfig(
         ev->Cookie,
         // external event
         MakeIntrusive<TCallContext>(GetFileSystemId()));
+    requestInfo->StartedTs = ctx.Now();
 
     const ui64 txId = msg->Record.GetTxId();
 
@@ -267,27 +268,35 @@ void TIndexTabletActor::HandleConfigureShards(
         ev->Cookie,
         // external event
         MakeIntrusive<TCallContext>(GetFileSystemId()));
+    requestInfo->StartedTs = ctx.Now();
 
     const auto& shardIds = GetFileSystem().GetShardFileSystemIds();
     NProto::TError error;
-    if (msg->Record.GetShardFileSystemIds().size() < shardIds.size()) {
-        error = MakeError(E_ARGUMENT, TStringBuilder() << "new shard list"
-            " is smaller than prev shard list: "
-            << msg->Record.GetShardFileSystemIds().size() << " < "
-            << shardIds.size());
-    } else if (msg->Record.ShardFileSystemIdsSize() > MaxShardCount) {
-        error = MakeError(E_ARGUMENT, TStringBuilder() << "new shard list"
-            " is bigger than limit: "
-            << msg->Record.GetShardFileSystemIds().size() << " > "
-            << MaxShardCount);
-    } else {
-        for (int i = 0; i < shardIds.size(); ++i) {
-            if (shardIds[i] != msg->Record.GetShardFileSystemIds(i)) {
-                error = MakeError(E_ARGUMENT, TStringBuilder() << "shard"
-                    " change not allowed, pos=" << i << ", prev="
-                    << shardIds[i] << ", new="
-                    << msg->Record.GetShardFileSystemIds(i));
-                break;
+    if (IsShard()) {
+        error = MakeError(E_INVALID_STATE, TStringBuilder() << "can't configure"
+            << " shards for a shard (ShardNo=" << GetFileSystem().GetShardNo());
+    }
+
+    if (!HasError(error) && !msg->Record.GetForce()) {
+        if (msg->Record.GetShardFileSystemIds().size() < shardIds.size()) {
+            error = MakeError(E_ARGUMENT, TStringBuilder() << "new shard list"
+                " is smaller than prev shard list: "
+                << msg->Record.GetShardFileSystemIds().size() << " < "
+                << shardIds.size());
+        } else if (msg->Record.ShardFileSystemIdsSize() > MaxShardCount) {
+            error = MakeError(E_ARGUMENT, TStringBuilder() << "new shard list"
+                " is bigger than limit: "
+                << msg->Record.GetShardFileSystemIds().size() << " > "
+                << MaxShardCount);
+        } else {
+            for (int i = 0; i < shardIds.size(); ++i) {
+                if (shardIds[i] != msg->Record.GetShardFileSystemIds(i)) {
+                    error = MakeError(E_ARGUMENT, TStringBuilder() << "shard"
+                        " change not allowed, pos=" << i << ", prev="
+                        << shardIds[i] << ", new="
+                        << msg->Record.GetShardFileSystemIds(i));
+                    break;
+                }
             }
         }
     }
@@ -374,6 +383,7 @@ void TIndexTabletActor::HandleConfigureAsShard(
         ev->Cookie,
         // external event
         MakeIntrusive<TCallContext>(GetFileSystemId()));
+    requestInfo->StartedTs = ctx.Now();
 
     const auto currentShardNo = GetFileSystem().GetShardNo();
     if (currentShardNo && currentShardNo != msg->Record.GetShardNo()) {

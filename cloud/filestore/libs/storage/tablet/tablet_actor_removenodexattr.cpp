@@ -41,6 +41,7 @@ void TIndexTabletActor::HandleRemoveNodeXAttr(
         ev->Sender,
         ev->Cookie,
         msg->CallContext);
+    requestInfo->StartedTs = ctx.Now();
 
     AddTransaction<TEvService::TRemoveNodeXAttrMethod>(*requestInfo);
 

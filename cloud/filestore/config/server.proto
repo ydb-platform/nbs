@@ -93,6 +93,11 @@ message TLocalServiceConfig
     // Enable Writeback cache on guest (fuse client)
     optional bool GuestWritebackCacheEnabled = 11;
 
+    // Async processing of destroy handle requests.
+    optional bool AsyncDestroyHandleEnabled = 12;
+
+    // Period of processing create/destroy handle requests.
+    optional uint32 AsyncHandleOperationPeriod = 13;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

@@ -611,8 +611,37 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Counters)
                 {"filesystem", "test"}}, 17},
             {{
                 {"sensor", "Suffer"},
-                {"filesystem", "test"}}, 1},
+                {"filesystem", "test"}}, 0},
         });
+
+        // hard to guarantee something better than the absence of overflows
+        const auto latencySensorPredicate = [] (i64 val) {
+            return val < 1e9;
+        };
+        TVector<std::pair<
+            TVector<TTestRegistryVisitor::TLabel>,
+            std::function<bool(i64)>>> expectedCounters;
+        const auto requestNames = {
+            "WriteData",
+            "ReadData",
+            "ListNodes",
+            "GetNodeAttr",
+            "RenameNode",
+            "UnlinkNode",
+            "StatFileStore",
+            "DescribeData",
+            "DestroyHandle",
+        };
+        for (const auto& requestName: requestNames) {
+            expectedCounters.push_back(std::make_pair(
+                TVector<TTestRegistryVisitor::TLabel>({
+                    {"sensor", Sprintf("%s.TimeSumUs", requestName)},
+                    {"filesystem", "test"}
+                }),
+                latencySensorPredicate
+            ));
+        }
+        Visitor.ValidateExpectedCountersWithPredicate(expectedCounters);
     }
 
     Y_UNIT_TEST(ShouldCorrectlyWriteCompactionStats)

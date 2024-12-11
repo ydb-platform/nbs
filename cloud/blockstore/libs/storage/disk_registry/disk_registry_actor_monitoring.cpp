@@ -337,27 +337,30 @@ void TDiskRegistryActor::HandleHttpInfo_RenderBrokenDeviceList(
     Y_UNUSED(params);
 
     TStringStream out;
-    RenderBrokenDeviceList(out, Max<ui32>());
+    RenderBrokenDeviceList(out);
     SendHttpResponse(ctx, *requestInfo, std::move(out.Str()));
 }
 
-void TDiskRegistryActor::RenderBrokenDeviceList(
-    IOutputStream& out,
-    ui32 limit) const
+void TDiskRegistryActor::RenderBrokenDeviceList(IOutputStream& out) const
 {
     auto brokenDevices = State->GetBrokenDevices();
     if (brokenDevices.empty()) {
         return;
     }
 
-    if (brokenDevices.size() > limit) {
-        DumpActionLink(
-            out,
-            TabletID(),
-            "RenderBrokenDeviceList",
-            "Broken devices",
-            brokenDevices.size());
+    DumpActionLink(
+        out,
+        TabletID(),
+        "RenderBrokenDeviceList",
+        "Broken devices",
+        brokenDevices.size());
+}
 
+void TDiskRegistryActor::RenderBrokenDeviceListDetailed(
+    IOutputStream& out) const
+{
+    auto brokenDevices = State->GetBrokenDevices();
+    if (brokenDevices.empty()) {
         return;
     }
 
@@ -1116,23 +1119,22 @@ void TDiskRegistryActor::HandleHttpInfo_RenderDisks(
     Y_UNUSED(params);
 
     TStringStream out;
-    RenderDisks(out, Max<ui32>());
+    RenderDisksDetailed(out);
     SendHttpResponse(ctx, *requestInfo, std::move(out.Str()));
 }
 
-void TDiskRegistryActor::RenderDisks(IOutputStream& out, ui32 limit) const
+void TDiskRegistryActor::RenderDisks(IOutputStream& out) const
 {
-    if (State->GetDiskCount() > limit) {
-        DumpActionLink(
-            out,
-            TabletID(),
-            "RenderDisks",
-            "Disks",
-            State->GetDiskCount());
+    DumpActionLink(
+        out,
+        TabletID(),
+        "RenderDisks",
+        "Disks",
+        State->GetDiskCount());
+}
 
-        return;
-    }
-
+void TDiskRegistryActor::RenderDisksDetailed(IOutputStream& out) const
+{
     RenderDiskList(out);
     RenderMirroredDiskList(out);
     RenderMigrationList(out);
@@ -1151,24 +1153,18 @@ void TDiskRegistryActor::HandleHttpInfo_RenderRacks(
     Y_UNUSED(params);
 
     TStringStream out;
-    RenderRacks(out, Max<ui32>());
+    RenderRacksDetailed(out);
     SendHttpResponse(ctx, *requestInfo, std::move(out.Str()));
 }
 
-void TDiskRegistryActor::RenderRacks(IOutputStream& out, ui32 limit) const
+void TDiskRegistryActor::RenderRacks(IOutputStream& out) const
 {
     const ui32 rackCount = State->CalculateRackCount();
-    if (rackCount > limit) {
-        DumpActionLink(
-            out,
-            TabletID(),
-            "RenderRacks",
-            "Racks",
-            rackCount);
+    DumpActionLink(out, TabletID(), "RenderRacks", "Racks", rackCount);
+}
 
-        return;
-    }
-
+void TDiskRegistryActor::RenderRacksDetailed(IOutputStream& out) const
+{
     for (const auto& poolName: State->GetPoolNames()) {
         RenderPoolRacks(out, poolName);
     }
@@ -1520,49 +1516,53 @@ void TDiskRegistryActor::HandleHttpInfo_RenderPlacementGroupList(
     Y_UNUSED(params);
 
     TStringStream out;
-    RenderPlacementGroupList(out, Max<ui32>());
+    RenderPlacementGroupListDetailed(out);
     SendHttpResponse(ctx, *requestInfo, std::move(out.Str()));
 }
 
-void TDiskRegistryActor::RenderPlacementGroupList(
-    IOutputStream& out,
-    ui32 limit) const
+void TDiskRegistryActor::RenderPlacementGroupList(IOutputStream& out) const
 {
-    if (State->GetPlacementGroups().size() > limit) {
-        DumpActionLink(
-            out,
-            TabletID(),
-            "RenderPlacementGroupList",
-            "Placement groups",
-            State->GetPlacementGroups().size());
+    DumpActionLink(
+        out,
+        TabletID(),
+        "RenderPlacementGroupList",
+        "Placement groups",
+        State->GetPlacementGroups().size());
+}
 
-        return;
-    }
-
-    HTML(out) {
-        TAG(TH3) {
+void TDiskRegistryActor::RenderPlacementGroupListDetailed(
+    IOutputStream& out) const
+{
+    HTML(out)
+    {
+        TAG(TH3)
+        {
             out << "PlacementGroups";
             DumpSize(out, State->GetPlacementGroups());
         }
 
         OnShowRecentPGCheckboxClickedActionsJS(out);
-        DIV() {
+        DIV()
+        {
             TAG_ATTRS(
                 TInput,
                 {{"type", "checkbox"},
                  {"id", "showRecentPGCheckbox"},
                  {"onclick", "onShowRecentPGCheckboxClicked()"}})
             {}
-            LABEL() {
+            LABEL()
+            {
                 auto period = Config->GetPlacementGroupAlertPeriod();
                 out << "Treat only recently broken partitions as broken"
                     << " (period=" << period.ToString() << ")";
             }
         }
-        TAG_ATTRS(TDiv, {{"id", "TotalPGTable"}}) {
+        TAG_ATTRS(TDiv, {{"id", "TotalPGTable"}})
+        {
             RenderPlacementGroupTable(out, false);
         }
-        TAG_ATTRS(TDiv, {{"id", "RecentPGTable"}, {"hidden", "true"}}) {
+        TAG_ATTRS(TDiv, {{"id", "RecentPGTable"}, {"hidden", "true"}})
+        {
             RenderPlacementGroupTable(out, true);
         }
     }
@@ -1729,26 +1729,24 @@ void TDiskRegistryActor::HandleHttpInfo_RenderAgentList(
     Y_UNUSED(params);
 
     TStringStream out;
-    RenderAgentList(ctx.Now(), out, Max<ui32>());
+    RenderAgentListDetailed(ctx.Now(), out);
     SendHttpResponse(ctx, *requestInfo, std::move(out.Str()));
 }
 
-void TDiskRegistryActor::RenderAgentList(
-    TInstant now,
-    IOutputStream& out,
-    ui32 limit) const
+void TDiskRegistryActor::RenderAgentList(IOutputStream& out) const
 {
-    if (State->GetAgents().size() > limit) {
-        DumpActionLink(
-            out,
-            TabletID(),
-            "RenderAgentList",
-            "Agents",
-            State->GetAgents().size());
+    DumpActionLink(
+        out,
+        TabletID(),
+        "RenderAgentList",
+        "Agents",
+        State->GetAgents().size());
+}
 
-        return;
-    }
-
+void TDiskRegistryActor::RenderAgentListDetailed(
+    TInstant now,
+    IOutputStream& out) const
+{
     HTML(out) {
         TAG(TH3) { out << "Agents"; DumpSize(out, State->GetAgents()); }
 
@@ -1888,24 +1886,22 @@ void TDiskRegistryActor::HandleHttpInfo_RenderConfig(
     Y_UNUSED(params);
 
     TStringStream out;
-    RenderConfig(out, Max<ui32>());
+    RenderConfigDetailed(out);
     SendHttpResponse(ctx, *requestInfo, std::move(out.Str()));
 }
 
-void TDiskRegistryActor::RenderConfig(IOutputStream& out, ui32 limit) const
+void TDiskRegistryActor::RenderConfig(IOutputStream& out) const
 {
-    const ui32 knownAgentCount = State->GetConfig().KnownAgentsSize();
-    if (knownAgentCount > limit) {
-        DumpActionLink(
-            out,
-            TabletID(),
-            "RenderConfig",
-            "Config",
-            knownAgentCount);
+    DumpActionLink(
+        out,
+        TabletID(),
+        "RenderConfig",
+        "Config",
+        State->GetConfig().KnownAgentsSize());
+}
 
-        return;
-    }
-
+void TDiskRegistryActor::RenderConfigDetailed(IOutputStream& out) const
+{
     HTML(out) {
         TAG(TH3) { out << "Config"; }
 
@@ -2013,26 +2009,29 @@ void TDiskRegistryActor::HandleHttpInfo_RenderDirtyDeviceList(
     Y_UNUSED(params);
 
     TStringStream out;
-    RenderDirtyDeviceList(out, Max<ui32>());
+    RenderDirtyDeviceListDetailed(out);
     SendHttpResponse(ctx, *requestInfo, std::move(out.Str()));
 }
 
-void TDiskRegistryActor::RenderDirtyDeviceList(IOutputStream& out, ui32 limit)
-    const
+void TDiskRegistryActor::RenderDirtyDeviceList(IOutputStream& out) const
 {
     auto dirtyDevices = State->GetDirtyDevices();
     if (dirtyDevices.empty()) {
         return;
     }
 
-    if (dirtyDevices.size() > limit) {
-        DumpActionLink(
-            out,
-            TabletID(),
-            "RenderDirtyDeviceList",
-            "Dirty devices",
-            dirtyDevices.size());
+    DumpActionLink(
+        out,
+        TabletID(),
+        "RenderDirtyDeviceList",
+        "Dirty devices",
+        dirtyDevices.size());
+}
 
+void TDiskRegistryActor::RenderDirtyDeviceListDetailed(IOutputStream& out) const
+{
+    auto dirtyDevices = State->GetDirtyDevices();
+    if (dirtyDevices.empty()) {
         return;
     }
 
@@ -2073,26 +2072,30 @@ void TDiskRegistryActor::HandleHttpInfo_RenderSuspendedDeviceList(
     Y_UNUSED(params);
 
     TStringStream out;
-    RenderSuspendedDeviceList(out, Max<ui32>());
+    RenderSuspendedDeviceListDetailed(out);
     SendHttpResponse(ctx, *requestInfo, std::move(out.Str()));
 }
 
-void TDiskRegistryActor::RenderSuspendedDeviceList(
-    IOutputStream& out,
-    ui32 limit) const
+void TDiskRegistryActor::RenderSuspendedDeviceList(IOutputStream& out) const
 {
     const auto suspendedDevices = State->GetSuspendedDevices();
     if (suspendedDevices.empty()) {
         return;
     }
 
-    if (suspendedDevices.size() > limit) {
-        DumpActionLink(
-            out,
-            TabletID(),
-            "RenderSuspendedDeviceList",
-            "Suspended devices",
-            suspendedDevices.size());
+    DumpActionLink(
+        out,
+        TabletID(),
+        "RenderSuspendedDeviceList",
+        "Suspended devices",
+        suspendedDevices.size());
+}
+
+void TDiskRegistryActor::RenderSuspendedDeviceListDetailed(
+    IOutputStream& out) const
+{
+    const auto suspendedDevices = State->GetSuspendedDevices();
+    if (suspendedDevices.empty()) {
         return;
     }
 
@@ -2176,7 +2179,7 @@ void TDiskRegistryActor::RenderAutomaticallyReplacedDeviceList(
     }
 }
 
-void TDiskRegistryActor::RenderHtmlInfo(TInstant now, IOutputStream& out) const
+void TDiskRegistryActor::RenderHtmlInfo(IOutputStream& out) const
 {
     using namespace NMonitoringUtils;
 
@@ -2186,21 +2189,21 @@ void TDiskRegistryActor::RenderHtmlInfo(TInstant now, IOutputStream& out) const
         if (State) {
             RenderState(out);
 
-            RenderDisks(out, 30);
+            RenderDisks(out);
 
-            RenderPlacementGroupList(out, 30);
+            RenderPlacementGroupList(out);
 
-            RenderRacks(out, 10);
+            RenderRacks(out);
 
-            RenderAgentList(now, out, 20);
+            RenderAgentList(out);
 
-            RenderConfig(out, 20);
+            RenderConfig(out);
 
-            RenderDirtyDeviceList(out, 20);
+            RenderDirtyDeviceList(out);
 
-            RenderBrokenDeviceList(out, 20);
+            RenderBrokenDeviceList(out);
 
-            RenderSuspendedDeviceList(out, 20);
+            RenderSuspendedDeviceList(out);
 
             RenderAutomaticallyReplacedDeviceList(out);
         } else {
@@ -2307,7 +2310,7 @@ void TDiskRegistryActor::HandleHttpInfo(
     }
 
     TStringStream out;
-    RenderHtmlInfo(ctx.Now(), out);
+    RenderHtmlInfo(out);
 
     SendHttpResponse(ctx, *requestInfo, std::move(out.Str()));
 }

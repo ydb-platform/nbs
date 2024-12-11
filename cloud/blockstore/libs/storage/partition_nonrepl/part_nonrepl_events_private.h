@@ -224,6 +224,8 @@ struct TEvNonreplPartitionPrivate
     {
         NProto::TDeviceConfig Device;
         TBlockRange64 DeviceBlockRange;
+        TDuration RequestTimeout;
+        TNonreplicatedPartitionConfigPtr PartConfig;
     };
 
     //

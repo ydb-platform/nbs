@@ -118,12 +118,14 @@ TPermissionList GetRequestPermissions(
     static const THashMap<TString, TPermissionList> actions = {
         // Get
         perms("getstorageconfigfields", CreatePermissionList({EPermission::Get})),
+        perms("listlocalfilestores", CreatePermissionList({EPermission::Get})),
 
         // Update
         perms("draintablets", CreatePermissionList({EPermission::Update})),
 
         // Admin
-        perms("changestorageconfig", TPermissionList().Flip())
+        perms("changestorageconfig", TPermissionList().Flip()),
+        perms("restarttablet", TPermissionList().Flip())
     };
 
     auto it = actions.find(action);

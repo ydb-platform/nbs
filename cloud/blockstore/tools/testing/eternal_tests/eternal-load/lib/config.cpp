@@ -49,7 +49,8 @@ public:
         ui16 writeRate,
         ui64 requestBlockCount,
         ui64 writeParts,
-        TString alternatingPhase);
+        TString alternatingPhase,
+        ui64 maxWriteRequestCount);
 
     TTestConfig& GetConfig() override;
     void DumpConfig(const TString& filePath) override;
@@ -74,7 +75,8 @@ TConfigHolder::TConfigHolder(
         ui16 writeRate,
         ui64 requestBlockCount,
         ui64 writeParts,
-        TString alternatingPhase)
+        TString alternatingPhase,
+        ui64 maxWriteRequestCount)
 {
     Config.SetFilePath(filePath);
     Config.SetFileSize(fileSize);
@@ -92,6 +94,10 @@ TConfigHolder::TConfigHolder(
 
     if (!alternatingPhase.empty()) {
         Config.SetAlternatingPhase(alternatingPhase);
+    }
+
+    if (maxWriteRequestCount) {
+        Config.SetMaxWriteRequestCount(maxWriteRequestCount);
     }
 
     GenerateMissingFields();
@@ -160,7 +166,8 @@ IConfigHolderPtr CreateTestConfig(
     ui16 writeRate,
     ui64 requestBlockCount,
     ui64 writeParts,
-    TString alternatingPhase)
+    TString alternatingPhase,
+    ui64 maxWriteRequestCount)
 {
     return std::make_shared<TConfigHolder>(
         filePath,
@@ -170,7 +177,8 @@ IConfigHolderPtr CreateTestConfig(
         writeRate,
         requestBlockCount,
         writeParts,
-        alternatingPhase);
+        alternatingPhase,
+        maxWriteRequestCount);
 }
 
 IConfigHolderPtr CreateTestConfig(const TString& filePath)

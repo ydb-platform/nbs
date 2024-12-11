@@ -57,13 +57,7 @@ Y_UNIT_TEST_SUITE(TCGroupStatFetcherTest)
         auto fetcher = CreateCgroupStatsFetcher(
             ComponentName,
             CreateLoggingService("console"),
-            monitoring,
-            statsFile.Name(),
-            {
-                .CountersGroupName = "storage",
-                .ComponentGroupName = "test",
-                .CounterName = "CpuWaitFailure",
-            });
+            statsFile.Name());
         fetcher->Start();
 
         auto cpuWait = fetcher->GetCpuWait();
@@ -96,21 +90,8 @@ Y_UNIT_TEST_SUITE(TCGroupStatFetcherTest)
         auto fetcher = CreateCgroupStatsFetcher(
             ComponentName,
             CreateLoggingService("console"),
-            monitoring,
-            "noname",
-            {
-                .CountersGroupName = "storage",
-                .ComponentGroupName = "server",
-                .CounterName = "CpuWaitFailure",
-            });
+            "noname");
         fetcher->Start();
-
-        auto failCounter = monitoring->GetCounters()
-            ->GetSubgroup("counters", "storage")
-            ->GetSubgroup("component", "server")
-            ->GetCounter("CpuWaitFailure", false);
-
-        UNIT_ASSERT_VALUES_EQUAL(1, failCounter->Val());
 
         auto cpuWait = fetcher->GetCpuWait();
         UNIT_ASSERT_C(HasError(cpuWait), cpuWait.GetError());
@@ -131,13 +112,7 @@ Y_UNIT_TEST_SUITE(TCGroupStatFetcherTest)
         auto fetcher = CreateCgroupStatsFetcher(
             ComponentName,
             CreateLoggingService("console"),
-            monitoring,
-            "test",
-            {
-                .CountersGroupName = "storage",
-                .ComponentGroupName = "test",
-                .CounterName = "CpuWaitFailure",
-            });
+            "test");
         fetcher->Start();
 
         UpdateCGroupWaitDuration(statsFile, TDuration::MicroSeconds(80));

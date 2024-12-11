@@ -269,6 +269,7 @@ void TIndexTabletActor::HandleUnlinkNode(
         ev->Sender,
         ev->Cookie,
         msg->CallContext);
+    requestInfo->StartedTs = ctx.Now();
 
     AddTransaction<TEvService::TUnlinkNodeMethod>(*requestInfo);
 
@@ -380,7 +381,7 @@ void TIndexTabletActor::ExecuteTx_UnlinkNode(
             args.ParentNodeId,
             args.Name,
             args.ChildRef->ShardId,
-            args.ChildRef->ShardName,
+            args.ChildRef->ShardNodeName,
             args.ChildRef->MinCommitId,
             args.CommitId);
 
@@ -391,7 +392,7 @@ void TIndexTabletActor::ExecuteTx_UnlinkNode(
         shardRequest->CopyFrom(args.Request);
         shardRequest->SetFileSystemId(args.ChildRef->ShardId);
         shardRequest->SetNodeId(RootNodeId);
-        shardRequest->SetName(args.ChildRef->ShardName);
+        shardRequest->SetName(args.ChildRef->ShardNodeName);
 
         db.WriteOpLogEntry(args.OpLogEntry);
     } else {
@@ -451,7 +452,7 @@ void TIndexTabletActor::CompleteTx_UnlinkNode(
                 "%s Unlinking node in shard upon UnlinkNode: %s, %s",
                 LogTag.c_str(),
                 args.ChildRef->ShardId.c_str(),
-                args.ChildRef->ShardName.c_str());
+                args.ChildRef->ShardNodeName.c_str());
 
             RegisterUnlinkNodeInShardActor(
                 ctx,

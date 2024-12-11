@@ -137,6 +137,8 @@ private:
 
     TLog Log;
 
+    TAtomic WriteRequestsCompleted = 0;
+
 private:
     void DoWriteRequest(ui16 rangeIdx);
     void DoReadRequest(ui16 rangeIdx);
@@ -216,6 +218,16 @@ void TTestExecutor::OnResponse(
     ui16 rangeIdx,
     TStringBuf reqType)
 {
+    if (reqType == "write") {
+        const i64 maxRequestCount =
+            ConfigHolder->GetConfig().GetMaxWriteRequestCount();
+        if (maxRequestCount &&
+            AtomicIncrement(WriteRequestsCompleted) >= maxRequestCount)
+        {
+            Stop();
+        }
+    }
+
     const auto now = Now();
     const auto d = now - startTs;
     if (d > SlowRequestThreshold) {
@@ -273,16 +285,8 @@ void TTestExecutor::DoReadRequest(ui16 rangeIdx)
                 STORAGE_ERROR(
                     "[" << rangeIdx << "] Wrong data in block "
                     << blockIdx
-                    << " expected " << expected
-                    << " actual { " << blockData.RequestNumber
-                    << " " << blockData.PartNumber
-                    << " " << blockData.BlockIndex
-                    << " " << blockData.RangeIdx
-                    << " " << TInstant::MicroSeconds(blockData.RequestTimestamp)
-                    << " " << TInstant::MicroSeconds(blockData.TestTimestamp)
-                    << " " << blockData.TestId
-                    << " " << blockData.Checksum
-                    << " }");
+                    << " expected RequestNumber " << expected
+                    << " actual TBlockData " << blockData);
                 AtomicSet(Failed, 1);
                 Stop();
                 return;

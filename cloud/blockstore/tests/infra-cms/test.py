@@ -526,6 +526,7 @@ def __run_test(test_case, always_allocate_local_ssd):
     storage.DisableLocalService = False
     storage.NonReplicatedDontSuspendDevices = True
     storage.DiskRegistryAlwaysAllocatesLocalDisks = always_allocate_local_ssd
+    storage.DiskRegistryCleanupConfigOnRemoveHost = not always_allocate_local_ssd
     storage.NodeType = 'main'
 
     nbs = Nbs(

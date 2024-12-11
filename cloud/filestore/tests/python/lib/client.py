@@ -54,6 +54,7 @@ class FilestoreCliClient:
         blk_size=4096,
         blk_count=100 * 1024 * 1024 * 1024,
         return_stdout=True,
+        verbose=False,
     ):
         cmd = [
             self.__binary_path, "create",
@@ -61,8 +62,11 @@ class FilestoreCliClient:
             "--cloud", cloud,
             "--folder", folder,
             "--block-size", str(blk_size),
-            "--blocks-count", str(blk_count)
+            "--blocks-count", str(blk_count),
         ] + self.__cmd_opts()
+
+        if verbose:
+            cmd += ["--verbose", "trace"]
 
         logger.info("creating filestore: " + " ".join(cmd))
         result = common.execute(cmd, env=self.__env, check_exit_code=self.__check_exit_code)

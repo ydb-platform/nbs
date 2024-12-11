@@ -53,9 +53,11 @@ using TAliases = NProto::TStorageConfig::TFilestoreAliases;
     xxx(MaxBlocksPerTruncateTx,             ui32,   0 /*TODO: 32GiB/4KiB*/    )\
     xxx(MaxTruncateTxInflight,              ui32,   10                        )\
                                                                                \
-    xxx(AutomaticShardCreationEnabled,                  bool,   false         )\
-    xxx(ShardAllocationUnit,                            ui64,   4_TB          )\
-    xxx(AutomaticallyCreatedShardSize,                  ui64,   5_TB          )\
+    xxx(AutomaticShardCreationEnabled,                          bool,   false )\
+    xxx(ShardAllocationUnit,                                    ui64,   4_TB  )\
+    xxx(AutomaticallyCreatedShardSize,                          ui64,   5_TB  )\
+    xxx(EnforceCorrectFileSystemShardCountUponSessionCreation,  bool,   false )\
+    xxx(ShardIdSelectionInLeaderEnabled,                        bool,   false )\
                                                                                \
     xxx(MaxFileBlocks,                                  ui32,   300_GB / 4_KB )\
     xxx(LargeDeletionMarkersEnabled,                    bool,   false         )\

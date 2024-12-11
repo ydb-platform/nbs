@@ -211,6 +211,29 @@ TVector<NProto::TDiskConfig> MirrorDisk(
     return result;
 }
 
+NProto::TDiskConfig ShadowDisk(
+    const TString& sourceDiskId,
+    const TString& checkpointId,
+    std::initializer_list<TString> uuids,
+    NProto::EDiskState state)
+{
+    NProto::TDiskConfig config;
+
+    config.SetDiskId(sourceDiskId + "-" + checkpointId);
+    auto* checkpoint = config.MutableCheckpointReplica();
+    checkpoint->SetSourceDiskId(sourceDiskId);
+    checkpoint->SetCheckpointId(checkpointId);
+    config.SetBlockSize(DefaultLogicalBlockSize);
+    config.SetState(state);
+
+    for (const auto& uuid: uuids) {
+        *config.AddDeviceUUIDs() = uuid;
+    }
+
+    return config;
+}
+
+
 NProto::TError AllocateMirroredDisk(
     TDiskRegistryDatabase& db,
     TDiskRegistryState& state,

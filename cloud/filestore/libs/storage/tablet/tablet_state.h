@@ -298,6 +298,8 @@ public:
 
     bool CalculateExpectedShardCount() const;
 
+    TString SelectShard(ui64 fileSize);
+
     //
     // FileSystem Stats
     //
@@ -410,7 +412,7 @@ public:
         ui64 parentNodeId,
         const TString& name,
         const TString& shardId,
-        const TString& shardName,
+        const TString& shardNodeName,
         ui64 minCommitId,
         ui64 maxCommitId);
 
@@ -504,7 +506,7 @@ public:
         const TString& childName,
         ui64 childNodeId,
         const TString& shardId,
-        const TString& shardName);
+        const TString& shardNodeName);
 
     void RemoveNodeRef(
         TIndexTabletDatabase& db,
@@ -514,7 +516,7 @@ public:
         const TString& childName,
         ui64 prevChildNodeId,
         const TString& shardId,
-        const TString& shardName);
+        const TString& shardNodeName);
 
     bool ReadNodeRef(
         IIndexTabletDatabase& db,
@@ -555,7 +557,7 @@ public:
         const TString& childName,
         ui64 childNodeId,
         const TString& shardId,
-        const TString& shardName);
+        const TString& shardNodeName);
 
     //
     // Sessions

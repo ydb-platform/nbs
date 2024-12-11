@@ -22,17 +22,6 @@ LWTRACE_USING(BLOCKSTORE_STORAGE_PROVIDER);
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void HandleError(
-    const TNonreplicatedPartitionConfigPtr& partConfig,
-    TStringBuf responseBuffer,
-    NProto::TError& error)
-{
-    error = NRdma::ParseError(responseBuffer);
-    partConfig->AugmentErrorFlags(error);
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
 TNonreplicatedPartitionRdmaActor::TNonreplicatedPartitionRdmaActor(
         TStorageConfigPtr config,
         TNonreplicatedPartitionConfigPtr partConfig,
@@ -123,19 +112,14 @@ bool TNonreplicatedPartitionRdmaActor::InitRequests(
         return false;
     }
 
-    if (!msg.Record.GetHeaders().GetIsBackgroundRequest()
-            && RequiresReadWriteAccess<TMethod>
-            && PartConfig->IsReadOnly())
+    if (!msg.Record.GetHeaders().GetIsBackgroundRequest() &&
+        RequiresReadWriteAccess<TMethod> && PartConfig->IsReadOnly())
     {
-        reply(
-            ctx,
-            requestInfo,
-            PartConfig->MakeIOError(
-                "disk in error state",
-                true // cooldown passed
-                ));
+        reply(ctx, requestInfo, PartConfig->MakeIOError("disk in error state"));
         return false;
-    } else if (RequiresCheckpointSupport(msg.Record)) {
+    }
+
+    if (RequiresCheckpointSupport(msg.Record)) {
         reply(
             ctx,
             requestInfo,

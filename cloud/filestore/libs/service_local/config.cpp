@@ -10,6 +10,10 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+constexpr TDuration AsyncHandleOpsPeriod = TDuration::MilliSeconds(50);
+
+////////////////////////////////////////////////////////////////////////////////
+
 #define FILESTORE_SERVICE_CONFIG(xxx)                                          \
     xxx(RootPath,                    TString,       "./"                      )\
     xxx(PathPrefix,                  TString,       "nfs_"                    )\
@@ -22,6 +26,8 @@ namespace {
     xxx(DirectIoEnabled,             bool,          false                     )\
     xxx(DirectIoAlign,               ui32,          4_KB                      )\
     xxx(GuestWritebackCacheEnabled,  bool,          false                     )\
+    xxx(AsyncDestroyHandleEnabled,   bool,          false                     )\
+    xxx(AsyncHandleOperationPeriod,  TDuration,     AsyncHandleOpsPeriod      )\
 // FILESTORE_SERVICE_CONFIG
 
 #define FILESTORE_SERVICE_DECLARE_CONFIG(name, type, value)                    \

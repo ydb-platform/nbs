@@ -51,6 +51,7 @@ void TIndexTabletActor::HandleDeleteGarbage(
         ev->Sender,
         ev->Cookie,
         msg->CallContext);
+    requestInfo->StartedTs = ctx.Now();
 
     ExecuteTx<TDeleteGarbage>(
         ctx,

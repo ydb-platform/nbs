@@ -10,6 +10,7 @@ RECURSE(
     config_dispatcher
     csi_driver
     disk_agent_config
+    encryption_at_rest
     external_endpoint
     e2e-tests
     fio

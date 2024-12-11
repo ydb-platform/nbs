@@ -32,13 +32,6 @@ struct TDeviceReadRequestContext: public NRdma::TNullContext
     ui64 BlockCount = 0;
 };
 
-///////////////////////////////////////////////////////////////////////////////
-
-void HandleError(
-    const TNonreplicatedPartitionConfigPtr& partConfig,
-    TStringBuf responseBuffer,
-    NProto::TError& error);
-
 ////////////////////////////////////////////////////////////////////////////////
 
 class TNonreplicatedPartitionRdmaActor final
@@ -58,6 +51,7 @@ private:
         PartConfig->GetName()};
     TGetDeviceForRangeCompanion GetDeviceForRangeCompanion{
         TGetDeviceForRangeCompanion::EAllowedOperation::ReadWrite,
+        Config,
         PartConfig};
 
     bool UpdateCountersScheduled = false;
