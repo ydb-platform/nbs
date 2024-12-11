@@ -204,8 +204,13 @@ bool TIndexTabletActor::PrepareTx_CreateHandle(
                 return true;
             }
 
-            if (args.RequestShardId) {
-                args.ShardId = args.RequestShardId;
+            auto shardId = args.RequestShardId;
+            if (!IsShard() && Config->GetShardIdSelectionInLeaderEnabled()) {
+                shardId = SelectShard(0 /*fileSize*/);
+            }
+
+            if (shardId) {
+                args.ShardId = std::move(shardId);
                 args.ShardNodeName = CreateGuidAsString();
                 args.IsNewShardNode = true;
             }

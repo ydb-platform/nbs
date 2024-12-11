@@ -357,6 +357,22 @@ bool TIndexTabletActor::PrepareTx_CreateNode(
 {
     Y_UNUSED(ctx);
 
+    if (!IsShard()
+            && Config->GetShardIdSelectionInLeaderEnabled()
+            && args.Attrs.GetType() == NProto::E_REGULAR_NODE)
+    {
+        args.ShardId = SelectShard(args.Attrs.GetSize());
+    }
+
+    // For multishard filestore, selection of the shard node name for
+    // hard links is done by the client, not the leader. Thus, the
+    // client is able to provide the shard node name explicitly:
+    if (args.Request.HasLink() && args.Request.GetLink().GetShardNodeName()) {
+        args.ShardNodeName = args.Request.GetLink().GetShardNodeName();
+    } else if (args.ShardId) {
+        args.ShardNodeName = CreateGuidAsString();
+    }
+
     if (!IsShard()) {
         FILESTORE_VALIDATE_DUPTX_SESSION(CreateNode, args);
     }

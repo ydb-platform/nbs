@@ -156,6 +156,9 @@ void TIndexTabletState::LoadState(
     }
 
     Impl->OrphanNodeIds.insert(orphanNodeIds.begin(), orphanNodeIds.end());
+
+    const auto& shardIds = GetFileSystem().GetShardFileSystemIds();
+    Impl->ShardBalancer.UpdateShards({shardIds.begin(), shardIds.end()});
 }
 
 void TIndexTabletState::UpdateConfig(

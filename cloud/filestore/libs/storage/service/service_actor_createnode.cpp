@@ -171,7 +171,7 @@ void TLinkActor::HandleShardResponse(
 
     ctx.Send(MakeIndexTabletProxyServiceId(), request.release());
 
-    // TODO(#1350): add proper mechanism for handling dangling links for the
+    // TODO(#2667): add proper mechanism for handling dangling links for the
     // cases, when the hardlink has been created in the shard, but the
     // nodeRef creation in the leader was not completed or failed
 }
@@ -202,7 +202,7 @@ void TLinkActor::HandleLeaderResponse(
         LogTag.c_str(),
         msg->Record.GetNode().GetId());
 
-    // TODO(#1350): some attributes from the shard response could be invalid
+    // TODO(#2667): some attributes from the shard response could be invalid
     // by the time the leader response is received
     msg->Record.MutableNode()->Swap(ShardResponse.MutableNode());
 

@@ -298,6 +298,8 @@ public:
 
     bool CalculateExpectedShardCount() const;
 
+    TString SelectShard(ui64 fileSize);
+
     //
     // FileSystem Stats
     //
