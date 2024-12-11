@@ -581,11 +581,11 @@ void TCommand::InitIamTokenClient()
         ParseFromTextFormat(DefaultIamConfigFile, iamConfig);
     }
 
-    auto IamClientConfig =
+    auto iamClientConfig =
         std::make_shared<NCloud::NIamClient::TIamClientConfig>(iamConfig);
 
     IamClient = ClientFactories->IamClientFactory(
-        std::move(IamClientConfig),
+        std::move(iamClientConfig),
         CreateLoggingService("console"),
         Scheduler,
         Timer);
