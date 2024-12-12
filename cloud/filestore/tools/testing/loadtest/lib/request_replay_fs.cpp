@@ -185,6 +185,7 @@ private:
         if (it == KnownLogNodes.end()) {
             return InvalidNodeId;
         }
+
         auto parent = GetLocalNodeId(it->second.ParentLog);
 
         if (parent == InvalidNodeId && it->second.ParentLog != InvalidNodeId &&
@@ -198,10 +199,15 @@ private:
             if (!parentPath.IsDefined() && parent != InvalidNodeId) {
                 parentPath = PathByNode(parent);
             }
-            if (!parentPath.IsDefined()) {
+            if (!parentPath.IsDefined() &&
+                it->second.ParentLog != InvalidNodeId)
+            {
                 parentPath =
                     PathByNode(RootNodeId) / LostName / UnknownNodeNamePrefix +
                     ToString(it->second.ParentLog);
+            }
+            if (!parentPath.IsDefined()) {
+                parentPath = PathByNode(RootNodeId) / LostName;
             }
             const auto name =
                 parentPath / (it->second.Name.empty()
@@ -301,7 +307,9 @@ private:
                         .Name;
             }
 
-            if (parentNode == InvalidNodeId && nodeName.empty()) {
+            if (parentNode == InvalidNodeId && nodeName.empty() &&
+                logRequest.GetNodeInfo().GetNodeId() != InvalidNodeId)
+            {
                 nodeName = UnknownNodeNamePrefix +
                            ToString(logRequest.GetNodeInfo().GetNodeId());
             }
