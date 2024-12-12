@@ -551,7 +551,6 @@ TLocalFileSystemPtr TLocalFileStore::InitFileSystem(
 void TLocalFileStore::RefreshFileSystems()
 {
     TWriteGuard guard(Lock);
-    const auto& prefix = Config->GetPathPrefix();
 
     TVector<TFsPath> children;
     RootPath.List(children);
