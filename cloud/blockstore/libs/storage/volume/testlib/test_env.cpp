@@ -605,7 +605,8 @@ std::unique_ptr<TTestActorRuntime> PrepareTestActorRuntime(
     NProto::TStorageServiceConfig storageServiceConfig,
     TDiskRegistryStatePtr diskRegistryState,
     NProto::TFeaturesConfig featuresConfig,
-    NRdma::IClientPtr rdmaClient)
+    NRdma::IClientPtr rdmaClient,
+    TDiskAgentStatePtr diskAgentState)
 {
     auto runtime = std::make_unique<TTestBasicRuntime>(1);
 
@@ -690,14 +691,14 @@ std::unique_ptr<TTestActorRuntime> PrepareTestActorRuntime(
     runtime->AddLocalService(
         MakeDiskAgentServiceId(runtime->GetNodeId()),
         TActorSetupCmd(
-            new TDiskAgentMock({
-                diskRegistryState->Devices.begin(),
-                diskRegistryState->Devices.end()
-            }),
+            new TDiskAgentMock(
+                {
+                    diskRegistryState->Devices.begin(),
+                    diskRegistryState->Devices.end(),
+                },
+                diskAgentState),
             TMailboxType::Simple,
-            0
-        )
-    );
+            0));
 
     SetupTabletServices(*runtime);
 
