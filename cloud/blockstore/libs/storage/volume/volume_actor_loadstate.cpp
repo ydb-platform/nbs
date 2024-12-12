@@ -196,10 +196,13 @@ void TVolumeActor::CompleteLoadState(
     ScheduleAllocateDiskIfNeeded(ctx);
 
     LOG_ERROR(ctx, TBlockStoreComponents::VOLUME, "Volume registrations started");
+    //LOG_ERROR(ctx, TBlockStoreComponents::VOLUME, State->GetDiskId());
 
     ScanDiskId = NCloud::Register(
         ctx,
         CreateScanDiskActor(
+            //State->GetDiskId(),
+            "disk_id",
             SelfId(),
             100,
             0,

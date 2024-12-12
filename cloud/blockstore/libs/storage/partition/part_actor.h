@@ -408,6 +408,10 @@ private:
         const TString& operationId,
         ui32& ranges) const;
 
+    void CheckRange(
+        const TEvVolume::TEvCheckRange::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
     NActors::IActorPtr CreateMetadataRebuildUsedBlocksActor(
         NActors::TActorId tablet,
         ui64 blocksPerBatch,

@@ -932,6 +932,11 @@ void TPartitionActor::ReadBlocks(
     IReadBlocksHandlerPtr readHandler,
     bool replyLocal)
 {
+    LOG_ERROR(
+        ctx,
+        TBlockStoreComponents::VOLUME,
+        "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! reading blocks");
+
     State->GetCleanupQueue().AcquireBarrier(commitId);
 
     LOG_TRACE(ctx, TBlockStoreComponents::PARTITION,

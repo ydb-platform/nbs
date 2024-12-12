@@ -358,6 +358,15 @@ private:
 
     NActors::TActorId ScanDiskId;
 
+    struct TScanDiskStatus
+    {
+        bool IsFinished;
+        ui64 LastBlockId;
+        ui64 BrokenBlockId;
+        TString ErrorMessage;
+        TString TimeStamp;
+    };
+
 public:
     TVolumeActor(
         const NActors::TActorId& owner,
@@ -1003,6 +1012,7 @@ private:
     ////////////////////////////////////////////////////////////////////////////
 
     NActors::IActorPtr CreateScanDiskActor(
+        TString diskId,
         NActors::TActorId tablet,
         ui64 blobsPerBatch,
         ui64 finalCommitId,

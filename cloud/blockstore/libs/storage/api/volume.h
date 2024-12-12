@@ -10,6 +10,8 @@
 #include <cloud/blockstore/libs/storage/protos/volume.pb.h>
 #include <cloud/blockstore/libs/storage/protos_ydb/volume.pb.h>
 
+#include <utility>
+
 namespace NCloud::NBlockStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -251,10 +253,12 @@ struct TEvVolume
     {
         ui64 BlockId;
         ui64 BlocksCount;
+        TString DiskId;
 
-        TCheckRange(ui64 blockId, ui64 blocksCount)
+        TCheckRange(ui64 blockId, ui64 blocksCount, TString diskId)
             : BlockId(blockId)
             , BlocksCount(blocksCount)
+            , DiskId(std::move(diskId))
         {}
     };
 
