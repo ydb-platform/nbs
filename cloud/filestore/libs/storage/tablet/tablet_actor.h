@@ -331,7 +331,7 @@ private:
     } Metrics;
 
     NProtoPrivate::TStorageStats CachedAggregateStats;
-    TVector<TEvIndexTabletPrivate::TShardStats> CachedShardStats;
+    TVector<TShardStats> CachedShardStats;
     bool CachedStatsFetchingInProgress = false;
 
     const IProfileLogPtr ProfileLog;

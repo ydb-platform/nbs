@@ -296,6 +296,8 @@ public:
     ui64 GetAutomaticallyCreatedShardSize() const;
     bool GetEnforceCorrectFileSystemShardCountUponSessionCreation() const;
     bool GetShardIdSelectionInLeaderEnabled() const;
+    ui64 GetShardBalancerDesiredFreeSpaceReserve() const;
+    ui64 GetShardBalancerMinFreeSpaceReserve() const;
 
     bool GetGuestWritebackCacheEnabled() const;
 };

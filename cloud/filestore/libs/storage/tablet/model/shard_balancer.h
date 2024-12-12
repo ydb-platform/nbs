@@ -2,6 +2,8 @@
 
 #include "public.h"
 
+#include <cloud/storage/core/libs/common/error.h>
+
 #include <util/generic/string.h>
 #include <util/generic/vector.h>
 
@@ -9,29 +11,43 @@ namespace NCloud::NFileStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+struct TShardStats
+{
+    ui64 TotalBlocksCount = 0;
+    ui64 UsedBlocksCount = 0;
+    ui64 CurrentLoad = 0;
+    ui64 Suffer = 0;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
 class TShardBalancer
 {
+public:
+    struct TShardMeta
+    {
+        ui32 ShardIdx;
+        TShardStats Stats;
+
+        TShardMeta(ui32 shardIdx, TShardStats stats)
+            : ShardIdx(shardIdx)
+            , Stats(stats)
+        {}
+    };
+
 private:
-    TVector<TString> ShardIds;
+    ui64 DesiredFreeSpaceReserve = 0;
+    ui32 MinFreeSpaceReserve = 0;
+
+    TVector<TString> Ids;
+    TVector<TShardMeta> Metas;
     ui32 ShardSelector = 0;
 
 public:
-    void UpdateShards(TVector<TString> shardIds)
-    {
-        ShardIds = std::move(shardIds);
-        ShardSelector = 0;
-    }
-
-    TString SelectShard(ui64 fileSize)
-    {
-        Y_UNUSED(fileSize);
-
-        if (!ShardIds) {
-            return {};
-        }
-
-        return ShardIds[ShardSelector++ % ShardIds.size()];
-    }
+    void SetParameters(ui64 desiredFreeSpaceReserve, ui64 minFreeSpaceReserve);
+    void UpdateShards(TVector<TString> shardIds);
+    void UpdateShardStats(const TVector<TShardStats>& stats);
+    NProto::TError SelectShard(ui64 fileSize, TString* shardId);
 };
 
 }   // namespace NCloud::NFileStore::NStorage

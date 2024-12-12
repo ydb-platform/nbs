@@ -1432,9 +1432,14 @@ TReadAheadCacheStats TIndexTabletState::CalculateReadAheadCacheStats() const
 ////////////////////////////////////////////////////////////////////////////////
 // Balancing
 
-TString TIndexTabletState::SelectShard(ui64 fileSize)
+NProto::TError TIndexTabletState::SelectShard(ui64 fileSize, TString* shardId)
 {
-    return Impl->ShardBalancer.SelectShard(fileSize);
+    return Impl->ShardBalancer.SelectShard(fileSize, shardId);
+}
+
+void TIndexTabletState::UpdateShardStats(const TVector<TShardStats>& stats)
+{
+    Impl->ShardBalancer.UpdateShardStats(stats);
 }
 
 }   // namespace NCloud::NFileStore::NStorage

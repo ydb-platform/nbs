@@ -361,7 +361,10 @@ bool TIndexTabletActor::PrepareTx_CreateNode(
             && Config->GetShardIdSelectionInLeaderEnabled()
             && args.Attrs.GetType() == NProto::E_REGULAR_NODE)
     {
-        args.ShardId = SelectShard(args.Attrs.GetSize());
+        args.Error = SelectShard(args.Attrs.GetSize(), &args.ShardId);
+        if (HasError(args.Error)) {
+            return true;
+        }
     }
 
     // For multishard filestore, selection of the shard node name for
