@@ -15,19 +15,22 @@ ui64 FreeSpace(const TShardStats& s)
 
 }   // namespace
 
-bool operator<(
-    const TShardBalancer::TShardMeta& lhs,
-    const TShardBalancer::TShardMeta& rhs)
+struct TShardMetaComp
 {
-    return FreeSpace(lhs.Stats) == FreeSpace(rhs.Stats)
-        ? lhs.ShardIdx < rhs.ShardIdx
-        : FreeSpace(lhs.Stats) > FreeSpace(rhs.Stats);
-}
+    bool operator()(
+        const TShardBalancer::TShardMeta& lhs,
+        const TShardBalancer::TShardMeta& rhs)
+    {
+        return FreeSpace(lhs.Stats) == FreeSpace(rhs.Stats)
+            ? lhs.ShardIdx < rhs.ShardIdx
+            : FreeSpace(lhs.Stats) > FreeSpace(rhs.Stats);
+    }
 
-bool operator<(ui64 lhs, const TShardBalancer::TShardMeta& rhs)
-{
-    return lhs > FreeSpace(rhs.Stats);
-}
+    bool operator()(ui64 lhs, const TShardBalancer::TShardMeta& rhs)
+    {
+        return lhs > FreeSpace(rhs.Stats);
+    }
+};
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -56,11 +59,11 @@ void TShardBalancer::UpdateShardStats(const TVector<TShardStats>& stats)
     for (ui32 i = 0; i < cnt; ++i) {
         Metas[i].Stats = {};
     }
-    Sort(Metas.begin(), Metas.end());
+    Sort(Metas.begin(), Metas.end(), TShardMetaComp());
     for (ui32 i = 0; i < cnt; ++i) {
         Metas[i].Stats = stats[i];
     }
-    Sort(Metas.begin(), Metas.end());
+    Sort(Metas.begin(), Metas.end(), TShardMetaComp());
     ShardSelector = 0;
 }
 
@@ -69,12 +72,14 @@ NProto::TError TShardBalancer::SelectShard(ui64 fileSize, TString* shardId)
     auto* e = UpperBound(
         Metas.begin(),
         Metas.end(),
-        fileSize + DesiredFreeSpaceReserve);
+        fileSize + DesiredFreeSpaceReserve,
+        TShardMetaComp());
     if (e == Metas.begin()) {
         e = UpperBound(
             Metas.begin(),
             Metas.end(),
-            fileSize + MinFreeSpaceReserve);
+            fileSize + MinFreeSpaceReserve,
+            TShardMetaComp());
     }
 
     if (e == Metas.begin()) {
