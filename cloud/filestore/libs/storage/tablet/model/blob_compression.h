@@ -68,17 +68,9 @@ class TBlobCompressionInfo
 {
 private:
     struct TImpl;
-    std::unique_ptr<TImpl> Impl;
+    std::shared_ptr<TImpl> Impl;
 
 public:
-    TBlobCompressionInfo();
-
-    TBlobCompressionInfo(const TBlobCompressionInfo& other);
-
-    TBlobCompressionInfo& operator=(TBlobCompressionInfo other);
-
-    ~TBlobCompressionInfo();
-
     bool BlobCompressed() const;
 
     TCompressedRange CompressedRange(TUncompressedRange range) const;

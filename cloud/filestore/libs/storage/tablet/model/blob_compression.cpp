@@ -20,26 +20,6 @@ struct TBlobCompressionInfo::TImpl
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TBlobCompressionInfo::TBlobCompressionInfo()
-{}
-
-TBlobCompressionInfo::TBlobCompressionInfo(const TBlobCompressionInfo& other)
-{
-    if (other.Impl) {
-        Impl.reset(new TImpl(*other.Impl));
-    }
-}
-
-TBlobCompressionInfo& TBlobCompressionInfo::operator=(
-    TBlobCompressionInfo other)
-{
-    Impl = std::move(other.Impl);
-    return *this;
-}
-
-TBlobCompressionInfo::~TBlobCompressionInfo()
-{}
-
 bool TBlobCompressionInfo::BlobCompressed() const
 {
     return !!Impl;
