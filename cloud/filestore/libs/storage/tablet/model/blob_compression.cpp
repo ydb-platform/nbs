@@ -6,17 +6,29 @@ namespace NCloud::NFileStore::NStorage {
 
 struct TBlobCompressionInfo::TImpl
 {
+    TByteVector Bytes;
+
+    TImpl(TByteVector bytes)
+        : Bytes(std::move(bytes))
+    {}
+
     TCompressedRange CompressedRange(TUncompressedRange range) const
     {
         Y_UNUSED(range);
         return {};
     }
 
-    TString Encode() const
+    const TByteVector& GetEncoded() const
     {
-        return "";
+        return Bytes;
     }
 };
+
+////////////////////////////////////////////////////////////////////////////////
+
+TBlobCompressionInfo::TBlobCompressionInfo(TByteVector bytes)
+    : Impl(new TImpl(std::move(bytes)))
+{}
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -32,10 +44,10 @@ TCompressedRange TBlobCompressionInfo::CompressedRange(
     return Impl->CompressedRange(range);
 }
 
-TString TBlobCompressionInfo::Encode() const
+const TByteVector& TBlobCompressionInfo::GetEncoded() const
 {
     Y_ABORT_UNLESS(Impl);
-    return Impl->Encode();
+    return Impl->GetEncoded();
 }
 
 ////////////////////////////////////////////////////////////////////////////////

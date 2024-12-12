@@ -3,6 +3,7 @@
 #include "public.h"
 
 #include <cloud/storage/core/libs/common/block_buffer.h>
+#include <cloud/storage/core/libs/common/byte_vector.h>
 
 #include <contrib/ydb/library/actors/util/rope.h>
 
@@ -71,11 +72,15 @@ private:
     std::shared_ptr<TImpl> Impl;
 
 public:
+    TBlobCompressionInfo() = default;
+
+    explicit TBlobCompressionInfo(TByteVector bytes);
+
     bool BlobCompressed() const;
 
     TCompressedRange CompressedRange(TUncompressedRange range) const;
 
-    TString Encode() const;
+    const TByteVector& GetEncoded() const;
 };
 
 ////////////////////////////////////////////////////////////////////////////////

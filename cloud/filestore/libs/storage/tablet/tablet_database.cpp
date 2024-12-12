@@ -1238,9 +1238,12 @@ void TIndexTabletDatabase::WriteMixedBlocks(
     );
 
     if (blobCompressionInfo.BlobCompressed()) {
+        TStringBuf encodedBlobCompressionInfo{
+            blobCompressionInfo.GetEncoded().begin(),
+            blobCompressionInfo.GetEncoded().end()};
         value.Update(
             NIceDb::TUpdate<TTable::BlobCompressionInfo>(
-                blobCompressionInfo.Encode())
+                encodedBlobCompressionInfo)
         );
     }
 }
@@ -1287,10 +1290,15 @@ bool TIndexTabletDatabase::ReadMixedBlocks(
 
         TBlockList blockList { std::move(blocks), std::move(deletionMarkers) };
 
+        TBlobCompressionInfo blobCompressionInfo;
+        if (auto value = it.GetValue<TTable::BlobCompressionInfo>()) {
+            blobCompressionInfo = TBlobCompressionInfo(FromStringBuf(value, alloc));
+        }
+
         blob = TMixedBlob {
             blobId,
             std::move(blockList),
-            TBlobCompressionInfo(), // TODO
+            std::move(blobCompressionInfo),
             it.GetValue<TTable::GarbageBlocksCount>(),
             it.GetValue<TTable::CheckpointBlocksCount>()
         };
