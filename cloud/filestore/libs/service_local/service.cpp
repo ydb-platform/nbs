@@ -1,6 +1,5 @@
 #include "service.h"
 
-#include "config.h"
 #include "fs.h"
 
 #include <cloud/filestore/libs/service/context.h>
@@ -39,7 +38,7 @@ TFsPath Concat(const TFsPath& lhs, const TFsPath& rhs)
     TPathSplit r(rhs.GetPath());
 
     l.AppendMany(r.begin(), r.end());
-    return TFsPath(l.Reconstruct());
+    return l.Reconstruct();
 }
 
 void CreateRequestToFileStore(
@@ -144,7 +143,8 @@ private:
     const ILoggingServicePtr Logging;
     const IFileIOServicePtr FileIOService;
     const ITaskQueuePtr TaskQueue;
-    const TFsPath Root;
+    const TFsPath RootPath;
+    const TFsPath StatePath;
 
     TRWMutex Lock;
     THashMap<TString, TLocalFileSystemPtr> FileSystems;
@@ -165,9 +165,10 @@ public:
         , Logging(std::move(logging))
         , FileIOService(std::move(fileIOService))
         , TaskQueue(std::move(taskQueue))
-        , Root(Config->GetRootPath())
+        , RootPath(Config->GetRootPath())
+        , StatePath(Config->GetStatePath())
     {
-        Root.CheckExists();
+        RootPath.CheckExists();
         Log = Logging->CreateLog("NFS_SERVICE");
     }
 
@@ -212,9 +213,52 @@ FILESTORE_SERVICE_LOCAL_ASYNC(FILESTORE_IMPLEMENT_METHOD_ASYNC)
     }
 
 private:
+    struct TFileStorePaths
+    {
+        TFsPath MetaPath;
+        TFsPath RootPath;
+        TFsPath StatePath;
+    };
+
+    TFileStorePaths GetPaths(const TString& fsId)
+    {
+        TFileStorePaths paths;
+
+        const TString& name = Config->GetPathPrefix() + fsId;
+
+        paths.MetaPath = Concat(RootPath, "." + name);
+        paths.RootPath = Concat(RootPath, name);
+        paths.StatePath = Concat(StatePath, ".state_" + name);
+        return paths;
+    }
+
+    std::optional<TString> ParseFsIdFromStateDir(const TFsPath& dir)
+    {
+        const auto& prefix = ".state_" + Config->GetPathPrefix();
+        if (dir.GetName().StartsWith(prefix) && dir.IsDirectory()) {
+            return dir.GetName().substr(prefix.size());
+        }
+
+        return {};
+    }
+
+    std::optional<TString> ParseFsIdFromRootDir(const TFsPath& dir)
+    {
+        const auto& prefix = Config->GetPathPrefix();
+        if (dir.GetName().StartsWith(prefix) && dir.IsDirectory()) {
+            return dir.GetName().substr(prefix.size());
+        }
+
+        return {};
+    }
+
     template <typename T>
     typename T::TResult Execute(typename T::TRequest& request)
     {
+        if constexpr (std::is_same_v<T, TCreateSessionMethod>) {
+            RefreshFileSystems();
+        }
+
         const auto& id = GetFileSystemId(request);
         if (!id) {
             return T::ErrorResponse(E_ARGUMENT, "invalid file system identifier");
@@ -272,8 +316,9 @@ private:
 
     template <>
     NProto::TDescribeFileStoreModelResponse Execute<TDescribeFileStoreModelMethod>(
-        NProto::TDescribeFileStoreModelRequest&)
+        NProto::TDescribeFileStoreModelRequest& request)
     {
+        Y_UNUSED(request);
         return TErrorResponse(
             E_NOT_IMPLEMENTED,
             "DescribeFileStoreModel is not implemented for the local service");
@@ -281,8 +326,9 @@ private:
 
     template <>
     NProto::TResizeFileStoreResponse Execute<TResizeFileStoreMethod>(
-        NProto::TResizeFileStoreRequest&)
+        NProto::TResizeFileStoreRequest& request)
     {
+        Y_UNUSED(request);
         return TErrorResponse(
             E_NOT_IMPLEMENTED,
             "ResizeFileStore is not implemented for the local service");
@@ -290,8 +336,9 @@ private:
 
     template <>
     NProto::TSubscribeSessionResponse Execute<TSubscribeSessionMethod>(
-        NProto::TSubscribeSessionRequest&)
+        NProto::TSubscribeSessionRequest& request)
     {
+        Y_UNUSED(request);
         return TErrorResponse(
             E_NOT_IMPLEMENTED,
             "SubscribeSession is not implemented for the local service");
@@ -299,8 +346,9 @@ private:
 
     template <>
     NProto::TGetSessionEventsResponse Execute<TGetSessionEventsMethod>(
-        NProto::TGetSessionEventsRequest&)
+        NProto::TGetSessionEventsRequest& request)
     {
+        Y_UNUSED(request);
         return TErrorResponse(
             E_NOT_IMPLEMENTED,
             "GetSessionEvents is not implemented for the local service");
@@ -308,13 +356,13 @@ private:
 
     template <>
     NProto::TExecuteActionResponse Execute<TExecuteActionMethod>(
-        NProto::TExecuteActionRequest&)
+        NProto::TExecuteActionRequest& request)
     {
+        Y_UNUSED(request);
         return TErrorResponse(
             E_NOT_IMPLEMENTED,
             "ExecuteAction is not implemented for the local service");
     }
-
 
     NProto::TCreateFileStoreResponse CreateFileStore(
         const NProto::TCreateFileStoreRequest& request);
@@ -337,46 +385,17 @@ private:
         const TFsPath& statePath,
         const NProto::TFileStore& store);
 
-    TLocalFileSystemPtr FindFileSystem(const TString& id);
+    void RefreshFileSystems();
+    TLocalFileSystemPtr LoadFileSystemNoLock(const TString& id);
 
-    TFsPath GetStatePath(const TString name)
-    {
-        return Concat(Config->GetStatePath(), ".state_" + name);
-    }
+    TLocalFileSystemPtr FindFileSystem(const TString& id);
 };
 
 ////////////////////////////////////////////////////////////////////////////////
 
 void TLocalFileStore::Start()
 {
-    const auto& prefix = Config->GetPathPrefix();
-
-    TVector<TFsPath> children;
-    Root.List(children);
-
-    TWriteGuard guard(Lock);
-
-    for (const auto& child: children) {
-        if (child.GetName().StartsWith(prefix) && child.IsDirectory()) {
-            auto id = child.GetName().substr(prefix.size());
-            auto path = Concat(Root, "." + child.GetName());
-            if (!path.Exists()) {
-                STORAGE_WARN("skipped suspicious " << id.Quote());
-                continue;
-            }
-
-            TFsPath statePath = GetStatePath(child.GetName());
-            statePath.MkDir(Config->GetDefaultPermissions());
-
-            STORAGE_INFO("restoring local store " << id.Quote());
-
-            NProto::TFileStore store;
-            LoadFileStoreProto(path, store);
-            InitFileSystem(id, child, statePath, store);
-
-            STORAGE_INFO("restored local store " << id.Quote());
-        }
-    }
+    RefreshFileSystems();
 }
 
 void TLocalFileStore::Stop()
@@ -403,27 +422,25 @@ NProto::TCreateFileStoreResponse TLocalFileStore::CreateFileStore(
     if (it != FileSystems.end()) {
         ui32 errorCode = S_ALREADY;
 
-        google::protobuf::util::MessageDifferencer comparator;
-        if (!comparator.Equals(store, it->second->GetConfig())) {
+        if (!google::protobuf::util::MessageDifferencer::Equals(
+                store,
+                it->second->GetConfig()))
+        {
             errorCode = E_ARGUMENT;
         }
 
         return TErrorResponse(errorCode, TStringBuilder()
-            << "file store already exists: " << id.Quote());
+            << "local filestore already exists: " << id.Quote());
     }
 
-    const TString& name = Config->GetPathPrefix() + id;
+    auto fsPaths = GetPaths(id);
 
-    TFsPath meta = Concat(Config->GetRootPath(), "." + name);
-    SaveFileStoreProto(meta, store);
+    SaveFileStoreProto(fsPaths.MetaPath, store);
 
-    TFsPath root = Concat(Config->GetRootPath(), name);
-    root.MkDir(Config->GetDefaultPermissions());
+    fsPaths.RootPath.MkDir(static_cast<int>(Config->GetDefaultPermissions()));
+    fsPaths.StatePath.MkDir(static_cast<int>(Config->GetDefaultPermissions()));
 
-    TFsPath statePath = GetStatePath(name);
-    statePath.MkDir(Config->GetDefaultPermissions());
-
-    InitFileSystem(id, root, statePath, store);
+    InitFileSystem(id, fsPaths.RootPath, fsPaths.StatePath, store);
 
     NProto::TCreateFileStoreResponse response;
     response.MutableFileStore()->Swap(&store);
@@ -441,6 +458,8 @@ NProto::TDestroyFileStoreResponse TLocalFileStore::DestroyFileStore(
         return TErrorResponse(E_ARGUMENT, "invalid file system identifier");
     }
 
+    RefreshFileSystems();
+
     TWriteGuard guard(Lock);
 
     auto it = FileSystems.find(id);
@@ -449,13 +468,10 @@ NProto::TDestroyFileStoreResponse TLocalFileStore::DestroyFileStore(
             << "invalid file system: " << id.Quote());
     }
 
-    const TString& name = Config->GetPathPrefix() + id;
-
-    TFsPath path = Concat(Config->GetRootPath(), name);
-    path.ForceDelete();
-
-    TFsPath statePath = GetStatePath(name);
-    statePath.ForceDelete();
+    auto fsPaths = GetPaths(id);
+    fsPaths.MetaPath.ForceDelete();
+    fsPaths.RootPath.ForceDelete();
+    fsPaths.StatePath.ForceDelete();
 
     FileSystems.erase(it);
 
@@ -472,20 +488,22 @@ NProto::TAlterFileStoreResponse TLocalFileStore::AlterFileStore(
         return TErrorResponse(E_ARGUMENT, "invalid file system identifier");
     }
 
+    RefreshFileSystems();
+
     TWriteGuard guard(Lock);
 
     auto it = FileSystems.find(id);
     if (it == FileSystems.end()) {
         return TErrorResponse(E_ARGUMENT, TStringBuilder()
-            << "file store doesn't exist: " << id.Quote());
+            << "local filestore doesn't exist: " << id.Quote());
     }
 
     NProto::TFileStore store = it->second->GetConfig();
     AlterRequestToFileStore(request, store);
 
-    const TString& name = Config->GetPathPrefix() + id;
-    TFsPath meta = Concat(Config->GetRootPath(), "." + name);
-    SaveFileStoreProto(meta, store);
+    auto fsPaths = GetPaths(id);
+
+    SaveFileStoreProto(fsPaths.MetaPath, store);
 
     it->second->SetConfig(store);
 
@@ -497,6 +515,8 @@ NProto::TListFileStoresResponse TLocalFileStore::ListFileStores(
 {
     STORAGE_TRACE("ListFileStores " << DumpMessage(request));
     NProto::TListFileStoresResponse response;
+
+    RefreshFileSystems();
 
     TReadGuard guard(Lock);
     for (const auto& [id, _]: FileSystems) {
@@ -528,12 +548,94 @@ TLocalFileSystemPtr TLocalFileStore::InitFileSystem(
     return fs;
 }
 
+void TLocalFileStore::RefreshFileSystems()
+{
+    TWriteGuard guard(Lock);
+    const auto& prefix = Config->GetPathPrefix();
+
+    TVector<TFsPath> children;
+    RootPath.List(children);
+
+    // Load new filesystems
+    for (const auto& child: children) {
+        auto fsId = ParseFsIdFromRootDir(child);
+        if (fsId) {
+            auto it = FileSystems.find(*fsId);
+            if (it != FileSystems.end()) {
+                continue;
+            }
+
+            LoadFileSystemNoLock(*fsId);
+        }
+    }
+
+    // Clean filesystems that were destroyed externally
+    TVector<TString> destroyedFsIds;
+    for (auto& [fsId, _]: FileSystems) {
+        auto fsPaths = GetPaths(fsId);
+        if (!fsPaths.RootPath.Exists() && !fsPaths.MetaPath.Exists()) {
+            destroyedFsIds.push_back(fsId);
+        }
+    }
+
+    for (auto& fsId: destroyedFsIds) {
+        STORAGE_INFO("Unloading local filestore " << fsId.Quote());
+        FileSystems.erase(fsId);
+
+        auto fsPaths = GetPaths(fsId);
+        fsPaths.StatePath.ForceDelete();
+    }
+
+    // Clean local state directories that not used anymore
+    // This can happend if filestore-vhost was stopped, filesystem destroyed
+    // externally and then filestore-vhost was started
+    children.clear();
+    StatePath.List(children);
+    for (const auto& child: children) {
+        auto fsId = ParseFsIdFromStateDir(child);
+        if (fsId) {
+            if (FileSystems.find(*fsId) != FileSystems.end()) {
+                continue;
+            }
+
+            STORAGE_INFO("Removing local filestore state " << fsId->Quote());
+            child.ForceDelete();
+        }
+    }
+}
+
+TLocalFileSystemPtr TLocalFileStore::LoadFileSystemNoLock(const TString& id)
+{
+    auto fsPaths = GetPaths(id);
+    if (!fsPaths.MetaPath.Exists()) {
+        return nullptr;
+    }
+
+    TLocalFileSystemPtr fs = nullptr;
+    try {
+        STORAGE_INFO("Loading local filestore " << id.Quote());
+
+        fsPaths.StatePath.MkDir(
+            static_cast<int>(Config->GetDefaultPermissions()));
+
+        NProto::TFileStore store;
+        LoadFileStoreProto(fsPaths.MetaPath, store);
+
+        fs = InitFileSystem(id, fsPaths.RootPath, fsPaths.StatePath, store);
+        STORAGE_INFO("Loaded local filestore " << id.Quote());
+    } catch (...) {
+        STORAGE_ERROR("Failed to load fs proto" << CurrentExceptionMessage());
+    }
+
+    return fs;
+}
+
 TLocalFileSystemPtr TLocalFileStore::FindFileSystem(const TString& id)
 {
     TReadGuard guard(Lock);
 
     auto it = FileSystems.find(id);
-    if (it != FileSystems.end()){
+    if (it != FileSystems.end()) {
         return it->second;
     }
 

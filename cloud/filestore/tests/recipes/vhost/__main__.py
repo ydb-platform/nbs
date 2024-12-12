@@ -56,8 +56,11 @@ def start(argv):
     restart_interval = get_restart_interval(args.restart_interval)
     restart_flag = get_restart_flag(args.restart_flag, "qemu-ready-" + uid)
 
-    endpoint_storage_dir = common.work_path() + '/endpoints-' + uid
+    endpoint_storage_dir = os.getenv("NFS_VHOST_ENDPOINT_STORAGE_DIR")
+    if not endpoint_storage_dir:
+        endpoint_storage_dir = common.work_path() + '/endpoints-' + uid
     pathlib.Path(endpoint_storage_dir).mkdir(parents=True, exist_ok=True)
+    set_env("NFS_VHOST_ENDPOINT_STORAGE_DIR", endpoint_storage_dir)
 
     config = TVhostAppConfig()
     config.VhostServiceConfig.CopyFrom(TVhostServiceConfig())
@@ -146,7 +149,6 @@ def start(argv):
     wait_for_filestore_vhost(filestore_vhost, vhost_configurator.port)
 
     if restart_interval:
-        set_env("NFS_VHOST_ENDPOINT_STORAGE_DIR", endpoint_storage_dir)
         if restart_flag is not None:
             set_env("QEMU_SET_READY_FLAG", restart_flag)
 

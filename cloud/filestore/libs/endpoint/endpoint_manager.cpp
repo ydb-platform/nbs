@@ -12,6 +12,8 @@
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 #include <cloud/storage/core/libs/endpoints/iface/endpoints.h>
 
+#include <contrib/ydb/core/protos/flat_tx_scheme.pb.h>
+
 #include <util/generic/guid.h>
 #include <util/system/hostname.h>
 #include <util/generic/map.h>
@@ -194,10 +196,10 @@ private:
         auto originFqdn = GetFQDNHostName();
 
         TVector<TFuture<void>> futures;
-        for (auto keyringId: storedIds) {
-            auto requestOrError = Storage->GetEndpoint(keyringId);
+        for (auto endpointId: storedIds) {
+            auto requestOrError = Storage->GetEndpoint(endpointId);
             if (HasError(requestOrError)) {
-                STORAGE_WARN("Failed to restore endpoint. ID: " << keyringId
+                STORAGE_WARN("Failed to restore endpoint. ID: " << endpointId
                     << ", error: " << FormatError(requestOrError.GetError()));
                 continue;
             }
@@ -207,7 +209,7 @@ private:
 
             if (!request) {
                 // TODO: report critical error
-                STORAGE_ERROR("Failed to deserialize request. ID: " << keyringId);
+                STORAGE_ERROR("Failed to deserialize request. ID: " << endpointId);
                 continue;
             }
 
@@ -220,18 +222,37 @@ private:
                 MakeIntrusive<TCallContext>(requestId),
                 std::move(request));
 
-            future.Subscribe([=] (const auto& f) {
-                const auto& response = f.GetValue();
-                if (HasError(response)) {
-                    // TODO: report critical error
-                    STORAGE_ERROR("Failed to start endpoint: "
-                        << FormatError(response.GetError()));
-                }
-            });
+            future.Subscribe(
+                [weakPtr = weak_from_this(), endpointId](const auto& f) {
+                    if (auto ptr = weakPtr.lock()) {
+                        const auto& response = f.GetValue();
+                        ptr->HandleRestoredEndpoint(
+                            endpointId,
+                            response.GetError());
+                    }
+                });
             futures.push_back(future.IgnoreResult());
         }
 
         return WaitAll(futures);
+    }
+
+    void HandleRestoredEndpoint(
+        const TString& endpointId,
+        const NProto::TError& error)
+    {
+        if (HasError(error)) {
+            STORAGE_ERROR("Failed to start endpoint: "
+                << FormatError(error));
+            if (error.GetCode() ==
+                MAKE_SCHEMESHARD_ERROR(NKikimrScheme::StatusPathDoesNotExist))
+            {
+                STORAGE_INFO(
+                    "Remove endpoint for non-existing filesystem. endpoint id: "
+                    << endpointId.Quote());
+                Storage->RemoveEndpoint(endpointId);
+            }
+        }
     }
 
     void AddStartingSocket(

@@ -25,7 +25,10 @@ TApp& TApp::Instance()
     return *Singleton<TApp>();
 }
 
-int TApp::Run(int argc, char** argv)
+int TApp::Run(
+    std::shared_ptr<TClientFactories> clientFactories,
+    int argc,
+    char** argv)
 {
     TOpts opts;
     opts.AddHelpOption('h');
@@ -51,6 +54,7 @@ int TApp::Run(int argc, char** argv)
         if (!Command) {
             ythrow yexception() << "unknown command: " << name;
         }
+        Command->SetClientFactories(std::move(clientFactories));
         return Command->Run(argc - 1, std::next(argv));
     } catch (const TUsageException& e) {
         Cerr << FormatCmdLine(argc, argv)

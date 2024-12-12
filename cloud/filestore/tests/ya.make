@@ -9,6 +9,7 @@ RECURSE_FOR_TESTS(
     client
     client_sharded
     config_dispatcher
+    endpoints
     fio
     fio_index
     fio_index_migration

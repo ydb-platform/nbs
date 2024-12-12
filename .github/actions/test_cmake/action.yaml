@@ -7,10 +7,12 @@ runs:
     - name: prepare
       shell: bash --noprofile --norc -eo pipefail -x {0}
       run: |
-        echo "SHELLOPTS=$SHELLOPTS:xtrace" >> $GITHUB_ENV
-        echo "ARTIFACTS_DIR=${TMP_DIR}/artifacts" >> $GITHUB_ENV
-        echo "SUMMARY_DIR=${ARTIFACTS_DIR}/summary" >> $GITHUB_ENV
-        echo "SUMMARY_LINKS=$(mktemp)" >> $GITHUB_ENV
+        {
+          echo "SHELLOPTS=$SHELLOPTS:xtrace"
+          echo "ARTIFACTS_DIR=${TMP_DIR}/artifacts"
+          echo "SUMMARY_DIR=${ARTIFACTS_DIR}/summary"
+          echo "SUMMARY_LINKS=$(mktemp)"
+        } >> $GITHUB_ENV
 
     - name: create dirs
       shell: bash --noprofile --norc -eo pipefail -x {0}
