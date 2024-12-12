@@ -24,17 +24,19 @@ runs:
       run: |
         export TMP_DIR=$(pwd)/tmp_build
         export ROOT_PATH=$(pwd)
-        echo "TMP_DIR=$TMP_DIR" >> $GITHUB_ENV
+        {
+          echo "TMP_DIR=$TMP_DIR"
+          echo "ROOT_PATH=$ROOT_PATH"
+          echo "CONAN_USER_HOME=$TMP_DIR"
+          echo "CCACHE_SLOPPINESS=locale"
+          echo "CCACHE_BASEDIR=$TMP_DIR"
+          echo "CCACHE_MAXSIZE=500G"
+          echo "CCACHE_NOREADONLY=1"
+          echo "CCACHE_REMOTE_ONLY=1"
+          echo "CCACHE_DEBUG=1"
+          echo "CCACHE_REMOTE_STORAGE=http://${{ inputs.bazel_remote_username }}:${{ inputs.bazel_remote_password }}@195.242.17.155:9090|layout=bazel"
+        } >> $GITHUB_ENV
         rm -rf $TMP_DIR && mkdir $TMP_DIR
-        echo "ROOT_PATH=$ROOT_PATH"  >> $GITHUB_ENV
-        echo "CONAN_USER_HOME=$TMP_DIR" >> $GITHUB_ENV
-        echo "CCACHE_SLOPPINESS=locale" >> $GITHUB_ENV
-        echo "CCACHE_BASEDIR=$TMP_DIR" >> $GITHUB_ENV
-        echo "CCACHE_MAXSIZE=500G" >> $GITHUB_ENV
-        echo "CCACHE_NOREADONLY=1" >> $GITHUB_ENV
-        echo "CCACHE_REMOTE_ONLY=1" >> $GITHUB_ENV
-        echo "CCACHE_DEBUG=1" >> $GITHUB_ENV
-        echo "CCACHE_REMOTE_STORAGE=http://${{ inputs.bazel_remote_username }}:${{ inputs.bazel_remote_password }}@195.242.17.155:9090|layout=bazel" >> $GITHUB_ENV
 
     - name: build
       shell: bash --noprofile --norc -eo pipefail -x {0}
@@ -42,6 +44,7 @@ runs:
         cd $TMP_DIR
         export
 
+        # shellcheck disable=SC2195
         case "${{ inputs.build_preset }}" in
           debug)
             export CMAKE_BUILD_TYPE=Debug
@@ -57,7 +60,7 @@ runs:
             exit 1
             ;;
         esac
-        if [ $(git branch --show-current) == "main" ]; then
+        if [ "$(git branch --show-current)" == "main" ]; then
           cp ${ROOT_PATH}/contrib/ydb/library/yql/minikql/codegen/codegen_llvm_deps.h.txt ${ROOT_PATH}/contrib/ydb/library/yql/minikql/codegen/codegen_llvm_deps.h
         fi
 
