@@ -3819,6 +3819,18 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
                 E_INVALID_STATE,
                 response->GetStatus(),
                 response->GetErrorReason());
+
+            // configureshards for a shard should work with force flag
+            request.SetForce(true);
+
+            buf.clear();
+            google::protobuf::util::MessageToJsonString(request, &buf);
+            service.SendExecuteActionRequest("configureshards", buf);
+            response = service.RecvExecuteActionResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                response->GetStatus(),
+                response->GetErrorReason());
         }
     }
 
