@@ -75,6 +75,7 @@ class NbsLauncher:
         storage_config_patch.DisableLocalService = False
         storage_config_patch.InactiveClientsTimeout = 60000  # 1 min
         storage_config_patch.AgentRequestTimeout = 5000      # 5 sec
+        storage_config_patch.UseShadowDisksForNonreplDiskCheckpoints = True
         if destruction_allowed_only_for_disks_with_id_prefixes:
             storage_config_patch.DestructionAllowedOnlyForDisksWithIdPrefixes.extend(destruction_allowed_only_for_disks_with_id_prefixes)
 
