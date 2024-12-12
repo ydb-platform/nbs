@@ -18,7 +18,7 @@ import (
 
 ////////////////////////////////////////////////////////////////////////////////
 
-func TestRetireBaseDisksTaskSchedulingIdempotency(t *testing.T) {
+func TestDeleteImageSchedulesRetireBaseDisksIdempotently(t *testing.T) {
 	zoneID := "zone-a"
 
 	ctx := logging.SetLogger(
