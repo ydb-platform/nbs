@@ -146,6 +146,21 @@ void TConfigInitializerYdb::InitKmsClientConfig()
     KmsClientConfig = std::move(config);
 }
 
+void TConfigInitializerYdb::InitRootKmsConfig()
+{
+    NProto::TRootKmsConfig config;
+
+    if (Options->RootKmsConfig) {
+        ParseProtoTextFromFile(Options->RootKmsConfig, config);
+    }
+
+    if (!config.GetRootCertsFile()) {
+        config.SetRootCertsFile(ServerConfig->GetRootCertsFile());
+    }
+
+    RootKmsConfig = std::move(config);
+}
+
 void TConfigInitializerYdb::InitComputeClientConfig()
 {
     NProto::TGrpcClientConfig config;
@@ -340,6 +355,14 @@ void TConfigInitializerYdb::ApplyKmsClientConfig(const TString& text)
     KmsClientConfig = std::move(config);
 }
 
+void TConfigInitializerYdb::ApplyRootKmsConfig(const TString& text)
+{
+    NProto::TRootKmsConfig config;
+    ParseProtoTextFromString(text, config);
+
+    RootKmsConfig = std::move(config);
+}
+
 void TConfigInitializerYdb::ApplyComputeClientConfig(const TString& text)
 {
     NProto::TGrpcClientConfig config;
@@ -384,6 +407,7 @@ void TConfigInitializerYdb::ApplyCustomCMSConfigs(const NKikimrConfig::TAppConfi
         { "YdbStatsConfig",          &TSelf::ApplyYdbStatsConfig          },
         { "IamClientConfig",         &TSelf::ApplyIamClientConfig         },
         { "KmsClientConfig",         &TSelf::ApplyKmsClientConfig         },
+        { "RootKmsConfig",           &TSelf::ApplyRootKmsConfig           },
         { "ComputeClientConfig",     &TSelf::ApplyComputeClientConfig     },
     };
 

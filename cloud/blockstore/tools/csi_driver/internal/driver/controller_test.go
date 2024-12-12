@@ -15,16 +15,25 @@ import (
 
 ////////////////////////////////////////////////////////////////////////////////
 
-func doTestCreateDeleteVolume(t *testing.T, parameters map[string]string) {
+func doTestCreateDeleteVolume(t *testing.T, parameters map[string]string, isLocalFsOverride bool) {
 	nbsClient := mocks.NewNbsClientMock()
 	nfsClient := mocks.NewNfsClientMock()
+	nfsLocalClient := mocks.NewNfsClientMock()
 
 	ctx := context.Background()
 	volumeID := "test-volume-id-42"
 	var blockSize uint32 = 4096
 	var blockCount uint64 = 1024
 
-	controller := newNBSServerControllerService(nbsClient, nfsClient)
+	localFsOverrides := make(LocalFilestoreOverrideMap)
+	if isLocalFsOverride {
+		localFsOverrides[volumeID] = LocalFilestoreOverride{
+			FsId:           volumeID,
+			LocalMountPath: "/tmp/mnt/local_mount",
+		}
+	}
+
+	controller := newNBSServerControllerService(localFsOverrides, nbsClient, nfsClient, nfsLocalClient)
 
 	if parameters["backend"] == "nbs" {
 		nbsClient.On("CreateVolume", ctx, &nbs.TCreateVolumeRequest{
@@ -37,8 +46,13 @@ func doTestCreateDeleteVolume(t *testing.T, parameters map[string]string) {
 		}).Return(&nbs.TCreateVolumeResponse{}, nil)
 	}
 
+	expectedNfsClient := nfsClient
+	if isLocalFsOverride {
+		expectedNfsClient = nfsLocalClient
+	}
+
 	if parameters["backend"] == "nfs" {
-		nfsClient.On("CreateFileStore", ctx, &nfs.TCreateFileStoreRequest{
+		expectedNfsClient.On("CreateFileStore", ctx, &nfs.TCreateFileStoreRequest{
 			FileSystemId:     volumeID,
 			CloudId:          "fakeCloud",
 			FolderId:         "fakeFolder",
@@ -62,7 +76,7 @@ func doTestCreateDeleteVolume(t *testing.T, parameters map[string]string) {
 		DiskId: volumeID,
 	}).Return(&nbs.TDestroyVolumeResponse{}, nil)
 
-	nfsClient.On("DestroyFileStore", ctx, &nfs.TDestroyFileStoreRequest{
+	expectedNfsClient.On("DestroyFileStore", ctx, &nfs.TDestroyFileStoreRequest{
 		FileSystemId: volumeID,
 	}).Return(&nfs.TDestroyFileStoreResponse{}, nil)
 
@@ -73,22 +87,44 @@ func doTestCreateDeleteVolume(t *testing.T, parameters map[string]string) {
 }
 
 func TestCreateDeleteNbsDisk(t *testing.T) {
-	doTestCreateDeleteVolume(t, map[string]string{
-		"backend":                 "nbs",
-		"base-disk-id":            "testBaseDiskId",
-		"base-disk-checkpoint-id": "testBaseCheckpointId",
-	})
+	doTestCreateDeleteVolume(
+		t,
+		map[string]string{
+			"backend":                 "nbs",
+			"base-disk-id":            "testBaseDiskId",
+			"base-disk-checkpoint-id": "testBaseCheckpointId",
+		},
+		false, // don't override local fs
+	)
 
-	doTestCreateDeleteVolume(t, map[string]string{
-		"backend":            "nbs",
-		"storage-media-kind": "ssd_nonrepl",
-	})
+	doTestCreateDeleteVolume(
+		t,
+		map[string]string{
+			"backend":            "nbs",
+			"storage-media-kind": "ssd_nonrepl",
+		},
+		false, // don't override local fs
+	)
 }
 
 func TestCreateDeleteNfsFilesystem(t *testing.T) {
-	doTestCreateDeleteVolume(t, map[string]string{
-		"backend": "nfs",
-	})
+	doTestCreateDeleteVolume(
+		t,
+		map[string]string{
+			"backend": "nfs",
+		},
+		false, // don't override local fs
+	)
+}
+
+func TestCreateDeleteNfsLocalFilesystem(t *testing.T) {
+	doTestCreateDeleteVolume(
+		t,
+		map[string]string{
+			"backend": "nfs",
+		},
+		true, // override local fs
+	)
 }
 
 func TestGetStorageMediaKind(t *testing.T) {

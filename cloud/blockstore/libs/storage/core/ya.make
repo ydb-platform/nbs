@@ -5,7 +5,9 @@ GENERATE_ENUM_SERIALIZATION(mount_token.h)
 SRCS(
     block_handler.cpp
     compaction_map.cpp
+    compaction_options.cpp
     compaction_policy.cpp
+    compaction_type.cpp
     config.cpp
     disk_counters.cpp
     disk_validation.cpp

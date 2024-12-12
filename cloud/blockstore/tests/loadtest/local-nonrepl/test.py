@@ -39,7 +39,7 @@ def enable_lwtrace(kikimr, query_file):
     update_cms_config(kikimr, 'DiagnosticsConfig', config, 'disk-agent')
 
 
-class TestCase(object):
+class _TestCase(object):
 
     def __init__(
             self,
@@ -55,7 +55,8 @@ class TestCase(object):
             agent_count=1,
             storage_pool_name=None,
             dump_block_digests=False,
-            reject_late_requests_at_disk_agent=False):
+            reject_late_requests_at_disk_agent=False,
+            encryption_at_rest=False):
         self.name = name
         self.config_path = config_path
         self.restart_interval = restart_interval
@@ -69,29 +70,30 @@ class TestCase(object):
         self.storage_pool_name = storage_pool_name
         self.dump_block_digests = dump_block_digests
         self.reject_late_requests_at_disk_agent = reject_late_requests_at_disk_agent
+        self.encryption_at_rest = encryption_at_rest
 
 
 TESTS = [
-    TestCase(
+    _TestCase(
         "load",
         "cloud/blockstore/tests/loadtest/local-nonrepl/local-smallreqs.txt",
     ),
-    TestCase(
+    _TestCase(
         "restarts",
         "cloud/blockstore/tests/loadtest/local-nonrepl/local-nonrepl.txt",
         restart_interval=get_restart_interval(),
     ),
-    TestCase(
+    _TestCase(
         "late_requests",
         "cloud/blockstore/tests/loadtest/local-nonrepl/local-nonrepl.txt",
         reject_late_requests_at_disk_agent=True,
     ),
-    TestCase(
+    _TestCase(
         "io-errors",
         "cloud/blockstore/tests/loadtest/local-nonrepl/local-nonrepl.txt",
         lwtrace_query_path="cloud/blockstore/tests/loadtest/local-nonrepl/io-errors.tr",
     ),
-    TestCase(
+    _TestCase(
         "large-disk",
         "cloud/blockstore/tests/loadtest/local-nonrepl/local-large-disk.txt",
         use_memory_devices=True,
@@ -100,39 +102,44 @@ TESTS = [
         block_count_per_device=256 * 1024 * 1024,  # 1TiB
         allocation_unit_size=1024,  # 1TiB
     ),
-    TestCase(
+    _TestCase(
         "migration",
         "cloud/blockstore/tests/loadtest/local-nonrepl/local-migration.txt",
         # agent_count=2,
         dump_block_digests=True,
     ),
-    TestCase(
+    _TestCase(
         "migration-nbd",
         "cloud/blockstore/tests/loadtest/local-nonrepl/local-migration-nbd.txt",
         # agent_count=2,
         dump_block_digests=True,
     ),
-    TestCase(
+    _TestCase(
         "local-encryption",
         "cloud/blockstore/tests/loadtest/local-nonrepl/local-encryption.txt",
     ),
-    TestCase(
+    _TestCase(
         "remote-encryption",
         "cloud/blockstore/tests/loadtest/local-nonrepl/remote-encryption.txt",
     ),
-    TestCase(
+    _TestCase(
         "local-encryption-overlay",
         "cloud/blockstore/tests/loadtest/local-nonrepl/local-encryption-overlay.txt",
     ),
-    TestCase(
+    _TestCase(
         "local-nonrepl-overlay",
         "cloud/blockstore/tests/loadtest/local-nonrepl/local-nonrepl-overlay.txt",
     ),
-    TestCase(
+    _TestCase(
         "load-hdd",
         "cloud/blockstore/tests/loadtest/local-nonrepl/local-hdd.txt",
         storage_pool_name="rot",
     ),
+    _TestCase(
+        "load-encryption-at-rest",
+        "cloud/blockstore/tests/loadtest/local-nonrepl/local-smallreqs.txt",
+        encryption_at_rest=True,
+    )
 ]
 
 
@@ -241,6 +248,7 @@ def __run_test(test_case):
         storage.RejectLateRequestsAtDiskAgentEnabled = test_case.reject_late_requests_at_disk_agent
         storage.AssignIdToWriteAndZeroRequestsEnabled = test_case.reject_late_requests_at_disk_agent
         storage.NodeType = 'main'
+        storage.EncryptionAtRestForDiskRegistryBasedDisksEnabled = test_case.encryption_at_rest
 
         if test_case.dump_block_digests:
             storage.BlockDigestsEnabled = True

@@ -37,6 +37,7 @@ namespace NCloud::NFileStore::NStorage {
     xxx(UnsafeGetNode,              __VA_ARGS__)                               \
     xxx(ForcedOperationStatus,      __VA_ARGS__)                               \
     xxx(GetFileSystemTopology,      __VA_ARGS__)                               \
+    xxx(RestartTablet,              __VA_ARGS__)                               \
 // FILESTORE_TABLET_REQUESTS
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -116,6 +117,9 @@ struct TEvIndexTablet
 
         EvGetFileSystemTopologyRequest = EvBegin + 43,
         EvGetFileSystemTopologyResponse,
+
+        EvRestartTabletRequest = EvBegin + 45,
+        EvRestartTabletResponse,
 
         EvEnd
     };

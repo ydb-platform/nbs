@@ -5,7 +5,7 @@ import cloud.storage.core.tools.testing.fio.lib as fio
 from cloud.filestore.tests.python.lib.common import get_filestore_mount_path
 
 
-TESTS = fio.generate_index_tests()
+TESTS = fio.generate_index_tests(duration=20)
 
 
 @pytest.mark.parametrize("name", TESTS.keys())

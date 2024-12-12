@@ -37,6 +37,7 @@ TIndexTabletActor::TIndexTabletActor(
         const TActorId& owner,
         TTabletStorageInfoPtr storage,
         TStorageConfigPtr config,
+        TDiagnosticsConfigPtr diagConfig,
         IProfileLogPtr profileLog,
         ITraceSerializerPtr traceSerializer,
         NMetrics::IMetricsRegistryPtr metricsRegistry,
@@ -54,6 +55,7 @@ TIndexTabletActor::TIndexTabletActor(
         }
     )
     , Config(std::move(config))
+    , DiagConfig(std::move(diagConfig))
     , UseNoneCompactionPolicy(useNoneCompactionPolicy)
     , BlobCodec(NBlockCodecs::Codec(Config->GetBlobCompressionCodec()))
 {
@@ -676,6 +678,7 @@ void TIndexTabletActor::HandleGetFileSystemTopology(
         std::make_unique<TEvIndexTablet::TEvGetFileSystemTopologyResponse>();
     *response->Record.MutableShardFileSystemIds() =
         GetFileSystem().GetShardFileSystemIds();
+    response->Record.SetShardNo(GetFileSystem().GetShardNo());
 
     NCloud::Reply(
         ctx,
@@ -804,6 +807,16 @@ void TIndexTabletActor::HandleForcedOperationStatus(
 
 ////////////////////////////////////////////////////////////////////////////////
 
+void TIndexTabletActor::HandleShardRequestCompleted(
+    const TEvIndexTabletPrivate::TEvShardRequestCompleted::TPtr& ev,
+    const TActorContext& ctx)
+{
+    Y_UNUSED(ctx);
+    WorkerActors.erase(ev->Sender);
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 bool TIndexTabletActor::HandleRequests(STFUNC_SIG)
 {
     switch (ev->GetTypeRewrite()) {
@@ -921,6 +934,12 @@ STFUNC(TIndexTabletActor::StateInit)
         HFunc(
             TEvIndexTabletPrivate::TEvNodeUnlinkedInShard,
             HandleNodeUnlinkedInShard);
+        HFunc(
+            TEvIndexTabletPrivate::TEvGetShardStatsCompleted,
+            HandleGetShardStatsCompleted);
+        HFunc(
+            TEvIndexTabletPrivate::TEvShardRequestCompleted,
+            HandleShardRequestCompleted);
 
         FILESTORE_HANDLE_REQUEST(WaitReady, TEvIndexTablet)
 
@@ -962,6 +981,12 @@ STFUNC(TIndexTabletActor::StateWork)
         HFunc(
             TEvIndexTabletPrivate::TEvNodeUnlinkedInShard,
             HandleNodeUnlinkedInShard);
+        HFunc(
+            TEvIndexTabletPrivate::TEvGetShardStatsCompleted,
+            HandleGetShardStatsCompleted);
+        HFunc(
+            TEvIndexTabletPrivate::TEvShardRequestCompleted,
+            HandleShardRequestCompleted);
 
         HFunc(TEvents::TEvWakeup, HandleWakeup);
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
@@ -994,6 +1019,13 @@ STFUNC(TIndexTabletActor::StateZombie)
         HFunc(TEvTablet::TEvTabletDead, HandleTabletDead);
         HFunc(TEvTabletPipe::TEvServerDisconnected, HandleSessionDisconnected);
 
+        // If compaction/cleanup/collectgarbage/flush started before the tablet
+        // reload and completed during the zombie state, we should ignore it.
+        IgnoreFunc(TEvIndexTabletPrivate::TEvCompactionResponse);
+        IgnoreFunc(TEvIndexTabletPrivate::TEvCleanupResponse);
+        IgnoreFunc(TEvIndexTabletPrivate::TEvCollectGarbageResponse);
+        IgnoreFunc(TEvIndexTabletPrivate::TEvFlushResponse);
+
         IgnoreFunc(TEvFileStore::TEvUpdateConfig);
 
         // private api
@@ -1020,9 +1052,17 @@ STFUNC(TIndexTabletActor::StateZombie)
         HFunc(
             TEvIndexTabletPrivate::TEvNodeUnlinkedInShard,
             HandleNodeUnlinkedInShard);
+        HFunc(
+            TEvIndexTabletPrivate::TEvGetShardStatsCompleted,
+            HandleGetShardStatsCompleted);
+        HFunc(
+            TEvIndexTabletPrivate::TEvShardRequestCompleted,
+            HandleShardRequestCompleted);
 
         default:
-            HandleUnexpectedEvent(ev, TFileStoreComponents::TABLET);
+            if (!HandleDefaultEvents(ev, SelfId())) {
+                HandleUnexpectedEvent(ev, TFileStoreComponents::TABLET);
+            }
             break;
     }
 }
@@ -1060,6 +1100,12 @@ STFUNC(TIndexTabletActor::StateBroken)
         HFunc(
             TEvIndexTabletPrivate::TEvNodeUnlinkedInShard,
             HandleNodeUnlinkedInShard);
+        HFunc(
+            TEvIndexTabletPrivate::TEvGetShardStatsCompleted,
+            HandleGetShardStatsCompleted);
+        HFunc(
+            TEvIndexTabletPrivate::TEvShardRequestCompleted,
+            HandleShardRequestCompleted);
 
         default:
             HandleUnexpectedEvent(ev, TFileStoreComponents::TABLET);

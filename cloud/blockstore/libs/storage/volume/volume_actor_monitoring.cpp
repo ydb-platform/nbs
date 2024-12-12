@@ -95,6 +95,47 @@ IOutputStream& operator <<(
     }
 }
 
+IOutputStream& operator <<(
+    IOutputStream& out,
+    const NKikimrBlockStore::TEncryptionDesc& desc)
+{
+    const auto encryptionMode =
+        static_cast<NProto::EEncryptionMode>(desc.GetMode());
+
+    HTML(out) {
+        DIV() { out << NProto::EEncryptionMode_Name(encryptionMode); }
+
+        switch (encryptionMode) {
+            case NProto::ENCRYPTION_AES_XTS: {
+                DIV() {
+                    const auto& keyHash = desc.GetKeyHash();
+                    if (keyHash.empty()) {
+                        out << "Binding to the encryption key has not yet "
+                               "occurred.";
+                    } else {
+                        out << "Encryption key hash: " << keyHash;
+                    }
+                }
+                break;
+            }
+
+            case NProto::ENCRYPTION_DEFAULT_AES_XTS: {
+                const auto& key = desc.GetEncryptedDataKey();
+                DIV() { out << "Kek Id: " << key.GetKekId().Quote(); }
+                DIV() {
+                    out << "Encrypted DEK has " << key.GetCiphertext().size()
+                        << " bytes length";
+                }
+                break;
+            }
+            default:
+                break;
+        }
+    }
+
+    return out;
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 void OutputProgress(
@@ -1161,26 +1202,7 @@ void TVolumeActor::RenderConfig(IOutputStream& out) const
 
                 TABLER() {
                     TABLED() { out << "Encryption"; }
-                    TABLED() {
-                        DIV()
-                        {
-                            auto encryptionMode =
-                                static_cast<NProto::EEncryptionMode>(
-                                    volumeConfig.GetEncryptionDesc().GetMode());
-                            out << NProto::EEncryptionMode_Name(encryptionMode);
-                        }
-                        DIV()
-                        {
-                            const auto& keyHash =
-                                volumeConfig.GetEncryptionDesc().GetKeyHash();
-                            if (keyHash.empty()) {
-                                out << "Binding to the encryption key has not "
-                                       "yet occurred.";
-                            } else {
-                                out << "Encryption key hash: " << keyHash;
-                            }
-                        }
-                    }
+                    TABLED() { out << volumeConfig.GetEncryptionDesc(); }
                 }
 
                 TABLER() {

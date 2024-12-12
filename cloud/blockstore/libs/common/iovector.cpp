@@ -160,9 +160,9 @@ size_t CopyAndTrimVoidBuffers(
     return bytesCount;
 }
 
-ui32 CountVoidBuffers(const NProto::TIOVector& iov)
+size_t CountVoidBuffers(const NProto::TIOVector& iov)
 {
-    ui32 result = 0;
+    size_t result = 0;
     for (const auto& buffer: iov.GetBuffers()) {
         if (buffer.empty()) {
             ++result;
@@ -193,9 +193,15 @@ bool IsAllZeroes(const char* src, size_t size)
                             src,
                             src + sizeof(TBigNumber),
                             size - sizeof(TBigNumber));
-    } else {
-        return !src[0] && !memcmp(src, src + sizeof(char), size - sizeof(char));
     }
+    return !src[0] && !memcmp(src, src + sizeof(char), size - sizeof(char));
+}
+
+bool IsAllZeroes(const NProto::TIOVector& iov) {
+    return AllOf(
+        iov.GetBuffers(),
+        [](const auto& buffer)
+        { return IsAllZeroes(buffer.data(), buffer.size()); });
 }
 
 }   // namespace NCloud::NBlockStore

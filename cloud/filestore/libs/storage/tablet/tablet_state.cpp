@@ -1,6 +1,7 @@
 #include "tablet_state_impl.h"
 
 #include <cloud/filestore/libs/diagnostics/events/profile_events.ev.pb.h>
+#include <cloud/filestore/libs/storage/core/model.h>
 #include <cloud/filestore/libs/storage/tablet/model/block.h>
 
 #include <library/cpp/protobuf/json/proto2json.h>
@@ -155,6 +156,12 @@ void TIndexTabletState::LoadState(
     }
 
     Impl->OrphanNodeIds.insert(orphanNodeIds.begin(), orphanNodeIds.end());
+
+    Impl->ShardBalancer.SetParameters(
+        config.GetShardBalancerDesiredFreeSpaceReserve(),
+        config.GetShardBalancerMinFreeSpaceReserve());
+    const auto& shardIds = GetFileSystem().GetShardFileSystemIds();
+    Impl->ShardBalancer.UpdateShards({shardIds.begin(), shardIds.end()});
 }
 
 void TIndexTabletState::UpdateConfig(
@@ -212,11 +219,12 @@ bool TIndexTabletState::CalculateExpectedShardCount() const
     const auto currentShardCount = FileSystem.ShardFileSystemIdsSize();
     ui64 autoShardCount = 0;
     if (FileSystem.GetAutomaticShardCreationEnabled()
-            && FileSystem.GetMaxShardSize())
+            && FileSystem.GetShardAllocationUnit())
     {
-        const double fsSize =
-            FileSystem.GetBlockSize() * FileSystem.GetBlocksCount();
-        autoShardCount = ceil(fsSize / FileSystem.GetMaxShardSize());
+        autoShardCount = ComputeShardCount(
+            FileSystem.GetBlocksCount(),
+            FileSystem.GetBlockSize(),
+            FileSystem.GetShardAllocationUnit());
     }
 
     return Max(currentShardCount, autoShardCount);

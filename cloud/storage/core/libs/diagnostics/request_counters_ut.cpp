@@ -691,22 +691,21 @@ Y_UNIT_TEST_SUITE(TRequestCountersTest)
         counters->Register(*monitoring->GetCounters());
 
         AddRequestStats(*counters, WriteRequestType, {
-            { 1_KB, TDuration::MilliSeconds(800), TDuration::Zero() },
-            { 1_KB, TDuration::MilliSeconds(1500), TDuration::Zero() },
-            { 1_KB, TDuration::MilliSeconds(2000), TDuration::Zero() },
-            { 1_KB, TDuration::MilliSeconds(8000), TDuration::Zero() },
-            { 1_KB, TDuration::MilliSeconds(36000), TDuration::Zero() },
-            { 1_KB, TDuration::MilliSeconds(100000), TDuration::Zero() },
+            { 1_KB, TDuration::Seconds(8), TDuration::Zero() },
+            { 1_KB, TDuration::Seconds(20), TDuration::Zero() },
+            { 1_KB, TDuration::Seconds(30), TDuration::Zero() },
+            { 1_KB, TDuration::Seconds(37), TDuration::Zero() },
+            { 1_KB, TDuration::Seconds(50), TDuration::Zero() },
+            { 1_KB, TDuration::Seconds(100), TDuration::Zero() },
         });
 
         TMap<TString, uint64_t> expectedHistogramValues;
         for (const auto& bucketName : TRequestMsTimeBuckets::MakeNames()) {
             expectedHistogramValues[bucketName] = 0;
         }
-        expectedHistogramValues["1000ms"] = 1;
-        expectedHistogramValues["2000ms"] = 2;
         expectedHistogramValues["10000ms"] = 1;
-        expectedHistogramValues["Inf"] = 2;
+        expectedHistogramValues["35000ms"] = 2;
+        expectedHistogramValues["Inf"] = 3;
 
         counters->UpdateStats();
         const auto group = monitoring
@@ -733,19 +732,18 @@ Y_UNIT_TEST_SUITE(TRequestCountersTest)
         counters->Register(*monitoring->GetCounters());
 
         AddRequestStats(*counters, WriteRequestType, {
-            { 1_KB, TDuration::MilliSeconds(800), TDuration::Zero() },
-            { 1_KB, TDuration::MilliSeconds(1500), TDuration::Zero() },
-            { 1_KB, TDuration::MilliSeconds(2000), TDuration::Zero() },
-            { 1_KB, TDuration::MilliSeconds(8000), TDuration::Zero() },
-            { 1_KB, TDuration::MilliSeconds(36000), TDuration::Zero() },
-            { 1_KB, TDuration::MilliSeconds(100000), TDuration::Zero() },
+            { 1_KB, TDuration::Seconds(8), TDuration::Zero() },
+            { 1_KB, TDuration::Seconds(20), TDuration::Zero() },
+            { 1_KB, TDuration::Seconds(30), TDuration::Zero() },
+            { 1_KB, TDuration::Seconds(37), TDuration::Zero() },
+            { 1_KB, TDuration::Seconds(50), TDuration::Zero() },
+            { 1_KB, TDuration::Seconds(100), TDuration::Zero() },
         });
 
         const TMap<size_t, uint64_t> expectedHistogramValues = {
-            { 19, 1 }, // 1000ms
-            { 20, 2 }, // 2000ms
             { 22, 1 }, // 10000ms
-            { 24, 2 }, // Inf
+            { 23, 2 }, // 35000ms
+            { 24, 3 }, // Inf
         };
 
         counters->UpdateStats();

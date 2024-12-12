@@ -31,6 +31,7 @@ SRCS(
     profile_log_events.cpp
     range_locks.cpp
     read_ahead.cpp
+    shard_balancer.cpp
     sparse_segment.cpp
     split_range.cpp
     throttler_logger.cpp

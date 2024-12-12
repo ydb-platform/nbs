@@ -10,6 +10,7 @@
 #include <cloud/blockstore/libs/common/block_range.h>
 #include <cloud/blockstore/libs/storage/api/partition2.h>
 #include <cloud/blockstore/libs/storage/core/compaction_map.h>
+#include <cloud/blockstore/libs/storage/core/compaction_type.h>
 #include <cloud/blockstore/libs/storage/core/request_buffer.h>
 #include <cloud/blockstore/libs/storage/core/request_info.h>
 #include <cloud/blockstore/libs/storage/core/tablet.h>
@@ -102,6 +103,7 @@ struct TForcedCompactionState
     ui32 Progress = 0;
     ui32 RangeCount = 0;
     TString OperationId;
+    TOperationState State;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -898,15 +900,8 @@ private:
     TCompactionMap CompactionMap;
 
 public:
-    EOperationStatus GetCompactionStatus() const
-    {
-        return CompactionState.GetStatus();
-    }
-
-    void SetCompactionStatus(EOperationStatus status)
-    {
-        CompactionState.SetStatus(status);
-    }
+    EOperationStatus GetCompactionStatus(ECompactionType type) const;
+    void SetCompactionStatus(ECompactionType type, EOperationStatus status);
 
     TCompactionMap& GetCompactionMap()
     {

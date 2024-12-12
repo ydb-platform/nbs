@@ -92,6 +92,14 @@ void TStorageServiceActor::HandleExecuteAction(
             "getstoragestats",
             &TStorageServiceActor::CreateGetStorageStatsActionActor
         },
+        {
+            "listlocalfilestores",
+            &TStorageServiceActor::CreateListLocalFileStoresActionActor,
+        },
+        {
+            "restarttablet",
+            &TStorageServiceActor::CreateRestartTabletActionActor
+        }
     };
 
     auto it = actions.find(action);

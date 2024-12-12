@@ -2,6 +2,7 @@
 
 #include <cloud/blockstore/libs/storage/api/disk_registry_proxy.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
+#include <cloud/blockstore/libs/storage/core/forward_helpers.h>
 #include <cloud/blockstore/libs/storage/core/proto_helpers.h>
 #include <cloud/blockstore/libs/storage/disk_agent/model/public.h>
 #include <cloud/blockstore/libs/storage/partition_nonrepl/config.h>
@@ -26,25 +27,6 @@ TString MakeShadowDiskClientId(
         return TString(ShadowDiskClientId);
     }
     return sourceDiskClientId;
-}
-
-template <typename TEvent>
-void ForwardMessageToActor(
-    TEvent& ev,
-    const NActors::TActorContext& ctx,
-    TActorId destActor)
-{
-    NActors::TActorId nondeliveryActor = ev->GetForwardOnNondeliveryRecipient();
-    auto message = std::make_unique<IEventHandle>(
-        destActor,
-        ev->Sender,
-        ev->ReleaseBase().Release(),
-        ev->Flags,
-        ev->Cookie,
-        ev->Flags & NActors::IEventHandle::FlagForwardOnNondelivery
-            ? &nondeliveryActor
-            : nullptr);
-    ctx.Send(std::move(message));
 }
 
 TString GetDeviceUUIDs(const TDevices& devices)

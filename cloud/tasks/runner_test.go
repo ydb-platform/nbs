@@ -1424,10 +1424,11 @@ func testListerLoop(
 		func(ctx context.Context, limit uint64) ([]storage.TaskInfo, error) {
 			return tasks, nil
 		},
-		uint64(channelCount),
-		50*time.Millisecond,
-		100*time.Millisecond,
-		make(map[string]int64),
+		uint64(channelCount),   // channelsCount
+		100,                    // tasksToListLimit
+		50*time.Millisecond,    // pollForTasksPeriodMin
+		100*time.Millisecond,   // pollForTasksPeriodMax
+		make(map[string]int64), // inflightTaskLimits
 	)
 
 	receivedTasks := make([]storage.TaskInfo, 0)
@@ -1500,10 +1501,11 @@ func TestListerLoopCancellingWhileReceiving(t *testing.T) {
 		func(ctx context.Context, limit uint64) ([]storage.TaskInfo, error) {
 			return tasks, nil
 		},
-		uint64(channelCount),
-		50*time.Millisecond,
-		100*time.Millisecond,
-		make(map[string]int64),
+		uint64(channelCount),   // channelsCount
+		100,                    // tasksToListLimit
+		50*time.Millisecond,    // pollForTasksPeriodMin
+		100*time.Millisecond,   // pollForTasksPeriodMax
+		make(map[string]int64), // inflightTaskLimits
 	)
 
 	receivedTasks := make([]storage.TaskInfo, 0)

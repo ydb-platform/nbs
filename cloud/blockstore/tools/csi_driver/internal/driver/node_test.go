@@ -25,11 +25,12 @@ import (
 
 ////////////////////////////////////////////////////////////////////////////////
 
-func doTestPublishUnpublishVolumeForKubevirt(t *testing.T, backend string, deviceNameOpt *string) {
+func doTestPublishUnpublishVolumeForKubevirt(t *testing.T, backend string, deviceNameOpt *string, isLocalFsOverride bool) {
 	tempDir := t.TempDir()
 
 	nbsClient := mocks.NewNbsClientMock()
 	nfsClient := mocks.NewNfsEndpointClientMock()
+	nfsLocalClient := mocks.NewNfsEndpointClientMock()
 	mounter := csimounter.NewMock()
 
 	ctx := context.Background()
@@ -50,6 +51,14 @@ func doTestPublishUnpublishVolumeForKubevirt(t *testing.T, backend string, devic
 	nbsSocketPath := filepath.Join(sourcePath, "nbs.sock")
 	nfsSocketPath := filepath.Join(sourcePath, "nfs.sock")
 
+	localFsOverrides := make(LocalFilestoreOverrideMap)
+	if isLocalFsOverride {
+		localFsOverrides[diskId] = LocalFilestoreOverride{
+			FsId:           diskId,
+			LocalMountPath: "/tmp/mnt/local_mount",
+		}
+	}
+
 	nodeService := newNodeService(
 		nodeId,
 		clientId,
@@ -57,8 +66,10 @@ func doTestPublishUnpublishVolumeForKubevirt(t *testing.T, backend string, devic
 		socketsDir,
 		targetFsPathPattern,
 		"", // targetBlkPathPattern
+		localFsOverrides,
 		nbsClient,
 		nfsClient,
+		nfsLocalClient,
 		mounter,
 	)
 
@@ -114,8 +125,13 @@ func doTestPublishUnpublishVolumeForKubevirt(t *testing.T, backend string, devic
 		}).Return(&nbs.TStartEndpointResponse{}, nil)
 	}
 
+	expectedNfsClient := nfsClient
+	if isLocalFsOverride {
+		expectedNfsClient = nfsLocalClient
+	}
+
 	if backend == "nfs" {
-		nfsClient.On("StartEndpoint", ctx, &nfs.TStartEndpointRequest{
+		expectedNfsClient.On("StartEndpoint", ctx, &nfs.TStartEndpointRequest{
 			Endpoint: &nfs.TEndpointConfig{
 				SocketPath:       nfsSocketPath,
 				FileSystemId:     diskId,
@@ -159,7 +175,7 @@ func doTestPublishUnpublishVolumeForKubevirt(t *testing.T, backend string, devic
 		UnixSocketPath: nbsSocketPath,
 	}).Return(&nbs.TStopEndpointResponse{}, nil)
 
-	nfsClient.On("StopEndpoint", ctx, &nfs.TStopEndpointRequest{
+	expectedNfsClient.On("StopEndpoint", ctx, &nfs.TStopEndpointRequest{
 		SocketPath: nfsSocketPath,
 	}).Return(&nfs.TStopEndpointResponse{}, nil)
 
@@ -180,23 +196,28 @@ func doTestPublishUnpublishVolumeForKubevirt(t *testing.T, backend string, devic
 }
 
 func TestPublishUnpublishDiskForKubevirt(t *testing.T) {
-	doTestPublishUnpublishVolumeForKubevirt(t, "nbs", nil)
+	doTestPublishUnpublishVolumeForKubevirt(t, "nbs", nil, false)
 }
 
 func TestPublishUnpublishDiskForKubevirtSetDeviceName(t *testing.T) {
 	deviceName := "test-disk-name-42"
-	doTestPublishUnpublishVolumeForKubevirt(t, "nbs", &deviceName)
+	doTestPublishUnpublishVolumeForKubevirt(t, "nbs", &deviceName, false)
 }
 
 func TestPublishUnpublishFilestoreForKubevirt(t *testing.T) {
-	doTestPublishUnpublishVolumeForKubevirt(t, "nfs", nil)
+	doTestPublishUnpublishVolumeForKubevirt(t, "nfs", nil, false)
 }
 
-func doTestStagedPublishUnpublishVolumeForKubevirt(t *testing.T, backend string, deviceNameOpt *string, perInstanceVolumes bool) {
+func TestPublishUnpublishLocalFilestoreForKubevirt(t *testing.T) {
+	doTestPublishUnpublishVolumeForKubevirt(t, "nfs", nil, true)
+}
+
+func doTestStagedPublishUnpublishVolumeForKubevirt(t *testing.T, backend string, deviceNameOpt *string, perInstanceVolumes bool, isLocalFsOverride bool) {
 	tempDir := t.TempDir()
 
 	nbsClient := mocks.NewNbsClientMock()
 	nfsClient := mocks.NewNfsEndpointClientMock()
+	nfsLocalClient := mocks.NewNfsEndpointClientMock()
 	mounter := csimounter.NewMock()
 
 	ctx := context.Background()
@@ -222,6 +243,14 @@ func doTestStagedPublishUnpublishVolumeForKubevirt(t *testing.T, backend string,
 	nbsSocketPath := filepath.Join(sourcePath, "nbs.sock")
 	nfsSocketPath := filepath.Join(sourcePath, "nfs.sock")
 
+	localFsOverrides := make(LocalFilestoreOverrideMap)
+	if isLocalFsOverride {
+		localFsOverrides[diskId] = LocalFilestoreOverride{
+			FsId:           diskId,
+			LocalMountPath: "/tmp/mnt/local_mount",
+		}
+	}
+
 	nodeService := newNodeService(
 		nodeId,
 		clientId,
@@ -229,8 +258,10 @@ func doTestStagedPublishUnpublishVolumeForKubevirt(t *testing.T, backend string,
 		socketsDir,
 		targetFsPathPattern,
 		"", // targetBlkPathPattern
+		localFsOverrides,
 		nbsClient,
 		nfsClient,
+		nfsLocalClient,
 		mounter,
 	)
 
@@ -278,8 +309,13 @@ func doTestStagedPublishUnpublishVolumeForKubevirt(t *testing.T, backend string,
 		}).Return(&nbs.TStartEndpointResponse{}, nil)
 	}
 
+	expectedNfsClient := nfsClient
+	if isLocalFsOverride {
+		expectedNfsClient = nfsLocalClient
+	}
+
 	if backend == "nfs" {
-		nfsClient.On("StartEndpoint", ctx, &nfs.TStartEndpointRequest{
+		expectedNfsClient.On("StartEndpoint", ctx, &nfs.TStartEndpointRequest{
 			Endpoint: &nfs.TEndpointConfig{
 				SocketPath:       nfsSocketPath,
 				FileSystemId:     diskId,
@@ -333,7 +369,7 @@ func doTestStagedPublishUnpublishVolumeForKubevirt(t *testing.T, backend string,
 			UnixSocketPath: filepath.Join(socketsDir, podId, diskId, nbsSocketName),
 		}).Return(&nbs.TStopEndpointResponse{}, nil)
 
-		nfsClient.On("StopEndpoint", ctx, &nfs.TStopEndpointRequest{
+		expectedNfsClient.On("StopEndpoint", ctx, &nfs.TStopEndpointRequest{
 			SocketPath: filepath.Join(socketsDir, podId, diskId, nfsSocketName),
 		}).Return(&nfs.TStopEndpointResponse{}, nil)
 	}
@@ -351,7 +387,7 @@ func doTestStagedPublishUnpublishVolumeForKubevirt(t *testing.T, backend string,
 	}
 
 	if backend == "nfs" {
-		nfsClient.On("StopEndpoint", ctx, &nfs.TStopEndpointRequest{
+		expectedNfsClient.On("StopEndpoint", ctx, &nfs.TStopEndpointRequest{
 			SocketPath: nfsSocketPath,
 		}).Return(&nfs.TStopEndpointResponse{}, nil)
 	}
@@ -367,29 +403,37 @@ func doTestStagedPublishUnpublishVolumeForKubevirt(t *testing.T, backend string,
 }
 
 func TestStagedPublishUnpublishDiskForKubevirtLegacy(t *testing.T) {
-	doTestStagedPublishUnpublishVolumeForKubevirt(t, "nbs", nil, false)
+	doTestStagedPublishUnpublishVolumeForKubevirt(t, "nbs", nil, false, false)
 }
 
 func TestStagedPublishUnpublishDiskForKubevirtSetDeviceNameLegacy(t *testing.T) {
 	deviceName := "test-disk-name-42"
-	doTestStagedPublishUnpublishVolumeForKubevirt(t, "nbs", &deviceName, false)
+	doTestStagedPublishUnpublishVolumeForKubevirt(t, "nbs", &deviceName, false, false)
 }
 
 func TestStagedPublishUnpublishFilestoreForKubevirtLegacy(t *testing.T) {
-	doTestStagedPublishUnpublishVolumeForKubevirt(t, "nfs", nil, false)
+	doTestStagedPublishUnpublishVolumeForKubevirt(t, "nfs", nil, false, false)
+}
+
+func TestStagedPublishUnpublishLocalFilestoreForKubevirtLegacy(t *testing.T) {
+	doTestStagedPublishUnpublishVolumeForKubevirt(t, "nfs", nil, false, true)
 }
 
 func TestStagedPublishUnpublishDiskForKubevirt(t *testing.T) {
-	doTestStagedPublishUnpublishVolumeForKubevirt(t, "nbs", nil, true)
+	doTestStagedPublishUnpublishVolumeForKubevirt(t, "nbs", nil, true, false)
 }
 
 func TestStagedPublishUnpublishDiskForKubevirtSetDeviceName(t *testing.T) {
 	deviceName := "test-disk-name-42"
-	doTestStagedPublishUnpublishVolumeForKubevirt(t, "nbs", &deviceName, true)
+	doTestStagedPublishUnpublishVolumeForKubevirt(t, "nbs", &deviceName, true, false)
 }
 
 func TestStagedPublishUnpublishFilestoreForKubevirt(t *testing.T) {
-	doTestStagedPublishUnpublishVolumeForKubevirt(t, "nfs", nil, true)
+	doTestStagedPublishUnpublishVolumeForKubevirt(t, "nfs", nil, true, false)
+}
+
+func TestStagedPublishUnpublishLocalFilestoreForKubevirt(t *testing.T) {
+	doTestStagedPublishUnpublishVolumeForKubevirt(t, "nfs", nil, true, true)
 }
 
 func TestPublishUnpublishDiskForInfrakuber(t *testing.T) {
@@ -428,6 +472,7 @@ func TestPublishUnpublishDiskForInfrakuber(t *testing.T) {
 	sourcePath := filepath.Join(socketsDir, diskId)
 	socketPath := filepath.Join(socketsDir, diskId, "nbs.sock")
 	deprecatedSocketPath := filepath.Join(socketsDir, podId, diskId, "nbs.sock")
+	localFsOverrides := make(LocalFilestoreOverrideMap)
 
 	nodeService := newNodeService(
 		nodeId,
@@ -436,8 +481,10 @@ func TestPublishUnpublishDiskForInfrakuber(t *testing.T) {
 		socketsDir,
 		targetFsPathPattern,
 		"", // targetBlkPathPattern
+		localFsOverrides,
 		nbsClient,
 		nil,
+		nil, // nfsLocalClient
 		mounter,
 	)
 
@@ -581,6 +628,7 @@ func TestPublishUnpublishDeviceForInfrakuber(t *testing.T) {
 	sourcePath := filepath.Join(socketsDir, diskId)
 	socketPath := filepath.Join(socketsDir, diskId, "nbs.sock")
 	deprecatedSocketPath := filepath.Join(socketsDir, podId, diskId, "nbs.sock")
+	localFsOverrides := make(LocalFilestoreOverrideMap)
 
 	nodeService := newNodeService(
 		nodeId,
@@ -589,8 +637,10 @@ func TestPublishUnpublishDeviceForInfrakuber(t *testing.T) {
 		socketsDir,
 		"", // targetFsPathPattern
 		targetBlkPathPattern,
+		localFsOverrides,
 		nbsClient,
 		nil,
+		nil, // nfsLocalClient
 		mounter,
 	)
 
@@ -716,6 +766,7 @@ func TestGetVolumeStatCapabilitiesWithoutVmMode(t *testing.T) {
 	require.NoError(t, err)
 	err = os.MkdirAll(targetPath, info.Mode())
 	require.NoError(t, err)
+	localFsOverrides := make(LocalFilestoreOverrideMap)
 
 	nodeService := newNodeService(
 		"testNodeId",
@@ -724,8 +775,10 @@ func TestGetVolumeStatCapabilitiesWithoutVmMode(t *testing.T) {
 		socketsDir,
 		targetFsPathPattern,
 		"",
+		localFsOverrides,
 		nbsClient,
 		nil,
+		nil, // nfsLocalClient
 		mounter,
 	)
 
@@ -779,6 +832,7 @@ func TestGetVolumeStatCapabilitiesWithVmMode(t *testing.T) {
 	targetBlkPathPattern := filepath.Join(tempDir,
 		"volumeDevices/publish/([a-z0-9-]+)/([a-z0-9-]+)")
 	socketsDir := filepath.Join(tempDir, "sockets")
+	localFsOverrides := make(LocalFilestoreOverrideMap)
 
 	nodeService := newNodeService(
 		"testNodeId",
@@ -787,8 +841,10 @@ func TestGetVolumeStatCapabilitiesWithVmMode(t *testing.T) {
 		socketsDir,
 		"",
 		targetBlkPathPattern,
+		localFsOverrides,
 		nbsClient,
 		nil,
+		nil, // nfsLocalClient
 		mounter,
 	)
 
@@ -832,6 +888,7 @@ func TestPublishDeviceWithReadWriteManyModeIsNotSupportedWithNBS(t *testing.T) {
 	volumeContext := map[string]string{
 		backendVolumeContextKey: "nbs",
 	}
+	localFsOverrides := make(LocalFilestoreOverrideMap)
 
 	nodeService := newNodeService(
 		"testNodeId",
@@ -840,8 +897,10 @@ func TestPublishDeviceWithReadWriteManyModeIsNotSupportedWithNBS(t *testing.T) {
 		socketsDir,
 		"",
 		targetBlkPathPattern,
+		localFsOverrides,
 		nbsClient,
 		nil,
+		nil, // nfsLocalClient
 		mounter,
 	)
 

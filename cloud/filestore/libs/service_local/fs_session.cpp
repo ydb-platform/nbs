@@ -51,7 +51,7 @@ NProto::TCreateSessionResponse TLocalFileSystem::CreateSession(
 
     session = std::make_shared<TSession>(
         Store.GetFileSystemId(),
-        Root,
+        RootPath,
         clientSessionStatePath,
         clientId,
         Config->GetMaxNodeCount(),
@@ -79,6 +79,10 @@ NProto::TCreateSessionResponse TLocalFileSystem::CreateSession(
     features->SetDirectIoAlign(Config->GetDirectIoAlign());
     features->SetGuestWritebackCacheEnabled(
         Config->GetGuestWritebackCacheEnabled());
+    features->SetAsyncDestroyHandleEnabled(
+        Config->GetAsyncDestroyHandleEnabled());
+    features->SetAsyncHandleOperationPeriod(
+        Config->GetAsyncHandleOperationPeriod().MilliSeconds());
 
     return response;
 }

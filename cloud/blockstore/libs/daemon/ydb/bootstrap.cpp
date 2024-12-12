@@ -28,6 +28,8 @@
 #include <cloud/blockstore/libs/rdma/iface/client.h>
 #include <cloud/blockstore/libs/rdma/iface/config.h>
 #include <cloud/blockstore/libs/rdma/iface/server.h>
+#include <cloud/blockstore/libs/root_kms/iface/client.h>
+#include <cloud/blockstore/libs/root_kms/iface/key_provider.h>
 #include <cloud/blockstore/libs/server/config.h>
 #include <cloud/blockstore/libs/service/service_auth.h>
 #include <cloud/blockstore/libs/service_kikimr/auth_provider_kikimr.h>
@@ -133,6 +135,7 @@ IStartable* TBootstrapYdb::GetCgroupStatsFetcher() { return CgroupStatsFetcher.g
 IStartable* TBootstrapYdb::GetIamTokenClient()     { return IamTokenClient.get(); }
 IStartable* TBootstrapYdb::GetComputeClient()      { return ComputeClient.get(); }
 IStartable* TBootstrapYdb::GetKmsClient()          { return KmsClient.get(); }
+IStartable* TBootstrapYdb::GetRootKmsClient()      { return RootKmsClient.get(); }
 
 void TBootstrapYdb::InitConfigs()
 {
@@ -151,6 +154,7 @@ void TBootstrapYdb::InitConfigs()
     Configs->InitNotifyConfig();
     Configs->InitIamClientConfig();
     Configs->InitKmsClientConfig();
+    Configs->InitRootKmsConfig();
     Configs->InitComputeClientConfig();
 }
 
@@ -363,6 +367,16 @@ void TBootstrapYdb::InitKikimrService()
 
     STORAGE_INFO("KmsKeyProvider initialized");
 
+    RootKmsClient = ServerModuleFactories->RootKmsClientFactory(
+        Configs->RootKmsConfig,
+        logging);
+
+    RootKmsKeyProvider = CreateRootKmsKeyProvider(
+        RootKmsClient,
+        Configs->RootKmsConfig.GetKeyId());
+
+    STORAGE_INFO("RootKmsKeyProvider initialized");
+
     auto discoveryConfig = Configs->DiscoveryConfig;
     if (discoveryConfig->GetConductorGroups()
             || discoveryConfig->GetInstanceListFile())
@@ -485,19 +499,11 @@ void TBootstrapYdb::InitKikimrService()
 
     STORAGE_INFO("ProfileLog initialized");
 
-    auto cgroupStatsFetcherMonitoringSettings =
-        TCgroupStatsFetcherMonitoringSettings{
-            .CountersGroupName = "blockstore",
-            .ComponentGroupName = "server",
-            .CounterName = "CpuWaitFailure",
-        };
-
-    CgroupStatsFetcher = CreateCgroupStatsFetcher(
-        "BLOCKSTORE_CGROUPS",
-        logging,
-        monitoring,
+    CgroupStatsFetcher = BuildCgroupStatsFetcher(
         Configs->DiagnosticsConfig->GetCpuWaitFilename(),
-        std::move(cgroupStatsFetcherMonitoringSettings));
+        Log,
+        logging,
+        "BLOCKSTORE_CGROUPS");
 
     if (Configs->StorageConfig->GetBlockDigestsEnabled()) {
         if (Configs->StorageConfig->GetUseTestBlockDigestGenerator()) {
@@ -567,6 +573,7 @@ void TBootstrapYdb::InitKikimrService()
         }();
     args.VolumeBalancerSwitch = VolumeBalancerSwitch;
     args.EndpointEventHandler = EndpointEventHandler;
+    args.RootKmsKeyProvider = RootKmsKeyProvider;
 
     ActorSystem = NStorage::CreateActorSystem(args);
 

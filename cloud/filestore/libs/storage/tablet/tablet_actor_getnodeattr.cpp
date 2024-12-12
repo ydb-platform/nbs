@@ -61,6 +61,7 @@ void TIndexTabletActor::HandleGetNodeAttr(
         ev->Sender,
         ev->Cookie,
         msg->CallContext);
+    requestInfo->StartedTs = ctx.Now();
 
     if (msg->Record.GetName()) {
         // access by parentId/name is a more common case. Try to get the result
@@ -84,6 +85,7 @@ void TIndexTabletActor::HandleGetNodeAttr(
             Metrics.NodeIndexCacheHitCount.fetch_add(
                 1,
                 std::memory_order_relaxed);
+            Metrics.GetNodeAttr.Update(1, 0, TDuration::Zero());
 
             NCloud::Reply(ctx, *requestInfo, std::move(response));
             return;
@@ -165,7 +167,7 @@ bool TIndexTabletActor::PrepareTx_GetNodeAttr(
 
         args.TargetNodeId = ref->ChildNodeId;
         args.ShardId = ref->ShardId;
-        args.ShardName = ref->ShardName;
+        args.ShardNodeName = ref->ShardNodeName;
     } else {
         args.TargetNodeId = args.NodeId;
     }
@@ -200,7 +202,7 @@ void TIndexTabletActor::CompleteTx_GetNodeAttr(
         auto* node = response->Record.MutableNode();
         if (args.ShardId) {
             node->SetShardFileSystemId(args.ShardId);
-            node->SetShardNodeName(args.ShardName);
+            node->SetShardNodeName(args.ShardNodeName);
         } else {
             TABLET_VERIFY(args.TargetNode);
             ConvertNodeFromAttrs(
@@ -216,6 +218,11 @@ void TIndexTabletActor::CompleteTx_GetNodeAttr(
                 args.Name,
                 *node);
         }
+
+        Metrics.GetNodeAttr.Update(
+            1,
+            0,
+            ctx.Now() - args.RequestInfo->StartedTs);
     }
 
     CompleteResponse<TEvService::TGetNodeAttrMethod>(
@@ -245,6 +252,7 @@ void TIndexTabletActor::HandleGetNodeAttrBatch(
         ev->Sender,
         ev->Cookie,
         msg->CallContext);
+    requestInfo->StartedTs = ctx.Now();
 
     ui32 cacheHits = 0;
     NProtoPrivate::TGetNodeAttrBatchResponse result;
@@ -273,6 +281,8 @@ void TIndexTabletActor::HandleGetNodeAttrBatch(
             response->Record,
             msg->CallContext,
             ctx);
+
+        Metrics.GetNodeAttr.Update(cacheHits, 0, TDuration::Zero());
 
         NCloud::Reply(ctx, *requestInfo, std::move(response));
         return;
@@ -379,7 +389,7 @@ bool TIndexTabletActor::PrepareTx_GetNodeAttrBatch(
         auto* nodeAttr = nodeResult->MutableNode();
         if (refs[i]->ShardId) {
             nodeAttr->SetShardFileSystemId(refs[i]->ShardId);
-            nodeAttr->SetShardNodeName(refs[i]->ShardName);
+            nodeAttr->SetShardNodeName(refs[i]->ShardNodeName);
             continue;
         }
 
@@ -437,6 +447,11 @@ void TIndexTabletActor::CompleteTx_GetNodeAttrBatch(
         }
 
         response->Record = std::move(args.Response);
+
+        Metrics.GetNodeAttr.Update(
+            args.Request.NamesSize(),
+            0,
+            ctx.Now() - args.RequestInfo->StartedTs);
     }
 
     CompleteResponse<TEvIndexTablet::TGetNodeAttrBatchMethod>(

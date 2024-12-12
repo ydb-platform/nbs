@@ -659,8 +659,9 @@ struct TTxIndexTablet
         const ui64 TargetNodeId;
         const TString Name;
         const NProto::TNode Attrs;
-        const TString ShardId;
-        const TString ShardName;
+        const TString RequestShardId;
+        TString ShardId;
+        TString ShardNodeName;
         NProto::TCreateNodeRequest Request;
 
         ui64 CommitId = InvalidCommitId;
@@ -684,14 +685,8 @@ struct TTxIndexTablet
             , TargetNodeId(targetNodeId)
             , Name(request.GetName())
             , Attrs(std::move(attrs))
-            , ShardId(request.GetShardFileSystemId())
-            // For multishard filestore, selection of the shard node name for
-            // hard links is done by the client, not the leader. Thus, the
-            // client is able to provide the shard node name explicitly:
-            , ShardName(
-                  request.HasLink() && request.GetLink().GetShardNodeName()
-                      ? request.GetLink().GetShardNodeName()
-                      : CreateGuidAsString())
+            , RequestShardId(request.GetShardFileSystemId())
+            , ShardId(RequestShardId)
             , Request(std::move(request))
         {
         }
@@ -784,7 +779,7 @@ struct TTxIndexTablet
         NProto::TRenameNodeResponse Response;
 
         TString ShardIdForUnlink;
-        TString ShardNameForUnlink;
+        TString ShardNodeNameForUnlink;
 
         TRenameNode(
                 TRequestInfoPtr requestInfo,
@@ -816,7 +811,7 @@ struct TTxIndexTablet
             Response.Clear();
 
             ShardIdForUnlink.clear();
-            ShardNameForUnlink.clear();
+            ShardNodeNameForUnlink.clear();
         }
     };
 
@@ -982,7 +977,7 @@ struct TTxIndexTablet
         ui64 TargetNodeId = InvalidNodeId;
         TMaybe<IIndexTabletDatabase::TNode> TargetNode;
         TString ShardId;
-        TString ShardName;
+        TString ShardNodeName;
 
         TGetNodeAttr(
                 TRequestInfoPtr requestInfo,
@@ -1002,7 +997,7 @@ struct TTxIndexTablet
             TargetNodeId = InvalidNodeId;
             TargetNode.Clear();
             ShardId.clear();
-            ShardName.clear();
+            ShardNodeName.clear();
         }
     };
 
@@ -1208,7 +1203,7 @@ struct TTxIndexTablet
         ui64 WriteCommitId = InvalidCommitId;
         ui64 TargetNodeId = InvalidNodeId;
         TString ShardId;
-        TString ShardName;
+        TString ShardNodeName;
         bool IsNewShardNode = false;
         TMaybe<IIndexTabletDatabase::TNode> TargetNode;
         TMaybe<IIndexTabletDatabase::TNode> ParentNode;
@@ -1240,7 +1235,7 @@ struct TTxIndexTablet
             WriteCommitId = InvalidCommitId;
             TargetNodeId = InvalidNodeId;
             ShardId.clear();
-            ShardName.clear();
+            ShardNodeName.clear();
             IsNewShardNode = false;
             TargetNode.Clear();
             ParentNode.Clear();

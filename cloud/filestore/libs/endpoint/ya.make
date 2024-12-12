@@ -1,9 +1,9 @@
 LIBRARY()
 
 SRCS(
+    endpoint_manager.cpp
     listener.cpp
     service_auth.cpp
-    service.cpp
 )
 
 PEERDIR(
@@ -12,6 +12,8 @@ PEERDIR(
     cloud/storage/core/libs/common
     cloud/storage/core/libs/coroutine
     cloud/storage/core/libs/diagnostics
+
+    contrib/ydb/core/protos
 )
 
 END()

@@ -21,6 +21,7 @@ struct TOptionsYdb final
     TString NotifyConfig;
     TString IamConfig;
     TString KmsConfig;
+    TString RootKmsConfig;
     TString ComputeConfig;
 
     TOptionsYdb();

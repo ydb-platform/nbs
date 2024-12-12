@@ -19,6 +19,7 @@ void TIndexTabletActor::HandleWriteCompactionMap(
         ev->Sender,
         ev->Cookie,
         msg->CallContext);
+    requestInfo->StartedTs = ctx.Now();
 
     TVector<NProtoPrivate::TCompactionRangeStats> ranges(
         Reserve(msg->Record.GetRanges().size()));

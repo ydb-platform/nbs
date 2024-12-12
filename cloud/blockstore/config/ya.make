@@ -14,6 +14,7 @@ SRCS(
     notify.proto
     plugin.proto
     rdma.proto
+    root_kms.proto
     server.proto
     spdk.proto
     storage.proto

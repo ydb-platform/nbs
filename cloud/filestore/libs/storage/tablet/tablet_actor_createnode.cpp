@@ -335,6 +335,7 @@ void TIndexTabletActor::HandleCreateNode(
         ev->Sender,
         ev->Cookie,
         msg->CallContext);
+    requestInfo->StartedTs = ctx.Now();
 
     AddTransaction<TEvService::TCreateNodeMethod>(*requestInfo);
 
@@ -355,6 +356,25 @@ bool TIndexTabletActor::PrepareTx_CreateNode(
     TTxIndexTablet::TCreateNode& args)
 {
     Y_UNUSED(ctx);
+
+    if (!IsShard()
+            && Config->GetShardIdSelectionInLeaderEnabled()
+            && args.Attrs.GetType() == NProto::E_REGULAR_NODE)
+    {
+        args.Error = SelectShard(args.Attrs.GetSize(), &args.ShardId);
+        if (HasError(args.Error)) {
+            return true;
+        }
+    }
+
+    // For multishard filestore, selection of the shard node name for
+    // hard links is done by the client, not the leader. Thus, the
+    // client is able to provide the shard node name explicitly:
+    if (args.Request.HasLink() && args.Request.GetLink().GetShardNodeName()) {
+        args.ShardNodeName = args.Request.GetLink().GetShardNodeName();
+    } else if (args.ShardId) {
+        args.ShardNodeName = CreateGuidAsString();
+    }
 
     if (!IsShard()) {
         FILESTORE_VALIDATE_DUPTX_SESSION(CreateNode, args);
@@ -490,7 +510,7 @@ void TIndexTabletActor::ExecuteTx_CreateNode(
             shardRequest->CopyFrom(args.Request);
             shardRequest->SetFileSystemId(args.ShardId);
             shardRequest->SetNodeId(RootNodeId);
-            shardRequest->SetName(args.ShardName);
+            shardRequest->SetName(args.ShardNodeName);
             shardRequest->ClearShardFileSystemId();
 
             db.WriteOpLogEntry(args.OpLogEntry);
@@ -532,7 +552,7 @@ void TIndexTabletActor::ExecuteTx_CreateNode(
         args.Name,
         args.ChildNodeId,
         args.ShardId,
-        args.ShardName);
+        args.ShardNodeName);
 
     if (args.ShardId.empty()) {
         if (args.ChildNodeId == InvalidNodeId) {
@@ -571,7 +591,7 @@ void TIndexTabletActor::CompleteTx_CreateNode(
             "%s Creating node in shard upon CreateNode: %s, %s",
             LogTag.c_str(),
             args.ShardId.c_str(),
-            args.ShardName.c_str());
+            args.ShardNodeName.c_str());
 
         RegisterCreateNodeInShardActor(
             ctx,
@@ -625,6 +645,11 @@ void TIndexTabletActor::CompleteTx_CreateNode(
         args.RequestInfo->CallContext,
         ctx);
 
+    Metrics.CreateNode.Update(
+        1,
+        0,
+        ctx.Now() - args.RequestInfo->StartedTs);
+
     NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
 }
 
@@ -654,6 +679,11 @@ void TIndexTabletActor::HandleNodeCreatedInShard(
                 msg->RequestInfo->CallContext,
                 ctx);
 
+            Metrics.CreateNode.Update(
+                1,
+                0,
+                ctx.Now() - msg->RequestInfo->StartedTs);
+
             // replying before DupCacheEntry is committed to reduce response
             // latency
             NCloud::Reply(ctx, *msg->RequestInfo, std::move(response));
@@ -677,6 +707,11 @@ void TIndexTabletActor::HandleNodeCreatedInShard(
                 response->Record,
                 msg->RequestInfo->CallContext,
                 ctx);
+
+            Metrics.CreateHandle.Update(
+                1,
+                0,
+                ctx.Now() - msg->RequestInfo->StartedTs);
 
             NCloud::Reply(ctx, *msg->RequestInfo, std::move(response));
         }

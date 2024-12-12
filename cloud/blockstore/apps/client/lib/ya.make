@@ -1,7 +1,5 @@
 LIBRARY()
 
-OWNER(g:cloud-nbs)
-
 SRCS(
     alter_placement_group_membership.cpp
     alter_volume.cpp

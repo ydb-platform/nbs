@@ -450,18 +450,21 @@ func (t *migrateDiskTask) finishMigration(
 	}
 
 	if len(t.state.RelocateInfo.TargetBaseDiskID) != 0 {
+		rebaseInfo := storage.RebaseInfo{
+			OverlayDisk:      t.request.Disk,
+			BaseDiskID:       t.state.RelocateInfo.BaseDiskID,
+			TargetZoneID:     t.request.DstZoneId,
+			TargetBaseDiskID: t.state.RelocateInfo.TargetBaseDiskID,
+			SlotGeneration:   t.state.RelocateInfo.SlotGeneration,
+		}
+
 		err = execCtx.SaveStateWithPreparation(
 			ctx,
-			func(context.Context, *persistence.Transaction) (err error) {
-				err = t.poolStorage.OverlayDiskRebased(
+			func(ctx context.Context, tx *persistence.Transaction) (err error) {
+				err = t.poolStorage.OverlayDiskRebasedTx(
 					ctx,
-					storage.RebaseInfo{
-						OverlayDisk:      t.request.Disk,
-						BaseDiskID:       t.state.RelocateInfo.BaseDiskID,
-						TargetZoneID:     t.request.DstZoneId,
-						TargetBaseDiskID: t.state.RelocateInfo.TargetBaseDiskID,
-						SlotGeneration:   t.state.RelocateInfo.SlotGeneration,
-					},
+					tx,
+					rebaseInfo,
 				)
 				if err != nil {
 					return err
@@ -474,6 +477,7 @@ func (t *migrateDiskTask) finishMigration(
 		if err != nil {
 			return err
 		}
+		logging.Info(ctx, "Overlay disk rebased for RebaseInfo %+v", rebaseInfo)
 	}
 
 	client, err := t.nbsFactory.GetClient(ctx, t.request.Disk.ZoneId)

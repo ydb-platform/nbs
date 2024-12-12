@@ -321,7 +321,7 @@ void TIndexTabletActor::CompleteTx_LoadState(
     EnqueueTruncateIfNeeded(ctx);
 
     RegisterFileStore(ctx);
-    RegisterStatCounters();
+    RegisterStatCounters(ctx.Now());
     ResetThrottlingPolicy();
 
     LOG_INFO_S(ctx, TFileStoreComponents::TABLET,
@@ -352,6 +352,7 @@ void TIndexTabletActor::HandleLoadCompactionMapChunk(
         ev->Sender,
         ev->Cookie,
         msg->CallContext);
+    requestInfo->StartedTs = ctx.Now();
 
     ExecuteTx<TLoadCompactionMapChunk>(
         ctx,

@@ -25,7 +25,6 @@ public:
     TVector<NProto::TServiceEndpoint> GetServiceEndpoints() const;
     TString GetRootKeyringName() const;
     TString GetEndpointsKeyringName() const;
-    bool GetRequireEndpointsKeyring() const;
     NCloud::NProto::EEndpointStorageType GetEndpointStorageType() const;
     TString GetEndpointStorageDir() const;
     ui32 GetSocketAccessMode() const;

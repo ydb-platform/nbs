@@ -1,3 +1,4 @@
+#include <cloud/blockstore/config/root_kms.pb.h>
 #include <cloud/blockstore/libs/daemon/ydb/bootstrap.h>
 #include <cloud/blockstore/libs/kms/iface/compute_client.h>
 #include <cloud/blockstore/libs/kms/iface/kms_client.h>
@@ -7,6 +8,8 @@
 #include <cloud/blockstore/libs/rdma/impl/client.h>
 #include <cloud/blockstore/libs/rdma/impl/server.h>
 #include <cloud/blockstore/libs/rdma/impl/verbs.h>
+#include <cloud/blockstore/libs/root_kms/iface/client.h>
+#include <cloud/blockstore/libs/root_kms/impl/client.h>
 #include <cloud/blockstore/libs/service/device_handler.h>
 #include <cloud/blockstore/libs/spdk/iface/env_stub.h>
 
@@ -74,6 +77,22 @@ int main(int argc, char** argv)
         }
 
         return NCloud::NBlockStore::CreateKmsClientStub();
+    };
+
+    serverModuleFactories->RootKmsClientFactory = [] (
+        const NProto::TRootKmsConfig& config,
+        NCloud::ILoggingServicePtr logging)
+    {
+        if (config.GetAddress()) {
+            return NCloud::NBlockStore::CreateRootKmsClient(
+                std::move(logging),
+                {.Address = config.GetAddress(),
+                 .RootCertsFile = config.GetRootCertsFile(),
+                 .CertChainFile = config.GetCertChainFile(),
+                 .PrivateKeyFile = config.GetPrivateKeyFile()});
+        }
+
+        return NCloud::NBlockStore::CreateRootKmsClientStub();
     };
 
     serverModuleFactories->SpdkFactory = [] (

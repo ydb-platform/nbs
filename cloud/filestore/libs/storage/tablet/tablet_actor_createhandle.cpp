@@ -130,6 +130,7 @@ void TIndexTabletActor::HandleCreateHandle(
         ev->Sender,
         ev->Cookie,
         msg->CallContext);
+    requestInfo->StartedTs = ctx.Now();
 
     AddTransaction<TEvService::TCreateHandleMethod>(*requestInfo);
 
@@ -203,9 +204,17 @@ bool TIndexTabletActor::PrepareTx_CreateHandle(
                 return true;
             }
 
-            if (args.RequestShardId) {
-                args.ShardId = args.RequestShardId;
-                args.ShardName = CreateGuidAsString();
+            auto shardId = args.RequestShardId;
+            if (!IsShard() && Config->GetShardIdSelectionInLeaderEnabled()) {
+                args.Error = SelectShard(0 /*fileSize*/, &shardId);
+                if (HasError(args.Error)) {
+                    return true;
+                }
+            }
+
+            if (shardId) {
+                args.ShardId = std::move(shardId);
+                args.ShardNodeName = CreateGuidAsString();
                 args.IsNewShardNode = true;
             }
         } else {
@@ -217,7 +226,7 @@ bool TIndexTabletActor::PrepareTx_CreateHandle(
 
             args.TargetNodeId = ref->ChildNodeId;
             args.ShardId = ref->ShardId;
-            args.ShardName = ref->ShardName;
+            args.ShardNodeName = ref->ShardNodeName;
         }
     } else {
         args.TargetNodeId = args.NodeId;
@@ -316,7 +325,7 @@ void TIndexTabletActor::ExecuteTx_CreateHandle(
             args.Name,
             args.TargetNodeId,
             args.ShardId,
-            args.ShardName);
+            args.ShardNodeName);
 
         // update parent cmtime as we created a new entry
         auto parent = CopyAttrs(args.ParentNode->Attrs, E_CM_CMTIME);
@@ -374,7 +383,7 @@ void TIndexTabletActor::ExecuteTx_CreateHandle(
         ConvertNodeFromAttrs(*node, args.TargetNodeId, args.TargetNode->Attrs);
     } else {
         args.Response.SetShardFileSystemId(args.ShardId);
-        args.Response.SetShardNodeName(args.ShardName);
+        args.Response.SetShardNodeName(args.ShardNodeName);
     }
 
     if (args.IsNewShardNode) {
@@ -388,7 +397,7 @@ void TIndexTabletActor::ExecuteTx_CreateHandle(
         shardRequest->SetGid(args.Gid);
         shardRequest->SetFileSystemId(args.ShardId);
         shardRequest->SetNodeId(RootNodeId);
-        shardRequest->SetName(args.ShardName);
+        shardRequest->SetName(args.ShardNodeName);
         shardRequest->ClearShardFileSystemId();
 
         db.WriteOpLogEntry(args.OpLogEntry);
@@ -423,7 +432,7 @@ void TIndexTabletActor::CompleteTx_CreateHandle(
             "%s Creating node in shard upon CreateHandle: %s, %s",
             LogTag.c_str(),
             args.ShardId.c_str(),
-            args.ShardName.c_str());
+            args.ShardNodeName.c_str());
 
         RegisterCreateNodeInShardActor(
             ctx,
@@ -444,6 +453,11 @@ void TIndexTabletActor::CompleteTx_CreateHandle(
     if (!HasError(args.Error)) {
         CommitDupCacheEntry(args.SessionId, args.RequestId);
         response->Record = std::move(args.Response);
+
+        Metrics.CreateHandle.Update(
+            1,
+            0,
+            ctx.Now() - args.RequestInfo->StartedTs);
     }
 
     CompleteResponse<TEvService::TCreateHandleMethod>(

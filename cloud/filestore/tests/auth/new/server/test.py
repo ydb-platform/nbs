@@ -1,16 +1,7 @@
 import json
-import logging
+import os
 
-from cloud.filestore.tests.auth.lib import TestFixture
-
-
-def log_result(test_name, result):
-    logging.info(
-        "[%s] Filestore create stdout=%s, stderr=%s",
-        test_name,
-        result.stdout.decode(),
-        result.stderr.decode(),
-    )
+from cloud.filestore.tests.auth.lib import TestFixture, log_result
 
 
 def test_new_auth_authorization_ok():
@@ -34,18 +25,19 @@ def test_new_auth_authorization_ok():
     log_result("test_new_auth_authorization_ok", result)
     assert result.returncode == 0
 
-# TODO: enable when unix sockets without auth are supported
-# def test_unix_socket_does_not_require_auth():
-#     fixture = TestFixture()
-#     client = fixture.get_client("some-token", use_unix_socket=True)
-#     result = client.create(
-#         "test_unix_socket_does_not_require_auth",
-#         "some_cloud",
-#         fixture.folder_id,
-#         return_stdout=False,
-#     )
-#     log_result("test_unix_socket_does_not_require_auth", result)
-#     assert result.returncode != 0
+
+def test_unix_socket_does_not_require_auth():
+    fixture = TestFixture()
+    uds_path = os.getenv("NFS_SERVER_UNIX_SOCKET_PATH")
+    client = fixture.get_client("some-token", unix_socket=uds_path)
+    result = client.create(
+        "test_unix_socket_does_not_require_auth",
+        "some_cloud",
+        fixture.folder_id,
+        return_stdout=False,
+    )
+    log_result("test_unix_socket_does_not_require_auth", result)
+    assert result.returncode == 0
 
 
 def test_new_auth_unauthorized():

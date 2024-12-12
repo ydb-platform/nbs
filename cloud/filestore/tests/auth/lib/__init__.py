@@ -1,3 +1,4 @@
+import logging
 import os
 
 import yatest.common as common
@@ -10,6 +11,15 @@ from cloud.filestore.config.client_pb2 import TClientAppConfig, TClientConfig
 from cloud.filestore.tests.python.lib.client import FilestoreCliClient
 from cloud.storage.core.tools.testing.access_service.lib import AccessService
 from cloud.storage.core.tools.testing.access_service_new.lib import NewAccessService
+
+
+def log_result(test_name, result):
+    logging.info(
+        "[%s] Filestore stdout=%s, stderr=%s",
+        test_name,
+        result.stdout.decode(),
+        result.stderr.decode(),
+    )
 
 
 class TestFixture:
@@ -36,10 +46,11 @@ class TestFixture:
         client_config.ClientConfig.CopyFrom(TClientConfig())
         client_config.ClientConfig.RootCertsFile = common.source_path(
             "cloud/filestore/tests/certs/server.crt")
-        client_config.ClientConfig.SecurePort = int(self.__port)
+        if self.__port:
+            client_config.ClientConfig.SecurePort = int(self.__port)
         self.__client_config_path.write_text(MessageToString(client_config))
 
-    def get_client(self, auth_token, use_unix_socket=False):
+    def get_client(self, auth_token, unix_socket=None):
         # auth_token MUST be a non-empty string; otherwise, the client will look
         # for the IAM token config at the default path, which does not exist.
         client = FilestoreCliClient(
@@ -50,7 +61,7 @@ class TestFixture:
             config_path=str(self.__client_config_path),
             check_exit_code=False,
             return_json=True,
-            use_unix_socket=use_unix_socket,
+            unix_socket=unix_socket,
             verbose=True,
         )
         return client

@@ -1,12 +1,11 @@
 #include "public.h"
 
-#include <cloud/blockstore/config/grpc_client.pb.h>
-
 #include <cloud/blockstore/libs/daemon/common/bootstrap.h>
 #include <cloud/blockstore/libs/kms/iface/public.h>
 #include <cloud/blockstore/libs/logbroker/iface/public.h>
 #include <cloud/blockstore/libs/notify/public.h>
 #include <cloud/blockstore/libs/rdma/iface/public.h>
+#include <cloud/blockstore/libs/root_kms/iface/public.h>
 #include <cloud/blockstore/libs/ydbstats/public.h>
 
 #include <cloud/storage/core/libs/actors/public.h>
@@ -14,6 +13,11 @@
 #include <cloud/storage/core/libs/iam/iface/public.h>
 
 #include <contrib/ydb/core/driver_lib/run/factories.h>
+
+namespace NCloud::NBlockStore::NProto {
+    class TGrpcClientConfig;
+    class TRootKmsConfig;
+}   // namespace NCloud::NBlockStore::NProto
 
 namespace NCloud::NBlockStore::NServer {
 
@@ -45,6 +49,10 @@ struct TServerModuleFactories
     std::function<IKmsClientPtr(
         NProto::TGrpcClientConfig config,
         ILoggingServicePtr logging)> KmsClientFactory;
+
+    std::function<IRootKmsClientPtr(
+        const NProto::TRootKmsConfig& config,
+        ILoggingServicePtr logging)> RootKmsClientFactory;
 
     std::function<TSpdkParts(NSpdk::TSpdkEnvConfigPtr config)> SpdkFactory;
 
@@ -83,6 +91,7 @@ private:
     NIamClient::IIamTokenClientPtr IamTokenClient;
     IComputeClientPtr ComputeClient;
     IKmsClientPtr KmsClient;
+    IRootKmsClientPtr RootKmsClient;
     std::function<void(TLog& log)> SpdkLogInitializer;
 
 public:
@@ -90,7 +99,7 @@ public:
         std::shared_ptr<NKikimr::TModuleFactories> moduleFactories,
         std::shared_ptr<TServerModuleFactories> serverModuleFactories,
         IDeviceHandlerFactoryPtr deviceHandlerFactory);
-    ~TBootstrapYdb();
+    ~TBootstrapYdb() override;
 
     TProgramShouldContinue& GetShouldContinue() override;
 
@@ -110,6 +119,7 @@ protected:
     IStartable* GetIamTokenClient() override;
     IStartable* GetComputeClient() override;
     IStartable* GetKmsClient() override;
+    IStartable* GetRootKmsClient() override;
 
     void InitSpdk() override;
     void InitRdmaClient() override;

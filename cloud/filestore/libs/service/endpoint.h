@@ -32,6 +32,8 @@ struct IEndpointManager
 #undef FILESTORE_DECLARE_METHOD
 
     virtual void Drain() = 0;
+
+    virtual NThreading::TFuture<void> RestoreEndpoints() = 0;
 };
 
 }   // namespace NCloud::NFileStore

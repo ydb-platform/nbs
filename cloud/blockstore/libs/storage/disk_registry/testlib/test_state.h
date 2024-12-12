@@ -144,6 +144,12 @@ TVector<NProto::TDiskConfig> MirrorDisk(
     TVector<TVector<TString>> uuids,
     NProto::EDiskState state = NProto::DISK_STATE_ONLINE);
 
+NProto::TDiskConfig ShadowDisk(
+    const TString& sourceDiskId,
+    const TString& checkpointId,
+    std::initializer_list<TString> uuids,
+    NProto::EDiskState state = NProto::DISK_STATE_ONLINE);
+
 NProto::TError AllocateMirroredDisk(
     TDiskRegistryDatabase& db,
     TDiskRegistryState& state,

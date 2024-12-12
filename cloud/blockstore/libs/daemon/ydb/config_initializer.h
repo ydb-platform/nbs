@@ -3,6 +3,7 @@
 #include "public.h"
 
 #include <cloud/blockstore/config/grpc_client.pb.h>
+#include <cloud/blockstore/config/root_kms.pb.h>
 
 #include <cloud/blockstore/libs/client/config.h>
 #include <cloud/blockstore/libs/client/throttling.h>
@@ -15,6 +16,7 @@
 #include <cloud/blockstore/libs/kikimr/public.h>
 #include <cloud/blockstore/libs/logbroker/iface/public.h>
 #include <cloud/blockstore/libs/notify/public.h>
+#include <cloud/blockstore/libs/root_kms/iface/public.h>
 #include <cloud/blockstore/libs/server/public.h>
 #include <cloud/blockstore/libs/service/public.h>
 #include <cloud/blockstore/libs/spdk/iface/public.h>
@@ -59,6 +61,7 @@ struct TConfigInitializerYdb final
     NIamClient::TIamClientConfigPtr IamClientConfig;
     NProto::TGrpcClientConfig KmsClientConfig;
     NProto::TGrpcClientConfig ComputeClientConfig;
+    NProto::TRootKmsConfig RootKmsConfig;
 
     TConfigInitializerYdb(TOptionsYdbPtr options);
 
@@ -69,6 +72,7 @@ struct TConfigInitializerYdb final
     void InitStorageConfig();
     void InitIamClientConfig();
     void InitKmsClientConfig();
+    void InitRootKmsConfig();
     void InitComputeClientConfig();
 
     bool GetUseNonreplicatedRdmaActor() const override;
@@ -92,6 +96,7 @@ private:
     void ApplyYdbStatsConfig(const TString& text);
     void ApplyIamClientConfig(const TString& text);
     void ApplyKmsClientConfig(const TString& text);
+    void ApplyRootKmsConfig(const TString& text);
     void ApplyComputeClientConfig(const TString& text);
 };
 

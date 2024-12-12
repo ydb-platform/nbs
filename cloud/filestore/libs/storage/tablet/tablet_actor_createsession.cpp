@@ -141,22 +141,32 @@ void TIndexTabletActor::HandleCreateSession(
         ev->Sender,
         ev->Cookie,
         msg->CallContext);
+    requestInfo->StartedTs = ctx.Now();
 
     const auto expectedShardCount = CalculateExpectedShardCount();
     const auto actualShardCount = GetFileSystem().ShardFileSystemIdsSize();
     if (actualShardCount < expectedShardCount) {
         auto message = TStringBuilder() << "Shard count smaller than expected: "
             << actualShardCount << " < " << expectedShardCount;
+        const bool shouldReject =
+            Config->GetEnforceCorrectFileSystemShardCountUponSessionCreation();
+        if (shouldReject) {
+            LOG_INFO(ctx, TFileStoreComponents::TABLET,
+                "%s CreateSession rejected: %s",
+                LogTag.c_str(),
+                message.c_str());
+
+            using TResponse = TEvIndexTablet::TEvCreateSessionResponse;
+            auto response = std::make_unique<TResponse>(
+                MakeError(E_REJECTED, std::move(message)));
+            NCloud::Reply(ctx, *requestInfo, std::move(response));
+            return;
+        }
+
         LOG_INFO(ctx, TFileStoreComponents::TABLET,
-            "%s CreateSession rejected: %s",
+            "%s CreateSession: %s",
             LogTag.c_str(),
             message.c_str());
-
-        using TResponse = TEvIndexTablet::TEvCreateSessionResponse;
-        auto response = std::make_unique<TResponse>(
-            MakeError(E_REJECTED, std::move(message)));
-        NCloud::Reply(ctx, *requestInfo, std::move(response));
-        return;
     }
 
     AddTransaction<TEvIndexTablet::TCreateSessionMethod>(*requestInfo);
@@ -408,15 +418,14 @@ void TIndexTabletActor::CreateSessionsInShards(
 
     auto actor = std::make_unique<TCreateShardSessionsActor>(
         std::move(logTag),
+        SelfId(),
         std::move(requestInfo),
         std::move(request),
         std::move(shardIds),
         std::move(response));
 
     auto actorId = NCloud::Register(ctx, std::move(actor));
-
-    Y_UNUSED(actorId);
-    // TODO(#1350): register actorId in WorkerActors, erase upon completion
+    WorkerActors.insert(actorId);
 }
 
 }   // namespace NCloud::NFileStore::NStorage

@@ -20,6 +20,37 @@ message TMonitoringUrlData
 };
 
 ////////////////////////////////////////////////////////////////////////////////
+// Performance profile settings for performance diagnostics (e.g. Suffer metric
+// calculation).
+
+message TRequestPerformanceProfile
+{
+    // Requests per second.
+    optional uint64 RPS = 1;
+    // Throughput in any kind of units - for Read/Write it should be bytes per
+    // second, for ListNodes it can be entries per second, for other requests
+    // it can be 0 until we come up with something more useful.
+    optional uint64 Throughput = 2;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+// Performance profile for filesystems / tablets / etc.
+
+message TFileSystemPerformanceProfile
+{
+    optional TRequestPerformanceProfile Read = 1;
+    optional TRequestPerformanceProfile Write = 2;
+    optional TRequestPerformanceProfile ListNodes = 3;
+    optional TRequestPerformanceProfile GetNodeAttr = 4;
+    optional TRequestPerformanceProfile CreateHandle = 5;
+    optional TRequestPerformanceProfile DestroyHandle = 6;
+    optional TRequestPerformanceProfile CreateNode = 7;
+    optional TRequestPerformanceProfile RenameNode = 8;
+    optional TRequestPerformanceProfile UnlinkNode = 9;
+    optional TRequestPerformanceProfile StatFileStore = 10;
+};
+
+////////////////////////////////////////////////////////////////////////////////
 
 message TDiagnosticsConfig
 {
@@ -27,15 +58,12 @@ message TDiagnosticsConfig
     optional string BastionNameSuffix = 1;
 
     // [obsolete]
-    // Solomon cluster name (e.g. yandexcloud_prod_vla).
     // optional string SolomonClusterName = 2;
 
     // [obsolete]
-    // Solomon host url.
     // optional string SolomonUrl = 3;
 
     // [obsolete]
-    // Project name in solomon.
     // optional string SolomonProject = 4;
 
     // Monserver will listen on this port.
@@ -103,4 +131,10 @@ message TDiagnosticsConfig
 
     // Report histogram as a single counter (THistogramCounter)
     optional bool ReportHistogramAsSingleCounter = 25;
+
+    // Performance profile for HDD filesystems.
+    optional TFileSystemPerformanceProfile HDDFileSystemPerformanceProfile = 26;
+
+    // Performance profile for SSD filesystems.
+    optional TFileSystemPerformanceProfile SSDFileSystemPerformanceProfile = 27;
 }

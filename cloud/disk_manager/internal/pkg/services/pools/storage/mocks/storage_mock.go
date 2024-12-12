@@ -55,6 +55,16 @@ func (s *StorageMock) OverlayDiskRebasing(
 	return args.Error(0)
 }
 
+func (s *StorageMock) OverlayDiskRebasedTx(
+	ctx context.Context,
+	tx *persistence.Transaction,
+	info storage.RebaseInfo,
+) error {
+
+	args := s.Called(ctx, tx, info)
+	return args.Error(0)
+}
+
 func (s *StorageMock) OverlayDiskRebased(
 	ctx context.Context,
 	info storage.RebaseInfo,

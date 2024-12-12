@@ -852,6 +852,11 @@ public:
     void Drain() override
     {}
 
+    NThreading::TFuture<void> RestoreEndpoints() override
+    {
+        return MakeFuture();
+    }
+
     void InitService(std::shared_ptr<::grpc::Channel> channel) override
     {
         TBase::AppCtx.Service = NProto::TEndpointManagerService::NewStub(std::move(channel));

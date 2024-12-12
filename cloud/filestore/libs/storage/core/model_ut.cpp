@@ -2297,7 +2297,8 @@ Y_UNIT_TEST_SUITE(TModel)
 
         // Disable media type override.
         StorageConfig.SetAutomaticShardCreationEnabled(true);
-        StorageConfig.SetMaxShardSize(4_TB);
+        StorageConfig.SetShardAllocationUnit(4_TB);
+        StorageConfig.SetAutomaticallyCreatedShardSize(5_TB);
 
         auto fs = SetupMultiShardFileStorePerformanceAndChannels(
             StorageConfig,
@@ -2325,6 +2326,10 @@ Y_UNIT_TEST_SUITE(TModel)
             KikimrConfig,
             ClientPerformanceProfile);
         UNIT_ASSERT_VALUES_EQUAL(254, fs.ShardConfigs.size());
+
+        for (const auto& sc: fs.ShardConfigs) {
+            UNIT_ASSERT_VALUES_EQUAL(5_TB / 4_KB, sc.GetBlocksCount());
+        }
     }
 }
 

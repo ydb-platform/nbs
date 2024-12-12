@@ -431,6 +431,7 @@ TDuration MSeconds(ui32 value)
                                                                                \
     xxx(DiskRegistryVolumeConfigUpdatePeriod,      TDuration, Minutes(5)      )\
     xxx(DiskRegistryAlwaysAllocatesLocalDisks,     bool,      false           )\
+    xxx(DiskRegistryCleanupConfigOnRemoveHost,     bool,      false           )\
                                                                                \
     xxx(ReassignRequestRetryTimeout,               TDuration, Seconds(5)      )\
     xxx(ReassignChannelsPercentageThreshold,       ui32,      10              )\
@@ -489,6 +490,7 @@ TDuration MSeconds(ui32 value)
                                                                                \
     xxx(VolumeProxyCacheRetryDuration,             TDuration, Seconds(15)     )\
                                                                                \
+    xxx(UseDirectCopyRange,                             bool,      false         )\
     xxx(MaxShadowDiskFillBandwidth,                     ui32,      512           )\
     xxx(MaxShadowDiskFillIoDepth,                       ui32,      1             )\
     xxx(BackgroundOperationsTotalBandwidth,             ui32,      1024          )\
@@ -515,6 +517,8 @@ TDuration MSeconds(ui32 value)
     xxx(DiskRegistryDisksNotificationTimeout,           TDuration, Seconds(5)    )\
     xxx(BlobStorageAsyncGetTimeoutHDD,                  TDuration, Seconds(0)    )\
     xxx(BlobStorageAsyncGetTimeoutSSD,                  TDuration, Seconds(0)    )\
+                                                                               \
+    xxx(EncryptionAtRestForDiskRegistryBasedDisksEnabled, bool,    false      )\
 
 // BLOCKSTORE_STORAGE_CONFIG_RW
 
@@ -545,6 +549,7 @@ BLOCKSTORE_STORAGE_CONFIG(BLOCKSTORE_STORAGE_DECLARE_CONFIG)
     xxx(ReplaceDevice)                                                         \
     xxx(UseNonReplicatedHDDInsteadOfReplicated)                                \
     xxx(AddingUnconfirmedBlobs)                                                \
+    xxx(EncryptionAtRestForDiskRegistryBasedDisks)                             \
 
 // BLOCKSTORE_BINARY_FEATURES
 

@@ -1,15 +1,15 @@
 #include "part_nonrepl_migration_actor.h"
 #include "ut_env.h"
 
-#include <cloud/blockstore/libs/rdma_test/client_test.h>
 #include <cloud/blockstore/libs/diagnostics/block_digest.h>
 #include <cloud/blockstore/libs/diagnostics/profile_log.h>
+#include <cloud/blockstore/libs/rdma_test/client_test.h>
 #include <cloud/blockstore/libs/storage/api/disk_agent.h>
 #include <cloud/blockstore/libs/storage/api/volume.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
+#include <cloud/blockstore/libs/storage/disk_agent/actors/direct_copy_actor.h>
 #include <cloud/blockstore/libs/storage/protos/disk.pb.h>
 #include <cloud/blockstore/libs/storage/testlib/disk_agent_mock.h>
-
 #include <cloud/storage/core/libs/common/sglist_test.h>
 
 #include <contrib/ydb/core/testlib/basics/runtime.h>
@@ -28,6 +28,51 @@ using namespace NKikimr;
 namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
+
+// The block count migrated at a time.
+constexpr ui64 ProcessingBlockCount = ProcessingRangeSize / DefaultBlockSize;
+
+auto MakeLeaderFollowerFilter(
+    TActorId* leaderPartition,
+    TActorId* followerPartition)
+{
+    using TEvGetDeviceForRangeRequest =
+        TEvNonreplPartitionPrivate::TEvGetDeviceForRangeRequest;
+    using EPurpose =
+        TEvNonreplPartitionPrivate::TGetDeviceForRangeRequest::EPurpose;
+
+    auto findLeaderAndFollower = [leaderPartition, followerPartition](
+                                     TTestActorRuntimeBase& runtime,
+                                     TAutoPtr<IEventHandle>& event) -> bool
+    {
+        Y_UNUSED(runtime);
+
+        switch (event->GetTypeRewrite()) {
+            case TEvService::EvReadBlocksRequest: {
+                *leaderPartition = event->Recipient;
+            } break;
+
+            case TEvService::EvWriteBlocksRequest: {
+                *followerPartition = event->Recipient;
+            } break;
+
+            case TEvNonreplPartitionPrivate::EvGetDeviceForRangeRequest: {
+                auto& msg = *event->Get<TEvGetDeviceForRangeRequest>();
+                switch (msg.Purpose) {
+                    case EPurpose::ForReading:
+                        *leaderPartition = event->Recipient;
+                        break;
+                    case EPurpose::ForWriting:
+                        *followerPartition = event->Recipient;
+                        break;
+                }
+            } break;
+        }
+
+        return false;
+    };
+    return findLeaderAndFollower;
+}
 
 struct TTestEnv
 {
@@ -79,7 +124,8 @@ struct TTestEnv
             TMigrations migrations,
             NProto::EVolumeIOMode ioMode,
             bool useRdma,
-            TMigrationStatePtr migrationState)
+            TMigrationStatePtr migrationState,
+            bool useDirectCopy)
         : Runtime(runtime)
         , ActorId(0, "YYY")
         , VolumeActorId(0, "VVV")
@@ -92,11 +138,26 @@ struct TTestEnv
 
         SetupLogging();
 
+        DiskAgentState->CreateDirectCopyActorFunc =
+            [](const TEvDiskAgent::TEvDirectCopyBlocksRequest::TPtr& ev,
+               const NActors::TActorContext& ctx,
+               NActors::TActorId owner)
+        {
+            auto* msg = ev->Get();
+            auto& record = msg->Record;
+            NCloud::Register<TDirectCopyActor>(
+                ctx,
+                owner,
+                CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext),
+                std::move(record));
+        };
+
         NProto::TStorageServiceConfig storageConfig;
         storageConfig.SetMaxTimedOutDeviceStateDuration(20'000);
         storageConfig.SetNonReplicatedMinRequestTimeoutSSD(1'000);
         storageConfig.SetNonReplicatedMaxRequestTimeoutSSD(5'000);
         storageConfig.SetMaxMigrationBandwidth(500);
+        storageConfig.SetUseDirectCopyRange(useDirectCopy);
 
         auto config = std::make_shared<TStorageConfig>(
             std::move(storageConfig),
@@ -223,7 +284,7 @@ struct TTestEnv
 
 Y_UNIT_TEST_SUITE(TNonreplicatedPartitionMigrationTest)
 {
-    Y_UNIT_TEST(ShouldMirrorRequestsAfterAllDataIsMigrated)
+    void DoShouldMirrorRequestsAfterAllDataIsMigrated(bool useDirectCopy)
     {
         TTestBasicRuntime runtime;
 
@@ -233,8 +294,8 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionMigrationTest)
             TTestEnv::DefaultMigrations(runtime.GetNodeId(0)),
             NProto::VOLUME_IO_OK,
             false,
-            nullptr   // no migration state
-        );
+            nullptr,   // no migration state
+            useDirectCopy);
 
         TPartitionClient client(runtime, env.ActorId);
 
@@ -249,15 +310,24 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionMigrationTest)
         runtime.AdvanceCurrentTime(UpdateCountersInterval);
         runtime.DispatchEvents({}, TDuration::Seconds(1));
 
+        const size_t migrationWrites = useDirectCopy ? 0 : 3;
         auto& counters = env.StorageStatsServiceState->Counters.RequestCounters;
-        UNIT_ASSERT_VALUES_EQUAL(5, counters.WriteBlocks.Count);
+        UNIT_ASSERT_VALUES_EQUAL(2 + migrationWrites, counters.WriteBlocks.Count);
         UNIT_ASSERT_VALUES_EQUAL(
-            (2 + 3072) * DefaultBlockSize,
+            (2 + migrationWrites * ProcessingBlockCount) * DefaultBlockSize,
             counters.WriteBlocks.RequestBytes
         );
     }
 
-    Y_UNIT_TEST(ShouldDoMigrationViaRdma)
+    Y_UNIT_TEST(ShouldMirrorRequestsAfterAllDataIsMigrated) {
+        DoShouldMirrorRequestsAfterAllDataIsMigrated(false);
+    }
+
+    Y_UNIT_TEST(ShouldMirrorRequestsAfterAllDataIsMigratedDirectCopy) {
+        DoShouldMirrorRequestsAfterAllDataIsMigrated(true);
+    }
+
+    void DoShouldDoMigrationViaRdma(bool useDirectCopy)
     {
         TTestBasicRuntime runtime;
 
@@ -267,8 +337,8 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionMigrationTest)
             TTestEnv::DefaultMigrations(runtime.GetNodeId(0)),
             NProto::VOLUME_IO_OK,
             true,
-            nullptr   // no migration state
-        );
+            nullptr,   // no migration state,
+            useDirectCopy);
 
         env.Rdma().InitAllEndpoints();
 
@@ -276,7 +346,15 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionMigrationTest)
         WaitForMigrations(runtime, 3);
     }
 
-    Y_UNIT_TEST(ShouldDoMigrationEvenInReadOnlyMode)
+    Y_UNIT_TEST(DoShouldDoMigrationViaRdma) {
+        DoShouldDoMigrationViaRdma(false);
+    }
+
+    Y_UNIT_TEST(DoShouldDoMigrationViaRdmaDirectCopy) {
+        DoShouldDoMigrationViaRdma(true);
+    }
+
+    void DoShouldDoMigrationEvenInReadOnlyMode(bool useDirectCopy)
     {
         TTestBasicRuntime runtime;
 
@@ -286,14 +364,24 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionMigrationTest)
             TTestEnv::DefaultMigrations(runtime.GetNodeId(0)),
             NProto::VOLUME_IO_ERROR_READ_ONLY,
             false,
-            nullptr   // no migration state
-        );
+            nullptr,   // no migration state
+            useDirectCopy);
 
         // petya should be migrated => 3 ranges
         WaitForMigrations(runtime, 3);
     }
 
-    Y_UNIT_TEST(ShouldReportSimpleCounters)
+    Y_UNIT_TEST(ShouldDoMigrationEvenInReadOnlyMode)
+    {
+        DoShouldDoMigrationEvenInReadOnlyMode(false);
+    }
+
+    Y_UNIT_TEST(ShouldDoMigrationEvenInReadOnlyModeDirectCopy)
+    {
+        DoShouldDoMigrationEvenInReadOnlyMode(true);
+    }
+
+    void DoShouldReportSimpleCounters(bool useDirectCopy)
     {
         TTestBasicRuntime runtime;
 
@@ -303,8 +391,8 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionMigrationTest)
             TTestEnv::DefaultMigrations(runtime.GetNodeId(0)),
             NProto::VOLUME_IO_OK,
             false,
-            nullptr   // no migration state
-        );
+            nullptr,   // no migration state
+            useDirectCopy);
 
         TPartitionClient client(runtime, env.ActorId);
 
@@ -315,11 +403,21 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionMigrationTest)
 
         auto& counters = env.StorageStatsServiceState->Counters.Simple;
         UNIT_ASSERT_VALUES_EQUAL(
-            5 * 1024 * DefaultBlockSize,
+            5 * ProcessingBlockCount * DefaultBlockSize,
             counters.BytesCount.Value);
     }
 
-    Y_UNIT_TEST(ShouldDelayMigration)
+    Y_UNIT_TEST(ShouldReportSimpleCounters)
+    {
+        DoShouldReportSimpleCounters(false);
+    }
+
+    Y_UNIT_TEST(ShouldReportSimpleCountersDirectCopy)
+    {
+        DoShouldReportSimpleCounters(true);
+    }
+
+    void DoShouldDelayMigration(bool useDirectCopy)
     {
         TTestBasicRuntime runtime;
 
@@ -332,7 +430,8 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionMigrationTest)
             TTestEnv::DefaultMigrations(runtime.GetNodeId(0)),
             NProto::VOLUME_IO_OK,
             false,
-            migrationState);
+            migrationState,
+            useDirectCopy);
 
         WaitForNoMigrations(runtime, TDuration::Seconds(5));
 
@@ -340,7 +439,17 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionMigrationTest)
         WaitForMigrations(runtime, 3);
     }
 
-    Y_UNIT_TEST(ShouldRegisterTrafficSource)
+    Y_UNIT_TEST(ShouldDelayMigration)
+    {
+        DoShouldDelayMigration(false);
+    }
+
+    Y_UNIT_TEST(ShouldDelayMigrationDirectCopy)
+    {
+        DoShouldDelayMigration(true);
+    }
+
+    void DoShouldRegisterTrafficSource(bool useDirectCopy)
     {
         TTestBasicRuntime runtime;
 
@@ -353,7 +462,8 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionMigrationTest)
             TTestEnv::DefaultMigrations(runtime.GetNodeId(0)),
             NProto::VOLUME_IO_OK,
             false,
-            migrationState);
+            migrationState,
+            useDirectCopy);
 
         WaitForNoMigrations(runtime, TDuration::Seconds(5));
 
@@ -391,7 +501,17 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionMigrationTest)
         UNIT_ASSERT_VALUES_EQUAL(2, registerSourceCounter);
     }
 
-    Y_UNIT_TEST(ShouldNotFailRequestOnFollowerNonRetriableError)
+    Y_UNIT_TEST(ShouldRegisterTrafficSource)
+    {
+        DoShouldRegisterTrafficSource(false);
+    }
+
+    Y_UNIT_TEST(ShouldRegisterTrafficSourceDirectCopy)
+    {
+        DoShouldRegisterTrafficSource(true);
+    }
+
+    void DoShouldNotFailRequestOnFollowerNonRetriableError(bool useDirectCopy)
     {
         TTestBasicRuntime runtime;
 
@@ -404,23 +524,14 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionMigrationTest)
             TTestEnv::DefaultMigrations(runtime.GetNodeId(0)),
             NProto::VOLUME_IO_OK,
             false,
-            migrationState);
+            migrationState,
+            useDirectCopy);
 
         // Find the ActorIDs of the leader and follower partitions.
         TActorId leaderPartition;
         TActorId followerPartition;
-        auto findLeaderAndFollower = [&](TTestActorRuntimeBase& runtime,
-                                         TAutoPtr<IEventHandle>& event) -> bool
-        {
-            Y_UNUSED(runtime);
-            if (event->GetTypeRewrite() == TEvService::EvReadBlocksRequest) {
-                leaderPartition = event->Recipient;
-            }
-            if (event->GetTypeRewrite() == TEvService::EvWriteBlocksRequest) {
-                followerPartition = event->Recipient;
-            }
-            return false;
-        };
+        auto findLeaderAndFollower =
+            MakeLeaderFollowerFilter(&leaderPartition, &followerPartition);
         runtime.SetEventFilter(findLeaderAndFollower);
 
         migrationState->IsMigrationAllowed = true;
@@ -556,7 +667,17 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionMigrationTest)
         }
     }
 
-    Y_UNIT_TEST(ShouldFailRequestOnFollowerRetriableError)
+    Y_UNIT_TEST(ShouldNotFailRequestOnFollowerNonRetriableError)
+    {
+        DoShouldNotFailRequestOnFollowerNonRetriableError(false);
+    }
+
+    Y_UNIT_TEST(ShouldNotFailRequestOnFollowerNonRetriableErrorDirectCopy)
+    {
+        DoShouldNotFailRequestOnFollowerNonRetriableError(true);
+    }
+
+    void DoShouldFailRequestOnFollowerRetriableError(bool useDirectCopy)
     {
         TTestBasicRuntime runtime;
 
@@ -569,23 +690,14 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionMigrationTest)
             TTestEnv::DefaultMigrations(runtime.GetNodeId(0)),
             NProto::VOLUME_IO_OK,
             false,
-            migrationState);
+            migrationState,
+            useDirectCopy);
 
         // Find the ActorIDs of the leader and follower partitions.
         TActorId leaderPartition;
         TActorId followerPartition;
-        auto findLeaderAndFollower = [&](TTestActorRuntimeBase& runtime,
-                                         TAutoPtr<IEventHandle>& event) -> bool
-        {
-            Y_UNUSED(runtime);
-            if (event->GetTypeRewrite() == TEvService::EvReadBlocksRequest) {
-                leaderPartition = event->Recipient;
-            }
-            if (event->GetTypeRewrite() == TEvService::EvWriteBlocksRequest) {
-                followerPartition = event->Recipient;
-            }
-            return false;
-        };
+        auto findLeaderAndFollower =
+            MakeLeaderFollowerFilter(&leaderPartition, &followerPartition);
         runtime.SetEventFilter(findLeaderAndFollower);
 
         migrationState->IsMigrationAllowed = true;
@@ -675,6 +787,213 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionMigrationTest)
         }
 
         UNIT_ASSERT_VALUES_EQUAL(2, failedPartitionRequestCount);
+    }
+
+    Y_UNIT_TEST(ShouldFailRequestOnFollowerRetriableError)
+    {
+        DoShouldFailRequestOnFollowerRetriableError(false);
+    }
+
+    Y_UNIT_TEST(ShouldFailRequestOnFollowerRetriableErrorDirectCopy)
+    {
+        DoShouldFailRequestOnFollowerRetriableError(true);
+    }
+
+    Y_UNIT_TEST(ShouldHandleGetDeviceForRangeRequest)
+    {
+        using TEvGetDeviceForRangeRequest =
+            TEvNonreplPartitionPrivate::TEvGetDeviceForRangeRequest;
+        using TEvGetDeviceForRangeResponse =
+            TEvNonreplPartitionPrivate::TEvGetDeviceForRangeResponse;
+        using EPurpose = TEvGetDeviceForRangeRequest::EPurpose;
+
+        TTestBasicRuntime runtime;
+
+        auto migrationState = std::make_shared<TMigrationState>();
+        migrationState->IsMigrationAllowed = false;
+
+        TTestEnv env(
+            runtime,
+            TTestEnv::DefaultDevices(runtime.GetNodeId(0)),
+            TTestEnv::DefaultMigrations(runtime.GetNodeId(0)),
+            NProto::VOLUME_IO_OK,
+            false,
+            migrationState,
+            true);
+        TPartitionClient client(runtime, env.ActorId);
+
+        migrationState->IsMigrationAllowed = true;
+
+        {   // Request to first device
+            client.SendRequest(
+                env.ActorId,
+                std::make_unique<TEvGetDeviceForRangeRequest>(
+                    EPurpose::ForReading,
+                    TBlockRange64::WithLength(2040, 8)));
+            auto response = client.RecvResponse<TEvGetDeviceForRangeResponse>();
+            UNIT_ASSERT_C(
+                SUCCEEDED(response->GetStatus()),
+                response->GetErrorReason());
+            UNIT_ASSERT_VALUES_EQUAL("vasya", response->Device.GetDeviceUUID());
+            UNIT_ASSERT_VALUES_EQUAL(
+                TBlockRange64::WithLength(2040, 8),
+                response->DeviceBlockRange);
+        }
+
+        WaitForMigrations(runtime, 3);
+
+        {
+            // Request to second device
+            client.SendRequest(
+                env.ActorId,
+                std::make_unique<TEvGetDeviceForRangeRequest>(
+                    EPurpose::ForWriting,
+                    TBlockRange64::WithLength(2048, 8)));
+            auto response = client.RecvResponse<TEvGetDeviceForRangeResponse>();
+            UNIT_ASSERT_C(
+                SUCCEEDED(response->GetStatus()),
+                response->GetErrorReason());
+            UNIT_ASSERT_VALUES_EQUAL("petya", response->Device.GetDeviceUUID());
+            UNIT_ASSERT_VALUES_EQUAL(
+                TBlockRange64::WithLength(0, 8),
+                response->DeviceBlockRange);
+        }
+        {   // Request on the border of two devices
+            client.SendRequest(
+                env.ActorId,
+                std::make_unique<TEvGetDeviceForRangeRequest>(
+                    EPurpose::ForReading,
+                    TBlockRange64::WithLength(2040, 16)));
+            auto response = client.RecvResponse<TEvGetDeviceForRangeResponse>();
+            UNIT_ASSERT_VALUES_EQUAL(E_ABORTED, response->Error.GetCode());
+        }
+    }
+
+    Y_UNIT_TEST(ShouldFailOnDirectCopyRequestTimeout)
+    {
+        TTestBasicRuntime runtime;
+
+        auto migrationState = std::make_shared<TMigrationState>();
+        migrationState->IsMigrationAllowed = false;
+
+        TTestEnv env(
+            runtime,
+            TTestEnv::DefaultDevices(runtime.GetNodeId(0)),
+            TTestEnv::DefaultMigrations(runtime.GetNodeId(0)),
+            NProto::VOLUME_IO_OK,
+            false,
+            migrationState,
+            true);
+
+        // We will steal a EvDirectCopyBlocksResponse this will cause the
+        // TEvDirectCopyBlocksRequest to hang and the range migration timeout.
+        bool gotTimeout = false;
+        bool directCopyBlocksResponseStolen = false;
+
+        auto stoleTargetWriteRequest =
+            [&](TTestActorRuntimeBase& runtime,
+                TAutoPtr<IEventHandle>& event) -> bool
+        {
+            Y_UNUSED(runtime);
+
+            if (event->GetTypeRewrite() ==
+                TEvDiskAgent::EvDirectCopyBlocksResponse)
+            {
+                directCopyBlocksResponseStolen = true;
+                return true;
+            }
+
+            if (event->GetTypeRewrite() ==
+                TEvNonreplPartitionPrivate::EvRangeMigrated)
+            {
+                auto* msg =
+                    event->Get<TEvNonreplPartitionPrivate::TEvRangeMigrated>();
+                gotTimeout = msg->GetError().GetCode() == E_TIMEOUT;
+            }
+            return false;
+        };
+        runtime.SetEventFilter(stoleTargetWriteRequest);
+
+        migrationState->IsMigrationAllowed = true;
+
+        NActors::TDispatchOptions options;
+        options.CustomFinalCondition = [&]()
+        {
+            return directCopyBlocksResponseStolen;
+        };
+        runtime.DispatchEvents(options);
+        UNIT_ASSERT_VALUES_EQUAL(true, directCopyBlocksResponseStolen);
+
+        options.CustomFinalCondition = [&]()
+        {
+            return gotTimeout;
+        };
+        runtime.AdvanceCurrentTime(TDuration::Seconds(10));
+        runtime.DispatchEvents(options, TDuration::Seconds(1));
+        UNIT_ASSERT_VALUES_EQUAL(true, gotTimeout);
+    }
+
+    Y_UNIT_TEST(ShouldFallbackFromDirectCopy)
+    {
+        using TEvGetDeviceForRangeResponse =
+            TEvNonreplPartitionPrivate::TEvGetDeviceForRangeResponse;
+
+        const size_t migratedRangeCount = 3;
+
+        TTestBasicRuntime runtime;
+
+        auto migrationState = std::make_shared<TMigrationState>();
+        migrationState->IsMigrationAllowed = false;
+
+        TTestEnv env(
+            runtime,
+            TTestEnv::DefaultDevices(runtime.GetNodeId(0)),
+            TTestEnv::DefaultMigrations(runtime.GetNodeId(0)),
+            NProto::VOLUME_IO_OK,
+            false,
+            migrationState,
+            true);
+        TPartitionClient client(runtime, env.ActorId);
+
+        // Abort TEvGetDeviceForRangeRequest requests. In this case, the
+        // migrator will fallback to normal reading and writing.
+        auto abortGetDeviceForRange = [&](TTestActorRuntimeBase& runtime,
+                                          TAutoPtr<IEventHandle>& event) -> bool
+        {
+            if (event->GetTypeRewrite() ==
+                TEvNonreplPartitionPrivate::EvGetDeviceForRangeRequest)
+            {
+                runtime.Schedule(
+                    new IEventHandle(
+                        event->Sender,
+                        event->Recipient,
+                        new TEvGetDeviceForRangeResponse(MakeError(E_ABORTED)),
+                        0,
+                        event->Cookie,
+                        nullptr),
+                    TDuration::MilliSeconds(1));
+
+                return true;
+            }
+            return false;
+        };
+        runtime.SetEventFilter(abortGetDeviceForRange);
+
+        migrationState->IsMigrationAllowed = true;
+        WaitForMigrations(runtime, migratedRangeCount);
+
+        runtime.AdvanceCurrentTime(UpdateCountersInterval);
+        runtime.DispatchEvents({}, TDuration::Seconds(1));
+        runtime.AdvanceCurrentTime(UpdateCountersInterval);
+        runtime.DispatchEvents({}, TDuration::Seconds(1));
+
+        auto& counters = env.StorageStatsServiceState->Counters.RequestCounters;
+        UNIT_ASSERT_VALUES_EQUAL(
+            migratedRangeCount,
+            counters.WriteBlocks.Count);
+        UNIT_ASSERT_VALUES_EQUAL(
+            (migratedRangeCount * ProcessingBlockCount) * DefaultBlockSize,
+            counters.WriteBlocks.RequestBytes);
     }
 }
 

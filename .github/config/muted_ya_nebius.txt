@@ -12,6 +12,7 @@ cloud/filestore/tests/fio/qemu-kikimr-test *
 cloud/filestore/tests/fio/qemu-local-noserver-test *
 cloud/filestore/tests/fio/qemu-local-test *
 cloud/filestore/tests/fio_index/qemu-kikimr-multishard-nemesis-test *
+cloud/filestore/tests/fio_index/qemu-kikimr-multishard-tablets-restart-test *
 cloud/filestore/tests/fio_index/qemu-kikimr-multishard-test *
 cloud/filestore/tests/fio_index/qemu-kikimr-nemesis-test *
 cloud/filestore/tests/fio_index/qemu-kikimr-test *
@@ -31,3 +32,4 @@ cloud/storage/core/libs/endpoints/keyring/ut *
 cloud/filestore/tests/fio/qemu-local-noserver-direct-io-test *
 cloud/blockstore/tests/csi_driver/e2e_tests_part1 *
 cloud/blockstore/tests/csi_driver/e2e_tests_part2 *
+cloud/blockstore/tests/csi_driver/e2e_tests_nfs *

@@ -63,6 +63,7 @@ void TStorageServiceActor::RegisterCounters(const NActors::TActorContext& ctx)
     auto serverCounters = rootGroup->GetSubgroup("component", "server");
 
     CpuWait = serverCounters->GetCounter("CpuWait", false);
+    CpuWaitFailure = serverCounters->GetCounter("CpuWaitFailure", false);
 }
 
 void TStorageServiceActor::ScheduleUpdateStats(const NActors::TActorContext& ctx)
@@ -126,7 +127,6 @@ bool TStorageServiceActor::HandleRequests(STFUNC_SIG)
         FILESTORE_HANDLE_RESPONSE(name, ns)             \
 
         FILESTORE_REMOTE_SERVICE(FILESTORE_HANDLE_REQUEST_RESPONSE, TEvService)
-        FILESTORE_SERVICE_REQUESTS_PRIVATE(FILESTORE_HANDLE_REQUEST_RESPONSE, TEvServicePrivate)
     #undef FILESTORE_HANDLE_REQUEST_RESPONSE
 
         HFunc(NMon::TEvHttpInfo, HandleHttpInfo);

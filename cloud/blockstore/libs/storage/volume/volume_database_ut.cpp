@@ -1253,6 +1253,10 @@ Y_UNIT_TEST_SUITE(TVolumeDatabaseTest)
         TTestExecutor executor;
         executor.WriteTx([&] (TVolumeDatabase db) {
             db.InitSchema();
+
+            NProto::TVolumeMeta meta;
+            meta.MutableVolumeConfig()->SetDiskId("vol0");
+            db.WriteMeta(meta);
         });
 
         TMaybe<NProto::TStorageServiceConfig> serviceConfig;

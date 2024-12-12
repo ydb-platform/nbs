@@ -73,6 +73,9 @@ message TMonitoringUrlData
     optional string MonitoringPartitionDashboard = 5;
     optional string MonitoringNBSAlertsDashboard = 6;
     optional string MonitoringNBSTVDashboard = 7;
+
+    optional string MonitoringYDBProject = 8;
+    optional string MonitoringYDBGroupDashboard = 9;
 };
 
 ////////////////////////////////////////////////////////////////////////////////

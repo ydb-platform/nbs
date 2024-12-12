@@ -9,6 +9,7 @@
 #include <cloud/blockstore/libs/diagnostics/downtime_history.h>
 #include <cloud/blockstore/libs/storage/api/partition.h>
 #include <cloud/blockstore/libs/storage/core/compaction_map.h>
+#include <cloud/blockstore/libs/storage/core/compaction_type.h>
 #include <cloud/blockstore/libs/storage/core/request_buffer.h>
 #include <cloud/blockstore/libs/storage/core/request_info.h>
 #include <cloud/blockstore/libs/storage/core/ts_ring_buffer.h>
@@ -78,6 +79,7 @@ struct TForcedCompactionState
     ui32 Progress = 0;
     ui32 RangesCount = 0;
     TString OperationId;
+    TOperationState State;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -800,10 +802,7 @@ private:
     TInstant LastCompactionRangeCountPerRunTs;
 
 public:
-    TOperationState& GetCompactionState()
-    {
-        return CompactionState;
-    }
+    TOperationState& GetCompactionState(ECompactionType type);
 
     TCompactionMap& GetCompactionMap()
     {

@@ -103,6 +103,9 @@ void TVolumeActor::CompleteLoadState(
         Config = std::make_shared<TStorageConfig>(*Config);
         Config->Merge(*args.StorageConfig.Get());
         HasStorageConfigPatch = !Config->Equals(*GlobalStorageConfig);
+        if (!HasStorageConfigPatch) {
+            Config = GlobalStorageConfig;
+        }
     }
 
     if (args.Meta.Defined()) {
@@ -122,7 +125,7 @@ void TVolumeActor::CompleteLoadState(
             Config->GetVolumeHistoryCacheSize(),
             std::move(args.MountHistory)};
 
-        State.reset(new TVolumeState(
+        State = std::make_unique<TVolumeState>(
             Config,
             std::move(*args.Meta),
             std::move(args.MetaHistory),
@@ -131,7 +134,7 @@ void TVolumeActor::CompleteLoadState(
             std::move(args.Clients),
             std::move(volumeHistory),
             std::move(args.CheckpointRequests),
-            startPartitionsNeeded));
+            startPartitionsNeeded);
 
         ResetThrottlingPolicy();
 

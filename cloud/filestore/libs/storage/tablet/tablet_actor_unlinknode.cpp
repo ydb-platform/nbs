@@ -269,6 +269,7 @@ void TIndexTabletActor::HandleUnlinkNode(
         ev->Sender,
         ev->Cookie,
         msg->CallContext);
+    requestInfo->StartedTs = ctx.Now();
 
     AddTransaction<TEvService::TUnlinkNodeMethod>(*requestInfo);
 
@@ -380,7 +381,7 @@ void TIndexTabletActor::ExecuteTx_UnlinkNode(
             args.ParentNodeId,
             args.Name,
             args.ChildRef->ShardId,
-            args.ChildRef->ShardName,
+            args.ChildRef->ShardNodeName,
             args.ChildRef->MinCommitId,
             args.CommitId);
 
@@ -391,7 +392,7 @@ void TIndexTabletActor::ExecuteTx_UnlinkNode(
         shardRequest->CopyFrom(args.Request);
         shardRequest->SetFileSystemId(args.ChildRef->ShardId);
         shardRequest->SetNodeId(RootNodeId);
-        shardRequest->SetName(args.ChildRef->ShardName);
+        shardRequest->SetName(args.ChildRef->ShardNodeName);
 
         db.WriteOpLogEntry(args.OpLogEntry);
     } else {
@@ -451,7 +452,7 @@ void TIndexTabletActor::CompleteTx_UnlinkNode(
                 "%s Unlinking node in shard upon UnlinkNode: %s, %s",
                 LogTag.c_str(),
                 args.ChildRef->ShardId.c_str(),
-                args.ChildRef->ShardName.c_str());
+                args.ChildRef->ShardNodeName.c_str());
 
             RegisterUnlinkNodeInShardActor(
                 ctx,
@@ -481,6 +482,11 @@ void TIndexTabletActor::CompleteTx_UnlinkNode(
 
     RemoveTransaction(*args.RequestInfo);
     EnqueueBlobIndexOpIfNeeded(ctx);
+
+    Metrics.UnlinkNode.Update(
+        1,
+        0,
+        ctx.Now() - args.RequestInfo->StartedTs);
 
     auto response =
         std::make_unique<TEvService::TEvUnlinkNodeResponse>(args.Error);
@@ -515,6 +521,11 @@ void TIndexTabletActor::HandleNodeUnlinkedInShard(
                 msg->RequestInfo->CallContext,
                 ctx);
 
+            Metrics.RenameNode.Update(
+                1,
+                0,
+                ctx.Now() - msg->RequestInfo->StartedTs);
+
             NCloud::Reply(ctx, *msg->RequestInfo, std::move(response));
         } else if (auto* x = std::get_if<NProto::TUnlinkNodeResponse>(&res)) {
             auto response =
@@ -525,6 +536,11 @@ void TIndexTabletActor::HandleNodeUnlinkedInShard(
                 response->Record,
                 msg->RequestInfo->CallContext,
                 ctx);
+
+            Metrics.UnlinkNode.Update(
+                1,
+                0,
+                ctx.Now() - msg->RequestInfo->StartedTs);
 
             NCloud::Reply(ctx, *msg->RequestInfo, std::move(response));
         } else {

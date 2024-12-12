@@ -127,7 +127,7 @@ public:
         if (status == NRdma::RDMA_PROTO_OK) {
             HandleResult(*dr, buffer);
         } else {
-            HandleError(PartConfig, buffer, Error);
+            Error = NRdma::ParseError(buffer);
         }
 
         if (--ResponseCount != 0) {

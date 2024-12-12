@@ -252,23 +252,30 @@ private:
         const NActors::TActorContext& ctx,
         const NProto::TAgentConfig& config);
 
-    void RenderHtmlInfo(TInstant now, IOutputStream& out) const;
+    void RenderHtmlInfo(IOutputStream& out) const;
     void RenderState(IOutputStream& out) const;
-    void RenderDisks(IOutputStream& out, ui32 limit) const;
+    void RenderDisks(IOutputStream& out) const;
+    void RenderDisksDetailed(IOutputStream& out) const;
     void RenderDiskList(IOutputStream& out) const;
     void RenderMirroredDiskList(IOutputStream& out) const;
     void RenderMigrationList(IOutputStream& out) const;
     void RenderBrokenDiskList(IOutputStream& out) const;
     void RenderDisksToNotify(IOutputStream& out) const;
     void RenderUserNotifications(IOutputStream& out) const;
-    void RenderPlacementGroupList(IOutputStream& out, ui32 limit) const;
+    void RenderPlacementGroupList(IOutputStream& out) const;
+    void RenderPlacementGroupListDetailed(IOutputStream& out) const;
     void RenderPlacementGroupTable(IOutputStream& out, bool showRecent) const;
-    void RenderRacks(IOutputStream& out, ui32 limit) const;
+    void RenderRacks(IOutputStream& out) const;
+    void RenderRacksDetailed(IOutputStream& out) const;
     void RenderPoolRacks(IOutputStream& out, const TString& poolName) const;
-    void RenderAgentList(TInstant now, IOutputStream& out, ui32 limit) const;
-    void RenderConfig(IOutputStream& out, ui32 limit) const;
-    void RenderDirtyDeviceList(IOutputStream& out, ui32 limit) const;
-    void RenderSuspendedDeviceList(IOutputStream& out, ui32 limit) const;
+    void RenderAgentList(IOutputStream& out) const;
+    void RenderAgentListDetailed(TInstant now, IOutputStream& out) const;
+    void RenderConfig(IOutputStream& out) const;
+    void RenderConfigDetailed(IOutputStream& out) const;
+    void RenderDirtyDeviceList(IOutputStream& out) const;
+    void RenderDirtyDeviceListDetailed(IOutputStream& out) const;
+    void RenderSuspendedDeviceList(IOutputStream& out) const;
+    void RenderSuspendedDeviceListDetailed(IOutputStream& out) const;
     void RenderAutomaticallyReplacedDeviceList(IOutputStream& out) const;
     template <typename TDevices>
     void RenderDevicesWithDetails(
@@ -276,7 +283,8 @@ private:
         const TDevices& devices,
         const TString& title,
         const TVector<TAdditionalColumn>& additionalColumns = {}) const;
-    void RenderBrokenDeviceList(IOutputStream& out, ui32 limit) const;
+    void RenderBrokenDeviceList(IOutputStream& out) const;
+    void RenderBrokenDeviceListDetailed(IOutputStream& out) const;
     void RenderDeviceHtmlInfo(IOutputStream& out, const TString& id) const;
     void RenderAgentHtmlInfo(IOutputStream& out, const TString& id) const;
     void RenderDiskHtmlInfo(IOutputStream& out, const TString& id) const;

@@ -2,6 +2,8 @@ syntax = "proto2";
 
 package NCloud.NFileStore.NProto;
 
+import "cloud/storage/core/config/iam.proto";
+
 option go_package = "github.com/ydb-platform/nbs/cloud/filestore/config";
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -51,9 +53,18 @@ message TClientConfig
 
 ////////////////////////////////////////////////////////////////////////////////
 
+message TAuthConfig
+{
+    optional string IamTokenFile = 1;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 message TClientAppConfig
 {
     optional TClientConfig ClientConfig = 1;
+    optional TAuthConfig AuthConfig = 2;
+    optional NCloud.NProto.TIamClientConfig IamConfig = 3;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

@@ -59,6 +59,13 @@ var vmModeCapabilities = []*csi.NodeServiceCapability{
 			},
 		},
 	},
+	{
+		Type: &csi.NodeServiceCapability_Rpc{
+			Rpc: &csi.NodeServiceCapability_RPC{
+				Type: csi.NodeServiceCapability_RPC_EXPAND_VOLUME,
+			},
+		},
+	},
 }
 
 // CSI driver provides RPC_GET_VOLUME_STATS capability only in podMode
@@ -105,10 +112,12 @@ type nodeService struct {
 	socketsDir          string
 	targetFsPathRegexp  *regexp.Regexp
 	targetBlkPathRegexp *regexp.Regexp
+	localFsOverrides    LocalFilestoreOverrideMap
 
-	nbsClient nbsclient.ClientIface
-	nfsClient nfsclient.EndpointClientIface
-	mounter   mounter.Interface
+	nbsClient      nbsclient.ClientIface
+	nfsClient      nfsclient.EndpointClientIface
+	nfsLocalClient nfsclient.EndpointClientIface
+	mounter        mounter.Interface
 }
 
 func newNodeService(
@@ -118,8 +127,10 @@ func newNodeService(
 	socketsDir string,
 	targetFsPathPattern string,
 	targetBlkPathPattern string,
+	localFsOverrides LocalFilestoreOverrideMap,
 	nbsClient nbsclient.ClientIface,
 	nfsClient nfsclient.EndpointClientIface,
+	nfsLocalClient nfsclient.EndpointClientIface,
 	mounter mounter.Interface) csi.NodeServer {
 
 	return &nodeService{
@@ -129,9 +140,11 @@ func newNodeService(
 		socketsDir:          socketsDir,
 		nbsClient:           nbsClient,
 		nfsClient:           nfsClient,
+		nfsLocalClient:      nfsLocalClient,
 		mounter:             mounter,
 		targetFsPathRegexp:  regexp.MustCompile(targetFsPathPattern),
 		targetBlkPathRegexp: regexp.MustCompile(targetBlkPathPattern),
+		localFsOverrides:    localFsOverrides,
 	}
 }
 
@@ -188,7 +201,6 @@ func (s *nodeService) NodeStageVolume(
 			var err error
 			if instanceId := req.VolumeContext[instanceIdKey]; instanceId != "" {
 				nbsId, _ := parseVolumeId(req.VolumeId)
-
 				stageRecordPath := filepath.Join(req.StagingTargetPath, nbsId+".json")
 				// Backend can be empty for old disks, in this case we use NBS
 				backend := "nbs"
@@ -920,6 +932,15 @@ func (s *nodeService) startNbsEndpointForNBD(
 	})
 }
 
+func (s *nodeService) getNfsClient(fileSystemId string) nfsclient.EndpointClientIface {
+	_, ok := s.localFsOverrides[fileSystemId]
+	if !ok {
+		return s.nfsClient
+	}
+
+	return s.nfsLocalClient
+}
+
 func (s *nodeService) nodePublishFileStoreAsVhostSocket(
 	ctx context.Context,
 	req *csi.NodePublishVolumeRequest) error {
@@ -931,11 +952,13 @@ func (s *nodeService) nodePublishFileStoreAsVhostSocket(
 		return err
 	}
 
-	if s.nfsClient == nil {
+	nfsClient := s.getNfsClient(filesystemId)
+
+	if nfsClient == nil {
 		return fmt.Errorf("NFS client wasn't created")
 	}
 
-	_, err := s.nfsClient.StartEndpoint(ctx, &nfsapi.TStartEndpointRequest{
+	_, err := nfsClient.StartEndpoint(ctx, &nfsapi.TStartEndpointRequest{
 		Endpoint: &nfsapi.TEndpointConfig{
 			SocketPath:       filepath.Join(endpointDir, nfsSocketName),
 			FileSystemId:     filesystemId,
@@ -967,11 +990,13 @@ func (s *nodeService) nodeStageFileStoreAsVhostSocket(
 		return err
 	}
 
-	if s.nfsClient == nil {
+	nfsClient := s.getNfsClient(filesystemId)
+
+	if nfsClient == nil {
 		return fmt.Errorf("NFS client wasn't created")
 	}
 
-	_, err := s.nfsClient.StartEndpoint(ctx, &nfsapi.TStartEndpointRequest{
+	_, err := nfsClient.StartEndpoint(ctx, &nfsapi.TStartEndpointRequest{
 		Endpoint: &nfsapi.TEndpointConfig{
 			SocketPath:       filepath.Join(endpointDir, nfsSocketName),
 			FileSystemId:     filesystemId,
@@ -1086,12 +1111,13 @@ func (s *nodeService) nodeUnpublishVolume(
 		}
 	}
 
-	if s.nfsClient != nil {
-		_, err := s.nfsClient.StopEndpoint(ctx, &nfsapi.TStopEndpointRequest{
+	nfsClient := s.getNfsClient(nbsId)
+	if nfsClient != nil {
+		_, err := nfsClient.StopEndpoint(ctx, &nfsapi.TStopEndpointRequest{
 			SocketPath: filepath.Join(endpointDir, nfsSocketName),
 		})
 		if err != nil {
-			return fmt.Errorf("failed to stop nfs endpoint: %w", err)
+			return fmt.Errorf("failed to stop nfs endpoint (%T): %w", nfsClient, err)
 		}
 	}
 
@@ -1163,11 +1189,17 @@ func (s *nodeService) nodeUnstageVhostSocket(
 			return fmt.Errorf("failed to stop nbs endpoint: %w", err)
 		}
 	} else if stageData.Backend == "nfs" {
-		_, err := s.nfsClient.StopEndpoint(ctx, &nfsapi.TStopEndpointRequest{
+		nfsClient := s.getNfsClient(nbsId)
+
+		if nfsClient == nil {
+			return fmt.Errorf("NFS client wasn't created")
+		}
+
+		_, err := nfsClient.StopEndpoint(ctx, &nfsapi.TStopEndpointRequest{
 			SocketPath: filepath.Join(stageData.RealStagePath, nfsSocketName),
 		})
 		if err != nil {
-			return fmt.Errorf("failed to stop nfs endpoint: %w", err)
+			return fmt.Errorf("failed to stop nfs endpoint (%T): %w", nfsClient, err)
 		}
 	}
 
@@ -1425,6 +1457,75 @@ func (s *nodeService) NodeGetVolumeStats(
 	}}, nil
 }
 
+func (s *nodeService) nodeExpandVolumeVmMode(
+	ctx context.Context,
+	req *csi.NodeExpandVolumeRequest) (*csi.NodeExpandVolumeResponse, error) {
+
+	// support expand volume only for volumes with instance id
+	diskId, _ := parseVolumeId(req.VolumeId)
+
+	stageRecordPath := filepath.Join(req.StagingTargetPath, diskId+".json")
+	stageData, err := s.readStageData(stageRecordPath)
+	if err != nil || stageData.InstanceId == "" {
+		return nil, s.statusErrorf(
+			codes.NotFound,
+			"NodeExpandVolume is not supported for volumes without instance id")
+	}
+
+	if stageData.Backend == "nfs" {
+		// expanding volumes with nfs backend works without refresh endpoint
+		return &csi.NodeExpandVolumeResponse{
+			CapacityBytes: req.CapacityRange.RequiredBytes,
+		}, nil
+	}
+
+	if s.nbsClient == nil {
+		return nil, fmt.Errorf("NodeExpandVolume is not supported")
+	}
+
+	resp, err := s.nbsClient.DescribeVolume(
+		ctx, &nbsapi.TDescribeVolumeRequest{
+			DiskId: diskId,
+		},
+	)
+
+	if err != nil {
+		if nbsclient.IsDiskNotFoundError(err) {
+			return nil, s.statusError(
+				codes.NotFound,
+				"Volume is not found")
+		}
+
+		log.Printf("Failed to describe volume %v", err)
+		return nil, s.statusErrorf(
+			codes.Internal,
+			"Failed to describe volume %v", err)
+	}
+
+	volumeSize := int64(resp.Volume.BlocksCount * uint64(resp.Volume.BlockSize))
+	if req.CapacityRange.RequiredBytes > volumeSize {
+		return nil, s.statusError(
+			codes.OutOfRange,
+			"Requested size is more than volume size")
+	}
+
+	endpointDir := s.getEndpointDir(stageData.InstanceId, diskId)
+	_, err = s.nbsClient.RefreshEndpoint(ctx, &nbsapi.TRefreshEndpointRequest{
+		UnixSocketPath: filepath.Join(endpointDir, nbsSocketName),
+	})
+
+	if err != nil {
+		log.Printf("Failed to resize device %v", err)
+		return nil, s.statusErrorf(
+			codes.Internal,
+			"Failed to resize device %v", err)
+	}
+
+	return &csi.NodeExpandVolumeResponse{
+		CapacityBytes: int64(resp.Volume.BlocksCount * uint64(resp.Volume.BlockSize)),
+	}, nil
+}
+
 func (s *nodeService) NodeExpandVolume(
 	ctx context.Context,
 	req *csi.NodeExpandVolumeRequest) (*csi.NodeExpandVolumeResponse, error) {
@@ -1441,6 +1542,10 @@ func (s *nodeService) NodeExpandVolume(
 		return nil, status.Error(
 			codes.InvalidArgument,
 			"VolumePath is missing in NodeExpandVolumeRequest")
+	}
+
+	if s.vmMode {
+		return s.nodeExpandVolumeVmMode(ctx, req)
 	}
 
 	if s.nbsClient == nil {

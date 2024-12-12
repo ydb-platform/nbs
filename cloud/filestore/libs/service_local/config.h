@@ -35,6 +35,9 @@ public:
 
     void Dump(IOutputStream& out) const;
     void DumpHtml(IOutputStream& out) const;
+
+    bool GetAsyncDestroyHandleEnabled() const;
+    TDuration GetAsyncHandleOperationPeriod() const;
 };
 
 }   // namespace NCloud::NFileStore

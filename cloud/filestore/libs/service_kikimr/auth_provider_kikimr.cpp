@@ -188,7 +188,9 @@ public:
     {
         // Data channel does not need IAM authorization:
         // all requests are allowed if authorized with mount tokens.
-        return !IsDataChannel(requestSource) && !permissions.Empty();
+        return requestSource != NCloud::NProto::SOURCE_FD_CONTROL_CHANNEL &&
+            !IsDataChannel(requestSource) &&
+            !permissions.Empty();
     }
 
     TFuture<NProto::TError> CheckRequest(

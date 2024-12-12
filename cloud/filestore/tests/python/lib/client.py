@@ -30,7 +30,7 @@ class FilestoreCliClient:
         auth_token=None,
         check_exit_code=True,
         return_json=False,
-        use_unix_socket=False,
+        unix_socket=None,
     ):
         self.__binary_path = binary_path
         self.__port = port
@@ -42,10 +42,7 @@ class FilestoreCliClient:
         self.__env = {}
         self.__check_exit_code = check_exit_code
         self.__return_json = return_json
-        if use_unix_socket:
-            self.__server_unix_socket_path = os.getenv("NFS_SERVER_UNIX_SOCKET_PATH")
-        else:
-            self.__server_unix_socket_path = None
+        self.__server_unix_socket_path = unix_socket
         if auth_token is not None:
             self.__env = {"IAM_TOKEN": auth_token}
 
@@ -57,6 +54,7 @@ class FilestoreCliClient:
         blk_size=4096,
         blk_count=100 * 1024 * 1024 * 1024,
         return_stdout=True,
+        verbose=False,
     ):
         cmd = [
             self.__binary_path, "create",
@@ -64,8 +62,11 @@ class FilestoreCliClient:
             "--cloud", cloud,
             "--folder", folder,
             "--block-size", str(blk_size),
-            "--blocks-count", str(blk_count)
+            "--blocks-count", str(blk_count),
         ] + self.__cmd_opts()
+
+        if verbose:
+            cmd += ["--verbose", "trace"]
 
         logger.info("creating filestore: " + " ".join(cmd))
         result = common.execute(cmd, env=self.__env, check_exit_code=self.__check_exit_code)

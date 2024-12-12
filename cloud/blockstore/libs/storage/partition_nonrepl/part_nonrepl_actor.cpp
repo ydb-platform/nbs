@@ -304,7 +304,7 @@ bool TNonreplicatedPartitionActor::InitRequests(
         reply(
             ctx,
             requestInfo,
-            PartConfig->MakeIOError("disk in error state", true));
+            PartConfig->MakeIOError("disk in error state"));
         return false;
     }
 
@@ -319,8 +319,7 @@ bool TNonreplicatedPartitionActor::InitRequests(
                 requestInfo,
                 PartConfig->MakeIOError(
                     TStringBuilder() << "unavailable device requested: "
-                                     << dr.Device.GetDeviceUUID(),
-                    true));
+                                     << dr.Device.GetDeviceUUID()));
             return false;
         }
     }
@@ -538,6 +537,9 @@ STFUNC(TNonreplicatedPartitionActor::StateWork)
 
         HFunc(NPartition::TEvPartition::TEvDrainRequest, DrainActorCompanion.HandleDrain);
         HFunc(TEvService::TEvGetChangedBlocksRequest, DeclineGetChangedBlocks);
+        HFunc(
+            TEvNonreplPartitionPrivate::TEvGetDeviceForRangeRequest,
+            GetDeviceForRangeCompanion.HandleGetDeviceForRange);
 
         HFunc(TEvNonreplPartitionPrivate::TEvReadBlocksCompleted, HandleReadBlocksCompleted);
         HFunc(TEvNonreplPartitionPrivate::TEvWriteBlocksCompleted, HandleWriteBlocksCompleted);
@@ -580,6 +582,9 @@ STFUNC(TNonreplicatedPartitionActor::StateZombie)
 
         HFunc(NPartition::TEvPartition::TEvDrainRequest, RejectDrain);
         HFunc(TEvService::TEvGetChangedBlocksRequest, DeclineGetChangedBlocks);
+        HFunc(
+            TEvNonreplPartitionPrivate::TEvGetDeviceForRangeRequest,
+            GetDeviceForRangeCompanion.RejectGetDeviceForRange);
 
         HFunc(TEvNonreplPartitionPrivate::TEvReadBlocksCompleted, HandleReadBlocksCompleted);
         HFunc(TEvNonreplPartitionPrivate::TEvWriteBlocksCompleted, HandleWriteBlocksCompleted);

@@ -4,4 +4,5 @@ RECURSE(
     service-local
     vhost
     vhost-endpoint
+    tablets-restarter
 )

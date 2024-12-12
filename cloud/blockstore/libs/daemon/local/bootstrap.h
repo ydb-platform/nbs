@@ -36,6 +36,7 @@ protected:
     IStartable* GetIamTokenClient() override     { return nullptr; }
     IStartable* GetComputeClient() override      { return nullptr; }
     IStartable* GetKmsClient() override          { return nullptr; }
+    IStartable* GetRootKmsClient() override      { return nullptr; }
 
     void InitSpdk() override;
     void InitRdmaClient() override;

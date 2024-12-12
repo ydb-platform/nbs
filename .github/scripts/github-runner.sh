@@ -56,7 +56,7 @@ sudo apt-get install -y --no-install-recommends \
              dpkg-dev docker-ce docker-ce-cli containerd.io \
              docker-buildx-plugin docker-compose-plugin jq \
              aria2 jq tree tmux atop awscli iftop htop \
-             pixz pigz pbzip2 xz-utils
+             pixz pigz pbzip2 xz-utils gdb
 cat << EOF > /tmp/requirements.txt
 conan==1.59
 pytest==7.1.3

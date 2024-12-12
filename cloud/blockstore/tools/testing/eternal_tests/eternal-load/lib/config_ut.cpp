@@ -1,4 +1,5 @@
 #include "config.h"
+
 #include <util/generic/fwd.h>
 #include <util/generic/size_literals.h>
 #include <util/random/random.h>

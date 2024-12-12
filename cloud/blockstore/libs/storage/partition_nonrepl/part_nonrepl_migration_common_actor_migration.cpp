@@ -10,6 +10,7 @@
 #include <cloud/blockstore/libs/storage/core/forward_helpers.h>
 #include <cloud/blockstore/libs/storage/core/probes.h>
 #include <cloud/blockstore/libs/storage/partition_nonrepl/copy_range.h>
+#include <cloud/blockstore/libs/storage/partition_nonrepl/direct_copy_range.h>
 #include <cloud/storage/core/libs/diagnostics/critical_events.h>
 
 namespace NCloud::NBlockStore::NStorage {
@@ -33,6 +34,8 @@ void TNonreplicatedPartitionMigrationCommonActor::InitWork(
 
     PoisonPillHelper.TakeOwnership(ctx, SrcActorId);
     PoisonPillHelper.TakeOwnership(ctx, DstActorId);
+
+    GetDeviceForRangeCompanion.SetDelegate(SrcActorId);
 
     if (DstActorId == NActors::TActorId{}) {
         ProcessingBlocks.AbortProcessing();
@@ -89,18 +92,33 @@ void TNonreplicatedPartitionMigrationCommonActor::MigrateRange(
                              << range << ", diskId: " << DiskId);
     }
 
-    NCloud::Register<TCopyRangeActor>(
-        ctx,
-        CreateRequestInfo(
-            SelfId(),
-            0,   // cookie
-            MakeIntrusive<TCallContext>()),
-        BlockSize,
-        range,
-        SrcActorId,
-        DstActorId,
-        RWClientId,
-        BlockDigestGenerator);
+    if (Config->GetUseDirectCopyRange()) {
+        NCloud::Register<TDirectCopyRangeActor>(
+            ctx,
+            CreateRequestInfo(
+                SelfId(),
+                0,   // cookie
+                MakeIntrusive<TCallContext>()),
+            BlockSize,
+            range,
+            SrcActorId,
+            DstActorId,
+            RWClientId,
+            BlockDigestGenerator);
+    } else {
+        NCloud::Register<TCopyRangeActor>(
+            ctx,
+            CreateRequestInfo(
+                SelfId(),
+                0,   // cookie
+                MakeIntrusive<TCallContext>()),
+            BlockSize,
+            range,
+            SrcActorId,
+            DstActorId,
+            RWClientId,
+            BlockDigestGenerator);
+    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////

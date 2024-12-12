@@ -6,6 +6,8 @@
 #include <cloud/blockstore/libs/diagnostics/profile_log.h>
 #include <cloud/blockstore/libs/kikimr/components.h>
 #include <cloud/blockstore/libs/kikimr/events.h>
+#include <cloud/blockstore/libs/storage/core/compaction_options.h>
+#include <cloud/blockstore/libs/storage/core/compaction_type.h>
 #include <cloud/blockstore/libs/storage/core/request_info.h>
 #include <cloud/blockstore/libs/storage/model/channel_data_kind.h>
 #include <cloud/blockstore/libs/storage/model/channel_permissions.h>
@@ -441,14 +443,19 @@ struct TEvPartitionPrivate
     {
         ECompactionMode Mode = RangeCompaction;
         TMaybe<ui32> BlockIndex;
-        bool ForceFullCompaction = false;
+        TCompactionOptions CompactionOptions;
 
         TCompactionRequest() = default;
 
-        TCompactionRequest(ui32 blockIndex, bool forceFullCompaction)
-            : Mode(RangeCompaction)
-            , BlockIndex(blockIndex)
-            , ForceFullCompaction(forceFullCompaction)
+        TCompactionRequest(
+                ui32 blockIndex,
+                TCompactionOptions compactionOptions)
+            : BlockIndex(blockIndex)
+            , CompactionOptions(compactionOptions)
+        {}
+
+        TCompactionRequest(ui32 blockIndex)
+            : TCompactionRequest(blockIndex, {})
         {}
 
         TCompactionRequest(ECompactionMode mode)
@@ -773,6 +780,17 @@ struct TEvPartitionPrivate
     {
     };
 
+
+    //
+    // CompactionCompleted
+    //
+
+    struct TCompactionCompleted
+        : TOperationCompleted
+    {
+        ECompactionType CompactionType;
+    };
+
     //
     // MetadataRebuildCompleted
     //
@@ -880,7 +898,7 @@ struct TEvPartitionPrivate
     using TEvWriteBlocksCompleted = TResponseEvent<TWriteBlocksCompleted, EvWriteBlocksCompleted>;
     using TEvZeroBlocksCompleted = TResponseEvent<TOperationCompleted, EvZeroBlocksCompleted>;
     using TEvFlushCompleted = TResponseEvent<TFlushCompleted, EvFlushCompleted>;
-    using TEvCompactionCompleted = TResponseEvent<TOperationCompleted, EvCompactionCompleted>;
+    using TEvCompactionCompleted = TResponseEvent<TCompactionCompleted, EvCompactionCompleted>;
     using TEvCollectGarbageCompleted = TResponseEvent<TOperationCompleted, EvCollectGarbageCompleted>;
     using TEvForcedCompactionCompleted = TResponseEvent<TForcedCompactionCompleted, EvForcedCompactionCompleted>;
     using TEvMetadataRebuildCompleted = TResponseEvent<TOperationCompleted, EvMetadataRebuildCompleted>;
