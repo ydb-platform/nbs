@@ -1,5 +1,7 @@
 #include "public.h"
 
+#include "command.h"
+
 #include <util/generic/string.h>
 #include <util/generic/vector.h>
 

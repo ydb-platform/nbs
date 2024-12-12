@@ -2,6 +2,8 @@
 
 #include "public.h"
 
+#include "bootstrap.h"
+
 #include <cloud/filestore/libs/client/client.h>
 #include <cloud/filestore/libs/client/config.h>
 #include <cloud/filestore/libs/client/session.h>
@@ -16,6 +18,7 @@
 #include <cloud/storage/core/libs/common/public.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 #include <cloud/storage/core/libs/diagnostics/monitoring.h>
+#include <cloud/storage/core/libs/iam/iface/client.h>
 
 #include <contrib/ydb/library/actors/util/should_continue.h>
 #include <library/cpp/getopt/small/last_getopt.h>
@@ -66,6 +69,10 @@ protected:
 
     TProgramShouldContinue ProgramShouldContinue;
 
+    std::shared_ptr<TClientFactories> ClientFactories;
+    TString IamConfigFile;
+    NCloud::NIamClient::IIamTokenClientPtr IamClient;
+
 public:
     TCommand();
 
@@ -73,6 +80,8 @@ public:
 
     int Run(int argc, char** argv);
     void Stop(int exitCode);
+
+    void SetClientFactories(std::shared_ptr<TClientFactories> clientFactories);
 
     NLastGetopt::TOpts& GetOpts()
     {
@@ -86,6 +95,7 @@ public:
 
 protected:
     virtual void Init();
+    void InitIamTokenClient();
 
     virtual void Start();
     virtual void Stop();
@@ -111,6 +121,8 @@ protected:
 
 private:
     bool WaitForI(const NThreading::TFuture<void>& future);
+
+    TString GetIamTokenFromClient();
 };
 
 ////////////////////////////////////////////////////////////////////////////////

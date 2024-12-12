@@ -10,7 +10,7 @@ SRCS(
 
 PEERDIR(
     cloud/filestore/apps/client/lib
-
+    cloud/storage/core/libs/iam/iface
     library/cpp/getopt
 )
 

@@ -570,18 +570,23 @@ void TCommand::InitLWTrace()
 
 void TCommand::InitIamTokenClient()
 {
-    NProto::TIamClientConfig iamConfig;
-    if (IamConfigFile) {
-        ParseFromTextFormat(IamConfigFile, iamConfig);
-    } else if (NFs::Exists(DefaultIamConfigFile)) {
-        ParseFromTextFormat(DefaultIamConfigFile, iamConfig);
+    if (!ClientFactories) {
+        return;
     }
 
-    auto IamClientConfigPtr =
-        std::make_shared<NCloud::NIamClient::TIamClientConfig>(iamConfig);
+    NProto::TIamClientConfig iamClientProtoConfig;
+    if (IamConfigFile) {
+        ParseFromTextFormat(IamConfigFile, iamClientProtoConfig);
+    } else if (NFs::Exists(DefaultIamConfigFile)) {
+        ParseFromTextFormat(DefaultIamConfigFile, iamClientProtoConfig);
+    }
+
+    auto iamClientConfig =
+        std::make_shared<NCloud::NIamClient::TIamClientConfig>(
+            iamClientProtoConfig);
 
     IamClient = ClientFactories->IamClientFactory(
-        IamClientConfigPtr,
+        std::move(iamClientConfig),
         CreateLoggingService("console"),
         Scheduler,
         Timer);
