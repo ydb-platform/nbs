@@ -217,7 +217,6 @@ struct TVolumeThrottlingPolicy::TImpl
             // See NBS-2733
             return 0;
         }
-//!!!!
         return Config.GetMaxReadBandwidth();
     }
 
@@ -236,7 +235,7 @@ struct TVolumeThrottlingPolicy::TImpl
             return TDuration::Zero();
         }
 
-        auto bandwidthUpdate = requestInfo.ByteCount;
+        ui64 bandwidthUpdate = requestInfo.ByteCount;
         double m = static_cast<EOpType>(requestInfo.OpType) == EOpType::Read
             ? 1.0
             : WriteCostMultiplier;
