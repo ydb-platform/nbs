@@ -7,6 +7,7 @@
 
 #include <cloud/blockstore/libs/diagnostics/block_digest.h>
 #include <cloud/blockstore/libs/diagnostics/profile_log.h>
+#include <cloud/blockstore/libs/diagnostics/ut_helpers.h>
 #include <cloud/blockstore/libs/storage/api/disk_agent.h>
 #include <cloud/blockstore/libs/storage/api/disk_registry_proxy.h>
 #include <cloud/blockstore/libs/storage/api/volume.h>
@@ -279,6 +280,7 @@ struct TTestEnv
 
         auto mirror = std::make_unique<TMirrorPartitionActor>(
             Config,
+            CreateDiagnosticsConfig(),
             CreateProfileLogStub(),
             CreateBlockDigestGeneratorStub(),
             "", // rwClientId
@@ -347,6 +349,7 @@ struct TTestEnv
     {
         auto actor = std::make_unique<TMirrorPartitionResyncActor>(
             Config,
+            CreateDiagnosticsConfig(),
             CreateProfileLogStub(),
             CreateBlockDigestGeneratorStub(),
             "", // rwClientId
@@ -422,6 +425,7 @@ struct TTestEnv
     {
         auto part = std::make_unique<TNonreplicatedPartitionActor>(
             Config,
+            CreateDiagnosticsConfig(),
             partConfig,
             TActorId() // do not send stats
         );

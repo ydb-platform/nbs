@@ -1,5 +1,6 @@
 #include "volume_state.h"
 
+#include <cloud/blockstore/libs/diagnostics/ut_helpers.h>
 #include <cloud/blockstore/libs/kikimr/events.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/partition_nonrepl/config.h>
@@ -85,6 +86,7 @@ TVolumeState CreateVolumeState(
 {
     return TVolumeState(
         MakeConfig(inactiveClientsTimeout, {}),
+        CreateDiagnosticsConfig(),
         CreateVolumeMeta(pp),
         {{TInstant::Seconds(100), CreateVolumeMeta(pp)}}, // metaHistory
         {},
@@ -103,6 +105,7 @@ TVolumeState CreateVolumeState(
 {
     return TVolumeState(
         MakeConfig(inactiveClientsTimeout, {}),
+        CreateDiagnosticsConfig(),
         CreateVolumeMeta(pp),
         {{TInstant::Seconds(100), CreateVolumeMeta(pp)}}, // metaHistory
         {},
@@ -121,6 +124,7 @@ TVolumeState CreateVolumeState(
         std::make_shared<TStorageConfig>(
             config,
             std::make_shared<NFeatures::TFeaturesConfig>()),
+        CreateDiagnosticsConfig(),
         CreateVolumeMeta({}),
         {}, // metaHistory
         {},

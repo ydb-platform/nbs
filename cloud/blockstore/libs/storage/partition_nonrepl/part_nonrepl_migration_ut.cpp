@@ -3,6 +3,7 @@
 
 #include <cloud/blockstore/libs/diagnostics/block_digest.h>
 #include <cloud/blockstore/libs/diagnostics/profile_log.h>
+#include <cloud/blockstore/libs/diagnostics/ut_helpers.h>
 #include <cloud/blockstore/libs/rdma_test/client_test.h>
 #include <cloud/blockstore/libs/storage/api/disk_agent.h>
 #include <cloud/blockstore/libs/storage/api/volume.h>
@@ -211,6 +212,7 @@ struct TTestEnv
 
         auto part = std::make_unique<TNonreplicatedPartitionMigrationActor>(
             std::move(config),
+            CreateDiagnosticsConfig(),
             CreateProfileLogStub(),
             CreateBlockDigestGeneratorStub(),
             0,

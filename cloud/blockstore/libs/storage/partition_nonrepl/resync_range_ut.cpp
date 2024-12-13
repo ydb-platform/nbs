@@ -7,6 +7,7 @@
 
 #include <cloud/blockstore/libs/common/block_checksum.h>
 #include <cloud/blockstore/libs/diagnostics/block_digest.h>
+#include <cloud/blockstore/libs/diagnostics/ut_helpers.h>
 #include <cloud/blockstore/libs/storage/api/disk_agent.h>
 #include <cloud/blockstore/libs/storage/api/stats_service.h>
 #include <cloud/blockstore/libs/storage/api/volume.h>
@@ -143,6 +144,7 @@ struct TTestEnv
 
             auto part = std::make_unique<TNonreplicatedPartitionActor>(
                 config,
+                CreateDiagnosticsConfig(),
                 std::move(partConfig),
                 VolumeActorId
             );

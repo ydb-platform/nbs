@@ -3,6 +3,7 @@
 #include "ut_env.h"
 
 #include <cloud/blockstore/libs/common/block_checksum.h>
+#include <cloud/blockstore/libs/diagnostics/ut_helpers.h>
 #include <cloud/blockstore/libs/rdma_test/client_test.h>
 #include <cloud/blockstore/libs/service_local/rdma_protocol.h>
 #include <cloud/blockstore/libs/storage/api/disk_agent.h>
@@ -138,6 +139,7 @@ struct TTestEnv
 
         auto part = std::make_unique<TNonreplicatedPartitionRdmaActor>(
             std::move(config),
+            CreateDiagnosticsConfig(),
             std::move(partConfig),
             RdmaClient,
             VolumeActorId
