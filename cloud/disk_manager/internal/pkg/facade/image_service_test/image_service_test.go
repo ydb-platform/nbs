@@ -176,6 +176,91 @@ func checkUnencryptedImage(
 	require.ErrorContains(t, err, "KeyPath should contain path to encryption key")
 }
 
+func testImageServiceCreateImageFromDiskKind(
+	t *testing.T,
+	diskKind disk_manager.DiskKind,
+	diskSize uint64,
+) {
+
+	ctx := testcommon.NewContext()
+
+	client, err := testcommon.NewClient(ctx)
+	require.NoError(t, err)
+	defer client.Close()
+
+	diskID := t.Name()
+
+	reqCtx := testcommon.GetRequestContext(t, ctx)
+	operation, err := client.CreateDisk(reqCtx, &disk_manager.CreateDiskRequest{
+		Src: &disk_manager.CreateDiskRequest_SrcEmpty{
+			SrcEmpty: &empty.Empty{},
+		},
+		Size: int64(diskSize),
+		Kind: diskKind,
+		DiskId: &disk_manager.DiskId{
+			ZoneId: "zone-a",
+			DiskId: diskID,
+		},
+	})
+	require.NoError(t, err)
+	require.NotEmpty(t, operation)
+	err = internal_client.WaitOperation(ctx, client, operation.Id)
+	require.NoError(t, err)
+
+	nbsClient := testcommon.NewNbsClient(t, ctx, "zone-a")
+	diskContentInfo, err := nbsClient.FillDisk(ctx, diskID, diskSize)
+	require.NoError(t, err)
+
+	imageID := t.Name()
+
+	reqCtx = testcommon.GetRequestContext(t, ctx)
+	operation, err = client.CreateImage(reqCtx, &disk_manager.CreateImageRequest{
+		Src: &disk_manager.CreateImageRequest_SrcDiskId{
+			SrcDiskId: &disk_manager.DiskId{
+				ZoneId: "zone-a",
+				DiskId: diskID,
+			},
+		},
+		DstImageId: imageID,
+		FolderId:   "folder",
+		Pooled:     true,
+	})
+	require.NoError(t, err)
+	require.NotEmpty(t, operation)
+
+	response := disk_manager.CreateImageResponse{}
+	err = internal_client.WaitResponse(ctx, client, operation.Id, &response)
+	require.NoError(t, err)
+	require.Equal(t, int64(diskSize), response.Size)
+
+	meta := disk_manager.CreateImageMetadata{}
+	err = internal_client.GetOperationMetadata(ctx, client, operation.Id, &meta)
+	require.NoError(t, err)
+	require.Equal(t, float64(1), meta.Progress)
+
+	testcommon.RequireCheckpointsAreEmpty(t, ctx, diskID)
+
+	checkUnencryptedImage(
+		t,
+		client,
+		ctx,
+		imageID,
+		int64(diskSize),
+		diskContentInfo.Crc32,
+	)
+
+	reqCtx = testcommon.GetRequestContext(t, ctx)
+	operation, err = client.DeleteImage(reqCtx, &disk_manager.DeleteImageRequest{
+		ImageId: imageID,
+	})
+	require.NoError(t, err)
+	require.NotEmpty(t, operation)
+	err = internal_client.WaitOperation(ctx, client, operation.Id)
+	require.NoError(t, err)
+
+	testcommon.CheckConsistency(t, ctx)
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 func TestImageServiceCreateImageFromImage(t *testing.T) {
@@ -905,93 +990,6 @@ func TestImageServiceCancelCreateImageFromSnapshot(t *testing.T) {
 	testcommon.CheckConsistency(t, ctx)
 }
 
-////////////////////////////////////////////////////////////////////////////////
-
-func testImageServiceCreateImageFromDiskKind(
-	t *testing.T,
-	diskKind disk_manager.DiskKind,
-	diskSize uint64,
-) {
-
-	ctx := testcommon.NewContext()
-
-	client, err := testcommon.NewClient(ctx)
-	require.NoError(t, err)
-	defer client.Close()
-
-	diskID := t.Name()
-
-	reqCtx := testcommon.GetRequestContext(t, ctx)
-	operation, err := client.CreateDisk(reqCtx, &disk_manager.CreateDiskRequest{
-		Src: &disk_manager.CreateDiskRequest_SrcEmpty{
-			SrcEmpty: &empty.Empty{},
-		},
-		Size: int64(diskSize),
-		Kind: diskKind,
-		DiskId: &disk_manager.DiskId{
-			ZoneId: "zone-a",
-			DiskId: diskID,
-		},
-	})
-	require.NoError(t, err)
-	require.NotEmpty(t, operation)
-	err = internal_client.WaitOperation(ctx, client, operation.Id)
-	require.NoError(t, err)
-
-	nbsClient := testcommon.NewNbsClient(t, ctx, "zone-a")
-	diskContentInfo, err := nbsClient.FillDisk(ctx, diskID, diskSize)
-	require.NoError(t, err)
-
-	imageID := t.Name()
-
-	reqCtx = testcommon.GetRequestContext(t, ctx)
-	operation, err = client.CreateImage(reqCtx, &disk_manager.CreateImageRequest{
-		Src: &disk_manager.CreateImageRequest_SrcDiskId{
-			SrcDiskId: &disk_manager.DiskId{
-				ZoneId: "zone-a",
-				DiskId: diskID,
-			},
-		},
-		DstImageId: imageID,
-		FolderId:   "folder",
-		Pooled:     true,
-	})
-	require.NoError(t, err)
-	require.NotEmpty(t, operation)
-
-	response := disk_manager.CreateImageResponse{}
-	err = internal_client.WaitResponse(ctx, client, operation.Id, &response)
-	require.NoError(t, err)
-	require.Equal(t, int64(diskSize), response.Size)
-
-	meta := disk_manager.CreateImageMetadata{}
-	err = internal_client.GetOperationMetadata(ctx, client, operation.Id, &meta)
-	require.NoError(t, err)
-	require.Equal(t, float64(1), meta.Progress)
-
-	testcommon.RequireCheckpointsAreEmpty(t, ctx, diskID)
-
-	checkUnencryptedImage(
-		t,
-		client,
-		ctx,
-		imageID,
-		int64(diskSize),
-		diskContentInfo.Crc32,
-	)
-
-	reqCtx = testcommon.GetRequestContext(t, ctx)
-	operation, err = client.DeleteImage(reqCtx, &disk_manager.DeleteImageRequest{
-		ImageId: imageID,
-	})
-	require.NoError(t, err)
-	require.NotEmpty(t, operation)
-	err = internal_client.WaitOperation(ctx, client, operation.Id)
-	require.NoError(t, err)
-
-	testcommon.CheckConsistency(t, ctx)
-}
-
 func TestImageServiceCreateImageFromDisk(t *testing.T) {
 	testImageServiceCreateImageFromDiskKind(
 		t,
@@ -1007,8 +1005,6 @@ func TestImageServiceCreateImageFromNonReplicatedDisk(t *testing.T) {
 		uint64(1073741824),
 	)
 }
-
-////////////////////////////////////////////////////////////////////////////////
 
 func TestImageServiceCancelCreateImageFromDisk(t *testing.T) {
 	ctx := testcommon.NewContext()
