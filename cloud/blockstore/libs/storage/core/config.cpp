@@ -721,6 +721,25 @@ struct TStorageConfig::TImpl
     {
         FeaturesConfig = std::move(featuresConfig);
     }
+
+    NProto::TStorageServiceConfig GetStorageConfigProto() const
+    {
+        NProto::TStorageServiceConfig proto = StorageServiceConfig;
+
+        // Overriding fields with values from ICB
+#define BLOCKSTORE_CONFIG_COPY(name, type, ...)                                \
+        if (const ui64 value = Control##name) {                                \
+            using T = decltype(StorageServiceConfig.Get##name());              \
+            proto.Set##name(static_cast<T>(value));                            \
+        }                                                                      \
+// BLOCKSTORE_CONFIG_COPY
+
+        BLOCKSTORE_STORAGE_CONFIG_RW(BLOCKSTORE_CONFIG_COPY)
+
+#undef BLOCKSTORE_CONFIG_COPY
+
+        return proto;
+    }
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -876,17 +895,18 @@ TStorageConfigPtr TStorageConfig::Merge(
     TStorageConfigPtr config,
     const NProto::TStorageServiceConfig& patch)
 {
-    auto proto = config->GetStorageConfigProto();
-    proto.MergeFrom(patch);
+    const auto configProto = config->GetStorageConfigProto();
+    auto patchedConfigProto = configProto;
+    patchedConfigProto.MergeFrom(patch);
     if (google::protobuf::util::MessageDifferencer::Equals(
-            proto,
-            config->GetStorageConfigProto()))
+            patchedConfigProto,
+            configProto))
     {
         return config;
     }
 
     return std::make_shared<TStorageConfig>(
-        std::move(proto),
+        std::move(patchedConfigProto),
         config->Impl->FeaturesConfig);
 }
 
@@ -960,9 +980,9 @@ TStorageConfig::TValueByName TStorageConfig::GetValueByName(
     return {value};
 }
 
-const NProto::TStorageServiceConfig& TStorageConfig::GetStorageConfigProto() const
+NProto::TStorageServiceConfig TStorageConfig::GetStorageConfigProto() const
 {
-    return Impl->StorageServiceConfig;
+    return Impl->GetStorageConfigProto();
 }
 
 void AdaptNodeRegistrationParams(
