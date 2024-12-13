@@ -31,7 +31,8 @@ struct TMarkerInfoLess
 
     bool operator()(const auto& lhs, const auto& rhs) const
     {
-        return GetEnd(lhs) < GetEnd(rhs);
+        return std::make_pair(GetEnd(lhs), GetCommitId(lhs)) <
+            std::make_pair(GetEnd(rhs), GetCommitId(rhs));
     }
 
     static ui64 GetEnd(const TMarkerInfo& markerInfo)
@@ -39,9 +40,20 @@ struct TMarkerInfoLess
         return markerInfo.Marker.BlockIndex + markerInfo.Marker.BlockCount;
     }
 
+    static ui64 GetCommitId(const TMarkerInfo& markerInfo)
+    {
+        return markerInfo.Marker.CommitId;
+    }
+
     static ui64 GetEnd(ui64 end)
     {
         return end;
+    }
+
+    static ui64 GetCommitId(ui64 end)
+    {
+        Y_UNUSED(end);
+        return Max<ui64>();
     }
 };
 
