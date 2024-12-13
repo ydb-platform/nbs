@@ -766,3 +766,118 @@ func TestSnapshotServiceDeleteSnapshotWhenCreationIsInFlight(t *testing.T) {
 
 	testcommon.CheckConsistency(t, ctx)
 }
+
+////////////////////////////////////////////////////////////////////////////////
+
+func testCreateSnapshotFromDiskWithFailedShadowDisk(
+	t *testing.T,
+	diskKind disk_manager.DiskKind,
+	diskBlockSize uint32,
+	diskSize uint64,
+	waitDurationBeforeDisableDevice time.Duration,
+) {
+
+	ctx := testcommon.NewContext()
+
+	client, err := testcommon.NewClient(ctx)
+	require.NoError(t, err)
+	defer client.Close()
+
+	diskID := t.Name()
+
+	reqCtx := testcommon.GetRequestContext(t, ctx)
+	operation, err := client.CreateDisk(reqCtx, &disk_manager.CreateDiskRequest{
+		Src: &disk_manager.CreateDiskRequest_SrcEmpty{
+			SrcEmpty: &empty.Empty{},
+		},
+		Size: int64(diskSize),
+		Kind: diskKind,
+		DiskId: &disk_manager.DiskId{
+			ZoneId: "zone-a",
+			DiskId: diskID,
+		},
+		BlockSize: int64(diskBlockSize),
+	})
+	require.NoError(t, err)
+	require.NotEmpty(t, operation)
+	err = internal_client.WaitOperation(ctx, client, operation.Id)
+	require.NoError(t, err)
+
+	nbsClient := testcommon.NewNbsClient(t, ctx, "zone-a")
+	_, err = nbsClient.FillDisk(ctx, diskID, diskSize)
+	require.NoError(t, err)
+
+	snapshotID := t.Name()
+
+	reqCtx = testcommon.GetRequestContext(t, ctx)
+	operation, err = client.CreateSnapshot(reqCtx, &disk_manager.CreateSnapshotRequest{
+		Src: &disk_manager.DiskId{
+			ZoneId: "zone-a",
+			DiskId: diskID,
+		},
+		SnapshotId: snapshotID,
+		FolderId:   "folder",
+	})
+	require.NoError(t, err)
+	require.NotEmpty(t, operation)
+
+	time.Sleep(waitDurationBeforeDisableDevice)
+
+	diskRegistryBackup, err := nbsClient.BackupDiskRegistryState(ctx)
+	require.NoError(t, err)
+
+	deviceUUIDs := diskRegistryBackup.GetDevicesOfShadowDisk(diskID)
+	if len(deviceUUIDs) == 0 {
+		// Ok: shadow disk is not created yet or it was already deleted.
+		return
+	}
+	require.Equal(t, 1, len(deviceUUIDs))
+
+	agentID := diskRegistryBackup.GetAgentIDByDeviceUUId(deviceUUIDs[0])
+
+	// Disable device to enforce checkpoint status ERROR.
+	nbsClient.DisableDevices(ctx, agentID, deviceUUIDs, t.Name())
+
+	response := disk_manager.CreateSnapshotResponse{}
+	err = internal_client.WaitResponse(ctx, client, operation.Id, &response)
+	if err != nil {
+		// Ok: dataplane task might fail with 'Device disabled' error.
+		require.Contains(t, err.Error(), "Device disabled")
+		return
+	}
+	require.Equal(t, int64(diskSize), response.Size)
+
+	meta := disk_manager.CreateSnapshotMetadata{}
+	err = internal_client.GetOperationMetadata(ctx, client, operation.Id, &meta)
+	if err != nil {
+		// Ok: dataplane task might fail with 'Device disabled' error.
+		require.Contains(t, err.Error(), "Device disabled")
+		return
+	}
+	require.Equal(t, float64(1), meta.Progress)
+
+	testcommon.RequireCheckpointsAreEmpty(t, ctx, diskID)
+	testcommon.CheckConsistency(t, ctx)
+}
+
+func TestCreateSnapshotFromDiskWithFailedShadowDiskShort(t *testing.T) {
+	testCreateSnapshotFromDiskWithFailedShadowDisk(
+		t,
+		disk_manager.DiskKind_DISK_KIND_SSD_NONREPLICATED,
+		4096,        // diskBlockSize
+		262144*4096, // diskSize
+		// Need to add some variance for better testing.
+		common.RandomDuration(time.Second, 3*time.Second), // waitDurationBeforeDisableDevice
+	)
+}
+
+func TestCreateSnapshotFromDiskWithFailedShadowDiskLong(t *testing.T) {
+	testCreateSnapshotFromDiskWithFailedShadowDisk(
+		t,
+		disk_manager.DiskKind_DISK_KIND_SSD_NONREPLICATED,
+		4096,        // diskBlockSize
+		262144*4096, // diskSize
+		// Need to add some variance for better testing.
+		common.RandomDuration(time.Second, 40*time.Second), // waitDurationBeforeDisableDevice
+	)
+}
