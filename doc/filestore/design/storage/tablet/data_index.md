@@ -27,6 +27,8 @@ It is the main layer intended for long-term data storage.
 * Each range is supposed to contain up to 4MiB of data (sometimes slightly more due to hash collisions).
 * Each write generates DeletionMarkers which are later applied to the MixedBlocks table via the [Cleanup operation](https://github.com/ydb-platform/nbs/blob/main/cloud/filestore/libs/storage/tablet/tablet_actor_cleanup.cpp).
 
+![diagram_svg](../../../excalidraw/mixed_blocks.svg)
+
 ## [proposed] LargeFileBlocks
 This layer is planned for use with large files. For simplicity the code is going to use it for the blocks at offsets >= N MiB belonging to all files. The first version will implement only large DeletionMarkers to solve the problem of quick large file deletion which is hard to do via the MixedBlocks layer since deleting a 1TiB file implies writing 1TiB / 256KiB = 2 ^ 22 DeletionMarkers in a single transaction.
 * The first version is going to load all such large DeletionMarkers into memory upon tablet startup.
