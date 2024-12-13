@@ -317,7 +317,10 @@ func (t *createSnapshotFromDiskTask) ensureCheckpointReady(
 
 	case nbs.CheckpointStatusError:
 		t.state.FailedCheckpointsCount++
-		execCtx.SaveState(ctx)
+		err = execCtx.SaveState(ctx)
+		if err != nil {
+			return err
+		}
 		return errors.NewRetriableErrorf("Filling the NRD disk replica ended with an error.")
 
 	case nbs.CheckpointStatusReady:
@@ -357,7 +360,7 @@ func (t *createSnapshotFromDiskTask) deletePreviousCheckpoint(
 		return nil
 	}
 
-	checkpointID := t.getCheckpointIDByIndex(
+	checkpointID := t.makeCheckpointID(
 		int(t.state.FailedCheckpointsCount) - 1,
 	)
 
@@ -369,10 +372,10 @@ func (t *createSnapshotFromDiskTask) deletePreviousCheckpoint(
 }
 
 func (t *createSnapshotFromDiskTask) getCurrentCheckpointID() string {
-	return t.getCheckpointIDByIndex(int(t.state.FailedCheckpointsCount))
+	return t.makeCheckpointID(int(t.state.FailedCheckpointsCount))
 }
 
-func (t *createSnapshotFromDiskTask) getCheckpointIDByIndex(index int) string {
+func (t *createSnapshotFromDiskTask) makeCheckpointID(index int) string {
 	if index == 0 {
 		return t.request.DstSnapshotId
 	}

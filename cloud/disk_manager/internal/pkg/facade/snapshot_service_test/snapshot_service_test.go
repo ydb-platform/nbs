@@ -825,23 +825,24 @@ func testCreateSnapshotFromDiskWithFailedShadowDisk(
 
 	diskRegistryBackup, err := nbsClient.BackupDiskRegistryState(ctx)
 	require.NoError(t, err)
-
 	deviceUUIDs := diskRegistryBackup.GetDevicesOfShadowDisk(diskID)
 	if len(deviceUUIDs) == 0 {
-		// Ok: shadow disk is not created yet or it was already deleted.
+		// OK: shadow disk is not created yet or it was already deleted.
 		return
 	}
 	require.Equal(t, 1, len(deviceUUIDs))
-
 	agentID := diskRegistryBackup.GetAgentIDByDeviceUUId(deviceUUIDs[0])
-
+	require.NotEmpty(t, agentID)
 	// Disable device to enforce checkpoint status ERROR.
-	nbsClient.DisableDevices(ctx, agentID, deviceUUIDs, t.Name())
+	err = nbsClient.DisableDevices(ctx, agentID, deviceUUIDs, t.Name())
+	require.NoError(t, err)
 
 	response := disk_manager.CreateSnapshotResponse{}
 	err = internal_client.WaitResponse(ctx, client, operation.Id, &response)
 	if err != nil {
-		// Ok: dataplane task might fail with 'Device disabled' error.
+		// OK: dataplane task failed with 'Device disabled' error, but shadow
+		// disk was filled successfully.
+		// TODO: improve this test after https://github.com/ydb-platform/nbs/issues/1950#issuecomment-2541530203
 		require.Contains(t, err.Error(), "Device disabled")
 		return
 	}
@@ -850,7 +851,9 @@ func testCreateSnapshotFromDiskWithFailedShadowDisk(
 	meta := disk_manager.CreateSnapshotMetadata{}
 	err = internal_client.GetOperationMetadata(ctx, client, operation.Id, &meta)
 	if err != nil {
-		// Ok: dataplane task might fail with 'Device disabled' error.
+		// OK: dataplane task failed with 'Device disabled' error, but shadow
+		// disk was filled successfully.
+		// TODO: improve this test after https://github.com/ydb-platform/nbs/issues/1950#issuecomment-2541530203
 		require.Contains(t, err.Error(), "Device disabled")
 		return
 	}
@@ -867,7 +870,7 @@ func TestCreateSnapshotFromDiskWithFailedShadowDiskShort(t *testing.T) {
 		4096,        // diskBlockSize
 		262144*4096, // diskSize
 		// Need to add some variance for better testing.
-		common.RandomDuration(time.Second, 3*time.Second), // waitDurationBeforeDisableDevice
+		common.RandomDuration(0*time.Second, 3*time.Second), // waitDurationBeforeDisableDevice
 	)
 }
 
@@ -878,6 +881,6 @@ func TestCreateSnapshotFromDiskWithFailedShadowDiskLong(t *testing.T) {
 		4096,        // diskBlockSize
 		262144*4096, // diskSize
 		// Need to add some variance for better testing.
-		common.RandomDuration(time.Second, 40*time.Second), // waitDurationBeforeDisableDevice
+		common.RandomDuration(3*time.Second, 40*time.Second), // waitDurationBeforeDisableDevice
 	)
 }
