@@ -26,7 +26,7 @@ TStatsServiceActor::TStatsServiceActor(
     , DiagnosticsConfig(std::move(diagnosticsConfig))
     , StatsUploader(std::move(uploader))
     , ClientStatsAggregator(std::move(clientStatsAggregator))
-    , State(*Config)
+    , State(*Config, *DiagnosticsConfig)
     , UserCounters(CreateUserCounterSupplier())
 {}
 

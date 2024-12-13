@@ -82,6 +82,7 @@ private:
     };
 
     const TStorageConfigPtr Config;
+    const TDiagnosticsConfigPtr DiagnosticConfig;
     const NRdma::IClientPtr RdmaClient;
     const TNonreplicatedPartitionConfigPtr SrcConfig;
     const TString CheckpointId;
@@ -110,6 +111,7 @@ private:
 public:
     TShadowDiskActor(
         TStorageConfigPtr config,
+        TDiagnosticsConfigPtr diagnosticConfig,
         NRdma::IClientPtr rdmaClient,
         IProfileLogPtr profileLog,
         IBlockDigestGeneratorPtr digestGenerator,

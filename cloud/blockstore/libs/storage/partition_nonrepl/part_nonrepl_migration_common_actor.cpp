@@ -20,6 +20,7 @@ TNonreplicatedPartitionMigrationCommonActor::
     TNonreplicatedPartitionMigrationCommonActor(
         IMigrationOwner* migrationOwner,
         TStorageConfigPtr config,
+        TDiagnosticsConfigPtr diagnosticsConfig,
         TString diskId,
         ui64 blockCount,
         ui64 blockSize,
@@ -42,6 +43,7 @@ TNonreplicatedPartitionMigrationCommonActor::
     , ChangedRangesMap(blockCount, blockSize, ProcessingRangeSize)
     , StatActorId(statActorId)
     , PoisonPillHelper(this)
+    , DiagnosticsConfig(std::move(diagnosticsConfig))
 {}
 
 TNonreplicatedPartitionMigrationCommonActor::

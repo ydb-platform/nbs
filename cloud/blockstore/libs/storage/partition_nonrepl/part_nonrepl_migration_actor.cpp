@@ -17,6 +17,7 @@ constexpr TDuration PrepareMigrationInterval = TDuration::Seconds(5);
 
 TNonreplicatedPartitionMigrationActor::TNonreplicatedPartitionMigrationActor(
         TStorageConfigPtr config,
+        TDiagnosticsConfigPtr diagnosticsConfig,
         IProfileLogPtr profileLog,
         IBlockDigestGeneratorPtr digestGenerator,
         ui64 initialMigrationIndex,
@@ -28,6 +29,7 @@ TNonreplicatedPartitionMigrationActor::TNonreplicatedPartitionMigrationActor(
     : TNonreplicatedPartitionMigrationCommonActor(
           static_cast<IMigrationOwner*>(this),
           config,
+          diagnosticsConfig,
           srcConfig->GetName(),
           srcConfig->GetBlockCount(),
           srcConfig->GetBlockSize(),
@@ -38,6 +40,7 @@ TNonreplicatedPartitionMigrationActor::TNonreplicatedPartitionMigrationActor(
           statActorId,
           config->GetMaxMigrationIoDepth())
     , Config(std::move(config))
+    , DiagnosticsConfig(std::move(diagnosticsConfig))
     , SrcConfig(std::move(srcConfig))
     , Migrations(std::move(migrations))
     , RdmaClient(std::move(rdmaClient))
@@ -161,7 +164,12 @@ NActors::TActorId TNonreplicatedPartitionMigrationActor::CreateSrcActor(
 {
     return NCloud::Register(
         ctx,
-        CreateNonreplicatedPartition(Config, SrcConfig, SelfId(), RdmaClient));
+        CreateNonreplicatedPartition(
+            Config,
+            DiagnosticsConfig,
+            SrcConfig,
+            SelfId(),
+            RdmaClient));
 }
 
 NActors::TActorId TNonreplicatedPartitionMigrationActor::CreateDstActor(
@@ -220,6 +228,7 @@ NActors::TActorId TNonreplicatedPartitionMigrationActor::CreateDstActor(
         ctx,
         CreateNonreplicatedPartition(
             Config,
+            DiagnosticsConfig,
             SrcConfig->Fork(std::move(devices)),
             SelfId(),
             RdmaClient));

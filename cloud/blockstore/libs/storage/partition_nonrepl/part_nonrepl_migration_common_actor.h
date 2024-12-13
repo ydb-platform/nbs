@@ -4,6 +4,7 @@
 
 #include "config.h"
 
+#include <cloud/blockstore/libs/diagnostics/config.h>
 #include <cloud/blockstore/libs/diagnostics/public.h>
 #include <cloud/blockstore/libs/rdma/iface/public.h>
 #include <cloud/blockstore/libs/storage/api/disk_registry.h>
@@ -147,11 +148,13 @@ protected:
 
     // PoisonPill
     TPoisonPillHelper PoisonPillHelper;
+    const TDiagnosticsConfigPtr DiagnosticsConfig;
 
 public:
     TNonreplicatedPartitionMigrationCommonActor(
         IMigrationOwner* migrationOwner,
         TStorageConfigPtr config,
+        TDiagnosticsConfigPtr diagnosticsConfig,
         TString diskId,
         ui64 blockCount,
         ui64 blockSize,

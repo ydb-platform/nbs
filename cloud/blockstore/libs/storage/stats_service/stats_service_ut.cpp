@@ -207,8 +207,12 @@ TVector<ui64> BroadcastVolumeCounters(
     TDispatchOptions options;
 
     for (ui32 i = 0; i < nodes.size(); ++i) {
-        auto counters = CreatePartitionDiskCounters(EPublishingPolicy::Repl);
-        auto volume = CreateVolumeSelfCounters(EPublishingPolicy::Repl);
+        auto counters = CreatePartitionDiskCounters(
+            EPublishingPolicy::Repl,
+            EHistogramCounterOption::ReportMultipleCounters);
+        auto volume = CreateVolumeSelfCounters(
+            EPublishingPolicy::Repl,
+            EHistogramCounterOption::ReportMultipleCounters);
         counters->Simple.MixedBytesCount.Set(1);
 
         SendDiskStats(
@@ -253,8 +257,12 @@ void ForceYdbStatsUpdate(
     TDispatchOptions options;
 
     for (ui32 i = 0; i < volumes.size(); ++i) {
-        auto counters = CreatePartitionDiskCounters(EPublishingPolicy::Repl);
-        auto volume = CreateVolumeSelfCounters(EPublishingPolicy::Repl);
+        auto counters = CreatePartitionDiskCounters(
+            EPublishingPolicy::Repl,
+            EHistogramCounterOption::ReportMultipleCounters);
+        auto volume = CreateVolumeSelfCounters(
+            EPublishingPolicy::Repl,
+            EHistogramCounterOption::ReportMultipleCounters);
         counters->Simple.MixedBytesCount.Set(1);
 
         SendDiskStats(
@@ -480,8 +488,12 @@ Y_UNIT_TEST_SUITE(TServiceVolumeStatsTest)
 
         UnregisterVolume(runtime, DefaultDiskId);
 
-        auto counters = CreatePartitionDiskCounters(EPublishingPolicy::Repl);
-        auto volume = CreateVolumeSelfCounters(EPublishingPolicy::Repl);
+        auto counters = CreatePartitionDiskCounters(
+            EPublishingPolicy::Repl,
+            EHistogramCounterOption::ReportMultipleCounters);
+        auto volume = CreateVolumeSelfCounters(
+            EPublishingPolicy::Repl,
+            EHistogramCounterOption::ReportMultipleCounters);
         counters->Simple.MixedBytesCount.Set(1);
 
         SendDiskStats(
@@ -529,23 +541,31 @@ Y_UNIT_TEST_SUITE(TServiceVolumeStatsTest)
         RegisterVolume(runtime, "vol0");
         RegisterVolume(runtime, "vol1");
 
-        auto counters1 = CreatePartitionDiskCounters(EPublishingPolicy::Repl);
+        auto counters1 = CreatePartitionDiskCounters(
+            EPublishingPolicy::Repl,
+            EHistogramCounterOption::ReportMultipleCounters);
         counters1->Simple.CompactionScore.Set(1);
         SendDiskStats(
             runtime,
             "vol0",
             std::move(counters1),
-            CreateVolumeSelfCounters(EPublishingPolicy::Repl),
+            CreateVolumeSelfCounters(
+                EPublishingPolicy::Repl,
+                EHistogramCounterOption::ReportMultipleCounters),
             EVolumeTestOptions::VOLUME_HASCLIENTS,
             0);
 
-        auto counters2 = CreatePartitionDiskCounters(EPublishingPolicy::Repl);
+        auto counters2 = CreatePartitionDiskCounters(
+            EPublishingPolicy::Repl,
+            EHistogramCounterOption::ReportMultipleCounters);
         counters2->Simple.CompactionScore.Set(3);
         SendDiskStats(
             runtime,
             "vol1",
             std::move(counters2),
-            CreateVolumeSelfCounters(EPublishingPolicy::Repl),
+            CreateVolumeSelfCounters(
+                EPublishingPolicy::Repl,
+                EHistogramCounterOption::ReportMultipleCounters),
             EVolumeTestOptions::VOLUME_HASCLIENTS,
             0);
 
@@ -582,13 +602,17 @@ Y_UNIT_TEST_SUITE(TServiceVolumeStatsTest)
 
         RegisterVolume(runtime, DefaultDiskId, mediaKind, isSystem);
 
-        auto counters = CreatePartitionDiskCounters(policy);
+        auto counters = CreatePartitionDiskCounters(
+            policy,
+            EHistogramCounterOption::ReportMultipleCounters);
         counters->Simple.BytesCount.Set(100500);
         SendDiskStats(
             runtime,
             DefaultDiskId,
             std::move(counters),
-            CreateVolumeSelfCounters(policy),
+            CreateVolumeSelfCounters(
+                policy,
+                EHistogramCounterOption::ReportMultipleCounters),
             EVolumeTestOptions::VOLUME_HASCLIENTS,
             0);
         auto updateMsg = std::make_unique<TEvents::TEvWakeup>();
@@ -779,8 +803,11 @@ Y_UNIT_TEST_SUITE(TServiceVolumeStatsTest)
             totalCounters->GetCounter("VolumeStartTimeOver5Sec")->Val());      \
 // CHECK_STATS
 
-        auto makeVolumeCounters = [=] (ui64 lt, ui64 st) {
-            auto counters = CreateVolumeSelfCounters(EPublishingPolicy::Repl);
+        auto makeVolumeCounters = [=](ui64 lt, ui64 st)
+        {
+            auto counters = CreateVolumeSelfCounters(
+                EPublishingPolicy::Repl,
+                EHistogramCounterOption::ReportMultipleCounters);
             counters->Simple.LastVolumeLoadTime.Set(lt);
             counters->Simple.LastVolumeStartTime.Set(st);
             return counters;
@@ -799,11 +826,14 @@ Y_UNIT_TEST_SUITE(TServiceVolumeStatsTest)
             {"disk-3", 5'500'000, 3'000'000},
         };
 
-        auto sendDiskStats = [&] (const TDiskInfo& diskInfo) {
+        auto sendDiskStats = [&](const TDiskInfo& diskInfo)
+        {
             SendDiskStats(
                 runtime,
                 diskInfo.DiskId,
-                CreatePartitionDiskCounters(EPublishingPolicy::Repl),
+                CreatePartitionDiskCounters(
+                    EPublishingPolicy::Repl,
+                    EHistogramCounterOption::ReportMultipleCounters),
                 makeVolumeCounters(diskInfo.LoadTime, diskInfo.StartTime),
                 EVolumeTestOptions::VOLUME_HASCLIENTS,
                 0);
@@ -1057,14 +1087,18 @@ Y_UNIT_TEST_SUITE(TServiceVolumeStatsTest)
 
         RegisterVolume(runtime, "vol0", mediaKind, true);
 
-        auto counters = CreatePartitionDiskCounters(publishingPolicy);
+        auto counters = CreatePartitionDiskCounters(
+            publishingPolicy,
+            EHistogramCounterOption::ReportMultipleCounters);
         counters->RequestCounters.ReadBlocks.Count = 42;
         counters->RequestCounters.ReadBlocks.RequestBytes = 100500;
         SendDiskStats(
             runtime,
             "vol0",
             std::move(counters),
-            CreateVolumeSelfCounters(publishingPolicy),
+            CreateVolumeSelfCounters(
+                publishingPolicy,
+                EHistogramCounterOption::ReportMultipleCounters),
             EVolumeTestOptions::VOLUME_HASCLIENTS,
             0);
         auto updateMsg = std::make_unique<TEvents::TEvWakeup>();

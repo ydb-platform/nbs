@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cloud/blockstore/libs/diagnostics/config.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/core/disk_counters.h>
 #include <cloud/blockstore/libs/storage/core/metrics.h>
@@ -36,11 +37,13 @@ struct TDiskPerfData
     ui64 VolumeSystemCpu = 0;
     ui64 VolumeUserCpu = 0;
 
-    TDiskPerfData(EPublishingPolicy policy)
-        : DiskCounters(policy)
-        , VolumeSelfCounters(policy)
-        , YdbDiskCounters(policy)
-        , YdbVolumeSelfCounters(policy)
+    TDiskPerfData(
+            EPublishingPolicy policy,
+            EHistogramCounterOptions histCounterOptions)
+        : DiskCounters(policy, histCounterOptions)
+        , VolumeSelfCounters(policy, histCounterOptions)
+        , YdbDiskCounters(policy, histCounterOptions)
+        , YdbVolumeSelfCounters(policy, histCounterOptions)
     {}
 };
 
@@ -61,10 +64,11 @@ struct TTotalCounters
     TSimpleCounter VolumeStartTime1To5Sec;
     TSimpleCounter VolumeStartTimeOver5Sec;
 
-    TTotalCounters(EPublishingPolicy policy)
-        : PartAcc(policy)
-        , VolumeAcc(policy)
-    {};
+    TTotalCounters(
+        EPublishingPolicy policy,
+        EHistogramCounterOptions histCounterOptions)
+        : PartAcc(policy, histCounterOptions)
+        , VolumeAcc(policy, histCounterOptions){};
 
     void Register(NMonitoring::TDynamicCountersPtr counters);
     void Reset();
@@ -128,9 +132,11 @@ struct TVolumeStatsInfo
     TInstant ApproximateStartTs;
     TDuration ApproximateBootstrapTime;
 
-    TVolumeStatsInfo(NProto::TVolume config)
+    TVolumeStatsInfo(
+        NProto::TVolume config,
+        EHistogramCounterOptions histCounterOptions)
         : VolumeInfo(std::move(config))
-        , PerfCounters(EPublishingPolicy::All)
+        , PerfCounters(EPublishingPolicy::All, histCounterOptions)
     {}
 
     bool IsDiskRegistryBased() const
@@ -181,6 +187,7 @@ private:
     TBlobLoadCounters HddBlobLoadCounters;
 
     bool StatsUploadingCompleted = true;
+    EHistogramCounterOptions HistCounterOptions;
 
 public:
     void RemoveVolume(TInstant now, const TString& diskId);
@@ -189,31 +196,50 @@ public:
         const TString& diskId,
         NProto::TVolume config);
 
-    TStatsServiceState(const TStorageConfig& config)
-        : Total(EPublishingPolicy::All)
-        , Hdd(EPublishingPolicy::Repl)
-        , Ssd(EPublishingPolicy::Repl)
-        , SsdNonrepl(EPublishingPolicy::DiskRegistryBased)
-        , HddNonrepl(EPublishingPolicy::DiskRegistryBased)
-        , SsdMirror2(EPublishingPolicy::DiskRegistryBased)
-        , SsdMirror3(EPublishingPolicy::DiskRegistryBased)
-        , SsdLocal(EPublishingPolicy::DiskRegistryBased)
-        , HddLocal(EPublishingPolicy::DiskRegistryBased)
-        , SsdSystem(EPublishingPolicy::Repl)
-        , HddSystem(EPublishingPolicy::Repl)
+    TStatsServiceState(
+        const TStorageConfig& config,
+        const TDiagnosticsConfig& diagConfig)
+        : Total(EPublishingPolicy::All, diagConfig.GetHistogramCounterOptions())
+        , Hdd(EPublishingPolicy::Repl, diagConfig.GetHistogramCounterOptions())
+        , Ssd(EPublishingPolicy::Repl, diagConfig.GetHistogramCounterOptions())
+        , SsdNonrepl(
+              EPublishingPolicy::DiskRegistryBased,
+              diagConfig.GetHistogramCounterOptions())
+        , HddNonrepl(
+              EPublishingPolicy::DiskRegistryBased,
+              diagConfig.GetHistogramCounterOptions())
+        , SsdMirror2(
+              EPublishingPolicy::DiskRegistryBased,
+              diagConfig.GetHistogramCounterOptions())
+        , SsdMirror3(
+              EPublishingPolicy::DiskRegistryBased,
+              diagConfig.GetHistogramCounterOptions())
+        , SsdLocal(
+              EPublishingPolicy::DiskRegistryBased,
+              diagConfig.GetHistogramCounterOptions())
+        , HddLocal(
+              EPublishingPolicy::DiskRegistryBased,
+              diagConfig.GetHistogramCounterOptions())
+        , SsdSystem(
+              EPublishingPolicy::Repl,
+              diagConfig.GetHistogramCounterOptions())
+        , HddSystem(
+              EPublishingPolicy::Repl,
+              diagConfig.GetHistogramCounterOptions())
         , SsdBlobLoadCounters(
-            config.GetCommonSSDPoolKind(),
-            config.GetMaxSSDGroupReadIops(),
-            config.GetMaxSSDGroupWriteIops(),
-            config.GetMaxSSDGroupReadBandwidth(),
-            config.GetMaxSSDGroupWriteBandwidth())
+              config.GetCommonSSDPoolKind(),
+              config.GetMaxSSDGroupReadIops(),
+              config.GetMaxSSDGroupWriteIops(),
+              config.GetMaxSSDGroupReadBandwidth(),
+              config.GetMaxSSDGroupWriteBandwidth())
         , HddBlobLoadCounters(
-            config.GetCommonHDDPoolKind(),
-            config.GetMaxHDDGroupReadIops(),
-            config.GetMaxHDDGroupWriteIops(),
-            config.GetMaxHDDGroupReadBandwidth(),
-            config.GetMaxHDDGroupWriteBandwidth())
-    {};
+              config.GetCommonHDDPoolKind(),
+              config.GetMaxHDDGroupReadIops(),
+              config.GetMaxHDDGroupWriteIops(),
+              config.GetMaxHDDGroupReadBandwidth(),
+              config.GetMaxHDDGroupWriteBandwidth())
+        , HistCounterOptions(diagConfig.GetHistogramCounterOptions())
+    {}
 
     const TVolumesMap& GetVolumes() const
     {

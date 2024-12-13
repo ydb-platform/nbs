@@ -69,6 +69,14 @@ struct TRequestCounters
 
     ERequestCounterOptions Options;
 
+    explicit TRequestCounters(EHistogramCounterOptions histCounterOptions)
+        : Total(histCounterOptions)
+        , Fresh(histCounterOptions)
+        , Mixed(histCounterOptions)
+        , Merged(histCounterOptions)
+        , External(histCounterOptions)
+    {}
+
     void AddRequest(
         ui64 time,
         ui64 size = 0,

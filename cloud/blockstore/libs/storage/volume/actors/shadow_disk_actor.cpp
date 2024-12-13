@@ -526,6 +526,7 @@ void TAcquireShadowDiskActor::MaybeReady(const NActors::TActorContext& ctx)
 
 TShadowDiskActor::TShadowDiskActor(
         TStorageConfigPtr config,
+        TDiagnosticsConfigPtr diagnosticConfig,
         NRdma::IClientPtr rdmaClient,
         IProfileLogPtr profileLog,
         IBlockDigestGeneratorPtr digestGenerator,
@@ -539,6 +540,7 @@ TShadowDiskActor::TShadowDiskActor(
     : TNonreplicatedPartitionMigrationCommonActor(
           static_cast<IMigrationOwner*>(this),
           config,
+          diagnosticConfig,
           srcConfig->GetName(),
           srcConfig->GetBlockCount(),
           srcConfig->GetBlockSize(),
@@ -551,6 +553,7 @@ TShadowDiskActor::TShadowDiskActor(
           volumeActorId,
           config->GetMaxShadowDiskFillIoDepth())
     , Config(std::move(config))
+    , DiagnosticConfig(std::move(diagnosticConfig))
     , RdmaClient(std::move(rdmaClient))
     , SrcConfig(std::move(srcConfig))
     , CheckpointId(checkpointInfo.CheckpointId)
@@ -826,6 +829,7 @@ void TShadowDiskActor::CreateShadowDiskPartitionActor(
         ctx,
         CreateNonreplicatedPartition(
             Config,
+            DiagnosticsConfig,
             DstConfig,
             VolumeActorId,   // send stat to volume directly.
             RdmaClient));

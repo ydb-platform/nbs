@@ -7,6 +7,7 @@
 #include "part_nonrepl_events_private.h"
 #include "resync_range.h"
 
+#include <cloud/blockstore/libs/diagnostics/config.h>
 #include <cloud/blockstore/libs/diagnostics/public.h>
 #include <cloud/blockstore/libs/rdma/iface/public.h>
 #include <cloud/blockstore/libs/storage/api/disk_registry.h>
@@ -37,6 +38,7 @@ class TMirrorPartitionResyncActor final
 {
 private:
     const TStorageConfigPtr Config;
+    const TDiagnosticsConfigPtr DiagnosticsConfig;
     const IProfileLogPtr ProfileLog;
     const IBlockDigestGeneratorPtr BlockDigestGenerator;
     TString RWClientId;
@@ -88,6 +90,7 @@ private:
 public:
     TMirrorPartitionResyncActor(
         TStorageConfigPtr config,
+        TDiagnosticsConfigPtr diagnosticsConfig,
         IProfileLogPtr profileLog,
         IBlockDigestGeneratorPtr digestGenerator,
         TString rwClientId,

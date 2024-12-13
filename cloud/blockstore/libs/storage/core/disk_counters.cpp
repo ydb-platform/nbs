@@ -421,14 +421,18 @@ void TVolumeSelfCounters::Publish(TInstant now)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TVolumeSelfCountersPtr CreateVolumeSelfCounters(EPublishingPolicy policy)
+TVolumeSelfCountersPtr CreateVolumeSelfCounters(
+    EPublishingPolicy policy,
+    EHistogramCounterOptions histCounterOptions)
 {
-    return std::make_unique<TVolumeSelfCounters>(policy);
+    return std::make_unique<TVolumeSelfCounters>(policy, histCounterOptions);
 }
 
-TPartitionDiskCountersPtr CreatePartitionDiskCounters(EPublishingPolicy policy)
+TPartitionDiskCountersPtr CreatePartitionDiskCounters(
+    EPublishingPolicy policy,
+    EHistogramCounterOptions histCounterOptions)
 {
-    return std::make_unique<TPartitionDiskCounters>(policy);
+    return std::make_unique<TPartitionDiskCounters>(policy, histCounterOptions);
 }
 
 }   // namespace NCloud::NBlockStore::NStorage
