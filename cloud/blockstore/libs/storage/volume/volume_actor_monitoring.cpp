@@ -883,21 +883,21 @@ void TVolumeActor::RenderStorageConfig(IOutputStream& out) const
                 }
                 const auto& protoValues = Config->GetStorageConfigProto();
                 constexpr i32 expectedNonRepeatedFieldIndex = -1;
-                const auto* descriptor = protoValues.GetDescriptor();
-                if (descriptor == nullptr) {
+                const auto* descriptor =
+                    NProto::TStorageServiceConfig::GetDescriptor();
+                if (!descriptor) {
                     return;
                 }
 
                 const auto* reflection =
                     NProto::TStorageServiceConfig::GetReflection();
 
-                for (int i = 0; i < descriptor->field_count(); ++i)
-                {
+                for (int i = 0; i < descriptor->field_count(); ++i) {
                     TStringBuilder value;
-                    const auto field_descriptor = descriptor->field(i);
-                    if (field_descriptor->is_repeated()) {
+                    const auto* fieldDescriptor = descriptor->field(i);
+                    if (fieldDescriptor->is_repeated()) {
                         const auto repeatedSize =
-                            reflection->FieldSize(protoValues, field_descriptor);
+                            reflection->FieldSize(protoValues, fieldDescriptor);
                         if (!repeatedSize) {
                             continue;
                         }
@@ -906,18 +906,18 @@ void TVolumeActor::RenderStorageConfig(IOutputStream& out) const
                             TString curValue;
                             google::protobuf::TextFormat::PrintFieldValueToString(
                                 protoValues,
-                                field_descriptor,
+                                fieldDescriptor,
                                 j,
                                 &curValue);
                             value.append(curValue);
                             value.append("; ");
                         }
                     } else if (
-                        reflection->HasField(protoValues, field_descriptor))
+                        reflection->HasField(protoValues, fieldDescriptor))
                     {
                         google::protobuf::TextFormat::PrintFieldValueToString(
                             protoValues,
-                            field_descriptor,
+                            fieldDescriptor,
                             expectedNonRepeatedFieldIndex,
                             &value);
                     } else {
@@ -926,7 +926,7 @@ void TVolumeActor::RenderStorageConfig(IOutputStream& out) const
 
                     TABLER() {
                         TABLED() {
-                            out << field_descriptor->name();;
+                            out << fieldDescriptor->name();;
                         }
                         TABLED() {
                             out << value;

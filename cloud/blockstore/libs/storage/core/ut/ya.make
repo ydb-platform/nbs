@@ -6,6 +6,7 @@ SRCS(
     block_handler_ut.cpp
     compaction_map_ut.cpp
     compaction_policy_ut.cpp
+    config_ut.cpp
     disk_counters_ut.cpp
     manually_preempted_volumes_ut.cpp
     metrics_ut.cpp

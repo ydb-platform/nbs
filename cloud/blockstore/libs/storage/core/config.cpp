@@ -721,35 +721,17 @@ struct TStorageConfig::TImpl
     {
         FeaturesConfig = std::move(featuresConfig);
     }
-
-    void Merge(const NProto::TStorageServiceConfig& storageServiceConfig)
-    {
-        StorageServiceConfig.MergeFrom(storageServiceConfig);
-    }
-
-    bool Equals(const TStorageConfig::TImpl& other) const
-    {
-        return google::protobuf::util::MessageDifferencer::Equals(
-            StorageServiceConfig,
-            other.StorageServiceConfig);
-    }
 };
 
 ////////////////////////////////////////////////////////////////////////////////
 
 TStorageConfig::TStorageConfig(
-    NProto::TStorageServiceConfig storageServiceConfig,
-    NFeatures::TFeaturesConfigPtr featuresConfig)
+        NProto::TStorageServiceConfig storageServiceConfig,
+        NFeatures::TFeaturesConfigPtr featuresConfig)
     : Impl(new TImpl(std::move(storageServiceConfig), std::move(featuresConfig)))
 {}
 
-TStorageConfig::TStorageConfig(const TStorageConfig& config)
-    : Impl(new TImpl(
-        config.Impl->StorageServiceConfig, config.Impl->FeaturesConfig))
-{}
-
-TStorageConfig::~TStorageConfig()
-{}
+TStorageConfig::~TStorageConfig() = default;
 
 void TStorageConfig::SetFeaturesConfig(
     NFeatures::TFeaturesConfigPtr featuresConfig)
@@ -890,15 +872,22 @@ TString TStorageConfig::Get##name##FeatureValue(                               \
 
 #undef BLOCKSTORE_STRING_FEATURE_GETTER
 
-void TStorageConfig::Merge(
-    const NProto::TStorageServiceConfig& storageServiceConfig)
+TStorageConfigPtr TStorageConfig::Merge(
+    TStorageConfigPtr config,
+    const NProto::TStorageServiceConfig& patch)
 {
-    Impl->Merge(storageServiceConfig);
-}
+    auto proto = config->GetStorageConfigProto();
+    proto.MergeFrom(patch);
+    if (google::protobuf::util::MessageDifferencer::Equals(
+            proto,
+            config->GetStorageConfigProto()))
+    {
+        return config;
+    }
 
-bool TStorageConfig::Equals(const TStorageConfig& other) const
-{
-    return Impl->Equals(*other.Impl);
+    return std::make_shared<TStorageConfig>(
+        std::move(proto),
+        config->Impl->FeaturesConfig);
 }
 
 ui64 GetAllocationUnit(
