@@ -2,6 +2,7 @@ GO_LIBRARY()
 
 SRCS(
     client.go
+    disk_registry_state.go
     factory.go
     interface.go
     metrics.go

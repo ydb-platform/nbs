@@ -364,6 +364,17 @@ type Client interface {
 
 	// Used in tests.
 	List(ctx context.Context) ([]string, error)
+
+	// Used in tests.
+	BackupDiskRegistryState(ctx context.Context) (*DiskRegistryBackup, error)
+
+	// Used in tests.
+	DisableDevices(
+		ctx context.Context,
+		agentID string,
+		deviceUUIDs []string,
+		message string,
+	) error
 }
 
 ////////////////////////////////////////////////////////////////////////////////

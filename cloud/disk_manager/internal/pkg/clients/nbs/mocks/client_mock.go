@@ -486,6 +486,25 @@ func (c *ClientMock) FinishFillDisk(
 	return args.Error(0)
 }
 
+func (c *ClientMock) BackupDiskRegistryState(
+	ctx context.Context,
+) (*nbs.DiskRegistryBackup, error) {
+
+	args := c.Called(ctx)
+	return args.Get(0).(*nbs.DiskRegistryBackup), args.Error(1)
+}
+
+func (c *ClientMock) DisableDevices(
+	ctx context.Context,
+	agentID string,
+	deviceUUIDs []string,
+	message string,
+) error {
+
+	args := c.Called(ctx, agentID, deviceUUIDs, message)
+	return args.Error(0)
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 func NewClientMock() *ClientMock {

@@ -3,6 +3,7 @@ package nbs
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"hash/crc32"
 	"math/rand"
@@ -511,6 +512,56 @@ func (c *client) Write(
 	}
 
 	return nil
+}
+
+func (c *client) BackupDiskRegistryState(
+	ctx context.Context,
+) (*DiskRegistryBackup, error) {
+
+	output, err := c.nbs.ExecuteAction(ctx, "backupdiskregistrystate", []byte("{}"))
+	if err != nil {
+		return nil, wrapError(err)
+	}
+
+	var state diskRegistryState
+	err = json.Unmarshal(output, &state)
+	if err != nil {
+		return nil, err
+	}
+
+	return &state.Backup, nil
+}
+
+func (c *client) DisableDevices(
+	ctx context.Context,
+	agentID string,
+	deviceUUIDs []string,
+	message string,
+) error {
+
+	if len(deviceUUIDs) == 0 {
+		return fmt.Errorf("list of devices to disable should contain at least one device")
+	}
+
+	deviceUUIDsField, err := json.Marshal(deviceUUIDs)
+	if err != nil {
+		return nil
+	}
+
+	input := fmt.Sprintf(
+		"{\"DisableAgent\":{\"AgentId\":\"%v\",\"DeviceUUIDs\":%v},\"Message\":\"%v\"}",
+		agentID,
+		string(deviceUUIDsField),
+		message,
+	)
+
+	_, err = c.nbs.ExecuteAction(
+		ctx,
+		"diskregistrychangestate",
+		[]byte(input),
+	)
+
+	return wrapError(err)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
