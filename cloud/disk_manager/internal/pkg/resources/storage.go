@@ -168,6 +168,7 @@ type Storage interface {
 	SnapshotCreated(
 		ctx context.Context,
 		snapshotID string,
+		checkpointID string,
 		createdAt time.Time,
 		snapshotSize uint64,
 		snapshotStorageSize uint64,
