@@ -863,7 +863,7 @@ func testCreateSnapshotFromDiskWithFailedShadowDisk(
 	testcommon.CheckConsistency(t, ctx)
 }
 
-func TestCreateSnapshotFromDiskWithFailedShadowDiskShort(t *testing.T) {
+func TestSnapshotServiceCreateSnapshotFromDiskWithFailedShadowDiskShort(t *testing.T) {
 	testCreateSnapshotFromDiskWithFailedShadowDisk(
 		t,
 		disk_manager.DiskKind_DISK_KIND_SSD_NONREPLICATED,
@@ -874,7 +874,7 @@ func TestCreateSnapshotFromDiskWithFailedShadowDiskShort(t *testing.T) {
 	)
 }
 
-func TestCreateSnapshotFromDiskWithFailedShadowDiskLong(t *testing.T) {
+func TestSnapshotServiceCreateSnapshotFromDiskWithFailedShadowDiskLong(t *testing.T) {
 	testCreateSnapshotFromDiskWithFailedShadowDisk(
 		t,
 		disk_manager.DiskKind_DISK_KIND_SSD_NONREPLICATED,
