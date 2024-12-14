@@ -1530,3 +1530,142 @@ func TestReadFromProxyOverlayDiskWithMultipartitionBaseDisk(t *testing.T) {
 	err = client.ValidateCrc32(ctx, proxyOverlayDiskID, diskContentInfo)
 	require.NoError(t, err)
 }
+
+func TestDiskRegistryState(t *testing.T) {
+	ctx := newContext()
+	client := newClient(t, ctx)
+
+	diskID := t.Name()
+
+	err := client.Create(ctx, nbs.CreateDiskParams{
+		ID:          diskID,
+		BlocksCount: 2 * 262144,
+		BlockSize:   4096,
+		Kind:        types.DiskKind_DISK_KIND_SSD_NONREPLICATED,
+	})
+	require.NoError(t, err)
+
+	backup, err := client.BackupDiskRegistryState(ctx)
+	require.NoError(t, err)
+
+	deviceUUIDs := backup.GetDevicesOfDisk(diskID)
+	require.Equal(t, len(deviceUUIDs), 2)
+
+	agentID := backup.GetAgentIDByDeviceUUId(deviceUUIDs[0])
+	require.NotEmpty(t, agentID)
+	agentID = backup.GetAgentIDByDeviceUUId(deviceUUIDs[1])
+	require.NotEmpty(t, agentID)
+
+	deviceUUIDs = backup.GetDevicesOfDisk("nonExistingDiskID")
+	require.Nil(t, deviceUUIDs)
+	agentID = backup.GetAgentIDByDeviceUUId("nonExistingDeviceID")
+	require.Empty(t, agentID)
+
+	err = client.Delete(ctx, diskID)
+	require.NoError(t, err)
+}
+
+func TestDiskRegistryDisableDevices(t *testing.T) {
+	ctx := newContext()
+	client := newClient(t, ctx)
+
+	diskID := t.Name()
+
+	err := client.Create(ctx, nbs.CreateDiskParams{
+		ID:          diskID,
+		BlocksCount: 262144,
+		BlockSize:   4096,
+		Kind:        types.DiskKind_DISK_KIND_SSD_NONREPLICATED,
+	})
+	require.NoError(t, err)
+
+	writeBlocks(t, ctx, client, diskID, 0 /* startIndex */, 1 /* blockCount */)
+
+	backup, err := client.BackupDiskRegistryState(ctx)
+	require.NoError(t, err)
+	deviceUUIDs := backup.GetDevicesOfDisk(diskID)
+	require.Equal(t, len(deviceUUIDs), 1)
+	agentID := backup.GetAgentIDByDeviceUUId(deviceUUIDs[0])
+	require.NotEmpty(t, agentID)
+
+	err = client.DisableDevices(ctx, agentID, deviceUUIDs, t.Name())
+	require.NoError(t, err)
+
+	session, err := client.MountRW(
+		ctx,
+		diskID,
+		0,   // fillGeneration
+		0,   // fillSeqNumber
+		nil, // encryption
+	)
+	require.NoError(t, err)
+	require.NotNil(t, session)
+	defer session.Close(ctx)
+
+	data := make([]byte, 4096)
+	rand.Read(data)
+
+	// Device is disabled, all read and write requests should return error.
+	err = session.Write(ctx, 0, data)
+	require.Error(t, err)
+	zero := false
+	err = session.Read(ctx, 0, 1, "", data, &zero)
+	require.Error(t, err)
+
+	err = client.Delete(ctx, diskID)
+	require.NoError(t, err)
+}
+
+func TestDiskRegistryFindDevicesOfShadowDisk(t *testing.T) {
+	ctx := newContext()
+	client := newClient(t, ctx)
+
+	diskID := t.Name()
+
+	err := client.Create(ctx, nbs.CreateDiskParams{
+		ID:          diskID,
+		BlocksCount: 262144,
+		BlockSize:   4096,
+		Kind:        types.DiskKind_DISK_KIND_SSD_NONREPLICATED,
+	})
+	require.NoError(t, err)
+
+	backup, err := client.BackupDiskRegistryState(ctx)
+	require.NoError(t, err)
+	deviceUUIDs := backup.GetDevicesOfShadowDisk(diskID)
+	// Shadow disk should not exist because checkpoint is not created yet.
+	require.Nil(t, deviceUUIDs)
+
+	checkpointID := "checkpointID"
+	err = client.CreateCheckpoint(ctx, nbs.CheckpointParams{
+		DiskID:         diskID,
+		CheckpointID:   checkpointID,
+		CheckpointType: nbs.CheckpointTypeNormal,
+	})
+	require.NoError(t, err)
+
+	retries := 0
+	for {
+		// Waiting for shadow disk to be created.
+		time.Sleep(time.Second)
+
+		backup, err := client.BackupDiskRegistryState(ctx)
+		require.NoError(t, err)
+		deviceUUIDs := backup.GetDevicesOfShadowDisk(diskID)
+
+		if len(deviceUUIDs) > 0 {
+			require.Equal(t, len(deviceUUIDs), 1)
+			break
+		}
+
+		retries++
+		if retries == 10 {
+			require.Fail(t, "Shadow disk has not appeared in disk registry state")
+		}
+	}
+
+	err = client.DeleteCheckpoint(ctx, diskID, checkpointID)
+	require.NoError(t, err)
+	err = client.Delete(ctx, diskID)
+	require.NoError(t, err)
+}

@@ -29,9 +29,21 @@ type diskRegistryState struct {
 	Backup DiskRegistryBackup `json:"Backup"`
 }
 
-func (b *DiskRegistryBackup) GetDevicesOfShadowDisk(diskID string) []string {
+func (b *DiskRegistryBackup) GetDevicesOfDisk(diskID string) []string {
 	for _, disk := range b.Disks {
-		if disk.CheckpointReplica.SourceDiskID == diskID {
+		if disk.DiskID == diskID {
+			return disk.DeviceUUIDs
+		}
+	}
+	return nil
+}
+
+func (b *DiskRegistryBackup) GetDevicesOfShadowDisk(
+	originalDiskID string,
+) []string {
+
+	for _, disk := range b.Disks {
+		if disk.CheckpointReplica.SourceDiskID == originalDiskID {
 			return disk.DeviceUUIDs
 		}
 	}
