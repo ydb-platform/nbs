@@ -3,6 +3,7 @@ Vertices {
         Name: "create_and_shoot_volume"
         CreateVolumeRequest {
             DiskId: "@volume"
+            StorageMediaKind: STORAGE_MEDIA_HDD
             BlocksCount: 20000000
             BlockSize: 4096
             PerformanceProfile {
@@ -24,7 +25,7 @@ Vertices {
             }
         }
         SuccessOnError: 2147811330
-        SuccessOnError: 2147483650
+        SuccessOnError: 2147483662
     }
 }
 
