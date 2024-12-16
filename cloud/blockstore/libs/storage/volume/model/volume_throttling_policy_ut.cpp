@@ -643,6 +643,98 @@ Y_UNIT_TEST_SUITE(TVolumeThrottlingPolicyTest)
         DO_TEST(tp, 4'379'770, 10'000, 1_MB, static_cast<ui32>(EOpType::Write));
     }
 
+    Y_UNIT_TEST(CollectThrotlingDiagnostics)
+    {
+        const ui64 maxBandwidth = 2_MB;
+        const ui64 maxIops = 4;
+
+        const auto config = MakeSimpleConfig(
+            maxBandwidth,
+            maxIops,
+            100,   // burstPercentage
+            0,     // boostTime
+            0,     // boostRefillTime
+            0,     // boostPercentage
+            1_GB   // maxPostponedWeight
+        );
+        TVolumeThrottlingPolicy tp(
+            config,
+            TThrottlerConfig(
+                TDuration::Seconds(1),        // maxDelay
+                Max<ui32>(),                  // maxWriteCostMultiplier
+                1,                            // defaultPostponedRequestWeight
+                CalculateBoostTime(config),   // initialBoostBudget
+                false                         // useDiskSpaceScore
+                ));
+
+        const auto byteCount = 256_KB;
+        const auto ioOperation = 2;
+
+        for (auto i = 0; i < ioOperation; ++i) {
+            DO_TEST(tp, 0, 0, byteCount, static_cast<ui32>(EOpType::Read));
+        }
+
+        UNIT_ASSERT_DOUBLES_EQUAL(
+            tp.GetUsedBandwidthBudget(),
+            static_cast<double>(ioOperation * byteCount) /
+                static_cast<double>(maxBandwidth),
+            1e-6);
+
+        UNIT_ASSERT_DOUBLES_EQUAL(
+            tp.GetUsedIoBudget(),
+            static_cast<double>(ioOperation) / static_cast<double>(maxIops),
+            1e-6);
+
+        tp.FlushSpentBandwidthBudget();
+
+        UNIT_ASSERT_DOUBLES_EQUAL(tp.GetUsedBandwidthBudget(), 0, 1e-6);
+
+        tp.FlushSpentIoBudget();
+
+        UNIT_ASSERT_DOUBLES_EQUAL(tp.GetUsedIoBudget(), 0, 1e-6);
+    }
+
+    Y_UNIT_TEST(UsedBandwidthBudgetZeroWithoutBytesThrotling)
+    {
+        const ui64 maxIops = 4;
+
+        const auto config = MakeSimpleConfig(
+            0,
+            maxIops,
+            100,   // burstPercentage
+            0,     // boostTime
+            0,     // boostRefillTime
+            0,     // boostPercentage
+            1_GB   // maxPostponedWeight
+        );
+        TVolumeThrottlingPolicy tp(
+            config,
+            TThrottlerConfig(
+                TDuration::Seconds(1),        // maxDelay
+                Max<ui32>(),                  // maxWriteCostMultiplier
+                1,                            // defaultPostponedRequestWeight
+                CalculateBoostTime(config),   // initialBoostBudget
+                false                         // useDiskSpaceScore
+                ));
+
+        const auto byteCount = 256_KB;
+        const auto ioOperation = 2;
+
+        for (auto i = 0; i < ioOperation; ++i) {
+            DO_TEST(tp, 0, 0, byteCount, static_cast<ui32>(EOpType::Read));
+        }
+
+        UNIT_ASSERT_DOUBLES_EQUAL(
+            tp.GetUsedBandwidthBudget(),
+            0,
+            1e-6);
+
+        UNIT_ASSERT_DOUBLES_EQUAL(
+            tp.GetUsedIoBudget(),
+            static_cast<double>(ioOperation) / static_cast<double>(maxIops),
+            1e-6);
+    }
+
 #undef DO_TEST
 
     Y_UNIT_TEST(MergeBackpressureReports)

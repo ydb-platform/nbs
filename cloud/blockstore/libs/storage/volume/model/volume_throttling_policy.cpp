@@ -80,6 +80,9 @@ struct TVolumeThrottlingPolicy::TImpl
     double WriteCostMultiplier = 1;
     ui32 PostponedWeight = 0;
 
+    mutable double UsedIoOperationsBudget = 0;
+    mutable double UsedBandwidthBudget = 0;
+
     TImpl(
             const NProto::TVolumePerformanceProfile& config,
             const ui32 policyVersion,
@@ -236,7 +239,7 @@ struct TVolumeThrottlingPolicy::TImpl
             return TDuration::Zero();
         }
 
-        ui32 bandwidthUpdate = requestInfo.ByteCount;
+        const ui32 bandwidthUpdate = requestInfo.ByteCount;
         double m = static_cast<EOpType>(requestInfo.OpType) == EOpType::Read
             ? 1.0
             : WriteCostMultiplier;
@@ -255,6 +258,13 @@ struct TVolumeThrottlingPolicy::TImpl
         );
 
         if (!d.GetValue()) {
+            // 0 is special value which disables throttling by byteCount
+            if (maxBandwidth) {
+                UsedBandwidthBudget += static_cast<double>(bandwidthUpdate) /
+                                       static_cast<double>(maxBandwidth);
+            }
+            UsedIoOperationsBudget +=
+                static_cast<double>(1) / static_cast<double>(maxIops);
             return TDuration::Zero();
         }
 
@@ -282,6 +292,26 @@ struct TVolumeThrottlingPolicy::TImpl
     double CalculateCurrentSpentBudgetShare(TInstant ts) const
     {
         return Bucket.CalculateCurrentSpentBudgetShare(ts);
+    }
+
+    double GetUsedIoBudget() const
+    {
+        return UsedIoOperationsBudget;
+    }
+
+    double GetUsedBandwidthBudget() const
+    {
+        return UsedBandwidthBudget;
+    }
+
+    void FlushSpentIopsBudget() const
+    {
+        UsedIoOperationsBudget = 0;
+    }
+
+    void FlushSpentBandwidthBudget() const
+    {
+        UsedBandwidthBudget = 0;
     }
 };
 
@@ -388,6 +418,26 @@ ui32 TVolumeThrottlingPolicy::CalculatePostponedWeight() const
 double TVolumeThrottlingPolicy::CalculateCurrentSpentBudgetShare(TInstant ts) const
 {
     return Impl->CalculateCurrentSpentBudgetShare(ts);
+}
+
+double TVolumeThrottlingPolicy::GetUsedIoBudget() const
+{
+    return Impl->GetUsedIoBudget();
+}
+
+double TVolumeThrottlingPolicy::GetUsedBandwidthBudget() const
+{
+    return Impl->GetUsedBandwidthBudget();
+}
+
+void TVolumeThrottlingPolicy::FlushSpentIoBudget() const
+{
+    Impl->FlushSpentIopsBudget();
+}
+
+void TVolumeThrottlingPolicy::FlushSpentBandwidthBudget() const
+{
+    Impl->FlushSpentBandwidthBudget();
 }
 
 const TBackpressureReport& TVolumeThrottlingPolicy::GetCurrentBackpressure() const
