@@ -33,6 +33,7 @@ CHECK_DEPENDENT_DIRS(ALLOW_ONLY PEERDIRS
     logbroker
     tools/enum_parser
     util
+    yql/essentials
 )
 
 END()
