@@ -318,7 +318,7 @@ Y_UNIT_TEST_SUITE(TRdmaClientTest)
         // wait for receive queue to initialize 2nd time after reconnect
         ui64 recv;
         do {
-            recv = AtomicGet(testContext->PostRecv);
+            recv = AtomicGet(testContext->PostRecvCounter);
         } while (recv != 2 * clientConfig->QueueSize);
 
         struct TResponse
@@ -387,7 +387,7 @@ Y_UNIT_TEST_SUITE(TRdmaClientTest)
         UNIT_ASSERT_VALUES_EQUAL(0, response.Status);
     }
 
-    Y_UNIT_TEST(ShouldIgnoreMalformedCompletions)
+    Y_UNIT_TEST(ShouldHandleErrors)
     {
         auto context = MakeIntrusive<NVerbs::TTestContext>();
         context->AllowConnect = true;
@@ -421,13 +421,31 @@ Y_UNIT_TEST_SUITE(TRdmaClientTest)
 
         auto unexpected = counters->GetCounter("UnexpectedCompletions");
         auto active = counters->GetCounter("ActiveRecv");
+        auto errors = counters->GetCounter("RecvErrors");
         auto unexpectedOld = unexpected->Val();
-        auto activeOld = active->Val();
+        auto errorsOld = errors->Val();
 
-        ibv_recv_wr wr;
+        ibv_recv_wr* wr = context->RecvEvents.back();
         auto completion = TVector<ibv_wc>();
 
         with_lock(context->CompletionLock) {
+            // emulate IBV_QPS_ERR
+            context->PostRecv = [](auto* qp, auto* wr) {
+                Y_UNUSED(qp);
+                Y_UNUSED(wr);
+                throw TServiceError(ENODEV) << "ibv_post_recv error";
+            };
+            // good id, good opcode, error status
+            completion.push_back({
+                .wr_id = wr->wr_id,
+                .status = IBV_WC_RETRY_EXC_ERR,
+                .opcode = IBV_WC_RECV,
+            });
+            // good id, good opcode, success status, bad message
+            completion.push_back({
+                .wr_id = wr->wr_id,
+                .opcode = IBV_WC_RECV,
+            });
             // bad id, good opcode
             completion.push_back({
                 .wr_id = Max<ui64>(),
@@ -435,28 +453,35 @@ Y_UNIT_TEST_SUITE(TRdmaClientTest)
             });
             // good id, bad opcode
             completion.push_back({
-                .wr_id = context->RecvEvents.back()->wr_id,
+                .wr_id = wr->wr_id,
                 .opcode = IBV_WC_RECV_RDMA_WITH_IMM,
             });
             context->HandleCompletionEvent = [&](ibv_wc* wc) {
                 static int i = 0;
                 *wc = completion[i++];
             };
-            // actual wr doesn't matter, only it's address
-            context->ProcessedRecvEvents.push_back(&wr);
-            context->ProcessedRecvEvents.push_back(&wr);
+            // HandleCompletionEvent will override completions, but we still
+            // need to pass a valid request pointer here
+            for (size_t i = 0; i < completion.size(); i++) {
+                context->ProcessedRecvEvents.push_back(wr);
+            }
             context->CompletionHandle.Set();
         }
 
-        auto start = GetCycleCount();
-        while (unexpected->Val() != unexpectedOld + 2) {
-            auto now = GetCycleCount();
-            if (CyclesToDurationSafe(now - start) > TDuration::Seconds(5)) {
-                UNIT_FAIL("should increment counter");
+        auto wait = [](auto& counter, auto value) {
+            auto start = GetCycleCount();
+            while (counter->Val() != value) {
+                auto now = GetCycleCount();
+                if (CyclesToDurationSafe(now - start) > TDuration::Seconds(5)) {
+                    UNIT_FAIL("timed out waiting for counter");
+                }
+                SpinLockPause();
             }
-            SpinLockPause();
-        }
-        UNIT_ASSERT_EQUAL(active->Val(), activeOld);
+        };
+
+        wait(unexpected, unexpectedOld + 2);
+        wait(errors, errorsOld + 2);
+        wait(active, 8);
     }
 };
 

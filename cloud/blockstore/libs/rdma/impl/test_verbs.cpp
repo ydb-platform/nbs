@@ -266,12 +266,14 @@ struct TTestVerbs
 
     void PostRecv(ibv_qp* qp, ibv_recv_wr* wr) override
     {
-        Y_UNUSED(qp);
+        if (TestContext->PostRecv) {
+            TestContext->PostRecv(qp, wr);
+        }
 
         auto g = Guard(TestContext->CompletionLock);
         TestContext->RecvEvents.push_back(wr);
 
-        AtomicIncrement(TestContext->PostRecv);
+        AtomicIncrement(TestContext->PostRecvCounter);
     }
 
     // connection manager
