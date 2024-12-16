@@ -11,7 +11,7 @@ message TProfileLogBlockRange {
     optional uint64 Handle = 2;
     optional uint64 Offset = 3;
     optional uint64 Bytes = 4;
-    optional uint64 ResponseBytes = 5;
+    optional uint64 ActualBytes = 5;
 };
 
 message TProfileLogNodeInfo {

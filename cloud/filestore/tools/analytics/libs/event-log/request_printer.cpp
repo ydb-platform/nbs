@@ -166,7 +166,7 @@ TString PrintRanges(
     TStringBuf handleLabel,
     TStringBuf offsetLabel,
     TStringBuf bytesLabel,
-    TStringBuf responseBytesLabel,
+    TStringBuf actualBytesLabel,
     const google::protobuf::RepeatedPtrField<NProto::TProfileLogBlockRange>& ranges)
 {
     TStringBuilder out;
@@ -189,8 +189,8 @@ TString PrintRanges(
         if (range.HasBytes()) {
             currentRange << PrintValue(bytesLabel, range.GetBytes()) << ", ";
         }
-        if (range.HasResponseBytes()) {
-            currentRange << PrintValue(responseBytesLabel, range.GetResponseBytes()) << ", ";
+        if (range.HasActualBytes()) {
+            currentRange << PrintValue(actualBytesLabel, range.GetActualBytes()) << ", ";
         }
 
         if (currentRange.empty()) {
@@ -231,7 +231,7 @@ TString PrintBlobsInfo(
                 "handle",
                 "offset",
                 "bytes",
-                "response_bytes",
+                "actual_bytes",
                 blob.GetRanges())
             << '\t';
     }
@@ -342,7 +342,7 @@ public:
                 "handle",
                 "offset",
                 "bytes",
-                "response_bytes",
+                "actual_bytes",
                 request.GetRanges()) << "\t";
         }
 
@@ -557,7 +557,7 @@ public:
                 "",
                 "offset",
                 "bytes",
-                "response_bytes",
+                "actual_bytes",
                 request.GetRanges());
         }
 

@@ -621,7 +621,7 @@ void FinalizeProfileLogRequestInfo(
         profileLogRequest.AddRanges();
     }
     auto* rangeInfo = profileLogRequest.MutableRanges(0);
-    rangeInfo->SetResponseBytes(response.GetBuffer().size());
+    rangeInfo->SetActualBytes(response.GetBuffer().size());
 }
 
 template <>
@@ -633,7 +633,7 @@ void FinalizeProfileLogRequestInfo(
         profileLogRequest.AddRanges();
     }
     auto* rangeInfo = profileLogRequest.MutableRanges(0);
-    rangeInfo->SetResponseBytes(response.GetBytes());
+    rangeInfo->SetActualBytes(response.GetBytes());
 }
 
 }   // namespace NCloud::NFileStore
