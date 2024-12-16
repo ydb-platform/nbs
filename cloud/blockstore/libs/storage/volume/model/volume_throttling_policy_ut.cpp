@@ -1,4 +1,5 @@
 #include "volume_throttling_policy.h"
+#include "cloud/storage/core/libs/throttling/helpers.h"
 
 #include <cloud/blockstore/libs/storage/protos/part.pb.h>
 
@@ -674,24 +675,25 @@ Y_UNIT_TEST_SUITE(TVolumeThrottlingPolicyTest)
             DO_TEST(tp, 0, 0, byteCount, static_cast<ui32>(EOpType::Read));
         }
 
+        auto recalculatedMaxIops = CalculateThrottlerC1(maxIops, maxBandwidth);
+        auto recalculatedMaxBandwidth =
+            CalculateThrottlerC2(maxIops, maxBandwidth);
+
         UNIT_ASSERT_DOUBLES_EQUAL(
-            tp.GetUsedBandwidthBudget(),
+            tp.TakeUsedBandwidthBudget(),
             static_cast<double>(ioOperation * byteCount) /
-                static_cast<double>(maxBandwidth),
+                static_cast<double>(recalculatedMaxBandwidth),
             1e-6);
+
+        UNIT_ASSERT_DOUBLES_EQUAL(tp.TakeUsedBandwidthBudget(), 0, 1e-6);
 
         UNIT_ASSERT_DOUBLES_EQUAL(
-            tp.GetUsedIoBudget(),
-            static_cast<double>(ioOperation) / static_cast<double>(maxIops),
+            tp.TakeUsedIoBudget(),
+            static_cast<double>(ioOperation) /
+                static_cast<double>(recalculatedMaxIops),
             1e-6);
 
-        tp.FlushSpentBandwidthBudget();
-
-        UNIT_ASSERT_DOUBLES_EQUAL(tp.GetUsedBandwidthBudget(), 0, 1e-6);
-
-        tp.FlushSpentIoBudget();
-
-        UNIT_ASSERT_DOUBLES_EQUAL(tp.GetUsedIoBudget(), 0, 1e-6);
+        UNIT_ASSERT_DOUBLES_EQUAL(tp.TakeUsedIoBudget(), 0, 1e-6);
     }
 
     Y_UNIT_TEST(UsedBandwidthBudgetZeroWithoutBytesThrotling)
@@ -725,12 +727,12 @@ Y_UNIT_TEST_SUITE(TVolumeThrottlingPolicyTest)
         }
 
         UNIT_ASSERT_DOUBLES_EQUAL(
-            tp.GetUsedBandwidthBudget(),
+            tp.TakeUsedBandwidthBudget(),
             0,
             1e-6);
 
         UNIT_ASSERT_DOUBLES_EQUAL(
-            tp.GetUsedIoBudget(),
+            tp.TakeUsedIoBudget(),
             static_cast<double>(ioOperation) / static_cast<double>(maxIops),
             1e-6);
     }

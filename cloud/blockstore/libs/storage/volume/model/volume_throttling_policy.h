@@ -99,10 +99,8 @@ public:
     TDuration GetCurrentBoostBudget() const;
     ui32 CalculatePostponedWeight() const;
     double CalculateCurrentSpentBudgetShare(TInstant ts) const;
-    [[nodiscard]] double GetUsedIoBudget() const;
-    [[nodiscard]] double GetUsedBandwidthBudget() const;
-    void FlushSpentIoBudget() const;
-    void FlushSpentBandwidthBudget() const;
+    [[nodiscard]] double TakeUsedIoBudget();
+    [[nodiscard]] double TakeUsedBandwidthBudget();
     const TBackpressureReport& GetCurrentBackpressure() const;
     const NProto::TVolumePerformanceProfile& GetConfig() const;
 
