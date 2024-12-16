@@ -29,19 +29,26 @@ struct TMarkerInfoLess
 {
     using is_transparent = void;
 
-    bool operator()(const auto& lhs, const auto& rhs) const
+    bool operator()(const TMarkerInfo& lhs, const TMarkerInfo& rhs) const
     {
-        return GetEnd(lhs) < GetEnd(rhs);
+        return std::make_tuple(
+            GetEnd(lhs),
+            lhs.Marker.BlockIndex,
+            lhs.Marker.CommitId
+        ) < std::make_tuple(
+            GetEnd(rhs),
+            rhs.Marker.BlockIndex,
+            rhs.Marker.CommitId);
+    }
+
+    bool operator()(const ui64 lhs, const TMarkerInfo& rhs) const
+    {
+        return lhs < GetEnd(rhs);
     }
 
     static ui64 GetEnd(const TMarkerInfo& markerInfo)
     {
         return markerInfo.Marker.BlockIndex + markerInfo.Marker.BlockCount;
-    }
-
-    static ui64 GetEnd(ui64 end)
-    {
-        return end;
     }
 };
 
