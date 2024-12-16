@@ -2,6 +2,7 @@
 
 #include "fs.h"
 
+#include <cloud/filestore/libs/diagnostics/profile_log_events.h>
 #include <cloud/filestore/libs/service/context.h>
 #include <cloud/filestore/libs/service/filestore.h>
 #include <cloud/filestore/libs/service/request.h>
@@ -92,9 +93,14 @@ void SaveFileStoreProto(const TString& fileName, const NProto::TFileStore& store
         using TRequest = NProto::T##name##Request;                             \
         using TResponse = NProto::T##name##Response;                           \
         using TResult = TResponse;                                             \
+        static constexpr auto RequestType = EFileStoreRequest::name;           \
                                                                                \
-        static TResult Execute(TLocalFileSystem& fs, const TRequest& request)  \
+        static TResult Execute(                                                \
+            TLocalFileSystem& fs,                                              \
+            const TRequest& request,                                           \
+            NProto::TProfileLogRequestInfo& logRequest)                        \
         {                                                                      \
+            Y_UNUSED(logRequest);                                              \
             return fs.name(request);                                           \
         }                                                                      \
                                                                                \
@@ -105,24 +111,28 @@ void SaveFileStoreProto(const TString& fileName, const NProto::TFileStore& store
     };                                                                         \
 // FILESTORE_DECLARE_METHOD_SYNC
 
-#define FILESTORE_DECLARE_METHOD_ASYNC(name, ...)                              \
-    struct T##name##Method                                                     \
-    {                                                                          \
-        using TRequest = NProto::T##name##Request;                             \
-        using TResponse = NProto::T##name##Response;                           \
-        using TResult = TFuture<TResponse>;                                    \
-                                                                               \
-        static TResult Execute(TLocalFileSystem& fs, TRequest& request)        \
-        {                                                                      \
-            return fs.name##Async(request);                                    \
-        }                                                                      \
-                                                                               \
-        static TResult ErrorResponse(ui32 code, TString message)               \
-        {                                                                      \
-            return MakeFuture(                                                 \
-                NCloud::ErrorResponse<TResponse>(code, std::move(message)));   \
-        }                                                                      \
-    };                                                                         \
+#define FILESTORE_DECLARE_METHOD_ASYNC(name, ...)                            \
+    struct T##name##Method                                                   \
+    {                                                                        \
+        using TRequest = NProto::T##name##Request;                           \
+        using TResponse = NProto::T##name##Response;                         \
+        using TResult = TFuture<TResponse>;                                  \
+        static constexpr auto RequestType = EFileStoreRequest::name;         \
+                                                                             \
+        static TResult Execute(                                              \
+            TLocalFileSystem& fs,                                            \
+            TRequest& request,                                               \
+            NProto::TProfileLogRequestInfo& logRequest)                      \
+        {                                                                    \
+            return fs.name##Async(request, logRequest);                      \
+        }                                                                    \
+                                                                             \
+        static TResult ErrorResponse(ui32 code, TString message)             \
+        {                                                                    \
+            return MakeFuture(                                               \
+                NCloud::ErrorResponse<TResponse>(code, std::move(message))); \
+        }                                                                    \
+    };                                                                       \
 // FILESTORE_DECLARE_METHOD_SYNC
 
 FILESTORE_SERVICE_LOCAL_SYNC(FILESTORE_DECLARE_METHOD_SYNC)
@@ -135,6 +145,7 @@ FILESTORE_SERVICE_LOCAL_ASYNC(FILESTORE_DECLARE_METHOD_ASYNC)
 
 class TLocalFileStore final
     : public IFileStoreService
+    , public std::enable_shared_from_this<TLocalFileStore>
 {
 private:
     const TLocalFileStoreConfigPtr Config;
@@ -143,6 +154,7 @@ private:
     const ILoggingServicePtr Logging;
     const IFileIOServicePtr FileIOService;
     const ITaskQueuePtr TaskQueue;
+    const IProfileLogPtr ProfileLog;
     const TFsPath RootPath;
     const TFsPath StatePath;
 
@@ -158,13 +170,15 @@ public:
             ISchedulerPtr scheduler,
             ILoggingServicePtr logging,
             IFileIOServicePtr fileIOService,
-            ITaskQueuePtr taskQueue)
+            ITaskQueuePtr taskQueue,
+            IProfileLogPtr profileLog)
         : Config(std::move(config))
         , Timer(std::move(timer))
         , Scheduler(std::move(scheduler))
         , Logging(std::move(logging))
         , FileIOService(std::move(fileIOService))
         , TaskQueue(std::move(taskQueue))
+        , ProfileLog(std::move(profileLog))
         , RootPath(Config->GetRootPath())
         , StatePath(Config->GetStatePath())
     {
@@ -182,18 +196,18 @@ public:
     {                                                                          \
         Y_UNUSED(callContext);                                                 \
         return TaskQueue->Execute([this, request = std::move(request)] {       \
-            return Execute<T##name##Method>(*request);                         \
+            return ExecuteWithPerfLog<T##name##Method>(*request);              \
         });                                                                    \
     }                                                                          \
 // FILESTORE_IMPLEMENT_METHOD_SYNC
 
-#define FILESTORE_IMPLEMENT_METHOD_ASYNC(name, ...)                             \
+#define FILESTORE_IMPLEMENT_METHOD_ASYNC(name, ...)                            \
     TFuture<NProto::T##name##Response> name(                                   \
         TCallContextPtr callContext,                                           \
         std::shared_ptr<NProto::T##name##Request> request) override            \
     {                                                                          \
         Y_UNUSED(callContext);                                                 \
-        return Execute<T##name##Method>(*request);                             \
+        return ExecuteWithPerfLogAsync<T##name##Method>(*request);             \
     }                                                                          \
 // FILESTORE_IMPLEMENT_METHOD_ASYNC
 
@@ -253,7 +267,81 @@ private:
     }
 
     template <typename T>
-    typename T::TResult Execute(typename T::TRequest& request)
+    void ProfileLogInit(
+        NProto::TProfileLogRequestInfo& logRequest,
+        const typename T::TRequest& request)
+    {
+        logRequest.SetRequestType(static_cast<ui32>(T::RequestType));
+        logRequest.SetTimestampMcs(Now().MicroSeconds());
+        InitProfileLogRequestInfo(logRequest, request);
+    }
+
+    template <typename T>
+    void ProfileLogFinilize(
+        NProto::TProfileLogRequestInfo&& logRequest,
+        const typename T::TResponse& response,
+        TString&& fsId)
+    {
+        FinalizeProfileLogRequestInfo(logRequest, response);
+        logRequest.SetDurationMcs(
+            Now().MicroSeconds() - logRequest.GetTimestampMcs());
+        logRequest.SetErrorCode(response.GetError().GetCode());
+        ProfileLog->Write({std::move(fsId), std::move(logRequest)});
+    }
+
+    template <typename T>
+    void ProfileLogFinilize(
+        NProto::TProfileLogRequestInfo&& logRequest,
+        TString&& fsId)
+    {
+        logRequest.SetDurationMcs(
+            Now().MicroSeconds() - logRequest.GetTimestampMcs());
+        ProfileLog->Write({std::move(fsId), std::move(logRequest)});
+    }
+
+    template <typename T>
+    typename T::TResult ExecuteWithPerfLog(typename T::TRequest& request)
+    {
+        NProto::TProfileLogRequestInfo logRequest;
+        ProfileLogInit<T>(logRequest, request);
+
+        auto response = Execute<T>(request, logRequest);
+
+        ProfileLogFinilize<T>(
+            std::move(logRequest),
+            response,
+            GetFileSystemId(request));
+
+        return response;
+    }
+
+    template <typename T>
+    typename T::TResult ExecuteWithPerfLogAsync(typename T::TRequest& request)
+    {
+        auto logRequest = std::make_shared<NProto::TProfileLogRequestInfo>();
+        ProfileLogInit<T>(*logRequest, request);
+
+        return Execute<T>(request, *logRequest)
+            .Subscribe(
+                [ptr = weak_from_this(),
+                 logRequest = std::move(logRequest),
+                 fsId = GetFileSystemId(request)](auto&) mutable
+                {
+                    auto self = ptr.lock();
+                    if (!self) {
+                        return;
+                    }
+
+                    self->ProfileLogFinilize<T>(
+                        std::move(*logRequest),
+                        std::move(fsId));
+                });
+    }
+
+    template <typename T>
+    typename T::TResult Execute(
+        typename T::TRequest& request,
+        NProto::TProfileLogRequestInfo& logRequest)
     {
         if constexpr (std::is_same_v<T, TCreateSessionMethod>) {
             RefreshFileSystems();
@@ -271,7 +359,7 @@ private:
         }
 
         try {
-            return T::Execute(*fs, request);
+            return T::Execute(*fs, request, logRequest);
         } catch (const TServiceError& e) {
             return T::ErrorResponse(e.GetCode(), TString(e.GetMessage()));
         } catch (...) {
@@ -280,45 +368,59 @@ private:
     }
 
     template <>
-    NProto::TPingResponse Execute<TPingMethod>(NProto::TPingRequest& request)
+    NProto::TPingResponse Execute<TPingMethod>(
+        NProto::TPingRequest& request,
+        NProto::TProfileLogRequestInfo& logRequest)
     {
         Y_UNUSED(request);
+        Y_UNUSED(logRequest);
         return {};
     }
 
     template <>
     NProto::TCreateFileStoreResponse Execute<TCreateFileStoreMethod>(
-        NProto::TCreateFileStoreRequest& request)
+        NProto::TCreateFileStoreRequest& request,
+        NProto::TProfileLogRequestInfo& logRequest)
     {
+        Y_UNUSED(logRequest);
         return CreateFileStore(request);
     }
 
     template <>
     NProto::TDestroyFileStoreResponse Execute<TDestroyFileStoreMethod>(
-        NProto::TDestroyFileStoreRequest& request)
+        NProto::TDestroyFileStoreRequest& request,
+        NProto::TProfileLogRequestInfo& logRequest)
     {
+        Y_UNUSED(logRequest);
         return DestroyFileStore(request);
     }
 
     template <>
     NProto::TAlterFileStoreResponse Execute<TAlterFileStoreMethod>(
-        NProto::TAlterFileStoreRequest& request)
+        NProto::TAlterFileStoreRequest& request,
+        NProto::TProfileLogRequestInfo& logRequest)
     {
+        Y_UNUSED(logRequest);
         return AlterFileStore(request);
     }
 
     template <>
     NProto::TListFileStoresResponse Execute<TListFileStoresMethod>(
-        NProto::TListFileStoresRequest& request)
+        NProto::TListFileStoresRequest& request,
+        NProto::TProfileLogRequestInfo& logRequest)
     {
+        Y_UNUSED(logRequest);
         return ListFileStores(request);
     }
 
     template <>
-    NProto::TDescribeFileStoreModelResponse Execute<TDescribeFileStoreModelMethod>(
-        NProto::TDescribeFileStoreModelRequest& request)
+    NProto::TDescribeFileStoreModelResponse
+    Execute<TDescribeFileStoreModelMethod>(
+        NProto::TDescribeFileStoreModelRequest& request,
+        NProto::TProfileLogRequestInfo& logRequest)
     {
         Y_UNUSED(request);
+        Y_UNUSED(logRequest);
         return TErrorResponse(
             E_NOT_IMPLEMENTED,
             "DescribeFileStoreModel is not implemented for the local service");
@@ -326,9 +428,11 @@ private:
 
     template <>
     NProto::TResizeFileStoreResponse Execute<TResizeFileStoreMethod>(
-        NProto::TResizeFileStoreRequest& request)
+        NProto::TResizeFileStoreRequest& request,
+        NProto::TProfileLogRequestInfo& logRequest)
     {
         Y_UNUSED(request);
+        Y_UNUSED(logRequest);
         return TErrorResponse(
             E_NOT_IMPLEMENTED,
             "ResizeFileStore is not implemented for the local service");
@@ -336,9 +440,11 @@ private:
 
     template <>
     NProto::TSubscribeSessionResponse Execute<TSubscribeSessionMethod>(
-        NProto::TSubscribeSessionRequest& request)
+        NProto::TSubscribeSessionRequest& request,
+        NProto::TProfileLogRequestInfo& logRequest)
     {
         Y_UNUSED(request);
+        Y_UNUSED(logRequest);
         return TErrorResponse(
             E_NOT_IMPLEMENTED,
             "SubscribeSession is not implemented for the local service");
@@ -346,9 +452,11 @@ private:
 
     template <>
     NProto::TGetSessionEventsResponse Execute<TGetSessionEventsMethod>(
-        NProto::TGetSessionEventsRequest& request)
+        NProto::TGetSessionEventsRequest& request,
+        NProto::TProfileLogRequestInfo& logRequest)
     {
         Y_UNUSED(request);
+        Y_UNUSED(logRequest);
         return TErrorResponse(
             E_NOT_IMPLEMENTED,
             "GetSessionEvents is not implemented for the local service");
@@ -356,9 +464,11 @@ private:
 
     template <>
     NProto::TExecuteActionResponse Execute<TExecuteActionMethod>(
-        NProto::TExecuteActionRequest& request)
+        NProto::TExecuteActionRequest& request,
+        NProto::TProfileLogRequestInfo& logRequest)
     {
         Y_UNUSED(request);
+        Y_UNUSED(logRequest);
         return TErrorResponse(
             E_NOT_IMPLEMENTED,
             "ExecuteAction is not implemented for the local service");
@@ -652,15 +762,21 @@ IFileStoreServicePtr CreateLocalFileStore(
     ISchedulerPtr scheduler,
     ILoggingServicePtr logging,
     IFileIOServicePtr fileIOService,
-    ITaskQueuePtr taskQueue)
+    ITaskQueuePtr taskQueue,
+    IProfileLogPtr profileLog)
 {
+    if (!profileLog) {
+        profileLog = CreateProfileLogStub();
+    }
+
     return std::make_shared<TLocalFileStore>(
         std::move(config),
         std::move(timer),
         std::move(scheduler),
         std::move(logging),
         std::move(fileIOService),
-        std::move(taskQueue));
+        std::move(taskQueue),
+        std::move(profileLog));
 }
 
 }   // namespace NCloud::NFileStore

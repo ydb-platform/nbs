@@ -159,7 +159,9 @@ void TBootstrapServer::InitLocalService()
         Scheduler,
         Logging,
         FileIOService,
-        ThreadPool);
+        ThreadPool,
+        nullptr   // no profile log
+    );
 }
 
 void TBootstrapServer::InitNullService()
