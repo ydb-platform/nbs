@@ -148,7 +148,7 @@ TFuture<NProto::TWriteDataResponse> TLocalFileSystem::WriteDataAsync(
         [b = std::move(b), promise] (const TFuture<ui32>& f) mutable {
             NProto::TWriteDataResponse response;
             try {
-                f.GetValue();
+                response.SetBytes(f.GetValue());
             } catch (const TServiceError& e) {
                 *response.MutableError() = MakeError(MAKE_FILESTORE_ERROR(
                     ErrnoToFileStoreError(STATUS_FROM_CODE(e.GetCode()))));

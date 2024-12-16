@@ -166,6 +166,7 @@ TString PrintRanges(
     TStringBuf handleLabel,
     TStringBuf offsetLabel,
     TStringBuf bytesLabel,
+    TStringBuf responseBytesLabel,
     const google::protobuf::RepeatedPtrField<NProto::TProfileLogBlockRange>& ranges)
 {
     TStringBuilder out;
@@ -187,6 +188,9 @@ TString PrintRanges(
         }
         if (range.HasBytes()) {
             currentRange << PrintValue(bytesLabel, range.GetBytes()) << ", ";
+        }
+        if (range.HasResponseBytes()) {
+            currentRange << PrintValue(responseBytesLabel, range.GetResponseBytes()) << ", ";
         }
 
         if (currentRange.empty()) {
@@ -227,6 +231,7 @@ TString PrintBlobsInfo(
                 "handle",
                 "offset",
                 "bytes",
+                "response_bytes",
                 blob.GetRanges())
             << '\t';
     }
@@ -337,6 +342,7 @@ public:
                 "handle",
                 "offset",
                 "bytes",
+                "response_bytes",
                 request.GetRanges()) << "\t";
         }
 
@@ -507,6 +513,7 @@ public:
                 "last_collect_commit_id",
                 "new_blobs",
                 "garbage_blobs",
+                "",
                 request.GetRanges());
         }
 
@@ -528,6 +535,7 @@ public:
                 "",
                 "new_blobs",
                 "garbage_blobs",
+                "",
                 request.GetRanges());
         }
 
@@ -549,6 +557,7 @@ public:
                 "",
                 "offset",
                 "bytes",
+                "response_bytes",
                 request.GetRanges());
         }
 

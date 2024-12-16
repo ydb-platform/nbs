@@ -184,6 +184,9 @@ message TWriteDataResponse
     // Optional error, set only if error happened.
     NCloud.NProto.TError Error = 1;
 
+    // Bytes written
+    uint64 Bytes = 2;
+
     // Optional response headers.
     TResponseHeaders Headers = 1000;
 }
