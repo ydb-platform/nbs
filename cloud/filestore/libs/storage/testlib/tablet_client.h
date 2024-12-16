@@ -436,6 +436,11 @@ public:
     // TEvService
     //
 
+    auto CreateDescribeSessionsRequest()
+    {
+        return std::make_unique<TEvIndexTablet::TEvDescribeSessionsRequest>();
+    }
+
     auto CreateCreateNodeRequest(
         const TCreateNodeArgs& args,
         ui64 requestId = 0)
