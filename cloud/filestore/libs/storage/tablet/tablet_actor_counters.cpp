@@ -92,7 +92,7 @@ void TGetShardStatsActor::SendRequests(const TActorContext& ctx)
         request->Record = Request;
         request->Record.SetFileSystemId(shardId);
 
-        LOG_INFO(
+        LOG_DEBUG(
             ctx,
             TFileStoreComponents::TABLET_WORKER,
             "%s Sending GetStorageStatsRequest to shard %s",

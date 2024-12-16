@@ -63,6 +63,7 @@ private:
     const ui32 NumWorkers;
     const ui32 MaxSpinning;
     const ui64 SpinCycles;
+    const TString MemoryTagScope;
 
     TVector<TWorker> Workers;
     TConcurrentQueue<ITask> Queue;
@@ -72,10 +73,14 @@ private:
     Y_CACHE_ALIGNED TAtomic SpinningWorkers = 0;
 
 public:
-    TThreadPool(const TString& threadName, size_t numWorkers)
+    TThreadPool(
+            const TString& threadName,
+            size_t numWorkers,
+            TString memoryTagScope)
         : NumWorkers(numWorkers)
         , MaxSpinning(Max<ui32>(1, numWorkers / 4))
         , SpinCycles(DurationToCyclesSafe(SPIN_TIMEOUT))
+        , MemoryTagScope(std::move(memoryTagScope))
         , Workers(numWorkers)
     {
         size_t i = 1;
@@ -85,7 +90,7 @@ public:
         }
     }
 
-    ~TThreadPool()
+    ~TThreadPool() override
     {
         Stop();
     }
@@ -125,7 +130,7 @@ private:
     void Run(TWorker& worker)
     {
         ::NCloud::SetCurrentThreadName(worker.Name);
-        NProfiling::TMemoryTagScope tagScope("STORAGE_THREAD_WORKER");
+        NProfiling::TMemoryTagScope tagScope(MemoryTagScope.c_str());
 
         while (AtomicGet(ShouldStop) == 0) {
             if (auto task = Queue.Dequeue()) {
@@ -307,7 +312,7 @@ private:
     const TString ThreadName;
 
 public:
-    TLongRunningTaskExecutor(TString threadName)
+    explicit TLongRunningTaskExecutor(TString threadName)
         : ThreadName(std::move(threadName))
     {}
 
@@ -345,9 +350,25 @@ private:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-ITaskQueuePtr CreateThreadPool(const TString& threadName, size_t numWorkers)
+ITaskQueuePtr CreateThreadPool(
+    const TString& threadName,
+    size_t numThreads,
+    TString memoryTagScope)
 {
-    return std::make_shared<TThreadPool>(threadName, numWorkers);
+    return std::make_shared<TThreadPool>(
+        threadName,
+        numThreads,
+        std::move(memoryTagScope));
+}
+
+ITaskQueuePtr CreateThreadPool(
+    const TString& threadName,
+    size_t numThreads)
+{
+    return std::make_shared<TThreadPool>(
+        threadName,
+        numThreads,
+        "STORAGE_" + threadName);
 }
 
 ITaskQueuePtr CreateLongRunningTaskExecutor(const TString& threadName)
