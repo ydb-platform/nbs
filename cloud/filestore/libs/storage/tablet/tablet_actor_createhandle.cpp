@@ -428,7 +428,7 @@ void TIndexTabletActor::CompleteTx_CreateHandle(
     }
 
     if (args.OpLogEntry.HasCreateNodeRequest() && !HasError(args.Error)) {
-        LOG_INFO(ctx, TFileStoreComponents::TABLET,
+        LOG_DEBUG(ctx, TFileStoreComponents::TABLET,
             "%s Creating node in shard upon CreateHandle: %s, %s",
             LogTag.c_str(),
             args.ShardId.c_str(),
