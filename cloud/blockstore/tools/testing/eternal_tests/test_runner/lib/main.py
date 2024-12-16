@@ -205,7 +205,14 @@ class EternalTestHelper:
     def run_prepare_db_script_on_instance(self, instance_ip: str):
         script_name = self._DB_TEST_INIT_SCRIPT % self.test_config.db
         with self.module_factories.make_ssh_client(self.args.dry_run, instance_ip, ssh_key_path=self.args.ssh_key_path) as ssh:
-            _, stdout, stderr = ssh.exec_command(f'{self._DB_TEST_INIT_SCRIPT_PATH}/{script_name}')
+            _, stdout, stderr = ssh.exec_command(
+                f'cp {self._DB_TEST_INIT_SCRIPT_PATH}/{script_name} {self._DB_TEST_INIT_SCRIPT_PATH}/{script_name}.run')
+            if stdout.channel.recv_exit_status() != 0 or stderr.channel.recv_exit_status() != 0:
+                self.logger.error(f'Failed to copy script to instance:\n'
+                                  f'stderr: {"".join(stderr.readlines())}\n'
+                                  f'stdout: {"".join(stdout.readlines())}')
+                raise Error('Failed to run command')
+            _, stdout, stderr = ssh.exec_command(f'{self._DB_TEST_INIT_SCRIPT_PATH}/{script_name}.run')
             exit_code = stdout.channel.recv_exit_status()
             if exit_code != 0:
                 self.logger.error(f'Failed to prepare db test:\n'
