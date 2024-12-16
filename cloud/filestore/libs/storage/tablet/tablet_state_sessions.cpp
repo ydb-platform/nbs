@@ -190,6 +190,13 @@ TSession* TIndexTabletState::CreateSession(
     Impl->SessionByOwner.emplace(owner, session.get());
     Impl->SessionByClient.emplace(session->GetClientId(), session.get());
 
+    LOG_INFO(*TlsActivationContext, TFileStoreComponents::TABLET,
+        "%s created session c: %s, s: %s, owner: %s",
+        LogTag.c_str(),
+        session->GetClientId().c_str(),
+        session->GetSessionId().c_str(),
+        owner.ToString().c_str());
+
     return session.release();
 }
 
@@ -203,6 +210,13 @@ NActors::TActorId TIndexTabletState::RecoverSession(
         session->UpdateSubSession(sessionSeqNo, readOnly, owner);
     if (oldOwner) {
         Impl->SessionByOwner.erase(oldOwner);
+
+        LOG_INFO(*TlsActivationContext, TFileStoreComponents::TABLET,
+            "%s removed old owner for session c: %s, s: %s, owner: %s",
+            LogTag.c_str(),
+            session->GetClientId().c_str(),
+            session->GetSessionId().c_str(),
+            oldOwner.ToString().c_str());
     }
 
     if (oldOwner != owner) {
@@ -212,6 +226,13 @@ NActors::TActorId TIndexTabletState::RecoverSession(
         Impl->Sessions.PushBack(session);
 
         Impl->SessionByOwner.emplace(owner, session);
+
+        LOG_INFO(*TlsActivationContext, TFileStoreComponents::TABLET,
+            "%s added new owner for session c: %s, s: %s, owner: %s",
+            LogTag.c_str(),
+            session->GetClientId().c_str(),
+            session->GetSessionId().c_str(),
+            owner.ToString().c_str());
     }
 
     session->SetRecoveryTimestampUs(Now().MicroSeconds());
@@ -244,7 +265,7 @@ TSession* TIndexTabletState::FindSession(
     const TString& sessionId,
     ui64 seqNo) const
 {
-    auto session = FindSession(sessionId);
+    auto* session = FindSession(sessionId);
     if (session &&
         session->IsValid() &&
         session->GetClientId() == clientId &&
@@ -266,10 +287,11 @@ void TIndexTabletState::OrphanSession(const TActorId& owner, TInstant deadline)
     auto* session = it->second;
 
     LOG_INFO(*TlsActivationContext, TFileStoreComponents::TABLET,
-        "%s orphaning session c: %s, s: %s",
+        "%s orphaning session c: %s, s: %s, owner: %s",
         LogTag.c_str(),
         session->GetClientId().c_str(),
-        session->GetSessionId().c_str());
+        session->GetSessionId().c_str(),
+        owner.ToString().c_str());
 
     if (!session->DeleteSubSession(owner)) {
         session->Deadline = deadline;
@@ -278,6 +300,13 @@ void TIndexTabletState::OrphanSession(const TActorId& owner, TInstant deadline)
         Impl->OrphanSessions.PushBack(session);
 
         Impl->SessionByOwner.erase(it);
+
+        LOG_INFO(*TlsActivationContext, TFileStoreComponents::TABLET,
+            "%s removed last owner for session c: %s, s: %s, owner: %s",
+            LogTag.c_str(),
+            session->GetClientId().c_str(),
+            session->GetSessionId().c_str(),
+            owner.ToString().c_str());
     }
 }
 
