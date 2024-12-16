@@ -614,8 +614,8 @@ void FinalizeProfileLogRequestInfo(
 
 template <>
 void FinalizeProfileLogRequestInfo(
-    NProto ::TProfileLogRequestInfo& profileLogRequest,
-    const NProto ::TReadDataResponse& response)
+    NProto::TProfileLogRequestInfo& profileLogRequest,
+    const NProto::TReadDataResponse& response)
 {
     if (profileLogRequest.RangesSize() == 0) {
         profileLogRequest.AddRanges();
@@ -626,8 +626,8 @@ void FinalizeProfileLogRequestInfo(
 
 template <>
 void FinalizeProfileLogRequestInfo(
-    NProto ::TProfileLogRequestInfo& profileLogRequest,
-    const NProto ::TWriteDataResponse& response)
+    NProto::TProfileLogRequestInfo& profileLogRequest,
+    const NProto::TWriteDataResponse& response)
 {
     if (profileLogRequest.RangesSize() == 0) {
         profileLogRequest.AddRanges();
