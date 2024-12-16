@@ -326,13 +326,21 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
 
         const ui64 nodeId = 123;
         const ui64 handleId = 456;
-        bootstrap.Service->CreateHandleHandler = [&] (auto callContext, auto request) {
+        bootstrap.Service->CreateHandleHandler =
+            [&](auto callContext, auto request)
+        {
             if (isWritebackCacheEnabled) {
-                UNIT_ASSERT(HasFlag(request->GetFlags(), NProto::TCreateHandleRequest::E_READ));
+                UNIT_ASSERT(HasFlag(
+                    request->GetFlags(),
+                    NProto::TCreateHandleRequest::E_READ));
             } else {
-                UNIT_ASSERT(!HasFlag(request->GetFlags(), NProto::TCreateHandleRequest::E_READ));
+                UNIT_ASSERT(!HasFlag(
+                    request->GetFlags(),
+                    NProto::TCreateHandleRequest::E_READ));
             }
-            UNIT_ASSERT(HasFlag(request->GetFlags(), NProto::TCreateHandleRequest::E_WRITE));
+            UNIT_ASSERT(HasFlag(
+                request->GetFlags(),
+                NProto::TCreateHandleRequest::E_WRITE));
             UNIT_ASSERT_VALUES_EQUAL(FileSystemId, callContext->FileSystemId);
 
             NProto::TCreateHandleResponse result;
