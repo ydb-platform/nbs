@@ -734,8 +734,8 @@ struct TPartitionDiskCounters
     EPublishingPolicy Policy;
 
     explicit TPartitionDiskCounters(
-        EPublishingPolicy policy,
-        EHistogramCounterOptions histCounterOptions)
+            EPublishingPolicy policy,
+            EHistogramCounterOptions histCounterOptions)
         : RequestCounters(histCounterOptions)
         , Histogram(histCounterOptions)
         , Policy(policy)
@@ -759,8 +759,8 @@ struct TVolumeSelfCounters
     EPublishingPolicy Policy;
 
     explicit TVolumeSelfCounters(
-        EPublishingPolicy policy,
-        EHistogramCounterOptions histCounterOptions)
+            EPublishingPolicy policy,
+            EHistogramCounterOptions histCounterOptions)
         : RequestCounters(histCounterOptions)
         , Policy(policy)
     {}

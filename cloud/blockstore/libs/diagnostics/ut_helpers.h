@@ -5,6 +5,8 @@
 
 namespace NCloud::NBlockStore {
 
+////////////////////////////////////////////////////////////////////////////////
+
 inline TDiagnosticsConfigPtr CreateDiagnosticsConfig()
 {
     NProto::TDiagnosticsConfig diagnosticsConfig;
@@ -13,4 +15,4 @@ inline TDiagnosticsConfigPtr CreateDiagnosticsConfig()
     return std::make_shared<TDiagnosticsConfig>(diagnosticsConfig);
 }
 
-}
+} // namespace NCloud::NBlockStore

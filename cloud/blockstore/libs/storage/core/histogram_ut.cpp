@@ -6,8 +6,13 @@
 #include <library/cpp/testing/unittest/registar.h>
 
 namespace NCloud::NBlockStore::NStorage {
+
+////////////////////////////////////////////////////////////////////////////////
+
     using TDynamicCounterPtr = NMonitoring::TDynamicCounterPtr;
     using TDynamicCounters = NMonitoring::TDynamicCounters;
+
+////////////////////////////////////////////////////////////////////////////////
 
     auto CreateTestHistogram1(
         const TDynamicCounterPtr& group,
@@ -46,6 +51,8 @@ namespace NCloud::NBlockStore::NStorage {
         histogram.Increment(1000000000, 1);
         return histogram;
     }
+
+////////////////////////////////////////////////////////////////////////////////
 
 Y_UNIT_TEST_SUITE(THistogramTest)
 {

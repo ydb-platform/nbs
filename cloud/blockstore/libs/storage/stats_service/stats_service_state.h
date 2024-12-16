@@ -65,8 +65,8 @@ struct TTotalCounters
     TSimpleCounter VolumeStartTimeOver5Sec;
 
     TTotalCounters(
-        EPublishingPolicy policy,
-        EHistogramCounterOptions histCounterOptions)
+            EPublishingPolicy policy,
+            EHistogramCounterOptions histCounterOptions)
         : PartAcc(policy, histCounterOptions)
         , VolumeAcc(policy, histCounterOptions){};
 
@@ -133,8 +133,8 @@ struct TVolumeStatsInfo
     TDuration ApproximateBootstrapTime;
 
     TVolumeStatsInfo(
-        NProto::TVolume config,
-        EHistogramCounterOptions histCounterOptions)
+            NProto::TVolume config,
+            EHistogramCounterOptions histCounterOptions)
         : VolumeInfo(std::move(config))
         , PerfCounters(EPublishingPolicy::All, histCounterOptions)
     {}
@@ -197,8 +197,8 @@ public:
         NProto::TVolume config);
 
     TStatsServiceState(
-        const TStorageConfig& config,
-        const TDiagnosticsConfig& diagConfig)
+            const TStorageConfig& config,
+            const TDiagnosticsConfig& diagConfig)
         : Total(EPublishingPolicy::All, diagConfig.GetHistogramCounterOptions())
         , Hdd(EPublishingPolicy::Repl, diagConfig.GetHistogramCounterOptions())
         , Ssd(EPublishingPolicy::Repl, diagConfig.GetHistogramCounterOptions())

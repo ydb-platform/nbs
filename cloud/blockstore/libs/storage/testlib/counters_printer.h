@@ -6,8 +6,14 @@
 
 namespace NCloud::NBlockStore::NStorage {
 
+////////////////////////////////////////////////////////////////////////////////
+
 class TCountersPrinter: public NMonitoring::ICountableConsumer
 {
+private:
+    IOutputStream* Out;
+    int Level = 0;
+
 public:
     explicit TCountersPrinter(IOutputStream* out)
         : Out(out)
@@ -62,9 +68,6 @@ private:
         }
         return *out;
     }
-
-    IOutputStream* Out;
-    int Level = 0;
 };
 
 }   // namespace NCloud::NBlockStore::NStorage
