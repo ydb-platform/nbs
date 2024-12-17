@@ -999,19 +999,6 @@ Y_UNIT_TEST_SUITE(TProfileLogEventsTest)
             profileLogRequest.GetRanges(0).GetActualBytes());
     }
 
-    Y_UNIT_TEST(ShouldWriteDataResponseInitializeFieldsCorrectly)
-    {
-        NProto::TWriteDataResponse res;
-        constexpr auto Size = 42;
-        res.SetBytes(Size);
-
-        NProto::TProfileLogRequestInfo profileLogRequest;
-        FinalizeProfileLogRequestInfo(profileLogRequest, res);
-        UNIT_ASSERT_VALUES_EQUAL(
-            Size,
-            profileLogRequest.GetRanges(0).GetActualBytes());
-    }
-
     Y_UNIT_TEST(ShouldGetCorrectFuseRequestName)
     {
         UNIT_ASSERT_VALUES_EQUAL(
