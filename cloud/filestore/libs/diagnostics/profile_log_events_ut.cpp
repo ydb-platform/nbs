@@ -985,6 +985,33 @@ Y_UNIT_TEST_SUITE(TProfileLogEventsTest)
         UNIT_ASSERT_VALUES_EQUAL(names.size(), nodeInfo.GetSize());
     }
 
+    Y_UNIT_TEST(ShouldReadDataResponseInitializeFieldsCorrectly)
+    {
+        NProto::TReadDataResponse res;
+        constexpr auto Size = 42;
+        TString data{Size, ' '};
+        res.SetBuffer(data);
+
+        NProto::TProfileLogRequestInfo profileLogRequest;
+        FinalizeProfileLogRequestInfo(profileLogRequest, res);
+        UNIT_ASSERT_VALUES_EQUAL(
+            profileLogRequest.GetRanges(0).GetActualBytes(),
+            Size);
+    }
+
+    Y_UNIT_TEST(ShouldWriteDataResponseInitializeFieldsCorrectly)
+    {
+        NProto::TWriteDataResponse res;
+        constexpr auto Size = 42;
+        res.SetBytes(Size);
+
+        NProto::TProfileLogRequestInfo profileLogRequest;
+        FinalizeProfileLogRequestInfo(profileLogRequest, res);
+        UNIT_ASSERT_VALUES_EQUAL(
+            profileLogRequest.GetRanges(0).GetActualBytes(),
+            Size);
+    }
+
     Y_UNIT_TEST(ShouldGetCorrectFuseRequestName)
     {
         UNIT_ASSERT_VALUES_EQUAL(
