@@ -1669,7 +1669,7 @@ func (s *nodeService) NodeExpandVolume(
 			_, err := s.mounter.Resize(nbdDevicePath, req.VolumePath)
 			if err != nil {
 				return nil, s.statusErrorf(
-					codes.Internal,
+					codes.FailedPrecondition,
 					"Failed to resize filesystem %v", err)
 			}
 		}
