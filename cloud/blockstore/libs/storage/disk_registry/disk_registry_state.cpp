@@ -5032,9 +5032,8 @@ void TDiskRegistryState::ApplyAgentStateChange(
                 continue;
             }
 
-            if (std::ranges::find(disk.Devices, deviceId) == disk.Devices.end())
-            {
-                ReportDiskRegistryMigrationOfNotFoundDisk(
+            if (Find(disk.Devices, deviceId) == disk.Devices.end()) {
+                ReportDiskRegistryWrongMigratedDeviceOwnership(
                     TStringBuilder() << "device " << deviceId << " not found");
                 continue;
             }
@@ -6137,7 +6136,7 @@ NProto::TError TDiskRegistryState::FinishDeviceMigration(
     auto devIt = Find(disk.Devices, sourceId);
 
     if (devIt == disk.Devices.end()) {
-        ReportDiskRegistryMigrationOfNotFoundDisk(
+        ReportDiskRegistryWrongMigratedDeviceOwnership(
             TStringBuilder() << "device " << sourceId.Quote() << " not found");
         return MakeError(
             E_INVALID_STATE,

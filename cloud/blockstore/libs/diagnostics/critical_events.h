@@ -64,6 +64,7 @@ namespace NCloud::NBlockStore {
     xxx(DiskRegistryCleanupAgentConfigError)                                   \
     xxx(DiskRegistryOccupiedDeviceConfigurationHasChanged)                     \
     xxx(MirroredDiskChecksumMismatchUponRead)                                  \
+    xxx(DiskRegistryWrongMigratedDeviceOwnership)                              \
 // BLOCKSTORE_CRITICAL_EVENTS
 
 #define BLOCKSTORE_IMPOSSIBLE_EVENTS(xxx)                                      \
@@ -79,7 +80,6 @@ namespace NCloud::NBlockStore {
     xxx(DiskRegistryInvalidPlacementGroupPartition)                            \
     xxx(DiskRegistryDeviceLocationNotFound)                                    \
     xxx(DiskRegistryDiskNotFound)                                              \
-    xxx(DiskRegistryMigrationOfNotFoundDisk)                                   \
     xxx(DiskRegistryPlacementGroupNotFound)                                    \
     xxx(DiskRegistryDeviceListReferencesNonexistentDisk)                       \
     xxx(DiskRegistryPlacementGroupDiskNotFound)                                \
