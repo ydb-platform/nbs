@@ -680,23 +680,23 @@ Y_UNIT_TEST_SUITE(TVolumeThrottlingPolicyTest)
             CalculateThrottlerC2(maxIops, maxBandwidth);
 
         UNIT_ASSERT_DOUBLES_EQUAL(
-            tp.TakeUsedBandwidthBudget(),
+            tp.TakeUsedBandwidthQuota(),
             static_cast<double>(ioOperation * byteCount) /
                 static_cast<double>(recalculatedMaxBandwidth),
             1e-6);
 
-        UNIT_ASSERT_DOUBLES_EQUAL(tp.TakeUsedBandwidthBudget(), 0, 1e-6);
+        UNIT_ASSERT_DOUBLES_EQUAL(tp.TakeUsedBandwidthQuota(), 0, 1e-6);
 
         UNIT_ASSERT_DOUBLES_EQUAL(
-            tp.TakeUsedIoBudget(),
+            tp.TakeUsedIoQuota(),
             static_cast<double>(ioOperation) /
                 static_cast<double>(recalculatedMaxIops),
             1e-6);
 
-        UNIT_ASSERT_DOUBLES_EQUAL(tp.TakeUsedIoBudget(), 0, 1e-6);
+        UNIT_ASSERT_DOUBLES_EQUAL(tp.TakeUsedIoQuota(), 0, 1e-6);
     }
 
-    Y_UNIT_TEST(UsedBandwidthBudgetZeroWithoutBytesThrotling)
+    Y_UNIT_TEST(UsedBandwidthQuotaZeroWithoutBytesThrotling)
     {
         const ui64 maxIops = 4;
 
@@ -727,12 +727,12 @@ Y_UNIT_TEST_SUITE(TVolumeThrottlingPolicyTest)
         }
 
         UNIT_ASSERT_DOUBLES_EQUAL(
-            tp.TakeUsedBandwidthBudget(),
+            tp.TakeUsedBandwidthQuota(),
             0,
             1e-6);
 
         UNIT_ASSERT_DOUBLES_EQUAL(
-            tp.TakeUsedIoBudget(),
+            tp.TakeUsedIoQuota(),
             static_cast<double>(ioOperation) / static_cast<double>(maxIops),
             1e-6);
     }
