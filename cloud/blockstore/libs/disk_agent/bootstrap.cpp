@@ -1,6 +1,7 @@
 #include "bootstrap.h"
 
 #include "config_initializer.h"
+#include "library/cpp/build_info/build_info_static.h"
 #include "options.h"
 
 #include <cloud/blockstore/libs/common/caching_allocator.h>
@@ -231,12 +232,25 @@ void TBootstrap::InitHTTPServer()
 {
     Y_DEBUG_ABORT_UNLESS(!Initialized);
 
+    std::stringstream stubMonPageBuilder;
+
+    stubMonPageBuilder
+        << R"(<html><head></head><body><ol class="breadcrumb">)"
+           R"(This node is not registered in the NodeBroker. See "DisableNodeBrokerRegistrationOnDevicelessAgent in the disk agent agent<br>)"
+           R"(</ol><div class="container"><h2>Version</h2><pre>)";
+
+    const auto* version = GetProgramSvnVersion();
+    stubMonPageBuilder << version;
+    if (!TString(version).EndsWith("\n")) {
+        stubMonPageBuilder << "\n";
+    }
+
+    stubMonPageBuilder << R"(</pre></div></body></html>)";
+
     StubMonPageServer = std::make_unique<NCloud::NStorage::TSimpleHttpServer>(
         Configs->Options->MonitoringAddress,
         Configs->DiagnosticsConfig->GetNbsMonPort(),
-        "This node is not registered in the NodeBroker. See "
-        "\"DisableNodeBrokerRegistrationOnDevicelessAgent\" in the disk agent "
-        "config.");
+        stubMonPageBuilder.str());
 }
 
 void TBootstrap::Init()
