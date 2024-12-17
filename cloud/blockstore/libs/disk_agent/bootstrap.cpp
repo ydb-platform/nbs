@@ -232,12 +232,12 @@ void TBootstrap::InitHTTPServer()
 {
     Y_DEBUG_ABORT_UNLESS(!Initialized);
 
-    std::stringstream stubMonPageBuilder;
+    TStringBuilder stubMonPageBuilder;
 
     stubMonPageBuilder
-        << R"(<html><head></head><body><ol class="breadcrumb">)"
-           R"(This node is not registered in the NodeBroker. See "DisableNodeBrokerRegistrationOnDevicelessAgent" in the disk agent config.<br>)"
-           R"(</ol><div class="container"><h2>Version</h2><pre>)";
+        << R"(<html><head></head><body>)"
+           R"(<h3>This node is not registered in the NodeBroker. See "DisableNodeBrokerRegistrationOnDevicelessAgent" in the disk agent config.</h3><br>)"
+           R"(<div class="container"><h2>Version</h2><pre>)";
 
     const auto* version = GetProgramSvnVersion();
     stubMonPageBuilder << version;
@@ -247,12 +247,10 @@ void TBootstrap::InitHTTPServer()
 
     stubMonPageBuilder << R"(</pre></div></body></html>)";
 
-    Cerr << stubMonPageBuilder.str() << Endl;
-
     StubMonPageServer = std::make_unique<NCloud::NStorage::TSimpleHttpServer>(
         Configs->Options->MonitoringAddress,
         Configs->DiagnosticsConfig->GetNbsMonPort(),
-        stubMonPageBuilder.str());
+        stubMonPageBuilder.Data());
 }
 
 void TBootstrap::Init()
