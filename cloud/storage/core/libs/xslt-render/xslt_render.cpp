@@ -1,4 +1,4 @@
-#include "xslt-render.h"
+#include "xslt_render.h"
 
 namespace {
 

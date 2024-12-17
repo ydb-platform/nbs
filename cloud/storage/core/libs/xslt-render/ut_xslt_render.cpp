@@ -1,4 +1,4 @@
-#include "xslt-render.h"
+#include "xslt_render.h"
 
 #include <library/cpp/resource/resource.h>
 #include <library/cpp/testing/unittest/registar.h>

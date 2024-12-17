@@ -1,8 +1,8 @@
 UNITTEST_FOR(cloud/storage/core/libs/xslt-render)
 
 SRCS(
-    ut-xml-document.cpp
-    ut-xslt-render.cpp
+    ut_xml_document.cpp
+    ut_xslt_render.cpp
 )
 
 PEERDIR (

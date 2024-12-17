@@ -1,6 +1,6 @@
 #pragma once
 
-#include "xml-document.h"
+#include "xml_document.h"
 
 #include <contrib/libs/libxml/include/libxml/globals.h>
 #include <contrib/libs/libxslt/libxslt/templates.h>

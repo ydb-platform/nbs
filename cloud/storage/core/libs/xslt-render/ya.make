@@ -1,8 +1,8 @@
 LIBRARY(xslt-render)
 
 SRCS(
-    xml-document.cpp
-    xslt-render.cpp
+    xml_document.cpp
+    xslt_render.cpp
 )
 
 PEERDIR(
