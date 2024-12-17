@@ -79,6 +79,7 @@ namespace NCloud::NBlockStore {
     xxx(DiskRegistryInvalidPlacementGroupPartition)                            \
     xxx(DiskRegistryDeviceLocationNotFound)                                    \
     xxx(DiskRegistryDiskNotFound)                                              \
+    xxx(DiskRegistryMigrationOfNotFoundDisk)                                   \
     xxx(DiskRegistryPlacementGroupNotFound)                                    \
     xxx(DiskRegistryDeviceListReferencesNonexistentDisk)                       \
     xxx(DiskRegistryPlacementGroupDiskNotFound)                                \
