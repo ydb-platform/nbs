@@ -236,7 +236,7 @@ void TBootstrap::InitHTTPServer()
 
     stubMonPageBuilder
         << R"(<html><head></head><body><ol class="breadcrumb">)"
-           R"(This node is not registered in the NodeBroker. See "DisableNodeBrokerRegistrationOnDevicelessAgent in the disk agent agent<br>)"
+           R"(This node is not registered in the NodeBroker. See "DisableNodeBrokerRegistrationOnDevicelessAgent" in the disk agent config.<br>)"
            R"(</ol><div class="container"><h2>Version</h2><pre>)";
 
     const auto* version = GetProgramSvnVersion();
@@ -246,6 +246,8 @@ void TBootstrap::InitHTTPServer()
     }
 
     stubMonPageBuilder << R"(</pre></div></body></html>)";
+
+    Cerr << stubMonPageBuilder.str() << Endl;
 
     StubMonPageServer = std::make_unique<NCloud::NStorage::TSimpleHttpServer>(
         Configs->Options->MonitoringAddress,
