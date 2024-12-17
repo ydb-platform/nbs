@@ -9,6 +9,7 @@ There is also a list of labels that slightly alters how and which tests are run:
 3. `sleep` to add 7200s (2 hours) sleep to your run, if you want to debug it.
 4. `asan` or `tsan` to add address sanitizer or thread sanitizer builds on top of the regular build.
 5. `recheck` trigger checks without commit. Removed automatically after launch.
+6. `allow-downgrade` allows to downgrade VM preset dynamically in case of problems with resources
 
 Also, you can launch [ya make](https://github.com/ydb-platform/nbs/actions/workflows/build_and_test_on_demand.yaml) or [cmake](https://github.com/ydb-platform/nbs/actions/workflows/build_and_test_on_demand_cmake.yaml) builds on your branch with any timeout you want (but please do not do more than 12 hours, VMs are expensive). You can find the IP of the VM inside of the jobs. The first occurrence happens in the `Prepare runner` job in the `Configure NCP` step, later IP is set in the header of jobs. You must use your GitHub key for it. User `github`. Feature not available for non-members.
 

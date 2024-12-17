@@ -46,6 +46,9 @@ inputs:
   vm_user_passwd:
     required: true
     description: "vm user password"
+  vm_allow_downgrade:
+    required: false
+    description: "allow downgrade"
 
 outputs:
   label:
@@ -92,7 +95,7 @@ runs:
       id: create-vm
       shell: bash
       run: |
-        python .github/scripts/nebius-manage-vm.py create ${ORG} ${TEAM} \
+        python .github/scripts/nebius-manage-vm.py create ${ORG} ${TEAM} ${VM_ALLOW_DOWNGRADE} \
           --github-repo-owner "${REPO_OWNER}" \
           --github-repo "${REPO}" \
           --service-account-key "${SERVICE_ACCOUNT_KEY}" \
@@ -119,6 +122,7 @@ runs:
         VM_IMAGE: ${{ inputs.vm_image }}
         VM_LABELS: ${{ inputs.vm_labels }}
         VM_USER_PASSWD: ${{ inputs.vm_user_passwd }}
+        VM_ALLOW_DOWNGRADE: ${{ inputs.vm_allow_downgrade && '--allow-downgrade' || '' }}
 
     - name: save console output if we had any
       if: ${{ steps.create-vm.outputs.console-output }}
