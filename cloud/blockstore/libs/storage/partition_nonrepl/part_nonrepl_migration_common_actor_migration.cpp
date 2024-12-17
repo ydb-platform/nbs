@@ -233,9 +233,6 @@ void TNonreplicatedPartitionMigrationCommonActor::HandleRangeMigrated(
 
     auto* msg = ev->Get();
 
-    NetworkBytes += 2 * msg->Range.Size() * BlockSize;
-    CpuUsage += CyclesToDurationSafe(msg->ExecCycles);
-
     ProfileLog->Write({
         .DiskId = DiskId,
         .Ts = msg->ReadStartTs,
@@ -266,6 +263,18 @@ void TNonreplicatedPartitionMigrationCommonActor::HandleRangeMigrated(
                 .CommitId = 0,
             },
         });
+    }
+
+    if (msg->ExecutionSide == EExecutionSide::Remote) {
+        const auto networkBytes = msg->Range.Size() * BlockSize;
+        const auto execTime = msg->ReadDuration + msg->WriteDuration;
+
+        MigrationCounters->RequestCounters.CopyBlocks.AddRequest(
+            execTime.MicroSeconds(),
+            networkBytes);
+    } else {
+        NetworkBytes += 2 * msg->Range.Size() * BlockSize;
+        CpuUsage += CyclesToDurationSafe(msg->ExecCycles);
     }
 
     const bool erased = MigrationsInProgress.Remove(msg->Range);

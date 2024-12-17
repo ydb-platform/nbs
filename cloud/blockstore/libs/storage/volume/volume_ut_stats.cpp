@@ -1,5 +1,7 @@
 #include "volume_ut.h"
 
+#include <cloud/blockstore/libs/storage/disk_agent/actors/direct_copy_actor.h>
+
 namespace NCloud::NBlockStore::NStorage {
 
 using namespace NTestVolume;
@@ -507,7 +509,7 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
         }}, TDuration::Seconds(1));
     }
 
-    Y_UNIT_TEST(ShouldSendPartitionStatsForShadowDisk)
+    void DoShouldSendPartitionStatsForShadowDisk(bool useDirectCopy)
     {
         constexpr ui64 DiskBlockCount = 32768;
         constexpr ui64 DiskBlockSize = 4096;
@@ -518,12 +520,31 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
 
         NProto::TStorageServiceConfig config;
         config.SetUseShadowDisksForNonreplDiskCheckpoints(true);
-        auto runtime = PrepareTestActorRuntime(config);
+        config.SetUseDirectCopyRange(useDirectCopy);
+
+        TDiskAgentStatePtr diskAgentState = std::make_shared<TDiskAgentState>();
+        diskAgentState->CreateDirectCopyActorFunc =
+            [](const TEvDiskAgent::TEvDirectCopyBlocksRequest::TPtr& ev,
+               const NActors::TActorContext& ctx,
+               NActors::TActorId owner)
+        {
+            auto* msg = ev->Get();
+            auto& record = msg->Record;
+            NCloud::Register<TDirectCopyActor>(
+                ctx,
+                owner,
+                CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext),
+                std::move(record));
+        };
+
+        auto runtime =
+            PrepareTestActorRuntime(config, {}, {}, {}, diskAgentState);
 
         struct TReadAndWriteByteCount
         {
             ui64 ReadByteCount = 0;
             ui64 WriteByteCount = 0;
+            ui64 DirectCopyByteCount = 0;
         };
         TMap<TString, TReadAndWriteByteCount> statsForDisks;
         auto statEventInterceptor = [&](TAutoPtr<IEventHandle>& event)
@@ -538,6 +559,8 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
                     msg->DiskCounters->RequestCounters.ReadBlocks.RequestBytes;
                 statsForDisks[msg->DiskId].WriteByteCount +=
                     msg->DiskCounters->RequestCounters.WriteBlocks.RequestBytes;
+                statsForDisks[msg->DiskId].DirectCopyByteCount +=
+                    msg->DiskCounters->RequestCounters.CopyBlocks.RequestBytes;
             }
             return TTestActorRuntime::DefaultObserverFunc(event);
         };
@@ -608,9 +631,12 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
         runtime->DispatchEvents({}, TDuration::Seconds(1));
 
         // Validate bytes count for source and shadow disks.
+        auto shadowActorBytes = useDirectCopy ? 0 :DiskByteCount;
+        auto directCopyBytes = useDirectCopy ? DiskByteCount : 0;
+
         UNIT_ASSERT_VALUES_EQUAL(2, statsForDisks.size());
         UNIT_ASSERT_VALUES_EQUAL(
-            DiskByteCount + ReadFromSourceBlockCount * DiskBlockSize,
+            shadowActorBytes + ReadFromSourceBlockCount * DiskBlockSize,
             statsForDisks["vol0"].ReadByteCount);
         UNIT_ASSERT_VALUES_EQUAL(
             WriteBlockCount * DiskBlockSize,
@@ -620,8 +646,22 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
             ReadFromCheckpointBlockCount * DiskBlockSize,
             statsForDisks["vol0-c1"].ReadByteCount);
         UNIT_ASSERT_VALUES_EQUAL(
-            DiskByteCount + WriteBlockCount * DiskBlockSize,
+            shadowActorBytes + WriteBlockCount * DiskBlockSize,
             statsForDisks["vol0-c1"].WriteByteCount);
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            directCopyBytes,
+            statsForDisks["vol0"].DirectCopyByteCount);
+    }
+
+    Y_UNIT_TEST(ShouldSendPartitionStatsForShadowDisk)
+    {
+        DoShouldSendPartitionStatsForShadowDisk(false);
+    }
+
+    Y_UNIT_TEST(ShouldSendPartitionStatsForShadowDiskDirectCopy)
+    {
+        DoShouldSendPartitionStatsForShadowDisk(true);
     }
 
     Y_UNIT_TEST(ShouldTryToCutVolumeHistoryAtStartup)

@@ -152,9 +152,13 @@ void TCopyRangeActor::ZeroBlocks(const TActorContext& ctx)
 
 void TCopyRangeActor::Done(const TActorContext& ctx, NProto::TError error)
 {
+    using EExecutionSide =
+        TEvNonreplPartitionPrivate::TEvRangeMigrated::EExecutionSide;
+
     auto response =
         std::make_unique<TEvNonreplPartitionPrivate::TEvRangeMigrated>(
             std::move(error),
+            EExecutionSide::Local,
             Range,
             ReadStartTs,
             ReadDuration,

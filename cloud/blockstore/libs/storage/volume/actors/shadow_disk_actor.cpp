@@ -603,12 +603,7 @@ bool TShadowDiskActor::OnMessage(
         HFunc(
             TEvVolumePrivate::TEvShadowDiskAcquired,
             HandleShadowDiskAcquired);
-        HFunc(
-            TEvNonreplPartitionPrivate::TEvUpdateCounters,
-            HandleUpdateCounters);
-        HFunc(
-            TEvVolume::TEvDiskRegistryBasedPartitionCounters,
-            HandleShadowDiskCounters);
+
         HFunc(TEvVolume::TEvReacquireDisk, HandleReacquireDisk);
         HFunc(TEvVolume::TEvRdmaUnavailable, HandleRdmaUnavailable);
         HFunc(
@@ -832,7 +827,7 @@ void TShadowDiskActor::CreateShadowDiskPartitionActor(
         CreateNonreplicatedPartition(
             Config,
             DstConfig,
-            SelfId(),
+            VolumeActorId,   // send stat to volume directly.
             RdmaClient));
     PoisonPillHelper.TakeOwnership(ctx, DstActorId);
 
@@ -1086,25 +1081,6 @@ void TShadowDiskActor::HandleUpdateShadowDiskStateResponse(
             State = EActorState::Error;
         } break;
     }
-}
-
-void TShadowDiskActor::HandleUpdateCounters(
-    const TEvNonreplPartitionPrivate::TEvUpdateCounters::TPtr& ev,
-    const TActorContext& ctx)
-{
-    Y_UNUSED(ev);
-    Y_UNUSED(ctx);
-
-    // Block sending statistics counters from the base class by processing the
-    // TEvUpdateCounters message ourselves.
-}
-
-void TShadowDiskActor::HandleShadowDiskCounters(
-    const TEvVolume::TEvDiskRegistryBasedPartitionCounters::TPtr& ev,
-    const NActors::TActorContext& ctx)
-{
-    // Forward stat from shadow disk to volume.
-    ForwardMessageToActor(ev, ctx, VolumeActorId);
 }
 
 bool TShadowDiskActor::HandleWakeup(
