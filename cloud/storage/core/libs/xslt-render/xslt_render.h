@@ -1,11 +1,7 @@
 #pragma once
 
 #include "xml_document.h"
-
-#include <contrib/libs/libxml/include/libxml/globals.h>
-#include <contrib/libs/libxslt/libxslt/templates.h>
-#include <contrib/libs/libxslt/libxslt/transform.h>
-#include <contrib/libs/libxslt/libxslt/xsltutils.h>
+#include <memory.h>
 
 namespace NCloud {
 
@@ -20,7 +16,9 @@ public:
     void Render(const NXml::TDocument& document, IOutputStream& out);
 
 private:
-    xsltStylesheetPtr Stylesheet = nullptr;
+    struct TData;
+
+    std::unique_ptr<TData> Stylesheet = nullptr;
 };
 
 }   // namespace NCloud
