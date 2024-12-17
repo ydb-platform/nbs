@@ -177,6 +177,22 @@ struct TCreateHandleRequest
     }
 };
 
+struct TOpenHandleRequest
+    : public TRequestBase<fuse_open_in, fuse_open_out, ui64>
+{
+    explicit TOpenHandleRequest(ui64 nodeId)
+    {
+        In->Header.opcode = FUSE_OPEN;
+        In->Header.nodeid = nodeId;
+        In->Body.flags = 0;
+    }
+
+    void SetResult() override
+    {
+        Result.SetValue(Out->Body.fh);
+    }
+};
+
 ////////////////////////////////////////////////////////////////////////////////
 
 struct TLookupRequest
