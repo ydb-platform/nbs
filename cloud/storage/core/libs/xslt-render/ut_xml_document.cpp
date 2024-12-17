@@ -15,7 +15,7 @@ TString Content(auto&& name, auto&& value)
     return out.Str();
 }
 
-void TestAddChilds(auto&& name, auto&& value)
+void TestAddChildren(auto&& name, auto&& value)
 {
     NXml::TDocument data("root", NXml::TDocument::RootName);
     auto root = data.Root();
@@ -34,9 +34,9 @@ Y_UNIT_TEST_SUITE(TXmlNodeWrapperTest)
 {
     Y_UNIT_TEST(ShouldAddElemWithNameAndValue)
     {
-        TestAddChilds("a", "b");
-        TestAddChilds(1, 1);
-        TestAddChilds(1e-2, 1e-2);
+        TestAddChildren("a", "b");
+        TestAddChildren(1, 1);
+        TestAddChildren(1e-2, 1e-2);
     }
 }
 

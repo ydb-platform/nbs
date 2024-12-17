@@ -18,6 +18,7 @@ struct TXslInitializer
         xmlCleanupParser();
     }
 };
+
 }   // namespace
 
 namespace NCloud {

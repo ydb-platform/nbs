@@ -9,7 +9,7 @@ namespace NCloud {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-Y_UNIT_TEST_SUITE(XsltRenderTest)
+Y_UNIT_TEST_SUITE(TXsltRenderTest)
 {
     Y_UNIT_TEST(ShouldRenderXslt)
     {
