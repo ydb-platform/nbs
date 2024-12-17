@@ -12,6 +12,22 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+TString PrintChannels(const TVector<TTabletChannelInfo>& channels)
+{
+    TStringBuilder res;
+    res << "[";
+    for (size_t i = 0; i < channels.size(); i++) {
+        if (i != 0) {
+            res << ", ";
+        }
+        res << channels[i].ToString();
+    }
+    res << "]";
+    return res;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 class TBootRequestActor final
     : public TActorBootstrapped<TBootRequestActor>
 {
@@ -122,6 +138,13 @@ void TBootRequestActor::HandleBoot(
     TTabletStorageInfoPtr storageInfo =
         TabletStorageInfoFromProto(msg->Record.GetInfo());
     ui64 suggestedGeneration = msg->Record.GetSuggestedGeneration();
+
+    LOG_DEBUG(
+        ctx,
+        LogComponent,
+        "[%s] Booting tablet with channels: %s",
+        ToString(storageInfo->TabletID).c_str(),
+        PrintChannels(storageInfo->Channels).c_str());
 
     if (TabletBootInfoBackup) {
         auto updateRequest =
