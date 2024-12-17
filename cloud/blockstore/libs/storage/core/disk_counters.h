@@ -32,10 +32,12 @@ struct TMemberWithMeta: public TBase
         , PublishingPolicy(publishingPolicy)
     {}
 
+    template <typename... TArgs>
     TMemberWithMeta(
             EPublishingPolicy publishingPolicy,
-            ERequestCounterOption counterOption)
-        : TBase()
+            ERequestCounterOption counterOption,
+            TArgs&&... args)
+        : TBase(std::forward<TArgs>(args)...)
         , PublishingPolicy(publishingPolicy)
         , CounterOption(counterOption)
     {}
@@ -374,7 +376,7 @@ struct THistogramRequestCounters
         TMemberMeta<THighResCounter THistogramRequestCounters::*>;
 
     explicit THistogramRequestCounters(
-            EHistogramCounterOptions histCounterOptions)
+        EHistogramCounterOptions histCounterOptions)
         : Flush(EPublishingPolicy::Repl, histCounterOptions)
         , AddBlobs(EPublishingPolicy::Repl, histCounterOptions)
         , Compaction(EPublishingPolicy::Repl, histCounterOptions)
@@ -385,21 +387,27 @@ struct THistogramRequestCounters
         , AddConfirmedBlobs(EPublishingPolicy::Repl, histCounterOptions)
         , AddUnconfirmedBlobs(EPublishingPolicy::Repl, histCounterOptions)
         , ConfirmBlobs(EPublishingPolicy::Repl, histCounterOptions)
-        , WriteBlob(EPublishingPolicy::Repl, histCounterOptions)
-        , ReadBlob(EPublishingPolicy::Repl, histCounterOptions)
-        , PatchBlob(EPublishingPolicy::Repl, histCounterOptions)
-        , ReadBlocks(EPublishingPolicy::All, histCounterOptions)
+        , WriteBlob(
+              EPublishingPolicy::Repl,
+              ERequestCounterOption::HasKind,
+              histCounterOptions)
+        , ReadBlob(
+              EPublishingPolicy::Repl,
+              ERequestCounterOption::HasKind,
+              histCounterOptions)
+        , PatchBlob(
+              EPublishingPolicy::Repl,
+              ERequestCounterOption::HasKind,
+              histCounterOptions)
+        , ReadBlocks(
+              EPublishingPolicy::All,
+              ERequestCounterOption::HasVoidBytes,
+              histCounterOptions)
         , WriteBlocks(EPublishingPolicy::All, histCounterOptions)
         , ZeroBlocks(EPublishingPolicy::All, histCounterOptions)
         , DescribeBlocks(EPublishingPolicy::All, histCounterOptions)
         , ChecksumBlocks(EPublishingPolicy::All, histCounterOptions)
-    {
-        WriteBlob.CounterOption = ERequestCounterOption::HasKind;
-        ReadBlob.CounterOption = ERequestCounterOption::HasKind;
-        PatchBlob.CounterOption = ERequestCounterOption::HasKind;
-
-        ReadBlocks.CounterOption = ERequestCounterOption::HasVoidBytes;
-    }
+    {}
 
     // BlobStorage based
     TLowResCounter Flush;
