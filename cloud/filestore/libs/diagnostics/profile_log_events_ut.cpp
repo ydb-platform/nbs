@@ -995,8 +995,8 @@ Y_UNIT_TEST_SUITE(TProfileLogEventsTest)
         NProto::TProfileLogRequestInfo profileLogRequest;
         FinalizeProfileLogRequestInfo(profileLogRequest, res);
         UNIT_ASSERT_VALUES_EQUAL(
-            profileLogRequest.GetRanges(0).GetActualBytes(),
-            Size);
+            Size,
+            profileLogRequest.GetRanges(0).GetActualBytes());
     }
 
     Y_UNIT_TEST(ShouldWriteDataResponseInitializeFieldsCorrectly)
@@ -1008,8 +1008,8 @@ Y_UNIT_TEST_SUITE(TProfileLogEventsTest)
         NProto::TProfileLogRequestInfo profileLogRequest;
         FinalizeProfileLogRequestInfo(profileLogRequest, res);
         UNIT_ASSERT_VALUES_EQUAL(
-            profileLogRequest.GetRanges(0).GetActualBytes(),
-            Size);
+            Size,
+            profileLogRequest.GetRanges(0).GetActualBytes());
     }
 
     Y_UNIT_TEST(ShouldGetCorrectFuseRequestName)
