@@ -1,11 +1,8 @@
 #include "disk_agent_actor.h"
 
 #include <cloud/blockstore/libs/diagnostics/public.h>
-
 #include <cloud/blockstore/libs/storage/api/disk_registry_proxy.h>
 #include <cloud/blockstore/libs/storage/core/request_info.h>
-
-#include <util/random/fast.h>
 
 namespace NCloud::NBlockStore::NStorage {
 
@@ -15,27 +12,6 @@ using namespace NThreading;
 namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
-
-enum class EDeviceHealthStatus
-{
-    Healthy,
-    Broken,
-    Unknown,
-};
-
-EDeviceHealthStatus GetHealthStatus(EWellKnownResultCodes code)
-{
-    switch (code) {
-        case EWellKnownResultCodes::S_OK:
-            return EDeviceHealthStatus::Healthy;
-        case EWellKnownResultCodes::E_ARGUMENT:
-        case EWellKnownResultCodes::E_CANCELLED:
-        case EWellKnownResultCodes::E_REJECTED:
-            return EDeviceHealthStatus::Unknown;
-        default:
-            return EDeviceHealthStatus::Broken;
-    }
-}
 
 NProto::TDeviceStats CalcDelta(
     const NProto::TDeviceStats& cur,
@@ -102,17 +78,12 @@ class TStatsActor
 {
 private:
     const TActorId Owner;
-    const TVector<NProto::TDeviceConfig> Devices;
-
-    TVector<EDeviceHealthStatus> DevicesHealth;
 
     NProto::TAgentStats PrevStats = {};
     NProto::TAgentStats CurStats = {};
 
-    TFastRng32 Rng;
-
 public:
-    explicit TStatsActor(const TActorId& owner, const TVector<NProto::TDeviceConfig>& devices);
+    explicit TStatsActor(const TActorId& owner);
 
     void Bootstrap(const TActorContext& ctx);
 
@@ -146,13 +117,8 @@ private:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TStatsActor::TStatsActor(
-        const TActorId& owner,
-        const TVector<NProto::TDeviceConfig>& devices)
+TStatsActor::TStatsActor(const TActorId& owner)
     : Owner(owner)
-    , Devices(devices)
-    , DevicesHealth(Devices.size(), EDeviceHealthStatus::Healthy)
-    , Rng(12345, 0)
 {}
 
 void TStatsActor::Bootstrap(const TActorContext& ctx)
@@ -171,27 +137,6 @@ void TStatsActor::ScheduleUpdateStats(const TActorContext& ctx)
     ctx.ExecutorThread.Schedule(
         UpdateCountersInterval,
         new IEventHandle(ctx.SelfID, ctx.SelfID, request.release()));
-}
-
-void TStatsActor::CheckDevicesHealth(const TActorContext& ctx)
-{
-    for (size_t i = 0; i < Devices.size(); ++i) {
-        const auto& device = Devices[i];
-        auto request =
-            std::make_unique<TEvDiskAgent::TEvReadDeviceBlocksRequest>();
-        auto& rec = request->Record;
-        rec.MutableHeaders()->SetClientId(TString(CheckHealthClientId));
-        rec.SetDeviceUUID(device.GetDeviceUUID());
-        rec.SetStartIndex(Rng.Uniform(device.GetBlocksCount()));
-        rec.SetBlockSize(device.GetBlockSize());
-        rec.SetBlocksCount(1);
-
-        LOG_DEBUG_S(
-            ctx, TBlockStoreComponents::DISK_AGENT_WORKER,
-            "Checking device: " + rec.DebugString());
-
-        ctx.Send(Owner, request.release(), TEventFlags{}, i);
-    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -213,7 +158,6 @@ void TStatsActor::HandleWakeup(
 
     LOG_DEBUG(ctx, TBlockStoreComponents::DISK_AGENT_WORKER, "Collect stats");
 
-    CheckDevicesHealth(ctx);
     NCloud::Send<TEvDiskAgentPrivate::TEvCollectStatsRequest>(ctx, Owner);
 }
 
@@ -261,71 +205,6 @@ void TStatsActor::HandleUpdateAgentStatsResponse(
     ScheduleUpdateStats(ctx);
 }
 
-void TStatsActor::HandleReadDeviceBlocksResponse(
-    const TEvDiskAgent::TEvReadDeviceBlocksResponse::TPtr& ev,
-    const TActorContext& ctx)
-{
-    auto* msg = ev->Get();
-    const size_t deviceIndex = ev->Cookie;
-    Y_DEBUG_ABORT_UNLESS(
-        deviceIndex < DevicesHealth.size(),
-        "Invalid device index");
-    const auto& deviceUUID = Devices[deviceIndex].GetDeviceUUID();
-
-    auto currentHealth = GetHealthStatus(
-        static_cast<EWellKnownResultCodes>(msg->GetError().GetCode()));
-    auto lastHealth = DevicesHealth[deviceIndex];
-
-    // Device has changed state only if reads status changed from healthy to
-    // broken or vice versa. Ignore the "unknown" state.
-    const bool deviceHealthChanged =
-        currentHealth != lastHealth &&
-        currentHealth != EDeviceHealthStatus::Unknown;
-
-    if (currentHealth != EDeviceHealthStatus::Unknown) {
-        // We save only the "healthy" and "broken" states. This allows us not to
-        // trigger when transitions with "unknown" state occur.
-        DevicesHealth[deviceIndex] = currentHealth;
-    }
-
-    switch (currentHealth) {
-        case EDeviceHealthStatus::Healthy: {
-            LOG_TRACE_S(
-                ctx,
-                TBlockStoreComponents::DISK_AGENT_WORKER,
-                "Everything fine!");
-            if (deviceHealthChanged) {
-                LOG_WARN_S(
-                    ctx,
-                    TBlockStoreComponents::DISK_AGENT_WORKER,
-                    "A miracle happened, the device " << deviceUUID.Quote()
-                                                      << " was healed.");
-            }
-            break;
-        }
-        case EDeviceHealthStatus::Broken: {
-            auto priority = deviceHealthChanged ? NActors::NLog::PRI_ERROR
-                                                : NActors::NLog::PRI_INFO;
-            LOG_LOG_S(
-                ctx,
-                priority,
-                TBlockStoreComponents::DISK_AGENT_WORKER,
-                "The device " << deviceUUID.Quote() << " broke down. "
-                              << FormatError(msg->GetError()));
-            break;
-        }
-        case EDeviceHealthStatus::Unknown: {
-            LOG_DEBUG_S(
-                ctx,
-                TBlockStoreComponents::DISK_AGENT_WORKER,
-                "Got error when reading from the device "
-                    << deviceUUID.Quote() << ". "
-                    << FormatError(msg->GetError()));
-            break;
-        }
-    }
-}
-
 STFUNC(TStatsActor::StateWork)
 {
     switch (ev->GetTypeRewrite()) {
@@ -337,9 +216,6 @@ STFUNC(TStatsActor::StateWork)
 
         HFunc(TEvDiskRegistry::TEvUpdateAgentStatsResponse,
             HandleUpdateAgentStatsResponse);
-
-        HFunc(TEvDiskAgent::TEvReadDeviceBlocksResponse,
-            HandleReadDeviceBlocksResponse);
 
         default:
             HandleUnexpectedEvent(ev, TBlockStoreComponents::DISK_AGENT_WORKER);
@@ -354,12 +230,7 @@ STFUNC(TStatsActor::StateWork)
 void TDiskAgentActor::ScheduleUpdateStats(const TActorContext& ctx)
 {
     if (!StatsActor) {
-        StatsActor = NCloud::Register<TStatsActor>(
-            ctx,
-            ctx.SelfID,
-            AgentConfig->GetDeviceHealthCheckDisabled()
-                ? TVector<NProto::TDeviceConfig>{}
-                : State->GetDevices());
+        StatsActor = NCloud::Register<TStatsActor>(ctx, ctx.SelfID);
     }
 }
 
