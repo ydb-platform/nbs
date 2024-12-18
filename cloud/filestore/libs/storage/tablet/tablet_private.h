@@ -577,6 +577,7 @@ struct TEvIndexTabletPrivate
         const TString SessionId;
         const ui64 RequestId;
         const ui64 OpLogEntryId;
+        const TString NodeName;
         TCreateNodeInShardResult Result;
 
         TNodeCreatedInShard(
@@ -584,11 +585,13 @@ struct TEvIndexTabletPrivate
                 TString sessionId,
                 ui64 requestId,
                 ui64 opLogEntryId,
+                TString nodeName,
                 TCreateNodeInShardResult result)
             : RequestInfo(std::move(requestInfo))
             , SessionId(std::move(sessionId))
             , RequestId(requestId)
             , OpLogEntryId(opLogEntryId)
+            , NodeName(std::move(nodeName))
             , Result(std::move(result))
         {
         }
