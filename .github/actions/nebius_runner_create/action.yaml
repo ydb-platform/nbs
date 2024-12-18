@@ -73,6 +73,11 @@ outputs:
       External ipv4 address of the created runner.
       The address is used to connect to the runner via SSH.
     value: ${{ steps.create-vm.outputs.external-ipv4 || '0.0.0.0' }}
+  vm-preset:
+    description: >-
+      Resulting VM preset of the created runner.
+    value: ${{ steps.create-vm.outputs.vm-preset || inputs.vm_preset }}
+
 
 
 runs:

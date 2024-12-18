@@ -347,17 +347,17 @@ def retry_create_vm(func: callable) -> callable:
     @functools.wraps(func)
     def wrapper(sdk: SDK, args: argparse.Namespace) -> callable:
         total_time_limit = 60 * 60  # 1 hour in seconds
-        retry_interval = 10 * 60
+        retry_interval = 5 * 60
         start_time = time.time()
         attempt = 0
         while time.time() - start_time < total_time_limit:
             try:
-                logger.info("Trying to create VM at %s", time.ctime(time.time()))
+                logger.info("Trying to create VM at %s (attempt=%d)", time.ctime(time.time()), attempt)
                 result = func(sdk, args, attempt)
-                attempt += 1
                 logger.info("VM created successfully at %s", time.ctime(time.time()))
                 return result
             except OperationError as e:
+                attempt += 1
                 if time.time() - start_time >= total_time_limit:
                     if os.environ.get("GITHUB_EVENT_NAME") == "pull_request":
                         pr_number = int(os.environ.get("GITHUB_REF").split("/")[-1])
@@ -417,6 +417,7 @@ def create_vm(sdk: SDK, args: argparse.Namespace, attempt: int = 0):
     # if our preset is 80cpu and downgrade_after is 2 on third
     # attempt it will be downgraded to 64cpu
     # And on 4th attempt it will be downgraded to 48cpu
+    logger.info("Attempt %d", attempt)
     if args.allow_downgrade and attempt % args.downgrade_after == 0 and attempt > 0:
         current_preset_index = PRESETS.index(args.preset)
         if current_preset_index > 0:
@@ -517,6 +518,7 @@ def create_vm(sdk: SDK, args: argparse.Namespace, attempt: int = 0):
         github_output("instance-id", instance_id)
         github_output("label", runner_github_label)
         github_output("local-ipv4", local_ipv4)
+        github_output("vm-preset", args.preset)
         if external_ipv4:
             github_output("external-ipv4", external_ipv4)
 
