@@ -80,7 +80,7 @@ struct TVolumeThrottlingPolicy::TImpl
     double WriteCostMultiplier = 1;
     ui32 PostponedWeight = 0;
 
-    double UsedIoOperationsBudget = 0;
+    double UsedIoQuota = 0;
     double UsedBandwidthQuota = 0;
 
     TImpl(
@@ -266,7 +266,7 @@ struct TVolumeThrottlingPolicy::TImpl
                     m * (static_cast<double>(bandwidthUpdate) /
                          static_cast<double>(recalculatedMaxBandwidth));
             }
-            UsedIoOperationsBudget += m * (1.0 / recalculatedMaxIops);
+            UsedIoQuota += m * (1.0 / recalculatedMaxIops);
             return TDuration::Zero();
         }
 
@@ -298,8 +298,8 @@ struct TVolumeThrottlingPolicy::TImpl
 
     double TakeUsedIoQuota()
     {
-        auto res = UsedIoOperationsBudget;
-        UsedIoOperationsBudget = 0;
+        auto res = UsedIoQuota;
+        UsedIoQuota = 0;
         return res;
     }
 
