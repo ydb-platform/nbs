@@ -342,7 +342,6 @@ def create_disk(sdk: SDK, args: argparse.Namespace) -> str:
     return result
 
 
-
 def retry_create_vm(func: callable) -> callable:
     @functools.wraps(func)
     def wrapper(sdk: SDK, args: argparse.Namespace) -> callable:
@@ -352,7 +351,11 @@ def retry_create_vm(func: callable) -> callable:
         attempt = 0
         while time.time() - start_time < total_time_limit:
             try:
-                logger.info("Trying to create VM at %s (attempt=%d)", time.ctime(time.time()), attempt)
+                logger.info(
+                    "Trying to create VM at %s (attempt=%d)",
+                    time.ctime(time.time()),
+                    attempt,
+                )
                 result = func(sdk, args, attempt)
                 logger.info("VM created successfully at %s", time.ctime(time.time()))
                 return result
@@ -373,12 +376,16 @@ def retry_create_vm(func: callable) -> callable:
                 logger.error("Failed to create VM: %s", e)
                 ## convert to proper date
                 logger.info("Next run will be at %s", time.ctime(next_run_time))
-                while time.time() < next_run_time and time.time() - start_time < total_time_limit:
+                while (
+                    time.time() < next_run_time
+                    and time.time() - start_time < total_time_limit
+                ):
                     time.sleep(1)
             except Exception as e:
                 logger.error("Failed to create VM: %s", e)
                 raise e
         raise Exception("Time limit exceeded while retrying function")
+
     return wrapper
 
 
@@ -428,7 +435,6 @@ def create_vm(sdk: SDK, args: argparse.Namespace, attempt: int = 0):
         if current_preset_index > 0:
             args.preset = PRESETS[current_preset_index - 1]
             logger.info("Downgrading to %s preset", args.preset)
-
 
     runner_github_label = generate_github_label()
 
@@ -781,8 +787,17 @@ if __name__ == "__main__":
     create.add_argument(
         "--timeout", default=1200, help="How long to wait for creation (seconds)"
     )
-    create.add_argument("--allow-downgrade", action="store_true", help="Allow downgrade to lower presets")
-    create.add_argument("--downgrade-after", type=int, default=2, help="Downgrade to lower preset after N failed attempts")
+    create.add_argument(
+        "--allow-downgrade",
+        action="store_true",
+        help="Allow downgrade to lower presets",
+    )
+    create.add_argument(
+        "--downgrade-after",
+        type=int,
+        default=2,
+        help="Downgrade to lower preset after N failed attempts",
+    )
     create.add_argument("--apply", action="store_true", help="Apply the changes")
 
     remove = subparsers.add_parser("remove", help="Remove an existing VM")
