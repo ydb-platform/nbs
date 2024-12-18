@@ -376,7 +376,7 @@ struct THistogramRequestCounters
         TMemberMeta<THighResCounter THistogramRequestCounters::*>;
 
     explicit THistogramRequestCounters(
-        EHistogramCounterOptions histCounterOptions)
+            EHistogramCounterOptions histCounterOptions)
         : Flush(EPublishingPolicy::Repl, histCounterOptions)
         , AddBlobs(EPublishingPolicy::Repl, histCounterOptions)
         , Compaction(EPublishingPolicy::Repl, histCounterOptions)
