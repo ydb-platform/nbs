@@ -1,6 +1,7 @@
 import argparse
 import logging
 import os
+import subprocess
 
 import yatest.common as common
 
