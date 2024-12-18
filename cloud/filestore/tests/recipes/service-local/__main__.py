@@ -70,7 +70,7 @@ def stop(argv):
         bt = subprocess.getoutput(
             f'sudo gdb --batch -p {pid} -ex "thread apply all bt"'
         )
-        logger.warning(f"PID {pid}: backtrace:\n{bt}")
+        logging.warning(f"PID {pid}: backtrace:\n{bt}")
 
         shutdown(pid)
 
