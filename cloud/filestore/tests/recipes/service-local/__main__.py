@@ -64,6 +64,13 @@ def stop(argv):
 
     with open(PID_FILE_NAME) as f:
         pid = int(f.read())
+
+        # Used for debugging filestore-server hangs
+        bt = subprocess.getoutput(
+            f'sudo gdb --batch -p {pid} -ex "thread apply all bt"'
+        )
+        logger.warning(f"PID {pid}: backtrace:\n{bt}")
+
         shutdown(pid)
 
 
