@@ -346,7 +346,7 @@ def create_disk(sdk: SDK, args: argparse.Namespace) -> str:
 def retry_create_vm(func: callable) -> callable:
     @functools.wraps(func)
     def wrapper(sdk: SDK, args: argparse.Namespace) -> callable:
-        total_time_limit = 60 * 60  # 1 hour in seconds
+        total_time_limit = 30 * 60
         retry_interval = 5 * 60
         start_time = time.time()
         attempt = 0
@@ -418,6 +418,11 @@ def create_vm(sdk: SDK, args: argparse.Namespace, attempt: int = 0):
     # attempt it will be downgraded to 64cpu
     # And on 4th attempt it will be downgraded to 48cpu
     logger.info("Attempt %d", attempt)
+    logger.info("Current preset %s", args.preset)
+    logger.info("Downgrade after %d", args.downgrade_after)
+    logger.info("Allow downgrade %s", args.allow_downgrade)
+    logger.info("attempt mod args.downgrade_after = %d", attempt % args.downgrade_after)
+    logger.info("attempt > 0 = %s", attempt > 0)
     if args.allow_downgrade and attempt % args.downgrade_after == 0 and attempt > 0:
         current_preset_index = PRESETS.index(args.preset)
         if current_preset_index > 0:
