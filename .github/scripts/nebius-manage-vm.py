@@ -13,6 +13,7 @@ import nebius.compute.v1.disk_service_pb2 as disk_service_pb2
 import nebius.compute.v1.instance_service_pb2 as instance_service_pb2
 import requests
 import yaml
+import functools
 from github import Auth as GithubAuth
 from github import Github
 from nebius.common.v1.metadata_pb2 import ResourceMetadata
@@ -43,10 +44,6 @@ from nebius.compute.v1.network_interface_pb2 import (
 )
 from nebiusai import SDK, RetryInterceptor, backoff_linear_with_jitter
 from nebiusai.operations import OperationError
-import functools
-import time
-import os
-import requests
 
 SENSITIVE_DATA_VALUES = {}
 if os.environ.get("GITHUB_TOKEN"):
@@ -374,7 +371,6 @@ def retry_create_vm(func: callable) -> callable:
                     raise
                 next_run_time = time.time() + retry_interval
                 logger.error("Failed to create VM: %s", e)
-                ## convert to proper date
                 logger.info("Next run will be at %s", time.ctime(next_run_time))
                 while (
                     time.time() < next_run_time
