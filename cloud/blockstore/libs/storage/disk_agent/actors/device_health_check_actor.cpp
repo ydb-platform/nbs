@@ -98,10 +98,10 @@ void TDeviceHealthCheckActor::Bootstrap(const TActorContext& ctx)
     Become(&TThis::StateWork);
     ScheduleHealthCheck(ctx);
 
-    LOG_INFO(
+    LOG_INFO_S(
         ctx,
         TBlockStoreComponents::DISK_AGENT_WORKER,
-        "Device Health Check Actor started");
+        "Device Health Check Actor started. Devices: " << Devices.size());
 }
 
 void TDeviceHealthCheckActor::ScheduleHealthCheck(const TActorContext& ctx)

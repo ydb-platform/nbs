@@ -161,6 +161,11 @@ TString TDiskAgentActor::GetCachedSessionsPath() const
 
 void TDiskAgentActor::RestartDeviceHealthChecking(const TActorContext& ctx)
 {
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::DISK_AGENT,
+        "Restart device health checking");
+
     if (HealthCheckActor) {
         NCloud::Send<TEvents::TEvPoisonPill>(ctx, HealthCheckActor);
         HealthCheckActor = {};
@@ -171,7 +176,7 @@ void TDiskAgentActor::RestartDeviceHealthChecking(const TActorContext& ctx)
             ctx,
             NDiskAgent::CreateDeviceHealthCheckActor(
                 ctx.SelfID,
-                State->GetDevices()));
+                State->GetEnabledDevices()));
     }
 }
 
