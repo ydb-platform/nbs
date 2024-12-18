@@ -1,7 +1,6 @@
 #include "bootstrap.h"
 
 #include "config_initializer.h"
-#include "library/cpp/build_info/build_info_static.h"
 #include "options.h"
 
 #include <cloud/blockstore/libs/common/caching_allocator.h>
@@ -56,6 +55,7 @@
 #include <contrib/ydb/core/protos/config.pb.h>
 #include <contrib/ydb/core/tablet_flat/probes.h>
 
+#include <library/cpp/build_info/build_info_static.h>
 #include <library/cpp/lwtrace/mon/mon_lwtrace.h>
 #include <library/cpp/lwtrace/probes.h>
 #include <library/cpp/monlib/dynamic_counters/counters.h>
@@ -239,7 +239,7 @@ void TBootstrap::InitHTTPServer()
            R"(<h3>This node is not registered in the NodeBroker. See "DisableNodeBrokerRegistrationOnDevicelessAgent" in the disk agent config.</h3><br>)"
            R"(<div class="container"><h2>Version</h2><pre>)";
 
-    const auto* version = GetProgramSvnVersion();
+    TStringBuf version = GetProgramSvnVersion();
     stubMonPageBuilder << version;
     if (!TString(version).EndsWith("\n")) {
         stubMonPageBuilder << "\n";
