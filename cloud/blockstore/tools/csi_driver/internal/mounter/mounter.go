@@ -89,3 +89,22 @@ func (m *mounter) NeedResize(devicePath string, deviceMountPath string) (bool, e
 func (m *mounter) Resize(devicePath string, deviceMountPath string) (bool, error) {
 	return mount.NewResizeFs(m.exec).Resize(devicePath, deviceMountPath)
 }
+
+func (m *mounter) FormatAndMount(source string, target string, fsType string, options []string) error {
+	formatOptions := []string{"-t", fsType}
+	if fsType == "ext4" {
+		formatOptions = append(formatOptions, "-E", "nodiscard")
+	}
+	if fsType == "xfs" {
+		formatOptions = append(formatOptions, "-K")
+	}
+
+	safeFormatAndMount := mount.NewSafeFormatAndMount(m.mnt, m.exec)
+	return safeFormatAndMount.FormatAndMountSensitiveWithFormatOptions(
+		source,
+		target,
+		fsType,
+		options,
+		nil,
+		formatOptions)
+}

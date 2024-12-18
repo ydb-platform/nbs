@@ -4,6 +4,8 @@ package mounter
 
 type Interface interface {
 	Mount(source string, target string, fsType string, options []string) error
+	FormatAndMount(source string, target string, fsType string, options []string) error
+
 	IsMountPoint(file string) (bool, error)
 	CleanupMountPoint(target string) error
 
