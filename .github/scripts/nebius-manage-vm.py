@@ -417,7 +417,7 @@ def create_vm(sdk: SDK, args: argparse.Namespace, attempt: int = 0):
     # if our preset is 80cpu and downgrade_after is 2 on third
     # attempt it will be downgraded to 64cpu
     # And on 4th attempt it will be downgraded to 48cpu
-    if args.allow_downgrade and attempt % args.downgrade_after == 0:
+    if args.allow_downgrade and attempt % args.downgrade_after == 0 and attempt > 0:
         current_preset_index = PRESETS.index(args.preset)
         if current_preset_index > 0:
             args.preset = PRESETS[current_preset_index - 1]

@@ -122,7 +122,7 @@ runs:
         VM_IMAGE: ${{ inputs.vm_image }}
         VM_LABELS: ${{ inputs.vm_labels }}
         VM_USER_PASSWD: ${{ inputs.vm_user_passwd }}
-        VM_ALLOW_DOWNGRADE: ${{ inputs.vm_allow_downgrade && '--allow-downgrade' || '' }}
+        VM_ALLOW_DOWNGRADE: ${{ inputs.vm_allow_downgrade == 'yes' && '--allow-downgrade' || '' }}
 
     - name: save console output if we had any
       if: ${{ steps.create-vm.outputs.console-output }}
