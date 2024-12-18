@@ -13,6 +13,7 @@ class FilestoreVhost(Daemon):
             command=configurator.generate_command(),
             cwd=configurator.working_dir,
             timeout=180,
+            ping_attempts=5,
             **daemon_log_files(prefix="filestore-vhost", cwd=configurator.working_dir))
 
     @property
