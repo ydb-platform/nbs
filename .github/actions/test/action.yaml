@@ -65,15 +65,17 @@ runs:
       id: init
       run: |
         export TMP_DIR=/home/github/tmp
-        echo "TMP_DIR=$TMP_DIR" >> $GITHUB_ENV
-        echo "LOG_DIR=$TMP_DIR/logs" >> $GITHUB_ENV
-        echo "OUT_DIR=$TMP_DIR/out" >> $GITHUB_ENV
-        echo "ARTIFACTS_DIR=$TMP_DIR/artifacts" >> $GITHUB_ENV
-        echo "TESTS_DATA_DIR=$TMP_DIR/test_data" >> $GITHUB_ENV
-        echo "REPORTS_ARTIFACTS_DIR=$TMP_DIR/artifacts/test_reports" >> $GITHUB_ENV
-        echo "JUNIT_REPORT_XML=$TMP_DIR/junit.xml" >> $GITHUB_ENV
-        echo "JUNIT_REPORT_PARTS=$TMP_DIR/junit-split" >> $GITHUB_ENV
-        echo "SUMMARY_LINKS=$(mktemp -p /home/github)" >> $GITHUB_ENV
+        {
+          echo "TMP_DIR=$TMP_DIR"
+          echo "LOG_DIR=$TMP_DIR/logs"
+          echo "OUT_DIR=$TMP_DIR/out"
+          echo "ARTIFACTS_DIR=$TMP_DIR/artifacts"
+          echo "TESTS_DATA_DIR=$TMP_DIR/test_data"
+          echo "REPORTS_ARTIFACTS_DIR=$TMP_DIR/artifacts/test_reports"
+          echo "JUNIT_REPORT_XML=$TMP_DIR/junit.xml"
+          echo "JUNIT_REPORT_PARTS=$TMP_DIR/junit-split"
+          echo "SUMMARY_LINKS=$(mktemp -p /home/github)"
+        } >> $GITHUB_ENV
 
     - name: prepare
       shell: bash --noprofile --norc -eo pipefail -x {0}
@@ -83,6 +85,7 @@ runs:
         chown -R github:github $TMP_DIR $OUT_DIR $ARTIFACTS_DIR $LOG_DIR $JUNIT_REPORT_PARTS \
                                $REPORTS_ARTIFACTS_DIR $SUMMARY_LINKS $GITHUB_WORKSPACE \
                                $GITHUB_STEP_SUMMARY $TESTS_DATA_DIR
+        # shellcheck disable=SC2193
         if [ "${{ inputs.clean_ya_dir }}" == "yes" ] && [ -d /home/github/.ya/ ]; then
           echo "Cleaning ya dir"
           rm -rf /home/github/.ya/
@@ -93,7 +96,7 @@ runs:
         set -x
         extra_params=()
 
-        # FIXME: copy-paste from build_ya
+        # shellcheck disable=SC2195
         case "${{ inputs.build_preset }}" in
           debug)
             build_type=debug
@@ -127,25 +130,29 @@ runs:
             ;;
         esac
 
-
-        if [ ! -z "${{ inputs.test_target }}" ]; then
+        # shellcheck disable=SC2157
+        if [ -n "${{ inputs.test_target }}" ]; then
           readarray -d ',' -t targets < <(printf "%s" "${{ inputs.test_target }}")
           for target in "${targets[@]}"; do
             extra_params+=(--target="${target}")
           done
         fi
 
+        # shellcheck disable=SC2193
         if [ "${{ inputs.use_network_cache }}" == "yes" ]; then
-          if [ ! -z "${{ inputs.bazel_remote_uri }}" ]; then
+          # shellcheck disable=SC2157
+          if [ -n "${{ inputs.bazel_remote_uri }}" ]; then
             extra_params+=(--bazel-remote-store)
             extra_params+=(--bazel-remote-base-uri "${{ inputs.bazel_remote_uri }}")
           fi
 
-          if [ ! -z "${{ inputs.bazel_remote_username }}" ]; then
+          # shellcheck disable=SC2157
+          if [ -n "${{ inputs.bazel_remote_username }}" ]; then
             extra_params+=(--bazel-remote-username "${{ inputs.bazel_remote_username }}")
             extra_params+=(--bazel-remote-password "${{ inputs.bazel_remote_password }}")
           fi
 
+          # shellcheck disable=SC2193
           if [ "${{ inputs.cache_update }}" = "true" ]; then
             extra_params+=(--bazel-remote-put)
           fi
@@ -167,7 +174,7 @@ runs:
         date
         echo "::group::ya-make-test"
         sudo -E -H -u github ./ya test -k --build "${build_type}" \
-          ${test_size[@]/#/--test-size=} ${test_type[@]/#/--test-type=} \
+          "${test_size[@]/#/--test-size=}" "${test_type[@]/#/--test-type=}" \
           --test-threads "${{ inputs.test_threads }}" --link-threads "${{ inputs.link_threads }}" \
           --cache-size 512G --do-not-output-stderrs -T \
           --stat --log-file "$LOG_DIR/ya_log.txt" --evlog-file "$LOG_DIR/ya_evlog.jsonl" \
@@ -200,6 +207,7 @@ runs:
     - name: archive unitest reports (orig)
       shell: bash --noprofile --norc -eo pipefail -x {0}
       run: |
+        # shellcheck disable=SC2024
         sudo -E -H -u github gzip -c $JUNIT_REPORT_XML > $REPORTS_ARTIFACTS_DIR/orig_junit.xml.gz
 
     - name: postprocess junit report
@@ -209,6 +217,7 @@ runs:
         cat .github/config/muted_ya.txt
         cat .github/config/muted_ya_nebius.txt
         MUTED_CONFIG=".github/config/muted_ya.txt"
+        # shellcheck disable=SC2193
         [ "${{ inputs.nebius }}" == "yes" ] && MUTED_CONFIG=".github/config/muted_ya_nebius.txt"
         echo "::endgroup::"
         echo "::group::postprocess-junit"
@@ -226,7 +235,7 @@ runs:
     - name: archive unitest reports (transformed)
       shell: bash --noprofile --norc -eo pipefail -x {0}
       run: |
-        sudo -E -H -u github tar -C $JUNIT_REPORT_PARTS/.. -czf $REPORTS_ARTIFACTS_DIR/junit_parts.xml.tar.gz $(basename $JUNIT_REPORT_PARTS) $JUNIT_REPORT_XML
+        sudo -E -H -u github tar -C $JUNIT_REPORT_PARTS/.. -czf $REPORTS_ARTIFACTS_DIR/junit_parts.xml.tar.gz "$(basename $JUNIT_REPORT_PARTS)" $JUNIT_REPORT_XML
 
     - name: write tests summary
       shell: bash --noprofile --norc -eo pipefail -x {0}
@@ -260,7 +269,7 @@ runs:
 
           echo "::group::Copy-failed-tests-data"
           sudo -E -H -u github .github/scripts/tests/fail-checker.py "$JUNIT_REPORT_XML" --paths-only
-          sudo -E -H -u github .github/scripts/tests/fail-checker.py "$JUNIT_REPORT_XML" --paths-only | while read path; do
+          sudo -E -H -u github .github/scripts/tests/fail-checker.py "$JUNIT_REPORT_XML" --paths-only | while read -r path; do
             echo $path
             find "${GITHUB_WORKSPACE}/${path}" -print0 | xargs -0 xargs -0 cp -L -r --parents -t "$TESTS_DATA_DIR"
           done
@@ -272,7 +281,7 @@ runs:
           echo "::endgroup::"
           echo "::group::remove-images-from-tests-data-dir"
           find "$TESTS_DATA_DIR" -name generated_raw_image -o -name generated_vmdk_image -o -name invalid_qcow2_image -o -name qcow2_fuzzing_image
-          find "$TESTS_DATA_DIR" -name generated_raw_image -o -name generated_vmdk_image -o -name invalid_qcow2_image -o -name qcow2_fuzzing_image -delete
+          find "$TESTS_DATA_DIR" \( -name generated_raw_image -o -name generated_vmdk_image -o -name invalid_qcow2_image -o -name qcow2_fuzzing_image \) -delete
           echo "::endgroup::"
           echo "::group::s3-sync"
           if [ "$SYNC_TO_S3" = "true" ];
@@ -324,18 +333,18 @@ runs:
       if: success() && inputs.upload_ya_dir == 'yes'
       run: |
         function grep_ya_tc() {
-          ps aux | grep [y]a-tc || true
+          ps aux | grep "[y]a-tc" || true
         }
         process_name="ya-tc"
         # by default ya-tc should terminate within 5 minutes
         timeout=360
         start_time=$(date +%s)
         while true; do
-            pgrep -x "ya-tc" && {
-                echo "ya-tc is still running."
+            pgrep -x "$process_name" && {
+                echo "$process_name is still running."
                 grep_ya_tc
             } || {
-                echo "ya-tc is not running."
+                echo "$process_name is not running."
                 grep_ya_tc
                 break
             }
@@ -344,9 +353,9 @@ runs:
             elapsed_time=$((current_time - start_time))
 
             if [ "$elapsed_time" -ge "$timeout" ]; then
-                echo "Timeout reached. ya-tc is still running. killing it"
+                echo "Timeout reached. $process_name is still running. killing it"
                 grep_ya_tc
-                pkill -f ya-tc || true
+                pkill -f $process_name || true
                 grep_ya_tc
                 break
             fi

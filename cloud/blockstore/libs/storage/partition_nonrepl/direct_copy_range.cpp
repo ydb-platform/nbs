@@ -132,6 +132,9 @@ void TDirectCopyRangeActor::Fallback(const TActorContext& ctx)
 
 void TDirectCopyRangeActor::Done(const TActorContext& ctx, NProto::TError error)
 {
+    using EExecutionSide =
+        TEvNonreplPartitionPrivate::TEvRangeMigrated::EExecutionSide;
+
     ProcessError(
         *NActors::TActorContext::ActorSystem(),
         *TargetInfo->PartConfig,
@@ -141,6 +144,7 @@ void TDirectCopyRangeActor::Done(const TActorContext& ctx, NProto::TError error)
     auto response =
         std::make_unique<TEvNonreplPartitionPrivate::TEvRangeMigrated>(
             std::move(error),
+            EExecutionSide::Remote,
             Range,
             StartTs,
             ReadDuration,

@@ -147,6 +147,9 @@ void TMirrorPartitionActor::StartScrubbingRange(
             ScrubbingRangeId = 0;
         }
         ScrubbingRangeStarted = ctx.Now();
+        ScrubbingRangeRescheduled = false;
+    } else {
+        ScrubbingRangeRescheduled = true;
     }
     ScheduleScrubbingNextRange(ctx);
 }
@@ -165,12 +168,14 @@ void TMirrorPartitionActor::CompareChecksums(const TActorContext& ctx)
 
     const bool equal = (majorCount == checksums.size());
     if (!equal && WriteIntersectsWithScrubbing) {
-        LOG_DEBUG(
-            ctx,
-            TBlockStoreComponents::PARTITION,
-            "[%s] Reschedule scrubbing for range %s due to inflight write",
-            DiskId.c_str(),
-            DescribeRange(GetScrubbingRange()).c_str());
+        if (!ScrubbingRangeRescheduled) {
+            LOG_WARN(
+                ctx,
+                TBlockStoreComponents::PARTITION,
+                "[%s] Reschedule scrubbing for range %s due to inflight write",
+                DiskId.c_str(),
+                DescribeRange(GetScrubbingRange()).c_str());
+        }
         StartScrubbingRange(ctx, ScrubbingRangeId);
         return;
     }
@@ -179,12 +184,14 @@ void TMirrorPartitionActor::CompareChecksums(const TActorContext& ctx)
         if (ctx.Now() - ScrubbingRangeStarted <
             Config->GetScrubbingChecksumMismatchTimeout())
         {
-            LOG_WARN(
-                ctx,
-                TBlockStoreComponents::PARTITION,
-                "[%s] Checksum mismatch for range %s, reschedule scrubbing",
-                DiskId.c_str(),
-                DescribeRange(GetScrubbingRange()).c_str());
+            if (!ScrubbingRangeRescheduled) {
+                LOG_WARN(
+                    ctx,
+                    TBlockStoreComponents::PARTITION,
+                    "[%s] Checksum mismatch for range %s, reschedule scrubbing",
+                    DiskId.c_str(),
+                    DescribeRange(GetScrubbingRange()).c_str());
+            }
 
             StartScrubbingRange(ctx, ScrubbingRangeId);
             return;

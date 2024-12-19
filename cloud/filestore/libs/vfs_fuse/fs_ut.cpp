@@ -312,6 +312,83 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         UNIT_ASSERT_VALUES_EQUAL(1, fsyncCalledWithDataSync.load());
     }
 
+    void CheckCreateOpenHandleRequest(bool isCreate, bool isWritebackCacheEnabled)
+    {
+        NProto::TFileStoreFeatures features;
+        if (isWritebackCacheEnabled) {
+            features.SetGuestWritebackCacheEnabled(true);
+        }
+
+        TBootstrap bootstrap(
+            CreateWallClockTimer(),
+            CreateScheduler(),
+            features);
+
+        const ui64 nodeId = 123;
+        const ui64 handleId = 456;
+        bootstrap.Service->CreateHandleHandler =
+            [&](auto callContext, auto request)
+        {
+            if (isWritebackCacheEnabled) {
+                UNIT_ASSERT(HasFlag(
+                    request->GetFlags(),
+                    NProto::TCreateHandleRequest::E_READ));
+            } else {
+                UNIT_ASSERT(!HasFlag(
+                    request->GetFlags(),
+                    NProto::TCreateHandleRequest::E_READ));
+            }
+            UNIT_ASSERT(HasFlag(
+                request->GetFlags(),
+                NProto::TCreateHandleRequest::E_WRITE));
+            UNIT_ASSERT_VALUES_EQUAL(FileSystemId, callContext->FileSystemId);
+
+            NProto::TCreateHandleResponse result;
+            result.SetHandle(handleId);
+            result.MutableNodeAttr()->SetId(nodeId);
+            return MakeFuture(result);
+        };
+
+        bootstrap.Start();
+
+
+        auto req = std::make_shared<TCreateHandleRequest>("/file1", RootNodeId);
+        req->In->Body.flags |= O_WRONLY;
+        auto handle = bootstrap.Fuse->SendRequest<TCreateHandleRequest>(req);
+        UNIT_ASSERT_VALUES_EQUAL(handle.GetValue(WaitTimeout), handleId);
+
+        if (!isCreate) {
+            auto req = std::make_shared<TOpenHandleRequest>(handleId);
+            req->In->Body.flags |= O_WRONLY;
+            auto handle = bootstrap.Fuse->SendRequest<TOpenHandleRequest>(req);
+            UNIT_ASSERT_VALUES_EQUAL(handle.GetValue(WaitTimeout), handleId);
+        }
+    }
+
+    Y_UNIT_TEST(ShouldHandleCreateHandleRequestWithGuestWritebackCacheEnabled)
+    {
+        CheckCreateOpenHandleRequest(
+            true,   // Create Handle
+            false   // no guest writeback cache
+        );
+        CheckCreateOpenHandleRequest(
+            true,   // Create Handle
+            true    // guest writeback cache
+        );
+    }
+
+    Y_UNIT_TEST(ShouldHandleOpenHandleRequestWithGuestWritebackCacheEnabled)
+    {
+        CheckCreateOpenHandleRequest(
+            false,   // Open Handle
+            false    // no guest writeback cache
+        );
+        CheckCreateOpenHandleRequest(
+            false,   // Open Handle
+            true     // guest writeback cache
+        );
+    }
+
     Y_UNIT_TEST(ShouldPassSessionId)
     {
         TBootstrap bootstrap;

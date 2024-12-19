@@ -154,6 +154,36 @@ func (s *scheduler) ScheduleRegularTasks(
 			}
 
 			metadataCtx := headers.SetIncomingRequestID(ctx, requestID.String())
+
+			// Parent span for tasks scheduled at this iteration.
+			metadataCtx, span := tracing.StartSpan(
+				metadataCtx,
+				"ScheduleRegularTasks",
+				tracing.WithAttributes(
+					tracing.AttributeString("task_type", taskType),
+					tracing.AttributeString("request_id", requestID.String()),
+					tracing.AttributeInt(
+						"max_tasks_inflight",
+						schedule.MaxTasksInflight,
+					),
+					tracing.AttributeBool("use_crontab", schedule.UseCrontab),
+				),
+			)
+			if schedule.UseCrontab {
+				span.SetAttributes(
+					tracing.AttributeInt("crontab_hour", schedule.Hour),
+					tracing.AttributeInt("crontab_minute", schedule.Min),
+				)
+			} else {
+				span.SetAttributes(
+					tracing.AttributeString(
+						"schedule_interval",
+						schedule.ScheduleInterval.String(),
+					),
+				)
+			}
+			span.End()
+
 			metadataCtx = tracing.SetTracingContext(metadataCtx)
 			metadata := tasks_storage.NewMetadata(
 				headers.GetTracingHeaders(metadataCtx),

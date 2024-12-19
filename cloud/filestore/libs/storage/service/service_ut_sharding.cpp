@@ -3819,6 +3819,18 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
                 E_INVALID_STATE,
                 response->GetStatus(),
                 response->GetErrorReason());
+
+            // configureshards for a shard should work with force flag
+            request.SetForce(true);
+
+            buf.clear();
+            google::protobuf::util::MessageToJsonString(request, &buf);
+            service.SendExecuteActionRequest("configureshards", buf);
+            response = service.RecvExecuteActionResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                response->GetStatus(),
+                response->GetErrorReason());
         }
     }
 
@@ -3854,6 +3866,285 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         ids = TVector<TString>(fsIds.begin(), fsIds.end());
         Sort(ids);
         UNIT_ASSERT_VALUES_EQUAL(expected, ids);
+    }
+
+    void CheckPendingCreateNodeInShards(bool withCreateHandle, bool withTabletReboot)
+    {
+        NProto::TStorageConfig config;
+        TTestEnv env({}, config);
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+
+        const TString fsId = "test";
+        const auto shard1Id = fsId + "-f1";
+        const auto shard2Id = fsId + "-f2";
+
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+        service.CreateFileStore(fsId, 1'000);
+        service.CreateFileStore(shard1Id, 1'000);
+        service.CreateFileStore(shard2Id, 1'000);
+
+        ConfigureShards(service, fsId, shard1Id, shard2Id);
+
+        auto headers = service.InitSession(fsId, "client");
+
+        bool createNodeObserved = false;
+        bool createHandleObserved = false;
+        TAutoPtr<IEventHandle> createNodeOnShard;
+        ui64 tabletId = -1;
+
+        auto& runtime = env.GetRuntime();
+        runtime.SetEventFilter(
+            [&](auto& runtime, TAutoPtr<IEventHandle>& event)
+            {
+                Y_UNUSED(runtime);
+                switch (event->GetTypeRewrite()) {
+                    case TEvService::EvCreateHandleRequest:
+                        createHandleObserved = true;
+                        break;
+                    case TEvService::EvCreateNodeRequest: {
+                        const auto* msg =
+                            event->Get<TEvService::TEvCreateNodeRequest>();
+                        if (msg->Record.GetShardFileSystemId().empty()) {
+                            createNodeOnShard = event.Release();
+                            return true;
+                        }
+                        createNodeObserved = true;
+
+                        break;
+                    }
+                    case TEvSSProxy::EvDescribeFileStoreResponse: {
+                        using TDesc = TEvSSProxy::TEvDescribeFileStoreResponse;
+                        const auto* msg = event->Get<TDesc>();
+                        const auto& desc =
+                            msg->PathDescription.GetFileStoreDescription();
+                        if (desc.GetConfig().GetFileSystemId() == fsId) {
+                            tabletId = desc.GetIndexTabletId();
+                        }
+                        break;
+                    }
+                }
+                return false;
+            });
+
+        auto checkListNodes = [&](auto expectedNames) {
+            auto listNodesRsp =
+                service.ListNodes(headers, fsId, RootNodeId)->Record;
+
+            UNIT_ASSERT_VALUES_EQUAL(expectedNames.size(), listNodesRsp.NamesSize());
+            UNIT_ASSERT_VALUES_EQUAL(expectedNames.size(), listNodesRsp.NodesSize());
+
+            const auto& names = listNodesRsp.GetNames();
+            TVector<TString> listedNames(names.begin(), names.end());
+            Sort(listedNames);
+            UNIT_ASSERT_VALUES_EQUAL(expectedNames, listedNames);
+        };
+
+        // send create node/handle, delay response in shard and make sure node is not
+        // listed
+        if (!withCreateHandle) {
+            service.SendCreateNodeRequest(
+                headers,
+                TCreateNodeArgs::File(
+                    RootNodeId,
+                    "file1",
+                    0,   // mode
+                    shard1Id));
+        } else {
+            service.SendCreateHandleRequest(
+                headers,
+                fsId,
+                RootNodeId,
+                "file1",
+                TCreateHandleArgs::CREATE,
+                shard1Id);
+        }
+        runtime.DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
+
+        if (withCreateHandle) {
+            UNIT_ASSERT(!createNodeObserved);
+            UNIT_ASSERT(createHandleObserved);
+        } else {
+            UNIT_ASSERT(createNodeObserved);
+            UNIT_ASSERT(!createHandleObserved);
+        }
+        UNIT_ASSERT(createNodeOnShard);
+
+        if (withTabletReboot) {
+            TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
+            tablet.RebootTablet();
+
+            headers = service.InitSession(fsId, "client", {}, true);
+        }
+
+        checkListNodes(TVector<TString>{});
+
+        // send delayed response in shard and make sure node is listed
+        auto createNodeRsp =
+            std::make_unique<TEvService::TEvCreateNodeResponse>();
+        runtime.Send(
+            new IEventHandle(
+                createNodeOnShard->Sender,
+                createNodeOnShard->Recipient,
+                createNodeRsp.release(),
+                0,   // flags
+                createNodeOnShard->Cookie),
+            nodeIdx);
+        runtime.DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
+
+        checkListNodes(TVector<TString>{"file1"});
+    }
+
+    Y_UNIT_TEST(ShouldNotListPendingCreateNodeInShards)
+    {
+        CheckPendingCreateNodeInShards(
+            false,   // don't create handle
+            false    // don't reboot tablet
+        );
+        CheckPendingCreateNodeInShards(
+            false,   // don't create handle
+            true     // reboot tablet
+        );
+    }
+
+    Y_UNIT_TEST(ShouldNotListPendingCreateHandleInShards)
+    {
+        CheckPendingCreateNodeInShards(
+            true,    // create handle
+            false    // don't reboot tablet
+        );
+        CheckPendingCreateNodeInShards(
+            true,   // create handle
+            true    // reboot tablet
+        );
+    }
+
+    Y_UNIT_TEST(ShouldBalanceShardsByFreeSpace)
+    {
+        NProto::TStorageConfig config;
+        config.SetShardIdSelectionInLeaderEnabled(true);
+        config.SetAutomaticShardCreationEnabled(true);
+        config.SetShardAllocationUnit(4_MB);
+        config.SetAutomaticallyCreatedShardSize(4_MB);
+        config.SetShardBalancerMinFreeSpaceReserve(4_KB);
+        config.SetShardBalancerDesiredFreeSpaceReserve(1_MB);
+        config.SetMultiTabletForwardingEnabled(true);
+
+        TTestEnv env({}, config);
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+
+        const TString fsId = "test";
+
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+        service.CreateFileStore(fsId, 20_MB / 4_KB);
+
+        // waiting for IndexTablet start after the restart triggered by
+        // configureshards
+        WaitForTabletStart(service);
+
+        TVector<TString> expected = {
+            fsId,
+            fsId + "_s1",
+            fsId + "_s2",
+            fsId + "_s3",
+            fsId + "_s4",
+            fsId + "_s5",
+        };
+        auto listing = service.ListFileStores();
+        auto fsIds = listing->Record.GetFileStores();
+        TVector<TString> ids(fsIds.begin(), fsIds.end());
+        Sort(ids);
+        UNIT_ASSERT_VALUES_EQUAL(expected, ids);
+
+        auto headers = service.InitSession(fsId, "client");
+
+        TVector<ui64> handles;
+        TVector<ui64> nodes;
+        TSet<ui32> shards;
+        for (ui32 i = 0; i < 5; ++i) {
+            auto createHandleResponse = service.CreateHandle(
+                headers,
+                fsId,
+                RootNodeId,
+                Sprintf("file%u", i),
+                TCreateHandleArgs::CREATE)->Record;
+
+            const auto nodeId = createHandleResponse.GetNodeAttr().GetId();
+            shards.insert(ExtractShardNo(nodeId));
+            nodes.push_back(nodeId);
+
+            const auto handleId = createHandleResponse.GetHandle();
+            handles.push_back(handleId);
+        }
+
+        UNIT_ASSERT_VALUES_EQUAL(5, shards.size());
+
+        service.WriteData(
+            headers,
+            fsId,
+            nodes[0],
+            handles[0],
+            0,
+            TString(3_MB + 4_KB, 'a'));
+
+        service.WriteData(
+            headers,
+            fsId,
+            nodes[2],
+            handles[2],
+            0,
+            TString(3_MB + 4_KB, 'a'));
+
+        service.WriteData(
+            headers,
+            fsId,
+            nodes[4],
+            handles[4],
+            0,
+            TString(3_MB + 4_KB, 'a'));
+
+        // waiting for async stats aggregation from shards
+        // doing it before triggering another event to avoid DispatchEvents call
+        // which does a long busy-wait loop
+        env.GetRuntime().AdvanceCurrentTime(TDuration::Seconds(15));
+        // just triggering another event chain - doesn't matter which one
+        service.StatFileStore(headers, fsId);
+
+        TSet<ui32> emptyShards;
+        emptyShards.insert(ExtractShardNo(nodes[1]));
+        emptyShards.insert(ExtractShardNo(nodes[3]));
+
+        handles.clear();
+        nodes.clear();
+        shards.clear();
+
+        for (ui32 i = 0; i < 5; ++i) {
+            auto createHandleResponse = service.CreateHandle(
+                headers,
+                fsId,
+                RootNodeId,
+                Sprintf("file%u", 5 + i),
+                TCreateHandleArgs::CREATE)->Record;
+
+            const auto nodeId = createHandleResponse.GetNodeAttr().GetId();
+            shards.insert(ExtractShardNo(nodeId));
+            nodes.push_back(nodeId);
+
+            const auto handleId = createHandleResponse.GetHandle();
+            handles.push_back(handleId);
+        }
+
+        UNIT_ASSERT_VALUES_EQUAL(2, shards.size());
+        auto l = emptyShards.begin();
+        auto r = shards.begin();
+        while (l != emptyShards.end()) {
+            UNIT_ASSERT_VALUES_EQUAL(*l, *r);
+            ++l;
+            ++r;
+        }
     }
 }
 

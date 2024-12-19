@@ -194,6 +194,32 @@ class EternalTestHelper:
             file.write(json)
             file.flush()
 
+    def copy_prepare_db_script_to_instance(self, instance_ip: str):
+        script_name = self._DB_TEST_INIT_SCRIPT % self.test_config.db
+        with self.module_factories.make_sftp_client(self.args.dry_run, instance_ip, ssh_key_path=self.args.ssh_key_path) as sftp:
+            file = sftp.file(f'{self._DB_TEST_INIT_SCRIPT_PATH}/{script_name}', 'w')
+            file.write(resource.find(script_name).decode('utf8'))
+            file.flush()
+            sftp.chmod(f'{self._DB_TEST_INIT_SCRIPT_PATH}/{script_name}', 0o755)
+
+    def run_prepare_db_script_on_instance(self, instance_ip: str):
+        script_name = self._DB_TEST_INIT_SCRIPT % self.test_config.db
+        with self.module_factories.make_ssh_client(self.args.dry_run, instance_ip, ssh_key_path=self.args.ssh_key_path) as ssh:
+            _, stdout, stderr = ssh.exec_command(
+                f'cp {self._DB_TEST_INIT_SCRIPT_PATH}/{script_name} {self._DB_TEST_INIT_SCRIPT_PATH}/{script_name}.run')
+            if stdout.channel.recv_exit_status() != 0 or stderr.channel.recv_exit_status() != 0:
+                self.logger.error(f'Failed to copy script to instance:\n'
+                                  f'stderr: {"".join(stderr.readlines())}\n'
+                                  f'stdout: {"".join(stdout.readlines())}')
+                raise Error('Failed to run command')
+            _, stdout, stderr = ssh.exec_command(f'{self._DB_TEST_INIT_SCRIPT_PATH}/{script_name}.run')
+            exit_code = stdout.channel.recv_exit_status()
+            if exit_code != 0:
+                self.logger.error(f'Failed to prepare db test:\n'
+                                  f'stderr: {"".join(stderr.readlines())}\n'
+                                  f'stdout: {"".join(stdout.readlines())}')
+                raise Error('Failed to run command')
+
     def create_systemd_load_service_on_instance(self, instance_ip: str, load_config: LoadConfig):
         service_config = render_load_service_config(load_config)
 
@@ -224,6 +250,11 @@ class EternalTestHelper:
             load_command += get_generate_load_command(load_config)
 
         return load_command
+
+    def generate_run_load_db_command(self) -> str:
+        return (self._SYSBENCH_INIT_CMD + ' && ' + self._SYSBENCH_TEST_CMD
+                if 'mysql' in self.test_config.db
+                else self._PGBENCH_INIT_CMD + ' && ' + self._PGBENCH_TEST_CMD)
 
     def run_command_in_background(self, instance_ip: str, command: str):
         self.logger.info(f'Running command on instance:\n{command}')
@@ -692,31 +723,16 @@ class EternalTestHelper:
 
         instance = self.create_and_configure_vm()
         self.logger.info('Prepare database, executing script')
-        with self.module_factories.make_sftp_client(self.args.dry_run, instance.ip, ssh_key_path=self.args.ssh_key_path) as sftp:
-            script_name = self._DB_TEST_INIT_SCRIPT % self.test_config.db
-            file = sftp.file(f'{self._DB_TEST_INIT_SCRIPT_PATH}/{script_name}', 'w')
-            file.write(resource.find(script_name).decode('utf8'))
-            file.flush()
-            sftp.chmod(f'{self._DB_TEST_INIT_SCRIPT_PATH}/{script_name}', 0o755)
 
-        with self.module_factories.make_ssh_client(self.args.dry_run, instance.ip, ssh_key_path=self.args.ssh_key_path) as ssh:
-            _, stdout, stderr = ssh.exec_command(f'{self._DB_TEST_INIT_SCRIPT_PATH}/{script_name}')
-            exit_code = stdout.channel.recv_exit_status()
-            if exit_code != 0:
-                self.logger.error(f'Failed to prepare db test:\n'
-                                  f'stderr: {"".join(stderr.readlines())}\n'
-                                  f'stdout: {"".join(stdout.readlines())}')
-                raise Error('Failed to run command')
+        self.copy_prepare_db_script_to_instance(instance.ip)
+        self.run_prepare_db_script_on_instance(instance.ip)
 
         if 'mysql' in self.test_config.db:
             self.copy_test_script_to_instance(instance.ip, 'oltp-custom.lua', self._SYSBENCH_SCRIPT_PATH)
-            self.run_command_in_background(
-                instance.ip,
-                self._SYSBENCH_INIT_CMD + ' && ' + self._SYSBENCH_TEST_CMD)
-        else:
-            self.run_command_in_background(
-                instance.ip,
-                self._PGBENCH_INIT_CMD + ' && ' + self._PGBENCH_TEST_CMD)
+
+        self.run_command_in_background(
+            instance.ip,
+            self.generate_run_load_db_command())
 
     def check_load_on_device(self, instance: Ycp.Instance, device: str):
         self.logger.info(f'Check if eternal load running on instance id=<{instance.id}>, device=<{device}>')

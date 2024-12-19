@@ -243,7 +243,8 @@ ModifyScheme {
         ]
 
         logger.info("Init scheme {}".format(command))
-        subprocess.check_call(command)
+        with open(self.__cwd + "/ydbd_output.log", "w") as ydbd_output:
+            subprocess.check_call(command, stdout=ydbd_output, stderr=ydbd_output)
 
     @property
     def nbs_port(self):

@@ -195,11 +195,14 @@ void TIndexTabletActor::CompleteTx_ListNodes(
             const auto& ref = args.ChildRefs[i];
             requestBytes += ref.Name.size();
             if (ref.ShardId) {
-                AddExternalNode(
-                    record,
-                    ref.Name,
-                    ref.ShardId,
-                    ref.ShardNodeName);
+                if (!HasPendingNodeCreateInShard(ref.ShardNodeName)) {
+                    AddExternalNode(
+                        record,
+                        ref.Name,
+                        ref.ShardId,
+                        ref.ShardNodeName);
+
+                }
 
                 continue;
             }

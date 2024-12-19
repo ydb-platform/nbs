@@ -50,6 +50,11 @@ func (c *Mock) Resize(devicePath string, deviceMountPath string) (bool, error) {
 	return args.Get(0).(bool), args.Error(1)
 }
 
+func (c *Mock) FormatAndMount(source string, target string, fsType string, options []string) error {
+	args := c.Called(source, target, fsType, options)
+	return args.Error(0)
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 func NewMock() *Mock {

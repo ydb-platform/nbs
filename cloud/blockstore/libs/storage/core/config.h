@@ -35,15 +35,13 @@ public:
         NFeatures::TFeaturesConfigPtr featuresConfig);
     ~TStorageConfig();
 
-    TStorageConfig(const TStorageConfig& config);
-
     void SetFeaturesConfig(NFeatures::TFeaturesConfigPtr featuresConfig);
 
     void Register(NKikimr::TControlBoard& controlBoard);
 
-    void Merge(const NProto::TStorageServiceConfig& storageServiceConfig);
-
-    bool Equals(const TStorageConfig& other) const;
+    static TStorageConfigPtr Merge(
+        TStorageConfigPtr config,
+        const NProto::TStorageServiceConfig& patch);
 
     struct TValueByName
     {
@@ -66,7 +64,7 @@ public:
 
     TValueByName GetValueByName(const TString& name) const;
 
-    const NProto::TStorageServiceConfig& GetStorageConfigProto() const;
+    [[nodiscard]] NProto::TStorageServiceConfig GetStorageConfigProto() const;
 
     TString GetSchemeShardDir() const;
     ui32 GetWriteBlobThreshold() const;
