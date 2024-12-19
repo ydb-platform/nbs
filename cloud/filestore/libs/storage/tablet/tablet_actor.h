@@ -332,7 +332,7 @@ private:
 
     NProtoPrivate::TStorageStats CachedAggregateStats;
     TVector<TShardStats> CachedShardStats;
-    bool CachedStatsFetchingInProgress = false;
+    TInstant CachedStatsFetchingStartTs;
 
     const IProfileLogPtr ProfileLog;
     const ITraceSerializerPtr TraceSerializer;
