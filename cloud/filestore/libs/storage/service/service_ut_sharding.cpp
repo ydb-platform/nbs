@@ -4061,6 +4061,10 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
 
         auto headers = service.InitSession(fsId, "client");
 
+        // creating 5 files - we should have round-robin balancing at this
+        // point since all shards have enough free space - more than the
+        // DesiredFreeSpaceReserve threshold
+
         TVector<ui64> handles;
         TVector<ui64> nodes;
         TSet<ui32> shards;
@@ -4080,7 +4084,12 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
             handles.push_back(handleId);
         }
 
+        // checking that we indeed created those 5 files in 5 shards
+
         UNIT_ASSERT_VALUES_EQUAL(5, shards.size());
+
+        // writing some data to 3 of the 5 files to make 3 of the 5 shards have
+        // less than DesiredFreeSpaceReserve free space
 
         service.WriteData(
             headers,
@@ -4121,6 +4130,10 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         nodes.clear();
         shards.clear();
 
+        // creating 5 new files - these files should be balanced among the
+        // 2 remaining shards which still have more than DesiredFreeSpaceReserve
+        // free space
+
         for (ui32 i = 0; i < 5; ++i) {
             auto createHandleResponse = service.CreateHandle(
                 headers,
@@ -4136,6 +4149,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
             const auto handleId = createHandleResponse.GetHandle();
             handles.push_back(handleId);
         }
+
+        // checking that the new 5 files were indeed created in those 2 shards
 
         UNIT_ASSERT_VALUES_EQUAL(2, shards.size());
         auto l = emptyShards.begin();
