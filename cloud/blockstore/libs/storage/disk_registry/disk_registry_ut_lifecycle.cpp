@@ -2140,6 +2140,8 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
         auto config = CreateDefaultStorageConfig();
         config.SetNonReplicatedDiskSwitchToReadOnlyTimeout(
             TDuration{5s}.MilliSeconds());
+        config.SetDiskRegistryInitialAgentRejectionThreshold(100.0);
+
         auto runtime = TTestRuntimeBuilder()
             .With(config)
             .WithAgents(agents)
