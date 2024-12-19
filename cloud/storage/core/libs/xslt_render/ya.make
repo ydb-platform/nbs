@@ -1,4 +1,4 @@
-LIBRARY(xslt-render)
+LIBRARY(xslt_render)
 
 SRCS(
     xml_document.cpp

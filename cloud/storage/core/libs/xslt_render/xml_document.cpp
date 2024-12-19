@@ -12,11 +12,11 @@ using namespace NCloud;
 TDocument::Source ToTDocumentSource(TXmlNodeWrapper::ESource source)
 {
     switch (source) {
-        case TXmlNodeWrapper::ROOT_NAME:
+        case TXmlNodeWrapper::ESource::ROOT_NAME:
             return TDocument::RootName;
-        case TXmlNodeWrapper::FILE:
+        case TXmlNodeWrapper::ESource::FILE:
             return TDocument::File;
-        case TXmlNodeWrapper::STRING:
+        case TXmlNodeWrapper::ESource::STRING:
             return TDocument::String;
     }
 }
@@ -27,16 +27,16 @@ namespace NCloud {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TXmlNodeWrapper::TData
+struct TXmlNodeWrapper::TImpl
 {
-    TData(const TString& source, ESource type)
+    TImpl(const TString& source, ESource type)
         : Document(std::make_shared<TDocument>(source, ToTDocumentSource(type)))
         , Node(Document->Root())
     {}
 
-    TData ToNewNode(TNode newNode) const
+    TImpl ToNewNode(TNode newNode) const
     {
-        TData resultNode = *this;
+        TImpl resultNode = *this;
         resultNode.Node = newNode;
         return resultNode;
     }
@@ -46,29 +46,24 @@ struct TXmlNodeWrapper::TData
 };
 
 TXmlNodeWrapper::TXmlNodeWrapper(const TString& source, ESource type)
-    : Data(std::make_unique<TData>(source, type))
+    : Impl(std::make_unique<TImpl>(source, type))
 {}
 
-TXmlNodeWrapper::~TXmlNodeWrapper()
+TXmlNodeWrapper::~TXmlNodeWrapper() = default;
+
+TXmlNodeWrapper TXmlNodeWrapper::AddChildImpl(TString name, TString value = "")
 {
-    Data.~unique_ptr();
+    auto child = Impl->Node.AddChild(name, value);
+    return TXmlNodeWrapper(std::make_unique<TImpl>(Impl->ToNewNode(child)));
 }
 
-TXmlNodeWrapper TXmlNodeWrapper::AddChild(
-    TZtStringBuf name,
-    TZtStringBuf value = "")
+TString TXmlNodeWrapper::ToString(TString enc) const
 {
-    auto child = Data->Node.AddChild(name, value);
-    return TXmlNodeWrapper(std::make_unique<TData>(Data->ToNewNode(child)));
+    return Impl->Node.ToString(enc);
 }
 
-TString TXmlNodeWrapper::ToString(TZtStringBuf enc) const
-{
-    return Data->Node.ToString(enc);
-}
-
-TXmlNodeWrapper::TXmlNodeWrapper(std::unique_ptr<TData> data)
-    : Data(std::move(data))
+TXmlNodeWrapper::TXmlNodeWrapper(std::unique_ptr<TImpl> impl)
+    : Impl(std::move(impl))
 {}
 
 }   // namespace NCloud

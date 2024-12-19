@@ -30,30 +30,42 @@ namespace NCloud {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TXslRenderer::TData
+struct TXslRenderer::TImpl
 {
-    xsltStylesheetPtr Value;
+    ~TImpl()
+    {
+        xsltFreeStylesheet(Stylesheet);
+    }
+
+    xsltStylesheetPtr Stylesheet;
 };
 
 TXslRenderer::TXslRenderer(const char* xsl)
 {
     static const TXslInitializer XslInit;
-    xmlDocPtr styleDoc = xmlReadDoc(BAD_CAST xsl, nullptr, "utf-8", 0);
+    xmlDocPtr styleDoc =
+        xmlReadDoc(reinterpret_cast<const xmlChar*>(xsl), nullptr, "utf-8", 0);
 
-    Stylesheet = std::make_unique<TData>(xsltParseStylesheetDoc(styleDoc));
-    if (Stylesheet->Value == nullptr) {
+    Impl = std::make_unique<TImpl>(xsltParseStylesheetDoc(styleDoc));
+    if (Impl->Stylesheet == nullptr) {
         xmlFreeDoc(styleDoc);
     }
 }
 
-void TXslRenderer::Render(const TXmlNodeWrapper& document, IOutputStream& out)
+TXslRenderer::~TXslRenderer() = default;
+
+int TXslRenderer::Render(const TXmlNodeWrapper& document, IOutputStream& out)
 {
     auto documentStr = document.ToString("utf-8");
 
-    xmlDocPtr sourceDoc =
-        xmlReadDoc(BAD_CAST documentStr.data(), nullptr, "utf-8", 0);
+    xmlDocPtr sourceDoc = xmlReadDoc(
+        reinterpret_cast<const xmlChar*>(documentStr.data()),
+        nullptr,
+        "utf-8",
+        0);
 
-    xmlDocPtr result = xsltApplyStylesheet(Stylesheet->Value, sourceDoc, {});
+    int returnCode = 0;
+    xmlDocPtr result = xsltApplyStylesheet(Impl->Stylesheet, sourceDoc, {});
     if (result != nullptr) {
         xmlChar* buffer = nullptr;
         int bufferSize = 0;
@@ -62,24 +74,20 @@ void TXslRenderer::Render(const TXmlNodeWrapper& document, IOutputStream& out)
                 &buffer,
                 &bufferSize,
                 result,
-                Stylesheet->Value))
+                Impl->Stylesheet))
         {
-            out << (char*)buffer;
+            out << reinterpret_cast<char*>(buffer);
         } else {
-            out << "Error returning page";
+            returnCode = -2;
         }
         xmlFree(buffer);
     } else {
-        out << "Error rendering page: " << documentStr;
+        returnCode = -1;
     }
 
     xmlFreeDoc(result);
     xmlFreeDoc(sourceDoc);
-}
-
-TXslRenderer::~TXslRenderer()
-{
-    xsltFreeStylesheet(Stylesheet->Value);
+    return returnCode;
 }
 
 }   // namespace NCloud

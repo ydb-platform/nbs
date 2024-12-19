@@ -14,14 +14,15 @@ class TXslRenderer final
 {
 public:
     explicit TXslRenderer(const char* xsl);
+
     ~TXslRenderer();
 
-    void Render(const TXmlNodeWrapper& document, IOutputStream& out);
+    int Render(const TXmlNodeWrapper& document, IOutputStream& out);
 
 private:
-    struct TData;
+    struct TImpl;
 
-    std::unique_ptr<TData> Stylesheet = nullptr;
+    std::unique_ptr<TImpl> Impl;
 };
 
 }   // namespace NCloud

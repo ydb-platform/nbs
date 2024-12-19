@@ -18,7 +18,7 @@ TString ContentAddChildren(const auto& name, const auto& value)
 
 void TestAddChildren(const auto& name, const auto& value)
 {
-    TXmlNodeWrapper wrapper("root", TXmlNodeWrapper::ROOT_NAME);
+    TXmlNodeWrapper wrapper("root", TXmlNodeWrapper::ESource::ROOT_NAME);
     wrapper.AddNamedElement(name, value);
     UNIT_ASSERT_VALUES_EQUAL(
         ContentAddChildren(name, value),
@@ -34,7 +34,7 @@ TString ContentAddChild(const auto& name, const auto& value)
 
 TXmlNodeWrapper TestAddChild(const auto& name, const auto& value)
 {
-    TXmlNodeWrapper wrapper("root", TXmlNodeWrapper::ROOT_NAME);
+    TXmlNodeWrapper wrapper("root", TXmlNodeWrapper::ESource::ROOT_NAME);
     auto child = wrapper.AddChild(name, value);
     UNIT_ASSERT_VALUES_EQUAL(ContentAddChildren(name, value), child.ToString());
     return child;

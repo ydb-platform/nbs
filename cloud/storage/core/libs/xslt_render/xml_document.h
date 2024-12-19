@@ -1,7 +1,5 @@
 #pragma once
 
-#include <library/cpp/string_utils/ztstrbuf/ztstrbuf.h>
-
 #include <util/generic/fwd.h>
 #include <util/stream/str.h>
 
@@ -14,7 +12,7 @@ namespace NCloud {
 class TXmlNodeWrapper final
 {
 public:
-    enum ESource
+    enum class ESource
     {
         FILE,
         STRING,
@@ -25,21 +23,14 @@ public:
 
     ~TXmlNodeWrapper();
 
-    TXmlNodeWrapper AddChild(TZtStringBuf name, TZtStringBuf value);
-
-    template <typename T, typename P>
-    std::enable_if<
-        !std::is_convertible_v<T, TZtStringBuf> ||
-            !std::is_convertible_v<P, TZtStringBuf>,
-        TXmlNodeWrapper>::type
-    AddChild(P name, T value)
+    TXmlNodeWrapper AddChild(const auto& name, const auto& value)
     {
         TStringStream out;
         out << name;
         auto nameStr = out.Str();
         out.Clear();
         out << value;
-        return AddChild(nameStr, out.Str());
+        return AddChildImpl(nameStr, out.Str());
     }
 
     TXmlNodeWrapper& AddNamedElement(const auto& name, const auto& value)
@@ -50,14 +41,16 @@ public:
         return *this;
     }
 
-    TString ToString(TZtStringBuf enc = "") const;
+    TString ToString(TString enc = "") const;
 
 private:
-    struct TData;
+    struct TImpl;
 
-    explicit TXmlNodeWrapper(std::unique_ptr<TData> data);
+    explicit TXmlNodeWrapper(std::unique_ptr<TImpl> impl);
 
-    std::unique_ptr<TData> Data = nullptr;
+    std::unique_ptr<TImpl> Impl;
+
+    TXmlNodeWrapper AddChildImpl(TString name, TString value);
 };
 
 }   // namespace NCloud
