@@ -3689,7 +3689,27 @@ void TDiskRegistryState::ForgetDevices(
         DeviceList.ForgetDevice(id);
         db.DeleteSuspendedDevice(id);
         db.DeleteDirtyDevice(id);
+
+        // Cleanup AutomaticallyReplacedDevice
+        {
+            auto idIt = AutomaticallyReplacedDeviceIds.find(id);
+
+            if (idIt != AutomaticallyReplacedDeviceIds.end()) {
+                AutomaticallyReplacedDeviceIds.erase(idIt);
+
+                auto deviceItToCleanup = FindIf(
+                    AutomaticallyReplacedDevices,
+                    [&](const TAutomaticallyReplacedDeviceInfo& value)
+                    { return value.DeviceId == id; });
+                if (deviceItToCleanup != AutomaticallyReplacedDevices.end()) {
+                    AutomaticallyReplacedDevices.erase(deviceItToCleanup);
+                }
+
+                db.DeleteAutomaticallyReplacedDevice(id);
+            }
+        }
     }
+
 }
 
 void TDiskRegistryState::RemoveAgent(
@@ -7499,6 +7519,41 @@ TVector<NProto::TAgentInfo> TDiskRegistryState::QueryAgentsInfo() const
     }
 
     return ret;
+}
+
+NProto::TError TDiskRegistryState::CleanupDevices(TDiskRegistryDatabase& db)
+{
+    THashSet<TString> allKnownDevicesWithAgents;
+    for (const auto& agent: AgentList.GetAgents()) {
+        for (const auto& device: agent.GetDevices()) {
+            const auto& deviceId = device.GetDeviceUUID();
+            allKnownDevicesWithAgents.insert(deviceId);
+        }
+    }
+
+
+    THashSet<TString> devicesToRemoveHashSet;
+    for (const auto & device: DeviceList.GetAllDevices()) {
+        auto it = allKnownDevicesWithAgents.find(device.first);
+        if (it == allKnownDevicesWithAgents.end()) {
+            devicesToRemoveHashSet.emplace(device.first);
+        }
+    }
+
+    for (const auto& deviceId: AutomaticallyReplacedDeviceIds) {
+        auto it = allKnownDevicesWithAgents.find(deviceId);
+        if (it == allKnownDevicesWithAgents.end()) {
+            devicesToRemoveHashSet.emplace(deviceId);
+        }
+    }
+
+    TVector<TString> devicesToRemoveVector(
+        devicesToRemoveHashSet.begin(),
+        devicesToRemoveHashSet.end());
+
+    ForgetDevices(db, devicesToRemoveVector);
+
+    return {};
 }
 
 std::optional<ui64> TDiskRegistryState::GetDiskBlockCount(

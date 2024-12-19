@@ -774,6 +774,12 @@ TVector<NProto::TDeviceConfig> TDeviceList::GetDirtyDevices() const
     return devices;
 }
 
+const THashMap<TDeviceList::TDeviceId, NProto::TDeviceConfig>&
+TDeviceList::GetAllDevices() const
+{
+    return AllDevices;
+}
+
 bool TDeviceList::IsDirtyDevice(const TDeviceId& uuid) const
 {
     return DirtyDevices.contains(uuid);
