@@ -169,14 +169,20 @@ void TDiskRegistryActor::CompleteLoadState(
     // resend pending requests
     SendPendingRequests(ctx, PendingRequests);
 
-    for (const auto& agent: args.Snapshot.Agents) {
-        if (agent.GetState() != NProto::AGENT_STATE_UNAVAILABLE) {
-            // this event will be scheduled using NonReplicatedAgentMaxTimeout
-            ScheduleRejectAgent(ctx, agent.GetAgentId(), 0);
-        }
-    }
-
     InitializeState(std::move(args.Snapshot));
+
+    if (TDuration timeout = Config->GetNonReplicatedAgentMaxTimeout()) {
+        const auto deadline = timeout.ToDeadLine(ctx.Now());
+
+        LOG_INFO_S(
+            ctx,
+            TBlockStoreComponents::DISK_REGISTRY,
+            "Schedule the initial agents rejection phase to " << deadline);
+
+        auto request =
+            std::make_unique<TEvDiskRegistryPrivate::TEvAgentConnectionLost>();
+        ctx.Schedule(deadline, request.release());
+    }
 
     SecureErase(ctx);
 

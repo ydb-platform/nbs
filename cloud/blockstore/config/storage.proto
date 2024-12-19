@@ -1074,4 +1074,6 @@ message TStorageServiceConfig
 
     // Enabling direct copying of data between disk agents.
     optional bool UseDirectCopyRange = 394;
+
+    optional double DiskRegistryInitialAgentRejectionThreshold = 395;
 }
