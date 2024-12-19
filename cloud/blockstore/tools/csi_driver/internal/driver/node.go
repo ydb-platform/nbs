@@ -772,6 +772,13 @@ func (s *nodeService) nodeStageDiskAsFilesystem(
 
 	logVolume(req.VolumeId, "endpoint started with device: %q", resp.NbdDeviceFile)
 
+	// startNbsEndpointForNBD is async function. Kubelet will retry
+	// NodeStageVolume request if nbd device is not available yet.
+	hasBlockDevice, err := s.mounter.HasBlockDevice(resp.NbdDeviceFile)
+	if !hasBlockDevice {
+		return fmt.Errorf("Nbd device is not available: %w", err)
+	}
+
 	mnt := req.VolumeCapability.GetMount()
 
 	fsType := req.VolumeContext["fsType"]
