@@ -363,7 +363,7 @@ def retry_create_vm(func: callable) -> callable:
                         pr_number = int(os.environ.get("GITHUB_REF").split("/")[-1])
                         repo_name = os.environ.get("GITHUB_REPOSITORY")
                         github_token = os.environ.get("GITHUB_TOKEN")
-                        comment = f"VM creation failed after 1 hour: {e}"
+                        comment = f"VM creation failed after 30 minutes: {e}"
                         gh = Github(auth=GithubAuth.Token(github_token))
                         repo = gh.get_repo(repo_name)
                         pr = repo.get_pull(pr_number)
