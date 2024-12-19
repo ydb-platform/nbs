@@ -36,7 +36,7 @@ public:
     };
 
 private:
-    ui32 BlockSize;
+    ui32 BlockSize = 4_KB;
     ui64 DesiredFreeSpaceReserve = 0;
     ui64 MinFreeSpaceReserve = 0;
 
