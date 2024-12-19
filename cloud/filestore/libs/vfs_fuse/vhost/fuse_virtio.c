@@ -329,7 +329,14 @@ void fuse_session_setparams(
 
 void fuse_session_initparams(struct fuse_session* se)
 {
-    memset(se, 0, sizeof(*se));
+    se->conn.proto_major = 0;
+    se->conn.proto_minor = 0;
+    se->conn.capable = 0;
+    se->conn.want = 0;
+    se->bufsize = 0;
+
+    se->got_init = 0;
+    se->got_destroy = 0;
 }
 
 void fuse_session_getparams(
