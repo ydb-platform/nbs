@@ -329,7 +329,7 @@ void fuse_session_setparams(
 
 void fuse_session_initparams(struct fuse_session* se)
 {
-    memset(&se, 0, sizeof(*se));
+    memset(se, 0, sizeof(*se));
 }
 
 void fuse_session_getparams(
