@@ -34,7 +34,7 @@ struct TXmlNodeWrapper::TData
         , Node(Document->Root())
     {}
 
-    TData toNewNode(TNode newNode) const
+    TData ToNewNode(TNode newNode) const
     {
         TData resultNode = *this;
         resultNode.Node = newNode;
@@ -59,7 +59,7 @@ TXmlNodeWrapper TXmlNodeWrapper::AddChild(
     TZtStringBuf value = "")
 {
     auto child = Data->Node.AddChild(name, value);
-    return TXmlNodeWrapper(std::make_unique<TData>(Data->toNewNode(child)));
+    return TXmlNodeWrapper(std::make_unique<TData>(Data->ToNewNode(child)));
 }
 
 TString TXmlNodeWrapper::ToString(TZtStringBuf enc) const
