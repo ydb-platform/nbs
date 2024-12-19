@@ -480,9 +480,9 @@ void TDiskRegistryActor::ProcessInitialAgentRejectionPhase(
     }
 
     const double k =
-        static_cast<double>(agentsToReject.size()) / expectedToBeOnline;
+        100.0 * static_cast<double>(agentsToReject.size()) / expectedToBeOnline;
 
-    if (k >= Config->GetDiskRegistryInitialAgentRejectionThreshold()) {
+    if (k > Config->GetDiskRegistryInitialAgentRejectionThreshold()) {
         ReportDiskRegistryInitialAgentRejectionThresholdExceeded(
             TStringBuilder()
             << "Too many agents haven't reconnected: " << agentsToReject.size()
