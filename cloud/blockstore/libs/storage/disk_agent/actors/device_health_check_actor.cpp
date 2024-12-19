@@ -52,7 +52,7 @@ private:
     const TVector<NProto::TDeviceConfig> Devices;
 
     TVector<EDeviceHealthStatus> DevicesHealth;
-    TFastRng32 Rng{RndSeed, 0};
+    TFastRng<ui64> Rng{RndSeed};
 
     int PendingRequests = 0;
 
