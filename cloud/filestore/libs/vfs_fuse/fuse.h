@@ -24,6 +24,8 @@ void fuse_session_setparams(
     struct fuse_session* se,
     const struct fuse_session_params* params);
 
+void fuse_session_initparams(struct fuse_session* se);
+
 void fuse_session_getparams(
     struct fuse_session* se,
     struct fuse_session_params* params);

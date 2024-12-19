@@ -277,7 +277,7 @@ public:
     {
         NProto::TVfsSessionState proto;
         if (!state || !proto.ParseFromString(state)) {
-            memset(Session, 0, sizeof(*Session));
+            fuse_session_initparams(Session);
 
             return;
         }

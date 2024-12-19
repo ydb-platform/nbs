@@ -327,6 +327,11 @@ void fuse_session_setparams(
     se->got_destroy = 0;
 }
 
+void fuse_session_initparams(struct fuse_session* se)
+{
+    memset(&se, 0, sizeof(*se));
+}
+
 void fuse_session_getparams(
     struct fuse_session* se,
     struct fuse_session_params* params)
