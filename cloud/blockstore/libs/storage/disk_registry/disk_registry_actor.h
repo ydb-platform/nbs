@@ -83,6 +83,7 @@ private:
     // Pending requests
     TDeque<TPendingRequest> PendingRequests;
 
+    THashMap<TDiskId, TVector<TRequestInfoPtr>> PendingDiskAllocationRequests;
     THashMap<TDiskId, TVector<TRequestInfoPtr>> PendingDiskDeallocationRequests;
 
     bool BrokenDisksDestructionInProgress = false;
@@ -226,6 +227,21 @@ private:
     bool LoadState(
         TDiskRegistryDatabase& db,
         TDiskRegistryStateSnapshot& args);
+
+    void AddPendingAllocation(
+        const NActors::TActorContext& ctx,
+        const TString& diskId,
+        TRequestInfoPtr requestInfoPtr);
+
+    void ReplyToPendingAllocations(
+        const NActors::TActorContext& ctx,
+        const TString& diskId,
+        NProto::TError error = MakeError(S_OK));
+
+    void ReplyToPendingAllocations(
+        const NActors::TActorContext& ctx,
+        TVector<TRequestInfoPtr>& requestInfos,
+        NProto::TError error);
 
     void AddPendingDeallocation(
         const NActors::TActorContext& ctx,

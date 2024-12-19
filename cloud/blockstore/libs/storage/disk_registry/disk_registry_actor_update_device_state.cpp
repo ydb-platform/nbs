@@ -89,6 +89,20 @@ void TDiskRegistryActor::CompleteUpdateDeviceState(
     SecureErase(ctx);
     StartMigration(ctx);
 
+    TDiskId failedAllocationDisk;
+    if (args.State == NProto::DEVICE_STATE_ERROR) {
+        failedAllocationDisk = State->CheckPendingAllocation(args.DeviceId);
+    }
+
+    if (failedAllocationDisk) {
+        ReplyToPendingAllocations(
+            ctx,
+            failedAllocationDisk,
+            MakeError(
+                E_REJECTED,
+                "Allocation failed due to disk agent problems"));
+    }
+
     auto response = std::make_unique<TEvDiskRegistry::TEvChangeDeviceStateResponse>(
         std::move(args.Error));
     NCloud::Reply(ctx, *args.RequestInfo, std::move(response));

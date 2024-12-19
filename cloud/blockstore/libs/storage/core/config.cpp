@@ -459,6 +459,7 @@ TDuration MSeconds(ui32 value)
     xxx(NonReplicatedDontSuspendDevices,           bool,      false           )\
     xxx(AddClientRetryTimeoutIncrement,            TDuration, MSeconds(100)   )\
     xxx(MaxNonReplicatedDiskDeallocationRequests,  ui32,      16              )\
+    xxx(MaxNonReplicatedDiskAllocationRequests,    ui32,      16              )\
     xxx(BalancerActionDelayInterval,               TDuration, Seconds(3)      )\
                                                                                \
     xxx(UseMirrorResync,                           bool,      false           )\

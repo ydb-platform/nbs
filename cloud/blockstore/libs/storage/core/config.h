@@ -518,6 +518,7 @@ public:
     TDuration GetDiskRegistryBackupPeriod() const;
     TString GetDiskRegistryBackupDirPath() const;
 
+    ui32 GetMaxNonReplicatedDiskAllocationRequests() const;
     ui32 GetMaxNonReplicatedDiskDeallocationRequests() const;
 
     TDuration GetDiskRegistryMetricsCachePeriod() const;

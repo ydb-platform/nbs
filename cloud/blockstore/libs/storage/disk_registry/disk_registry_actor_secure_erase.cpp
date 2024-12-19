@@ -279,7 +279,7 @@ void TDiskRegistryActor::ExecuteCleanupDevices(
     TTxDiskRegistry::TCleanupDevices& args)
 {
     TDiskRegistryDatabase db(tx.DB);
-    args.SyncDeallocatedDisks =
+    std::tie(args.SyncAllocatedDisks, args.SyncDeallocatedDisks) =
         State->MarkDevicesAsClean(ctx.Now(), db, args.Devices);
 }
 
@@ -292,6 +292,10 @@ void TDiskRegistryActor::CompleteCleanupDevices(
 
     for (const auto& diskId: args.SyncDeallocatedDisks) {
         ReplyToPendingDeallocations(ctx, diskId);
+    }
+
+    for (const auto& diskId: args.SyncAllocatedDisks) {
+        ReplyToPendingAllocations(ctx, diskId);
     }
 }
 

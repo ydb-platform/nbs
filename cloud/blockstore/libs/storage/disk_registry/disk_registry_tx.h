@@ -128,6 +128,7 @@ struct TTxDiskRegistry
 
         NProto::TError Error;
         TVector<NProto::TDeviceConfig> Devices;
+        TVector<NProto::TDeviceConfig> DirtyDevices;
         TVector<NProto::TDeviceMigration> DeviceMigrations;
         TVector<TVector<NProto::TDeviceConfig>> Replicas;
         TVector<TString> DeviceReplacementUUIDs;
@@ -306,6 +307,7 @@ struct TTxDiskRegistry
         const TRequestInfoPtr RequestInfo;
         const TVector<TString> Devices;
 
+        TVector<TString> SyncAllocatedDisks;
         TVector<TString> SyncDeallocatedDisks;
 
         explicit TCleanupDevices(
@@ -317,6 +319,7 @@ struct TTxDiskRegistry
 
         void Clear()
         {
+            SyncAllocatedDisks.clear();
             SyncDeallocatedDisks.clear();
         }
     };

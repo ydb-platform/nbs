@@ -281,6 +281,18 @@ class TDiskRegistryState
     using TCheckpoints = THashMap<TCheckpointId, TCheckpointInfo>;
     using TPlacementGroups = THashMap<TString, TPlacementGroupInfo>;
 
+    using TAllocatingDiskId = TDiskRegistryState::TDiskId;
+    using TDeallocatingDiskId = TDiskRegistryState::TDiskId;
+    using TAllocatedDisksList = TVector<TAllocatingDiskId>;
+    using TDellocatedDisksList = TVector<TDeallocatingDiskId>;
+
+    // both values are optional with empty string being empty value
+    struct TOpt2Disk
+    {
+        TAllocatingDiskId AllocatingDiskId;
+        TDeallocatingDiskId DeallocatingDiskId;
+    };
+
 private:
     TLog Log;
 
@@ -392,6 +404,7 @@ public:
     struct TAllocateDiskResult
     {
         TVector<NProto::TDeviceConfig> Devices;
+        TVector<NProto::TDeviceConfig> DirtyDevices;
         TVector<NProto::TDeviceMigration> Migrations;
         TVector<TVector<NProto::TDeviceConfig>> Replicas;
         TVector<TString> DeviceReplacementIds;
@@ -503,7 +516,7 @@ public:
 
     /// Mark selected device as clean and remove it
     /// from lists of suspended/dirty/pending cleanup devices
-    /// @return disk id where selected device was allocated
+    /// @return deallocated disk id of where selected device was deallocated
     TDiskId MarkDeviceAsClean(
         TInstant now,
         TDiskRegistryDatabase& db,
@@ -511,8 +524,9 @@ public:
 
     /// Mark selected devices as clean and remove them
     /// from lists of suspended/dirty/pending cleanup devices
-    /// @return vector of disk ids where selected devices were allocated
-    TVector<TDiskId> MarkDevicesAsClean(
+    /// @return vector of allocated/deallocated disk ids where selected devices were allocated/deallocated
+    std::pair<TAllocatedDisksList, TDellocatedDisksList>
+    MarkDevicesAsClean(
         TInstant now,
         TDiskRegistryDatabase& db,
         const TVector<TDeviceId>& uuids);
@@ -620,6 +634,9 @@ public:
 
     TMaybe<NProto::EAgentState> GetAgentState(const TString& agentId) const;
     TMaybe<TInstant> GetAgentCmsTs(const TString& agentId) const;
+
+    TDiskId CheckPendingAllocation(const TString& deviceId);
+    TVector<TDiskId> CheckPendingAllocations(const TAgentId& agentId);
 
     NProto::TError UpdateDeviceState(
         TDiskRegistryDatabase& db,
@@ -938,6 +955,9 @@ private:
 
     auto FindDeviceLocation(const TDeviceId& uuid) const
         -> std::pair<const NProto::TAgentConfig*, const NProto::TDeviceConfig*>;
+
+    auto FindDiskDevicesAgents(const TDiskState& disk) const
+        -> THashSet<const NProto::TAgentConfig*>;
 
     TVector<NProto::TDeviceConfig> FindDevices(
         const TString& agentId,

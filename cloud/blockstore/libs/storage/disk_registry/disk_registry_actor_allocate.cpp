@@ -131,6 +131,7 @@ void TDiskRegistryActor::ExecuteAddDisk(
         &result);
 
     args.Devices = std::move(result.Devices);
+    args.DirtyDevices = std::move(result.DirtyDevices);
     args.DeviceMigrations = std::move(result.Migrations);
     args.Replicas = std::move(result.Replicas);
     args.DeviceReplacementUUIDs = std::move(result.DeviceReplacementIds);
@@ -157,6 +158,9 @@ void TDiskRegistryActor::CompleteAddDisk(
         TStringBuilder devices;
         OutputDevices(args.Devices, devices);
 
+        TStringBuilder dirtyDevices;
+        OutputDevices(args.DirtyDevices, dirtyDevices);
+
         TStringBuilder replicas;
         replicas << "[";
         if (!args.Replicas.empty()) {
@@ -180,11 +184,12 @@ void TDiskRegistryActor::CompleteAddDisk(
         migrations << "]";
 
         LOG_INFO(ctx, TBlockStoreComponents::DISK_REGISTRY,
-            "[%lu] AddDisk success. DiskId=%s Devices=%s Replicas=%s"
-            " Migrations=%s",
+            "[%lu] AddDisk success. DiskId=%s Devices=%s DirtyDevices=%s"
+            " Replicas=%s Migrations=%s",
             TabletID(),
             args.DiskId.Quote().c_str(),
             devices.c_str(),
+            dirtyDevices.c_str(),
             replicas.c_str(),
             migrations.c_str()
         );
@@ -240,10 +245,69 @@ void TDiskRegistryActor::CompleteAddDisk(
         response->Record.SetMuteIOErrors(args.MuteIOErrors);
     }
 
-    NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
+    if (HasError(args.Error) || args.DirtyDevices.empty()) {
+        NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
+    } else {
+        AddPendingAllocation(ctx, args.DiskId, args.RequestInfo);
+        SecureErase(ctx);
+    }
 
     DestroyBrokenDisks(ctx);
     NotifyUsers(ctx);
+}
+
+void TDiskRegistryActor::AddPendingAllocation(
+    const NActors::TActorContext& ctx,
+    const TString& diskId,
+    TRequestInfoPtr requestInfo)
+{
+    auto& requestInfos = PendingDiskAllocationRequests[diskId];
+
+    if (requestInfos.size() > Config->GetMaxNonReplicatedDiskAllocationRequests()) {
+        LOG_WARN(ctx, TBlockStoreComponents::DISK_REGISTRY,
+            "Too many pending allocation requests (%lu) for disk %s. "
+            "Reject all requests.",
+            requestInfos.size(),
+            diskId.Quote().c_str());
+
+        ReplyToPendingAllocations(ctx, requestInfos, MakeError(E_REJECTED));
+    }
+
+    requestInfos.emplace_back(std::move(requestInfo));
+}
+
+void TDiskRegistryActor::ReplyToPendingAllocations(
+    const NActors::TActorContext& ctx,
+    TVector<TRequestInfoPtr>& requestInfos,
+    NProto::TError error)
+{
+    for (auto& requestInfo: requestInfos) {
+        NCloud::Reply(
+            ctx,
+            *requestInfo,
+            std::make_unique<TEvDiskRegistry::TEvAllocateDiskResponse>(error));
+    }
+    requestInfos.clear();
+}
+
+void TDiskRegistryActor::ReplyToPendingAllocations(
+    const NActors::TActorContext& ctx,
+    const TString& diskId,
+    NProto::TError error)
+{
+    auto it = PendingDiskAllocationRequests.find(diskId);
+    if (it == PendingDiskAllocationRequests.end()) {
+        return;
+    }
+
+    LOG_INFO(ctx, TBlockStoreComponents::DISK_REGISTRY,
+        "Reply to pending allocation requests. DiskId=%s PendingRequests=%d",
+        diskId.Quote().c_str(),
+        static_cast<int>(it->second.size()));
+
+    ReplyToPendingAllocations(ctx, it->second, std::move(error));
+
+    PendingDiskAllocationRequests.erase(it);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -379,7 +443,7 @@ void TDiskRegistryActor::ReplyToPendingDeallocations(
     }
 
     LOG_INFO(ctx, TBlockStoreComponents::DISK_REGISTRY,
-        "Reply to pending deallocation requests. DiskId=%s PendingRquests=%d",
+        "Reply to pending deallocation requests. DiskId=%s PendingRequests=%d",
         diskId.Quote().c_str(),
         static_cast<int>(it->second.size()));
 

@@ -1103,4 +1103,7 @@ message TStorageServiceConfig
     optional uint32 ForcedCompactionRangeCountPerRun = 401;
 
     optional bool YdbViewerServiceEnabled = 402;
+
+    // Maximum number of pending allocation requests per one disk.
+    optional uint32 MaxNonReplicatedDiskAllocationRequests = 403;
 }

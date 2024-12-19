@@ -11795,7 +11795,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
                 const auto& cleanDisks = state.MarkDevicesAsClean(
                     Now(),
                     db,
-                    TVector<TString>{"uuid-1", "uuid-2"});
+                    TVector<TString>{"uuid-1", "uuid-2"}).second;
                 UNIT_ASSERT_EQUAL(cleanDisks.size(), 1);
                 UNIT_ASSERT_EQUAL(cleanDisks[0], "disk-1");
             });
@@ -11834,7 +11834,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
                 const auto& cleanDisks = state.MarkDevicesAsClean(
                     Now(),
                     db,
-                    TVector<TString>{"uuid-1", "uuid-2"});
+                    TVector<TString>{"uuid-1", "uuid-2"}).second;
                 UNIT_ASSERT_EQUAL(cleanDisks.size(), 2);
                 UNIT_ASSERT_EQUAL(cleanDisks[0], "disk-1");
                 UNIT_ASSERT_EQUAL(cleanDisks[1], "disk-2");

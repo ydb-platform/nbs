@@ -1299,9 +1299,16 @@ NProto::TError TDiskRegistryState::ReplaceDeviceWithoutDiskStateUpdate(
         }
 
         if (!manual && !deviceReplacementId.empty()) {
-            auto cleaningDiskId =
+            TDiskId cleaningDiskId;
+            auto [allocating, deallocating] =
                 PendingCleanup.FindDiskId(deviceReplacementId);
-            if (!cleaningDiskId.empty() && cleaningDiskId != diskId) {
+            if (allocating && allocating != diskId) {
+                cleaningDiskId = allocating;
+            }
+            if (deallocating && deallocating != diskId) {
+                cleaningDiskId = deallocating;
+            }
+            if (cleaningDiskId) {
                 return MakeError(
                     E_ARGUMENT,
                     TStringBuilder()
@@ -2765,6 +2772,37 @@ NProto::TError TDiskRegistryState::AllocateSimpleDisk(
             params.BlockSize << " bytes");
     }
 
+    // check that we can secure erase each dirty allocated device
+    TVector<TString> dirtyDevices;
+    for (const auto& device: allocatedDevices) {
+        const auto& uuid = device.GetDeviceUUID();
+        if (!IsDirtyDevice(uuid)) {
+            continue;
+        }
+        // if we can't secure erase one of allocated disk's dirty devices, we can't allocate the disk
+        if (!CanSecureErase(uuid)) {
+            onError();
+
+            return MakeError(E_BS_DISK_ALLOCATION_FAILED, TStringBuilder() <<
+                "can't secure erase device " << uuid);
+        }
+        dirtyDevices.push_back(uuid);
+        result->DirtyDevices.push_back(device);
+    }
+
+    if (dirtyDevices) {
+        NProto::TError cleanupError = PendingCleanup.Insert(params.DiskId, std::move(dirtyDevices), /*allocation=*/true);
+        // if we can't secure erase one of allocated disk's dirty devices, we can't allocate the disk
+        if (HasError(cleanupError)) {
+            onError();
+
+            ReportDiskRegistryInsertToPendingCleanupFailed(
+                TStringBuilder() << "An error occurred while allocating disk: "
+                                << FormatError(cleanupError));
+            return cleanupError;
+        }
+    }
+
     for (const auto& device: allocatedDevices) {
         disk.Devices.push_back(device.GetDeviceUUID());
     }
@@ -2985,6 +3023,11 @@ auto TDiskRegistryState::DeallocateSimpleDisk(
 
     for (const auto& uuid: dirtyDevices) {
         db.UpdateDirtyDevice(uuid, diskId);
+    }
+
+    auto agents = FindDiskDevicesAgents(disk);
+    for (const auto* agent: agents) {
+        DeviceList.UpdateDevices(*agent, DevicePoolConfigs);
     }
 
     DeleteAllDeviceMigrations(diskId);
@@ -3851,11 +3894,13 @@ TDiskRegistryState::TDiskId TDiskRegistryState::MarkDeviceAsClean(
     TDiskRegistryDatabase& db,
     const TDeviceId& uuid)
 {
-    auto ret = MarkDevicesAsClean(now, db, TVector<TDeviceId>{uuid});
-    return ret.empty() ? "" : ret[0];
+    auto [alloc, dealloc] = MarkDevicesAsClean(now, db, TVector<TDeviceId>{uuid});
+    Y_UNUSED(alloc);
+    return dealloc.empty() ? "" : dealloc[0];
 }
 
-TVector<TDiskRegistryState::TDiskId> TDiskRegistryState::MarkDevicesAsClean(
+std::pair<TDiskRegistryState::TAllocatedDisksList, TDiskRegistryState::TDellocatedDisksList>
+TDiskRegistryState::MarkDevicesAsClean(
     TInstant now,
     TDiskRegistryDatabase& db,
     const TVector<TDeviceId>& uuids)
@@ -3869,14 +3914,19 @@ TVector<TDiskRegistryState::TDiskId> TDiskRegistryState::MarkDevicesAsClean(
         }
     }
 
-    TVector<TDiskId> ret;
+    TAllocatedDisksList allocatedDisks;
+    TDellocatedDisksList dellocatedDisks;
     for (const auto& uuid: TryUpdateDevices(now, db, uuids)) {
-        if (auto diskId = PendingCleanup.EraseDevice(uuid); !diskId.empty()) {
-            ret.push_back(std::move(diskId));
+        auto [allocatedDisk, deallocatedDisk] = PendingCleanup.EraseDevice(uuid);
+        if (allocatedDisk) {
+            allocatedDisks.push_back(std::move(allocatedDisk));
+        }
+        if (deallocatedDisk) {
+            dellocatedDisks.push_back(std::move(deallocatedDisk));
         }
     }
 
-    return ret;
+    return {std::move(allocatedDisks), std::move(dellocatedDisks)};
 }
 
 bool TDiskRegistryState::TryUpdateDevice(
@@ -5076,8 +5126,9 @@ bool TDiskRegistryState::HasDependentSsdDisks(
             continue;
         }
 
+        auto [allocating, deallocating] = PendingCleanup.FindDiskId(d.GetDeviceUUID());
         if (d.GetPoolKind() == NProto::DEVICE_POOL_KIND_LOCAL &&
-            PendingCleanup.FindDiskId(d.GetDeviceUUID()))
+            (allocating || deallocating))
         {
             return true;
         }
@@ -5602,6 +5653,28 @@ auto TDiskRegistryState::FindDeviceLocation(const TDeviceId& deviceId) const
     return const_cast<TDiskRegistryState*>(this)->FindDeviceLocation(deviceId);
 }
 
+auto TDiskRegistryState::FindDiskDevicesAgents(const TDiskState& disk) const
+    -> THashSet<const NProto::TAgentConfig*>
+{
+    THashSet<TString> diskAgentIds;
+    for (const auto& uuid: disk.Devices) {
+        auto diskAgentId = DeviceList.FindAgentId(uuid);
+        if (diskAgentId) {
+            diskAgentIds.insert(diskAgentId);
+        }
+    }
+
+    THashSet<const NProto::TAgentConfig*> agents;
+    for (const auto& agentId: diskAgentIds) {
+        const auto *agent = AgentList.FindAgent(agentId);
+        if (agent) {
+            agents.insert(agent);
+        }
+    }
+
+    return agents;
+}
+
 auto TDiskRegistryState::FindDeviceLocation(const TDeviceId& deviceId)
     -> std::pair<NProto::TAgentConfig*, NProto::TDeviceConfig*>
 {
@@ -5624,6 +5697,47 @@ auto TDiskRegistryState::FindDeviceLocation(const TDeviceId& deviceId)
     }
 
     return {agent, device};
+}
+
+TVector<TDiskRegistryState::TDiskId>
+TDiskRegistryState::CheckPendingAllocations(const TAgentId& agentId)
+{
+    auto* agent = AgentList.FindAgent(agentId);
+
+    if (!agent) {
+        return {};
+    }
+
+    if (agent->GetState() != NProto::AGENT_STATE_UNAVAILABLE) {
+        return {};
+    }
+
+    // If device is unavailable pending allocation is failed
+    TVector<TDiskId> failedAllocationDisks;
+    for (const auto& d: agent->GetDevices()) {
+        const auto& deviceId = d.GetDeviceUUID();
+        auto diskId = PendingCleanup.CancelPendingAllocation(deviceId);
+        if (diskId) {
+            failedAllocationDisks.push_back(std::move(diskId));
+        }
+    }
+    return failedAllocationDisks;
+}
+
+TDiskRegistryState::TDiskId TDiskRegistryState::CheckPendingAllocation(
+    const TString& deviceId)
+{
+    auto [agentPtr, devicePtr] = FindDeviceLocation(deviceId);
+    if (!agentPtr || !devicePtr) {
+        return {};
+    }
+
+    if (devicePtr->GetState() != NProto::DEVICE_STATE_ERROR) {
+        return {};
+    }
+
+    // If device is in error state pending allocation is failed
+    return PendingCleanup.CancelPendingAllocation(devicePtr->GetDeviceUUID());
 }
 
 NProto::TError TDiskRegistryState::UpdateDeviceState(
@@ -6358,7 +6472,9 @@ NProto::TDiskRegistryStateBackup TDiskRegistryState::BackupState() const
     transform(GetDirtyDevices(), backup.MutableDirtyDevices(), [this] (auto& x) {
         NProto::TDiskRegistryStateBackup::TDirtyDevice dd;
         dd.SetId(x.GetDeviceUUID());
-        dd.SetDiskId(PendingCleanup.FindDiskId(x.GetDeviceUUID()));
+        auto [allocating, deallocating] = PendingCleanup.FindDiskId(x.GetDeviceUUID()); // TODO: need to backup
+        Y_UNUSED(allocating);
+        dd.SetDiskId(deallocating);
 
         return dd;
     });
