@@ -55,11 +55,11 @@
 #include <contrib/ydb/core/protos/config.pb.h>
 #include <contrib/ydb/core/tablet_flat/probes.h>
 
-#include <library/cpp/build_info/build_info_static.h>
 #include <library/cpp/lwtrace/mon/mon_lwtrace.h>
 #include <library/cpp/lwtrace/probes.h>
 #include <library/cpp/monlib/dynamic_counters/counters.h>
 #include <library/cpp/protobuf/util/pb_io.h>
+#include <library/cpp/svnversion/svnversion.h>
 
 #include <util/datetime/base.h>
 #include <util/stream/file.h>
@@ -239,9 +239,8 @@ void TBootstrap::InitHTTPServer()
            R"(<h3>This node is not registered in the NodeBroker. See "DisableNodeBrokerRegistrationOnDevicelessAgent" in the disk agent config.</h3><br>)"
            R"(<div class="container"><h2>Version</h2><pre>)";
 
-    TStringBuf version = GetProgramSvnVersion();
-    stubMonPageBuilder << version;
-    if (!TString(version).EndsWith("\n")) {
+    stubMonPageBuilder << GetProgramSvnVersion();
+    if (!stubMonPageBuilder.EndsWith("\n")) {
         stubMonPageBuilder << "\n";
     }
 
@@ -250,7 +249,7 @@ void TBootstrap::InitHTTPServer()
     StubMonPageServer = std::make_unique<NCloud::NStorage::TSimpleHttpServer>(
         Configs->Options->MonitoringAddress,
         Configs->DiagnosticsConfig->GetNbsMonPort(),
-        stubMonPageBuilder.Data());
+        std::move(stubMonPageBuilder));
 }
 
 void TBootstrap::Init()
