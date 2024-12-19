@@ -3,6 +3,7 @@
 
 #include <cloud/filestore/libs/storage/api/ss_proxy.h>
 #include <cloud/filestore/libs/storage/api/tablet.h>
+#include <cloud/filestore/libs/storage/api/tablet_proxy.h>
 #include <cloud/filestore/libs/storage/model/utils.h>
 #include <cloud/filestore/libs/storage/testlib/service_client.h>
 #include <cloud/filestore/libs/storage/testlib/tablet_client.h>
@@ -2033,11 +2034,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         auto data2 = GenerateValidateData(512_KB);
         service.WriteData(headers, fsId, nodeId2, handle2, 0, data2);
 
-        // waiting for async stats aggregation from shards
-        // doing it before triggering another event to avoid DispatchEvents call
-        // which does a long busy-wait loop
-        env.GetRuntime().AdvanceCurrentTime(TDuration::Seconds(15));
-
+        // triggering stats collection from shards
         const auto fsStat = service.StatFileStore(headers, fsId)->Record;
         const auto& fileStore = fsStat.GetFileStore();
         UNIT_ASSERT_VALUES_EQUAL(fsId, fileStore.GetFileSystemId());
@@ -2072,12 +2069,253 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
 
         service.WriteData(headers, fsId, nodeId2, handle2, 0, data2);
 
-        // waiting for async stats aggregation from shards
-        // doing it before triggering another event to avoid DispatchEvents call
-        // which does a long busy-wait loop
-        env.GetRuntime().AdvanceCurrentTime(TDuration::Seconds(15));
-        // just triggering another event chain - doesn't matter which one
+        // triggering stats collection from shards
         service.StatFileStore(headers, fsId);
+
+        {
+            NProtoPrivate::TGetStorageStatsRequest request;
+            request.SetFileSystemId(fsId);
+            request.SetAllowCache(true);
+            TString buf;
+            google::protobuf::util::MessageToJsonString(request, &buf);
+            const auto response = service.ExecuteAction("GetStorageStats", buf);
+            NProtoPrivate::TGetStorageStatsResponse record;
+            auto status = google::protobuf::util::JsonStringToMessage(
+                response->Record.GetOutput(),
+                &record);
+            const auto& stats = record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(
+                (data1.size() + data2.size()) / 4_KB,
+                stats.GetUsedBlocksCount());
+            UNIT_ASSERT_VALUES_EQUAL(
+                (data1.size() + 2 * data2.size()) / 4_KB,
+                stats.GetMixedBlocksCount());
+        }
+    }
+
+    SERVICE_TEST_SIMPLE(ShouldAggregateFileSystemMetricsInBackground)
+    {
+        config.SetMultiTabletForwardingEnabled(true);
+        TTestEnv env({}, config);
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+
+        const TString fsId = "test";
+        const auto shard1Id = fsId + "-f1";
+        const auto shard2Id = fsId + "-f2";
+
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+        service.CreateFileStore(fsId, 1'000);
+        service.CreateFileStore(shard1Id, 1'000);
+        service.CreateFileStore(shard2Id, 1'000);
+
+        TActorId mainTabletActorId;
+        env.GetRuntime().SetEventFilter(
+            [&] (auto& runtime, TAutoPtr<IEventHandle>& event) {
+                Y_UNUSED(runtime);
+                switch (event->GetTypeRewrite()) {
+                    case TEvIndexTablet::EvConfigureShardsRequest: {
+                        mainTabletActorId = event->Recipient;
+                        break;
+                    }
+                }
+
+                return false;
+            });
+
+        ConfigureShards(service, fsId, shard1Id, shard2Id);
+
+        auto headers = service.InitSession(fsId, "client");
+
+        // creating 2 files
+
+        auto createNodeResponse = service.CreateNode(
+            headers,
+            TCreateNodeArgs::File(RootNodeId, "file1"))->Record;
+
+        const auto nodeId1 = createNodeResponse.GetNode().GetId();
+        UNIT_ASSERT_VALUES_EQUAL(1, ExtractShardNo(nodeId1));
+
+        createNodeResponse = service.CreateNode(
+            headers,
+            TCreateNodeArgs::File(RootNodeId, "file2"))->Record;
+
+        const auto nodeId2 = createNodeResponse.GetNode().GetId();
+        UNIT_ASSERT_VALUES_EQUAL(2, ExtractShardNo(nodeId2));
+
+        ui64 handle1 = service.CreateHandle(
+            headers,
+            fsId,
+            nodeId1,
+            "",
+            TCreateHandleArgs::RDWR)->Record.GetHandle();
+
+        auto data1 = GenerateValidateData(256_KB);
+        service.WriteData(headers, fsId, nodeId1, handle1, 0, data1);
+
+        ui64 handle2 = service.CreateHandle(
+            headers,
+            fsId,
+            nodeId2,
+            "",
+            TCreateHandleArgs::RDWR)->Record.GetHandle();
+
+        auto data2 = GenerateValidateData(512_KB);
+        service.WriteData(headers, fsId, nodeId2, handle2, 0, data2);
+
+        // triggering background shard stats collection
+
+        env.GetRuntime().AdvanceCurrentTime(TDuration::Seconds(15));
+
+        {
+            using TRequest = TEvIndexTabletPrivate::TEvUpdateCounters;
+
+            env.GetRuntime().Send(
+                new IEventHandle(
+                    mainTabletActorId, // recipient
+                    TActorId(), // sender
+                    new TRequest(),
+                    0, // flags
+                    0),
+                0);
+        }
+
+        TDispatchOptions options;
+        options.FinalEvents = {
+            TDispatchOptions::TFinalEventCondition(
+                TEvIndexTabletPrivate::EvGetShardStatsCompleted)};
+        service.AccessRuntime().DispatchEvents(options);
+
+        {
+            NProtoPrivate::TGetStorageStatsRequest request;
+            request.SetFileSystemId(fsId);
+            request.SetAllowCache(true);
+            TString buf;
+            google::protobuf::util::MessageToJsonString(request, &buf);
+            const auto response = service.ExecuteAction("GetStorageStats", buf);
+            NProtoPrivate::TGetStorageStatsResponse record;
+            auto status = google::protobuf::util::JsonStringToMessage(
+                response->Record.GetOutput(),
+                &record);
+            const auto& stats = record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(
+                (data1.size() + data2.size()) / 4_KB,
+                stats.GetUsedBlocksCount());
+            UNIT_ASSERT_VALUES_EQUAL(
+                (data1.size() + data2.size()) / 4_KB,
+                stats.GetMixedBlocksCount());
+        }
+
+        // writing some more data to change stats
+
+        service.WriteData(headers, fsId, nodeId2, handle2, 0, data2);
+
+        // configuring one time request drop to break a single iteration of
+        // background stats collection
+
+        bool dropped = false;
+        env.GetRuntime().SetEventFilter(
+            [&] (auto& runtime, TAutoPtr<IEventHandle>& event) {
+                Y_UNUSED(runtime);
+                switch (event->GetTypeRewrite()) {
+                    case TEvIndexTablet::EvGetStorageStatsRequest: {
+                        if (!dropped
+                                && event->Recipient != mainTabletActorId
+                                && event->Recipient
+                                    != MakeIndexTabletProxyServiceId())
+                        {
+                        Cerr << "DROPPED REQUEST" << Endl;
+                            dropped = true;
+                            return true;
+                        }
+                        break;
+                    }
+                }
+
+                return false;
+            });
+
+        // triggering background stats collection
+
+        env.GetRuntime().AdvanceCurrentTime(TDuration::Seconds(15));
+
+        {
+            using TRequest = TEvIndexTabletPrivate::TEvUpdateCounters;
+
+            env.GetRuntime().Send(
+                new IEventHandle(
+                    mainTabletActorId, // recipient
+                    TActorId(), // sender
+                    new TRequest(),
+                    0, // flags
+                    0),
+                0);
+        }
+
+        options.FinalEvents = {
+            TDispatchOptions::TFinalEventCondition(
+                TEvIndexTablet::EvGetStorageStatsRequest)};
+        service.AccessRuntime().DispatchEvents(options);
+
+        const auto counters =
+            env.GetCounters()->FindSubgroup("component", "service");
+        UNIT_ASSERT(counters);
+        const auto counter = counters->GetCounter(
+            "AppCriticalEvents/ShardStatsRetrievalTimeout");
+        UNIT_ASSERT_EQUAL(0, counter->GetAtomic());
+
+        env.GetRuntime().AdvanceCurrentTime(TDuration::Minutes(15));
+
+        // stats not updated yet
+
+        {
+            NProtoPrivate::TGetStorageStatsRequest request;
+            request.SetFileSystemId(fsId);
+            request.SetAllowCache(true);
+            TString buf;
+            google::protobuf::util::MessageToJsonString(request, &buf);
+            const auto response = service.ExecuteAction("GetStorageStats", buf);
+            NProtoPrivate::TGetStorageStatsResponse record;
+            auto status = google::protobuf::util::JsonStringToMessage(
+                response->Record.GetOutput(),
+                &record);
+            const auto& stats = record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(
+                (data1.size() + data2.size()) / 4_KB,
+                stats.GetUsedBlocksCount());
+            UNIT_ASSERT_VALUES_EQUAL(
+                (data1.size() + data2.size()) / 4_KB,
+                stats.GetMixedBlocksCount());
+        }
+
+        // triggering background stats collection once more - main tablet
+        // should notice that previous background request timed out and
+        // should send the request again
+
+        {
+            using TRequest = TEvIndexTabletPrivate::TEvUpdateCounters;
+
+            env.GetRuntime().Send(
+                new IEventHandle(
+                    mainTabletActorId, // recipient
+                    TActorId(), // sender
+                    new TRequest(),
+                    0, // flags
+                    0),
+                0);
+        }
+
+        options.FinalEvents = {
+            TDispatchOptions::TFinalEventCondition(
+                TEvIndexTabletPrivate::EvGetShardStatsCompleted)};
+        service.AccessRuntime().DispatchEvents(options);
+
+        // crit event should be raised
+
+        UNIT_ASSERT_EQUAL(1, counter->GetAtomic());
+
+        // stats should be up to date now
 
         {
             NProtoPrivate::TGetStorageStatsRequest request;
@@ -4106,11 +4344,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
             0,
             TString(3_MB + 4_KB, 'a'));
 
-        // waiting for async stats aggregation from shards
-        // doing it before triggering another event to avoid DispatchEvents call
-        // which does a long busy-wait loop
-        env.GetRuntime().AdvanceCurrentTime(TDuration::Seconds(15));
-        // just triggering another event chain - doesn't matter which one
+        // triggering stats collection from shards
         service.StatFileStore(headers, fsId);
 
         TSet<ui32> emptyShards;
