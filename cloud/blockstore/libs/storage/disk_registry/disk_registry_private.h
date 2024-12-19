@@ -492,7 +492,9 @@ struct TEvDiskRegistryPrivate
     struct TAgentConnectionLost
     {
         TString AgentId;
-        ui64 SeqNo;
+        ui64 SeqNo = 0;
+
+        TAgentConnectionLost() = default;
 
         TAgentConnectionLost(
                 TString agentId,

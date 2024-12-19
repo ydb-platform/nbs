@@ -1077,4 +1077,6 @@ message TStorageServiceConfig
 
     // Disables the calculation of the FullPlacementGroups counter.
     optional bool DisableFullPlacementGroupCountCalculation = 395;
+
+    optional double DiskRegistryInitialAgentRejectionThreshold = 396;
 }
