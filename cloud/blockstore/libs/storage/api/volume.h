@@ -12,8 +12,6 @@
 
 #include <utility>
 
-#include <utility>
-
 namespace NCloud::NBlockStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -251,32 +249,19 @@ struct TEvVolume
     //
     // TCheckRange
     //
-    struct TCheckRange
+    struct TCheckRangeRequest
     {
         ui64 BlockId;
         ui64 BlocksCount;
         TString DiskId;
 
-        TCheckRange(ui64 blockId, ui64 blocksCount, TString diskId)
+        TCheckRangeRequest(ui64 blockId, ui64 blocksCount, TString diskId)
             : BlockId(blockId)
             , BlocksCount(blocksCount)
             , DiskId(std::move(diskId))
         {}
     };
 
-    //
-    // CheckRangeReportStatus
-    //
-    struct TCheckRangeReportStatus
-    {
-        ui64 CurentBlockId;
-        bool IsFinished;
-
-        TCheckRangeReportStatus(ui64 curentBlockId, bool isFinished)
-            : CurentBlockId(curentBlockId)
-            , IsFinished(isFinished)
-        {}
-    };
 
     //
     // Events declaration

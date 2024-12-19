@@ -197,16 +197,15 @@ void TVolumeActor::CompleteLoadState(
 
     LOG_ERROR(ctx, TBlockStoreComponents::VOLUME, "Volume registrations started");
     //LOG_ERROR(ctx, TBlockStoreComponents::VOLUME, State->GetDiskId());
-
     ScanDiskId = NCloud::Register(
         ctx,
         CreateScanDiskActor(
             //State->GetDiskId(),
             "disk_id",
+            //State->GetBlocksCount(),
+            8388600,
             SelfId(),
-            100,
-            0,
-            Config->GetCompactionRetryTimeout())
+            100)
 
     );
 

@@ -26,10 +26,12 @@ class TScanDiskActor final: public TActorBootstrapped<TScanDiskActor>
 {
 private:
     TString DiskId;
+    const ui64 Size;
     const NActors::TActorId VolumeId;
-    const ui32 BlocksPerBatch = 0;
+    const ui64 BlocksPerBatch = 0;
     const TPartialBlobId FinalBlobId;
-    const TDuration RetryTimeout;
+    TDuration Timeout;
+
     bool IsCompleted = false;
     bool HasErrors = false;
 
@@ -45,9 +47,9 @@ private:
 public:
     TScanDiskActor(
         TString diskId,
+        ui64 size,
         const NActors::TActorId& volumeId,
         ui32 blobsPerBatch,
-        ui64 finalCommitId,
         TDuration retryTimeout);
 
     void Bootstrap(const TActorContext& ctx);
@@ -78,33 +80,32 @@ private:
     void HandleCheckRangeResponse(
         const TEvVolume::TEvCheckRangeResponse::TPtr& ev,
         const TActorContext& ctx);
-
-    /*
-    void HandleReadBlobResponse(
-        const TEvPartitionCommonPrivate::TEvReadBlobResponse::TPtr& ev,
-        const TActorContext& ctx);
-    */
 };
 
 ////////////////////////////////////////////////////////////////////////////////
 
 TScanDiskActor::TScanDiskActor(
     TString diskId,
+    ui64 size,
     const NActors::TActorId& volumeId,
     ui32 blobsPerBatch,
-    ui64 finalBlobId,
-    TDuration retryTimeout
-    // TBlockBuffer blockBuffer
-    )
+    TDuration retryTimeout)
     : DiskId(std::move(diskId))
+    , Size(size)
     , VolumeId(volumeId)
     , BlocksPerBatch(blobsPerBatch)
-    , FinalBlobId(MakePartialBlobId(finalBlobId, Max()))
-    , RetryTimeout(retryTimeout)
+    , Timeout(retryTimeout)
+
 {}
 
 void TScanDiskActor::Bootstrap(const TActorContext& ctx)
 {
+    TStorageConfigPtr config;
+    auto bytesPerStripe = config->GetBytesPerStripe();
+    if (Size > bytesPerStripe){
+        // send error message
+        return;
+    }
     LOG_ERROR(
         ctx,
         TBlockStoreComponents::VOLUME,
@@ -117,20 +118,14 @@ void TScanDiskActor::Bootstrap(const TActorContext& ctx)
 
 void TScanDiskActor::CheckRange(const TActorContext& ctx)
 {
-    if (HasErrors) {
-        IsCompleted = true;
-        ReportStatus(ctx);
-        Die(ctx);
-    }
 
-    // SendCheckRangeRequest(ctx);
 
-    SendReadBlocksRequest(ctx);
+    SendCheckRangeRequest(ctx);
 }
 
 void TScanDiskActor::SendCheckRangeRequest(const TActorContext& ctx)
 {
-    auto request = std::make_unique<TEvVolume::TEvCheckRange>(
+    auto request = std::make_unique<TEvVolume::TEvCheckRangeRequest>(
         MakeIntrusive<TCallContext>(),
         CurrentBlockId,
         BlocksPerBatch,
@@ -148,11 +143,11 @@ void TScanDiskActor::SendCheckRangeRequest(const TActorContext& ctx)
 void TScanDiskActor::SendReadBlocksRequest(const TActorContext& ctx)
 {
     auto request = std::make_unique<TEvService::TEvReadBlocksRequest>();
-    request->Record.SetDiskId(DiskId);
+
     request->Record.SetStartIndex(CurrentBlockId);
-    // на подумать
-    request->Record.SetSessionId("");
-    request->Record.SetBlocksCount(BlocksPerBatch);
+    auto blocksCount = Min(BlocksPerBatch, Size-CurrentBlockId);
+    request->Record.SetBlocksCount(blocksCount);
+    request->Record.SetDiskId(DiskId);
 
     auto* headers = request->Record.MutableHeaders();
 
@@ -209,49 +204,18 @@ void TScanDiskActor::HandleCheckRangeResponse(
 {
     const auto* msg = ev->Get();
 
-    LOG_ERROR(
-        ctx,
-        TBlockStoreComponents::VOLUME,
-        "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! scandisk response "
-        "catched ");
+    Y_UNUSED(ctx);
+    Y_UNUSED(msg);
 
     if (FinalBlobId.UniqueId() <= CurrentBlockId) {
         IsCompleted = true;
+        LOG_ERROR(
+            ctx,
+            TBlockStoreComponents::VOLUME,
+            "is complited  = " + std::to_string(IsCompleted));
     } else {
         CurrentBlockId += BlocksPerBatch;
     }
-
-    ReportStatus(ctx);
-
-    Y_UNUSED(msg);
-    /*
-    if (FAILED(msg->GetStatus())) {
-        if (GetErrorKind(msg->Error) == EErrorKind::ErrorRetriable) {
-            ctx.Schedule(RetryTimeout, new TEvents::TEvWakeup());
-        } else {
-            NotifyCompleted(ctx, msg->Error);
-        }
-        return;
-    }
-
-    if (msg->IsScanCompleted) {
-        NotifyCompleted(ctx);
-        return;
-    }
-
-    BlobIdToRead = NextBlobId(msg->LastVisitedBlobId, MaxUniqueId);
-
-    if (msg->BlobsInBatch.empty()) {
-        SendScanDiskBatchRequest(ctx);
-        return;
-    }
-    ReadBlobResponsesCounter = 0;
-
-    RequestsInCurrentBatch = std::move(msg->BlobsInBatch);
-    for (ui32 requestIndex = 0; requestIndex < RequestsInCurrentBatch.size();
-    ++requestIndex) { SendReadBlobRequest(ctx, requestIndex);
-    }
-    */
 }
 
 void TScanDiskActor::HandleReadBlocksResponse(
@@ -263,8 +227,8 @@ void TScanDiskActor::HandleReadBlocksResponse(
     LOG_ERROR(
         ctx,
         TBlockStoreComponents::VOLUME,
-        "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! readblocks response "
-        "catched ");
+        "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! scandisk response "
+        "catched, cur block id = " + std::to_string(CurrentBlockId));
 
     if (HasError(msg->Record.GetError())) {
         ErrorBlockId = CurrentBlockId;
@@ -277,51 +241,37 @@ void TScanDiskActor::HandleReadBlocksResponse(
         HasErrors = true;
     }
 
-    if (FinalBlobId.UniqueId() <= CurrentBlockId) {
-        IsCompleted = true;
+    if (Size <= CurrentBlockId) {
+
     } else {
         CurrentBlockId += BlocksPerBatch;
     }
+    IsCompleted = true;
+        LOG_ERROR(
+            ctx,
+            TBlockStoreComponents::VOLUME,
+            "is complited  = " + std::to_string(IsCompleted));
 
-    ReportStatus(ctx);
-    SendReadBlocksRequest(ctx);
-
-    Y_UNUSED(msg);
+    CheckRange(ctx);
 }
 
-void TScanDiskActor::ReportStatus(const TActorContext& ctx)
-{
-    LOG_ERROR(
-        ctx,
-        TBlockStoreComponents::VOLUME,
-        "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! reporting status ");
+}   // namespace    , RetryTimeout()
 
-    auto request = std::make_unique<TEvVolume::TEvCheckRangeReportStatus>(
-        MakeIntrusive<TCallContext>(),
-        CurrentBlockId,
-        IsCompleted);
-
-    NCloud::Send(ctx, VolumeId, std::move(request));
-}
-
-}   // namespace
 
 }   // namespace NCloud::NBlockStore::NStorage::NVolume
 
 namespace NCloud::NBlockStore::NStorage {
 NActors::IActorPtr TVolumeActor::CreateScanDiskActor(
     TString diskId,
+    ui64 diskSize,
     NActors::TActorId tabletId,
-    ui64 blobsPerBatch,
-    ui64 finalCommitId,
-    TDuration retryTimeout)
+    ui64 blobsPerBatch)
 {
     return std::make_unique<NVolume::TScanDiskActor>(
         std::move(diskId),
+        diskSize,
         tabletId,
-        blobsPerBatch,
-        finalCommitId,
-        retryTimeout);
+        blobsPerBatch);
 }
 
 }   // namespace NCloud::NBlockStore::NStorage
