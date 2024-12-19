@@ -12,6 +12,8 @@
 
 #include <utility>
 
+#include <utility>
+
 namespace NCloud::NBlockStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -370,9 +372,8 @@ struct TEvVolume
         EvGetStorageConfigRequest = EvBegin + 58,
         EvGetStorageConfigResponse = EvBegin + 59,
 
-        EvCheckRange = EvBegin + 60,
+        EvCheckRangeRequest = EvBegin + 60,
         EvCheckRangeResponse = EvBegin + 61,
-        EvCheckRangeReportStatus = EvBegin + 62,
 
         EvEnd
     };
@@ -447,19 +448,14 @@ struct TEvVolume
         EvPreparePartitionMigrationResponse
     >;
 
-    using TEvCheckRange = TRequestEvent<
-        TCheckRange,
-        EvCheckRange
+    using TEvCheckRangeRequest = TRequestEvent<
+        TCheckRangeRequest,
+        EvCheckRangeRequest
     >;
 
     using TEvCheckRangeResponse = TRequestEvent<
         TCheckRangeResponse,
         EvCheckRangeResponse
-    >;
-
-    using TEvCheckRangeReportStatus = TRequestEvent<
-        TCheckRangeReportStatus,
-        EvCheckRangeReportStatus
     >;
 };
 

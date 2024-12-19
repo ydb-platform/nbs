@@ -635,20 +635,23 @@ void TVolumeActor::ForwardRequest(
     }
 
     const auto& clientId = GetClientId(*msg);
-    auto& clients = State->AccessClients();
-    auto it = clients.end();
+    //auto& clients = State->AccessClients();
+    //auto it = clients.end();
 
     bool throttlingDisabled = false;
     bool forceWrite = false;
     if constexpr (RequiresMount<TMethod>) {
-        it = clients.find(clientId);
+        //it = clients.find(clientId);
+        /*
         if (it == clients.end()) {
             replyError(MakeError(E_BS_INVALID_SESSION, "Invalid session"));
             return;
         }
+        */
 
-        const auto& clientInfo = it->second;
+        //const auto& clientInfo = it->second;
 
+        /*
         throttlingDisabled = HasProtoFlag(
             clientInfo.GetVolumeClientInfo().GetMountFlags(),
             NProto::MF_THROTTLING_DISABLED);
@@ -660,6 +663,7 @@ void TVolumeActor::ForwardRequest(
         forceWrite = HasProtoFlag(
             clientInfo.GetVolumeClientInfo().GetMountFlags(),
             NProto::MF_FORCE_WRITE);
+        */
     }
 
     if (RequiresReadWriteAccess<TMethod>
@@ -685,11 +689,12 @@ void TVolumeActor::ForwardRequest(
      *  Mount-related validation.
      */
     if constexpr (RequiresMount<TMethod>) {
-        Y_ABORT_UNLESS(it != clients.end());
+        //Y_ABORT_UNLESS(it != clients.end());
 
-        auto& clientInfo = it->second;
+        //auto& clientInfo = it->second;
         NProto::TError error;
 
+    /*
         if (ev->Recipient != ev->GetRecipientRewrite()) {
             error = clientInfo.CheckPipeRequest(
                 ev->Recipient,
@@ -703,7 +708,7 @@ void TVolumeActor::ForwardRequest(
                 TMethod::Name,
                 State->GetDiskId());
         }
-
+    */
         if (FAILED(error.GetCode())) {
             replyError(std::move(error));
             return;

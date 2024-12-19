@@ -563,7 +563,7 @@ void TReadBlocksActor::HandleReadBlobResponse(
     Y_ABORT_UNLESS(RequestsCompleted <= RequestsScheduled);
     if (RequestsCompleted < RequestsScheduled) {
         return;
-    }
+}
 
     if (WaitBaseDiskRequests) {
         return;
@@ -1188,6 +1188,7 @@ void TPartitionActor::CompleteReadBlocks(
         "ReadBlocks",
         args.RequestInfo->CallContext->RequestId);
 
+    //Возвращает обратно в партактора
     NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
 
     FinalizeReadBlocks(

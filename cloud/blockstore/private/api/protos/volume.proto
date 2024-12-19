@@ -47,7 +47,7 @@ message TDescribeBlocksResponse
 
 ////////////////////////////////////////////////////////////////////////////////
 // CompactRange request/response.
-
+////////
 message TCompactRangeRequest
 {
     string DiskId = 1;
@@ -211,9 +211,7 @@ message TGetRebuildMetadataStatusResponse
 message TScanDiskRequest
 {
     string DiskId = 1;
-
-    // Number of blobs per batch.
-    uint32 BatchSize = 2;
+//
 }
 
 message TScanDiskResponse

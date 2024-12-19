@@ -412,6 +412,10 @@ private:
         const TEvVolume::TEvCheckRange::TPtr& ev,
         const NActors::TActorContext& ctx);
 
+    void CheckRange(
+        const TEvVolume::TEvCheckRangeRequest::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
     NActors::IActorPtr CreateMetadataRebuildUsedBlocksActor(
         NActors::TActorId tablet,
         ui64 blocksPerBatch,

@@ -407,6 +407,7 @@ message TStorageServiceConfig
     // New volumes will be created with partition count proportional to their size.
     optional uint64 BytesPerPartition = 156;
 
+    ///////////////////////////////////////
     // Bytes per stripe (applicable for multipartition volumes).
     optional uint32 BytesPerStripe = 157;
 

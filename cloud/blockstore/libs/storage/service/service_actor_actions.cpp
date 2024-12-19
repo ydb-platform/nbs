@@ -53,7 +53,6 @@ void TServiceActor::HandleExecuteAction(
         {"getdependentdisks",                 &TServiceActor::CreateGetDependentDisksActionActor           },
         {"getpartitioninfo",                  &TServiceActor::CreateGetPartitionInfoActionActor            },
         {"getrebuildmetadatastatus",          &TServiceActor::CreateRebuildMetadataStatusActionActor       },
-        {"getscandiskstatus",                 &TServiceActor::CreateScanDiskStatusActionActor              },
         {"killtablet",                        &TServiceActor::CreateKillTabletActionActor                  },
         {"migrationdiskregistrydevice",       &TServiceActor::CreateMigrationDiskRegistryDeviceActor       },
         {"modifytags",                        &TServiceActor::CreateModifyTagsActionActor                  },
