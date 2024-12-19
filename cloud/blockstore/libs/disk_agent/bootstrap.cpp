@@ -236,7 +236,9 @@ void TBootstrap::InitHTTPServer()
 
     stubMonPageBuilder
         << R"(<html><head></head><body>)"
-           R"(<h3>This node is not registered in the NodeBroker. See "DisableNodeBrokerRegistrationOnDevicelessAgent" in the disk agent config.</h3><br>)"
+           R"(<h3>This node is not registered in the NodeBroker.)"
+           R"(See "DisableNodeBrokerRegistrationOnDevicelessAgent")"
+           R"( in the disk agent config.</h3><br>)"
            R"(<div class="container"><h2>Version</h2><pre>)";
 
     stubMonPageBuilder << GetProgramSvnVersion();
