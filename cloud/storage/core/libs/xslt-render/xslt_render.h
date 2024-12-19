@@ -1,6 +1,9 @@
 #pragma once
 
 #include "xml_document.h"
+
+#include <util/stream/output.h>
+
 #include <memory.h>
 
 namespace NCloud {
@@ -13,7 +16,7 @@ public:
     explicit TXslRenderer(const char* xsl);
     ~TXslRenderer();
 
-    void Render(const NXml::TDocument& document, IOutputStream& out);
+    void Render(const TXmlNodeWrapper& document, IOutputStream& out);
 
 private:
     struct TData;

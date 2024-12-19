@@ -14,9 +14,9 @@ Y_UNIT_TEST_SUITE(TXsltRenderTest)
     Y_UNIT_TEST(ShouldRenderXslt)
     {
         TXslRenderer renderer(NResource::Find("xslt-render/ut/style1").c_str());
-        NXml::TDocument document(
+        TXmlNodeWrapper document(
             NResource::Find("xslt-render/ut/xml1"),
-            NXml::TDocument::String);
+            TXmlNodeWrapper::STRING);
         TStringStream result;
         renderer.Render(document, result);
         UNIT_ASSERT_VALUES_EQUAL(
@@ -34,7 +34,7 @@ Y_UNIT_TEST_SUITE(TXsltRenderTest)
             threads.push_back(std::make_shared<std::thread>(
                 [&]()
                 {
-                    NXml::TDocument document(data, NXml::TDocument::String);
+                    TXmlNodeWrapper document(data, TXmlNodeWrapper::STRING);
                     TStringStream result;
                     renderer.Render(document, result);
                     UNIT_ASSERT_VALUES_EQUAL(resultStr, result.Str());

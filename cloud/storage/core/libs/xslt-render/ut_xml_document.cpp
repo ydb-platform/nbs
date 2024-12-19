@@ -6,22 +6,38 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TString Content(auto&& name, auto&& value)
+using namespace NCloud;
+
+TString ContentAddChildren(const auto& name, const auto& value)
 {
     TStringStream out;
-    out << "<root><cd><name>" << std::forward<decltype(name)>(name)
-        << "</name><value>" << std::forward<decltype(value)>(value)
+    out << "<root><cd><name>" << name << "</name><value>" << value
         << "</value></cd></root>";
     return out.Str();
 }
 
-void TestAddChildren(auto&& name, auto&& value)
+void TestAddChildren(const auto& name, const auto& value)
 {
-    NXml::TDocument data("root", NXml::TDocument::RootName);
-    auto root = data.Root();
-    NCloud::TXmlNodeWrapper wrapper(root);
+    TXmlNodeWrapper wrapper("root", TXmlNodeWrapper::ROOT_NAME);
     wrapper.AddNamedElement(name, value);
-    UNIT_ASSERT_VALUES_EQUAL(Content(name, value), root.ToString());
+    UNIT_ASSERT_VALUES_EQUAL(
+        ContentAddChildren(name, value),
+        wrapper.ToString());
+}
+
+TString ContentAddChild(const auto& name, const auto& value)
+{
+    TStringStream out;
+    out << "<" << name << ">" << value << "</" << name << ">";
+    return out.Str();
+}
+
+TXmlNodeWrapper TestAddChild(const auto& name, const auto& value)
+{
+    TXmlNodeWrapper wrapper("root", TXmlNodeWrapper::ROOT_NAME);
+    auto child = wrapper.AddChild(name, value);
+    UNIT_ASSERT_VALUES_EQUAL(ContentAddChildren(name, value), child.ToString());
+    return child;
 }
 
 }   // namespace
@@ -32,6 +48,13 @@ namespace NCloud {
 
 Y_UNIT_TEST_SUITE(TXmlNodeWrapperTest)
 {
+    Y_UNIT_TEST(ShouldAddChild)
+    {
+        TestAddChildren("a", "b");
+        TestAddChildren(1, 1);
+        TestAddChildren(1e-2, 1e-2);
+    }
+
     Y_UNIT_TEST(ShouldAddElemWithNameAndValue)
     {
         TestAddChildren("a", "b");
