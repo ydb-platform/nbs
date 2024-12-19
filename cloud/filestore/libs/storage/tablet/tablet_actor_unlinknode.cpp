@@ -368,6 +368,17 @@ void TIndexTabletActor::ExecuteTx_UnlinkNode(
 {
     FILESTORE_VALIDATE_TX_ERROR(UnlinkNode, args);
 
+    // This transaction can potentially change the node attrs, so we need to
+    // protect all affected nodes from being populated by a concurrent
+    // GetNodeAttr request. Note that this place is reached as soon as a
+    // prepare stage is completed, so we can safely lock all nodes here.
+    if (args.ParentNodeId != InvalidNodeId) {
+        LockNodeIndexCache(args.ParentNodeId);
+    }
+    if (args.ChildNode && args.ChildNode->NodeId != InvalidNodeId) {
+        LockNodeIndexCache(args.ChildNode->NodeId);
+    }
+
     TIndexTabletDatabaseProxy db(tx.DB, args.NodeUpdates);
 
     args.CommitId = GenerateCommitId();
@@ -439,6 +450,13 @@ void TIndexTabletActor::CompleteTx_UnlinkNode(
         LogTag.c_str(),
         args.SessionId.c_str(),
         FormatError(args.Error).c_str());
+
+    if (args.ParentNodeId != InvalidNodeId) {
+        UnlockNodeIndexCache(args.ParentNodeId);
+    }
+    if (args.ChildNode && args.ChildNode->NodeId != InvalidNodeId) {
+        UnlockNodeIndexCache(args.ChildNode->NodeId);
+    }
 
     if (!HasError(args.Error) && !args.ChildRef) {
         auto message = ReportChildRefIsNull(TStringBuilder()

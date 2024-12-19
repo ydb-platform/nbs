@@ -576,6 +576,16 @@ bool TIndexTabletState::TryFillGetNodeAttrResult(
         response);
 }
 
+void TIndexTabletState::LockNodeIndexCache(ui64 nodeId)
+{
+    Impl->NodeIndexCache.LockNode(nodeId);
+}
+
+void TIndexTabletState::UnlockNodeIndexCache(ui64 nodeId)
+{
+    Impl->NodeIndexCache.UnlockNode(nodeId);
+}
+
 void TIndexTabletState::InvalidateNodeIndexCache(
     ui64 parentNodeId,
     const TString& name)

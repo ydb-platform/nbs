@@ -102,6 +102,11 @@ bool TIndexTabletActor::PrepareTx_SetNodeAttr(
         return false;   // not ready
     }
 
+    // This transaction can potentially change the node attributes, so we need
+    // to protect the cache from being populated by a concurrent GetNodeAttr
+    // request
+    LockNodeIndexCache(args.NodeId);
+
     if (!args.Node) {
         args.Error = ErrorInvalidTarget(args.NodeId);
         return true;
@@ -224,6 +229,8 @@ void TIndexTabletActor::CompleteTx_SetNodeAttr(
         ctx);
 
     NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
+
+    UnlockNodeIndexCache(args.NodeId);
 }
 
 }   // namespace NCloud::NFileStore::NStorage

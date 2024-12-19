@@ -1309,6 +1309,8 @@ public:
         ui64 parentNodeId,
         const TString& name,
         NProto::TNodeAttr* response);
+    void LockNodeIndexCache(ui64 nodeId);
+    void UnlockNodeIndexCache(ui64 nodeId);
     void InvalidateNodeIndexCache(ui64 parentNodeId, const TString& name);
     void InvalidateNodeIndexCache(ui64 nodeId);
     void RegisterGetNodeAttrResult(

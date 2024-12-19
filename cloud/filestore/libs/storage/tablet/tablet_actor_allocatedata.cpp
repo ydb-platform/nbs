@@ -170,6 +170,11 @@ bool TIndexTabletActor::PrepareTx_AllocateData(
     // TODO: AccessCheck
     TABLET_VERIFY(args.Node);
 
+    // This transaction can potentially change the node size, so we need to
+    // protect the cache from being populated by a concurrent GetNodeAttr
+    // request
+    LockNodeIndexCache(args.NodeId);
+
     return true;
 }
 
@@ -241,6 +246,9 @@ void TIndexTabletActor::CompleteTx_AllocateData(
     const TActorContext& ctx,
     TTxIndexTablet::TAllocateData& args)
 {
+    if (!HasError(args.Error)) {
+        UnlockNodeIndexCache(args.NodeId);
+    }
     RemoveTransaction(*args.RequestInfo);
 
     auto response = std::make_unique<TEvService::TEvAllocateDataResponse>(args.Error);

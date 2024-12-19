@@ -415,7 +415,22 @@ bool TIndexTabletActor::PrepareTx_CreateNode(
         if (!ReadNode(db, args.TargetNodeId, args.CommitId, args.ChildNode)) {
             return false;   // not ready
         }
+    }
 
+    // This transaction can potentially change the node attrs, so we need to
+    // protect the cache from being populated by a concurrent GetNodeAttr
+    // request
+    if (args.TargetNodeId != InvalidNodeId) {
+        LockNodeIndexCache(args.TargetNodeId);
+    }
+    if (args.ChildNodeId != InvalidNodeId) {
+        LockNodeIndexCache(args.ChildNodeId);
+    }
+    if (args.ParentNode && args.ParentNode->NodeId != InvalidNodeId) {
+        LockNodeIndexCache(args.ParentNode->NodeId);
+    }
+
+    if (args.TargetNodeId != InvalidNodeId) {
         if (args.ShardId.empty()) {
             args.ChildNodeId = args.TargetNodeId;
             if (!args.ChildNode) {
@@ -567,6 +582,16 @@ void TIndexTabletActor::CompleteTx_CreateNode(
     const TActorContext& ctx,
     TTxIndexTablet::TCreateNode& args)
 {
+    if (args.TargetNodeId != InvalidNodeId) {
+        UnlockNodeIndexCache(args.TargetNodeId);
+    }
+    if (args.ChildNodeId != InvalidNodeId) {
+        UnlockNodeIndexCache(args.ChildNodeId);
+    }
+    if (args.ParentNode && args.ParentNode->NodeId != InvalidNodeId) {
+        UnlockNodeIndexCache(args.ParentNode->NodeId);
+    }
+
     if (args.OpLogEntry.HasCreateNodeRequest() && !HasError(args.Error)) {
         LOG_DEBUG(ctx, TFileStoreComponents::TABLET,
             "%s Creating node in shard upon CreateNode: %s, %s",

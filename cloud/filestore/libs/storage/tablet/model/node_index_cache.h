@@ -6,6 +6,7 @@
 
 #include <util/digest/multi.h>
 #include <util/generic/hash.h>
+#include <util/generic/hash_set.h>
 #include <util/memory/alloc.h>
 
 namespace NCloud::NFileStore::NStorage {
@@ -56,8 +57,10 @@ private:
     THashMap<ui64, TNodeIndexCacheKey> KeyByNodeId;
     THashMap<TNodeIndexCacheKey, NProto::TNodeAttr, TNodeIndexCacheKeyHash>
         AttrByParentNodeId;
+    // Nodes that are not possible to update due to an ongoing RW access
+    THashMultiSet<ui64> LockedNodes;
 
-    ui32 MaxNodes;
+    ui32 MaxNodes = 0;
 
 public:
     explicit TNodeIndexCache(IAllocator* allocator);
@@ -69,6 +72,11 @@ public:
     void InvalidateCache(ui64 parentNodeId, const TString& name);
 
     void InvalidateCache(ui64 nodeId);
+
+    void LockNode(ui64 nodeId);
+
+    void UnlockNode(ui64 nodeId);
+
     void RegisterGetNodeAttrResult(
         ui64 parentNodeId,
         const TString& name,

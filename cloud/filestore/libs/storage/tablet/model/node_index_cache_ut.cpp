@@ -100,6 +100,37 @@ Y_UNIT_TEST_SUITE(TNodeIndexCache)
 
         UNIT_ASSERT_VALUES_EQUAL(cache.GetStats().NodeCount, 1);
     }
+
+    Y_UNIT_TEST(ShouldLockAndUnlockNodes)
+    {
+        TNodeIndexCache cache(TDefaultAllocator::Instance());
+        cache.Reset(10);
+
+        cache.LockNode(2);
+
+        // name1 is locked and should not be cached, while name2 is not locked
+
+        cache.RegisterGetNodeAttrResult(1, "name1", MakeNodeAttr(2));
+        cache.RegisterGetNodeAttrResult(1, "name2", MakeNodeAttr(3));
+
+        NProto::TNodeAttr attr;
+        UNIT_ASSERT(!cache.TryFillGetNodeAttrResult(1, "name1", &attr));
+        UNIT_ASSERT(cache.TryFillGetNodeAttrResult(1, "name2", &attr));
+
+        // there can be multiple locks on the same node
+
+        cache.LockNode(2);
+        cache.RegisterGetNodeAttrResult(1, "name1", MakeNodeAttr(2));
+        UNIT_ASSERT(!cache.TryFillGetNodeAttrResult(1, "name1", &attr));
+
+        cache.UnlockNode(2);
+        cache.UnlockNode(2);
+
+        // now the node is unlocked and should be cached
+
+        cache.RegisterGetNodeAttrResult(1, "name1", MakeNodeAttr(2));
+        UNIT_ASSERT(cache.TryFillGetNodeAttrResult(1, "name1", &attr));
+    }
 }
 
 }   // namespace NCloud::NFileStore::NStorage
