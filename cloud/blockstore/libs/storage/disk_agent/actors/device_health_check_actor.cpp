@@ -9,7 +9,11 @@
 #include <contrib/ydb/library/actors/core/events.h>
 #include <contrib/ydb/library/actors/core/log.h>
 
+#include <util/datetime/base.h>
+#include <util/generic/vector.h>
 #include <util/random/fast.h>
+
+#include <optional>
 
 using namespace NActors;
 
