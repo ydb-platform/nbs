@@ -176,7 +176,8 @@ void TDiskAgentActor::RestartDeviceHealthChecking(const TActorContext& ctx)
             ctx,
             NDiskAgent::CreateDeviceHealthCheckActor(
                 ctx.SelfID,
-                State->GetEnabledDevices()));
+                State->GetEnabledDevices(),
+                UpdateCountersInterval));
     }
 }
 

@@ -46,20 +46,20 @@ class TDeviceHealthCheckActor
     : public TActorBootstrapped<TDeviceHealthCheckActor>
 {
 private:
-    constexpr static ui64 RndSeed = 12345;
-
     const TActorId DiskAgent;
     const TVector<NProto::TDeviceConfig> Devices;
+    const TDuration HealthCheckDelay;
 
     TVector<EDeviceHealthStatus> DevicesHealth;
-    TFastRng<ui64> Rng{RndSeed};
+    std::optional<TFastRng<ui64>> Rng;
 
     int PendingRequests = 0;
 
 public:
     TDeviceHealthCheckActor(
         const TActorId& diskAgent,
-        TVector<NProto::TDeviceConfig> devices);
+        TVector<NProto::TDeviceConfig> devices,
+        TDuration healthCheckDelay);
 
     void Bootstrap(const TActorContext& ctx);
 
@@ -87,14 +87,18 @@ private:
 
 TDeviceHealthCheckActor::TDeviceHealthCheckActor(
         const TActorId& diskAgent,
-        TVector<NProto::TDeviceConfig> devices)
+        TVector<NProto::TDeviceConfig> devices,
+        TDuration healthCheckDelay)
     : DiskAgent{diskAgent}
     , Devices(std::move(devices))
+    , HealthCheckDelay(healthCheckDelay)
     , DevicesHealth(Devices.size(), EDeviceHealthStatus::Healthy)
 {}
 
 void TDeviceHealthCheckActor::Bootstrap(const TActorContext& ctx)
 {
+    Rng.emplace(ctx.Now().GetValue());
+
     Become(&TThis::StateWork);
     ScheduleHealthCheck(ctx);
 
@@ -111,7 +115,7 @@ void TDeviceHealthCheckActor::ScheduleHealthCheck(const TActorContext& ctx)
         TBlockStoreComponents::DISK_AGENT_WORKER,
         "Schedule health check");
 
-    ctx.Schedule(UpdateCountersInterval, new TEvents::TEvWakeup());
+    ctx.Schedule(HealthCheckDelay, new TEvents::TEvWakeup());
 }
 
 void TDeviceHealthCheckActor::CheckDevicesHealth(const TActorContext& ctx)
@@ -123,7 +127,7 @@ void TDeviceHealthCheckActor::CheckDevicesHealth(const TActorContext& ctx)
         auto& rec = request->Record;
         rec.MutableHeaders()->SetClientId(TString(CheckHealthClientId));
         rec.SetDeviceUUID(device.GetDeviceUUID());
-        rec.SetStartIndex(Rng.Uniform(device.GetBlocksCount()));
+        rec.SetStartIndex(Rng->Uniform(device.GetBlocksCount()));
         rec.SetBlockSize(device.GetBlockSize());
         rec.SetBlocksCount(1);
 
@@ -245,11 +249,13 @@ STFUNC(TDeviceHealthCheckActor::StateWork)
 
 std::unique_ptr<IActor> CreateDeviceHealthCheckActor(
     const TActorId& diskAgent,
-    TVector<NProto::TDeviceConfig> devices)
+    TVector<NProto::TDeviceConfig> devices,
+    TDuration healthCheckDelay)
 {
     return std::make_unique<TDeviceHealthCheckActor>(
         diskAgent,
-        std::move(devices));
+        std::move(devices),
+        healthCheckDelay);
 }
 
 }   // namespace NCloud::NBlockStore::NStorage::NDiskAgent
