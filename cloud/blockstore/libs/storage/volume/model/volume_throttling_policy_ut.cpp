@@ -679,21 +679,26 @@ Y_UNIT_TEST_SUITE(TVolumeThrottlingPolicyTest)
         auto recalculatedMaxBandwidth =
             CalculateThrottlerC2(maxIops, maxBandwidth);
 
+        const auto [usedIopsQuota, usedBandwidthQuota] = tp.TakeUsedQuota();
+
         UNIT_ASSERT_DOUBLES_EQUAL(
-            tp.TakeUsedBandwidthQuota(),
+            usedBandwidthQuota,
             static_cast<double>(ioOperation * byteCount) /
                 static_cast<double>(recalculatedMaxBandwidth),
             1e-6);
 
-        UNIT_ASSERT_DOUBLES_EQUAL(tp.TakeUsedBandwidthQuota(), 0, 1e-6);
-
         UNIT_ASSERT_DOUBLES_EQUAL(
-            tp.TakeUsedIoQuota(),
+            usedIopsQuota,
             static_cast<double>(ioOperation) /
                 static_cast<double>(recalculatedMaxIops),
             1e-6);
 
-        UNIT_ASSERT_DOUBLES_EQUAL(tp.TakeUsedIoQuota(), 0, 1e-6);
+        auto [usedIopsQuotaAfterTake, usedBandwidthQuotaAfterTake] =
+            tp.TakeUsedQuota();
+
+        UNIT_ASSERT_DOUBLES_EQUAL(usedIopsQuotaAfterTake, 0, 1e-6);
+
+        UNIT_ASSERT_DOUBLES_EQUAL(usedBandwidthQuotaAfterTake, 0, 1e-6);
     }
 
     Y_UNIT_TEST(UsedBandwidthQuotaZeroWithoutBytesThrotling)
@@ -726,13 +731,12 @@ Y_UNIT_TEST_SUITE(TVolumeThrottlingPolicyTest)
             DO_TEST(tp, 0, 0, byteCount, static_cast<ui32>(EOpType::Read));
         }
 
-        UNIT_ASSERT_DOUBLES_EQUAL(
-            tp.TakeUsedBandwidthQuota(),
-            0,
-            1e-6);
+        const auto [usedIopsQuota, usedBandwidthQuota] = tp.TakeUsedQuota();
+
+        UNIT_ASSERT_DOUBLES_EQUAL(usedBandwidthQuota, 0, 1e-6);
 
         UNIT_ASSERT_DOUBLES_EQUAL(
-            tp.TakeUsedIoQuota(),
+            usedIopsQuota,
             static_cast<double>(ioOperation) / static_cast<double>(maxIops),
             1e-6);
     }

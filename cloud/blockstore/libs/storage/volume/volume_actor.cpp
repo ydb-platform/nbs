@@ -217,10 +217,9 @@ void TVolumeActor::UpdateLeakyBucketCounters(const TActorContext& ctx)
     auto& cumulative = VolumeSelfCounters->Cumulative;
     auto& tp = State->AccessThrottlingPolicy();
 
-    auto usedIoQuota = tp.TakeUsedIoQuota();
-    auto usedBandwidthQuota = tp.TakeUsedBandwidthQuota();
+    auto [usedIopsQuota, usedBandwidthQuota] = tp.TakeUsedQuota();
 
-    cumulative.UsedIoQuota.Increment(static_cast<ui64>(usedIoQuota * 100.0));
+    cumulative.UsedIopsQuota.Increment(static_cast<ui64>(usedIopsQuota * 100.0));
     cumulative.UsedBandwidthQuota.Increment(
         static_cast<ui64>(usedBandwidthQuota * 100.0));
 
@@ -228,7 +227,7 @@ void TVolumeActor::UpdateLeakyBucketCounters(const TActorContext& ctx)
         [&]()
         {
             if (Config->GetCalculateUsedQuotaFromOtherMetrics()) {
-                return (usedIoQuota + usedBandwidthQuota) * 100.0;
+                return (usedIopsQuota + usedBandwidthQuota) * 100.0;
             }
             return tp.CalculateCurrentSpentBudgetShare(ctx.Now()) * 100.0;
         }(),

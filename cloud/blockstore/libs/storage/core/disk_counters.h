@@ -623,7 +623,7 @@ struct TVolumeSelfCumulativeCounters
         EPublishingPolicy::All,
         TCumulativeCounter::ECounterType::Generic,
         ECounterExpirationPolicy::Permanent};
-    TCounter UsedIoQuota{
+    TCounter UsedIopsQuota{
         EPublishingPolicy::All,
         TCumulativeCounter::ECounterType::Generic,
         ECounterExpirationPolicy::Permanent};
@@ -637,7 +637,7 @@ struct TVolumeSelfCumulativeCounters
         MakeMeta<&TVolumeSelfCumulativeCounters::ThrottlerPostponedRequests>(),
         MakeMeta<&TVolumeSelfCumulativeCounters::ThrottlerSkippedRequests>(),
         MakeMeta<&TVolumeSelfCumulativeCounters::UsedQuota>(),
-        MakeMeta<&TVolumeSelfCumulativeCounters::UsedIoQuota>(),
+        MakeMeta<&TVolumeSelfCumulativeCounters::UsedIopsQuota>(),
         MakeMeta<&TVolumeSelfCumulativeCounters::UsedBandwidthQuota>(),
     };
 };

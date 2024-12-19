@@ -99,8 +99,8 @@ public:
     TDuration GetCurrentBoostBudget() const;
     ui32 CalculatePostponedWeight() const;
     double CalculateCurrentSpentBudgetShare(TInstant ts) const;
-    [[nodiscard]] double TakeUsedIoQuota();
-    [[nodiscard]] double TakeUsedBandwidthQuota();
+    // Returns pair of UsedIopsQuota and UsedBandwidthQuota.
+    [[nodiscard]] std::pair<double, double> TakeUsedQuota();
     const TBackpressureReport& GetCurrentBackpressure() const;
     const NProto::TVolumePerformanceProfile& GetConfig() const;
 
