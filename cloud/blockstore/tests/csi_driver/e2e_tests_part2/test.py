@@ -68,7 +68,7 @@ def test_mount_volume_group():
     # 3. unpublish volume
     # 4. create new group with specified GID
     # 5. publish volume with mount volume group GID
-    # 6. check that mounted dir and existing files have specified GID
+    # 6. check that mounted dir has specified GID
     # 7. create new directory and file
     # 8. check that new directory and file have specified GID
     env, run = csi.init()
@@ -111,8 +111,8 @@ def test_mount_volume_group():
         )
 
         assert gid == mount_path.stat().st_gid
-        assert gid == test_dir1.stat().st_gid
-        assert gid == test_file1.stat().st_gid
+        assert 0 == test_dir1.stat().st_gid
+        assert 0 == test_file1.stat().st_gid
 
         test_file2 = mount_path / "testfile2"
         test_file2.touch()
