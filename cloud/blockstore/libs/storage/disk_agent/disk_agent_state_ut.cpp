@@ -42,7 +42,7 @@ namespace {
 
 constexpr TDuration WaitTimeout = 5s;
 constexpr ui32 DefaultDeviceBlockSize = 4_KB;
-constexpr ui64 DefaultBlocksCount = 1_MB;
+constexpr ui64 DefaultBlocksCount = 1024*1024;
 constexpr bool LockingEnabled = true;
 
 ////////////////////////////////////////////////////////////////////////////////
