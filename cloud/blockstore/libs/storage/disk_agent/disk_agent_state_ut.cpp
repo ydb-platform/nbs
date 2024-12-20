@@ -29,18 +29,32 @@
 #include <util/string/join.h>
 #include <util/system/file.h>
 
+#include <chrono>
+
 namespace NCloud::NBlockStore::NStorage {
 
 using namespace NThreading;
+using namespace std::chrono_literals;
 
 namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-constexpr TDuration WaitTimeout = TDuration::Seconds(5);
-constexpr ui32 DefaultDeviceBlockSize = 4096;
+constexpr TDuration WaitTimeout = 5s;
+constexpr ui32 DefaultDeviceBlockSize = 4_KB;
 constexpr ui64 DefaultBlocksCount = 1024*1024;
 constexpr bool LockingEnabled = true;
+
+////////////////////////////////////////////////////////////////////////////////
+
+struct TByDeviceUUID
+{
+    template <typename T>
+    bool operator()(const T& lhs, const T& rhs) const
+    {
+        return lhs.GetDeviceUUID() < rhs.GetDeviceUUID();
+    }
+};
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -1944,9 +1958,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
             [](auto& e) { return e.GetCode() == E_IO; });
 
         stats = state->CollectStats().GetValueSync();
-        SortBy(
-            *stats.MutableDeviceStats(),
-            [](const auto& s) { return s.GetDeviceUUID(); });
+        Sort(*stats.MutableDeviceStats(), TByDeviceUUID());
 
         UNIT_ASSERT_VALUES_EQUAL(3, stats.DeviceStatsSize());
         UNIT_ASSERT_VALUES_EQUAL(3, stats.GetDeviceStats(0).GetErrors()); // uuid-1
@@ -1971,9 +1983,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
             [](auto& e) { return e.GetCode() == E_REJECTED; });
 
         stats = state->CollectStats().GetValueSync();
-        SortBy(
-            *stats.MutableDeviceStats(),
-            [](const auto& s) { return s.GetDeviceUUID(); });
+        Sort(*stats.MutableDeviceStats(), TByDeviceUUID());
 
         UNIT_ASSERT_VALUES_EQUAL(3, stats.DeviceStatsSize());
         UNIT_ASSERT_VALUES_EQUAL(3, stats.GetDeviceStats(0).GetErrors()); // uuid-1
@@ -2010,14 +2020,85 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
         }
 
         stats = state->CollectStats().GetValueSync();
-        SortBy(
-            *stats.MutableDeviceStats(),
-            [](const auto& s) { return s.GetDeviceUUID(); });
+        Sort(*stats.MutableDeviceStats(), TByDeviceUUID());
 
         UNIT_ASSERT_VALUES_EQUAL(3, stats.DeviceStatsSize());
         UNIT_ASSERT_VALUES_EQUAL(3, stats.GetDeviceStats(0).GetErrors()); // uuid-1
         UNIT_ASSERT_VALUES_EQUAL(0, stats.GetDeviceStats(1).GetErrors());
         UNIT_ASSERT_VALUES_EQUAL(0, stats.GetDeviceStats(2).GetErrors());
+    }
+
+    Y_UNIT_TEST_F(ShouldFilterOutDisableDevice, TFiles)
+    {
+        auto state = CreateDiskAgentStateNull(
+            CreateNullConfig({ .Files = Nvme3s, .AcquireRequired = true })
+        );
+
+        auto future = state->Initialize();
+        const auto& r = future.GetValueSync();
+
+        UNIT_ASSERT(r.Errors.empty());
+        UNIT_ASSERT_VALUES_EQUAL(3, r.Configs.size());
+        {
+            auto devices = state->GetEnabledDevices();
+            Sort(devices, TByDeviceUUID());
+            UNIT_ASSERT_VALUES_EQUAL(3, devices.size());
+            UNIT_ASSERT_VALUES_EQUAL("uuid-1", devices[0].GetDeviceUUID());
+            UNIT_ASSERT_VALUES_EQUAL("uuid-2", devices[1].GetDeviceUUID());
+            UNIT_ASSERT_VALUES_EQUAL("uuid-3", devices[2].GetDeviceUUID());
+        }
+
+        state->SuspendDevice("uuid-1");
+        {
+            auto devices = state->GetEnabledDevices();
+            Sort(devices, TByDeviceUUID());
+            UNIT_ASSERT_VALUES_EQUAL(2, devices.size());
+            UNIT_ASSERT_VALUES_EQUAL("uuid-2", devices[0].GetDeviceUUID());
+            UNIT_ASSERT_VALUES_EQUAL("uuid-3", devices[1].GetDeviceUUID());
+        }
+
+        state->DisableDevice("uuid-3");
+        {
+            auto devices = state->GetEnabledDevices();
+            UNIT_ASSERT_VALUES_EQUAL(1, devices.size());
+            UNIT_ASSERT_VALUES_EQUAL("uuid-2", devices[0].GetDeviceUUID());
+        }
+
+        state->SuspendDevice("uuid-3");
+        {
+            auto devices = state->GetEnabledDevices();
+            UNIT_ASSERT_VALUES_EQUAL(1, devices.size());
+            UNIT_ASSERT_VALUES_EQUAL("uuid-2", devices[0].GetDeviceUUID());
+        }
+
+        state->SuspendDevice("uuid-2");
+        UNIT_ASSERT_VALUES_EQUAL(0, state->GetEnabledDevices().size());
+
+        state->EnableDevice("uuid-1");
+        {
+            auto devices = state->GetEnabledDevices();
+            UNIT_ASSERT_VALUES_EQUAL(1, devices.size());
+            UNIT_ASSERT_VALUES_EQUAL("uuid-1", devices[0].GetDeviceUUID());
+        }
+
+        state->EnableDevice("uuid-2");
+        {
+            auto devices = state->GetEnabledDevices();
+            Sort(devices, TByDeviceUUID());
+            UNIT_ASSERT_VALUES_EQUAL(2, devices.size());
+            UNIT_ASSERT_VALUES_EQUAL("uuid-1", devices[0].GetDeviceUUID());
+            UNIT_ASSERT_VALUES_EQUAL("uuid-2", devices[1].GetDeviceUUID());
+        }
+
+        state->EnableDevice("uuid-3");
+        {
+            auto devices = state->GetEnabledDevices();
+            Sort(devices, TByDeviceUUID());
+            UNIT_ASSERT_VALUES_EQUAL(3, devices.size());
+            UNIT_ASSERT_VALUES_EQUAL("uuid-1", devices[0].GetDeviceUUID());
+            UNIT_ASSERT_VALUES_EQUAL("uuid-2", devices[1].GetDeviceUUID());
+            UNIT_ASSERT_VALUES_EQUAL("uuid-3", devices[2].GetDeviceUUID());
+        }
     }
 }
 

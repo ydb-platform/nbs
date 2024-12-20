@@ -20,6 +20,8 @@
 
 #include <util/folder/tempdir.h>
 
+#include <chrono>
+
 namespace NCloud::NBlockStore::NStorage {
 
 using namespace NActors;
@@ -3985,87 +3987,239 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
 
         const auto workingDir = TryGetRamDrivePath();
         TTestBasicRuntime runtime;
+
         auto mockSp = new TMockStorageProvider();
         std::shared_ptr<IStorageProvider> sp(mockSp);
 
+        const auto agentConfig = [&] {
+            auto agentConfig = CreateDefaultAgentConfig();
+            agentConfig.SetBackend(NProto::DISK_AGENT_BACKEND_AIO);
+            agentConfig.SetAcquireRequired(true);
+            agentConfig.SetEnabled(true);
+            *agentConfig.AddFileDevices() =
+                PrepareFileDevice(workingDir / "dev1", "dev1");
+            *agentConfig.AddFileDevices() =
+                PrepareFileDevice(workingDir / "dev2", "dev2");
+            return agentConfig;
+        } ();
+
         auto env = TTestEnvBuilder(runtime)
-            .With([&] {
-                auto agentConfig = CreateDefaultAgentConfig();
-                agentConfig.SetBackend(NProto::DISK_AGENT_BACKEND_AIO);
-                agentConfig.SetAcquireRequired(true);
-                agentConfig.SetEnabled(true);
-                *agentConfig.AddFileDevices() =
-                    PrepareFileDevice(workingDir / "dev1", "dev1");
-                *agentConfig.AddFileDevices() =
-                    PrepareFileDevice(workingDir / "dev2", "dev2");
-                return agentConfig;
-            }())
+            .With(agentConfig)
             .With(sp)
             .Build();
 
-        UNIT_ASSERT(env.DiskRegistryState->Stats.empty());
+        size_t healthCheckCount = 0;
+        NProto::TAgentStats agentStats;
+
+        runtime.SetEventFilter(
+            [&](auto&, TAutoPtr<IEventHandle>& event)
+            {
+                switch (event->GetTypeRewrite()) {
+                    case TEvDiskAgentPrivate::EvCollectStatsResponse: {
+                        auto& msg = *event->Get<
+                            TEvDiskAgentPrivate::TEvCollectStatsResponse>();
+
+                        agentStats = msg.Stats;
+                        break;
+                    }
+                    case TEvDiskAgent::EvReadDeviceBlocksRequest: {
+                        auto& msg = *event->Get<
+                            TEvDiskAgent::TEvReadDeviceBlocksRequest>();
+
+                        healthCheckCount +=
+                            // ignore events from the IO request parser actor
+                            event->GetRecipientRewrite() == event->Recipient &&
+                            msg.Record.GetHeaders().GetClientId() ==
+                                CheckHealthClientId;
+
+                        break;
+                    }
+                }
+
+                return false;
+            });
 
         TDiskAgentClient diskAgent(runtime);
         diskAgent.WaitReady();
 
-        diskAgent.AcquireDevices(
-            TVector<TString> {"dev1", "dev2"},
-            "client-1",
-            NProto::VOLUME_ACCESS_READ_WRITE
-        );
+        UNIT_ASSERT_VALUES_EQUAL(0, healthCheckCount);
 
-        auto jumpInFuture = [&](ui32 secs) {
-            runtime.AdvanceCurrentTime(TDuration::Seconds(secs));
-            TDispatchOptions options;
-            options.FinalEvents = {
-                TDispatchOptions::TFinalEventCondition(
-                    TEvDiskRegistry::EvUpdateAgentStatsRequest)};
-            runtime.DispatchEvents(options);
-        };
+        runtime.AdvanceCurrentTime(15s);
+        runtime.DispatchEvents(
+            {.FinalEvents = {
+                 {TEvDiskAgent::EvReadDeviceBlocksResponse,
+                  static_cast<ui32>(agentConfig.FileDevicesSize())}}});
 
-        auto getStats = [&]() -> THashMap<TString, NProto::TDeviceStats> {
-            jumpInFuture(15);
-            UNIT_ASSERT_VALUES_EQUAL(1, env.DiskRegistryState->Stats.size());
-            THashMap<TString, NProto::TDeviceStats> stats;
-            auto& agentStats = env.DiskRegistryState->Stats.begin()->second;
-            for (const auto& deviceStats: agentStats.GetDeviceStats()) {
-                stats[deviceStats.GetDeviceUUID()] = deviceStats;
-            }
-            return stats;
-        };
+        UNIT_ASSERT_VALUES_EQUAL(
+            agentConfig.FileDevicesSize(),
+            healthCheckCount);
 
-        auto read = [&] (const auto& uuid) {
-            return ReadDeviceBlocks(
-                runtime, diskAgent, uuid, 0, 1, "client-1"
-            )->GetStatus();
-        };
+        runtime.AdvanceCurrentTime(15s);
+        runtime.DispatchEvents(
+            {.FinalEvents = {
+                 {TEvDiskAgent::EvReadDeviceBlocksResponse,
+                  static_cast<ui32>(agentConfig.FileDevicesSize())}}});
 
+        UNIT_ASSERT_VALUES_EQUAL(
+            2 * agentConfig.FileDevicesSize(),
+            healthCheckCount);
+
+        runtime.AdvanceCurrentTime(15s);
+        runtime.DispatchEvents(
+            {.FinalEvents = {{TEvDiskRegistry::EvUpdateAgentStatsResponse}}});
+
+        UNIT_ASSERT_VALUES_EQUAL(2, agentStats.DeviceStatsSize());
         {
-            auto stats = getStats();
-            UNIT_ASSERT_VALUES_EQUAL(0, stats["dev1"].GetErrors());
-            UNIT_ASSERT_VALUES_EQUAL(0, stats["dev1"].GetErrors());
-        }
+            auto stats = agentStats;
+            SortBy(*stats.MutableDeviceStats(), [] (auto& x) {
+                return x.GetDeviceUUID();
+            });
 
-        UNIT_ASSERT_VALUES_EQUAL(S_OK, read("dev1"));
-        UNIT_ASSERT_VALUES_EQUAL(S_OK, read("dev2"));
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetInitErrorsCount());
 
-        {
-            auto stats = getStats();
-            UNIT_ASSERT_GT(stats["dev1"].GetNumReadOps(), 0);
-            UNIT_ASSERT_VALUES_EQUAL(0, stats["dev1"].GetErrors());
-            UNIT_ASSERT_GT(stats["dev2"].GetNumReadOps(), 0);
-            UNIT_ASSERT_VALUES_EQUAL(0, stats["dev2"].GetErrors());
+            const auto& dev1 = stats.GetDeviceStats(0);
+            UNIT_ASSERT_VALUES_EQUAL("dev1", dev1.GetDeviceUUID());
+            UNIT_ASSERT_LE(2, dev1.GetNumReadOps());
+            UNIT_ASSERT_VALUES_EQUAL(0, dev1.GetErrors());
+
+            const auto& dev2 = stats.GetDeviceStats(1);
+            UNIT_ASSERT_VALUES_EQUAL("dev2", dev2.GetDeviceUUID());
+            UNIT_ASSERT_LE(2, dev2.GetNumReadOps());
+            UNIT_ASSERT_VALUES_EQUAL(0, dev2.GetErrors());
         }
 
         ON_CALL((*mockSp->GetStorage()), ReadBlocksLocal(_, _))
             .WillByDefault(Return(MakeFuture(MakeReadResponse(E_IO))));
-        jumpInFuture(15);
+
+        runtime.AdvanceCurrentTime(15s);
+        runtime.DispatchEvents(
+            {.FinalEvents = {
+                 {TEvDiskAgent::EvReadDeviceBlocksResponse,
+                  static_cast<ui32>(agentConfig.FileDevicesSize())}}});
+
+        UNIT_ASSERT_LE(3 * agentConfig.FileDevicesSize(), healthCheckCount);
+
+        runtime.AdvanceCurrentTime(15s);
+        runtime.DispatchEvents(
+            {.FinalEvents = {{TEvDiskRegistry::EvUpdateAgentStatsResponse}}});
 
         {
-            auto stats = getStats();
-            UNIT_ASSERT_GT(stats["dev1"].GetErrors(), 0);
-            UNIT_ASSERT_GT(stats["dev2"].GetErrors(), 0);
+            auto stats = agentStats;
+            SortBy(*stats.MutableDeviceStats(), [] (auto& x) {
+                return x.GetDeviceUUID();
+            });
+
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetInitErrorsCount());
+
+            const auto& dev1 = stats.GetDeviceStats(0);
+            UNIT_ASSERT_VALUES_EQUAL("dev1", dev1.GetDeviceUUID());
+            UNIT_ASSERT_LE(3, dev1.GetNumReadOps());
+            UNIT_ASSERT_LE(1, dev1.GetErrors());
+
+            const auto& dev2 = stats.GetDeviceStats(1);
+            UNIT_ASSERT_VALUES_EQUAL("dev2", dev2.GetDeviceUUID());
+            UNIT_ASSERT_LE(3, dev2.GetNumReadOps());
+            UNIT_ASSERT_LE(1, dev2.GetErrors());
         }
+    }
+
+    Y_UNIT_TEST(ShouldCheckHealthOnlyForEnabledDevices)
+    {
+        TTestBasicRuntime runtime;
+        THashMap<TString, size_t> healthCheckCount;
+
+        runtime.SetEventFilter(
+            [&](auto&, TAutoPtr<IEventHandle>& event)
+            {
+                switch (event->GetTypeRewrite()) {
+                    case TEvDiskAgent::EvReadDeviceBlocksRequest: {
+                        auto& msg = *event->Get<
+                            TEvDiskAgent::TEvReadDeviceBlocksRequest>();
+
+                        if (event->GetRecipientRewrite() == event->Recipient &&
+                            msg.Record.GetHeaders().GetClientId() ==
+                                CheckHealthClientId)
+                        {
+                            healthCheckCount[msg.Record.GetDeviceUUID()] += 1;
+                        }
+
+                        break;
+                    }
+                }
+
+                return false;
+            });
+
+        const auto workingDir = TryGetRamDrivePath();
+        const auto agentConfig = [&] {
+            auto agentConfig = CreateDefaultAgentConfig();
+            agentConfig.SetBackend(NProto::DISK_AGENT_BACKEND_AIO);
+            agentConfig.SetAcquireRequired(true);
+            agentConfig.SetEnabled(true);
+            agentConfig.SetDisableBrokenDevices(true);
+
+            *agentConfig.AddFileDevices() =
+                PrepareFileDevice(workingDir / "dev1", "dev1");
+            *agentConfig.AddFileDevices() =
+                PrepareFileDevice(workingDir / "dev2", "dev2");
+            *agentConfig.AddFileDevices() =
+                PrepareFileDevice(workingDir / "dev3", "dev3");
+            *agentConfig.AddFileDevices() =
+                PrepareFileDevice(workingDir / "dev4", "dev4");
+
+            return agentConfig;
+        } ();
+
+        auto diskregistryState = MakeIntrusive<TDiskRegistryState>();
+        diskregistryState->DisabledDevices = {"dev2", "dev4"};
+
+        auto env = TTestEnvBuilder(runtime)
+            .With(agentConfig)
+            .With(diskregistryState)
+            .Build();
+
+        runtime.SetLogPriority(
+            TBlockStoreComponents::DISK_AGENT,
+            NLog::PRI_DEBUG);
+        runtime.SetLogPriority(
+            TBlockStoreComponents::DISK_AGENT_WORKER,
+            NLog::PRI_DEBUG);
+
+        TDiskAgentClient diskAgent(runtime);
+        diskAgent.WaitReady();
+
+        UNIT_ASSERT_VALUES_EQUAL(0, healthCheckCount.size());
+
+        runtime.AdvanceCurrentTime(15s);
+        runtime.DispatchEvents(
+            {.FinalEvents = {{TEvDiskAgent::EvReadDeviceBlocksResponse, 2}}});
+
+        UNIT_ASSERT_VALUES_EQUAL(2, healthCheckCount.size());
+        UNIT_ASSERT_VALUES_EQUAL(1, healthCheckCount["dev1"]);
+        UNIT_ASSERT_VALUES_EQUAL(1, healthCheckCount["dev3"]);
+
+        runtime.AdvanceCurrentTime(15s);
+        runtime.DispatchEvents(
+            {.FinalEvents = {{TEvDiskAgent::EvReadDeviceBlocksResponse, 2}}});
+
+        UNIT_ASSERT_VALUES_EQUAL(2, healthCheckCount.size());
+        UNIT_ASSERT_VALUES_EQUAL(2, healthCheckCount["dev1"]);
+        UNIT_ASSERT_VALUES_EQUAL(2, healthCheckCount["dev3"]);
+
+        // Update the disable device list
+        diskregistryState->DisabledDevices = {"dev2"};
+
+        diskAgent.SendRequest(
+            std::make_unique<TEvDiskRegistryProxy::TEvConnectionLost>());
+
+        runtime.AdvanceCurrentTime(15s);
+        runtime.DispatchEvents(
+            {.FinalEvents = {{TEvDiskAgent::EvReadDeviceBlocksResponse, 3}}});
+
+        UNIT_ASSERT_VALUES_EQUAL(3, healthCheckCount.size());
+        UNIT_ASSERT_VALUES_EQUAL(3, healthCheckCount["dev1"]);
+        UNIT_ASSERT_VALUES_EQUAL(3, healthCheckCount["dev3"]);
+        UNIT_ASSERT_VALUES_EQUAL(1, healthCheckCount["dev4"]);
     }
 
     Y_UNIT_TEST(ShouldFindDevices)

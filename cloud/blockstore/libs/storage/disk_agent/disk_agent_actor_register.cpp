@@ -235,6 +235,7 @@ void TDiskAgentActor::HandleRegisterAgentResponse(
         RegistrationState = ERegistrationState::Registered;
         LOG_INFO(ctx, TBlockStoreComponents::DISK_AGENT, "Register completed");
         ProcessDevicesToDisableIO(ctx, std::move(msg->DevicesToDisableIO));
+        RestartDeviceHealthChecking(ctx);
     } else {
         LOG_WARN(ctx, TBlockStoreComponents::DISK_AGENT,
             "Register failed: %s. Try later", FormatError(msg->GetError()).c_str());
