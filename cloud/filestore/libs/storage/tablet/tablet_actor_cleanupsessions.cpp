@@ -426,13 +426,22 @@ void TIndexTabletActor::HandleSyncSessionsCompleted(
         LogTag.c_str(),
         FormatError(msg->GetError()).c_str());
 
+    ui32 sessionsSynced = 0;
     for (const auto& shardSessionsInfo: msg->ShardSessionsInfos) {
-        LOG_INFO(ctx, TFileStoreComponents::TABLET,
+        LOG_DEBUG(ctx, TFileStoreComponents::TABLET,
             "%s Synced %lu sessions for shard %s",
             LogTag.c_str(),
             shardSessionsInfo.SessionCount,
             shardSessionsInfo.ShardId.c_str());
+
+        sessionsSynced += shardSessionsInfo.SessionCount;
     }
+
+    LOG_INFO(ctx, TFileStoreComponents::TABLET,
+        "%s Synced %u sessions for %lu shards",
+        LogTag.c_str(),
+        sessionsSynced,
+        msg->ShardSessionsInfos.size());
 
     WorkerActors.erase(ev->Sender);
     ScheduleSyncSessions(ctx);

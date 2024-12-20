@@ -29,6 +29,7 @@ namespace NCloud::NFileStore{
     xxx(LocalFsMaxSessionNodesInUse)                                           \
     xxx(LocalFsMaxSessionFileHandlesInUse)                                     \
     xxx(LocalFsMissingHandleNode)                                              \
+    xxx(ShardStatsRetrievalTimeout)                                            \
 // FILESTORE_CRITICAL_EVENTS
 
 #define FILESTORE_IMPOSSIBLE_EVENTS(xxx)                                       \

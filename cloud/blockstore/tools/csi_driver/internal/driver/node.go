@@ -782,11 +782,6 @@ func (s *nodeService) nodeStageDiskAsFilesystem(
 		fsType = "ext4"
 	}
 
-	err = s.makeFilesystemIfNeeded(diskId, resp.NbdDeviceFile, fsType)
-	if err != nil {
-		return err
-	}
-
 	targetPerm := os.FileMode(0775)
 	if err := os.MkdirAll(req.StagingTargetPath, targetPerm); err != nil {
 		return fmt.Errorf("failed to create staging directory: %w", err)
@@ -803,14 +798,14 @@ func (s *nodeService) nodeStageDiskAsFilesystem(
 		}
 	}
 
-	err = s.mountIfNeeded(
+	err = s.formatAndMount(
 		diskId,
 		resp.NbdDeviceFile,
 		req.StagingTargetPath,
 		fsType,
 		mountOptions)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to format or mount filesystem: %w", err)
 	}
 
 	if mnt != nil && mnt.VolumeMountGroup != "" {
@@ -1285,6 +1280,28 @@ func (s *nodeService) mountIfNeeded(
 	return s.mounter.Mount(source, target, fsType, options)
 }
 
+func (s *nodeService) formatAndMount(
+	nbsId string,
+	source string,
+	target string,
+	fsType string,
+	options []string) error {
+
+	mounted, err := s.mounter.IsMountPoint(target)
+	if err != nil {
+		return err
+	}
+
+	if mounted {
+		logVolume(nbsId, "target path %q is already mounted", target)
+		return nil
+	}
+
+	logVolume(nbsId, "mount source %q to target %q, fsType: %q, options: %v",
+		source, target, fsType, options)
+	return s.mounter.FormatAndMount(source, target, fsType, options)
+}
+
 func (s *nodeService) makeFilesystemIfNeeded(
 	diskId string,
 	deviceName string,
@@ -1669,7 +1686,7 @@ func (s *nodeService) NodeExpandVolume(
 			_, err := s.mounter.Resize(nbdDevicePath, req.VolumePath)
 			if err != nil {
 				return nil, s.statusErrorf(
-					codes.Internal,
+					codes.FailedPrecondition,
 					"Failed to resize filesystem %v", err)
 			}
 		}

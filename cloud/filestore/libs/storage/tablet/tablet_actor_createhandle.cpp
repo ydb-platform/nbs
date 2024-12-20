@@ -206,7 +206,10 @@ bool TIndexTabletActor::PrepareTx_CreateHandle(
 
             auto shardId = args.RequestShardId;
             if (!IsShard() && Config->GetShardIdSelectionInLeaderEnabled()) {
-                shardId = SelectShard(0 /*fileSize*/);
+                args.Error = SelectShard(0 /*fileSize*/, &shardId);
+                if (HasError(args.Error)) {
+                    return true;
+                }
             }
 
             if (shardId) {
@@ -425,7 +428,7 @@ void TIndexTabletActor::CompleteTx_CreateHandle(
     }
 
     if (args.OpLogEntry.HasCreateNodeRequest() && !HasError(args.Error)) {
-        LOG_INFO(ctx, TFileStoreComponents::TABLET,
+        LOG_DEBUG(ctx, TFileStoreComponents::TABLET,
             "%s Creating node in shard upon CreateHandle: %s, %s",
             LogTag.c_str(),
             args.ShardId.c_str(),

@@ -48,7 +48,7 @@ void TDescribeBaseDiskBlocksActor::Bootstrap(const TActorContext& ctx)
     LWTRACK(
         RequestReceived_PartitionWorker,
         RequestInfo->CallContext->LWOrbit,
-        "ReadBlocks",
+        "DescribeBlocks",
         RequestInfo->CallContext->RequestId);
 
     DescribeBlocks(ctx);
@@ -61,9 +61,9 @@ void TDescribeBaseDiskBlocksActor::ReplyAndDie(
     using TEvent = TEvPartitionCommonPrivate::TEvDescribeBlocksCompleted;
 
     LWTRACK(
-        RequestReceived_PartitionWorker,
+        ResponseSent_PartitionWorker,
         RequestInfo->CallContext->LWOrbit,
-        "ReadBlocks",
+        "DescribeBlocks",
         RequestInfo->CallContext->RequestId);
 
     if (NotifyActorId) {
@@ -244,4 +244,3 @@ STFUNC(TDescribeBaseDiskBlocksActor::StateWork)
 }
 
 }   // namespace NCloud::NBlockStore::NStorage
-

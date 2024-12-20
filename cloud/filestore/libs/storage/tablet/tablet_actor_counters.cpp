@@ -1,6 +1,7 @@
 #include "tablet_actor.h"
 
 #include <cloud/filestore/libs/diagnostics/config.h>
+#include <cloud/filestore/libs/diagnostics/critical_events.h>
 #include <cloud/filestore/libs/diagnostics/metrics/label.h>
 #include <cloud/filestore/libs/diagnostics/metrics/operations.h>
 #include <cloud/filestore/libs/diagnostics/metrics/registry.h>
@@ -27,7 +28,7 @@ private:
     const NProtoPrivate::TGetStorageStatsRequest Request;
     const google::protobuf::RepeatedPtrField<TString> ShardIds;
     std::unique_ptr<TEvIndexTablet::TEvGetStorageStatsResponse> Response;
-    TVector<TEvIndexTabletPrivate::TShardStats> ShardStats;
+    TVector<TShardStats> ShardStats;
     int Responses = 0;
 
 public:
@@ -92,7 +93,7 @@ void TGetShardStatsActor::SendRequests(const TActorContext& ctx)
         request->Record = Request;
         request->Record.SetFileSystemId(shardId);
 
-        LOG_INFO(
+        LOG_DEBUG(
             ctx,
             TFileStoreComponents::TABLET_WORKER,
             "%s Sending GetStorageStatsRequest to shard %s",
@@ -751,7 +752,16 @@ void TIndexTabletActor::HandleUpdateCounters(
     UpdateCountersScheduled = false;
     ScheduleUpdateCounters(ctx);
 
-    if (!CachedStatsFetchingInProgress) {
+    if (CachedStatsFetchingStartTs != TInstant::Zero()) {
+        const auto delay = ctx.Now() - CachedStatsFetchingStartTs;
+        const auto maxDelay = TDuration::Minutes(15);
+        if (delay > maxDelay) {
+            ReportShardStatsRetrievalTimeout();
+            CachedStatsFetchingStartTs = TInstant::Zero();
+        }
+    }
+
+    if (CachedStatsFetchingStartTs == TInstant::Zero()) {
         auto response =
             std::make_unique<TEvIndexTablet::TEvGetStorageStatsResponse>();
         auto* stats = response->Record.MutableStats();
@@ -772,7 +782,7 @@ void TIndexTabletActor::HandleUpdateCounters(
 
         auto actorId = NCloud::Register(ctx, std::move(actor));
         WorkerActors.insert(actorId);
-        CachedStatsFetchingInProgress = true;
+        CachedStatsFetchingStartTs = ctx.Now();
     }
 }
 
@@ -916,7 +926,13 @@ void TIndexTabletActor::HandleGetShardStatsCompleted(
     auto* msg = ev->Get();
     const bool isBackgroundRequest = msg->StartedTs.GetValue() == 0;
     if (isBackgroundRequest) {
-        CachedStatsFetchingInProgress = false;
+        LOG_DEBUG(
+            ctx,
+            TFileStoreComponents::TABLET_WORKER,
+            "%s Background shard stats fetch completed in %s",
+            LogTag.c_str(),
+            (ctx.Now() - CachedStatsFetchingStartTs).ToString().c_str());
+        CachedStatsFetchingStartTs = TInstant::Zero();
     }
     if (!HasError(msg->Error)) {
         if (!isBackgroundRequest) {
@@ -924,6 +940,7 @@ void TIndexTabletActor::HandleGetShardStatsCompleted(
         }
         CachedAggregateStats = std::move(msg->AggregateStats);
         CachedShardStats = std::move(msg->ShardStats);
+        UpdateShardStats(CachedShardStats);
 
         Store(
             Metrics.AggregateUsedBytesCount,

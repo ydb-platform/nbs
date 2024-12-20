@@ -298,7 +298,9 @@ public:
 
     bool CalculateExpectedShardCount() const;
 
-    TString SelectShard(ui64 fileSize);
+    NProto::TError SelectShard(ui64 fileSize, TString* shardId);
+
+    void UpdateShardStats(const TVector<TShardStats>& stats);
 
     //
     // FileSystem Stats
@@ -440,6 +442,12 @@ public:
         TIndexTabletDatabase& db,
         const TString& message,
         ui64 nodeId);
+
+    bool HasPendingNodeCreateInShard(const TString& nodeName) const;
+
+    void StartNodeCreateInShard(const TString& nodeName);
+
+    void EndNodeCreateInShard(const TString& nodeName);
 
 private:
     void UpdateUsedBlocksCount(

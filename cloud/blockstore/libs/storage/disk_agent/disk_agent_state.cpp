@@ -327,6 +327,20 @@ TVector<NProto::TDeviceConfig> TDiskAgentState::GetDevices() const
     return devices;
 }
 
+TVector<NProto::TDeviceConfig> TDiskAgentState::GetEnabledDevices() const
+{
+    TVector<NProto::TDeviceConfig> devices;
+    devices.reserve(Devices.size());
+
+    for (const auto& [uuid, state]: Devices) {
+        if (DeviceClient->IsDeviceEnabled(uuid)) {
+            devices.push_back(state.Config);
+        }
+    }
+
+    return devices;
+}
+
 TVector<TString> TDiskAgentState::GetDeviceIds() const
 {
     TVector<TString> uuids;

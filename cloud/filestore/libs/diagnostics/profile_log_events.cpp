@@ -498,7 +498,6 @@ void InitProfileLogRequestInfo(
     IMPLEMENT_DEFAULT_METHOD(DestroyHandle, NProto)
     IMPLEMENT_DEFAULT_METHOD(AcquireLock, NProto)
     IMPLEMENT_DEFAULT_METHOD(ReleaseLock, NProto)
-    IMPLEMENT_DEFAULT_METHOD(ReadData, NProto)
     IMPLEMENT_DEFAULT_METHOD(WriteData, NProto)
     IMPLEMENT_DEFAULT_METHOD(AllocateData, NProto)
     IMPLEMENT_DEFAULT_METHOD(StartEndpoint, NProto)
@@ -612,6 +611,18 @@ void FinalizeProfileLogRequestInfo(
 {
     auto* nodeInfo = profileLogRequest.MutableNodeInfo();
     nodeInfo->SetSize(response.GetNames().size());
+}
+
+template <>
+void FinalizeProfileLogRequestInfo(
+    NProto::TProfileLogRequestInfo& profileLogRequest,
+    const NProto::TReadDataResponse& response)
+{
+    if (profileLogRequest.RangesSize() == 0) {
+        profileLogRequest.AddRanges();
+    }
+    auto* rangeInfo = profileLogRequest.MutableRanges(0);
+    rangeInfo->SetActualBytes(response.GetBuffer().size());
 }
 
 }   // namespace NCloud::NFileStore

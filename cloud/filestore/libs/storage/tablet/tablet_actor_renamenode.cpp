@@ -425,6 +425,7 @@ void TIndexTabletActor::CompleteTx_RenameNode(
     if (!HasError(args.Error)) {
         auto& op = args.OpLogEntry;
         if (op.HasUnlinkNodeRequest()) {
+            // rename + unlink is pretty rare so let's keep INFO level here
             LOG_INFO(ctx, TFileStoreComponents::TABLET,
                 "%s Unlinking node in shard upon RenameNode: %s, %s",
                 LogTag.c_str(),

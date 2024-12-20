@@ -118,6 +118,8 @@ public:
     TString GetDeviceName(const TString& uuid) const;
 
     TVector<NProto::TDeviceConfig> GetDevices() const;
+    TVector<NProto::TDeviceConfig> GetEnabledDevices() const;
+
     TVector<TString> GetDeviceIds() const;
 
     ui32 GetDevicesCount() const;

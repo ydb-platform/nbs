@@ -103,7 +103,7 @@ void TShardRequestActor<TRequest, TResponse>::SendRequests(
         request->Record = Request;
         request->Record.SetFileSystemId(shardId);
 
-        LOG_INFO(
+        LOG_DEBUG(
             ctx,
             TFileStoreComponents::TABLET_WORKER,
             "%s Sending %s to shard %s",
@@ -140,7 +140,7 @@ void TShardRequestActor<TRequest, TResponse>::HandleResponse(
         return;
     }
 
-    LOG_INFO(
+    LOG_DEBUG(
         ctx,
         TFileStoreComponents::TABLET_WORKER,
         "%s %s succeeded for shard %s",

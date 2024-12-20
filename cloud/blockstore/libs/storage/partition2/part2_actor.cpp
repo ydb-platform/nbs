@@ -59,7 +59,9 @@ TPartitionActor::TPartitionActor(
 {}
 
 TPartitionActor::~TPartitionActor()
-{}
+{
+    ReleaseTransactions();
+}
 
 TString TPartitionActor::GetStateName(ui32 state)
 {
@@ -372,6 +374,18 @@ void TPartitionActor::RemoveTransaction(TRequestInfo& requestInfo)
         TabletID());
 
     requestInfo.UnRef();
+}
+
+void TPartitionActor::ReleaseTransactions()
+{
+    while (ActiveTransactions) {
+        TRequestInfo* requestInfo = ActiveTransactions.PopFront();
+        STORAGE_VERIFY(
+            requestInfo->RefCount() >= 1,
+            TWellKnownEntityTypes::TABLET,
+            TabletID());
+        requestInfo->UnRef();
+    }
 }
 
 void TPartitionActor::TerminateTransactions(const TActorContext& ctx)

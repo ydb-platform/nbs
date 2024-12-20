@@ -591,10 +591,10 @@ void TIndexTabletActor::HandlePoisonPill(
     const TEvents::TEvPoisonPill::TPtr& ev,
     const TActorContext& ctx)
 {
-    Y_UNUSED(ev);
-
-    LOG_INFO_S(ctx, TFileStoreComponents::TABLET,
-        LogTag << " Stop tablet because of PoisonPill request");
+    LOG_INFO(ctx, TFileStoreComponents::TABLET,
+        "%s Stop tablet because of PoisonPill request, ev->Sender: %s",
+        LogTag.c_str(),
+        ev->Sender.ToString().c_str());
 
     Suicide(ctx);
 }
@@ -612,6 +612,11 @@ void TIndexTabletActor::HandleSessionDisconnected(
     const TEvTabletPipe::TEvServerDisconnected::TPtr& ev,
     const TActorContext& ctx)
 {
+    LOG_INFO(ctx, TFileStoreComponents::TABLET,
+        "%s Server disconnected, ev->Sender: %s",
+        LogTag.c_str(),
+        ev->Sender.ToString().c_str());
+
     OrphanSession(ev->Sender, ctx.Now());
 }
 

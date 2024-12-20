@@ -157,6 +157,11 @@ def generate_cloud_init_script(
 
     script = f"""
 set -x
+
+echo "fixing /etc/hosts"
+echo "::1 localhost" | tee -a /etc/hosts
+grep localhost /etc/hosts
+
 [ -d /actions-runner ] && {{
     echo "Runner already installed"
     cd /actions-runner
@@ -200,7 +205,7 @@ done
 """
 
     cloud_init = {"runcmd": [script]}
-    cloud_init["manage_etc_hosts"] = True
+    cloud_init["manage_etc_hosts"] = "true"
     # cloud_init["ssh_pwauth"] = False
     cloud_init["users"] = [
         {

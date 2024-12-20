@@ -3,6 +3,7 @@
 
 #include <cloud/filestore/libs/storage/api/ss_proxy.h>
 #include <cloud/filestore/libs/storage/api/tablet.h>
+#include <cloud/filestore/libs/storage/api/tablet_proxy.h>
 #include <cloud/filestore/libs/storage/model/utils.h>
 #include <cloud/filestore/libs/storage/testlib/service_client.h>
 #include <cloud/filestore/libs/storage/testlib/tablet_client.h>
@@ -2033,11 +2034,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         auto data2 = GenerateValidateData(512_KB);
         service.WriteData(headers, fsId, nodeId2, handle2, 0, data2);
 
-        // waiting for async stats aggregation from shards
-        // doing it before triggering another event to avoid DispatchEvents call
-        // which does a long busy-wait loop
-        env.GetRuntime().AdvanceCurrentTime(TDuration::Seconds(15));
-
+        // triggering stats collection from shards
         const auto fsStat = service.StatFileStore(headers, fsId)->Record;
         const auto& fileStore = fsStat.GetFileStore();
         UNIT_ASSERT_VALUES_EQUAL(fsId, fileStore.GetFileSystemId());
@@ -2072,12 +2069,253 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
 
         service.WriteData(headers, fsId, nodeId2, handle2, 0, data2);
 
-        // waiting for async stats aggregation from shards
-        // doing it before triggering another event to avoid DispatchEvents call
-        // which does a long busy-wait loop
-        env.GetRuntime().AdvanceCurrentTime(TDuration::Seconds(15));
-        // just triggering another event chain - doesn't matter which one
+        // triggering stats collection from shards
         service.StatFileStore(headers, fsId);
+
+        {
+            NProtoPrivate::TGetStorageStatsRequest request;
+            request.SetFileSystemId(fsId);
+            request.SetAllowCache(true);
+            TString buf;
+            google::protobuf::util::MessageToJsonString(request, &buf);
+            const auto response = service.ExecuteAction("GetStorageStats", buf);
+            NProtoPrivate::TGetStorageStatsResponse record;
+            auto status = google::protobuf::util::JsonStringToMessage(
+                response->Record.GetOutput(),
+                &record);
+            const auto& stats = record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(
+                (data1.size() + data2.size()) / 4_KB,
+                stats.GetUsedBlocksCount());
+            UNIT_ASSERT_VALUES_EQUAL(
+                (data1.size() + 2 * data2.size()) / 4_KB,
+                stats.GetMixedBlocksCount());
+        }
+    }
+
+    SERVICE_TEST_SIMPLE(ShouldAggregateFileSystemMetricsInBackground)
+    {
+        config.SetMultiTabletForwardingEnabled(true);
+        TTestEnv env({}, config);
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+
+        const TString fsId = "test";
+        const auto shard1Id = fsId + "-f1";
+        const auto shard2Id = fsId + "-f2";
+
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+        service.CreateFileStore(fsId, 1'000);
+        service.CreateFileStore(shard1Id, 1'000);
+        service.CreateFileStore(shard2Id, 1'000);
+
+        TActorId mainTabletActorId;
+        env.GetRuntime().SetEventFilter(
+            [&] (auto& runtime, TAutoPtr<IEventHandle>& event) {
+                Y_UNUSED(runtime);
+                switch (event->GetTypeRewrite()) {
+                    case TEvIndexTablet::EvConfigureShardsRequest: {
+                        mainTabletActorId = event->Recipient;
+                        break;
+                    }
+                }
+
+                return false;
+            });
+
+        ConfigureShards(service, fsId, shard1Id, shard2Id);
+
+        auto headers = service.InitSession(fsId, "client");
+
+        // creating 2 files
+
+        auto createNodeResponse = service.CreateNode(
+            headers,
+            TCreateNodeArgs::File(RootNodeId, "file1"))->Record;
+
+        const auto nodeId1 = createNodeResponse.GetNode().GetId();
+        UNIT_ASSERT_VALUES_EQUAL(1, ExtractShardNo(nodeId1));
+
+        createNodeResponse = service.CreateNode(
+            headers,
+            TCreateNodeArgs::File(RootNodeId, "file2"))->Record;
+
+        const auto nodeId2 = createNodeResponse.GetNode().GetId();
+        UNIT_ASSERT_VALUES_EQUAL(2, ExtractShardNo(nodeId2));
+
+        ui64 handle1 = service.CreateHandle(
+            headers,
+            fsId,
+            nodeId1,
+            "",
+            TCreateHandleArgs::RDWR)->Record.GetHandle();
+
+        auto data1 = GenerateValidateData(256_KB);
+        service.WriteData(headers, fsId, nodeId1, handle1, 0, data1);
+
+        ui64 handle2 = service.CreateHandle(
+            headers,
+            fsId,
+            nodeId2,
+            "",
+            TCreateHandleArgs::RDWR)->Record.GetHandle();
+
+        auto data2 = GenerateValidateData(512_KB);
+        service.WriteData(headers, fsId, nodeId2, handle2, 0, data2);
+
+        // triggering background shard stats collection
+
+        env.GetRuntime().AdvanceCurrentTime(TDuration::Seconds(15));
+
+        {
+            using TRequest = TEvIndexTabletPrivate::TEvUpdateCounters;
+
+            env.GetRuntime().Send(
+                new IEventHandle(
+                    mainTabletActorId, // recipient
+                    TActorId(), // sender
+                    new TRequest(),
+                    0, // flags
+                    0),
+                0);
+        }
+
+        TDispatchOptions options;
+        options.FinalEvents = {
+            TDispatchOptions::TFinalEventCondition(
+                TEvIndexTabletPrivate::EvGetShardStatsCompleted)};
+        service.AccessRuntime().DispatchEvents(options);
+
+        {
+            NProtoPrivate::TGetStorageStatsRequest request;
+            request.SetFileSystemId(fsId);
+            request.SetAllowCache(true);
+            TString buf;
+            google::protobuf::util::MessageToJsonString(request, &buf);
+            const auto response = service.ExecuteAction("GetStorageStats", buf);
+            NProtoPrivate::TGetStorageStatsResponse record;
+            auto status = google::protobuf::util::JsonStringToMessage(
+                response->Record.GetOutput(),
+                &record);
+            const auto& stats = record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(
+                (data1.size() + data2.size()) / 4_KB,
+                stats.GetUsedBlocksCount());
+            UNIT_ASSERT_VALUES_EQUAL(
+                (data1.size() + data2.size()) / 4_KB,
+                stats.GetMixedBlocksCount());
+        }
+
+        // writing some more data to change stats
+
+        service.WriteData(headers, fsId, nodeId2, handle2, 0, data2);
+
+        // configuring one time request drop to break a single iteration of
+        // background stats collection
+
+        bool dropped = false;
+        env.GetRuntime().SetEventFilter(
+            [&] (auto& runtime, TAutoPtr<IEventHandle>& event) {
+                Y_UNUSED(runtime);
+                switch (event->GetTypeRewrite()) {
+                    case TEvIndexTablet::EvGetStorageStatsRequest: {
+                        if (!dropped
+                                && event->Recipient != mainTabletActorId
+                                && event->Recipient
+                                    != MakeIndexTabletProxyServiceId())
+                        {
+                        Cerr << "DROPPED REQUEST" << Endl;
+                            dropped = true;
+                            return true;
+                        }
+                        break;
+                    }
+                }
+
+                return false;
+            });
+
+        // triggering background stats collection
+
+        env.GetRuntime().AdvanceCurrentTime(TDuration::Seconds(15));
+
+        {
+            using TRequest = TEvIndexTabletPrivate::TEvUpdateCounters;
+
+            env.GetRuntime().Send(
+                new IEventHandle(
+                    mainTabletActorId, // recipient
+                    TActorId(), // sender
+                    new TRequest(),
+                    0, // flags
+                    0),
+                0);
+        }
+
+        options.FinalEvents = {
+            TDispatchOptions::TFinalEventCondition(
+                TEvIndexTablet::EvGetStorageStatsRequest)};
+        service.AccessRuntime().DispatchEvents(options);
+
+        const auto counters =
+            env.GetCounters()->FindSubgroup("component", "service");
+        UNIT_ASSERT(counters);
+        const auto counter = counters->GetCounter(
+            "AppCriticalEvents/ShardStatsRetrievalTimeout");
+        UNIT_ASSERT_EQUAL(0, counter->GetAtomic());
+
+        env.GetRuntime().AdvanceCurrentTime(TDuration::Minutes(15));
+
+        // stats not updated yet
+
+        {
+            NProtoPrivate::TGetStorageStatsRequest request;
+            request.SetFileSystemId(fsId);
+            request.SetAllowCache(true);
+            TString buf;
+            google::protobuf::util::MessageToJsonString(request, &buf);
+            const auto response = service.ExecuteAction("GetStorageStats", buf);
+            NProtoPrivate::TGetStorageStatsResponse record;
+            auto status = google::protobuf::util::JsonStringToMessage(
+                response->Record.GetOutput(),
+                &record);
+            const auto& stats = record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(
+                (data1.size() + data2.size()) / 4_KB,
+                stats.GetUsedBlocksCount());
+            UNIT_ASSERT_VALUES_EQUAL(
+                (data1.size() + data2.size()) / 4_KB,
+                stats.GetMixedBlocksCount());
+        }
+
+        // triggering background stats collection once more - main tablet
+        // should notice that previous background request timed out and
+        // should send the request again
+
+        {
+            using TRequest = TEvIndexTabletPrivate::TEvUpdateCounters;
+
+            env.GetRuntime().Send(
+                new IEventHandle(
+                    mainTabletActorId, // recipient
+                    TActorId(), // sender
+                    new TRequest(),
+                    0, // flags
+                    0),
+                0);
+        }
+
+        options.FinalEvents = {
+            TDispatchOptions::TFinalEventCondition(
+                TEvIndexTabletPrivate::EvGetShardStatsCompleted)};
+        service.AccessRuntime().DispatchEvents(options);
+
+        // crit event should be raised
+
+        UNIT_ASSERT_EQUAL(1, counter->GetAtomic());
+
+        // stats should be up to date now
 
         {
             NProtoPrivate::TGetStorageStatsRequest request;
@@ -3866,6 +4104,296 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         ids = TVector<TString>(fsIds.begin(), fsIds.end());
         Sort(ids);
         UNIT_ASSERT_VALUES_EQUAL(expected, ids);
+    }
+
+    void CheckPendingCreateNodeInShards(bool withCreateHandle, bool withTabletReboot)
+    {
+        NProto::TStorageConfig config;
+        TTestEnv env({}, config);
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+
+        const TString fsId = "test";
+        const auto shard1Id = fsId + "-f1";
+        const auto shard2Id = fsId + "-f2";
+
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+        service.CreateFileStore(fsId, 1'000);
+        service.CreateFileStore(shard1Id, 1'000);
+        service.CreateFileStore(shard2Id, 1'000);
+
+        ConfigureShards(service, fsId, shard1Id, shard2Id);
+
+        auto headers = service.InitSession(fsId, "client");
+
+        bool createNodeObserved = false;
+        bool createHandleObserved = false;
+        TAutoPtr<IEventHandle> createNodeOnShard;
+        ui64 tabletId = -1;
+
+        auto& runtime = env.GetRuntime();
+        runtime.SetEventFilter(
+            [&](auto& runtime, TAutoPtr<IEventHandle>& event)
+            {
+                Y_UNUSED(runtime);
+                switch (event->GetTypeRewrite()) {
+                    case TEvService::EvCreateHandleRequest:
+                        createHandleObserved = true;
+                        break;
+                    case TEvService::EvCreateNodeRequest: {
+                        const auto* msg =
+                            event->Get<TEvService::TEvCreateNodeRequest>();
+                        if (msg->Record.GetShardFileSystemId().empty()) {
+                            createNodeOnShard = event.Release();
+                            return true;
+                        }
+                        createNodeObserved = true;
+
+                        break;
+                    }
+                    case TEvSSProxy::EvDescribeFileStoreResponse: {
+                        using TDesc = TEvSSProxy::TEvDescribeFileStoreResponse;
+                        const auto* msg = event->Get<TDesc>();
+                        const auto& desc =
+                            msg->PathDescription.GetFileStoreDescription();
+                        if (desc.GetConfig().GetFileSystemId() == fsId) {
+                            tabletId = desc.GetIndexTabletId();
+                        }
+                        break;
+                    }
+                }
+                return false;
+            });
+
+        auto checkListNodes = [&](auto expectedNames) {
+            auto listNodesRsp =
+                service.ListNodes(headers, fsId, RootNodeId)->Record;
+
+            UNIT_ASSERT_VALUES_EQUAL(expectedNames.size(), listNodesRsp.NamesSize());
+            UNIT_ASSERT_VALUES_EQUAL(expectedNames.size(), listNodesRsp.NodesSize());
+
+            const auto& names = listNodesRsp.GetNames();
+            TVector<TString> listedNames(names.begin(), names.end());
+            Sort(listedNames);
+            UNIT_ASSERT_VALUES_EQUAL(expectedNames, listedNames);
+        };
+
+        // send create node/handle, delay response in shard and make sure node is not
+        // listed
+        if (!withCreateHandle) {
+            service.SendCreateNodeRequest(
+                headers,
+                TCreateNodeArgs::File(
+                    RootNodeId,
+                    "file1",
+                    0,   // mode
+                    shard1Id));
+        } else {
+            service.SendCreateHandleRequest(
+                headers,
+                fsId,
+                RootNodeId,
+                "file1",
+                TCreateHandleArgs::CREATE,
+                shard1Id);
+        }
+        runtime.DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
+
+        if (withCreateHandle) {
+            UNIT_ASSERT(!createNodeObserved);
+            UNIT_ASSERT(createHandleObserved);
+        } else {
+            UNIT_ASSERT(createNodeObserved);
+            UNIT_ASSERT(!createHandleObserved);
+        }
+        UNIT_ASSERT(createNodeOnShard);
+
+        if (withTabletReboot) {
+            TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
+            tablet.RebootTablet();
+
+            headers = service.InitSession(fsId, "client", {}, true);
+        }
+
+        checkListNodes(TVector<TString>{});
+
+        // send delayed response in shard and make sure node is listed
+        auto createNodeRsp =
+            std::make_unique<TEvService::TEvCreateNodeResponse>();
+        runtime.Send(
+            new IEventHandle(
+                createNodeOnShard->Sender,
+                createNodeOnShard->Recipient,
+                createNodeRsp.release(),
+                0,   // flags
+                createNodeOnShard->Cookie),
+            nodeIdx);
+        runtime.DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
+
+        checkListNodes(TVector<TString>{"file1"});
+    }
+
+    Y_UNIT_TEST(ShouldNotListPendingCreateNodeInShards)
+    {
+        CheckPendingCreateNodeInShards(
+            false,   // don't create handle
+            false    // don't reboot tablet
+        );
+        CheckPendingCreateNodeInShards(
+            false,   // don't create handle
+            true     // reboot tablet
+        );
+    }
+
+    Y_UNIT_TEST(ShouldNotListPendingCreateHandleInShards)
+    {
+        CheckPendingCreateNodeInShards(
+            true,    // create handle
+            false    // don't reboot tablet
+        );
+        CheckPendingCreateNodeInShards(
+            true,   // create handle
+            true    // reboot tablet
+        );
+    }
+
+    Y_UNIT_TEST(ShouldBalanceShardsByFreeSpace)
+    {
+        NProto::TStorageConfig config;
+        config.SetShardIdSelectionInLeaderEnabled(true);
+        config.SetAutomaticShardCreationEnabled(true);
+        config.SetShardAllocationUnit(4_MB);
+        config.SetAutomaticallyCreatedShardSize(4_MB);
+        config.SetShardBalancerMinFreeSpaceReserve(4_KB);
+        config.SetShardBalancerDesiredFreeSpaceReserve(1_MB);
+        config.SetMultiTabletForwardingEnabled(true);
+
+        TTestEnv env({}, config);
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+
+        const TString fsId = "test";
+
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+        service.CreateFileStore(fsId, 20_MB / 4_KB);
+
+        // waiting for IndexTablet start after the restart triggered by
+        // configureshards
+        WaitForTabletStart(service);
+
+        TVector<TString> expected = {
+            fsId,
+            fsId + "_s1",
+            fsId + "_s2",
+            fsId + "_s3",
+            fsId + "_s4",
+            fsId + "_s5",
+        };
+        auto listing = service.ListFileStores();
+        auto fsIds = listing->Record.GetFileStores();
+        TVector<TString> ids(fsIds.begin(), fsIds.end());
+        Sort(ids);
+        UNIT_ASSERT_VALUES_EQUAL(expected, ids);
+
+        auto headers = service.InitSession(fsId, "client");
+
+        // creating 5 files - we should have round-robin balancing at this
+        // point since all shards have enough free space - more than the
+        // DesiredFreeSpaceReserve threshold
+
+        TVector<ui64> handles;
+        TVector<ui64> nodes;
+        TSet<ui32> shards;
+        for (ui32 i = 0; i < 5; ++i) {
+            auto createHandleResponse = service.CreateHandle(
+                headers,
+                fsId,
+                RootNodeId,
+                Sprintf("file%u", i),
+                TCreateHandleArgs::CREATE)->Record;
+
+            const auto nodeId = createHandleResponse.GetNodeAttr().GetId();
+            shards.insert(ExtractShardNo(nodeId));
+            nodes.push_back(nodeId);
+
+            const auto handleId = createHandleResponse.GetHandle();
+            handles.push_back(handleId);
+        }
+
+        // checking that we indeed created those 5 files in 5 shards
+
+        UNIT_ASSERT_VALUES_EQUAL(5, shards.size());
+
+        // writing some data to 3 of the 5 files to make 3 of the 5 shards have
+        // less than DesiredFreeSpaceReserve free space
+
+        service.WriteData(
+            headers,
+            fsId,
+            nodes[0],
+            handles[0],
+            0,
+            TString(3_MB + 4_KB, 'a'));
+
+        service.WriteData(
+            headers,
+            fsId,
+            nodes[2],
+            handles[2],
+            0,
+            TString(3_MB + 4_KB, 'a'));
+
+        service.WriteData(
+            headers,
+            fsId,
+            nodes[4],
+            handles[4],
+            0,
+            TString(3_MB + 4_KB, 'a'));
+
+        // triggering stats collection from shards
+        service.StatFileStore(headers, fsId);
+
+        TSet<ui32> emptyShards;
+        emptyShards.insert(ExtractShardNo(nodes[1]));
+        emptyShards.insert(ExtractShardNo(nodes[3]));
+
+        handles.clear();
+        nodes.clear();
+        shards.clear();
+
+        // creating 5 new files - these files should be balanced among the
+        // 2 remaining shards which still have more than DesiredFreeSpaceReserve
+        // free space
+
+        for (ui32 i = 0; i < 5; ++i) {
+            auto createHandleResponse = service.CreateHandle(
+                headers,
+                fsId,
+                RootNodeId,
+                Sprintf("file%u", 5 + i),
+                TCreateHandleArgs::CREATE)->Record;
+
+            const auto nodeId = createHandleResponse.GetNodeAttr().GetId();
+            shards.insert(ExtractShardNo(nodeId));
+            nodes.push_back(nodeId);
+
+            const auto handleId = createHandleResponse.GetHandle();
+            handles.push_back(handleId);
+        }
+
+        // checking that the new 5 files were indeed created in those 2 shards
+
+        UNIT_ASSERT_VALUES_EQUAL(2, shards.size());
+        auto l = emptyShards.begin();
+        auto r = shards.begin();
+        while (l != emptyShards.end()) {
+            UNIT_ASSERT_VALUES_EQUAL(*l, *r);
+            ++l;
+            ++r;
+        }
     }
 }
 
