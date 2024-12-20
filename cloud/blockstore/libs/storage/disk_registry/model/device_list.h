@@ -125,9 +125,6 @@ public:
     [[nodiscard]] TVector<NProto::TDeviceConfig> GetDirtyDevices() const;
     [[nodiscard]] TVector<TString> GetDirtyDevicesId() const;
 
-    [[nodiscard]] const THashMap<TDeviceId, NProto::TDeviceConfig>&
-    GetAllDevices() const;
-
     NProto::TDeviceConfig AllocateDevice(
         const TDiskId& diskId,
         const TAllocationQuery& query);
