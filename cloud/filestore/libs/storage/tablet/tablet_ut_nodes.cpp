@@ -1257,8 +1257,6 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Nodes)
                             return true;                                       \
                         }                                                      \
                 }                                                              \
-                Cerr << "Event: " << event->GetTypeRewrite() << " "            \
-                     << event->ToString() << Endl;                             \
                 return false;                                                  \
             });                                                                \
                                                                                \
