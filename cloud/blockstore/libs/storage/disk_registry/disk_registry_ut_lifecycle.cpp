@@ -2605,7 +2605,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
         UNIT_ASSERT_VALUES_EQUAL(x->GetDeviceUUID(), devicesToSuspendIO[0]);
     }
 
-    Y_UNIT_TEST(ShouldRefrainFromRejectingHalfOfTheCluster)
+    Y_UNIT_TEST(ShouldRefrainFromRejectingBigPartOfTheCluster)
     {
         const TVector agents {
             CreateAgentConfig("agent-1", {Device("dev", "uuid-1")}),
@@ -2630,7 +2630,8 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
                 auto config = CreateDefaultStorageConfig();
                 config.SetDiskRegistryCountersHost("test");
 
-                config.SetNonReplicatedAgentMaxTimeout(50'000); // 50s
+                config.SetNonReplicatedAgentMaxTimeout(50'000);           // 50s
+                config.SetDiskRegistryInitialAgentRejectionThreshold(50); // 50%
 
                 return config;
             }())
@@ -2651,6 +2652,9 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
 
         diskRegistry.RebootTablet();
         diskRegistry.WaitReady();
+
+        // Only 33% of agents are reconnected
+        RegisterAgents(*runtime, 2);
 
         UNIT_ASSERT_VALUES_EQUAL(0, crits->Val());
 
