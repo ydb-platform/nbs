@@ -1,7 +1,5 @@
 #include "node_index_cache.h"
 
-#include <util/generic/algorithm.h>
-
 namespace NCloud::NFileStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -43,32 +41,12 @@ void TNodeIndexCache::InvalidateCache(ui64 nodeId)
     }
 }
 
-void TNodeIndexCache::LockNode(ui64 nodeId)
-{
-    if (MaxNodes == 0) {
-        // If the cache is disabled, no need to lock nodes – it will not work
-        // anyway
-        return;
-    }
-    LockedNodes.insert(nodeId);
-}
-
-void TNodeIndexCache::UnlockNode(ui64 nodeId)
-{
-    if (auto it = LockedNodes.find(nodeId); it != LockedNodes.end()) {
-        LockedNodes.erase(it);
-    }
-}
-
 void TNodeIndexCache::RegisterGetNodeAttrResult(
     ui64 parentNodeId,
     const TString& name,
     const NProto::TNodeAttr& response)
 {
     if (MaxNodes == 0) {
-        return;
-    }
-    if (LockedNodes.find(response.GetId()) != LockedNodes.end()) {
         return;
     }
     if (AttrByParentNodeId.size() == MaxNodes) {

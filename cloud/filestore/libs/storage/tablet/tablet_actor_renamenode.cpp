@@ -416,6 +416,22 @@ void TIndexTabletActor::CompleteTx_RenameNode(
     const TActorContext& ctx,
     TTxIndexTablet::TRenameNode& args)
 {
+    InvalidateNodeCaches(args.ParentNodeId);
+    InvalidateNodeCaches(args.NewParentNodeId);
+    if (args.ChildRef) {
+        InvalidateNodeCaches(args.ChildRef->ChildNodeId);
+    }
+    if (args.NewChildRef) {
+        InvalidateNodeCaches(args.NewChildRef->ChildNodeId);
+    }
+    if (args.ParentNode) {
+        InvalidateNodeCaches(args.ParentNode->NodeId);
+    }
+    if (args.NewParentNode) {
+        InvalidateNodeCaches(args.NewParentNode->NodeId);
+    }
+
+
     if (!HasError(args.Error) && !args.ChildRef) {
         auto message = ReportChildRefIsNull(TStringBuilder()
             << "RenameNode: " << args.Request.ShortDebugString());

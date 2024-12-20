@@ -247,16 +247,7 @@ bool TIndexTabletActor::PrepareTx_CreateHandle(
             return true;
         }
 
-    }
-
-    // This transaction can potentially change the node size, so we need to
-    // protect the cache from being populated by a concurrent GetNodeAttr
-    // request
-    if (args.TargetNodeId != InvalidNodeId) {
-        LockNodeIndexCache(args.TargetNodeId);
-    }
-    if (args.NodeId != InvalidNodeId) {
-        LockNodeIndexCache(args.NodeId);
+        // TODO: AccessCheck
     }
 
     return true;
@@ -418,12 +409,8 @@ void TIndexTabletActor::CompleteTx_CreateHandle(
     const TActorContext& ctx,
     TTxIndexTablet::TCreateHandle& args)
 {
-    if (args.TargetNodeId != InvalidNodeId) {
-        UnlockNodeIndexCache(args.TargetNodeId);
-    }
-    if (args.NodeId != InvalidNodeId) {
-        UnlockNodeIndexCache(args.NodeId);
-    }
+    InvalidateNodeCaches(args.TargetNodeId);
+    InvalidateNodeCaches(args.NodeId);
 
     if (args.Error.GetCode() == E_ARGUMENT) {
         // service actor sent something inappropriate, we'd better log it

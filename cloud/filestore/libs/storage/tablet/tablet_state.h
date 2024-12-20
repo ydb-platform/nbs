@@ -1280,11 +1280,20 @@ private:
         ui64 commitId,
         const TByteRange& range);
 
+public:
+
+    ////////////////////////////////////////////////////////////////////////////
+    // Caching: ReadAhead, NodeIndexCache, InMemoryIndexState
+    ////////////////////////////////////////////////////////////////////////////
+
+    // Upon any completion of the RW operation this function is supposed to be
+    // called in order to invalidate potentially cached data
+    void InvalidateNodeCaches(ui64 nodeId);
+
     //
     // ReadAhead.
     //
 
-public:
     bool TryFillDescribeResult(
         ui64 nodeId,
         ui64 handle,
@@ -1309,8 +1318,6 @@ public:
         ui64 parentNodeId,
         const TString& name,
         NProto::TNodeAttr* response);
-    void LockNodeIndexCache(ui64 nodeId);
-    void UnlockNodeIndexCache(ui64 nodeId);
     void InvalidateNodeIndexCache(ui64 parentNodeId, const TString& name);
     void InvalidateNodeIndexCache(ui64 nodeId);
     void RegisterGetNodeAttrResult(

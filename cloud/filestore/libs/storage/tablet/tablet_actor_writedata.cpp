@@ -206,12 +206,6 @@ bool TIndexTabletActor::PrepareTx_WriteData(
         return true;
     }
 
-    // This transaction can potentially change the node size, so we need to
-    // protect the cache from being populated by a concurrent GetNodeAttr
-    // request. Note that thus the only need to lock unlock the node is if the
-    // args.Error is not set.
-    LockNodeIndexCache(args.NodeId);
-
     return true;
 }
 
@@ -315,6 +309,8 @@ void TIndexTabletActor::CompleteTx_WriteData(
     const TActorContext& ctx,
     TTxIndexTablet::TWriteData& args)
 {
+    InvalidateNodeCaches(args.NodeId);
+
     RemoveTransaction(*args.RequestInfo);
 
     auto reply = [&] (
@@ -334,8 +330,6 @@ void TIndexTabletActor::CompleteTx_WriteData(
         reply(ctx, args);
         return;
     }
-
-    UnlockNodeIndexCache(args.NodeId);
 
     if (!args.ShouldWriteBlob()) {
         reply(ctx, args);
