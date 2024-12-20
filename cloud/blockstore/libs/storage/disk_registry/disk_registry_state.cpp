@@ -4044,6 +4044,9 @@ void TDiskRegistryState::PublishCounters(TInstant now)
         return;
     }
 
+    const auto startAt = TMonotonic::Now();
+    STORAGE_LOG(TLOG_INFO, "DiskRegistry started PublishCounters");
+
     AgentList.PublishCounters(now);
 
     THashMap<TString, TDevicePoolCounters> poolName2Counters;
@@ -4202,6 +4205,10 @@ void TDiskRegistryState::PublishCounters(TInstant now)
         }
 
         if (!logicalBlockSize) {
+            continue;
+        }
+
+        if (StorageConfig->GetDisableFullPlacementGroupCountCalculation()) {
             continue;
         }
 
@@ -4409,6 +4416,11 @@ void TDiskRegistryState::PublishCounters(TInstant now)
 
     SelfCounters.QueryAvailableStorageErrors.Publish(now);
     SelfCounters.QueryAvailableStorageErrors.Reset();
+
+    STORAGE_LOG(
+        TLOG_INFO,
+        "DiskRegistry finished PublishCounters in %s",
+        (TMonotonic::Now() - startAt).ToString().c_str());
 }
 
 NProto::TError TDiskRegistryState::CreatePlacementGroup(

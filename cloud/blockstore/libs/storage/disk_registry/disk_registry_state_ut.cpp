@@ -1365,7 +1365,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
         UNIT_ASSERT_VALUES_EQUAL(state.GetDirtyDevices().size(), 0);
     }
 
-    Y_UNIT_TEST(ShouldUpdateCounters)
+    void DoShouldUpdateCounters(bool disableFullGroupsCountCalculation)
     {
         TTestExecutor executor;
         executor.WriteTx([&] (TDiskRegistryDatabase db) {
@@ -1389,12 +1389,17 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
             })
         };
 
+        NProto::TStorageServiceConfig proto;
+        proto.SetDisableFullPlacementGroupCountCalculation(
+            disableFullGroupsCountCalculation);
+
         auto monitoring = CreateMonitoringServiceStub();
         auto diskRegistryGroup = monitoring->GetCounters()
             ->GetSubgroup("counters", "blockstore")
             ->GetSubgroup("component", "disk_registry");
 
         TDiskRegistryState state = TDiskRegistryStateBuilder()
+            .With(CreateStorageConfig(proto))
             .With(diskRegistryGroup)
             .WithKnownAgents(agents)
             .AddDevicePoolConfig("local-ssd", 10_GB, NProto::DEVICE_POOL_KIND_LOCAL)
@@ -1819,6 +1824,16 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
         UNIT_ASSERT_VALUES_EQUAL(0, localPool.BrokenBytes->Val());
         UNIT_ASSERT_VALUES_EQUAL(0, localPool.DecommissionedBytes->Val());
         UNIT_ASSERT_VALUES_EQUAL(10_GB, localPool.DirtyBytes->Val());
+    }
+
+    Y_UNIT_TEST(ShouldUpdateCounters)
+    {
+        DoShouldUpdateCounters(false);
+    }
+
+    Y_UNIT_TEST(ShouldUpdateCountersWithDisabledFullGroupsCalculation)
+    {
+        DoShouldUpdateCounters(true);
     }
 
     Y_UNIT_TEST(ShouldRejectBrokenStats)
