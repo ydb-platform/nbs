@@ -4045,7 +4045,7 @@ void TDiskRegistryState::PublishCounters(TInstant now)
     }
 
     const auto startAt = TMonotonic::Now();
-    STORAGE_LOG(TLOG_INFO, "DiskRegistry started PublishCounters");
+    STORAGE_LOG(TLOG_DEBUG, "DiskRegistry started PublishCounters");
 
     AgentList.PublishCounters(now);
 
@@ -4417,10 +4417,11 @@ void TDiskRegistryState::PublishCounters(TInstant now)
     SelfCounters.QueryAvailableStorageErrors.Publish(now);
     SelfCounters.QueryAvailableStorageErrors.Reset();
 
+    auto executionTime = TMonotonic::Now() - startAt;
     STORAGE_LOG(
-        TLOG_INFO,
+        executionTime > TDuration::Seconds(1) ? TLOG_WARNING : TLOG_DEBUG,
         "DiskRegistry finished PublishCounters in %s",
-        (TMonotonic::Now() - startAt).ToString().c_str());
+        executionTime.ToString().c_str());
 }
 
 NProto::TError TDiskRegistryState::CreatePlacementGroup(

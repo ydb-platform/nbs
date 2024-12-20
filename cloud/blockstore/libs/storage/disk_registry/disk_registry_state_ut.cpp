@@ -1389,7 +1389,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
             })
         };
 
-        NProto::TStorageServiceConfig proto;
+        NProto::TStorageServiceConfig proto = CreateDefaultStorageConfigProto();
         proto.SetDisableFullPlacementGroupCountCalculation(
             disableFullGroupsCountCalculation);
 
@@ -1690,7 +1690,9 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
         UNIT_ASSERT_VALUES_EQUAL(0, disksInTemporarilyUnavailableState->Val());
         UNIT_ASSERT_VALUES_EQUAL(0, disksInErrorState->Val());
         UNIT_ASSERT_VALUES_EQUAL(1, placementGroups->Val());
-        UNIT_ASSERT_VALUES_EQUAL(1, fullPlacementGroups->Val());
+        UNIT_ASSERT_VALUES_EQUAL(
+            disableFullGroupsCountCalculation ? 0 : 1,
+            fullPlacementGroups->Val());
         UNIT_ASSERT_VALUES_EQUAL(1, allocatedDisksInGroups->Val());
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) mutable {
@@ -1739,7 +1741,9 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
         UNIT_ASSERT_VALUES_EQUAL(0, disksInTemporarilyUnavailableState->Val());
         UNIT_ASSERT_VALUES_EQUAL(1, disksInErrorState->Val());
         UNIT_ASSERT_VALUES_EQUAL(1, placementGroups->Val());
-        UNIT_ASSERT_VALUES_EQUAL(1, fullPlacementGroups->Val());
+        UNIT_ASSERT_VALUES_EQUAL(
+            disableFullGroupsCountCalculation ? 0 : 1,
+            fullPlacementGroups->Val());
         UNIT_ASSERT_VALUES_EQUAL(1, allocatedDisksInGroups->Val());
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) mutable {
@@ -1778,7 +1782,9 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
         UNIT_ASSERT_VALUES_EQUAL(0, disksInTemporarilyUnavailableState->Val());
         UNIT_ASSERT_VALUES_EQUAL(1, disksInErrorState->Val());
         UNIT_ASSERT_VALUES_EQUAL(1, placementGroups->Val());
-        UNIT_ASSERT_VALUES_EQUAL(1, fullPlacementGroups->Val());
+        UNIT_ASSERT_VALUES_EQUAL(
+            disableFullGroupsCountCalculation ? 0 : 1,
+            fullPlacementGroups->Val());
         UNIT_ASSERT_VALUES_EQUAL(1, allocatedDisksInGroups->Val());
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) {
@@ -1815,7 +1821,9 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
         UNIT_ASSERT_VALUES_EQUAL(0, disksInTemporarilyUnavailableState->Val());
         UNIT_ASSERT_VALUES_EQUAL(1, disksInErrorState->Val());
         UNIT_ASSERT_VALUES_EQUAL(1, placementGroups->Val());
-        UNIT_ASSERT_VALUES_EQUAL(1, fullPlacementGroups->Val());
+        UNIT_ASSERT_VALUES_EQUAL(
+            disableFullGroupsCountCalculation ? 0 : 1,
+            fullPlacementGroups->Val());
         UNIT_ASSERT_VALUES_EQUAL(1, allocatedDisksInGroups->Val());
 
         UNIT_ASSERT_VALUES_EQUAL(10_GB, localPool.FreeBytes->Val());
