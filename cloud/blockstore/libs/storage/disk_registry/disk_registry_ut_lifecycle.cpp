@@ -2604,6 +2604,85 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
         UNIT_ASSERT_VALUES_EQUAL(1, devicesToSuspendIO.size());
         UNIT_ASSERT_VALUES_EQUAL(x->GetDeviceUUID(), devicesToSuspendIO[0]);
     }
+
+    Y_UNIT_TEST(ShouldRefrainFromRejectingHalfOfTheCluster)
+    {
+        const TVector agents {
+            CreateAgentConfig("agent-1", {Device("dev", "uuid-1")}),
+            CreateAgentConfig("agent-2", {Device("dev", "uuid-2")}),
+            CreateAgentConfig("agent-3", {Device("dev", "uuid-3")}),
+            CreateAgentConfig("agent-4", {Device("dev", "uuid-4")}),
+            CreateAgentConfig("agent-5", {Device("dev", "uuid-5")}),
+            CreateAgentConfig("agent-6", {Device("dev", "uuid-6")}),
+        };
+
+        auto counters = MakeIntrusive<NMonitoring::TDynamicCounters>();
+        InitCriticalEventsCounter(counters);
+
+        auto crits = counters->GetCounter(
+            "AppCriticalEvents/"
+            "DiskRegistryInitialAgentRejectionThresholdExceeded",
+            true);
+
+        auto runtime = TTestRuntimeBuilder()
+            .WithAgents(agents)
+            .With([] {
+                auto config = CreateDefaultStorageConfig();
+                config.SetDiskRegistryCountersHost("test");
+
+                config.SetNonReplicatedAgentMaxTimeout(50'000); // 50s
+
+                return config;
+            }())
+            .Build();
+
+        TDiskRegistryClient diskRegistry(*runtime);
+        diskRegistry.WaitReady();
+        diskRegistry.SetWritableState(true);
+        diskRegistry.UpdateConfig(CreateRegistryConfig(0, agents));
+
+        RegisterAndWaitForAgents(*runtime, agents);
+
+        UNIT_ASSERT_VALUES_EQUAL(0, crits->Val());
+
+        runtime->AdvanceCurrentTime(1h);
+
+        UNIT_ASSERT_VALUES_EQUAL(0, crits->Val());
+
+        diskRegistry.RebootTablet();
+        diskRegistry.WaitReady();
+
+        UNIT_ASSERT_VALUES_EQUAL(0, crits->Val());
+
+        runtime->AdvanceCurrentTime(10s);
+        runtime->DispatchEvents({}, 10ms);
+
+        UNIT_ASSERT_VALUES_EQUAL(0, crits->Val());
+
+        runtime->AdvanceCurrentTime(30s);
+        runtime->DispatchEvents({}, 10ms);
+
+        UNIT_ASSERT_VALUES_EQUAL(0, crits->Val());
+
+        // NonReplicatedAgentMaxTimeout expired
+        runtime->AdvanceCurrentTime(10s);
+        runtime->DispatchEvents({}, 10ms);
+
+        UNIT_ASSERT_VALUES_EQUAL(1, crits->Val());
+
+        // DR can still allocate a disk
+        diskRegistry.AllocateDisk("vol0", 60_GB);
+
+        diskRegistry.RebootTablet();
+        diskRegistry.WaitReady();
+
+        UNIT_ASSERT_VALUES_EQUAL(1, crits->Val());
+
+        runtime->AdvanceCurrentTime(50s);
+        runtime->DispatchEvents({}, 10ms);
+
+        UNIT_ASSERT_VALUES_EQUAL(2, crits->Val());
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

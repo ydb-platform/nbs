@@ -76,7 +76,7 @@ void TDiskRegistryActor::ScheduleMakeBackup(
         - (ctx.Now() - lastBackupTs);
 
     LOG_DEBUG_S(ctx, TBlockStoreComponents::DISK_REGISTRY,
-        "Schedule backup at " << backupPeriod.ToDeadLine());
+        "Schedule backup at " << backupPeriod.ToDeadLine(ctx.Now()));
 
     TString hostPrefix = Config->GetDiskRegistryCountersHost();
     if (!hostPrefix.empty()) {
@@ -103,7 +103,7 @@ void TDiskRegistryActor::ScheduleCleanup(const TActorContext& ctx)
     const auto recyclingPeriod = Config->GetNonReplicatedDiskRecyclingPeriod();
 
     LOG_DEBUG_S(ctx, TBlockStoreComponents::DISK_REGISTRY,
-        "Schedule cleanup at " << recyclingPeriod.ToDeadLine());
+        "Schedule cleanup at " << recyclingPeriod.ToDeadLine(ctx.Now()));
 
     auto request = std::make_unique<TEvDiskRegistryPrivate::TEvCleanupDisksRequest>();
 
