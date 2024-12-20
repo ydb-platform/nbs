@@ -303,7 +303,7 @@ struct TTestBootstrap
             Scheduler,
             Logging,
             AIOService,
-            TaskQueue
+            TaskQueue,
             nullptr   // no profile log
         );
         Store->Start();
