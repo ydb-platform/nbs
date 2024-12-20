@@ -2,6 +2,18 @@
 
 namespace NCloud::NBlockStore::NStorage::NDiskRegistryStateTest {
 
+namespace {
+bool AllSucceeded(std::initializer_list<bool> ls)
+{
+    auto identity = [](bool x)
+    {
+        return x;
+    };
+
+    return std::all_of(std::begin(ls), std::end(ls), identity);
+}
+}   // namespace
+
 using NProto::TDeviceConfig;
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -460,6 +472,33 @@ TString GetReplicaTableRepr(
 
 ////////////////////////////////////////////////////////////////////////////////
 
+std::optional<TDiskRegistryStateBuilder> TDiskRegistryStateBuilder::LoadState(
+    TDiskRegistryDatabase& db)
+{
+    TDiskRegistryStateBuilder builder;
+
+     if(!AllSucceeded({
+        db.ReadDiskRegistryConfig(builder.Config),
+        db.ReadDirtyDevices(builder.DirtyDevices),
+        db.ReadAgents(builder.Agents),
+        db.ReadDisks(builder.Disks),
+        db.ReadPlacementGroups(builder.PlacementGroups),
+        db.ReadBrokenDisks(builder.BrokenDisks),
+        db.ReadDisksToReallocate(builder.DisksToReallocate),
+        db.ReadErrorNotifications(builder.ErrorNotifications),
+        db.ReadUserNotifications(builder.UserNotifications),
+        db.ReadDisksToCleanup(builder.DisksToCleanup),
+        db.ReadOutdatedVolumeConfigs(builder.OutdatedVolumeConfigs),
+        db.ReadSuspendedDevices(builder.SuspendedDevices),
+        db.ReadAutomaticallyReplacedDevices(builder.AutomaticallyReplacedDevices),
+        db.ReadDiskRegistryAgentListParams(builder.DiskRegistryAgentListParams),
+    })) {
+        return std::nullopt;
+    }
+
+    return builder;
+}
+
 TDiskRegistryState TDiskRegistryStateBuilder::Build()
 {
     return TDiskRegistryState(
@@ -591,6 +630,20 @@ TDiskRegistryStateBuilder& TDiskRegistryStateBuilder::WithSuspendedDevices(
         suspendedDevice.SetId(uuid);
         SuspendedDevices.push_back(std::move(suspendedDevice));
     }
+    return *this;
+}
+
+TDiskRegistryStateBuilder& TDiskRegistryStateBuilder::WithSuspendedDevices(
+    TVector<NProto::TSuspendedDevice> suspendedDevices)
+{
+    SuspendedDevices = std::move(suspendedDevices);
+    return *this;
+}
+
+TDiskRegistryStateBuilder& TDiskRegistryStateBuilder::WithAutomaticallyReplacedDevices(
+    TDeque<TAutomaticallyReplacedDeviceInfo> automaticalyReplacedDevices)
+{
+    AutomaticallyReplacedDevices = std::move(automaticalyReplacedDevices);
     return *this;
 }
 

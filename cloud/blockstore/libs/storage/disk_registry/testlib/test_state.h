@@ -254,6 +254,9 @@ struct TDiskRegistryStateBuilder
     TDeque<TAutomaticallyReplacedDeviceInfo> AutomaticallyReplacedDevices;
     THashMap<TString, NProto::TDiskRegistryAgentParams> DiskRegistryAgentListParams;
 
+    static std::optional<TDiskRegistryStateBuilder> LoadState(
+        TDiskRegistryDatabase& db);
+
     TDiskRegistryState Build();
 
     TDiskRegistryStateBuilder& With(TStorageConfigPtr config);
@@ -286,6 +289,12 @@ struct TDiskRegistryStateBuilder
 
     TDiskRegistryStateBuilder& WithSuspendedDevices(
         TVector<TString> suspendedDevices);
+
+    TDiskRegistryStateBuilder& WithSuspendedDevices(
+        TVector<NProto::TSuspendedDevice> suspendedDevices);
+
+    TDiskRegistryStateBuilder& WithAutomaticallyReplacedDevices(
+        TDeque<TAutomaticallyReplacedDeviceInfo> automaticalyReplacedDevices);
 
     TDiskRegistryStateBuilder& WithSpreadPlacementGroups(
         TVector<TString> groupIds);

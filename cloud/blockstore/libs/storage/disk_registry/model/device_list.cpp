@@ -774,6 +774,17 @@ TVector<NProto::TDeviceConfig> TDeviceList::GetDirtyDevices() const
     return devices;
 }
 
+TVector<TString> TDeviceList::GetDirtyDevicesId() const
+{
+    TVector<TString> devices;
+    devices.reserve(SuspendedDevices.size());
+    for (const auto& id: DirtyDevices) {
+        devices.push_back(id);
+    }
+
+    return devices;
+}
+
 const THashMap<TDeviceList::TDeviceId, NProto::TDeviceConfig>&
 TDeviceList::GetAllDevices() const
 {

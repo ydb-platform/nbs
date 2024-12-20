@@ -7531,12 +7531,18 @@ NProto::TError TDiskRegistryState::CleanupDevices(TDiskRegistryDatabase& db)
         }
     }
 
-
     THashSet<TString> devicesToRemoveHashSet;
-    for (const auto & device: DeviceList.GetAllDevices()) {
-        auto it = allKnownDevicesWithAgents.find(device.first);
+    for (const auto& deviceId: DeviceList.GetDirtyDevicesId()) {
+        auto it = allKnownDevicesWithAgents.find(deviceId);
         if (it == allKnownDevicesWithAgents.end()) {
-            devicesToRemoveHashSet.emplace(device.first);
+            devicesToRemoveHashSet.emplace(deviceId);
+        }
+    }
+
+    for (const auto& device: DeviceList.GetSuspendedDevices()) {
+        auto it = allKnownDevicesWithAgents.find(device.GetId());
+        if (it == allKnownDevicesWithAgents.end()) {
+            devicesToRemoveHashSet.emplace(device.GetId());
         }
     }
 
