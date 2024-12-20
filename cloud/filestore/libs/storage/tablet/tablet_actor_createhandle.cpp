@@ -328,6 +328,7 @@ void TIndexTabletActor::ExecuteTx_CreateHandle(
             args.WriteCommitId,
             parent,
             args.ParentNode->Attrs);
+        args.UpdatedNodes.push_back(args.ParentNode->NodeId);
 
     } else if (args.ShardId.empty()
         && HasFlag(args.Flags, NProto::TCreateHandleRequest::E_TRUNCATE))
@@ -353,6 +354,7 @@ void TIndexTabletActor::ExecuteTx_CreateHandle(
             args.WriteCommitId,
             attrs,
             args.TargetNode->Attrs);
+        args.UpdatedNodes.push_back(args.TargetNodeId);
     }
 
     if (args.ShardId.empty()) {
@@ -409,8 +411,9 @@ void TIndexTabletActor::CompleteTx_CreateHandle(
     const TActorContext& ctx,
     TTxIndexTablet::TCreateHandle& args)
 {
-    InvalidateNodeCaches(args.TargetNodeId);
-    InvalidateNodeCaches(args.NodeId);
+    for (auto nodeId: args.UpdatedNodes) {
+        InvalidateNodeCaches(nodeId);
+    }
 
     if (args.Error.GetCode() == E_ARGUMENT) {
         // service actor sent something inappropriate, we'd better log it

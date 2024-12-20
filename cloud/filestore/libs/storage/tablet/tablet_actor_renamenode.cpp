@@ -431,7 +431,6 @@ void TIndexTabletActor::CompleteTx_RenameNode(
         InvalidateNodeCaches(args.NewParentNode->NodeId);
     }
 
-
     if (!HasError(args.Error) && !args.ChildRef) {
         auto message = ReportChildRefIsNull(TStringBuilder()
             << "RenameNode: " << args.Request.ShortDebugString());
