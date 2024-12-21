@@ -29,6 +29,7 @@ private:
     const NProto::TFileStorePerformanceProfile PerformanceProfile;
     const bool Alter;
     const bool Force;
+    const ui32 ExplicitShardCount;
 
     NKikimrFileStore::TConfig Config;
 
@@ -110,6 +111,7 @@ TAlterFileStoreActor::TAlterFileStoreActor(
     , FileSystemId(request.GetFileSystemId())
     , Alter(true)
     , Force(false)
+    , ExplicitShardCount(0)
 {
     Config.SetCloudId(request.GetCloudId());
     Config.SetFolderId(request.GetFolderId());
@@ -127,6 +129,7 @@ TAlterFileStoreActor::TAlterFileStoreActor(
     , PerformanceProfile(request.GetPerformanceProfile())
     , Alter(false)
     , Force(request.GetForce())
+    , ExplicitShardCount(request.GetShardCount())
 {
     Config.SetBlocksCount(request.GetBlocksCount());
     Config.SetVersion(request.GetConfigVersion());
@@ -190,7 +193,8 @@ void TAlterFileStoreActor::HandleDescribeFileStoreResponse(
             FileStoreConfig = SetupMultiShardFileStorePerformanceAndChannels(
                 *StorageConfig,
                 config,
-                PerformanceProfile);
+                PerformanceProfile,
+                ExplicitShardCount);
             ShardsToCreate = FileStoreConfig.ShardConfigs.size();
             config = FileStoreConfig.MainFileSystemConfig;
 

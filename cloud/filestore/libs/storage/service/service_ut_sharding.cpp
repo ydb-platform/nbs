@@ -4395,6 +4395,51 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
             ++r;
         }
     }
+
+    SERVICE_TEST_SIMPLE(ShouldAddExplicitShardCountAutomaticallyUponResize)
+    {
+        config.SetAutomaticShardCreationEnabled(true);
+        config.SetShardAllocationUnit(4_TB);
+        config.SetAutomaticallyCreatedShardSize(5_TB);
+        TTestEnv env({}, config);
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+
+        const TString fsId = "test";
+
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+        service.CreateFileStore(fsId, 1_GB / 4_KB);
+
+        TVector<TString> expected = {fsId};
+        auto listing = service.ListFileStores();
+        auto fsIds = listing->Record.GetFileStores();
+        TVector<TString> ids(fsIds.begin(), fsIds.end());
+        Sort(ids);
+        UNIT_ASSERT_VALUES_EQUAL(expected, ids);
+
+        // explicitly specifying shard count, other params are left intact
+        service.ResizeFileStore(fsId, 1_GB / 4_KB, false, 10);
+
+        expected = TVector<TString>{
+            fsId,
+            fsId + "_s1",
+            fsId + "_s10",
+            fsId + "_s2",
+            fsId + "_s3",
+            fsId + "_s4",
+            fsId + "_s5",
+            fsId + "_s6",
+            fsId + "_s7",
+            fsId + "_s8",
+            fsId + "_s9",
+        };
+        listing = service.ListFileStores();
+        fsIds = listing->Record.GetFileStores();
+        ids = TVector<TString>(fsIds.begin(), fsIds.end());
+        Sort(ids);
+        UNIT_ASSERT_VALUES_EQUAL(expected, ids);
+    }
 }
 
 }   // namespace NCloud::NFileStore::NStorage
