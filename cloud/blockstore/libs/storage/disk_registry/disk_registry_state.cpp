@@ -23,6 +23,7 @@
 #include <util/string/builder.h>
 #include <util/string/join.h>
 
+#include <ranges>
 #include <tuple>
 
 namespace NCloud::NBlockStore::NStorage {
@@ -7531,32 +7532,38 @@ NProto::TError TDiskRegistryState::CleanupDevices(TDiskRegistryDatabase& db)
         }
     }
 
-    THashSet<TString> devicesToRemoveHashSet;
-    for (const auto& deviceId: DeviceList.GetDirtyDevicesId()) {
-        auto it = allKnownDevicesWithAgents.find(deviceId);
-        if (it == allKnownDevicesWithAgents.end()) {
-            devicesToRemoveHashSet.emplace(deviceId);
-        }
+    TVector<TString> devicesToRemoveVector;
+
+
+    auto filterLeakedDevices = [&](const TString& id)
+    {
+        return allKnownDevicesWithAgents.find(id) ==
+               allKnownDevicesWithAgents.end();
+    };
+    auto addIdToVector = [&](TString id)
+    {
+        devicesToRemoveVector.emplace_back(std::move(id));
+    };
+
+    for (auto& deviceId: DeviceList.GetDirtyDevicesId() |
+                             std::views::filter(filterLeakedDevices))
+    {
+        addIdToVector(std::move(deviceId));
+    }
+    for (auto& device: DeviceList.GetSuspendedDevices() |
+                           std::views::filter(
+                               [&](const auto& device)
+                               { return filterLeakedDevices(device.GetId()); }))
+    {
+        addIdToVector(std::move(*device.MutableId()));
+    }
+    for (const auto& deviceId: AutomaticallyReplacedDeviceIds |
+                                   std::views::filter(filterLeakedDevices))
+    {
+        addIdToVector(deviceId);
     }
 
-    for (const auto& device: DeviceList.GetSuspendedDevices()) {
-        auto it = allKnownDevicesWithAgents.find(device.GetId());
-        if (it == allKnownDevicesWithAgents.end()) {
-            devicesToRemoveHashSet.emplace(device.GetId());
-        }
-    }
-
-    for (const auto& deviceId: AutomaticallyReplacedDeviceIds) {
-        auto it = allKnownDevicesWithAgents.find(deviceId);
-        if (it == allKnownDevicesWithAgents.end()) {
-            devicesToRemoveHashSet.emplace(deviceId);
-        }
-    }
-
-    TVector<TString> devicesToRemoveVector(
-        devicesToRemoveHashSet.begin(),
-        devicesToRemoveHashSet.end());
-
+    SortUnique(devicesToRemoveVector);
     ForgetDevices(db, devicesToRemoveVector);
 
     return {};
