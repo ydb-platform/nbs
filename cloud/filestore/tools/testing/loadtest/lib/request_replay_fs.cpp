@@ -271,6 +271,7 @@ private:
             }
 
             if (parentNode == InvalidNodeId &&
+                logRequest.GetNodeInfo().GetParentNodeId() != InvalidNodeId &&
                 logRequest.GetNodeInfo().GetParentNodeId() !=
                     logRequest.GetNodeInfo().GetNodeId())
             {
@@ -297,17 +298,16 @@ private:
                 nodeName =
                     KnownLogNodes[logRequest.GetNodeInfo().GetNodeId()].Name;
             }
-            const auto parentpath = parentNode == InvalidNodeId
+            const auto parentPath = parentNode == InvalidNodeId
                                         ? PathByNode(RootNodeId) / LostName
                                         : PathByNode(parentNode);
-
-            if (nodeName.empty() && parentpath.IsDirectory()) {
+            if (nodeName.empty() && parentPath.IsDirectory()) {
                 nodeName =
                     KnownLogNodes[logRequest.GetNodeInfo().GetParentNodeId()]
                         .Name;
             }
 
-            if (parentNode == InvalidNodeId && nodeName.empty() &&
+            if (nodeName.empty() &&
                 logRequest.GetNodeInfo().GetNodeId() != InvalidNodeId)
             {
                 nodeName = UnknownNodeNamePrefix +
@@ -315,9 +315,9 @@ private:
             }
 
             if (nodeName.empty()) {
-                fullName = parentpath;
+                fullName = parentPath;
             } else {
-                fullName = parentpath / nodeName;
+                fullName = parentPath / nodeName;
             }
         }
         STORAGE_DEBUG(
@@ -420,24 +420,32 @@ private:
         }
 
         TGuard<TMutex> guard(StateLock);
+        const auto& range = logRequest.GetRanges(0);
+        auto handleLocal = GetLocalHandleId(range.GetHandle());
+        if (handleLocal == InvalidHandle) {
+            NCloud::NFileStore::NProto::TProfileLogRequestInfo requestCreate =
+                logRequest;
+            requestCreate.MutableNodeInfo()->SetNodeId(range.GetNodeId());
+            requestCreate.MutableNodeInfo()->SetHandle(range.GetHandle());
+            DoCreateHandle(requestCreate);
 
-        const auto handle =
-            GetLocalHandleId(logRequest.GetRanges(0).GetHandle());
-        if (handle == InvalidHandle) {
-            STORAGE_DEBUG(
-                "Read: no handle %lu ranges size=%d map size=%zu",
-                logRequest.GetRanges(0).GetHandle(),
-                logRequest.GetRanges().size(),
-                HandlesLogToActual.size());
-            return MakeFuture(TCompletedRequest{
-                NProto::ACTION_READ,
-                Started,
-                MakeError(E_FAIL, "cancelled")});
+            handleLocal = GetLocalHandleId(range.GetHandle());
+            if (handleLocal == InvalidHandle) {
+                STORAGE_DEBUG(
+                    "Read: no handle %lu ranges size=%d map size=%zu",
+                    range.GetHandle(),
+                    logRequest.GetRanges().size(),
+                    HandlesLogToActual.size());
+                return MakeFuture(TCompletedRequest{
+                    NProto::ACTION_READ,
+                    Started,
+                    MakeError(E_FAIL, "cancelled")});
+            }
         }
-        auto& fh = OpenHandles[handle];
+        auto& fh = OpenHandles[handleLocal];
         STORAGE_DEBUG(
             "Read from %lu fh.len=%ld fh.pos=%ld ",
-            handle,
+            handleLocal,
             fh.GetLength(),
             fh.GetPosition());
 
@@ -488,7 +496,7 @@ private:
         return ret.substr(0, bytes);
     }
 
-    TFuture<TCompletedRequest> DoWrite(
+    TFuture<TCompletedRequest> DoWriteData(
         const NCloud::NFileStore::NProto::TProfileLogRequestInfo& logRequest)
         override
     {
@@ -502,22 +510,31 @@ private:
                 MakeError(E_PRECONDITION_FAILED, "disabled by SkipWrite")});
         }
         TGuard<TMutex> guard(StateLock);
-
-        const auto handleLog = logRequest.GetRanges(0).GetHandle();
-        const auto handleLocal = GetLocalHandleId(handleLog);
+        const auto& range = logRequest.GetRanges(0);
+        const auto handleLog = range.GetHandle();
+        auto handleLocal = GetLocalHandleId(handleLog);
         if (handleLocal == InvalidHandle) {
-            // TODO(proller): Suggest filename, place in __lost__ if unknown,
-            // create and open file, continue to write
-            return MakeFuture(TCompletedRequest(
-                NProto::ACTION_WRITE,
-                Started,
-                MakeError(
-                    E_CANCELLED,
-                    TStringBuilder()
-                        << "write cancelled: no handle =" << handleLog)));
+            NCloud::NFileStore::NProto::TProfileLogRequestInfo requestCreate =
+                logRequest;
+            requestCreate.MutableNodeInfo()->SetNodeId(range.GetNodeId());
+            requestCreate.MutableNodeInfo()->SetHandle(range.GetHandle());
+
+            DoCreateHandle(requestCreate);
+            handleLocal = GetLocalHandleId(handleLog);
+            if (handleLocal == InvalidHandle) {
+                // TODO(proller): Suggest filename, place in __lost__ if
+                // unknown, create and open file, continue to write
+                return MakeFuture(TCompletedRequest(
+                    NProto::ACTION_WRITE,
+                    Started,
+                    MakeError(
+                        E_CANCELLED,
+                        TStringBuilder()
+                            << "write cancelled: no handle =" << handleLog)));
+            }
         }
-        const auto bytes = logRequest.GetRanges(0).GetBytes();
-        const auto offset = logRequest.GetRanges(0).GetOffset();
+        const auto bytes = range.GetBytes();
+        const auto offset = range.GetOffset();
 
         auto buffer = std::make_shared<TString>();
 
@@ -592,8 +609,11 @@ private:
 
         TGuard<TMutex> guard(StateLock);
 
-        const auto parentNode = CreateDirIfMissingByNodeLog(
-            logRequest.GetNodeInfo().GetNewParentNodeId());
+        const auto parentNode =
+            logRequest.GetNodeInfo().GetNewParentNodeId() == InvalidNodeId
+                ? InvalidNodeId
+                : CreateDirIfMissingByNodeLog(
+                      logRequest.GetNodeInfo().GetNewParentNodeId());
 
         auto fullName =
             PathByNode(parentNode) / logRequest.GetNodeInfo().GetNewNodeName();
@@ -822,7 +842,8 @@ private:
                 logRequest.GetNodeInfo().GetParentNodeId();
         }
 
-        // TODO(proller): can create and truncate to known size missing file by flag
+        // TODO(proller): can create and truncate to known size missing file by
+        // flag
 
         TFsPath fullname;
         if (logRequest.GetNodeInfo().GetNodeId() != InvalidNodeId) {

@@ -70,11 +70,15 @@ void IReplayRequestGenerator::Advance()
         if (!Spec.GetFileSystemIdFilter().empty() &&
             fileSystemId != Spec.GetFileSystemIdFilter())
         {
+            ++EventsSkipped;
             STORAGE_DEBUG(
-                "Skipped event with FileSystemId=%s",
-                fileSystemId.c_str());
+                "Skipped events=%zu FileSystemId=%s Filter=%s",
+                EventsSkipped,
+                fileSystemId.c_str(),
+                Spec.GetFileSystemIdFilter().c_str());
             continue;
         }
+
 
         if (TargetFilesystemId.empty() && !fileSystemId.empty()) {
             TargetFilesystemId = fileSystemId;
@@ -96,7 +100,7 @@ TFuture<TCompletedRequest> IReplayRequestGenerator::ProcessRequest(
         case EFileStoreRequest::ReadData:
             return DoReadData(request);
         case EFileStoreRequest::WriteData:
-            return DoWrite(request);
+            return DoWriteData(request);
         case EFileStoreRequest::CreateNode:
             return DoCreateNode(request);
         case EFileStoreRequest::RenameNode:
@@ -177,13 +181,16 @@ IReplayRequestGenerator::ExecuteNextRequest()
 
                 const auto current = TInstant::Now();
 
-                if (nextStatusAt <= current) {
-                    nextStatusAt = current + statusEverySeconds;
+                if (NextStatusAt <= current) {
+                    NextStatusAt = current + StatusEverySeconds;
                     STORAGE_INFO(
-                        "Current event=%zu Msg=%zd TotalMsg=%zu",
+                        "Current event=%zu skipped=%zu Msg=%zd TotalMsg=%zu "
+                        "Sleeps=%f",
                         EventsProcessed,
+                        EventsSkipped,
                         EventMessageNumber,
-                        MessagesProcessed)
+                        MessagesProcessed,
+                        Sleeps)
                 }
 
                 auto diff = current - Started;
@@ -198,6 +205,7 @@ IReplayRequestGenerator::ExecuteNextRequest()
                         diff.MicroSeconds());
 
                     Sleep(sleep);
+                    Sleeps += sleep.SecondsFloat();
                 }
 
                 Started = current;

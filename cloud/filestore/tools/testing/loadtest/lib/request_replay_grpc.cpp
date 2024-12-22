@@ -408,7 +408,7 @@ private:
         return ret.substr(0, bytes);
     }
 
-    TFuture<TCompletedRequest> DoWrite(
+    TFuture<TCompletedRequest> DoWriteData(
         const NCloud::NFileStore::NProto::TProfileLogRequestInfo& logRequest)
         override
     {
