@@ -501,7 +501,7 @@ TVector<TMonSessionInfo> TIndexTabletState::GetActiveSessionInfos() const
         sessionInfos.emplace_back();
         auto& info = sessionInfos.back();
         info.ClientId = p.first;
-        info.ProtoInfo = *static_cast<NProto::TSession*>(p.second);
+        info.ProtoInfo = *p.second;
         info.SubSessions = p.second->SubSessions.GetAllSubSessions();
     }
     return sessionInfos;
@@ -514,7 +514,7 @@ TVector<TMonSessionInfo> TIndexTabletState::GetOrphanSessionInfos() const
         sessionInfos.emplace_back();
         auto& info = sessionInfos.back();
         info.ClientId = session.GetClientId();
-        info.ProtoInfo = static_cast<const NProto::TSession&>(session);
+        info.ProtoInfo = session;
         info.SubSessions = session.SubSessions.GetAllSubSessions();
     }
     return sessionInfos;
