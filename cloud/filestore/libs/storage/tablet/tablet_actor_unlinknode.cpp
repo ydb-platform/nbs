@@ -440,6 +440,13 @@ void TIndexTabletActor::CompleteTx_UnlinkNode(
         args.SessionId.c_str(),
         FormatError(args.Error).c_str());
 
+    if (args.ParentNodeId != InvalidNodeId) {
+        InvalidateNodeCaches(args.ParentNodeId);
+    }
+    if (args.ChildNode && args.ChildNode->NodeId != InvalidNodeId) {
+        InvalidateNodeCaches(args.ChildNode->NodeId);
+    }
+
     if (!HasError(args.Error) && !args.ChildRef) {
         auto message = ReportChildRefIsNull(TStringBuilder()
             << "UnlinkNode: " << args.Request.ShortDebugString());

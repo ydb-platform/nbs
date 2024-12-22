@@ -4541,6 +4541,104 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         }
     }
 
+    // See #2737 for more details
+    TABLET_TEST_16K(ReadAheadCacheShouldNotBeAffectedByConcurrentModifications)
+    {
+        NProto::TStorageConfig storageConfig;
+        storageConfig.SetReadAheadCacheRangeSize(1_MB);
+        storageConfig.SetReadAheadCacheMaxResultsPerNode(32);
+        TTestEnv env({}, storageConfig);
+        env.CreateSubDomain("nfs");
+        auto registry = env.GetRegistry();
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(
+            env.GetRuntime(),
+            nodeIdx,
+            tabletId,
+            tabletConfig);
+        tablet.InitSession("client", "session");
+
+        auto id = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
+
+        ui64 handle = CreateHandle(tablet, id);
+        for (ui32 i = 0; i < 2; ++i) {
+            tablet.WriteData(handle, i * 1_MB, 1_MB, '0');
+        }
+
+        for (ui32 i = 0; i < 7; ++i) {
+            const ui64 len = 128_KB;
+            const ui64 offset = i * len;
+            auto response = tablet.DescribeData(handle, offset, len);
+        }
+        // The next describe data will trigger ReadAhead cache population
+
+        auto& runtime = env.GetRuntime();
+        TAutoPtr<IEventHandle> rwTxPutRequest;
+
+        runtime.SetEventFilter(
+            [&](auto& runtime, auto& event)
+            {
+                Y_UNUSED(runtime);
+                switch (event->GetTypeRewrite()) {
+                    case TEvBlobStorage::EvPut:
+                        if (!rwTxPutRequest) {
+                            rwTxPutRequest = std::move(event);
+                            return true;
+                        }
+                }
+                return false;
+            });
+
+        // Execute stage of RW tx will produce a TEvPut request, which is
+        // dropped to postpone the completion of the transaction
+        tablet.SendSetNodeAttrRequest(TSetNodeAttrArgs(RootNodeId).SetUid(2));
+        runtime.DispatchEvents(TDispatchOptions{
+            .CustomFinalCondition = [&]()
+            {
+                return rwTxPutRequest != nullptr;
+            }});
+
+        // Now the DescribeData operation is supposed to start a new transaction
+        // and hang because it accesses the same data as the previous one. This
+        // operation has a potential to populate the node attributes cache
+        tablet.SendDescribeDataRequest(handle, 1_MB - 128_KB, 128_KB);
+
+        tablet.AssertSetNodeAttrNoResponse();
+        tablet.AssertDescribeDataNoResponse();
+
+        // However, Prepare stages are already completed, and GetNodeAttr has
+        // stale data in its structure
+
+        runtime.SetEventFilter(TTestActorRuntimeBase::DefaultFilterFunc);
+
+        // Now let's start the new transaction that will clear the file by
+        // setting its size to 0
+        tablet.SendSetNodeAttrRequest(TSetNodeAttrArgs(id).SetSize(0));
+
+        runtime.DispatchEvents(TDispatchOptions(), TDuration::Seconds(2));
+
+        // Let us complete the initial transaction that will release the lock
+        // and let the DescribeData operation to proceed
+        runtime.Send(rwTxPutRequest.Release(), nodeIdx);
+
+        // Now the initial SetNodeAttr should complete
+        tablet.RecvSetNodeAttrResponse();
+        // The DescribeData operation should also complete
+        tablet.RecvDescribeDataResponse();
+        // The SetNodeAttr operation should also complete
+        tablet.RecvSetNodeAttrResponse();
+
+        // The ReadAhead cache should not give faulty results. If the cache is
+        // not invalidated, the DescribeData operation will return stale data
+        auto response = tablet.DescribeData(handle, 1_MB, 128_KB);
+
+        UNIT_ASSERT_VALUES_EQUAL(0, response->Record.GetFileSize());
+        UNIT_ASSERT_VALUES_EQUAL(0, response->Record.FreshDataRangesSize());
+    }
+
     void DoTestWriteRequestCancellationOnTabletReboot(
         bool writeBatchEnabled,
         const TFileSystemConfig& tabletConfig)

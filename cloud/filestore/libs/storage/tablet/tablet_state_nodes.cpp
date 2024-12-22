@@ -640,4 +640,12 @@ TInMemoryIndexStateStats TIndexTabletState::GetInMemoryIndexStateStats() const
     return Impl->InMemoryIndexState.GetStats();
 }
 
+////////////////////////////////////////////////////////////////////////////////
+
+void TIndexTabletState::InvalidateNodeCaches(ui64 nodeId)
+{
+    InvalidateReadAheadCache(nodeId);
+    InvalidateNodeIndexCache(nodeId);
+}
+
 }   // namespace NCloud::NFileStore::NStorage

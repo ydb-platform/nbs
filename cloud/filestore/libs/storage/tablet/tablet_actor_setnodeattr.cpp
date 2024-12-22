@@ -200,6 +200,8 @@ void TIndexTabletActor::CompleteTx_SetNodeAttr(
     const TActorContext& ctx,
     TTxIndexTablet::TSetNodeAttr& args)
 {
+    InvalidateNodeCaches(args.NodeId);
+
     RemoveTransaction(*args.RequestInfo);
 
     auto response = std::make_unique<TEvService::TEvSetNodeAttrResponse>(args.Error);

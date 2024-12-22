@@ -1207,6 +1207,7 @@ struct TTxIndexTablet
         bool IsNewShardNode = false;
         TMaybe<IIndexTabletDatabase::TNode> TargetNode;
         TMaybe<IIndexTabletDatabase::TNode> ParentNode;
+        TVector<ui64> UpdatedNodes;
 
         NProto::TOpLogEntry OpLogEntry;
 
@@ -1243,6 +1244,7 @@ struct TTxIndexTablet
             OpLogEntry.Clear();
 
             Response.Clear();
+            UpdatedNodes.clear();
         }
     };
 
