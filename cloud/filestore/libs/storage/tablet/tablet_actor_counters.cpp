@@ -275,6 +275,8 @@ void TIndexTabletActor::TMetrics::Register(
         metrType)                                                              \
 // REGISTER_LOCAL
 
+    REGISTER_AGGREGATABLE_SUM(FsCount, EMetricType::MT_ABSOLUTE);
+    REGISTER_AGGREGATABLE_SUM(FsShardCount, EMetricType::MT_ABSOLUTE);
     REGISTER_AGGREGATABLE_SUM(TotalBytesCount, EMetricType::MT_ABSOLUTE);
     REGISTER_AGGREGATABLE_SUM(UsedBytesCount, EMetricType::MT_ABSOLUTE);
     REGISTER_AGGREGATABLE_SUM(
@@ -476,8 +478,13 @@ void TIndexTabletActor::TMetrics::Update(
     const TNodeIndexCacheStats& nodeIndexCacheStats,
     const TNodeToSessionCounters& nodeToSessionCounters,
     const TMiscNodeStats& miscNodeStats,
-    const TInMemoryIndexStateStats& inMemoryIndexStateStats)
+    const TInMemoryIndexStateStats& inMemoryIndexStateStats,
+    bool isShard)
 {
+    auto shardCnt = isShard ? 1 : 0;
+    NMetrics::Store(FsCount, 1 - shardCnt);
+    NMetrics::Store(FsShardCount, shardCnt);
+
     const ui32 blockSize = fileSystem.GetBlockSize();
 
     Store(TotalBytesCount, fileSystem.GetBlocksCount() * blockSize);
@@ -695,7 +702,8 @@ void TIndexTabletActor::RegisterStatCounters(TInstant now)
         CalculateNodeIndexCacheStats(),
         GetNodeToSessionCounters(),
         GetMiscNodeStats(),
-        GetInMemoryIndexStateStats());
+        GetInMemoryIndexStateStats(),
+        IsShard());
 
     Metrics.Register(fsId, storageMediaKind);
 }
@@ -745,7 +753,8 @@ void TIndexTabletActor::HandleUpdateCounters(
         CalculateNodeIndexCacheStats(),
         GetNodeToSessionCounters(),
         GetMiscNodeStats(),
-        GetInMemoryIndexStateStats());
+        GetInMemoryIndexStateStats(),
+        IsShard());
     SendMetricsToExecutor(ctx);
 
     UpdateCountersScheduled = false;
