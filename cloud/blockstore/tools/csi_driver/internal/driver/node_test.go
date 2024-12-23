@@ -523,6 +523,8 @@ func TestPublishUnpublishDiskForInfrakuber(t *testing.T) {
 		NbdDeviceFile: nbdDeviceFile,
 	}, nil)
 
+	mounter.On("HasBlockDevice", nbdDeviceFile).Return(true, nil)
+
 	mockCallIsMountPoint := mounter.On("IsMountPoint", stagingTargetPath).Return(false, nil)
 
 	mounter.On("FormatAndMount", nbdDeviceFile, stagingTargetPath, "ext4",
