@@ -17,16 +17,35 @@ on:
       - 'reopened'
       - 'labeled'
   workflow_dispatch:
+    inputs:
+      nebius:
+        description: 'Run on Nebius'
+        required: false
+        default: 'no'
+      allow_downgrade:
+        description: 'Allow downgrade'
+        required: false
+        default: 'no'
 
 defaults:
   run:
     shell: bash
+
+env:
+  nebius: ${{ vars.GLOBAL_RUN_ON_NEBIUS == 'yes' || ((github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'nebius')) || inputs.nebius == 'yes') }}
+  allow_downgrade: ${{ vars.GLOBAL_ALLOW_DOWNGRADE == 'yes' || ((github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'allow-downgrade')) || inputs.allow_downgrade == 'yes') }}
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
   cancel-in-progress: true
 
 jobs:
+  set-env:
+    runs-on: ubuntu-latest
+    outputs:
+      nebius: ${{ env.nebius == 'false' && 'no' || 'yes' }}
+      allow_downgrade: ${{ env.allow_downgrade == 'false' && 'no' || 'yes' }}
+
   shell:
     runs-on: ubuntu-latest
 
@@ -161,6 +180,9 @@ jobs:
   create-and-delete-vm:
     name: Create and delete VM
     uses: ./.github/workflows/create_and_delete_vm.yaml
+    needs:
+      - set-env
     with:
-      nebius: ${{ vars.GLOBAL_RUN_ON_NEBIUS }}
+      nebius: ${{ needs.set-env.outputs.nebius }}
+      allow_downgrade: ${{ needs.set-env.outputs.allow_downgrade }}
     secrets: inherit

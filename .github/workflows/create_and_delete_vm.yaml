@@ -21,6 +21,13 @@ on:
         options:
           - "yes"
           - "no"
+      allow_downgrade:
+        type: choice
+        default: "no"
+        description: "Allow downgrade"
+        options:
+          - "yes"
+          - "no"
   workflow_call:
     inputs:
       vm_name_suffix:
@@ -39,9 +46,14 @@ on:
         type: string
         default: "no"
         description: "Run on nebius runners"
+      allow_downgrade:
+        type: string
+        default: "no"
+        description: "Allow downgrade"
 
 env:
   nebius: ${{ vars.GLOBAL_RUN_ON_NEBIUS == 'yes' || ((github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'nebius')) || inputs.nebius == 'yes') }}
+  allow_downgrade: ${{ vars.GLOBAL_ALLOW_DOWNGRADE == 'yes' || ((github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'allow-downgrade')) || inputs.allow_downgrade == 'yes') }}
 
 
 jobs:
@@ -119,7 +131,7 @@ jobs:
           vm_image: ${{ inputs.vm_image || vars.NEBIUS_IMAGE_ID_2204 }}
           vm_labels: ${{ github.event.pull_request.number && format('pr={0},run={1}-{2},repo={3},owner={4}', github.event.pull_request.number, github.run_id, github.run_attempt, github.event.repository.name, github.repository_owner) || format('run={0}-{1},repo={2},owner={3}', github.run_id, github.run_attempt, github.event.repository.name, github.repository_owner) }}
           vm_user_passwd: ${{ secrets.VM_USER_PASSWD }}
-          vm_allow_downgrade: ${{ contains(github.event.pull_request.labels.*.name, 'allow-downgrade') && 'yes' || 'no' }}
+          vm_allow_downgrade: ${{ env.allow_downgrade == 'true' && 'yes' || 'no' }}
   build-and-test:
     name: Build and test NBS (relwithdebinfo) [id=${{ needs.provide-runner.outputs.instance-id }} local_ip=${{ needs.provide-runner.outputs.runner_local_ipv4 }} ip=${{ needs.provide-runner.outputs.runner_ipv4 }}]
     uses: ./.github/workflows/build_and_test_ya.yaml
