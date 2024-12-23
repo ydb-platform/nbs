@@ -185,7 +185,7 @@ void TDiskRegistryActor::BeforeDie(const NActors::TActorContext& ctx)
         ReplyToPendingDeallocations(
             ctx,
             requestInfos,
-            MakeError(E_REJECTED, "Tablet is dead"));
+            MakeError(E_REJECTED, TABLET_IS_DEAD_ERROR_MESSAGE));
     }
     PendingDiskDeallocationRequests.clear();
 }

@@ -110,7 +110,7 @@ void TMarkReplacementDevicesActor::HandlePoisonPill(
 {
     Y_UNUSED(ev);
 
-    Error = MakeError(E_REJECTED, "Tablet is dead");
+    Error = MakeError(E_REJECTED, TABLET_IS_DEAD_ERROR_MESSAGE);
     ReplyAndDie(ctx);
 }
 

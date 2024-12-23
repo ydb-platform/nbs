@@ -55,7 +55,7 @@ void TUndeliveredHandlerActor::CancelRequest(
     const typename TMethod::TRequest::TPtr& ev)
 {
    auto response = std::make_unique<typename TMethod::TResponse>(
-        MakeError(E_REJECTED, "Tablet is dead"));
+        MakeError(E_REJECTED, TABLET_IS_DEAD_ERROR_MESSAGE));
 
     NCloud::Reply(ctx, *ev, std::move(response));
 }

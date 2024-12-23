@@ -133,7 +133,7 @@ void TReplaceActor::HandlePoisonPill(
     const TActorContext& ctx)
 {
     Y_UNUSED(ev);
-    ReplyAndDie(ctx, MakeError(E_REJECTED, "Tablet is dead"));
+    ReplyAndDie(ctx, MakeError(E_REJECTED, TABLET_IS_DEAD_ERROR_MESSAGE));
 }
 
 void TReplaceActor::HandleReplaceDeviceResponse(
