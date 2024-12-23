@@ -501,4 +501,8 @@ message TStorageConfig
     // Shard balancer will not select shards which have less than this amount of
     // free space in bytes.
     optional uint64 ShardBalancerMinFreeSpaceReserve = 413;
+
+    // Mixed blobs map is stored in memory and its capacity is limited by this
+    // value. This limit may be exceeded if all blocks must be stored in memory
+    optional uint64 MixedBlocksCapacity = 414;
 }
