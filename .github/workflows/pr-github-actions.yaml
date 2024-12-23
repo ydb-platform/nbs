@@ -34,6 +34,14 @@ on:
         options:
           - "yes"
           - "no"
+      large_tests:
+        description: 'Launch large tests'
+        required: false
+        type: choice
+        default: "no"
+        options:
+          - "yes"
+          - "no"
 
 defaults:
   run:
@@ -42,6 +50,7 @@ defaults:
 env:
   nebius: ${{ vars.GLOBAL_RUN_ON_NEBIUS == 'yes' || ((github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'nebius')) || inputs.nebius == 'yes') }}
   allow_downgrade: ${{ vars.GLOBAL_ALLOW_DOWNGRADE == 'yes' || ((github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'allow-downgrade')) || inputs.allow_downgrade == 'yes') }}
+  large_tests: ${{ (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'large-tests'))  && 'true' || inputs.large_tests == 'yes' }}
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
@@ -53,6 +62,7 @@ jobs:
     outputs:
       nebius: ${{ env.nebius == 'false' && 'no' || 'yes' }}
       allow_downgrade: ${{ env.allow_downgrade == 'false' && 'no' || 'yes' }}
+      large_tests: ${{ env.large_tests == 'false' && 'no' || 'yes' }}
     # we don't need anything, but otherwise github will complain
     steps:
       - name: set env
@@ -198,4 +208,5 @@ jobs:
     with:
       nebius: ${{ needs.set-env.outputs.nebius }}
       allow_downgrade: ${{ needs.set-env.outputs.allow_downgrade }}
+      large_tests: ${{ needs.set-env.outputs.large_tests }}
     secrets: inherit
