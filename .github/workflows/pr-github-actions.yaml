@@ -19,13 +19,21 @@ on:
   workflow_dispatch:
     inputs:
       nebius:
-        description: 'Run on Nebius'
         required: false
-        default: 'no'
+        type: choice
+        default: "no"
+        description: "Run on nebius runners"
+        options:
+          - "yes"
+          - "no"
       allow_downgrade:
         description: 'Allow downgrade'
         required: false
-        default: 'no'
+        type: choice
+        default: "no"
+        options:
+          - "yes"
+          - "no"
 
 defaults:
   run:
@@ -45,6 +53,11 @@ jobs:
     outputs:
       nebius: ${{ env.nebius == 'false' && 'no' || 'yes' }}
       allow_downgrade: ${{ env.allow_downgrade == 'false' && 'no' || 'yes' }}
+    # we don't need anything, but otherwise github will complain
+    steps:
+      - name: set env
+        id: set-env
+        run: echo
 
   shell:
     runs-on: ubuntu-latest

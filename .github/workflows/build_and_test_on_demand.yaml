@@ -56,9 +56,12 @@ on:
         default: true
         description: "run tests"
       nebius:
-        type: string
-        default: "no"
         description: "Run on new nebius runners"
+        type: choice
+        default: "no"
+        options:
+          - "yes"
+          - "no"
   workflow_call:
     inputs:
       build_target:
