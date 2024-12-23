@@ -21,6 +21,20 @@ on:
         options:
           - "yes"
           - "no"
+      allow_downgrade:
+        type: choice
+        default: "no"
+        description: "Allow downgrade"
+        options:
+          - "yes"
+          - "no"
+      large_tests:
+        type: choice
+        default: "no"
+        description: "Launch large tests"
+        options:
+          - "yes"
+          - "no"
   workflow_call:
     inputs:
       vm_name_suffix:
@@ -39,9 +53,19 @@ on:
         type: string
         default: "no"
         description: "Run on nebius runners"
+      allow_downgrade:
+        type: string
+        default: "no"
+        description: "Allow downgrade"
+      large_tests:
+        type: string
+        default: "no"
+        description: "Launch large tests"
 
 env:
   nebius: ${{ vars.GLOBAL_RUN_ON_NEBIUS == 'yes' || ((github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'nebius')) || inputs.nebius == 'yes') }}
+  allow_downgrade: ${{ vars.GLOBAL_ALLOW_DOWNGRADE == 'yes' || ((github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'allow-downgrade')) || inputs.allow_downgrade == 'yes') }}
+  large_tests: ${{ (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'large-tests'))  && 'true' || inputs.large_tests == 'yes' }}
 
 
 jobs:
@@ -56,6 +80,8 @@ jobs:
       runner_ipv4: ${{ steps.start-runner.outputs.external-ipv4 || steps.start-runner-nebius.outputs.external-ipv4 }}
       runner_local_ipv4: ${{ steps.start-runner.outputs.local-ipv4 || steps.start-runner-nebius.outputs.local-ipv4 }}
       nebius: ${{ env.nebius == 'false' && 'no' || 'yes' }}
+      allow_downgrade: ${{ env.allow_downgrade == 'false' && 'no' || 'yes' }}
+      large_tests: ${{ env.large_tests == 'false' && 'no' || 'yes' }}
     steps:
       - name: checkout PR
         uses: actions/checkout@v4
@@ -112,14 +138,14 @@ jobs:
           token: ${{ secrets.GH_PERSONAL_ACCESS_TOKEN }}
           vm_parent_id: ${{ vars.NEBIUS_PARENT_ID }}
           vm_name: ${{ github.event.pull_request.number && format('pr-{0}{1}-{2}-{3}', github.event.pull_request.number, inputs.vm_name_suffix, github.run_id, github.run_attempt) || format('run-{0}-{1}', github.run_id, github.run_attempt) }}
-          vm_preset: ${{ contains(github.event.pull_request.labels.*.name, 'large-tests') && '80vcpu-320gb' || '16vcpu-64gb' }}
+          vm_preset: ${{ env.large_tests == 'true' && '80vcpu-320gb' || '16vcpu-64gb' }}
           vm_disk_type: ${{ inputs.disk_type || 'network-ssd-nonreplicated' }}
           vm_disk_size: 1023
           vm_subnet: ${{ vars.NEBIUS_SUBNET_ID }}
           vm_image: ${{ inputs.vm_image || vars.NEBIUS_IMAGE_ID_2204 }}
           vm_labels: ${{ github.event.pull_request.number && format('pr={0},run={1}-{2},repo={3},owner={4}', github.event.pull_request.number, github.run_id, github.run_attempt, github.event.repository.name, github.repository_owner) || format('run={0}-{1},repo={2},owner={3}', github.run_id, github.run_attempt, github.event.repository.name, github.repository_owner) }}
           vm_user_passwd: ${{ secrets.VM_USER_PASSWD }}
-          vm_allow_downgrade: ${{ contains(github.event.pull_request.labels.*.name, 'allow-downgrade') && 'yes' || 'no' }}
+          vm_allow_downgrade: ${{ env.allow_downgrade == 'true' && 'yes' || 'no' }}
   build-and-test:
     name: Build and test NBS (relwithdebinfo) [id=${{ needs.provide-runner.outputs.instance-id }} local_ip=${{ needs.provide-runner.outputs.runner_local_ipv4 }} ip=${{ needs.provide-runner.outputs.runner_ipv4 }}]
     uses: ./.github/workflows/build_and_test_ya.yaml
@@ -130,15 +156,15 @@ jobs:
       runner_label: ${{ needs.provide-runner.outputs.label }}
       runner_instance_id: ${{ needs.provide-runner.outputs.instance-id }}
       runner_ipv4: ${{ needs.provide-runner.outputs.runner_ipv4 }}
-      build_target: ${{ contains(github.event.pull_request.labels.*.name, 'large-tests') && 'cloud/blockstore/apps/,cloud/filestore/apps/,cloud/disk_manager/,cloud/tasks/' || 'cloud/tasks' }}
-      test_target:  ${{ contains(github.event.pull_request.labels.*.name, 'large-tests') && 'cloud/blockstore/,cloud/filestore/,cloud/disk_manager/,cloud/tasks/' || 'cloud/tasks' }}
+      build_target: ${{ needs.provide-runner.outputs.large_tests == 'yes' && 'cloud/blockstore/apps/,cloud/filestore/apps/,cloud/disk_manager/,cloud/tasks/' || 'cloud/tasks' }}
+      test_target:  ${{ needs.provide-runner.outputs.large_tests == 'yes' && 'cloud/blockstore/,cloud/filestore/,cloud/disk_manager/,cloud/tasks/' || 'cloud/tasks' }}
       build_preset: "relwithdebinfo"
       run_build: true
       run_tests: true
-      test_size: ${{ contains(github.event.pull_request.labels.*.name, 'large-tests') && 'small,medium,large' || 'small' }}
-      test_type: ${{ contains(github.event.pull_request.labels.*.name, 'large-tests') && 'unittest,clang_tidy,gtest,py3test,py2test,pytest,flake8,black,py2_flake8,gofmt' || 'go_test' }}
-      link_threads: ${{ contains(github.event.pull_request.labels.*.name, 'large-tests') && '32' || '16' }}
-      test_threads: ${{ contains(github.event.pull_request.labels.*.name, 'large-tests') && '32' || '4' }}
+      test_size: ${{ needs.provide-runner.outputs.large_tests == 'yes' && 'small,medium,large' || 'small' }}
+      test_type: ${{ needs.provide-runner.outputs.large_tests == 'yes' && 'unittest,clang_tidy,gtest,py3test,py2test,pytest,flake8,black,py2_flake8,gofmt' || 'go_test' }}
+      link_threads: ${{ needs.provide-runner.outputs.large_tests == 'yes' && '32' || '16' }}
+      test_threads: ${{ needs.provide-runner.outputs.large_tests == 'yes' && '32' || '4' }}
       sleep_after_tests: ${{ contains(github.event.pull_request.labels.*.name, 'sleep') && '7200' || '1' }}
       cache_update_build: false
       cache_update_tests: false
