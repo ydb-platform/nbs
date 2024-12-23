@@ -88,9 +88,14 @@ runs:
         fi
         link_threads=$(( test_threads * 2 ))
 
-        echo "::set-output name=build_threads::$build_threads"
-        echo "::set-output name=test_threads::$test_threads"
-        echo "::set-output name=link_threads::$link_threads"
+        {
+          echo "build_threads=$build_threads"
+          echo "test_threads=$test_threads"
+          echo "link_threads=$link_threads"
+        } >> $GITHUB_OUTPUT
+        echo "build_threads=$build_threads"
+        echo "test_threads=$test_threads"
+        echo "link_threads=$link_threads"
 
       env:
         vm_preset: ${{ inputs.vm_preset || '80vcpu-320gb' }}
