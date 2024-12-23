@@ -619,6 +619,8 @@ public:
     TDuration GetBlobStorageAsyncGetTimeoutSSD() const;
 
     [[nodiscard]] bool GetEncryptionAtRestForDiskRegistryBasedDisksEnabled() const;
+
+    [[nodiscard]] bool GetDisableFullPlacementGroupCountCalculation() const;
 };
 
 ui64 GetAllocationUnit(
