@@ -304,6 +304,7 @@ void TPathElement::ApplySpecialAttributes() {
     VolumeSpaceSSDSystem.Limit = Max<ui64>();
     FileStoreSpaceSSD.Limit = Max<ui64>();
     FileStoreSpaceHDD.Limit = Max<ui64>();
+    FileStoreSpaceSSDSystem.Limit = Max<ui64>();
     ExtraPathSymbolsAllowed = TString();
     DocumentApiVersion = 0;
     AsyncReplication = NJson::TJsonValue();
@@ -330,6 +331,9 @@ void TPathElement::ApplySpecialAttributes() {
                 break;
             case EAttribute::FILESTORE_SPACE_LIMIT_HDD:
                 HandleAttributeValue(value, FileStoreSpaceHDD.Limit);
+                break;
+            case EAttribute::FILESTORE_SPACE_LIMIT_SSD_SYSTEM:
+                HandleAttributeValue(value, FileStoreSpaceSSDSystem.Limit);
                 break;
             case EAttribute::EXTRA_PATH_SYMBOLS_ALLOWED:
                 HandleAttributeValue(value, ExtraPathSymbolsAllowed);
@@ -391,16 +395,19 @@ bool TPathElement::CheckVolumeSpaceChange(TVolumeSpace newSpace, TVolumeSpace ol
 void TPathElement::ChangeFileStoreSpaceBegin(TFileStoreSpace newSpace, TFileStoreSpace oldSpace) {
     UpdateSpaceBegin(FileStoreSpaceSSD, newSpace.SSD, oldSpace.SSD);
     UpdateSpaceBegin(FileStoreSpaceHDD, newSpace.HDD, oldSpace.HDD);
+    UpdateSpaceBegin(FileStoreSpaceSSDSystem, newSpace.SSDSystem, oldSpace.SSDSystem);
 }
 
 void TPathElement::ChangeFileStoreSpaceCommit(TFileStoreSpace newSpace, TFileStoreSpace oldSpace) {
     UpdateSpaceCommit(FileStoreSpaceSSD, newSpace.SSD, oldSpace.SSD);
     UpdateSpaceCommit(FileStoreSpaceHDD, newSpace.HDD, oldSpace.HDD);
+    UpdateSpaceCommit(FileStoreSpaceSSDSystem, newSpace.SSDSystem, oldSpace.SSDSystem);
 }
 
 bool TPathElement::CheckFileStoreSpaceChange(TFileStoreSpace newSpace, TFileStoreSpace oldSpace, TString& errStr) {
     return (CheckSpaceChanged(FileStoreSpaceSSD, newSpace.SSD, oldSpace.SSD, errStr, "filestore", " (ssd)") &&
-            CheckSpaceChanged(FileStoreSpaceHDD, newSpace.HDD, oldSpace.HDD, errStr, "filestore", " (hdd)"));
+            CheckSpaceChanged(FileStoreSpaceHDD, newSpace.HDD, oldSpace.HDD, errStr, "filestore", " (hdd)") &&
+            CheckSpaceChanged(FileStoreSpaceSSDSystem, newSpace.SSDSystem, oldSpace.SSDSystem, errStr, "filestore", " (ssd_system)"));
 }
 
 bool TPathElement::HasRuntimeAttrs() const {
@@ -410,7 +417,8 @@ bool TPathElement::HasRuntimeAttrs() const {
             VolumeSpaceSSDNonrepl.Allocated > 0 ||
             VolumeSpaceSSDSystem.Allocated > 0 ||
             FileStoreSpaceSSD.Allocated > 0 ||
-            FileStoreSpaceHDD.Allocated > 0);
+            FileStoreSpaceHDD.Allocated > 0 ||
+            FileStoreSpaceSSDSystem.Allocated > 0);
 }
 
 void TPathElement::SerializeRuntimeAttrs(
@@ -434,6 +442,7 @@ void TPathElement::SerializeRuntimeAttrs(
     // filestore
     process(FileStoreSpaceSSD, "__filestore_space_allocated_ssd");
     process(FileStoreSpaceHDD, "__filestore_space_allocated_hdd");
+    process(FileStoreSpaceSSDSystem, "__filestore_space_allocated_ssd_system");
 }
 
 }
