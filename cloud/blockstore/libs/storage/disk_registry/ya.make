@@ -7,7 +7,7 @@ SRCS(
     disk_registry_actor_change_disk_device.cpp
     disk_registry_actor_checkpoint.cpp
     disk_registry_actor_cleanup.cpp
-    disk_registry_actor_cleanupdeviceswithoutagent.cpp
+    disk_registry_actor_cleanup_devices_without_agent.cpp
     disk_registry_actor_cms.cpp
     disk_registry_actor_config.cpp
     disk_registry_actor_create_disk_from_devices.cpp

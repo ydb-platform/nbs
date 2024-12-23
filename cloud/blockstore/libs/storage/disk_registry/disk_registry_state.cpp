@@ -3691,26 +3691,8 @@ void TDiskRegistryState::ForgetDevices(
         db.DeleteSuspendedDevice(id);
         db.DeleteDirtyDevice(id);
 
-        // Cleanup AutomaticallyReplacedDevice
-        {
-            auto idIt = AutomaticallyReplacedDeviceIds.find(id);
-
-            if (idIt != AutomaticallyReplacedDeviceIds.end()) {
-                AutomaticallyReplacedDeviceIds.erase(idIt);
-
-                auto deviceItToCleanup = FindIf(
-                    AutomaticallyReplacedDevices,
-                    [&](const TAutomaticallyReplacedDeviceInfo& value)
-                    { return value.DeviceId == id; });
-                if (deviceItToCleanup != AutomaticallyReplacedDevices.end()) {
-                    AutomaticallyReplacedDevices.erase(deviceItToCleanup);
-                }
-
-                db.DeleteAutomaticallyReplacedDevice(id);
-            }
-        }
+        DeleteAutomaticallyReplacedDevice(db, id);
     }
-
 }
 
 void TDiskRegistryState::RemoveAgent(
@@ -7527,46 +7509,39 @@ void TDiskRegistryState::CleanupDevices(TDiskRegistryDatabase& db)
     THashSet<TString> allKnownDevicesWithAgents;
     for (const auto& agent: AgentList.GetAgents()) {
         for (const auto& device: agent.GetDevices()) {
-            const auto& deviceId = device.GetDeviceUUID();
-            allKnownDevicesWithAgents.insert(deviceId);
+            const auto& deviceUUID = device.GetDeviceUUID();
+            allKnownDevicesWithAgents.insert(deviceUUID);
         }
     }
 
-    TVector<TString> devicesToRemoveVector;
+    TVector<TString> devicesToRemove;
 
-
-    auto filterLeakedDevices = [&](const TString& id)
+    auto isDeviceUnknown = [&](const TString& id)
     {
         return allKnownDevicesWithAgents.find(id) ==
                allKnownDevicesWithAgents.end();
     };
-    auto addIdToVector = [&](TString id)
-    {
-        devicesToRemoveVector.emplace_back(std::move(id));
-    };
 
-    for (auto& deviceId: DeviceList.GetDirtyDevicesId() |
-                             std::views::filter(filterLeakedDevices))
+    for (auto& deviceUUID:
+         DeviceList.GetDirtyDevicesId() | std::views::filter(isDeviceUnknown))
     {
-        addIdToVector(std::move(deviceId));
+        devicesToRemove.emplace_back(std::move(deviceUUID));
     }
-    for (auto& device: DeviceList.GetSuspendedDevices() |
-                           std::views::filter(
-                               [&](const auto& device)
-                               { return filterLeakedDevices(device.GetId()); }))
+    for (auto& device:
+         DeviceList.GetSuspendedDevices() |
+             std::views::filter([&](const auto& device)
+                                { return isDeviceUnknown(device.GetId()); }))
     {
-        addIdToVector(std::move(*device.MutableId()));
+        devicesToRemove.emplace_back(std::move(*device.MutableId()));
     }
-    for (const auto& deviceId: AutomaticallyReplacedDeviceIds |
-                                   std::views::filter(filterLeakedDevices))
+    for (const auto& deviceUUID:
+         AutomaticallyReplacedDeviceIds | std::views::filter(isDeviceUnknown))
     {
-        addIdToVector(deviceId);
+        devicesToRemove.emplace_back(deviceUUID);
     }
 
-    SortUnique(devicesToRemoveVector);
-    ForgetDevices(db, devicesToRemoveVector);
-
-    return {};
+    SortUnique(devicesToRemove);
+    ForgetDevices(db, devicesToRemove);
 }
 
 std::optional<ui64> TDiskRegistryState::GetDiskBlockCount(
