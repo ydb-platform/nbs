@@ -1,4 +1,5 @@
 #include "disk_registry_actor.h"
+#include "util/string/join.h"
 
 namespace NCloud::NBlockStore::NStorage {
 
@@ -30,7 +31,13 @@ void TDiskRegistryActor::ExecuteCleanupDevicesWithoutAgent(
     Y_UNUSED(args);
 
     TDiskRegistryDatabase db(tx.DB);
-    State->CleanupDevices(db);
+    auto removedDevices = State->CleanupDevicesWithoutAgent(db);
+
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::DISK_REGISTRY,
+        "Found devices without agent and remove them, removed DeviceUUIDs=%s",
+        JoinSeq(" ", removedDevices).c_str());
 }
 
 void TDiskRegistryActor::CompleteCleanupDevicesWithoutAgent(

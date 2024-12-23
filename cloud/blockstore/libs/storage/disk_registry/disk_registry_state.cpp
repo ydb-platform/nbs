@@ -7504,7 +7504,8 @@ TVector<NProto::TAgentInfo> TDiskRegistryState::QueryAgentsInfo() const
     return ret;
 }
 
-void TDiskRegistryState::CleanupDevices(TDiskRegistryDatabase& db)
+TVector<TString> TDiskRegistryState::CleanupDevicesWithoutAgent(
+    TDiskRegistryDatabase& db)
 {
     THashSet<TString> allKnownDevicesWithAgents;
     for (const auto& agent: AgentList.GetAgents()) {
@@ -7514,34 +7515,37 @@ void TDiskRegistryState::CleanupDevices(TDiskRegistryDatabase& db)
         }
     }
 
-    TVector<TString> devicesToRemove;
-
-    auto isDeviceUnknown = [&](const TString& id)
+    TVector<TString> devicesWithoutAgentToRemove;
+    auto isDeviceWithoutAgent = [&](const TString& id)
     {
         return allKnownDevicesWithAgents.find(id) ==
                allKnownDevicesWithAgents.end();
     };
 
-    for (auto& deviceUUID:
-         DeviceList.GetDirtyDevicesId() | std::views::filter(isDeviceUnknown))
+    for (auto& deviceUUID: DeviceList.GetDirtyDevicesId() |
+                               std::views::filter(isDeviceWithoutAgent))
     {
-        devicesToRemove.emplace_back(std::move(deviceUUID));
+        devicesWithoutAgentToRemove.emplace_back(std::move(deviceUUID));
     }
-    for (auto& device:
-         DeviceList.GetSuspendedDevices() |
-             std::views::filter([&](const auto& device)
-                                { return isDeviceUnknown(device.GetId()); }))
+    for (auto& device: DeviceList.GetSuspendedDevices() |
+                           std::views::filter(
+                               [&](const auto& device) {
+                                   return isDeviceWithoutAgent(device.GetId());
+                               }))
     {
-        devicesToRemove.emplace_back(std::move(*device.MutableId()));
+        devicesWithoutAgentToRemove.emplace_back(
+            std::move(*device.MutableId()));
     }
-    for (const auto& deviceUUID:
-         AutomaticallyReplacedDeviceIds | std::views::filter(isDeviceUnknown))
+    for (const auto& deviceUUID: AutomaticallyReplacedDeviceIds |
+                                     std::views::filter(isDeviceWithoutAgent))
     {
-        devicesToRemove.emplace_back(deviceUUID);
+        devicesWithoutAgentToRemove.emplace_back(deviceUUID);
     }
 
-    SortUnique(devicesToRemove);
-    ForgetDevices(db, devicesToRemove);
+    SortUnique(devicesWithoutAgentToRemove);
+    ForgetDevices(db, devicesWithoutAgentToRemove);
+
+    return devicesWithoutAgentToRemove;
 }
 
 std::optional<ui64> TDiskRegistryState::GetDiskBlockCount(

@@ -864,7 +864,8 @@ public:
 
     TVector<NProto::TAgentInfo> QueryAgentsInfo() const;
 
-    void CleanupDevices(TDiskRegistryDatabase& db);
+    // Returns uuids of devices without agent that was removed.
+    TVector<TString> CleanupDevicesWithoutAgent(TDiskRegistryDatabase& db);
 
 private:
     void ProcessConfig(const NProto::TDiskRegistryConfig& config);
