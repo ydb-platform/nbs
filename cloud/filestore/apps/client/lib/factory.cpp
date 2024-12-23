@@ -36,6 +36,7 @@ TCommandPtr NewStatCommand();
 TCommandPtr NewSetNodeAttrCommand();
 TCommandPtr NewFindGarbageCommand();
 TCommandPtr NewForcedCompactionCommand();
+TCommandPtr NewCacheWarmupCommand();
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -44,6 +45,7 @@ using TFactoryMap = TMap<TString, TFactoryFunc>;
 
 static const TMap<TString, TFactoryFunc> Commands = {
     { "addclusternode", NewAddClusterNodeCommand },
+    { "cachewarmup", NewCacheWarmupCommand },
     { "create", NewCreateCommand },
     { "createsession", NewCreateSessionCommand },
     { "describe", NewDescribeCommand },

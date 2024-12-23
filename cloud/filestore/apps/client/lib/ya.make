@@ -4,6 +4,7 @@ SRCS(
     add_cluster_node.cpp
     app.cpp
     bootstrap.cpp
+    cache_warmup.cpp
     command.cpp
     create.cpp
     create_session.cpp

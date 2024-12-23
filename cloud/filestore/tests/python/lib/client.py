@@ -246,6 +246,15 @@ class FilestoreCliClient:
 
         return common.execute(cmd, env=self.__env, check_exit_code=self.__check_exit_code).stdout
 
+    def cache_warmup(self, fs, depth):
+        cmd = [
+            self.__binary_path, "cachewarmup",
+            "--filesystem", fs,
+            "--depth", str(depth),
+        ] + self.__cmd_opts()
+
+        return common.execute(cmd, env=self.__env, check_exit_code=self.__check_exit_code).stdout
+
     def execute_action(self, action, request):
         request_file = tempfile.NamedTemporaryFile(mode="w", delete=False)
         json.dump(request, request_file)
