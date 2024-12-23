@@ -7522,7 +7522,7 @@ TVector<NProto::TAgentInfo> TDiskRegistryState::QueryAgentsInfo() const
     return ret;
 }
 
-NProto::TError TDiskRegistryState::CleanupDevices(TDiskRegistryDatabase& db)
+void TDiskRegistryState::CleanupDevices(TDiskRegistryDatabase& db)
 {
     THashSet<TString> allKnownDevicesWithAgents;
     for (const auto& agent: AgentList.GetAgents()) {

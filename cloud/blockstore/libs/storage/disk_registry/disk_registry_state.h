@@ -864,7 +864,7 @@ public:
 
     TVector<NProto::TAgentInfo> QueryAgentsInfo() const;
 
-    NProto::TError CleanupDevices(TDiskRegistryDatabase& db);
+    void CleanupDevices(TDiskRegistryDatabase& db);
 
 private:
     void ProcessConfig(const NProto::TDiskRegistryConfig& config);

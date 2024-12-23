@@ -633,20 +633,6 @@ TDiskRegistryStateBuilder& TDiskRegistryStateBuilder::WithSuspendedDevices(
     return *this;
 }
 
-TDiskRegistryStateBuilder& TDiskRegistryStateBuilder::WithSuspendedDevices(
-    TVector<NProto::TSuspendedDevice> suspendedDevices)
-{
-    SuspendedDevices = std::move(suspendedDevices);
-    return *this;
-}
-
-TDiskRegistryStateBuilder& TDiskRegistryStateBuilder::WithAutomaticallyReplacedDevices(
-    TDeque<TAutomaticallyReplacedDeviceInfo> automaticalyReplacedDevices)
-{
-    AutomaticallyReplacedDevices = std::move(automaticalyReplacedDevices);
-    return *this;
-}
-
 TDiskRegistryStateBuilder& TDiskRegistryStateBuilder::WithSpreadPlacementGroups(
     TVector<TString> groupIds)
 {

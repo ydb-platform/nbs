@@ -290,12 +290,6 @@ struct TDiskRegistryStateBuilder
     TDiskRegistryStateBuilder& WithSuspendedDevices(
         TVector<TString> suspendedDevices);
 
-    TDiskRegistryStateBuilder& WithSuspendedDevices(
-        TVector<NProto::TSuspendedDevice> suspendedDevices);
-
-    TDiskRegistryStateBuilder& WithAutomaticallyReplacedDevices(
-        TDeque<TAutomaticallyReplacedDeviceInfo> automaticalyReplacedDevices);
-
     TDiskRegistryStateBuilder& WithSpreadPlacementGroups(
         TVector<TString> groupIds);
 
