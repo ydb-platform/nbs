@@ -276,7 +276,6 @@ void TIndexTabletActor::TMetrics::Register(
 // REGISTER_LOCAL
 
     REGISTER_AGGREGATABLE_SUM(FsCount, EMetricType::MT_ABSOLUTE);
-    REGISTER_AGGREGATABLE_SUM(FsShardCount, EMetricType::MT_ABSOLUTE);
     REGISTER_AGGREGATABLE_SUM(TotalBytesCount, EMetricType::MT_ABSOLUTE);
     REGISTER_AGGREGATABLE_SUM(UsedBytesCount, EMetricType::MT_ABSOLUTE);
     REGISTER_AGGREGATABLE_SUM(
@@ -481,9 +480,9 @@ void TIndexTabletActor::TMetrics::Update(
     const TInMemoryIndexStateStats& inMemoryIndexStateStats,
     bool isShard)
 {
-    auto shardCnt = isShard ? 1 : 0;
-    NMetrics::Store(FsCount, 1 - shardCnt);
-    NMetrics::Store(FsShardCount, shardCnt);
+    auto fsCounter = isShard ? 0 : 1;
+    NMetrics::Store(FsCount, fsCounter);
+    NMetrics::Store(FsShardCount, 1 - fsCounter);
 
     const ui32 blockSize = fileSystem.GetBlockSize();
 
