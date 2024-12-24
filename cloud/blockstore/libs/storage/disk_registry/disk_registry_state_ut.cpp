@@ -11935,7 +11935,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
         UNIT_ASSERT_VALUES_EQUAL(2, criticalEvents->Val());
     }
 
-    Y_UNIT_TEST(ShouldCleanupAlreadyLeakedDevices)
+Y_UNIT_TEST(ShouldCleanupAlreadyLeakedDevices)
     {
         TTestExecutor executor;
 
@@ -11953,6 +11953,11 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
         const TString leakedDirtyDevice = "uuid-100.1";
         const TString leakedSuspendedDevice = "uuid-100.2";
         const TString leakedAutomaticallyReplacedDevice = "uuid-100.3";
+
+        const TVector<TString> allLeakedDevices = {
+            leakedDirtyDevice,
+            leakedSuspendedDevice,
+            leakedAutomaticallyReplacedDevice};
 
         // Add leaked devices.
         executor.WriteTx(
@@ -11974,11 +11979,19 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
             {
                 auto state = TDiskRegistryStateBuilder::LoadState(db)->Build();
 
-                state.CleanupDevices(db);
+                auto devicesRemoved = state.CleanupOrphanDevices(db);
 
-                const auto dirtyDevicesFromState = state.GetDirtyDevices();
+                UNIT_ASSERT_EQUAL(
+                    static_cast<size_t>(3),
+                    devicesRemoved.size());
+                for (const auto& leakedDevice: allLeakedDevices) {
+                    UNIT_ASSERT_UNEQUAL(
+                        devicesRemoved.end(),
+                        Find(devicesRemoved, leakedDevice));
+                }
 
                 // Check that device cleaned up from tables.
+                const auto dirtyDevicesFromState = state.GetDirtyDevices();
                 UNIT_ASSERT_EQUAL(
                     dirtyDevicesFromState.end(),
                     FindIf(

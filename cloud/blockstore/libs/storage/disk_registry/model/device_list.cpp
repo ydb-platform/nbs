@@ -776,13 +776,7 @@ TVector<NProto::TDeviceConfig> TDeviceList::GetDirtyDevices() const
 
 TVector<TString> TDeviceList::GetDirtyDevicesId() const
 {
-    TVector<TString> devices;
-    devices.reserve(SuspendedDevices.size());
-    for (const auto& id: DirtyDevices) {
-        devices.push_back(id);
-    }
-
-    return devices;
+    return {DirtyDevices.begin(), DirtyDevices.end()};
 }
 
 bool TDeviceList::IsDirtyDevice(const TDeviceId& uuid) const

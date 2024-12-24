@@ -865,7 +865,7 @@ public:
     TVector<NProto::TAgentInfo> QueryAgentsInfo() const;
 
     // Returns uuids of devices without agent that was removed.
-    TVector<TString> CleanupDevicesWithoutAgent(TDiskRegistryDatabase& db);
+    TVector<TString> CleanupOrphanDevices(TDiskRegistryDatabase& db);
 
 private:
     void ProcessConfig(const NProto::TDiskRegistryConfig& config);
@@ -1305,6 +1305,8 @@ private:
     void CleanupAgentConfig(
         TDiskRegistryDatabase& db,
         const NProto::TAgentConfig& agent);
+
+    TVector<TString> FindOrphanDevices() const;
 };
 
 }   // namespace NCloud::NBlockStore::NStorage

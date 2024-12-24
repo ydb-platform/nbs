@@ -23,7 +23,6 @@
 #include <util/string/builder.h>
 #include <util/string/join.h>
 
-#include <ranges>
 #include <tuple>
 
 namespace NCloud::NBlockStore::NStorage {
@@ -5547,6 +5546,38 @@ void TDiskRegistryState::CleanupAgentConfig(
     SuspendLocalDevices(db, agent);
 }
 
+TVector<TString> TDiskRegistryState::FindOrphanDevices() const
+{
+    THashSet<TString> allKnownDevicesWithAgents;
+    for (const auto& agent: AgentList.GetAgents()) {
+        for (const auto& device: agent.GetDevices()) {
+            const auto& deviceUUID = device.GetDeviceUUID();
+            allKnownDevicesWithAgents.insert(deviceUUID);
+        }
+    }
+
+    TVector<TString> orphanDevices;
+    for (auto& deviceUUID: DeviceList.GetDirtyDevicesId()) {
+        if (!allKnownDevicesWithAgents.contains(deviceUUID)) {
+            orphanDevices.emplace_back(std::move(deviceUUID));
+        }
+    }
+    for (auto& device: DeviceList.GetSuspendedDevices()) {
+        if (!allKnownDevicesWithAgents.contains(device.GetId())) {
+            orphanDevices.emplace_back(std::move(*device.MutableId()));
+        }
+    }
+    for (const auto& deviceUUID: AutomaticallyReplacedDeviceIds) {
+        if (!allKnownDevicesWithAgents.contains(deviceUUID)) {
+            orphanDevices.emplace_back(deviceUUID);
+        }
+    }
+
+    SortUnique(orphanDevices);
+
+    return orphanDevices;
+}
+
 NProto::TError TDiskRegistryState::TryToRemoveAgentDevices(
     TDiskRegistryDatabase& db,
     const TAgentId& agentId)
@@ -7504,48 +7535,14 @@ TVector<NProto::TAgentInfo> TDiskRegistryState::QueryAgentsInfo() const
     return ret;
 }
 
-TVector<TString> TDiskRegistryState::CleanupDevicesWithoutAgent(
+TVector<TString> TDiskRegistryState::CleanupOrphanDevices(
     TDiskRegistryDatabase& db)
 {
-    THashSet<TString> allKnownDevicesWithAgents;
-    for (const auto& agent: AgentList.GetAgents()) {
-        for (const auto& device: agent.GetDevices()) {
-            const auto& deviceUUID = device.GetDeviceUUID();
-            allKnownDevicesWithAgents.insert(deviceUUID);
-        }
+    auto orphanDevices = FindOrphanDevices();
+    if (!orphanDevices.empty()) {
+        ForgetDevices(db, orphanDevices);
     }
-
-    TVector<TString> devicesWithoutAgentToRemove;
-    auto isDeviceWithoutAgent = [&](const TString& id)
-    {
-        return allKnownDevicesWithAgents.find(id) ==
-               allKnownDevicesWithAgents.end();
-    };
-
-    for (auto& deviceUUID: DeviceList.GetDirtyDevicesId() |
-                               std::views::filter(isDeviceWithoutAgent))
-    {
-        devicesWithoutAgentToRemove.emplace_back(std::move(deviceUUID));
-    }
-    for (auto& device: DeviceList.GetSuspendedDevices() |
-                           std::views::filter(
-                               [&](const auto& device) {
-                                   return isDeviceWithoutAgent(device.GetId());
-                               }))
-    {
-        devicesWithoutAgentToRemove.emplace_back(
-            std::move(*device.MutableId()));
-    }
-    for (const auto& deviceUUID: AutomaticallyReplacedDeviceIds |
-                                     std::views::filter(isDeviceWithoutAgent))
-    {
-        devicesWithoutAgentToRemove.emplace_back(deviceUUID);
-    }
-
-    SortUnique(devicesWithoutAgentToRemove);
-    ForgetDevices(db, devicesWithoutAgentToRemove);
-
-    return devicesWithoutAgentToRemove;
+    return orphanDevices;
 }
 
 std::optional<ui64> TDiskRegistryState::GetDiskBlockCount(

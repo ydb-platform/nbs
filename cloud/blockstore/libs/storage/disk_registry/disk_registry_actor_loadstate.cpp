@@ -208,7 +208,7 @@ void TDiskRegistryActor::CompleteLoadState(
 
     ScheduleDiskRegistryAgentListExpiredParamsCleanup(ctx);
 
-    ExecuteTx<TCleanupDevicesWithoutAgent>(ctx);
+    ExecuteTx<TCleanupOrphanDevices>(ctx);
 }
 
 }   // namespace NCloud::NBlockStore::NStorage
