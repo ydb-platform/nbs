@@ -1107,4 +1107,7 @@ message TStorageServiceConfig
     // When enabled, tag "use-intermediate-write-buffer" will be added
     // after scrubbing finds a mismatch
     optional bool AutomaticallyEnableBufferCopyingAfterChecksumMismatch = 403;
+
+    // Enabling direct sending AcquireDevices to disk agent.
+    optional bool UseDirectAcquireReleaseDevicesSending = 404;
 }

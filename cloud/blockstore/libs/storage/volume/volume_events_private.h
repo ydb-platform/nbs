@@ -1,18 +1,20 @@
 #pragma once
 
 #include "public.h"
+
 #include "volume_state.h"
 
+#include <cloud/blockstore/libs/storage/api/disk_registry.h>
 #include <cloud/blockstore/libs/diagnostics/profile_log.h>
 #include <cloud/blockstore/libs/kikimr/components.h>
 #include <cloud/blockstore/libs/kikimr/events.h>
-
 #include <cloud/blockstore/libs/storage/core/request_info.h>
 #include <cloud/blockstore/libs/storage/protos/volume.pb.h>
 
 #include <contrib/ydb/library/actors/core/scheduler_cookie.h>
 
 #include <optional>
+#include <utility>
 
 namespace NCloud::NBlockStore::NStorage {
 
@@ -25,6 +27,8 @@ namespace NCloud::NBlockStore::NStorage {
     xxx(UpdateCheckpointRequest,            __VA_ARGS__)                       \
     xxx(UpdateShadowDiskState,              __VA_ARGS__)                       \
     xxx(ReadMetaHistory,                    __VA_ARGS__)                       \
+    xxx(FinishAcquireDisk,                  __VA_ARGS__)                       \
+    xxx(RemoveDiskSession,                  __VA_ARGS__)                       \
 // BLOCKSTORE_VOLUME_REQUESTS_PRIVATE
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -130,6 +134,41 @@ struct TEvVolumePrivate
     struct TReadMetaHistoryResponse
     {
         TVector<TVolumeMetaHistoryItem> MetaHistory;
+    };
+
+    //
+    // FinishAcquireDisk
+    //
+
+    struct TFinishAcquireDiskRequest
+    {
+        NProto::TAcquireDiskResponse ResponceRecord;
+        explicit TFinishAcquireDiskRequest(
+                NProto::TAcquireDiskResponse responceRecord)
+            : ResponceRecord(std::move(responceRecord))
+        {}
+
+    };
+
+    struct TFinishAcquireDiskResponse
+    {
+    };
+
+    //
+    // RemoveDiskSession
+    //
+
+    struct TRemoveDiskSessionRequest
+    {
+        NProto::TReleaseDiskResponse ResponceRecord;
+        explicit TRemoveDiskSessionRequest(
+            NProto::TReleaseDiskResponse responceRecord)
+            : ResponceRecord(std::move(responceRecord))
+        {}
+    };
+
+    struct TRemoveDiskSessionResponse
+    {
     };
 
     //

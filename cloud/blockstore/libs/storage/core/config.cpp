@@ -494,6 +494,7 @@ TDuration MSeconds(ui32 value)
     xxx(VolumeProxyCacheRetryDuration,             TDuration, Seconds(15)     )\
                                                                                \
     xxx(UseDirectCopyRange,                             bool,      false         )\
+    xxx(UseDirectAcqruireReleaseDiskSending,            bool,      false         )\
     xxx(MaxShadowDiskFillBandwidth,                     ui32,      512           )\
     xxx(MaxShadowDiskFillIoDepth,                       ui32,      1             )\
     xxx(BackgroundOperationsTotalBandwidth,             ui32,      1024          )\

@@ -1,5 +1,7 @@
 #include "volume_state.h"
 
+#include "cloud/blockstore/libs/storage/disk_registry/testlib/test_state.h"
+
 #include <cloud/blockstore/libs/kikimr/events.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/partition_nonrepl/config.h>
@@ -88,7 +90,7 @@ TVolumeState CreateVolumeState(
         MakeConfig(inactiveClientsTimeout, {}),
         CreateDiagnosticsConfig(),
         CreateVolumeMeta(pp),
-        {{TInstant::Seconds(100), CreateVolumeMeta(pp)}}, // metaHistory
+        {{TInstant::Seconds(100), CreateVolumeMeta(pp)}},   // metaHistory
         {},
         throttlerConfig,
         std::move(clientInfos),
@@ -126,7 +128,7 @@ TVolumeState CreateVolumeState(
             std::make_shared<NFeatures::TFeaturesConfig>()),
         CreateDiagnosticsConfig(),
         CreateVolumeMeta({}),
-        {}, // metaHistory
+        {},   // metaHistory
         {},
         CreateThrottlerConfig(),
         {},
@@ -155,16 +157,13 @@ void CheckPipeState(
     const auto& pipes = client.GetPipes();
     auto it = pipes.find(actor);
     UNIT_ASSERT_C(pipes.end() != it, "Pipe not found");
-    UNIT_ASSERT_VALUES_EQUAL(
-        state,
-        it->second.State);
+    UNIT_ASSERT_VALUES_EQUAL(state, it->second.State);
 }
 
 void CheckServicePipeRemoved(
     const TVolumeState& volumeState,
     const TString& clientId,
-    TActorId serverId
-)
+    TActorId serverId)
 {
     const auto& allPipes = volumeState.GetPipeServerId2ClientId();
     auto pipeIt = allPipes.find(serverId);
@@ -181,8 +180,8 @@ void CheckServicePipeRemoved(
     if (it == pipes.end()) {
         return;
     }
-    if (it->second.State != TVolumeClientState::EPipeState::DEACTIVATED
-        && it->second.State != TVolumeClientState::EPipeState::WAIT_START)
+    if (it->second.State != TVolumeClientState::EPipeState::DEACTIVATED &&
+        it->second.State != TVolumeClientState::EPipeState::WAIT_START)
     {
         UNIT_ASSERT_C(false, "Wrong pipe state");
     }
@@ -204,7 +203,9 @@ void CheckServicePipe(
     UNIT_ASSERT_C(allClients.end() != clientInfoIt, "client not found");
 
     auto it = clientInfoIt->second.GetPipes().find(serverId);
-    UNIT_ASSERT_C(clientInfoIt->second.GetPipes().end() != it, "server id not found");
+    UNIT_ASSERT_C(
+        clientInfoIt->second.GetPipes().end() != it,
+        "server id not found");
 
     const auto& pipeInfo = it->second;
     UNIT_ASSERT_VALUES_EQUAL(
@@ -321,18 +322,14 @@ Y_UNIT_TEST_SUITE(TVolumeStateTest)
 
         auto result = volumeState.RemoveClient(clientId, CreateActor(1));
         UNIT_ASSERT_C(!FAILED(result.GetCode()), result);
-        CheckServicePipeRemoved(
-            volumeState,
-            clientId,
-            CreateActor(1));
+        CheckServicePipeRemoved(volumeState, clientId, CreateActor(1));
 
         const auto& allClients = volumeState.GetClients();
-        UNIT_ASSERT_VALUES_EQUAL(true, allClients.end() == allClients.find(clientId));
+        UNIT_ASSERT_VALUES_EQUAL(
+            true,
+            allClients.end() == allClients.find(clientId));
 
-        CheckServicePipeRemoved(
-            volumeState,
-            clientId,
-            CreateActor(1));
+        CheckServicePipeRemoved(volumeState, clientId, CreateActor(1));
     }
 
     Y_UNIT_TEST(ShouldNotRemoveClientWithEmptyId)
@@ -369,10 +366,7 @@ Y_UNIT_TEST_SUITE(TVolumeStateTest)
         res = volumeState.AddClient(info, CreateActor(2));
         UNIT_ASSERT_EQUAL(res.Error.GetCode(), E_BS_MOUNT_CONFLICT);
 
-        CheckServicePipeRemoved(
-            volumeState,
-            clientId2,
-            CreateActor(2));
+        CheckServicePipeRemoved(volumeState, clientId2, CreateActor(2));
     }
 
     Y_UNIT_TEST(ShouldAllowMultipleAddClientWithSingleLocalMount)
@@ -403,10 +397,7 @@ Y_UNIT_TEST_SUITE(TVolumeStateTest)
         res = volumeState.AddClient(info, CreateActor(2));
         UNIT_ASSERT_EQUAL(res.Error.GetCode(), E_BS_MOUNT_CONFLICT);
 
-        CheckServicePipeRemoved(
-            volumeState,
-            clientId2,
-            CreateActor(2));
+        CheckServicePipeRemoved(volumeState, clientId2, CreateActor(2));
 
         info = CreateVolumeClientInfo(
             clientId2,
@@ -426,20 +417,14 @@ Y_UNIT_TEST_SUITE(TVolumeStateTest)
             auto result = volumeState.RemoveClient(clientId, CreateActor(1));
             UNIT_ASSERT_C(!FAILED(result.GetCode()), result);
 
-            CheckServicePipeRemoved(
-                volumeState,
-                clientId,
-                CreateActor(1));
+            CheckServicePipeRemoved(volumeState, clientId, CreateActor(1));
         }
 
         {
             auto result = volumeState.RemoveClient(clientId2, TActorId());
             UNIT_ASSERT_C(!FAILED(result.GetCode()), result);
 
-            CheckServicePipeRemoved(
-                volumeState,
-                clientId2,
-                CreateActor(3));
+            CheckServicePipeRemoved(volumeState, clientId2, CreateActor(3));
         }
 
         info = CreateVolumeClientInfo(
@@ -493,10 +478,7 @@ Y_UNIT_TEST_SUITE(TVolumeStateTest)
         res = volumeState.AddClient(info, CreateActor(7));
         UNIT_ASSERT(FAILED(res.Error.GetCode()));
 
-        CheckServicePipeRemoved(
-            volumeState,
-            clientId4,
-            CreateActor(7));
+        CheckServicePipeRemoved(volumeState, clientId4, CreateActor(7));
 
         info = CreateVolumeClientInfo(
             clientId4,
@@ -563,11 +545,8 @@ Y_UNIT_TEST_SUITE(TVolumeStateTest)
         auto serverActorId = TActorId(0, "actor1");
         TInstant now = TInstant::Now();
 
-        auto res = volumeState.AddClient(
-            info,
-            serverActorId,
-            serverActorId,
-            now);
+        auto res =
+            volumeState.AddClient(info, serverActorId, serverActorId, now);
         UNIT_ASSERT_C(!HasError(res.Error), res.Error);
         UNIT_ASSERT(!res.RemovedClientIds);
 
@@ -590,10 +569,7 @@ Y_UNIT_TEST_SUITE(TVolumeStateTest)
 
         volumeState.SetServiceDisconnected(serverActorId, now);
 
-        CheckServicePipeRemoved(
-            volumeState,
-            clientId,
-            serverActorId);
+        CheckServicePipeRemoved(volumeState, clientId, serverActorId);
 
         // Should not be able to add the second client immediately
         // after the first client is disconnected
@@ -605,10 +581,7 @@ Y_UNIT_TEST_SUITE(TVolumeStateTest)
         UNIT_ASSERT(FAILED(res.Error.GetCode()));
         UNIT_ASSERT(!res.RemovedClientIds);
 
-        CheckServicePipeRemoved(
-            volumeState,
-            clientId,
-            secondServerActorId);
+        CheckServicePipeRemoved(volumeState, clientId, secondServerActorId);
 
         TInstant later = now + inactiveClientsTimeout;
 
@@ -646,11 +619,8 @@ Y_UNIT_TEST_SUITE(TVolumeStateTest)
         auto serverActorId = TActorId(0, "actor1");
         TInstant now = TInstant::Now();
 
-        auto res = volumeState.AddClient(
-            info,
-            serverActorId,
-            serverActorId,
-            now);
+        auto res =
+            volumeState.AddClient(info, serverActorId, serverActorId, now);
         UNIT_ASSERT_C(!HasError(res.Error), res.Error);
         UNIT_ASSERT(!res.RemovedClientIds);
 
@@ -665,21 +635,14 @@ Y_UNIT_TEST_SUITE(TVolumeStateTest)
 
         volumeState.SetServiceDisconnected(serverActorId, disconnectTime);
 
-        CheckServicePipeRemoved(
-            volumeState,
-            clientId,
-            serverActorId);
+        CheckServicePipeRemoved(volumeState, clientId, serverActorId);
 
         const auto& clients = volumeState.GetClients();
         auto* clientInfo = clients.FindPtr(clientId);
         auto time = clientInfo->GetVolumeClientInfo().GetDisconnectTimestamp();
         UNIT_ASSERT(time == disconnectTime.MicroSeconds());
 
-        res = volumeState.AddClient(
-            info,
-            serverActorId,
-            serverActorId,
-            now);
+        res = volumeState.AddClient(info, serverActorId, serverActorId, now);
         UNIT_ASSERT_C(!HasError(res.Error), res.Error);
 
         CheckServicePipe(
@@ -689,17 +652,15 @@ Y_UNIT_TEST_SUITE(TVolumeStateTest)
             NProto::VOLUME_MOUNT_LOCAL,
             TVolumeClientState::EPipeState::WAIT_START);
 
-        UNIT_ASSERT(!clientInfo->GetVolumeClientInfo().GetDisconnectTimestamp());
+        UNIT_ASSERT(
+            !clientInfo->GetVolumeClientInfo().GetDisconnectTimestamp());
     }
 
     Y_UNIT_TEST(TestResetMeta)
     {
         NProto::TVolumePerformanceProfile pp;
         pp.SetMaxReadBandwidth(1);
-        auto volumeState = CreateVolumeState(
-            CreateThrottlerConfig(),
-            {},
-            pp);
+        auto volumeState = CreateVolumeState(CreateThrottlerConfig(), {}, pp);
         pp.SetMaxReadBandwidth(2);
         auto meta = CreateVolumeMeta(pp);
 
@@ -709,8 +670,7 @@ Y_UNIT_TEST_SUITE(TVolumeStateTest)
         UNIT_ASSERT_VALUES_EQUAL(2, config.GetMaxReadBandwidth());
         UNIT_ASSERT_VALUES_EQUAL(
             static_cast<int>(EStorageAccessMode::Default),
-            static_cast<int>(volumeState.GetStorageAccessMode())
-        );
+            static_cast<int>(volumeState.GetStorageAccessMode()));
         UNIT_ASSERT(!volumeState.GetMuteIOErrors());
 
         {
@@ -719,8 +679,7 @@ Y_UNIT_TEST_SUITE(TVolumeStateTest)
             volumeState.ResetMeta(meta);
             UNIT_ASSERT_VALUES_EQUAL(
                 static_cast<int>(EStorageAccessMode::Repair),
-                static_cast<int>(volumeState.GetStorageAccessMode())
-            );
+                static_cast<int>(volumeState.GetStorageAccessMode()));
             UNIT_ASSERT(volumeState.GetMuteIOErrors());
         }
 
@@ -729,8 +688,7 @@ Y_UNIT_TEST_SUITE(TVolumeStateTest)
             volumeState.ResetMeta(meta);
             UNIT_ASSERT_VALUES_EQUAL(
                 static_cast<int>(EStorageAccessMode::Repair),
-                static_cast<int>(volumeState.GetStorageAccessMode())
-            );
+                static_cast<int>(volumeState.GetStorageAccessMode()));
         }
 
         {
@@ -738,8 +696,7 @@ Y_UNIT_TEST_SUITE(TVolumeStateTest)
             volumeState.ResetMeta(meta);
             UNIT_ASSERT_VALUES_EQUAL(
                 static_cast<int>(EStorageAccessMode::Default),
-                static_cast<int>(volumeState.GetStorageAccessMode())
-            );
+                static_cast<int>(volumeState.GetStorageAccessMode()));
         }
 
         {
@@ -747,8 +704,7 @@ Y_UNIT_TEST_SUITE(TVolumeStateTest)
             volumeState.ResetMeta(meta);
             UNIT_ASSERT_VALUES_EQUAL(
                 static_cast<int>(EStorageAccessMode::Default),
-                static_cast<int>(volumeState.GetStorageAccessMode())
-            );
+                static_cast<int>(volumeState.GetStorageAccessMode()));
         }
         // TODO: test other TVolumeState fields?
     }
@@ -765,13 +721,15 @@ Y_UNIT_TEST_SUITE(TVolumeStateTest)
                 10,                       // maxWriteCostMultiplier
                 1,                        // defaultPostponedRequestWeight
                 CalculateBoostTime(pp)    // startupBoostBudget
-            ),
+                ),
             {},
             pp);
 
         {
             const auto& tp = volumeState.GetThrottlingPolicy();
-            UNIT_ASSERT_VALUES_EQUAL(15'000, tp.GetCurrentBoostBudget().MilliSeconds());
+            UNIT_ASSERT_VALUES_EQUAL(
+                15'000,
+                tp.GetCurrentBoostBudget().MilliSeconds());
         }
 
         pp.SetMaxReadBandwidth(2);
@@ -779,17 +737,22 @@ Y_UNIT_TEST_SUITE(TVolumeStateTest)
         volumeState.ResetMeta(meta);
         {
             const auto& tp = volumeState.GetThrottlingPolicy();
-            UNIT_ASSERT_VALUES_EQUAL(15'000, tp.GetCurrentBoostBudget().MilliSeconds());
+            UNIT_ASSERT_VALUES_EQUAL(
+                15'000,
+                tp.GetCurrentBoostBudget().MilliSeconds());
         }
 
         volumeState.Reset();
         {
             const auto& tp = volumeState.GetThrottlingPolicy();
-            UNIT_ASSERT_VALUES_EQUAL(15'000, tp.GetCurrentBoostBudget().MilliSeconds());
+            UNIT_ASSERT_VALUES_EQUAL(
+                15'000,
+                tp.GetCurrentBoostBudget().MilliSeconds());
         }
     }
 
-    Y_UNIT_TEST(ShouldFillThrottlerConfigWithCustomInitialBudgetUponConstructAndReset)
+    Y_UNIT_TEST(
+        ShouldFillThrottlerConfigWithCustomInitialBudgetUponConstructAndReset)
     {
         NProto::TVolumePerformanceProfile pp;
         pp.SetMaxReadBandwidth(1);
@@ -799,14 +762,13 @@ Y_UNIT_TEST_SUITE(TVolumeStateTest)
             1,                        // defaultPostponedRequestWeight
             TDuration::Seconds(4)     // startupBoostBudget
         );
-        auto volumeState = CreateVolumeState(
-            throttlerConfig,
-            {},
-            pp);
+        auto volumeState = CreateVolumeState(throttlerConfig, {}, pp);
 
         {
             const auto& tp = volumeState.GetThrottlingPolicy();
-            UNIT_ASSERT_VALUES_EQUAL(4'000, tp.GetCurrentBoostBudget().MilliSeconds());
+            UNIT_ASSERT_VALUES_EQUAL(
+                4'000,
+                tp.GetCurrentBoostBudget().MilliSeconds());
         }
 
         pp.SetMaxReadBandwidth(2);
@@ -814,13 +776,17 @@ Y_UNIT_TEST_SUITE(TVolumeStateTest)
         volumeState.ResetMeta(meta);
         {
             const auto& tp = volumeState.GetThrottlingPolicy();
-            UNIT_ASSERT_VALUES_EQUAL(4'000, tp.GetCurrentBoostBudget().MilliSeconds());
+            UNIT_ASSERT_VALUES_EQUAL(
+                4'000,
+                tp.GetCurrentBoostBudget().MilliSeconds());
         }
 
         volumeState.Reset();
         {
             const auto& tp = volumeState.GetThrottlingPolicy();
-            UNIT_ASSERT_VALUES_EQUAL(4'000, tp.GetCurrentBoostBudget().MilliSeconds());
+            UNIT_ASSERT_VALUES_EQUAL(
+                4'000,
+                tp.GetCurrentBoostBudget().MilliSeconds());
         }
     }
 
@@ -853,10 +819,7 @@ Y_UNIT_TEST_SUITE(TVolumeStateTest)
             NProto::VOLUME_MOUNT_LOCAL,
             TVolumeClientState::EPipeState::WAIT_START);
 
-        CheckServicePipeRemoved(
-            volumeState,
-            clientId2,
-            CreateActor(2));
+        CheckServicePipeRemoved(volumeState, clientId2, CreateActor(2));
     }
 
     Y_UNIT_TEST(ShouldNotAllowSecondLocalReadOnlyWhenLocalRO)
@@ -888,10 +851,7 @@ Y_UNIT_TEST_SUITE(TVolumeStateTest)
             NProto::VOLUME_MOUNT_LOCAL,
             TVolumeClientState::EPipeState::WAIT_START);
 
-        CheckServicePipeRemoved(
-            volumeState,
-            clientId2,
-            CreateActor(2));
+        CheckServicePipeRemoved(volumeState, clientId2, CreateActor(2));
     }
 
     Y_UNIT_TEST(ShouldAllowNewLRWWithHigherSeqNum)
@@ -1009,10 +969,7 @@ Y_UNIT_TEST_SUITE(TVolumeStateTest)
             NProto::VOLUME_MOUNT_LOCAL,
             TVolumeClientState::EPipeState::WAIT_START);
 
-        CheckServicePipeRemoved(
-            volumeState,
-            clientId2,
-            CreateActor(2));
+        CheckServicePipeRemoved(volumeState, clientId2, CreateActor(2));
     }
 
     Y_UNIT_TEST(ShouldNotAllowLROIfLRWAlreadyExists)
@@ -1044,10 +1001,7 @@ Y_UNIT_TEST_SUITE(TVolumeStateTest)
             NProto::VOLUME_MOUNT_LOCAL,
             TVolumeClientState::EPipeState::WAIT_START);
 
-        CheckServicePipeRemoved(
-            volumeState,
-            clientId2,
-            CreateActor(2));
+        CheckServicePipeRemoved(volumeState, clientId2, CreateActor(2));
     }
 
     Y_UNIT_TEST(ShouldCacheLimitedNumberOfRecords)
@@ -1065,7 +1019,9 @@ Y_UNIT_TEST_SUITE(TVolumeStateTest)
             auto res = volumeState.LogAddClient(
                 TInstant::Now(),
                 info1,
-                MakeError(S_OK), {}, {});
+                MakeError(S_OK),
+                {},
+                {});
             const auto& history = volumeState.GetMountHistory().GetItems();
             if (history.size() >= 2) {
                 UNIT_ASSERT(
@@ -1080,7 +1036,8 @@ Y_UNIT_TEST_SUITE(TVolumeStateTest)
     Y_UNIT_TEST(ShouldNotCrashWhenCleanupEmptyHistory)
     {
         auto volumeState = CreateVolumeState();
-        volumeState.AccessMountHistory().CleanupHistoryIfNeeded(TInstant::Now());
+        volumeState.AccessMountHistory().CleanupHistoryIfNeeded(
+            TInstant::Now());
     }
 
     Y_UNIT_TEST(ShouldCheckStaleWhenCalledHasActiveClients)
@@ -1102,13 +1059,10 @@ Y_UNIT_TEST_SUITE(TVolumeStateTest)
 
         volumeState.SetServiceDisconnected(pipeServerActorId, TInstant::Now());
 
-        CheckServicePipeRemoved(
-            volumeState,
-            clientId,
-            pipeServerActorId);
+        CheckServicePipeRemoved(volumeState, clientId, pipeServerActorId);
 
-        UNIT_ASSERT(
-            !volumeState.HasActiveClients(TInstant::Now() + TDuration::Seconds(10)));
+        UNIT_ASSERT(!volumeState.HasActiveClients(
+            TInstant::Now() + TDuration::Seconds(10)));
     }
 
     Y_UNIT_TEST(ShouldAllowAdditionalConnectionFromTheSameClient)
@@ -1246,10 +1200,7 @@ Y_UNIT_TEST_SUITE(TVolumeStateTest)
             NProto::VOLUME_MOUNT_LOCAL,
             TVolumeClientState::EPipeState::WAIT_START);
 
-        CheckServicePipeRemoved(
-            volumeState,
-            clientId,
-            actor2);
+        CheckServicePipeRemoved(volumeState, clientId, actor2);
 
         UNIT_ASSERT_VALUES_EQUAL(
             NProto::VOLUME_ACCESS_READ_WRITE,
@@ -1290,19 +1241,13 @@ Y_UNIT_TEST_SUITE(TVolumeStateTest)
         TInstant now;
         volumeState.SetServiceDisconnected(actor2, now);
 
-        CheckServicePipeRemoved(
-            volumeState,
-            clientId,
-            actor2);
+        CheckServicePipeRemoved(volumeState, clientId, actor2);
 
         now += TDuration::Seconds(10);
 
         volumeState.SetServiceDisconnected(actor1, now);
 
-        CheckServicePipeRemoved(
-            volumeState,
-            clientId,
-            actor1);
+        CheckServicePipeRemoved(volumeState, clientId, actor1);
 
         auto& clients = volumeState.AccessClients();
         UNIT_ASSERT_VALUES_EQUAL(1, clients.size());
@@ -1366,7 +1311,8 @@ Y_UNIT_TEST_SUITE(TVolumeStateTest)
             NProto::VOLUME_MOUNT_REMOTE,
             TVolumeClientState::EPipeState::WAIT_START);
 
-        auto result = client.CheckLocalRequest(serverActor1.NodeId(), true, "", "");
+        auto result =
+            client.CheckLocalRequest(serverActor1.NodeId(), true, "", "");
         UNIT_ASSERT_C(!FAILED(result.GetCode()), result);
 
         CheckPipeState(
@@ -1512,10 +1458,7 @@ Y_UNIT_TEST_SUITE(TVolumeStateTest)
             auto res = volumeState.RemoveClient(clientId, serverActor2);
             UNIT_ASSERT_C(!FAILED(res.GetCode()), res);
 
-            CheckServicePipeRemoved(
-                volumeState,
-                clientId,
-                serverActor2);
+            CheckServicePipeRemoved(volumeState, clientId, serverActor2);
 
             auto& client = clients[clientId];
             UNIT_ASSERT_VALUES_EQUAL(1, client.GetPipes().size());
@@ -1617,19 +1560,13 @@ Y_UNIT_TEST_SUITE(TVolumeStateTest)
         {
             auto res = volumeState.RemoveClient(clientId, serverActor2);
             UNIT_ASSERT_C(!FAILED(res.GetCode()), res);
-            CheckServicePipeRemoved(
-                volumeState,
-                clientId,
-                serverActor2);
+            CheckServicePipeRemoved(volumeState, clientId, serverActor2);
         }
 
         {
             auto res = volumeState.RemoveClient(clientId, serverActor1);
             UNIT_ASSERT_C(!FAILED(res.GetCode()), res);
-            CheckServicePipeRemoved(
-                volumeState,
-                clientId,
-                serverActor1);
+            CheckServicePipeRemoved(volumeState, clientId, serverActor1);
         }
 
         auto it = clients.find(clientId);
@@ -1640,7 +1577,8 @@ Y_UNIT_TEST_SUITE(TVolumeStateTest)
     {
         auto volumeState = CreateVolumeState();
 
-        UNIT_ASSERT(!volumeState.GetShouldStartPartitionsForGc(TInstant::Now()));
+        UNIT_ASSERT(
+            !volumeState.GetShouldStartPartitionsForGc(TInstant::Now()));
 
         volumeState.SetStartPartitionsNeeded(true);
         UNIT_ASSERT(volumeState.GetShouldStartPartitionsForGc(TInstant::Now()));
@@ -1705,13 +1643,8 @@ Y_UNIT_TEST_SUITE(TVolumeStateTest)
         volumeState.ResetMeta(meta);
 
         ASSERT_VECTOR_CONTENTS_EQUAL(
-            TVector<TString>({
-                "d2",
-                "d3",
-                "d5",
-                "garbage1",
-                "garbage2",
-                "garbage3"}),
+            TVector<TString>(
+                {"d2", "d3", "d5", "garbage1", "garbage2", "garbage3"}),
             TVector<TString>(
                 volumeState.GetFilteredFreshDevices().begin(),
                 volumeState.GetFilteredFreshDevices().end()));
@@ -1724,27 +1657,30 @@ Y_UNIT_TEST_SUITE(TVolumeStateTest)
         config.SetVolumeHistoryCacheSize(100);
 
         TVolumeMountHistorySlice history{
-            {
-                {THistoryLogKey(TInstant::FromValue(10), 0), {}},
-                {THistoryLogKey(TInstant::FromValue(9), 0), {}},
-                {THistoryLogKey(TInstant::FromValue(8), 0), {}}
-            },
-            {}
-        };
+            {{THistoryLogKey(TInstant::FromValue(10), 0), {}},
+             {THistoryLogKey(TInstant::FromValue(9), 0), {}},
+             {THistoryLogKey(TInstant::FromValue(8), 0), {}}},
+            {}};
 
-        auto volumeState = CreateVolumeState(
-            config,
-            std::move(history)
-        );
+        auto volumeState = CreateVolumeState(config, std::move(history));
 
-        volumeState.AccessMountHistory().CleanupHistoryIfNeeded(TInstant::FromValue(8));
-        UNIT_ASSERT_VALUES_EQUAL(2, volumeState.GetMountHistory().GetItems().size());
+        volumeState.AccessMountHistory().CleanupHistoryIfNeeded(
+            TInstant::FromValue(8));
+        UNIT_ASSERT_VALUES_EQUAL(
+            2,
+            volumeState.GetMountHistory().GetItems().size());
 
-        volumeState.AccessMountHistory().CleanupHistoryIfNeeded(TInstant::FromValue(9));
-        UNIT_ASSERT_VALUES_EQUAL(1, volumeState.GetMountHistory().GetItems().size());
+        volumeState.AccessMountHistory().CleanupHistoryIfNeeded(
+            TInstant::FromValue(9));
+        UNIT_ASSERT_VALUES_EQUAL(
+            1,
+            volumeState.GetMountHistory().GetItems().size());
 
-        volumeState.AccessMountHistory().CleanupHistoryIfNeeded(TInstant::FromValue(30));
-        UNIT_ASSERT_VALUES_EQUAL(0, volumeState.GetMountHistory().GetItems().size());
+        volumeState.AccessMountHistory().CleanupHistoryIfNeeded(
+            TInstant::FromValue(30));
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            volumeState.GetMountHistory().GetItems().size());
     }
 
     Y_UNIT_TEST(ShouldNotExceedCacheSizeWhenAddingHistoryRecords)
@@ -1752,10 +1688,7 @@ Y_UNIT_TEST_SUITE(TVolumeStateTest)
         NProto::TStorageServiceConfig config;
         config.SetVolumeHistoryCacheSize(4);
 
-        TVolumeMountHistorySlice history {
-            {},
-            {}
-        };
+        TVolumeMountHistorySlice history{{}, {}};
 
         auto volumeState = CreateVolumeState(config, std::move(history));
 
@@ -1765,7 +1698,9 @@ Y_UNIT_TEST_SUITE(TVolumeStateTest)
         volumeState.LogRemoveClient(TInstant::FromValue(3), {}, {}, {});
         volumeState.LogRemoveClient(TInstant::FromValue(4), {}, {}, {});
 
-        UNIT_ASSERT_VALUES_EQUAL(4, volumeState.GetMountHistory().GetItems().size());
+        UNIT_ASSERT_VALUES_EQUAL(
+            4,
+            volumeState.GetMountHistory().GetItems().size());
     }
 
     Y_UNIT_TEST(ShouldProperlyAllocateLogRecordsWithSameTimestamp)
@@ -1774,18 +1709,12 @@ Y_UNIT_TEST_SUITE(TVolumeStateTest)
         config.SetVolumeHistoryCacheSize(3);
 
         TVolumeMountHistorySlice history{
-            {
-                {THistoryLogKey(TInstant::FromValue(10), 0), {}},
-                {THistoryLogKey(TInstant::FromValue(8), 1), {}},
-                {THistoryLogKey(TInstant::FromValue(8), 0), {}}
-            },
-            {}
-        };
+            {{THistoryLogKey(TInstant::FromValue(10), 0), {}},
+             {THistoryLogKey(TInstant::FromValue(8), 1), {}},
+             {THistoryLogKey(TInstant::FromValue(8), 0), {}}},
+            {}};
 
-        auto volumeState = CreateVolumeState(
-            config,
-            std::move(history)
-        );
+        auto volumeState = CreateVolumeState(config, std::move(history));
 
         volumeState.LogAddClient(TInstant::FromValue(10), {}, {}, {}, {});
 
@@ -1803,18 +1732,12 @@ Y_UNIT_TEST_SUITE(TVolumeStateTest)
         config.SetVolumeHistoryCacheSize(3);
 
         TVolumeMountHistorySlice history{
-            {
-                {THistoryLogKey(TInstant::FromValue(10), 0), {}},
-                {THistoryLogKey(TInstant::FromValue(8), 1), {}},
-                {THistoryLogKey(TInstant::FromValue(8), 0), {}}
-            },
-            {}
-        };
+            {{THistoryLogKey(TInstant::FromValue(10), 0), {}},
+             {THistoryLogKey(TInstant::FromValue(8), 1), {}},
+             {THistoryLogKey(TInstant::FromValue(8), 0), {}}},
+            {}};
 
-        auto volumeState = CreateVolumeState(
-            config,
-            std::move(history)
-        );
+        auto volumeState = CreateVolumeState(config, std::move(history));
 
         UNIT_ASSERT_C(
             !volumeState.GetMountHistory().GetNextOlderRecord().has_value(),
@@ -1830,8 +1753,11 @@ Y_UNIT_TEST_SUITE(TVolumeStateTest)
             *volumeState.GetMountHistory().GetNextOlderRecord(),
             THistoryLogKey(TInstant::FromValue(8), 0));
 
-        volumeState.AccessMountHistory().CleanupHistoryIfNeeded(TInstant::FromValue(9));
-        UNIT_ASSERT_VALUES_EQUAL(2, volumeState.GetMountHistory().GetItems().size());
+        volumeState.AccessMountHistory().CleanupHistoryIfNeeded(
+            TInstant::FromValue(9));
+        UNIT_ASSERT_VALUES_EQUAL(
+            2,
+            volumeState.GetMountHistory().GetItems().size());
 
         UNIT_ASSERT_C(
             !volumeState.GetMountHistory().GetNextOlderRecord().has_value(),
@@ -1844,18 +1770,13 @@ Y_UNIT_TEST_SUITE(TVolumeStateTest)
         config.SetVolumeHistoryCacheSize(3);
 
         TVolumeMountHistorySlice history{
-            {
-                {THistoryLogKey(TInstant::FromValue(11), 0), {}},
-                {THistoryLogKey(TInstant::FromValue(10), 0), {}},
-                {THistoryLogKey(TInstant::FromValue(8), 1), {}},
-                {THistoryLogKey(TInstant::FromValue(8), 0), {}}
-            },
-            {}
-        };
+            {{THistoryLogKey(TInstant::FromValue(11), 0), {}},
+             {THistoryLogKey(TInstant::FromValue(10), 0), {}},
+             {THistoryLogKey(TInstant::FromValue(8), 1), {}},
+             {THistoryLogKey(TInstant::FromValue(8), 0), {}}},
+            {}};
 
-        auto volumeState = CreateVolumeState(
-            config,
-            history);
+        auto volumeState = CreateVolumeState(config, history);
 
         UNIT_ASSERT_C(
             volumeState.GetMountHistory().GetNextOlderRecord().has_value(),
@@ -1864,7 +1785,6 @@ Y_UNIT_TEST_SUITE(TVolumeStateTest)
         UNIT_ASSERT_VALUES_EQUAL(
             THistoryLogKey(TInstant::FromValue(8), 0),
             *volumeState.GetMountHistory().GetNextOlderRecord());
-
 
         auto slice = volumeState.GetMountHistory().GetSlice();
         UNIT_ASSERT_VALUES_EQUAL(
@@ -1880,7 +1800,8 @@ Y_UNIT_TEST_SUITE(TVolumeStateTest)
 
     Y_UNIT_TEST(ShouldNotTrackUsedBlocks)
     {
-        auto makeState = [] (auto kind, auto mode) {
+        auto makeState = [](auto kind, auto mode)
+        {
             NProto::TVolumeMeta meta;
 
             auto& config = *meta.MutableConfig();
@@ -1897,8 +1818,8 @@ Y_UNIT_TEST_SUITE(TVolumeStateTest)
                 MakeConfig(10s, 0s),
                 CreateDiagnosticsConfig(),
                 std::move(meta),
-                {},     // metaHistory
-                {},     // volumeParams
+                {},   // metaHistory
+                {},   // volumeParams
                 CreateThrottlerConfig(),
                 {},     // infos
                 {},     // mountHistory
@@ -1937,6 +1858,75 @@ Y_UNIT_TEST_SUITE(TVolumeStateTest)
                 NProto::ENCRYPTION_AES_XTS);
 
             UNIT_ASSERT(!state.GetTrackUsedBlocks());
+        }
+    }
+
+    Y_UNIT_TEST(AcquireDisk)
+    {
+        auto volumeState = CreateVolumeState();
+        auto meta = volumeState.GetMeta();
+        const TInstant oldDate = TInstant::ParseIso8601("2023-08-30");
+        const TVector<TString> deviceUUIDS{"d1", "d2", "d3", "d4", "d5", "d6"};
+        meta.MutableVolumeConfig()->SetCreationTs(oldDate.MicroSeconds());
+        meta.AddDevices()->SetDeviceUUID("d1");
+        meta.AddDevices()->SetDeviceUUID("d2");
+        auto& r1 = *meta.AddReplicas();
+        r1.AddDevices()->SetDeviceUUID("d3");
+        r1.AddDevices()->SetDeviceUUID("d4");
+        auto& r2 = *meta.AddReplicas();
+        r2.AddDevices()->SetDeviceUUID("d5");
+        r2.AddDevices()->SetDeviceUUID("d6");
+
+        {
+            TVector<NProto::TDeviceConfig> devices;
+            auto error = volumeState.StartAcquireDisk(devices);
+            UNIT_ASSERT_SUCCESS(error);
+            UNIT_ASSERT_VALUES_EQUAL(6, devices.size());
+
+            for (const auto& deviceUUID: deviceUUIDS) {
+                UNIT_ASSERT_UNEQUAL(
+                    devices.end(),
+                    FindIf(
+                        devices,
+                        [&](const auto& deviceConfig)
+                        {
+                            return deviceConfig.GetDeviceUUID() == deviceUUID;
+                        }));
+            }
+        }
+
+        {
+            TVector<NProto::TDeviceConfig> devices;
+            auto error = volumeState.StartAcquireDisk(devices);
+            UNIT_ASSERT(HasError(error));
+            UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, error.GetCode());
+        }
+
+        volumeState.FinishAcquireDisk();
+
+        {
+            TVector<NProto::TDeviceConfig> devices;
+            auto error = volumeState.StartAcquireDisk(devices);
+            UNIT_ASSERT_SUCCESS(error);
+            UNIT_ASSERT_VALUES_EQUAL(6, devices.size());
+
+            for (const auto& deviceUUID: deviceUUIDS) {
+                UNIT_ASSERT_UNEQUAL(
+                    devices.end(),
+                    FindIf(
+                        devices,
+                        [&](const auto& deviceConfig)
+                        {
+                            return deviceConfig.GetDeviceUUID() == deviceUUID;
+                        }));
+            }
+        }
+
+        {
+            TVector<NProto::TDeviceConfig> devices;
+            auto error = volumeState.StartAcquireDisk(devices);
+            UNIT_ASSERT(HasError(error));
+            UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, error.GetCode());
         }
     }
 }

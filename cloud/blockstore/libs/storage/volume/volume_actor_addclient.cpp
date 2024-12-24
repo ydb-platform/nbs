@@ -48,6 +48,10 @@ void TVolumeActor::AcquireDisk(
     request->Record.SetMountSeqNumber(mountSeqNumber);
     request->Record.SetVolumeGeneration(Executor()->Generation());
 
+    if (Config->GetUseDirectAcquireReleaseDiskSending()) {
+        SendProxylessAcquireDisk(std::move(request), ctx);
+        return;
+    }
     NCloud::Send(
         ctx,
         MakeDiskRegistryProxyServiceId(),
@@ -178,6 +182,13 @@ void TVolumeActor::HandleAcquireDiskResponse(
     // agents
     auto& record = msg->Record;
 
+    HandleAcquireDiskResponseImpl(record, ctx);
+}
+
+void TVolumeActor::HandleAcquireDiskResponseImpl(
+        const NProto::TAcquireDiskResponse& record,
+        const NActors::TActorContext& ctx)
+{
     ScheduleAcquireDiskIfNeeded(ctx);
 
     if (AcquireReleaseDiskRequests.empty()) {

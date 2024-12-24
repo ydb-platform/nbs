@@ -28,7 +28,10 @@ void TVolumeActor::ReleaseDisk(const TActorContext& ctx, const TString& clientId
     request->Record.SetDiskId(State->GetDiskId());
     request->Record.MutableHeaders()->SetClientId(clientId);
     request->Record.SetVolumeGeneration(Executor()->Generation());
-
+    if (Config->GetUseDirectAcquireReleaseDiskSending()) {
+        SendProxylessReleaseDisk(std::move(request), ctx);
+        return;
+    }
     NCloud::Send(
         ctx,
         MakeDiskRegistryProxyServiceId(),
@@ -42,6 +45,13 @@ void TVolumeActor::HandleReleaseDiskResponse(
     auto* msg = ev->Get();
     auto& record = msg->Record;
 
+    HandleReleaseDiskResponseImpl(record, ctx);
+}
+
+void TVolumeActor::HandleReleaseDiskResponseImpl(
+    const NProto::TReleaseDiskResponse& record,
+    const NActors::TActorContext& ctx)
+{
     if (AcquireReleaseDiskRequests.empty()) {
         LOG_DEBUG_S(
             ctx,

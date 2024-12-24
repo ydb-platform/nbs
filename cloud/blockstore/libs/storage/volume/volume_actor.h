@@ -716,11 +716,19 @@ private:
         const TEvDiskRegistry::TEvAcquireDiskResponse::TPtr& ev,
         const NActors::TActorContext& ctx);
 
+    void HandleAcquireDiskResponseImpl(
+        const NProto::TAcquireDiskResponse& record,
+        const NActors::TActorContext& ctx);
+
     void AcquireDisk(
         const NActors::TActorContext& ctx,
         TString clientId,
         NProto::EVolumeAccessMode accessMode,
         ui64 mountSeqNumber);
+
+    void SendProxylessAcquireDisk(
+        std::unique_ptr<TEvDiskRegistry::TEvAcquireDiskRequest> ev,
+        const NActors::TActorContext& ctx);
 
     void AcquireDiskIfNeeded(const NActors::TActorContext& ctx);
 
@@ -742,7 +750,15 @@ private:
         const TEvDiskRegistry::TEvReleaseDiskResponse::TPtr& ev,
         const NActors::TActorContext& ctx);
 
+    void HandleReleaseDiskResponseImpl(
+        const NProto::TReleaseDiskResponse& record,
+        const NActors::TActorContext& ctx);
+
     void ReleaseDisk(const NActors::TActorContext& ctx, const TString& clientId);
+
+    void SendProxylessReleaseDisk(
+        std::unique_ptr<TEvDiskRegistry::TEvReleaseDiskRequest> msg,
+        const NActors::TActorContext& ctx);
 
     void HandleAllocateDiskResponse(
         const TEvDiskRegistry::TEvAllocateDiskResponse::TPtr& ev,
@@ -1018,5 +1034,7 @@ private:
 // BLOCKSTORE_VOLUME_COUNTER
 
 TString DescribeAllocation(const NProto::TAllocateDiskResponse& record);
+
+TString LogDevices(const TVector<NProto::TDeviceConfig>& devices);
 
 }   // namespace NCloud::NBlockStore::NStorage
