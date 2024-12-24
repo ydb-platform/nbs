@@ -109,11 +109,6 @@ struct TEnv
 
     void TearDown(NUnitTest::TTestContext& /*context*/) override
     {}
-
-    const TTestEnv& GetTestEnv() const
-    {
-        return Env;
-    }
 };
 
 }   // namespace
