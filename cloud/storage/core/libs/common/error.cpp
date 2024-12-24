@@ -5,7 +5,6 @@
 #include <util/stream/format.h>
 #include <util/stream/output.h>
 #include <util/stream/str.h>
-#include <util/string/printf.h>
 
 namespace NCloud {
 
@@ -250,9 +249,11 @@ NProto::TError MakeError(ui32 code, TString message, ui32 flags)
     return error;
 }
 
-TString MakeTabletIsDeadError(const char* fileName, int line)
+NProto::TError MakeTabletIsDeadError(ui32 code, TSourceLocation location)
 {
-    return Sprintf("Tablet is dead: %s:%d", fileName, line);
+    TStringStream out;
+    out << "Tablet is dead: " << location.File << ":" << location.Line;
+    return MakeError(code, out.Str());
 }
 
 }   // namespace NCloud

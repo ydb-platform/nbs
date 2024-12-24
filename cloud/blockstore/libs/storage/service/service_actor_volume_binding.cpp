@@ -99,7 +99,7 @@ private:
 
         auto response =
             std::make_unique<TEvService::TEvChangeVolumeBindingResponse>(
-                MakeError(E_REJECTED, TABLET_IS_DEAD_ERROR_MESSAGE),
+                TABLET_IS_DEAD_ERROR(E_REJECTED),
                 DiskId);
 
         NCloud::Reply(ctx, *RequestInfo, std::move(response));

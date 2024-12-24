@@ -143,7 +143,7 @@ private:
         const TEvService::TEvWriteBlocksRequest::TPtr&,
         const TActorContext& ctx)
     {
-        ReplyAndDie(ctx, MakeError(E_REJECTED, TABLET_IS_DEAD_ERROR_MESSAGE));
+        ReplyAndDie(ctx, TABLET_IS_DEAD_ERROR(E_REJECTED));
     }
 
     void HandleWriteBlocksResponse(
