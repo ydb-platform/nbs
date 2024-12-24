@@ -238,6 +238,8 @@ private:
     // The number of blocks that need to be migrated to complete the migration.
     std::optional<ui64> BlockCountToMigrate;
 
+    bool AcquireInProgress = false;
+
 public:
     TVolumeState(
         TStorageConfigPtr storageConfig,
@@ -719,6 +721,32 @@ public:
         }
 
         return Meta.GetResyncNeeded();
+    }
+
+    NProto::TError StartAcquireDisk(TVector<NProto::TDeviceConfig>& devices)
+    {
+        if (AcquireInProgress) {
+            return MakeError(
+                E_REJECTED,
+                TStringBuilder() << "disk acquire in progress");
+        }
+
+        for (const auto& device: Meta.GetDevices()) {
+            devices.emplace_back(device);
+        }
+        for (const auto& replica: Meta.GetReplicas()) {
+            for (const auto& device: replica.GetDevices()) {
+                devices.emplace_back(device);
+            }
+        }
+        AcquireInProgress = true;
+
+        return {};
+    }
+
+    void FinishAcquireDisk()
+    {
+        AcquireInProgress = false;
     }
 
 private:
