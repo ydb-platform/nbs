@@ -31,7 +31,8 @@ namespace NCloud::NBlockStore {
     xxx(MirroredDiskDeviceReplacementForbidden)                                \
     xxx(MirroredDiskDeviceReplacementFailure)                                  \
     xxx(MirroredDiskDeviceReplacementRateLimitExceeded)                        \
-    xxx(MirroredDiskChecksumMismatch)                                          \
+    xxx(MirroredDiskMinorityChecksumMismatch)                                  \
+    xxx(MirroredDiskMajorityChecksumMismatch)                                  \
     xxx(CounterUpdateRace)                                                     \
     xxx(EndpointStartingError)                                                 \
     xxx(ResyncFailed)                                                          \

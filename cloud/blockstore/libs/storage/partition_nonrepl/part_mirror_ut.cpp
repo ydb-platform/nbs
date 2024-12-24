@@ -1190,11 +1190,12 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
         WaitUntilScrubbingFinishesCurrentCycle(env);
 
         auto& counters = env.StorageStatsServiceState->Counters;
-        auto mirroredDiskChecksumMismatch = critEventsCounters->GetCounter(
-            "AppCriticalEvents/MirroredDiskChecksumMismatch",
-            true);
+        auto mirroredDiskMinorityChecksumMismatch =
+            critEventsCounters->GetCounter(
+                "AppCriticalEvents/MirroredDiskMinorityChecksumMismatch",
+                true);
 
-        UNIT_ASSERT_VALUES_EQUAL(2, mirroredDiskChecksumMismatch->Val());
+        UNIT_ASSERT_VALUES_EQUAL(2, mirroredDiskMinorityChecksumMismatch->Val());
         UNIT_ASSERT_VALUES_EQUAL(2, counters.Simple.ChecksumMismatches.Value);
 
         const auto range3 = TBlockRange64::WithLength(1025, 50);
@@ -1207,7 +1208,7 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
         WaitUntilScrubbingFinishesCurrentCycle(env);
         WaitUntilScrubbingFinishesCurrentCycle(env);
         UNIT_ASSERT_VALUES_EQUAL(3, counters.Simple.ChecksumMismatches.Value);
-        UNIT_ASSERT_VALUES_EQUAL(3, mirroredDiskChecksumMismatch->Val());
+        UNIT_ASSERT_VALUES_EQUAL(3, mirroredDiskMinorityChecksumMismatch->Val());
 
         // at this point, scrubbing may not start from the beginning,
         // so we need to wait for 2 cycles to be sure that
@@ -1217,7 +1218,7 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
 
         // check that all ranges was resynced and there is no more mismatches
         UNIT_ASSERT_VALUES_EQUAL(3, counters.Simple.ChecksumMismatches.Value);
-        UNIT_ASSERT_VALUES_EQUAL(3, mirroredDiskChecksumMismatch->Val());
+        UNIT_ASSERT_VALUES_EQUAL(3, mirroredDiskMinorityChecksumMismatch->Val());
     }
 
     Y_UNIT_TEST(ShouldPostponeScrubbingIfIntersectingWritePending)
@@ -1271,10 +1272,10 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
         });
         env.WriteActor(env.ActorId, range, 'D');
 
-        auto mirroredDiskChecksumMismatch = counters->GetCounter(
-            "AppCriticalEvents/MirroredDiskChecksumMismatch",
+        auto mirroredDiskMinorityChecksumMismatch = counters->GetCounter(
+            "AppCriticalEvents/MirroredDiskMinorityChecksumMismatch",
             true);
-        UNIT_ASSERT_VALUES_EQUAL(0, mirroredDiskChecksumMismatch->Val());
+        UNIT_ASSERT_VALUES_EQUAL(0, mirroredDiskMinorityChecksumMismatch->Val());
 
         rangeCount = 0;
         ui32 iterations = 0;
@@ -1282,7 +1283,7 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
             runtime.DispatchEvents({}, env.ScrubbingInterval);
         }
 
-        UNIT_ASSERT_VALUES_EQUAL(0, mirroredDiskChecksumMismatch->Val());
+        UNIT_ASSERT_VALUES_EQUAL(0, mirroredDiskMinorityChecksumMismatch->Val());
     }
 
     Y_UNIT_TEST(ShouldNotFindMismatchIfChecksumIntersectedWithWrite)
@@ -1382,11 +1383,11 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
             runtime.DispatchEvents({}, env.ScrubbingInterval);
         }
 
-        auto mirroredDiskChecksumMismatch = counters->GetCounter(
-            "AppCriticalEvents/MirroredDiskChecksumMismatch",
+        auto mirroredDiskMinorityChecksumMismatch = counters->GetCounter(
+            "AppCriticalEvents/MirroredDiskMinorityChecksumMismatch",
             true);
 
-        UNIT_ASSERT_VALUES_EQUAL(0, mirroredDiskChecksumMismatch->Val());
+        UNIT_ASSERT_VALUES_EQUAL(0, mirroredDiskMinorityChecksumMismatch->Val());
     }
 
     Y_UNIT_TEST(ShouldNotFindMismatchIfWriteRequestToOneReplicaHasError)
@@ -1445,12 +1446,12 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
         runtime.AdvanceCurrentTime(UpdateCountersInterval);
         runtime.DispatchEvents({}, TDuration::MilliSeconds(50));
 
-        auto mirroredDiskChecksumMismatch = critEventsCounters->GetCounter(
-            "AppCriticalEvents/MirroredDiskChecksumMismatch",
+        auto mirroredDiskMinorityChecksumMismatch = critEventsCounters->GetCounter(
+            "AppCriticalEvents/MirroredDiskMinorityChecksumMismatch",
             true);
         auto& counters = env.StorageStatsServiceState->Counters;
 
-        UNIT_ASSERT_VALUES_EQUAL(0, mirroredDiskChecksumMismatch->Val());
+        UNIT_ASSERT_VALUES_EQUAL(0, mirroredDiskMinorityChecksumMismatch->Val());
         UNIT_ASSERT_VALUES_EQUAL(0, counters.Simple.ScrubbingProgress.Value);
 
         client.SendWriteBlocksLocalRequest(range, data);
@@ -1464,7 +1465,7 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
             runtime.DispatchEvents({}, TDuration::MilliSeconds(50));
         }
 
-        UNIT_ASSERT_VALUES_EQUAL(0, mirroredDiskChecksumMismatch->Val());
+        UNIT_ASSERT_VALUES_EQUAL(0, mirroredDiskMinorityChecksumMismatch->Val());
     }
 
     Y_UNIT_TEST(ShouldRejectRequestsIfRangeResyncingAfterChecksumMismatch)
@@ -1586,6 +1587,16 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
 
         TTestEnv env(runtime);
         auto& counters = env.StorageStatsServiceState->Counters;
+        TDynamicCountersPtr critEventsCounters = new TDynamicCounters();
+        InitCriticalEventsCounter(critEventsCounters);
+        auto mirroredDiskMajorityChecksumMismatch =
+            critEventsCounters->GetCounter(
+                "AppCriticalEvents/MirroredDiskMajorityChecksumMismatch",
+                true);
+        auto mirroredDiskMinorityChecksumMismatch =
+            critEventsCounters->GetCounter(
+                "AppCriticalEvents/MirroredDiskMinorityChecksumMismatch",
+                true);
 
         // Write different data to all replicas
         const auto range = TBlockRange64::WithLength(2049, 50);
@@ -1599,6 +1610,8 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
         WaitUntilScrubbingFinishesCurrentCycle(env);
         UNIT_ASSERT_VALUES_EQUAL(2, counters.Simple.ChecksumMismatches.Value);
         UNIT_ASSERT_VALUES_EQUAL(0, rangeResynced);
+        UNIT_ASSERT_VALUES_EQUAL(2, mirroredDiskMajorityChecksumMismatch->Val());
+        UNIT_ASSERT_VALUES_EQUAL(0, mirroredDiskMinorityChecksumMismatch->Val());
 
         // Make data in 1st and 3rd replica the same.
         env.WriteReplica(2, range, 'A');
@@ -1609,6 +1622,8 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
         WaitUntilScrubbingFinishesCurrentCycle(env);
         UNIT_ASSERT_VALUES_EQUAL(3, counters.Simple.ChecksumMismatches.Value);
         UNIT_ASSERT_VALUES_EQUAL(1, rangeResynced);
+        UNIT_ASSERT_VALUES_EQUAL(2, mirroredDiskMajorityChecksumMismatch->Val());
+        UNIT_ASSERT_VALUES_EQUAL(1, mirroredDiskMinorityChecksumMismatch->Val());
     }
 
     Y_UNIT_TEST(ShouldRejectReadUponChecksumMismatchIfRead2IsEnabled)
