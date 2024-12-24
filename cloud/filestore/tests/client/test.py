@@ -194,7 +194,7 @@ def test_ls():
     return ret
 
 
-def test_cache_warmup():
+def test_find():
     client, results_path = __init_test()
     client.create("fs0", "test_cloud", "test_folder", BLOCK_SIZE, BLOCKS_COUNT)
 
@@ -210,7 +210,14 @@ def test_cache_warmup():
     client.touch("fs0", "/a0/b0/f0.txt")
     client.touch("fs0", "/a0/b0/c0_0/f1.txt")
     client.touch("fs0", "/a1/b1/c1/f2.txt")
-    out = client.cache_warmup("fs0", depth=2)
+    client.touch("fs0", "/a1/f3.txt")
+    client.touch("fs0", "/a1/f4.txt")
+    client.touch("fs0", "/a0/f5.txt")
+    client.touch("fs0", "/a1/g1.txt")
+    client.touch("fs0", "/a1/g2.txt")
+    client.touch("fs0", "/a0/g3.txt")
+    out = client.find("fs0", depth=2)
+    out += client.find("fs0", depth=2, glob="f*.txt")
     client.destroy("fs0")
 
     with open(results_path, "wb") as results_file:

@@ -4,7 +4,6 @@ SRCS(
     add_cluster_node.cpp
     app.cpp
     bootstrap.cpp
-    cache_warmup.cpp
     command.cpp
     create.cpp
     create_session.cpp
@@ -13,6 +12,7 @@ SRCS(
     destroy_session.cpp
     execute_action.cpp
     factory.cpp
+    find.cpp
     find_garbage.cpp
     forced_compaction.cpp
     kick_endpoint.cpp

@@ -246,12 +246,12 @@ class FilestoreCliClient:
 
         return common.execute(cmd, env=self.__env, check_exit_code=self.__check_exit_code).stdout
 
-    def cache_warmup(self, fs, depth):
+    def find(self, fs, depth, glob=None):
         cmd = [
-            self.__binary_path, "cachewarmup",
+            self.__binary_path, "find",
             "--filesystem", fs,
             "--depth", str(depth),
-        ] + self.__cmd_opts()
+        ] + (["--glob", glob] if glob is not None else []) + self.__cmd_opts()
 
         return common.execute(cmd, env=self.__env, check_exit_code=self.__check_exit_code).stdout
 

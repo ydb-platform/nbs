@@ -4,7 +4,7 @@
 
 #include <cloud/storage/core/libs/common/format.h>
 
-#include <sys/stat.h>
+#include <fnmatch.h>
 
 namespace NCloud::NFileStore::NClient {
 
@@ -12,25 +12,27 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TNode
+bool MatchesGlob(const TString& pattern, const TString& name)
 {
-    ui64 Id = 0;
-    TString Name;
-    TString ShardFileSystemId;
-    TString ShardNodeName;
-};
+    return pattern ? fnmatch(pattern.c_str(), name.c_str(), 0) == 0 : true;
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TCacheWarmup final
+class TFindCommand final
     : public TFileStoreCommand
 {
 private:
+    TString Glob;
     ui32 Depth = 0;
 
 public:
-    TCacheWarmup()
+    TFindCommand()
     {
+        Opts.AddLongOption("glob")
+            .RequiredArgument("GLOB")
+            .StoreResult(&Glob);
+
         Opts.AddLongOption("depth")
             .RequiredArgument("NUM")
             .DefaultValue(1)
@@ -86,18 +88,22 @@ public:
         --depth;
         auto response = ListAll(session, fsId, parentId);
 
+        // TODO: async
+
         for (ui32 i = 0; i < response.NodesSize(); ++i) {
             const auto& node = response.GetNodes(i);
             const auto& name = response.GetNames(i);
+            if (MatchesGlob(Glob, name)) {
+                Cout << prefix << "\t" << name << "\t" << node.GetId() << Endl;
+            }
+
             if (node.GetType() == NProto::E_DIRECTORY_NODE && depth) {
                 StatAll(
                     session,
                     fsId,
-                    prefix + "/" + name,
+                    prefix + name + "/",
                     node.GetId(),
                     depth);
-            } else {
-                Cout << prefix << "\t" << name << "\t" << node.GetId() << Endl;
             }
         }
     }
@@ -116,9 +122,9 @@ public:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TCommandPtr NewCacheWarmupCommand()
+TCommandPtr NewFindCommand()
 {
-    return std::make_shared<TCacheWarmupCommand>();
+    return std::make_shared<TFindCommand>();
 }
 
 }   // namespace NCloud::NFileStore::NClient
