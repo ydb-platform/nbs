@@ -462,6 +462,31 @@ void TDiskRegistryActor::RenderDeviceHtmlInfo(
         }
         DIV() { out << "State Message: " << device.GetStateMessage(); }
 
+        if (device.GetState() != NProto::EDeviceState::DEVICE_STATE_ERROR) {
+            DIV()
+            {
+                out << Sprintf(
+                    R"(<form name="stateChange%s" method="post">
+            <br>
+            <label for="NewState">Change device state to:</label>
+            <select name="NewState">
+                <option value="%u">Online</option>
+                <option value="%u">Warning</option>
+            </select>
+            <input type="submit" value="Change state">
+            <input type='hidden' name='action' value='changeDeviceState'/>
+            <input type='hidden' name='DeviceUUID' value='%s'/>
+            <input type='hidden' name='TabletID' value='%lu'/>
+            </form>)",
+                    device.GetDeviceUUID().c_str(),
+                    static_cast<int>(NProto::EDeviceState::DEVICE_STATE_ONLINE),
+                    static_cast<int>(
+                        NProto::EDeviceState::DEVICE_STATE_WARNING),
+                    device.GetDeviceUUID().c_str(),
+                    TabletID());
+            }
+        }
+
         if (auto diskId = State->FindDisk(id)) {
             DIV() {
                 out << "Disk: ";
@@ -2253,9 +2278,11 @@ void TDiskRegistryActor::HandleHttpInfo(
 
     using THttpHandlers = THashMap<TString, THttpHandler>;
 
-    static const THttpHandlers postActions {{
-        {"volumeRealloc", &TDiskRegistryActor::HandleHttpInfo_VolumeRealloc  },
-        {"replaceDevice", &TDiskRegistryActor::HandleHttpInfo_ReplaceDevice  },
+    static const THttpHandlers postActions{{
+        {"volumeRealloc", &TDiskRegistryActor::HandleHttpInfo_VolumeRealloc},
+        {"replaceDevice", &TDiskRegistryActor::HandleHttpInfo_ReplaceDevice},
+        {"changeDeviceState",
+         &TDiskRegistryActor::HandleHttpInfo_ChangeDeviseState},
     }};
 
     static const THttpHandlers getActions {{

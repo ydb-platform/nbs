@@ -173,3 +173,10 @@ class NbsClient:
         resp = self.__execute_action('getstorageconfig', req, timeout)
 
         return json.loads(resp)
+
+    def change_device_state(self, device_uuid, state, timeout=300):
+        req = {"ChangeDeviceState": {"DeviceUUID": device_uuid, "State": state}, "Message":"XXX"}
+
+        resp = self.__execute_action("diskregistrychangestate", req, timeout)
+
+        return json.loads(resp)

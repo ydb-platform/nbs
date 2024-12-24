@@ -346,6 +346,11 @@ private:
         const TCgiParameters& params,
         TRequestInfoPtr requestInfo);
 
+    void HandleHttpInfo_ChangeDeviseState(
+        const NActors::TActorContext& ctx,
+        const TCgiParameters& params,
+        TRequestInfoPtr requestInfo);
+
     void HandleHttpInfo_RenderDisks(
         const NActors::TActorContext& ctx,
         const TCgiParameters& params,
