@@ -7,7 +7,6 @@
 #include <util/stream/str.h>
 #include <util/string/printf.h>
 
-
 namespace NCloud {
 
 namespace {
