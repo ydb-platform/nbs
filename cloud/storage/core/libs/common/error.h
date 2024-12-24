@@ -9,7 +9,6 @@
 
 #include <util/generic/string.h>
 #include <util/generic/yexception.h>
-#include <util/string/printf.h>
 
 #include <tuple>
 #include <type_traits>
@@ -468,10 +467,7 @@ inline TResultOrError<void> ResultOrError(NThreading::TFuture<void>& future)
     });
 }
 
-inline TString MakeTabletIsDeadError(const char* fileName, int line)
-{
-    return Sprintf("Tablet is dead: %s:%d", fileName, line);
-}
+TString MakeTabletIsDeadError(const char* fileName, int line);
 
 #define TABLET_IS_DEAD_ERROR_MESSAGE MakeTabletIsDeadError(__FILE__, __LINE__)
 
