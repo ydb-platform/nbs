@@ -61,7 +61,7 @@ namespace NCloud::NBlockStore::NStorage {
     xxx(DeallocateCheckpoint,               __VA_ARGS__)                       \
     xxx(SetCheckpointDataState,             __VA_ARGS__)                       \
     xxx(PurgeHostCms,                       __VA_ARGS__)                       \
-    xxx(CleanupOrphanDevices,         __VA_ARGS__)                       \
+    xxx(CleanupOrphanDevices,               __VA_ARGS__)                       \
 // BLOCKSTORE_DISK_REGISTRY_TRANSACTIONS
 
 ////////////////////////////////////////////////////////////////////////////////
