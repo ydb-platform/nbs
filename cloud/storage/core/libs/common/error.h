@@ -467,9 +467,9 @@ inline TResultOrError<void> ResultOrError(NThreading::TFuture<void>& future)
     });
 }
 
-NProto::TError MakeTabletIsDeadError(ui32 code, TSourceLocation location);
-
-#define TABLET_IS_DEAD_ERROR(code) MakeTabletIsDeadError(code, __LOCATION__)
+NProto::TError MakeTabletIsDeadError(
+    ui32 code,
+    const TSourceLocation& location);
 
 }   // namespace NCloud
 

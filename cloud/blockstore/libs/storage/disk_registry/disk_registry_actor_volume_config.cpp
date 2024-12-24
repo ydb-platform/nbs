@@ -168,7 +168,7 @@ void TUpdateActor::HandlePoisonPill(
     const TActorContext& ctx)
 {
     Y_UNUSED(ev);
-    ReplyAndDie(ctx, TABLET_IS_DEAD_ERROR(E_REJECTED));
+    ReplyAndDie(ctx, MakeTabletIsDeadError(E_REJECTED, __LOCATION__));
 }
 
 void TUpdateActor::ReplyAndDie(const TActorContext& ctx, NProto::TError error)

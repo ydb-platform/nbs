@@ -249,7 +249,7 @@ NProto::TError MakeError(ui32 code, TString message, ui32 flags)
     return error;
 }
 
-NProto::TError MakeTabletIsDeadError(ui32 code, TSourceLocation location)
+NProto::TError MakeTabletIsDeadError(ui32 code, const TSourceLocation& location)
 {
     TStringStream out;
     out << "Tablet is dead: " << location.File << ":" << location.Line;
