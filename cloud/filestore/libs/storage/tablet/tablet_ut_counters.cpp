@@ -908,9 +908,6 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Counters)
             {{{"sensor", "FsCount"}}, 1},
             {{{"sensor", "TabletCount"}}, 1},
         });
-
-        //auto counters = Env.GetCounters();
-        //counters->
     }
 }
 
