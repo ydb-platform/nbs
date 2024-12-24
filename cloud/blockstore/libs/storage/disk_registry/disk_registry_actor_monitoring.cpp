@@ -103,6 +103,56 @@ void BuildDeviceReplaceButton(
     );
 }
 
+void BuildChangeDeviceStateButton(
+    IOutputStream& out,
+    ui64 tabletId,
+    const TString& deviceUUID)
+{
+    out << Sprintf(
+        R"(<form name="devtSateChange%s" method="post">
+            <br>
+            <label for="NewState">Change device state to:</label>
+            <select name="NewState">
+                <option value="%u">Online</option>
+                <option value="%u">Warning</option>
+            </select>
+            <input type="submit" value="Change state">
+            <input type='hidden' name='action' value='changeDeviceState'/>
+            <input type='hidden' name='DeviceUUID' value='%s'/>
+            <input type='hidden' name='TabletID' value='%lu'/>
+            </form>)",
+        deviceUUID.c_str(),
+        static_cast<int>(NProto::EDeviceState::DEVICE_STATE_ONLINE),
+        static_cast<int>(NProto::EDeviceState::DEVICE_STATE_WARNING),
+        deviceUUID.c_str(),
+        tabletId);
+}
+
+void BuildChangeAgentStateButton(
+    IOutputStream& out,
+    ui64 tabletId,
+    const TString& agentId)
+{
+    out << Sprintf(
+        R"(<form name="agentStateChange%s" method="post">
+            <br>
+            <label for="NewState">Change agent state to:</label>
+            <select name="NewState">
+                <option value="%u">Online</option>
+                <option value="%u">Warning</option>
+            </select>
+            <input type="submit" value="Change state">
+            <input type='hidden' name='action' value='changeAgentState'/>
+            <input type='hidden' name='AgentID' value='%s'/>
+            <input type='hidden' name='TabletID' value='%lu'/>
+            </form>)",
+        agentId.c_str(),
+        static_cast<int>(NProto::EAgentState::AGENT_STATE_ONLINE),
+        static_cast<int>(NProto::EAgentState::AGENT_STATE_WARNING),
+        agentId.c_str(),
+        tabletId);
+}
+
 void GenerateDiskRegistryActionsJS(IOutputStream& out)
 {
     out << R"html(
@@ -465,25 +515,10 @@ void TDiskRegistryActor::RenderDeviceHtmlInfo(
         if (device.GetState() != NProto::EDeviceState::DEVICE_STATE_ERROR) {
             DIV()
             {
-                out << Sprintf(
-                    R"(<form name="stateChange%s" method="post">
-            <br>
-            <label for="NewState">Change device state to:</label>
-            <select name="NewState">
-                <option value="%u">Online</option>
-                <option value="%u">Warning</option>
-            </select>
-            <input type="submit" value="Change state">
-            <input type='hidden' name='action' value='changeDeviceState'/>
-            <input type='hidden' name='DeviceUUID' value='%s'/>
-            <input type='hidden' name='TabletID' value='%lu'/>
-            </form>)",
-                    device.GetDeviceUUID().c_str(),
-                    static_cast<int>(NProto::EDeviceState::DEVICE_STATE_ONLINE),
-                    static_cast<int>(
-                        NProto::EDeviceState::DEVICE_STATE_WARNING),
-                    device.GetDeviceUUID().c_str(),
-                    TabletID());
+                BuildChangeDeviceStateButton(
+                    out,
+                    TabletID(),
+                    device.GetDeviceUUID());
             }
         }
 
@@ -556,6 +591,9 @@ void TDiskRegistryActor::RenderAgentHtmlInfo(
         DIV() {
             out << "State Timestamp: "
                 << TInstant::MicroSeconds(agent->GetStateTs());
+        }
+        DIV() {
+            BuildChangeAgentStateButton(out, TabletID(), agent->GetAgentId());
         }
         DIV() { out << "State Message: " << agent->GetStateMessage(); }
         DIV() {
@@ -2283,6 +2321,8 @@ void TDiskRegistryActor::HandleHttpInfo(
         {"replaceDevice", &TDiskRegistryActor::HandleHttpInfo_ReplaceDevice},
         {"changeDeviceState",
          &TDiskRegistryActor::HandleHttpInfo_ChangeDeviseState},
+        {"changeAgentState",
+         &TDiskRegistryActor::HandleHttpInfo_ChangeAgentState},
     }};
 
     static const THttpHandlers getActions {{

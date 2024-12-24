@@ -1,5 +1,4 @@
 #include "disk_registry_actor.h"
-#include "util/string/join.h"
 
 #include <cloud/blockstore/libs/storage/core/monitoring_utils.h>
 
@@ -15,23 +14,23 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TChangeDeviceStateActor final
-    : public TActorBootstrapped<TChangeDeviceStateActor>
+class TChangeAgentStateActor final
+    : public TActorBootstrapped<TChangeAgentStateActor>
 {
 private:
     const TActorId Owner;
     const ui64 TabletID;
     const TRequestInfoPtr RequestInfo;
-    const TString DeviceUUID;
-    const NProto::EDeviceState NewState;
+    const TString AgentID;
+    const NProto::EAgentState NewState;
 
 public:
-    TChangeDeviceStateActor(
+    TChangeAgentStateActor(
         const TActorId& owner,
         ui64 tabletID,
         TRequestInfoPtr requestInfo,
-        TString deviceId,
-        NProto::EDeviceState newState);
+        TString agentId,
+        NProto::EAgentState newState);
 
     void Bootstrap(const TActorContext& ctx);
 
@@ -46,8 +45,8 @@ private:
 private:
     STFUNC(StateWork);
 
-    void HandleChangeDeviceStateResponse(
-        const TEvDiskRegistry::TEvChangeDeviceStateResponse::TPtr& ev,
+    void HandleChangeAgentStateResponse(
+        const TEvDiskRegistry::TEvChangeAgentStateResponse::TPtr& ev,
         const TActorContext& ctx);
 
     void HandlePoisonPill(
@@ -57,33 +56,33 @@ private:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TChangeDeviceStateActor::TChangeDeviceStateActor(
+TChangeAgentStateActor::TChangeAgentStateActor(
     const TActorId& owner,
     ui64 tabletID,
     TRequestInfoPtr requestInfo,
-    TString deviceId,
-    NProto::EDeviceState newState)
+    TString agentId,
+    NProto::EAgentState newState)
     : Owner(owner)
     , TabletID(tabletID)
     , RequestInfo(std::move(requestInfo))
-    , DeviceUUID(std::move(deviceId))
+    , AgentID(std::move(agentId))
     , NewState(newState)
 {}
 
-void TChangeDeviceStateActor::Bootstrap(const TActorContext& ctx)
+void TChangeAgentStateActor::Bootstrap(const TActorContext& ctx)
 {
     auto request =
-        std::make_unique<TEvDiskRegistry::TEvChangeDeviceStateRequest>();
+        std::make_unique<TEvDiskRegistry::TEvChangeAgentStateRequest>();
 
-    request->Record.SetDeviceUUID(DeviceUUID);
-    request->Record.SetDeviceState(NewState);
+    request->Record.SetAgentId(AgentID);
+    request->Record.SetAgentState(NewState);
 
     NCloud::Send(ctx, Owner, std::move(request));
 
     Become(&TThis::StateWork);
 }
 
-void TChangeDeviceStateActor::Notify(
+void TChangeAgentStateActor::Notify(
     const TActorContext& ctx,
     TString message,
     const EAlertLevel alertLevel)
@@ -93,8 +92,8 @@ void TChangeDeviceStateActor::Notify(
     BuildNotifyPageWithRedirect(
         out,
         std::move(message),
-        TStringBuilder() << "./app?action=dev&TabletId=" << TabletID
-                         << "&DeviceUUID=" << DeviceUUID,
+        TStringBuilder() << "./app?action=agent&TabletId=" << TabletID
+                         << "&AgentID=" << AgentID,
         alertLevel);
 
     auto response =
@@ -102,7 +101,7 @@ void TChangeDeviceStateActor::Notify(
     NCloud::Reply(ctx, *RequestInfo, std::move(response));
 }
 
-void TChangeDeviceStateActor::ReplyAndDie(
+void TChangeAgentStateActor::ReplyAndDie(
     const TActorContext& ctx,
     NProto::TError error)
 {
@@ -112,8 +111,8 @@ void TChangeDeviceStateActor::ReplyAndDie(
         Notify(
             ctx,
             TStringBuilder()
-                << "failed to change device " << DeviceUUID.Quote()
-                << " state to " << static_cast<int>(NewState) << ": " << FormatError(error),
+                << "failed to change agent[" << AgentID.Quote() << "] state to "
+                << static_cast<int>(NewState) << ": " << FormatError(error),
             EAlertLevel::DANGER);
     }
 
@@ -127,7 +126,7 @@ void TChangeDeviceStateActor::ReplyAndDie(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void TChangeDeviceStateActor::HandlePoisonPill(
+void TChangeAgentStateActor::HandlePoisonPill(
     const TEvents::TEvPoisonPill::TPtr& ev,
     const TActorContext& ctx)
 {
@@ -135,8 +134,8 @@ void TChangeDeviceStateActor::HandlePoisonPill(
     ReplyAndDie(ctx, MakeError(E_REJECTED, "Tablet is dead"));
 }
 
-void TChangeDeviceStateActor::HandleChangeDeviceStateResponse(
-    const TEvDiskRegistry::TEvChangeDeviceStateResponse::TPtr& ev,
+void TChangeAgentStateActor::HandleChangeAgentStateResponse(
+    const TEvDiskRegistry::TEvChangeAgentStateResponse::TPtr& ev,
     const TActorContext& ctx)
 {
     const auto* response = ev->Get();
@@ -146,14 +145,14 @@ void TChangeDeviceStateActor::HandleChangeDeviceStateResponse(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-STFUNC(TChangeDeviceStateActor::StateWork)
+STFUNC(TChangeAgentStateActor::StateWork)
 {
     switch (ev->GetTypeRewrite()) {
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
 
         HFunc(
-            TEvDiskRegistry::TEvChangeDeviceStateResponse,
-            HandleChangeDeviceStateResponse);
+            TEvDiskRegistry::TEvChangeAgentStateResponse,
+            HandleChangeAgentStateResponse);
 
         default:
             HandleUnexpectedEvent(
@@ -167,65 +166,57 @@ STFUNC(TChangeDeviceStateActor::StateWork)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void TDiskRegistryActor::HandleHttpInfo_ChangeDeviseState(
+void TDiskRegistryActor::HandleHttpInfo_ChangeAgentState(
     const TActorContext& ctx,
     const TCgiParameters& params,
     TRequestInfoPtr requestInfo)
 {
     const auto& newStateRaw = params.Get("NewState");
-    const auto& deviceUUID = params.Get("DeviceUUID");
-
+    const auto& agentId = params.Get("AgentID");
 
     if (!newStateRaw) {
         RejectHttpRequest(ctx, *requestInfo, "No new state is given");
         return;
     }
 
-    if (!deviceUUID) {
-        RejectHttpRequest(ctx, *requestInfo, "No device id is given");
+    if (!agentId) {
+        RejectHttpRequest(ctx, *requestInfo, "No agent id is given");
         return;
     }
 
-    static const std::vector<std::pair<NProto::EDeviceState, TString>>
+    static const std::vector<std::pair<NProto::EAgentState, TString>>
         NewStateWhiteList = {
-            {NProto::EDeviceState::DEVICE_STATE_ONLINE,
+            {NProto::EAgentState::AGENT_STATE_ONLINE,
              ToString(
-                 static_cast<int>(NProto::EDeviceState::DEVICE_STATE_ONLINE))},
-            {NProto::EDeviceState::DEVICE_STATE_WARNING,
+                 static_cast<int>(NProto::EAgentState::AGENT_STATE_ONLINE))},
+            {NProto::EAgentState::AGENT_STATE_WARNING,
              ToString(
-                 static_cast<int>(NProto::EDeviceState::DEVICE_STATE_WARNING))},
+                 static_cast<int>(NProto::EAgentState::AGENT_STATE_WARNING))},
         };
+
     auto it = FindIf(
         NewStateWhiteList,
         [&](const auto& state) { return state.second == newStateRaw; });
     auto newState = it->first;
+
     if (it == NewStateWhiteList.end()) {
         RejectHttpRequest(ctx, *requestInfo, "Invalid new state");
-        return;
-    }
-
-    const auto& device = State->GetDevice(deviceUUID);
-    if (device.GetState() == NProto::DEVICE_STATE_ERROR) {
-        RejectHttpRequest(
-            ctx,
-            *requestInfo,
-            "Can't change state of device in ERROR state");
         return;
     }
 
     LOG_INFO(
         ctx,
         TBlockStoreComponents::DISK_REGISTRY,
-        "Change state of device[%s] from monitoring page to %s",
-        deviceUUID.Quote().c_str(),
+        "Change state of agent[%s] from monitoring page to %s",
+        agentId.Quote().c_str(),
         newStateRaw.c_str());
 
-    auto actor = NCloud::Register<TChangeDeviceStateActor>(
+    auto actor = NCloud::Register<TChangeAgentStateActor>(
         ctx,
         SelfId(),
         TabletID(),
         std::move(requestInfo),
-        deviceUUID,
+        agentId,
         newState);
 
     Actors.insert(actor);

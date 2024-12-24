@@ -410,7 +410,7 @@ class TestDiskRegistryTablet:
             self.session, self.base_url,
             self.dr_id, params, "<h2>Replace device is not allowed</h2>")
 
-    def check_change_device(self):
+    def check_change_device_state(self):
         params = {"action": "changeDeviceState"}
         check_tablet_get_redirect(
             self.session, self.base_url,
@@ -468,6 +468,51 @@ class TestDiskRegistryTablet:
                 if device["DeviceUUID"] == "FileDevice-1":
                     assert device["State"] == "DEVICE_STATE_WARNING"
 
+    def check_change_agent_state(self):
+        params = {"action": "changeAgentState"}
+        check_tablet_get_redirect(
+            self.session, self.base_url,
+            self.dr_id, params, "<h2>Wrong HTTP method</h2>")
+        check_tablet_post_redirect(
+            self.session, self.base_url,
+            self.dr_id, params, "<h2>No new state is given</h2>")
+
+        params = {
+            "action": "changeAgentState",
+            "NewState" : "0",
+        }
+        check_tablet_post_redirect(
+            self.session, self.base_url,
+            self.dr_id, params, "<h2>No agent id is given</h2>")
+
+
+        params = {
+            "action": "changeAgentState",
+            "NewState" : "1000",
+            "AgentID": "localhost"
+        }
+        check_tablet_post_redirect(
+            self.session, self.base_url,
+            self.dr_id, params, "<h2>Invalid new state</h2>")
+
+        params = {
+            "action": "changeAgentState",
+            "NewState" : "1",
+            "AgentID": "localhost"
+        }
+
+        check_tablet_post_redirect(
+            self.session, self.base_url,
+            self.dr_id, params, "<h2>Operation successfully completed</h2>")
+
+        state = self.client.backup_disk_registry_state()
+
+        for agent in state["Backup"]["Agents"]:
+            if agent["AgentId"] == "localhost":
+                assert agent["State"] == "AGENT_STATE_WARNING"
+
+        self.client.change_agent_state("localhost", "0")
+
     def check_showdisk(self):
         params = {"action": "disk"}
         check_tablet_get_redirect(
@@ -510,7 +555,8 @@ class TestDiskRegistryTablet:
 
         self.check_mainpage()
         self.check_replacedevice()
-        self.check_change_device()
+        self.check_change_device_state()
+        self.check_change_agent_state()
         self.check_reallocate()
         self.check_showdisk()
         self.check_showdevice()
