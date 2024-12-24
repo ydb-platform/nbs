@@ -36,6 +36,7 @@ TCommandPtr NewStatCommand();
 TCommandPtr NewSetNodeAttrCommand();
 TCommandPtr NewFindGarbageCommand();
 TCommandPtr NewForcedCompactionCommand();
+TCommandPtr NewFindCommand();
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -50,6 +51,7 @@ static const TMap<TString, TFactoryFunc> Commands = {
     { "destroy", NewDestroyCommand },
     { "destroysession", NewDestroySessionCommand },
     { "executeaction", NewExecuteActionCommand },
+    { "find", NewFindCommand },
     { "findgarbage", NewFindGarbageCommand },
     { "forcedcompaction", NewForcedCompactionCommand },
     { "kickendpoint", NewKickEndpointCommand },
