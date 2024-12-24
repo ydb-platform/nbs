@@ -3,6 +3,7 @@
 #include "helpers.h"
 
 #include <cloud/filestore/libs/diagnostics/critical_events.h>
+#include <cloud/filestore/libs/diagnostics/metrics/operations.h>
 
 namespace NCloud::NFileStore::NStorage {
 
@@ -332,6 +333,8 @@ void TIndexTabletActor::CompleteTx_LoadState(
 
     LOG_INFO_S(ctx, TFileStoreComponents::TABLET,
         LogTag << " Load state completed");
+
+    NMetrics::Store(Metrics.FsCount, IsShard() ? 0 : 1);
 }
 
 ////////////////////////////////////////////////////////////////////////////////

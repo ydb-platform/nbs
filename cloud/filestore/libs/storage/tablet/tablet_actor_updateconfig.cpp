@@ -1,6 +1,7 @@
 #include "tablet_actor.h"
 
 #include <cloud/filestore/libs/diagnostics/critical_events.h>
+#include <cloud/filestore/libs/diagnostics/metrics/operations.h>
 
 #include <util/string/join.h>
 
@@ -230,6 +231,8 @@ void TIndexTabletActor::ExecuteTx_UpdateConfig(
     Convert(args.FileSystem.GetPerformanceProfile(), config);
 
     UpdateConfig(db, args.FileSystem, config);
+
+    NMetrics::Store(Metrics.FsCount, IsShard() ? 0 : 1);
 }
 
 void TIndexTabletActor::CompleteTx_UpdateConfig(

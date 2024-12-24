@@ -110,6 +110,10 @@ struct TEnv
     void TearDown(NUnitTest::TTestContext& /*context*/) override
     {}
 
+    const TTestEnv& GetTestEnv() const
+    {
+        return Env;
+    }
 };
 
 }   // namespace
@@ -895,6 +899,23 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Counters)
                 [](i64 val) { return val > 0 && val < 370; } // expected
             },
         });
+    }
+
+    Y_UNIT_TEST_F(ShouldReportFsAndTabletCountSensors, TEnv)
+    {
+        auto registry = Env.GetRegistry();
+
+        Tablet->AdvanceTime(TDuration::Seconds(15));
+        Env.GetRuntime().DispatchEvents({}, TDuration::Seconds(5));
+
+        registry->Visit(TInstant::Zero(), Visitor);
+        Visitor.ValidateExpectedCounters({
+            {{{"sensor", "FsCount"}}, 1},
+            {{{"sensor", "TabletCount"}}, 1},
+        });
+
+        //auto counters = Env.GetCounters();
+        //counters->
     }
 }
 

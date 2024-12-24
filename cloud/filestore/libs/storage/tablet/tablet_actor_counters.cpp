@@ -253,7 +253,10 @@ void TIndexTabletActor::TMetrics::Register(
         StorageFsRegistry);
     AggregatableFsRegistry = CreateScopedMetricsRegistry(
         {},
-        {std::move(totalKindRegistry), FsRegistry});
+        {totalKindRegistry, FsRegistry});
+    AggregatableRegistry = CreateScopedMetricsRegistry(
+        {},
+        {std::move(totalKindRegistry)});
 
 #define REGISTER(registry, name, aggrType, metrType)                           \
     RegisterSensor(registry, #name, name, aggrType, metrType)                  \
@@ -267,6 +270,14 @@ void TIndexTabletActor::TMetrics::Register(
         metrType)                                                              \
 // REGISTER_AGGREGATABLE_SUM
 
+#define REGISTER_AGGREGATABLE_ONLY_SUM(name, metrType)                         \
+    REGISTER(                                                                  \
+        AggregatableRegistry,                                                  \
+        name,                                                                  \
+        EAggregationType::AT_SUM,                                              \
+        metrType)                                                              \
+// REGISTER_AGGREGATABLE_ONLY_SUM
+
 #define REGISTER_LOCAL(name, metrType)                                         \
     REGISTER(                                                                  \
         FsRegistry,                                                            \
@@ -275,7 +286,9 @@ void TIndexTabletActor::TMetrics::Register(
         metrType)                                                              \
 // REGISTER_LOCAL
 
-    REGISTER_AGGREGATABLE_SUM(FsCount, EMetricType::MT_ABSOLUTE);
+    REGISTER_AGGREGATABLE_ONLY_SUM(FsCount, EMetricType::MT_ABSOLUTE);
+    REGISTER_AGGREGATABLE_ONLY_SUM(TabletCount, EMetricType::MT_ABSOLUTE);
+
     REGISTER_AGGREGATABLE_SUM(TotalBytesCount, EMetricType::MT_ABSOLUTE);
     REGISTER_AGGREGATABLE_SUM(UsedBytesCount, EMetricType::MT_ABSOLUTE);
     REGISTER_AGGREGATABLE_SUM(
@@ -477,13 +490,8 @@ void TIndexTabletActor::TMetrics::Update(
     const TNodeIndexCacheStats& nodeIndexCacheStats,
     const TNodeToSessionCounters& nodeToSessionCounters,
     const TMiscNodeStats& miscNodeStats,
-    const TInMemoryIndexStateStats& inMemoryIndexStateStats,
-    bool isShard)
+    const TInMemoryIndexStateStats& inMemoryIndexStateStats)
 {
-    auto fsCounter = isShard ? 0 : 1;
-    NMetrics::Store(FsCount, fsCounter);
-    NMetrics::Store(FsShardCount, 1 - fsCounter);
-
     const ui32 blockSize = fileSystem.GetBlockSize();
 
     Store(TotalBytesCount, fileSystem.GetBlocksCount() * blockSize);
@@ -701,8 +709,7 @@ void TIndexTabletActor::RegisterStatCounters(TInstant now)
         CalculateNodeIndexCacheStats(),
         GetNodeToSessionCounters(),
         GetMiscNodeStats(),
-        GetInMemoryIndexStateStats(),
-        IsShard());
+        GetInMemoryIndexStateStats());
 
     Metrics.Register(fsId, storageMediaKind);
 }
@@ -752,8 +759,7 @@ void TIndexTabletActor::HandleUpdateCounters(
         CalculateNodeIndexCacheStats(),
         GetNodeToSessionCounters(),
         GetMiscNodeStats(),
-        GetInMemoryIndexStateStats(),
-        IsShard());
+        GetInMemoryIndexStateStats());
     SendMetricsToExecutor(ctx);
 
     UpdateCountersScheduled = false;

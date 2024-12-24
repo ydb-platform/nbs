@@ -81,7 +81,8 @@ private:
         bool Initialized{false};
 
         std::atomic<i64> FsCount{0};
-        std::atomic<i64> FsShardCount{0};
+        std::atomic<i64> TabletCount{1};
+
         std::atomic<i64> TotalBytesCount{0};
         std::atomic<i64> UsedBytesCount{0};
         std::atomic<i64> AggregateUsedBytesCount{0};
@@ -308,6 +309,7 @@ private:
 
         NMetrics::IMetricsRegistryPtr FsRegistry;
         NMetrics::IMetricsRegistryPtr AggregatableFsRegistry;
+        NMetrics::IMetricsRegistryPtr AggregatableRegistry;
 
         explicit TMetrics(NMetrics::IMetricsRegistryPtr metricsRegistry);
 
@@ -325,8 +327,7 @@ private:
             const TNodeIndexCacheStats& nodeIndexCacheStats,
             const TNodeToSessionCounters& nodeToSessionCounters,
             const TMiscNodeStats& miscNodeStats,
-            const TInMemoryIndexStateStats& inMemoryIndexStateStats,
-            bool isShard);
+            const TInMemoryIndexStateStats& inMemoryIndexStateStats);
         void UpdatePerformanceMetrics(
             TInstant now,
             const TDiagnosticsConfig& diagConfig,
