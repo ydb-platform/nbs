@@ -5546,38 +5546,6 @@ void TDiskRegistryState::CleanupAgentConfig(
     SuspendLocalDevices(db, agent);
 }
 
-TVector<TString> TDiskRegistryState::FindOrphanDevices() const
-{
-    THashSet<TString> allKnownDevicesWithAgents;
-    for (const auto& agent: AgentList.GetAgents()) {
-        for (const auto& device: agent.GetDevices()) {
-            const auto& deviceUUID = device.GetDeviceUUID();
-            allKnownDevicesWithAgents.insert(deviceUUID);
-        }
-    }
-
-    TVector<TString> orphanDevices;
-    for (auto& deviceUUID: DeviceList.GetDirtyDevicesId()) {
-        if (!allKnownDevicesWithAgents.contains(deviceUUID)) {
-            orphanDevices.emplace_back(std::move(deviceUUID));
-        }
-    }
-    for (auto& device: DeviceList.GetSuspendedDevices()) {
-        if (!allKnownDevicesWithAgents.contains(device.GetId())) {
-            orphanDevices.emplace_back(std::move(*device.MutableId()));
-        }
-    }
-    for (const auto& deviceUUID: AutomaticallyReplacedDeviceIds) {
-        if (!allKnownDevicesWithAgents.contains(deviceUUID)) {
-            orphanDevices.emplace_back(deviceUUID);
-        }
-    }
-
-    SortUnique(orphanDevices);
-
-    return orphanDevices;
-}
-
 NProto::TError TDiskRegistryState::TryToRemoveAgentDevices(
     TDiskRegistryDatabase& db,
     const TAgentId& agentId)
@@ -7533,6 +7501,38 @@ TVector<NProto::TAgentInfo> TDiskRegistryState::QueryAgentsInfo() const
     }
 
     return ret;
+}
+
+TVector<TString> TDiskRegistryState::FindOrphanDevices() const
+{
+    THashSet<TString> allKnownDevicesWithAgents;
+    for (const auto& agent: AgentList.GetAgents()) {
+        for (const auto& device: agent.GetDevices()) {
+            const auto& deviceUUID = device.GetDeviceUUID();
+            allKnownDevicesWithAgents.insert(deviceUUID);
+        }
+    }
+
+    TVector<TString> orphanDevices;
+    for (auto& deviceUUID: DeviceList.GetDirtyDevicesId()) {
+        if (!allKnownDevicesWithAgents.contains(deviceUUID)) {
+            orphanDevices.emplace_back(std::move(deviceUUID));
+        }
+    }
+    for (auto& device: DeviceList.GetSuspendedDevices()) {
+        if (!allKnownDevicesWithAgents.contains(device.GetId())) {
+            orphanDevices.emplace_back(std::move(*device.MutableId()));
+        }
+    }
+    for (const auto& deviceUUID: AutomaticallyReplacedDeviceIds) {
+        if (!allKnownDevicesWithAgents.contains(deviceUUID)) {
+            orphanDevices.emplace_back(deviceUUID);
+        }
+    }
+
+    SortUnique(orphanDevices);
+
+    return orphanDevices;
 }
 
 TVector<TString> TDiskRegistryState::CleanupOrphanDevices(
