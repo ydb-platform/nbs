@@ -196,7 +196,7 @@ public:
     {                                                                          \
         Y_UNUSED(callContext);                                                 \
         return TaskQueue->Execute([this, request = std::move(request)] {       \
-            return ExecuteWithPerfLog<T##name##Method>(*request);              \
+            return ExecuteWithProfileLog<T##name##Method>(*request);           \
         });                                                                    \
     }                                                                          \
 // FILESTORE_IMPLEMENT_METHOD_SYNC
@@ -207,7 +207,7 @@ public:
         std::shared_ptr<NProto::T##name##Request> request) override            \
     {                                                                          \
         Y_UNUSED(callContext);                                                 \
-        return ExecuteWithPerfLogAsync<T##name##Method>(*request);             \
+        return ExecuteWithProfileLogAsync<T##name##Method>(*request);          \
     }                                                                          \
 // FILESTORE_IMPLEMENT_METHOD_ASYNC
 
@@ -221,9 +221,7 @@ FILESTORE_SERVICE_LOCAL_ASYNC(FILESTORE_IMPLEMENT_METHOD_ASYNC)
         std::shared_ptr<NProto::TGetSessionEventsRequest> request,
         IResponseHandlerPtr<NProto::TGetSessionEventsResponse> responseHandler) override
     {
-        Y_UNUSED(callContext);
-        Y_UNUSED(request);
-        Y_UNUSED(responseHandler);
+        Y_UNUSED(callContext, request, responseHandler);
     }
 
 private:
@@ -277,7 +275,7 @@ private:
     }
 
     template <typename T>
-    void ProfileLogFinilize(
+    void ProfileLogFinalize(
         NProto::TProfileLogRequestInfo&& logRequest,
         const typename T::TResponse& response,
         TString&& fsId)
@@ -290,7 +288,7 @@ private:
     }
 
     template <typename T>
-    void ProfileLogFinilize(
+    void ProfileLogFinalize(
         NProto::TProfileLogRequestInfo&& logRequest,
         TString&& fsId)
     {
@@ -300,14 +298,14 @@ private:
     }
 
     template <typename T>
-    typename T::TResult ExecuteWithPerfLog(typename T::TRequest& request)
+    typename T::TResult ExecuteWithProfileLog(typename T::TRequest& request)
     {
         NProto::TProfileLogRequestInfo logRequest;
         ProfileLogInit<T>(logRequest, request);
 
         auto response = Execute<T>(request, logRequest);
 
-        ProfileLogFinilize<T>(
+        ProfileLogFinalize<T>(
             std::move(logRequest),
             response,
             GetFileSystemId(request));
@@ -316,7 +314,7 @@ private:
     }
 
     template <typename T>
-    typename T::TResult ExecuteWithPerfLogAsync(typename T::TRequest& request)
+    typename T::TResult ExecuteWithProfileLogAsync(typename T::TRequest& request)
     {
         auto logRequest = std::make_shared<NProto::TProfileLogRequestInfo>();
         ProfileLogInit<T>(*logRequest, request);
@@ -332,7 +330,7 @@ private:
                         return;
                     }
 
-                    self->ProfileLogFinilize<T>(
+                    self->ProfileLogFinalize<T>(
                         std::move(*logRequest),
                         std::move(fsId));
                 });
@@ -372,8 +370,7 @@ private:
         NProto::TPingRequest& request,
         NProto::TProfileLogRequestInfo& logRequest)
     {
-        Y_UNUSED(request);
-        Y_UNUSED(logRequest);
+        Y_UNUSED(request, logRequest);
         return {};
     }
 
@@ -419,8 +416,7 @@ private:
         NProto::TDescribeFileStoreModelRequest& request,
         NProto::TProfileLogRequestInfo& logRequest)
     {
-        Y_UNUSED(request);
-        Y_UNUSED(logRequest);
+        Y_UNUSED(request, logRequest);
         return TErrorResponse(
             E_NOT_IMPLEMENTED,
             "DescribeFileStoreModel is not implemented for the local service");
@@ -431,8 +427,7 @@ private:
         NProto::TResizeFileStoreRequest& request,
         NProto::TProfileLogRequestInfo& logRequest)
     {
-        Y_UNUSED(request);
-        Y_UNUSED(logRequest);
+        Y_UNUSED(request, logRequest);
         return TErrorResponse(
             E_NOT_IMPLEMENTED,
             "ResizeFileStore is not implemented for the local service");
@@ -443,8 +438,7 @@ private:
         NProto::TSubscribeSessionRequest& request,
         NProto::TProfileLogRequestInfo& logRequest)
     {
-        Y_UNUSED(request);
-        Y_UNUSED(logRequest);
+        Y_UNUSED(request, logRequest);
         return TErrorResponse(
             E_NOT_IMPLEMENTED,
             "SubscribeSession is not implemented for the local service");
@@ -455,8 +449,7 @@ private:
         NProto::TGetSessionEventsRequest& request,
         NProto::TProfileLogRequestInfo& logRequest)
     {
-        Y_UNUSED(request);
-        Y_UNUSED(logRequest);
+        Y_UNUSED(request, logRequest);
         return TErrorResponse(
             E_NOT_IMPLEMENTED,
             "GetSessionEvents is not implemented for the local service");
@@ -467,8 +460,7 @@ private:
         NProto::TExecuteActionRequest& request,
         NProto::TProfileLogRequestInfo& logRequest)
     {
-        Y_UNUSED(request);
-        Y_UNUSED(logRequest);
+        Y_UNUSED(request, logRequest);
         return TErrorResponse(
             E_NOT_IMPLEMENTED,
             "ExecuteAction is not implemented for the local service");
