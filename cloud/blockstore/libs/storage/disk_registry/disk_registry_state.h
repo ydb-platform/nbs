@@ -866,8 +866,9 @@ public:
 
     TVector<TString> FindOrphanDevices() const;
 
-    // Returns uuids of devices without agent that was removed.
-    TVector<TString> CleanupOrphanDevices(TDiskRegistryDatabase& db);
+    void RemoveOrphanDevices(
+        TDiskRegistryDatabase& db,
+        const TVector<TString>& orphanDevicesIds);
 
 private:
     void ProcessConfig(const NProto::TDiskRegistryConfig& config);

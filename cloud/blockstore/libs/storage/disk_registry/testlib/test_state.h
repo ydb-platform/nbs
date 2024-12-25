@@ -254,8 +254,7 @@ struct TDiskRegistryStateBuilder
     TDeque<TAutomaticallyReplacedDeviceInfo> AutomaticallyReplacedDevices;
     THashMap<TString, NProto::TDiskRegistryAgentParams> DiskRegistryAgentListParams;
 
-    static std::optional<TDiskRegistryStateBuilder> LoadState(
-        TDiskRegistryDatabase& db);
+    static TDiskRegistryStateBuilder LoadState(TDiskRegistryDatabase& db);
 
     TDiskRegistryState Build();
 

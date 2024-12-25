@@ -7535,14 +7535,11 @@ TVector<TString> TDiskRegistryState::FindOrphanDevices() const
     return orphanDevices;
 }
 
-TVector<TString> TDiskRegistryState::CleanupOrphanDevices(
-    TDiskRegistryDatabase& db)
+void TDiskRegistryState::RemoveOrphanDevices(
+    TDiskRegistryDatabase& db,
+    const TVector<TString>& orphanDevicesIds)
 {
-    auto orphanDevices = FindOrphanDevices();
-    if (!orphanDevices.empty()) {
-        ForgetDevices(db, orphanDevices);
-    }
-    return orphanDevices;
+    ForgetDevices(db, orphanDevicesIds);
 }
 
 std::optional<ui64> TDiskRegistryState::GetDiskBlockCount(

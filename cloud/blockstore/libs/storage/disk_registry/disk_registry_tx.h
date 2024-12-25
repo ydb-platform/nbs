@@ -1438,6 +1438,11 @@ struct TTxDiskRegistry
     struct TCleanupOrphanDevices
     {
         const TRequestInfoPtr RequestInfo;
+        TVector<TString> OrphanDevices;
+
+        explicit TCleanupOrphanDevices(TVector<TString> orphanDevices)
+            : OrphanDevices(std::move(orphanDevices))
+        {}
 
         void Clear()
         {

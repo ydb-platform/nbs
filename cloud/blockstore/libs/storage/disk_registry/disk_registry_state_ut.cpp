@@ -11977,18 +11977,17 @@ Y_UNIT_TEST(ShouldCleanupAlreadyLeakedDevices)
         executor.WriteTx(
             [&](TDiskRegistryDatabase db)
             {
-                auto state = TDiskRegistryStateBuilder::LoadState(db)->Build();
+                auto state = TDiskRegistryStateBuilder::LoadState(db).Build();
 
-                auto devicesRemoved = state.CleanupOrphanDevices(db);
-
-                UNIT_ASSERT_EQUAL(
-                    static_cast<size_t>(3),
-                    devicesRemoved.size());
+                auto orphanDevices = state.FindOrphanDevices();
+                UNIT_ASSERT_EQUAL(static_cast<size_t>(3), orphanDevices.size());
                 for (const auto& leakedDevice: allLeakedDevices) {
                     UNIT_ASSERT_UNEQUAL(
-                        devicesRemoved.end(),
-                        Find(devicesRemoved, leakedDevice));
+                        orphanDevices.end(),
+                        Find(orphanDevices, leakedDevice));
                 }
+
+                state.RemoveOrphanDevices(db, orphanDevices);
 
                 // Check that device cleaned up from tables.
                 const auto dirtyDevicesFromState = state.GetDirtyDevices();

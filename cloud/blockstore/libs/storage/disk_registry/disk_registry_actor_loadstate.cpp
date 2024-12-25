@@ -209,7 +209,7 @@ void TDiskRegistryActor::CompleteLoadState(
     ScheduleDiskRegistryAgentListExpiredParamsCleanup(ctx);
 
     if (auto orphanDevices = State->FindOrphanDevices()) {
-        ExecuteTx<TCleanupOrphanDevices>(ctx);
+        ExecuteTx<TCleanupOrphanDevices>(ctx, std::move(orphanDevices));
     }
 }
 

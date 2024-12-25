@@ -772,7 +772,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateCMSTest)
             {
                 // Load state from db.
                 auto state = TDiskRegistryStateBuilder::LoadState(db)
-                                 ->WithConfig({agent})
+                                 .WithConfig({agent})
                                  .Build();
 
                 // Remove agent.

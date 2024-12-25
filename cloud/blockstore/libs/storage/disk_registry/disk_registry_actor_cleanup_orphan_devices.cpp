@@ -32,15 +32,14 @@ void TDiskRegistryActor::ExecuteCleanupOrphanDevices(
     Y_UNUSED(args);
 
     TDiskRegistryDatabase db(tx.DB);
-    auto removedDevices = State->CleanupOrphanDevices(db);
-
-    if (!removedDevices.empty()) {
+    if (!args.OrphanDevices) {
+        State->RemoveOrphanDevices(db, args.OrphanDevices);
         LOG_INFO(
             ctx,
             TBlockStoreComponents::DISK_REGISTRY,
             "Found devices without agent and remove them, removed "
             "DeviceUUIDs=%s",
-            JoinSeq(" ", removedDevices).c_str());
+            JoinSeq(" ", args.OrphanDevices).c_str());
     }
 }
 
