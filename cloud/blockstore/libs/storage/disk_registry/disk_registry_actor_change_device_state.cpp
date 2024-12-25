@@ -58,11 +58,11 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 TChangeDeviceStateActor::TChangeDeviceStateActor(
-    const TActorId& owner,
-    ui64 tabletID,
-    TRequestInfoPtr requestInfo,
-    TString deviceId,
-    NProto::EDeviceState newState)
+        const TActorId& owner,
+        ui64 tabletID,
+        TRequestInfoPtr requestInfo,
+        TString deviceId,
+        NProto::EDeviceState newState)
     : Owner(owner)
     , TabletID(tabletID)
     , RequestInfo(std::move(requestInfo))

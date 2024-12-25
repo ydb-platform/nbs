@@ -57,11 +57,11 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 TChangeAgentStateActor::TChangeAgentStateActor(
-    const TActorId& owner,
-    ui64 tabletID,
-    TRequestInfoPtr requestInfo,
-    TString agentId,
-    NProto::EAgentState newState)
+        const TActorId& owner,
+        ui64 tabletID,
+        TRequestInfoPtr requestInfo,
+        TString agentId,
+        NProto::EAgentState newState)
     : Owner(owner)
     , TabletID(tabletID)
     , RequestInfo(std::move(requestInfo))
