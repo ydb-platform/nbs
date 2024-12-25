@@ -152,7 +152,6 @@ public:
         , MaxNodeCount(maxNodeCount)
         , Log(std::move(log))
     {
-        Init();
     }
 
     TIndexNodePtr LookupNode(ui64 nodeId)
@@ -224,25 +223,30 @@ public:
         Nodes.insert(TIndexNode::CreateRoot(RootPath));
     }
 
-private:
-    void Init()
+    void Init(bool recoverNodes)
     {
         STORAGE_INFO(
             "Init index, Root=" << RootPath <<
-            ", StatePath=" << StatePath
-            << ", MaxNodeCount=" << MaxNodeCount);
-
-        Nodes.insert(TIndexNode::CreateRoot(RootPath));
+            ", StatePath=" << StatePath <<
+            ", MaxNodeCount=" << MaxNodeCount <<
+            ", RecoverNodes=" << recoverNodes);
 
         NodeTable = std::make_unique<TNodeTable>(
             (StatePath / "nodes").GetPath(),
             MaxNodeCount);
 
-        RecoverNodesFromPersistentTable();
+        if (recoverNodes) {
+            RecoverNodesFromPersistentTable();
+        } else {
+            Clear();
+        }
     }
 
+private:
     void RecoverNodesFromPersistentTable()
     {
+        Nodes.insert(TIndexNode::CreateRoot(RootPath));
+
         // enties are ordered by NodeId in TMap but this doesn't mean that
         // a/b/c/d has order a, b, c, d usually inode number increased but
         // directories can move so directory a which was created later can

@@ -43,6 +43,7 @@ protected:
         StatePath.MkDir();
 
         TLocalIndex index(RootPath, StatePath, pathLen, Log);
+        index.Init(false /* don't recove nodes */);
 
         auto node = index.LookupNode(RootNodeId);
         UNIT_ASSERT_C(node, "Failed to lookup RootNode");
@@ -109,6 +110,7 @@ protected:
         StatePath.MkDir();
 
         TLocalIndex index(RootPath, StatePath, pathLen, Log);
+        index.Init(false /* don't recover nodes */);
 
         auto node = index.LookupNode(RootNodeId);
         UNIT_ASSERT_C(node, "Failed to lookup RootNode");
@@ -170,6 +172,8 @@ protected:
     void CheckNestedDir(ui32 pathLen, const TMap<TString, ui64>& nodeMap)
     {
         TLocalIndex index(RootPath, StatePath, pathLen, Log);
+        index.Init(true /* recover nodes */);
+
         auto node = index.LookupNode(RootNodeId);
         UNIT_ASSERT_C(node, "Failed to lookup root node");
 
@@ -198,6 +202,8 @@ protected:
     void CheckMissingNodes(ui32 pathLen, const TVector<ui64>& nodeIds)
     {
         TLocalIndex index(RootPath, StatePath, pathLen, Log);
+        index.Init(true /* recover nodes */);
+
         auto node = index.LookupNode(RootNodeId);
         UNIT_ASSERT_C(node, "Failed to lookup root node");
 
