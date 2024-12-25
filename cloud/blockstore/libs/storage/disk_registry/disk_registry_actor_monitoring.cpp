@@ -113,8 +113,8 @@ void BuildChangeDeviceStateButton(
             <br>
             <label for="NewState">Change device state to:</label>
             <select name="NewState">
-                <option value="%u">Online</option>
-                <option value="%u">Warning</option>
+                <option value="%s">Online</option>
+                <option value="%s">Warning</option>
             </select>
             <input type="submit" value="Change state">
             <input type='hidden' name='action' value='changeDeviceState'/>
@@ -122,8 +122,8 @@ void BuildChangeDeviceStateButton(
             <input type='hidden' name='TabletID' value='%lu'/>
             </form>)",
         deviceUUID.c_str(),
-        static_cast<int>(NProto::EDeviceState::DEVICE_STATE_ONLINE),
-        static_cast<int>(NProto::EDeviceState::DEVICE_STATE_WARNING),
+        EDeviceState_Name(NProto::EDeviceState::DEVICE_STATE_ONLINE).c_str(),
+        EDeviceState_Name(NProto::EDeviceState::DEVICE_STATE_WARNING).c_str(),
         deviceUUID.c_str(),
         tabletId);
 }
@@ -138,8 +138,8 @@ void BuildChangeAgentStateButton(
             <br>
             <label for="NewState">Change agent state to:</label>
             <select name="NewState">
-                <option value="%u">Online</option>
-                <option value="%u">Warning</option>
+                <option value="%s">Online</option>
+                <option value="%s">Warning</option>
             </select>
             <input type="submit" value="Change state">
             <input type='hidden' name='action' value='changeAgentState'/>
@@ -147,8 +147,8 @@ void BuildChangeAgentStateButton(
             <input type='hidden' name='TabletID' value='%lu'/>
             </form>)",
         agentId.c_str(),
-        static_cast<int>(NProto::EAgentState::AGENT_STATE_ONLINE),
-        static_cast<int>(NProto::EAgentState::AGENT_STATE_WARNING),
+        EAgentState_Name(NProto::EAgentState::AGENT_STATE_ONLINE).c_str(),
+        EAgentState_Name(NProto::EAgentState::AGENT_STATE_WARNING).c_str(),
         agentId.c_str(),
         tabletId);
 }

@@ -421,7 +421,7 @@ class TestDiskRegistryTablet:
 
         params = {
             "action": "changeDeviceState",
-            "NewState" : "0",
+            "NewState" : "DEVICE_STATE_ONLINE",
         }
         check_tablet_post_redirect(
             self.session, self.base_url,
@@ -430,7 +430,7 @@ class TestDiskRegistryTablet:
 
         params = {
             "action": "changeDeviceState",
-            "NewState" : "1000",
+            "NewState" : "not a state",
             "DeviceUUID": "FileDevice-1"
         }
         check_tablet_post_redirect(
@@ -441,7 +441,7 @@ class TestDiskRegistryTablet:
 
         params = {
             "action": "changeDeviceState",
-            "NewState" : "0",
+            "NewState" : "DEVICE_STATE_ONLINE",
             "DeviceUUID": "FileDevice-1"
         }
 
@@ -453,7 +453,7 @@ class TestDiskRegistryTablet:
 
         params = {
             "action": "changeDeviceState",
-            "NewState" : "1",
+            "NewState" : "DEVICE_STATE_WARNING",
             "DeviceUUID": "FileDevice-1"
         }
 
@@ -479,7 +479,7 @@ class TestDiskRegistryTablet:
 
         params = {
             "action": "changeAgentState",
-            "NewState" : "0",
+            "NewState" : "AGENT_STATE_ONLINE",
         }
         check_tablet_post_redirect(
             self.session, self.base_url,
@@ -488,7 +488,7 @@ class TestDiskRegistryTablet:
 
         params = {
             "action": "changeAgentState",
-            "NewState" : "1000",
+            "NewState" : "not a state",
             "AgentID": "localhost"
         }
         check_tablet_post_redirect(
@@ -497,7 +497,7 @@ class TestDiskRegistryTablet:
 
         params = {
             "action": "changeAgentState",
-            "NewState" : "1",
+            "NewState" : "AGENT_STATE_WARNING",
             "AgentID": "localhost"
         }
 

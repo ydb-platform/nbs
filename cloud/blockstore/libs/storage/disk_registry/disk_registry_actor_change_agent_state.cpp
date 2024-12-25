@@ -112,7 +112,7 @@ void TChangeAgentStateActor::ReplyAndDie(
             ctx,
             TStringBuilder()
                 << "failed to change agent[" << AgentID.Quote() << "] state to "
-                << static_cast<int>(NewState) << ": " << FormatError(error),
+                << EAgentState_Name(NewState) << ": " << FormatError(error),
             EAlertLevel::DANGER);
     }
 
@@ -184,22 +184,13 @@ void TDiskRegistryActor::HandleHttpInfo_ChangeAgentState(
         return;
     }
 
-    static const std::vector<std::pair<NProto::EAgentState, TString>>
-        NewStateWhiteList = {
-            {NProto::EAgentState::AGENT_STATE_ONLINE,
-             ToString(
-                 static_cast<int>(NProto::EAgentState::AGENT_STATE_ONLINE))},
-            {NProto::EAgentState::AGENT_STATE_WARNING,
-             ToString(
-                 static_cast<int>(NProto::EAgentState::AGENT_STATE_WARNING))},
-        };
+    NProto::EAgentState newState;
+    if (!EAgentState_Parse(newStateRaw, &newState)) {
+        RejectHttpRequest(ctx, *requestInfo, "Invalid new state");
+        return;
+    }
 
-    auto it = FindIf(
-        NewStateWhiteList,
-        [&](const auto& state) { return state.second == newStateRaw; });
-    auto newState = it->first;
-
-    if (it == NewStateWhiteList.end()) {
+    if (newState == NProto::EAgentState::AGENT_STATE_UNAVAILABLE) {
         RejectHttpRequest(ctx, *requestInfo, "Invalid new state");
         return;
     }
@@ -209,7 +200,7 @@ void TDiskRegistryActor::HandleHttpInfo_ChangeAgentState(
         TBlockStoreComponents::DISK_REGISTRY,
         "Change state of agent[%s] from monitoring page to %s",
         agentId.Quote().c_str(),
-        newStateRaw.c_str());
+        EAgentState_Name(newState).c_str());
 
     auto actor = NCloud::Register<TChangeAgentStateActor>(
         ctx,

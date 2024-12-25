@@ -111,9 +111,9 @@ void TChangeDeviceStateActor::ReplyAndDie(
     } else {
         Notify(
             ctx,
-            TStringBuilder()
-                << "failed to change device " << DeviceUUID.Quote()
-                << " state to " << static_cast<int>(NewState) << ": " << FormatError(error),
+            TStringBuilder() << "failed to change device " << DeviceUUID.Quote()
+                             << " state to " << EDeviceState_Name(NewState)
+                             << ": " << FormatError(error),
             EAlertLevel::DANGER);
     }
 
@@ -186,20 +186,13 @@ void TDiskRegistryActor::HandleHttpInfo_ChangeDeviseState(
         return;
     }
 
-    static const std::vector<std::pair<NProto::EDeviceState, TString>>
-        NewStateWhiteList = {
-            {NProto::EDeviceState::DEVICE_STATE_ONLINE,
-             ToString(
-                 static_cast<int>(NProto::EDeviceState::DEVICE_STATE_ONLINE))},
-            {NProto::EDeviceState::DEVICE_STATE_WARNING,
-             ToString(
-                 static_cast<int>(NProto::EDeviceState::DEVICE_STATE_WARNING))},
-        };
-    auto it = FindIf(
-        NewStateWhiteList,
-        [&](const auto& state) { return state.second == newStateRaw; });
-    auto newState = it->first;
-    if (it == NewStateWhiteList.end()) {
+    NProto::EDeviceState newState;
+    if (!EDeviceState_Parse(newStateRaw, &newState)) {
+        RejectHttpRequest(ctx, *requestInfo, "Invalid new state");
+        return;
+    }
+
+    if (newState == NProto::EDeviceState::DEVICE_STATE_ERROR) {
         RejectHttpRequest(ctx, *requestInfo, "Invalid new state");
         return;
     }
@@ -218,7 +211,7 @@ void TDiskRegistryActor::HandleHttpInfo_ChangeDeviseState(
         TBlockStoreComponents::DISK_REGISTRY,
         "Change state of device[%s] from monitoring page to %s",
         deviceUUID.Quote().c_str(),
-        newStateRaw.c_str());
+        EDeviceState_Name(newState).c_str());
 
     auto actor = NCloud::Register<TChangeDeviceStateActor>(
         ctx,
