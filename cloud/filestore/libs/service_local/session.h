@@ -116,6 +116,8 @@ public:
             ", MaxHandleCount=" << MaxHandleCount);
 
 
+        Index.Init(!isNewSession /* recover nodes */);
+
         HandleTable = std::make_unique<THandleTable>(
             handlesPath.GetPath(),
             MaxHandleCount);
