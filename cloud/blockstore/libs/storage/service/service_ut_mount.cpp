@@ -2625,8 +2625,8 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
         runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
                 switch (event->GetTypeRewrite()) {
                     case TEvVolume::EvRemoveClientRequest: {
-                        auto msg = std::make_unique<TEvVolume::TEvRemoveClientResponse>(MakeError(
-                            MakeTabletIsDeadError(E_REJECTED, __LOCATION__)));
+                        auto msg = std::make_unique<TEvVolume::TEvRemoveClientResponse>(
+                            MakeTabletIsDeadError(E_REJECTED, __LOCATION__));
                         runtime.Send(
                             new IEventHandle(
                                 event->Sender,
