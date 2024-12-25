@@ -467,6 +467,10 @@ inline TResultOrError<void> ResultOrError(NThreading::TFuture<void>& future)
     });
 }
 
+NProto::TError MakeTabletIsDeadError(
+    ui32 code,
+    const TSourceLocation& location);
+
 }   // namespace NCloud
 
 ////////////////////////////////////////////////////////////////////////////////
