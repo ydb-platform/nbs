@@ -96,8 +96,7 @@ void TChangeAgentStateActor::Notify(
                          << "&AgentID=" << AgentID,
         alertLevel);
 
-    auto response =
-        std::make_unique<NMon::TEvRemoteHttpInfoRes>(std::move(out.Str()));
+    auto response = std::make_unique<NMon::TEvRemoteHttpInfoRes>(out.Str());
     NCloud::Reply(ctx, *RequestInfo, std::move(response));
 }
 
@@ -190,7 +189,12 @@ void TDiskRegistryActor::HandleHttpInfo_ChangeAgentState(
         return;
     }
 
-    if (newState == NProto::EAgentState::AGENT_STATE_UNAVAILABLE) {
+    static const THashSet<NProto::EAgentState> NewStateWhiteList = {
+        NProto::EAgentState::AGENT_STATE_ONLINE,
+        NProto::EAgentState::AGENT_STATE_WARNING,
+    };
+
+    if (!NewStateWhiteList.contains(newState)) {
         RejectHttpRequest(ctx, *requestInfo, "Invalid new state");
         return;
     }

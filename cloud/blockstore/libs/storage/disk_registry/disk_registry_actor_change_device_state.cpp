@@ -97,8 +97,7 @@ void TChangeDeviceStateActor::Notify(
                          << "&DeviceUUID=" << DeviceUUID,
         alertLevel);
 
-    auto response =
-        std::make_unique<NMon::TEvRemoteHttpInfoRes>(std::move(out.Str()));
+    auto response = std::make_unique<NMon::TEvRemoteHttpInfoRes>(out.Str());
     NCloud::Reply(ctx, *RequestInfo, std::move(response));
 }
 
@@ -192,7 +191,12 @@ void TDiskRegistryActor::HandleHttpInfo_ChangeDeviseState(
         return;
     }
 
-    if (newState == NProto::EDeviceState::DEVICE_STATE_ERROR) {
+    static const THashSet<NProto::EDeviceState> NewStateWhiteList = {
+        NProto::EDeviceState::DEVICE_STATE_ONLINE,
+        NProto::EDeviceState::DEVICE_STATE_WARNING,
+    };
+
+    if (!NewStateWhiteList.contains(newState)) {
         RejectHttpRequest(ctx, *requestInfo, "Invalid new state");
         return;
     }
