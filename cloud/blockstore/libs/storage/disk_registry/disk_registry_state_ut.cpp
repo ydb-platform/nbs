@@ -1365,7 +1365,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
         UNIT_ASSERT_VALUES_EQUAL(state.GetDirtyDevices().size(), 0);
     }
 
-    Y_UNIT_TEST(ShouldUpdateCounters)
+    void DoShouldUpdateCounters(bool disableFullGroupsCountCalculation)
     {
         TTestExecutor executor;
         executor.WriteTx([&] (TDiskRegistryDatabase db) {
@@ -1389,12 +1389,17 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
             })
         };
 
+        NProto::TStorageServiceConfig proto = CreateDefaultStorageConfigProto();
+        proto.SetDisableFullPlacementGroupCountCalculation(
+            disableFullGroupsCountCalculation);
+
         auto monitoring = CreateMonitoringServiceStub();
         auto diskRegistryGroup = monitoring->GetCounters()
             ->GetSubgroup("counters", "blockstore")
             ->GetSubgroup("component", "disk_registry");
 
         TDiskRegistryState state = TDiskRegistryStateBuilder()
+            .With(CreateStorageConfig(proto))
             .With(diskRegistryGroup)
             .WithKnownAgents(agents)
             .AddDevicePoolConfig("local-ssd", 10_GB, NProto::DEVICE_POOL_KIND_LOCAL)
@@ -1685,7 +1690,9 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
         UNIT_ASSERT_VALUES_EQUAL(0, disksInTemporarilyUnavailableState->Val());
         UNIT_ASSERT_VALUES_EQUAL(0, disksInErrorState->Val());
         UNIT_ASSERT_VALUES_EQUAL(1, placementGroups->Val());
-        UNIT_ASSERT_VALUES_EQUAL(1, fullPlacementGroups->Val());
+        UNIT_ASSERT_VALUES_EQUAL(
+            disableFullGroupsCountCalculation ? 0 : 1,
+            fullPlacementGroups->Val());
         UNIT_ASSERT_VALUES_EQUAL(1, allocatedDisksInGroups->Val());
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) mutable {
@@ -1734,7 +1741,9 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
         UNIT_ASSERT_VALUES_EQUAL(0, disksInTemporarilyUnavailableState->Val());
         UNIT_ASSERT_VALUES_EQUAL(1, disksInErrorState->Val());
         UNIT_ASSERT_VALUES_EQUAL(1, placementGroups->Val());
-        UNIT_ASSERT_VALUES_EQUAL(1, fullPlacementGroups->Val());
+        UNIT_ASSERT_VALUES_EQUAL(
+            disableFullGroupsCountCalculation ? 0 : 1,
+            fullPlacementGroups->Val());
         UNIT_ASSERT_VALUES_EQUAL(1, allocatedDisksInGroups->Val());
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) mutable {
@@ -1773,7 +1782,9 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
         UNIT_ASSERT_VALUES_EQUAL(0, disksInTemporarilyUnavailableState->Val());
         UNIT_ASSERT_VALUES_EQUAL(1, disksInErrorState->Val());
         UNIT_ASSERT_VALUES_EQUAL(1, placementGroups->Val());
-        UNIT_ASSERT_VALUES_EQUAL(1, fullPlacementGroups->Val());
+        UNIT_ASSERT_VALUES_EQUAL(
+            disableFullGroupsCountCalculation ? 0 : 1,
+            fullPlacementGroups->Val());
         UNIT_ASSERT_VALUES_EQUAL(1, allocatedDisksInGroups->Val());
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) {
@@ -1810,7 +1821,9 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
         UNIT_ASSERT_VALUES_EQUAL(0, disksInTemporarilyUnavailableState->Val());
         UNIT_ASSERT_VALUES_EQUAL(1, disksInErrorState->Val());
         UNIT_ASSERT_VALUES_EQUAL(1, placementGroups->Val());
-        UNIT_ASSERT_VALUES_EQUAL(1, fullPlacementGroups->Val());
+        UNIT_ASSERT_VALUES_EQUAL(
+            disableFullGroupsCountCalculation ? 0 : 1,
+            fullPlacementGroups->Val());
         UNIT_ASSERT_VALUES_EQUAL(1, allocatedDisksInGroups->Val());
 
         UNIT_ASSERT_VALUES_EQUAL(10_GB, localPool.FreeBytes->Val());
@@ -1819,6 +1832,16 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
         UNIT_ASSERT_VALUES_EQUAL(0, localPool.BrokenBytes->Val());
         UNIT_ASSERT_VALUES_EQUAL(0, localPool.DecommissionedBytes->Val());
         UNIT_ASSERT_VALUES_EQUAL(10_GB, localPool.DirtyBytes->Val());
+    }
+
+    Y_UNIT_TEST(ShouldUpdateCounters)
+    {
+        DoShouldUpdateCounters(false);
+    }
+
+    Y_UNIT_TEST(ShouldUpdateCountersWithDisabledFullGroupsCalculation)
+    {
+        DoShouldUpdateCounters(true);
     }
 
     Y_UNIT_TEST(ShouldRejectBrokenStats)

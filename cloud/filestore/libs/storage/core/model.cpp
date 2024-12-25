@@ -528,7 +528,8 @@ void SetupFileStorePerformanceAndChannels(
 TMultiShardFileStoreConfig SetupMultiShardFileStorePerformanceAndChannels(
     const TStorageConfig& config,
     const NKikimrFileStore::TConfig& fileStore,
-    const NProto::TFileStorePerformanceProfile& clientProfile)
+    const NProto::TFileStorePerformanceProfile& clientProfile,
+    ui32 explicitShardCount)
 {
     TMultiShardFileStoreConfig result;
     result.MainFileSystemConfig = fileStore;
@@ -539,10 +540,12 @@ TMultiShardFileStoreConfig SetupMultiShardFileStorePerformanceAndChannels(
         result.MainFileSystemConfig,
         clientProfile);
 
-    const auto shardCount = ComputeShardCount(
-        fileStore.GetBlocksCount(),
-        fileStore.GetBlockSize(),
-        config.GetShardAllocationUnit());
+    const auto shardCount = explicitShardCount
+        ? explicitShardCount
+        : ComputeShardCount(
+            fileStore.GetBlocksCount(),
+            fileStore.GetBlockSize(),
+            config.GetShardAllocationUnit());
     result.ShardConfigs.resize(shardCount);
     for (ui32 i = 0; i < shardCount; ++i) {
         result.ShardConfigs[i] = fileStore;

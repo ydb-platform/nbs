@@ -416,6 +416,21 @@ void TIndexTabletActor::CompleteTx_RenameNode(
     const TActorContext& ctx,
     TTxIndexTablet::TRenameNode& args)
 {
+    InvalidateNodeCaches(args.ParentNodeId);
+    InvalidateNodeCaches(args.NewParentNodeId);
+    if (args.ChildRef) {
+        InvalidateNodeCaches(args.ChildRef->ChildNodeId);
+    }
+    if (args.NewChildRef) {
+        InvalidateNodeCaches(args.NewChildRef->ChildNodeId);
+    }
+    if (args.ParentNode) {
+        InvalidateNodeCaches(args.ParentNode->NodeId);
+    }
+    if (args.NewParentNode) {
+        InvalidateNodeCaches(args.NewParentNode->NodeId);
+    }
+
     if (!HasError(args.Error) && !args.ChildRef) {
         auto message = ReportChildRefIsNull(TStringBuilder()
             << "RenameNode: " << args.Request.ShortDebugString());
@@ -425,6 +440,7 @@ void TIndexTabletActor::CompleteTx_RenameNode(
     if (!HasError(args.Error)) {
         auto& op = args.OpLogEntry;
         if (op.HasUnlinkNodeRequest()) {
+            // rename + unlink is pretty rare so let's keep INFO level here
             LOG_INFO(ctx, TFileStoreComponents::TABLET,
                 "%s Unlinking node in shard upon RenameNode: %s, %s",
                 LogTag.c_str(),

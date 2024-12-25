@@ -151,7 +151,8 @@ void TCreateFileStoreActor::CreateMainFileStore(const TActorContext& ctx)
         FileStoreConfig = SetupMultiShardFileStorePerformanceAndChannels(
             *StorageConfig,
             config,
-            Request.GetPerformanceProfile());
+            Request.GetPerformanceProfile(),
+            Request.GetShardCount());
         ShardsToCreate = FileStoreConfig.ShardConfigs.size();
         ShardsToConfigure = ShardsToCreate;
         config = FileStoreConfig.MainFileSystemConfig;

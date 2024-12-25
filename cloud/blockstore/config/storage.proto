@@ -1075,6 +1075,9 @@ message TStorageServiceConfig
     // Enabling direct copying of data between disk agents.
     optional bool UseDirectCopyRange = 394;
 
+    // Disables the calculation of the FullPlacementGroups counter.
+    optional bool DisableFullPlacementGroupCountCalculation = 395;
+
     // Enabling UsedQuota calculation as UsedIopsQuota + UsedBandwidthQuota
-    optional bool CalculateUsedQuotaFromOtherMetrics = 395;
+    optional bool CalculateUsedQuotaFromOtherMetrics = 396;
 }

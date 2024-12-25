@@ -1217,6 +1217,164 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Nodes)
         }
     }
 
+// See #2737 for more details
+#define INDEX_CACHE_CONSISTENCY_CACHE_TEST_IMPL(name, createHandle, ...)       \
+    Y_UNIT_TEST(IndexCacheShouldProperlyHandleConcurrentModifying##name)       \
+    {                                                                          \
+        NProto::TStorageConfig storageConfig;                                  \
+        storageConfig.SetNodeIndexCacheMaxNodes(32);                           \
+        TTestEnv env({}, storageConfig);                                       \
+        env.CreateSubDomain("nfs");                                            \
+        auto registry = env.GetRegistry();                                     \
+                                                                               \
+        ui32 nodeIdx = env.CreateNode("nfs");                                  \
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);                          \
+                                                                               \
+        TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);        \
+        tablet.InitSession("client", "session");                               \
+                                                                               \
+        auto id =                                                              \
+            CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));     \
+        auto handle = InvalidHandle;                                           \
+        if (createHandle) {                                                    \
+            handle = CreateHandle(tablet, id);                                 \
+            /* Just write some data to the file to make it non-empty */        \
+            tablet.WriteData(handle, 0, 16, '0');                              \
+        }                                                                      \
+                                                                               \
+        auto& runtime = env.GetRuntime();                                      \
+                                                                               \
+        TAutoPtr<IEventHandle> rwTxPutRequest;                                 \
+                                                                               \
+        runtime.SetEventFilter(                                                \
+            [&](auto& runtime, auto& event)                                    \
+            {                                                                  \
+                Y_UNUSED(runtime);                                             \
+                switch (event->GetTypeRewrite()) {                             \
+                    case TEvBlobStorage::EvPut:                                \
+                        if (!rwTxPutRequest) {                                 \
+                            rwTxPutRequest = std::move(event);                 \
+                            return true;                                       \
+                        }                                                      \
+                }                                                              \
+                return false;                                                  \
+            });                                                                \
+                                                                               \
+        /* Execute stage of RW tx will produce a TEvPut request, which is      \
+           dropped to postpone the completion of the transaction */            \
+        tablet.SendSetNodeAttrRequest(TSetNodeAttrArgs(RootNodeId).SetUid(2)); \
+                                                                               \
+        runtime.DispatchEvents(TDispatchOptions{                               \
+            .CustomFinalCondition = [&]()                                      \
+            {                                                                  \
+                return rwTxPutRequest != nullptr;                              \
+            }});                                                               \
+                                                                               \
+        /* Now the GetNodeAttr operation is supposed to start a new            \
+           transaction and hang because it accesses the same data as the       \
+           previous one. This operation has a potential to populate the        \
+           node attributes cache */                                            \
+        tablet.SendGetNodeAttrRequest(RootNodeId, "test");                     \
+                                                                               \
+        runtime.DispatchEvents(TDispatchOptions(), TDuration::Seconds(2));     \
+                                                                               \
+        /* Ensure that both operations are still in progress */                \
+        tablet.AssertSetNodeAttrNoResponse();                                  \
+        tablet.AssertGetNodeAttrNoResponse();                                  \
+                                                                               \
+        /* However, Prepare stages are already completed, and GetNodeAttr has  \
+           stale data in its structure */                                      \
+                                                                               \
+        runtime.SetEventFilter(TTestActorRuntimeBase::DefaultFilterFunc);      \
+                                                                               \
+        /* Now let's start the new transaction that will update attributes of  \
+           the node. It is also expected to hang */                            \
+        tablet.Send##name##Request(__VA_ARGS__);                               \
+                                                                               \
+        runtime.DispatchEvents(TDispatchOptions(), TDuration::Seconds(2));     \
+                                                                               \
+        /* Let us complete the initial transaction that will release the lock  \
+           and let the GetNodeAttr complete */                                 \
+        runtime.Send(rwTxPutRequest.Release(), nodeIdx);                       \
+                                                                               \
+        /* Now the initial SetNodeAttr should complete */                      \
+        {                                                                      \
+            auto response = tablet.RecvSetNodeAttrResponse();                  \
+            UNIT_ASSERT(!HasError(response->GetError()));                      \
+        }                                                                      \
+                                                                               \
+        /* The GetNodeAttr should also complete with initial data */           \
+        {                                                                      \
+            auto response = tablet.RecvGetNodeAttrResponse();                  \
+            UNIT_ASSERT(!HasError(response->GetError()));                      \
+            UNIT_ASSERT_VALUES_EQUAL(0, response->Record.GetNode().GetUid());  \
+        }                                                                      \
+                                                                               \
+        /* Now the sent modifying operation is expected to complete */         \
+        {                                                                      \
+            auto response = tablet.Recv##name##Response();                     \
+            UNIT_ASSERT(!HasError(response->GetError()));                      \
+        }                                                                      \
+                                                                               \
+        /* Now let us ensure that GetNodeAttr using node id and using          \
+           parent + name are consistent */                                     \
+        {                                                                      \
+            auto response1 = tablet.SendAndRecvGetNodeAttr(id);                \
+            auto response2 =                                                   \
+                tablet.SendAndRecvGetNodeAttr(RootNodeId, "test");             \
+            if (HasError(response1->GetError())) {                             \
+                UNIT_ASSERT(HasError(response2->GetError()));                  \
+            } else {                                                           \
+                UNIT_ASSERT(!HasError(response2->GetError()));                 \
+                UNIT_ASSERT_VALUES_EQUAL(                                      \
+                    response1->Record.DebugString(),                           \
+                    response2->Record.DebugString());                          \
+            }                                                                  \
+        }                                                                      \
+    }
+    // INDEX_CACHE_CONSISTENCY_CACHE_TEST_IMPL
+
+    // IndexCacheShouldProperlyHandleConcurrentModifyingSetNodeAttr
+    INDEX_CACHE_CONSISTENCY_CACHE_TEST_IMPL(
+        SetNodeAttr,
+        false,
+        TSetNodeAttrArgs(id).SetUid(1))
+
+    // IndexCacheShouldProperlyHandleConcurrentModifyingWriteData
+    INDEX_CACHE_CONSISTENCY_CACHE_TEST_IMPL(WriteData, true, handle, 0, 1, '1')
+
+    // IndexCacheShouldProperlyHandleConcurrentModifyingCreateNode
+    INDEX_CACHE_CONSISTENCY_CACHE_TEST_IMPL(
+        CreateNode,
+        true,
+        TCreateNodeArgs::Link(RootNodeId, "test2", id))
+
+    // IndexCacheShouldProperlyHandleConcurrentModifyingAllocateData
+    INDEX_CACHE_CONSISTENCY_CACHE_TEST_IMPL(
+        AllocateData,
+        true,
+        handle,
+        0,
+        1024,
+        ProtoFlag(NProto::TAllocateDataRequest::F_ZERO_RANGE))
+
+    // IndexCacheShouldProperlyHandleConcurrentModifyingCreateHandle
+    INDEX_CACHE_CONSISTENCY_CACHE_TEST_IMPL(
+        CreateHandle,
+        true,
+        id,
+        TCreateHandleArgs::TRUNC | TCreateHandleArgs::RDWR)
+
+    // IndexCacheShouldProperlyHandleConcurrentModifyingUnlinkNode
+    INDEX_CACHE_CONSISTENCY_CACHE_TEST_IMPL(
+        UnlinkNode,
+        false,
+        RootNodeId,
+        "test",
+        false)
+
+#undef INDEX_CACHE_CONSISTENCY_CACHE_TEST_IMPL
+
     Y_UNIT_TEST(ShouldStatOpenedFiles)
     {
         NProto::TStorageConfig storageConfig;
@@ -1392,9 +1550,16 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Nodes)
         // RemoveNode (no open handles)
         tablet.UnlinkNode(dir, "file", false);
         file = CreateNode(tablet, TCreateNodeArgs::File(dir, "file"));
+
+        // RenameNode
+        tablet.GetNodeAttr(dir, "file");
+
+        tablet.RenameNode(dir, "file", dir, "file2");
+        tablet.AssertGetNodeAttrFailed(dir, "file");
+
         UNIT_ASSERT_VALUES_EQUAL(
             file,
-            tablet.GetNodeAttr(dir, "file")->Record.GetNode().GetId());
+            tablet.GetNodeAttr(dir, "file2")->Record.GetNode().GetId());
 
         {
             tablet.SendRequest(tablet.CreateUpdateCounters());

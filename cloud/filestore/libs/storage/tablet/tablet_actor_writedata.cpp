@@ -309,6 +309,8 @@ void TIndexTabletActor::CompleteTx_WriteData(
     const TActorContext& ctx,
     TTxIndexTablet::TWriteData& args)
 {
+    InvalidateNodeCaches(args.NodeId);
+
     RemoveTransaction(*args.RequestInfo);
 
     auto reply = [&] (

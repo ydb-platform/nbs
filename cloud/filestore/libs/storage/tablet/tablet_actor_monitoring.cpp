@@ -1059,7 +1059,7 @@ void TIndexTabletActor::HandleHttpInfo_Default(
 
                 ui32 shardNo = 0;
                 for (const auto& shardId: shardIds) {
-                    TEvIndexTabletPrivate::TShardStats ss;
+                    TShardStats ss;
                     if (shardNo < CachedShardStats.size()) {
                         ss = CachedShardStats[shardNo];
                     }
@@ -1269,7 +1269,13 @@ void TIndexTabletActor::HandleHttpInfo_Default(
         {
             out << "Active Sessions";
         }
-        DumpSessions(out, GetActiveSessions());
+        DumpSessions(out, GetActiveSessionInfos());
+
+        TAG(TH3)
+        {
+            out << "Orphan Sessions";
+        }
+        DumpSessions(out, GetOrphanSessionInfos());
 
         TAG(TH3)
         {

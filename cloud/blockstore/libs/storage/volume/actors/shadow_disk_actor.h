@@ -199,14 +199,6 @@ private:
         const TEvVolumePrivate::TEvUpdateShadowDiskStateResponse::TPtr& ev,
         const NActors::TActorContext& ctx);
 
-    void HandleUpdateCounters(
-        const TEvNonreplPartitionPrivate::TEvUpdateCounters::TPtr& ev,
-        const NActors::TActorContext& ctx);
-
-    void HandleShadowDiskCounters(
-        const TEvVolume::TEvDiskRegistryBasedPartitionCounters::TPtr& ev,
-        const NActors::TActorContext& ctx);
-
     bool HandleWakeup(
         const NActors::TEvents::TEvWakeup::TPtr& ev,
         const NActors::TActorContext& ctx);

@@ -523,13 +523,11 @@ func TestPublishUnpublishDiskForInfrakuber(t *testing.T) {
 		NbdDeviceFile: nbdDeviceFile,
 	}, nil)
 
-	mounter.On("IsFilesystemExisted", nbdDeviceFile).Return(false, nil)
-
-	mounter.On("MakeFilesystem", nbdDeviceFile, "ext4").Return([]byte{}, nil)
+	mounter.On("HasBlockDevice", nbdDeviceFile).Return(true, nil)
 
 	mockCallIsMountPoint := mounter.On("IsMountPoint", stagingTargetPath).Return(false, nil)
 
-	mounter.On("Mount", nbdDeviceFile, stagingTargetPath, "ext4",
+	mounter.On("FormatAndMount", nbdDeviceFile, stagingTargetPath, "ext4",
 		[]string{"grpid", "errors=remount-ro"}).Return(nil)
 
 	_, err = nodeService.NodeStageVolume(ctx, &csi.NodeStageVolumeRequest{

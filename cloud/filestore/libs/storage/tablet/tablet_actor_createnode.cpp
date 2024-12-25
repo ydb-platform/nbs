@@ -78,7 +78,7 @@ private:
     const TString LogTag;
     TRequestInfoPtr RequestInfo;
     const TActorId ParentId;
-    const NProto::TCreateNodeRequest Request;
+    NProto::TCreateNodeRequest Request;
     const ui64 RequestId;
     const ui64 OpLogEntryId;
     TCreateNodeInShardResult Result;
@@ -263,6 +263,7 @@ void TCreateNodeInShardActor::ReplyAndDie(
         Request.GetHeaders().GetSessionId(),
         RequestId,
         OpLogEntryId,
+        std::move(*Request.MutableName()),
         std::move(Result)));
 
     Die(ctx);
@@ -361,7 +362,10 @@ bool TIndexTabletActor::PrepareTx_CreateNode(
             && Config->GetShardIdSelectionInLeaderEnabled()
             && args.Attrs.GetType() == NProto::E_REGULAR_NODE)
     {
-        args.ShardId = SelectShard(args.Attrs.GetSize());
+        args.Error = SelectShard(args.Attrs.GetSize(), &args.ShardId);
+        if (HasError(args.Error)) {
+            return true;
+        }
     }
 
     // For multishard filestore, selection of the shard node name for
@@ -583,6 +587,12 @@ void TIndexTabletActor::CompleteTx_CreateNode(
     const TActorContext& ctx,
     TTxIndexTablet::TCreateNode& args)
 {
+    InvalidateNodeCaches(args.TargetNodeId);
+    InvalidateNodeCaches(args.ChildNodeId);
+    if (args.ParentNode) {
+        InvalidateNodeCaches(args.ParentNode->NodeId);
+    }
+
     if (args.OpLogEntry.HasCreateNodeRequest() && !HasError(args.Error)) {
         LOG_DEBUG(ctx, TFileStoreComponents::TABLET,
             "%s Creating node in shard upon CreateNode: %s, %s",
@@ -664,6 +674,8 @@ void TIndexTabletActor::HandleNodeCreatedInShard(
     }
 
     WorkerActors.erase(ev->Sender);
+
+    EndNodeCreateInShard(msg->NodeName);
 
     if (auto* x = std::get_if<NProto::TCreateNodeResponse>(&res)) {
         if (msg->RequestInfo) {
@@ -775,6 +787,8 @@ void TIndexTabletActor::RegisterCreateNodeInShardActor(
     ui64 opLogEntryId,
     TCreateNodeInShardResult result)
 {
+    StartNodeCreateInShard(request.GetName());
+
     auto actor = std::make_unique<TCreateNodeInShardActor>(
         LogTag,
         std::move(requestInfo),

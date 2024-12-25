@@ -4044,6 +4044,9 @@ void TDiskRegistryState::PublishCounters(TInstant now)
         return;
     }
 
+    const auto startAt = TMonotonic::Now();
+    STORAGE_LOG(TLOG_DEBUG, "DiskRegistry started PublishCounters");
+
     AgentList.PublishCounters(now);
 
     THashMap<TString, TDevicePoolCounters> poolName2Counters;
@@ -4202,6 +4205,10 @@ void TDiskRegistryState::PublishCounters(TInstant now)
         }
 
         if (!logicalBlockSize) {
+            continue;
+        }
+
+        if (StorageConfig->GetDisableFullPlacementGroupCountCalculation()) {
             continue;
         }
 
@@ -4409,6 +4416,12 @@ void TDiskRegistryState::PublishCounters(TInstant now)
 
     SelfCounters.QueryAvailableStorageErrors.Publish(now);
     SelfCounters.QueryAvailableStorageErrors.Reset();
+
+    auto executionTime = TMonotonic::Now() - startAt;
+    STORAGE_LOG(
+        executionTime > TDuration::Seconds(1) ? TLOG_WARNING : TLOG_DEBUG,
+        "DiskRegistry finished PublishCounters in %s",
+        executionTime.ToString().c_str());
 }
 
 NProto::TError TDiskRegistryState::CreatePlacementGroup(
@@ -5032,18 +5045,10 @@ void TDiskRegistryState::ApplyAgentStateChange(
                 continue;
             }
 
-            bool found = false;
-            for (const auto& d: disk.Devices) {
-                if (d == deviceId) {
-                    found = true;
-                    break;
-                }
-            }
-
-            if (!found) {
-                // this device is allocated for this disk but it is not among
-                // this disk's active device set
-                // NBS-3726
+            if (Find(disk.Devices, deviceId) == disk.Devices.end()) {
+                ReportDiskRegistryWrongMigratedDeviceOwnership(
+                    TStringBuilder() << "ApplyAgentStateChange: device "
+                                     << deviceId << " not found");
                 continue;
             }
 
@@ -6145,9 +6150,10 @@ NProto::TError TDiskRegistryState::FinishDeviceMigration(
     auto devIt = Find(disk.Devices, sourceId);
 
     if (devIt == disk.Devices.end()) {
-        // temporarily commented out, see NBS-3726
-        // return MakeError(E_INVALID_STATE, TStringBuilder() <<
-        //     "device " << sourceId.Quote() << " not found");
+        auto message = ReportDiskRegistryWrongMigratedDeviceOwnership(
+            TStringBuilder() << "FinishDeviceMigration: device "
+                             << sourceId.Quote() << " not found");
+        return MakeError(E_INVALID_STATE, std::move(message));
     }
 
     if (auto it = disk.MigrationTarget2Source.find(targetId);
@@ -6174,27 +6180,16 @@ NProto::TError TDiskRegistryState::FinishDeviceMigration(
     }
 
     const ui64 seqNo = AddReallocateRequest(db, diskId);
-    // this condition is needed because of NBS-3726
-    if (devIt != disk.Devices.end()) {
-        *devIt = targetId;
-        disk.FinishedMigrations.push_back({
-            .DeviceId = sourceId,
-            .SeqNo = seqNo
-        });
+    *devIt = targetId;
+    disk.FinishedMigrations.push_back({.DeviceId = sourceId, .SeqNo = seqNo});
 
-        if (disk.MasterDiskId) {
-            const bool replaced = ReplicaTable.ReplaceDevice(
-                disk.MasterDiskId,
-                sourceId,
-                targetId);
-            // targetId is actually fully initialized after migration
-            ReplicaTable.MarkReplacementDevice(
-                disk.MasterDiskId,
-                targetId,
-                false);
+    if (disk.MasterDiskId) {
+        const bool replaced =
+            ReplicaTable.ReplaceDevice(disk.MasterDiskId, sourceId, targetId);
+        // targetId is actually fully initialized after migration
+        ReplicaTable.MarkReplacementDevice(disk.MasterDiskId, targetId, false);
 
-            Y_DEBUG_ABORT_UNLESS(replaced);
-        }
+        Y_DEBUG_ABORT_UNLESS(replaced);
     }
 
     *diskStateUpdated = TryUpdateDiskState(db, diskId, disk, timestamp);

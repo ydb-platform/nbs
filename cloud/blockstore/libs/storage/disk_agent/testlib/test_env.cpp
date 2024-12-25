@@ -323,6 +323,7 @@ TTestEnv TTestEnvBuilder::Build()
     // Runtime.SetLogPriority(NLog::InvalidComponent, NLog::PRI_DEBUG);
 
     Runtime.SetLogPriority(TBlockStoreComponents::DISK_AGENT, NLog::PRI_INFO);
+    Runtime.SetLogPriority(TBlockStoreComponents::DISK_AGENT_WORKER, NLog::PRI_INFO);
 
     Runtime.SetRegistrationObserverFunc(
         [] (auto& runtime, const auto& parentId, const auto& actorId)

@@ -493,4 +493,12 @@ message TStorageConfig
     // requests. ShardIds selected in Leader have priority over ShardIds
     // selected at the StorageServiceActor level.
     optional bool ShardIdSelectionInLeaderEnabled = 411;
+
+    // Shard balancer will prefer shards which have at least this amount of
+    // free space in bytes.
+    optional uint64 ShardBalancerDesiredFreeSpaceReserve = 412;
+
+    // Shard balancer will not select shards which have less than this amount of
+    // free space in bytes.
+    optional uint64 ShardBalancerMinFreeSpaceReserve = 413;
 }

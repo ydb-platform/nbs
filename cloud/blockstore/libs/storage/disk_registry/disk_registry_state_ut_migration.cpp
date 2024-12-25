@@ -314,6 +314,14 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMigrationTest)
             UNIT_ASSERT_VALUES_EQUAL(0, affectedDisks.size());
         });
 
+        NMonitoring::TDynamicCountersPtr counters =
+            new NMonitoring::TDynamicCounters();
+        InitCriticalEventsCounter(counters);
+        auto configCounter = counters->GetCounter(
+            "AppCriticalEvents/DiskRegistryWrongMigratedDeviceOwnership",
+            true);
+        UNIT_ASSERT_VALUES_EQUAL(0, configCounter->Val());
+
         executor.WriteTx([&] (TDiskRegistryDatabase db) mutable {
             auto affectedDisks = ChangeAgentState(
                 state,
@@ -331,6 +339,9 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMigrationTest)
         }
 
         UNIT_ASSERT(state.IsMigrationListEmpty());
+        // Now bug is fixed, but, if it reproduce in future, we must report
+        // event.
+        UNIT_ASSERT_VALUES_EQUAL(1, configCounter->Val());
     }
 
     Y_UNIT_TEST(ShouldEraseMigrationsForDeletedDisk)

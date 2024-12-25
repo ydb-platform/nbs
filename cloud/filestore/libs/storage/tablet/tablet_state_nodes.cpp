@@ -254,6 +254,22 @@ void TIndexTabletState::WriteOrphanNode(
     Impl->OrphanNodeIds.insert(nodeId);
 }
 
+bool TIndexTabletState::HasPendingNodeCreateInShard(const TString& nodeName) const
+{
+    return Impl->PendingNodeCreateInShardNames.contains(nodeName);
+}
+
+void TIndexTabletState::StartNodeCreateInShard(const TString& nodeName)
+{
+    Impl->PendingNodeCreateInShardNames.insert(nodeName);
+}
+
+void TIndexTabletState::EndNodeCreateInShard(const TString& nodeName)
+{
+    Impl->PendingNodeCreateInShardNames.erase(nodeName);
+}
+
+
 ////////////////////////////////////////////////////////////////////////////////
 // NodeAttrs
 
@@ -622,6 +638,14 @@ void TIndexTabletState::MarkNodeRefsLoadComplete()
 TInMemoryIndexStateStats TIndexTabletState::GetInMemoryIndexStateStats() const
 {
     return Impl->InMemoryIndexState.GetStats();
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+void TIndexTabletState::InvalidateNodeCaches(ui64 nodeId)
+{
+    InvalidateReadAheadCache(nodeId);
+    InvalidateNodeIndexCache(nodeId);
 }
 
 }   // namespace NCloud::NFileStore::NStorage

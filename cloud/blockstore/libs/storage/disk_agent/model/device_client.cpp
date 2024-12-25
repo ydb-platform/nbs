@@ -393,6 +393,11 @@ bool TDeviceClient::IsDeviceSuspended(const TString& uuid) const
     return GetDeviceIOErrorCode(uuid).value_or(S_OK) == E_REJECTED;
 }
 
+bool TDeviceClient::IsDeviceEnabled(const TString& uuid) const
+{
+    return !GetDeviceIOErrorCode(uuid).has_value();
+}
+
 // static
 TDeviceClient::TDevicesState TDeviceClient::MakeDevices(TVector<TString> uuids)
 {

@@ -64,6 +64,7 @@ namespace NCloud::NBlockStore {
     xxx(DiskRegistryCleanupAgentConfigError)                                   \
     xxx(DiskRegistryOccupiedDeviceConfigurationHasChanged)                     \
     xxx(MirroredDiskChecksumMismatchUponRead)                                  \
+    xxx(DiskRegistryWrongMigratedDeviceOwnership)                              \
 // BLOCKSTORE_CRITICAL_EVENTS
 
 #define BLOCKSTORE_IMPOSSIBLE_EVENTS(xxx)                                      \

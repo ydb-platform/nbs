@@ -31,8 +31,9 @@ WORKING_DIR="flock"
 mkdir $WORKING_DIR || die "$WORKING_DIR already exists"
 
 # general lock
+echo "Locking"
 $FLOCK_TOOL --shared $WORKING_DIR/lockfile \
-	bash -c 'echo "Locking"; while [ ! -f .release_lock ]; do sleep 1; done; echo "Unlocking"' 2>&1 &
+	bash -c 'while [ ! -f .release_lock ]; do sleep 1; done; echo "Unlocking"' 2>&1 &
 
 pid=$!
 # check for running background process

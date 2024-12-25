@@ -79,6 +79,7 @@ private:
     bool WriteIntersectsWithScrubbing = false;
     ui64 ScrubbingThroughput = 0;
     TInstant ScrubbingRangeStarted;
+    bool ScrubbingRangeRescheduled  = false;
     bool ResyncRangeStarted = false;
     ui32 ChecksumMismatches = 0;
 

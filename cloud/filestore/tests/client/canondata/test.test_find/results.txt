@@ -1,0 +1,14 @@
+/	a0	2
+/a0/	b0	3
+/a0/	f5.txt	16
+/a0/	g3.txt	19
+/	a1	7
+/a1/	b1	8
+/a1/	b1_0	9
+/a1/	f3.txt	14
+/a1/	f4.txt	15
+/a1/	g1.txt	17
+/a1/	g2.txt	18
+/a0/	f5.txt	16
+/a1/	f3.txt	14
+/a1/	f4.txt	15

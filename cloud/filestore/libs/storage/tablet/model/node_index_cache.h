@@ -57,7 +57,7 @@ private:
     THashMap<TNodeIndexCacheKey, NProto::TNodeAttr, TNodeIndexCacheKeyHash>
         AttrByParentNodeId;
 
-    ui32 MaxNodes;
+    ui32 MaxNodes = 0;
 
 public:
     explicit TNodeIndexCache(IAllocator* allocator);
@@ -69,6 +69,7 @@ public:
     void InvalidateCache(ui64 parentNodeId, const TString& name);
 
     void InvalidateCache(ui64 nodeId);
+
     void RegisterGetNodeAttrResult(
         ui64 parentNodeId,
         const TString& name,

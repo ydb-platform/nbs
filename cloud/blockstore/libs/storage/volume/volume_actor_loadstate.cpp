@@ -100,12 +100,9 @@ void TVolumeActor::CompleteLoadState(
     TTxVolume::TLoadState& args)
 {
     if (args.StorageConfig.Defined()) {
-        Config = std::make_shared<TStorageConfig>(*Config);
-        Config->Merge(*args.StorageConfig.Get());
-        HasStorageConfigPatch = !Config->Equals(*GlobalStorageConfig);
-        if (!HasStorageConfigPatch) {
-            Config = GlobalStorageConfig;
-        }
+        Config =
+            TStorageConfig::Merge(GlobalStorageConfig, *args.StorageConfig);
+        HasStorageConfigPatch = Config != GlobalStorageConfig;
     }
 
     if (args.Meta.Defined()) {
