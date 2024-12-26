@@ -3,6 +3,7 @@
 #include <contrib/ydb/core/base/appdata.h>
 
 #include <util/generic/algorithm.h>
+#include <util/string/join.h>
 
 namespace NCloud::NBlockStore::NStorage {
 
@@ -209,6 +210,13 @@ void TDiskRegistryActor::CompleteLoadState(
     ScheduleDiskRegistryAgentListExpiredParamsCleanup(ctx);
 
     if (auto orphanDevices = State->FindOrphanDevices()) {
+        LOG_INFO(
+            ctx,
+            TBlockStoreComponents::DISK_REGISTRY,
+            "Found devices without agent and try to remove them: "
+            "DeviceUUIDs=%s",
+            JoinSeq(" ", orphanDevices).c_str());
+
         ExecuteTx<TCleanupOrphanDevices>(ctx, std::move(orphanDevices));
     }
 }

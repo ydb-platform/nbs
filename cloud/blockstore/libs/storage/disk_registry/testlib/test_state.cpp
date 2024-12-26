@@ -2,18 +2,6 @@
 
 namespace NCloud::NBlockStore::NStorage::NDiskRegistryStateTest {
 
-namespace {
-bool AllSucceeded(std::initializer_list<bool> ls)
-{
-    auto identity = [](bool x)
-    {
-        return x;
-    };
-
-    return std::all_of(std::begin(ls), std::end(ls), identity);
-}
-}   // namespace
-
 using NProto::TDeviceConfig;
 
 ////////////////////////////////////////////////////////////////////////////////

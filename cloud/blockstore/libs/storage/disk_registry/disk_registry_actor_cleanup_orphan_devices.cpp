@@ -1,6 +1,5 @@
 #include "disk_registry_actor.h"
 
-#include <util/string/join.h>
 
 namespace NCloud::NBlockStore::NStorage {
 
@@ -29,17 +28,10 @@ void TDiskRegistryActor::ExecuteCleanupOrphanDevices(
     TTxDiskRegistry::TCleanupOrphanDevices& args)
 {
     Y_UNUSED(ctx);
-    Y_UNUSED(args);
 
     TDiskRegistryDatabase db(tx.DB);
     if (!args.OrphanDevices) {
         State->RemoveOrphanDevices(db, args.OrphanDevices);
-        LOG_INFO(
-            ctx,
-            TBlockStoreComponents::DISK_REGISTRY,
-            "Found devices without agent and remove them, removed "
-            "DeviceUUIDs=%s",
-            JoinSeq(" ", args.OrphanDevices).c_str());
     }
 }
 
