@@ -307,6 +307,13 @@ service TFileStoreService
         };
     }
 
+    rpc CheckInvalidateNodeNeeded(TCheckInvalidateNodeNeededRequest) returns (TCheckInvalidateNodeNeededResponse) {
+        option (google.api.http) = {
+            post: "/should_invalidate_nodes"
+            body: "*"
+        };
+    }
+
     //
     // Data operations.
     //

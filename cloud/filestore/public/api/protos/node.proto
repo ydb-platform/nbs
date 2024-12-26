@@ -571,3 +571,39 @@ message TRemoveNodeXAttrResponse
     // Optional response headers.
     TResponseHeaders Headers = 1000;
 }
+
+////////////////////////////////////////////////////////////////////////////////
+// Node invalidate entry
+
+message TInvalidateNodeEntry
+{
+    // parent node id
+    uint64 ParentNodeId = 1;
+
+    // node name.
+    bytes Name = 2;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// CheckInvalidateNodeNeeded request/response
+
+message TCheckInvalidateNodeNeededRequest
+{
+    // Optional request headers.
+    THeaders Headers = 1;
+
+    // FileSystem identifier.
+    string FileSystemId = 2;
+}
+
+message TCheckInvalidateNodeNeededResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+
+    // Node attributes.
+    repeated TInvalidateNodeEntry Nodes = 2;
+
+    // Optional response headers.
+    TResponseHeaders Headers = 1000;
+}

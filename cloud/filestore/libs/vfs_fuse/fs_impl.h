@@ -88,6 +88,8 @@ private:
     TQueue<TReleaseRequest> DelayedReleaseQueue;
     TMutex DelayedReleaseQueueLock;
 
+    FuseSessionWrap& FuseSession;
+
 public:
     TFileSystem(
         ILoggingServicePtr logging,
@@ -98,7 +100,8 @@ public:
         IFileStorePtr session,
         IRequestStatsPtr stats,
         ICompletionQueuePtr queue,
-        THandleOpsQueuePtr handleOpsQueue);
+        THandleOpsQueuePtr handleOpsQueue,
+        FuseSessionWrap& fuseSession);
 
     ~TFileSystem();
 
@@ -431,6 +434,9 @@ private:
 
     void ScheduleProcessHandleOpsQueue();
     void ProcessHandleOpsQueue();
+
+    void ScheduleCheckInvalidateNodeNeeded();
+    void CheckInvalidateNodeNeeded();
 
 #define FILESYSTEM_REPLY_IMPL(name, ...)                                       \
     template<typename... TArgs>                                                \

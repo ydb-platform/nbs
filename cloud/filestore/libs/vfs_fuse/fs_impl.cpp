@@ -33,7 +33,8 @@ TFileSystem::TFileSystem(
         IFileStorePtr session,
         IRequestStatsPtr stats,
         ICompletionQueuePtr queue,
-        THandleOpsQueuePtr handleOpsQueue)
+        THandleOpsQueuePtr handleOpsQueue,
+        FuseSessionWrap& fuseSession)
     : Logging(std::move(logging))
     , ProfileLog(std::move(profileLog))
     , Timer(std::move(timer))
@@ -48,6 +49,7 @@ TFileSystem::TFileSystem(
         Config->GetXAttrCacheLimit(),
         Config->GetXAttrCacheTimeout())
     , HandleOpsQueue(std::move(handleOpsQueue))
+    , FuseSession(fuseSession)
 {
     Log = Logging->CreateLog("NFS_FUSE");
 }
@@ -61,6 +63,11 @@ void TFileSystem::Init()
 {
     STORAGE_INFO("scheduling destroy handle queue processing");
     ScheduleProcessHandleOpsQueue();
+    if (Config->GetCheckInvalidateNodeNeededEnabled()) {
+        STORAGE_INFO("scheduling check for nodes needed invalidate");
+        ScheduleCheckInvalidateNodeNeeded();
+    }
+
 }
 
 void TFileSystem::Reset()
@@ -350,6 +357,70 @@ void TFileSystem::ProcessHandleOpsQueue()
         return;
     }
 
+}
+
+void TFileSystem::ScheduleCheckInvalidateNodeNeeded()
+{
+    if (Config->GetCheckInvalidateNodeNeededEnabled()) {
+        Scheduler->Schedule(
+        Timer->Now() + Config->GetCheckInvalidateNodeNeededPeriod(),
+        [=, ptr = weak_from_this()] () {
+            if (auto self = ptr.lock()) {
+                self->CheckInvalidateNodeNeeded();
+            }
+        });
+    }
+}
+
+void TFileSystem::CheckInvalidateNodeNeeded()
+{
+    STORAGE_DEBUG("CheckInvalidateNodeNeeded #");
+
+    auto request = StartRequest<NProto::TCheckInvalidateNodeNeededRequest>();
+    auto callContext = MakeIntrusive<TCallContext>(
+        Config->GetFileSystemId(),
+        CreateRequestId());
+    callContext->RequestType = EFileStoreRequest::CheckInvalidateNodeNeeded;
+    RequestStats->RequestStarted(Log, *callContext);
+
+    Session->CheckInvalidateNodeNeeded(callContext, std::move(request))
+        .Subscribe(
+            [ptr = weak_from_this(), callContext](const auto& future)
+            {
+                auto self = ptr.lock();
+                if (!self || !self->FuseSession) {
+                    return;
+                }
+
+                auto& Log = self->Log;
+                const auto& response = future.GetValue();
+                if (HasError(response)) {
+                    STORAGE_ERROR(
+                        "CheckInvalidateNodeNeeded request failed: "
+                        << "filesystem " << self->Config->GetFileSystemId()
+                        << " error: " << FormatError(response.GetError()));
+                    self->ScheduleCheckInvalidateNodeNeeded();
+                    return;
+                }
+
+                for (auto& entry : response.GetNodes()) {
+                    const auto& parentNodeId = entry.GetParentNodeId();
+                    const auto& name = entry.GetName();
+                    int res = fuse_lowlevel_notify_inval_entry(
+                        *(self->FuseSession),
+                        parentNodeId,
+                        name.c_str(),
+                        name.size());
+                    STORAGE_DEBUG(
+                        "Invalida node: "
+                        << "filesystem=" << self->Config->GetFileSystemId()
+                        << ", parentNodeId=" << parentNodeId
+                        << ", name=" << name
+                        << ", res=" << res);
+                }
+
+                self->ScheduleCheckInvalidateNodeNeeded();
+            });
 }
 
 }   // namespace NCloud::NFileStore::NFuse

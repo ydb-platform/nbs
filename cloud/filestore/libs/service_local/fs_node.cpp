@@ -238,4 +238,13 @@ NProto::TReadLinkResponse TLocalFileSystem::ReadLink(
     return response;
 }
 
+NProto::TCheckInvalidateNodeNeededResponse TLocalFileSystem::CheckInvalidateNodeNeeded(
+    const NProto::TCheckInvalidateNodeNeededRequest& request)
+{
+    STORAGE_TRACE("CheckInvalidateNodeNeeded " << DumpMessage(request));
+
+    NProto::TCheckInvalidateNodeNeededResponse response;
+    return response;
+}
+
 }   // namespace NCloud::NFileStore

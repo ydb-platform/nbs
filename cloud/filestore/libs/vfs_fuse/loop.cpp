@@ -311,7 +311,7 @@ public:
         }
     }
 
-    operator fuse_session* ()
+    operator fuse_session* () const
     {
         return Session;
     }
@@ -391,7 +391,7 @@ public:
         }
     }
 
-    operator fuse_session* ()
+    operator fuse_session* () const
     {
         return Session;
     }
@@ -511,6 +511,7 @@ private:
     TFileSystemConfigPtr FileSystemConfig;
 
     bool HandleOpsQueueInitialized = false;
+    FuseSessionWrap FuseSession;
 
 public:
     TFileSystemLoop(
@@ -821,7 +822,8 @@ private:
                 Session,
                 RequestStats,
                 CompletionQueue,
-                std::move(handleOpsQueue));
+                std::move(handleOpsQueue),
+                FuseSession);
 
             RequestStats->RegisterIncompleteRequestProvider(CompletionQueue);
 
@@ -848,6 +850,8 @@ private:
                 ops,
                 SessionState,
                 this);
+
+            FuseSession.emplace(SessionThread->GetSession());
 
             SessionThread->Start();
         } catch (const TServiceError& e) {
@@ -903,6 +907,8 @@ private:
 
         config.SetGuestWritebackCacheEnabled(
             features.GetGuestWritebackCacheEnabled());
+        config.SetCheckInvalidateNodeNeededEnabled(
+            features.GetCheckInvalidateNodeNeededEnabled());
 
         return std::make_shared<TFileSystemConfig>(config);
     }

@@ -34,6 +34,9 @@ namespace {
     xxx(DirectIoAlign,              ui32,       4_KB                          )\
                                                                                \
     xxx(GuestWritebackCacheEnabled, bool,       false                         )\
+                                                                               \
+    xxx(CheckInvalidateNodeNeededEnabled, bool,       false                   )\
+    xxx(CheckInvalidateNodeNeededPeriod,  TDuration, TDuration::Seconds(30)   )\
 // FILESTORE_FUSE_CONFIG
 
 #define FILESTORE_FILESYSTEM_DECLARE_CONFIG(name, type, value)                 \

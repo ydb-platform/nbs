@@ -44,6 +44,9 @@ public:
 
     bool GetGuestWritebackCacheEnabled() const;
 
+    bool GetCheckInvalidateNodeNeededEnabled() const;
+    TDuration GetCheckInvalidateNodeNeededPeriod() const;
+
     void Dump(IOutputStream& out) const;
     void DumpHtml(IOutputStream& out) const;
 };

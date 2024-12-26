@@ -331,6 +331,19 @@ private:
         response.SetValue(TFsyncDirMethod::TResponse());
     }
 
+    template<>
+    void ExecuteRequest<TCheckInvalidateNodeNeededMethod>(
+        TCallContextPtr callContext,
+        std::shared_ptr<TCheckInvalidateNodeNeededMethod::TRequest> request,
+        TPromise<TCheckInvalidateNodeNeededMethod::TResponse> response)
+    {
+        Y_UNUSED(callContext);
+        Y_UNUSED(request);
+        Y_UNUSED(TCheckInvalidateNodeNeededMethod::RequestName);
+
+        response.SetValue(TCheckInvalidateNodeNeededMethod::TResponse());
+    }
+
     template <typename T>
     void ExecuteStreamRequest(
         TCallContextPtr callContext,

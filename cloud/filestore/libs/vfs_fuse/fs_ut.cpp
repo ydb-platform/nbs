@@ -1731,6 +1731,30 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         scheduler->RunAllScheduledTasks();
         UNIT_ASSERT_EQUAL(2, handlerCalled);
     }
+
+    Y_UNIT_TEST(CheckInvalidateNodeNeededOnGuest)
+    {
+        NProto::TFileStoreFeatures features;
+        features.SetCheckInvalidateNodeNeededEnabled(true);
+        auto scheduler = std::make_shared<TTestScheduler>();
+        TBootstrap bootstrap(CreateWallClockTimer(), scheduler, features);
+
+        bool called = false;
+        bootstrap.Service->CheckInvalidateNodeNeededHandler =
+            [&](auto callContext, auto request)
+        {
+            Y_UNUSED(callContext, request);
+
+            called = true;
+            return MakeFuture(NProto::TCheckInvalidateNodeNeededResponse());
+        };
+
+        bootstrap.Start();
+
+        scheduler->RunAllScheduledTasks();
+
+        UNIT_ASSERT(called);
+    }
 }
 
 }   // namespace NCloud::NFileStore::NFuse

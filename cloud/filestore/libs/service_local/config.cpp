@@ -14,20 +14,22 @@ constexpr TDuration AsyncHandleOpsPeriod = TDuration::MilliSeconds(50);
 
 ////////////////////////////////////////////////////////////////////////////////
 
-#define FILESTORE_SERVICE_CONFIG(xxx)                                          \
-    xxx(RootPath,                    TString,       "./"                      )\
-    xxx(PathPrefix,                  TString,       "nfs_"                    )\
-    xxx(DefaultPermissions,          ui32,          0775                      )\
-    xxx(IdleSessionTimeout,          TDuration,     TDuration::Seconds(30)    )\
-    xxx(NumThreads,                  ui32,          4                         )\
-    xxx(StatePath,                   TString,       "./"                      )\
-    xxx(MaxNodeCount,                ui32,          1000000                   )\
-    xxx(MaxHandlePerSessionCount,    ui32,          10000                     )\
-    xxx(DirectIoEnabled,             bool,          false                     )\
-    xxx(DirectIoAlign,               ui32,          4_KB                      )\
-    xxx(GuestWritebackCacheEnabled,  bool,          false                     )\
-    xxx(AsyncDestroyHandleEnabled,   bool,          false                     )\
-    xxx(AsyncHandleOperationPeriod,  TDuration,     AsyncHandleOpsPeriod      )\
+#define FILESTORE_SERVICE_CONFIG(xxx)                                               \
+    xxx(RootPath,                         TString,       "./"                      )\
+    xxx(PathPrefix,                       TString,       "nfs_"                    )\
+    xxx(DefaultPermissions,               ui32,          0775                      )\
+    xxx(IdleSessionTimeout,               TDuration,     TDuration::Seconds(30)    )\
+    xxx(NumThreads,                       ui32,          4                         )\
+    xxx(StatePath,                        TString,       "./"                      )\
+    xxx(MaxNodeCount,                     ui32,          1000000                   )\
+    xxx(MaxHandlePerSessionCount,         ui32,          10000                     )\
+    xxx(DirectIoEnabled,                  bool,          false                     )\
+    xxx(DirectIoAlign,                    ui32,          4_KB                      )\
+    xxx(GuestWritebackCacheEnabled,       bool,          false                     )\
+    xxx(AsyncDestroyHandleEnabled,        bool,          false                     )\
+    xxx(AsyncHandleOperationPeriod,       TDuration,     AsyncHandleOpsPeriod      )\
+    xxx(CheckInvalidateNodeNeededEnabled, bool,          false                     )\
+    xxx(CheckInvalidateNodeNeededPeriod,  TDuration,     TDuration::Seconds(30)    )\
 // FILESTORE_SERVICE_CONFIG
 
 #define FILESTORE_SERVICE_DECLARE_CONFIG(name, type, value)                    \

@@ -98,6 +98,14 @@ message TLocalServiceConfig
 
     // Period of processing create/destroy handle requests.
     optional uint32 AsyncHandleOperationPeriod = 13;
+
+    // Enable notification to guest on invalid nodes.
+    // This is used for local filestore when number of cached node entries
+    // reacheas a threshold
+    optional bool CheckInvalidateNodeNeededEnabled = 14;
+
+    // Period of checking for guest invalidate nodes requests in msec.
+    optional uint32 CheckInvalidateNodeNeededPeriod = 15;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

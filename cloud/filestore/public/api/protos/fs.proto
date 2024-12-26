@@ -27,6 +27,8 @@ message TFileStoreFeatures
     bool TwoStageReadDisabledForHDD = 12;
     bool ThreeStageWriteDisabledForHDD = 13;
     bool GuestWritebackCacheEnabled = 14;
+    bool CheckInvalidateNodeNeededEnabled = 15;
+    uint32 CheckInvalidateNodeNeededPeriod = 16;
 }
 
 message TFileStore

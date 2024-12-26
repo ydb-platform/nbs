@@ -27,6 +27,10 @@ namespace NCloud::NFileStore::NFuse {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+using FuseSessionWrap = std::optional<struct fuse_session*>;
+
+////////////////////////////////////////////////////////////////////////////////
+
 #define FILESYSTEM_REPLY_METHOD(xxx, ...) \
     xxx(None,     __VA_ARGS__)            \
     xxx(Error,    __VA_ARGS__)            \
@@ -474,6 +478,7 @@ IFileSystemPtr CreateFileSystem(
     IFileStorePtr session,
     IRequestStatsPtr stats,
     ICompletionQueuePtr queue,
-    THandleOpsQueuePtr handleOpsQueue);
+    THandleOpsQueuePtr handleOpsQueue,
+    FuseSessionWrap& fuseSession);
 
 }   // namespace NCloud::NFileStore::NFuse

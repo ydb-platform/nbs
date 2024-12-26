@@ -83,6 +83,8 @@ NProto::TCreateSessionResponse TLocalFileSystem::CreateSession(
         Config->GetAsyncDestroyHandleEnabled());
     features->SetAsyncHandleOperationPeriod(
         Config->GetAsyncHandleOperationPeriod().MilliSeconds());
+    features->SetCheckInvalidateNodeNeededEnabled(
+        Config->GetCheckInvalidateNodeNeededEnabled());
 
     return response;
 }
