@@ -383,7 +383,7 @@ void TIndexTabletActor::HandleSyncSessions(
 
     TVector<TString> shardIds;
     // session sync should be enabled only in the main tablet
-    if (GetFileSystem().GetShardNo() == 0) {
+    if (IsMainTablet()) {
         for (const auto& shardId: GetFileSystem().GetShardFileSystemIds()) {
             shardIds.push_back(shardId);
         }

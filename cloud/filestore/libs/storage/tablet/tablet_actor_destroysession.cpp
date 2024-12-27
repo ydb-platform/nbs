@@ -192,7 +192,7 @@ void TIndexTabletActor::CompleteTx_DestroySession(
 
     const auto& shardIds = GetFileSystem().GetShardFileSystemIds();
     // session will be deleted in other shards via the code in the main tablet
-    if (GetFileSystem().GetShardNo() != 0 || shardIds.empty()) {
+    if (!IsMainTablet() || shardIds.empty()) {
         LOG_INFO(ctx, TFileStoreComponents::TABLET,
             "%s DestroySession completed",
             LogTag.c_str());

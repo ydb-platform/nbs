@@ -852,7 +852,7 @@ void TIndexTabletActor::HandleGetStorageStats(
     auto* stats = response->Record.MutableStats();
     // shards shouldn't collect other shards' stats (unless it's background
     // shard <-> shard stats exchange which is handled in HandleUpdateCounters)
-    const auto& shardIds = GetFileSystem().GetShardNo() == 0
+    const auto& shardIds = IsMainTablet()
         ? GetFileSystem().GetShardFileSystemIds()
         : Default<google::protobuf::RepeatedPtrField<TString>>();
     if (req.GetAllowCache()) {

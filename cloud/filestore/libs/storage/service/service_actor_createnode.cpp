@@ -316,8 +316,6 @@ void TStorageServiceActor::HandleCreateNode(
     if (msg->Record.HasLink()) {
         auto shardNo = ExtractShardNo(msg->Record.GetLink().GetTargetNode());
 
-        // TODO(#2674): select proper shard for msg->Record.GetNodeId(), not
-        // necessarily main filesystem tablet
         auto [shardId, error] = SelectShard(
             ctx,
             sessionId,

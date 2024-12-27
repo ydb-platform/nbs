@@ -682,7 +682,7 @@ void TIndexTabletActor::HandleGetFileSystemTopology(
     auto response =
         std::make_unique<TEvIndexTablet::TEvGetFileSystemTopologyResponse>();
 
-    if (GetFileSystem().GetShardNo() == 0) {
+    if (IsMainTablet()) {
         *response->Record.MutableShardFileSystemIds() =
             GetFileSystem().GetShardFileSystemIds();
     }
@@ -1195,10 +1195,15 @@ i64 TIndexTabletActor::TMetrics::CalculateNetworkRequestBytes(
 
 ////////////////////////////////////////////////////////////////////////////////
 
+bool TIndexTabletActor::IsMainTablet() const
+{
+    return GetFileSystem().GetShardNo() == 0;
+}
+
 bool TIndexTabletActor::BehaveAsShard(const NProto::THeaders& headers) const
 {
     // main filesystem can't behave as a shard
-    if (GetFileSystem().GetShardNo() == 0) {
+    if (IsMainTablet()) {
         return false;
     }
 

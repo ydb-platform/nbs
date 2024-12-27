@@ -272,8 +272,7 @@ void TIndexTabletActor::HandleConfigureShards(
 
     const auto& shardIds = GetFileSystem().GetShardFileSystemIds();
     NProto::TError error;
-    // TODO(#2674): do proper BehaveAsShard check
-    if (BehaveAsShard({}) && !msg->Record.GetForce()) {
+    if (!IsMainTablet() && !msg->Record.GetForce()) {
         error = MakeError(E_INVALID_STATE, TStringBuilder() << "can't configure"
             << " shards for a shard (ShardNo=" << GetFileSystem().GetShardNo()
             << ")");

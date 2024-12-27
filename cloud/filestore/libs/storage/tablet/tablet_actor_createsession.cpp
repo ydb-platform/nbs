@@ -348,7 +348,7 @@ void TIndexTabletActor::CompleteTx_CreateSession(
     // there's no point in returning shard list unless it's main filesystem
     // tablet (in which case shard list is needed to perform request forwarding
     // to shards in TStorageServiceActor)
-    if (GetFileSystem().GetShardNo() == 0) {
+    if (IsMainTablet()) {
         for (const auto& shardId: GetFileSystem().GetShardFileSystemIds()) {
             shardIds.push_back(shardId);
         }

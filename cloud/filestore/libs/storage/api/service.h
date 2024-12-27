@@ -53,7 +53,7 @@ namespace NCloud::NFileStore::NStorage {
     xxx(AcquireLock,                        __VA_ARGS__)                       \
     xxx(ReleaseLock,                        __VA_ARGS__)                       \
     xxx(TestLock,                           __VA_ARGS__)                       \
-// FILESTORE_SERVICE_REQUESTS_FWD_TO_SHARD_BY_NODE_ID
+// FILESTORE_SERVICE_REQUESTS_FWD_TO_SHARD_BY_HANDLE
 
 #define FILESTORE_SERVICE_REQUESTS_HANDLE(xxx, ...)                            \
     xxx(WriteData,                          __VA_ARGS__)                       \
