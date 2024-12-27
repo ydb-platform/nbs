@@ -191,7 +191,8 @@ void TIndexTabletActor::CompleteTx_DestroySession(
         std::make_unique<TEvIndexTablet::TEvDestroySessionResponse>();
 
     const auto& shardIds = GetFileSystem().GetShardFileSystemIds();
-    if (shardIds.empty()) {
+    // session will be deleted in other shards via the code in the main tablet
+    if (GetFileSystem().GetShardNo() != 0 || shardIds.empty()) {
         LOG_INFO(ctx, TFileStoreComponents::TABLET,
             "%s DestroySession completed",
             LogTag.c_str());

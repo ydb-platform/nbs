@@ -211,6 +211,7 @@ public:
 
     void UpdateConfig(
         TIndexTabletDatabase& db,
+        const TStorageConfig& config,
         const NProto::TFileSystem& fileSystem,
         const TThrottlerConfig& throttlerConfig);
 

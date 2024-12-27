@@ -298,6 +298,7 @@ public:
     bool GetShardIdSelectionInLeaderEnabled() const;
     ui64 GetShardBalancerDesiredFreeSpaceReserve() const;
     ui64 GetShardBalancerMinFreeSpaceReserve() const;
+    bool GetDirectoryCreationInShardsEnabled() const;
 
     bool GetGuestWritebackCacheEnabled() const;
 };

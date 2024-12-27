@@ -681,8 +681,11 @@ void TIndexTabletActor::HandleGetFileSystemTopology(
 {
     auto response =
         std::make_unique<TEvIndexTablet::TEvGetFileSystemTopologyResponse>();
-    *response->Record.MutableShardFileSystemIds() =
-        GetFileSystem().GetShardFileSystemIds();
+
+    if (GetFileSystem().GetShardNo() == 0) {
+        *response->Record.MutableShardFileSystemIds() =
+            GetFileSystem().GetShardFileSystemIds();
+    }
     response->Record.SetShardNo(GetFileSystem().GetShardNo());
 
     NCloud::Reply(
@@ -1192,9 +1195,23 @@ i64 TIndexTabletActor::TMetrics::CalculateNetworkRequestBytes(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-bool TIndexTabletActor::IsShard() const
+bool TIndexTabletActor::BehaveAsShard(const NProto::THeaders& headers) const
 {
-    return GetFileSystem().GetShardNo() > 0;
+    // main filesystem can't behave as a shard
+    if (GetFileSystem().GetShardNo() == 0) {
+        return false;
+    }
+
+    // shard can behave as a directory tablet only if it's explicitly allowed
+    // via request headers AND it's properly configured (knows about other
+    // shards)
+    if (headers.GetBehaveAsDirectoryTablet()
+            && !GetFileSystem().GetShardFileSystemIds().empty())
+    {
+        return false;
+    }
+
+    return true;
 }
 
 }   // namespace NCloud::NFileStore::NStorage

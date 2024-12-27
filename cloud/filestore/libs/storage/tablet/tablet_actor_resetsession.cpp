@@ -185,7 +185,8 @@ void TIndexTabletActor::CompleteTx_ResetSession(
     auto response = std::make_unique<TEvService::TEvResetSessionResponse>();
 
     const auto& shardIds = GetFileSystem().GetShardFileSystemIds();
-    if (shardIds.empty()) {
+    // session will be reset in other shards via the code in the main tablet
+    if (GetFileSystem().GetShardNo() != 0 || shardIds.empty()) {
         LOG_INFO(ctx, TFileStoreComponents::TABLET,
             "%s ResetSession completed",
             LogTag.c_str());

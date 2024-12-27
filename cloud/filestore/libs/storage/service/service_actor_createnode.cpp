@@ -289,26 +289,41 @@ void TStorageServiceActor::HandleCreateNode(
         return NCloud::Reply(ctx, *ev, std::move(response));
     }
 
-    const bool multiTabletForwardingEnabled =
-        StorageConfig->GetMultiTabletForwardingEnabled()
-        && !msg->Record.GetHeaders().GetDisableMultiTabletForwarding();
-    if (msg->Record.HasFile()) {
-        const auto& shardId = session->SelectShard();
+    const NProto::TFileStore& filestore = session->FileStore;
 
-        if (multiTabletForwardingEnabled && shardId) {
-            msg->Record.SetShardFileSystemId(shardId);
-        }
-    } else if (msg->Record.HasLink()) {
-        auto shardNo = ExtractShardNo(msg->Record.GetLink().GetTargetNode());
-
-        const NProto::TFileStore& filestore = session->FileStore;
-
+    auto& headers = *msg->Record.MutableHeaders();
+    headers.SetBehaveAsDirectoryTablet(
+        StorageConfig->GetDirectoryCreationInShardsEnabled());
+    if (auto shardNo = ExtractShardNo(msg->Record.GetNodeId())) {
+        // parent directory is managed by a shard
         auto [shardId, error] = SelectShard(
             ctx,
             sessionId,
             seqNo,
-            msg->Record.GetHeaders().GetDisableMultiTabletForwarding(),
-            "",
+            headers.GetDisableMultiTabletForwarding(),
+            TEvService::TCreateNodeMethod::Name,
+            msg->CallContext->RequestId,
+            filestore,
+            shardNo);
+        if (HasError(error)) {
+            auto response = std::make_unique<TEvService::TEvCreateNodeResponse>(
+                std::move(error));
+            return NCloud::Reply(ctx, *ev, std::move(response));
+        }
+        msg->Record.SetFileSystemId(shardId);
+    }
+
+    if (msg->Record.HasLink()) {
+        auto shardNo = ExtractShardNo(msg->Record.GetLink().GetTargetNode());
+
+        // TODO(#2674): select proper shard for msg->Record.GetNodeId(), not
+        // necessarily main filesystem tablet
+        auto [shardId, error] = SelectShard(
+            ctx,
+            sessionId,
+            seqNo,
+            headers.GetDisableMultiTabletForwarding(),
+            TEvService::TCreateNodeMethod::Name,
             msg->CallContext->RequestId,
             filestore,
             shardNo);
@@ -343,6 +358,18 @@ void TStorageServiceActor::HandleCreateNode(
             NCloud::Register(ctx, std::move(actor));
 
             return;
+        }
+    } else {
+        const bool multiTabletForwardingEnabled =
+            StorageConfig->GetMultiTabletForwardingEnabled()
+            && !headers.GetDisableMultiTabletForwarding()
+            && (msg->Record.HasFile()
+                || StorageConfig->GetDirectoryCreationInShardsEnabled());
+
+        if (multiTabletForwardingEnabled) {
+            if (const auto& shardId = session->SelectShard()) {
+                msg->Record.SetShardFileSystemId(shardId);
+            }
         }
     }
 
