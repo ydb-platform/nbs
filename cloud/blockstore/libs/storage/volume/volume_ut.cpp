@@ -2048,7 +2048,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
     {
         NProto::TStorageServiceConfig config;
         config.SetAcquireNonReplicatedDevices(true);
-        config.SetUseDirectAcqruireReleaseDiskSending(true);
+        config.SetUseDirectAcquireReleaseDevicesSending(true);
         config.SetClientRemountPeriod(2000);
         auto state = MakeIntrusive<TDiskRegistryState>();
         auto runtime = PrepareTestActorRuntime(config, state);

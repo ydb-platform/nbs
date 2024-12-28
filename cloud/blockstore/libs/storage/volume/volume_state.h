@@ -240,9 +240,6 @@ private:
 
     // The number of blocks that need to be migrated to complete the migration.
     std::optional<ui64> BlockCountToMigrate;
-
-    bool AcquireInProgress = false;
-
 public:
     TVolumeState(
         TStorageConfigPtr storageConfig,
@@ -727,30 +724,31 @@ public:
         return Meta.GetResyncNeeded();
     }
 
-    NProto::TError StartAcquireDisk(TVector<NProto::TDeviceConfig>& devices)
+    TVector<NProto::TDeviceConfig> GetAllDevicesForAcquireRelease()
     {
-        if (AcquireInProgress) {
-            return MakeError(
-                E_REJECTED,
-                TStringBuilder() << "disk acquire in progress");
+
+        size_t allDevicesCount = Meta.GetDevices().size();
+        for (const auto& replica: Meta.GetReplicas()) {
+            allDevicesCount += replica.GetDevices().size();
         }
+        allDevicesCount += GetMeta().GetMigrations().size();
+
+        TVector<NProto::TDeviceConfig> resultDevices;
+        resultDevices.reserve(allDevicesCount);
 
         for (const auto& device: Meta.GetDevices()) {
-            devices.emplace_back(device);
+            resultDevices.emplace_back(device);
         }
         for (const auto& replica: Meta.GetReplicas()) {
             for (const auto& device: replica.GetDevices()) {
-                devices.emplace_back(device);
+                resultDevices.emplace_back(device);
             }
         }
-        AcquireInProgress = true;
+        for (const auto& migration: Meta.GetMigrations()) {
+            resultDevices.emplace_back(migration.GetTargetDevice());
+        }
 
-        return {};
-    }
-
-    void FinishAcquireDisk()
-    {
-        AcquireInProgress = false;
+        return resultDevices;
     }
 
 private:

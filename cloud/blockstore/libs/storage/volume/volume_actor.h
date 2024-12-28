@@ -716,8 +716,8 @@ private:
         const TEvDiskRegistry::TEvAcquireDiskResponse::TPtr& ev,
         const NActors::TActorContext& ctx);
 
-    void HandleAcquireDiskResponseImpl(
-        const NProto::TAcquireDiskResponse& record,
+    void HandleDevicesAcquireFinishedImpl(
+        const NProto::TError& error,
         const NActors::TActorContext& ctx);
 
     void AcquireDisk(
@@ -726,8 +726,14 @@ private:
         NProto::EVolumeAccessMode accessMode,
         ui64 mountSeqNumber);
 
-    void SendProxylessAcquireDisk(
-        std::unique_ptr<TEvDiskRegistry::TEvAcquireDiskRequest> ev,
+    void SendAcquireDevicesToAgents(
+        TString clientId,
+        NProto::EVolumeAccessMode accessMode,
+        ui64 mountSeqNumber,
+        const NActors::TActorContext& ctx);
+
+    void HandleDevicesAcquireFinished(
+        const TEvVolumePrivate::TEvDevicesAcquireFinished::TPtr& ev,
         const NActors::TActorContext& ctx);
 
     void AcquireDiskIfNeeded(const NActors::TActorContext& ctx);
@@ -750,14 +756,18 @@ private:
         const TEvDiskRegistry::TEvReleaseDiskResponse::TPtr& ev,
         const NActors::TActorContext& ctx);
 
-    void HandleReleaseDiskResponseImpl(
-        const NProto::TReleaseDiskResponse& record,
+    void HandleDevicesReleasedFinishedImpl(
+        const NProto::TError& error,
         const NActors::TActorContext& ctx);
 
     void ReleaseDisk(const NActors::TActorContext& ctx, const TString& clientId);
 
-    void SendProxylessReleaseDisk(
-        std::unique_ptr<TEvDiskRegistry::TEvReleaseDiskRequest> msg,
+    void SendReleaseDevicesToAgents(
+        const TString& clientId,
+        const NActors::TActorContext& ctx);
+
+    void HandleDevicesReleasedFinished(
+        const TEvVolumePrivate::TEvDevicesReleaseFinished::TPtr& ev,
         const NActors::TActorContext& ctx);
 
     void HandleAllocateDiskResponse(
@@ -1034,7 +1044,5 @@ private:
 // BLOCKSTORE_VOLUME_COUNTER
 
 TString DescribeAllocation(const NProto::TAllocateDiskResponse& record);
-
-TString LogDevices(const TVector<NProto::TDeviceConfig>& devices);
 
 }   // namespace NCloud::NBlockStore::NStorage
