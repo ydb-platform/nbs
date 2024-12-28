@@ -35,6 +35,7 @@ private:
     const bool BlobCompressionEnabled;
     const ui32 BlobCompressionChunkSize;
     const NBlockCodecs::ICodec* BlobCodec;
+    IAllocator* BlobCompressionInfoAllocator;
     const IProfileLogPtr ProfileLog;
 
     TVector<TMixedBlobMeta> SrcBlobs;
@@ -59,6 +60,7 @@ public:
         bool blobCompressionEnabled,
         ui32 blobCompressionChunkSize,
         const NBlockCodecs::ICodec* blobCodec,
+        IAllocator* blobCompressionInfoAllocator,
         IProfileLogPtr profileLog,
         TVector<TMixedBlobMeta> srcBlobs,
         TVector<TCompactionBlob> dstBlobs,
@@ -106,6 +108,7 @@ TCompactionActor::TCompactionActor(
         bool blobCompressionEnabled,
         ui32 blobCompressionChunkSize,
         const NBlockCodecs::ICodec* blobCodec,
+        IAllocator* blobCompressionInfoAllocator,
         IProfileLogPtr profileLog,
         TVector<TMixedBlobMeta> srcBlobs,
         TVector<TCompactionBlob> dstBlobs,
@@ -120,6 +123,7 @@ TCompactionActor::TCompactionActor(
     , BlobCompressionEnabled(blobCompressionEnabled)
     , BlobCompressionChunkSize(blobCompressionChunkSize)
     , BlobCodec(blobCodec)
+    , BlobCompressionInfoAllocator(blobCompressionInfoAllocator)
     , ProfileLog(std::move(profileLog))
     , SrcBlobs(std::move(srcBlobs))
     , DstBlobs(std::move(dstBlobs))
@@ -223,7 +227,8 @@ void TCompactionActor::WriteBlob(const TActorContext& ctx)
             blob.BlobCompressionInfo = TryCompressBlob(
                 BlobCompressionChunkSize,
                 BlobCodec,
-                &blobContent);
+                &blobContent,
+                BlobCompressionInfoAllocator);
             // TODO: fix blob.BlobId BlobSize
         }
 
@@ -741,6 +746,7 @@ void TIndexTabletActor::CompleteTx_Compaction(
         Config->GetBlobCompressionEnabled(),
         Config->GetBlobCompressionChunkSize(),
         BlobCodec,
+        GetAllocator(EAllocatorTag::BlobCompressionInfo),
         ProfileLog,
         std::move(args.CompactionBlobs),
         std::move(dstBlobs),

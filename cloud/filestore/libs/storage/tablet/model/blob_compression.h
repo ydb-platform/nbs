@@ -2,6 +2,8 @@
 
 #include "public.h"
 
+#include "alloc.h"
+
 #include <cloud/storage/core/libs/common/block_buffer.h>
 #include <cloud/storage/core/libs/common/byte_vector.h>
 
@@ -99,7 +101,8 @@ public:
 TBlobCompressionInfo TryCompressBlob(
     ui32 chunkSize,
     const NBlockCodecs::ICodec* codec,
-    TString* content);
+    TString* content,
+    IAllocator* alloc);
 
 ////////////////////////////////////////////////////////////////////////////////
 

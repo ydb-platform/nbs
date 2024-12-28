@@ -8,7 +8,7 @@ struct TBlobCompressionInfo::TImpl
 {
     TByteVector Bytes;
 
-    TImpl(TByteVector bytes)
+    explicit TImpl(TByteVector bytes)
         : Bytes(std::move(bytes))
     {}
 
@@ -54,11 +54,13 @@ const TByteVector& TBlobCompressionInfo::GetEncoded() const
 TBlobCompressionInfo TryCompressBlob(
     ui32 chunkSize,
     const NBlockCodecs::ICodec* codec,
-    TString* content)
+    TString* content,
+    IAllocator* alloc)
 {
     Y_UNUSED(chunkSize);
     Y_UNUSED(codec);
     Y_UNUSED(content);
+    Y_UNUSED(alloc);
     return {};
 }
 
