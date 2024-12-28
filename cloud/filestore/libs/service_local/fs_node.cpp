@@ -243,7 +243,30 @@ NProto::TCheckInvalidateNodeNeededResponse TLocalFileSystem::CheckInvalidateNode
 {
     STORAGE_TRACE("CheckInvalidateNodeNeeded " << DumpMessage(request));
 
+    auto session = GetSession(request);
+    auto nodeCount = session->GetNodeCount();
+
+    auto maxNodeCount = Config->GetMaxNodeCount();
+    if (nodeCount < maxNodeCount / 2) {
+        return {};
+    }
+
+    auto parent = session->LookupNode(RootNodeId);
+    if (!parent) {
+        return TErrorResponse(ErrorInvalidParent(RootNodeId));
+    }
+
+    auto entries = parent->List();
+
     NProto::TCheckInvalidateNodeNeededResponse response;
+    response.MutableNodes()->Reserve(entries.size());
+
+    for (auto& entry: entries) {
+        auto* node = response.MutableNodes()->Add();
+        node->SetParentNodeId(RootNodeId);
+        node->SetName(entry.first);
+    }
+
     return response;
 }
 

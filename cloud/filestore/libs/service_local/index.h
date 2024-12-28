@@ -242,6 +242,12 @@ public:
         }
     }
 
+    ui32 Size()
+    {
+        TReadGuard guard(NodesLock);
+        return Nodes.size();
+    }
+
 private:
     void RecoverNodesFromPersistentTable()
     {

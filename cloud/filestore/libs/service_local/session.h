@@ -233,6 +233,11 @@ public:
         Index.ForgetNode(nodeId);
     }
 
+    ui32 GetNodeCount()
+    {
+        return Index.Size();
+    }
+
     void Ping(ui64 sessionSeqNo)
     {
         auto it = SubSessions.find(sessionSeqNo);
