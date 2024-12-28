@@ -560,6 +560,7 @@ TMultiShardFileStoreConfig SetupMultiShardFileStorePerformanceAndChannels(
             config,
             result.ShardConfigs[i],
             clientProfile);
+        result.ShardConfigs[i].SetIsSystem(true);
     }
 
     return result;
