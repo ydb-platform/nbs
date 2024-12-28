@@ -40,6 +40,15 @@ void TVolumeActor::AcquireDisk(
         "Acquiring disk " << State->GetDiskId()
     );
 
+    if (Config->GetUseDirectAcquireReleaseDevicesSending()) {
+        SendAcquireDevicesToAgents(
+            std::move(clientId),
+            accessMode,
+            mountSeqNumber,
+            ctx);
+        return;
+    }
+
     auto request = std::make_unique<TEvDiskRegistry::TEvAcquireDiskRequest>();
 
     request->Record.SetDiskId(State->GetDiskId());
@@ -48,10 +57,6 @@ void TVolumeActor::AcquireDisk(
     request->Record.SetMountSeqNumber(mountSeqNumber);
     request->Record.SetVolumeGeneration(Executor()->Generation());
 
-    if (Config->GetUseDirectAcquireReleaseDiskSending()) {
-        SendProxylessAcquireDisk(std::move(request), ctx);
-        return;
-    }
     NCloud::Send(
         ctx,
         MakeDiskRegistryProxyServiceId(),
@@ -182,11 +187,11 @@ void TVolumeActor::HandleAcquireDiskResponse(
     // agents
     auto& record = msg->Record;
 
-    HandleAcquireDiskResponseImpl(record, ctx);
+    HandleDevicesAcquireFinishedImpl(record.GetError(), ctx);
 }
 
-void TVolumeActor::HandleAcquireDiskResponseImpl(
-        const NProto::TAcquireDiskResponse& record,
+void TVolumeActor::HandleDevicesAcquireFinishedImpl(
+        const NProto::TError& error,
         const NActors::TActorContext& ctx)
 {
     ScheduleAcquireDiskIfNeeded(ctx);
@@ -204,7 +209,7 @@ void TVolumeActor::HandleAcquireDiskResponseImpl(
     auto& request = AcquireReleaseDiskRequests.front();
     auto& cr = request.ClientRequest;
 
-    if (HasError(record.GetError())) {
+    if (HasError(error)) {
         LOG_DEBUG_S(
             ctx,
             TBlockStoreComponents::VOLUME,
@@ -212,8 +217,8 @@ void TVolumeActor::HandleAcquireDiskResponseImpl(
         );
 
         if (cr) {
-            auto response = std::make_unique<TEvVolume::TEvAddClientResponse>(
-                record.GetError());
+            auto response =
+                std::make_unique<TEvVolume::TEvAddClientResponse>(error);
             response->Record.MutableVolume()->SetDiskId(cr->DiskId);
             response->Record.SetClientId(cr->GetClientId());
             response->Record.SetTabletId(TabletID());

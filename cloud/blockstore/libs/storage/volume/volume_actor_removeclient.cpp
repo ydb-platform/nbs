@@ -28,8 +28,8 @@ void TVolumeActor::ReleaseDisk(const TActorContext& ctx, const TString& clientId
     request->Record.SetDiskId(State->GetDiskId());
     request->Record.MutableHeaders()->SetClientId(clientId);
     request->Record.SetVolumeGeneration(Executor()->Generation());
-    if (Config->GetUseDirectAcquireReleaseDiskSending()) {
-        SendProxylessReleaseDisk(std::move(request), ctx);
+    if (Config->GetUseDirectAcquireReleaseDevicesSending()) {
+        SendReleaseDevicesToAgents(clientId, ctx);
         return;
     }
     NCloud::Send(
@@ -45,11 +45,11 @@ void TVolumeActor::HandleReleaseDiskResponse(
     auto* msg = ev->Get();
     auto& record = msg->Record;
 
-    HandleReleaseDiskResponseImpl(record, ctx);
+    HandleDevicesReleasedFinishedImpl(record.GetError(), ctx);
 }
 
-void TVolumeActor::HandleReleaseDiskResponseImpl(
-    const NProto::TReleaseDiskResponse& record,
+void TVolumeActor::HandleDevicesReleasedFinishedImpl(
+    const NProto::TError& error,
     const NActors::TActorContext& ctx)
 {
     if (AcquireReleaseDiskRequests.empty()) {
@@ -64,7 +64,6 @@ void TVolumeActor::HandleReleaseDiskResponseImpl(
 
     auto& request = AcquireReleaseDiskRequests.front();
     auto& cr = request.ClientRequest;
-    const auto& error = record.GetError();
 
     if (HasError(error) && (error.GetCode() != E_NOT_FOUND)) {
         LOG_DEBUG_S(
