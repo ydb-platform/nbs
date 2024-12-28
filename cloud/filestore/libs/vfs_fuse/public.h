@@ -23,4 +23,7 @@ using ICompletionQueuePtr = std::shared_ptr<ICompletionQueue>;
 class THandleOpsQueue;
 using THandleOpsQueuePtr = std::unique_ptr<THandleOpsQueue>;
 
+struct IFuseNotifyOps;
+using IFuseNotifyOpsPtr = std::weak_ptr<IFuseNotifyOps>;
+
 }   // namespace NCloud::NFileStore::NFuse

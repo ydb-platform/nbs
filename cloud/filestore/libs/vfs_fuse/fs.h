@@ -27,10 +27,6 @@ namespace NCloud::NFileStore::NFuse {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-using FuseSessionWrap = std::optional<struct fuse_session*>;
-
-////////////////////////////////////////////////////////////////////////////////
-
 #define FILESYSTEM_REPLY_METHOD(xxx, ...) \
     xxx(None,     __VA_ARGS__)            \
     xxx(Error,    __VA_ARGS__)            \
@@ -151,6 +147,15 @@ struct ICompletionQueue
     virtual int Complete(
         fuse_req_t req,
         TCompletionCallback cb) = 0;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+struct IFuseNotifyOps
+{
+    virtual ~IFuseNotifyOps() = default;
+
+    virtual int NotifyInvalEntry(ui64 parentNodeId, const TString& name) = 0;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -479,6 +484,6 @@ IFileSystemPtr CreateFileSystem(
     IRequestStatsPtr stats,
     ICompletionQueuePtr queue,
     THandleOpsQueuePtr handleOpsQueue,
-    FuseSessionWrap& fuseSession);
+    IFuseNotifyOpsPtr fuseNotifyOps);
 
 }   // namespace NCloud::NFileStore::NFuse

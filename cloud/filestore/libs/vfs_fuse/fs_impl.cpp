@@ -34,7 +34,7 @@ TFileSystem::TFileSystem(
         IRequestStatsPtr stats,
         ICompletionQueuePtr queue,
         THandleOpsQueuePtr handleOpsQueue,
-        FuseSessionWrap& fuseSession)
+        IFuseNotifyOpsPtr fuseNotifyOps)
     : Logging(std::move(logging))
     , ProfileLog(std::move(profileLog))
     , Timer(std::move(timer))
@@ -49,7 +49,7 @@ TFileSystem::TFileSystem(
         Config->GetXAttrCacheLimit(),
         Config->GetXAttrCacheTimeout())
     , HandleOpsQueue(std::move(handleOpsQueue))
-    , FuseSession(fuseSession)
+    , FuseNotifyOps(fuseNotifyOps)
 {
     Log = Logging->CreateLog("NFS_FUSE");
 }
@@ -388,7 +388,12 @@ void TFileSystem::CheckInvalidateNodeNeeded()
             [ptr = weak_from_this(), callContext](const auto& future)
             {
                 auto self = ptr.lock();
-                if (!self || !self->FuseSession) {
+                if (!self) {
+                    return;
+                }
+
+                auto fuseNotifyOps = self->FuseNotifyOps.lock();
+                if (!fuseNotifyOps) {
                     return;
                 }
 
@@ -403,20 +408,16 @@ void TFileSystem::CheckInvalidateNodeNeeded()
                     return;
                 }
 
-                for (auto& entry : response.GetNodes()) {
-                    const auto& parentNodeId = entry.GetParentNodeId();
-                    const auto& name = entry.GetName();
-                    int res = fuse_lowlevel_notify_inval_entry(
-                        *(self->FuseSession),
-                        parentNodeId,
-                        name.c_str(),
-                        name.size());
+                for (auto& entry: response.GetNodes()) {
+                    int ret = fuseNotifyOps->NotifyInvalEntry(
+                        entry.GetParentNodeId(),
+                        entry.GetName());
                     STORAGE_DEBUG(
-                        "Invalida node: "
+                        "Invalidate node entry: "
                         << "filesystem=" << self->Config->GetFileSystemId()
-                        << ", parentNodeId=" << parentNodeId
-                        << ", name=" << name
-                        << ", res=" << res);
+                        << ", parentNodeId=" << entry.GetParentNodeId()
+                        << ", name=" << entry.GetName()
+                        << ", ret=" << ret);
                 }
 
                 self->ScheduleCheckInvalidateNodeNeeded();

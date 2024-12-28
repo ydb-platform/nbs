@@ -487,6 +487,7 @@ private:
 
 class TFileSystemLoop final
     : public IFileSystemLoop
+    , public IFuseNotifyOps
     , public std::enable_shared_from_this<TFileSystemLoop>
 {
 private:
@@ -511,7 +512,6 @@ private:
     TFileSystemConfigPtr FileSystemConfig;
 
     bool HandleOpsQueueInitialized = false;
-    FuseSessionWrap FuseSession;
 
 public:
     TFileSystemLoop(
@@ -738,6 +738,15 @@ public:
             });
     }
 
+    int NotifyInvalEntry(ui64 parentNodeId, const TString& name) override
+    {
+        return fuse_lowlevel_notify_inval_entry(
+            SessionThread->GetSession(),
+            parentNodeId,
+            name.c_str(),
+            name.size());
+    }
+
 private:
     NProto::TError StartWithSessionState(
         const TFuture<NProto::TCreateSessionResponse>& future)
@@ -823,7 +832,7 @@ private:
                 RequestStats,
                 CompletionQueue,
                 std::move(handleOpsQueue),
-                FuseSession);
+                weak_from_this());
 
             RequestStats->RegisterIncompleteRequestProvider(CompletionQueue);
 
@@ -850,8 +859,6 @@ private:
                 ops,
                 SessionState,
                 this);
-
-            FuseSession.emplace(SessionThread->GetSession());
 
             SessionThread->Start();
         } catch (const TServiceError& e) {

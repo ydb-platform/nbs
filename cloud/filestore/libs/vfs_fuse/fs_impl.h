@@ -88,7 +88,7 @@ private:
     TQueue<TReleaseRequest> DelayedReleaseQueue;
     TMutex DelayedReleaseQueueLock;
 
-    FuseSessionWrap& FuseSession;
+    IFuseNotifyOpsPtr FuseNotifyOps;
 
 public:
     TFileSystem(
@@ -101,7 +101,7 @@ public:
         IRequestStatsPtr stats,
         ICompletionQueuePtr queue,
         THandleOpsQueuePtr handleOpsQueue,
-        FuseSessionWrap& fuseSession);
+        IFuseNotifyOpsPtr fuseNotifyOps);
 
     ~TFileSystem();
 
