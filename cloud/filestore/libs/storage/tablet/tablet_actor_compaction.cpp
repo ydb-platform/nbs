@@ -229,7 +229,10 @@ void TCompactionActor::WriteBlob(const TActorContext& ctx)
                 BlobCodec,
                 &blobContent,
                 BlobCompressionInfoAllocator);
-            // TODO: fix blob.BlobId BlobSize
+            if (blob.BlobCompressionInfo.BlobCompressed()) {
+                blob.BlobId.SetBlobSize(
+                    blob.BlobCompressionInfo.CompressedBlobSize());
+            }
         }
 
         request->Blobs.emplace_back(blob.BlobId, std::move(blobContent));

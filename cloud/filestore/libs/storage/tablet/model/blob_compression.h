@@ -87,9 +87,13 @@ private:
 public:
     TBlobCompressionInfo() = default;
 
+    TBlobCompressionInfo(ui32 compressedBlobSize, IAllocator* alloc);
+
     explicit TBlobCompressionInfo(TByteVector bytes);
 
     bool BlobCompressed() const;
+
+    ui32 CompressedBlobSize() const;
 
     TCompressedRange CompressedRange(TUncompressedRange range) const;
 

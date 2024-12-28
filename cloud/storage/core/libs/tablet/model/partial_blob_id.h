@@ -102,6 +102,11 @@ public:
         return UniqueId_.BlobSize;
     }
 
+    void SetBlobSize(ui32 size)
+    {
+        UniqueId_.BlobSize = size;
+    }
+
     ui32 PartId() const
     {
         return UniqueId_.PartId;

@@ -1,5 +1,8 @@
 #include "blob_compression.h"
 
+#include "binary_reader.h"
+#include "binary_writer.h"
+
 namespace NCloud::NFileStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -7,10 +10,23 @@ namespace NCloud::NFileStore::NStorage {
 struct TBlobCompressionInfo::TImpl
 {
     TByteVector Bytes;
+    ui32 CompressedBlobSize = 0;
+
+    TImpl(ui32 compressedBlobSize, IAllocator* alloc)
+        : Bytes(alloc)
+        , CompressedBlobSize(compressedBlobSize)
+    {
+        TBinaryWriter writer(alloc);
+        writer.Write<ui32>(CompressedBlobSize);
+        Bytes = writer.Finish();
+    }
 
     explicit TImpl(TByteVector bytes)
         : Bytes(std::move(bytes))
-    {}
+    {
+        TBinaryReader reader(Bytes);
+        CompressedBlobSize = reader.Read<ui32>();
+    }
 
     TCompressedRange CompressedRange(TUncompressedRange range) const
     {
@@ -25,6 +41,12 @@ struct TBlobCompressionInfo::TImpl
 
 ////////////////////////////////////////////////////////////////////////////////
 
+TBlobCompressionInfo::TBlobCompressionInfo(
+        ui32 compressedBlobSize,
+        IAllocator* alloc)
+    : Impl(new TImpl(compressedBlobSize, alloc))
+{}
+
 TBlobCompressionInfo::TBlobCompressionInfo(TByteVector bytes)
     : Impl(new TImpl(std::move(bytes)))
 {}
@@ -34,6 +56,12 @@ TBlobCompressionInfo::TBlobCompressionInfo(TByteVector bytes)
 bool TBlobCompressionInfo::BlobCompressed() const
 {
     return !!Impl;
+}
+
+ui32 TBlobCompressionInfo::CompressedBlobSize() const
+{
+    Y_ABORT_UNLESS(Impl);
+    return Impl->CompressedBlobSize;
 }
 
 TCompressedRange TBlobCompressionInfo::CompressedRange(
@@ -59,9 +87,8 @@ TBlobCompressionInfo TryCompressBlob(
 {
     Y_UNUSED(chunkSize);
     Y_UNUSED(codec);
-    Y_UNUSED(content);
-    Y_UNUSED(alloc);
-    return {};
+
+    return TBlobCompressionInfo(static_cast<ui32>(content->size()), alloc);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
