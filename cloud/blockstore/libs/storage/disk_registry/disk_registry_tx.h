@@ -61,7 +61,7 @@ namespace NCloud::NBlockStore::NStorage {
     xxx(DeallocateCheckpoint,               __VA_ARGS__)                       \
     xxx(SetCheckpointDataState,             __VA_ARGS__)                       \
     xxx(PurgeHostCms,                       __VA_ARGS__)                       \
-    xxx(CleanupOrphanDevices,               __VA_ARGS__)                       \
+    xxx(RemoveOrphanDevices,                __VA_ARGS__)                       \
 // BLOCKSTORE_DISK_REGISTRY_TRANSACTIONS
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1432,14 +1432,14 @@ struct TTxDiskRegistry
     };
 
     //
-    // CleanupOrphanDevices
+    // RemoveOrphanDevices
     //
 
-    struct TCleanupOrphanDevices
+    struct TRemoveOrphanDevices
     {
         TVector<TString> OrphanDevices;
 
-        explicit TCleanupOrphanDevices(TVector<TString> orphanDevices)
+        explicit TRemoveOrphanDevices(TVector<TString> orphanDevices)
             : OrphanDevices(std::move(orphanDevices))
         {}
 

@@ -720,7 +720,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateCMSTest)
             });
     }
 
-    Y_UNIT_TEST(ShouldCleanupDevicesFromOtherTables)
+    Y_UNIT_TEST(ShouldRemoveDevicesAfterAgentDelete)
     {
         TTestExecutor executor;
         executor.WriteTx([&](TDiskRegistryDatabase db) { db.InitSchema(); });

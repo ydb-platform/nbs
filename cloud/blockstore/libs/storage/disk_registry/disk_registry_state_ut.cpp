@@ -11935,7 +11935,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
         UNIT_ASSERT_VALUES_EQUAL(2, criticalEvents->Val());
     }
 
-    Y_UNIT_TEST(ShouldCleanupAlreadyLeakedDevices)
+    Y_UNIT_TEST(ShouldRemoveAlreadyLeakedDevices)
     {
         TTestExecutor executor;
 

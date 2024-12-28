@@ -217,7 +217,7 @@ void TDiskRegistryActor::CompleteLoadState(
             "DeviceUUIDs=%s",
             JoinSeq(" ", orphanDevices).c_str());
 
-        ExecuteTx<TCleanupOrphanDevices>(ctx, std::move(orphanDevices));
+        ExecuteTx<TRemoveOrphanDevices>(ctx, std::move(orphanDevices));
     }
 }
 

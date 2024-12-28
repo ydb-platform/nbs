@@ -10,10 +10,10 @@ using namespace NKikimr::NTabletFlatExecutor;
 
 ////////////////////////////////////////////////////////////////////////////////
 
-bool TDiskRegistryActor::PrepareCleanupOrphanDevices(
+bool TDiskRegistryActor::PrepareRemoveOrphanDevices(
     const TActorContext& ctx,
     TTransactionContext& tx,
-    TTxDiskRegistry::TCleanupOrphanDevices& args)
+    TTxDiskRegistry::TRemoveOrphanDevices& args)
 {
     Y_UNUSED(ctx);
     Y_UNUSED(tx);
@@ -22,10 +22,10 @@ bool TDiskRegistryActor::PrepareCleanupOrphanDevices(
     return true;
 }
 
-void TDiskRegistryActor::ExecuteCleanupOrphanDevices(
+void TDiskRegistryActor::ExecuteRemoveOrphanDevices(
     const TActorContext& ctx,
     TTransactionContext& tx,
-    TTxDiskRegistry::TCleanupOrphanDevices& args)
+    TTxDiskRegistry::TRemoveOrphanDevices& args)
 {
     Y_UNUSED(ctx);
 
@@ -35,9 +35,9 @@ void TDiskRegistryActor::ExecuteCleanupOrphanDevices(
     }
 }
 
-void TDiskRegistryActor::CompleteCleanupOrphanDevices(
+void TDiskRegistryActor::CompleteRemoveOrphanDevices(
     const TActorContext& ctx,
-    TTxDiskRegistry::TCleanupOrphanDevices& args)
+    TTxDiskRegistry::TRemoveOrphanDevices& args)
 {
     Y_UNUSED(args);
     Y_UNUSED(ctx);
