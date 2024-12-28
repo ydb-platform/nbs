@@ -314,6 +314,13 @@ service TFileStoreService
         };
     }
 
+    rpc ForgetNode(TForgetNodeRequest) returns (TForgetNodeResponse) {
+        option (google.api.http) = {
+            post: "/forget_node"
+            body: "*"
+        };
+    }
+
     //
     // Data operations.
     //

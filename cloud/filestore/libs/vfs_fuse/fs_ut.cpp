@@ -747,6 +747,12 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         const ui64 nodeId = 123;
         const ui64 refCount = 10;
 
+        bootstrap.Service->ForgetNodeHandler = [&] (auto callContext, auto request) {
+            Y_UNUSED(callContext, request);
+            NProto::TForgetNodeResponse result;
+            return MakeFuture(result);
+        };
+
         auto forget = bootstrap.Fuse->SendRequest<TForgetRequest>(nodeId, refCount);
         UNIT_ASSERT_NO_EXCEPTION(forget.GetValue(WaitTimeout));
     }

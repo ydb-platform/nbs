@@ -270,4 +270,15 @@ NProto::TCheckInvalidateNodeNeededResponse TLocalFileSystem::CheckInvalidateNode
     return response;
 }
 
+NProto::TForgetNodeResponse TLocalFileSystem::ForgetNode(
+    const NProto::TForgetNodeRequest& request)
+{
+    STORAGE_TRACE("ForgetNode " << DumpMessage(request));
+
+    auto session = GetSession(request);
+    session->ForgetNode(request.GetNodeId());
+
+    return {};
+}
+
 }   // namespace NCloud::NFileStore

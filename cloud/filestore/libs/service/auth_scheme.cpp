@@ -50,6 +50,7 @@ TPermissionList GetRequestPermissions(EFileStoreRequest requestType)
         case EFileStoreRequest::AddData:
         case EFileStoreRequest::Fsync:
         case EFileStoreRequest::FsyncDir:
+        case EFileStoreRequest::ForgetNode:
             return CreatePermissionList({EPermission::Write});
 
         case EFileStoreRequest::AddClusterNode:

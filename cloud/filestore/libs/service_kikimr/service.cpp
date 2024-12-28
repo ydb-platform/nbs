@@ -337,11 +337,23 @@ private:
         std::shared_ptr<TCheckInvalidateNodeNeededMethod::TRequest> request,
         TPromise<TCheckInvalidateNodeNeededMethod::TResponse> response)
     {
-        Y_UNUSED(callContext);
-        Y_UNUSED(request);
-        Y_UNUSED(TCheckInvalidateNodeNeededMethod::RequestName);
+        Y_UNUSED(
+            callContext,
+            request,
+            TCheckInvalidateNodeNeededMethod::RequestName);
 
         response.SetValue(TCheckInvalidateNodeNeededMethod::TResponse());
+    }
+
+    template<>
+    void ExecuteRequest<TForgetNodeMethod>(
+        TCallContextPtr callContext,
+        std::shared_ptr<TForgetNodeMethod::TRequest> request,
+        TPromise<TForgetNodeMethod::TResponse> response)
+    {
+        Y_UNUSED(callContext, request, TForgetNodeMethod::RequestName);
+
+        response.SetValue(TForgetNodeMethod::TResponse());
     }
 
     template <typename T>

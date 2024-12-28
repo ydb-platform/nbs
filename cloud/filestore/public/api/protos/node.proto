@@ -607,3 +607,30 @@ message TCheckInvalidateNodeNeededResponse
     // Optional response headers.
     TResponseHeaders Headers = 1000;
 }
+
+////////////////////////////////////////////////////////////////////////////////
+// ForgetNode request/response
+
+message TForgetNodeRequest
+{
+    // Optional request headers.
+    THeaders Headers = 1;
+
+    // FileSystem identifier.
+    string FileSystemId = 2;
+
+    // node id
+    uint64 NodeId = 3;
+
+    // number of lookups to forget
+    uint32 LookupCount = 4;
+}
+
+message TForgetNodeResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+
+    // Optional response headers.
+    TResponseHeaders Headers = 1000;
+}

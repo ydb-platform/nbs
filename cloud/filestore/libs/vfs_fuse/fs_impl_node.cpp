@@ -60,7 +60,16 @@ void TFileSystem::Forget(
         Cache.ForgetNode(ino, nlookup);
     }
 
-    ReplyNone(*callContext, {}, req);
+    auto request = StartRequest<NProto::TForgetNodeRequest>();
+    request->SetNodeId(ino);
+    request->SetLookupCount(nlookup);
+
+    Session->ForgetNode(callContext, std::move(request))
+        .Subscribe([=, ptr = weak_from_this()] (const auto&) {
+            if (auto self = ptr.lock()) {
+                ReplyNone(*callContext, {}, req);
+            }
+        });
 }
 
 void TFileSystem::ForgetMulti(
