@@ -14,8 +14,7 @@ struct TBlobCompressionInfo::TImpl
 
     TCompressedRange CompressedRange(TUncompressedRange range) const
     {
-        Y_UNUSED(range);
-        return {};
+        return TCompressedRange(range.Offset, range.Length);
     }
 
     const TByteVector& GetEncoded() const

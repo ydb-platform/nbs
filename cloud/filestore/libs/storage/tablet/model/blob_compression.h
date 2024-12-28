@@ -36,32 +36,43 @@ struct TUncompressedRange
         , Length(length)
     {}
 
+    void Extend(ui32 length)
+    {
+        Length += length;
+    }
+};
+
+struct TCompressedRange
+{
+    ui32 Offset = 0;
+    ui32 Length = 0;
+
+    TCompressedRange() = default;
+
+    TCompressedRange(ui32 offset, ui32 length)
+        : Offset(offset)
+        , Length(length)
+    {}
+
     ui32 End() const
     {
         return Offset + Length;
     }
 
-    void Extend(ui32 length)
-    {
-        Length += length;
-    }
-
-    void Merge(TUncompressedRange other)
+    void Merge(TCompressedRange other)
     {
         Offset = Min(Offset, other.Offset);
         auto end = Max(End(), other.End());
         Length = end - Offset;
     }
 
-    bool Overlaps(TUncompressedRange other) const
+    bool Overlaps(TCompressedRange other) const
     {
         auto offset = Max(Offset, other.Offset);
         auto end = Min(End(), other.End());
         return end <= offset;
     }
 };
-
-using TCompressedRange = TUncompressedRange;
 
 ////////////////////////////////////////////////////////////////////////////////
 
