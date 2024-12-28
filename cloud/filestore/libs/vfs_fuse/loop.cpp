@@ -740,11 +740,16 @@ public:
 
     int NotifyInvalEntry(ui64 parentNodeId, const TString& name) override
     {
+#if defined(FUSE_VIRTIO)
         return fuse_lowlevel_notify_inval_entry(
             SessionThread->GetSession(),
             parentNodeId,
             name.c_str(),
             name.size());
+#else
+        Y_UNUSED(parentNodeId, name);
+        return 0;
+#endif
     }
 
 private:

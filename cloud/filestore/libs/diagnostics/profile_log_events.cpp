@@ -142,6 +142,8 @@ void FinalizeProfileLogRequestInfo(
     IMPLEMENT_DEFAULT_METHOD(ListEndpoints)
     IMPLEMENT_DEFAULT_METHOD(KickEndpoint)
     IMPLEMENT_DEFAULT_METHOD(ExecuteAction)
+    IMPLEMENT_DEFAULT_METHOD(CheckInvalidateNodeNeeded)
+    IMPLEMENT_DEFAULT_METHOD(ForgetNode)
 
 #undef IMPLEMENT_DEFAULT_METHOD
 
@@ -510,6 +512,8 @@ void InitProfileLogRequestInfo(
     IMPLEMENT_DEFAULT_METHOD(AddData, NProtoPrivate)
     IMPLEMENT_DEFAULT_METHOD(Fsync, NProto)
     IMPLEMENT_DEFAULT_METHOD(FsyncDir, NProto)
+    IMPLEMENT_DEFAULT_METHOD(CheckInvalidateNodeNeeded, NProto)
+    IMPLEMENT_DEFAULT_METHOD(ForgetNode, NProto)
 
 #undef IMPLEMENT_DEFAULT_METHOD
 
