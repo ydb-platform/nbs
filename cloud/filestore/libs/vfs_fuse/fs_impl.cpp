@@ -361,7 +361,9 @@ void TFileSystem::ProcessHandleOpsQueue()
 
 void TFileSystem::ScheduleCheckInvalidateNodeNeeded()
 {
+    STORAGE_INFO("xxx TCheckInvalidateNodeNeededRequest");
     if (Config->GetCheckInvalidateNodeNeededEnabled()) {
+        STORAGE_INFO("xxx Schedule: " << Timer->Now() + Config->GetCheckInvalidateNodeNeededPeriod());
         Scheduler->Schedule(
         Timer->Now() + Config->GetCheckInvalidateNodeNeededPeriod(),
         [=, ptr = weak_from_this()] () {
@@ -374,7 +376,7 @@ void TFileSystem::ScheduleCheckInvalidateNodeNeeded()
 
 void TFileSystem::CheckInvalidateNodeNeeded()
 {
-    STORAGE_DEBUG("CheckInvalidateNodeNeeded #");
+    STORAGE_INFO("xxx CheckInvalidateNodeNeeded #");
 
     auto request = StartRequest<NProto::TCheckInvalidateNodeNeededRequest>();
     auto callContext = MakeIntrusive<TCallContext>(
@@ -399,6 +401,7 @@ void TFileSystem::CheckInvalidateNodeNeeded()
 
                 auto& Log = self->Log;
                 const auto& response = future.GetValue();
+                STORAGE_INFO("xxx CheckInvalidateNodeNeeded response:" << DumpMessage(response));
                 if (HasError(response)) {
                     STORAGE_ERROR(
                         "CheckInvalidateNodeNeeded request failed: "

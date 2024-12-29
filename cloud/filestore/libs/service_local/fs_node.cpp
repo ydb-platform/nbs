@@ -241,7 +241,7 @@ NProto::TReadLinkResponse TLocalFileSystem::ReadLink(
 NProto::TCheckInvalidateNodeNeededResponse TLocalFileSystem::CheckInvalidateNodeNeeded(
     const NProto::TCheckInvalidateNodeNeededRequest& request)
 {
-    STORAGE_TRACE("CheckInvalidateNodeNeeded " << DumpMessage(request));
+    STORAGE_INFO("CheckInvalidateNodeNeeded " << DumpMessage(request));
 
     auto session = GetSession(request);
     auto nodeCount = session->GetNodeCount();
@@ -273,7 +273,7 @@ NProto::TCheckInvalidateNodeNeededResponse TLocalFileSystem::CheckInvalidateNode
 NProto::TForgetNodeResponse TLocalFileSystem::ForgetNode(
     const NProto::TForgetNodeRequest& request)
 {
-    STORAGE_TRACE("ForgetNode " << DumpMessage(request));
+    STORAGE_INFO("ForgetNode " << DumpMessage(request));
 
     auto session = GetSession(request);
     session->ForgetNode(request.GetNodeId());
