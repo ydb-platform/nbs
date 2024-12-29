@@ -149,6 +149,7 @@ public:
                     inserted,
                     "dup file handle for: %lu",
                     it->HandleId);
+                DisallowNodeEviction(it->NodeId);
             } catch (...) {
                 STORAGE_ERROR(
                     "Failed to open Handle, HandleId=" << it->HandleId <<
@@ -189,6 +190,7 @@ public:
         Handles.emplace(handleId, THandle{std::move(handle), recordIndex});
         HandleTable->CommitRecord(recordIndex);
 
+        DisallowNodeEviction(nodeId);
         return handleId;
     }
 
@@ -210,7 +212,12 @@ public:
 
         auto it = Handles.find(handleId);
         if (it != Handles.end()) {
-            HandleTable->DeleteRecord(it->second.RecordIndex);
+            auto recordIndex = it->second.RecordIndex;
+            auto* state = HandleTable->RecordData(recordIndex);
+
+            AllowNodeEviction(state->NodeId);
+
+            HandleTable->DeleteRecord(recordIndex);
             Handles.erase(it);
         }
     }
@@ -223,9 +230,17 @@ public:
     [[nodiscard]] bool TryInsertNode(
         TIndexNodePtr node,
         ui64 parentNodeId,
-        const TString& name)
+        const TString& name,
+        const TFileStat& stat)
     {
-        return Index.TryInsertNode(std::move(node), parentNodeId, name);
+        auto nodeId = node->GetNodeId();
+
+        auto inserted = Index.TryInsertNode(std::move(node), parentNodeId, name);
+        if (inserted && stat.IsFile()) {
+            AllowNodeEviction(nodeId);
+        }
+
+        return inserted;
     }
 
     void ForgetNode(ui64 nodeId)
@@ -293,6 +308,21 @@ public:
                 return ts < deadline;
             });
         return SubSessions.empty();
+    }
+
+    void AllowNodeEviction(ui64 nodeId)
+    {
+        Index.AllowNodeEviction(nodeId);
+    }
+
+    void DisallowNodeEviction(ui64 nodeId)
+    {
+        Index.DisallowNodeEviction(nodeId);
+    }
+
+    void EvictNodes(ui32 nodesCount, ui32 evictThresholdPercent)
+    {
+        Index.EvictNodes(nodesCount, evictThresholdPercent);
     }
 
 private:

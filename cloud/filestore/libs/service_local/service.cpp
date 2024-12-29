@@ -649,7 +649,8 @@ TLocalFileSystemPtr TLocalFileStore::InitFileSystem(
     auto [it, inserted] = FileSystems.emplace(id, fs);
     Y_ABORT_UNLESS(inserted);
 
-    return fs;
+    it->second->Init();
+    return it->second;
 }
 
 void TLocalFileStore::RefreshFileSystems()

@@ -23,11 +23,13 @@ namespace NCloud::NFileStore {
 
 class TIndexNode
     : private TNonCopyable
+    , public TIntrusiveListItem<TIndexNode>
 {
 private:
     const ui64 NodeId;
     const TFileHandle NodeFd;
     ui64 RecordIndex = -1;
+    ui64 DisallowEvictionCounter = 0;
 
 public:
     TIndexNode(ui64 nodeId, TFileHandle node)
@@ -43,6 +45,25 @@ public:
     void SetRecordIndex(ui64 index)
     {
         RecordIndex = index;
+    }
+
+    [[nodiscard]] bool IsEvictionAllowed() const
+    {
+        return DisallowEvictionCounter == 0;
+    }
+
+    bool AllowEviction()
+    {
+        if (DisallowEvictionCounter > 0) {
+            --DisallowEvictionCounter;
+        }
+
+        return DisallowEvictionCounter == 0;
+    }
+
+    void DisallowEviction()
+    {
+        ++DisallowEvictionCounter;
     }
 
     static TIndexNodePtr CreateRoot(const TFsPath& path);
@@ -141,6 +162,8 @@ private:
     TRWMutex NodesLock;
     TLog Log;
 
+    TIntrusiveList<TIndexNode> EvictionCandidateNodes;
+
 public:
     TLocalIndex(
             TFsPath root,
@@ -161,6 +184,10 @@ public:
         auto it = Nodes.find(nodeId);
         if (it == Nodes.end()) {
             return nullptr;
+        }
+
+        if (!(*it)->Empty()) {
+            EvictionCandidateNodes.PushBack((*it).get());
         }
 
         return *it;
@@ -202,16 +229,7 @@ public:
     TIndexNodePtr ForgetNode(ui64 nodeId)
     {
         TWriteGuard guard(NodesLock);
-
-        TIndexNodePtr node = nullptr;
-        auto it = Nodes.find(nodeId);
-        if (it != Nodes.end()) {
-            node = *it;
-            NodeTable->DeleteRecord(node->GetRecordIndex());
-            Nodes.erase(it);
-        }
-
-        return node;
+        return ForgetNodeNoLock(nodeId);
     }
 
     void Clear()
@@ -242,7 +260,72 @@ public:
         }
     }
 
+    void AllowNodeEviction(ui64 nodeId)
+    {
+        TWriteGuard guard(NodesLock);
+
+        auto it = Nodes.find(nodeId);
+        if (it == Nodes.end()) {
+            return;
+        }
+
+        if ((*it)->AllowEviction()) {
+            EvictionCandidateNodes.PushBack((*it).get());
+        }
+    }
+
+    void DisallowNodeEviction(ui64 nodeId)
+    {
+        TWriteGuard guard(NodesLock);
+
+        auto it = Nodes.find(nodeId);
+        if (it == Nodes.end()) {
+            return;
+        }
+
+        (*it)->DisallowEviction();
+        (*it)->TIntrusiveListItem<TIndexNode>::Unlink();
+    }
+
+    void EvictNodes(ui32 nodesCount, ui32 evictThresholdPercent)
+    {
+        TWriteGuard guard(NodesLock);
+
+        ui64 nodeOccupationPercent = Nodes.size() * 100 / MaxNodeCount;
+        if (nodeOccupationPercent < evictThresholdPercent) {
+            return;
+        }
+
+        TVector<ui64> evictedNodeIds(Reserve(nodesCount));
+
+        for (const auto& node: EvictionCandidateNodes) {
+            if (nodesCount == 0) {
+                break;
+            }
+
+            evictedNodeIds.push_back(node.GetNodeId());
+            --nodesCount;
+        }
+
+        for (auto nodeId: evictedNodeIds) {
+            ForgetNodeNoLock(nodeId);
+        }
+    }
+
 private:
+    TIndexNodePtr ForgetNodeNoLock(ui64 nodeId)
+    {
+        TIndexNodePtr node = nullptr;
+        auto it = Nodes.find(nodeId);
+        if (it != Nodes.end()) {
+            node = *it;
+            NodeTable->DeleteRecord(node->GetRecordIndex());
+            Nodes.erase(it);
+        }
+
+        return node;
+    }
+
     void RecoverNodesFromPersistentTable()
     {
         Nodes.insert(TIndexNode::CreateRoot(RootPath));
@@ -318,6 +401,9 @@ private:
                         TIndexNode::Create(**parentNodeIt, pathElemRecord->Name);
                     node->SetRecordIndex(pathElemIndex);
                     Nodes.insert(node);
+                    if(node->Stat().IsFile()) {
+                        EvictionCandidateNodes.PushBack(node.get());
+                    }
 
                     STORAGE_TRACE(
                         "Resolve node end, NodeId=" << pathElemRecord->NodeId);

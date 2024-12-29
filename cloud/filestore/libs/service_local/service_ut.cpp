@@ -11,6 +11,7 @@
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/common/file_io_service.h>
 #include <cloud/storage/core/libs/common/scheduler.h>
+#include <cloud/storage/core/libs/common/scheduler_test.h>
 #include <cloud/storage/core/libs/common/task_queue.h>
 #include <cloud/storage/core/libs/common/timer.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
@@ -289,7 +290,7 @@ struct TTestBootstrap
     TIntrusivePtr<TCallContext> Ctx = MakeIntrusive<TCallContext>();
     ILoggingServicePtr Logging = CreateLoggingService("console", {TLOG_RESOURCES});
     ITimerPtr Timer = CreateWallClockTimer();
-    ISchedulerPtr Scheduler = CreateScheduler();
+    std::shared_ptr<TTestScheduler> Scheduler = std::make_shared<TTestScheduler>();
     ITaskQueuePtr TaskQueue = CreateTaskQueueStub();
     IFileIOServicePtr AIOService = CreateAIOService();
 
@@ -302,19 +303,13 @@ struct TTestBootstrap
 
     TTestBootstrap(
             const TTempDirectoryPtr& cwd = std::make_shared<TTempDirectory>(),
-            ui32 maxNodeCount = 1000,
-            ui32 maxHandlePerSessionCount = 100,
-            bool directIoEnabled = false,
-            ui32 directIoAlign = 4096)
+            const NProto::TLocalServiceConfig& config= {})
         : Cwd(cwd)
     {
         AIOService->Start();
+        Scheduler->Start();
         Store = CreateLocalFileStore(
-            CreateConfig(
-                maxNodeCount,
-                maxHandlePerSessionCount,
-                directIoEnabled,
-                directIoAlign),
+            CreateConfig(config),
             Timer,
             Scheduler,
             Logging,
@@ -329,19 +324,13 @@ struct TTestBootstrap
             const TString& id,
             const TString& client = "client",
             const TString& session = {},
-            ui32 maxNodeCount = 1000,
-            ui32 maxHandlePerSessionCount = 100,
-            bool directIoEnabled = false,
-            ui32 directIoAlign = 4096)
+            const NProto::TLocalServiceConfig& config = {})
         : Cwd(std::make_shared<TTempDirectory>())
     {
         AIOService->Start();
+        Scheduler->Start();
         Store = CreateLocalFileStore(
-            CreateConfig(
-                maxNodeCount,
-                maxHandlePerSessionCount,
-                directIoEnabled,
-                directIoAlign),
+            CreateConfig(config),
             Timer,
             Scheduler,
             Logging,
@@ -359,6 +348,7 @@ struct TTestBootstrap
 
     ~TTestBootstrap()
     {
+        Scheduler->Stop();
         AIOService->Stop();
     }
 
@@ -401,21 +391,16 @@ struct TTestBootstrap
         return {};
     }
 
-    TLocalFileStoreConfigPtr CreateConfig(
-        ui32 maxNodeCount,
-        ui32 maxHandlePerSessionCount,
-        bool directIoEnabled,
-        ui32 directIoAlign)
+    TLocalFileStoreConfigPtr CreateConfig(const NProto::TLocalServiceConfig& config)
     {
-        NProto::TLocalServiceConfig config;
-        config.SetRootPath(Cwd->GetName());
-        config.SetStatePath(Cwd->GetName());
-        config.SetMaxNodeCount(maxNodeCount);
-        config.SetMaxHandlePerSessionCount(maxHandlePerSessionCount);
-        config.SetDirectIoEnabled(directIoEnabled);
-        config.SetDirectIoAlign(directIoAlign);
+        NProto::TLocalServiceConfig newConfig;
+        newConfig.SetRootPath(Cwd->GetName());
+        newConfig.SetStatePath(Cwd->GetName());
+        newConfig.SetMaxNodeCount(1000);
+        newConfig.SetMaxHandlePerSessionCount(1000);
 
-        return std::make_shared<TLocalFileStoreConfig>(config);
+        newConfig.MergeFrom(config);
+        return std::make_shared<TLocalFileStoreConfig>(newConfig);
     }
 
     template<typename T>
@@ -1278,7 +1263,10 @@ Y_UNIT_TEST_SUITE(LocalFileStore)
         constexpr ui32 maxHandles = 4;
         constexpr ui32 maxNodes = maxHandles + 2;
 
-        TTestBootstrap bootstrap("fs", "client", {}, maxNodes, maxHandles);
+        NProto::TLocalServiceConfig config;
+        config.SetMaxNodeCount(maxNodes);
+        config.SetMaxHandlePerSessionCount(maxHandles);
+        TTestBootstrap bootstrap("fs", "client", {}, config);
 
         TVector<ui64> nodes;
         TVector<ui64> handles;
@@ -2121,14 +2109,12 @@ Y_UNIT_TEST_SUITE(LocalFileStore)
 
     void CheckReadAndWriteDataWithDirectIo(ui32 directIoAlign)
     {
-        TTestBootstrap bootstrap(
-            "fs",
-            "client",
-            {},
-            1000,
-            1000,
-            true /* direct io enabled */,
-            directIoAlign);
+        NProto::TLocalServiceConfig config;
+        config.SetMaxNodeCount(1000);
+        config.SetMaxHandlePerSessionCount(1000);
+        config.SetDirectIoEnabled(true);
+        config.SetDirectIoAlign(directIoAlign);
+        TTestBootstrap bootstrap("fs", "client", {}, config);
 
         ui64 handle =
             bootstrap
@@ -2186,6 +2172,90 @@ Y_UNIT_TEST_SUITE(LocalFileStore)
     Y_UNIT_TEST(ShouldReadAndWriteDataWithDirectIoAlignedTo4096)
     {
         CheckReadAndWriteDataWithDirectIo(4096);
+    }
+
+    Y_UNIT_TEST(ShouldEvictNodes)
+    {
+        NProto::TLocalServiceConfig config;
+        config.SetMaxNodeCount(10);
+        config.SetNodeCleanupPeriod(5000);
+        config.SetNodeCleanupBatchSize(1000);
+        config.SetNodeCleanupThresholdPercent(10);
+
+        TTestBootstrap bootstrap("fs", "client", {}, config);
+
+        auto dirNodeId = CreateDirectory(bootstrap, RootNodeId, "dir1");
+        auto unusedFileNodeId = CreateFile(bootstrap, RootNodeId, "file1");
+        auto usedFileNodeId = CreateFile(bootstrap, RootNodeId, "file2");
+        auto fileHandle =
+            bootstrap.CreateHandle(usedFileNodeId, "", TCreateHandleArgs::RDNLY)
+                .GetHandle();
+
+        bootstrap.GetNodeAttr(unusedFileNodeId);
+        bootstrap.GetNodeAttr(dirNodeId);
+        bootstrap.GetNodeAttr(usedFileNodeId);
+
+        bootstrap.Scheduler->RunAllScheduledTasks();
+
+        // dir node is never evicted
+        bootstrap.GetNodeAttr(dirNodeId);
+        // unused file node will be evicted
+        bootstrap.AssertGetNodeAttrFailed(unusedFileNodeId);
+        // used file node won't be evicted
+        bootstrap.GetNodeAttr(usedFileNodeId);
+
+        bootstrap.DestroyHandle(fileHandle);
+        bootstrap.Scheduler->RunAllScheduledTasks();
+
+        // after handle release the used file node will be evicted
+        bootstrap.AssertGetNodeAttrFailed(usedFileNodeId);
+    }
+
+    Y_UNIT_TEST(ShouldEvictLeastRecentlyUsedNodesFirst)
+    {
+        NProto::TLocalServiceConfig config;
+        config.SetMaxNodeCount(10);
+        config.SetNodeCleanupPeriod(5000);
+        config.SetNodeCleanupBatchSize(1);
+        config.SetNodeCleanupThresholdPercent(10);
+
+        TTestBootstrap bootstrap("fs", "client", {}, config);
+
+        TVector<ui64> nodeIds(Reserve(10));
+        TSet<ui64> evictedNodeIds;
+
+        for (ui32 i = 0; i < nodeIds.capacity(); i++) {
+            nodeIds.push_back(CreateFile(bootstrap, RootNodeId, "file" + ToString(i)));
+        }
+
+        auto checkEvicted = [&]() {
+            for (auto& nodeId: nodeIds) {
+                if (evictedNodeIds.contains(nodeId)) {
+                    bootstrap.AssertGetNodeAttrFailed(nodeId);
+                } else {
+                    bootstrap.GetNodeAttr(nodeId);
+                }
+            }
+        };
+
+        checkEvicted();
+
+        // nodeIds[0] will be evicted since it's least recently used
+        bootstrap.Scheduler->RunAllScheduledTasks();
+        evictedNodeIds.insert(nodeIds[0]);
+        checkEvicted();
+
+        // nodeIds[1] will be evicted next
+        bootstrap.Scheduler->RunAllScheduledTasks();
+        evictedNodeIds.insert(nodeIds[1]);
+        checkEvicted();
+
+        bootstrap.GetNodeAttr(nodeIds[2]);
+
+        // nodeIds[2] was recently used so nodeIds[3] will be evicted next
+        bootstrap.Scheduler->RunAllScheduledTasks();
+        evictedNodeIds.insert(nodeIds[3]);
+        checkEvicted();
     }
 
 };

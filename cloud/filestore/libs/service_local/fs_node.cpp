@@ -90,7 +90,8 @@ NProto::TCreateNodeResponse TLocalFileSystem::CreateNode(
     if (!session->TryInsertNode(
             std::move(target),
             parent->GetNodeId(),
-            request.GetName()))
+            request.GetName(),
+            stat))
     {
         ReportLocalFsMaxSessionNodesInUse();
         return TErrorResponse(ErrorNoSpaceLeft());
@@ -208,7 +209,8 @@ NProto::TListNodesResponse TLocalFileSystem::ListNodes(
                 if (!session->TryInsertNode(
                         std::move(node),
                         parent->GetNodeId(),
-                        entry.first))
+                        entry.first,
+                        entry.second))
                 {
                     ReportLocalFsMaxSessionNodesInUse();
                     return TErrorResponse(ErrorNoSpaceLeft());

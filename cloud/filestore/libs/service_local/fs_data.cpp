@@ -55,7 +55,8 @@ NProto::TCreateHandleResponse TLocalFileSystem::CreateHandle(
         if (!session->TryInsertNode(
                 std::move(newnode),
                 node->GetNodeId(),
-                pathname))
+                pathname,
+                stat))
         {
             ReportLocalFsMaxSessionNodesInUse();
             return TErrorResponse(ErrorNoSpaceLeft());
