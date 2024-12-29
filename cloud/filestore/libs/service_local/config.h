@@ -32,6 +32,8 @@ public:
     bool GetDirectIoEnabled() const;
     ui32 GetDirectIoAlign() const;
     bool GetGuestWritebackCacheEnabled() const;
+    TDuration GetNodeCleanupPeriod() const;
+    ui32 GetNodeCleanupBatchSize() const;
 
     void Dump(IOutputStream& out) const;
     void DumpHtml(IOutputStream& out) const;

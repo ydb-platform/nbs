@@ -92,7 +92,8 @@ NProto::TGetNodeAttrResponse TLocalFileSystem::GetNodeAttr(
             if (!session->TryInsertNode(
                     std::move(child),
                     node->GetNodeId(),
-                    name))
+                    name,
+                    stat))
             {
                 ReportLocalFsMaxSessionNodesInUse();
                 return TErrorResponse(ErrorNoSpaceLeft());

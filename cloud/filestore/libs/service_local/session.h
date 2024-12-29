@@ -149,6 +149,7 @@ public:
                     inserted,
                     "dup file handle for: %lu",
                     it->HandleId);
+                DisallowNodeEviction(it->NodeId);
             } catch (...) {
                 STORAGE_ERROR(
                     "Failed to open Handle, HandleId=" << it->HandleId <<
@@ -189,6 +190,7 @@ public:
         Handles.emplace(handleId, THandle{std::move(handle), recordIndex});
         HandleTable->CommitRecord(recordIndex);
 
+        DisallowNodeEviction(nodeId);
         return handleId;
     }
 
@@ -204,7 +206,7 @@ public:
         return &it->second.FileHandle;
     }
 
-    void DeleteHandle(ui64 handleId)
+    void DeleteHandle(ui64 nodeId, ui64 handleId)
     {
         TWriteGuard guard(Lock);
 
@@ -213,6 +215,8 @@ public:
             HandleTable->DeleteRecord(it->second.RecordIndex);
             Handles.erase(it);
         }
+
+        AllowNodeEviction(nodeId);
     }
 
     TIndexNodePtr LookupNode(ui64 nodeId)
@@ -223,9 +227,17 @@ public:
     [[nodiscard]] bool TryInsertNode(
         TIndexNodePtr node,
         ui64 parentNodeId,
-        const TString& name)
+        const TString& name,
+        const TFileStat& stat)
     {
-        return Index.TryInsertNode(std::move(node), parentNodeId, name);
+        auto nodeId = node->GetNodeId();
+
+        auto inserted = Index.TryInsertNode(std::move(node), parentNodeId, name);
+        if (inserted && stat.IsFile()) {
+            AllowNodeEviction(nodeId);
+        }
+
+        return inserted;
     }
 
     void ForgetNode(ui64 nodeId)
@@ -293,6 +305,21 @@ public:
                 return ts < deadline;
             });
         return SubSessions.empty();
+    }
+
+    void AllowNodeEviction(ui64 nodeId)
+    {
+        Index.AllowNodeEviction(nodeId);
+    }
+
+    void DisallowNodeEviction(ui64 nodeId)
+    {
+        Index.DisallowNodeEviction(nodeId);
+    }
+
+    void EvictNodes(int count)
+    {
+        Index.EvictNodes(count);
     }
 
 private:

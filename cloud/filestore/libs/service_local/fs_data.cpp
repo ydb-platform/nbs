@@ -52,7 +52,8 @@ NProto::TCreateHandleResponse TLocalFileSystem::CreateHandle(
         if (!session->TryInsertNode(
                 std::move(newnode),
                 node->GetNodeId(),
-                pathname))
+                pathname,
+                stat))
         {
             ReportLocalFsMaxSessionNodesInUse();
             return TErrorResponse(ErrorNoSpaceLeft());
@@ -86,7 +87,7 @@ NProto::TDestroyHandleResponse TLocalFileSystem::DestroyHandle(
     STORAGE_TRACE("DestroyHandle " << DumpMessage(request));
 
     auto session = GetSession(request);
-    session->DeleteHandle(request.GetHandle());
+    session->DeleteHandle(request.GetNodeId(), request.GetHandle());
 
     return {};
 }
