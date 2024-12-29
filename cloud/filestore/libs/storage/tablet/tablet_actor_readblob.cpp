@@ -140,6 +140,7 @@ private:
     const IBlockBufferPtr BlockBuffer;
     const ui32 BlockSize;
     const TString FileSystemId;
+    const NBlockCodecs::ICodec* BlobCodec;
     const IProfileLogPtr ProfileLog;
 
     TVector<TReadBlobRequest> Requests;
@@ -155,6 +156,7 @@ public:
         IBlockBufferPtr buffer,
         ui32 blockSize,
         TString fileSystemId,
+        const NBlockCodecs::ICodec* blobCodec,
         IProfileLogPtr profileLog,
         TVector<TReadBlobRequest> requests,
         NProto::TProfileLogRequestInfo profileLogRequest);
@@ -195,6 +197,7 @@ TReadBlobActor::TReadBlobActor(
         IBlockBufferPtr buffer,
         ui32 blockSize,
         TString fileSystemId,
+        const NBlockCodecs::ICodec* blobCodec,
         IProfileLogPtr profileLog,
         TVector<TReadBlobRequest> requests,
         NProto::TProfileLogRequestInfo profileLogRequest)
@@ -204,6 +207,7 @@ TReadBlobActor::TReadBlobActor(
     , BlockBuffer(std::move(buffer))
     , BlockSize(blockSize)
     , FileSystemId(std::move(fileSystemId))
+    , BlobCodec(blobCodec)
     , ProfileLog(std::move(profileLog))
     , Requests(std::move(requests))
     , ProfileLogRequest(std::move(profileLogRequest))
@@ -282,6 +286,7 @@ void TReadBlobActor::HandleGetResult(
             }
 
             Decompress(
+                BlobCodec,
                 request.BlobCompressionInfo,
                 BlockSize,
                 response.Buffer,
@@ -532,6 +537,7 @@ void TIndexTabletActor::HandleReadBlob(
         std::move(msg->Buffer),
         blockSize,
         GetFileSystemId(),
+        BlobCodec,
         ProfileLog,
         std::move(requests),
         std::move(profileLogRequest));

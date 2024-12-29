@@ -87,12 +87,16 @@ private:
 public:
     TBlobCompressionInfo() = default;
 
-    TBlobCompressionInfo(ui32 compressedBlobSize, IAllocator* alloc);
+    TBlobCompressionInfo(
+        ui32 decompressedBlobSize,
+        ui32 compressedBlobSize,
+        IAllocator* alloc);
 
     explicit TBlobCompressionInfo(TByteVector bytes);
 
     bool BlobCompressed() const;
 
+    ui32 DecompressedBlobSize() const;
     ui32 CompressedBlobSize() const;
 
     TCompressedRange CompressedRange(TUncompressedRange range) const;
@@ -124,6 +128,7 @@ struct TUncompressedBlock
 struct IBlockBuffer;
 
 void Decompress(
+    const NBlockCodecs::ICodec* codec,
     const TBlobCompressionInfo& blobCompressionInfo,
     ui32 blockSize,
     const TRope& compressedData,

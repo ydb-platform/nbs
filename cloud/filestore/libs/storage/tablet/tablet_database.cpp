@@ -1292,7 +1292,8 @@ bool TIndexTabletDatabase::ReadMixedBlocks(
 
         TBlobCompressionInfo blobCompressionInfo;
         if (auto value = it.GetValue<TTable::BlobCompressionInfo>()) {
-            blobCompressionInfo = TBlobCompressionInfo(FromStringBuf(value, alloc));
+            blobCompressionInfo =
+                TBlobCompressionInfo(FromStringBuf(value, alloc));
         }
 
         blob = TMixedBlob {
@@ -1337,10 +1338,16 @@ bool TIndexTabletDatabase::ReadMixedBlocks(
 
         TBlockList blockList { std::move(blocks), std::move(deletionMarkers) };
 
+        TBlobCompressionInfo blobCompressionInfo;
+        if (auto value = it.GetValue<TTable::BlobCompressionInfo>()) {
+            blobCompressionInfo =
+                TBlobCompressionInfo(FromStringBuf(value, alloc));
+        }
+
         blobs.emplace_back(TMixedBlob {
             blobId,
             std::move(blockList),
-            TBlobCompressionInfo(), // TODO
+            std::move(blobCompressionInfo),
             it.GetValue<TTable::GarbageBlocksCount>(),
             it.GetValue<TTable::CheckpointBlocksCount>()
         });

@@ -61,7 +61,6 @@ public:
         ui32 blobOffset,
         const TBlobCompressionInfo& blobCompressionInfo) override
     {
-        TABLET_VERIFY(!blobCompressionInfo.BlobCompressed());
         TABLET_VERIFY(!ApplyingByteLayer);
 
         if (block.MinCommitId > BlockMinCommitId) {
