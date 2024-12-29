@@ -1077,4 +1077,10 @@ message TStorageServiceConfig
 
     // Disables the calculation of the FullPlacementGroups counter.
     optional bool DisableFullPlacementGroupCountCalculation = 395;
+
+    // The percentage of agents that is acceptable to reject at the start.
+    // If the number of agents that did not reconnect is higher than this
+    // percentage, then the rejection of such agents does not occur - we assume
+    // a connectivity failure in the cluster.
+    optional double DiskRegistryInitialAgentRejectionThreshold = 396;
 }

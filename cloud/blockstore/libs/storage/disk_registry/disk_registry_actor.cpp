@@ -76,7 +76,7 @@ void TDiskRegistryActor::ScheduleMakeBackup(
         - (ctx.Now() - lastBackupTs);
 
     LOG_DEBUG_S(ctx, TBlockStoreComponents::DISK_REGISTRY,
-        "Schedule backup at " << backupPeriod.ToDeadLine());
+        "Schedule backup at " << backupPeriod.ToDeadLine(ctx.Now()));
 
     TString hostPrefix = Config->GetDiskRegistryCountersHost();
     if (!hostPrefix.empty()) {
@@ -103,7 +103,7 @@ void TDiskRegistryActor::ScheduleCleanup(const TActorContext& ctx)
     const auto recyclingPeriod = Config->GetNonReplicatedDiskRecyclingPeriod();
 
     LOG_DEBUG_S(ctx, TBlockStoreComponents::DISK_REGISTRY,
-        "Schedule cleanup at " << recyclingPeriod.ToDeadLine());
+        "Schedule cleanup at " << recyclingPeriod.ToDeadLine(ctx.Now()));
 
     auto request = std::make_unique<TEvDiskRegistryPrivate::TEvCleanupDisksRequest>();
 
@@ -434,14 +434,7 @@ void TDiskRegistryActor::ScheduleRejectAgent(
     TString agentId,
     ui64 seqNo)
 {
-    auto timeout = Config->GetNonReplicatedAgentMaxTimeout();
-
-    // if there is no State it means that this is our initial agent rejection
-    // phase that happens during the LoadState tx => we should use max timeout
-    // in order not to reject all agents at once
-    if (State) {
-        timeout = State->GetRejectAgentTimeout(ctx.Now(), agentId);
-    }
+    auto timeout = State->GetRejectAgentTimeout(ctx.Now(), agentId);
 
     if (!timeout) {
         return;
@@ -458,11 +451,65 @@ void TDiskRegistryActor::ScheduleRejectAgent(
     ctx.Schedule(deadline, request.release());
 }
 
+void TDiskRegistryActor::ProcessInitialAgentRejectionPhase(
+    const TActorContext& ctx)
+{
+    LOG_INFO_S(
+        ctx,
+        TBlockStoreComponents::DISK_REGISTRY,
+        "Process the initial agents rejection phase");
+
+    ui32 expectedToBeOnline = 0;
+    TVector<TString> agentsToReject;
+
+    for (const auto& agent: State->GetAgents()) {
+        if (agent.GetState() == NProto::AGENT_STATE_UNAVAILABLE) {
+            continue;
+        }
+        ++expectedToBeOnline;
+
+        const auto& agentId = agent.GetAgentId();
+
+        if (!AgentRegInfo.contains(agentId)) {
+            agentsToReject.push_back(agentId);
+        }
+    }
+
+    if (agentsToReject.empty() || !expectedToBeOnline) {
+        return;
+    }
+
+    const double k =
+        100.0 * static_cast<double>(agentsToReject.size()) / expectedToBeOnline;
+
+    if (k > Config->GetDiskRegistryInitialAgentRejectionThreshold()) {
+        ReportDiskRegistryInitialAgentRejectionThresholdExceeded(
+            TStringBuilder()
+            << "Too many agents haven't reconnected: " << agentsToReject.size()
+            << "/" << expectedToBeOnline);
+        return;
+    }
+
+    for (const auto& agentId: agentsToReject) {
+        NCloud::Send(
+            ctx,
+            ctx.SelfID,
+            std::make_unique<TEvDiskRegistryPrivate::TEvAgentConnectionLost>(
+                agentId,
+                0));
+    }
+}
+
 void TDiskRegistryActor::HandleAgentConnectionLost(
     const TEvDiskRegistryPrivate::TEvAgentConnectionLost::TPtr& ev,
     const TActorContext& ctx)
 {
     auto* msg = ev->Get();
+
+    if (msg->AgentId.empty()) {
+        ProcessInitialAgentRejectionPhase(ctx);
+        return;
+    }
 
     auto it = AgentRegInfo.find(msg->AgentId);
     if (it != AgentRegInfo.end() && msg->SeqNo < it->second.SeqNo) {
