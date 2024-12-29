@@ -1,4 +1,5 @@
 RECURSE_FOR_TESTS(
+    service-kikimr-compression-test
     service-kikimr-auth-test
     service-kikimr-emergency-test
     service-kikimr-nemesis-test
