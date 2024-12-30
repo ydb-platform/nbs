@@ -13,6 +13,9 @@ Y_UNIT_TEST_SUITE(TLRUCache)
         TLRUCache<TString, TString> hashMap(TDefaultAllocator::Instance());
         hashMap.Reset(2);
 
+        UNIT_ASSERT_VALUES_EQUAL(0, hashMap.size());
+        UNIT_ASSERT_VALUES_EQUAL(2, hashMap.capacity());
+
         hashMap.emplace("key1", "value1");
         hashMap.emplace("key2", "value2");
 
@@ -102,7 +105,8 @@ Y_UNIT_TEST_SUITE(TLRUCache)
         UNIT_ASSERT_EQUAL(hashMap.end(), hashMap.find("key1"));
 
         hashMap.Reset(2);
-        UNIT_ASSERT_EQUAL(0, hashMap.size());
+        UNIT_ASSERT_VALUES_EQUAL(0, hashMap.size());
+        UNIT_ASSERT_VALUES_EQUAL(2, hashMap.capacity());
 
         // Test inserting duplicate keys - emplace should not overwrite the
         // value
