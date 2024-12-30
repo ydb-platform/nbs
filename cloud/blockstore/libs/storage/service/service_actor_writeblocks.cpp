@@ -53,18 +53,6 @@ private:
         const auto& clientId = GetClientId(*msg);
         const auto& diskId = GetDiskId(*msg);
 
-        const ui64 startIndex = msg->Record.GetStartIndex();
-        ui32 blocksCount = msg->Record.BlocksCount;
-
-        if (!blocksCount)
-        {
-            auto error = MakeError(E_ARGUMENT, TStringBuilder()
-                << "invalid block range [index" << startIndex
-                << ", count: " << blocksCount << "]");
-            ReplyAndDie(ctx, error);
-            return;
-        }
-
         auto request = CreateRemoteRequest();
         if (!request) {
             ReplyAndDie(ctx, MakeError(E_REJECTED, "failed to create remote request"));
