@@ -7,12 +7,17 @@
 ![node_management](../excalidraw/sharded_filesystem_node_management.svg)
 
 ## Reading and writing
-
-TODO
+![io](../excalidraw/sharded_filesystem_io.svg)
 
 ## Metrics aggregation
+`GetStorageStats` requests are sent to all shards from the main tablet, the results are cached and aggregated.
+The following aggregate metrics are exported:
+* AggregateUsedBytesCount - sum(UsedBytesCount) over all shards
 
-TODO
+`GetStorageStats` requests are sent to the shards in background each 15 seconds.
+Cached shard metrics can be retrieved by using `AllowCache: true` flag in `TGetStorageStatsRequest`.
+Shard metrics such as UsedBytesCount, CurrentLoad and Suffer are displayed on the main tablet monpage.
+Shard metrics are used by ShardBalancer in the main tablet to pessimize file creation in shards with low free space.
 
 ## Main tasks
 * Initial sharding implementation: https://github.com/ydb-platform/nbs/issues/1350
