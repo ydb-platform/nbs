@@ -2334,6 +2334,12 @@ Y_UNIT_TEST_SUITE(TModel)
         for (const auto& sc: fs.ShardConfigs) {
             UNIT_ASSERT_VALUES_EQUAL(5_TB / 4_KB, sc.GetBlocksCount());
         }
+
+        // shards (but not main tablet) should have 'IsSystem' flag
+        UNIT_ASSERT(!fs.MainFileSystemConfig.GetIsSystem());
+        for (const auto& sc: fs.ShardConfigs) {
+            UNIT_ASSERT(sc.GetIsSystem());
+        }
     }
 
     Y_UNIT_TEST_F(ShouldCreateExplicitNumberOfShards, TConfigs)
