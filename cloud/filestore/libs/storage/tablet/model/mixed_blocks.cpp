@@ -119,15 +119,14 @@ struct TRange
 
 struct TMixedBlocks::TImpl
 {
-    // Holds all ranges that are actively used, i.e. have ref count > 0.
+    // Holds all ranges that are actively used, i.e. have ref count > 0
     using TRangeMap = THashMap<ui32, TRange>;
-    // Can be used to store ranges that are not actively used, i.e. have ref
-    // count == 0. May be useful for caching
+    // Is used to store ranges that are not actively used, i.e. have
+    // ref count == 0. May be useful for caching
     using TOffloadedRangeMap = NCloud::TLRUCache<ui32, TRange>;
 
     void Reset(ui64 offloadedRangesCapacity)
     {
-        OffloadedRangesCapacity = offloadedRangesCapacity;
         OffloadedRanges.Reset(offloadedRangesCapacity);
     }
 
@@ -145,10 +144,9 @@ struct TMixedBlocks::TImpl
         return OffloadedRanges.FindPtr(rangeId);
     }
 
-    IAllocator* Alloc{};
+    IAllocator* Alloc;
     TRangeMap Ranges;
     TOffloadedRangeMap OffloadedRanges;
-    ui64 OffloadedRangesCapacity = 0;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -199,11 +197,9 @@ void TMixedBlocks::UnRefRange(ui32 rangeId)
     it->second.RefCount--;
 
     // If ref count drops to 0, move the range to offloaded ranges. No need to
-    // try to offload the range if capacity is 0 – thus, it is possible to fall
-    // back to the default behavior of removing the range from the active ranges
-    // by setting the capacity to 0.
+    // offload the range if the capacity is 0
     if (it->second.RefCount == 0) {
-        if (Impl->OffloadedRangesCapacity > 0) {
+        if (Impl->OffloadedRanges.capacity() != 0) {
             auto [_, inserted] =
                 Impl->OffloadedRanges.emplace(rangeId, Impl->Alloc);
             Y_DEBUG_ABORT_UNLESS(inserted);

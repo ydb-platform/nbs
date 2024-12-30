@@ -12,17 +12,14 @@ namespace NCloud {
 
 // A simple wrapper around THashMap that also evicts the least recently used
 // elements when the capacity is reached. It keeps track of the order in which
-// keys are accessed.
-//
-// Note: not all THashMap methods are implemented, only the ones that are
-// actually used upon the usage of this class. Feel free to add more as needed.
+// keys are accessed
 template <typename TKey, typename TValue>
 class TLRUCache: public TMapOps<TLRUCache<TKey, TValue>>
 {
     using TBase =
         THashMap<TKey, TValue, THash<TKey>, TEqualTo<TKey>, TStlAllocator>;
     using TOrderList = TList<TKey, TStlAllocator>;
-    using TOrderIterator = THashMap<
+    using TOrderPositions = THashMap<
         TKey,
         typename TOrderList::iterator,
         THash<TKey>,
@@ -32,12 +29,11 @@ class TLRUCache: public TMapOps<TLRUCache<TKey, TValue>>
     // Contains the actual mapping key -> value
     TBase Base;
     // Contains the keys in order of access, from most to least recently
-    // accessed (the last element is the oldest one to be accessed) most
-    // recently accessed
+    // accessed (the last element is the oldest one to be accessed)
     TOrderList OrderList;
     // Contains the position of each key in OrderList, needed to quickly find
     // and update the order when accessing a key
-    TOrderIterator OrderPosition;
+    TOrderPositions OrderPositions;
 
     IAllocator* Alloc;
 
@@ -47,20 +43,23 @@ private:
     // Bumps the key to the front of the order list, used upon any access
     void UpdateOrder(const TKey& key)
     {
-        auto it = OrderPosition.find(key);
-        if (it != OrderPosition.end()) {
-            OrderList.erase(it->second);
+        auto it = OrderPositions.find(key);
+        if (it != OrderPositions.end()) {
+            OrderList.splice(OrderList.begin(), OrderList, it->second);
+            it->second = OrderList.insert(OrderList.begin(), key);
+        } else {
+            OrderPositions.emplace(
+                key,
+                OrderList.insert(OrderList.begin(), key));
         }
-        OrderList.emplace_front(key);
-        OrderPosition[key] = OrderList.begin();
     }
 
-    void RemoveFromOrder(const TKey& key)
+    inline void RemoveFromOrder(const TKey& key)
     {
-        auto it = OrderPosition.find(key);
-        if (it != OrderPosition.end()) {
+        auto it = OrderPositions.find(key);
+        if (it != OrderPositions.end()) {
             OrderList.erase(it->second);
-            OrderPosition.erase(it);
+            OrderPositions.erase(it);
         }
     }
 
@@ -69,7 +68,7 @@ private:
         while (Base.size() > Capacity) {
             auto& key = OrderList.back();
             Base.erase(key);
-            OrderPosition.erase(key);
+            OrderPositions.erase(key);
             OrderList.pop_back();
         }
     }
@@ -80,7 +79,7 @@ public:
     explicit TLRUCache(IAllocator* alloc)
         : Base(alloc)
         , OrderList(alloc)
-        , OrderPosition(alloc)
+        , OrderPositions(alloc)
         , Alloc(alloc)
     {}
 
@@ -89,7 +88,7 @@ public:
         Capacity = capacity;
         CleanupIfNeeded();
         Base.reserve(Capacity);
-        OrderPosition.reserve(Capacity);
+        OrderPositions.reserve(Capacity);
     }
 
     iterator end()
@@ -115,6 +114,9 @@ public:
     template <typename... Args>
     std::pair<iterator, bool> emplace(Args&&... args)
     {
+        if (Capacity == 0) {
+            return {Base.end(), false};
+        }
         auto result = Base.emplace(std::forward<Args>(args)...);
         UpdateOrder(result.first->first);
         CleanupIfNeeded();
@@ -133,6 +135,10 @@ public:
         return Base.size();
     }
 
+    [[nodiscard]] size_t capacity() const
+    {
+        return Capacity;
+    }
 };
 
 }   // namespace NCloud

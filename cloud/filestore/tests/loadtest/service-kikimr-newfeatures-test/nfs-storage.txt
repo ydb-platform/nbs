@@ -13,3 +13,4 @@ InMemoryIndexCacheNodesCapacity: 10
 InMemoryIndexCacheNodeRefsCapacity: 10
 InMemoryIndexCacheNodeAttrsCapacity: 10
 UseMixedBlocksInsteadOfAliveBlocksInCompaction: true
+MixedBlocksOffloadedRangesCapacity: 1024

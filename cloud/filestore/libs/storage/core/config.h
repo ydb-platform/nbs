@@ -300,7 +300,7 @@ public:
     ui64 GetShardBalancerMinFreeSpaceReserve() const;
 
     bool GetGuestWritebackCacheEnabled() const;
-    ui64 GetMixedBlocksCapacity() const;
+    ui64 GetMixedBlocksOffloadedRangesCapacity() const;
 };
 
 }   // namespace NCloud::NFileStore::NStorage
