@@ -186,6 +186,10 @@ public:
             return nullptr;
         }
 
+        if (!(*it)->Empty()) {
+            EvictionCandidateNodes.PushBack((*it).get());
+        }
+
         return *it;
     }
 

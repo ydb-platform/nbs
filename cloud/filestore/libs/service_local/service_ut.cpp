@@ -2211,6 +2211,53 @@ Y_UNIT_TEST_SUITE(LocalFileStore)
         bootstrap.AssertGetNodeAttrFailed(usedFileNodeId);
     }
 
+    Y_UNIT_TEST(ShouldEvictLeastRecentlyUsedNodesFirst)
+    {
+        NProto::TLocalServiceConfig config;
+        config.SetMaxNodeCount(10);
+        config.SetNodeCleanupPeriod(5000);
+        config.SetNodeCleanupBatchSize(1);
+        config.SetNodeCleanupThresholdPercent(10);
+
+        TTestBootstrap bootstrap("fs", "client", {}, config);
+
+        TVector<ui64> nodeIds(Reserve(10));
+        TSet<ui64> evictedNodeIds;
+
+        for (ui32 i = 0; i < nodeIds.capacity(); i++) {
+            nodeIds.push_back(CreateFile(bootstrap, RootNodeId, "file" + ToString(i)));
+        }
+
+        auto checkEvicted = [&]() {
+            for (auto& nodeId: nodeIds) {
+                if (evictedNodeIds.contains(nodeId)) {
+                    bootstrap.AssertGetNodeAttrFailed(nodeId);
+                } else {
+                    bootstrap.GetNodeAttr(nodeId);
+                }
+            }
+        };
+
+        checkEvicted();
+
+        // nodeIds[0] will be evicted since it's least recently used
+        bootstrap.Scheduler->RunAllScheduledTasks();
+        evictedNodeIds.insert(nodeIds[0]);
+        checkEvicted();
+
+        // nodeIds[1] will be evicted next
+        bootstrap.Scheduler->RunAllScheduledTasks();
+        evictedNodeIds.insert(nodeIds[1]);
+        checkEvicted();
+
+        bootstrap.GetNodeAttr(nodeIds[2]);
+
+        // nodeIds[2] was recently used so nodeIds[3] will be evicted next
+        bootstrap.Scheduler->RunAllScheduledTasks();
+        evictedNodeIds.insert(nodeIds[3]);
+        checkEvicted();
+    }
+
 };
 
 }   // namespace NCloud::NFileStore
