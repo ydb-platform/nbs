@@ -291,7 +291,8 @@ void TBootstrapVhost::InitEndpoints()
             Scheduler,
             Logging,
             FileIOService,
-            ThreadPool);
+            ThreadPool,
+            ProfileLog);
 
         STORAGE_INFO("initialized LocalService: %s",
             localServiceConfig->Utf8DebugString().Quote().c_str());

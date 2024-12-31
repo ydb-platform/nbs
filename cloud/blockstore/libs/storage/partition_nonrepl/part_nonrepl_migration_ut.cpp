@@ -307,16 +307,24 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionMigrationTest)
 
         runtime.AdvanceCurrentTime(UpdateCountersInterval);
         runtime.DispatchEvents({}, TDuration::Seconds(1));
+
+        auto& counters = env.StorageStatsServiceState->Counters.RequestCounters;
+        const size_t migrationCopyBlocks = useDirectCopy ? 3 : 0;
+        UNIT_ASSERT_VALUES_EQUAL(migrationCopyBlocks, counters.CopyBlocks.Count);
+        UNIT_ASSERT_VALUES_EQUAL(
+            migrationCopyBlocks * ProcessingRangeSize,
+            counters.CopyBlocks.RequestBytes);
+
         runtime.AdvanceCurrentTime(UpdateCountersInterval);
         runtime.DispatchEvents({}, TDuration::Seconds(1));
 
         const size_t migrationWrites = useDirectCopy ? 0 : 3;
-        auto& counters = env.StorageStatsServiceState->Counters.RequestCounters;
-        UNIT_ASSERT_VALUES_EQUAL(2 + migrationWrites, counters.WriteBlocks.Count);
+        UNIT_ASSERT_VALUES_EQUAL(
+            2 + migrationWrites,
+            counters.WriteBlocks.Count);
         UNIT_ASSERT_VALUES_EQUAL(
             (2 + migrationWrites * ProcessingBlockCount) * DefaultBlockSize,
-            counters.WriteBlocks.RequestBytes
-        );
+            counters.WriteBlocks.RequestBytes);
     }
 
     Y_UNIT_TEST(ShouldMirrorRequestsAfterAllDataIsMigrated) {

@@ -36,15 +36,19 @@ public:
     };
 
 private:
+    ui32 BlockSize = 4_KB;
     ui64 DesiredFreeSpaceReserve = 0;
-    ui32 MinFreeSpaceReserve = 0;
+    ui64 MinFreeSpaceReserve = 0;
 
     TVector<TString> Ids;
     TVector<TShardMeta> Metas;
     ui32 ShardSelector = 0;
 
 public:
-    void SetParameters(ui64 desiredFreeSpaceReserve, ui64 minFreeSpaceReserve);
+    void SetParameters(
+        ui32 blockSize,
+        ui64 desiredFreeSpaceReserve,
+        ui64 minFreeSpaceReserve);
     void UpdateShards(TVector<TString> shardIds);
     void UpdateShardStats(const TVector<TShardStats>& stats);
     NProto::TError SelectShard(ui64 fileSize, TString* shardId);

@@ -1,5 +1,6 @@
 #include "disk_agent_actor.h"
 
+#include "actors/device_health_check_actor.h"
 #include "actors/session_cache_actor.h"
 
 #include <cloud/blockstore/libs/diagnostics/critical_events.h>
@@ -158,6 +159,28 @@ TString TDiskAgentActor::GetCachedSessionsPath() const
     return agentPath.empty() ? storagePath : agentPath;
 }
 
+void TDiskAgentActor::RestartDeviceHealthChecking(const TActorContext& ctx)
+{
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::DISK_AGENT,
+        "Restart device health checking");
+
+    if (HealthCheckActor) {
+        NCloud::Send<TEvents::TEvPoisonPill>(ctx, HealthCheckActor);
+        HealthCheckActor = {};
+    }
+
+    if (!AgentConfig->GetDeviceHealthCheckDisabled()) {
+        HealthCheckActor = NCloud::Register(
+            ctx,
+            NDiskAgent::CreateDeviceHealthCheckActor(
+                ctx.SelfID,
+                State->GetEnabledDevices(),
+                UpdateCountersInterval));
+    }
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 void TDiskAgentActor::HandleReportDelayedDiskAgentConfigMismatch(
@@ -182,6 +205,11 @@ void TDiskAgentActor::HandlePoisonPill(
     if (StatsActor) {
         NCloud::Send<TEvents::TEvPoisonPill>(ctx, StatsActor);
         StatsActor = {};
+    }
+
+    if (HealthCheckActor) {
+        NCloud::Send<TEvents::TEvPoisonPill>(ctx, HealthCheckActor);
+        HealthCheckActor = {};
     }
 
     if (SessionCacheActor) {

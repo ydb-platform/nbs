@@ -197,7 +197,7 @@ void TStorageServiceActor::ForwardRequestToShard(
 
 #undef FILESTORE_FORWARD_REQUEST
 
-#define FILESTORE_FORWARD_REQUEST_TO_FOLLOWER_BY_NODE_ID(name, ns)             \
+#define FILESTORE_FORWARD_REQUEST_TO_SHARD_BY_NODE_ID(name, ns)                \
     void TStorageServiceActor::Handle##name(                                   \
         const ns::TEv##name##Request::TPtr& ev,                                \
         const TActorContext& ctx)                                              \
@@ -208,13 +208,13 @@ void TStorageServiceActor::ForwardRequestToShard(
             ExtractShardNo(ev->Get()->Record.GetNodeId()));                    \
     }                                                                          \
 
-    FILESTORE_SERVICE_REQUESTS_FWD_TO_FOLLOWER_BY_NODE_ID(
-        FILESTORE_FORWARD_REQUEST_TO_FOLLOWER_BY_NODE_ID,
+    FILESTORE_SERVICE_REQUESTS_FWD_TO_SHARD_BY_NODE_ID(
+        FILESTORE_FORWARD_REQUEST_TO_SHARD_BY_NODE_ID,
         TEvService)
 
-#undef FILESTORE_FORWARD_REQUEST_TO_FOLLOWER_BY_NODE_ID
+#undef FILESTORE_FORWARD_REQUEST_TO_SHARD_BY_NODE_ID
 
-#define FILESTORE_FORWARD_REQUEST_TO_FOLLOWER_BY_HANDLE(name, ns)              \
+#define FILESTORE_FORWARD_REQUEST_TO_SHARD_BY_HANDLE(name, ns)                 \
     void TStorageServiceActor::Handle##name(                                   \
         const ns::TEv##name##Request::TPtr& ev,                                \
         const TActorContext& ctx)                                              \
@@ -225,11 +225,11 @@ void TStorageServiceActor::ForwardRequestToShard(
             ExtractShardNo(ev->Get()->Record.GetHandle()));                    \
     }                                                                          \
 
-    FILESTORE_SERVICE_REQUESTS_FWD_TO_FOLLOWER_BY_HANDLE(
-        FILESTORE_FORWARD_REQUEST_TO_FOLLOWER_BY_HANDLE,
+    FILESTORE_SERVICE_REQUESTS_FWD_TO_SHARD_BY_HANDLE(
+        FILESTORE_FORWARD_REQUEST_TO_SHARD_BY_HANDLE,
         TEvService)
 
-#undef FILESTORE_FORWARD_REQUEST_TO_FOLLOWER_BY_NODE_ID
+#undef FILESTORE_FORWARD_REQUEST_TO_SHARD_BY_NODE_ID
 
 #define FILESTORE_DEFINE_HANDLE_FORWARD(name, ns)                              \
 template void TStorageServiceActor::ForwardRequest<ns::T##name##Method>(       \

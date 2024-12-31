@@ -35,9 +35,11 @@ struct TShardMetaComp
 ////////////////////////////////////////////////////////////////////////////////
 
 void TShardBalancer::SetParameters(
+    ui32 blockSize,
     ui64 desiredFreeSpaceReserve,
     ui64 minFreeSpaceReserve)
 {
+    BlockSize = blockSize;
     DesiredFreeSpaceReserve = desiredFreeSpaceReserve;
     MinFreeSpaceReserve = minFreeSpaceReserve;
 }
@@ -72,13 +74,13 @@ NProto::TError TShardBalancer::SelectShard(ui64 fileSize, TString* shardId)
     auto* e = UpperBound(
         Metas.begin(),
         Metas.end(),
-        fileSize + DesiredFreeSpaceReserve,
+        (fileSize + DesiredFreeSpaceReserve) / BlockSize,
         TShardMetaComp());
     if (e == Metas.begin()) {
         e = UpperBound(
             Metas.begin(),
             Metas.end(),
-            fileSize + MinFreeSpaceReserve,
+            (fileSize + MinFreeSpaceReserve) / BlockSize,
             TShardMetaComp());
     }
 

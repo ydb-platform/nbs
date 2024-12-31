@@ -146,6 +146,9 @@ message TCreateFileStoreRequest
 
     // File system performance profile.
     TFileStorePerformanceProfile PerformanceProfile = 9;
+
+    // Explicitly specified shard count.
+    uint32 ShardCount = 10;
 }
 
 message TCreateFileStoreResponse
@@ -230,6 +233,9 @@ message TResizeFileStoreRequest
 
     // Bypass some checks.
     bool Force = 6;
+
+    // Explicitly specified shard count.
+    uint32 ShardCount = 7;
 }
 
 message TResizeFileStoreResponse

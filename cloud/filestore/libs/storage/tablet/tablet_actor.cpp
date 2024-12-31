@@ -591,10 +591,10 @@ void TIndexTabletActor::HandlePoisonPill(
     const TEvents::TEvPoisonPill::TPtr& ev,
     const TActorContext& ctx)
 {
-    Y_UNUSED(ev);
-
-    LOG_INFO_S(ctx, TFileStoreComponents::TABLET,
-        LogTag << " Stop tablet because of PoisonPill request");
+    LOG_INFO(ctx, TFileStoreComponents::TABLET,
+        "%s Stop tablet because of PoisonPill request, ev->Sender: %s",
+        LogTag.c_str(),
+        ev->Sender.ToString().c_str());
 
     Suicide(ctx);
 }
@@ -612,6 +612,11 @@ void TIndexTabletActor::HandleSessionDisconnected(
     const TEvTabletPipe::TEvServerDisconnected::TPtr& ev,
     const TActorContext& ctx)
 {
+    LOG_INFO(ctx, TFileStoreComponents::TABLET,
+        "%s Server disconnected, ev->Sender: %s",
+        LogTag.c_str(),
+        ev->Sender.ToString().c_str());
+
     OrphanSession(ev->Sender, ctx.Now());
 }
 
@@ -676,8 +681,11 @@ void TIndexTabletActor::HandleGetFileSystemTopology(
 {
     auto response =
         std::make_unique<TEvIndexTablet::TEvGetFileSystemTopologyResponse>();
-    *response->Record.MutableShardFileSystemIds() =
-        GetFileSystem().GetShardFileSystemIds();
+
+    if (IsMainTablet()) {
+        *response->Record.MutableShardFileSystemIds() =
+            GetFileSystem().GetShardFileSystemIds();
+    }
     response->Record.SetShardNo(GetFileSystem().GetShardNo());
 
     NCloud::Reply(
@@ -1187,9 +1195,28 @@ i64 TIndexTabletActor::TMetrics::CalculateNetworkRequestBytes(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-bool TIndexTabletActor::IsShard() const
+bool TIndexTabletActor::IsMainTablet() const
 {
-    return GetFileSystem().GetShardNo() > 0;
+    return GetFileSystem().GetShardNo() == 0;
+}
+
+bool TIndexTabletActor::BehaveAsShard(const NProto::THeaders& headers) const
+{
+    // main filesystem can't behave as a shard
+    if (IsMainTablet()) {
+        return false;
+    }
+
+    // shard can behave as a directory tablet only if it's explicitly allowed
+    // via request headers AND it's properly configured (knows about other
+    // shards)
+    if (headers.GetBehaveAsDirectoryTablet()
+            && !GetFileSystem().GetShardFileSystemIds().empty())
+    {
+        return false;
+    }
+
+    return true;
 }
 
 }   // namespace NCloud::NFileStore::NStorage

@@ -60,8 +60,8 @@ void TIndexTabletActor::HandleCreateHandle(
     auto* msg = ev->Get();
     const auto requestId = GetRequestId(msg->Record);
     if (const auto* e = session->LookupDupEntry(requestId)) {
-        const bool shouldStoreHandles =
-            GetFileSystem().GetShardFileSystemIds().empty();
+        const bool shouldStoreHandles = BehaveAsShard(msg->Record.GetHeaders())
+            || GetFileSystem().GetShardFileSystemIds().empty();
         auto response = std::make_unique<TResponse>();
 
         // sometimes we may receive duplicate request ids - either due to
@@ -205,7 +205,9 @@ bool TIndexTabletActor::PrepareTx_CreateHandle(
             }
 
             auto shardId = args.RequestShardId;
-            if (!IsShard() && Config->GetShardIdSelectionInLeaderEnabled()) {
+            if (!BehaveAsShard(args.Request.GetHeaders())
+                    && Config->GetShardIdSelectionInLeaderEnabled())
+            {
                 args.Error = SelectShard(0 /*fileSize*/, &shardId);
                 if (HasError(args.Error)) {
                     return true;
@@ -218,7 +220,8 @@ bool TIndexTabletActor::PrepareTx_CreateHandle(
                 args.IsNewShardNode = true;
             }
         } else {
-            // if yes check whether O_EXCL was specified, assume O_CREAT is also specified
+            // if yes check whether O_EXCL was specified, assume O_CREAT is also
+            // specified
             if (HasFlag(args.Flags, NProto::TCreateHandleRequest::E_EXCLUSIVE)) {
                 args.Error = ErrorAlreadyExists(args.Name);
                 return true;
@@ -336,6 +339,7 @@ void TIndexTabletActor::ExecuteTx_CreateHandle(
             args.WriteCommitId,
             parent,
             args.ParentNode->Attrs);
+        args.UpdatedNodes.push_back(args.ParentNode->NodeId);
 
     } else if (args.ShardId.empty()
         && HasFlag(args.Flags, NProto::TCreateHandleRequest::E_TRUNCATE))
@@ -361,6 +365,7 @@ void TIndexTabletActor::ExecuteTx_CreateHandle(
             args.WriteCommitId,
             attrs,
             args.TargetNode->Attrs);
+        args.UpdatedNodes.push_back(args.TargetNodeId);
     }
 
     if (args.ShardId.empty()) {
@@ -417,6 +422,10 @@ void TIndexTabletActor::CompleteTx_CreateHandle(
     const TActorContext& ctx,
     TTxIndexTablet::TCreateHandle& args)
 {
+    for (auto nodeId: args.UpdatedNodes) {
+        InvalidateNodeCaches(nodeId);
+    }
+
     if (args.Error.GetCode() == E_ARGUMENT) {
         // service actor sent something inappropriate, we'd better log it
         LOG_ERROR(

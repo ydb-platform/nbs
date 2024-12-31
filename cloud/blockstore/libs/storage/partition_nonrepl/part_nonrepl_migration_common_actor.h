@@ -81,6 +81,8 @@ class TNonreplicatedPartitionMigrationCommonActor
 private:
     using TBase = NActors::TActorBootstrapped<
         TNonreplicatedPartitionMigrationCommonActor>;
+    using EExecutionSide =
+        TEvNonreplPartitionPrivate::TEvRangeMigrated::EExecutionSide;
 
     IMigrationOwner* const MigrationOwner = nullptr;
     const TStorageConfigPtr Config;
@@ -126,6 +128,8 @@ private:
     bool UpdateCountersScheduled = false;
     TPartitionDiskCountersPtr SrcCounters;
     TPartitionDiskCountersPtr DstCounters;
+    TPartitionDiskCountersPtr MigrationCounters =
+        CreatePartitionDiskCounters(EPublishingPolicy::DiskRegistryBased);
 
     // Usage statistics
     ui64 NetworkBytes = 0;

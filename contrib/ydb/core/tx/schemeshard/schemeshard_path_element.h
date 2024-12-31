@@ -25,6 +25,7 @@ struct TVolumeSpace {
 struct TFileStoreSpace {
     ui64 SSD = 0;
     ui64 HDD = 0;
+    ui64 SSDSystem = 0;
 };
 
 struct TSpaceLimits {
@@ -77,6 +78,7 @@ struct TPathElement : TSimpleRefCount<TPathElement> {
     TSpaceLimits VolumeSpaceSSDSystem;
     TSpaceLimits FileStoreSpaceSSD;
     TSpaceLimits FileStoreSpaceHDD;
+    TSpaceLimits FileStoreSpaceSSDSystem;
     ui64 DocumentApiVersion = 0;
     NJson::TJsonValue AsyncReplication;
 

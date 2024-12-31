@@ -32,7 +32,7 @@ Y_UNIT_TEST_SUITE(TShardBalancerTest)
     Y_UNIT_TEST(ShouldBalanceShards)
     {
         TShardBalancer balancer;
-        balancer.SetParameters(1_TB, 1_MB);
+        balancer.SetParameters(4_KB, 1_TB, 1_MB);
         balancer.UpdateShards({"s1", "s2", "s3", "s4", "s5"});
         ASSERT_NO_SB_ERROR(0, "s1");
         ASSERT_NO_SB_ERROR(0, "s2");
@@ -46,11 +46,11 @@ Y_UNIT_TEST_SUITE(TShardBalancerTest)
         ASSERT_NO_SB_ERROR(0, "s5");
 
         balancer.UpdateShardStats({
-            {5_TB, 1_TB, 0, 0},
-            {5_TB, 2_TB, 0, 0},
-            {5_TB, 1_TB, 0, 0},
-            {5_TB, 1_TB, 0, 0},
-            {5_TB, 3_TB, 0, 0},
+            {5_TB / 4_KB, 1_TB / 4_KB, 0, 0},
+            {5_TB / 4_KB, 2_TB / 4_KB, 0, 0},
+            {5_TB / 4_KB, 1_TB / 4_KB, 0, 0},
+            {5_TB / 4_KB, 1_TB / 4_KB, 0, 0},
+            {5_TB / 4_KB, 3_TB / 4_KB, 0, 0},
         });
 
         // order changed: s1, s3, s4, s2, s5
@@ -69,11 +69,11 @@ Y_UNIT_TEST_SUITE(TShardBalancerTest)
         // order changed: s1, s2, s3, s4, s5
 
         balancer.UpdateShardStats({
-            {5_TB, 1_TB, 0, 0},
-            {5_TB, 2_TB, 0, 0},
-            {5_TB, 2_TB, 0, 0},
-            {5_TB, 2_TB, 0, 0},
-            {5_TB, 4_TB, 0, 0},
+            {5_TB / 4_KB, 1_TB / 4_KB, 0, 0},
+            {5_TB / 4_KB, 2_TB / 4_KB, 0, 0},
+            {5_TB / 4_KB, 2_TB / 4_KB, 0, 0},
+            {5_TB / 4_KB, 2_TB / 4_KB, 0, 0},
+            {5_TB / 4_KB, 4_TB / 4_KB, 0, 0},
         });
 
         ASSERT_NO_SB_ERROR(0, "s1");
@@ -91,11 +91,11 @@ Y_UNIT_TEST_SUITE(TShardBalancerTest)
         // order changed: s1, s2, s3, s4
 
         balancer.UpdateShardStats({
-            {5_TB, 1_TB, 0, 0},
-            {5_TB, 2_TB, 0, 0},
-            {5_TB, 2_TB, 0, 0},
-            {5_TB, 2_TB, 0, 0},
-            {5_TB, 4_TB + 500_GB, 0, 0},
+            {5_TB / 4_KB, 1_TB / 4_KB, 0, 0},
+            {5_TB / 4_KB, 2_TB / 4_KB, 0, 0},
+            {5_TB / 4_KB, 2_TB / 4_KB, 0, 0},
+            {5_TB / 4_KB, 2_TB / 4_KB, 0, 0},
+            {5_TB / 4_KB, (4_TB + 500_GB) / 4_KB, 0, 0},
         });
 
         ASSERT_NO_SB_ERROR(0, "s1");
@@ -112,11 +112,11 @@ Y_UNIT_TEST_SUITE(TShardBalancerTest)
         // tier 2: s3, s5
 
         balancer.UpdateShardStats({
-            {5_TB, 1_TB, 0, 0},
-            {5_TB, 5_TB, 0, 0},
-            {5_TB, 4_TB + 300_GB, 0, 0},
-            {5_TB, 2_TB, 0, 0},
-            {5_TB, 4_TB + 500_GB, 0, 0},
+            {5_TB / 4_KB, 1_TB / 4_KB, 0, 0},
+            {5_TB / 4_KB, 5_TB / 4_KB, 0, 0},
+            {5_TB / 4_KB, (4_TB + 300_GB) / 4_KB, 0, 0},
+            {5_TB / 4_KB, 2_TB / 4_KB, 0, 0},
+            {5_TB / 4_KB, (4_TB + 500_GB) / 4_KB, 0, 0},
         });
 
         ASSERT_NO_SB_ERROR(0, "s1");
@@ -128,11 +128,11 @@ Y_UNIT_TEST_SUITE(TShardBalancerTest)
         // order changed: s3, s1, s5
 
         balancer.UpdateShardStats({
-            {5_TB, 4_TB + 400_GB, 0, 0},
-            {5_TB, 5_TB + 100_GB, 0, 0},
-            {5_TB, 4_TB + 300_GB, 0, 0},
-            {5_TB, 5_TB, 0, 0},
-            {5_TB, 4_TB + 500_GB, 0, 0},
+            {5_TB / 4_KB, (4_TB + 400_GB) / 4_KB, 0, 0},
+            {5_TB / 4_KB, (5_TB + 100_GB) / 4_KB, 0, 0},
+            {5_TB / 4_KB, (4_TB + 300_GB) / 4_KB, 0, 0},
+            {5_TB / 4_KB, 5_TB / 4_KB, 0, 0},
+            {5_TB / 4_KB, (4_TB + 500_GB) / 4_KB, 0, 0},
         });
 
         ASSERT_NO_SB_ERROR(0, "s3");
@@ -145,11 +145,11 @@ Y_UNIT_TEST_SUITE(TShardBalancerTest)
         // 1 close to full shard left: s3
 
         balancer.UpdateShardStats({
-            {5_TB, 5_TB - 512_KB, 0, 0},
-            {5_TB, 5_TB + 100_GB, 0, 0},
-            {5_TB, 4_TB + 300_GB, 0, 0},
-            {5_TB, 5_TB, 0, 0},
-            {5_TB, 5_TB, 0, 0},
+            {5_TB / 4_KB, (5_TB - 512_KB) / 4_KB, 0, 0},
+            {5_TB / 4_KB, (5_TB + 100_GB) / 4_KB, 0, 0},
+            {5_TB / 4_KB, (4_TB + 300_GB) / 4_KB, 0, 0},
+            {5_TB / 4_KB, 5_TB / 4_KB, 0, 0},
+            {5_TB / 4_KB, 5_TB / 4_KB, 0, 0},
         });
 
         ASSERT_NO_SB_ERROR(0, "s3");
@@ -158,11 +158,11 @@ Y_UNIT_TEST_SUITE(TShardBalancerTest)
         // out of space
 
         balancer.UpdateShardStats({
-            {5_TB, 5_TB - 512_KB, 0, 0},
-            {5_TB, 5_TB + 100_GB, 0, 0},
-            {5_TB, 5_TB + 300_GB, 0, 0},
-            {5_TB, 5_TB, 0, 0},
-            {5_TB, 5_TB, 0, 0},
+            {5_TB / 4_KB, (5_TB - 512_KB) / 4_KB, 0, 0},
+            {5_TB / 4_KB, (5_TB + 100_GB) / 4_KB, 0, 0},
+            {5_TB / 4_KB, (5_TB + 300_GB) / 4_KB, 0, 0},
+            {5_TB / 4_KB, 5_TB / 4_KB, 0, 0},
+            {5_TB / 4_KB, 5_TB / 4_KB, 0, 0},
         });
 
         ASSERT_SB_ERROR(0, E_FS_NOSPC);
@@ -173,15 +173,15 @@ Y_UNIT_TEST_SUITE(TShardBalancerTest)
     Y_UNIT_TEST(ShouldBalanceShardsWithFileSize)
     {
         TShardBalancer balancer;
-        balancer.SetParameters(1_TB, 1_MB);
+        balancer.SetParameters(4_KB, 1_TB, 1_MB);
         balancer.UpdateShards({"s1", "s2", "s3", "s4", "s5"});
 
         balancer.UpdateShardStats({
-            {5_TB, 512_GB, 0, 0},
-            {5_TB, 2_TB, 0, 0},
-            {5_TB, 1_TB, 0, 0},
-            {5_TB, 1_TB, 0, 0},
-            {5_TB, 3_TB, 0, 0},
+            {5_TB / 4_KB, 512_GB / 4_KB, 0, 0},
+            {5_TB / 4_KB, 2_TB / 4_KB, 0, 0},
+            {5_TB / 4_KB, 1_TB / 4_KB, 0, 0},
+            {5_TB / 4_KB, 1_TB / 4_KB, 0, 0},
+            {5_TB / 4_KB, 3_TB / 4_KB, 0, 0},
         });
 
         // 1_TB can fit in any shard

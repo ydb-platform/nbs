@@ -1,6 +1,7 @@
 #include "tablet_actor.h"
 
 #include <cloud/filestore/libs/diagnostics/config.h>
+#include <cloud/filestore/libs/diagnostics/critical_events.h>
 #include <cloud/filestore/libs/diagnostics/metrics/label.h>
 #include <cloud/filestore/libs/diagnostics/metrics/operations.h>
 #include <cloud/filestore/libs/diagnostics/metrics/registry.h>
@@ -751,7 +752,18 @@ void TIndexTabletActor::HandleUpdateCounters(
     UpdateCountersScheduled = false;
     ScheduleUpdateCounters(ctx);
 
-    if (!CachedStatsFetchingInProgress) {
+    if (CachedStatsFetchingStartTs != TInstant::Zero()) {
+        const auto delay = ctx.Now() - CachedStatsFetchingStartTs;
+        const auto maxDelay = TDuration::Minutes(15);
+        if (delay > maxDelay) {
+            ReportShardStatsRetrievalTimeout();
+            CachedStatsFetchingStartTs = TInstant::Zero();
+        }
+    }
+
+    if (CachedStatsFetchingStartTs == TInstant::Zero()) {
+        // TODO(#2674): do shard<->shard stats exchange less often than normal
+        // metrics collection since it's O(n^2) (where n == shardCount)
         auto response =
             std::make_unique<TEvIndexTablet::TEvGetStorageStatsResponse>();
         auto* stats = response->Record.MutableStats();
@@ -772,7 +784,7 @@ void TIndexTabletActor::HandleUpdateCounters(
 
         auto actorId = NCloud::Register(ctx, std::move(actor));
         WorkerActors.insert(actorId);
-        CachedStatsFetchingInProgress = true;
+        CachedStatsFetchingStartTs = ctx.Now();
     }
 }
 
@@ -838,7 +850,11 @@ void TIndexTabletActor::HandleGetStorageStats(
     response->Record.SetMediaKind(GetFileSystem().GetStorageMediaKind());
     auto& req = ev->Get()->Record;
     auto* stats = response->Record.MutableStats();
-    const auto& shardIds = GetFileSystem().GetShardFileSystemIds();
+    // shards shouldn't collect other shards' stats (unless it's background
+    // shard <-> shard stats exchange which is handled in HandleUpdateCounters)
+    const auto& shardIds = IsMainTablet()
+        ? GetFileSystem().GetShardFileSystemIds()
+        : Default<google::protobuf::RepeatedPtrField<TString>>();
     if (req.GetAllowCache()) {
         *stats = CachedAggregateStats;
         const ui32 shardMetricsCount =
@@ -916,7 +932,13 @@ void TIndexTabletActor::HandleGetShardStatsCompleted(
     auto* msg = ev->Get();
     const bool isBackgroundRequest = msg->StartedTs.GetValue() == 0;
     if (isBackgroundRequest) {
-        CachedStatsFetchingInProgress = false;
+        LOG_DEBUG(
+            ctx,
+            TFileStoreComponents::TABLET_WORKER,
+            "%s Background shard stats fetch completed in %s",
+            LogTag.c_str(),
+            (ctx.Now() - CachedStatsFetchingStartTs).ToString().c_str());
+        CachedStatsFetchingStartTs = TInstant::Zero();
     }
     if (!HasError(msg->Error)) {
         if (!isBackgroundRequest) {

@@ -211,6 +211,7 @@ public:
 
     void UpdateConfig(
         TIndexTabletDatabase& db,
+        const TStorageConfig& config,
         const NProto::TFileSystem& fileSystem,
         const TThrottlerConfig& throttlerConfig);
 
@@ -443,6 +444,12 @@ public:
         const TString& message,
         ui64 nodeId);
 
+    bool HasPendingNodeCreateInShard(const TString& nodeName) const;
+
+    void StartNodeCreateInShard(const TString& nodeName);
+
+    void EndNodeCreateInShard(const TString& nodeName);
+
 private:
     void UpdateUsedBlocksCount(
         TIndexTabletDatabase& db,
@@ -616,7 +623,8 @@ public:
         TVector<NProtoPrivate::TCreateSessionRequest>;
     TCreateSessionRequests BuildCreateSessionRequests(
         const THashSet<TString>& filter) const;
-    TVector<TMonSessionInfo> GetActiveSessions() const;
+    TVector<TMonSessionInfo> GetActiveSessionInfos() const;
+    TVector<TMonSessionInfo> GetOrphanSessionInfos() const;
     TSessionsStats CalculateSessionsStats() const;
 
 private:
@@ -1284,11 +1292,20 @@ private:
         ui64 commitId,
         const TByteRange& range);
 
+public:
+
+    ////////////////////////////////////////////////////////////////////////////
+    // Caching: ReadAhead, NodeIndexCache, InMemoryIndexState
+    ////////////////////////////////////////////////////////////////////////////
+
+    // Upon any completion of the RW operation this function is supposed to be
+    // called in order to invalidate potentially cached data
+    void InvalidateNodeCaches(ui64 nodeId);
+
     //
     // ReadAhead.
     //
 
-public:
     bool TryFillDescribeResult(
         ui64 nodeId,
         ui64 handle,

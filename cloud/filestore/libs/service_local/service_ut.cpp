@@ -2,6 +2,7 @@
 
 #include "config.h"
 
+#include <cloud/filestore/libs/diagnostics/profile_log.h>
 #include <cloud/filestore/libs/service/context.h>
 #include <cloud/filestore/libs/service/filestore.h>
 
@@ -318,7 +319,9 @@ struct TTestBootstrap
             Scheduler,
             Logging,
             AIOService,
-            TaskQueue);
+            TaskQueue,
+            nullptr   // no profile log
+        );
         Store->Start();
     }
 
@@ -343,7 +346,9 @@ struct TTestBootstrap
             Scheduler,
             Logging,
             AIOService,
-            TaskQueue);
+            TaskQueue,
+            nullptr   // no profile log
+        );
         Store->Start();
 
         CreateFileStore(id, "cloud", "folder", 100500, 500100);

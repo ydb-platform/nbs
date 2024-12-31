@@ -2626,7 +2626,7 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
                 switch (event->GetTypeRewrite()) {
                     case TEvVolume::EvRemoveClientRequest: {
                         auto msg = std::make_unique<TEvVolume::TEvRemoveClientResponse>(
-                            MakeError(E_REJECTED, "Tablet is dead"));
+                            MakeTabletIsDeadError(E_REJECTED, __LOCATION__));
                         runtime.Send(
                             new IEventHandle(
                                 event->Sender,
