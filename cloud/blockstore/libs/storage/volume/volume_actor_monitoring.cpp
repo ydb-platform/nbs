@@ -1657,7 +1657,7 @@ void TVolumeActor::HandleHttpInfo_ChangeThrottlingPolicy(
     };
     auto getParam64 = [&] (const TStringBuf name) {
         const auto& s = params.Get(name);
-        return FromStringWithDefault(s,  static_cast<ui64>(Max<ui32>()));
+        return FromStringWithDefault(s, static_cast<ui64>(Max<ui32>()));
     };
     const auto maxReadIops = getParam("MaxReadIops");
     const auto maxWriteIops = getParam("MaxWriteIops");
