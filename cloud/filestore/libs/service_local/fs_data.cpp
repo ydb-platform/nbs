@@ -87,7 +87,7 @@ NProto::TDestroyHandleResponse TLocalFileSystem::DestroyHandle(
     STORAGE_TRACE("DestroyHandle " << DumpMessage(request));
 
     auto session = GetSession(request);
-    session->DeleteHandle(request.GetNodeId(), request.GetHandle());
+    session->DeleteHandle(request.GetHandle());
 
     return {};
 }

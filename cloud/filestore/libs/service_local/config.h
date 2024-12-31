@@ -34,6 +34,7 @@ public:
     bool GetGuestWritebackCacheEnabled() const;
     TDuration GetNodeCleanupPeriod() const;
     ui32 GetNodeCleanupBatchSize() const;
+    ui32 GetNodeCleanupThresholdPercent() const;
 
     void Dump(IOutputStream& out) const;
     void DumpHtml(IOutputStream& out) const;

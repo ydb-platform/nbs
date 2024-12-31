@@ -206,17 +206,20 @@ public:
         return &it->second.FileHandle;
     }
 
-    void DeleteHandle(ui64 nodeId, ui64 handleId)
+    void DeleteHandle(ui64 handleId)
     {
         TWriteGuard guard(Lock);
 
         auto it = Handles.find(handleId);
         if (it != Handles.end()) {
-            HandleTable->DeleteRecord(it->second.RecordIndex);
+            auto recordIndex = it->second.RecordIndex;
+            auto* state = HandleTable->RecordData(recordIndex);
+
+            AllowNodeEviction(state->NodeId);
+
+            HandleTable->DeleteRecord(recordIndex);
             Handles.erase(it);
         }
-
-        AllowNodeEviction(nodeId);
     }
 
     TIndexNodePtr LookupNode(ui64 nodeId)
@@ -317,9 +320,9 @@ public:
         Index.DisallowNodeEviction(nodeId);
     }
 
-    void EvictNodes(int count)
+    void EvictNodes(ui32 nodesCount, ui32 evictThresholdPercent)
     {
-        Index.EvictNodes(count);
+        Index.EvictNodes(nodesCount, evictThresholdPercent);
     }
 
 private:

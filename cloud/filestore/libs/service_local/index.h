@@ -283,18 +283,24 @@ public:
         (*it)->TIntrusiveListItem<TIndexNode>::Unlink();
     }
 
-    void EvictNodes(int count)
+    void EvictNodes(ui32 nodesCount, ui32 evictThresholdPercent)
     {
         TWriteGuard guard(NodesLock);
 
-        TVector<ui64> evictedNodeIds(Reserve(count));
+        ui64 nodeOccupationPercent = Nodes.size() * 100 / MaxNodeCount;
+        if (nodeOccupationPercent < evictThresholdPercent) {
+            return;
+        }
+
+        TVector<ui64> evictedNodeIds(Reserve(nodesCount));
 
         for (const auto& node: EvictionCandidateNodes) {
-            if (count-- <= 0) {
+            if (nodesCount == 0) {
                 break;
             }
 
             evictedNodeIds.push_back(node.GetNodeId());
+            --nodesCount;
         }
 
         for (auto nodeId: evictedNodeIds) {

@@ -233,7 +233,9 @@ void TLocalFileSystem::CleanupNodes()
     TWriteGuard guard(SessionsLock);
 
     for (auto it = SessionsList.begin(); it != SessionsList.end(); ++it) {
-        (*it)->EvictNodes(Config->GetNodeCleanupBatchSize());
+        (*it)->EvictNodes(
+            Config->GetNodeCleanupBatchSize(),
+            Config->GetNodeCleanupThresholdPercent());
     }
 
     ScheduleCleanupNodes();
