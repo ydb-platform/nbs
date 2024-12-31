@@ -9,6 +9,8 @@ type Interface interface {
 	IsMountPoint(file string) (bool, error)
 	CleanupMountPoint(target string) error
 
+	HasBlockDevice(device string) (bool, error)
+
 	IsFilesystemExisted(device string) (bool, error)
 	MakeFilesystem(device string, fsType string) ([]byte, error)
 

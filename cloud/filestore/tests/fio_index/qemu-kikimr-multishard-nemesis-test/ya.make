@@ -24,6 +24,7 @@ SET(
     NFS_STORAGE_CONFIG_PATCH
     cloud/filestore/tests/loadtest/service-kikimr-newfeatures-test/nfs-storage.txt
 )
+SET(FORCE_VERBOSE 1)
 
 INCLUDE(${ARCADIA_ROOT}/cloud/filestore/tests/recipes/service-kikimr.inc)
 INCLUDE(${ARCADIA_ROOT}/cloud/filestore/tests/recipes/vhost-kikimr.inc)

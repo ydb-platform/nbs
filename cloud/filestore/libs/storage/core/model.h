@@ -26,7 +26,8 @@ ui32 ComputeShardCount(
 TMultiShardFileStoreConfig SetupMultiShardFileStorePerformanceAndChannels(
     const TStorageConfig& config,
     const NKikimrFileStore::TConfig& fileStore,
-    const NProto::TFileStorePerformanceProfile& clientProfile);
+    const NProto::TFileStorePerformanceProfile& clientProfile,
+    ui32 explicitShardCount);
 
 void SetupFileStorePerformanceAndChannels(
     bool allocateMixed0Channel,

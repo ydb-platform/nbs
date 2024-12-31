@@ -622,7 +622,8 @@ public:
         TVector<NProtoPrivate::TCreateSessionRequest>;
     TCreateSessionRequests BuildCreateSessionRequests(
         const THashSet<TString>& filter) const;
-    TVector<TMonSessionInfo> GetActiveSessions() const;
+    TVector<TMonSessionInfo> GetActiveSessionInfos() const;
+    TVector<TMonSessionInfo> GetOrphanSessionInfos() const;
     TSessionsStats CalculateSessionsStats() const;
 
 private:

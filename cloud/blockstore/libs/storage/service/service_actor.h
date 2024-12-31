@@ -426,7 +426,6 @@ NActors::IActorPtr CreateReadBlocksRemoteActor(
 NActors::IActorPtr CreateWriteBlocksRemoteActor(
     TEvService::TEvWriteBlocksLocalRequest::TPtr request,
     ui64 blockSize,
-    ui64 maxBlocksCount,
     NActors::TActorId volumeClient);
 
 NActors::IActorPtr CreateVolumeSessionActor(

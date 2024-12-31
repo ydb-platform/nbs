@@ -310,6 +310,8 @@ private:
 
     void InitializeState(TDiskRegistryStateSnapshot snapshot);
 
+    void ProcessInitialAgentRejectionPhase(const NActors::TActorContext& ctx);
+
 private:
     STFUNC(StateBoot);
     STFUNC(StateInit);

@@ -16,6 +16,7 @@ import (
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 	nbs "github.com/ydb-platform/nbs/cloud/blockstore/public/api/protos"
 	"github.com/ydb-platform/nbs/cloud/blockstore/tools/csi_driver/internal/driver/mocks"
@@ -523,6 +524,8 @@ func TestPublishUnpublishDiskForInfrakuber(t *testing.T) {
 		NbdDeviceFile: nbdDeviceFile,
 	}, nil)
 
+	mounter.On("HasBlockDevice", nbdDeviceFile).Return(true, nil)
+
 	mockCallIsMountPoint := mounter.On("IsMountPoint", stagingTargetPath).Return(false, nil)
 
 	mounter.On("FormatAndMount", nbdDeviceFile, stagingTargetPath, "ext4",
@@ -651,6 +654,19 @@ func TestPublishUnpublishDeviceForInfrakuber(t *testing.T) {
 
 	volumeContext := map[string]string{}
 
+	var volumeOperationInProgress = func(args mock.Arguments) {
+		_, err = nodeService.NodeStageVolume(ctx, &csi.NodeStageVolumeRequest{
+			VolumeId:          diskId,
+			StagingTargetPath: stagingTargetPath,
+			VolumeCapability:  &volumeCapability,
+			VolumeContext:     volumeContext,
+		})
+		require.Error(t, err)
+		expectedError := "rpc error: code = Aborted desc = [n=testNodeId]: " +
+			"Another operation with volume test-disk-id-42 is in progress"
+		require.Equal(t, expectedError, err.Error())
+	}
+
 	hostType := nbs.EHostType_HOST_TYPE_DEFAULT
 	nbsClient.On("StartEndpoint", ctx, &nbs.TStartEndpointRequest{
 		UnixSocketPath:   socketPath,
@@ -673,7 +689,8 @@ func TestPublishUnpublishDeviceForInfrakuber(t *testing.T) {
 		NbdDeviceFile: nbdDeviceFile,
 	}, nil)
 
-	mockCallIsMountPointStagingPath := mounter.On("IsMountPoint", stagingDevicePath).Return(true, nil)
+	mockCallIsMountPointStagingPath :=
+		mounter.On("IsMountPoint", stagingDevicePath).Run(volumeOperationInProgress).Return(true, nil)
 	mockCallMount := mounter.On("Mount", nbdDeviceFile, stagingDevicePath, "", []string{"bind"}).Return(nil)
 
 	_, err = nodeService.NodeStageVolume(ctx, &csi.NodeStageVolumeRequest{
@@ -685,7 +702,8 @@ func TestPublishUnpublishDeviceForInfrakuber(t *testing.T) {
 	require.NoError(t, err)
 	mockCallMount.Unset()
 
-	mockCallIsMountPointTargetPath := mounter.On("IsMountPoint", targetPath).Return(false, nil)
+	mockCallIsMountPointTargetPath :=
+		mounter.On("IsMountPoint", targetPath).Run(volumeOperationInProgress).Return(false, nil)
 	mounter.On("Mount", stagingDevicePath, targetPath, "", []string{"bind"}).Return(nil)
 
 	_, err = nodeService.NodePublishVolume(ctx, &csi.NodePublishVolumeRequest{
@@ -719,7 +737,7 @@ func TestPublishUnpublishDeviceForInfrakuber(t *testing.T) {
 
 	nbsClient.On("StopEndpoint", ctx, &nbs.TStopEndpointRequest{
 		UnixSocketPath: deprecatedSocketPath,
-	}).Return(&nbs.TStopEndpointResponse{}, nil)
+	}).Run(volumeOperationInProgress).Return(&nbs.TStopEndpointResponse{}, nil)
 
 	_, err = nodeService.NodeUnpublishVolume(ctx, &csi.NodeUnpublishVolumeRequest{
 		VolumeId:   diskId,
@@ -736,7 +754,7 @@ func TestPublishUnpublishDeviceForInfrakuber(t *testing.T) {
 
 	nbsClient.On("StopEndpoint", ctx, &nbs.TStopEndpointRequest{
 		UnixSocketPath: socketPath,
-	}).Return(&nbs.TStopEndpointResponse{}, nil)
+	}).Run(volumeOperationInProgress).Return(&nbs.TStopEndpointResponse{}, nil)
 
 	_, err = nodeService.NodeUnstageVolume(ctx, &csi.NodeUnstageVolumeRequest{
 		VolumeId:          diskId,

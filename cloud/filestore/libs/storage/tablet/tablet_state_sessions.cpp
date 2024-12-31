@@ -494,17 +494,30 @@ TIndexTabletState::BuildCreateSessionRequests(
     return requests;
 }
 
-TVector<TMonSessionInfo> TIndexTabletState::GetActiveSessions() const
+TVector<TMonSessionInfo> TIndexTabletState::GetActiveSessionInfos() const
 {
-    TVector<TMonSessionInfo> sessions;
+    TVector<TMonSessionInfo> sessionInfos;
     for (const auto& p: Impl->SessionByClient) {
-        sessions.emplace_back();
-        auto& info = sessions.back();
+        sessionInfos.emplace_back();
+        auto& info = sessionInfos.back();
         info.ClientId = p.first;
-        info.ProtoInfo = *static_cast<NProto::TSession*>(p.second);
+        info.ProtoInfo = *p.second;
         info.SubSessions = p.second->SubSessions.GetAllSubSessions();
     }
-    return sessions;
+    return sessionInfos;
+}
+
+TVector<TMonSessionInfo> TIndexTabletState::GetOrphanSessionInfos() const
+{
+    TVector<TMonSessionInfo> sessionInfos;
+    for (const auto& session: Impl->OrphanSessions) {
+        sessionInfos.emplace_back();
+        auto& info = sessionInfos.back();
+        info.ClientId = session.GetClientId();
+        info.ProtoInfo = session;
+        info.SubSessions = session.SubSessions.GetAllSubSessions();
+    }
+    return sessionInfos;
 }
 
 TSessionsStats TIndexTabletState::CalculateSessionsStats() const

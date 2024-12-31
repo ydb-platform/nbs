@@ -275,7 +275,8 @@ void TCmsRequestActor::HandlePoisonPill(
 {
     Y_UNUSED(ev);
 
-    *Response->Record.MutableError() = MakeError(E_REJECTED, "Tablet is dead");
+    *Response->Record.MutableError() =
+        MakeTabletIsDeadError(E_REJECTED, __LOCATION__);
 
     ReplyAndDie(ctx);
 }

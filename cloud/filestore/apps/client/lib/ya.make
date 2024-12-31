@@ -12,6 +12,7 @@ SRCS(
     destroy_session.cpp
     execute_action.cpp
     factory.cpp
+    find.cpp
     find_garbage.cpp
     forced_compaction.cpp
     kick_endpoint.cpp

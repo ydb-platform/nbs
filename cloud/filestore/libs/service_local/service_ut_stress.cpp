@@ -287,7 +287,9 @@ struct TTestBootstrap
             Scheduler,
             Logging,
             AIOService,
-            TaskQueue);
+            TaskQueue,
+            nullptr   // no profile log
+        );
         Store->Start();
     }
 
@@ -301,7 +303,9 @@ struct TTestBootstrap
             Scheduler,
             Logging,
             AIOService,
-            TaskQueue);
+            TaskQueue,
+            nullptr   // no profile log
+        );
         Store->Start();
 
         CreateFileStore(id, "cloud", "folder", 100500, 500100);

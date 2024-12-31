@@ -105,7 +105,7 @@ private:
         const TActorContext& ctx)
     {
         auto response = std::make_unique<TEvService::TEvReadBlocksLocalResponse>(
-            MakeError(E_REJECTED, "Tablet is dead"));
+            MakeTabletIsDeadError(E_REJECTED, __LOCATION__));
 
         NCloud::Reply(ctx, *Request, std::move(response));
         Die(ctx);
