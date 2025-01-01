@@ -99,15 +99,21 @@ private:
     STFUNC(StateWork);
 
     void SendRequest(const TActorContext& ctx);
+    void GetNodeAttr(const TActorContext& ctx);
 
     void HandleCreateNodeResponse(
         const TEvService::TEvCreateNodeResponse::TPtr& ev,
+        const TActorContext& ctx);
+
+    void HandleGetNodeAttrResponse(
+        const TEvService::TEvGetNodeAttrResponse::TPtr& ev,
         const TActorContext& ctx);
 
     void HandlePoisonPill(
         const TEvents::TEvPoisonPill::TPtr& ev,
         const TActorContext& ctx);
 
+    void ProcessNodeAttr(NProto::TNodeAttr nodeAttr);
     void ReplyAndDie(const TActorContext& ctx, NProto::TError error);
 };
 
@@ -155,6 +161,53 @@ void TCreateNodeInShardActor::SendRequest(const TActorContext& ctx)
         request.release());
 }
 
+void TCreateNodeInShardActor::GetNodeAttr(const TActorContext& ctx)
+{
+    auto request = std::make_unique<TEvService::TEvGetNodeAttrRequest>();
+    *request->Record.MutableHeaders() = Request.GetHeaders();
+    request->Record.SetFileSystemId(Request.GetFileSystemId());
+    request->Record.SetNodeId(Request.GetNodeId());
+    request->Record.SetName(Request.GetName());
+
+    LOG_DEBUG(
+        ctx,
+        TFileStoreComponents::TABLET_WORKER,
+        "%s Sending GetNodeAttrRequest to shard %s, %s",
+        LogTag.c_str(),
+        Request.GetFileSystemId().c_str(),
+        Request.GetName().c_str());
+
+    ctx.Send(
+        MakeIndexTabletProxyServiceId(),
+        request.release());
+}
+
+void TCreateNodeInShardActor::ProcessNodeAttr(NProto::TNodeAttr attr)
+{
+    NProto::TNode requestAttrs;
+    InitAttrs(requestAttrs, Request);
+    if (attr.GetSize() != requestAttrs.GetSize()
+            || attr.GetType() != requestAttrs.GetType())
+    {
+        ReportCreateNodeRequestResponseMismatchInShard(TStringBuilder()
+            << "filesystem: " << LogTag
+            << ", shard: " << Request.GetFileSystemId()
+            << ", name: " << Request.GetName()
+            << ", created node: " << attr.ShortUtf8DebugString()
+            << ", request attrs: " << requestAttrs.ShortUtf8DebugString());
+    }
+
+    if (auto* x = std::get_if<NProto::TCreateNodeResponse>(&Result)) {
+        *x->MutableNode() = std::move(attr);
+    } else if (auto* x = std::get_if<NProto::TCreateHandleResponse>(&Result)) {
+        *x->MutableNodeAttr() = std::move(attr);
+    } else {
+        TABLET_VERIFY_C(
+            0,
+            TStringBuilder() << "bad variant index: " << Result.index());
+    }
+}
+
 void TCreateNodeInShardActor::HandleCreateNodeResponse(
     const TEvService::TEvCreateNodeResponse::TPtr& ev,
     const TActorContext& ctx)
@@ -163,7 +216,7 @@ void TCreateNodeInShardActor::HandleCreateNodeResponse(
 
     if (msg->GetError().GetCode() == E_FS_EXIST) {
         // EXIST can arrive after a successful operation is retried, it's ok
-        LOG_DEBUG(
+        LOG_INFO(
             ctx,
             TFileStoreComponents::TABLET_WORKER,
             "%s Shard node creation for %s, %s returned EEXIST %s",
@@ -172,7 +225,10 @@ void TCreateNodeInShardActor::HandleCreateNodeResponse(
             Request.GetName().c_str(),
             FormatError(msg->GetError()).Quote().c_str());
 
-        msg->Record.ClearError();
+        // simply resetting error isn't enough - CreateNodeResponses with errors
+        // don't contain NodeAttr, so we need to do explicit GetNodeAttr
+        GetNodeAttr(ctx);
+        return;
     }
 
     if (HasError(msg->GetError())) {
@@ -219,16 +275,61 @@ void TCreateNodeInShardActor::HandleCreateNodeResponse(
         Request.GetFileSystemId().c_str(),
         Request.GetName().c_str());
 
-    if (auto* x = std::get_if<NProto::TCreateNodeResponse>(&Result)) {
-        *x->MutableNode() = std::move(*msg->Record.MutableNode());
-    } else if (auto* x = std::get_if<NProto::TCreateHandleResponse>(&Result)) {
-        *x->MutableNodeAttr() = std::move(*msg->Record.MutableNode());
-    } else {
-        TABLET_VERIFY_C(
-            0,
-            TStringBuilder() << "bad variant index: " << Result.index());
+    ProcessNodeAttr(*msg->Record.MutableNode());
+    ReplyAndDie(ctx, {});
+}
+
+void TCreateNodeInShardActor::HandleGetNodeAttrResponse(
+    const TEvService::TEvGetNodeAttrResponse::TPtr& ev,
+    const TActorContext& ctx)
+{
+    auto* msg = ev->Get();
+
+    if (HasError(msg->GetError())) {
+        if (GetErrorKind(msg->GetError()) == EErrorKind::ErrorRetriable) {
+            LOG_WARN(
+                ctx,
+                TFileStoreComponents::TABLET_WORKER,
+                "%s Shard GetNodeAttr failed for %s, %s with error %s"
+                ", retrying",
+                LogTag.c_str(),
+                Request.GetFileSystemId().c_str(),
+                Request.GetName().c_str(),
+                FormatError(msg->GetError()).Quote().c_str());
+
+            GetNodeAttr(ctx);
+            return;
+        }
+
+        const auto message = Sprintf(
+            "Shard GetNodeAttr failed for %s, %s with error %s"
+            ", will not retry",
+            Request.GetFileSystemId().c_str(),
+            Request.GetName().c_str(),
+            FormatError(msg->GetError()).Quote().c_str());
+
+        LOG_ERROR(
+            ctx,
+            TFileStoreComponents::TABLET_WORKER,
+            "%s %s",
+            LogTag.c_str(),
+            message.c_str());
+
+        ReportReceivedNodeOpErrorFromShard(message);
+
+        ReplyAndDie(ctx, msg->GetError());
+        return;
     }
 
+    LOG_DEBUG(
+        ctx,
+        TFileStoreComponents::TABLET_WORKER,
+        "%s Shard GetNodeAttr completed for %s, %s",
+        LogTag.c_str(),
+        Request.GetFileSystemId().c_str(),
+        Request.GetName().c_str());
+
+    ProcessNodeAttr(*msg->Record.MutableNode());
     ReplyAndDie(ctx, {});
 }
 
@@ -276,6 +377,7 @@ STFUNC(TCreateNodeInShardActor::StateWork)
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
 
         HFunc(TEvService::TEvCreateNodeResponse, HandleCreateNodeResponse);
+        HFunc(TEvService::TEvGetNodeAttrResponse, HandleGetNodeAttrResponse);
 
         default:
             HandleUnexpectedEvent(ev, TFileStoreComponents::TABLET_WORKER);

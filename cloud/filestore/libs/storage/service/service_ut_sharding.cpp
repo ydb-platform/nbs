@@ -630,6 +630,92 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
             TString(1_MB, 'a'));
     }
 
+    SERVICE_TEST_SIMPLE(ShouldCheckAttrForNodeCreatedInShardViaLeader)
+    {
+        TTestEnv env({}, config);
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+
+        const TString fsId = "test";
+        const auto shard1Id = fsId + "-f1";
+        const auto shard2Id = fsId + "-f2";
+
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+        service.CreateFileStore(fsId, 1'000);
+        service.CreateFileStore(shard1Id, 1'000);
+        service.CreateFileStore(shard2Id, 1'000);
+
+        ConfigureShards(service, fsId, shard1Id, shard2Id);
+
+        auto headers = service.InitSession(fsId, "client");
+
+        TAutoPtr<IEventHandle> createNodeInShard;
+        TString name;
+        bool intercept = true;
+        env.GetRuntime().SetEventFilter(
+            [&] (auto& runtime, TAutoPtr<IEventHandle>& e) {
+                Y_UNUSED(runtime);
+                if (e->GetTypeRewrite() == TEvService::EvCreateNodeRequest) {
+                    const auto* msg =
+                        e->Get<TEvService::TEvCreateNodeRequest>();
+                    if (intercept
+                            && msg->Record.GetFileSystemId() == shard1Id)
+                    {
+                        name = msg->Record.GetName();
+                        createNodeInShard = e;
+                        return true;
+                    }
+                }
+                return false;
+            });
+
+        service.SendCreateNodeRequest(
+            headers,
+            TCreateNodeArgs::File(
+                RootNodeId,
+                "file1",
+                0, // mode
+                shard1Id));
+
+        ui32 iterations = 0;
+        while (!createNodeInShard && iterations++ < 100) {
+            env.GetRuntime().DispatchEvents({}, TDuration::MilliSeconds(50));
+        }
+
+        UNIT_ASSERT(createNodeInShard);
+        intercept = false;
+
+        auto headers1 = headers;
+        headers1.FileSystemId = shard1Id;
+
+        const auto nodeId = service.CreateNode(
+            headers1,
+            TCreateNodeArgs::File(RootNodeId, name))->Record.GetNode().GetId();
+        UNIT_ASSERT_VALUES_EQUAL(1, ExtractShardNo(nodeId));
+        service.SetNodeAttr(headers1, shard1Id, nodeId, 1_MB);
+
+        const auto counters =
+            env.GetCounters()->FindSubgroup("component", "service");
+        UNIT_ASSERT(counters);
+        const auto counter = counters->GetCounter(
+            "AppCriticalEvents/CreateNodeRequestResponseMismatchInShard");
+
+        UNIT_ASSERT_VALUES_EQUAL(0, counter->GetAtomic());
+
+        env.GetRuntime().Send(createNodeInShard.Release());
+
+        auto response = service.RecvCreateNodeResponse();
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            S_OK,
+            response->GetStatus(),
+            response->GetErrorReason());
+
+        UNIT_ASSERT_VALUES_EQUAL(nodeId, response->Record.GetNode().GetId());
+
+        UNIT_ASSERT_VALUES_EQUAL(1, counter->GetAtomic());
+    }
+
     SERVICE_TEST_SID_SELECT_IN_LEADER(
         ShouldCreateNodeInShardByCreateHandleViaLeader)
     {
@@ -2243,7 +2329,6 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
                                 && event->Recipient
                                     != MakeIndexTabletProxyServiceId())
                         {
-                        Cerr << "DROPPED REQUEST" << Endl;
                             dropped = true;
                             return true;
                         }
