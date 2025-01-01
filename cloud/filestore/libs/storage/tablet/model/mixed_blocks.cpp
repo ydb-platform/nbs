@@ -352,8 +352,6 @@ TMixedBlobMeta TMixedBlocks::FindBlob(ui32 rangeId, TPartialBlobId blobId) const
     const auto* range = Impl->Ranges.FindPtr(rangeId);
     Y_ABORT_UNLESS(range);
 
-    TVector<TMixedBlobMeta> result;
-
     auto it = range->Blobs.find(blobId);
     Y_ABORT_UNLESS(it != range->Blobs.end());
 

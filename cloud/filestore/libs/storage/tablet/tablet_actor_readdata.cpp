@@ -425,7 +425,7 @@ void TReadDataActor::ReadBlob(const TActorContext& ctx)
             blockOffset - 1);
         if (block.BlobCompressionInfo.BlobCompressed()) {
             blobCompressionInfoByBlobId[block.BlobId] =
-                std::move(block.BlobCompressionInfo);
+                block.BlobCompressionInfo;
         }
     }
 

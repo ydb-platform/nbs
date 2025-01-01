@@ -225,7 +225,7 @@ private:
                 db,
                 blob.BlobId,
                 blob.Blocks,
-                TBlobCompressionInfo()  /* uncompressed */);
+                blob.BlobCompressionInfo);
             if (written) {
                 ui32 rangeId = Tablet.GetMixedRangeIndex(blob.Blocks);
                 AccessCompactionRangeInfo(rangeId).Stats.BlobsCount += 1;
@@ -270,7 +270,7 @@ private:
                     db,
                     blob.BlobId,
                     blob.Blocks,
-                    TBlobCompressionInfo()  /* uncompressed */)
+                    blob.BlobCompressionInfo)
             ) {
                 stats.BlobsCount += 1;
                 // conservative estimate
@@ -314,7 +314,7 @@ private:
                     db,
                     blob.BlobId,
                     blob.Blocks,
-                    TBlobCompressionInfo()  /* uncompressed */)
+                    blob.BlobCompressionInfo)
             ) {
                 stats.BlobsCount += 1;
                 // conservative estimate

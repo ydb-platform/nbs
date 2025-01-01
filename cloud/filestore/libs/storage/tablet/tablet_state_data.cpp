@@ -883,7 +883,7 @@ bool TIndexTabletState::UpdateBlockLists(
         rangeId,
         blob.BlobId,
         blob.Blocks,
-        TBlobCompressionInfo()  /* remains unchanged */);
+        blob.BlobCompressionInfo);
 }
 
 ui32 TIndexTabletState::CleanupBlockDeletions(
