@@ -11,18 +11,18 @@ namespace {
 ////////////////////////////////////////////////////////////////////////////////
 
 TThrottlerConfig MakeConfig(
-    ui32 maxReadBandwidth,
-    ui32 maxWriteBandwidth,
+    ui64 maxReadBandwidth,
+    ui64 maxWriteBandwidth,
     ui32 maxReadIops,
     ui32 maxWriteIops,
     ui32 burstPercentage,
     ui32 boostTime,
     ui32 boostRefillTime,
     ui32 boostPercentage,
-    ui32 maxPostponedWeight,
+    ui64 maxPostponedWeight,
     TDuration maxPostponedTime,
     ui32 maxWriteCostMultiplier,
-    ui32 defaultPostponedRequestWeight)
+    ui64 defaultPostponedRequestWeight)
 {
     TThrottlerConfig config;
 
@@ -373,6 +373,40 @@ Y_UNIT_TEST_SUITE(TIndexTabletThrottlingPolicyTest)
             TDuration::Zero(),
             {1_MB, static_cast<ui32>(EOpType::Read), 1}
         ).Defined());
+    }
+
+    Y_UNIT_TEST(MoreThan4g)
+    {
+        // From SeparateReadAndWriteLimits
+        const auto config = MakeConfig(
+            10_GB,                   // maxReadBandwidth
+            20_GB,                   // maxWriteBandwidth
+            100000,                  // maxReadIops
+            500000,                  // maxWriteIops
+            100,                     // burstPercentage
+            0,                       // boostTime
+            0,                       // boostRefillTime
+            0,                       // boostPercentage
+            1_GB,                    // maxPostponedWeight
+            TDuration::Seconds(1),   // maxPostponedTime
+            Max<ui32>(),             // maxWriteCostMultiplier
+            1_GB                     // defaultPostponedRequestWeight
+        );
+        TThrottlingPolicy tp(config);
+        for (ui32 i = 0; i < 10; ++i) {
+            DO_TEST(tp, 0, 10'000, 1_GB, static_cast<ui32>(EOpType::Read));
+        }
+        DO_TEST(tp, 72'995, 10'000, 1_GB, static_cast<ui32>(EOpType::Read));
+        tp.OnPostponedEvent({}, {1_GB, static_cast<ui32>(EOpType::Read), 1});
+        DO_TEST(tp, 34'864, 48'131, 1_GB, static_cast<ui32>(EOpType::Read));
+        for (ui32 i = 0; i < 19; ++i) {
+           DO_TEST(tp, 0, 10'000'000, 1_GB, static_cast<ui32>(EOpType::Write));
+        }
+        DO_TEST(tp, 0, 10'000'000, 1_GB, static_cast<ui32>(EOpType::Write));
+        tp.OnPostponedEvent({}, {1_GB, static_cast<ui32>(EOpType::Write), 1});
+        DO_TEST(tp, 30'319, 10'010'000, 1_GB, static_cast<ui32>(EOpType::Write));
+        DO_TEST(tp, 0, 11'025'900, 1_GB, static_cast<ui32>(EOpType::Read));
+        DO_TEST(tp, 0, 11'025'900, 1_GB, static_cast<ui32>(EOpType::Write));
     }
 }
 

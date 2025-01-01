@@ -18,10 +18,10 @@ struct TVolumePerfSettings:
     public TAtomicRefCount<TVolumePerfSettings>
 {
     ui32 ReadIops = 0;
-    ui32 ReadBandwidth = 0;
+    ui64 ReadBandwidth = 0;
 
     ui32 WriteIops = 0;
-    ui32 WriteBandwidth = 0;
+    ui64 WriteBandwidth = 0;
 
     ui32 CriticalFactor = 0;
 
@@ -30,9 +30,9 @@ struct TVolumePerfSettings:
 
     TVolumePerfSettings(
             ui32 readIops,
-            ui32 readBandwidth,
+            ui64 readBandwidth,
             ui32 writeIops,
-            ui32 writeBandwidth,
+            ui64 writeBandwidth,
             ui32 criticalFactor)
         : ReadIops(readIops)
         , ReadBandwidth(readBandwidth)

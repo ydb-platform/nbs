@@ -46,12 +46,12 @@ enum EVolumeIOMode
 message TVolumePerformanceProfile
 {
     // Bytes per sec
-    uint32 MaxReadBandwidth = 1;
+    uint64 MaxReadBandwidth = 1;
 
     // Max instantaneous bandwidth
     /* uint32 MaxBurstBandwidth = 2; obsolete */
     // Limits the total weight of all postponed operations
-    uint32 MaxPostponedWeight = 3;
+    uint64 MaxPostponedWeight = 3;
 
     // Throttling enabled
     bool ThrottlingEnabled = 4;
@@ -69,7 +69,7 @@ message TVolumePerformanceProfile
     uint32 BoostPercentage = 9;
 
     // Bytes per sec
-    uint32 MaxWriteBandwidth = 10;
+    uint64 MaxWriteBandwidth = 10;
 
     // Iops
     uint32 MaxWriteIops = 11;

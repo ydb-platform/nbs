@@ -211,7 +211,7 @@ message TFileSystemConfig
 
     uint32 BlockSize = 6;
     uint64 BlocksCount = 7;
-    uint32 NodesCount = 8;
+    uint64 NodesCount = 8;
 
     repeated TChannelProfile ExplicitChannelProfiles = 9;
 
