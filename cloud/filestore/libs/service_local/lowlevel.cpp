@@ -307,7 +307,7 @@ void Chmod(const TFileHandle& handle, int mode)
     }
 }
 
-void Chown(const TFileHandle& handle, unsigned int uid, unsigned int gid)
+void Chown(const TFileHandle& handle, uid_t uid, gid_t gid)
 {
     char path[64] = {0};
     sprintf(path, "/proc/self/fd/%i", Fd(handle));
