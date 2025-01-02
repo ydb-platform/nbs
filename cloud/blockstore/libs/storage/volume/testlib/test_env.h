@@ -279,10 +279,10 @@ public:
 
     std::unique_ptr<TEvBlockStore::TEvUpdateVolumeConfig>
     CreateUpdateVolumeConfigRequest(
-        ui32 maxBandwidth = 0,
+        ui64 maxBandwidth = 0,
         ui32 maxIops = 0,
         ui32 burstPercentage = 0,
-        ui32 maxPostponedWeight = 0,
+        ui64 maxPostponedWeight = 0,
         bool throttlingEnabled = false,
         ui32 version = 1,
         NCloud::NProto::EStorageMediaKind mediaKind =

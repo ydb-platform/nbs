@@ -616,7 +616,8 @@ private:
         const NActors::TActorContext& ctx,
         const TVector<NProto::TOpLogEntry>& opLog);
 
-    bool IsShard() const;
+    bool IsMainTablet() const;
+    bool BehaveAsShard(const NProto::THeaders& headers) const;
 
     void FillSelfStorageStats(NProtoPrivate::TStorageStats* stats);
 

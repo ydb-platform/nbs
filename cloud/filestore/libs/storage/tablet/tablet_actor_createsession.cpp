@@ -345,8 +345,13 @@ void TIndexTabletActor::CompleteTx_CreateSession(
     FillFeatures(*Config, fileStore);
 
     TVector<TString> shardIds;
-    for (const auto& shardId: GetFileSystem().GetShardFileSystemIds()) {
-        shardIds.push_back(shardId);
+    // there's no point in returning shard list unless it's main filesystem
+    // tablet (in which case shard list is needed to perform request forwarding
+    // to shards in TStorageServiceActor)
+    if (IsMainTablet()) {
+        for (const auto& shardId: GetFileSystem().GetShardFileSystemIds()) {
+            shardIds.push_back(shardId);
+        }
     }
     if (shardIds.empty()) {
         LOG_INFO(ctx, TFileStoreComponents::TABLET,

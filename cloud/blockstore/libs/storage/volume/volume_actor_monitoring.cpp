@@ -1655,10 +1655,14 @@ void TVolumeActor::HandleHttpInfo_ChangeThrottlingPolicy(
         const auto& s = params.Get(name);
         return FromStringWithDefault(s, Max<ui32>());
     };
+    auto getParam64 = [&] (const TStringBuf name) {
+        const auto& s = params.Get(name);
+        return FromStringWithDefault(s, static_cast<ui64>(Max<ui32>()));
+    };
     const auto maxReadIops = getParam("MaxReadIops");
     const auto maxWriteIops = getParam("MaxWriteIops");
-    const auto maxReadBandwidth = getParam("MaxReadBandwidth");
-    const auto maxWriteBandwidth = getParam("MaxWriteBandwidth");
+    const auto maxReadBandwidth = getParam64("MaxReadBandwidth");
+    const auto maxWriteBandwidth = getParam64("MaxWriteBandwidth");
 
     pp.SetMaxReadIops(Min(pp.GetMaxReadIops(), maxReadIops));
     pp.SetMaxWriteIops(Min(pp.GetMaxWriteIops(), maxWriteIops));

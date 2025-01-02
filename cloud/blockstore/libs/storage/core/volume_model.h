@@ -35,8 +35,8 @@ struct TVolumeParams
     ui64 BlocksCountPerPartition = 0;
     ui32 PartitionsCount = 0;
     TVector<TChannelInfo> DataChannels;
-    ui32 MaxReadBandwidth = 0;
-    ui32 MaxWriteBandwidth = 0;
+    ui64 MaxReadBandwidth = 0;
+    ui64 MaxWriteBandwidth = 0;
     ui32 MaxReadIops = 0;
     ui32 MaxWriteIops = 0;
     NCloud::NProto::EStorageMediaKind MediaKind

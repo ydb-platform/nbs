@@ -12,7 +12,7 @@ namespace NCloud {
 
 struct TThrottlingRequestInfo final
 {
-    ui32 ByteCount = 0;
+    ui64 ByteCount = 0;
     ui32 OpType = 0;
     ui32 PolicyVersion = 0;
 };

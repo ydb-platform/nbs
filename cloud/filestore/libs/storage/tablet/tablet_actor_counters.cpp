@@ -762,6 +762,8 @@ void TIndexTabletActor::HandleUpdateCounters(
     }
 
     if (CachedStatsFetchingStartTs == TInstant::Zero()) {
+        // TODO(#2674): do shard<->shard stats exchange less often than normal
+        // metrics collection since it's O(n^2) (where n == shardCount)
         auto response =
             std::make_unique<TEvIndexTablet::TEvGetStorageStatsResponse>();
         auto* stats = response->Record.MutableStats();
@@ -848,7 +850,11 @@ void TIndexTabletActor::HandleGetStorageStats(
     response->Record.SetMediaKind(GetFileSystem().GetStorageMediaKind());
     auto& req = ev->Get()->Record;
     auto* stats = response->Record.MutableStats();
-    const auto& shardIds = GetFileSystem().GetShardFileSystemIds();
+    // shards shouldn't collect other shards' stats (unless it's background
+    // shard <-> shard stats exchange which is handled in HandleUpdateCounters)
+    const auto& shardIds = IsMainTablet()
+        ? GetFileSystem().GetShardFileSystemIds()
+        : Default<google::protobuf::RepeatedPtrField<TString>>();
     if (req.GetAllowCache()) {
         *stats = CachedAggregateStats;
         const ui32 shardMetricsCount =

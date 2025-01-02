@@ -42,8 +42,8 @@ NProto::TSetNodeAttrResponse TLocalFileSystem::SetNodeAttr(
         gid = request.GetUpdate().GetGid();
     }
 
-    if (uid.has_value() && gid.has_value()) {
-        node->Chown(*uid, *gid);
+    if (uid || gid) {
+        node->Chown(uid ? *uid : -1, gid ? *gid : -1);
     }
 
     //
