@@ -24,8 +24,16 @@ from contrib.ydb.core.protos import msgbus_pb2 as msgbus
 from contrib.ydb.public.api.protos.ydb_status_codes_pb2 import StatusIds
 from contrib.ydb.tests.library.harness.kikimr_runner import get_unique_path_for_current_test, ensure_path_exists
 
+from pathlib import Path
+import subprocess
+import time
+
 logger = logging.getLogger(__name__)
 
+
+def gdb_args():
+    [gdb_bin] = [*(Path.home() / ".ya").rglob("**/bin/gdb")]
+    return (str(gdb_bin), "-x", str(Path.home() / "gdb.breakpoints.temp"))
 
 class LocalNbs(Daemon):
 
@@ -517,6 +525,7 @@ ModifyScheme {
     def __start_daemon(self):
         self.write_configs()
         super(LocalNbs, self).start()
+        time.sleep(200)
         self.__pid = super(LocalNbs, self).pid
         logger.info(
             "blockstore-server started and initialized at {}".format(self.config_path()))
@@ -528,7 +537,7 @@ ModifyScheme {
             command.append("{name}".format(name=option_name))
             command.append("{conf_file}".format(conf_file=conf_file))
 
-        command = [self.__binary_path]
+        command = [*gdb_args(), "--args", self.__binary_path]
         command += [
             "--service", self.__service_type,
             "--server-port", str(self.__nbs_port),
