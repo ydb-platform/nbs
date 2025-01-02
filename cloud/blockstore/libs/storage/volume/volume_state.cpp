@@ -221,6 +221,26 @@ void TVolumeState::ResetThrottlingPolicy(
             ThrottlerConfig.UseDiskSpaceScore));
 }
 
+bool TVolumeState::ShouldTrackUsedBlocks() const
+{
+    if (!IsDiskRegistryMediaKind()) {
+        return false;
+    }
+
+    const bool overlay = !GetBaseDiskId().empty();
+    if (overlay) {
+        return true;
+    }
+
+    // TODO(drbasic)
+    // For encrypted disk-registry based disks, we will continue to
+    // write a map of encrypted blocks for a while.
+    const auto mode = Meta.GetVolumeConfig().GetEncryptionDesc().GetMode();
+
+    return mode != NProto::NO_ENCRYPTION &&
+           mode != NProto::ENCRYPTION_DEFAULT_AES_XTS;
+}
+
 void TVolumeState::Reset()
 {
     Partitions.clear();
@@ -228,7 +248,7 @@ void TVolumeState::Reset()
     PartitionsState = TPartitionInfo::UNKNOWN;
     ForceRepair = false;
     RejectWrite = false;
-    TrackUsedBlocks = false;
+    TrackUsedBlocks = ShouldTrackUsedBlocks();
     MaskUnusedBlocks = false;
     MaxTimedOutDeviceStateDuration = TDuration::Zero();
     UseRdma = StorageConfig->GetUseRdma()
@@ -241,21 +261,11 @@ void TVolumeState::Reset()
     AcceptInvalidDiskAllocationResponse = false;
     UseIntermediateWriteBuffer = false;
 
-    if (IsDiskRegistryMediaKind()) {
-        if (Meta.GetDevices().size()) {
-            CreatePartitionStatInfo(GetDiskId(), 0);
-        }
-        const bool overlay = !GetBaseDiskId().empty();
-        // TODO(drbasic)
-        // For encrypted disk-registry based disks, we will continue to
-        // write a map of encrypted blocks for a while.
-        const bool encrypted =
-            Meta.GetVolumeConfig().GetEncryptionDesc().GetMode() !=
-            NProto::NO_ENCRYPTION;
-        if (encrypted || overlay) {
-            TrackUsedBlocks = true;
-        }
-    } else {
+    if (IsDiskRegistryMediaKind() && Meta.GetDevices().size()) {
+        CreatePartitionStatInfo(GetDiskId(), 0);
+    }
+
+    if (!IsDiskRegistryMediaKind()) {
         for (ui64 tabletId: Meta.GetPartitions()) {
             Partitions.emplace_back(
                 tabletId,

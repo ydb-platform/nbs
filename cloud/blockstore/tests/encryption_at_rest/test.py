@@ -192,3 +192,19 @@ def test_create_volume_with_default_ecnryption(nbs, disk_agent):
     assert raw_data != expected_data
 
     session.unmount_volume()
+
+    # check that the volume doesn't tack used blocks
+
+    response = json.loads(client.execute_action(
+            action="UpdateUsedBlocks",
+            input_bytes=json.dumps({
+                "DiskId": "vol0",
+                "StartIndices": [0],
+                "BlockCounts": [1],
+                "Used": True
+            }).encode()))
+
+    error = response.get("Error", {})
+
+    assert error.get("Code") == 1   # S_FALSE
+    assert error.get("Message") == "Used block tracking not set up"

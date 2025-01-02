@@ -10,9 +10,12 @@
 #include <util/datetime/base.h>
 #include <util/generic/guid.h>
 
+#include <chrono>
+
 namespace NCloud::NBlockStore::NStorage {
 
 using namespace NActors;
+using namespace std::chrono_literals;
 
 namespace {
 
@@ -1867,6 +1870,67 @@ Y_UNIT_TEST_SUITE(TVolumeStateTest)
             UNIT_ASSERT_VALUES_EQUAL(
                 slice.Items[i].Key,
                 volumeState.GetMountHistory().GetItems()[i].Key);
+        }
+    }
+
+    Y_UNIT_TEST(ShouldNotTrackUsedBlocks)
+    {
+        auto makeState = [] (auto kind, auto mode) {
+            NProto::TVolumeMeta meta;
+
+            auto& config = *meta.MutableConfig();
+            config.SetStorageMediaKind(kind);
+
+            auto& volumeConfig = *meta.MutableVolumeConfig();
+            auto& part = *volumeConfig.AddPartitions();
+            part.SetBlockCount(1);
+
+            auto& desc = *volumeConfig.MutableEncryptionDesc();
+            desc.SetMode(mode);
+
+            return TVolumeState{
+                MakeConfig(10s, 0s),
+                std::move(meta),
+                {},     // metaHistory
+                {},     // volumeParams
+                CreateThrottlerConfig(),
+                {},     // infos
+                {},     // mountHistory
+                {},     // checkpointRequests
+                false   // startPartitionsNeeded
+            };
+        };
+
+        {
+            auto state = makeState(
+                NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
+                NProto::ENCRYPTION_DEFAULT_AES_XTS);
+
+            UNIT_ASSERT(!state.GetTrackUsedBlocks());
+        }
+
+        {
+            auto state = makeState(
+                NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
+                NProto::NO_ENCRYPTION);
+
+            UNIT_ASSERT(!state.GetTrackUsedBlocks());
+        }
+
+        {
+            auto state = makeState(
+                NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
+                NProto::ENCRYPTION_AES_XTS);
+
+            UNIT_ASSERT(state.GetTrackUsedBlocks());
+        }
+
+        {
+            auto state = makeState(
+                NProto::STORAGE_MEDIA_SSD,
+                NProto::ENCRYPTION_AES_XTS);
+
+            UNIT_ASSERT(!state.GetTrackUsedBlocks());
         }
     }
 }
