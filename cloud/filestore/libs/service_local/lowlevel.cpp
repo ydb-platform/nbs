@@ -108,7 +108,8 @@ TFileHandle Open(const TFileHandle& handle, int flags, int mode)
     char path[64] = {0};
     sprintf(path, "/proc/self/fd/%i", Fd(handle));
 
-    int fd = open(path, flags, mode);
+    // Clear `O_NOFOLLOW` if it's set to follow `/proc/self/fd` symlink.
+    int fd = open(path, flags & ~O_NOFOLLOW, mode);
     Y_ENSURE_EX(fd != -1, TServiceError(GetSystemErrorCode())
         << "failed to open: " << LastSystemErrorText());
 
