@@ -1,8 +1,8 @@
 # Purpose
 
 Endpoint is an abstraction for interaction with existing volumes.
-StartEndpoint creates unix socket which is used for communitcation
-between nbs server and client to confgiure specified device(e.g. nbd/vhost)
+StartEndpoint creates unix socket which is used for communication
+between nbs server and client to configure specified device(e.g. nbd/vhost)
 
 # GRPC API
 
