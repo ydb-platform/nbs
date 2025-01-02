@@ -11,6 +11,9 @@
     "test.test_describe_sessions": {
         "uri": "file://test.test_describe_sessions/results.txt"
     },
+    "test.test_diff": {
+        "uri": "file://test.test_diff/results.txt"
+    },
     "test.test_find": {
         "uri": "file://test.test_find/results.txt"
     },

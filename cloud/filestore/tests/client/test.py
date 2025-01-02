@@ -227,6 +227,70 @@ def test_find():
     return ret
 
 
+def __write_some_data(client, fs_id, path, data):
+    data_file = os.path.join(common.output_path(), "data.txt")
+    with open(data_file, "w") as f:
+        f.write("data for %s" % path)
+        f.write(":: actual data: %s" % data)
+
+    client.write(fs_id, path, "--data", data_file)
+
+
+def __fill_fs(client, fs_id):
+    client.mkdir(fs_id, "/a0")
+    client.mkdir(fs_id, "/a0/b0")
+    client.mkdir(fs_id, "/a0/b0/c0")
+    client.mkdir(fs_id, "/a0/b0/c0_0")
+    client.mkdir(fs_id, "/a0/b0/c0_1")
+    client.mkdir(fs_id, "/a1")
+    client.mkdir(fs_id, "/a1/b1")
+    client.mkdir(fs_id, "/a1/b1_0")
+    client.mkdir(fs_id, "/a1/b1/c1")
+    client.mkdir(fs_id, "/a1/b1/c2")
+    client.mkdir(fs_id, "/a1/b1/c2/d1")
+    client.mkdir(fs_id, "/a1/b1/c2/d2")
+    client.touch(fs_id, "/a1/b1/c2/d2/x.txt")
+    client.mkdir(fs_id, "/a1/b1/c2/d3")
+    client.touch(fs_id, "/a0/b0/f0.txt")
+    client.touch(fs_id, "/a0/b0/c0_0/f1.txt")
+    __write_some_data(client, fs_id, "/a0/b0/c0_0/f1.txt", "aaaa")
+    client.touch(fs_id, "/a1/b1/c1/f2.txt")
+    client.touch(fs_id, "/a1/f3.txt")
+    __write_some_data(client, fs_id, "/a1/f3.txt", "ccc ccc ccc")
+    client.touch(fs_id, "/a1/f4.txt")
+    client.touch(fs_id, "/a0/f5.txt")
+    __write_some_data(client, fs_id, "/a0/f5.txt", "bbbbbbbbb")
+    client.touch(fs_id, "/a1/g1.txt")
+    client.touch(fs_id, "/a1/g2.txt")
+    client.touch(fs_id, "/a0/g3.txt")
+
+
+def test_diff():
+    client, results_path = __init_test()
+    client.create("fs0", "test_cloud", "test_folder", BLOCK_SIZE, BLOCKS_COUNT)
+    client.create("fs1", "test_cloud", "test_folder", BLOCK_SIZE, BLOCKS_COUNT)
+
+    __fill_fs(client, "fs0")
+    __fill_fs(client, "fs1")
+    client.rm("fs0", "/a1/b1/c2/d1", "-r")
+    client.rm("fs0", "/a1/b1/c2/d2/x.txt")
+    client.rm("fs0", "/a1/b1/c2/d2", "-r")
+    client.rm("fs0", "/a1/b1/c2/d3", "-r")
+    client.rm("fs0", "/a1/b1/c2", "-r")
+    client.rm("fs1", "/a1/f3.txt")
+    __write_some_data(client, "fs1", "/a1/g1.txt", "zzzzzzzzzzzzzzz")
+    __write_some_data(client, "fs1", "/a0/b0/c0_0/f1.txt", "AAAA")
+    out = client.diff("fs0", "fs1")
+    client.destroy("fs0")
+    client.destroy("fs1")
+
+    with open(results_path, "wb") as results_file:
+        results_file.write(out)
+
+    ret = common.canonical_file(results_path, local=True)
+    return ret
+
+
 def test_write_ls_rm_ls():
     client, results_path = __init_test()
 
