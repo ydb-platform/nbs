@@ -46,12 +46,14 @@ struct TRequestCounters
     ui64 ExternalCount = 0;
     ui64 ExternalRequestBytes = 0;
 
-    THistogram Total;
+    EHistogramCounterOptions HistCounterOptions;
 
-    THistogram Fresh;
-    THistogram Mixed;
-    THistogram Merged;
-    THistogram External;
+    THistogram Total{HistCounterOptions};
+
+    THistogram Fresh{HistCounterOptions};
+    THistogram Mixed{HistCounterOptions};
+    THistogram Merged{HistCounterOptions};
+    THistogram External{HistCounterOptions};
 
     NMonitoring::TDynamicCounters::TCounterPtr SolomonCount;
     NMonitoring::TDynamicCounters::TCounterPtr SolomonRequestBytes;
@@ -70,11 +72,7 @@ struct TRequestCounters
     ERequestCounterOptions Options;
 
     explicit TRequestCounters(EHistogramCounterOptions histCounterOptions)
-        : Total(histCounterOptions)
-        , Fresh(histCounterOptions)
-        , Mixed(histCounterOptions)
-        , Merged(histCounterOptions)
-        , External(histCounterOptions)
+        : HistCounterOptions(histCounterOptions)
     {}
 
     void AddRequest(

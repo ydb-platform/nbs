@@ -6,8 +6,6 @@
 
 namespace NCloud::NBlockStore::NStorage {
 
-////////////////////////////////////////////////////////////////////////////////
-
 class TCountersPrinter: public NMonitoring::ICountableConsumer
 {
 private:
@@ -15,59 +13,28 @@ private:
     int Level = 0;
 
 public:
-    explicit TCountersPrinter(IOutputStream* out)
-        : Out(out)
-    {}
+    explicit TCountersPrinter(IOutputStream* out);
 
-private:
     void OnCounter(
         const TString& labelName,
         const TString& labelValue,
-        const NMonitoring::TCounterForPtr* counter) override
-    {
-        Indent(Out, Level) << labelName << ':' << labelValue << " = "
-                           << counter->Val() << '\n';
-    }
+        const NMonitoring::TCounterForPtr* counter) override;
 
     void OnHistogram(
         const TString& labelName,
         const TString& labelValue,
         NMonitoring::IHistogramSnapshotPtr snapshot,
-        bool derivative) override
-    {
-        Y_UNUSED(snapshot);
-        Y_UNUSED(derivative);
-        Indent(Out, Level) << labelName << ':' << labelValue << " = "
-                           << *snapshot << '\n';
-    }
+        bool derivative) override;
 
     void OnGroupBegin(
         const TString& labelName,
         const TString& labelValue,
-        const NMonitoring::TDynamicCounters* snapshot) override
-    {
-        Y_UNUSED(snapshot);
-        Indent(Out, Level++) << labelName << ':' << labelValue << " {\n";
-    }
+        const NMonitoring::TDynamicCounters* snapshot) override;
 
     void OnGroupEnd(
         const TString& labelName,
         const TString& labelValue,
-        const NMonitoring::TDynamicCounters* snapshot) override
-    {
-        Y_UNUSED(labelName);
-        Y_UNUSED(labelValue);
-        Y_UNUSED(snapshot);
-        Indent(Out, --Level) << "}\n";
-    }
-
-    static IOutputStream& Indent(IOutputStream* out, int level)
-    {
-        for (int i = 0; i < level; i++) {
-            out->Write("  ");
-        }
-        return *out;
-    }
+        const NMonitoring::TDynamicCounters* snapshot) override;
 };
 
 }   // namespace NCloud::NBlockStore::NStorage

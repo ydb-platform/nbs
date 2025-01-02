@@ -377,54 +377,40 @@ struct THistogramRequestCounters
 
     explicit THistogramRequestCounters(
             EHistogramCounterOptions histCounterOptions)
-        : Flush(EPublishingPolicy::Repl, histCounterOptions)
-        , AddBlobs(EPublishingPolicy::Repl, histCounterOptions)
-        , Compaction(EPublishingPolicy::Repl, histCounterOptions)
-        , Cleanup(EPublishingPolicy::Repl, histCounterOptions)
-        , CollectGarbage(EPublishingPolicy::Repl, histCounterOptions)
-        , DeleteGarbage(EPublishingPolicy::Repl, histCounterOptions)
-        , TrimFreshLog(EPublishingPolicy::Repl, histCounterOptions)
-        , AddConfirmedBlobs(EPublishingPolicy::Repl, histCounterOptions)
-        , AddUnconfirmedBlobs(EPublishingPolicy::Repl, histCounterOptions)
-        , ConfirmBlobs(EPublishingPolicy::Repl, histCounterOptions)
-        , WriteBlob(
-              EPublishingPolicy::Repl,
-              ERequestCounterOption::HasKind,
-              histCounterOptions)
-        , ReadBlob(
-              EPublishingPolicy::Repl,
-              ERequestCounterOption::HasKind,
-              histCounterOptions)
-        , PatchBlob(
-              EPublishingPolicy::Repl,
-              ERequestCounterOption::HasKind,
-              histCounterOptions)
-        , ReadBlocks(
-              EPublishingPolicy::All,
-              ERequestCounterOption::HasVoidBytes,
-              histCounterOptions)
-        , WriteBlocks(EPublishingPolicy::All, histCounterOptions)
-        , ZeroBlocks(EPublishingPolicy::All, histCounterOptions)
-        , DescribeBlocks(EPublishingPolicy::All, histCounterOptions)
-        , ChecksumBlocks(EPublishingPolicy::All, histCounterOptions)
+        : HistCounterOptions(histCounterOptions)
     {}
 
+    EHistogramCounterOptions HistCounterOptions;
+
     // BlobStorage based
-    TLowResCounter Flush;
-    TLowResCounter AddBlobs;
-    TLowResCounter Compaction;
-    TLowResCounter Cleanup;
-    TLowResCounter CollectGarbage;
-    TLowResCounter DeleteGarbage;
-    TLowResCounter TrimFreshLog;
-    TLowResCounter AddConfirmedBlobs;
-    TLowResCounter AddUnconfirmedBlobs;
-    TLowResCounter ConfirmBlobs;
+    TLowResCounter Flush{EPublishingPolicy::Repl, HistCounterOptions};
+    TLowResCounter AddBlobs{EPublishingPolicy::Repl, HistCounterOptions};
+    TLowResCounter Compaction{EPublishingPolicy::Repl, HistCounterOptions};
+    TLowResCounter Cleanup{EPublishingPolicy::Repl, HistCounterOptions};
+    TLowResCounter CollectGarbage{EPublishingPolicy::Repl, HistCounterOptions};
+    TLowResCounter DeleteGarbage{EPublishingPolicy::Repl, HistCounterOptions};
+    TLowResCounter TrimFreshLog{EPublishingPolicy::Repl, HistCounterOptions};
+    TLowResCounter AddConfirmedBlobs{
+        EPublishingPolicy::Repl,
+        HistCounterOptions};
+    TLowResCounter AddUnconfirmedBlobs{
+        EPublishingPolicy::Repl,
+        HistCounterOptions};
+    TLowResCounter ConfirmBlobs{EPublishingPolicy::Repl, HistCounterOptions};
 
     // BlobStorage based with kind and size
-    TLowResCounter WriteBlob;
-    TLowResCounter ReadBlob;
-    TLowResCounter PatchBlob;
+    TLowResCounter WriteBlob{
+        EPublishingPolicy::Repl,
+        ERequestCounterOption::HasKind,
+        HistCounterOptions};
+    TLowResCounter ReadBlob{
+        EPublishingPolicy::Repl,
+        ERequestCounterOption::HasKind,
+        HistCounterOptions};
+    TLowResCounter PatchBlob{
+        EPublishingPolicy::Repl,
+        ERequestCounterOption::HasKind,
+        HistCounterOptions};
 
     static constexpr TLowResMeta AllLowResCounters[] = {
         MakeMeta<&THistogramRequestCounters::Flush>(),
@@ -445,12 +431,15 @@ struct THistogramRequestCounters
 
     THighResCounter ReadBlocks{
         EPublishingPolicy::All,
-        ERequestCounterOption::HasVoidBytes};
-    THighResCounter WriteBlocks{EPublishingPolicy::All};
-    THighResCounter ZeroBlocks{EPublishingPolicy::All};
-    THighResCounter DescribeBlocks{EPublishingPolicy::All};
-    THighResCounter ChecksumBlocks{EPublishingPolicy::All};
-    THighResCounter CopyBlocks{EPublishingPolicy::DiskRegistryBased};
+        ERequestCounterOption::HasVoidBytes,
+        HistCounterOptions};
+    THighResCounter WriteBlocks{EPublishingPolicy::All, HistCounterOptions};
+    THighResCounter ZeroBlocks{EPublishingPolicy::All, HistCounterOptions};
+    THighResCounter DescribeBlocks{EPublishingPolicy::All, HistCounterOptions};
+    THighResCounter ChecksumBlocks{EPublishingPolicy::All, HistCounterOptions};
+    THighResCounter CopyBlocks{
+        EPublishingPolicy::DiskRegistryBased,
+        HistCounterOptions};
 
     static constexpr THighResMeta AllHighResCounters[] = {
         MakeMeta<&THistogramRequestCounters::ReadBlocks>(),
@@ -464,7 +453,9 @@ struct THistogramRequestCounters
 
 static_assert(
     sizeof(THistogramRequestCounters) ==
-    (sizeof(THistogramRequestCounters::TLowResCounter) *
+    // cannot use sizeof(EHistogramCounterOptions) because of alignment
+    (offsetof(THistogramRequestCounters, Flush) +
+     sizeof(THistogramRequestCounters::TLowResCounter) *
          std::size(THistogramRequestCounters::AllLowResCounters) +
      sizeof(THistogramRequestCounters::THighResCounter) *
          std::size(THistogramRequestCounters::AllHighResCounters)));
