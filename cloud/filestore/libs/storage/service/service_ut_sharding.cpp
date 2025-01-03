@@ -4663,6 +4663,135 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         service.DestroyHandle(headers, fsId, nodeId2, handle2);
         service.DestroyHandle(headers, fsId, nodeId3, handle3);
     }
+
+    SERVICE_TEST_SID_SELECT_IN_LEADER_ONLY(
+        ShouldListNodesAndGetNodeAttrInDirectoryInShard)
+    {
+        config.SetMultiTabletForwardingEnabled(true);
+        config.SetDirectoryCreationInShardsEnabled(true);
+        TTestEnv env({}, config);
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+
+        const TString fsId = "test";
+        const auto shard1Id = fsId + "-f1";
+        const auto shard2Id = fsId + "-f2";
+
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+        service.CreateFileStore(fsId, 1'000);
+        service.CreateFileStore(shard1Id, 1'000);
+        service.CreateFileStore(shard2Id, 1'000);
+
+        ConfigureShards(service, fsId, shard1Id, shard2Id);
+
+        auto headers = service.InitSession(fsId, "client");
+
+        auto createNodeResponse = service.CreateNode(
+            headers,
+            TCreateNodeArgs::Directory(RootNodeId, "dir1"))->Record;
+        const auto dir1Id = createNodeResponse.GetNode().GetId();
+        UNIT_ASSERT_VALUES_EQUAL(1, ExtractShardNo(dir1Id));
+
+        service.CreateNode(
+            headers,
+            TCreateNodeArgs::File(dir1Id, "file1"));
+        service.CreateNode(
+            headers,
+            TCreateNodeArgs::File(dir1Id, "file2"));
+        service.CreateNode(
+            headers,
+            TCreateNodeArgs::File(dir1Id, "file3"));
+        service.CreateNode(
+            headers,
+            TCreateNodeArgs::File(dir1Id, "file4"));
+
+        auto listNodesResponse = service.ListNodes(
+            headers,
+            fsId,
+            dir1Id)->Record;
+
+        UNIT_ASSERT_VALUES_EQUAL(4, listNodesResponse.NamesSize());
+        UNIT_ASSERT_VALUES_EQUAL("file1", listNodesResponse.GetNames(0));
+        UNIT_ASSERT_VALUES_EQUAL("file2", listNodesResponse.GetNames(1));
+        UNIT_ASSERT_VALUES_EQUAL("file3", listNodesResponse.GetNames(2));
+        UNIT_ASSERT_VALUES_EQUAL("file4", listNodesResponse.GetNames(3));
+        TVector<std::pair<ui64, TString>> nodes(4);
+        for (ui32 i = 0; i < 4; ++i) {
+            nodes[i] = {
+                listNodesResponse.GetNodes(i).GetId(),
+                listNodesResponse.GetNames(i)};
+            UNIT_ASSERT_VALUES_UNEQUAL(0, nodes[i].first);
+        }
+
+        UNIT_ASSERT_VALUES_EQUAL(2, ExtractShardNo(nodes[0].first));
+        UNIT_ASSERT_VALUES_EQUAL(1, ExtractShardNo(nodes[1].first));
+        UNIT_ASSERT_VALUES_EQUAL(2, ExtractShardNo(nodes[2].first));
+        UNIT_ASSERT_VALUES_EQUAL(1, ExtractShardNo(nodes[3].first));
+
+        auto getAttrResponse = service.GetNodeAttr(
+            headers,
+            fsId,
+            RootNodeId,
+            "dir1")->Record;
+
+        UNIT_ASSERT_VALUES_EQUAL(dir1Id, getAttrResponse.GetNode().GetId());
+        UNIT_ASSERT_VALUES_EQUAL(
+            static_cast<ui32>(NProto::E_DIRECTORY_NODE),
+            getAttrResponse.GetNode().GetType());
+
+        getAttrResponse = service.GetNodeAttr(
+            headers,
+            fsId,
+            dir1Id,
+            "file1")->Record;
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            nodes[0].first,
+            getAttrResponse.GetNode().GetId());
+        UNIT_ASSERT_VALUES_EQUAL(
+            static_cast<ui32>(NProto::E_REGULAR_NODE),
+            getAttrResponse.GetNode().GetType());
+
+        getAttrResponse = service.GetNodeAttr(
+            headers,
+            fsId,
+            dir1Id,
+            "file2")->Record;
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            nodes[1].first,
+            getAttrResponse.GetNode().GetId());
+        UNIT_ASSERT_VALUES_EQUAL(
+            static_cast<ui32>(NProto::E_REGULAR_NODE),
+            getAttrResponse.GetNode().GetType());
+
+        getAttrResponse = service.GetNodeAttr(
+            headers,
+            fsId,
+            dir1Id,
+            "file3")->Record;
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            nodes[2].first,
+            getAttrResponse.GetNode().GetId());
+        UNIT_ASSERT_VALUES_EQUAL(
+            static_cast<ui32>(NProto::E_REGULAR_NODE),
+            getAttrResponse.GetNode().GetType());
+
+        getAttrResponse = service.GetNodeAttr(
+            headers,
+            fsId,
+            dir1Id,
+            "file4")->Record;
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            nodes[3].first,
+            getAttrResponse.GetNode().GetId());
+        UNIT_ASSERT_VALUES_EQUAL(
+            static_cast<ui32>(NProto::E_REGULAR_NODE),
+            getAttrResponse.GetNode().GetType());
+    }
 }
 
 }   // namespace NCloud::NFileStore::NStorage
