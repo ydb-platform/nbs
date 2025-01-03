@@ -173,8 +173,9 @@ struct TResizeRequestContext: TRequestContextBase
     }
 };
 
-struct TRestartAlarmContext: TRequestContextBase
+class TRestartAlarmContext: public TRequestContextBase
 {
+public:
     gpr_timespec Delay;
     TString Socket;
     grpc::Alarm Alarm;
@@ -185,22 +186,26 @@ struct TRestartAlarmContext: TRequestContextBase
         : Delay(MIN_RECONNECT_DELAY)
         , Socket(std::move(socket))
     {
-        Alarm.Set(&cq, gpr_now(gpr_clock_type::GPR_CLOCK_MONOTONIC), this);
+        SetAlarm(cq);
     }
 
     TRestartAlarmContext(
-            TRestartAlarmContext* other,
+            const TRestartAlarmContext* other,
             grpc::ServerCompletionQueue& cq)
-        : Delay(other->Delay)
-        , Socket(other->Socket)
+        : Socket(other->Socket)
+    {
+        // double the delay for the next attempt
+        Delay = gpr_time_add(other->Delay, other->Delay);
+        Delay = gpr_time_min(Delay, MAX_RECONNECT_DELAY);
+        SetAlarm(cq);
+    }
+
+private:
+    void SetAlarm(grpc::ServerCompletionQueue& cq)
     {
         auto now = gpr_now(gpr_clock_type::GPR_CLOCK_MONOTONIC);
         auto deadline = gpr_time_add(now, Delay);
         Alarm.Set(&cq, deadline, this);
-
-        // double the delay for the next attempt
-        Delay = gpr_time_add(other->Delay, other->Delay);
-        Delay = gpr_time_min(Delay, MAX_RECONNECT_DELAY);
     }
 };
 
