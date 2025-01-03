@@ -41,49 +41,6 @@ public:
             .StoreResult(&PageSize);
     }
 
-    NProto::TListNodesResponse ListAll(
-        ISession& session,
-        const TString& fsId,
-        ui64 parentId)
-    {
-        NProto::TListNodesResponse fullResult;
-        TString cookie;
-        do {
-            auto request = CreateRequest<NProto::TListNodesRequest>();
-            request->SetFileSystemId(fsId);
-            request->SetNodeId(parentId);
-            request->MutableHeaders()->SetDisableMultiTabletForwarding(true);
-            if (PageSize) {
-                request->SetMaxBytes(PageSize);
-            }
-            request->SetCookie(cookie);
-            // TODO: async listing
-
-            auto response = WaitFor(session.ListNodes(
-                PrepareCallContext(),
-                std::move(request)));
-
-            Y_ENSURE_EX(
-                !HasError(response.GetError()),
-                yexception() << "ListNodes error: "
-                    << FormatError(response.GetError()));
-
-            Y_ENSURE_EX(
-                response.NamesSize() == response.NodesSize(),
-                yexception() << "invalid ListNodes response: "
-                    << response.DebugString().Quote());
-
-            for (ui32 i = 0; i < response.NamesSize(); ++i) {
-                fullResult.AddNames(*response.MutableNames(i));
-                *fullResult.AddNodes() = std::move(*response.MutableNodes(i));
-            }
-
-            cookie = response.GetCookie();
-        } while (cookie);
-
-        return fullResult;
-    }
-
     void FetchAll(
         ISession& session,
         const TString& fsId,

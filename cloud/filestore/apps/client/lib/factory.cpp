@@ -37,6 +37,7 @@ TCommandPtr NewSetNodeAttrCommand();
 TCommandPtr NewFindGarbageCommand();
 TCommandPtr NewForcedCompactionCommand();
 TCommandPtr NewFindCommand();
+TCommandPtr NewDiffCommand();
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -50,6 +51,7 @@ static const TMap<TString, TFactoryFunc> Commands = {
     { "describe", NewDescribeCommand },
     { "destroy", NewDestroyCommand },
     { "destroysession", NewDestroySessionCommand },
+    { "diff", NewDiffCommand },
     { "executeaction", NewExecuteActionCommand },
     { "find", NewFindCommand },
     { "findgarbage", NewFindGarbageCommand },

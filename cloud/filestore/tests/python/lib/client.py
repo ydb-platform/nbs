@@ -255,6 +255,16 @@ class FilestoreCliClient:
 
         return common.execute(cmd, env=self.__env, check_exit_code=self.__check_exit_code).stdout
 
+    def diff(self, fs, other_fs):
+        cmd = [
+            self.__binary_path, "diff",
+            "--filesystem", fs,
+            "--other-filesystem", other_fs,
+            "--diff-content",
+        ] + self.__cmd_opts()
+
+        return common.execute(cmd, env=self.__env, check_exit_code=self.__check_exit_code).stdout
+
     def execute_action(self, action, request):
         request_file = tempfile.NamedTemporaryFile(mode="w", delete=False)
         json.dump(request, request_file)
