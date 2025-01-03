@@ -53,6 +53,7 @@ public:
             Logging,
             std::move(session),
             ServerStats,
+            CreateErrorHandlerStub(),
             options);
 
         auto address = TNetworkAddress(

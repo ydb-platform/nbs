@@ -274,6 +274,7 @@ std::unique_ptr<TBootstrap> CreateBootstrap(
         logging,
         std::move(storage),
         CreateServerStatsStub(),
+        CreateErrorHandlerStub(),
         options);
 
     auto client = CreateClient(
@@ -1033,6 +1034,7 @@ Y_UNIT_TEST_SUITE(TServerTest)
                 bootstrap->GetLogging(),
                 storage,
                 CreateServerStatsStub(),
+                CreateErrorHandlerStub(),
                 options);
 
             auto future = bootstrap->GetServer()->StartEndpoint(

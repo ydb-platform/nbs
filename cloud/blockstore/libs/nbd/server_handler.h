@@ -100,6 +100,9 @@ struct IServerHandler
         IInputStream& in,
         IOutputStream& out,
         TCont* cont) = 0;
+
+    virtual void ProcessException(
+        std::exception_ptr e) = 0;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -131,6 +134,7 @@ IServerHandlerFactoryPtr CreateServerHandlerFactory(
     ILoggingServicePtr logging,
     IStoragePtr storage,
     IServerStatsPtr serverStats,
+    IErrorHandlerPtr errorHandler,
     const TStorageOptions& options);
 
 }   // namespace NCloud::NBlockStore::NBD
