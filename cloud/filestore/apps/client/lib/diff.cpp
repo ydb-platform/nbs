@@ -72,7 +72,8 @@ public:
 
     void DumpPath(const TString& path) const
     {
-        Cout << NColorizer::StdOut().DarkYellow() << "= PATH: " << path << Endl;
+        Cout << NColorizer::StdOut().DarkYellow() << "=\tPATH: "
+            << path << Endl;
     }
 
     void DumpLine(const TString& prefix, const TString& line) const
