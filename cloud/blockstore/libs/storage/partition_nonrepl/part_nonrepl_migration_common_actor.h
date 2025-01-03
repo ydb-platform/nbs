@@ -87,6 +87,7 @@ private:
 
     IMigrationOwner* const MigrationOwner = nullptr;
     const TStorageConfigPtr Config;
+    const TDiagnosticsConfigPtr DiagnosticsConfig;
     const IProfileLogPtr ProfileLog;
     const TString DiskId;
     const ui64 BlockSize;
@@ -129,8 +130,9 @@ private:
     bool UpdateCountersScheduled = false;
     TPartitionDiskCountersPtr SrcCounters;
     TPartitionDiskCountersPtr DstCounters;
-    TPartitionDiskCountersPtr MigrationCounters =
-        CreatePartitionDiskCounters(EPublishingPolicy::DiskRegistryBased);
+    TPartitionDiskCountersPtr MigrationCounters = CreatePartitionDiskCounters(
+        EPublishingPolicy::DiskRegistryBased,
+        DiagnosticsConfig->GetHistogramCounterOptions());
 
     // Usage statistics
     ui64 NetworkBytes = 0;
@@ -148,7 +150,6 @@ protected:
 
     // PoisonPill
     TPoisonPillHelper PoisonPillHelper;
-    const TDiagnosticsConfigPtr DiagnosticsConfig;
 
 public:
     TNonreplicatedPartitionMigrationCommonActor(
@@ -195,6 +196,8 @@ public:
 
 protected:
     [[nodiscard]] TString GetChangedBlocks(TBlockRange64 range) const;
+    const TStorageConfigPtr& GetConfig() const;
+    const TDiagnosticsConfigPtr& GetDiagnosticsConfig() const;
 
 private:
     bool IsMigrationAllowed() const;

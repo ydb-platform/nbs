@@ -81,8 +81,6 @@ private:
         Error,
     };
 
-    const TStorageConfigPtr Config;
-    const TDiagnosticsConfigPtr DiagnosticConfig;
     const NRdma::IClientPtr RdmaClient;
     const TNonreplicatedPartitionConfigPtr SrcConfig;
     const TString CheckpointId;

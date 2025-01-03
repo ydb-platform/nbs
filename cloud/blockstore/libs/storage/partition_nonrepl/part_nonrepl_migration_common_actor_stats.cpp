@@ -59,8 +59,9 @@ void TNonreplicatedPartitionMigrationCommonActor::SendStats(
     }
 
     stats->AggregateWith(*MigrationCounters);
-    MigrationCounters =
-        CreatePartitionDiskCounters(EPublishingPolicy::DiskRegistryBased);
+    MigrationCounters = CreatePartitionDiskCounters(
+        EPublishingPolicy::DiskRegistryBased,
+        DiagnosticsConfig->GetHistogramCounterOptions());
 
     auto request =
         std::make_unique<TEvVolume::TEvDiskRegistryBasedPartitionCounters>(

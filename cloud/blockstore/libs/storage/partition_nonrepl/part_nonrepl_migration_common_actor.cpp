@@ -32,6 +32,7 @@ TNonreplicatedPartitionMigrationCommonActor::
         ui32 maxIoDepth)
     : MigrationOwner(migrationOwner)
     , Config(std::move(config))
+    , DiagnosticsConfig(std::move(diagnosticsConfig))
     , ProfileLog(std::move(profileLog))
     , DiskId(std::move(diskId))
     , BlockSize(blockSize)
@@ -43,7 +44,6 @@ TNonreplicatedPartitionMigrationCommonActor::
     , ChangedRangesMap(blockCount, blockSize, ProcessingRangeSize)
     , StatActorId(statActorId)
     , PoisonPillHelper(this)
-    , DiagnosticsConfig(std::move(diagnosticsConfig))
 {}
 
 TNonreplicatedPartitionMigrationCommonActor::
