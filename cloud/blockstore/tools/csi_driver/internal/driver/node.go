@@ -11,7 +11,6 @@ import (
 	"log"
 	"math"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -58,13 +57,6 @@ var vmModeCapabilities = []*csi.NodeServiceCapability{
 	{
 		Type: &csi.NodeServiceCapability_Rpc{
 			Rpc: &csi.NodeServiceCapability_RPC{
-				Type: csi.NodeServiceCapability_RPC_VOLUME_MOUNT_GROUP,
-			},
-		},
-	},
-	{
-		Type: &csi.NodeServiceCapability_Rpc{
-			Rpc: &csi.NodeServiceCapability_RPC{
 				Type: csi.NodeServiceCapability_RPC_EXPAND_VOLUME,
 			},
 		},
@@ -78,13 +70,6 @@ var podModeCapabilities = []*csi.NodeServiceCapability{
 		Type: &csi.NodeServiceCapability_Rpc{
 			Rpc: &csi.NodeServiceCapability_RPC{
 				Type: csi.NodeServiceCapability_RPC_STAGE_UNSTAGE_VOLUME,
-			},
-		},
-	},
-	{
-		Type: &csi.NodeServiceCapability_Rpc{
-			Rpc: &csi.NodeServiceCapability_RPC{
-				Type: csi.NodeServiceCapability_RPC_VOLUME_MOUNT_GROUP,
 			},
 		},
 	},
@@ -666,14 +651,6 @@ func (s *nodeService) nodePublishDiskAsFilesystemDeprecated(
 		return err
 	}
 
-	if mnt != nil && mnt.VolumeMountGroup != "" && !req.Readonly {
-		cmd := exec.Command("chown", "-R", ":"+mnt.VolumeMountGroup, req.TargetPath)
-		if out, err := cmd.CombinedOutput(); err != nil {
-			return fmt.Errorf("failed to chown %s to %q: %w, output %q",
-				mnt.VolumeMountGroup, req.TargetPath, err, out)
-		}
-	}
-
 	return nil
 }
 
@@ -721,14 +698,6 @@ func (s *nodeService) nodePublishDiskAsFilesystem(
 		mountOptions)
 	if err != nil {
 		return err
-	}
-
-	if mnt != nil && mnt.VolumeMountGroup != "" && !req.Readonly {
-		cmd := exec.Command("chown", "-R", ":"+mnt.VolumeMountGroup, req.TargetPath)
-		if out, err := cmd.CombinedOutput(); err != nil {
-			return fmt.Errorf("failed to chown %s to %q: %w, output %q",
-				mnt.VolumeMountGroup, req.TargetPath, err, out)
-		}
 	}
 
 	return nil
@@ -819,7 +788,7 @@ func (s *nodeService) nodeStageDiskAsFilesystem(
 		return fmt.Errorf("failed to create staging directory: %w", err)
 	}
 
-	mountOptions := []string{"grpid"}
+	mountOptions := []string{}
 	if fsType == "ext4" {
 		mountOptions = append(mountOptions, "errors=remount-ro")
 	}
@@ -838,14 +807,6 @@ func (s *nodeService) nodeStageDiskAsFilesystem(
 		mountOptions)
 	if err != nil {
 		return fmt.Errorf("failed to format or mount filesystem: %w", err)
-	}
-
-	if mnt != nil && mnt.VolumeMountGroup != "" {
-		cmd := exec.Command("chown", "-R", ":"+mnt.VolumeMountGroup, req.StagingTargetPath)
-		if out, err := cmd.CombinedOutput(); err != nil {
-			return fmt.Errorf("failed to chown %s to %q: %w, output %q",
-				mnt.VolumeMountGroup, req.StagingTargetPath, err, out)
-		}
 	}
 
 	if err := os.Chmod(req.StagingTargetPath, targetPerm); err != nil {

@@ -6,3 +6,5 @@ metadata:
 provisioner: nbs.csi.nebius.ai
 volumeBindingMode: Immediate
 allowVolumeExpansion: true
+parameters:
+  fsType: ext4
