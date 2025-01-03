@@ -2,6 +2,7 @@
 
 #include "client.h"
 #include "client_handler.h"
+#include "error_handler.h"
 #include "server_handler.h"
 
 #include <cloud/blockstore/libs/client/config.h>

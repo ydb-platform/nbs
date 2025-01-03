@@ -1,5 +1,3 @@
-#pragma once
-
 #include "error_handler.h"
 
 namespace NCloud::NBlockStore::NBD {
@@ -15,13 +13,13 @@ struct TErrorHandlerStub
     {}
 };
 
+}   // namespace
+
 ////////////////////////////////////////////////////////////////////////////////
 
 IErrorHandlerPtr CreateErrorHandlerStub()
 {
     return std::make_shared<TErrorHandlerStub>();
 }
-
-}   // namespace
 
 }   // namespace NCloud::NBlockStore::NBD

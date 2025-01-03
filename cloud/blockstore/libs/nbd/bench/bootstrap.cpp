@@ -8,6 +8,7 @@
 #include <cloud/blockstore/libs/diagnostics/server_stats.h>
 #include <cloud/blockstore/libs/nbd/client.h>
 #include <cloud/blockstore/libs/nbd/client_handler.h>
+#include <cloud/blockstore/libs/nbd/error_handler.h>
 #include <cloud/blockstore/libs/nbd/server.h>
 #include <cloud/blockstore/libs/nbd/server_handler.h>
 #include <cloud/blockstore/libs/service/context.h>
@@ -132,6 +133,7 @@ void TBootstrap::Init()
         Logging,
         std::make_shared<TServiceWrapper>(Service),
         CreateServerStatsStub(),
+        CreateErrorHandlerStub(),
         options);
 
     TServerConfig serverConfig {
