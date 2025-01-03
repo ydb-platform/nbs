@@ -3,7 +3,7 @@
 
 namespace NCloud::NBlockStore {
 
-inline TDiagnosticsConfigPtr CreateDiagnosticsConfig()
+TDiagnosticsConfigPtr CreateDiagnosticsConfig()
 {
     NProto::TDiagnosticsConfig diagnosticsConfig;
     diagnosticsConfig.SetReportHistogramAsMultipleCounters(true);

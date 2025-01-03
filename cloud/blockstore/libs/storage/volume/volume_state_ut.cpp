@@ -1,9 +1,9 @@
 #include "volume_state.h"
 
-#include <cloud/blockstore/libs/diagnostics/ut_helpers.h>
 #include <cloud/blockstore/libs/kikimr/events.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/partition_nonrepl/config.h>
+#include <cloud/blockstore/libs/storage/testlib/diagnostics.h>
 #include <cloud/blockstore/libs/storage/testlib/ut_helpers.h>
 
 #include <library/cpp/testing/unittest/registar.h>

@@ -28,7 +28,7 @@ TNonreplicatedPartitionMigrationActor::TNonreplicatedPartitionMigrationActor(
         NActors::TActorId statActorId)
     : TNonreplicatedPartitionMigrationCommonActor(
           static_cast<IMigrationOwner*>(this),
-          std::move(config),
+          config,
           std::move(diagnosticsConfig),
           srcConfig->GetName(),
           srcConfig->GetBlockCount(),

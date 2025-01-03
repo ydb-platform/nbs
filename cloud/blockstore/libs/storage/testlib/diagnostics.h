@@ -5,6 +5,6 @@
 
 namespace NCloud::NBlockStore {
 
-inline TDiagnosticsConfigPtr CreateDiagnosticsConfig();
+TDiagnosticsConfigPtr CreateDiagnosticsConfig();
 
 } // namespace NCloud::NBlockStore

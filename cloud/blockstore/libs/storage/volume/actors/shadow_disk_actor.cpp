@@ -539,7 +539,7 @@ TShadowDiskActor::TShadowDiskActor(
         const TActiveCheckpointInfo& checkpointInfo)
     : TNonreplicatedPartitionMigrationCommonActor(
           static_cast<IMigrationOwner*>(this),
-          std::move(config),
+          config,
           std::move(diagnosticConfig),
           srcConfig->GetName(),
           srcConfig->GetBlockCount(),
