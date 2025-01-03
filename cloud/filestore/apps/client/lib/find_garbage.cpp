@@ -48,7 +48,7 @@ public:
         TVector<TNode>* nodes)
     {
         // TODO: async listing
-        auto response = ListAll(session, fsId, parentId);
+        auto response = ListAll(session, fsId, parentId, true);
 
         for (ui32 i = 0; i < response.NodesSize(); ++i) {
             const auto& node = response.GetNodes(i);
