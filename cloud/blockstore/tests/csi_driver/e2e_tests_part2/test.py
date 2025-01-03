@@ -1,8 +1,6 @@
 import pytest
 import subprocess
 
-from pathlib import Path
-
 import cloud.blockstore.tests.csi_driver.lib.csi_runner as csi
 
 
