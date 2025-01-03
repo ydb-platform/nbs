@@ -196,13 +196,13 @@ def test_create_volume_with_default_ecnryption(nbs, disk_agent):
     # check that the volume doesn't tack used blocks
 
     response = json.loads(client.execute_action(
-            action="UpdateUsedBlocks",
-            input_bytes=json.dumps({
-                "DiskId": "vol0",
-                "StartIndices": [0],
-                "BlockCounts": [1],
-                "Used": True
-            }).encode()))
+        action="UpdateUsedBlocks",
+        input_bytes=json.dumps({
+            "DiskId": "vol0",
+            "StartIndices": [0],
+            "BlockCounts": [1],
+            "Used": True
+        }).encode()))
 
     error = response.get("Error", {})
 
