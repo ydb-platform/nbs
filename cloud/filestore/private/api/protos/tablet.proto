@@ -173,6 +173,10 @@ message TGetStorageStatsRequest
 
     // Use cached data, don't require up-to-date stats.
     bool AllowCache = 6;
+
+    // Forces shard stats fetching even if this request is itself sent to a
+    // shard.
+    bool ForceFetchShardStats = 7;
 }
 
 message TGetStorageStatsResponse

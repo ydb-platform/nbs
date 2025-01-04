@@ -4792,6 +4792,157 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
             static_cast<ui32>(NProto::E_REGULAR_NODE),
             getAttrResponse.GetNode().GetType());
     }
+
+    SERVICE_TEST_SID_SELECT_IN_LEADER_ONLY(
+        ShouldAggregateFileSystemMetricsInBackgroundWithDirectoriesInShards)
+    {
+        config.SetMultiTabletForwardingEnabled(true);
+        config.SetDirectoryCreationInShardsEnabled(true);
+        TTestEnv env({}, config);
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+
+        const TString fsId = "test";
+        const auto shard1Id = fsId + "-f1";
+        const auto shard2Id = fsId + "-f2";
+
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+        service.CreateFileStore(fsId, 1'000);
+        service.CreateFileStore(shard1Id, 1'000);
+        service.CreateFileStore(shard2Id, 1'000);
+
+        TActorId shard1ActorId;
+        env.GetRuntime().SetEventFilter(
+            [&] (auto& runtime, TAutoPtr<IEventHandle>& event) {
+                Y_UNUSED(runtime);
+                switch (event->GetTypeRewrite()) {
+                    case TEvIndexTablet::EvConfigureAsShardRequest: {
+                        using R = TEvIndexTablet::TEvConfigureAsShardRequest;
+                        const auto* msg = event->Get<R>();
+                        if (shard1Id == msg->Record.GetFileSystemId()) {
+                            shard1ActorId = event->Recipient;
+                        }
+                        break;
+                    }
+                }
+
+                return false;
+            });
+
+        ConfigureShards(service, fsId, shard1Id, shard2Id, true);
+
+        auto headers = service.InitSession(fsId, "client");
+
+        // creating 2 files
+
+        auto createNodeResponse = service.CreateNode(
+            headers,
+            TCreateNodeArgs::File(RootNodeId, "file1"))->Record;
+
+        const auto nodeId1 = createNodeResponse.GetNode().GetId();
+        UNIT_ASSERT_VALUES_EQUAL(1, ExtractShardNo(nodeId1));
+
+        createNodeResponse = service.CreateNode(
+            headers,
+            TCreateNodeArgs::File(RootNodeId, "file2"))->Record;
+
+        const auto nodeId2 = createNodeResponse.GetNode().GetId();
+        UNIT_ASSERT_VALUES_EQUAL(2, ExtractShardNo(nodeId2));
+
+        ui64 handle1 = service.CreateHandle(
+            headers,
+            fsId,
+            nodeId1,
+            "",
+            TCreateHandleArgs::RDWR)->Record.GetHandle();
+
+        auto data1 = GenerateValidateData(256_KB);
+        service.WriteData(headers, fsId, nodeId1, handle1, 0, data1);
+
+        ui64 handle2 = service.CreateHandle(
+            headers,
+            fsId,
+            nodeId2,
+            "",
+            TCreateHandleArgs::RDWR)->Record.GetHandle();
+
+        auto data2 = GenerateValidateData(512_KB);
+        service.WriteData(headers, fsId, nodeId2, handle2, 0, data2);
+
+        // triggering background shard stats collection
+
+        env.GetRuntime().AdvanceCurrentTime(TDuration::Seconds(15));
+
+        {
+            using TRequest = TEvIndexTabletPrivate::TEvUpdateCounters;
+
+            env.GetRuntime().Send(
+                new IEventHandle(
+                    shard1ActorId, // recipient
+                    TActorId(), // sender
+                    new TRequest(),
+                    0, // flags
+                    0),
+                0);
+        }
+
+        TDispatchOptions options;
+        options.FinalEvents = {
+            TDispatchOptions::TFinalEventCondition(
+                TEvIndexTabletPrivate::EvGetShardStatsCompleted)};
+        service.AccessRuntime().DispatchEvents(options);
+
+        {
+            NProtoPrivate::TGetStorageStatsRequest request;
+            request.SetFileSystemId(shard1Id);
+            TString buf;
+            google::protobuf::util::MessageToJsonString(request, &buf);
+            auto response = service.ExecuteAction("GetStorageStats", buf);
+            NProtoPrivate::TGetStorageStatsResponse record;
+            auto status = google::protobuf::util::JsonStringToMessage(
+                response->Record.GetOutput(),
+                &record);
+            auto stats = record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.ShardStatsSize());
+            UNIT_ASSERT_VALUES_EQUAL(
+                data1.size() / 4_KB,
+                stats.GetUsedBlocksCount());
+            UNIT_ASSERT_VALUES_EQUAL(
+                data1.size() / 4_KB,
+                stats.GetMixedBlocksCount());
+
+            request.SetAllowCache(true);
+            request.SetForceFetchShardStats(true);
+            buf.clear();
+            google::protobuf::util::MessageToJsonString(request, &buf);
+            response = service.ExecuteAction("GetStorageStats", buf);
+            record.Clear();
+            status = google::protobuf::util::JsonStringToMessage(
+                response->Record.GetOutput(),
+                &record);
+            stats = record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(2, stats.ShardStatsSize());
+            UNIT_ASSERT_VALUES_EQUAL(
+                64,
+                stats.GetShardStats(0).GetUsedBlocksCount());
+            UNIT_ASSERT_VALUES_EQUAL(
+                1000,
+                stats.GetShardStats(0).GetTotalBlocksCount());
+            UNIT_ASSERT_VALUES_EQUAL(
+                128,
+                stats.GetShardStats(1).GetUsedBlocksCount());
+            UNIT_ASSERT_VALUES_EQUAL(
+                1000,
+                stats.GetShardStats(1).GetTotalBlocksCount());
+            UNIT_ASSERT_VALUES_EQUAL(
+                (data1.size() + data2.size()) / 4_KB,
+                stats.GetUsedBlocksCount());
+            UNIT_ASSERT_VALUES_EQUAL(
+                (data1.size() + data2.size()) / 4_KB,
+                stats.GetMixedBlocksCount());
+        }
+    }
 }
 
 }   // namespace NCloud::NFileStore::NStorage
