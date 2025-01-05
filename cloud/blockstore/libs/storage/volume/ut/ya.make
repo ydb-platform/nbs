@@ -4,6 +4,7 @@ INCLUDE(${ARCADIA_ROOT}/cloud/storage/core/tests/recipes/medium.inc)
 
 SRCS(
     volume_database_ut.cpp
+    volume_lagging_agent_ut.cpp
     volume_state_ut.cpp
     volume_ut.cpp
     volume_ut_checkpoint.cpp

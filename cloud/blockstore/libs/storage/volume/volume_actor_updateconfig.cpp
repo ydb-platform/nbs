@@ -4,7 +4,7 @@
 
 #include <cloud/blockstore/libs/service/context.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
-
+#include <cloud/blockstore/libs/storage/volume/model/helpers.h>
 #include <cloud/storage/core/libs/common/media.h>
 
 #include <library/cpp/protobuf/util/pb_io.h>
@@ -243,11 +243,19 @@ void TVolumeActor::FinishUpdateVolumeConfig(const TActorContext& ctx)
     for (auto& freshDeviceId: UnfinishedUpdateVolumeConfig.FreshDeviceIds) {
         *newMeta.AddFreshDeviceIds() = std::move(freshDeviceId);
     }
+    if (State) {
+        newMeta.MutableLaggingAgentsInfo()->CopyFrom(
+            State->GetMeta().GetLaggingAgentsInfo());
+        RemoveLaggingDevicesFromMeta(
+            newMeta,
+            UnfinishedUpdateVolumeConfig.RemovedLaggingDeviceIds);
+    }
 
     UnfinishedUpdateVolumeConfig.Devices = {};
     UnfinishedUpdateVolumeConfig.Migrations = {};
     UnfinishedUpdateVolumeConfig.Replicas = {};
     UnfinishedUpdateVolumeConfig.FreshDeviceIds = {};
+    UnfinishedUpdateVolumeConfig.RemovedLaggingDeviceIds = {};
 
     LOG_DEBUG(ctx, TBlockStoreComponents::VOLUME,
         "[%lu] Updating volume config to version %u",

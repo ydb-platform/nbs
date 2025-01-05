@@ -236,6 +236,7 @@ private:
         TMigrations Migrations;
         TVector<TDevices> Replicas;
         TVector<TString> FreshDeviceIds;
+        TVector<TString> RemovedLaggingDeviceIds;
 
         void Clear()
         {
@@ -474,6 +475,8 @@ private:
 
     void SetupDiskRegistryBasedPartitions(const NActors::TActorContext& ctx);
 
+    void ReportLaggingDevicesToDR(const NActors::TActorContext& ctx);
+
     void DumpUsageStats(
         const NActors::TActorContext& ctx,
         TVolumeActor::EStatus status);
@@ -657,6 +660,10 @@ private:
         const TEvVolumePrivate::TEvWriteOrZeroCompleted::TPtr& ev,
         const NActors::TActorContext& ctx);
 
+    void HandleReportLaggingDevicesToDR(
+        const TEvVolumePrivate::TEvReportLaggingDevicesToDR::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
     template <typename TMethod>
     bool ReplyToOriginalRequest(
         const NActors::TActorContext& ctx,
@@ -772,6 +779,10 @@ private:
 
     void HandleAllocateDiskResponse(
         const TEvDiskRegistry::TEvAllocateDiskResponse::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleAddLaggingDevicesResponse(
+        const TEvDiskRegistry::TEvAddLaggingDevicesResponse::TPtr& ev,
         const NActors::TActorContext& ctx);
 
     void ScheduleAllocateDiskIfNeeded(const NActors::TActorContext& ctx);
@@ -992,6 +1003,14 @@ private:
 
     void HandleReadBlocksLocalResponse(
         const TEvService::TEvReadBlocksLocalResponse::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleSmartMigrationFinished(
+        const TEvVolumePrivate::TEvSmartMigrationFinished::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleUpdateSmartMigrationState(
+        const TEvVolumePrivate::TEvUpdateSmartMigrationState::TPtr& ev,
         const NActors::TActorContext& ctx);
 
     void CreateCheckpointLightRequest(

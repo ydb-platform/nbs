@@ -1,7 +1,6 @@
 #include "volume_actor.h"
 
 #include "volume_database.h"
-#include "volume_tx.h"
 
 #include <cloud/blockstore/libs/storage/api/bootstrapper.h>
 #include <cloud/blockstore/libs/storage/api/service.h>
@@ -1088,6 +1087,22 @@ STFUNC(TVolumeActor::StateWork)
         HFunc(TEvVolume::TEvResyncFinished, HandleResyncFinished);
 
         HFunc(
+            TEvDiskRegistry::TEvAddLaggingDevicesResponse,
+            HandleAddLaggingDevicesResponse);
+        HFunc(
+            TEvVolumePrivate::TEvReportLaggingDevicesToDR,
+            HandleReportLaggingDevicesToDR);
+        HFunc(
+            TEvVolumePrivate::TEvDeviceTimeoutedRequest,
+            HandleDeviceTimeouted);
+        HFunc(
+            TEvVolumePrivate::TEvUpdateSmartMigrationState,
+            HandleUpdateSmartMigrationState);
+        HFunc(
+            TEvVolumePrivate::TEvSmartMigrationFinished,
+            HandleSmartMigrationFinished);
+
+        HFunc(
             TEvPartitionCommonPrivate::TEvLongRunningOperation,
             HandleLongRunningBlobOperation);
 
@@ -1120,6 +1135,10 @@ STFUNC(TVolumeActor::StateZombie)
         IgnoreFunc(TEvVolumePrivate::TEvUpdateThrottlerState);
         IgnoreFunc(TEvVolumePrivate::TEvUpdateReadWriteClientInfo);
         IgnoreFunc(TEvVolumePrivate::TEvRemoveExpiredVolumeParams);
+        IgnoreFunc(TEvVolumePrivate::TEvReportLaggingDevicesToDR);
+        IgnoreFunc(TEvVolumePrivate::TEvDeviceTimeoutedRequest);
+        IgnoreFunc(TEvVolumePrivate::TEvUpdateSmartMigrationState);
+        IgnoreFunc(TEvVolumePrivate::TEvSmartMigrationFinished);
 
         IgnoreFunc(TEvStatsService::TEvVolumePartCounters);
 
@@ -1137,6 +1156,8 @@ STFUNC(TVolumeActor::StateZombie)
         IgnoreFunc(TEvVolumePrivate::TEvUpdateShadowDiskStateRequest);
 
         IgnoreFunc(TEvDiskRegistryProxy::TEvGetDrTabletInfoResponse);
+
+        IgnoreFunc(TEvDiskRegistry::TEvAddLaggingDevicesResponse);
 
         default:
             if (!RejectRequests(ev)) {

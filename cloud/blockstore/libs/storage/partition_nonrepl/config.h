@@ -61,6 +61,8 @@ private:
     const NActors::TActorId ParentActorId;
     const bool MuteIOErrors;
     const THashSet<TString> FreshDeviceIds;
+    // List of devices that have outdated data. Can only appear on mirror disks.
+    const THashSet<TString> LaggingDeviceIds;
     const TDuration MaxTimedOutDeviceStateDuration;
     const bool MaxTimedOutDeviceStateDurationOverridden;
     const bool UseSimpleMigrationBandwidthLimiter;
@@ -77,6 +79,7 @@ public:
             NActors::TActorId parentActorId,
             bool muteIOErrors,
             THashSet<TString> freshDeviceIds,
+            THashSet<TString> laggingDeviceIds,
             TDuration maxTimedOutDeviceStateDuration,
             bool maxTimedOutDeviceStateDurationOverridden,
             bool useSimpleMigrationBandwidthLimiter)
@@ -88,6 +91,7 @@ public:
         , ParentActorId(std::move(parentActorId))
         , MuteIOErrors(muteIOErrors)
         , FreshDeviceIds(std::move(freshDeviceIds))
+        , LaggingDeviceIds(std::move(laggingDeviceIds))
         , MaxTimedOutDeviceStateDuration(maxTimedOutDeviceStateDuration)
         , MaxTimedOutDeviceStateDurationOverridden(maxTimedOutDeviceStateDurationOverridden)
         , UseSimpleMigrationBandwidthLimiter(useSimpleMigrationBandwidthLimiter)
@@ -111,6 +115,13 @@ public:
             }
         }
 
+        THashSet<TString> laggingDeviceIds;
+        for (const auto& device: devices) {
+            if (LaggingDeviceIds.contains(device.GetDeviceUUID())) {
+                laggingDeviceIds.insert(device.GetDeviceUUID());
+            }
+        }
+
         return std::make_shared<TNonreplicatedPartitionConfig>(
             std::move(devices),
             IOMode,
@@ -120,6 +131,7 @@ public:
             ParentActorId,
             MuteIOErrors,
             std::move(freshDeviceIds),
+            std::move(laggingDeviceIds),
             MaxTimedOutDeviceStateDuration,
             MaxTimedOutDeviceStateDurationOverridden,
             UseSimpleMigrationBandwidthLimiter
@@ -176,6 +188,11 @@ public:
         return FreshDeviceIds;
     }
 
+    const auto& GetLaggingDeviceIds() const
+    {
+        return LaggingDeviceIds;
+    }
+
     auto GetMaxTimedOutDeviceStateDuration() const
     {
         return MaxTimedOutDeviceStateDuration;
@@ -229,7 +246,8 @@ public:
                 Y_UNUSED(relativeRange);
 
                 return !Devices[i].GetDeviceUUID()
-                    || FreshDeviceIds.contains(Devices[i].GetDeviceUUID());
+                    || FreshDeviceIds.contains(Devices[i].GetDeviceUUID())
+                    || LaggingDeviceIds.contains(Devices[i].GetDeviceUUID());
             });
     }
 

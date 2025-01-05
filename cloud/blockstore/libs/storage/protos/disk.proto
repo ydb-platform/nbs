@@ -278,6 +278,9 @@ message TDiskConfig
 
     // A log of important events in the life of this disk.
     repeated TDiskHistoryItem History = 17;
+
+    // A list of devices that are lagging begind on writes.
+    repeated TLaggingDevice LaggingDevices = 18;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -413,6 +416,41 @@ message TAgentStats
 
     // Error count at Disk Agent initialization
     uint32 InitErrorsCount = 3;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+message TLaggingDevice
+{
+    // UUID of the lagging device.
+    string DeviceUUID = 1;
+
+    // Index of the lagging device in the replica.
+    uint32 RowIndex = 2;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+message TLaggingAgent
+{
+    // Agent id.
+    string AgentId = 1;
+
+    // Index of the mirror disk replica.
+    // 0 - main devices
+    // 1,2 - replica devices
+    uint32 ReplicaIndex = 2;
+
+    // A list of devices that belong to the agent.
+    repeated TLaggingDevice Devices = 3;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+message TLaggingAgentsInfo
+{
+    // A list of agents that lagging behind on writes.
+    repeated TLaggingAgent Agents = 1;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -635,6 +673,9 @@ message TAllocateDiskResponse
 
     // New devices used instead of recently replaced ones.
     repeated string DeviceReplacementUUIDs = 8;
+
+    // Devices that had been lagging.
+    repeated TLaggingDevice RemovedLaggingDevices = 9;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1663,6 +1704,27 @@ message TGetAgentNodeIdResponse
 
     // Whether the agent is connected to the DR or not.
     bool Connected = 4;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// Report that some of the devices were lagging.
+
+message TAddLaggingDevicesRequest
+{
+    // Optional request headers.
+    THeaders Headers = 1;
+
+    // Disk identifier to perform operations on.
+    string DiskId = 2;
+
+    // Devices that has been lagging.
+    repeated TLaggingDevice LaggingDevices = 3;
+}
+
+message TAddLaggingDevicesResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

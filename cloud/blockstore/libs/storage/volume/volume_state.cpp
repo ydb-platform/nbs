@@ -197,6 +197,51 @@ TRuntimeVolumeParams& TVolumeState::GetVolumeParams()
     return VolumeParams;
 }
 
+void TVolumeState::AddLaggingAgent(NProto::TLaggingAgent agent)
+{
+    Meta.MutableLaggingAgentsInfo()->MutableAgents()->Add(std::move(agent));
+}
+
+std::optional<NProto::TLaggingAgent> TVolumeState::RemoveLaggingAgent(
+    const TString& agentId)
+{
+    auto agentIdPred = [&agentId](const auto& info)
+    {
+        return info.GetAgentId() == agentId;
+    };
+
+    const auto& laggingAgents = Meta.GetLaggingAgentsInfo().GetAgents();
+    Y_DEBUG_ABORT_UNLESS(CountIf(laggingAgents, agentIdPred) <= 1);
+    auto it = FindIf(laggingAgents, agentIdPred);
+    if (it != laggingAgents.end()) {
+        NProto::TLaggingAgent laggingAgent = *it;
+        Meta.MutableLaggingAgentsInfo()->MutableAgents()->erase(it);
+        return laggingAgent;
+    }
+    return std::nullopt;
+}
+
+bool TVolumeState::HasLaggingInReplica(ui32 replicaIndex)
+{
+    for (const auto& agent: Meta.GetLaggingAgentsInfo().GetAgents()) {
+        if (agent.GetReplicaIndex() == replicaIndex) {
+            return true;
+        }
+    }
+    return false;
+}
+
+THashSet<TString> TVolumeState::GetLaggingDevices() const
+{
+    THashSet<TString> laggingDevices;
+    for (const auto& agent: Meta.GetLaggingAgentsInfo().GetAgents()) {
+        for (const auto& device: agent.GetDevices()) {
+            laggingDevices.insert(device.GetDeviceUUID());
+        }
+    }
+    return laggingDevices;
+}
+
 void TVolumeState::ResetMeta(NProto::TVolumeMeta meta)
 {
     Meta = std::move(meta);

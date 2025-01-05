@@ -41,6 +41,8 @@ namespace NCloud::NBlockStore::NStorage {
     xxx(DeleteVolumeParams,             __VA_ARGS__)                           \
     xxx(ChangeStorageConfig,            __VA_ARGS__)                           \
     xxx(ReadMetaHistory,                __VA_ARGS__)                           \
+    xxx(AddLaggingAgent,                __VA_ARGS__)                           \
+    xxx(RemoveLaggingAgent,             __VA_ARGS__)                           \
 // BLOCKSTORE_VOLUME_TRANSACTIONS
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -148,6 +150,7 @@ struct TTxVolume
         TMigrations Migrations;
         TVector<TDevices> Replicas;
         TVector<TString> FreshDeviceIds;
+        TVector<TString> RemovedLaggingDeviceIds;
         NProto::EVolumeIOMode IOMode;
         TInstant IOModeTs;
         bool MuteIOErrors;
@@ -159,6 +162,7 @@ struct TTxVolume
                 TMigrations migrations,
                 TVector<TDevices> replicas,
                 TVector<TString> freshDeviceIds,
+                TVector<TString> removedLaggingDeviceIds,
                 NProto::EVolumeIOMode ioMode,
                 TInstant ioModeTs,
                 bool muteIOErrors)
@@ -168,6 +172,7 @@ struct TTxVolume
                 std::move(migrations),
                 std::move(replicas),
                 std::move(freshDeviceIds),
+                std::move(removedLaggingDeviceIds),
                 ioMode,
                 ioModeTs,
                 muteIOErrors
@@ -180,6 +185,7 @@ struct TTxVolume
                 TMigrations migrations,
                 TVector<TDevices> replicas,
                 TVector<TString> freshDeviceIds,
+                TVector<TString> removedLaggingDeviceIds,
                 NProto::EVolumeIOMode ioMode,
                 TInstant ioModeTs,
                 bool muteIOErrors)
@@ -188,6 +194,7 @@ struct TTxVolume
             , Migrations(std::move(migrations))
             , Replicas(std::move(replicas))
             , FreshDeviceIds(std::move(freshDeviceIds))
+            , RemovedLaggingDeviceIds(std::move(removedLaggingDeviceIds))
             , IOMode(ioMode)
             , IOModeTs(ioModeTs)
             , MuteIOErrors(muteIOErrors)
@@ -693,6 +700,48 @@ struct TTxVolume
         {
             StorageConfigFromDB.Clear();
             ResultStorageConfig.Clear();
+        }
+    };
+
+    //
+    // AddLaggingAgent
+    //
+
+    struct TAddLaggingAgent
+    {
+        const TRequestInfoPtr RequestInfo;
+        const NProto::TLaggingAgent Agent;
+
+        TAddLaggingAgent(
+                TRequestInfoPtr requestInfo,
+                NProto::TLaggingAgent agent)
+            : RequestInfo(std::move(requestInfo))
+            , Agent(std::move(agent))
+        {}
+
+        void Clear()
+        {}
+    };
+
+    //
+    // RemoveLaggingAgent
+    //
+
+    struct TRemoveLaggingAgent
+    {
+        const TRequestInfoPtr RequestInfo;
+        const TString AgentId;
+
+        NProto::TLaggingAgent RemovedLaggingAgent;
+
+        TRemoveLaggingAgent(TRequestInfoPtr requestInfo, TString agentId)
+            : RequestInfo(std::move(requestInfo))
+            , AgentId(std::move(agentId))
+        {}
+
+        void Clear()
+        {
+            RemovedLaggingAgent.Clear();
         }
     };
 };

@@ -32,6 +32,7 @@ struct TDiskRegistryState: TAtomicRefCount<TDiskRegistryState>
         TInstant IOModeTs;
         TMap<TString, NProto::TDeviceConfig> Migrations;
         TVector<TVector<NProto::TDeviceConfig>> Replicas;
+        TVector<NProto::TLaggingDevice> LaggingDevices;
         bool MuteIOErrors = false;
         TString PoolName;
         NCloud::NProto::EStorageMediaKind MediaKind = {};
@@ -51,8 +52,8 @@ struct TDiskRegistryState: TAtomicRefCount<TDiskRegistryState>
     TSet<TString> DisksMarkedForCleanup;
     TMap<TString, TPlacementGroup> PlacementGroups;
     TVector<NProto::TDeviceConfig> Devices;
+    TVector<bool> DeviceIsAllocated;
     TMap<TString, NProto::TDeviceConfig> MigrationDevices;
-    ui32 NextDeviceIdx = 0;
     ui32 CurrentErrorCode = S_OK;
     EMigrationMode MigrationMode = EMigrationMode::Disabled;
     ui32 ReplicaCount = 0;
@@ -61,6 +62,7 @@ struct TDiskRegistryState: TAtomicRefCount<TDiskRegistryState>
 
     TVector<std::pair<TString, NProto::EAgentState>> AgentStates;
 
+    bool AllocateDiskReplicasOnDifferentNodes = false;
     bool WritableState = false;
 };
 

@@ -34,10 +34,12 @@ private:
     TDiskRegistryStatePtr State;
 
 public:
-    TDiskRegistryProxyMock(TDiskRegistryStatePtr state)
+    explicit TDiskRegistryProxyMock(TDiskRegistryStatePtr state)
         : TActor(&TThis::StateWork)
         , State(std::move(state))
-    {}
+    {
+        State->DeviceIsAllocated.resize(State->Devices.size(), false);
+    }
 
 private:
     STFUNC(StateWork)
@@ -137,12 +139,17 @@ private:
                 HandleDeallocateCheckpoint);
 
             HFunc(
+                TEvDiskRegistry::TEvAddLaggingDevicesRequest,
+                HandleAddLaggingDevices);
+
+            HFunc(
                 TEvService::TEvCmsActionRequest,
                 HandleCmsAction);
 
             HFunc(
                 TEvDiskRegistryProxy::TEvGetDrTabletInfoRequest,
                 HandleGetDrTabletInfo);
+
 
             IgnoreFunc(NKikimr::TEvLocal::TEvTabletMetrics);
 
@@ -184,6 +191,26 @@ private:
         }
     }
 
+    const NProto::TDeviceConfig* AllocateNextDevice(i32 prevNodeId)
+    {
+        for (int i = 0; i < State->Devices.ysize(); i++) {
+            if (State->DeviceIsAllocated[i]) {
+                continue;
+            }
+
+            if (State->AllocateDiskReplicasOnDifferentNodes &&
+                static_cast<i32>(State->Devices[i].GetNodeId()) <= prevNodeId)
+            {
+                continue;
+            }
+
+            State->DeviceIsAllocated[i] = true;
+            return &State->Devices[i];
+        }
+
+        return nullptr;
+    }
+
     void HandleAllocateDisk(
         const TEvDiskRegistry::TEvAllocateDiskRequest::TPtr& ev,
         const NActors::TActorContext& ctx)
@@ -217,6 +244,7 @@ private:
 
         disk.PoolName = msg->Record.GetPoolName();
         disk.MediaKind = msg->Record.GetStorageMediaKind();
+        disk.Replicas.resize(State->ReplicaCount);
         disk.Migrations.clear();
         ui64 bytes = (1 + State->ReplicaCount)
             * msg->Record.GetBlocksCount()
@@ -225,36 +253,39 @@ private:
         ui32 i = 0;
         while (bytes) {
             ui64 deviceBytes = 0;
+            i32 prevNodeId = -1;
             if (i < disk.Devices.size()) {
-                deviceBytes = Min(bytes, disk.Devices[i].GetBlocksCount()
-                    * disk.Devices[i].GetBlockSize());
+                deviceBytes =
+                    Min(bytes,
+                        disk.Devices[i].GetBlocksCount() *
+                            disk.Devices[i].GetBlockSize());
             } else {
-                if (State->NextDeviceIdx >= State->Devices.size()) {
+                const auto* device = AllocateNextDevice(prevNodeId);
+                if (!device) {
                     break;
                 }
 
-                disk.Devices.push_back(
-                    State->Devices[State->NextDeviceIdx++]);
-                const auto& device = disk.Devices.back();
-                deviceBytes = device.GetBlocksCount() * device.GetBlockSize();
+                disk.Devices.push_back(*device);
+                deviceBytes = device->GetBlocksCount() * device->GetBlockSize();
+                prevNodeId = static_cast<i32>(device->GetNodeId());
             }
-
-            disk.Replicas.resize(State->ReplicaCount);
 
             for (auto& replica: disk.Replicas) {
                 if (i < replica.size()) {
-                    deviceBytes += Min(bytes, replica[i].GetBlocksCount()
-                        * replica[i].GetBlockSize());
+                    deviceBytes +=
+                        Min(bytes,
+                            replica[i].GetBlocksCount() *
+                                replica[i].GetBlockSize());
                 } else {
-                    if (State->NextDeviceIdx >= State->Devices.size()) {
+                    const auto* device = AllocateNextDevice(prevNodeId);
+                    if (!device) {
                         break;
                     }
 
-                    replica.push_back(
-                        State->Devices[State->NextDeviceIdx++]);
-                    const auto& device = replica.back();
+                    replica.push_back(*device);
                     deviceBytes +=
-                        device.GetBlocksCount() * device.GetBlockSize();
+                        device->GetBlocksCount() * device->GetBlockSize();
+                    prevNodeId = static_cast<i32>(device->GetNodeId());
                 }
             }
 
@@ -280,6 +311,11 @@ private:
         for (const auto& deviceId: State->DeviceReplacementUUIDs) {
             *response->Record.AddDeviceReplacementUUIDs() = deviceId;
         }
+
+        for (const auto& laggingDevice: disk.LaggingDevices) {
+            *response->Record.AddRemovedLaggingDevices() = laggingDevice;
+        }
+        disk.LaggingDevices.clear();
 
         if (bytes) {
             response->Record.MutableError()->CopyFrom(
@@ -962,6 +998,32 @@ private:
             *ev,
             std::make_unique<
                 TEvDiskRegistry::TEvDeallocateCheckpointResponse>());
+    }
+
+    void HandleAddLaggingDevices(
+        const TEvDiskRegistry::TEvAddLaggingDevicesRequest::TPtr& ev,
+        const NActors::TActorContext& ctx)
+    {
+        const auto* msg = ev->Get();
+        const auto& diskId = msg->Record.GetDiskId();
+        auto* diskState = State->Disks.FindPtr(diskId);
+        if (!diskState) {
+            NCloud::Reply(
+                ctx,
+                *ev,
+                std::make_unique<TEvDiskRegistry::TEvAddLaggingDevicesResponse>(
+                    MakeError(E_NOT_FOUND, "Disk not found")));
+            return;
+        }
+
+        for (const auto& laggingDevice: msg->Record.GetLaggingDevices()) {
+            diskState->LaggingDevices.push_back(laggingDevice);
+        }
+
+        NCloud::Reply(
+            ctx,
+            *ev,
+            std::make_unique<TEvDiskRegistry::TEvAddLaggingDevicesResponse>());
     }
 
     void HandleCmsAction(

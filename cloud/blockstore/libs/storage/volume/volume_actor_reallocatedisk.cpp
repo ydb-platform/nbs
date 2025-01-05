@@ -120,11 +120,20 @@ void TReallocateActor::HandleAllocateDiskResponse(
         freshDeviceIds.push_back(std::move(freshDeviceId));
     }
 
+    TVector<TString> removedLaggingDevices;
+    for (auto& removedLaggingDevice:
+         *msg->Record.MutableRemovedLaggingDevices())
+    {
+        removedLaggingDevices.push_back(
+            std::move(*removedLaggingDevice.MutableDeviceUUID()));
+    }
+
     auto request = std::make_unique<TEvVolumePrivate::TEvUpdateDevicesRequest>(
         std::move(*msg->Record.MutableDevices()),
         std::move(*msg->Record.MutableMigrations()),
         std::move(replicas),
         std::move(freshDeviceIds),
+        std::move(removedLaggingDevices),
         msg->Record.GetIOMode(),
         TInstant::MicroSeconds(msg->Record.GetIOModeTs()),
         msg->Record.GetMuteIOErrors());
