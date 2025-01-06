@@ -127,7 +127,7 @@ struct TMixedBlocks::TImpl
 
     void Reset(ui64 offloadedRangesCapacity)
     {
-        OffloadedRanges.Reset(offloadedRangesCapacity);
+        OffloadedRanges.SetCapacity(offloadedRangesCapacity);
     }
 
     explicit TImpl(IAllocator* alloc)

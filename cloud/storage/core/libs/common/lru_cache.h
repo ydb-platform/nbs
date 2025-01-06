@@ -83,7 +83,7 @@ public:
         , Alloc(alloc)
     {}
 
-    void Reset(size_t capacity)
+    void SetCapacity(size_t capacity)
     {
         Capacity = capacity;
         CleanupIfNeeded();

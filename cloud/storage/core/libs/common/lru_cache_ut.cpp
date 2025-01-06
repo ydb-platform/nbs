@@ -11,7 +11,7 @@ Y_UNIT_TEST_SUITE(TLRUCache)
     Y_UNIT_TEST(ShouldEnforceCapacity)
     {
         TLRUCache<TString, TString> hashMap(TDefaultAllocator::Instance());
-        hashMap.Reset(2);
+        hashMap.SetCapacity(2);
 
         UNIT_ASSERT_VALUES_EQUAL(0, hashMap.size());
         UNIT_ASSERT_VALUES_EQUAL(2, hashMap.capacity());
@@ -34,7 +34,7 @@ Y_UNIT_TEST_SUITE(TLRUCache)
     Y_UNIT_TEST(ShouldHandleAccessOrder)
     {
         TLRUCache<TString, TString> hashMap(TDefaultAllocator::Instance());
-        hashMap.Reset(3);
+        hashMap.SetCapacity(3);
 
         hashMap.emplace("key1", "value1");
         hashMap.emplace("key2", "value2");
@@ -55,7 +55,7 @@ Y_UNIT_TEST_SUITE(TLRUCache)
     Y_UNIT_TEST(ShouldHandleErase)
     {
         TLRUCache<TString, TString> hashMap(TDefaultAllocator::Instance());
-        hashMap.Reset(3);
+        hashMap.SetCapacity(3);
 
         hashMap.emplace("key1", "value1");
         hashMap.emplace("key2", "value2");
@@ -83,7 +83,7 @@ Y_UNIT_TEST_SUITE(TLRUCache)
     Y_UNIT_TEST(ShouldThrowOnAtForNonExistentKey)
     {
         TLRUCache<TString, TString> hashMap(TDefaultAllocator::Instance());
-        hashMap.Reset(2);
+        hashMap.SetCapacity(2);
 
         hashMap.emplace("key1", "value1");
 
@@ -95,7 +95,7 @@ Y_UNIT_TEST_SUITE(TLRUCache)
     Y_UNIT_TEST(ShouldHandleEdgeCases)
     {
         TLRUCache<TString, TString> hashMap(TDefaultAllocator::Instance());
-        hashMap.Reset(0);
+        hashMap.SetCapacity(0);
 
         // Test capacity 0
         auto [it, inserted1] = hashMap.emplace("key1", "value1");
@@ -104,7 +104,7 @@ Y_UNIT_TEST_SUITE(TLRUCache)
         UNIT_ASSERT_VALUES_EQUAL(0, hashMap.size());
         UNIT_ASSERT_EQUAL(hashMap.end(), hashMap.find("key1"));
 
-        hashMap.Reset(2);
+        hashMap.SetCapacity(2);
         UNIT_ASSERT_VALUES_EQUAL(0, hashMap.size());
         UNIT_ASSERT_VALUES_EQUAL(2, hashMap.capacity());
 
