@@ -24,6 +24,8 @@ public:
     TMixedBlocks(IAllocator* allocator);
     ~TMixedBlocks();
 
+    void Reset(ui64 offloadedRangesCapacity);
+
     bool IsLoaded(ui32 rangeId) const;
 
     void RefRange(ui32 rangeId);

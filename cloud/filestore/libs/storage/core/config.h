@@ -301,6 +301,7 @@ public:
     bool GetDirectoryCreationInShardsEnabled() const;
 
     bool GetGuestWritebackCacheEnabled() const;
+    ui64 GetMixedBlocksOffloadedRangesCapacity() const;
 };
 
 }   // namespace NCloud::NFileStore::NStorage
