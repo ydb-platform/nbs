@@ -46,7 +46,6 @@ private:
         auto it = OrderPositions.find(key);
         if (it != OrderPositions.end()) {
             OrderList.splice(OrderList.begin(), OrderList, it->second);
-            it->second = OrderList.insert(OrderList.begin(), key);
         } else {
             OrderPositions.emplace(
                 key,

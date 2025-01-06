@@ -117,6 +117,21 @@ Y_UNIT_TEST_SUITE(TLRUCache)
 
         UNIT_ASSERT_VALUES_EQUAL(1, hashMap.size());
         UNIT_ASSERT_VALUES_EQUAL("value1", hashMap.find("key1")->second);
+
+        // Test downsizing capacity
+        hashMap.SetCapacity(0);
+        hashMap.SetCapacity(3);
+        hashMap.emplace("key1", "value1");
+        hashMap.emplace("key2", "value2");
+        hashMap.emplace("key3", "value3");
+        hashMap.find("key1");
+        // Now the order is key1, key3, key2
+        hashMap.SetCapacity(2);
+        // Should evict key2
+        UNIT_ASSERT_EQUAL(hashMap.end(), hashMap.find("key2"));
+        UNIT_ASSERT_VALUES_EQUAL("value1", hashMap.find("key1")->second);
+        UNIT_ASSERT_VALUES_EQUAL("value3", hashMap.find("key3")->second);
+        UNIT_ASSERT_VALUES_EQUAL(2, hashMap.size());
     }
 }
 
