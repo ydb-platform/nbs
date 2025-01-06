@@ -297,6 +297,8 @@ void TIndexTabletActor::HandleWriteBlob(
             return;
         }
 
+        // TODO: this experiment should be superseeded by blob compression
+        // feature
         const auto compRate = Config->GetBlobCompressionRate();
         if (BlobCodec && compRate && blob.BlobId.GetHash() % compRate == 0) {
             size_t compressedSize = 0;

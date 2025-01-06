@@ -105,13 +105,18 @@ struct TReadBlob
 
     TPartialBlobId BlobId;
     TVector<TBlock> Blocks;
+    TBlobCompressionInfo BlobCompressionInfo;
 
     TInstant Deadline = TInstant::Max();
     bool Async = false;
 
-    TReadBlob(const TPartialBlobId& blobId, TVector<TBlock> blocks)
+    TReadBlob(
+        const TPartialBlobId& blobId,
+        TVector<TBlock> blocks,
+        TBlobCompressionInfo blobCompressionInfo)
         : BlobId(blobId)
         , Blocks(std::move(blocks))
+        , BlobCompressionInfo(std::move(blobCompressionInfo))
     {}
 };
 

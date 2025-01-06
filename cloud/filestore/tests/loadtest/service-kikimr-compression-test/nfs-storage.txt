@@ -1,0 +1,2 @@
+TwoStageReadEnabled: false
+BlobCompressionEnabled: true

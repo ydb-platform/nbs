@@ -11,6 +11,7 @@ SRCS(
     binary_writer.cpp
     blob.cpp
     blob_builder.cpp
+    blob_compression.cpp
     block.cpp
     block_list.cpp
     block_list_decode.cpp

@@ -33,6 +33,7 @@ public:
         ui32 rangeId,
         const TPartialBlobId& blobId,
         TBlockList blockList,
+        TBlobCompressionInfo blobCompressionInfo,
         const TMixedBlobStats& stats = {});
 
     bool RemoveBlocks(

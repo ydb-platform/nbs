@@ -2,6 +2,8 @@
 
 #include "public.h"
 
+#include <cloud/filestore/libs/storage/tablet/model/blob_compression.h>
+
 #include <cloud/storage/core/libs/tablet/model/commit.h>
 #include <cloud/storage/core/libs/tablet/model/partial_blob_id.h>
 
@@ -67,6 +69,7 @@ struct TBlockDataRef: TBlock
 {
     TPartialBlobId BlobId;
     ui32 BlobOffset = 0;
+    TBlobCompressionInfo BlobCompressionInfo;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -259,7 +262,8 @@ struct IMixedBlockVisitor
     virtual void Accept(
         const TBlock& block,
         const TPartialBlobId& blobId,
-        ui32 blobOffset) = 0;
+        ui32 blobOffset,
+        const TBlobCompressionInfo& blobCompressionInfo) = 0;
 };
 
 ////////////////////////////////////////////////////////////////////////////////

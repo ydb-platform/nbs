@@ -58,7 +58,8 @@ public:
     void Accept(
         const TBlock& block,
         const TPartialBlobId& blobId,
-        ui32 blobOffset) override
+        ui32 blobOffset,
+        const TBlobCompressionInfo& blobCompressionInfo) override
     {
         TABLET_VERIFY(!ApplyingByteLayer);
 
@@ -68,6 +69,7 @@ public:
             static_cast<TBlock&>(ref) = block;
             ref.BlobId = blobId;
             ref.BlobOffset = blobOffset;
+            ref.BlobCompressionInfo = blobCompressionInfo;
             Block.Block = std::move(ref);
         }
     }
@@ -261,7 +263,10 @@ void TFlushBytesActor::ReadBlobs(const TActorContext& ctx)
                 blocks.size() * BlockSize,
                 BlockSize
             ));
-            request->Blobs.emplace_back(blobToRead.BlobId, std::move(blocks));
+            request->Blobs.emplace_back(
+                blobToRead.BlobId,
+                std::move(blocks),
+                blobToRead.BlobCompressionInfo);
             request->Blobs.back().Async = true;
 
             Buffers[blobToRead.BlobId] = request->Buffer;
@@ -385,7 +390,10 @@ void TFlushBytesActor::AddBlob(const TActorContext& ctx)
             commitId = block.BytesMinCommitId;
         }
 
-        request->MixedBlobs.emplace_back(blob.BlobId, std::move(blocks));
+        request->MixedBlobs.emplace_back(
+            blob.BlobId,
+            std::move(blocks),
+            TBlobCompressionInfo() /* uncompressed */);
     }
 
     for (auto& srcBlob: request->SrcBlobs) {
@@ -677,8 +685,6 @@ void TIndexTabletActor::CompleteTx_FlushBytes(
         }
     };
 
-
-
     THashMap<TBlockLocation, TBlockWithBytes, TBlockLocationHash> blockMap;
 
     struct TSrcBlobInfo
@@ -754,7 +760,11 @@ void TIndexTabletActor::CompleteTx_FlushBytes(
             if (!srcBlobInfo.SrcBlob.BlobId) {
                 const auto rangeId = GetMixedRangeIndex(bytes.NodeId, blockIndex);
                 srcBlobInfo.SrcBlob = FindBlob(rangeId, ref->BlobId);
+                srcBlobInfo.SrcBlob.BlobCompressionInfo = ref->BlobCompressionInfo;
+
                 srcBlobInfo.SrcBlobToRead.BlobId = ref->BlobId;
+                srcBlobInfo.SrcBlobToRead.BlobCompressionInfo =
+                    ref->BlobCompressionInfo;
             }
             srcBlobInfo.SrcBlobToRead.Blocks.push_back(
                 static_cast<const TBlock&>(*ref)

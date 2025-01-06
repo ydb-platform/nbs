@@ -301,6 +301,8 @@ public:
     bool GetDirectoryCreationInShardsEnabled() const;
 
     bool GetGuestWritebackCacheEnabled() const;
+
+    bool GetBlobCompressionEnabled() const;
 };
 
 }   // namespace NCloud::NFileStore::NStorage

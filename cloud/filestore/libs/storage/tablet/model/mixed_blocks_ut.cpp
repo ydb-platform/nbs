@@ -20,9 +20,10 @@ public:
     void Accept(
         const TBlock& block,
         const TPartialBlobId& blobId,
-        ui32 blobOffset) override
+        ui32 blobOffset,
+        const TBlobCompressionInfo& blobCompressionInfo) override
     {
-        Blocks.push_back({ block, blobId, blobOffset });
+        Blocks.push_back({ block, blobId, blobOffset, blobCompressionInfo });
     }
 
     TVector<TBlockDataRef> Finish()
@@ -54,7 +55,7 @@ Y_UNIT_TEST_SUITE(TMixedBlocksTest)
 
         TMixedBlocks mixedBlocks(TDefaultAllocator::Instance());
         mixedBlocks.RefRange(rangeId);
-        mixedBlocks.AddBlocks(rangeId, TPartialBlobId(), std::move(list));
+        mixedBlocks.AddBlocks(rangeId, TPartialBlobId(), std::move(list), {});
 
         {
             TMixedBlockVisitor visitor;
@@ -95,7 +96,7 @@ Y_UNIT_TEST_SUITE(TMixedBlocksTest)
 
         TMixedBlocks mixedBlocks(TDefaultAllocator::Instance());
         mixedBlocks.RefRange(rangeId);
-        mixedBlocks.AddBlocks(rangeId, TPartialBlobId(), std::move(list));
+        mixedBlocks.AddBlocks(rangeId, TPartialBlobId(), std::move(list), {});
 
         mixedBlocks.AddDeletionMarker(
             rangeId,
@@ -141,7 +142,7 @@ Y_UNIT_TEST_SUITE(TMixedBlocksTest)
 
         TMixedBlocks mixedBlocks(TDefaultAllocator::Instance());
         mixedBlocks.RefRange(rangeId);
-        mixedBlocks.AddBlocks(rangeId, TPartialBlobId(), std::move(list));
+        mixedBlocks.AddBlocks(rangeId, TPartialBlobId(), std::move(list), {});
         UNIT_ASSERT(mixedBlocks.IsLoaded(rangeId));
 
         mixedBlocks.RefRange(rangeId);

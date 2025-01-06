@@ -19,6 +19,7 @@ enum class EAllocatorTag
     NodeIndexCache,
     InMemoryNodeIndexCache,
     LargeBlocks,
+    BlobCompressionInfo,
 
     Max
 };

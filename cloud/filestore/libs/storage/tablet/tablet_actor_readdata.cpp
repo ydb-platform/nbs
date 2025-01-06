@@ -212,7 +212,7 @@ public:
         TABLET_VERIFY(blockOffset < Args.ActualRange().BlockCount());
 
         auto& prev = Args.Blocks[blockOffset];
-        if (Update(prev, block, {}, 0)) {
+        if (Update(prev, block, {}, 0, {})) {
             Args.Buffer->SetBlock(blockOffset, blockData);
         }
     }
@@ -220,7 +220,8 @@ public:
     void Accept(
         const TBlock& block,
         const TPartialBlobId& blobId,
-        ui32 blobOffset) override
+        ui32 blobOffset,
+        const TBlobCompressionInfo& blobCompressionInfo) override
     {
         TABLET_VERIFY(!ApplyingByteLayer);
         TABLET_VERIFY(blobId);
@@ -229,7 +230,7 @@ public:
         TABLET_VERIFY(blockOffset < Args.ActualRange().BlockCount());
 
         auto& prev = Args.Blocks[blockOffset];
-        if (Update(prev, block, blobId, blobOffset)) {
+        if (Update(prev, block, blobId, blobOffset, blobCompressionInfo)) {
             Args.Buffer->ClearBlock(blockOffset);
         }
     }
@@ -286,12 +287,14 @@ private:
         TBlockDataRef& prev,
         const TBlock& block,
         const TPartialBlobId& blobId,
-        ui32 blobOffset)
+        ui32 blobOffset,
+        const TBlobCompressionInfo blobCompressionInfo)
     {
         if (prev.MinCommitId < block.MinCommitId) {
             memcpy(&prev, &block, sizeof(TBlock));
             prev.BlobId = blobId;
             prev.BlobOffset = blobOffset;
+            prev.BlobCompressionInfo = blobCompressionInfo;
             return true;
         }
         return false;
@@ -395,13 +398,19 @@ void TReadDataActor::Bootstrap(const TActorContext& ctx)
 
 void TReadDataActor::ReadBlob(const TActorContext& ctx)
 {
-    using TBlocksByBlob = THashMap<
+    using TBlocksByBlobId = THashMap<
         TPartialBlobId,
         TVector<TReadBlob::TBlock>,
         TPartialBlobIdHash
     >;
+    using TBlobCompressionInfoByBlobId = THashMap<
+        TPartialBlobId,
+        TBlobCompressionInfo,
+        TPartialBlobIdHash
+    >;
 
-    TBlocksByBlob blocksByBlob;
+    TBlocksByBlobId blocksByBlobId;
+    TBlobCompressionInfoByBlobId blobCompressionInfoByBlobId;
 
     ui32 blockOffset = 0;
     for (const auto& block: Blocks) {
@@ -411,7 +420,13 @@ void TReadDataActor::ReadBlob(const TActorContext& ctx)
             continue;
         }
 
-        blocksByBlob[block.BlobId].emplace_back(block.BlobOffset, blockOffset - 1);
+        blocksByBlobId[block.BlobId].emplace_back(
+            block.BlobOffset,
+            blockOffset - 1);
+        if (block.BlobCompressionInfo.BlobCompressed()) {
+            blobCompressionInfoByBlobId[block.BlobId] =
+                block.BlobCompressionInfo;
+        }
     }
 
     auto request = std::make_unique<TEvIndexTabletPrivate::TEvReadBlobRequest>(
@@ -422,9 +437,20 @@ void TReadDataActor::ReadBlob(const TActorContext& ctx)
         return l.BlobOffset < r.BlobOffset;
     };
 
-    for (auto& [blobId, blocks]: blocksByBlob) {
+    for (auto& [blobId, blocks]: blocksByBlobId) {
         Sort(blocks, comparer);
-        request->Blobs.emplace_back(blobId, std::move(blocks));
+
+        TBlobCompressionInfo blobCompressionInfo;
+        if (auto iter = blobCompressionInfoByBlobId.find(blobId);
+            iter != blobCompressionInfoByBlobId.end())
+        {
+            blobCompressionInfo = std::move(iter->second);
+        }
+
+        request->Blobs.emplace_back(
+            blobId,
+            std::move(blocks),
+            std::move(blobCompressionInfo));
     }
 
     NCloud::Send(ctx, Tablet, std::move(request));

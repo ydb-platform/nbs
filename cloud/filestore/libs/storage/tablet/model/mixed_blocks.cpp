@@ -22,16 +22,19 @@ struct TBlobMeta: TIntrusiveListItem<TBlobMeta>
 {
     const TPartialBlobId BlobId;
     const TBlockList BlockList;
+    const TBlobCompressionInfo BlobCompressionInfo;
     const TMixedBlobStats Stats;
     const size_t Level;
 
     TBlobMeta(
             const TPartialBlobId& blobId,
             TBlockList blockList,
+            TBlobCompressionInfo blobCompressionInfo,
             const TMixedBlobStats& stats,
             size_t level)
         : BlobId(blobId)
         , BlockList(std::move(blockList))
+        , BlobCompressionInfo(std::move(blobCompressionInfo))
         , Stats(stats)
         , Level(level)
     {}
@@ -156,6 +159,7 @@ bool TMixedBlocks::AddBlocks(
     ui32 rangeId,
     const TPartialBlobId& blobId,
     TBlockList blockList,
+    TBlobCompressionInfo blobCompressionInfo,
     const TMixedBlobStats& stats)
 {
     auto* range = Impl->Ranges.FindPtr(rangeId);
@@ -165,6 +169,7 @@ bool TMixedBlocks::AddBlocks(
     auto [it, inserted] = range->Blobs.emplace(
         blobId,
         std::move(blockList),
+        std::move(blobCompressionInfo),
         stats,
         0);
 
@@ -236,7 +241,11 @@ void TMixedBlocks::FindBlocks(
             range->DeletionMarkers.Apply(block);
 
             if (commitId < block.MaxCommitId) {
-                visitor.Accept(block, blob.BlobId, iter->BlobOffset);
+                visitor.Accept(
+                    block,
+                    blob.BlobId,
+                    iter->BlobOffset,
+                    blob.BlobCompressionInfo);
             }
         }
     }
@@ -283,7 +292,10 @@ TVector<TMixedBlobMeta> TMixedBlocks::ApplyDeletionMarkers(ui32 rangeId) const
         auto blocks = blob.BlockList.DecodeBlocks();
 
         if (range->DeletionMarkers.Apply(MakeArrayRef(blocks)) > 0) {
-            result.emplace_back(blob.BlobId, std::move(blocks));
+            result.emplace_back(
+                blob.BlobId,
+                std::move(blocks),
+                blob.BlobCompressionInfo);
         }
     }
 
@@ -304,7 +316,10 @@ auto TMixedBlocks::ApplyDeletionMarkersAndGetMetas(ui32 rangeId) const
             range->DeletionMarkers.Apply(MakeArrayRef(blocks)) > 0;
 
         result.emplace_back(
-            TMixedBlobMeta{blob.BlobId, std::move(blocks)},
+            TMixedBlobMeta(
+                blob.BlobId,
+                std::move(blocks),
+                blob.BlobCompressionInfo),
             affected);
     }
 
@@ -323,7 +338,10 @@ TVector<TMixedBlobMeta> TMixedBlocks::GetBlobsForCompaction(ui32 rangeId) const
         auto blocks = blob.BlockList.DecodeBlocks();
 
         range->DeletionMarkers.Apply(MakeArrayRef(blocks));
-        result.emplace_back(blob.BlobId, std::move(blocks));
+        result.emplace_back(
+            blob.BlobId,
+            std::move(blocks),
+            blob.BlobCompressionInfo);
     }
 
     return result;
@@ -334,15 +352,13 @@ TMixedBlobMeta TMixedBlocks::FindBlob(ui32 rangeId, TPartialBlobId blobId) const
     const auto* range = Impl->Ranges.FindPtr(rangeId);
     Y_ABORT_UNLESS(range);
 
-    TVector<TMixedBlobMeta> result;
-
     auto it = range->Blobs.find(blobId);
     Y_ABORT_UNLESS(it != range->Blobs.end());
 
     auto blocks = it->BlockList.DecodeBlocks();
     range->DeletionMarkers.Apply(MakeArrayRef(blocks));
 
-    return {it->BlobId, std::move(blocks)};
+    return {it->BlobId, std::move(blocks), it->BlobCompressionInfo};
 }
 
 ui32 TMixedBlocks::CalculateGarbageBlockCount(ui32 rangeId) const

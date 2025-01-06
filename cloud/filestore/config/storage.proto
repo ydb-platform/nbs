@@ -505,4 +505,6 @@ message TStorageConfig
     // Enables directory creation in shards (by default directories are created
     // only in the main tablet).
     optional bool DirectoryCreationInShardsEnabled = 414;
+
+    optional bool BlobCompressionEnabled = 415;
 }

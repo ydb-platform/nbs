@@ -596,6 +596,7 @@ bool TIndexTabletState::LoadMixedBlocks(
             rangeId,
             blob.BlobId,
             std::move(blob.BlockList),
+            std::move(blob.BlobCompressionInfo),
             TMixedBlobStats {
                 blob.GarbageBlocks,
                 blob.CheckpointBlocks
@@ -653,7 +654,13 @@ void TIndexTabletState::WriteMixedBlocks(
         block,
         blocksCount,
         GetAllocator(EAllocatorTag::BlockList));
-    db.WriteMixedBlocks(rangeId, blobId, blockList, 0, 0);
+    db.WriteMixedBlocks(
+        rangeId,
+        blobId,
+        blockList,
+        TBlobCompressionInfo(), // uncompressed
+        0,
+        0);
 
     IncrementMixedBlobsCount(db);
     IncrementMixedBlocksCount(db, blocksCount);
@@ -662,7 +669,8 @@ void TIndexTabletState::WriteMixedBlocks(
         bool added = Impl->MixedBlocks.AddBlocks(
             rangeId,
             blobId,
-            std::move(blockList));
+            std::move(blockList),
+            TBlobCompressionInfo()  /* uncompressed */);
         TABLET_VERIFY(added);
     }
 
@@ -674,11 +682,12 @@ void TIndexTabletState::WriteMixedBlocks(
 bool TIndexTabletState::WriteMixedBlocks(
     TIndexTabletDatabase& db,
     const TPartialBlobId& blobId,
-    /*const*/ TVector<TBlock>& blocks)
+    /*const*/ TVector<TBlock>& blocks,
+    const TBlobCompressionInfo& blobCompressionInfo)
 {
     ui32 rangeId = GetMixedRangeIndex(blocks);
 
-    if (WriteMixedBlocks(db, rangeId, blobId, blocks)) {
+    if (WriteMixedBlocks(db, rangeId, blobId, blocks, blobCompressionInfo)) {
         AddNewBlob(db, blobId);
 
         return true;
@@ -691,7 +700,8 @@ bool TIndexTabletState::WriteMixedBlocks(
     TIndexTabletDatabase& db,
     ui32 rangeId,
     const TPartialBlobId& blobId,
-    /*const*/ TVector<TBlock>& blocks)
+    /*const*/ TVector<TBlock>& blocks,
+    const TBlobCompressionInfo& blobCompressionInfo)
 {
     const bool isMixedRangeLoaded = Impl->MixedBlocks.IsLoaded(rangeId);
     if (isMixedRangeLoaded) {
@@ -726,6 +736,7 @@ bool TIndexTabletState::WriteMixedBlocks(
         rangeId,
         blobId,
         blockList,
+        blobCompressionInfo,
         rebaseResult.GarbageBlocks,
         rebaseResult.CheckpointBlocks);
 
@@ -737,6 +748,7 @@ bool TIndexTabletState::WriteMixedBlocks(
             rangeId,
             blobId,
             std::move(blockList),
+            blobCompressionInfo,
             TMixedBlobStats {
                 rebaseResult.GarbageBlocks,
                 rebaseResult.CheckpointBlocks
@@ -866,7 +878,12 @@ bool TIndexTabletState::UpdateBlockLists(
 {
     const auto rangeId = GetMixedRangeIndex(blob.Blocks);
     DeleteMixedBlocks(db, rangeId, blob.BlobId, blob.Blocks);
-    return WriteMixedBlocks(db, rangeId, blob.BlobId, blob.Blocks);
+    return WriteMixedBlocks(
+        db,
+        rangeId,
+        blob.BlobId,
+        blob.Blocks,
+        blob.BlobCompressionInfo);
 }
 
 ui32 TIndexTabletState::CleanupBlockDeletions(
@@ -898,7 +915,8 @@ ui32 TIndexTabletState::CleanupBlockDeletions(
             db,
             rangeId,
             blob.BlobMeta.BlobId,
-            blob.BlobMeta.Blocks);
+            blob.BlobMeta.Blocks,
+            TBlobCompressionInfo()  /* remains unchanged */);
         if (!written) {
             ++removedBlobs;
         }
@@ -1026,6 +1044,7 @@ void TIndexTabletState::RewriteMixedBlocks(
         rangeId,
         blob.BlobId,
         blockList,
+        TBlobCompressionInfo(), // remains unchanged
         rebaseResult.GarbageBlocks,
         rebaseResult.CheckpointBlocks);
 
@@ -1037,6 +1056,7 @@ void TIndexTabletState::RewriteMixedBlocks(
             rangeId,
             blob.BlobId,
             std::move(blockList),
+            blob.BlobCompressionInfo,
             TMixedBlobStats {
                 rebaseResult.GarbageBlocks,
                 rebaseResult.CheckpointBlocks

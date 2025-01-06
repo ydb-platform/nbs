@@ -19,11 +19,40 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TReadBlockRange
+struct TQuery
 {
-    ui32 BlockOffset = 0;
-    ui32 Count = 0;
+    TUncompressedRange UncompressedRange;
+    TCompressedRange CompressedRange;
+    TVector<TUncompressedBlock> Blocks;
 };
+
+void MergeOverlappingCompressedQueries(TVector<TQuery>& queries)
+{
+    Sort(queries, [] (const auto& l, const auto& r) {
+        return l.CompressedRange.Offset < r.CompressedRange.Offset
+            || (l.CompressedRange.Offset == r.CompressedRange.Offset
+                && l.CompressedRange.Length < r.CompressedRange.Length);
+    });
+
+    auto pivotQueryIter = queries.begin();
+    for (size_t i = 1; i < queries.size(); i++) {
+        auto& curQuery = queries[i];
+        auto& pivotQuery = *pivotQueryIter;
+
+        if (pivotQuery.CompressedRange.Overlaps(curQuery.CompressedRange)) {
+            pivotQuery.CompressedRange.Merge(curQuery.CompressedRange);
+
+            for (auto& block : curQuery.Blocks) {
+                pivotQuery.Blocks.push_back(std::move(block));
+            }
+            curQuery.Blocks.clear();
+        } else {
+            ++pivotQueryIter;
+        }
+    }
+
+    EraseIf(queries, [] (const auto& query) { return query.Blocks.empty(); });
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -31,20 +60,59 @@ struct TReadBlobRequest
 {
     TActorId Proxy;
     TLogoBlobID BlobId;
-    TVector<TReadBlockRange> Ranges;
+    TBlobCompressionInfo BlobCompressionInfo;
+    TVector<TQuery> Queries;
     std::unique_ptr<TEvBlobStorage::TEvGet> Request;
 
     TReadBlobRequest(
             const TActorId& proxy,
             const TLogoBlobID& blobId,
-            TVector<TReadBlockRange> ranges,
+            TBlobCompressionInfo blobCompressionInfo,
+            TVector<TQuery> queries,
             std::unique_ptr<TEvBlobStorage::TEvGet> request)
         : Proxy(proxy)
         , BlobId(blobId)
-        , Ranges(std::move(ranges))
+        , BlobCompressionInfo(std::move(blobCompressionInfo))
+        , Queries(std::move(queries))
         , Request(std::move(request))
     {}
 };
+
+////////////////////////////////////////////////////////////////////////////////
+
+std::unique_ptr<TEvBlobStorage::TEvGet> CreateGetRequest(
+    const TLogoBlobID& blobId,
+    const TVector<TQuery>& queries,
+    TInstant deadline,
+    bool async,
+    bool blobCompressed
+) {
+    using TEvGetQuery = TEvBlobStorage::TEvGet::TQuery;
+    TArrayHolder<TEvGetQuery> qs(new TEvGetQuery[queries.size()]);
+
+    size_t queryIndex = 0;
+    for (const auto& query : queries) {
+        if (blobCompressed) {
+            qs[queryIndex].Set(
+                blobId,
+                query.CompressedRange.Offset,
+                query.CompressedRange.Length);
+        } else {
+            qs[queryIndex].Set(
+                blobId,
+                query.UncompressedRange.Offset,
+                query.UncompressedRange.Length);
+        }
+        ++queryIndex;
+    }
+
+    return std::make_unique<TEvBlobStorage::TEvGet>(
+        qs,
+        queries.size(),
+        deadline,
+        async ? NKikimrBlobStorage::AsyncRead : NKikimrBlobStorage::FastRead
+    );
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -69,9 +137,10 @@ private:
     const TString LogTag;
     const TActorId Tablet;
     const TRequestInfoPtr RequestInfo;
-    const IBlockBufferPtr Buffer;
+    const IBlockBufferPtr BlockBuffer;
     const ui32 BlockSize;
     const TString FileSystemId;
+    const NBlockCodecs::ICodec* BlobCodec;
     const IProfileLogPtr ProfileLog;
 
     TVector<TReadBlobRequest> Requests;
@@ -87,6 +156,7 @@ public:
         IBlockBufferPtr buffer,
         ui32 blockSize,
         TString fileSystemId,
+        const NBlockCodecs::ICodec* blobCodec,
         IProfileLogPtr profileLog,
         TVector<TReadBlobRequest> requests,
         NProto::TProfileLogRequestInfo profileLogRequest);
@@ -100,6 +170,9 @@ private:
     void HandleGetResult(
         const TEvBlobStorage::TEvGetResult::TPtr& ev,
         const TActorContext& ctx);
+    void ReadQueryResponseUncompressed(
+        const TRope& responseBuffer,
+        const TQuery& query);
 
     void HandlePoisonPill(
         const TEvents::TEvPoisonPill::TPtr& ev,
@@ -124,15 +197,17 @@ TReadBlobActor::TReadBlobActor(
         IBlockBufferPtr buffer,
         ui32 blockSize,
         TString fileSystemId,
+        const NBlockCodecs::ICodec* blobCodec,
         IProfileLogPtr profileLog,
         TVector<TReadBlobRequest> requests,
         NProto::TProfileLogRequestInfo profileLogRequest)
     : LogTag(std::move(logTag))
     , Tablet(tablet)
     , RequestInfo(std::move(requestInfo))
-    , Buffer(std::move(buffer))
+    , BlockBuffer(std::move(buffer))
     , BlockSize(blockSize)
     , FileSystemId(std::move(fileSystemId))
+    , BlobCodec(blobCodec)
     , ProfileLog(std::move(profileLog))
     , Requests(std::move(requests))
     , ProfileLogRequest(std::move(profileLogRequest))
@@ -179,8 +254,10 @@ void TReadBlobActor::HandleGetResult(
 
     const auto& request = Requests[requestIndex];
 
-    const auto* rangeIt = request.Ranges.begin();
-    TABLET_VERIFY(rangeIt != request.Ranges.end());
+    if (msg->ResponseSz != request.Queries.size()) {
+        ReplyError(ctx, *msg, "invalid number of responses");
+        return;
+    }
 
     for (size_t i = 0; i < msg->ResponseSz; ++i) {
         auto& response = msg->Responses[i];
@@ -190,53 +267,67 @@ void TReadBlobActor::HandleGetResult(
             return;
         }
 
-        if (response.Id != request.BlobId ||
-            response.Buffer.empty() ||
-            response.Buffer.size() % BlockSize != 0)
-        {
-            ReplyError(ctx, *msg, "invalid response received");
+        if (response.Id != request.BlobId) {
+            ReplyError(ctx, *msg, "invalid blob id");
             return;
         }
 
         TotalSize += response.Buffer.size();
-        ui32 blocksCount = response.Buffer.size() / BlockSize;
-        ui32 rangeOffset = 0;
 
-        char buffer[BlockSize];
-        auto iter = response.Buffer.begin();
+        const auto& query = request.Queries[i];
 
-        for (size_t j = 0; j < blocksCount; ++j) {
-            size_t inRange = j - rangeOffset;
-            if (inRange >= rangeIt->Count) {
-                ++rangeIt;
-                rangeOffset = j;
-                inRange = 0;
+        if (request.BlobCompressionInfo.BlobCompressed()) {
+            if (response.Buffer.size() != query.CompressedRange.Length) {
+                ReplyError(
+                    ctx,
+                    *msg,
+                    "invalid compressed response buffer size");
+                return;
             }
 
-            TStringBuf view;
-
-            if (iter.ContiguousSize() >= BlockSize) {
-                view = TStringBuf(iter.ContiguousData(), BlockSize);
-                iter += BlockSize;
-            } else {
-                iter.ExtractPlainDataAndAdvance(buffer, BlockSize);
-                view = TStringBuf(buffer, BlockSize);
+            Decompress(
+                BlobCodec,
+                request.BlobCompressionInfo,
+                BlockSize,
+                response.Buffer,
+                query.CompressedRange.Offset,
+                query.Blocks,
+                BlockBuffer.get());
+        } else {
+            if (response.Buffer.size() / BlockSize != query.Blocks.size()) {
+                ReplyError(ctx, *msg, "invalid response buffer size");
+                return;
             }
 
-            Buffer->SetBlock(
-                rangeIt->BlockOffset + inRange,
-                view);
+            ReadQueryResponseUncompressed(response.Buffer, query);
         }
-
-        TABLET_VERIFY(blocksCount - rangeOffset == rangeIt->Count);
-        ++rangeIt;
     }
-
-    TABLET_VERIFY(rangeIt == request.Ranges.end());
 
     TABLET_VERIFY(RequestsCompleted < Requests.size());
     if (++RequestsCompleted == Requests.size()) {
         ReplyAndDie(ctx);
+    }
+}
+
+void TReadBlobActor::ReadQueryResponseUncompressed(
+    const TRope& responseBuffer,
+    const TQuery& query)
+{
+    char buffer[BlockSize];
+    auto iter = responseBuffer.begin();
+
+    for (const auto& block : query.Blocks) {
+        TStringBuf view;
+
+        if (iter.ContiguousSize() >= BlockSize) {
+            view = TStringBuf(iter.ContiguousData(), BlockSize);
+            iter += BlockSize;
+        } else {
+            iter.ExtractPlainDataAndAdvance(buffer, BlockSize);
+            view = TStringBuf(buffer, BlockSize);
+        }
+
+        BlockBuffer->SetBlock(block.BlockOffset, view);
     }
 }
 
@@ -256,8 +347,8 @@ void TReadBlobActor::ReplyError(
     LOG_ERROR(ctx, TFileStoreComponents::TABLET,
         "%s TEvBlobStorage::TEvGet failed: %s\n%s",
         LogTag.c_str(),
-        message.data(),
-        response.Print(false).data());
+        message.c_str(),
+        response.Print(false).c_str());
 
     auto error = MakeError(E_REJECTED, "TEvBlobStorage::TEvGet failed: " + message);
     ReplyAndDie(ctx, error);
@@ -340,69 +431,80 @@ void TIndexTabletActor::HandleReadBlob(
         msg->CallContext,
         "ReadBlob");
 
-    ui32 blockSize = GetBlockSize();
+    const auto blockSize = GetBlockSize();
 
     TVector<TReadBlobRequest> requests(Reserve(msg->Blobs.size()));
     for (auto& blob: msg->Blobs) {
-        auto blobId = MakeBlobId(TabletID(), blob.BlobId);
+        struct TBlockRange
+        {
+            ui32 BlockOffset = 0;
+            ui32 BlocksCount = 0;
+        };
 
-        auto proxy = Info()->BSProxyIDForChannel(
-            blob.BlobId.Channel(),
-            blob.BlobId.Generation());
+        auto addRangeToProfileLog = [&](const TBlockRange& range) {
+            if (range.BlocksCount) {
+                AddRange(
+                    blob.BlobId.CommitId(),
+                    static_cast<ui64>(range.BlockOffset) * blockSize,
+                    static_cast<ui64>(range.BlocksCount) * blockSize,
+                    profileLogRequest);
+            }
+        };
 
-        ui32 blocksCount = blob.Blocks.size();
+        TVector<TQuery> queries;
+        TBlockRange curBlockRange;
 
-        using TEvGetQuery = TEvBlobStorage::TEvGet::TQuery;
-
-        TArrayHolder<TEvGetQuery> queries(new TEvGetQuery[blocksCount]);
-        size_t queriesCount = 0;
-
-        TVector<TReadBlockRange> ranges;
-        ranges.reserve(blocksCount);
-
+        const auto blocksCount = blob.Blocks.size();
         for (size_t i = 0; i < blocksCount; ++i) {
             const auto& curBlock = blob.Blocks[i];
+
             if (i && curBlock.BlobOffset == blob.Blocks[i - 1].BlobOffset + 1) {
                 const auto& prevBlock = blob.Blocks[i - 1];
 
-                // extend range
-                queries[queriesCount - 1].Size += blockSize;
+                queries.back().UncompressedRange.Extend(blockSize);
+                queries.back().Blocks.push_back(
+                    TUncompressedBlock(
+                        curBlock.BlobOffset,
+                        curBlock.BlockOffset));
+
                 if (curBlock.BlockOffset == prevBlock.BlockOffset + 1) {
-                    ++ranges.back().Count;
+                    // extend range
+                    ++curBlockRange.BlocksCount;
                 } else {
-                    ranges.push_back({
-                        curBlock.BlockOffset,
-                        1
-                    });
+                    addRangeToProfileLog(curBlockRange);
+                    // new range
+                    curBlockRange = { curBlock.BlockOffset, 1 };
                 }
             } else {
-                queries[queriesCount++].Set(
-                    blobId,
-                    blob.Blocks[i].BlobOffset * blockSize,
-                    blockSize);
-
-                ranges.push_back({
-                    blob.Blocks[i].BlockOffset,
-                    1
+                queries.push_back(TQuery {
+                    .UncompressedRange = TUncompressedRange(
+                        curBlock.BlobOffset * blockSize,
+                        blockSize),
+                    .Blocks = {{ curBlock.BlobOffset, curBlock.BlockOffset }},
                 });
+
+                addRangeToProfileLog(curBlockRange);
+                // new range
+                curBlockRange = { curBlock.BlockOffset, 1 };
             }
         }
 
-        for (const auto& range : ranges) {
-            AddRange(
-                blob.BlobId.CommitId(),
-                static_cast<ui64>(range.BlockOffset) * blockSize,
-                static_cast<ui64>(range.Count) * blockSize,
-                profileLogRequest);
+        if (blob.BlobCompressionInfo.BlobCompressed()) {
+            for (auto& query : queries) {
+                query.CompressedRange = blob.BlobCompressionInfo.CompressedRange(
+                    query.UncompressedRange);
+            }
+
+            MergeOverlappingCompressedQueries(queries);
         }
 
-        auto request = std::make_unique<TEvBlobStorage::TEvGet>(
+        auto blobId = MakeBlobId(TabletID(), blob.BlobId);
+        auto request = CreateGetRequest(
+            blobId,
             queries,
-            queriesCount,
             blob.Deadline,
-            blob.Async
-                ? NKikimrBlobStorage::AsyncRead
-                : NKikimrBlobStorage::FastRead);
+            blob.Async,
+            blob.BlobCompressionInfo.BlobCompressed());
 
         if (!msg->CallContext->LWOrbit.Fork(request->Orbit)) {
             FILESTORE_TRACK(
@@ -411,10 +513,15 @@ void TIndexTabletActor::HandleReadBlob(
                 "TEvBlobStorage::TEvGet");
         }
 
+        auto proxy = Info()->BSProxyIDForChannel(
+            blob.BlobId.Channel(),
+            blob.BlobId.Generation());
+
         requests.emplace_back(
             proxy,
             blobId,
-            std::move(ranges),
+            std::move(blob.BlobCompressionInfo),
+            std::move(queries),
             std::move(request));
     }
 
@@ -430,6 +537,7 @@ void TIndexTabletActor::HandleReadBlob(
         std::move(msg->Buffer),
         blockSize,
         GetFileSystemId(),
+        BlobCodec,
         ProfileLog,
         std::move(requests),
         std::move(profileLogRequest));

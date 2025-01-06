@@ -45,6 +45,7 @@ void TMixedBlobBuilder::CompleteBlob(TRange& range)
     Blobs.emplace_back(
         TPartialBlobId(), // need to generate BlobId later
         std::move(range.Blocks),
+        TBlobCompressionInfo(),
         std::move(range.BlobContent));
 
     ++BlobsCount;
