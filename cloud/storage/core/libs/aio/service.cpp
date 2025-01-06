@@ -8,6 +8,7 @@
 #include <util/string/builder.h>
 #include <util/system/file.h>
 #include <util/system/thread.h>
+#include <util/string/cast.h>
 
 #include <atomic>
 
@@ -223,7 +224,9 @@ private:
     void Run()
     {
         SetHighestThreadPriority();
-        NCloud::SetCurrentThreadName("AIO");
+
+        static std::atomic<ui64> index = 0;
+        NCloud::SetCurrentThreadName("AIO" + ToString(index++));
 
         timespec timeout = WAIT_TIMEOUT;
 
@@ -248,6 +251,60 @@ private:
     }
 };
 
+////////////////////////////////////////////////////////////////////////////////
+
+class TThreadedAIOService final
+    : public IFileIOService
+{
+private:
+    TVector<IFileIOServicePtr> IoServices;
+    std::atomic<i64> NextService = 0;
+
+public:
+    TThreadedAIOService(ui32 threadCount, size_t maxEvents)
+    {
+        for (ui32 i = 0; i < threadCount; i++) {
+            IoServices.push_back(CreateAIOService(maxEvents));
+        }
+    }
+
+    void AsyncRead(
+        TFileHandle& file,
+        i64 offset,
+        TArrayRef<char> buffer,
+        TFileIOCompletion* completion) override
+    {
+        auto index = NextService++;
+        IoServices[index % IoServices.size()]
+            ->AsyncRead(file, offset, buffer, completion);
+    }
+
+    void AsyncWrite(
+        TFileHandle& file,
+        i64 offset,
+        TArrayRef<const char> buffer,
+        TFileIOCompletion* completion) override
+    {
+        auto index = NextService++;
+        IoServices[index % IoServices.size()]
+            ->AsyncWrite(file, offset, buffer, completion);
+    }
+
+    void Start() override
+    {
+        for (auto& ioService : IoServices) {
+            ioService->Start();
+        }
+    }
+
+    void Stop() override
+    {
+        for (auto& ioService : IoServices) {
+            ioService->Stop();
+        }
+    }
+};
+
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -255,6 +312,11 @@ private:
 IFileIOServicePtr CreateAIOService(size_t maxEvents)
 {
     return std::make_shared<TAIOService>(maxEvents);
+}
+
+IFileIOServicePtr CreateThreadedAIOService(ui32 threadCount, size_t maxEvents)
+{
+    return std::make_shared<TThreadedAIOService>(threadCount, maxEvents);
 }
 
 }   // namespace NCloud
