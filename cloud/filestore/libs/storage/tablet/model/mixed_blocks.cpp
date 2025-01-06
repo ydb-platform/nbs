@@ -125,7 +125,7 @@ struct TMixedBlocks::TImpl
     // ref count == 0. May be useful for caching
     using TOffloadedRangeMap = NCloud::TLRUCache<ui32, TRange>;
 
-    void Reset(ui64 offloadedRangesCapacity)
+    void SetOffloadedRangesCapacity(ui64 offloadedRangesCapacity)
     {
         OffloadedRanges.SetCapacity(offloadedRangesCapacity);
     }
@@ -160,7 +160,7 @@ TMixedBlocks::~TMixedBlocks()
 
 void TMixedBlocks::Reset(ui64 offloadedRangesCapacity)
 {
-    Impl->Reset(offloadedRangesCapacity);
+    Impl->SetOffloadedRangesCapacity(offloadedRangesCapacity);
 }
 
 bool TMixedBlocks::IsLoaded(ui32 rangeId) const
