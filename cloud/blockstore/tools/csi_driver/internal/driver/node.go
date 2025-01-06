@@ -11,10 +11,10 @@ import (
 	"log"
 	"math"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strings"
+	"sync"
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	nbsapi "github.com/ydb-platform/nbs/cloud/blockstore/public/api/protos"
@@ -44,18 +44,13 @@ const backendVolumeContextKey = "backend"
 const deviceNameVolumeContextKey = "deviceName"
 const instanceIdKey = "instanceId"
 
+const volumeOperationInProgress = "Another operation with volume %s is in progress"
+
 var vmModeCapabilities = []*csi.NodeServiceCapability{
 	{
 		Type: &csi.NodeServiceCapability_Rpc{
 			Rpc: &csi.NodeServiceCapability_RPC{
 				Type: csi.NodeServiceCapability_RPC_STAGE_UNSTAGE_VOLUME,
-			},
-		},
-	},
-	{
-		Type: &csi.NodeServiceCapability_Rpc{
-			Rpc: &csi.NodeServiceCapability_RPC{
-				Type: csi.NodeServiceCapability_RPC_VOLUME_MOUNT_GROUP,
 			},
 		},
 	},
@@ -75,13 +70,6 @@ var podModeCapabilities = []*csi.NodeServiceCapability{
 		Type: &csi.NodeServiceCapability_Rpc{
 			Rpc: &csi.NodeServiceCapability_RPC{
 				Type: csi.NodeServiceCapability_RPC_STAGE_UNSTAGE_VOLUME,
-			},
-		},
-	},
-	{
-		Type: &csi.NodeServiceCapability_Rpc{
-			Rpc: &csi.NodeServiceCapability_RPC{
-				Type: csi.NodeServiceCapability_RPC_VOLUME_MOUNT_GROUP,
 			},
 		},
 	},
@@ -118,6 +106,7 @@ type nodeService struct {
 	nfsClient      nfsclient.EndpointClientIface
 	nfsLocalClient nfsclient.EndpointClientIface
 	mounter        mounter.Interface
+	volumeOps      *sync.Map
 }
 
 func newNodeService(
@@ -145,6 +134,7 @@ func newNodeService(
 		targetFsPathRegexp:  regexp.MustCompile(targetFsPathPattern),
 		targetBlkPathRegexp: regexp.MustCompile(targetBlkPathPattern),
 		localFsOverrides:    localFsOverrides,
+		volumeOps:           new(sync.Map),
 	}
 }
 
@@ -191,6 +181,11 @@ func (s *nodeService) NodeStageVolume(
 			codes.InvalidArgument,
 			"ReadWriteMany access mode is supported only with nfs backend")
 	}
+
+	if _, opInProgress := s.volumeOps.LoadOrStore(req.VolumeId, nil); opInProgress {
+		return nil, s.statusErrorf(codes.Aborted, volumeOperationInProgress, req.VolumeId)
+	}
+	defer s.volumeOps.Delete(req.VolumeId)
 
 	var err error
 	switch req.VolumeCapability.GetAccessType().(type) {
@@ -272,6 +267,11 @@ func (s *nodeService) NodeUnstageVolume(
 			"StagingTargetPath is missing in NodeUnstageVolumeRequest")
 	}
 
+	if _, opInProgress := s.volumeOps.LoadOrStore(req.VolumeId, nil); opInProgress {
+		return nil, s.statusErrorf(codes.Aborted, volumeOperationInProgress, req.VolumeId)
+	}
+	defer s.volumeOps.Delete(req.VolumeId)
+
 	if s.vmMode {
 		nbsId, _ := parseVolumeId(req.VolumeId)
 
@@ -348,6 +348,11 @@ func (s *nodeService) NodePublishVolume(
 			"ReadWriteMany access mode is supported only with nfs backend")
 	}
 
+	if _, opInProgress := s.volumeOps.LoadOrStore(req.VolumeId, nil); opInProgress {
+		return nil, s.statusErrorf(codes.Aborted, volumeOperationInProgress, req.VolumeId)
+	}
+	defer s.volumeOps.Delete(req.VolumeId)
+
 	var err error
 	switch req.VolumeCapability.GetAccessType().(type) {
 	case *csi.VolumeCapability_Mount:
@@ -405,6 +410,11 @@ func (s *nodeService) NodeUnpublishVolume(
 			codes.InvalidArgument,
 			"Target Path is missing in NodeUnpublishVolumeRequest")
 	}
+
+	if _, opInProgress := s.volumeOps.LoadOrStore(req.VolumeId, nil); opInProgress {
+		return nil, s.statusErrorf(codes.Aborted, volumeOperationInProgress, req.VolumeId)
+	}
+	defer s.volumeOps.Delete(req.VolumeId)
 
 	if err := s.nodeUnpublishVolume(ctx, req); err != nil {
 		return nil, s.statusErrorf(
@@ -641,14 +651,6 @@ func (s *nodeService) nodePublishDiskAsFilesystemDeprecated(
 		return err
 	}
 
-	if mnt != nil && mnt.VolumeMountGroup != "" && !req.Readonly {
-		cmd := exec.Command("chown", "-R", ":"+mnt.VolumeMountGroup, req.TargetPath)
-		if out, err := cmd.CombinedOutput(); err != nil {
-			return fmt.Errorf("failed to chown %s to %q: %w, output %q",
-				mnt.VolumeMountGroup, req.TargetPath, err, out)
-		}
-	}
-
 	return nil
 }
 
@@ -696,14 +698,6 @@ func (s *nodeService) nodePublishDiskAsFilesystem(
 		mountOptions)
 	if err != nil {
 		return err
-	}
-
-	if mnt != nil && mnt.VolumeMountGroup != "" && !req.Readonly {
-		cmd := exec.Command("chown", "-R", ":"+mnt.VolumeMountGroup, req.TargetPath)
-		if out, err := cmd.CombinedOutput(); err != nil {
-			return fmt.Errorf("failed to chown %s to %q: %w, output %q",
-				mnt.VolumeMountGroup, req.TargetPath, err, out)
-		}
 	}
 
 	return nil
@@ -772,6 +766,13 @@ func (s *nodeService) nodeStageDiskAsFilesystem(
 
 	logVolume(req.VolumeId, "endpoint started with device: %q", resp.NbdDeviceFile)
 
+	// startNbsEndpointForNBD is async function. Kubelet will retry
+	// NodeStageVolume request if nbd device is not available yet.
+	hasBlockDevice, err := s.mounter.HasBlockDevice(resp.NbdDeviceFile)
+	if !hasBlockDevice {
+		return fmt.Errorf("Nbd device is not available: %w", err)
+	}
+
 	mnt := req.VolumeCapability.GetMount()
 
 	fsType := req.VolumeContext["fsType"]
@@ -787,7 +788,7 @@ func (s *nodeService) nodeStageDiskAsFilesystem(
 		return fmt.Errorf("failed to create staging directory: %w", err)
 	}
 
-	mountOptions := []string{"grpid"}
+	mountOptions := []string{}
 	if fsType == "ext4" {
 		mountOptions = append(mountOptions, "errors=remount-ro")
 	}
@@ -806,14 +807,6 @@ func (s *nodeService) nodeStageDiskAsFilesystem(
 		mountOptions)
 	if err != nil {
 		return fmt.Errorf("failed to format or mount filesystem: %w", err)
-	}
-
-	if mnt != nil && mnt.VolumeMountGroup != "" {
-		cmd := exec.Command("chown", "-R", ":"+mnt.VolumeMountGroup, req.StagingTargetPath)
-		if out, err := cmd.CombinedOutput(); err != nil {
-			return fmt.Errorf("failed to chown %s to %q: %w, output %q",
-				mnt.VolumeMountGroup, req.StagingTargetPath, err, out)
-		}
 	}
 
 	if err := os.Chmod(req.StagingTargetPath, targetPerm); err != nil {
@@ -1417,6 +1410,11 @@ func (s *nodeService) NodeGetVolumeStats(
 			"VolumePath is missing in NodeGetVolumeStatsRequest")
 	}
 
+	if _, opInProgress := s.volumeOps.LoadOrStore(req.VolumeId, nil); opInProgress {
+		return nil, s.statusErrorf(codes.Aborted, volumeOperationInProgress, req.VolumeId)
+	}
+	defer s.volumeOps.Delete(req.VolumeId)
+
 	if s.vmMode {
 		return nil, fmt.Errorf("NodeGetVolumeStats is not supported in vmMode")
 	}
@@ -1560,6 +1558,11 @@ func (s *nodeService) NodeExpandVolume(
 			codes.InvalidArgument,
 			"VolumePath is missing in NodeExpandVolumeRequest")
 	}
+
+	if _, opInProgress := s.volumeOps.LoadOrStore(req.VolumeId, nil); opInProgress {
+		return nil, s.statusErrorf(codes.Aborted, volumeOperationInProgress, req.VolumeId)
+	}
+	defer s.volumeOps.Delete(req.VolumeId)
 
 	if s.vmMode {
 		return s.nodeExpandVolumeVmMode(ctx, req)

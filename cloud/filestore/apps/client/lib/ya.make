@@ -10,8 +10,10 @@ SRCS(
     describe.cpp
     destroy.cpp
     destroy_session.cpp
+    diff.cpp
     execute_action.cpp
     factory.cpp
+    find.cpp
     find_garbage.cpp
     forced_compaction.cpp
     kick_endpoint.cpp
@@ -46,6 +48,8 @@ PEERDIR(
     cloud/storage/core/libs/diagnostics
 
     contrib/ydb/library/actors/util
+    library/cpp/colorizer
+    library/cpp/digest/md5
     library/cpp/getopt
     library/cpp/logger
     library/cpp/protobuf/json

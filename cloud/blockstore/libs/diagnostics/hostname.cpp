@@ -127,11 +127,12 @@ TString GetMonitoringYDBGroupUrl(
         R"(q.1.s=histogram_percentile(100, {project="kikimr", cluster="*", storagePool="%s", group="%)" PRIu32
         R"(", host="*", service="vdisks", subsystem="latency_histo", handleclass="PutUserData"})&q.1.name=B)";
     constexpr TStringBuf Url =
-        "%s/projects/kikimr/explorer/"
+        "%s/projects/%s/explorer/"
         "queries?%s&%s&from=now-1d&to=now&refresh=60000";
     return Sprintf(
         Url.data(),
         config.GetMonitoringUrlData().MonitoringUrl.c_str(),
+        config.GetMonitoringUrlData().MonitoringYDBProject.c_str(),
         Sprintf(GetFast.data(), storagePool.c_str(), groupId).c_str(),
         Sprintf(PutUserData.data(), storagePool.c_str(), groupId).c_str());
 }

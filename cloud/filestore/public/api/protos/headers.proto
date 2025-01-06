@@ -57,8 +57,12 @@ message THeaders
     // Explicitly disables multitablet forwarding.
     bool DisableMultiTabletForwarding = 11;
 
-    // Throttle already performed
+    // Throttling already performed.
     bool ThrottlingDisabled = 12;
+
+    // Behave as directory tablet (main tablet) - allows work delegation to
+    // shards if directory handling is allowed for shards.
+    bool BehaveAsDirectoryTablet = 13;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

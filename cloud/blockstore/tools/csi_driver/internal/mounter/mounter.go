@@ -37,11 +37,7 @@ func (m *mounter) CleanupMountPoint(target string) error {
 	return mount.CleanupMountPoint(target, m.mnt, true)
 }
 
-func (m *mounter) IsFilesystemExisted(device string) (bool, error) {
-	if _, err := exec.LookPath("blkid"); err != nil {
-		return false, fmt.Errorf("failed to find 'blkid' tool: %w", err)
-	}
-
+func (m *mounter) HasBlockDevice(device string) (bool, error) {
 	if _, err := exec.LookPath("blockdev"); err != nil {
 		return false, fmt.Errorf("failed to find 'blockdev' tool: %w", err)
 	}
@@ -65,7 +61,20 @@ func (m *mounter) IsFilesystemExisted(device string) (bool, error) {
 			"size of device %q is empty. blockdev output: %q", device, out)
 	}
 
-	out, err = exec.Command("blkid", device).CombinedOutput()
+	return true, nil
+}
+
+func (m *mounter) IsFilesystemExisted(device string) (bool, error) {
+	hasBlockDevice, err := m.HasBlockDevice(device)
+	if !hasBlockDevice {
+		return false, fmt.Errorf("failed to check filesystem: %w", err)
+	}
+
+	if _, err = exec.LookPath("blkid"); err != nil {
+		return false, fmt.Errorf("failed to find 'blkid' tool: %w", err)
+	}
+
+	out, err := exec.Command("blkid", device).CombinedOutput()
 	return err == nil && string(out) != "", nil
 }
 

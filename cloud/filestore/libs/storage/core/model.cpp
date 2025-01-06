@@ -48,7 +48,7 @@ THROTTLING_PARAM(MaxPostponedCount, ui64);
 
 #undef THROTTLING_PARAM
 
-ui32 MaxReadBandwidth(
+ui64 MaxReadBandwidth(
     const TStorageConfig& config,
     const NKikimrFileStore::TConfig& fileStore,
     const ui32 unitCount)
@@ -66,7 +66,7 @@ ui32 MaxReadBandwidth(
     );
 }
 
-ui32 MaxWriteBandwidth(
+ui64 MaxWriteBandwidth(
     const TStorageConfig& config,
     const NKikimrFileStore::TConfig& fileStore,
     const ui32 unitCount)
@@ -172,7 +172,7 @@ ui32 BurstPercentage(
     return BurstPercentage(config, fileStore.GetStorageMediaKind());
 }
 
-ui32 DefaultPostponedRequestWeight(
+ui64 DefaultPostponedRequestWeight(
     const TStorageConfig& config,
     const NKikimrFileStore::TConfig& fileStore)
 {
@@ -181,7 +181,7 @@ ui32 DefaultPostponedRequestWeight(
         fileStore.GetStorageMediaKind());
 }
 
-ui32 MaxPostponedWeight(
+ui64 MaxPostponedWeight(
     const TStorageConfig& config,
     const NKikimrFileStore::TConfig& fileStore)
 {
@@ -528,7 +528,8 @@ void SetupFileStorePerformanceAndChannels(
 TMultiShardFileStoreConfig SetupMultiShardFileStorePerformanceAndChannels(
     const TStorageConfig& config,
     const NKikimrFileStore::TConfig& fileStore,
-    const NProto::TFileStorePerformanceProfile& clientProfile)
+    const NProto::TFileStorePerformanceProfile& clientProfile,
+    ui32 explicitShardCount)
 {
     TMultiShardFileStoreConfig result;
     result.MainFileSystemConfig = fileStore;
@@ -539,10 +540,12 @@ TMultiShardFileStoreConfig SetupMultiShardFileStorePerformanceAndChannels(
         result.MainFileSystemConfig,
         clientProfile);
 
-    const auto shardCount = ComputeShardCount(
-        fileStore.GetBlocksCount(),
-        fileStore.GetBlockSize(),
-        config.GetShardAllocationUnit());
+    const auto shardCount = explicitShardCount
+        ? explicitShardCount
+        : ComputeShardCount(
+            fileStore.GetBlocksCount(),
+            fileStore.GetBlockSize(),
+            config.GetShardAllocationUnit());
     result.ShardConfigs.resize(shardCount);
     for (ui32 i = 0; i < shardCount; ++i) {
         result.ShardConfigs[i] = fileStore;
@@ -557,6 +560,7 @@ TMultiShardFileStoreConfig SetupMultiShardFileStorePerformanceAndChannels(
             config,
             result.ShardConfigs[i],
             clientProfile);
+        result.ShardConfigs[i].SetIsSystem(true);
     }
 
     return result;

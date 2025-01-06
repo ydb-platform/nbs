@@ -519,7 +519,8 @@ TDuration MSeconds(ui32 value)
     xxx(BlobStorageAsyncGetTimeoutSSD,                  TDuration, Seconds(0)    )\
                                                                                \
     xxx(EncryptionAtRestForDiskRegistryBasedDisksEnabled, bool,    false      )\
-
+    xxx(DisableFullPlacementGroupCountCalculation,        bool,    false      )\
+    xxx(DiskRegistryInitialAgentRejectionThreshold,       double,    50       )\
 // BLOCKSTORE_STORAGE_CONFIG_RW
 
 #define BLOCKSTORE_STORAGE_CONFIG(xxx)                                         \

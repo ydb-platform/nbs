@@ -21,8 +21,9 @@ struct TDefaultParameters
     ui32 MaxReadIops = Max<ui32>();
     ui32 MaxWriteIops = Max<ui32>();
 
-    ui32 MaxReadBandwidth = Max<ui32>();
-    ui32 MaxWriteBandwidth = Max<ui32>();
+    // Use max of signed to match i64 metric counters
+    ui64 MaxReadBandwidth = Max<i64>();
+    ui64 MaxWriteBandwidth = Max<i64>();
 };
 
 struct TBoostParameters
@@ -34,7 +35,7 @@ struct TBoostParameters
 
 struct TDefaultThresholds
 {
-    ui32 MaxPostponedWeight = 128_MB;
+    ui64 MaxPostponedWeight = 128_MB;
     ui32 MaxPostponedCount = 512;
     TDuration MaxPostponedTime = TDuration::Seconds(25);
     double MaxWriteCostMultiplier = 10.0;
@@ -44,7 +45,7 @@ struct TThrottlerConfig
 {
     bool ThrottlingEnabled = false;
     ui32 BurstPercentage = 10;
-    ui32 DefaultPostponedRequestWeight = 1_KB;
+    ui64 DefaultPostponedRequestWeight = 1_KB;
 
     TDefaultParameters DefaultParameters;
     TBoostParameters BoostParameters;
@@ -90,12 +91,12 @@ public:
 
     const TThrottlerConfig& GetConfig() const;
     ui32 GetVersion() const;
-    ui32 CalculatePostponedWeight() const;
+    ui64 CalculatePostponedWeight() const;
     double GetWriteCostMultiplier() const;
     TDuration GetCurrentBoostBudget() const;
     double CalculateCurrentSpentBudgetShare(TInstant now) const;
-    ui32 C1(EOpType opType) const;
-    ui32 C2(EOpType opType) const;
+    ui64 C1(EOpType opType) const;
+    ui64 C2(EOpType opType) const;
 };
 
 using TThrottlingPolicyPtr = std::shared_ptr<TThrottlingPolicy>;

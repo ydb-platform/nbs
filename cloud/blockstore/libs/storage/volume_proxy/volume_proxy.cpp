@@ -587,7 +587,7 @@ void TVolumeProxyActor::HandleRequest(
     // otherwise it is safe to use Get() to retrieve actual message.
     if (!ev->HasBuffer() && !ev->HasEvent()) {
         auto response = std::make_unique<typename TMethod::TResponse>(
-            MakeError(E_REJECTED, "Tablet is dead"));
+            MakeTabletIsDeadError(E_REJECTED, __LOCATION__));
 
         NCloud::Reply(ctx, *ev, std::move(response));
         return;

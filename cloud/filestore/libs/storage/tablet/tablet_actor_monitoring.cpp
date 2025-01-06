@@ -1269,7 +1269,13 @@ void TIndexTabletActor::HandleHttpInfo_Default(
         {
             out << "Active Sessions";
         }
-        DumpSessions(out, GetActiveSessions());
+        DumpSessions(out, GetActiveSessionInfos());
+
+        TAG(TH3)
+        {
+            out << "Orphan Sessions";
+        }
+        DumpSessions(out, GetOrphanSessionInfos());
 
         TAG(TH3)
         {

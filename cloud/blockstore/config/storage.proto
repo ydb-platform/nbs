@@ -170,7 +170,7 @@ message TStorageServiceConfig
 
     // Default throttling settings.
     optional uint32 ThrottlingBurstPercentage = 40;
-    optional uint32 ThrottlingMaxPostponedWeight = 41;   // in bytes
+    optional uint64 ThrottlingMaxPostponedWeight = 41;   // in bytes
     optional uint32 ThrottlingBoostTime = 42;            // in milliseconds
     optional uint32 ThrottlingBoostRefillTime = 43;      // in milliseconds
 
@@ -1074,4 +1074,13 @@ message TStorageServiceConfig
 
     // Enabling direct copying of data between disk agents.
     optional bool UseDirectCopyRange = 394;
+
+    // Disables the calculation of the FullPlacementGroups counter.
+    optional bool DisableFullPlacementGroupCountCalculation = 395;
+
+    // The percentage of agents that is acceptable to reject at the start.
+    // If the number of agents that did not reconnect is higher than this
+    // percentage, then the rejection of such agents does not occur - we assume
+    // a connectivity failure in the cluster.
+    optional double DiskRegistryInitialAgentRejectionThreshold = 396;
 }
