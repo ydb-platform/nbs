@@ -492,6 +492,11 @@ func (s *nodeService) nodePublishDiskAsVhostSocket(
 	})
 
 	if err != nil {
+		if s.IsGrpcTimeoutError(err) {
+			s.nbsClient.StopEndpoint(ctx, &nbsapi.TStopEndpointRequest{
+				UnixSocketPath: filepath.Join(endpointDir, nbsSocketName),
+			})
+		}
 		return fmt.Errorf("failed to start NBS endpoint: %w", err)
 	}
 
@@ -582,6 +587,11 @@ func (s *nodeService) nodeStageDiskAsVhostSocket(
 	})
 
 	if err != nil {
+		if s.IsGrpcTimeoutError(err) {
+			s.nbsClient.StopEndpoint(ctx, &nbsapi.TStopEndpointRequest{
+				UnixSocketPath: filepath.Join(endpointDir, nbsSocketName),
+			})
+		}
 		return fmt.Errorf("failed to start NBS endpoint: %w", err)
 	}
 
@@ -708,6 +718,19 @@ func (s *nodeService) IsMountConflictError(err error) bool {
 		var clientErr *nbsclient.ClientError
 		if errors.As(err, &clientErr) {
 			if clientErr.Code == nbsclient.E_MOUNT_CONFLICT {
+				return true
+			}
+		}
+	}
+
+	return false
+}
+
+func (s *nodeService) IsGrpcTimeoutError(err error) bool {
+	if err != nil {
+		var clientErr *nbsclient.ClientError
+		if errors.As(err, &clientErr) {
+			if clientErr.Code == nbsclient.E_GRPC_DEADLINE_EXCEEDED {
 				return true
 			}
 		}
@@ -900,7 +923,7 @@ func (s *nodeService) startNbsEndpointForNBD(
 	}
 
 	hostType := nbsapi.EHostType_HOST_TYPE_DEFAULT
-	return s.nbsClient.StartEndpoint(ctx, &nbsapi.TStartEndpointRequest{
+	resp, err := s.nbsClient.StartEndpoint(ctx, &nbsapi.TStartEndpointRequest{
 		UnixSocketPath:   filepath.Join(endpointDir, nbsSocketName),
 		DiskId:           diskId,
 		InstanceId:       nbsInstanceId,
@@ -918,6 +941,14 @@ func (s *nodeService) startNbsEndpointForNBD(
 			HostType: &hostType,
 		},
 	})
+
+	if s.IsGrpcTimeoutError(err) {
+		s.nbsClient.StopEndpoint(ctx, &nbsapi.TStopEndpointRequest{
+			UnixSocketPath: filepath.Join(endpointDir, nbsSocketName),
+		})
+	}
+
+	return resp, err
 }
 
 func (s *nodeService) getNfsClient(fileSystemId string) nfsclient.EndpointClientIface {
@@ -956,6 +987,12 @@ func (s *nodeService) nodePublishFileStoreAsVhostSocket(
 		},
 	})
 	if err != nil {
+		if s.IsGrpcTimeoutError(err) {
+			s.nbsClient.StopEndpoint(ctx, &nbsapi.TStopEndpointRequest{
+				UnixSocketPath: filepath.Join(endpointDir, nbsSocketName),
+			})
+		}
+
 		return fmt.Errorf("failed to start NFS endpoint: %w", err)
 	}
 
@@ -994,6 +1031,12 @@ func (s *nodeService) nodeStageFileStoreAsVhostSocket(
 		},
 	})
 	if err != nil {
+		if s.IsGrpcTimeoutError(err) {
+			s.nbsClient.StopEndpoint(ctx, &nbsapi.TStopEndpointRequest{
+				UnixSocketPath: filepath.Join(endpointDir, nbsSocketName),
+			})
+		}
+
 		return fmt.Errorf("failed to start NFS endpoint: %w", err)
 	}
 
