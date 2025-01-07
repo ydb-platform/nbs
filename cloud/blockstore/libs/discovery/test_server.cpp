@@ -79,6 +79,7 @@ struct TFakeBlockStoreServer::TImpl
     ui32 LastByteCount = 0;
     bool DropPingRequests = false;
     TVector<std::unique_ptr<TRequestContext>> DroppedRequests;
+    TAtomic ShouldStop = 0;
 
     TImpl(
             ui16 port,
@@ -102,12 +103,19 @@ struct TFakeBlockStoreServer::TImpl
         }
 
         if (Server) {
-            Server->Shutdown();
-            CQ->Shutdown();
-
+            // Need to stop the loop explicitly to avoid possible data race
+            // with grpc server shutdown.
+            // See https://github.com/ydb-platform/nbs/issues/2809
+            AtomicSet(ShouldStop, 1);
             if (Thread) {
                 Thread->Join();
             }
+
+            Server->Shutdown();
+            CQ->Shutdown();
+            // Need to drain completion queue, otherwise it fails on assert when destroying:
+            // https://github.com/ydb-platform/nbs/blob/fbf6b9fa568b7b3861fbccffcf3177ee445f498a/contrib/libs/grpc/src/core/lib/surface/completion_queue.cc#L258
+            DrainCompletionQueue();
         }
     }
 
@@ -153,7 +161,13 @@ struct TFakeBlockStoreServer::TImpl
 
         void* tag;
         bool ok;
-        while (CQ->Next(&tag, &ok)) {
+        while (!AtomicGet(ShouldStop)) {
+            const auto deadline = gpr_time_0(GPR_TIMESPAN);
+            auto status = CQ->AsyncNext(&tag, &ok, deadline);
+            if (status != grpc::CompletionQueue::GOT_EVENT) {
+                continue;
+            }
+
             auto* requestContext = static_cast<TRequestContext*>(tag);
 
             if (requestContext->Done || !ok) {
@@ -168,6 +182,21 @@ struct TFakeBlockStoreServer::TImpl
                         FinishRequest(requestContext);
                     }
                 }
+            }
+        }
+    }
+
+    void DrainCompletionQueue()
+    {
+        void* tag;
+        bool ok;
+        while (CQ->Next(&tag, &ok)) {
+            auto* requestContext = static_cast<TRequestContext*>(tag);
+
+            if (requestContext->Done || !ok) {
+                delete requestContext;
+            } else {
+                FinishRequest(requestContext);
             }
         }
     }
