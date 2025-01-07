@@ -31,26 +31,6 @@ constexpr TStringBuf FILESTORE_INDEX_LATENCY     = "filestore.index_latency";
 constexpr TStringBuf FILESTORE_INDEX_ERRORS      = "filestore.index_errors";
 constexpr TStringBuf FILESTORE_INDEX_CUMULATIVE_TIME = "filestore.index_cumulative_time";
 
-const THashMap<TString, TString> FILESTORE_INDEX_OPS_NAMES = {
-    {"AllocateData", "fallocate"},
-    {"CreateHandle", "open"},
-    {"CreateNode", "createnode"},
-    {"DestroyHandle", "release"},
-    {"GetNodeAttr", "getattr"},
-    {"GetNodeXAttr", "getxattr"},
-    {"ListNodeXAttr", "listxattr"},
-    {"ListNodes", "readdir"},
-    {"RenameNode", "rename"},
-    {"SetNodeAttr", "setattr"},
-    {"SetNodeXAttr", "setxattr"},
-    {"UnlinkNode", "unlink"},
-    {"StatFileStore", "statfs"},
-    {"ReadLink", "readlink"},
-    {"AccessNode", "access"},
-    {"RemoveNodeXAttr", "removexattr"},
-    {"ReleaseLock", "releaselock"},
-    {"AcquireLock", "acquirelock"}};
-
 ////////////////////////////////////////////////////////////////////////////////
 
 struct TUserSumCounterWrapper
@@ -239,6 +219,31 @@ TLabels MakeFilestoreLabels(
         {"instance", instanceId}};
 }
 
+const THashMap<TString, TString>& GetIndexOpsNames()
+{
+    static const THashMap<TString, TString> names = {
+        {"AllocateData", "fallocate"},
+        {"CreateHandle", "open"},
+        {"CreateNode", "createnode"},
+        {"DestroyHandle", "release"},
+        {"GetNodeAttr", "getattr"},
+        {"GetNodeXAttr", "getxattr"},
+        {"ListNodeXAttr", "listxattr"},
+        {"ListNodes", "readdir"},
+        {"RenameNode", "rename"},
+        {"SetNodeAttr", "setattr"},
+        {"SetNodeXAttr", "setxattr"},
+        {"UnlinkNode", "unlink"},
+        {"StatFileStore", "statfs"},
+        {"ReadLink", "readlink"},
+        {"AccessNode", "access"},
+        {"RemoveNodeXAttr", "removexattr"},
+        {"ReleaseLock", "releaselock"},
+        {"AcquireLock", "acquirelock"}};
+
+    return names;
+}
+
 TLabels MakeFilestoreLabelsWithRequestName(
     const TString& cloudId,
     const TString& folderId,
@@ -353,7 +358,7 @@ void RegisterFilestore(
             indexErrorCounters.emplace_back(indexSubgroup, "Errors/Fatal");
 
             const auto& metricName =
-                FILESTORE_INDEX_OPS_NAMES.find(request.first.LabelValue);
+                GetIndexOpsNames().find(request.first.LabelValue);
             if (metricName) {
                 const auto labels = MakeFilestoreLabelsWithRequestName(
                     cloudId,
@@ -427,7 +432,7 @@ void UnregisterFilestore(
     dsc.RemoveUserMetric(commonLabels, FILESTORE_INDEX_OPS);
     dsc.RemoveUserMetric(commonLabels, FILESTORE_INDEX_ERRORS);
 
-    for (const auto& [_, requestName]: FILESTORE_INDEX_OPS_NAMES) {
+    for (const auto& [_, requestName]: GetIndexOpsNames()) {
         const auto labels = MakeFilestoreLabelsWithRequestName(
             cloudId,
             folderId,
