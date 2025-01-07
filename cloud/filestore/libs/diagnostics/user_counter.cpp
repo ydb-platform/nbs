@@ -26,9 +26,9 @@ constexpr TStringBuf FILESTORE_WRITE_LATENCY     = "filestore.write_latency";
 constexpr TStringBuf FILESTORE_WRITE_ERRORS      = "filestore.write_errors";
 
 // Index operation counters
-constexpr TStringBuf FILESTORE_INDEX_OPS         = "filestore.index_ops";
-constexpr TStringBuf FILESTORE_INDEX_LATENCY     = "filestore.index_latency";
-constexpr TStringBuf FILESTORE_INDEX_ERRORS      = "filestore.index_errors";
+constexpr TStringBuf FILESTORE_INDEX_OPS             = "filestore.index_ops";
+constexpr TStringBuf FILESTORE_INDEX_LATENCY         = "filestore.index_latency";
+constexpr TStringBuf FILESTORE_INDEX_ERRORS          = "filestore.index_errors";
 constexpr TStringBuf FILESTORE_INDEX_CUMULATIVE_TIME = "filestore.index_cumulative_time";
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -357,7 +357,7 @@ void RegisterFilestore(
             indexOpsCounters.emplace_back(indexSubgroup, "Count");
             indexErrorCounters.emplace_back(indexSubgroup, "Errors/Fatal");
 
-            const auto& metricName =
+            auto metricName =
                 GetIndexOpsNames().find(request.first.LabelValue);
             if (metricName) {
                 const auto labels = MakeFilestoreLabelsWithRequestName(
@@ -369,24 +369,24 @@ void RegisterFilestore(
                 AddUserMetric(
                     dsc,
                     labels,
-                    {{indexSubgroup, "Count"}},
+                    { { indexSubgroup, "Count" } },
                     FILESTORE_INDEX_OPS);
                 AddUserMetric(
                     dsc,
                     labels,
-                    { {indexSubgroup, "Time"}},
+                    { { indexSubgroup, "Time" } },
                     FILESTORE_INDEX_CUMULATIVE_TIME
                 );
                 AddHistogramUserMetric(
                     MS_BUCKETS,
                     dsc,
                     labels,
-                    {indexSubgroup, "Time"},
+                    { indexSubgroup, "Time" },
                     FILESTORE_INDEX_LATENCY);
                 AddUserMetric(
                     dsc,
                     labels,
-                    { {indexSubgroup, "Errors/Fatal"}},
+                    { { indexSubgroup, "Errors/Fatal" } },
                     FILESTORE_INDEX_ERRORS
                 );
             }
