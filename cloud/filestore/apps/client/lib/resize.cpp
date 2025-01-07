@@ -16,6 +16,7 @@ private:
 
     ui64 BlocksCount = 0;
     bool Force = false;
+    ui32 ShardCount = 0;
 
 public:
     TResizeCommand()
@@ -29,6 +30,11 @@ public:
         Opts.AddLongOption("force")
             .StoreTrue(&Force)
             .Help("force flag allows to decrease the size of the file store");
+
+        Opts.AddLongOption("shard-count")
+            .RequiredArgument("NUM")
+            .Help("explicitly specifies the required shard count")
+            .StoreResult(&ShardCount);
     }
 
     bool Execute() override
@@ -39,6 +45,7 @@ public:
         request->SetFileSystemId(FileSystemId);
         request->SetBlocksCount(BlocksCount);
         request->SetForce(Force);
+        request->SetShardCount(ShardCount);
 
         PerformanceProfileParams.FillRequest(*request);
 
