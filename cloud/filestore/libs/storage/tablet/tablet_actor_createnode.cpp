@@ -463,6 +463,7 @@ bool TIndexTabletActor::PrepareTx_CreateNode(
 
     if (!BehaveAsShard(args.Request.GetHeaders())
             && Config->GetShardIdSelectionInLeaderEnabled()
+            && !GetFileSystem().GetShardFileSystemIds().empty()
             && (args.Attrs.GetType() == NProto::E_REGULAR_NODE
                 || Config->GetDirectoryCreationInShardsEnabled()))
     {

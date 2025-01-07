@@ -641,6 +641,31 @@ void TStorageServiceActor::HandleListNodes(
         return NCloud::Reply(ctx, *ev, std::move(response));
     }
 
+    const NProto::TFileStore& filestore = session->FileStore;
+
+    auto& headers = *msg->Record.MutableHeaders();
+    headers.SetBehaveAsDirectoryTablet(
+        StorageConfig->GetDirectoryCreationInShardsEnabled());
+    if (auto shardNo = ExtractShardNo(msg->Record.GetNodeId())) {
+        // parent directory is managed by a shard
+        auto [shardId, error] = SelectShard(
+            ctx,
+            sessionId,
+            seqNo,
+            headers.GetDisableMultiTabletForwarding(),
+            TEvService::TListNodesMethod::Name,
+            msg->CallContext->RequestId,
+            filestore,
+            shardNo);
+        if (HasError(error)) {
+            auto response =
+                std::make_unique<TEvService::TEvListNodesResponse>(
+                    std::move(error));
+            return NCloud::Reply(ctx, *ev, std::move(response));
+        }
+        msg->Record.SetFileSystemId(shardId);
+    }
+
     auto [cookie, inflight] = CreateInFlightRequest(
         TRequestInfo(ev->Sender, ev->Cookie, msg->CallContext),
         session->MediaKind,

@@ -47,7 +47,7 @@ public:
         ui32 depth)
     {
         --depth;
-        auto response = ListAll(session, fsId, parentId);
+        auto response = ListAll(session, fsId, parentId, false);
 
         // TODO: async
 

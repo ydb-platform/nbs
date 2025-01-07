@@ -494,7 +494,8 @@ TVector<TFileStoreCommand::TPathEntry> TFileStoreCommand::ResolvePath(
 NProto::TListNodesResponse TFileStoreCommand::ListAll(
     ISession& session,
     const TString& fsId,
-    ui64 parentId)
+    ui64 parentId,
+    bool disableMultiTabletForwarding)
 {
     NProto::TListNodesResponse fullResult;
     TString cookie;
@@ -502,7 +503,8 @@ NProto::TListNodesResponse TFileStoreCommand::ListAll(
         auto request = CreateRequest<NProto::TListNodesRequest>();
         request->SetFileSystemId(fsId);
         request->SetNodeId(parentId);
-        request->MutableHeaders()->SetDisableMultiTabletForwarding(true);
+        request->MutableHeaders()->SetDisableMultiTabletForwarding(
+            disableMultiTabletForwarding);
         request->SetCookie(cookie);
 
         auto response = WaitFor(session.ListNodes(

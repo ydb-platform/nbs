@@ -196,7 +196,8 @@ protected:
     NProto::TListNodesResponse ListAll(
         ISession& session,
         const TString& fsId,
-        ui64 parentId);
+        ui64 parentId,
+        bool disableMultiTabletForwarding);
 
     class TSessionGuard final
     {
