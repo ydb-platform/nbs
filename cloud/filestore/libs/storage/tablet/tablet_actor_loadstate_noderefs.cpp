@@ -71,7 +71,6 @@ void TIndexTabletActor::CompleteTx_LoadNodeRefs(
                 args.NextNodeId,
                 args.NextCookie,
                 args.MaxNodeRefs));
-
     } else {
         LOG_INFO(
             ctx,
