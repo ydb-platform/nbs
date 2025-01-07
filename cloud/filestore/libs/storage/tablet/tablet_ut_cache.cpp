@@ -919,6 +919,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesCache)
         storageConfig.SetInMemoryIndexCacheNodesCapacity(100);
         storageConfig.SetInMemoryIndexCacheNodeRefsCapacity(100);
         storageConfig.SetInMemoryIndexCacheLoadOnTabletStart(true);
+        storageConfig.SetInMemoryIndexCacheLoadOnTabletStartRowsPerTx(1);
         TTestEnv env({}, storageConfig);
         env.CreateSubDomain("nfs");
 
@@ -939,6 +940,12 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesCache)
 
         tablet.RebootTablet();
         tablet.InitSession("client", "session");
+
+        // It will take 3 iterations to load all the nodes
+        UNIT_ASSERT_VALUES_EQUAL(
+            3,
+            env.GetRuntime().GetCounter(
+                TEvIndexTabletPrivate::EEvents::EvLoadNodeRefs));
 
         auto statsBefore = GetTxStats(env, tablet);
 

@@ -6,32 +6,6 @@ using namespace NActors;
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void TIndexTabletActor::LoadNodeRefs(
-    const NActors::TActorContext& ctx,
-    ui64 nodeId,
-    const TString& name)
-{
-    const ui64 maxNodeRefs = Config->GetInMemoryIndexCacheLoadOnTabletStartRowsPerTx();
-
-    LOG_INFO(
-        ctx,
-        TFileStoreComponents::TABLET,
-        "%s LoadNodeRefs iteration started (nodeId: %lu, name: %s, "
-        "maxNodeRefs: %lu)",
-        LogTag.c_str(),
-        nodeId,
-        name.c_str(),
-        maxNodeRefs);
-
-    ExecuteTx<TLoadNodeRefs>(
-        ctx,
-        nodeId,
-        name,
-        maxNodeRefs);
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
 bool TIndexTabletActor::ValidateTx_LoadNodeRefs(
     const TActorContext& ctx,
     TTxIndexTablet::TLoadNodeRefs& args)
@@ -91,7 +65,13 @@ void TIndexTabletActor::CompleteTx_LoadNodeRefs(
         args.NextCookie.c_str());
 
     if (args.NextCookie || args.NextNodeId) {
-        LoadNodeRefs(ctx, args.NextNodeId, args.NextCookie);
+        ctx.Send(
+            SelfId(),
+            new TEvIndexTabletPrivate::TEvLoadNodeRefsRequest(
+                args.NextNodeId,
+                args.NextCookie,
+                args.MaxNodeRefs));
+
     } else {
         LOG_INFO(
             ctx,
@@ -101,6 +81,36 @@ void TIndexTabletActor::CompleteTx_LoadNodeRefs(
 
         MarkNodeRefsLoadComplete();
     }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+void TIndexTabletActor::HandleLoadNodeRefsRequest(
+    const TEvIndexTabletPrivate::TEvLoadNodeRefsRequest::TPtr& ev,
+    const NActors::TActorContext& ctx)
+{
+    auto* msg = ev->Get();
+
+    LOG_INFO(
+        ctx,
+        TFileStoreComponents::TABLET,
+        "%s LoadNodeRefs iteration started (nodeId: %lu, name: %s, "
+        "maxNodeRefs: %lu)",
+        LogTag.c_str(),
+        msg->NodeId,
+        msg->Cookie.c_str(),
+        msg->MaxNodeRefs);
+
+    auto requestInfo =
+        CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
+    requestInfo->StartedTs = ctx.Now();
+
+    ExecuteTx<TLoadNodeRefs>(
+        ctx,
+        std::move(requestInfo),
+        msg->NodeId,
+        msg->Cookie,
+        msg->MaxNodeRefs);
 }
 
 }   // namespace NCloud::NFileStore::NStorage
