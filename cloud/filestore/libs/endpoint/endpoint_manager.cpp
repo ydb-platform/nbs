@@ -197,7 +197,7 @@ private:
 
         TVector<TFuture<void>> futures;
         for (auto endpointId: storedIds) {
-            STORAGE_INFO("Start to restore endpoint. ID: " << endpointId.Quote());
+            STORAGE_INFO("Restoring endpoint, ID: " << endpointId.Quote());
             auto requestOrError = Storage->GetEndpoint(endpointId);
             if (HasError(requestOrError)) {
                 STORAGE_WARN("Failed to restore endpoint. ID: " << endpointId
