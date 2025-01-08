@@ -71,12 +71,12 @@ jobs:
       cache_update_build: true
       cache_update_tests: false
       sleep_after_tests: 1
-      test_threads: 32
       disk_type: ${{ inputs.disk_type }}
       use_network_cache: ${{ inputs.use_network_cache }}
       upload_ya_dir: ${{ inputs.upload_ya_dir }}
       clean_ya_dir: ${{ inputs.clean_ya_dir }}
       nebius: "yes"
+      allow_downgrade: "yes"
   build_schedule:
     name: Build/test x86_64 using YA (relwithdebinfo) (schedule)
     if: github.event_name == 'schedule'
@@ -89,9 +89,10 @@ jobs:
       cache_update_build: true
       cache_update_tests: false
       sleep_after_tests: 1
-      test_threads: 32
+      test_threads: 24
       disk_type: 'network-ssd-nonreplicated'
       use_network_cache: "yes"
       upload_ya_dir: "yes"
       clean_ya_dir: "yes"
       nebius: "yes"
+      allow_downgrade: "yes"
