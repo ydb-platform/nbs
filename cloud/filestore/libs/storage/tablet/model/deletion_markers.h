@@ -60,6 +60,7 @@ public:
     ui32 Apply(TBlock& block) const;
     ui32 Apply(TArrayRef<TBlock> blocks) const;
     TVector<TDeletionMarker> Extract();
+    void Swap(TDeletionMarkers& other);
 };
 
 }   // namespace NCloud::NFileStore::NStorage

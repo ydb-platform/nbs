@@ -1731,9 +1731,17 @@ void TVolumeActor::HandleHttpInfo_RenderNonreplPartitionInfo(
                 TABLER() {
                     TABLED() { out << "MaxTimedOutDeviceStateDuration"; }
                     TABLED() {
-                        out << config.GetMaxTimedOutDeviceStateDuration() ;
-                        if (config.IsMaxTimedOutDeviceStateDurationOverridden()) {
-                            out << "(overridden)";
+                        const bool overridden =
+                            config.IsMaxTimedOutDeviceStateDurationOverridden();
+                        if (config.GetMaxTimedOutDeviceStateDuration() ||
+                            overridden)
+                        {
+                            out << config.GetMaxTimedOutDeviceStateDuration();
+                        } else {
+                            out << Config->GetMaxTimedOutDeviceStateDuration();
+                        }
+                        if (overridden) {
+                            out << " (overridden)";
                         }
                     }
                 }

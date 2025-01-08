@@ -142,9 +142,11 @@ void TGetShardStatsActor::HandleGetStorageStatsResponse(
     LOG_DEBUG(
         ctx,
         TFileStoreComponents::TABLET_WORKER,
-        "%s Got storage stats for shard %s",
+        "%s Got storage stats for shard %s, used: %lu, aggregate used: %lu",
         LogTag.c_str(),
-        ShardIds[ev->Cookie].c_str());
+        ShardIds[ev->Cookie].c_str(),
+        src.GetUsedBlocksCount(),
+        dst.GetUsedBlocksCount());
 
     TABLET_VERIFY(ev->Cookie < ShardStats.size());
     auto& ss = ShardStats[ev->Cookie];
@@ -762,13 +764,15 @@ void TIndexTabletActor::HandleUpdateCounters(
     }
 
     if (CachedStatsFetchingStartTs == TInstant::Zero()) {
-        // TODO(#2674): do shard<->shard stats exchange less often than normal
-        // metrics collection since it's O(n^2) (where n == shardCount)
         auto response =
             std::make_unique<TEvIndexTablet::TEvGetStorageStatsResponse>();
         auto* stats = response->Record.MutableStats();
-        FillSelfStorageStats(stats);
         const auto& shardIds = GetFileSystem().GetShardFileSystemIds();
+        // if shardIds isn't empty and current tablet is a shard, it will
+        // collect self stats via TGetShardStatsActor
+        if (shardIds.empty() || IsMainTablet()) {
+            FillSelfStorageStats(stats);
+        }
         if (shardIds.empty()) {
             CachedAggregateStats = std::move(*stats);
             return;
@@ -852,9 +856,10 @@ void TIndexTabletActor::HandleGetStorageStats(
     auto* stats = response->Record.MutableStats();
     // shards shouldn't collect other shards' stats (unless it's background
     // shard <-> shard stats exchange which is handled in HandleUpdateCounters)
-    const auto& shardIds = IsMainTablet()
+    const auto& shardIds = req.GetForceFetchShardStats() || IsMainTablet()
         ? GetFileSystem().GetShardFileSystemIds()
         : Default<google::protobuf::RepeatedPtrField<TString>>();
+    req.SetForceFetchShardStats(false);
     if (req.GetAllowCache()) {
         *stats = CachedAggregateStats;
         const ui32 shardMetricsCount =
@@ -910,6 +915,12 @@ void TIndexTabletActor::HandleGetStorageStats(
         ev->Cookie,
         ev->Get()->CallContext);
     requestInfo->StartedTs = ctx.Now();
+
+    if (!IsMainTablet()) {
+        // if current tablet is a shard, it will collect self stats via
+        // TGetShardStatsActor
+        stats->Clear();
+    }
 
     auto actor = std::make_unique<TGetShardStatsActor>(
         LogTag,

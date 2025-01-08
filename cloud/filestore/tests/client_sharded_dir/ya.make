@@ -7,11 +7,7 @@ TEST_SRCS(
 )
 
 DEPENDS(
-    cloud/filestore/tools/testing/loadtest/bin
-)
-
-DATA(
-    arcadia/cloud/filestore/tests/loadtest/service-kikimr-emergency-test
+    cloud/filestore/apps/client
 )
 
 PEERDIR(
@@ -20,10 +16,10 @@ PEERDIR(
 
 SET(
     NFS_STORAGE_CONFIG_PATCH
-    cloud/filestore/tests/loadtest/service-kikimr-emergency-test/nfs-storage.txt
+    cloud/filestore/tests/client_sharded_dir/nfs-storage.txt
 )
 
-SET(NFS_BS_CACHE_FILE_PATH "bs_cache.txt")
+SET(NFS_FORCE_VERBOSE 1)
 
 INCLUDE(${ARCADIA_ROOT}/cloud/filestore/tests/recipes/service-kikimr.inc)
 

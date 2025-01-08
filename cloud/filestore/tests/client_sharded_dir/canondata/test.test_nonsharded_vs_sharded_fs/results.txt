@@ -1,0 +1,25 @@
+[
+    {
+        "Type": 2,
+        "Links": 1,
+        "Name": "a0",
+        "Mode": 511,
+        "Id": 2
+    },
+    {
+        "Type": 2,
+        "Links": 1,
+        "Name": "a1",
+        "Mode": 511,
+        "Id": 17
+    }
+][
+    {
+        "ShardFileSystemId": "fs1_s1",
+        "Name": "a0"
+    },
+    {
+        "ShardFileSystemId": "fs1_s2",
+        "Name": "a1"
+    }
+]

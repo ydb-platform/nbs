@@ -1,0 +1,14 @@
+[0m[2;33m=	PATH: /a0/b0/c0_0/f1.txt
+[22;31m-	DATA: [0m[0;39me051387aa349354ad7a996fda865c9f0
+[22;32m+	DATA: [0m[0;39m207a7dd3ca135a12735cccf755828776
+[22;32m+	PATH: [0m[2;33m/a1/b1/c2	ATTR: [0m[0;35mId=11 Uid=0 Gid=0 Type=2 Size=0 B Links=1
+[22;32m+	PATH: [0m[2;33m/a1/b1/c2/d1	ATTR: [0m[0;35mId=12 Uid=0 Gid=0 Type=2 Size=0 B Links=1
+[22;32m+	PATH: [0m[2;33m/a1/b1/c2/d2	ATTR: [0m[0;35mId=13 Uid=0 Gid=0 Type=2 Size=0 B Links=1
+[22;32m+	PATH: [0m[2;33m/a1/b1/c2/d2/x.txt	ATTR: [0m[0;35mId=14 Uid=0 Gid=0 Type=1 Size=0 B Links=1
+[22;32m+	PATH: [0m[2;33m/a1/b1/c2/d3	ATTR: [0m[0;35mId=15 Uid=0 Gid=0 Type=2 Size=0 B Links=1
+[22;31m-	PATH: [0m[2;33m/a1/f3.txt	ATTR: [0m[0;35mId=19 Uid=0 Gid=0 Type=1 Size=46 B Links=1
+[0m[2;33m=	PATH: /a1/g1.txt
+[22;31m-	ATTR: [0m[0;39m[0m[0;35mId=22 Uid=0 Gid=0 Type=1 Size=0 B Links=1
+[22;32m+	ATTR: [0m[0;39m[0m[0;35mId=22 Uid=0 Gid=0 Type=1 Size=50 B Links=1
+[22;31m-	DATA: [0m[0;39md41d8cd98f00b204e9800998ecf8427e
+[22;32m+	DATA: [0m[0;39m34392546b73526cf67cd6579990a4628

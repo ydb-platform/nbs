@@ -3,6 +3,8 @@
 #include "alloc.h"
 #include "deletion_markers.h"
 
+#include <cloud/storage/core/libs/common/lru_cache.h>
+
 #include <util/generic/hash_set.h>
 #include <util/generic/intrlist.h>
 
@@ -97,7 +99,15 @@ struct TRange
 
     ui64 RefCount = 1;
 
-    TRange(IAllocator* alloc)
+    void Swap(TRange& other)
+    {
+        Blobs.swap(other.Blobs);
+        DeletionMarkers.Swap(other.DeletionMarkers);
+        Levels.swap(other.Levels);
+        std::swap(RefCount, other.RefCount);
+    }
+
+    explicit TRange(IAllocator* alloc)
         : Blobs{alloc}
         , DeletionMarkers(alloc)
     {}
@@ -109,32 +119,70 @@ struct TRange
 
 struct TMixedBlocks::TImpl
 {
+    // Holds all ranges that are actively used, i.e. have ref count > 0
     using TRangeMap = THashMap<ui32, TRange>;
+    // Is used to store ranges that are not actively used, i.e. have
+    // ref count == 0. May be useful for caching
+    using TOffloadedRangeMap = NCloud::TLRUCache<ui32, TRange>;
+
+    void SetOffloadedRangesCapacity(ui64 offloadedRangesCapacity)
+    {
+        OffloadedRanges.SetCapacity(offloadedRangesCapacity);
+    }
+
+    explicit TImpl(IAllocator* alloc)
+        : Alloc(alloc)
+        , OffloadedRanges(alloc)
+    {}
+
+    TRange* FindRange(ui32 rangeId)
+    {
+        auto* it = Ranges.FindPtr(rangeId);
+        if (it) {
+            return it;
+        }
+        return OffloadedRanges.FindPtr(rangeId);
+    }
 
     IAllocator* Alloc;
     TRangeMap Ranges;
+    TOffloadedRangeMap OffloadedRanges;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
 
 TMixedBlocks::TMixedBlocks(IAllocator* alloc)
-    : Impl(new TImpl{alloc, {}})
+    : Impl(new TImpl(alloc))
 {}
 
 TMixedBlocks::~TMixedBlocks()
 {}
 
+void TMixedBlocks::Reset(ui64 offloadedRangesCapacity)
+{
+    Impl->SetOffloadedRangesCapacity(offloadedRangesCapacity);
+}
+
 bool TMixedBlocks::IsLoaded(ui32 rangeId) const
 {
-    auto* range = Impl->Ranges.FindPtr(rangeId);
+    auto* range = Impl->FindRange(rangeId);
     return range;
 }
 
 void TMixedBlocks::RefRange(ui32 rangeId)
 {
-    TImpl::TRangeMap::insert_ctx ctx;
+    TImpl::TRangeMap::insert_ctx ctx = nullptr;
     if (auto it = Impl->Ranges.find(rangeId, ctx); it == Impl->Ranges.end()) {
-        Impl->Ranges.emplace_direct(ctx, rangeId, Impl->Alloc);
+        // If the range is offloaded, move it to active ranges. Otherwise,
+        // create a new range
+        if (auto offloadedIt = Impl->OffloadedRanges.find(rangeId)) {
+            Impl->Ranges.emplace_direct(ctx, rangeId, Impl->Alloc);
+            Impl->Ranges.at(rangeId).Swap(offloadedIt->second);
+            Impl->Ranges.at(rangeId).RefCount = 1;
+            Impl->OffloadedRanges.erase(offloadedIt);
+        } else {
+            Impl->Ranges.emplace_direct(ctx, rangeId, Impl->Alloc);
+        }
     } else {
         it->second.RefCount++;
     }
@@ -147,7 +195,16 @@ void TMixedBlocks::UnRefRange(ui32 rangeId)
     Y_ABORT_UNLESS(it->second.RefCount, "invalid ref count for range: %u", rangeId);
 
     it->second.RefCount--;
-    if (!it->second.RefCount) {
+
+    // If ref count drops to 0, move the range to offloaded ranges. No need to
+    // offload the range if the capacity is 0
+    if (it->second.RefCount == 0) {
+        if (Impl->OffloadedRanges.capacity() != 0) {
+            auto [_, inserted] =
+                Impl->OffloadedRanges.emplace(rangeId, Impl->Alloc);
+            Y_DEBUG_ABORT_UNLESS(inserted);
+            Impl->OffloadedRanges.at(rangeId).Swap(it->second);
+        }
         Impl->Ranges.erase(it);
     }
 }
@@ -158,7 +215,7 @@ bool TMixedBlocks::AddBlocks(
     TBlockList blockList,
     const TMixedBlobStats& stats)
 {
-    auto* range = Impl->Ranges.FindPtr(rangeId);
+    auto* range = Impl->FindRange(rangeId);
     Y_ABORT_UNLESS(range);
 
     // TODO: pick level
@@ -186,7 +243,7 @@ bool TMixedBlocks::RemoveBlocks(
     const TPartialBlobId& blobId,
     TMixedBlobStats* stats)
 {
-    auto* range = Impl->Ranges.FindPtr(rangeId);
+    auto* range = Impl->FindRange(rangeId);
     Y_ABORT_UNLESS(range);
 
     auto it = range->Blobs.find(blobId);
@@ -216,7 +273,7 @@ void TMixedBlocks::FindBlocks(
     ui32 blockIndex,
     ui32 blocksCount) const
 {
-    const auto* range = Impl->Ranges.FindPtr(rangeId);
+    auto* range = Impl->FindRange(rangeId);
     Y_ABORT_UNLESS(range);
 
     // TODO: limit range scan
@@ -246,7 +303,7 @@ void TMixedBlocks::AddDeletionMarker(
     ui32 rangeId,
     TDeletionMarker deletionMarker)
 {
-    auto* range = Impl->Ranges.FindPtr(rangeId);
+    auto* range = Impl->FindRange(rangeId);
     Y_ABORT_UNLESS(range);
 
     range->DeletionMarkers.Add(deletionMarker);
@@ -254,7 +311,7 @@ void TMixedBlocks::AddDeletionMarker(
 
 TVector<TDeletionMarker> TMixedBlocks::ExtractDeletionMarkers(ui32 rangeId)
 {
-    auto* range = Impl->Ranges.FindPtr(rangeId);
+    auto* range = Impl->FindRange(rangeId);
     Y_ABORT_UNLESS(range);
 
     return range->DeletionMarkers.Extract();
@@ -266,7 +323,7 @@ void TMixedBlocks::ApplyDeletionMarkers(
 {
     const auto rangeId = GetMixedRangeIndex(hasher, blocks);
 
-    const auto* range = Impl->Ranges.FindPtr(rangeId);
+    auto* range = Impl->FindRange(rangeId);
     Y_ABORT_UNLESS(range);
 
     range->DeletionMarkers.Apply(MakeArrayRef(blocks));
@@ -274,7 +331,7 @@ void TMixedBlocks::ApplyDeletionMarkers(
 
 TVector<TMixedBlobMeta> TMixedBlocks::ApplyDeletionMarkers(ui32 rangeId) const
 {
-    const auto* range = Impl->Ranges.FindPtr(rangeId);
+    auto* range = Impl->FindRange(rangeId);
     Y_ABORT_UNLESS(range);
 
     TVector<TMixedBlobMeta> result;
@@ -293,7 +350,7 @@ TVector<TMixedBlobMeta> TMixedBlocks::ApplyDeletionMarkers(ui32 rangeId) const
 auto TMixedBlocks::ApplyDeletionMarkersAndGetMetas(ui32 rangeId) const
     -> TVector<TDeletionMarkerApplicationResult>
 {
-    const auto* range = Impl->Ranges.FindPtr(rangeId);
+    auto* range = Impl->FindRange(rangeId);
     Y_ABORT_UNLESS(range);
 
     TVector<TDeletionMarkerApplicationResult> result;
@@ -313,7 +370,7 @@ auto TMixedBlocks::ApplyDeletionMarkersAndGetMetas(ui32 rangeId) const
 
 TVector<TMixedBlobMeta> TMixedBlocks::GetBlobsForCompaction(ui32 rangeId) const
 {
-    const auto* range = Impl->Ranges.FindPtr(rangeId);
+    auto* range = Impl->FindRange(rangeId);
     Y_ABORT_UNLESS(range);
 
     TVector<TMixedBlobMeta> result;
@@ -331,7 +388,7 @@ TVector<TMixedBlobMeta> TMixedBlocks::GetBlobsForCompaction(ui32 rangeId) const
 
 TMixedBlobMeta TMixedBlocks::FindBlob(ui32 rangeId, TPartialBlobId blobId) const
 {
-    const auto* range = Impl->Ranges.FindPtr(rangeId);
+    auto* range = Impl->FindRange(rangeId);
     Y_ABORT_UNLESS(range);
 
     TVector<TMixedBlobMeta> result;
@@ -347,7 +404,7 @@ TMixedBlobMeta TMixedBlocks::FindBlob(ui32 rangeId, TPartialBlobId blobId) const
 
 ui32 TMixedBlocks::CalculateGarbageBlockCount(ui32 rangeId) const
 {
-    const auto* range = Impl->Ranges.FindPtr(rangeId);
+    auto* range = Impl->FindRange(rangeId);
     Y_DEBUG_ABORT_UNLESS(range);
     if (!range) {
         return 0;

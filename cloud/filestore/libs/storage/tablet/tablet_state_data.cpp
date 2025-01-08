@@ -1434,7 +1434,16 @@ TReadAheadCacheStats TIndexTabletState::CalculateReadAheadCacheStats() const
 
 NProto::TError TIndexTabletState::SelectShard(ui64 fileSize, TString* shardId)
 {
-    return Impl->ShardBalancer.SelectShard(fileSize, shardId);
+    auto e = Impl->ShardBalancer.SelectShard(fileSize, shardId);
+    if (HasError(e)) {
+        return e;
+    }
+
+    if (*shardId == GetFileSystemId()) {
+        shardId->clear();
+    }
+
+    return e;
 }
 
 void TIndexTabletState::UpdateShardStats(const TVector<TShardStats>& stats)

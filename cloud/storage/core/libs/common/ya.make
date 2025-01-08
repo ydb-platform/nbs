@@ -19,6 +19,7 @@ SRCS(
     guarded_sglist.cpp
     helpers.cpp
     history.cpp
+    lru_cache.cpp
     media.cpp
     persistent_table.cpp
     proto_helpers.cpp

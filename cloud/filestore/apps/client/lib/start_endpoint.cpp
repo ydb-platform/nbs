@@ -15,6 +15,7 @@ private:
     TString ClientId;
     bool MountReadOnly = false;
     ui64 MountSeqNo = 0;
+    ui32 VhostQueuesCount = 0;
     bool Persistent = false;
 
 public:
@@ -39,6 +40,10 @@ public:
             .NoArgument()
             .SetFlag(&MountReadOnly);
 
+        Opts.AddLongOption("vhost-queue-count")
+            .RequiredArgument("NUM")
+            .StoreResult(&VhostQueuesCount);
+
         Opts.AddLongOption("mount-seqno")
             .RequiredArgument("NUM")
             .StoreResult(&MountSeqNo);
@@ -60,6 +65,7 @@ public:
         config->SetClientId(ClientId);
         config->SetReadOnly(MountReadOnly);
         config->SetMountSeqNumber(MountSeqNo);
+        config->SetVhostQueuesCount(VhostQueuesCount);
         config->SetPersistent(Persistent);
 
         auto response = WaitFor(

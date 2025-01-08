@@ -241,6 +241,8 @@ using TAliases = NProto::TStorageConfig::TFilestoreAliases;
     xxx(DestroyFilestoreDenyList,       TVector<TString>,          {}         )\
                                                                                \
     xxx(SSProxyFallbackMode,            bool,     false                       )\
+                                                                               \
+    xxx(MixedBlocksOffloadedRangesCapacity,        ui64,     0                )\
 // FILESTORE_STORAGE_CONFIG
 
 #define FILESTORE_STORAGE_CONFIG_REF(xxx)                                      \
