@@ -1439,10 +1439,6 @@ NProto::TError TIndexTabletState::SelectShard(ui64 fileSize, TString* shardId)
         return e;
     }
 
-    if (*shardId == GetFileSystemId()) {
-        shardId->clear();
-    }
-
     return e;
 }
 
