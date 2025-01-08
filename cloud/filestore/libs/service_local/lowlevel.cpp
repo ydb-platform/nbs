@@ -578,4 +578,45 @@ bool Flock(const TFileHandle& handle, int operation)
     return true;
 }
 
+////////////////////////////////////////////////////////////////////////////////
+
+UnixCredentialsGuard::UnixCredentialsGuard(uid_t uid, gid_t gid)
+{
+    Uid = geteuid();
+    if (Uid != 0) {
+        // need to be root to set euid/egid
+        return;
+    }
+
+    Gid = getegid();
+
+    if (uid == Uid && gid == Gid) {
+        return;
+    }
+
+    int ret = setresgid(-1, gid, -1);
+    if (ret == -1) {
+        return;
+    }
+
+    ret = setresuid(-1, uid, -1);
+    if (ret == -1) {
+        setresgid(-1, Gid, -1);
+        return;
+    }
+
+    IsRestoreNeeded = true;
+}
+
+UnixCredentialsGuard::~UnixCredentialsGuard()
+{
+    if (!IsRestoreNeeded) {
+        return;
+    }
+
+    setresuid(-1, Uid, -1);
+    setresgid(-1, Gid, -1);
+}
+
+
 }   // namespace NCloud::NFileStore::NLowLevel

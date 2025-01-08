@@ -1,5 +1,7 @@
 #include "fs.h"
 
+#include "lowlevel.h"
+
 #include <cloud/filestore/libs/diagnostics/critical_events.h>
 
 #include <util/generic/guid.h>
@@ -46,6 +48,9 @@ NProto::TCreateNodeResponse TLocalFileSystem::CreateNode(
         return TErrorResponse(ErrorInvalidParent(request.GetNodeId()));
     }
 
+    NLowLevel::UnixCredentialsGuard credGuard(
+        request.GetUid(),
+        request.GetGid());
     TIndexNodePtr target;
     if (request.HasDirectory()) {
         int mode = request.GetDirectory().GetMode();
