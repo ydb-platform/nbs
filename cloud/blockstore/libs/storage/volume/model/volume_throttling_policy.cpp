@@ -72,13 +72,13 @@ struct TVolumeThrottlingPolicy::TImpl
     const ui32 PolicyVersion;
     const TDuration MaxDelay;
     const ui32 MaxWriteCostMultiplier;
-    const ui32 DefaultPostponedRequestWeight;
+    const ui64 DefaultPostponedRequestWeight;
     const bool UseDiskSpaceScore;
     TBoostedTimeBucket Bucket;
     TVector<TBackpressureReport> PartitionBackpressures;
     TBackpressureReport CurrentBackpressure;
     double WriteCostMultiplier = 1;
-    ui32 PostponedWeight = 0;
+    ui64 PostponedWeight = 0;
 
     double UsedIopsQuota = 0;
     double UsedBandwidthQuota = 0;
@@ -88,7 +88,7 @@ struct TVolumeThrottlingPolicy::TImpl
             const ui32 policyVersion,
             const TDuration maxDelay,
             const ui32 maxWriteCostMultiplier,
-            const ui32 defaultPostponedRequestWeight,
+            const ui64 defaultPostponedRequestWeight,
             const TDuration initialBoostBudget,
             const bool useDiskSpaceScore)
         : Config(config)
@@ -176,7 +176,7 @@ struct TVolumeThrottlingPolicy::TImpl
         }
     }
 
-    bool TryPostpone(TInstant ts, ui32 weight)
+    bool TryPostpone(TInstant ts, ui64 weight)
     {
         Y_UNUSED(ts);
 
@@ -208,7 +208,7 @@ struct TVolumeThrottlingPolicy::TImpl
         return Config.GetMaxReadIops();
     }
 
-    ui32 MaxBandwidth(EOpType opType) const
+    ui64 MaxBandwidth(EOpType opType) const
     {
         if (opType == EOpType::Write && Config.GetMaxWriteBandwidth()) {
             return Config.GetMaxWriteBandwidth();
@@ -220,7 +220,6 @@ struct TVolumeThrottlingPolicy::TImpl
             // See NBS-2733
             return 0;
         }
-
         return Config.GetMaxReadBandwidth();
     }
 
@@ -239,7 +238,8 @@ struct TVolumeThrottlingPolicy::TImpl
             return TDuration::Zero();
         }
 
-        const ui32 bandwidthUpdate = requestInfo.ByteCount;
+
+        const ui64 bandwidthUpdate = requestInfo.ByteCount;
         double m = static_cast<EOpType>(requestInfo.OpType) == EOpType::Read
             ? 1.0
             : WriteCostMultiplier;
@@ -284,7 +284,7 @@ struct TVolumeThrottlingPolicy::TImpl
         return postponed ? d : TMaybe<TDuration>();
     }
 
-    ui32 PostponedRequestWeight(EOpType opType, ui32 byteCount) const
+    ui64 PostponedRequestWeight(EOpType opType, ui64 byteCount) const
     {
         return opType == EOpType::Write
             ? byteCount
@@ -401,7 +401,7 @@ TDuration TVolumeThrottlingPolicy::GetCurrentBoostBudget() const
     return Impl->Bucket.GetCurrentBoostBudget();
 }
 
-ui32 TVolumeThrottlingPolicy::CalculatePostponedWeight() const
+ui64 TVolumeThrottlingPolicy::CalculatePostponedWeight() const
 {
     return Impl->PostponedWeight;
 }
@@ -426,12 +426,12 @@ const NProto::TVolumePerformanceProfile& TVolumeThrottlingPolicy::GetConfig() co
     return Impl->Config;
 }
 
-ui32 TVolumeThrottlingPolicy::C1(EOpType opType) const
+ui64 TVolumeThrottlingPolicy::C1(EOpType opType) const
 {
     return CalculateThrottlerC1(Impl->MaxIops(opType), Impl->MaxBandwidth(opType));
 }
 
-ui32 TVolumeThrottlingPolicy::C2(EOpType opType) const
+ui64 TVolumeThrottlingPolicy::C2(EOpType opType) const
 {
     return CalculateThrottlerC2(Impl->MaxIops(opType), Impl->MaxBandwidth(opType));
 }

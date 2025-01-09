@@ -14,15 +14,15 @@ namespace {
 ////////////////////////////////////////////////////////////////////////////////
 
 NProto::TVolumePerformanceProfile MakeConfig(
-    ui32 maxReadBandwidth,
-    ui32 maxWriteBandwidth,
+    ui64 maxReadBandwidth,
+    ui64 maxWriteBandwidth,
     ui32 maxReadIops,
     ui32 maxWriteIops,
     ui32 burstPercentage,
     ui32 boostTime,
     ui32 boostRefillTime,
     ui32 boostPercentage,
-    ui32 maxPostponedWeight)
+    ui64 maxPostponedWeight)
 {
     NProto::TVolumePerformanceProfile config;
 
@@ -40,13 +40,13 @@ NProto::TVolumePerformanceProfile MakeConfig(
 }
 
 NProto::TVolumePerformanceProfile MakeSimpleConfig(
-    ui32 maxBandwidth,
+    ui64 maxBandwidth,
     ui32 maxIops,
     ui32 burstPercentage,
     ui32 boostTime,
     ui32 boostRefillTime,
     ui32 boostPercentage,
-    ui32 maxPostponedWeight)
+    ui64 maxPostponedWeight)
 {
     return MakeConfig(
         maxBandwidth,

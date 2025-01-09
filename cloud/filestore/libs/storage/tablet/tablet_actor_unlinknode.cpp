@@ -98,6 +98,7 @@ void TUnlinkNodeInShardActor::SendRequest(const TActorContext& ctx)
 {
     auto request = std::make_unique<TEvService::TEvUnlinkNodeRequest>();
     request->Record = Request;
+    request->Record.MutableHeaders()->SetBehaveAsDirectoryTablet(false);
 
     LOG_DEBUG(
         ctx,
@@ -248,7 +249,7 @@ void TIndexTabletActor::HandleUnlinkNode(
     auto* msg = ev->Get();
 
     // DupCache isn't needed for Create/UnlinkNode requests in shards
-    if (!IsShard()) {
+    if (!BehaveAsShard(msg->Record.GetHeaders())) {
         auto* session = AcceptRequest<TEvService::TUnlinkNodeMethod>(ev, ctx, ValidateRequest);
         if (!session) {
             return;
@@ -288,7 +289,7 @@ bool TIndexTabletActor::PrepareTx_UnlinkNode(
 {
     Y_UNUSED(ctx);
 
-    if (!IsShard()) {
+    if (!BehaveAsShard(args.Request.GetHeaders())) {
         FILESTORE_VALIDATE_DUPTX_SESSION(UnlinkNode, args);
     }
 
@@ -410,7 +411,7 @@ void TIndexTabletActor::ExecuteTx_UnlinkNode(
         }
     }
 
-    if (!IsShard()) {
+    if (!BehaveAsShard(args.Request.GetHeaders())) {
         auto* session = FindSession(args.SessionId);
         if (!session) {
             auto message = ReportSessionNotFoundInTx(TStringBuilder()
@@ -472,7 +473,7 @@ void TIndexTabletActor::CompleteTx_UnlinkNode(
             return;
         }
 
-        if (!IsShard()) {
+        if (!BehaveAsShard(args.Request.GetHeaders())) {
             CommitDupCacheEntry(args.SessionId, args.RequestId);
         }
 

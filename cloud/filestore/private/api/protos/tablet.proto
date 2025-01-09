@@ -173,6 +173,10 @@ message TGetStorageStatsRequest
 
     // Use cached data, don't require up-to-date stats.
     bool AllowCache = 6;
+
+    // Forces shard stats fetching even if this request is itself sent to a
+    // shard.
+    bool ForceFetchShardStats = 7;
 }
 
 message TGetStorageStatsResponse
@@ -211,7 +215,7 @@ message TFileSystemConfig
 
     uint32 BlockSize = 6;
     uint64 BlocksCount = 7;
-    uint32 NodesCount = 8;
+    uint64 NodesCount = 8;
 
     repeated TChannelProfile ExplicitChannelProfiles = 9;
 
@@ -591,6 +595,9 @@ message TConfigureAsShardRequest
 
     // ShardNo (will be used for the high bits of NodeId and HandleId)
     uint32 ShardNo = 2;
+
+    // Shard FileSystem identifiers. Needed for directory creation in shards.
+    repeated string ShardFileSystemIds = 3;
 }
 
 message TConfigureAsShardResponse

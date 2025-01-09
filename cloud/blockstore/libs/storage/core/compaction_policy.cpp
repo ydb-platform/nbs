@@ -15,7 +15,7 @@ namespace {
 
 float RequestCost(
     ui32 maxIops,
-    ui32 maxBandwidth,
+    ui64 maxBandwidth,
     double bytes,
     double count)
 {
@@ -61,9 +61,9 @@ struct TDefaultPolicy
 ////////////////////////////////////////////////////////////////////////////////
 
 const ui32 DefaultMaxReadIops = 100;
-const ui32 DefaultMaxReadBandwidth = 30_MB;
+const ui64 DefaultMaxReadBandwidth = 30_MB;
 const ui32 DefaultMaxWriteIops = 300;
-const ui32 DefaultMaxWriteBandwidth = 30_MB;
+const ui64 DefaultMaxWriteBandwidth = 30_MB;
 
 struct TLoadOptimizationPolicy
     : ICompactionPolicy

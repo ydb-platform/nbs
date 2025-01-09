@@ -48,7 +48,7 @@ THROTTLING_PARAM(MaxPostponedCount, ui64);
 
 #undef THROTTLING_PARAM
 
-ui32 MaxReadBandwidth(
+ui64 MaxReadBandwidth(
     const TStorageConfig& config,
     const NKikimrFileStore::TConfig& fileStore,
     const ui32 unitCount)
@@ -66,7 +66,7 @@ ui32 MaxReadBandwidth(
     );
 }
 
-ui32 MaxWriteBandwidth(
+ui64 MaxWriteBandwidth(
     const TStorageConfig& config,
     const NKikimrFileStore::TConfig& fileStore,
     const ui32 unitCount)
@@ -172,7 +172,7 @@ ui32 BurstPercentage(
     return BurstPercentage(config, fileStore.GetStorageMediaKind());
 }
 
-ui32 DefaultPostponedRequestWeight(
+ui64 DefaultPostponedRequestWeight(
     const TStorageConfig& config,
     const NKikimrFileStore::TConfig& fileStore)
 {
@@ -181,7 +181,7 @@ ui32 DefaultPostponedRequestWeight(
         fileStore.GetStorageMediaKind());
 }
 
-ui32 MaxPostponedWeight(
+ui64 MaxPostponedWeight(
     const TStorageConfig& config,
     const NKikimrFileStore::TConfig& fileStore)
 {
@@ -560,6 +560,7 @@ TMultiShardFileStoreConfig SetupMultiShardFileStorePerformanceAndChannels(
             config,
             result.ShardConfigs[i],
             clientProfile);
+        result.ShardConfigs[i].SetIsSystem(true);
     }
 
     return result;

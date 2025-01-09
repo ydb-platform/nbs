@@ -9,11 +9,11 @@ option go_package = "github.com/ydb-platform/nbs/cloud/blockstore/public/api/pro
 message TClientMediaKindPerformanceProfile
 {
     // Read bytes per sec.
-    optional uint32 MaxReadBandwidth = 1;
+    optional uint64 MaxReadBandwidth = 1;
     // Read iops.
     optional uint32 MaxReadIops = 2;
     // Write bytes per sec.
-    optional uint32 MaxWriteBandwidth = 3;
+    optional uint64 MaxWriteBandwidth = 3;
     // Write iops.
     optional uint32 MaxWriteIops = 4;
 }

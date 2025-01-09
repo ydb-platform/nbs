@@ -660,6 +660,51 @@ Y_UNIT_TEST_SUITE(TAuthorizerActorTest)
             {{EAuthorizationStatus::PermissionsDenied, 1}});
     }
 
+    Y_UNIT_TEST(ReplyWithFailureIfTicketParserReturnsEmptyTokenInResult)
+    {
+        TAuthorizerTestEnv testEnv;
+
+        std::vector<TEvTicketParser::TEvAuthorizeTicket::TPtr> authorizeEvents;
+        auto ticketParser = std::make_unique<TTestTicketParser>();
+        ticketParser->AuthorizeTicketHandler =
+            [&](const TEvTicketParser::TEvAuthorizeTicket::TPtr& ev) {
+                authorizeEvents.push_back(ev);
+            };
+        testEnv.RegisterTestTicketParser(std::move(ticketParser));
+
+        auto authorizerActorID = testEnv.Register(CreateAuthorizerActor(
+            true,
+            NProto::AUTHORIZATION_ACCEPT,
+            FolderId));
+
+        testEnv.DispatchEvents();
+
+        testEnv.Send(
+            authorizerActorID,
+            std::make_unique<TEvAuth::TEvAuthorizationRequest>(
+                AuthToken1,
+                CreatePermissionList({
+                    EPermission::Read,
+                    EPermission::Write})));
+
+        testEnv.DispatchEvents();
+
+        UNIT_ASSERT_EQUAL(authorizeEvents.size(), 1ul);
+
+        testEnv.Send(
+            authorizeEvents[0]->Sender,
+            std::make_unique<TEvTicketParser::TEvAuthorizeTicketResult>(
+                "",
+                FatalError()));
+
+        auto event = testEnv.GrabAuthorizationResponse();
+        UNIT_ASSERT_VALUES_EQUAL(E_UNAUTHORIZED, event->GetStatus());
+
+        AssertAuthCounters(
+            testEnv.GetCounters(),
+            {{EAuthorizationStatus::PermissionsDenied, 1}});
+    }
+
     Y_UNIT_TEST(ReplyWithAllPermissions)
     {
         TAuthorizerTestEnv testEnv;

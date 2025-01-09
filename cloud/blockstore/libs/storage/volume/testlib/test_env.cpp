@@ -158,10 +158,10 @@ void TVolumeClient::RebootSysTablet()
 
 std::unique_ptr<TEvBlockStore::TEvUpdateVolumeConfig>
 TVolumeClient::CreateUpdateVolumeConfigRequest(
-    ui32 maxBandwidth,
+    ui64 maxBandwidth,
     ui32 maxIops,
     ui32 burstPercentage,
-    ui32 maxPostponedWeight,
+    ui64 maxPostponedWeight,
     bool throttlingEnabled,
     ui32 version,
     NCloud::NProto::EStorageMediaKind mediaKind,

@@ -97,7 +97,7 @@ public:
 
     double GetWriteCostMultiplier() const;
     TDuration GetCurrentBoostBudget() const;
-    ui32 CalculatePostponedWeight() const;
+    ui64 CalculatePostponedWeight() const;
     double CalculateCurrentSpentBudgetShare(TInstant ts) const;
     // Returns pair of UsedIopsQuota and UsedBandwidthQuota.
     [[nodiscard]] std::pair<double, double> TakeUsedQuota();
@@ -110,8 +110,8 @@ public:
     }
 
     // the following funcs were made public to display the results on monpages
-    ui32 C1(EOpType opType) const;
-    ui32 C2(EOpType opType) const;
+    ui64 C1(EOpType opType) const;
+    ui64 C2(EOpType opType) const;
 };
 
 }   // namespace NCloud::NBlockStore::NStorage

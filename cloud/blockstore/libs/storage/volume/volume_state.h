@@ -734,6 +734,8 @@ private:
     bool ShouldForceTabletRestart(const NProto::TVolumeClientInfo& info) const;
 
     THashSet<TString> MakeFilteredDeviceIds() const;
+
+    [[nodiscard]] bool ShouldTrackUsedBlocks() const;
 };
 
 }   // namespace NCloud::NBlockStore::NStorage

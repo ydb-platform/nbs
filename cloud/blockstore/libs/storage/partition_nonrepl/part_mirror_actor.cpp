@@ -215,12 +215,16 @@ void TMirrorPartitionActor::CompareChecksums(const TActorContext& ctx)
                 checksums[i]);
         }
         ++ChecksumMismatches;
-        ReportMirroredDiskChecksumMismatch();
 
         const bool hasQuorum = majorCount > checksums.size() / 2;
-        if (Config->GetResyncRangeAfterScrubbing() && hasQuorum) {
-            StartResyncRange(ctx);
-            return;
+        if (hasQuorum) {
+            ReportMirroredDiskMinorityChecksumMismatch();
+            if (Config->GetResyncRangeAfterScrubbing()) {
+                StartResyncRange(ctx);
+                return;
+            }
+        } else {
+           ReportMirroredDiskMajorityChecksumMismatch();
         }
     }
 

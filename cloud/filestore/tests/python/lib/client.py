@@ -113,7 +113,7 @@ class FilestoreCliClient:
 
         return pid
 
-    def resize(self, fs, blk_count, force=False):
+    def resize(self, fs, blk_count, force=False, shard_count=None):
         cmd = [
             self.__binary_path, "resize",
             "--filesystem", fs,
@@ -122,6 +122,9 @@ class FilestoreCliClient:
 
         if force:
             cmd.append("--force")
+
+        if shard_count is not None:
+            cmd += ["--shard-count", str(shard_count)]
 
         logger.info("resizing filestore: " + " ".join(cmd))
         return common.execute(cmd, env=self.__env, check_exit_code=self.__check_exit_code).stdout
@@ -252,6 +255,16 @@ class FilestoreCliClient:
             "--filesystem", fs,
             "--depth", str(depth),
         ] + (["--glob", glob] if glob is not None else []) + self.__cmd_opts()
+
+        return common.execute(cmd, env=self.__env, check_exit_code=self.__check_exit_code).stdout
+
+    def diff(self, fs, other_fs):
+        cmd = [
+            self.__binary_path, "diff",
+            "--filesystem", fs,
+            "--other-filesystem", other_fs,
+            "--diff-content",
+        ] + self.__cmd_opts()
 
         return common.execute(cmd, env=self.__env, check_exit_code=self.__check_exit_code).stdout
 

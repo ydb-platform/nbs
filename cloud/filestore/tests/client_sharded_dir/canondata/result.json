@@ -1,0 +1,5 @@
+{
+    "test.test_nonsharded_vs_sharded_fs": {
+        "uri": "file://test.test_nonsharded_vs_sharded_fs/results.txt"
+    }
+}

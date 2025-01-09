@@ -429,9 +429,9 @@ Y_UNIT_TEST_SUITE(TModel)
         TString PoolType;
         ui64 Size;
         ui32 ReadIops;
-        ui32 ReadBandwidth;
+        ui64 ReadBandwidth;
         ui32 WriteIops;
-        ui32 WriteBandwidth;
+        ui64 WriteBandwidth;
     };
 
     void TestChannels(
@@ -2333,6 +2333,12 @@ Y_UNIT_TEST_SUITE(TModel)
 
         for (const auto& sc: fs.ShardConfigs) {
             UNIT_ASSERT_VALUES_EQUAL(5_TB / 4_KB, sc.GetBlocksCount());
+        }
+
+        // shards (but not main tablet) should have 'IsSystem' flag
+        UNIT_ASSERT(!fs.MainFileSystemConfig.GetIsSystem());
+        for (const auto& sc: fs.ShardConfigs) {
+            UNIT_ASSERT(sc.GetIsSystem());
         }
     }
 

@@ -14,16 +14,16 @@ class TPerformanceProfileParams
 {
 private:
     bool ThrottlingEnabled = false;
-    ui32 MaxReadBandwidth = 0;
+    ui64 MaxReadBandwidth = 0;
     ui32 MaxReadIops = 0;
-    ui32 MaxWriteBandwidth = 0;
+    ui64 MaxWriteBandwidth = 0;
     ui32 MaxWriteIops = 0;
     ui32 BoostTime = 0;
     ui32 BoostRefillTime = 0;
     ui32 BoostPercentage = 0;
     ui32 BurstPercentage = 0;
-    ui32 DefaultPostponedRequestWeight = 0;
-    ui32 MaxPostponedWeight = 0;
+    ui64 DefaultPostponedRequestWeight = 0;
+    ui64 MaxPostponedWeight = 0;
     ui32 MaxWriteCostMultiplier = 0;
     ui32 MaxPostponedTime = 0;
     ui32 MaxPostponedCount = 0;

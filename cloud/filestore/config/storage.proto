@@ -501,4 +501,15 @@ message TStorageConfig
     // Shard balancer will not select shards which have less than this amount of
     // free space in bytes.
     optional uint64 ShardBalancerMinFreeSpaceReserve = 413;
+
+    // Enables directory creation in shards (by default directories are created
+    // only in the main tablet).
+    optional bool DirectoryCreationInShardsEnabled = 414;
+
+    // Mixed blocks map are  stored in memory only for actively used ranges.
+    // Additionally MixedBlocksOffloadedRangesCapacity ranges that are not
+    // actively used are also stored in memory. Their memory footprint is
+    // proportional to the aforementioned value multiplied my the size of
+    // TRange
+    optional uint64 MixedBlocksOffloadedRangesCapacity = 415;
 }

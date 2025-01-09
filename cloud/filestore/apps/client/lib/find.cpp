@@ -39,45 +39,6 @@ public:
             .StoreResult(&Depth);
     }
 
-    NProto::TListNodesResponse ListAll(
-        ISession& session,
-        const TString& fsId,
-        ui64 parentId)
-    {
-        NProto::TListNodesResponse fullResult;
-        TString cookie;
-        do {
-            auto request = CreateRequest<NProto::TListNodesRequest>();
-            request->SetFileSystemId(fsId);
-            request->SetNodeId(parentId);
-            request->MutableHeaders()->SetDisableMultiTabletForwarding(true);
-            request->SetCookie(cookie);
-
-            auto response = WaitFor(session.ListNodes(
-                PrepareCallContext(),
-                std::move(request)));
-
-            Y_ENSURE_EX(
-                !HasError(response.GetError()),
-                yexception() << "ListNodes error: "
-                    << FormatError(response.GetError()));
-
-            Y_ENSURE_EX(
-                response.NamesSize() == response.NodesSize(),
-                yexception() << "invalid ListNodes response: "
-                    << response.DebugString().Quote());
-
-            for (ui32 i = 0; i < response.NamesSize(); ++i) {
-                fullResult.AddNames(*response.MutableNames(i));
-                *fullResult.AddNodes() = std::move(*response.MutableNodes(i));
-            }
-
-            cookie = response.GetCookie();
-        } while (cookie);
-
-        return fullResult;
-    }
-
     void StatAll(
         ISession& session,
         const TString& fsId,
@@ -86,7 +47,7 @@ public:
         ui32 depth)
     {
         --depth;
-        auto response = ListAll(session, fsId, parentId);
+        auto response = ListAll(session, fsId, parentId, false);
 
         // TODO: async
 

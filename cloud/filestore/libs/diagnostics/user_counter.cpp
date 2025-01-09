@@ -11,6 +11,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+// Read/Write counters
 constexpr TStringBuf FILESTORE_READ_OPS          = "filestore.read_ops";
 constexpr TStringBuf FILESTORE_READ_OPS_BURST    = "filestore.read_ops_burst";
 constexpr TStringBuf FILESTORE_READ_BYTES        = "filestore.read_bytes";
@@ -23,8 +24,12 @@ constexpr TStringBuf FILESTORE_WRITE_BYTES       = "filestore.write_bytes";
 constexpr TStringBuf FILESTORE_WRITE_BYTES_BURST = "filestore.write_bytes_burst";
 constexpr TStringBuf FILESTORE_WRITE_LATENCY     = "filestore.write_latency";
 constexpr TStringBuf FILESTORE_WRITE_ERRORS      = "filestore.write_errors";
-constexpr TStringBuf FILESTORE_INDEX_OPS         = "filestore.index_ops";
-constexpr TStringBuf FILESTORE_INDEX_ERRORS      = "filestore.index_errors";
+
+// Index operation counters
+constexpr TStringBuf FILESTORE_INDEX_OPS             = "filestore.index_ops";
+constexpr TStringBuf FILESTORE_INDEX_LATENCY         = "filestore.index_latency";
+constexpr TStringBuf FILESTORE_INDEX_ERRORS          = "filestore.index_errors";
+constexpr TStringBuf FILESTORE_INDEX_CUMULATIVE_TIME = "filestore.index_cumulative_time";
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -214,6 +219,44 @@ TLabels MakeFilestoreLabels(
         {"instance", instanceId}};
 }
 
+const THashMap<TString, TString>& GetIndexOpsNames()
+{
+    static const THashMap<TString, TString> names = {
+        {"AllocateData", "fallocate"},
+        {"CreateHandle", "open"},
+        {"CreateNode", "createnode"},
+        {"DestroyHandle", "release"},
+        {"GetNodeAttr", "getattr"},
+        {"GetNodeXAttr", "getxattr"},
+        {"ListNodeXAttr", "listxattr"},
+        {"ListNodes", "readdir"},
+        {"RenameNode", "rename"},
+        {"SetNodeAttr", "setattr"},
+        {"SetNodeXAttr", "setxattr"},
+        {"UnlinkNode", "unlink"},
+        {"StatFileStore", "statfs"},
+        {"ReadLink", "readlink"},
+        {"AccessNode", "access"},
+        {"RemoveNodeXAttr", "removexattr"},
+        {"ReleaseLock", "releaselock"},
+        {"AcquireLock", "acquirelock"}};
+
+    return names;
+}
+
+TLabels MakeFilestoreLabelsWithRequestName(
+    const TString& cloudId,
+    const TString& folderId,
+    const TString& filestoreId,
+    const TString& instanceId,
+    const TString& requestName)
+{
+    auto labels =
+        MakeFilestoreLabels(cloudId, folderId, filestoreId, instanceId);
+    labels.Add("request", requestName);
+    return labels;
+}
+
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -308,12 +351,45 @@ void RegisterFilestore(
             request.first.LabelValue != "ReadData" &&
             request.first.LabelValue != "WriteData")
         {
-            indexOpsCounters.emplace_back(
-                src->FindSubgroup("request", request.first.LabelValue),
-                "Count");
-            indexErrorCounters.emplace_back(
-                src->FindSubgroup("request", request.first.LabelValue),
-                "Errors/Fatal");
+            const auto indexSubgroup =
+                src->FindSubgroup("request", request.first.LabelValue);
+
+            indexOpsCounters.emplace_back(indexSubgroup, "Count");
+            indexErrorCounters.emplace_back(indexSubgroup, "Errors/Fatal");
+
+            auto metricName =
+                GetIndexOpsNames().find(request.first.LabelValue);
+            if (metricName) {
+                const auto labels = MakeFilestoreLabelsWithRequestName(
+                    cloudId,
+                    folderId,
+                    filestoreId,
+                    instanceId,
+                    metricName->second);
+                AddUserMetric(
+                    dsc,
+                    labels,
+                    { { indexSubgroup, "Count" } },
+                    FILESTORE_INDEX_OPS);
+                AddUserMetric(
+                    dsc,
+                    labels,
+                    { { indexSubgroup, "Time" } },
+                    FILESTORE_INDEX_CUMULATIVE_TIME
+                );
+                AddHistogramUserMetric(
+                    MS_BUCKETS,
+                    dsc,
+                    labels,
+                    { indexSubgroup, "Time" },
+                    FILESTORE_INDEX_LATENCY);
+                AddUserMetric(
+                    dsc,
+                    labels,
+                    { { indexSubgroup, "Errors/Fatal" } },
+                    FILESTORE_INDEX_ERRORS
+                );
+            }
         }
     }
 
@@ -355,6 +431,19 @@ void UnregisterFilestore(
 
     dsc.RemoveUserMetric(commonLabels, FILESTORE_INDEX_OPS);
     dsc.RemoveUserMetric(commonLabels, FILESTORE_INDEX_ERRORS);
+
+    for (const auto& [_, requestName]: GetIndexOpsNames()) {
+        const auto labels = MakeFilestoreLabelsWithRequestName(
+            cloudId,
+            folderId,
+            filestoreId,
+            instanceId,
+            requestName);
+        dsc.RemoveUserMetric(labels, FILESTORE_INDEX_OPS);
+        dsc.RemoveUserMetric(labels, FILESTORE_INDEX_CUMULATIVE_TIME);
+        dsc.RemoveUserMetric(labels, FILESTORE_INDEX_LATENCY);
+        dsc.RemoveUserMetric(labels, FILESTORE_INDEX_ERRORS);
+    }
 }
 
 }   // NCloud::NFileStore::NUserCounter

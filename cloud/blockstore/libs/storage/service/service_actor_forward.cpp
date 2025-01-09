@@ -53,7 +53,6 @@ bool ConvertToRemoteRequestAndForward<TEvService::TWriteBlocksLocalMethod>(
     NCloud::Register(ctx, CreateWriteBlocksRemoteActor(
         ev,
         volume.VolumeInfo->GetBlockSize(),
-        volume.VolumeInfo->GetBlocksCount(),
         volume.VolumeClientActor));
     return true;
 }

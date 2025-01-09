@@ -1,4 +1,7 @@
 {
+    "test.test_explicit_shard_count_addition": {
+        "uri": "file://test.test_explicit_shard_count_addition/results.txt"
+    },
     "test.test_shard_autoaddition": {
         "uri": "file://test.test_shard_autoaddition/results.txt"
     }

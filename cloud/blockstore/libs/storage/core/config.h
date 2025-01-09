@@ -622,6 +622,7 @@ public:
     [[nodiscard]] bool GetEncryptionAtRestForDiskRegistryBasedDisksEnabled() const;
 
     [[nodiscard]] bool GetDisableFullPlacementGroupCountCalculation() const;
+    [[nodiscard]] double GetDiskRegistryInitialAgentRejectionThreshold() const;
 };
 
 ui64 GetAllocationUnit(
