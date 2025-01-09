@@ -238,7 +238,6 @@ struct TVolumeThrottlingPolicy::TImpl
             return TDuration::Zero();
         }
 
-
         const ui64 bandwidthUpdate = requestInfo.ByteCount;
         double m = static_cast<EOpType>(requestInfo.OpType) == EOpType::Read
             ? 1.0
