@@ -1437,7 +1437,7 @@ struct TTxDiskRegistry
 
     struct TRemoveOrphanDevices
     {
-        TVector<TString> OrphanDevices;
+        const TVector<TString> OrphanDevices;
 
         explicit TRemoveOrphanDevices(TVector<TString> orphanDevices)
             : OrphanDevices(std::move(orphanDevices))

@@ -40,6 +40,13 @@ template <typename T>
 constexpr bool combinedRequest<T, std::void_t<
     decltype(std::declval<T>().Requests)>> = true;
 
+template <typename T>
+constexpr bool HasRequestInfoField() {
+    return requires(const T& t) {
+        t.RequestInfo;
+    };
+}
+
 #define TX_TRACK_HELPER(probe, info)                                           \
     LWTRACK(                                                                   \
         probe,                                                                 \
@@ -53,8 +60,10 @@ constexpr bool combinedRequest<T, std::void_t<
         for (auto& __request: Args.Requests) {                                 \
             TX_TRACK_HELPER(probe, __request.RequestInfo);                     \
         }                                                                      \
-    } else if (Args.RequestInfo) {                                             \
-        TX_TRACK_HELPER(probe, Args.RequestInfo);                              \
+    } else if constexpr (HasRequestInfoField<decltype(Args)>()) {              \
+        if (Args.RequestInfo) {                                                \
+            TX_TRACK_HELPER(probe, Args.RequestInfo);                          \
+        }                                                                      \
     }                                                                          \
 // TX_TRACK
 
@@ -69,8 +78,10 @@ constexpr bool combinedRequest<T, std::void_t<
         for (auto& __request: Args.Requests) {                                 \
             TX_FORK_HELPER(__request.RequestInfo);                             \
         }                                                                      \
-    } else if (Args.RequestInfo) {                                             \
-        TX_FORK_HELPER(Args.RequestInfo);                                      \
+    } else if constexpr (HasRequestInfoField<decltype(Args)>()) {              \
+        if (Args.RequestInfo) {                                                \
+            TX_FORK_HELPER(Args.RequestInfo);                                  \
+        }                                                                      \
     }                                                                          \
 // TX_FORK
 
@@ -83,8 +94,10 @@ constexpr bool combinedRequest<T, std::void_t<
         for (auto& __request: Args.Requests) {                                 \
             TX_JOIN_HELPER(__request.RequestInfo);                             \
         }                                                                      \
-    } else if (Args.RequestInfo) {                                             \
-        TX_JOIN_HELPER(Args.RequestInfo);                                      \
+    } else if constexpr (HasRequestInfoField<decltype(Args)>()) {              \
+        if (Args.RequestInfo) {                                                \
+            TX_JOIN_HELPER(Args.RequestInfo);                                  \
+        }                                                                      \
     }                                                                          \
 // TX_JOIN
 
