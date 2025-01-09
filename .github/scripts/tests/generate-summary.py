@@ -81,7 +81,7 @@ class TestResult:
             status = TestStatus.PASS
 
         log_urls = {
-            "DIR": get_property_value(testcase, "url:logs_directory"),
+            "DIR": get_property_value(testcase, "url:logs_directory") + '/index.html',
             "Log": get_property_value(testcase, "url:Log"),
             "log": get_property_value(testcase, "url:log"),
             "stdout": get_property_value(testcase, "url:stdout"),
