@@ -23,19 +23,19 @@ public:
 
     ~TXmlNodeWrapper();
 
-    TXmlNodeWrapper AddChild(const auto& name, const auto& value)
+    TXmlNodeWrapper AddChild(const auto& tag, const auto& content)
     {
         TStringStream out;
-        out << name;
-        auto nameStr = out.Str();
+        out << tag;
+        auto tagStr = std::move(out.Str());
         out.Clear();
-        out << value;
-        return AddChildImpl(nameStr, out.Str());
+        out << content;
+        return AddChildImpl(std::move(tagStr), std::move(out.Str()));
     }
 
     TXmlNodeWrapper& AddNamedElement(const auto& name, const auto& value)
     {
-        auto cd = AddChild("cd", "");
+        auto cd = AddChild("item", "");
         cd.AddChild("name", name);
         cd.AddChild("value", value);
         return *this;
@@ -50,7 +50,7 @@ private:
 
     std::unique_ptr<TImpl> Impl;
 
-    TXmlNodeWrapper AddChildImpl(TString name, TString value);
+    TXmlNodeWrapper AddChildImpl(TString tag, TString content);
 };
 
 }   // namespace NCloud

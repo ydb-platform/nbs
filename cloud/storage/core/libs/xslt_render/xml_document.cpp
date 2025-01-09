@@ -51,15 +51,15 @@ TXmlNodeWrapper::TXmlNodeWrapper(const TString& source, ESource type)
 
 TXmlNodeWrapper::~TXmlNodeWrapper() = default;
 
-TXmlNodeWrapper TXmlNodeWrapper::AddChildImpl(TString name, TString value = "")
+TXmlNodeWrapper TXmlNodeWrapper::AddChildImpl(TString tag, TString content = "")
 {
-    auto child = Impl->Node.AddChild(name, value);
+    auto child = Impl->Node.AddChild(std::move(tag), std::move(content));
     return TXmlNodeWrapper(std::make_unique<TImpl>(Impl->ToNewNode(child)));
 }
 
 TString TXmlNodeWrapper::ToString(TString enc) const
 {
-    return Impl->Node.ToString(enc);
+    return Impl->Node.ToString(std::move(enc));
 }
 
 TXmlNodeWrapper::TXmlNodeWrapper(std::unique_ptr<TImpl> impl)

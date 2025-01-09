@@ -8,36 +8,35 @@ namespace {
 
 using namespace NCloud;
 
-TString ContentAddChildren(const auto& name, const auto& value)
+TString ContentAddNamedElement(const auto& name, const auto& value)
 {
     TStringStream out;
-    out << "<root><cd><name>" << name << "</name><value>" << value
-        << "</value></cd></root>";
+    out << "<root><item><name>" << name << "</name><value>" << value
+        << "</value></item></root>";
     return out.Str();
 }
 
-void TestAddChildren(const auto& name, const auto& value)
+void TestAddNamedElement(const auto& name, const auto& value)
 {
     TXmlNodeWrapper wrapper("root", TXmlNodeWrapper::ESource::ROOT_NAME);
     wrapper.AddNamedElement(name, value);
     UNIT_ASSERT_VALUES_EQUAL(
-        ContentAddChildren(name, value),
+        ContentAddNamedElement(name, value),
         wrapper.ToString());
 }
 
-TString ContentAddChild(const auto& name, const auto& value)
+TString ContentAddChild(const auto& tag, const auto& content)
 {
     TStringStream out;
-    out << "<" << name << ">" << value << "</" << name << ">";
+    out << "<" << tag << ">" << content << "</" << tag << ">";
     return out.Str();
 }
 
-TXmlNodeWrapper TestAddChild(const auto& name, const auto& value)
+void TestAddChild(const auto& tag, const auto& content)
 {
     TXmlNodeWrapper wrapper("root", TXmlNodeWrapper::ESource::ROOT_NAME);
-    auto child = wrapper.AddChild(name, value);
-    UNIT_ASSERT_VALUES_EQUAL(ContentAddChildren(name, value), child.ToString());
-    return child;
+    auto child = wrapper.AddChild(tag, content);
+    UNIT_ASSERT_VALUES_EQUAL(ContentAddChild(tag, content), child.ToString());
 }
 
 }   // namespace
@@ -50,16 +49,16 @@ Y_UNIT_TEST_SUITE(TXmlNodeWrapperTest)
 {
     Y_UNIT_TEST(ShouldAddChild)
     {
-        TestAddChildren("a", "b");
-        TestAddChildren(1, 1);
-        TestAddChildren(1e-2, 1e-2);
+        TestAddNamedElement("a", "b");
+        TestAddNamedElement(1, 1);
+        TestAddNamedElement(1e-2, 1e-2);
     }
 
     Y_UNIT_TEST(ShouldAddElemWithNameAndValue)
     {
-        TestAddChildren("a", "b");
-        TestAddChildren(1, 1);
-        TestAddChildren(1e-2, 1e-2);
+        TestAddChild("a", "b");
+        TestAddChild(1, 1);
+        TestAddChild(1e-2, 1e-2);
     }
 }
 
