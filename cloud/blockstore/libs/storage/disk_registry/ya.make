@@ -6,6 +6,7 @@ SRCS(
     disk_registry_actor_backup_state.cpp
     disk_registry_actor_change_disk_device.cpp
     disk_registry_actor_checkpoint.cpp
+    disk_registry_actor_remove_orphan_devices.cpp
     disk_registry_actor_cleanup.cpp
     disk_registry_actor_cms.cpp
     disk_registry_actor_config.cpp

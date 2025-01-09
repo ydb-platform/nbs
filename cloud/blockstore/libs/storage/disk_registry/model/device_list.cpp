@@ -774,6 +774,11 @@ TVector<NProto::TDeviceConfig> TDeviceList::GetDirtyDevices() const
     return devices;
 }
 
+TVector<TString> TDeviceList::GetDirtyDevicesId() const
+{
+    return {DirtyDevices.begin(), DirtyDevices.end()};
+}
+
 bool TDeviceList::IsDirtyDevice(const TDeviceId& uuid) const
 {
     return DirtyDevices.contains(uuid);
