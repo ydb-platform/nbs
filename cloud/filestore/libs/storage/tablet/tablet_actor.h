@@ -722,6 +722,10 @@ private:
         const TEvIndexTabletPrivate::TEvForcedRangeOperationProgress::TPtr& ev,
         const NActors::TActorContext& ctx);
 
+    void HandleLoadNodeRefsRequest(
+        const TEvIndexTabletPrivate::TEvLoadNodeRefsRequest::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
     void HandleNodeCreatedInShard(
         const TEvIndexTabletPrivate::TEvNodeCreatedInShard::TPtr& ev,
         const NActors::TActorContext& ctx);

@@ -311,7 +311,15 @@ void TIndexTabletActor::CompleteTx_LoadState(
     if (Config->GetInMemoryIndexCacheEnabled() &&
         Config->GetInMemoryIndexCacheLoadOnTabletStart())
     {
-        LoadNodeRefs(ctx, 0, "");
+        const ui64 maxNodeRefs =
+            Config->GetInMemoryIndexCacheLoadOnTabletStartRowsPerTx();
+
+        ctx.Send(
+            SelfId(),
+            new TEvIndexTabletPrivate::TEvLoadNodeRefsRequest(
+                0,
+                "",
+                maxNodeRefs));
     }
 
     ScheduleSyncSessions(ctx);

@@ -2111,8 +2111,6 @@ struct TTxIndexTablet
 
     struct TLoadNodeRefs: TIndexStateNodeUpdates
     {
-        // actually unused, needed in tablet_tx.h to avoid sophisticated
-        // template tricks
         const TRequestInfoPtr RequestInfo;
 
         const ui64 NodeId;
@@ -2123,10 +2121,12 @@ struct TTxIndexTablet
         TString NextCookie;
 
         TLoadNodeRefs(
+                TRequestInfoPtr requestInfo,
                 ui64 nodeId,
                 TString cookie,
                 ui64 maxNodeRefs)
-            : NodeId(nodeId)
+            : RequestInfo(std::move(requestInfo))
+            , NodeId(nodeId)
             , Cookie(std::move(cookie))
             , MaxNodeRefs(maxNodeRefs)
         {}
