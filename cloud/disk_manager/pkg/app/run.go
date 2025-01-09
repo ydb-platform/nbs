@@ -213,6 +213,28 @@ func run(
 			}
 		}
 
+		var migrationDestinationDB *persistence.YDBClient
+		var migrationDestinationS3 *persistence.S3Client
+		migrationDestinationStorageConfig := snapshotConfig.GetMigrationDestinationStorageConfig()
+		if migrationDestinationStorageConfig != nil {
+			migrationYdbClientRegistry := mon.NewRegistry("migration_ydb_client")
+			migrationDestinationDB, err = persistence.NewYDBClient(
+				ctx,
+				migrationDestinationStorageConfig,
+				migrationYdbClientRegistry,
+				persistence.WithCredentials(creds),
+			)
+			if err != nil {
+				return err
+			}
+
+			registry := mon.NewRegistry("migration_s3_client")
+			migrationDestinationS3, err = persistence.NewS3ClientFromConfig(s3Config, registry)
+			if err != nil {
+				return err
+			}
+		}
+
 		err = initDataplane(
 			ctx,
 			config,
@@ -222,6 +244,8 @@ func run(
 			taskScheduler,
 			nbsFactory,
 			s3,
+			migrationDestinationDB,
+			migrationDestinationS3,
 		)
 		if err != nil {
 			logging.Error(ctx, "Failed to initialize dataplane: %v", err)

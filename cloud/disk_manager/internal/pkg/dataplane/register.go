@@ -22,6 +22,7 @@ func RegisterForExecution(
 	legacyStorage storage.Storage,
 	config *config.DataplaneConfig,
 	metricsRegistry metrics.Registry,
+	migrationDestinationStorage storage.Storage,
 ) error {
 
 	err := taskRegistry.RegisterForExecution("dataplane.CreateSnapshotFromDisk", func() tasks.Task {
@@ -86,6 +87,19 @@ func RegisterForExecution(
 	})
 	if err != nil {
 		return err
+	}
+
+	if migrationDestinationStorage != nil {
+		err = taskRegistry.Register("dataplane.MigrateSnapshotToAnotherDatabaseTask", func() tasks.Task {
+			return &migrateSnapshotToAnotherDatabaseTask{
+				sourceStorage:      storage,
+				destinationStorage: nil,
+				config:             config,
+			}
+		})
+		if err != nil {
+			return err
+		}
 	}
 
 	err = taskRegistry.RegisterForExecution("dataplane.TransferFromSnapshotToDisk", func() tasks.Task {
@@ -250,15 +264,16 @@ func Register(ctx context.Context, taskRegistry *tasks.Registry) error {
 ////////////////////////////////////////////////////////////////////////////////
 
 var newTaskByTaskType = map[string]func() tasks.Task{
-	"dataplane.CreateSnapshotFromDisk":           func() tasks.Task { return &createSnapshotFromDiskTask{} },
-	"dataplane.CreateSnapshotFromSnapshot":       func() tasks.Task { return &createSnapshotFromSnapshotTask{} },
-	"dataplane.CreateSnapshotFromURL":            func() tasks.Task { return &createSnapshotFromURLTask{} },
-	"dataplane.CreateSnapshotFromLegacySnapshot": func() tasks.Task { return &createSnapshotFromLegacySnapshotTask{} },
-	"dataplane.TransferFromSnapshotToDisk":       func() tasks.Task { return &transferFromSnapshotToDiskTask{} },
-	"dataplane.TransferFromLegacySnapshotToDisk": func() tasks.Task { return &transferFromSnapshotToDiskTask{} },
-	"dataplane.TransferFromDiskToDisk":           func() tasks.Task { return &transferFromDiskToDiskTask{} },
-	"dataplane.ReplicateDisk":                    func() tasks.Task { return &replicateDiskTask{} },
-	"dataplane.DeleteSnapshot":                   func() tasks.Task { return &deleteSnapshotTask{} },
-	"dataplane.DeleteSnapshotData":               func() tasks.Task { return &deleteSnapshotDataTask{} },
-	"dataplane.DeleteDiskFromIncremental":        func() tasks.Task { return &deleteDiskFromIncrementalTask{} },
+	"dataplane.CreateSnapshotFromDisk":               func() tasks.Task { return &createSnapshotFromDiskTask{} },
+	"dataplane.CreateSnapshotFromSnapshot":           func() tasks.Task { return &createSnapshotFromSnapshotTask{} },
+	"dataplane.CreateSnapshotFromURL":                func() tasks.Task { return &createSnapshotFromURLTask{} },
+	"dataplane.CreateSnapshotFromLegacySnapshot":     func() tasks.Task { return &createSnapshotFromLegacySnapshotTask{} },
+	"dataplane.MigrateSnapshotToAnotherDatabaseTask": func() tasks.Task { return &migrateSnapshotToAnotherDatabaseTask{} },
+	"dataplane.TransferFromSnapshotToDisk":           func() tasks.Task { return &transferFromSnapshotToDiskTask{} },
+	"dataplane.TransferFromLegacySnapshotToDisk":     func() tasks.Task { return &transferFromSnapshotToDiskTask{} },
+	"dataplane.TransferFromDiskToDisk":               func() tasks.Task { return &transferFromDiskToDiskTask{} },
+	"dataplane.ReplicateDisk":                        func() tasks.Task { return &replicateDiskTask{} },
+	"dataplane.DeleteSnapshot":                       func() tasks.Task { return &deleteSnapshotTask{} },
+	"dataplane.DeleteSnapshotData":                   func() tasks.Task { return &deleteSnapshotDataTask{} },
+	"dataplane.DeleteDiskFromIncremental":            func() tasks.Task { return &deleteDiskFromIncrementalTask{} },
 }

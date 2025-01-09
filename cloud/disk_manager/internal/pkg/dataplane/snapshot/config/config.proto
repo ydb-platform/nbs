@@ -22,4 +22,5 @@ message SnapshotConfig {
     optional string S3Bucket = 11;
     optional string ChunkBlobsS3KeyPrefix = 12 [default = "snapshot/chunks"];
     map<string, uint32> ProbeCompressionPercentage = 13;  // by codec
+    optional persistence.PersistenceConfig MigrationDestinationStorageConfig = 14;
 }
