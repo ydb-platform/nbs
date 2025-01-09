@@ -15,11 +15,11 @@
     }
 ][
     {
-        "ShardFileSystemId": "fs1_s1",
+        "ShardFileSystemId": "masked_for_test_stability",
         "Name": "a0"
     },
     {
-        "ShardFileSystemId": "fs1_s2",
+        "ShardFileSystemId": "masked_for_test_stability",
         "Name": "a1"
     }
 ]

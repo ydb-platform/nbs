@@ -27,6 +27,8 @@ def __process_stat(node):
     d("MTime")
     d("CTime")
     d("ShardNodeName")
+    if "ShardFileSystemId" in node:
+        node["ShardFileSystemId"] = "masked_for_test_stability"
 
     return node
 
