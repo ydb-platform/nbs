@@ -594,12 +594,15 @@ UnixCredentialsGuard::UnixCredentialsGuard(uid_t uid, gid_t gid)
         return;
     }
 
-    int ret = setresgid(-1, gid, -1);
+    // use syscall directly to change uid/gid per thread instead of glibc
+    // version of setresgid/setresuid since they will change uid/gid for all
+    // threads
+    int ret = syscall(SYS_setresgid, -1, gid, -1);
     if (ret == -1) {
         return;
     }
 
-    ret = setresuid(-1, uid, -1);
+    ret = syscall(SYS_setresuid, -1, uid, -1);
     if (ret == -1) {
         setresgid(-1, Gid, -1);
         return;
@@ -614,8 +617,8 @@ UnixCredentialsGuard::~UnixCredentialsGuard()
         return;
     }
 
-    setresuid(-1, Uid, -1);
-    setresgid(-1, Gid, -1);
+    syscall(SYS_setresuid, -1, Uid, -1);
+    syscall(SYS_setresgid, -1, Gid, -1);
 }
 
 
