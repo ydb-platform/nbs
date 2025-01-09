@@ -1,0 +1,28 @@
+syntax = "proto3";
+
+package dataplane;
+
+option go_package = "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/protos";
+
+////////////////////////////////////////////////////////////////////////////////
+
+message MigrateSnapshotToAnotherDatabaseRequest {
+  string SrcSnapshotId = 1;
+  bool UseS3 = 2;
+}
+
+message MigrateSnapshotToAnotherDatabaseResponse {
+  uint64 SnapshotSize = 1;
+  uint64 SnapshotStorageSize = 2;
+  uint64 TransferredDataSize = 3;
+}
+
+message MigrateSnapshotToAnotherDatabaseTaskState {
+  uint32 MilestoneChunkIndex = 1;
+  uint32 TransferredChunkCount = 2;
+  double Progress = 3;
+  uint64 SnapshotSize = 4;
+  uint64 SnapshotStorageSize = 5;
+  uint32 ChunkCount = 6;
+  uint64 TransferredDataSize = 7;
+}
