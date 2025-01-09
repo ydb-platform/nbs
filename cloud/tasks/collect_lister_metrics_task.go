@@ -153,6 +153,11 @@ func (c *collectListerMetricsTask) collectHangingTasksMetrics(
 		taskInfoByID[taskInfo.ID] = taskInfo
 	}
 
+	c.registry.WithTags(
+		map[string]string{
+			"type": "default", "id": "default",
+		},
+	).Gauge("hangingTasks").Set(0)
 	for id, gauge := range c.hangingTaskGaugesByID {
 		_, ok := taskInfoByID[id]
 		if !ok {
