@@ -17,6 +17,8 @@
 #include <util/system/mutex.h>
 #include <util/thread/factory.h>
 
+#include <chrono>
+
 namespace NCloud::NBlockStore::NDiscovery {
 
 namespace {
@@ -162,7 +164,9 @@ struct TFakeBlockStoreServer::TImpl
         void* tag;
         bool ok;
         while (!AtomicGet(ShouldStop)) {
-            const auto deadline = gpr_time_0(GPR_TIMESPAN);
+            const auto deadline =
+                std::chrono::system_clock::now() +
+                std::chrono::milliseconds(100);
             auto status = CQ->AsyncNext(&tag, &ok, deadline);
             if (status != grpc::CompletionQueue::GOT_EVENT) {
                 continue;
