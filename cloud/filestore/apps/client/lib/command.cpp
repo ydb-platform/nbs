@@ -532,6 +532,20 @@ NProto::TListNodesResponse TFileStoreCommand::ListAll(
     return fullResult;
 }
 
+TString TFileStoreCommand::ReadLink(ISession& session, ui64 nodeId)
+{
+    auto request = CreateRequest<NProto::TReadLinkRequest>();
+    request->SetNodeId(nodeId);
+
+    auto response = WaitFor(session.ReadLink(
+        PrepareCallContext(),
+        std::move(request)));
+
+    CheckResponse(response);
+
+    return response.GetSymLink();
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 TEndpointCommand::TEndpointCommand()
