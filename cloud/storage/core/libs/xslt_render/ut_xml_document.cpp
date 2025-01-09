@@ -49,16 +49,16 @@ Y_UNIT_TEST_SUITE(TXmlNodeWrapperTest)
 {
     Y_UNIT_TEST(ShouldAddChild)
     {
-        TestAddNamedElement("a", "b");
-        TestAddNamedElement(1, 1);
-        TestAddNamedElement(1e-2, 1e-2);
+        TestAddChild("a", "b");
+        TestAddChild(1, 1);
+        TestAddChild(1e-2, 1e-2);
     }
 
     Y_UNIT_TEST(ShouldAddElemWithNameAndValue)
     {
-        TestAddChild("a", "b");
-        TestAddChild(1, 1);
-        TestAddChild(1e-2, 1e-2);
+        TestAddNamedElement("a", "b");
+        TestAddNamedElement(1, 1);
+        TestAddNamedElement(1e-2, 1e-2);
     }
 }
 
