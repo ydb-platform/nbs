@@ -20,6 +20,7 @@ TCommandPtr NewListFileStoresCommand();
 TCommandPtr NewLsCommand();
 TCommandPtr NewMkDirCommand();
 TCommandPtr NewMountCommand();
+TCommandPtr NewMvCommand();
 TCommandPtr NewReadCommand();
 TCommandPtr NewRemoveClusterNodeCommand();
 TCommandPtr NewResizeCommand();
@@ -63,6 +64,7 @@ static const TMap<TString, TFactoryFunc> Commands = {
     { "ls", NewLsCommand },
     { "mkdir", NewMkDirCommand },
     { "mount", NewMountCommand },
+    { "mv", NewMvCommand },
     { "read", NewReadCommand },
     { "removeclusternode", NewRemoveClusterNodeCommand },
     { "resetsession", NewResetSessionCommand },

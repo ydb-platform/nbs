@@ -23,6 +23,7 @@ SRCS(
     ls.cpp
     mkdir.cpp
     mount.cpp
+    mv.cpp
     performance_profile_params.cpp
     read.cpp
     remove_cluster_node.cpp
