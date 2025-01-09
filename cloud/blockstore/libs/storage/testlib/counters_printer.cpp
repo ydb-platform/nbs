@@ -37,7 +37,6 @@ void TCountersPrinter::OnHistogram(
     NMonitoring::IHistogramSnapshotPtr snapshot,
     bool derivative)
 {
-    Y_UNUSED(snapshot);
     Y_UNUSED(derivative);
     Indent(Out, Level) << labelName << ':' << labelValue << " = " << *snapshot
                        << '\n';

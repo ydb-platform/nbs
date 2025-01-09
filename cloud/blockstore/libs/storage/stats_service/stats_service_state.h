@@ -68,7 +68,8 @@ struct TTotalCounters
             EPublishingPolicy policy,
             EHistogramCounterOptions histCounterOptions)
         : PartAcc(policy, histCounterOptions)
-        , VolumeAcc(policy, histCounterOptions){};
+        , VolumeAcc(policy, histCounterOptions)
+    {}
 
     void Register(NMonitoring::TDynamicCountersPtr counters);
     void Reset();

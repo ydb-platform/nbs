@@ -465,13 +465,14 @@ struct THistogramCounters
     using TCounter = TMemberWithMeta<THistogram<TQueueSizeBuckets>>;
     using TMeta = TMemberMeta<TCounter THistogramCounters::*>;
 
+    EHistogramCounterOptions HistCounterOptions;
+
     // BlobStorage based
-    TCounter ActorQueue;
-    TCounter MailboxQueue;
+    TCounter ActorQueue{EPublishingPolicy::Repl, HistCounterOptions};
+    TCounter MailboxQueue{EPublishingPolicy::Repl, HistCounterOptions};
 
     explicit THistogramCounters(EHistogramCounterOptions histCounterOptions)
-        : ActorQueue(EPublishingPolicy::Repl, histCounterOptions)
-        , MailboxQueue(EPublishingPolicy::Repl, histCounterOptions)
+        : HistCounterOptions(histCounterOptions)
     {}
 
     static constexpr TMeta AllCounters[] = {
@@ -482,8 +483,10 @@ struct THistogramCounters
 
 static_assert(
     sizeof(THistogramCounters) ==
-    sizeof(THistogramCounters::TCounter) *
-        std::size(THistogramCounters::AllCounters));
+    // cannot use sizeof(EHistogramCounterOptions) because of alignment
+    (offsetof(THistogramCounters, ActorQueue) +
+     sizeof(THistogramCounters::TCounter) *
+         std::size(THistogramCounters::AllCounters)));
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -663,17 +666,17 @@ struct TVolumeSelfRequestCounters
     using TCounter = TMemberWithMeta<THistogram<TRequestUsTimeBuckets>>;
     using TMeta = TMemberMeta<TCounter TVolumeSelfRequestCounters::*>;
 
-    // Common
-    TCounter ReadBlocks;
-    TCounter WriteBlocks;
-    TCounter ZeroBlocks;
-    TCounter DescribeBlocks;
+    EHistogramCounterOptions HistCounterOptions;
 
-    explicit TVolumeSelfRequestCounters(EHistogramCounterOptions histCounterOptions)
-        : ReadBlocks(EPublishingPolicy::All, histCounterOptions)
-        , WriteBlocks(EPublishingPolicy::All, histCounterOptions)
-        , ZeroBlocks(EPublishingPolicy::All, histCounterOptions)
-        , DescribeBlocks(EPublishingPolicy::All, histCounterOptions)
+    // Common
+    TCounter ReadBlocks{EPublishingPolicy::All, HistCounterOptions};
+    TCounter WriteBlocks{EPublishingPolicy::All, HistCounterOptions};
+    TCounter ZeroBlocks{EPublishingPolicy::All, HistCounterOptions};
+    TCounter DescribeBlocks{EPublishingPolicy::All, HistCounterOptions};
+
+    explicit TVolumeSelfRequestCounters(
+            EHistogramCounterOptions histCounterOptions)
+        : HistCounterOptions(histCounterOptions)
     {}
 
     static constexpr TMeta AllCounters[] = {
@@ -685,8 +688,10 @@ struct TVolumeSelfRequestCounters
 };
 static_assert(
     sizeof(TVolumeSelfRequestCounters) ==
-    sizeof(TVolumeSelfRequestCounters::TCounter) *
-        std::size(TVolumeSelfRequestCounters::AllCounters));
+    // cannot use sizeof(EHistogramCounterOptions) because of alignment
+    (offsetof(TVolumeSelfRequestCounters, ReadBlocks) +
+     sizeof(TVolumeSelfRequestCounters::TCounter) *
+         std::size(TVolumeSelfRequestCounters::AllCounters)));
 
 struct TTransportCounters
 {
@@ -732,7 +737,7 @@ struct TPartitionDiskCounters
 
     EPublishingPolicy Policy;
 
-    explicit TPartitionDiskCounters(
+    TPartitionDiskCounters(
             EPublishingPolicy policy,
             EHistogramCounterOptions histCounterOptions)
         : RequestCounters(histCounterOptions)
@@ -757,7 +762,7 @@ struct TVolumeSelfCounters
 
     EPublishingPolicy Policy;
 
-    explicit TVolumeSelfCounters(
+    TVolumeSelfCounters(
             EPublishingPolicy policy,
             EHistogramCounterOptions histCounterOptions)
         : RequestCounters(histCounterOptions)
