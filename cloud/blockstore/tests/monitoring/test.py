@@ -427,7 +427,6 @@ class TestDiskRegistryTablet:
             self.session, self.base_url,
             self.dr_id, params, "<h2>No device id is given</h2>")
 
-
         params = {
             "action": "changeDeviceState",
             "NewState" : "not a state",
@@ -484,7 +483,6 @@ class TestDiskRegistryTablet:
         check_tablet_post_redirect(
             self.session, self.base_url,
             self.dr_id, params, "<h2>No agent id is given</h2>")
-
 
         params = {
             "action": "changeAgentState",
