@@ -80,8 +80,12 @@ class TestResult:
         else:
             status = TestStatus.PASS
 
+        logs_directory = get_property_value(testcase, "url:logs_directory")
+        if logs_directory is not None:
+            logs_directory = f"{logs_directory}/index.html"
+
         log_urls = {
-            "DIR": get_property_value(testcase, "url:logs_directory") + '/index.html',
+            "DIR": logs_directory,
             "Log": get_property_value(testcase, "url:Log"),
             "log": get_property_value(testcase, "url:log"),
             "stdout": get_property_value(testcase, "url:stdout"),
