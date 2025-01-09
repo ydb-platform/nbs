@@ -545,6 +545,23 @@ struct TEvIndexTabletPrivate
     };
 
     //
+    // LoadNodes
+    //
+
+    struct TLoadNodesRequest
+    {
+        const ui64 NodeId;
+        const ui32 MaxNodes;
+
+        TLoadNodesRequest(
+                ui64 nodeId,
+                ui32 maxNodes)
+            : NodeId(nodeId)
+            , MaxNodes(maxNodes)
+        {}
+    };
+
+    //
     // ForcedRangeOperation
     //
 
@@ -879,6 +896,7 @@ struct TEvIndexTabletPrivate
         EvShardRequestCompleted,
 
         EvLoadNodeRefs,
+        EvLoadNodes,
 
         EvEnd
     };
@@ -921,6 +939,9 @@ struct TEvIndexTabletPrivate
 
     using TEvLoadNodeRefsRequest =
         TRequestEvent<TLoadNodeRefsRequest, EvLoadNodeRefs>;
+
+    using TEvLoadNodesRequest =
+        TRequestEvent<TLoadNodesRequest, EvLoadNodes>;
 };
 
 }   // namespace NCloud::NFileStore::NStorage

@@ -79,6 +79,7 @@ namespace NCloud::NFileStore::NStorage {
     xxx(UnsafeGetNode,                      __VA_ARGS__)                       \
                                                                                \
     xxx(LoadNodeRefs,                       __VA_ARGS__)                       \
+    xxx(LoadNodes,                          __VA_ARGS__)                       \
 // FILESTORE_TABLET_RO_TRANSACTIONS
 
 #define FILESTORE_TABLET_RW_TRANSACTIONS(xxx, ...)                             \
@@ -2102,13 +2103,13 @@ struct TTxIndexTablet
         }
     };
 
+    // The whole point of these transactions is to observe some data in NodeRefs
+    // and Nodes tables and populate the contents of TIndexStateNodeUpdates with
+    // it
+
     //
     // LoadNodeRefs
     //
-
-    // The whole point of this transaction is to observe some data in the
-    // NodeRefs table and populate the contents of TIndexStateNodeUpdates with it
-
     struct TLoadNodeRefs: TIndexStateNodeUpdates
     {
         const TRequestInfoPtr RequestInfo;
@@ -2137,6 +2138,34 @@ struct TTxIndexTablet
 
             NextNodeId = 0;
             NextCookie.clear();
+        }
+    };
+
+    //
+    // LoadNodes
+    //
+
+    struct TLoadNodes: TIndexStateNodeUpdates
+    {
+        const TRequestInfoPtr RequestInfo;
+        const ui64 NodeId;
+        const ui64 MaxNodes;
+
+        ui64 NextNodeId = 0;
+
+        TLoadNodes(
+                TRequestInfoPtr requestInfo,
+                ui64 nodeId,
+                ui64 maxNodes)
+            : RequestInfo(std::move(requestInfo))
+            , NodeId(nodeId)
+            , MaxNodes(maxNodes)
+        {}
+
+        void Clear()
+        {
+            TIndexStateNodeUpdates::Clear();
+            NextNodeId = 0;
         }
     };
 };

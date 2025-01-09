@@ -47,6 +47,7 @@ SRCS(
     tablet_actor_listnodexattr.cpp
     tablet_actor_loadstate.cpp
     tablet_actor_loadstate_noderefs.cpp
+    tablet_actor_loadstate_nodes.cpp
     tablet_actor_monitoring.cpp
     tablet_actor_oplog.cpp
     tablet_actor_readblob.cpp

@@ -184,6 +184,41 @@ bool TIndexTabletDatabase::ReadNode(
     return true;
 }
 
+bool TIndexTabletDatabase::ReadNodes(
+    ui64 startNodeId,
+    ui64 maxNodes,
+    ui64& nextNodeId,
+    TVector<IIndexTabletDatabase::TNode>& nodes)
+{
+    using TTable = TIndexTabletSchema::Nodes;
+
+    auto it = Table<TTable>().GreaterOrEqual(startNodeId).Select();
+
+    if (!it.IsReady()) {
+        return false;   // not ready
+    }
+
+    while (it.IsValid() && maxNodes > 0) {
+        nodes.emplace_back(TNode{
+            it.GetValue<TTable::NodeId>(),
+            it.GetValue<TTable::Proto>(),
+            it.GetValue<TTable::CommitId>(),
+            InvalidCommitId});
+
+        --maxNodes;
+
+        if (!it.Next()) {
+            return false;   // not ready
+        }
+    }
+
+    if (it.IsValid()) {
+        nextNodeId = it.GetValue<TTable::NodeId>();
+    }
+
+    return true;
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 // Nodes_Ver
 
@@ -1964,6 +1999,29 @@ bool TIndexTabletDatabaseProxy::ReadNode(
         NodeUpdates.emplace_back(TInMemoryIndexState::TWriteNodeRequest{
             .NodeId = nodeId,
             .Row = {.CommitId = node->MinCommitId, .Node = node->Attrs}});
+    }
+    return result;
+}
+
+bool TIndexTabletDatabaseProxy::ReadNodes(
+    ui64 startNodeId,
+    ui64 maxNodes,
+    ui64& nextNodeId,
+    TVector<IIndexTabletDatabase::TNode>& nodes)
+{
+    auto result = TIndexTabletDatabase::ReadNodes(
+        startNodeId,
+        maxNodes,
+        nextNodeId,
+        nodes);
+    if (result) {
+        // If ReadNodes was successful, it is reasonable to update the cache
+        // with the values that have just been read.
+        for (const auto& node: nodes) {
+            NodeUpdates.emplace_back(TInMemoryIndexState::TWriteNodeRequest{
+                .NodeId = node.NodeId,
+                .Row = {.CommitId = node.MinCommitId, .Node = node.Attrs}});
+        }
     }
     return result;
 }
