@@ -58,6 +58,12 @@ public:
 
     virtual bool ReadNode(ui64 nodeId, ui64 commitId, TMaybe<TNode>& node) = 0;
 
+    virtual bool ReadNodes(
+        ui64 startNodeId,
+        ui64 maxNodes,
+        ui64& nextNodeId,
+        TVector<TNode>& nodes) = 0;
+
     //
     // Nodes_Ver
     //

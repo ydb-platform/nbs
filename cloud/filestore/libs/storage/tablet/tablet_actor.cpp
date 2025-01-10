@@ -910,6 +910,7 @@ STFUNC(TIndexTabletActor::StateBoot)
         IgnoreFunc(TEvIndexTabletPrivate::TEvReleaseCollectBarrier);
         IgnoreFunc(TEvIndexTabletPrivate::TEvForcedRangeOperationProgress);
         IgnoreFunc(TEvIndexTabletPrivate::TEvLoadNodeRefsRequest);
+        IgnoreFunc(TEvIndexTabletPrivate::TEvLoadNodesRequest);
 
         IgnoreFunc(TEvHiveProxy::TEvReassignTabletResponse);
 
@@ -952,6 +953,9 @@ STFUNC(TIndexTabletActor::StateInit)
         HFunc(
             TEvIndexTabletPrivate::TEvLoadNodeRefsRequest,
             HandleLoadNodeRefsRequest);
+        HFunc(
+            TEvIndexTabletPrivate::TEvLoadNodesRequest,
+            HandleLoadNodesRequest);
 
         FILESTORE_HANDLE_REQUEST(WaitReady, TEvIndexTablet)
 
@@ -1002,6 +1006,9 @@ STFUNC(TIndexTabletActor::StateWork)
         HFunc(
             TEvIndexTabletPrivate::TEvLoadNodeRefsRequest,
             HandleLoadNodeRefsRequest);
+        HFunc(
+            TEvIndexTabletPrivate::TEvLoadNodesRequest,
+            HandleLoadNodesRequest);
 
         HFunc(TEvents::TEvWakeup, HandleWakeup);
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
@@ -1050,6 +1057,7 @@ STFUNC(TIndexTabletActor::StateZombie)
         IgnoreFunc(TEvIndexTabletPrivate::TEvReleaseCollectBarrier);
         IgnoreFunc(TEvIndexTabletPrivate::TEvForcedRangeOperationProgress);
         IgnoreFunc(TEvIndexTabletPrivate::TEvLoadNodeRefsRequest);
+        IgnoreFunc(TEvIndexTabletPrivate::TEvLoadNodesRequest);
 
         IgnoreFunc(TEvIndexTabletPrivate::TEvReadDataCompleted);
         IgnoreFunc(TEvIndexTabletPrivate::TEvWriteDataCompleted);
@@ -1095,6 +1103,7 @@ STFUNC(TIndexTabletActor::StateBroken)
         IgnoreFunc(TEvIndexTabletPrivate::TEvReleaseCollectBarrier);
         IgnoreFunc(TEvIndexTabletPrivate::TEvForcedRangeOperationProgress);
         IgnoreFunc(TEvIndexTabletPrivate::TEvLoadNodeRefsRequest);
+        IgnoreFunc(TEvIndexTabletPrivate::TEvLoadNodesRequest);
 
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
         HFunc(TEvTablet::TEvTabletDead, HandleTabletDead);

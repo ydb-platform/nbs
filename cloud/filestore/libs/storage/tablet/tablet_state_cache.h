@@ -52,6 +52,12 @@ public:
         ui64 commitId,
         TMaybe<IIndexTabletDatabase::TNode>& node) override;
 
+    bool ReadNodes(
+        ui64 startNodeId,
+        ui64 maxNodes,
+        ui64& nextNodeId,
+        TVector<IIndexTabletDatabase::TNode>& nodes) override;
+
 private:
     void WriteNode(
         ui64 nodeId,
