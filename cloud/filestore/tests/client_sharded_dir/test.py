@@ -52,23 +52,30 @@ def __write_some_data(client, fs_id, path, data):
     client.write(fs_id, path, "--data", data_file)
 
 
+_DIR = 1
+_FILE = 2
+_SYMLINK = 3
+
+
 class FsItem:
 
-    def __init__(self, path, is_dir, data):
+    def __init__(self, path, node_type, data):
         self.path = path
-        self.is_dir = is_dir
+        self.node_type = node_type
         self.data = data
 
 
 def __fill_fs(client, fs_id, items):
     for item in items:
-        if item.is_dir:
+        if item.node_type == _DIR:
             client.mkdir(fs_id, item.path)
-        else:
+        elif item.node_type == _FILE:
             if item.data is not None:
                 __write_some_data(client, fs_id, item.path, item.data)
             else:
                 client.touch(fs_id, item.path)
+        else:
+            client.ln(fs_id, item.path, "--symlink", item.data)
 
 
 def test_nonsharded_vs_sharded_fs():
@@ -87,10 +94,13 @@ def test_nonsharded_vs_sharded_fs():
         3 * int(SHARD_SIZE / BLOCK_SIZE))
 
     def _d(path):
-        return FsItem(path, True, None)
+        return FsItem(path, _DIR, None)
 
     def _f(path, data=None):
-        return FsItem(path, False, data)
+        return FsItem(path, _FILE, data)
+
+    def _l(path, symlink):
+        return FsItem(path, _SYMLINK, symlink)
 
     items = [
         _d("/a0"),
@@ -117,11 +127,22 @@ def test_nonsharded_vs_sharded_fs():
         _f("/a1/b2/f14.txt", "zzzzz4"),
         _d("/a1/b2/c1"),
         _f("/a1/b2/f15.txt", "ZZZZZZZZZZZ"),
+        _l("/a1/b2/l1", "/does/not/matter"),
+        _f("/a1/b2/f16.txt", "ZZZZZZZZZZZ2"),
         _d("/a1/b3"),
     ]
 
     __fill_fs(client, "fs0", items)
     __fill_fs(client, "fs1", items)
+
+    # checking that mv, rm and ln work properly
+    client.mv("fs0", "/a0/b0/c0/d0/f9.txt", "/a0/b0/c0/d0/f9_moved.txt")
+    client.mv("fs1", "/a0/b0/c0/d0/f9.txt", "/a0/b0/c0/d0/f9_moved.txt")
+    client.rm("fs0", "/a1/b2/f16.txt")
+    client.rm("fs1", "/a1/b2/f16.txt")
+    # checking that readlink works (indirectly - via diff)
+    client.ln("fs0", "/a1/b2/l2", "--symlink", "/does/not/matter/2")
+    client.ln("fs1", "/a1/b2/l2", "--symlink", "/does/not/matter/3")
 
     out = __exec_ls(client, "fs0", "/", "--disable-multitablet-forwarding")
     out += __exec_ls(client, "fs1", "/", "--disable-multitablet-forwarding")

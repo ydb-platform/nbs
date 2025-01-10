@@ -22,4 +22,5 @@
         "ShardFileSystemId": "masked_for_test_stability",
         "Name": "a1"
     }
-]
+][22;31m-	LINK: [0m[0;39m/does/not/matter/2
+[22;32m+	LINK: [0m[0;39m/does/not/matter/3

@@ -354,6 +354,10 @@ class FilestoreCliClient:
     def rm(self, cmd):
         return common.execute(cmd, env=self.__env, check_exit_code=self.__check_exit_code).stdout
 
+    @standard_command("ln")
+    def ln(self, cmd):
+        return common.execute(cmd, env=self.__env, check_exit_code=self.__check_exit_code).stdout
+
 
 def create_endpoint(client, filesystem, socket_path, socket_prefix, endpoint_storage_dir, mount_seqno=0, readonly=False):
     _uid = str(uuid.uuid4())

@@ -17,6 +17,7 @@ TCommandPtr NewKickEndpointCommand();
 TCommandPtr NewListClusterNodesCommand();
 TCommandPtr NewListEndpointsCommand();
 TCommandPtr NewListFileStoresCommand();
+TCommandPtr NewLnCommand();
 TCommandPtr NewLsCommand();
 TCommandPtr NewMkDirCommand();
 TCommandPtr NewMountCommand();
@@ -61,6 +62,7 @@ static const TMap<TString, TFactoryFunc> Commands = {
     { "listclusternodes", NewListClusterNodesCommand },
     { "listendpoints", NewListEndpointsCommand },
     { "listfilestores", NewListFileStoresCommand },
+    { "ln", NewLnCommand },
     { "ls", NewLsCommand },
     { "mkdir", NewMkDirCommand },
     { "mount", NewMountCommand },

@@ -31,9 +31,6 @@ namespace NCloud::NFileStore::NStorage {
     xxx(DestroyCheckpoint,                  __VA_ARGS__)                       \
                                                                                \
     xxx(ResolvePath,                        __VA_ARGS__)                       \
-    xxx(UnlinkNode,                         __VA_ARGS__)                       \
-    xxx(RenameNode,                         __VA_ARGS__)                       \
-    xxx(ReadLink,                           __VA_ARGS__)                       \
                                                                                \
 // FILESTORE_SERVICE_REQUESTS_FWD
 
@@ -44,6 +41,10 @@ namespace NCloud::NFileStore::NStorage {
     xxx(SetNodeXAttr,                       __VA_ARGS__)                       \
     xxx(ListNodeXAttr,                      __VA_ARGS__)                       \
     xxx(RemoveNodeXAttr,                    __VA_ARGS__)                       \
+                                                                               \
+    xxx(UnlinkNode,                         __VA_ARGS__)                       \
+    xxx(RenameNode,                         __VA_ARGS__)                       \
+    xxx(ReadLink,                           __VA_ARGS__)                       \
 // FILESTORE_SERVICE_REQUESTS_FWD_TO_SHARD_BY_NODE_ID
 
 #define FILESTORE_SERVICE_REQUESTS_FWD_TO_SHARD_BY_HANDLE(xxx, ...)            \

@@ -183,6 +183,17 @@ public:
                 DumpLine(RDiff() + "DATA: ", rhash);
             }
         }
+
+        if (lattr.GetType() == NProto::E_LINK_NODE
+                && rattr.GetType() == NProto::E_LINK_NODE)
+        {
+            const auto lcontent = ReadLink(lsession, lattr.GetId());
+            const auto rcontent = ReadLink(rsession, rattr.GetId());
+            if (lcontent != rcontent) {
+                DumpLine(LDiff() + "LINK: ", lcontent);
+                DumpLine(RDiff() + "LINK: ", rcontent);
+            }
+        }
     }
 
     bool Execute() override
