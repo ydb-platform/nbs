@@ -97,6 +97,32 @@ func create(
 		if err != nil {
 			return err
 		}
+
+		snapshotConfig := config.GetDataplaneConfig().GetSnapshotConfig()
+		if snapshotConfig.GetMigrationDestinationStorageConfig() != nil {
+			migrationDestinationDb, err := persistence.NewYDBClient(
+				ctx,
+				snapshotConfig.GetMigrationDestinationStorageConfig(),
+				metrics.NewEmptyRegistry(),
+				persistence.WithCredentials(creds),
+			)
+			if err != nil {
+				return err
+			}
+			defer migrationDestinationDb.Close(ctx)
+
+			err = initDataplane(
+				ctx,
+				config,
+				creds,
+				migrationDestinationDb,
+				dropUnusedColumns,
+			)
+			if err != nil {
+				return err
+			}
+
+		}
 	}
 
 	// TODO: should not use GrpcConfig here.
