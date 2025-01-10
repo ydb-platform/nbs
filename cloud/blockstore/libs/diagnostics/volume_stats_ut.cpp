@@ -632,7 +632,6 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
         const TVector<TString>& strictSLACloudIds,
         bool reportStrictSLA)
     {
-
         auto inactivityTimeout = TDuration::MilliSeconds(10);
 
         auto monitoring = CreateMonitoringServiceStub();
