@@ -227,11 +227,13 @@ func run(
 			if err != nil {
 				return err
 			}
-
-			registry := mon.NewRegistry("migration_s3_client")
-			migrationDestinationS3, err = persistence.NewS3ClientFromConfig(s3Config, registry)
-			if err != nil {
-				return err
+			migrationDestinationS3Config := migrationDestinationStorageConfig.GetS3Config()
+			if migrationDestinationS3Config != nil {
+				registry := mon.NewRegistry("migration_s3_client")
+				migrationDestinationS3, err = persistence.NewS3ClientFromConfig(migrationDestinationS3Config, registry)
+				if err != nil {
+					return err
+				}
 			}
 		}
 
