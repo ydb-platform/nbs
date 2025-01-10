@@ -625,8 +625,8 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
         const TVector<TString>& strictSLACloudIds,
         bool reportStrictSLA)
     {
-        auto warmupTimer = GetCyclesPerMillisecond();
-        Y_UNUSED(warmupTimer);
+        // warming up NHPTimer, see issue #2830 for more info
+        Y_UNUSED(GetCyclesPerMillisecond());
 
         auto inactivityTimeout = TDuration::MilliSeconds(10);
 

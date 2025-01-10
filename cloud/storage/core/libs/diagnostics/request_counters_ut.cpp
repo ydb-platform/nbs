@@ -681,8 +681,8 @@ Y_UNIT_TEST_SUITE(TRequestCountersTest)
 
     Y_UNIT_TEST(ShouldReportHistogramAsMultipleSensors)
     {
-        auto warmupTimer = GetCyclesPerMillisecond();
-        Y_UNUSED(warmupTimer);
+        // warming up NHPTimer, see issue #2830 for more info
+        Y_UNUSED(GetCyclesPerMillisecond());
 
         auto monitoring = CreateMonitoringServiceStub();
         auto counters = MakeRequestCountersPtr(
@@ -722,8 +722,8 @@ Y_UNIT_TEST_SUITE(TRequestCountersTest)
 
     Y_UNIT_TEST(ShouldReportHistogramAsSingleSensor)
     {
-        auto warmupTimer = GetCyclesPerMillisecond();
-        Y_UNUSED(warmupTimer);
+        // warming up NHPTimer, see issue #2830 for more info
+        Y_UNUSED(GetCyclesPerMillisecond());
 
         auto monitoring = CreateMonitoringServiceStub();
         auto counters = MakeRequestCountersPtr(
