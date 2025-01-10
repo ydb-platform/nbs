@@ -208,6 +208,10 @@ private:
         const TEvService::TEvRunVolumesLivenessCheckResponse::TPtr& ev,
         const NActors::TActorContext& ctx);
 
+    void HandleAddTagsRequest(
+        const TEvService::TEvAddTagsRequest::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
     bool HandleRequests(STFUNC_SIG);
 
     BLOCKSTORE_STORAGE_SERVICE(BLOCKSTORE_IMPLEMENT_REQUEST, TEvService)

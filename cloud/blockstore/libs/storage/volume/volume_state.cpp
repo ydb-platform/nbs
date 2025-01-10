@@ -310,7 +310,7 @@ void TVolumeState::Reset()
             TDuration::TryParse(value, MaxTimedOutDeviceStateDuration);
         } else if (tag == "use-fastpath") {
             UseFastPath = true;
-        } else if (tag == "use-intermediate-write-buffer") {
+        } else if (tag == IntermediateWriteBufferTagName) {
             UseIntermediateWriteBuffer = true;
         }
     }

@@ -1103,4 +1103,8 @@ message TStorageServiceConfig
     optional uint32 ForcedCompactionRangeCountPerRun = 401;
 
     optional bool YdbViewerServiceEnabled = 402;
+
+    // When enabled, tag "use-intermediate-write-buffer" will be added
+    // after scrubbing finds a mismatch
+    optional bool AutomaticallyEnableBufferCopyingAfterChecksumMismatch = 403;
 }

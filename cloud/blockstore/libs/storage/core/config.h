@@ -631,6 +631,8 @@ public:
     [[nodiscard]] bool GetCalculateSplittedUsedQuotaMetric() const;
 
     bool GetYdbViewerServiceEnabled() const;
+
+    bool GetAutomaticallyEnableBufferCopyingAfterChecksumMismatch() const;
 };
 
 ui64 GetAllocationUnit(

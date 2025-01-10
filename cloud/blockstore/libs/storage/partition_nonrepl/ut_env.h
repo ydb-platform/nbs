@@ -236,6 +236,48 @@ private:
 
 ////////////////////////////////////////////////////////////////////////////////
 
+class TStorageServiceMock final
+    : public NActors::TActor<TStorageServiceMock>
+{
+public:
+    TStorageServiceMock()
+        : TActor(&TThis::StateWork)
+    {
+    }
+
+private:
+    STFUNC(StateWork)
+    {
+        switch (ev->GetTypeRewrite()) {
+            HFunc(NActors::TEvents::TEvPoisonPill, HandlePoisonPill);
+
+            HFunc(TEvService::TEvAddTagsRequest, HandleAddTagsRequest);
+
+            default:
+                Y_ABORT("Unexpected event %x", ev->GetTypeRewrite());
+        }
+    }
+
+    void HandlePoisonPill(
+        const NActors::TEvents::TEvPoisonPill::TPtr& ev,
+        const NActors::TActorContext& ctx)
+    {
+        Y_UNUSED(ev);
+
+        Die(ctx);
+    }
+
+    void HandleAddTagsRequest(
+        const TEvService::TEvAddTagsRequest::TPtr& ev,
+        const NActors::TActorContext& ctx)
+    {
+        Y_UNUSED(ev);
+        Y_UNUSED(ctx);
+    }
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
 class TPartitionClient
 {
 private:

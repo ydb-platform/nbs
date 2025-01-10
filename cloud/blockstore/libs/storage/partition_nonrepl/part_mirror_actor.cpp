@@ -12,6 +12,7 @@
 #include <cloud/blockstore/libs/storage/core/probes.h>
 #include <cloud/blockstore/libs/storage/core/proto_helpers.h>
 #include <cloud/blockstore/libs/storage/core/unimplemented.h>
+#include <cloud/blockstore/libs/storage/volume/volume_state.h>
 
 #include <contrib/ydb/core/base/appdata.h>
 
@@ -208,6 +209,11 @@ void TMirrorPartitionActor::CompareChecksums(const TActorContext& ctx)
             DiskId.c_str(),
             DescribeRange(GetScrubbingRange()).c_str());
 
+        if (Config->GetAutomaticallyEnableBufferCopyingAfterChecksumMismatch())
+        {
+            AddTagForBufferCopying(ctx);
+        }
+
         for (size_t i = 0; i < checksums.size(); i++) {
             LOG_ERROR(
                 ctx,
@@ -273,6 +279,25 @@ void TMirrorPartitionActor::StartResyncRange(
         std::move(replicas),
         State.GetRWClientId(),
         BlockDigestGenerator);
+}
+
+void TMirrorPartitionActor::AddTagForBufferCopying(
+    const NActors::TActorContext& ctx)
+{
+    auto requestInfo = CreateRequestInfo(
+        SelfId(),
+        0,  // cookie
+        MakeIntrusive<TCallContext>()
+    );
+
+    TVector<TString> tags(1);
+    tags.emplace_back(IntermediateWriteBufferTagName);
+    auto request = std::make_unique<TEvService::TEvAddTagsRequest>(
+        DiskId,
+        std::move(tags)
+    );
+
+    ctx.Send(MakeStorageServiceId(), std::move(request));
 }
 
 void TMirrorPartitionActor::ReplyAndDie(const TActorContext& ctx)
