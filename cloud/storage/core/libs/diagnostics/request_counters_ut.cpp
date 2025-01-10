@@ -726,9 +726,6 @@ Y_UNIT_TEST_SUITE(TRequestCountersTest)
 
     Y_UNIT_TEST(ShouldReportHistogramAsSingleSensor)
     {
-        // NHPTimer warmup, see issue #2830 for more information
-        Y_UNUSED(GetCyclesPerMillisecond());
-
         auto monitoring = CreateMonitoringServiceStub();
         auto counters = MakeRequestCountersPtr(
             TRequestCounters::EOption::ReportDataPlaneHistogram,
