@@ -1894,6 +1894,7 @@ Y_UNIT_TEST_SUITE(TVolumeStateTest)
 
             return TVolumeState{
                 MakeConfig(10s, 0s),
+                CreateDiagnosticsConfig(),
                 std::move(meta),
                 {},     // metaHistory
                 {},     // volumeParams
@@ -1901,7 +1902,8 @@ Y_UNIT_TEST_SUITE(TVolumeStateTest)
                 {},     // infos
                 {},     // mountHistory
                 {},     // checkpointRequests
-                false   // startPartitionsNeeded
+                false,  // startPartitionsNeeded
+
             };
         };
 
