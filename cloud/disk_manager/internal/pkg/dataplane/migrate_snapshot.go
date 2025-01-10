@@ -143,7 +143,7 @@ func (t *migrateSnapshotToAnotherDatabaseTask) GetMetadata(
 }
 
 func (t *migrateSnapshotToAnotherDatabaseTask) GetResponse() proto.Message {
-	return &protos.CreateSnapshotFromLegacySnapshotResponse{
+	return &protos.MigrateSnapshotToAnotherDatabaseResponse{
 		SnapshotSize:        t.state.SnapshotSize,
 		SnapshotStorageSize: t.state.SnapshotStorageSize,
 		TransferredDataSize: t.state.TransferredDataSize,
