@@ -27,7 +27,8 @@ func initDataplane(
 	migrationDestinationS3 *persistence.S3Client,
 ) error {
 
-	snapshotConfig := config.GetDataplaneConfig().GetSnapshotConfig()
+	dataplaneConfig := config.GetDataplaneConfig()
+	snapshotConfig := dataplaneConfig.GetSnapshotConfig()
 
 	snapshotMetricsRegistry := mon.NewRegistry("snapshot_storage")
 
@@ -46,10 +47,11 @@ func initDataplane(
 		snapshotMetricsRegistry,
 		snapshotDB,
 	)
+	migrationDestinationStorageConfig := dataplaneConfig.GetMigrationDestinationStorageConfig()
 	var migrationDestinationStorage snapshot_storage.Storage
 	if migrationDestinationDB != nil {
 		migrationDestinationStorage, err = snapshot_storage.NewStorage(
-			snapshotConfig,
+			migrationDestinationStorageConfig,
 			snapshotMetricsRegistry,
 			migrationDestinationDB,
 			migrationDestinationS3,
@@ -66,7 +68,7 @@ func initDataplane(
 		nbsFactory,
 		snapshotStorage,
 		snapshotLegacyStorage,
-		config.GetDataplaneConfig(),
+		dataplaneConfig,
 		snapshotMetricsRegistry,
 		migrationDestinationStorage,
 	)

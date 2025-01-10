@@ -178,7 +178,8 @@ func run(
 	var s3 *persistence.S3Client
 	var s3Bucket string
 
-	if config.GetDataplaneConfig() == nil {
+	dataplaneConfig := config.GetDataplaneConfig()
+	if dataplaneConfig == nil {
 		logging.Info(ctx, "Registering dataplane tasks")
 		err = dataplane.Register(ctx, taskRegistry)
 		if err != nil {
@@ -187,7 +188,7 @@ func run(
 		}
 	} else {
 		logging.Info(ctx, "Initializing YDB client for snapshot database")
-		snapshotConfig := config.GetDataplaneConfig().GetSnapshotConfig()
+		snapshotConfig := dataplaneConfig.GetSnapshotConfig()
 		snapshotDB, err := persistence.NewYDBClient(
 			ctx,
 			snapshotConfig.GetPersistenceConfig(),
@@ -215,19 +216,21 @@ func run(
 
 		var migrationDestinationDB *persistence.YDBClient
 		var migrationDestinationS3 *persistence.S3Client
-		migrationDestinationStorageConfig := snapshotConfig.GetMigrationDestinationStorageConfig()
+		migrationDestinationStorageConfig := dataplaneConfig.GetMigrationDestinationStorageConfig()
 		if migrationDestinationStorageConfig != nil {
 			migrationYdbClientRegistry := mon.NewRegistry("migration_ydb_client")
 			migrationDestinationDB, err = persistence.NewYDBClient(
 				ctx,
-				migrationDestinationStorageConfig,
+				migrationDestinationStorageConfig.GetPersistenceConfig(),
 				migrationYdbClientRegistry,
 				persistence.WithCredentials(creds),
 			)
 			if err != nil {
 				return err
 			}
-			migrationDestinationS3Config := migrationDestinationStorageConfig.GetS3Config()
+			defer migrationDestinationDB.Close(ctx)
+
+			migrationDestinationS3Config := migrationDestinationStorageConfig.GetPersistenceConfig().GetS3Config()
 			if migrationDestinationS3Config != nil {
 				registry := mon.NewRegistry("migration_s3_client")
 				migrationDestinationS3, err = persistence.NewS3ClientFromConfig(migrationDestinationS3Config, registry)

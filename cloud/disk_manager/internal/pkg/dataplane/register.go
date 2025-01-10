@@ -93,7 +93,7 @@ func RegisterForExecution(
 		err = taskRegistry.Register("dataplane.MigrateSnapshotToAnotherDatabaseTask", func() tasks.Task {
 			return &migrateSnapshotToAnotherDatabaseTask{
 				sourceStorage:      storage,
-				destinationStorage: nil,
+				destinationStorage: migrationDestinationStorage,
 				config:             config,
 			}
 		})
