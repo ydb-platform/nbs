@@ -278,7 +278,8 @@ func (c *scheduleCreateSnapshotFromLegacySnapshotTask) run() error {
 	logging.Info(ctx, "Creating task scheduler")
 	taskRegistry := tasks.NewRegistry()
 
-	*(c.serverConfig.TasksConfig).RegularSystemTasksEnabled = false
+	regularSystemTasksEnabled := false
+	c.serverConfig.TasksConfig.RegularSystemTasksEnabled = &regularSystemTasksEnabled
 	taskScheduler, err := tasks.NewScheduler(
 		ctx,
 		taskRegistry,
@@ -362,7 +363,8 @@ func (c *scheduleMigrateSnapshotToAnotherDatabaseTaskCmd) run() error {
 	logging.Info(ctx, "Creating task scheduler")
 	taskRegistry := tasks.NewRegistry()
 
-	*(c.serverConfig.TasksConfig).RegularSystemTasksEnabled = false
+	regularSystemTasksEnabled := false
+	c.serverConfig.TasksConfig.RegularSystemTasksEnabled = &regularSystemTasksEnabled
 	taskScheduler, err := tasks.NewScheduler(
 		ctx,
 		taskRegistry,
