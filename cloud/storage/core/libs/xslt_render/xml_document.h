@@ -1,7 +1,7 @@
 #pragma once
 
 #include <util/generic/fwd.h>
-#include <util/stream/str.h>
+#include <util/string/cast.h>
 
 #include <memory.h>
 
@@ -25,19 +25,14 @@ public:
 
     TXmlNodeWrapper AddChild(const auto& tag, const auto& content)
     {
-        TStringStream out;
-        out << tag;
-        auto tagStr = std::move(out.Str());
-        out.Clear();
-        out << content;
-        return AddChildImpl(std::move(tagStr), std::move(out.Str()));
+        return AddChildImpl(::ToString(tag), ::ToString(content));
     }
 
     TXmlNodeWrapper& AddNamedElement(const auto& name, const auto& value)
     {
-        auto cd = AddChild("item", "");
-        cd.AddChild("name", name);
-        cd.AddChild("value", value);
+        auto item = AddChild("item", "");
+        item.AddChild("name", name);
+        item.AddChild("value", value);
         return *this;
     }
 
