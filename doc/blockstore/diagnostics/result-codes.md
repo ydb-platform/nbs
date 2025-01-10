@@ -28,4 +28,4 @@
 ## Error Flags
 
     EF_SILENT  // A flag that makes the target error EErrorKind::ErrorSilent. Such an error does not increment the fatal error counter. Caution: using this flag with a retryable error makes it non-retryable
-    EF_HW_PROBLEMS_DETECTED  // A flag indicating a problem with the NRD (Non Replicated Disk) or the Disk Agent
+    EF_HW_PROBLEMS_DETECTED  // A flag indicating a hardware problem
