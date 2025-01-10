@@ -130,7 +130,7 @@ void TChangeAgentStateActor::HandlePoisonPill(
     const TActorContext& ctx)
 {
     Y_UNUSED(ev);
-    ReplyAndDie(ctx, MakeError(E_REJECTED, "Tablet is dead"));
+    ReplyAndDie(ctx, MakeTabletIsDeadError(E_REJECTED, __LOCATION__));
 }
 
 void TChangeAgentStateActor::HandleChangeAgentStateResponse(
@@ -170,6 +170,11 @@ void TDiskRegistryActor::HandleHttpInfo_ChangeAgentState(
     const TCgiParameters& params,
     TRequestInfoPtr requestInfo)
 {
+    if (!Config->GetEnableToChangeStatesFromMonpage()) {
+        RejectHttpRequest(ctx, *requestInfo, "Can't change state from monpage");
+        return;
+    }
+
     const auto& newStateRaw = params.Get("NewState");
     const auto& agentId = params.Get("AgentID");
 
@@ -189,7 +194,7 @@ void TDiskRegistryActor::HandleHttpInfo_ChangeAgentState(
         return;
     }
 
-    static const THashSet<NProto::EAgentState> NewStateWhiteList = {
+    static const THashSet<NProto::EAgentState> NewStateWhiteList{
         NProto::EAgentState::AGENT_STATE_ONLINE,
         NProto::EAgentState::AGENT_STATE_WARNING,
     };
@@ -197,6 +202,35 @@ void TDiskRegistryActor::HandleHttpInfo_ChangeAgentState(
     if (!NewStateWhiteList.contains(newState)) {
         RejectHttpRequest(ctx, *requestInfo, "Invalid new state");
         return;
+    }
+
+    const auto agentState = State->GetAgentState(agentId);
+    if (agentState.Empty()) {
+        RejectHttpRequest(ctx, *requestInfo, "Unknown agent");
+        return;
+    }
+
+    static const auto OldStateWhiteList = [&]()
+    {
+        THashSet<NProto::EAgentState> whitelist = {
+            NProto::EAgentState::AGENT_STATE_ONLINE,
+            NProto::EAgentState::AGENT_STATE_WARNING,
+        };
+
+        if (Config->GetEnableToChangeErrorStatesFromMonpage()) {
+            whitelist.emplace(NProto::EAgentState::AGENT_STATE_UNAVAILABLE);
+        }
+
+        return whitelist;
+    }();
+
+
+    if (!OldStateWhiteList.contains(*agentState.Get())) {
+        RejectHttpRequest(
+            ctx,
+            *requestInfo,
+            "Can't change agent state from " +
+                EAgentState_Name(*agentState.Get()));
     }
 
     LOG_INFO(

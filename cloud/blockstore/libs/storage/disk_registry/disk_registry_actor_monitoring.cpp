@@ -512,13 +512,17 @@ void TDiskRegistryActor::RenderDeviceHtmlInfo(
         }
         DIV() { out << "State Message: " << device.GetStateMessage(); }
 
-        if (device.GetState() != NProto::EDeviceState::DEVICE_STATE_ERROR) {
-            DIV()
+        if (Config->GetEnableToChangeStatesFromMonpage()) {
+            if (device.GetState() != NProto::EDeviceState::DEVICE_STATE_ERROR ||
+                Config->GetEnableToChangeErrorStatesFromMonpage())
             {
-                BuildChangeDeviceStateButton(
-                    out,
-                    TabletID(),
-                    device.GetDeviceUUID());
+                DIV()
+                {
+                    BuildChangeDeviceStateButton(
+                        out,
+                        TabletID(),
+                        device.GetDeviceUUID());
+                }
             }
         }
 
@@ -593,7 +597,18 @@ void TDiskRegistryActor::RenderAgentHtmlInfo(
                 << TInstant::MicroSeconds(agent->GetStateTs());
         }
         DIV() {
-            BuildChangeAgentStateButton(out, TabletID(), agent->GetAgentId());
+            if (Config->GetEnableToChangeStatesFromMonpage()) {
+                if (agent->GetState() !=
+                        NProto::EAgentState::AGENT_STATE_UNAVAILABLE ||
+                    Config->GetEnableToChangeErrorStatesFromMonpage())
+                {
+                    BuildChangeAgentStateButton(
+                        out,
+                        TabletID(),
+                        agent->GetAgentId());
+                }
+            }
+
         }
         DIV() { out << "State Message: " << agent->GetStateMessage(); }
         DIV() {

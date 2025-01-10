@@ -131,7 +131,7 @@ void TChangeDeviceStateActor::HandlePoisonPill(
     const TActorContext& ctx)
 {
     Y_UNUSED(ev);
-    ReplyAndDie(ctx, MakeError(E_REJECTED, "Tablet is dead"));
+    ReplyAndDie(ctx, MakeTabletIsDeadError(E_REJECTED, __LOCATION__));
 }
 
 void TChangeDeviceStateActor::HandleChangeDeviceStateResponse(
@@ -171,15 +171,17 @@ void TDiskRegistryActor::HandleHttpInfo_ChangeDeviseState(
     const TCgiParameters& params,
     TRequestInfoPtr requestInfo)
 {
+    if (!Config->GetEnableToChangeStatesFromMonpage()) {
+        RejectHttpRequest(ctx, *requestInfo, "Can't change state from monpage");
+        return;
+    }
     const auto& newStateRaw = params.Get("NewState");
     const auto& deviceUUID = params.Get("DeviceUUID");
-
 
     if (!newStateRaw) {
         RejectHttpRequest(ctx, *requestInfo, "No new state is given");
         return;
     }
-
     if (!deviceUUID) {
         RejectHttpRequest(ctx, *requestInfo, "No device id is given");
         return;
@@ -195,18 +197,32 @@ void TDiskRegistryActor::HandleHttpInfo_ChangeDeviseState(
         NProto::EDeviceState::DEVICE_STATE_ONLINE,
         NProto::EDeviceState::DEVICE_STATE_WARNING,
     };
-
     if (!NewStateWhiteList.contains(newState)) {
         RejectHttpRequest(ctx, *requestInfo, "Invalid new state");
         return;
     }
 
+    static const auto OldStateWhiteList = [&]()
+    {
+        THashSet<NProto::EDeviceState> whitelist = {
+            NProto::EDeviceState::DEVICE_STATE_ONLINE,
+            NProto::EDeviceState::DEVICE_STATE_WARNING,
+        };
+
+        if (Config->GetEnableToChangeErrorStatesFromMonpage()) {
+            whitelist.emplace(NProto::EDeviceState::DEVICE_STATE_ERROR);
+        }
+
+        return whitelist;
+    }();
+
     const auto& device = State->GetDevice(deviceUUID);
-    if (device.GetState() == NProto::DEVICE_STATE_ERROR) {
+    if (!OldStateWhiteList.contains(device.GetState())) {
         RejectHttpRequest(
             ctx,
             *requestInfo,
-            "Can't change state of device in ERROR state");
+            "Can't change device state from " +
+                EDeviceState_Name(device.GetState()));
         return;
     }
 

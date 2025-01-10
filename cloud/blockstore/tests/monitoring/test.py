@@ -436,20 +436,6 @@ class TestDiskRegistryTablet:
             self.session, self.base_url,
             self.dr_id, params, "<h2>Invalid new state</h2>")
 
-        self.client.change_device_state("FileDevice-1", "2")
-
-        params = {
-            "action": "changeDeviceState",
-            "NewState" : "DEVICE_STATE_ONLINE",
-            "DeviceUUID": "FileDevice-1"
-        }
-
-        check_tablet_post_redirect(
-            self.session, self.base_url,
-            self.dr_id, params, "<h2>Can't change state of device in ERROR state</h2>")
-
-        self.client.change_device_state("FileDevice-1", "0")
-
         params = {
             "action": "changeDeviceState",
             "NewState" : "DEVICE_STATE_WARNING",
@@ -878,6 +864,9 @@ def __run_test(test_case):
         storage.NonReplicatedAgentMinTimeout = 3000
         storage.NonReplicatedAgentMaxTimeout = 3000
         storage.NonReplicatedDiskRecyclingPeriod = 5000
+
+    storage.EnableToChangeStatesFromMonpage = True
+    storage.EnableToChangeErrorStatesFromMonpage = True
 
     nbs = Nbs(
         kikimr_port,
