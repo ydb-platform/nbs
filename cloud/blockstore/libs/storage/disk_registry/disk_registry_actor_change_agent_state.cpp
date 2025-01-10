@@ -23,6 +23,7 @@ private:
     const TRequestInfoPtr RequestInfo;
     const TString AgentID;
     const NProto::EAgentState NewState;
+    const NProto::EAgentState OldState;
 
 public:
     TChangeAgentStateActor(
@@ -30,7 +31,8 @@ public:
         ui64 tabletID,
         TRequestInfoPtr requestInfo,
         TString agentId,
-        NProto::EAgentState newState);
+        NProto::EAgentState newState,
+        NProto::EAgentState oldState);
 
     void Bootstrap(const TActorContext& ctx);
 
@@ -61,12 +63,14 @@ TChangeAgentStateActor::TChangeAgentStateActor(
         ui64 tabletID,
         TRequestInfoPtr requestInfo,
         TString agentId,
-        NProto::EAgentState newState)
+        NProto::EAgentState newState,
+        NProto::EAgentState oldState)
     : Owner(owner)
     , TabletID(tabletID)
     , RequestInfo(std::move(requestInfo))
     , AgentID(std::move(agentId))
     , NewState(newState)
+    , OldState(oldState)
 {}
 
 void TChangeAgentStateActor::Bootstrap(const TActorContext& ctx)
@@ -76,6 +80,7 @@ void TChangeAgentStateActor::Bootstrap(const TActorContext& ctx)
 
     request->Record.SetAgentId(AgentID);
     request->Record.SetAgentState(NewState);
+    request->Record.SetReason("Change state from disk registry mon page");
 
     NCloud::Send(ctx, Owner, std::move(request));
 
@@ -110,7 +115,8 @@ void TChangeAgentStateActor::ReplyAndDie(
         Notify(
             ctx,
             TStringBuilder()
-                << "failed to change agent[" << AgentID.Quote() << "] state to "
+                << "failed to change agent[" << AgentID.Quote()
+                << "] state from " << EAgentState_Name(OldState) << " to "
                 << EAgentState_Name(NewState) << ": " << FormatError(error),
             EAlertLevel::DANGER);
     }
@@ -170,7 +176,7 @@ void TDiskRegistryActor::HandleHttpInfo_ChangeAgentState(
     const TCgiParameters& params,
     TRequestInfoPtr requestInfo)
 {
-    if (!Config->GetEnableToChangeStatesFromMonpage()) {
+    if (!Config->GetEnableToChangeStatesFromDiskRegistryMonpage()) {
         RejectHttpRequest(ctx, *requestInfo, "Can't change state from monpage");
         return;
     }
@@ -194,12 +200,12 @@ void TDiskRegistryActor::HandleHttpInfo_ChangeAgentState(
         return;
     }
 
-    static const THashSet<NProto::EAgentState> NewStateWhiteList{
+    static const THashSet<NProto::EAgentState> NewStateWhitelist{
         NProto::EAgentState::AGENT_STATE_ONLINE,
         NProto::EAgentState::AGENT_STATE_WARNING,
     };
 
-    if (!NewStateWhiteList.contains(newState)) {
+    if (!NewStateWhitelist.contains(newState)) {
         RejectHttpRequest(ctx, *requestInfo, "Invalid new state");
         return;
     }
@@ -210,22 +216,12 @@ void TDiskRegistryActor::HandleHttpInfo_ChangeAgentState(
         return;
     }
 
-    static const auto OldStateWhiteList = [&]()
-    {
-        THashSet<NProto::EAgentState> whitelist = {
-            NProto::EAgentState::AGENT_STATE_ONLINE,
-            NProto::EAgentState::AGENT_STATE_WARNING,
-        };
+    static const THashSet<NProto::EAgentState> OldStateAllowlist = {
+        NProto::EAgentState::AGENT_STATE_ONLINE,
+        NProto::EAgentState::AGENT_STATE_WARNING,
+    };
 
-        if (Config->GetEnableToChangeErrorStatesFromMonpage()) {
-            whitelist.emplace(NProto::EAgentState::AGENT_STATE_UNAVAILABLE);
-        }
-
-        return whitelist;
-    }();
-
-
-    if (!OldStateWhiteList.contains(*agentState.Get())) {
+    if (!OldStateAllowlist.contains(*agentState.Get())) {
         RejectHttpRequest(
             ctx,
             *requestInfo,
@@ -236,8 +232,9 @@ void TDiskRegistryActor::HandleHttpInfo_ChangeAgentState(
     LOG_INFO(
         ctx,
         TBlockStoreComponents::DISK_REGISTRY,
-        "Change state of agent[%s] from monitoring page to %s",
+        "Changing state of agent[%s] from monitoring page from %s to %s",
         agentId.Quote().c_str(),
+        EAgentState_Name(*agentState.Get()).c_str(),
         EAgentState_Name(newState).c_str());
 
     auto actor = NCloud::Register<TChangeAgentStateActor>(
@@ -246,7 +243,8 @@ void TDiskRegistryActor::HandleHttpInfo_ChangeAgentState(
         TabletID(),
         std::move(requestInfo),
         agentId,
-        newState);
+        newState,
+        *agentState.Get());
 
     Actors.insert(actor);
 }

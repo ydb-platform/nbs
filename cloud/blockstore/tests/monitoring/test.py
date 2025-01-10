@@ -865,8 +865,8 @@ def __run_test(test_case):
         storage.NonReplicatedAgentMaxTimeout = 3000
         storage.NonReplicatedDiskRecyclingPeriod = 5000
 
-    storage.EnableToChangeStatesFromMonpage = True
-    storage.EnableToChangeErrorStatesFromMonpage = True
+    storage.EnableToChangeStatesFromDiskRegistryMonpage = True
+    storage.EnableToChangeErrorStatesFromDiskRegistryMonpage = True
 
     nbs = Nbs(
         kikimr_port,

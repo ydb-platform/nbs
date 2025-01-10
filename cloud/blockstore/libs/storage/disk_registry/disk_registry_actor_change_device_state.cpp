@@ -24,6 +24,7 @@ private:
     const TRequestInfoPtr RequestInfo;
     const TString DeviceUUID;
     const NProto::EDeviceState NewState;
+    const NProto::EDeviceState OldState;
 
 public:
     TChangeDeviceStateActor(
@@ -31,7 +32,8 @@ public:
         ui64 tabletID,
         TRequestInfoPtr requestInfo,
         TString deviceId,
-        NProto::EDeviceState newState);
+        NProto::EDeviceState newState,
+        NProto::EDeviceState oldState);
 
     void Bootstrap(const TActorContext& ctx);
 
@@ -62,12 +64,14 @@ TChangeDeviceStateActor::TChangeDeviceStateActor(
         ui64 tabletID,
         TRequestInfoPtr requestInfo,
         TString deviceId,
-        NProto::EDeviceState newState)
+        NProto::EDeviceState newState,
+        NProto::EDeviceState oldState)
     : Owner(owner)
     , TabletID(tabletID)
     , RequestInfo(std::move(requestInfo))
     , DeviceUUID(std::move(deviceId))
     , NewState(newState)
+    , OldState(oldState)
 {}
 
 void TChangeDeviceStateActor::Bootstrap(const TActorContext& ctx)
@@ -77,6 +81,7 @@ void TChangeDeviceStateActor::Bootstrap(const TActorContext& ctx)
 
     request->Record.SetDeviceUUID(DeviceUUID);
     request->Record.SetDeviceState(NewState);
+    request->Record.SetReason("Change state from disk registry mon page");
 
     NCloud::Send(ctx, Owner, std::move(request));
 
@@ -110,9 +115,10 @@ void TChangeDeviceStateActor::ReplyAndDie(
     } else {
         Notify(
             ctx,
-            TStringBuilder() << "failed to change device " << DeviceUUID.Quote()
-                             << " state to " << EDeviceState_Name(NewState)
-                             << ": " << FormatError(error),
+            TStringBuilder()
+                << "failed to change device " << DeviceUUID.Quote()
+                << " state from: " << EDeviceState_Name(OldState) << "to "
+                << EDeviceState_Name(NewState) << ": " << FormatError(error),
             EAlertLevel::DANGER);
     }
 
@@ -171,7 +177,7 @@ void TDiskRegistryActor::HandleHttpInfo_ChangeDeviseState(
     const TCgiParameters& params,
     TRequestInfoPtr requestInfo)
 {
-    if (!Config->GetEnableToChangeStatesFromMonpage()) {
+    if (!Config->GetEnableToChangeStatesFromDiskRegistryMonpage()) {
         RejectHttpRequest(ctx, *requestInfo, "Can't change state from monpage");
         return;
     }
@@ -193,23 +199,23 @@ void TDiskRegistryActor::HandleHttpInfo_ChangeDeviseState(
         return;
     }
 
-    static const THashSet<NProto::EDeviceState> NewStateWhiteList = {
+    static const THashSet<NProto::EDeviceState> NewStateWhitelist = {
         NProto::EDeviceState::DEVICE_STATE_ONLINE,
         NProto::EDeviceState::DEVICE_STATE_WARNING,
     };
-    if (!NewStateWhiteList.contains(newState)) {
+    if (!NewStateWhitelist.contains(newState)) {
         RejectHttpRequest(ctx, *requestInfo, "Invalid new state");
         return;
     }
 
-    static const auto OldStateWhiteList = [&]()
+    static const auto OldStateAllowlist = [&]()
     {
         THashSet<NProto::EDeviceState> whitelist = {
             NProto::EDeviceState::DEVICE_STATE_ONLINE,
             NProto::EDeviceState::DEVICE_STATE_WARNING,
         };
 
-        if (Config->GetEnableToChangeErrorStatesFromMonpage()) {
+        if (Config->GetEnableToChangeErrorStatesFromDiskRegistryMonpage()) {
             whitelist.emplace(NProto::EDeviceState::DEVICE_STATE_ERROR);
         }
 
@@ -217,7 +223,7 @@ void TDiskRegistryActor::HandleHttpInfo_ChangeDeviseState(
     }();
 
     const auto& device = State->GetDevice(deviceUUID);
-    if (!OldStateWhiteList.contains(device.GetState())) {
+    if (!OldStateAllowlist.contains(device.GetState())) {
         RejectHttpRequest(
             ctx,
             *requestInfo,
@@ -229,8 +235,9 @@ void TDiskRegistryActor::HandleHttpInfo_ChangeDeviseState(
     LOG_INFO(
         ctx,
         TBlockStoreComponents::DISK_REGISTRY,
-        "Change state of device[%s] from monitoring page to %s",
+        "Changing state of device[%s] from monitoring page from %s to %s",
         deviceUUID.Quote().c_str(),
+        EDeviceState_Name(device.GetState()).c_str(),
         EDeviceState_Name(newState).c_str());
 
     auto actor = NCloud::Register<TChangeDeviceStateActor>(
@@ -239,7 +246,8 @@ void TDiskRegistryActor::HandleHttpInfo_ChangeDeviseState(
         TabletID(),
         std::move(requestInfo),
         deviceUUID,
-        newState);
+        newState,
+        device.GetState());
 
     Actors.insert(actor);
 }

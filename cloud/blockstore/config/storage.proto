@@ -1085,9 +1085,8 @@ message TStorageServiceConfig
     optional double DiskRegistryInitialAgentRejectionThreshold = 396;
 
     // Enable buttons for agent/device state changing.
-    optional bool EnableToChangeStatesFromMonpage = 397;
+    optional bool EnableToChangeStatesFromDiskRegistryMonpage = 397;
 
-    // Enable buttons for agent/device state changing,
-    // when they in unavailable/error state.
-    optional bool EnableToChangeErrorStatesFromMonpage = 398;
+    // Enable buttons for device state changing, when they in error state.
+    optional bool EnableToChangeErrorStatesFromDiskRegistryMonpage = 398;
 }

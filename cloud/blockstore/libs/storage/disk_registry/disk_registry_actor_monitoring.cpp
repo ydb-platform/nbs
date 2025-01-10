@@ -512,9 +512,9 @@ void TDiskRegistryActor::RenderDeviceHtmlInfo(
         }
         DIV() { out << "State Message: " << device.GetStateMessage(); }
 
-        if (Config->GetEnableToChangeStatesFromMonpage()) {
+        if (Config->GetEnableToChangeStatesFromDiskRegistryMonpage()) {
             if (device.GetState() != NProto::EDeviceState::DEVICE_STATE_ERROR ||
-                Config->GetEnableToChangeErrorStatesFromMonpage())
+                Config->GetEnableToChangeErrorStatesFromDiskRegistryMonpage())
             {
                 DIV()
                 {
@@ -597,10 +597,9 @@ void TDiskRegistryActor::RenderAgentHtmlInfo(
                 << TInstant::MicroSeconds(agent->GetStateTs());
         }
         DIV() {
-            if (Config->GetEnableToChangeStatesFromMonpage()) {
+            if (Config->GetEnableToChangeStatesFromDiskRegistryMonpage()) {
                 if (agent->GetState() !=
-                        NProto::EAgentState::AGENT_STATE_UNAVAILABLE ||
-                    Config->GetEnableToChangeErrorStatesFromMonpage())
+                    NProto::EAgentState::AGENT_STATE_UNAVAILABLE)
                 {
                     BuildChangeAgentStateButton(
                         out,
