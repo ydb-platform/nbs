@@ -10,6 +10,7 @@
 #include <library/cpp/monlib/dynamic_counters/counters.h>
 #include <library/cpp/monlib/metrics/metric_consumer.h>
 #include <library/cpp/monlib/metrics/metric_registry.h>
+#include <library/cpp/testing/hook/hook.h>
 #include <library/cpp/testing/unittest/registar.h>
 
 #include <util/datetime/cputimer.h>
@@ -83,6 +84,12 @@ void Mount(
 
 Y_UNIT_TEST_SUITE(TVolumeStatsTest)
 {
+    Y_TEST_HOOK_BEFORE_RUN(InitTest)
+    {
+        // NHPTimer warmup, see issue #2830 for more information
+        Y_UNUSED(GetCyclesPerMillisecond());
+    }
+
     Y_UNIT_TEST(ShouldTrackRequestsPerVolume)
     {
         auto monitoring = CreateMonitoringServiceStub();
@@ -625,8 +632,6 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
         const TVector<TString>& strictSLACloudIds,
         bool reportStrictSLA)
     {
-        // NHPTimer warmup, see issue #2830 for more information
-        Y_UNUSED(GetCyclesPerMillisecond());
 
         auto inactivityTimeout = TDuration::MilliSeconds(10);
 

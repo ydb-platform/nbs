@@ -7,6 +7,7 @@
 #include "cloud/storage/core/libs/diagnostics/histogram_types.h"
 
 #include <library/cpp/monlib/dynamic_counters/counters.h>
+#include <library/cpp/testing/hook/hook.h>
 #include <library/cpp/testing/unittest/registar.h>
 
 #include <util/datetime/cputimer.h>
@@ -131,6 +132,12 @@ auto MakeRequestCountersPtr(
 
 Y_UNIT_TEST_SUITE(TRequestCountersTest)
 {
+    Y_TEST_HOOK_BEFORE_RUN(InitTest)
+    {
+        // NHPTimer warmup, see issue #2830 for more information
+        Y_UNUSED(GetCyclesPerMillisecond());
+    }
+
     Y_UNIT_TEST(ShouldTrackRequestsInProgress)
     {
         auto monitoring = CreateMonitoringServiceStub();
@@ -681,9 +688,6 @@ Y_UNIT_TEST_SUITE(TRequestCountersTest)
 
     Y_UNIT_TEST(ShouldReportHistogramAsMultipleSensors)
     {
-        // NHPTimer warmup, see issue #2830 for more information
-        Y_UNUSED(GetCyclesPerMillisecond());
-
         auto monitoring = CreateMonitoringServiceStub();
         auto counters = MakeRequestCountersPtr(
             TRequestCounters::EOption::ReportDataPlaneHistogram,
