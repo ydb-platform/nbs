@@ -1,4 +1,5 @@
 import argparse
+import logging
 import os
 
 import yatest.common as common
@@ -57,6 +58,9 @@ def start(argv):
 
 
 def stop(argv):
+    # TODO(#2831): remove this debug information
+    logging.info(os.system("ps aux"))
+
     if not os.path.exists(PID_FILE_NAME):
         return
 
