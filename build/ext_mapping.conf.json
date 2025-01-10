@@ -41,7 +41,7 @@
         "2831814743": "cloud/disk_manager/internal/pkg/dataplane/url/tests|cloud/disk_manager/internal/pkg/dataplane/url/vmdk/tests",
         "9413258143": "csi-sanity tests binary: https://github.com/kubernetes-csi/csi-test",
         "976686287": "breakpad init library",
-        "976687783": "minidump-2-core utility"
+        "976687783": "minidump-2-core binary"
     },
     "tasks": {}
 }
