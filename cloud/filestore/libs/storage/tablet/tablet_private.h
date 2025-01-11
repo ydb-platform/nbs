@@ -168,7 +168,8 @@ using TCreateNodeInShardResult = std::variant<
 
 using TUnlinkNodeInShardResult = std::variant<
     NProto::TUnlinkNodeResponse,
-    NProto::TRenameNodeResponse>;
+    NProto::TRenameNodeResponse,
+    NProtoPrivate::TRenameNodeInDestinationResponse>;
 
 ////////////////////////////////////////////////////////////////////////////////
 

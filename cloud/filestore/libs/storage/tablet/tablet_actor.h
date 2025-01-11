@@ -612,6 +612,13 @@ private:
         ui64 opLogEntryId,
         TUnlinkNodeInShardResult result);
 
+    void RegisterRenameNodeInDestinationActor(
+        const NActors::TActorContext& ctx,
+        TRequestInfoPtr requestInfo,
+        NProtoPrivate::TRenameNodeInDestinationRequest request,
+        ui64 requestId,
+        ui64 opLogEntryId);
+
     void ReplayOpLog(
         const NActors::TActorContext& ctx,
         const TVector<NProto::TOpLogEntry>& opLog);

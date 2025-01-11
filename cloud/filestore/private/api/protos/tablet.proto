@@ -748,3 +748,48 @@ message TRestartTabletResponse
     // Optional error, set only if error happened.
     NCloud.NProto.TError Error = 1;
 }
+
+////////////////////////////////////////////////////////////////////////////////
+// RenameNodeInDestination request/response
+
+message TRenameNodeInDestinationRequest
+{
+    enum EFlags
+    {
+        F_NONE = 0;
+        F_EXCHANGE = 1;
+        F_NOREPLACE = 2;
+    }
+
+    // Optional request headers.
+    NProto.THeaders Headers = 1;
+
+    // FileSystem identifier.
+    string FileSystemId = 2;
+
+    // New parent Node
+    uint64 NewParentId = 3;
+
+    // New node name.
+    bytes NewName = 4;
+
+    // Optional linux specific flags.
+    uint32 Flags = 5;
+
+    // Source node info.
+    string SourceNodeShardId = 6;
+    string SourceNodeShardNodeName = 7;
+}
+
+message TRenameNodeInDestinationResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+
+    // Needed if F_EXCHANGE flag is used.
+    string OldTargetNodeShardId = 2;
+    string OldTargetNodeShardNodeName = 3;
+
+    // Optional response headers.
+    NProto.TResponseHeaders Headers = 1000;
+}

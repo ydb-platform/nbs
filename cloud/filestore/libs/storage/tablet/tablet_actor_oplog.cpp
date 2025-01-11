@@ -39,6 +39,8 @@ void TIndexTabletActor::ReplayOpLog(
                 op.GetEntryId(),
                 {} // result
             );
+        } else if (op.HasRenameNodeInDestinationRequest()) {
+            // TODO(#2674): lock SourceNodeRef, send request
         } else {
             TABLET_VERIFY_C(
                 0,

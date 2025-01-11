@@ -72,6 +72,50 @@ void TIndexTabletActor::HandleRenameNode(
 
     AddTransaction<TEvService::TRenameNodeMethod>(*requestInfo);
 
+    // we have separate logic for cross-shard move ops, see the following link
+    // for more details:
+    // https://github.com/ydb-platform/nbs/issues/2674#issuecomment-2578785398
+    const auto& shardIds = GetFileSystem().GetShardFileSystemIds();
+    if (!shardIds.empty()) {
+        const auto shardNo = GetFileSystem().GetShardNo();
+        const auto parentShardNo = ExtractShardNo(msg->Record.GetNodeId());
+        if (parentShardNo != shardNo) {
+            auto message = ReportRenameNodeRequestSentToWrongShard(
+                TStringBuilder() << "RenameNode: "
+                    << msg->Record.ShortDebugString() << " received by shard "
+                    << shardNo << ", expected: " << parentShardNo);
+            auto response = std::make_unique<TEvService::TEvRenameNodeResponse>(
+                MakeError(E_ARGUMENT, std::move(message)));
+            NCloud::Reply(ctx, *requestInfo, std::move(response));
+            return;
+        }
+
+        const auto newParentShardNo =
+            ExtractShardNo(msg->Record.GetNewParentId());
+        if (newParentShardNo > static_cast<ui32>(shardIds.size())
+                || newParentShardNo == 0)
+        {
+            auto message = ReportInvalidShardNo(
+                TStringBuilder() << "RenameNode: "
+                    << msg->Record.ShortDebugString() << " newParentShardNo: "
+                    << newParentShardNo << ", shard count: "
+                    << shardIds.size());
+            auto response = std::make_unique<TEvService::TEvRenameNodeResponse>(
+                MakeError(E_ARGUMENT, std::move(message)));
+            NCloud::Reply(ctx, *requestInfo, std::move(response));
+            return;
+        }
+
+        if (newParentShardNo != GetFileSystem().GetShardNo()) {
+            ExecuteTx<TPrepareRenameNodeInSource>(
+                ctx,
+                std::move(requestInfo),
+                std::move(msg->Record),
+                shardIds[newParentShardNo - 1]);
+            return;
+        }
+    }
+
     ExecuteTx<TRenameNode>(
         ctx,
         std::move(requestInfo),
