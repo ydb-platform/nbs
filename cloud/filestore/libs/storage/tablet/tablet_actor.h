@@ -741,6 +741,10 @@ private:
         const TEvIndexTabletPrivate::TEvNodeUnlinkedInShard::TPtr& ev,
         const NActors::TActorContext& ctx);
 
+    void HandleNodeRenamedInDestination(
+        const TEvIndexTabletPrivate::TEvNodeRenamedInDestination::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
     void HandleGetShardStatsCompleted(
         const TEvIndexTabletPrivate::TEvGetShardStatsCompleted::TPtr& ev,
         const NActors::TActorContext& ctx);

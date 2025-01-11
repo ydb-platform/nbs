@@ -790,9 +790,9 @@ struct TTxIndexTablet
             : TSessionAware(request)
             , RequestInfo(std::move(requestInfo))
             , ParentNodeId(request.GetNodeId())
-            , Name(std::move(*request.MutableName()))
+            , Name(request.GetName())
             , NewParentNodeId(request.GetNewParentId())
-            , NewName(std::move(*request.MutableNewName()))
+            , NewName(request.GetNewName())
             , Flags(request.GetFlags())
             , Request(std::move(request))
         {}
@@ -847,7 +847,7 @@ struct TTxIndexTablet
             : TSessionAware(request)
             , RequestInfo(std::move(requestInfo))
             , ParentNodeId(request.GetNodeId())
-            , Name(std::move(*request.MutableName()))
+            , Name(request.GetName())
             , Request(std::move(request))
             , NewParentShardId(std::move(newParentShardId))
         {}
@@ -926,25 +926,23 @@ struct TTxIndexTablet
         , TIndexStateNodeUpdates
     {
         const TRequestInfoPtr RequestInfo;
-        const ui64 ParentNodeId;
-        const TString Name;
+        const NProto::TRenameNodeRequest Request;
+        const NProtoPrivate::TRenameNodeInDestinationResponse Response;
 
         ui64 CommitId = InvalidCommitId;
-        TMaybe<IIndexTabletDatabase::TNode> ParentNode;
-        TMaybe<IIndexTabletDatabase::TNode> ChildNode;
         TMaybe<IIndexTabletDatabase::TNodeRef> ChildRef;
 
         const ui64 OpLogEntryId;
-        NProto::TError Error;
 
         TCommitRenameNodeInSource(
                 TRequestInfoPtr requestInfo,
                 NProto::TRenameNodeRequest request,
+                NProtoPrivate::TRenameNodeInDestinationResponse response,
                 ui64 opLogEntryId)
             : TSessionAware(request)
             , RequestInfo(std::move(requestInfo))
-            , ParentNodeId(request.GetNodeId())
-            , Name(std::move(*request.MutableName()))
+            , Request(std::move(request))
+            , Response(std::move(response))
             , OpLogEntryId(opLogEntryId)
         {}
 
@@ -952,8 +950,6 @@ struct TTxIndexTablet
         {
             TIndexStateNodeUpdates::Clear();
             CommitId = InvalidCommitId;
-            ParentNode.Clear();
-            ChildNode.Clear();
             ChildRef.Clear();
         }
     };

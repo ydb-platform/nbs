@@ -50,6 +50,10 @@ void TIndexTabletActor::HandleRenameNodeInDestination(
     //  <NewParentNodeId, NewChildName> now points to the file unlinked in p.4
     //  So both the new and the old file are now deleted plus we have a NodeRef
     //  pointing to a deleted file
+    //
+    //  A more reliable way to prevent such a race is to lock the affected
+    //  NodeRef in destination shard and unlock it after
+    //  CommitRenameNodeInSource
     /*
     const auto requestId = GetRequestId(msg->Record);
     if (const auto* e = session->LookupDupEntry(requestId)) {
@@ -122,7 +126,16 @@ bool TIndexTabletActor::PrepareTx_RenameNodeInDestination(
 
     if (args.NewChildRef) {
         if (HasFlag(args.Flags, NProto::TRenameNodeRequest::F_NOREPLACE)) {
-            args.Error = ErrorAlreadyExists(args.NewName);
+            if (args.NewChildRef->ShardId == args.Request.GetSourceNodeShardId()
+                    && args.NewChildRef->ShardNodeName
+                    == args.Request.GetSourceNodeShardNodeName())
+            {
+                // just an extra precaution for the case of DupCache-related
+                // bugs
+                args.Error = MakeError(S_ALREADY);
+            } else {
+                args.Error = ErrorAlreadyExists(args.NewName);
+            }
             return true;
         }
 
@@ -167,7 +180,7 @@ void TIndexTabletActor::ExecuteTx_RenameNodeInDestination(
     TTransactionContext& tx,
     TTxIndexTablet::TRenameNodeInDestination& args)
 {
-    FILESTORE_VALIDATE_TX_ERROR(RenameNode, args);
+    FILESTORE_VALIDATE_TX_ERROR(RenameNodeInDestination, args);
     if (args.Error.GetCode() == S_ALREADY) {
         return; // nothing to do
     }
@@ -176,7 +189,7 @@ void TIndexTabletActor::ExecuteTx_RenameNodeInDestination(
 
     args.CommitId = GenerateCommitId();
     if (args.CommitId == InvalidCommitId) {
-        return RebootTabletOnCommitOverflow(ctx, "RenameNode");
+        return RebootTabletOnCommitOverflow(ctx, "RenameNodeInDestination");
     }
 
     if (args.NewChildRef) {

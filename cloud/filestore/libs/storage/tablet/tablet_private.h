@@ -646,6 +646,36 @@ struct TEvIndexTabletPrivate
     };
 
     //
+    // NodeRenamedInDestination
+    //
+
+    struct TNodeRenamedInDestination
+    {
+        const TRequestInfoPtr RequestInfo;
+        const TString SessionId;
+        const ui64 RequestId;
+        const ui64 OpLogEntryId;
+        NProto::TRenameNodeRequest Request;
+        NProtoPrivate::TRenameNodeInDestinationResponse Response;
+
+        TNodeRenamedInDestination(
+                TRequestInfoPtr requestInfo,
+                TString sessionId,
+                ui64 requestId,
+                ui64 opLogEntryId,
+                NProto::TRenameNodeRequest request,
+                NProtoPrivate::TRenameNodeInDestinationResponse response)
+            : RequestInfo(std::move(requestInfo))
+            , SessionId(std::move(sessionId))
+            , RequestId(requestId)
+            , OpLogEntryId(opLogEntryId)
+            , Request(std::move(request))
+            , Response(std::move(response))
+        {
+        }
+    };
+
+    //
     // DumpCompactionRange
     //
 
@@ -874,6 +904,7 @@ struct TEvIndexTabletPrivate
 
         EvNodeCreatedInShard,
         EvNodeUnlinkedInShard,
+        EvNodeRenamedInDestination,
 
         EvGetShardStatsCompleted,
 
@@ -913,6 +944,9 @@ struct TEvIndexTabletPrivate
 
     using TEvNodeUnlinkedInShard =
         TRequestEvent<TNodeUnlinkedInShard, EvNodeUnlinkedInShard>;
+
+    using TEvNodeRenamedInDestination =
+        TRequestEvent<TNodeRenamedInDestination, EvNodeRenamedInDestination>;
 
     using TEvGetShardStatsCompleted =
         TResponseEvent<TGetShardStatsCompleted, EvGetShardStatsCompleted>;

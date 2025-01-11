@@ -465,7 +465,10 @@ bool TIndexTabletActor::PrepareTx_CreateNode(
             && Config->GetShardIdSelectionInLeaderEnabled()
             && !GetFileSystem().GetShardFileSystemIds().empty()
             && (args.Attrs.GetType() == NProto::E_REGULAR_NODE
-                || Config->GetDirectoryCreationInShardsEnabled()))
+                || Config->GetDirectoryCreationInShardsEnabled()
+                // otherwise there might be some local nodes which breaks
+                // current cross-shard RenameNode implementation
+                && GetLastNodeId() == RootNodeId))
     {
         args.Error = SelectShard(args.Attrs.GetSize(), &args.ShardId);
         if (HasError(args.Error)) {

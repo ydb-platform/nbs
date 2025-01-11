@@ -52,6 +52,7 @@ namespace NCloud::NFileStore{
     xxx(LocalFsDuplicateFileHandle)                                            \
     xxx(UnexpectedLocalNode)                                                   \
     xxx(NoRenameNodeInDestinationRequest)                                      \
+    xxx(BadChildRefUponCommitRenameNodeInSource)                               \
 // FILESTORE_IMPOSSIBLE_EVENTS
 
 ////////////////////////////////////////////////////////////////////////////////

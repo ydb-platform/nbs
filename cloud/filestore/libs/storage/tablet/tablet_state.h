@@ -730,6 +730,12 @@ FILESTORE_DUPCACHE_REQUESTS(FILESTORE_DECLARE_DUPCACHE)
         ui64 requestId,
         NProto::TCreateNodeResponse response);
 
+    void PatchDupCacheEntry(
+        TIndexTabletDatabase& db,
+        const TString& sessionId,
+        ui64 requestId,
+        NProto::TRenameNodeResponse response);
+
     void CommitDupCacheEntry(
         const TString& sessionId,
         ui64 requestId);

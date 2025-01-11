@@ -779,6 +779,10 @@ message TRenameNodeInDestinationRequest
     // Source node info.
     string SourceNodeShardId = 6;
     string SourceNodeShardNodeName = 7;
+
+    // Passing the whole original request might be an overkill but it actually
+    // may help with debugging.
+    NProto.TRenameNodeRequest OriginalRequest = 8;
 }
 
 message TRenameNodeInDestinationResponse
