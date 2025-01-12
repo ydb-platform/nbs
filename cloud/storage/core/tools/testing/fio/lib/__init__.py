@@ -175,12 +175,25 @@ class TestCase:
         cmd += ["--filename", file_name]
         return cmd
 
-    def get_index_fio_cmd(self, fio_bin, directory):
+    def get_index_fio_cmd(self, fio_bin, directory, verbose=False):
         cmd = self.get_common_fio_cmd(fio_bin)
         cmd += [
             "--directory", directory,
             "--numjobs", str(self.numjobs)
         ]
+        if verbose:
+            cmd += [
+                "--write_iolog",
+                os.path.join(common.output_path(), f"{self.name}.iolog"),
+                "--log_issue_time",
+                "1",
+                "--write_lat_log",
+                os.path.join(common.output_path(), f"{self.name}.lat.log"),
+                "--write_bw_log",
+                os.path.join(common.output_path(), f"{self.name}.bw.log"),
+                "--log_offset",
+                "1",
+            ]
         if self.fsync > 0:
             cmd += ["--fsync", str(self.fsync)]
         if self.fdatasync > 0:
@@ -311,7 +324,7 @@ def run_test(file_name, test, fail_on_errors=False):
     return _execute_command(cmd, fail_on_errors)
 
 
-def run_index_test(directory, test, fail_on_errors=False):
+def run_index_test(directory, test, fail_on_errors=False, verbose=False):
     # fio lays out the test file using the job blocksize, which may exhaust the
     # run time limit, so do it ourselves
     logger.info("laying out files in directory " + directory)
@@ -319,6 +332,6 @@ def run_index_test(directory, test, fail_on_errors=False):
     logger.info("laid out")
 
     fio_bin = _get_fio_bin()
-    cmd = test.get_index_fio_cmd(fio_bin, directory)
+    cmd = test.get_index_fio_cmd(fio_bin, directory, verbose)
 
     return _execute_command(cmd, fail_on_errors)
