@@ -210,16 +210,16 @@ void TDiskRegistryActor::HandleHttpInfo_ChangeDeviseState(
 
     static const auto OldStateAllowlist = [&]()
     {
-        THashSet<NProto::EDeviceState> whitelist = {
+        THashSet<NProto::EDeviceState> allowlist = {
             NProto::EDeviceState::DEVICE_STATE_ONLINE,
             NProto::EDeviceState::DEVICE_STATE_WARNING,
         };
 
         if (Config->GetEnableToChangeErrorStatesFromDiskRegistryMonpage()) {
-            whitelist.emplace(NProto::EDeviceState::DEVICE_STATE_ERROR);
+            allowlist.emplace(NProto::EDeviceState::DEVICE_STATE_ERROR);
         }
 
-        return whitelist;
+        return allowlist;
     }();
 
     const auto& device = State->GetDevice(deviceUUID);
