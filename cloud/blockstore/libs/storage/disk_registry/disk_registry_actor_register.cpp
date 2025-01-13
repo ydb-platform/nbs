@@ -185,7 +185,9 @@ void TDiskRegistryActor::CompleteAddAgent(
 
     NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
 
-    SendCachedAcquireRequestsToAgent(ctx, args.Config);
+    if (!Config->GetUseDirectAcquireReleaseDevicesSending()) {
+        SendCachedAcquireRequestsToAgent(ctx, args.Config);
+    }
 
     ReallocateDisks(ctx);
     NotifyUsers(ctx);
