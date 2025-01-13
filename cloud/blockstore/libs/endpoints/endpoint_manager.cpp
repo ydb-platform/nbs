@@ -791,7 +791,7 @@ NProto::TStartEndpointResponse TEndpointManager::StartEndpointImplWithLock(
     std::shared_ptr<NProto::TStartEndpointRequest> request,
     bool restoring)
 {
-    const auto& socketPath = request->GetUnixSocketPath();
+    const TString socketPath = request->GetUnixSocketPath();
     auto lock_it = EndpointsLock.find(socketPath);
     auto lock = [&] () {
         if (lock_it == EndpointsLock.end()) {
