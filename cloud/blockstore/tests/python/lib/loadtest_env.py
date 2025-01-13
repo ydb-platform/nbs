@@ -1,6 +1,7 @@
 from contrib.ydb.tests.library.harness.kikimr_config import KikimrConfigGenerator
 from contrib.ydb.tests.library.harness.kikimr_cluster import kikimr_cluster_factory
 from contrib.ydb.tests.library.harness.kikimr_runner import get_unique_path_for_current_test
+from contrib.ydb.tests.library.harness.kikimr_port_allocator import KikimrFixedPortAllocator, KikimrFixedNodePortAllocator
 from contrib.ydb.tests.library.harness.util import LogLevels
 
 from cloud.blockstore.config.storage_pb2 import TStorageServiceConfig
@@ -70,6 +71,7 @@ class LocalLoadTest:
             dynamic_storage_pools=dynamic_storage_pools,
             additional_log_configs={"HIVE": LogLevels.TRACE},
             bs_cache_file_path=bs_cache_file_path,
+            port_allocator=KikimrFixedPortAllocator([KikimrFixedNodePortAllocator()])
         )
         self.kikimr_cluster = kikimr_cluster_factory(
             configurator=self.configurator)
