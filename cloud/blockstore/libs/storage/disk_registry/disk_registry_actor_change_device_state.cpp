@@ -81,7 +81,7 @@ void TChangeDeviceStateActor::Bootstrap(const TActorContext& ctx)
 
     request->Record.SetDeviceUUID(DeviceUUID);
     request->Record.SetDeviceState(NewState);
-    request->Record.SetReason("Change state from disk registry mon page");
+    request->Record.SetReason("monpage action");
 
     NCloud::Send(ctx, Owner, std::move(request));
 
@@ -199,11 +199,11 @@ void TDiskRegistryActor::HandleHttpInfo_ChangeDeviseState(
         return;
     }
 
-    static const THashSet<NProto::EDeviceState> NewStateWhitelist = {
+    static const THashSet<NProto::EDeviceState> NewStateAllowlist = {
         NProto::EDeviceState::DEVICE_STATE_ONLINE,
         NProto::EDeviceState::DEVICE_STATE_WARNING,
     };
-    if (!NewStateWhitelist.contains(newState)) {
+    if (!NewStateAllowlist.contains(newState)) {
         RejectHttpRequest(ctx, *requestInfo, "Invalid new state");
         return;
     }
@@ -235,7 +235,7 @@ void TDiskRegistryActor::HandleHttpInfo_ChangeDeviseState(
     LOG_INFO(
         ctx,
         TBlockStoreComponents::DISK_REGISTRY,
-        "Changing state of device[%s] from monitoring page from %s to %s",
+        "Change state of device[%s] on monitoring page from %s to %s",
         deviceUUID.Quote().c_str(),
         EDeviceState_Name(device.GetState()).c_str(),
         EDeviceState_Name(newState).c_str());
