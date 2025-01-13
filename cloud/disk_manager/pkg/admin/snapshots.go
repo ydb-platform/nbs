@@ -407,7 +407,7 @@ func newScheduleMigrateSnapshotTaskCmd(
 	}
 
 	cmd := &cobra.Command{
-		Use: "schedule_migrate_snapshot_data_to_another_database",
+		Use: "schedule_migrate_snapshot_task",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return c.run()
 		},
