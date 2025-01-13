@@ -930,6 +930,9 @@ void TDiskRegistryActor::SendCachedAcquireRequestsToAgent(
     const TActorContext& ctx,
     const NProto::TAgentConfig& config)
 {
+    if (Config->GetUseDirectAcquireReleaseDevicesSending()) {
+        return;
+    }
     auto& acquireCacheByAgentId = State->GetAcquireCacheByAgentId();
     auto cacheIt = acquireCacheByAgentId.find(config.GetAgentId());
     if (cacheIt == acquireCacheByAgentId.end()) {
