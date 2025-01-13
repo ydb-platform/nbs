@@ -122,8 +122,8 @@ void BuildChangeDeviceStateButton(
             <input type='hidden' name='TabletID' value='%lu'/>
             </form>)",
         deviceUUID.c_str(),
-        EDeviceState_Name(NProto::EDeviceState::DEVICE_STATE_ONLINE).c_str(),
-        EDeviceState_Name(NProto::EDeviceState::DEVICE_STATE_WARNING).c_str(),
+        EDeviceState_Name(NProto::DEVICE_STATE_ONLINE).c_str(),
+        EDeviceState_Name(NProto::DEVICE_STATE_WARNING).c_str(),
         deviceUUID.c_str(),
         tabletId);
 }
@@ -147,8 +147,8 @@ void BuildChangeAgentStateButton(
             <input type='hidden' name='TabletID' value='%lu'/>
             </form>)",
         agentId.c_str(),
-        EAgentState_Name(NProto::EAgentState::AGENT_STATE_ONLINE).c_str(),
-        EAgentState_Name(NProto::EAgentState::AGENT_STATE_WARNING).c_str(),
+        EAgentState_Name(NProto::AGENT_STATE_ONLINE).c_str(),
+        EAgentState_Name(NProto::AGENT_STATE_WARNING).c_str(),
         agentId.c_str(),
         tabletId);
 }

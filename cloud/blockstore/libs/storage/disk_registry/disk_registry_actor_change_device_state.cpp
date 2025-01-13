@@ -199,37 +199,32 @@ void TDiskRegistryActor::HandleHttpInfo_ChangeDeviseState(
         return;
     }
 
-    static const THashSet<NProto::EDeviceState> NewStateAllowlist = {
-        NProto::EDeviceState::DEVICE_STATE_ONLINE,
-        NProto::EDeviceState::DEVICE_STATE_WARNING,
-    };
-    if (!NewStateAllowlist.contains(newState)) {
-        RejectHttpRequest(ctx, *requestInfo, "Invalid new state");
-        return;
+    switch (newState) {
+        case NProto::DEVICE_STATE_ONLINE:
+        case NProto::DEVICE_STATE_WARNING:
+            break;
+        default:
+            RejectHttpRequest(ctx, *requestInfo, "Invalid new state");
+            return;
     }
 
-    static const auto OldStateAllowlist = [&]()
-    {
-        THashSet<NProto::EDeviceState> allowlist = {
-            NProto::EDeviceState::DEVICE_STATE_ONLINE,
-            NProto::EDeviceState::DEVICE_STATE_WARNING,
-        };
-
-        if (Config->GetEnableToChangeErrorStatesFromDiskRegistryMonpage()) {
-            allowlist.emplace(NProto::EDeviceState::DEVICE_STATE_ERROR);
-        }
-
-        return allowlist;
-    }();
-
     const auto& device = State->GetDevice(deviceUUID);
-    if (!OldStateAllowlist.contains(device.GetState())) {
-        RejectHttpRequest(
-            ctx,
-            *requestInfo,
-            "Can't change device state from " +
-                EDeviceState_Name(device.GetState()));
-        return;
+    switch (device.GetState()) {
+        case NProto::DEVICE_STATE_ONLINE:
+        case NProto::DEVICE_STATE_WARNING:
+            break;
+        case NProto::DEVICE_STATE_ERROR:
+            if (Config->GetEnableToChangeErrorStatesFromDiskRegistryMonpage()) {
+                break;
+            }
+            [[fallthrough]];
+        default:
+            RejectHttpRequest(
+                ctx,
+                *requestInfo,
+                "Can't change device state from " +
+                    EDeviceState_Name(device.GetState()));
+            return;
     }
 
     LOG_INFO(

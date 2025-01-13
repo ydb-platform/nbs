@@ -200,14 +200,13 @@ void TDiskRegistryActor::HandleHttpInfo_ChangeAgentState(
         return;
     }
 
-    static const THashSet<NProto::EAgentState> NewStateAllowlist{
-        NProto::EAgentState::AGENT_STATE_ONLINE,
-        NProto::EAgentState::AGENT_STATE_WARNING,
-    };
-
-    if (!NewStateAllowlist.contains(newState)) {
-        RejectHttpRequest(ctx, *requestInfo, "Invalid new state");
-        return;
+    switch (newState) {
+        case NProto::AGENT_STATE_ONLINE:
+        case NProto::AGENT_STATE_WARNING:
+            break;
+        default:
+            RejectHttpRequest(ctx, *requestInfo, "Invalid new state");
+            return;
     }
 
     const auto agentState = State->GetAgentState(agentId);
@@ -216,17 +215,17 @@ void TDiskRegistryActor::HandleHttpInfo_ChangeAgentState(
         return;
     }
 
-    static const THashSet<NProto::EAgentState> OldStateAllowlist = {
-        NProto::EAgentState::AGENT_STATE_ONLINE,
-        NProto::EAgentState::AGENT_STATE_WARNING,
-    };
-
-    if (!OldStateAllowlist.contains(*agentState.Get())) {
-        RejectHttpRequest(
-            ctx,
-            *requestInfo,
-            "Can't change agent state from " +
-                EAgentState_Name(*agentState.Get()));
+    switch (newState) {
+        case NProto::AGENT_STATE_ONLINE:
+        case NProto::AGENT_STATE_WARNING:
+            break;
+        default:
+            RejectHttpRequest(
+                ctx,
+                *requestInfo,
+                "Can't change agent state from " +
+                    EAgentState_Name(*agentState.Get()));
+            return;
     }
 
     LOG_INFO(
