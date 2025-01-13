@@ -106,7 +106,7 @@ void DoCreateDeleteDisk(
     executor.WriteTx([&](TDiskRegistryDatabase db) mutable
                      { db.InitSchema(); });
 
-    auto state = Load("vla.json", true);
+    auto state = Load("vla.json", false);
     for (const auto _: benchmarkState) {
         executor.WriteTx(
             [&](TDiskRegistryDatabase db)
