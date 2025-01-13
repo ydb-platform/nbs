@@ -214,12 +214,12 @@ func run(
 			}
 		}
 
-		var migrationDestinationDB *persistence.YDBClient
-		var migrationDestinationS3 *persistence.S3Client
-		migrationDestinationStorageConfig := dataplaneConfig.GetMigrationDestinationStorageConfig()
+		var migrationDstDB *persistence.YDBClient
+		var migrationDstS3 *persistence.S3Client
+		migrationDestinationStorageConfig := dataplaneConfig.GetMigrationDstSnapshotConfig()
 		if migrationDestinationStorageConfig != nil {
 			migrationYdbClientRegistry := mon.NewRegistry("migration_ydb_client")
-			migrationDestinationDB, err = persistence.NewYDBClient(
+			migrationDstDB, err = persistence.NewYDBClient(
 				ctx,
 				migrationDestinationStorageConfig.GetPersistenceConfig(),
 				migrationYdbClientRegistry,
@@ -228,12 +228,12 @@ func run(
 			if err != nil {
 				return err
 			}
-			defer migrationDestinationDB.Close(ctx)
+			defer migrationDstDB.Close(ctx)
 
-			migrationDestinationS3Config := migrationDestinationStorageConfig.GetPersistenceConfig().GetS3Config()
-			if migrationDestinationS3Config != nil {
+			migrationDstS3Config := migrationDestinationStorageConfig.GetPersistenceConfig().GetS3Config()
+			if migrationDstS3Config != nil {
 				registry := mon.NewRegistry("migration_s3_client")
-				migrationDestinationS3, err = persistence.NewS3ClientFromConfig(migrationDestinationS3Config, registry)
+				migrationDstS3, err = persistence.NewS3ClientFromConfig(migrationDstS3Config, registry)
 				if err != nil {
 					return err
 				}
@@ -249,8 +249,8 @@ func run(
 			taskScheduler,
 			nbsFactory,
 			s3,
-			migrationDestinationDB,
-			migrationDestinationS3,
+			migrationDstDB,
+			migrationDstS3,
 		)
 		if err != nil {
 			logging.Error(ctx, "Failed to initialize dataplane: %v", err)

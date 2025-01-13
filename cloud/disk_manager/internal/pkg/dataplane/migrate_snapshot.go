@@ -15,19 +15,19 @@ import (
 
 ////////////////////////////////////////////////////////////////////////////////
 
-type migrateSnapshotToAnotherDatabaseTask struct {
-	sourceStorage      storage.Storage
-	destinationStorage storage.Storage
-	config             *config.DataplaneConfig
-	request            *protos.MigrateSnapshotToAnotherDatabaseRequest
-	state              *protos.MigrateSnapshotToAnotherDatabaseTaskState
+type migrateSnapshotTask struct {
+	srcStorage storage.Storage
+	dstStorage storage.Storage
+	config     *config.DataplaneConfig
+	request    *protos.MigrateSnapshotToAnotherDatabaseRequest
+	state      *protos.MigrateSnapshotTaskState
 }
 
-func (t *migrateSnapshotToAnotherDatabaseTask) Save() ([]byte, error) {
+func (t *migrateSnapshotTask) Save() ([]byte, error) {
 	return proto.Marshal(t.state)
 }
 
-func (t *migrateSnapshotToAnotherDatabaseTask) Load(
+func (t *migrateSnapshotTask) Load(
 	request, state []byte,
 ) error {
 
@@ -37,16 +37,16 @@ func (t *migrateSnapshotToAnotherDatabaseTask) Load(
 		return err
 	}
 
-	t.state = &protos.MigrateSnapshotToAnotherDatabaseTaskState{}
+	t.state = &protos.MigrateSnapshotTaskState{}
 	return proto.Unmarshal(state, t.state)
 }
 
-func (t *migrateSnapshotToAnotherDatabaseTask) Run(
+func (t *migrateSnapshotTask) Run(
 	ctx context.Context,
 	execCtx tasks.ExecutionContext,
 ) error {
 
-	srcMeta, err := t.sourceStorage.CheckSnapshotReady(
+	srcMeta, err := t.srcStorage.CheckSnapshotReady(
 		ctx,
 		t.request.SrcSnapshotId,
 	)
@@ -56,17 +56,32 @@ func (t *migrateSnapshotToAnotherDatabaseTask) Run(
 
 	t.state.ChunkCount = srcMeta.ChunkCount
 
+	_, err = t.dstStorage.CreateSnapshot(
+		ctx,
+		storage.SnapshotMeta{
+			ID:           t.request.SrcSnapshotId,
+			Disk:         srcMeta.Disk,
+			CheckpointID: srcMeta.CheckpointID,
+			CreateTaskID: execCtx.GetTaskID(),
+		},
+	)
+	if err != nil {
+		return err
+	}
+
 	source := snapshot.NewSnapshotSource(
 		t.request.SrcSnapshotId,
-		t.sourceStorage,
+		t.srcStorage,
 	)
 	defer source.Close(ctx)
+
+	ignoreZeroChunks := true
 
 	target := snapshot.NewSnapshotTarget(
 		execCtx.GetTaskID(),
 		t.request.SrcSnapshotId,
-		t.destinationStorage,
-		true,
+		t.dstStorage,
+		ignoreZeroChunks,
 		t.request.UseS3,
 	)
 	defer target.Close(ctx)
@@ -87,7 +102,15 @@ func (t *migrateSnapshotToAnotherDatabaseTask) Run(
 			TransferredChunkCount: t.state.TransferredChunkCount,
 		},
 		func(ctx context.Context, milestone common.Milestone) error {
-			_, err := t.sourceStorage.CheckSnapshotReady(
+			_, err := t.srcStorage.CheckSnapshotReady(
+				ctx,
+				t.request.SrcSnapshotId,
+			)
+			if err != nil {
+				return err
+			}
+
+			err = t.dstStorage.CheckSnapshotAlive(
 				ctx,
 				t.request.SrcSnapshotId,
 			)
@@ -108,7 +131,7 @@ func (t *migrateSnapshotToAnotherDatabaseTask) Run(
 	t.state.TransferredChunkCount = transferredChunkCount
 	t.state.Progress = 1
 
-	dataChunkCount, err := t.destinationStorage.GetDataChunkCount(
+	dataChunkCount, err := t.dstStorage.GetDataChunkCount(
 		ctx,
 		t.request.SrcSnapshotId,
 	)
@@ -124,17 +147,25 @@ func (t *migrateSnapshotToAnotherDatabaseTask) Run(
 	t.state.TransferredDataSize =
 		uint64(t.state.TransferredChunkCount) * chunkSize
 
-	return nil
+	return t.dstStorage.SnapshotCreated(
+		ctx,
+		t.request.SrcSnapshotId,
+		size,
+		storageSize,
+		t.state.ChunkCount,
+		srcMeta.Encryption,
+	)
 }
 
-func (t *migrateSnapshotToAnotherDatabaseTask) Cancel(
+func (t *migrateSnapshotTask) Cancel(
 	ctx context.Context,
 	execCtx tasks.ExecutionContext,
 ) error {
-	return nil
+	_, err := t.dstStorage.DeletingSnapshot(ctx, t.request.SrcSnapshotId, execCtx.GetTaskID())
+	return err
 }
 
-func (t *migrateSnapshotToAnotherDatabaseTask) GetMetadata(
+func (t *migrateSnapshotTask) GetMetadata(
 	ctx context.Context,
 ) (proto.Message, error) {
 	return &protos.CreateSnapshotFromLegacySnapshotMetadata{
@@ -142,7 +173,7 @@ func (t *migrateSnapshotToAnotherDatabaseTask) GetMetadata(
 	}, nil
 }
 
-func (t *migrateSnapshotToAnotherDatabaseTask) GetResponse() proto.Message {
+func (t *migrateSnapshotTask) GetResponse() proto.Message {
 	return &protos.MigrateSnapshotToAnotherDatabaseResponse{
 		SnapshotSize:        t.state.SnapshotSize,
 		SnapshotStorageSize: t.state.SnapshotStorageSize,
@@ -152,7 +183,7 @@ func (t *migrateSnapshotToAnotherDatabaseTask) GetResponse() proto.Message {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-func (t *migrateSnapshotToAnotherDatabaseTask) saveProgress(
+func (t *migrateSnapshotTask) saveProgress(
 	ctx context.Context,
 	execCtx tasks.ExecutionContext,
 ) error {

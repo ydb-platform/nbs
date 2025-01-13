@@ -345,13 +345,13 @@ func newScheduleCreateSnapshotFromLegacySnapshotTaskCmd(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-type scheduleMigrateSnapshotToAnotherDatabaseTaskCmd struct {
+type scheduleMigrateSnapshotTaskCmd struct {
 	clientConfig *client_config.ClientConfig
 	serverConfig *server_config.ServerConfig
 	snapshotID   string
 }
 
-func (c *scheduleMigrateSnapshotToAnotherDatabaseTaskCmd) run() error {
+func (c *scheduleMigrateSnapshotTaskCmd) run() error {
 	ctx := newContext(c.clientConfig)
 
 	taskStorage, db, err := newTaskStorage(ctx, c.serverConfig)
@@ -380,9 +380,9 @@ func (c *scheduleMigrateSnapshotToAnotherDatabaseTaskCmd) run() error {
 	taskID, err := taskScheduler.ScheduleTask(
 		headers.SetIncomingIdempotencyKey(
 			ctx,
-			"dataplane.MigrateSnapshotToAnotherDatabaseTask_"+c.snapshotID+"_"+generateID(),
+			"dataplane.MigrateSnapshotTask_"+c.snapshotID+"_"+generateID(),
 		),
-		"dataplane.MigrateSnapshotToAnotherDatabaseTask",
+		"dataplane.MigrateSnapshotTask",
 		"",
 		&dataplane_protos.MigrateSnapshotToAnotherDatabaseRequest{
 			SrcSnapshotId: c.snapshotID,
@@ -396,12 +396,12 @@ func (c *scheduleMigrateSnapshotToAnotherDatabaseTaskCmd) run() error {
 	return nil
 }
 
-func newScheduleMigrateSnapshotToAnotherDatabaseTaskCmd(
+func newScheduleMigrateSnapshotTaskCmd(
 	clientConfig *client_config.ClientConfig,
 	serverConfig *server_config.ServerConfig,
 ) *cobra.Command {
 
-	c := &scheduleMigrateSnapshotToAnotherDatabaseTaskCmd{
+	c := &scheduleMigrateSnapshotTaskCmd{
 		clientConfig: clientConfig,
 		serverConfig: serverConfig,
 	}
@@ -448,7 +448,7 @@ func newSnapshotsCmd(
 			clientConfig,
 			serverConfig,
 		),
-		newScheduleMigrateSnapshotToAnotherDatabaseTaskCmd(
+		newScheduleMigrateSnapshotTaskCmd(
 			clientConfig,
 			serverConfig,
 		),

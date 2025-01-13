@@ -23,8 +23,8 @@ func initDataplane(
 	taskScheduler tasks.Scheduler,
 	nbsFactory nbs.Factory,
 	s3 *persistence.S3Client,
-	migrationDestinationDB *persistence.YDBClient,
-	migrationDestinationS3 *persistence.S3Client,
+	migrationDstDB *persistence.YDBClient,
+	migrationDstS3 *persistence.S3Client,
 ) error {
 
 	dataplaneConfig := config.GetDataplaneConfig()
@@ -47,14 +47,14 @@ func initDataplane(
 		snapshotMetricsRegistry,
 		snapshotDB,
 	)
-	migrationDestinationStorageConfig := dataplaneConfig.GetMigrationDestinationStorageConfig()
+	migrationDestinationStorageConfig := dataplaneConfig.GetMigrationDstSnapshotConfig()
 	var migrationDestinationStorage snapshot_storage.Storage
-	if migrationDestinationDB != nil {
+	if migrationDstDB != nil {
 		migrationDestinationStorage, err = snapshot_storage.NewStorage(
 			migrationDestinationStorageConfig,
 			snapshotMetricsRegistry,
-			migrationDestinationDB,
-			migrationDestinationS3,
+			migrationDstDB,
+			migrationDstS3,
 		)
 		if err != nil {
 			return err

@@ -17,7 +17,7 @@ message MigrateSnapshotToAnotherDatabaseResponse {
   uint64 TransferredDataSize = 3;
 }
 
-message MigrateSnapshotToAnotherDatabaseTaskState {
+message MigrateSnapshotTaskState {
   uint32 MilestoneChunkIndex = 1;
   uint32 TransferredChunkCount = 2;
   double Progress = 3;
