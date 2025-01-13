@@ -137,7 +137,8 @@ void TReadDataActor::DescribeData(const TActorContext& ctx)
     LOG_DEBUG(
         ctx,
         TFileStoreComponents::SERVICE,
-        "Executing DescribeData for %lu, %lu, %lu, %lu",
+        "Executing DescribeData for %s, node: %lu, handle: %lu, offset: %lu, length: %lu",
+        ReadRequest.GetFileSystemId().c_str(),
         ReadRequest.GetNodeId(),
         ReadRequest.GetHandle(),
         ReadRequest.GetOffset(),
@@ -379,15 +380,16 @@ void TReadDataActor::HandleReadBlobResponse(
     const auto* msg = ev->Get();
 
     if (msg->Status != NKikimrProto::OK) {
-        const auto errorReason = FormatError(
-            MakeError(MAKE_KIKIMR_ERROR(msg->Status), msg->ErrorReason));
         LOG_WARN(
             ctx,
             TFileStoreComponents::SERVICE,
-            "ReadBlob error: %s",
-            errorReason.c_str());
-        ReadData(ctx, errorReason);
+            "TEvBlobStorage::TEvGet failed for %s: response %s",
+            ReadRequest.GetFileSystemId().c_str(),
+            msg->Print(false).c_str());
 
+        const auto errorReason = FormatError(
+            MakeError(MAKE_KIKIMR_ERROR(msg->Status), msg->ErrorReason));
+        ReadData(ctx, errorReason);
         return;
     }
 
@@ -409,15 +411,17 @@ void TReadDataActor::HandleReadBlobResponse(
         const auto& blobRange = blobPiece.GetRanges(i);
         const auto& response = msg->Responses[i];
         if (response.Status != NKikimrProto::OK) {
-            const auto errorReason = FormatError(
-                MakeError(MAKE_KIKIMR_ERROR(response.Status), "read error"));
             LOG_WARN(
                 ctx,
                 TFileStoreComponents::SERVICE,
-                "ReadBlob error: %s",
-                errorReason.c_str());
-            ReadData(ctx, errorReason);
+                "TEvBlobStorage::TEvGet query failed for %s: status %s, response %s",
+                ReadRequest.GetFileSystemId().c_str(),
+                NKikimrProto::EReplyStatus_Name(response.Status).c_str(),
+                msg->Print(false).c_str());
 
+            const auto errorReason = FormatError(
+                MakeError(MAKE_KIKIMR_ERROR(response.Status), "read error"));
+            ReadData(ctx, errorReason);
             return;
         }
 
@@ -438,7 +442,8 @@ void TReadDataActor::HandleReadBlobResponse(
             LOG_WARN(
                 ctx,
                 TFileStoreComponents::SERVICE,
-                "ReadBlob error: %s",
+                "ReadBlob error for %s: %s",
+                ReadRequest.GetFileSystemId().c_str(),
                 error.c_str());
             ReadData(ctx, error);
 
@@ -503,7 +508,8 @@ void TReadDataActor::ReadData(
     LOG_WARN(
         ctx,
         TFileStoreComponents::SERVICE,
-        "Falling back to ReadData for %lu, %lu, %lu, %lu. Message: %s",
+        "Falling back to ReadData for %s, node: %lu, handle: %lu, offset: %lu, length: %lu. Message: %s",
+        ReadRequest.GetFileSystemId().c_str(),
         ReadRequest.GetNodeId(),
         ReadRequest.GetHandle(),
         ReadRequest.GetOffset(),
