@@ -137,7 +137,9 @@ void TReadDataActor::DescribeData(const TActorContext& ctx)
     LOG_DEBUG(
         ctx,
         TFileStoreComponents::SERVICE,
-        "Executing DescribeData for %lu, %lu, %lu, %lu",
+        "%s executing DescribeData for node: %lu, "
+        "handle: %lu, offset: %lu, length: %lu",
+        LogTag.c_str(),
         ReadRequest.GetNodeId(),
         ReadRequest.GetHandle(),
         ReadRequest.GetOffset(),
@@ -285,7 +287,8 @@ void TReadDataActor::HandleDescribeDataResponse(
     LOG_DEBUG(
         ctx,
         TFileStoreComponents::SERVICE,
-        "DescribeData succeeded %lu freshdata + %lu blobpieces",
+        "%s DescribeData succeeded %lu freshdata + %lu blobpieces",
+        LogTag.c_str(),
         msg->Record.FreshDataRangesSize(),
         msg->Record.BlobPiecesSize());
 
@@ -379,22 +382,24 @@ void TReadDataActor::HandleReadBlobResponse(
     const auto* msg = ev->Get();
 
     if (msg->Status != NKikimrProto::OK) {
-        const auto errorReason = FormatError(
-            MakeError(MAKE_KIKIMR_ERROR(msg->Status), msg->ErrorReason));
         LOG_WARN(
             ctx,
             TFileStoreComponents::SERVICE,
-            "ReadBlob error: %s",
-            errorReason.c_str());
-        ReadData(ctx, errorReason);
+            "%s TEvBlobStorage::TEvGet failed: response %s",
+            LogTag.c_str(),
+            msg->Print(false).c_str());
 
+        const auto errorReason = FormatError(
+            MakeError(MAKE_KIKIMR_ERROR(msg->Status), msg->ErrorReason));
+        ReadData(ctx, errorReason);
         return;
     }
 
     LOG_DEBUG(
         ctx,
         TFileStoreComponents::SERVICE,
-        "ReadBlobResponse count: %lu, status: %lu, cookie: %lu",
+        "%s ReadBlobResponse count: %lu, status: %lu, cookie: %lu",
+        LogTag.c_str(),
         msg->ResponseSz,
         (ui64)(msg->Status),
         ev->Cookie);
@@ -409,15 +414,18 @@ void TReadDataActor::HandleReadBlobResponse(
         const auto& blobRange = blobPiece.GetRanges(i);
         const auto& response = msg->Responses[i];
         if (response.Status != NKikimrProto::OK) {
-            const auto errorReason = FormatError(
-                MakeError(MAKE_KIKIMR_ERROR(response.Status), "read error"));
             LOG_WARN(
                 ctx,
                 TFileStoreComponents::SERVICE,
-                "ReadBlob error: %s",
-                errorReason.c_str());
-            ReadData(ctx, errorReason);
+                "%s TEvBlobStorage::TEvGet query failed:"
+                " status %s, response %s",
+                LogTag.c_str(),
+                NKikimrProto::EReplyStatus_Name(response.Status).c_str(),
+                msg->Print(false).c_str());
 
+            const auto errorReason = FormatError(
+                MakeError(MAKE_KIKIMR_ERROR(response.Status), "read error"));
+            ReadData(ctx, errorReason);
             return;
         }
 
@@ -438,7 +446,8 @@ void TReadDataActor::HandleReadBlobResponse(
             LOG_WARN(
                 ctx,
                 TFileStoreComponents::SERVICE,
-                "ReadBlob error: %s",
+                "%s ReadBlob error: %s",
+                LogTag.c_str(),
                 error.c_str());
             ReadData(ctx, error);
 
@@ -503,7 +512,9 @@ void TReadDataActor::ReadData(
     LOG_WARN(
         ctx,
         TFileStoreComponents::SERVICE,
-        "Falling back to ReadData for %lu, %lu, %lu, %lu. Message: %s",
+        "%s falling back to ReadData: "
+        "node: %lu, handle: %lu, offset: %lu, length: %lu. Message: %s",
+        LogTag.c_str(),
         ReadRequest.GetNodeId(),
         ReadRequest.GetHandle(),
         ReadRequest.GetOffset(),
@@ -567,7 +578,8 @@ void TReadDataActor::ReplyAndDie(const TActorContext& ctx)
         LOG_DEBUG(
             ctx,
             TFileStoreComponents::SERVICE,
-            "processed fresh data range size: %lu, offset: %lu",
+            "%s processed fresh data range size: %lu, offset: %lu",
+            LogTag.c_str(),
             content.size(),
             offset);
     }
