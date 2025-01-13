@@ -62,6 +62,7 @@ namespace NCloud::NBlockStore::NStorage {
     xxx(SetCheckpointDataState,             __VA_ARGS__)                       \
     xxx(PurgeHostCms,                       __VA_ARGS__)                       \
     xxx(RemoveOrphanDevices,                __VA_ARGS__)                       \
+    xxx(AddLaggingDevices,                  __VA_ARGS__)                       \
 // BLOCKSTORE_DISK_REGISTRY_TRANSACTIONS
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -131,6 +132,7 @@ struct TTxDiskRegistry
         TVector<NProto::TDeviceMigration> DeviceMigrations;
         TVector<TVector<NProto::TDeviceConfig>> Replicas;
         TVector<TString> DeviceReplacementUUIDs;
+        TVector<TLaggingDevice> LaggingDevices;
         NProto::EVolumeIOMode IOMode = NProto::VOLUME_IO_OK;
         TInstant IOModeTs;
         bool MuteIOErrors = false;
@@ -169,6 +171,7 @@ struct TTxDiskRegistry
             DeviceMigrations.clear();
             Replicas.clear();
             DeviceReplacementUUIDs.clear();
+            LaggingDevices.clear();
             IOMode = NProto::VOLUME_IO_OK;
             IOModeTs = {};
             MuteIOErrors = false;
@@ -1446,6 +1449,33 @@ struct TTxDiskRegistry
         void Clear()
         {
             // nothing to do
+        }
+    };
+
+    //
+    // AddLaggingDevices
+    //
+
+    struct TAddLaggingDevices
+    {
+        const TRequestInfoPtr RequestInfo;
+        const TString DiskId;
+        TVector<NProto::TLaggingDevice> VolumeLaggingDevices;
+
+        NProto::TError Error;
+
+        TAddLaggingDevices(
+                TRequestInfoPtr requestInfo,
+                TString diskId,
+                TVector<NProto::TLaggingDevice> volumeLaggingDevices)
+            : RequestInfo(std::move(requestInfo))
+            , DiskId(std::move(diskId))
+            , VolumeLaggingDevices(std::move(volumeLaggingDevices))
+        {}
+
+        void Clear()
+        {
+            Error.Clear();
         }
     };
 };
