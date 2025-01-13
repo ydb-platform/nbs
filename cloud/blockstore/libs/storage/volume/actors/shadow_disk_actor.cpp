@@ -902,7 +902,8 @@ bool TShadowDiskActor::AreWritesToSrcDiskForbidden() const
 
 bool TShadowDiskActor::AreWritesToSrcDiskImpossible() const
 {
-    return AreWritesToSrcDiskForbidden() || ForcedReAcquireInProgress;
+    return AreWritesToSrcDiskForbidden() ||
+           (ForcedReAcquireInProgress && State == EActorState::Preparing);
 }
 
 bool TShadowDiskActor::WaitingForAcquire() const
@@ -1166,7 +1167,12 @@ bool TShadowDiskActor::HandleRWClientIdChanged(
     }
 
     // Reacquire shadow disk with new clientId.
-    AcquireShadowDisk(ctx, EAcquireReason::ForcedReAcquire);
+    const bool clientChanged =
+        CurrentShadowDiskClientId !=
+        MakeShadowDiskClientId(SourceDiskClientId, ReadOnlyMount());
+    if (clientChanged || !WaitingForAcquire()) {
+        AcquireShadowDisk(ctx, EAcquireReason::ForcedReAcquire);
+    }
 
     // It is necessary to handle the EvRWClientIdChanged message in the base
     // class TNonreplicatedPartitionMigrationCommonActor too.
