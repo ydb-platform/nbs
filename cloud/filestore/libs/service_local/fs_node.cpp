@@ -111,8 +111,7 @@ NProto::TUnlinkNodeResponse TLocalFileSystem::UnlinkNode(
     auto stat = parent->Stat(request.GetName());
     parent->Unlink(request.GetName(), request.GetUnlinkDirectory());
 
-    // FIXME
-    if ((!stat.IsDir() && stat.NLinks == 1) || (stat.IsDir() && stat.NLinks == 2)) {
+    if ((!stat.IsDir() && stat.NLinks == 1) || (stat.IsDir() && stat.NLinks <= 2)) {
         session->ForgetNode(stat.INode);
     }
 
