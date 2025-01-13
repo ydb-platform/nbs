@@ -2,6 +2,7 @@
 
 #include "endpoint_events.h"
 #include "endpoint_listener.h"
+#include "library/cpp/threading/future/async_semaphore.h"
 #include "session_manager.h"
 
 #include <cloud/blockstore/libs/client/config.h>
@@ -427,6 +428,8 @@ private:
 
     THashMap<TString, TEndpoint> Endpoints;
 
+    THashMap<TString, TAsyncSemaphore::TPtr> EndpointsLock;
+
     NClient::IMetricClientPtr RestoringClient;
     TSet<TString> RestoringEndpoints;
 
@@ -566,6 +569,11 @@ private:
         }
         return false;
     }
+
+    NProto::TStartEndpointResponse StartEndpointImplWithLock(
+        TCallContextPtr ctx,
+        std::shared_ptr<NProto::TStartEndpointRequest> request,
+        bool restoring);
 
     NProto::TStartEndpointResponse StartEndpointImpl(
         TCallContextPtr ctx,
@@ -734,7 +742,7 @@ TFuture<NProto::TStartEndpointResponse> TEndpointManager::RestoreSingleEndpoint(
             return TErrorResponse(E_FAIL, "EndpointManager is destroyed");
         }
 
-        return self->StartEndpointImpl(
+        return self->StartEndpointImplWithLock(
             std::move(ctx),
             std::move(request),
             true);
@@ -755,11 +763,58 @@ NProto::TStartEndpointResponse TEndpointManager::DoStartEndpoint(
         return promise.ExtractValue();
     }
 
-    auto response = StartEndpointImpl(std::move(ctx), std::move(request), false);
+    auto response =
+        StartEndpointImplWithLock(std::move(ctx), std::move(request), false);
     promise.SetValue(response);
 
     RemoveProcessingSocket(socketPath);
     return response;
+}
+
+// See issue-2841
+// There are two maps Endpoints: one in the TEndpointManager, another in
+// TSessionManager. If we try to CreateSession with endpoint, for which session
+// was already created (endpoint was already inserted to the
+// TSessionManager::Endpoints), we will crash. Thats why we have map Endpoints
+// in TEndpointManager, and at the start of method StartEndpointImpl we check if
+// endpoint exists in that map. If it is already exists we call AlterEndpoint.
+// But we insert new element to the TEndpointManager::Endpoints only at the end
+// of method StartEndpointImpl and between inserting to
+// TSessionManager::Endpoints and inserting to TEndpointManager::Endpoints there
+// are few async waits, which causes race condition: first routine calls
+// StartEndpointImpl, insert endpoint to TSessionManager::Endpoints and fall
+// asleep in some wait before inserting  TEndpointManager::Endpoints, second
+// routine calls StartEndpointImpl, then calls SessionManager::CreateSession and
+// crash process. Thats why we call StartEndpointImpl with lock.
+NProto::TStartEndpointResponse TEndpointManager::StartEndpointImplWithLock(
+    TCallContextPtr ctx,
+    std::shared_ptr<NProto::TStartEndpointRequest> request,
+    bool restoring)
+{
+    const auto& socketPath = request->GetUnixSocketPath();
+    auto lock_it = EndpointsLock.find(socketPath);
+    auto lock = [&] () {
+        if (lock_it == EndpointsLock.end()) {
+            return EndpointsLock.emplace(
+                std::make_pair(socketPath, TAsyncSemaphore::Make(1))).first->second;
+        }
+        return lock_it->second;
+    }();
+    Y_DEFER {
+        // 2 because one pointer in the map, second on the stack.
+        if (lock.RefCount() == 2) {
+            EndpointsLock.erase(socketPath);
+        }
+    };
+
+    NProto::TStartEndpointResponse result;
+
+    auto futureLock = lock->AcquireAsync();
+    Executor->WaitFor(futureLock.IgnoreResult());
+
+    auto deferGuard = lock->MakeAutoRelease();
+
+    return StartEndpointImpl(std::move(ctx), std::move(request), restoring);
 }
 
 NProto::TStartEndpointResponse TEndpointManager::StartEndpointImpl(
