@@ -337,7 +337,7 @@ void TDiskRegistryActor::HandleHttpInfo_RenderBrokenDeviceList(
     Y_UNUSED(params);
 
     TStringStream out;
-    RenderBrokenDeviceList(out);
+    RenderBrokenDeviceListDetailed(out);
     SendHttpResponse(ctx, *requestInfo, std::move(out.Str()));
 }
 
