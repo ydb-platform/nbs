@@ -137,8 +137,9 @@ void TReadDataActor::DescribeData(const TActorContext& ctx)
     LOG_DEBUG(
         ctx,
         TFileStoreComponents::SERVICE,
-        "Executing DescribeData for %s, node: %lu, handle: %lu, offset: %lu, length: %lu",
-        ReadRequest.GetFileSystemId().c_str(),
+        "%s executing DescribeData for node: %lu, "
+        "handle: %lu, offset: %lu, length: %lu",
+        LogTag.c_str(),
         ReadRequest.GetNodeId(),
         ReadRequest.GetHandle(),
         ReadRequest.GetOffset(),
@@ -286,7 +287,8 @@ void TReadDataActor::HandleDescribeDataResponse(
     LOG_DEBUG(
         ctx,
         TFileStoreComponents::SERVICE,
-        "DescribeData succeeded %lu freshdata + %lu blobpieces",
+        "%s DescribeData succeeded %lu freshdata + %lu blobpieces",
+        LogTag.c_str(),
         msg->Record.FreshDataRangesSize(),
         msg->Record.BlobPiecesSize());
 
@@ -383,8 +385,8 @@ void TReadDataActor::HandleReadBlobResponse(
         LOG_WARN(
             ctx,
             TFileStoreComponents::SERVICE,
-            "TEvBlobStorage::TEvGet failed for %s: response %s",
-            ReadRequest.GetFileSystemId().c_str(),
+            "%s TEvBlobStorage::TEvGet failed: response %s",
+            LogTag.c_str(),
             msg->Print(false).c_str());
 
         const auto errorReason = FormatError(
@@ -396,7 +398,8 @@ void TReadDataActor::HandleReadBlobResponse(
     LOG_DEBUG(
         ctx,
         TFileStoreComponents::SERVICE,
-        "ReadBlobResponse count: %lu, status: %lu, cookie: %lu",
+        "%s ReadBlobResponse count: %lu, status: %lu, cookie: %lu",
+        LogTag.c_str(),
         msg->ResponseSz,
         (ui64)(msg->Status),
         ev->Cookie);
@@ -414,8 +417,9 @@ void TReadDataActor::HandleReadBlobResponse(
             LOG_WARN(
                 ctx,
                 TFileStoreComponents::SERVICE,
-                "TEvBlobStorage::TEvGet query failed for %s: status %s, response %s",
-                ReadRequest.GetFileSystemId().c_str(),
+                "%s TEvBlobStorage::TEvGet query failed:"
+                " status %s, response %s",
+                LogTag.c_str(),
                 NKikimrProto::EReplyStatus_Name(response.Status).c_str(),
                 msg->Print(false).c_str());
 
@@ -442,8 +446,8 @@ void TReadDataActor::HandleReadBlobResponse(
             LOG_WARN(
                 ctx,
                 TFileStoreComponents::SERVICE,
-                "ReadBlob error for %s: %s",
-                ReadRequest.GetFileSystemId().c_str(),
+                "%s ReadBlob error: %s",
+                LogTag.c_str(),
                 error.c_str());
             ReadData(ctx, error);
 
@@ -508,8 +512,9 @@ void TReadDataActor::ReadData(
     LOG_WARN(
         ctx,
         TFileStoreComponents::SERVICE,
-        "Falling back to ReadData for %s, node: %lu, handle: %lu, offset: %lu, length: %lu. Message: %s",
-        ReadRequest.GetFileSystemId().c_str(),
+        "%s falling back to ReadData: "
+        "node: %lu, handle: %lu, offset: %lu, length: %lu. Message: %s",
+        LogTag.c_str(),
         ReadRequest.GetNodeId(),
         ReadRequest.GetHandle(),
         ReadRequest.GetOffset(),
@@ -573,7 +578,8 @@ void TReadDataActor::ReplyAndDie(const TActorContext& ctx)
         LOG_DEBUG(
             ctx,
             TFileStoreComponents::SERVICE,
-            "processed fresh data range size: %lu, offset: %lu",
+            "%s processed fresh data range size: %lu, offset: %lu",
+            LogTag.c_str(),
             content.size(),
             offset);
     }
