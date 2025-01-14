@@ -92,26 +92,39 @@ void TIndexTabletActor::HandleRenameNode(
 
         const auto newParentShardNo =
             ExtractShardNo(msg->Record.GetNewParentId());
-        if (newParentShardNo > static_cast<ui32>(shardIds.size())
-                || newParentShardNo == 0)
-        {
-            auto message = ReportInvalidShardNo(
-                TStringBuilder() << "RenameNode: "
-                    << msg->Record.ShortDebugString() << " newParentShardNo: "
-                    << newParentShardNo << ", shard count: "
-                    << shardIds.size());
-            auto response = std::make_unique<TEvService::TEvRenameNodeResponse>(
-                MakeError(E_ARGUMENT, std::move(message)));
-            NCloud::Reply(ctx, *requestInfo, std::move(response));
-            return;
-        }
-
         if (newParentShardNo != GetFileSystem().GetShardNo()) {
-            ExecuteTx<TPrepareRenameNodeInSource>(
-                ctx,
-                std::move(requestInfo),
-                std::move(msg->Record),
-                shardIds[newParentShardNo - 1]);
+            if (newParentShardNo > static_cast<ui32>(shardIds.size())) {
+                auto message = ReportInvalidShardNo(
+                    TStringBuilder() << "RenameNode: "
+                        << msg->Record.ShortDebugString() << " newParentShardNo"
+                        << ": " << newParentShardNo << ", shard count: "
+                        << shardIds.size());
+                auto response =
+                    std::make_unique<TEvService::TEvRenameNodeResponse>(
+                        MakeError(E_ARGUMENT, std::move(message)));
+                NCloud::Reply(ctx, *requestInfo, std::move(response));
+            } else if (newParentShardNo == 0
+                    && msg->Record.GetNewParentId() != RootNodeId)
+            {
+                auto message = ReportInvalidShardNo(
+                    TStringBuilder() << "RenameNode: "
+                        << msg->Record.ShortDebugString() << " newParentShardNo"
+                        << ": " << newParentShardNo << ", NewParentId: "
+                        << msg->Record.GetNewParentId());
+                auto response =
+                    std::make_unique<TEvService::TEvRenameNodeResponse>(
+                        MakeError(E_ARGUMENT, std::move(message)));
+                NCloud::Reply(ctx, *requestInfo, std::move(response));
+            } else {
+                ExecuteTx<TPrepareRenameNodeInSource>(
+                    ctx,
+                    std::move(requestInfo),
+                    std::move(msg->Record),
+                    newParentShardNo
+                        ? shardIds[newParentShardNo - 1]
+                        : GetMainFileSystemId());
+            }
+
             return;
         }
     }

@@ -230,6 +230,11 @@ public:
         return FileSystem.GetFileSystemId();
     }
 
+    TString GetMainFileSystemId() const
+    {
+        return FileSystem.GetMainFileSystemId();
+    }
+
     ui32 GetGeneration() const
     {
         return Generation;

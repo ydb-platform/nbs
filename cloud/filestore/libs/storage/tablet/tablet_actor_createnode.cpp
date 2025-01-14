@@ -461,6 +461,9 @@ bool TIndexTabletActor::PrepareTx_CreateNode(
 {
     Y_UNUSED(ctx);
 
+    const bool isMainWithLocalNodes =
+        IsMainTablet() && GetLastNodeId() > RootNodeId;
+
     if (!BehaveAsShard(args.Request.GetHeaders())
             && Config->GetShardIdSelectionInLeaderEnabled()
             && !GetFileSystem().GetShardFileSystemIds().empty()
@@ -468,7 +471,7 @@ bool TIndexTabletActor::PrepareTx_CreateNode(
                 || Config->GetDirectoryCreationInShardsEnabled()
                 // otherwise there might be some local nodes which breaks
                 // current cross-shard RenameNode implementation
-                && GetLastNodeId() == RootNodeId))
+                && !isMainWithLocalNodes))
     {
         args.Error = SelectShard(args.Attrs.GetSize(), &args.ShardId);
         if (HasError(args.Error)) {

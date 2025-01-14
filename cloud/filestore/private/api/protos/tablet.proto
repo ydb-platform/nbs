@@ -596,8 +596,10 @@ message TConfigureAsShardRequest
     // ShardNo (will be used for the high bits of NodeId and HandleId)
     uint32 ShardNo = 2;
 
-    // Shard FileSystem identifiers. Needed for directory creation in shards.
+    // Shard FileSystem identifiers and main FileSystem identifier (manages
+    // RootNode). Needed for directory creation in shards.
     repeated string ShardFileSystemIds = 3;
+    string MainFileSystemId = 4;
 }
 
 message TConfigureAsShardResponse

@@ -130,6 +130,7 @@ def test_nonsharded_vs_sharded_fs():
         _l("/a1/b2/l1", "/does/not/matter"),
         _f("/a1/b2/f16.txt", "ZZZZZZZZZZZ2"),
         _f("/f17.txt", "010101010101010101"),
+        _f("/a1/f18.txt", "xxxxxxxxxxxxxxxxxxxxxxxxxx"),
         _d("/a1/b3"),
     ]
 
@@ -154,6 +155,9 @@ def test_nonsharded_vs_sharded_fs():
     client.mv("fs1", "/a0/b0/c0/f17.txt", "/a0/b0/c0/d0/f17.txt")
     client.mv("fs1", "/a0/b0/c0/d0/f17.txt", "/a1/f17.txt")
     client.mv("fs1", "/a1/f17.txt", "/a1/b2/f17.txt")
+    # checking that cross-directory mv to root works
+    client.mv("fs0", "/a1/f18.txt", "/f18.txt")
+    client.mv("fs1", "/a1/f18.txt", "/f18.txt")
     # checking that readlink works (indirectly - via diff)
     client.ln("fs0", "/a1/b2/l2", "--symlink", "/does/not/matter/2")
     client.ln("fs1", "/a1/b2/l2", "--symlink", "/does/not/matter/3")
