@@ -2839,14 +2839,14 @@ NProto::TError TDiskRegistryState::DeallocateDisk(
 
     auto dirtyDevices = DeallocateSimpleDisk(db, diskId, *disk);
     auto error = AddDevicesToPendingCleanup(diskId, std::move(dirtyDevices));
-    if (SUCCEEDED(error.GetCode())) {
+    if (!HasError(error)) {
         // NOTE: We must pass S_ALREADY to the higher-level code. It is used for
         // sync deallocations.
         return error;
     }
-        ReportDiskRegistryInsertToPendingCleanupFailed(
-            TStringBuilder() << "An error occurred while deallocating disk: "
-                             << FormatError(error));
+    ReportDiskRegistryInsertToPendingCleanupFailed(
+        TStringBuilder() << "An error occurred while deallocating disk: "
+                         << FormatError(error));
     return {};
 }
 
