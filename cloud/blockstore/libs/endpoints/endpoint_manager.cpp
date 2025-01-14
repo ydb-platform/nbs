@@ -772,20 +772,18 @@ NProto::TStartEndpointResponse TEndpointManager::DoStartEndpoint(
 }
 
 // See issue-2841
-// There are two maps Endpoints: one in the TEndpointManager, another in
-// TSessionManager. If we try to CreateSession with endpoint, for which session
-// was already created (endpoint was already inserted to the
-// TSessionManager::Endpoints), we will crash. Thats why we have map Endpoints
-// in TEndpointManager, and at the start of method StartEndpointImpl we check if
-// endpoint exists in that map. If it is already exists we call AlterEndpoint.
-// But we insert new element to the TEndpointManager::Endpoints only at the end
-// of method StartEndpointImpl and between inserting to
-// TSessionManager::Endpoints and inserting to TEndpointManager::Endpoints there
-// are few async waits, which causes race condition: first routine calls
-// StartEndpointImpl, insert endpoint to TSessionManager::Endpoints and fall
-// asleep in some wait before inserting  TEndpointManager::Endpoints, second
-// routine calls StartEndpointImpl, then calls SessionManager::CreateSession and
-// crash process. Thats why we call StartEndpointImpl with lock.
+// There are two maps Endpoints: one in the TEndpointManager, the other in
+// TSessionManager. If we try to call TSessionManager::CreateSession method
+// using an endpoint, for which a session has already been created (endpoint has
+// already been inserted into TSessionManager::Endpoints), a crash will occur.
+// To prevent this, we use the TEndpointManager::Endpoints map and check for the
+// existence of an endpoint at the beginning of the StartEndpointImpl method.
+// If the endpoint already exists, we call AlterEndpoint. However, insertion
+// into TEndpointManager::Endpoints is delayed until the end of StartEndpointImpl.
+// In the meantime, multiple asynchronous operations are performed, which can
+// lead to race conditions. To mitigate this, we invoke StartEndpointImpl with a
+// lock, ensuring synchronized access to the maps and preventing concurrent
+// issues.
 NProto::TStartEndpointResponse TEndpointManager::StartEndpointImplWithLock(
     TCallContextPtr ctx,
     std::shared_ptr<NProto::TStartEndpointRequest> request,
@@ -801,13 +799,11 @@ NProto::TStartEndpointResponse TEndpointManager::StartEndpointImplWithLock(
         return lock_it->second;
     }();
     Y_DEFER {
-        // 2 because one pointer in the map, second on the stack.
+        // 2 because the first pointer is in the map, the second is on the stack.
         if (lock.RefCount() == 2) {
             EndpointsLock.erase(socketPath);
         }
     };
-
-    NProto::TStartEndpointResponse result;
 
     auto futureLock = lock->AcquireAsync();
     Executor->WaitFor(futureLock.IgnoreResult());

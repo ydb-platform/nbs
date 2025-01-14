@@ -428,11 +428,10 @@ TSessionManager::TSessionOrError TSessionManager::CreateSessionImpl(
         auto [it, inserted] = Endpoints.emplace(
             request.GetUnixSocketPath(),
             endpoint);
-        if (!inserted) {
-            return TErrorResponse(
-                E_REJECTED,
-                "Session with this socket path was created");
-        }
+        STORAGE_VERIFY(
+            inserted,
+            TWellKnownEntityTypes::ENDPOINT,
+            request.GetUnixSocketPath());
     }
 
     return TSessionInfo {
