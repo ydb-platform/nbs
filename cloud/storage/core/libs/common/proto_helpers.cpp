@@ -118,17 +118,18 @@ bool HasField(
     const TProtoStringType& fieldName)
 {
     const auto* descriptor = message.GetDescriptor();
-    const auto* field = descriptor->FindFieldByName(fieldName);
-
-    if (field == nullptr) {
+    if (!descriptor) {
         return false;
     }
 
+    const auto* field = descriptor->FindFieldByName(fieldName);
     const auto* reflection = message.GetReflection();
+    if (!field || !reflection) {
+        return false;
+    }
     if (field->is_repeated()) {
         return reflection->FieldSize(message, field) != 0;
     }
-
     return reflection->HasField(message, field);
 }
 

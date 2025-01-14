@@ -4,18 +4,22 @@
 
 #include <library/cpp/testing/unittest/registar.h>
 
-namespace {
-using TDiagnosticsConfig = NCloud::NBlockStore::NProto::TDiagnosticsConfig;
+namespace NCloud::NBlockStore {
 
-TDiagnosticsConfig CreateConfig(const TString& protoText)
+namespace {
+
+////////////////////////////////////////////////////////////////////////////////
+
+NProto::TDiagnosticsConfig CreateConfig(const TString& protoText)
 {
-    TDiagnosticsConfig config;
+    NProto::TDiagnosticsConfig config;
     NCloud::ParseProtoTextFromStringRobust(protoText, config);
     return config;
 }
+
 }   // namespace
 
-namespace NCloud::NBlockStore {
+////////////////////////////////////////////////////////////////////////////////
 
 Y_UNIT_TEST_SUITE(TDiagnosticsConfigTest)
 {
