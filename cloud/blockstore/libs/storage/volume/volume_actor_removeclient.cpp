@@ -23,15 +23,15 @@ LWTRACE_USING(BLOCKSTORE_STORAGE_PROVIDER);
 
 void TVolumeActor::ReleaseDisk(const TActorContext& ctx, const TString& clientId)
 {
+    if (Config->GetUseDirectAcquireReleaseDevicesSending()) {
+        SendReleaseDevicesToAgents(clientId, ctx);
+        return;
+    }
     auto request = std::make_unique<TEvDiskRegistry::TEvReleaseDiskRequest>();
 
     request->Record.SetDiskId(State->GetDiskId());
     request->Record.MutableHeaders()->SetClientId(clientId);
     request->Record.SetVolumeGeneration(Executor()->Generation());
-    if (Config->GetUseDirectAcquireReleaseDevicesSending()) {
-        SendReleaseDevicesToAgents(clientId, ctx);
-        return;
-    }
     NCloud::Send(
         ctx,
         MakeDiskRegistryProxyServiceId(),

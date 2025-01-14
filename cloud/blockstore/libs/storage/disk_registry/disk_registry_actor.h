@@ -15,17 +15,16 @@
 #include <cloud/blockstore/libs/storage/api/disk_agent.h>
 #include <cloud/blockstore/libs/storage/api/disk_registry.h>
 #include <cloud/blockstore/libs/storage/api/service.h>
+#include <cloud/blockstore/libs/storage/core/acquire_release_disk.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/core/monitoring_utils.h>
 #include <cloud/blockstore/libs/storage/core/pending_request.h>
 #include <cloud/blockstore/libs/storage/core/request_info.h>
 #include <cloud/blockstore/libs/storage/core/tablet.h>
 #include <cloud/blockstore/libs/storage/model/composite_task_waiter.h>
-
 #include <cloud/storage/core/libs/common/backoff_delay_provider.h>
 
 #include <contrib/ydb/core/base/tablet_pipe.h>
-
 #include <contrib/ydb/library/actors/core/actor.h>
 #include <contrib/ydb/library/actors/core/events.h>
 #include <contrib/ydb/library/actors/core/hfunc.h>
@@ -116,6 +115,9 @@ private:
 
     // Requests in-progress
     THashSet<NActors::TActorId> Actors;
+
+    THashMap<NActors::TActorId, TRequestInfoPtr> AcquireDiskRequests;
+    THashMap<NActors::TActorId, TRequestInfoPtr> ReleaseDiskRequests;
 
     TLogbrokerServicePtr LogbrokerService;
     NNotify::IServicePtr NotifyService;
@@ -243,10 +245,20 @@ private:
 
     void ProcessAutomaticallyReplacedDevices(const NActors::TActorContext& ctx);
 
+    void HandleDevicesAcquireFinished(
+        const NAcquireReleaseDevices::TEvDevicesAcquireFinished::TPtr& ev,
+        const NActors::TActorContext& ctx);
     void OnDiskAcquired(
-        TVector<TAgentAcquireDevicesCachedRequest> sentAcquireRequests);
+        TVector<NAcquireReleaseDevices::TAgentAcquireDevicesCachedRequest>
+            sentAcquireRequests);
+
+    void HandleDevicesReleaseFinished(
+        const NAcquireReleaseDevices::TEvDevicesReleaseFinished::TPtr& ev,
+        const NActors::TActorContext& ctx);
     void OnDiskReleased(
-        const TVector<TAgentReleaseDevicesCachedRequest>& sentReleaseRequests);
+        const TVector<
+            NAcquireReleaseDevices::TAgentReleaseDevicesCachedRequest>&
+            sentReleaseRequests);
     void OnDiskDeallocated(const TDiskId& diskId);
     void SendCachedAcquireRequestsToAgent(
         const NActors::TActorContext& ctx,

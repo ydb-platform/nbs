@@ -1,15 +1,16 @@
-#include "disk_registry_actor.h"
-#include "cloud/blockstore/libs/storage/core/proto_helpers.h"
+#include "acquire_release_disk.h"
 
-#include <cloud/blockstore/libs/storage/api/disk_agent.h>
+#include <cloud/blockstore/libs/storage/core/proto_helpers.h>
+#include <cloud/storage/core/libs/actors/helpers.h>
 
-#include <cloud/blockstore/libs/kikimr/events.h>
+#include <contrib/ydb/library/actors/core/actor.h>
+#include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
+#include <contrib/ydb/library/actors/core/log.h>
 
-namespace NCloud::NBlockStore::NStorage {
+#include <util/string/join.h>
 
+namespace NCloud::NBlockStore::NStorage::NAcquireReleaseDevices {
 using namespace NActors;
-
-using namespace NKikimr::NTabletFlatExecutor;
 
 namespace {
 
@@ -20,13 +21,14 @@ class TReleaseDiskActor final
 {
 private:
     const TActorId Owner;
-    const TRequestInfoPtr RequestInfo;
     const TString DiskId;
     const TString ClientId;
     const ui32 VolumeGeneration;
     const TDuration RequestTimeout;
-
     TVector<NProto::TDeviceConfig> Devices;
+    bool MuteIOErrors;
+    NLog::EComponent Component;
+
     int PendingRequests = 0;
 
     TVector<TAgentReleaseDevicesCachedRequest> SentReleaseRequests;
@@ -34,18 +36,18 @@ private:
 public:
     TReleaseDiskActor(
         const TActorId& owner,
-        TRequestInfoPtr requestInfo,
         TString diskId,
         TString clientId,
         ui32 volumeGeneration,
         TDuration requestTimeout,
-        TVector<NProto::TDeviceConfig> devices);
+        TVector<NProto::TDeviceConfig> devices,
+        bool muteIoErrors,
+        NLog::EComponent component);
 
     void Bootstrap(const TActorContext& ctx);
 
 private:
     void PrepareRequest(NProto::TReleaseDevicesRequest& request);
-    void RemoveDiskSession(const TActorContext& ctx);
     void ReplyAndDie(const TActorContext& ctx, NProto::TError error);
 
     void OnReleaseResponse(
@@ -68,10 +70,6 @@ private:
         const TEvDiskAgent::TEvReleaseDevicesRequest::TPtr& ev,
         const TActorContext& ctx);
 
-    void HandleRemoveDiskSessionResponse(
-        const TEvDiskRegistryPrivate::TEvRemoveDiskSessionResponse::TPtr& ev,
-        const TActorContext& ctx);
-
     void HandleTimeout(
         const TEvents::TEvWakeup::TPtr& ev,
         const TActorContext& ctx);
@@ -83,19 +81,21 @@ private:
 
 TReleaseDiskActor::TReleaseDiskActor(
         const TActorId& owner,
-        TRequestInfoPtr requestInfo,
         TString diskId,
         TString clientId,
         ui32 volumeGeneration,
         TDuration requestTimeout,
-        TVector<NProto::TDeviceConfig> devices)
+        TVector<NProto::TDeviceConfig> devices,
+        bool muteIOErrors,
+        NLog::EComponent component)
     : Owner(owner)
-    , RequestInfo(std::move(requestInfo))
     , DiskId(std::move(diskId))
     , ClientId(std::move(clientId))
     , VolumeGeneration(volumeGeneration)
     , RequestTimeout(requestTimeout)
     , Devices(std::move(devices))
+    , MuteIOErrors(muteIOErrors)
+    , Component(component)
 {}
 
 void TReleaseDiskActor::PrepareRequest(NProto::TReleaseDevicesRequest& request)
@@ -141,27 +141,16 @@ void TReleaseDiskActor::Bootstrap(const TActorContext& ctx)
     ctx.Schedule(RequestTimeout, new TEvents::TEvWakeup());
 }
 
-void TReleaseDiskActor::RemoveDiskSession(const TActorContext& ctx)
-{
-    auto request =
-        std::make_unique<TEvDiskRegistryPrivate::TEvRemoveDiskSessionRequest>(
-            DiskId,
-            ClientId,
-            std::move(SentReleaseRequests));
-
-    NCloud::Send(ctx, Owner, std::move(request));
-}
-
 void TReleaseDiskActor::ReplyAndDie(const TActorContext& ctx, NProto::TError error)
 {
-    auto response = std::make_unique<TEvDiskRegistry::TEvReleaseDiskResponse>(
-        std::move(error));
-    NCloud::Reply(ctx, *RequestInfo, std::move(response));
-
     NCloud::Send(
         ctx,
         Owner,
-        std::make_unique<TEvDiskRegistryPrivate::TEvOperationCompleted>());
+        std::make_unique<TEvDevicesReleaseFinished>(
+            DiskId,
+            ClientId,
+            std::move(SentReleaseRequests),
+            std::move(error)));
 
     Die(ctx);
 }
@@ -174,7 +163,10 @@ void TReleaseDiskActor::OnReleaseResponse(
     Y_ABORT_UNLESS(PendingRequests > 0);
 
     if (HasError(error)) {
-        LOG_ERROR(ctx, TBlockStoreComponents::DISK_REGISTRY_WORKER,
+        LOG_LOG(
+            ctx,
+            MuteIOErrors ? NLog::PRI_WARN : NLog::PRI_ERROR,
+            Component,
             "ReleaseDevices %s error: %s, %llu",
             LogTargets().c_str(),
             FormatError(error).c_str(),
@@ -182,7 +174,7 @@ void TReleaseDiskActor::OnReleaseResponse(
     }
 
     if (--PendingRequests == 0) {
-        RemoveDiskSession(ctx);
+        ReplyAndDie(ctx, {});
     }
 }
 
@@ -198,15 +190,6 @@ void TReleaseDiskActor::HandleReleaseDevicesUndelivery(
     const TActorContext& ctx)
 {
     OnReleaseResponse(ctx, ev->Cookie, MakeError(E_REJECTED, "not delivered"));
-}
-
-void TReleaseDiskActor::HandleRemoveDiskSessionResponse(
-    const TEvDiskRegistryPrivate::TEvRemoveDiskSessionResponse::TPtr& ev,
-    const TActorContext& ctx)
-{
-    const auto* msg = ev->Get();
-
-    ReplyAndDie(ctx, msg->GetError());
 }
 
 void TReleaseDiskActor::HandlePoisonPill(
@@ -232,7 +215,7 @@ void TReleaseDiskActor::HandleTimeout(
         << " VolumeGeneration: " << VolumeGeneration
         << " PendingRequests: " << PendingRequests;
 
-    LOG_WARN(ctx, TBlockStoreComponents::DISK_REGISTRY_WORKER, err);
+    LOG_WARN(ctx, Component, err);
 
     ReplyAndDie(ctx, MakeError(E_TIMEOUT, err));
 }
@@ -248,11 +231,8 @@ STFUNC(TReleaseDiskActor::StateWork)
         HFunc(TEvDiskAgent::TEvReleaseDevicesRequest,
             HandleReleaseDevicesUndelivery);
 
-        HFunc(TEvDiskRegistryPrivate::TEvRemoveDiskSessionResponse,
-            HandleRemoveDiskSessionResponse);
-
         default:
-            HandleUnexpectedEvent(ev, TBlockStoreComponents::DISK_REGISTRY_WORKER);
+            HandleUnexpectedEvent(ev, Component);
             break;
     }
 }
@@ -266,109 +246,26 @@ TString TReleaseDiskActor::LogTargets() const
 
 }   // namespace
 
-////////////////////////////////////////////////////////////////////////////////
-
-void TDiskRegistryActor::HandleReleaseDisk(
-    const TEvDiskRegistry::TEvReleaseDiskRequest::TPtr& ev,
-    const TActorContext& ctx)
+TActorId ReleaseDevices(
+    const TActorContext& ctx,
+    const TActorId& owner,
+    TString diskId,
+    TString clientId,
+    ui32 volumeGeneration,
+    TDuration requestTimeout,
+    TVector<NProto::TDeviceConfig> devices,
+    bool muteIOErrors,
+    NActors::NLog::EComponent component)
 {
-    BLOCKSTORE_DISK_REGISTRY_COUNTER(ReleaseDisk);
-
-    auto replyWithError = [&] (auto error) {
-        auto response = std::make_unique<TEvDiskRegistry::TEvReleaseDiskResponse>(
-            std::move(error));
-        NCloud::Reply(ctx, *ev, std::move(response));
-    };
-
-    auto* msg = ev->Get();
-    TString& diskId = *msg->Record.MutableDiskId();
-    TString& clientId = *msg->Record.MutableHeaders()->MutableClientId();
-    ui32 volumeGeneration = msg->Record.GetVolumeGeneration();
-
-    LOG_DEBUG(ctx, TBlockStoreComponents::DISK_REGISTRY,
-        "[%lu] Received ReleaseDisk request: DiskId=%s, ClientId=%s"
-        ", VolumeGeneration=%u",
-        TabletID(),
-        diskId.c_str(),
-        clientId.c_str(),
-        volumeGeneration);
-
-    if (!clientId) {
-        replyWithError(MakeError(E_ARGUMENT, "empty client id"));
-        return;
-    }
-
-    if (!diskId) {
-        replyWithError(MakeError(E_ARGUMENT, "empty disk id"));
-        return;
-    }
-
-    TDiskInfo diskInfo;
-    const auto error = State->GetDiskInfo(diskId, diskInfo);
-    if (HasError(error)) {
-        LOG_ERROR(ctx, TBlockStoreComponents::DISK_REGISTRY,
-            "ReleaseDisk %s. GetDiskInfo error: %s",
-            diskId.c_str(),
-            FormatError(error).c_str());
-
-        replyWithError(error);
-        return;
-    }
-
-    if (!State->FilterDevicesAtUnavailableAgents(diskInfo)) {
-        LOG_WARN(ctx, TBlockStoreComponents::DISK_REGISTRY,
-            "ReleaseDisk %s. Nothing to release",
-            diskId.c_str());
-
-        replyWithError(MakeError(S_ALREADY, {}));
-        return;
-    }
-
-    TVector<NProto::TDeviceConfig> devices = std::move(diskInfo.Devices);
-    for (auto& migration: diskInfo.Migrations) {
-        devices.push_back(std::move(*migration.MutableTargetDevice()));
-    }
-    for (auto& replica: diskInfo.Replicas) {
-        for (auto& device: replica) {
-            devices.push_back(std::move(device));
-        }
-    }
-
-    auto requestInfo = CreateRequestInfo(
-        ev->Sender,
-        ev->Cookie,
-        msg->CallContext);
-
-    auto actor = NCloud::Register<TReleaseDiskActor>(
+    return NCloud::Register<TReleaseDiskActor>(
         ctx,
-        ctx.SelfID,
-        std::move(requestInfo),
+        owner,
         std::move(diskId),
         std::move(clientId),
         volumeGeneration,
-        Config->GetAgentRequestTimeout(),
-        std::move(devices));
-
-    Actors.insert(actor);
+        requestTimeout,
+        std::move(devices),
+        muteIOErrors,
+        component);
 }
-
-void TDiskRegistryActor::HandleRemoveDiskSession(
-    const TEvDiskRegistryPrivate::TEvRemoveDiskSessionRequest::TPtr& ev,
-    const TActorContext& ctx)
-{
-    const auto* msg = ev->Get();
-
-    OnDiskReleased(msg->SentRequests);
-
-    auto requestInfo = CreateRequestInfo(
-        ev->Sender,
-        ev->Cookie,
-        msg->CallContext);
-
-    State->FinishAcquireDisk(msg->DiskId);
-    auto response =
-        std::make_unique<TEvDiskRegistryPrivate::TEvRemoveDiskSessionResponse>();
-    NCloud::Reply(ctx, *ev, std::move(response));
-}
-
-}   // namespace NCloud::NBlockStore::NStorage
+} // namespace NCloud::NBlockStore::NStorage::NAcquireReleaseDevices

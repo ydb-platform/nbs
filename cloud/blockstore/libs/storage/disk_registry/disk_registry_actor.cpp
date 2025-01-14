@@ -708,6 +708,14 @@ STFUNC(TDiskRegistryActor::StateWork)
             TEvDiskRegistryPrivate::TEvDiskRegistryAgentListExpiredParamsCleanup,
             TDiskRegistryActor::HandleDiskRegistryAgentListExpiredParamsCleanup);
 
+        HFunc(
+            NAcquireReleaseDevices::TEvDevicesAcquireFinished,
+            HandleDevicesAcquireFinished);
+
+        HFunc(
+            NAcquireReleaseDevices::TEvDevicesReleaseFinished,
+            HandleDevicesReleaseFinished);
+
         default:
             if (!HandleRequests(ev) && !HandleDefaultEvents(ev, SelfId())) {
                 HandleUnexpectedEvent(ev, TBlockStoreComponents::DISK_REGISTRY);
@@ -880,7 +888,8 @@ bool ToLogicalBlocks(NProto::TDeviceConfig& device, ui32 logicalBlockSize)
 ////////////////////////////////////////////////////////////////////////////////
 
 void TDiskRegistryActor::OnDiskAcquired(
-    TVector<TAgentAcquireDevicesCachedRequest> sentAcquireRequests)
+    TVector<NAcquireReleaseDevices::TAgentAcquireDevicesCachedRequest>
+        sentAcquireRequests)
 {
     for (auto& sentRequest: sentAcquireRequests) {
         TCachedAcquireRequests& cachedRequests =
@@ -893,7 +902,8 @@ void TDiskRegistryActor::OnDiskAcquired(
 }
 
 void TDiskRegistryActor::OnDiskReleased(
-    const TVector<TAgentReleaseDevicesCachedRequest>& sentReleaseRequests)
+    const TVector<NAcquireReleaseDevices::TAgentReleaseDevicesCachedRequest>&
+        sentReleaseRequests)
 {
     auto& acquireCacheByAgentId = State->GetAcquireCacheByAgentId();
     for (const auto& [agentId, releaseRequest]: sentReleaseRequests) {

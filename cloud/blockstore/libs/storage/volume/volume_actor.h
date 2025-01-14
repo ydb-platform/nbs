@@ -19,6 +19,7 @@
 #include <cloud/blockstore/libs/storage/api/service.h>
 #include <cloud/blockstore/libs/storage/api/stats_service.h>
 #include <cloud/blockstore/libs/storage/api/volume.h>
+#include <cloud/blockstore/libs/storage/core/acquire_release_disk.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/core/disk_counters.h>
 #include <cloud/blockstore/libs/storage/core/metrics.h>
@@ -733,7 +734,7 @@ private:
         const NActors::TActorContext& ctx);
 
     void HandleDevicesAcquireFinished(
-        const TEvVolumePrivate::TEvDevicesAcquireFinished::TPtr& ev,
+        const NAcquireReleaseDevices::TEvDevicesAcquireFinished::TPtr& ev,
         const NActors::TActorContext& ctx);
 
     void AcquireDiskIfNeeded(const NActors::TActorContext& ctx);
@@ -767,7 +768,7 @@ private:
         const NActors::TActorContext& ctx);
 
     void HandleDevicesReleasedFinished(
-        const TEvVolumePrivate::TEvDevicesReleaseFinished::TPtr& ev,
+        const NAcquireReleaseDevices::TEvDevicesReleaseFinished::TPtr& ev,
         const NActors::TActorContext& ctx);
 
     void HandleAllocateDiskResponse(

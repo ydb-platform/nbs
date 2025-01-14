@@ -309,24 +309,6 @@ struct TEvVolumePrivate
     };
 
     //
-    // DevicesAcquireFinished
-    //
-
-    struct TDevicesAcquireFinished
-    {
-        NProto::TError Error;
-    };
-
-    //
-    // DevicesReleaseFinished
-    //
-
-    struct TDevicesReleaseFinished
-    {
-        NProto::TError Error;
-    };
-
-    //
     // Events declaration
     //
 
@@ -348,8 +330,6 @@ struct TEvVolumePrivate
         EvRemoveExpiredVolumeParams,
         EvShadowDiskAcquired,
         EvExternalDrainDone,
-        EvDevicesAcquireFinished,
-        EvDevicesReleaseFinished,
 
         EvEnd
     };
@@ -411,17 +391,6 @@ struct TEvVolumePrivate
     using TEvExternalDrainDone = TRequestEvent<
         TExternalDrainDone,
         EvExternalDrainDone
-    >;
-
-    using TEvDevicesAcquireFinished = TRequestEvent<
-        TDevicesAcquireFinished,
-        EvDevicesAcquireFinished
-    >;
-
-    using TEvDevicesReleaseFinished =
-        TRequestEvent<
-        TDevicesReleaseFinished,
-        EvDevicesReleaseFinished
     >;
 };
 

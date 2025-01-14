@@ -92,8 +92,7 @@ private:
 private:
     STFUNC(StateWork)
     {
-        auto typeRewrite = ev->GetTypeRewrite();
-        switch (typeRewrite) {
+        switch (ev->GetTypeRewrite()) {
             HFunc(NActors::TEvents::TEvPoisonPill, HandlePoisonPill);
 
             HFunc(TEvDiskAgent::TEvReadDeviceBlocksRequest, HandleReadDeviceBlocks);
