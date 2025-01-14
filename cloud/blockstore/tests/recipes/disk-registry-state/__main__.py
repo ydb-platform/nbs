@@ -1,9 +1,7 @@
-import json
-import os
 import yatest.common as yatest_common
 
 from yatest.common import process
-from library.python.testing.recipe import declare_recipe, set_env
+from library.python.testing.recipe import declare_recipe
 
 BACKUP_PATH = "cloud/blockstore/tests/recipes/disk-registry-state/data/backup.json"
 GENERATOR_PATH = "cloud/blockstore/tools/testing/disk-registry-state-generator/disk-registry-state-generator"

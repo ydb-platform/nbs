@@ -16,5 +16,4 @@ PEERDIR(
     cloud/blockstore/libs/storage/disk_registry/testlib
 )
 
-
 END()
