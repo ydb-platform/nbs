@@ -873,12 +873,11 @@ func (c *client) EnsureCheckpointReady(
 
 	defer c.metrics.StatRequest("EnsureCheckpointReady")(&err)
 
-	unparserStatus, err := c.getCheckpointStatus(ctx, diskID, checkpointID)
+	status, err := c.GetCheckpointStatus(ctx, diskID, checkpointID)
+
 	if err != nil {
 		return err
 	}
-
-	status := parseCheckpointStatus(unparserStatus)
 
 	logging.Info(
 		ctx,
