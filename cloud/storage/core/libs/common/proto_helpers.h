@@ -40,4 +40,8 @@ void ParseProtoTextFromFileRobust(
 
 TString ProtoToText(const google::protobuf::Message& proto);
 
+bool HasField(
+    const google::protobuf::Message& message,
+    const TProtoStringType& fieldName);
+
 }   // namespace NCloud
