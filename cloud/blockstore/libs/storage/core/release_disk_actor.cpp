@@ -16,8 +16,8 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TReleaseDiskActor final
-    : public TActorBootstrapped<TReleaseDiskActor>
+class TReleaseDevicesActor final
+    : public TActorBootstrapped<TReleaseDevicesActor>
 {
 private:
     const TActorId Owner;
@@ -34,7 +34,7 @@ private:
     TVector<TAgentReleaseDevicesCachedRequest> SentReleaseRequests;
 
 public:
-    TReleaseDiskActor(
+    TReleaseDevicesActor(
         const TActorId& owner,
         TString diskId,
         TString clientId,
@@ -79,7 +79,7 @@ private:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TReleaseDiskActor::TReleaseDiskActor(
+TReleaseDevicesActor::TReleaseDevicesActor(
         const TActorId& owner,
         TString diskId,
         TString clientId,
@@ -98,14 +98,14 @@ TReleaseDiskActor::TReleaseDiskActor(
     , Component(component)
 {}
 
-void TReleaseDiskActor::PrepareRequest(NProto::TReleaseDevicesRequest& request)
+void TReleaseDevicesActor::PrepareRequest(NProto::TReleaseDevicesRequest& request)
 {
     request.MutableHeaders()->SetClientId(ClientId);
     request.SetDiskId(DiskId);
     request.SetVolumeGeneration(VolumeGeneration);
 }
 
-void TReleaseDiskActor::Bootstrap(const TActorContext& ctx)
+void TReleaseDevicesActor::Bootstrap(const TActorContext& ctx)
 {
     Become(&TThis::StateWork);
 
@@ -141,7 +141,7 @@ void TReleaseDiskActor::Bootstrap(const TActorContext& ctx)
     ctx.Schedule(RequestTimeout, new TEvents::TEvWakeup());
 }
 
-void TReleaseDiskActor::ReplyAndDie(const TActorContext& ctx, NProto::TError error)
+void TReleaseDevicesActor::ReplyAndDie(const TActorContext& ctx, NProto::TError error)
 {
     NCloud::Send(
         ctx,
@@ -155,7 +155,7 @@ void TReleaseDiskActor::ReplyAndDie(const TActorContext& ctx, NProto::TError err
     Die(ctx);
 }
 
-void TReleaseDiskActor::OnReleaseResponse(
+void TReleaseDevicesActor::OnReleaseResponse(
     const TActorContext& ctx,
     ui64 cookie,
     NProto::TError error)
@@ -178,21 +178,21 @@ void TReleaseDiskActor::OnReleaseResponse(
     }
 }
 
-void TReleaseDiskActor::HandleReleaseDevicesResponse(
+void TReleaseDevicesActor::HandleReleaseDevicesResponse(
     const TEvDiskAgent::TEvReleaseDevicesResponse::TPtr& ev,
     const TActorContext& ctx)
 {
     OnReleaseResponse(ctx, ev->Cookie, ev->Get()->GetError());
 }
 
-void TReleaseDiskActor::HandleReleaseDevicesUndelivery(
+void TReleaseDevicesActor::HandleReleaseDevicesUndelivery(
     const TEvDiskAgent::TEvReleaseDevicesRequest::TPtr& ev,
     const TActorContext& ctx)
 {
     OnReleaseResponse(ctx, ev->Cookie, MakeError(E_REJECTED, "not delivered"));
 }
 
-void TReleaseDiskActor::HandlePoisonPill(
+void TReleaseDevicesActor::HandlePoisonPill(
     const TEvents::TEvPoisonPill::TPtr& ev,
     const TActorContext& ctx)
 {
@@ -201,14 +201,14 @@ void TReleaseDiskActor::HandlePoisonPill(
     ReplyAndDie(ctx, MakeTabletIsDeadError(E_REJECTED, __LOCATION__));
 }
 
-void TReleaseDiskActor::HandleTimeout(
+void TReleaseDevicesActor::HandleTimeout(
     const TEvents::TEvWakeup::TPtr& ev,
     const TActorContext& ctx)
 {
     Y_UNUSED(ev);
 
     const auto err = TStringBuilder()
-        << "TReleaseDiskActor timeout."
+        << "TReleaseDevicesActor timeout."
         << " DiskId: " << DiskId
         << " ClientId: " << ClientId
         << " Targets: " << LogTargets()
@@ -220,7 +220,7 @@ void TReleaseDiskActor::HandleTimeout(
     ReplyAndDie(ctx, MakeError(E_TIMEOUT, err));
 }
 
-STFUNC(TReleaseDiskActor::StateWork)
+STFUNC(TReleaseDevicesActor::StateWork)
 {
     switch (ev->GetTypeRewrite()) {
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
@@ -239,7 +239,7 @@ STFUNC(TReleaseDiskActor::StateWork)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TString TReleaseDiskActor::LogTargets() const
+TString TReleaseDevicesActor::LogTargets() const
 {
     return LogDevices(Devices);
 }
@@ -257,7 +257,7 @@ TActorId ReleaseDevices(
     bool muteIOErrors,
     NActors::NLog::EComponent component)
 {
-    return NCloud::Register<TReleaseDiskActor>(
+    return NCloud::Register<TReleaseDevicesActor>(
         ctx,
         owner,
         std::move(diskId),

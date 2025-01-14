@@ -1,7 +1,7 @@
 
 #pragma once
 
-#include "contrib/ydb/library/actors/interconnect/types.h"
+#include <contrib/ydb/library/actors/interconnect/types.h>
 
 #include <cloud/blockstore/libs/kikimr/events.h>
 #include <cloud/blockstore/libs/storage/api/disk_agent.h>

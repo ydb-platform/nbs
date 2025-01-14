@@ -238,7 +238,7 @@ void TAcquireDevicesActor::ReplyAndDie(
         LOG_ERROR(
             ctx,
             Component,
-            "[%s] AcquireDisk %s targets %s error: %s",
+            "[%s] AcquireDevices %s targets %s error: %s",
             ClientId.c_str(),
             DiskId.c_str(),
             LogTargets().c_str(),
