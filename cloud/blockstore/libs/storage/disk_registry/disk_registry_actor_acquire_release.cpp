@@ -121,7 +121,7 @@ void TDiskRegistryActor::HandleDevicesAcquireFinished(
         }
     }
 
-    NCloud::Reply(ctx, reqInfo, std::move(response));
+    NCloud::Reply(ctx, *reqInfo, std::move(response));
     Actors.erase(ev->Sender);
     AcquireDiskRequests.erase(ev->Sender);
 }
@@ -231,7 +231,7 @@ void TDiskRegistryActor::HandleDevicesReleaseFinished(
 
     auto response =
         std::make_unique<TEvDiskRegistry::TEvReleaseDiskResponse>(msg->Error);
-    NCloud::Reply(ctx, reqInfo, std::move(response));
+    NCloud::Reply(ctx, *reqInfo, std::move(response));
 
     Actors.erase(ev->Sender);
     ReleaseDiskRequests.erase(ev->Sender);
