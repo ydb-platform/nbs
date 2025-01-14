@@ -216,6 +216,13 @@ void TCreateSessionActor::HandleDescribeFileStoreResponse(
 
     if (FAILED(msg->GetStatus())) {
         if (GetErrorKind(msg->GetError()) != EErrorKind::ErrorRetriable) {
+            LOG_ERROR(
+                ctx,
+                TFileStoreComponents::SERVICE_WORKER,
+                "%s Failed to describe filestore %s Error: %s",
+                LogTag().c_str(),
+                FileSystemId.c_str(),
+                FormatError(msg->GetError()).c_str());
             ReportDescribeFileStoreError();
         }
 
