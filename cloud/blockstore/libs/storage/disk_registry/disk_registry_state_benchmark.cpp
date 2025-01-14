@@ -16,33 +16,35 @@ namespace {
 
 ///////////////////////////////////////////////////////////////////////////////
 
-TString FilePath(TStringBuf fileName)
+const TString BackupFile =
+    "cloud/blockstore/tests/recipes/disk-registry-state/data/backup.json";
+
+TString BackupFilePath()
 {
     auto arcRoot = ArcadiaSourceRoot();
-    return JoinFsPaths(
-        arcRoot ? arcRoot : "/work/nbs.3",
-        "cloud/blockstore/libs/storage/disk_registry/benchmark",
-        fileName);
+    Y_ABORT_UNLESS(arcRoot);
+    return JoinFsPaths(arcRoot, BackupFile);
 }
 
-TString ReadFile(const TString& fileName)
+TString ReadFile(const TString& filePath)
 {
-    TFile file(fileName, EOpenModeFlag::RdOnly);
+    TFile file(filePath, EOpenModeFlag::RdOnly);
     return TFileInput(file).ReadAll();
 }
 
-TDiskRegistryState Load(const TString& fileName, bool disableFullGroupsCalc)
+TDiskRegistryState Load(bool disableFullGroupsCalc)
 {
-    auto filePath = FilePath(fileName);
-    TString backupData = ReadFile(filePath);
+    auto backupPath = BackupFilePath();
+    TString backupData = ReadFile(backupPath);
 
     NProto::TBackupDiskRegistryStateResponse backup;
 
     auto status =
         google::protobuf::util::JsonStringToMessage(backupData, &backup);
     if (!status.ok()) {
-        ythrow yexception() << "Error loading state: " << filePath
-                            << " error: " << status.ToString();
+        ythrow yexception()
+            << "Error loading state from: " << backupPath.Quote()
+            << " error: " << status.ToString();
     }
     auto monitoring = CreateMonitoringServiceStub();
     auto diskRegistryGroup = monitoring->GetCounters()
@@ -84,7 +86,7 @@ TDiskRegistryState Load(const TString& fileName, bool disableFullGroupsCalc)
 
 static void PublishCounters_All(benchmark::State& benchmarkState)
 {
-    auto state = Load("vla.json", false);
+    auto state = Load(false);
     for (const auto _: benchmarkState) {
         state.PublishCounters(TInstant::Now());
     }
@@ -92,7 +94,7 @@ static void PublishCounters_All(benchmark::State& benchmarkState)
 
 static void PublishCounters_DisableFullGroups(benchmark::State& benchmarkState)
 {
-    auto state = Load("vla.json", true);
+    auto state = Load(true);
     for (const auto _: benchmarkState) {
         state.PublishCounters(TInstant::Now());
     }
@@ -106,7 +108,7 @@ void DoCreateDeleteDisk(
     executor.WriteTx([&](TDiskRegistryDatabase db) mutable
                      { db.InitSchema(); });
 
-    auto state = Load("vla.json", false);
+    auto state = Load(false);
     for (const auto _: benchmarkState) {
         executor.WriteTx(
             [&](TDiskRegistryDatabase db)

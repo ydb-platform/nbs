@@ -1,4 +1,5 @@
 RECURSE(
+    disk-registry-state
     endpoint
     fake-root-kms
     local-kikimr

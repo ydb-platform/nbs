@@ -6,14 +6,19 @@
 #include <contrib/libs/protobuf/src/google/protobuf/stubs/port.h>
 #include <contrib/libs/protobuf/src/google/protobuf/util/json_util.h>
 
+#include <library/cpp/getopt/small/last_getopt.h>
+
 #include <util/random/fast.h>
 #include <util/stream/file.h>
 
 #include <google/protobuf/util/json_util.h>
 
-namespace NCloud::NBlockStore::NStorage {
+using namespace NCloud::NBlockStore;
+using namespace NCloud::NBlockStore::NStorage;
 
 namespace {
+
+////////////////////////////////////////////////////////////////////////////////
 
 constexpr ui32 DefaultBlockSize = 4096;
 
@@ -56,7 +61,22 @@ constexpr TEntityInfo<EVolumeType> Disks[]{
     {.Count = 1000, .Min = 1, .Max = 3, .Tag = EVolumeType::Mirror3},
 };
 
-//////////////////////////////////////////////////////////////////
+struct TOptions
+{
+    TString BackupPath;
+
+    void Parse(int argc, char** argv)
+    {
+        NLastGetopt::TOpts opts;
+        opts.AddHelpOption();
+
+        opts.AddLongOption("backup-path")
+            .RequiredArgument()
+            .StoreResult(&BackupPath);
+
+        NLastGetopt::TOptsParseResultException res(&opts, argc, argv);
+    }
+};
 
 template <typename TTag>
 void Generate(
@@ -74,25 +94,7 @@ void Generate(
         }
     }
 }
-/*
-NProto::TDiskConfig Disk(
-    const TString& diskId,
-    const TVector<TString>& uuids,
-    NProto::EDiskState state)
-{
-    NProto::TDiskConfig config;
 
-    config.SetDiskId(diskId);
-    config.SetBlockSize(DefaultBlockSize);
-    config.SetState(state);
-
-    for (const auto& uuid: uuids) {
-        *config.AddDeviceUUIDs() = uuid;
-    }
-
-    return config;
-}
-*/
 auto GenerateAll()
 {
     TFastRng64 Rand(GetCycleCount());
@@ -136,7 +138,7 @@ auto GenerateAll()
         std::function<void(size_t i, size_t val, EDevicePool tag)>(makeHost),
         Rand);
 
-    auto monitoring = CreateMonitoringServiceStub();
+    auto monitoring = NCloud::CreateMonitoringServiceStub();
     auto diskRegistryGroup = monitoring->GetCounters()
                                  ->GetSubgroup("counters", "blockstore")
                                  ->GetSubgroup("component", "disk_registry");
@@ -186,19 +188,18 @@ auto GenerateAll()
 
 }   // namespace
 
-}   // namespace NCloud::NBlockStore::NStorage
-
 int main(int argc, char** argv)
 {
-    Y_UNUSED(argc);
-    Y_UNUSED(argv);
+    TOptions opts;
+    opts.Parse(argc, argv);
 
-    TString filePath = "backup.json";
-    auto state = NCloud::NBlockStore::NStorage::GenerateAll();
-    auto backup = state.BackupState();
+    auto state = GenerateAll();
+    NProto::TDiskRegistryStateBackup backupState = state.BackupState();
+    NProto::TBackupDiskRegistryStateResponse backup;
+    backup.MutableBackup()->Swap(&backupState);
 
     TProtoStringType str;
     google::protobuf::util::MessageToJsonString(backup, &str);
-    TFileOutput(filePath).Write(str.c_str());
+    TFileOutput(opts.BackupPath).Write(str.c_str());
     return 0;
 }

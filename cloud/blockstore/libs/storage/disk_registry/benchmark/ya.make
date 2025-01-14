@@ -1,5 +1,7 @@
 G_BENCHMARK()
 
+INCLUDE(${ARCADIA_ROOT}/cloud/blockstore/tests/recipes/disk-registry-state/recipe.inc)
+
 IF (SANITIZER_TYPE)
     INCLUDE(${ARCADIA_ROOT}/cloud/storage/core/tests/recipes/large.inc)
 ELSE()
