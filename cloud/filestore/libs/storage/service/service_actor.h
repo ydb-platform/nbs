@@ -67,6 +67,7 @@ private:
     void HandleHttpInfo(
         const NActors::NMon::TEvHttpInfo::TPtr& ev,
         const NActors::TActorContext& ctx);
+
     void HandleHttpInfo_Search(
         const NActors::NMon::TEvHttpInfo::TPtr& ev,
         const TString& filesystemId,
@@ -102,7 +103,6 @@ private:
         const NActors::TActorContext& ctx);                                    \
 
     FILESTORE_REMOTE_SERVICE(FILESTORE_DECLARE_REQUEST_RESPONSE, TEvService)
-    FILESTORE_SERVICE_REQUESTS_PRIVATE(FILESTORE_DECLARE_REQUEST_RESPONSE, TEvServicePrivate)
 #undef FILESTORE_DECLARE_REQUEST_RESPONSE
 
     STFUNC(StateWork);
@@ -207,6 +207,14 @@ private:
         TString input);
 
     NActors::IActorPtr CreateGetStorageStatsActionActor(
+        TRequestInfoPtr requestInfo,
+        TString input);
+
+    NActors::IActorPtr CreateListLocalFileStoresActionActor(
+        TRequestInfoPtr requestInfo,
+        TString input);
+
+    NActors::IActorPtr CreateRestartTabletActionActor(
         TRequestInfoPtr requestInfo,
         TString input);
 

@@ -150,16 +150,25 @@ void TIndexTabletState::LoadState(
             config.GetInMemoryIndexCacheNodeRefsCapacity(),
             GetNodesCount(),
             config.GetInMemoryIndexCacheNodesToNodeRefsCapacityRatio()));
+    Impl->MixedBlocks.Reset(config.GetMixedBlocksOffloadedRangesCapacity());
 
     for (const auto& deletionMarker: largeDeletionMarkers) {
         Impl->LargeBlocks.AddDeletionMarker(deletionMarker);
     }
 
     Impl->OrphanNodeIds.insert(orphanNodeIds.begin(), orphanNodeIds.end());
+
+    Impl->ShardBalancer.SetParameters(
+        GetBlockSize(),
+        config.GetShardBalancerDesiredFreeSpaceReserve(),
+        config.GetShardBalancerMinFreeSpaceReserve());
+    const auto& shardIds = GetFileSystem().GetShardFileSystemIds();
+    Impl->ShardBalancer.UpdateShards({shardIds.begin(), shardIds.end()});
 }
 
 void TIndexTabletState::UpdateConfig(
     TIndexTabletDatabase& db,
+    const TStorageConfig& config,
     const NProto::TFileSystem& fileSystem,
     const TThrottlerConfig& throttlerConfig)
 {
@@ -170,6 +179,13 @@ void TIndexTabletState::UpdateConfig(
 
     Impl->RangeIdHasher = CreateHasher(fileSystem);
     Impl->ThrottlingPolicy.Reset(throttlerConfig);
+
+    Impl->ShardBalancer.SetParameters(
+        GetBlockSize(),
+        config.GetShardBalancerDesiredFreeSpaceReserve(),
+        config.GetShardBalancerMinFreeSpaceReserve());
+    const auto& shardIds = GetFileSystem().GetShardFileSystemIds();
+    Impl->ShardBalancer.UpdateShards({shardIds.begin(), shardIds.end()});
 }
 
 const NProto::TFileStorePerformanceProfile& TIndexTabletState::GetPerformanceProfile() const

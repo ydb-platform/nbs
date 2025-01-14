@@ -97,27 +97,27 @@ enum EFacilityCode
 
 enum EWellKnownResultCodes: ui32
 {
-    S_OK                         = MAKE_SUCCESS(0),
-    S_FALSE                      = MAKE_SUCCESS(1),
+    S_OK                         = MAKE_SUCCESS(0),  // The request was completed successfully
+    S_FALSE                      = MAKE_SUCCESS(1),  // The request was not completed because there is nothing to operate on
     S_ALREADY                    = MAKE_SUCCESS(2),
 
-    E_FAIL                       = MAKE_ERROR(0),
-    E_ARGUMENT                   = MAKE_ERROR(1),
-    E_REJECTED                   = MAKE_ERROR(2),
+    E_FAIL                       = MAKE_ERROR(0),  // Critical failure occured
+    E_ARGUMENT                   = MAKE_ERROR(1),  // Request arguments are ill-formed; no point in retrying
+    E_REJECTED                   = MAKE_ERROR(2),  // Request can be retried immediately (the most common code for retriable errors)
     // see MDB-11177#5fe20bc27e06002b58fe3eec
     // E_IO                      = MAKE_ERROR(3),
-    E_INVALID_STATE              = MAKE_ERROR(4),
-    E_TIMEOUT                    = MAKE_ERROR(5),
+    E_INVALID_STATE              = MAKE_ERROR(4),  // The object is in an inappropriate state to perform the request
+    E_TIMEOUT                    = MAKE_ERROR(5),  // The underlying layer failed to meet the deadline
     E_NOT_FOUND                  = MAKE_ERROR(6),
     E_UNAUTHORIZED               = MAKE_ERROR(7),
     E_NOT_IMPLEMENTED            = MAKE_ERROR(8),
-    E_ABORTED                    = MAKE_ERROR(9),
-    E_TRY_AGAIN                  = MAKE_ERROR(10),
-    E_IO                         = MAKE_ERROR(11),
-    E_CANCELLED                  = MAKE_ERROR(12),
-    E_IO_SILENT                  = MAKE_ERROR(13),  // XXX: need to keep this for legacy clients
-    E_RETRY_TIMEOUT              = MAKE_ERROR(14),
-    E_PRECONDITION_FAILED        = MAKE_ERROR(15),
+    E_ABORTED                    = MAKE_ERROR(9),  // This request must not be retried; you should retry the higher-level request instead
+    E_TRY_AGAIN                  = MAKE_ERROR(10),  // The control-plane request cannot be executed at this time; please try again later. Unlike E_REJECTED, which can be retried immediately
+    E_IO                         = MAKE_ERROR(11),  // Input/output error. This is fatal, indicating it is impossible to read or write a block due to hardware failure
+    E_CANCELLED                  = MAKE_ERROR(12),  // A legacy code for input/output errors. Unlike E_IO, it does not increment the fatal error counter in monitoring
+    E_IO_SILENT                  = MAKE_ERROR(13),  // A legacy code for input/output errors. Unlike E_IO, it does not increment the fatal error counter in monitoring
+    E_RETRY_TIMEOUT              = MAKE_ERROR(14),  // The total time limit (24 hours) for executing the request has expired
+    E_PRECONDITION_FAILED        = MAKE_ERROR(15),  // Transition to the requested state would violate object's preconditions (e.g. unexpected order of operations, write request in read-only state...). This error is not retryable
 
     E_GRPC_CANCELLED             = MAKE_GRPC_ERROR(1),
     E_GRPC_UNKNOWN               = MAKE_GRPC_ERROR(2),
@@ -466,6 +466,10 @@ inline TResultOrError<void> ResultOrError(NThreading::TFuture<void>& future)
         return NProto::TError();
     });
 }
+
+NProto::TError MakeTabletIsDeadError(
+    ui32 code,
+    const TSourceLocation& location);
 
 }   // namespace NCloud
 

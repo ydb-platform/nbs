@@ -513,6 +513,10 @@ void TIndexTabletActor::CompleteTx_AddBlob(
     const TActorContext& ctx,
     TTxIndexTablet::TAddBlob& args)
 {
+    for (auto [nodeId, _]: args.WriteRanges) {
+        InvalidateNodeCaches(nodeId);
+    }
+
     // log request
     FinalizeProfileLogRequestInfo(
         std::move(args.ProfileLogRequest),

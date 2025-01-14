@@ -185,7 +185,8 @@ void TIndexTabletActor::CompleteTx_ResetSession(
     auto response = std::make_unique<TEvService::TEvResetSessionResponse>();
 
     const auto& shardIds = GetFileSystem().GetShardFileSystemIds();
-    if (shardIds.empty()) {
+    // session will be reset in other shards via the code in the main tablet
+    if (!IsMainTablet() || shardIds.empty()) {
         LOG_INFO(ctx, TFileStoreComponents::TABLET,
             "%s ResetSession completed",
             LogTag.c_str());
@@ -202,12 +203,14 @@ void TIndexTabletActor::CompleteTx_ResetSession(
 
     auto actor = std::make_unique<TResetShardSessionsActor>(
         LogTag,
+        SelfId(),
         std::move(args.RequestInfo),
         std::move(args.Request),
         TVector<TString>(shardIds.begin(), shardIds.end()),
         std::move(response));
 
-    NCloud::Register(ctx, std::move(actor));
+    auto actorId = NCloud::Register(ctx, std::move(actor));
+    WorkerActors.insert(actorId);
 }
 
 }   // namespace NCloud::NFileStore::NStorage

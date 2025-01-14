@@ -27,7 +27,8 @@ TServiceActor::TServiceActor(
         NServer::IEndpointEventHandlerPtr endpointEventHandler,
         NRdma::IClientPtr rdmaClient,
         IVolumeStatsPtr volumeStats,
-        TManuallyPreemptedVolumesPtr preemptedVolumes)
+        TManuallyPreemptedVolumesPtr preemptedVolumes,
+        IRootKmsKeyProviderPtr rootKmsKeyProvider)
     : Config(std::move(config))
     , DiagnosticsConfig(std::move(diagnosticsConfig))
     , ProfileLog(std::move(profileLog))
@@ -37,12 +38,12 @@ TServiceActor::TServiceActor(
     , EndpointEventHandler(std::move(endpointEventHandler))
     , RdmaClient(std::move(rdmaClient))
     , VolumeStats(std::move(volumeStats))
+    , RootKmsKeyProvider(std::move(rootKmsKeyProvider))
     , SharedCounters(MakeIntrusive<TSharedServiceCounters>(Config))
     , State(std::move(preemptedVolumes))
 {}
 
-TServiceActor::~TServiceActor()
-{}
+TServiceActor::~TServiceActor() = default;
 
 void TServiceActor::Bootstrap(const TActorContext& ctx)
 {

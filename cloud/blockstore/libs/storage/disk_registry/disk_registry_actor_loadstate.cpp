@@ -3,6 +3,7 @@
 #include <contrib/ydb/core/base/appdata.h>
 
 #include <util/generic/algorithm.h>
+#include <util/string/join.h>
 
 namespace NCloud::NBlockStore::NStorage {
 
@@ -169,14 +170,20 @@ void TDiskRegistryActor::CompleteLoadState(
     // resend pending requests
     SendPendingRequests(ctx, PendingRequests);
 
-    for (const auto& agent: args.Snapshot.Agents) {
-        if (agent.GetState() != NProto::AGENT_STATE_UNAVAILABLE) {
-            // this event will be scheduled using NonReplicatedAgentMaxTimeout
-            ScheduleRejectAgent(ctx, agent.GetAgentId(), 0);
-        }
-    }
-
     InitializeState(std::move(args.Snapshot));
+
+    if (TDuration timeout = Config->GetNonReplicatedAgentMaxTimeout()) {
+        const auto deadline = timeout.ToDeadLine(ctx.Now());
+
+        LOG_INFO_S(
+            ctx,
+            TBlockStoreComponents::DISK_REGISTRY,
+            "Schedule the initial agents rejection phase to " << deadline);
+
+        auto request =
+            std::make_unique<TEvDiskRegistryPrivate::TEvAgentConnectionLost>();
+        ctx.Schedule(deadline, request.release());
+    }
 
     SecureErase(ctx);
 
@@ -201,6 +208,17 @@ void TDiskRegistryActor::CompleteLoadState(
     ScheduleMakeBackup(ctx, args.LastBackupTime);
 
     ScheduleDiskRegistryAgentListExpiredParamsCleanup(ctx);
+
+    if (auto orphanDevices = State->FindOrphanDevices()) {
+        LOG_INFO(
+            ctx,
+            TBlockStoreComponents::DISK_REGISTRY,
+            "Found devices without agent and try to remove them: "
+            "DeviceUUIDs=%s",
+            JoinSeq(" ", orphanDevices).c_str());
+
+        ExecuteTx<TRemoveOrphanDevices>(ctx, std::move(orphanDevices));
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

@@ -60,8 +60,8 @@ void TIndexTabletActor::HandleCreateHandle(
     auto* msg = ev->Get();
     const auto requestId = GetRequestId(msg->Record);
     if (const auto* e = session->LookupDupEntry(requestId)) {
-        const bool shouldStoreHandles =
-            GetFileSystem().GetShardFileSystemIds().empty();
+        const bool shouldStoreHandles = BehaveAsShard(msg->Record.GetHeaders())
+            || GetFileSystem().GetShardFileSystemIds().empty();
         auto response = std::make_unique<TResponse>();
 
         // sometimes we may receive duplicate request ids - either due to
@@ -204,13 +204,25 @@ bool TIndexTabletActor::PrepareTx_CreateHandle(
                 return true;
             }
 
-            if (args.RequestShardId) {
-                args.ShardId = args.RequestShardId;
-                args.ShardName = CreateGuidAsString();
+            auto shardId = args.RequestShardId;
+            if (!BehaveAsShard(args.Request.GetHeaders())
+                    && !GetFileSystem().GetShardFileSystemIds().empty()
+                    && Config->GetShardIdSelectionInLeaderEnabled())
+            {
+                args.Error = SelectShard(0 /*fileSize*/, &shardId);
+                if (HasError(args.Error)) {
+                    return true;
+                }
+            }
+
+            if (shardId) {
+                args.ShardId = std::move(shardId);
+                args.ShardNodeName = CreateGuidAsString();
                 args.IsNewShardNode = true;
             }
         } else {
-            // if yes check whether O_EXCL was specified, assume O_CREAT is also specified
+            // if yes check whether O_EXCL was specified, assume O_CREAT is also
+            // specified
             if (HasFlag(args.Flags, NProto::TCreateHandleRequest::E_EXCLUSIVE)) {
                 args.Error = ErrorAlreadyExists(args.Name);
                 return true;
@@ -218,7 +230,7 @@ bool TIndexTabletActor::PrepareTx_CreateHandle(
 
             args.TargetNodeId = ref->ChildNodeId;
             args.ShardId = ref->ShardId;
-            args.ShardName = ref->ShardName;
+            args.ShardNodeName = ref->ShardNodeName;
         }
     } else {
         args.TargetNodeId = args.NodeId;
@@ -317,7 +329,7 @@ void TIndexTabletActor::ExecuteTx_CreateHandle(
             args.Name,
             args.TargetNodeId,
             args.ShardId,
-            args.ShardName);
+            args.ShardNodeName);
 
         // update parent cmtime as we created a new entry
         auto parent = CopyAttrs(args.ParentNode->Attrs, E_CM_CMTIME);
@@ -328,6 +340,7 @@ void TIndexTabletActor::ExecuteTx_CreateHandle(
             args.WriteCommitId,
             parent,
             args.ParentNode->Attrs);
+        args.UpdatedNodes.push_back(args.ParentNode->NodeId);
 
     } else if (args.ShardId.empty()
         && HasFlag(args.Flags, NProto::TCreateHandleRequest::E_TRUNCATE))
@@ -353,6 +366,7 @@ void TIndexTabletActor::ExecuteTx_CreateHandle(
             args.WriteCommitId,
             attrs,
             args.TargetNode->Attrs);
+        args.UpdatedNodes.push_back(args.TargetNodeId);
     }
 
     if (args.ShardId.empty()) {
@@ -375,7 +389,7 @@ void TIndexTabletActor::ExecuteTx_CreateHandle(
         ConvertNodeFromAttrs(*node, args.TargetNodeId, args.TargetNode->Attrs);
     } else {
         args.Response.SetShardFileSystemId(args.ShardId);
-        args.Response.SetShardNodeName(args.ShardName);
+        args.Response.SetShardNodeName(args.ShardNodeName);
     }
 
     if (args.IsNewShardNode) {
@@ -389,7 +403,7 @@ void TIndexTabletActor::ExecuteTx_CreateHandle(
         shardRequest->SetGid(args.Gid);
         shardRequest->SetFileSystemId(args.ShardId);
         shardRequest->SetNodeId(RootNodeId);
-        shardRequest->SetName(args.ShardName);
+        shardRequest->SetName(args.ShardNodeName);
         shardRequest->ClearShardFileSystemId();
 
         db.WriteOpLogEntry(args.OpLogEntry);
@@ -409,6 +423,10 @@ void TIndexTabletActor::CompleteTx_CreateHandle(
     const TActorContext& ctx,
     TTxIndexTablet::TCreateHandle& args)
 {
+    for (auto nodeId: args.UpdatedNodes) {
+        InvalidateNodeCaches(nodeId);
+    }
+
     if (args.Error.GetCode() == E_ARGUMENT) {
         // service actor sent something inappropriate, we'd better log it
         LOG_ERROR(
@@ -420,11 +438,11 @@ void TIndexTabletActor::CompleteTx_CreateHandle(
     }
 
     if (args.OpLogEntry.HasCreateNodeRequest() && !HasError(args.Error)) {
-        LOG_INFO(ctx, TFileStoreComponents::TABLET,
+        LOG_DEBUG(ctx, TFileStoreComponents::TABLET,
             "%s Creating node in shard upon CreateHandle: %s, %s",
             LogTag.c_str(),
             args.ShardId.c_str(),
-            args.ShardName.c_str());
+            args.ShardNodeName.c_str());
 
         RegisterCreateNodeInShardActor(
             ctx,

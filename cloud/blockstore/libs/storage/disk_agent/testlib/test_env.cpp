@@ -285,6 +285,13 @@ TTestEnvBuilder& TTestEnvBuilder::With(NProto::TDiskAgentConfig config)
     return *this;
 }
 
+TTestEnvBuilder& TTestEnvBuilder::WithSecondAgent(
+    NProto::TDiskAgentConfig config)
+{
+    SecondAgentConfigProto = std::move(config);
+    return *this;
+}
+
 TTestEnvBuilder& TTestEnvBuilder::With(INvmeManagerPtr nvmeManager)
 {
     NvmeManager = nvmeManager;
@@ -316,6 +323,7 @@ TTestEnv TTestEnvBuilder::Build()
     // Runtime.SetLogPriority(NLog::InvalidComponent, NLog::PRI_DEBUG);
 
     Runtime.SetLogPriority(TBlockStoreComponents::DISK_AGENT, NLog::PRI_INFO);
+    Runtime.SetLogPriority(TBlockStoreComponents::DISK_AGENT_WORKER, NLog::PRI_INFO);
 
     Runtime.SetRegistrationObserverFunc(
         [] (auto& runtime, const auto& parentId, const auto& actorId)
@@ -381,9 +389,35 @@ TTestEnv TTestEnvBuilder::Build()
         nullptr,    // rdmaServer
         NvmeManager);
 
+    const ui32 firstDiskAgentNodeIndex = 0;
+    const ui32 secondDiskAgentNodeIndex = 1;
+
     Runtime.AddLocalService(
-        MakeDiskAgentServiceId(),
-        TActorSetupCmd(diskAgent.release(), TMailboxType::Simple, 0));
+        MakeDiskAgentServiceId(Runtime.GetNodeId(firstDiskAgentNodeIndex)),
+        TActorSetupCmd(diskAgent.release(), TMailboxType::Simple, 0),
+        firstDiskAgentNodeIndex);
+
+    if (SecondAgentConfigProto.GetEnabled()) {
+        auto diskAgent2 = CreateDiskAgent(
+            config,
+            std::make_shared<TDiskAgentConfig>(
+                std::move(SecondAgentConfigProto),
+                "the-rack"),
+            nullptr,   // rdmaConfig
+            Spdk,
+            allocator,
+            StorageProvider,
+            CreateProfileLogStub(),
+            CreateBlockDigestGeneratorStub(),
+            CreateLoggingService("console"),
+            nullptr,   // rdmaServer
+            NvmeManager);
+
+        Runtime.AddLocalService(
+            MakeDiskAgentServiceId(Runtime.GetNodeId(secondDiskAgentNodeIndex)),
+            TActorSetupCmd(diskAgent2.release(), TMailboxType::Simple, 0),
+            secondDiskAgentNodeIndex);
+    }
 
     SetupTabletServices(Runtime);
 
@@ -401,6 +435,8 @@ TTestEnv TTestEnvBuilder::Build()
         .DiskRegistryState = std::move(DiskRegistryState),
         .FileIOService = FileIOService,
         .NvmeManager = NvmeManager,
+        .DiskAgentActorId =
+            MakeDiskAgentServiceId(Runtime.GetNodeId(firstDiskAgentNodeIndex))
     };
 }
 

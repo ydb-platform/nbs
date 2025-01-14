@@ -720,6 +720,114 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateCMSTest)
             });
     }
 
+    Y_UNIT_TEST(ShouldRemoveDevicesAfterAgentDelete)
+    {
+        TTestExecutor executor;
+        executor.WriteTx([&](TDiskRegistryDatabase db) { db.InitSchema(); });
+
+        const auto agent = AgentConfig(
+            2,
+            "agent-2",
+            {
+                Device("NVMENBS01", "uuid-2.1", "rack-2"),
+                Device("NVMENBS02", "uuid-2.2", "rack-2"),
+                Device("NVMENBS03", "uuid-2.3", "rack-2"),
+            });
+
+        // Init state.
+        {
+            TDiskRegistryState state =
+                TDiskRegistryStateBuilder().WithConfig({agent}).Build();
+
+            // Register agent.
+            executor.WriteTx(
+                [&](TDiskRegistryDatabase db)
+                {
+                    UNIT_ASSERT_SUCCESS(RegisterAgent(state, db, agent, Now()));
+                    for (const auto& device: agent.GetDevices()) {
+                        state.MarkDeviceAsClean(
+                            Now(),
+                            db,
+                            device.GetDeviceUUID());
+                    }
+                });
+
+            // Mark devices.
+            executor.WriteTx(
+                [&](TDiskRegistryDatabase db)
+                {
+                    state.MarkDeviceAsDirty(
+                        db,
+                        agent.devices()[0].deviceuuid());
+                    state.SuspendDevice(db, agent.devices()[1].deviceuuid());
+                    db.AddAutomaticallyReplacedDevice(
+                        TAutomaticallyReplacedDeviceInfo{
+                            agent.devices()[2].deviceuuid(),
+                            Now()});
+                });
+        }
+
+        executor.WriteTx(
+            [&](TDiskRegistryDatabase db)
+            {
+                // Load state from db.
+                auto state = TDiskRegistryStateBuilder::LoadState(db)
+                                 .WithConfig({agent})
+                                 .Build();
+
+                // Remove agent.
+                TVector<TString> affectedDisks;
+                TDuration timeout;
+
+                UNIT_ASSERT_SUCCESS(state.UpdateCmsHostState(
+                    db,
+                    agent.GetAgentId(),
+                    NProto::AGENT_STATE_WARNING,
+                    Now(),
+                    false,   // dryRun
+                    affectedDisks,
+                    timeout));
+
+                UNIT_ASSERT_VALUES_EQUAL(1, state.GetAgents().size());
+
+                UNIT_ASSERT_SUCCESS(state.PurgeHost(
+                    db,
+                    agent.GetAgentId(),
+                    Now(),
+                    false,   // dryRun
+                    affectedDisks));
+
+                UNIT_ASSERT_SUCCESS(state.UpdateAgentState(
+                    db,
+                    agent.GetAgentId(),
+                    NProto::AGENT_STATE_UNAVAILABLE,
+                    Now(),
+                    "lost",
+                    affectedDisks));
+
+                UNIT_ASSERT_VALUES_EQUAL(0, state.GetAgents().size());
+
+                UNIT_ASSERT_VALUES_EQUAL(0, state.GetDirtyDevices().size());
+                TVector<TDirtyDevice> dirtyDevices;
+                db.ReadDirtyDevices(dirtyDevices);
+                UNIT_ASSERT_VALUES_EQUAL(0, dirtyDevices.size());
+
+                UNIT_ASSERT_VALUES_EQUAL(0, state.GetSuspendedDevices().size());
+                TVector<NProto::TSuspendedDevice> suspendedDevices;
+                db.ReadSuspendedDevices(suspendedDevices);
+                UNIT_ASSERT_VALUES_EQUAL(0, suspendedDevices.size());
+
+                UNIT_ASSERT_VALUES_EQUAL(
+                    0,
+                    state.GetAutomaticallyReplacedDevices().size());
+                TDeque<TAutomaticallyReplacedDeviceInfo>
+                    automaticalyReplacedDevices;
+                db.ReadAutomaticallyReplacedDevices(
+                    automaticalyReplacedDevices);
+                UNIT_ASSERT_VALUES_EQUAL(0, automaticalyReplacedDevices.size());
+            });
+    }
+
     Y_UNIT_TEST(ShouldReturnAffectedDisksFromPurgeHost)
     {
         TTestExecutor executor;

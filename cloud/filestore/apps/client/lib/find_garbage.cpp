@@ -41,49 +41,6 @@ public:
             .StoreResult(&PageSize);
     }
 
-    NProto::TListNodesResponse ListAll(
-        ISession& session,
-        const TString& fsId,
-        ui64 parentId)
-    {
-        NProto::TListNodesResponse fullResult;
-        TString cookie;
-        do {
-            auto request = CreateRequest<NProto::TListNodesRequest>();
-            request->SetFileSystemId(fsId);
-            request->SetNodeId(parentId);
-            request->MutableHeaders()->SetDisableMultiTabletForwarding(true);
-            if (PageSize) {
-                request->SetMaxBytes(PageSize);
-            }
-            request->SetCookie(cookie);
-            // TODO: async listing
-
-            auto response = WaitFor(session.ListNodes(
-                PrepareCallContext(),
-                std::move(request)));
-
-            Y_ENSURE_EX(
-                !HasError(response.GetError()),
-                yexception() << "ListNodes error: "
-                    << FormatError(response.GetError()));
-
-            Y_ENSURE_EX(
-                response.NamesSize() == response.NodesSize(),
-                yexception() << "invalid ListNodes response: "
-                    << response.DebugString().Quote());
-
-            for (ui32 i = 0; i < response.NamesSize(); ++i) {
-                fullResult.AddNames(*response.MutableNames(i));
-                *fullResult.AddNodes() = std::move(*response.MutableNodes(i));
-            }
-
-            cookie = response.GetCookie();
-        } while (cookie);
-
-        return fullResult;
-    }
-
     void FetchAll(
         ISession& session,
         const TString& fsId,
@@ -91,7 +48,7 @@ public:
         TVector<TNode>* nodes)
     {
         // TODO: async listing
-        auto response = ListAll(session, fsId, parentId);
+        auto response = ListAll(session, fsId, parentId, true);
 
         for (ui32 i = 0; i < response.NodesSize(); ++i) {
             const auto& node = response.GetNodes(i);
@@ -156,13 +113,13 @@ public:
         FetchAll(session, FileSystemId, RootNodeId, &leaderNodes);
         STORAGE_INFO("Fetched " << leaderNodes.size() << " nodes");
 
-        THashSet<TString> shardNames;
+        THashSet<TString> shardNodeNames;
         for (const auto& node: leaderNodes) {
             if (!node.ShardFileSystemId) {
                 continue;
             }
 
-            shardNames.insert(node.ShardNodeName);
+            shardNodeNames.insert(node.ShardNodeName);
         }
 
         struct TResult
@@ -187,7 +144,7 @@ public:
                 CreateCustomSession(shard, shard + "::" + ClientId);
             auto& shardSession = shardSessionGuard.AccessSession();
             for (const auto& node: nodes) {
-                if (!shardNames.contains(node.Name)) {
+                if (!shardNodeNames.contains(node.Name)) {
                     STORAGE_INFO("Node " << node.Name << " not found in shard"
                         ", calling stat");
                     auto stat =

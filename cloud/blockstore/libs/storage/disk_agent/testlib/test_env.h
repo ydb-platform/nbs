@@ -100,17 +100,19 @@ public:
         , Sender(runtime.AllocateEdgeActor(nodeIdx))
     {}
 
+    NActors::TActorId DiskAgentActorId() const
+    {
+        return MakeDiskAgentServiceId(Runtime.GetNodeId(NodeIdx));
+    }
+
     template <typename TRequest>
-    void SendRequest(
-        const NActors::TActorId& recipient,
-        std::unique_ptr<TRequest> request,
-        ui64 cookie = 0)
+    void SendRequest(std::unique_ptr<TRequest> request, ui64 cookie = 0)
     {
         auto* ev = new NActors::IEventHandle(
-            recipient,
+            DiskAgentActorId(),
             Sender,
             request.release(),
-            0,          // flags
+            0,   // flags
             cookie,
             nullptr);   // forwardOnNondelivery
 
@@ -307,7 +309,7 @@ public:
     void Send##name##Request(Args&&... args)                                   \
     {                                                                          \
         auto request = Create##name##Request(std::forward<Args>(args)...);     \
-        SendRequest(MakeDiskAgentServiceId(), std::move(request));             \
+        SendRequest(std::move(request));                                       \
     }                                                                          \
                                                                                \
     std::unique_ptr<ns::TEv##name##Response> Recv##name##Response(             \
@@ -320,7 +322,7 @@ public:
     std::unique_ptr<ns::TEv##name##Response> name(Args&&... args)              \
     {                                                                          \
         auto request = Create##name##Request(std::forward<Args>(args)...);     \
-        SendRequest(MakeDiskAgentServiceId(), std::move(request));             \
+        SendRequest(std::move(request));                                       \
                                                                                \
         auto response = RecvResponse<ns::TEv##name##Response>();               \
         UNIT_ASSERT_C(                                                         \
@@ -442,6 +444,7 @@ struct TTestEnv
     TDiskRegistryState::TPtr DiskRegistryState;
     IFileIOServicePtr FileIOService;
     NNvme::INvmeManagerPtr NvmeManager;
+    NActors::TActorId DiskAgentActorId;
 
     ~TTestEnv();
 };
@@ -451,6 +454,7 @@ struct TTestEnvBuilder
     NActors::TTestActorRuntime& Runtime;
 
     NProto::TDiskAgentConfig AgentConfigProto;
+    NProto::TDiskAgentConfig SecondAgentConfigProto;
     IStorageProviderPtr StorageProvider;
     IFileIOServicePtr FileIOService;
     NNvme::INvmeManagerPtr NvmeManager;
@@ -465,6 +469,7 @@ struct TTestEnvBuilder
     TTestEnvBuilder& With(IFileIOServicePtr fileIO);
     TTestEnvBuilder& With(NNvme::INvmeManagerPtr nvmeManager);
     TTestEnvBuilder& With(NProto::TDiskAgentConfig config);
+    TTestEnvBuilder& WithSecondAgent(NProto::TDiskAgentConfig config);
     TTestEnvBuilder& With(NProto::TStorageServiceConfig storageServiceConfig);
     TTestEnvBuilder& With(TDiskRegistryState::TPtr diskRegistryState);
 

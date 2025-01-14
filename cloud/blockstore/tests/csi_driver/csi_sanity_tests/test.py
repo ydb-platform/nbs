@@ -8,11 +8,12 @@ import yatest.common as common
 import cloud.blockstore.tests.csi_driver.lib.csi_runner as csi
 
 
-@pytest.mark.parametrize('mount_path,volume_access_type,vm_mode',
-                         [("/var/lib/kubelet/pods/123/volumes/kubernetes.io~csi/456/mount", "mount", False),
-                          ("/var/lib/kubelet/plugins/kubernetes.io/csi/volumeDevices/publish/123/456", "block", False),
-                          ("/var/lib/kubelet/pods/123/volumes/kubernetes.io~csi/456/mount", "mount", True)])
-def test_csi_sanity_nbs_backend(mount_path, volume_access_type, vm_mode):
+@pytest.mark.parametrize('mount_path,volume_access_type,vm_mode,skip_tests',
+                         [("/var/lib/kubelet/pods/123/volumes/kubernetes.io~csi/456/mount", "mount", False, []),
+                          ("/var/lib/kubelet/plugins/kubernetes.io/csi/volumeDevices/publish/123/456", "block", False, []),
+                          ("/var/lib/kubelet/pods/123/volumes/kubernetes.io~csi/456/mount", "mount", True,
+                           ["should work if node-expand is called after node-publish"])])
+def test_csi_sanity_nbs_backend(mount_path, volume_access_type, vm_mode, skip_tests):
     env, run = csi.init(vm_mode)
     backend = "nbs"
 
@@ -29,7 +30,6 @@ def test_csi_sanity_nbs_backend(mount_path, volume_access_type, vm_mode):
             }
         ))
 
-        skipTests = []
         args = [CSI_SANITY_BINARY_PATH,
                 "-csi.endpoint",
                 env.csi._endpoint,
@@ -40,7 +40,7 @@ def test_csi_sanity_nbs_backend(mount_path, volume_access_type, vm_mode):
                 "-csi.testvolumeaccesstype",
                 volume_access_type,
                 "--ginkgo.skip",
-                '|'.join(skipTests)]
+                '|'.join(skip_tests)]
         subprocess.run(
             args,
             check=True,

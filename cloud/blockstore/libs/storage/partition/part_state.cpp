@@ -1009,6 +1009,16 @@ ui64 TPartitionState::GetMixedIndexCacheMemSize() const
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+// Compaction
+
+TOperationState& TPartitionState::GetCompactionState(ECompactionType type)
+{
+    return type == ECompactionType::Forced ?
+        ForcedCompactionState.State :
+        CompactionState;
+}
+
+////////////////////////////////////////////////////////////////////////////////
 
 void TPartitionState::SetUsedBlocks(
     TPartitionDatabase& db,

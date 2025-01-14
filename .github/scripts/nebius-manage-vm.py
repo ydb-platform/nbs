@@ -13,6 +13,7 @@ import nebius.compute.v1.disk_service_pb2 as disk_service_pb2
 import nebius.compute.v1.instance_service_pb2 as instance_service_pb2
 import requests
 import yaml
+import functools
 from github import Auth as GithubAuth
 from github import Github
 from nebius.common.v1.metadata_pb2 import ResourceMetadata
@@ -157,6 +158,11 @@ def generate_cloud_init_script(
 
     script = f"""
 set -x
+
+echo "fixing /etc/hosts"
+echo "::1 localhost" | tee -a /etc/hosts
+grep localhost /etc/hosts
+
 [ -d /actions-runner ] && {{
     echo "Runner already installed"
     cd /actions-runner
@@ -200,7 +206,7 @@ done
 """
 
     cloud_init = {"runcmd": [script]}
-    cloud_init["manage_etc_hosts"] = True
+    cloud_init["manage_etc_hosts"] = "true"
     # cloud_init["ssh_pwauth"] = False
     cloud_init["users"] = [
         {
@@ -333,7 +339,54 @@ def create_disk(sdk: SDK, args: argparse.Namespace) -> str:
     return result
 
 
-def create_vm(sdk: SDK, args: argparse.Namespace):
+def retry_create_vm(func: callable) -> callable:
+    @functools.wraps(func)
+    def wrapper(sdk: SDK, args: argparse.Namespace) -> callable:
+        total_time_limit = 30 * 60
+        retry_interval = 5 * 60
+        start_time = time.time()
+        attempt = 0
+        while time.time() - start_time < total_time_limit:
+            try:
+                logger.info(
+                    "Trying to create VM at %s (attempt=%d)",
+                    time.ctime(time.time()),
+                    attempt,
+                )
+                result = func(sdk, args, attempt)
+                logger.info("VM created successfully at %s", time.ctime(time.time()))
+                return result
+            except OperationError as e:
+                attempt += 1
+                if time.time() - start_time >= total_time_limit:
+                    if os.environ.get("GITHUB_EVENT_NAME") == "pull_request":
+                        pr_number = int(os.environ.get("GITHUB_REF").split("/")[-1])
+                        repo_name = os.environ.get("GITHUB_REPOSITORY")
+                        github_token = os.environ.get("GITHUB_TOKEN")
+                        comment = f"VM creation failed after 30 minutes: {e}"
+                        gh = Github(auth=GithubAuth.Token(github_token))
+                        repo = gh.get_repo(repo_name)
+                        pr = repo.get_pull(pr_number)
+                        pr.create_issue_comment(comment)
+                    raise
+                next_run_time = time.time() + retry_interval
+                logger.error("Failed to create VM: %s", e)
+                logger.info("Next run will be at %s", time.ctime(next_run_time))
+                while (
+                    time.time() < next_run_time
+                    and time.time() - start_time < total_time_limit
+                ):
+                    time.sleep(1)
+            except Exception as e:
+                logger.error("Failed to create VM: %s", e)
+                raise e
+        raise Exception("Time limit exceeded while retrying function")
+
+    return wrapper
+
+
+@retry_create_vm
+def create_vm(sdk: SDK, args: argparse.Namespace, attempt: int = 0):
     GITHUB_TOKEN = os.environ["GITHUB_TOKEN"]
 
     gh = Github(auth=GithubAuth.Token(GITHUB_TOKEN))
@@ -362,6 +415,22 @@ def create_vm(sdk: SDK, args: argparse.Namespace):
         raise ValueError(
             "Disk size must be a multiple of 93GB for the selected disk type"
         )
+
+    # We will downgrade every N failed attempts
+    # if our preset is 80cpu and downgrade_after is 2 on third
+    # attempt it will be downgraded to 64cpu
+    # And on 4th attempt it will be downgraded to 48cpu
+    logger.info("Attempt %d", attempt)
+    logger.info("Current preset %s", args.preset)
+    logger.info("Downgrade after %d", args.downgrade_after)
+    logger.info("Allow downgrade %s", args.allow_downgrade)
+    logger.info("attempt mod args.downgrade_after = %d", attempt % args.downgrade_after)
+    logger.info("attempt > 0 = %s", attempt > 0)
+    if args.allow_downgrade and attempt % args.downgrade_after == 0 and attempt > 0:
+        current_preset_index = PRESETS.index(args.preset)
+        if current_preset_index > 0:
+            args.preset = PRESETS[current_preset_index - 1]
+            logger.info("Downgrading to %s preset", args.preset)
 
     runner_github_label = generate_github_label()
 
@@ -456,6 +525,7 @@ def create_vm(sdk: SDK, args: argparse.Namespace):
         github_output("instance-id", instance_id)
         github_output("label", runner_github_label)
         github_output("local-ipv4", local_ipv4)
+        github_output("vm-preset", args.preset)
         if external_ipv4:
             github_output("external-ipv4", external_ipv4)
 
@@ -712,6 +782,17 @@ if __name__ == "__main__":
     create.add_argument("--retry-time", default=10, help="How often to retry (seconds)")
     create.add_argument(
         "--timeout", default=1200, help="How long to wait for creation (seconds)"
+    )
+    create.add_argument(
+        "--allow-downgrade",
+        action="store_true",
+        help="Allow downgrade to lower presets",
+    )
+    create.add_argument(
+        "--downgrade-after",
+        type=int,
+        default=2,
+        help="Downgrade to lower preset after N failed attempts",
     )
     create.add_argument("--apply", action="store_true", help="Apply the changes")
 

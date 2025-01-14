@@ -769,6 +769,11 @@ void DumpChannels(
             Y_UNUSED(storagePool);
             return TString();
         },
+        [&] (ui32 groupId) {
+            // TODO: dashboard url
+            Y_UNUSED(groupId);
+            return TString();
+        },
         [&] (IOutputStream& out, ui64 hiveTabletId, ui64 tabletId, ui32 c) {
             // TODO: reassign button
             Y_UNUSED(out);
@@ -1040,16 +1045,24 @@ void TIndexTabletActor::HandleHttpInfo_Default(
         const auto& shardIds = GetFileSystem().GetShardFileSystemIds();
         if (shardIds.size()) {
             TAG(TH3) { out << "Shards"; }
-            TABLE_CLASS("table table-bordered") {
+            TABLE_SORTABLE_CLASS("table table-bordered") {
                 TABLEHEAD() {
                     TABLER() {
                         TABLEH() { out << "ShardNo"; }
                         TABLEH() { out << "FileSystemId"; }
+                        TABLEH() { out << "UsedBytesCount"; }
+                        TABLEH() { out << "FreeBytesCount"; }
+                        TABLEH() { out << "CurrentLoad"; }
+                        TABLEH() { out << "Suffer"; }
                     }
                 }
 
                 ui32 shardNo = 0;
                 for (const auto& shardId: shardIds) {
+                    TShardStats ss;
+                    if (shardNo < CachedShardStats.size()) {
+                        ss = CachedShardStats[shardNo];
+                    }
                     TABLER() {
                         TABLED() { out << ++shardNo; }
                         TABLED() {
@@ -1057,6 +1070,15 @@ void TIndexTabletActor::HandleHttpInfo_Default(
                                 << "&Filesystem=" << shardId << "'>"
                                 << shardId << "</a>";
                         }
+                        TABLED() {
+                            out << ss.UsedBlocksCount * GetBlockSize();
+                        }
+                        TABLED() {
+                            out << (ss.TotalBlocksCount - ss.UsedBlocksCount)
+                                * GetBlockSize();
+                        }
+                        TABLED() { out << ss.CurrentLoad; }
+                        TABLED() { out << ss.Suffer; }
                     }
                 }
             }
@@ -1247,7 +1269,13 @@ void TIndexTabletActor::HandleHttpInfo_Default(
         {
             out << "Active Sessions";
         }
-        DumpSessions(out, GetActiveSessions());
+        DumpSessions(out, GetActiveSessionInfos());
+
+        TAG(TH3)
+        {
+            out << "Orphan Sessions";
+        }
+        DumpSessions(out, GetOrphanSessionInfos());
 
         TAG(TH3)
         {

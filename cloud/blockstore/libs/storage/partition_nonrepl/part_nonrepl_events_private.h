@@ -38,6 +38,12 @@ struct TEvNonreplPartitionPrivate
 
     struct TRangeMigrated
     {
+        enum class EExecutionSide
+        {
+            Local,
+            Remote
+        };
+
         TBlockRange64 Range;
         TInstant ReadStartTs;
         TDuration ReadDuration;
@@ -45,9 +51,11 @@ struct TEvNonreplPartitionPrivate
         TDuration WriteDuration;
         TVector<IProfileLog::TBlockInfo> AffectedBlockInfos;
         bool AllZeroes;
+        EExecutionSide ExecutionSide;
         ui64 ExecCycles;
 
         TRangeMigrated(
+                EExecutionSide executionSide,
                 TBlockRange64 range,
                 TInstant readStartTs,
                 TDuration readDuration,
@@ -63,9 +71,9 @@ struct TEvNonreplPartitionPrivate
             , WriteDuration(writeDuration)
             , AffectedBlockInfos(std::move(affectedBlockInfos))
             , AllZeroes(allZeroes)
+            , ExecutionSide(executionSide)
             , ExecCycles(execCycles)
-        {
-        }
+        {}
     };
 
     //
@@ -224,6 +232,8 @@ struct TEvNonreplPartitionPrivate
     {
         NProto::TDeviceConfig Device;
         TBlockRange64 DeviceBlockRange;
+        TDuration RequestTimeout;
+        TNonreplicatedPartitionConfigPtr PartConfig;
     };
 
     //

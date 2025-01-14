@@ -908,6 +908,7 @@ func StartRunners(
 			)
 		},
 		config.GetRunnersCount(),
+		config.GetTasksToListLimit(),
 		pollForTasksPeriodMin,
 		pollForTasksPeriodMax,
 		inflightTaskLimits,
@@ -922,6 +923,7 @@ func StartRunners(
 			)
 		},
 		config.GetRunnersCount(),
+		config.GetTasksToListLimit(),
 		pollForTasksPeriodMin,
 		pollForTasksPeriodMax,
 		inflightTaskLimits,
@@ -960,6 +962,7 @@ func StartRunners(
 			)
 		},
 		config.GetStalkingRunnersCount(),
+		config.GetTasksToListLimit(),
 		pollForStallingTasksPeriodMin,
 		pollForStallingTasksPeriodMax,
 		inflightTaskLimits,
@@ -975,6 +978,7 @@ func StartRunners(
 			)
 		},
 		config.GetStalkingRunnersCount(),
+		config.GetTasksToListLimit(),
 		pollForStallingTasksPeriodMin,
 		pollForStallingTasksPeriodMax,
 		inflightTaskLimits,

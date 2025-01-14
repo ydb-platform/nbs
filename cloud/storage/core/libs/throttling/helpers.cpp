@@ -8,7 +8,7 @@ namespace NCloud {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-ui32 CalculateThrottlerC1(double maxIops, double maxBandwidth)
+ui64 CalculateThrottlerC1(double maxIops, double maxBandwidth)
 {
     if (maxBandwidth == 0) {
         return maxIops;
@@ -21,10 +21,10 @@ ui32 CalculateThrottlerC1(double maxIops, double maxBandwidth)
        return maxIops;
    }
 
-   return Max<ui32>((1_KB - 1) / denominator, 1);
+   return Max<ui64>((1_KB - 1) / denominator, 1);
 }
 
-ui32 CalculateThrottlerC2(double maxIops, double maxBandwidth)
+ui64 CalculateThrottlerC2(double maxIops, double maxBandwidth)
 {
    if (maxBandwidth == 0) {
        return 0;
@@ -34,10 +34,10 @@ ui32 CalculateThrottlerC2(double maxIops, double maxBandwidth)
 
    if (abs(denominator) < 1e-5) {
        // fallback for "special" params
-       return Max<ui32>();
+       return Max<ui64>();
    }
 
-   return Max<ui32>(Min<ui64>((4_MB - 4_KB) / denominator, Max<ui32>()), 1);
+   return Max<ui64>(Min<ui64>((4_MB - 4_KB) / denominator, Max<ui64>()), 1);
 }
 
 TDuration SecondsToDuration(double seconds)
@@ -45,7 +45,7 @@ TDuration SecondsToDuration(double seconds)
     return TDuration::MicroSeconds(ceil(1e6 * seconds));
 }
 
-TDuration CostPerIO(ui32 maxIops, ui32 maxBandwidth, ui32 byteCount)
+TDuration CostPerIO(ui64 maxIops, ui64 maxBandwidth, ui64 byteCount)
 {
     Y_DEBUG_ABORT_UNLESS(maxIops);
 

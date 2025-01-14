@@ -1,17 +1,12 @@
 #include <cloud/blockstore/tools/testing/eternal_tests/eternal-load/lib/config.h>
 
+#include <cloud/blockstore/tools/testing/eternal_tests/range-validator/lib/validate.h>
+
 #include <library/cpp/getopt/small/last_getopt.h>
 
-#include <util/datetime/base.h>
-#include <util/generic/size_literals.h>
 #include <util/generic/vector.h>
 
 using namespace NCloud::NBlockStore;
-
-////////////////////////////////////////////////////////////////////////////////
-
-constexpr ui64 MaxMirrorReplicas = 3;
-constexpr ui64 PAGE_SIZE = 4096;
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -23,31 +18,13 @@ enum class EValidationMode
 
 ////////////////////////////////////////////////////////////////////////////////
 
-inline IOutputStream& operator<<(IOutputStream& out, const TBlockData& data)
-{
-    out << "{"
-        << " " << data.RequestNumber
-        << " " << data.PartNumber
-        << " " << data.BlockIndex
-        << " " << data.RangeIdx
-        << " " << TInstant::MicroSeconds(data.RequestTimestamp)
-        << " " << TInstant::MicroSeconds(data.TestTimestamp)
-        << " " << data.TestId
-        << " " << data.Checksum
-        << " }";
-
-    return out;
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
 struct TOptions
 {
     TString ConfigPath;
     TString DevicePath;
     TString LogPath;
-    TVector<ui32> Ranges;
-    TVector<ui64> Blocks;
+    TVector<ui32> RangeIndices;
+    TVector<ui64> BlockIndices;
     EValidationMode Mode = EValidationMode::Checksum;
     ui64 BlockSize = 4096;
 
@@ -75,19 +52,19 @@ struct TOptions
 
         opts.AddLongOption(
             "ranges",
-            "specify range indexes for validation, separated by comma")
+            "specify range indices for validation, separated by comma")
             .RequiredArgument("STR")
             .Handler1T<TString>([this] (const auto& s) {
                 TStringBuf buf(s);
                 TStringBuf arg;
                 while (buf.NextTok(',', arg)) {
-                    Ranges.push_back(FromString<ui32>(arg));
+                    RangeIndices.push_back(FromString<ui32>(arg));
                 }
             });
 
         opts.AddLongOption(
             "blocks",
-            "specify individual blocks NUM or ranges NUM-NUM for validation, separated by comma")
+            "specify individual block indices NUM or ranges NUM-NUM for validation, separated by comma")
             .RequiredArgument("STR")
             .Handler1T<TString>([this] (const auto& s) {
                 TStringBuf buf(s);
@@ -96,8 +73,8 @@ struct TOptions
                     TStringBuf lastStr = firstStr.SplitOff('-');
                     ui64 first = FromString<ui64>(firstStr);
                     ui64 last = lastStr.empty() ? first : FromString<ui64>(lastStr);
-                    for (ui64 block = first; block <= last; block++) {
-                        Blocks.push_back(block);
+                    for (ui64 idx = first; idx <= last; idx++) {
+                        BlockIndices.push_back(idx);
                     }
                 }
             });
@@ -125,95 +102,15 @@ struct TOptions
 
         if (Mode == EValidationMode::Checksum) {
             Y_ENSURE(ConfigPath.size(), "you must specify config-path in checksum validation mode");
-            Y_ENSURE(Ranges.size(), "you must specify ranges in checksum validation mode");
+            Y_ENSURE(RangeIndices.size(), "you must specify ranges in checksum validation mode");
             Y_ENSURE(LogPath.size(), "you must specify log-path in checksum validation mode");
         }
 
         if (Mode == EValidationMode::Mirror) {
-            Y_ENSURE(Blocks.size(), "you must specify blocks in mirror validation mode");
+            Y_ENSURE(BlockIndices.size(), "you must specify blocks in mirror validation mode");
         }
     }
 };
-
-TBlockData ReadBlockData(TFile& file, ui64 offset)
-{
-    // using O_DIRECT imposes some alignment restrictions:
-    //   - offset should be sector aligned
-    //   - buffer should be page aligned
-    //   - size should be a multiple of a page size
-    size_t len = (sizeof(TBlockData) + PAGE_SIZE - 1) / PAGE_SIZE * PAGE_SIZE;
-    alignas(PAGE_SIZE) char buf[len];
-    file.Seek(offset, sSet);
-    file.Read(buf, len);
-    return *reinterpret_cast<TBlockData*>(buf);
-}
-
-void ValidateRanges(TOptions options)
-{
-    TFile file(options.DevicePath, EOpenModeFlag::RdOnly | EOpenModeFlag::DirectAligned);
-
-    const auto& configHolder = CreateTestConfig(options.ConfigPath);
-    for (ui32 rangeIdx: options.Ranges) {
-        Cout << "Start validation of " << rangeIdx << " range" << Endl;
-
-        const auto& config = configHolder->GetConfig().GetRanges()[rangeIdx];
-
-        ui64 len = config.GetRequestCount();
-        ui64 startOffset = config.GetStartOffset();
-        ui64 requestSize = config.GetRequestBlockCount() * 4_KB;
-
-        TVector<ui64> expected(len);
-
-        ui64 step = config.GetStep();
-        ui64 curBlockIdx = config.GetLastBlockIdx();
-        ui64 curNum = config.GetNumberToWrite();
-        ui64 cnt = 0;
-        while (cnt < len && curNum != 0) {
-            curBlockIdx = (curBlockIdx + len - step) % len;
-            expected[curBlockIdx] = --curNum;
-            ++cnt;
-        }
-
-        TString path = options.LogPath + "range_" + ToString(rangeIdx) + ".log";
-        TFileOutput out(TFile(path, EOpenModeFlag::CreateAlways | EOpenModeFlag::WrOnly));
-
-        for (ui64 i = 0; i < len; ++i) {
-            auto blockData = ReadBlockData(file, (i + startOffset) * requestSize);
-            if (blockData.RequestNumber != expected[i]) {
-                out << "[" << rangeIdx << "]"
-                    << " Wrong data in block " << (i + startOffset)
-                    << " expected " << expected[i]
-                    << " actual " << blockData
-                    << Endl;
-            }
-        }
-
-        Cout << "Finish validation of " << rangeIdx << " range" << Endl;
-        Cout << "Log written to " << path.Quote() << Endl;
-    }
-}
-
-void ValidateBlocks(TOptions options)
-{
-    TFile file(options.DevicePath, EOpenModeFlag::RdOnly | EOpenModeFlag::DirectAligned);
-
-    for (ui64 blockIndex: options.Blocks) {
-        std::set<TBlockData> blocks;
-
-        for (ui64 i = 0; i < MaxMirrorReplicas; i++) {
-            auto blockData = ReadBlockData(file, blockIndex * options.BlockSize);
-            blocks.emplace(blockData);
-        }
-
-        if (blocks.size() == 1) {
-            continue;
-        }
-
-        for (const auto& block: blocks) {
-            Cout << "mismatch in block data " << block << Endl;
-        }
-    }
-}
 
 int main(int argc, const char** argv)
 {
@@ -225,10 +122,40 @@ int main(int argc, const char** argv)
         return 1;
     }
 
+    TFile file(options.DevicePath, EOpenModeFlag::RdOnly | EOpenModeFlag::DirectAligned);
+
     if (options.Mode == EValidationMode::Checksum) {
-        ValidateRanges(std::move(options));
+        auto configHolder = CreateTestConfig(options.ConfigPath);
+        for (ui32 rangeIdx : options.RangeIndices) {
+            Cout << "Start validation of " << rangeIdx << " range" << Endl;
+
+            auto res = ValidateRange(file, std::move(configHolder), rangeIdx);
+            Cout << "GuessedStep " << res.GuessedStep
+                 << "GuessedLastBlockIdx " << res.GuessedLastBlockIdx
+                 << "GuessedNumberToWrite " << res.GuessedNumberToWrite
+                 << Endl;
+
+            TString path = options.LogPath + "range_" + ToString(rangeIdx) + ".log";
+            TFileOutput out(TFile(path, EOpenModeFlag::CreateAlways | EOpenModeFlag::WrOnly));
+
+            for (const auto& block : res.InvalidBlocks) {
+                out << "[" << rangeIdx << "]"
+                    << " Wrong data in block " << block
+                    << Endl;
+            }
+
+            Cout << "Finish validation of " << rangeIdx << " range" << Endl;
+            Cout << "Log written to " << path.Quote() << Endl;
+        }
     } else {
-        ValidateBlocks(std::move(options));
+        auto res = ValidateBlocks(
+            std::move(file),
+            options.BlockSize,
+            std::move(options.BlockIndices));
+
+        for (const auto& block : res) {
+            Cout << "mismatch in block data " << block << Endl;
+        }
     }
 
     return 0;

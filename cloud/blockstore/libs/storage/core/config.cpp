@@ -431,6 +431,7 @@ TDuration MSeconds(ui32 value)
                                                                                \
     xxx(DiskRegistryVolumeConfigUpdatePeriod,      TDuration, Minutes(5)      )\
     xxx(DiskRegistryAlwaysAllocatesLocalDisks,     bool,      false           )\
+    xxx(DiskRegistryCleanupConfigOnRemoveHost,     bool,      false           )\
                                                                                \
     xxx(ReassignRequestRetryTimeout,               TDuration, Seconds(5)      )\
     xxx(ReassignChannelsPercentageThreshold,       ui32,      10              )\
@@ -489,6 +490,7 @@ TDuration MSeconds(ui32 value)
                                                                                \
     xxx(VolumeProxyCacheRetryDuration,             TDuration, Seconds(15)     )\
                                                                                \
+    xxx(UseDirectCopyRange,                             bool,      false         )\
     xxx(MaxShadowDiskFillBandwidth,                     ui32,      512           )\
     xxx(MaxShadowDiskFillIoDepth,                       ui32,      1             )\
     xxx(BackgroundOperationsTotalBandwidth,             ui32,      1024          )\
@@ -515,7 +517,10 @@ TDuration MSeconds(ui32 value)
     xxx(DiskRegistryDisksNotificationTimeout,           TDuration, Seconds(5)    )\
     xxx(BlobStorageAsyncGetTimeoutHDD,                  TDuration, Seconds(0)    )\
     xxx(BlobStorageAsyncGetTimeoutSSD,                  TDuration, Seconds(0)    )\
-
+                                                                               \
+    xxx(EncryptionAtRestForDiskRegistryBasedDisksEnabled, bool,    false      )\
+    xxx(DisableFullPlacementGroupCountCalculation,        bool,    false      )\
+    xxx(DiskRegistryInitialAgentRejectionThreshold,       double,    50       )\
 // BLOCKSTORE_STORAGE_CONFIG_RW
 
 #define BLOCKSTORE_STORAGE_CONFIG(xxx)                                         \
@@ -545,6 +550,7 @@ BLOCKSTORE_STORAGE_CONFIG(BLOCKSTORE_STORAGE_DECLARE_CONFIG)
     xxx(ReplaceDevice)                                                         \
     xxx(UseNonReplicatedHDDInsteadOfReplicated)                                \
     xxx(AddingUnconfirmedBlobs)                                                \
+    xxx(EncryptionAtRestForDiskRegistryBasedDisks)                             \
 
 // BLOCKSTORE_BINARY_FEATURES
 
@@ -717,34 +723,35 @@ struct TStorageConfig::TImpl
         FeaturesConfig = std::move(featuresConfig);
     }
 
-    void Merge(const NProto::TStorageServiceConfig& storageServiceConfig)
+    NProto::TStorageServiceConfig GetStorageConfigProto() const
     {
-        StorageServiceConfig.MergeFrom(storageServiceConfig);
-    }
+        NProto::TStorageServiceConfig proto = StorageServiceConfig;
 
-    bool Equals(const TStorageConfig::TImpl& other) const
-    {
-        return google::protobuf::util::MessageDifferencer::Equals(
-            StorageServiceConfig,
-            other.StorageServiceConfig);
+        // Overriding fields with values from ICB
+#define BLOCKSTORE_CONFIG_COPY(name, type, ...)                                \
+        if (const ui64 value = Control##name) {                                \
+            using T = decltype(StorageServiceConfig.Get##name());              \
+            proto.Set##name(static_cast<T>(value));                            \
+        }                                                                      \
+// BLOCKSTORE_CONFIG_COPY
+
+        BLOCKSTORE_STORAGE_CONFIG_RW(BLOCKSTORE_CONFIG_COPY)
+
+#undef BLOCKSTORE_CONFIG_COPY
+
+        return proto;
     }
 };
 
 ////////////////////////////////////////////////////////////////////////////////
 
 TStorageConfig::TStorageConfig(
-    NProto::TStorageServiceConfig storageServiceConfig,
-    NFeatures::TFeaturesConfigPtr featuresConfig)
+        NProto::TStorageServiceConfig storageServiceConfig,
+        NFeatures::TFeaturesConfigPtr featuresConfig)
     : Impl(new TImpl(std::move(storageServiceConfig), std::move(featuresConfig)))
 {}
 
-TStorageConfig::TStorageConfig(const TStorageConfig& config)
-    : Impl(new TImpl(
-        config.Impl->StorageServiceConfig, config.Impl->FeaturesConfig))
-{}
-
-TStorageConfig::~TStorageConfig()
-{}
+TStorageConfig::~TStorageConfig() = default;
 
 void TStorageConfig::SetFeaturesConfig(
     NFeatures::TFeaturesConfigPtr featuresConfig)
@@ -885,15 +892,23 @@ TString TStorageConfig::Get##name##FeatureValue(                               \
 
 #undef BLOCKSTORE_STRING_FEATURE_GETTER
 
-void TStorageConfig::Merge(
-    const NProto::TStorageServiceConfig& storageServiceConfig)
+TStorageConfigPtr TStorageConfig::Merge(
+    TStorageConfigPtr config,
+    const NProto::TStorageServiceConfig& patch)
 {
-    Impl->Merge(storageServiceConfig);
-}
+    const auto configProto = config->GetStorageConfigProto();
+    auto patchedConfigProto = configProto;
+    patchedConfigProto.MergeFrom(patch);
+    if (google::protobuf::util::MessageDifferencer::Equals(
+            patchedConfigProto,
+            configProto))
+    {
+        return config;
+    }
 
-bool TStorageConfig::Equals(const TStorageConfig& other) const
-{
-    return Impl->Equals(*other.Impl);
+    return std::make_shared<TStorageConfig>(
+        std::move(patchedConfigProto),
+        config->Impl->FeaturesConfig);
 }
 
 ui64 GetAllocationUnit(
@@ -966,9 +981,9 @@ TStorageConfig::TValueByName TStorageConfig::GetValueByName(
     return {value};
 }
 
-const NProto::TStorageServiceConfig& TStorageConfig::GetStorageConfigProto() const
+NProto::TStorageServiceConfig TStorageConfig::GetStorageConfigProto() const
 {
-    return Impl->StorageServiceConfig;
+    return Impl->GetStorageConfigProto();
 }
 
 void AdaptNodeRegistrationParams(

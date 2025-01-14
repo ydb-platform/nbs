@@ -492,8 +492,7 @@ private:
     bool IsWorkRequestValid(const TWorkRequestId& id) const;
     void HandleFlush(const TWorkRequestId& id) noexcept;
     void SendRequest(TRequestPtr req, TSendWr* send);
-    void SendRequestCompleted(
-        TSendWr* send, ibv_wc_status status) noexcept;
+    void SendRequestCompleted(TSendWr* send, ibv_wc_status status) noexcept;
     void RecvResponse(TRecvWr* recv);
     void RecvResponseCompleted(TRecvWr* recv, ibv_wc_status status);
     void AbortRequest(TRequestPtr req, ui32 err, const TString& msg) noexcept;
@@ -952,7 +951,21 @@ void TClientEndpoint::SendRequest(TRequestPtr req, TSendWr* send)
     requestMsg->Out = req->OutBuffer;
 
     RDMA_TRACE("SEND " << TWorkRequestId(send->wr.wr_id));
-    Verbs->PostSend(Connection->qp, &send->wr);
+
+    try {
+        Verbs->PostSend(Connection->qp, &send->wr);
+    } catch (const TServiceError& e) {
+        RDMA_ERROR(
+            "SEND " << TWorkRequestId(send->wr.wr_id) << ": " << e.what());
+        SendQueue.Push(send);
+        ReportRdmaError();
+        Disconnect();
+
+        Counters->RequestEnqueued();
+        QueuedRequests.Enqueue(std::move(req));
+
+        return;
+    }
 
     LWTRACK(
         SendRequestStarted,
@@ -1013,7 +1026,17 @@ void TClientEndpoint::RecvResponse(TRecvWr* recv)
     Zero(*responseMsg);
 
     RDMA_TRACE("RECV " << TWorkRequestId(recv->wr.wr_id));
-    Verbs->PostRecv(Connection->qp, &recv->wr);
+
+    try {
+        Verbs->PostRecv(Connection->qp, &recv->wr);
+    } catch (const TServiceError& e) {
+        RDMA_ERROR(
+            "RECV " << TWorkRequestId(recv->wr.wr_id) << ": " << e.what());
+        RecvQueue.Push(recv);
+        ReportRdmaError();
+        Disconnect();
+        return;
+    }
 
     Counters->RecvResponseStarted();
 }
@@ -1027,7 +1050,7 @@ void TClientEndpoint::RecvResponseCompleted(
             << ": " << NVerbs::GetStatusString(wc_status));
 
         Counters->RecvResponseError();
-        RecvResponse(recv);
+        RecvQueue.Push(recv);
         ReportRdmaError();
         Disconnect();
         return;
@@ -1037,7 +1060,8 @@ void TClientEndpoint::RecvResponseCompleted(
     int version = ParseMessageHeader(msg);
     if (version != RDMA_PROTO_VERSION) {
         RDMA_ERROR("RECV " << TWorkRequestId(recv->wr.wr_id)
-            << ": unrecognized protocol version")
+            << ": incompatible protocol version "
+            << version << ", expected " << int(RDMA_PROTO_VERSION));
 
         Counters->RecvResponseError();
         RecvResponse(recv);

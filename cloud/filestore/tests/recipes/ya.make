@@ -2,6 +2,8 @@ RECURSE(
     mount
     service-kikimr
     service-local
+    tablets-restarter
     vhost
     vhost-endpoint
+    vhost-restore-endpoint
 )

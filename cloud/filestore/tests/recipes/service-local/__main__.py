@@ -1,5 +1,7 @@
 import argparse
+import logging
 import os
+import subprocess
 
 import yatest.common as common
 
@@ -56,11 +58,20 @@ def start(argv):
 
 
 def stop(argv):
+    logging.info(os.system("ss -tpna"))
+
     if not os.path.exists(PID_FILE_NAME):
         return
 
     with open(PID_FILE_NAME) as f:
         pid = int(f.read())
+
+        # Used for debugging filestore-server hangs
+        bt = subprocess.getoutput(
+            f'sudo gdb --batch -p {pid} -ex "thread apply all bt"'
+        )
+        logging.warning(f"PID {pid}: backtrace:\n{bt}")
+
         shutdown(pid)
 
 

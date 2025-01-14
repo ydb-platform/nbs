@@ -57,6 +57,10 @@ void TNonreplicatedPartitionMigrationCommonActor::SendStats(
             DstCounters->Simple.IORequestsInFlight.Value);
     }
 
+    stats->AggregateWith(*MigrationCounters);
+    MigrationCounters =
+        CreatePartitionDiskCounters(EPublishingPolicy::DiskRegistryBased);
+
     auto request =
         std::make_unique<TEvVolume::TEvDiskRegistryBasedPartitionCounters>(
             MakeIntrusive<TCallContext>(),

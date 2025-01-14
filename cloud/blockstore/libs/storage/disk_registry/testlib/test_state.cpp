@@ -211,6 +211,29 @@ TVector<NProto::TDiskConfig> MirrorDisk(
     return result;
 }
 
+NProto::TDiskConfig ShadowDisk(
+    const TString& sourceDiskId,
+    const TString& checkpointId,
+    std::initializer_list<TString> uuids,
+    NProto::EDiskState state)
+{
+    NProto::TDiskConfig config;
+
+    config.SetDiskId(sourceDiskId + "-" + checkpointId);
+    auto* checkpoint = config.MutableCheckpointReplica();
+    checkpoint->SetSourceDiskId(sourceDiskId);
+    checkpoint->SetCheckpointId(checkpointId);
+    config.SetBlockSize(DefaultLogicalBlockSize);
+    config.SetState(state);
+
+    for (const auto& uuid: uuids) {
+        *config.AddDeviceUUIDs() = uuid;
+    }
+
+    return config;
+}
+
+
 NProto::TError AllocateMirroredDisk(
     TDiskRegistryDatabase& db,
     TDiskRegistryState& state,
@@ -436,6 +459,29 @@ TString GetReplicaTableRepr(
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+
+TDiskRegistryStateBuilder TDiskRegistryStateBuilder::LoadState(
+    TDiskRegistryDatabase& db)
+{
+    TDiskRegistryStateBuilder builder;
+
+    db.ReadDiskRegistryConfig(builder.Config);
+    db.ReadDirtyDevices(builder.DirtyDevices);
+    db.ReadAgents(builder.Agents);
+    db.ReadDisks(builder.Disks);
+    db.ReadPlacementGroups(builder.PlacementGroups);
+    db.ReadBrokenDisks(builder.BrokenDisks);
+    db.ReadDisksToReallocate(builder.DisksToReallocate);
+    db.ReadErrorNotifications(builder.ErrorNotifications);
+    db.ReadUserNotifications(builder.UserNotifications);
+    db.ReadDisksToCleanup(builder.DisksToCleanup);
+    db.ReadOutdatedVolumeConfigs(builder.OutdatedVolumeConfigs);
+    db.ReadSuspendedDevices(builder.SuspendedDevices);
+    db.ReadAutomaticallyReplacedDevices(builder.AutomaticallyReplacedDevices);
+    db.ReadDiskRegistryAgentListParams(builder.DiskRegistryAgentListParams);
+
+    return builder;
+}
 
 TDiskRegistryState TDiskRegistryStateBuilder::Build()
 {

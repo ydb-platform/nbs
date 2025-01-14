@@ -72,6 +72,63 @@ void TIndexTabletActor::HandleRenameNode(
 
     AddTransaction<TEvService::TRenameNodeMethod>(*requestInfo);
 
+    // we have separate logic for cross-shard move ops, see the following link
+    // for more details:
+    // https://github.com/ydb-platform/nbs/issues/2674#issuecomment-2578785398
+    const auto& shardIds = GetFileSystem().GetShardFileSystemIds();
+    if (!shardIds.empty()) {
+        const auto shardNo = GetFileSystem().GetShardNo();
+        const auto parentShardNo = ExtractShardNo(msg->Record.GetNodeId());
+        if (parentShardNo != shardNo) {
+            auto message = ReportRenameNodeRequestSentToWrongShard(
+                TStringBuilder() << "RenameNode: "
+                    << msg->Record.ShortDebugString() << " received by shard "
+                    << shardNo << ", expected: " << parentShardNo);
+            auto response = std::make_unique<TEvService::TEvRenameNodeResponse>(
+                MakeError(E_ARGUMENT, std::move(message)));
+            NCloud::Reply(ctx, *requestInfo, std::move(response));
+            return;
+        }
+
+        const auto newParentShardNo =
+            ExtractShardNo(msg->Record.GetNewParentId());
+        if (newParentShardNo != GetFileSystem().GetShardNo()) {
+            if (newParentShardNo > static_cast<ui32>(shardIds.size())) {
+                auto message = ReportInvalidShardNo(
+                    TStringBuilder() << "RenameNode: "
+                        << msg->Record.ShortDebugString() << " newParentShardNo"
+                        << ": " << newParentShardNo << ", shard count: "
+                        << shardIds.size());
+                auto response =
+                    std::make_unique<TEvService::TEvRenameNodeResponse>(
+                        MakeError(E_ARGUMENT, std::move(message)));
+                NCloud::Reply(ctx, *requestInfo, std::move(response));
+            } else if (newParentShardNo == 0
+                    && msg->Record.GetNewParentId() != RootNodeId)
+            {
+                auto message = ReportInvalidShardNo(
+                    TStringBuilder() << "RenameNode: "
+                        << msg->Record.ShortDebugString() << " newParentShardNo"
+                        << ": " << newParentShardNo << ", NewParentId: "
+                        << msg->Record.GetNewParentId());
+                auto response =
+                    std::make_unique<TEvService::TEvRenameNodeResponse>(
+                        MakeError(E_ARGUMENT, std::move(message)));
+                NCloud::Reply(ctx, *requestInfo, std::move(response));
+            } else {
+                ExecuteTx<TPrepareRenameNodeInSource>(
+                    ctx,
+                    std::move(requestInfo),
+                    std::move(msg->Record),
+                    newParentShardNo
+                        ? shardIds[newParentShardNo - 1]
+                        : GetMainFileSystemId());
+            }
+
+            return;
+        }
+    }
+
     ExecuteTx<TRenameNode>(
         ctx,
         std::move(requestInfo),
@@ -204,7 +261,7 @@ bool TIndexTabletActor::PrepareTx_RenameNode(
         const bool isSameExternalNode = args.ChildRef->ShardId
             && args.NewChildRef->ShardId
             && args.ChildRef->ShardId == args.NewChildRef->ShardId
-            && args.ChildRef->ShardName == args.NewChildRef->ShardName;
+            && args.ChildRef->ShardNodeName == args.NewChildRef->ShardNodeName;
         if (isSameNode || isSameExternalNode) {
             args.Error = MakeError(S_ALREADY, "is the same file");
             return true;
@@ -290,7 +347,7 @@ void TIndexTabletActor::ExecuteTx_RenameNode(
         args.Name,
         args.ChildRef->ChildNodeId,
         args.ChildRef->ShardId,
-        args.ChildRef->ShardName);
+        args.ChildRef->ShardNodeName);
 
     if (args.NewChildRef) {
         if (HasFlag(args.Flags, NProto::TRenameNodeRequest::F_EXCHANGE)) {
@@ -303,7 +360,7 @@ void TIndexTabletActor::ExecuteTx_RenameNode(
                 args.NewName,
                 args.NewChildRef->NodeId,
                 args.NewChildRef->ShardId,
-                args.NewChildRef->ShardName);
+                args.NewChildRef->ShardNodeName);
 
             // create source ref to target node
             CreateNodeRef(
@@ -313,7 +370,7 @@ void TIndexTabletActor::ExecuteTx_RenameNode(
                 args.Name,
                 args.NewChildRef->ChildNodeId,
                 args.NewChildRef->ShardId,
-                args.NewChildRef->ShardName);
+                args.NewChildRef->ShardNodeName);
         } else if (args.NewChildRef->ShardId.empty()) {
             if (!args.NewChildNode) {
                 auto message = ReportNewChildNodeIsNull(TStringBuilder()
@@ -346,7 +403,7 @@ void TIndexTabletActor::ExecuteTx_RenameNode(
                 args.NewParentNode->NodeId,
                 args.NewName,
                 args.NewChildRef->ShardId,
-                args.NewChildRef->ShardName,
+                args.NewChildRef->ShardNodeName,
                 args.NewChildRef->MinCommitId,
                 args.CommitId);
 
@@ -359,7 +416,7 @@ void TIndexTabletActor::ExecuteTx_RenameNode(
                 args.Request.GetHeaders());
             shardRequest->SetFileSystemId(args.NewChildRef->ShardId);
             shardRequest->SetNodeId(RootNodeId);
-            shardRequest->SetName(args.NewChildRef->ShardName);
+            shardRequest->SetName(args.NewChildRef->ShardNodeName);
 
             db.WriteOpLogEntry(args.OpLogEntry);
         }
@@ -383,7 +440,7 @@ void TIndexTabletActor::ExecuteTx_RenameNode(
         args.NewName,
         args.ChildRef->ChildNodeId,
         args.ChildRef->ShardId,
-        args.ChildRef->ShardName);
+        args.ChildRef->ShardNodeName);
 
     auto newParent = CopyAttrs(args.NewParentNode->Attrs, E_CM_CMTIME);
     UpdateNode(
@@ -416,6 +473,21 @@ void TIndexTabletActor::CompleteTx_RenameNode(
     const TActorContext& ctx,
     TTxIndexTablet::TRenameNode& args)
 {
+    InvalidateNodeCaches(args.ParentNodeId);
+    InvalidateNodeCaches(args.NewParentNodeId);
+    if (args.ChildRef) {
+        InvalidateNodeCaches(args.ChildRef->ChildNodeId);
+    }
+    if (args.NewChildRef) {
+        InvalidateNodeCaches(args.NewChildRef->ChildNodeId);
+    }
+    if (args.ParentNode) {
+        InvalidateNodeCaches(args.ParentNode->NodeId);
+    }
+    if (args.NewParentNode) {
+        InvalidateNodeCaches(args.NewParentNode->NodeId);
+    }
+
     if (!HasError(args.Error) && !args.ChildRef) {
         auto message = ReportChildRefIsNull(TStringBuilder()
             << "RenameNode: " << args.Request.ShortDebugString());
@@ -425,6 +497,7 @@ void TIndexTabletActor::CompleteTx_RenameNode(
     if (!HasError(args.Error)) {
         auto& op = args.OpLogEntry;
         if (op.HasUnlinkNodeRequest()) {
+            // rename + unlink is pretty rare so let's keep INFO level here
             LOG_INFO(ctx, TFileStoreComponents::TABLET,
                 "%s Unlinking node in shard upon RenameNode: %s, %s",
                 LogTag.c_str(),

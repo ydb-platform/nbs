@@ -57,6 +57,10 @@ using TAliases = NProto::TStorageConfig::TFilestoreAliases;
     xxx(ShardAllocationUnit,                                    ui64,   4_TB  )\
     xxx(AutomaticallyCreatedShardSize,                          ui64,   5_TB  )\
     xxx(EnforceCorrectFileSystemShardCountUponSessionCreation,  bool,   false )\
+    xxx(ShardIdSelectionInLeaderEnabled,                        bool,   false )\
+    xxx(ShardBalancerDesiredFreeSpaceReserve,                   ui64,   1_TB  )\
+    xxx(ShardBalancerMinFreeSpaceReserve,                       ui64,   1_MB  )\
+    xxx(DirectoryCreationInShardsEnabled,                       bool,   false )\
                                                                                \
     xxx(MaxFileBlocks,                                  ui32,   300_GB / 4_KB )\
     xxx(LargeDeletionMarkersEnabled,                    bool,   false         )\
@@ -237,6 +241,8 @@ using TAliases = NProto::TStorageConfig::TFilestoreAliases;
     xxx(DestroyFilestoreDenyList,       TVector<TString>,          {}         )\
                                                                                \
     xxx(SSProxyFallbackMode,            bool,     false                       )\
+                                                                               \
+    xxx(MixedBlocksOffloadedRangesCapacity,        ui64,     0                )\
 // FILESTORE_STORAGE_CONFIG
 
 #define FILESTORE_STORAGE_CONFIG_REF(xxx)                                      \

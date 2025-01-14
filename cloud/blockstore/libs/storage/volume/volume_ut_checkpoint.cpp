@@ -4332,6 +4332,110 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
         UNIT_ASSERT_VALUES_EQUAL(AnyWriterClientId, releaseClientId);
     }
 
+    Y_UNIT_TEST(ShouldReacquireShadowDiskWhenChangedToReadyWithNonBlockingTimeout)
+    {
+        auto blockingTimeout = TDuration::Seconds(5);
+        auto nonBlockingTimeout = TDuration::Seconds(30);
+
+        NProto::TStorageServiceConfig config;
+        config.SetUseShadowDisksForNonreplDiskCheckpoints(true);
+        config.SetMaxAcquireShadowDiskTotalTimeoutWhenBlocked(
+            blockingTimeout.MilliSeconds());
+        config.SetMaxAcquireShadowDiskTotalTimeoutWhenNonBlocked(
+            nonBlockingTimeout.MilliSeconds());
+        auto runtime = PrepareTestActorRuntime(config);
+
+        const ui64 expectedBlockCount = 32768;
+
+        TVolumeClient volume(*runtime);
+        volume.UpdateVolumeConfig(
+            0,
+            0,
+            0,
+            0,
+            false,
+            1,
+            NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
+            expectedBlockCount);
+
+        volume.WaitReady();
+
+        // Connect new client.
+        auto clientInfo1 = CreateVolumeClientInfo(
+            NProto::VOLUME_ACCESS_READ_WRITE,
+            NProto::VOLUME_MOUNT_LOCAL,
+            0);
+        volume.AddClient(clientInfo1);
+
+        // Create checkpoint when no client connected.
+        volume.CreateCheckpoint("c1");
+
+        // Reconnect pipe since partition has restarted.
+        volume.ReconnectPipe();
+
+        runtime->DispatchEvents({}, TDuration::MilliSeconds(10));
+
+        bool changedToReady = false;
+        // Steal the acquire response when state changed to ready.
+        std::unique_ptr<IEventHandle> stolenAcquireResponse;
+        auto filter =
+            [&](TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event)
+        {
+            Y_UNUSED(runtime);
+            if (event->GetTypeRewrite() ==
+                TEvVolumePrivate::EvUpdateShadowDiskStateResponse)
+            {
+                auto* msg = event->Get<
+                    TEvVolumePrivate::TEvUpdateShadowDiskStateResponse>();
+                if (msg->NewState == EShadowDiskState::Ready) {
+                    changedToReady = true;
+                }
+            }
+            if (changedToReady && event->GetTypeRewrite() ==
+                TEvDiskRegistry::EvAcquireDiskResponse)
+            {
+                stolenAcquireResponse.reset(event.Release());
+                return true;
+            }
+            return false;
+        };
+        auto oldFilter = runtime->SetEventFilter(filter);
+
+        // Wait for checkpoint get ready and
+        // Wait for AcquireResponse stolen.
+        {
+            TDispatchOptions options;
+            options.CustomFinalCondition = [&]
+            {
+                return changedToReady && stolenAcquireResponse != nullptr;
+            };
+            runtime->DispatchEvents(options);
+        }
+
+        // Making sure that the shadow disk does not get an error state if the
+        // time is less than MaxAcquireShadowDiskTotalTimeoutWhenNonBlocked
+        {
+            runtime->AdvanceCurrentTime(blockingTimeout);
+            runtime->DispatchEvents({}, TDuration::Seconds(1));
+            auto status = volume.GetCheckpointStatus("c1");
+            UNIT_ASSERT_EQUAL(
+                NProto::ECheckpointStatus::READY,
+                status->Record.GetCheckpointStatus());
+        }
+
+        // When acquiring hung for time more than
+        // MaxAcquireShadowDiskTotalTimeoutWhenNonBlocked shadow disk will get
+        // error state.
+        {
+            runtime->AdvanceCurrentTime(nonBlockingTimeout);
+            runtime->DispatchEvents({}, TDuration::Seconds(1));
+            auto status = volume.GetCheckpointStatus("c1");
+            UNIT_ASSERT_EQUAL(
+                NProto::ECheckpointStatus::ERROR,
+                status->Record.GetCheckpointStatus());
+        }
+    }
+
     Y_UNIT_TEST(ShouldAcquireShadowDiskEvenIfReleaseFailed)
     {
         NProto::TStorageServiceConfig config;

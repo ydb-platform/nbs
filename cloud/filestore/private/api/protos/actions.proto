@@ -28,3 +28,15 @@ message TReassignTabletRequest
 message TReassignTabletResponse
 {
 }
+
+////////////////////////////////////////////////////////////////////////////////
+// ListLocalFileStores request/response.
+
+message TListLocalFileStoresRequest
+{
+}
+
+message TListLocalFileStoresResponse
+{
+    repeated string FileSystemIds = 1;
+}

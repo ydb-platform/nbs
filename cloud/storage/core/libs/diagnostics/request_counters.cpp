@@ -339,6 +339,13 @@ struct TRequestCounters::TStatCounters
         // initialization is enabled and the values are zeroes
         Count = counters.GetCounter("Count", true);
         ErrorsFatal = counters.GetCounter("Errors/Fatal", true);
+        Time = counters.GetCounter("Time", true);
+        if (ReportControlPlaneHistogram) {
+            TimeHist.Register(counters, "Time");
+        } else {
+            TimePercentiles.Register(
+                *counters.GetSubgroup("percentiles", "Time"));
+        }
     }
 
     void FullInitIfNeeded()
@@ -354,7 +361,6 @@ struct TRequestCounters::TStatCounters
 
         auto& counters = *CountersGroup;
 
-        Time = counters.GetCounter("Time", true);
         MaxTime = counters.GetCounter("MaxTime");
         MaxTotalTime = counters.GetCounter("MaxTotalTime");
 
@@ -426,13 +432,6 @@ struct TRequestCounters::TStatCounters
                 counters.GetCounter("PostponedCountGrpc", true);
 
             FastPathHits = counters.GetCounter("FastPathHits", true);
-        } else {
-            if (ReportControlPlaneHistogram) {
-                TimeHist.Register(counters, "Time");
-            } else {
-                TimePercentiles.Register(
-                    *counters.GetSubgroup("percentiles", "Time"));
-            }
         }
 
         AtomicSet(FullyInitialized, true);

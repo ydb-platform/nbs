@@ -17,9 +17,11 @@ TCommandPtr NewKickEndpointCommand();
 TCommandPtr NewListClusterNodesCommand();
 TCommandPtr NewListEndpointsCommand();
 TCommandPtr NewListFileStoresCommand();
+TCommandPtr NewLnCommand();
 TCommandPtr NewLsCommand();
 TCommandPtr NewMkDirCommand();
 TCommandPtr NewMountCommand();
+TCommandPtr NewMvCommand();
 TCommandPtr NewReadCommand();
 TCommandPtr NewRemoveClusterNodeCommand();
 TCommandPtr NewResizeCommand();
@@ -36,6 +38,8 @@ TCommandPtr NewStatCommand();
 TCommandPtr NewSetNodeAttrCommand();
 TCommandPtr NewFindGarbageCommand();
 TCommandPtr NewForcedCompactionCommand();
+TCommandPtr NewFindCommand();
+TCommandPtr NewDiffCommand();
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -49,16 +53,20 @@ static const TMap<TString, TFactoryFunc> Commands = {
     { "describe", NewDescribeCommand },
     { "destroy", NewDestroyCommand },
     { "destroysession", NewDestroySessionCommand },
+    { "diff", NewDiffCommand },
     { "executeaction", NewExecuteActionCommand },
+    { "find", NewFindCommand },
     { "findgarbage", NewFindGarbageCommand },
     { "forcedcompaction", NewForcedCompactionCommand },
     { "kickendpoint", NewKickEndpointCommand },
     { "listclusternodes", NewListClusterNodesCommand },
     { "listendpoints", NewListEndpointsCommand },
     { "listfilestores", NewListFileStoresCommand },
+    { "ln", NewLnCommand },
     { "ls", NewLsCommand },
     { "mkdir", NewMkDirCommand },
     { "mount", NewMountCommand },
+    { "mv", NewMvCommand },
     { "read", NewReadCommand },
     { "removeclusternode", NewRemoveClusterNodeCommand },
     { "resetsession", NewResetSessionCommand },

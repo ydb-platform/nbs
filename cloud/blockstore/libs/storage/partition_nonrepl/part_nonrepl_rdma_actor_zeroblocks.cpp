@@ -85,9 +85,9 @@ public:
         auto buffer = req->ResponseBuffer.Head(responseBytes);
 
         if (status == NRdma::RDMA_PROTO_OK) {
-            HandleResult(std::move(buffer));
+            HandleResult(buffer);
         } else {
-            HandleError(PartConfig, std::move(buffer), Error);
+            Error = NRdma::ParseError(buffer);
         }
 
         if (--ResponseCount != 0) {

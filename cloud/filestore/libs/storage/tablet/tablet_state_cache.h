@@ -52,6 +52,12 @@ public:
         ui64 commitId,
         TMaybe<IIndexTabletDatabase::TNode>& node) override;
 
+    bool ReadNodes(
+        ui64 startNodeId,
+        ui64 maxNodes,
+        ui64& nextNodeId,
+        TVector<IIndexTabletDatabase::TNode>& nodes) override;
+
 private:
     void WriteNode(
         ui64 nodeId,
@@ -149,7 +155,7 @@ private:
         const TString& name,
         ui64 childNode,
         const TString& shardId,
-        const TString& shardName);
+        const TString& shardNodeName);
 
     void DeleteNodeRef(ui64 nodeId, const TString& name);
 
@@ -250,7 +256,7 @@ private:
         ui64 CommitId = 0;
         ui64 ChildId = 0;
         TString ShardId;
-        TString ShardName;
+        TString ShardNodeName;
     };
 
     TMap<TNodeRefsKey, TNodeRefsRow> NodeRefs;

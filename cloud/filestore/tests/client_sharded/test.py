@@ -96,3 +96,41 @@ def test_shard_autoaddition():
 
     ret = common.canonical_file(results_path, local=True)
     return ret
+
+
+def test_explicit_shard_count_addition():
+    client, results_path = __init_test()
+    out = client.create(
+        "fs0",
+        "test_cloud",
+        "test_folder",
+        BLOCK_SIZE,
+        int(SHARD_SIZE / BLOCK_SIZE))
+
+    data_file = os.path.join(common.output_path(), "data.txt")
+    with open(data_file, "w") as f:
+        f.write("some data")
+
+    client.create_session("fs0", "session0", "client0")
+    out = client.execute_action("describesessions", {"FileSystemId": "fs0"})
+    out += client.execute_action("describesessions", {"FileSystemId": "fs0_s1"})
+    out += client.execute_action("describesessions", {"FileSystemId": "fs0_s2"})
+    out += client.execute_action("describesessions", {"FileSystemId": "fs0_s3"})
+    client.destroy_session("fs0", "session0", "client0")
+
+    out += client.resize("fs0", int(SHARD_SIZE / BLOCK_SIZE), shard_count=3)
+
+    client.create_session("fs0", "session0", "client0")
+    out += client.execute_action("describesessions", {"FileSystemId": "fs0"})
+    out += client.execute_action("describesessions", {"FileSystemId": "fs0_s1"})
+    out += client.execute_action("describesessions", {"FileSystemId": "fs0_s2"})
+    out += client.execute_action("describesessions", {"FileSystemId": "fs0_s3"})
+    client.destroy_session("fs0", "session0", "client0")
+
+    out += client.destroy("fs0")
+
+    with open(results_path, "wb") as results_file:
+        results_file.write(out)
+
+    ret = common.canonical_file(results_path, local=True)
+    return ret

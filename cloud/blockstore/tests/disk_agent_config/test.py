@@ -164,6 +164,15 @@ def _add_host(client, agent_id):
     return client.cms_action(request)
 
 
+# wait for devices to be cleared
+def _wait_devices(client):
+    while True:
+        bkp = _backup(client)
+        if bkp.get("DirtyDevices", 0) == 0:
+            break
+        time.sleep(1)
+
+
 def test_change_rack(nbs, agent_ids, disk_agent_configurators):
 
     client = CreateClient(f"localhost:{nbs.port}")
@@ -190,12 +199,7 @@ def test_change_rack(nbs, agent_ids, disk_agent_configurators):
             assert d.get('State') is None  # online
             assert d['Rack'] == 'c:RACK'   # default rack
 
-    # wait for devices to be cleared
-    while True:
-        bkp = _backup(client)
-        if bkp.get("DirtyDevices", 0) == 0:
-            break
-        time.sleep(1)
+    _wait_devices(client)
 
     # create volumes
 
@@ -270,12 +274,7 @@ def test_null_backend(nbs, agent_ids, disk_agent_configurators):
     assert len(r.ActionResults) == 1
     assert r.ActionResults[0].Result.Code == 0
 
-    # wait for devices to be cleared
-    while True:
-        bkp = _backup(client)
-        if bkp.get("DirtyDevices", 0) == 0:
-            break
-        time.sleep(1)
+    _wait_devices(client)
 
     client.create_volume(
         disk_id="vol1",
@@ -351,6 +350,8 @@ def test_disable_io_for_broken_devices(
     r = _add_host(client, agent_id)
     assert len(r.ActionResults) == 1
     assert r.ActionResults[0].Result.Code == 0
+
+    _wait_devices(client)
 
     # create a volume
     client.create_volume(

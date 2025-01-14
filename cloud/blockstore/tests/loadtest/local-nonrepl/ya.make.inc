@@ -44,3 +44,5 @@ REQUIREMENTS(
 
 FORK_SUBTESTS()
 SPLIT_FACTOR(2)
+
+INCLUDE(${ARCADIA_ROOT}/cloud/blockstore/tests/recipes/fake-root-kms/recipe.inc)

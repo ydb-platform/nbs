@@ -109,6 +109,11 @@ FILESTORE_FILESYSTEM_STATS(FILESTORE_DECLARE_STATS)
         ui64 nodeId,
         ui64 commitId,
         TMaybe<IIndexTabletDatabase::TNode>& node) override;
+    virtual bool ReadNodes(
+        ui64 startNodeId,
+        ui64 maxNodes,
+        ui64& nextNodeId,
+        TVector<IIndexTabletDatabase::TNode>& nodes) override;
 
     //
     // Nodes_Ver
@@ -189,7 +194,7 @@ FILESTORE_FILESYSTEM_STATS(FILESTORE_DECLARE_STATS)
         const TString& name,
         ui64 childNode,
         const TString& shardId,
-        const TString& shardName);
+        const TString& shardNodeName);
 
     virtual void DeleteNodeRef(ui64 nodeId, const TString& name);
 
@@ -231,7 +236,7 @@ FILESTORE_FILESYSTEM_STATS(FILESTORE_DECLARE_STATS)
         const TString& name,
         ui64 childNode,
         const TString& shardId,
-        const TString& shardName);
+        const TString& shardNodeName);
 
     virtual void DeleteNodeRefVer(
         ui64 nodeId,
@@ -554,6 +559,12 @@ public:
         ui64 commitId,
         TMaybe<IIndexTabletDatabase::TNode>& node) final;
 
+    bool ReadNodes(
+        ui64 startNodeId,
+        ui64 maxNodes,
+        ui64& nextNodeId,
+        TVector<IIndexTabletDatabase::TNode>& nodes) final;
+
     void WriteNode(
         ui64 nodeId,
         ui64 commitId,
@@ -641,7 +652,7 @@ public:
         const TString& name,
         ui64 childNode,
         const TString& shardId,
-        const TString& shardName) override;
+        const TString& shardNodeName) override;
 
     void DeleteNodeRef(ui64 nodeId, const TString& name) override;
 
@@ -656,7 +667,7 @@ public:
         const TString& name,
         ui64 childNode,
         const TString& shardId,
-        const TString& shardName) override;
+        const TString& shardNodeName) override;
 
     void DeleteNodeRefVer(
         ui64 nodeId,

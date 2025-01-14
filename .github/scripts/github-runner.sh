@@ -37,10 +37,6 @@ sudo curl -o runner.tar.gz -L "https://github.com/actions/runner/releases/downlo
 sudo tar xzf ./runner.tar.gz
 # we do not have v6 connectivity on vms
 echo 'Acquire::ForceIPv4 "true";' | sudo tee /etc/apt/apt.conf.d/99force-ipv4
-wget -O - https://apt.kitware.com/keys/kitware-archive-latest.asc | sudo apt-key add -
-echo "deb https://apt.kitware.com/ubuntu/ ${LSB_RELEASE} main" | sudo tee /etc/apt/sources.list.d/kitware.list > /dev/null
-wget -O - https://apt.llvm.org/llvm-snapshot.gpg.key | sudo apt-key add -
-echo "deb https://apt.llvm.org/${LSB_RELEASE}/ llvm-toolchain-${LSB_RELEASE}-14 main" | sudo tee /etc/apt/sources.list.d/llvm.list > /dev/null
 sudo install -m 0755 -d /etc/apt/keyrings
 sudo curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
 sudo chmod a+r /etc/apt/keyrings/docker.asc
@@ -49,21 +45,18 @@ echo 'debconf debconf/frontend select Noninteractive' | sudo debconf-set-selecti
 sudo apt-get update
 sudo apt-get -y upgrade
 sudo apt-get install -y --no-install-recommends \
-             git wget gnupg lsb-release curl tzdata \
-             cmake python3-dev python3-pip ninja-build antlr3 \
-             m4 libidn11-dev libaio1 libaio-dev make clang-14 \
-             lld-14 llvm-14 file distcc s3cmd qemu-kvm qemu-utils \
+             git wget gnupg lsb-release curl tzdata python3-dev \
+             python3-pip libidn11-dev file s3cmd qemu-kvm qemu-utils \
              dpkg-dev docker-ce docker-ce-cli containerd.io \
              docker-buildx-plugin docker-compose-plugin jq \
              aria2 jq tree tmux atop awscli iftop htop \
-             pixz pigz pbzip2 xz-utils
+             pixz pigz pbzip2 xz-utils gdb unzip
 cat << EOF > /tmp/requirements.txt
-conan==1.59
-pytest==7.1.3
-pyinstaller==5.13.2
+pytest
+pyinstaller
 pytest-timeout
-pytest-xdist==3.3.1
-setproctitle==1.3.2
+pytest-xdist
+setproctitle
 six
 pyyaml
 packaging
@@ -75,14 +68,14 @@ tornado
 xmltodict
 pyarrow
 boto3
-moto[server]
 psutil
-yandexcloud==0.258.0
-PyGithub==2.2.0
+yandexcloud==0.330.0
+PyGithub==2.5.0
 cryptography
 pyOpenSSL==24.2.1
 packaging
 rapidgzip
+typing-extensions==4.10.0
 EOF
 sudo pip3 install https://github.com/librarian/python-sdk/releases/download/v0.1.1/nebiusai-0.1.1-py3-none-any.whl
 sudo pip3 install -r /tmp/requirements.txt

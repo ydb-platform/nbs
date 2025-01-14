@@ -1,8 +1,8 @@
 #include "service.h"
 
-#include "config.h"
 #include "fs.h"
 
+#include <cloud/filestore/libs/diagnostics/profile_log_events.h>
 #include <cloud/filestore/libs/service/context.h>
 #include <cloud/filestore/libs/service/filestore.h>
 #include <cloud/filestore/libs/service/request.h>
@@ -39,7 +39,7 @@ TFsPath Concat(const TFsPath& lhs, const TFsPath& rhs)
     TPathSplit r(rhs.GetPath());
 
     l.AppendMany(r.begin(), r.end());
-    return TFsPath(l.Reconstruct());
+    return l.Reconstruct();
 }
 
 void CreateRequestToFileStore(
@@ -93,9 +93,14 @@ void SaveFileStoreProto(const TString& fileName, const NProto::TFileStore& store
         using TRequest = NProto::T##name##Request;                             \
         using TResponse = NProto::T##name##Response;                           \
         using TResult = TResponse;                                             \
+        static constexpr auto RequestType = EFileStoreRequest::name;           \
                                                                                \
-        static TResult Execute(TLocalFileSystem& fs, const TRequest& request)  \
+        static TResult Execute(                                                \
+            TLocalFileSystem& fs,                                              \
+            const TRequest& request,                                           \
+            NProto::TProfileLogRequestInfo& logRequest)                        \
         {                                                                      \
+            Y_UNUSED(logRequest);                                              \
             return fs.name(request);                                           \
         }                                                                      \
                                                                                \
@@ -106,24 +111,28 @@ void SaveFileStoreProto(const TString& fileName, const NProto::TFileStore& store
     };                                                                         \
 // FILESTORE_DECLARE_METHOD_SYNC
 
-#define FILESTORE_DECLARE_METHOD_ASYNC(name, ...)                              \
-    struct T##name##Method                                                     \
-    {                                                                          \
-        using TRequest = NProto::T##name##Request;                             \
-        using TResponse = NProto::T##name##Response;                           \
-        using TResult = TFuture<TResponse>;                                    \
-                                                                               \
-        static TResult Execute(TLocalFileSystem& fs, TRequest& request)        \
-        {                                                                      \
-            return fs.name##Async(request);                                    \
-        }                                                                      \
-                                                                               \
-        static TResult ErrorResponse(ui32 code, TString message)               \
-        {                                                                      \
-            return MakeFuture(                                                 \
-                NCloud::ErrorResponse<TResponse>(code, std::move(message)));   \
-        }                                                                      \
-    };                                                                         \
+#define FILESTORE_DECLARE_METHOD_ASYNC(name, ...)                            \
+    struct T##name##Method                                                   \
+    {                                                                        \
+        using TRequest = NProto::T##name##Request;                           \
+        using TResponse = NProto::T##name##Response;                         \
+        using TResult = TFuture<TResponse>;                                  \
+        static constexpr auto RequestType = EFileStoreRequest::name;         \
+                                                                             \
+        static TResult Execute(                                              \
+            TLocalFileSystem& fs,                                            \
+            TRequest& request,                                               \
+            NProto::TProfileLogRequestInfo& logRequest)                      \
+        {                                                                    \
+            return fs.name##Async(request, logRequest);                      \
+        }                                                                    \
+                                                                             \
+        static TResult ErrorResponse(ui32 code, TString message)             \
+        {                                                                    \
+            return MakeFuture(                                               \
+                NCloud::ErrorResponse<TResponse>(code, std::move(message))); \
+        }                                                                    \
+    };                                                                       \
 // FILESTORE_DECLARE_METHOD_SYNC
 
 FILESTORE_SERVICE_LOCAL_SYNC(FILESTORE_DECLARE_METHOD_SYNC)
@@ -136,6 +145,7 @@ FILESTORE_SERVICE_LOCAL_ASYNC(FILESTORE_DECLARE_METHOD_ASYNC)
 
 class TLocalFileStore final
     : public IFileStoreService
+    , public std::enable_shared_from_this<TLocalFileStore>
 {
 private:
     const TLocalFileStoreConfigPtr Config;
@@ -144,7 +154,9 @@ private:
     const ILoggingServicePtr Logging;
     const IFileIOServicePtr FileIOService;
     const ITaskQueuePtr TaskQueue;
-    const TFsPath Root;
+    const IProfileLogPtr ProfileLog;
+    const TFsPath RootPath;
+    const TFsPath StatePath;
 
     TRWMutex Lock;
     THashMap<TString, TLocalFileSystemPtr> FileSystems;
@@ -158,16 +170,19 @@ public:
             ISchedulerPtr scheduler,
             ILoggingServicePtr logging,
             IFileIOServicePtr fileIOService,
-            ITaskQueuePtr taskQueue)
+            ITaskQueuePtr taskQueue,
+            IProfileLogPtr profileLog)
         : Config(std::move(config))
         , Timer(std::move(timer))
         , Scheduler(std::move(scheduler))
         , Logging(std::move(logging))
         , FileIOService(std::move(fileIOService))
         , TaskQueue(std::move(taskQueue))
-        , Root(Config->GetRootPath())
+        , ProfileLog(std::move(profileLog))
+        , RootPath(Config->GetRootPath())
+        , StatePath(Config->GetStatePath())
     {
-        Root.CheckExists();
+        RootPath.CheckExists();
         Log = Logging->CreateLog("NFS_SERVICE");
     }
 
@@ -181,18 +196,18 @@ public:
     {                                                                          \
         Y_UNUSED(callContext);                                                 \
         return TaskQueue->Execute([this, request = std::move(request)] {       \
-            return Execute<T##name##Method>(*request);                         \
+            return ExecuteWithProfileLog<T##name##Method>(*request);           \
         });                                                                    \
     }                                                                          \
 // FILESTORE_IMPLEMENT_METHOD_SYNC
 
-#define FILESTORE_IMPLEMENT_METHOD_ASYNC(name, ...)                             \
+#define FILESTORE_IMPLEMENT_METHOD_ASYNC(name, ...)                            \
     TFuture<NProto::T##name##Response> name(                                   \
         TCallContextPtr callContext,                                           \
         std::shared_ptr<NProto::T##name##Request> request) override            \
     {                                                                          \
         Y_UNUSED(callContext);                                                 \
-        return Execute<T##name##Method>(*request);                             \
+        return ExecuteWithProfileLogAsync<T##name##Method>(*request);          \
     }                                                                          \
 // FILESTORE_IMPLEMENT_METHOD_ASYNC
 
@@ -206,15 +221,130 @@ FILESTORE_SERVICE_LOCAL_ASYNC(FILESTORE_IMPLEMENT_METHOD_ASYNC)
         std::shared_ptr<NProto::TGetSessionEventsRequest> request,
         IResponseHandlerPtr<NProto::TGetSessionEventsResponse> responseHandler) override
     {
-        Y_UNUSED(callContext);
-        Y_UNUSED(request);
-        Y_UNUSED(responseHandler);
+        Y_UNUSED(callContext, request, responseHandler);
     }
 
 private:
-    template <typename T>
-    typename T::TResult Execute(typename T::TRequest& request)
+    struct TFileStorePaths
     {
+        TFsPath MetaPath;
+        TFsPath RootPath;
+        TFsPath StatePath;
+    };
+
+    TFileStorePaths GetPaths(const TString& fsId)
+    {
+        TFileStorePaths paths;
+
+        const TString& name = Config->GetPathPrefix() + fsId;
+
+        paths.MetaPath = Concat(RootPath, "." + name);
+        paths.RootPath = Concat(RootPath, name);
+        paths.StatePath = Concat(StatePath, ".state_" + name);
+        return paths;
+    }
+
+    std::optional<TString> ParseFsIdFromStateDir(const TFsPath& dir)
+    {
+        const auto& prefix = ".state_" + Config->GetPathPrefix();
+        if (dir.GetName().StartsWith(prefix) && dir.IsDirectory()) {
+            return dir.GetName().substr(prefix.size());
+        }
+
+        return {};
+    }
+
+    std::optional<TString> ParseFsIdFromRootDir(const TFsPath& dir)
+    {
+        const auto& prefix = Config->GetPathPrefix();
+        if (dir.GetName().StartsWith(prefix) && dir.IsDirectory()) {
+            return dir.GetName().substr(prefix.size());
+        }
+
+        return {};
+    }
+
+    template <typename T>
+    void ProfileLogInit(
+        NProto::TProfileLogRequestInfo& logRequest,
+        const typename T::TRequest& request)
+    {
+        logRequest.SetRequestType(static_cast<ui32>(T::RequestType));
+        logRequest.SetTimestampMcs(Now().MicroSeconds());
+        InitProfileLogRequestInfo(logRequest, request);
+    }
+
+    template <typename T>
+    void ProfileLogFinalize(
+        NProto::TProfileLogRequestInfo&& logRequest,
+        const typename T::TResponse& response,
+        TString&& fsId)
+    {
+        FinalizeProfileLogRequestInfo(logRequest, response);
+        logRequest.SetDurationMcs(
+            Now().MicroSeconds() - logRequest.GetTimestampMcs());
+        logRequest.SetErrorCode(response.GetError().GetCode());
+        ProfileLog->Write({std::move(fsId), std::move(logRequest)});
+    }
+
+    template <typename T>
+    void ProfileLogFinalize(
+        NProto::TProfileLogRequestInfo&& logRequest,
+        TString&& fsId)
+    {
+        logRequest.SetDurationMcs(
+            Now().MicroSeconds() - logRequest.GetTimestampMcs());
+        ProfileLog->Write({std::move(fsId), std::move(logRequest)});
+    }
+
+    template <typename T>
+    typename T::TResult ExecuteWithProfileLog(typename T::TRequest& request)
+    {
+        NProto::TProfileLogRequestInfo logRequest;
+        ProfileLogInit<T>(logRequest, request);
+
+        auto response = Execute<T>(request, logRequest);
+
+        ProfileLogFinalize<T>(
+            std::move(logRequest),
+            response,
+            GetFileSystemId(request));
+
+        return response;
+    }
+
+    template <typename T>
+    typename T::TResult ExecuteWithProfileLogAsync(typename T::TRequest& request)
+    {
+        auto logRequest = std::make_shared<NProto::TProfileLogRequestInfo>();
+        ProfileLogInit<T>(*logRequest, request);
+
+        return Execute<T>(request, *logRequest)
+            .Subscribe(
+                [ptr = weak_from_this(),
+                 logRequest = std::move(logRequest),
+                 fsId = GetFileSystemId(request)](auto&) mutable
+                {
+                    auto self = ptr.lock();
+                    if (!self) {
+                        return;
+                    }
+
+                    self->ProfileLogFinalize<T>(
+                        std::move(*logRequest),
+                        std::move(fsId));
+                });
+    }
+
+    template <typename T>
+    typename T::TResult Execute(
+        typename T::TRequest& request,
+        NProto::TProfileLogRequestInfo& logRequest)
+    {
+        if constexpr (std::is_same_v<T, TCreateSessionMethod>) {
+            RefreshFileSystems();
+        }
+
         const auto& id = GetFileSystemId(request);
         if (!id) {
             return T::ErrorResponse(E_ARGUMENT, "invalid file system identifier");
@@ -227,7 +357,7 @@ private:
         }
 
         try {
-            return T::Execute(*fs, request);
+            return T::Execute(*fs, request, logRequest);
         } catch (const TServiceError& e) {
             return T::ErrorResponse(e.GetCode(), TString(e.GetMessage()));
         } catch (...) {
@@ -236,44 +366,57 @@ private:
     }
 
     template <>
-    NProto::TPingResponse Execute<TPingMethod>(NProto::TPingRequest& request)
+    NProto::TPingResponse Execute<TPingMethod>(
+        NProto::TPingRequest& request,
+        NProto::TProfileLogRequestInfo& logRequest)
     {
-        Y_UNUSED(request);
+        Y_UNUSED(request, logRequest);
         return {};
     }
 
     template <>
     NProto::TCreateFileStoreResponse Execute<TCreateFileStoreMethod>(
-        NProto::TCreateFileStoreRequest& request)
+        NProto::TCreateFileStoreRequest& request,
+        NProto::TProfileLogRequestInfo& logRequest)
     {
+        Y_UNUSED(logRequest);
         return CreateFileStore(request);
     }
 
     template <>
     NProto::TDestroyFileStoreResponse Execute<TDestroyFileStoreMethod>(
-        NProto::TDestroyFileStoreRequest& request)
+        NProto::TDestroyFileStoreRequest& request,
+        NProto::TProfileLogRequestInfo& logRequest)
     {
+        Y_UNUSED(logRequest);
         return DestroyFileStore(request);
     }
 
     template <>
     NProto::TAlterFileStoreResponse Execute<TAlterFileStoreMethod>(
-        NProto::TAlterFileStoreRequest& request)
+        NProto::TAlterFileStoreRequest& request,
+        NProto::TProfileLogRequestInfo& logRequest)
     {
+        Y_UNUSED(logRequest);
         return AlterFileStore(request);
     }
 
     template <>
     NProto::TListFileStoresResponse Execute<TListFileStoresMethod>(
-        NProto::TListFileStoresRequest& request)
+        NProto::TListFileStoresRequest& request,
+        NProto::TProfileLogRequestInfo& logRequest)
     {
+        Y_UNUSED(logRequest);
         return ListFileStores(request);
     }
 
     template <>
-    NProto::TDescribeFileStoreModelResponse Execute<TDescribeFileStoreModelMethod>(
-        NProto::TDescribeFileStoreModelRequest&)
+    NProto::TDescribeFileStoreModelResponse
+    Execute<TDescribeFileStoreModelMethod>(
+        NProto::TDescribeFileStoreModelRequest& request,
+        NProto::TProfileLogRequestInfo& logRequest)
     {
+        Y_UNUSED(request, logRequest);
         return TErrorResponse(
             E_NOT_IMPLEMENTED,
             "DescribeFileStoreModel is not implemented for the local service");
@@ -281,8 +424,10 @@ private:
 
     template <>
     NProto::TResizeFileStoreResponse Execute<TResizeFileStoreMethod>(
-        NProto::TResizeFileStoreRequest&)
+        NProto::TResizeFileStoreRequest& request,
+        NProto::TProfileLogRequestInfo& logRequest)
     {
+        Y_UNUSED(request, logRequest);
         return TErrorResponse(
             E_NOT_IMPLEMENTED,
             "ResizeFileStore is not implemented for the local service");
@@ -290,8 +435,10 @@ private:
 
     template <>
     NProto::TSubscribeSessionResponse Execute<TSubscribeSessionMethod>(
-        NProto::TSubscribeSessionRequest&)
+        NProto::TSubscribeSessionRequest& request,
+        NProto::TProfileLogRequestInfo& logRequest)
     {
+        Y_UNUSED(request, logRequest);
         return TErrorResponse(
             E_NOT_IMPLEMENTED,
             "SubscribeSession is not implemented for the local service");
@@ -299,8 +446,10 @@ private:
 
     template <>
     NProto::TGetSessionEventsResponse Execute<TGetSessionEventsMethod>(
-        NProto::TGetSessionEventsRequest&)
+        NProto::TGetSessionEventsRequest& request,
+        NProto::TProfileLogRequestInfo& logRequest)
     {
+        Y_UNUSED(request, logRequest);
         return TErrorResponse(
             E_NOT_IMPLEMENTED,
             "GetSessionEvents is not implemented for the local service");
@@ -308,13 +457,14 @@ private:
 
     template <>
     NProto::TExecuteActionResponse Execute<TExecuteActionMethod>(
-        NProto::TExecuteActionRequest&)
+        NProto::TExecuteActionRequest& request,
+        NProto::TProfileLogRequestInfo& logRequest)
     {
+        Y_UNUSED(request, logRequest);
         return TErrorResponse(
             E_NOT_IMPLEMENTED,
             "ExecuteAction is not implemented for the local service");
     }
-
 
     NProto::TCreateFileStoreResponse CreateFileStore(
         const NProto::TCreateFileStoreRequest& request);
@@ -337,46 +487,17 @@ private:
         const TFsPath& statePath,
         const NProto::TFileStore& store);
 
-    TLocalFileSystemPtr FindFileSystem(const TString& id);
+    void RefreshFileSystems();
+    TLocalFileSystemPtr LoadFileSystemNoLock(const TString& id);
 
-    TFsPath GetStatePath(const TString name)
-    {
-        return Concat(Config->GetStatePath(), ".state_" + name);
-    }
+    TLocalFileSystemPtr FindFileSystem(const TString& id);
 };
 
 ////////////////////////////////////////////////////////////////////////////////
 
 void TLocalFileStore::Start()
 {
-    const auto& prefix = Config->GetPathPrefix();
-
-    TVector<TFsPath> children;
-    Root.List(children);
-
-    TWriteGuard guard(Lock);
-
-    for (const auto& child: children) {
-        if (child.GetName().StartsWith(prefix) && child.IsDirectory()) {
-            auto id = child.GetName().substr(prefix.size());
-            auto path = Concat(Root, "." + child.GetName());
-            if (!path.Exists()) {
-                STORAGE_WARN("skipped suspicious " << id.Quote());
-                continue;
-            }
-
-            TFsPath statePath = GetStatePath(child.GetName());
-            statePath.MkDir(Config->GetDefaultPermissions());
-
-            STORAGE_INFO("restoring local store " << id.Quote());
-
-            NProto::TFileStore store;
-            LoadFileStoreProto(path, store);
-            InitFileSystem(id, child, statePath, store);
-
-            STORAGE_INFO("restored local store " << id.Quote());
-        }
-    }
+    RefreshFileSystems();
 }
 
 void TLocalFileStore::Stop()
@@ -403,27 +524,25 @@ NProto::TCreateFileStoreResponse TLocalFileStore::CreateFileStore(
     if (it != FileSystems.end()) {
         ui32 errorCode = S_ALREADY;
 
-        google::protobuf::util::MessageDifferencer comparator;
-        if (!comparator.Equals(store, it->second->GetConfig())) {
+        if (!google::protobuf::util::MessageDifferencer::Equals(
+                store,
+                it->second->GetConfig()))
+        {
             errorCode = E_ARGUMENT;
         }
 
         return TErrorResponse(errorCode, TStringBuilder()
-            << "file store already exists: " << id.Quote());
+            << "local filestore already exists: " << id.Quote());
     }
 
-    const TString& name = Config->GetPathPrefix() + id;
+    auto fsPaths = GetPaths(id);
 
-    TFsPath meta = Concat(Config->GetRootPath(), "." + name);
-    SaveFileStoreProto(meta, store);
+    SaveFileStoreProto(fsPaths.MetaPath, store);
 
-    TFsPath root = Concat(Config->GetRootPath(), name);
-    root.MkDir(Config->GetDefaultPermissions());
+    fsPaths.RootPath.MkDir(static_cast<int>(Config->GetDefaultPermissions()));
+    fsPaths.StatePath.MkDir(static_cast<int>(Config->GetDefaultPermissions()));
 
-    TFsPath statePath = GetStatePath(name);
-    statePath.MkDir(Config->GetDefaultPermissions());
-
-    InitFileSystem(id, root, statePath, store);
+    InitFileSystem(id, fsPaths.RootPath, fsPaths.StatePath, store);
 
     NProto::TCreateFileStoreResponse response;
     response.MutableFileStore()->Swap(&store);
@@ -441,6 +560,8 @@ NProto::TDestroyFileStoreResponse TLocalFileStore::DestroyFileStore(
         return TErrorResponse(E_ARGUMENT, "invalid file system identifier");
     }
 
+    RefreshFileSystems();
+
     TWriteGuard guard(Lock);
 
     auto it = FileSystems.find(id);
@@ -449,13 +570,10 @@ NProto::TDestroyFileStoreResponse TLocalFileStore::DestroyFileStore(
             << "invalid file system: " << id.Quote());
     }
 
-    const TString& name = Config->GetPathPrefix() + id;
-
-    TFsPath path = Concat(Config->GetRootPath(), name);
-    path.ForceDelete();
-
-    TFsPath statePath = GetStatePath(name);
-    statePath.ForceDelete();
+    auto fsPaths = GetPaths(id);
+    fsPaths.MetaPath.ForceDelete();
+    fsPaths.RootPath.ForceDelete();
+    fsPaths.StatePath.ForceDelete();
 
     FileSystems.erase(it);
 
@@ -472,20 +590,22 @@ NProto::TAlterFileStoreResponse TLocalFileStore::AlterFileStore(
         return TErrorResponse(E_ARGUMENT, "invalid file system identifier");
     }
 
+    RefreshFileSystems();
+
     TWriteGuard guard(Lock);
 
     auto it = FileSystems.find(id);
     if (it == FileSystems.end()) {
         return TErrorResponse(E_ARGUMENT, TStringBuilder()
-            << "file store doesn't exist: " << id.Quote());
+            << "local filestore doesn't exist: " << id.Quote());
     }
 
     NProto::TFileStore store = it->second->GetConfig();
     AlterRequestToFileStore(request, store);
 
-    const TString& name = Config->GetPathPrefix() + id;
-    TFsPath meta = Concat(Config->GetRootPath(), "." + name);
-    SaveFileStoreProto(meta, store);
+    auto fsPaths = GetPaths(id);
+
+    SaveFileStoreProto(fsPaths.MetaPath, store);
 
     it->second->SetConfig(store);
 
@@ -497,6 +617,8 @@ NProto::TListFileStoresResponse TLocalFileStore::ListFileStores(
 {
     STORAGE_TRACE("ListFileStores " << DumpMessage(request));
     NProto::TListFileStoresResponse response;
+
+    RefreshFileSystems();
 
     TReadGuard guard(Lock);
     for (const auto& [id, _]: FileSystems) {
@@ -528,12 +650,94 @@ TLocalFileSystemPtr TLocalFileStore::InitFileSystem(
     return fs;
 }
 
+void TLocalFileStore::RefreshFileSystems()
+{
+    TWriteGuard guard(Lock);
+    const auto& prefix = Config->GetPathPrefix();
+
+    TVector<TFsPath> children;
+    RootPath.List(children);
+
+    // Load new filesystems
+    for (const auto& child: children) {
+        auto fsId = ParseFsIdFromRootDir(child);
+        if (fsId) {
+            auto it = FileSystems.find(*fsId);
+            if (it != FileSystems.end()) {
+                continue;
+            }
+
+            LoadFileSystemNoLock(*fsId);
+        }
+    }
+
+    // Clean filesystems that were destroyed externally
+    TVector<TString> destroyedFsIds;
+    for (auto& [fsId, _]: FileSystems) {
+        auto fsPaths = GetPaths(fsId);
+        if (!fsPaths.RootPath.Exists() && !fsPaths.MetaPath.Exists()) {
+            destroyedFsIds.push_back(fsId);
+        }
+    }
+
+    for (auto& fsId: destroyedFsIds) {
+        STORAGE_INFO("Unloading local filestore " << fsId.Quote());
+        FileSystems.erase(fsId);
+
+        auto fsPaths = GetPaths(fsId);
+        fsPaths.StatePath.ForceDelete();
+    }
+
+    // Clean local state directories that not used anymore
+    // This can happend if filestore-vhost was stopped, filesystem destroyed
+    // externally and then filestore-vhost was started
+    children.clear();
+    StatePath.List(children);
+    for (const auto& child: children) {
+        auto fsId = ParseFsIdFromStateDir(child);
+        if (fsId) {
+            if (FileSystems.find(*fsId) != FileSystems.end()) {
+                continue;
+            }
+
+            STORAGE_INFO("Removing local filestore state " << fsId->Quote());
+            child.ForceDelete();
+        }
+    }
+}
+
+TLocalFileSystemPtr TLocalFileStore::LoadFileSystemNoLock(const TString& id)
+{
+    auto fsPaths = GetPaths(id);
+    if (!fsPaths.MetaPath.Exists()) {
+        return nullptr;
+    }
+
+    TLocalFileSystemPtr fs = nullptr;
+    try {
+        STORAGE_INFO("Loading local filestore " << id.Quote());
+
+        fsPaths.StatePath.MkDir(
+            static_cast<int>(Config->GetDefaultPermissions()));
+
+        NProto::TFileStore store;
+        LoadFileStoreProto(fsPaths.MetaPath, store);
+
+        fs = InitFileSystem(id, fsPaths.RootPath, fsPaths.StatePath, store);
+        STORAGE_INFO("Loaded local filestore " << id.Quote());
+    } catch (...) {
+        STORAGE_ERROR("Failed to load fs proto" << CurrentExceptionMessage());
+    }
+
+    return fs;
+}
+
 TLocalFileSystemPtr TLocalFileStore::FindFileSystem(const TString& id)
 {
     TReadGuard guard(Lock);
 
     auto it = FileSystems.find(id);
-    if (it != FileSystems.end()){
+    if (it != FileSystems.end()) {
         return it->second;
     }
 
@@ -550,15 +754,21 @@ IFileStoreServicePtr CreateLocalFileStore(
     ISchedulerPtr scheduler,
     ILoggingServicePtr logging,
     IFileIOServicePtr fileIOService,
-    ITaskQueuePtr taskQueue)
+    ITaskQueuePtr taskQueue,
+    IProfileLogPtr profileLog)
 {
+    if (!profileLog) {
+        profileLog = CreateProfileLogStub();
+    }
+
     return std::make_shared<TLocalFileStore>(
         std::move(config),
         std::move(timer),
         std::move(scheduler),
         std::move(logging),
         std::move(fileIOService),
-        std::move(taskQueue));
+        std::move(taskQueue),
+        std::move(profileLog));
 }
 
 }   // namespace NCloud::NFileStore

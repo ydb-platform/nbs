@@ -44,7 +44,7 @@ jobs:
         find . -type f -exec md5sum {} + | sort -k2,2 | tee ${GITHUB_WORKSPACE}/.github/scripts/tests/test-data/MD5SUMS
         cp $TMP_DIR/{fail-checker,summary_env,ya-test.html} ${GITHUB_WORKSPACE}/.github/scripts/tests/test-data/
         cd ${GITHUB_WORKSPACE}/.github/scripts/tests/test-data/
-        export NEW_VERSION=$(($ACTIONS_TEST_DATA_VERSION + 1))
+        export NEW_VERSION=$((ACTIONS_TEST_DATA_VERSION + 1))
         tar zcvf cloud-v${NEW_VERSION}.tar.gz cloud/ MD5SUMS fail-checker  junit.xml summary_env ya-test.html muted_ya.txt
 
         Upload resulting cloud-v${NEW_VERSION}.tar.gz to the storage.ai.nebius.cloud bucket github-actions-test-data
@@ -148,7 +148,7 @@ jobs:
       shell: bash
       run: |
         cd $TMP_DIR
-        grep FAILED RESULT | awk -F: '{print $1}' | while read f;
+        grep FAILED RESULT | awk -F: '{print $1}' | while read -r f;
         do
           echo "=========="
           echo $f

@@ -95,6 +95,47 @@ IOutputStream& operator <<(
     }
 }
 
+IOutputStream& operator <<(
+    IOutputStream& out,
+    const NKikimrBlockStore::TEncryptionDesc& desc)
+{
+    const auto encryptionMode =
+        static_cast<NProto::EEncryptionMode>(desc.GetMode());
+
+    HTML(out) {
+        DIV() { out << NProto::EEncryptionMode_Name(encryptionMode); }
+
+        switch (encryptionMode) {
+            case NProto::ENCRYPTION_AES_XTS: {
+                DIV() {
+                    const auto& keyHash = desc.GetKeyHash();
+                    if (keyHash.empty()) {
+                        out << "Binding to the encryption key has not yet "
+                               "occurred.";
+                    } else {
+                        out << "Encryption key hash: " << keyHash;
+                    }
+                }
+                break;
+            }
+
+            case NProto::ENCRYPTION_DEFAULT_AES_XTS: {
+                const auto& key = desc.GetEncryptedDataKey();
+                DIV() { out << "Kek Id: " << key.GetKekId().Quote(); }
+                DIV() {
+                    out << "Encrypted DEK has " << key.GetCiphertext().size()
+                        << " bytes length";
+                }
+                break;
+            }
+            default:
+                break;
+        }
+    }
+
+    return out;
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 void OutputProgress(
@@ -842,21 +883,21 @@ void TVolumeActor::RenderStorageConfig(IOutputStream& out) const
                 }
                 const auto& protoValues = Config->GetStorageConfigProto();
                 constexpr i32 expectedNonRepeatedFieldIndex = -1;
-                const auto* descriptor = protoValues.GetDescriptor();
-                if (descriptor == nullptr) {
+                const auto* descriptor =
+                    NProto::TStorageServiceConfig::GetDescriptor();
+                if (!descriptor) {
                     return;
                 }
 
                 const auto* reflection =
                     NProto::TStorageServiceConfig::GetReflection();
 
-                for (int i = 0; i < descriptor->field_count(); ++i)
-                {
+                for (int i = 0; i < descriptor->field_count(); ++i) {
                     TStringBuilder value;
-                    const auto field_descriptor = descriptor->field(i);
-                    if (field_descriptor->is_repeated()) {
+                    const auto* fieldDescriptor = descriptor->field(i);
+                    if (fieldDescriptor->is_repeated()) {
                         const auto repeatedSize =
-                            reflection->FieldSize(protoValues, field_descriptor);
+                            reflection->FieldSize(protoValues, fieldDescriptor);
                         if (!repeatedSize) {
                             continue;
                         }
@@ -865,18 +906,18 @@ void TVolumeActor::RenderStorageConfig(IOutputStream& out) const
                             TString curValue;
                             google::protobuf::TextFormat::PrintFieldValueToString(
                                 protoValues,
-                                field_descriptor,
+                                fieldDescriptor,
                                 j,
                                 &curValue);
                             value.append(curValue);
                             value.append("; ");
                         }
                     } else if (
-                        reflection->HasField(protoValues, field_descriptor))
+                        reflection->HasField(protoValues, fieldDescriptor))
                     {
                         google::protobuf::TextFormat::PrintFieldValueToString(
                             protoValues,
-                            field_descriptor,
+                            fieldDescriptor,
                             expectedNonRepeatedFieldIndex,
                             &value);
                     } else {
@@ -885,7 +926,7 @@ void TVolumeActor::RenderStorageConfig(IOutputStream& out) const
 
                     TABLER() {
                         TABLED() {
-                            out << field_descriptor->name();;
+                            out << fieldDescriptor->name();;
                         }
                         TABLED() {
                             out << value;
@@ -1161,26 +1202,7 @@ void TVolumeActor::RenderConfig(IOutputStream& out) const
 
                 TABLER() {
                     TABLED() { out << "Encryption"; }
-                    TABLED() {
-                        DIV()
-                        {
-                            auto encryptionMode =
-                                static_cast<NProto::EEncryptionMode>(
-                                    volumeConfig.GetEncryptionDesc().GetMode());
-                            out << NProto::EEncryptionMode_Name(encryptionMode);
-                        }
-                        DIV()
-                        {
-                            const auto& keyHash =
-                                volumeConfig.GetEncryptionDesc().GetKeyHash();
-                            if (keyHash.empty()) {
-                                out << "Binding to the encryption key has not "
-                                       "yet occurred.";
-                            } else {
-                                out << "Encryption key hash: " << keyHash;
-                            }
-                        }
-                    }
+                    TABLED() { out << volumeConfig.GetEncryptionDesc(); }
                 }
 
                 TABLER() {
@@ -1633,10 +1655,14 @@ void TVolumeActor::HandleHttpInfo_ChangeThrottlingPolicy(
         const auto& s = params.Get(name);
         return FromStringWithDefault(s, Max<ui32>());
     };
+    auto getParam64 = [&] (const TStringBuf name) {
+        const auto& s = params.Get(name);
+        return FromStringWithDefault(s, static_cast<ui64>(Max<ui32>()));
+    };
     const auto maxReadIops = getParam("MaxReadIops");
     const auto maxWriteIops = getParam("MaxWriteIops");
-    const auto maxReadBandwidth = getParam("MaxReadBandwidth");
-    const auto maxWriteBandwidth = getParam("MaxWriteBandwidth");
+    const auto maxReadBandwidth = getParam64("MaxReadBandwidth");
+    const auto maxWriteBandwidth = getParam64("MaxWriteBandwidth");
 
     pp.SetMaxReadIops(Min(pp.GetMaxReadIops(), maxReadIops));
     pp.SetMaxWriteIops(Min(pp.GetMaxWriteIops(), maxWriteIops));
@@ -1705,9 +1731,17 @@ void TVolumeActor::HandleHttpInfo_RenderNonreplPartitionInfo(
                 TABLER() {
                     TABLED() { out << "MaxTimedOutDeviceStateDuration"; }
                     TABLED() {
-                        out << config.GetMaxTimedOutDeviceStateDuration() ;
-                        if (config.IsMaxTimedOutDeviceStateDurationOverridden()) {
-                            out << "(overridden)";
+                        const bool overridden =
+                            config.IsMaxTimedOutDeviceStateDurationOverridden();
+                        if (config.GetMaxTimedOutDeviceStateDuration() ||
+                            overridden)
+                        {
+                            out << config.GetMaxTimedOutDeviceStateDuration();
+                        } else {
+                            out << Config->GetMaxTimedOutDeviceStateDuration();
+                        }
+                        if (overridden) {
+                            out << " (overridden)";
                         }
                     }
                 }

@@ -382,8 +382,11 @@ void TIndexTabletActor::HandleSyncSessions(
     SyncSessionsScheduled = false;
 
     TVector<TString> shardIds;
-    for (const auto& shardId: GetFileSystem().GetShardFileSystemIds()) {
-        shardIds.push_back(shardId);
+    // session sync should be enabled only in the main tablet
+    if (IsMainTablet()) {
+        for (const auto& shardId: GetFileSystem().GetShardFileSystemIds()) {
+            shardIds.push_back(shardId);
+        }
     }
 
     if (shardIds.empty()) {
@@ -426,13 +429,22 @@ void TIndexTabletActor::HandleSyncSessionsCompleted(
         LogTag.c_str(),
         FormatError(msg->GetError()).c_str());
 
+    ui32 sessionsSynced = 0;
     for (const auto& shardSessionsInfo: msg->ShardSessionsInfos) {
-        LOG_INFO(ctx, TFileStoreComponents::TABLET,
+        LOG_DEBUG(ctx, TFileStoreComponents::TABLET,
             "%s Synced %lu sessions for shard %s",
             LogTag.c_str(),
             shardSessionsInfo.SessionCount,
             shardSessionsInfo.ShardId.c_str());
+
+        sessionsSynced += shardSessionsInfo.SessionCount;
     }
+
+    LOG_INFO(ctx, TFileStoreComponents::TABLET,
+        "%s Synced %u sessions for %lu shards",
+        LogTag.c_str(),
+        sessionsSynced,
+        msg->ShardSessionsInfos.size());
 
     WorkerActors.erase(ev->Sender);
     ScheduleSyncSessions(ctx);

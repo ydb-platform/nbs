@@ -295,6 +295,43 @@ Y_UNIT_TEST_SUITE(TLargeBlocksTest)
         UNIT_ASSERT_VALUES_EQUAL(l, one.BlockCount);
         UNIT_ASSERT_VALUES_EQUAL(10003, one.CommitId);
     }
+
+    Y_UNIT_TEST(ShouldExtractDeletionMarkersForAllCommits)
+    {
+        const ui64 nodeId1 = 111;
+
+        const ui64 l = 1_GB / 4_KB;
+
+        TLargeBlocks lb(TDefaultAllocator::Instance());
+
+        lb.AddDeletionMarker(TDeletionMarker(nodeId1, 1001, 0, l));
+        lb.AddDeletionMarker(TDeletionMarker(nodeId1, 1002, 0, l));
+        lb.AddDeletionMarker(TDeletionMarker(nodeId1, 1003, 0, l));
+
+        while (true) {
+            const auto one = lb.GetOne();
+            if (!one.IsValid()) {
+                break;
+            }
+
+            lb.MarkProcessed(nodeId1, 1004, one.BlockIndex, one.BlockCount);
+        }
+
+        const auto processed = lb.ExtractProcessedDeletionMarkers();
+        UNIT_ASSERT_VALUES_EQUAL(3, processed.size());
+        UNIT_ASSERT_VALUES_EQUAL(nodeId1, processed[0].NodeId);
+        UNIT_ASSERT_VALUES_EQUAL(1001, processed[0].CommitId);
+        UNIT_ASSERT_VALUES_EQUAL(0, processed[0].BlockIndex);
+        UNIT_ASSERT_VALUES_EQUAL(l, processed[0].BlockCount);
+        UNIT_ASSERT_VALUES_EQUAL(nodeId1, processed[1].NodeId);
+        UNIT_ASSERT_VALUES_EQUAL(1002, processed[1].CommitId);
+        UNIT_ASSERT_VALUES_EQUAL(0, processed[1].BlockIndex);
+        UNIT_ASSERT_VALUES_EQUAL(l, processed[1].BlockCount);
+        UNIT_ASSERT_VALUES_EQUAL(nodeId1, processed[2].NodeId);
+        UNIT_ASSERT_VALUES_EQUAL(1003, processed[2].CommitId);
+        UNIT_ASSERT_VALUES_EQUAL(0, processed[2].BlockIndex);
+        UNIT_ASSERT_VALUES_EQUAL(l, processed[2].BlockCount);
+    }
 }
 
 }   // namespace NCloud::NFileStore::NStorage

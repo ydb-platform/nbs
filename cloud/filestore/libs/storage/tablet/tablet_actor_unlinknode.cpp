@@ -98,6 +98,7 @@ void TUnlinkNodeInShardActor::SendRequest(const TActorContext& ctx)
 {
     auto request = std::make_unique<TEvService::TEvUnlinkNodeRequest>();
     request->Record = Request;
+    request->Record.MutableHeaders()->SetBehaveAsDirectoryTablet(false);
 
     LOG_DEBUG(
         ctx,
@@ -194,6 +195,10 @@ void TUnlinkNodeInShardActor::ReplyAndDie(
     if (HasError(error)) {
         if (auto* x = std::get_if<NProto::TRenameNodeResponse>(&Result)) {
             *x->MutableError() = std::move(error);
+        } else if (auto* x = std::get_if<
+                NProtoPrivate::TRenameNodeInDestinationResponse>(&Result))
+        {
+            *x->MutableError() = std::move(error);
         } else if (auto* x = std::get_if<NProto::TUnlinkNodeResponse>(&Result)) {
             *x->MutableError() = std::move(error);
         } else {
@@ -248,7 +253,7 @@ void TIndexTabletActor::HandleUnlinkNode(
     auto* msg = ev->Get();
 
     // DupCache isn't needed for Create/UnlinkNode requests in shards
-    if (!IsShard()) {
+    if (!BehaveAsShard(msg->Record.GetHeaders())) {
         auto* session = AcceptRequest<TEvService::TUnlinkNodeMethod>(ev, ctx, ValidateRequest);
         if (!session) {
             return;
@@ -288,7 +293,7 @@ bool TIndexTabletActor::PrepareTx_UnlinkNode(
 {
     Y_UNUSED(ctx);
 
-    if (!IsShard()) {
+    if (!BehaveAsShard(args.Request.GetHeaders())) {
         FILESTORE_VALIDATE_DUPTX_SESSION(UnlinkNode, args);
     }
 
@@ -381,7 +386,7 @@ void TIndexTabletActor::ExecuteTx_UnlinkNode(
             args.ParentNodeId,
             args.Name,
             args.ChildRef->ShardId,
-            args.ChildRef->ShardName,
+            args.ChildRef->ShardNodeName,
             args.ChildRef->MinCommitId,
             args.CommitId);
 
@@ -392,7 +397,7 @@ void TIndexTabletActor::ExecuteTx_UnlinkNode(
         shardRequest->CopyFrom(args.Request);
         shardRequest->SetFileSystemId(args.ChildRef->ShardId);
         shardRequest->SetNodeId(RootNodeId);
-        shardRequest->SetName(args.ChildRef->ShardName);
+        shardRequest->SetName(args.ChildRef->ShardNodeName);
 
         db.WriteOpLogEntry(args.OpLogEntry);
     } else {
@@ -410,7 +415,7 @@ void TIndexTabletActor::ExecuteTx_UnlinkNode(
         }
     }
 
-    if (!IsShard()) {
+    if (!BehaveAsShard(args.Request.GetHeaders())) {
         auto* session = FindSession(args.SessionId);
         if (!session) {
             auto message = ReportSessionNotFoundInTx(TStringBuilder()
@@ -440,6 +445,13 @@ void TIndexTabletActor::CompleteTx_UnlinkNode(
         args.SessionId.c_str(),
         FormatError(args.Error).c_str());
 
+    if (args.ParentNodeId != InvalidNodeId) {
+        InvalidateNodeCaches(args.ParentNodeId);
+    }
+    if (args.ChildNode && args.ChildNode->NodeId != InvalidNodeId) {
+        InvalidateNodeCaches(args.ChildNode->NodeId);
+    }
+
     if (!HasError(args.Error) && !args.ChildRef) {
         auto message = ReportChildRefIsNull(TStringBuilder()
             << "UnlinkNode: " << args.Request.ShortDebugString());
@@ -452,7 +464,7 @@ void TIndexTabletActor::CompleteTx_UnlinkNode(
                 "%s Unlinking node in shard upon UnlinkNode: %s, %s",
                 LogTag.c_str(),
                 args.ChildRef->ShardId.c_str(),
-                args.ChildRef->ShardName.c_str());
+                args.ChildRef->ShardNodeName.c_str());
 
             RegisterUnlinkNodeInShardActor(
                 ctx,
@@ -465,7 +477,7 @@ void TIndexTabletActor::CompleteTx_UnlinkNode(
             return;
         }
 
-        if (!IsShard()) {
+        if (!BehaveAsShard(args.Request.GetHeaders())) {
             CommitDupCacheEntry(args.SessionId, args.RequestId);
         }
 
@@ -517,6 +529,24 @@ void TIndexTabletActor::HandleNodeUnlinkedInShard(
             response->Record = std::move(*x);
 
             CompleteResponse<TEvService::TRenameNodeMethod>(
+                response->Record,
+                msg->RequestInfo->CallContext,
+                ctx);
+
+            Metrics.RenameNode.Update(
+                1,
+                0,
+                ctx.Now() - msg->RequestInfo->StartedTs);
+
+            NCloud::Reply(ctx, *msg->RequestInfo, std::move(response));
+        } else if (auto* x = std::get_if<
+                NProtoPrivate::TRenameNodeInDestinationResponse>(&res))
+        {
+            auto response = std::make_unique<
+                TEvIndexTablet::TEvRenameNodeInDestinationResponse>();
+            response->Record = std::move(*x);
+
+            CompleteResponse<TEvIndexTablet::TRenameNodeInDestinationMethod>(
                 response->Record,
                 msg->RequestInfo->CallContext,
                 ctx);

@@ -54,6 +54,7 @@ class FilestoreCliClient:
         blk_size=4096,
         blk_count=100 * 1024 * 1024 * 1024,
         return_stdout=True,
+        verbose=False,
     ):
         cmd = [
             self.__binary_path, "create",
@@ -61,8 +62,11 @@ class FilestoreCliClient:
             "--cloud", cloud,
             "--folder", folder,
             "--block-size", str(blk_size),
-            "--blocks-count", str(blk_count)
+            "--blocks-count", str(blk_count),
         ] + self.__cmd_opts()
+
+        if verbose:
+            cmd += ["--verbose", "trace"]
 
         logger.info("creating filestore: " + " ".join(cmd))
         result = common.execute(cmd, env=self.__env, check_exit_code=self.__check_exit_code)
@@ -109,7 +113,7 @@ class FilestoreCliClient:
 
         return pid
 
-    def resize(self, fs, blk_count, force=False):
+    def resize(self, fs, blk_count, force=False, shard_count=None):
         cmd = [
             self.__binary_path, "resize",
             "--filesystem", fs,
@@ -118,6 +122,9 @@ class FilestoreCliClient:
 
         if force:
             cmd.append("--force")
+
+        if shard_count is not None:
+            cmd += ["--shard-count", str(shard_count)]
 
         logger.info("resizing filestore: " + " ".join(cmd))
         return common.execute(cmd, env=self.__env, check_exit_code=self.__check_exit_code).stdout
@@ -242,6 +249,25 @@ class FilestoreCliClient:
 
         return common.execute(cmd, env=self.__env, check_exit_code=self.__check_exit_code).stdout
 
+    def find(self, fs, depth, glob=None):
+        cmd = [
+            self.__binary_path, "find",
+            "--filesystem", fs,
+            "--depth", str(depth),
+        ] + (["--glob", glob] if glob is not None else []) + self.__cmd_opts()
+
+        return common.execute(cmd, env=self.__env, check_exit_code=self.__check_exit_code).stdout
+
+    def diff(self, fs, other_fs):
+        cmd = [
+            self.__binary_path, "diff",
+            "--filesystem", fs,
+            "--other-filesystem", other_fs,
+            "--diff-content",
+        ] + self.__cmd_opts()
+
+        return common.execute(cmd, env=self.__env, check_exit_code=self.__check_exit_code).stdout
+
     def execute_action(self, action, request):
         request_file = tempfile.NamedTemporaryFile(mode="w", delete=False)
         json.dump(request, request_file)
@@ -263,6 +289,16 @@ class FilestoreCliClient:
         resp = self.execute_action("getstorageconfig", req)
 
         return json.loads(resp)
+
+    def mv(self, fs, src_path, dst_path):
+        cmd = [
+            self.__binary_path, "mv",
+            "--filesystem", fs,
+            "--src-path", src_path,
+            "--dst-path", dst_path,
+        ] + self.__cmd_opts()
+
+        return common.execute(cmd, env=self.__env, check_exit_code=self.__check_exit_code).stdout
 
     def __cmd_opts(self, vhost=False):
         opts = [
@@ -316,6 +352,10 @@ class FilestoreCliClient:
 
     @standard_command("rm")
     def rm(self, cmd):
+        return common.execute(cmd, env=self.__env, check_exit_code=self.__check_exit_code).stdout
+
+    @standard_command("ln")
+    def ln(self, cmd):
         return common.execute(cmd, env=self.__env, check_exit_code=self.__check_exit_code).stdout
 
 

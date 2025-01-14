@@ -253,13 +253,12 @@ private:
             return;
         }
 
-        Y_ABORT_UNLESS(Token == msg->Ticket);
-
         const bool allow = PermissionsMatch(Permissions, *msg);
 
         auto logLevel = allow ? NLog::PRI_DEBUG : NLog::PRI_WARN;
         LOG_LOG_S(ctx, logLevel, Component,
-            "Permissions response: "
+            "Token = '" << MaskSecret(Token) << "'"
+            << ", Permissions response: "
             << TResponsePermissionsInfo(RequestId, *msg, allow));
 
         Counters->ReportAuthorizationStatus(allow

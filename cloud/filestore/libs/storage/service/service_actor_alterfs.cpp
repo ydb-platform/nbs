@@ -29,6 +29,7 @@ private:
     const NProto::TFileStorePerformanceProfile PerformanceProfile;
     const bool Alter;
     const bool Force;
+    const ui32 ExplicitShardCount;
 
     NKikimrFileStore::TConfig Config;
 
@@ -110,6 +111,7 @@ TAlterFileStoreActor::TAlterFileStoreActor(
     , FileSystemId(request.GetFileSystemId())
     , Alter(true)
     , Force(false)
+    , ExplicitShardCount(0)
 {
     Config.SetCloudId(request.GetCloudId());
     Config.SetFolderId(request.GetFolderId());
@@ -127,6 +129,7 @@ TAlterFileStoreActor::TAlterFileStoreActor(
     , PerformanceProfile(request.GetPerformanceProfile())
     , Alter(false)
     , Force(request.GetForce())
+    , ExplicitShardCount(request.GetShardCount())
 {
     Config.SetBlocksCount(request.GetBlocksCount());
     Config.SetVersion(request.GetConfigVersion());
@@ -190,7 +193,8 @@ void TAlterFileStoreActor::HandleDescribeFileStoreResponse(
             FileStoreConfig = SetupMultiShardFileStorePerformanceAndChannels(
                 *StorageConfig,
                 config,
-                PerformanceProfile);
+                PerformanceProfile,
+                ExplicitShardCount);
             ShardsToCreate = FileStoreConfig.ShardConfigs.size();
             config = FileStoreConfig.MainFileSystemConfig;
 
@@ -318,8 +322,20 @@ void TAlterFileStoreActor::HandleGetFileSystemTopologyResponse(
         }
     }
 
-    ShardsToCreate -= Min<ui32>(ShardsToCreate, ShardIds.size());
-    ShardsToConfigure = ShardsToCreate;
+    if (msg->Record.GetShardNo()) {
+        LOG_WARN(
+            ctx,
+            TFileStoreComponents::SERVICE,
+            "[%s] GetFileSystemTopology - resized a shard (%u), no subshards"
+            " will be added",
+            FileSystemId.c_str(),
+            msg->Record.GetShardNo());
+        ShardsToCreate = 0;
+        ShardsToConfigure = 0;
+    } else {
+        ShardsToCreate -= Min<ui32>(ShardsToCreate, ShardIds.size());
+        ShardsToConfigure = ShardsToCreate;
+    }
 
     if (ShardsToCreate) {
         CreateShards(ctx);
@@ -400,6 +416,12 @@ void TAlterFileStoreActor::ConfigureShards(const TActorContext& ctx)
         request->Record.SetFileSystemId(
             FileStoreConfig.ShardConfigs[i].GetFileSystemId());
         request->Record.SetShardNo(i + 1);
+        request->Record.SetMainFileSystemId(FileSystemId);
+        if (StorageConfig->GetDirectoryCreationInShardsEnabled()) {
+            for (const auto& shard: FileStoreConfig.ShardConfigs) {
+                request->Record.AddShardFileSystemIds(shard.GetFileSystemId());
+            }
+        }
 
         LOG_INFO(
             ctx,

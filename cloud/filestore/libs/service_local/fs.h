@@ -7,6 +7,7 @@
 #include "index.h"
 #include "session.h"
 
+#include <cloud/filestore/libs/diagnostics/profile_log.h>
 #include <cloud/filestore/libs/service/context.h>
 #include <cloud/filestore/libs/service/error.h>
 #include <cloud/filestore/libs/service/filestore.h>
@@ -88,7 +89,7 @@ class TLocalFileSystem final
 
 private:
     const TLocalFileStoreConfigPtr Config;
-    const TFsPath Root;
+    const TFsPath RootPath;
     const TFsPath StatePath;
     const ITimerPtr Timer;
     const ISchedulerPtr Scheduler;
@@ -122,10 +123,11 @@ public:
         const NProto::T##name##Request& request);                              \
 // FILESTORE_DECLARE_METHOD_SYNC
 
-#define FILESTORE_DECLARE_METHOD_ASYNC(name, ...)                              \
-    NThreading::TFuture<NProto::T##name##Response> name##Async(                \
-        NProto::T##name##Request& request);                                    \
-// FILESTORE_DECLARE_METHOD_SYNC
+#define FILESTORE_DECLARE_METHOD_ASYNC(name, ...)               \
+    NThreading::TFuture<NProto::T##name##Response> name##Async( \
+        NProto::T##name##Request& request,                      \
+        NProto::TProfileLogRequestInfo& logRequest);            \
+    // FILESTORE_DECLARE_METHOD_SYNC
 
     FILESTORE_SERVICE_LOCAL_SYNC(FILESTORE_DECLARE_METHOD_SYNC)
     FILESTORE_SERVICE_LOCAL_ASYNC(FILESTORE_DECLARE_METHOD_ASYNC)

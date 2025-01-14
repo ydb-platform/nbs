@@ -1,5 +1,6 @@
 #include "config.h"
 
+#include <cloud/storage/core/libs/common/proto_helpers.h>
 #include <cloud/storage/core/protos/trace.pb.h>
 
 #include <library/cpp/monlib/service/pages/templates.h>
@@ -115,28 +116,6 @@ TVector<TString> ConvertValue(
 }
 
 template <typename T>
-bool IsEmpty(const T& t)
-{
-    return !t;
-}
-
-bool IsEmpty(const NProto::TVolumePerfSettings& t)
-{
-    return t.ByteSizeLong() == 0;
-}
-
-bool IsEmpty(const NProto::TMonitoringUrlData& t)
-{
-    return t.ByteSizeLong() == 0;
-}
-
-template <typename T>
-bool IsEmpty(const google::protobuf::RepeatedPtrField<T>& value)
-{
-    return value.empty();
-}
-
-template <typename T>
 void DumpImpl(const T& t, IOutputStream& os)
 {
     os << t;
@@ -164,8 +143,9 @@ TDiagnosticsConfig::TDiagnosticsConfig(NProto::TDiagnosticsConfig diagnosticsCon
 #define BLOCKSTORE_CONFIG_GETTER(name, type, ...)                              \
 type TDiagnosticsConfig::Get##name() const                                     \
 {                                                                              \
-    const auto& v = DiagnosticsConfig.Get##name();                             \
-    return !IsEmpty(v) ? ConvertValue<type>(v) : Default##name;                \
+    return NCloud::HasField(DiagnosticsConfig, #name)                          \
+        ? ConvertValue<type>(DiagnosticsConfig.Get##name())                    \
+        : Default##name;                                                       \
 }                                                                              \
 // BLOCKSTORE_CONFIG_GETTER
 

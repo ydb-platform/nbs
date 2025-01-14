@@ -30,6 +30,11 @@ func (c *Mock) CleanupMountPoint(target string) error {
 	return args.Error(0)
 }
 
+func (c *Mock) HasBlockDevice(device string) (bool, error) {
+	args := c.Called(device)
+	return args.Get(0).(bool), args.Error(1)
+}
+
 func (c *Mock) IsFilesystemExisted(device string) (bool, error) {
 	args := c.Called(device)
 	return args.Get(0).(bool), args.Error(1)
@@ -48,6 +53,11 @@ func (c *Mock) NeedResize(devicePath string, deviceMountPath string) (bool, erro
 func (c *Mock) Resize(devicePath string, deviceMountPath string) (bool, error) {
 	args := c.Called(devicePath, deviceMountPath)
 	return args.Get(0).(bool), args.Error(1)
+}
+
+func (c *Mock) FormatAndMount(source string, target string, fsType string, options []string) error {
+	args := c.Called(source, target, fsType, options)
+	return args.Error(0)
 }
 
 ////////////////////////////////////////////////////////////////////////////////

@@ -6,6 +6,7 @@
 
 #include <cloud/storage/core/libs/common/scheduler.h>
 #include <cloud/storage/core/libs/common/timer.h>
+#include <cloud/storage/core/libs/iam/iface/config.h>
 
 #include <library/cpp/lwtrace/mon/mon_lwtrace.h>
 #include <library/cpp/protobuf/util/pb_io.h>
@@ -34,6 +35,7 @@ namespace {
 constexpr TDuration WaitTimeout = TDuration::Seconds(1);
 
 const TString DefaultConfigFile = "/Berkanavt/nfs-server/cfg/nfs-client.txt";
+const TString DefaultIamConfigFile = "/Berkanavt/nfs-server/cfg/nfs-iam.txt";
 const TString DefaultIamTokenFile = "~/.nfs-client/iam-token";
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -41,9 +43,14 @@ const TString DefaultIamTokenFile = "~/.nfs-client/iam-token";
 TString GetIamTokenFromFile(const TString& iamTokenFile)
 {
     auto path = TFsPath(iamTokenFile).RealPath();
-    TFile file(
-        path.GetPath(),
-        EOpenModeFlag::OpenExisting | EOpenModeFlag::RdOnly);
+    TFile file;
+    try {
+        file = TFile(
+            path.GetPath(),
+            EOpenModeFlag::OpenExisting | EOpenModeFlag::RdOnly);
+    } catch (...) {
+        return {};
+    }
 
     auto stats = std::filesystem::status(
             std::filesystem::path(path.GetPath().c_str()));
@@ -116,6 +123,13 @@ TCommand::TCommand()
         .RequiredArgument("STR")
         .DefaultValue(DefaultConfigFile)
         .StoreResult(&ConfigFile);
+
+    Opts.AddLongOption("iam-config")
+        .Help(TStringBuilder()
+            << "iam-config file name. Default is "
+            << DefaultIamConfigFile)
+        .RequiredArgument("STR")
+        .StoreResult(&IamConfigFile);
 
     Opts.AddLongOption("json")
         .StoreTrue(&JsonOutput);
@@ -214,8 +228,15 @@ void TCommand::Init()
         config.SetSkipCertVerification(SkipCertVerification);
     }
 
+    InitIamTokenClient();
+
     if (!IamTokenFile) {
-        IamTokenFile = DefaultIamTokenFile;
+        auto& authConfig = appConfig.GetAuthConfig();
+        if (authConfig.HasIamTokenFile()) {
+            IamTokenFile = authConfig.GetIamTokenFile();
+        } else {
+            IamTokenFile = DefaultIamTokenFile;
+        }
     }
 
     // Do not send token via insecure channel.
@@ -223,6 +244,9 @@ void TCommand::Init()
         auto iamToken = GetEnv("IAM_TOKEN");
         if (!iamToken) {
             iamToken = GetIamTokenFromFile(IamTokenFile);
+        }
+        if (!iamToken) {
+            iamToken = GetIamTokenFromClient();
         }
         config.SetAuthToken(std::move(iamToken));
     }
@@ -247,6 +271,10 @@ void TCommand::Start()
 
 void TCommand::Stop()
 {
+    if (IamClient) {
+        IamClient->Stop();
+    }
+
     if (Monitoring) {
         Monitoring->Stop();
     }
@@ -258,6 +286,57 @@ void TCommand::Stop()
     if (Scheduler) {
         Scheduler->Stop();
     }
+}
+
+void TCommand::InitIamTokenClient()
+{
+    if (!ClientFactories) {
+        return;
+    }
+
+    NProto::TIamClientConfig iamClientProtoConfig;
+    if (IamConfigFile) {
+        ParseFromTextFormat(IamConfigFile, iamClientProtoConfig);
+    } else if (NFs::Exists(DefaultIamConfigFile)) {
+        ParseFromTextFormat(DefaultIamConfigFile, iamClientProtoConfig);
+    }
+
+    auto iamClientConfig =
+        std::make_shared<NCloud::NIamClient::TIamClientConfig>(
+            iamClientProtoConfig);
+
+    IamClient = ClientFactories->IamClientFactory(
+        std::move(iamClientConfig),
+        CreateLoggingService("console"),
+        Scheduler,
+        Timer);
+
+    IamClient->Start();
+}
+
+void TCommand::SetClientFactories(
+    std::shared_ptr<TClientFactories> clientFactories)
+{
+    ClientFactories = std::move(clientFactories);
+}
+
+TString TCommand::GetIamTokenFromClient()
+{
+    TString iamToken;
+    if (!IamClient) {
+        return iamToken;
+    }
+    try {
+        auto future = IamClient->GetTokenAsync();
+        const auto& tokenInfo = future.GetValue(WaitTimeout);
+        if (!HasError(tokenInfo)) {
+            iamToken = tokenInfo.GetResult().Token;
+        }
+    } catch (...) {
+        STORAGE_ERROR(CurrentExceptionMessage());
+    }
+
+    return iamToken;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -410,6 +489,61 @@ TVector<TFileStoreCommand::TPathEntry> TFileStoreCommand::ResolvePath(
     }
 
     return result;
+}
+
+NProto::TListNodesResponse TFileStoreCommand::ListAll(
+    ISession& session,
+    const TString& fsId,
+    ui64 parentId,
+    bool disableMultiTabletForwarding)
+{
+    NProto::TListNodesResponse fullResult;
+    TString cookie;
+    do {
+        auto request = CreateRequest<NProto::TListNodesRequest>();
+        request->SetFileSystemId(fsId);
+        request->SetNodeId(parentId);
+        request->MutableHeaders()->SetDisableMultiTabletForwarding(
+            disableMultiTabletForwarding);
+        request->SetCookie(cookie);
+
+        auto response = WaitFor(session.ListNodes(
+            PrepareCallContext(),
+            std::move(request)));
+
+        Y_ENSURE_EX(
+            !HasError(response.GetError()),
+            yexception() << "ListNodes error: "
+                << FormatError(response.GetError()));
+
+        Y_ENSURE_EX(
+            response.NamesSize() == response.NodesSize(),
+            yexception() << "invalid ListNodes response: "
+                << response.DebugString().Quote());
+
+        for (ui32 i = 0; i < response.NamesSize(); ++i) {
+            fullResult.AddNames(*response.MutableNames(i));
+            *fullResult.AddNodes() = std::move(*response.MutableNodes(i));
+        }
+
+        cookie = response.GetCookie();
+    } while (cookie);
+
+    return fullResult;
+}
+
+TString TFileStoreCommand::ReadLink(ISession& session, ui64 nodeId)
+{
+    auto request = CreateRequest<NProto::TReadLinkRequest>();
+    request->SetNodeId(nodeId);
+
+    auto response = WaitFor(session.ReadLink(
+        PrepareCallContext(),
+        std::move(request)));
+
+    CheckResponse(response);
+
+    return response.GetSymLink();
 }
 
 ////////////////////////////////////////////////////////////////////////////////

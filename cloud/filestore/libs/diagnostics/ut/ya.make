@@ -13,4 +13,8 @@ PEERDIR(
     library/cpp/eventlog/dumper
 )
 
+RESOURCE(
+    data/counters.json counters.json
+)
+
 END()

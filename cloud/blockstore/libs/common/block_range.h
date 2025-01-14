@@ -172,6 +172,8 @@ struct TBlockRange
         return lhs.Start == rhs.Start && lhs.End == rhs.End;
     }
 
+    [[nodiscard]] TString Print() const;
+
 private:
     TBlockRange(TBlockIndex start, TBlockIndex end)
         : Start(start)
@@ -247,7 +249,7 @@ inline TBlockRange64 ConvertRangeSafe(const TBlockRange32& range)
 template <typename T>
 IOutputStream& operator<<(IOutputStream& out, const TBlockRange<T>& rhs)
 {
-    out << "{" << rhs.Start << "," << rhs.End << "}";
+    out << rhs.Print();
     return out;
 }
 

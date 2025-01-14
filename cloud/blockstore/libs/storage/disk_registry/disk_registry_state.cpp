@@ -425,10 +425,15 @@ void TDiskRegistryState::AllowNotifications(
 {
     // currently we don't want to notify users about mirrored disks since they are not
     // supposed to break
-
     if (disk.MasterDiskId) {
         return;
     }
+
+    // We do not want to notify the user about the breakdowns of the shadow disks.
+    if (disk.CheckpointReplica.GetCheckpointId()) {
+        return;
+    }
+
 
     Y_DEBUG_ABORT_UNLESS(IsDiskRegistryMediaKind(disk.MediaKind));
     if (!IsReliableDiskRegistryMediaKind(disk.MediaKind)) {
@@ -542,9 +547,7 @@ void TDiskRegistryState::ProcessDisks(TVector<NProto::TDiskConfig> configs)
         }
 
         if (!config.GetFinishedMigrations().empty()) {
-            const auto& notifiedDiskId = disk.MasterDiskId
-                ? disk.MasterDiskId
-                : diskId;
+            const auto notifiedDiskId = GetDiskIdToNotify(diskId);
 
             ui64 seqNo = NotificationSystem.GetDiskSeqNo(notifiedDiskId);
 
@@ -608,6 +611,11 @@ void TDiskRegistryState::AddMigration(
     const TString& diskId,
     const TString& sourceDeviceId)
 {
+    if (disk.CheckpointReplica.GetCheckpointId()) {
+        // Don't start migrations for shadow disks.
+        return;
+    }
+
     if (IsDiskRegistryLocalMediaKind(disk.MediaKind) ||
         disk.MediaKind == NProto::STORAGE_MEDIA_HDD_NONREPLICATED)
     {
@@ -3170,7 +3178,7 @@ NProto::TError TDiskRegistryState::GetDependentDisks(
     TVector<TDiskId>* diskIds) const
 {
     diskIds->clear();
-    auto* agent = AgentList.FindAgent(agentId);
+    const auto* agent = AgentList.FindAgent(agentId);
     if (!agent) {
         return MakeError(E_NOT_FOUND, agentId);
     }
@@ -3187,23 +3195,32 @@ NProto::TError TDiskRegistryState::GetDependentDisks(
         }
 
         const TDiskState* state = FindDiskState(diskId);
-        if (state && state->MasterDiskId) {
-            if (ignoreReplicatedDisks) {
-                continue;
-            }
-            // for mirrored disks return master diskId
-            diskId = state->MasterDiskId;
-        }
-
-        // linear search on every iteration is ok here, diskIds size is small
-        if (Find(*diskIds, diskId) != diskIds->end()) {
+        if (state && state->MasterDiskId && ignoreReplicatedDisks) {
             continue;
         }
 
-        diskIds->push_back(std::move(diskId));
+        // linear search on every iteration is ok here, diskIds size is small
+        auto diskIdToNotify = GetDiskIdToNotify(diskId);
+        if (Find(*diskIds, diskIdToNotify) == diskIds->end()) {
+            diskIds->push_back(std::move(diskIdToNotify));
+        }
     }
 
     return {};
+}
+
+TString TDiskRegistryState::GetDiskIdToNotify(const TString& diskId) const
+{
+    const auto* disk = Disks.FindPtr(diskId);
+    Y_DEBUG_ABORT_UNLESS(disk, "unknown disk: %s", diskId.c_str());
+
+    if (disk && disk->MasterDiskId) {
+        return disk->MasterDiskId;
+    }
+    if (disk && disk->CheckpointReplica.GetCheckpointId()) {
+        return disk->CheckpointReplica.GetSourceDiskId();
+    }
+    return diskId;
 }
 
 NProto::TError TDiskRegistryState::GetDiskDevices(
@@ -3672,6 +3689,8 @@ void TDiskRegistryState::ForgetDevices(
         DeviceList.ForgetDevice(id);
         db.DeleteSuspendedDevice(id);
         db.DeleteDirtyDevice(id);
+
+        DeleteAutomaticallyReplacedDevice(db, id);
     }
 }
 
@@ -4027,6 +4046,9 @@ void TDiskRegistryState::PublishCounters(TInstant now)
         return;
     }
 
+    const auto startAt = TMonotonic::Now();
+    STORAGE_LOG(TLOG_DEBUG, "DiskRegistry started PublishCounters");
+
     AgentList.PublishCounters(now);
 
     THashMap<TString, TDevicePoolCounters> poolName2Counters;
@@ -4185,6 +4207,10 @@ void TDiskRegistryState::PublishCounters(TInstant now)
         }
 
         if (!logicalBlockSize) {
+            continue;
+        }
+
+        if (StorageConfig->GetDisableFullPlacementGroupCountCalculation()) {
             continue;
         }
 
@@ -4392,6 +4418,12 @@ void TDiskRegistryState::PublishCounters(TInstant now)
 
     SelfCounters.QueryAvailableStorageErrors.Publish(now);
     SelfCounters.QueryAvailableStorageErrors.Reset();
+
+    auto executionTime = TMonotonic::Now() - startAt;
+    STORAGE_LOG(
+        executionTime > TDuration::Seconds(1) ? TLOG_WARNING : TLOG_DEBUG,
+        "DiskRegistry finished PublishCounters in %s",
+        executionTime.ToString().c_str());
 }
 
 NProto::TError TDiskRegistryState::CreatePlacementGroup(
@@ -4734,16 +4766,11 @@ void TDiskRegistryState::UpdateAndReallocateDisk(
 
 ui64 TDiskRegistryState::AddReallocateRequest(
     TDiskRegistryDatabase& db,
-    TString diskId)
+    const TString& diskId)
 {
-    const auto* disk = Disks.FindPtr(diskId);
-    Y_DEBUG_ABORT_UNLESS(disk, "unknown disk: %s", diskId.c_str());
-
-    if (disk && disk->MasterDiskId) {
-        diskId = disk->MasterDiskId;
-    }
-
-    return NotificationSystem.AddReallocateRequest(db, diskId);
+    return NotificationSystem.AddReallocateRequest(
+        db,
+        GetDiskIdToNotify(diskId));
 }
 
 const THashMap<TString, ui64>& TDiskRegistryState::GetDisksToReallocate() const
@@ -5020,18 +5047,10 @@ void TDiskRegistryState::ApplyAgentStateChange(
                 continue;
             }
 
-            bool found = false;
-            for (const auto& d: disk.Devices) {
-                if (d == deviceId) {
-                    found = true;
-                    break;
-                }
-            }
-
-            if (!found) {
-                // this device is allocated for this disk but it is not among
-                // this disk's active device set
-                // NBS-3726
+            if (Find(disk.Devices, deviceId) == disk.Devices.end()) {
+                ReportDiskRegistryWrongMigratedDeviceOwnership(
+                    TStringBuilder() << "ApplyAgentStateChange: device "
+                                     << deviceId << " not found");
                 continue;
             }
 
@@ -5276,7 +5295,8 @@ NProto::TError TDiskRegistryState::UpdateCmsHostState(
     ApplyAgentStateChange(db, *agent, now, affectedDisks);
 
     if (newState != NProto::AGENT_STATE_ONLINE && !HasError(result) &&
-        !StorageConfig->GetDiskRegistryAlwaysAllocatesLocalDisks())
+        (!StorageConfig->GetDiskRegistryAlwaysAllocatesLocalDisks() ||
+         StorageConfig->GetDiskRegistryCleanupConfigOnRemoveHost()))
     {
         CleanupAgentConfig(db, *agent);
     }
@@ -6132,9 +6152,10 @@ NProto::TError TDiskRegistryState::FinishDeviceMigration(
     auto devIt = Find(disk.Devices, sourceId);
 
     if (devIt == disk.Devices.end()) {
-        // temporarily commented out, see NBS-3726
-        // return MakeError(E_INVALID_STATE, TStringBuilder() <<
-        //     "device " << sourceId.Quote() << " not found");
+        auto message = ReportDiskRegistryWrongMigratedDeviceOwnership(
+            TStringBuilder() << "FinishDeviceMigration: device "
+                             << sourceId.Quote() << " not found");
+        return MakeError(E_INVALID_STATE, std::move(message));
     }
 
     if (auto it = disk.MigrationTarget2Source.find(targetId);
@@ -6161,27 +6182,16 @@ NProto::TError TDiskRegistryState::FinishDeviceMigration(
     }
 
     const ui64 seqNo = AddReallocateRequest(db, diskId);
-    // this condition is needed because of NBS-3726
-    if (devIt != disk.Devices.end()) {
-        *devIt = targetId;
-        disk.FinishedMigrations.push_back({
-            .DeviceId = sourceId,
-            .SeqNo = seqNo
-        });
+    *devIt = targetId;
+    disk.FinishedMigrations.push_back({.DeviceId = sourceId, .SeqNo = seqNo});
 
-        if (disk.MasterDiskId) {
-            const bool replaced = ReplicaTable.ReplaceDevice(
-                disk.MasterDiskId,
-                sourceId,
-                targetId);
-            // targetId is actually fully initialized after migration
-            ReplicaTable.MarkReplacementDevice(
-                disk.MasterDiskId,
-                targetId,
-                false);
+    if (disk.MasterDiskId) {
+        const bool replaced =
+            ReplicaTable.ReplaceDevice(disk.MasterDiskId, sourceId, targetId);
+        // targetId is actually fully initialized after migration
+        ReplicaTable.MarkReplacementDevice(disk.MasterDiskId, targetId, false);
 
-            Y_DEBUG_ABORT_UNLESS(replaced);
-        }
+        Y_DEBUG_ABORT_UNLESS(replaced);
     }
 
     *diskStateUpdated = TryUpdateDiskState(db, diskId, disk, timestamp);
@@ -7491,6 +7501,45 @@ TVector<NProto::TAgentInfo> TDiskRegistryState::QueryAgentsInfo() const
     }
 
     return ret;
+}
+
+TVector<TString> TDiskRegistryState::FindOrphanDevices() const
+{
+    THashSet<TString> allKnownDevicesWithAgents;
+    for (const auto& agent: AgentList.GetAgents()) {
+        for (const auto& device: agent.GetDevices()) {
+            const auto& deviceUUID = device.GetDeviceUUID();
+            allKnownDevicesWithAgents.insert(deviceUUID);
+        }
+    }
+
+    TVector<TString> orphanDevices;
+    for (auto& deviceUUID: DeviceList.GetDirtyDevicesId()) {
+        if (!allKnownDevicesWithAgents.contains(deviceUUID)) {
+            orphanDevices.emplace_back(std::move(deviceUUID));
+        }
+    }
+    for (auto& device: DeviceList.GetSuspendedDevices()) {
+        if (!allKnownDevicesWithAgents.contains(device.GetId())) {
+            orphanDevices.emplace_back(std::move(*device.MutableId()));
+        }
+    }
+    for (const auto& deviceUUID: AutomaticallyReplacedDeviceIds) {
+        if (!allKnownDevicesWithAgents.contains(deviceUUID)) {
+            orphanDevices.emplace_back(deviceUUID);
+        }
+    }
+
+    SortUnique(orphanDevices);
+
+    return orphanDevices;
+}
+
+void TDiskRegistryState::RemoveOrphanDevices(
+    TDiskRegistryDatabase& db,
+    const TVector<TString>& orphanDevicesIds)
+{
+    ForgetDevices(db, orphanDevicesIds);
 }
 
 std::optional<ui64> TDiskRegistryState::GetDiskBlockCount(

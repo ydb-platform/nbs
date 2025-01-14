@@ -3,6 +3,7 @@
 #include "lowlevel.h"
 
 #include <cloud/filestore/libs/diagnostics/critical_events.h>
+#include <cloud/filestore/libs/diagnostics/profile_log_events.h>
 
 #include <cloud/storage/core/libs/common/aligned_buffer.h>
 #include <cloud/storage/core/libs/common/file_io_service.h>
@@ -91,7 +92,8 @@ NProto::TDestroyHandleResponse TLocalFileSystem::DestroyHandle(
 }
 
 TFuture<NProto::TReadDataResponse> TLocalFileSystem::ReadDataAsync(
-    NProto::TReadDataRequest& request)
+    NProto::TReadDataRequest& request,
+    NProto::TProfileLogRequestInfo& logRequest)
 {
     STORAGE_TRACE("ReadData " << DumpMessage(request));
 
@@ -109,7 +111,7 @@ TFuture<NProto::TReadDataResponse> TLocalFileSystem::ReadDataAsync(
     TArrayRef<char> data(b->Begin(), b->End());
     auto promise = NewPromise<NProto::TReadDataResponse>();
     FileIOService->AsyncRead(*handle, request.GetOffset(), data).Subscribe(
-        [b = std::move(b), promise] (const TFuture<ui32>& f) mutable {
+        [&logRequest, b = std::move(b), promise] (const TFuture<ui32>& f) mutable {
             NProto::TReadDataResponse response;
             try {
                 auto bytesRead = f.GetValue();
@@ -123,13 +125,15 @@ TFuture<NProto::TReadDataResponse> TLocalFileSystem::ReadDataAsync(
                 *response.MutableError() =
                     MakeError(E_IO, CurrentExceptionMessage());
             }
+            FinalizeProfileLogRequestInfo(logRequest, response);
             promise.SetValue(std::move(response));
         });
     return promise;
 }
 
 TFuture<NProto::TWriteDataResponse> TLocalFileSystem::WriteDataAsync(
-    NProto::TWriteDataRequest& request)
+    NProto::TWriteDataRequest& request,
+    NProto::TProfileLogRequestInfo& logRequest)
 {
     STORAGE_TRACE("WriteData " << DumpMessage(request));
 
@@ -144,20 +148,24 @@ TFuture<NProto::TWriteDataResponse> TLocalFileSystem::WriteDataAsync(
     auto offset = request.GetBufferOffset();
     TArrayRef<char> data(b.begin() + offset, b.vend());
     auto promise = NewPromise<NProto::TWriteDataResponse>();
-    FileIOService->AsyncWrite(*handle, request.GetOffset(), data).Subscribe(
-        [b = std::move(b), promise] (const TFuture<ui32>& f) mutable {
-            NProto::TWriteDataResponse response;
-            try {
-                f.GetValue();
-            } catch (const TServiceError& e) {
-                *response.MutableError() = MakeError(MAKE_FILESTORE_ERROR(
-                    ErrnoToFileStoreError(STATUS_FROM_CODE(e.GetCode()))));
-            } catch (...) {
-                *response.MutableError() =
-                    MakeError(E_IO, CurrentExceptionMessage());
-            }
-            promise.SetValue(std::move(response));
-        });
+    FileIOService->AsyncWrite(*handle, request.GetOffset(), data)
+        .Subscribe(
+            [&logRequest, b = std::move(b), promise](
+                const TFuture<ui32>& f) mutable
+            {
+                NProto::TWriteDataResponse response;
+                try {
+                    f.GetValue();
+                } catch (const TServiceError& e) {
+                    *response.MutableError() = MakeError(MAKE_FILESTORE_ERROR(
+                        ErrnoToFileStoreError(STATUS_FROM_CODE(e.GetCode()))));
+                } catch (...) {
+                    *response.MutableError() =
+                        MakeError(E_IO, CurrentExceptionMessage());
+                }
+                FinalizeProfileLogRequestInfo(logRequest, response);
+                promise.SetValue(std::move(response));
+            });
 
     return promise;
 }

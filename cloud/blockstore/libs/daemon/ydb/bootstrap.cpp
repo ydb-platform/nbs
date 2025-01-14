@@ -573,6 +573,7 @@ void TBootstrapYdb::InitKikimrService()
         }();
     args.VolumeBalancerSwitch = VolumeBalancerSwitch;
     args.EndpointEventHandler = EndpointEventHandler;
+    args.RootKmsKeyProvider = RootKmsKeyProvider;
 
     ActorSystem = NStorage::CreateActorSystem(args);
 

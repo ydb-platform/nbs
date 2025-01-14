@@ -416,16 +416,11 @@ struct THistogramRequestCounters
     THighResCounter ReadBlocks{
         EPublishingPolicy::All,
         ERequestCounterOption::HasVoidBytes};
-    THighResCounter WriteBlocks{
-        EPublishingPolicy::All,
-    };
+    THighResCounter WriteBlocks{EPublishingPolicy::All};
     THighResCounter ZeroBlocks{EPublishingPolicy::All};
-    THighResCounter DescribeBlocks{
-        EPublishingPolicy::All,
-    };
-    THighResCounter ChecksumBlocks{
-        EPublishingPolicy::All,
-    };
+    THighResCounter DescribeBlocks{EPublishingPolicy::All};
+    THighResCounter ChecksumBlocks{EPublishingPolicy::All};
+    THighResCounter CopyBlocks{EPublishingPolicy::DiskRegistryBased};
 
     static constexpr THighResMeta AllHighResCounters[] = {
         MakeMeta<&THistogramRequestCounters::ReadBlocks>(),
@@ -433,6 +428,7 @@ struct THistogramRequestCounters
         MakeMeta<&THistogramRequestCounters::ZeroBlocks>(),
         MakeMeta<&THistogramRequestCounters::DescribeBlocks>(),
         MakeMeta<&THistogramRequestCounters::ChecksumBlocks>(),
+        MakeMeta<&THistogramRequestCounters::CopyBlocks>(),
     };
 };
 

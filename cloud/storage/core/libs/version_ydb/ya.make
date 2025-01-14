@@ -1,5 +1,3 @@
-OWNER(g:cloud-nbs)
-
 LIBRARY()
 
 SRCS(

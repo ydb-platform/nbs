@@ -123,6 +123,7 @@ public:
 
     [[nodiscard]] TVector<NProto::TDeviceConfig> GetBrokenDevices() const;
     [[nodiscard]] TVector<NProto::TDeviceConfig> GetDirtyDevices() const;
+    [[nodiscard]] TVector<TString> GetDirtyDevicesId() const;
 
     NProto::TDeviceConfig AllocateDevice(
         const TDiskId& diskId,

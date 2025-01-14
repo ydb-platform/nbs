@@ -429,9 +429,9 @@ Y_UNIT_TEST_SUITE(TModel)
         TString PoolType;
         ui64 Size;
         ui32 ReadIops;
-        ui32 ReadBandwidth;
+        ui64 ReadBandwidth;
         ui32 WriteIops;
-        ui32 WriteBandwidth;
+        ui64 WriteBandwidth;
     };
 
     void TestChannels(
@@ -2303,29 +2303,62 @@ Y_UNIT_TEST_SUITE(TModel)
         auto fs = SetupMultiShardFileStorePerformanceAndChannels(
             StorageConfig,
             KikimrConfig,
-            ClientPerformanceProfile);
+            ClientPerformanceProfile,
+            0);
         UNIT_ASSERT_VALUES_EQUAL(1, fs.ShardConfigs.size());
 
         KikimrConfig.SetBlocksCount(16_TB / 4_KB);
         fs = SetupMultiShardFileStorePerformanceAndChannels(
             StorageConfig,
             KikimrConfig,
-            ClientPerformanceProfile);
+            ClientPerformanceProfile,
+            0);
         UNIT_ASSERT_VALUES_EQUAL(4, fs.ShardConfigs.size());
 
         KikimrConfig.SetBlocksCount(512_TB / 4_KB);
         fs = SetupMultiShardFileStorePerformanceAndChannels(
             StorageConfig,
             KikimrConfig,
-            ClientPerformanceProfile);
+            ClientPerformanceProfile,
+            0);
         UNIT_ASSERT_VALUES_EQUAL(128, fs.ShardConfigs.size());
 
         KikimrConfig.SetBlocksCount(1_PB / 4_KB);
         fs = SetupMultiShardFileStorePerformanceAndChannels(
             StorageConfig,
             KikimrConfig,
-            ClientPerformanceProfile);
+            ClientPerformanceProfile,
+            0);
         UNIT_ASSERT_VALUES_EQUAL(254, fs.ShardConfigs.size());
+
+        for (const auto& sc: fs.ShardConfigs) {
+            UNIT_ASSERT_VALUES_EQUAL(5_TB / 4_KB, sc.GetBlocksCount());
+        }
+
+        // shards (but not main tablet) should have 'IsSystem' flag
+        UNIT_ASSERT(!fs.MainFileSystemConfig.GetIsSystem());
+        for (const auto& sc: fs.ShardConfigs) {
+            UNIT_ASSERT(sc.GetIsSystem());
+        }
+    }
+
+    Y_UNIT_TEST_F(ShouldCreateExplicitNumberOfShards, TConfigs)
+    {
+        using namespace ::NCloud::NProto;
+        KikimrConfig.SetBlockSize(4_KB);
+        KikimrConfig.SetBlocksCount(4_TB / 4_KB);
+
+        // Disable media type override.
+        StorageConfig.SetAutomaticShardCreationEnabled(true);
+        StorageConfig.SetShardAllocationUnit(4_TB);
+        StorageConfig.SetAutomaticallyCreatedShardSize(5_TB);
+
+        auto fs = SetupMultiShardFileStorePerformanceAndChannels(
+            StorageConfig,
+            KikimrConfig,
+            ClientPerformanceProfile,
+            10);
+        UNIT_ASSERT_VALUES_EQUAL(10, fs.ShardConfigs.size());
 
         for (const auto& sc: fs.ShardConfigs) {
             UNIT_ASSERT_VALUES_EQUAL(5_TB / 4_KB, sc.GetBlocksCount());

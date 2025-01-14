@@ -6,6 +6,7 @@ import contrib.ydb.tests.library.common.yatest_common as yatest_common
 
 from cloud.blockstore.config.diagnostics_pb2 import TDiagnosticsConfig
 from cloud.blockstore.config.disk_pb2 import TDiskRegistryProxyConfig
+from cloud.blockstore.config.root_kms_pb2 import TRootKmsConfig
 from cloud.blockstore.config.storage_pb2 import TStorageServiceConfig
 from cloud.blockstore.config.server_pb2 import TServerAppConfig, TKikimrServiceConfig, TServerConfig, TLocation
 from cloud.storage.core.config.features_pb2 import TFeaturesConfig
@@ -146,6 +147,16 @@ class LocalNbs(Daemon):
         if self.__server_app_config is None or self.__server_app_config.HasField('KikimrServiceConfig'):
             self.init_scheme()
 
+        root_kms_port = os.environ.get("FAKE_ROOT_KMS_PORT")
+        if root_kms_port is not None:
+            root_kms = TRootKmsConfig()
+            root_kms.Address = f'localhost:{root_kms_port}'
+            root_kms.KeyId = 'nbs'
+            root_kms.RootCertsFile = os.environ.get("FAKE_ROOT_KMS_CA")
+            root_kms.CertChainFile = os.environ.get("FAKE_ROOT_KMS_CLIENT_CRT")
+            root_kms.PrivateKeyFile = os.environ.get("FAKE_ROOT_KMS_CLIENT_KEY")
+            self.__proto_configs['root-kms.txt'] = root_kms
+
         self.__access_service = None
         if enable_access_service:
             host = "localhost"
@@ -232,7 +243,8 @@ ModifyScheme {
         ]
 
         logger.info("Init scheme {}".format(command))
-        subprocess.check_call(command)
+        with open(self.__cwd + "/ydbd_output.log", "w") as ydbd_output:
+            subprocess.check_call(command, stdout=ydbd_output, stderr=ydbd_output)
 
     @property
     def nbs_port(self):
@@ -581,6 +593,9 @@ ModifyScheme {
 
         if self.kms_config is not None:
             command += ["--kms-file", os.path.join(self.config_path(), "kms.txt")]
+
+        if 'root-kms.txt' in self.__proto_configs:
+            command += ["--root-kms-file", os.path.join(self.config_path(), "root-kms.txt")]
 
         append_conf_file_arg(command, self.config_path(),
                              "--location-file", "location.txt")

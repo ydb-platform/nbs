@@ -8,7 +8,9 @@ RECURSE_FOR_TESTS(
     build_arcadia_test
     client
     client_sharded
+    client_sharded_dir
     config_dispatcher
+    endpoints
     fio
     fio_index
     fio_index_migration

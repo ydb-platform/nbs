@@ -167,7 +167,7 @@ bool TIndexTabletActor::PrepareTx_GetNodeAttr(
 
         args.TargetNodeId = ref->ChildNodeId;
         args.ShardId = ref->ShardId;
-        args.ShardName = ref->ShardName;
+        args.ShardNodeName = ref->ShardNodeName;
     } else {
         args.TargetNodeId = args.NodeId;
     }
@@ -202,7 +202,7 @@ void TIndexTabletActor::CompleteTx_GetNodeAttr(
         auto* node = response->Record.MutableNode();
         if (args.ShardId) {
             node->SetShardFileSystemId(args.ShardId);
-            node->SetShardNodeName(args.ShardName);
+            node->SetShardNodeName(args.ShardNodeName);
         } else {
             TABLET_VERIFY(args.TargetNode);
             ConvertNodeFromAttrs(
@@ -389,7 +389,7 @@ bool TIndexTabletActor::PrepareTx_GetNodeAttrBatch(
         auto* nodeAttr = nodeResult->MutableNode();
         if (refs[i]->ShardId) {
             nodeAttr->SetShardFileSystemId(refs[i]->ShardId);
-            nodeAttr->SetShardNodeName(refs[i]->ShardName);
+            nodeAttr->SetShardNodeName(refs[i]->ShardNodeName);
             continue;
         }
 

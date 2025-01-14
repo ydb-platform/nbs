@@ -201,4 +201,9 @@ TVector<TDeletionMarker> TDeletionMarkers::Extract()
     return Impl->Extract();
 }
 
+void TDeletionMarkers::Swap(TDeletionMarkers& other)
+{
+    Impl.swap(other.Impl);
+}
+
 }   // namespace NCloud::NFileStore::NStorage

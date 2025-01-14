@@ -26,8 +26,9 @@ struct TTestContext: TAtomicRefCount<TTestContext>
     TDeque<ibv_recv_wr*> RecvEvents;
     TDeque<ibv_recv_wr*> ProcessedRecvEvents;
     TSpinLock CompletionLock;
-    TAtomic PostRecv = 0;
+    TAtomic PostRecvCounter = 0;
 
+    std::function<void(ibv_qp* qp, ibv_recv_wr* wr)> PostRecv;
     std::function<void(rdma_cm_id* id, int backlog)> Listen;
     std::function<void(ibv_wc* wc)> HandleCompletionEvent;
 };

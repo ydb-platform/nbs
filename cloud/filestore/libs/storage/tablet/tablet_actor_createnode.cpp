@@ -78,7 +78,7 @@ private:
     const TString LogTag;
     TRequestInfoPtr RequestInfo;
     const TActorId ParentId;
-    const NProto::TCreateNodeRequest Request;
+    NProto::TCreateNodeRequest Request;
     const ui64 RequestId;
     const ui64 OpLogEntryId;
     TCreateNodeInShardResult Result;
@@ -99,15 +99,21 @@ private:
     STFUNC(StateWork);
 
     void SendRequest(const TActorContext& ctx);
+    void GetNodeAttr(const TActorContext& ctx);
 
     void HandleCreateNodeResponse(
         const TEvService::TEvCreateNodeResponse::TPtr& ev,
+        const TActorContext& ctx);
+
+    void HandleGetNodeAttrResponse(
+        const TEvService::TEvGetNodeAttrResponse::TPtr& ev,
         const TActorContext& ctx);
 
     void HandlePoisonPill(
         const TEvents::TEvPoisonPill::TPtr& ev,
         const TActorContext& ctx);
 
+    void ProcessNodeAttr(NProto::TNodeAttr nodeAttr);
     void ReplyAndDie(const TActorContext& ctx, NProto::TError error);
 };
 
@@ -140,6 +146,7 @@ void TCreateNodeInShardActor::SendRequest(const TActorContext& ctx)
 {
     auto request = std::make_unique<TEvService::TEvCreateNodeRequest>();
     request->Record = Request;
+    request->Record.MutableHeaders()->SetBehaveAsDirectoryTablet(false);
 
     LOG_DEBUG(
         ctx,
@@ -154,6 +161,53 @@ void TCreateNodeInShardActor::SendRequest(const TActorContext& ctx)
         request.release());
 }
 
+void TCreateNodeInShardActor::GetNodeAttr(const TActorContext& ctx)
+{
+    auto request = std::make_unique<TEvService::TEvGetNodeAttrRequest>();
+    *request->Record.MutableHeaders() = Request.GetHeaders();
+    request->Record.SetFileSystemId(Request.GetFileSystemId());
+    request->Record.SetNodeId(Request.GetNodeId());
+    request->Record.SetName(Request.GetName());
+
+    LOG_DEBUG(
+        ctx,
+        TFileStoreComponents::TABLET_WORKER,
+        "%s Sending GetNodeAttrRequest to shard %s, %s",
+        LogTag.c_str(),
+        Request.GetFileSystemId().c_str(),
+        Request.GetName().c_str());
+
+    ctx.Send(
+        MakeIndexTabletProxyServiceId(),
+        request.release());
+}
+
+void TCreateNodeInShardActor::ProcessNodeAttr(NProto::TNodeAttr attr)
+{
+    NProto::TNode requestAttrs;
+    InitAttrs(requestAttrs, Request);
+    if (attr.GetSize() != requestAttrs.GetSize()
+            || attr.GetType() != requestAttrs.GetType())
+    {
+        ReportCreateNodeRequestResponseMismatchInShard(TStringBuilder()
+            << "filesystem: " << LogTag
+            << ", shard: " << Request.GetFileSystemId()
+            << ", name: " << Request.GetName()
+            << ", created node: " << attr.ShortUtf8DebugString()
+            << ", request attrs: " << requestAttrs.ShortUtf8DebugString());
+    }
+
+    if (auto* x = std::get_if<NProto::TCreateNodeResponse>(&Result)) {
+        *x->MutableNode() = std::move(attr);
+    } else if (auto* x = std::get_if<NProto::TCreateHandleResponse>(&Result)) {
+        *x->MutableNodeAttr() = std::move(attr);
+    } else {
+        TABLET_VERIFY_C(
+            0,
+            TStringBuilder() << "bad variant index: " << Result.index());
+    }
+}
+
 void TCreateNodeInShardActor::HandleCreateNodeResponse(
     const TEvService::TEvCreateNodeResponse::TPtr& ev,
     const TActorContext& ctx)
@@ -162,7 +216,7 @@ void TCreateNodeInShardActor::HandleCreateNodeResponse(
 
     if (msg->GetError().GetCode() == E_FS_EXIST) {
         // EXIST can arrive after a successful operation is retried, it's ok
-        LOG_DEBUG(
+        LOG_INFO(
             ctx,
             TFileStoreComponents::TABLET_WORKER,
             "%s Shard node creation for %s, %s returned EEXIST %s",
@@ -171,7 +225,10 @@ void TCreateNodeInShardActor::HandleCreateNodeResponse(
             Request.GetName().c_str(),
             FormatError(msg->GetError()).Quote().c_str());
 
-        msg->Record.ClearError();
+        // simply resetting error isn't enough - CreateNodeResponses with errors
+        // don't contain NodeAttr, so we need to do explicit GetNodeAttr
+        GetNodeAttr(ctx);
+        return;
     }
 
     if (HasError(msg->GetError())) {
@@ -218,16 +275,61 @@ void TCreateNodeInShardActor::HandleCreateNodeResponse(
         Request.GetFileSystemId().c_str(),
         Request.GetName().c_str());
 
-    if (auto* x = std::get_if<NProto::TCreateNodeResponse>(&Result)) {
-        *x->MutableNode() = std::move(*msg->Record.MutableNode());
-    } else if (auto* x = std::get_if<NProto::TCreateHandleResponse>(&Result)) {
-        *x->MutableNodeAttr() = std::move(*msg->Record.MutableNode());
-    } else {
-        TABLET_VERIFY_C(
-            0,
-            TStringBuilder() << "bad variant index: " << Result.index());
+    ProcessNodeAttr(*msg->Record.MutableNode());
+    ReplyAndDie(ctx, {});
+}
+
+void TCreateNodeInShardActor::HandleGetNodeAttrResponse(
+    const TEvService::TEvGetNodeAttrResponse::TPtr& ev,
+    const TActorContext& ctx)
+{
+    auto* msg = ev->Get();
+
+    if (HasError(msg->GetError())) {
+        if (GetErrorKind(msg->GetError()) == EErrorKind::ErrorRetriable) {
+            LOG_WARN(
+                ctx,
+                TFileStoreComponents::TABLET_WORKER,
+                "%s Shard GetNodeAttr failed for %s, %s with error %s"
+                ", retrying",
+                LogTag.c_str(),
+                Request.GetFileSystemId().c_str(),
+                Request.GetName().c_str(),
+                FormatError(msg->GetError()).Quote().c_str());
+
+            GetNodeAttr(ctx);
+            return;
+        }
+
+        const auto message = Sprintf(
+            "Shard GetNodeAttr failed for %s, %s with error %s"
+            ", will not retry",
+            Request.GetFileSystemId().c_str(),
+            Request.GetName().c_str(),
+            FormatError(msg->GetError()).Quote().c_str());
+
+        LOG_ERROR(
+            ctx,
+            TFileStoreComponents::TABLET_WORKER,
+            "%s %s",
+            LogTag.c_str(),
+            message.c_str());
+
+        ReportReceivedNodeOpErrorFromShard(message);
+
+        ReplyAndDie(ctx, msg->GetError());
+        return;
     }
 
+    LOG_DEBUG(
+        ctx,
+        TFileStoreComponents::TABLET_WORKER,
+        "%s Shard GetNodeAttr completed for %s, %s",
+        LogTag.c_str(),
+        Request.GetFileSystemId().c_str(),
+        Request.GetName().c_str());
+
+    ProcessNodeAttr(*msg->Record.MutableNode());
     ReplyAndDie(ctx, {});
 }
 
@@ -263,6 +365,7 @@ void TCreateNodeInShardActor::ReplyAndDie(
         Request.GetHeaders().GetSessionId(),
         RequestId,
         OpLogEntryId,
+        std::move(*Request.MutableName()),
         std::move(Result)));
 
     Die(ctx);
@@ -274,6 +377,7 @@ STFUNC(TCreateNodeInShardActor::StateWork)
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
 
         HFunc(TEvService::TEvCreateNodeResponse, HandleCreateNodeResponse);
+        HFunc(TEvService::TEvGetNodeAttrResponse, HandleGetNodeAttrResponse);
 
         default:
             HandleUnexpectedEvent(ev, TFileStoreComponents::TABLET_WORKER);
@@ -292,7 +396,7 @@ void TIndexTabletActor::HandleCreateNode(
     auto* msg = ev->Get();
 
     // DupCache isn't needed for Create/UnlinkNode requests in shards
-    if (!IsShard()) {
+    if (!BehaveAsShard(msg->Record.GetHeaders())) {
         auto* session = AcceptRequest<TEvService::TCreateNodeMethod>(
             ev,
             ctx,
@@ -357,7 +461,44 @@ bool TIndexTabletActor::PrepareTx_CreateNode(
 {
     Y_UNUSED(ctx);
 
-    if (!IsShard()) {
+    const bool isMainWithLocalNodes =
+        IsMainTablet() && GetLastNodeId() > RootNodeId;
+
+    if (!BehaveAsShard(args.Request.GetHeaders())
+            && Config->GetShardIdSelectionInLeaderEnabled()
+            && !GetFileSystem().GetShardFileSystemIds().empty()
+            && (args.Attrs.GetType() == NProto::E_REGULAR_NODE
+                || Config->GetDirectoryCreationInShardsEnabled()
+                // otherwise there might be some local nodes which breaks
+                // current cross-shard RenameNode implementation
+                && !isMainWithLocalNodes))
+    {
+        args.Error = SelectShard(args.Attrs.GetSize(), &args.ShardId);
+        if (HasError(args.Error)) {
+            return true;
+        }
+    }
+
+    // For multishard filestore, selection of the shard node name for
+    // hard links is done by the client, not the leader. Thus, the
+    // client is able to provide the shard node name explicitly:
+    if (args.Request.HasLink() && args.Request.GetLink().GetShardNodeName()) {
+        args.ShardNodeName = args.Request.GetLink().GetShardNodeName();
+    } else if (args.ShardId) {
+        args.ShardNodeName = CreateGuidAsString();
+    }
+
+    if (args.ShardNodeName) {
+        LOG_DEBUG(ctx, TFileStoreComponents::TABLET,
+            "%s Selected shard %s, name %s upon CreateNode: %lu, %s",
+            LogTag.c_str(),
+            args.ShardId.c_str(),
+            args.ShardNodeName.c_str(),
+            args.Request.GetNodeId(),
+            args.Request.GetName().c_str());
+    }
+
+    if (!BehaveAsShard(args.Request.GetHeaders())) {
         FILESTORE_VALIDATE_DUPTX_SESSION(CreateNode, args);
     }
 
@@ -451,7 +592,7 @@ void TIndexTabletActor::ExecuteTx_CreateNode(
     FILESTORE_VALIDATE_TX_ERROR(CreateNode, args);
 
     TSession* session = nullptr;
-    if (!IsShard()) {
+    if (!BehaveAsShard(args.Request.GetHeaders())) {
         session = FindSession(args.SessionId);
         if (!session) {
             auto message = ReportSessionNotFoundInTx(TStringBuilder()
@@ -491,7 +632,7 @@ void TIndexTabletActor::ExecuteTx_CreateNode(
             shardRequest->CopyFrom(args.Request);
             shardRequest->SetFileSystemId(args.ShardId);
             shardRequest->SetNodeId(RootNodeId);
-            shardRequest->SetName(args.ShardName);
+            shardRequest->SetName(args.ShardNodeName);
             shardRequest->ClearShardFileSystemId();
 
             db.WriteOpLogEntry(args.OpLogEntry);
@@ -533,7 +674,7 @@ void TIndexTabletActor::ExecuteTx_CreateNode(
         args.Name,
         args.ChildNodeId,
         args.ShardId,
-        args.ShardName);
+        args.ShardNodeName);
 
     if (args.ShardId.empty()) {
         if (args.ChildNodeId == InvalidNodeId) {
@@ -553,7 +694,7 @@ void TIndexTabletActor::ExecuteTx_CreateNode(
     // 1. there will be no duplicates - node name is generated by the leader
     // 2. the leader serves all file creation operations and has its own
     //  dupcache
-    if (!IsShard()) {
+    if (!BehaveAsShard(args.Request.GetHeaders())) {
         AddDupCacheEntry(
             db,
             session,
@@ -567,12 +708,18 @@ void TIndexTabletActor::CompleteTx_CreateNode(
     const TActorContext& ctx,
     TTxIndexTablet::TCreateNode& args)
 {
+    InvalidateNodeCaches(args.TargetNodeId);
+    InvalidateNodeCaches(args.ChildNodeId);
+    if (args.ParentNode) {
+        InvalidateNodeCaches(args.ParentNode->NodeId);
+    }
+
     if (args.OpLogEntry.HasCreateNodeRequest() && !HasError(args.Error)) {
         LOG_DEBUG(ctx, TFileStoreComponents::TABLET,
             "%s Creating node in shard upon CreateNode: %s, %s",
             LogTag.c_str(),
             args.ShardId.c_str(),
-            args.ShardName.c_str());
+            args.ShardNodeName.c_str());
 
         RegisterCreateNodeInShardActor(
             ctx,
@@ -594,7 +741,7 @@ void TIndexTabletActor::CompleteTx_CreateNode(
         // 1. there will be no duplicates - node name is generated by the leader
         // 2. the leader serves all file creation operations and has its own
         //  dupcache
-        if (!IsShard()) {
+        if (!BehaveAsShard(args.Request.GetHeaders())) {
             CommitDupCacheEntry(args.SessionId, args.RequestId);
         }
 
@@ -648,6 +795,8 @@ void TIndexTabletActor::HandleNodeCreatedInShard(
     }
 
     WorkerActors.erase(ev->Sender);
+
+    EndNodeCreateInShard(msg->NodeName);
 
     if (auto* x = std::get_if<NProto::TCreateNodeResponse>(&res)) {
         if (msg->RequestInfo) {
@@ -759,6 +908,8 @@ void TIndexTabletActor::RegisterCreateNodeInShardActor(
     ui64 opLogEntryId,
     TCreateNodeInShardResult result)
 {
+    StartNodeCreateInShard(request.GetName());
+
     auto actor = std::make_unique<TCreateNodeInShardActor>(
         LogTag,
         std::move(requestInfo),

@@ -90,6 +90,8 @@ private:
     TVector<NActors::TActorId> IOParserActors;
     ui32 ParserActorIdx = 0;
 
+    NActors::TActorId HealthCheckActor;
+
 public:
     TDiskAgentActor(
         TStorageConfigPtr config,
@@ -128,6 +130,7 @@ private:
     void InitLocalStorageProvider(const NActors::TActorContext& ctx);
 
     void ScheduleUpdateStats(const NActors::TActorContext& ctx);
+    void RestartDeviceHealthChecking(const NActors::TActorContext& ctx);
 
     void SendRegisterRequest(const NActors::TActorContext& ctx);
 

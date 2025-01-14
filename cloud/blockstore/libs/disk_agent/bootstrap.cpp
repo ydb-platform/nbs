@@ -59,6 +59,7 @@
 #include <library/cpp/lwtrace/probes.h>
 #include <library/cpp/monlib/dynamic_counters/counters.h>
 #include <library/cpp/protobuf/util/pb_io.h>
+#include <library/cpp/svnversion/svnversion.h>
 
 #include <util/datetime/base.h>
 #include <util/stream/file.h>
@@ -231,12 +232,26 @@ void TBootstrap::InitHTTPServer()
 {
     Y_DEBUG_ABORT_UNLESS(!Initialized);
 
+    TStringBuilder stubMonPageBuilder;
+
+    stubMonPageBuilder
+        << R"(<html><head></head><body>)"
+           R"(<h3>This node is not registered in the NodeBroker.)"
+           R"(See "DisableNodeBrokerRegistrationOnDevicelessAgent")"
+           R"( in the disk agent config.</h3><br>)"
+           R"(<div class="container"><h2>Version</h2><pre>)";
+
+    stubMonPageBuilder << GetProgramSvnVersion();
+    if (!stubMonPageBuilder.EndsWith("\n")) {
+        stubMonPageBuilder << "\n";
+    }
+
+    stubMonPageBuilder << R"(</pre></div></body></html>)";
+
     StubMonPageServer = std::make_unique<NCloud::NStorage::TSimpleHttpServer>(
         Configs->Options->MonitoringAddress,
         Configs->DiagnosticsConfig->GetNbsMonPort(),
-        "This node is not registered in the NodeBroker. See "
-        "\"DisableNodeBrokerRegistrationOnDevicelessAgent\" in the disk agent "
-        "config.");
+        std::move(stubMonPageBuilder));
 }
 
 void TBootstrap::Init()

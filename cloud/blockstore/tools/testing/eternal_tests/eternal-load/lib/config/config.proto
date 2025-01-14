@@ -28,4 +28,6 @@ message TTestConfig {
   // Used for a testcases, where write rate is periodically replaced
   // with read rate and vice versa.
   optional string AlternatingPhase = 10;
+  // Used for tests only.
+  optional uint64 MaxWriteRequestCount = 11;
 }

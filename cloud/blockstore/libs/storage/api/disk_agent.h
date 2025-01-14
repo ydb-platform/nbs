@@ -27,7 +27,9 @@ namespace NCloud::NBlockStore::NStorage {
     xxx(ChecksumDeviceBlocks,     __VA_ARGS__)                                 \
     xxx(DisableConcreteAgent,     __VA_ARGS__)                                 \
     xxx(EnableAgentDevice,        __VA_ARGS__)                                 \
-    xxx(PartiallySuspendAgent,    __VA_ARGS__)                                \
+    xxx(PartiallySuspendAgent,    __VA_ARGS__)                                 \
+    xxx(DirectCopyBlocks,         __VA_ARGS__)                                 \
+
 // BLOCKSTORE_DISK_AGENT_REQUESTS_PROTO
 
 #define BLOCKSTORE_DISK_AGENT_REQUESTS(xxx, ...)                               \
@@ -92,6 +94,9 @@ struct TEvDiskAgent
         EvPartiallySuspendAgentRequest = EvBegin + 21,
         EvPartiallySuspendAgentResponse = EvBegin + 22,
 
+        EvDirectCopyBlocksRequest = EvBegin + 23,
+        EvDirectCopyBlocksResponse = EvBegin + 24,
+
         EvEnd
     };
 
@@ -104,6 +109,6 @@ struct TEvDiskAgent
 
 ////////////////////////////////////////////////////////////////////////////////
 
-NActors::TActorId MakeDiskAgentServiceId(ui32 nodeId = 0);
+NActors::TActorId MakeDiskAgentServiceId(ui32 nodeId);
 
 }   // namespace NCloud::NBlockStore::NStorage

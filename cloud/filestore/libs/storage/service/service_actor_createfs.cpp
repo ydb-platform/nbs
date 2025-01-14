@@ -151,7 +151,8 @@ void TCreateFileStoreActor::CreateMainFileStore(const TActorContext& ctx)
         FileStoreConfig = SetupMultiShardFileStorePerformanceAndChannels(
             *StorageConfig,
             config,
-            Request.GetPerformanceProfile());
+            Request.GetPerformanceProfile(),
+            Request.GetShardCount());
         ShardsToCreate = FileStoreConfig.ShardConfigs.size();
         ShardsToConfigure = ShardsToCreate;
         config = FileStoreConfig.MainFileSystemConfig;
@@ -206,6 +207,12 @@ void TCreateFileStoreActor::ConfigureShards(const TActorContext& ctx)
         request->Record.SetFileSystemId(
             FileStoreConfig.ShardConfigs[i].GetFileSystemId());
         request->Record.SetShardNo(i + 1);
+        request->Record.SetMainFileSystemId(Request.GetFileSystemId());
+        if (StorageConfig->GetDirectoryCreationInShardsEnabled()) {
+            for (const auto& shard: FileStoreConfig.ShardConfigs) {
+                request->Record.AddShardFileSystemIds(shard.GetFileSystemId());
+            }
+        }
 
         LOG_INFO(
             ctx,

@@ -184,6 +184,41 @@ bool TIndexTabletDatabase::ReadNode(
     return true;
 }
 
+bool TIndexTabletDatabase::ReadNodes(
+    ui64 startNodeId,
+    ui64 maxNodes,
+    ui64& nextNodeId,
+    TVector<IIndexTabletDatabase::TNode>& nodes)
+{
+    using TTable = TIndexTabletSchema::Nodes;
+
+    auto it = Table<TTable>().GreaterOrEqual(startNodeId).Select();
+
+    if (!it.IsReady()) {
+        return false;   // not ready
+    }
+
+    while (it.IsValid() && maxNodes > 0) {
+        nodes.emplace_back(TNode{
+            it.GetValue<TTable::NodeId>(),
+            it.GetValue<TTable::Proto>(),
+            it.GetValue<TTable::CommitId>(),
+            InvalidCommitId});
+
+        --maxNodes;
+
+        if (!it.Next()) {
+            return false;   // not ready
+        }
+    }
+
+    if (it.IsValid()) {
+        nextNodeId = it.GetValue<TTable::NodeId>();
+    }
+
+    return true;
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 // Nodes_Ver
 
@@ -484,7 +519,7 @@ void TIndexTabletDatabase::WriteNodeRef(
     const TString& name,
     ui64 childNodeId,
     const TString& shardId,
-    const TString& shardName)
+    const TString& shardNodeName)
 {
     using TTable = TIndexTabletSchema::NodeRefs;
 
@@ -494,7 +529,7 @@ void TIndexTabletDatabase::WriteNodeRef(
             NIceDb::TUpdate<TTable::CommitId>(commitId),
             NIceDb::TUpdate<TTable::ChildId>(childNodeId),
             NIceDb::TUpdate<TTable::ShardId>(shardId),
-            NIceDb::TUpdate<TTable::ShardName>(shardName)
+            NIceDb::TUpdate<TTable::ShardNodeName>(shardNodeName)
         );
 }
 
@@ -533,7 +568,7 @@ bool TIndexTabletDatabase::ReadNodeRef(
                 name,
                 it.GetValue<TTable::ChildId>(),
                 it.GetValue<TTable::ShardId>(),
-                it.GetValue<TTable::ShardName>(),
+                it.GetValue<TTable::ShardNodeName>(),
                 minCommitId,
                 maxCommitId
             };
@@ -573,7 +608,7 @@ bool TIndexTabletDatabase::ReadNodeRefs(
                 it.GetValue<TTable::Name>(),
                 it.GetValue<TTable::ChildId>(),
                 it.GetValue<TTable::ShardId>(),
-                it.GetValue<TTable::ShardName>(),
+                it.GetValue<TTable::ShardNodeName>(),
                 minCommitId,
                 maxCommitId
             });
@@ -624,7 +659,7 @@ bool TIndexTabletDatabase::ReadNodeRefs(
             it.GetValue<TTable::Name>(),
             it.GetValue<TTable::ChildId>(),
             it.GetValue<TTable::ShardId>(),
-            it.GetValue<TTable::ShardName>(),
+            it.GetValue<TTable::ShardNodeName>(),
             it.GetValue<TTable::CommitId>(),
             InvalidCommitId});
         --maxCount;
@@ -666,7 +701,7 @@ void TIndexTabletDatabase::WriteNodeRefVer(
     const TString& name,
     ui64 childNodeId,
     const TString& shardId,
-    const TString& shardName)
+    const TString& shardNodeName)
 {
     using TTable = TIndexTabletSchema::NodeRefs_Ver;
 
@@ -676,7 +711,7 @@ void TIndexTabletDatabase::WriteNodeRefVer(
             NIceDb::TUpdate<TTable::MaxCommitId>(maxCommitId),
             NIceDb::TUpdate<TTable::ChildId>(childNodeId),
             NIceDb::TUpdate<TTable::ShardId>(shardId),
-            NIceDb::TUpdate<TTable::ShardName>(shardName)
+            NIceDb::TUpdate<TTable::ShardNodeName>(shardNodeName)
         );
 }
 
@@ -725,7 +760,7 @@ bool TIndexTabletDatabase::ReadNodeRefVer(
                 name,
                 it.GetValue<TTable::ChildId>(),
                 it.GetValue<TTable::ShardId>(),
-                it.GetValue<TTable::ShardName>(),
+                it.GetValue<TTable::ShardNodeName>(),
                 minCommitId,
                 maxCommitId
             };
@@ -765,7 +800,7 @@ bool TIndexTabletDatabase::ReadNodeRefVers(
                 it.GetValue<TTable::Name>(),
                 it.GetValue<TTable::ChildId>(),
                 it.GetValue<TTable::ShardId>(),
-                it.GetValue<TTable::ShardName>(),
+                it.GetValue<TTable::ShardNodeName>(),
                 minCommitId,
                 maxCommitId
             });
@@ -1968,6 +2003,29 @@ bool TIndexTabletDatabaseProxy::ReadNode(
     return result;
 }
 
+bool TIndexTabletDatabaseProxy::ReadNodes(
+    ui64 startNodeId,
+    ui64 maxNodes,
+    ui64& nextNodeId,
+    TVector<IIndexTabletDatabase::TNode>& nodes)
+{
+    auto result = TIndexTabletDatabase::ReadNodes(
+        startNodeId,
+        maxNodes,
+        nextNodeId,
+        nodes);
+    if (result) {
+        // If ReadNodes was successful, it is reasonable to update the cache
+        // with the values that have just been read.
+        for (const auto& node: nodes) {
+            NodeUpdates.emplace_back(TInMemoryIndexState::TWriteNodeRequest{
+                .NodeId = node.NodeId,
+                .Row = {.CommitId = node.MinCommitId, .Node = node.Attrs}});
+        }
+    }
+    return result;
+}
+
 void TIndexTabletDatabaseProxy::WriteNode(
     ui64 nodeId,
     ui64 commitId,
@@ -2138,7 +2196,7 @@ void TIndexTabletDatabaseProxy::WriteNodeRef(
     const TString& name,
     ui64 childNode,
     const TString& shardId,
-    const TString& shardName)
+    const TString& shardNodeName)
 {
     TIndexTabletDatabase::WriteNodeRef(
         nodeId,
@@ -2146,14 +2204,14 @@ void TIndexTabletDatabaseProxy::WriteNodeRef(
         name,
         childNode,
         shardId,
-        shardName);
+        shardNodeName);
     NodeUpdates.emplace_back(TInMemoryIndexState::TWriteNodeRefsRequest{
         .NodeRefsKey = {nodeId, name},
         .NodeRefsRow = {
             .CommitId = commitId,
             .ChildId = childNode,
             .ShardId = shardId,
-            .ShardName = shardName}});
+            .ShardNodeName = shardNodeName}});
 }
 
 void TIndexTabletDatabaseProxy::DeleteNodeRef(ui64 nodeId, const TString& name)
@@ -2170,7 +2228,7 @@ void TIndexTabletDatabaseProxy::WriteNodeRefVer(
     const TString& name,
     ui64 childNode,
     const TString& shardId,
-    const TString& shardName)
+    const TString& shardNodeName)
 {
     TIndexTabletDatabase::WriteNodeRefVer(
         nodeId,
@@ -2179,7 +2237,7 @@ void TIndexTabletDatabaseProxy::WriteNodeRefVer(
         name,
         childNode,
         shardId,
-        shardName);
+        shardNodeName);
     // TODO(#1146): _Ver tables not yet supported
 }
 
@@ -2201,7 +2259,7 @@ TIndexTabletDatabaseProxy::ExtractWriteNodeRefsFromNodeRef(const TNodeRef& ref)
             .CommitId = ref.MinCommitId,
             .ChildId = ref.ChildNodeId,
             .ShardId = ref.ShardId,
-            .ShardName = ref.ShardName}};
+            .ShardNodeName = ref.ShardNodeName}};
 }
 
 }   // namespace NCloud::NFileStore::NStorage

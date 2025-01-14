@@ -591,10 +591,10 @@ void TIndexTabletActor::HandlePoisonPill(
     const TEvents::TEvPoisonPill::TPtr& ev,
     const TActorContext& ctx)
 {
-    Y_UNUSED(ev);
-
-    LOG_INFO_S(ctx, TFileStoreComponents::TABLET,
-        LogTag << " Stop tablet because of PoisonPill request");
+    LOG_INFO(ctx, TFileStoreComponents::TABLET,
+        "%s Stop tablet because of PoisonPill request, ev->Sender: %s",
+        LogTag.c_str(),
+        ev->Sender.ToString().c_str());
 
     Suicide(ctx);
 }
@@ -612,6 +612,11 @@ void TIndexTabletActor::HandleSessionDisconnected(
     const TEvTabletPipe::TEvServerDisconnected::TPtr& ev,
     const TActorContext& ctx)
 {
+    LOG_INFO(ctx, TFileStoreComponents::TABLET,
+        "%s Server disconnected, ev->Sender: %s",
+        LogTag.c_str(),
+        ev->Sender.ToString().c_str());
+
     OrphanSession(ev->Sender, ctx.Now());
 }
 
@@ -676,8 +681,12 @@ void TIndexTabletActor::HandleGetFileSystemTopology(
 {
     auto response =
         std::make_unique<TEvIndexTablet::TEvGetFileSystemTopologyResponse>();
-    *response->Record.MutableShardFileSystemIds() =
-        GetFileSystem().GetShardFileSystemIds();
+
+    if (IsMainTablet()) {
+        *response->Record.MutableShardFileSystemIds() =
+            GetFileSystem().GetShardFileSystemIds();
+    }
+    response->Record.SetShardNo(GetFileSystem().GetShardNo());
 
     NCloud::Reply(
         ctx,
@@ -806,6 +815,16 @@ void TIndexTabletActor::HandleForcedOperationStatus(
 
 ////////////////////////////////////////////////////////////////////////////////
 
+void TIndexTabletActor::HandleShardRequestCompleted(
+    const TEvIndexTabletPrivate::TEvShardRequestCompleted::TPtr& ev,
+    const TActorContext& ctx)
+{
+    Y_UNUSED(ctx);
+    WorkerActors.erase(ev->Sender);
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 bool TIndexTabletActor::HandleRequests(STFUNC_SIG)
 {
     switch (ev->GetTypeRewrite()) {
@@ -890,6 +909,8 @@ STFUNC(TIndexTabletActor::StateBoot)
         IgnoreFunc(TEvIndexTabletPrivate::TEvUpdateLeakyBucketCounters);
         IgnoreFunc(TEvIndexTabletPrivate::TEvReleaseCollectBarrier);
         IgnoreFunc(TEvIndexTabletPrivate::TEvForcedRangeOperationProgress);
+        IgnoreFunc(TEvIndexTabletPrivate::TEvLoadNodeRefsRequest);
+        IgnoreFunc(TEvIndexTabletPrivate::TEvLoadNodesRequest);
 
         IgnoreFunc(TEvHiveProxy::TEvReassignTabletResponse);
 
@@ -924,8 +945,20 @@ STFUNC(TIndexTabletActor::StateInit)
             TEvIndexTabletPrivate::TEvNodeUnlinkedInShard,
             HandleNodeUnlinkedInShard);
         HFunc(
+            TEvIndexTabletPrivate::TEvNodeRenamedInDestination,
+            HandleNodeRenamedInDestination);
+        HFunc(
             TEvIndexTabletPrivate::TEvGetShardStatsCompleted,
             HandleGetShardStatsCompleted);
+        HFunc(
+            TEvIndexTabletPrivate::TEvShardRequestCompleted,
+            HandleShardRequestCompleted);
+        HFunc(
+            TEvIndexTabletPrivate::TEvLoadNodeRefsRequest,
+            HandleLoadNodeRefsRequest);
+        HFunc(
+            TEvIndexTabletPrivate::TEvLoadNodesRequest,
+            HandleLoadNodesRequest);
 
         FILESTORE_HANDLE_REQUEST(WaitReady, TEvIndexTablet)
 
@@ -968,8 +1001,20 @@ STFUNC(TIndexTabletActor::StateWork)
             TEvIndexTabletPrivate::TEvNodeUnlinkedInShard,
             HandleNodeUnlinkedInShard);
         HFunc(
+            TEvIndexTabletPrivate::TEvNodeRenamedInDestination,
+            HandleNodeRenamedInDestination);
+        HFunc(
             TEvIndexTabletPrivate::TEvGetShardStatsCompleted,
             HandleGetShardStatsCompleted);
+        HFunc(
+            TEvIndexTabletPrivate::TEvShardRequestCompleted,
+            HandleShardRequestCompleted);
+        HFunc(
+            TEvIndexTabletPrivate::TEvLoadNodeRefsRequest,
+            HandleLoadNodeRefsRequest);
+        HFunc(
+            TEvIndexTabletPrivate::TEvLoadNodesRequest,
+            HandleLoadNodesRequest);
 
         HFunc(TEvents::TEvWakeup, HandleWakeup);
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
@@ -1002,6 +1047,13 @@ STFUNC(TIndexTabletActor::StateZombie)
         HFunc(TEvTablet::TEvTabletDead, HandleTabletDead);
         HFunc(TEvTabletPipe::TEvServerDisconnected, HandleSessionDisconnected);
 
+        // If compaction/cleanup/collectgarbage/flush started before the tablet
+        // reload and completed during the zombie state, we should ignore it.
+        IgnoreFunc(TEvIndexTabletPrivate::TEvCompactionResponse);
+        IgnoreFunc(TEvIndexTabletPrivate::TEvCleanupResponse);
+        IgnoreFunc(TEvIndexTabletPrivate::TEvCollectGarbageResponse);
+        IgnoreFunc(TEvIndexTabletPrivate::TEvFlushResponse);
+
         IgnoreFunc(TEvFileStore::TEvUpdateConfig);
 
         // private api
@@ -1010,6 +1062,8 @@ STFUNC(TIndexTabletActor::StateZombie)
 
         IgnoreFunc(TEvIndexTabletPrivate::TEvReleaseCollectBarrier);
         IgnoreFunc(TEvIndexTabletPrivate::TEvForcedRangeOperationProgress);
+        IgnoreFunc(TEvIndexTabletPrivate::TEvLoadNodeRefsRequest);
+        IgnoreFunc(TEvIndexTabletPrivate::TEvLoadNodesRequest);
 
         IgnoreFunc(TEvIndexTabletPrivate::TEvReadDataCompleted);
         IgnoreFunc(TEvIndexTabletPrivate::TEvWriteDataCompleted);
@@ -1029,11 +1083,19 @@ STFUNC(TIndexTabletActor::StateZombie)
             TEvIndexTabletPrivate::TEvNodeUnlinkedInShard,
             HandleNodeUnlinkedInShard);
         HFunc(
+            TEvIndexTabletPrivate::TEvNodeRenamedInDestination,
+            HandleNodeRenamedInDestination);
+        HFunc(
             TEvIndexTabletPrivate::TEvGetShardStatsCompleted,
             HandleGetShardStatsCompleted);
+        HFunc(
+            TEvIndexTabletPrivate::TEvShardRequestCompleted,
+            HandleShardRequestCompleted);
 
         default:
-            HandleUnexpectedEvent(ev, TFileStoreComponents::TABLET);
+            if (!HandleDefaultEvents(ev, SelfId())) {
+                HandleUnexpectedEvent(ev, TFileStoreComponents::TABLET);
+            }
             break;
     }
 }
@@ -1049,6 +1111,8 @@ STFUNC(TIndexTabletActor::StateBroken)
         IgnoreFunc(TEvIndexTabletPrivate::TEvUpdateLeakyBucketCounters);
         IgnoreFunc(TEvIndexTabletPrivate::TEvReleaseCollectBarrier);
         IgnoreFunc(TEvIndexTabletPrivate::TEvForcedRangeOperationProgress);
+        IgnoreFunc(TEvIndexTabletPrivate::TEvLoadNodeRefsRequest);
+        IgnoreFunc(TEvIndexTabletPrivate::TEvLoadNodesRequest);
 
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
         HFunc(TEvTablet::TEvTabletDead, HandleTabletDead);
@@ -1072,8 +1136,14 @@ STFUNC(TIndexTabletActor::StateBroken)
             TEvIndexTabletPrivate::TEvNodeUnlinkedInShard,
             HandleNodeUnlinkedInShard);
         HFunc(
+            TEvIndexTabletPrivate::TEvNodeRenamedInDestination,
+            HandleNodeRenamedInDestination);
+        HFunc(
             TEvIndexTabletPrivate::TEvGetShardStatsCompleted,
             HandleGetShardStatsCompleted);
+        HFunc(
+            TEvIndexTabletPrivate::TEvShardRequestCompleted,
+            HandleShardRequestCompleted);
 
         default:
             HandleUnexpectedEvent(ev, TFileStoreComponents::TABLET);
@@ -1155,9 +1225,28 @@ i64 TIndexTabletActor::TMetrics::CalculateNetworkRequestBytes(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-bool TIndexTabletActor::IsShard() const
+bool TIndexTabletActor::IsMainTablet() const
 {
-    return GetFileSystem().GetShardNo() > 0;
+    return GetFileSystem().GetShardNo() == 0;
+}
+
+bool TIndexTabletActor::BehaveAsShard(const NProto::THeaders& headers) const
+{
+    // main filesystem can't behave as a shard
+    if (IsMainTablet()) {
+        return false;
+    }
+
+    // shard can behave as a directory tablet only if it's explicitly allowed
+    // via request headers AND it's properly configured (knows about other
+    // shards)
+    if (headers.GetBehaveAsDirectoryTablet()
+            && !GetFileSystem().GetShardFileSystemIds().empty())
+    {
+        return false;
+    }
+
+    return true;
 }
 
 }   // namespace NCloud::NFileStore::NStorage

@@ -137,6 +137,8 @@ void DumpChannels(
                 groupId,
                 storagePool);
         },
+        [&](ui32 groupId)
+        { return GetMonitoringDashboardYDBGroupUrl(config, groupId); },
         [&] (IOutputStream& out, ui64 hiveTabletId, ui64 tabletId, ui32 c) {
             BuildReassignChannelButton(
                 out,

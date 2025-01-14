@@ -39,4 +39,8 @@ TString GetMonitoringYDBGroupUrl(
     ui32 groupId,
     const TString& storagePool);
 
+TString GetMonitoringDashboardYDBGroupUrl(
+    const TDiagnosticsConfig& config,
+    ui32 groupId);
+
 }   // namespace NCloud::NBlockStore

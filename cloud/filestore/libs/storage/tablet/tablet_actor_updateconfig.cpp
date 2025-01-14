@@ -158,6 +158,7 @@ void TIndexTabletActor::HandleUpdateConfig(
     *newConfig.MutableShardFileSystemIds() =
         oldConfig.GetShardFileSystemIds();
     newConfig.SetShardNo(oldConfig.GetShardNo());
+    newConfig.SetMainFileSystemId(oldConfig.GetMainFileSystemId());
     newConfig.SetAutomaticShardCreationEnabled(
         oldConfig.GetAutomaticShardCreationEnabled());
     newConfig.SetShardAllocationUnit(oldConfig.GetShardAllocationUnit());
@@ -229,7 +230,7 @@ void TIndexTabletActor::ExecuteTx_UpdateConfig(
     TThrottlerConfig config;
     Convert(args.FileSystem.GetPerformanceProfile(), config);
 
-    UpdateConfig(db, args.FileSystem, config);
+    UpdateConfig(db, *Config, args.FileSystem, config);
 }
 
 void TIndexTabletActor::CompleteTx_UpdateConfig(
@@ -272,24 +273,32 @@ void TIndexTabletActor::HandleConfigureShards(
 
     const auto& shardIds = GetFileSystem().GetShardFileSystemIds();
     NProto::TError error;
-    if (msg->Record.GetShardFileSystemIds().size() < shardIds.size()) {
-        error = MakeError(E_ARGUMENT, TStringBuilder() << "new shard list"
-            " is smaller than prev shard list: "
-            << msg->Record.GetShardFileSystemIds().size() << " < "
-            << shardIds.size());
-    } else if (msg->Record.ShardFileSystemIdsSize() > MaxShardCount) {
-        error = MakeError(E_ARGUMENT, TStringBuilder() << "new shard list"
-            " is bigger than limit: "
-            << msg->Record.GetShardFileSystemIds().size() << " > "
-            << MaxShardCount);
-    } else {
-        for (int i = 0; i < shardIds.size(); ++i) {
-            if (shardIds[i] != msg->Record.GetShardFileSystemIds(i)) {
-                error = MakeError(E_ARGUMENT, TStringBuilder() << "shard"
-                    " change not allowed, pos=" << i << ", prev="
-                    << shardIds[i] << ", new="
-                    << msg->Record.GetShardFileSystemIds(i));
-                break;
+    if (!IsMainTablet() && !msg->Record.GetForce()) {
+        error = MakeError(E_INVALID_STATE, TStringBuilder() << "can't configure"
+            << " shards for a shard (ShardNo=" << GetFileSystem().GetShardNo()
+            << ")");
+    }
+
+    if (!HasError(error) && !msg->Record.GetForce()) {
+        if (msg->Record.GetShardFileSystemIds().size() < shardIds.size()) {
+            error = MakeError(E_ARGUMENT, TStringBuilder() << "new shard list"
+                " is smaller than prev shard list: "
+                << msg->Record.GetShardFileSystemIds().size() << " < "
+                << shardIds.size());
+        } else if (msg->Record.ShardFileSystemIdsSize() > MaxShardCount) {
+            error = MakeError(E_ARGUMENT, TStringBuilder() << "new shard list"
+                " is bigger than limit: "
+                << msg->Record.GetShardFileSystemIds().size() << " > "
+                << MaxShardCount);
+        } else {
+            for (int i = 0; i < shardIds.size(); ++i) {
+                if (shardIds[i] != msg->Record.GetShardFileSystemIds(i)) {
+                    error = MakeError(E_ARGUMENT, TStringBuilder() << "shard"
+                        " change not allowed, pos=" << i << ", prev="
+                        << shardIds[i] << ", new="
+                        << msg->Record.GetShardFileSystemIds(i));
+                    break;
+                }
             }
         }
     }
@@ -336,7 +345,7 @@ void TIndexTabletActor::ExecuteTx_ConfigureShards(
     *config.MutableShardFileSystemIds() =
         std::move(*args.Request.MutableShardFileSystemIds());
 
-    UpdateConfig(db, config, GetThrottlingConfig());
+    UpdateConfig(db, *Config, config, GetThrottlingConfig());
 }
 
 void TIndexTabletActor::CompleteTx_ConfigureShards(
@@ -422,8 +431,11 @@ void TIndexTabletActor::ExecuteTx_ConfigureAsShard(
 
     auto config = GetFileSystem();
     config.SetShardNo(args.Request.GetShardNo());
+    config.SetMainFileSystemId(args.Request.GetMainFileSystemId());
+    *config.MutableShardFileSystemIds() =
+        std::move(*args.Request.MutableShardFileSystemIds());
 
-    UpdateConfig(db, config, GetThrottlingConfig());
+    UpdateConfig(db, *Config, config, GetThrottlingConfig());
 }
 
 void TIndexTabletActor::CompleteTx_ConfigureAsShard(
@@ -431,9 +443,10 @@ void TIndexTabletActor::CompleteTx_ConfigureAsShard(
     TTxIndexTablet::TConfigureAsShard& args)
 {
     LOG_INFO(ctx, TFileStoreComponents::TABLET,
-        "%s Configured as shard, ShardNo: %u",
+        "%s Configured as shard, ShardNo: %u, new shard list: %s",
         LogTag.c_str(),
-        args.Request.GetShardNo());
+        args.Request.GetShardNo(),
+        JoinSeq(",", GetFileSystem().GetShardFileSystemIds()).c_str());
 
     auto response =
         std::make_unique<TEvIndexTablet::TEvConfigureAsShardResponse>();

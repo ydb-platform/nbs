@@ -1639,6 +1639,28 @@ void TPartitionState::ResetCompactionMap(
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+// Compaction
+
+EOperationStatus TPartitionState::GetCompactionStatus(
+    ECompactionType type) const
+{
+    const auto& state = type == ECompactionType::Forced ?
+        ForcedCompactionState.State :
+        CompactionState;
+    return state.GetStatus();
+}
+
+void TPartitionState::SetCompactionStatus(
+    ECompactionType type,
+    EOperationStatus status)
+{
+    auto& state =  type == ECompactionType::Forced ?
+        ForcedCompactionState.State :
+        CompactionState;
+    state.SetStatus(status);
+}
+
+////////////////////////////////////////////////////////////////////////////////
 // Stats
 
 void TPartitionState::WriteStats(TPartitionDatabase& db)

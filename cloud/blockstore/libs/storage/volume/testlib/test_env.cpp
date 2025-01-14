@@ -158,10 +158,10 @@ void TVolumeClient::RebootSysTablet()
 
 std::unique_ptr<TEvBlockStore::TEvUpdateVolumeConfig>
 TVolumeClient::CreateUpdateVolumeConfigRequest(
-    ui32 maxBandwidth,
+    ui64 maxBandwidth,
     ui32 maxIops,
     ui32 burstPercentage,
-    ui32 maxPostponedWeight,
+    ui64 maxPostponedWeight,
     bool throttlingEnabled,
     ui32 version,
     NCloud::NProto::EStorageMediaKind mediaKind,
@@ -605,7 +605,8 @@ std::unique_ptr<TTestActorRuntime> PrepareTestActorRuntime(
     NProto::TStorageServiceConfig storageServiceConfig,
     TDiskRegistryStatePtr diskRegistryState,
     NProto::TFeaturesConfig featuresConfig,
-    NRdma::IClientPtr rdmaClient)
+    NRdma::IClientPtr rdmaClient,
+    TDiskAgentStatePtr diskAgentState)
 {
     auto runtime = std::make_unique<TTestBasicRuntime>(1);
 
@@ -690,14 +691,14 @@ std::unique_ptr<TTestActorRuntime> PrepareTestActorRuntime(
     runtime->AddLocalService(
         MakeDiskAgentServiceId(runtime->GetNodeId()),
         TActorSetupCmd(
-            new TDiskAgentMock({
-                diskRegistryState->Devices.begin(),
-                diskRegistryState->Devices.end()
-            }),
+            new TDiskAgentMock(
+                {
+                    diskRegistryState->Devices.begin(),
+                    diskRegistryState->Devices.end(),
+                },
+                diskAgentState),
             TMailboxType::Simple,
-            0
-        )
-    );
+            0));
 
     SetupTabletServices(*runtime);
 

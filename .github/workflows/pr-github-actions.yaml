@@ -17,16 +17,58 @@ on:
       - 'reopened'
       - 'labeled'
   workflow_dispatch:
+    inputs:
+      nebius:
+        required: false
+        type: choice
+        default: "no"
+        description: "Run on nebius runners"
+        options:
+          - "yes"
+          - "no"
+      allow_downgrade:
+        description: 'Allow downgrade'
+        required: false
+        type: choice
+        default: "no"
+        options:
+          - "yes"
+          - "no"
+      large_tests:
+        description: 'Launch large tests'
+        required: false
+        type: choice
+        default: "no"
+        options:
+          - "yes"
+          - "no"
 
 defaults:
   run:
     shell: bash
+
+env:
+  nebius: ${{ vars.GLOBAL_RUN_ON_NEBIUS == 'yes' || ((github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'nebius')) || inputs.nebius == 'yes') }}
+  allow_downgrade: ${{ vars.GLOBAL_ALLOW_DOWNGRADE == 'yes' || ((github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'allow-downgrade')) || inputs.allow_downgrade == 'yes') }}
+  large_tests: ${{ (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'large-tests'))  && 'true' || inputs.large_tests == 'yes' }}
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
   cancel-in-progress: true
 
 jobs:
+  set-env:
+    runs-on: ubuntu-latest
+    outputs:
+      nebius: ${{ env.nebius == 'false' && 'no' || 'yes' }}
+      allow_downgrade: ${{ env.allow_downgrade == 'false' && 'no' || 'yes' }}
+      large_tests: ${{ env.large_tests == 'false' && 'no' || 'yes' }}
+    # we don't need anything, but otherwise github will complain
+    steps:
+      - name: set env
+        id: set-env
+        run: echo
+
   shell:
     runs-on: ubuntu-latest
 
@@ -44,14 +86,28 @@ jobs:
           if_true: "github-pr-review"
           if_false: "github-check"
 
-      - name: shellcheck
-        uses: reviewdog/action-shellcheck@v1.19.0
+      - name: set up dependencies
+        run: pip install pyyaml
+
+      - name: generate shellscripts from github actions
+        run: |
+          python .github/scripts/shell-extractor.py
+          find .temporary/ -type f -name "*.sh";
+
+      - name: shellcheck for .github dir
+        uses: ludeeus/action-shellcheck@master
         with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          reporter: ${{ steps.reporter.outputs.value }}
-          path: |
-            .github/
-          pattern: "*.sh"
+          scandir: .github
+        env:
+          SHELLCHECK_OPTS: "-e SC2155,SC2086,SC2154,SC2164,SC2009,SC2015"
+
+
+      - name: shellcheck for github actions shell scripts in .temporary dir
+        uses: ludeeus/action-shellcheck@master
+        env:
+          SHELLCHECK_OPTS: "-e SC2155,SC2086,SC2154,SC2164,SC2009,SC2015"
+        with:
+          scandir: .temporary
 
       - name: shfmt
         uses: librarian/action-shfmt@v0.0.1
@@ -121,8 +177,8 @@ jobs:
         run: |
           set -x
           export TMP_OUT=$(mktemp)
-          find .github/workflows -type f \( -iname \*.yaml -o -iname \*.yml \) \
-            | xargs -I {} action-validator --verbose {} > $TMP_OUT
+          find .github/workflows -type f \( -iname \*.yaml -o -iname \*.yml \) -print0 \
+            | xargs -0 -I {} action-validator --verbose {} > $TMP_OUT
 
           echo "WORKFLOW_LINT=$(cat $TMP_OUT | awk -v ORS='\\n' 1)"
           cat $TMP_OUT >> "$GITHUB_STEP_SUMMARY"
@@ -147,6 +203,10 @@ jobs:
   create-and-delete-vm:
     name: Create and delete VM
     uses: ./.github/workflows/create_and_delete_vm.yaml
+    needs:
+      - set-env
     with:
-      nebius: ${{ vars.GLOBAL_RUN_ON_NEBIUS }}
+      nebius: ${{ needs.set-env.outputs.nebius }}
+      allow_downgrade: ${{ needs.set-env.outputs.allow_downgrade }}
+      large_tests: ${{ needs.set-env.outputs.large_tests }}
     secrets: inherit

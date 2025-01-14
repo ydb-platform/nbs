@@ -5,8 +5,11 @@ on:
   workflow_dispatch:
     inputs:
       nebius:
-        type: string
-        default: "no"
+        type: choice
+        default: "yes"
+        options:
+          - "yes"
+          - "no"
         description: "Run on nebius infrastructure"
   workflow_call:
 

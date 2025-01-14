@@ -1,6 +1,10 @@
 PY3TEST()
 
-INCLUDE(${ARCADIA_ROOT}/cloud/filestore/tests/recipes/medium.inc)
+IF (SANITIZER_TYPE OR WITH_VALGRIND)
+    INCLUDE(${ARCADIA_ROOT}/cloud/filestore/tests/recipes/large.inc)
+ELSE()
+    INCLUDE(${ARCADIA_ROOT}/cloud/filestore/tests/recipes/medium.inc)
+ENDIF()
 
 DEPENDS(
     cloud/storage/core/tools/testing/fio/bin
@@ -24,6 +28,7 @@ SET(
     NFS_STORAGE_CONFIG_PATCH
     cloud/filestore/tests/loadtest/service-kikimr-newfeatures-test/nfs-storage.txt
 )
+SET(NFS_FORCE_VERBOSE 1)
 
 INCLUDE(${ARCADIA_ROOT}/cloud/filestore/tests/recipes/service-kikimr.inc)
 INCLUDE(${ARCADIA_ROOT}/cloud/filestore/tests/recipes/vhost-kikimr.inc)

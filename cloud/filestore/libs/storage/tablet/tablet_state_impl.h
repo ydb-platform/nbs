@@ -18,6 +18,7 @@
 #include <cloud/filestore/libs/storage/tablet/model/node_index_cache.h>
 #include <cloud/filestore/libs/storage/tablet/model/range_locks.h>
 #include <cloud/filestore/libs/storage/tablet/model/read_ahead.h>
+#include <cloud/filestore/libs/storage/tablet/model/shard_balancer.h>
 #include <cloud/filestore/libs/storage/tablet/model/throttler_logger.h>
 #include <cloud/filestore/libs/storage/tablet/model/throttling_policy.h>
 #include <cloud/filestore/libs/storage/tablet/model/truncate_queue.h>
@@ -60,6 +61,7 @@ struct TIndexTabletState::TImpl
     TNodeIndexCache NodeIndexCache;
     TInMemoryIndexState InMemoryIndexState;
     TSet<ui64> OrphanNodeIds;
+    TSet<TString> PendingNodeCreateInShardNames;
 
     TCheckpointStore Checkpoints;
     TChannels Channels;
@@ -67,6 +69,8 @@ struct TIndexTabletState::TImpl
     IBlockLocation2RangeIndexPtr RangeIdHasher;
 
     TThrottlingPolicy ThrottlingPolicy;
+
+    TShardBalancer ShardBalancer;
 
     TImpl(const TFileStoreAllocRegistry& registry)
         : FreshBytes(registry.GetAllocator(EAllocatorTag::FreshBytes))

@@ -43,7 +43,7 @@ message TVolumePerfThreshold
 message TOperationCoefficients
 {
     optional uint32 Iops = 1;
-    optional uint32 Bandwidth = 2;
+    optional uint64 Bandwidth = 2;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -73,6 +73,9 @@ message TMonitoringUrlData
     optional string MonitoringPartitionDashboard = 5;
     optional string MonitoringNBSAlertsDashboard = 6;
     optional string MonitoringNBSTVDashboard = 7;
+
+    optional string MonitoringYDBProject = 8;
+    optional string MonitoringYDBGroupDashboard = 9;
 };
 
 ////////////////////////////////////////////////////////////////////////////////

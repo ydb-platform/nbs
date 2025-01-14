@@ -73,6 +73,7 @@ private:
     const ui64 CommitId;
     const TBlockRange32 BlockRange;
     const TDuration ReadBlobTimeout;
+    const ECompactionType CompactionType;
     TGarbageInfo GarbageInfo;
     TAffectedBlobInfos AffectedBlobInfos;
     ui32 BlobsSkipped;
@@ -109,6 +110,7 @@ public:
         ui64 commitId,
         const TBlockRange32& blockRange,
         TDuration readBlobTimeout,
+        ECompactionType compactionType,
         TGarbageInfo garbageInfo,
         TAffectedBlobInfos affectedBlobInfos,
         ui32 blobsSkipped,
@@ -165,6 +167,7 @@ TCompactionActor::TCompactionActor(
         ui64 commitId,
         const TBlockRange32& blockRange,
         TDuration readBlobTimeout,
+        ECompactionType compactionType,
         TGarbageInfo garbageInfo,
         TAffectedBlobInfos affectedBlobInfos,
         ui32 blobsSkipped,
@@ -179,6 +182,7 @@ TCompactionActor::TCompactionActor(
     , CommitId(commitId)
     , BlockRange(blockRange)
     , ReadBlobTimeout(readBlobTimeout)
+    , CompactionType(compactionType)
     , GarbageInfo(std::move(garbageInfo))
     , AffectedBlobInfos(std::move(affectedBlobInfos))
     , BlobsSkipped(blobsSkipped)
@@ -420,6 +424,7 @@ void TCompactionActor::NotifyCompleted(
     request->AffectedRanges = std::move(AffectedRanges);
     request->AffectedBlockInfos = std::move(AffectedBlockInfos);
     request->BlockCommitIds = std::move(BlockCommitIds);
+    request->CompactionType = CompactionType;
 
     NCloud::Send(ctx, Tablet, std::move(request));
 }
@@ -628,7 +633,9 @@ public:
 
 void TPartitionActor::EnqueueCompactionIfNeeded(const TActorContext& ctx)
 {
-    if (State->GetCompactionStatus() != EOperationStatus::Idle) {
+    if (State->GetCompactionStatus(ECompactionType::Tablet) !=
+        EOperationStatus::Idle)
+    {
         // compaction already enqueued
         return;
     }
@@ -685,7 +692,6 @@ void TPartitionActor::EnqueueCompactionIfNeeded(const TActorContext& ctx)
         return;
     }
 
-
     TEvPartitionPrivate::ECompactionMode compactionMode;
     if (rangeScore > 0) {
         compactionMode = TEvPartitionPrivate::RangeCompaction;
@@ -696,7 +702,9 @@ void TPartitionActor::EnqueueCompactionIfNeeded(const TActorContext& ctx)
         return;
     }
 
-    State->SetCompactionStatus(EOperationStatus::Enqueued);
+    State->SetCompactionStatus(
+        ECompactionType::Tablet,
+        EOperationStatus::Enqueued);
 
     auto request = std::make_unique<TEvPartitionPrivate::TEvCompactionRequest>(
         MakeIntrusive<TCallContext>(CreateRequestId()),
@@ -747,13 +755,18 @@ void TPartitionActor::HandleCompaction(
         NCloud::Reply(ctx, requestInfo, std::move(response));
     };
 
-    if (State->GetCompactionStatus() == EOperationStatus::Started) {
-        replyError(ctx, *requestInfo, E_TRY_AGAIN, "compaction already in progress");
+    const auto compactionType =
+        msg->CompactionOptions.test(ToBit(ECompactionOption::Forced)) ?
+        ECompactionType::Forced:
+        ECompactionType::Tablet;
+
+    if (State->GetCompactionStatus(compactionType) == EOperationStatus::Started) {
+        replyError(ctx, *requestInfo, E_TRY_AGAIN, "compaction already started");
         return;
     }
 
     if (!State->IsCompactionAllowed()) {
-        State->SetCompactionStatus(EOperationStatus::Idle);
+        State->SetCompactionStatus(compactionType, EOperationStatus::Idle);
 
         replyError(ctx, *requestInfo, E_BS_OUT_OF_SPACE, "all channels readonly");
         return;
@@ -788,7 +801,7 @@ void TPartitionActor::HandleCompaction(
     }
 
     if (!rangeStat.BlobCount && !garbageInfo.BlobCounters) {
-        State->SetCompactionStatus(EOperationStatus::Idle);
+        State->SetCompactionStatus(compactionType, EOperationStatus::Idle);
 
         replyError(ctx, *requestInfo, S_ALREADY, "nothing to compact");
         return;
@@ -817,14 +830,13 @@ void TPartitionActor::HandleCompaction(
             rangeStat.ReadRequestBlobCount,
             rangeStat.ReadRequestBlockCount,
             rangeStat.CompactionScore.Score,
-            msg->ForceFullCompaction
+            msg->CompactionOptions.test(ToBit(ECompactionOption::Forced))
         );
 
         tx = CreateTx<TCompaction>(
             requestInfo,
             blockRange,
-            msg->ForceFullCompaction
-        );
+            msg->CompactionOptions);
     } else {
         LOG_DEBUG(ctx, TBlockStoreComponents::PARTITION,
             "[%lu] Start compaction (blobs: %s)",
@@ -834,7 +846,8 @@ void TPartitionActor::HandleCompaction(
         tx = CreateTx<TCompaction>(requestInfo, std::move(garbageInfo));
     }
 
-    State->SetCompactionStatus(EOperationStatus::Started);
+
+    State->SetCompactionStatus(compactionType, EOperationStatus::Started);
 
     AddTransaction<TEvPartitionPrivate::TCompactionMethod>(*requestInfo);
 
@@ -868,7 +881,8 @@ void TPartitionActor::HandleCompactionCompleted(
     PartCounters->RequestCounters.Compaction.AddRequest(d.MicroSeconds());
 
     State->ReleaseCollectBarrier(msg->CommitId);
-    State->SetCompactionStatus(EOperationStatus::Idle);
+
+    State->SetCompactionStatus(msg->CompactionType, EOperationStatus::Idle);
 
     Actors.erase(ev->Sender);
 
@@ -955,7 +969,7 @@ bool TPartitionActor::PrepareCompaction(
 
     visitor.Finish();
 
-    if (!args.ForceFullCompaction) {
+    if (!args.CompactionOptions.test(ToBit(ECompactionOption::Full))) {
         Sort(
             args.Blobs.begin(),
             args.Blobs.end(),
@@ -1177,6 +1191,12 @@ void TPartitionActor::CompleteCompaction(
         Config->GetBlobStorageAsyncGetTimeoutSSD() :
         Config->GetBlobStorageAsyncGetTimeoutHDD();
 
+
+    const auto compactionType =
+        args.CompactionOptions.test(ToBit(ECompactionOption::Forced)) ?
+            ECompactionType::Forced:
+            ECompactionType::Tablet;
+
     auto actor = NCloud::Register<TCompactionActor>(
         ctx,
         args.RequestInfo,
@@ -1187,6 +1207,7 @@ void TPartitionActor::CompleteCompaction(
         args.CommitId,
         args.BlockRange,
         readBlobTimeout,
+        compactionType,
         std::move(args.GarbageInfo),
         std::move(args.AffectedBlobInfos),
         args.BlobsSkipped,

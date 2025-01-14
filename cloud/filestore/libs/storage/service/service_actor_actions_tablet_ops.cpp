@@ -90,4 +90,19 @@ IActorPtr TStorageServiceActor::CreateUnsafeGetNodeActionActor(
         std::move(input));
 }
 
+////////////////////////////////////////////////////////////////////////////////
+// RestartTablet
+
+IActorPtr TStorageServiceActor::CreateRestartTabletActionActor(
+    TRequestInfoPtr requestInfo,
+    TString input)
+{
+    using TRestartTabletActor = TTabletActionActor<
+        TEvIndexTablet::TEvRestartTabletRequest,
+        TEvIndexTablet::TEvRestartTabletResponse>;
+    return std::make_unique<TRestartTabletActor>(
+        std::move(requestInfo),
+        std::move(input));
+}
+
 }   // namespace NCloud::NFileStore::NStorage

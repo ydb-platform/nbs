@@ -11,6 +11,7 @@
 #include <cloud/filestore/libs/storage/model/range.h>
 #include <cloud/filestore/libs/storage/tablet/model/blob.h>
 #include <cloud/filestore/libs/storage/tablet/model/block.h>
+#include <cloud/filestore/libs/storage/tablet/model/shard_balancer.h>
 #include <cloud/filestore/private/api/protos/tablet.pb.h>
 
 #include <contrib/ydb/core/base/blobstorage.h>
@@ -167,7 +168,8 @@ using TCreateNodeInShardResult = std::variant<
 
 using TUnlinkNodeInShardResult = std::variant<
     NProto::TUnlinkNodeResponse,
-    NProto::TRenameNodeResponse>;
+    NProto::TRenameNodeResponse,
+    NProtoPrivate::TRenameNodeInDestinationResponse>;
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -524,6 +526,43 @@ struct TEvIndexTabletPrivate
     };
 
     //
+    // LoadNodeRefs
+    //
+
+    struct TLoadNodeRefsRequest
+    {
+        const ui64 NodeId;
+        const TString Cookie;
+        const ui32 MaxNodeRefs;
+
+        TLoadNodeRefsRequest(
+                ui64 nodeId,
+                TString cookie,
+                ui32 maxNodeRefs)
+            : NodeId(nodeId)
+            , Cookie(std::move(cookie))
+            , MaxNodeRefs(maxNodeRefs)
+        {}
+    };
+
+    //
+    // LoadNodes
+    //
+
+    struct TLoadNodesRequest
+    {
+        const ui64 NodeId;
+        const ui32 MaxNodes;
+
+        TLoadNodesRequest(
+                ui64 nodeId,
+                ui32 maxNodes)
+            : NodeId(nodeId)
+            , MaxNodes(maxNodes)
+        {}
+    };
+
+    //
     // ForcedRangeOperation
     //
 
@@ -576,6 +615,7 @@ struct TEvIndexTabletPrivate
         const TString SessionId;
         const ui64 RequestId;
         const ui64 OpLogEntryId;
+        const TString NodeName;
         TCreateNodeInShardResult Result;
 
         TNodeCreatedInShard(
@@ -583,11 +623,13 @@ struct TEvIndexTabletPrivate
                 TString sessionId,
                 ui64 requestId,
                 ui64 opLogEntryId,
+                TString nodeName,
                 TCreateNodeInShardResult result)
             : RequestInfo(std::move(requestInfo))
             , SessionId(std::move(sessionId))
             , RequestId(requestId)
             , OpLogEntryId(opLogEntryId)
+            , NodeName(std::move(nodeName))
             , Result(std::move(result))
         {
         }
@@ -616,6 +658,36 @@ struct TEvIndexTabletPrivate
             , RequestId(requestId)
             , OpLogEntryId(opLogEntryId)
             , Result(std::move(result))
+        {
+        }
+    };
+
+    //
+    // NodeRenamedInDestination
+    //
+
+    struct TNodeRenamedInDestination
+    {
+        const TRequestInfoPtr RequestInfo;
+        const TString SessionId;
+        const ui64 RequestId;
+        const ui64 OpLogEntryId;
+        NProto::TRenameNodeRequest Request;
+        NProtoPrivate::TRenameNodeInDestinationResponse Response;
+
+        TNodeRenamedInDestination(
+                TRequestInfoPtr requestInfo,
+                TString sessionId,
+                ui64 requestId,
+                ui64 opLogEntryId,
+                NProto::TRenameNodeRequest request,
+                NProtoPrivate::TRenameNodeInDestinationResponse response)
+            : RequestInfo(std::move(requestInfo))
+            , SessionId(std::move(sessionId))
+            , RequestId(requestId)
+            , OpLogEntryId(opLogEntryId)
+            , Request(std::move(request))
+            , Response(std::move(response))
         {
         }
     };
@@ -820,6 +892,8 @@ struct TEvIndexTabletPrivate
 
     struct TGetShardStatsCompleted
     {
+        NProtoPrivate::TStorageStats AggregateStats;
+        TVector<TShardStats> ShardStats;
         TInstant StartedTs;
     };
 
@@ -847,8 +921,14 @@ struct TEvIndexTabletPrivate
 
         EvNodeCreatedInShard,
         EvNodeUnlinkedInShard,
+        EvNodeRenamedInDestination,
 
         EvGetShardStatsCompleted,
+
+        EvShardRequestCompleted,
+
+        EvLoadNodeRefs,
+        EvLoadNodes,
 
         EvEnd
     };
@@ -860,17 +940,22 @@ struct TEvIndexTabletPrivate
     FILESTORE_TABLET_REQUESTS_PRIVATE_SYNC(FILESTORE_DECLARE_EVENTS)
 
     using TEvUpdateCounters = TRequestEvent<TEmpty, EvUpdateCounters>;
-    using TEvUpdateLeakyBucketCounters = TRequestEvent<TEmpty, EvUpdateLeakyBucketCounters>;
+    using TEvUpdateLeakyBucketCounters =
+        TRequestEvent<TEmpty, EvUpdateLeakyBucketCounters>;
 
     using TEvReleaseCollectBarrier =
         TRequestEvent<TReleaseCollectBarrier, EvReleaseCollectBarrier>;
 
-    using TEvReadDataCompleted = TResponseEvent<TReadWriteCompleted, EvReadDataCompleted>;
-    using TEvWriteDataCompleted = TResponseEvent<TReadWriteCompleted, EvWriteDataCompleted>;
-    using TEvAddDataCompleted = TResponseEvent<TAddDataCompleted, EvAddDataCompleted>;
+    using TEvReadDataCompleted =
+        TResponseEvent<TReadWriteCompleted, EvReadDataCompleted>;
+    using TEvWriteDataCompleted =
+        TResponseEvent<TReadWriteCompleted, EvWriteDataCompleted>;
+    using TEvAddDataCompleted =
+        TResponseEvent<TAddDataCompleted, EvAddDataCompleted>;
 
-    using TEvForcedRangeOperationProgress =
-        TRequestEvent<TForcedRangeOperationProgress, EvForcedRangeOperationProgress>;
+    using TEvForcedRangeOperationProgress = TRequestEvent<
+        TForcedRangeOperationProgress,
+        EvForcedRangeOperationProgress>;
 
     using TEvNodeCreatedInShard =
         TRequestEvent<TNodeCreatedInShard, EvNodeCreatedInShard>;
@@ -878,8 +963,20 @@ struct TEvIndexTabletPrivate
     using TEvNodeUnlinkedInShard =
         TRequestEvent<TNodeUnlinkedInShard, EvNodeUnlinkedInShard>;
 
+    using TEvNodeRenamedInDestination =
+        TRequestEvent<TNodeRenamedInDestination, EvNodeRenamedInDestination>;
+
     using TEvGetShardStatsCompleted =
         TResponseEvent<TGetShardStatsCompleted, EvGetShardStatsCompleted>;
+
+    using TEvShardRequestCompleted =
+        TResponseEvent<TEmpty, EvShardRequestCompleted>;
+
+    using TEvLoadNodeRefsRequest =
+        TRequestEvent<TLoadNodeRefsRequest, EvLoadNodeRefs>;
+
+    using TEvLoadNodesRequest =
+        TRequestEvent<TLoadNodesRequest, EvLoadNodes>;
 };
 
 }   // namespace NCloud::NFileStore::NStorage

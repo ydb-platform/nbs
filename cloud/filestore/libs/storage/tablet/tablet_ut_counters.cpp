@@ -19,17 +19,17 @@ TFileSystemConfig MakeThrottlerConfig(
     bool throttlingEnabled,
     ui32 maxReadIops,
     ui32 maxWriteIops,
-    ui32 maxReadBandwidth,
-    ui32 maxWriteBandwidth,
+    ui64 maxReadBandwidth,
+    ui64 maxWriteBandwidth,
     ui32 boostTime,
     ui32 boostRefillTime,
     ui32 boostPercentage,
-    ui32 maxPostponedWeight,
+    ui64 maxPostponedWeight,
     ui32 maxWriteCostMultiplier,
     ui32 maxPostponedTime,
     ui32 maxPostponedCount,
     ui32 burstPercentage,
-    ui32 defaultPostponedRequestWeight)
+    ui64 defaultPostponedRequestWeight)
 {
     TFileSystemConfig config;
     config.PerformanceProfile.ThrottlingEnabled = throttlingEnabled;
@@ -234,12 +234,12 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Counters)
 
         registry->Visit(TInstant::Zero(), Visitor);
         Visitor.ValidateExpectedCounters({
-            {{{"sensor", "MaxWriteBandwidth"}}, 4_GB - 1},
+            {{{"sensor", "MaxWriteBandwidth"}}, Max<i64>()},
             {{{"sensor", "MaxReadIops"}}, 4_GB - 1},
             {{{"sensor", "MaxWriteIops"}}, 4_GB - 1},
-            {{{"sensor", "MaxReadBandwidth"}}, 4_GB - 1}
+            {{{"sensor", "MaxReadBandwidth"}}, Max<i64>()}
         });
-        const auto config = MakeThrottlerConfig(
+        auto config = MakeThrottlerConfig(
             true,                                    // throttlingEnabled
             100,                                     // maxReadIops
             200,                                     // maxWriteIops
@@ -266,6 +266,16 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Counters)
             {{{"sensor", "MaxReadIops"}}, 100},
             {{{"sensor", "MaxWriteIops"}}, 200},
             {{{"sensor", "MaxReadBandwidth"}}, 4_KB}
+        });
+
+        config.PerformanceProfile.MaxWriteBandwidth = 3_GB;
+        config.PerformanceProfile.MaxReadBandwidth = 5_GB;
+        Tablet->UpdateConfig(config);
+        Env.GetRuntime().DispatchEvents({}, TDuration::Seconds(5));
+        registry->Visit(TInstant::Zero(), Visitor);
+        Visitor.ValidateExpectedCounters({
+            {{{"sensor", "MaxWriteBandwidth"}}, 3_GB},
+            {{{"sensor", "MaxReadBandwidth"}}, 5_GB},
         });
     }
 
@@ -614,7 +624,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Counters)
                 {"filesystem", "test"}}, 0},
         });
 
-        // hard to guarantee something better than the absense of overflows
+        // hard to guarantee something better than the absence of overflows
         const auto latencySensorPredicate = [] (i64 val) {
             return val < 1e9;
         };

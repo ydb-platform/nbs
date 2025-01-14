@@ -1056,9 +1056,9 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
         }
 
         auto config = CreateDefaultStorageConfig();
-        config.SetNonReplicatedAgentMinTimeout(10'000);
-        config.SetNonReplicatedAgentMaxTimeout(50'000);
-        config.SetNonReplicatedAgentDisconnectRecoveryInterval(100'000);
+        config.SetNonReplicatedAgentMinTimeout(10'000); // 10s
+        config.SetNonReplicatedAgentMaxTimeout(50'000); // 50s
+        config.SetNonReplicatedAgentDisconnectRecoveryInterval(100'000); // 100s
         config.SetNonReplicatedAgentTimeoutGrowthFactor(2);
 
         auto runtime =
@@ -1123,6 +1123,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
             pipeEv->Rewrite(NKikimr::TEvTabletPipe::EvSend, pipe);
 
             runtime->Send(pipeEv, agentNo, true);
+            runtime->DispatchEvents({}, 10ms);
 
             return pipe;
         };
@@ -1132,20 +1133,19 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
                 pipe,
                 agentActors[agentNo],
                 new TEvTabletPipe::TEvShutdown()), agentNo, true);
+            runtime->DispatchEvents({}, 10ms);
         };
 
         auto pipe = registerAgent(0);
-
-        runtime->DispatchEvents({}, 10ms);
-
         disconnectAgent(pipe, 0);
 
-        runtime->DispatchEvents({}, 1s);
-        runtime->DispatchEvents({}, 5s);
+        runtime->AdvanceCurrentTime(6s);
+        runtime->DispatchEvents({}, 10ms);
 
-        UNIT_ASSERT_VALUES_EQUAL(TString(), agentId);
+        UNIT_ASSERT_C(agentId.empty(), agentId);
 
-        runtime->DispatchEvents({}, 5s);
+        runtime->AdvanceCurrentTime(4s);
+        runtime->DispatchEvents({}, 10ms);
 
         UNIT_ASSERT_VALUES_EQUAL(agents[0].GetAgentId(), agentId);
         UNIT_ASSERT_VALUES_EQUAL(
@@ -1157,16 +1157,15 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
 
         pipe = registerAgent(1);
 
-        runtime->DispatchEvents({}, 10ms);
-
         disconnectAgent(pipe, 1);
 
-        runtime->DispatchEvents({}, 1s);
-        runtime->DispatchEvents({}, 10s);
+        runtime->AdvanceCurrentTime(11s);
+        runtime->DispatchEvents({}, 10ms);
 
         UNIT_ASSERT_VALUES_EQUAL(TString(), agentId);
 
-        runtime->DispatchEvents({}, 10s);
+        runtime->AdvanceCurrentTime(9s);
+        runtime->DispatchEvents({}, 10ms);
 
         UNIT_ASSERT_VALUES_EQUAL(agents[1].GetAgentId(), agentId);
         UNIT_ASSERT_VALUES_EQUAL(
@@ -1179,13 +1178,12 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
         pipe = registerAgent(2);
 
         runtime->AdvanceCurrentTime(200s);
-        runtime->DispatchEvents({}, 10ms);
 
         disconnectAgent(pipe, 2);
 
         // disconnect timeout should've been completely recovered
-        runtime->DispatchEvents({}, 1s);
-        runtime->DispatchEvents({}, 10s);
+        runtime->AdvanceCurrentTime(10s);
+        runtime->DispatchEvents({}, 10ms);
 
         UNIT_ASSERT_VALUES_EQUAL(agents[2].GetAgentId(), agentId);
         UNIT_ASSERT_VALUES_EQUAL(
@@ -1203,29 +1201,31 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
             pipe = registerAgent(3);
 
             runtime->AdvanceCurrentTime(200s);
-            runtime->DispatchEvents({}, 10ms);
 
             diskRegistry.UpdateDiskRegistryAgentListParams(
                 TVector<TString>{agents[3].GetAgentId()},
                 100s,
                 500s,
                 1000s);
-            runtime->DispatchEvents({}, 1s);
+            runtime->DispatchEvents({}, 10ms);
+            runtime->AdvanceCurrentTime(1s);
             // diskRegistry.RebootTablet();
             // diskRegistry.WaitReady();
 
             disconnectAgent(pipe, 3);
 
-            runtime->DispatchEvents({}, 1s);
-            runtime->DispatchEvents({}, 5s);
+            runtime->AdvanceCurrentTime(6s);
+            runtime->DispatchEvents({}, 10ms);
 
             UNIT_ASSERT_VALUES_EQUAL(TString(), agentId);
 
-            runtime->DispatchEvents({}, 5s);
+            runtime->AdvanceCurrentTime(5s);
+            runtime->DispatchEvents({}, 10ms);
 
             UNIT_ASSERT_VALUES_EQUAL(TString(), agentId);
 
-            runtime->DispatchEvents({}, 90s);
+            runtime->AdvanceCurrentTime(90s);
+            runtime->DispatchEvents({}, 10ms);
 
             UNIT_ASSERT_VALUES_EQUAL(agents[3].GetAgentId(), agentId);
             UNIT_ASSERT_VALUES_EQUAL(
@@ -1245,13 +1245,13 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
 
             disconnectAgent(pipe, 4);
 
-            runtime->DispatchEvents({}, 1s);
-            runtime->DispatchEvents({}, 5s);
+            runtime->AdvanceCurrentTime(6s);
+            runtime->DispatchEvents({}, 10ms);
 
             UNIT_ASSERT_VALUES_EQUAL(TString(), agentId);
 
-            runtime->DispatchEvents({}, 5s);
-            runtime->DispatchEvents({}, 5s);
+            runtime->AdvanceCurrentTime(10s);
+            runtime->DispatchEvents({}, 10ms);
 
             UNIT_ASSERT_VALUES_EQUAL(agents[4].GetAgentId(), agentId);
             UNIT_ASSERT_VALUES_EQUAL(
@@ -2140,6 +2140,8 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
         auto config = CreateDefaultStorageConfig();
         config.SetNonReplicatedDiskSwitchToReadOnlyTimeout(
             TDuration{5s}.MilliSeconds());
+        config.SetDiskRegistryInitialAgentRejectionThreshold(100.0);
+
         auto runtime = TTestRuntimeBuilder()
             .With(config)
             .WithAgents(agents)
@@ -2601,6 +2603,89 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
         UNIT_ASSERT_VALUES_EQUAL(3, registrationCount);
         UNIT_ASSERT_VALUES_EQUAL(1, devicesToSuspendIO.size());
         UNIT_ASSERT_VALUES_EQUAL(x->GetDeviceUUID(), devicesToSuspendIO[0]);
+    }
+
+    Y_UNIT_TEST(ShouldRefrainFromRejectingBigPartOfTheCluster)
+    {
+        const TVector agents {
+            CreateAgentConfig("agent-1", {Device("dev", "uuid-1")}),
+            CreateAgentConfig("agent-2", {Device("dev", "uuid-2")}),
+            CreateAgentConfig("agent-3", {Device("dev", "uuid-3")}),
+            CreateAgentConfig("agent-4", {Device("dev", "uuid-4")}),
+            CreateAgentConfig("agent-5", {Device("dev", "uuid-5")}),
+            CreateAgentConfig("agent-6", {Device("dev", "uuid-6")}),
+        };
+
+        auto counters = MakeIntrusive<NMonitoring::TDynamicCounters>();
+        InitCriticalEventsCounter(counters);
+
+        auto crits = counters->GetCounter(
+            "AppCriticalEvents/"
+            "DiskRegistryInitialAgentRejectionThresholdExceeded",
+            true);
+
+        auto runtime = TTestRuntimeBuilder()
+            .WithAgents(agents)
+            .With([] {
+                auto config = CreateDefaultStorageConfig();
+                config.SetDiskRegistryCountersHost("test");
+
+                config.SetNonReplicatedAgentMaxTimeout(50'000);           // 50s
+                config.SetDiskRegistryInitialAgentRejectionThreshold(50); // 50%
+
+                return config;
+            }())
+            .Build();
+
+        TDiskRegistryClient diskRegistry(*runtime);
+        diskRegistry.WaitReady();
+        diskRegistry.SetWritableState(true);
+        diskRegistry.UpdateConfig(CreateRegistryConfig(0, agents));
+
+        RegisterAndWaitForAgents(*runtime, agents);
+
+        UNIT_ASSERT_VALUES_EQUAL(0, crits->Val());
+
+        runtime->AdvanceCurrentTime(1h);
+
+        UNIT_ASSERT_VALUES_EQUAL(0, crits->Val());
+
+        diskRegistry.RebootTablet();
+        diskRegistry.WaitReady();
+
+        // Only 33% of agents are reconnected
+        RegisterAgents(*runtime, 2);
+
+        UNIT_ASSERT_VALUES_EQUAL(0, crits->Val());
+
+        runtime->AdvanceCurrentTime(10s);
+        runtime->DispatchEvents({}, 10ms);
+
+        UNIT_ASSERT_VALUES_EQUAL(0, crits->Val());
+
+        runtime->AdvanceCurrentTime(30s);
+        runtime->DispatchEvents({}, 10ms);
+
+        UNIT_ASSERT_VALUES_EQUAL(0, crits->Val());
+
+        // NonReplicatedAgentMaxTimeout expired
+        runtime->AdvanceCurrentTime(10s);
+        runtime->DispatchEvents({}, 10ms);
+
+        UNIT_ASSERT_VALUES_EQUAL(1, crits->Val());
+
+        // DR can still allocate a disk
+        diskRegistry.AllocateDisk("vol0", 60_GB);
+
+        diskRegistry.RebootTablet();
+        diskRegistry.WaitReady();
+
+        UNIT_ASSERT_VALUES_EQUAL(1, crits->Val());
+
+        runtime->AdvanceCurrentTime(50s);
+        runtime->DispatchEvents({}, 10ms);
+
+        UNIT_ASSERT_VALUES_EQUAL(2, crits->Val());
     }
 }
 

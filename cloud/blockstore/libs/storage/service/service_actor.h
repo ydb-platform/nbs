@@ -10,6 +10,7 @@
 #include <cloud/blockstore/libs/diagnostics/public.h>
 #include <cloud/blockstore/libs/diagnostics/stats_aggregator.h>
 #include <cloud/blockstore/libs/discovery/discovery.h>
+#include <cloud/blockstore/libs/encryption/public.h>
 #include <cloud/blockstore/libs/endpoints/public.h>
 #include <cloud/blockstore/libs/kikimr/helpers.h>
 #include <cloud/blockstore/libs/rdma/iface/public.h>
@@ -47,6 +48,7 @@ private:
     const NServer::IEndpointEventHandlerPtr EndpointEventHandler;
     const NRdma::IClientPtr RdmaClient;
     const IVolumeStatsPtr VolumeStats;
+    const IRootKmsKeyProviderPtr RootKmsKeyProvider;
 
     TSharedServiceCountersPtr SharedCounters;
 
@@ -73,8 +75,9 @@ public:
         NServer::IEndpointEventHandlerPtr endpointEventHandler,
         NRdma::IClientPtr rdmaClient,
         IVolumeStatsPtr volumeStats,
-        TManuallyPreemptedVolumesPtr preemptedVolumes);
-    ~TServiceActor();
+        TManuallyPreemptedVolumesPtr preemptedVolumes,
+        IRootKmsKeyProviderPtr rootKmsKeyProvider);
+    ~TServiceActor() override;
 
     void Bootstrap(const NActors::TActorContext& ctx);
 
@@ -423,7 +426,6 @@ NActors::IActorPtr CreateReadBlocksRemoteActor(
 NActors::IActorPtr CreateWriteBlocksRemoteActor(
     TEvService::TEvWriteBlocksLocalRequest::TPtr request,
     ui64 blockSize,
-    ui64 maxBlocksCount,
     NActors::TActorId volumeClient);
 
 NActors::IActorPtr CreateVolumeSessionActor(

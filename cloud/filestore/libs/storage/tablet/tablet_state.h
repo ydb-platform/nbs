@@ -211,6 +211,7 @@ public:
 
     void UpdateConfig(
         TIndexTabletDatabase& db,
+        const TStorageConfig& config,
         const NProto::TFileSystem& fileSystem,
         const TThrottlerConfig& throttlerConfig);
 
@@ -227,6 +228,11 @@ public:
     TString GetFileSystemId() const
     {
         return FileSystem.GetFileSystemId();
+    }
+
+    TString GetMainFileSystemId() const
+    {
+        return FileSystem.GetMainFileSystemId();
     }
 
     ui32 GetGeneration() const
@@ -297,6 +303,10 @@ public:
     }
 
     bool CalculateExpectedShardCount() const;
+
+    NProto::TError SelectShard(ui64 fileSize, TString* shardId);
+
+    void UpdateShardStats(const TVector<TShardStats>& stats);
 
     //
     // FileSystem Stats
@@ -410,7 +420,7 @@ public:
         ui64 parentNodeId,
         const TString& name,
         const TString& shardId,
-        const TString& shardName,
+        const TString& shardNodeName,
         ui64 minCommitId,
         ui64 maxCommitId);
 
@@ -438,6 +448,12 @@ public:
         TIndexTabletDatabase& db,
         const TString& message,
         ui64 nodeId);
+
+    bool HasPendingNodeCreateInShard(const TString& nodeName) const;
+
+    void StartNodeCreateInShard(const TString& nodeName);
+
+    void EndNodeCreateInShard(const TString& nodeName);
 
 private:
     void UpdateUsedBlocksCount(
@@ -504,7 +520,7 @@ public:
         const TString& childName,
         ui64 childNodeId,
         const TString& shardId,
-        const TString& shardName);
+        const TString& shardNodeName);
 
     void RemoveNodeRef(
         TIndexTabletDatabase& db,
@@ -514,7 +530,7 @@ public:
         const TString& childName,
         ui64 prevChildNodeId,
         const TString& shardId,
-        const TString& shardName);
+        const TString& shardNodeName);
 
     bool ReadNodeRef(
         IIndexTabletDatabase& db,
@@ -555,7 +571,7 @@ public:
         const TString& childName,
         ui64 childNodeId,
         const TString& shardId,
-        const TString& shardName);
+        const TString& shardNodeName);
 
     //
     // Sessions
@@ -612,7 +628,8 @@ public:
         TVector<NProtoPrivate::TCreateSessionRequest>;
     TCreateSessionRequests BuildCreateSessionRequests(
         const THashSet<TString>& filter) const;
-    TVector<TMonSessionInfo> GetActiveSessions() const;
+    TVector<TMonSessionInfo> GetActiveSessionInfos() const;
+    TVector<TMonSessionInfo> GetOrphanSessionInfos() const;
     TSessionsStats CalculateSessionsStats() const;
 
 private:
@@ -717,6 +734,12 @@ FILESTORE_DUPCACHE_REQUESTS(FILESTORE_DECLARE_DUPCACHE)
         const TString& sessionId,
         ui64 requestId,
         NProto::TCreateNodeResponse response);
+
+    void PatchDupCacheEntry(
+        TIndexTabletDatabase& db,
+        const TString& sessionId,
+        ui64 requestId,
+        NProto::TRenameNodeResponse response);
 
     void CommitDupCacheEntry(
         const TString& sessionId,
@@ -1280,11 +1303,20 @@ private:
         ui64 commitId,
         const TByteRange& range);
 
+public:
+
+    ////////////////////////////////////////////////////////////////////////////
+    // Caching: ReadAhead, NodeIndexCache, InMemoryIndexState
+    ////////////////////////////////////////////////////////////////////////////
+
+    // Upon any completion of the RW operation this function is supposed to be
+    // called in order to invalidate potentially cached data
+    void InvalidateNodeCaches(ui64 nodeId);
+
     //
     // ReadAhead.
     //
 
-public:
     bool TryFillDescribeResult(
         ui64 nodeId,
         ui64 handle,

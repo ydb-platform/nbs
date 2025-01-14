@@ -47,6 +47,7 @@ SRCS(
     tablet_actor_listnodexattr.cpp
     tablet_actor_loadstate.cpp
     tablet_actor_loadstate_noderefs.cpp
+    tablet_actor_loadstate_nodes.cpp
     tablet_actor_monitoring.cpp
     tablet_actor_oplog.cpp
     tablet_actor_readblob.cpp
@@ -55,9 +56,12 @@ SRCS(
     tablet_actor_releaselock.cpp
     tablet_actor_removenodexattr.cpp
     tablet_actor_renamenode.cpp
+    tablet_actor_renamenode_destination.cpp
+    tablet_actor_renamenode_source.cpp
     tablet_actor_request.cpp
     tablet_actor_resetsession.cpp
     tablet_actor_resolvepath.cpp
+    tablet_actor_restart_tablet.cpp
     tablet_actor_setnodeattr.cpp
     tablet_actor_setnodexattr.cpp
     tablet_actor_subscribesession.cpp

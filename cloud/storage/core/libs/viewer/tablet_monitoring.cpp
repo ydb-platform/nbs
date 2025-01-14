@@ -16,6 +16,7 @@ void DumpChannel(
     const ui64 tabletId,
     const TTabletChannelInfo& channel,
     const TGetMonitoringYDBGroupUrl& getGroupUrl,
+    const TGetMonitoringDashboardYDBGroupUrl& getDashboardUrl,
     const TBuildReassignChannelButton& buildReassignButton,
     ui64 hiveTabletId)
 {
@@ -75,8 +76,15 @@ void DumpChannel(
             const auto groupUrl =
                 getGroupUrl(latestEntry->GroupID, channel.StoragePool);
             if (groupUrl) {
-                TABLED() {
+                TABLED()
+                {
                     out << "<a href='" << groupUrl << "'>Graphs</a>";
+                    const auto dashboardGroupUrl =
+                        getDashboardUrl(latestEntry->GroupID);
+                    if (!dashboardGroupUrl.empty()) {
+                        out << "<br>" << "<a href='" << dashboardGroupUrl
+                            << "'>Group dashboard</a>";
+                    }
                 }
             }
             TABLED() {
@@ -99,6 +107,7 @@ void DumpChannels(
     const TVector<TChannelMonInfo>& channelInfos,
     const TTabletStorageInfo& storage,
     const TGetMonitoringYDBGroupUrl& getGroupUrl,
+    const TGetMonitoringDashboardYDBGroupUrl& getDashboardUrl,
     const TBuildReassignChannelButton& buildReassignButton,
     ui64 hiveTabletId)
 {
@@ -126,6 +135,7 @@ void DumpChannels(
                         storage.TabletID,
                         channel,
                         getGroupUrl,
+                        getDashboardUrl,
                         buildReassignButton,
                         hiveTabletId);
                 }

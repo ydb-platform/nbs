@@ -345,8 +345,13 @@ void TIndexTabletActor::CompleteTx_CreateSession(
     FillFeatures(*Config, fileStore);
 
     TVector<TString> shardIds;
-    for (const auto& shardId: GetFileSystem().GetShardFileSystemIds()) {
-        shardIds.push_back(shardId);
+    // there's no point in returning shard list unless it's main filesystem
+    // tablet (in which case shard list is needed to perform request forwarding
+    // to shards in TStorageServiceActor)
+    if (IsMainTablet()) {
+        for (const auto& shardId: GetFileSystem().GetShardFileSystemIds()) {
+            shardIds.push_back(shardId);
+        }
     }
     if (shardIds.empty()) {
         LOG_INFO(ctx, TFileStoreComponents::TABLET,
@@ -418,15 +423,14 @@ void TIndexTabletActor::CreateSessionsInShards(
 
     auto actor = std::make_unique<TCreateShardSessionsActor>(
         std::move(logTag),
+        SelfId(),
         std::move(requestInfo),
         std::move(request),
         std::move(shardIds),
         std::move(response));
 
     auto actorId = NCloud::Register(ctx, std::move(actor));
-
-    Y_UNUSED(actorId);
-    // TODO(#1350): register actorId in WorkerActors, erase upon completion
+    WorkerActors.insert(actorId);
 }
 
 }   // namespace NCloud::NFileStore::NStorage

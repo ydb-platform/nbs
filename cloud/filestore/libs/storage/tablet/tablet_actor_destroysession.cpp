@@ -191,7 +191,8 @@ void TIndexTabletActor::CompleteTx_DestroySession(
         std::make_unique<TEvIndexTablet::TEvDestroySessionResponse>();
 
     const auto& shardIds = GetFileSystem().GetShardFileSystemIds();
-    if (shardIds.empty()) {
+    // session will be deleted in other shards via the code in the main tablet
+    if (!IsMainTablet() || shardIds.empty()) {
         LOG_INFO(ctx, TFileStoreComponents::TABLET,
             "%s DestroySession completed",
             LogTag.c_str());
@@ -208,12 +209,14 @@ void TIndexTabletActor::CompleteTx_DestroySession(
 
     auto actor = std::make_unique<TDestroyShardSessionsActor>(
         LogTag,
+        SelfId(),
         std::move(args.RequestInfo),
         std::move(args.Request),
         TVector<TString>(shardIds.begin(), shardIds.end()),
         std::move(response));
 
-    NCloud::Register(ctx, std::move(actor));
+    auto actorId = NCloud::Register(ctx, std::move(actor));
+    WorkerActors.insert(actorId);
 }
 
 }   // namespace NCloud::NFileStore::NStorage
