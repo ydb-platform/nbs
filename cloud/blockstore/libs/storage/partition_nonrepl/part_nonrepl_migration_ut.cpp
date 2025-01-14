@@ -9,6 +9,7 @@
 #include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/disk_agent/actors/direct_copy_actor.h>
 #include <cloud/blockstore/libs/storage/protos/disk.pb.h>
+#include <cloud/blockstore/libs/storage/testlib/diagnostics.h>
 #include <cloud/blockstore/libs/storage/testlib/disk_agent_mock.h>
 #include <cloud/storage/core/libs/common/sglist_test.h>
 
@@ -211,6 +212,7 @@ struct TTestEnv
 
         auto part = std::make_unique<TNonreplicatedPartitionMigrationActor>(
             std::move(config),
+            CreateDiagnosticsConfig(),
             CreateProfileLogStub(),
             CreateBlockDigestGeneratorStub(),
             0,

@@ -20,6 +20,7 @@ TNonreplicatedPartitionMigrationCommonActor::
     TNonreplicatedPartitionMigrationCommonActor(
         IMigrationOwner* migrationOwner,
         TStorageConfigPtr config,
+        TDiagnosticsConfigPtr diagnosticsConfig,
         TString diskId,
         ui64 blockCount,
         ui64 blockSize,
@@ -31,6 +32,7 @@ TNonreplicatedPartitionMigrationCommonActor::
         ui32 maxIoDepth)
     : MigrationOwner(migrationOwner)
     , Config(std::move(config))
+    , DiagnosticsConfig(std::move(diagnosticsConfig))
     , ProfileLog(std::move(profileLog))
     , DiskId(std::move(diskId))
     , BlockSize(blockSize)

@@ -147,7 +147,9 @@ void TPartitionActor::SendStatsToService(const TActorContext& ctx)
     UserCPUConsumption = 0;
     SysCPUConsumption = sysCpuConsumption;
 
-    PartCounters = CreatePartitionDiskCounters(EPublishingPolicy::Repl);
+    PartCounters = CreatePartitionDiskCounters(
+        EPublishingPolicy::Repl,
+        DiagnosticsConfig->GetHistogramCounterOptions());
 
     NCloud::Send(ctx, VolumeActorId, std::move(request));
 }

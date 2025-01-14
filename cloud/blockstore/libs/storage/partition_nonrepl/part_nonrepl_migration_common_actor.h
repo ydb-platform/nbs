@@ -4,6 +4,7 @@
 
 #include "config.h"
 
+#include <cloud/blockstore/libs/diagnostics/config.h>
 #include <cloud/blockstore/libs/diagnostics/public.h>
 #include <cloud/blockstore/libs/rdma/iface/public.h>
 #include <cloud/blockstore/libs/storage/api/disk_registry.h>
@@ -86,6 +87,7 @@ private:
 
     IMigrationOwner* const MigrationOwner = nullptr;
     const TStorageConfigPtr Config;
+    const TDiagnosticsConfigPtr DiagnosticsConfig;
     const IProfileLogPtr ProfileLog;
     const TString DiskId;
     const ui64 BlockSize;
@@ -128,8 +130,9 @@ private:
     bool UpdateCountersScheduled = false;
     TPartitionDiskCountersPtr SrcCounters;
     TPartitionDiskCountersPtr DstCounters;
-    TPartitionDiskCountersPtr MigrationCounters =
-        CreatePartitionDiskCounters(EPublishingPolicy::DiskRegistryBased);
+    TPartitionDiskCountersPtr MigrationCounters = CreatePartitionDiskCounters(
+        EPublishingPolicy::DiskRegistryBased,
+        DiagnosticsConfig->GetHistogramCounterOptions());
 
     // Usage statistics
     ui64 NetworkBytes = 0;
@@ -152,6 +155,7 @@ public:
     TNonreplicatedPartitionMigrationCommonActor(
         IMigrationOwner* migrationOwner,
         TStorageConfigPtr config,
+        TDiagnosticsConfigPtr diagnosticsConfig,
         TString diskId,
         ui64 blockCount,
         ui64 blockSize,
@@ -192,6 +196,8 @@ public:
 
 protected:
     [[nodiscard]] TString GetChangedBlocks(TBlockRange64 range) const;
+    const TStorageConfigPtr& GetConfig() const;
+    const TDiagnosticsConfigPtr& GetDiagnosticsConfig() const;
 
 private:
     bool IsMigrationAllowed() const;

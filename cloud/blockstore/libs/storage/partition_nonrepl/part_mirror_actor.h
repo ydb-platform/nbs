@@ -7,6 +7,7 @@
 #include "part_mirror_state.h"
 #include "part_nonrepl_events_private.h"
 
+#include <cloud/blockstore/libs/diagnostics/config.h>
 #include <cloud/blockstore/libs/diagnostics/public.h>
 #include <cloud/blockstore/libs/rdma/iface/public.h>
 #include <cloud/blockstore/libs/storage/api/disk_registry.h>
@@ -45,6 +46,7 @@ class TMirrorPartitionActor final
 {
 private:
     const TStorageConfigPtr Config;
+    const TDiagnosticsConfigPtr DiagnosticsConfig;
     const IProfileLogPtr ProfileLog;
     const IBlockDigestGeneratorPtr BlockDigestGenerator;
     NRdma::IClientPtr RdmaClient;
@@ -86,6 +88,7 @@ private:
 public:
     TMirrorPartitionActor(
         TStorageConfigPtr config,
+        TDiagnosticsConfigPtr diagnosticsConfig,
         IProfileLogPtr profileLog,
         IBlockDigestGeneratorPtr digestGenerator,
         TString rwClientId,
