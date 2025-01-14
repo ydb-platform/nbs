@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -199,11 +200,19 @@ func createServices(
 }
 
 func (s *services) startRunners(ctx context.Context) error {
+	return s.startRunnersWithMetricsRegistry(ctx, metrics_empty.NewRegistry())
+}
+
+func (s *services) startRunnersWithMetricsRegistry(
+	ctx context.Context,
+	runnerMetricsRegistry metrics.Registry,
+) error {
+
 	return tasks.StartRunners(
 		ctx,
 		s.storage,
 		s.registry,
-		metrics_empty.NewRegistry(),
+		runnerMetricsRegistry,
 		s.config,
 		"localhost",
 	)
@@ -703,7 +712,7 @@ func TestTasksRunningOneTask(t *testing.T) {
 	require.EqualValues(t, 2*123, response)
 }
 
-func TestTasksRunningLimit(t *testing.T) {
+func TestTasksInflightLimit(t *testing.T) {
 	ctx, cancel := context.WithCancel(newContext())
 	defer cancel()
 
@@ -711,7 +720,14 @@ func TestTasksRunningLimit(t *testing.T) {
 	require.NoError(t, err)
 	defer db.Close(ctx)
 
-	s := createServices(t, ctx, db, 3*inflightLongTaskPerNodeLimit)
+	runnersCount := uint64(3 * inflightLongTaskPerNodeLimit)
+	config := proto.Clone(newDefaultConfig()).(*tasks_config.TasksConfig)
+	config.RunnersCount = &runnersCount
+	config.StalkingRunnersCount = &runnersCount
+
+	registry := mocks.NewIgnoreUnknownCallsRegistryMock()
+
+	s := createServicesWithConfig(t, ctx, db, config, registry)
 
 	err = registerDoublerTask(s.registry)
 	require.NoError(t, err)
@@ -719,7 +735,25 @@ func TestTasksRunningLimit(t *testing.T) {
 	err = registerLongTask(s.registry)
 	require.NoError(t, err)
 
-	err = s.startRunners(ctx)
+	var inflightLongTasksCount atomic.Int32
+	registry.GetGauge(
+		"inflightTasks",
+		map[string]string{"type": "long"},
+	).On("Add", float64(1)).Return().Run(
+		func(args mock.Arguments) {
+			inflightLongTasksCount.Add(1)
+		},
+	)
+	registry.GetGauge(
+		"inflightTasks",
+		map[string]string{"type": "long"},
+	).On("Add", float64(-1)).Return().Run(
+		func(args mock.Arguments) {
+			inflightLongTasksCount.Add(-1)
+		},
+	)
+
+	err = s.startRunnersWithMetricsRegistry(ctx, registry)
 	require.NoError(t, err)
 
 	longTaskIDs := []string{}
@@ -769,26 +803,17 @@ func TestTasksRunningLimit(t *testing.T) {
 	for {
 		select {
 		case <-ticker.C:
-			runningTasks, _ := s.storage.ListTasksRunning(
-				ctx,
-				uint64(scheduledLongTaskCount),
-			)
-			require.NoError(t, err)
-
-			logging.Debug(ctx, "Listed running tasks: %v+", runningTasks)
-
-			runningLongTaskCount := 0
-			for _, task := range runningTasks {
-				if task.TaskType == "long" {
-					runningLongTaskCount++
-				}
-			}
-
+			count := int(inflightLongTasksCount.Load())
+			logging.Debug(ctx, "There are %v inflight tasks of type long", count)
 			// We have separate inflight per node limit for each lister.
 			// So long tasks can be taken by listerReadyToRun or
 			// listerStallingWhileRunning lister.
 			// Thus we need to compare runningLongTaskCount with doubled inflightLongTaskPerNodeLimit.
-			require.LessOrEqual(t, runningLongTaskCount, 2*inflightLongTaskPerNodeLimit)
+			require.LessOrEqual(
+				t,
+				count,
+				2*inflightLongTaskPerNodeLimit,
+			)
 		case err := <-doublerTaskErrs:
 			require.NoError(t, err)
 			endedDoublerTaskCount++
@@ -798,6 +823,7 @@ func TestTasksRunningLimit(t *testing.T) {
 
 			if endedLongTaskCount == scheduledLongTaskCount {
 				require.EqualValues(t, scheduledDoublerTaskCount, endedDoublerTaskCount)
+				registry.AssertAllExpectations(t)
 				return
 			}
 		}
