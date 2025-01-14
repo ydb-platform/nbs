@@ -1902,8 +1902,7 @@ Y_UNIT_TEST_SUITE(TVolumeStateTest)
                 {},     // infos
                 {},     // mountHistory
                 {},     // checkpointRequests
-                false,  // startPartitionsNeeded
-
+                false   // startPartitionsNeeded
             };
         };
 
