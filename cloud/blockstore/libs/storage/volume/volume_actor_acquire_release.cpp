@@ -50,25 +50,29 @@ void TVolumeActor::SendReleaseDevicesToAgents(
     const TString& clientId,
     const TActorContext& ctx)
 {
-    auto replyWithError = [&](auto error)
+    auto returnError = [&](auto error)
     {
-        NCloud::Send(
-            ctx,
-            SelfId(),
-            std::make_unique<TEvVolumePrivate::TEvDevicesReleaseFinished>(
-                std::move(error)));
+        auto event =
+            std::make_unique<NAcquireReleaseDevices::TEvDevicesReleaseFinished>(
+                NAcquireReleaseDevices::TDevicesReleaseFinished{
+                    {},
+                    {},
+                    {},
+                    std::move(error),
+                });
+        NCloud::Send(ctx, SelfId(), std::move(event));
     };
 
     TString diskId = State->GetDiskId();
     ui32 volumeGeneration = Executor()->Generation();
 
     if (!clientId) {
-        replyWithError(MakeError(E_ARGUMENT, "empty client id"));
+        returnError(MakeError(E_ARGUMENT, "empty client id"));
         return;
     }
 
     if (!diskId) {
-        replyWithError(MakeError(E_ARGUMENT, "empty disk id"));
+        returnError(MakeError(E_ARGUMENT, "empty disk id"));
         return;
     }
 
