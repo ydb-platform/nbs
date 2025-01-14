@@ -131,12 +131,12 @@ void TVolumeActor::HandleDeviceTimeouted(
     }
 
     TVector<NProto::TLaggingDevice> timeoutedAgentDevices;
-    const auto replicaIndex = GetAgentDevicesIndexes(
+    const auto timeoutedDeviceReplicaIndex = GetAgentDevicesIndexes(
         meta,
         timeoutedDeviceConfig->GetNodeId(),
-        timeoutedAgentDevices);
+        &timeoutedAgentDevices);
     Y_DEBUG_ABORT_UNLESS(!timeoutedAgentDevices.empty());
-    Y_DEBUG_ABORT_UNLESS(replicaIndex);
+    Y_DEBUG_ABORT_UNLESS(timeoutedDeviceReplicaIndex);
 
     for (const auto& laggingAgent: meta.GetLaggingAgentsInfo().GetAgents()) {
         // Whether the agent is lagging already.
@@ -155,7 +155,7 @@ void TVolumeActor::HandleDeviceTimeouted(
                 ctx,
                 State->GetDiskRegistryBasedPartitionActor(),
                 std::make_unique<TEvPartition::TEvAddLaggingAgentRequest>(
-                    *replicaIndex,
+                    *timeoutedDeviceReplicaIndex,
                     timeoutedDeviceConfig->GetAgentId()));
 
             auto response =
@@ -186,9 +186,8 @@ void TVolumeActor::HandleDeviceTimeouted(
             TLaggingDeviceIndexCmp());
 
         if (!rowIndexesIntersection.empty()) {
-            Y_DEBUG_ABORT_UNLESS(
-                laggingAgent.GetReplicaIndex() != replicaIndex);
-
+            // TODO(komarevtsev-d): Allow source and target of the migration to
+            // lag at the same time.
             LOG_WARN(
                 ctx,
                 TBlockStoreComponents::VOLUME,
@@ -213,9 +212,9 @@ void TVolumeActor::HandleDeviceTimeouted(
     // Check for fresh devices in the same row.
     for (const auto& laggingDevice: timeoutedAgentDevices) {
         TSet<ui32> replicaIndexes =
-            ReplicaIndexesWithFreshDevices(meta, laggingDevice);
+            ReplicaIndexesWithFreshDevices(meta, laggingDevice.GetRowIndex());
         const bool laggingDeviceIsFresh =
-            replicaIndexes.contains(*replicaIndex);
+            replicaIndexes.contains(*timeoutedDeviceReplicaIndex);
         if (replicaIndexes.size() - laggingDeviceIsFresh > 0) {
             LOG_WARN(
                 ctx,
@@ -239,7 +238,8 @@ void TVolumeActor::HandleDeviceTimeouted(
 
     NProto::TLaggingAgent unavailableAgent;
     unavailableAgent.SetAgentId(timeoutedDeviceConfig->GetAgentId());
-    unavailableAgent.SetReplicaIndex(*replicaIndex);
+    unavailableAgent.SetNodeId(timeoutedDeviceConfig->GetNodeId());
+    unavailableAgent.SetReplicaIndex(*timeoutedDeviceReplicaIndex);
     unavailableAgent.MutableDevices()->Assign(
         timeoutedAgentDevices.begin(),
         timeoutedAgentDevices.end());

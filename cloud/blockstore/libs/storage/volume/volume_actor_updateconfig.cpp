@@ -249,6 +249,7 @@ void TVolumeActor::FinishUpdateVolumeConfig(const TActorContext& ctx)
         RemoveLaggingDevicesFromMeta(
             newMeta,
             UnfinishedUpdateVolumeConfig.RemovedLaggingDeviceIds);
+        UpdateLaggingDevicesAfterMetaUpdate(newMeta);
     }
 
     UnfinishedUpdateVolumeConfig.Devices = {};

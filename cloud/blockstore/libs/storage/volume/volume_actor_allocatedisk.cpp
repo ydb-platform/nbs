@@ -160,6 +160,7 @@ NProto::TVolumeMeta CreateNewMeta(
     newMeta.SetIOModeTs(args.IOModeTs.MicroSeconds());
     newMeta.SetMuteIOErrors(args.MuteIOErrors);
     RemoveLaggingDevicesFromMeta(newMeta, args.RemovedLaggingDeviceIds);
+    UpdateLaggingDevicesAfterMetaUpdate(newMeta);
 
     return newMeta;
 }

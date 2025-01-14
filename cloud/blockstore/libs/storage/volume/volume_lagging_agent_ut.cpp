@@ -22,7 +22,7 @@ TVector<NProto::TDeviceConfig> MakeDeviceList(ui32 agentCount, ui32 deviceCount)
     for (ui32 i = 1; i <= agentCount; i++) {
         for (ui32 j = 0; j < deviceCount; j++) {
             auto device = MakeDevice(
-                Sprintf("uuid%u-%u", i, j),
+                Sprintf("uuid-%u.%u", i, j),
                 Sprintf("dev%u", j),
                 Sprintf("transport%u-%u", i, j));
             device.SetNodeId(i - 1);
@@ -77,20 +77,20 @@ Y_UNIT_TEST_SUITE(TLaggingAgentVolumeTest)
         const auto& devices = stat->Record.GetVolume().GetDevices();
         const auto& replicas = stat->Record.GetVolume().GetReplicas();
         UNIT_ASSERT_VALUES_EQUAL(1, devices.size());
-        UNIT_ASSERT_VALUES_EQUAL("uuid1-0", devices[0].GetDeviceUUID());
+        UNIT_ASSERT_VALUES_EQUAL("uuid-1.0", devices[0].GetDeviceUUID());
         UNIT_ASSERT_VALUES_EQUAL("agent-1", devices[0].GetAgentId());
 
         UNIT_ASSERT_VALUES_EQUAL(2, replicas.size());
         UNIT_ASSERT_VALUES_EQUAL(1, replicas[0].DevicesSize());
         UNIT_ASSERT_VALUES_EQUAL(
-            "uuid2-0",
+            "uuid-2.0",
             replicas[0].GetDevices(0).GetDeviceUUID());
         UNIT_ASSERT_VALUES_EQUAL(
             "agent-2",
             replicas[0].GetDevices(0).GetAgentId());
         UNIT_ASSERT_VALUES_EQUAL(1, replicas[1].DevicesSize());
         UNIT_ASSERT_VALUES_EQUAL(
-            "uuid3-0",
+            "uuid-3.0",
             replicas[1].GetDevices(0).GetDeviceUUID());
         UNIT_ASSERT_VALUES_EQUAL(
             "agent-3",
@@ -124,7 +124,7 @@ Y_UNIT_TEST_SUITE(TLaggingAgentVolumeTest)
             });
 
         // Device in the first replica is timeouted.
-        volume.DeviceTimeouted(0, "uuid2-0");
+        volume.DeviceTimeouted(0, "uuid-2.0");
 
         UNIT_ASSERT(addLaggingAgentRequest.has_value());
         UNIT_ASSERT_VALUES_EQUAL(
@@ -133,7 +133,7 @@ Y_UNIT_TEST_SUITE(TLaggingAgentVolumeTest)
         UNIT_ASSERT_VALUES_EQUAL(1, addLaggingAgentRequest->ReplicaIndex);
 
         // Can't add more lagging devices in the same row.
-        volume.SendDeviceTimeoutedRequest(0, "uuid3-0");
+        volume.SendDeviceTimeoutedRequest(0, "uuid-3.0");
         auto response = volume.RecvDeviceTimeoutedResponse();
         UNIT_ASSERT_VALUES_EQUAL(
             E_INVALID_STATE,
@@ -147,7 +147,7 @@ Y_UNIT_TEST_SUITE(TLaggingAgentVolumeTest)
         UNIT_ASSERT(!addLaggingAgentRequest.has_value());
 
         // Now the zeroth replica can lag.
-        volume.DeviceTimeouted(0, "uuid1-0");
+        volume.DeviceTimeouted(0, "uuid-1.0");
         UNIT_ASSERT(addLaggingAgentRequest.has_value());
         UNIT_ASSERT_VALUES_EQUAL(
             devices[0].GetAgentId(),
@@ -192,31 +192,31 @@ Y_UNIT_TEST_SUITE(TLaggingAgentVolumeTest)
         auto stat = volume.StatVolume();
         const auto& devices = stat->Record.GetVolume().GetDevices();
         UNIT_ASSERT_VALUES_EQUAL(3, devices.size());
-        UNIT_ASSERT_VALUES_EQUAL("uuid1-0", devices[0].GetDeviceUUID());
+        UNIT_ASSERT_VALUES_EQUAL("uuid-1.0", devices[0].GetDeviceUUID());
         UNIT_ASSERT_VALUES_EQUAL("agent-1", devices[0].GetAgentId());
-        UNIT_ASSERT_VALUES_EQUAL("uuid1-1", devices[1].GetDeviceUUID());
+        UNIT_ASSERT_VALUES_EQUAL("uuid-1.1", devices[1].GetDeviceUUID());
         UNIT_ASSERT_VALUES_EQUAL("agent-1", devices[1].GetAgentId());
-        UNIT_ASSERT_VALUES_EQUAL("uuid4-0", devices[2].GetDeviceUUID());
+        UNIT_ASSERT_VALUES_EQUAL("uuid-4.0", devices[2].GetDeviceUUID());
         UNIT_ASSERT_VALUES_EQUAL("agent-4", devices[2].GetAgentId());
 
         const auto& replicas = stat->Record.GetVolume().GetReplicas();
         UNIT_ASSERT_VALUES_EQUAL(2, replicas.size());
         const auto& replica1Devices = replicas[0].GetDevices();
         UNIT_ASSERT_VALUES_EQUAL(3, replica1Devices.size());
-        UNIT_ASSERT_VALUES_EQUAL("uuid2-0", replica1Devices[0].GetDeviceUUID());
+        UNIT_ASSERT_VALUES_EQUAL("uuid-2.0", replica1Devices[0].GetDeviceUUID());
         UNIT_ASSERT_VALUES_EQUAL("agent-2", replica1Devices[0].GetAgentId());
-        UNIT_ASSERT_VALUES_EQUAL("uuid2-1", replica1Devices[1].GetDeviceUUID());
+        UNIT_ASSERT_VALUES_EQUAL("uuid-2.1", replica1Devices[1].GetDeviceUUID());
         UNIT_ASSERT_VALUES_EQUAL("agent-2", replica1Devices[1].GetAgentId());
-        UNIT_ASSERT_VALUES_EQUAL("uuid5-0", replica1Devices[2].GetDeviceUUID());
+        UNIT_ASSERT_VALUES_EQUAL("uuid-5.0", replica1Devices[2].GetDeviceUUID());
         UNIT_ASSERT_VALUES_EQUAL("agent-5", replica1Devices[2].GetAgentId());
 
         const auto& replica2Devices = replicas[1].GetDevices();
         UNIT_ASSERT_VALUES_EQUAL(3, replica2Devices.size());
-        UNIT_ASSERT_VALUES_EQUAL("uuid3-0", replica2Devices[0].GetDeviceUUID());
+        UNIT_ASSERT_VALUES_EQUAL("uuid-3.0", replica2Devices[0].GetDeviceUUID());
         UNIT_ASSERT_VALUES_EQUAL("agent-3", replica2Devices[0].GetAgentId());
-        UNIT_ASSERT_VALUES_EQUAL("uuid3-1", replica2Devices[1].GetDeviceUUID());
+        UNIT_ASSERT_VALUES_EQUAL("uuid-3.1", replica2Devices[1].GetDeviceUUID());
         UNIT_ASSERT_VALUES_EQUAL("agent-3", replica2Devices[1].GetAgentId());
-        UNIT_ASSERT_VALUES_EQUAL("uuid6-0", replica2Devices[2].GetDeviceUUID());
+        UNIT_ASSERT_VALUES_EQUAL("uuid-6.0", replica2Devices[2].GetDeviceUUID());
         UNIT_ASSERT_VALUES_EQUAL("agent-6", replica2Devices[2].GetAgentId());
 
         std::optional<TEvPartition::TAddLaggingAgentRequest>
@@ -245,7 +245,7 @@ Y_UNIT_TEST_SUITE(TLaggingAgentVolumeTest)
             });
 
         // Device in the zeroth replica is timeouted.
-        volume.DeviceTimeouted(1, "uuid1-1");
+        volume.DeviceTimeouted(1, "uuid-1.1");
 
         UNIT_ASSERT(addLaggingAgentRequest.has_value());
         UNIT_ASSERT_VALUES_EQUAL(
@@ -256,7 +256,7 @@ Y_UNIT_TEST_SUITE(TLaggingAgentVolumeTest)
         {
             addLaggingAgentRequest.reset();
             // The first agent is already lagging.
-            volume.SendDeviceTimeoutedRequest(0, "uuid1-0");
+            volume.SendDeviceTimeoutedRequest(0, "uuid-1.0");
             auto response = volume.RecvDeviceTimeoutedResponse();
             UNIT_ASSERT_VALUES_EQUAL(S_ALREADY, response->GetError().GetCode());
             UNIT_ASSERT(addLaggingAgentRequest.has_value());
@@ -268,7 +268,7 @@ Y_UNIT_TEST_SUITE(TLaggingAgentVolumeTest)
         {
             // 0 and 1st rows already lagging. Can't add more lagging devices on
             // these rows.
-            volume.SendDeviceTimeoutedRequest(0, "uuid2-1");
+            volume.SendDeviceTimeoutedRequest(0, "uuid-2.1");
             auto response = volume.RecvDeviceTimeoutedResponse();
             UNIT_ASSERT_VALUES_EQUAL(
                 E_INVALID_STATE,
@@ -277,7 +277,7 @@ Y_UNIT_TEST_SUITE(TLaggingAgentVolumeTest)
 
         // Adding the second row to lagging.
         addLaggingAgentRequest.reset();
-        volume.DeviceTimeouted(2, "uuid6-0");
+        volume.DeviceTimeouted(2, "uuid-6.0");
         UNIT_ASSERT(addLaggingAgentRequest.has_value());
         UNIT_ASSERT_VALUES_EQUAL(
             replica2Devices[2].GetAgentId(),
@@ -294,13 +294,13 @@ Y_UNIT_TEST_SUITE(TLaggingAgentVolumeTest)
             3,
             addLaggingDevicesRequest->GetLaggingDevices().size());
         UNIT_ASSERT_VALUES_EQUAL(
-            "DeviceUUID: \"uuid1-0\"\n",
+            "DeviceUUID: \"uuid-1.0\"\n",
             addLaggingDevicesRequest->GetLaggingDevices(0).DebugString());
         UNIT_ASSERT_VALUES_EQUAL(
-            "DeviceUUID: \"uuid1-1\"\nRowIndex: 1\n",
+            "DeviceUUID: \"uuid-1.1\"\nRowIndex: 1\n",
             addLaggingDevicesRequest->GetLaggingDevices(1).DebugString());
         UNIT_ASSERT_VALUES_EQUAL(
-            "DeviceUUID: \"uuid6-0\"\nRowIndex: 2\n",
+            "DeviceUUID: \"uuid-6.0\"\nRowIndex: 2\n",
             addLaggingDevicesRequest->GetLaggingDevices(2).DebugString());
 
         // Disk Registry will remove lagging devices on reallocation.
@@ -372,7 +372,7 @@ Y_UNIT_TEST_SUITE(TLaggingAgentVolumeTest)
             });
 
         // Device in the zeroth replica is timeouted.
-        volume.DeviceTimeouted(1, "uuid1-1");
+        volume.DeviceTimeouted(1, "uuid-1.1");
 
         UNIT_ASSERT(!addLaggingDevicesRequest.has_value());
         // Update volume config.
@@ -407,6 +407,182 @@ Y_UNIT_TEST_SUITE(TLaggingAgentVolumeTest)
                 .GetAgents()[0]
                 .GetDevices()
                 .size());
+    }
+
+    Y_UNIT_TEST(ShouldHandleMigratingDevice)
+    {
+        constexpr ui32 AgentCount = 7;
+        constexpr ui32 DevicePerAgentCount = 2;
+        auto diskRegistryState = MakeIntrusive<TDiskRegistryState>();
+        diskRegistryState->Devices =
+            MakeDeviceList(AgentCount - 1, DevicePerAgentCount);
+        diskRegistryState->AllocateDiskReplicasOnDifferentNodes = true;
+        diskRegistryState->ReplicaCount = 2;
+        diskRegistryState->MigrationMode = EMigrationMode::InProgress;
+
+        // Add migration device.
+        {
+            auto device = MakeDevice(
+                "uuid-migration",
+                "dev-migration",
+                "transport-migration");
+            device.SetNodeId(AgentCount - 1);
+            device.SetAgentId(Sprintf("agent-%u", AgentCount));
+            diskRegistryState->MigrationDevices["uuid-1.0"] = device;
+            diskRegistryState->Devices.push_back(device);
+        }
+
+        TVector<TDiskAgentStatePtr> agentStates;
+        for (ui32 i = 0; i < AgentCount; i++) {
+            agentStates.push_back(TDiskAgentStatePtr{});
+        }
+        auto runtime = PrepareTestActorRuntime(
+            {},
+            diskRegistryState,
+            {},
+            {},
+            std::move(agentStates));
+
+        TVolumeClient volume(*runtime);
+        const ui64 blockCount = DefaultDeviceBlockCount *
+                                DefaultDeviceBlockSize / DefaultBlockSize * 3;
+        volume.UpdateVolumeConfig(
+            0,
+            0,
+            0,
+            0,
+            false,
+            1,   // version
+            NCloud::NProto::STORAGE_MEDIA_SSD_MIRROR3,
+            blockCount);
+        volume.WaitReady();
+
+        auto stat = volume.StatVolume();
+        const auto& devices = stat->Record.GetVolume().GetDevices();
+        UNIT_ASSERT_VALUES_EQUAL(3, devices.size());
+        UNIT_ASSERT_VALUES_EQUAL("uuid-1.0", devices[0].GetDeviceUUID());
+        UNIT_ASSERT_VALUES_EQUAL("agent-1", devices[0].GetAgentId());
+        UNIT_ASSERT_VALUES_EQUAL("uuid-1.1", devices[1].GetDeviceUUID());
+        UNIT_ASSERT_VALUES_EQUAL("agent-1", devices[1].GetAgentId());
+        UNIT_ASSERT_VALUES_EQUAL("uuid-4.0", devices[2].GetDeviceUUID());
+        UNIT_ASSERT_VALUES_EQUAL("agent-4", devices[2].GetAgentId());
+
+        const auto& replicas = stat->Record.GetVolume().GetReplicas();
+        UNIT_ASSERT_VALUES_EQUAL(2, replicas.size());
+        const auto& replica1Devices = replicas[0].GetDevices();
+        UNIT_ASSERT_VALUES_EQUAL(3, replica1Devices.size());
+        UNIT_ASSERT_VALUES_EQUAL(
+            "uuid-2.0",
+            replica1Devices[0].GetDeviceUUID());
+        UNIT_ASSERT_VALUES_EQUAL("agent-2", replica1Devices[0].GetAgentId());
+        UNIT_ASSERT_VALUES_EQUAL(
+            "uuid-2.1",
+            replica1Devices[1].GetDeviceUUID());
+        UNIT_ASSERT_VALUES_EQUAL("agent-2", replica1Devices[1].GetAgentId());
+        UNIT_ASSERT_VALUES_EQUAL(
+            "uuid-5.0",
+            replica1Devices[2].GetDeviceUUID());
+        UNIT_ASSERT_VALUES_EQUAL("agent-5", replica1Devices[2].GetAgentId());
+
+        const auto& replica2Devices = replicas[1].GetDevices();
+        UNIT_ASSERT_VALUES_EQUAL(3, replica2Devices.size());
+        UNIT_ASSERT_VALUES_EQUAL(
+            "uuid-3.0",
+            replica2Devices[0].GetDeviceUUID());
+        UNIT_ASSERT_VALUES_EQUAL("agent-3", replica2Devices[0].GetAgentId());
+        UNIT_ASSERT_VALUES_EQUAL(
+            "uuid-3.1",
+            replica2Devices[1].GetDeviceUUID());
+        UNIT_ASSERT_VALUES_EQUAL("agent-3", replica2Devices[1].GetAgentId());
+        UNIT_ASSERT_VALUES_EQUAL(
+            "uuid-6.0",
+            replica2Devices[2].GetDeviceUUID());
+        UNIT_ASSERT_VALUES_EQUAL("agent-6", replica2Devices[2].GetAgentId());
+
+        const auto& migrations = stat->Record.GetVolume().GetMigrations();
+        UNIT_ASSERT_VALUES_EQUAL(1, migrations.size());
+        UNIT_ASSERT_VALUES_EQUAL("uuid-1.0", migrations[0].GetSourceDeviceId());
+        UNIT_ASSERT_VALUES_EQUAL(
+            "uuid-migration",
+            migrations[0].GetTargetDevice().GetDeviceUUID());
+
+        std::optional<TEvPartition::TAddLaggingAgentRequest>
+            addLaggingAgentRequest;
+        std::optional<NProto::TAddLaggingDevicesRequest>
+            addLaggingDevicesRequest;
+        runtime->SetEventFilter(
+            [&](TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& event)
+            {
+                switch (event->GetTypeRewrite()) {
+                    case TEvPartition::EvAddLaggingAgentRequest: {
+                        auto* msg = event->Get<
+                            TEvPartition::TEvAddLaggingAgentRequest>();
+                        UNIT_ASSERT(!addLaggingAgentRequest.has_value());
+                        addLaggingAgentRequest = *msg;
+                        return true;
+                    }
+                    case TEvDiskRegistry::EvAddLaggingDevicesRequest: {
+                        auto* msg = event->Get<
+                            TEvDiskRegistry::TEvAddLaggingDevicesRequest>();
+                        addLaggingDevicesRequest = msg->Record;
+                        break;
+                    }
+                }
+                return false;
+            });
+
+        // Device in the zeroth replica is timeouted.
+        volume.DeviceTimeouted(0, "uuid-migration");
+
+        UNIT_ASSERT(addLaggingAgentRequest.has_value());
+        UNIT_ASSERT_VALUES_EQUAL("agent-7", addLaggingAgentRequest->AgentId);
+        UNIT_ASSERT_VALUES_EQUAL(0, addLaggingAgentRequest->ReplicaIndex);
+
+        {
+            addLaggingAgentRequest.reset();
+            // The zeroth row is already lagging.
+            volume.SendDeviceTimeoutedRequest(0, "uuid-1.0");
+            auto response = volume.RecvDeviceTimeoutedResponse();
+            UNIT_ASSERT_VALUES_EQUAL(
+                E_INVALID_STATE,
+                response->GetError().GetCode());
+            UNIT_ASSERT(!addLaggingAgentRequest.has_value());
+        }
+
+        // Adding the second row to lagging.
+        addLaggingAgentRequest.reset();
+        volume.DeviceTimeouted(2, "uuid-6.0");
+        UNIT_ASSERT(addLaggingAgentRequest.has_value());
+        UNIT_ASSERT_VALUES_EQUAL(
+            replica2Devices[2].GetAgentId(),
+            addLaggingAgentRequest->AgentId);
+
+        // Rebooting the volume tablet should report lagging devices to the DR.
+        UNIT_ASSERT(!addLaggingDevicesRequest.has_value());
+        volume.RebootTablet();
+        runtime->DispatchEvents({}, TDuration::Seconds(1));
+        UNIT_ASSERT(addLaggingDevicesRequest.has_value());
+
+        UNIT_ASSERT_VALUES_EQUAL("vol0", addLaggingDevicesRequest->GetDiskId());
+        UNIT_ASSERT_VALUES_EQUAL(
+            2,
+            addLaggingDevicesRequest->GetLaggingDevices().size());
+        UNIT_ASSERT_VALUES_EQUAL(
+            "DeviceUUID: \"uuid-migration\"\n",
+            addLaggingDevicesRequest->GetLaggingDevices(0).DebugString());
+        UNIT_ASSERT_VALUES_EQUAL(
+            "DeviceUUID: \"uuid-6.0\"\nRowIndex: 2\n",
+            addLaggingDevicesRequest->GetLaggingDevices(1).DebugString());
+
+        // Disk Registry will remove lagging devices on reallocation.
+        volume.ReallocateDisk();
+        auto metaHistoryResponse = volume.ReadMetaHistory();
+        UNIT_ASSERT(!metaHistoryResponse->MetaHistory.empty());
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            metaHistoryResponse->MetaHistory.back()
+                .Meta.GetLaggingAgentsInfo()
+                .AgentsSize());
     }
 }
 

@@ -19,18 +19,16 @@ struct TLaggingDeviceIndexCmp
 [[nodiscard]] std::optional<ui32> GetAgentDevicesIndexes(
     const NProto::TVolumeMeta& meta,
     ui32 agentNodeId,
-    TVector<NProto::TLaggingDevice>& laggingDevices);
+    TVector<NProto::TLaggingDevice>* laggingDevices);
 
 [[nodiscard]] TSet<ui32> ReplicaIndexesWithFreshDevices(
     const NProto::TVolumeMeta& meta,
-    NProto::TLaggingDevice device);
-
-[[nodiscard]] bool CheckReplicasPlacementAreCorrect(
-    const NProto::TVolumeMeta& meta,
-    ui32 agentNodeId);
+    ui32 rowIndex);
 
 void RemoveLaggingDevicesFromMeta(
     NProto::TVolumeMeta& meta,
-    const TVector<TString> laggingDeviceIds);
+    const TVector<TString>& laggingDeviceIds);
+
+void UpdateLaggingDevicesAfterMetaUpdate(NProto::TVolumeMeta& meta);
 
 }   // namespace NCloud::NBlockStore::NStorage

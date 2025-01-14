@@ -209,7 +209,8 @@ struct TTestEnv
             THashSet<TString>(),   // laggingDeviceIds
             TDuration::Zero(),     // maxTimedOutDeviceStateDuration
             false,                 // maxTimedOutDeviceStateDurationOverridden
-            false);
+            false                  // useSimpleMigrationBandwidthLimiter
+        );
 
         auto part = std::make_unique<TNonreplicatedPartitionMigrationActor>(
             std::move(config),

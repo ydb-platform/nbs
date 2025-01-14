@@ -279,7 +279,7 @@ message TDiskConfig
     // A log of important events in the life of this disk.
     repeated TDiskHistoryItem History = 17;
 
-    // A list of devices that are lagging begind on writes.
+    // A list of devices that are lagging behind on writes.
     repeated TLaggingDevice LaggingDevices = 18;
 }
 
@@ -436,13 +436,16 @@ message TLaggingAgent
     // Agent id.
     string AgentId = 1;
 
+    // Node that agent is running on.
+    uint32 NodeId = 2;
+
     // Index of the mirror disk replica.
     // 0 - main devices
     // 1,2 - replica devices
-    uint32 ReplicaIndex = 2;
+    uint32 ReplicaIndex = 3;
 
     // A list of devices that belong to the agent.
-    repeated TLaggingDevice Devices = 3;
+    repeated TLaggingDevice Devices = 4;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
