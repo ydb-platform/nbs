@@ -110,15 +110,17 @@ bool ValidateDevices(
     return ok;
 }
 
-std::unique_ptr<MessageDifferencer> CreateNodeIdChangeDifferencer()
+std::unique_ptr<MessageDifferencer> CreateLiteReallocationDifferencer()
 {
+    const auto* ioModeTsDescriptor =
+        NProto::TVolumeMeta::GetDescriptor()->FindFieldByName("IOModeTs");
     // These are two fields that will change during disk agent blue-green
     // deploy.
     const auto* nodeIdDescriptor =
         NProto::TDeviceConfig::GetDescriptor()->FindFieldByName("NodeId");
     const auto* rdmaPortDescriptor =
         NProto::TRdmaEndpoint::GetDescriptor()->FindFieldByName("Port");
-    if (!nodeIdDescriptor || !rdmaPortDescriptor) {
+    if (!nodeIdDescriptor || !rdmaPortDescriptor || !ioModeTsDescriptor) {
         ReportFieldDescriptorNotFound(
             TStringBuilder()
             << "Lite reallocation is impossible. nodeIdDescriptor = "
@@ -129,6 +131,7 @@ std::unique_ptr<MessageDifferencer> CreateNodeIdChangeDifferencer()
     }
 
     auto diff = std::make_unique<MessageDifferencer>();
+    diff->IgnoreField(ioModeTsDescriptor);
     diff->IgnoreField(nodeIdDescriptor);
     diff->IgnoreField(rdmaPortDescriptor);
     diff->set_float_comparison(
@@ -538,7 +541,7 @@ void TVolumeActor::ExecuteUpdateDevices(
 
     Y_DEBUG_ABORT_UNLESS(State->IsDiskRegistryMediaKind());
     if (Config->GetAllowLiteDiskReallocations()) {
-        auto differencer = CreateNodeIdChangeDifferencer();
+        auto differencer = CreateLiteReallocationDifferencer();
         args.LiteReallocation =
             differencer && differencer->Compare(oldMeta, newMeta);
     }
