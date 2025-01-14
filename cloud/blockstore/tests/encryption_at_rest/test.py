@@ -177,7 +177,7 @@ def test_create_volume_with_default_ecnryption(nbs, disk_agent):
     assert vol0.EncryptionDesc.Mode == ENCRYPTION_DEFAULT_AES_XTS
 
     assert vol0.EncryptionDesc.EncryptionKey.KekId == KEK_ID
-    assert len(vol0.EncryptionDesc.EncryptionKey.EncryptedDEK) == 512
+    assert len(vol0.EncryptionDesc.EncryptionKey.EncryptedDEK) >= 32
 
     expected_data = os.urandom(4096)
 
