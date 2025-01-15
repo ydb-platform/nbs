@@ -101,8 +101,7 @@ struct IServerHandler
         IOutputStream& out,
         TCont* cont) = 0;
 
-    virtual void ProcessException(
-        std::exception_ptr e) = 0;
+    virtual void ProcessException(std::exception_ptr e) = 0;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
