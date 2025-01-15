@@ -5,6 +5,7 @@
 #include <cloud/blockstore/libs/kikimr/components.h>
 #include <cloud/blockstore/libs/kikimr/events.h>
 #include <cloud/blockstore/libs/storage/api/disk_agent.h>
+#include <cloud/blockstore/libs/storage/core/acquire_release_devices.h>
 #include <cloud/blockstore/libs/storage/core/request_info.h>
 #include <cloud/blockstore/libs/storage/protos/disk.pb.h>
 
@@ -74,19 +75,6 @@ struct TUserNotificationKey
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TAgentAcquireDevicesCachedRequest
-{
-    TString AgentId;
-    NProto::TAcquireDevicesRequest Request;
-    TInstant RequestTime;
-};
-
-struct TAgentReleaseDevicesCachedRequest
-{
-    TString AgentId;
-    NProto::TReleaseDevicesRequest Request;
-};
-
 struct TCachedAcquireKey
 {
     TString DiskId;
@@ -104,8 +92,9 @@ struct TCachedAcquireKey
     }
 };
 
-using TCachedAcquireRequests =
-    TMap<TCachedAcquireKey, TAgentAcquireDevicesCachedRequest>;
+using TCachedAcquireRequests = TMap<
+    TCachedAcquireKey,
+    NAcquireReleaseDevices::TAgentAcquireDevicesCachedRequest>;
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -179,8 +168,6 @@ using TVolumeConfig = NKikimrBlockStore::TVolumeConfig;
     xxx(CleanupDisks,                               __VA_ARGS__)               \
     xxx(SecureErase,                                __VA_ARGS__)               \
     xxx(CleanupDevices,                             __VA_ARGS__)               \
-    xxx(FinishAcquireDisk,                          __VA_ARGS__)               \
-    xxx(RemoveDiskSession,                          __VA_ARGS__)               \
     xxx(DestroyBrokenDisks,                         __VA_ARGS__)               \
     xxx(ListBrokenDisks,                            __VA_ARGS__)               \
     xxx(NotifyDisks,                                __VA_ARGS__)               \
@@ -204,52 +191,6 @@ using TVolumeConfig = NKikimrBlockStore::TVolumeConfig;
 
 struct TEvDiskRegistryPrivate
 {
-    //
-    // FinishAcquireDisk
-    //
-
-    struct TFinishAcquireDiskRequest
-    {
-        TString DiskId;
-        TString ClientId;
-        TVector<TAgentAcquireDevicesCachedRequest> SentRequests;
-
-        TFinishAcquireDiskRequest(
-                TString diskId,
-                TString clientId,
-                TVector<TAgentAcquireDevicesCachedRequest> sentRequests)
-            : DiskId(std::move(diskId))
-            , ClientId(std::move(clientId))
-            , SentRequests(std::move(sentRequests))
-        {}
-    };
-
-    struct TFinishAcquireDiskResponse
-    {};
-
-    //
-    // RemoveDiskSession
-    //
-
-    struct TRemoveDiskSessionRequest
-    {
-        TString DiskId;
-        TString ClientId;
-        TVector<TAgentReleaseDevicesCachedRequest> SentRequests;
-
-        TRemoveDiskSessionRequest(
-                TString diskId,
-                TString clientId,
-                TVector<TAgentReleaseDevicesCachedRequest> sentRequests)
-            : DiskId(std::move(diskId))
-            , ClientId(std::move(clientId))
-            , SentRequests(std::move(sentRequests))
-        {}
-    };
-
-    struct TRemoveDiskSessionResponse
-    {};
-
     //
     // CleanupDisks
     //

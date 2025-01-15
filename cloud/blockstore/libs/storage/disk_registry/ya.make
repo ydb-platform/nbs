@@ -1,7 +1,7 @@
 LIBRARY()
 
 SRCS(
-    disk_registry_actor_acquire.cpp
+    disk_registry_actor_acquire_release.cpp
     disk_registry_actor_allocate.cpp
     disk_registry_actor_backup_state.cpp
     disk_registry_actor_change_disk_device.cpp
@@ -34,7 +34,6 @@ SRCS(
     disk_registry_actor_query_available_storage.cpp
     disk_registry_actor_register.cpp
     disk_registry_actor_regular.cpp
-    disk_registry_actor_release.cpp
     disk_registry_actor_replace.cpp
     disk_registry_actor_restore_state.cpp
     disk_registry_actor_resume_device.cpp

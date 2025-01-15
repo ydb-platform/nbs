@@ -188,6 +188,24 @@ void TDiskRegistryActor::BeforeDie(const NActors::TActorContext& ctx)
             MakeTabletIsDeadError(E_REJECTED, __LOCATION__));
     }
     PendingDiskDeallocationRequests.clear();
+
+    for (auto& [actorId, requestInfo]: PendingAcquireDiskRequests) {
+        NCloud::Reply(
+            ctx,
+            *requestInfo,
+            std::make_unique<TEvDiskRegistry::TEvAcquireDiskResponse>(
+                MakeTabletIsDeadError(E_REJECTED, __LOCATION__)));
+    }
+    PendingAcquireDiskRequests.clear();
+
+    for (auto& [actorId, requestInfo]: PendingReleaseDiskRequests) {
+        NCloud::Reply(
+            ctx,
+            *requestInfo,
+            std::make_unique<TEvDiskRegistry::TEvReleaseDiskResponse>(
+                MakeTabletIsDeadError(E_REJECTED, __LOCATION__)));
+    }
+    PendingReleaseDiskRequests.clear();
 }
 
 void TDiskRegistryActor::OnDetach(const TActorContext& ctx)
@@ -708,6 +726,14 @@ STFUNC(TDiskRegistryActor::StateWork)
             TEvDiskRegistryPrivate::TEvDiskRegistryAgentListExpiredParamsCleanup,
             TDiskRegistryActor::HandleDiskRegistryAgentListExpiredParamsCleanup);
 
+        HFunc(
+            NAcquireReleaseDevices::TEvDevicesAcquireFinished,
+            HandleDevicesAcquireFinished);
+
+        HFunc(
+            NAcquireReleaseDevices::TEvDevicesReleaseFinished,
+            HandleDevicesReleaseFinished);
+
         default:
             if (!HandleRequests(ev) && !HandleDefaultEvents(ev, SelfId())) {
                 HandleUnexpectedEvent(ev, TBlockStoreComponents::DISK_REGISTRY);
@@ -879,21 +905,9 @@ bool ToLogicalBlocks(NProto::TDeviceConfig& device, ui32 logicalBlockSize)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TString LogDevices(const TVector<NProto::TDeviceConfig>& devices)
-{
-    TStringBuilder sb;
-    sb << "( ";
-    for (const auto& d: devices) {
-        sb << d.GetDeviceUUID() << "@" << d.GetAgentId() << " ";
-    }
-    sb << ")";
-    return sb;
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
 void TDiskRegistryActor::OnDiskAcquired(
-    TVector<TAgentAcquireDevicesCachedRequest> sentAcquireRequests)
+    TVector<NAcquireReleaseDevices::TAgentAcquireDevicesCachedRequest>
+        sentAcquireRequests)
 {
     for (auto& sentRequest: sentAcquireRequests) {
         TCachedAcquireRequests& cachedRequests =
@@ -906,7 +920,8 @@ void TDiskRegistryActor::OnDiskAcquired(
 }
 
 void TDiskRegistryActor::OnDiskReleased(
-    const TVector<TAgentReleaseDevicesCachedRequest>& sentReleaseRequests)
+    const TVector<NAcquireReleaseDevices::TAgentReleaseDevicesCachedRequest>&
+        sentReleaseRequests)
 {
     auto& acquireCacheByAgentId = State->GetAcquireCacheByAgentId();
     for (const auto& [agentId, releaseRequest]: sentReleaseRequests) {

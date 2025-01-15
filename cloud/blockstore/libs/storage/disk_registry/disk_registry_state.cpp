@@ -3363,6 +3363,12 @@ NProto::EDiskState TDiskRegistryState::GetDiskState(const TDiskId& diskId) const
     return disk->State;
 }
 
+const TDiskRegistryState::TDiskState* TDiskRegistryState::GetDisk(
+    const TDiskId& diskId) const
+{
+    return Disks.FindPtr(diskId);
+}
+
 NProto::TError TDiskRegistryState::GetShadowDiskId(
     const TDiskId& sourceDiskId,
     const TCheckpointId& checkpointId,

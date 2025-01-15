@@ -15,6 +15,7 @@
 #include <cloud/blockstore/libs/storage/api/disk_agent.h>
 #include <cloud/blockstore/libs/storage/api/disk_registry.h>
 #include <cloud/blockstore/libs/storage/api/service.h>
+#include <cloud/blockstore/libs/storage/core/acquire_release_devices.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/core/monitoring_utils.h>
 #include <cloud/blockstore/libs/storage/core/pending_request.h>
@@ -84,6 +85,9 @@ private:
     TDeque<TPendingRequest> PendingRequests;
 
     THashMap<TDiskId, TVector<TRequestInfoPtr>> PendingDiskDeallocationRequests;
+
+    THashMap<NActors::TActorId, TRequestInfoPtr> PendingAcquireDiskRequests;
+    THashMap<NActors::TActorId, TRequestInfoPtr> PendingReleaseDiskRequests;
 
     bool BrokenDisksDestructionInProgress = false;
     bool DisksNotificationInProgress = false;
@@ -243,10 +247,19 @@ private:
 
     void ProcessAutomaticallyReplacedDevices(const NActors::TActorContext& ctx);
 
+    void HandleDevicesAcquireFinished(
+        const NAcquireReleaseDevices::TEvDevicesAcquireFinished::TPtr& ev,
+        const NActors::TActorContext& ctx);
     void OnDiskAcquired(
-        TVector<TAgentAcquireDevicesCachedRequest> sentAcquireRequests);
+        TVector<NAcquireReleaseDevices::TAgentAcquireDevicesCachedRequest>
+            sentAcquireRequests);
+    void HandleDevicesReleaseFinished(
+        const NAcquireReleaseDevices::TEvDevicesReleaseFinished::TPtr& ev,
+        const NActors::TActorContext& ctx);
     void OnDiskReleased(
-        const TVector<TAgentReleaseDevicesCachedRequest>& sentReleaseRequests);
+        const TVector<
+            NAcquireReleaseDevices::TAgentReleaseDevicesCachedRequest>&
+            sentReleaseRequests);
     void OnDiskDeallocated(const TDiskId& diskId);
     void SendCachedAcquireRequestsToAgent(
         const NActors::TActorContext& ctx,
@@ -503,6 +516,5 @@ private:
 // BLOCKSTORE_DISK_REGISTRY_COUNTER
 
 bool ToLogicalBlocks(NProto::TDeviceConfig& device, ui32 logicalBlockSize);
-TString LogDevices(const TVector<NProto::TDeviceConfig>& devices);
 
 }   // namespace NCloud::NBlockStore::NStorage
