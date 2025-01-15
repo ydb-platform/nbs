@@ -40,7 +40,14 @@ void TIndexTabletActor::ReplayOpLog(
                 {} // result
             );
         } else if (op.HasRenameNodeInDestinationRequest()) {
-            // TODO(#2674): lock SourceNodeRef, send request
+            // TODO(#2674): lock SourceNodeRef
+            RegisterRenameNodeInDestinationActor(
+                ctx,
+                nullptr, // requestInfo
+                op.GetRenameNodeInDestinationRequest(),
+                0, // requestId (TODO(#2674): either idempotency or use real
+                   // requestId)
+                op.GetEntryId());
         } else {
             TABLET_VERIFY_C(
                 0,
