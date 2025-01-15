@@ -48,6 +48,7 @@ testing/chaos-monkey/chaos-monkey
 testing/chaos-monkey/tests/tests
 testing/csi-sanity/bin/cloud
 testing/csi-sanity/bin/csi-sanity
+testing/disk-registry-state-generator/disk-registry-state-generator
 testing/eternal_tests/checkpoint-validator/bin/checkpoint-validator
 testing/eternal_tests/checkpoint-validator/lib/ut/lib-ut
 testing/eternal_tests/eternal-load/bin/eternal-load

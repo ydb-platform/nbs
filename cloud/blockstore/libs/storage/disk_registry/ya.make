@@ -93,6 +93,7 @@ RECURSE(
 )
 
 RECURSE_FOR_TESTS(
+    benchmark
     ut
     ut_allocation
     ut_cms

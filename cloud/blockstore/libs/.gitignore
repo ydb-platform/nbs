@@ -41,6 +41,7 @@ storage/disk_agent/ut/cloud-blockstore-libs-storage-disk_agent-ut
 storage/disk_registry_proxy/ut/blockstore-libs-storage-disk_registry_proxy-ut
 storage/disk_registry/actors/ut/libs-storage-disk_registry-actors-ut
 storage/disk_registry/model/ut/blockstore-libs-storage-disk_registry-model-ut
+storage/disk_registry/benchmark/benchmark
 storage/disk_registry/ut_allocation/libs-storage-disk_registry-ut_allocation
 storage/disk_registry/ut_checkpoint/libs-storage-disk_registry-ut_checkpoint
 storage/disk_registry/ut_cms/blockstore-libs-storage-disk_registry-ut_cms
