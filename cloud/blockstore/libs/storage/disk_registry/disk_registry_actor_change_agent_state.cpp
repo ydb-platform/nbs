@@ -109,7 +109,7 @@ void TChangeAgentStateActor::ReplyAndDie(
     const TActorContext& ctx,
     NProto::TError error)
 {
-    if (SUCCEEDED(error.GetCode())) {
+    if (!HasError(error.GetCode())) {
         Notify(ctx, "Operation successfully completed", EAlertLevel::SUCCESS);
     } else {
         Notify(
