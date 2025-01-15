@@ -188,6 +188,24 @@ void TDiskRegistryActor::BeforeDie(const NActors::TActorContext& ctx)
             MakeTabletIsDeadError(E_REJECTED, __LOCATION__));
     }
     PendingDiskDeallocationRequests.clear();
+
+    for (auto& [actorId, requestInfo]: PendingAcquireDiskRequests) {
+        NCloud::Reply(
+            ctx,
+            *requestInfo,
+            std::make_unique<TEvDiskRegistry::TEvAcquireDiskResponse>(
+                MakeTabletIsDeadError(E_REJECTED, __LOCATION__)));
+    }
+    PendingAcquireDiskRequests.clear();
+
+    for (auto& [actorId, requestInfo]: PendingReleaseDiskRequests) {
+        NCloud::Reply(
+            ctx,
+            *requestInfo,
+            std::make_unique<TEvDiskRegistry::TEvReleaseDiskResponse>(
+                MakeTabletIsDeadError(E_REJECTED, __LOCATION__)));
+    }
+    PendingReleaseDiskRequests.clear();
 }
 
 void TDiskRegistryActor::OnDetach(const TActorContext& ctx)

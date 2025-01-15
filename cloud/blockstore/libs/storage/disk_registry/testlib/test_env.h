@@ -780,18 +780,6 @@ public:
             std::move(devices));
     }
 
-    auto CreateRemoveDiskSessionRequest(
-        TString diskId,
-        TString clientId,
-        TVector<TAgentReleaseDevicesCachedRequest> sentRequests)
-    {
-        return std::make_unique<
-            TEvDiskRegistryPrivate::TEvRemoveDiskSessionRequest>(
-            std::move(diskId),
-            std::move(clientId),
-            std::move(sentRequests));
-    }
-
     auto CreateUpdateAgentStatsRequest(NProto::TAgentStats stats)
     {
         auto request = std::make_unique<TEvDiskRegistry::TEvUpdateAgentStatsRequest>();

@@ -507,7 +507,8 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
 
         runtime->SetObserverFunc( [&] (TAutoPtr<IEventHandle>& event) {
             switch (event->GetTypeRewrite()) {
-                case TEvDiskRegistryPrivate::EvFinishAcquireDiskResponse: {
+                case NAcquireReleaseDevices::TEvDevicesAcquireFinished::
+                    EventType: {
                     finished = true;
                     break;
                 }
@@ -676,10 +677,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
         }
 
         {
-            auto response = diskRegistry.RemoveDiskSession(
-                "disk-1",
-                "session-1",
-                TVector<TAgentReleaseDevicesCachedRequest>());
+            auto response = diskRegistry.ReleaseDisk("disk-1", "session-1");
             UNIT_ASSERT(!HasError(response->GetError()));
         }
     }

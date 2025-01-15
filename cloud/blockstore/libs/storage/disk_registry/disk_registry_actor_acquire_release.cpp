@@ -85,7 +85,7 @@ void TDiskRegistryActor::HandleAcquireDisk(
         /*muteIOErrors=*/false,
         TBlockStoreComponents::DISK_REGISTRY);
     Actors.insert(actor);
-    AcquireDiskRequests[actor] =
+    PendingAcquireDiskRequests[actor] =
         CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
 }
 
@@ -99,10 +99,12 @@ void TDiskRegistryActor::HandleDevicesAcquireFinished(
 
     OnDiskAcquired(std::move(msg->SentRequests));
 
-    auto reqInfo = AcquireDiskRequests.at(ev->Sender);
+    auto reqInfo = PendingAcquireDiskRequests.at(ev->Sender);
 
     auto response = std::make_unique<TEvDiskRegistry::TEvAcquireDiskResponse>(
         std::move(msg->Error));
+
+    const auto* disk = State->GetDisk(msg->DiskId);
 
     if (HasError(response->GetError())) {
         LOG_ERROR(
@@ -117,13 +119,16 @@ void TDiskRegistryActor::HandleDevicesAcquireFinished(
         response->Record.MutableDevices()->Reserve(msg->Devices.size());
 
         for (auto& device: msg->Devices) {
+            if (disk) {
+                ToLogicalBlocks(device, disk->LogicalBlockSize);
+            }
             *response->Record.AddDevices() = std::move(device);
         }
     }
 
     NCloud::Reply(ctx, *reqInfo, std::move(response));
     Actors.erase(ev->Sender);
-    AcquireDiskRequests.erase(ev->Sender);
+    PendingAcquireDiskRequests.erase(ev->Sender);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -214,7 +219,7 @@ void TDiskRegistryActor::HandleReleaseDisk(
         TBlockStoreComponents::DISK_REGISTRY);
 
     Actors.insert(actor);
-    ReleaseDiskRequests[actor] =
+    PendingReleaseDiskRequests[actor] =
         CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
 }
 
@@ -227,14 +232,14 @@ void TDiskRegistryActor::HandleDevicesReleaseFinished(
     OnDiskReleased(msg->SentRequests);
 
     State->FinishAcquireDisk(msg->DiskId);
-    auto reqInfo = ReleaseDiskRequests.at(ev->Sender);
+    auto reqInfo = PendingReleaseDiskRequests.at(ev->Sender);
 
     auto response =
         std::make_unique<TEvDiskRegistry::TEvReleaseDiskResponse>(msg->Error);
     NCloud::Reply(ctx, *reqInfo, std::move(response));
 
     Actors.erase(ev->Sender);
-    ReleaseDiskRequests.erase(ev->Sender);
+    PendingReleaseDiskRequests.erase(ev->Sender);
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

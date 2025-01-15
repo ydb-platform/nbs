@@ -15,7 +15,7 @@
 #include <cloud/blockstore/libs/storage/api/disk_agent.h>
 #include <cloud/blockstore/libs/storage/api/disk_registry.h>
 #include <cloud/blockstore/libs/storage/api/service.h>
-#include <cloud/blockstore/libs/storage/core/acquire_release_disk.h>
+#include <cloud/blockstore/libs/storage/core/acquire_release_devices.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/core/monitoring_utils.h>
 #include <cloud/blockstore/libs/storage/core/pending_request.h>
@@ -118,8 +118,8 @@ private:
     // Requests in-progress
     THashSet<NActors::TActorId> Actors;
 
-    THashMap<NActors::TActorId, TRequestInfoPtr> AcquireDiskRequests;
-    THashMap<NActors::TActorId, TRequestInfoPtr> ReleaseDiskRequests;
+    THashMap<NActors::TActorId, TRequestInfoPtr> PendingAcquireDiskRequests;
+    THashMap<NActors::TActorId, TRequestInfoPtr> PendingReleaseDiskRequests;
 
     TLogbrokerServicePtr LogbrokerService;
     NNotify::IServicePtr NotifyService;

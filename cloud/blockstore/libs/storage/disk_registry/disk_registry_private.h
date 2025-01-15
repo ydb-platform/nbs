@@ -5,7 +5,7 @@
 #include <cloud/blockstore/libs/kikimr/components.h>
 #include <cloud/blockstore/libs/kikimr/events.h>
 #include <cloud/blockstore/libs/storage/api/disk_agent.h>
-#include <cloud/blockstore/libs/storage/core/acquire_release_disk.h>
+#include <cloud/blockstore/libs/storage/core/acquire_release_devices.h>
 #include <cloud/blockstore/libs/storage/core/request_info.h>
 #include <cloud/blockstore/libs/storage/protos/disk.pb.h>
 

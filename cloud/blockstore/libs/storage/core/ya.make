@@ -3,7 +3,7 @@ LIBRARY()
 GENERATE_ENUM_SERIALIZATION(mount_token.h)
 
 SRCS(
-    acquire_disk_actor.cpp
+    acquire_devices_actor.cpp
     block_handler.cpp
     compaction_map.cpp
     compaction_options.cpp
@@ -20,7 +20,7 @@ SRCS(
     pending_request.cpp
     probes.cpp
     proto_helpers.cpp
-    release_disk_actor.cpp
+    release_devices_actor.cpp
     request_buffer.cpp
     request_info.cpp
     storage_request_counters.cpp
