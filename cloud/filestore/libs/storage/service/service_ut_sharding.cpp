@@ -4611,10 +4611,10 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
             UNIT_ASSERT_VALUES_UNEQUAL(0, nodes[i].first);
         }
 
-        UNIT_ASSERT_VALUES_EQUAL(2, ExtractShardNo(nodes[0].first));
-        UNIT_ASSERT_VALUES_EQUAL(1, ExtractShardNo(nodes[1].first));
-        UNIT_ASSERT_VALUES_EQUAL(2, ExtractShardNo(nodes[2].first));
-        UNIT_ASSERT_VALUES_EQUAL(1, ExtractShardNo(nodes[3].first));
+        UNIT_ASSERT_VALUES_EQUAL(1, ExtractShardNo(nodes[0].first));
+        UNIT_ASSERT_VALUES_EQUAL(2, ExtractShardNo(nodes[1].first));
+        UNIT_ASSERT_VALUES_EQUAL(1, ExtractShardNo(nodes[2].first));
+        UNIT_ASSERT_VALUES_EQUAL(2, ExtractShardNo(nodes[3].first));
 
         auto getAttrResponse = service.GetNodeAttr(
             headers,
@@ -4816,7 +4816,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         void CatchEvent(ui32 eventType)
         {
             Env.GetRuntime().SetEventFilter(
-                [&] (auto& runtime, TAutoPtr<IEventHandle>& event) {
+                [&, eventType] (auto& runtime, TAutoPtr<IEventHandle>& event) {
                     Y_UNUSED(runtime);
                     if (ShouldIntercept
                             && event->GetTypeRewrite() == eventType)
