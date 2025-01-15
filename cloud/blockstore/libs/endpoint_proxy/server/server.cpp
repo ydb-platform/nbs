@@ -20,6 +20,7 @@
 #include <cloud/blockstore/public/api/grpc/endpoint_proxy.grpc.pb.h>
 #include <cloud/blockstore/public/api/protos/endpoints.pb.h>
 
+#include <cloud/storage/core/libs/common/backoff_delay_provider.h>
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/common/proto_helpers.h>
 #include <cloud/storage/core/libs/common/scheduler.h>
@@ -58,13 +59,11 @@ namespace {
 ////////////////////////////////////////////////////////////////////////////////
 
 constexpr auto NBD_CONNECTION_TIMEOUT = TDuration::Days(1);
-constexpr bool NBD_RECONFIGURE_CONNECTED = true;
-constexpr bool NBD_DELETE_DEVICE = false;
+constexpr auto NBD_RECONFIGURE_CONNECTED = true;
+constexpr auto NBD_DELETE_DEVICE = false;
 
-const auto MIN_RECONNECT_DELAY =
-    gpr_time_from_millis(100, gpr_clock_type::GPR_TIMESPAN);
-const auto MAX_RECONNECT_DELAY =
-    gpr_time_from_minutes(10, gpr_clock_type::GPR_TIMESPAN);
+constexpr auto MIN_RECONNECT_DELAY = TDuration::MilliSeconds(100);
+constexpr auto MAX_RECONNECT_DELAY = TDuration::Minutes(10);
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -173,39 +172,31 @@ struct TResizeRequestContext: TRequestContextBase
     }
 };
 
-class TRestartAlarmContext: public TRequestContextBase
+struct TRestartAlarmContext: TRequestContextBase
 {
-public:
-    gpr_timespec Delay;
     TString Socket;
+    grpc::ServerCompletionQueue& CQ;
+    TBackoffDelayProvider Backoff;
     grpc::Alarm Alarm;
 
     TRestartAlarmContext(
             TString socket,
             grpc::ServerCompletionQueue& cq)
-        : Delay(MIN_RECONNECT_DELAY)
-        , Socket(std::move(socket))
+        : Socket(std::move(socket))
+        , CQ(cq)
+        , Backoff{MIN_RECONNECT_DELAY, MAX_RECONNECT_DELAY}
     {
-        SetAlarm(cq);
+        SetAlarm();
     }
 
-    TRestartAlarmContext(
-            const TRestartAlarmContext* other,
-            grpc::ServerCompletionQueue& cq)
-        : Socket(other->Socket)
+    void SetAlarm()
     {
-        // double the delay for the next attempt
-        Delay = gpr_time_add(other->Delay, other->Delay);
-        Delay = gpr_time_min(Delay, MAX_RECONNECT_DELAY);
-        SetAlarm(cq);
-    }
-
-private:
-    void SetAlarm(grpc::ServerCompletionQueue& cq)
-    {
-        auto now = gpr_now(gpr_clock_type::GPR_CLOCK_MONOTONIC);
-        auto deadline = gpr_time_add(now, Delay);
-        Alarm.Set(&cq, deadline, this);
+        Alarm.Set(
+            &CQ,
+            gpr_time_from_nanos(
+                Backoff.GetDelayAndIncrease().NanoSeconds(),
+                gpr_clock_type::GPR_TIMESPAN),
+            this);
     }
 };
 
@@ -531,8 +522,9 @@ struct TServer: IEndpointProxyServer
             auto* restartAlarmContext =
                 dynamic_cast<TRestartAlarmContext*>(requestContext);
             if (restartAlarmContext) {
-                ProcessAlarm(restartAlarmContext);
-                delete restartAlarmContext;
+                if (!ProcessAlarm(restartAlarmContext)) {
+                    delete restartAlarmContext;
+                }
                 continue;
             }
         }
@@ -983,7 +975,8 @@ struct TServer: IEndpointProxyServer
         return {};
     }
 
-    void ProcessAlarm(TRestartAlarmContext* context)
+    // returns true in case of an error
+    bool ProcessAlarm(TRestartAlarmContext* context)
     {
         const auto tag = TStringBuilder()
             << "UnixSocketPath: " << context->Socket.Quote() << " - ";
@@ -994,13 +987,15 @@ struct TServer: IEndpointProxyServer
             if (DoProcessAlarm(*ep, tag)) {
                 STORAGE_ERROR(tag
                     << "Unable to restart proxy endpoint, retry in "
-                    << gpr_time_to_millis(context->Delay) << "ms");
-                new TRestartAlarmContext(context, *CQ);
+                    << context->Backoff.GetDelay());
+                context->SetAlarm();
+                return true;
             }
         } else {
             STORAGE_WARN(tag << "Unable to restart proxy endpoint: "
                 << "original endpoint stopped");
         }
+        return false;
     }
 
     // returns true in case of an error
