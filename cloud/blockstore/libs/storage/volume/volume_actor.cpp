@@ -1033,6 +1033,9 @@ STFUNC(TVolumeActor::StateWork)
             TEvDiskRegistry::TEvAcquireDiskResponse,
             HandleAcquireDiskResponse);
         HFunc(
+            NAcquireReleaseDevices::TEvDevicesAcquireFinished,
+            HandleDevicesAcquireFinished);
+        HFunc(
             TEvVolumePrivate::TEvAcquireDiskIfNeeded,
             HandleAcquireDiskIfNeeded);
         HFunc(TEvVolume::TEvReacquireDisk, HandleReacquireDisk);
@@ -1040,6 +1043,9 @@ STFUNC(TVolumeActor::StateWork)
         HFunc(
             TEvDiskRegistry::TEvReleaseDiskResponse,
             HandleReleaseDiskResponse);
+        HFunc(
+            NAcquireReleaseDevices::TEvDevicesReleaseFinished,
+            HandleDevicesReleasedFinished);
         HFunc(
             TEvDiskRegistry::TEvAllocateDiskResponse,
             HandleAllocateDiskResponse);

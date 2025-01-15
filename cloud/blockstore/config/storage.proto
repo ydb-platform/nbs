@@ -1083,4 +1083,7 @@ message TStorageServiceConfig
     // percentage, then the rejection of such agents does not occur - we assume
     // a connectivity failure in the cluster.
     optional double DiskRegistryInitialAgentRejectionThreshold = 396;
+
+    // Enabling direct sending AcquireDevices to disk agent.
+    optional bool UseDirectAcquireReleaseDevicesSending = 397;
 }

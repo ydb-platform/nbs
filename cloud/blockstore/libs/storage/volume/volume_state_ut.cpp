@@ -11,6 +11,7 @@
 #include <util/generic/guid.h>
 
 #include <chrono>
+#include <ranges>
 
 namespace NCloud::NBlockStore::NStorage {
 
@@ -1932,6 +1933,43 @@ Y_UNIT_TEST_SUITE(TVolumeStateTest)
 
             UNIT_ASSERT(!state.GetTrackUsedBlocks());
         }
+    }
+
+    Y_UNIT_TEST(AcquireDisk)
+    {
+        auto volumeState = CreateVolumeState();
+        auto meta = volumeState.GetMeta();
+        const TInstant oldDate = TInstant::ParseIso8601("2023-08-30");
+        meta.MutableVolumeConfig()->SetCreationTs(oldDate.MicroSeconds());
+        meta.AddDevices()->SetDeviceUUID("d1");
+        meta.AddDevices()->SetDeviceUUID("d2");
+        auto& r1 = *meta.AddReplicas();
+        r1.AddDevices()->SetDeviceUUID("d3");
+        r1.AddDevices()->SetDeviceUUID("d4");
+        auto& r2 = *meta.AddReplicas();
+        r2.AddDevices()->SetDeviceUUID("d5");
+        r2.AddDevices()->SetDeviceUUID("d6");
+
+        auto deviceMigration = NProto::TDeviceMigration();
+        deviceMigration.SetSourceDeviceId("d1");
+        *deviceMigration.MutableTargetDevice()->MutableDeviceUUID() = "d7";
+
+        meta.MutableMigrations()->Add(std::move(deviceMigration));
+        volumeState.ResetMeta(meta);
+
+        const THashSet<TString>
+            deviceUUIDSExpected{"d1", "d2", "d3", "d4", "d5", "d6", "d7"};
+
+        auto devices = volumeState.GetAllDevicesForAcquireRelease();
+        auto devicesUUIDS =
+            devices | std::views::transform([](const auto& el)
+                                            { return el.GetDeviceUUID(); });
+
+        THashSet<TString> devicesUUIDSActual(
+            devicesUUIDS.begin(),
+            devicesUUIDS.end());
+
+        UNIT_ASSERT_EQUAL(deviceUUIDSExpected, devicesUUIDSActual);
     }
 }
 

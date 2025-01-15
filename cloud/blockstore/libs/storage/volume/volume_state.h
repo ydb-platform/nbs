@@ -721,6 +721,33 @@ public:
         return Meta.GetResyncNeeded();
     }
 
+    TVector<NProto::TDeviceConfig> GetAllDevicesForAcquireRelease()
+    {
+
+        size_t allDevicesCount = Meta.GetDevices().size();
+        for (const auto& replica: Meta.GetReplicas()) {
+            allDevicesCount += replica.GetDevices().size();
+        }
+        allDevicesCount += GetMeta().GetMigrations().size();
+
+        TVector<NProto::TDeviceConfig> resultDevices;
+        resultDevices.reserve(allDevicesCount);
+
+        for (const auto& device: Meta.GetDevices()) {
+            resultDevices.emplace_back(device);
+        }
+        for (const auto& replica: Meta.GetReplicas()) {
+            for (const auto& device: replica.GetDevices()) {
+                resultDevices.emplace_back(device);
+            }
+        }
+        for (const auto& migration: Meta.GetMigrations()) {
+            resultDevices.emplace_back(migration.GetTargetDevice());
+        }
+
+        return resultDevices;
+    }
+
 private:
     bool CanPreemptClient(
         const TString& oldClientId,

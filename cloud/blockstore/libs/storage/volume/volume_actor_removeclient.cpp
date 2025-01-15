@@ -23,6 +23,10 @@ LWTRACE_USING(BLOCKSTORE_STORAGE_PROVIDER);
 
 void TVolumeActor::ReleaseDisk(const TActorContext& ctx, const TString& clientId)
 {
+    if (Config->GetUseDirectAcquireReleaseDevicesSending()) {
+        SendReleaseDevicesToAgents(clientId, ctx);
+        return;
+    }
     auto request = std::make_unique<TEvDiskRegistry::TEvReleaseDiskRequest>();
 
     request->Record.SetDiskId(State->GetDiskId());
@@ -42,6 +46,13 @@ void TVolumeActor::HandleReleaseDiskResponse(
     auto* msg = ev->Get();
     auto& record = msg->Record;
 
+    HandleDevicesReleasedFinishedImpl(record.GetError(), ctx);
+}
+
+void TVolumeActor::HandleDevicesReleasedFinishedImpl(
+    const NProto::TError& error,
+    const NActors::TActorContext& ctx)
+{
     if (AcquireReleaseDiskRequests.empty()) {
         LOG_DEBUG_S(
             ctx,
