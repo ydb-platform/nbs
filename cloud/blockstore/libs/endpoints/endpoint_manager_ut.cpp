@@ -1939,6 +1939,49 @@ Y_UNIT_TEST_SUITE(TEndpointManagerTest)
             UNIT_ASSERT(!HasError(response));
         }
     }
+
+    Y_UNIT_TEST(ShouldNotCrashRestoreEndpointWhileStartingEndpoint)
+    {
+        TTempDir dir;
+        auto socketPath = dir.Path() / "testSocket";
+        TString diskId = "testDiskId";
+        auto ipcType = NProto::IPC_GRPC;
+
+        TBootstrap bootstrap;
+        TMap<TString, NProto::TMountVolumeRequest> mountedVolumes;
+        bootstrap.Service = CreateTestService(mountedVolumes);
+
+        auto grpcListener =
+            CreateSocketEndpointListener(bootstrap.Logging, 16, MODE0660);
+        grpcListener->SetClientStorageFactory(CreateClientStorageFactoryStub());
+        bootstrap.EndpointListeners = {{NProto::IPC_GRPC, grpcListener}};
+
+        auto manager = CreateEndpointManager(bootstrap);
+        bootstrap.Start();
+
+        NProto::TStartEndpointRequest request;
+        SetDefaultHeaders(request);
+        request.SetUnixSocketPath(socketPath.GetPath());
+        request.SetDiskId(diskId);
+        request.SetClientId(TestClientId);
+        request.SetIpcType(ipcType);
+
+        socketPath.DeleteIfExists();
+        UNIT_ASSERT(!socketPath.Exists());
+
+        {
+            auto futureStartEndpoint = StartEndpoint(*manager, request);
+            auto futureRestoreEndpoint =
+                manager->RestoreSingleEndpointForTesting(
+                    MakeIntrusive<TCallContext>(),
+                    std::make_shared<NProto::TStartEndpointRequest>(request));
+
+            UNIT_ASSERT(
+                !HasError(futureStartEndpoint.GetValue(TDuration::Seconds(5))));
+            UNIT_ASSERT(!HasError(
+                futureRestoreEndpoint.GetValue(TDuration::Seconds(5))));
+        }
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NServer

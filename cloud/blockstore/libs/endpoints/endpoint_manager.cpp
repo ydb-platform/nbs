@@ -554,6 +554,10 @@ public:
         });
     }
 
+    TFuture<NProto::TStartEndpointResponse> RestoreSingleEndpointForTesting(
+        TCallContextPtr ctx,
+        std::shared_ptr<NProto::TStartEndpointRequest> request) override;
+
     TFuture<NProto::TStartEndpointResponse> RestoreSingleEndpoint(
         TCallContextPtr ctx,
         std::shared_ptr<NProto::TStartEndpointRequest> request);
@@ -570,10 +574,6 @@ private:
         return false;
     }
 
-    NProto::TStartEndpointResponse StartEndpointImplWithLock(
-        TCallContextPtr ctx,
-        std::shared_ptr<NProto::TStartEndpointRequest> request,
-        bool restoring);
 
     NProto::TStartEndpointResponse StartEndpointImpl(
         TCallContextPtr ctx,
@@ -728,25 +728,45 @@ private:
 
 ////////////////////////////////////////////////////////////////////////////////
 
+TFuture<NProto::TStartEndpointResponse>
+TEndpointManager::RestoreSingleEndpointForTesting(
+    TCallContextPtr ctx,
+    std::shared_ptr<NProto::TStartEndpointRequest> request)
+{
+    return RestoreSingleEndpoint(ctx, std::move(request));
+}
+
 TFuture<NProto::TStartEndpointResponse> TEndpointManager::RestoreSingleEndpoint(
     TCallContextPtr ctx,
     std::shared_ptr<NProto::TStartEndpointRequest> request)
 {
-    return Executor->Execute([
-        weakSelf = weak_from_this(),
-        ctx,
-        request] () mutable -> NProto::TStartEndpointResponse
-    {
-        auto self = weakSelf.lock();
-        if (!self) {
-            return TErrorResponse(E_FAIL, "EndpointManager is destroyed");
-        }
+    return Executor->Execute(
+        [weakSelf = weak_from_this(),
+         ctx,
+         request]() mutable -> NProto::TStartEndpointResponse
+        {
+            auto self = weakSelf.lock();
+            if (!self) {
+                return TErrorResponse(E_FAIL, "EndpointManager is destroyed");
+            }
 
-        return self->StartEndpointImplWithLock(
-            std::move(ctx),
-            std::move(request),
-            true);
-    });
+            auto promise =
+                self->AddProcessingSocket<TStartEndpointMethod>(*request);
+            if (promise.HasValue()) {
+                return promise.ExtractValue();
+            }
+
+            auto socketPath = request->GetUnixSocketPath();
+
+            auto response = self->StartEndpointImpl(
+                std::move(ctx),
+                std::move(request),
+                true);
+            promise.SetValue(response);
+
+            self->RemoveProcessingSocket(socketPath);
+            return response;
+        });
 }
 
 NProto::TStartEndpointResponse TEndpointManager::DoStartEndpoint(
@@ -764,53 +784,11 @@ NProto::TStartEndpointResponse TEndpointManager::DoStartEndpoint(
     }
 
     auto response =
-        StartEndpointImplWithLock(std::move(ctx), std::move(request), false);
+        StartEndpointImpl(std::move(ctx), std::move(request), false);
     promise.SetValue(response);
 
     RemoveProcessingSocket(socketPath);
     return response;
-}
-
-// See issue-2841
-// There are two maps Endpoints: one in the TEndpointManager, the other in
-// TSessionManager. If we try to call TSessionManager::CreateSession method
-// using an endpoint, for which a session has already been created (endpoint has
-// already been inserted into TSessionManager::Endpoints), a crash will occur.
-// To prevent this, we use the TEndpointManager::Endpoints map and check for the
-// existence of an endpoint at the beginning of the StartEndpointImpl method.
-// If the endpoint already exists, we call AlterEndpoint. However, insertion
-// into TEndpointManager::Endpoints is delayed until the end of StartEndpointImpl.
-// In the meantime, multiple asynchronous operations are performed, which can
-// lead to race conditions. To mitigate this, we invoke StartEndpointImpl with a
-// lock, ensuring synchronized access to the maps and preventing concurrent
-// issues.
-NProto::TStartEndpointResponse TEndpointManager::StartEndpointImplWithLock(
-    TCallContextPtr ctx,
-    std::shared_ptr<NProto::TStartEndpointRequest> request,
-    bool restoring)
-{
-    const TString socketPath = request->GetUnixSocketPath();
-    auto lock_it = EndpointsLock.find(socketPath);
-    auto lock = [&] () {
-        if (lock_it == EndpointsLock.end()) {
-            return EndpointsLock.emplace(
-                std::make_pair(socketPath, TAsyncSemaphore::Make(1))).first->second;
-        }
-        return lock_it->second;
-    }();
-    Y_DEFER {
-        // 2 because the first pointer is in the map, the second is on the stack.
-        if (lock.RefCount() == 2) {
-            EndpointsLock.erase(socketPath);
-        }
-    };
-
-    auto futureLock = lock->AcquireAsync();
-    Executor->WaitFor(futureLock.IgnoreResult());
-
-    auto deferGuard = lock->MakeAutoRelease();
-
-    return StartEndpointImpl(std::move(ctx), std::move(request), restoring);
 }
 
 NProto::TStartEndpointResponse TEndpointManager::StartEndpointImpl(
