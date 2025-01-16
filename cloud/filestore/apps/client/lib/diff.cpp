@@ -51,7 +51,7 @@ public:
         ui64 parentId,
         TMap<TString, NProto::TNodeAttr>& result)
     {
-        auto response = ListAll(session, fsId, parentId, false);
+        auto response = ListAll(session, fsId, parentId, false, 0);
 
         for (ui32 i = 0; i < response.NodesSize(); ++i) {
             const auto& node = response.GetNodes(i);

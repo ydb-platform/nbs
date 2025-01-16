@@ -219,10 +219,18 @@ class FilestoreCliClient:
 
         return common.execute(cmd, env=self.__env, check_exit_code=self.__check_exit_code).stdout
 
-    def find_garbage(self, fs, shards, page_size):
+    def find_garbage(
+            self,
+            fs,
+            shards,
+            page_size,
+            find_in_shards=True,
+            find_in_leader=False):
         shard_params = []
         for shard in shards:
             shard_params += ["--shard", shard]
+        shard_params += ["--find-in-shards", str(int(find_in_shards))]
+        shard_params += ["--find-in-leader", str(int(find_in_leader))]
         cmd = [
             self.__binary_path, "findgarbage",
             "--filesystem", fs,
