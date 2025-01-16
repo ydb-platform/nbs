@@ -309,17 +309,23 @@ private:
 
                 // parent already resolved so we can create node and resolve
                 // this entry
-                auto node =
-                    TIndexNode::Create(**parentNodeIt, pathElemRecord->Name);
-                node->SetRecordIndex(pathElemIndex);
+                try {
+                    auto node =
+                        TIndexNode::Create(**parentNodeIt, pathElemRecord->Name);
+                    node->SetRecordIndex(pathElemIndex);
+                    Nodes.insert(node);
 
-                Nodes.insert(node);
+                    STORAGE_TRACE(
+                        "Resolve node end, NodeId=" << pathElemRecord->NodeId);
+                } catch (...) {
+                    STORAGE_ERROR(
+                        "Resolve node failed, NodeId=" << pathElemRecord->NodeId <<
+                        ", Exception=" << CurrentExceptionMessage());
+                    NodeTable->DeleteRecord(pathElemIndex);
+                }
 
                 unresolvedPath.pop();
                 unresolvedRecords.erase(pathElemRecord->NodeId);
-
-                STORAGE_TRACE(
-                    "Resolve node end, NodeId=" << pathElemRecord->NodeId);
             }
         }
     }
