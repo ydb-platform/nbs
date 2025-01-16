@@ -679,7 +679,8 @@ Y_UNIT_TEST_SUITE(TVolumeThrottlingPolicyTest)
         auto recalculatedMaxBandwidth =
             CalculateThrottlerC2(maxIops, maxBandwidth);
 
-        const auto [usedIopsQuota, usedBandwidthQuota] = tp.TakeUsedQuota();
+        const auto [usedIopsQuota, usedBandwidthQuota] =
+            tp.TakeSplittedUsedQuota();
 
         UNIT_ASSERT_DOUBLES_EQUAL(
             usedBandwidthQuota,
@@ -694,7 +695,7 @@ Y_UNIT_TEST_SUITE(TVolumeThrottlingPolicyTest)
             1e-6);
 
         auto [usedIopsQuotaAfterTake, usedBandwidthQuotaAfterTake] =
-            tp.TakeUsedQuota();
+            tp.TakeSplittedUsedQuota();
 
         UNIT_ASSERT_DOUBLES_EQUAL(usedIopsQuotaAfterTake, 0, 1e-6);
 
@@ -731,7 +732,8 @@ Y_UNIT_TEST_SUITE(TVolumeThrottlingPolicyTest)
             DO_TEST(tp, 0, 0, byteCount, static_cast<ui32>(EOpType::Read));
         }
 
-        const auto [usedIopsQuota, usedBandwidthQuota] = tp.TakeUsedQuota();
+        const auto [usedIopsQuota, usedBandwidthQuota] =
+            tp.TakeSplittedUsedQuota();
 
         UNIT_ASSERT_DOUBLES_EQUAL(usedBandwidthQuota, 0, 1e-6);
 
