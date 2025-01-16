@@ -726,6 +726,7 @@ func TestTasksInflightLimit(t *testing.T) {
 	config.StalkingRunnersCount = &runnersCount
 
 	registry := mocks.NewIgnoreUnknownCallsRegistryMock()
+	defer registry.AssertAllExpectations(t)
 
 	s := createServicesWithConfig(t, ctx, db, config, registry)
 
@@ -809,11 +810,7 @@ func TestTasksInflightLimit(t *testing.T) {
 			// So long tasks can be taken by listerReadyToRun or
 			// listerStallingWhileRunning lister.
 			// Thus we need to compare runningLongTaskCount with doubled inflightLongTaskPerNodeLimit.
-			require.LessOrEqual(
-				t,
-				count,
-				2*inflightLongTaskPerNodeLimit,
-			)
+			require.LessOrEqual(t, count, 2*inflightLongTaskPerNodeLimit)
 		case err := <-doublerTaskErrs:
 			require.NoError(t, err)
 			endedDoublerTaskCount++
@@ -823,7 +820,6 @@ func TestTasksInflightLimit(t *testing.T) {
 
 			if endedLongTaskCount == scheduledLongTaskCount {
 				require.EqualValues(t, scheduledDoublerTaskCount, endedDoublerTaskCount)
-				registry.AssertAllExpectations(t)
 				return
 			}
 		}
