@@ -57,6 +57,7 @@ private:
     void NotifyDiskRegistry(const TActorContext& ctx);
     void StatVolume(const TActorContext& ctx);
     void DeallocateDisk(const TActorContext& ctx);
+    void StopPartitions(const TActorContext& ctx);
     NProto::TError CheckIfDestructionIsAllowed() const;
 
     void HandleModifyResponse(
@@ -77,6 +78,11 @@ private:
 
     void HandleDeallocateDiskResponse(
         const TEvDiskRegistry::TEvDeallocateDiskResponse::TPtr& ev,
+        const TActorContext& ctx);
+
+    void HandleStopPartitions(
+        const TEvVolume::TEvStopPartionBeforeVolumeDestructionResponse::TPtr&
+            ev,
         const TActorContext& ctx);
 
     void ReplyAndDie(const TActorContext& ctx, NProto::TError error);
@@ -178,6 +184,14 @@ void TDestroyVolumeActor::DeallocateDisk(const TActorContext& ctx)
     request->Record.SetSync(Sync);
 
     NCloud::Send(ctx, MakeDiskRegistryProxyServiceId(), std::move(request));
+}
+
+void TDestroyVolumeActor::StopPartitions(const TActorContext& ctx)
+{
+    auto stopPartReq = std::make_unique<
+        TEvVolume::TEvStopPartionBeforeVolumeDestructionRequest>();
+    stopPartReq->Record.SetDiskId(DiskId);
+    NCloud::Send(ctx, MakeVolumeProxyServiceId(), std::move(stopPartReq));
 }
 
 NProto::TError TDestroyVolumeActor::CheckIfDestructionIsAllowed() const
@@ -282,7 +296,7 @@ void TDestroyVolumeActor::HandleMarkDiskForCleanupResponse(
         return;
     }
 
-    DestroyVolume(ctx);
+    StopPartitions(ctx);
 }
 
 void TDestroyVolumeActor::HandleDeallocateDiskResponse(
@@ -383,6 +397,14 @@ void TDestroyVolumeActor::HandleStatVolumeResponse(
     }
 }
 
+void TDestroyVolumeActor::HandleStopPartitions(
+    const TEvVolume::TEvStopPartionBeforeVolumeDestructionResponse::TPtr& ev,
+    const TActorContext& ctx)
+{
+    Y_UNUSED(ev);
+    DestroyVolume(ctx);
+}
+
 void TDestroyVolumeActor::ReplyAndDie(
     const TActorContext& ctx,
     NProto::TError error)
@@ -411,6 +433,10 @@ STFUNC(TDestroyVolumeActor::StateWork)
         HFunc(
             TEvService::TEvStatVolumeResponse,
             HandleStatVolumeResponse);
+
+        HFunc(
+            TEvVolume::TEvStopPartionBeforeVolumeDestructionResponse,
+            HandleStopPartitions);
 
         default:
             HandleUnexpectedEvent(ev, TBlockStoreComponents::SERVICE);

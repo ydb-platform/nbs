@@ -346,6 +346,53 @@ void TVolumeActor::StartPartitionsForGc(const TActorContext& ctx)
     PartitionsStartedReason = EPartitionsStartedReason::STARTED_FOR_GC;
 }
 
+void TVolumeActor::HandleStopPartionBeforeVolumeDestruction(
+    const TEvVolume::TEvStopPartionBeforeVolumeDestructionRequest::TPtr& ev,
+    const TActorContext& ctx)
+{
+    if (!State->GetDiskRegistryBasedPartitionActor()) {
+        LOG_ERROR(
+            ctx,
+            TBlockStoreComponents::VOLUME,
+            "[%lu] StopPartionBeforeVolumeDestruction req was send to not DR "
+            "based "
+            "volume",
+            TabletID());
+
+        NCloud::Reply(
+            ctx,
+            *ev,
+            std::make_unique<
+                TEvVolume::TEvStopPartionBeforeVolumeDestructionResponse>(
+                MakeError(E_REJECTED, "request not supported")));
+        return;
+    }
+
+    LOG_DEBUG(
+        ctx,
+        TBlockStoreComponents::VOLUME,
+        "[%lu] Stop Partition before volume destruction",
+        TabletID());
+
+    CancelRequests(ctx);
+
+    auto reqInfo =
+        CreateRequestInfo(ev->Sender, ev->Cookie, ev->Get()->CallContext);
+    StopPartitions(
+        ctx,
+        [reqInfo = std::move(reqInfo)](const auto& ctx)
+        {
+            NCloud::Reply(
+                ctx,
+                *reqInfo,
+                std::make_unique<
+                    TEvVolume::
+                        TEvStopPartionBeforeVolumeDestructionResponse>());
+        });
+    BecomeAux(ctx, STATE_ZOMBIE);
+
+}
+
 void TVolumeActor::StopPartitions(
     const TActorContext& ctx,
     TDiskRegistryBasedPartitionStoppedCallback onPartitionStopped)

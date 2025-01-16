@@ -460,6 +460,9 @@ public:
     std::unique_ptr<TEvVolumePrivate::TEvReadMetaHistoryRequest>
     CreateReadMetaHistoryRequest();
 
+    std::unique_ptr<TEvVolume::TEvStopPartionBeforeVolumeDestructionRequest>
+    CreateStopPartionBeforeVolumeDestructionRequest();
+
     void SendRemoteHttpInfo(
         const TString& params,
         HTTP_METHOD method);
