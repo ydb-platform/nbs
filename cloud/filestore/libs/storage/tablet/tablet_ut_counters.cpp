@@ -901,12 +901,24 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Counters)
         auto registry = Env.GetRegistry();
 
         Tablet->AdvanceTime(TDuration::Seconds(15));
-        Env.GetRuntime().DispatchEvents({}, TDuration::Seconds(5));
+        Env.GetRuntime().DispatchEvents({}, TDuration::Seconds(1));
+
+        registry->Visit(TInstant::Zero(), Visitor);
+
+        Visitor.ValidateExpectedCounters({
+            {{{"type", "hdd"}, {"sensor", "FileSystemCount"}}, 1},
+            {{{"type", "hdd"}, {"sensor", "TabletCount"}}, 1}
+        });
+
+        Tablet->ConfigureAsShard(1);
+
+        Tablet->AdvanceTime(TDuration::Seconds(15));
+        Env.GetRuntime().DispatchEvents({}, TDuration::Seconds(1));
 
         registry->Visit(TInstant::Zero(), Visitor);
         Visitor.ValidateExpectedCounters({
-            {{{"sensor", "FsCount"}}, 1},
-            {{{"sensor", "TabletCount"}}, 1},
+            {{{"type", "hdd"}, {"sensor", "FileSystemCount"}}, 0},
+            {{{"type", "hdd"}, {"sensor", "TabletCount"}}, 1}
         });
     }
 }

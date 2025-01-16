@@ -80,7 +80,7 @@ private:
     {
         bool Initialized{false};
 
-        std::atomic<i64> FsCount{0};
+        std::atomic<i64> FileSystemCount{0};
         std::atomic<i64> TabletCount{1};
 
         std::atomic<i64> TotalBytesCount{0};

@@ -334,7 +334,7 @@ void TIndexTabletActor::CompleteTx_LoadState(
     LOG_INFO_S(ctx, TFileStoreComponents::TABLET,
         LogTag << " Load state completed");
 
-    NMetrics::Store(Metrics.FsCount, IsShard() ? 0 : 1);
+    NMetrics::Store(Metrics.FileSystemCount, IsShard() ? 0 : 1);
 }
 
 ////////////////////////////////////////////////////////////////////////////////

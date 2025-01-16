@@ -256,7 +256,7 @@ void TIndexTabletActor::TMetrics::Register(
         {totalKindRegistry, FsRegistry});
     AggregatableRegistry = CreateScopedMetricsRegistry(
         {},
-        {std::move(totalKindRegistry)});
+        {std::move(totalKindRegistry), StorageRegistry});
 
 #define REGISTER(registry, name, aggrType, metrType)                           \
     RegisterSensor(registry, #name, name, aggrType, metrType)                  \
@@ -286,7 +286,7 @@ void TIndexTabletActor::TMetrics::Register(
         metrType)                                                              \
 // REGISTER_LOCAL
 
-    REGISTER_AGGREGATABLE_ONLY_SUM(FsCount, EMetricType::MT_ABSOLUTE);
+    REGISTER_AGGREGATABLE_ONLY_SUM(FileSystemCount, EMetricType::MT_ABSOLUTE);
     REGISTER_AGGREGATABLE_ONLY_SUM(TabletCount, EMetricType::MT_ABSOLUTE);
 
     REGISTER_AGGREGATABLE_SUM(TotalBytesCount, EMetricType::MT_ABSOLUTE);

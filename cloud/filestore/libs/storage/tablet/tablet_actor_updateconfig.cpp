@@ -231,8 +231,6 @@ void TIndexTabletActor::ExecuteTx_UpdateConfig(
     Convert(args.FileSystem.GetPerformanceProfile(), config);
 
     UpdateConfig(db, args.FileSystem, config);
-
-    NMetrics::Store(Metrics.FsCount, IsShard() ? 0 : 1);
 }
 
 void TIndexTabletActor::CompleteTx_UpdateConfig(
@@ -244,6 +242,8 @@ void TIndexTabletActor::CompleteTx_UpdateConfig(
     RegisterFileStore(ctx);
     RegisterStatCounters(ctx.Now());
     ResetThrottlingPolicy();
+
+    NMetrics::Store(Metrics.FileSystemCount, IsShard() ? 0 : 1);
 
     LOG_DEBUG(ctx, TFileStoreComponents::TABLET,
         "%s Sending OK response for UpdateConfig with version=%u",
@@ -445,6 +445,8 @@ void TIndexTabletActor::CompleteTx_ConfigureAsShard(
         "%s Configured as shard, ShardNo: %u",
         LogTag.c_str(),
         args.Request.GetShardNo());
+
+    NMetrics::Store(Metrics.FileSystemCount, IsShard() ? 0 : 1);
 
     auto response =
         std::make_unique<TEvIndexTablet::TEvConfigureAsShardResponse>();
