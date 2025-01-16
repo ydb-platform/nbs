@@ -52,7 +52,6 @@ void TStorageServiceActor::RegisterPages(const NActors::TActorContext& ctx)
         mon->RegisterActorPage(rootPage, "service", "Service",
             false, ctx.ExecutorThread.ActorSystem, SelfId());
     }
-
 }
 
 void TStorageServiceActor::RegisterCounters(const NActors::TActorContext& ctx)
@@ -64,6 +63,18 @@ void TStorageServiceActor::RegisterCounters(const NActors::TActorContext& ctx)
 
     CpuWait = serverCounters->GetCounter("CpuWait", false);
     CpuWaitFailure = serverCounters->GetCounter("CpuWaitFailure", false);
+
+    auto serviceCounters = rootGroup->GetSubgroup("component", "service");
+    TotalFileSystemCount = serviceCounters->GetCounter("FileSystemCount", false);
+    TotalTabletCount = serviceCounters->GetCounter("TabletCount", false);
+
+    auto hddCounters = serviceCounters->GetSubgroup("type", "hdd");
+    HddFileSystemCount = hddCounters->GetCounter("FileSystemCount", false);
+    HddTabletCount = hddCounters->GetCounter("TabletCount", false);
+
+    auto ssdCounters = serviceCounters->GetSubgroup("type", "ssd");
+    SsdFileSystemCount = hddCounters->GetCounter("FileSystemCount", false);
+    SsdTabletCount = hddCounters->GetCounter("TabletCount", false);
 }
 
 void TStorageServiceActor::ScheduleUpdateStats(const NActors::TActorContext& ctx)
@@ -166,6 +177,7 @@ void TStorageServiceActor::HandleRegisterLocalFileStore(
             msg->FileStoreId,
             msg->TabletId,
             msg->Generation,
+            msg->IsShard,
             std::move(msg->Config));
     }
 }

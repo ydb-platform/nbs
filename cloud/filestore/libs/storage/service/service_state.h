@@ -156,6 +156,7 @@ struct TLocalFileStore
     const TString FileStoreId;
     const ui64 TabletId;
     const ui32 Generation;
+    const bool IsShard;
 
     NProtoPrivate::TFileSystemConfig Config;
 
@@ -163,10 +164,12 @@ struct TLocalFileStore
             TString id,
             ui64 tablet,
             ui32 generation,
+            bool isShard,
             NProtoPrivate::TFileSystemConfig config)
         : FileStoreId(std::move(id))
         , TabletId(tablet)
         , Generation(generation)
+        , IsShard(isShard)
         , Config(std::move(config))
     {}
 };
@@ -221,6 +224,7 @@ public:
         const TString& id,
         ui64 tablet,
         ui32 generation,
+        bool isShard,
         NProtoPrivate::TFileSystemConfig config);
     void UnregisterLocalFileStore(
         const TString& id,
