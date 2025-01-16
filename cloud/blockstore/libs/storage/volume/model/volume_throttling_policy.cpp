@@ -249,8 +249,11 @@ struct TVolumeThrottlingPolicy::TImpl
 
         const auto recalculatedMaxIops =
             CalculateThrottlerC1(maxIops, maxBandwidth);
+        Y_DEBUG_ABORT_UNLESS(recalculatedMaxIops);
+
         const auto recalculatedMaxBandwidth =
             CalculateThrottlerC2(maxIops, maxBandwidth);
+
         auto d = Bucket.Register(
             ts,
             m * CostPerIO(
@@ -260,7 +263,7 @@ struct TVolumeThrottlingPolicy::TImpl
 
         if (!d.GetValue()) {
             // 0 is special value which disables throttling by byteCount
-            if (maxBandwidth) {
+            if (recalculatedMaxBandwidth) {
                 UsedBandwidthQuota +=
                     m * (static_cast<double>(bandwidthUpdate) /
                          static_cast<double>(recalculatedMaxBandwidth));
@@ -295,9 +298,9 @@ struct TVolumeThrottlingPolicy::TImpl
         return Bucket.CalculateCurrentSpentBudgetShare(ts);
     }
 
-    std::pair<double, double> TakeUsedQuota()
+    TSplittedUsedQuota TakeSplittedUsedQuota()
     {
-        auto result = std::make_pair(UsedIopsQuota, UsedBandwidthQuota);
+        auto result = TSplittedUsedQuota(UsedIopsQuota, UsedBandwidthQuota);
         UsedIopsQuota = 0;
         UsedBandwidthQuota = 0;
 
@@ -410,9 +413,10 @@ double TVolumeThrottlingPolicy::CalculateCurrentSpentBudgetShare(TInstant ts) co
     return Impl->CalculateCurrentSpentBudgetShare(ts);
 }
 
-std::pair<double, double> TVolumeThrottlingPolicy::TakeUsedQuota()
+TVolumeThrottlingPolicy::TSplittedUsedQuota
+TVolumeThrottlingPolicy::TakeSplittedUsedQuota()
 {
-    return Impl->TakeUsedQuota();
+    return Impl->TakeSplittedUsedQuota();
 }
 
 const TBackpressureReport& TVolumeThrottlingPolicy::GetCurrentBackpressure() const

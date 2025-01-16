@@ -54,6 +54,11 @@ public:
         Last,
     };
 
+    struct TSplittedUsedQuota {
+        double Iops;
+        double Bandwidth;
+    };
+
 private:
     struct TImpl;
     std::unique_ptr<TImpl> Impl;
@@ -100,7 +105,7 @@ public:
     ui64 CalculatePostponedWeight() const;
     double CalculateCurrentSpentBudgetShare(TInstant ts) const;
     // Returns pair of UsedIopsQuota and UsedBandwidthQuota.
-    [[nodiscard]] std::pair<double, double> TakeUsedQuota();
+    [[nodiscard]] TSplittedUsedQuota TakeSplittedUsedQuota();
     const TBackpressureReport& GetCurrentBackpressure() const;
     const NProto::TVolumePerformanceProfile& GetConfig() const;
 

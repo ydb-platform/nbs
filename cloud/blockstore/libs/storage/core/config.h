@@ -570,7 +570,6 @@ public:
     TString GetCachedDiskAgentSessionsPath() const;
 
     bool GetUseDirectCopyRange() const;
-    bool GetCalculateUsedQuotaFromOtherMetrics() const;
     ui32 GetMaxShadowDiskFillBandwidth() const;
     ui32 GetMaxShadowDiskFillIoDepth() const;
     ui32 GetBackgroundOperationsTotalBandwidth() const;
@@ -623,6 +622,7 @@ public:
 
     [[nodiscard]] bool GetDisableFullPlacementGroupCountCalculation() const;
     [[nodiscard]] double GetDiskRegistryInitialAgentRejectionThreshold() const;
+    [[nodiscard]] bool GetCalculateSplittedUsedQuotaMetric() const;
 };
 
 ui64 GetAllocationUnit(
