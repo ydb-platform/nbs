@@ -38,6 +38,7 @@ python_client/cloud-blockstore-tests-python_client
 rdma/image/cloud
 rdma/image/rootfs.img
 rdma/rdma-test/cloud-blockstore-tests-rdma-rdma-test
+recipes/disk-registry-state/recipe
 recipes/endpoint/endpoint-recipe
 recipes/local-kikimr/local-kikimr-recipe
 recipes/local-null/local-null-recipe

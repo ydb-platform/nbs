@@ -38,8 +38,9 @@ void TMirrorPartitionActor::SendStats(const TActorContext& ctx)
         return;
     }
 
-    auto stats =
-        CreatePartitionDiskCounters(EPublishingPolicy::DiskRegistryBased);
+    auto stats = CreatePartitionDiskCounters(
+        EPublishingPolicy::DiskRegistryBased,
+        DiagnosticsConfig->GetHistogramCounterOptions());
 
     for (const auto& counters: ReplicaCounters) {
         if (counters) {

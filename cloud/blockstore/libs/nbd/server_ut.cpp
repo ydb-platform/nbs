@@ -2,6 +2,7 @@
 
 #include "client.h"
 #include "client_handler.h"
+#include "error_handler.h"
 #include "server_handler.h"
 
 #include <cloud/blockstore/libs/client/config.h>
@@ -274,6 +275,7 @@ std::unique_ptr<TBootstrap> CreateBootstrap(
         logging,
         std::move(storage),
         CreateServerStatsStub(),
+        CreateErrorHandlerStub(),
         options);
 
     auto client = CreateClient(
@@ -1033,6 +1035,7 @@ Y_UNIT_TEST_SUITE(TServerTest)
                 bootstrap->GetLogging(),
                 storage,
                 CreateServerStatsStub(),
+                CreateErrorHandlerStub(),
                 options);
 
             auto future = bootstrap->GetServer()->StartEndpoint(

@@ -526,6 +526,7 @@ void TAcquireShadowDiskActor::MaybeReady(const NActors::TActorContext& ctx)
 
 TShadowDiskActor::TShadowDiskActor(
         TStorageConfigPtr config,
+        TDiagnosticsConfigPtr diagnosticConfig,
         NRdma::IClientPtr rdmaClient,
         IProfileLogPtr profileLog,
         IBlockDigestGeneratorPtr digestGenerator,
@@ -539,6 +540,7 @@ TShadowDiskActor::TShadowDiskActor(
     : TNonreplicatedPartitionMigrationCommonActor(
           static_cast<IMigrationOwner*>(this),
           config,
+          std::move(diagnosticConfig),
           srcConfig->GetName(),
           srcConfig->GetBlockCount(),
           srcConfig->GetBlockSize(),
@@ -550,7 +552,6 @@ TShadowDiskActor::TShadowDiskActor(
               checkpointInfo.ShadowDiskState == EShadowDiskState::Ready),
           volumeActorId,
           config->GetMaxShadowDiskFillIoDepth())
-    , Config(std::move(config))
     , RdmaClient(std::move(rdmaClient))
     , SrcConfig(std::move(srcConfig))
     , CheckpointId(checkpointInfo.CheckpointId)
@@ -744,7 +745,7 @@ void TShadowDiskActor::AcquireShadowDisk(
     AcquireActorId = NCloud::Register(
         ctx,
         std::make_unique<TAcquireShadowDiskActor>(
-            Config,
+            GetConfig(),
             ShadowDiskId,
             ShadowDiskDevices,
             acquireReason,
@@ -825,7 +826,8 @@ void TShadowDiskActor::CreateShadowDiskPartitionActor(
     DstActorId = NCloud::Register(
         ctx,
         CreateNonreplicatedPartition(
-            Config,
+            GetConfig(),
+            GetDiagnosticsConfig(),
             DstConfig,
             VolumeActorId,   // send stat to volume directly.
             RdmaClient));
@@ -846,8 +848,8 @@ void TShadowDiskActor::CreateShadowDiskPartitionActor(
             SrcActorId,
             DstActorId,
             std::make_unique<TMigrationTimeoutCalculator>(
-                Config->GetMaxShadowDiskFillBandwidth(),
-                Config->GetExpectedDiskAgentSize(),
+                GetConfig()->GetMaxShadowDiskFillBandwidth(),
+                GetConfig()->GetExpectedDiskAgentSize(),
                 DstConfig));
         StartWork(ctx);
 
@@ -868,7 +870,7 @@ void TShadowDiskActor::CreateShadowDiskPartitionActor(
 void TShadowDiskActor::SchedulePeriodicalReAcquire(const TActorContext& ctx)
 {
     ctx.Schedule(
-        Config->GetClientRemountPeriod(),
+        GetConfig()->GetClientRemountPeriod(),
         new TEvents::TEvWakeup(EShadowDiskWakeupReason::SDWR_REACQUIRE));
 }
 

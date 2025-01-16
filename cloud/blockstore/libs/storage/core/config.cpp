@@ -521,6 +521,8 @@ TDuration MSeconds(ui32 value)
     xxx(EncryptionAtRestForDiskRegistryBasedDisksEnabled, bool,    false      )\
     xxx(DisableFullPlacementGroupCountCalculation,        bool,    false      )\
     xxx(DiskRegistryInitialAgentRejectionThreshold,       double,    50       )\
+    xxx(EnableToChangeStatesFromDiskRegistryMonpage,      bool,    false      )\
+    xxx(EnableToChangeErrorStatesFromDiskRegistryMonpage, bool,    false      )\
 // BLOCKSTORE_STORAGE_CONFIG_RW
 
 #define BLOCKSTORE_STORAGE_CONFIG(xxx)                                         \

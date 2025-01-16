@@ -50,8 +50,9 @@ void TNonreplicatedPartitionActor::SendStats(const TActorContext& ctx)
     NetworkBytes = 0;
     CpuUsage = {};
 
-    PartCounters =
-        CreatePartitionDiskCounters(EPublishingPolicy::DiskRegistryBased);
+    PartCounters = CreatePartitionDiskCounters(
+        EPublishingPolicy::DiskRegistryBased,
+        DiagnosticsConfig->GetHistogramCounterOptions());
 
     NCloud::Send(ctx, StatActorId, std::move(request));
 }

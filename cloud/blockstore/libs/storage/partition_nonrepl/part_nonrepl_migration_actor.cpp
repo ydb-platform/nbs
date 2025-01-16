@@ -17,6 +17,7 @@ constexpr TDuration PrepareMigrationInterval = TDuration::Seconds(5);
 
 TNonreplicatedPartitionMigrationActor::TNonreplicatedPartitionMigrationActor(
         TStorageConfigPtr config,
+        TDiagnosticsConfigPtr diagnosticsConfig,
         IProfileLogPtr profileLog,
         IBlockDigestGeneratorPtr digestGenerator,
         ui64 initialMigrationIndex,
@@ -28,6 +29,7 @@ TNonreplicatedPartitionMigrationActor::TNonreplicatedPartitionMigrationActor(
     : TNonreplicatedPartitionMigrationCommonActor(
           static_cast<IMigrationOwner*>(this),
           config,
+          std::move(diagnosticsConfig),
           srcConfig->GetName(),
           srcConfig->GetBlockCount(),
           srcConfig->GetBlockSize(),
@@ -37,7 +39,6 @@ TNonreplicatedPartitionMigrationActor::TNonreplicatedPartitionMigrationActor(
           std::move(rwClientId),
           statActorId,
           config->GetMaxMigrationIoDepth())
-    , Config(std::move(config))
     , SrcConfig(std::move(srcConfig))
     , Migrations(std::move(migrations))
     , RdmaClient(std::move(rdmaClient))
@@ -51,8 +52,8 @@ void TNonreplicatedPartitionMigrationActor::OnBootstrap(
         CreateSrcActor(ctx),
         CreateDstActor(ctx),
         std::make_unique<TMigrationTimeoutCalculator>(
-            Config->GetMaxMigrationBandwidth(),
-            Config->GetExpectedDiskAgentSize(),
+            GetConfig()->GetMaxMigrationBandwidth(),
+            GetConfig()->GetExpectedDiskAgentSize(),
             SrcConfig));
 
     PrepareForMigration(ctx);
@@ -161,7 +162,12 @@ NActors::TActorId TNonreplicatedPartitionMigrationActor::CreateSrcActor(
 {
     return NCloud::Register(
         ctx,
-        CreateNonreplicatedPartition(Config, SrcConfig, SelfId(), RdmaClient));
+        CreateNonreplicatedPartition(
+            GetConfig(),
+            GetDiagnosticsConfig(),
+            SrcConfig,
+            SelfId(),
+            RdmaClient));
 }
 
 NActors::TActorId TNonreplicatedPartitionMigrationActor::CreateDstActor(
@@ -169,7 +175,7 @@ NActors::TActorId TNonreplicatedPartitionMigrationActor::CreateDstActor(
 {
     Y_ABORT_UNLESS(!Migrations.empty());
 
-    if (Config->GetNonReplicatedVolumeMigrationDisabled()) {
+    if (GetConfig()->GetNonReplicatedVolumeMigrationDisabled()) {
         LOG_WARN(
             ctx,
             TBlockStoreComponents::PARTITION,
@@ -219,7 +225,8 @@ NActors::TActorId TNonreplicatedPartitionMigrationActor::CreateDstActor(
     return NCloud::Register(
         ctx,
         CreateNonreplicatedPartition(
-            Config,
+            GetConfig(),
+            GetDiagnosticsConfig(),
             SrcConfig->Fork(std::move(devices)),
             SelfId(),
             RdmaClient));

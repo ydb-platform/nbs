@@ -13,6 +13,7 @@ from cloud.blockstore.config.server_pb2 import TServerConfig, \
     TServerAppConfig, TKikimrServiceConfig
 from cloud.blockstore.config.storage_pb2 import TStorageServiceConfig
 from cloud.blockstore.tests.python.lib.nbs_runner import LocalNbs
+from cloud.blockstore.tests.python.lib.client import NbsClient
 from cloud.blockstore.tests.python.lib.nonreplicated_setup import \
     setup_nonreplicated, create_file_devices, \
     setup_disk_registry_config_simple, enable_writable_state
@@ -409,6 +410,93 @@ class TestDiskRegistryTablet:
             self.session, self.base_url,
             self.dr_id, params, "<h2>Replace device is not allowed</h2>")
 
+    def check_change_device_state(self):
+        params = {"action": "changeDeviceState"}
+        check_tablet_get_redirect(
+            self.session, self.base_url,
+            self.dr_id, params, "<h2>Wrong HTTP method</h2>")
+        check_tablet_post_redirect(
+            self.session, self.base_url,
+            self.dr_id, params, "<h2>No new state is given</h2>")
+
+        params = {
+            "action": "changeDeviceState",
+            "NewState" : "DEVICE_STATE_ONLINE",
+        }
+        check_tablet_post_redirect(
+            self.session, self.base_url,
+            self.dr_id, params, "<h2>No device id is given</h2>")
+
+        params = {
+            "action": "changeDeviceState",
+            "NewState" : "not a state",
+            "DeviceUUID": "FileDevice-1"
+        }
+        check_tablet_post_redirect(
+            self.session, self.base_url,
+            self.dr_id, params, "<h2>Invalid new state</h2>")
+
+        params = {
+            "action": "changeDeviceState",
+            "NewState" : "DEVICE_STATE_WARNING",
+            "DeviceUUID": "FileDevice-1"
+        }
+
+        check_tablet_post_redirect(
+            self.session, self.base_url,
+            self.dr_id, params, "<h2>Operation successfully completed</h2>")
+
+        state = self.client.backup_disk_registry_state()
+
+        for agent in state["Backup"]["Agents"]:
+            for device in agent["Devices"]:
+                if device["DeviceUUID"] == "FileDevice-1":
+                    assert device["State"] == "DEVICE_STATE_WARNING"
+
+    def check_change_agent_state(self):
+        params = {"action": "changeAgentState"}
+        check_tablet_get_redirect(
+            self.session, self.base_url,
+            self.dr_id, params, "<h2>Wrong HTTP method</h2>")
+        check_tablet_post_redirect(
+            self.session, self.base_url,
+            self.dr_id, params, "<h2>No new state is given</h2>")
+
+        params = {
+            "action": "changeAgentState",
+            "NewState" : "AGENT_STATE_ONLINE",
+        }
+        check_tablet_post_redirect(
+            self.session, self.base_url,
+            self.dr_id, params, "<h2>No agent id is given</h2>")
+
+        params = {
+            "action": "changeAgentState",
+            "NewState" : "not a state",
+            "AgentID": "localhost"
+        }
+        check_tablet_post_redirect(
+            self.session, self.base_url,
+            self.dr_id, params, "<h2>Invalid new state</h2>")
+
+        params = {
+            "action": "changeAgentState",
+            "NewState" : "AGENT_STATE_WARNING",
+            "AgentID": "localhost"
+        }
+
+        check_tablet_post_redirect(
+            self.session, self.base_url,
+            self.dr_id, params, "<h2>Operation successfully completed</h2>")
+
+        state = self.client.backup_disk_registry_state()
+
+        for agent in state["Backup"]["Agents"]:
+            if agent["AgentId"] == "localhost":
+                assert agent["State"] == "AGENT_STATE_WARNING"
+
+        self.client.change_agent_state("localhost", "0")
+
     def check_showdisk(self):
         params = {"action": "disk"}
         check_tablet_get_redirect(
@@ -447,8 +535,12 @@ class TestDiskRegistryTablet:
         self.dr_id = nbs.get_dr_tablet_id()
         logging.info("disk registry tablet %s" % self.dr_id)
 
+        self.client = NbsClient(nbs.nbs_port)
+
         self.check_mainpage()
         self.check_replacedevice()
+        self.check_change_device_state()
+        self.check_change_agent_state()
         self.check_reallocate()
         self.check_showdisk()
         self.check_showdevice()
@@ -772,6 +864,9 @@ def __run_test(test_case):
         storage.NonReplicatedAgentMinTimeout = 3000
         storage.NonReplicatedAgentMaxTimeout = 3000
         storage.NonReplicatedDiskRecyclingPeriod = 5000
+
+    storage.EnableToChangeStatesFromDiskRegistryMonpage = True
+    storage.EnableToChangeErrorStatesFromDiskRegistryMonpage = True
 
     nbs = Nbs(
         kikimr_port,

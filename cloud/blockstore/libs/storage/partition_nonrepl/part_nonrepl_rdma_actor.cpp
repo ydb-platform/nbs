@@ -24,15 +24,18 @@ LWTRACE_USING(BLOCKSTORE_STORAGE_PROVIDER);
 
 TNonreplicatedPartitionRdmaActor::TNonreplicatedPartitionRdmaActor(
         TStorageConfigPtr config,
+        TDiagnosticsConfigPtr diagnosticsConfig,
         TNonreplicatedPartitionConfigPtr partConfig,
         NRdma::IClientPtr rdmaClient,
         TActorId statActorId)
     : Config(std::move(config))
+    , DiagnosticsConfig(std::move(diagnosticsConfig))
     , PartConfig(std::move(partConfig))
     , RdmaClient(std::move(rdmaClient))
     , StatActorId(statActorId)
-    , PartCounters(
-        CreatePartitionDiskCounters(EPublishingPolicy::DiskRegistryBased))
+    , PartCounters(CreatePartitionDiskCounters(
+          EPublishingPolicy::DiskRegistryBased,
+          DiagnosticsConfig->GetHistogramCounterOptions()))
 {}
 
 TNonreplicatedPartitionRdmaActor::~TNonreplicatedPartitionRdmaActor()

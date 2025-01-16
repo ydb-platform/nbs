@@ -368,6 +368,18 @@ TString TNonreplicatedPartitionMigrationCommonActor::GetChangedBlocks(
     return ChangedRangesMap.GetChangedBlocks(range);
 }
 
+const TStorageConfigPtr&
+TNonreplicatedPartitionMigrationCommonActor::GetConfig() const
+{
+    return Config;
+}
+
+const TDiagnosticsConfigPtr&
+TNonreplicatedPartitionMigrationCommonActor::GetDiagnosticsConfig() const
+{
+    return DiagnosticsConfig;
+}
+
 TDuration
 TNonreplicatedPartitionMigrationCommonActor::CalculateMigrationTimeout(
     TBlockRange64 range) const

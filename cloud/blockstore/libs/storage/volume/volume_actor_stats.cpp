@@ -145,8 +145,9 @@ void TVolumeActor::HandleDiskRegistryBasedPartCounters(
     }
 
     if (!statInfo->LastCounters) {
-        statInfo->LastCounters =
-            CreatePartitionDiskCounters(State->CountersPolicy());
+        statInfo->LastCounters = CreatePartitionDiskCounters(
+            State->CountersPolicy(),
+            DiagnosticsConfig->GetHistogramCounterOptions());
     }
 
     statInfo->LastCounters->Add(*msg->DiskCounters);
@@ -193,8 +194,9 @@ void TVolumeActor::HandlePartCounters(
     }
 
     if (!statInfo->LastCounters) {
-        statInfo->LastCounters =
-            CreatePartitionDiskCounters(State->CountersPolicy());
+        statInfo->LastCounters = CreatePartitionDiskCounters(
+            State->CountersPolicy(),
+            DiagnosticsConfig->GetHistogramCounterOptions());
         statInfo->LastMetrics = std::move(msg->BlobLoadMetrics);
     }
 
@@ -284,7 +286,9 @@ void TVolumeActor::DoSendPartStatsToService(
     const NActors::TActorContext& ctx,
     const TString& diskId)
 {
-    auto stats = CreatePartitionDiskCounters(State->CountersPolicy());
+    auto stats = CreatePartitionDiskCounters(
+        State->CountersPolicy(),
+        DiagnosticsConfig->GetHistogramCounterOptions());
     ui64 systemCpu = 0;
     ui64 userCpu = 0;
     // XXX - we need to "manually" calculate total channel history
@@ -415,7 +419,9 @@ void TVolumeActor::SendSelfStatsToService(const TActorContext& ctx)
         State->GetMeta().GetMigrations().size() == 0);
 
     SendVolumeSelfCounters(ctx);
-    VolumeSelfCounters = CreateVolumeSelfCounters(State->CountersPolicy());
+    VolumeSelfCounters = CreateVolumeSelfCounters(
+        State->CountersPolicy(),
+        DiagnosticsConfig->GetHistogramCounterOptions());
 }
 
 void TVolumeActor::HandleGetVolumeLoadInfo(

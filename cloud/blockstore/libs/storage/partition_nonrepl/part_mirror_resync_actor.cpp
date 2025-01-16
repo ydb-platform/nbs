@@ -25,6 +25,7 @@ LWTRACE_USING(BLOCKSTORE_STORAGE_PROVIDER);
 
 TMirrorPartitionResyncActor::TMirrorPartitionResyncActor(
         TStorageConfigPtr config,
+        TDiagnosticsConfigPtr diagnosticsConfig,
         IProfileLogPtr profileLog,
         IBlockDigestGeneratorPtr digestGenerator,
         TString rwClientId,
@@ -35,6 +36,7 @@ TMirrorPartitionResyncActor::TMirrorPartitionResyncActor(
         NActors::TActorId statActorId,
         ui64 initialResyncIndex)
     : Config(std::move(config))
+    , DiagnosticsConfig(std::move(diagnosticsConfig))
     , ProfileLog(std::move(profileLog))
     , BlockDigestGenerator(std::move(digestGenerator))
     , RWClientId(std::move(rwClientId))
@@ -100,6 +102,7 @@ void TMirrorPartitionResyncActor::SetupPartitions(const TActorContext& ctx)
         ctx,
         CreateMirrorPartition(
             Config,
+            DiagnosticsConfig,
             ProfileLog,
             BlockDigestGenerator,
             RWClientId,
@@ -116,6 +119,7 @@ void TMirrorPartitionResyncActor::SetupPartitions(const TActorContext& ctx)
     for (ui32 i = 0; i < replicaInfos.size(); i++) {
         IActorPtr actor = CreateNonreplicatedPartition(
             Config,
+            DiagnosticsConfig,
             replicaInfos[i].Config,
             TActorId(), // do not send stats
             RdmaClient);

@@ -15,6 +15,7 @@
 #include <cloud/blockstore/libs/diagnostics/server_stats.h>
 #include <cloud/blockstore/libs/diagnostics/volume_stats.h>
 #include <cloud/blockstore/libs/nbd/device.h>
+#include <cloud/blockstore/libs/nbd/error_handler.h>
 #include <cloud/blockstore/libs/nbd/netlink_device.h>
 #include <cloud/blockstore/libs/nbd/server.h>
 #include <cloud/blockstore/libs/nbd/server_handler.h>
@@ -489,6 +490,7 @@ void TBootstrap::StartNbdServer(TNetworkAddress listenAddress)
         Logging,
         Session,
         CreateServerStatsStub(),
+        CreateErrorHandlerStub(),
         options);
 
     TServerConfig serverConfig {
