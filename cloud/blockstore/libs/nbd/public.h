@@ -35,4 +35,7 @@ using IDeviceFactoryPtr = std::shared_ptr<IDeviceFactory>;
 struct ILimiter;
 using ILimiterPtr = std::shared_ptr<ILimiter>;
 
+struct IErrorHandler;
+using IErrorHandlerPtr = std::shared_ptr<IErrorHandler>;
+
 }   // namespace NCloud::NBlockStore::NBD

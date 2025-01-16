@@ -1,5 +1,6 @@
 #include "server_handler.h"
 
+#include "error_handler.h"
 #include "protocol.h"
 #include "utils.h"
 
@@ -44,6 +45,7 @@ private:
     const ILoggingServicePtr Logging;
     const IServerStatsPtr ServerStats;
     const IDeviceHandlerPtr DeviceHandler;
+    const IErrorHandlerPtr ErrorHandler;
     const TStorageOptions Options;
 
     TLog Log;
@@ -58,10 +60,12 @@ public:
             ILoggingServicePtr logging,
             IServerStatsPtr serverStats,
             IDeviceHandlerPtr deviceHandler,
+            IErrorHandlerPtr errorHandler,
             const TStorageOptions& options)
         : Logging(std::move(logging))
         , ServerStats(std::move(serverStats))
         , DeviceHandler(std::move(deviceHandler))
+        , ErrorHandler(std::move(errorHandler))
         , Options(options)
     {
         Log = Logging->CreateLog("BLOCKSTORE_NBD");
@@ -106,6 +110,11 @@ public:
 
     size_t CollectRequests(
         const TIncompleteRequestsCollector& collector) override;
+
+    void ProcessException(std::exception_ptr e) override
+    {
+        ErrorHandler->ProcessException(e);
+    }
 
 private:
     bool NegotiateClient(TRequestReader& in, TRequestWriter& out);
@@ -900,6 +909,7 @@ private:
     const ILoggingServicePtr Logging;
     const IServerStatsPtr ServerStats;
     const IDeviceHandlerPtr DeviceHandler;
+    const IErrorHandlerPtr ErrorHandler;
     const TStorageOptions Options;
 
 public:
@@ -907,10 +917,12 @@ public:
             ILoggingServicePtr logging,
             IServerStatsPtr serverStats,
             IDeviceHandlerPtr deviceHandler,
+            IErrorHandlerPtr errorHandler,
             const TStorageOptions& options)
         : Logging(std::move(logging))
         , ServerStats(std::move(serverStats))
         , DeviceHandler(std::move(deviceHandler))
+        , ErrorHandler(std::move(errorHandler))
         , Options(options)
     {}
 
@@ -920,6 +932,7 @@ public:
             Logging,
             ServerStats,
             DeviceHandler,
+            ErrorHandler,
             Options);
     }
 };
@@ -933,6 +946,7 @@ IServerHandlerFactoryPtr CreateServerHandlerFactory(
     ILoggingServicePtr logging,
     IStoragePtr storage,
     IServerStatsPtr serverStats,
+    IErrorHandlerPtr errorHandler,
     const TStorageOptions& options)
 {
     auto deviceHandler = deviceHandlerFactory->CreateDeviceHandler(
@@ -945,6 +959,7 @@ IServerHandlerFactoryPtr CreateServerHandlerFactory(
         std::move(logging),
         std::move(serverStats),
         std::move(deviceHandler),
+        std::move(errorHandler),
         options);
 }
 
