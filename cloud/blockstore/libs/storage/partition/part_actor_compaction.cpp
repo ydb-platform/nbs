@@ -1275,31 +1275,39 @@ void TPartitionActor::HandleCompaction(
 
     TVector<TCompactionCounter> tops;
 
+    const bool batchCompactionEnabledForCloud =
+        Config->IsBatchCompactionFeatureEnabled(
+            PartitionConfig.GetCloudId(),
+            PartitionConfig.GetFolderId(),
+            PartitionConfig.GetDiskId());
+    const bool batchCompactionEnabled =
+        Config->GetBatchCompactionEnabled() || batchCompactionEnabledForCloud;
+
     const auto& cm = State->GetCompactionMap();
 
     if (msg->BlockIndex.Defined()) {
-        const auto startIndex = cm.GetRangeStart(*msg->BlockIndex);
-        tops.push_back({startIndex, cm.Get(startIndex)});
+        if (batchCompactionEnabled) {
+            tops = cm.GetNonEmptyRanges(
+                *msg->BlockIndex, Config->GetForcedCompactionRangeCountPerRun());
+        } else {
+            const auto startIndex = cm.GetRangeStart(*msg->BlockIndex);
+            tops.push_back({startIndex, cm.Get(startIndex)});
+        }
         State->OnNewCompactionRange();
     } else if (msg->Mode == TEvPartitionPrivate::GarbageCompaction) {
-        const auto& top = State->GetCompactionMap().GetTopByGarbageBlockCount();
-        tops.push_back({top.BlockIndex, top.Stat});
-    } else {
-        ui32 rangeCount = 1;
-
-        const bool batchCompactionEnabledForCloud =
-            Config->IsBatchCompactionFeatureEnabled(
-                PartitionConfig.GetCloudId(),
-                PartitionConfig.GetFolderId(),
-                PartitionConfig.GetDiskId());
-        const bool batchCompactionEnabled =
-            Config->GetBatchCompactionEnabled() || batchCompactionEnabledForCloud;
-
-        if (batchCompactionEnabled) {
-            rangeCount = State->GetCompactionRangeCountPerRun();
+        if (batchCompactionEnabled &&
+            Config->GetGarbageCompactionRangeCountPerRun() > 1)
+        {
+            tops = cm.GetTopByGarbageBlockCount(
+                Config->GetGarbageCompactionRangeCountPerRun());
+        } else {
+            const auto& top = cm.GetTopByGarbageBlockCount();
+            tops.push_back({top.BlockIndex, top.Stat});
         }
-
-        tops = State->GetCompactionMap().GetTopsFromGroups(rangeCount);
+    } else {
+        tops = cm.GetTopsFromGroups(
+            batchCompactionEnabled ? State->GetCompactionRangeCountPerRun()
+                                   : 1);
     }
 
     if (tops.empty() || !tops.front().Stat.BlobCount) {
