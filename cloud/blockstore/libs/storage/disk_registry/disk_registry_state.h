@@ -447,7 +447,6 @@ public:
 
     NProto::TError GetDiskInfo(const TDiskId& diskId, TDiskInfo& diskInfo) const;
     NProto::EDiskState GetDiskState(const TDiskId& diskId) const;
-    const TDiskState* GetDisk(const TDiskId& diskId) const;
     NProto::TError GetShadowDiskId(
         const TDiskId& sourceDiskId,
         const TCheckpointId& checkpointId,
@@ -465,7 +464,7 @@ public:
 
     bool HasPendingCleanup(const TDiskId& diskId) const;
 
-    void FinishAcquireDisk(const TString& diskId);
+    const TDiskState* FinishAcquireDisk(const TString& diskId);
 
     bool IsAcquireInProgress(const TString& diskId) const;
 

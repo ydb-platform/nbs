@@ -131,15 +131,13 @@ void TDiskRegistryActor::HandleDevicesAcquireFinished(
     if (HasError(msg->Error)) {
         LOG_ERROR(
             ctx,
-            TBlockStoreComponents::DISK_REGISTRY_WORKER,
+            TBlockStoreComponents::DISK_REGISTRY,
             "[%s] AcquireDisk %s targets %s error: %s",
             msg->ClientId.c_str(),
             msg->DiskId.c_str(),
             LogDevices(msg->Devices).c_str(),
             FormatError(msg->Error).c_str());
     }
-
-    State->FinishAcquireDisk(msg->DiskId);
 
     OnDiskAcquired(std::move(msg->SentRequests));
 
@@ -150,8 +148,8 @@ void TDiskRegistryActor::HandleDevicesAcquireFinished(
 
     auto response = std::make_unique<TEvDiskRegistry::TEvAcquireDiskResponse>(
         std::move(msg->Error));
+    const auto* disk = State->FinishAcquireDisk(msg->DiskId);
     if (!HasError(response->GetError())) {
-        const auto* disk = State->GetDisk(msg->DiskId);
         response->Record.MutableDevices()->Reserve(msg->Devices.size());
 
         for (auto& device: msg->Devices) {
@@ -245,7 +243,7 @@ void TDiskRegistryActor::HandleReleaseDisk(
         Config->GetAgentRequestTimeout(),
         std::move(devices),
         /*muteIOErrors=*/false,
-        TBlockStoreComponents::DISK_REGISTRY);
+        TBlockStoreComponents::DISK_REGISTRY_WORKER);
 
     Actors.insert(actor);
     PendingReleaseDiskRequests[actor] =

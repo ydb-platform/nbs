@@ -3363,12 +3363,6 @@ NProto::EDiskState TDiskRegistryState::GetDiskState(const TDiskId& diskId) const
     return disk->State;
 }
 
-const TDiskRegistryState::TDiskState* TDiskRegistryState::GetDisk(
-    const TDiskId& diskId) const
-{
-    return Disks.FindPtr(diskId);
-}
-
 NProto::TError TDiskRegistryState::GetShadowDiskId(
     const TDiskId& sourceDiskId,
     const TCheckpointId& checkpointId,
@@ -3474,17 +3468,19 @@ NProto::TError TDiskRegistryState::StartAcquireDisk(
     return {};
 }
 
-void TDiskRegistryState::FinishAcquireDisk(const TString& diskId)
+const TDiskRegistryState::TDiskState* TDiskRegistryState::FinishAcquireDisk(
+    const TString& diskId)
 {
     auto it = Disks.find(diskId);
 
     if (it == Disks.end()) {
-        return;
+        return nullptr;
     }
 
     auto& disk = it->second;
 
     disk.AcquireInProgress = false;
+    return &disk;
 }
 
 bool TDiskRegistryState::IsAcquireInProgress(const TString& diskId) const
