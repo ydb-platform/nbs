@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/golang/protobuf/ptypes/empty"
+	"github.com/hashicorp/go-retryablehttp"
 	prometheus_client "github.com/prometheus/client_model/go"
 	"github.com/prometheus/common/expfmt"
 	"github.com/stretchr/testify/require"
@@ -114,12 +115,12 @@ func GetQCOW2ImageCrc32(t *testing.T) uint32 {
 }
 
 func UseDefaultQCOW2ImageFile(t *testing.T) {
-	_, err := http.Get(GetQCOW2ImageFileURL() + "/use_default_image")
+	_, err := httpGetWithRetries(GetQCOW2ImageFileURL() + "/use_default_image")
 	require.NoError(t, err)
 }
 
 func UseOtherQCOW2ImageFile(t *testing.T) {
-	_, err := http.Get(GetQCOW2ImageFileURL() + "/use_other_image")
+	_, err := httpGetWithRetries(GetQCOW2ImageFileURL() + "/use_other_image")
 	require.NoError(t, err)
 }
 
@@ -180,12 +181,12 @@ func GetBigRawImageCrc32(t *testing.T) uint32 {
 }
 
 func UseDefaultBigRawImageFile(t *testing.T) {
-	_, err := http.Get(GetBigRawImageURL() + "/use_default_image")
+	_, err := httpGetWithRetries(GetBigRawImageURL() + "/use_default_image")
 	require.NoError(t, err)
 }
 
 func UseOtherBigRawImageFile(t *testing.T) {
-	_, err := http.Get(GetBigRawImageURL() + "/use_other_image")
+	_, err := httpGetWithRetries(GetBigRawImageURL() + "/use_other_image")
 	require.NoError(t, err)
 }
 
@@ -666,8 +667,17 @@ func CheckErrorDetails(
 
 ////////////////////////////////////////////////////////////////////////////////
 
+func httpGetWithRetries(url string) (*http.Response, error) {
+	retryableClient := retryablehttp.NewClient()
+	retryableClient.HTTPClient.Timeout = 500 * time.Second
+	retryableClient.RetryWaitMin = time.Second
+	retryableClient.RetryWaitMax = 5 * time.Second
+	retryableClient.RetryMax = 100
+	return retryableClient.Get(url)
+}
+
 func GetCounter(t *testing.T, name string, labels map[string]string) float64 {
-	resp, err := http.Get(
+	resp, err := httpGetWithRetries(
 		fmt.Sprintf(
 			"http://localhost:%s/metrics/",
 			os.Getenv("DISK_MANAGER_RECIPE_DISK_MANAGER_MON_PORT"),
