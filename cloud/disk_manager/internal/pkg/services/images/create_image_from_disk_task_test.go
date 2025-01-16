@@ -64,19 +64,16 @@ func TestCreateImageFromDiskTaskFailure(t *testing.T) {
 
 	nbsFactory.On("GetClient", ctx, zoneID).Return(nbsClient, nil)
 	nbsClient.On("Describe", ctx, diskID).Return(diskParams, nil)
-
 	storage.On("CreateImage", ctx, mock.Anything).Return(
 		resources.ImageMeta{
 			Ready: false,
 		},
 		nil,
 	)
-
 	nbsClient.On("CreateCheckpoint", ctx, nbs.CheckpointParams{
 		DiskID:       diskID,
 		CheckpointID: imageID,
 	}).Return(nil)
-
 	nbsClient.On("EnsureCheckpointReady", ctx, diskID, imageID).Return(checkpointEnsuringError)
 
 	err := task.Run(ctx, execCtx)

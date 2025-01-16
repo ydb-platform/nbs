@@ -874,7 +874,6 @@ func (c *client) EnsureCheckpointReady(
 	defer c.metrics.StatRequest("EnsureCheckpointReady")(&err)
 
 	status, err := c.GetCheckpointStatus(ctx, diskID, checkpointID)
-
 	if err != nil {
 		return err
 	}
