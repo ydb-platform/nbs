@@ -10,6 +10,7 @@ using namespace NActors;
 
 IActorPtr CreateMirrorPartitionResync(
     TStorageConfigPtr config,
+    TDiagnosticsConfigPtr diagnosticsConfig,
     IProfileLogPtr profileLog,
     IBlockDigestGeneratorPtr digestGenerator,
     TString rwClientId,
@@ -22,6 +23,7 @@ IActorPtr CreateMirrorPartitionResync(
 {
     return std::make_unique<TMirrorPartitionResyncActor>(
         std::move(config),
+        std::move(diagnosticsConfig),
         std::move(profileLog),
         std::move(digestGenerator),
         std::move(rwClientId),

@@ -492,6 +492,11 @@ func (s *nodeService) nodePublishDiskAsVhostSocket(
 	})
 
 	if err != nil {
+		if s.IsGrpcTimeoutError(err) {
+			s.nbsClient.StopEndpoint(ctx, &nbsapi.TStopEndpointRequest{
+				UnixSocketPath: filepath.Join(endpointDir, nbsSocketName),
+			})
+		}
 		return fmt.Errorf("failed to start NBS endpoint: %w", err)
 	}
 
@@ -582,87 +587,25 @@ func (s *nodeService) nodeStageDiskAsVhostSocket(
 	})
 
 	if err != nil {
+		if s.IsGrpcTimeoutError(err) {
+			s.nbsClient.StopEndpoint(ctx, &nbsapi.TStopEndpointRequest{
+				UnixSocketPath: filepath.Join(endpointDir, nbsSocketName),
+			})
+		}
 		return fmt.Errorf("failed to start NBS endpoint: %w", err)
 	}
 
 	return s.createDummyImgFile(endpointDir)
 }
 
-func (s *nodeService) nodePublishDiskAsFilesystemDeprecated(
-	ctx context.Context,
-	req *csi.NodePublishVolumeRequest) error {
-
-	diskId := req.VolumeId
-	resp, err := s.startNbsEndpointForNBD(ctx, s.getPodId(req), diskId, req.VolumeContext)
-	if err != nil {
-		return fmt.Errorf("failed to start NBS endpoint: %w", err)
-	}
-
-	if resp.NbdDeviceFile == "" {
-		return fmt.Errorf("NbdDeviceFile shouldn't be empty")
-	}
-
-	logVolume(req.VolumeId, "endpoint started with device: %q", resp.NbdDeviceFile)
-
-	mnt := req.VolumeCapability.GetMount()
-
-	fsType := req.VolumeContext["fsType"]
-	if mnt != nil && mnt.FsType != "" {
-		fsType = mnt.FsType
-	}
-	if fsType == "" {
-		fsType = "ext4"
-	}
-
-	err = s.makeFilesystemIfNeeded(diskId, resp.NbdDeviceFile, fsType)
-	if err != nil {
-		return err
-	}
-
-	mounted, _ := s.mounter.IsMountPoint(req.TargetPath)
-	if !mounted {
-		targetPerm := os.FileMode(0775)
-		if err := os.MkdirAll(req.TargetPath, targetPerm); err != nil {
-			return fmt.Errorf("failed to create target directory: %w", err)
-		}
-
-		if err := os.Chmod(req.TargetPath, targetPerm); err != nil {
-			return fmt.Errorf("failed to chmod target path: %w", err)
-		}
-	}
-
-	mountOptions := []string{}
-	if mnt != nil {
-		for _, flag := range mnt.MountFlags {
-			mountOptions = append(mountOptions, flag)
-		}
-	}
-	if req.Readonly {
-		mountOptions = append(mountOptions, "ro")
-	}
-
-	err = s.mountIfNeeded(
-		diskId,
-		resp.NbdDeviceFile,
-		req.TargetPath,
-		fsType,
-		mountOptions)
-	if err != nil {
-		return err
-	}
-
-	return nil
-}
-
 func (s *nodeService) nodePublishDiskAsFilesystem(
 	ctx context.Context,
 	req *csi.NodePublishVolumeRequest) error {
 
-	// Fallback to previous implementation for already mounted volumes
-	// Must be removed after migration of all endpoints to the new format
 	mounted, _ := s.mounter.IsMountPoint(req.StagingTargetPath)
 	if !mounted {
-		return s.nodePublishDiskAsFilesystemDeprecated(ctx, req)
+		return s.statusErrorf(codes.FailedPrecondition,
+			"Staging target path is not mounted: %w", req.VolumeId)
 	}
 
 	mounted, _ = s.mounter.IsMountPoint(req.TargetPath)
@@ -703,42 +646,17 @@ func (s *nodeService) nodePublishDiskAsFilesystem(
 	return nil
 }
 
-func (s *nodeService) IsMountConflictError(err error) bool {
+func (s *nodeService) IsGrpcTimeoutError(err error) bool {
 	if err != nil {
 		var clientErr *nbsclient.ClientError
 		if errors.As(err, &clientErr) {
-			if clientErr.Code == nbsclient.E_MOUNT_CONFLICT {
+			if clientErr.Code == nbsclient.E_GRPC_DEADLINE_EXCEEDED {
 				return true
 			}
 		}
 	}
 
 	return false
-}
-
-func (s *nodeService) hasLocalEndpoint(
-	ctx context.Context,
-	diskId string) (bool, error) {
-
-	listEndpointsResp, err := s.nbsClient.ListEndpoints(
-		ctx, &nbsapi.TListEndpointsRequest{},
-	)
-	if err != nil {
-		log.Printf("List endpoints failed %v", err)
-		return false, err
-	}
-
-	if len(listEndpointsResp.Endpoints) == 0 {
-		return false, nil
-	}
-
-	for _, endpoint := range listEndpointsResp.Endpoints {
-		if endpoint.DiskId == diskId {
-			return true, nil
-		}
-	}
-
-	return false, nil
 }
 
 func (s *nodeService) nodeStageDiskAsFilesystem(
@@ -748,15 +666,6 @@ func (s *nodeService) nodeStageDiskAsFilesystem(
 	diskId := req.VolumeId
 	resp, err := s.startNbsEndpointForNBD(ctx, "", diskId, req.VolumeContext)
 	if err != nil {
-		if s.IsMountConflictError(err) {
-			localEndpoint, err := s.hasLocalEndpoint(ctx, diskId)
-			if err != nil {
-				return err
-			}
-			if localEndpoint {
-				return nil
-			}
-		}
 		return fmt.Errorf("failed to start NBS endpoint: %w", err)
 	}
 
@@ -823,15 +732,6 @@ func (s *nodeService) nodeStageDiskAsBlockDevice(
 	diskId := req.VolumeId
 	resp, err := s.startNbsEndpointForNBD(ctx, "", diskId, req.VolumeContext)
 	if err != nil {
-		if s.IsMountConflictError(err) {
-			localEndpoint, err := s.hasLocalEndpoint(ctx, diskId)
-			if err != nil {
-				return err
-			}
-			if localEndpoint {
-				return nil
-			}
-		}
 		return fmt.Errorf("failed to start NBS endpoint: %w", err)
 	}
 
@@ -845,24 +745,6 @@ func (s *nodeService) nodeStageDiskAsBlockDevice(
 	return s.mountBlockDevice(diskId, resp.NbdDeviceFile, devicePath, false)
 }
 
-func (s *nodeService) nodePublishDiskAsBlockDeviceDeprecated(
-	ctx context.Context,
-	req *csi.NodePublishVolumeRequest) error {
-
-	diskId := req.VolumeId
-	resp, err := s.startNbsEndpointForNBD(ctx, s.getPodId(req), diskId, req.VolumeContext)
-	if err != nil {
-		return fmt.Errorf("failed to start NBS endpoint: %w", err)
-	}
-
-	if resp.NbdDeviceFile == "" {
-		return fmt.Errorf("NbdDeviceFile shouldn't be empty")
-	}
-
-	logVolume(req.VolumeId, "endpoint started with device: %q", resp.NbdDeviceFile)
-	return s.mountBlockDevice(req.VolumeId, resp.NbdDeviceFile, req.TargetPath, req.Readonly)
-}
-
 func (s *nodeService) nodePublishDiskAsBlockDevice(
 	ctx context.Context,
 	req *csi.NodePublishVolumeRequest) error {
@@ -871,8 +753,8 @@ func (s *nodeService) nodePublishDiskAsBlockDevice(
 	devicePath := filepath.Join(req.StagingTargetPath, diskId)
 	mounted, _ := s.mounter.IsMountPoint(devicePath)
 	if !mounted {
-		// Fallback to previous implementation for already staged volumes
-		return s.nodePublishDiskAsBlockDeviceDeprecated(ctx, req)
+		return s.statusErrorf(codes.FailedPrecondition,
+			"Staging target path is not mounted: %w", req.VolumeId)
 	}
 
 	return s.mountBlockDevice(diskId, devicePath, req.TargetPath, req.Readonly)
@@ -900,7 +782,7 @@ func (s *nodeService) startNbsEndpointForNBD(
 	}
 
 	hostType := nbsapi.EHostType_HOST_TYPE_DEFAULT
-	return s.nbsClient.StartEndpoint(ctx, &nbsapi.TStartEndpointRequest{
+	resp, err := s.nbsClient.StartEndpoint(ctx, &nbsapi.TStartEndpointRequest{
 		UnixSocketPath:   filepath.Join(endpointDir, nbsSocketName),
 		DiskId:           diskId,
 		InstanceId:       nbsInstanceId,
@@ -918,6 +800,14 @@ func (s *nodeService) startNbsEndpointForNBD(
 			HostType: &hostType,
 		},
 	})
+
+	if s.IsGrpcTimeoutError(err) {
+		s.nbsClient.StopEndpoint(ctx, &nbsapi.TStopEndpointRequest{
+			UnixSocketPath: filepath.Join(endpointDir, nbsSocketName),
+		})
+	}
+
+	return resp, err
 }
 
 func (s *nodeService) getNfsClient(fileSystemId string) nfsclient.EndpointClientIface {
@@ -956,6 +846,12 @@ func (s *nodeService) nodePublishFileStoreAsVhostSocket(
 		},
 	})
 	if err != nil {
+		if s.IsGrpcTimeoutError(err) {
+			s.nbsClient.StopEndpoint(ctx, &nbsapi.TStopEndpointRequest{
+				UnixSocketPath: filepath.Join(endpointDir, nbsSocketName),
+			})
+		}
+
 		return fmt.Errorf("failed to start NFS endpoint: %w", err)
 	}
 
@@ -994,6 +890,12 @@ func (s *nodeService) nodeStageFileStoreAsVhostSocket(
 		},
 	})
 	if err != nil {
+		if s.IsGrpcTimeoutError(err) {
+			s.nbsClient.StopEndpoint(ctx, &nbsapi.TStopEndpointRequest{
+				UnixSocketPath: filepath.Join(endpointDir, nbsSocketName),
+			})
+		}
+
 		return fmt.Errorf("failed to start NFS endpoint: %w", err)
 	}
 

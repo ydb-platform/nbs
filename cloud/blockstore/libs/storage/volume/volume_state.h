@@ -3,6 +3,7 @@
 #include "partition_info.h"
 #include "public.h"
 
+#include <cloud/blockstore/libs/diagnostics/config.h>
 #include <cloud/blockstore/libs/common/block_range.h>
 #include <cloud/blockstore/libs/kikimr/components.h>
 #include <cloud/blockstore/libs/kikimr/public.h>
@@ -97,10 +98,11 @@ struct TPartitionStatInfo
     TPartitionStatInfo(
             const TString& diskId,
             const ui64 tabletId,
-            EPublishingPolicy countersPolicy)
+            EPublishingPolicy countersPolicy,
+            EHistogramCounterOptions histCounterOptions)
         : DiskId(diskId)
         , TabletId(tabletId)
-        , CachedCounters(countersPolicy)
+        , CachedCounters(countersPolicy, histCounterOptions)
     {}
 };
 
@@ -182,6 +184,7 @@ class TVolumeState
 {
 private:
     TStorageConfigPtr StorageConfig;
+    const TDiagnosticsConfigPtr DiagnosticsConfig;
     NProto::TVolumeMeta Meta;
     TVector<TVolumeMetaHistoryItem> MetaHistory;
     const NProto::TPartitionConfig* Config;
@@ -241,6 +244,7 @@ private:
 public:
     TVolumeState(
         TStorageConfigPtr storageConfig,
+        TDiagnosticsConfigPtr diagnosticsConfig,
         NProto::TVolumeMeta meta,
         TVector<TVolumeMetaHistoryItem> metaHistory,
         TVector<TRuntimeVolumeParamsValue> volumeParams,

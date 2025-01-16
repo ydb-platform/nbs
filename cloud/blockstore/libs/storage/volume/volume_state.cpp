@@ -138,6 +138,7 @@ void TCachedVolumeMountHistory::CleanupHistoryIfNeeded(TInstant oldest)
 
 TVolumeState::TVolumeState(
         TStorageConfigPtr storageConfig,
+        TDiagnosticsConfigPtr diagnosticsConfig,
         NProto::TVolumeMeta meta,
         TVector<TVolumeMetaHistoryItem> metaHistory,
         TVector<TRuntimeVolumeParamsValue> volumeParams,
@@ -147,6 +148,7 @@ TVolumeState::TVolumeState(
         TVector<TCheckpointRequest> checkpointRequests,
         bool startPartitionsNeeded)
     : StorageConfig(std::move(storageConfig))
+    , DiagnosticsConfig(std::move(diagnosticsConfig))
     , Meta(std::move(meta))
     , MetaHistory(std::move(metaHistory))
     , Config(&Meta.GetConfig())
@@ -903,8 +905,11 @@ TPartitionStatInfo& TVolumeState::CreatePartitionStatInfo(
     const TString& diskId,
     ui64 tabletId)
 {
-    PartitionStatInfos.push_back(
-        TPartitionStatInfo(diskId, tabletId, CountersPolicy()));
+    PartitionStatInfos.push_back(TPartitionStatInfo(
+        diskId,
+        tabletId,
+        CountersPolicy(),
+        DiagnosticsConfig->GetHistogramCounterOptions()));
     return PartitionStatInfos.back();
 }
 

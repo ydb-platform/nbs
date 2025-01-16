@@ -124,6 +124,7 @@ void TVolumeActor::CompleteLoadState(
 
         State = std::make_unique<TVolumeState>(
             Config,
+            DiagnosticsConfig,
             std::move(*args.Meta),
             std::move(args.MetaHistory),
             std::move(args.VolumeParams),

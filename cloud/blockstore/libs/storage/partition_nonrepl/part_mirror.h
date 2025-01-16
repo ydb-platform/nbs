@@ -15,6 +15,7 @@ namespace NCloud::NBlockStore::NStorage {
 
 NActors::IActorPtr CreateMirrorPartition(
     TStorageConfigPtr config,
+    TDiagnosticsConfigPtr diagnosticsConfig,
     IProfileLogPtr profileLog,
     IBlockDigestGeneratorPtr digestGenerator,
     TString rwClientId,

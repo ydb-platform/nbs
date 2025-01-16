@@ -195,6 +195,10 @@ void TUnlinkNodeInShardActor::ReplyAndDie(
     if (HasError(error)) {
         if (auto* x = std::get_if<NProto::TRenameNodeResponse>(&Result)) {
             *x->MutableError() = std::move(error);
+        } else if (auto* x = std::get_if<
+                NProtoPrivate::TRenameNodeInDestinationResponse>(&Result))
+        {
+            *x->MutableError() = std::move(error);
         } else if (auto* x = std::get_if<NProto::TUnlinkNodeResponse>(&Result)) {
             *x->MutableError() = std::move(error);
         } else {
@@ -525,6 +529,24 @@ void TIndexTabletActor::HandleNodeUnlinkedInShard(
             response->Record = std::move(*x);
 
             CompleteResponse<TEvService::TRenameNodeMethod>(
+                response->Record,
+                msg->RequestInfo->CallContext,
+                ctx);
+
+            Metrics.RenameNode.Update(
+                1,
+                0,
+                ctx.Now() - msg->RequestInfo->StartedTs);
+
+            NCloud::Reply(ctx, *msg->RequestInfo, std::move(response));
+        } else if (auto* x = std::get_if<
+                NProtoPrivate::TRenameNodeInDestinationResponse>(&res))
+        {
+            auto response = std::make_unique<
+                TEvIndexTablet::TEvRenameNodeInDestinationResponse>();
+            response->Record = std::move(*x);
+
+            CompleteResponse<TEvIndexTablet::TRenameNodeInDestinationMethod>(
                 response->Record,
                 msg->RequestInfo->CallContext,
                 ctx);

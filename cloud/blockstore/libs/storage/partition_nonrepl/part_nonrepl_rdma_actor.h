@@ -5,6 +5,7 @@
 #include "config.h"
 #include "part_nonrepl_events_private.h"
 
+#include <cloud/blockstore/libs/diagnostics/config.h>
 #include <cloud/blockstore/libs/rdma/iface/client.h>
 #include <cloud/blockstore/libs/storage/api/service.h>
 #include <cloud/blockstore/libs/storage/api/volume.h>
@@ -39,6 +40,7 @@ class TNonreplicatedPartitionRdmaActor final
 {
 private:
     const TStorageConfigPtr Config;
+    const TDiagnosticsConfigPtr DiagnosticsConfig;
     const TNonreplicatedPartitionConfigPtr PartConfig;
     const NRdma::IClientPtr RdmaClient;
     const NActors::TActorId StatActorId;
@@ -73,6 +75,7 @@ private:
 public:
     TNonreplicatedPartitionRdmaActor(
         TStorageConfigPtr config,
+        TDiagnosticsConfigPtr diagnosticsConfig,
         TNonreplicatedPartitionConfigPtr partConfig,
         NRdma::IClientPtr rdmaClient,
         NActors::TActorId statActorId);

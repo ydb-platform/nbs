@@ -171,7 +171,9 @@ void TVolumeActor::RegisterCounters(const TActorContext& ctx)
     }
 
     if (!VolumeSelfCounters) {
-        VolumeSelfCounters = CreateVolumeSelfCounters(State->CountersPolicy());
+        VolumeSelfCounters = CreateVolumeSelfCounters(
+            State->CountersPolicy(),
+            DiagnosticsConfig->GetHistogramCounterOptions());
     }
 }
 

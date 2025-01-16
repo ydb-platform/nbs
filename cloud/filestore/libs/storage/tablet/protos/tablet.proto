@@ -1,5 +1,6 @@
 syntax = "proto3";
 
+import "cloud/filestore/private/api/protos/tablet.proto";
 import "cloud/filestore/public/api/protos/data.proto";
 import "cloud/filestore/public/api/protos/fs.proto";
 import "cloud/filestore/public/api/protos/locks.proto";
@@ -46,6 +47,7 @@ message TFileSystem
     uint32 ShardNo = 14;
     bool AutomaticShardCreationEnabled = 15;
     uint64 ShardAllocationUnit = 16;
+    string MainFileSystemId = 17;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -203,5 +205,6 @@ message TOpLogEntry
     oneof Request {
         TCreateNodeRequest CreateNodeRequest = 101;
         TUnlinkNodeRequest UnlinkNodeRequest = 102;
+        NProtoPrivate.TRenameNodeInDestinationRequest RenameNodeInDestinationRequest = 103;
     }
 }

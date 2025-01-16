@@ -940,6 +940,30 @@ void TIndexTabletState::PatchDupCacheEntry(
     db.WriteSessionDupCacheEntry(*entry);
 }
 
+void TIndexTabletState::PatchDupCacheEntry(
+    TIndexTabletDatabase& db,
+    const TString& sessionId,
+    ui64 requestId,
+    NProto::TRenameNodeResponse response)
+{
+    if (!requestId) {
+        return;
+    }
+
+    auto* session = FindSession(sessionId);
+    if (!session) {
+        return;
+    }
+
+    auto* entry = session->AccessDupEntry(requestId);
+    if (!entry) {
+        return;
+    }
+
+    *entry->MutableRenameNode() = std::move(response);
+    db.WriteSessionDupCacheEntry(*entry);
+}
+
 void TIndexTabletState::CommitDupCacheEntry(
     const TString& sessionId,
     ui64 requestId)

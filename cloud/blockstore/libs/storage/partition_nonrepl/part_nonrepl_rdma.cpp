@@ -10,12 +10,14 @@ using namespace NActors;
 
 IActorPtr CreateNonreplicatedPartitionRdma(
     TStorageConfigPtr config,
+    TDiagnosticsConfigPtr diagnosticsConfig,
     TNonreplicatedPartitionConfigPtr partConfig,
     NRdma::IClientPtr rdmaClient,
     TActorId statActorId)
 {
     return std::make_unique<TNonreplicatedPartitionRdmaActor>(
         std::move(config),
+        std::move(diagnosticsConfig),
         std::move(partConfig),
         std::move(rdmaClient),
         statActorId);

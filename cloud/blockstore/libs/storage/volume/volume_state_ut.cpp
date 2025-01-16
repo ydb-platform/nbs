@@ -3,6 +3,7 @@
 #include <cloud/blockstore/libs/kikimr/events.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/partition_nonrepl/config.h>
+#include <cloud/blockstore/libs/storage/testlib/diagnostics.h>
 #include <cloud/blockstore/libs/storage/testlib/ut_helpers.h>
 
 #include <library/cpp/testing/unittest/registar.h>
@@ -86,6 +87,7 @@ TVolumeState CreateVolumeState(
 {
     return TVolumeState(
         MakeConfig(inactiveClientsTimeout, {}),
+        CreateDiagnosticsConfig(),
         CreateVolumeMeta(pp),
         {{TInstant::Seconds(100), CreateVolumeMeta(pp)}}, // metaHistory
         {},
@@ -104,6 +106,7 @@ TVolumeState CreateVolumeState(
 {
     return TVolumeState(
         MakeConfig(inactiveClientsTimeout, {}),
+        CreateDiagnosticsConfig(),
         CreateVolumeMeta(pp),
         {{TInstant::Seconds(100), CreateVolumeMeta(pp)}}, // metaHistory
         {},
@@ -122,6 +125,7 @@ TVolumeState CreateVolumeState(
         std::make_shared<TStorageConfig>(
             config,
             std::make_shared<NFeatures::TFeaturesConfig>()),
+        CreateDiagnosticsConfig(),
         CreateVolumeMeta({}),
         {}, // metaHistory
         {},
@@ -1891,6 +1895,7 @@ Y_UNIT_TEST_SUITE(TVolumeStateTest)
 
             return TVolumeState{
                 MakeConfig(10s, 0s),
+                CreateDiagnosticsConfig(),
                 std::move(meta),
                 {},     // metaHistory
                 {},     // volumeParams

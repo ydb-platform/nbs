@@ -100,6 +100,9 @@ namespace NCloud::NFileStore::NStorage {
     xxx(CreateNode,                         __VA_ARGS__)                       \
     xxx(UnlinkNode,                         __VA_ARGS__)                       \
     xxx(RenameNode,                         __VA_ARGS__)                       \
+    xxx(PrepareRenameNodeInSource,          __VA_ARGS__)                       \
+    xxx(RenameNodeInDestination,            __VA_ARGS__)                       \
+    xxx(CommitRenameNodeInSource,           __VA_ARGS__)                       \
                                                                                \
     xxx(SetNodeAttr,                        __VA_ARGS__)                       \
     xxx(SetNodeXAttr,                       __VA_ARGS__)                       \
@@ -788,9 +791,9 @@ struct TTxIndexTablet
             : TSessionAware(request)
             , RequestInfo(std::move(requestInfo))
             , ParentNodeId(request.GetNodeId())
-            , Name(std::move(*request.MutableName()))
+            , Name(request.GetName())
             , NewParentNodeId(request.GetNewParentId())
-            , NewName(std::move(*request.MutableNewName()))
+            , NewName(request.GetNewName())
             , Flags(request.GetFlags())
             , Request(std::move(request))
         {}
@@ -813,6 +816,142 @@ struct TTxIndexTablet
 
             ShardIdForUnlink.clear();
             ShardNodeNameForUnlink.clear();
+        }
+    };
+
+    //
+    // PrepareRenameNodeInSource
+    //
+
+    struct TPrepareRenameNodeInSource
+        : TSessionAware
+        , TIndexStateNodeUpdates
+    {
+        const TRequestInfoPtr RequestInfo;
+        const ui64 ParentNodeId;
+        const TString Name;
+        const NProto::TRenameNodeRequest Request;
+        const TString NewParentShardId;
+
+        ui64 CommitId = InvalidCommitId;
+        TMaybe<IIndexTabletDatabase::TNode> ParentNode;
+        TMaybe<IIndexTabletDatabase::TNode> ChildNode;
+        TMaybe<IIndexTabletDatabase::TNodeRef> ChildRef;
+
+        NProto::TOpLogEntry OpLogEntry;
+        NProto::TError Error;
+
+        TPrepareRenameNodeInSource(
+                TRequestInfoPtr requestInfo,
+                NProto::TRenameNodeRequest request,
+                TString newParentShardId)
+            : TSessionAware(request)
+            , RequestInfo(std::move(requestInfo))
+            , ParentNodeId(request.GetNodeId())
+            , Name(request.GetName())
+            , Request(std::move(request))
+            , NewParentShardId(std::move(newParentShardId))
+        {}
+
+        void Clear()
+        {
+            TIndexStateNodeUpdates::Clear();
+            CommitId = InvalidCommitId;
+            ParentNode.Clear();
+            ChildNode.Clear();
+            ChildRef.Clear();
+
+            OpLogEntry.Clear();
+            Error.Clear();
+        }
+    };
+
+    //
+    // RenameNodeInDestination
+    //
+
+    struct TRenameNodeInDestination
+        : TSessionAware
+        , TIndexStateNodeUpdates
+    {
+        const TRequestInfoPtr RequestInfo;
+        const ui64 NewParentNodeId;
+        const TString NewName;
+        const ui32 Flags;
+        const NProtoPrivate::TRenameNodeInDestinationRequest Request;
+
+        ui64 CommitId = InvalidCommitId;
+        TMaybe<IIndexTabletDatabase::TNode> NewParentNode;
+        TMaybe<IIndexTabletDatabase::TNodeRef> NewChildRef;
+
+        NProto::TOpLogEntry OpLogEntry;
+        NProtoPrivate::TRenameNodeInDestinationResponse Response;
+
+        TString ShardIdForUnlink;
+        TString ShardNodeNameForUnlink;
+
+        TRenameNodeInDestination(
+                TRequestInfoPtr requestInfo,
+                NProtoPrivate::TRenameNodeInDestinationRequest request)
+            : TSessionAware(request)
+            , RequestInfo(std::move(requestInfo))
+            , NewParentNodeId(request.GetNewParentId())
+            , NewName(std::move(*request.MutableNewName()))
+            , Flags(request.GetFlags())
+            , Request(std::move(request))
+        {}
+
+        void Clear()
+        {
+            TIndexStateNodeUpdates::Clear();
+            CommitId = InvalidCommitId;
+
+            NewParentNode.Clear();
+            NewChildRef.Clear();
+
+            OpLogEntry.Clear();
+
+            Response.Clear();
+
+            ShardIdForUnlink.clear();
+            ShardNodeNameForUnlink.clear();
+        }
+    };
+
+    //
+    // CommitRenameNodeInSource
+    //
+
+    struct TCommitRenameNodeInSource
+        : TSessionAware
+        , TIndexStateNodeUpdates
+    {
+        const TRequestInfoPtr RequestInfo;
+        const NProto::TRenameNodeRequest Request;
+        const NProtoPrivate::TRenameNodeInDestinationResponse Response;
+
+        ui64 CommitId = InvalidCommitId;
+        TMaybe<IIndexTabletDatabase::TNodeRef> ChildRef;
+
+        const ui64 OpLogEntryId;
+
+        TCommitRenameNodeInSource(
+                TRequestInfoPtr requestInfo,
+                NProto::TRenameNodeRequest request,
+                NProtoPrivate::TRenameNodeInDestinationResponse response,
+                ui64 opLogEntryId)
+            : TSessionAware(request)
+            , RequestInfo(std::move(requestInfo))
+            , Request(std::move(request))
+            , Response(std::move(response))
+            , OpLogEntryId(opLogEntryId)
+        {}
+
+        void Clear()
+        {
+            TIndexStateNodeUpdates::Clear();
+            CommitId = InvalidCommitId;
+            ChildRef.Clear();
         }
     };
 

@@ -15,120 +15,6 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TDiskRegistryStateSnapshot MakeNewLoadState(
-    NProto::TDiskRegistryStateBackup&& backup)
-{
-    auto move = [] (auto& src, auto& dst) {
-        dst.reserve(src.size());
-        dst.assign(
-            std::make_move_iterator(src.begin()),
-            std::make_move_iterator(src.end()));
-        src.Clear();
-    };
-
-    auto transform = [] (auto& src, auto& dst, auto func) {
-        dst.resize(src.size());
-        for (int i = 0; i < src.size(); ++i) {
-            func(src[i], dst[i]);
-        }
-        src.Clear();
-    };
-
-    TDiskRegistryStateSnapshot newLoadState;
-    // if new fields are added to TDiskRegistryStateSnapshot
-    // there will be a compilation error.
-    auto& [
-        config,
-        dirtyDevices,
-        agents,
-        disks,
-        placementGroups,
-        brokenDisks,
-        disksToReallocate,
-        diskStateChanges,
-        lastDiskStateSeqNo,
-        writableState,
-        disksToCleanup,
-        errorNotifications,
-        userNotifications,
-        outdatedVolumeConfigs,
-        suspendedDevices,
-        automaticallyReplacedDevices,
-        diskRegistryAgentListParams
-    ] = newLoadState;
-
-    if (backup.DirtyDevicesSize()) {
-        transform(
-            *backup.MutableDirtyDevices(),
-            dirtyDevices,
-            [] (auto& src, auto& dst) {
-                dst.Id = src.GetId();
-                dst.DiskId = src.GetDiskId();
-            });
-    } else {
-        transform(
-            *backup.MutableOldDirtyDevices(),
-            dirtyDevices,
-            [] (auto& src, auto& dst) {
-                dst.Id = src;
-            });
-    }
-
-    move(*backup.MutableAgents(), agents);
-    move(*backup.MutableDisks(), disks);
-    move(*backup.MutablePlacementGroups(), placementGroups);
-    move(*backup.MutableDisksToNotify(), disksToReallocate);
-    move(*backup.MutableDisksToCleanup(), disksToCleanup);
-
-    move(*backup.MutableErrorNotifications(), errorNotifications);
-    move(*backup.MutableUserNotifications(), userNotifications);
-    // Filter out unknown events for future version rollback compatibility
-    std::erase_if(userNotifications, [] (const auto& notif) {
-            return notif.GetEventCase()
-                == NProto::TUserNotification::EventCase::EVENT_NOT_SET;
-        });
-
-    move(*backup.MutableOutdatedVolumeConfigs(), outdatedVolumeConfigs);
-    move(*backup.MutableSuspendedDevices(), suspendedDevices);
-
-    transform(
-        *backup.MutableBrokenDisks(),
-        brokenDisks,
-        [] (auto& src, auto& dst) {
-            dst.DiskId = src.GetDiskId();
-            dst.TsToDestroy = TInstant::MicroSeconds(src.GetTsToDestroy());
-        });
-    transform(
-        *backup.MutableDiskStateChanges(),
-        diskStateChanges,
-        [] (auto& src, auto& dst) {
-            if (src.HasState()) {
-                dst.State.Swap(src.MutableState());
-            }
-            dst.SeqNo = src.GetSeqNo();
-        });
-    transform(
-        *backup.MutableAutomaticallyReplacedDevices(),
-        automaticallyReplacedDevices,
-        [] (auto& src, auto& dst) {
-            dst.DeviceId = src.GetDeviceId();
-            dst.ReplacementTs = TInstant::MicroSeconds(src.GetReplacementTs());
-        });
-
-    diskRegistryAgentListParams.insert(
-        backup.MutableDiskRegistryAgentListParams()->begin(),
-        backup.MutableDiskRegistryAgentListParams()->end());
-
-    if (backup.HasConfig()) {
-        config.Swap(backup.MutableConfig());
-    }
-
-    lastDiskStateSeqNo = config.GetLastDiskStateSeqNo();
-    writableState = config.GetWritableState();
-
-    return newLoadState;
-}
-
 using TOperations = TQueue<std::function<void(TDiskRegistryDatabase&)>>;
 
 void RestoreConfig(
@@ -437,6 +323,122 @@ void RestoreDiskRegistryAgentListParams(
 }
 
 }   // namespace
+
+////////////////////////////////////////////////////////////////////////////////
+
+TDiskRegistryStateSnapshot MakeNewLoadState(
+    NProto::TDiskRegistryStateBackup&& backup)
+{
+    auto move = [] (auto& src, auto& dst) {
+        dst.reserve(src.size());
+        dst.assign(
+            std::make_move_iterator(src.begin()),
+            std::make_move_iterator(src.end()));
+        src.Clear();
+    };
+
+    auto transform = [] (auto& src, auto& dst, auto func) {
+        dst.resize(src.size());
+        for (int i = 0; i < src.size(); ++i) {
+            func(src[i], dst[i]);
+        }
+        src.Clear();
+    };
+
+    TDiskRegistryStateSnapshot newLoadState;
+    // if new fields are added to TDiskRegistryStateSnapshot
+    // there will be a compilation error.
+    auto& [
+        config,
+        dirtyDevices,
+        agents,
+        disks,
+        placementGroups,
+        brokenDisks,
+        disksToReallocate,
+        diskStateChanges,
+        lastDiskStateSeqNo,
+        writableState,
+        disksToCleanup,
+        errorNotifications,
+        userNotifications,
+        outdatedVolumeConfigs,
+        suspendedDevices,
+        automaticallyReplacedDevices,
+        diskRegistryAgentListParams
+    ] = newLoadState;
+
+    if (backup.DirtyDevicesSize()) {
+        transform(
+            *backup.MutableDirtyDevices(),
+            dirtyDevices,
+            [] (auto& src, auto& dst) {
+                dst.Id = src.GetId();
+                dst.DiskId = src.GetDiskId();
+            });
+    } else {
+        transform(
+            *backup.MutableOldDirtyDevices(),
+            dirtyDevices,
+            [] (auto& src, auto& dst) {
+                dst.Id = src;
+            });
+    }
+
+    move(*backup.MutableAgents(), agents);
+    move(*backup.MutableDisks(), disks);
+    move(*backup.MutablePlacementGroups(), placementGroups);
+    move(*backup.MutableDisksToNotify(), disksToReallocate);
+    move(*backup.MutableDisksToCleanup(), disksToCleanup);
+
+    move(*backup.MutableErrorNotifications(), errorNotifications);
+    move(*backup.MutableUserNotifications(), userNotifications);
+    // Filter out unknown events for future version rollback compatibility
+    std::erase_if(userNotifications, [] (const auto& notif) {
+            return notif.GetEventCase()
+                == NProto::TUserNotification::EventCase::EVENT_NOT_SET;
+        });
+
+    move(*backup.MutableOutdatedVolumeConfigs(), outdatedVolumeConfigs);
+    move(*backup.MutableSuspendedDevices(), suspendedDevices);
+
+    transform(
+        *backup.MutableBrokenDisks(),
+        brokenDisks,
+        [] (auto& src, auto& dst) {
+            dst.DiskId = src.GetDiskId();
+            dst.TsToDestroy = TInstant::MicroSeconds(src.GetTsToDestroy());
+        });
+    transform(
+        *backup.MutableDiskStateChanges(),
+        diskStateChanges,
+        [] (auto& src, auto& dst) {
+            if (src.HasState()) {
+                dst.State.Swap(src.MutableState());
+            }
+            dst.SeqNo = src.GetSeqNo();
+        });
+    transform(
+        *backup.MutableAutomaticallyReplacedDevices(),
+        automaticallyReplacedDevices,
+        [] (auto& src, auto& dst) {
+            dst.DeviceId = src.GetDeviceId();
+            dst.ReplacementTs = TInstant::MicroSeconds(src.GetReplacementTs());
+        });
+
+    diskRegistryAgentListParams.insert(
+        backup.MutableDiskRegistryAgentListParams()->begin(),
+        backup.MutableDiskRegistryAgentListParams()->end());
+
+    if (backup.HasConfig()) {
+        config.Swap(backup.MutableConfig());
+    }
+
+    lastDiskStateSeqNo = config.GetLastDiskStateSeqNo();
+    writableState = config.GetWritableState();
+
+    return newLoadState;
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 

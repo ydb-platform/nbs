@@ -5,6 +5,7 @@
 #include "config.h"
 #include "part_nonrepl_events_private.h"
 
+#include <cloud/blockstore/libs/diagnostics/config.h>
 #include <cloud/blockstore/libs/storage/api/partition.h>
 #include <cloud/blockstore/libs/storage/api/service.h>
 #include <cloud/blockstore/libs/storage/api/volume.h>
@@ -48,6 +49,7 @@ class TNonreplicatedPartitionActor final
 {
 private:
     const TStorageConfigPtr Config;
+    const TDiagnosticsConfigPtr DiagnosticsConfig;
     const TNonreplicatedPartitionConfigPtr PartConfig;
     const NActors::TActorId StatActorId;
 
@@ -103,6 +105,7 @@ private:
 public:
     TNonreplicatedPartitionActor(
         TStorageConfigPtr config,
+        TDiagnosticsConfigPtr diagnosticsConfig,
         TNonreplicatedPartitionConfigPtr partConfig,
         NActors::TActorId statActorId);
 

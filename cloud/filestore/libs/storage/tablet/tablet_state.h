@@ -230,6 +230,11 @@ public:
         return FileSystem.GetFileSystemId();
     }
 
+    TString GetMainFileSystemId() const
+    {
+        return FileSystem.GetMainFileSystemId();
+    }
+
     ui32 GetGeneration() const
     {
         return Generation;
@@ -729,6 +734,12 @@ FILESTORE_DUPCACHE_REQUESTS(FILESTORE_DECLARE_DUPCACHE)
         const TString& sessionId,
         ui64 requestId,
         NProto::TCreateNodeResponse response);
+
+    void PatchDupCacheEntry(
+        TIndexTabletDatabase& db,
+        const TString& sessionId,
+        ui64 requestId,
+        NProto::TRenameNodeResponse response);
 
     void CommitDupCacheEntry(
         const TString& sessionId,
