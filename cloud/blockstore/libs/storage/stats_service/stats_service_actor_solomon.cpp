@@ -223,10 +223,13 @@ void TStatsServiceActor::HandleRegisterVolume(
     auto volume = State.GetOrAddVolume(msg->DiskId, msg->Config);
 
     if (volume->IsDiskRegistryBased()) {
-        volume->PerfCounters =
-            TDiskPerfData(EPublishingPolicy::DiskRegistryBased);
+        volume->PerfCounters = TDiskPerfData(
+            EPublishingPolicy::DiskRegistryBased,
+            DiagnosticsConfig->GetHistogramCounterOptions());
     } else {
-        volume->PerfCounters = TDiskPerfData(EPublishingPolicy::Repl);
+        volume->PerfCounters = TDiskPerfData(
+            EPublishingPolicy::Repl,
+            DiagnosticsConfig->GetHistogramCounterOptions());
     }
 }
 

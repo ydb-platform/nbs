@@ -4943,6 +4943,189 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
                 stats.GetMixedBlocksCount());
         }
     }
+
+    SERVICE_TEST_SID_SELECT_IN_LEADER_ONLY(
+        ShouldRetryRenameNodeInShardUponLeaderRestartWithDirectoriesInShards)
+    {
+        config.SetMultiTabletForwardingEnabled(true);
+        config.SetDirectoryCreationInShardsEnabled(true);
+        TTestEnv env({}, config);
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+
+        const TString fsId = "test";
+        const auto shard1Id = fsId + "-f1";
+        const auto shard2Id = fsId + "-f2";
+
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+
+        // configuring shard tablet id interceptor to reboot the tablet using
+        // it later on
+
+        ui64 shard1TabletId = -1;
+        ui64 shard2TabletId = -1;
+        env.GetRuntime().SetEventFilter(
+            [&] (auto& runtime, TAutoPtr<IEventHandle>& event) {
+                Y_UNUSED(runtime);
+                switch (event->GetTypeRewrite()) {
+                    case TEvSSProxy::EvDescribeFileStoreResponse: {
+                        using TDesc = TEvSSProxy::TEvDescribeFileStoreResponse;
+                        const auto* msg = event->Get<TDesc>();
+                        const auto& desc =
+                            msg->PathDescription.GetFileStoreDescription();
+                        if (desc.GetConfig().GetFileSystemId() == shard1Id) {
+                            shard1TabletId = desc.GetIndexTabletId();
+                        }
+
+                        if (desc.GetConfig().GetFileSystemId() == shard2Id) {
+                            shard2TabletId = desc.GetIndexTabletId();
+                        }
+
+                        break;
+                    }
+                }
+
+                return false;
+            });
+
+        service.CreateFileStore(fsId, 1'000);
+        service.CreateFileStore(shard1Id, 1'000);
+        service.CreateFileStore(shard2Id, 1'000);
+
+        ConfigureShards(service, fsId, shard1Id, shard2Id, true);
+
+        auto headers = service.InitSession(fsId, "client");
+
+        // creating 2 dirs - we'll move a file from one dir to another
+
+        ui64 dir1Id = service.CreateNode(
+            headers,
+            TCreateNodeArgs::Directory(RootNodeId, "dir1")
+        )->Record.GetNode().GetId();
+
+        ui64 dir2Id = service.CreateNode(
+            headers,
+            TCreateNodeArgs::Directory(RootNodeId, "dir2")
+        )->Record.GetNode().GetId();
+
+        UNIT_ASSERT_VALUES_UNEQUAL(0, ExtractShardNo(dir1Id));
+        UNIT_ASSERT_VALUES_UNEQUAL(0, ExtractShardNo(dir2Id));
+        UNIT_ASSERT_VALUES_UNEQUAL(
+            ExtractShardNo(dir1Id),
+            ExtractShardNo(dir2Id));
+
+        // creating a file which we will move
+
+        ui64 node1Id = service.CreateNode(
+            headers,
+            TCreateNodeArgs::File(dir1Id, "file1")
+        )->Record.GetNode().GetId();
+
+        // configuring an interceptor to make RenameNode get stuck in the shard
+        // in charge of dir1
+
+        bool intercept = true;
+        bool intercepted = false;
+        env.GetRuntime().SetEventFilter(
+            [&] (auto& runtime, TAutoPtr<IEventHandle>& event) {
+                Y_UNUSED(runtime);
+                if (intercept && event->GetTypeRewrite() ==
+                        TEvIndexTablet::EvRenameNodeInDestinationRequest)
+                {
+                    intercepted = true;
+                    return true;
+                }
+                return false;
+            });
+
+        service.SendRenameNodeRequest(
+            headers,
+            dir1Id,
+            "file1",
+            dir2Id,
+            "file2",
+            0);
+
+        ui32 iterations = 0;
+        while (!intercepted && iterations++ < 100) {
+            env.GetRuntime().DispatchEvents({}, TDuration::MilliSeconds(50));
+        }
+
+        UNIT_ASSERT(intercepted);
+        intercept = false;
+
+        // listing the nodes in dir1 and dir2 - no changes should be visible
+        // at this point
+
+        {
+            auto listNodesResponse = service.ListNodes(
+                headers,
+                fsId,
+                dir1Id)->Record;
+
+            UNIT_ASSERT_VALUES_EQUAL(1, listNodesResponse.NamesSize());
+            UNIT_ASSERT_VALUES_EQUAL(1, listNodesResponse.NodesSize());
+        }
+
+        {
+            auto listNodesResponse = service.ListNodes(
+                headers,
+                fsId,
+                dir2Id)->Record;
+
+            UNIT_ASSERT_VALUES_EQUAL(0, listNodesResponse.NamesSize());
+            UNIT_ASSERT_VALUES_EQUAL(0, listNodesResponse.NodesSize());
+        }
+
+        // rebooting the shard in charge of dir1 to trigger OpLog replay which
+        // should rerun the part of the RenameNode operation that got stuck
+
+        const ui64 tabletId =
+            ExtractShardNo(dir1Id) == 1 ? shard1TabletId : shard2TabletId;
+        TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
+        tablet.RebootTablet();
+
+        {
+            auto renameResponse = service.RecvRenameNodeResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_REJECTED,
+                renameResponse->GetError().GetCode(),
+                renameResponse->GetError().GetMessage());
+        }
+
+        // remaking session since CreateSessionActor doesn't do it by itself
+        // because EvWakeup never arrives because Scheduling doesn't work by
+        // default and RegistrationObservers get reset after RebootTablet
+        headers = service.InitSession(fsId, "client");
+
+        // after shard reboot our RenameNode operation should have completed
+        // checking it via directory listing
+
+        {
+            auto listNodesResponse = service.ListNodes(
+                headers,
+                fsId,
+                dir1Id)->Record;
+
+            UNIT_ASSERT_VALUES_EQUAL(0, listNodesResponse.NamesSize());
+            UNIT_ASSERT_VALUES_EQUAL(0, listNodesResponse.NodesSize());
+        }
+
+        {
+            auto listNodesResponse = service.ListNodes(
+                headers,
+                fsId,
+                dir2Id)->Record;
+
+            UNIT_ASSERT_VALUES_EQUAL(1, listNodesResponse.NamesSize());
+            UNIT_ASSERT_VALUES_EQUAL(1, listNodesResponse.NodesSize());
+            UNIT_ASSERT_VALUES_EQUAL("file2", listNodesResponse.GetNames(0));
+            UNIT_ASSERT_VALUES_EQUAL(
+                node1Id,
+                listNodesResponse.GetNodes(0).GetId());
+        }
+    }
 }
 
 }   // namespace NCloud::NFileStore::NStorage

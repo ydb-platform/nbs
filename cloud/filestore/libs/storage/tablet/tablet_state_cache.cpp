@@ -82,6 +82,18 @@ bool TInMemoryIndexState::ReadNode(
     return true;
 }
 
+bool TInMemoryIndexState::ReadNodes(
+    ui64 startNodeId,
+    ui64 maxNodes,
+    ui64& nextNodeId,
+    TVector<TNode>& nodes)
+{
+    Y_UNUSED(startNodeId, maxNodes, nextNodeId, nodes);
+    // TInMemoryIndexState is a preemptive cache, thus it is impossible to
+    // determine, whether the set of stored nodes is complete.
+    return false;
+}
+
 void TInMemoryIndexState::WriteNode(
     ui64 nodeId,
     ui64 commitId,

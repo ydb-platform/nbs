@@ -3689,6 +3689,8 @@ void TDiskRegistryState::ForgetDevices(
         DeviceList.ForgetDevice(id);
         db.DeleteSuspendedDevice(id);
         db.DeleteDirtyDevice(id);
+
+        DeleteAutomaticallyReplacedDevice(db, id);
     }
 }
 
@@ -7499,6 +7501,45 @@ TVector<NProto::TAgentInfo> TDiskRegistryState::QueryAgentsInfo() const
     }
 
     return ret;
+}
+
+TVector<TString> TDiskRegistryState::FindOrphanDevices() const
+{
+    THashSet<TString> allKnownDevicesWithAgents;
+    for (const auto& agent: AgentList.GetAgents()) {
+        for (const auto& device: agent.GetDevices()) {
+            const auto& deviceUUID = device.GetDeviceUUID();
+            allKnownDevicesWithAgents.insert(deviceUUID);
+        }
+    }
+
+    TVector<TString> orphanDevices;
+    for (auto& deviceUUID: DeviceList.GetDirtyDevicesId()) {
+        if (!allKnownDevicesWithAgents.contains(deviceUUID)) {
+            orphanDevices.emplace_back(std::move(deviceUUID));
+        }
+    }
+    for (auto& device: DeviceList.GetSuspendedDevices()) {
+        if (!allKnownDevicesWithAgents.contains(device.GetId())) {
+            orphanDevices.emplace_back(std::move(*device.MutableId()));
+        }
+    }
+    for (const auto& deviceUUID: AutomaticallyReplacedDeviceIds) {
+        if (!allKnownDevicesWithAgents.contains(deviceUUID)) {
+            orphanDevices.emplace_back(deviceUUID);
+        }
+    }
+
+    SortUnique(orphanDevices);
+
+    return orphanDevices;
+}
+
+void TDiskRegistryState::RemoveOrphanDevices(
+    TDiskRegistryDatabase& db,
+    const TVector<TString>& orphanDevicesIds)
+{
+    ForgetDevices(db, orphanDevicesIds);
 }
 
 std::optional<ui64> TDiskRegistryState::GetDiskBlockCount(

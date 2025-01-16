@@ -158,6 +158,7 @@ void TIndexTabletActor::HandleUpdateConfig(
     *newConfig.MutableShardFileSystemIds() =
         oldConfig.GetShardFileSystemIds();
     newConfig.SetShardNo(oldConfig.GetShardNo());
+    newConfig.SetMainFileSystemId(oldConfig.GetMainFileSystemId());
     newConfig.SetAutomaticShardCreationEnabled(
         oldConfig.GetAutomaticShardCreationEnabled());
     newConfig.SetShardAllocationUnit(oldConfig.GetShardAllocationUnit());
@@ -430,6 +431,7 @@ void TIndexTabletActor::ExecuteTx_ConfigureAsShard(
 
     auto config = GetFileSystem();
     config.SetShardNo(args.Request.GetShardNo());
+    config.SetMainFileSystemId(args.Request.GetMainFileSystemId());
     *config.MutableShardFileSystemIds() =
         std::move(*args.Request.MutableShardFileSystemIds());
 

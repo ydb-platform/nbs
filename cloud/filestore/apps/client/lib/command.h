@@ -198,6 +198,7 @@ protected:
         const TString& fsId,
         ui64 parentId,
         bool disableMultiTabletForwarding);
+    TString ReadLink(ISession& session, ui64 nodeId);
 
     class TSessionGuard final
     {

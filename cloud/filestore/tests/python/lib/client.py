@@ -290,6 +290,16 @@ class FilestoreCliClient:
 
         return json.loads(resp)
 
+    def mv(self, fs, src_path, dst_path):
+        cmd = [
+            self.__binary_path, "mv",
+            "--filesystem", fs,
+            "--src-path", src_path,
+            "--dst-path", dst_path,
+        ] + self.__cmd_opts()
+
+        return common.execute(cmd, env=self.__env, check_exit_code=self.__check_exit_code).stdout
+
     def __cmd_opts(self, vhost=False):
         opts = [
             "--server-address", "localhost",
@@ -342,6 +352,10 @@ class FilestoreCliClient:
 
     @standard_command("rm")
     def rm(self, cmd):
+        return common.execute(cmd, env=self.__env, check_exit_code=self.__check_exit_code).stdout
+
+    @standard_command("ln")
+    def ln(self, cmd):
         return common.execute(cmd, env=self.__env, check_exit_code=self.__check_exit_code).stdout
 
 

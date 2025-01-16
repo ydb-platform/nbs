@@ -346,6 +346,16 @@ private:
         const TCgiParameters& params,
         TRequestInfoPtr requestInfo);
 
+    void HandleHttpInfo_ChangeDeviseState(
+        const NActors::TActorContext& ctx,
+        const TCgiParameters& params,
+        TRequestInfoPtr requestInfo);
+
+    void HandleHttpInfo_ChangeAgentState(
+        const NActors::TActorContext& ctx,
+        const TCgiParameters& params,
+        TRequestInfoPtr requestInfo);
+
     void HandleHttpInfo_RenderDisks(
         const NActors::TActorContext& ctx,
         const TCgiParameters& params,
@@ -502,6 +512,8 @@ private:
     }                                                                          \
 // BLOCKSTORE_DISK_REGISTRY_COUNTER
 
+TDiskRegistryStateSnapshot MakeNewLoadState(
+    NProto::TDiskRegistryStateBackup&& backup);
 bool ToLogicalBlocks(NProto::TDeviceConfig& device, ui32 logicalBlockSize);
 TString LogDevices(const TVector<NProto::TDeviceConfig>& devices);
 

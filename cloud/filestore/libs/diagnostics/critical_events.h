@@ -31,6 +31,9 @@ namespace NCloud::NFileStore{
     xxx(LocalFsMissingHandleNode)                                              \
     xxx(ShardStatsRetrievalTimeout)                                            \
     xxx(CreateNodeRequestResponseMismatchInShard)                              \
+    xxx(RenameNodeRequestSentToWrongShard)                                     \
+    xxx(RenameNodeRequestForLocalNode)                                         \
+    xxx(InvalidShardNo)                                                        \
 // FILESTORE_CRITICAL_EVENTS
 
 #define FILESTORE_IMPOSSIBLE_EVENTS(xxx)                                       \
@@ -47,6 +50,9 @@ namespace NCloud::NFileStore{
     xxx(IndexOutOfBounds)                                                      \
     xxx(CheckFreshBytesFailed)                                                 \
     xxx(LocalFsDuplicateFileHandle)                                            \
+    xxx(UnexpectedLocalNode)                                                   \
+    xxx(NoRenameNodeInDestinationRequest)                                      \
+    xxx(BadChildRefUponCommitRenameNodeInSource)                               \
 // FILESTORE_IMPOSSIBLE_EVENTS
 
 ////////////////////////////////////////////////////////////////////////////////

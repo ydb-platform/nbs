@@ -460,6 +460,29 @@ TString GetReplicaTableRepr(
 
 ////////////////////////////////////////////////////////////////////////////////
 
+TDiskRegistryStateBuilder TDiskRegistryStateBuilder::LoadState(
+    TDiskRegistryDatabase& db)
+{
+    TDiskRegistryStateBuilder builder;
+
+    db.ReadDiskRegistryConfig(builder.Config);
+    db.ReadDirtyDevices(builder.DirtyDevices);
+    db.ReadAgents(builder.Agents);
+    db.ReadDisks(builder.Disks);
+    db.ReadPlacementGroups(builder.PlacementGroups);
+    db.ReadBrokenDisks(builder.BrokenDisks);
+    db.ReadDisksToReallocate(builder.DisksToReallocate);
+    db.ReadErrorNotifications(builder.ErrorNotifications);
+    db.ReadUserNotifications(builder.UserNotifications);
+    db.ReadDisksToCleanup(builder.DisksToCleanup);
+    db.ReadOutdatedVolumeConfigs(builder.OutdatedVolumeConfigs);
+    db.ReadSuspendedDevices(builder.SuspendedDevices);
+    db.ReadAutomaticallyReplacedDevices(builder.AutomaticallyReplacedDevices);
+    db.ReadDiskRegistryAgentListParams(builder.DiskRegistryAgentListParams);
+
+    return builder;
+}
+
 TDiskRegistryState TDiskRegistryStateBuilder::Build()
 {
     return TDiskRegistryState(

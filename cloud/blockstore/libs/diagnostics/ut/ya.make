@@ -9,6 +9,7 @@ PEERDIR(
 )
 
 SRCS(
+    config_ut.cpp
     block_digest_ut.cpp
     fault_injection_ut.cpp
     profile_log_ut.cpp

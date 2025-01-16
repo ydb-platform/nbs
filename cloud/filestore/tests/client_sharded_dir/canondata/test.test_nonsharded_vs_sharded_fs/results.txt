@@ -12,14 +12,26 @@
         "Name": "a1",
         "Mode": 511,
         "Id": 17
+    },
+    {
+        "Type": 1,
+        "Links": 1,
+        "Size": 62,
+        "Name": "f18.txt",
+        "Id": 29
     }
 ][
     {
-        "ShardFileSystemId": "fs1_s1",
+        "ShardFileSystemId": "masked_for_test_stability",
         "Name": "a0"
     },
     {
-        "ShardFileSystemId": "fs1_s2",
+        "ShardFileSystemId": "masked_for_test_stability",
         "Name": "a1"
+    },
+    {
+        "ShardFileSystemId": "masked_for_test_stability",
+        "Name": "f18.txt"
     }
-]
+][22;31m-	LINK: [0m[0;39m/does/not/matter/2
+[22;32m+	LINK: [0m[0;39m/does/not/matter/3

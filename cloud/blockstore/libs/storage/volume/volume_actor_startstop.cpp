@@ -194,6 +194,7 @@ void TVolumeActor::SetupDiskRegistryBasedPartitions(const TActorContext& ctx)
                 ctx,
                 CreateNonreplicatedPartition(
                     Config,
+                    DiagnosticsConfig,
                     nonreplicatedConfig,
                     SelfId(),
                     GetRdmaClient()));
@@ -203,6 +204,7 @@ void TVolumeActor::SetupDiskRegistryBasedPartitions(const TActorContext& ctx)
                 ctx,
                 CreateNonreplicatedPartitionMigration(
                     Config,
+                    DiagnosticsConfig,
                     ProfileLog,
                     BlockDigestGenerator,
                     State->GetMeta().GetMigrationIndex(),
@@ -226,6 +228,7 @@ void TVolumeActor::SetupDiskRegistryBasedPartitions(const TActorContext& ctx)
                 ctx,
                 CreateMirrorPartitionResync(
                     Config,
+                    DiagnosticsConfig,
                     ProfileLog,
                     BlockDigestGenerator,
                     State->GetReadWriteAccessClientId(),
@@ -241,6 +244,7 @@ void TVolumeActor::SetupDiskRegistryBasedPartitions(const TActorContext& ctx)
                 ctx,
                 CreateMirrorPartition(
                     Config,
+                    DiagnosticsConfig,
                     ProfileLog,
                     BlockDigestGenerator,
                     State->GetReadWriteAccessClientId(),
@@ -274,6 +278,7 @@ NActors::TActorId TVolumeActor::WrapNonreplActorIfNeeded(
         nonreplicatedActorId = NCloud::Register<TShadowDiskActor>(
             ctx,
             Config,
+            DiagnosticsConfig,
             GetRdmaClient(),
             ProfileLog,
             BlockDigestGenerator,

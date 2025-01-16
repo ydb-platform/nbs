@@ -20,9 +20,11 @@ SRCS(
     list_cluster_nodes.cpp
     list_endpoints.cpp
     list_filestores.cpp
+    ln.cpp
     ls.cpp
     mkdir.cpp
     mount.cpp
+    mv.cpp
     performance_profile_params.cpp
     read.cpp
     remove_cluster_node.cpp

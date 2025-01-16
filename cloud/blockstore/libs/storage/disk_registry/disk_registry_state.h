@@ -864,6 +864,12 @@ public:
 
     TVector<NProto::TAgentInfo> QueryAgentsInfo() const;
 
+    TVector<TString> FindOrphanDevices() const;
+
+    void RemoveOrphanDevices(
+        TDiskRegistryDatabase& db,
+        const TVector<TString>& orphanDevicesIds);
+
 private:
     void ProcessConfig(const NProto::TDiskRegistryConfig& config);
     void ProcessDisks(TVector<NProto::TDiskConfig> disks);

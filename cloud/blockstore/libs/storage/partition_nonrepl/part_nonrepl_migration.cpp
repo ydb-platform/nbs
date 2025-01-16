@@ -10,6 +10,7 @@ using namespace NActors;
 
 IActorPtr CreateNonreplicatedPartitionMigration(
     TStorageConfigPtr config,
+    TDiagnosticsConfigPtr diagnosticsConfig,
     IProfileLogPtr profileLog,
     IBlockDigestGeneratorPtr digestGenerator,
     ui64 initialMigrationIndex,
@@ -21,6 +22,7 @@ IActorPtr CreateNonreplicatedPartitionMigration(
 {
     return std::make_unique<TNonreplicatedPartitionMigrationActor>(
         std::move(config),
+        std::move(diagnosticsConfig),
         std::move(profileLog),
         std::move(digestGenerator),
         initialMigrationIndex,

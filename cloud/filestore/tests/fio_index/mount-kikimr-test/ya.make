@@ -15,6 +15,8 @@ TEST_SRCS(
     test.py
 )
 
+SET(NFS_FORCE_VERBOSE 1)
+
 INCLUDE(${ARCADIA_ROOT}/cloud/filestore/tests/recipes/service-kikimr.inc)
 INCLUDE(${ARCADIA_ROOT}/cloud/filestore/tests/recipes/mount.inc)
 

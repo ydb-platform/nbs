@@ -207,6 +207,7 @@ void TCreateFileStoreActor::ConfigureShards(const TActorContext& ctx)
         request->Record.SetFileSystemId(
             FileStoreConfig.ShardConfigs[i].GetFileSystemId());
         request->Record.SetShardNo(i + 1);
+        request->Record.SetMainFileSystemId(Request.GetFileSystemId());
         if (StorageConfig->GetDirectoryCreationInShardsEnabled()) {
             for (const auto& shard: FileStoreConfig.ShardConfigs) {
                 request->Record.AddShardFileSystemIds(shard.GetFileSystemId());

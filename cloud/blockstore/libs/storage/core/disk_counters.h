@@ -32,10 +32,12 @@ struct TMemberWithMeta: public TBase
         , PublishingPolicy(publishingPolicy)
     {}
 
+    template <typename... TArgs>
     TMemberWithMeta(
             EPublishingPolicy publishingPolicy,
-            ERequestCounterOption counterOption)
-        : TBase()
+            ERequestCounterOption counterOption,
+            TArgs&&... args)
+        : TBase(std::forward<TArgs>(args)...)
         , PublishingPolicy(publishingPolicy)
         , CounterOption(counterOption)
     {}
@@ -373,28 +375,42 @@ struct THistogramRequestCounters
     using THighResMeta =
         TMemberMeta<THighResCounter THistogramRequestCounters::*>;
 
+    explicit THistogramRequestCounters(
+            EHistogramCounterOptions histCounterOptions)
+        : HistCounterOptions(histCounterOptions)
+    {}
+
+    EHistogramCounterOptions HistCounterOptions;
+
     // BlobStorage based
-    TLowResCounter Flush{EPublishingPolicy::Repl};
-    TLowResCounter AddBlobs{EPublishingPolicy::Repl};
-    TLowResCounter Compaction{EPublishingPolicy::Repl};
-    TLowResCounter Cleanup{EPublishingPolicy::Repl};
-    TLowResCounter CollectGarbage{EPublishingPolicy::Repl};
-    TLowResCounter DeleteGarbage{EPublishingPolicy::Repl};
-    TLowResCounter TrimFreshLog{EPublishingPolicy::Repl};
-    TLowResCounter AddConfirmedBlobs{EPublishingPolicy::Repl};
-    TLowResCounter AddUnconfirmedBlobs{EPublishingPolicy::Repl};
-    TLowResCounter ConfirmBlobs{EPublishingPolicy::Repl};
+    TLowResCounter Flush{EPublishingPolicy::Repl, HistCounterOptions};
+    TLowResCounter AddBlobs{EPublishingPolicy::Repl, HistCounterOptions};
+    TLowResCounter Compaction{EPublishingPolicy::Repl, HistCounterOptions};
+    TLowResCounter Cleanup{EPublishingPolicy::Repl, HistCounterOptions};
+    TLowResCounter CollectGarbage{EPublishingPolicy::Repl, HistCounterOptions};
+    TLowResCounter DeleteGarbage{EPublishingPolicy::Repl, HistCounterOptions};
+    TLowResCounter TrimFreshLog{EPublishingPolicy::Repl, HistCounterOptions};
+    TLowResCounter AddConfirmedBlobs{
+        EPublishingPolicy::Repl,
+        HistCounterOptions};
+    TLowResCounter AddUnconfirmedBlobs{
+        EPublishingPolicy::Repl,
+        HistCounterOptions};
+    TLowResCounter ConfirmBlobs{EPublishingPolicy::Repl, HistCounterOptions};
 
     // BlobStorage based with kind and size
     TLowResCounter WriteBlob{
         EPublishingPolicy::Repl,
-        ERequestCounterOption::HasKind};
+        ERequestCounterOption::HasKind,
+        HistCounterOptions};
     TLowResCounter ReadBlob{
         EPublishingPolicy::Repl,
-        ERequestCounterOption::HasKind};
+        ERequestCounterOption::HasKind,
+        HistCounterOptions};
     TLowResCounter PatchBlob{
         EPublishingPolicy::Repl,
-        ERequestCounterOption::HasKind};
+        ERequestCounterOption::HasKind,
+        HistCounterOptions};
 
     static constexpr TLowResMeta AllLowResCounters[] = {
         MakeMeta<&THistogramRequestCounters::Flush>(),
@@ -415,12 +431,15 @@ struct THistogramRequestCounters
 
     THighResCounter ReadBlocks{
         EPublishingPolicy::All,
-        ERequestCounterOption::HasVoidBytes};
-    THighResCounter WriteBlocks{EPublishingPolicy::All};
-    THighResCounter ZeroBlocks{EPublishingPolicy::All};
-    THighResCounter DescribeBlocks{EPublishingPolicy::All};
-    THighResCounter ChecksumBlocks{EPublishingPolicy::All};
-    THighResCounter CopyBlocks{EPublishingPolicy::DiskRegistryBased};
+        ERequestCounterOption::HasVoidBytes,
+        HistCounterOptions};
+    THighResCounter WriteBlocks{EPublishingPolicy::All, HistCounterOptions};
+    THighResCounter ZeroBlocks{EPublishingPolicy::All, HistCounterOptions};
+    THighResCounter DescribeBlocks{EPublishingPolicy::All, HistCounterOptions};
+    THighResCounter ChecksumBlocks{EPublishingPolicy::All, HistCounterOptions};
+    THighResCounter CopyBlocks{
+        EPublishingPolicy::DiskRegistryBased,
+        HistCounterOptions};
 
     static constexpr THighResMeta AllHighResCounters[] = {
         MakeMeta<&THistogramRequestCounters::ReadBlocks>(),
@@ -434,7 +453,9 @@ struct THistogramRequestCounters
 
 static_assert(
     sizeof(THistogramRequestCounters) ==
-    (sizeof(THistogramRequestCounters::TLowResCounter) *
+    // cannot use sizeof(EHistogramCounterOptions) because of alignment
+    (offsetof(THistogramRequestCounters, Flush) +
+     sizeof(THistogramRequestCounters::TLowResCounter) *
          std::size(THistogramRequestCounters::AllLowResCounters) +
      sizeof(THistogramRequestCounters::THighResCounter) *
          std::size(THistogramRequestCounters::AllHighResCounters)));
@@ -444,9 +465,15 @@ struct THistogramCounters
     using TCounter = TMemberWithMeta<THistogram<TQueueSizeBuckets>>;
     using TMeta = TMemberMeta<TCounter THistogramCounters::*>;
 
+    EHistogramCounterOptions HistCounterOptions;
+
     // BlobStorage based
-    TCounter ActorQueue{EPublishingPolicy::Repl};
-    TCounter MailboxQueue{EPublishingPolicy::Repl};
+    TCounter ActorQueue{EPublishingPolicy::Repl, HistCounterOptions};
+    TCounter MailboxQueue{EPublishingPolicy::Repl, HistCounterOptions};
+
+    explicit THistogramCounters(EHistogramCounterOptions histCounterOptions)
+        : HistCounterOptions(histCounterOptions)
+    {}
 
     static constexpr TMeta AllCounters[] = {
         MakeMeta<&THistogramCounters::ActorQueue>(),
@@ -456,8 +483,10 @@ struct THistogramCounters
 
 static_assert(
     sizeof(THistogramCounters) ==
-    sizeof(THistogramCounters::TCounter) *
-        std::size(THistogramCounters::AllCounters));
+    // cannot use sizeof(EHistogramCounterOptions) because of alignment
+    (offsetof(THistogramCounters, ActorQueue) +
+     sizeof(THistogramCounters::TCounter) *
+         std::size(THistogramCounters::AllCounters)));
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -647,11 +676,18 @@ struct TVolumeSelfRequestCounters
     using TCounter = TMemberWithMeta<THistogram<TRequestUsTimeBuckets>>;
     using TMeta = TMemberMeta<TCounter TVolumeSelfRequestCounters::*>;
 
+    EHistogramCounterOptions HistCounterOptions;
+
     // Common
-    TCounter ReadBlocks{EPublishingPolicy::All};
-    TCounter WriteBlocks{EPublishingPolicy::All};
-    TCounter ZeroBlocks{EPublishingPolicy::All};
-    TCounter DescribeBlocks{EPublishingPolicy::All};
+    TCounter ReadBlocks{EPublishingPolicy::All, HistCounterOptions};
+    TCounter WriteBlocks{EPublishingPolicy::All, HistCounterOptions};
+    TCounter ZeroBlocks{EPublishingPolicy::All, HistCounterOptions};
+    TCounter DescribeBlocks{EPublishingPolicy::All, HistCounterOptions};
+
+    explicit TVolumeSelfRequestCounters(
+            EHistogramCounterOptions histCounterOptions)
+        : HistCounterOptions(histCounterOptions)
+    {}
 
     static constexpr TMeta AllCounters[] = {
         MakeMeta<&TVolumeSelfRequestCounters::ReadBlocks>(),
@@ -662,8 +698,10 @@ struct TVolumeSelfRequestCounters
 };
 static_assert(
     sizeof(TVolumeSelfRequestCounters) ==
-    sizeof(TVolumeSelfRequestCounters::TCounter) *
-        std::size(TVolumeSelfRequestCounters::AllCounters));
+    // cannot use sizeof(EHistogramCounterOptions) because of alignment
+    (offsetof(TVolumeSelfRequestCounters, ReadBlocks) +
+     sizeof(TVolumeSelfRequestCounters::TCounter) *
+         std::size(TVolumeSelfRequestCounters::AllCounters)));
 
 struct TTransportCounters
 {
@@ -709,8 +747,12 @@ struct TPartitionDiskCounters
 
     EPublishingPolicy Policy;
 
-    explicit TPartitionDiskCounters(EPublishingPolicy policy)
-        : Policy(policy)
+    TPartitionDiskCounters(
+            EPublishingPolicy policy,
+            EHistogramCounterOptions histCounterOptions)
+        : RequestCounters(histCounterOptions)
+        , Histogram(histCounterOptions)
+        , Policy(policy)
     {}
 
     void Add(const TPartitionDiskCounters& source);
@@ -730,8 +772,11 @@ struct TVolumeSelfCounters
 
     EPublishingPolicy Policy;
 
-    explicit TVolumeSelfCounters(EPublishingPolicy policy)
-        : Policy(policy)
+    TVolumeSelfCounters(
+            EPublishingPolicy policy,
+            EHistogramCounterOptions histCounterOptions)
+        : RequestCounters(histCounterOptions)
+        , Policy(policy)
     {}
 
     void Add(const TVolumeSelfCounters& source);
@@ -748,7 +793,11 @@ using TVolumeSelfCountersPtr = std::unique_ptr<TVolumeSelfCounters>;
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TPartitionDiskCountersPtr CreatePartitionDiskCounters(EPublishingPolicy policy);
-TVolumeSelfCountersPtr CreateVolumeSelfCounters(EPublishingPolicy policy);
+TPartitionDiskCountersPtr CreatePartitionDiskCounters(
+    EPublishingPolicy policy,
+    EHistogramCounterOptions histCounterOptions);
+TVolumeSelfCountersPtr CreateVolumeSelfCounters(
+    EPublishingPolicy policy,
+    EHistogramCounterOptions histCounterOptions);
 
 }   // namespace NCloud::NBlockStore::NStorage

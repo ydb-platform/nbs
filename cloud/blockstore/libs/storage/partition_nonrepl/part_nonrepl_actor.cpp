@@ -56,14 +56,17 @@ bool TNonreplicatedPartitionActor::TDeviceStat::CooldownPassed(
 
 TNonreplicatedPartitionActor::TNonreplicatedPartitionActor(
         TStorageConfigPtr config,
+        TDiagnosticsConfigPtr diagnosticsConfig,
         TNonreplicatedPartitionConfigPtr partConfig,
         TActorId statActorId)
     : Config(std::move(config))
+    , DiagnosticsConfig(std::move(diagnosticsConfig))
     , PartConfig(std::move(partConfig))
     , StatActorId(statActorId)
     , DeviceStats(PartConfig->GetDevices().size())
-    , PartCounters(
-        CreatePartitionDiskCounters(EPublishingPolicy::DiskRegistryBased))
+    , PartCounters(CreatePartitionDiskCounters(
+          EPublishingPolicy::DiskRegistryBased,
+          DiagnosticsConfig->GetHistogramCounterOptions()))
 {}
 
 TNonreplicatedPartitionActor::~TNonreplicatedPartitionActor() = default;
