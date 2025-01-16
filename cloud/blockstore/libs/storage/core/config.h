@@ -622,6 +622,9 @@ public:
 
     [[nodiscard]] bool GetDisableFullPlacementGroupCountCalculation() const;
     [[nodiscard]] double GetDiskRegistryInitialAgentRejectionThreshold() const;
+    [[nodiscard]] bool GetEnableToChangeStatesFromDiskRegistryMonpage() const;
+    [[nodiscard]] bool
+    GetEnableToChangeErrorStatesFromDiskRegistryMonpage() const;
 };
 
 ui64 GetAllocationUnit(

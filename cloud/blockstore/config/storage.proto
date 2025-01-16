@@ -1083,4 +1083,10 @@ message TStorageServiceConfig
     // percentage, then the rejection of such agents does not occur - we assume
     // a connectivity failure in the cluster.
     optional double DiskRegistryInitialAgentRejectionThreshold = 396;
+
+    // Enable buttons for agent/device state changing.
+    optional bool EnableToChangeStatesFromDiskRegistryMonpage = 397;
+
+    // Enable buttons for device state changing, when they in error state.
+    optional bool EnableToChangeErrorStatesFromDiskRegistryMonpage = 398;
 }
