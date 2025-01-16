@@ -495,7 +495,8 @@ NProto::TListNodesResponse TFileStoreCommand::ListAll(
     ISession& session,
     const TString& fsId,
     ui64 parentId,
-    bool disableMultiTabletForwarding)
+    bool disableMultiTabletForwarding,
+    ui32 maxBytes)
 {
     NProto::TListNodesResponse fullResult;
     TString cookie;
@@ -506,6 +507,9 @@ NProto::TListNodesResponse TFileStoreCommand::ListAll(
         request->MutableHeaders()->SetDisableMultiTabletForwarding(
             disableMultiTabletForwarding);
         request->SetCookie(cookie);
+        if (maxBytes) {
+            request->SetMaxBytes(maxBytes);
+        }
 
         auto response = WaitFor(session.ListNodes(
             PrepareCallContext(),
