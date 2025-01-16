@@ -1,7 +1,8 @@
 import json
+import os
 import requests
-import subprocess
 import socket
+import subprocess
 import time
 
 from .config import NbsConfigurator
@@ -20,6 +21,11 @@ from contrib.ydb.tests.library.harness.kikimr_cluster import kikimr_cluster_fact
 from contrib.ydb.tests.library.harness.kikimr_config import KikimrConfigGenerator
 from contrib.ydb.tests.library.harness.kikimr_runner import get_unique_path_for_current_test, \
     ensure_path_exists
+
+
+def __get_bin_path(name, default):
+    return yatest_common.binary_path(
+        yatest_common.get_param(name) or os.environ.get(name, default))
 
 
 def _match(labels, query):
@@ -145,7 +151,10 @@ class DiskAgent(Daemon):
 
 
 def start_nbs(config: NbsConfigurator, name='nbs-server'):
-    exe_path = yatest_common.binary_path("cloud/blockstore/apps/server/nbsd")
+
+    exe_path = __get_bin_path(
+        "NBS_SERVER_PATH",
+        "cloud/blockstore/apps/server/nbsd")
 
     cwd = get_unique_path_for_current_test(
         output_path=yatest_common.output_path(),
@@ -176,7 +185,10 @@ def start_nbs(config: NbsConfigurator, name='nbs-server'):
 
 
 def start_disk_agent(config: NbsConfigurator, name='disk-agent'):
-    exe_path = yatest_common.binary_path("cloud/blockstore/apps/disk_agent/diskagentd")
+
+    exe_path = __get_bin_path(
+        "DISK_AGENT_PATH",
+        "cloud/blockstore/apps/disk_agent/diskagentd")
 
     cwd = get_unique_path_for_current_test(
         output_path=yatest_common.output_path(),
