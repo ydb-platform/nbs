@@ -55,8 +55,8 @@ func TestCreateSnapshotFromDiskUpdatesCheckpointsCorrectly(t *testing.T) {
 		state:             &protos.CreateSnapshotFromDiskTaskState{},
 	}
 
-	require.Equal(t, int32(0), task.state.FailedCheckpointsCount)
-	require.Empty(t, task.state.FinalCheckpointID)
+	require.Equal(t, int32(0), task.state.CheckpointIteration)
+	require.Empty(t, task.state.CheckpointID)
 
 	// Create first checkpoint and get checkpoint status 'Error'.
 	execCtx.On("GetTaskID").Return("create_snapshot_from_disk_task")
@@ -81,8 +81,8 @@ func TestCreateSnapshotFromDiskUpdatesCheckpointsCorrectly(t *testing.T) {
 	err := task.Run(ctx, execCtx)
 	require.Error(t, err)
 	require.True(t, errors.CanRetry(err))
-	require.Equal(t, int32(1), task.state.FailedCheckpointsCount)
-	require.Empty(t, task.state.FinalCheckpointID)
+	require.Equal(t, int32(1), task.state.CheckpointIteration)
+	require.Empty(t, task.state.CheckpointID)
 	mock.AssertExpectationsForObjects(t, scheduler, storage, nbsFactory, nbsClient, execCtx)
 
 	// Create second checkpoint and get checkpoint status 'Ready'.
@@ -126,8 +126,8 @@ func TestCreateSnapshotFromDiskUpdatesCheckpointsCorrectly(t *testing.T) {
 	err = task.Run(ctx, execCtx)
 	require.Error(t, err)
 	require.True(t, errors.Is(err, errors.NewInterruptExecutionError()))
-	require.Equal(t, int32(1), task.state.FailedCheckpointsCount)
-	require.Equal(t, task.state.FinalCheckpointID, "snapshotID_1")
+	require.Equal(t, int32(1), task.state.CheckpointIteration)
+	require.Equal(t, task.state.CheckpointID, "snapshotID_1")
 	mock.AssertExpectationsForObjects(t, scheduler, storage, nbsFactory, nbsClient, execCtx)
 
 	// Finish waiting for the dataplane task, finish creating snapshot.
@@ -154,8 +154,8 @@ func TestCreateSnapshotFromDiskUpdatesCheckpointsCorrectly(t *testing.T) {
 
 	err = task.Run(ctx, execCtx)
 	require.NoError(t, err)
-	require.Equal(t, int32(1), task.state.FailedCheckpointsCount)
-	require.Equal(t, task.state.FinalCheckpointID, "snapshotID_1")
+	require.Equal(t, int32(1), task.state.CheckpointIteration)
+	require.Equal(t, task.state.CheckpointID, "snapshotID_1")
 	mock.AssertExpectationsForObjects(t, scheduler, storage, nbsFactory, nbsClient, execCtx)
 
 	// Cancel the task.
@@ -185,8 +185,8 @@ func TestCreateSnapshotFromDiskUpdatesCheckpointsCorrectly(t *testing.T) {
 
 	err = task.Cancel(ctx, execCtx)
 	require.NoError(t, err)
-	require.Equal(t, int32(1), task.state.FailedCheckpointsCount)
-	require.Equal(t, task.state.FinalCheckpointID, "snapshotID_1")
+	require.Equal(t, int32(1), task.state.CheckpointIteration)
+	require.Equal(t, task.state.CheckpointID, "snapshotID_1")
 	mock.AssertExpectationsForObjects(
 		t,
 		scheduler,

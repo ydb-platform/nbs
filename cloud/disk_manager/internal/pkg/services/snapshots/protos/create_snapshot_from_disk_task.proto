@@ -26,6 +26,6 @@ message CreateSnapshotFromDiskTaskState {
     string DataplaneTaskID = 6;
 
     // Needed for shadow disk based checkpoints.
-    int32 FailedCheckpointsCount = 7;
-    string FinalCheckpointID = 8;
+    int32 CheckpointIteration = 7;
+    string CheckpointID = 8;
 }
