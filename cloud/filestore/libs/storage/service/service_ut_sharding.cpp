@@ -99,20 +99,119 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         service.AccessRuntime().DispatchEvents(options);
     }
 
-    void ConfigureShards(
-        TServiceClient& service,
-        const TString& fsId,
-        const TString& shard1Id,
-        const TString& shard2Id,
-        bool directoryCreationInShardsEnabled = false)
+    struct TFileSystemInfo
     {
+        ui64 MainTabletId = -1;
+        ui64 Shard1TabletId = -1;
+        ui64 Shard2TabletId = -1;
+        TActorId MainTabletActorId;
+        TActorId Shard1ActorId;
+        TActorId Shard2ActorId;
+    };
+
+    struct TFileSystemConfig
+    {
+        TString FsId = "test";
+        TString Shard1Id = "test-f1";
+        TString Shard2Id = "test-f2";
+        ui64 MainTabletBlockCount = 1'000;
+        ui64 Shard1BlockCount = 1'000;
+        ui64 Shard2BlockCount = 1'000;
+        bool DirectoryCreationInShardsEnabled = false;
+
+        TVector<TString> ShardIds() const
+        {
+            return {Shard1Id, Shard2Id};
+        }
+
+        TVector<TString> MainAndShardIds() const
+        {
+            return {FsId, Shard1Id, Shard2Id};
+        }
+    };
+
+    const auto StartupEventType =
+        TEvIndexTabletPrivate::EvLoadCompactionMapChunkRequest;
+
+    void CatchActorIds(TServiceClient& service, TVector<TActorId>& ids)
+    {
+        service.AccessRuntime().SetEventFilter(
+            [&] (auto& runtime, TAutoPtr<IEventHandle>& event) {
+                Y_UNUSED(runtime);
+                switch (event->GetTypeRewrite()) {
+                    case StartupEventType: {
+                        if (Find(ids, event->Sender) == ids.end()) {
+                            ids.push_back(event->Sender);
+                        }
+
+                        break;
+                    }
+                }
+
+                return false;
+            });
+    }
+
+    TFileSystemInfo CreateFileSystem(
+        TServiceClient& service,
+        const TFileSystemConfig& fsConfig)
+    {
+        TFileSystemInfo info;
+        auto prevFilter = service.AccessRuntime().SetEventFilter(
+            [&] (auto& runtime, TAutoPtr<IEventHandle>& event) {
+                Y_UNUSED(runtime);
+                switch (event->GetTypeRewrite()) {
+                    case TEvSSProxy::EvDescribeFileStoreResponse: {
+                        using TDesc = TEvSSProxy::TEvDescribeFileStoreResponse;
+                        const auto* msg = event->Get<TDesc>();
+                        const auto& desc =
+                            msg->PathDescription.GetFileStoreDescription();
+                        if (desc.GetConfig().GetFileSystemId()
+                                == fsConfig.Shard1Id)
+                        {
+                            info.Shard1TabletId = desc.GetIndexTabletId();
+                        }
+
+                        if (desc.GetConfig().GetFileSystemId()
+                                == fsConfig.Shard2Id)
+                        {
+                            info.Shard2TabletId = desc.GetIndexTabletId();
+                        }
+
+                        break;
+                    }
+
+                    case TEvIndexTablet::EvConfigureAsShardRequest: {
+                        using R = TEvIndexTablet::TEvConfigureAsShardRequest;
+                        const auto* msg = event->Get<R>();
+                        if (fsConfig.Shard1Id == msg->Record.GetFileSystemId())
+                        {
+                            info.Shard1ActorId = event->Recipient;
+                        }
+
+                        if (fsConfig.Shard2Id == msg->Record.GetFileSystemId())
+                        {
+                            info.Shard2ActorId = event->Recipient;
+                        }
+
+                        break;
+                    }
+                }
+
+                return false;
+            });
+
+        service.CreateFileStore(fsConfig.FsId, fsConfig.MainTabletBlockCount);
+        service.CreateFileStore(fsConfig.Shard1Id, fsConfig.Shard1BlockCount);
+        service.CreateFileStore(fsConfig.Shard2Id, fsConfig.Shard2BlockCount);
+
         {
             NProtoPrivate::TConfigureAsShardRequest request;
-            request.SetFileSystemId(shard1Id);
+            request.SetFileSystemId(fsConfig.Shard1Id);
             request.SetShardNo(1);
-            if (directoryCreationInShardsEnabled) {
-                *request.AddShardFileSystemIds() = shard1Id;
-                *request.AddShardFileSystemIds() = shard2Id;
+            if (fsConfig.DirectoryCreationInShardsEnabled) {
+                *request.AddShardFileSystemIds() = fsConfig.Shard1Id;
+                *request.AddShardFileSystemIds() = fsConfig.Shard2Id;
             }
 
             TString buf;
@@ -125,11 +224,11 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
 
         {
             NProtoPrivate::TConfigureAsShardRequest request;
-            request.SetFileSystemId(shard2Id);
+            request.SetFileSystemId(fsConfig.Shard2Id);
             request.SetShardNo(2);
-            if (directoryCreationInShardsEnabled) {
-                *request.AddShardFileSystemIds() = shard1Id;
-                *request.AddShardFileSystemIds() = shard2Id;
+            if (fsConfig.DirectoryCreationInShardsEnabled) {
+                *request.AddShardFileSystemIds() = fsConfig.Shard1Id;
+                *request.AddShardFileSystemIds() = fsConfig.Shard2Id;
             }
 
             TString buf;
@@ -139,12 +238,43 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
             UNIT_ASSERT(google::protobuf::util::JsonStringToMessage(
                 jsonResponse->Record.GetOutput(), &response).ok());
         }
+
+        // doing this right before ConfigureShardsRequest because it triggers
+        // main tablet restart
+        service.AccessRuntime().SetEventFilter(
+            [&] (auto& runtime, TAutoPtr<IEventHandle>& event) {
+                Y_UNUSED(runtime);
+                switch (event->GetTypeRewrite()) {
+                    case StartupEventType: {
+                        if (!info.MainTabletActorId) {
+                            info.MainTabletActorId = event->Sender;
+                        }
+
+                        break;
+                    }
+
+                    case TEvSSProxy::EvDescribeFileStoreResponse: {
+                        using TDesc = TEvSSProxy::TEvDescribeFileStoreResponse;
+                        const auto* msg = event->Get<TDesc>();
+                        const auto& desc =
+                            msg->PathDescription.GetFileStoreDescription();
+                        if (desc.GetConfig().GetFileSystemId() == fsConfig.FsId)
+                        {
+                            info.MainTabletId = desc.GetIndexTabletId();
+                        }
+
+                        break;
+                    }
+                }
+
+                return false;
+            });
 
         {
             NProtoPrivate::TConfigureShardsRequest request;
-            request.SetFileSystemId(fsId);
-            *request.AddShardFileSystemIds() = shard1Id;
-            *request.AddShardFileSystemIds() = shard2Id;
+            request.SetFileSystemId(fsConfig.FsId);
+            *request.AddShardFileSystemIds() = fsConfig.Shard1Id;
+            *request.AddShardFileSystemIds() = fsConfig.Shard2Id;
 
             TString buf;
             google::protobuf::util::MessageToJsonString(request, &buf);
@@ -157,6 +287,16 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         // waiting for IndexTablet start after the restart triggered by
         // configureshards
         WaitForTabletStart(service);
+        service.AccessRuntime().SetEventFilter(prevFilter);
+
+        UNIT_ASSERT_VALUES_UNEQUAL(-1, info.MainTabletId);
+        UNIT_ASSERT_VALUES_UNEQUAL(-1, info.Shard1TabletId);
+        UNIT_ASSERT_VALUES_UNEQUAL(-1, info.Shard2TabletId);
+        UNIT_ASSERT(info.MainTabletActorId);
+        UNIT_ASSERT(info.Shard1ActorId);
+        UNIT_ASSERT(info.Shard2ActorId);
+
+        return info;
     }
 
     SERVICE_TEST_SIMPLE(ShouldCreateSessionInShards)
@@ -166,22 +306,15 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
 
         ui32 nodeIdx = env.CreateNode("nfs");
 
-        const TString fsId = "test";
-        const auto shard1Id = fsId + "-f1";
-        const auto shard2Id = fsId + "-f2";
-
         TServiceClient service(env.GetRuntime(), nodeIdx);
-        service.CreateFileStore(fsId, 1'000);
-        service.CreateFileStore(shard1Id, 1'000);
-        service.CreateFileStore(shard2Id, 1'000);
+        TFileSystemConfig fsConfig;
+        CreateFileSystem(service, fsConfig);
 
-        ConfigureShards(service, fsId, shard1Id, shard2Id);
-
-        auto headers = service.InitSession(fsId, "client");
+        auto headers = service.InitSession(fsConfig.FsId, "client");
         auto headers1 = headers;
-        headers1.FileSystemId = shard1Id;
+        headers1.FileSystemId = fsConfig.Shard1Id;
         auto headers2 = headers;
-        headers2.FileSystemId = shard2Id;
+        headers2.FileSystemId = fsConfig.Shard2Id;
 
         ui64 nodeId1 =
             service
@@ -243,7 +376,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
             0,
             TString(1_MB, 'a'));
 
-        for (const auto& shardId: {shard1Id, shard2Id}) {
+        for (const auto& shardId: fsConfig.ShardIds()) {
             NProtoPrivate::TDescribeSessionsRequest request;
             request.SetFileSystemId(shardId);
 
@@ -269,7 +402,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         const TString sessionState = "some_state";
         service.ResetSession(headers, sessionState);
 
-        for (const auto& shardId: {shard1Id, shard2Id}) {
+        for (const auto& shardId: fsConfig.ShardIds()) {
             NProtoPrivate::TDescribeSessionsRequest request;
             request.SetFileSystemId(shardId);
 
@@ -296,7 +429,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
 
         service.DestroySession(headers);
 
-        for (const auto& shardId: {shard1Id, shard2Id}) {
+        for (const auto& shardId: fsConfig.ShardIds()) {
             NProtoPrivate::TDescribeSessionsRequest request;
             request.SetFileSystemId(shardId);
 
@@ -321,63 +454,15 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
 
         ui32 nodeIdx = env.CreateNode("nfs");
 
-        const TString fsId = "test";
-        const auto shard1Id = fsId + "-f1";
-        const auto shard2Id = fsId + "-f2";
-
         TServiceClient service(env.GetRuntime(), nodeIdx);
+        TFileSystemConfig fsConfig;
+        const auto fsInfo = CreateFileSystem(service, fsConfig);
 
-        TActorId leaderActorId;
-        ui64 shard1TabletId = -1;
-        ui64 shard2TabletId = -1;
-        const auto startupEventType =
-            TEvIndexTabletPrivate::EvLoadCompactionMapChunkRequest;
-        env.GetRuntime().SetEventFilter(
-            [&] (auto& runtime, TAutoPtr<IEventHandle>& event) {
-                Y_UNUSED(runtime);
-                switch (event->GetTypeRewrite()) {
-                    case TEvSSProxy::EvDescribeFileStoreResponse: {
-                        using TDesc = TEvSSProxy::TEvDescribeFileStoreResponse;
-                        const auto* msg = event->Get<TDesc>();
-                        const auto& desc =
-                            msg->PathDescription.GetFileStoreDescription();
-                        if (desc.GetConfig().GetFileSystemId() == shard1Id) {
-                            shard1TabletId = desc.GetIndexTabletId();
-                        }
-
-                        if (desc.GetConfig().GetFileSystemId() == shard2Id) {
-                            shard2TabletId = desc.GetIndexTabletId();
-                        }
-
-                        break;
-                    }
-
-                    case startupEventType: {
-                        if (!leaderActorId) {
-                            leaderActorId = event->Sender;
-                        }
-
-                        break;
-                    }
-                }
-
-                return false;
-            });
-
-        service.CreateFileStore(fsId, 1'000);
-        service.CreateFileStore(shard1Id, 1'000);
-        service.CreateFileStore(shard2Id, 1'000);
-
-        // leaderActorId should be re-captured after the restart triggered by
-        // configureshards
-        leaderActorId = {};
-        ConfigureShards(service, fsId, shard1Id, shard2Id);
-
-        auto headers = service.InitSession(fsId, "client");
+        auto headers = service.InitSession(fsConfig.FsId, "client");
         auto headers1 = headers;
-        headers1.FileSystemId = shard1Id;
+        headers1.FileSystemId = fsConfig.Shard1Id;
         auto headers2 = headers;
-        headers2.FileSystemId = shard2Id;
+        headers2.FileSystemId = fsConfig.Shard2Id;
 
         // creating nodes and handles in both shards
 
@@ -428,29 +513,12 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         // rebooting shards
 
         TVector<TActorId> fsActorIds;
-        env.GetRuntime().SetEventFilter(
-            [&] (auto& runtime, TAutoPtr<IEventHandle>& event) {
-                Y_UNUSED(runtime);
-                switch (event->GetTypeRewrite()) {
-                    case TEvIndexTabletPrivate::EvLoadCompactionMapChunkRequest: {
-                        // catching one of the startup events to detect shard
-                        // actor ids
-
-                        if (Find(fsActorIds, event->Sender) == fsActorIds.end()) {
-                            fsActorIds.push_back(event->Sender);
-                        }
-
-                        break;
-                    }
-                }
-
-                return false;
-            });
+        CatchActorIds(service, fsActorIds);
 
         TIndexTabletClient shard1(
             env.GetRuntime(),
             nodeIdx,
-            shard1TabletId,
+            fsInfo.Shard1TabletId,
             {}, // config
             false // updateConfig
         );
@@ -459,7 +527,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         TIndexTabletClient shard2(
             env.GetRuntime(),
             nodeIdx,
-            shard2TabletId,
+            fsInfo.Shard2TabletId,
             {}, // config
             false // updateConfig
         );
@@ -476,7 +544,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
 
             env.GetRuntime().Send(
                 new IEventHandle(
-                    leaderActorId, // recipient
+                    fsInfo.MainTabletActorId, // recipient
                     TActorId(), // sender
                     new TRequest(),
                     0, // flags
@@ -513,7 +581,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
 
         // shard sessions should exist
 
-        for (const auto& id: {fsId, shard1Id, shard2Id}) {
+        for (const auto& id: fsConfig.MainAndShardIds()) {
             NProtoPrivate::TDescribeSessionsRequest request;
             request.SetFileSystemId(id);
 
@@ -561,18 +629,11 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
 
         ui32 nodeIdx = env.CreateNode("nfs");
 
-        const TString fsId = "test";
-        const auto shard1Id = fsId + "-f1";
-        const auto shard2Id = fsId + "-f2";
-
         TServiceClient service(env.GetRuntime(), nodeIdx);
-        service.CreateFileStore(fsId, 1'000);
-        service.CreateFileStore(shard1Id, 1'000);
-        service.CreateFileStore(shard2Id, 1'000);
+        TFileSystemConfig fsConfig;
+        CreateFileSystem(service, fsConfig);
 
-        ConfigureShards(service, fsId, shard1Id, shard2Id);
-
-        auto headers = service.InitSession(fsId, "client");
+        auto headers = service.InitSession(fsConfig.FsId, "client");
 
         ui64 nodeId1 =
             service
@@ -580,7 +641,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
                     RootNodeId,
                     "file1",
                     0, // mode
-                    shard1Id))
+                    fsConfig.Shard1Id))
                 ->Record.GetNode()
                 .GetId();
 
@@ -588,13 +649,13 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
 
         auto createHandleResponse = service.CreateHandle(
             headers,
-            fsId,
+            fsConfig.FsId,
             RootNodeId,
             "file1",
             TCreateHandleArgs::RDWR)->Record;
 
         UNIT_ASSERT_VALUES_EQUAL(
-            shard1Id,
+            fsConfig.Shard1Id,
             createHandleResponse.GetShardFileSystemId());
 
         UNIT_ASSERT_VALUES_UNEQUAL(
@@ -602,7 +663,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
             createHandleResponse.GetShardNodeName());
 
         auto headers1 = headers;
-        headers1.FileSystemId = shard1Id;
+        headers1.FileSystemId = fsConfig.Shard1Id;
 
         createHandleResponse = service.CreateHandle(
             headers1,
@@ -637,18 +698,11 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
 
         ui32 nodeIdx = env.CreateNode("nfs");
 
-        const TString fsId = "test";
-        const auto shard1Id = fsId + "-f1";
-        const auto shard2Id = fsId + "-f2";
-
         TServiceClient service(env.GetRuntime(), nodeIdx);
-        service.CreateFileStore(fsId, 1'000);
-        service.CreateFileStore(shard1Id, 1'000);
-        service.CreateFileStore(shard2Id, 1'000);
+        TFileSystemConfig fsConfig;
+        CreateFileSystem(service, fsConfig);
 
-        ConfigureShards(service, fsId, shard1Id, shard2Id);
-
-        auto headers = service.InitSession(fsId, "client");
+        auto headers = service.InitSession(fsConfig.FsId, "client");
 
         TAutoPtr<IEventHandle> createNodeInShard;
         TString name;
@@ -659,8 +713,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
                 if (e->GetTypeRewrite() == TEvService::EvCreateNodeRequest) {
                     const auto* msg =
                         e->Get<TEvService::TEvCreateNodeRequest>();
-                    if (intercept
-                            && msg->Record.GetFileSystemId() == shard1Id)
+                    if (intercept && msg->Record.GetFileSystemId()
+                            == fsConfig.Shard1Id)
                     {
                         name = msg->Record.GetName();
                         createNodeInShard = e;
@@ -676,7 +730,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
                 RootNodeId,
                 "file1",
                 0, // mode
-                shard1Id));
+                fsConfig.Shard1Id));
 
         ui32 iterations = 0;
         while (!createNodeInShard && iterations++ < 100) {
@@ -687,13 +741,13 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         intercept = false;
 
         auto headers1 = headers;
-        headers1.FileSystemId = shard1Id;
+        headers1.FileSystemId = fsConfig.Shard1Id;
 
         const auto nodeId = service.CreateNode(
             headers1,
             TCreateNodeArgs::File(RootNodeId, name))->Record.GetNode().GetId();
         UNIT_ASSERT_VALUES_EQUAL(1, ExtractShardNo(nodeId));
-        service.SetNodeAttr(headers1, shard1Id, nodeId, 1_MB);
+        service.SetNodeAttr(headers1, fsConfig.Shard1Id, nodeId, 1_MB);
 
         const auto counters =
             env.GetCounters()->FindSubgroup("component", "service");
@@ -724,29 +778,22 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
 
         ui32 nodeIdx = env.CreateNode("nfs");
 
-        const TString fsId = "test";
-        const auto shard1Id = fsId + "-f1";
-        const auto shard2Id = fsId + "-f2";
-
         TServiceClient service(env.GetRuntime(), nodeIdx);
-        service.CreateFileStore(fsId, 1'000);
-        service.CreateFileStore(shard1Id, 1'000);
-        service.CreateFileStore(shard2Id, 1'000);
+        TFileSystemConfig fsConfig;
+        CreateFileSystem(service, fsConfig);
 
-        ConfigureShards(service, fsId, shard1Id, shard2Id);
-
-        auto headers = service.InitSession(fsId, "client");
+        auto headers = service.InitSession(fsConfig.FsId, "client");
 
         auto createHandleResponse = service.CreateHandle(
             headers,
-            fsId,
+            fsConfig.FsId,
             RootNodeId,
             "file1",
             TCreateHandleArgs::CREATE,
-            shard1Id)->Record;
+            fsConfig.Shard1Id)->Record;
 
         UNIT_ASSERT_VALUES_EQUAL(
-            shard1Id,
+            fsConfig.Shard1Id,
             createHandleResponse.GetShardFileSystemId());
 
         const auto shardNodeName =
@@ -758,7 +805,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         UNIT_ASSERT_VALUES_EQUAL((1LU << 56U) + 2, nodeId1);
 
         auto headers1 = headers;
-        headers1.FileSystemId = shard1Id;
+        headers1.FileSystemId = fsConfig.Shard1Id;
 
         createHandleResponse = service.CreateHandle(
             headers1,
@@ -787,12 +834,12 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
 
         auto getAttrResponse = service.GetNodeAttr(
             headers,
-            fsId,
+            fsConfig.FsId,
             RootNodeId,
             "file1")->Record;
 
         UNIT_ASSERT_VALUES_EQUAL(
-            shard1Id,
+            fsConfig.Shard1Id,
             getAttrResponse.GetNode().GetShardFileSystemId());
 
         UNIT_ASSERT_VALUES_EQUAL(
@@ -801,7 +848,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
 
         getAttrResponse = service.GetNodeAttr(
             headers1,
-            shard1Id,
+            fsConfig.Shard1Id,
             RootNodeId,
             shardNodeName)->Record;
 
@@ -810,7 +857,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
 
         auto listNodesResponse = service.ListNodes(
             headers,
-            fsId,
+            fsConfig.FsId,
             RootNodeId)->Record;
 
         UNIT_ASSERT_VALUES_EQUAL(1, listNodesResponse.NamesSize());
@@ -818,7 +865,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
 
         UNIT_ASSERT_VALUES_EQUAL(1, listNodesResponse.NodesSize());
         UNIT_ASSERT_VALUES_EQUAL(
-            shard1Id,
+            fsConfig.Shard1Id,
             listNodesResponse.GetNodes(0).GetShardFileSystemId());
         UNIT_ASSERT_VALUES_EQUAL(
             shardNodeName,
@@ -833,22 +880,15 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
 
         ui32 nodeIdx = env.CreateNode("nfs");
 
-        const TString fsId = "test";
-        const auto shard1Id = fsId + "-f1";
-        const auto shard2Id = fsId + "-f2";
-
         TServiceClient service(env.GetRuntime(), nodeIdx);
-        service.CreateFileStore(fsId, 1'000);
-        service.CreateFileStore(shard1Id, 1'000);
-        service.CreateFileStore(shard2Id, 1'000);
+        TFileSystemConfig fsConfig;
+        CreateFileSystem(service, fsConfig);
 
-        ConfigureShards(service, fsId, shard1Id, shard2Id);
-
-        auto headers = service.InitSession(fsId, "client");
+        auto headers = service.InitSession(fsConfig.FsId, "client");
 
         auto createHandleResponse = service.CreateHandle(
             headers,
-            fsId,
+            fsConfig.FsId,
             RootNodeId,
             "file1",
             TCreateHandleArgs::CREATE_EXL)->Record;
@@ -871,14 +911,14 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
 
         auto accessNodeResponse = service.AccessNode(
             headers,
-            fsId,
+            fsConfig.FsId,
             nodeId1)->Record;
 
         Y_UNUSED(accessNodeResponse);
 
         auto setNodeAttrResponse = service.SetNodeAttr(
             headers,
-            fsId,
+            fsConfig.FsId,
             nodeId1,
             1_MB)->Record;
 
@@ -890,7 +930,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
 
         auto allocateDataResponse = service.AllocateData(
             headers,
-            fsId,
+            fsConfig.FsId,
             nodeId1,
             handle1,
             0,
@@ -899,10 +939,10 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         Y_UNUSED(allocateDataResponse);
 
         auto data = GenerateValidateData(256_KB);
-        service.WriteData(headers, fsId, nodeId1, handle1, 0, data);
+        service.WriteData(headers, fsConfig.FsId, nodeId1, handle1, 0, data);
         auto readDataResponse = service.ReadData(
             headers,
-            fsId,
+            fsConfig.FsId,
             nodeId1,
             handle1,
             0,
@@ -911,7 +951,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
 
         auto destroyHandleResponse = service.DestroyHandle(
             headers,
-            fsId,
+            fsConfig.FsId,
             nodeId1,
             handle1)->Record;
 
@@ -926,7 +966,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
 
         auto getNodeAttrResponse = service.GetNodeAttr(
             headers,
-            fsId,
+            fsConfig.FsId,
             RootNodeId,
             "file1")->Record;
 
@@ -939,7 +979,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
 
         getNodeAttrResponse = service.GetNodeAttr(
             headers,
-            fsId,
+            fsConfig.FsId,
             nodeId1,
             "")->Record;
 
@@ -952,7 +992,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
 
         auto listNodesResponse = service.ListNodes(
             headers,
-            fsId,
+            fsConfig.FsId,
             RootNodeId)->Record;
 
         UNIT_ASSERT_VALUES_EQUAL(2, listNodesResponse.NamesSize());
@@ -977,7 +1017,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
 
         listNodesResponse = service.ListNodes(
             headers,
-            fsId,
+            fsConfig.FsId,
             RootNodeId)->Record;
 
         UNIT_ASSERT_VALUES_EQUAL(1, listNodesResponse.NamesSize());
@@ -992,22 +1032,22 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
             listNodesResponse.GetNodes(0).GetSize());
 
         auto headers1 = headers;
-        headers1.FileSystemId = shard1Id;
+        headers1.FileSystemId = fsConfig.Shard1Id;
 
         listNodesResponse = service.ListNodes(
             headers1,
-            shard1Id,
+            fsConfig.Shard1Id,
             RootNodeId)->Record;
 
         UNIT_ASSERT_VALUES_EQUAL(0, listNodesResponse.NamesSize());
         UNIT_ASSERT_VALUES_EQUAL(0, listNodesResponse.NodesSize());
 
         auto headers2 = headers;
-        headers2.FileSystemId = shard2Id;
+        headers2.FileSystemId = fsConfig.Shard2Id;
 
         listNodesResponse = service.ListNodes(
             headers2,
-            shard2Id,
+            fsConfig.Shard2Id,
             RootNodeId)->Record;
 
         UNIT_ASSERT_VALUES_EQUAL(1, listNodesResponse.NamesSize());
@@ -1015,7 +1055,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
 
         auto setXAttrResponse = service.SetNodeXAttr(
             headers,
-            fsId,
+            fsConfig.FsId,
             nodeId2,
             "user.some_attr",
             "some_value")->Record;
@@ -1024,7 +1064,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
 
         auto getXAttrResponse = service.GetNodeXAttr(
             headers,
-            fsId,
+            fsConfig.FsId,
             nodeId2,
             "user.some_attr")->Record;
 
@@ -1033,7 +1073,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
 
         service.SendSetNodeXAttrRequest(
             headers,
-            fsId,
+            fsConfig.FsId,
             nodeId1,
             "user.some_attr",
             "some_value");
@@ -1053,18 +1093,11 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
 
         ui32 nodeIdx = env.CreateNode("nfs");
 
-        const TString fsId = "test";
-        const auto shard1Id = fsId + "-f1";
-        const auto shard2Id = fsId + "-f2";
-
         TServiceClient service(env.GetRuntime(), nodeIdx);
-        service.CreateFileStore(fsId, 1'000);
-        service.CreateFileStore(shard1Id, 1'000);
-        service.CreateFileStore(shard2Id, 1'000);
+        TFileSystemConfig fsConfig;
+        CreateFileSystem(service, fsConfig);
 
-        ConfigureShards(service, fsId, shard1Id, shard2Id);
-
-        auto headers = service.InitSession(fsId, "client");
+        auto headers = service.InitSession(fsConfig.FsId, "client");
 
         auto createNodeResponse = service.CreateNode(
             headers,
@@ -1086,7 +1119,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
 
         auto createHandleResponse = service.CreateHandle(
             headers,
-            fsId,
+            fsConfig.FsId,
             dir1_1Id,
             "file1",
             TCreateHandleArgs::CREATE)->Record;
@@ -1099,7 +1132,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
 
         createHandleResponse = service.CreateHandle(
             headers,
-            fsId,
+            fsConfig.FsId,
             dir1_2Id,
             "file1",
             TCreateHandleArgs::CREATE)->Record;
@@ -1111,10 +1144,10 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         UNIT_ASSERT_C(ExtractShardNo(handle2) == 2, handle2);
 
         auto data = GenerateValidateData(256_KB);
-        service.WriteData(headers, fsId, nodeId1, handle1, 0, data);
+        service.WriteData(headers, fsConfig.FsId, nodeId1, handle1, 0, data);
         auto readDataResponse = service.ReadData(
             headers,
-            fsId,
+            fsConfig.FsId,
             nodeId1,
             handle1,
             0,
@@ -1122,18 +1155,18 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         UNIT_ASSERT_VALUES_EQUAL(data, readDataResponse.GetBuffer());
 
         data = GenerateValidateData(1_MB);
-        service.WriteData(headers, fsId, nodeId2, handle2, 0, data);
+        service.WriteData(headers, fsConfig.FsId, nodeId2, handle2, 0, data);
         readDataResponse = service.ReadData(
             headers,
-            fsId,
+            fsConfig.FsId,
             nodeId2,
             handle2,
             0,
             data.size())->Record;
         UNIT_ASSERT_VALUES_EQUAL(data, readDataResponse.GetBuffer());
 
-        service.DestroyHandle(headers, fsId, nodeId1, handle1);
-        service.DestroyHandle(headers, fsId, nodeId2, handle2);
+        service.DestroyHandle(headers, fsConfig.FsId, nodeId1, handle1);
+        service.DestroyHandle(headers, fsConfig.FsId, nodeId2, handle2);
     }
 
     SERVICE_TEST_SID_SELECT_IN_LEADER(ShouldNotFailOnLegacyHandlesWithHighBits)
@@ -1199,18 +1232,11 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
 
         ui32 nodeIdx = env.CreateNode("nfs");
 
-        const TString fsId = "test";
-        const auto shard1Id = fsId + "-f1";
-        const auto shard2Id = fsId + "-f2";
-
         TServiceClient service(env.GetRuntime(), nodeIdx);
-        service.CreateFileStore(fsId, 1'000);
-        service.CreateFileStore(shard1Id, 1'000);
-        service.CreateFileStore(shard2Id, 1'000);
+        TFileSystemConfig fsConfig;
+        CreateFileSystem(service, fsConfig);
 
-        ConfigureShards(service, fsId, shard1Id, shard2Id);
-
-        auto headers = service.InitSession(fsId, "client");
+        auto headers = service.InitSession(fsConfig.FsId, "client");
 
         auto error = MakeError(E_FAIL);
 
@@ -1235,7 +1261,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
 
         service.SendCreateHandleRequest(
             headers,
-            fsId,
+            fsConfig.FsId,
             RootNodeId,
             "file1",
             TCreateHandleArgs::CREATE_EXL,
@@ -1252,7 +1278,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
 
         service.SendCreateHandleRequest(
             headers,
-            fsId,
+            fsConfig.FsId,
             RootNodeId,
             "file1",
             TCreateHandleArgs::CREATE_EXL,
@@ -1274,18 +1300,11 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
 
         ui32 nodeIdx = env.CreateNode("nfs");
 
-        const TString fsId = "test";
-        const auto shard1Id = fsId + "-f1";
-        const auto shard2Id = fsId + "-f2";
-
         TServiceClient service(env.GetRuntime(), nodeIdx);
-        service.CreateFileStore(fsId, 1'000);
-        service.CreateFileStore(shard1Id, 1'000);
-        service.CreateFileStore(shard2Id, 1'000);
+        TFileSystemConfig fsConfig;
+        CreateFileSystem(service, fsConfig);
 
-        ConfigureShards(service, fsId, shard1Id, shard2Id);
-
-        auto headers = service.InitSession(fsId, "client");
+        auto headers = service.InitSession(fsConfig.FsId, "client");
 
         service.CreateNode(
             headers,
@@ -1302,7 +1321,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
 
         auto listNodesResponse = service.ListNodes(
             headers,
-            fsId,
+            fsConfig.FsId,
             RootNodeId)->Record;
 
         UNIT_ASSERT_VALUES_EQUAL(4, listNodesResponse.NamesSize());
@@ -1319,11 +1338,11 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         }
 
         auto headers1 = headers;
-        headers1.FileSystemId = shard1Id;
+        headers1.FileSystemId = fsConfig.Shard1Id;
 
         listNodesResponse = service.ListNodes(
             headers1,
-            shard1Id,
+            fsConfig.Shard1Id,
             RootNodeId)->Record;
 
         UNIT_ASSERT_VALUES_EQUAL(2, listNodesResponse.NamesSize());
@@ -1332,11 +1351,11 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         const auto shard1NodeName2 = listNodesResponse.GetNames(1);
 
         auto headers2 = headers;
-        headers2.FileSystemId = shard2Id;
+        headers2.FileSystemId = fsConfig.Shard2Id;
 
         listNodesResponse = service.ListNodes(
             headers2,
-            shard2Id,
+            fsConfig.Shard2Id,
             RootNodeId)->Record;
 
         UNIT_ASSERT_VALUES_EQUAL(2, listNodesResponse.NamesSize());
@@ -1353,7 +1372,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         // ListNodes should still succeed
         listNodesResponse = service.ListNodes(
             headers,
-            fsId,
+            fsConfig.FsId,
             RootNodeId)->Record;
 
         // unresolved nodes should be removed from the response
@@ -1391,7 +1410,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         service.UnlinkNode(headers2, RootNodeId, shard2NodeName1);
         service.UnlinkNode(headers2, RootNodeId, shard2NodeName2);
 
-        service.SendListNodesRequest(headers, fsId, RootNodeId);
+        service.SendListNodesRequest(headers, fsConfig.FsId, RootNodeId);
         auto response = service.RecvListNodesResponse();
         UNIT_ASSERT_VALUES_EQUAL_C(
             E_IO,
@@ -1408,20 +1427,13 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
 
         ui32 nodeIdx = env.CreateNode("nfs");
 
-        const TString fsId = "test";
-        const auto shard1Id = fsId + "-f1";
-        const auto shard2Id = fsId + "-f2";
-
         TServiceClient service(env.GetRuntime(), nodeIdx);
-        service.CreateFileStore(fsId, 1'000);
-        service.CreateFileStore(shard1Id, 1'000);
-        service.CreateFileStore(shard2Id, 1'000);
+        TFileSystemConfig fsConfig;
+        CreateFileSystem(service, fsConfig);
 
-        ConfigureShards(service, fsId, shard1Id, shard2Id);
-
-        auto headers = service.InitSession(fsId, "client");
+        auto headers = service.InitSession(fsConfig.FsId, "client");
         auto headers1 = headers;
-        headers1.FileSystemId = shard1Id;
+        headers1.FileSystemId = fsConfig.Shard1Id;
 
         TVector<TString> names;
         TVector<ui64> ids;
@@ -1437,7 +1449,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
 
         auto listNodesResponse = service.ListNodes(
             headers1,
-            shard1Id,
+            fsConfig.Shard1Id,
             RootNodeId)->Record;
 
         UNIT_ASSERT_VALUES_EQUAL(
@@ -1452,7 +1464,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
 
         listNodesResponse = service.ListNodes(
             headers,
-            fsId,
+            fsConfig.FsId,
             RootNodeId)->Record;
 
         UNIT_ASSERT_VALUES_EQUAL(names.size(), listNodesResponse.NamesSize());
@@ -1468,7 +1480,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
 
         listNodesResponse = service.ListNodes(
             headers,
-            fsId,
+            fsConfig.FsId,
             RootNodeId)->Record;
 
         for (auto id: {unlinkedId1, unlinkedId2}) {
@@ -1493,18 +1505,11 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
 
         ui32 nodeIdx = env.CreateNode("nfs");
 
-        const TString fsId = "test";
-        const auto shard1Id = fsId + "-f1";
-        const auto shard2Id = fsId + "-f2";
-
         TServiceClient service(env.GetRuntime(), nodeIdx);
-        service.CreateFileStore(fsId, 1'000);
-        service.CreateFileStore(shard1Id, 1'000);
-        service.CreateFileStore(shard2Id, 1'000);
+        TFileSystemConfig fsConfig;
+        CreateFileSystem(service, fsConfig);
 
-        ConfigureShards(service, fsId, shard1Id, shard2Id);
-
-        auto headers = service.InitSession(fsId, "client");
+        auto headers = service.InitSession(fsConfig.FsId, "client");
 
         const auto createNodeResponse = service.CreateNode(
             headers,
@@ -1513,16 +1518,16 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         const auto nodeId1 = createNodeResponse.GetNode().GetId();
 
         auto headers1 = headers;
-        headers1.FileSystemId = shard1Id;
+        headers1.FileSystemId = fsConfig.Shard1Id;
 
         // a request with ShardId and without Name
         service.SendCreateHandleRequest(
             headers,
-            fsId,
+            fsConfig.FsId,
             nodeId1,
             "",
             TCreateHandleArgs::RDWR,
-            shard1Id);
+            fsConfig.Shard1Id);
 
         auto createHandleResponseEvent = service.RecvCreateHandleResponse();
         UNIT_ASSERT_VALUES_EQUAL_C(
@@ -1538,23 +1543,17 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
 
         ui32 nodeIdx = env.CreateNode("nfs");
 
-        const TString fsId = "test";
-        const auto shard1Id = fsId + "-f1";
-        const auto shard2Id = fsId + "-f2";
-        const auto shard3Id = fsId + "-f3";
-
         TServiceClient service(env.GetRuntime(), nodeIdx);
-        service.CreateFileStore(fsId, 1'000);
-        service.CreateFileStore(shard1Id, 1'000);
-        service.CreateFileStore(shard2Id, 1'000);
-        service.CreateFileStore(shard3Id, 1'000);
+        TFileSystemConfig fsConfig;
+        CreateFileSystem(service, fsConfig);
 
-        ConfigureShards(service, fsId, shard1Id, shard2Id);
+        const auto shard3Id = fsConfig.FsId + "-f3";
+        service.CreateFileStore(shard3Id, 1'000);
 
         // ShardNo change not allowed
         {
             NProtoPrivate::TConfigureAsShardRequest request;
-            request.SetFileSystemId(shard1Id);
+            request.SetFileSystemId(fsConfig.Shard1Id);
             request.SetShardNo(2);
 
             TString buf;
@@ -1570,8 +1569,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         // Shard deletion not allowed
         {
             NProtoPrivate::TConfigureShardsRequest request;
-            request.SetFileSystemId(fsId);
-            *request.AddShardFileSystemIds() = shard1Id;
+            request.SetFileSystemId(fsConfig.FsId);
+            *request.AddShardFileSystemIds() = fsConfig.Shard1Id;
 
             TString buf;
             google::protobuf::util::MessageToJsonString(request, &buf);
@@ -1586,9 +1585,9 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         // Shard reordering not allowed
         {
             NProtoPrivate::TConfigureShardsRequest request;
-            request.SetFileSystemId(fsId);
-            *request.AddShardFileSystemIds() = shard2Id;
-            *request.AddShardFileSystemIds() = shard1Id;
+            request.SetFileSystemId(fsConfig.FsId);
+            *request.AddShardFileSystemIds() = fsConfig.Shard2Id;
+            *request.AddShardFileSystemIds() = fsConfig.Shard1Id;
 
             TString buf;
             google::protobuf::util::MessageToJsonString(request, &buf);
@@ -1616,9 +1615,9 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
 
         {
             NProtoPrivate::TConfigureShardsRequest request;
-            request.SetFileSystemId(fsId);
-            *request.AddShardFileSystemIds() = shard1Id;
-            *request.AddShardFileSystemIds() = shard2Id;
+            request.SetFileSystemId(fsConfig.FsId);
+            *request.AddShardFileSystemIds() = fsConfig.Shard1Id;
+            *request.AddShardFileSystemIds() = fsConfig.Shard2Id;
             *request.AddShardFileSystemIds() = shard3Id;
 
             TString buf;
@@ -1641,18 +1640,11 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
 
         ui32 nodeIdx = env.CreateNode("nfs");
 
-        const TString fsId = "test";
-        const auto shard1Id = fsId + "-f1";
-        const auto shard2Id = fsId + "-f2";
-
         TServiceClient service(env.GetRuntime(), nodeIdx);
-        service.CreateFileStore(fsId, 1'000);
-        service.CreateFileStore(shard1Id, 1'000);
-        service.CreateFileStore(shard2Id, 1'000);
+        TFileSystemConfig fsConfig;
+        CreateFileSystem(service, fsConfig);
 
-        ConfigureShards(service, fsId, shard1Id, shard2Id);
-
-        auto headers = service.InitSession(fsId, "client");
+        auto headers = service.InitSession(fsConfig.FsId, "client");
 
         // creating 2 files
 
@@ -1672,7 +1664,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
 
         ui64 handle1 = service.CreateHandle(
             headers,
-            fsId,
+            fsConfig.FsId,
             nodeId1,
             "",
             TCreateHandleArgs::RDWR)->Record.GetHandle();
@@ -1680,7 +1672,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         // writing some data to file1 then moving file1 to file3
 
         auto data1 = GenerateValidateData(256_KB);
-        service.WriteData(headers, fsId, nodeId1, handle1, 0, data1);
+        service.WriteData(headers, fsConfig.FsId, nodeId1, handle1, 0, data1);
 
         auto renameNodeResponse = service.RenameNode(
             headers,
@@ -1694,7 +1686,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
 
         auto createHandleResponse = service.CreateHandle(
             headers,
-            fsId,
+            fsConfig.FsId,
             RootNodeId,
             "file3",
             TCreateHandleArgs::RDNLY)->Record;
@@ -1711,7 +1703,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
 
         auto readDataResponse = service.ReadData(
             headers,
-            fsId,
+            fsConfig.FsId,
             nodeId1,
             handle1r,
             0,
@@ -1722,7 +1714,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
 
         auto listNodesResponse = service.ListNodes(
             headers,
-            fsId,
+            fsConfig.FsId,
             RootNodeId)->Record;
 
         UNIT_ASSERT_VALUES_EQUAL(2, listNodesResponse.NamesSize());
@@ -1751,7 +1743,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
 
         createHandleResponse = service.CreateHandle(
             headers,
-            fsId,
+            fsConfig.FsId,
             RootNodeId,
             "file2",
             TCreateHandleArgs::RDNLY)->Record;
@@ -1766,7 +1758,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
 
         readDataResponse = service.ReadData(
             headers,
-            fsId,
+            fsConfig.FsId,
             nodeId1,
             handle1r,
             0,
@@ -1777,7 +1769,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
 
         listNodesResponse = service.ListNodes(
             headers,
-            fsId,
+            fsConfig.FsId,
             RootNodeId)->Record;
 
         UNIT_ASSERT_VALUES_EQUAL(1, listNodesResponse.NamesSize());
@@ -1791,11 +1783,11 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         // listing in shard2 should show nothing
 
         auto headers2 = headers;
-        headers2.FileSystemId = shard2Id;
+        headers2.FileSystemId = fsConfig.Shard2Id;
 
         listNodesResponse = service.ListNodes(
             headers2,
-            shard2Id,
+            fsConfig.Shard2Id,
             RootNodeId)->Record;
 
         UNIT_ASSERT_VALUES_EQUAL(0, listNodesResponse.NamesSize());
@@ -1823,13 +1815,14 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
 
         listNodesResponse = service.ListNodes(
             headers,
-            fsId,
+            fsConfig.FsId,
             RootNodeId)->Record;
 
         UNIT_ASSERT_VALUES_EQUAL(1, listNodesResponse.NamesSize());
         UNIT_ASSERT_VALUES_EQUAL("subdir", listNodesResponse.GetNames(0));
 
-        listNodesResponse = service.ListNodes(headers, fsId, subdirId)->Record;
+        listNodesResponse =
+            service.ListNodes(headers, fsConfig.FsId, subdirId)->Record;
 
         UNIT_ASSERT_VALUES_EQUAL(1, listNodesResponse.NamesSize());
         UNIT_ASSERT_VALUES_EQUAL("file2", listNodesResponse.GetNames(0));
@@ -1868,7 +1861,11 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
 
         // file4 should not be present in the listing
 
-        service.SendGetNodeAttrRequest(headers, fsId, RootNodeId, "file4");
+        service.SendGetNodeAttrRequest(
+            headers,
+            fsConfig.FsId,
+            RootNodeId,
+            "file4");
 
         auto getNodeAttrResponse = service.RecvGetNodeAttrResponse();
         UNIT_ASSERT(getNodeAttrResponse);
@@ -1885,47 +1882,53 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
 
         ui32 nodeIdx = env.CreateNode("nfs");
 
-        const TString fsId = "test";
-        const auto shard1Id = fsId + "-f1";
-        const auto shard2Id = fsId + "-f2";
-
         TServiceClient service(env.GetRuntime(), nodeIdx);
-        service.CreateFileStore(fsId, 1'000);
-        service.CreateFileStore(shard1Id, 1'000);
-        service.CreateFileStore(shard2Id, 1'000);
+        TFileSystemConfig fsConfig;
+        CreateFileSystem(service, fsConfig);
 
-        ConfigureShards(service, fsId, shard1Id, shard2Id);
-
-        auto headers = service.InitSession(fsId, "client");
+        auto headers = service.InitSession(fsConfig.FsId, "client");
 
         ui64 nodeId = service
             .CreateNode(headers, TCreateNodeArgs::File(RootNodeId, "file"))
             ->Record.GetNode()
             .GetId();
-        ui64 handle = service
-            .CreateHandle(headers, fsId, nodeId, "", TCreateHandleArgs::RDWR)
-            ->Record.GetHandle();
+        ui64 handle = service.CreateHandle(
+            headers,
+            fsConfig.FsId,
+            nodeId,
+            "",
+            TCreateHandleArgs::RDWR)->Record.GetHandle();
 
-        service.AcquireLock(headers, fsId, handle, 1, 0, 4_KB);
+        service.AcquireLock(headers, fsConfig.FsId, handle, 1, 0, 4_KB);
 
-        auto response =
-            service.AssertAcquireLockFailed(headers, fsId, handle, 2, 0, 4_KB);
+        auto response = service.AssertAcquireLockFailed(
+            headers,
+            fsConfig.FsId,
+            handle,
+            2,
+            0,
+            4_KB);
         UNIT_ASSERT_VALUES_EQUAL(response->GetError().GetCode(), E_FS_WOULDBLOCK);
 
-        service.ReleaseLock(headers, fsId, handle, 2, 0, 4_KB);
-        service.AcquireLock(headers, fsId, handle, 1, 0, 0);
+        service.ReleaseLock(headers, fsConfig.FsId, handle, 2, 0, 4_KB);
+        service.AcquireLock(headers, fsConfig.FsId, handle, 1, 0, 0);
 
-        response =
-            service.AssertAcquireLockFailed(headers, fsId, handle, 2, 0, 4_KB);
+        response = service.AssertAcquireLockFailed(
+            headers,
+            fsConfig.FsId,
+            handle,
+            2,
+            0,
+            4_KB);
         UNIT_ASSERT_VALUES_EQUAL(response->GetError().GetCode(), E_FS_WOULDBLOCK);
 
-        service.ReleaseLock(headers, fsId, handle, 1, 0, 0);
+        service.ReleaseLock(headers, fsConfig.FsId, handle, 1, 0, 0);
 
         // ShouldTrackSharedLocks
 
         service.AcquireLock(
             headers,
-            fsId,
+            fsConfig.FsId,
             handle,
             1,
             0,
@@ -1934,7 +1937,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
             NProto::E_SHARED);
         service.AcquireLock(
             headers,
-            fsId,
+            fsConfig.FsId,
             handle,
             2,
             0,
@@ -1942,25 +1945,63 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
             DefaultPid,
             NProto::E_SHARED);
 
-        response =
-            service.AssertAcquireLockFailed(headers, fsId, handle, 1, 0, 0);
+        response = service.AssertAcquireLockFailed(
+            headers,
+            fsConfig.FsId,
+            handle,
+            1,
+            0,
+            0);
         UNIT_ASSERT_VALUES_EQUAL(
             response->GetError().GetCode(),
             E_FS_WOULDBLOCK);
 
-        response = service.AssertAcquireLockFailed(headers, fsId, handle, 1, 0, 0);
+        response = service.AssertAcquireLockFailed(
+            headers,
+            fsConfig.FsId,
+            handle,
+            1,
+            0,
+            0);
         UNIT_ASSERT_VALUES_EQUAL(response->GetError().GetCode(), E_FS_WOULDBLOCK);
 
-        service.AcquireLock(headers, fsId, handle, 3, 0, 4_KB, DefaultPid, NProto::E_SHARED);
+        service.AcquireLock(
+            headers,
+            fsConfig.FsId,
+            handle,
+            3,
+            0,
+            4_KB,
+            DefaultPid,
+            NProto::E_SHARED);
 
-        service.DestroyHandle(headers, fsId, nodeId, handle);
+        service.DestroyHandle(headers, fsConfig.FsId, nodeId, handle);
 
-        handle = service
-            .CreateHandle(headers, fsId, nodeId, "", TCreateHandleArgs::WRNLY)
-            ->Record.GetHandle();
+        handle = service.CreateHandle(
+            headers,
+            fsConfig.FsId,
+            nodeId,
+            "",
+            TCreateHandleArgs::WRNLY)->Record.GetHandle();
 
-        service.AssertTestLockFailed(headers, fsId, handle, 1, 0, 4_KB, DefaultPid, NProto::E_SHARED);
-        service.AssertAcquireLockFailed(headers, fsId, handle, 1, 0, 4_KB, DefaultPid, NProto::E_SHARED);
+        service.AssertTestLockFailed(
+            headers,
+            fsConfig.FsId,
+            handle,
+            1,
+            0,
+            4_KB,
+            DefaultPid,
+            NProto::E_SHARED);
+        service.AssertAcquireLockFailed(
+            headers,
+            fsConfig.FsId,
+            handle,
+            1,
+            0,
+            4_KB,
+            DefaultPid,
+            NProto::E_SHARED);
     }
 
     SERVICE_TEST_SID_SELECT_IN_LEADER(ShouldLinkExternalNodes)
@@ -1971,21 +2012,14 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
 
         ui32 nodeIdx = env.CreateNode("nfs");
 
-        const TString fsId = "test";
-        const auto shard1Id = fsId + "-f1";
-        const auto shard2Id = fsId + "-f2";
-
         TServiceClient service(env.GetRuntime(), nodeIdx);
-        service.CreateFileStore(fsId, 1'000);
-        service.CreateFileStore(shard1Id, 1'000);
-        service.CreateFileStore(shard2Id, 1'000);
+        TFileSystemConfig fsConfig;
+        CreateFileSystem(service, fsConfig);
 
-        ConfigureShards(service, fsId, shard1Id, shard2Id);
-
-        auto headers = service.InitSession(fsId, "client");
+        auto headers = service.InitSession(fsConfig.FsId, "client");
 
         auto headers1 = headers;
-        headers1.FileSystemId = shard1Id;
+        headers1.FileSystemId = fsConfig.Shard1Id;
 
         const auto nodeId1 =
             service
@@ -1994,8 +2028,11 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
                 .GetId();
         UNIT_ASSERT_VALUES_EQUAL(1, ExtractShardNo(nodeId1));
 
-        auto node = service.GetNodeAttr(headers, fsId, RootNodeId, "file1")
-                        ->Record.GetNode();
+        auto node = service.GetNodeAttr(
+            headers,
+            fsConfig.FsId,
+            RootNodeId,
+            "file1")->Record.GetNode();
         UNIT_ASSERT_VALUES_EQUAL(1, node.GetLinks());
 
         auto linkNodeResponse = service.CreateNode(
@@ -2015,29 +2052,38 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
             linkNodeResponse->Record.GetNode().GetCTime());
 
         // validate that the links field is incremented
-        auto links = service.GetNodeAttr(headers, fsId, RootNodeId, "file1")
-                         ->Record.GetNode().GetLinks();
+        auto links = service.GetNodeAttr(
+            headers,
+            fsConfig.FsId,
+            RootNodeId,
+            "file1")->Record.GetNode().GetLinks();
         UNIT_ASSERT_VALUES_EQUAL(2, links);
 
         // get node attr should also work with the link
-        links = service.GetNodeAttr(headers, fsId, RootNodeId, "file1")
-                    ->Record.GetNode().GetLinks();
+        links = service.GetNodeAttr(headers, fsConfig.FsId, RootNodeId, "file1")
+            ->Record.GetNode().GetLinks();
         UNIT_ASSERT_VALUES_EQUAL(2, links);
 
         // validate that reading from hardlinked file works
         auto data = GenerateValidateData(256_KB);
-        ui64 handle = service
-            .CreateHandle(headers, fsId, RootNodeId, "file1", TCreateHandleArgs::RDWR)
-            ->Record.GetHandle();
-        service.WriteData(headers, fsId, nodeId1, handle, 0, data);
+        ui64 handle = service.CreateHandle(
+            headers,
+            fsConfig.FsId,
+            RootNodeId,
+            "file1",
+            TCreateHandleArgs::RDWR)->Record.GetHandle();
+        service.WriteData(headers, fsConfig.FsId, nodeId1, handle, 0, data);
 
-        ui64 handle2 = service
-            .CreateHandle(headers, fsId, RootNodeId, "file2", TCreateHandleArgs::RDWR)
-            ->Record.GetHandle();
+        ui64 handle2 = service.CreateHandle(
+            headers,
+            fsConfig.FsId,
+            RootNodeId,
+            "file2",
+            TCreateHandleArgs::RDWR)->Record.GetHandle();
 
         auto data2 = service.ReadData(
             headers,
-            fsId,
+            fsConfig.FsId,
             linkNodeResponse->Record.GetNode().GetId(),
             handle2,
             0,
@@ -2047,8 +2093,12 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         // Removal of both the file and a hardlink should remove file from both
         // the shard and a leader
 
-        service.DestroyHandle(headers, fsId, nodeId1, handle);
-        service.DestroyHandle(headers, fsId, linkNodeResponse->Record.GetNode().GetId(), handle2);
+        service.DestroyHandle(headers, fsConfig.FsId, nodeId1, handle);
+        service.DestroyHandle(
+            headers,
+            fsConfig.FsId,
+            linkNodeResponse->Record.GetNode().GetId(),
+            handle2);
 
         service.UnlinkNode(headers, RootNodeId, "file1");
         service.UnlinkNode(headers, RootNodeId, "file2");
@@ -2057,22 +2107,30 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
 
         auto listNodesResponse = service.ListNodes(
             headers,
-            fsId,
+            fsConfig.FsId,
             RootNodeId)->Record;
         UNIT_ASSERT_VALUES_EQUAL(0, listNodesResponse.NamesSize());
         UNIT_ASSERT_VALUES_EQUAL(0, listNodesResponse.NodesSize());
 
         listNodesResponse = service.ListNodes(
             headers1,
-            shard1Id,
+            fsConfig.Shard1Id,
             RootNodeId)->Record;
         UNIT_ASSERT_VALUES_EQUAL(0, listNodesResponse.NamesSize());
         UNIT_ASSERT_VALUES_EQUAL(0, listNodesResponse.NodesSize());
 
         // GetNodeAttr should fail as well
 
-        service.AssertGetNodeAttrFailed(headers, fsId, RootNodeId, "file1");
-        service.AssertGetNodeAttrFailed(headers, fsId, RootNodeId, "file2");
+        service.AssertGetNodeAttrFailed(
+            headers,
+            fsConfig.FsId,
+            RootNodeId,
+            "file1");
+        service.AssertGetNodeAttrFailed(
+            headers,
+            fsConfig.FsId,
+            RootNodeId,
+            "file2");
 
         // Creating hardlinks to non-existing files should fail. It is
         // reasonable to assume that nodeId + 100 is not a valid node id.
@@ -2089,18 +2147,11 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
 
         ui32 nodeIdx = env.CreateNode("nfs");
 
-        const TString fsId = "test";
-        const auto shard1Id = fsId + "-f1";
-        const auto shard2Id = fsId + "-f2";
-
         TServiceClient service(env.GetRuntime(), nodeIdx);
-        service.CreateFileStore(fsId, 1'000);
-        service.CreateFileStore(shard1Id, 1'000);
-        service.CreateFileStore(shard2Id, 1'000);
+        TFileSystemConfig fsConfig;
+        CreateFileSystem(service, fsConfig);
 
-        ConfigureShards(service, fsId, shard1Id, shard2Id);
-
-        auto headers = service.InitSession(fsId, "client");
+        auto headers = service.InitSession(fsConfig.FsId, "client");
 
         // creating 2 files
 
@@ -2120,28 +2171,29 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
 
         ui64 handle1 = service.CreateHandle(
             headers,
-            fsId,
+            fsConfig.FsId,
             nodeId1,
             "",
             TCreateHandleArgs::RDWR)->Record.GetHandle();
 
         auto data1 = GenerateValidateData(256_KB);
-        service.WriteData(headers, fsId, nodeId1, handle1, 0, data1);
+        service.WriteData(headers, fsConfig.FsId, nodeId1, handle1, 0, data1);
 
         ui64 handle2 = service.CreateHandle(
             headers,
-            fsId,
+            fsConfig.FsId,
             nodeId2,
             "",
             TCreateHandleArgs::RDWR)->Record.GetHandle();
 
         auto data2 = GenerateValidateData(512_KB);
-        service.WriteData(headers, fsId, nodeId2, handle2, 0, data2);
+        service.WriteData(headers, fsConfig.FsId, nodeId2, handle2, 0, data2);
 
         // triggering stats collection from shards
-        const auto fsStat = service.StatFileStore(headers, fsId)->Record;
+        const auto fsStat =
+            service.StatFileStore(headers, fsConfig.FsId)->Record;
         const auto& fileStore = fsStat.GetFileStore();
-        UNIT_ASSERT_VALUES_EQUAL(fsId, fileStore.GetFileSystemId());
+        UNIT_ASSERT_VALUES_EQUAL(fsConfig.FsId, fileStore.GetFileSystemId());
         UNIT_ASSERT_VALUES_EQUAL(1'000, fileStore.GetBlocksCount());
         UNIT_ASSERT_VALUES_EQUAL(4_KB, fileStore.GetBlockSize());
 
@@ -2153,7 +2205,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
 
         {
             NProtoPrivate::TGetStorageStatsRequest request;
-            request.SetFileSystemId(fsId);
+            request.SetFileSystemId(fsConfig.FsId);
             request.SetAllowCache(true);
             TString buf;
             google::protobuf::util::MessageToJsonString(request, &buf);
@@ -2171,14 +2223,14 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
                 stats.GetMixedBlocksCount());
         }
 
-        service.WriteData(headers, fsId, nodeId2, handle2, 0, data2);
+        service.WriteData(headers, fsConfig.FsId, nodeId2, handle2, 0, data2);
 
         // triggering stats collection from shards
-        service.StatFileStore(headers, fsId);
+        service.StatFileStore(headers, fsConfig.FsId);
 
         {
             NProtoPrivate::TGetStorageStatsRequest request;
-            request.SetFileSystemId(fsId);
+            request.SetFileSystemId(fsConfig.FsId);
             request.SetAllowCache(true);
             TString buf;
             google::protobuf::util::MessageToJsonString(request, &buf);
@@ -2205,32 +2257,11 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
 
         ui32 nodeIdx = env.CreateNode("nfs");
 
-        const TString fsId = "test";
-        const auto shard1Id = fsId + "-f1";
-        const auto shard2Id = fsId + "-f2";
-
         TServiceClient service(env.GetRuntime(), nodeIdx);
-        service.CreateFileStore(fsId, 1'000);
-        service.CreateFileStore(shard1Id, 1'000);
-        service.CreateFileStore(shard2Id, 1'000);
+        TFileSystemConfig fsConfig;
+        const auto fsInfo = CreateFileSystem(service, fsConfig);
 
-        TActorId mainTabletActorId;
-        env.GetRuntime().SetEventFilter(
-            [&] (auto& runtime, TAutoPtr<IEventHandle>& event) {
-                Y_UNUSED(runtime);
-                switch (event->GetTypeRewrite()) {
-                    case TEvIndexTablet::EvConfigureShardsRequest: {
-                        mainTabletActorId = event->Recipient;
-                        break;
-                    }
-                }
-
-                return false;
-            });
-
-        ConfigureShards(service, fsId, shard1Id, shard2Id);
-
-        auto headers = service.InitSession(fsId, "client");
+        auto headers = service.InitSession(fsConfig.FsId, "client");
 
         // creating 2 files
 
@@ -2250,23 +2281,23 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
 
         ui64 handle1 = service.CreateHandle(
             headers,
-            fsId,
+            fsConfig.FsId,
             nodeId1,
             "",
             TCreateHandleArgs::RDWR)->Record.GetHandle();
 
         auto data1 = GenerateValidateData(256_KB);
-        service.WriteData(headers, fsId, nodeId1, handle1, 0, data1);
+        service.WriteData(headers, fsConfig.FsId, nodeId1, handle1, 0, data1);
 
         ui64 handle2 = service.CreateHandle(
             headers,
-            fsId,
+            fsConfig.FsId,
             nodeId2,
             "",
             TCreateHandleArgs::RDWR)->Record.GetHandle();
 
         auto data2 = GenerateValidateData(512_KB);
-        service.WriteData(headers, fsId, nodeId2, handle2, 0, data2);
+        service.WriteData(headers, fsConfig.FsId, nodeId2, handle2, 0, data2);
 
         // triggering background shard stats collection
 
@@ -2277,7 +2308,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
 
             env.GetRuntime().Send(
                 new IEventHandle(
-                    mainTabletActorId, // recipient
+                    fsInfo.MainTabletActorId, // recipient
                     TActorId(), // sender
                     new TRequest(),
                     0, // flags
@@ -2293,7 +2324,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
 
         {
             NProtoPrivate::TGetStorageStatsRequest request;
-            request.SetFileSystemId(fsId);
+            request.SetFileSystemId(fsConfig.FsId);
             request.SetAllowCache(true);
             TString buf;
             google::protobuf::util::MessageToJsonString(request, &buf);
@@ -2313,7 +2344,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
 
         // writing some more data to change stats
 
-        service.WriteData(headers, fsId, nodeId2, handle2, 0, data2);
+        service.WriteData(headers, fsConfig.FsId, nodeId2, handle2, 0, data2);
 
         // configuring one time request drop to break a single iteration of
         // background stats collection
@@ -2325,7 +2356,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
                 switch (event->GetTypeRewrite()) {
                     case TEvIndexTablet::EvGetStorageStatsRequest: {
                         if (!dropped
-                                && event->Recipient != mainTabletActorId
+                                && event->Recipient != fsInfo.MainTabletActorId
                                 && event->Recipient
                                     != MakeIndexTabletProxyServiceId())
                         {
@@ -2348,7 +2379,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
 
             env.GetRuntime().Send(
                 new IEventHandle(
-                    mainTabletActorId, // recipient
+                    fsInfo.MainTabletActorId, // recipient
                     TActorId(), // sender
                     new TRequest(),
                     0, // flags
@@ -2374,7 +2405,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
 
         {
             NProtoPrivate::TGetStorageStatsRequest request;
-            request.SetFileSystemId(fsId);
+            request.SetFileSystemId(fsConfig.FsId);
             request.SetAllowCache(true);
             TString buf;
             google::protobuf::util::MessageToJsonString(request, &buf);
@@ -2401,7 +2432,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
 
             env.GetRuntime().Send(
                 new IEventHandle(
-                    mainTabletActorId, // recipient
+                    fsInfo.MainTabletActorId, // recipient
                     TActorId(), // sender
                     new TRequest(),
                     0, // flags
@@ -2422,7 +2453,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
 
         {
             NProtoPrivate::TGetStorageStatsRequest request;
-            request.SetFileSystemId(fsId);
+            request.SetFileSystemId(fsConfig.FsId);
             request.SetAllowCache(true);
             TString buf;
             google::protobuf::util::MessageToJsonString(request, &buf);
@@ -2449,18 +2480,11 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
 
         ui32 nodeIdx = env.CreateNode("nfs");
 
-        const TString fsId = "test";
-        const auto shard1Id = fsId + "-f1";
-        const auto shard2Id = fsId + "-f2";
-
         TServiceClient service(env.GetRuntime(), nodeIdx);
-        service.CreateFileStore(fsId, 1'000);
-        service.CreateFileStore(shard1Id, 1'000);
-        service.CreateFileStore(shard2Id, 1'000);
+        TFileSystemConfig fsConfig;
+        CreateFileSystem(service, fsConfig);
 
-        ConfigureShards(service, fsId, shard1Id, shard2Id);
-
-        auto headers = service.InitSession(fsId, "client");
+        auto headers = service.InitSession(fsConfig.FsId, "client");
 
         const auto createNodeResponse = service.CreateNode(
             headers,
@@ -2477,8 +2501,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
                 if (event->GetTypeRewrite() == TEvService::EvUnlinkNodeRequest) {
                     const auto* msg =
                         event->Get<TEvService::TEvUnlinkNodeRequest>();
-                    if (intercept
-                            && msg->Record.GetFileSystemId() == shard1Id)
+                    if (intercept && msg->Record.GetFileSystemId()
+                            == fsConfig.Shard1Id)
                     {
                         auto response = std::make_unique<
                             TEvService::TEvUnlinkNodeResponse>(
@@ -2522,18 +2546,18 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
 
         auto listNodesResponse = service.ListNodes(
             headers,
-            fsId,
+            fsConfig.FsId,
             RootNodeId)->Record;
 
         UNIT_ASSERT_VALUES_EQUAL(0, listNodesResponse.NamesSize());
         UNIT_ASSERT_VALUES_EQUAL(0, listNodesResponse.NodesSize());
 
         auto headers1 = headers;
-        headers1.FileSystemId = shard1Id;
+        headers1.FileSystemId = fsConfig.Shard1Id;
 
         listNodesResponse = service.ListNodes(
             headers1,
-            shard1Id,
+            fsConfig.Shard1Id,
             RootNodeId)->Record;
 
         UNIT_ASSERT_VALUES_EQUAL(0, listNodesResponse.NamesSize());
@@ -2563,38 +2587,11 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
 
         ui32 nodeIdx = env.CreateNode("nfs");
 
-        const TString fsId = "test";
-        const auto shard1Id = fsId + "-f1";
-        const auto shard2Id = fsId + "-f2";
-
         TServiceClient service(env.GetRuntime(), nodeIdx);
+        TFileSystemConfig fsConfig;
+        const auto fsInfo = CreateFileSystem(service, fsConfig);
 
-        ui64 tabletId = -1;
-        env.GetRuntime().SetEventFilter(
-            [&] (auto& runtime, TAutoPtr<IEventHandle>& event) {
-                Y_UNUSED(runtime);
-                switch (event->GetTypeRewrite()) {
-                    case TEvSSProxy::EvDescribeFileStoreResponse: {
-                        using TDesc = TEvSSProxy::TEvDescribeFileStoreResponse;
-                        const auto* msg = event->Get<TDesc>();
-                        const auto& desc =
-                            msg->PathDescription.GetFileStoreDescription();
-                        if (desc.GetConfig().GetFileSystemId() == fsId) {
-                            tabletId = desc.GetIndexTabletId();
-                        }
-                    }
-                }
-
-                return false;
-            });
-
-        service.CreateFileStore(fsId, 1'000);
-        service.CreateFileStore(shard1Id, 1'000);
-        service.CreateFileStore(shard2Id, 1'000);
-
-        ConfigureShards(service, fsId, shard1Id, shard2Id);
-
-        auto headers = service.InitSession(fsId, "client");
+        auto headers = service.InitSession(fsConfig.FsId, "client");
 
         const auto createNodeResponse = service.CreateNode(
             headers,
@@ -2611,8 +2608,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
                 if (event->GetTypeRewrite() == TEvService::EvUnlinkNodeRequest) {
                     const auto* msg =
                         event->Get<TEvService::TEvUnlinkNodeRequest>();
-                    if (intercept
-                            && msg->Record.GetFileSystemId() == shard1Id)
+                    if (intercept && msg->Record.GetFileSystemId()
+                            == fsConfig.Shard1Id)
                     {
                         intercepted = true;
                         return true;
@@ -2632,17 +2629,20 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         intercept = false;
 
         auto headers1 = headers;
-        headers1.FileSystemId = shard1Id;
+        headers1.FileSystemId = fsConfig.Shard1Id;
 
         auto listNodesResponse = service.ListNodes(
             headers1,
-            shard1Id,
+            fsConfig.Shard1Id,
             RootNodeId)->Record;
 
         UNIT_ASSERT_VALUES_EQUAL(1, listNodesResponse.NamesSize());
         UNIT_ASSERT_VALUES_EQUAL(1, listNodesResponse.NodesSize());
 
-        TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
+        TIndexTabletClient tablet(
+            env.GetRuntime(),
+            nodeIdx,
+            fsInfo.MainTabletId);
         tablet.RebootTablet();
 
         auto unlinkResponse = service.RecvUnlinkNodeResponse();
@@ -2654,11 +2654,11 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         // remaking session since CreateSessionActor doesn't do it by itself
         // because EvWakeup never arrives because Scheduling doesn't work by
         // default and RegistrationObservers get reset after RebootTablet
-        headers = service.InitSession(fsId, "client");
+        headers = service.InitSession(fsConfig.FsId, "client");
 
         listNodesResponse = service.ListNodes(
             headers,
-            fsId,
+            fsConfig.FsId,
             RootNodeId)->Record;
 
         UNIT_ASSERT_VALUES_EQUAL(0, listNodesResponse.NamesSize());
@@ -2666,7 +2666,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
 
         listNodesResponse = service.ListNodes(
             headers1,
-            shard1Id,
+            fsConfig.Shard1Id,
             RootNodeId)->Record;
 
         UNIT_ASSERT_VALUES_EQUAL(0, listNodesResponse.NamesSize());
@@ -2682,38 +2682,11 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
 
         ui32 nodeIdx = env.CreateNode("nfs");
 
-        const TString fsId = "test";
-        const auto shard1Id = fsId + "-f1";
-        const auto shard2Id = fsId + "-f2";
-
         TServiceClient service(env.GetRuntime(), nodeIdx);
+        TFileSystemConfig fsConfig;
+        const auto fsInfo = CreateFileSystem(service, fsConfig);
 
-        ui64 tabletId = -1;
-        env.GetRuntime().SetEventFilter(
-            [&] (auto& runtime, TAutoPtr<IEventHandle>& event) {
-                Y_UNUSED(runtime);
-                switch (event->GetTypeRewrite()) {
-                    case TEvSSProxy::EvDescribeFileStoreResponse: {
-                        using TDesc = TEvSSProxy::TEvDescribeFileStoreResponse;
-                        const auto* msg = event->Get<TDesc>();
-                        const auto& desc =
-                            msg->PathDescription.GetFileStoreDescription();
-                        if (desc.GetConfig().GetFileSystemId() == fsId) {
-                            tabletId = desc.GetIndexTabletId();
-                        }
-                    }
-                }
-
-                return false;
-            });
-
-        service.CreateFileStore(fsId, 1'000);
-        service.CreateFileStore(shard1Id, 1'000);
-        service.CreateFileStore(shard2Id, 1'000);
-
-        ConfigureShards(service, fsId, shard1Id, shard2Id);
-
-        auto headers = service.InitSession(fsId, "client");
+        auto headers = service.InitSession(fsConfig.FsId, "client");
 
         const auto createNodeResponse1 = service.CreateNode(
             headers,
@@ -2737,8 +2710,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
                 if (event->GetTypeRewrite() == TEvService::EvUnlinkNodeRequest) {
                     const auto* msg =
                         event->Get<TEvService::TEvUnlinkNodeRequest>();
-                    if (intercept
-                            && msg->Record.GetFileSystemId() == shard2Id)
+                    if (intercept && msg->Record.GetFileSystemId()
+                            == fsConfig.Shard2Id)
                     {
                         intercepted = true;
                         return true;
@@ -2764,17 +2737,20 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         intercept = false;
 
         auto headers2 = headers;
-        headers2.FileSystemId = shard2Id;
+        headers2.FileSystemId = fsConfig.Shard2Id;
 
         auto listNodesResponse = service.ListNodes(
             headers2,
-            shard2Id,
+            fsConfig.Shard2Id,
             RootNodeId)->Record;
 
         UNIT_ASSERT_VALUES_EQUAL(1, listNodesResponse.NamesSize());
         UNIT_ASSERT_VALUES_EQUAL(1, listNodesResponse.NodesSize());
 
-        TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
+        TIndexTabletClient tablet(
+            env.GetRuntime(),
+            nodeIdx,
+            fsInfo.MainTabletId);
         tablet.RebootTablet();
 
         auto renameResponse = service.RecvRenameNodeResponse();
@@ -2786,11 +2762,11 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         // remaking session since CreateSessionActor doesn't do it by itself
         // because EvWakeup never arrives because Scheduling doesn't work by
         // default and RegistrationObservers get reset after RebootTablet
-        headers = service.InitSession(fsId, "client");
+        headers = service.InitSession(fsConfig.FsId, "client");
 
         listNodesResponse = service.ListNodes(
             headers,
-            fsId,
+            fsConfig.FsId,
             RootNodeId)->Record;
 
         UNIT_ASSERT_VALUES_EQUAL(1, listNodesResponse.NamesSize());
@@ -2802,7 +2778,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
 
         listNodesResponse = service.ListNodes(
             headers2,
-            shard2Id,
+            fsConfig.Shard2Id,
             RootNodeId)->Record;
 
         UNIT_ASSERT_VALUES_EQUAL(0, listNodesResponse.NamesSize());
@@ -2817,18 +2793,11 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
 
         ui32 nodeIdx = env.CreateNode("nfs");
 
-        const TString fsId = "test";
-        const auto shard1Id = fsId + "-f1";
-        const auto shard2Id = fsId + "-f2";
-
         TServiceClient service(env.GetRuntime(), nodeIdx);
-        service.CreateFileStore(fsId, 1'000);
-        service.CreateFileStore(shard1Id, 1'000);
-        service.CreateFileStore(shard2Id, 1'000);
+        TFileSystemConfig fsConfig;
+        CreateFileSystem(service, fsConfig);
 
-        ConfigureShards(service, fsId, shard1Id, shard2Id);
-
-        auto headers = service.InitSession(fsId, "client");
+        auto headers = service.InitSession(fsConfig.FsId, "client");
 
         TAutoPtr<IEventHandle> shardCreateResponse;
         bool intercept = true;
@@ -2838,8 +2807,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
                 if (event->GetTypeRewrite() == TEvService::EvCreateNodeRequest) {
                     const auto* msg =
                         event->Get<TEvService::TEvCreateNodeRequest>();
-                    if (intercept
-                            && msg->Record.GetFileSystemId() == shard1Id)
+                    if (intercept && msg->Record.GetFileSystemId()
+                            == fsConfig.Shard1Id)
                     {
                         auto response = std::make_unique<
                             TEvService::TEvCreateNodeResponse>(
@@ -2884,7 +2853,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
 
         auto listNodesResponse = service.ListNodes(
             headers,
-            fsId,
+            fsConfig.FsId,
             RootNodeId)->Record;
 
         UNIT_ASSERT_VALUES_EQUAL(1, listNodesResponse.NamesSize());
@@ -2919,38 +2888,11 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
 
         ui32 nodeIdx = env.CreateNode("nfs");
 
-        const TString fsId = "test";
-        const auto shard1Id = fsId + "-f1";
-        const auto shard2Id = fsId + "-f2";
-
         TServiceClient service(env.GetRuntime(), nodeIdx);
+        TFileSystemConfig fsConfig;
+        const auto fsInfo = CreateFileSystem(service, fsConfig);
 
-        ui64 tabletId = -1;
-        env.GetRuntime().SetEventFilter(
-            [&] (auto& runtime, TAutoPtr<IEventHandle>& event) {
-                Y_UNUSED(runtime);
-                switch (event->GetTypeRewrite()) {
-                    case TEvSSProxy::EvDescribeFileStoreResponse: {
-                        using TDesc = TEvSSProxy::TEvDescribeFileStoreResponse;
-                        const auto* msg = event->Get<TDesc>();
-                        const auto& desc =
-                            msg->PathDescription.GetFileStoreDescription();
-                        if (desc.GetConfig().GetFileSystemId() == fsId) {
-                            tabletId = desc.GetIndexTabletId();
-                        }
-                    }
-                }
-
-                return false;
-            });
-
-        service.CreateFileStore(fsId, 1'000);
-        service.CreateFileStore(shard1Id, 1'000);
-        service.CreateFileStore(shard2Id, 1'000);
-
-        ConfigureShards(service, fsId, shard1Id, shard2Id);
-
-        auto headers = service.InitSession(fsId, "client");
+        auto headers = service.InitSession(fsConfig.FsId, "client");
 
         bool intercept = true;
         bool intercepted = false;
@@ -2960,8 +2902,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
                 if (event->GetTypeRewrite() == TEvService::EvCreateNodeRequest) {
                     const auto* msg =
                         event->Get<TEvService::TEvCreateNodeRequest>();
-                    if (intercept
-                            && msg->Record.GetFileSystemId() == shard1Id)
+                    if (intercept && msg->Record.GetFileSystemId()
+                            == fsConfig.Shard1Id)
                     {
                         intercepted = true;
                         return true;
@@ -2987,17 +2929,20 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         // TODO listNodes in leader?
 
         auto headers1 = headers;
-        headers1.FileSystemId = shard1Id;
+        headers1.FileSystemId = fsConfig.Shard1Id;
 
         auto listNodesResponse = service.ListNodes(
             headers1,
-            shard1Id,
+            fsConfig.Shard1Id,
             RootNodeId)->Record;
 
         UNIT_ASSERT_VALUES_EQUAL(0, listNodesResponse.NamesSize());
         UNIT_ASSERT_VALUES_EQUAL(0, listNodesResponse.NodesSize());
 
-        TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
+        TIndexTabletClient tablet(
+            env.GetRuntime(),
+            nodeIdx,
+            fsInfo.MainTabletId);
         tablet.RebootTablet();
 
         auto createResponse = service.RecvCreateNodeResponse();
@@ -3010,11 +2955,11 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         // because EvWakeup never arrives because Scheduling doesn't work by
         // default and RegistrationObservers get reset after RebootTablet
         // restoreClientSession = true
-        headers = service.InitSession(fsId, "client", {}, true);
+        headers = service.InitSession(fsConfig.FsId, "client", {}, true);
 
         listNodesResponse = service.ListNodes(
             headers,
-            fsId,
+            fsConfig.FsId,
             RootNodeId)->Record;
 
         const ui64 nodeId1 = (1LU << 56U) + 2;
@@ -3028,7 +2973,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
 
         listNodesResponse = service.ListNodes(
             headers1,
-            shard1Id,
+            fsConfig.Shard1Id,
             RootNodeId)->Record;
 
         UNIT_ASSERT_VALUES_EQUAL(1, listNodesResponse.NamesSize());
@@ -3059,18 +3004,11 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
 
         ui32 nodeIdx = env.CreateNode("nfs");
 
-        const TString fsId = "test";
-        const auto shard1Id = fsId + "-f1";
-        const auto shard2Id = fsId + "-f2";
-
         TServiceClient service(env.GetRuntime(), nodeIdx);
-        service.CreateFileStore(fsId, 1'000);
-        service.CreateFileStore(shard1Id, 1'000);
-        service.CreateFileStore(shard2Id, 1'000);
+        TFileSystemConfig fsConfig;
+        CreateFileSystem(service, fsConfig);
 
-        ConfigureShards(service, fsId, shard1Id, shard2Id);
-
-        auto headers = service.InitSession(fsId, "client");
+        auto headers = service.InitSession(fsConfig.FsId, "client");
 
         TAutoPtr<IEventHandle> shardCreateResponse;
         bool intercept = true;
@@ -3080,8 +3018,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
                 if (event->GetTypeRewrite() == TEvService::EvCreateNodeRequest) {
                     const auto* msg =
                         event->Get<TEvService::TEvCreateNodeRequest>();
-                    if (intercept
-                            && msg->Record.GetFileSystemId() == shard1Id)
+                    if (intercept && msg->Record.GetFileSystemId()
+                            == fsConfig.Shard1Id)
                     {
                         auto response = std::make_unique<
                             TEvService::TEvCreateNodeResponse>(
@@ -3103,7 +3041,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         const ui64 requestId = 111;
         service.SendCreateHandleRequest(
             headers,
-            fsId,
+            fsConfig.FsId,
             RootNodeId,
             "file1",
             TCreateHandleArgs::CREATE,
@@ -3130,7 +3068,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
 
         auto listNodesResponse = service.ListNodes(
             headers,
-            fsId,
+            fsConfig.FsId,
             RootNodeId)->Record;
 
         UNIT_ASSERT_VALUES_EQUAL(1, listNodesResponse.NamesSize());
@@ -3143,7 +3081,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         // checking DupCache logic
         service.SendCreateHandleRequest(
             headers,
-            fsId,
+            fsConfig.FsId,
             RootNodeId,
             "file1",
             TCreateHandleArgs::CREATE,
@@ -3169,38 +3107,11 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
 
         ui32 nodeIdx = env.CreateNode("nfs");
 
-        const TString fsId = "test";
-        const auto shard1Id = fsId + "-f1";
-        const auto shard2Id = fsId + "-f2";
-
         TServiceClient service(env.GetRuntime(), nodeIdx);
+        TFileSystemConfig fsConfig;
+        const auto fsInfo = CreateFileSystem(service, fsConfig);
 
-        ui64 tabletId = -1;
-        env.GetRuntime().SetEventFilter(
-            [&] (auto& runtime, TAutoPtr<IEventHandle>& event) {
-                Y_UNUSED(runtime);
-                switch (event->GetTypeRewrite()) {
-                    case TEvSSProxy::EvDescribeFileStoreResponse: {
-                        using TDesc = TEvSSProxy::TEvDescribeFileStoreResponse;
-                        const auto* msg = event->Get<TDesc>();
-                        const auto& desc =
-                            msg->PathDescription.GetFileStoreDescription();
-                        if (desc.GetConfig().GetFileSystemId() == fsId) {
-                            tabletId = desc.GetIndexTabletId();
-                        }
-                    }
-                }
-
-                return false;
-            });
-
-        service.CreateFileStore(fsId, 1'000);
-        service.CreateFileStore(shard1Id, 1'000);
-        service.CreateFileStore(shard2Id, 1'000);
-
-        ConfigureShards(service, fsId, shard1Id, shard2Id);
-
-        auto headers = service.InitSession(fsId, "client");
+        auto headers = service.InitSession(fsConfig.FsId, "client");
 
         bool intercept = true;
         bool intercepted = false;
@@ -3210,8 +3121,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
                 if (event->GetTypeRewrite() == TEvService::EvCreateNodeRequest) {
                     const auto* msg =
                         event->Get<TEvService::TEvCreateNodeRequest>();
-                    if (intercept
-                            && msg->Record.GetFileSystemId() == shard1Id)
+                    if (intercept && msg->Record.GetFileSystemId()
+                            == fsConfig.Shard1Id)
                     {
                         intercepted = true;
                         return true;
@@ -3223,7 +3134,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         const ui64 requestId = 111;
         service.SendCreateHandleRequest(
             headers,
-            fsId,
+            fsConfig.FsId,
             RootNodeId,
             "file1",
             TCreateHandleArgs::CREATE,
@@ -3238,7 +3149,10 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         UNIT_ASSERT(intercepted);
         intercept = false;
 
-        TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
+        TIndexTabletClient tablet(
+            env.GetRuntime(),
+            nodeIdx,
+            fsInfo.MainTabletId);
         tablet.RebootTablet();
 
         auto createHandleResponse = service.RecvCreateHandleResponse();
@@ -3253,11 +3167,11 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         // because EvWakeup never arrives because Scheduling doesn't work by
         // default and RegistrationObservers get reset after RebootTablet
         // restoreClientSession = true
-        headers = service.InitSession(fsId, "client", {}, true);
+        headers = service.InitSession(fsConfig.FsId, "client", {}, true);
 
         auto listNodesResponse = service.ListNodes(
             headers,
-            fsId,
+            fsConfig.FsId,
             RootNodeId)->Record;
 
         UNIT_ASSERT_VALUES_EQUAL(1, listNodesResponse.NamesSize());
@@ -3270,7 +3184,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         // checking DupCache logic
         service.SendCreateHandleRequest(
             headers,
-            fsId,
+            fsConfig.FsId,
             RootNodeId,
             "file1",
             TCreateHandleArgs::CREATE,
@@ -4217,23 +4131,15 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
 
         ui32 nodeIdx = env.CreateNode("nfs");
 
-        const TString fsId = "test";
-        const auto shard1Id = fsId + "-f1";
-        const auto shard2Id = fsId + "-f2";
-
         TServiceClient service(env.GetRuntime(), nodeIdx);
-        service.CreateFileStore(fsId, 1'000);
-        service.CreateFileStore(shard1Id, 1'000);
-        service.CreateFileStore(shard2Id, 1'000);
+        TFileSystemConfig fsConfig;
+        const auto fsInfo = CreateFileSystem(service, fsConfig);
 
-        ConfigureShards(service, fsId, shard1Id, shard2Id);
-
-        auto headers = service.InitSession(fsId, "client");
+        auto headers = service.InitSession(fsConfig.FsId, "client");
 
         bool createNodeObserved = false;
         bool createHandleObserved = false;
         TAutoPtr<IEventHandle> createNodeOnShard;
-        ui64 tabletId = -1;
 
         auto& runtime = env.GetRuntime();
         runtime.SetEventFilter(
@@ -4255,23 +4161,13 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
 
                         break;
                     }
-                    case TEvSSProxy::EvDescribeFileStoreResponse: {
-                        using TDesc = TEvSSProxy::TEvDescribeFileStoreResponse;
-                        const auto* msg = event->Get<TDesc>();
-                        const auto& desc =
-                            msg->PathDescription.GetFileStoreDescription();
-                        if (desc.GetConfig().GetFileSystemId() == fsId) {
-                            tabletId = desc.GetIndexTabletId();
-                        }
-                        break;
-                    }
                 }
                 return false;
             });
 
         auto checkListNodes = [&](auto expectedNames) {
             auto listNodesRsp =
-                service.ListNodes(headers, fsId, RootNodeId)->Record;
+                service.ListNodes(headers, fsConfig.FsId, RootNodeId)->Record;
 
             UNIT_ASSERT_VALUES_EQUAL(expectedNames.size(), listNodesRsp.NamesSize());
             UNIT_ASSERT_VALUES_EQUAL(expectedNames.size(), listNodesRsp.NodesSize());
@@ -4291,15 +4187,15 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
                     RootNodeId,
                     "file1",
                     0,   // mode
-                    shard1Id));
+                    fsConfig.Shard1Id));
         } else {
             service.SendCreateHandleRequest(
                 headers,
-                fsId,
+                fsConfig.FsId,
                 RootNodeId,
                 "file1",
                 TCreateHandleArgs::CREATE,
-                shard1Id);
+                fsConfig.Shard1Id);
         }
         runtime.DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
 
@@ -4313,10 +4209,13 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         UNIT_ASSERT(createNodeOnShard);
 
         if (withTabletReboot) {
-            TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
+            TIndexTabletClient tablet(
+                env.GetRuntime(),
+                nodeIdx,
+                fsInfo.MainTabletId);
             tablet.RebootTablet();
 
-            headers = service.InitSession(fsId, "client", {}, true);
+            headers = service.InitSession(fsConfig.FsId, "client", {}, true);
         }
 
         checkListNodes(TVector<TString>{});
@@ -4553,18 +4452,12 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
 
         ui32 nodeIdx = env.CreateNode("nfs");
 
-        const TString fsId = "test";
-        const auto shard1Id = fsId + "-f1";
-        const auto shard2Id = fsId + "-f2";
-
         TServiceClient service(env.GetRuntime(), nodeIdx);
-        service.CreateFileStore(fsId, 1'000);
-        service.CreateFileStore(shard1Id, 1'000);
-        service.CreateFileStore(shard2Id, 1'000);
+        TFileSystemConfig fsConfig;
+        fsConfig.DirectoryCreationInShardsEnabled = true;
+        CreateFileSystem(service, fsConfig);
 
-        ConfigureShards(service, fsId, shard1Id, shard2Id, true);
-
-        auto headers = service.InitSession(fsId, "client");
+        auto headers = service.InitSession(fsConfig.FsId, "client");
 
         auto createNodeResponse = service.CreateNode(
             headers,
@@ -4586,7 +4479,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
 
         auto createHandleResponse = service.CreateHandle(
             headers,
-            fsId,
+            fsConfig.FsId,
             dir1_1Id,
             "file1",
             TCreateHandleArgs::CREATE)->Record;
@@ -4599,7 +4492,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
 
         createHandleResponse = service.CreateHandle(
             headers,
-            fsId,
+            fsConfig.FsId,
             dir1_2Id,
             "file1",
             TCreateHandleArgs::CREATE)->Record;
@@ -4612,7 +4505,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
 
         createHandleResponse = service.CreateHandle(
             headers,
-            fsId,
+            fsConfig.FsId,
             dir1_2Id,
             "file2",
             TCreateHandleArgs::CREATE)->Record;
@@ -4624,17 +4517,17 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         UNIT_ASSERT_VALUES_EQUAL_C(2, ExtractShardNo(handle3), handle3);
 
         auto data1 = GenerateValidateData(256_KB, 1);
-        service.WriteData(headers, fsId, nodeId1, handle1, 0, data1);
+        service.WriteData(headers, fsConfig.FsId, nodeId1, handle1, 0, data1);
 
         auto data2 = GenerateValidateData(1_MB, 2);
-        service.WriteData(headers, fsId, nodeId2, handle2, 0, data2);
+        service.WriteData(headers, fsConfig.FsId, nodeId2, handle2, 0, data2);
 
         auto data3 = GenerateValidateData(512_KB, 3);
-        service.WriteData(headers, fsId, nodeId3, handle3, 0, data3);
+        service.WriteData(headers, fsConfig.FsId, nodeId3, handle3, 0, data3);
 
         auto readDataResponse = service.ReadData(
             headers,
-            fsId,
+            fsConfig.FsId,
             nodeId1,
             handle1,
             0,
@@ -4643,7 +4536,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
 
         readDataResponse = service.ReadData(
             headers,
-            fsId,
+            fsConfig.FsId,
             nodeId2,
             handle2,
             0,
@@ -4652,16 +4545,16 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
 
         readDataResponse = service.ReadData(
             headers,
-            fsId,
+            fsConfig.FsId,
             nodeId3,
             handle3,
             0,
             data3.size())->Record;
         UNIT_ASSERT_VALUES_EQUAL(data3, readDataResponse.GetBuffer());
 
-        service.DestroyHandle(headers, fsId, nodeId1, handle1);
-        service.DestroyHandle(headers, fsId, nodeId2, handle2);
-        service.DestroyHandle(headers, fsId, nodeId3, handle3);
+        service.DestroyHandle(headers, fsConfig.FsId, nodeId1, handle1);
+        service.DestroyHandle(headers, fsConfig.FsId, nodeId2, handle2);
+        service.DestroyHandle(headers, fsConfig.FsId, nodeId3, handle3);
     }
 
     SERVICE_TEST_SID_SELECT_IN_LEADER_ONLY(
@@ -4674,18 +4567,12 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
 
         ui32 nodeIdx = env.CreateNode("nfs");
 
-        const TString fsId = "test";
-        const auto shard1Id = fsId + "-f1";
-        const auto shard2Id = fsId + "-f2";
-
         TServiceClient service(env.GetRuntime(), nodeIdx);
-        service.CreateFileStore(fsId, 1'000);
-        service.CreateFileStore(shard1Id, 1'000);
-        service.CreateFileStore(shard2Id, 1'000);
+        TFileSystemConfig fsConfig;
+        fsConfig.DirectoryCreationInShardsEnabled = true;
+        CreateFileSystem(service, fsConfig);
 
-        ConfigureShards(service, fsId, shard1Id, shard2Id);
-
-        auto headers = service.InitSession(fsId, "client");
+        auto headers = service.InitSession(fsConfig.FsId, "client");
 
         auto createNodeResponse = service.CreateNode(
             headers,
@@ -4708,7 +4595,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
 
         auto listNodesResponse = service.ListNodes(
             headers,
-            fsId,
+            fsConfig.FsId,
             dir1Id)->Record;
 
         UNIT_ASSERT_VALUES_EQUAL(4, listNodesResponse.NamesSize());
@@ -4724,14 +4611,14 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
             UNIT_ASSERT_VALUES_UNEQUAL(0, nodes[i].first);
         }
 
-        UNIT_ASSERT_VALUES_EQUAL(2, ExtractShardNo(nodes[0].first));
-        UNIT_ASSERT_VALUES_EQUAL(1, ExtractShardNo(nodes[1].first));
-        UNIT_ASSERT_VALUES_EQUAL(2, ExtractShardNo(nodes[2].first));
-        UNIT_ASSERT_VALUES_EQUAL(1, ExtractShardNo(nodes[3].first));
+        UNIT_ASSERT_VALUES_EQUAL(1, ExtractShardNo(nodes[0].first));
+        UNIT_ASSERT_VALUES_EQUAL(2, ExtractShardNo(nodes[1].first));
+        UNIT_ASSERT_VALUES_EQUAL(1, ExtractShardNo(nodes[2].first));
+        UNIT_ASSERT_VALUES_EQUAL(2, ExtractShardNo(nodes[3].first));
 
         auto getAttrResponse = service.GetNodeAttr(
             headers,
-            fsId,
+            fsConfig.FsId,
             RootNodeId,
             "dir1")->Record;
 
@@ -4742,7 +4629,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
 
         getAttrResponse = service.GetNodeAttr(
             headers,
-            fsId,
+            fsConfig.FsId,
             dir1Id,
             "file1")->Record;
 
@@ -4755,7 +4642,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
 
         getAttrResponse = service.GetNodeAttr(
             headers,
-            fsId,
+            fsConfig.FsId,
             dir1Id,
             "file2")->Record;
 
@@ -4768,7 +4655,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
 
         getAttrResponse = service.GetNodeAttr(
             headers,
-            fsId,
+            fsConfig.FsId,
             dir1Id,
             "file3")->Record;
 
@@ -4781,7 +4668,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
 
         getAttrResponse = service.GetNodeAttr(
             headers,
-            fsId,
+            fsConfig.FsId,
             dir1Id,
             "file4")->Record;
 
@@ -4803,36 +4690,12 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
 
         ui32 nodeIdx = env.CreateNode("nfs");
 
-        const TString fsId = "test";
-        const auto shard1Id = fsId + "-f1";
-        const auto shard2Id = fsId + "-f2";
-
         TServiceClient service(env.GetRuntime(), nodeIdx);
-        service.CreateFileStore(fsId, 1'000);
-        service.CreateFileStore(shard1Id, 1'000);
-        service.CreateFileStore(shard2Id, 1'000);
+        TFileSystemConfig fsConfig;
+        fsConfig.DirectoryCreationInShardsEnabled = true;
+        const auto fsInfo = CreateFileSystem(service, fsConfig);
 
-        TActorId shard1ActorId;
-        env.GetRuntime().SetEventFilter(
-            [&] (auto& runtime, TAutoPtr<IEventHandle>& event) {
-                Y_UNUSED(runtime);
-                switch (event->GetTypeRewrite()) {
-                    case TEvIndexTablet::EvConfigureAsShardRequest: {
-                        using R = TEvIndexTablet::TEvConfigureAsShardRequest;
-                        const auto* msg = event->Get<R>();
-                        if (shard1Id == msg->Record.GetFileSystemId()) {
-                            shard1ActorId = event->Recipient;
-                        }
-                        break;
-                    }
-                }
-
-                return false;
-            });
-
-        ConfigureShards(service, fsId, shard1Id, shard2Id, true);
-
-        auto headers = service.InitSession(fsId, "client");
+        auto headers = service.InitSession(fsConfig.FsId, "client");
 
         // creating 2 files
 
@@ -4852,23 +4715,23 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
 
         ui64 handle1 = service.CreateHandle(
             headers,
-            fsId,
+            fsConfig.FsId,
             nodeId1,
             "",
             TCreateHandleArgs::RDWR)->Record.GetHandle();
 
         auto data1 = GenerateValidateData(256_KB);
-        service.WriteData(headers, fsId, nodeId1, handle1, 0, data1);
+        service.WriteData(headers, fsConfig.FsId, nodeId1, handle1, 0, data1);
 
         ui64 handle2 = service.CreateHandle(
             headers,
-            fsId,
+            fsConfig.FsId,
             nodeId2,
             "",
             TCreateHandleArgs::RDWR)->Record.GetHandle();
 
         auto data2 = GenerateValidateData(512_KB);
-        service.WriteData(headers, fsId, nodeId2, handle2, 0, data2);
+        service.WriteData(headers, fsConfig.FsId, nodeId2, handle2, 0, data2);
 
         // triggering background shard stats collection
 
@@ -4879,7 +4742,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
 
             env.GetRuntime().Send(
                 new IEventHandle(
-                    shard1ActorId, // recipient
+                    fsInfo.Shard1ActorId, // recipient
                     TActorId(), // sender
                     new TRequest(),
                     0, // flags
@@ -4895,7 +4758,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
 
         {
             NProtoPrivate::TGetStorageStatsRequest request;
-            request.SetFileSystemId(shard1Id);
+            request.SetFileSystemId(fsConfig.Shard1Id);
             TString buf;
             google::protobuf::util::MessageToJsonString(request, &buf);
             auto response = service.ExecuteAction("GetStorageStats", buf);
@@ -4944,6 +4807,28 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         }
     }
 
+    struct TEventHelper
+    {
+        TTestEnv& Env;
+        TAutoPtr<IEventHandle> Event;
+        bool ShouldIntercept = true;
+
+        void CatchEvent(ui32 eventType)
+        {
+            Env.GetRuntime().SetEventFilter(
+                [&, eventType] (auto& runtime, TAutoPtr<IEventHandle>& event) {
+                    Y_UNUSED(runtime);
+                    if (ShouldIntercept
+                            && event->GetTypeRewrite() == eventType)
+                    {
+                        Event = event.Release();
+                        return true;
+                    }
+                    return false;
+                });
+        }
+    };
+
     SERVICE_TEST_SID_SELECT_IN_LEADER_ONLY(
         ShouldRetryRenameNodeInShardUponLeaderRestartWithDirectoriesInShards)
     {
@@ -4954,48 +4839,12 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
 
         ui32 nodeIdx = env.CreateNode("nfs");
 
-        const TString fsId = "test";
-        const auto shard1Id = fsId + "-f1";
-        const auto shard2Id = fsId + "-f2";
-
         TServiceClient service(env.GetRuntime(), nodeIdx);
+        TFileSystemConfig fsConfig;
+        fsConfig.DirectoryCreationInShardsEnabled = true;
+        const auto fsInfo = CreateFileSystem(service, fsConfig);
 
-        // configuring shard tablet id interceptor to reboot the tablet using
-        // it later on
-
-        ui64 shard1TabletId = -1;
-        ui64 shard2TabletId = -1;
-        env.GetRuntime().SetEventFilter(
-            [&] (auto& runtime, TAutoPtr<IEventHandle>& event) {
-                Y_UNUSED(runtime);
-                switch (event->GetTypeRewrite()) {
-                    case TEvSSProxy::EvDescribeFileStoreResponse: {
-                        using TDesc = TEvSSProxy::TEvDescribeFileStoreResponse;
-                        const auto* msg = event->Get<TDesc>();
-                        const auto& desc =
-                            msg->PathDescription.GetFileStoreDescription();
-                        if (desc.GetConfig().GetFileSystemId() == shard1Id) {
-                            shard1TabletId = desc.GetIndexTabletId();
-                        }
-
-                        if (desc.GetConfig().GetFileSystemId() == shard2Id) {
-                            shard2TabletId = desc.GetIndexTabletId();
-                        }
-
-                        break;
-                    }
-                }
-
-                return false;
-            });
-
-        service.CreateFileStore(fsId, 1'000);
-        service.CreateFileStore(shard1Id, 1'000);
-        service.CreateFileStore(shard2Id, 1'000);
-
-        ConfigureShards(service, fsId, shard1Id, shard2Id, true);
-
-        auto headers = service.InitSession(fsId, "client");
+        auto headers = service.InitSession(fsConfig.FsId, "client");
 
         // creating 2 dirs - we'll move a file from one dir to another
 
@@ -5025,19 +4874,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         // configuring an interceptor to make RenameNode get stuck in the shard
         // in charge of dir1
 
-        bool intercept = true;
-        bool intercepted = false;
-        env.GetRuntime().SetEventFilter(
-            [&] (auto& runtime, TAutoPtr<IEventHandle>& event) {
-                Y_UNUSED(runtime);
-                if (intercept && event->GetTypeRewrite() ==
-                        TEvIndexTablet::EvRenameNodeInDestinationRequest)
-                {
-                    intercepted = true;
-                    return true;
-                }
-                return false;
-            });
+        TEventHelper evHelper(env);
+        evHelper.CatchEvent(TEvIndexTablet::EvRenameNodeInDestinationRequest);
 
         service.SendRenameNodeRequest(
             headers,
@@ -5048,12 +4886,12 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
             0);
 
         ui32 iterations = 0;
-        while (!intercepted && iterations++ < 100) {
+        while (!evHelper.Event && iterations++ < 100) {
             env.GetRuntime().DispatchEvents({}, TDuration::MilliSeconds(50));
         }
 
-        UNIT_ASSERT(intercepted);
-        intercept = false;
+        UNIT_ASSERT(evHelper.Event);
+        evHelper.ShouldIntercept = false;
 
         // listing the nodes in dir1 and dir2 - no changes should be visible
         // at this point
@@ -5061,7 +4899,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         {
             auto listNodesResponse = service.ListNodes(
                 headers,
-                fsId,
+                fsConfig.FsId,
                 dir1Id)->Record;
 
             UNIT_ASSERT_VALUES_EQUAL(1, listNodesResponse.NamesSize());
@@ -5071,7 +4909,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         {
             auto listNodesResponse = service.ListNodes(
                 headers,
-                fsId,
+                fsConfig.FsId,
                 dir2Id)->Record;
 
             UNIT_ASSERT_VALUES_EQUAL(0, listNodesResponse.NamesSize());
@@ -5081,8 +4919,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         // rebooting the shard in charge of dir1 to trigger OpLog replay which
         // should rerun the part of the RenameNode operation that got stuck
 
-        const ui64 tabletId =
-            ExtractShardNo(dir1Id) == 1 ? shard1TabletId : shard2TabletId;
+        const ui64 tabletId = ExtractShardNo(dir1Id) == 1
+            ? fsInfo.Shard1TabletId : fsInfo.Shard2TabletId;
         TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
         tablet.RebootTablet();
 
@@ -5097,7 +4935,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         // remaking session since CreateSessionActor doesn't do it by itself
         // because EvWakeup never arrives because Scheduling doesn't work by
         // default and RegistrationObservers get reset after RebootTablet
-        headers = service.InitSession(fsId, "client");
+        headers = service.InitSession(fsConfig.FsId, "client");
 
         // after shard reboot our RenameNode operation should have completed
         // checking it via directory listing
@@ -5105,7 +4943,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         {
             auto listNodesResponse = service.ListNodes(
                 headers,
-                fsId,
+                fsConfig.FsId,
                 dir1Id)->Record;
 
             UNIT_ASSERT_VALUES_EQUAL(0, listNodesResponse.NamesSize());
@@ -5115,7 +4953,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         {
             auto listNodesResponse = service.ListNodes(
                 headers,
-                fsId,
+                fsConfig.FsId,
                 dir2Id)->Record;
 
             UNIT_ASSERT_VALUES_EQUAL(1, listNodesResponse.NamesSize());
