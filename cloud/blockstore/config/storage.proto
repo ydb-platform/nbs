@@ -1091,5 +1091,5 @@ message TStorageServiceConfig
     optional bool EnableToChangeErrorStatesFromDiskRegistryMonpage = 398;
     
     // Enabling UsedQuota calculation as UsedIopsQuota + UsedBandwidthQuota
-    optional bool CalculateSplittedUsedQuotaMetric = 397;
+    optional bool CalculateSplittedUsedQuotaMetric = 399;
 }
