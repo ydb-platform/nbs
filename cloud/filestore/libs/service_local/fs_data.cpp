@@ -39,6 +39,9 @@ NProto::TCreateHandleResponse TLocalFileSystem::CreateHandle(
     const int mode = request.GetMode()
         ? request.GetMode() : Config->GetDefaultPermissions();
 
+    NLowLevel::UnixCredentialsGuard credGuard(
+        request.GetUid(),
+        request.GetGid());
     TFileHandle handle;
     TFileStat stat;
     ui64 nodeId;
