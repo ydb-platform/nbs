@@ -507,8 +507,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
 
         runtime->SetObserverFunc( [&] (TAutoPtr<IEventHandle>& event) {
             switch (event->GetTypeRewrite()) {
-                case NAcquireReleaseDevices::TEvDevicesAcquireFinished::
-                    EventType: {
+                case NAcquireReleaseDevices::EvDevicesAcquireFinished: {
                     finished = true;
                     break;
                 }

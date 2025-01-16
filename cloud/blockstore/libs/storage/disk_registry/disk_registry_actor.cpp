@@ -189,7 +189,7 @@ void TDiskRegistryActor::BeforeDie(const NActors::TActorContext& ctx)
     }
     PendingDiskDeallocationRequests.clear();
 
-    for (auto& [actorId, requestInfo]: PendingAcquireDiskRequests) {
+    for (auto& [_, requestInfo]: PendingAcquireDiskRequests) {
         NCloud::Reply(
             ctx,
             *requestInfo,
@@ -198,7 +198,7 @@ void TDiskRegistryActor::BeforeDie(const NActors::TActorContext& ctx)
     }
     PendingAcquireDiskRequests.clear();
 
-    for (auto& [actorId, requestInfo]: PendingReleaseDiskRequests) {
+    for (auto& [_, requestInfo]: PendingReleaseDiskRequests) {
         NCloud::Reply(
             ctx,
             *requestInfo,

@@ -1,12 +1,10 @@
-
 #pragma once
-
-#include <contrib/ydb/library/actors/interconnect/types.h>
 
 #include <cloud/blockstore/libs/kikimr/events.h>
 #include <cloud/blockstore/libs/storage/api/disk_agent.h>
 
 #include <contrib/ydb/library/actors/core/actor.h>
+#include <contrib/ydb/library/actors/interconnect/types.h>
 
 namespace NCloud::NBlockStore::NStorage::NAcquireReleaseDevices {
 
@@ -80,7 +78,7 @@ using TEvDevicesAcquireFinished =
 using TEvDevicesReleaseFinished =
     TRequestEvent<TDevicesReleaseFinished, EvDevicesReleaseFinished>;
 
-TActorId AcquireDevices(
+TActorId CreateAcquireDevicesActor(
     const NActors::TActorContext& ctx,
     const TActorId& owner,
     TVector<NProto::TDeviceConfig> devices,
@@ -93,7 +91,7 @@ TActorId AcquireDevices(
     bool muteIOErrors,
     NActors::NLog::EComponent component);
 
-TActorId ReleaseDevices(
+TActorId CreateReleaseDevicesActor(
     const NActors::TActorContext& ctx,
     const TActorId& owner,
     TString diskId,

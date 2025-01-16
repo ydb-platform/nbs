@@ -17,7 +17,8 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TAcquireDevicesActor final: public TActorBootstrapped<TAcquireDevicesActor>
+class TAcquireDevicesActor final
+    : public TActorBootstrapped<TAcquireDevicesActor>
 {
 private:
     const TActorId Owner;
@@ -123,9 +124,7 @@ TAcquireDevicesActor::TAcquireDevicesActor(
     , MuteIOErrors(muteIOErrors)
     , Component(component)
 {
-    SortBy(Devices, [] (auto& d) {
-        return d.GetNodeId();
-    });
+    SortBy(Devices, [](auto& d) { return d.GetNodeId(); });
 }
 
 void TAcquireDevicesActor::Bootstrap(const TActorContext& ctx)
@@ -147,7 +146,8 @@ void TAcquireDevicesActor::Bootstrap(const TActorContext& ctx)
         DiskId.c_str(),
         LogTargets().c_str());
 
-    auto sentRequests = CreateRequests<TEvDiskAgent::TEvAcquireDevicesRequest>();
+    auto sentRequests =
+        CreateRequests<TEvDiskAgent::TEvAcquireDevicesRequest>();
     SendRequests(ctx, sentRequests);
 
     Y_ABORT_UNLESS(SentAcquireRequests.empty());
@@ -206,9 +206,7 @@ void TAcquireDevicesActor::SendRequests(
     PendingRequests = 0;
 
     for (const auto& r: requests) {
-        auto request = std::make_unique<TRequest>(
-            TCallContextPtr {},
-            r.Record);
+        auto request = std::make_unique<TRequest>(TCallContextPtr{}, r.Record);
 
         LOG_DEBUG(
             ctx,
@@ -355,9 +353,11 @@ STFUNC(TAcquireDevicesActor::StateAcquire)
     switch (ev->GetTypeRewrite()) {
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
 
-        HFunc(TEvDiskAgent::TEvAcquireDevicesResponse,
+        HFunc(
+            TEvDiskAgent::TEvAcquireDevicesResponse,
             HandleAcquireDevicesResponse);
-        HFunc(TEvDiskAgent::TEvAcquireDevicesRequest,
+        HFunc(
+            TEvDiskAgent::TEvAcquireDevicesRequest,
             HandleAcquireDevicesUndelivery);
 
         HFunc(TEvents::TEvWakeup, HandleWakeup);
@@ -372,7 +372,7 @@ STFUNC(TAcquireDevicesActor::StateAcquire)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TActorId AcquireDevices(
+TActorId CreateAcquireDevicesActor(
     const NActors::TActorContext& ctx,
     const TActorId& owner,
     TVector<NProto::TDeviceConfig> devices,

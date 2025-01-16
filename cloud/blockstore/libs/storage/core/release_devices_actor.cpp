@@ -98,7 +98,8 @@ TReleaseDevicesActor::TReleaseDevicesActor(
     , Component(component)
 {}
 
-void TReleaseDevicesActor::PrepareRequest(NProto::TReleaseDevicesRequest& request)
+void TReleaseDevicesActor::PrepareRequest(
+    NProto::TReleaseDevicesRequest& request)
 {
     request.MutableHeaders()->SetClientId(ClientId);
     request.SetDiskId(DiskId);
@@ -109,9 +110,7 @@ void TReleaseDevicesActor::Bootstrap(const TActorContext& ctx)
 {
     Become(&TThis::StateWork);
 
-    SortBy(Devices, [] (auto& d) {
-        return d.GetNodeId();
-    });
+    SortBy(Devices, [](auto& d) { return d.GetNodeId(); });
 
     auto it = Devices.begin();
     while (it != Devices.end()) {
@@ -141,7 +140,9 @@ void TReleaseDevicesActor::Bootstrap(const TActorContext& ctx)
     ctx.Schedule(RequestTimeout, new TEvents::TEvWakeup());
 }
 
-void TReleaseDevicesActor::ReplyAndDie(const TActorContext& ctx, NProto::TError error)
+void TReleaseDevicesActor::ReplyAndDie(
+    const TActorContext& ctx,
+    NProto::TError error)
 {
     NCloud::Send(
         ctx,
@@ -208,16 +209,15 @@ void TReleaseDevicesActor::HandleTimeout(
     Y_UNUSED(ev);
 
     const auto err = TStringBuilder()
-        << "TReleaseDevicesActor timeout."
-        << " DiskId: " << DiskId
-        << " ClientId: " << ClientId
-        << " Targets: " << LogTargets()
-        << " VolumeGeneration: " << VolumeGeneration
-        << " PendingRequests: " << PendingRequests;
+                     << "TReleaseDevicesActor timeout." << " DiskId: " << DiskId
+                     << " ClientId: " << ClientId
+                     << " Targets: " << LogTargets()
+                     << " VolumeGeneration: " << VolumeGeneration
+                     << " PendingRequests: " << PendingRequests;
 
     LOG_WARN(ctx, Component, err);
 
-    ReplyAndDie(ctx, MakeError(E_TIMEOUT, err));
+    ReplyAndDie(ctx, MakeError(E_TIMEOUT, std::move(err)));
 }
 
 STFUNC(TReleaseDevicesActor::StateWork)
@@ -226,9 +226,11 @@ STFUNC(TReleaseDevicesActor::StateWork)
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
         HFunc(TEvents::TEvWakeup, HandleTimeout);
 
-        HFunc(TEvDiskAgent::TEvReleaseDevicesResponse,
+        HFunc(
+            TEvDiskAgent::TEvReleaseDevicesResponse,
             HandleReleaseDevicesResponse);
-        HFunc(TEvDiskAgent::TEvReleaseDevicesRequest,
+        HFunc(
+            TEvDiskAgent::TEvReleaseDevicesRequest,
             HandleReleaseDevicesUndelivery);
 
         default:
@@ -246,7 +248,7 @@ TString TReleaseDevicesActor::LogTargets() const
 
 }   // namespace
 
-TActorId ReleaseDevices(
+TActorId CreateReleaseDevicesActor(
     const TActorContext& ctx,
     const TActorId& owner,
     TString diskId,
@@ -268,4 +270,4 @@ TActorId ReleaseDevices(
         muteIOErrors,
         component);
 }
-} // namespace NCloud::NBlockStore::NStorage::NAcquireReleaseDevices
+}   // namespace NCloud::NBlockStore::NStorage::NAcquireReleaseDevices
