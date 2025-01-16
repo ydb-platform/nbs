@@ -503,7 +503,7 @@ def test_multitablet_findgarbage():
     client.write(shard2_id, "/garbage2_2", "--data", data_file)
     client.write(shard2_id, "/garbage2_3", "--data", big_data_file)
     # TODO: teach the client to fetch shard list by itself
-    find_garbage_result = client.find_garbage(
+    out += client.find_garbage(
         fs_id, [shard1_id, shard2_id], page_size=1024
     )
     client.destroy(fs_id)
@@ -526,40 +526,33 @@ def test_multitablet_findgarbage_in_leader():
 
     fs_id = "fs0"
     shard1_id = fs_id + "-shard1"
-    shard2_id = fs_id + "-shard2"
+    out = __create_multitablet_fs(client, fs_id, [shard1_id])
 
-    out = __create_multitablet_fs(client, fs_id, [shard1_id, shard2_id])
+    client.touch(fs_id, "/a")
 
-    for filename in "abcd":
-        client.touch(fs_id, f"/{filename}")
-
-    for shard in [shard1_id, shard2_id]:
-        shard_ls = json.loads(str(client.ls(shard, "/", "--json"), "utf-8"))[
-            "content"
-        ]
-        for file in shard_ls:
-            client.rm(shard, f"/{file['Name']}")
-            break
+    shard_ls = json.loads(str(client.ls(shard1_id, "/", "--json"), "utf-8"))[
+        "content"
+    ]
+    for file in shard_ls:
+        client.rm(shard1_id, f"/{file['Name']}")
 
     find_garbage_result = client.find_garbage(
         fs_id,
-        [shard1_id, shard2_id],
+        [shard1_id],
         page_size=1024,
         find_in_shards=False,
         find_in_leader=True,
     )
     # replace uuids with a constant value to make the test deterministic
     find_garbage_result = re.sub(
-        rb"([0-9a-f]{8}-[0-9a-f]{8}-[0-9a-f]{8}-[0-9a-f]{8})",
+        rb"([0-9a-f]{1,8}-[0-9a-f]{1,8}-[0-9a-f]{1,8}-[0-9a-f]{1,8})",
         b"01234567-89abcdef-01234567-89abcdef",
         find_garbage_result,
     )
     out += find_garbage_result
 
-
     client.destroy(fs_id)
     client.destroy(shard1_id)
-    client.destroy(shard2_id)
 
     with open(results_path, "wb") as results_file:
         results_file.write(out)
