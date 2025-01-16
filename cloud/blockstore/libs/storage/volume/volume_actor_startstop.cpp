@@ -355,8 +355,7 @@ void TVolumeActor::HandleStopPartionBeforeVolumeDestruction(
             ctx,
             TBlockStoreComponents::VOLUME,
             "[%lu] StopPartionBeforeVolumeDestruction req was send to not DR "
-            "based "
-            "volume",
+            "based disk",
             TabletID());
 
         NCloud::Reply(
