@@ -15,16 +15,12 @@ using namespace NKikimr::NTabletFlatExecutor;
 
 namespace {
 
-
-TVector<NProto::TDeviceConfig> ExtractDevicesFromDiskInfo(TDiskInfo &diskInfo) {
+TVector<NProto::TDeviceConfig> ExtractDevicesFromDiskInfo(TDiskInfo& diskInfo)
+{
     TVector devices = std::move(diskInfo.Devices);
-
-    auto devicesToAdd = diskInfo.Migrations.size();
-    for (const auto& replica: diskInfo.Replicas) {
-        devicesToAdd += replica.size();
-    }
-
-    devices.reserve(devices.size() + devicesToAdd);
+    devices.reserve(
+        devices.size() * (diskInfo.Replicas.size() + 1) +
+        diskInfo.Migrations.size());
 
     for (auto& migration: diskInfo.Migrations) {
         devices.emplace_back(std::move(*migration.MutableTargetDevice()));
@@ -39,8 +35,7 @@ TVector<NProto::TDeviceConfig> ExtractDevicesFromDiskInfo(TDiskInfo &diskInfo) {
     return devices;
 }
 
-}  // namespace
-
+}   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -53,7 +48,7 @@ void TDiskRegistryActor::HandleAcquireDisk(
     auto replyWithError = [&](auto error)
     {
         auto response =
-            std::make_unique<TEvDiskRegistry::TEvReleaseDiskResponse>(
+            std::make_unique<TEvDiskRegistry::TEvAcquireDiskResponse>(
                 std::move(error));
         NCloud::Reply(ctx, *ev, std::move(response));
     };
