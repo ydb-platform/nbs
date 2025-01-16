@@ -37,6 +37,10 @@ on:
         type: boolean
         default: true
         description: "run tests"
+      build_threads:
+        type: string
+        default: '60'
+        description: "Build threads count"
       test_threads:
         type: string
         default: '64'
@@ -138,6 +142,7 @@ jobs:
         bazel_remote_uri: ${{ inputs.nebius == 'yes' && vars.NEBIUS_BAZEL_REMOTE_CACHE_URL || vars.REMOTE_CACHE_URL_YA }}
         bazel_remote_username: ${{ secrets.REMOTE_CACHE_USERNAME }}
         bazel_remote_password: ${{ secrets.REMOTE_CACHE_PASSWORD }}
+        build_threads: ${{ inputs.build_threads }}
         link_threads: ${{ inputs.link_threads }}
         clean_ya_dir: ${{ inputs.clean_ya_dir }}
         use_network_cache: ${{ inputs.use_network_cache }}

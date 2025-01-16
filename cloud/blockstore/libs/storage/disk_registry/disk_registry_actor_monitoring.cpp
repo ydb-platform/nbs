@@ -103,6 +103,56 @@ void BuildDeviceReplaceButton(
     );
 }
 
+void BuildChangeDeviceStateButton(
+    IOutputStream& out,
+    ui64 tabletId,
+    const TString& deviceUUID)
+{
+    out << Sprintf(
+        R"(<form name="devtSateChange%s" method="post">
+            <br>
+            <label for="NewState">Change device state to:</label>
+            <select name="NewState">
+                <option value="%s">Online</option>
+                <option value="%s">Warning</option>
+            </select>
+            <input type="submit" value="Change state">
+            <input type='hidden' name='action' value='changeDeviceState'/>
+            <input type='hidden' name='DeviceUUID' value='%s'/>
+            <input type='hidden' name='TabletID' value='%lu'/>
+            </form>)",
+        deviceUUID.c_str(),
+        EDeviceState_Name(NProto::DEVICE_STATE_ONLINE).c_str(),
+        EDeviceState_Name(NProto::DEVICE_STATE_WARNING).c_str(),
+        deviceUUID.c_str(),
+        tabletId);
+}
+
+void BuildChangeAgentStateButton(
+    IOutputStream& out,
+    ui64 tabletId,
+    const TString& agentId)
+{
+    out << Sprintf(
+        R"(<form name="agentStateChange%s" method="post">
+            <br>
+            <label for="NewState">Change agent state to:</label>
+            <select name="NewState">
+                <option value="%s">Online</option>
+                <option value="%s">Warning</option>
+            </select>
+            <input type="submit" value="Change state">
+            <input type='hidden' name='action' value='changeAgentState'/>
+            <input type='hidden' name='AgentID' value='%s'/>
+            <input type='hidden' name='TabletID' value='%lu'/>
+            </form>)",
+        agentId.c_str(),
+        EAgentState_Name(NProto::AGENT_STATE_ONLINE).c_str(),
+        EAgentState_Name(NProto::AGENT_STATE_WARNING).c_str(),
+        agentId.c_str(),
+        tabletId);
+}
+
 void GenerateDiskRegistryActionsJS(IOutputStream& out)
 {
     out << R"html(
@@ -337,7 +387,7 @@ void TDiskRegistryActor::HandleHttpInfo_RenderBrokenDeviceList(
     Y_UNUSED(params);
 
     TStringStream out;
-    RenderBrokenDeviceList(out);
+    RenderBrokenDeviceListDetailed(out);
     SendHttpResponse(ctx, *requestInfo, std::move(out.Str()));
 }
 
@@ -462,6 +512,20 @@ void TDiskRegistryActor::RenderDeviceHtmlInfo(
         }
         DIV() { out << "State Message: " << device.GetStateMessage(); }
 
+        if (Config->GetEnableToChangeStatesFromDiskRegistryMonpage()) {
+            if (device.GetState() != NProto::EDeviceState::DEVICE_STATE_ERROR ||
+                Config->GetEnableToChangeErrorStatesFromDiskRegistryMonpage())
+            {
+                DIV()
+                {
+                    BuildChangeDeviceStateButton(
+                        out,
+                        TabletID(),
+                        device.GetDeviceUUID());
+                }
+            }
+        }
+
         if (auto diskId = State->FindDisk(id)) {
             DIV() {
                 out << "Disk: ";
@@ -531,6 +595,19 @@ void TDiskRegistryActor::RenderAgentHtmlInfo(
         DIV() {
             out << "State Timestamp: "
                 << TInstant::MicroSeconds(agent->GetStateTs());
+        }
+        DIV() {
+            if (Config->GetEnableToChangeStatesFromDiskRegistryMonpage()) {
+                if (agent->GetState() !=
+                    NProto::EAgentState::AGENT_STATE_UNAVAILABLE)
+                {
+                    BuildChangeAgentStateButton(
+                        out,
+                        TabletID(),
+                        agent->GetAgentId());
+                }
+            }
+
         }
         DIV() { out << "State Message: " << agent->GetStateMessage(); }
         DIV() {
@@ -2253,9 +2330,13 @@ void TDiskRegistryActor::HandleHttpInfo(
 
     using THttpHandlers = THashMap<TString, THttpHandler>;
 
-    static const THttpHandlers postActions {{
-        {"volumeRealloc", &TDiskRegistryActor::HandleHttpInfo_VolumeRealloc  },
-        {"replaceDevice", &TDiskRegistryActor::HandleHttpInfo_ReplaceDevice  },
+    static const THttpHandlers postActions{{
+        {"volumeRealloc", &TDiskRegistryActor::HandleHttpInfo_VolumeRealloc},
+        {"replaceDevice", &TDiskRegistryActor::HandleHttpInfo_ReplaceDevice},
+        {"changeDeviceState",
+         &TDiskRegistryActor::HandleHttpInfo_ChangeDeviseState},
+        {"changeAgentState",
+         &TDiskRegistryActor::HandleHttpInfo_ChangeAgentState},
     }};
 
     static const THttpHandlers getActions {{

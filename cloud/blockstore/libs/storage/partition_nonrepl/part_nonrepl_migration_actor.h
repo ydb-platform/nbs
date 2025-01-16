@@ -13,7 +13,6 @@ class TNonreplicatedPartitionMigrationActor final
     , public IMigrationOwner
 {
 private:
-    const TStorageConfigPtr Config;
     TNonreplicatedPartitionConfigPtr SrcConfig;
     google::protobuf::RepeatedPtrField<NProto::TDeviceMigration> Migrations;
     NRdma::IClientPtr RdmaClient;
@@ -24,6 +23,7 @@ private:
 public:
     TNonreplicatedPartitionMigrationActor(
         TStorageConfigPtr config,
+        TDiagnosticsConfigPtr diagnosticsConfig,
         IProfileLogPtr profileLog,
         IBlockDigestGeneratorPtr digestGenerator,
         ui64 initialMigrationIndex,

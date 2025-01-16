@@ -5,6 +5,7 @@ SRCS(
     binary_writer.cpp
     client.cpp
     client_handler.cpp
+    error_handler.cpp
     limiter.cpp
     protocol.cpp
     server.cpp

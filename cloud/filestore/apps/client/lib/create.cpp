@@ -27,6 +27,7 @@ private:
     NCloud::NProto::EStorageMediaKind StorageMediaKind =
         NCloud::NProto::STORAGE_MEDIA_HDD;
     TString StorageMediaKindArg;
+    ui32 ShardCount = 0;
 
 public:
     TCreateCommand()
@@ -54,6 +55,11 @@ public:
         Opts.AddLongOption("storage-media-kind")
             .RequiredArgument("STR")
             .StoreResult(&StorageMediaKindArg);
+
+        Opts.AddLongOption("shard-count")
+            .RequiredArgument("NUM")
+            .Help("explicitly specifies the required shard count")
+            .StoreResult(&ShardCount);
     }
 
     bool Execute() override
@@ -80,6 +86,7 @@ public:
         }
 
         request->SetStorageMediaKind(StorageMediaKind);
+        request->SetShardCount(ShardCount);
 
         PerformanceProfileParams.FillRequest(*request);
 

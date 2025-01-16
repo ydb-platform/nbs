@@ -181,6 +181,7 @@ private:
             if (!IsShuttingDown() && !c->Cancelled()) {
                 STORAGE_INFO("lost connection with client, failed to receive: "
                     << CurrentExceptionMessage());
+                Handler->ProcessException(std::current_exception());
             }
         }
 
@@ -212,6 +213,7 @@ private:
             } catch (...) {
                 STORAGE_INFO("lost connection with client, failed to send: "
                     << CurrentExceptionMessage());
+                Handler->ProcessException(std::current_exception());
             }
 
             ReleaseRequest(response->RequestBytes);

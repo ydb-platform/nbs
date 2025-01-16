@@ -1,6 +1,8 @@
 LIBRARY(blockstore-libs-storage-testlib)
 
 SRCS(
+    counters_printer.cpp
+    diagnostics.cpp
     disk_agent_mock.cpp
     disk_registry_proxy_mock.cpp
     service_client.cpp

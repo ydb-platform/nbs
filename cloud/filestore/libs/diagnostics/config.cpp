@@ -1,5 +1,6 @@
 #include "config.h"
 
+#include <cloud/storage/core/libs/common/proto_helpers.h>
 #include <cloud/storage/core/protos/trace.pb.h>
 
 #include <library/cpp/monlib/service/pages/templates.h>
@@ -117,10 +118,9 @@ TDiagnosticsConfig::TDiagnosticsConfig(NProto::TDiagnosticsConfig diagnosticsCon
 #define FILESTORE_CONFIG_GETTER(name, type, ...)                               \
 type TDiagnosticsConfig::Get##name() const                                     \
 {                                                                              \
-    auto has = DiagnosticsConfig.Has##name();                                  \
-    return has ?                                                               \
-        ConvertValue<type>(DiagnosticsConfig.Get##name()) :                    \
-        Default##name;                                                         \
+    return NCloud::HasField(DiagnosticsConfig, #name)                          \
+        ? ConvertValue<type>(DiagnosticsConfig.Get##name())                    \
+        : Default##name;                                                       \
 }                                                                              \
 // FILESTORE_CONFIG_GETTER
 

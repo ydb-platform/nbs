@@ -11,6 +11,7 @@ using namespace NActors;
 
 IActorPtr CreateNonreplicatedPartition(
     TStorageConfigPtr config,
+    TDiagnosticsConfigPtr diagnosticsConfig,
     TNonreplicatedPartitionConfigPtr partConfig,
     TActorId statActorId,
     NRdma::IClientPtr rdmaClient)
@@ -18,6 +19,7 @@ IActorPtr CreateNonreplicatedPartition(
     if (rdmaClient) {
         return std::make_unique<TNonreplicatedPartitionRdmaActor>(
             std::move(config),
+            std::move(diagnosticsConfig),
             std::move(partConfig),
             std::move(rdmaClient),
             statActorId);
@@ -25,6 +27,7 @@ IActorPtr CreateNonreplicatedPartition(
 
     return std::make_unique<TNonreplicatedPartitionActor>(
         std::move(config),
+        std::move(diagnosticsConfig),
         std::move(partConfig),
         statActorId);
 }

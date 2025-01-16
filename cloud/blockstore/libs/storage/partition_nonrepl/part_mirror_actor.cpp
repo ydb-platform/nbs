@@ -45,6 +45,7 @@ TDuration CalculateScrubbingInterval(
 
 TMirrorPartitionActor::TMirrorPartitionActor(
         TStorageConfigPtr config,
+        TDiagnosticsConfigPtr diagnosticsConfig,
         IProfileLogPtr profileLog,
         IBlockDigestGeneratorPtr digestGenerator,
         TString rwClientId,
@@ -55,6 +56,7 @@ TMirrorPartitionActor::TMirrorPartitionActor(
         TActorId statActorId,
         TActorId resyncActorId)
     : Config(std::move(config))
+    , DiagnosticsConfig(std::move(diagnosticsConfig))
     , ProfileLog(std::move(profileLog))
     , BlockDigestGenerator(std::move(digestGenerator))
     , RdmaClient(std::move(rdmaClient))
@@ -110,6 +112,7 @@ void TMirrorPartitionActor::SetupPartitions(const TActorContext& ctx)
         if (replicaInfo.Migrations.size()) {
             actor = CreateNonreplicatedPartitionMigration(
                 Config,
+                DiagnosticsConfig,
                 ProfileLog,
                 BlockDigestGenerator,
                 0,  // initialMigrationIndex
@@ -121,6 +124,7 @@ void TMirrorPartitionActor::SetupPartitions(const TActorContext& ctx)
         } else {
             actor = CreateNonreplicatedPartition(
                 Config,
+                DiagnosticsConfig,
                 replicaInfo.Config,
                 SelfId(),
                 RdmaClient);

@@ -12,7 +12,9 @@ Y_UNIT_TEST_SUITE(TDiskCountersTests)
 {
     Y_UNIT_TEST(ShouldResetAfterPublish)
     {
-        TVolumeSelfCounters counters(EPublishingPolicy::All);
+        TVolumeSelfCounters counters(
+            EPublishingPolicy::All,
+            EHistogramCounterOption::ReportMultipleCounters);
         NMonitoring::TDynamicCountersPtr dynCounters =
             new NMonitoring::TDynamicCounters();
         counters.Register(dynCounters, false);

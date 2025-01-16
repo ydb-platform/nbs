@@ -1,4 +1,5 @@
 import argparse
+import logging
 import os
 
 import yatest.common as common
@@ -10,6 +11,7 @@ from cloud.filestore.tests.python.lib.common import shutdown
 
 
 PID_FILE_NAME = "local_mount_nfs_share_recipe.pid"
+MOUNT_PATH_FILE_NAME = "local_mount_nfs_share_recipe.mount_path"
 
 
 def start(argv):
@@ -52,13 +54,21 @@ def start(argv):
 
     with open(PID_FILE_NAME, 'w') as f:
         f.write(",".join([str(pid) for pid in pids]))
+    with open(MOUNT_PATH_FILE_NAME, 'w') as f:
+        f.write(",".join(paths))
 
     set_env("NFS_MOUNT_PATH", ",".join(paths))
 
 
 def stop(argv):
-    if not os.path.exists(PID_FILE_NAME):
-        return
+    # TODO(#2831): remove this debug information
+    logging.info(os.system("ps aux"))
+    logging.info(os.system("mount"))
+    with open(MOUNT_PATH_FILE_NAME) as f:
+        paths = f.read().split(",")
+        for path in paths:
+            logging.info("Mount path: %s", path)
+            logging.info(os.system(f"ls -la {path}"))
 
     with open(PID_FILE_NAME) as f:
         pids = [int(x) for x in f.read().split(",")]

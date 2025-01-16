@@ -152,30 +152,8 @@ def test_publish_volume_twice_on_the_same_node(access_type, vm_mode):
         csi.cleanup_after_test(env, volume_name, access_type, [pod_id1, pod_id2])
 
 
-# test can be removed after migration of all endpoints to the new format
 @pytest.mark.parametrize('access_type', ["mount", "block"])
-def test_restart_kubelet_with_old_format_endpoint(access_type):
-    env, run = csi.init()
-    try:
-        volume_name = "example-disk"
-        volume_size = 1024 ** 3
-        pod_name1 = "example-pod-1"
-        pod_id1 = "deadbeef1"
-        env.csi.create_volume(name=volume_name, size=volume_size)
-        # skip stage to create endpoint with old format
-        env.csi.publish_volume(pod_id1, volume_name, pod_name1, access_type)
-        # run stage/publish again to simulate kubelet restart
-        env.csi.stage_volume(volume_name, access_type)
-        env.csi.publish_volume(pod_id1, volume_name, pod_name1, access_type)
-    except subprocess.CalledProcessError as e:
-        csi.log_called_process_error(e)
-        raise
-    finally:
-        csi.cleanup_after_test(env, volume_name, access_type, [pod_id1])
-
-
-@pytest.mark.parametrize('access_type', ["mount", "block"])
-def test_restart_kubelet_with_new_format_endpoint(access_type):
+def test_kubelet_restart(access_type):
     env, run = csi.init()
     try:
         volume_name = "example-disk"

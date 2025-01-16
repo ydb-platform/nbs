@@ -3,6 +3,7 @@
 #include <cloud/blockstore/libs/client/session.h>
 #include <cloud/blockstore/libs/diagnostics/server_stats.h>
 #include <cloud/blockstore/libs/endpoints/endpoint_listener.h>
+#include <cloud/blockstore/libs/nbd/error_handler.h>
 #include <cloud/blockstore/libs/nbd/server.h>
 #include <cloud/blockstore/libs/nbd/server_handler.h>
 #include <cloud/blockstore/libs/service/device_handler.h>
@@ -53,6 +54,7 @@ public:
             Logging,
             std::move(session),
             ServerStats,
+            NBD::CreateErrorHandlerStub(),
             options);
 
         auto address = TNetworkAddress(

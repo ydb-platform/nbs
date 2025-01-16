@@ -337,6 +337,7 @@ void TVolumeActor::CompleteUpdateConfig(
 
         State.reset(new TVolumeState(
             Config,
+            DiagnosticsConfig,
             args.Meta,
             {args.MetaHistoryItem},
             // TODO: will it get updated later?

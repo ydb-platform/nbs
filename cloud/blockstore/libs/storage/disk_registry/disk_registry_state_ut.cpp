@@ -11934,6 +11934,126 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
         // Crit event shouldn't be reported
         UNIT_ASSERT_VALUES_EQUAL(2, criticalEvents->Val());
     }
-}
 
+    Y_UNIT_TEST(ShouldRemoveAlreadyLeakedDevices)
+    {
+        TTestExecutor executor;
+
+        executor.WriteTx([&](TDiskRegistryDatabase db) { db.InitSchema(); });
+
+        const auto agent = AgentConfig(
+            1,
+            "agent-1",
+            {
+                Device("NVMENBS01", "uuid-2.1", "rack-2"),
+                Device("NVMENBS02", "uuid-2.2", "rack-2"),
+                Device("NVMENBS03", "uuid-2.3", "rack-2"),
+            });
+
+        const TString leakedDirtyDevice = "uuid-100.1";
+        const TString leakedSuspendedDevice = "uuid-100.2";
+        const TString leakedAutomaticallyReplacedDevice = "uuid-100.3";
+
+        const TVector<TString> allLeakedDevices = {
+            leakedDirtyDevice,
+            leakedSuspendedDevice,
+            leakedAutomaticallyReplacedDevice};
+
+        // Add leaked devices.
+        executor.WriteTx(
+            [&](TDiskRegistryDatabase db)
+            {
+                db.UpdateDirtyDevice(leakedDirtyDevice, "");
+                NProto::TSuspendedDevice device;
+                device.SetId(leakedSuspendedDevice);
+                db.UpdateSuspendedDevice(device);
+                db.AddAutomaticallyReplacedDevice(
+                    TAutomaticallyReplacedDeviceInfo{
+                        leakedAutomaticallyReplacedDevice,
+                        Now()});
+            });
+
+        // Register agent.
+        executor.WriteTx(
+            [&](TDiskRegistryDatabase db)
+            {
+                auto state = TDiskRegistryStateBuilder::LoadState(db).Build();
+
+                auto orphanDevices = state.FindOrphanDevices();
+                UNIT_ASSERT_EQUAL(static_cast<size_t>(3), orphanDevices.size());
+                for (const auto& leakedDevice: allLeakedDevices) {
+                    UNIT_ASSERT_UNEQUAL(
+                        orphanDevices.end(),
+                        Find(orphanDevices, leakedDevice));
+                }
+
+                state.RemoveOrphanDevices(db, orphanDevices);
+
+                // Check that device cleaned up from tables.
+                const auto dirtyDevicesFromState = state.GetDirtyDevices();
+                UNIT_ASSERT_EQUAL(
+                    dirtyDevicesFromState.end(),
+                    FindIf(
+                        dirtyDevicesFromState,
+                        [&](const TDeviceConfig& val)
+                        { return val.deviceuuid() == leakedDirtyDevice; }));
+
+                TVector<TDirtyDevice> dirtyDevicesDb;
+                db.ReadDirtyDevices(dirtyDevicesDb);
+                UNIT_ASSERT_EQUAL(
+                    dirtyDevicesDb.end(),
+                    FindIf(
+                        dirtyDevicesDb,
+                        [&](const TDirtyDevice& val)
+                        { return val.Id == leakedDirtyDevice; }));
+
+                const auto suspendedDevicesFromState =
+                    state.GetSuspendedDevices();
+
+                auto deviceIdPredicateForSuspendDevices =
+                    [&](const NProto::TSuspendedDevice& val)
+                {
+                    return val.GetId() == leakedSuspendedDevice;
+                };
+
+                UNIT_ASSERT_EQUAL(
+                    suspendedDevicesFromState.end(),
+                    FindIf(
+                        suspendedDevicesFromState,
+                        deviceIdPredicateForSuspendDevices));
+
+                TVector<NProto::TSuspendedDevice> suspendedDevicesDb;
+                db.ReadSuspendedDevices(suspendedDevicesDb);
+                UNIT_ASSERT_EQUAL(
+                    suspendedDevicesDb.end(),
+                    FindIf(
+                        suspendedDevicesDb,
+                        deviceIdPredicateForSuspendDevices));
+
+                auto deviceIdPredicateForAutomaticallyReplacedDevices =
+                    [&](const TAutomaticallyReplacedDeviceInfo& val)
+                {
+                    return val.DeviceId == leakedAutomaticallyReplacedDevice;
+                };
+
+                const auto automaticallyReplacedDevicesFromState =
+                    state.GetAutomaticallyReplacedDevices();
+                UNIT_ASSERT_EQUAL(
+                    automaticallyReplacedDevicesFromState.end(),
+                    FindIf(
+                        automaticallyReplacedDevicesFromState,
+                        deviceIdPredicateForAutomaticallyReplacedDevices));
+
+                TDeque<TAutomaticallyReplacedDeviceInfo>
+                    automaticallyReplacedDevicesFromDb;
+                db.ReadAutomaticallyReplacedDevices(
+                    automaticallyReplacedDevicesFromDb);
+                UNIT_ASSERT_EQUAL(
+                    automaticallyReplacedDevicesFromDb.end(),
+                    FindIf(
+                        automaticallyReplacedDevicesFromDb,
+                        deviceIdPredicateForAutomaticallyReplacedDevices));
+            });
+    }
+}
 }   // namespace NCloud::NBlockStore::NStorage

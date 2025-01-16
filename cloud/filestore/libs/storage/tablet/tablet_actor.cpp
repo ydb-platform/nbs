@@ -909,6 +909,8 @@ STFUNC(TIndexTabletActor::StateBoot)
         IgnoreFunc(TEvIndexTabletPrivate::TEvUpdateLeakyBucketCounters);
         IgnoreFunc(TEvIndexTabletPrivate::TEvReleaseCollectBarrier);
         IgnoreFunc(TEvIndexTabletPrivate::TEvForcedRangeOperationProgress);
+        IgnoreFunc(TEvIndexTabletPrivate::TEvLoadNodeRefsRequest);
+        IgnoreFunc(TEvIndexTabletPrivate::TEvLoadNodesRequest);
 
         IgnoreFunc(TEvHiveProxy::TEvReassignTabletResponse);
 
@@ -943,11 +945,20 @@ STFUNC(TIndexTabletActor::StateInit)
             TEvIndexTabletPrivate::TEvNodeUnlinkedInShard,
             HandleNodeUnlinkedInShard);
         HFunc(
+            TEvIndexTabletPrivate::TEvNodeRenamedInDestination,
+            HandleNodeRenamedInDestination);
+        HFunc(
             TEvIndexTabletPrivate::TEvGetShardStatsCompleted,
             HandleGetShardStatsCompleted);
         HFunc(
             TEvIndexTabletPrivate::TEvShardRequestCompleted,
             HandleShardRequestCompleted);
+        HFunc(
+            TEvIndexTabletPrivate::TEvLoadNodeRefsRequest,
+            HandleLoadNodeRefsRequest);
+        HFunc(
+            TEvIndexTabletPrivate::TEvLoadNodesRequest,
+            HandleLoadNodesRequest);
 
         FILESTORE_HANDLE_REQUEST(WaitReady, TEvIndexTablet)
 
@@ -990,11 +1001,20 @@ STFUNC(TIndexTabletActor::StateWork)
             TEvIndexTabletPrivate::TEvNodeUnlinkedInShard,
             HandleNodeUnlinkedInShard);
         HFunc(
+            TEvIndexTabletPrivate::TEvNodeRenamedInDestination,
+            HandleNodeRenamedInDestination);
+        HFunc(
             TEvIndexTabletPrivate::TEvGetShardStatsCompleted,
             HandleGetShardStatsCompleted);
         HFunc(
             TEvIndexTabletPrivate::TEvShardRequestCompleted,
             HandleShardRequestCompleted);
+        HFunc(
+            TEvIndexTabletPrivate::TEvLoadNodeRefsRequest,
+            HandleLoadNodeRefsRequest);
+        HFunc(
+            TEvIndexTabletPrivate::TEvLoadNodesRequest,
+            HandleLoadNodesRequest);
 
         HFunc(TEvents::TEvWakeup, HandleWakeup);
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
@@ -1042,6 +1062,8 @@ STFUNC(TIndexTabletActor::StateZombie)
 
         IgnoreFunc(TEvIndexTabletPrivate::TEvReleaseCollectBarrier);
         IgnoreFunc(TEvIndexTabletPrivate::TEvForcedRangeOperationProgress);
+        IgnoreFunc(TEvIndexTabletPrivate::TEvLoadNodeRefsRequest);
+        IgnoreFunc(TEvIndexTabletPrivate::TEvLoadNodesRequest);
 
         IgnoreFunc(TEvIndexTabletPrivate::TEvReadDataCompleted);
         IgnoreFunc(TEvIndexTabletPrivate::TEvWriteDataCompleted);
@@ -1060,6 +1082,9 @@ STFUNC(TIndexTabletActor::StateZombie)
         HFunc(
             TEvIndexTabletPrivate::TEvNodeUnlinkedInShard,
             HandleNodeUnlinkedInShard);
+        HFunc(
+            TEvIndexTabletPrivate::TEvNodeRenamedInDestination,
+            HandleNodeRenamedInDestination);
         HFunc(
             TEvIndexTabletPrivate::TEvGetShardStatsCompleted,
             HandleGetShardStatsCompleted);
@@ -1086,6 +1111,8 @@ STFUNC(TIndexTabletActor::StateBroken)
         IgnoreFunc(TEvIndexTabletPrivate::TEvUpdateLeakyBucketCounters);
         IgnoreFunc(TEvIndexTabletPrivate::TEvReleaseCollectBarrier);
         IgnoreFunc(TEvIndexTabletPrivate::TEvForcedRangeOperationProgress);
+        IgnoreFunc(TEvIndexTabletPrivate::TEvLoadNodeRefsRequest);
+        IgnoreFunc(TEvIndexTabletPrivate::TEvLoadNodesRequest);
 
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
         HFunc(TEvTablet::TEvTabletDead, HandleTabletDead);
@@ -1108,6 +1135,9 @@ STFUNC(TIndexTabletActor::StateBroken)
         HFunc(
             TEvIndexTabletPrivate::TEvNodeUnlinkedInShard,
             HandleNodeUnlinkedInShard);
+        HFunc(
+            TEvIndexTabletPrivate::TEvNodeRenamedInDestination,
+            HandleNodeRenamedInDestination);
         HFunc(
             TEvIndexTabletPrivate::TEvGetShardStatsCompleted,
             HandleGetShardStatsCompleted);

@@ -2,9 +2,11 @@ RECURSE(
     bad-guest
     build-fresh-blob
     chaos-monkey
+    disk-registry-state-generator
     eternal_tests
     fake-conductor
     fake-nbs
+    fake-root-kms
     fake-vhost-server
     generate-agents
     infra-client
@@ -14,7 +16,6 @@ RECURSE(
     pd-metadata-bench
     plugintest
     rdma-test
-    fake-root-kms
     stable-plugin
     verify-test
 )

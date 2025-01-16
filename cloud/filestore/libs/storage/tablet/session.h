@@ -233,8 +233,10 @@ public:
         }
 
         auto entry = DupCacheEntries.front();
-        const auto erased = DupCache.erase(entry.GetRequestId());
-        Y_DEBUG_ABORT_UNLESS(erased || entry.Dropped);
+        if (!entry.Dropped) {
+            const auto erased = DupCache.erase(entry.GetRequestId());
+            Y_DEBUG_ABORT_UNLESS(erased);
+        }
         DupCacheEntries.pop_front();
 
         return entry.GetEntryId();

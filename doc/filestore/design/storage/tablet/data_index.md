@@ -26,6 +26,7 @@ It is the main layer intended for long-term data storage.
 * Each blob may contain blocks belonging to multiple different inodes.
 * Each range is supposed to contain up to 4MiB of data (sometimes slightly more due to hash collisions).
 * Each write generates DeletionMarkers which are later applied to the MixedBlocks table via the [Cleanup operation](https://github.com/ydb-platform/nbs/blob/main/cloud/filestore/libs/storage/tablet/tablet_actor_cleanup.cpp).
+* Block metadata for each blob is stored in a [BlockList](block_list.md).
 
 ![mixed_blocks_svg](../../../excalidraw/mixed_blocks.svg)
 

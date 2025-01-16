@@ -578,4 +578,48 @@ bool Flock(const TFileHandle& handle, int operation)
     return true;
 }
 
+////////////////////////////////////////////////////////////////////////////////
+
+UnixCredentialsGuard::UnixCredentialsGuard(uid_t uid, gid_t gid)
+{
+    OriginalUid = geteuid();
+    if (OriginalUid != 0) {
+        // need to be root to set euid/egid
+        return;
+    }
+
+    OriginalGid = getegid();
+
+    if (uid == OriginalUid && gid == OriginalGid) {
+        return;
+    }
+
+    // use syscall directly to change uid/gid per thread instead of glibc
+    // version of setresgid/setresuid since they will change uid/gid for all
+    // threads
+    int ret = syscall(SYS_setresgid, -1, gid, -1);
+    if (ret == -1) {
+        return;
+    }
+
+    ret = syscall(SYS_setresuid, -1, uid, -1);
+    if (ret == -1) {
+        syscall(SYS_setresgid, -1, OriginalGid, -1);
+        return;
+    }
+
+    IsRestoreNeeded = true;
+}
+
+UnixCredentialsGuard::~UnixCredentialsGuard()
+{
+    if (!IsRestoreNeeded) {
+        return;
+    }
+
+    syscall(SYS_setresuid, -1, OriginalUid, -1);
+    syscall(SYS_setresgid, -1, OriginalGid, -1);
+}
+
+
 }   // namespace NCloud::NFileStore::NLowLevel

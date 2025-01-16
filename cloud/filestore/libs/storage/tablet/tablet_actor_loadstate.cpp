@@ -311,7 +311,23 @@ void TIndexTabletActor::CompleteTx_LoadState(
     if (Config->GetInMemoryIndexCacheEnabled() &&
         Config->GetInMemoryIndexCacheLoadOnTabletStart())
     {
-        LoadNodeRefs(ctx, 0, "");
+        const ui64 maxRows =
+            Config->GetInMemoryIndexCacheLoadOnTabletStartRowsPerTx();
+
+        // If necessary, code can iteratively call ReadNodeRefs for all nodes.
+        // This will populate cache with node refs and allow us to perform
+        // ListNodes using in-memory index state by knowing that the nodeRefs
+        // cache is exhaustive
+        ctx.Send(
+            SelfId(),
+            new TEvIndexTabletPrivate::TEvLoadNodeRefsRequest(0, "", maxRows));
+
+        // Same logic is performed for batch loading nodes as well. The only
+        // difference is that we do not need to keep track of the exhaustiveness
+        // of the cache
+        ctx.Send(
+            SelfId(),
+            new TEvIndexTabletPrivate::TEvLoadNodesRequest(0, maxRows));
     }
 
     ScheduleSyncSessions(ctx);

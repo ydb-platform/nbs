@@ -108,9 +108,9 @@ TFuture<NProto::TError> TNetlinkDevice::Start()
         ConnectSocket();
         Connect();
 
-    } catch (const TServiceError& e) {
+    } catch (const std::exception& e) {
         StartResult.SetValue(MakeError(
-            e.GetCode(),
+            E_FAIL,
             TStringBuilder()
                 << "unable to configure " << DeviceName << ": " << e.what()));
     }

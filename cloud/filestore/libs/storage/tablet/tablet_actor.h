@@ -476,17 +476,6 @@ private:
 
     TVector<ui32> GenerateForceDeleteZeroCompactionRanges() const;
 
-    /**
-     * @brief If necessary, code can iteratively call ReadNodeRefs for all
-     * nodes. This will populate cache with node refs and allow us to perform
-     * ListNodes using in-memory index state by knowing that the nodeRefs cache
-     * is exhaustive.
-     */
-    void LoadNodeRefs(
-        const NActors::TActorContext& ctx,
-        ui64 nodeId,
-        const TString& name);
-
     void AddTransaction(
         TRequestInfo& transaction,
         TRequestInfo::TCancelRoutine cancelRoutine);
@@ -612,6 +601,13 @@ private:
         ui64 opLogEntryId,
         TUnlinkNodeInShardResult result);
 
+    void RegisterRenameNodeInDestinationActor(
+        const NActors::TActorContext& ctx,
+        TRequestInfoPtr requestInfo,
+        NProtoPrivate::TRenameNodeInDestinationRequest request,
+        ui64 requestId,
+        ui64 opLogEntryId);
+
     void ReplayOpLog(
         const NActors::TActorContext& ctx,
         const TVector<NProto::TOpLogEntry>& opLog);
@@ -722,12 +718,24 @@ private:
         const TEvIndexTabletPrivate::TEvForcedRangeOperationProgress::TPtr& ev,
         const NActors::TActorContext& ctx);
 
+    void HandleLoadNodeRefsRequest(
+        const TEvIndexTabletPrivate::TEvLoadNodeRefsRequest::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleLoadNodesRequest(
+        const TEvIndexTabletPrivate::TEvLoadNodesRequest::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
     void HandleNodeCreatedInShard(
         const TEvIndexTabletPrivate::TEvNodeCreatedInShard::TPtr& ev,
         const NActors::TActorContext& ctx);
 
     void HandleNodeUnlinkedInShard(
         const TEvIndexTabletPrivate::TEvNodeUnlinkedInShard::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleNodeRenamedInDestination(
+        const TEvIndexTabletPrivate::TEvNodeRenamedInDestination::TPtr& ev,
         const NActors::TActorContext& ctx);
 
     void HandleGetShardStatsCompleted(
