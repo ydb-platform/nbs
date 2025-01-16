@@ -15,8 +15,8 @@ namespace NLowLevel {
 
 class UnixCredentialsGuard {
 private:
-    uid_t Uid = -1;
-    gid_t Gid = -1;
+    uid_t OriginalUid = -1;
+    gid_t OriginalGid = -1;
     bool IsRestoreNeeded = false;
 
 public:

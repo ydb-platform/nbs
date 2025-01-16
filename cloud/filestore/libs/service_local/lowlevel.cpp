@@ -582,15 +582,15 @@ bool Flock(const TFileHandle& handle, int operation)
 
 UnixCredentialsGuard::UnixCredentialsGuard(uid_t uid, gid_t gid)
 {
-    Uid = geteuid();
-    if (Uid != 0) {
+    OriginalUid = geteuid();
+    if (OriginalUid != 0) {
         // need to be root to set euid/egid
         return;
     }
 
-    Gid = getegid();
+    OriginalGid = getegid();
 
-    if (uid == Uid && gid == Gid) {
+    if (uid == OriginalUid && gid == OriginalGid) {
         return;
     }
 
@@ -604,7 +604,7 @@ UnixCredentialsGuard::UnixCredentialsGuard(uid_t uid, gid_t gid)
 
     ret = syscall(SYS_setresuid, -1, uid, -1);
     if (ret == -1) {
-        setresgid(-1, Gid, -1);
+        syscall(SYS_setresuid, -1, OriginalGid, -1);
         return;
     }
 
@@ -617,8 +617,8 @@ UnixCredentialsGuard::~UnixCredentialsGuard()
         return;
     }
 
-    syscall(SYS_setresuid, -1, Uid, -1);
-    syscall(SYS_setresgid, -1, Gid, -1);
+    syscall(SYS_setresuid, -1, OriginalUid, -1);
+    syscall(SYS_setresgid, -1, OriginalGid, -1);
 }
 
 
