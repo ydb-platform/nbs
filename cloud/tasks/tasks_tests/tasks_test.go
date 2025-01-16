@@ -180,6 +180,27 @@ func createServicesWithConfig(
 	}
 }
 
+func createServicesWithMetricsRegistry(
+	t *testing.T,
+	ctx context.Context,
+	db *persistence.YDBClient,
+	runnersCount uint64,
+	schedulerRegistry metrics.Registry,
+) services {
+
+	config := proto.Clone(newDefaultConfig()).(*tasks_config.TasksConfig)
+	config.RunnersCount = &runnersCount
+	config.StalkingRunnersCount = &runnersCount
+
+	return createServicesWithConfig(
+		t,
+		ctx,
+		db,
+		config,
+		schedulerRegistry,
+	)
+}
+
 func createServices(
 	t *testing.T,
 	ctx context.Context,
@@ -187,14 +208,11 @@ func createServices(
 	runnersCount uint64,
 ) services {
 
-	config := proto.Clone(newDefaultConfig()).(*tasks_config.TasksConfig)
-	config.RunnersCount = &runnersCount
-	config.StalkingRunnersCount = &runnersCount
-	return createServicesWithConfig(
+	return createServicesWithMetricsRegistry(
 		t,
 		ctx,
 		db,
-		config,
+		runnersCount,
 		metrics_empty.NewRegistry(),
 	)
 }
@@ -720,15 +738,16 @@ func TestTasksInflightLimit(t *testing.T) {
 	require.NoError(t, err)
 	defer db.Close(ctx)
 
-	runnersCount := uint64(3 * inflightLongTaskPerNodeLimit)
-	config := proto.Clone(newDefaultConfig()).(*tasks_config.TasksConfig)
-	config.RunnersCount = &runnersCount
-	config.StalkingRunnersCount = &runnersCount
-
 	registry := mocks.NewIgnoreUnknownCallsRegistryMock()
 	defer registry.AssertAllExpectations(t)
 
-	s := createServicesWithConfig(t, ctx, db, config, registry)
+	s := createServicesWithMetricsRegistry(
+		t,
+		ctx,
+		db,
+		3*inflightLongTaskPerNodeLimit, // runnersCount
+		registry,
+	)
 
 	err = registerDoublerTask(s.registry)
 	require.NoError(t, err)
@@ -804,6 +823,8 @@ func TestTasksInflightLimit(t *testing.T) {
 	for {
 		select {
 		case <-ticker.C:
+			// Note that inflight task is not the same as task with status 'running'.
+			// The task with status 'running' might not be executed right now.
 			count := int(inflightLongTasksCount.Load())
 			logging.Debug(ctx, "There are %v inflight tasks of type long", count)
 			// We have separate inflight per node limit for each lister.
