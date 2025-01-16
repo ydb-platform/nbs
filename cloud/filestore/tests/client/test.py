@@ -293,6 +293,38 @@ def test_diff():
     return ret
 
 
+def test_rm():
+    client, results_path = __init_test()
+    client.create("fs", "test_cloud", "test_folder", BLOCK_SIZE, BLOCKS_COUNT)
+
+    client.mkdir("fs", "/a")
+    client.mkdir("fs", "/a/b")
+    client.touch("fs", "/a/b/c.txt")
+    client.touch("fs", "/a/b/d.txt")
+
+    # remove by path
+    out = __exec_ls(client, "fs", "/a/b")
+    out += client.rm("fs", "/a/b/c.txt")
+
+    # remove by parentId + name
+    out += __exec_ls(client, "fs", "/a/b")
+    node_id = json.loads(client.stat("fs", "/a/b"))["Id"]
+    out += client.rm("fs", "d.txt", "--node", str(node_id))
+    out += __exec_ls(client, "fs", "/a/b")
+
+    # remove a directory
+    out += __exec_ls(client, "fs", "/a")
+    out += client.rm("fs", "/a/b", "-r")
+    out += __exec_ls(client, "fs", "/a")
+
+    client.destroy("fs")
+    with open(results_path, "wb") as results_file:
+        results_file.write(out)
+
+    ret = common.canonical_file(results_path, local=True)
+    return ret
+
+
 def test_write_ls_rm_ls():
     client, results_path = __init_test()
 

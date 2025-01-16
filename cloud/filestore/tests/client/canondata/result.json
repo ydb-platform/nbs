@@ -38,6 +38,9 @@
     "test.test_resize": {
         "uri": "file://test.test_resize/results.txt"
     },
+    "test.test_rm": {
+        "uri": "file://test.test_rm/results.txt"
+    },
     "test.test_stat": {
         "uri": "file://test.test_stat/results.txt"
     },
