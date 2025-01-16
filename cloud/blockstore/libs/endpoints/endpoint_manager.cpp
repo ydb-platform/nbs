@@ -2,7 +2,6 @@
 
 #include "endpoint_events.h"
 #include "endpoint_listener.h"
-#include "library/cpp/threading/future/async_semaphore.h"
 #include "session_manager.h"
 
 #include <cloud/blockstore/libs/client/config.h>
@@ -428,8 +427,6 @@ private:
 
     THashMap<TString, TEndpoint> Endpoints;
 
-    THashMap<TString, TAsyncSemaphore::TPtr> EndpointsLock;
-
     NClient::IMetricClientPtr RestoringClient;
     TSet<TString> RestoringEndpoints;
 
@@ -573,7 +570,6 @@ private:
         }
         return false;
     }
-
 
     NProto::TStartEndpointResponse StartEndpointImpl(
         TCallContextPtr ctx,
