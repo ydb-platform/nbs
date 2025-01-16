@@ -15,7 +15,7 @@ namespace {
 struct TNode
 {
     ui64 Id = 0;
-    ui64 ParentId;
+    ui64 ParentId = 0;
     TString Name;
     TString ShardFileSystemId;
     TString ShardNodeName;
@@ -141,15 +141,15 @@ public:
             struct TResult
             {
                 TString Shard;
-                TString Name;
+                TString NodeName;
                 ui64 Size = 0;
 
                 bool operator<(const TResult& rhs) const
                 {
                     const auto s = Max<ui64>() - Size;
                     const auto rs = Max<ui64>() - rhs.Size;
-                    return std::tie(Shard, s, Name) <
-                           std::tie(rhs.Shard, rs, rhs.Name);
+                    return std::tie(Shard, s, NodeName) <
+                           std::tie(rhs.Shard, rs, rhs.NodeName);
                 }
             };
 
@@ -178,7 +178,7 @@ public:
 
             Sort(results.begin(), results.end());
             for (const auto& result: results) {
-                Cout << result.Shard << "\t" << result.Name << "\t"
+                Cout << result.Shard << "\t" << result.NodeName << "\t"
                      << FormatByteSize(result.Size) << " (" << result.Size
                      << ")"
                      << "\n";
