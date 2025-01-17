@@ -551,10 +551,6 @@ public:
         });
     }
 
-    TFuture<NProto::TStartEndpointResponse> RestoreSingleEndpointForTesting(
-        TCallContextPtr ctx,
-        std::shared_ptr<NProto::TStartEndpointRequest> request) override;
-
     TFuture<NProto::TStartEndpointResponse> RestoreSingleEndpoint(
         TCallContextPtr ctx,
         std::shared_ptr<NProto::TStartEndpointRequest> request);
@@ -723,14 +719,6 @@ private:
 };
 
 ////////////////////////////////////////////////////////////////////////////////
-
-TFuture<NProto::TStartEndpointResponse>
-TEndpointManager::RestoreSingleEndpointForTesting(
-    TCallContextPtr ctx,
-    std::shared_ptr<NProto::TStartEndpointRequest> request)
-{
-    return RestoreSingleEndpoint(ctx, std::move(request));
-}
 
 TFuture<NProto::TStartEndpointResponse> TEndpointManager::RestoreSingleEndpoint(
     TCallContextPtr ctx,

@@ -37,11 +37,6 @@ struct IEndpointManager
 #undef ENDPOINT_DECLARE_METHOD
 
     virtual NThreading::TFuture<void> RestoreEndpoints() = 0;
-
-    virtual NThreading::TFuture<NProto::TStartEndpointResponse>
-    RestoreSingleEndpointForTesting(
-        TCallContextPtr ctx,
-        std::shared_ptr<NProto::TStartEndpointRequest> request) = 0;
 };
 
 ////////////////////////////////////////////////////////////////////////////////

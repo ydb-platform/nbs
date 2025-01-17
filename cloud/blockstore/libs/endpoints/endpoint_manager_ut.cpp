@@ -165,10 +165,78 @@ struct TMockSessionManager final: public ISessionManager
 
 ////////////////////////////////////////////////////////////////////////////////
 
+class TSlowDevice final: public NBD::IDevice
+{
+public:
+    explicit TSlowDevice(std::weak_ptr<::NCloud::TExecutor> executor)
+        : Executor(std::move(executor))
+    {}
+
+    TExecutorPtr GetExecutor()
+    {
+        if (Executor.expired()) {
+            return {};
+        }
+
+        return Executor.lock();
+    }
+
+    NThreading::TFuture<NProto::TError> StubFunction()
+    {
+        auto executor = GetExecutor();
+        if (!executor) {
+            return NThreading::MakeFuture(MakeError(S_OK));
+        }
+
+        return executor->Execute(
+            [weakExec = Executor]()
+            {
+
+                auto executor = weakExec.lock();
+                if (!executor) {
+                    return MakeError(S_OK);
+                }
+                auto stubFuture =
+                    executor->Execute([]() {});
+
+                executor->WaitFor(stubFuture);
+                return MakeError(S_OK);
+            });
+    }
+
+    NThreading::TFuture<NProto::TError> Start() override
+    {
+        return StubFunction();
+    }
+
+    NThreading::TFuture<NProto::TError> Stop(bool deleteDevice) override
+    {
+        Y_UNUSED(deleteDevice);
+
+        return StubFunction();
+    }
+
+    NThreading::TFuture<NProto::TError> Resize(ui64 deviceSizeInBytes) override
+    {
+        Y_UNUSED(deviceSizeInBytes);
+
+        return StubFunction();
+    }
+
+private:
+    std::weak_ptr<::NCloud::TExecutor> Executor;
+};
+
 struct TTestDeviceFactory
     : public NBD::IDeviceFactory
 {
     TVector<TString> Devices;
+    std::weak_ptr<::NCloud::TExecutor> Executor;
+
+    void SetExecutor(std::weak_ptr<::NCloud::TExecutor> executor)
+    {
+        Executor = std::move(executor);
+    }
 
     NBD::IDevicePtr Create(
         const TNetworkAddress& connectAddress,
@@ -180,7 +248,7 @@ struct TTestDeviceFactory
         Y_UNUSED(blockCount);
         Y_UNUSED(blockSize);
         Devices.push_back(deviceName);
-        return NBD::CreateDeviceStub();
+        return std::make_shared<TSlowDevice>(Executor);
     }
 };
 
@@ -1942,22 +2010,39 @@ Y_UNIT_TEST_SUITE(TEndpointManagerTest)
 
     Y_UNIT_TEST(ShouldNotCrashRestoreEndpointWhileStartingEndpoint)
     {
+        TString nbdDevPrefix = CreateGuidAsString() + "_nbd";
+        auto nbdDevice = nbdDevPrefix + "0";
+        auto nbdDeviceAnother = nbdDevPrefix + "1";
+        TFsPath(nbdDevice).Touch();
+        TFsPath(nbdDeviceAnother).Touch();
+        Y_DEFER {
+            TFsPath(nbdDevice).DeleteIfExists();
+            TFsPath(nbdDeviceAnother).DeleteIfExists();
+        };
         TTempDir dir;
         auto socketPath = dir.Path() / "testSocket";
         TString diskId = "testDiskId";
-        auto ipcType = NProto::IPC_GRPC;
+        auto ipcType = NProto::IPC_NBD;
 
         TBootstrap bootstrap;
         TMap<TString, NProto::TMountVolumeRequest> mountedVolumes;
         bootstrap.Service = CreateTestService(mountedVolumes);
 
-        auto grpcListener =
-            CreateSocketEndpointListener(bootstrap.Logging, 16, MODE0660);
-        grpcListener->SetClientStorageFactory(CreateClientStorageFactoryStub());
-        bootstrap.EndpointListeners = {{NProto::IPC_GRPC, grpcListener}};
+        bootstrap.Options.NbdDevicePrefix = nbdDevPrefix;
+
+        auto deviceFactory = std::make_shared<TTestDeviceFactory>();
+        deviceFactory->SetExecutor(bootstrap.Executor);
+        bootstrap.NbdDeviceFactory = deviceFactory;
+
+        auto listener = std::make_shared<TTestEndpointListener>();
+        bootstrap.EndpointListeners = {{ NProto::IPC_NBD, listener }};
 
         auto manager = CreateEndpointManager(bootstrap);
         bootstrap.Start();
+        Y_DEFER
+        {
+            bootstrap.Stop();
+        };
 
         NProto::TStartEndpointRequest request;
         SetDefaultHeaders(request);
@@ -1965,21 +2050,26 @@ Y_UNIT_TEST_SUITE(TEndpointManagerTest)
         request.SetDiskId(diskId);
         request.SetClientId(TestClientId);
         request.SetIpcType(ipcType);
+        request.SetNbdDeviceFile(nbdDevice);
+        request.SetPersistent(true);
 
+        auto [str, error] = SerializeEndpoint(request);
+        UNIT_ASSERT_C(!HasError(error), error);
+
+        bootstrap.EndpointStorage->AddEndpoint(socketPath.GetPath(), str);
+
+        request.SetNbdDeviceFile(nbdDeviceAnother);
         socketPath.DeleteIfExists();
         UNIT_ASSERT(!socketPath.Exists());
 
         {
             auto futureStartEndpoint = StartEndpoint(*manager, request);
-            auto futureRestoreEndpoint =
-                manager->RestoreSingleEndpointForTesting(
-                    MakeIntrusive<TCallContext>(),
-                    std::make_shared<NProto::TStartEndpointRequest>(request));
+            bootstrap.Executor
+                ->Execute([manager = manager.get()]() mutable
+                          { manager->RestoreEndpoints(); })
+                .Wait();
 
-            UNIT_ASSERT(
-                !HasError(futureStartEndpoint.GetValue(TDuration::Seconds(5))));
-            UNIT_ASSERT(!HasError(
-                futureRestoreEndpoint.GetValue(TDuration::Seconds(5))));
+            futureStartEndpoint.Wait();
         }
     }
 }
