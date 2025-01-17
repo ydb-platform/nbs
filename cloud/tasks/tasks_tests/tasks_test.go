@@ -824,7 +824,8 @@ func TestTasksInflightLimit(t *testing.T) {
 		select {
 		case <-ticker.C:
 			// Note that inflight task is not the same as task with status 'running'.
-			// The task with status 'running' might not be executing right now.
+			// The task with status 'running' might not be executing right now
+			// in case of retriable or interrupt execution error.
 			count := int(inflightLongTasksCount.Load())
 			logging.Debug(ctx, "There are %v inflight tasks of type long", count)
 			// We have separate inflight per node limit for each lister.
