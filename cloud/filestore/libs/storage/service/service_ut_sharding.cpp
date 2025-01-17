@@ -5289,6 +5289,104 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
                 renameResponse->GetError().GetMessage());
         }
     }
+
+    SERVICE_TEST_SID_SELECT_IN_LEADER_ONLY(
+        ShouldProcessRenameNodeInDestinationErrorWithDirectoriesInShards)
+    {
+        config.SetMultiTabletForwardingEnabled(true);
+        config.SetDirectoryCreationInShardsEnabled(true);
+        TTestEnv env({}, config);
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+        TFileSystemConfig fsConfig;
+        fsConfig.DirectoryCreationInShardsEnabled = true;
+        CreateFileSystem(service, fsConfig);
+
+        auto headers = service.InitSession(fsConfig.FsId, "client");
+
+        // creating 2 dirs - we'll move a file from one dir to another
+
+        ui64 dir1Id = service.CreateNode(
+            headers,
+            TCreateNodeArgs::Directory(RootNodeId, "dir1")
+        )->Record.GetNode().GetId();
+
+        ui64 dir2Id = service.CreateNode(
+            headers,
+            TCreateNodeArgs::Directory(RootNodeId, "dir2")
+        )->Record.GetNode().GetId();
+
+        UNIT_ASSERT_VALUES_UNEQUAL(0, ExtractShardNo(dir1Id));
+        UNIT_ASSERT_VALUES_UNEQUAL(0, ExtractShardNo(dir2Id));
+        UNIT_ASSERT_VALUES_UNEQUAL(
+            ExtractShardNo(dir1Id),
+            ExtractShardNo(dir2Id));
+
+        // creating a file which we will try move
+
+        ui64 node1Id = service.CreateNode(
+            headers,
+            TCreateNodeArgs::File(dir1Id, "file1")
+        )->Record.GetNode().GetId();
+
+        // creating a file which will prevent the move from succeeding
+
+        ui64 node2Id = service.CreateNode(
+            headers,
+            TCreateNodeArgs::File(dir2Id, "file2")
+        )->Record.GetNode().GetId();
+
+        UNIT_ASSERT_VALUES_UNEQUAL(node1Id, node2Id);
+
+        service.SendRenameNodeRequest(
+            headers,
+            dir1Id,
+            "file1",
+            dir2Id,
+            "file2",
+            ProtoFlag(NProto::TRenameNodeRequest::F_NOREPLACE));
+
+        {
+            auto renameResponse = service.RecvRenameNodeResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_FS_EXIST,
+                renameResponse->GetError().GetCode(),
+                renameResponse->GetError().GetMessage());
+        }
+
+        // listing the nodes in dir1 and dir2 - no changes should be done
+
+        {
+            auto listNodesResponse = service.ListNodes(
+                headers,
+                fsConfig.FsId,
+                dir1Id)->Record;
+
+            UNIT_ASSERT_VALUES_EQUAL(1, listNodesResponse.NamesSize());
+            UNIT_ASSERT_VALUES_EQUAL(1, listNodesResponse.NodesSize());
+            UNIT_ASSERT_VALUES_EQUAL(
+                node1Id,
+                listNodesResponse.GetNodes(0).GetId());
+            UNIT_ASSERT_VALUES_EQUAL("file1", listNodesResponse.GetNames(0));
+        }
+
+        {
+            auto listNodesResponse = service.ListNodes(
+                headers,
+                fsConfig.FsId,
+                dir2Id)->Record;
+
+            UNIT_ASSERT_VALUES_EQUAL(1, listNodesResponse.NamesSize());
+            UNIT_ASSERT_VALUES_EQUAL(1, listNodesResponse.NodesSize());
+            UNIT_ASSERT_VALUES_EQUAL(
+                node2Id,
+                listNodesResponse.GetNodes(0).GetId());
+            UNIT_ASSERT_VALUES_EQUAL("file2", listNodesResponse.GetNames(0));
+        }
+    }
 }
 
 }   // namespace NCloud::NFileStore::NStorage
