@@ -180,7 +180,7 @@ func createServicesWithConfig(
 	}
 }
 
-func createServicesWithSchedulerMetricsRegistry(
+func createServicesWithMetricsRegistry(
 	t *testing.T,
 	ctx context.Context,
 	db *persistence.YDBClient,
@@ -208,7 +208,7 @@ func createServices(
 	runnersCount uint64,
 ) services {
 
-	return createServicesWithSchedulerMetricsRegistry(
+	return createServicesWithMetricsRegistry(
 		t,
 		ctx,
 		db,
@@ -741,7 +741,7 @@ func TestTasksInflightLimit(t *testing.T) {
 	registry := mocks.NewIgnoreUnknownCallsRegistryMock()
 	defer registry.AssertAllExpectations(t)
 
-	s := createServicesWithSchedulerMetricsRegistry(
+	s := createServicesWithMetricsRegistry(
 		t,
 		ctx,
 		db,
