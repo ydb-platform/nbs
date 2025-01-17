@@ -230,7 +230,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest)
             response->Record.GetStorageConfig().GetMultiTabletForwardingEnabled());
     }
 
-    Y_UNIT_TEST(ShouldNotifyServiceWhenFileSystemConfigChaged)
+    Y_UNIT_TEST(ShouldNotifyServiceWhenFileSystemConfigChanged)
     {
         TTestEnv env;
         env.CreateSubDomain("nfs");
