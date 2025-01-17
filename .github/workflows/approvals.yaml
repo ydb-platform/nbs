@@ -36,7 +36,7 @@ jobs:
                 console.log("Left team members: " + leftUsers.join(', '));
                 console.log("Right team members: " + rightUsers.join(', '));
                 // users that can approve PRs without any restrictions by commenting /approve
-                const superUsers = ['qkrorlqr', 'EvgeniyKozev'];
+                const superUsers = ['SvartMetal', 'EvgeniyKozev'];
                 const prNumber = context.issue.number;
                 const owner = context.repo.owner;
                 const repo = context.repo.repo;
