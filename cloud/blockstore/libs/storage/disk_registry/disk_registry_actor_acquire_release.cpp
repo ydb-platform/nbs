@@ -481,6 +481,7 @@ void TDiskRegistryActor::HandleReleaseDisk(
             .RequestTimeout = Config->GetAgentRequestTimeout(),
             .MuteIOErrors = false,
         },
+        diskInfo.LogicalBlockSize,
         CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext),
         TAcquireReleaseDiskProxyActor::RELEASE_DISK);
     Actors.insert(actor);
