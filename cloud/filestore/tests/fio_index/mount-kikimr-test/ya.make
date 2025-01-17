@@ -16,7 +16,7 @@ TEST_SRCS(
 )
 
 IF (SANITIZER_TYPE)
-    SKIP_TEST("Suppressed until #2831 is resolved")
+    SKIP_TEST("Suppressed until issue 2831 is resolved")
 ENDIF()
 
 SET(NFS_FORCE_VERBOSE 1)
