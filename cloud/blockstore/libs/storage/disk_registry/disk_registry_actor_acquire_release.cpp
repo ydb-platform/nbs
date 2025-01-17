@@ -380,7 +380,7 @@ void TDiskRegistryActor::HandleAcquireDisk(
             .MuteIOErrors = false,
         },
         diskInfo.LogicalBlockSize,
-        TBlockStoreComponents::DISK_REGISTRY_WORKER,
+        CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext),
         TAcquireReleaseDiskProxyActor::ACQUIRE_DISK);
     Actors.insert(actor);
 }
@@ -481,7 +481,7 @@ void TDiskRegistryActor::HandleReleaseDisk(
             .RequestTimeout = Config->GetAgentRequestTimeout(),
             .MuteIOErrors = false,
         },
-        TBlockStoreComponents::DISK_REGISTRY_WORKER,
+        CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext),
         TAcquireReleaseDiskProxyActor::RELEASE_DISK);
     Actors.insert(actor);
 }
