@@ -389,7 +389,6 @@ void TVolumeActor::HandleStopPartionBeforeVolumeDestruction(
                         TEvStopPartionBeforeVolumeDestructionResponse>());
         });
     BecomeAux(ctx, STATE_ZOMBIE);
-
 }
 
 void TVolumeActor::StopPartitions(
