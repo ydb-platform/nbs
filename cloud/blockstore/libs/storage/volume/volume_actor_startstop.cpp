@@ -354,8 +354,8 @@ void TVolumeActor::HandleStopPartionBeforeVolumeDestruction(
         LOG_ERROR(
             ctx,
             TBlockStoreComponents::VOLUME,
-            "[%lu] StopPartionBeforeVolumeDestruction req was send to not DR "
-            "based disk",
+            "[%lu] StopPartionBeforeVolumeDestruction request was send to not "
+            "DR based disk",
             TabletID());
 
         NCloud::Reply(
@@ -363,11 +363,11 @@ void TVolumeActor::HandleStopPartionBeforeVolumeDestruction(
             *ev,
             std::make_unique<
                 TEvVolume::TEvStopPartionBeforeVolumeDestructionResponse>(
-                MakeError(E_REJECTED, "request not supported")));
+                MakeError(E_NOT_IMPLEMENTED, "request not supported")));
         return;
     }
 
-    LOG_DEBUG(
+    LOG_INFO(
         ctx,
         TBlockStoreComponents::VOLUME,
         "[%lu] Stop Partition before volume destruction",
