@@ -3468,17 +3468,15 @@ NProto::TError TDiskRegistryState::StartAcquireDisk(
     return {};
 }
 
-const TDiskRegistryState::TDiskState* TDiskRegistryState::FinishAcquireDisk(
-    const TString& diskId)
+void TDiskRegistryState::FinishAcquireDisk(const TString& diskId)
 {
     auto* diskPtr = Disks.FindPtr(diskId);
 
     if (!diskPtr) {
-        return nullptr;
+        return;
     }
 
     diskPtr->AcquireInProgress = false;
-    return diskPtr;
 }
 
 bool TDiskRegistryState::IsAcquireInProgress(const TString& diskId) const

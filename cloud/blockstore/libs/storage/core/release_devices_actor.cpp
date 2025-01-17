@@ -1,4 +1,4 @@
-#include "acquire_release_devices.h"
+#include "acquire_release_devices_actors.h"
 
 #include <cloud/blockstore/libs/storage/core/proto_helpers.h>
 #include <cloud/storage/core/libs/actors/helpers.h>
@@ -10,6 +10,9 @@
 #include <util/string/join.h>
 
 namespace NCloud::NBlockStore::NStorage::NAcquireReleaseDevices {
+
+////////////////////////////////////////////////////////////////////////////////
+
 using namespace NActors;
 
 namespace {
@@ -21,11 +24,11 @@ class TReleaseDevicesActor final
 {
 private:
     const TActorId Owner;
+    TVector<NProto::TDeviceConfig> Devices;
     const TString DiskId;
     const TString ClientId;
     const ui32 VolumeGeneration;
     const TDuration RequestTimeout;
-    TVector<NProto::TDeviceConfig> Devices;
     bool MuteIOErrors;
     NLog::EComponent Component;
 
@@ -36,12 +39,7 @@ private:
 public:
     TReleaseDevicesActor(
         const TActorId& owner,
-        TString diskId,
-        TString clientId,
-        ui32 volumeGeneration,
-        TDuration requestTimeout,
-        TVector<NProto::TDeviceConfig> devices,
-        bool muteIoErrors,
+        TAcquireReleaseDevicesInfo releaseDevicesInfo,
         NLog::EComponent component);
 
     void Bootstrap(const TActorContext& ctx);
@@ -81,20 +79,15 @@ private:
 
 TReleaseDevicesActor::TReleaseDevicesActor(
         const TActorId& owner,
-        TString diskId,
-        TString clientId,
-        ui32 volumeGeneration,
-        TDuration requestTimeout,
-        TVector<NProto::TDeviceConfig> devices,
-        bool muteIOErrors,
+        TAcquireReleaseDevicesInfo releaseDevicesInfo,
         NLog::EComponent component)
     : Owner(owner)
-    , DiskId(std::move(diskId))
-    , ClientId(std::move(clientId))
-    , VolumeGeneration(volumeGeneration)
-    , RequestTimeout(requestTimeout)
-    , Devices(std::move(devices))
-    , MuteIOErrors(muteIOErrors)
+    , Devices(std::move(releaseDevicesInfo.Devices))
+    , DiskId(std::move(releaseDevicesInfo.DiskId))
+    , ClientId(std::move(releaseDevicesInfo.ClientId))
+    , VolumeGeneration(releaseDevicesInfo.VolumeGeneration)
+    , RequestTimeout(releaseDevicesInfo.RequestTimeout)
+    , MuteIOErrors(releaseDevicesInfo.MuteIOErrors)
     , Component(component)
 {}
 
@@ -249,25 +242,15 @@ TString TReleaseDevicesActor::LogTargets() const
 }   // namespace
 
 TActorId CreateReleaseDevicesActor(
-    const TActorContext& ctx,
+    const NActors::TActorContext& ctx,
     const TActorId& owner,
-    TString diskId,
-    TString clientId,
-    ui32 volumeGeneration,
-    TDuration requestTimeout,
-    TVector<NProto::TDeviceConfig> devices,
-    bool muteIOErrors,
+    TAcquireReleaseDevicesInfo releaseDevicesInfo,
     NActors::NLog::EComponent component)
 {
     return NCloud::Register<TReleaseDevicesActor>(
         ctx,
         owner,
-        std::move(diskId),
-        std::move(clientId),
-        volumeGeneration,
-        requestTimeout,
-        std::move(devices),
-        muteIOErrors,
+        releaseDevicesInfo,
         component);
 }
 }   // namespace NCloud::NBlockStore::NStorage::NAcquireReleaseDevices

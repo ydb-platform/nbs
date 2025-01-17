@@ -464,7 +464,7 @@ public:
 
     bool HasPendingCleanup(const TDiskId& diskId) const;
 
-    const TDiskState* FinishAcquireDisk(const TString& diskId);
+    void FinishAcquireDisk(const TString& diskId);
 
     bool IsAcquireInProgress(const TString& diskId) const;
 

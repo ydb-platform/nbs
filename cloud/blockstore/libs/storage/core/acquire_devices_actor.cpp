@@ -1,4 +1,4 @@
-#include "acquire_release_devices.h"
+#include "acquire_release_devices_actors.h"
 
 #include <cloud/blockstore/libs/storage/core/proto_helpers.h>
 #include <cloud/storage/core/libs/actors/helpers.h>
@@ -11,6 +11,9 @@
 #include <util/string/join.h>
 
 namespace NCloud::NBlockStore::NStorage::NAcquireReleaseDevices {
+
+////////////////////////////////////////////////////////////////////////////////
+
 using namespace NActors;
 
 namespace {
@@ -39,14 +42,7 @@ private:
 public:
     TAcquireDevicesActor(
         const TActorId& owner,
-        TVector<NProto::TDeviceConfig> devices,
-        TString diskId,
-        TString clientId,
-        NProto::EVolumeAccessMode accessMode,
-        ui64 mountSeqNumber,
-        ui32 volumeGeneration,
-        TDuration requestTimeout,
-        bool muteIOErrors,
+        TAcquireReleaseDevicesInfo acquireDevicesInfo,
         NLog::EComponent component);
 
     void Bootstrap(const TActorContext& ctx);
@@ -104,24 +100,17 @@ private:
 
 TAcquireDevicesActor::TAcquireDevicesActor(
         const TActorId& owner,
-        TVector<NProto::TDeviceConfig> devices,
-        TString diskId,
-        TString clientId,
-        NProto::EVolumeAccessMode accessMode,
-        ui64 mountSeqNumber,
-        ui32 volumeGeneration,
-        TDuration requestTimeout,
-        bool muteIOErrors,
+        TAcquireReleaseDevicesInfo acquireDevicesInfo,
         NLog::EComponent component)
     : Owner(owner)
-    , Devices(std::move(devices))
-    , DiskId(std::move(diskId))
-    , ClientId(std::move(clientId))
-    , AccessMode(accessMode)
-    , MountSeqNumber(mountSeqNumber)
-    , VolumeGeneration(volumeGeneration)
-    , RequestTimeout(requestTimeout)
-    , MuteIOErrors(muteIOErrors)
+    , Devices(std::move(acquireDevicesInfo.Devices))
+    , DiskId(std::move(acquireDevicesInfo.DiskId))
+    , ClientId(std::move(acquireDevicesInfo.ClientId))
+    , AccessMode(acquireDevicesInfo.AccessMode.value())
+    , MountSeqNumber(acquireDevicesInfo.MountSeqNumber.value())
+    , VolumeGeneration(acquireDevicesInfo.VolumeGeneration)
+    , RequestTimeout(acquireDevicesInfo.RequestTimeout)
+    , MuteIOErrors(acquireDevicesInfo.MuteIOErrors)
     , Component(component)
 {
     SortBy(Devices, [](auto& d) { return d.GetNodeId(); });
@@ -375,27 +364,13 @@ STFUNC(TAcquireDevicesActor::StateAcquire)
 TActorId CreateAcquireDevicesActor(
     const NActors::TActorContext& ctx,
     const TActorId& owner,
-    TVector<NProto::TDeviceConfig> devices,
-    TString diskId,
-    TString clientId,
-    NProto::EVolumeAccessMode accessMode,
-    ui64 mountSeqNumber,
-    ui32 volumeGeneration,
-    TDuration requestTimeout,
-    bool muteIOErrors,
-    NLog::EComponent component)
+    TAcquireReleaseDevicesInfo acquireDevicesInfo,
+    NActors::NLog::EComponent component)
 {
     return NCloud::Register<TAcquireDevicesActor>(
         ctx,
         owner,
-        std::move(devices),
-        diskId,
-        std::move(clientId),
-        accessMode,
-        mountSeqNumber,
-        volumeGeneration,
-        requestTimeout,
-        muteIOErrors,
+        std::move(acquireDevicesInfo),
         component);
 }
 

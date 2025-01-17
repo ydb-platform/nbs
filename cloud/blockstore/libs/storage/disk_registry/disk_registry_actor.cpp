@@ -188,24 +188,6 @@ void TDiskRegistryActor::BeforeDie(const NActors::TActorContext& ctx)
             MakeTabletIsDeadError(E_REJECTED, __LOCATION__));
     }
     PendingDiskDeallocationRequests.clear();
-
-    for (auto& [_, requestInfo]: PendingAcquireDiskRequests) {
-        NCloud::Reply(
-            ctx,
-            *requestInfo,
-            std::make_unique<TEvDiskRegistry::TEvAcquireDiskResponse>(
-                MakeTabletIsDeadError(E_REJECTED, __LOCATION__)));
-    }
-    PendingAcquireDiskRequests.clear();
-
-    for (auto& [_, requestInfo]: PendingReleaseDiskRequests) {
-        NCloud::Reply(
-            ctx,
-            *requestInfo,
-            std::make_unique<TEvDiskRegistry::TEvReleaseDiskResponse>(
-                MakeTabletIsDeadError(E_REJECTED, __LOCATION__)));
-    }
-    PendingReleaseDiskRequests.clear();
 }
 
 void TDiskRegistryActor::OnDetach(const TActorContext& ctx)
@@ -725,14 +707,6 @@ STFUNC(TDiskRegistryActor::StateWork)
         HFunc(
             TEvDiskRegistryPrivate::TEvDiskRegistryAgentListExpiredParamsCleanup,
             TDiskRegistryActor::HandleDiskRegistryAgentListExpiredParamsCleanup);
-
-        HFunc(
-            NAcquireReleaseDevices::TEvDevicesAcquireFinished,
-            HandleDevicesAcquireFinished);
-
-        HFunc(
-            NAcquireReleaseDevices::TEvDevicesReleaseFinished,
-            HandleDevicesReleaseFinished);
 
         default:
             if (!HandleRequests(ev) && !HandleDefaultEvents(ev, SelfId())) {

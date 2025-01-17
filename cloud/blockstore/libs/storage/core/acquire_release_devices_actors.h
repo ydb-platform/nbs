@@ -78,28 +78,29 @@ using TEvDevicesAcquireFinished =
 using TEvDevicesReleaseFinished =
     TRequestEvent<TDevicesReleaseFinished, EvDevicesReleaseFinished>;
 
+struct TAcquireReleaseDevicesInfo
+{
+    TVector<NProto::TDeviceConfig> Devices;
+    TString DiskId;
+    TString ClientId;
+    std::optional<NProto::EVolumeAccessMode>
+        AccessMode;                       // Only AcquireDevicesActor need it.
+    std::optional<ui64> MountSeqNumber;   // Only AcquireDevicesActor need it.
+    ui32 VolumeGeneration;
+    TDuration RequestTimeout;
+    bool MuteIOErrors;
+};
+
 TActorId CreateAcquireDevicesActor(
     const NActors::TActorContext& ctx,
     const TActorId& owner,
-    TVector<NProto::TDeviceConfig> devices,
-    TString diskId,
-    TString clientId,
-    NProto::EVolumeAccessMode accessMode,
-    ui64 mountSeqNumber,
-    ui32 volumeGeneration,
-    TDuration requestTimeout,
-    bool muteIOErrors,
+    TAcquireReleaseDevicesInfo acquireDevicesInfo,
     NActors::NLog::EComponent component);
 
 TActorId CreateReleaseDevicesActor(
     const NActors::TActorContext& ctx,
     const TActorId& owner,
-    TString diskId,
-    TString clientId,
-    ui32 volumeGeneration,
-    TDuration requestTimeout,
-    TVector<NProto::TDeviceConfig> devices,
-    bool muteIOErrors,
+    TAcquireReleaseDevicesInfo releaseDevicesInfo,
     NActors::NLog::EComponent component);
 
 }   // namespace NCloud::NBlockStore::NStorage::NAcquireReleaseDevices
