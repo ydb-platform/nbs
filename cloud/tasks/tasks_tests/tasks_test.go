@@ -180,12 +180,12 @@ func createServicesWithConfig(
 	}
 }
 
-func createServicesWithMetricsRegistry(
+func createServicesWithSchedulerMetricsRegistry(
 	t *testing.T,
 	ctx context.Context,
 	db *persistence.YDBClient,
 	runnersCount uint64,
-	schedulerRegistry metrics.Registry,
+	metricsRegistry metrics.Registry,
 ) services {
 
 	config := proto.Clone(newDefaultConfig()).(*tasks_config.TasksConfig)
@@ -197,7 +197,7 @@ func createServicesWithMetricsRegistry(
 		ctx,
 		db,
 		config,
-		schedulerRegistry,
+		metricsRegistry,
 	)
 }
 
@@ -208,7 +208,7 @@ func createServices(
 	runnersCount uint64,
 ) services {
 
-	return createServicesWithMetricsRegistry(
+	return createServicesWithSchedulerMetricsRegistry(
 		t,
 		ctx,
 		db,
@@ -223,14 +223,14 @@ func (s *services) startRunners(ctx context.Context) error {
 
 func (s *services) startRunnersWithMetricsRegistry(
 	ctx context.Context,
-	runnerMetricsRegistry metrics.Registry,
+	metricsRegistry metrics.Registry,
 ) error {
 
 	return tasks.StartRunners(
 		ctx,
 		s.storage,
 		s.registry,
-		runnerMetricsRegistry,
+		metricsRegistry,
 		s.config,
 		"localhost",
 	)
@@ -741,7 +741,7 @@ func TestTasksInflightLimit(t *testing.T) {
 	registry := mocks.NewIgnoreUnknownCallsRegistryMock()
 	defer registry.AssertAllExpectations(t)
 
-	s := createServicesWithMetricsRegistry(
+	s := createServicesWithSchedulerMetricsRegistry(
 		t,
 		ctx,
 		db,
