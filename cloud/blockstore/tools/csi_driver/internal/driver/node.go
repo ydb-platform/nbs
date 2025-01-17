@@ -11,9 +11,9 @@ import (
 	"log"
 	"math"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 
@@ -21,6 +21,7 @@ import (
 	nbsapi "github.com/ydb-platform/nbs/cloud/blockstore/public/api/protos"
 	nbsclient "github.com/ydb-platform/nbs/cloud/blockstore/public/sdk/go/client"
 	"github.com/ydb-platform/nbs/cloud/blockstore/tools/csi_driver/internal/mounter"
+	"github.com/ydb-platform/nbs/cloud/blockstore/tools/csi_driver/internal/volume"
 	nfsapi "github.com/ydb-platform/nbs/cloud/filestore/public/api/protos"
 	nfsclient "github.com/ydb-platform/nbs/cloud/filestore/public/sdk/go/client"
 	"golang.org/x/sys/unix"
@@ -658,11 +659,15 @@ func (s *nodeService) nodePublishDiskAsFilesystem(
 		return err
 	}
 
-	if mnt != nil && mnt.VolumeMountGroup != "" && !req.Readonly {
-		cmd := exec.Command("chown", "-R", ":"+mnt.VolumeMountGroup, req.TargetPath)
-		if out, err := cmd.CombinedOutput(); err != nil {
-			return fmt.Errorf("failed to chown %s to %q: %w, output %q",
-				mnt.VolumeMountGroup, req.TargetPath, err, out)
+	if mnt != nil && mnt.VolumeMountGroup != "" {
+		fsGroup, err := strconv.ParseInt(mnt.VolumeMountGroup, 10, 64)
+		if err != nil {
+			return fmt.Errorf("failed to parse volume mount group: %w", err)
+		}
+
+		err = volume.SetVolumeOwnership(req.TargetPath, &fsGroup, req.Readonly)
+		if err != nil {
+			return fmt.Errorf("failed to set volume ownership: %w", err)
 		}
 	}
 
@@ -739,14 +744,6 @@ func (s *nodeService) nodeStageDiskAsFilesystem(
 		mountOptions)
 	if err != nil {
 		return fmt.Errorf("failed to format or mount filesystem: %w", err)
-	}
-
-	if mnt != nil && mnt.VolumeMountGroup != "" {
-		cmd := exec.Command("chown", "-R", ":"+mnt.VolumeMountGroup, req.StagingTargetPath)
-		if out, err := cmd.CombinedOutput(); err != nil {
-			return fmt.Errorf("failed to chown %s to %q: %w, output %q",
-				mnt.VolumeMountGroup, req.StagingTargetPath, err, out)
-		}
 	}
 
 	if err := os.Chmod(req.StagingTargetPath, targetPerm); err != nil {
