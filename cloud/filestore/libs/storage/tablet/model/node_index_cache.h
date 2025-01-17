@@ -2,9 +2,10 @@
 
 #include "public.h"
 
+#include "node_ref.h"
+
 #include <cloud/filestore/public/api/protos/node.pb.h>
 
-#include <util/digest/multi.h>
 #include <util/generic/hash.h>
 #include <util/memory/alloc.h>
 
@@ -22,39 +23,8 @@ struct TNodeIndexCacheStats
 class TNodeIndexCache
 {
 private:
-    struct TNodeIndexCacheKey
-    {
-        ui64 ParentNodeId;
-        TString Name;
-
-        TNodeIndexCacheKey(ui64 parentNodeId, const TString& name)
-            : ParentNodeId(parentNodeId)
-            , Name(name)
-        {}
-
-        size_t GetHash() const
-        {
-            return MultiHash(ParentNodeId, Name);
-        }
-
-        TNodeIndexCacheKey(const TNodeIndexCacheKey&) = default;
-        TNodeIndexCacheKey& operator=(const TNodeIndexCacheKey&) = default;
-        TNodeIndexCacheKey(TNodeIndexCacheKey&&) = default;
-        TNodeIndexCacheKey& operator=(TNodeIndexCacheKey&&) = default;
-
-        bool operator==(const TNodeIndexCacheKey& rhs) const = default;
-    };
-
-    struct TNodeIndexCacheKeyHash
-    {
-        size_t operator()(const TNodeIndexCacheKey& key) const noexcept
-        {
-            return key.GetHash();
-        }
-    };
-
-    THashMap<ui64, TNodeIndexCacheKey> KeyByNodeId;
-    THashMap<TNodeIndexCacheKey, NProto::TNodeAttr, TNodeIndexCacheKeyHash>
+    THashMap<ui64, TNodeRefKey> KeyByNodeId;
+    THashMap<TNodeRefKey, NProto::TNodeAttr, TNodeRefKeyHash>
         AttrByParentNodeId;
 
     ui32 MaxNodes = 0;

@@ -25,7 +25,7 @@ void TNodeIndexCache::Reset(ui32 maxNodes)
 
 void TNodeIndexCache::InvalidateCache(ui64 parentNodeId, const TString& name)
 {
-    auto it = AttrByParentNodeId.find(TNodeIndexCacheKey(parentNodeId, name));
+    auto it = AttrByParentNodeId.find(TNodeRefKey(parentNodeId, name));
     if (it != AttrByParentNodeId.end()) {
         KeyByNodeId.erase(it->second.GetId());
         AttrByParentNodeId.erase(it);
@@ -54,7 +54,7 @@ void TNodeIndexCache::RegisterGetNodeAttrResult(
         AttrByParentNodeId.clear();
     }
 
-    auto key = TNodeIndexCacheKey(parentNodeId, name);
+    auto key = TNodeRefKey(parentNodeId, name);
     AttrByParentNodeId[key] = response;
     KeyByNodeId.emplace(response.GetId(), key);
 }
@@ -64,7 +64,7 @@ bool TNodeIndexCache::TryFillGetNodeAttrResult(
     const TString& name,
     NProto::TNodeAttr* response)
 {
-    auto it = AttrByParentNodeId.find(TNodeIndexCacheKey(parentNodeId, name));
+    auto it = AttrByParentNodeId.find(TNodeRefKey(parentNodeId, name));
     if (it == AttrByParentNodeId.end()) {
         return false;
     }
