@@ -53,7 +53,7 @@ void TIndexTabletActor::ReplayOpLog(
             RegisterRenameNodeInDestinationActor(
                 ctx,
                 nullptr, // requestInfo
-                op.GetRenameNodeInDestinationRequest(),
+                request,
                 0, // requestId (TODO(#2674): either idempotency or use real
                    // requestId)
                 op.GetEntryId());
