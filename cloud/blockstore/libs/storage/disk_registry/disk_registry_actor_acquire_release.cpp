@@ -45,7 +45,8 @@ class TAcquireReleaseDiskProxyActor final
     : public TActorBootstrapped<TAcquireReleaseDiskProxyActor>
 {
 public:
-    enum EOperationType {
+    enum EOperationType
+    {
         ACQUIRE_DISK,
         RELEASE_DISK,
     };
@@ -67,7 +68,6 @@ private:
         NAcquireReleaseDevices::TDevicesAcquireFinished,
         NAcquireReleaseDevices::TDevicesReleaseFinished>>
         OperationFinishedResponce;
-
 
 public:
     TAcquireReleaseDiskProxyActor(
@@ -140,8 +140,7 @@ TAcquireReleaseDiskProxyActor::TAcquireReleaseDiskProxyActor(
     , LogicalBlockSize(logicalBlockSize)
     , RequestInfo(std::move(requestInfo))
     , OperationType(operationType)
-{
-}
+{}
 
 void TAcquireReleaseDiskProxyActor::Bootstrap(const TActorContext& ctx)
 {
@@ -245,7 +244,9 @@ STFUNC(TAcquireReleaseDiskProxyActor::StateWork)
             HandleRemoveDiskSessionResponse);
 
         default:
-            HandleUnexpectedEvent(ev, TBlockStoreComponents::DISK_REGISTRY_WORKER);
+            HandleUnexpectedEvent(
+                ev,
+                TBlockStoreComponents::DISK_REGISTRY_WORKER);
             break;
     }
 }
@@ -493,14 +494,12 @@ void TDiskRegistryActor::HandleRemoveDiskSession(
 
     OnDiskReleased(msg->SentRequests);
 
-    auto requestInfo = CreateRequestInfo(
-        ev->Sender,
-        ev->Cookie,
-        msg->CallContext);
+    auto requestInfo =
+        CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
 
     State->FinishAcquireDisk(msg->DiskId);
-    auto response =
-        std::make_unique<TEvDiskRegistryPrivate::TEvRemoveDiskSessionResponse>();
+    auto response = std::make_unique<
+        TEvDiskRegistryPrivate::TEvRemoveDiskSessionResponse>();
     NCloud::Reply(ctx, *ev, std::move(response));
 }
 
