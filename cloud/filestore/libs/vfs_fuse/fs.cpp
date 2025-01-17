@@ -39,7 +39,7 @@ int ReplyNone(
 }
 
 int ReplyError(
-    TLog& log,
+    TLog& Log,
     IRequestStats& requestStats,
     TCallContext& callContext,
     const NCloud::NProto::TError& error,
@@ -50,8 +50,12 @@ int ReplyError(
     FILESTORE_TRACK(ResponseSent, (&callContext), "Error");
 
     int res = fuse_reply_err(req, errorCode);
+    if (res != 0) {
+        STORAGE_LOG(TLOG_WARNING, callContext.LogString()
+            << " fuse_reply_err failed with code " << res);
+    }
 
-    requestStats.RequestCompleted(log, callContext, error);
+    requestStats.RequestCompleted(Log, callContext, error);
 
     const ui64 now = GetCycleCount();
     const auto ts = callContext.CalcRequestTime(now);
@@ -68,7 +72,7 @@ int ReplyError(
 }
 
 int ReplyEntry(
-    TLog& log,
+    TLog& Log,
     IRequestStats& requestStats,
     TCallContext& callContext,
     const NCloud::NProto::TError& error,
@@ -79,8 +83,12 @@ int ReplyEntry(
     FILESTORE_TRACK(ResponseSent, (&callContext), "Entry");
 
     int res = fuse_reply_entry(req, e);
+    if (res != 0) {
+        STORAGE_LOG(TLOG_WARNING, callContext.LogString()
+            << " fuse_reply_entry failed with code " << res);
+    }
 
-    requestStats.RequestCompleted(log, callContext, error);
+    requestStats.RequestCompleted(Log, callContext, error);
 
     const ui64 now = GetCycleCount();
     const auto ts = callContext.CalcRequestTime(now);
@@ -96,7 +104,7 @@ int ReplyEntry(
 }
 
 int ReplyCreate(
-    TLog& log,
+    TLog& Log,
     IRequestStats& requestStats,
     TCallContext& callContext,
     const NCloud::NProto::TError& error,
@@ -108,8 +116,12 @@ int ReplyCreate(
     FILESTORE_TRACK(ResponseSent, (&callContext), "Create");
 
     int res = fuse_reply_create(req, e, fi);
+    if (res != 0) {
+        STORAGE_LOG(TLOG_WARNING, callContext.LogString()
+            << " fuse_reply_create failed with code " << res);
+    }
 
-    requestStats.RequestCompleted(log, callContext, error);
+    requestStats.RequestCompleted(Log, callContext, error);
 
     const ui64 now = GetCycleCount();
     const auto ts = callContext.CalcRequestTime(now);
@@ -125,7 +137,7 @@ int ReplyCreate(
 }
 
 int ReplyAttr(
-    TLog& log,
+    TLog& Log,
     IRequestStats& requestStats,
     TCallContext& callContext,
     const NCloud::NProto::TError& error,
@@ -137,8 +149,12 @@ int ReplyAttr(
     FILESTORE_TRACK(ResponseSent, (&callContext), "Attr");
 
     int res = fuse_reply_attr(req, attr, attr_timeout);
+    if (res != 0) {
+        STORAGE_LOG(TLOG_WARNING, callContext.LogString()
+            << " fuse_reply_attr failed with code " << res);
+    }
 
-    requestStats.RequestCompleted(log, callContext, error);
+    requestStats.RequestCompleted(Log, callContext, error);
 
     const ui64 now = GetCycleCount();
     const auto ts = callContext.CalcRequestTime(now);
@@ -154,7 +170,7 @@ int ReplyAttr(
 }
 
 int ReplyReadLink(
-    TLog& log,
+    TLog& Log,
     IRequestStats& requestStats,
     TCallContext& callContext,
     const NCloud::NProto::TError& error,
@@ -163,9 +179,14 @@ int ReplyReadLink(
 {
     FILESTORE_TRACK(ResponseSent, (&callContext), "ReadLink");
     requestStats.ResponseSent(callContext);
-    int res = fuse_reply_readlink(req, link);
 
-    requestStats.RequestCompleted(log, callContext, error);
+    int res = fuse_reply_readlink(req, link);
+    if (res != 0) {
+        STORAGE_LOG(TLOG_WARNING, callContext.LogString()
+            << " fuse_reply_readlink failed with code " << res);
+    }
+
+    requestStats.RequestCompleted(Log, callContext, error);
 
     const ui64 now = GetCycleCount();
     const auto ts = callContext.CalcRequestTime(now);
@@ -181,7 +202,7 @@ int ReplyReadLink(
 }
 
 int ReplyOpen(
-    TLog& log,
+    TLog& Log,
     IRequestStats& requestStats,
     TCallContext& callContext,
     const NCloud::NProto::TError& error,
@@ -192,8 +213,12 @@ int ReplyOpen(
     requestStats.ResponseSent(callContext);
 
     int res = fuse_reply_open(req, fi);
+    if (res != 0) {
+        STORAGE_LOG(TLOG_WARNING, callContext.LogString()
+            << " fuse_reply_open failed with code " << res);
+    }
 
-    requestStats.RequestCompleted(log, callContext, error);
+    requestStats.RequestCompleted(Log, callContext, error);
 
     const ui64 now = GetCycleCount();
     const auto ts = callContext.CalcRequestTime(now);
@@ -209,7 +234,7 @@ int ReplyOpen(
 }
 
 int ReplyWrite(
-    TLog& log,
+    TLog& Log,
     IRequestStats& requestStats,
     TCallContext& callContext,
     const NCloud::NProto::TError& error,
@@ -220,8 +245,12 @@ int ReplyWrite(
     FILESTORE_TRACK(ResponseSent, (&callContext), "Write");
 
     int res = fuse_reply_write(req, count);
+    if (res != 0) {
+        STORAGE_LOG(TLOG_WARNING, callContext.LogString()
+            << " fuse_reply_write failed with code " << res);
+    }
 
-    requestStats.RequestCompleted(log, callContext, error);
+    requestStats.RequestCompleted(Log, callContext, error);
 
     const ui64 now = GetCycleCount();
     const auto ts = callContext.CalcRequestTime(now);
@@ -237,7 +266,7 @@ int ReplyWrite(
 }
 
 int ReplyBuf(
-    TLog& log,
+    TLog& Log,
     IRequestStats& requestStats,
     TCallContext& callContext,
     const NCloud::NProto::TError& error,
@@ -249,8 +278,12 @@ int ReplyBuf(
     FILESTORE_TRACK(ResponseSent, (&callContext), "Buf");
 
     int res = fuse_reply_buf(req, buf, size);
+    if (res != 0) {
+        STORAGE_LOG(TLOG_WARNING, callContext.LogString()
+            << " fuse_reply_buf failed with code " << res);
+    }
 
-    requestStats.RequestCompleted(log, callContext, error);
+    requestStats.RequestCompleted(Log, callContext, error);
 
     const ui64 now = GetCycleCount();
     const auto ts = callContext.CalcRequestTime(now);
@@ -266,7 +299,7 @@ int ReplyBuf(
 }
 
 int ReplyStatFs(
-    TLog& log,
+    TLog& Log,
     IRequestStats& requestStats,
     TCallContext& callContext,
     const NCloud::NProto::TError& error,
@@ -277,8 +310,12 @@ int ReplyStatFs(
     FILESTORE_TRACK(ResponseSent, (&callContext), "StatFs");
 
     int res = fuse_reply_statfs(req, stbuf);
+    if (res != 0) {
+        STORAGE_LOG(TLOG_WARNING, callContext.LogString()
+            << " fuse_reply_statfs failed with code " << res);
+    }
 
-    requestStats.RequestCompleted(log, callContext, error);
+    requestStats.RequestCompleted(Log, callContext, error);
 
     const ui64 now = GetCycleCount();
     const auto ts = callContext.CalcRequestTime(now);
@@ -294,7 +331,7 @@ int ReplyStatFs(
 }
 
 int ReplyXAttr(
-    TLog& log,
+    TLog& Log,
     IRequestStats& requestStats,
     TCallContext& callContext,
     const NCloud::NProto::TError& error,
@@ -305,8 +342,12 @@ int ReplyXAttr(
     FILESTORE_TRACK(ResponseSent, (&callContext), "XAttr");
 
     int res = fuse_reply_xattr(req, count);
+    if (res != 0) {
+        STORAGE_LOG(TLOG_WARNING, callContext.LogString()
+            << " fuse_reply_xattr failed with code " << res);
+    }
 
-    requestStats.RequestCompleted(log, callContext, error);
+    requestStats.RequestCompleted(Log, callContext, error);
 
     const ui64 now = GetCycleCount();
     const auto ts = callContext.CalcRequestTime(now);
@@ -322,7 +363,7 @@ int ReplyXAttr(
 }
 
 int ReplyLock(
-    TLog& log,
+    TLog& Log,
     IRequestStats& requestStats,
     TCallContext& callContext,
     const NCloud::NProto::TError& error,
@@ -333,8 +374,12 @@ int ReplyLock(
     FILESTORE_TRACK(ResponseSent, (&callContext), "Lock");
 
     int res = fuse_reply_lock(req, lock);
+    if (res != 0) {
+        STORAGE_LOG(TLOG_WARNING, callContext.LogString()
+            << " fuse_reply_lock failed with code " << res);
+    }
 
-    requestStats.RequestCompleted(log, callContext, error);
+    requestStats.RequestCompleted(Log, callContext, error);
 
     const ui64 now = GetCycleCount();
     const auto ts = callContext.CalcRequestTime(now);
@@ -350,7 +395,7 @@ int ReplyLock(
 }
 
 void CancelRequest(
-    TLog& log,
+    TLog& Log,
     IRequestStats& requestStats,
     TCallContext& callContext,
     fuse_req_t req)
@@ -361,11 +406,15 @@ void CancelRequest(
     int res = fuse_cancel_request(
         req,
         static_cast<fuse_cancelation_code>(callContext.CancellationCode));
+    if (res != 0) {
+        STORAGE_LOG(TLOG_WARNING, callContext.LogString()
+            << " fuse_cancel_request failed with code " << res)
+    }
 
     ui32 flags = 0;
     SetProtoFlag(flags, NCloud::NProto::EF_SILENT);
     requestStats.RequestCompleted(
-        log,
+        Log,
         callContext,
         MakeError(E_CANCELLED, "Driver is stopping", flags));
 
