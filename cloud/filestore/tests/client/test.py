@@ -42,6 +42,37 @@ def __exec_ls(client, *args):
     return json.dumps(nodes, indent=4).encode('utf-8')
 
 
+def __create_multitablet_fs(client, fs_id, shard_ids):
+    out = b""
+    for shard_id in shard_ids:
+        out += client.create(
+            shard_id, "test_cloud", "test_folder", BLOCK_SIZE, BLOCKS_COUNT
+        )
+
+    out += client.create(
+        fs_id, "test_cloud", "test_folder", BLOCK_SIZE, BLOCKS_COUNT
+    )
+
+    for i, shard_id in enumerate(shard_ids):
+        out += client.execute_action(
+            "configureasshard",
+            {
+                "FileSystemId": shard_id,
+                "ShardNo": i + 1,
+            },
+        )
+
+    out += client.execute_action(
+        "configureshards",
+        {
+            "FileSystemId": fs_id,
+            "ShardFileSystemIds": shard_ids,
+        },
+    )
+
+    return out
+
+
 def test_create_destroy():
     client, results_path = __init_test()
 
@@ -462,29 +493,7 @@ def test_multitablet_ls():
     with open(data_file, "w") as f:
         f.write("some data")
 
-    out = client.create(
-        "fs0",
-        "test_cloud",
-        "test_folder",
-        BLOCK_SIZE,
-        BLOCKS_COUNT)
-
-    out += client.create(
-        "fs0-shard",
-        "test_cloud",
-        "test_folder",
-        BLOCK_SIZE,
-        BLOCKS_COUNT)
-
-    out += client.execute_action("configureasshard", {
-        "FileSystemId": "fs0-shard",
-        "ShardNo": 1,
-    })
-
-    out += client.execute_action("configureshards", {
-        "FileSystemId": "fs0",
-        "ShardFileSystemIds": ["fs0-shard"],
-    })
+    out = __create_multitablet_fs(client, "fs0", ["fs0-shard"])
 
     client.write("fs0", "/xxx", "--data", data_file)
     out += __exec_ls(client, "fs0", "/")
@@ -516,41 +525,7 @@ def test_multitablet_findgarbage():
     shard1_id = fs_id + "-shard1"
     shard2_id = fs_id + "-shard2"
 
-    out = client.create(
-        fs_id,
-        "test_cloud",
-        "test_folder",
-        BLOCK_SIZE,
-        BLOCKS_COUNT)
-
-    out += client.create(
-        shard1_id,
-        "test_cloud",
-        "test_folder",
-        BLOCK_SIZE,
-        BLOCKS_COUNT)
-
-    out += client.create(
-        shard2_id,
-        "test_cloud",
-        "test_folder",
-        BLOCK_SIZE,
-        BLOCKS_COUNT)
-
-    out += client.execute_action("configureasshard", {
-        "FileSystemId": shard1_id,
-        "ShardNo": 1,
-    })
-
-    out += client.execute_action("configureasshard", {
-        "FileSystemId": shard2_id,
-        "ShardNo": 2,
-    })
-
-    out += client.execute_action("configureshards", {
-        "FileSystemId": fs_id,
-        "ShardFileSystemIds": [shard1_id, shard2_id],
-    })
+    out = __create_multitablet_fs(client, fs_id, [shard1_id, shard2_id])
 
     # let's generate multiple "pages" for listing
     for i in range(100):
@@ -560,11 +535,56 @@ def test_multitablet_findgarbage():
     client.write(shard2_id, "/garbage2_2", "--data", data_file)
     client.write(shard2_id, "/garbage2_3", "--data", big_data_file)
     # TODO: teach the client to fetch shard list by itself
-    out += client.find_garbage(fs_id, [shard1_id, shard2_id], page_size=1024)
-
+    out += client.find_garbage(
+        fs_id, [shard1_id, shard2_id], page_size=1024
+    )
     client.destroy(fs_id)
     client.destroy(shard1_id)
     client.destroy(shard2_id)
+
+    with open(results_path, "wb") as results_file:
+        results_file.write(out)
+
+    ret = common.canonical_file(results_path, local=True)
+    return ret
+
+
+def test_multitablet_findgarbage_in_leader():
+    client, results_path = __init_test()
+
+    data_file = os.path.join(common.output_path(), "data.txt")
+    with open(data_file, "w") as f:
+        f.write("some data")
+
+    fs_id = "fs0"
+    shard1_id = fs_id + "-shard1"
+    out = __create_multitablet_fs(client, fs_id, [shard1_id])
+
+    client.touch(fs_id, "/a")
+
+    shard_ls = json.loads(str(client.ls(shard1_id, "/", "--json"), "utf-8"))[
+        "content"
+    ]
+    for file in shard_ls:
+        client.rm(shard1_id, f"/{file['Name']}")
+
+    find_garbage_result = client.find_garbage(
+        fs_id,
+        [shard1_id],
+        page_size=1024,
+        find_in_shards=False,
+        find_in_leader=True,
+    )
+    # replace uuids with a constant value to make the test deterministic
+    find_garbage_result = re.sub(
+        rb"([0-9a-f]{1,8}-[0-9a-f]{1,8}-[0-9a-f]{1,8}-[0-9a-f]{1,8})",
+        b"01234567-89abcdef-01234567-89abcdef",
+        find_garbage_result,
+    )
+    out += find_garbage_result
+
+    client.destroy(fs_id)
+    client.destroy(shard1_id)
 
     with open(results_path, "wb") as results_file:
         results_file.write(out)
