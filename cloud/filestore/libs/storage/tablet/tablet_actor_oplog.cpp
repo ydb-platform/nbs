@@ -1,5 +1,7 @@
 #include "tablet_actor.h"
 
+#include <cloud/filestore/libs/diagnostics/critical_events.h>
+
 namespace NCloud::NFileStore::NStorage {
 
 using namespace NActors;
@@ -40,7 +42,14 @@ void TIndexTabletActor::ReplayOpLog(
                 {} // result
             );
         } else if (op.HasRenameNodeInDestinationRequest()) {
-            // TODO(#2674): lock SourceNodeRef
+            const auto& request = op.GetRenameNodeInDestinationRequest();
+            const bool locked = TryLockNodeRef({
+                request.GetOriginalRequest().GetNodeId(),
+                request.GetOriginalRequest().GetName()});
+            if (!locked) {
+                ReportFailedToLockNodeRef(TStringBuilder() << "Request: "
+                    << request.GetOriginalRequest().ShortUtf8DebugString());
+            }
             RegisterRenameNodeInDestinationActor(
                 ctx,
                 nullptr, // requestInfo
