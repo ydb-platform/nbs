@@ -698,7 +698,7 @@ Y_UNIT_TEST_SUITE(TVolumeThrottlingPolicyTest)
         UNIT_ASSERT_DOUBLES_EQUAL(splittedUsedQuota.Iops, 0, 1e-6);
     }
 
-    Y_UNIT_TEST(CalculateUsedQuotaCorrectlyWhenBytesThrottlingDisabled)
+    Y_UNIT_TEST(CalculateSplittedUsedQuotaCorrectlyWhenBytesThrottlingDisabled)
     {
         const ui64 maxIops = 4;
 
