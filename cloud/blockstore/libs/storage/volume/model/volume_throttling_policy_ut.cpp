@@ -644,7 +644,7 @@ Y_UNIT_TEST_SUITE(TVolumeThrottlingPolicyTest)
         DO_TEST(tp, 4'379'770, 10'000, 1_MB, static_cast<ui32>(EOpType::Write));
     }
 
-    Y_UNIT_TEST(CollectThrotlingDiagnostics)
+    Y_UNIT_TEST(CalculateSplittedUsedQuota)
     {
         const ui64 maxBandwidth = 2_MB;
         const ui64 maxIops = 4;
@@ -679,35 +679,31 @@ Y_UNIT_TEST_SUITE(TVolumeThrottlingPolicyTest)
         auto recalculatedMaxBandwidth =
             CalculateThrottlerC2(maxIops, maxBandwidth);
 
-        const auto [usedIopsQuota, usedBandwidthQuota] =
-            tp.TakeSplittedUsedQuota();
+        auto splittedUsedQuota = tp.TakeSplittedUsedQuota();
 
         UNIT_ASSERT_DOUBLES_EQUAL(
-            usedBandwidthQuota,
+            splittedUsedQuota.Bandwidth,
             static_cast<double>(ioOperation * byteCount) /
                 static_cast<double>(recalculatedMaxBandwidth),
             1e-6);
-
         UNIT_ASSERT_DOUBLES_EQUAL(
-            usedIopsQuota,
+            splittedUsedQuota.Iops,
             static_cast<double>(ioOperation) /
                 static_cast<double>(recalculatedMaxIops),
             1e-6);
 
-        auto [usedIopsQuotaAfterTake, usedBandwidthQuotaAfterTake] =
-            tp.TakeSplittedUsedQuota();
+        splittedUsedQuota = tp.TakeSplittedUsedQuota();
 
-        UNIT_ASSERT_DOUBLES_EQUAL(usedIopsQuotaAfterTake, 0, 1e-6);
-
-        UNIT_ASSERT_DOUBLES_EQUAL(usedBandwidthQuotaAfterTake, 0, 1e-6);
+        UNIT_ASSERT_DOUBLES_EQUAL(splittedUsedQuota.Bandwidth, 0, 1e-6);
+        UNIT_ASSERT_DOUBLES_EQUAL(splittedUsedQuota.Iops, 0, 1e-6);
     }
 
-    Y_UNIT_TEST(UsedBandwidthQuotaZeroWithoutBytesThrotling)
+    Y_UNIT_TEST(CalculateUsedQuotaCorrectlyWhenBytesThrottlingDisabled)
     {
         const ui64 maxIops = 4;
 
         const auto config = MakeSimpleConfig(
-            0,
+            0,   // maxBandwidth
             maxIops,
             100,   // burstPercentage
             0,     // boostTime
@@ -735,11 +731,13 @@ Y_UNIT_TEST_SUITE(TVolumeThrottlingPolicyTest)
         const auto [usedIopsQuota, usedBandwidthQuota] =
             tp.TakeSplittedUsedQuota();
 
-        UNIT_ASSERT_DOUBLES_EQUAL(usedBandwidthQuota, 0, 1e-6);
+        auto recalculatedMaxIops = CalculateThrottlerC1(maxIops, 0);
 
+        UNIT_ASSERT_DOUBLES_EQUAL(usedBandwidthQuota, 0, 1e-6);
         UNIT_ASSERT_DOUBLES_EQUAL(
             usedIopsQuota,
-            static_cast<double>(ioOperation) / static_cast<double>(maxIops),
+            static_cast<double>(ioOperation) /
+                static_cast<double>(recalculatedMaxIops),
             1e-6);
     }
 

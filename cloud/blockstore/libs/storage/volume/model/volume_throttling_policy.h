@@ -55,8 +55,8 @@ public:
     };
 
     struct TSplittedUsedQuota {
-        double Iops;
-        double Bandwidth;
+        double Iops = 0;
+        double Bandwidth = 0;
     };
 
 private:
@@ -104,7 +104,6 @@ public:
     TDuration GetCurrentBoostBudget() const;
     ui64 CalculatePostponedWeight() const;
     double CalculateCurrentSpentBudgetShare(TInstant ts) const;
-    // Returns pair of UsedIopsQuota and UsedBandwidthQuota.
     [[nodiscard]] TSplittedUsedQuota TakeSplittedUsedQuota();
     const TBackpressureReport& GetCurrentBackpressure() const;
     const NProto::TVolumePerformanceProfile& GetConfig() const;

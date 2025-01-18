@@ -219,26 +219,23 @@ void TVolumeActor::UpdateLeakyBucketCounters(const TActorContext& ctx)
     auto& cumulative = VolumeSelfCounters->Cumulative;
     auto& tp = State->AccessThrottlingPolicy();
 
-    const auto [usedIopsQuotaPrecentage, usedBandwidthQuotaPrecentage] = [&]()
-    {
-        auto quotaMetrics = tp.TakeSplittedUsedQuota();
-        quotaMetrics.Bandwidth *= 100.0;
-        quotaMetrics.Iops *= 100.0;
-        return quotaMetrics;
-    }();
+    const auto splittedUsedQuota = tp.TakeSplittedUsedQuota();
+    const auto usedIopsQuotaPercentage = splittedUsedQuota.Iops * 100.0;
+    const auto usedBandwidthQuotaPercentage =
+        splittedUsedQuota.Bandwidth * 100.0;
 
     cumulative.UsedIopsQuota.Increment(
-        static_cast<ui64>(usedIopsQuotaPrecentage));
+        static_cast<ui64>(usedIopsQuotaPercentage));
     cumulative.UsedBandwidthQuota.Increment(
-        static_cast<ui64>(usedBandwidthQuotaPrecentage));
+        static_cast<ui64>(usedBandwidthQuotaPercentage));
 
-    const auto currentSpentBudgetSharePrecentage =
+    const auto currentSpentBudgetSharePercentage =
         100.0 * tp.CalculateCurrentSpentBudgetShare(ctx.Now());
 
     const auto currentRate = static_cast<ui64>(
         Min((Config->GetCalculateSplittedUsedQuotaMetric()
-                 ? usedIopsQuotaPrecentage + usedBandwidthQuotaPrecentage
-                 : currentSpentBudgetSharePrecentage),
+                 ? usedIopsQuotaPercentage + usedBandwidthQuotaPercentage
+                 : currentSpentBudgetSharePercentage),
             100.0));
     simple.MaxUsedQuota.Set(Max(simple.MaxUsedQuota.Value, currentRate));
     cumulative.UsedQuota.Increment(currentRate);
