@@ -618,7 +618,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
         {
             diskRegistry.SendAcquireDiskRequest("disk-1", "session-1");
             auto response = diskRegistry.RecvAcquireDiskResponse();
-            UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
+            UNIT_ASSERT_VALUES_EQUAL(S_ALREADY, response->GetStatus());
 
             UNIT_ASSERT_VALUES_EQUAL(0, response->Record.DevicesSize());
         }
@@ -631,7 +631,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
                 NProto::VOLUME_ACCESS_READ_ONLY);
 
             auto response = diskRegistry.RecvAcquireDiskResponse();
-            UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
+            UNIT_ASSERT_VALUES_EQUAL(S_ALREADY, response->GetStatus());
 
             UNIT_ASSERT_VALUES_EQUAL(0, response->Record.DevicesSize());
         }

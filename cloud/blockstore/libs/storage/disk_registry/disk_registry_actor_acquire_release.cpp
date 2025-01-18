@@ -45,10 +45,10 @@ class TAcquireReleaseDiskProxyActor final
     : public TActorBootstrapped<TAcquireReleaseDiskProxyActor>
 {
 public:
-    enum EOperationType
+    enum class EOperationType
     {
-        ACQUIRE_DISK,
-        RELEASE_DISK,
+        AcquireDisk,
+        ReleaseDisk,
     };
 
 private:
@@ -97,10 +97,16 @@ private:
         NCloud::Send(ctx, Owner, std::move(request));
     }
 
+    template <typename TEventType>
+    TEventType* GetFinishedOperationResponce()
+    {
+        return OperationFinishedResponce.has_value()
+                   ? &std::get<TEventType>(OperationFinishedResponce.value())
+                   : nullptr;
+    }
+
     void ReplyAndDie(const TActorContext& ctx, NProto::TError error);
-
     void ReplyAndDieAcquire(const TActorContext& ctx, NProto::TError error);
-
     void ReplyAndDieRelease(const TActorContext& ctx, NProto::TError error);
 
 private:
@@ -149,13 +155,13 @@ void TAcquireReleaseDiskProxyActor::Bootstrap(const TActorContext& ctx)
     WorkerId = [&]()
     {
         switch (OperationType) {
-            case ACQUIRE_DISK:
+            case EOperationType::AcquireDisk:
                 return NAcquireReleaseDevices::CreateAcquireDevicesActor(
                     ctx,
                     ctx.SelfID,
                     std::move(AcquireReleaseInfo),
                     TBlockStoreComponents::DISK_REGISTRY_WORKER);
-            case RELEASE_DISK:
+            case EOperationType::ReleaseDisk:
                 return NAcquireReleaseDevices::CreateReleaseDevicesActor(
                     ctx,
                     ctx.SelfID,
@@ -170,10 +176,10 @@ void TAcquireReleaseDiskProxyActor::ReplyAndDie(
     NProto::TError error)
 {
     switch (OperationType) {
-        case ACQUIRE_DISK:
+        case EOperationType::AcquireDisk:
             ReplyAndDieAcquire(ctx, std::move(error));
             return;
-        case RELEASE_DISK:
+        case EOperationType::ReleaseDisk:
             ReplyAndDieRelease(ctx, std::move(error));
             return;
     }
@@ -183,11 +189,8 @@ void TAcquireReleaseDiskProxyActor::ReplyAndDieAcquire(
     const TActorContext& ctx,
     NProto::TError error)
 {
-    auto* msg =
-        OperationFinishedResponce.has_value()
-            ? &std::get<NAcquireReleaseDevices::TDevicesAcquireFinished>(
-                  OperationFinishedResponce.value())
-            : nullptr;
+    auto* msg = GetFinishedOperationResponce<
+        NAcquireReleaseDevices::TDevicesAcquireFinished>();
 
     auto response = std::make_unique<TEvDiskRegistry::TEvAcquireDiskResponse>(
         !HasError(error) && msg ? std::move(msg->Error) : std::move(error));
@@ -213,8 +216,11 @@ void TAcquireReleaseDiskProxyActor::ReplyAndDieRelease(
     const TActorContext& ctx,
     NProto::TError error)
 {
+    auto* msg = GetFinishedOperationResponce<
+        NAcquireReleaseDevices::TDevicesReleaseFinished>();
+
     auto response = std::make_unique<TEvDiskRegistry::TEvReleaseDiskResponse>(
-        std::move(error));
+        !HasError(error) && msg ? std::move(msg->Error) : std::move(error));
     NCloud::Reply(ctx, *RequestInfo, std::move(response));
 
     NCloud::Send(
@@ -271,7 +277,7 @@ void TAcquireReleaseDiskProxyActor::HandleDevicesAcquireFinished(
     const NAcquireReleaseDevices::TEvDevicesAcquireFinished::TPtr& ev,
     const TActorContext& ctx)
 {
-    Y_ABORT_UNLESS(OperationType == ACQUIRE_DISK);
+    Y_ABORT_UNLESS(OperationType == EOperationType::AcquireDisk);
     SendOperationFinishedToOwner<
         TEvDiskRegistryPrivate::TEvFinishAcquireDiskRequest>(ctx, ev);
 }
@@ -280,7 +286,7 @@ void TAcquireReleaseDiskProxyActor::HandleFinishAcquireDiskResponse(
     const TEvDiskRegistryPrivate::TEvFinishAcquireDiskResponse::TPtr& ev,
     const TActorContext& ctx)
 {
-    Y_ABORT_UNLESS(OperationType == ACQUIRE_DISK);
+    Y_ABORT_UNLESS(OperationType == EOperationType::AcquireDisk);
     Y_UNUSED(ev);
 
     ReplyAndDie(ctx, {});
@@ -290,7 +296,7 @@ void TAcquireReleaseDiskProxyActor::HandleDevicesReleaseFinished(
     const NAcquireReleaseDevices::TEvDevicesReleaseFinished::TPtr& ev,
     const NActors::TActorContext& ctx)
 {
-    Y_ABORT_UNLESS(OperationType == RELEASE_DISK);
+    Y_ABORT_UNLESS(OperationType == EOperationType::ReleaseDisk);
     SendOperationFinishedToOwner<
         TEvDiskRegistryPrivate::TEvRemoveDiskSessionRequest>(ctx, ev);
 }
@@ -299,7 +305,7 @@ void TAcquireReleaseDiskProxyActor::HandleRemoveDiskSessionResponse(
     const TEvDiskRegistryPrivate::TEvRemoveDiskSessionResponse::TPtr& ev,
     const TActorContext& ctx)
 {
-    Y_ABORT_UNLESS(OperationType == RELEASE_DISK);
+    Y_ABORT_UNLESS(OperationType == EOperationType::ReleaseDisk);
     ReplyAndDie(ctx, ev->Get()->GetError());
 }
 
@@ -361,7 +367,8 @@ void TDiskRegistryActor::HandleAcquireDisk(
             "AcquireeDisk %s. Nothing to acquire",
             diskId.c_str());
 
-        replyWithError(MakeError(S_ALREADY, {}));
+        State->FinishAcquireDisk(diskId);
+        replyWithError(MakeError(S_ALREADY, "Nothing to acquire"));
         return;
     }
 
@@ -381,7 +388,7 @@ void TDiskRegistryActor::HandleAcquireDisk(
         },
         diskInfo.LogicalBlockSize,
         CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext),
-        TAcquireReleaseDiskProxyActor::ACQUIRE_DISK);
+        TAcquireReleaseDiskProxyActor::EOperationType::AcquireDisk);
     Actors.insert(actor);
 }
 
@@ -464,7 +471,7 @@ void TDiskRegistryActor::HandleReleaseDisk(
             "ReleaseDisk %s. Nothing to release",
             diskId.c_str());
 
-        replyWithError(MakeError(S_ALREADY, {}));
+        replyWithError(MakeError(S_ALREADY, "Nothing to acquire"));
         return;
     }
 
@@ -483,7 +490,7 @@ void TDiskRegistryActor::HandleReleaseDisk(
         },
         diskInfo.LogicalBlockSize,
         CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext),
-        TAcquireReleaseDiskProxyActor::RELEASE_DISK);
+        TAcquireReleaseDiskProxyActor::EOperationType::ReleaseDisk);
     Actors.insert(actor);
 }
 
