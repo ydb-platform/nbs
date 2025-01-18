@@ -669,9 +669,9 @@ Y_UNIT_TEST_SUITE(TVolumeThrottlingPolicyTest)
                 ));
 
         const auto byteCount = 256_KB;
-        const auto ioOperation = 2;
+        const auto requestCount = 2;
 
-        for (auto i = 0; i < ioOperation; ++i) {
+        for (auto i = 0; i < requestCount; ++i) {
             DO_TEST(tp, 0, 0, byteCount, static_cast<ui32>(EOpType::Read));
         }
 
@@ -683,12 +683,12 @@ Y_UNIT_TEST_SUITE(TVolumeThrottlingPolicyTest)
 
         UNIT_ASSERT_DOUBLES_EQUAL(
             splittedUsedQuota.Bandwidth,
-            static_cast<double>(ioOperation * byteCount) /
+            static_cast<double>(requestCount * byteCount) /
                 static_cast<double>(recalculatedMaxBandwidth),
             1e-6);
         UNIT_ASSERT_DOUBLES_EQUAL(
             splittedUsedQuota.Iops,
-            static_cast<double>(ioOperation) /
+            static_cast<double>(requestCount) /
                 static_cast<double>(recalculatedMaxIops),
             1e-6);
 
@@ -722,9 +722,9 @@ Y_UNIT_TEST_SUITE(TVolumeThrottlingPolicyTest)
                 ));
 
         const auto byteCount = 256_KB;
-        const auto ioOperation = 2;
+        const auto requestCount = 2;
 
-        for (auto i = 0; i < ioOperation; ++i) {
+        for (auto i = 0; i < requestCount; ++i) {
             DO_TEST(tp, 0, 0, byteCount, static_cast<ui32>(EOpType::Read));
         }
 
@@ -736,7 +736,7 @@ Y_UNIT_TEST_SUITE(TVolumeThrottlingPolicyTest)
         UNIT_ASSERT_DOUBLES_EQUAL(usedBandwidthQuota, 0, 1e-6);
         UNIT_ASSERT_DOUBLES_EQUAL(
             usedIopsQuota,
-            static_cast<double>(ioOperation) /
+            static_cast<double>(requestCount) /
                 static_cast<double>(recalculatedMaxIops),
             1e-6);
     }
