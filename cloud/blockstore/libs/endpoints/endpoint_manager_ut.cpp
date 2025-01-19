@@ -165,78 +165,10 @@ struct TMockSessionManager final: public ISessionManager
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TSlowDevice final: public NBD::IDevice
-{
-public:
-    explicit TSlowDevice(std::weak_ptr<::NCloud::TExecutor> executor)
-        : Executor(std::move(executor))
-    {}
-
-    TExecutorPtr GetExecutor()
-    {
-        if (Executor.expired()) {
-            return {};
-        }
-
-        return Executor.lock();
-    }
-
-    NThreading::TFuture<NProto::TError> StubFunction()
-    {
-        auto executor = GetExecutor();
-        if (!executor) {
-            return NThreading::MakeFuture(MakeError(S_OK));
-        }
-
-        return executor->Execute(
-            [weakExec = Executor]()
-            {
-
-                auto executor = weakExec.lock();
-                if (!executor) {
-                    return MakeError(S_OK);
-                }
-                auto stubFuture =
-                    executor->Execute([]() {});
-
-                executor->WaitFor(stubFuture);
-                return MakeError(S_OK);
-            });
-    }
-
-    NThreading::TFuture<NProto::TError> Start() override
-    {
-        return StubFunction();
-    }
-
-    NThreading::TFuture<NProto::TError> Stop(bool deleteDevice) override
-    {
-        Y_UNUSED(deleteDevice);
-
-        return StubFunction();
-    }
-
-    NThreading::TFuture<NProto::TError> Resize(ui64 deviceSizeInBytes) override
-    {
-        Y_UNUSED(deviceSizeInBytes);
-
-        return StubFunction();
-    }
-
-private:
-    std::weak_ptr<::NCloud::TExecutor> Executor;
-};
-
 struct TTestDeviceFactory
     : public NBD::IDeviceFactory
 {
     TVector<TString> Devices;
-    std::weak_ptr<::NCloud::TExecutor> Executor;
-
-    void SetExecutor(std::weak_ptr<::NCloud::TExecutor> executor)
-    {
-        Executor = std::move(executor);
-    }
 
     NBD::IDevicePtr Create(
         const TNetworkAddress& connectAddress,
@@ -248,7 +180,63 @@ struct TTestDeviceFactory
         Y_UNUSED(blockCount);
         Y_UNUSED(blockSize);
         Devices.push_back(deviceName);
-        return std::make_shared<TSlowDevice>(Executor);
+        return NBD::CreateDeviceStub();
+    }
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+class TControlledDevice final: public NBD::IDevice
+{
+public:
+    explicit TControlledDevice(
+        std::function<NThreading::TFuture<NProto::TError>()> deviceStubFunction)
+        : DeviceStubFunction(std::move(deviceStubFunction))
+    {}
+
+    NThreading::TFuture<NProto::TError> Start() override
+    {
+        return DeviceStubFunction();
+    }
+
+    NThreading::TFuture<NProto::TError> Stop(bool deleteDevice) override
+    {
+        Y_UNUSED(deleteDevice);
+
+        return DeviceStubFunction();
+    }
+
+    NThreading::TFuture<NProto::TError> Resize(ui64 deviceSizeInBytes) override
+    {
+        Y_UNUSED(deviceSizeInBytes);
+
+        return DeviceStubFunction();
+    }
+
+private:
+    std::function<NThreading::TFuture<NProto::TError>()> DeviceStubFunction;
+};
+
+struct TTestControlledDeviceFactory: public NBD::IDeviceFactory
+{
+    std::function<NThreading::TFuture<NProto::TError>()> DeviceStubFunction;
+
+    explicit TTestControlledDeviceFactory(
+        std::function<NThreading::TFuture<NProto::TError>()> deviceStubFunction)
+        : DeviceStubFunction(std::move(deviceStubFunction))
+    {}
+
+    NBD::IDevicePtr Create(
+        const TNetworkAddress& connectAddress,
+        TString deviceName,
+        ui64 blockCount,
+        ui32 blockSize) override
+    {
+        Y_UNUSED(connectAddress);
+        Y_UNUSED(deviceName);
+        Y_UNUSED(blockCount);
+        Y_UNUSED(blockSize);
+        return std::make_shared<TControlledDevice>(DeviceStubFunction);
     }
 };
 
@@ -2030,8 +2018,10 @@ Y_UNIT_TEST_SUITE(TEndpointManagerTest)
 
         bootstrap.Options.NbdDevicePrefix = nbdDevPrefix;
 
-        auto deviceFactory = std::make_shared<TTestDeviceFactory>();
-        deviceFactory->SetExecutor(bootstrap.Executor);
+        auto promise = NewPromise<NProto::TError>();
+
+        auto deviceFactory = std::make_shared<TTestControlledDeviceFactory>(
+            [&]() { return promise.GetFuture(); });
         bootstrap.NbdDeviceFactory = deviceFactory;
 
         auto listener = std::make_shared<TTestEndpointListener>();
@@ -2064,12 +2054,15 @@ Y_UNIT_TEST_SUITE(TEndpointManagerTest)
 
         {
             auto futureStartEndpoint = StartEndpoint(*manager, request);
-            bootstrap.Executor
-                ->Execute([manager = manager.get()]() mutable
-                          { manager->RestoreEndpoints(); })
-                .Wait();
+            auto restoreEndpoints =
+                bootstrap.Executor->Execute([manager = manager.get()]() mutable
+                                            { manager->RestoreEndpoints(); });
 
-            futureStartEndpoint.Wait();
+            Sleep(TDuration::MilliSeconds(100));
+            promise.SetValue(MakeError(S_OK, {}));
+
+            UNIT_ASSERT(
+                !HasError(futureStartEndpoint.GetValue(TDuration::Seconds(1))));
         }
     }
 }

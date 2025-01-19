@@ -762,6 +762,9 @@ NProto::TStartEndpointResponse TEndpointManager::DoStartEndpoint(
         return TErrorResponse(E_REJECTED, "endpoint is restoring now");
     }
 
+    // We can have concurrent StartEndpoint and RestoreEndpoint call when the
+    // process starts. AddProcessingSocket should protect us from this race and
+    // delay the StartEndpoint call.
     auto promise = AddProcessingSocket<TStartEndpointMethod>(*request);
     if (promise.HasValue()) {
         return promise.ExtractValue();
@@ -775,19 +778,6 @@ NProto::TStartEndpointResponse TEndpointManager::DoStartEndpoint(
     return response;
 }
 
-// There are two maps Endpoints: one in the TEndpointManager, the other in
-// TSessionManager. If we try to call TSessionManager::CreateSession method
-// using an endpoint, for which a session has already been created (endpoint has
-// already been inserted into TSessionManager::Endpoints), a crash will occur.
-// To prevent this, we use the TEndpointManager::Endpoints map and check for the
-// existence of an endpoint at the beginning of the StartEndpointImpl method.
-// If the endpoint already exists, we call AlterEndpoint. However, insertion
-// into TEndpointManager::Endpoints is delayed until the end of
-// StartEndpointImpl. In the meantime, multiple asynchronous operations are
-// performed, which can lead to race conditions. To mitigate this, we must call
-// this method with the AddProcessingSocket/RemoveProcessingSocket
-// synchronization primitive or guarantee that this method is not called
-// concurrently.
 NProto::TStartEndpointResponse TEndpointManager::StartEndpointImpl(
     TCallContextPtr ctx,
     std::shared_ptr<NProto::TStartEndpointRequest> request,
