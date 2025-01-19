@@ -169,7 +169,7 @@ public:
 
         STORAGE_INFO(
             "[f:%s] StopAsync: completing left: %ld, requests left: %u, "
-            "fuse cancelation code: %u",
+            "fuse cancellation code: %u",
             FileSystemId.c_str(),
             completingCount,
             requestsSize,
