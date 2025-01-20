@@ -80,6 +80,9 @@ struct TVolumeThrottlingPolicy::TImpl
     double WriteCostMultiplier = 1;
     ui64 PostponedWeight = 0;
 
+    double UsedIopsQuota = 0;
+    double UsedBandwidthQuota = 0;
+
     TImpl(
             const NProto::TVolumePerformanceProfile& config,
             const ui32 policyVersion,
@@ -235,7 +238,7 @@ struct TVolumeThrottlingPolicy::TImpl
             return TDuration::Zero();
         }
 
-        ui64 bandwidthUpdate = requestInfo.ByteCount;
+        const ui64 bandwidthUpdate = requestInfo.ByteCount;
         double m = static_cast<EOpType>(requestInfo.OpType) == EOpType::Read
             ? 1.0
             : WriteCostMultiplier;
@@ -244,16 +247,28 @@ struct TVolumeThrottlingPolicy::TImpl
             MaxBandwidth(static_cast<EOpType>(requestInfo.OpType));
         const auto maxIops = MaxIops(static_cast<EOpType>(requestInfo.OpType));
 
+        const auto recalculatedMaxIops =
+            CalculateThrottlerC1(maxIops, maxBandwidth);
+        const auto recalculatedMaxBandwidth =
+            CalculateThrottlerC2(maxIops, maxBandwidth);
+
         auto d = Bucket.Register(
             ts,
             m * CostPerIO(
-                CalculateThrottlerC1(maxIops, maxBandwidth),
-                CalculateThrottlerC2(maxIops, maxBandwidth),
-                bandwidthUpdate
-            )
-        );
+                    recalculatedMaxIops,
+                    recalculatedMaxBandwidth,
+                    bandwidthUpdate));
 
         if (!d.GetValue()) {
+            // 0 is special value which disables throttling by byteCount
+            if (recalculatedMaxBandwidth) {
+                UsedBandwidthQuota +=
+                    m * (static_cast<double>(bandwidthUpdate) /
+                         static_cast<double>(recalculatedMaxBandwidth));
+            }
+            if (recalculatedMaxIops) {
+                UsedIopsQuota += m * (1.0 / recalculatedMaxIops);
+            }
             return TDuration::Zero();
         }
 
@@ -281,6 +296,15 @@ struct TVolumeThrottlingPolicy::TImpl
     double CalculateCurrentSpentBudgetShare(TInstant ts) const
     {
         return Bucket.CalculateCurrentSpentBudgetShare(ts);
+    }
+
+    TSplittedUsedQuota TakeSplittedUsedQuota()
+    {
+        auto result = TSplittedUsedQuota(UsedIopsQuota, UsedBandwidthQuota);
+        UsedIopsQuota = 0;
+        UsedBandwidthQuota = 0;
+
+        return result;
     }
 };
 
@@ -387,6 +411,12 @@ ui64 TVolumeThrottlingPolicy::CalculatePostponedWeight() const
 double TVolumeThrottlingPolicy::CalculateCurrentSpentBudgetShare(TInstant ts) const
 {
     return Impl->CalculateCurrentSpentBudgetShare(ts);
+}
+
+TVolumeThrottlingPolicy::TSplittedUsedQuota
+TVolumeThrottlingPolicy::TakeSplittedUsedQuota()
+{
+    return Impl->TakeSplittedUsedQuota();
 }
 
 const TBackpressureReport& TVolumeThrottlingPolicy::GetCurrentBackpressure() const
