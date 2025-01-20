@@ -38,6 +38,10 @@ void TConfigInitializerVhost::InitAppConfig()
 
     VhostServiceConfig = std::make_shared<TVhostServiceConfig>(
         AppConfig.GetVhostServiceConfig());
+
+    if (Options->DiagnosticsConfig) {
+        InitDiagnosticsConfig();
+    }
 }
 
 void TConfigInitializerVhost::ApplyVHostAppConfig(const TString& text)

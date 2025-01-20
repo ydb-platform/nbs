@@ -46,6 +46,7 @@ class FilestoreDaemonConfigGenerator:
         config_file=None,
         storage_config_file=None,
         app_config=None,
+        diag_config_file=None,
         profile_log=None,
         verbose=False,
         service_type=None,
@@ -73,6 +74,11 @@ class FilestoreDaemonConfigGenerator:
         self.__storage_config = storage_config or TStorageConfig()
 
         self.__profile_log_path = self.__profile_file_path(profile_log)
+
+        if diag_config_file:
+            self.diag_config_file_path = self.__config_file_path(diag_config_file)
+        else:
+            self.diag_config_file_path = None
 
         self.__restart_interval = restart_interval
         self.__restart_flag = restart_flag
@@ -320,6 +326,11 @@ class FilestoreDaemonConfigGenerator:
             self.__profile_log_path,
         ] + self.generate_aux_params()
 
+        if self.diag_config_file_path:
+            command += [
+                "--diag-file", self.diag_config_file_path
+            ]
+
         if self.__service_type == "kikimr":
             command += [
                 "--domain",
@@ -387,6 +398,7 @@ class FilestoreServerConfigGenerator(FilestoreDaemonConfigGenerator):
         restart_interval=None,
         access_service_port=0,
         storage_config=None,
+        diag_config_file=None,
         use_secure_registration=False,
         secure=False,
         access_service_type=AccessService,
@@ -397,6 +409,7 @@ class FilestoreServerConfigGenerator(FilestoreDaemonConfigGenerator):
             config_file="server.txt",
             storage_config_file="storage.txt",
             app_config=app_config,
+            diag_config_file="diag.txt",
             profile_log="nfs-profile.log",
             service_type=service_type,
             verbose=verbose,
@@ -411,6 +424,17 @@ class FilestoreServerConfigGenerator(FilestoreDaemonConfigGenerator):
             access_service_type=access_service_type,
             ic_port=ic_port
         )
+
+        self.__diag_config=self.__generate_diag_txt()
+        with open(self.diag_config_file_path, "w") as config_file:
+            if self.__diag_config:
+                config_file.write(MessageToString(self.__diag_config))
+                os.fsync(config_file)
+
+    def __generate_diag_txt(self):
+        diag = TDiagnosticsConfig()
+        diag.ProfileLogTimeThreshold = 100
+        return diag
 
 
 class FilestoreVhostConfigGenerator(FilestoreDaemonConfigGenerator):
@@ -430,12 +454,14 @@ class FilestoreVhostConfigGenerator(FilestoreDaemonConfigGenerator):
         ic_port=None,
         access_service_type=AccessService,
         secure=False,
+        diag_config_file=None,
     ):
         super().__init__(
             binary_path,
             config_file="vhost.txt",
             storage_config_file="storage-nolocal.txt",
             app_config=app_config,
+            diag_config_file="diag.txt",
             profile_log="vhost-profile.log",
             service_type=service_type,
             verbose=verbose,
@@ -453,9 +479,20 @@ class FilestoreVhostConfigGenerator(FilestoreDaemonConfigGenerator):
 
         self.__local_service_port = self._port_manager.get_port()
 
+        self.__diag_config=self.__generate_diag_txt()
+        with open(self.diag_config_file_path, "w") as config_file:
+            if self.__diag_config:
+                config_file.write(MessageToString(self.__diag_config))
+                os.fsync(config_file)
+
     def generate_aux_params(self):
         return ["--local-service-port", str(self.__local_service_port)]
 
     @property
     def local_service_port(self):
         return self.__local_service_port
+
+    def __generate_diag_txt(self):
+        diag = TDiagnosticsConfig()
+        diag.ProfileLogTimeThreshold = 100
+        return diag

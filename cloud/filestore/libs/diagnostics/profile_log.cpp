@@ -41,6 +41,11 @@ public:
     {
     }
 
+    ~TProfileLog() override
+    {
+        Flush();
+    }
+
 public:
     void Start() override;
     void Stop() override;

@@ -33,6 +33,10 @@ void TConfigInitializerServer::InitAppConfig()
     }
 
     ServerConfig = std::make_shared<NServer::TServerConfig>(serverConfig);
+
+    if (Options->DiagnosticsConfig) {
+        InitDiagnosticsConfig();
+    }
 }
 
 void TConfigInitializerServer::ApplyServerAppConfig(const TString& text)
