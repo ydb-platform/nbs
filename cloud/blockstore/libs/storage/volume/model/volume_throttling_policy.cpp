@@ -249,8 +249,6 @@ struct TVolumeThrottlingPolicy::TImpl
 
         const auto recalculatedMaxIops =
             CalculateThrottlerC1(maxIops, maxBandwidth);
-        Y_DEBUG_ABORT_UNLESS(recalculatedMaxIops);
-
         const auto recalculatedMaxBandwidth =
             CalculateThrottlerC2(maxIops, maxBandwidth);
 
@@ -268,7 +266,9 @@ struct TVolumeThrottlingPolicy::TImpl
                     m * (static_cast<double>(bandwidthUpdate) /
                          static_cast<double>(recalculatedMaxBandwidth));
             }
-            UsedIopsQuota += m * (1.0 / recalculatedMaxIops);
+            if (recalculatedMaxIops) {
+                UsedIopsQuota += m * (1.0 / recalculatedMaxIops);
+            }
             return TDuration::Zero();
         }
 
