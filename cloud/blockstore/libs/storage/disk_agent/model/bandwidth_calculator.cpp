@@ -1,13 +1,27 @@
 #include "bandwidth_calculator.h"
 
+#include <cloud/blockstore/libs/storage/disk_agent/model/config.h>
+
 namespace NCloud::NBlockStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+namespace {
+
 constexpr auto WindowDuration = TDuration::Seconds(1);
 
-TBandwidthCalculator::TBandwidthCalculator(ui64 maxTotalBandwidth)
-    : MaxTotalBandwidth(maxTotalBandwidth)
+ui64 GetNetworkBandwidth(const TDiskAgentConfig& config)
+{
+    return (static_cast<ui64>(config.GetNetworkMbitThroughput()) * 1_MB / 8) *
+           config.GetThrottlerConfig().GetDirectCopyBandwidthFraction();
+}
+
+}   // namespace
+
+TBandwidthCalculator::TBandwidthCalculator(const TDiskAgentConfig& config)
+    : MaxTotalBandwidth(GetNetworkBandwidth(config))
+    , MaxDeviceBandwidth(
+          config.GetThrottlerConfig().GetMaxDeviceBandwidthMiB() * 1_MB)
 {}
 
 TBandwidthCalculator::~TBandwidthCalculator() = default;
@@ -34,7 +48,11 @@ void TBandwidthCalculator::ClearHistory(TInstant deadline)
 
 ui64 TBandwidthCalculator::GetRecommendedBandwidth() const
 {
-    return MaxTotalBandwidth / DeviceLastRequest.size();
+    ui64 result = MaxTotalBandwidth / DeviceLastRequest.size();
+    if (MaxDeviceBandwidth) {
+        result = Min(MaxDeviceBandwidth, result);
+    }
+    return result;
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

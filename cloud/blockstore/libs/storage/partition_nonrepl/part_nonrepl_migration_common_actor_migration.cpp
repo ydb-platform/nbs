@@ -308,10 +308,10 @@ void TNonreplicatedPartitionMigrationCommonActor::HandleRangeMigrated(
     LOG_DEBUG(
         ctx,
         TBlockStoreComponents::PARTITION,
-        "[%s] Range %s migrated. Recommended bandwidth: %lu",
+        "[%s] Range %s migrated. Recommended bandwidth: %.2f MiB",
         DiskId.c_str(),
         DescribeRange(msg->Range).c_str(),
-        msg->RecommendedBandwidth);
+        static_cast<double>(msg->RecommendedBandwidth) / 1_MB);
 
     if (msg->AllZeroes) {
         ChangedRangesMap.MarkNotChanged(msg->Range);

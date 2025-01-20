@@ -1089,8 +1089,4 @@ message TStorageServiceConfig
 
     // Enable buttons for device state changing, when they in error state.
     optional bool EnableToChangeErrorStatesFromDiskRegistryMonpage = 398;
-
-    // Fraction of network throughput utilized for migrations and shadow
-    // disk fill.
-    optional double DirectCopyBandwidthFraction = 399;
 }

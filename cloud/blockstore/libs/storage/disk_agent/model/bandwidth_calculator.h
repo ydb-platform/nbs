@@ -1,5 +1,7 @@
 #pragma once
 
+#include <cloud/blockstore/libs/storage/disk_agent/model/public.h>
+
 #include <util/datetime/base.h>
 #include <util/generic/hash.h>
 #include <util/generic/list.h>
@@ -11,10 +13,12 @@ namespace NCloud::NBlockStore::NStorage {
 class TBandwidthCalculator
 {
     const ui64 MaxTotalBandwidth;
+    const ui64 MaxDeviceBandwidth;
+
     THashMap<TString, TInstant> DeviceLastRequest;
 
 public:
-    explicit TBandwidthCalculator(ui64 maxTotalBandwidth);
+    explicit TBandwidthCalculator(const TDiskAgentConfig& config);
     ~TBandwidthCalculator();
 
     // Returns the recommended bandwidth for the next request.

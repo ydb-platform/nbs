@@ -72,7 +72,7 @@ private:
     // Pending WaitReady requests
     TDeque<TPendingRequest> PendingRequests;
 
-    TBandwidthCalculator BandwidthCalculator;
+    TBandwidthCalculator BandwidthCalculator {*AgentConfig};
 
     ERegistrationState RegistrationState = ERegistrationState::NotStarted;
 

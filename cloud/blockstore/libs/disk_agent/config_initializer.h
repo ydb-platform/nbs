@@ -19,6 +19,8 @@
 #include <contrib/ydb/core/protos/blobstorage.pb.h>
 #include <contrib/ydb/core/protos/config.pb.h>
 
+#include <library/cpp/logger/log.h>
+
 namespace NCloud::NBlockStore::NServer {
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -35,10 +37,10 @@ struct TConfigInitializer
     TDiagnosticsConfigPtr DiagnosticsConfig;
     NSpdk::TSpdkEnvConfigPtr SpdkEnvConfig;
     NFeatures::TFeaturesConfigPtr FeaturesConfig;
-    ui32 NetworkMbitThroughput = 0;
     NRdma::TRdmaConfigPtr RdmaConfig;
 
     TString Rack;
+    TLog Log;
 
     TConfigInitializer(TOptionsPtr options)
         : Options(std::move(options))
@@ -52,7 +54,6 @@ struct TConfigInitializer
     void InitStorageConfig();
     void InitDiskAgentConfig();
     void InitDiskRegistryProxyConfig();
-    void InitNetworkThroughput();
     void InitServerConfig();
     void InitSpdkEnvConfig();
     void InitFeaturesConfig();

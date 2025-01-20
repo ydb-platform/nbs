@@ -123,6 +123,11 @@ public:
         return Config.GetPathToSerialNumberMapping();
     }
 
+    const NProto::TDiskAgentThrottlingConfig& GetThrottlerConfig() const
+    {
+        return Config.GetThrottlingConfig();
+    }
+
     ui32 GetNetworkMbitThroughput() const
     {
         return NetworkMbitThroughput;

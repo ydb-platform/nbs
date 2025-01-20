@@ -570,7 +570,6 @@ public:
     TString GetCachedDiskAgentSessionsPath() const;
 
     bool GetUseDirectCopyRange() const;
-    double GetDirectCopyBandwidthFraction() const;
     ui32 GetMaxShadowDiskFillBandwidth() const;
     ui32 GetMaxShadowDiskFillIoDepth() const;
     ui32 GetBackgroundOperationsTotalBandwidth() const;
