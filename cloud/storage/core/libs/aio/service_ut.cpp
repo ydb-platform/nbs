@@ -106,7 +106,7 @@ Y_UNIT_TEST_SUITE(TAioTest)
         promise1.GetFuture().GetValueSync();
         Sleep(TDuration::Seconds(1));
         service1.reset();
-        promise2.GetFuture().GetValue(TDuration::Seconds(5));
+        promise2.GetFuture().GetValueSync();
     }
 }
 
