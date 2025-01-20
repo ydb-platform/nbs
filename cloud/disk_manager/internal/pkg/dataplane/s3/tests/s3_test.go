@@ -3,6 +3,7 @@ package tests
 import (
 	"context"
 	"encoding/binary"
+	"math/rand"
 	"testing"
 	"time"
 
@@ -22,8 +23,7 @@ const (
 	defaultHTTPClientMinRetryTimeout = time.Second
 	defaultHTTPClientMaxRetryTimeout = 8 * time.Second
 	defaultHTTPClientMaxRetries      = 5
-	chunkSize                        = uint32(1024 * 4096) // 4 MiB
-	chunkCount                       = uint32(2)
+	chunkCount                       = uint64(30)
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -61,25 +61,24 @@ func TestReadWrite(t *testing.T) {
 	defer target.Close(ctx)
 
 	expectedData := make([]byte, 0)
-	for i := uint32(0); i < chunkCount; i++ {
+	for i := uint64(0); i < chunkCount; i++ {
 		var chunk dataplane_common.Chunk
 
-		data := make([]byte, chunkSize)
-		// if rand.Intn(2) == 1 {
-		// rand.Read(data)
-		// chunk = dataplane_common.Chunk{Index: i, Data: data}
-		// expectedData = append(expectedData, data...)
-		// } else {
-		// Zero chunk.
-		chunk = dataplane_common.Chunk{Index: i, Zero: true}
-		expectedData = append(expectedData, data...)
-		// }
+		data := make([]byte, s3.ChunkSize)
+		if rand.Intn(2) == 1 {
+			rand.Read(data)
+			chunk = dataplane_common.Chunk{Index: uint32(i), Data: data}
+			expectedData = append(expectedData, data...)
+		} else {
+			// Zero chunk.
+			chunk = dataplane_common.Chunk{Index: uint32(i), Zero: true}
+			expectedData = append(expectedData, data...)
+		}
 
 		err = target.Write(ctx, chunk)
 		require.NoError(t, err)
 	}
 
-	logging.Info(ctx, "comppa is %+v", completedParts)
 	err = s3Client.CompleteMultipartUpload(ctx, "bucket", "key", uploadId, completedParts)
 	require.NoError(t, err)
 
@@ -96,8 +95,8 @@ func TestReadWrite(t *testing.T) {
 	)
 	require.NoError(t, err)
 
-	actualData := make([]byte, chunkSize*chunkCount)
-	err = source.ReadBinary(ctx, 0, uint64(chunkSize*chunkCount), binary.BigEndian, &actualData)
+	actualData := make([]byte, s3.ChunkSize*chunkCount)
+	err = source.ReadBinary(ctx, 0, s3.ChunkSize*chunkCount, binary.BigEndian, &actualData)
 	require.NoError(t, err)
 
 	require.EqualValues(t, expectedData, actualData)

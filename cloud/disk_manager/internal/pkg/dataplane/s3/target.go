@@ -11,7 +11,9 @@ import (
 
 ////////////////////////////////////////////////////////////////////////////////
 
-const chunkSize = uint64(1024 * 4096) // 4 MiB
+const (
+	ChunkSize = uint64(5 * 1024 * 1024) // 5 GiB
+)
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -33,33 +35,23 @@ func (t *s3Target) Write(
 	t.mutex.Lock()
 	defer t.mutex.Unlock()
 
-	var completedPart *aws_s3.CompletedPart
-	var err error
+	var data []byte
 	if chunk.Zero {
-		data := make([]byte, chunkSize)
-		completedPart, err = t.s3.UploadPart(
-			ctx,
-			t.bucket,
-			t.key,
-			int64(chunk.Index)+1, // partNumber starts from 1
-			t.uploadId,
-			data,
-		)
-		if err != nil {
-			return err
-		}
+		data = make([]byte, ChunkSize)
 	} else {
-		completedPart, err = t.s3.UploadPart(
-			ctx,
-			t.bucket,
-			t.key,
-			int64(chunk.Index)+1, // partNumber starts from 1
-			t.uploadId,
-			chunk.Data,
-		)
-		if err != nil {
-			return err
-		}
+		data = chunk.Data
+	}
+
+	completedPart, err := t.s3.UploadPart(
+		ctx,
+		t.bucket,
+		t.key,
+		int64(chunk.Index)+1,
+		t.uploadId,
+		data,
+	)
+	if err != nil {
+		return err
 	}
 
 	*t.completedParts = append(*t.completedParts, completedPart)
