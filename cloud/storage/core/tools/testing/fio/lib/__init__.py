@@ -342,6 +342,8 @@ def run_index_test(directory, test, fail_on_errors=False, verbose=False):
         nonlocal cmd, parent_pids
         period_sec = 0.001
         pid_seen = False
+        start_time = time.time()
+        timout = 60
         while True:
             # use pgrep to find the fio process
 
@@ -378,6 +380,34 @@ def run_index_test(directory, test, fail_on_errors=False, verbose=False):
                 )
                 pid_seen = True
                 parent_pids = parent_pids.union(set(map(str, fio_pids)))
+
+                if time.time() - start_time > timout:
+                    logging.error("Fio process has timed out")
+                    dmesg = subprocess.Popen(
+                        ["sudo", "dmesg"],
+                        stdout=subprocess.PIPE,
+                    )
+                    dmesg.wait()
+                    logging.error(
+                        "dmesg output: "
+                        + dmesg.stdout.read().decode("utf-8")
+                        if dmesg.stdout
+                        else ""
+                    )
+                    for pid in fio_pids:
+                        strace = subprocess.Popen(
+                            ["sudo", "strace", "-p", str(pid)],
+                            stdout=subprocess.PIPE,
+                        )
+                        strace.wait()
+                        logging.error(
+                            "strace output for pid {}: ".format(pid)
+                            + strace.stdout.read().decode("utf-8")
+                            if strace.stdout
+                            else ""
+                        )
+                    break
+
             else:
                 if pid_seen:
                     logging.info("Fio process has finished")
