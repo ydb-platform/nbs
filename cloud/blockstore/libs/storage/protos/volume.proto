@@ -654,9 +654,9 @@ message TGetStorageConfigResponse
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-// StopPartionBeforeVolumeDestruction request/response.
+// StopPartitionBeforeVolumeDestruction request/response.
 
-message TStopPartionBeforeVolumeDestructionRequest
+message TStopPartitionBeforeVolumeDestructionRequest
 {
     // Optional request headers.
     THeaders Headers = 1;
@@ -666,7 +666,7 @@ message TStopPartionBeforeVolumeDestructionRequest
     string DiskId = 2;
 }
 
-message TStopPartionBeforeVolumeDestructionResponse
+message TStopPartitionBeforeVolumeDestructionResponse
 {
     // Optional error, set only if error happened.
     NCloud.NProto.TError Error = 1;

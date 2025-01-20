@@ -35,7 +35,7 @@ namespace NCloud::NBlockStore::NStorage {
     xxx(UpdateVolumeParams,                         __VA_ARGS__)               \
     xxx(ChangeStorageConfig,                        __VA_ARGS__)               \
     xxx(GetStorageConfig,                           __VA_ARGS__)               \
-    xxx(StopPartionBeforeVolumeDestruction,         __VA_ARGS__)               \
+    xxx(StopPartitionBeforeVolumeDestruction,         __VA_ARGS__)               \
 
 // BLOCKSTORE_VOLUME_REQUESTS
 
@@ -332,8 +332,8 @@ struct TEvVolume
         EvGetStorageConfigRequest = EvBegin + 58,
         EvGetStorageConfigResponse = EvBegin + 59,
 
-        EvStopPartionBeforeVolumeDestructionRequest = EvBegin + 60,
-        EvStopPartionBeforeVolumeDestructionResponse = EvBegin + 61,
+        EvStopPartitionBeforeVolumeDestructionRequest = EvBegin + 60,
+        EvStopPartitionBeforeVolumeDestructionResponse = EvBegin + 61,
 
         EvEnd
     };

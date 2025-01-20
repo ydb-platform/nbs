@@ -346,15 +346,16 @@ void TVolumeActor::StartPartitionsForGc(const TActorContext& ctx)
     PartitionsStartedReason = EPartitionsStartedReason::STARTED_FOR_GC;
 }
 
-void TVolumeActor::HandleStopPartionBeforeVolumeDestruction(
-    const TEvVolume::TEvStopPartionBeforeVolumeDestructionRequest::TPtr& ev,
+void TVolumeActor::HandleStopPartitionBeforeVolumeDestruction(
+    const TEvVolume::TEvStopPartitionBeforeVolumeDestructionRequest::TPtr& ev,
     const TActorContext& ctx)
 {
     if (!State->GetDiskRegistryBasedPartitionActor()) {
         LOG_ERROR(
             ctx,
             TBlockStoreComponents::VOLUME,
-            "[%lu] StopPartionBeforeVolumeDestruction request was send to not "
+            "[%lu] StopPartitionBeforeVolumeDestruction request was send to "
+            "not "
             "DR based disk",
             TabletID());
 
@@ -362,7 +363,7 @@ void TVolumeActor::HandleStopPartionBeforeVolumeDestruction(
             ctx,
             *ev,
             std::make_unique<
-                TEvVolume::TEvStopPartionBeforeVolumeDestructionResponse>(
+                TEvVolume::TEvStopPartitionBeforeVolumeDestructionResponse>(
                 MakeError(E_NOT_IMPLEMENTED, "request not supported")));
         return;
     }
@@ -372,8 +373,6 @@ void TVolumeActor::HandleStopPartionBeforeVolumeDestruction(
         TBlockStoreComponents::VOLUME,
         "[%lu] Stop Partition before volume destruction",
         TabletID());
-
-    CancelRequests(ctx);
 
     auto reqInfo =
         CreateRequestInfo(ev->Sender, ev->Cookie, ev->Get()->CallContext);
@@ -386,8 +385,13 @@ void TVolumeActor::HandleStopPartionBeforeVolumeDestruction(
                 *reqInfo,
                 std::make_unique<
                     TEvVolume::
-                        TEvStopPartionBeforeVolumeDestructionResponse>());
+                        TEvStopPartitionBeforeVolumeDestructionResponse>());
         });
+
+    TerminateTransactions(ctx);
+    KillActors(ctx);
+    CancelRequests(ctx);
+
     BecomeAux(ctx, STATE_ZOMBIE);
 }
 

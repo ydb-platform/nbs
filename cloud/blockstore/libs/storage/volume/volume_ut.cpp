@@ -8190,10 +8190,10 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
             false);
 
 
-        volume.StopPartionBeforeVolumeDestruction();
+        volume.StopPartitionBeforeVolumeDestruction();
         UNIT_ASSERT(partitionsStopped);
 
-        // Check that volume after TEvStopPartionBeforeVolumeDestructionRequest
+        // Check that volume after TEvStopPartitionBeforeVolumeDestructionRequest
         // in zombie state and rejects requsts.
         volume.SendGetVolumeInfoRequest();
         auto response = volume.RecvGetVolumeInfoResponse();

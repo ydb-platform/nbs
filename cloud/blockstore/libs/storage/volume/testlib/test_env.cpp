@@ -551,10 +551,10 @@ TVolumeClient::CreateReadMetaHistoryRequest()
     return std::make_unique<TEvVolumePrivate::TEvReadMetaHistoryRequest>();
 }
 
-std::unique_ptr<TEvVolume::TEvStopPartionBeforeVolumeDestructionRequest>
-TVolumeClient::CreateStopPartionBeforeVolumeDestructionRequest() {
+std::unique_ptr<TEvVolume::TEvStopPartitionBeforeVolumeDestructionRequest>
+TVolumeClient::CreateStopPartitionBeforeVolumeDestructionRequest() {
     return std::make_unique<
-        TEvVolume::TEvStopPartionBeforeVolumeDestructionRequest>();
+        TEvVolume::TEvStopPartitionBeforeVolumeDestructionRequest>();
 }
 
 void TVolumeClient::SendRemoteHttpInfo(

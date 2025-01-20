@@ -81,7 +81,7 @@ private:
         const TActorContext& ctx);
 
     void HandleStopPartitions(
-        const TEvVolume::TEvStopPartionBeforeVolumeDestructionResponse::TPtr&
+        const TEvVolume::TEvStopPartitionBeforeVolumeDestructionResponse::TPtr&
             ev,
         const TActorContext& ctx);
 
@@ -189,7 +189,7 @@ void TDestroyVolumeActor::DeallocateDisk(const TActorContext& ctx)
 void TDestroyVolumeActor::StopPartitions(const TActorContext& ctx)
 {
     auto stopPartReq = std::make_unique<
-        TEvVolume::TEvStopPartionBeforeVolumeDestructionRequest>();
+        TEvVolume::TEvStopPartitionBeforeVolumeDestructionRequest>();
     stopPartReq->Record.SetDiskId(DiskId);
     NCloud::Send(ctx, MakeVolumeProxyServiceId(), std::move(stopPartReq));
 }
@@ -398,7 +398,7 @@ void TDestroyVolumeActor::HandleStatVolumeResponse(
 }
 
 void TDestroyVolumeActor::HandleStopPartitions(
-    const TEvVolume::TEvStopPartionBeforeVolumeDestructionResponse::TPtr& ev,
+    const TEvVolume::TEvStopPartitionBeforeVolumeDestructionResponse::TPtr& ev,
     const TActorContext& ctx)
 {
     Y_UNUSED(ev);
@@ -435,7 +435,7 @@ STFUNC(TDestroyVolumeActor::StateWork)
             HandleStatVolumeResponse);
 
         HFunc(
-            TEvVolume::TEvStopPartionBeforeVolumeDestructionResponse,
+            TEvVolume::TEvStopPartitionBeforeVolumeDestructionResponse,
             HandleStopPartitions);
 
         default:
