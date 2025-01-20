@@ -169,8 +169,8 @@ void TConfigInitializer::InitDiskAgentConfig()
 
     DiskAgentConfig = std::make_shared<NStorage::TDiskAgentConfig>(
         std::move(diskAgentConfig),
-        Rack
-    );
+        Rack,
+        NetworkMbitThroughput);
 }
 
 void TConfigInitializer::InitDiskRegistryProxyConfig()
@@ -182,6 +182,10 @@ void TConfigInitializer::InitDiskRegistryProxyConfig()
 
     DiskRegistryProxyConfig = std::make_shared<NStorage::TDiskRegistryProxyConfig>(
         std::move(config));
+}
+
+void TConfigInitializer::InitNetworkThroughput() {
+
 }
 
 void TConfigInitializer::InitServerConfig()
@@ -430,7 +434,8 @@ void TConfigInitializer::ApplyDiskAgentConfig(const TString& text)
 
     DiskAgentConfig = std::make_shared<NStorage::TDiskAgentConfig>(
         std::move(config),
-        Rack);
+        Rack,
+        NetworkMbitThroughput);
 }
 
 void TConfigInitializer::ApplyDiskRegistryProxyConfig(const TString& text)

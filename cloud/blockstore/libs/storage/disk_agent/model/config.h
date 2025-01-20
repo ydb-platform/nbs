@@ -19,15 +19,18 @@ class TDiskAgentConfig
 private:
     NProto::TDiskAgentConfig Config;
     TString Rack;
+    ui32 NetworkMbitThroughput = 0;
 
 public:
     TDiskAgentConfig() = default;
 
     TDiskAgentConfig(
             NProto::TDiskAgentConfig config,
-            TString rack)
+            TString rack,
+            ui32 networkMbitThroughput)
         : Config(std::move(config))
         , Rack(std::move(rack))
+        , NetworkMbitThroughput(networkMbitThroughput)
     {}
 
     bool GetEnabled() const;
@@ -118,6 +121,11 @@ public:
     const auto& GetPathToSerialNumberMapping() const
     {
         return Config.GetPathToSerialNumberMapping();
+    }
+
+    ui32 GetNetworkMbitThroughput() const
+    {
+        return NetworkMbitThroughput;
     }
 
     void Dump(IOutputStream& out) const;

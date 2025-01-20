@@ -12,8 +12,8 @@
 #include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/disk_agent/model/config.h>
 #include <cloud/blockstore/libs/storage/disk_registry_proxy/model/public.h>
-#include <cloud/storage/core/libs/features/features_config.h>
 #include <cloud/storage/core/libs/coroutine/public.h>
+#include <cloud/storage/core/libs/features/features_config.h>
 
 #include <contrib/ydb/core/protos/auth.pb.h>
 #include <contrib/ydb/core/protos/blobstorage.pb.h>
@@ -35,6 +35,7 @@ struct TConfigInitializer
     TDiagnosticsConfigPtr DiagnosticsConfig;
     NSpdk::TSpdkEnvConfigPtr SpdkEnvConfig;
     NFeatures::TFeaturesConfigPtr FeaturesConfig;
+    ui32 NetworkMbitThroughput = 0;
     NRdma::TRdmaConfigPtr RdmaConfig;
 
     TString Rack;
@@ -51,6 +52,7 @@ struct TConfigInitializer
     void InitStorageConfig();
     void InitDiskAgentConfig();
     void InitDiskRegistryProxyConfig();
+    void InitNetworkThroughput();
     void InitServerConfig();
     void InitSpdkEnvConfig();
     void InitFeaturesConfig();

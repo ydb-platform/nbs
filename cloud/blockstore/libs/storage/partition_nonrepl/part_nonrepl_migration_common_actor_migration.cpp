@@ -230,6 +230,7 @@ void TNonreplicatedPartitionMigrationCommonActor::HandleRangeMigrated(
     if (!IsMigrationAllowed()) {
         return;
     }
+    STORAGE_CHECK_PRECONDITION(TimeoutCalculator);
 
     auto* msg = ev->Get();
 
@@ -307,13 +308,15 @@ void TNonreplicatedPartitionMigrationCommonActor::HandleRangeMigrated(
     LOG_DEBUG(
         ctx,
         TBlockStoreComponents::PARTITION,
-        "[%s] Range %s migrated",
+        "[%s] Range %s migrated. Recommended bandwidth: %lu",
         DiskId.c_str(),
-        DescribeRange(msg->Range).c_str());
+        DescribeRange(msg->Range).c_str(),
+        msg->RecommendedBandwidth);
 
     if (msg->AllZeroes) {
         ChangedRangesMap.MarkNotChanged(msg->Range);
     }
+    TimeoutCalculator->SetRecommendedBandwidth(msg->RecommendedBandwidth);
     NotifyMigrationProgressIfNeeded(ctx, msg->Range);
     NotifyMigrationFinishedIfNeeded(ctx);
     ScheduleRangeMigration(ctx);

@@ -17,7 +17,16 @@ using namespace NActors;
 
 using namespace NKikimr;
 
+namespace {
+
 ////////////////////////////////////////////////////////////////////////////////
+
+ui64 GetNetworkBandwidth(ui32 networkMbitThroughput, double directCopyBandwidthFraction) {
+    return (static_cast<ui64>(networkMbitThroughput) * 1_MB / 8) *
+           directCopyBandwidthFraction;
+}
+
+}   // namespace
 
 TDiskAgentActor::TDiskAgentActor(
         TStorageConfigPtr config,
@@ -42,6 +51,9 @@ TDiskAgentActor::TDiskAgentActor(
     , Logging(std::move(logging))
     , RdmaServer(std::move(rdmaServer))
     , NvmeManager(std::move(nvmeManager))
+    , BandwidthCalculator(
+          GetNetworkBandwidth(AgentConfig->GetNetworkMbitThroughput(),
+          Config->GetDirectCopyBandwidthFraction()))
 {}
 
 TDiskAgentActor::~TDiskAgentActor()
