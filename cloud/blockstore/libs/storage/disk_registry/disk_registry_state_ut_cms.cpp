@@ -21,6 +21,64 @@ using namespace NDiskRegistryStateTest;
 
 ////////////////////////////////////////////////////////////////////////////////
 
+
+namespace {
+
+////////////////////////////////////////////////////////////////////////////////
+
+TResultOrError<TDiskRegistryState::TAllocateDiskResult> AllocateDisk(
+    TDiskRegistryDatabase& db,
+    TDiskRegistryState& state,
+    TString diskId)
+{
+    TDiskRegistryState::TAllocateDiskResult result{};
+
+    auto error = state.AllocateDisk(
+        Now(),
+        db,
+        TDiskRegistryState::TAllocateDiskParams{
+            .DiskId = std::move(diskId),
+            .BlockSize = NDiskRegistryStateTest::DefaultLogicalBlockSize,
+            .BlocksCount = 20_GB / DefaultLogicalBlockSize},
+        &result);
+    if (HasError(error)) {
+        return error;
+    }
+
+    return result;
+}
+
+TVector<NProto::TAgentConfig> GetSeveralAgents()
+{
+    return {
+        AgentConfig(
+            1,
+            {
+                Device("dev-1", "uuid-1.1", "rack-1"),
+                Device("dev-2", "uuid-1.2", "rack-1"),
+            }),
+        AgentConfig(
+            2,
+            {
+                Device("dev-1", "uuid-2.1", "rack-2"),
+                Device("dev-2", "uuid-2.2", "rack-2"),
+            })};
+}
+
+TDiskRegistryState GetTestState(const TVector<NProto::TAgentConfig>& agents)
+{
+    return TDiskRegistryStateBuilder()
+        .WithKnownAgents(agents)
+        .WithDisks({
+            Disk("disk-1", {"uuid-1.1", "uuid-1.2"}),
+        })
+        .Build();
+}
+
+}   // namespace
+
+
+
 Y_UNIT_TEST_SUITE(TDiskRegistryStateCMSTest)
 {
     Y_UNIT_TEST(ShouldAddNewDevice)
@@ -1125,6 +1183,494 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateCMSTest)
                     0,
                     agentConfig->GetUnknownDevices().size());
             });
+    }
+
+    Y_UNIT_TEST(ShouldNotStartAlreadyFinishedMigrationAgent)
+    {
+        TTestExecutor executor;
+        executor.WriteTx([&](TDiskRegistryDatabase db) { db.InitSchema(); });
+
+        const TVector agents = GetSeveralAgents();
+
+        TDiskRegistryState state = GetTestState(agents);
+
+        UNIT_ASSERT_VALUES_EQUAL(0, state.BuildMigrationList().size());
+        UNIT_ASSERT(state.IsMigrationListEmpty());
+
+        executor.WriteTx(
+            [&](TDiskRegistryDatabase db)
+            {
+                auto [result, error] = AllocateDisk(db, state, "disk-1");
+                UNIT_ASSERT_SUCCESS(error);
+
+                UNIT_ASSERT_VALUES_EQUAL(2, result.Devices.size());
+                UNIT_ASSERT_VALUES_EQUAL(0, result.Migrations.size());
+            });
+
+        executor.WriteTx(
+            [&](TDiskRegistryDatabase db) mutable
+            {
+                TVector<TString> affectedDisks;
+                TDuration timeout;
+                auto error = state.UpdateCmsHostState(
+                    db,
+                    agents[0].agentid(),
+                    NProto::AGENT_STATE_WARNING,
+                    Now(),
+                    false,   // dryRun
+                    affectedDisks,
+                    timeout);
+
+                UNIT_ASSERT_VALUES_EQUAL(error.code(), E_TRY_AGAIN);
+                UNIT_ASSERT_VALUES_EQUAL(1, affectedDisks.size());
+                UNIT_ASSERT(!state.IsMigrationListEmpty());
+            });
+
+        const auto migrations = state.BuildMigrationList();
+        UNIT_ASSERT_VALUES_EQUAL(2, migrations.size());
+
+        TVector<TString> targets;
+        executor.WriteTx(
+            [&](TDiskRegistryDatabase db) mutable
+            {
+                for (const auto& [diskId, uuid]: migrations) {
+                    auto [config, error] =
+                        state.StartDeviceMigration(Now(), db, diskId, uuid);
+                    UNIT_ASSERT_SUCCESS(error);
+                    targets.push_back(config.GetDeviceUUID());
+                }
+            });
+
+        executor.WriteTx(
+            [&](TDiskRegistryDatabase db)
+            {
+                auto [result, error] = AllocateDisk(db, state, "disk-1");;
+                UNIT_ASSERT_SUCCESS(error);
+
+                UNIT_ASSERT_VALUES_EQUAL(2, result.Devices.size());
+                UNIT_ASSERT_VALUES_EQUAL(2, result.Migrations.size());
+            });
+
+        {
+            TDiskInfo diskInfo;
+            UNIT_ASSERT_SUCCESS(state.GetDiskInfo("disk-1", diskInfo));
+            UNIT_ASSERT_VALUES_EQUAL(2, diskInfo.Devices.size());
+            UNIT_ASSERT_VALUES_EQUAL(2, diskInfo.Migrations.size());
+            UNIT_ASSERT_VALUES_EQUAL(0, diskInfo.FinishedMigrations.size());
+        }
+
+        UNIT_ASSERT_VALUES_EQUAL(0, state.GetDirtyDevices().size());
+
+        // finish migrations
+        executor.WriteTx(
+            [&](TDiskRegistryDatabase db) mutable
+            {
+                for (size_t i = 0; i < migrations.size(); ++i) {
+                    const auto& diskId = migrations[i].DiskId;
+                    const auto& uuid = migrations[i].SourceDeviceId;
+                    const auto& target = targets[i];
+
+                    bool updated = false;
+                    auto error = state.FinishDeviceMigration(
+                        db,
+                        diskId,
+                        uuid,
+                        target,
+                        TInstant::Now(),
+                        &updated);
+
+                    UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
+                }
+            });
+
+        {
+            TDiskInfo diskInfo;
+            UNIT_ASSERT_SUCCESS(state.GetDiskInfo("disk-1", diskInfo));
+            UNIT_ASSERT_VALUES_EQUAL(2, diskInfo.Devices.size());
+            UNIT_ASSERT_VALUES_EQUAL(0, diskInfo.Migrations.size());
+            UNIT_ASSERT_VALUES_EQUAL(2, diskInfo.FinishedMigrations.size());
+        }
+
+        executor.WriteTx(
+            [&](TDiskRegistryDatabase db) mutable
+            {
+                TVector<TString> affectedDisks;
+                TDuration timeout;
+                auto error = state.UpdateCmsHostState(
+                    db,
+                    agents[0].agentid(),
+                    NProto::AGENT_STATE_WARNING,
+                    Now(),
+                    false,   // dryRun
+                    affectedDisks,
+                    timeout);
+
+                UNIT_ASSERT_VALUES_EQUAL(error.code(), E_TRY_AGAIN);
+                UNIT_ASSERT(state.IsMigrationListEmpty());
+            });
+
+        auto migrationsAfterSecondRequest = state.BuildMigrationList();
+        UNIT_ASSERT_VALUES_EQUAL(0, migrationsAfterSecondRequest.size());
+    }
+
+    Y_UNIT_TEST(ShouldStartCanceledMigrationAgent)
+    {
+        TTestExecutor executor;
+        executor.WriteTx([&] (TDiskRegistryDatabase db) {
+            db.InitSchema();
+        });
+
+        const TVector agents = GetSeveralAgents();
+
+        TDiskRegistryState state = GetTestState(agents);
+
+        UNIT_ASSERT_VALUES_EQUAL(0, state.BuildMigrationList().size());
+        UNIT_ASSERT(state.IsMigrationListEmpty());
+
+        executor.WriteTx(
+            [&](TDiskRegistryDatabase db)
+            {
+                auto [result, error] = AllocateDisk(db, state, "disk-1");
+                UNIT_ASSERT_SUCCESS(error);
+
+                UNIT_ASSERT_VALUES_EQUAL(2, result.Devices.size());
+                UNIT_ASSERT_VALUES_EQUAL(0, result.Migrations.size());
+            });
+
+        executor.WriteTx(
+            [&](TDiskRegistryDatabase db) mutable
+            {
+                auto affectedDisks = UpdateAgentState(
+                    state,
+                    db,
+                    agents[0],
+                    NProto::AGENT_STATE_WARNING);
+                UNIT_ASSERT_VALUES_EQUAL(1, affectedDisks.size());
+                UNIT_ASSERT(!state.IsMigrationListEmpty());
+            });
+
+        const auto migrations = state.BuildMigrationList();
+        UNIT_ASSERT_VALUES_EQUAL(2, migrations.size());
+
+        TVector<TString> targets;
+        executor.WriteTx([&] (TDiskRegistryDatabase db) mutable {
+            for (const auto& [diskId, uuid]: migrations) {
+                auto [config, error] = state.StartDeviceMigration(Now(), db, diskId, uuid);
+                UNIT_ASSERT_SUCCESS(error);
+                targets.push_back(config.GetDeviceUUID());
+            }
+        });
+        Sort(targets);
+
+        executor.WriteTx([&] (TDiskRegistryDatabase db) {
+            auto [result, error] = AllocateDisk(db, state, "disk-1");;
+            UNIT_ASSERT_SUCCESS(error);
+
+            UNIT_ASSERT_VALUES_EQUAL(2, result.Devices.size());
+            UNIT_ASSERT_VALUES_EQUAL(2, result.Migrations.size());
+        });
+
+        {
+            TDiskInfo diskInfo;
+            UNIT_ASSERT_SUCCESS(state.GetDiskInfo("disk-1", diskInfo));
+            UNIT_ASSERT_VALUES_EQUAL(2, diskInfo.Devices.size());
+            UNIT_ASSERT_VALUES_EQUAL(2, diskInfo.Migrations.size());
+            UNIT_ASSERT_VALUES_EQUAL(0, diskInfo.FinishedMigrations.size());
+        }
+
+        UNIT_ASSERT_VALUES_EQUAL(0, state.GetDirtyDevices().size());
+
+        // cancel migrations
+        executor.WriteTx(
+            [&](TDiskRegistryDatabase db) mutable
+            {
+                TVector<TString> affectedDisks;
+                TDuration timeout;
+                auto error = state.UpdateCmsHostState(
+                    db,
+                    agents[0].agentid(),
+                    NProto::AGENT_STATE_ONLINE,
+                    Now(),
+                    false,   // dryRun
+                    affectedDisks,
+                    timeout);
+                UNIT_ASSERT_VALUES_EQUAL(1, affectedDisks.size());
+                UNIT_ASSERT(state.IsMigrationListEmpty());
+            });
+
+        UNIT_ASSERT_VALUES_EQUAL(0, state.GetDirtyDevices().size());
+
+        {
+            TDiskInfo diskInfo;
+            UNIT_ASSERT_SUCCESS(state.GetDiskInfo("disk-1", diskInfo));
+            UNIT_ASSERT_VALUES_EQUAL(2, diskInfo.Devices.size());
+            UNIT_ASSERT_VALUES_EQUAL(0, diskInfo.Migrations.size());
+            UNIT_ASSERT_VALUES_EQUAL(2, diskInfo.FinishedMigrations.size());
+        }
+
+        executor.WriteTx(
+            [&](TDiskRegistryDatabase db) mutable
+            {
+                TVector<TString> affectedDisks;
+                TDuration timeout;
+                auto error = state.UpdateCmsHostState(
+                    db,
+                    agents[0].agentid(),
+                    NProto::AGENT_STATE_WARNING,
+                    Now(),
+                    false,   // dryRun
+                    affectedDisks,
+                    timeout);
+
+                UNIT_ASSERT_VALUES_EQUAL(error.code(), E_TRY_AGAIN);
+                UNIT_ASSERT(!state.IsMigrationListEmpty());
+            });
+
+        auto migrationsAfterSecondRequest = state.BuildMigrationList();
+        UNIT_ASSERT_VALUES_EQUAL(2, migrationsAfterSecondRequest.size());
+    }
+
+    Y_UNIT_TEST(ShouldNotStartAlreadyFinishedMigrationDevice)
+    {
+        TTestExecutor executor;
+        executor.WriteTx([&](TDiskRegistryDatabase db) { db.InitSchema(); });
+
+        const TVector agents = GetSeveralAgents();
+
+        TDiskRegistryState state = GetTestState(agents);
+
+        UNIT_ASSERT_VALUES_EQUAL(0, state.BuildMigrationList().size());
+        UNIT_ASSERT(state.IsMigrationListEmpty());
+
+        executor.WriteTx(
+            [&](TDiskRegistryDatabase db)
+            {
+                auto [result, error] = AllocateDisk(db, state, "disk-1");
+                UNIT_ASSERT_SUCCESS(error);
+
+                UNIT_ASSERT_VALUES_EQUAL(2, result.Devices.size());
+                UNIT_ASSERT_VALUES_EQUAL(0, result.Migrations.size());
+            });
+
+        executor.WriteTx(
+            [&](TDiskRegistryDatabase db) mutable
+            {
+                auto result = state.UpdateCmsDeviceState(
+                    db,
+                    agents[0].agentid(),
+                    agents[0].GetDevices()[0].GetDeviceName(),
+                    NProto::DEVICE_STATE_WARNING,
+                    Now(),
+                    false,    // shouldResumeDevice
+                    false);   // dryRun
+
+                UNIT_ASSERT_VALUES_EQUAL(result.Error.code(), E_TRY_AGAIN);
+                UNIT_ASSERT_VALUES_EQUAL(1, result.AffectedDisks.size());
+                UNIT_ASSERT(!state.IsMigrationListEmpty());
+            });
+
+        const auto migrations = state.BuildMigrationList();
+        UNIT_ASSERT_VALUES_EQUAL(1, migrations.size());
+        const auto& migration = migrations[0];
+
+        TString target;
+        executor.WriteTx(
+            [&](TDiskRegistryDatabase db) mutable
+            {
+                auto [config, error] = state.StartDeviceMigration(
+                    Now(),
+                    db,
+                    migration.DiskId,
+                    migration.SourceDeviceId);
+                UNIT_ASSERT_SUCCESS(error);
+                target = config.GetDeviceUUID();
+            });
+
+        executor.WriteTx(
+            [&](TDiskRegistryDatabase db)
+            {
+                auto [result, error] = AllocateDisk(db, state, "disk-1");;
+                UNIT_ASSERT_SUCCESS(error);
+
+                UNIT_ASSERT_VALUES_EQUAL(2, result.Devices.size());
+                UNIT_ASSERT_VALUES_EQUAL(1, result.Migrations.size());
+            });
+
+        {
+            TDiskInfo diskInfo;
+            UNIT_ASSERT_SUCCESS(state.GetDiskInfo("disk-1", diskInfo));
+            UNIT_ASSERT_VALUES_EQUAL(2, diskInfo.Devices.size());
+            UNIT_ASSERT_VALUES_EQUAL(1, diskInfo.Migrations.size());
+            UNIT_ASSERT_VALUES_EQUAL(0, diskInfo.FinishedMigrations.size());
+        }
+
+        UNIT_ASSERT_VALUES_EQUAL(0, state.GetDirtyDevices().size());
+
+        // finish migration
+        executor.WriteTx(
+            [&](TDiskRegistryDatabase db) mutable
+            {
+                const auto& diskId = migration.DiskId;
+                const auto& uuid = migration.SourceDeviceId;
+
+                bool updated = false;
+                auto error = state.FinishDeviceMigration(
+                    db,
+                    diskId,
+                    uuid,
+                    target,
+                    TInstant::Now(),
+                    &updated);
+
+                UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
+            });
+
+        {
+            TDiskInfo diskInfo;
+            UNIT_ASSERT_SUCCESS(state.GetDiskInfo("disk-1", diskInfo));
+            UNIT_ASSERT_VALUES_EQUAL(2, diskInfo.Devices.size());
+            UNIT_ASSERT_VALUES_EQUAL(0, diskInfo.Migrations.size());
+            UNIT_ASSERT_VALUES_EQUAL(1, diskInfo.FinishedMigrations.size());
+        }
+
+        executor.WriteTx(
+            [&](TDiskRegistryDatabase db) mutable
+            {
+                auto result = state.UpdateCmsDeviceState(
+                    db,
+                    agents[0].agentid(),
+                    agents[0].GetDevices()[0].GetDeviceName(),
+                    NProto::DEVICE_STATE_WARNING,
+                    Now(),
+                    false,    // shouldResumeDevice
+                    false);   // dryRun
+
+                UNIT_ASSERT_VALUES_EQUAL(result.Error.code(), E_TRY_AGAIN);
+                UNIT_ASSERT(state.IsMigrationListEmpty());
+            });
+
+        auto migrationsAfterSecondRequest = state.BuildMigrationList();
+        UNIT_ASSERT_VALUES_EQUAL(0, migrationsAfterSecondRequest.size());
+    }
+
+    Y_UNIT_TEST(ShouldStartCanceledMigrationDevice)
+    {
+        TTestExecutor executor;
+        executor.WriteTx([&](TDiskRegistryDatabase db) { db.InitSchema(); });
+
+        const TVector agents = GetSeveralAgents();
+
+        TDiskRegistryState state = GetTestState(agents);
+
+        UNIT_ASSERT_VALUES_EQUAL(0, state.BuildMigrationList().size());
+        UNIT_ASSERT(state.IsMigrationListEmpty());
+
+        executor.WriteTx(
+            [&](TDiskRegistryDatabase db)
+            {
+                auto [result, error] = AllocateDisk(db, state, "disk-1");
+                UNIT_ASSERT_SUCCESS(error);
+
+                UNIT_ASSERT_VALUES_EQUAL(2, result.Devices.size());
+                UNIT_ASSERT_VALUES_EQUAL(0, result.Migrations.size());
+            });
+
+        executor.WriteTx(
+            [&](TDiskRegistryDatabase db) mutable
+            {
+                auto result = state.UpdateCmsDeviceState(
+                    db,
+                    agents[0].agentid(),
+                    agents[0].GetDevices()[0].GetDeviceName(),
+                    NProto::DEVICE_STATE_WARNING,
+                    Now(),
+                    false,    // shouldResumeDevice
+                    false);   // dryRun
+
+                UNIT_ASSERT_VALUES_EQUAL(result.Error.code(), E_TRY_AGAIN);
+                UNIT_ASSERT_VALUES_EQUAL(1, result.AffectedDisks.size());
+                UNIT_ASSERT(!state.IsMigrationListEmpty());
+            });
+
+        const auto migrations = state.BuildMigrationList();
+        UNIT_ASSERT_VALUES_EQUAL(1, migrations.size());
+        const auto& migration = migrations[0];
+
+        TString target;
+        executor.WriteTx(
+            [&](TDiskRegistryDatabase db) mutable
+            {
+                auto [config, error] = state.StartDeviceMigration(
+                    Now(),
+                    db,
+                    migration.DiskId,
+                    migration.SourceDeviceId);
+                UNIT_ASSERT_SUCCESS(error);
+                target = config.GetDeviceUUID();
+            });
+
+        executor.WriteTx(
+            [&](TDiskRegistryDatabase db)
+            {
+                auto [result, error] = AllocateDisk(db, state, "disk-1");
+                ;
+                UNIT_ASSERT_SUCCESS(error);
+
+                UNIT_ASSERT_VALUES_EQUAL(2, result.Devices.size());
+                UNIT_ASSERT_VALUES_EQUAL(1, result.Migrations.size());
+            });
+
+        {
+            TDiskInfo diskInfo;
+            UNIT_ASSERT_SUCCESS(state.GetDiskInfo("disk-1", diskInfo));
+            UNIT_ASSERT_VALUES_EQUAL(2, diskInfo.Devices.size());
+            UNIT_ASSERT_VALUES_EQUAL(1, diskInfo.Migrations.size());
+            UNIT_ASSERT_VALUES_EQUAL(0, diskInfo.FinishedMigrations.size());
+        }
+
+        UNIT_ASSERT_VALUES_EQUAL(0, state.GetDirtyDevices().size());
+
+        // cancel migration
+        executor.WriteTx(
+            [&](TDiskRegistryDatabase db) mutable
+            {
+                auto result = state.UpdateCmsDeviceState(
+                    db,
+                    agents[0].agentid(),
+                    agents[0].GetDevices()[0].GetDeviceName(),
+                    NProto::DEVICE_STATE_ONLINE,
+                    Now(),
+                    false,    // shouldResumeDevice
+                    false);   // dryRun
+                UNIT_ASSERT(state.IsMigrationListEmpty());
+            });
+
+        {
+            TDiskInfo diskInfo;
+            UNIT_ASSERT_SUCCESS(state.GetDiskInfo("disk-1", diskInfo));
+            UNIT_ASSERT_VALUES_EQUAL(2, diskInfo.Devices.size());
+            UNIT_ASSERT_VALUES_EQUAL(0, diskInfo.Migrations.size());
+            UNIT_ASSERT_VALUES_EQUAL(1, diskInfo.FinishedMigrations.size());
+        }
+
+        executor.WriteTx(
+            [&](TDiskRegistryDatabase db) mutable
+            {
+                auto result = state.UpdateCmsDeviceState(
+                    db,
+                    agents[0].agentid(),
+                    agents[0].GetDevices()[0].GetDeviceName(),
+                    NProto::DEVICE_STATE_WARNING,
+                    Now(),
+                    false,    // shouldResumeDevice
+                    false);   // dryRun
+
+                UNIT_ASSERT_VALUES_EQUAL(result.Error.code(), E_TRY_AGAIN);
+                UNIT_ASSERT(!state.IsMigrationListEmpty());
+            });
+
+        auto migrationsAfterSecondRequest = state.BuildMigrationList();
+        UNIT_ASSERT_VALUES_EQUAL(1, migrationsAfterSecondRequest.size());
     }
 }
 

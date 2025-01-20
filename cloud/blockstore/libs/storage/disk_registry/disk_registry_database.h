@@ -30,6 +30,7 @@ struct TFinishedMigration
 {
     TString DeviceId;
     ui64 SeqNo = 0;
+    bool IsCanceled;
 };
 
 ////////////////////////////////////////////////////////////////////////////////

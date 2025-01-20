@@ -2975,7 +2975,7 @@ auto TDiskRegistryState::DeallocateSimpleDisk(
         }
     }
 
-    for (const auto& [uuid, seqNo]: disk.FinishedMigrations) {
+    for (const auto& [uuid, seqNo, _]: disk.FinishedMigrations) {
         Y_UNUSED(seqNo);
 
         if (DeviceList.ReleaseDevice(uuid)) {
@@ -4882,7 +4882,7 @@ NProto::TDiskConfig TDiskRegistryState::BuildDiskConfig(
     config.SetStorageMediaKind(diskState.MediaKind);
     config.SetMigrationStartTs(diskState.MigrationStartTs.MicroSeconds());
 
-    for (const auto& [uuid, seqNo]: diskState.FinishedMigrations) {
+    for (const auto& [uuid, seqNo, _]: diskState.FinishedMigrations) {
         Y_UNUSED(seqNo);
         auto& m = *config.AddFinishedMigrations();
         m.SetDeviceId(uuid);
@@ -5031,8 +5031,13 @@ void TDiskRegistryState::ApplyAgentStateChange(
         }
 
         if (agent.GetState() == NProto::AGENT_STATE_WARNING) {
-            if (disk.MigrationSource2Target.contains(deviceId)) {
-                // migration already started
+            if (disk.MigrationSource2Target.contains(deviceId) ||
+                FindIfPtr(
+                    disk.FinishedMigrations,
+                    [&](const auto& el)
+                    { return el.DeviceId == deviceId && !el.IsCanceled; }))
+            {
+                // migration already started or finished
                 continue;
             }
 
@@ -6027,9 +6032,16 @@ void TDiskRegistryState::ApplyDeviceStateChange(
         return;
     }
 
-    if (!disk->MigrationSource2Target.contains(uuid)) {
-        AddMigration(*disk, diskId, uuid);
+    if (disk->MigrationSource2Target.contains(uuid) ||
+        FindIfPtr(
+            disk->FinishedMigrations,
+            [&](const auto& el)
+            { return el.DeviceId == uuid && !el.IsCanceled; }))
+    {
+        return;
     }
+
+    AddMigration(*disk, diskId, uuid);
 }
 
 bool TDiskRegistryState::RestartDeviceMigration(
@@ -6100,10 +6112,10 @@ void TDiskRegistryState::CancelDeviceMigration(
 
     const ui64 seqNo = AddReallocateRequest(db, diskId);
 
-    disk.FinishedMigrations.push_back({
+    disk.FinishedMigrations.emplace_back(TFinishedMigration{
         .DeviceId = targetId,
-        .SeqNo = seqNo
-    });
+        .SeqNo = seqNo,
+        .IsCanceled = true});
 
     NProto::TDiskHistoryItem historyItem;
     historyItem.SetTimestamp(now.MicroSeconds());
@@ -6172,7 +6184,11 @@ NProto::TError TDiskRegistryState::FinishDeviceMigration(
 
     const ui64 seqNo = AddReallocateRequest(db, diskId);
     *devIt = targetId;
-    disk.FinishedMigrations.push_back({.DeviceId = sourceId, .SeqNo = seqNo});
+
+    disk.FinishedMigrations.emplace_back(TFinishedMigration{
+        .DeviceId = sourceId,
+        .SeqNo = seqNo,
+        .IsCanceled = false});
 
     if (disk.MasterDiskId) {
         const bool replaced =
