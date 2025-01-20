@@ -2053,8 +2053,8 @@ Y_UNIT_TEST_SUITE(TEndpointManagerTest)
         UNIT_ASSERT(!socketPath.Exists());
 
         {
-            auto futureStartEndpoint = StartEndpoint(*manager, request);
-            auto restoreEndpoints =
+            auto startEndpointFuture = StartEndpoint(*manager, request);
+            auto restoreEndpointsFuture =
                 bootstrap.Executor->Execute([manager = manager.get()]() mutable
                                             { manager->RestoreEndpoints(); });
 
@@ -2062,7 +2062,8 @@ Y_UNIT_TEST_SUITE(TEndpointManagerTest)
             promise.SetValue(MakeError(S_OK, {}));
 
             UNIT_ASSERT(
-                !HasError(futureStartEndpoint.GetValue(TDuration::Seconds(1))));
+                !HasError(startEndpointFuture.GetValue(TDuration::Seconds(1))));
+            restoreEndpointsFuture.Wait(TDuration::Seconds(1));
         }
     }
 }
