@@ -3,6 +3,8 @@ import json
 import logging
 import os
 import subprocess
+import threading
+import time
 import uuid
 
 import yatest.common as common
@@ -294,7 +296,7 @@ def _lay_out_files(directory, name, jobs, size):
 
 
 def _execute_command(cmd, fail_on_errors):
-    logger.info("execute " + " ".join(cmd))
+    print("execute " + " ".join(cmd))
     ex = common.execute(
         cmd,
         stdout=subprocess.PIPE,
@@ -314,9 +316,9 @@ def _execute_command(cmd, fail_on_errors):
 def run_test(file_name, test, fail_on_errors=False):
     # fio lays out the test file using the job blocksize, which may exhaust the
     # run time limit, so do it ourselves
-    logger.info("laying out file " + file_name)
+    print("laying out file " + file_name)
     _lay_out_file(file_name, test.size)
-    logger.info("laid out")
+    print("laid out")
 
     fio_bin = _get_fio_bin()
     cmd = test.get_fio_cmd(fio_bin, file_name)
@@ -327,11 +329,67 @@ def run_test(file_name, test, fail_on_errors=False):
 def run_index_test(directory, test, fail_on_errors=False, verbose=False):
     # fio lays out the test file using the job blocksize, which may exhaust the
     # run time limit, so do it ourselves
-    logger.info("laying out files in directory " + directory)
+    print("laying out files in directory " + directory)
     _lay_out_files(directory, test.name, test.numjobs, test.size)
-    logger.info("laid out")
+    print("laid out")
 
     fio_bin = _get_fio_bin()
     cmd = test.get_index_fio_cmd(fio_bin, directory, verbose)
 
+    parent_pids = {str(os.getpid())}
+
+    def monitor_fio_progress():
+        nonlocal cmd, parent_pids
+        period_sec = 0.001
+        pid_seen = False
+        while True:
+            # use pgrep to find the fio process
+
+            pgrep_process = subprocess.Popen(
+                ["pgrep", "-P", ",".join(list(parent_pids))],
+                stdout=subprocess.PIPE,
+            )
+
+            stdout = pgrep_process.stdout.read() if pgrep_process.stdout else ""
+            stdout = stdout.decode("utf-8")
+            if len(stdout) > 0:
+                fio_pids = list(map(int, stdout.split()))
+                logging.info(
+                    "Fio process is still running with PIDs: {}".format(
+                        fio_pids
+                    )
+                )
+                # os.system("ps -p {} -o pid,ppid,cmd,%cpu,%mem,etime".format(",".join(map(str, fio_pids))))
+                status_process = subprocess.Popen(
+                    [
+                        "ps",
+                        "-F",
+                        "-p",
+                        ",".join(map(str, fio_pids)),
+                    ],
+                    stdout=subprocess.PIPE,
+                )
+                status_process.wait()
+                logging.info(
+                    "Fio process status: "
+                    + status_process.stdout.read().decode("utf-8")
+                    if status_process.stdout
+                    else ""
+                )
+                pid_seen = True
+                parent_pids = parent_pids.union(set(map(str, fio_pids)))
+            else:
+                if pid_seen:
+                    logging.info("Fio process has finished")
+                    break
+                else:
+                    logging.info("Fio process has not started yet")
+
+            time.sleep(period_sec)
+
+    # Monitoring process to report the progress of the test
+    monitoring_thread = threading.Thread(target=monitor_fio_progress, args=())
+    monitoring_thread.start()
+
+    # This will call popen and wait for the process to finish
     return _execute_command(cmd, fail_on_errors)
