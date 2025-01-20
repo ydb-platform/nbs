@@ -393,6 +393,7 @@ def run_index_test(directory, test, fail_on_errors=False, verbose=False):
                                 stderr=dmesg_output,
                                 timeout=10,
                             )
+                            logging.info("Saved dmesg output to dmesg.txt")
                     except Exception as dmesg_error:
                         logging.info(
                             f"Failed to save dmesg output: {dmesg_error}"
@@ -404,10 +405,13 @@ def run_index_test(directory, test, fail_on_errors=False, verbose=False):
                         ) as strace_output:
                             try:
                                 subprocess.run(
-                                    ["sudo", "-n", "strace", "-p", str(pid)],
+                                    ["strace", "-p", str(pid)],
                                     stdout=strace_output,
                                     stderr=strace_output,
                                     timeout=10,
+                                )
+                                logging.info(
+                                    f"Saved strace output for PID {pid} to strace_{pid}.txt"
                                 )
                             except Exception as strace_error:
                                 logging.info(
