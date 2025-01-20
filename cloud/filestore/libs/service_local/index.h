@@ -269,6 +269,8 @@ public:
             return;
         }
 
+        STORAGE_INFO("xxx AllowNodeEviction NodeId=" << nodeId << ", allow=" << (*it)->AllowEviction());
+
         if ((*it)->AllowEviction()) {
             EvictionCandidateNodes.PushBack((*it).get());
         }
@@ -278,10 +280,12 @@ public:
     {
         TWriteGuard guard(NodesLock);
 
+
         auto it = Nodes.find(nodeId);
         if (it == Nodes.end()) {
             return;
         }
+        STORAGE_INFO("xxx DisallowNodeEviction NodeId=" << nodeId);
 
         (*it)->DisallowEviction();
         (*it)->TIntrusiveListItem<TIndexNode>::Unlink();
@@ -292,9 +296,10 @@ public:
         TWriteGuard guard(NodesLock);
 
         ui64 nodeOccupationPercent = Nodes.size() * 100 / MaxNodeCount;
-        if (nodeOccupationPercent < evictThresholdPercent) {
-            return;
-        }
+        STORAGE_INFO("xxx EvictNodes nodes=" << Nodes.size() << ", nodeOccupationPercent=" << nodeOccupationPercent << ", evictThresholdPercent=" << evictThresholdPercent);
+        // if (nodeOccupationPercent < evictThresholdPercent) {
+        //     return;
+        // }
 
         TVector<ui64> evictedNodeIds(Reserve(nodesCount));
 
@@ -315,6 +320,8 @@ public:
 private:
     TIndexNodePtr ForgetNodeNoLock(ui64 nodeId)
     {
+        STORAGE_INFO("xxx ForgetNodeNoLock NodeId=" << nodeId);
+
         TIndexNodePtr node = nullptr;
         auto it = Nodes.find(nodeId);
         if (it != Nodes.end()) {
@@ -401,9 +408,9 @@ private:
                         TIndexNode::Create(**parentNodeIt, pathElemRecord->Name);
                     node->SetRecordIndex(pathElemIndex);
                     Nodes.insert(node);
-                    if(node->Stat().IsFile()) {
+                    // if(node->Stat().IsFile()) {
                         EvictionCandidateNodes.PushBack(node.get());
-                    }
+                    // }
 
                     STORAGE_TRACE(
                         "Resolve node end, NodeId=" << pathElemRecord->NodeId);

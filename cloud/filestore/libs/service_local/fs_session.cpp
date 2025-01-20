@@ -219,6 +219,8 @@ void TLocalFileSystem::ScheduleCleanupNodes()
         return;
     }
 
+    STORAGE_INFO("ScheduleCleanupNodes " << Timer->Now() + Config->GetNodeCleanupPeriod());
+
     Scheduler->Schedule(
         Timer->Now() + Config->GetNodeCleanupPeriod(),
         [weakPtr = weak_from_this()] () {
@@ -231,6 +233,8 @@ void TLocalFileSystem::ScheduleCleanupNodes()
 void TLocalFileSystem::CleanupNodes()
 {
     TWriteGuard guard(SessionsLock);
+
+    STORAGE_INFO("CleanupNodes " << Timer->Now());
 
     for (auto it = SessionsList.begin(); it != SessionsList.end(); ++it) {
         (*it)->EvictNodes(

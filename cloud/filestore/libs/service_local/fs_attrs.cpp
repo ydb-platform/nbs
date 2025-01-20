@@ -16,7 +16,7 @@ NProto::TSetNodeAttrResponse TLocalFileSystem::SetNodeAttr(
     auto session = GetSession(request);
     auto node = session->LookupNode(request.GetNodeId());
     if (!node) {
-        return TErrorResponse(ErrorInvalidTarget(request.GetNodeId()));
+        return TErrorResponse(ErrorStaleNode(request.GetNodeId()));
     }
 
     auto flags = request.GetFlags();
@@ -78,7 +78,7 @@ NProto::TGetNodeAttrResponse TLocalFileSystem::GetNodeAttr(
     auto session = GetSession(request);
     auto node = session->LookupNode(request.GetNodeId());
     if (!node) {
-        return TErrorResponse(ErrorInvalidTarget(request.GetNodeId()));
+        return TErrorResponse(ErrorStaleNode(request.GetNodeId()));
     }
 
     TFileStat stat;
@@ -117,7 +117,7 @@ NProto::TSetNodeXAttrResponse TLocalFileSystem::SetNodeXAttr(
     auto session = GetSession(request);
     auto node = session->LookupNode(request.GetNodeId());
     if (!node) {
-        return TErrorResponse(ErrorInvalidTarget(request.GetNodeId()));
+        return TErrorResponse(ErrorStaleNode(request.GetNodeId()));
     }
 
     node->SetXAttr(request.GetName(), request.GetValue());
@@ -132,7 +132,7 @@ NProto::TGetNodeXAttrResponse TLocalFileSystem::GetNodeXAttr(
     auto session = GetSession(request);
     auto node = session->LookupNode(request.GetNodeId());
     if (!node) {
-        return TErrorResponse(ErrorInvalidTarget(request.GetNodeId()));
+        return TErrorResponse(ErrorStaleNode(request.GetNodeId()));
     }
 
     NProto::TGetNodeXAttrResponse response;
@@ -148,7 +148,7 @@ NProto::TListNodeXAttrResponse TLocalFileSystem::ListNodeXAttr(
     auto session = GetSession(request);
     auto node = session->LookupNode(request.GetNodeId());
     if (!node) {
-        return TErrorResponse(ErrorInvalidTarget(request.GetNodeId()));
+        return TErrorResponse(ErrorStaleNode(request.GetNodeId()));
     }
 
     auto result = node->ListXAttrs();
@@ -171,7 +171,7 @@ NProto::TRemoveNodeXAttrResponse TLocalFileSystem::RemoveNodeXAttr(
     auto session = GetSession(request);
     auto node = session->LookupNode(request.GetNodeId());
     if (!node) {
-        return TErrorResponse(ErrorInvalidTarget(request.GetNodeId()));
+        return TErrorResponse(ErrorStaleNode(request.GetNodeId()));
     }
 
     node->RemoveXAttr(request.GetName());

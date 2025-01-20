@@ -233,10 +233,11 @@ public:
         const TString& name,
         const TFileStat& stat)
     {
+        Y_UNUSED(stat);
         auto nodeId = node->GetNodeId();
 
         auto inserted = Index.TryInsertNode(std::move(node), parentNodeId, name);
-        if (inserted && stat.IsFile()) {
+        if (inserted /* && stat.IsFile()*/) {
             AllowNodeEviction(nodeId);
         }
 
