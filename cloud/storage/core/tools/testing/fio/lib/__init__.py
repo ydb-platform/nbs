@@ -383,29 +383,36 @@ def run_index_test(directory, test, fail_on_errors=False, verbose=False):
 
                 if time.time() - start_time > timout:
                     logging.error("Fio process has timed out")
-                    dmesg = subprocess.Popen(
-                        ["sudo", "dmesg"],
-                        stdout=subprocess.PIPE,
-                    )
-                    dmesg.wait()
-                    logging.error(
-                        "dmesg output: "
-                        + dmesg.stdout.read().decode("utf-8")
-                        if dmesg.stdout
-                        else ""
-                    )
+                    try:
+                        with open(
+                            common.output_path() + "/dmesg.txt", "w"
+                        ) as dmesg_output:
+                            subprocess.run(
+                                ["sudo", "-n", "dmesg", "-T"],
+                                stdout=dmesg_output,
+                                stderr=dmesg_output,
+                                timeout=10,
+                            )
+                    except Exception as dmesg_error:
+                        logging.info(
+                            f"Failed to save dmesg output: {dmesg_error}"
+                        )
+
                     for pid in fio_pids:
-                        strace = subprocess.Popen(
-                            ["sudo", "strace", "-p", str(pid)],
-                            stdout=subprocess.PIPE,
-                        )
-                        strace.wait()
-                        logging.error(
-                            "strace output for pid {}: ".format(pid)
-                            + strace.stdout.read().decode("utf-8")
-                            if strace.stdout
-                            else ""
-                        )
+                        with open(
+                            common.output_path() + f"/strace_{pid}.txt", "w"
+                        ) as strace_output:
+                            try:
+                                subprocess.run(
+                                    ["sudo", "-n", "strace", "-p", str(pid)],
+                                    stdout=strace_output,
+                                    stderr=strace_output,
+                                    timeout=10,
+                                )
+                            except Exception as strace_error:
+                                logging.info(
+                                    f"Failed to save strace output: {strace_error}"
+                                )
                     break
 
             else:
