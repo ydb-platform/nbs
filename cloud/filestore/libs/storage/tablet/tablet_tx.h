@@ -2256,6 +2256,7 @@ struct TTxIndexTablet
         const ui64 NodeId;
         const TString Cookie;
         const ui64 MaxNodeRefs;
+        const TDuration ScheduleTimeout;
 
         ui64 NextNodeId = 0;
         TString NextCookie;
@@ -2264,11 +2265,13 @@ struct TTxIndexTablet
                 TRequestInfoPtr requestInfo,
                 ui64 nodeId,
                 TString cookie,
-                ui64 maxNodeRefs)
+                ui64 maxNodeRefs,
+                TDuration scheduleTimeout)
             : RequestInfo(std::move(requestInfo))
             , NodeId(nodeId)
             , Cookie(std::move(cookie))
             , MaxNodeRefs(maxNodeRefs)
+            , ScheduleTimeout(scheduleTimeout)
         {}
 
         void Clear()
@@ -2289,16 +2292,19 @@ struct TTxIndexTablet
         const TRequestInfoPtr RequestInfo;
         const ui64 NodeId;
         const ui64 MaxNodes;
+        const TDuration ScheduleTimeout;
 
         ui64 NextNodeId = 0;
 
         TLoadNodes(
                 TRequestInfoPtr requestInfo,
                 ui64 nodeId,
-                ui64 maxNodes)
+                ui64 maxNodes,
+                TDuration scheduleTimeout)
             : RequestInfo(std::move(requestInfo))
             , NodeId(nodeId)
             , MaxNodes(maxNodes)
+            , ScheduleTimeout(scheduleTimeout)
         {}
 
         void Clear()

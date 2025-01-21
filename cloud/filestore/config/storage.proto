@@ -512,4 +512,7 @@ message TStorageConfig
     // proportional to the aforementioned value multiplied my the size of
     // TRange
     optional uint64 MixedBlocksOffloadedRangesCapacity = 415;
+
+    // During the InMemoryIndexCache load, the time between the batches loading
+    optional uint32 InMemoryIndexCacheLoadScheduleTimeout = 416;
 }

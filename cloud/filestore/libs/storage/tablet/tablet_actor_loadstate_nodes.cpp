@@ -10,7 +10,7 @@ bool TIndexTabletActor::ValidateTx_LoadNodes(
     const TActorContext& ctx,
     TTxIndexTablet::TLoadNodes& args)
 {
-    LOG_INFO(
+    LOG_DEBUG(
         ctx,
         TFileStoreComponents::TABLET,
         "%s LoadingNodes (nodeId: %lu, maxNodes: %lu)",
@@ -31,7 +31,7 @@ bool TIndexTabletActor::PrepareTx_LoadNodes(
     bool ready =
         db.ReadNodes(args.NodeId, args.MaxNodes, args.NextNodeId, nodes);
 
-    LOG_INFO(
+    LOG_DEBUG(
         ctx,
         TFileStoreComponents::TABLET,
         "%s LoadingNodes (nodeId: %lu, maxNodes: %lu), read %lu nodes: %s",
@@ -48,7 +48,7 @@ void TIndexTabletActor::CompleteTx_LoadNodes(
     const TActorContext& ctx,
     TTxIndexTablet::TLoadNodes& args)
 {
-    LOG_INFO(
+    LOG_DEBUG(
         ctx,
         TFileStoreComponents::TABLET,
         "%s LoadNodes iteration completed, next nodeId: %lu",
@@ -60,7 +60,8 @@ void TIndexTabletActor::CompleteTx_LoadNodes(
             SelfId(),
             new TEvIndexTabletPrivate::TEvLoadNodesRequest(
                 args.NextNodeId,
-                args.MaxNodes));
+                args.MaxNodes,
+                args.ScheduleTimeout));
     } else {
         LOG_INFO(
             ctx,
@@ -78,7 +79,7 @@ void TIndexTabletActor::HandleLoadNodesRequest(
 {
     auto* msg = ev->Get();
 
-    LOG_INFO(
+    LOG_DEBUG(
         ctx,
         TFileStoreComponents::TABLET,
         "%s LoadNodes iteration started (nodeId: %lu, maxNodes: %lu)",
@@ -94,7 +95,8 @@ void TIndexTabletActor::HandleLoadNodesRequest(
         ctx,
         std::move(requestInfo),
         msg->NodeId,
-        msg->MaxNodes);
+        msg->MaxNodes,
+        msg->ScheduleTimeout);
 }
 
 }   // namespace NCloud::NFileStore::NStorage

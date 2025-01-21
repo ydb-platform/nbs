@@ -534,14 +534,17 @@ struct TEvIndexTabletPrivate
         const ui64 NodeId;
         const TString Cookie;
         const ui32 MaxNodeRefs;
+        const TDuration ScheduleTimeout;
 
         TLoadNodeRefsRequest(
                 ui64 nodeId,
                 TString cookie,
-                ui32 maxNodeRefs)
+                ui32 maxNodeRefs,
+                TDuration scheduleTimeout)
             : NodeId(nodeId)
             , Cookie(std::move(cookie))
             , MaxNodeRefs(maxNodeRefs)
+            , ScheduleTimeout(scheduleTimeout)
         {}
     };
 
@@ -553,12 +556,15 @@ struct TEvIndexTabletPrivate
     {
         const ui64 NodeId;
         const ui32 MaxNodes;
+        const TDuration ScheduleTimeout;
 
         TLoadNodesRequest(
                 ui64 nodeId,
-                ui32 maxNodes)
+                ui32 maxNodes,
+                TDuration scheduleTimeout)
             : NodeId(nodeId)
             , MaxNodes(maxNodes)
+            , ScheduleTimeout(scheduleTimeout)
         {}
     };
 

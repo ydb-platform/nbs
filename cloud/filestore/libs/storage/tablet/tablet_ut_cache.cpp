@@ -920,6 +920,8 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesCache)
         storageConfig.SetInMemoryIndexCacheNodeRefsCapacity(100);
         storageConfig.SetInMemoryIndexCacheLoadOnTabletStart(true);
         storageConfig.SetInMemoryIndexCacheLoadOnTabletStartRowsPerTx(1);
+        storageConfig.SetInMemoryIndexCacheLoadScheduleTimeout(
+            TDuration::Seconds(1).MilliSeconds());
         TTestEnv env({}, storageConfig);
         env.CreateSubDomain("nfs");
 
