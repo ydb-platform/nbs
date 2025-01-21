@@ -405,7 +405,7 @@ def run_index_test(directory, test, fail_on_errors=False, verbose=False):
                         ) as strace_output:
                             try:
                                 subprocess.run(
-                                    ["strace", "-p", str(pid)],
+                                    ["sudo", "strace", "-p", str(pid)],
                                     stdout=strace_output,
                                     stderr=strace_output,
                                     timeout=10,
