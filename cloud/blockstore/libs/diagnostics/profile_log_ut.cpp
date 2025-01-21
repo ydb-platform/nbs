@@ -110,12 +110,16 @@ struct TEnv
 
     ~TEnv()
     {
-        ProfileLog->Stop();
+        if (ProfileLog) {
+            ProfileLog->Stop();
+        }
     }
 
     void ProcessLog()
     {
-        Scheduler->RunAllScheduledTasks();
+        if (Scheduler) {
+            Scheduler->RunAllScheduledTasks();
+        }
 
         EventProcessor.FlatMessages.clear();
         const char* argv[] = {"foo", Settings.FilePath.c_str()};
@@ -387,6 +391,27 @@ Y_UNIT_TEST_SUITE(TProfileLogTest)
             "disk1\t2000000\tR\t9\t200000\t42000\t10,20",
             env.EventProcessor.FlatMessages[0]
         );
+    }
+
+    Y_UNIT_TEST(TestFlushOnDestruct)
+    {
+        TEnv env;
+        env.ProfileLog->Write(
+            {"disk2",
+             TInstant::Seconds(3),
+             IProfileLog::TReadWriteRequest{
+                 EBlockStoreRequest::WriteBlocks,
+                 TDuration::MilliSeconds(300),
+                 TDuration::MilliSeconds(42),
+                 TBlockRange64::WithLength(10, 20),
+             }});
+        env.Scheduler = nullptr;
+        env.ProfileLog = nullptr;
+        env.ProcessLog();
+        UNIT_ASSERT_VALUES_EQUAL(1, env.EventProcessor.FlatMessages.size());
+        UNIT_ASSERT_VALUES_EQUAL(
+            "disk2\t3000000\tR\t9\t300000\t42000\t10,20",
+            env.EventProcessor.FlatMessages[0]);
     }
 }
 
