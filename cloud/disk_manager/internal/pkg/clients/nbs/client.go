@@ -880,7 +880,9 @@ func (c *client) EnsureCheckpointReady(
 
 	logging.Info(
 		ctx,
-		"Current CheckpointStatus: %v",
+		"Current status of checkpoint with id %v for disk %v is %v",
+		checkpointID,
+		diskID,
 		status,
 	)
 
@@ -891,7 +893,8 @@ func (c *client) EnsureCheckpointReady(
 	case CheckpointStatusError:
 		_ = c.DeleteCheckpoint(ctx, diskID, checkpointID)
 		return errors.NewRetriableErrorf(
-			"Creating checkpoint for disk with id %v ended with an error.",
+			"creating checkpoint with id %v for disk %v ended with an error",
+			checkpointID,
 			diskID,
 		)
 

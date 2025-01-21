@@ -176,7 +176,7 @@ func checkUnencryptedImage(
 	require.ErrorContains(t, err, "KeyPath should contain path to encryption key")
 }
 
-func testImageServiceCreateImageFromDiskKind(
+func testImageServiceCreateImageFromDiskWithKind(
 	t *testing.T,
 	diskKind disk_manager.DiskKind,
 	diskSize uint64,
@@ -991,7 +991,7 @@ func TestImageServiceCancelCreateImageFromSnapshot(t *testing.T) {
 }
 
 func TestImageServiceCreateImageFromDisk(t *testing.T) {
-	testImageServiceCreateImageFromDiskKind(
+	testImageServiceCreateImageFromDiskWithKind(
 		t,
 		disk_manager.DiskKind_DISK_KIND_SSD,
 		uint64(4194304),
@@ -999,7 +999,7 @@ func TestImageServiceCreateImageFromDisk(t *testing.T) {
 }
 
 func TestImageServiceCreateImageFromNonReplicatedDisk(t *testing.T) {
-	testImageServiceCreateImageFromDiskKind(
+	testImageServiceCreateImageFromDiskWithKind(
 		t,
 		disk_manager.DiskKind_DISK_KIND_SSD_NONREPLICATED,
 		uint64(1073741824),
