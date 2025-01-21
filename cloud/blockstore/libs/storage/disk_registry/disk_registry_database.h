@@ -30,7 +30,9 @@ struct TFinishedMigration
 {
     TString DeviceId;
     ui64 SeqNo = 0;
-    bool IsCanceled;
+    bool IsCanceled =
+        true;   // by default, this value is set to true, because
+                // we may not start migration if this field is set to false
 };
 
 ////////////////////////////////////////////////////////////////////////////////

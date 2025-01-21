@@ -5031,12 +5031,7 @@ void TDiskRegistryState::ApplyAgentStateChange(
         }
 
         if (agent.GetState() == NProto::AGENT_STATE_WARNING) {
-            if (disk.MigrationSource2Target.contains(deviceId) ||
-                FindIfPtr(
-                    disk.FinishedMigrations,
-                    [&](const auto& el)
-                    { return el.DeviceId == deviceId && !el.IsCanceled; }))
-            {
+            if (!NeedToStartMigration(disk, deviceId)) {
                 // migration already started or finished
                 continue;
             }
@@ -6032,16 +6027,9 @@ void TDiskRegistryState::ApplyDeviceStateChange(
         return;
     }
 
-    if (disk->MigrationSource2Target.contains(uuid) ||
-        FindIfPtr(
-            disk->FinishedMigrations,
-            [&](const auto& el)
-            { return el.DeviceId == uuid && !el.IsCanceled; }))
-    {
-        return;
+    if (NeedToStartMigration(*disk, uuid)) {
+        AddMigration(*disk, diskId, uuid);
     }
-
-    AddMigration(*disk, diskId, uuid);
 }
 
 bool TDiskRegistryState::RestartDeviceMigration(
@@ -6112,10 +6100,8 @@ void TDiskRegistryState::CancelDeviceMigration(
 
     const ui64 seqNo = AddReallocateRequest(db, diskId);
 
-    disk.FinishedMigrations.emplace_back(TFinishedMigration{
-        .DeviceId = targetId,
-        .SeqNo = seqNo,
-        .IsCanceled = true});
+    disk.FinishedMigrations.push_back(
+        {.DeviceId = targetId, .SeqNo = seqNo, .IsCanceled = true});
 
     NProto::TDiskHistoryItem historyItem;
     historyItem.SetTimestamp(now.MicroSeconds());
@@ -6185,10 +6171,8 @@ NProto::TError TDiskRegistryState::FinishDeviceMigration(
     const ui64 seqNo = AddReallocateRequest(db, diskId);
     *devIt = targetId;
 
-    disk.FinishedMigrations.emplace_back(TFinishedMigration{
-        .DeviceId = sourceId,
-        .SeqNo = seqNo,
-        .IsCanceled = false});
+    disk.FinishedMigrations.push_back(
+        {.DeviceId = sourceId, .SeqNo = seqNo, .IsCanceled = false});
 
     if (disk.MasterDiskId) {
         const bool replaced =
@@ -7583,6 +7567,19 @@ std::optional<ui64> TDiskRegistryState::GetDiskBlockCount(
         return std::nullopt;
     }
     return diskInfo.GetBlocksCount();
+}
+
+// static
+bool TDiskRegistryState::NeedToStartMigration(
+    const TDiskState& disk,
+    const TString& deviceUUID)
+{
+    return !(
+        disk.MigrationSource2Target.contains(deviceUUID) ||
+        FindIfPtr(
+            disk.FinishedMigrations,
+            [&](const auto& el)
+            { return el.DeviceId == deviceUUID && !el.IsCanceled; }));
 }
 
 }   // namespace NCloud::NBlockStore::NStorage
