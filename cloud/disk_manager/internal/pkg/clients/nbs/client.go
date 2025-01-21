@@ -878,7 +878,7 @@ func (c *client) EnsureCheckpointReady(
 		return err
 	}
 
-	logging.Info(
+	logging.Debug(
 		ctx,
 		"Current status of checkpoint with id %v for disk %v is %v",
 		checkpointID,
