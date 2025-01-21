@@ -10,10 +10,472 @@ import (
 
 	"github.com/ydb-platform/nbs/cloud/blockstore/public/api/protos"
 	nbs_client "github.com/ydb-platform/nbs/cloud/blockstore/public/sdk/go/client"
+	nbs_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs/config"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/monitoring/metrics"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
 	"github.com/ydb-platform/nbs/cloud/tasks/logging"
 	"golang.org/x/sync/errgroup"
 )
+
+////////////////////////////////////////////////////////////////////////////////
+
+type TestingClient interface {
+	Client
+
+	// TODO_: move all methods that are needed for tests only
+	// from Client to TestingClient (issue #892).
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+type testingClient struct {
+	client *client
+}
+
+func newFactory(
+	ctx context.Context,
+	client_config *nbs_config.ClientConfig,
+) (*factory, error) {
+
+	return newFactoryWithCreds(
+		ctx,
+		client_config,
+		nil, // creds
+		metrics.NewEmptyRegistry(),
+		metrics.NewEmptyRegistry(),
+	)
+}
+
+func NewClientLegacy(
+	ctx context.Context,
+	zoneID string,
+	client_config *nbs_config.ClientConfig,
+) (Client, error) {
+
+	factory, err := newFactory(ctx, client_config)
+	if err != nil {
+		return nil, err
+	}
+
+	return factory.GetClient(ctx, zoneID)
+}
+
+func NewTestingClient(
+	ctx context.Context,
+	zoneID string,
+	client_config *nbs_config.ClientConfig,
+) (TestingClient, error) {
+
+	factory, err := newFactory(ctx, client_config)
+	if err != nil {
+		return nil, err
+	}
+
+	c, err := factory.getClient(ctx, zoneID)
+	if err != nil {
+		return nil, err
+	}
+
+	return &testingClient{client: c}, nil
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+func (c *testingClient) Ping(ctx context.Context) (err error) {
+	return c.client.Ping(ctx)
+}
+
+func (c *testingClient) Create(
+	ctx context.Context,
+	params CreateDiskParams,
+) (err error) {
+
+	return c.client.Create(ctx, params)
+}
+
+func (c *testingClient) CreateProxyOverlayDisk(
+	ctx context.Context,
+	diskID string,
+	baseDiskID string,
+	baseDiskCheckpointID string,
+) (created bool, err error) {
+
+	return c.client.CreateProxyOverlayDisk(
+		ctx,
+		diskID,
+		baseDiskID,
+		baseDiskCheckpointID,
+	)
+}
+
+func (c *testingClient) Delete(
+	ctx context.Context,
+	diskID string,
+) (err error) {
+
+	return c.client.Delete(ctx, diskID)
+}
+
+func (c *testingClient) DeleteSync(
+	ctx context.Context,
+	diskID string,
+) (err error) {
+
+	return c.client.DeleteSync(ctx, diskID)
+}
+
+func (c *testingClient) DeleteWithFillGeneration(
+	ctx context.Context,
+	diskID string,
+	fillGeneration uint64,
+) (err error) {
+
+	return c.client.DeleteWithFillGeneration(ctx, diskID, fillGeneration)
+}
+
+func (c *testingClient) CreateCheckpoint(
+	ctx context.Context,
+	params CheckpointParams,
+) (err error) {
+
+	return c.client.CreateCheckpoint(ctx, params)
+}
+
+func (c *testingClient) GetCheckpointStatus(
+	ctx context.Context,
+	diskID string,
+	checkpointID string,
+) (CheckpointStatus, error) {
+
+	return c.client.GetCheckpointStatus(ctx, diskID, checkpointID)
+}
+
+func (c *testingClient) DeleteCheckpoint(
+	ctx context.Context,
+	diskID string,
+	checkpointID string,
+) (err error) {
+
+	return c.client.DeleteCheckpoint(ctx, diskID, checkpointID)
+}
+
+func (c *testingClient) DeleteCheckpointData(
+	ctx context.Context,
+	diskID string,
+	checkpointID string,
+) (err error) {
+
+	return c.client.DeleteCheckpointData(ctx, diskID, checkpointID)
+}
+
+func (c *testingClient) Resize(
+	ctx context.Context,
+	checkpoint func() error,
+	diskID string,
+	size uint64,
+) (err error) {
+
+	return c.client.Resize(ctx, checkpoint, diskID, size)
+}
+
+func (c *testingClient) Alter(
+	ctx context.Context,
+	saveState func() error,
+	diskID string,
+	cloudID string,
+	folderID string,
+) (err error) {
+
+	return c.client.Alter(ctx, saveState, diskID, cloudID, folderID)
+}
+
+func (c *testingClient) Rebase(
+	ctx context.Context,
+	saveState func() error,
+	diskID string,
+	baseDiskID string,
+	targetBaseDiskID string,
+) (err error) {
+
+	return c.client.Rebase(ctx, saveState, diskID, baseDiskID, targetBaseDiskID)
+}
+
+func (c *testingClient) Assign(
+	ctx context.Context,
+	params AssignDiskParams,
+) (err error) {
+
+	return c.client.Assign(ctx, params)
+}
+
+func (c *testingClient) Unassign(
+	ctx context.Context,
+	diskID string,
+) (err error) {
+
+	return c.client.Unassign(ctx, diskID)
+}
+
+func (c *testingClient) DescribeModel(
+	ctx context.Context,
+	blocksCount uint64,
+	blockSize uint32,
+	kind types.DiskKind,
+	tabletVersion uint32,
+) (diskModel DiskModel, err error) {
+
+	return c.client.DescribeModel(ctx, blocksCount, blockSize, kind, tabletVersion)
+}
+
+func (c *testingClient) Describe(
+	ctx context.Context,
+	diskID string,
+) (diskParams DiskParams, err error) {
+
+	return c.client.Describe(ctx, diskID)
+}
+
+func (c *testingClient) CreatePlacementGroup(
+	ctx context.Context,
+	groupID string,
+	placementStrategy types.PlacementStrategy,
+	placementPartitionCount uint32,
+) (err error) {
+
+	return c.client.CreatePlacementGroup(ctx, groupID, placementStrategy, placementPartitionCount)
+}
+
+func (c *testingClient) DeletePlacementGroup(
+	ctx context.Context,
+	groupID string,
+) (err error) {
+
+	return c.client.DeletePlacementGroup(ctx, groupID)
+}
+
+func (c *testingClient) AlterPlacementGroupMembership(
+	ctx context.Context,
+	saveState func() error,
+	groupID string,
+	placementPartitionIndex uint32,
+	disksToAdd []string,
+	disksToRemove []string,
+) (err error) {
+
+	return c.client.AlterPlacementGroupMembership(ctx, saveState, groupID, placementPartitionIndex, disksToAdd, disksToRemove)
+}
+
+func (c *testingClient) ListPlacementGroups(
+	ctx context.Context,
+) (groups []string, err error) {
+
+	return c.client.ListPlacementGroups(ctx)
+}
+
+func (c *testingClient) DescribePlacementGroup(
+	ctx context.Context,
+	groupID string,
+) (placementGroup PlacementGroup, err error) {
+
+	return c.client.DescribePlacementGroup(ctx, groupID)
+}
+
+func (c *testingClient) MountRO(
+	ctx context.Context,
+	diskID string,
+	encryption *types.EncryptionDesc,
+) (session *Session, err error) {
+
+	return c.client.MountRO(ctx, diskID, encryption)
+}
+
+func (c *testingClient) MountLocalRO(
+	ctx context.Context,
+	diskID string,
+	encryption *types.EncryptionDesc,
+) (session *Session, err error) {
+
+	return c.client.MountLocalRO(ctx, diskID, encryption)
+}
+
+func (c *testingClient) MountRW(
+	ctx context.Context,
+	diskID string,
+	fillGeneration uint64,
+	fillSeqNumber uint64,
+	encryption *types.EncryptionDesc,
+) (session *Session, err error) {
+
+	return c.client.MountRW(ctx, diskID, fillGeneration, fillSeqNumber, encryption)
+}
+
+func (c *testingClient) GetChangedBlocks(
+	ctx context.Context,
+	diskID string,
+	startIndex uint64,
+	blockCount uint32,
+	baseCheckpointID,
+	checkpointID string,
+	ignoreBaseDisk bool,
+) (blockMask []byte, err error) {
+
+	return c.client.GetChangedBlocks(ctx, diskID, startIndex, blockCount, baseCheckpointID, checkpointID, ignoreBaseDisk)
+}
+
+func (c *testingClient) GetCheckpointSize(
+	ctx context.Context,
+	saveState func(blockIndex uint64, checkpointSize uint64) error,
+	diskID string,
+	checkpointID string,
+	milestoneBlockIndex uint64,
+	milestoneCheckpointSize uint64,
+) (err error) {
+
+	return c.client.GetCheckpointSize(ctx, saveState, diskID, checkpointID, milestoneBlockIndex, milestoneCheckpointSize)
+}
+
+func (c *testingClient) GetChangedBytes(
+	ctx context.Context,
+	diskID string,
+	baseCheckpointID string,
+	checkpointID string,
+	ignoreBaseDisk bool,
+) (diff uint64, err error) {
+
+	return c.client.GetChangedBytes(ctx, diskID, baseCheckpointID, checkpointID, ignoreBaseDisk)
+}
+
+func (c *testingClient) Stat(
+	ctx context.Context,
+	diskID string,
+) (stats DiskStats, err error) {
+
+	return c.client.Stat(ctx, diskID)
+}
+
+func (c *testingClient) Freeze(
+	ctx context.Context,
+	saveState func() error,
+	diskID string,
+) (err error) {
+
+	return c.client.Freeze(ctx, saveState, diskID)
+}
+
+func (c *testingClient) Unfreeze(
+	ctx context.Context,
+	saveState func() error,
+	diskID string,
+) (err error) {
+
+	return c.client.Unfreeze(ctx, saveState, diskID)
+}
+
+func (c *testingClient) ScanDisk(
+	ctx context.Context,
+	diskID string,
+	batchSize uint32,
+) (err error) {
+
+	return c.client.ScanDisk(ctx, diskID, batchSize)
+}
+
+func (c *testingClient) GetScanDiskStatus(
+	ctx context.Context,
+	diskID string,
+) (progress ScanDiskStatus, err error) {
+
+	return c.client.GetScanDiskStatus(ctx, diskID)
+}
+
+func (c *testingClient) FinishFillDisk(
+	ctx context.Context,
+	saveState func() error,
+	diskID string,
+	fillGeneration uint64,
+) (err error) {
+
+	return c.client.FinishFillDisk(ctx, saveState, diskID, fillGeneration)
+}
+
+func (c *testingClient) FillDisk(
+	ctx context.Context,
+	diskID string,
+	contentSize uint64,
+) (DiskContentInfo, error) {
+
+	return c.client.FillDisk(ctx, diskID, contentSize)
+}
+
+func (c *testingClient) FillEncryptedDisk(
+	ctx context.Context,
+	diskID string,
+	contentSize uint64,
+	encryption *types.EncryptionDesc,
+) (DiskContentInfo, error) {
+
+	return c.client.FillEncryptedDisk(ctx, diskID, contentSize, encryption)
+}
+
+func (c *testingClient) GoWriteRandomBlocksToNbsDisk(
+	ctx context.Context,
+	diskID string,
+) (func() error, error) {
+
+	return c.client.GoWriteRandomBlocksToNbsDisk(ctx, diskID)
+}
+
+func (c *testingClient) CalculateCrc32(
+	diskID string,
+	contentSize uint64,
+) (DiskContentInfo, error) {
+
+	return c.client.CalculateCrc32(diskID, contentSize)
+}
+
+func (c *testingClient) CalculateCrc32WithEncryption(
+	diskID string,
+	contentSize uint64,
+	encryption *types.EncryptionDesc,
+) (DiskContentInfo, error) {
+
+	return c.client.CalculateCrc32WithEncryption(diskID, contentSize, encryption)
+}
+
+func (c *testingClient) ValidateCrc32(
+	ctx context.Context,
+	diskID string,
+	expectedDiskContentInfo DiskContentInfo,
+) error {
+
+	return c.ValidateCrc32WithEncryption(ctx, diskID, expectedDiskContentInfo, nil)
+}
+
+func (c *testingClient) ValidateCrc32WithEncryption(
+	ctx context.Context,
+	diskID string,
+	expectedDiskContentInfo DiskContentInfo,
+	encryption *types.EncryptionDesc,
+) error {
+
+	return c.client.ValidateCrc32WithEncryption(ctx, diskID, expectedDiskContentInfo, encryption)
+}
+
+func (c *testingClient) MountForReadWrite(
+	diskID string,
+) (func(), error) {
+
+	return c.client.MountForReadWrite(diskID)
+}
+
+func (c *testingClient) Write(
+	diskID string,
+	startIndex int,
+	bytes []byte,
+) error {
+
+	return c.client.Write(diskID, startIndex, bytes)
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -529,9 +991,22 @@ func (c *client) GetCheckpoints(
 	ctx context.Context,
 	diskID string,
 ) ([]string, error) {
+
 	return c.nbs.GetCheckpoints(ctx, diskID)
 }
 
 func (c *client) List(ctx context.Context) ([]string, error) {
 	return c.nbs.ListVolumes(ctx)
+}
+
+func (c *testingClient) GetCheckpoints(
+	ctx context.Context,
+	diskID string,
+) ([]string, error) {
+
+	return c.client.GetCheckpoints(ctx, diskID)
+}
+
+func (c *testingClient) List(ctx context.Context) ([]string, error) {
+	return c.client.List(ctx)
 }

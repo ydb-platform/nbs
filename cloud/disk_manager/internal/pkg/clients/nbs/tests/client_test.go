@@ -1447,6 +1447,8 @@ func TestGetChangedBlocksForLightCheckpoints(t *testing.T) {
 	require.NoError(t, err)
 }
 
+// TODO:_ what should we do with these two tests? They use testing methods!
+
 func TestReadFromProxyOverlayDisk(t *testing.T) {
 	ctx := newContext()
 	client := newClient(t, ctx)

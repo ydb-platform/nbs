@@ -260,59 +260,67 @@ func NewPrivateClient(ctx context.Context) (internal_client.PrivateClient, error
 	)
 }
 
-func NewNbsClient(
-	t *testing.T,
-	ctx context.Context,
-	zoneID string,
-) nbs.Client {
+func newNbsClientClientConfig() *nbs_config.ClientConfig {
 	rootCertsFile := os.Getenv("DISK_MANAGER_RECIPE_ROOT_CERTS_FILE")
 
 	durableClientTimeout := "5m"
 	discoveryClientHardTimeout := "8m"
 	discoveryClientSoftTimeout := "15s"
 
-	factory, err := nbs.NewFactory(
-		ctx,
-		&nbs_config.ClientConfig{
-			Zones: map[string]*nbs_config.Zone{
-				"zone-a": {
-					Endpoints: []string{
-						fmt.Sprintf(
-							"localhost:%v",
-							os.Getenv("DISK_MANAGER_RECIPE_NBS_PORT"),
-						),
-					},
-				},
-				"zone-b": {
-					Endpoints: []string{
-						fmt.Sprintf(
-							"localhost:%v",
-							os.Getenv("DISK_MANAGER_RECIPE_NBS2_PORT"),
-						),
-					},
-				},
-				"zone-c": {
-					Endpoints: []string{
-						fmt.Sprintf(
-							"localhost:%v",
-							os.Getenv("DISK_MANAGER_RECIPE_NBS3_PORT"),
-						),
-					},
+	return &nbs_config.ClientConfig{
+		Zones: map[string]*nbs_config.Zone{
+			"zone-a": {
+				Endpoints: []string{
+					fmt.Sprintf(
+						"localhost:%v",
+						os.Getenv("DISK_MANAGER_RECIPE_NBS_PORT"),
+					),
 				},
 			},
-			RootCertsFile:              &rootCertsFile,
-			DurableClientTimeout:       &durableClientTimeout,
-			DiscoveryClientHardTimeout: &discoveryClientHardTimeout,
-			DiscoveryClientSoftTimeout: &discoveryClientSoftTimeout,
+			"zone-b": {
+				Endpoints: []string{
+					fmt.Sprintf(
+						"localhost:%v",
+						os.Getenv("DISK_MANAGER_RECIPE_NBS2_PORT"),
+					),
+				},
+			},
+			"zone-c": {
+				Endpoints: []string{
+					fmt.Sprintf(
+						"localhost:%v",
+						os.Getenv("DISK_MANAGER_RECIPE_NBS3_PORT"),
+					),
+				},
+			},
 		},
-		metrics.NewEmptyRegistry(),
-		metrics.NewEmptyRegistry(),
-	)
-	require.NoError(t, err)
+		RootCertsFile:              &rootCertsFile,
+		DurableClientTimeout:       &durableClientTimeout,
+		DiscoveryClientHardTimeout: &discoveryClientHardTimeout,
+		DiscoveryClientSoftTimeout: &discoveryClientSoftTimeout,
+	}
+}
 
-	client, err := factory.GetClient(ctx, zoneID)
-	require.NoError(t, err)
+// TODO_: Remove this. Should use only nbs.TestingClient in tests. (issue #892)
+func NewNbsClient(
+	t *testing.T,
+	ctx context.Context,
+	zoneID string,
+) nbs.Client {
 
+	client, err := nbs.NewClientLegacy(ctx, zoneID, newNbsClientClientConfig())
+	require.NoError(t, err)
+	return client
+}
+
+func NewNbsTestingClient(
+	t *testing.T,
+	ctx context.Context,
+	zoneID string,
+) nbs.TestingClient {
+
+	client, err := nbs.NewTestingClient(ctx, zoneID, newNbsClientClientConfig())
+	require.NoError(t, err)
 	return client
 }
 
