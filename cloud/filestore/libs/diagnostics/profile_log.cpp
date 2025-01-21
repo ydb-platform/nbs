@@ -41,6 +41,8 @@ public:
     {
     }
 
+    ~TProfileLog();
+
 public:
     void Start() override;
     void Stop() override;
@@ -51,6 +53,11 @@ private:
     void ScheduleFlush();
     void Flush();
 };
+
+TProfileLog::~TProfileLog()
+{
+    Flush();
+}
 
 void TProfileLog::Start()
 {

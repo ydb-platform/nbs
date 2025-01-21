@@ -114,6 +114,8 @@ public:
     {
     }
 
+    ~TProfileLog();
+
 public:
     void Start() override;
     void Stop() override;
@@ -125,6 +127,11 @@ private:
     void ScheduleFlush();
     void DoFlush();
 };
+
+TProfileLog::~TProfileLog()
+{
+    Flush();
+}
 
 void TProfileLog::Start()
 {
