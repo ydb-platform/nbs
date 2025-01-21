@@ -850,6 +850,130 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
         }
     }
 
+    void DoShouldTryToSplitReadRequest(const THashSet<TString>& freshDeviceIds)
+    {
+        using namespace std::chrono_literals;
+        TTestRuntime runtime;
+
+        TTestEnv env(
+            runtime,
+            TTestEnv::DefaultDevices(runtime.GetNodeId(0)),
+            TVector<TDevices>{
+                TTestEnv::DefaultReplica(runtime.GetNodeId(0), 1),
+                TTestEnv::DefaultReplica(runtime.GetNodeId(0), 2),
+            },
+            {},   // migrations
+            freshDeviceIds);
+
+        TPartitionClient client(runtime, env.ActorId);
+
+        runtime.AdvanceCurrentTime(100ms);
+        runtime.DispatchEvents({}, 100ms);
+
+        const auto diskRangeFirst = TBlockRange64::WithLength(0, 2048);
+        client.WriteBlocksLocal(diskRangeFirst, TString(DefaultBlockSize, 'A'));
+
+        const auto diskRangeSecond = TBlockRange64::WithLength(2048, 3072);
+        client.WriteBlocksLocal(diskRangeSecond, TString(DefaultBlockSize, 'B'));
+
+
+        {
+            auto nodeId = runtime.GetNodeId(0);
+            auto diskAgentActorId = MakeDiskAgentServiceId(nodeId);
+
+            for (const auto& deviceId: freshDeviceIds) {
+                auto sender = runtime.AllocateEdgeActor();
+
+                auto request = std::make_unique<
+                    TEvDiskAgent::TEvZeroDeviceBlocksRequest>();
+
+                request->Record.SetStartIndex(0);
+                request->Record.SetBlocksCount(Max<ui32>());
+                request->Record.SetBlockSize(4_KB);
+                request->Record.SetDeviceUUID(deviceId);
+
+                runtime.Send(new IEventHandle(
+                    diskAgentActorId,
+                    sender,
+                    request.release()));
+            }
+
+            runtime.DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
+        }
+
+#define TEST_READ(blockRange)                              \
+    {                                                      \
+        TVector<TString> blocks;                           \
+                                                           \
+        client.ReadBlocksLocal(                            \
+            blockRange,                                    \
+            TGuardedSgList(ResizeBlocks(                   \
+                blocks,                                    \
+                blockRange.Size(),                         \
+                TString(DefaultBlockSize, '\0'))));        \
+                                                           \
+        ui64 blockIndex = blockRange.Start;                \
+        for (const auto& block: blocks) {                  \
+            for (auto c: block) {                          \
+                if (diskRangeFirst.Contains(blockIndex)) { \
+                    UNIT_ASSERT_VALUES_EQUAL('A', c);      \
+                } else {                                   \
+                    UNIT_ASSERT_VALUES_EQUAL('B', c);      \
+                }                                          \
+            }                                              \
+            ++blockIndex;                                  \
+        }                                                  \
+    }                                                      \
+    // TEST_READ
+
+        // doing multiple reads to check that none of them targets fresh devices
+        TEST_READ(TBlockRange64::WithLength(2047, 5));
+        TEST_READ(TBlockRange64::WithLength(2047, 5));
+        TEST_READ(TBlockRange64::WithLength(2047, 5));
+
+#undef TEST_READ
+    }
+
+    Y_UNIT_TEST(ShouldTryToSplitReadRequest)
+    {
+        auto getDeviceUUID = [](TString base, auto idx)
+        {
+            if (idx == 0) {
+                return base;
+            }
+
+            return base + "#" + ToString(idx);
+        };
+
+        for (size_t vasyaFreshDeviceFirst = 0; vasyaFreshDeviceFirst < 3;
+             ++vasyaFreshDeviceFirst)
+        {
+            for (size_t vasyaFreshDeviceSecond = vasyaFreshDeviceFirst + 1;
+                 vasyaFreshDeviceSecond < 3;
+                 ++vasyaFreshDeviceSecond)
+            {
+                for (size_t petyaFreshDeviceFirst = 0;
+                     petyaFreshDeviceFirst < 3;
+                     ++petyaFreshDeviceFirst)
+                {
+                    for (size_t petyaFreshDeviceSecond =
+                             petyaFreshDeviceFirst + 1;
+                         petyaFreshDeviceSecond < 3;
+                         ++petyaFreshDeviceSecond)
+                    {
+                        THashSet<TString> freshDeviceIds = {
+                            getDeviceUUID("vasya", vasyaFreshDeviceFirst),
+                            getDeviceUUID("vasya", vasyaFreshDeviceSecond),
+                            getDeviceUUID("petya", petyaFreshDeviceFirst),
+                            getDeviceUUID("petya", petyaFreshDeviceSecond),
+                        };
+                        DoShouldTryToSplitReadRequest(freshDeviceIds);
+                    }
+                }
+            }
+        }
+    }
+
     struct TMigrationTestRuntime
     {
         TTestRuntime Runtime;

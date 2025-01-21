@@ -38,7 +38,8 @@ class TestCase(object):
             block_count_per_device=DEFAULT_BLOCK_COUNT_PER_DEVICE,
             allocation_unit_size=1,
             agent_count=1,
-            dump_block_digests=False):
+            dump_block_digests=False,
+            max_migration_bandwidth=1024 * 1024 * 1024):
         self.name = name
         self.config_path = config_path
         self.restart_interval = restart_interval
@@ -48,6 +49,7 @@ class TestCase(object):
         self.allocation_unit_size = allocation_unit_size
         self.agent_count = agent_count
         self.dump_block_digests = dump_block_digests
+        self.max_migration_bandwidth = max_migration_bandwidth
 
 
 TESTS = [
@@ -80,6 +82,24 @@ TESTS = [
         "cloud/blockstore/tests/loadtest/local-mirror/local-mirror3-resync.txt",
         agent_count=3,
         dump_block_digests=True,
+    ),
+
+    # There are non-intuitive replica configuration permutations during migration,
+    # that's why we should run tests with different fresh device topologies.
+    # See issue-2854
+    TestCase(
+        "mirror2-split-read-cross",
+        "cloud/blockstore/tests/loadtest/local-mirror/local-mirror2-split-read-cross.txt",
+        agent_count=6,
+        dump_block_digests=True,
+        max_migration_bandwidth=1
+    ),
+    TestCase(
+        "mirror2-split-read-column",
+        "cloud/blockstore/tests/loadtest/local-mirror/local-mirror2-split-read-column.txt",
+        agent_count=6,
+        dump_block_digests=True,
+        max_migration_bandwidth=1
     ),
 ]
 
@@ -197,7 +217,7 @@ def __run_test(test_case):
         storage.DisableLocalService = False
         storage.InactiveClientsTimeout = 60000  # 1 min
         storage.AgentRequestTimeout = 5000      # 5 sec
-        storage.MaxMigrationBandwidth = 1024 * 1024 * 1024
+        storage.MaxMigrationBandwidth = test_case.max_migration_bandwidth
         storage.UseMirrorResync = True
         storage.MirroredMigrationStartAllowed = True
         storage.NodeType = 'main'
