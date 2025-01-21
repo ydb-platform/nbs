@@ -84,7 +84,7 @@ func newFactory(
 ) nbs.Factory {
 
 	clientConfig := newClientConfig(
-		sessionRediscoverPeriodMax,
+		sessionRediscoverPeriodMin,
 		sessionRediscoverPeriodMax,
 	)
 
