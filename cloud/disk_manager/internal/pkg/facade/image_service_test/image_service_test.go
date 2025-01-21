@@ -207,7 +207,7 @@ func testImageServiceCreateImageFromDiskWithKind(
 	err = internal_client.WaitOperation(ctx, client, operation.Id)
 	require.NoError(t, err)
 
-	nbsClient := testcommon.NewNbsClient(t, ctx, "zone-a")
+	nbsClient := testcommon.NewNbsTestingClient(t, ctx, "zone-a")
 	diskContentInfo, err := nbsClient.FillDisk(ctx, diskID, diskSize)
 	require.NoError(t, err)
 
