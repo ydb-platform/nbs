@@ -41,7 +41,7 @@ public:
     {
     }
 
-    ~TProfileLog();
+    ~TProfileLog() override;
 
 public:
     void Start() override;
