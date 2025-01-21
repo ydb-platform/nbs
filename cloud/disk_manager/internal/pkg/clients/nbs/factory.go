@@ -279,7 +279,7 @@ func (f *factory) initMultiZoneClients() {
 }
 
 func (f *factory) getClient(
-	ctx context.Context, // TODO:_ remove ctx from args?
+	ctx context.Context,
 	zoneID string,
 ) (*client, error) {
 

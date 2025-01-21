@@ -301,18 +301,6 @@ func newNbsClientClientConfig() *nbs_config.ClientConfig {
 	}
 }
 
-// TODO_: Remove this. Should use only nbs.TestingClient in tests. (issue #892)
-func NewNbsClient(
-	t *testing.T,
-	ctx context.Context,
-	zoneID string,
-) nbs.Client {
-
-	client, err := nbs.NewClientLegacy(ctx, zoneID, newNbsClientClientConfig())
-	require.NoError(t, err)
-	return client
-}
-
 func NewNbsTestingClient(
 	t *testing.T,
 	ctx context.Context,
@@ -357,7 +345,7 @@ func RequireCheckpoint(
 	checkpointID string,
 ) {
 
-	nbsClient := NewNbsClient(t, ctx, "zone-a")
+	nbsClient := NewNbsTestingClient(t, ctx, "zone-a")
 	checkpoints, err := nbsClient.GetCheckpoints(ctx, diskID)
 	require.NoError(t, err)
 
@@ -371,7 +359,7 @@ func RequireCheckpointsAreEmpty(
 	diskID string,
 ) {
 
-	nbsClient := NewNbsClient(t, ctx, "zone-a")
+	nbsClient := NewNbsTestingClient(t, ctx, "zone-a")
 	checkpoints, err := nbsClient.GetCheckpoints(ctx, diskID)
 	require.NoError(t, err)
 	require.Empty(t, checkpoints)
@@ -383,7 +371,7 @@ func WaitForCheckpointsAreEmpty(
 	diskID string,
 ) {
 
-	nbsClient := NewNbsClient(t, ctx, "zone-a")
+	nbsClient := NewNbsTestingClient(t, ctx, "zone-a")
 
 	for {
 		checkpoints, err := nbsClient.GetCheckpoints(ctx, diskID)
@@ -436,7 +424,7 @@ func CreateImage(
 	err = internal_client.WaitOperation(ctx, client, operation.Id)
 	require.NoError(t, err)
 
-	nbsClient := NewNbsClient(t, ctx, "zone-a")
+	nbsClient := NewNbsTestingClient(t, ctx, "zone-a")
 	diskContentInfo, err := nbsClient.FillDisk(ctx, diskID, imageSize)
 	require.NoError(t, err)
 
@@ -585,7 +573,7 @@ func CheckBaseDiskSlotReleased(
 }
 
 func CheckConsistency(t *testing.T, ctx context.Context) {
-	nbsClient := NewNbsClient(t, ctx, "zone-a")
+	nbsClient := NewNbsTestingClient(t, ctx, "zone-a")
 
 	for {
 		ok := true

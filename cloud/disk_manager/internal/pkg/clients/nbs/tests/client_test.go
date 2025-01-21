@@ -24,6 +24,12 @@ import (
 
 ////////////////////////////////////////////////////////////////////////////////
 
+const defaultZoneID = "zone"
+const defaultSessionRediscoverPeriodMin = "10s"
+const defaultSessionRediscoverPeriodMax = "20s"
+
+////////////////////////////////////////////////////////////////////////////////
+
 func newContext() context.Context {
 	return logging.SetLogger(
 		context.Background(),
@@ -47,6 +53,28 @@ func getOtherZoneEndpoint() string {
 	)
 }
 
+func newClientConfig(
+	sessionRediscoverPeriodMin string,
+	sessionRediscoverPeriodMax string,
+) *config.ClientConfig {
+
+	rootCertsFile := os.Getenv("DISK_MANAGER_RECIPE_ROOT_CERTS_FILE")
+
+	return &config.ClientConfig{
+		Zones: map[string]*config.Zone{
+			"zone": {
+				Endpoints: []string{getEndpoint(), getEndpoint()},
+			},
+			"other": {
+				Endpoints: []string{getOtherZoneEndpoint(), getOtherZoneEndpoint()},
+			},
+		},
+		RootCertsFile:              &rootCertsFile,
+		SessionRediscoverPeriodMin: &sessionRediscoverPeriodMin,
+		SessionRediscoverPeriodMax: &sessionRediscoverPeriodMax,
+	}
+}
+
 func newFactory(
 	t *testing.T,
 	ctx context.Context,
@@ -55,23 +83,14 @@ func newFactory(
 	sessionRediscoverPeriodMax string,
 ) nbs.Factory {
 
-	rootCertsFile := os.Getenv("DISK_MANAGER_RECIPE_ROOT_CERTS_FILE")
+	clientConfig := newClientConfig(
+		sessionRediscoverPeriodMax,
+		sessionRediscoverPeriodMax,
+	)
 
 	factory, err := nbs.NewFactoryWithCreds(
 		ctx,
-		&config.ClientConfig{
-			Zones: map[string]*config.Zone{
-				"zone": {
-					Endpoints: []string{getEndpoint(), getEndpoint()},
-				},
-				"other": {
-					Endpoints: []string{getOtherZoneEndpoint(), getOtherZoneEndpoint()},
-				},
-			},
-			RootCertsFile:              &rootCertsFile,
-			SessionRediscoverPeriodMin: &sessionRediscoverPeriodMin,
-			SessionRediscoverPeriodMax: &sessionRediscoverPeriodMax,
-		},
+		clientConfig,
 		creds,
 		metrics.NewEmptyRegistry(),
 		metrics.NewEmptyRegistry(),
@@ -105,7 +124,27 @@ func newClientFull(
 }
 
 func newClient(t *testing.T, ctx context.Context) nbs.Client {
-	return newClientFull(t, ctx, "zone", nil, "10s", "20s")
+	return newClientFull(
+		t,
+		ctx,
+		defaultZoneID,
+		nil,
+		defaultSessionRediscoverPeriodMin,
+		defaultSessionRediscoverPeriodMax,
+	)
+}
+
+func newTestingClient(t *testing.T, ctx context.Context) nbs.TestingClient {
+	client, err := nbs.NewTestingClient(
+		ctx,
+		defaultZoneID,
+		newClientConfig(
+			defaultSessionRediscoverPeriodMin,
+			defaultSessionRediscoverPeriodMax,
+		),
+	)
+	require.NoError(t, err)
+	return client
 }
 
 func newOtherZoneClient(t *testing.T, ctx context.Context) nbs.Client {
@@ -1447,11 +1486,9 @@ func TestGetChangedBlocksForLightCheckpoints(t *testing.T) {
 	require.NoError(t, err)
 }
 
-// TODO:_ what should we do with these two tests? They use testing methods!
-
 func TestReadFromProxyOverlayDisk(t *testing.T) {
 	ctx := newContext()
-	client := newClient(t, ctx)
+	client := newTestingClient(t, ctx)
 
 	diskID := t.Name()
 	diskSize := int64(1024 * 4096)
@@ -1495,7 +1532,7 @@ func TestReadFromProxyOverlayDisk(t *testing.T) {
 
 func TestReadFromProxyOverlayDiskWithMultipartitionBaseDisk(t *testing.T) {
 	ctx := newContext()
-	client := newClient(t, ctx)
+	client := newTestingClient(t, ctx)
 
 	diskID := t.Name()
 	diskSize := int64(1024 * 4096)

@@ -111,7 +111,7 @@ func TestPrivateServiceRetireBaseDisks(t *testing.T) {
 	for i := 0; i < diskCount; i++ {
 		operationID := operations[i].Id
 
-		nbsClient := testcommon.NewNbsClient(t, ctx, "zone-a")
+		nbsClient := testcommon.NewNbsTestingClient(t, ctx, "zone-a")
 		diskID := fmt.Sprintf("%v%v", t.Name(), i)
 
 		go func() {
@@ -224,7 +224,7 @@ func TestPrivateServiceRetireBaseDisksUsingBaseDiskAsSrc(t *testing.T) {
 	err = internal_client.WaitOperation(ctx, client, operation.Id)
 	require.NoError(t, err)
 
-	nbsClient := testcommon.NewNbsClient(t, ctx, "zone-a")
+	nbsClient := testcommon.NewNbsTestingClient(t, ctx, "zone-a")
 	err = nbsClient.ValidateCrc32(ctx, diskID, diskContentInfo)
 	require.NoError(t, err)
 
@@ -369,7 +369,7 @@ func TestPrivateServiceOptimizeBaseDisks(t *testing.T) {
 	for i := 0; i < diskCount; i++ {
 		operationID := operations[i].Id
 
-		nbsClient := testcommon.NewNbsClient(t, ctx, "zone-a")
+		nbsClient := testcommon.NewNbsTestingClient(t, ctx, "zone-a")
 		diskID := fmt.Sprintf("%v%v", t.Name(), i)
 
 		go func() {
