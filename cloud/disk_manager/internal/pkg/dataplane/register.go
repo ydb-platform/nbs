@@ -22,7 +22,7 @@ func RegisterForExecution(
 	legacyStorage storage.Storage,
 	config *config.DataplaneConfig,
 	metricsRegistry metrics.Registry,
-	migrationDestinationStorage storage.Storage,
+	migrationDstStorage storage.Storage,
 ) error {
 
 	err := taskRegistry.RegisterForExecution("dataplane.CreateSnapshotFromDisk", func() tasks.Task {
@@ -89,11 +89,11 @@ func RegisterForExecution(
 		return err
 	}
 
-	if migrationDestinationStorage != nil {
+	if migrationDstStorage != nil {
 		err = taskRegistry.RegisterForExecution("dataplane.MigrateSnapshotTask", func() tasks.Task {
 			return &migrateSnapshotTask{
 				srcStorage: storage,
-				dstStorage: migrationDestinationStorage,
+				dstStorage: migrationDstStorage,
 				config:     config,
 			}
 		})

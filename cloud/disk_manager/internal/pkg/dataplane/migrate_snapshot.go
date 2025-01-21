@@ -75,13 +75,11 @@ func (t *migrateSnapshotTask) Run(
 	)
 	defer source.Close(ctx)
 
-	ignoreZeroChunks := true
-
 	target := snapshot.NewSnapshotTarget(
 		execCtx.GetTaskID(),
 		t.request.SrcSnapshotId,
 		t.dstStorage,
-		ignoreZeroChunks,
+		true, // ignoreZeroChunks
 		t.request.UseS3,
 	)
 	defer target.Close(ctx)
@@ -161,6 +159,7 @@ func (t *migrateSnapshotTask) Cancel(
 	ctx context.Context,
 	execCtx tasks.ExecutionContext,
 ) error {
+
 	_, err := t.dstStorage.DeletingSnapshot(ctx, t.request.SrcSnapshotId, execCtx.GetTaskID())
 	return err
 }
@@ -168,7 +167,8 @@ func (t *migrateSnapshotTask) Cancel(
 func (t *migrateSnapshotTask) GetMetadata(
 	ctx context.Context,
 ) (proto.Message, error) {
-	return &protos.CreateSnapshotFromLegacySnapshotMetadata{
+
+	return &protos.MigrateSnapshotMetadata{
 		Progress: t.state.Progress,
 	}, nil
 }

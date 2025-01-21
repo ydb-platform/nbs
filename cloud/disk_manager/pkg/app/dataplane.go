@@ -47,11 +47,11 @@ func initDataplane(
 		snapshotMetricsRegistry,
 		snapshotDB,
 	)
-	migrationDestinationStorageConfig := dataplaneConfig.GetMigrationDstSnapshotConfig()
-	var migrationDestinationStorage snapshot_storage.Storage
+	migrationDstStorageConfig := dataplaneConfig.GetMigrationDstSnapshotConfig()
+	var migrationDstStorage snapshot_storage.Storage
 	if migrationDstDB != nil {
-		migrationDestinationStorage, err = snapshot_storage.NewStorage(
-			migrationDestinationStorageConfig,
+		migrationDstStorage, err = snapshot_storage.NewStorage(
+			migrationDstStorageConfig,
 			snapshotMetricsRegistry,
 			migrationDstDB,
 			migrationDstS3,
@@ -70,6 +70,6 @@ func initDataplane(
 		snapshotLegacyStorage,
 		dataplaneConfig,
 		snapshotMetricsRegistry,
-		migrationDestinationStorage,
+		migrationDstStorage,
 	)
 }

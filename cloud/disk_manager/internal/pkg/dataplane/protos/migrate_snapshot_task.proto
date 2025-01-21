@@ -26,3 +26,7 @@ message MigrateSnapshotTaskState {
   uint32 ChunkCount = 6;
   uint64 TransferredDataSize = 7;
 }
+
+message MigrateSnapshotMetadata {
+  double Progress = 1;
+}
