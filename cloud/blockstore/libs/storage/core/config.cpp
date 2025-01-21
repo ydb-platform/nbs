@@ -526,6 +526,7 @@ TDuration MSeconds(ui32 value)
     xxx(EnableToChangeStatesFromDiskRegistryMonpage,      bool,    false      )\
     xxx(EnableToChangeErrorStatesFromDiskRegistryMonpage, bool,    false      )\
     xxx(CalculateSplittedUsedQuotaMetric,                 bool,    false      )\
+    xxx(YdbViewerServiceEnabled,                          bool,    true       )\
 // BLOCKSTORE_STORAGE_CONFIG_RW
 
 #define BLOCKSTORE_STORAGE_CONFIG(xxx)                                         \

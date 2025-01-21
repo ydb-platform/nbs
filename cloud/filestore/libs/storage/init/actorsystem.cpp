@@ -358,6 +358,8 @@ void TActorSystem::Init()
     servicesMask.EnableSchemeBoardMonitoring = 1;
     servicesMask.EnableConfigsDispatcher =
         Args.StorageConfig->GetConfigsDispatcherServiceEnabled();
+    servicesMask.EnableViewerService =
+        Args.StorageConfig->GetYdbViewerServiceEnabled();
 
     if (Args.AppConfig->HasAuthConfig()) {
         servicesMask.EnableSecurityServices = 1;
