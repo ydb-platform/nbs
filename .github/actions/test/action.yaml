@@ -278,10 +278,16 @@ runs:
           echo "::group::remove-binaries-from-tests-data-dir"
           find "$TESTS_DATA_DIR" -type f -print0 | xargs -0 -n 10 file -i  | grep "application/x-executable" | awk -F: '{print $1}'
           find "$TESTS_DATA_DIR" -type f -print0 | xargs -0 -n 10 file -i  | grep "application/x-executable" | awk -F: '{print $1}' | xargs rm
+          find "$TESTS_DATA_DIR" -type f -print -name "*.so" 
+          find "$TESTS_DATA_DIR" -type f -print -name "*.so" -delete
           echo "::endgroup::"
           echo "::group::remove-images-from-tests-data-dir"
           find "$TESTS_DATA_DIR" -name generated_raw_image -o -name generated_vmdk_image -o -name invalid_qcow2_image -o -name qcow2_fuzzing_image
           find "$TESTS_DATA_DIR" \( -name generated_raw_image -o -name generated_vmdk_image -o -name invalid_qcow2_image -o -name qcow2_fuzzing_image \) -delete
+          echo "::endgroup::"
+          echo "::group::remove-randrw-test-data-from-tests-data-dir"
+          find "$TESTS_DATA_DIR" -name "randrw.*" -o -name "randwrite.*" -o -name "randread.*" 
+          find "$TESTS_DATA_DIR" \( -name "randrw.*" -o -name "randwrite.*" -o -name "randread.*" \) -delete
           echo "::endgroup::"
           echo "::group::s3-sync"
           if [ "$SYNC_TO_S3" = "true" ];
