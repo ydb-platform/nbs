@@ -361,14 +361,14 @@ void TServiceActor::HandleAddTagsRequest(
     auto requestInfo = CreateRequestInfo(
         SelfId(),
         0,  // cookie
-        MakeIntrusive<TCallContext>()
-    );
+        MakeIntrusive<TCallContext>());
 
     NPrivateProto::TModifyTagsRequest modifyTagsRequest;
     modifyTagsRequest.SetDiskId(msg->DiskId);
-    for (const auto& tag : msg->Tags) {
+    for (const auto& tag: msg->Tags) {
         modifyTagsRequest.AddTagsToAdd(tag);
     }
+
     TString input;
     google::protobuf::util::MessageToJsonString(modifyTagsRequest, &input);
 

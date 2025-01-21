@@ -1197,6 +1197,11 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
             Y_UNUSED(runtime);
             if (event->GetTypeRewrite() == TEvService::EvAddTagsRequest)
             {
+                using TRequest =
+                    TEvService::TEvAddTagsRequest;
+                const auto& tags = event->template Get<TRequest>()->Tags;
+                UNIT_ASSERT_VALUES_EQUAL(1, tags.size());
+                UNIT_ASSERT_VALUES_EQUAL(IntermediateWriteBufferTagName, tags[0]);
                 tagEnabled = true;
             }
 

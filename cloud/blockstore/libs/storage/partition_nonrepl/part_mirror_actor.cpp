@@ -12,7 +12,6 @@
 #include <cloud/blockstore/libs/storage/core/probes.h>
 #include <cloud/blockstore/libs/storage/core/proto_helpers.h>
 #include <cloud/blockstore/libs/storage/core/unimplemented.h>
-#include <cloud/blockstore/libs/storage/volume/volume_state.h>
 
 #include <contrib/ydb/core/base/appdata.h>
 
@@ -287,15 +286,12 @@ void TMirrorPartitionActor::AddTagForBufferCopying(
     auto requestInfo = CreateRequestInfo(
         SelfId(),
         0,  // cookie
-        MakeIntrusive<TCallContext>()
-    );
+        MakeIntrusive<TCallContext>());
 
-    TVector<TString> tags(1);
-    tags.emplace_back(IntermediateWriteBufferTagName);
+    TVector<TString> tags({TString(IntermediateWriteBufferTagName)});
     auto request = std::make_unique<TEvService::TEvAddTagsRequest>(
         DiskId,
-        std::move(tags)
-    );
+        std::move(tags));
 
     ctx.Send(MakeStorageServiceId(), std::move(request));
 }

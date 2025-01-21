@@ -44,11 +44,6 @@ using TMigrations = google::protobuf::RepeatedPtrField<NProto::TDeviceMigration>
 
 ////////////////////////////////////////////////////////////////////////////////
 
-constexpr TStringBuf IntermediateWriteBufferTagName =
-    "use-intermediate-write-buffer";
-
-////////////////////////////////////////////////////////////////////////////////
-
 struct THistoryLogKey
 {
     TInstant Timestamp;
