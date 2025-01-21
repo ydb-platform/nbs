@@ -652,3 +652,30 @@ message TGetStorageConfigResponse
     // Result Storage config.
     NProto.TStorageServiceConfig StorageConfig = 3;
 }
+
+////////////////////////////////////////////////////////////////////////////////
+// CheckRange request/response.
+
+message TCheckRangeRequest
+{
+    // Optional request headers.
+    THeaders Headers = 1;
+
+    // Label of volume.
+    string DiskId = 2;
+
+    // First Block Id.
+    uint32 BlockId = 3;
+
+    // Number of blobs per batch.
+    uint32 BlocksCount = 4;
+}
+
+message TCheckRangeResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+
+    // Request traces.
+    NCloud.NProto.TTraceInfo Trace = 2;
+}

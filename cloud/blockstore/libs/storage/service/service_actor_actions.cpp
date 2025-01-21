@@ -41,6 +41,7 @@ void TServiceActor::HandleExecuteAction(
         {"diskregistrysetwritablestate",      &TServiceActor::CreateWritableStateActionActor               },
         {"backupdiskregistrystate",           &TServiceActor::CreateBackupDiskRegistryStateActor           },
         {"checkblob",                         &TServiceActor::CreateCheckBlobActionActor                   },
+        {"checkrange",                        &TServiceActor::CreateCheckRangeActionActor                  },
         {"compactrange",                      &TServiceActor::CreateCompactRangeActionActor                },
         {"configurevolumebalancer",           &TServiceActor::CreateConfigureVolumeBalancerActionActor     },
         {"deletecheckpointdata",              &TServiceActor::CreateDeleteCheckpointDataActionActor        },

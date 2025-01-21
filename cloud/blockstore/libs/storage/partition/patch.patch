@@ -1,0 +1,1425 @@
+diff --git a/cloud/blockstore/config/storage.proto b/cloud/blockstore/config/storage.proto
+index 1cb05555c5..cec75fd816 100644
+--- a/cloud/blockstore/config/storage.proto
++++ b/cloud/blockstore/config/storage.proto
+@@ -407,6 +407,7 @@ message TStorageServiceConfig
+     // New volumes will be created with partition count proportional to their size.
+     optional uint64 BytesPerPartition = 156;
+
++    ///////////////////////////////////////
+     // Bytes per stripe (applicable for multipartition volumes).
+     optional uint32 BytesPerStripe = 157;
+
+diff --git a/cloud/blockstore/libs/service/request.h b/cloud/blockstore/libs/service/request.h
+index 89f908fd83..1b13984c5e 100644
+--- a/cloud/blockstore/libs/service/request.h
++++ b/cloud/blockstore/libs/service/request.h
+@@ -89,6 +89,8 @@ using TWriteBlocksLocalResponse = TWriteBlocksResponse;
+     xxx(CreateVolumeFromDevice,             __VA_ARGS__)                       \
+     xxx(ResumeDevice,                       __VA_ARGS__)                       \
+     xxx(QueryAgentsInfo,                    __VA_ARGS__)                       \
++//    xxx(CheckRange,                         __VA_ARGS__)                       \
++
+ // BLOCKSTORE_GRPC_STORAGE_SERVICE
+
+ #define BLOCKSTORE_ENDPOINT_SERVICE(xxx, ...)                                  \
+@@ -119,6 +121,7 @@ using TWriteBlocksLocalResponse = TWriteBlocksResponse;
+ #define BLOCKSTORE_LOCAL_SERVICE(xxx, ...)                                     \
+     xxx(ReadBlocksLocal,                    __VA_ARGS__)                       \
+     xxx(WriteBlocksLocal,                   __VA_ARGS__)                       \
++//    xxx(CheckRange,                         __VA_ARGS__)                       \
+ // BLOCKSTORE_LOCAL_SERVICE
+
+ #define BLOCKSTORE_STORAGE_SERVICE(xxx, ...)                                   \
+diff --git a/cloud/blockstore/libs/storage/api/partition.h b/cloud/blockstore/libs/storage/api/partition.h
+index a53fbae21e..6c0228255c 100644
+--- a/cloud/blockstore/libs/storage/api/partition.h
++++ b/cloud/blockstore/libs/storage/api/partition.h
+@@ -39,6 +39,7 @@ namespace NCloud::NBlockStore::NStorage::NPartition {
+     xxx(GetRebuildMetadataStatus, __VA_ARGS__)                                 \
+     xxx(ScanDisk,                 __VA_ARGS__)                                 \
+     xxx(GetScanDiskStatus,        __VA_ARGS__)                                 \
++    xxx(CheckRange,               __VA_ARGS__)                                 \
+ // BLOCKSTORE_PARTITION_REQUESTS_FWD_VOLUME
+
+ ////////////////////////////////////////////////////////////////////////////////
+diff --git a/cloud/blockstore/libs/storage/api/volume.h b/cloud/blockstore/libs/storage/api/volume.h
+index 76e774f87b..498f144330 100644
+--- a/cloud/blockstore/libs/storage/api/volume.h
++++ b/cloud/blockstore/libs/storage/api/volume.h
+@@ -10,6 +10,8 @@
+ #include <cloud/blockstore/libs/storage/protos/volume.pb.h>
+ #include <cloud/blockstore/libs/storage/protos_ydb/volume.pb.h>
+
++#include <utility>
++
+ namespace NCloud::NBlockStore::NStorage {
+
+ ////////////////////////////////////////////////////////////////////////////////
+@@ -242,35 +244,25 @@ struct TEvVolume
+     //
+     struct TCheckRangeResponse
+     {
++        NProto::TError Error;
+     };
+
+     //
+-    // TCheckRange
++    // CheckRangeRequest
+     //
+-    struct TCheckRange
++    struct TCheckRangeRequest
+     {
+         ui64 BlockId;
+         ui64 BlocksCount;
++        TString DiskId;
+
+-        TCheckRange(ui64 blockId, ui64 blocksCount)
++        TCheckRangeRequest(ui64 blockId, ui64 blocksCount, TString diskId)
+             : BlockId(blockId)
+             , BlocksCount(blocksCount)
++            , DiskId(std::move(diskId))
+         {}
+     };
+
+-    //
+-    // CheckRangeReportStatus
+-    //
+-    struct TCheckRangeReportStatus
+-    {
+-        ui64 CurentBlockId;
+-        bool IsFinished;
+-
+-        TCheckRangeReportStatus(ui64 curentBlockId, bool isFinished)
+-            : CurentBlockId(curentBlockId)
+-            , IsFinished(isFinished)
+-        {}
+-    };
+
+     //
+     // Events declaration
+@@ -366,9 +358,8 @@ struct TEvVolume
+         EvGetStorageConfigRequest = EvBegin + 58,
+         EvGetStorageConfigResponse = EvBegin + 59,
+
+-        EvCheckRange = EvBegin + 60,
++        EvCheckRangeRequest = EvBegin + 60,
+         EvCheckRangeResponse = EvBegin + 61,
+-        EvCheckRangeReportStatus = EvBegin + 62,
+
+         EvEnd
+     };
+@@ -443,20 +434,15 @@ struct TEvVolume
+         EvPreparePartitionMigrationResponse
+     >;
+
+-    using TEvCheckRange = TRequestEvent<
+-        TCheckRange,
+-        EvCheckRange
++    using TEvCheckRangeRequest = TRequestEvent<
++        TCheckRangeRequest,
++        EvCheckRangeRequest
+     >;
+
+     using TEvCheckRangeResponse = TRequestEvent<
+         TCheckRangeResponse,
+         EvCheckRangeResponse
+     >;
+-
+-    using TEvCheckRangeReportStatus = TRequestEvent<
+-        TCheckRangeReportStatus,
+-        EvCheckRangeReportStatus
+-    >;
+ };
+
+ }   // namespace NCloud::NBlockStore::NStorage
+diff --git a/cloud/blockstore/libs/storage/partition/part_actor.h b/cloud/blockstore/libs/storage/partition/part_actor.h
+index e3ded32352..1953605fad 100644
+--- a/cloud/blockstore/libs/storage/partition/part_actor.h
++++ b/cloud/blockstore/libs/storage/partition/part_actor.h
+@@ -408,6 +408,10 @@ private:
+         const TString& operationId,
+         ui32& ranges) const;
+
++    void CheckRange(
++        const TEvVolume::TEvCheckRangeRequest::TPtr& ev,
++        const NActors::TActorContext& ctx);
++
+     NActors::IActorPtr CreateMetadataRebuildUsedBlocksActor(
+         NActors::TActorId tablet,
+         ui64 blocksPerBatch,
+diff --git a/cloud/blockstore/libs/storage/partition/part_actor_checkrange.cpp b/cloud/blockstore/libs/storage/partition/part_actor_checkrange.cpp
+new file mode 100644
+index 0000000000..491529787a
+--- /dev/null
++++ b/cloud/blockstore/libs/storage/partition/part_actor_checkrange.cpp
+@@ -0,0 +1,195 @@
++#include "part_actor.h"
++#include "cloud/blockstore/libs/storage/disk_agent/model/public.h"
++//
++#include <cloud/blockstore/libs/service/context.h>
++#include <cloud/blockstore/libs/storage/core/config.h>
++#include <cloud/blockstore/libs/storage/core/probes.h>
++
++#include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
++
++#include <util/datetime/base.h>
++#include <util/generic/algorithm.h>
++#include <util/generic/guid.h>
++#include <util/generic/string.h>
++#include <util/generic/vector.h>
++#include <util/generic/xrange.h>
++#include <util/stream/str.h>
++
++namespace NCloud::NBlockStore::NStorage::NPartition {
++
++using namespace NActors;
++
++using namespace NKikimr;
++
++LWTRACE_USING(BLOCKSTORE_STORAGE_PROVIDER);
++
++namespace {
++
++////////////////////////////////////////////////////////////////////////////////
++
++class TCheckRangeActor final
++    : public TActorBootstrapped<TCheckRangeActor>
++{
++private:
++    const TActorId Tablet;
++    const ui64 BlockIndex;
++    const ui64 BlocksCount;
++    const TString DiskId;
++
++public:
++    TCheckRangeActor(
++        const TActorId& tablet,
++        ui64 blockId,
++        ui64 blocksCount,
++        TString diskId);
++
++    void Bootstrap(const TActorContext& ctx);
++
++private:
++    void ReplyAndDie(
++        const TActorContext& ctx,
++        const NProto::TError& error = {});
++
++    void HandleReadBlocksResponse(
++        const TEvService::TEvReadBlocksResponse::TPtr& ev,
++        const TActorContext& ctx);
++
++    void SendReadBlocksRequest(const TActorContext& ctx);
++
++private:
++    STFUNC(StateWork);
++
++    void HandleWakeup(
++        const TEvents::TEvWakeup::TPtr& ev,
++        const TActorContext& ctx);
++
++    void HandlePoisonPill(
++        const TEvents::TEvPoisonPill::TPtr& ev,
++        const TActorContext& ctx);
++};
++
++////////////////////////////////////////////////////////////////////////////////
++
++TCheckRangeActor::TCheckRangeActor(
++        const TActorId& tablet,
++        ui64 blockIndex,
++        ui64 blocksCount,
++        TString diskId)
++    : Tablet(tablet)
++    , BlockIndex(blockIndex)
++    , BlocksCount(blocksCount)
++    , DiskId(std::move(diskId))
++{}
++
++void TCheckRangeActor::Bootstrap(const TActorContext& ctx)
++{
++    SendReadBlocksRequest(ctx);
++    Become(&TThis::StateWork);
++    Die(ctx);
++}
++
++void TCheckRangeActor::SendReadBlocksRequest(const TActorContext& ctx)
++{
++    auto request = std::make_unique<TEvService::TEvReadBlocksRequest>();
++
++    request->Record.SetStartIndex(BlockIndex);
++    request->Record.SetBlocksCount(BlocksCount);
++    request->Record.SetDiskId(DiskId);
++
++    auto* headers = request->Record.MutableHeaders();
++
++    headers->SetIsBackgroundRequest(true);
++    headers->SetClientId(TString(BackgroundOpsClientId));
++    NCloud::Send(ctx, Tablet, std::move(request));
++}
++
++void TCheckRangeActor::ReplyAndDie(
++    const TActorContext& ctx,
++    const NProto::TError& error)
++{
++    {
++        auto response = std::make_unique<TEvPartitionPrivate::TEvForcedCompactionCompleted>(error);
++        NCloud::Send(ctx, Tablet, std::move(response));
++    }
++
++    Die(ctx);
++}
++
++////////////////////////////////////////////////////////////////////////////////
++
++STFUNC(TCheckRangeActor::StateWork)
++{
++    switch (ev->GetTypeRewrite()) {
++        HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
++        HFunc(TEvents::TEvWakeup, HandleWakeup);
++        HFunc(TEvService::TEvReadBlocksResponse, HandleReadBlocksResponse);
++        default:
++            HandleUnexpectedEvent(ev, TBlockStoreComponents::PARTITION_WORKER);
++            break;
++    }
++}
++
++void TCheckRangeActor::HandleWakeup(
++    const TEvents::TEvWakeup::TPtr& ev,
++    const TActorContext& ctx)
++{
++    Y_UNUSED(ev);
++    SendReadBlocksRequest(ctx);
++}
++
++void TCheckRangeActor::HandlePoisonPill(
++    const TEvents::TEvPoisonPill::TPtr& ev,
++    const TActorContext& ctx)
++{
++    Y_UNUSED(ev);
++
++    auto error = MakeError(E_REJECTED, "tablet is shutting down");
++
++    ReplyAndDie(ctx, error);
++}
++
++void TCheckRangeActor::HandleReadBlocksResponse(
++    const TEvService::TEvReadBlocksResponse::TPtr& ev,
++    const TActorContext& ctx)
++{
++    const auto* msg = ev->Get();
++
++    LOG_ERROR(
++        ctx,
++        TBlockStoreComponents::VOLUME,
++        "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! scandisk response "
++        "catched, cur block id = " + std::to_string(BlockIndex));
++
++    ReplyAndDie(ctx, msg->GetError());
++}
++
++}   // namespace
++
++////////////////////////////////////////////////////////////////////////////////
++
++void TPartitionActor::HandleCheckRange(
++    const TEvVolume::TEvCheckRangeRequest::TPtr& ev,
++    const TActorContext& ctx)
++{
++    CheckRange(ev, ctx);
++}
++
++void TPartitionActor::CheckRange(
++    const TEvVolume::TEvCheckRangeRequest::TPtr& ev,
++    const TActorContext& ctx)
++{
++    auto* msg = ev->Get();
++
++    auto actorId = NCloud::Register<TCheckRangeActor>(
++        ctx,
++        ev->Sender,
++        msg->BlockId,
++        msg->BlocksCount,
++        msg->DiskId);
++
++    Actors.Insert(actorId);
++
++    LOG_INFO(ctx, TBlockStoreComponents::PARTITION, "Check range started");
++}
++
++}   // namespace NCloud::NBlockStore::NStorage::NPartition
+diff --git a/cloud/blockstore/libs/storage/partition/part_actor_readblocks.cpp b/cloud/blockstore/libs/storage/partition/part_actor_readblocks.cpp
+index 27c33550f5..89770cf60b 100644
+--- a/cloud/blockstore/libs/storage/partition/part_actor_readblocks.cpp
++++ b/cloud/blockstore/libs/storage/partition/part_actor_readblocks.cpp
+@@ -563,7 +563,7 @@ void TReadBlocksActor::HandleReadBlobResponse(
+     Y_ABORT_UNLESS(RequestsCompleted <= RequestsScheduled);
+     if (RequestsCompleted < RequestsScheduled) {
+         return;
+-    }
++}
+
+     if (WaitBaseDiskRequests) {
+         return;
+@@ -932,6 +932,11 @@ void TPartitionActor::ReadBlocks(
+     IReadBlocksHandlerPtr readHandler,
+     bool replyLocal)
+ {
++    LOG_ERROR(
++        ctx,
++        TBlockStoreComponents::VOLUME,
++        "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! reading blocks");
++
+     State->GetCleanupQueue().AcquireBarrier(commitId);
+
+     LOG_TRACE(ctx, TBlockStoreComponents::PARTITION,
+@@ -1183,6 +1188,7 @@ void TPartitionActor::CompleteReadBlocks(
+         "ReadBlocks",
+         args.RequestInfo->CallContext->RequestId);
+
++    //Возвращает обратно в партактора
+     NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
+
+     FinalizeReadBlocks(
+diff --git a/cloud/blockstore/libs/storage/partition/ya.make b/cloud/blockstore/libs/storage/partition/ya.make
+index ffdf7b5024..06d6a7b72d 100644
+--- a/cloud/blockstore/libs/storage/partition/ya.make
++++ b/cloud/blockstore/libs/storage/partition/ya.make
+@@ -8,6 +8,7 @@ SRCS(
+     part_actor_addgarbage.cpp
+     part_actor_addunconfirmedblobs.cpp
+     part_actor_changedblocks.cpp
++    part_actor_checkrange.cpp
+     part_actor_checkpoint.cpp
+     part_actor_cleanup.cpp
+     part_actor_collectgarbage.cpp
+diff --git a/cloud/blockstore/libs/storage/partition2/part2_actor.h b/cloud/blockstore/libs/storage/partition2/part2_actor.h
+index 6ab78f6697..7096bb5b76 100644
+--- a/cloud/blockstore/libs/storage/partition2/part2_actor.h
++++ b/cloud/blockstore/libs/storage/partition2/part2_actor.h
+@@ -554,6 +554,10 @@ private:
+         const NActors::TActorContext& ctx,
+         TEvPartitionPrivate::TOperationCompleted operation);
+
++    void CheckRange(
++        const TEvVolume::TEvCheckRangeRequest::TPtr& ev,
++        const NActors::TActorContext& ctx);
++
+     bool HandleRequests(STFUNC_SIG);
+     bool RejectRequests(STFUNC_SIG);
+
+diff --git a/cloud/blockstore/libs/storage/partition2/part2_actor_checkrange.cpp b/cloud/blockstore/libs/storage/partition2/part2_actor_checkrange.cpp
+new file mode 100644
+index 0000000000..14e51ac804
+--- /dev/null
++++ b/cloud/blockstore/libs/storage/partition2/part2_actor_checkrange.cpp
+@@ -0,0 +1,194 @@
++#include "part2_actor.h"
++#include "cloud/blockstore/libs/storage/disk_agent/model/public.h"
++//
++#include <cloud/blockstore/libs/service/context.h>
++#include <cloud/blockstore/libs/storage/core/config.h>
++#include <cloud/blockstore/libs/storage/core/probes.h>
++
++#include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
++
++#include <util/datetime/base.h>
++#include <util/generic/algorithm.h>
++#include <util/generic/guid.h>
++#include <util/generic/string.h>
++#include <util/generic/vector.h>
++#include <util/generic/xrange.h>
++#include <util/stream/str.h>
++
++namespace NCloud::NBlockStore::NStorage::NPartition2 {
++
++using namespace NActors;
++
++using namespace NKikimr;
++
++LWTRACE_USING(BLOCKSTORE_STORAGE_PROVIDER);
++
++namespace {
++
++////////////////////////////////////////////////////////////////////////////////
++
++class TCheckRangeActor final
++    : public TActorBootstrapped<TCheckRangeActor>
++{
++private:
++    const TActorId Tablet;
++    const ui64 BlockIndex;
++    const ui64 BlocksCount;
++    const TString DiskId;
++
++public:
++    TCheckRangeActor(
++        const TActorId& tablet,
++        ui64 blockId,
++        ui64 blocksCount,
++        TString diskId);
++
++    void Bootstrap(const TActorContext& ctx);
++
++private:
++    void ReplyAndDie(
++        const TActorContext& ctx,
++        const NProto::TError& error = {});
++
++    void HandleReadBlocksResponse(
++        const TEvService::TEvReadBlocksResponse::TPtr& ev,
++        const TActorContext& ctx);
++
++    void SendReadBlocksRequest(const TActorContext& ctx);
++
++private:
++    STFUNC(StateWork);
++
++    void HandleWakeup(
++        const TEvents::TEvWakeup::TPtr& ev,
++        const TActorContext& ctx);
++
++    void HandlePoisonPill(
++        const TEvents::TEvPoisonPill::TPtr& ev,
++        const TActorContext& ctx);
++};
++
++////////////////////////////////////////////////////////////////////////////////
++
++TCheckRangeActor::TCheckRangeActor(
++        const TActorId& tablet,
++        ui64 blockIndex,
++        ui64 blocksCount,
++        TString diskId)
++    : Tablet(tablet)
++    , BlockIndex(blockIndex)
++    , BlocksCount(blocksCount)
++    , DiskId(std::move(diskId))
++{}
++
++void TCheckRangeActor::Bootstrap(const TActorContext& ctx)
++{
++    SendReadBlocksRequest(ctx);
++    Become(&TThis::StateWork);
++    Die(ctx);
++}
++
++void TCheckRangeActor::SendReadBlocksRequest(const TActorContext& ctx)
++{
++    auto request = std::make_unique<TEvService::TEvReadBlocksRequest>();
++
++    request->Record.SetStartIndex(BlockIndex);
++    request->Record.SetBlocksCount(BlocksCount);
++    request->Record.SetDiskId(DiskId);
++
++    auto* headers = request->Record.MutableHeaders();
++
++    headers->SetIsBackgroundRequest(true);
++    headers->SetClientId(TString(BackgroundOpsClientId));
++    NCloud::Send(ctx, Tablet, std::move(request));
++}
++
++void TCheckRangeActor::ReplyAndDie(
++    const TActorContext& ctx,
++    const NProto::TError& error)
++{
++    {
++        auto response = std::make_unique<TEvPartitionPrivate::TEvForcedCompactionCompleted>(error);
++        NCloud::Send(ctx, Tablet, std::move(response));
++    }
++
++    Die(ctx);
++}
++
++////////////////////////////////////////////////////////////////////////////////
++
++STFUNC(TCheckRangeActor::StateWork)
++{
++    switch (ev->GetTypeRewrite()) {
++        HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
++        HFunc(TEvents::TEvWakeup, HandleWakeup);
++        HFunc(TEvService::TEvReadBlocksResponse, HandleReadBlocksResponse);
++        default:
++            HandleUnexpectedEvent(ev, TBlockStoreComponents::PARTITION_WORKER);
++            break;
++    }
++}
++
++void TCheckRangeActor::HandleWakeup(
++    const TEvents::TEvWakeup::TPtr& ev,
++    const TActorContext& ctx)
++{
++    SendReadBlocksRequest(ctx);
++    Y_UNUSED(ev);
++}
++
++void TCheckRangeActor::HandlePoisonPill(
++    const TEvents::TEvPoisonPill::TPtr& ev,
++    const TActorContext& ctx)
++{
++    Y_UNUSED(ev);
++
++    auto error = MakeError(E_REJECTED, "tablet is shutting down");
++
++    ReplyAndDie(ctx, error);
++}
++
++void TCheckRangeActor::HandleReadBlocksResponse(
++    const TEvService::TEvReadBlocksResponse::TPtr& ev,
++    const TActorContext& ctx)
++{
++    const auto* msg = ev->Get();
++
++    LOG_ERROR(
++        ctx,
++        TBlockStoreComponents::VOLUME,
++        "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! scandisk response "
++        "catched, cur block id = " + std::to_string(BlockIndex));
++
++    ReplyAndDie(ctx, msg->GetError());
++}
++
++}   // namespace
++
++////////////////////////////////////////////////////////////////////////////////
++void TPartitionActor::HandleCheckRange(
++    const TEvVolume::TEvCheckRangeRequest::TPtr& ev,
++    const TActorContext& ctx)
++{
++    CheckRange(ev, ctx);
++}
++
++void TPartitionActor::CheckRange(
++    const TEvVolume::TEvCheckRangeRequest::TPtr& ev,
++    const TActorContext& ctx)
++{
++    auto* msg = ev->Get();
++
++    auto actorId = NCloud::Register<TCheckRangeActor>(
++        ctx,
++        ev->Sender,
++        msg->BlockId,
++        msg->BlocksCount,
++        msg->DiskId);
++
++    Actors.insert(actorId);
++
++    LOG_INFO(ctx, TBlockStoreComponents::PARTITION, "Check range started");
++}
++
++}   // namespace NCloud::NBlockStore::NStorage::NPartition
+diff --git a/cloud/blockstore/libs/storage/partition2/ya.make b/cloud/blockstore/libs/storage/partition2/ya.make
+index 63fb42fb75..4dc9c2d21c 100644
+--- a/cloud/blockstore/libs/storage/partition2/ya.make
++++ b/cloud/blockstore/libs/storage/partition2/ya.make
+@@ -7,6 +7,7 @@ SRCS(
+     part2_actor_addblobs.cpp
+     part2_actor_addgarbage.cpp
+     part2_actor_changedblocks.cpp
++    part2_actor_checkrange.cpp
+     part2_actor_cleanup.cpp
+     part2_actor_collectgarbage.cpp
+     part2_actor_compaction.cpp
+@@ -55,18 +56,18 @@ PEERDIR(
+     cloud/blockstore/libs/storage/core
+     cloud/blockstore/libs/storage/partition2/model
+     cloud/blockstore/libs/storage/protos
+-
++
+     cloud/storage/core/libs/api
+     cloud/storage/core/libs/common
+     cloud/storage/core/libs/tablet
+-
++
+     library/cpp/cgiparam
+     library/cpp/containers/dense_hash
+     library/cpp/containers/intrusive_rb_tree
+     library/cpp/containers/stack_vector
+     library/cpp/lwtrace
+     library/cpp/monlib/service/pages
+-
++
+     contrib/ydb/core/base
+     contrib/ydb/core/node_whiteboard
+     contrib/ydb/core/scheme
+diff --git a/cloud/blockstore/libs/storage/partition_nonrepl/part_nonrepl_actor.cpp b/cloud/blockstore/libs/storage/partition_nonrepl/part_nonrepl_actor.cpp
+index b072fd00f5..117440220e 100644
+--- a/cloud/blockstore/libs/storage/partition_nonrepl/part_nonrepl_actor.cpp
++++ b/cloud/blockstore/libs/storage/partition_nonrepl/part_nonrepl_actor.cpp
+@@ -519,6 +519,8 @@ BLOCKSTORE_HANDLE_UNIMPLEMENTED_REQUEST(RebuildMetadata,          TEvVolume);
+ BLOCKSTORE_HANDLE_UNIMPLEMENTED_REQUEST(GetRebuildMetadataStatus, TEvVolume);
+ BLOCKSTORE_HANDLE_UNIMPLEMENTED_REQUEST(ScanDisk,                 TEvVolume);
+ BLOCKSTORE_HANDLE_UNIMPLEMENTED_REQUEST(GetScanDiskStatus,        TEvVolume);
++//BLOCKSTORE_HANDLE_UNIMPLEMENTED_REQUEST(CheckRange,               TEvVolume);
++
+
+ ////////////////////////////////////////////////////////////////////////////////
+
+@@ -552,6 +554,8 @@ STFUNC(TNonreplicatedPartitionActor::StateWork)
+         HFunc(TEvVolume::TEvRebuildMetadataRequest, HandleRebuildMetadata);
+         HFunc(TEvVolume::TEvGetRebuildMetadataStatusRequest, HandleGetRebuildMetadataStatus);
+         HFunc(TEvVolume::TEvScanDiskRequest, HandleScanDisk);
++        //HFunc(TEvVolume::TEvCheckRangeRequest, HandleCheckRange);
++
+         HFunc(TEvVolume::TEvGetScanDiskStatusRequest, HandleGetScanDiskStatus);
+
+         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
+diff --git a/cloud/blockstore/libs/storage/service/service_actor_actions.cpp b/cloud/blockstore/libs/storage/service/service_actor_actions.cpp
+index 8f60820f3e..7213e31d94 100644
+--- a/cloud/blockstore/libs/storage/service/service_actor_actions.cpp
++++ b/cloud/blockstore/libs/storage/service/service_actor_actions.cpp
+@@ -53,7 +53,6 @@ void TServiceActor::HandleExecuteAction(
+         {"getdependentdisks",                 &TServiceActor::CreateGetDependentDisksActionActor           },
+         {"getpartitioninfo",                  &TServiceActor::CreateGetPartitionInfoActionActor            },
+         {"getrebuildmetadatastatus",          &TServiceActor::CreateRebuildMetadataStatusActionActor       },
+-        {"getscandiskstatus",                 &TServiceActor::CreateScanDiskStatusActionActor              },
+         {"killtablet",                        &TServiceActor::CreateKillTabletActionActor                  },
+         {"migrationdiskregistrydevice",       &TServiceActor::CreateMigrationDiskRegistryDeviceActor       },
+         {"modifytags",                        &TServiceActor::CreateModifyTagsActionActor                  },
+diff --git a/cloud/blockstore/libs/storage/volume/volume_actor.cpp b/cloud/blockstore/libs/storage/volume/volume_actor.cpp
+index 3f63cfc619..c247ae25c7 100644
+--- a/cloud/blockstore/libs/storage/volume/volume_actor.cpp
++++ b/cloud/blockstore/libs/storage/volume/volume_actor.cpp
+@@ -1063,6 +1063,10 @@ STFUNC(TVolumeActor::StateWork)
+             TEvDiskRegistryProxy::TEvGetDrTabletInfoResponse,
+             HandleGetDrTabletInfoResponse);
+
++        HFunc(
++            TEvVolume::TEvCheckRangeRequest,
++            HandleCheckRangeRequest);
++
+         default:
+             if (!HandleRequests(ev) && !HandleDefaultEvents(ev, SelfId())) {
+                 HandleUnexpectedEvent(ev, TBlockStoreComponents::VOLUME);
+diff --git a/cloud/blockstore/libs/storage/volume/volume_actor.h b/cloud/blockstore/libs/storage/volume/volume_actor.h
+index 97c7371fd2..4e1891d914 100644
+--- a/cloud/blockstore/libs/storage/volume/volume_actor.h
++++ b/cloud/blockstore/libs/storage/volume/volume_actor.h
+@@ -874,6 +874,10 @@ private:
+         const NActors::TActorContext& ctx,
+         const typename TMethod::TRequest::TPtr& ev);
+
++    void HandleCheckRangeRequest(
++        const TEvVolume::TEvCheckRangeRequest::TPtr& ev,
++        const NActors::TActorContext& ctx);
++
+     template <typename TMethod>
+     NProto::TError Throttle(
+         const NActors::TActorContext& ctx,
+@@ -1003,12 +1007,21 @@ private:
+     ////////////////////////////////////////////////////////////////////////////
+
+     NActors::IActorPtr CreateScanDiskActor(
+-        NActors::TActorId tablet,
++        TString diskId,
++        ui64 diskSize,
++        NActors::TActorId tabletId,
+         ui64 blobsPerBatch,
+-        ui64 finalCommitId,
+-        TDuration retryTimeout);
++        TStorageConfigPtr config);
+ };
+
++////////////////////////////////////////////////////////////////////////////////
++
++    struct TCheckRangeMethod
++    {
++        using TRequest = TEvVolume::TEvCheckRangeRequest;
++        using TResponse = TEvVolume::TEvCheckRangeResponse;
++    };
++
+ ////////////////////////////////////////////////////////////////////////////////
+
+ #define BLOCKSTORE_VOLUME_COUNTER(name)                                        \
+diff --git a/cloud/blockstore/libs/storage/volume/volume_actor_forward.cpp b/cloud/blockstore/libs/storage/volume/volume_actor_forward.cpp
+index cec719ed84..b13f8aa217 100644
+--- a/cloud/blockstore/libs/storage/volume/volume_actor_forward.cpp
++++ b/cloud/blockstore/libs/storage/volume/volume_actor_forward.cpp
+@@ -635,20 +635,23 @@ void TVolumeActor::ForwardRequest(
+     }
+
+     const auto& clientId = GetClientId(*msg);
+-    auto& clients = State->AccessClients();
+-    auto it = clients.end();
++    //auto& clients = State->AccessClients();
++    //auto it = clients.end();
+
+     bool throttlingDisabled = false;
+     bool forceWrite = false;
+     if constexpr (RequiresMount<TMethod>) {
+-        it = clients.find(clientId);
++        //it = clients.find(clientId);
++        /*
+         if (it == clients.end()) {
+             replyError(MakeError(E_BS_INVALID_SESSION, "Invalid session"));
+             return;
+         }
++        */
+
+-        const auto& clientInfo = it->second;
++        //const auto& clientInfo = it->second;
+
++        /*
+         throttlingDisabled = HasProtoFlag(
+             clientInfo.GetVolumeClientInfo().GetMountFlags(),
+             NProto::MF_THROTTLING_DISABLED);
+@@ -660,6 +663,7 @@ void TVolumeActor::ForwardRequest(
+         forceWrite = HasProtoFlag(
+             clientInfo.GetVolumeClientInfo().GetMountFlags(),
+             NProto::MF_FORCE_WRITE);
++        */
+     }
+
+     if (RequiresReadWriteAccess<TMethod>
+@@ -685,11 +689,12 @@ void TVolumeActor::ForwardRequest(
+      *  Mount-related validation.
+      */
+     if constexpr (RequiresMount<TMethod>) {
+-        Y_ABORT_UNLESS(it != clients.end());
++        //Y_ABORT_UNLESS(it != clients.end());
+
+-        auto& clientInfo = it->second;
++        //auto& clientInfo = it->second;
+         NProto::TError error;
+
++    /*
+         if (ev->Recipient != ev->GetRecipientRewrite()) {
+             error = clientInfo.CheckPipeRequest(
+                 ev->Recipient,
+@@ -703,7 +708,7 @@ void TVolumeActor::ForwardRequest(
+                 TMethod::Name,
+                 State->GetDiskId());
+         }
+-
++    */
+         if (FAILED(error.GetCode())) {
+             replyError(std::move(error));
+             return;
+@@ -841,6 +846,195 @@ void TVolumeActor::ForwardRequest(
+     }
+ }
+
++template <>
++void TVolumeActor::ForwardRequest<TCheckRangeMethod>(
++    const TActorContext& ctx,
++    const TCheckRangeMethod::TRequest::TPtr& ev)
++{
++    // PartitionRequests undelivery handing
++    if (ev->Sender == SelfId()) {
++        const ui64 volumeRequestId = ev->Cookie;
++        auto response =
++            std::make_unique<TCheckRangeMethod::TResponse>(MakeError(
++                E_REJECTED,
++                TStringBuilder()
++                    << "Volume not ready: " << State->GetDiskId().Quote()));
++
++        if (ReplyToOriginalRequest<TCheckRangeMethod>(
++                ctx,
++                SelfId(),
++                0,   // flags
++                volumeRequestId,
++                std::move(response)))
++        {
++            return;
++        }
++    }
++
++    auto* msg = ev->Get();
++    auto now = GetCycleCount();
++
++    bool isTraced = false;
++
++    if (ev->Recipient != ev->GetRecipientRewrite()) {
++        if (TraceSerializer->IsTraced(msg->CallContext->LWOrbit)) {
++            isTraced = true;
++            now = msg->Record.GetHeaders().GetInternal().GetTraceTs();
++        } else if (TraceSerializer->HandleTraceRequest(
++                       msg->Record.GetHeaders().GetInternal().GetTrace(),
++                       msg->CallContext->LWOrbit))
++        {
++            isTraced = true;
++            msg->Record.MutableHeaders()->MutableInternal()->SetTraceTs(now);
++        }
++    }
++
++    LWTRACK(
++        RequestReceived_Volume,
++        msg->CallContext->LWOrbit,
++        "CheckRange",
++        msg->CallContext->RequestId);
++
++    auto replyError = [&](NProto::TError error)
++    {
++        auto response = std::make_unique<typename TCheckRangeMethod::TResponse>(
++            std::move(error));
++
++        FillResponse<TCheckRangeMethod>(*response, *msg->CallContext, now);
++
++        NCloud::Reply(ctx, *ev, std::move(response));
++    };
++
++    if (!VolumeRequestIdGenerator->CanAdvance()) {
++        replyError(MakeError(
++            E_REJECTED,
++            "VolumeRequestId overflow. Going to restart tablet."));
++        NCloud::Send(ctx, SelfId(), std::make_unique<TEvents::TEvPoisonPill>());
++        return;
++    }
++    const ui64 volumeRequestId = VolumeRequestIdGenerator->Advance();
++
++    if (ShuttingDown) {
++        replyError(MakeError(E_REJECTED, "Shutting down"));
++        return;
++    }
++
++    if (HasError(State->GetReadWriteError()))
++    {
++        replyError(State->GetReadWriteError());
++        return;
++    }
++
++    if (State->IsDiskRegistryMediaKind()) {
++        if (State->GetMeta().GetDevices().empty()) {
++            replyError(MakeError(
++                E_REJECTED,
++                TStringBuilder() << "Storage not allocated for volume: "
++                                 << State->GetDiskId().Quote()));
++            return;
++        }
++    }
++
++    if (State->GetPartitionsState() != TPartitionInfo::READY) {
++        StartPartitionsIfNeeded(ctx);
++
++        if (!State->Ready()) {
++            if constexpr (RejectRequestIfNotReady<TCheckRangeMethod>) {
++                replyError(MakeError(
++                    E_REJECTED,
++                    TStringBuilder()
++                        << "Volume not ready: " << State->GetDiskId().Quote()));
++            } else {
++                LOG_DEBUG(
++                    ctx,
++                    TBlockStoreComponents::VOLUME,
++                    "[%lu] %s request delayed until volume and partitions are "
++                    "ready",
++                    TabletID(),
++                    "CheckRange");
++
++                auto requestInfo = CreateRequestInfo<TCheckRangeMethod>(
++                    ev->Sender,
++                    ev->Cookie,
++                    ev->Get()->CallContext);
++
++                PendingRequests.emplace_back(
++                    NActors::IEventHandlePtr(ev.Release()),
++                    requestInfo);
++            }
++            return;
++        }
++    }
++
++    bool throttlingDisabled = false;
++
++    {
++        auto error = Throttle<TCheckRangeMethod>(ctx, ev, throttlingDisabled);
++        if (HasError(error)) {
++            replyError(std::move(error));
++            return;
++        } else if (!ev) {
++            // request postponed
++            return;
++        }
++    }
++
++    /*
++     *  Read from checkpoint processing and validation.
++     */
++
++    if (auto error = ProcessAndValidateReadFromCheckpoint<TCheckRangeMethod>(
++            msg->Record);
++        HasError(error))
++    {
++        replyError(std::move(error));
++        return;
++    }
++
++    /*
++     *  Validation of the request blocks range
++     */
++    if constexpr (IsReadOrWriteMethod<TCheckRangeMethod>) {
++        const auto range = BuildRequestBlockRange(*msg, State->GetBlockSize());
++        if (!CheckReadWriteBlockRange(range)) {
++            replyError(MakeError(
++                E_ARGUMENT,
++                TStringBuilder()
++                    << "invalid block range " << DescribeRange(range)));
++            return;
++        }
++    }
++
++    // Now we are ready to send the request to the underlying layer for
++    // processing. We need to save information about all sent requests in
++    // VolumeRequests to respond with E_REJECTED if the partition is stopped.
++    // When the underlying layer responds, we should remove the request from
++    // VolumeRequests.
++    // To do this, all requests before sending to the underlying actor are
++    // prepared by the WrapRequest<TCheckRangeMethod>() method, which replaces the sender
++    // and receiver.
++
++    const bool isSinglePartitionVolume = State->GetPartitions().size() <= 1;
++    if constexpr (IsCheckpointMethod<TCheckRangeMethod>) {
++        HandleCheckpointRequest<TCheckRangeMethod>(ctx, ev, isTraced, now);
++    } else if (isSinglePartitionVolume) {
++        SendRequestToPartition<TCheckRangeMethod>(ctx, ev, volumeRequestId, 0, now);
++    } else {
++        if (!HandleMultipartitionVolumeRequest<TCheckRangeMethod>(
++                ctx,
++                ev,
++                volumeRequestId,
++                isTraced,
++                now))
++        {
++            if constexpr (IsWriteMethod<TCheckRangeMethod>) {
++                WriteAndZeroRequestsInFlight.RemoveRequest(volumeRequestId);
++            }
++            replyError(MakeError(E_REJECTED, "Sglist destroyed"));
++        }
++    }
++}
++
+ #define BLOCKSTORE_FORWARD_REQUEST(name, ns)                                   \
+     void TVolumeActor::Handle##name(                                           \
+         const ns::TEv##name##Request::TPtr& ev,                                \
+@@ -878,6 +1072,7 @@ BLOCKSTORE_FORWARD_REQUEST(RebuildMetadata,          TEvVolume)
+ BLOCKSTORE_FORWARD_REQUEST(GetRebuildMetadataStatus, TEvVolume)
+ BLOCKSTORE_FORWARD_REQUEST(ScanDisk,                 TEvVolume)
+ BLOCKSTORE_FORWARD_REQUEST(GetScanDiskStatus,        TEvVolume)
++//BLOCKSTORE_FORWARD_REQUEST(CheckRange,               TEvVolume)
+
+
+ #undef BLOCKSTORE_FORWARD_REQUEST
+diff --git a/cloud/blockstore/libs/storage/volume/volume_actor_forward_trackused.cpp b/cloud/blockstore/libs/storage/volume/volume_actor_forward_trackused.cpp
+index 10b46d3611..8b264812b2 100644
+--- a/cloud/blockstore/libs/storage/volume/volume_actor_forward_trackused.cpp
++++ b/cloud/blockstore/libs/storage/volume/volume_actor_forward_trackused.cpp
+@@ -219,6 +219,8 @@ GENERATE_NO_IMPL(RebuildMetadata,          TEvVolume)
+ GENERATE_NO_IMPL(GetRebuildMetadataStatus, TEvVolume)
+ GENERATE_NO_IMPL(ScanDisk,                 TEvVolume)
+ GENERATE_NO_IMPL(GetScanDiskStatus,        TEvVolume)
++//GENERATE_NO_IMPL(CheckRange,               TEvVolume)
++
+
+ #undef GENERATE_IMPL
+
+diff --git a/cloud/blockstore/libs/storage/volume/volume_actor_loadstate.cpp b/cloud/blockstore/libs/storage/volume/volume_actor_loadstate.cpp
+index 72701f1ee2..839eb30ff2 100644
+--- a/cloud/blockstore/libs/storage/volume/volume_actor_loadstate.cpp
++++ b/cloud/blockstore/libs/storage/volume/volume_actor_loadstate.cpp
+@@ -195,15 +195,19 @@ void TVolumeActor::CompleteLoadState(
+     ScheduleProcessUpdateVolumeConfig(ctx);
+     ScheduleAllocateDiskIfNeeded(ctx);
+
+-    LOG_ERROR(ctx, TBlockStoreComponents::VOLUME, "Volume registrations started");
+
++    sleep(3);
++    LOG_ERROR(ctx, TBlockStoreComponents::VOLUME, "Volume registrations started");
+     ScanDiskId = NCloud::Register(
+         ctx,
+         CreateScanDiskActor(
++            //State->GetDiskId(),
++            "disk_id",
++            //State->GetBlocksCount(),
++            8388600,
+             SelfId(),
+             100,
+-            0,
+-            Config->GetCompactionRetryTimeout())
++            Config)
+
+     );
+
+diff --git a/cloud/blockstore/libs/storage/volume/volume_actor_scandisk.cpp b/cloud/blockstore/libs/storage/volume/volume_actor_scandisk.cpp
+index 66475807b8..745854de86 100644
+--- a/cloud/blockstore/libs/storage/volume/volume_actor_scandisk.cpp
++++ b/cloud/blockstore/libs/storage/volume/volume_actor_scandisk.cpp
+@@ -1,55 +1,68 @@
++#include "volume_actor.h"
++
++#include "cloud/blockstore/libs/storage/disk_agent/model/public.h"
+ #include "cloud/blockstore/libs/storage/partition_common/model/blob_markers.h"
+ #include "cloud/storage/core/libs/common/block_buffer.h"
+ #include "cloud/storage/core/libs/tablet/model/partial_blob_id.h"
+ #include "cloud/storage/core/protos/error.pb.h"
+ #include "contrib/ydb/library/actors/core/log.h"
++
+ #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
+-#include "volume_actor.h"
+
+ namespace NCloud::NBlockStore::NStorage::NVolume {
+
+ using namespace NActors;
+
+ using namespace NKikimr;
+-//using namespace NKikimr::NTabletFlatExecutor;
++// using namespace NKikimr::NTabletFlatExecutor;
+
+ namespace {
+
+ ////////////////////////////////////////////////////////////////////////////////
+
+-//constexpr ui64 MaxUniqueId = std::numeric_limits<ui64>::max();
+-
++// constexpr ui64 MaxUniqueId = std::numeric_limits<ui64>::max();
+
+-class TScanDiskActor final
+-    : public TActorBootstrapped<TScanDiskActor>
++class TScanDiskActor final: public TActorBootstrapped<TScanDiskActor>
+ {
+ private:
+-    const NActors::TActorId  VolumeId;
+-    const ui32 BlobsPerBatch = 0;
++    TString DiskId;
++    const ui64 Size;
++    const NActors::TActorId VolumeId;
++    const ui64 BlocksPerBatch = 0;
+     const TPartialBlobId FinalBlobId;
+-    const TDuration RetryTimeout;
+-    bool IsCompleted = false;
+-    ui64 currentBlobId = 0;
++    TDuration Timeout;
++    TStorageConfigPtr Config;
++
+
+-    TVector<NBlobMarkers::TBlobMark> RequestsInCurrentBatch;
++    bool IsCompleted = false;
++    bool HasErrors = false;
+
++    ui64 ErrorBlockId = 0;
++    TString ErrorMessage;
+
+-    //TVector<ui64> BrokenBlobs;
++    ui64 CurrentBlockId = 0;
++    // TVector<ui64> BrokenBlobs;
+
+ public:
+     TScanDiskActor(
+-        const NActors::TActorId & volumeId,
+-        ui32 blobsPerBatch,
+-        ui64 finalCommitId,
+-        TDuration retryTimeout
+-        );
++        TString diskId,
++        ui64 size,
++        const NActors::TActorId& volumeId,
++        ui64 blobsPerBatch,
++        TStorageConfigPtr config);
+
+     void Bootstrap(const TActorContext& ctx);
+
+ private:
+     void SendCheckRangeRequest(const TActorContext& ctx);
+
+-    void SendReadBlobRequest(const TActorContext& ctx, ui32 requestIndex);
++    void SendReadBlocksRequest(const TActorContext& ctx);
++
++    void CheckRange(const TActorContext& ctx);
++
++    void HandleReadBlocksResponse(
++        const TEvService::TEvReadBlocksResponse::TPtr& ev,
++        const TActorContext& ctx);
+
+     void ReportStatus(const TActorContext& ctx);
+
+@@ -66,46 +79,65 @@ private:
+     void HandleCheckRangeResponse(
+         const TEvVolume::TEvCheckRangeResponse::TPtr& ev,
+         const TActorContext& ctx);
+-
+-    /*
+-    void HandleReadBlobResponse(
+-        const TEvPartitionCommonPrivate::TEvReadBlobResponse::TPtr& ev,
+-        const TActorContext& ctx);
+-    */
+ };
+
+ ////////////////////////////////////////////////////////////////////////////////
+
+ TScanDiskActor::TScanDiskActor(
+-        const NActors::TActorId & volumeId,
+-        ui32 blobsPerBatch,
+-        ui64 finalBlobId,
+-        TDuration retryTimeout
+-        //TBlockBuffer blockBuffer
+-        )
+-    : VolumeId(volumeId)
+-    , BlobsPerBatch(blobsPerBatch)
+-    , FinalBlobId(MakePartialBlobId(finalBlobId, Max()))
+-    , RetryTimeout(retryTimeout)
+-{}
+-
+-void TScanDiskActor::Bootstrap(const TActorContext &ctx)
++    TString diskId,
++    ui64 size,
++    const NActors::TActorId& volumeId,
++    ui64 blobsPerBatch,
++    TStorageConfigPtr config
++    )
++    : DiskId(std::move(diskId))
++    , Size(size)
++    , VolumeId(volumeId)
++    , BlocksPerBatch(blobsPerBatch)
++    , Config(config)
++
++{
++    Cout<< "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! constructor "<<Endl;
++}
++
++void TScanDiskActor::Bootstrap(const TActorContext& ctx)
+ {
++    auto bytesPerStripe = Config->GetBytesPerStripe();
++
++
++    Cout<< "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! bootstraped "<<Endl;
++
+     LOG_ERROR(
+         ctx,
+         TBlockStoreComponents::VOLUME,
+         "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! scandisk in volume has "
+         "started");
+-    SendCheckRangeRequest(ctx);
++    sleep(5);
++
++    if (Size > bytesPerStripe) {
++        // send error message
++        LOG_ERROR(
++        ctx,
++        TBlockStoreComponents::VOLUME,
++        "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! RANGE IS TO BIG ");
++        //return;
++    }
++    CheckRange(ctx);
+     Become(&TThis::StateWork);
+ }
+
++void TScanDiskActor::CheckRange(const TActorContext& ctx)
++{
++    SendCheckRangeRequest(ctx);
++}
++
+ void TScanDiskActor::SendCheckRangeRequest(const TActorContext& ctx)
+ {
+-    auto request = std::make_unique<TEvVolume::TEvCheckRange>(
++    auto request = std::make_unique<TEvVolume::TEvCheckRangeRequest>(
+         MakeIntrusive<TCallContext>(),
+-        currentBlobId,
+-        BlobsPerBatch);
++        CurrentBlockId,
++        BlocksPerBatch,
++        DiskId);
+
+     NCloud::Send(ctx, VolumeId, std::move(request));
+
+@@ -116,27 +148,40 @@ void TScanDiskActor::SendCheckRangeRequest(const TActorContext& ctx)
+         "sended ");
+ }
+
++void TScanDiskActor::SendReadBlocksRequest(const TActorContext& ctx)
++{
++    auto request = std::make_unique<TEvService::TEvReadBlocksRequest>();
++
++    request->Record.SetStartIndex(CurrentBlockId);
++    auto blocksCount = Min(BlocksPerBatch, Size-CurrentBlockId);
++    request->Record.SetBlocksCount(blocksCount);
++    request->Record.SetDiskId(DiskId);
++
++    auto* headers = request->Record.MutableHeaders();
++
++    headers->SetIsBackgroundRequest(true);
++    headers->SetClientId(TString(BackgroundOpsClientId));
++    NCloud::Send(ctx, VolumeId, std::move(request));
++}
+
+ ////////////////////////////////////////////////////////////////////////////////
+
+ STFUNC(TScanDiskActor::StateWork)
+ {
+     switch (ev->GetTypeRewrite()) {
+-
+         HFunc(TEvents::TEvWakeup, HandleWakeup);
+         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
+-        HFunc(
+-            TEvVolume::TEvCheckRangeResponse,
+-            HandleCheckRangeResponse);
++        HFunc(TEvVolume::TEvCheckRangeResponse, HandleCheckRangeResponse);
+         /*
+         HFunc(
+             TEvPartitionCommonPrivate::TEvReadBlobResponse,
+             HandleReadBlobResponse);
+         */
+
++        HFunc(TEvService::TEvReadBlocksResponse, HandleReadBlocksResponse);
++
+         default:
+-            HandleUnexpectedEvent(
+-                ev, TBlockStoreComponents::PARTITION_WORKER);
++            HandleUnexpectedEvent(ev, TBlockStoreComponents::PARTITION_WORKER);
+             break;
+     }
+ }
+@@ -167,76 +212,94 @@ void TScanDiskActor::HandleCheckRangeResponse(
+ {
+     const auto* msg = ev->Get();
+
++    Y_UNUSED(ctx);
++    Y_UNUSED(msg);
++
++    if (FinalBlobId.UniqueId() <= CurrentBlockId) {
++        IsCompleted = true;
++        LOG_ERROR(
++            ctx,
++            TBlockStoreComponents::VOLUME,
++            "is complited  = " + std::to_string(IsCompleted));
++    } else {
++        CurrentBlockId += BlocksPerBatch;
++    }
++}
++
++void TScanDiskActor::HandleReadBlocksResponse(
++    const TEvService::TEvReadBlocksResponse::TPtr& ev,
++    const TActorContext& ctx)
++{
++    const auto* msg = ev->Get();
++
+     LOG_ERROR(
+         ctx,
+         TBlockStoreComponents::VOLUME,
+         "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! scandisk response "
+-        "catched ");
+-
+-    if (FinalBlobId.CommitId() <= currentBlobId){
+-        IsCompleted = true;
++        "catched, cur block id = " + std::to_string(CurrentBlockId));
++
++    if (HasError(msg->Record.GetError())) {
++        ErrorBlockId = CurrentBlockId;
++        ErrorMessage = msg->Record.GetError().GetMessage();
++        LOG_ERROR(
++            ctx,
++            TBlockStoreComponents::VOLUME,
++            "While scanning a disk with an id = " + DiskId +
++                " a reading error has occurred: " + ErrorMessage + "   message   " +  msg->Record.GetError().message() );
++        HasErrors = true;
+     }
+
+-    ReportStatus(ctx);
++    if (Size <= CurrentBlockId) {
+
+-    Y_UNUSED(msg);
+-    /*
+-    if (FAILED(msg->GetStatus())) {
+-        if (GetErrorKind(msg->Error) == EErrorKind::ErrorRetriable) {
+-            ctx.Schedule(RetryTimeout, new TEvents::TEvWakeup());
+-        } else {
+-            NotifyCompleted(ctx, msg->Error);
+-        }
+-        return;
++    } else {
++        CurrentBlockId += BlocksPerBatch;
+     }
++    IsCompleted = true;
++        LOG_ERROR(
++            ctx,
++            TBlockStoreComponents::VOLUME,
++            "is complited  = " + std::to_string(IsCompleted));
+
+-    if (msg->IsScanCompleted) {
+-        NotifyCompleted(ctx);
+-        return;
+-    }
++    CheckRange(ctx);
++}
+
+-    BlobIdToRead = NextBlobId(msg->LastVisitedBlobId, MaxUniqueId);
++}   // namespace    , RetryTimeout()
+
+-    if (msg->BlobsInBatch.empty()) {
+-        SendScanDiskBatchRequest(ctx);
+-        return;
+-    }
+-    ReadBlobResponsesCounter = 0;
+
+-    RequestsInCurrentBatch = std::move(msg->BlobsInBatch);
+-    for (ui32 requestIndex = 0; requestIndex < RequestsInCurrentBatch.size(); ++requestIndex) {
+-        SendReadBlobRequest(ctx, requestIndex);
+-    }
+-    */
+-}
++}   // namespace NCloud::NBlockStore::NStorage::NVolume
+
+-void TScanDiskActor::ReportStatus(
+-    const TActorContext& ctx)
+-{
+-    auto request = std::make_unique<TEvVolume::TEvCheckRangeReportStatus>(
+-        MakeIntrusive<TCallContext>(),
+-        currentBlobId,
+-        IsCompleted);
+
+-    NCloud::Send(ctx, VolumeId, std::move(request));
+-}
+
+-}  // namespace
+
+-}  // namespace NCloud::NBlockStore::NStorage::NPartition
+
+ namespace NCloud::NBlockStore::NStorage {
++
++void TVolumeActor::HandleCheckRangeRequest(
++    const TEvVolume::TEvCheckRangeRequest::TPtr& ev,
++    const NActors::TActorContext& ctx)
++{
++    TVolumeActor::ForwardRequest<TCheckRangeMethod>(ctx, ev);
++    Cout << "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
++            "CheckRangeRequestHandled"
++         << Endl;
++}
++
+ NActors::IActorPtr TVolumeActor::CreateScanDiskActor(
+-    NActors::TActorId  tablet,
++    TString diskId,
++    ui64 diskSize,
++    NActors::TActorId tabletId,
+     ui64 blobsPerBatch,
+-    ui64 finalCommitId,
+-    TDuration retryTimeout)
++    TStorageConfigPtr config
++)
+ {
++    Cout<< "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!CreateScanDiskActor started"<<Endl;
++
+     return std::make_unique<NVolume::TScanDiskActor>(
+-        std::move(tablet),
++        std::move(diskId),
++        diskSize,
++        tabletId,
+         blobsPerBatch,
+-        finalCommitId,
+-        retryTimeout);
++        config);
+ }
+
+ }   // namespace NCloud::NBlockStore::NStorage
+diff --git a/cloud/blockstore/private/api/protos/volume.proto b/cloud/blockstore/private/api/protos/volume.proto
+index d65918850b..29e7c5b77b 100644
+--- a/cloud/blockstore/private/api/protos/volume.proto
++++ b/cloud/blockstore/private/api/protos/volume.proto
+@@ -47,7 +47,7 @@ message TDescribeBlocksResponse
+
+ ////////////////////////////////////////////////////////////////////////////////
+ // CompactRange request/response.
+-
++////////
+ message TCompactRangeRequest
+ {
+     string DiskId = 1;

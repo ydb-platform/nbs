@@ -431,6 +431,12 @@ private:
         TDuration retryTimeout,
         TBlockBuffer blockBuffer);
 
+    NActors::IActorPtr CreateCheckRangeActor(
+        NActors::TActorId tablet,
+        ui64 blockOffset,
+        ui64 blocksCount,
+        TDuration retryTimeout);
+
 private:
     STFUNC(StateBoot);
     STFUNC(StateInit);
@@ -636,6 +642,11 @@ private:
     NProto::TError DoHandleScanDisk(
         const NActors::TActorContext& ctx,
         ui32 blobsPerBatch);
+
+    NProto::TError DoHandleCheckRange(
+        const NActors::TActorContext& ctx,
+        ui64 blockOffset,
+        ui64 blocksCount);
 
     void MapBaseDiskIdToTabletId(const NActors::TActorContext& ctx);
     void ClearBaseDiskIdToTabletIdMapping(const NActors::TActorContext& ctx);

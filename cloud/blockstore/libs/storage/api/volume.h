@@ -35,6 +35,8 @@ namespace NCloud::NBlockStore::NStorage {
     xxx(UpdateVolumeParams,       __VA_ARGS__)                                 \
     xxx(ChangeStorageConfig,      __VA_ARGS__)                                 \
     xxx(GetStorageConfig,         __VA_ARGS__)                                 \
+    xxx(CheckRange,               __VA_ARGS__)                                 \
+
 
 // BLOCKSTORE_VOLUME_REQUESTS
 
@@ -64,6 +66,7 @@ namespace NCloud::NBlockStore::NStorage {
     xxx(GetRebuildMetadataStatus, __VA_ARGS__)                                 \
     xxx(ScanDisk,                 __VA_ARGS__)                                 \
     xxx(GetScanDiskStatus,        __VA_ARGS__)                                 \
+    xxx(CheckRange,               __VA_ARGS__)                                 \
 // BLOCKSTORE_VOLUME_HANDLED_RESPONSES
 
 // responses for the requests forwarded from service which are forwarded back
@@ -330,6 +333,9 @@ struct TEvVolume
 
         EvGetStorageConfigRequest = EvBegin + 58,
         EvGetStorageConfigResponse = EvBegin + 59,
+
+        EvCheckRangeRequest = EvBegin + 60,
+        EvCheckRangeResponse = EvBegin + 61,
 
         EvEnd
     };

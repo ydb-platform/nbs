@@ -617,4 +617,22 @@ bool ToPartitionRequests<TEvVolume::TGetUsedBlocksMethod>(
     return false;
 }
 
+template <>
+bool ToPartitionRequests<TEvVolume::TCheckRangeMethod>(
+    const TPartitionInfoList& partitions,
+    const ui32 blockSize,
+    const ui32 blocksPerStripe,
+    const TEvVolume::TCheckRangeMethod::TRequest::TPtr& ev,
+    TVector<TPartitionRequest<TEvVolume::TCheckRangeMethod>>* requests,
+    TBlockRange64* blockRange)
+{
+    return ToPartitionRequestsSimple(
+        partitions,
+        blockSize,
+        blocksPerStripe,
+        ev,
+        requests,
+        blockRange);
+}
+
 }   // namespace NCloud::NBlockStore::NStorage

@@ -968,6 +968,10 @@ private:
         const TEvService::TEvReadBlocksLocalResponse::TPtr& ev,
         const NActors::TActorContext& ctx);
 
+    void HandleCheckRangeResponse(
+        const TEvVolume::TEvCheckRangeResponse::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
     void CreateCheckpointLightRequest(
         const NActors::TActorContext& ctx,
         ui64 requestId,

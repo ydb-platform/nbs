@@ -294,3 +294,21 @@ message TFinishFillDiskRequest
 message TFinishFillDiskResponse
 {
 }
+
+////////////////////////////////////////////////////////////////////////////////
+// CheckRange request/response.
+
+message TCheckRangeRequest
+{
+    string DiskId = 1;
+
+    // First Block Id.
+    uint32 BlockId = 2;
+
+    // Number of blobs per batch.
+    uint32 BlocksCount = 3;
+}
+
+message TCheckRangeResponse
+{
+}

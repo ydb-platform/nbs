@@ -9,6 +9,7 @@ SRCS(
     service_actor_actions_change_disk_device.cpp
     service_actor_actions_change_storage_config.cpp
     service_actor_actions_check_blob.cpp
+    service_actor_actions_check_range.cpp
     service_actor_actions_cms.cpp
     service_actor_actions_compact_range.cpp
     service_actor_actions_configure_volume_balancer.cpp
