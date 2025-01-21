@@ -2054,16 +2054,29 @@ Y_UNIT_TEST_SUITE(TEndpointManagerTest)
 
         {
             auto startEndpointFuture = StartEndpoint(*manager, request);
-            auto restoreEndpointsFuture =
-                bootstrap.Executor->Execute([manager = manager.get()]() mutable
-                                            { manager->RestoreEndpoints(); });
 
-            Sleep(TDuration::MilliSeconds(100));
+            auto waitForTaskScheduleFuture =
+                bootstrap.Scheduler->WaitForTaskSchedule();
+            auto restoreEndpointsFuture = bootstrap.Executor->Execute(
+                [manager = manager.get(),
+                 executor = bootstrap.Executor.get()]() mutable
+                {
+                    auto future = manager->RestoreEndpoints();
+                    executor->WaitFor(future);
+                });
+
+            // We start RestoreEndpoints with other args and it execute
+            // concurrently with StartEndpoint request, this means that
+            // RestoreSingleEndpoint should be rejected until StartEndpoint
+            // request processing ends. On reject restoring client will schedule
+            // task to retry request.
+            waitForTaskScheduleFuture.Wait();
+
             promise.SetValue(MakeError(S_OK, {}));
 
-            UNIT_ASSERT(
-                !HasError(startEndpointFuture.GetValue(TDuration::Seconds(1))));
-            restoreEndpointsFuture.Wait(TDuration::Seconds(1));
+            startEndpointFuture.Wait();
+            bootstrap.Scheduler->RunAllScheduledTasks();
+            restoreEndpointsFuture.Wait();
         }
     }
 }
