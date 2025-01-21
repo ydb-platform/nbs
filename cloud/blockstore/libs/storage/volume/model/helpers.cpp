@@ -11,37 +11,46 @@
 namespace NCloud::NBlockStore::NStorage {
 namespace {
 
+////////////////////////////////////////////////////////////////////////////////
+
 using google::protobuf::RepeatedPtrField;
 
-// Finds index of the replica by device UUID, without searching through
-// migrations.
-std::pair<ui32, const RepeatedPtrField<NProto::TDeviceConfig>*>
-FindReplicaDevices(const NProto::TVolumeMeta& meta, const TString& deviceUUID)
+struct TDeviceLocation
 {
-    auto deviceMatcher = [&deviceUUID](const auto& device)
-    {
-        return device.GetDeviceUUID() == deviceUUID;
-    };
+    ui32 RowIndex = 0;
+    ui32 ReplicaIndex = 0;
+    std::optional<int> MigrationIndex;
+};
 
-    if (AnyOf(meta.GetDevices(), deviceMatcher)) {
-        return std::make_pair(0, &meta.GetDevices());
+const RepeatedPtrField<NProto::TDeviceConfig>& GetReplicaDevices(
+    const NProto::TVolumeMeta& meta,
+    ui32 index)
+{
+    if (index == 0) {
+        return meta.GetDevices();
     }
-
-    for (int i = 0; i < meta.GetReplicas().size(); i++) {
-        const auto& replica = meta.GetReplicas()[i];
-        if (AnyOf(replica.GetDevices(), deviceMatcher)) {
-            return std::make_pair(i + 1, &replica.GetDevices());
-        }
-    }
-
-    return std::make_pair(0, nullptr);
+    index--;
+    Y_DEBUG_ABORT_UNLESS(meta.GetReplicas().size() > static_cast<i32>(index));
+    return meta.GetReplicas(index).GetDevices();
 }
 
-// Finds index of the device by device UUID, without searching through
-// migrations.
-std::optional<ui32> FindDeviceRowIndex(
+const NProto::TDeviceConfig& GetDeviceConfig(
     const NProto::TVolumeMeta& meta,
-    const TString& deviceUUID)
+    TDeviceLocation deviceLocation)
+{
+    if (!deviceLocation.MigrationIndex.has_value()) {
+        return GetReplicaDevices(
+            meta,
+            deviceLocation.ReplicaIndex)[deviceLocation.RowIndex];
+    }
+    Y_DEBUG_ABORT_UNLESS(
+        meta.GetMigrations().size() > *deviceLocation.MigrationIndex);
+    return meta.GetMigrations(*deviceLocation.MigrationIndex).GetTargetDevice();
+}
+
+std::optional<TDeviceLocation> FindDeviceLocation(
+    const NProto::TVolumeMeta& meta,
+    TStringBuf deviceUUID)
 {
     auto deviceMatcher = [&deviceUUID](const auto& device)
     {
@@ -50,13 +59,40 @@ std::optional<ui32> FindDeviceRowIndex(
 
     auto it = FindIf(meta.GetDevices(), deviceMatcher);
     if (it != meta.GetDevices().end()) {
-        return std::distance(meta.GetDevices().begin(), it);
+        return TDeviceLocation{
+            .RowIndex =
+                static_cast<ui32>(std::distance(meta.GetDevices().begin(), it)),
+            .ReplicaIndex = 0};
     }
 
-    for (const auto& replica: meta.GetReplicas()) {
+    for (int i = 0; i < meta.GetReplicas().size(); i++) {
+        const auto& replica = meta.GetReplicas(i);
         auto it = FindIf(replica.GetDevices(), deviceMatcher);
         if (it != replica.GetDevices().end()) {
-            return std::distance(replica.GetDevices().begin(), it);
+            return TDeviceLocation{
+                .RowIndex = static_cast<ui32>(
+                    std::distance(replica.GetDevices().begin(), it)),
+                .ReplicaIndex = static_cast<ui32>(i + 1)};
+        }
+    }
+
+    for (int i = 0; i < meta.GetMigrations().size(); i++) {
+        const auto& migration = meta.GetMigrations(i);
+        if (deviceMatcher(migration.GetTargetDevice())) {
+            auto sourceLocation =
+                FindDeviceLocation(meta, migration.GetSourceDeviceId());
+            if (!sourceLocation) {
+                ReportDiskAllocationFailure(
+                    TStringBuilder()
+                    << "Migration source device "
+                    << migration.GetSourceDeviceId()
+                    << " doesn't belong to the disk "
+                    << meta.GetConfig().GetDiskId() << ". Target device: "
+                    << migration.GetTargetDevice().GetDeviceUUID());
+                continue;
+            }
+            sourceLocation->MigrationIndex = i;
+            return sourceLocation;
         }
     }
 
@@ -64,6 +100,8 @@ std::optional<ui32> FindDeviceRowIndex(
 }
 
 }   // namespace
+
+////////////////////////////////////////////////////////////////////////////////
 
 bool TLaggingDeviceIndexCmp::operator()(
     const NProto::TLaggingDevice& lhs,
@@ -74,33 +112,13 @@ bool TLaggingDeviceIndexCmp::operator()(
 
 const NProto::TDeviceConfig* FindDeviceConfig(
     const NProto::TVolumeMeta& meta,
-    const TString& deviceUUID)
+    const TStringBuf& deviceUUID)
 {
-    auto deviceMatcher = [&deviceUUID](const auto& device)
-    {
-        return device.GetDeviceUUID() == deviceUUID;
-    };
-
-    const NProto::TDeviceConfig* deviceConfig = nullptr;
-    deviceConfig = FindIfPtr(meta.GetDevices(), deviceMatcher);
-    if (deviceConfig) {
-        return deviceConfig;
+    auto deviceLocation = FindDeviceLocation(meta, deviceUUID);
+    if (!deviceLocation.has_value()) {
+        return nullptr;
     }
-
-    for (const auto& replica: meta.GetReplicas()) {
-        deviceConfig = FindIfPtr(replica.GetDevices(), deviceMatcher);
-        if (deviceConfig) {
-            return deviceConfig;
-        }
-    }
-
-    for (const auto& migration: meta.GetMigrations()) {
-        if (deviceMatcher(migration.GetTargetDevice())) {
-            return &migration.GetTargetDevice();
-        }
-    }
-
-    return nullptr;
+    return &GetDeviceConfig(meta, *deviceLocation);
 }
 
 std::optional<ui32> GetAgentDevicesIndexes(
@@ -111,25 +129,18 @@ std::optional<ui32> GetAgentDevicesIndexes(
     Y_DEBUG_ABORT_UNLESS(laggingDevices);
     std::optional<ui32> replicaIndex;
     const RepeatedPtrField<NProto::TDeviceConfig>* replicaDevices = nullptr;
-    const auto deviceMatcher = [agentNodeId](const NProto::TDeviceConfig& device)
+    const auto deviceMatcher =
+        [agentNodeId](const NProto::TDeviceConfig& device)
     {
         return device.GetNodeId() == agentNodeId;
     };
-    if (AnyOf(
-            meta.GetDevices().begin(),
-            meta.GetDevices().end(),
-            deviceMatcher))
-    {
+    if (AnyOf(meta.GetDevices(), deviceMatcher)) {
         replicaIndex = 0;
         replicaDevices = &meta.GetDevices();
     }
 
     for (int i = 0; !replicaIndex && i < meta.GetReplicas().size(); i++) {
-        if (AnyOf(
-                meta.GetReplicas()[i].GetDevices().begin(),
-                meta.GetReplicas()[i].GetDevices().end(),
-                deviceMatcher))
-        {
+        if (AnyOf(meta.GetReplicas()[i].GetDevices(), deviceMatcher)) {
             replicaIndex = i + 1;
             replicaDevices = &meta.GetReplicas()[i].GetDevices();
             break;
@@ -139,11 +150,12 @@ std::optional<ui32> GetAgentDevicesIndexes(
     if (!replicaIndex) {
         for (const auto& migration: meta.GetMigrations()) {
             if (deviceMatcher(migration.GetTargetDevice())) {
-                auto [index, devices] =
-                    FindReplicaDevices(meta, migration.GetSourceDeviceId());
-                if (devices) {
-                    replicaIndex = index;
-                    replicaDevices = devices;
+                auto deviceLocation =
+                    FindDeviceLocation(meta, migration.GetSourceDeviceId());
+                if (deviceLocation) {
+                    replicaIndex = deviceLocation->ReplicaIndex;
+                    replicaDevices =
+                        &GetReplicaDevices(meta, deviceLocation->ReplicaIndex);
                 }
             }
         }
@@ -164,29 +176,29 @@ std::optional<ui32> GetAgentDevicesIndexes(
         }
     }
 
-    for (int i = 0; i < meta.GetMigrations().size(); i++) {
-        const auto& targetDevice = meta.GetMigrations()[i].GetTargetDevice();
+    for (const auto& migration: meta.GetMigrations()) {
+        const auto& targetDevice = migration.GetTargetDevice();
         if (deviceMatcher(targetDevice)) {
             NProto::TLaggingDevice laggingDevice;
-            auto sourceDeviceIndex = FindDeviceRowIndex(
-                meta,
-                meta.GetMigrations()[i].GetSourceDeviceId());
-            if (!sourceDeviceIndex) {
+            auto deviceLocation =
+                FindDeviceLocation(meta, migration.GetSourceDeviceId());
+            if (!deviceLocation) {
                 ReportDiskAllocationFailure(
                     TStringBuilder()
                     << "Migration source device "
-                    << meta.GetMigrations()[i].GetSourceDeviceId()
+                    << migration.GetSourceDeviceId()
                     << " doesn't belong to the disk "
                     << meta.GetConfig().GetDiskId()
                     << ". Target device: " << targetDevice.GetDeviceUUID());
                 continue;
             }
-            laggingDevice.SetRowIndex(*sourceDeviceIndex);
+            laggingDevice.SetRowIndex(deviceLocation->RowIndex);
             laggingDevice.SetDeviceUUID(targetDevice.GetDeviceUUID());
             laggingDevices->push_back(std::move(laggingDevice));
         }
     }
 
+    Sort(*laggingDevices, TLaggingDeviceIndexCmp());
     return replicaIndex;
 }
 
@@ -202,13 +214,12 @@ TSet<ui32> ReplicaIndexesWithFreshDevices(
         result.insert(0);
     }
 
-    const auto& replicas = meta.GetReplicas();
-    for (int i = 0; i < replicas.size(); i++) {
-        auto it = Find(
-            meta.GetFreshDeviceIds(),
-            replicas[i].GetDevices()[rowIndex].GetDeviceUUID());
-        if (it != meta.GetFreshDeviceIds().end()) {
-            result.insert(i + 1);
+    for (int i = 1; i <= meta.GetReplicas().size(); i++) {
+        if (FindPtr(
+                meta.GetFreshDeviceIds(),
+                GetReplicaDevices(meta, i)[rowIndex].GetDeviceUUID()))
+        {
+            result.insert(i);
         }
     }
     return result;
@@ -223,9 +234,9 @@ void RemoveLaggingDevicesFromMeta(
             *agent.MutableDevices(),
             [&laggingDeviceIds](const NProto::TLaggingDevice& laggingDevice)
             {
-                auto it =
-                    Find(laggingDeviceIds, laggingDevice.GetDeviceUUID());
-                return it != laggingDeviceIds.end();
+                return !!FindPtr(
+                    laggingDeviceIds,
+                    laggingDevice.GetDeviceUUID());
             });
     }
     EraseIf(

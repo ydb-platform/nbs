@@ -211,11 +211,11 @@ void TVolumeActor::HandleDeviceTimeouted(
 
     // Check for fresh devices in the same row.
     for (const auto& laggingDevice: timeoutedAgentDevices) {
-        TSet<ui32> replicaIndexes =
+        TSet<ui32> replicaIndexesWithFreshDevice =
             ReplicaIndexesWithFreshDevices(meta, laggingDevice.GetRowIndex());
         const bool laggingDeviceIsFresh =
-            replicaIndexes.contains(*timeoutedDeviceReplicaIndex);
-        if (replicaIndexes.size() - laggingDeviceIsFresh > 0) {
+            replicaIndexesWithFreshDevice.contains(*timeoutedDeviceReplicaIndex);
+        if (replicaIndexesWithFreshDevice.size() - laggingDeviceIsFresh > 0) {
             LOG_WARN(
                 ctx,
                 TBlockStoreComponents::VOLUME,

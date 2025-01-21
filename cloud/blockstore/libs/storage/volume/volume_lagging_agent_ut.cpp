@@ -411,24 +411,34 @@ Y_UNIT_TEST_SUITE(TLaggingAgentVolumeTest)
 
     Y_UNIT_TEST(ShouldHandleMigratingDevice)
     {
-        constexpr ui32 AgentCount = 7;
+        constexpr ui32 AgentCount = 8;
         constexpr ui32 DevicePerAgentCount = 2;
         auto diskRegistryState = MakeIntrusive<TDiskRegistryState>();
         diskRegistryState->Devices =
-            MakeDeviceList(AgentCount - 1, DevicePerAgentCount);
+            MakeDeviceList(AgentCount - 2, DevicePerAgentCount);
         diskRegistryState->AllocateDiskReplicasOnDifferentNodes = true;
         diskRegistryState->ReplicaCount = 2;
         diskRegistryState->MigrationMode = EMigrationMode::InProgress;
 
-        // Add migration device.
+        // Add migration devices.
         {
             auto device = MakeDevice(
-                "uuid-migration",
-                "dev-migration",
-                "transport-migration");
+                "uuid-migration-1",
+                "dev-migration-1",
+                "transport-migration-1");
+            device.SetNodeId(AgentCount - 2);
+            device.SetAgentId(Sprintf("agent-%u", AgentCount - 1));
+            diskRegistryState->MigrationDevices["uuid-1.0"] = device;
+            diskRegistryState->Devices.push_back(device);
+        }
+        {
+            auto device = MakeDevice(
+                "uuid-migration-2",
+                "dev-migration-2",
+                "transport-migration-2");
             device.SetNodeId(AgentCount - 1);
             device.SetAgentId(Sprintf("agent-%u", AgentCount));
-            diskRegistryState->MigrationDevices["uuid-1.0"] = device;
+            diskRegistryState->MigrationDevices["uuid-6.0"] = device;
             diskRegistryState->Devices.push_back(device);
         }
 
@@ -500,11 +510,15 @@ Y_UNIT_TEST_SUITE(TLaggingAgentVolumeTest)
         UNIT_ASSERT_VALUES_EQUAL("agent-6", replica2Devices[2].GetAgentId());
 
         const auto& migrations = stat->Record.GetVolume().GetMigrations();
-        UNIT_ASSERT_VALUES_EQUAL(1, migrations.size());
+        UNIT_ASSERT_VALUES_EQUAL(2, migrations.size());
         UNIT_ASSERT_VALUES_EQUAL("uuid-1.0", migrations[0].GetSourceDeviceId());
         UNIT_ASSERT_VALUES_EQUAL(
-            "uuid-migration",
+            "uuid-migration-1",
             migrations[0].GetTargetDevice().GetDeviceUUID());
+        UNIT_ASSERT_VALUES_EQUAL("uuid-6.0", migrations[1].GetSourceDeviceId());
+        UNIT_ASSERT_VALUES_EQUAL(
+            "uuid-migration-2",
+            migrations[1].GetTargetDevice().GetDeviceUUID());
 
         std::optional<TEvPartition::TAddLaggingAgentRequest>
             addLaggingAgentRequest;
@@ -532,11 +546,19 @@ Y_UNIT_TEST_SUITE(TLaggingAgentVolumeTest)
             });
 
         // Device in the zeroth replica is timeouted.
-        volume.DeviceTimeouted(0, "uuid-migration");
+        volume.DeviceTimeouted(0, "uuid-migration-1");
 
         UNIT_ASSERT(addLaggingAgentRequest.has_value());
         UNIT_ASSERT_VALUES_EQUAL("agent-7", addLaggingAgentRequest->AgentId);
         UNIT_ASSERT_VALUES_EQUAL(0, addLaggingAgentRequest->ReplicaIndex);
+        addLaggingAgentRequest.reset();
+
+        // Device in the second replica is timeouted.
+        volume.DeviceTimeouted(0, "uuid-migration-2");
+
+        UNIT_ASSERT(addLaggingAgentRequest.has_value());
+        UNIT_ASSERT_VALUES_EQUAL("agent-8", addLaggingAgentRequest->AgentId);
+        UNIT_ASSERT_VALUES_EQUAL(2, addLaggingAgentRequest->ReplicaIndex);
 
         {
             addLaggingAgentRequest.reset();
@@ -549,14 +571,6 @@ Y_UNIT_TEST_SUITE(TLaggingAgentVolumeTest)
             UNIT_ASSERT(!addLaggingAgentRequest.has_value());
         }
 
-        // Adding the second row to lagging.
-        addLaggingAgentRequest.reset();
-        volume.DeviceTimeouted(2, "uuid-6.0");
-        UNIT_ASSERT(addLaggingAgentRequest.has_value());
-        UNIT_ASSERT_VALUES_EQUAL(
-            replica2Devices[2].GetAgentId(),
-            addLaggingAgentRequest->AgentId);
-
         // Rebooting the volume tablet should report lagging devices to the DR.
         UNIT_ASSERT(!addLaggingDevicesRequest.has_value());
         volume.RebootTablet();
@@ -568,10 +582,10 @@ Y_UNIT_TEST_SUITE(TLaggingAgentVolumeTest)
             2,
             addLaggingDevicesRequest->GetLaggingDevices().size());
         UNIT_ASSERT_VALUES_EQUAL(
-            "DeviceUUID: \"uuid-migration\"\n",
+            "DeviceUUID: \"uuid-migration-1\"\n",
             addLaggingDevicesRequest->GetLaggingDevices(0).DebugString());
         UNIT_ASSERT_VALUES_EQUAL(
-            "DeviceUUID: \"uuid-6.0\"\nRowIndex: 2\n",
+            "DeviceUUID: \"uuid-migration-2\"\nRowIndex: 2\n",
             addLaggingDevicesRequest->GetLaggingDevices(1).DebugString());
 
         // Disk Registry will remove lagging devices on reallocation.

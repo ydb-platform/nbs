@@ -290,15 +290,24 @@ private:
             }
 
             if (State->MigrationMode != EMigrationMode::Disabled) {
-                auto& device = disk.Devices[i];
-                auto* mdevice = State->MigrationDevices.FindPtr(device.GetDeviceUUID());
-                if (mdevice) {
-                    if (State->MigrationMode == EMigrationMode::InProgress) {
-                        disk.Migrations[device.GetDeviceUUID()] = *mdevice;
-                    } else {
-                        UNIT_ASSERT(State->MigrationMode == EMigrationMode::Finish);
-                        device = *mdevice;
+                auto initMigration = [&](NProto::TDeviceConfig& device)
+                {
+                    auto* mdevice =
+                        State->MigrationDevices.FindPtr(device.GetDeviceUUID());
+                    if (mdevice) {
+                        if (State->MigrationMode == EMigrationMode::InProgress)
+                        {
+                            disk.Migrations[device.GetDeviceUUID()] = *mdevice;
+                        } else {
+                            UNIT_ASSERT(
+                                State->MigrationMode == EMigrationMode::Finish);
+                            device = *mdevice;
+                        }
                     }
+                };
+                initMigration(disk.Devices[i]);
+                for (auto& replica: disk.Replicas) {
+                    initMigration(replica[i]);
                 }
             }
 

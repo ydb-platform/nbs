@@ -6,6 +6,8 @@
 
 namespace NCloud::NBlockStore::NStorage {
 
+////////////////////////////////////////////////////////////////////////////////
+
 struct TLaggingDeviceIndexCmp
 {
     bool operator()(
@@ -14,7 +16,7 @@ struct TLaggingDeviceIndexCmp
 };
 
 [[nodiscard]] const NProto::TDeviceConfig* FindDeviceConfig(
-    const NProto::TVolumeMeta& meta, const TString& deviceUUID);
+    const NProto::TVolumeMeta& meta, const TStringBuf& deviceUUID);
 
 [[nodiscard]] std::optional<ui32> GetAgentDevicesIndexes(
     const NProto::TVolumeMeta& meta,

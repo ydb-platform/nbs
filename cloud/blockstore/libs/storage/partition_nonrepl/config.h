@@ -188,7 +188,7 @@ public:
         return FreshDeviceIds;
     }
 
-    const auto& GetLaggingDeviceIds() const
+    const THashSet<TString>& GetLaggingDeviceIds() const
     {
         return LaggingDeviceIds;
     }
