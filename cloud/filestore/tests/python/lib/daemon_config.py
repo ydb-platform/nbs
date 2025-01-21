@@ -99,7 +99,7 @@ class FilestoreDaemonConfigGenerator:
         with open(self.__app_config_file_path, "w") as config_file:
             if self.__app_config:
                 config_file.write(MessageToString(self.__app_config))
-                os.fsync(config_file)
+                config_file.flush()
 
     @property
     def port(self):
@@ -288,7 +288,7 @@ class FilestoreDaemonConfigGenerator:
             path = self.__config_file_path(name)
             with open(path, "w") as config_file:
                 config_file.write(MessageToString(proto))
-                os.fsync(config_file)
+                config_file.flush()
 
     def generate_configs(self, domains_txt, names_txt):
         self.__proto_configs = {}
@@ -429,7 +429,7 @@ class FilestoreServerConfigGenerator(FilestoreDaemonConfigGenerator):
         with open(self.diag_config_file_path, "w") as config_file:
             if self.__diag_config:
                 config_file.write(MessageToString(self.__diag_config))
-                os.fsync(config_file)
+                config_file.flush()
 
     def __generate_diag_txt(self):
         diag = TDiagnosticsConfig()
@@ -483,7 +483,7 @@ class FilestoreVhostConfigGenerator(FilestoreDaemonConfigGenerator):
         with open(self.diag_config_file_path, "w") as config_file:
             if self.__diag_config:
                 config_file.write(MessageToString(self.__diag_config))
-                os.fsync(config_file)
+                config_file.flush()
 
     def generate_aux_params(self):
         return ["--local-service-port", str(self.__local_service_port)]

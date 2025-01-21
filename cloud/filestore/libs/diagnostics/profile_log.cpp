@@ -41,7 +41,7 @@ public:
     {
     }
 
-    ~TProfileLog() override
+    ~TProfileLog()
     {
         Flush();
     }
