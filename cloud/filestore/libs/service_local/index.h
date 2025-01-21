@@ -2,6 +2,8 @@
 
 #include "public.h"
 
+#include "lowlevel.h"
+
 #include <cloud/filestore/libs/service/filestore.h>
 
 #include <cloud/storage/core/libs/common/persistent_table.h>
@@ -23,6 +25,7 @@ namespace NCloud::NFileStore {
 
 class TIndexNode
     : private TNonCopyable
+    , public TIntrusiveListItem<TIndexNode>
 {
 private:
     const ui64 NodeId;
@@ -98,6 +101,30 @@ public:
 
 ////////////////////////////////////////////////////////////////////////////////
 
+struct INodeLoader
+{
+    virtual ~INodeLoader() = default;
+    virtual TIndexNodePtr LoadNode(ui64 nodeId) const = 0;
+    virtual TString ToString() const = 0;
+};
+
+class TNodeLoader
+    : public INodeLoader
+{
+private:
+    TFileHandle RootHandle;
+    NLowLevel::TFileId RootFileId;
+
+public:
+    TNodeLoader(TIndexNodePtr rootNode);
+
+    [[nodiscard]] TIndexNodePtr LoadNode(ui64 nodeId) const;
+
+    TString ToString() const;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
 class TLocalIndex
 {
 private:
@@ -136,41 +163,66 @@ private:
     const TFsPath RootPath;
     const TFsPath StatePath;
     ui32 MaxNodeCount;
+    bool OpenNodeByHandleEnabled;
+    ui32 NodeCleanupBatchSize;
     TNodeMap Nodes;
     std::unique_ptr<TNodeTable> NodeTable;
     TRWMutex NodesLock;
     TLog Log;
+    std::shared_ptr<INodeLoader> NodeLoader;
+    TIntrusiveList<TIndexNode> NodeAccessList;
+    bool DoCleanupNodes = false;
 
 public:
     TLocalIndex(
             TFsPath root,
             TFsPath statePath,
             ui32 maxNodeCount,
-            TLog log)
+            bool openNodeByHandleEnabled,
+            ui32 nodeCleanupBatchSize,
+            TLog log,
+            std::shared_ptr<INodeLoader> nodeLoader = nullptr)
         : RootPath(std::move(root))
         , StatePath(std::move(statePath))
         , MaxNodeCount(maxNodeCount)
+        , OpenNodeByHandleEnabled(openNodeByHandleEnabled)
+        , NodeCleanupBatchSize(nodeCleanupBatchSize)
         , Log(std::move(log))
     {
-        Init();
+        Init(std::move(nodeLoader));
     }
 
     TIndexNodePtr LookupNode(ui64 nodeId)
     {
         TReadGuard guard(NodesLock);
 
+        CleanupNodesNoLock();
+
+        TIndexNodePtr node;
+
         auto it = Nodes.find(nodeId);
-        if (it == Nodes.end()) {
-            return nullptr;
+        if (it != Nodes.end()) {
+            node = *it;
+        } else {
+            node = LoadNodeById(nodeId);
+            if (node) {
+                Nodes.insert(node);
+            }
         }
 
-        return *it;
+        if (nodeId != RootNodeId && node) {
+            NodeAccessList.PushBack(node.get());
+        }
+
+        return node;
     }
 
     [[nodiscard]] bool
     TryInsertNode(TIndexNodePtr node, ui64 parentNodeId, const TString& name)
     {
         TWriteGuard guard(NodesLock);
+
+        CleanupNodesNoLock();
 
         auto it = Nodes.find(node->GetNodeId());
         if (it != Nodes.end()) {
@@ -179,24 +231,27 @@ public:
             return true;
         }
 
-        auto recordIndex = NodeTable->AllocRecord();
-        if (recordIndex == TNodeTable::InvalidIndex) {
-            return false;
+        if (NodeTable) {
+            auto recordIndex = NodeTable->AllocRecord();
+            if (recordIndex == TNodeTable::InvalidIndex) {
+                return false;
+            }
+
+            auto* record = NodeTable->RecordData(recordIndex);
+
+            record->NodeId = node->GetNodeId();
+            record->ParentNodeId = parentNodeId;
+
+            std::strncpy(record->Name, name.c_str(), NAME_MAX);
+            record->Name[NAME_MAX] = 0;
+
+            NodeTable->CommitRecord(recordIndex);
+
+            node->SetRecordIndex(recordIndex);
         }
 
-        auto* record = NodeTable->RecordData(recordIndex);
-
-        record->NodeId = node->GetNodeId();
-        record->ParentNodeId = parentNodeId;
-
-        std::strncpy(record->Name, name.c_str(), NAME_MAX);
-        record->Name[NAME_MAX] = 0;
-
-        NodeTable->CommitRecord(recordIndex);
-
-        node->SetRecordIndex(recordIndex);
+        NodeAccessList.PushBack(node.get());
         Nodes.emplace(std::move(node));
-
         return true;
     }
 
@@ -204,41 +259,64 @@ public:
     {
         TWriteGuard guard(NodesLock);
 
-        TIndexNodePtr node = nullptr;
-        auto it = Nodes.find(nodeId);
-        if (it != Nodes.end()) {
-            node = *it;
-            NodeTable->DeleteRecord(node->GetRecordIndex());
-            Nodes.erase(it);
-        }
-
-        return node;
+        return ForgetNodeNoLock(nodeId);
     }
 
     void Clear()
     {
         TWriteGuard guard(NodesLock);
 
-        NodeTable->Clear();
+        if (NodeTable) {
+            NodeTable->Clear();
+        }
+
+        auto it = Nodes.find(RootNodeId);
+        Y_ABORT_UNLESS(it != Nodes.end());
+
+        auto root = *it;
         Nodes.clear();
-        Nodes.insert(TIndexNode::CreateRoot(RootPath));
+        Nodes.insert(root);
     }
 
 private:
-    void Init()
+    void Init(std::shared_ptr<INodeLoader> nodeLoader)
     {
+
+        auto root = TIndexNode::CreateRoot(RootPath);
         STORAGE_INFO(
             "Init index, Root=" << RootPath <<
-            ", StatePath=" << StatePath
-            << ", MaxNodeCount=" << MaxNodeCount);
+            ", StatePath=" << StatePath <<
+            ", MaxNodeCount=" << MaxNodeCount);
 
-        Nodes.insert(TIndexNode::CreateRoot(RootPath));
+        if (OpenNodeByHandleEnabled) {
+            try {
+                if (nodeLoader) {
+                    NodeLoader = std::move(nodeLoader);
+                } else {
+                    NodeLoader = std::make_unique<TNodeLoader>(root);
+                }
 
-        NodeTable = std::make_unique<TNodeTable>(
-            (StatePath / "nodes").GetPath(),
-            MaxNodeCount);
+                STORAGE_INFO(
+                    "UseNodeFileHandles, Root=" << RootPath <<
+                    ", Inode=" << root->Stat().INode <<
+                    ", NodeLoader=" << NodeLoader->ToString());
+            } catch (...) {
+                STORAGE_ERROR(
+                    "Failed to initialize NodeLoader" <<
+                    ", Exception=" << CurrentExceptionMessage());
+            }
+        }
 
-        RecoverNodesFromPersistentTable();
+        Nodes.insert(root);
+
+        if (!NodeLoader) {
+            NodeTable = std::make_unique<TNodeTable>(
+                (StatePath / "nodes").GetPath(),
+                MaxNodeCount);
+
+            RecoverNodesFromPersistentTable();
+        }
+
     }
 
     void RecoverNodesFromPersistentTable()
@@ -313,6 +391,7 @@ private:
                     auto node =
                         TIndexNode::Create(**parentNodeIt, pathElemRecord->Name);
                     node->SetRecordIndex(pathElemIndex);
+                    NodeAccessList.PushBack(node.get());
                     Nodes.insert(node);
 
                     STORAGE_TRACE(
@@ -341,6 +420,67 @@ private:
     static auto GetNodeId(const T& value)
     {
         return value;
+    }
+
+    TIndexNodePtr LoadNodeById(ui64 nodeId)
+    {
+        try {
+            if (NodeLoader) {
+                return NodeLoader->LoadNode(nodeId);
+            }
+        } catch (...) {
+        }
+        return nullptr;
+    }
+
+    TIndexNodePtr ForgetNodeNoLock(ui64 nodeId)
+    {
+        TIndexNodePtr node = nullptr;
+        auto it = Nodes.find(nodeId);
+        if (it != Nodes.end()) {
+            node = *it;
+            if (NodeTable) {
+                NodeTable->DeleteRecord(node->GetRecordIndex());
+            }
+            node->TIntrusiveListItem<TIndexNode>::Unlink();
+            Nodes.erase(it);
+        }
+
+        return node;
+    }
+
+    void CleanupNodesNoLock()
+    {
+        // Clean nodes only if we can safely load them
+        if (!NodeLoader) {
+            return;
+        }
+
+        // Clean one node per lookup node, or `NodeCleanupBatchSize` nodes if
+        // `MaxNodeCount` is reached
+        ui32 maxNodesToClean = 1;
+        if(Nodes.size() >= MaxNodeCount) {
+            maxNodesToClean = NodeCleanupBatchSize;
+            DoCleanupNodes = true;
+        }
+
+        if (!DoCleanupNodes) {
+            return;
+        }
+
+        // Stop cleanup when the number of nodes in use drops to half the limit.
+        if (DoCleanupNodes && (Nodes.size() <= (MaxNodeCount / 2))) {
+            DoCleanupNodes = false;
+            return;
+        }
+
+        auto it = NodeAccessList.begin();
+        while (maxNodesToClean && it != NodeAccessList.end()) {
+            auto nodeId = it->GetNodeId();
+            ++it;
+            --maxNodesToClean;
+            ForgetNodeNoLock(nodeId);
+        }
     }
 };
 

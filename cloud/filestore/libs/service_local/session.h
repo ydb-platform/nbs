@@ -65,18 +65,22 @@ private:
 
     const ui32 MaxNodeCount;
     const ui32 MaxHandleCount;
+    const bool OpenNodeByHandleEnabled;
+    const ui32 NodeCleanupBatchSize;
 
     TLocalIndex Index;
     THashMap<ui64, std::pair<bool, TInstant>> SubSessions;
 public:
     TSession(
-            const TString& fileSystemId,
-            const TFsPath& root,
-            const TFsPath& statePath,
-            TString clientId,
-            ui32 maxNodeCount,
-            ui32 maxHandleCount,
-            ILoggingServicePtr logging)
+             const TString& fileSystemId,
+             const TFsPath& root,
+             const TFsPath& statePath,
+             TString clientId,
+             ui32 maxNodeCount,
+             ui32 maxHandleCount,
+             bool openNodeByHandleEnabled,
+             ui32 nodeCleanupBatchSize,
+             ILoggingServicePtr logging)
         : RootPath(root.RealPath())
         , StatePath(statePath.RealPath())
         , ClientId(std::move(clientId))
@@ -84,7 +88,15 @@ public:
         , Log(Logging->CreateLog(fileSystemId + "." + ClientId))
         , MaxNodeCount(maxNodeCount)
         , MaxHandleCount(maxHandleCount)
-        , Index(RootPath, StatePath, MaxNodeCount, Log)
+        , OpenNodeByHandleEnabled(openNodeByHandleEnabled)
+        , NodeCleanupBatchSize(nodeCleanupBatchSize)
+        , Index(
+              RootPath,
+              StatePath,
+              MaxNodeCount,
+              OpenNodeByHandleEnabled,
+              NodeCleanupBatchSize,
+              Log)
     {}
 
     void Init(bool restoreClientSession)
@@ -113,7 +125,9 @@ public:
             ", StatePath=" << StatePath <<
             ", SessionId=" << SessionId <<
             ", MaxNodeCount=" << MaxNodeCount <<
-            ", MaxHandleCount=" << MaxHandleCount);
+            ", MaxHandleCount=" << MaxHandleCount <<
+            ", OpenNodeByHandleEnabled=" << OpenNodeByHandleEnabled
+        );
 
 
         HandleTable = std::make_unique<THandleTable>(

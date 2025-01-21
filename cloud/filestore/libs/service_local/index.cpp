@@ -1,6 +1,6 @@
 #include "index.h"
 
-#include "lowlevel.h"
+#include <util/string/builder.h>
 
 namespace NCloud::NFileStore {
 
@@ -158,6 +158,47 @@ TString TIndexNode::GetXAttr(const TString& name)
 void TIndexNode::RemoveXAttr(const TString& name)
 {
     return NLowLevel::RemoveXAttr(NodeFd, name);
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+TNodeLoader::TNodeLoader(TIndexNodePtr rootNode)
+    : RootHandle(std::move(rootNode->OpenHandle(O_RDONLY)))
+    , RootFileId(RootHandle)
+{
+    switch (NLowLevel::TFileId::EFileIdType(RootFileId.FileHandle.handle_type)) {
+    case NLowLevel::TFileId::EFileIdType::Lustre:
+    case NLowLevel::TFileId::EFileIdType::Weka:
+        break;
+    default:
+        ythrow TServiceError(E_FS_NOTSUPP)
+            << "Not supported hande type, RootFileId=" << RootFileId.ToString();
+    }
+}
+
+TIndexNodePtr TNodeLoader::LoadNode(ui64 nodeId) const
+{
+    NLowLevel::TFileId fileId(RootFileId);
+
+    switch (NLowLevel::TFileId::EFileIdType(fileId.FileHandle.handle_type)) {
+    case NLowLevel::TFileId::EFileIdType::Lustre:
+        fileId.LustreFid.Oid = nodeId & 0xffffff;
+        fileId.LustreFid.Seq = (nodeId >> 24) & 0xffffffffff;
+        break;
+    case NLowLevel::TFileId::EFileIdType::Weka:
+        fileId.WekaInodeId.Id = nodeId;
+        break;
+    default:
+        ythrow TServiceError(E_FS_NOTSUPP);
+    }
+
+    auto handle =  fileId.Open(RootHandle, O_PATH);
+    return std::make_shared<TIndexNode>(nodeId, std::move(handle));
+}
+
+TString TNodeLoader::ToString() const
+{
+    return TStringBuilder() << "NodeLoader(" << RootFileId.ToString() << ")";
 }
 
 }   // namespace NCloud::NFileStore

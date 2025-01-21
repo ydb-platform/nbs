@@ -42,7 +42,7 @@ protected:
         StatePath.ForceDelete();
         StatePath.MkDir();
 
-        TLocalIndex index(RootPath, StatePath, pathLen, Log);
+        TLocalIndex index(RootPath, StatePath, pathLen, false, 1000, Log);
 
         auto node = index.LookupNode(RootNodeId);
         UNIT_ASSERT_C(node, "Failed to lookup RootNode");
@@ -108,7 +108,7 @@ protected:
         StatePath.ForceDelete();
         StatePath.MkDir();
 
-        TLocalIndex index(RootPath, StatePath, pathLen, Log);
+        TLocalIndex index(RootPath, StatePath, pathLen, false, 1000, Log);
 
         auto node = index.LookupNode(RootNodeId);
         UNIT_ASSERT_C(node, "Failed to lookup RootNode");
@@ -169,7 +169,7 @@ protected:
 
     void CheckNestedDir(ui32 pathLen, const TMap<TString, ui64>& nodeMap)
     {
-        TLocalIndex index(RootPath, StatePath, pathLen, Log);
+        TLocalIndex index(RootPath, StatePath, pathLen, false, 1000, Log);
         auto node = index.LookupNode(RootNodeId);
         UNIT_ASSERT_C(node, "Failed to lookup root node");
 
@@ -197,7 +197,7 @@ protected:
 
     void CheckMissingNodes(ui32 pathLen, const TVector<ui64>& nodeIds)
     {
-        TLocalIndex index(RootPath, StatePath, pathLen, Log);
+        TLocalIndex index(RootPath, StatePath, pathLen, false, 1000, Log);
         auto node = index.LookupNode(RootNodeId);
         UNIT_ASSERT_C(node, "Failed to lookup root node");
 
@@ -220,6 +220,27 @@ struct TNodeTableRecord
 };
 
 using TNodeTable = TPersistentTable<TNodeTableHeader, TNodeTableRecord>;
+
+struct NodeLoaderStub
+    : public INodeLoader
+{
+
+    TMap<ui64, TIndexNodePtr> NodeMap;
+
+    TIndexNodePtr LoadNode(ui64 nodeId) const override
+    {
+        auto it = NodeMap.find(nodeId);
+        if (it != NodeMap.end()) {
+            return it->second;
+        }
+        return nullptr;
+    }
+
+    TString ToString() const override
+    {
+        return "NodeLoaderStub";
+    }
+};
 
 }   // namespace
 
@@ -278,7 +299,13 @@ Y_UNIT_TEST_SUITE(TLocalIndex)
         StatePath.ForceDelete();
         StatePath.MkDir();
 
-        auto index = std::make_unique<TLocalIndex>(RootPath, StatePath, 100, Log);
+        auto index = std::make_unique<TLocalIndex>(
+            RootPath,
+            StatePath,
+            100,
+            false,
+            1000,
+            Log);
         auto rootNode = index->LookupNode(RootNodeId);
 
         // create /dir1
@@ -313,7 +340,13 @@ Y_UNIT_TEST_SUITE(TLocalIndex)
 
         // delete dir3
         dir3.ForceDelete();
-        index = std::make_unique<TLocalIndex>(RootPath, StatePath, 100, Log);
+        index = std::make_unique<TLocalIndex>(
+            RootPath,
+            StatePath,
+            100,
+            false,
+            1000,
+            Log);
 
         // /dir1 and /dir2 restored
         UNIT_ASSERT_C(index->LookupNode(node1->GetNodeId()),
@@ -330,6 +363,119 @@ Y_UNIT_TEST_SUITE(TLocalIndex)
         UNIT_ASSERT_C(!index->LookupNode(node4->GetNodeId()),
             "Did not failed to lookup node id: " << node4->GetNodeId() <<
             ", node: " << dir4.GetName());
+    }
+
+    Y_UNIT_TEST_F(ShouldLoadNodes, TEnvironment)
+    {
+        RootPath.ForceDelete();
+        RootPath.MkDir();
+
+        auto nodeLoader = std::make_shared<NodeLoaderStub>();
+
+        auto index = std::make_unique<TLocalIndex>(
+            RootPath,
+            StatePath,
+            100,
+            true, // openNodeByHandleEnabled
+            10,   // nodeCleanupBatchSize
+            Log,
+            nodeLoader);
+
+        auto rootNode = index->LookupNode(RootNodeId);
+        UNIT_ASSERT_C(rootNode, "Failed to lookup root node");
+
+        auto nodeAPath = RootPath / "a";
+        nodeAPath.MkDir();
+        auto nodeA = TIndexNode::Create(*rootNode, nodeAPath.GetName());
+        UNIT_ASSERT(nodeA);
+
+        auto node = index->LookupNode(nodeA->GetNodeId());
+        UNIT_ASSERT(!node);
+
+        nodeLoader->NodeMap.emplace(nodeA->GetNodeId(), nodeA);
+        node = index->LookupNode(nodeA->GetNodeId());
+        UNIT_ASSERT_C(node, "failed to lookup node a");
+
+    }
+
+    Y_UNIT_TEST_F(ShouldCleanupNodes, TEnvironment)
+    {
+        RootPath.ForceDelete();
+        RootPath.MkDir();
+
+        auto nodeLoader = std::make_shared<NodeLoaderStub>();
+
+        auto index = std::make_unique<TLocalIndex>(
+            RootPath,
+            StatePath,
+            8,
+            true, // openNodeByHandleEnabled
+            2,    // nodeCleanupBatchSize
+            Log,
+            nodeLoader);
+
+        auto rootNode = index->LookupNode(RootNodeId);
+        UNIT_ASSERT_C(rootNode, "Failed to lookup root node");
+
+        TVector<TIndexNodePtr> nodes;
+        for (ui32 i = 0; i < 10; i++) {
+            auto path = RootPath / ToString(i);
+            path.MkDir();
+            auto node = TIndexNode::Create(*rootNode, path.GetName());
+            UNIT_ASSERT(node);
+            nodes.push_back(std::move(node));
+        }
+
+        auto checkNodeInCache = [&](ui32 nodeIndex, bool isNodeInCache) {
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                isNodeInCache ? 2 : 1,
+                nodes[nodeIndex].use_count(),
+                "Node #" << nodeIndex << ", NodeId=" << nodes[nodeIndex]->GetNodeId()
+                << (isNodeInCache ? "doesn't " :  " ") << "exist in node cache");
+
+        };
+
+        // fill node cache RootNode + 6 nodes = 7/8 nodes
+        for (ui32 i = 0; i < 6; i++) {
+            auto inserted = index->TryInsertNode(nodes[i], RootNodeId, ToString(i));
+            UNIT_ASSERT(inserted);
+        }
+
+        // check nodes in cache
+        for (ui32 i = 0; i < 6; i++) {
+            {
+                auto node = index->LookupNode(nodes[i]->GetNodeId());
+                UNIT_ASSERT_C(
+                    node,
+                    "Node #" << i << ", NodeId=" << nodes[i]->GetNodeId()
+                             << " doesn't exist in node cache");
+            }
+            checkNodeInCache(i, true);
+        }
+
+        // insert extra node cache node is full root node + 7 nodes
+        UNIT_ASSERT(index->TryInsertNode(nodes[6], RootNodeId, ToString(6)));
+
+        // Trigger initial nodeCleanupBatchSize (2) nodes cleanup
+        UNIT_ASSERT(index->LookupNode(nodes[6]->GetNodeId()));
+        checkNodeInCache(0, false);
+        checkNodeInCache(1, false);
+        checkNodeInCache(2, true);
+
+        // Trigger single node cleanup
+        UNIT_ASSERT(index->LookupNode(nodes[6]->GetNodeId()));
+        checkNodeInCache(2, false);
+        checkNodeInCache(3, true);
+
+        // Trigger single node cleanup
+        UNIT_ASSERT(index->LookupNode(nodes[6]->GetNodeId()));
+        checkNodeInCache(3, false);
+        checkNodeInCache(4, true);
+
+        // Node cache reduced to half of it's size no more cleanup triggered
+        UNIT_ASSERT(index->LookupNode(nodes[6]->GetNodeId()));
+        checkNodeInCache(4, true);
+        checkNodeInCache(5, true);
     }
 };
 
