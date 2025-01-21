@@ -12,7 +12,11 @@ constexpr auto WindowDuration = TDuration::Seconds(1);
 
 ui64 GetNetworkBandwidth(const TDiskAgentConfig& config)
 {
-    return (static_cast<ui64>(config.GetNetworkMbitThroughput()) * 1_MB / 8) *
+    const ui64 networkMbitThroughput =
+        config.GetNetworkMbitThroughput()
+            ? config.GetNetworkMbitThroughput()
+            : config.GetThrottlerConfig().GetDefaultNetworkMbitThroughput();
+    return (networkMbitThroughput * 1_MB / 8) *
            config.GetThrottlerConfig().GetDirectCopyBandwidthFraction();
 }
 

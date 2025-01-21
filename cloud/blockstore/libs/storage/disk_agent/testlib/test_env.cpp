@@ -353,7 +353,7 @@ TTestEnv TTestEnvBuilder::Build()
     auto agentConfig = std::make_shared<TDiskAgentConfig>(
         std::move(AgentConfigProto),
         "the-rack",
-        1000);
+        0);
 
     if (!Spdk && agentConfig->GetBackend() == NProto::DISK_AGENT_BACKEND_SPDK) {
         Spdk = NSpdk::CreateEnvStub();
@@ -403,7 +403,7 @@ TTestEnv TTestEnvBuilder::Build()
             std::make_shared<TDiskAgentConfig>(
                 std::move(SecondAgentConfigProto),
                 "the-rack",
-                1000),
+                0),
             nullptr,   // rdmaConfig
             Spdk,
             allocator,
