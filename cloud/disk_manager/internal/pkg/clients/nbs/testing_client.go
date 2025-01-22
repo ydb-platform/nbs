@@ -145,6 +145,15 @@ func (c *testingClient) DeleteCheckpointData(
 	return c.client.DeleteCheckpointData(ctx, diskID, checkpointID)
 }
 
+func (c *testingClient) EnsureCheckpointReady(
+	ctx context.Context,
+	diskID string,
+	checkpointID string,
+) (err error) {
+
+	return c.client.EnsureCheckpointReady(ctx, diskID, checkpointID)
+}
+
 func (c *testingClient) Resize(
 	ctx context.Context,
 	checkpoint func() error,
