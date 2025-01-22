@@ -1125,9 +1125,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateCMSTest)
                     0,
                     agentConfig->GetUnknownDevices().size());
             });
-
     }
-
 }
 
 }   // namespace NCloud::NBlockStore::NStorage
