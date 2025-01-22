@@ -5031,15 +5031,15 @@ void TDiskRegistryState::ApplyAgentStateChange(
         }
 
         if (agent.GetState() == NProto::AGENT_STATE_WARNING) {
-            if (!NeedToStartMigration(disk, deviceId)) {
-                // migration already started or finished
-                continue;
-            }
-
             if (Find(disk.Devices, deviceId) == disk.Devices.end()) {
                 ReportDiskRegistryWrongMigratedDeviceOwnership(
                     TStringBuilder() << "ApplyAgentStateChange: device "
                                      << deviceId << " not found");
+                continue;
+            }
+
+            if (!NeedToStartMigration(disk, deviceId)) {
+                // migration already started or finished
                 continue;
             }
 
@@ -7574,12 +7574,21 @@ bool TDiskRegistryState::NeedToStartMigration(
     const TDiskState& disk,
     const TString& deviceUUID)
 {
-    return !(
-        disk.MigrationSource2Target.contains(deviceUUID) ||
-        FindIfPtr(
+    if (disk.MigrationSource2Target.contains(deviceUUID)) {
+        // migration already started
+        return false;
+    }
+
+    if (FindIfPtr(
             disk.FinishedMigrations,
-            [&](const auto& el)
-            { return el.DeviceId == deviceUUID && !el.IsCanceled; }));
+            [&](const auto& m)
+            { return m.DeviceId == deviceUUID && !m.IsCanceled; }))
+    {
+        // there is a finished migration for the device
+        return false;
+    }
+
+    return true;
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

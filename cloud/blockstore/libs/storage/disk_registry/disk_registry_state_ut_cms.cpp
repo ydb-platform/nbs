@@ -20,6 +20,7 @@ namespace NCloud::NBlockStore::NStorage {
 using namespace NDiskRegistryStateTest;
 
 ////////////////////////////////////////////////////////////////////////////////
+
 Y_UNIT_TEST_SUITE(TDiskRegistryStateCMSTest)
 {
     Y_UNIT_TEST(ShouldAddNewDevice)
@@ -1124,6 +1125,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateCMSTest)
                     0,
                     agentConfig->GetUnknownDevices().size());
             });
+
     }
 
 }

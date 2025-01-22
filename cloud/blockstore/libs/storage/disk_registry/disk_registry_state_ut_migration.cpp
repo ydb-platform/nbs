@@ -61,7 +61,7 @@ TResultOrError<TDiskRegistryState::TAllocateDiskResult> AllocateDisk(
     return result;
 }
 
-TVector<NProto::TAgentConfig> GetSeveralAgents()
+TVector<NProto::TAgentConfig> CreateSeveralAgents()
 {
     return {
         AgentConfig(
@@ -78,7 +78,7 @@ TVector<NProto::TAgentConfig> GetSeveralAgents()
             })};
 }
 
-TDiskRegistryState GetTestState(const TVector<NProto::TAgentConfig>& agents)
+TDiskRegistryState CreateTestState(const TVector<NProto::TAgentConfig>& agents)
 {
     return TDiskRegistryStateBuilder()
         .WithKnownAgents(agents)
@@ -1170,9 +1170,9 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMigrationTest)
         TTestExecutor executor;
         executor.WriteTx([&](TDiskRegistryDatabase db) { db.InitSchema(); });
 
-        const TVector agents = GetSeveralAgents();
+        const TVector agents = CreateSeveralAgents();
 
-        TDiskRegistryState state = GetTestState(agents);
+        TDiskRegistryState state = CreateTestState(agents);
 
         UNIT_ASSERT_VALUES_EQUAL(0, state.BuildMigrationList().size());
         UNIT_ASSERT(state.IsMigrationListEmpty());
@@ -1225,7 +1225,6 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMigrationTest)
             [&](TDiskRegistryDatabase db)
             {
                 auto [result, error] = AllocateDisk(db, state, "disk-1");
-                ;
                 UNIT_ASSERT_SUCCESS(error);
 
                 UNIT_ASSERT_VALUES_EQUAL(2, result.Devices.size());
@@ -1299,9 +1298,9 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMigrationTest)
         TTestExecutor executor;
         executor.WriteTx([&](TDiskRegistryDatabase db) { db.InitSchema(); });
 
-        const TVector agents = GetSeveralAgents();
+        const TVector agents = CreateSeveralAgents();
 
-        TDiskRegistryState state = GetTestState(agents);
+        TDiskRegistryState state = CreateTestState(agents);
 
         UNIT_ASSERT_VALUES_EQUAL(0, state.BuildMigrationList().size());
         UNIT_ASSERT(state.IsMigrationListEmpty());
@@ -1348,7 +1347,6 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMigrationTest)
             [&](TDiskRegistryDatabase db)
             {
                 auto [result, error] = AllocateDisk(db, state, "disk-1");
-                ;
                 UNIT_ASSERT_SUCCESS(error);
 
                 UNIT_ASSERT_VALUES_EQUAL(2, result.Devices.size());
@@ -1420,9 +1418,9 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMigrationTest)
         TTestExecutor executor;
         executor.WriteTx([&](TDiskRegistryDatabase db) { db.InitSchema(); });
 
-        const TVector agents = GetSeveralAgents();
+        const TVector agents = CreateSeveralAgents();
 
-        TDiskRegistryState state = GetTestState(agents);
+        TDiskRegistryState state = CreateTestState(agents);
 
         UNIT_ASSERT_VALUES_EQUAL(0, state.BuildMigrationList().size());
         UNIT_ASSERT(state.IsMigrationListEmpty());
@@ -1475,7 +1473,6 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMigrationTest)
             [&](TDiskRegistryDatabase db)
             {
                 auto [result, error] = AllocateDisk(db, state, "disk-1");
-                ;
                 UNIT_ASSERT_SUCCESS(error);
 
                 UNIT_ASSERT_VALUES_EQUAL(2, result.Devices.size());
@@ -1544,9 +1541,9 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMigrationTest)
         TTestExecutor executor;
         executor.WriteTx([&](TDiskRegistryDatabase db) { db.InitSchema(); });
 
-        const TVector agents = GetSeveralAgents();
+        const TVector agents = CreateSeveralAgents();
 
-        TDiskRegistryState state = GetTestState(agents);
+        TDiskRegistryState state = CreateTestState(agents);
 
         UNIT_ASSERT_VALUES_EQUAL(0, state.BuildMigrationList().size());
         UNIT_ASSERT(state.IsMigrationListEmpty());
@@ -1599,7 +1596,6 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMigrationTest)
             [&](TDiskRegistryDatabase db)
             {
                 auto [result, error] = AllocateDisk(db, state, "disk-1");
-                ;
                 UNIT_ASSERT_SUCCESS(error);
 
                 UNIT_ASSERT_VALUES_EQUAL(2, result.Devices.size());
