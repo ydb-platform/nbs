@@ -1067,7 +1067,7 @@ Y_UNIT_TEST_SUITE(TVolumeStateTest)
                 info1,
                 MakeError(S_OK), {}, {});
             const auto& history = volumeState.GetMountHistory().GetItems();
-            if (i > 1) {
+            if (i) {
                 UNIT_ASSERT(
                     res.Key.Timestamp != history[1].Key.Timestamp ||
                     res.Key.SeqNo != history[1].Key.SeqNo);
