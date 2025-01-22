@@ -223,6 +223,14 @@ NProto::TError TPartitionActor::DoHandleCheckRange(
     ui64 blockOffset,
     ui64 blocksCount)
 {
+    if (blocksCount > Config->GetBytesPerStripe())
+    {
+        return MakeError(
+            E_ARGUMENT,
+            "Too many blocks requested: " +
+                std::to_string(blocksCount) + " Max blocks per request : " +
+                std::to_string(Config->GetBytesPerStripe()));
+    }
     const auto actorId = NCloud::Register(
         ctx,
         CreateCheckRangeActor(
