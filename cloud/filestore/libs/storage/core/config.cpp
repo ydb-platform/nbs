@@ -243,7 +243,7 @@ using TAliases = NProto::TStorageConfig::TFilestoreAliases;
     xxx(SSProxyFallbackMode,            bool,     false                       )\
                                                                                \
     xxx(MixedBlocksOffloadedRangesCapacity,        ui64,     0                )\
-    xxx(YdbViewerServiceEnabled,                          bool,    true       )\
+    xxx(YdbViewerServiceEnabled,                        bool,       false     )\
 // FILESTORE_STORAGE_CONFIG
 
 #define FILESTORE_STORAGE_CONFIG_REF(xxx)                                      \
