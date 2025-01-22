@@ -1732,16 +1732,17 @@ Y_UNIT_TEST_SUITE(TServiceActionsTest)
             const auto response = service.ExecuteAction("CheckRange", buf);
             NPrivateProto::TCheckRangeResponse checkRangeResponse;
 
-            env.GetRuntime().DispatchEvents(TDispatchOptions(), TDuration::Seconds(5));
+            env.GetRuntime().DispatchEvents({}, TDuration::Seconds(5));
+            env.GetRuntime().AdvanceCurrentTime(TDuration::Seconds(30));
 
             Cout<<"!!!!!!!!!!!!!!!!!!!!!!!!!!"<< " response ut " <<response->Record.GetOutput()<<Endl;
+            Cout<<"!!!!!!!!!!!!!!!!!!!!!!!!!!"<< " response ut " <<response->Record.GetOutput()<<Endl;
+
             UNIT_ASSERT(google::protobuf::util::JsonStringToMessage(
                 response->Record.GetOutput(),
                 &checkRangeResponse
             ).ok());
         }
-
-        //UNIT_ASSERT_EQUAL(1, 3);
     }
 }
 
