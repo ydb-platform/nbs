@@ -65,18 +65,22 @@ private:
 
     const ui32 MaxNodeCount;
     const ui32 MaxHandleCount;
+    const ui32 NodeCleanupBatchSize;
+    const ui32 NodeCleanupThreshold;
 
     TLocalIndex Index;
     THashMap<ui64, std::pair<bool, TInstant>> SubSessions;
 public:
     TSession(
-            const TString& fileSystemId,
-            const TFsPath& root,
-            const TFsPath& statePath,
-            TString clientId,
-            ui32 maxNodeCount,
-            ui32 maxHandleCount,
-            ILoggingServicePtr logging)
+        const TString& fileSystemId,
+        const TFsPath& root,
+        const TFsPath& statePath,
+        TString clientId,
+        ui32 maxNodeCount,
+        ui32 maxHandleCount,
+        ui32 nodeCleanupBatchSize,
+        ui32 nodeCleanupThreshold,
+        ILoggingServicePtr logging)
         : RootPath(root.RealPath())
         , StatePath(statePath.RealPath())
         , ClientId(std::move(clientId))
@@ -84,7 +88,15 @@ public:
         , Log(Logging->CreateLog(fileSystemId + "." + ClientId))
         , MaxNodeCount(maxNodeCount)
         , MaxHandleCount(maxHandleCount)
-        , Index(RootPath, StatePath, MaxNodeCount, Log)
+        , NodeCleanupBatchSize(nodeCleanupBatchSize)
+        , NodeCleanupThreshold(nodeCleanupThreshold)
+        , Index(
+              RootPath,
+              StatePath,
+              MaxNodeCount,
+              NodeCleanupBatchSize,
+              NodeCleanupThreshold,
+              Log)
     {}
 
     void Init(bool restoreClientSession)
@@ -291,6 +303,11 @@ public:
                 return ts < deadline;
             });
         return SubSessions.empty();
+    }
+
+    void CleanupNodes()
+    {
+        Index.CleanupNodes();
     }
 
 private:

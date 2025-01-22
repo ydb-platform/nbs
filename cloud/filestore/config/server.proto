@@ -98,6 +98,15 @@ message TLocalServiceConfig
 
     // Period of processing create/destroy handle requests.
     optional uint32 AsyncHandleOperationPeriod = 13;
+
+    // Period of cleaning unused cached nodes.
+    optional uint32 NodeCleanupPeriod = 14; // msec
+
+    // number of nodes to clean in each iteration.
+    optional uint32 NodeCleanupBatchSize = 15;
+
+    // number of nodes to reach before cleanup started.
+    optional uint32 NodeCleanupThreshold = 16;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

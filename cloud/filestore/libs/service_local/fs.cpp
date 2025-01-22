@@ -23,13 +23,17 @@ TLocalFileSystem::TLocalFileSystem(
     , Store(std::move(store))
 {
     Log = Logging->CreateLog(Store.GetFileSystemId());
+}
 
+void TLocalFileSystem::Init()
+{
     STORAGE_INFO(
         "LocalFileSystemId=" << Store.GetFileSystemId() <<
         ", DirectIoEnabled=" << Config->GetDirectIoEnabled() <<
         ", DirectIoAlign=" << Config->GetDirectIoAlign());
 
     ScheduleCleanupSessions();
+    ScheduleCleanupNodes();
 }
 
 ////////////////////////////////////////////////////////////////////////////////

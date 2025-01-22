@@ -146,10 +146,15 @@ public:
         Store = std::move(store);
     }
 
+    void Init();
+
 private:
 
     void ScheduleCleanupSessions();
     void CleanupSessions();
+
+    void ScheduleCleanupNodes();
+    void CleanupNodes();
 
     template <typename T>
     TSessionPtr GetSession(const T& request)

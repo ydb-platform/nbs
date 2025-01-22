@@ -42,7 +42,7 @@ protected:
         StatePath.ForceDelete();
         StatePath.MkDir();
 
-        TLocalIndex index(RootPath, StatePath, pathLen, Log);
+        TLocalIndex index(RootPath, StatePath, pathLen, 0, 0, Log);
 
         auto node = index.LookupNode(RootNodeId);
         UNIT_ASSERT_C(node, "Failed to lookup RootNode");
@@ -108,7 +108,7 @@ protected:
         StatePath.ForceDelete();
         StatePath.MkDir();
 
-        TLocalIndex index(RootPath, StatePath, pathLen, Log);
+        TLocalIndex index(RootPath, StatePath, pathLen, 0, 0, Log);
 
         auto node = index.LookupNode(RootNodeId);
         UNIT_ASSERT_C(node, "Failed to lookup RootNode");
@@ -169,7 +169,7 @@ protected:
 
     void CheckNestedDir(ui32 pathLen, const TMap<TString, ui64>& nodeMap)
     {
-        TLocalIndex index(RootPath, StatePath, pathLen, Log);
+        TLocalIndex index(RootPath, StatePath, pathLen, 0, 0, Log);
         auto node = index.LookupNode(RootNodeId);
         UNIT_ASSERT_C(node, "Failed to lookup root node");
 
@@ -197,7 +197,7 @@ protected:
 
     void CheckMissingNodes(ui32 pathLen, const TVector<ui64>& nodeIds)
     {
-        TLocalIndex index(RootPath, StatePath, pathLen, Log);
+        TLocalIndex index(RootPath, StatePath, pathLen, 0, 0, Log);
         auto node = index.LookupNode(RootNodeId);
         UNIT_ASSERT_C(node, "Failed to lookup root node");
 
@@ -278,7 +278,7 @@ Y_UNIT_TEST_SUITE(TLocalIndex)
         StatePath.ForceDelete();
         StatePath.MkDir();
 
-        auto index = std::make_unique<TLocalIndex>(RootPath, StatePath, 100, Log);
+        auto index = std::make_unique<TLocalIndex>(RootPath, StatePath, 100, 0, 0, Log);
         auto rootNode = index->LookupNode(RootNodeId);
 
         // create /dir1
@@ -313,7 +313,7 @@ Y_UNIT_TEST_SUITE(TLocalIndex)
 
         // delete dir3
         dir3.ForceDelete();
-        index = std::make_unique<TLocalIndex>(RootPath, StatePath, 100, Log);
+        index = std::make_unique<TLocalIndex>(RootPath, StatePath, 100, 0, 0, Log);
 
         // /dir1 and /dir2 restored
         UNIT_ASSERT_C(index->LookupNode(node1->GetNodeId()),

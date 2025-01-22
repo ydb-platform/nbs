@@ -56,6 +56,8 @@ NProto::TCreateSessionResponse TLocalFileSystem::CreateSession(
         clientId,
         Config->GetMaxNodeCount(),
         Config->GetMaxHandlePerSessionCount(),
+        Config->GetNodeCleanupBatchSize(),
+        Config->GetNodeCleanupThreshold(),
         Logging);
 
     session->Init(request.GetRestoreClientSession());
@@ -211,6 +213,32 @@ void TLocalFileSystem::CleanupSessions()
     }
 
     ScheduleCleanupSessions();
+}
+
+void TLocalFileSystem::ScheduleCleanupNodes()
+{
+    if (!Config->GetNodeCleanupPeriod()) {
+        return;
+    }
+
+    Scheduler->Schedule(
+        Timer->Now() + Config->GetNodeCleanupPeriod(),
+        [weakPtr = weak_from_this()] () {
+            if (auto self = weakPtr.lock()) {
+                self->CleanupNodes();
+            }
+        });
+}
+
+void TLocalFileSystem::CleanupNodes()
+{
+    TWriteGuard guard(SessionsLock);
+
+    for (auto it = SessionsList.begin(); it != SessionsList.end(); ++it) {
+        (*it)->CleanupNodes();
+    }
+
+    ScheduleCleanupNodes();
 }
 
 }   // namespace NCloud::NFileStore

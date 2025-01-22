@@ -23,6 +23,7 @@ namespace NCloud::NFileStore {
 
 class TIndexNode
     : private TNonCopyable
+    , public TIntrusiveListItem<TIndexNode>
 {
 private:
     const ui64 NodeId;
@@ -136,20 +137,27 @@ private:
     const TFsPath RootPath;
     const TFsPath StatePath;
     ui32 MaxNodeCount;
+    ui32 NodeCleanupBatchSize;
+    ui32 NodeCleanupThreshold;
     TNodeMap Nodes;
     std::unique_ptr<TNodeTable> NodeTable;
     TRWMutex NodesLock;
     TLog Log;
-
+    TIntrusiveList<TIndexNode> NodeAccessList;
+    TIntrusiveList<TIndexNode> NodeCleanupList;
 public:
     TLocalIndex(
             TFsPath root,
             TFsPath statePath,
             ui32 maxNodeCount,
+            ui32 nodeCleanupBatchSize,
+            ui32 nodeCleanupThreshold,
             TLog log)
         : RootPath(std::move(root))
         , StatePath(std::move(statePath))
         , MaxNodeCount(maxNodeCount)
+        , NodeCleanupBatchSize(nodeCleanupBatchSize)
+        , NodeCleanupThreshold(nodeCleanupThreshold)
         , Log(std::move(log))
     {
         Init();
@@ -164,6 +172,7 @@ public:
             return nullptr;
         }
 
+        NodeAccessList.PushBack((*it).get());
         return *it;
     }
 
@@ -204,15 +213,7 @@ public:
     {
         TWriteGuard guard(NodesLock);
 
-        TIndexNodePtr node = nullptr;
-        auto it = Nodes.find(nodeId);
-        if (it != Nodes.end()) {
-            node = *it;
-            NodeTable->DeleteRecord(node->GetRecordIndex());
-            Nodes.erase(it);
-        }
-
-        return node;
+        return ForgetNodeNoLock(nodeId);
     }
 
     void Clear()
@@ -222,6 +223,36 @@ public:
         NodeTable->Clear();
         Nodes.clear();
         Nodes.insert(TIndexNode::CreateRoot(RootPath));
+    }
+
+    void CleanupNodes()
+    {
+        TWriteGuard guard(NodesLock);
+        STORAGE_INFO("Cleanup nodes start");
+
+        auto it = NodeCleanupList.begin();
+        while (it != NodeCleanupList.end()) {
+            auto& node = *it;
+            it++;
+            STORAGE_INFO("clean node NodeId=" << node.GetNodeId());
+            ForgetNodeNoLock(node.GetNodeId());
+        }
+
+        if (Nodes.size() > NodeCleanupThreshold) {
+            ui32 batchSize = NodeCleanupBatchSize;
+            for (auto& node : Nodes) {
+                if (batchSize == 0) {
+                    break;
+                }
+                if (node->GetNodeId() != RootNodeId) {
+                    STORAGE_INFO("add node to cleanup candidates NodeId=" << node->GetNodeId());
+                    NodeCleanupList.PushBack(node.get());
+                    batchSize--;
+                }
+            }
+        }
+
+        STORAGE_INFO("Cleanup nodes end");
     }
 
 private:
@@ -239,6 +270,20 @@ private:
             MaxNodeCount);
 
         RecoverNodesFromPersistentTable();
+    }
+
+private:
+    TIndexNodePtr ForgetNodeNoLock(ui64 nodeId)
+    {
+        TIndexNodePtr node = nullptr;
+        auto it = Nodes.find(nodeId);
+        if (it != Nodes.end()) {
+            node = *it;
+            NodeTable->DeleteRecord(node->GetRecordIndex());
+            Nodes.erase(it);
+        }
+
+        return node;
     }
 
     void RecoverNodesFromPersistentTable()
