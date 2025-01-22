@@ -32,7 +32,7 @@ std::optional<NJson::TJsonValue> ReadJsonFile(
     const TString& filename)
 {
     if (filename.empty()) {
-        return {};
+        return std::nullopt;
     }
 
     try {
@@ -42,7 +42,7 @@ std::optional<NJson::TJsonValue> ReadJsonFile(
         STORAGE_ERROR(
             "Failed to read file: " << filename.Quote() << " with error: "
                                     << CurrentExceptionMessage().c_str());
-        return {};
+        return std::nullopt;
     }
 }
 
@@ -57,7 +57,7 @@ ui32 ReadNetworkMbitThroughput(
         try {
             if (auto* value = json->GetValueByPath("interfaces.[0].eth0.speed"))
             {
-                networkThroughput = FromString<ui64>(value->GetStringSafe());
+                networkThroughput = FromString<ui32>(value->GetStringSafe());
             }
         } catch (...) {
             STORAGE_ERROR(

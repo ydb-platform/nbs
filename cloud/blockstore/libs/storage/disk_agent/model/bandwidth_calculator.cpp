@@ -52,6 +52,7 @@ void TBandwidthCalculator::ClearHistory(TInstant deadline)
 
 ui64 TBandwidthCalculator::GetRecommendedBandwidth() const
 {
+    Y_ABORT_UNLESS(DeviceLastRequest.size());
     ui64 result = MaxTotalBandwidth / DeviceLastRequest.size();
     if (MaxDeviceBandwidth) {
         result = Min(MaxDeviceBandwidth, result);
