@@ -107,11 +107,11 @@ TVolumeState CreateVolumeState(
         MakeConfig(inactiveClientsTimeout, {}),
         CreateDiagnosticsConfig(),
         CreateVolumeMeta(pp),
-        {{TInstant::Seconds(100), CreateVolumeMeta(pp)}}, // metaHistory
+        {{TInstant::Seconds(100), CreateVolumeMeta(pp)}},   // metaHistory
         {},
         CreateThrottlerConfig(),
         std::move(clientInfos),
-        {},
+        TCachedVolumeMountHistory{VolumeHistoryCacheSize, {}},
         std::move(checkpointRequests),
         false);
 }
@@ -1067,12 +1067,13 @@ Y_UNIT_TEST_SUITE(TVolumeStateTest)
                 info1,
                 MakeError(S_OK), {}, {});
             const auto& history = volumeState.GetMountHistory().GetItems();
-            if (i) {
+            if (i > 1) {
                 UNIT_ASSERT(
                     res.Key.Timestamp != history[1].Key.Timestamp ||
                     res.Key.SeqNo != history[1].Key.SeqNo);
             }
             UNIT_ASSERT(history.size() <= VolumeHistoryCacheSize);
+            UNIT_ASSERT(history.size() > 0);
         }
     }
 
