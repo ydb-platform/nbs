@@ -27,14 +27,21 @@ class TIndexNode
 {
 private:
     const ui64 NodeId;
+    bool IsFile;
     const TFileHandle NodeFd;
     ui64 RecordIndex = -1;
 
 public:
-    TIndexNode(ui64 nodeId, TFileHandle node)
+    TIndexNode(ui64 nodeId, bool isFile, TFileHandle node)
         : NodeId(nodeId)
+        , IsFile(isFile)
         , NodeFd(std::move(node))
     {}
+
+    [[nodiscard]] bool IsFileNode() const
+    {
+        return IsFile;
+    }
 
     [[nodiscard]] ui64 GetRecordIndex() const
     {
@@ -172,8 +179,11 @@ public:
             return nullptr;
         }
 
-        NodeAccessList.PushBack((*it).get());
-        return *it;
+        auto& node = *it;
+        if (node->IsFileNode()) {
+            NodeAccessList.PushBack(node.get());
+        }
+        return node;
     }
 
     [[nodiscard]] bool
@@ -204,6 +214,9 @@ public:
         NodeTable->CommitRecord(recordIndex);
 
         node->SetRecordIndex(recordIndex);
+        if (node->IsFileNode()) {
+            NodeAccessList.PushBack(node.get());
+        }
         Nodes.emplace(std::move(node));
 
         return true;
@@ -238,17 +251,16 @@ public:
             ForgetNodeNoLock(node.GetNodeId());
         }
 
+
         if (Nodes.size() > NodeCleanupThreshold) {
+            it = NodeAccessList.begin();
             ui32 batchSize = NodeCleanupBatchSize;
-            for (auto& node : Nodes) {
-                if (batchSize == 0) {
-                    break;
-                }
-                if (node->GetNodeId() != RootNodeId) {
-                    STORAGE_INFO("add node to cleanup candidates NodeId=" << node->GetNodeId());
-                    NodeCleanupList.PushBack(node.get());
-                    batchSize--;
-                }
+            while (batchSize > 0 && it != NodeAccessList.end()) {
+                auto& node = *it;
+                it++;
+                STORAGE_INFO("add node to cleanup candidates NodeId=" << node.GetNodeId());
+                NodeCleanupList.PushBack(&node);
+                batchSize--;
             }
         }
 
@@ -358,6 +370,9 @@ private:
                     auto node =
                         TIndexNode::Create(**parentNodeIt, pathElemRecord->Name);
                     node->SetRecordIndex(pathElemIndex);
+                    if (node->IsFileNode()) {
+                        NodeAccessList.PushBack(node.get());
+                    }
                     Nodes.insert(node);
 
                     STORAGE_TRACE(

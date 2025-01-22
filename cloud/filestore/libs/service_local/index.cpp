@@ -9,7 +9,7 @@ namespace NCloud::NFileStore {
 TIndexNodePtr TIndexNode::CreateRoot(const TFsPath& path)
 {
     auto node = NLowLevel::Open(path, O_PATH, 0);
-    return std::make_shared<TIndexNode>(RootNodeId, std::move(node));
+    return std::make_shared<TIndexNode>(RootNodeId, false, std::move(node));
 }
 
 TIndexNodePtr TIndexNode::Create(const TIndexNode& parent, const TString& name)
@@ -17,7 +17,7 @@ TIndexNodePtr TIndexNode::Create(const TIndexNode& parent, const TString& name)
     auto node = NLowLevel::OpenAt(parent.NodeFd, name, O_PATH | O_NOFOLLOW, 0);
     auto stat = NLowLevel::Stat(node);
 
-    return std::make_shared<TIndexNode>(stat.INode, std::move(node));
+    return std::make_shared<TIndexNode>(stat.INode, stat.IsFile(), std::move(node));
 }
 
 TIndexNodePtr TIndexNode::CreateDirectory(const TString& name, int mode)
@@ -27,7 +27,7 @@ TIndexNodePtr TIndexNode::CreateDirectory(const TString& name, int mode)
     auto node = NLowLevel::OpenAt(NodeFd, name, O_PATH, 0);
     auto stat = NLowLevel::Stat(node);
 
-    return std::make_shared<TIndexNode>(stat.INode, std::move(node));
+    return std::make_shared<TIndexNode>(stat.INode, stat.IsFile(), std::move(node));
 }
 
 TIndexNodePtr TIndexNode::CreateFile(const TString& name, int mode)
@@ -37,7 +37,7 @@ TIndexNodePtr TIndexNode::CreateFile(const TString& name, int mode)
     auto resolved = NLowLevel::Open(node, O_PATH, 0);
     auto stat = NLowLevel::Stat(resolved);
 
-    return std::make_shared<TIndexNode>(stat.INode, std::move(resolved));
+    return std::make_shared<TIndexNode>(stat.INode, stat.IsFile(), std::move(resolved));
 }
 
 TIndexNodePtr TIndexNode::CreateSocket(const TString& name, int mode)
@@ -47,7 +47,7 @@ TIndexNodePtr TIndexNode::CreateSocket(const TString& name, int mode)
     auto node = NLowLevel::OpenAt(NodeFd, name, O_PATH, 0);
     auto stat = NLowLevel::Stat(node);
 
-    return std::make_shared<TIndexNode>(stat.INode, std::move(node));
+    return std::make_shared<TIndexNode>(stat.INode, stat.IsFile(), std::move(node));
 }
 
 TIndexNodePtr TIndexNode::CreateLink(const TIndexNode& parent, const TString& name)
@@ -63,7 +63,7 @@ TIndexNodePtr TIndexNode::CreateSymlink(const TString& target, const TString& na
     auto node = NLowLevel::OpenAt(NodeFd, name, O_PATH | O_NOFOLLOW, 0);
     auto stat = NLowLevel::Stat(node);
 
-    return std::make_shared<TIndexNode>(stat.INode, std::move(node));
+    return std::make_shared<TIndexNode>(stat.INode, stat.IsFile(), std::move(node));
 }
 
 void TIndexNode::Rename(
