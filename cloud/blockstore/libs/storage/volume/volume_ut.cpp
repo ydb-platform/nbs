@@ -8175,7 +8175,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
             0,
             false,
             1,
-            NCloud::NProto::EStorageMediaKind::STORAGE_MEDIA_SSD_NONREPLICATED,
+            NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
             1024,
             "vol0",
             "cloud",
@@ -8190,10 +8190,10 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
             false);
 
 
-        volume.StopPartitionBeforeVolumeDestruction();
+        volume.GracefulShutdown();
         UNIT_ASSERT(partitionsStopped);
 
-        // Check that volume after TEvStopPartitionBeforeVolumeDestructionRequest
+        // Check that volume after TEvGracefulShutdownRequest
         // in zombie state and rejects requsts.
         volume.SendGetVolumeInfoRequest();
         auto response = volume.RecvGetVolumeInfoResponse();

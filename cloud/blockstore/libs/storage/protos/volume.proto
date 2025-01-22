@@ -654,9 +654,9 @@ message TGetStorageConfigResponse
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-// StopPartitionBeforeVolumeDestruction request/response.
+// GracefulShutdown request/response.
 
-message TStopPartitionBeforeVolumeDestructionRequest
+message TGracefulShutdownRequest
 {
     // Optional request headers.
     THeaders Headers = 1;
@@ -666,7 +666,7 @@ message TStopPartitionBeforeVolumeDestructionRequest
     string DiskId = 2;
 }
 
-message TStopPartitionBeforeVolumeDestructionResponse
+message TGracefulShutdownResponse
 {
     // Optional error, set only if error happened.
     NCloud.NProto.TError Error = 1;

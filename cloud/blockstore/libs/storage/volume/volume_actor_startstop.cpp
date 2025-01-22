@@ -346,24 +346,22 @@ void TVolumeActor::StartPartitionsForGc(const TActorContext& ctx)
     PartitionsStartedReason = EPartitionsStartedReason::STARTED_FOR_GC;
 }
 
-void TVolumeActor::HandleStopPartitionBeforeVolumeDestruction(
-    const TEvVolume::TEvStopPartitionBeforeVolumeDestructionRequest::TPtr& ev,
+void TVolumeActor::HandleGracefulShutdown(
+    const TEvVolume::TEvGracefulShutdownRequest::TPtr& ev,
     const TActorContext& ctx)
 {
     if (!State->GetDiskRegistryBasedPartitionActor()) {
         LOG_ERROR(
             ctx,
             TBlockStoreComponents::VOLUME,
-            "[%lu] StopPartitionBeforeVolumeDestruction request was send to "
-            "not "
-            "DR based disk",
+            "[%lu] GracefulShutdown request was send to "
+            "not DR based disk",
             TabletID());
 
         NCloud::Reply(
             ctx,
             *ev,
-            std::make_unique<
-                TEvVolume::TEvStopPartitionBeforeVolumeDestructionResponse>(
+            std::make_unique<TEvVolume::TEvGracefulShutdownResponse>(
                 MakeError(E_NOT_IMPLEMENTED, "request not supported")));
         return;
     }
@@ -383,9 +381,7 @@ void TVolumeActor::HandleStopPartitionBeforeVolumeDestruction(
             NCloud::Reply(
                 ctx,
                 *reqInfo,
-                std::make_unique<
-                    TEvVolume::
-                        TEvStopPartitionBeforeVolumeDestructionResponse>());
+                std::make_unique<TEvVolume::TEvGracefulShutdownResponse>());
         });
 
     TerminateTransactions(ctx);
