@@ -410,7 +410,20 @@ void TDestroyVolumeActor::HandleGracefulShutdownResponse(
     const TEvVolume::TEvGracefulShutdownResponse::TPtr& ev,
     const TActorContext& ctx)
 {
-    Y_UNUSED(ev);
+    const auto* msg = ev->Get();
+
+    if (auto error = msg->GetError(); HasError(error)) {
+        LOG_ERROR(
+            ctx,
+            TBlockStoreComponents::SERVICE,
+            "Volume %s: unable to gracefully stop volume: %s",
+            DiskId.Quote().data(),
+            FormatError(error).data());
+
+        ReplyAndDie(ctx, std::move(error));
+        return;
+    }
+
     DestroyVolume(ctx);
 }
 
@@ -420,7 +433,7 @@ void TDestroyVolumeActor::HandleTimeout(
 {
     Y_UNUSED(ev);
 
-    LOG_WARN(
+    LOG_ERROR(
         ctx,
         TBlockStoreComponents::SERVICE,
         "Timeout destroy volume request");
