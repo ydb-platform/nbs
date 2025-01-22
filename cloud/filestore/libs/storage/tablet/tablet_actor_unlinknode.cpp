@@ -270,6 +270,15 @@ void TIndexTabletActor::HandleUnlinkNode(
         }
     }
 
+    if (!TryLockNodeRef({msg->Record.GetNodeId(), msg->Record.GetName()})) {
+        auto response = std::make_unique<TEvService::TEvUnlinkNodeResponse>(
+            MakeError(E_REJECTED, TStringBuilder() << "node ref "
+                << msg->Record.GetNodeId() << " " << msg->Record.GetName()
+                << " is locked for UnlinkNode"));
+        NCloud::Reply(ctx, *ev, std::move(response));
+        return;
+    }
+
     auto requestInfo = CreateRequestInfo(
         ev->Sender,
         ev->Cookie,
@@ -444,6 +453,8 @@ void TIndexTabletActor::CompleteTx_UnlinkNode(
         LogTag.c_str(),
         args.SessionId.c_str(),
         FormatError(args.Error).c_str());
+
+    UnlockNodeRef({args.ParentNodeId, args.Name});
 
     if (args.ParentNodeId != InvalidNodeId) {
         InvalidateNodeCaches(args.ParentNodeId);

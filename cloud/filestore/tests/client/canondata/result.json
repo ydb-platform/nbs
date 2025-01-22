@@ -32,11 +32,17 @@
     "test.test_multitablet_findgarbage": {
         "uri": "file://test.test_multitablet_findgarbage/results.txt"
     },
+    "test.test_multitablet_findgarbage_in_leader": {
+        "uri": "file://test.test_multitablet_findgarbage_in_leader/results.txt"
+    },
     "test.test_multitablet_ls": {
         "uri": "file://test.test_multitablet_ls/results.txt"
     },
     "test.test_resize": {
         "uri": "file://test.test_resize/results.txt"
+    },
+    "test.test_rm": {
+        "uri": "file://test.test_rm/results.txt"
     },
     "test.test_stat": {
         "uri": "file://test.test_stat/results.txt"

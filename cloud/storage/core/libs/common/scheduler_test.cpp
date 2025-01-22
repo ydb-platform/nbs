@@ -14,6 +14,10 @@ void TTestScheduler::Schedule(
 
     with_lock (CallbacksLock) {
         Callbacks.push_back(callback);
+        if (GotNewCallback) {
+            GotNewCallback->SetValue();
+        }
+        GotNewCallback = std::nullopt;
     }
 }
 
@@ -26,6 +30,16 @@ void TTestScheduler::RunAllScheduledTasks()
 
     for (auto& callback: callbacks) {
         callback();
+    }
+}
+
+NThreading::TFuture<void> TTestScheduler::WaitForTaskSchedule()
+{
+    with_lock (CallbacksLock) {
+        if (!GotNewCallback) {
+            GotNewCallback = NThreading::NewPromise();
+        }
+        return GotNewCallback->GetFuture();
     }
 }
 

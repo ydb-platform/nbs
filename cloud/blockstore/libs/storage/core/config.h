@@ -625,6 +625,8 @@ public:
     [[nodiscard]] bool GetEnableToChangeStatesFromDiskRegistryMonpage() const;
     [[nodiscard]] bool
     GetEnableToChangeErrorStatesFromDiskRegistryMonpage() const;
+
+    [[nodiscard]] bool GetCalculateSplittedUsedQuotaMetric() const;
 };
 
 ui64 GetAllocationUnit(

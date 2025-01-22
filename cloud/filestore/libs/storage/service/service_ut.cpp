@@ -3259,6 +3259,81 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         CheckThreeStageWrites(NProto::STORAGE_MEDIA_SSD, true);
         CheckTwoStageReads(NProto::STORAGE_MEDIA_SSD, true);
     }
+
+    Y_UNIT_TEST(ShouldUpdateFileSystemAndTabletCountersOnRegisterAndUnregister)
+    {
+        TTestEnv env;
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+
+        service.RegisterLocalFileStore(
+            "test",
+            1, // tablet id
+            1, // generation
+            false, // isShard
+            {});
+
+        env.GetRuntime().AdvanceCurrentTime(TDuration::Seconds(15));
+        env.GetRuntime().DispatchEvents({}, TDuration::Seconds(1));
+
+        auto counters = env.GetRuntime().GetAppData(nodeIdx).Counters;
+
+        auto fsCounter = counters
+            ->FindSubgroup("counters", "filestore")
+            ->FindSubgroup("component", "service")
+            ->GetCounter("FileSystemCount", false);
+
+        auto hddFsCounter = counters
+            ->FindSubgroup("counters", "filestore")
+            ->FindSubgroup("component", "service")
+            ->FindSubgroup("type", "hdd")
+            ->GetCounter("FileSystemCount", false);
+
+        auto ssdFsCounter = counters
+            ->FindSubgroup("counters", "filestore")
+            ->FindSubgroup("component", "service")
+            ->FindSubgroup("type", "ssd")
+            ->GetCounter("FileSystemCount", false);
+
+        auto tabletCounter = counters
+            ->FindSubgroup("counters", "filestore")
+            ->FindSubgroup("component", "service")
+            ->GetCounter("TabletCount", false);
+
+        auto hddTabletCounter = counters
+            ->FindSubgroup("counters", "filestore")
+            ->FindSubgroup("component", "service")
+            ->FindSubgroup("type", "hdd")
+            ->GetCounter("TabletCount", false);
+
+        auto ssdTabletCounter = counters
+            ->FindSubgroup("counters", "filestore")
+            ->FindSubgroup("component", "service")
+            ->FindSubgroup("type", "ssd")
+            ->GetCounter("TabletCount", false);
+
+        UNIT_ASSERT_VALUES_EQUAL(1, fsCounter->GetAtomic());
+        UNIT_ASSERT_VALUES_EQUAL(1, tabletCounter->GetAtomic());
+        UNIT_ASSERT_VALUES_EQUAL(1, hddFsCounter->GetAtomic());
+        UNIT_ASSERT_VALUES_EQUAL(1, hddTabletCounter->GetAtomic());
+        UNIT_ASSERT_VALUES_EQUAL(0, ssdFsCounter->GetAtomic());
+        UNIT_ASSERT_VALUES_EQUAL(0, ssdTabletCounter->GetAtomic());
+
+        service.UnregisterLocalFileStore("test", 1);
+
+        env.GetRuntime().AdvanceCurrentTime(TDuration::Seconds(15));
+        env.GetRuntime().DispatchEvents({}, TDuration::Seconds(1));
+
+        UNIT_ASSERT_VALUES_EQUAL(0, fsCounter->GetAtomic());
+        UNIT_ASSERT_VALUES_EQUAL(0, tabletCounter->GetAtomic());
+        UNIT_ASSERT_VALUES_EQUAL(0, hddFsCounter->GetAtomic());
+        UNIT_ASSERT_VALUES_EQUAL(0, hddTabletCounter->GetAtomic());
+        UNIT_ASSERT_VALUES_EQUAL(0, ssdFsCounter->GetAtomic());
+        UNIT_ASSERT_VALUES_EQUAL(0, ssdTabletCounter->GetAtomic());
+    }
 }
 
 }   // namespace NCloud::NFileStore::NStorage

@@ -46,6 +46,16 @@ private:
 
     NMonitoring::TDynamicCounters::TCounterPtr CpuWait;
     NMonitoring::TDynamicCounters::TCounterPtr CpuWaitFailure;
+
+    NMonitoring::TDynamicCounters::TCounterPtr TotalFileSystemCount;
+    NMonitoring::TDynamicCounters::TCounterPtr TotalTabletCount;
+
+    NMonitoring::TDynamicCounters::TCounterPtr HddFileSystemCount;
+    NMonitoring::TDynamicCounters::TCounterPtr HddTabletCount;
+
+    NMonitoring::TDynamicCounters::TCounterPtr SsdFileSystemCount;
+    NMonitoring::TDynamicCounters::TCounterPtr SsdTabletCount;
+
     TInstant LastCpuWaitQuery;
 
 public:

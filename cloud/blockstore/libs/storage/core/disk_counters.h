@@ -648,12 +648,22 @@ struct TVolumeSelfCumulativeCounters
         EPublishingPolicy::All,
         TCumulativeCounter::ECounterType::Generic,
         ECounterExpirationPolicy::Permanent};
+    TCounter UsedIopsQuota{
+        EPublishingPolicy::All,
+        TCumulativeCounter::ECounterType::Generic,
+        ECounterExpirationPolicy::Permanent};
+    TCounter UsedBandwidthQuota{
+        EPublishingPolicy::All,
+        TCumulativeCounter::ECounterType::Generic,
+        ECounterExpirationPolicy::Permanent};
 
     static constexpr TMeta AllCounters[] = {
         MakeMeta<&TVolumeSelfCumulativeCounters::ThrottlerRejectedRequests>(),
         MakeMeta<&TVolumeSelfCumulativeCounters::ThrottlerPostponedRequests>(),
         MakeMeta<&TVolumeSelfCumulativeCounters::ThrottlerSkippedRequests>(),
         MakeMeta<&TVolumeSelfCumulativeCounters::UsedQuota>(),
+        MakeMeta<&TVolumeSelfCumulativeCounters::UsedIopsQuota>(),
+        MakeMeta<&TVolumeSelfCumulativeCounters::UsedBandwidthQuota>(),
     };
 };
 static_assert(

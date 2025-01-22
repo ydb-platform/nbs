@@ -106,6 +106,16 @@ func (c *ClientMock) DeleteCheckpointData(
 	return args.Error(0)
 }
 
+func (c *ClientMock) EnsureCheckpointReady(
+	ctx context.Context,
+	diskID string,
+	checkpointID string,
+) error {
+
+	args := c.Called(ctx, diskID, checkpointID)
+	return args.Error(0)
+}
+
 func (c *ClientMock) Resize(
 	ctx context.Context,
 	checkpoint func() error,

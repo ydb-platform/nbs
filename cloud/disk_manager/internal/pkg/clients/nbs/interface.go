@@ -161,6 +161,12 @@ type Client interface {
 		checkpointID string,
 	) error
 
+	EnsureCheckpointReady(
+		ctx context.Context,
+		diskID string,
+		checkpointID string,
+	) error
+
 	Resize(
 		ctx context.Context,
 		saveState func() error,

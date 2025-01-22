@@ -229,6 +229,54 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest)
             true,
             response->Record.GetStorageConfig().GetMultiTabletForwardingEnabled());
     }
+
+    Y_UNIT_TEST(ShouldNotifyServiceWhenFileSystemConfigChanged)
+    {
+        TTestEnv env;
+        env.CreateSubDomain("nfs");
+
+        const auto nodeIdx = env.CreateNode("nfs");
+        const auto tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
+
+        ui64 registerNonShardCount = 0;
+        ui64 registerShardCount = 0;
+        env.GetRuntime().SetEventFilter(
+            [&](auto& runtime, auto& event)
+            {
+                Y_UNUSED(runtime);
+                switch (event->GetTypeRewrite()) {
+                    case TEvService::EvRegisterLocalFileStore: {
+                        const auto* msg = event->template Get<
+                            TEvService::TEvRegisterLocalFileStoreRequest>();
+                        if (tabletId != msg->TabletId) {
+                            break;
+                        }
+                        if (msg->IsShard) {
+                           ++registerShardCount;
+                        } else {
+                            ++registerNonShardCount;
+                        }
+                    }
+                }
+                return false;
+            });
+
+        tablet.UpdateConfig({
+            .FileSystemId = "test_filesystem",
+            .CloudId = "test_cloud",
+            .FolderId = "test_folder",
+        });
+
+        UNIT_ASSERT_VALUES_EQUAL(1, registerNonShardCount);
+        UNIT_ASSERT_VALUES_EQUAL(0, registerShardCount);
+
+        tablet.ConfigureAsShard(1);
+
+        UNIT_ASSERT_VALUES_EQUAL(1, registerNonShardCount);
+        UNIT_ASSERT_VALUES_EQUAL(1, registerShardCount);
+    }
 }
 
 }   // namespace NCloud::NFileStore::NStorage

@@ -895,11 +895,6 @@ void TBootstrapBase::Start()
     // order
     START_COMMON_COMPONENT(Scheduler);
 
-    if (Configs->Options->MemLock) {
-        LockProcessMemory(Log);
-        STORAGE_INFO("Process memory locked");
-    }
-
     auto restoreFuture = EndpointManager->RestoreEndpoints();
     if (!Configs->Options->TemporaryServer) {
         auto balancerSwitch = VolumeBalancerSwitch;
@@ -909,6 +904,11 @@ void TBootstrapBase::Start()
         });
     }
     STORAGE_INFO("Started endpoints restoring");
+
+    if (Configs->Options->MemLock) {
+        LockProcessMemory(Log);
+        STORAGE_INFO("Process memory locked");
+    }
 
 #undef START_COMMON_COMPONENT
 #undef START_KIKIMR_COMPONENT
