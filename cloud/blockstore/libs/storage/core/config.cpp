@@ -156,10 +156,12 @@ TDuration MSeconds(ui32 value)
     xxx(TargetCompactionBytesPerOp,             ui64,   64_KB                 )\
     xxx(MaxSkippedBlobsDuringCompaction,        ui32,   3                     )\
     xxx(IncrementalCompactionEnabled,           bool,   false                 )\
-    xxx(CompactionRangeCountPerRun,             ui32,   3                     )\
     xxx(CompactionCountPerRunIncreasingThreshold, ui32, 0                     )\
     xxx(CompactionCountPerRunDecreasingThreshold, ui32, 0                     )\
+    xxx(CompactionRangeCountPerRun,             ui32,   3                     )\
     xxx(MaxCompactionRangeCountPerRun,          ui32,   8                     )\
+    xxx(GarbageCompactionRangeCountPerRun,      ui32,   1                     )\
+    xxx(ForcedCompactionRangeCountPerRun,       ui32,   1                     )\
     xxx(CompactionCountPerRunChangingPeriod,    TDuration, Seconds(60)        )\
     xxx(BatchCompactionEnabled,                 bool,   false                 )\
     xxx(BlobPatchingEnabled,                    bool,   false                 )\
