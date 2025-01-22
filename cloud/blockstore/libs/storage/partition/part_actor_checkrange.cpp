@@ -170,6 +170,15 @@ void TCheckRangeActor::HandleReadBlocksResponse(
         "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! CheckRange response "
         "catched, cur block id = " + std::to_string(FirstBlockOfset));
 
+    if (HasError(msg->Record.GetError())) {
+        auto errorMessage = msg->Record.GetError().GetMessage();
+        LOG_ERROR(
+            ctx,
+            TBlockStoreComponents::VOLUME,
+            "reading error has occurred: " + errorMessage + "   message   " +  msg->Record.GetError().message() );
+    }
+
+
     ReplyAndDie(ctx, msg->GetError());
 }
 

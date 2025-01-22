@@ -1736,7 +1736,6 @@ Y_UNIT_TEST_SUITE(TServiceActionsTest)
             env.GetRuntime().AdvanceCurrentTime(TDuration::Seconds(30));
 
             Cout<<"!!!!!!!!!!!!!!!!!!!!!!!!!!"<< " response ut " <<response->Record.GetOutput()<<Endl;
-            Cout<<"!!!!!!!!!!!!!!!!!!!!!!!!!!"<< " response ut " <<response->Record.GetOutput()<<Endl;
 
             UNIT_ASSERT(google::protobuf::util::JsonStringToMessage(
                 response->Record.GetOutput(),
