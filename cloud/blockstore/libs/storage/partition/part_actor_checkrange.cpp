@@ -35,13 +35,16 @@ private:
     const ui64 FirstBlockOfset;
     const ui64 BlocksCount;
     const TDuration Timeout;
+    const TActorId Sender;
+
 
 public:
     TCheckRangeActor(
         const TActorId& tablet,
         ui64 blockId,
         ui64 blocksCount,
-        TDuration timeout);
+        TDuration timeout,
+        const TActorId& sender);
 
     void Bootstrap(const TActorContext& ctx);
 
@@ -74,11 +77,13 @@ TCheckRangeActor::TCheckRangeActor(
         const TActorId& tablet,
         ui64 blockOffset,
         ui64 blocksCount,
-        TDuration timeout)
+        TDuration timeout,
+        const TActorId& sender)
     : Tablet(tablet)
     , FirstBlockOfset(blockOffset)
     , BlocksCount(blocksCount)
     , Timeout(std::move(timeout))
+    , Sender(sender)
 {}
 
 void TCheckRangeActor::Bootstrap(const TActorContext& ctx)
@@ -109,7 +114,7 @@ void TCheckRangeActor::SendReadBlocksRequest(const TActorContext& ctx)
     LOG_ERROR(
         ctx,
         TBlockStoreComponents::PARTITION,
-        "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! Bootstraped " + SelfId().ToString()) ;
+        "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! Sended " + SelfId().ToString()) ;
     NCloud::Send(ctx, Tablet, std::move(request));
 }
 
@@ -118,7 +123,7 @@ void TCheckRangeActor::ReplyAndDie(
     const NProto::TError& error)
 {
     {
-        auto response = std::make_unique<TEvPartitionPrivate::TEvForcedCompactionCompleted>(error);
+        auto response = std::make_unique<TEvVolume::TEvCheckRangeResponse>(error);
         NCloud::Send(ctx, Tablet, std::move(response));
     }
 
@@ -191,13 +196,15 @@ NActors::IActorPtr TPartitionActor::CreateCheckRangeActor(
     NActors::TActorId tablet,
     ui64 blockOffset,
     ui64 blocksCount,
-    TDuration retryTimeout)
+    TDuration retryTimeout,
+    NActors::TActorId sender)
 {
     return std::make_unique<NPartition::TCheckRangeActor>(
         std::move(tablet),
         blockOffset,
         blocksCount,
-        retryTimeout);
+        retryTimeout,
+        sender);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -208,40 +215,27 @@ void NPartition::TPartitionActor::HandleCheckRange(
 {
     const auto* msg = ev->Get();
 
-    NProto::TError result = DoHandleCheckRange(
-        ctx,
-        msg->Record.GetBlockId(),
-        msg->Record.GetBlocksCount());
-
-    auto response =
-        std::make_unique<TEvVolume::TEvCheckRangeResponse>(std::move(result));
-    NCloud::Reply(ctx, *ev, std::move(response));
-}
-
-NProto::TError TPartitionActor::DoHandleCheckRange(
-    const NActors::TActorContext& ctx,
-    ui64 blockOffset,
-    ui64 blocksCount)
-{
-    if (blocksCount > Config->GetBytesPerStripe())
-    {
-        return MakeError(
+    if (msg->Record.GetBlocksCount() > Config->GetBytesPerStripe()) {
+        auto err = MakeError(
             E_ARGUMENT,
-            "Too many blocks requested: " +
-                std::to_string(blocksCount) + " Max blocks per request : " +
-                std::to_string(Config->GetBytesPerStripe()));
+            "Too much blocks to check range, max size = " +
+                ToString(Config->GetBytesPerStripe()));
+        auto response =
+            std::make_unique<TEvVolume::TEvCheckRangeResponse>(std::move(err));
+        NCloud::Reply(ctx, *ev, std::move(response));
     }
+
     const auto actorId = NCloud::Register(
         ctx,
         CreateCheckRangeActor(
             SelfId(),
-            blockOffset,
-            blocksCount,
-            Config->GetCompactionRetryTimeout()));
-
+            msg->Record.GetBlockId(),
+            msg->Record.GetBlocksCount(),
+            Config->GetCompactionRetryTimeout(),
+            ev->Sender));
     Actors.Insert(actorId);
 
-    return MakeError(S_OK, "Scan disk has been started");
+    //NCloud::Reply(ctx, *ev, std::move(response));
 }
 
 }   // namespace NCloud::NBlockStore::NStorage::NPartition

@@ -435,7 +435,8 @@ private:
         NActors::TActorId tablet,
         ui64 blockOffset,
         ui64 blocksCount,
-        TDuration retryTimeout);
+        TDuration retryTimeout,
+        NActors::TActorId sender);
 
 private:
     STFUNC(StateBoot);
