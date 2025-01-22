@@ -1740,7 +1740,7 @@ Y_UNIT_TEST_SUITE(TServiceActionsTest)
                 switch (event->GetTypeRewrite()) {
                     case TEvService::EvReadBlocksResponse: {
                         const auto* msg = event->template Get<
-                            NKikimr::TEvLocal::TEvTabletMetrics>();
+                            TEvService::EvReadBlocksResponse>();
 
                         Cout<<"!!!!!!!!!!!!!!!!!!!!!!!!!!"<< " response tablet " << msg->TabletId <<Endl;
                     }
