@@ -352,7 +352,7 @@ STFUNC(TModifyTagsActionActor::StateWaitReady)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void TServiceActor::HandleAddTagsRequest(
+void TServiceActor::HandleAddTags(
     const TEvService::TEvAddTagsRequest::TPtr& ev,
     const NActors::TActorContext& ctx)
 {
