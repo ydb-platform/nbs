@@ -8148,7 +8148,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         UNIT_ASSERT(partitionsStopped);
     }
 
-    Y_UNIT_TEST(ShouldStopPartitionsOnMessage)
+    Y_UNIT_TEST(ShouldGracefulyShutdownVolume)
     {
         auto runtime = PrepareTestActorRuntime();
         TVolumeClient volume(*runtime);
@@ -8189,7 +8189,6 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
             NProto::VOLUME_MOUNT_LOCAL,
             false);
 
-
         volume.GracefulShutdown();
         UNIT_ASSERT(partitionsStopped);
 
@@ -8197,9 +8196,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         // in zombie state and rejects requsts.
         volume.SendGetVolumeInfoRequest();
         auto response = volume.RecvGetVolumeInfoResponse();
-        UNIT_ASSERT_VALUES_EQUAL(
-            response->GetStatus(),
-            E_REJECTED);
+        UNIT_ASSERT_VALUES_EQUAL(response->GetStatus(), E_REJECTED);
     }
 
     Y_UNIT_TEST(ShouldReturnClientsAndHostnameInStatVolumeResponse)

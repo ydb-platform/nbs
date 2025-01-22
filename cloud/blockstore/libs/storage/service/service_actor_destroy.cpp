@@ -197,8 +197,7 @@ void TDestroyVolumeActor::DeallocateDisk(const TActorContext& ctx)
 
 void TDestroyVolumeActor::GracefulShutdown(const TActorContext& ctx)
 {
-    auto request = std::make_unique<
-        TEvVolume::TEvGracefulShutdownRequest>();
+    auto request = std::make_unique<TEvVolume::TEvGracefulShutdownRequest>();
     request->Record.SetDiskId(DiskId);
     NCloud::Send(ctx, MakeVolumeProxyServiceId(), std::move(request));
 }
