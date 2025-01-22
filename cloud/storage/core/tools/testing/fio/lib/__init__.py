@@ -398,6 +398,8 @@ def run_index_test(directory, test, fail_on_errors=False, verbose=False):
                         logging.info(
                             f"Failed to save dmesg output: {dmesg_error}"
                         )
+                    os.system("id")
+                    os.system("sudo id")
 
                     for pid in fio_pids:
                         with open(

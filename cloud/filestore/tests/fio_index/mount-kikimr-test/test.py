@@ -15,4 +15,4 @@ def test_fio(name):
 
     # TODO(#2831): remove this debug information
     fio.run_index_test(dir_name, TESTS[name], fail_on_errors=True, verbose=True)
-    assert False
+    # assert False
