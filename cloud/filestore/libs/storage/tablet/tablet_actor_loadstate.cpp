@@ -313,8 +313,8 @@ void TIndexTabletActor::CompleteTx_LoadState(
     {
         const ui64 maxRows =
             Config->GetInMemoryIndexCacheLoadOnTabletStartRowsPerTx();
-        const TDuration timeout =
-            Config->GetInMemoryIndexCacheLoadScheduleTimeout();
+        const TDuration schedulePeriod =
+            Config->GetInMemoryIndexCacheLoadSchedulePeriod();
 
         // If necessary, code can iteratively call ReadNodeRefs for all nodes.
         // This will populate cache with node refs and allow us to perform
@@ -326,14 +326,14 @@ void TIndexTabletActor::CompleteTx_LoadState(
             "%s LoadNodeRefs started (maxNodeRefs: %lu, timeout: %s)",
             LogTag.c_str(),
             maxRows,
-            timeout.ToString());
+            schedulePeriod.ToString().c_str());
         ctx.Send(
             SelfId(),
             new TEvIndexTabletPrivate::TEvLoadNodeRefsRequest(
                 0,
                 "",
                 maxRows,
-                timeout));
+                schedulePeriod));
 
         // Same logic is performed for batch loading nodes as well. The only
         // difference is that we do not need to keep track of the exhaustiveness
@@ -344,13 +344,13 @@ void TIndexTabletActor::CompleteTx_LoadState(
             "%s LoadNodes started (maxNodes: %lu, timeout: %s)",
             LogTag.c_str(),
             maxRows,
-            timeout.ToString());
+            schedulePeriod.ToString().c_str());
         ctx.Send(
             SelfId(),
             new TEvIndexTabletPrivate::TEvLoadNodesRequest(
                 0,
                 maxRows,
-                timeout));
+                schedulePeriod));
     }
 
     ScheduleSyncSessions(ctx);

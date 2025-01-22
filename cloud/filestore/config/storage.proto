@@ -514,5 +514,5 @@ message TStorageConfig
     optional uint64 MixedBlocksOffloadedRangesCapacity = 415;
 
     // During the InMemoryIndexCache load, the time between the batches loading
-    optional uint32 InMemoryIndexCacheLoadScheduleTimeout = 416;
+    optional uint32 InMemoryIndexCacheLoadSchedulePeriod = 416;
 }

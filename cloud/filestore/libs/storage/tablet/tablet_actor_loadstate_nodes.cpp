@@ -61,7 +61,7 @@ void TIndexTabletActor::CompleteTx_LoadNodes(
             new TEvIndexTabletPrivate::TEvLoadNodesRequest(
                 args.NextNodeId,
                 args.MaxNodes,
-                args.ScheduleTimeout));
+                args.SchedulePeriod));
     } else {
         LOG_INFO(
             ctx,
@@ -96,7 +96,7 @@ void TIndexTabletActor::HandleLoadNodesRequest(
         std::move(requestInfo),
         msg->NodeId,
         msg->MaxNodes,
-        msg->ScheduleTimeout);
+        msg->SchedulePeriod);
 }
 
 }   // namespace NCloud::NFileStore::NStorage

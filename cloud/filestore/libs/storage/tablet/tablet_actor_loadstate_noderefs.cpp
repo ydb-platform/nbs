@@ -71,7 +71,7 @@ void TIndexTabletActor::CompleteTx_LoadNodeRefs(
                 args.NextNodeId,
                 args.NextCookie,
                 args.MaxNodeRefs,
-                args.ScheduleTimeout));
+                args.SchedulePeriod));
     } else {
         LOG_INFO(
             ctx,
@@ -111,7 +111,7 @@ void TIndexTabletActor::HandleLoadNodeRefsRequest(
         msg->NodeId,
         msg->Cookie,
         msg->MaxNodeRefs,
-        msg->ScheduleTimeout);
+        msg->SchedulePeriod);
 }
 
 }   // namespace NCloud::NFileStore::NStorage
