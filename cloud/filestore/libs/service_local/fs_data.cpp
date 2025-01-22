@@ -29,7 +29,7 @@ NProto::TCreateHandleResponse TLocalFileSystem::CreateHandle(
     auto session = GetSession(request);
     auto node = session->LookupNode(request.GetNodeId());
     if (!node) {
-        return TErrorResponse(ErrorInvalidParent(request.GetNodeId()));
+        return TErrorResponse(ErrorStaleNode(request.GetNodeId()));
     }
 
     int flags = HandleFlagsToSystem(request.GetFlags());
@@ -225,7 +225,7 @@ NProto::TFsyncDirResponse TLocalFileSystem::FsyncDir(
     auto session = GetSession(request);
     auto node = session->LookupNode(request.GetNodeId());
     if (!node) {
-        return TErrorResponse(ErrorInvalidTarget(request.GetNodeId()));
+        return TErrorResponse(ErrorStaleNode(request.GetNodeId()));
     }
 
     auto handle = node->OpenHandle(O_RDONLY|O_DIRECTORY);

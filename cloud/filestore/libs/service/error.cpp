@@ -71,6 +71,14 @@ NProto::TError ErrorInvalidNodeType(ui64 nodeId)
 
 ////////////////////////////////////////////////////////////////////////////////
 
+NProto::TError ErrorStaleNode(ui64 nodeId)
+{
+    return MakeError(
+        MAKE_FILESTORE_ERROR(NProto::E_FS_STALE),
+        TStringBuilder()
+            << "stale node #" << nodeId);
+}
+
 NProto::TError ErrorInvalidParent(ui64 nodeId)
 {
     return MakeError(

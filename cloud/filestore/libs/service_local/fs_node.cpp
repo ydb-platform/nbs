@@ -45,7 +45,7 @@ NProto::TCreateNodeResponse TLocalFileSystem::CreateNode(
     auto session = GetSession(request);
     auto parent = session->LookupNode(request.GetNodeId());
     if (!parent) {
-        return TErrorResponse(ErrorInvalidParent(request.GetNodeId()));
+        return TErrorResponse(ErrorStaleNode(request.GetNodeId()));
     }
 
     NLowLevel::UnixCredentialsGuard credGuard(
@@ -71,7 +71,7 @@ NProto::TCreateNodeResponse TLocalFileSystem::CreateNode(
     } else if (request.HasLink()) {
         auto node = session->LookupNode(request.GetLink().GetTargetNode());
         if (!node) {
-            return TErrorResponse(ErrorInvalidTarget(request.GetNodeId()));
+            return TErrorResponse(ErrorStaleNode(request.GetNodeId()));
         }
 
         target = node->CreateLink(*parent, request.GetName());
@@ -110,7 +110,7 @@ NProto::TUnlinkNodeResponse TLocalFileSystem::UnlinkNode(
     auto session = GetSession(request);
     auto parent = session->LookupNode(request.GetNodeId());
     if (!parent) {
-        return TErrorResponse(ErrorInvalidParent(request.GetNodeId()));
+        return TErrorResponse(ErrorStaleNode(request.GetNodeId()));
     }
 
     auto stat = parent->Stat(request.GetName());
@@ -132,12 +132,12 @@ NProto::TRenameNodeResponse TLocalFileSystem::RenameNode(
     auto session = GetSession(request);
     auto parent = session->LookupNode(request.GetNodeId());
     if (!parent) {
-        return TErrorResponse(ErrorInvalidParent(request.GetNodeId()));
+        return TErrorResponse(ErrorStaleNode(request.GetNodeId()));
     }
 
     auto newparent = session->LookupNode(request.GetNewParentId());
     if (!newparent) {
-        return TErrorResponse(ErrorInvalidParent(request.GetNodeId()));
+        return TErrorResponse(ErrorStaleNode(request.GetNodeId()));
     }
 
     std::optional<TFileStat> stat = std::nullopt;
@@ -176,7 +176,7 @@ NProto::TAccessNodeResponse TLocalFileSystem::AccessNode(
     auto session = GetSession(request);
     auto node = session->LookupNode(request.GetNodeId());
     if (!node) {
-        return TErrorResponse(ErrorInvalidTarget(request.GetNodeId()));
+        return TErrorResponse(ErrorStaleNode(request.GetNodeId()));
     }
 
     node->Access(request.GetMask());
@@ -192,7 +192,7 @@ NProto::TListNodesResponse TLocalFileSystem::ListNodes(
     auto session = GetSession(request);
     auto parent = session->LookupNode(request.GetNodeId());
     if (!parent) {
-        return TErrorResponse(ErrorInvalidParent(request.GetNodeId()));
+        return TErrorResponse(ErrorStaleNode(request.GetNodeId()));
     }
 
     auto entries = parent->List();
@@ -231,7 +231,7 @@ NProto::TReadLinkResponse TLocalFileSystem::ReadLink(
     auto session = GetSession(request);
     auto node = session->LookupNode(request.GetNodeId());
     if (!node) {
-        return TErrorResponse(ErrorInvalidTarget(request.GetNodeId()));
+        return TErrorResponse(ErrorStaleNode(request.GetNodeId()));
     }
 
     auto link = node->ReadLink();
