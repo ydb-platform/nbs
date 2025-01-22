@@ -18,14 +18,15 @@ struct TLaggingDeviceIndexCmp
 [[nodiscard]] const NProto::TDeviceConfig* FindDeviceConfig(
     const NProto::TVolumeMeta& meta, const TStringBuf& deviceUUID);
 
-[[nodiscard]] std::optional<ui32> GetAgentDevicesIndexes(
+[[nodiscard]] std::optional<ui32> GetDevicesIndexesByNodeId(
     const NProto::TVolumeMeta& meta,
     ui32 agentNodeId,
     TVector<NProto::TLaggingDevice>* laggingDevices);
 
-[[nodiscard]] TSet<ui32> ReplicaIndexesWithFreshDevices(
+[[nodiscard]] bool RowHasFreshDevices(
     const NProto::TVolumeMeta& meta,
-    ui32 rowIndex);
+    ui32 rowIndex,
+    ui32 timeoutedDeviceReplicaIndex);
 
 void RemoveLaggingDevicesFromMeta(
     NProto::TVolumeMeta& meta,

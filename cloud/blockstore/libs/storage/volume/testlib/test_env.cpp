@@ -535,12 +535,10 @@ std::unique_ptr<TEvVolume::TEvGetStorageConfigRequest> TVolumeClient::CreateGetS
 
 std::unique_ptr<TEvVolumePrivate::TEvDeviceTimeoutedRequest>
 TVolumeClient::CreateDeviceTimeoutedRequest(
-    ui32 deviceIndex,
     TString deviceUUID)
 {
     auto request =
         std::make_unique<TEvVolumePrivate::TEvDeviceTimeoutedRequest>(
-            deviceIndex,
             std::move(deviceUUID));
     return request;
 }

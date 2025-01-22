@@ -30,7 +30,7 @@ const RepeatedPtrField<NProto::TDeviceConfig>& GetReplicaDevices(
         return meta.GetDevices();
     }
     index--;
-    Y_DEBUG_ABORT_UNLESS(meta.GetReplicas().size() > static_cast<i32>(index));
+    Y_DEBUG_ABORT_UNLESS(meta.ReplicasSize() > index);
     return meta.GetReplicas(index).GetDevices();
 }
 
@@ -57,26 +57,17 @@ std::optional<TDeviceLocation> FindDeviceLocation(
         return device.GetDeviceUUID() == deviceUUID;
     };
 
-    auto it = FindIf(meta.GetDevices(), deviceMatcher);
-    if (it != meta.GetDevices().end()) {
-        return TDeviceLocation{
-            .RowIndex =
-                static_cast<ui32>(std::distance(meta.GetDevices().begin(), it)),
-            .ReplicaIndex = 0};
-    }
-
-    for (int i = 0; i < meta.GetReplicas().size(); i++) {
-        const auto& replica = meta.GetReplicas(i);
-        auto it = FindIf(replica.GetDevices(), deviceMatcher);
-        if (it != replica.GetDevices().end()) {
+    for (size_t i = 0; i <= meta.ReplicasSize(); i++) {
+        const auto& devices = GetReplicaDevices(meta, i);
+        const auto index = FindIndexIf(devices, deviceMatcher);
+        if (index != NPOS) {
             return TDeviceLocation{
-                .RowIndex = static_cast<ui32>(
-                    std::distance(replica.GetDevices().begin(), it)),
-                .ReplicaIndex = static_cast<ui32>(i + 1)};
+                .RowIndex = static_cast<ui32>(index),
+                .ReplicaIndex = static_cast<ui32>(i)};
         }
     }
 
-    for (int i = 0; i < meta.GetMigrations().size(); i++) {
+    for (size_t i = 0; i < meta.MigrationsSize(); i++) {
         const auto& migration = meta.GetMigrations(i);
         if (deviceMatcher(migration.GetTargetDevice())) {
             auto sourceLocation =
@@ -121,7 +112,7 @@ const NProto::TDeviceConfig* FindDeviceConfig(
     return &GetDeviceConfig(meta, *deviceLocation);
 }
 
-std::optional<ui32> GetAgentDevicesIndexes(
+std::optional<ui32> GetDevicesIndexesByNodeId(
     const NProto::TVolumeMeta& meta,
     ui32 agentNodeId,
     TVector<NProto::TLaggingDevice>* laggingDevices)
@@ -134,15 +125,12 @@ std::optional<ui32> GetAgentDevicesIndexes(
     {
         return device.GetNodeId() == agentNodeId;
     };
-    if (AnyOf(meta.GetDevices(), deviceMatcher)) {
-        replicaIndex = 0;
-        replicaDevices = &meta.GetDevices();
-    }
 
-    for (int i = 0; !replicaIndex && i < meta.GetReplicas().size(); i++) {
-        if (AnyOf(meta.GetReplicas()[i].GetDevices(), deviceMatcher)) {
-            replicaIndex = i + 1;
-            replicaDevices = &meta.GetReplicas()[i].GetDevices();
+    for (size_t i = 0; i <= meta.ReplicasSize(); i++) {
+        const auto& devices = GetReplicaDevices(meta, i);
+        if (AnyOf(devices, deviceMatcher)) {
+            replicaIndex = i;
+            replicaDevices = &devices;
             break;
         }
     }
@@ -169,17 +157,16 @@ std::optional<ui32> GetAgentDevicesIndexes(
     for (int i = 0; i < replicaDevices->size(); i++) {
         const auto& device = (*replicaDevices)[i];
         if (deviceMatcher(device)) {
-            NProto::TLaggingDevice laggingDevice;
+            NProto::TLaggingDevice& laggingDevice =
+                laggingDevices->emplace_back();
             laggingDevice.SetRowIndex(i);
             laggingDevice.SetDeviceUUID(device.GetDeviceUUID());
-            laggingDevices->push_back(std::move(laggingDevice));
         }
     }
 
     for (const auto& migration: meta.GetMigrations()) {
         const auto& targetDevice = migration.GetTargetDevice();
         if (deviceMatcher(targetDevice)) {
-            NProto::TLaggingDevice laggingDevice;
             auto deviceLocation =
                 FindDeviceLocation(meta, migration.GetSourceDeviceId());
             if (!deviceLocation) {
@@ -192,9 +179,10 @@ std::optional<ui32> GetAgentDevicesIndexes(
                     << ". Target device: " << targetDevice.GetDeviceUUID());
                 continue;
             }
+            NProto::TLaggingDevice& laggingDevice =
+                laggingDevices->emplace_back();
             laggingDevice.SetRowIndex(deviceLocation->RowIndex);
             laggingDevice.SetDeviceUUID(targetDevice.GetDeviceUUID());
-            laggingDevices->push_back(std::move(laggingDevice));
         }
     }
 
@@ -202,34 +190,32 @@ std::optional<ui32> GetAgentDevicesIndexes(
     return replicaIndex;
 }
 
-TSet<ui32> ReplicaIndexesWithFreshDevices(
+bool RowHasFreshDevices(
     const NProto::TVolumeMeta& meta,
-    ui32 rowIndex)
+    ui32 rowIndex,
+    ui32 timeoutedDeviceReplicaIndex)
 {
-    TSet<ui32> result;
-    auto it = Find(
-        meta.GetFreshDeviceIds(),
-        meta.GetDevices()[rowIndex].GetDeviceUUID());
-    if (it != meta.GetFreshDeviceIds().end()) {
-        result.insert(0);
-    }
-
-    for (int i = 1; i <= meta.GetReplicas().size(); i++) {
+    for (size_t i = 0; i <= meta.ReplicasSize(); i++) {
+        if (i == timeoutedDeviceReplicaIndex) {
+            continue;
+        }
+        const auto& devices = GetReplicaDevices(meta, i);
         if (FindPtr(
                 meta.GetFreshDeviceIds(),
-                GetReplicaDevices(meta, i)[rowIndex].GetDeviceUUID()))
+                devices[rowIndex].GetDeviceUUID()))
         {
-            result.insert(i);
+            return true;
         }
     }
-    return result;
+    return false;
 }
 
 void RemoveLaggingDevicesFromMeta(
     NProto::TVolumeMeta& meta,
     const TVector<TString>& laggingDeviceIds)
 {
-    for (auto& agent: *meta.MutableLaggingAgentsInfo()->MutableAgents()) {
+    auto& agents = *meta.MutableLaggingAgentsInfo()->MutableAgents();
+    for (auto& agent: agents) {
         EraseIf(
             *agent.MutableDevices(),
             [&laggingDeviceIds](const NProto::TLaggingDevice& laggingDevice)
@@ -240,10 +226,10 @@ void RemoveLaggingDevicesFromMeta(
             });
     }
     EraseIf(
-        *meta.MutableLaggingAgentsInfo()->MutableAgents(),
+        agents,
         [](const NProto::TLaggingAgent& laggingAgent)
         { return laggingAgent.GetDevices().empty(); });
-    if (meta.GetLaggingAgentsInfo().GetAgents().empty()) {
+    if (agents.empty()) {
         meta.MutableLaggingAgentsInfo()->Clear();
     }
 }
@@ -254,7 +240,7 @@ void UpdateLaggingDevicesAfterMetaUpdate(NProto::TVolumeMeta& meta)
         agent.ClearDevices();
 
         TVector<NProto::TLaggingDevice> updatedLaggingDevices;
-        auto replicaIndex = GetAgentDevicesIndexes(
+        auto replicaIndex = GetDevicesIndexesByNodeId(
             meta,
             agent.GetNodeId(),
             &updatedLaggingDevices);

@@ -82,10 +82,9 @@ void TVolumeActor::HandleDeviceTimeouted(
     LOG_INFO(
         ctx,
         TBlockStoreComponents::VOLUME,
-        "[%lu] Device \"%s\" timeouted. RowIndex: %u",
+        "[%lu] Device \"%s\" timeouted",
         TabletID(),
-        msg->DeviceUUID.c_str(),
-        msg->RowIndex);
+        msg->DeviceUUID.c_str());
 
     const auto& meta = State->GetMeta();
     if (!IsReliableDiskRegistryMediaKind(
@@ -96,7 +95,7 @@ void TVolumeActor::HandleDeviceTimeouted(
             *ev,
             std::make_unique<TEvVolumePrivate::TEvDeviceTimeoutedResponse>(
                 MakeError(
-                    E_NOT_IMPLEMENTED,
+                    E_PRECONDITION_FAILED,
                     "Only DR mirror disks can have lagging devices")));
         return;
     }
@@ -123,7 +122,7 @@ void TVolumeActor::HandleDeviceTimeouted(
         auto response =
             std::make_unique<TEvVolumePrivate::TEvDeviceTimeoutedResponse>(
                 MakeError(
-                    E_ARGUMENT,
+                    E_NOT_FOUND,
                     TStringBuilder() << "Could not find config with device "
                                      << msg->DeviceUUID));
         NCloud::Reply(ctx, *ev, std::move(response));
@@ -131,7 +130,7 @@ void TVolumeActor::HandleDeviceTimeouted(
     }
 
     TVector<NProto::TLaggingDevice> timeoutedAgentDevices;
-    const auto timeoutedDeviceReplicaIndex = GetAgentDevicesIndexes(
+    const auto timeoutedDeviceReplicaIndex = GetDevicesIndexesByNodeId(
         meta,
         timeoutedDeviceConfig->GetNodeId(),
         &timeoutedAgentDevices);
@@ -165,11 +164,11 @@ void TVolumeActor::HandleDeviceTimeouted(
             return;
         }
 
-        STORAGE_CHECK_PRECONDITION(IsSorted(
+        Y_ABORT_UNLESS(IsSorted(
             timeoutedAgentDevices.begin(),
             timeoutedAgentDevices.end(),
             TLaggingDeviceIndexCmp()));
-        STORAGE_CHECK_PRECONDITION(IsSorted(
+        Y_ABORT_UNLESS(IsSorted(
             laggingAgent.GetDevices().begin(),
             laggingAgent.GetDevices().end(),
             TLaggingDeviceIndexCmp()));
@@ -211,11 +210,11 @@ void TVolumeActor::HandleDeviceTimeouted(
 
     // Check for fresh devices in the same row.
     for (const auto& laggingDevice: timeoutedAgentDevices) {
-        TSet<ui32> replicaIndexesWithFreshDevice =
-            ReplicaIndexesWithFreshDevices(meta, laggingDevice.GetRowIndex());
-        const bool laggingDeviceIsFresh =
-            replicaIndexesWithFreshDevice.contains(*timeoutedDeviceReplicaIndex);
-        if (replicaIndexesWithFreshDevice.size() - laggingDeviceIsFresh > 0) {
+        const bool rowHasFreshDevice = RowHasFreshDevices(
+            meta,
+            laggingDevice.GetRowIndex(),
+            *timeoutedDeviceReplicaIndex);
+        if (rowHasFreshDevice) {
             LOG_WARN(
                 ctx,
                 TBlockStoreComponents::VOLUME,

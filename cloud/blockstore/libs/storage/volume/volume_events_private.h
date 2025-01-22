@@ -139,12 +139,10 @@ struct TEvVolumePrivate
 
     struct TDeviceTimeoutedRequest
     {
-        const ui32 RowIndex;
         const TString DeviceUUID;
 
-        TDeviceTimeoutedRequest(ui32 rowIndex, TString deviceUUID)
-            : RowIndex(rowIndex)
-            , DeviceUUID(std::move(deviceUUID))
+        explicit TDeviceTimeoutedRequest(TString deviceUUID)
+            : DeviceUUID(std::move(deviceUUID))
         {}
     };
 

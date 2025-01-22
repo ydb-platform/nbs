@@ -124,7 +124,7 @@ Y_UNIT_TEST_SUITE(TLaggingAgentVolumeTest)
             });
 
         // Device in the first replica is timeouted.
-        volume.DeviceTimeouted(0, "uuid-2.0");
+        volume.DeviceTimeouted("uuid-2.0");
 
         UNIT_ASSERT(addLaggingAgentRequest.has_value());
         UNIT_ASSERT_VALUES_EQUAL(
@@ -133,7 +133,7 @@ Y_UNIT_TEST_SUITE(TLaggingAgentVolumeTest)
         UNIT_ASSERT_VALUES_EQUAL(1, addLaggingAgentRequest->ReplicaIndex);
 
         // Can't add more lagging devices in the same row.
-        volume.SendDeviceTimeoutedRequest(0, "uuid-3.0");
+        volume.SendDeviceTimeoutedRequest("uuid-3.0");
         auto response = volume.RecvDeviceTimeoutedResponse();
         UNIT_ASSERT_VALUES_EQUAL(
             E_INVALID_STATE,
@@ -147,7 +147,7 @@ Y_UNIT_TEST_SUITE(TLaggingAgentVolumeTest)
         UNIT_ASSERT(!addLaggingAgentRequest.has_value());
 
         // Now the zeroth replica can lag.
-        volume.DeviceTimeouted(0, "uuid-1.0");
+        volume.DeviceTimeouted("uuid-1.0");
         UNIT_ASSERT(addLaggingAgentRequest.has_value());
         UNIT_ASSERT_VALUES_EQUAL(
             devices[0].GetAgentId(),
@@ -245,7 +245,7 @@ Y_UNIT_TEST_SUITE(TLaggingAgentVolumeTest)
             });
 
         // Device in the zeroth replica is timeouted.
-        volume.DeviceTimeouted(1, "uuid-1.1");
+        volume.DeviceTimeouted("uuid-1.1");
 
         UNIT_ASSERT(addLaggingAgentRequest.has_value());
         UNIT_ASSERT_VALUES_EQUAL(
@@ -256,7 +256,7 @@ Y_UNIT_TEST_SUITE(TLaggingAgentVolumeTest)
         {
             addLaggingAgentRequest.reset();
             // The first agent is already lagging.
-            volume.SendDeviceTimeoutedRequest(0, "uuid-1.0");
+            volume.SendDeviceTimeoutedRequest("uuid-1.0");
             auto response = volume.RecvDeviceTimeoutedResponse();
             UNIT_ASSERT_VALUES_EQUAL(S_ALREADY, response->GetError().GetCode());
             UNIT_ASSERT(addLaggingAgentRequest.has_value());
@@ -268,7 +268,7 @@ Y_UNIT_TEST_SUITE(TLaggingAgentVolumeTest)
         {
             // 0 and 1st rows already lagging. Can't add more lagging devices on
             // these rows.
-            volume.SendDeviceTimeoutedRequest(0, "uuid-2.1");
+            volume.SendDeviceTimeoutedRequest("uuid-2.1");
             auto response = volume.RecvDeviceTimeoutedResponse();
             UNIT_ASSERT_VALUES_EQUAL(
                 E_INVALID_STATE,
@@ -277,7 +277,7 @@ Y_UNIT_TEST_SUITE(TLaggingAgentVolumeTest)
 
         // Adding the second row to lagging.
         addLaggingAgentRequest.reset();
-        volume.DeviceTimeouted(2, "uuid-6.0");
+        volume.DeviceTimeouted("uuid-6.0");
         UNIT_ASSERT(addLaggingAgentRequest.has_value());
         UNIT_ASSERT_VALUES_EQUAL(
             replica2Devices[2].GetAgentId(),
@@ -372,7 +372,7 @@ Y_UNIT_TEST_SUITE(TLaggingAgentVolumeTest)
             });
 
         // Device in the zeroth replica is timeouted.
-        volume.DeviceTimeouted(1, "uuid-1.1");
+        volume.DeviceTimeouted("uuid-1.1");
 
         UNIT_ASSERT(!addLaggingDevicesRequest.has_value());
         // Update volume config.
@@ -546,7 +546,7 @@ Y_UNIT_TEST_SUITE(TLaggingAgentVolumeTest)
             });
 
         // Device in the zeroth replica is timeouted.
-        volume.DeviceTimeouted(0, "uuid-migration-1");
+        volume.DeviceTimeouted("uuid-migration-1");
 
         UNIT_ASSERT(addLaggingAgentRequest.has_value());
         UNIT_ASSERT_VALUES_EQUAL("agent-7", addLaggingAgentRequest->AgentId);
@@ -554,7 +554,7 @@ Y_UNIT_TEST_SUITE(TLaggingAgentVolumeTest)
         addLaggingAgentRequest.reset();
 
         // Device in the second replica is timeouted.
-        volume.DeviceTimeouted(0, "uuid-migration-2");
+        volume.DeviceTimeouted("uuid-migration-2");
 
         UNIT_ASSERT(addLaggingAgentRequest.has_value());
         UNIT_ASSERT_VALUES_EQUAL("agent-8", addLaggingAgentRequest->AgentId);
@@ -563,7 +563,7 @@ Y_UNIT_TEST_SUITE(TLaggingAgentVolumeTest)
         {
             addLaggingAgentRequest.reset();
             // The zeroth row is already lagging.
-            volume.SendDeviceTimeoutedRequest(0, "uuid-1.0");
+            volume.SendDeviceTimeoutedRequest("uuid-1.0");
             auto response = volume.RecvDeviceTimeoutedResponse();
             UNIT_ASSERT_VALUES_EQUAL(
                 E_INVALID_STATE,
