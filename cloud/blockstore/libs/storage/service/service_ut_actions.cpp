@@ -1733,21 +1733,6 @@ Y_UNIT_TEST_SUITE(TServiceActionsTest)
             NPrivateProto::TCheckRangeResponse checkRangeResponse;
 
 
-        env.GetRuntime().SetEventFilter(
-            [&](auto& runtime, auto& event)
-            {
-                Y_UNUSED(runtime);
-                switch (event->GetTypeRewrite()) {
-                    case TEvService::EvReadBlocksResponse: {
-                        const auto* msg = event->template Get<
-                            TEvService::EvReadBlocksResponse>();
-
-                        Cout<<"!!!!!!!!!!!!!!!!!!!!!!!!!!"<< " response tablet " << msg->TabletId <<Endl;
-                    }
-                }
-                return false;
-            });
-
             env.GetRuntime().DispatchEvents({}, TDuration::Seconds(5));
             env.GetRuntime().AdvanceCurrentTime(TDuration::Seconds(30));
 
