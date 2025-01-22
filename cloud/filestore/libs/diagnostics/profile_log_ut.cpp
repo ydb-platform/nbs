@@ -128,22 +128,18 @@ struct TEnv
 
     void SetUp(NUnitTest::TTestContext& /*context*/) override
     {
-        if (ProfileLog) {
-            ProfileLog->Start();
-        }
+        ProfileLog->Start();
     }
 
     void TearDown(NUnitTest::TTestContext& /*context*/) override
     {
-        if (ProfileLog) {
-            ProfileLog->Stop();
-        }
+        ProfileLog->Stop();
         ProfilePath.DeleteIfExists();
     }
 
-    void ProcessLog()
+    void ProcessLog(bool runScheduler = true)
     {
-        if (Scheduler) {
+        if (runScheduler) {
             Scheduler->RunAllScheduledTasks();
         }
 
@@ -385,9 +381,8 @@ Y_UNIT_TEST_SUITE(TProfileLogTest)
                  .SetError(0)
                  .Build()});
 
-        ProfileLog = nullptr;
-        Scheduler = nullptr;
-        ProcessLog();
+        ProfileLog = CreateProfileLogStub();
+        ProcessLog(false);
 
         UNIT_ASSERT_VALUES_EQUAL(7, EventProcessor.FlatMessages.size());
         UNIT_ASSERT_VALUES_EQUAL(

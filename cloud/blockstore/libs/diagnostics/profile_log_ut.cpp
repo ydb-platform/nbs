@@ -110,14 +110,12 @@ struct TEnv
 
     ~TEnv()
     {
-        if (ProfileLog) {
-            ProfileLog->Stop();
-        }
+        ProfileLog->Stop();
     }
 
-    void ProcessLog()
+    void ProcessLog(bool runScheduler = true)
     {
-        if (Scheduler) {
+        if (runScheduler) {
             Scheduler->RunAllScheduledTasks();
         }
 
@@ -405,9 +403,8 @@ Y_UNIT_TEST_SUITE(TProfileLogTest)
                  TDuration::MilliSeconds(42),
                  TBlockRange64::WithLength(10, 20),
              }});
-        env.Scheduler = nullptr;
-        env.ProfileLog = nullptr;
-        env.ProcessLog();
+        env.ProfileLog = CreateProfileLogStub();
+        env.ProcessLog(false);
         UNIT_ASSERT_VALUES_EQUAL(1, env.EventProcessor.FlatMessages.size());
         UNIT_ASSERT_VALUES_EQUAL(
             "disk2\t3000000\tR\t9\t300000\t42000\t10,20",

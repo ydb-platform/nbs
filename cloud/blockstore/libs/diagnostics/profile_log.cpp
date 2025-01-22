@@ -130,7 +130,7 @@ private:
 
 TProfileLog::~TProfileLog()
 {
-    Flush();
+    DoFlush();
 }
 
 void TProfileLog::Start()
