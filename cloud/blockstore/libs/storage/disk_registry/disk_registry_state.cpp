@@ -7579,13 +7579,11 @@ bool TDiskRegistryState::NeedToStartMigration(
         return false;
     }
 
-    if (FindIfPtr(
-            disk.FinishedMigrations,
-            [&](const auto& m)
-            { return m.DeviceId == deviceUUID && !m.IsCanceled; }))
-    {
-        // there is a finished migration for the device
-        return false;
+    for (const auto& m: disk.FinishedMigrations) {
+        if (m.DeviceId == deviceUUID && !m.IsCanceled) {
+            // there is a finished migration for the device
+            return false;
+        }
     }
 
     return true;
