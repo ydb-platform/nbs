@@ -261,12 +261,7 @@ struct TTestEnv
 
         Runtime.AddLocalService(
             MakeStorageServiceId(),
-            TActorSetupCmd(
-                new TStorageServiceMock(),
-                TMailboxType::Simple,
-                0
-            )
-        );
+            TActorSetupCmd(new TStorageServiceMock(), TMailboxType::Simple, 0));
 
         NKikimr::SetupTabletServices(Runtime);
     }

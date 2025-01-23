@@ -236,8 +236,7 @@ private:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TStorageServiceMock final
-    : public NActors::TActor<TStorageServiceMock>
+class TStorageServiceMock final: public NActors::TActor<TStorageServiceMock>
 {
 public:
     TStorageServiceMock()

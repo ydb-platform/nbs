@@ -512,6 +512,7 @@ TDuration MSeconds(ui32 value)
     xxx(ScrubbingBandwidth,                             ui64,      20            )\
     xxx(MaxScrubbingBandwidth,                          ui64,      50            )\
     xxx(MinScrubbingBandwidth,                          ui64,      5             )\
+    xxx(AutomaticallyEnableBufferCopyingAfterChecksumMismatch, bool, false       )\
                                                                                   \
     xxx(OptimizeVoidBuffersTransferForReadsEnabled,     bool,      false         )\
     xxx(VolumeHistoryCleanupItemCount,                  ui32,      100'000       )\
@@ -527,8 +528,6 @@ TDuration MSeconds(ui32 value)
     xxx(EnableToChangeStatesFromDiskRegistryMonpage,      bool,    false      )\
     xxx(EnableToChangeErrorStatesFromDiskRegistryMonpage, bool,    false      )\
     xxx(CalculateSplittedUsedQuotaMetric,                 bool,    false      )\
-                                                                               \
-    xxx(AutomaticallyEnableBufferCopyingAfterChecksumMismatch, bool, false    )\
 // BLOCKSTORE_STORAGE_CONFIG_RW
 
 #define BLOCKSTORE_STORAGE_CONFIG(xxx)                                         \
