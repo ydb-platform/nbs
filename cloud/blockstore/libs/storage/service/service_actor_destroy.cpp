@@ -292,9 +292,16 @@ void TDestroyVolumeActor::HandleMarkDiskForCleanupResponse(
 
     // disk is broken and will be removed by DR at some point
     if (error.GetCode() == E_NOT_FOUND) {
-        LOG_INFO(ctx, TBlockStoreComponents::SERVICE,
-            "volume %s not found in registry", DiskId.Quote().data());
-    } else if (HasError(error)) {
+        LOG_INFO(
+            ctx,
+            TBlockStoreComponents::SERVICE,
+            "volume %s not found in registry",
+            DiskId.Quote().data());
+        DestroyVolume(ctx);
+        return;
+    }
+
+    if (HasError(error)) {
         LOG_ERROR(ctx, TBlockStoreComponents::SERVICE,
             "Volume %s: unable to notify DR about disk destruction: %s",
             DiskId.Quote().data(),
