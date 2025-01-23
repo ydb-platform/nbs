@@ -788,6 +788,42 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
 #undef TEST_READ
     }
 
+    Y_UNIT_TEST(ShouldReadFromSpecifiedReplica)
+    {
+        TTestRuntime runtime;
+        TTestEnv env(runtime);
+
+        TPartitionClient client(runtime, env.ActorId);
+
+        const auto range1 = TBlockRange64::WithLength(0, 100);
+        env.WriteMirror(range1, 'X');
+        env.WriteReplica(0, range1, 'A');
+        env.WriteReplica(1, range1, 'B');
+        env.WriteReplica(2, range1, 'C');
+
+        {
+            auto response = client.ReadBlocks(range1, 0);
+            const auto& blocks = response->Record.GetBlocks();
+            UNIT_ASSERT_VALUES_EQUAL(100, blocks.BuffersSize());
+            for (ui32 i = 0; i < 100; ++i) {
+                UNIT_ASSERT_VALUES_EQUAL(
+                    TString(DefaultBlockSize, 'A'),
+                    blocks.GetBuffers(i));
+            }
+        }
+
+        {
+            auto response = client.ReadBlocks(range1, 2);
+            const auto& blocks = response->Record.GetBlocks();
+            UNIT_ASSERT_VALUES_EQUAL(100, blocks.BuffersSize());
+            for (ui32 i = 0; i < 100; ++i) {
+                UNIT_ASSERT_VALUES_EQUAL(
+                    TString(DefaultBlockSize, 'B'),
+                    blocks.GetBuffers(i));
+            }
+        }
+    }
+
     struct TMigrationTestRuntime
     {
         TTestRuntime Runtime;

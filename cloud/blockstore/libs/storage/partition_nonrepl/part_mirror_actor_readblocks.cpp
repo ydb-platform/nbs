@@ -427,24 +427,52 @@ void TMirrorPartitionActor::ReadBlocks(
         return;
     }
 
+    const auto replicaIndex = record.GetHeaders().GetReplicaIndex();
     TSet<TActorId> replicaActorIds;
-    const ui32 readReplicaCount = Min<ui32>(
-        Max<ui32>(1, Config->GetMirrorReadReplicaCount()),
-        State.GetReplicaInfos().size());
-    for (ui32 i = 0; i < readReplicaCount; ++i) {
-        TActorId replicaActorId;
-        const auto error = State.NextReadReplica(blockRange, &replicaActorId);
-        if (HasError(error)) {
-            Reply(
-                ctx,
-                *requestInfo,
-                std::make_unique<typename TMethod::TResponse>(error));
-
-            return;
+    if (replicaIndex) {
+        if (replicaIndex > State.GetReplicaInfos().size()) {
+            auto response =
+                std::make_unique<typename TMethod::TResponse>(MakeError(
+                    E_ARGUMENT,
+                    TStringBuilder()
+                        << "Request " << TMethod::Name
+                        << " has incorrect ReplicaIndex " << replicaIndex
+                        << " disk has " << State.GetReplicaInfos().size()
+                        << "replicas"));
+            NCloud::Reply(ctx, *ev, std::move(response));
         }
 
-        if (!replicaActorIds.insert(replicaActorId).second) {
-            break;
+        const auto& replicaInfo = State.GetReplicaInfos()[replicaIndex - 1];
+        if (!replicaInfo.Config->DevicesReadyForReading(blockRange)) {
+            auto response =
+                std::make_unique<typename TMethod::TResponse>(MakeError(
+                    E_REJECTED,
+                    TStringBuilder() << "Cannot process " << TMethod::Name
+                                     << " cause replica " << replicaIndex
+                                     << " has not ready devices"));
+            NCloud::Reply(ctx, *ev, std::move(response));
+        }
+        replicaActorIds.insert(State.GetReplicaActors()[replicaIndex - 1]);
+    } else {
+        const ui32 readReplicaCount = Min<ui32>(
+            Max<ui32>(1, Config->GetMirrorReadReplicaCount()),
+            State.GetReplicaInfos().size());
+        for (ui32 i = 0; i < readReplicaCount; ++i) {
+            TActorId replicaActorId;
+            const auto error =
+                State.NextReadReplica(blockRange, &replicaActorId);
+            if (HasError(error)) {
+                Reply(
+                    ctx,
+                    *requestInfo,
+                    std::make_unique<typename TMethod::TResponse>(error));
+
+                return;
+            }
+
+            if (!replicaActorIds.insert(replicaActorId).second) {
+                break;
+            }
         }
     }
 
