@@ -12,12 +12,14 @@
 #include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/disk_agent/model/config.h>
 #include <cloud/blockstore/libs/storage/disk_registry_proxy/model/public.h>
-#include <cloud/storage/core/libs/features/features_config.h>
 #include <cloud/storage/core/libs/coroutine/public.h>
+#include <cloud/storage/core/libs/features/features_config.h>
 
 #include <contrib/ydb/core/protos/auth.pb.h>
 #include <contrib/ydb/core/protos/blobstorage.pb.h>
 #include <contrib/ydb/core/protos/config.pb.h>
+
+#include <library/cpp/logger/log.h>
 
 namespace NCloud::NBlockStore::NServer {
 
@@ -38,6 +40,7 @@ struct TConfigInitializer
     NRdma::TRdmaConfigPtr RdmaConfig;
 
     TString Rack;
+    TLog Log;
 
     TConfigInitializer(TOptionsPtr options)
         : Options(std::move(options))

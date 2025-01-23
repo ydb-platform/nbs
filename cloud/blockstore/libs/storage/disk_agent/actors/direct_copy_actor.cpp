@@ -31,10 +31,12 @@ auto PrepareRequest(
 TDirectCopyActor::TDirectCopyActor(
         const TActorId& source,
         TRequestInfoPtr requestInfo,
-        NProto::TDirectCopyBlocksRequest request)
+        NProto::TDirectCopyBlocksRequest request,
+        ui64 recommendedBandwidth)
     : Source(source)
     , RequestInfo(std::move(requestInfo))
     , Request(std::move(request))
+    , RecommendedBandwidth(recommendedBandwidth)
 {}
 
 void TDirectCopyActor::Bootstrap(const TActorContext& ctx)
@@ -88,6 +90,7 @@ void TDirectCopyActor::Done(const NActors::TActorContext& ctx)
     response->Record.SetAllZeroes(AllZeroes);
     response->Record.SetReadDuration(readDuration.MicroSeconds());
     response->Record.SetWriteDuration(writeDuration.MicroSeconds());
+    response->Record.SetRecommendedBandwidth(RecommendedBandwidth);
 
     NCloud::Reply(ctx, *RequestInfo, std::move(response));
 

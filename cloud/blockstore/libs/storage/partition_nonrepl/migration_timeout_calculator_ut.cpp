@@ -255,6 +255,34 @@ Y_UNIT_TEST_SUITE(TMigrationCalculatorTest)
                 TBlockRange64::WithLength(1024 * 3, 1024)));
     }
 
+    Y_UNIT_TEST(ShouldCalculateMigrationTimeoutWithRecommendedBandwidth)
+    {
+        TMigrationTimeoutCalculator timeoutCalculator(
+            16,
+            100500,
+            MakePartitionConfig(MakeDevices(), true));
+
+        // Old-fashion timeout calculation
+        UNIT_ASSERT_VALUES_EQUAL(
+            TDuration::Seconds(1) / 4,
+            timeoutCalculator.CalculateTimeout(
+                TBlockRange64::WithLength(1024 * 0, 1024)));
+
+        // Calculate timeout with recommended bandwidth
+        timeoutCalculator.SetRecommendedBandwidth(40_MB);
+        UNIT_ASSERT_VALUES_EQUAL(
+            TDuration::Seconds(1) / 10,
+            timeoutCalculator.CalculateTimeout(
+                TBlockRange64::WithLength(1024 * 0, 1024)));
+
+        // Reset recommendation and do old-fashion timeout calculation
+        timeoutCalculator.SetRecommendedBandwidth(0);
+        UNIT_ASSERT_VALUES_EQUAL(
+            TDuration::Seconds(1) / 4,
+            timeoutCalculator.CalculateTimeout(
+                TBlockRange64::WithLength(1024 * 0, 1024)));
+    }
+
     Y_UNIT_TEST(ShouldRegisterTrafficSourceWithSimpleLimiter)
     {
         TMyTestEnv testEnv;

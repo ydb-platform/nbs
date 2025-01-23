@@ -346,6 +346,7 @@ void TBootstrap::InitRdmaServer(NRdma::TRdmaConfig& config)
 
 bool TBootstrap::InitKikimrService()
 {
+    Configs->Log = Log;
     Configs->InitKikimrConfig();
     Configs->InitServerConfig();
     Configs->InitFeaturesConfig();

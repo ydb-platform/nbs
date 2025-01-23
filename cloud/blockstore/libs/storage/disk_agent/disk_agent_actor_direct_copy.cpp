@@ -29,11 +29,16 @@ void TDiskAgentActor::HandleDirectCopyBlocks(
                           record.GetBlockCount()))
             .c_str());
 
+    ui64 recommendedBandwidth = BandwidthCalculator.RegisterRequest(
+        record.GetSourceDeviceUUID(),
+        ctx.Now());
+
     NCloud::Register<TDirectCopyActor>(
         ctx,
         SelfId(),
         CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext),
-        std::move(record));
+        std::move(record),
+        recommendedBandwidth);
 }
 
 }   // namespace NCloud::NBlockStore::NStorage
