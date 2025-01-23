@@ -132,6 +132,8 @@ TDuration MSeconds(ui32 value)
 #define BLOCKSTORE_STORAGE_CONFIG_RW(xxx)                                      \
     xxx(WriteBlobThreshold,            ui32,      1_MB                        )\
     xxx(WriteBlobThresholdSSD,         ui32,      128_KB                      )\
+    xxx(WriteMixedBlobThreshold,       ui32,      0                           )\
+    xxx(WriteMixedBlobThresholdSSD,    ui32,      0                           )\
     xxx(FlushThreshold,                ui32,      4_MB                        )\
     xxx(FreshBlobCountFlushThreshold,  ui32,      3200                        )\
     xxx(FreshBlobByteCountFlushThreshold,   ui32,      16_MB                  )\

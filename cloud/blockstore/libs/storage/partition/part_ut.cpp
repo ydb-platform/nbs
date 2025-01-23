@@ -11506,6 +11506,32 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
             UNIT_ASSERT_VALUES_EQUAL(3, stats.GetMergedBlobsCount());
         }
     }
+
+    Y_UNIT_TEST(ShouldWriteToDifferentChannels)
+    {
+        auto config = DefaultConfig();
+        config.SetWriteBlobThreshold(3_MB);
+        config.SetWriteMixedBlobThreshold(512_KB);
+
+        auto runtime = PrepareTestActorRuntime(config, 4096);
+
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+
+        partition.WriteBlocks(TBlockRange32::WithLength(0, 100));
+        partition.WriteBlocks(TBlockRange32::WithLength(512, 512));
+        partition.WriteBlocks(TBlockRange32::WithLength(2048, 1024));
+
+        {
+            auto response = partition.StatPartition();
+            const auto& stats = response->Record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(100, stats.GetFreshBlocksCount());
+            UNIT_ASSERT_VALUES_EQUAL(512, stats.GetMixedBlocksCount());
+            UNIT_ASSERT(stats.GetMixedBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(1024, stats.GetMergedBlocksCount());
+            UNIT_ASSERT(stats.GetMergedBlobsCount());
+        }
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage::NPartition

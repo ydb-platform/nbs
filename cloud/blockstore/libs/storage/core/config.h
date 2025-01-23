@@ -69,6 +69,8 @@ public:
     TString GetSchemeShardDir() const;
     ui32 GetWriteBlobThreshold() const;
     ui32 GetWriteBlobThresholdSSD() const;
+    ui32 GetWriteMixedBlobThreshold() const;
+    ui32 GetWriteMixedBlobThresholdSSD() const;
     ui32 GetFlushThreshold() const;
     ui32 GetFreshBlobCountFlushThreshold() const;
     ui32 GetFreshBlobByteCountFlushThreshold() const;

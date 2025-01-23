@@ -249,25 +249,40 @@ void TPartitionActor::WriteBlocks(
     const auto requestSize = writeRange.Size() * State->GetBlockSize();
     const auto writeBlobThreshold =
         GetWriteBlobThreshold(*Config, PartitionConfig.GetStorageMediaKind());
+    const auto writeMixedBlobThreshold = GetWriteMixedBlobThreshold(
+        *Config,
+        PartitionConfig.GetStorageMediaKind());
 
-    if (requestSize < writeBlobThreshold) {
+    if (requestSize >= writeBlobThreshold) {
+        WriteMergedBlocks(ctx, std::move(requestInBuffer));
+    } else if (
+        writeMixedBlobThreshold && requestSize >= writeMixedBlobThreshold)
+    {
+        TVector<TRequestGroup> groups;
+        groups.emplace_back();
+        groups.front().Weight = requestInBuffer.Weight;
+        groups.front().Requests.push_back(&requestInBuffer);
+        if (!WriteMixedBlocks(ctx, groups)) {
+            requestInBuffer.Data.RequestInfo->CancelRequest(ctx);
+            RebootPartitionOnCommitIdOverflow(ctx, "WriteMixedBlocks");
+            return;
+        }
+    } else {
         if (Config->GetWriteRequestBatchingEnabled()) {
             // we will try to batch small writes and, if batching fails,
             // we will accumulate these writes in FreshBlocks table
             EnqueueProcessWriteQueueIfNeeded(ctx);
 
-            LOG_TRACE(ctx, TBlockStoreComponents::PARTITION,
+            LOG_TRACE(
+                ctx,
+                TBlockStoreComponents::PARTITION,
                 "[%lu] Enqueueing fresh blocks (range: %s)",
                 TabletID(),
-                DescribeRange(writeRange).data()
-            );
+                DescribeRange(writeRange).data());
             State->GetWriteBuffer().Put(std::move(requestInBuffer));
         } else {
             WriteFreshBlocks(ctx, std::move(requestInBuffer));
         }
-    } else {
-        // large writes could skip FreshBlocks table completely
-        WriteMergedBlocks(ctx, std::move(requestInBuffer));
     }
 }
 

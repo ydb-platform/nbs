@@ -1103,4 +1103,11 @@ message TStorageServiceConfig
     optional uint32 ForcedCompactionRangeCountPerRun = 401;
 
     optional bool YdbViewerServiceEnabled = 402;
+
+    // Minimum write request size (in bytes) that lets us write the data
+    // to the mixed channel. If 0 then disabled.
+    optional uint32 WriteMixedBlobThreshold = 403;
+
+    // Overrides WriteMixedBlobThreshold for SSD volumes.
+    optional uint32 WriteMixedBlobThresholdSSD = 404;
 }
