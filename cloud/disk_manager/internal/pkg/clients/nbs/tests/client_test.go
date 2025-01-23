@@ -24,7 +24,8 @@ import (
 
 ////////////////////////////////////////////////////////////////////////////////
 
-const defaultZoneID = "zone"
+const defaultZoneID = "zone-a"
+const defaultOtherZoneID = "zone-b"
 const defaultSessionRediscoverPeriodMin = "10s"
 const defaultSessionRediscoverPeriodMax = "20s"
 
@@ -62,10 +63,10 @@ func newClientConfig(
 
 	return &config.ClientConfig{
 		Zones: map[string]*config.Zone{
-			"zone": {
+			defaultZoneID: {
 				Endpoints: []string{getEndpoint(), getEndpoint()},
 			},
-			"other": {
+			defaultOtherZoneID: {
 				Endpoints: []string{getOtherZoneEndpoint(), getOtherZoneEndpoint()},
 			},
 		},
@@ -148,12 +149,12 @@ func newTestingClient(t *testing.T, ctx context.Context) nbs.TestingClient {
 }
 
 func newOtherZoneClient(t *testing.T, ctx context.Context) nbs.Client {
-	return newClientFull(t, ctx, "other", nil, "10s", "20s")
+	return newClientFull(t, ctx, defaultOtherZoneID, nil, "10s", "20s")
 }
 
 func newMultiZoneClient(t *testing.T, ctx context.Context) nbs.MultiZoneClient {
 	factory := newFactory(t, ctx, nil, "10s", "20s")
-	client, err := factory.GetMultiZoneClient("zone", "other")
+	client, err := factory.GetMultiZoneClient(defaultZoneID, defaultOtherZoneID)
 	require.NoError(t, err)
 	return client
 }
@@ -705,7 +706,7 @@ func TestUnassignDeletedDisk(t *testing.T) {
 func TestTokenErrorsShouldBeRetriable(t *testing.T) {
 	ctx := newContext()
 	mockTokenProvider := &mockTokenProvider{}
-	client := newClientFull(t, ctx, "zone", mockTokenProvider, "10s", "20s")
+	client := newClientFull(t, ctx, defaultZoneID, mockTokenProvider, "10s", "20s")
 
 	mockTokenProvider.On("Token", mock.Anything).Return("", assert.AnError).Times(10)
 	mockTokenProvider.On("Token", mock.Anything).Return("", nil)
@@ -852,7 +853,7 @@ func TestMountRWDoesNotConflictWithBackgroundRediscover(t *testing.T) {
 	client := newClientFull(
 		t,
 		ctx,
-		"zone",
+		defaultZoneID,
 		nil,
 		"500ms",
 		fmt.Sprintf("%vs", sessionRediscoverPeriodMaxSeconds),
