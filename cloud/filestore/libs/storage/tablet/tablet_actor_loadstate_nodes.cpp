@@ -56,8 +56,8 @@ void TIndexTabletActor::CompleteTx_LoadNodes(
         args.NextNodeId);
 
     if (args.NextNodeId) {
-        ctx.Send(
-            SelfId(),
+        ctx.Schedule(
+            args.SchedulePeriod,
             new TEvIndexTabletPrivate::TEvLoadNodesRequest(
                 args.NextNodeId,
                 args.MaxNodes,

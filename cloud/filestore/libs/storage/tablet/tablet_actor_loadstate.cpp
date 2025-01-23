@@ -323,7 +323,7 @@ void TIndexTabletActor::CompleteTx_LoadState(
         LOG_INFO(
             ctx,
             TFileStoreComponents::TABLET,
-            "%s LoadNodeRefs started (maxNodeRefs: %lu, timeout: %s)",
+            "%s LoadNodeRefs started (maxNodeRefs: %lu, period: %s)",
             LogTag.c_str(),
             maxRows,
             schedulePeriod.ToString().c_str());
@@ -341,7 +341,7 @@ void TIndexTabletActor::CompleteTx_LoadState(
         LOG_INFO(
             ctx,
             TFileStoreComponents::TABLET,
-            "%s LoadNodes started (maxNodes: %lu, timeout: %s)",
+            "%s LoadNodes started (maxNodes: %lu, period: %s)",
             LogTag.c_str(),
             maxRows,
             schedulePeriod.ToString().c_str());

@@ -296,8 +296,6 @@ void TIndexTabletActor::HandleGenerateBlobIds(
         offset += length;
     }
 
-    // TODO(debnatkh): Throttling
-
     response->Record.SetCommitId(commitId);
 
     Metrics.GenerateBlobIds.Count.fetch_add(1, std::memory_order_relaxed);

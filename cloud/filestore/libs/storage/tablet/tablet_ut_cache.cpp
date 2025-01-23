@@ -921,7 +921,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesCache)
         storageConfig.SetInMemoryIndexCacheLoadOnTabletStart(true);
         storageConfig.SetInMemoryIndexCacheLoadOnTabletStartRowsPerTx(1);
         storageConfig.SetInMemoryIndexCacheLoadSchedulePeriod(
-            TDuration::Seconds(1).MicroSeconds());
+            TDuration::Seconds(1).MilliSeconds());
         TTestEnv env({}, storageConfig);
         env.CreateSubDomain("nfs");
 
@@ -932,22 +932,25 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesCache)
         tablet.InitSession("client", "session");
 
         tablet.CreateNode(TCreateNodeArgs::File(RootNodeId, "test1"));
-        tablet.CreateNode(TCreateNodeArgs::File(RootNodeId, "test2"));
 
         env.GetRuntime().ClearCounters();
         tablet.RebootTablet();
+
+        for (int i = 0; i < 10; ++i) {
+            tablet.AdvanceTime(TDuration::Seconds(1));
+            env.GetRuntime().DispatchEvents({}, TDuration::Seconds(1));
+        }
+
         tablet.InitSession("client", "session");
 
-        // It will take 2 iterations to load all the nodeRefs (root -> test1 and
-        // root -> test2)
+        // It will take 1 iteration to load all the nodeRefs (root -> test)1
         UNIT_ASSERT_VALUES_EQUAL(
-            2,
+            1,
             env.GetRuntime().GetCounter(
                 TEvIndexTabletPrivate::EEvents::EvLoadNodeRefs));
-        // It also will take 3 iterations to load all the nodes (root, test1 and
-        // test2)
+        // It also will take 2 iterations to load all the nodes (root and test1)
         UNIT_ASSERT_VALUES_EQUAL(
-            3,
+            2,
             env.GetRuntime().GetCounter(
                 TEvIndexTabletPrivate::EEvents::EvLoadNodes));
 
@@ -956,7 +959,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesCache)
         // The noderefs cache is exhaustive thus list nodes should be a cache
         // hit
         UNIT_ASSERT_VALUES_EQUAL(
-            2,
+            1,
             tablet.ListNodes(RootNodeId)->Record.NodesSize());
 
         auto statsAfter = GetTxStats(env, tablet);
@@ -971,28 +974,27 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesCache)
 
         statsBefore = statsAfter;
 
-        auto id3 =
-            tablet.CreateNode(TCreateNodeArgs::Directory(RootNodeId, "test3"))
+        auto id2 =
+            tablet.CreateNode(TCreateNodeArgs::Directory(RootNodeId, "test2"))
                 ->Record.GetNode()
                 .GetId();
-        tablet.CreateNode(TCreateNodeArgs::File(id3, "test4"));
-        tablet.CreateNode(TCreateNodeArgs::File(id3, "test5"));
-        tablet.CreateNode(TCreateNodeArgs::File(id3, "test6"));
+        tablet.CreateNode(TCreateNodeArgs::File(id2, "test3"));
+        tablet.CreateNode(TCreateNodeArgs::File(id2, "test4"));
+        tablet.CreateNode(TCreateNodeArgs::File(id2, "test5"));
 
         /*
         |- test1
         |- test2
-        |- test3
+            |- test3
             |- test4
             |- test5
-            |- test6
         */
 
         // The NodeRefs cache is still exhaustive thus list nodes should be a
         // cache hit
-        UNIT_ASSERT_VALUES_EQUAL(3, tablet.ListNodes(id3)->Record.NodesSize());
+        UNIT_ASSERT_VALUES_EQUAL(3, tablet.ListNodes(id2)->Record.NodesSize());
         UNIT_ASSERT_VALUES_EQUAL(
-            3,
+            2,
             tablet.ListNodes(RootNodeId)->Record.NodesSize());
 
         statsAfter = GetTxStats(env, tablet);

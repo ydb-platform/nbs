@@ -65,8 +65,8 @@ void TIndexTabletActor::CompleteTx_LoadNodeRefs(
         args.NextCookie.c_str());
 
     if (args.NextCookie || args.NextNodeId) {
-        ctx.Send(
-            SelfId(),
+        ctx.Schedule(
+            args.SchedulePeriod,
             new TEvIndexTabletPrivate::TEvLoadNodeRefsRequest(
                 args.NextNodeId,
                 args.NextCookie,
