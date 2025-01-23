@@ -512,4 +512,6 @@ message TStorageConfig
     // proportional to the aforementioned value multiplied my the size of
     // TRange
     optional uint64 MixedBlocksOffloadedRangesCapacity = 415;
+
+    optional bool YdbViewerServiceEnabled = 416;
 }

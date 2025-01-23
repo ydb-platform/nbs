@@ -126,6 +126,7 @@ TDuration MSeconds(ui32 value)
     xxx(ConfigDispatcherSettings,                                              \
         NCloud::NProto::TConfigDispatcherSettings,                             \
         {}                                                                    )\
+    xxx(YdbViewerServiceEnabled,              bool,                  false    )\
 // BLOCKSTORE_STORAGE_CONFIG_RO
 
 #define BLOCKSTORE_STORAGE_CONFIG_RW(xxx)                                      \

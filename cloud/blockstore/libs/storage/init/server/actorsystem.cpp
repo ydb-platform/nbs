@@ -546,6 +546,8 @@ IActorSystemPtr CreateActorSystem(const TServerActorSystemArgs& sArgs)
     servicesMask.EnableSchemeBoardMonitoring = 1;
     servicesMask.EnableConfigsDispatcher =
         storageConfig->GetConfigsDispatcherServiceEnabled();
+    servicesMask.EnableViewerService =
+        storageConfig->GetYdbViewerServiceEnabled();
 
     auto nodeId = sArgs.NodeId;
     auto onStart = [=] (IActorSystem& actorSystem) {

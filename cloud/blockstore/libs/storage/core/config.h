@@ -629,6 +629,8 @@ public:
     GetEnableToChangeErrorStatesFromDiskRegistryMonpage() const;
 
     [[nodiscard]] bool GetCalculateSplittedUsedQuotaMetric() const;
+
+    bool GetYdbViewerServiceEnabled() const;
 };
 
 ui64 GetAllocationUnit(

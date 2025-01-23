@@ -1101,4 +1101,6 @@ message TStorageServiceConfig
     // Number of ranges to process in a single Compaction run
     // in the range mode if batch compaction enabled.
     optional uint32 ForcedCompactionRangeCountPerRun = 401;
+
+    optional bool YdbViewerServiceEnabled = 402;
 }
