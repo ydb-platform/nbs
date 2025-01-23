@@ -479,7 +479,7 @@ class FilestoreVhostConfigGenerator(FilestoreDaemonConfigGenerator):
 
         self.__local_service_port = self._port_manager.get_port()
 
-        self.__diag_config=self.__generate_diag_txt()
+        self.__diag_config = self.__generate_diag_txt()
         with open(self.diag_config_file_path, "w") as config_file:
             if self.__diag_config:
                 config_file.write(MessageToString(self.__diag_config))
