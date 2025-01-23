@@ -1,6 +1,4 @@
 #include "part2_actor.h"
-#include "cloud/blockstore/libs/storage/disk_agent/model/public.h"
-//
 #include <cloud/blockstore/libs/service/context.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/core/probes.h>
@@ -32,16 +30,19 @@ class TCheckRangeActor final
 {
 private:
     const TActorId Tablet;
-    const ui64 FirstBlockOfset;
+    const ui64 FirstBlockOffset;
     const ui64 BlocksCount;
     const TDuration Timeout;
+    const TEvVolume::TEvCheckRangeRequest::TPtr& Ev;
+
 
 public:
     TCheckRangeActor(
         const TActorId& tablet,
         ui64 blockId,
         ui64 blocksCount,
-        TDuration timeout);
+        TDuration timeout,
+        const TEvVolume::TEvCheckRangeRequest::TPtr& Ev);
 
     void Bootstrap(const TActorContext& ctx);
 
@@ -74,32 +75,41 @@ TCheckRangeActor::TCheckRangeActor(
         const TActorId& tablet,
         ui64 blockOffset,
         ui64 blocksCount,
-        TDuration timeout)
+        TDuration timeout,
+        const TEvVolume::TEvCheckRangeRequest::TPtr& ev)
     : Tablet(tablet)
-    , FirstBlockOfset(blockOffset)
+    , FirstBlockOffset(blockOffset)
     , BlocksCount(blocksCount)
     , Timeout(std::move(timeout))
+    , Ev(ev)
 {}
 
 void TCheckRangeActor::Bootstrap(const TActorContext& ctx)
 {
+    LOG_ERROR(
+        ctx,
+        TBlockStoreComponents::PARTITION,
+        "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! Bootstraped ");
+
+
     SendReadBlocksRequest(ctx);
     Become(&TThis::StateWork);
-    Die(ctx);
 }
 
 void TCheckRangeActor::SendReadBlocksRequest(const TActorContext& ctx)
 {
     auto request = std::make_unique<TEvService::TEvReadBlocksRequest>();
 
-    request->Record.SetStartIndex(FirstBlockOfset);
+    request->Record.SetStartIndex(FirstBlockOffset);
     request->Record.SetBlocksCount(BlocksCount);
-    //request->Record.SetDiskId(DiskId);
 
     auto* headers = request->Record.MutableHeaders();
 
     headers->SetIsBackgroundRequest(true);
-    headers->SetClientId(TString(BackgroundOpsClientId));
+    LOG_ERROR(
+        ctx,
+        TBlockStoreComponents::PARTITION,
+        "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! Sended from " + SelfId().ToString()) ;
     NCloud::Send(ctx, Tablet, std::move(request));
 }
 
@@ -108,7 +118,9 @@ void TCheckRangeActor::ReplyAndDie(
     const NProto::TError& error)
 {
     {
-        auto response = std::make_unique<TEvPartitionPrivate::TEvForcedCompactionCompleted>(error);
+        Y_UNUSED(Ev);
+        auto response = std::make_unique<TEvVolume::TEvCheckRangeResponse>(error);
+        //NCloud::Send(ctx, Ev->Sender, std::move(response));
         NCloud::Send(ctx, Tablet, std::move(response));
     }
 
@@ -158,7 +170,16 @@ void TCheckRangeActor::HandleReadBlocksResponse(
         ctx,
         TBlockStoreComponents::VOLUME,
         "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! CheckRange response "
-        "catched, cur block id = " + std::to_string(FirstBlockOfset));
+        "catched, cur block id = " + std::to_string(FirstBlockOffset));
+
+    if (HasError(msg->Record.GetError())) {
+        auto errorMessage = msg->Record.GetError().GetMessage();
+        LOG_ERROR(
+            ctx,
+            TBlockStoreComponents::VOLUME,
+            "reading error has occurred: " + errorMessage + "   message   " +  msg->Record.GetError().message() );
+    }
+
 
     ReplyAndDie(ctx, msg->GetError());
 }
@@ -168,51 +189,52 @@ void TCheckRangeActor::HandleReadBlocksResponse(
 }   // namespace NCloud::NBlockStore::NStorage::NPartition2
 
 namespace NCloud::NBlockStore::NStorage::NPartition2 {
+NActors::IActorPtr TPartitionActor::CreateCheckRangeActor(
+    NActors::TActorId tablet,
+    ui64 blockOffset,
+    ui64 blocksCount,
+    TDuration retryTimeout,
+    const TEvVolume::TEvCheckRangeRequest::TPtr& ev)
+{
+    return std::make_unique<NPartition2::TCheckRangeActor>(
+        std::move(tablet),
+        blockOffset,
+        blocksCount,
+        retryTimeout,
+        ev);
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 void NPartition2::TPartitionActor::HandleCheckRange(
     const TEvVolume::TEvCheckRangeRequest::TPtr& ev,
     const TActorContext& ctx)
 {
     const auto* msg = ev->Get();
 
-    NProto::TError result = DoHandleCheckRange(
-        ctx,
-        msg->Record.GetBlockId(),
-        msg->Record.GetBlocksCount());
+    if (msg->Record.GetBlockCount() > Config->GetBytesPerStripe()) {
+        auto err = MakeError(
+            E_ARGUMENT,
+            "Too many blocks requested: " +
+                std::to_string(msg->Record.GetBlockCount()) + " Max blocks per request : " +
+                std::to_string(Config->GetBytesPerStripe()));
+        auto response =
+            std::make_unique<TEvVolume::TEvCheckRangeResponse>(std::move(err));
+        NCloud::Reply(ctx, *ev, std::move(response));
+        return;
+    }
 
-    auto response =
-        std::make_unique<TEvVolume::TEvCheckRangeResponse>(std::move(result));
-    NCloud::Reply(ctx, *ev, std::move(response));
-}
-
-NProto::TError TPartitionActor::DoHandleCheckRange(
-    const NActors::TActorContext& ctx,
-    ui64 blockOffset,
-    ui64 blocksCount)
-{
     const auto actorId = NCloud::Register(
         ctx,
         CreateCheckRangeActor(
             SelfId(),
-            blockOffset,
-            blocksCount,
-            Config->GetCompactionRetryTimeout()));
-
+            msg->Record.GetBlockIdx(),
+            msg->Record.GetBlockCount(),
+            Config->GetCompactionRetryTimeout(),
+            ev));
     Actors.insert(actorId);
 
-    return MakeError(S_OK, "Scan disk has been started");
-}
-
-NActors::IActorPtr TPartitionActor::CreateCheckRangeActor(
-    NActors::TActorId tablet,
-    ui64 blockOffset,
-    ui64 blocksCount,
-    TDuration retryTimeout)
-{
-    return std::make_unique<NPartition2::TCheckRangeActor>(
-        std::move(tablet),
-        blockOffset,
-        blocksCount,
-        retryTimeout);
+    //NCloud::Reply(ctx, *ev, std::move(response));
 }
 
 }   // namespace NCloud::NBlockStore::NStorage::NPartition2

@@ -585,6 +585,12 @@ void TVolumeProxyActor::HandleRequest(
     // So we need to handle the cases when message is re-sent or just came from
     // outside. We have to to check if message buffer is present
     // otherwise it is safe to use Get() to retrieve actual message.
+
+    LOG_ERROR(
+        ctx,
+        TBlockStoreComponents::VOLUME_PROXY,
+        "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! has buffer" +  ToString(ev->HasBuffer()) + " has event" +  ToString(ev->HasEvent()) + " sender : " + ToString(ev->Sender)) ;
+
     if (!ev->HasBuffer() && !ev->HasEvent()) {
         auto response = std::make_unique<typename TMethod::TResponse>(
             MakeTabletIsDeadError(E_REJECTED, __LOCATION__));

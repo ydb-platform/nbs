@@ -76,8 +76,8 @@ void TCheckRangeActor::Bootstrap(const TActorContext& ctx)
 
     auto request = std::make_unique<TEvVolume::TEvCheckRangeRequest>();
     request->Record.SetDiskId(Request.GetDiskId());
-    request->Record.SetBlockId(Request.GetBlockId());
-    request->Record.SetBlocksCount(Request.GetBlocksCount());
+    request->Record.SetBlockIdx(Request.GetBlockId());
+    request->Record.SetBlockCount(Request.GetBlocksCount());
 
     LOG_INFO(
         ctx,
@@ -125,6 +125,11 @@ void TCheckRangeActor::ReplyAndDie(
         NPrivateProto::TCheckRangeResponse(),
         msg->Record.MutableOutput());
 
+    LOG_ERROR(
+        ctx,
+        TBlockStoreComponents::SERVICE,
+        "!!!!!! result : " + response.GetError().GetMessage());
+
     LWTRACK(
         ResponseSent_Service,
         RequestInfo->CallContext->LWOrbit,
@@ -141,6 +146,11 @@ void TCheckRangeActor::HandleCheckRangeResponse(
     const TEvVolume::TEvCheckRangeResponse::TPtr& ev,
     const TActorContext& ctx)
 {
+    LOG_ERROR(
+        ctx,
+        TBlockStoreComponents::SERVICE,
+        "!!!! CheckRangeResponseCatched");
+
     ReplyAndDie(ctx, std::move(ev->Get()->Record));
 }
 

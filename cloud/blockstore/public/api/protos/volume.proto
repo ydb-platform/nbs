@@ -743,3 +743,29 @@ message TDescribeVolumeModelResponse
     // Volume model information.
     TVolumeModel VolumeModel = 2;
 }
+
+////////////////////////////////////////////////////////////////////////////////
+// CheckRange
+message TCheckRangeRequest
+{
+    // Optional request headers.
+    THeaders Headers = 1;
+
+    // Label of volume.
+    string DiskId = 2;
+
+    // First block Idx
+    uint64 BlockIdx = 3;
+
+    // BlocksCount
+    uint64 BlockCount = 4;
+}
+
+message TCheckRangeResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+
+    // Request traces.
+    NCloud.NProto.TTraceInfo Trace = 2;
+}

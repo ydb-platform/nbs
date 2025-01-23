@@ -94,7 +94,6 @@ void TCheckRangeActor::Bootstrap(const TActorContext& ctx)
 
     SendReadBlocksRequest(ctx);
     Become(&TThis::StateWork);
-    Die(ctx);
 }
 
 void TCheckRangeActor::SendReadBlocksRequest(const TActorContext& ctx)
@@ -119,10 +118,14 @@ void TCheckRangeActor::ReplyAndDie(
     const NProto::TError& error)
 {
     {
-        Y_UNUSED(Ev);
+    LOG_ERROR(
+        ctx,
+        TBlockStoreComponents::PARTITION,
+        "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! replyanddie") ;
+
         auto response = std::make_unique<TEvVolume::TEvCheckRangeResponse>(error);
-        //NCloud::Send(ctx, Ev->Sender, std::move(response));
-        NCloud::Send(ctx, Tablet, std::move(response));
+
+        NCloud::Reply(ctx, *Ev, std::move(response));
     }
 
     Die(ctx);
@@ -181,8 +184,8 @@ void TCheckRangeActor::HandleReadBlocksResponse(
             "reading error has occurred: " + errorMessage + "   message   " +  msg->Record.GetError().message() );
     }
 
-
-    ReplyAndDie(ctx, msg->GetError());
+    auto result = HasError(msg->Record.GetError()) ? msg->GetError() : MakeError(S_OK);
+    ReplyAndDie(ctx, result);
 }
 
 }   // namespace
@@ -213,11 +216,11 @@ void NPartition::TPartitionActor::HandleCheckRange(
 {
     const auto* msg = ev->Get();
 
-    if (msg->Record.GetBlocksCount() > Config->GetBytesPerStripe()) {
+    if (msg->Record.GetBlockCount() > Config->GetBytesPerStripe()) {
         auto err = MakeError(
             E_ARGUMENT,
             "Too many blocks requested: " +
-                std::to_string(msg->Record.GetBlocksCount()) + " Max blocks per request : " +
+                std::to_string(msg->Record.GetBlockCount()) + " Max blocks per request : " +
                 std::to_string(Config->GetBytesPerStripe()));
         auto response =
             std::make_unique<TEvVolume::TEvCheckRangeResponse>(std::move(err));
@@ -229,11 +232,13 @@ void NPartition::TPartitionActor::HandleCheckRange(
         ctx,
         CreateCheckRangeActor(
             SelfId(),
-            msg->Record.GetBlockId(),
-            msg->Record.GetBlocksCount(),
+            msg->Record.GetBlockIdx(),
+            msg->Record.GetBlockCount(),
             Config->GetCompactionRetryTimeout(),
             ev));
     Actors.Insert(actorId);
+
+    //auto response = std::make_unique<TEvVolume::TEvCheckRangeResponse>(std::move(MakeError(S_OK)));
 
     //NCloud::Reply(ctx, *ev, std::move(response));
 }
