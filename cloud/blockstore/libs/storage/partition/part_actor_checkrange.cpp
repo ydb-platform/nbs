@@ -1,6 +1,4 @@
 #include "part_actor.h"
-#include "cloud/blockstore/libs/storage/disk_agent/model/public.h"
-//
 #include <cloud/blockstore/libs/service/context.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/core/probes.h>
@@ -32,10 +30,10 @@ class TCheckRangeActor final
 {
 private:
     const TActorId Tablet;
-    const ui64 FirstBlockOfset;
+    const ui64 FirstBlockOffset;
     const ui64 BlocksCount;
     const TDuration Timeout;
-    const TActorId Sender;
+    const TEvVolume::TEvCheckRangeRequest::TPtr& Ev;
 
 
 public:
@@ -44,7 +42,7 @@ public:
         ui64 blockId,
         ui64 blocksCount,
         TDuration timeout,
-        const TActorId& sender);
+        const TEvVolume::TEvCheckRangeRequest::TPtr& Ev);
 
     void Bootstrap(const TActorContext& ctx);
 
@@ -78,12 +76,12 @@ TCheckRangeActor::TCheckRangeActor(
         ui64 blockOffset,
         ui64 blocksCount,
         TDuration timeout,
-        const TActorId& sender)
+        const TEvVolume::TEvCheckRangeRequest::TPtr& ev)
     : Tablet(tablet)
-    , FirstBlockOfset(blockOffset)
+    , FirstBlockOffset(blockOffset)
     , BlocksCount(blocksCount)
     , Timeout(std::move(timeout))
-    , Sender(sender)
+    , Ev(ev)
 {}
 
 void TCheckRangeActor::Bootstrap(const TActorContext& ctx)
@@ -103,18 +101,16 @@ void TCheckRangeActor::SendReadBlocksRequest(const TActorContext& ctx)
 {
     auto request = std::make_unique<TEvService::TEvReadBlocksRequest>();
 
-    request->Record.SetStartIndex(FirstBlockOfset);
+    request->Record.SetStartIndex(FirstBlockOffset);
     request->Record.SetBlocksCount(BlocksCount);
-    //request->Record.SetDiskId(DiskId);
 
     auto* headers = request->Record.MutableHeaders();
 
     headers->SetIsBackgroundRequest(true);
-    headers->SetClientId(TString(BackgroundOpsClientId));
     LOG_ERROR(
         ctx,
         TBlockStoreComponents::PARTITION,
-        "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! Sended " + SelfId().ToString()) ;
+        "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! Sended from " + SelfId().ToString()) ;
     NCloud::Send(ctx, Tablet, std::move(request));
 }
 
@@ -123,7 +119,9 @@ void TCheckRangeActor::ReplyAndDie(
     const NProto::TError& error)
 {
     {
+        Y_UNUSED(Ev);
         auto response = std::make_unique<TEvVolume::TEvCheckRangeResponse>(error);
+        //NCloud::Send(ctx, Ev->Sender, std::move(response));
         NCloud::Send(ctx, Tablet, std::move(response));
     }
 
@@ -173,7 +171,7 @@ void TCheckRangeActor::HandleReadBlocksResponse(
         ctx,
         TBlockStoreComponents::VOLUME,
         "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! CheckRange response "
-        "catched, cur block id = " + std::to_string(FirstBlockOfset));
+        "catched, cur block id = " + std::to_string(FirstBlockOffset));
 
     if (HasError(msg->Record.GetError())) {
         auto errorMessage = msg->Record.GetError().GetMessage();
@@ -197,14 +195,14 @@ NActors::IActorPtr TPartitionActor::CreateCheckRangeActor(
     ui64 blockOffset,
     ui64 blocksCount,
     TDuration retryTimeout,
-    NActors::TActorId sender)
+    const TEvVolume::TEvCheckRangeRequest::TPtr& ev)
 {
     return std::make_unique<NPartition::TCheckRangeActor>(
         std::move(tablet),
         blockOffset,
         blocksCount,
         retryTimeout,
-        sender);
+        ev);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -218,11 +216,13 @@ void NPartition::TPartitionActor::HandleCheckRange(
     if (msg->Record.GetBlocksCount() > Config->GetBytesPerStripe()) {
         auto err = MakeError(
             E_ARGUMENT,
-            "Too much blocks to check range, max size = " +
-                ToString(Config->GetBytesPerStripe()));
+            "Too many blocks requested: " +
+                std::to_string(msg->Record.GetBlocksCount()) + " Max blocks per request : " +
+                std::to_string(Config->GetBytesPerStripe()));
         auto response =
             std::make_unique<TEvVolume::TEvCheckRangeResponse>(std::move(err));
         NCloud::Reply(ctx, *ev, std::move(response));
+        return;
     }
 
     const auto actorId = NCloud::Register(
@@ -232,7 +232,7 @@ void NPartition::TPartitionActor::HandleCheckRange(
             msg->Record.GetBlockId(),
             msg->Record.GetBlocksCount(),
             Config->GetCompactionRetryTimeout(),
-            ev->Sender));
+            ev));
     Actors.Insert(actorId);
 
     //NCloud::Reply(ctx, *ev, std::move(response));

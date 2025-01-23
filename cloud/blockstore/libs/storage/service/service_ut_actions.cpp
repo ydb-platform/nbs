@@ -1724,7 +1724,8 @@ Y_UNIT_TEST_SUITE(TServiceActionsTest)
             NPrivateProto::TCheckRangeRequest request;
             request.SetDiskId("vol0");
             request.SetBlockId(0);
-            request.SetBlocksCount(1000);
+            //request.SetBlocksCount(16777217);
+            request.SetBlocksCount(2_KB);
 
             TString buf;
             google::protobuf::util::MessageToJsonString(request, &buf);
