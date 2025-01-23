@@ -581,7 +581,7 @@ public:
     }
 
     TVector<TString> CollectBrokenDevices(const NProto::TAgentStats& stats) const;
-    NProto::TError UpdateAgentCounters(const NProto::TAgentStats& source);
+    NProto::TError UpdateAgentCounters(const NProto::TAgentStats& stats);
     void PublishCounters(TInstant now);
 
     void DeleteDiskStateChanges(

@@ -1852,10 +1852,11 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
         });
 
         auto config1 = AgentConfig(1000, {
-            Device("dev-1", "uuid-1", "rack-1"),
+            Device("dev-1", "uuid-1.1"),
         });
         auto config2 = AgentConfig(1001, {
-            Device("dev-2", "uuid-2", "rack-2"),
+            Device("dev-1", "uuid-2.1"),
+            Device("dev-3", "uuid-2.3"),
         });
 
         auto monitoring = CreateMonitoringServiceStub();
@@ -1865,8 +1866,15 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
 
         TDiskRegistryState state = TDiskRegistryStateBuilder()
             .With(diskRegistryGroup)
-            .WithConfig({ config1 })
+            .WithConfig({ config1, config2 })
             .Build();
+
+        config2 = AgentConfig(1001, {
+            Device("dev-1", "uuid-2.1"),
+            // add an unknown device to #1001
+            Device("dev-2", "uuid-2.2"),
+            Device("dev-3", "uuid-2.3"),
+        });
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) {
             UNIT_ASSERT_SUCCESS(RegisterAgent(state, db, config1));
@@ -1877,9 +1885,9 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
 
         {
             NProto::TAgentStats stats;
-            stats.SetNodeId(1000);
+            stats.SetNodeId(1001);
             auto* d = stats.AddDeviceStats();
-            d->SetDeviceUUID("garbage");
+            d->SetDeviceUUID("uuid-1.1"); // uuid-1.1 belongs to agent-1000
 
             auto error = state.UpdateAgentCounters(stats);
             UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, error.GetCode());
@@ -1888,14 +1896,78 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
         {
             NProto::TAgentStats stats;
             stats.SetNodeId(1001);
-            auto* d = stats.AddDeviceStats();
-            d->SetDeviceUUID("uuid-2");
+
+            {
+                auto* d = stats.AddDeviceStats();
+                d->SetDeviceUUID("uuid-2.1");
+                d->SetDeviceName("dev-1");
+                d->SetBytesRead(4_KB);
+                d->SetNumReadOps(1);
+            }
+
+            {
+                auto* d = stats.AddDeviceStats();
+                d->SetDeviceUUID("uuid-2.2");
+                d->SetDeviceName("dev-2");
+                d->SetBytesRead(8_KB);
+                d->SetNumReadOps(2);
+            }
+
+            {
+                auto* d = stats.AddDeviceStats();
+                d->SetDeviceUUID("uuid-2.3");
+                d->SetDeviceName("dev-3");
+                d->SetBytesRead(12_KB);
+                d->SetNumReadOps(3);
+            }
 
             auto error = state.UpdateAgentCounters(stats);
-            UNIT_ASSERT_VALUES_EQUAL(S_FALSE, error.GetCode());
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
         }
 
         state.PublishCounters(Now());
+
+        UNIT_ASSERT(diskRegistryGroup->FindSubgroup("agent", "agent-1000"));
+
+        auto counters = diskRegistryGroup->FindSubgroup("agent", "agent-1001");
+        UNIT_ASSERT(counters);
+
+        auto totalReadCount = counters->FindCounter("ReadCount");
+        UNIT_ASSERT(totalReadCount);
+        UNIT_ASSERT_VALUES_EQUAL(4, totalReadCount->Val());
+
+        auto totalReadBytes = counters->FindCounter("ReadBytes");
+        UNIT_ASSERT(totalReadBytes);
+        UNIT_ASSERT_VALUES_EQUAL(16_KB, totalReadBytes->Val());
+
+        {
+            auto device = counters->FindSubgroup("device", "agent-1001:dev-1");
+            UNIT_ASSERT(device);
+
+            auto readCount = device->FindCounter("ReadCount");
+            UNIT_ASSERT(readCount);
+            UNIT_ASSERT_VALUES_EQUAL(1, readCount->Val());
+
+            auto readBytes = device->FindCounter("ReadBytes");
+            UNIT_ASSERT(readBytes);
+            UNIT_ASSERT_VALUES_EQUAL(4_KB, readBytes->Val());
+        }
+
+        // no metrics for the unknown device
+        UNIT_ASSERT(!counters->FindSubgroup("device", "agent-1001:dev-2"));
+
+        {
+            auto device = counters->FindSubgroup("device", "agent-1001:dev-3");
+            UNIT_ASSERT(device);
+
+            auto readCount = device->FindCounter("ReadCount");
+            UNIT_ASSERT(readCount);
+            UNIT_ASSERT_VALUES_EQUAL(3, readCount->Val());
+
+            auto readBytes = device->FindCounter("ReadBytes");
+            UNIT_ASSERT(readBytes);
+            UNIT_ASSERT_VALUES_EQUAL(12_KB, readBytes->Val());
+        }
     }
 
     Y_UNIT_TEST(ShouldRemoveAgentWithSameId)
@@ -12160,9 +12232,8 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
                 device.SetId(leakedSuspendedDevice);
                 db.UpdateSuspendedDevice(device);
                 db.AddAutomaticallyReplacedDevice(
-                    TAutomaticallyReplacedDeviceInfo{
-                        leakedAutomaticallyReplacedDevice,
-                        Now()});
+                    {.DeviceId = leakedAutomaticallyReplacedDevice,
+                     .ReplacementTs = Now()});
             });
 
         // Register agent.
@@ -12248,4 +12319,5 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
             });
     }
 }
+
 }   // namespace NCloud::NBlockStore::NStorage
