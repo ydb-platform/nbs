@@ -73,11 +73,11 @@ runs:
         else
           case "$vm_preset" in
             "80vcpu-320gb")
-                test_threads=32
+                test_threads=24
                 build_threads=80
             ;;
             "64vcpu-256gb")
-                test_threads=24
+                test_threads=20
                 build_threads=64
             ;;
             "48vcpu-192gb")
