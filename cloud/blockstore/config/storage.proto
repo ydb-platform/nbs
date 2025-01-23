@@ -1109,5 +1109,5 @@ message TStorageServiceConfig
     optional bool AutomaticallyEnableBufferCopyingAfterChecksumMismatch = 403;
 
     // Enabling direct sending AcquireDevices to disk agent.
-    optional bool UseDirectAcquireReleaseDevicesSending = 404;
+    optional bool NonReplicatedVolumeDirectAcquireEnabled = 404;
 }

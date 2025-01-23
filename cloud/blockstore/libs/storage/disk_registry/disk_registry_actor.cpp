@@ -930,7 +930,7 @@ void TDiskRegistryActor::SendCachedAcquireRequestsToAgent(
     const TActorContext& ctx,
     const NProto::TAgentConfig& config)
 {
-    if (Config->GetUseDirectAcquireReleaseDevicesSending()) {
+    if (Config->GetNonReplicatedVolumeDirectAcquireEnabled()) {
         return;
     }
     auto& acquireCacheByAgentId = State->GetAcquireCacheByAgentId();

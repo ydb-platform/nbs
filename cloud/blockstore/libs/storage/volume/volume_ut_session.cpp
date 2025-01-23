@@ -27,7 +27,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
     {
         NProto::TStorageServiceConfig config;
         config.SetAcquireNonReplicatedDevices(true);
-        config.SetUseDirectAcquireReleaseDevicesSending(true);
+        config.SetNonReplicatedVolumeDirectAcquireEnabled(true);
         config.SetClientRemountPeriod(2000);
         auto state = MakeIntrusive<TDiskRegistryState>();
         auto runtime = PrepareTestActorRuntime(config, state);
@@ -115,7 +115,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
     {
         NProto::TStorageServiceConfig config;
         config.SetAcquireNonReplicatedDevices(true);
-        config.SetUseDirectAcquireReleaseDevicesSending(true);
+        config.SetNonReplicatedVolumeDirectAcquireEnabled(true);
         config.SetClientRemountPeriod(2000);
         auto state = MakeIntrusive<TDiskRegistryState>();
         auto runtime = PrepareTestActorRuntime(config, state);
@@ -195,7 +195,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
     {
         NProto::TStorageServiceConfig config;
         config.SetAcquireNonReplicatedDevices(true);
-        config.SetUseDirectAcquireReleaseDevicesSending(true);
+        config.SetNonReplicatedVolumeDirectAcquireEnabled(true);
         config.SetClientRemountPeriod(2000);
         auto state = MakeIntrusive<TDiskRegistryState>();
         auto runtime = PrepareTestActorRuntime(config, state);
@@ -329,7 +329,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
     {
         NProto::TStorageServiceConfig config;
         config.SetAcquireNonReplicatedDevices(true);
-        config.SetUseDirectAcquireReleaseDevicesSending(true);
+        config.SetNonReplicatedVolumeDirectAcquireEnabled(true);
         config.SetAgentRequestTimeout(TDuration::Seconds(1).MilliSeconds());
         config.SetClientRemountPeriod(2000);
         auto state = MakeIntrusive<TDiskRegistryState>();
@@ -378,7 +378,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
     {
         NProto::TStorageServiceConfig config;
         config.SetAcquireNonReplicatedDevices(true);
-        config.SetUseDirectAcquireReleaseDevicesSending(true);
+        config.SetNonReplicatedVolumeDirectAcquireEnabled(true);
         config.SetAgentRequestTimeout(TDuration::Seconds(2).MilliSeconds());
         config.SetClientRemountPeriod(2000);
         auto state = MakeIntrusive<TDiskRegistryState>();
@@ -437,7 +437,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
     {
         NProto::TStorageServiceConfig config;
         config.SetAcquireNonReplicatedDevices(true);
-        config.SetUseDirectAcquireReleaseDevicesSending(true);
+        config.SetNonReplicatedVolumeDirectAcquireEnabled(true);
         config.SetAgentRequestTimeout(TDuration::Seconds(2).MilliSeconds());
         config.SetClientRemountPeriod(2000);
         auto state = MakeIntrusive<TDiskRegistryState>();
@@ -503,7 +503,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
     {
         NProto::TStorageServiceConfig config;
         config.SetAcquireNonReplicatedDevices(true);
-        config.SetUseDirectAcquireReleaseDevicesSending(true);
+        config.SetNonReplicatedVolumeDirectAcquireEnabled(true);
         config.SetAgentRequestTimeout(TDuration::Seconds(2).MilliSeconds());
         config.SetClientRemountPeriod(2000);
         auto state = MakeIntrusive<TDiskRegistryState>();

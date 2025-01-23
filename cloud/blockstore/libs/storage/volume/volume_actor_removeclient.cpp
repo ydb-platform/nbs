@@ -28,7 +28,7 @@ void TVolumeActor::ReleaseDisk(const TActorContext& ctx, const TString& clientId
     request->Record.SetDiskId(State->GetDiskId());
     request->Record.MutableHeaders()->SetClientId(clientId);
     request->Record.SetVolumeGeneration(Executor()->Generation());
-    if (Config->GetUseDirectAcquireReleaseDevicesSending()) {
+    if (Config->GetNonReplicatedVolumeDirectAcquireEnabled()) {
         SendReleaseDevicesToAgents(clientId, ctx);
         return;
     }

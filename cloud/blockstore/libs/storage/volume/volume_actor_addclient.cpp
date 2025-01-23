@@ -40,7 +40,7 @@ void TVolumeActor::AcquireDisk(
         "Acquiring disk " << State->GetDiskId()
     );
 
-    if (Config->GetUseDirectAcquireReleaseDevicesSending()) {
+    if (Config->GetNonReplicatedVolumeDirectAcquireEnabled()) {
         SendAcquireDevicesToAgents(
             std::move(clientId),
             accessMode,
