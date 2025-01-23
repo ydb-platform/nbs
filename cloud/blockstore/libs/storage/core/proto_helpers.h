@@ -156,6 +156,10 @@ ui32 GetWriteBlobThreshold(
     const TStorageConfig& config,
     const NCloud::NProto::EStorageMediaKind mediaKind);
 
+ui32 GetWriteMixedBlobThreshold(
+    const TStorageConfig& config,
+    const NCloud::NProto::EStorageMediaKind mediaKind);
+
 inline bool RequiresCheckpointSupport(const NProto::TReadBlocksRequest& request)
 {
     return !request.GetCheckpointId().empty();

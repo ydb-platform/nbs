@@ -322,6 +322,17 @@ ui32 GetWriteBlobThreshold(
     return config.GetWriteBlobThreshold();
 }
 
+ui32 GetWriteMixedBlobThreshold(
+    const TStorageConfig& config,
+    const NCloud::NProto::EStorageMediaKind mediaKind)
+{
+    if (mediaKind == NCloud::NProto::STORAGE_MEDIA_SSD) {
+        return 0;
+    }
+
+    return config.GetWriteMixedBlobThresholdHDD();
+}
+
 bool CompareVolumeConfigs(
     const NKikimrBlockStore::TVolumeConfig& prevConfig,
     const NKikimrBlockStore::TVolumeConfig& newConfig)
