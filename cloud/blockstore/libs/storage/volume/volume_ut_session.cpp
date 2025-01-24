@@ -31,11 +31,12 @@ struct TTestContext
     TIntrusivePtr<TDiskRegistryState> DRState;
 };
 
-TTestContext SetupTest()
+TTestContext SetupTest(TDuration agentRequestTimeout = TDuration::Seconds(1))
 {
     NProto::TStorageServiceConfig config;
     config.SetAcquireNonReplicatedDevices(true);
     config.SetNonReplicatedVolumeDirectAcquireEnabled(true);
+    config.SetAgentRequestTimeout(agentRequestTimeout.MilliSeconds());
     config.SetClientRemountPeriod(2000);
     auto state = MakeIntrusive<TDiskRegistryState>();
     auto runtime = PrepareTestActorRuntime(config, state);
@@ -319,7 +320,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
 
     Y_UNIT_TEST(ShouldRejectTimedoutAcquireRequests)
     {
-        auto [volume, runtime, _] = SetupTest();
+        auto [volume, runtime, _] = SetupTest(TDuration::MilliSeconds(100));
 
         TVolumeClient writerClient(*runtime);
 
