@@ -1,3 +1,5 @@
+#include "dump.h"
+
 #include "profile_log.h"
 
 #include <cloud/storage/core/libs/common/scheduler.h>
