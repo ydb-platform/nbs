@@ -387,6 +387,11 @@ private:
         TRequestInfoPtr requestInfo,
         TString input);
 
+    TResultOrError<NActors::IActorPtr> CreateCheckRangeActionActor(
+        TRequestInfoPtr requestInfo,
+        TString input);
+
+
     TResultOrError<NActors::IActorPtr> CreateFlushProfileLogActor(
         TRequestInfoPtr requestInfo,
         TString input);
@@ -412,10 +417,6 @@ private:
         TString input);
 
     TResultOrError<NActors::IActorPtr> CreateBackupTabletBootInfosActor(
-        TRequestInfoPtr requestInfo,
-        TString input);
-
-    TResultOrError<NActors::IActorPtr> CreateCheckRangeActionActor(
         TRequestInfoPtr requestInfo,
         TString input);
 };

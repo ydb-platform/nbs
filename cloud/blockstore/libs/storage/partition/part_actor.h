@@ -436,7 +436,7 @@ private:
         ui64 blockOffset,
         ui64 blocksCount,
         TDuration retryTimeout,
-        const TEvVolume::TEvCheckRangeRequest::TPtr& ev);
+        NActors::TActorId sender);
 
 private:
     STFUNC(StateBoot);

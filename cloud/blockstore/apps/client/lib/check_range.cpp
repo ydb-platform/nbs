@@ -1,4 +1,4 @@
-#include "describe_volume.h"
+#include "check_range.h"
 
 #include <cloud/blockstore/libs/service/context.h>
 #include <cloud/blockstore/libs/service/request_helpers.h>
@@ -46,7 +46,7 @@ protected:
             return false;
         }
 
-        auto& input = GetInputStream();
+        //auto& input = GetInputStream();
         auto& output = GetOutputStream();
 
         STORAGE_DEBUG("Reading CheckRange request");
@@ -59,8 +59,8 @@ protected:
         }
         */
         request->SetDiskId(DiskId);
-        request->setBlockIdx(BlockIdx);
-        request->setBlockCount(BlockCount);
+        request->SetBlockIdx(BlockIdx);
+        request->SetBlockCount(BlockCount);
 
         STORAGE_DEBUG("Sending CheckRange request");
         const auto requestId = GetRequestId(*request);

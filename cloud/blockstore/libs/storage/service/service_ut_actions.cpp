@@ -1720,6 +1720,7 @@ Y_UNIT_TEST_SUITE(TServiceActionsTest)
             sessionId,
             char(1));
 
+        //service.UnmountVolume("vol0");
         {
             NPrivateProto::TCheckRangeRequest request;
             request.SetDiskId("vol0");

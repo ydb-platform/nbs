@@ -317,6 +317,9 @@ struct TEvService
         EvQueryAgentsInfoRequest = EvBegin + 89,
         EvQueryAgentsInfoResponse = EvBegin + 90,
 
+        EvCheckRangeRequest = EvBegin + 91,
+        EvCheckRangeResponse = EvBegin + 92,
+
         EvEnd
     };
 

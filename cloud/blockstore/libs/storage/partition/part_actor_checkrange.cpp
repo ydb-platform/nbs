@@ -33,7 +33,7 @@ private:
     const ui64 FirstBlockOffset;
     const ui64 BlocksCount;
     const TDuration Timeout;
-    const TEvVolume::TEvCheckRangeRequest::TPtr& Ev;
+    const TActorId Sender;
 
 
 public:
@@ -42,7 +42,7 @@ public:
         ui64 blockId,
         ui64 blocksCount,
         TDuration timeout,
-        const TEvVolume::TEvCheckRangeRequest::TPtr& Ev);
+        const TActorId& sender);
 
     void Bootstrap(const TActorContext& ctx);
 
@@ -76,12 +76,12 @@ TCheckRangeActor::TCheckRangeActor(
         ui64 blockOffset,
         ui64 blocksCount,
         TDuration timeout,
-        const TEvVolume::TEvCheckRangeRequest::TPtr& ev)
+        const TActorId& sender)
     : Tablet(tablet)
     , FirstBlockOffset(blockOffset)
     , BlocksCount(blocksCount)
     , Timeout(std::move(timeout))
-    , Ev(ev)
+    , Sender(sender)
 {}
 
 void TCheckRangeActor::Bootstrap(const TActorContext& ctx)
@@ -125,7 +125,7 @@ void TCheckRangeActor::ReplyAndDie(
 
         auto response = std::make_unique<TEvVolume::TEvCheckRangeResponse>(error);
 
-        NCloud::Reply(ctx, *Ev, std::move(response));
+        NCloud::Send(ctx, Sender, std::move(response));
     }
 
     Die(ctx);
@@ -198,14 +198,14 @@ NActors::IActorPtr TPartitionActor::CreateCheckRangeActor(
     ui64 blockOffset,
     ui64 blocksCount,
     TDuration retryTimeout,
-    const TEvVolume::TEvCheckRangeRequest::TPtr& ev)
+    const TActorId sender)
 {
     return std::make_unique<NPartition::TCheckRangeActor>(
         std::move(tablet),
         blockOffset,
         blocksCount,
         retryTimeout,
-        ev);
+        sender);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -220,7 +220,8 @@ void NPartition::TPartitionActor::HandleCheckRange(
         auto err = MakeError(
             E_ARGUMENT,
             "Too many blocks requested: " +
-                std::to_string(msg->Record.GetBlockCount()) + " Max blocks per request : " +
+                std::to_string(msg->Record.GetBlockCount()) +
+                " Max blocks per request : " +
                 std::to_string(Config->GetBytesPerStripe()));
         auto response =
             std::make_unique<TEvVolume::TEvCheckRangeResponse>(std::move(err));
@@ -235,7 +236,7 @@ void NPartition::TPartitionActor::HandleCheckRange(
             msg->Record.GetBlockIdx(),
             msg->Record.GetBlockCount(),
             Config->GetCompactionRetryTimeout(),
-            ev));
+            ev->Sender));
     Actors.Insert(actorId);
 
     //auto response = std::make_unique<TEvVolume::TEvCheckRangeResponse>(std::move(MakeError(S_OK)));
