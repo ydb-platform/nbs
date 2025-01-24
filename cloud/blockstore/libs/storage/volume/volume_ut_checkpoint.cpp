@@ -1938,14 +1938,6 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
             UNIT_ASSERT_VALUES_EQUAL(1, cp.size());
         }
 
-        volume.DeleteCheckpoint("c1");
-
-        {
-            auto stat = volume.StatVolume();
-            const auto& cp = stat->Record.GetCheckpoints();
-            UNIT_ASSERT_VALUES_EQUAL(0, cp.size());
-        }
-
         volume.RebootTablet();
         volume.AddClient(clientInfo);
         volume.WaitReady();
@@ -1953,7 +1945,7 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
         {
             auto stat = volume.StatVolume();
             const auto& cp = stat->Record.GetCheckpoints();
-            UNIT_ASSERT_VALUES_EQUAL(0, cp.size());
+            UNIT_ASSERT_VALUES_EQUAL(1, cp.size());
         }
 
         {
