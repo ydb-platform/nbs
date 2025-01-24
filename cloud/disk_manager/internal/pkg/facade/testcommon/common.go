@@ -350,21 +350,41 @@ func RequireCheckpoint(
 ) {
 
 	nbsClient := NewNbsClient(t, ctx, "zone-a")
-	checkpoints, err := nbsClient.GetCheckpoints(ctx, diskID)
+	checkpoints, err := nbsClient.GetCheckpoints(ctx, diskID, false)
 	require.NoError(t, err)
 
 	require.Len(t, checkpoints, 1)
 	require.EqualValues(t, checkpointID, checkpoints[0])
 }
 
-func RequireCheckpointsAreEmpty(
+func RequireCheckpointWithNoData(
+	t *testing.T,
+	ctx context.Context,
+	diskID string,
+	checkpointID string,
+) {
+
+	nbsClient := NewNbsClient(t, ctx, "zone-a")
+	checkpoints, err := nbsClient.GetCheckpoints(ctx, diskID, true)
+	require.NoError(t, err)
+
+	require.Len(t, checkpoints, 1)
+	require.EqualValues(t, checkpointID, checkpoints[0])
+
+	checkpoints, err = nbsClient.GetCheckpoints(ctx, diskID, false)
+	require.NoError(t, err)
+
+	require.Empty(t, checkpoints)
+}
+
+func RequireNoCheckpoints(
 	t *testing.T,
 	ctx context.Context,
 	diskID string,
 ) {
 
 	nbsClient := NewNbsClient(t, ctx, "zone-a")
-	checkpoints, err := nbsClient.GetCheckpoints(ctx, diskID)
+	checkpoints, err := nbsClient.GetCheckpoints(ctx, diskID, true)
 	require.NoError(t, err)
 	require.Empty(t, checkpoints)
 }
@@ -378,7 +398,7 @@ func WaitForCheckpointsAreEmpty(
 	nbsClient := NewNbsClient(t, ctx, "zone-a")
 
 	for {
-		checkpoints, err := nbsClient.GetCheckpoints(ctx, diskID)
+		checkpoints, err := nbsClient.GetCheckpoints(ctx, diskID, false)
 		require.NoError(t, err)
 
 		if len(checkpoints) == 0 {

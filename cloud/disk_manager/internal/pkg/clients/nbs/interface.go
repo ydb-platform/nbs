@@ -366,7 +366,11 @@ type Client interface {
 	Write(diskID string, startIndex int, bytes []byte) error
 
 	// Used in tests.
-	GetCheckpoints(ctx context.Context, diskID string) ([]string, error)
+	GetCheckpoints(
+		ctx context.Context,
+		diskID string,
+		withNoDataCheckpoints bool,
+	) ([]string, error)
 
 	// Used in tests.
 	List(ctx context.Context) ([]string, error)

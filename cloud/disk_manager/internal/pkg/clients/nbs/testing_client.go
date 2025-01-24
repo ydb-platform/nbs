@@ -528,8 +528,9 @@ type partitionInfo struct {
 func (c *client) GetCheckpoints(
 	ctx context.Context,
 	diskID string,
+	withNoDataCheckpoints bool,
 ) ([]string, error) {
-	return c.nbs.GetCheckpoints(ctx, diskID)
+	return c.nbs.GetCheckpoints(ctx, diskID, withNoDataCheckpoints)
 }
 
 func (c *client) List(ctx context.Context) ([]string, error) {

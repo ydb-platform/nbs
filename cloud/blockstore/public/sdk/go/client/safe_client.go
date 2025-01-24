@@ -181,8 +181,9 @@ func (client *safeClient) StatVolume(
 ) (*protos.TVolume, *protos.TVolumeStats, error) {
 
 	req := &protos.TStatVolumeRequest{
-		DiskId: diskId,
-		Flags:  flags,
+		DiskId:                diskId,
+		Flags:                 flags,
+		WithNoDataCheckpoints: false,
 	}
 
 	resp, err := client.Impl.StatVolume(ctx, req)
@@ -196,11 +197,13 @@ func (client *safeClient) StatVolume(
 func (client *safeClient) GetCheckpoints(
 	ctx context.Context,
 	diskId string,
+	withNoDataCheckpoints bool,
 ) ([]string, error) {
 
 	req := &protos.TStatVolumeRequest{
-		DiskId: diskId,
-		Flags:  uint32(0),
+		DiskId:                diskId,
+		Flags:                 uint32(0),
+		WithNoDataCheckpoints: withNoDataCheckpoints,
 	}
 
 	resp, err := client.Impl.StatVolume(ctx, req)
