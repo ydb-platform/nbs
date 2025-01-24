@@ -3969,11 +3969,9 @@ NProto::TError TDiskRegistryState::UpdateAgentCounters(
             return MakeError(
                 E_ARGUMENT,
                 TStringBuilder()
-                    << "Unexpected device. DeviceId: \"" << uuid
-                    << "\" Sender node id: " << stats.GetNodeId()
-                    << " Found node id: "
-                    << (knownDevice ? ToString(knownDevice->GetNodeId())
-                                    : "null"));
+                    << "Unexpected device. DeviceId: " << uuid.Quote()
+                    << " Sender node id: " << stats.GetNodeId()
+                    << " Found node id: " << knownDevice->GetNodeId());
         }
     }
 
