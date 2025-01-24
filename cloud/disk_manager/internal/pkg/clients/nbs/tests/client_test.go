@@ -24,10 +24,12 @@ import (
 
 ////////////////////////////////////////////////////////////////////////////////
 
-const defaultZoneID = "zone-a"
-const defaultOtherZoneID = "zone-b"
-const defaultSessionRediscoverPeriodMin = "10s"
-const defaultSessionRediscoverPeriodMax = "20s"
+const (
+	defaultZoneID                     = "zone-a"
+	defaultOtherZoneID                = "zone-b"
+	defaultSessionRediscoverPeriodMin = "10s"
+	defaultSessionRediscoverPeriodMax = "20s"
+)
 
 ////////////////////////////////////////////////////////////////////////////////
 
