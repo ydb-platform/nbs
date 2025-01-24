@@ -161,6 +161,7 @@ void TDestroyVolumeActor::StatVolume(const TActorContext& ctx)
     request->Record.SetDiskId(DiskId);
     // no need to check partition readiness and retrieve partition stats
     request->Record.SetNoPartition(true);
+    request->Record.SetWithNoDataCheckpoints(false);
 
     NCloud::Send(
         ctx,

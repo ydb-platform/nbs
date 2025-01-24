@@ -295,8 +295,19 @@ void TVolumeActor::HandleStatVolume(
             partConfig->GetMaxTimedOutDeviceStateDuration().MilliSeconds());
     }
 
-    TVector<TString> checkpoints =
-        State->GetCheckpointStore().GetCheckpointsWithData();
+    const bool withNoDataCheckpoints = msg->Record.GetWithNoDataCheckpoints();
+    TVector<TString> checkpoints;
+
+    if (!withNoDataCheckpoints) {
+        checkpoints = State->GetCheckpointStore().GetCheckpointsWithData();
+    } else {
+        TActiveCheckpointsMap activeCheckpoints = State->GetCheckpointStore().GetActiveCheckpoints();
+        checkpoints.reserve(activeCheckpoints.size());
+        for (const auto& [checkpoint, checkpointData] : activeCheckpoints) {
+            checkpoints.push_back(checkpoint);
+        }
+    }
+
 
     TStringBuilder debugString;
     for (const auto& statInfo: State->GetPartitionStatInfos()) {
