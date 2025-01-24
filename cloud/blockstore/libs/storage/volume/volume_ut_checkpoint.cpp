@@ -916,6 +916,11 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
         volume.DeleteCheckpointData("c1");
         {
             auto stat = volume.StatVolume();
+            UNIT_ASSERT_VALUES_EQUAL(1, stat->Record.GetCheckpoints().size());
+        }
+        volume.DeleteCheckpoint("c1");
+        {
+            auto stat = volume.StatVolume();
             UNIT_ASSERT(stat->Record.GetCheckpoints().empty());
         }
 
