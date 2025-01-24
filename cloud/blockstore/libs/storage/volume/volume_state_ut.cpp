@@ -1956,9 +1956,9 @@ Y_UNIT_TEST_SUITE(TVolumeStateTest)
         r2.AddDevices()->SetDeviceUUID("d5");
         r2.AddDevices()->SetDeviceUUID("d6");
 
-        auto deviceMigration = NProto::TDeviceMigration();
+        NProto::TDeviceMigration deviceMigration;
         deviceMigration.SetSourceDeviceId("d1");
-        *deviceMigration.MutableTargetDevice()->MutableDeviceUUID() = "d7";
+        deviceMigration.MutableTargetDevice()->SetDeviceUUID("d7");
 
         meta.MutableMigrations()->Add(std::move(deviceMigration));
         volumeState.ResetMeta(meta);
@@ -1967,13 +1967,10 @@ Y_UNIT_TEST_SUITE(TVolumeStateTest)
             deviceUUIDSExpected{"d1", "d2", "d3", "d4", "d5", "d6", "d7"};
 
         auto devices = volumeState.GetAllDevicesForAcquireRelease();
-        auto devicesUUIDS =
-            devices | std::views::transform([](const auto& el)
-                                            { return el.GetDeviceUUID(); });
-
-        THashSet<TString> devicesUUIDSActual(
-            devicesUUIDS.begin(),
-            devicesUUIDS.end());
+        THashSet<TString> devicesUUIDSActual;
+        for (const auto& d: volumeState.GetAllDevicesForAcquireRelease()) {
+            devicesUUIDSActual.insert(d.GetDeviceUUID());
+        }
 
         UNIT_ASSERT_EQUAL(deviceUUIDSExpected, devicesUUIDSActual);
     }

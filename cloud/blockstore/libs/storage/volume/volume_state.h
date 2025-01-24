@@ -726,12 +726,9 @@ public:
 
     TVector<NProto::TDeviceConfig> GetAllDevicesForAcquireRelease()
     {
-
-        size_t allDevicesCount = Meta.GetDevices().size();
-        for (const auto& replica: Meta.GetReplicas()) {
-            allDevicesCount += replica.GetDevices().size();
-        }
-        allDevicesCount += GetMeta().GetMigrations().size();
+        const size_t allDevicesCount =
+            ((Meta.ReplicasSize() + 1) * Meta.DevicesSize()) +
+            GetMeta().MigrationsSize();
 
         TVector<NProto::TDeviceConfig> resultDevices;
         resultDevices.reserve(allDevicesCount);

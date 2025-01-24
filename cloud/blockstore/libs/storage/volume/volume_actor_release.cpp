@@ -1,5 +1,5 @@
 #include "volume_actor.h"
-#include "cloud/blockstore/libs/storage/core/proto_helpers.h"
+#include <cloud/blockstore/libs/storage/core/proto_helpers.h>
 
 #include <cloud/blockstore/libs/kikimr/events.h>
 #include <cloud/blockstore/libs/storage/api/disk_agent.h>

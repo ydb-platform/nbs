@@ -413,16 +413,11 @@ struct TEvVolumePrivate
         EvExternalDrainDone
     >;
 
-    using TEvDevicesAcquireFinished = TRequestEvent<
-        TDevicesAcquireFinished,
-        EvDevicesAcquireFinished
-    >;
+    using TEvDevicesAcquireFinished =
+        TResponseEvent<TDevicesAcquireFinished, EvDevicesAcquireFinished>;
 
     using TEvDevicesReleaseFinished =
-        TRequestEvent<
-        TDevicesReleaseFinished,
-        EvDevicesReleaseFinished
-    >;
+        TResponseEvent<TDevicesReleaseFinished, EvDevicesReleaseFinished>;
 };
 
 }   // namespace NCloud::NBlockStore::NStorage

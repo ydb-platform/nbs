@@ -191,8 +191,8 @@ void TVolumeActor::HandleAcquireDiskResponse(
 }
 
 void TVolumeActor::HandleDevicesAcquireFinishedImpl(
-        const NProto::TError& error,
-        const NActors::TActorContext& ctx)
+    const NProto::TError& error,
+    const NActors::TActorContext& ctx)
 {
     ScheduleAcquireDiskIfNeeded(ctx);
 
