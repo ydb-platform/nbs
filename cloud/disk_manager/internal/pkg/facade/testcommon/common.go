@@ -342,21 +342,6 @@ func GetRequestContext(t *testing.T, ctx context.Context) context.Context {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-func RequireCheckpoint(
-	t *testing.T,
-	ctx context.Context,
-	diskID string,
-	checkpointID string,
-) {
-
-	nbsClient := NewNbsClient(t, ctx, "zone-a")
-	checkpoints, err := nbsClient.GetCheckpoints(ctx, diskID, false)
-	require.NoError(t, err)
-
-	require.Len(t, checkpoints, 1)
-	require.EqualValues(t, checkpointID, checkpoints[0])
-}
-
 func RequireCheckpointWithoutData(
 	t *testing.T,
 	ctx context.Context,
