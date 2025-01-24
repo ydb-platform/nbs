@@ -1,3 +1,6 @@
+#include "dump.h"
+
+
 #include "fs_impl.h"
 
 #include <cloud/filestore/libs/diagnostics/critical_events.h>
@@ -467,7 +470,7 @@ void TFileSystem::Flush(
             }
 
             const auto& response = future.GetValue();
-
+DUMP("reportflush", self->Config->GetFileSystemId());
             FinalizeProfileLogRequestInfo(
                 std::move(requestInfo),
                 Now(),
@@ -516,7 +519,7 @@ void TFileSystem::FSync(
             }
 
             const auto& response = future.GetValue();
-
+DUMP("reportfsync", self->Config->GetFileSystemId());
             FinalizeProfileLogRequestInfo(
                 std::move(requestInfo),
                 Now(),
@@ -616,7 +619,7 @@ void TFileSystem::FSyncDir(
             }
 
             const auto& response = future.GetValue();
-
+DUMP("reportfsyncdir", self->Config->GetFileSystemId());
             FinalizeProfileLogRequestInfo(
                 std::move(requestInfo),
                 Now(),

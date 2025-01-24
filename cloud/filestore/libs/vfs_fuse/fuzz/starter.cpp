@@ -1,3 +1,6 @@
+#include "dump.h"
+
+
 #include "starter.h"
 
 #include <cloud/filestore/libs/client/config.h>
@@ -111,6 +114,8 @@ TStarter::TStarter()
     proto.SetSocketPath(SocketPath.c_str());
 
     auto config = std::make_shared<TVFSConfig>(std::move(proto));
+
+DUMP(config->GetFileSystemId());
 
     Loop = NFuse::CreateFuseLoop(
         std::move(config),

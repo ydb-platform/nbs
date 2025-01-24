@@ -1,3 +1,6 @@
+#include "dump.h"
+
+
 #include "profile_log_events.h"
 
 #include "profile_log.h"
@@ -95,7 +98,7 @@ void FinalizeProfileLogRequestInfo(
     profileLogRequest.SetDurationMcs(
         currentTs.MicroSeconds() - profileLogRequest.GetTimestampMcs());
     profileLogRequest.SetErrorCode(error.GetCode());
-
+DUMP("FinalizeProfileLogRequestInfo", fileSystemId, profileLogRequest.GetRequestType());
     profileLog->Write({fileSystemId, std::move(profileLogRequest)});
 }
 

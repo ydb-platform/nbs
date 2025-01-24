@@ -1,3 +1,5 @@
+#include "dump.h"
+
 #include "command.h"
 
 #include <cloud/filestore/libs/client/config.h>
@@ -66,6 +68,9 @@ public:
         }
 
         auto config = std::make_shared<NVFS::TVFSConfig>(std::move(proto));
+
+DUMP(config->GetFileSystemId());
+
         FileSystemLoop = NFuse::CreateFuseLoop(
             config,
             Logging,

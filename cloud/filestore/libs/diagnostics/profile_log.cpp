@@ -93,6 +93,8 @@ void TProfileLog::ScheduleFlush()
 
 void TProfileLog::Flush()
 {
+if (!Records.IsEmpty())
+    DUMP("Flush", Settings.FilePath, Records.IsEmpty());
     TVector<TRecord> records;
     Records.DequeueAllSingleConsumer(&records);
 

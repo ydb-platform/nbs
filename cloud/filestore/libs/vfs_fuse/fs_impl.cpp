@@ -1,3 +1,6 @@
+#include "dump.h"
+
+
 #include "fs_impl.h"
 
 #include <cloud/filestore/libs/diagnostics/critical_events.h>
@@ -50,6 +53,9 @@ TFileSystem::TFileSystem(
     , HandleOpsQueue(std::move(handleOpsQueue))
 {
     Log = Logging->CreateLog("NFS_FUSE");
+
+DUMP(Config->GetFileSystemId());
+
 }
 
 TFileSystem::~TFileSystem()

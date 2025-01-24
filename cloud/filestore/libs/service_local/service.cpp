@@ -1,3 +1,5 @@
+#include "dump.h"
+
 #include "service.h"
 
 #include "fs.h"
@@ -284,6 +286,9 @@ private:
         logRequest.SetDurationMcs(
             Now().MicroSeconds() - logRequest.GetTimestampMcs());
         logRequest.SetErrorCode(response.GetError().GetCode());
+
+DUMP("pfin2", fsId);
+
         ProfileLog->Write({std::move(fsId), std::move(logRequest)});
     }
 
@@ -294,6 +299,7 @@ private:
     {
         logRequest.SetDurationMcs(
             Now().MicroSeconds() - logRequest.GetTimestampMcs());
+DUMP("pfin1", fsId);
         ProfileLog->Write({std::move(fsId), std::move(logRequest)});
     }
 

@@ -1,3 +1,6 @@
+
+#include "dump.h"
+
 #include "service_state.h"
 
 #include <cloud/filestore/libs/diagnostics/profile_log.h>
@@ -36,6 +39,7 @@ void TInFlightRequest::Complete(
         ProfileLogRequest.HasNodeInfo() ||
         !ProfileLogRequest.GetRanges().empty())
     {
+DUMP("TInFlightRequest::Complete", CallContext->FileSystemId)        ;
         ProfileLog->Write({CallContext->FileSystemId, std::move(ProfileLogRequest)});
     }
 }

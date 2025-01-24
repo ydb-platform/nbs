@@ -1,3 +1,5 @@
+#include "dump.h"
+
 #include "profile_log_events.h"
 
 #include <cloud/filestore/libs/diagnostics/events/profile_events.ev.pb.h>
@@ -146,6 +148,7 @@ void FinalizeProfileLogRequestInfo(
         currentTs.MicroSeconds() - profileLogRequest.GetTimestampMcs());
     profileLogRequest.SetErrorCode(error.GetCode());
 
+DUMP("FinalizeProfileLogRequestInfo 2", fileSystemId);
     profileLog->Write({fileSystemId, std::move(profileLogRequest)});
 }
 

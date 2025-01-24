@@ -1,6 +1,8 @@
 #include "bootstrap.h"
 
 #include "config_initializer.h"
+#include "dump.h"
+
 
 #include <cloud/filestore/libs/diagnostics/config.h>
 #include <cloud/filestore/libs/diagnostics/metrics/service.h>
@@ -149,6 +151,7 @@ void TBootstrapCommon::ParseOptions(int argc, char** argv)
 
 void TBootstrapCommon::Init()
 {
+DUMP("call InitCommonConfigs");
     InitCommonConfigs();
 
     Timer = CreateWallClockTimer();
@@ -158,6 +161,7 @@ void TBootstrapCommon::Init()
         Scheduler,
         BackgroundThreadPool);
 
+DUMP("cccc21", Configs->Options->ProfileFile, Configs->DiagnosticsConfig->GetProfileLogTimeThreshold());
     if (Configs->Options->ProfileFile) {
         ProfileLog = CreateProfileLog(
             {
@@ -196,6 +200,7 @@ void TBootstrapCommon::InitCommonConfigs()
 {
     Configs->InitKikimrConfig();
     Configs->InitStorageConfig();
+DUMP("TBootstrapCommon::InitCommonConfigs GOdc:");
     Configs->InitDiagnosticsConfig();
     Configs->InitFeaturesConfig();
 }

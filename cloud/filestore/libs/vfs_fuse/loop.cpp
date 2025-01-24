@@ -1,3 +1,5 @@
+#include "dump.h"
+
 #include "loop.h"
 
 #include "config.h"
@@ -537,6 +539,9 @@ public:
 
     TFuture<NProto::TError> StartAsync() override
     {
+
+DUMP(Config->GetFileSystemId());
+
         RequestStats = StatsRegistry->GetFileSystemStats(
             Config->GetFileSystemId(),
             Config->GetClientId());
@@ -746,6 +751,8 @@ private:
     {
         NProto::TError error;
 
+DUMP(Config->GetFileSystemId());
+
         try {
             auto response = future.GetValue();
             if (HasError(response)) {
@@ -815,6 +822,9 @@ private:
                 SessionId = response.GetSession().GetSessionId();
                 HandleOpsQueueInitialized = true;
             }
+
+            DUMP(FileSystemConfig->GetFileSystemId());
+
             FileSystem = CreateFileSystem(
                 Logging,
                 ProfileLog,
