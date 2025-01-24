@@ -15,3 +15,5 @@ MaxMigrationBandwidth: 1000
 AssignIdToWriteAndZeroRequestsEnabled: true
 RejectLateRequestsAtDiskAgentEnabled: true
 UseDirectCopyRange: true
+EnableToChangeStatesFromDiskRegistryMonpage: true
+EnableToChangeErrorStatesFromDiskRegistryMonpage: true
