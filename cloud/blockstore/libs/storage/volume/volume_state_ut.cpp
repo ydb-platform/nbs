@@ -12,7 +12,6 @@
 #include <util/generic/guid.h>
 
 #include <chrono>
-#include <ranges>
 
 namespace NCloud::NBlockStore::NStorage {
 
@@ -108,7 +107,7 @@ TVolumeState CreateVolumeState(
         MakeConfig(inactiveClientsTimeout, {}),
         CreateDiagnosticsConfig(),
         CreateVolumeMeta(pp),
-        {{TInstant::Seconds(100), CreateVolumeMeta(pp)}}, // metaHistory
+        {{TInstant::Seconds(100), CreateVolumeMeta(pp)}},   // metaHistory
         {},
         CreateThrottlerConfig(),
         std::move(clientInfos),

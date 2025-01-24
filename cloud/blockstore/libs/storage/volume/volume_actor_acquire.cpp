@@ -100,15 +100,15 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 TAcquireDevicesActor::TAcquireDevicesActor(
-    const TActorId& owner,
-    TVector<NProto::TDeviceConfig> devices,
-    TString diskId,
-    TString clientId,
-    NProto::EVolumeAccessMode accessMode,
-    ui64 mountSeqNumber,
-    ui32 volumeGeneration,
-    TDuration requestTimeout,
-    bool muteIOErrors)
+        const TActorId& owner,
+        TVector<NProto::TDeviceConfig> devices,
+        TString diskId,
+        TString clientId,
+        NProto::EVolumeAccessMode accessMode,
+        ui64 mountSeqNumber,
+        ui32 volumeGeneration,
+        TDuration requestTimeout,
+        bool muteIOErrors)
     : Owner(owner)
     , Devices(std::move(devices))
     , DiskId(std::move(diskId))

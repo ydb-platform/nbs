@@ -20,29 +20,52 @@ using namespace NTestVolume;
 
 using namespace NTestVolumeHelpers;
 
+namespace {
+
+////////////////////////////////////////////////////////////////////////////////
+
+struct TTestContext
+{
+    TVolumeClient Volume;
+    std::unique_ptr<TTestActorRuntime> Runtime;
+    TIntrusivePtr<TDiskRegistryState> DRState;
+};
+
+TTestContext SetupTest()
+{
+    NProto::TStorageServiceConfig config;
+    config.SetAcquireNonReplicatedDevices(true);
+    config.SetNonReplicatedVolumeDirectAcquireEnabled(true);
+    config.SetClientRemountPeriod(2000);
+    auto state = MakeIntrusive<TDiskRegistryState>();
+    auto runtime = PrepareTestActorRuntime(config, state);
+    TVolumeClient volume(*runtime);
+
+    volume.UpdateVolumeConfig(
+        0,
+        0,
+        0,
+        0,
+        false,
+        1,
+        NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
+        1024);
+
+    return {
+        .Volume = std::move(volume),
+        .Runtime = std::move(runtime),
+        .DRState = std::move(state)};
+}
+
+} // namespace
+
 ////////////////////////////////////////////////////////////////////////////////
 
 Y_UNIT_TEST_SUITE(TVolumeTest)
 {
     Y_UNIT_TEST(ShouldPassAllParamsInAcquireDevicesRequest)
     {
-        NProto::TStorageServiceConfig config;
-        config.SetAcquireNonReplicatedDevices(true);
-        config.SetNonReplicatedVolumeDirectAcquireEnabled(true);
-        config.SetClientRemountPeriod(2000);
-        auto state = MakeIntrusive<TDiskRegistryState>();
-        auto runtime = PrepareTestActorRuntime(config, state);
-        TVolumeClient volume(*runtime);
-
-        volume.UpdateVolumeConfig(
-            0,
-            0,
-            0,
-            0,
-            false,
-            1,
-            NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
-            1024);
+        auto [volume, runtime, _] = SetupTest();
 
         TVolumeClient writerClient(*runtime);
 
@@ -50,12 +73,12 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
 
         auto response = volume.GetVolumeInfo();
         auto diskInfo = response->Record.GetVolume();
-        THashMap<TString, NProto::TDevice> devices;
+        THashSet<TString> devices;
         for (const auto& d: diskInfo.GetDevices()) {
-            devices[d.GetDeviceUUID()] = d;
+            devices.emplace(d.GetDeviceUUID());
         }
         for (const auto& m: diskInfo.GetMigrations()) {
-            devices[m.GetTargetDevice().GetDeviceUUID()] = m.GetTargetDevice();
+            devices.emplace(m.GetTargetDevice().GetDeviceUUID());
         }
 
         auto statVolumeResponse = volume.StatVolume();
@@ -114,23 +137,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
 
     Y_UNIT_TEST(ShouldPassAllParamsInReleaseDevicesRequest)
     {
-        NProto::TStorageServiceConfig config;
-        config.SetAcquireNonReplicatedDevices(true);
-        config.SetNonReplicatedVolumeDirectAcquireEnabled(true);
-        config.SetClientRemountPeriod(2000);
-        auto state = MakeIntrusive<TDiskRegistryState>();
-        auto runtime = PrepareTestActorRuntime(config, state);
-        TVolumeClient volume(*runtime);
-
-        volume.UpdateVolumeConfig(
-            0,
-            0,
-            0,
-            0,
-            false,
-            1,
-            NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
-            1024);
+        auto [volume, runtime, _] = SetupTest();
 
         TVolumeClient writerClient(*runtime);
 
@@ -144,12 +151,12 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
 
         auto response = volume.GetVolumeInfo();
         auto diskInfo = response->Record.GetVolume();
-        THashMap<TString, NProto::TDevice> devices;
+        THashSet<TString> devices;
         for (const auto& d: diskInfo.GetDevices()) {
-            devices[d.GetDeviceUUID()] = d;
+            devices.emplace(d.GetDeviceUUID());
         }
         for (const auto& m: diskInfo.GetMigrations()) {
-            devices[m.GetTargetDevice().GetDeviceUUID()] = m.GetTargetDevice();
+            devices.emplace(m.GetTargetDevice().GetDeviceUUID());
         }
 
         auto statVolumeResponse = volume.StatVolume();
@@ -194,23 +201,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
 
     Y_UNIT_TEST(ShouldSendAcquireReleaseRequestsDirectlyToDiskAgent)
     {
-        NProto::TStorageServiceConfig config;
-        config.SetAcquireNonReplicatedDevices(true);
-        config.SetNonReplicatedVolumeDirectAcquireEnabled(true);
-        config.SetClientRemountPeriod(2000);
-        auto state = MakeIntrusive<TDiskRegistryState>();
-        auto runtime = PrepareTestActorRuntime(config, state);
-        TVolumeClient volume(*runtime);
-
-        volume.UpdateVolumeConfig(
-            0,
-            0,
-            0,
-            0,
-            false,
-            1,
-            NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
-            1024);
+        auto [volume, runtime, _] = SetupTest();
 
         TVolumeClient writerClient(*runtime);
         TVolumeClient readerClient1(*runtime);
@@ -328,29 +319,11 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
 
     Y_UNIT_TEST(ShouldRejectTimedoutAcquireRequests)
     {
-        NProto::TStorageServiceConfig config;
-        config.SetAcquireNonReplicatedDevices(true);
-        config.SetNonReplicatedVolumeDirectAcquireEnabled(true);
-        config.SetAgentRequestTimeout(TDuration::Seconds(1).MilliSeconds());
-        config.SetClientRemountPeriod(2000);
-        auto state = MakeIntrusive<TDiskRegistryState>();
-        auto runtime = PrepareTestActorRuntime(config, state);
-        TVolumeClient volume(*runtime);
-
-        volume.UpdateVolumeConfig(
-            0,
-            0,
-            0,
-            0,
-            false,
-            1,
-            NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
-            1024);
+        auto [volume, runtime, _] = SetupTest();
 
         TVolumeClient writerClient(*runtime);
 
         volume.WaitReady();
-
         std::unique_ptr<IEventHandle> stollenResponse;
         runtime->SetObserverFunc(
             [&](TAutoPtr<IEventHandle>& event)
@@ -377,24 +350,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
 
     Y_UNIT_TEST(ShouldPassErrorsFromDiskAgent)
     {
-        NProto::TStorageServiceConfig config;
-        config.SetAcquireNonReplicatedDevices(true);
-        config.SetNonReplicatedVolumeDirectAcquireEnabled(true);
-        config.SetAgentRequestTimeout(TDuration::Seconds(2).MilliSeconds());
-        config.SetClientRemountPeriod(2000);
-        auto state = MakeIntrusive<TDiskRegistryState>();
-        auto runtime = PrepareTestActorRuntime(config, state);
-        TVolumeClient volume(*runtime);
-
-        volume.UpdateVolumeConfig(
-            0,
-            0,
-            0,
-            0,
-            false,
-            1,
-            NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
-            1024);
+        auto [volume, runtime, _] = SetupTest();
 
         TVolumeClient writerClient(*runtime);
 
@@ -436,24 +392,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
 
     Y_UNIT_TEST(ShouldMuteErrorsWithMuteIoErrors)
     {
-        NProto::TStorageServiceConfig config;
-        config.SetAcquireNonReplicatedDevices(true);
-        config.SetNonReplicatedVolumeDirectAcquireEnabled(true);
-        config.SetAgentRequestTimeout(TDuration::Seconds(2).MilliSeconds());
-        config.SetClientRemountPeriod(2000);
-        auto state = MakeIntrusive<TDiskRegistryState>();
-        auto runtime = PrepareTestActorRuntime(config, state);
-        TVolumeClient volume(*runtime);
-
-        volume.UpdateVolumeConfig(
-            0,
-            0,
-            0,
-            0,
-            false,
-            1,
-            NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
-            1024);
+        auto [volume, runtime, state] = SetupTest();
 
         TVolumeClient writerClient(*runtime);
 
@@ -502,24 +441,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
 
     Y_UNIT_TEST(ShouldHandleRequestsUndelivery)
     {
-        NProto::TStorageServiceConfig config;
-        config.SetAcquireNonReplicatedDevices(true);
-        config.SetNonReplicatedVolumeDirectAcquireEnabled(true);
-        config.SetAgentRequestTimeout(TDuration::Seconds(2).MilliSeconds());
-        config.SetClientRemountPeriod(2000);
-        auto state = MakeIntrusive<TDiskRegistryState>();
-        auto runtime = PrepareTestActorRuntime(config, state);
-        TVolumeClient volume(*runtime);
-
-        volume.UpdateVolumeConfig(
-            0,
-            0,
-            0,
-            0,
-            false,
-            1,
-            NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
-            1024);
+        auto [volume, runtime, state] = SetupTest();
 
         TVolumeClient writerClient(*runtime);
 
