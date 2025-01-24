@@ -242,13 +242,13 @@ func testImageServiceCreateImageFromDiskWithKind(
 	require.NoError(t, err)
 
 	if !diskParams.IsDiskRegistryBasedDisk {
-		testcommon.RequireCheckpointWithNoData(t, ctx, diskID, imageID)
+		testcommon.RequireCheckpointWithoutData(t, ctx, diskID, imageID)
 	} else {
 		// The disk registry based disk shouldn't have a checkpoint.
 		// TODO: replace this after resolving issue
-		// https://a.yandex-team.ru/issues/1460
+		// https://a.yandex-team.ru/issues/2923
 		// testcommon.RequireNoCheckpoints(t, ctx, diskID)
-		testcommon.RequireCheckpointWithNoData(t, ctx, diskID, imageID)
+		testcommon.RequireCheckpointWithoutData(t, ctx, diskID, imageID)
 	}
 
 	checkUnencryptedImage(
@@ -1155,7 +1155,7 @@ func TestImageServiceCreateIncrementalImageFromDisk(t *testing.T) {
 	err = internal_client.GetOperationMetadata(ctx, client, operation.Id, &meta)
 	require.NoError(t, err)
 	require.Equal(t, float64(1), meta.Progress)
-	testcommon.RequireCheckpointWithNoData(t, ctx, diskID1, imageID1)
+	testcommon.RequireCheckpointWithoutData(t, ctx, diskID1, imageID1)
 
 	nbsClient := testcommon.NewNbsClient(t, ctx, "zone-a")
 	waitForWrite, err := nbsClient.GoWriteRandomBlocksToNbsDisk(ctx, diskID1)
@@ -1188,7 +1188,7 @@ func TestImageServiceCreateIncrementalImageFromDisk(t *testing.T) {
 	err = internal_client.GetOperationMetadata(ctx, client, operation.Id, &meta)
 	require.NoError(t, err)
 	require.Equal(t, float64(1), meta.Progress)
-	testcommon.RequireCheckpointWithNoData(t, ctx, diskID1, imageID2)
+	testcommon.RequireCheckpointWithoutData(t, ctx, diskID1, imageID2)
 
 	testcommon.CheckBaseSnapshot(t, ctx, imageID2, imageID1)
 

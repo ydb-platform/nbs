@@ -415,6 +415,20 @@ func testCases() []differentChunkStorageTestCase {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+func checkIncremental(
+	t *testing.T,
+	f *fixture,
+	expectedSnapshotID string,
+	expectedCheckpointID string,
+	disk *types.Disk,
+) {
+
+	snapshotID, checkpointID, err := f.storage.GetIncremental(f.ctx, disk)
+	require.NoError(t, err)
+	require.Equal(t, expectedSnapshotID, snapshotID)
+	require.Equal(t, expectedCheckpointID, checkpointID)
+}
+
 func checkBaseSnapshot(
 	t *testing.T,
 	ctx context.Context,
@@ -508,6 +522,10 @@ func TestSnapshotsCreateIncrementalSnapshot(t *testing.T) {
 			require.NotNil(t, created)
 			require.Empty(t, created.BaseSnapshotID)
 			require.Empty(t, created.BaseCheckpointID)
+			checkIncremental(t, f, "", "", &types.Disk{
+				ZoneId: "zone",
+				DiskId: "disk",
+			})
 
 			created, err = f.storage.CreateSnapshot(f.ctx, SnapshotMeta{
 				ID: "snapshot2",
@@ -525,6 +543,10 @@ func TestSnapshotsCreateIncrementalSnapshot(t *testing.T) {
 
 			err = f.storage.SnapshotCreated(f.ctx, snapshot1.ID, 0, 0, 0, nil)
 			require.NoError(t, err)
+			checkIncremental(t, f, "snapshot1", "checkpoint1", &types.Disk{
+				ZoneId: "zone",
+				DiskId: "disk",
+			})
 
 			snapshot3 := SnapshotMeta{
 				ID: "snapshot3",
@@ -542,6 +564,10 @@ func TestSnapshotsCreateIncrementalSnapshot(t *testing.T) {
 			require.Equal(t, snapshot1.ID, created.BaseSnapshotID)
 			require.Equal(t, snapshot1.CheckpointID, created.BaseCheckpointID)
 			checkBaseSnapshot(t, f.ctx, f.storage, snapshot3.ID, snapshot1.ID)
+			checkIncremental(t, f, "snapshot1", "checkpoint1", &types.Disk{
+				ZoneId: "zone",
+				DiskId: "disk",
+			})
 
 			err = f.storage.SnapshotCreated(f.ctx, snapshot3.ID, 0, 0, 0, nil)
 			require.NoError(t, err)
@@ -562,6 +588,10 @@ func TestSnapshotsCreateIncrementalSnapshot(t *testing.T) {
 			require.Equal(t, snapshot3.ID, created.BaseSnapshotID)
 			require.Equal(t, snapshot3.CheckpointID, created.BaseCheckpointID)
 			checkBaseSnapshot(t, f.ctx, f.storage, snapshot4.ID, snapshot3.ID)
+			checkIncremental(t, f, "snapshot3", "checkpoint3", &types.Disk{
+				ZoneId: "zone",
+				DiskId: "disk",
+			})
 
 			err = f.storage.SnapshotCreated(f.ctx, snapshot4.ID, 0, 0, 0, nil)
 			require.NoError(t, err)
