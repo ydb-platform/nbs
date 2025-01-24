@@ -295,10 +295,10 @@ void TVolumeActor::HandleStatVolume(
             partConfig->GetMaxTimedOutDeviceStateDuration().MilliSeconds());
     }
 
-    const bool withNoDataCheckpoints = msg->Record.GetWithNoDataCheckpoints();
+    const bool withCheckpointsWithoutData = msg->Record.GetWithNoDataCheckpoints();
     TVector<TString> checkpoints;
 
-    if (!withNoDataCheckpoints) {
+    if (!withCheckpointsWithoutData) {
         checkpoints = State->GetCheckpointStore().GetCheckpointsWithData();
     } else {
         TActiveCheckpointsMap activeCheckpoints = State->GetCheckpointStore().GetActiveCheckpoints();

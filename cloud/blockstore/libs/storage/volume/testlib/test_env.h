@@ -360,7 +360,7 @@ public:
         const TString& clientId = {},
         const TVector<TString>& storageConfigFields = {},
         const bool noPartition = false,
-        const bool withNoDataCheckpoints = false);
+        const bool withCheckpointsWithoutData = false);
 
     std::unique_ptr<TEvService::TEvReadBlocksRequest> CreateReadBlocksRequest(
         const TBlockRange64& readRange,

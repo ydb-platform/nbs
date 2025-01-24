@@ -650,7 +650,7 @@ message TStatVolumeRequest
     bool NoPartition = 5;
 
     // Return only checkpoints without data.
-    bool WithNoDataCheckpoints = 6;
+    bool withCheckpointsWithoutData = 6;
 }
 
 message TStatVolumeResponse

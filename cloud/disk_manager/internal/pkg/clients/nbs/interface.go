@@ -369,7 +369,7 @@ type Client interface {
 	GetCheckpoints(
 		ctx context.Context,
 		diskID string,
-		withNoDataCheckpoints bool,
+		withCheckpointsWithoutData bool,
 	) ([]string, error)
 
 	// Used in tests.

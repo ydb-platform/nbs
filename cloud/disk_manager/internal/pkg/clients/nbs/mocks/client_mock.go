@@ -435,10 +435,10 @@ func (c *ClientMock) Write(
 func (c *ClientMock) GetCheckpoints(
 	ctx context.Context,
 	diskID string,
-	withNoDataCheckpoints bool,
+	withCheckpointsWithoutData bool,
 ) ([]string, error) {
 
-	args := c.Called(ctx, diskID, withNoDataCheckpoints)
+	args := c.Called(ctx, diskID, withCheckpointsWithoutData)
 	return args.Get(0).([]string), args.Error(1)
 }
 

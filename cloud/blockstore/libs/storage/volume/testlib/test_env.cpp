@@ -259,7 +259,7 @@ std::unique_ptr<TEvService::TEvStatVolumeRequest> TVolumeClient::CreateStatVolum
     const TString& clientId,
     const TVector<TString>& storageConfigFields,
     const bool noPartition,
-    const bool withNoDataCheckpoints)
+    const bool withCheckpointsWithoutData)
 {
     auto request = std::make_unique<TEvService::TEvStatVolumeRequest>();
     request->Record.MutableHeaders()->SetClientId(clientId);
@@ -267,7 +267,7 @@ std::unique_ptr<TEvService::TEvStatVolumeRequest> TVolumeClient::CreateStatVolum
         request->Record.AddStorageConfigFields(field);
     }
     request->Record.SetNoPartition(noPartition);
-    request->Record.SetWithNoDataCheckpoints(withNoDataCheckpoints);
+    request->Record.SetWithNoDataCheckpoints(withCheckpointsWithoutData);
     return request;
 }
 
