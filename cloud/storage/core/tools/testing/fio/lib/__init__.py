@@ -295,7 +295,10 @@ def _lay_out_files(directory, name, jobs, size):
         _lay_out_file('{}/{}.{}.0'.format(directory, name, i), size)
 
 
-def _execute_command(cmd, fail_on_errors):
+def _execute_command(cmd, fail_on_errors, debug=False):
+    if debug:
+        strace_file = os.path.join(common.output_path(), "strace_" + str(uuid.uuid4()) + ".log")
+        cmd = ["strace", "-f", "-o", strace_file] + cmd
     print("execute " + " ".join(cmd))
     ex = common.execute(
         cmd,
@@ -435,4 +438,4 @@ def run_index_test(directory, test, fail_on_errors=False, verbose=False):
     monitoring_thread.start()
 
     # This will call popen and wait for the process to finish
-    return _execute_command(cmd, fail_on_errors)
+    return _execute_command(cmd, fail_on_errors, debug=verbose)
