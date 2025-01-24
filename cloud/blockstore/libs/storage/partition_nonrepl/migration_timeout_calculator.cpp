@@ -23,6 +23,12 @@ TMigrationTimeoutCalculator::TMigrationTimeoutCalculator(
 TDuration TMigrationTimeoutCalculator::CalculateTimeout(
     TBlockRange64 nextProcessingRange) const
 {
+    if (RecommendedBandwidth) {
+        auto rangesPerSecond =
+            static_cast<double>(RecommendedBandwidth) / ProcessingRangeSize;
+        return TDuration::Seconds(1) / Max(rangesPerSecond, 1.0);
+    }
+
     // migration range is 4_MB
     const double processingRangeSizeMiBs =
         static_cast<double>(ProcessingRangeSize) / (1024 * 1024);
@@ -78,6 +84,11 @@ void TMigrationTimeoutCalculator::HandleUpdateBandwidthLimit(
     }
 
     LimitedBandwidthMiBs = msg->LimitedBandwidthMiBs;
+}
+
+void TMigrationTimeoutCalculator::SetRecommendedBandwidth(ui64 bandwidth)
+{
+    RecommendedBandwidth = bandwidth;
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

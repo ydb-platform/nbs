@@ -126,6 +126,7 @@ TDuration MSeconds(ui32 value)
     xxx(ConfigDispatcherSettings,                                              \
         NCloud::NProto::TConfigDispatcherSettings,                             \
         {}                                                                    )\
+    xxx(YdbViewerServiceEnabled,              bool,                  false    )\
 // BLOCKSTORE_STORAGE_CONFIG_RO
 
 #define BLOCKSTORE_STORAGE_CONFIG_RW(xxx)                                      \
@@ -156,10 +157,12 @@ TDuration MSeconds(ui32 value)
     xxx(TargetCompactionBytesPerOp,             ui64,   64_KB                 )\
     xxx(MaxSkippedBlobsDuringCompaction,        ui32,   3                     )\
     xxx(IncrementalCompactionEnabled,           bool,   false                 )\
-    xxx(CompactionRangeCountPerRun,             ui32,   3                     )\
     xxx(CompactionCountPerRunIncreasingThreshold, ui32, 0                     )\
     xxx(CompactionCountPerRunDecreasingThreshold, ui32, 0                     )\
+    xxx(CompactionRangeCountPerRun,             ui32,   3                     )\
     xxx(MaxCompactionRangeCountPerRun,          ui32,   8                     )\
+    xxx(GarbageCompactionRangeCountPerRun,      ui32,   1                     )\
+    xxx(ForcedCompactionRangeCountPerRun,       ui32,   1                     )\
     xxx(CompactionCountPerRunChangingPeriod,    TDuration, Seconds(60)        )\
     xxx(BatchCompactionEnabled,                 bool,   false                 )\
     xxx(BlobPatchingEnabled,                    bool,   false                 )\
@@ -523,6 +526,7 @@ TDuration MSeconds(ui32 value)
     xxx(DiskRegistryInitialAgentRejectionThreshold,       double,    50       )\
     xxx(EnableToChangeStatesFromDiskRegistryMonpage,      bool,    false      )\
     xxx(EnableToChangeErrorStatesFromDiskRegistryMonpage, bool,    false      )\
+    xxx(CalculateSplittedUsedQuotaMetric,                 bool,    false      )\
 // BLOCKSTORE_STORAGE_CONFIG_RW
 
 #define BLOCKSTORE_STORAGE_CONFIG(xxx)                                         \

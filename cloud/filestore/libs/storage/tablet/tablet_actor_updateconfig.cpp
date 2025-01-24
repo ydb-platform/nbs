@@ -448,6 +448,8 @@ void TIndexTabletActor::CompleteTx_ConfigureAsShard(
         args.Request.GetShardNo(),
         JoinSeq(",", GetFileSystem().GetShardFileSystemIds()).c_str());
 
+    RegisterFileStore(ctx);
+
     auto response =
         std::make_unique<TEvIndexTablet::TEvConfigureAsShardResponse>();
 

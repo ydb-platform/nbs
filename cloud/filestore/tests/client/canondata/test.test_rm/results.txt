@@ -1,0 +1,32 @@
+[
+    {
+        "Type": 1,
+        "Links": 1,
+        "Name": "c.txt",
+        "Mode": 420,
+        "Id": 4
+    },
+    {
+        "Type": 1,
+        "Links": 1,
+        "Name": "d.txt",
+        "Mode": 420,
+        "Id": 5
+    }
+][
+    {
+        "Type": 1,
+        "Links": 1,
+        "Name": "d.txt",
+        "Mode": 420,
+        "Id": 5
+    }
+][][
+    {
+        "Type": 2,
+        "Links": 1,
+        "Name": "b",
+        "Mode": 511,
+        "Id": 3
+    }
+][]

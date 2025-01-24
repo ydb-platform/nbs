@@ -51,6 +51,7 @@ struct TEvNonreplPartitionPrivate
         TDuration WriteDuration;
         TVector<IProfileLog::TBlockInfo> AffectedBlockInfos;
         bool AllZeroes;
+        ui64 RecommendedBandwidth;
         EExecutionSide ExecutionSide;
         ui64 ExecCycles;
 
@@ -62,6 +63,7 @@ struct TEvNonreplPartitionPrivate
                 TInstant writeStartTs,
                 TDuration writeDuration,
                 TVector<IProfileLog::TBlockInfo> affectedBlockInfos,
+                ui64 recommendedBandwidth,
                 bool allZeroes,
                 ui64 execCycles)
             : Range(range)
@@ -71,6 +73,7 @@ struct TEvNonreplPartitionPrivate
             , WriteDuration(writeDuration)
             , AffectedBlockInfos(std::move(affectedBlockInfos))
             , AllZeroes(allZeroes)
+            , RecommendedBandwidth(recommendedBandwidth)
             , ExecutionSide(executionSide)
             , ExecCycles(execCycles)
         {}

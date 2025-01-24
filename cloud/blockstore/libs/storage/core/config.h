@@ -95,6 +95,8 @@ public:
     ui32 GetCompactionCountPerRunDecreasingThreshold() const;
     ui32 GetCompactionRangeCountPerRun() const;
     ui32 GetMaxCompactionRangeCountPerRun() const;
+    ui32 GetGarbageCompactionRangeCountPerRun() const;
+    ui32 GetForcedCompactionRangeCountPerRun() const;
     TDuration GetCompactionCountPerRunChangingPeriod() const;
     bool GetBatchCompactionEnabled() const;
     bool GetBlobPatchingEnabled() const;
@@ -625,6 +627,10 @@ public:
     [[nodiscard]] bool GetEnableToChangeStatesFromDiskRegistryMonpage() const;
     [[nodiscard]] bool
     GetEnableToChangeErrorStatesFromDiskRegistryMonpage() const;
+
+    [[nodiscard]] bool GetCalculateSplittedUsedQuotaMetric() const;
+
+    bool GetYdbViewerServiceEnabled() const;
 };
 
 ui64 GetAllocationUnit(

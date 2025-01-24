@@ -165,6 +165,7 @@ void TCopyRangeActor::Done(const TActorContext& ctx, NProto::TError error)
             WriteStartTs,
             WriteDuration,
             std::move(AffectedBlockInfos),
+            0,   // RecommendedBandwidth,
             AllZeroes,
             RequestInfo->GetExecCycles());
 

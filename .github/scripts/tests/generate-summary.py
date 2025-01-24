@@ -2,7 +2,6 @@
 import argparse
 import dataclasses
 import os
-import re
 import json
 import sys
 from github import Github, Auth as GithubAuth
@@ -360,20 +359,21 @@ def update_pr_comment(
     test_history_url: str,
     is_dry_run: bool,
 ):
-    header = f"<!-- status pr={pr.number}, run={{}} -->"
-    header_re = re.compile(header.format(r"(\d+)"))
+    header = f"<!-- status pr={pr.number}, run={run_number}, build_preset={build_preset}, dry_run={is_dry_run} -->"
 
     body = None
+    comment = None
 
     for c in pr.get_issue_comments():
-        if matches := header_re.match(c.body):
-            if int(matches[1]) == run_number:
-                body = [c.body, "", "---", ""]
+        if c.body.startswith(header):
+            print(f"Found comment with id={c.id}")
+            comment = c
+            body = [c.body]
+            break
 
     if body is None:
-        body = [
-            header.format(run_number),
-        ]
+        body = [header]
+
         if is_dry_run:
             body.extend(
                 [
@@ -389,12 +389,19 @@ def update_pr_comment(
                 "",
             ]
         )
+    else:
+        body.extend(["", ""])
 
     body.extend(get_comment_text(pr, summary, build_preset, test_history_url))
 
     body = "\n".join(body)
 
-    pr.create_issue_comment(body)
+    if comment is None:
+        print("Creating new comment")
+        pr.create_issue_comment(body)
+    else:
+        print("Updating existing comment")
+        comment.edit(body)
 
 
 def main():

@@ -15,6 +15,10 @@ TEST_SRCS(
     test.py
 )
 
+IF (SANITIZER_TYPE)
+    SKIP_TEST("Suppressed until issue 2831 is resolved")
+ENDIF()
+
 SET(NFS_FORCE_VERBOSE 1)
 
 INCLUDE(${ARCADIA_ROOT}/cloud/filestore/tests/recipes/service-kikimr.inc)

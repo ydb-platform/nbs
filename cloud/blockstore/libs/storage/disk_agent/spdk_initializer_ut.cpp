@@ -122,9 +122,13 @@ TInitializeSpdkResult InitializeSpdkSync(
     NProto::TDiskAgentConfig config)
 {
     return InitializeSpdk(
-        std::make_shared<NStorage::TDiskAgentConfig>(std::move(config), "rack"),
-        std::make_shared<TTestEnv>(),
-        ICachingAllocatorPtr()).GetValueSync();
+               std::make_shared<NStorage::TDiskAgentConfig>(
+                   std::move(config),
+                   "rack",
+                   25000),
+               std::make_shared<TTestEnv>(),
+               ICachingAllocatorPtr())
+        .GetValueSync();
 }
 
 }   // namespace

@@ -19,6 +19,7 @@ private:
     const ui32 ExpectedDiskAgentSize = 0;
     TNonreplicatedPartitionConfigPtr PartitionConfig;
     ui32 LimitedBandwidthMiBs = 0;
+    ui64 RecommendedBandwidth = 0;
 
 public:
     TMigrationTimeoutCalculator(
@@ -35,6 +36,8 @@ public:
         const TEvStatsServicePrivate::
             TEvRegisterTrafficSourceResponse::TPtr& ev,
         const NActors::TActorContext& ctx);
+
+    void SetRecommendedBandwidth(ui64 bandwidth);
 };
 
 }   // namespace NCloud::NBlockStore::NStorage

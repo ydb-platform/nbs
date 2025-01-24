@@ -303,6 +303,8 @@ public:
 
     bool GetGuestWritebackCacheEnabled() const;
     ui64 GetMixedBlocksOffloadedRangesCapacity() const;
+
+    bool GetYdbViewerServiceEnabled() const;
 };
 
 }   // namespace NCloud::NFileStore::NStorage

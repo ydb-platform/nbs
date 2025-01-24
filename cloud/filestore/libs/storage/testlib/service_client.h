@@ -69,6 +69,36 @@ public:
         return Runtime;
     }
 
+    void RegisterLocalFileStore(
+        const TString& fileSystemId,
+        ui64 tabletId,
+        ui64 generation,
+        bool isShard,
+        NProtoPrivate::TFileSystemConfig config)
+    {
+        auto request =
+            std::make_unique<TEvService::TEvRegisterLocalFileStoreRequest>(
+                fileSystemId,
+                tabletId,
+                generation,
+                isShard,
+                std::move(config));
+        SendRequest(MakeStorageServiceId(), std::move(request));
+        Runtime.DispatchEvents({}, TDuration::Seconds(1));
+    }
+
+    void UnregisterLocalFileStore(
+        const TString& fileSystemId,
+        ui64 generation)
+    {
+        auto request =
+            std::make_unique<TEvService::TEvUnregisterLocalFileStoreRequest>(
+                fileSystemId,
+                generation);
+        SendRequest(MakeStorageServiceId(), std::move(request));
+        Runtime.DispatchEvents({}, TDuration::Seconds(1));
+    }
+
     THeaders InitSession(
         const TString& fileSystemId,
         const TString& clientId,

@@ -865,6 +865,46 @@ func (c *client) DeleteCheckpointData(
 	return err
 }
 
+func (c *client) EnsureCheckpointReady(
+	ctx context.Context,
+	diskID string,
+	checkpointID string,
+) (err error) {
+
+	defer c.metrics.StatRequest("EnsureCheckpointReady")(&err)
+
+	status, err := c.GetCheckpointStatus(ctx, diskID, checkpointID)
+	if err != nil {
+		return err
+	}
+
+	logging.Debug(
+		ctx,
+		"Current status of checkpoint with id %v for disk %v is %v",
+		checkpointID,
+		diskID,
+		status,
+	)
+
+	switch status {
+	case CheckpointStatusNotReady:
+		return errors.NewInterruptExecutionError()
+
+	case CheckpointStatusError:
+		_ = c.DeleteCheckpoint(ctx, diskID, checkpointID)
+		return errors.NewRetriableErrorf(
+			"creating checkpoint with id %v for disk %v ended with an error",
+			checkpointID,
+			diskID,
+		)
+
+	case CheckpointStatusReady:
+		// Nothing to do.
+	}
+
+	return nil
+}
+
 func (c *client) Resize(
 	ctx context.Context,
 	checkpoint func() error,

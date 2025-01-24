@@ -2,6 +2,7 @@
 
 #include "public.h"
 
+#include "library/cpp/threading/future/core/future.h"
 #include "scheduler.h"
 
 #include <util/generic/vector.h>
@@ -17,6 +18,7 @@ class TTestScheduler final
 private:
     TMutex CallbacksLock;
     TVector<TCallback> Callbacks;
+    std::optional<NThreading::TPromise<void>> GotNewCallback;
 
 public:
     void Start() override {}
@@ -28,6 +30,8 @@ public:
         TCallback callback) override;
 
     void RunAllScheduledTasks();
+
+    NThreading::TFuture<void> WaitForTaskSchedule();
 };
 
 }   // namespace NCloud

@@ -167,10 +167,13 @@ public:
             }
         }
 
-        STORAGE_INFO("[f:%s] StopAsync: completing left: %ld, requests left: %u",
+        STORAGE_INFO(
+            "[f:%s] StopAsync: completing left: %ld, requests left: %u, "
+            "fuse cancellation code: %u",
             FileSystemId.c_str(),
             completingCount,
-            requestsSize);
+            requestsSize,
+            code);
 
         if (canStop) {
             StopPromise.TrySetValue();

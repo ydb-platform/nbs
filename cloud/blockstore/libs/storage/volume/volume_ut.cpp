@@ -5050,10 +5050,12 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
 
     Y_UNIT_TEST(ShouldDoLiteReallocations)
     {
-        auto runtime = PrepareTestActorRuntime();
+        auto state = MakeIntrusive<TDiskRegistryState>();
+        auto runtime = PrepareTestActorRuntime(
+            NProto::TStorageServiceConfig(), state);
 
-        const auto expectedBlockCount = DefaultDeviceBlockSize * DefaultDeviceBlockCount
-            / DefaultBlockSize;
+        const auto expectedBlockCount =
+            DefaultDeviceBlockSize * DefaultDeviceBlockCount / DefaultBlockSize;
         const auto expectedDeviceCount = 3;
 
         TVolumeClient volume(*runtime);
@@ -5077,6 +5079,9 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
             auto metaHistory = volume.ReadMetaHistory();
             UNIT_ASSERT_VALUES_EQUAL(S_OK, metaHistory->Error.GetCode());
             UNIT_ASSERT_VALUES_EQUAL(1, metaHistory->MetaHistory.size());
+            UNIT_ASSERT_VALUES_EQUAL(
+                0,
+                metaHistory->MetaHistory[0].Meta.GetIOModeTs());
         }
 
         {
@@ -5149,6 +5154,34 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
             auto metaHistory = volume.ReadMetaHistory();
             UNIT_ASSERT_VALUES_EQUAL(S_OK, metaHistory->Error.GetCode());
             UNIT_ASSERT_VALUES_EQUAL(2, metaHistory->MetaHistory.size());
+            UNIT_ASSERT_VALUES_EQUAL(
+                0,
+                metaHistory->MetaHistory[1].Meta.GetIOModeTs());
+        }
+
+        runtime->SetEventFilter([](TTestActorRuntimeBase&,
+                                   TAutoPtr<IEventHandle>&) { return false; });
+        auto now = Now();
+        state->Disks["vol0"].IOModeTs = now;
+        volume.ReallocateDisk();
+        {
+            // Lite reallocation happened. Meta history still contains 2 items.
+            auto metaHistory = volume.ReadMetaHistory();
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, metaHistory->Error.GetCode());
+            UNIT_ASSERT_VALUES_EQUAL(2, metaHistory->MetaHistory.size());
+        }
+
+        state->Disks["vol0"].MuteIOErrors = true;
+        volume.ReallocateDisk();
+        {
+            // No lite reallocation, since MuteIOErrors has changed. Meta
+            // history contains 3 items now.
+            auto metaHistory = volume.ReadMetaHistory();
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, metaHistory->Error.GetCode());
+            UNIT_ASSERT_VALUES_EQUAL(3, metaHistory->MetaHistory.size());
+            UNIT_ASSERT_VALUES_EQUAL(
+                now.MicroSeconds(),
+                metaHistory->MetaHistory.back().Meta.GetIOModeTs());
         }
     }
 

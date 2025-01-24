@@ -2,6 +2,8 @@
 
 #include "public.h"
 
+#include "tablet_boot_info.h"
+
 #include <cloud/storage/core/libs/kikimr/components.h>
 #include <cloud/storage/core/libs/kikimr/events.h>
 
@@ -96,6 +98,24 @@ struct TEvHiveProxyPrivate
     };
 
     //
+    // ListTabletBootInfoBackups
+    //
+
+    struct TListTabletBootInfoBackupsRequest
+    {
+    };
+
+    struct TListTabletBootInfoBackupsResponse
+    {
+        TVector<TTabletBootInfo> TabletBootInfos;
+
+        explicit TListTabletBootInfoBackupsResponse(
+                TVector<TTabletBootInfo> tabletBootInfos)
+            : TabletBootInfos(std::move(tabletBootInfos))
+        {}
+    };
+
+    //
     // Events declaration
     //
 
@@ -110,6 +130,8 @@ struct TEvHiveProxyPrivate
         EvReadTabletBootInfoBackupRequest,
         EvReadTabletBootInfoBackupResponse,
         EvUpdateTabletBootInfoBackupRequest,
+        EvListTabletBootInfoBackupsRequest,
+        EvListTabletBootInfoBackupsResponse,
 
         EvEnd
     };
@@ -128,6 +150,10 @@ struct TEvHiveProxyPrivate
         TReadTabletBootInfoBackupResponse, EvReadTabletBootInfoBackupResponse>;
     using TEvUpdateTabletBootInfoBackupRequest = TRequestEvent<
         TUpdateTabletBootInfoBackupRequest, EvUpdateTabletBootInfoBackupRequest>;
+    using TEvListTabletBootInfoBackupsRequest = TRequestEvent<
+        TListTabletBootInfoBackupsRequest, EvListTabletBootInfoBackupsRequest>;
+    using TEvListTabletBootInfoBackupsResponse = TRequestEvent<
+        TListTabletBootInfoBackupsResponse, EvListTabletBootInfoBackupsResponse>;
 };
 
 }   // namespace NCloud::NStorage

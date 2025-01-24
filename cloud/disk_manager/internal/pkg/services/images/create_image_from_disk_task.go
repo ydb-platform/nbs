@@ -93,6 +93,11 @@ func (t *createImageFromDiskTask) run(
 		return err
 	}
 
+	err = nbsClient.EnsureCheckpointReady(ctx, disk.DiskId, checkpointID)
+	if err != nil {
+		return err
+	}
+
 	taskID, err := t.scheduler.ScheduleZonalTask(
 		headers.SetIncomingIdempotencyKey(ctx, selfTaskID+"_run"),
 		"dataplane.CreateSnapshotFromDisk",

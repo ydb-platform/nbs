@@ -983,6 +983,9 @@ message TDirectCopyBlocksResponse
 
     // The time spent writing the data (in microseconds).
     uint64 WriteDuration = 4;
+
+    // The disk agent's recommended bandwidth for copying blocks.
+    uint64 RecommendedBandwidth = 5;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

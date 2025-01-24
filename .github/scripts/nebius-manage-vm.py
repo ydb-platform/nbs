@@ -374,7 +374,7 @@ def retry_create_vm(func: callable) -> callable:
                 logger.info("Next run will be at %s", time.ctime(next_run_time))
                 while (
                     time.time() < next_run_time
-                    and time.time() - start_time < total_time_limit
+                    and time.time() - start_time < total_time_limit  # noqa: W503
                 ):
                     time.sleep(1)
             except Exception as e:
