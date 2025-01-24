@@ -77,6 +77,13 @@ FileDevices: {
     BlockSize: 4096
 }
 
+ThrottlingConfig: {
+    InfraThrottlingConfigPath: "nbs/nbs-throttling.json"
+    DefaultNetworkMbitThroughput: 100
+    DirectCopyBandwidthFraction: 0.5
+    MaxDeviceBandwidthMiB: 15
+}
+
 EOF
 
 cat > $BIN_DIR/nbs/nbs-location-$1.txt <<EOF
@@ -118,6 +125,13 @@ FileDevices: {
     BlockSize: 512
     PoolName: "local-ssd"
 }
+
+ThrottlingConfig: {
+    InfraThrottlingConfigPath: "nbs/nbs-throttling.json"
+    DefaultNetworkMbitThroughput: 100
+    DirectCopyBandwidthFraction: 0.5
+}
+
 EOF
 
 cat > $BIN_DIR/nbs/nbs-location-0.txt <<EOF

@@ -187,6 +187,23 @@ void TTabletBootInfoBackup::HandleBackupTabletBootInfos(
     NCloud::Reply(ctx, *ev, std::move(response));
 }
 
+void TTabletBootInfoBackup::HandleListTabletBootInfoBackups(
+    const TEvHiveProxyPrivate::TEvListTabletBootInfoBackupsRequest::TPtr& ev,
+    const TActorContext& ctx)
+{
+    TVector<TTabletBootInfo> infos;
+    for (const auto& [_, info]: BackupProto.GetData()) {
+        infos.emplace_back(
+            NKikimr::TabletStorageInfoFromProto(info.GetStorageInfo()),
+            info.GetSuggestedGeneration());
+    }
+
+    auto response =
+        std::make_unique<TEvHiveProxyPrivate::TEvListTabletBootInfoBackupsResponse>(
+            std::move(infos));
+    NCloud::Reply(ctx, *ev, std::move(response));
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 STFUNC(TTabletBootInfoBackup::StateWork)
@@ -196,6 +213,7 @@ STFUNC(TTabletBootInfoBackup::StateWork)
         HFunc(TEvHiveProxyPrivate::TEvReadTabletBootInfoBackupRequest, HandleReadTabletBootInfoBackup);
         HFunc(TEvHiveProxyPrivate::TEvUpdateTabletBootInfoBackupRequest, HandleUpdateTabletBootInfoBackup);
         HFunc(TEvHiveProxy::TEvBackupTabletBootInfosRequest, HandleBackupTabletBootInfos);
+        HFunc(TEvHiveProxyPrivate::TEvListTabletBootInfoBackupsRequest, HandleListTabletBootInfoBackups);
         default:
             HandleUnexpectedEvent(ev, LogComponent);
             break;

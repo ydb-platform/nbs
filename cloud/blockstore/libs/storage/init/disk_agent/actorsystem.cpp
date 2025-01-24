@@ -178,6 +178,8 @@ IActorSystemPtr CreateDiskAgentActorSystem(const TDiskAgentActorSystemArgs& daAr
     servicesMask.EnableLocalService = 0;    // configured manually
     servicesMask.EnableConfigsDispatcher =
         daArgs.StorageConfig->GetConfigsDispatcherServiceEnabled();
+    servicesMask.EnableViewerService =
+        daArgs.StorageConfig->GetYdbViewerServiceEnabled();
 
     TActorSystemArgs args{
         .ModuleFactories = daArgs.ModuleFactories,

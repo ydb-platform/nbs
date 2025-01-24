@@ -21,23 +21,6 @@ namespace NCloud::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TTabletBootInfo
-{
-    TTabletBootInfo() = default;
-
-    TTabletBootInfo(
-            NKikimr::TTabletStorageInfoPtr storageInfo,
-            ui64 suggestedGeneration)
-        : StorageInfo(std::move(storageInfo))
-        , SuggestedGeneration(suggestedGeneration)
-    {}
-
-    NKikimr::TTabletStorageInfoPtr StorageInfo;
-    ui64 SuggestedGeneration = 0;
-};
-
-////////////////////////////////////////////////////////////////////////////////
-
 class TTabletBootInfoBackup final
     : public NActors::TActorBootstrapped<TTabletBootInfoBackup>
 {
@@ -77,6 +60,10 @@ private:
 
     void HandleBackupTabletBootInfos(
         const TEvHiveProxy::TEvBackupTabletBootInfosRequest::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleListTabletBootInfoBackups(
+        const TEvHiveProxyPrivate::TEvListTabletBootInfoBackupsRequest::TPtr& ev,
         const NActors::TActorContext& ctx);
 };
 

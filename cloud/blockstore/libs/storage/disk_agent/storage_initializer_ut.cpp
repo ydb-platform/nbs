@@ -166,7 +166,7 @@ Y_UNIT_TEST_SUITE(TInitializerTest)
         auto future = InitializeStorage(
             Logging->CreateLog("Test"),
             StorageConfig,
-            std::make_shared<TDiskAgentConfig>(DefaultConfig, "rack"),
+            std::make_shared<TDiskAgentConfig>(DefaultConfig, "rack", 1000),
             StorageProvider,
             std::make_shared<TTestNvmeManager>(pathToSerial));
 
@@ -208,7 +208,7 @@ Y_UNIT_TEST_SUITE(TInitializerTest)
         auto future1 = InitializeStorage(
             Logging->CreateLog("Test"),
             StorageConfig,
-            std::make_shared<TDiskAgentConfig>(DefaultConfig, "rack"),
+            std::make_shared<TDiskAgentConfig>(DefaultConfig, "rack", 1000),
             StorageProvider,
             std::make_shared<TTestNvmeManager>(pathToSerial));
 
@@ -229,7 +229,7 @@ Y_UNIT_TEST_SUITE(TInitializerTest)
         auto future2 = InitializeStorage(
             Logging->CreateLog("Test"),
             StorageConfig,
-            std::make_shared<TDiskAgentConfig>(DefaultConfig, "rack"),
+            std::make_shared<TDiskAgentConfig>(DefaultConfig, "rack", 1000),
             StorageProvider,
             std::make_shared<TTestNvmeManager>(newPathToSerial));
 
@@ -260,7 +260,7 @@ Y_UNIT_TEST_SUITE(TInitializerTest)
         auto future3 = InitializeStorage(
             Logging->CreateLog("Test"),
             StorageConfig,
-            std::make_shared<TDiskAgentConfig>(DefaultConfig, "rack"),
+            std::make_shared<TDiskAgentConfig>(DefaultConfig, "rack", 1000),
             StorageProvider,
             std::make_shared<TTestNvmeManager>(newPathToSerial));
 
@@ -305,7 +305,7 @@ Y_UNIT_TEST_SUITE(TInitializerTest)
         auto future1 = InitializeStorage(
             Logging->CreateLog("Test"),
             StorageConfig,
-            std::make_shared<TDiskAgentConfig>(DefaultConfig, "rack"),
+            std::make_shared<TDiskAgentConfig>(DefaultConfig, "rack", 1000),
             StorageProvider,
             std::make_shared<TTestNvmeManager>(pathToSerial));
 
@@ -330,7 +330,7 @@ Y_UNIT_TEST_SUITE(TInitializerTest)
         auto future2 = InitializeStorage(
             Logging->CreateLog("Test"),
             StorageConfig,
-            std::make_shared<TDiskAgentConfig>(newConfig, "rack"),
+            std::make_shared<TDiskAgentConfig>(newConfig, "rack", 1000),
             StorageProvider,
             std::make_shared<TTestNvmeManager>(newPathToSerial));
 
@@ -381,7 +381,7 @@ Y_UNIT_TEST_SUITE(TInitializerTest)
         auto future1 = InitializeStorage(
             Logging->CreateLog("Test"),
             StorageConfig,
-            std::make_shared<TDiskAgentConfig>(DefaultConfig, "rack"),
+            std::make_shared<TDiskAgentConfig>(DefaultConfig, "rack", 1000),
             StorageProvider,
             std::make_shared<TTestNvmeManager>(pathToSerial));
 
@@ -402,7 +402,7 @@ Y_UNIT_TEST_SUITE(TInitializerTest)
         auto future2 = InitializeStorage(
             Logging->CreateLog("Test"),
             StorageConfig,
-            std::make_shared<TDiskAgentConfig>(newConfig, "rack"),
+            std::make_shared<TDiskAgentConfig>(newConfig, "rack", 1000),
             StorageProvider,
             std::make_shared<TTestNvmeManager>(newPathToSerial));
 
@@ -468,7 +468,7 @@ Y_UNIT_TEST_SUITE(TInitializerTest)
         auto future = InitializeStorage(
             Logging->CreateLog("Test"),
             StorageConfig,
-            std::make_shared<TDiskAgentConfig>(staticConfig, "rack"),
+            std::make_shared<TDiskAgentConfig>(staticConfig, "rack", 1000),
             StorageProvider,
             std::make_shared<TTestNvmeManager>(pathToSerial));
 

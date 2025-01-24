@@ -90,6 +90,9 @@ runs:
           echo "Cleaning ya dir"
           rm -rf /home/github/.ya/
         fi
+        # checking /etc/hosts to see if vm was created correctly
+        cat /etc/hosts
+
     - name: ya test
       shell: bash --noprofile --norc -eo pipefail -x {0}
       run: |

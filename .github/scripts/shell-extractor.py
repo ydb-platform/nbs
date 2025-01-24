@@ -106,6 +106,8 @@ def parse_command_blocks(run_content):
 
 def write_runs_to_files(runs, output_dir, prefix):
     """
+    Write run commands to files.
+
     Write each run command to a .sh file with template {action name}-{index inside of action file}
     in the given output_dir.
 
