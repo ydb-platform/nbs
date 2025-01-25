@@ -25,6 +25,8 @@ read/write with multiranges (now only first processed)
 #include <util/string/builder.h>
 #include <util/system/fstat.h>
 
+#include <algorithm>
+
 namespace NCloud::NFileStore::NLoadTest {
 
 using namespace NThreading;
@@ -75,6 +77,8 @@ private:
     };
 
     THashMap<THandleLocal, THandle> OpenHandles;
+
+    THashMap<TString, ui64> FilenameToSize;
 
     const TString LostName = "__lost__";
     const TString UnknownNodeNamePrefix = "_nodeid_";
@@ -230,7 +234,7 @@ private:
         }
     }
 
-    static EOpenModeFlag FileOpenFlags(ui32 flags, EOpenModeFlag init = {})
+    static EOpenModeFlag FileOpenFlags(ui32 flags, EOpenMode init = {})
     {
         auto systemflags = HandleFlagsToSystem(flags);
         ui32 value{init};
@@ -339,8 +343,41 @@ private:
             logRequest.GetNodeInfo().GetNodeId());
 
         try {
-            ui64 size = 0;
-            if (Spec.GetCreateOnRead() ==
+            ui64 wantSize = 0;
+            ui64 requestLastByte = 0;
+
+            if (Spec.GetCreateOnRead() == NProto::TReplaySpec_ECreateOnRead::
+                                              TReplaySpec_ECreateOnRead_Greedy)
+            {
+                if (const auto& action = logRequest.GetRequestType();
+                    static_cast<EFileStoreRequest>(action) ==
+                        EFileStoreRequest::ReadData &&
+                    logRequest.RangesSize() > 0)
+                {
+                    const auto& range = logRequest.GetRanges().cbegin();
+                    const auto& offset = range->GetOffset();
+                    const auto& bytes = range->GetBytes();
+                    requestLastByte = offset + bytes;
+                }
+
+                if (requestLastByte) {
+                    ui64 actualSize = 0;
+                    const auto iter = FilenameToSize.find(fullName.c_str());
+                    if (iter == FilenameToSize.end()) {
+                        actualSize = TFile(fullName, RdOnly).GetLength();
+                        FilenameToSize[fullName.c_str()] = actualSize;
+                    } else {
+                        actualSize = iter->second;
+                    }
+
+                    if (actualSize < requestLastByte) {
+                        wantSize = requestLastByte;
+                    }
+                }
+            }
+
+            if (wantSize ||
+                Spec.GetCreateOnRead() ==
                     NProto::TReplaySpec_ECreateOnRead::
                         TReplaySpec_ECreateOnRead_FullSize ||
                 (Spec.GetCreateOnRead() ==
@@ -349,20 +386,27 @@ private:
                  logRequest.GetNodeInfo().GetSize() <
                      GreedyMinimumAlwaysCreateBytes))
             {
-                TFile fileHandleResize(fullName, WrOnly);
-                size = logRequest.GetNodeInfo().GetSize();
-                fileHandleResize.Resize(size);
+                TFile fileResize(fullName, WrOnly | OpenAlways);
+                if (!wantSize) {
+                    wantSize = logRequest.GetNodeInfo().GetSize();
+                }
+                fileResize.Resize(wantSize);
             }
 
-            EOpenModeFlag modeInit{};
+            EOpenMode modeInit{};
             if (Spec.GetCreateOnRead()) {
                 modeInit = OpenAlways;
             } else {
                 modeInit = OpenExisting;
             }
 
+            if (Spec.GetOpenAddDirectFlag()) {
+                modeInit |= DirectAligned;
+            }
+
             const auto mode =
                 FileOpenFlags(logRequest.GetNodeInfo().GetFlags(), modeInit);
+
             TFile file(fullName, mode);
 
             if (!file.IsOpen()) {
@@ -382,7 +426,7 @@ private:
 
             OpenHandles[fh] = {
                 .File = file,
-                .Size = size,
+                .Size = wantSize,
                 .Path = fullName,
                 .Mode = mode};
 
@@ -463,10 +507,11 @@ private:
         }
         auto& fh = OpenHandles[handleLocal];
         STORAGE_DEBUG(
-            "Read from %lu fh.len=%ld fh.pos=%ld ",
+            "Read from %lu fh.len=%ld fh.pos=%ld per %lu mcs",
             handleLocal,
             fh.Size,
-            fh.File.GetPosition());
+            fh.File.GetPosition(),
+            (TInstant::Now() - Started).MicroSeconds());
 
         const auto& offset = logRequest.GetRanges().cbegin()->GetOffset();
         const auto& bytes = logRequest.GetRanges().cbegin()->GetBytes();
@@ -478,23 +523,23 @@ private:
         {
             // Resize and close for flush caches
             {
-                TFile fileResize(fh.Path, WrOnly);
+                TFile fileResize(fh.Path, WrOnly | OpenAlways);
                 fh.Size = lastByte * GreedyincreaseBy;
                 fileResize.Resize(fh.Size);
             }
             // Reopen with original mode
             fh.File = TFile(fh.Path, fh.Mode);
+            HandlesLogToActual[logRequest.GetNodeInfo().GetHandle()] =
+                fh.File.GetHandle();
         }
 
-        auto buffer = Acalloc(logRequest.GetRanges().cbegin()->GetBytes());
+        auto buffer = Acalloc(bytes);
 
         TFileHandle fileHandle{fh.File.GetHandle()};
 
-        const auto future = AsyncIO.Read(
-            fileHandle,
-            buffer.get(),
-            logRequest.GetRanges().cbegin()->GetBytes(),
-            logRequest.GetRanges().cbegin()->GetOffset());
+        const auto future =
+            AsyncIO.Read(fileHandle, buffer.get(), bytes, offset);
+
         fileHandle.Release();
 
         return future.Apply(
@@ -503,9 +548,10 @@ private:
             {
                 const auto value = future.GetValue();
                 STORAGE_TRACE(
-                    "Read %lu finished with ret %d ",
+                    "Read %lu finished with ret %d per %lu mcs",
                     handleLocal,
-                    value);
+                    value,
+                    (TInstant::Now() - started).MicroSeconds());
 
                 if (value) {
                     return TCompletedRequest(NProto::ACTION_READ, started, {});
@@ -598,9 +644,9 @@ private:
         FileHandle.Release();
 
         const auto currentEnd = bytes + offset;
-        if (fh.Size < currentEnd) {
-            fh.Size = currentEnd;
-        }
+        fh.Size = std::max(fh.Size, currentEnd);
+        FilenameToSize[fh.Path.c_str()] =
+            std::max(FilenameToSize[fh.Path.c_str()], currentEnd);
 
         return writeFuture.Apply(
             [this, handleLocal, started = Started, buffer = std::move(buffer)](
@@ -608,9 +654,10 @@ private:
             {
                 const auto value = future.GetValue();
                 STORAGE_TRACE(
-                    "Read %lu finished with ret %d ",
+                    "Write %lu finished with ret %d per %lu mcs",
                     handleLocal,
-                    value);
+                    value,
+                    (TInstant::Now() - started).MicroSeconds());
 
                 if (value) {
                     return TCompletedRequest(NProto::ACTION_WRITE, started, {});
@@ -675,6 +722,8 @@ private:
 
                 if (logRequest.GetNodeInfo().GetSize()) {
                     fh.Reserve(logRequest.GetNodeInfo().GetSize());
+                    FilenameToSize[fullName.c_str()] =
+                        logRequest.GetNodeInfo().GetSize();
                 }
                 break;
             }
@@ -806,6 +855,8 @@ private:
             PathByNode(parentNodeId) / logRequest.GetNodeInfo().GetNodeName();
         const auto unlinkres = NFs::Remove(fullName);
         STORAGE_DEBUG("Unlink %s : %d ", fullName.c_str(), unlinkres);
+        FilenameToSize.erase(fullName.c_str());
+        
         // TODO(proller):
         // NodesLogToActual.erase(...)
         // NodePath.erase(...)

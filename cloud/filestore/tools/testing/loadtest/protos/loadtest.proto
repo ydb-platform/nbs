@@ -102,6 +102,9 @@ message TReplaySpec
 
     // Ignore too long pauses in log, in microseconds
     uint64 MaxSleepMcs = 10;
+    
+    // Add O_DIRECT flag to open call
+    bool OpenAddDirectFlag = 11;
 }
 
 message TMigrationSpec

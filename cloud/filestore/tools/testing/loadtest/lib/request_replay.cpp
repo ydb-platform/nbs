@@ -128,6 +128,7 @@ TFuture<TCompletedRequest> IReplayRequestGenerator::ProcessRequest(
         case EFileStoreRequest::PingSession:
         case EFileStoreRequest::Ping:
         case EFileStoreRequest::DescribeData:
+        case EFileStoreRequest::AddData:
             return {};
 
         default:
