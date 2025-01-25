@@ -219,7 +219,10 @@ using TAliases = NProto::TStorageConfig::TFilestoreAliases;
     xxx(InMemoryIndexCacheNodeRefsCapacity,             ui64,       0         )\
     xxx(InMemoryIndexCacheNodesToNodeRefsCapacityRatio, ui64,       0         )\
     xxx(InMemoryIndexCacheLoadOnTabletStart,            bool,       false     )\
-    xxx(InMemoryIndexCacheLoadOnTabletStartRowsPerTx,   ui64,       1000000   )\
+    xxx(InMemoryIndexCacheLoadOnTabletStartRowsPerTx,   ui64,       1000      )\
+    xxx(InMemoryIndexCacheLoadSchedulePeriod,                                  \
+        TDuration,                                                             \
+        TDuration::Seconds(0)                                                 )\
                                                                                \
     xxx(NonNetworkMetricsBalancingFactor,               ui32,      1_KB       )\
                                                                                \

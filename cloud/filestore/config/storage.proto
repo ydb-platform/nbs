@@ -514,4 +514,7 @@ message TStorageConfig
     optional uint64 MixedBlocksOffloadedRangesCapacity = 415;
 
     optional bool YdbViewerServiceEnabled = 416;
+
+    // During the InMemoryIndexCache load, the time between the batches loading
+    optional uint32 InMemoryIndexCacheLoadSchedulePeriod = 417;  // in ms
 }
