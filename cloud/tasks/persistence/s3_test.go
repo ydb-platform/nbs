@@ -29,6 +29,7 @@ func newS3Client(
 		callTimeout,
 		metricsRegistry,
 		maxRetriableErrorCount,
+		nil, // availabilityMonitoring
 	)
 }
 

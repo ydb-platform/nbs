@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/spf13/cobra"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/accounting"
@@ -205,10 +206,34 @@ func run(
 		s3Bucket = snapshotConfig.GetS3Bucket()
 		// TODO: remove when s3 will always be initialized.
 		if s3Config != nil {
-			registry := mon.NewRegistry("s3_client")
+			s3MetricsRegistry := mon.NewRegistry("s3_client")
 
-			var err error
-			s3, err = persistence.NewS3ClientFromConfig(s3Config, registry)
+			availabilityMonitoringMetricsRegistry := mon.NewRegistry("availability_monitoring")
+			availabilityMonitoringStorage := persistence.NewAvailabilityMonitoringStorage(
+				config.TasksConfig,
+				db,
+			)
+			successRateReportingInterval, err := time.ParseDuration(
+				config.TasksConfig.GetAvailabilityMonitoringSuccessRateReportingInterval(),
+			)
+			if err != nil {
+				return err
+			}
+
+			availabilityMonitoring := persistence.NewAvailabilityMonitoring(
+				ctx,
+				"s3",
+				hostname,
+				successRateReportingInterval,
+				availabilityMonitoringStorage,
+				availabilityMonitoringMetricsRegistry,
+			)
+
+			s3, err = persistence.NewS3ClientFromConfig(
+				s3Config,
+				s3MetricsRegistry,
+				availabilityMonitoring,
+			)
 			if err != nil {
 				return err
 			}
