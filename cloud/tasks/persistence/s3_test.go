@@ -17,8 +17,9 @@ const maxRetriableErrorCount = 3
 ////////////////////////////////////////////////////////////////////////////////
 
 func newS3Client(
-	metricsRegistry *mocks.RegistryMock,
 	callTimeout time.Duration,
+	s3MetricsRegistry *mocks.RegistryMock,
+	healthMetricsRegistry *mocks.RegistryMock,
 ) (*S3Client, error) {
 
 	credentials := NewS3Credentials("test", "test")
@@ -27,7 +28,8 @@ func newS3Client(
 		"region",
 		credentials,
 		callTimeout,
-		metricsRegistry,
+		s3MetricsRegistry,
+		healthMetricsRegistry,
 		maxRetriableErrorCount,
 	)
 }
@@ -37,19 +39,20 @@ func newS3Client(
 func TestS3ShouldSendErrorCanceledMetric(t *testing.T) {
 	ctx, cancel := context.WithCancel(newContext())
 
-	metricsRegistry := mocks.NewRegistryMock()
+	s3MetricsRegistry := mocks.NewRegistryMock()
+	healthMetricsRegistry := mocks.NewRegistryMock()
 
-	s3, err := newS3Client(metricsRegistry, 10*time.Second /* callTimeout */)
+	s3, err := newS3Client(10*time.Second /* callTimeout */, s3MetricsRegistry, healthMetricsRegistry)
 	require.NoError(t, err)
 
 	cancel()
 
-	metricsRegistry.GetCounter(
+	s3MetricsRegistry.GetCounter(
 		"errors",
 		map[string]string{"call": "CreateBucket"},
 	).On("Inc").Once()
 
-	metricsRegistry.GetCounter(
+	s3MetricsRegistry.GetCounter(
 		"errors/canceled",
 		map[string]string{"call": "CreateBucket"},
 	).On("Inc").Once()
@@ -57,29 +60,30 @@ func TestS3ShouldSendErrorCanceledMetric(t *testing.T) {
 	err = s3.CreateBucket(ctx, "test")
 	require.True(t, errors.Is(err, errors.NewEmptyRetriableError()))
 
-	metricsRegistry.AssertAllExpectations(t)
+	s3MetricsRegistry.AssertAllExpectations(t)
 }
 
 func TestS3ShouldSendErrorTimeoutMetric(t *testing.T) {
 	ctx, cancel := context.WithCancel(newContext())
 	defer cancel()
 
-	metricsRegistry := mocks.NewRegistryMock()
+	s3MetricsRegistry := mocks.NewRegistryMock()
+	healthMetricsRegistry := mocks.NewRegistryMock()
 
-	s3, err := newS3Client(metricsRegistry, 0 /* callTimeout */)
+	s3, err := newS3Client(0 /* callTimeout */, s3MetricsRegistry, healthMetricsRegistry)
 	require.NoError(t, err)
 
-	metricsRegistry.GetCounter(
+	s3MetricsRegistry.GetCounter(
 		"errors",
 		map[string]string{"call": "CreateBucket"},
 	).On("Inc").Once()
 
-	metricsRegistry.GetCounter(
+	s3MetricsRegistry.GetCounter(
 		"hanging",
 		map[string]string{"call": "CreateBucket"},
 	).On("Inc").Once()
 
-	metricsRegistry.GetCounter(
+	s3MetricsRegistry.GetCounter(
 		"errors/timeout",
 		map[string]string{"call": "CreateBucket"},
 	).On("Inc").Once()
@@ -87,24 +91,25 @@ func TestS3ShouldSendErrorTimeoutMetric(t *testing.T) {
 	err = s3.CreateBucket(ctx, "test")
 	require.True(t, errors.Is(err, errors.NewEmptyRetriableError()))
 
-	metricsRegistry.AssertAllExpectations(t)
+	s3MetricsRegistry.AssertAllExpectations(t)
 }
 
 func TestS3ShouldRetryRequests(t *testing.T) {
 	ctx, cancel := context.WithCancel(newContext())
 	defer cancel()
 
-	metricsRegistry := mocks.NewRegistryMock()
+	s3MetricsRegistry := mocks.NewRegistryMock()
+	healthMetricsRegistry := mocks.NewRegistryMock()
 
-	s3, err := newS3Client(metricsRegistry, 10*time.Second /* callTimeout */)
+	s3, err := newS3Client(10*time.Second /* callTimeout */, s3MetricsRegistry, healthMetricsRegistry)
 	require.NoError(t, err)
 
-	metricsRegistry.GetCounter(
+	s3MetricsRegistry.GetCounter(
 		"errors",
 		map[string]string{"call": "CreateBucket"},
 	).On("Inc").Once()
 
-	metricsRegistry.GetCounter(
+	s3MetricsRegistry.GetCounter(
 		"retry",
 		map[string]string{"call": "CreateBucket"},
 	).On("Inc").Times(maxRetriableErrorCount)
@@ -112,5 +117,31 @@ func TestS3ShouldRetryRequests(t *testing.T) {
 	err = s3.CreateBucket(ctx, "test")
 	require.True(t, errors.Is(err, errors.NewEmptyRetriableError()))
 
-	metricsRegistry.AssertAllExpectations(t)
+	s3MetricsRegistry.AssertAllExpectations(t)
+}
+
+func TestS3ShouldSendHealthMetric(t *testing.T) {
+	ctx, cancel := context.WithCancel(newContext())
+	defer cancel()
+
+	s3MetricsRegistry := mocks.NewRegistryMock()
+	healthMetricsRegistry := mocks.NewRegistryMock()
+
+	s3, err := newS3Client(10*time.Second /* callTimeout */, s3MetricsRegistry, healthMetricsRegistry)
+	require.NoError(t, err)
+
+	s3MetricsRegistry.GetCounter(
+		"errors",
+		map[string]string{"call": "CreateBucket"},
+	).On("Inc").Once()
+
+	s3MetricsRegistry.GetCounter(
+		"retry",
+		map[string]string{"call": "CreateBucket"},
+	).On("Inc").Times(maxRetriableErrorCount)
+
+	err = s3.CreateBucket(ctx, "test")
+	require.True(t, errors.Is(err, errors.NewEmptyRetriableError()))
+
+	s3MetricsRegistry.AssertAllExpectations(t)
 }

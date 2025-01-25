@@ -24,8 +24,9 @@ func s3CallDurationBuckets() metrics.DurationBuckets {
 ////////////////////////////////////////////////////////////////////////////////
 
 type s3Metrics struct {
-	registry    metrics.Registry
-	callTimeout time.Duration
+	callTimeout       time.Duration
+	s3MetricsRegistry metrics.Registry
+	healthCheck       *healthCheck
 }
 
 func (m *s3Metrics) StatCall(
@@ -38,17 +39,19 @@ func (m *s3Metrics) StatCall(
 	start := time.Now()
 
 	return func(err *error) {
-		subRegistry := m.registry.WithTags(map[string]string{
+		subRegistry := m.s3MetricsRegistry.WithTags(map[string]string{
 			"call": name,
 		})
 
 		// Should initialize all counters before using them, to avoid 'no data'.
-		errorCounter := subRegistry.Counter("errors")
 		successCounter := subRegistry.Counter("success")
 		hangingCounter := subRegistry.Counter("hanging")
+		errorCounter := subRegistry.Counter("errors")
 		timeoutCounter := subRegistry.Counter("errors/timeout")
 		canceledCounter := subRegistry.Counter("errors/canceled")
 		timeHistogram := subRegistry.DurationHistogram("time", s3CallDurationBuckets())
+
+		m.healthCheck.accountQuery(*err)
 
 		if time.Since(start) >= m.callTimeout {
 			logging.Error(
@@ -110,7 +113,7 @@ func (m *s3Metrics) OnRetry(req *request.Request) {
 		req.RetryCount+1,
 	)
 
-	subRegistry := m.registry.WithTags(map[string]string{
+	subRegistry := m.s3MetricsRegistry.WithTags(map[string]string{
 		"call": req.Operation.Name,
 	})
 
@@ -119,9 +122,14 @@ func (m *s3Metrics) OnRetry(req *request.Request) {
 	retryCounter.Inc()
 }
 
-func newS3Metrics(registry metrics.Registry, callTimeout time.Duration) *s3Metrics {
+func newS3Metrics(
+	callTimeout time.Duration,
+	s3MetricsRegistry metrics.Registry,
+	healthMetricsRegistry metrics.Registry,
+) *s3Metrics {
 	return &s3Metrics{
-		registry:    registry,
-		callTimeout: callTimeout,
+		callTimeout:       callTimeout,
+		s3MetricsRegistry: s3MetricsRegistry,
+		healthCheck:       newHealthCheck("s3", healthMetricsRegistry),
 	}
 }
