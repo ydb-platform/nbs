@@ -537,6 +537,17 @@ func CreateYDBTables(
 	}
 	logging.Info(ctx, "Created nodes table")
 
+	err = persistence.CreateAvailabilityMonitoringYDBTables(
+		ctx,
+		config.GetStorageFolder(),
+		db,
+		dropUnusedColumns,
+	)
+	if err != nil {
+		return err
+	}
+	logging.Info(ctx, "Created availability monitoring tables")
+
 	logging.Info(ctx, "Created tables for tasks")
 
 	return nil
@@ -603,6 +614,16 @@ func DropYDBTables(
 		return err
 	}
 	logging.Info(ctx, "Dropped nodes table")
+
+	err = persistence.DropAvailabilityMonitoringYDBTables(
+		ctx,
+		config.GetStorageFolder(),
+		db,
+	)
+	if err != nil {
+		return err
+	}
+	logging.Info(ctx, "Dropped availability monitoring tables")
 
 	logging.Info(ctx, "Dropped tables for tasks")
 
