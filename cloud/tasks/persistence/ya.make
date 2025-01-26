@@ -1,18 +1,20 @@
 GO_LIBRARY()
 
 SRCS(
-    health.go
     s3.go
     s3_metrics.go
     ydb.go
     ydb_logger.go
     ydb_metrics.go
+
+    health.go
+    health_storage.go
 )
 
 GO_TEST_SRCS(
-    health_test.go
     s3_test.go
     ydb_test.go
+    health_test.go
 )
 
 END()

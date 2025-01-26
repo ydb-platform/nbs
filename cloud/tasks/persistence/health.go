@@ -8,21 +8,15 @@ import (
 
 ////////////////////////////////////////////////////////////////////////////////
 
-type healthCheck struct {
+type HealthCheck struct {
 	queriesCount              uint64
 	successQueriesCount       uint64
+	storage                   *healthCheckStorage
 	registry                  metrics.Registry
 	metricsCollectionInterval time.Duration
 }
 
-func (h *healthCheck) accountQuery(err error) {
-	h.queriesCount++
-	if err == nil {
-		h.successQueriesCount++
-	}
-}
-
-func (h *healthCheck) reportSuccessRate() {
+func (h *HealthCheck) reportSuccessRate() {
 	if h.queriesCount == 0 {
 		h.registry.Gauge("successRate").Set(0)
 		return
@@ -31,12 +25,27 @@ func (h *healthCheck) reportSuccessRate() {
 	h.registry.Gauge("successRate").Set(float64(h.successQueriesCount) / float64(h.queriesCount))
 }
 
-func newHealthCheck(componentName string, registry metrics.Registry) *healthCheck {
+////////////////////////////////////////////////////////////////////////////////
+
+func (h *HealthCheck) AccountQuery(err error) {
+	h.queriesCount++
+	if err == nil {
+		h.successQueriesCount++
+	}
+}
+
+func NewHealthCheck(
+	componentName string,
+	storage *healthCheckStorage,
+	registry metrics.Registry,
+) *HealthCheck {
+
 	subRegistry := registry.WithTags(map[string]string{
 		"component": componentName,
 	})
 
-	h := healthCheck{
+	h := HealthCheck{
+		storage:                   storage,
 		registry:                  subRegistry,
 		metricsCollectionInterval: 15 * time.Second, // todo
 	}

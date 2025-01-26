@@ -26,7 +26,7 @@ func s3CallDurationBuckets() metrics.DurationBuckets {
 type s3Metrics struct {
 	callTimeout       time.Duration
 	s3MetricsRegistry metrics.Registry
-	healthCheck       *healthCheck
+	healthCheck       *HealthCheck
 }
 
 func (m *s3Metrics) StatCall(
@@ -51,7 +51,7 @@ func (m *s3Metrics) StatCall(
 		canceledCounter := subRegistry.Counter("errors/canceled")
 		timeHistogram := subRegistry.DurationHistogram("time", s3CallDurationBuckets())
 
-		m.healthCheck.accountQuery(*err)
+		m.healthCheck.AccountQuery(*err)
 
 		if time.Since(start) >= m.callTimeout {
 			logging.Error(
@@ -130,6 +130,6 @@ func newS3Metrics(
 	return &s3Metrics{
 		callTimeout:       callTimeout,
 		s3MetricsRegistry: s3MetricsRegistry,
-		healthCheck:       newHealthCheck("s3", healthMetricsRegistry),
+		healthCheck:       NewHealthCheck("s3", healthMetricsRegistry),
 	}
 }
