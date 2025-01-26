@@ -55,6 +55,7 @@ class LocalLoadTest:
             with_netlink=False,
             access_service_type=AccessService,
             load_configs_from_cms=True,
+            stored_endpoints_path=None,
     ):
 
         self.__endpoint = endpoint
@@ -125,7 +126,8 @@ class LocalLoadTest:
             self.endpoint_proxy = EndpointProxy(
                 working_dir=self.nbs.cwd,
                 unix_socket_path=server_app_config.ServerConfig.EndpointProxySocketPath,
-                with_netlink=with_netlink)
+                with_netlink=with_netlink,
+                stored_endpoints_path=stored_endpoints_path)
 
         if run_kikimr:
             self.nbs.setup_cms(self.kikimr_cluster.client)

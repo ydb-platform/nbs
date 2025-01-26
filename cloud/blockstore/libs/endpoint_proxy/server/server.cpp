@@ -851,7 +851,7 @@ struct TServer: IEndpointProxyServer
     void DoProcessRequest(
         const NProto::TResizeProxyDeviceRequest& request,
         TEndpoint& ep,
-        NProto::TResizeProxyDeviceResponse& response) const
+        NProto::TResizeProxyDeviceResponse& response)
     {
         if (ep.NbdDevice) {
             auto err = ep.NbdDevice->Resize(request.GetDeviceSizeInBytes())
@@ -874,6 +874,9 @@ struct TServer: IEndpointProxyServer
 
             ep.NbdOptions.BlocksCount =
                 request.GetDeviceSizeInBytes() / ep.NbdOptions.BlockSize;
+
+            StoreEndpointIfNeeded(ep);
+
             STORAGE_INFO(
                 request.ShortDebugString().Quote()
                 << " - NBD device was resized");
