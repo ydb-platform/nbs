@@ -4,6 +4,8 @@
 
 #include <cloud/blockstore/libs/storage/protos/disk.pb.h>
 
+#include <span>
+
 namespace NCloud::NBlockStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -16,17 +18,34 @@ struct TLaggingDeviceIndexCmp
 };
 
 [[nodiscard]] const NProto::TDeviceConfig* FindDeviceConfig(
-    const NProto::TVolumeMeta& meta, const TStringBuf& deviceUUID);
-
-[[nodiscard]] std::optional<ui32> GetDevicesIndexesByNodeId(
     const NProto::TVolumeMeta& meta,
-    ui32 agentNodeId,
-    TVector<NProto::TLaggingDevice>* laggingDevices);
+    TStringBuf deviceUUID);
+
+[[nodiscard]] std::optional<ui32> FindReplicaIndexByAgentNodeId(
+    const NProto::TVolumeMeta& meta,
+    ui32 agentNodeId);
+[[nodiscard]] std::optional<ui32> FindReplicaIndexByAgentId(
+    const NProto::TVolumeMeta& meta,
+    TStringBuf agentId);
+
+[[nodiscard]] TVector<NProto::TLaggingDevice> CollectLaggingDevices(
+    const NProto::TVolumeMeta& meta,
+    ui32 replicaIndex,
+    ui32 agentNodeId);
+[[nodiscard]] TVector<NProto::TLaggingDevice> CollectLaggingDevices(
+    const NProto::TVolumeMeta& meta,
+    ui32 replicaIndex,
+    TStringBuf agentId);
 
 [[nodiscard]] bool RowHasFreshDevices(
     const NProto::TVolumeMeta& meta,
     ui32 rowIndex,
     ui32 timeoutedDeviceReplicaIndex);
+
+[[nodiscard]] bool HaveCommonRows(
+    const TVector<NProto::TLaggingDevice>& laggingCandidates,
+    const google::protobuf::RepeatedPtrField<NProto::TLaggingDevice>&
+        alreadyLagging);
 
 void RemoveLaggingDevicesFromMeta(
     NProto::TVolumeMeta& meta,

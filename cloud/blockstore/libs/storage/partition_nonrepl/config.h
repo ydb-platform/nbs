@@ -109,16 +109,15 @@ public:
     TNonreplicatedPartitionConfigPtr Fork(TDevices devices) const
     {
         THashSet<TString> freshDeviceIds;
-        for (const auto& device: devices) {
-            if (FreshDeviceIds.contains(device.GetDeviceUUID())) {
-                freshDeviceIds.insert(device.GetDeviceUUID());
-            }
-        }
-
         THashSet<TString> laggingDeviceIds;
         for (const auto& device: devices) {
-            if (LaggingDeviceIds.contains(device.GetDeviceUUID())) {
-                laggingDeviceIds.insert(device.GetDeviceUUID());
+            const auto& uuid = device.GetDeviceUUID();
+
+            if (FreshDeviceIds.contains(uuid)) {
+                freshDeviceIds.insert(uuid);
+            }
+            if (LaggingDeviceIds.contains(uuid)) {
+                laggingDeviceIds.insert(uuid);
             }
         }
 

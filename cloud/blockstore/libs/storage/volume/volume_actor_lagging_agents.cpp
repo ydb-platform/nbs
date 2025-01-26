@@ -129,13 +129,16 @@ void TVolumeActor::HandleDeviceTimeouted(
         return;
     }
 
-    TVector<NProto::TLaggingDevice> timeoutedAgentDevices;
-    const auto timeoutedDeviceReplicaIndex = GetDevicesIndexesByNodeId(
-        meta,
-        timeoutedDeviceConfig->GetNodeId(),
-        &timeoutedAgentDevices);
-    Y_DEBUG_ABORT_UNLESS(!timeoutedAgentDevices.empty());
+    const auto timeoutedDeviceReplicaIndex =
+        FindReplicaIndexByAgentNodeId(meta, timeoutedDeviceConfig->GetNodeId());
     Y_DEBUG_ABORT_UNLESS(timeoutedDeviceReplicaIndex);
+
+    TVector<NProto::TLaggingDevice> timeoutedAgentDevices =
+        CollectLaggingDevices(
+            meta,
+            *timeoutedDeviceReplicaIndex,
+            timeoutedDeviceConfig->GetNodeId());
+    Y_DEBUG_ABORT_UNLESS(!timeoutedAgentDevices.empty());
 
     for (const auto& laggingAgent: meta.GetLaggingAgentsInfo().GetAgents()) {
         // Whether the agent is lagging already.
@@ -148,8 +151,7 @@ void TVolumeActor::HandleDeviceTimeouted(
                 laggingAgent.GetAgentId().c_str());
 
             STORAGE_CHECK_PRECONDITION(
-                laggingAgent.GetDevices().size() ==
-                timeoutedAgentDevices.ysize());
+                laggingAgent.DevicesSize() == timeoutedAgentDevices.size());
             NCloud::Send(
                 ctx,
                 State->GetDiskRegistryBasedPartitionActor(),
@@ -164,27 +166,11 @@ void TVolumeActor::HandleDeviceTimeouted(
             return;
         }
 
-        Y_ABORT_UNLESS(IsSorted(
-            timeoutedAgentDevices.begin(),
-            timeoutedAgentDevices.end(),
-            TLaggingDeviceIndexCmp()));
-        Y_ABORT_UNLESS(IsSorted(
-            laggingAgent.GetDevices().begin(),
-            laggingAgent.GetDevices().end(),
-            TLaggingDeviceIndexCmp()));
-
         // Intersect row indexes of known lagging devices and a new one. We only
         // allow one lagging device per row.
-        TVector<NProto::TLaggingDevice> rowIndexesIntersection;
-        SetIntersection(
-            timeoutedAgentDevices.begin(),
-            timeoutedAgentDevices.end(),
-            laggingAgent.GetDevices().begin(),
-            laggingAgent.GetDevices().end(),
-            std::back_inserter(rowIndexesIntersection),
-            TLaggingDeviceIndexCmp());
-
-        if (!rowIndexesIntersection.empty()) {
+        const bool intersects =
+            HaveCommonRows(timeoutedAgentDevices, laggingAgent.GetDevices());
+        if (intersects) {
             // TODO(komarevtsev-d): Allow source and target of the migration to
             // lag at the same time.
             LOG_WARN(
@@ -240,8 +226,8 @@ void TVolumeActor::HandleDeviceTimeouted(
     unavailableAgent.SetNodeId(timeoutedDeviceConfig->GetNodeId());
     unavailableAgent.SetReplicaIndex(*timeoutedDeviceReplicaIndex);
     unavailableAgent.MutableDevices()->Assign(
-        timeoutedAgentDevices.begin(),
-        timeoutedAgentDevices.end());
+        std::make_move_iterator(timeoutedAgentDevices.begin()),
+        std::make_move_iterator(timeoutedAgentDevices.end()));
     ExecuteTx<TAddLaggingAgent>(
         ctx,
         CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext),
@@ -325,7 +311,7 @@ void TVolumeActor::ExecuteAddLaggingAgent(
         TabletID(),
         args.Agent.GetAgentId().c_str(),
         args.Agent.GetReplicaIndex(),
-        [laggingDevices = args.Agent.GetDevices()]()
+        [&laggingDevices = args.Agent.GetDevices()]()
         {
             TStringBuilder ss;
             for (const auto& device: laggingDevices) {
