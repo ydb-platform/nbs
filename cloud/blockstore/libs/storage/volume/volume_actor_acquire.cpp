@@ -377,7 +377,7 @@ void TVolumeActor::HandleDevicesAcquireFinished(
     const TEvVolumePrivate::TEvDevicesAcquireFinished::TPtr& ev,
     const TActorContext& ctx)
 {
-    HandleDevicesAcquireFinishedImpl(ev->Get()->Error, ctx);
+    HandleDevicesAcquireFinishedImpl(ev->Get()->GetError(), ctx);
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

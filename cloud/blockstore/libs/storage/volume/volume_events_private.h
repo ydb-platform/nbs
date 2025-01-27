@@ -314,7 +314,6 @@ struct TEvVolumePrivate
 
     struct TDevicesAcquireFinished
     {
-        NProto::TError Error;
     };
 
     //
@@ -323,7 +322,6 @@ struct TEvVolumePrivate
 
     struct TDevicesReleaseFinished
     {
-        NProto::TError Error;
     };
 
     //

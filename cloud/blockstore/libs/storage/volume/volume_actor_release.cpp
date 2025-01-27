@@ -12,6 +12,8 @@ using namespace NKikimr::NTabletFlatExecutor;
 
 namespace {
 
+////////////////////////////////////////////////////////////////////////////////
+
 class TReleaseDevicesActor final
     : public TActorBootstrapped<TReleaseDevicesActor>
 {
@@ -276,7 +278,7 @@ void TVolumeActor::HandleDevicesReleasedFinished(
     const TEvVolumePrivate::TEvDevicesReleaseFinished::TPtr& ev,
     const NActors::TActorContext& ctx)
 {
-    HandleDevicesReleasedFinishedImpl(ev->Get()->Error, ctx);
+    HandleDevicesReleasedFinishedImpl(ev->Get()->GetError(), ctx);
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

@@ -4,9 +4,12 @@
 #include <cloud/blockstore/libs/storage/partition_common/events_private.h>
 #include <cloud/blockstore/libs/storage/partition_nonrepl/model/processing_blocks.h>
 #include <cloud/blockstore/libs/storage/stats_service/stats_service_events_private.h>
+
 #include <util/system/hostname.h>
 
 namespace NCloud::NBlockStore::NStorage {
+
+using namespace std::chrono_literals;
 
 using namespace NActors;
 
@@ -24,53 +27,52 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TTestContext
+struct TFixture: public NUnitTest::TBaseFixture
 {
-    TVolumeClient Volume;
     std::unique_ptr<TTestActorRuntime> Runtime;
-    TIntrusivePtr<TDiskRegistryState> DRState;
+    TIntrusivePtr<TDiskRegistryState> State;
+
+    void SetupTest(TDuration agentRequestTimeout = 1s)
+    {
+        NProto::TStorageServiceConfig config;
+        config.SetAcquireNonReplicatedDevices(true);
+        config.SetNonReplicatedVolumeDirectAcquireEnabled(true);
+        config.SetAgentRequestTimeout(agentRequestTimeout.MilliSeconds());
+        config.SetClientRemountPeriod(2000);
+        State = MakeIntrusive<TDiskRegistryState>();
+        Runtime = PrepareTestActorRuntime(config, State);
+        auto volume = GetVolumeClient();
+
+        volume.UpdateVolumeConfig(
+            0,
+            0,
+            0,
+            0,
+            false,
+            1,
+            NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
+            1024);
+
+        volume.WaitReady();
+    }
+
+    TVolumeClient GetVolumeClient() const
+    {
+        return {*Runtime};
+    }
 };
 
-TTestContext SetupTest(TDuration agentRequestTimeout = TDuration::Seconds(1))
-{
-    NProto::TStorageServiceConfig config;
-    config.SetAcquireNonReplicatedDevices(true);
-    config.SetNonReplicatedVolumeDirectAcquireEnabled(true);
-    config.SetAgentRequestTimeout(agentRequestTimeout.MilliSeconds());
-    config.SetClientRemountPeriod(2000);
-    auto state = MakeIntrusive<TDiskRegistryState>();
-    auto runtime = PrepareTestActorRuntime(config, state);
-    TVolumeClient volume(*runtime);
-
-    volume.UpdateVolumeConfig(
-        0,
-        0,
-        0,
-        0,
-        false,
-        1,
-        NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
-        1024);
-
-    return {
-        .Volume = std::move(volume),
-        .Runtime = std::move(runtime),
-        .DRState = std::move(state)};
-}
-
-} // namespace
+}   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
 
-Y_UNIT_TEST_SUITE(TVolumeTest)
+Y_UNIT_TEST_SUITE(TVolumeSessionTest)
 {
-    Y_UNIT_TEST(ShouldPassAllParamsInAcquireDevicesRequest)
+    Y_UNIT_TEST_F(ShouldPassAllParamsInAcquireDevicesRequest, TFixture)
     {
-        auto [volume, runtime, _] = SetupTest();
+        SetupTest();
 
-        TVolumeClient writerClient(*runtime);
-
-        volume.WaitReady();
+        auto volume = GetVolumeClient();
 
         auto response = volume.GetVolumeInfo();
         auto diskInfo = response->Record.GetVolume();
@@ -86,7 +88,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
 
         bool requestSended = false;
 
-        runtime->SetObserverFunc(
+        Runtime->SetObserverFunc(
             [&](TAutoPtr<IEventHandle>& event)
             {
                 if (event->GetTypeRewrite() ==
@@ -103,9 +105,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
                         record.GetAccessMode(),
                         NProto::VOLUME_ACCESS_READ_WRITE);
 
-                    UNIT_ASSERT_EQUAL(
-                        record.GetDiskId(),
-                        diskInfo.GetDiskId());
+                    UNIT_ASSERT_EQUAL(record.GetDiskId(), diskInfo.GetDiskId());
 
                     const auto& deviceUUIDS = record.GetDeviceUUIDs();
                     UNIT_ASSERT_EQUAL(
@@ -131,24 +131,22 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
             NProto::VOLUME_ACCESS_READ_WRITE,
             NProto::VOLUME_MOUNT_LOCAL,
             0);
-        writerClient.AddClient(writer);
+        volume.AddClient(writer);
 
         UNIT_ASSERT(requestSended);
     }
 
-    Y_UNIT_TEST(ShouldPassAllParamsInReleaseDevicesRequest)
+    Y_UNIT_TEST_F(ShouldPassAllParamsInReleaseDevicesRequest, TFixture)
     {
-        auto [volume, runtime, _] = SetupTest();
+        SetupTest();
 
-        TVolumeClient writerClient(*runtime);
-
-        volume.WaitReady();
+        auto volume = GetVolumeClient();
 
         auto writer = CreateVolumeClientInfo(
             NProto::VOLUME_ACCESS_READ_WRITE,
             NProto::VOLUME_MOUNT_LOCAL,
             0);
-        writerClient.AddClient(writer);
+        volume.AddClient(writer);
 
         auto response = volume.GetVolumeInfo();
         auto diskInfo = response->Record.GetVolume();
@@ -164,7 +162,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
 
         bool requestSended = false;
 
-        runtime->SetObserverFunc(
+        Runtime->SetObserverFunc(
             [&](TAutoPtr<IEventHandle>& event)
             {
                 if (event->GetTypeRewrite() ==
@@ -200,15 +198,13 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         UNIT_ASSERT(requestSended);
     }
 
-    Y_UNIT_TEST(ShouldSendAcquireReleaseRequestsDirectlyToDiskAgent)
+    Y_UNIT_TEST_F(ShouldSendAcquireReleaseRequestsDirectlyToDiskAgent, TFixture)
     {
-        auto [volume, runtime, _] = SetupTest();
+        SetupTest();
 
-        TVolumeClient writerClient(*runtime);
-        TVolumeClient readerClient1(*runtime);
-        TVolumeClient readerClient2(*runtime);
-
-        volume.WaitReady();
+        TVolumeClient writerClient = GetVolumeClient();
+        auto readerClient1 = GetVolumeClient();
+        auto readerClient2 = GetVolumeClient();
 
         ui32 acquireRequestsToDiskRegistry = 0;
         ui32 releaseRequestsToDiskRegistry = 0;
@@ -216,7 +212,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         ui32 writerAcquireRequests = 0;
         ui32 releaseRequests = 0;
 
-        runtime->SetObserverFunc(
+        Runtime->SetObserverFunc(
             [&](TAutoPtr<IEventHandle>& event)
             {
                 switch (event->GetTypeRewrite()) {
@@ -249,8 +245,8 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
                 return TTestActorRuntime::DefaultObserverFunc(event);
             });
 
-        runtime->AdvanceCurrentTime(TDuration::Seconds(2));
-        runtime->DispatchEvents({}, TDuration::MilliSeconds(1));
+        Runtime->AdvanceCurrentTime(2s);
+        Runtime->DispatchEvents({}, 1ms);
 
         UNIT_ASSERT_VALUES_EQUAL(acquireRequestsToDiskRegistry, 0);
         UNIT_ASSERT_VALUES_EQUAL(writerAcquireRequests, 0);
@@ -282,8 +278,8 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         UNIT_ASSERT_VALUES_EQUAL(writerAcquireRequests, 1);
         UNIT_ASSERT_VALUES_EQUAL(readerAcquireRequests, 2);
 
-        runtime->AdvanceCurrentTime(TDuration::Seconds(2));
-        runtime->DispatchEvents({}, TDuration::MilliSeconds(1));
+        Runtime->AdvanceCurrentTime(2s);
+        Runtime->DispatchEvents({}, 1ms);
 
         UNIT_ASSERT_VALUES_EQUAL(acquireRequestsToDiskRegistry, 0);
         UNIT_ASSERT_VALUES_EQUAL(writerAcquireRequests, 2);
@@ -294,8 +290,8 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
 
         readerClient1.RemoveClient(reader1.GetClientId());
 
-        runtime->AdvanceCurrentTime(TDuration::Seconds(2));
-        runtime->DispatchEvents({}, TDuration::MilliSeconds(1));
+        Runtime->AdvanceCurrentTime(2s);
+        Runtime->DispatchEvents({}, 1ms);
 
         UNIT_ASSERT_VALUES_EQUAL(acquireRequestsToDiskRegistry, 0);
         UNIT_ASSERT_VALUES_EQUAL(writerAcquireRequests, 3);
@@ -307,8 +303,8 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         writerClient.RemoveClient(writer.GetClientId());
         readerClient2.RemoveClient(reader2.GetClientId());
 
-        runtime->AdvanceCurrentTime(TDuration::Seconds(2));
-        runtime->DispatchEvents({}, TDuration::MilliSeconds(1));
+        Runtime->AdvanceCurrentTime(2s);
+        Runtime->DispatchEvents({}, 1ms);
 
         UNIT_ASSERT_VALUES_EQUAL(acquireRequestsToDiskRegistry, 0);
         UNIT_ASSERT_VALUES_EQUAL(writerAcquireRequests, 3);
@@ -318,15 +314,14 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         UNIT_ASSERT_VALUES_EQUAL(releaseRequestsToDiskRegistry, 0);
     }
 
-    Y_UNIT_TEST(ShouldRejectTimedoutAcquireRequests)
+    Y_UNIT_TEST_F(ShouldRejectTimedoutAcquireRequests, TFixture)
     {
-        auto [volume, runtime, _] = SetupTest(TDuration::MilliSeconds(100));
+        SetupTest(100ms);
 
-        TVolumeClient writerClient(*runtime);
+        auto writerClient = GetVolumeClient();
 
-        volume.WaitReady();
         std::unique_ptr<IEventHandle> stollenResponse;
-        runtime->SetObserverFunc(
+        Runtime->SetObserverFunc(
             [&](TAutoPtr<IEventHandle>& event)
             {
                 if (event->GetTypeRewrite() ==
@@ -349,15 +344,13 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         UNIT_ASSERT_VALUES_EQUAL(response->GetError().GetMessage(), "timeout");
     }
 
-    Y_UNIT_TEST(ShouldPassErrorsFromDiskAgent)
+    Y_UNIT_TEST_F(ShouldPassErrorsFromDiskAgent, TFixture)
     {
-        auto [volume, runtime, _] = SetupTest();
+        SetupTest();
 
-        TVolumeClient writerClient(*runtime);
+        auto writerClient = GetVolumeClient();
 
-        volume.WaitReady();
-
-        runtime->SetObserverFunc(
+        Runtime->SetObserverFunc(
             [&](TAutoPtr<IEventHandle>& event)
             {
                 if (event->GetTypeRewrite() ==
@@ -367,7 +360,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
                         TEvDiskAgent::TEvAcquireDevicesResponse>(
                         MakeError(E_TRY_AGAIN));
 
-                    runtime->Send(new IEventHandle(
+                    Runtime->Send(new IEventHandle(
                         event->Recipient,
                         event->Sender,
                         response.release(),
@@ -391,16 +384,13 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         UNIT_ASSERT_EQUAL(response->GetError().GetCode(), E_TRY_AGAIN);
     }
 
-    Y_UNIT_TEST(ShouldMuteErrorsWithMuteIoErrors)
+    Y_UNIT_TEST_F(ShouldMuteErrorsWithMuteIoErrors, TFixture)
     {
-        auto [volume, runtime, state] = SetupTest();
+        SetupTest();
 
-        TVolumeClient writerClient(*runtime);
+        auto writerClient = GetVolumeClient();
 
-        volume.WaitReady();
-
-
-        runtime->SetObserverFunc(
+        Runtime->SetObserverFunc(
             [&](TAutoPtr<IEventHandle>& event)
             {
                 if (event->GetTypeRewrite() ==
@@ -410,7 +400,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
                         TEvDiskAgent::TEvAcquireDevicesResponse>(
                         MakeError(E_TRY_AGAIN));
 
-                    runtime->Send(new IEventHandle(
+                    Runtime->Send(new IEventHandle(
                         event->Recipient,
                         event->Sender,
                         response.release(),
@@ -428,11 +418,12 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
             NProto::VOLUME_MOUNT_LOCAL,
             0);
 
-        auto& disk = state->Disks.at("vol0");
+        auto& disk = State->Disks.at("vol0");
         disk.IOMode = NProto::VOLUME_IO_ERROR_READ_ONLY;
-        disk.IOModeTs = runtime->GetCurrentTime();
+        disk.IOModeTs = Runtime->GetCurrentTime();
         disk.MuteIOErrors = true;
 
+        auto volume = GetVolumeClient();
         volume.ReallocateDisk();
         // reallocate disk will trigger pipes reset, so reestablish connection
         volume.ReconnectPipe();
@@ -440,13 +431,11 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         writerClient.AddClient(writer);
     }
 
-    Y_UNIT_TEST(ShouldHandleRequestsUndelivery)
+    Y_UNIT_TEST_F(ShouldHandleRequestsUndelivery, TFixture)
     {
-        auto [volume, runtime, state] = SetupTest();
+        SetupTest();
 
-        TVolumeClient writerClient(*runtime);
-
-        volume.WaitReady();
+        auto writerClient = GetVolumeClient();
 
         auto writer = CreateVolumeClientInfo(
             NProto::VOLUME_ACCESS_READ_WRITE,
@@ -454,9 +443,9 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
             0);
 
         auto agentNodeId = MakeDiskAgentServiceId(
-            state->Disks.at("vol0").Devices[0].GetNodeId());
+            State->Disks.at("vol0").Devices[0].GetNodeId());
 
-        runtime->Send(new IEventHandle(
+        Runtime->Send(new IEventHandle(
             agentNodeId,
             TActorId(),
             new TEvents::TEvPoisonPill));
