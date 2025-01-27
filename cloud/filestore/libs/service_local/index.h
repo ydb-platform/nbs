@@ -317,10 +317,12 @@ private:
 
                     STORAGE_TRACE(
                         "Resolve node end, NodeId=" << pathElemRecord->NodeId);
-                } catch (...) {
+                } catch (const TServiceError& e) {
                     STORAGE_ERROR(
-                        "Resolve node failed, NodeId=" << pathElemRecord->NodeId <<
-                        ", Exception=" << CurrentExceptionMessage());
+                        "Resolve node failed, NodeId="
+                        << pathElemRecord->NodeId
+                        << ", Exception=" << FormatResultCode(e.GetCode())
+                        << " " << e.GetMessage());
                     NodeTable->DeleteRecord(pathElemIndex);
                 }
 
