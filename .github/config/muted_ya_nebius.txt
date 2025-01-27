@@ -1,0 +1,2 @@
+cloud/filestore/tests/fio_index/qemu-kikimr-test *
+cloud/filestore/tests/fio_index/qemu-local-test *
