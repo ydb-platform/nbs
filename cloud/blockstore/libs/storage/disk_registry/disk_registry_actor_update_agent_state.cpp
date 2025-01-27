@@ -197,8 +197,19 @@ void TDiskRegistryActor::CompleteUpdateAgentState(
 
     NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
 
+    TVector<TDiskId> failedAllocationDisks;
     if (args.State == NProto::AGENT_STATE_UNAVAILABLE) {
         ScheduleSwitchAgentDisksToReadOnly(ctx, args.AgentId);
+        failedAllocationDisks = State->CheckPendingAllocations(args.AgentId);
+    }
+
+    for (const auto& diskId: failedAllocationDisks) {
+        ReplyToPendingAllocations(
+            ctx,
+            diskId,
+            MakeError(
+                E_REJECTED,
+                "Allocation failed due to disk agent problems"));
     }
 }
 

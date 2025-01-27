@@ -10,9 +10,10 @@ namespace NCloud::NBlockStore::NStorage {
 
 NProto::TError TPendingCleanup::Insert(
     const TString& diskId,
-    TVector<TString> uuids)
+    TVector<TString> uuids,
+    bool allocation)
 {
-    auto error = ValidateInsertion(diskId, uuids);
+    auto error = ValidateInsertion(diskId, uuids, allocation);
     if (HasError(error)) {
         return error;
     }
@@ -21,21 +22,22 @@ NProto::TError TPendingCleanup::Insert(
 
     for (auto& uuid: uuids) {
         Y_DEBUG_ABORT_UNLESS(!uuid.empty());
-        auto [_, success] = DeviceToDisk.emplace(std::move(uuid), diskId);
-        Y_DEBUG_ABORT_UNLESS(success);
+        auto& [allocatingDiskId, deallocatingDiskId] = DeviceToDisk[uuid];
+        (allocation ? allocatingDiskId : deallocatingDiskId) = diskId;
     }
 
     return {};
 }
 
-NProto::TError TPendingCleanup::Insert(const TString& diskId, TString uuid)
+NProto::TError TPendingCleanup::Insert(const TString& diskId, TString uuid, bool allocation)
 {
-    return Insert(diskId, TVector{std::move(uuid)});
+    return Insert(diskId, TVector{std::move(uuid)}, allocation);
 }
 
 [[nodiscard]] NProto::TError TPendingCleanup::ValidateInsertion(
     const TString& diskId,
-    const TVector<TString>& uuids) const
+    const TVector<TString>& uuids,
+    bool allocation) const
 {
     if (diskId.empty() || uuids.empty()) {
         return MakeError(
@@ -55,7 +57,12 @@ NProto::TError TPendingCleanup::Insert(const TString& diskId, TString uuid)
                                  << JoinStrings(uuids, ", ") << "]");
         }
 
-        const auto* foundDiskId = DeviceToDisk.FindPtr(uuid);
+        const auto* foundDisks = DeviceToDisk.FindPtr(uuid);
+        if (!foundDisks) {
+            continue;
+        }
+        const auto& foundDiskId = allocation ? foundDisks->AllocatingDiskId
+                                             : foundDisks->DeallocatingDiskId;
         if (foundDiskId) {
             return MakeError(
                 E_ARGUMENT,
@@ -63,34 +70,41 @@ NProto::TError TPendingCleanup::Insert(const TString& diskId, TString uuid)
                                  << "; diskId: " << diskId
                                  << " to PendingCleanup. It was already "
                                     "inserted with the diskId: "
-                                 << *foundDiskId);
+                                 << foundDiskId);
         }
     }
 
     return {};
 }
 
-TString TPendingCleanup::EraseDevice(const TString& uuid)
+TPendingCleanup::TOpt2Disk TPendingCleanup::EraseDevice(const TString& uuid)
 {
     auto it = DeviceToDisk.find(uuid);
     if (it == DeviceToDisk.end()) {
         return {};
     }
 
-    auto diskId = std::move(it->second);
+    auto [allocatingDiskId, deallocatingDiskId] = std::move(it->second);
     DeviceToDisk.erase(it);
+    TOpt2Disk ret;
 
-    Y_DEBUG_ABORT_UNLESS(DiskToDeviceCount.contains(diskId));
-    if (--DiskToDeviceCount[diskId] > 0) {
-        return {};
+    Y_DEBUG_ABORT_UNLESS(allocatingDiskId || deallocatingDiskId);
+    Y_DEBUG_ABORT_UNLESS(!allocatingDiskId || DiskToDeviceCount.contains(allocatingDiskId));
+    Y_DEBUG_ABORT_UNLESS(!deallocatingDiskId || DiskToDeviceCount.contains(deallocatingDiskId));
+    if (allocatingDiskId && --DiskToDeviceCount[allocatingDiskId] <= 0) {
+        DiskToDeviceCount.erase(allocatingDiskId);
+        ret.AllocatingDiskId = std::move(allocatingDiskId);
     }
 
-    DiskToDeviceCount.erase(diskId);
+    if (deallocatingDiskId && --DiskToDeviceCount[deallocatingDiskId] <= 0) {
+        DiskToDeviceCount.erase(deallocatingDiskId);
+        ret.DeallocatingDiskId = std::move(deallocatingDiskId);
+    }
 
-    return diskId;
+    return ret;
 }
 
-TString TPendingCleanup::FindDiskId(const TString& uuid) const
+TPendingCleanup::TOpt2Disk TPendingCleanup::FindDiskId(const TString& uuid) const
 {
     auto it = DeviceToDisk.find(uuid);
     if (it == DeviceToDisk.end()) {
@@ -106,8 +120,19 @@ bool TPendingCleanup::EraseDisk(const TString& diskId)
         return false;
     }
 
+    for (auto& [device, opt2Disk] : DeviceToDisk) {
+        auto& [allocatingDiskId, deallocatingDiskId] = opt2Disk;
+        if (allocatingDiskId == diskId) {
+            allocatingDiskId.clear();
+        }
+        if (deallocatingDiskId == diskId) {
+            deallocatingDiskId.clear();
+        }
+    }
+
     EraseNodesIf(DeviceToDisk, [&] (auto& x) {
-        return x.second == diskId;
+        auto& [allocating, deallocating] = x.second;
+        return !allocating && !deallocating;
     });
 
     return true;
@@ -121,6 +146,15 @@ bool TPendingCleanup::IsEmpty() const
 bool TPendingCleanup::Contains(const TString& diskId) const
 {
     return DiskToDeviceCount.contains(diskId);
+}
+
+TPendingCleanup::TAllocatingDiskId TPendingCleanup::CancelPendingAllocation(const TString& uuid) {
+    const auto [allocating, deallocating] = FindDiskId(uuid);
+    Y_UNUSED(deallocating);
+    if (allocating) {
+        EraseDisk(allocating);
+    }
+    return allocating;
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

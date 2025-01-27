@@ -45,7 +45,7 @@ class TDeviceList
     {
         TString Rack;
 
-        // sorted by {PoolKind, BlockSize}
+        // sorted by {IsDirty, PoolKind, BlockSize}
         TVector<NProto::TDeviceConfig> FreeDevices;
 
         ui64 TotalSize = 0;

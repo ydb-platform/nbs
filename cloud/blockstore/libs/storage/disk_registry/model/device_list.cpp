@@ -14,6 +14,7 @@ namespace {
 ////////////////////////////////////////////////////////////////////////////////
 
 using TSortQueryKey = std::tuple<
+    bool,
     NProto::EDevicePoolKind,
     TString,
     ui32,
@@ -21,9 +22,11 @@ using TSortQueryKey = std::tuple<
 
 struct TBySortQueryKey
 {
+    std::function<bool(const TString& uuid)> IsDirty;
     auto operator () (const NProto::TDeviceConfig& config) const
     {
         return TSortQueryKey {
+            IsDirty(config.GetDeviceUUID()),
             config.GetPoolKind(),
             config.GetPoolName(),
             config.GetBlockSize(),
@@ -165,7 +168,8 @@ void TDeviceList::UpdateDevices(
         const bool isFree =
             DevicesAllocationAllowed(device.GetPoolKind(), agent.GetState()) &&
             device.GetState() == NProto::DEVICE_STATE_ONLINE &&
-            !AllocatedDevices.contains(uuid) && !DirtyDevices.contains(uuid) &&
+            !AllocatedDevices.contains(uuid) &&
+            (device.GetPoolKind() == NProto::DEVICE_POOL_KIND_LOCAL || !DirtyDevices.contains(uuid)) &&
             !SuspendedDevices.contains(uuid);
 
         const auto* poolConfig = poolConfigs.FindPtr(device.GetPoolName());
@@ -196,7 +200,12 @@ void TDeviceList::UpdateDevices(
         nodeDevices.TotalSize += deviceSize;
     }
 
-    SortBy(nodeDevices.FreeDevices, TBySortQueryKey());
+    std::function<bool(const TDeviceId& uuid)> isDirty =
+        [&](const TDeviceId& uuid)
+    {
+        return DirtyDevices.contains(uuid);
+    };
+    SortBy(nodeDevices.FreeDevices, TBySortQueryKey{.IsDirty = isDirty});
 }
 
 void TDeviceList::RemoveDevices(const NProto::TAgentConfig& agent)
@@ -539,13 +548,12 @@ TVector<TDeviceList::TDeviceRange> TDeviceList::CollectDevices(
 
     for (const auto& rack: SelectRacks(query, poolName)) {
         for (const auto& node: rack.Nodes) {
-            const auto* nodeDevices = NodeDevices.FindPtr(node.NodeId);
+            auto* nodeDevices = NodeDevices.FindPtr(node.NodeId);
             Y_ABORT_UNLESS(nodeDevices);
 
             // finding free devices belonging to this node that match our
             // query
-            auto [begin, end] =
-                FindDeviceRange(query, poolName, nodeDevices->FreeDevices);
+            auto [begin, end] = FindDeviceRange(query, poolName, nodeDevices->FreeDevices);
 
             using TDeviceIter = decltype(begin);
             struct TDeviceInfo
@@ -611,7 +619,6 @@ TVector<TDeviceList::TDeviceRange> TDeviceList::CollectDevices(
 
             if (query.PoolKind == NProto::DEVICE_POOL_KIND_LOCAL) {
                 // here we go again
-
                 ranges.clear();
                 totalSize = query.GetTotalByteCount();
             }
@@ -670,7 +677,6 @@ TVector<NProto::TDeviceConfig> TDeviceList::AllocateDevices(
         });
 
         auto& nodeDevices = NodeDevices[nodeId];
-
         for (const auto& arange: aranges) {
             nodeDevices.FreeDevices.erase(arange.first, arange.second);
         }
@@ -716,15 +722,14 @@ void TDeviceList::MarkDeviceAsDirty(const TDeviceId& id)
 void TDeviceList::RemoveDeviceFromFreeList(const TDeviceId& id)
 {
     auto nodeId = FindNodeId(id);
-
+    const auto& predicate = [&](const auto& x)
+    {
+        return x.GetDeviceUUID() == id;
+    };
     if (nodeId) {
         auto& devices = NodeDevices[nodeId].FreeDevices;
 
-        auto it = FindIf(devices, [&] (const auto& x) {
-            return x.GetDeviceUUID() == id;
-        });
-
-        if (it != devices.end()) {
+        if (auto* it = FindIf(devices, predicate); it != devices.end()) {
             devices.erase(it);
         }
     }
