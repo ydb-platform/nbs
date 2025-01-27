@@ -512,6 +512,7 @@ TDuration MSeconds(ui32 value)
     xxx(ScrubbingBandwidth,                             ui64,      20            )\
     xxx(MaxScrubbingBandwidth,                          ui64,      50            )\
     xxx(MinScrubbingBandwidth,                          ui64,      5             )\
+    xxx(AutomaticallyEnableBufferCopyingAfterChecksumMismatch, bool, false       )\
                                                                                   \
     xxx(OptimizeVoidBuffersTransferForReadsEnabled,     bool,      false         )\
     xxx(VolumeHistoryCleanupItemCount,                  ui32,      100'000       )\
