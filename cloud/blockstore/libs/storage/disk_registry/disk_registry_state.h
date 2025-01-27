@@ -516,7 +516,7 @@ public:
 
     /// Mark selected device as clean and remove it
     /// from lists of suspended/dirty/pending cleanup devices
-    /// @return deallocated disk id of where selected device was deallocated
+    /// @return disk id where selected device was deallocated
     TDiskId MarkDeviceAsClean(
         TInstant now,
         TDiskRegistryDatabase& db,
