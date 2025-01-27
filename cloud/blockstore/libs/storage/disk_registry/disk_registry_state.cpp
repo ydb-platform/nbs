@@ -3960,26 +3960,18 @@ NProto::TError TDiskRegistryState::UpdateAgentCounters(
     for (const auto& device: stats.GetDeviceStats()) {
         const auto& uuid = device.GetDeviceUUID();
 
-        const bool deviceIsUnknown = std::ranges::any_of(
-            agent->GetUnknownDevices(),
-            [&uuid](const NProto::TDeviceConfig& device)
-            { return device.GetDeviceUUID() == uuid; });
-        if (deviceIsUnknown) {
-            return MakeError(
-                S_FALSE,
-                TStringBuilder() << "Device: \"" << uuid << "\" is unknown");
+        const NProto::TDeviceConfig* knownDevice = DeviceList.FindDevice(uuid);
+        if (!knownDevice) {
+            continue;
         }
 
-        const NProto::TDeviceConfig* knownDevice = DeviceList.FindDevice(uuid);
-        if (!knownDevice || stats.GetNodeId() != knownDevice->GetNodeId()) {
+        if (stats.GetNodeId() != knownDevice->GetNodeId()) {
             return MakeError(
                 E_ARGUMENT,
                 TStringBuilder()
-                    << "Unexpected device. DeviceId: \"" << uuid
-                    << "\" Sender node id: " << stats.GetNodeId()
-                    << " Found node id: "
-                    << (knownDevice ? ToString(knownDevice->GetNodeId())
-                                    : "null"));
+                    << "Unexpected device. DeviceId: " << uuid.Quote()
+                    << " Sender node id: " << stats.GetNodeId()
+                    << " Found node id: " << knownDevice->GetNodeId());
         }
     }
 
