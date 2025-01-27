@@ -4,12 +4,20 @@ import contrib.ydb.tests.library.common.yatest_common as yatest_common
 
 class EndpointProxy(Daemon):
 
-    def __init__(self, working_dir, unix_socket_path, with_netlink):
+    def __init__(
+            self,
+            working_dir,
+            unix_socket_path,
+            with_netlink,
+            stored_endpoints_path
+    ):
         command = [yatest_common.binary_path(
             "cloud/blockstore/apps/endpoint_proxy/blockstore-endpoint-proxy")]
         command += [
             "--unix-socket-path", unix_socket_path, "--verbose"
         ]
+        if stored_endpoints_path:
+            command += ["--stored-endpoints-path", stored_endpoints_path]
 
         if with_netlink:
             command += ["--netlink"]

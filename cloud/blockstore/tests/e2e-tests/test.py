@@ -4,6 +4,7 @@ import os
 import shutil
 import subprocess
 import tempfile
+import yaml
 
 from pathlib import Path
 
@@ -29,7 +30,11 @@ ENDPOINT_PROXY_PATH = common.binary_path(
     "cloud/blockstore/apps/endpoint_proxy/blockstore-endpoint-proxy")
 
 
-def init(with_netlink=True, with_endpoint_proxy=True):
+def init(
+        with_netlink=True,
+        with_endpoint_proxy=True,
+        stored_endpoints_path=None
+):
     server_config_patch = TServerConfig()
     server_config_patch.NbdEnabled = True
     if with_endpoint_proxy:
@@ -57,13 +62,16 @@ def init(with_netlink=True, with_endpoint_proxy=True):
     server.ServerConfig.StrictContractValidation = True
     server.KikimrServiceConfig.CopyFrom(TKikimrServiceConfig())
     subprocess.check_call(["modprobe", "nbd"], timeout=20)
+    if stored_endpoints_path:
+        stored_endpoints_path.mkdir(exist_ok=True)
     env = LocalLoadTest(
         endpoint="",
         server_app_config=server,
         storage_config_patches=None,
         use_in_memory_pdisks=True,
         with_endpoint_proxy=with_endpoint_proxy,
-        with_netlink=with_netlink)
+        with_netlink=with_netlink,
+        stored_endpoints_path=stored_endpoints_path)
 
     client_config_path = Path(yatest_common.output_path()) / "client-config.txt"
     client_config = TClientAppConfig()
@@ -118,13 +126,16 @@ def log_called_process_error(exc):
 @pytest.mark.parametrize('with_netlink,with_endpoint_proxy',
                          [(True, False), (True, True), (False, False), (False, True)])
 def test_resize_device(with_netlink, with_endpoint_proxy):
-    env, run = init(with_netlink, with_endpoint_proxy)
+    stored_endpoints_path = Path(common.output_path()) / "stored_endpoints"
+    env, run = init(with_netlink, with_endpoint_proxy, stored_endpoints_path)
+
     volume_name = "example-disk"
     block_size = 4096
     blocks_count = 10000
     volume_size = blocks_count * block_size
     nbd_device = "/dev/nbd0"
     socket_path = "/tmp/nbd.sock"
+    stored_endpoint_path = stored_endpoints_path / socket_path.replace("/", "_")
     try:
         result = run(
             "createvolume",
@@ -174,6 +185,11 @@ def test_resize_device(with_netlink, with_endpoint_proxy):
             stderr=subprocess.STDOUT)
         assert result.returncode == 0
 
+        if with_endpoint_proxy:
+            with open(stored_endpoint_path) as stream:
+                stored_endpoint = yaml.safe_load(stream)
+            assert stored_endpoint["BlocksCount"] == volume_size / block_size
+
         new_volume_size = 2 * volume_size
         result = run(
             "resizevolume",
@@ -205,6 +221,11 @@ def test_resize_device(with_netlink, with_endpoint_proxy):
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT)
         assert result.returncode == 0
+
+        if with_endpoint_proxy:
+            with open(stored_endpoint_path) as stream:
+                stored_endpoint = yaml.safe_load(stream)
+            assert stored_endpoint["BlocksCount"] == new_volume_size / block_size
 
     except subprocess.CalledProcessError as e:
         log_called_process_error(e)
