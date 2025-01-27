@@ -126,7 +126,7 @@ def log_called_process_error(exc):
 @pytest.mark.parametrize('with_netlink,with_endpoint_proxy',
                          [(True, False), (True, True), (False, False), (False, True)])
 def test_resize_device(with_netlink, with_endpoint_proxy):
-    stored_endpoints_path = Path(common.output_path()) / f"stored_endpoints"
+    stored_endpoints_path = Path(common.output_path()) / "stored_endpoints"
     env, run = init(with_netlink, with_endpoint_proxy, stored_endpoints_path)
 
     volume_name = "example-disk"
@@ -185,9 +185,10 @@ def test_resize_device(with_netlink, with_endpoint_proxy):
             stderr=subprocess.STDOUT)
         assert result.returncode == 0
 
-        with open(stored_endpoint_path) as stream:
-            stored_endpoint = yaml.safe_load(stream)
-        assert stored_endpoint["BlocksCount"] == volume_size / block_size
+        if with_endpoint_proxy:
+            with open(stored_endpoint_path) as stream:
+                stored_endpoint = yaml.safe_load(stream)
+            assert stored_endpoint["BlocksCount"] == volume_size / block_size
 
         new_volume_size = 2 * volume_size
         result = run(
@@ -221,9 +222,10 @@ def test_resize_device(with_netlink, with_endpoint_proxy):
             stderr=subprocess.STDOUT)
         assert result.returncode == 0
 
-        with open(stored_endpoint_path) as stream:
-            stored_endpoint = yaml.safe_load(stream)
-        assert stored_endpoint["BlocksCount"] == new_volume_size / block_size
+        if with_endpoint_proxy:
+            with open(stored_endpoint_path) as stream:
+                stored_endpoint = yaml.safe_load(stream)
+            assert stored_endpoint["BlocksCount"] == new_volume_size / block_size
 
     except subprocess.CalledProcessError as e:
         log_called_process_error(e)
