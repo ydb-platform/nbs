@@ -6,9 +6,9 @@
 
 #include <util/stream/file.h>
 #include <util/string/builder.h>
+#include <util/string/cast.h>
 #include <util/system/file.h>
 #include <util/system/thread.h>
-#include <util/string/cast.h>
 
 #include <atomic>
 
@@ -263,6 +263,8 @@ private:
 public:
     TThreadedAIOService(ui32 threadCount, size_t maxEvents)
     {
+        Y_ABORT_UNLESS(threadCount > 0);
+
         for (ui32 i = 0; i < threadCount; i++) {
             IoServices.push_back(CreateAIOService(maxEvents));
         }
@@ -292,14 +294,14 @@ public:
 
     void Start() override
     {
-        for (auto& ioService : IoServices) {
+        for (auto& ioService: IoServices) {
             ioService->Start();
         }
     }
 
     void Stop() override
     {
-        for (auto& ioService : IoServices) {
+        for (auto& ioService: IoServices) {
             ioService->Stop();
         }
     }
