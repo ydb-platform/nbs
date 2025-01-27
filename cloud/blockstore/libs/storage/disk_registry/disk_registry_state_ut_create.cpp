@@ -492,6 +492,283 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateCreateTest)
         }
     }
 
+    Y_UNIT_TEST(ShouldAllocateLocalWithDirtyDevices)
+    {
+        TTestExecutor executor;
+        executor.WriteTx([&](TDiskRegistryDatabase db) { db.InitSchema(); });
+
+        constexpr ui64 LocalDeviceSize = 99999997952;   // ~ 93.13 GiB
+
+        auto makeLocalDevice = [](const auto* name, const auto* uuid)
+        {
+            return Device(name, uuid) |
+                   WithPool("local-ssd", NProto::DEVICE_POOL_KIND_LOCAL) |
+                   WithTotalSize(LocalDeviceSize);
+        };
+
+        auto agentConfig = AgentConfig(
+            1,
+            {
+                makeLocalDevice("NVMELOCAL01", "uuid-1"),
+                makeLocalDevice("NVMELOCAL02", "uuid-2"),
+                makeLocalDevice("NVMELOCAL03", "uuid-3"),
+            });
+        const TVector agents{
+            agentConfig,
+        };
+
+        TDiskRegistryState state =
+            TDiskRegistryStateBuilder()
+                .WithConfig(
+                    [&]
+                    {
+                        auto config = MakeConfig(0, agents);
+
+                        auto* pool = config.AddDevicePoolConfigs();
+                        pool->SetName("local-ssd");
+                        pool->SetKind(NProto::DEVICE_POOL_KIND_LOCAL);
+                        pool->SetAllocationUnit(LocalDeviceSize);
+
+                        return config;
+                    }())
+                .WithAgents(agents)
+                .WithDirtyDevices(
+                    {TDirtyDevice{"uuid-1", {}},
+                     TDirtyDevice{"uuid-2", {}},
+                     TDirtyDevice{"uuid-3", {}}})
+                .Build();
+
+        auto allocate = [&](auto db, ui32 deviceCount)
+        {
+            TDiskRegistryState::TAllocateDiskResult result;
+
+            auto error = state.AllocateDisk(
+                TInstant::Zero(),
+                db,
+                TDiskRegistryState::TAllocateDiskParams{
+                    .DiskId = "local0",
+                    .BlockSize = DefaultLogicalBlockSize,
+                    .BlocksCount =
+                        deviceCount * LocalDeviceSize / DefaultLogicalBlockSize,
+                    .MediaKind = NProto::STORAGE_MEDIA_SSD_LOCAL},
+                &result);
+
+            return std::make_pair(std::move(result), error);
+        };
+
+        // Register agents.
+        executor.WriteTx(
+            [&](TDiskRegistryDatabase db) {
+                UNIT_ASSERT_SUCCESS(
+                    RegisterAgent(state, db, agentConfig, Now()));
+            });
+
+        UNIT_ASSERT_VALUES_EQUAL(1, state.GetConfig().KnownAgentsSize());
+        UNIT_ASSERT_VALUES_EQUAL(1, state.GetAgents().size());
+        UNIT_ASSERT_VALUES_EQUAL(0, state.GetSuspendedDevices().size());
+        UNIT_ASSERT_VALUES_EQUAL(3, state.GetDirtyDevices().size());
+        UNIT_ASSERT_VALUES_EQUAL(0, state.GetBrokenDevices().size());
+
+        // Allocate disk with dirty devices
+        executor.WriteTx(
+            [&](TDiskRegistryDatabase db)
+            {
+                auto [result, error] = allocate(db, 3U);
+                UNIT_ASSERT_SUCCESS(error);
+                UNIT_ASSERT_VALUES_EQUAL(3U, result.Devices.size());
+                UNIT_ASSERT_VALUES_EQUAL(3U, result.DirtyDevices.size());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    "NVMELOCAL01",
+                    result.Devices[0].GetDeviceName());
+            });
+    }
+
+    Y_UNIT_TEST(ShouldFavorCleanLocalDevices)
+    {
+        TTestExecutor executor;
+        executor.WriteTx([&](TDiskRegistryDatabase db) { db.InitSchema(); });
+
+        constexpr ui64 LocalDeviceSize = 99999997952;   // ~ 93.13 GiB
+
+        auto makeLocalDevice = [](const auto* name, const auto* uuid)
+        {
+            return Device(name, uuid) |
+                   WithPool("local-ssd", NProto::DEVICE_POOL_KIND_LOCAL) |
+                   WithTotalSize(LocalDeviceSize);
+        };
+
+        auto agentConfig = AgentConfig(
+            1,
+            {
+                makeLocalDevice("NVMELOCAL01", "uuid-1"),
+                makeLocalDevice("NVMELOCAL02", "uuid-2"),
+                makeLocalDevice("NVMELOCAL03", "uuid-3"),
+            });
+        const TVector agents{
+            agentConfig,
+        };
+
+        TDiskRegistryState state =
+            TDiskRegistryStateBuilder()
+                .WithConfig(
+                    [&]
+                    {
+                        auto config = MakeConfig(0, agents);
+
+                        auto* pool = config.AddDevicePoolConfigs();
+                        pool->SetName("local-ssd");
+                        pool->SetKind(NProto::DEVICE_POOL_KIND_LOCAL);
+                        pool->SetAllocationUnit(LocalDeviceSize);
+
+                        return config;
+                    }())
+                .WithAgents(agents)
+                .WithDirtyDevices(
+                    {TDirtyDevice{"uuid-1", {}},
+                     TDirtyDevice{"uuid-3", {}}})
+                .Build();
+
+        auto allocate = [&](auto db, ui32 deviceCount)
+        {
+            TDiskRegistryState::TAllocateDiskResult result;
+
+            auto error = state.AllocateDisk(
+                TInstant::Zero(),
+                db,
+                TDiskRegistryState::TAllocateDiskParams{
+                    .DiskId = "local0",
+                    .BlockSize = DefaultLogicalBlockSize,
+                    .BlocksCount =
+                        deviceCount * LocalDeviceSize / DefaultLogicalBlockSize,
+                    .MediaKind = NProto::STORAGE_MEDIA_SSD_LOCAL},
+                &result);
+
+            return std::make_pair(std::move(result), error);
+        };
+
+        // Register agents.
+        executor.WriteTx(
+            [&](TDiskRegistryDatabase db) {
+                UNIT_ASSERT_SUCCESS(
+                    RegisterAgent(state, db, agentConfig, Now()));
+            });
+
+        UNIT_ASSERT_VALUES_EQUAL(1, state.GetConfig().KnownAgentsSize());
+        UNIT_ASSERT_VALUES_EQUAL(1, state.GetAgents().size());
+        UNIT_ASSERT_VALUES_EQUAL(0, state.GetSuspendedDevices().size());
+        UNIT_ASSERT_VALUES_EQUAL(2, state.GetDirtyDevices().size());
+        UNIT_ASSERT_VALUES_EQUAL(0, state.GetBrokenDevices().size());
+
+        // Allocate disk with dirty devices
+        executor.WriteTx(
+            [&](TDiskRegistryDatabase db)
+            {
+                auto [result, error] = allocate(db, 1U);
+                UNIT_ASSERT_SUCCESS(error);
+                UNIT_ASSERT_VALUES_EQUAL(1U, result.Devices.size());
+                UNIT_ASSERT_VALUES_EQUAL(0U, result.DirtyDevices.size());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    "NVMELOCAL02",
+                    result.Devices[0].GetDeviceName());
+            });
+    }
+
+    Y_UNIT_TEST(ShouldFavorCleanDevicesAndAllocateDirty)
+    {
+        TTestExecutor executor;
+        executor.WriteTx([&](TDiskRegistryDatabase db) { db.InitSchema(); });
+
+        constexpr ui64 LocalDeviceSize = 99999997952;   // ~ 93.13 GiB
+
+        auto makeLocalDevice = [](const auto* name, const auto* uuid)
+        {
+            return Device(name, uuid) |
+                   WithPool("local-ssd", NProto::DEVICE_POOL_KIND_LOCAL) |
+                   WithTotalSize(LocalDeviceSize);
+        };
+
+        auto agentConfig = AgentConfig(
+            1,
+            {
+                makeLocalDevice("NVMELOCAL01", "uuid-1"),
+                makeLocalDevice("NVMELOCAL02", "uuid-2"),
+                makeLocalDevice("NVMELOCAL03", "uuid-3"),
+            });
+        const TVector agents{
+            agentConfig,
+        };
+
+        TDiskRegistryState state =
+            TDiskRegistryStateBuilder()
+                .WithConfig(
+                    [&]
+                    {
+                        auto config = MakeConfig(0, agents);
+
+                        auto* pool = config.AddDevicePoolConfigs();
+                        pool->SetName("local-ssd");
+                        pool->SetKind(NProto::DEVICE_POOL_KIND_LOCAL);
+                        pool->SetAllocationUnit(LocalDeviceSize);
+
+                        return config;
+                    }())
+                .WithAgents(agents)
+                .WithDirtyDevices(
+                    {TDirtyDevice{"uuid-1", {}},
+                     TDirtyDevice{"uuid-3", {}}})
+                .Build();
+
+        auto allocate = [&](auto db, ui32 deviceCount)
+        {
+            TDiskRegistryState::TAllocateDiskResult result;
+
+            auto error = state.AllocateDisk(
+                TInstant::Zero(),
+                db,
+                TDiskRegistryState::TAllocateDiskParams{
+                    .DiskId = "local0",
+                    .BlockSize = DefaultLogicalBlockSize,
+                    .BlocksCount =
+                        deviceCount * LocalDeviceSize / DefaultLogicalBlockSize,
+                    .MediaKind = NProto::STORAGE_MEDIA_SSD_LOCAL},
+                &result);
+
+            return std::make_pair(std::move(result), error);
+        };
+
+        // Register agents.
+        executor.WriteTx(
+            [&](TDiskRegistryDatabase db) {
+                UNIT_ASSERT_SUCCESS(
+                    RegisterAgent(state, db, agentConfig, Now()));
+            });
+
+        UNIT_ASSERT_VALUES_EQUAL(1, state.GetConfig().KnownAgentsSize());
+        UNIT_ASSERT_VALUES_EQUAL(1, state.GetAgents().size());
+        UNIT_ASSERT_VALUES_EQUAL(0, state.GetSuspendedDevices().size());
+        UNIT_ASSERT_VALUES_EQUAL(2, state.GetDirtyDevices().size());
+        UNIT_ASSERT_VALUES_EQUAL(0, state.GetBrokenDevices().size());
+
+        // Allocate disk with dirty devices
+        executor.WriteTx(
+            [&](TDiskRegistryDatabase db)
+            {
+                auto [result, error] = allocate(db, 2U);
+                UNIT_ASSERT_SUCCESS(error);
+                UNIT_ASSERT_VALUES_EQUAL(2U, result.Devices.size());
+                UNIT_ASSERT_VALUES_EQUAL(1U, result.DirtyDevices.size());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    "NVMELOCAL01",
+                    result.DirtyDevices[0].GetDeviceName());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    "NVMELOCAL02",
+                    result.Devices[0].GetDeviceName());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    "NVMELOCAL01",
+                    result.Devices[1].GetDeviceName());
+            });
+    }
+
     Y_UNIT_TEST(ShouldAllocateDiskWithAdjustedBlockCount)
     {
         TTestExecutor executor;
