@@ -30,7 +30,7 @@ def start(argv):
     kikimr_binary_path = yatest_common.binary_path("contrib/ydb/apps/ydbd/ydbd")
     if args.kikimr_package_path is not None:
         kikimr_binary_path = yatest_common.build_path(
-            "{}/Berkanavt/kikimr/bin/kikimr".format(args.kikimr_package_path)
+            "{}/ydbd".format(args.kikimr_package_path)
         )
 
     configurator = KikimrConfigGenerator(
