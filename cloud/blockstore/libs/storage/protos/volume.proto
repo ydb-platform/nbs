@@ -661,8 +661,7 @@ message TGracefulShutdownRequest
     // Optional request headers.
     THeaders Headers = 1;
 
-    // Label of volume to query its storage config. Or empty to
-    // query server storage config.
+    // Label of volume to shutdown.
     string DiskId = 2;
 }
 
