@@ -1702,7 +1702,7 @@ Y_UNIT_TEST_SUITE(TServiceActionsTest)
         }
     }
 
-       Y_UNIT_TEST(ShouldCheckRange)
+    Y_UNIT_TEST(ShouldCheckRange)
     {
         TTestEnv env;
         NProto::TStorageServiceConfig config;
@@ -1720,7 +1720,6 @@ Y_UNIT_TEST_SUITE(TServiceActionsTest)
             sessionId,
             char(1));
 
-        //service.UnmountVolume("vol0");
         {
             NPrivateProto::TCheckRangeRequest request;
             request.SetDiskId("vol0");
@@ -1733,8 +1732,6 @@ Y_UNIT_TEST_SUITE(TServiceActionsTest)
 
             const auto response = service.ExecuteAction("CheckRange", buf);
             NPrivateProto::TCheckRangeResponse checkRangeResponse;
-
-            Cout<<"!!!!!!!!!!!!!!!!!!!!!!!!!!"<< " response ut " <<response->Record.GetOutput()<<Endl;
 
             UNIT_ASSERT(google::protobuf::util::JsonStringToMessage(
                 response->Record.GetOutput(),
