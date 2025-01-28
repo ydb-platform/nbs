@@ -252,10 +252,10 @@ concept TAcceptsError = requires(T a)
 };
 
 template <typename T>
-T ErrorResponse(ui32 code, TString message)
+T ErrorResponse(ui32 code, TString message, ui32 flags = 0)
 {
     T response;
-    *response.MutableError() = MakeError(code, std::move(message));
+    *response.MutableError() = MakeError(code, std::move(message), flags);
     return response;
 }
 
@@ -390,40 +390,48 @@ public:
 class TErrorResponse
 {
 private:
-    const ui32 Code;
-    const TString Message;
+    NProto::TError Error;
 
 public:
-    TErrorResponse(ui32 code, TString message = {})
-        : Code(code)
-        , Message(std::move(message))
+    TErrorResponse(ui32 code, TString message = {}, ui32 flags = 0)
+        : Error(MakeError(code, std::move(message), flags))
     {}
 
     TErrorResponse(const NProto::TError& e)
-        : Code(e.GetCode())
-        , Message(e.GetMessage())
+        : Error(e)
+    {}
+
+    TErrorResponse(NProto::TError&& e)
+        : Error(std::move(e))
     {}
 
     TErrorResponse(const TServiceError& e)
-        : Code(e.GetCode())
-        , Message(e.GetMessage())
+        : Error(MakeError(e.GetCode(), TString(e.GetMessage())))
     {}
 
     template <TAcceptsError T>
     operator T() const
     {
-        return ErrorResponse<T>(Code, Message);
+        return ErrorResponse<T>(
+            Error.GetCode(),
+            Error.GetMessage(),
+            Error.GetFlags());
     }
 
     template <typename T>
     operator TResultOrError<T>() const
     {
-        return MakeError(Code, Message);
+        return TResultOrError<T>(Error);
     }
 
     operator NProto::TError() const
     {
-        return MakeError(Code, Message);
+        return Error;
+    }
+
+    operator NProto::TError&& () &&
+    {
+        return std::move(Error);
     }
 };
 
