@@ -16,6 +16,16 @@ namespace {
 using google::protobuf::RepeatedPtrField;
 using TDeviceMatcher = std::function<bool(const NProto::TDeviceConfig& device)>;
 
+struct TLaggingDeviceIndexCmp
+{
+    bool operator()(
+        const NProto::TLaggingDevice& lhs,
+        const NProto::TLaggingDevice& rhs) const
+    {
+        return lhs.GetRowIndex() < rhs.GetRowIndex();
+    }
+};
+
 struct TDeviceLocation
 {
     ui32 RowIndex = 0;
@@ -31,7 +41,6 @@ const RepeatedPtrField<NProto::TDeviceConfig>& GetReplicaDevices(
         return meta.GetDevices();
     }
     index--;
-    Y_DEBUG_ABORT_UNLESS(meta.ReplicasSize() > index);
     return meta.GetReplicas(index).GetDevices();
 }
 
@@ -44,8 +53,6 @@ const NProto::TDeviceConfig& GetDeviceConfig(
             meta,
             deviceLocation.ReplicaIndex)[deviceLocation.RowIndex];
     }
-    Y_DEBUG_ABORT_UNLESS(
-        meta.MigrationsSize() > *deviceLocation.MigrationIndex);
     return meta.GetMigrations(*deviceLocation.MigrationIndex).GetTargetDevice();
 }
 
@@ -95,29 +102,24 @@ std::optional<TDeviceLocation> FindDeviceLocation(
     const NProto::TVolumeMeta& meta,
     const TDeviceMatcher& deviceMatcher)
 {
-    std::optional<ui32> replicaIndex;
     for (size_t i = 0; i <= meta.ReplicasSize(); i++) {
         const auto& devices = GetReplicaDevices(meta, i);
         if (AnyOf(devices, deviceMatcher)) {
-            replicaIndex = i;
-            break;
+            return i;
         }
     }
 
-    if (!replicaIndex) {
-        for (const auto& migration: meta.GetMigrations()) {
-            if (deviceMatcher(migration.GetTargetDevice())) {
-                auto deviceLocation =
-                    FindDeviceLocation(meta, migration.GetSourceDeviceId());
-                if (deviceLocation) {
-                    replicaIndex = deviceLocation->ReplicaIndex;
-                    break;
-                }
+    for (const auto& migration: meta.GetMigrations()) {
+        if (deviceMatcher(migration.GetTargetDevice())) {
+            auto deviceLocation =
+                FindDeviceLocation(meta, migration.GetSourceDeviceId());
+            if (deviceLocation) {
+                return deviceLocation->ReplicaIndex;
             }
         }
     }
 
-    return replicaIndex;
+    return std::nullopt;
 }
 
 [[nodiscard]] TVector<NProto::TLaggingDevice> CollectLaggingDevices(
@@ -164,13 +166,6 @@ std::optional<TDeviceLocation> FindDeviceLocation(
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
-
-bool TLaggingDeviceIndexCmp::operator()(
-    const NProto::TLaggingDevice& lhs,
-    const NProto::TLaggingDevice& rhs) const
-{
-    return lhs.GetRowIndex() < rhs.GetRowIndex();
-}
 
 const NProto::TDeviceConfig* FindDeviceConfig(
     const NProto::TVolumeMeta& meta,
@@ -239,23 +234,18 @@ bool HaveCommonRows(
     const TVector<NProto::TLaggingDevice>& laggingCandidates,
     const RepeatedPtrField<NProto::TLaggingDevice>& alreadyLagging)
 {
-    Y_ABORT_UNLESS(IsSorted(
-        laggingCandidates.begin(),
-        laggingCandidates.end(),
-        TLaggingDeviceIndexCmp()));
-    Y_ABORT_UNLESS(IsSorted(
-        alreadyLagging.begin(),
-        alreadyLagging.end(),
-        TLaggingDeviceIndexCmp()));
+    TLaggingDeviceIndexCmp cmp;
+
+    Y_ABORT_UNLESS(
+        IsSorted(laggingCandidates.begin(), laggingCandidates.end(), cmp));
+    Y_ABORT_UNLESS(IsSorted(alreadyLagging.begin(), alreadyLagging.end(), cmp));
 
     for (int i = 0, j = 0;
          i < laggingCandidates.ysize() && j < alreadyLagging.size();)
     {
-        if (TLaggingDeviceIndexCmp()(laggingCandidates[i], alreadyLagging[j])) {
+        if (cmp(laggingCandidates[i], alreadyLagging[j])) {
             i++;
-        } else if (
-            TLaggingDeviceIndexCmp()(alreadyLagging[j], laggingCandidates[i]))
-        {
+        } else if (cmp(alreadyLagging[j], laggingCandidates[i])) {
             j++;
         } else {
             return true;
@@ -322,7 +312,7 @@ void UpdateLaggingDevicesAfterMetaUpdate(NProto::TVolumeMeta& meta)
         TVector<NProto::TLaggingDevice> updatedLaggingDevices =
             CollectLaggingDevices(meta, *replicaIndex, agent.GetAgentId());
 
-        Y_DEBUG_ABORT_UNLESS(*replicaIndex == agent.GetReplicaIndex());
+        Y_ABORT_UNLESS(*replicaIndex == agent.GetReplicaIndex());
         Y_DEBUG_ABORT_UNLESS(!updatedLaggingDevices.empty());
         for (auto& laggingDevice: updatedLaggingDevices) {
             *agent.AddDevices() = std::move(laggingDevice);
@@ -333,7 +323,7 @@ void UpdateLaggingDevicesAfterMetaUpdate(NProto::TVolumeMeta& meta)
         laggingAgents,
         [](const NProto::TLaggingAgent& laggingAgent)
         { return laggingAgent.GetDevices().empty(); });
-    if (meta.GetLaggingAgentsInfo().GetAgents().empty()) {
+    if (laggingAgents.empty()) {
         meta.MutableLaggingAgentsInfo()->Clear();
     }
 }

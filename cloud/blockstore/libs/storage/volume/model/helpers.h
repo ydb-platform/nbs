@@ -1,21 +1,11 @@
 #pragma once
 
-#include "cloud/blockstore/libs/storage/protos_ydb/volume.pb.h"
-
 #include <cloud/blockstore/libs/storage/protos/disk.pb.h>
-
-#include <span>
+#include <cloud/blockstore/libs/storage/protos_ydb/volume.pb.h>
 
 namespace NCloud::NBlockStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
-
-struct TLaggingDeviceIndexCmp
-{
-    bool operator()(
-        const NProto::TLaggingDevice& lhs,
-        const NProto::TLaggingDevice& rhs) const;
-};
 
 [[nodiscard]] const NProto::TDeviceConfig* FindDeviceConfig(
     const NProto::TVolumeMeta& meta,

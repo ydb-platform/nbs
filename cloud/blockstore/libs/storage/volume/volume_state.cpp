@@ -205,23 +205,23 @@ void TVolumeState::AddLaggingAgent(NProto::TLaggingAgent agent)
 std::optional<NProto::TLaggingAgent> TVolumeState::RemoveLaggingAgent(
     const TString& agentId)
 {
-    auto agentIdPred = [&agentId](const auto& info)
+    auto agentIdPredicate = [&agentId](const auto& info)
     {
         return info.GetAgentId() == agentId;
     };
 
-    const auto& laggingAgents = Meta.GetLaggingAgentsInfo().GetAgents();
-    Y_DEBUG_ABORT_UNLESS(CountIf(laggingAgents, agentIdPred) <= 1);
-    auto it = FindIf(laggingAgents, agentIdPred);
+    auto& laggingAgents = *Meta.MutableLaggingAgentsInfo()->MutableAgents();
+    Y_DEBUG_ABORT_UNLESS(CountIf(laggingAgents, agentIdPredicate) <= 1);
+    auto it = FindIf(laggingAgents, agentIdPredicate);
     if (it != laggingAgents.end()) {
-        NProto::TLaggingAgent laggingAgent = *it;
-        Meta.MutableLaggingAgentsInfo()->MutableAgents()->erase(it);
+        NProto::TLaggingAgent laggingAgent = std::move(*it);
+        laggingAgents.erase(it);
         return laggingAgent;
     }
     return std::nullopt;
 }
 
-bool TVolumeState::HasLaggingInReplica(ui32 replicaIndex)
+bool TVolumeState::HasLaggingInReplica(ui32 replicaIndex) const
 {
     for (const auto& agent: Meta.GetLaggingAgentsInfo().GetAgents()) {
         if (agent.GetReplicaIndex() == replicaIndex) {
