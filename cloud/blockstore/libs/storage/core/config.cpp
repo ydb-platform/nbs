@@ -338,7 +338,7 @@ TDuration MSeconds(ui32 value)
     xxx(ColdZoneRequestCountFactor,                ui32,   5                  )\
     xxx(BlockListCacheSizePercentage,              ui32,   100                )\
                                                                                \
-    xxx(WriteRequestBatchingEnabled,               bool,      false           )\
+    xxx(WriteRequestBatchingEnabled,               bool,      true            )\
                                                                                \
     xxx(FreshChannelWriteRequestsEnabled,          bool,      false           )\
                                                                                \
