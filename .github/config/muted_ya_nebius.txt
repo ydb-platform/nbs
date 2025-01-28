@@ -1,2 +1,2 @@
-cloud/filestore/tests/fio_index/qemu-kikimr-test *
-cloud/filestore/tests/fio_index/qemu-local-test *
+cloud/filestore/tests/fio_index/mount-kikimr-test *
+cloud/filestore/tests/fio_index/mount-local-test *
