@@ -1,4 +1,5 @@
 #include "disk_registry_actor.h"
+#include <cloud/blockstore/libs/storage/core/proto_helpers.h>
 
 #include <cloud/blockstore/libs/storage/api/disk_agent.h>
 

@@ -444,4 +444,15 @@ ui64 GetVolumeRequestId(const TEvDiskAgent::TEvZeroDeviceBlocksRequest& request)
     return request.Record.GetVolumeRequestId();
 }
 
+TString LogDevices(const TVector<NProto::TDeviceConfig>& devices)
+{
+    TStringBuilder sb;
+    sb << "( ";
+    for (const auto& d: devices) {
+        sb << d.GetDeviceUUID() << "@" << d.GetAgentId() << " ";
+    }
+    sb << ")";
+    return sb;
+}
+
 }   // namespace NCloud::NBlockStore::NStorage

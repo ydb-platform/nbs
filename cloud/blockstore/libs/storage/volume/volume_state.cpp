@@ -811,6 +811,31 @@ const THashMultiMap<TActorId, TString>& TVolumeState::GetPipeServerId2ClientId()
     return ClientIdsByPipeServerId;
 }
 
+TVector<NProto::TDeviceConfig>
+TVolumeState::GetAllDevicesForAcquireRelease() const
+{
+    const size_t allDevicesCount =
+        ((Meta.ReplicasSize() + 1) * Meta.DevicesSize()) +
+        GetMeta().MigrationsSize();
+
+    TVector<NProto::TDeviceConfig> resultDevices;
+    resultDevices.reserve(allDevicesCount);
+
+    for (const auto& device: Meta.GetDevices()) {
+        resultDevices.emplace_back(device);
+    }
+    for (const auto& replica: Meta.GetReplicas()) {
+        for (const auto& device: replica.GetDevices()) {
+            resultDevices.emplace_back(device);
+        }
+    }
+    for (const auto& migration: Meta.GetMigrations()) {
+        resultDevices.emplace_back(migration.GetTargetDevice());
+    }
+
+    return resultDevices;
+}
+
 bool TVolumeState::CanPreemptClient(
     const TString& oldClientId,
     TInstant referenceTimestamp,
