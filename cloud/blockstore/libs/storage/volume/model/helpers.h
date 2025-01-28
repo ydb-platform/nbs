@@ -30,10 +30,8 @@ namespace NCloud::NBlockStore::NStorage {
     const google::protobuf::RepeatedPtrField<NProto::TLaggingDevice>&
         alreadyLagging);
 
-void RemoveLaggingDevicesFromMeta(
+void UpdateLaggingDevicesAfterMetaUpdate(
     NProto::TVolumeMeta& meta,
-    const TVector<TString>& laggingDeviceIds);
-
-void UpdateLaggingDevicesAfterMetaUpdate(NProto::TVolumeMeta& meta);
+    const TVector<TString>& removedLaggingDeviceIds);
 
 }   // namespace NCloud::NBlockStore::NStorage

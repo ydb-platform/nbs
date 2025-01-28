@@ -246,10 +246,9 @@ void TVolumeActor::FinishUpdateVolumeConfig(const TActorContext& ctx)
     if (State) {
         newMeta.MutableLaggingAgentsInfo()->CopyFrom(
             State->GetMeta().GetLaggingAgentsInfo());
-        RemoveLaggingDevicesFromMeta(
+        UpdateLaggingDevicesAfterMetaUpdate(
             newMeta,
             UnfinishedUpdateVolumeConfig.RemovedLaggingDeviceIds);
-        UpdateLaggingDevicesAfterMetaUpdate(newMeta);
     }
 
     UnfinishedUpdateVolumeConfig.Devices = {};

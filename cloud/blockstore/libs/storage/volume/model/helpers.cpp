@@ -232,35 +232,26 @@ bool RowHasFreshDevices(
     return false;
 }
 
-void RemoveLaggingDevicesFromMeta(
+void UpdateLaggingDevicesAfterMetaUpdate(
     NProto::TVolumeMeta& meta,
-    const TVector<TString>& laggingDeviceIds)
-{
-    auto& agents = *meta.MutableLaggingAgentsInfo()->MutableAgents();
-    for (auto& agent: agents) {
-        EraseIf(
-            *agent.MutableDevices(),
-            [&laggingDeviceIds](const NProto::TLaggingDevice& laggingDevice)
-            {
-                return !!FindPtr(
-                    laggingDeviceIds,
-                    laggingDevice.GetDeviceUUID());
-            });
-    }
-    EraseIf(
-        agents,
-        [](const NProto::TLaggingAgent& laggingAgent)
-        { return laggingAgent.GetDevices().empty(); });
-    if (agents.empty()) {
-        meta.MutableLaggingAgentsInfo()->Clear();
-    }
-}
-
-void UpdateLaggingDevicesAfterMetaUpdate(NProto::TVolumeMeta& meta)
+    const TVector<TString>& removedLaggingDeviceIds)
 {
     auto& laggingAgents = *meta.MutableLaggingAgentsInfo()->MutableAgents();
     for (auto& agent: laggingAgents) {
+        const bool laggingDevicesWereRemoved = AllOf(
+            agent.GetDevices(),
+            [&removedLaggingDeviceIds](
+                const NProto::TLaggingDevice& laggingDevice)
+            {
+                return !!FindPtr(
+                    removedLaggingDeviceIds,
+                    laggingDevice.GetDeviceUUID());
+            });
+
         agent.ClearDevices();
+        if (laggingDevicesWereRemoved) {
+            continue;
+        }
 
         auto replicaIndex = FindReplicaIndexByAgentId(meta, agent.GetAgentId());
         if (!replicaIndex) {
