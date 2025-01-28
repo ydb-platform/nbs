@@ -40,6 +40,11 @@ func (c *Mock) IsFilesystemExisted(device string) (bool, error) {
 	return args.Get(0).(bool), args.Error(1)
 }
 
+func (c *Mock) IsFilesystemRemountedAsReadonly(mountPoint string) (bool, error) {
+	args := c.Called(mountPoint)
+	return args.Get(0).(bool), args.Error(1)
+}
+
 func (c *Mock) MakeFilesystem(device string, fsType string) ([]byte, error) {
 	args := c.Called(device, fsType)
 	return args.Get(0).([]byte), args.Error(1)
