@@ -58,6 +58,7 @@ struct THandlerFactory
         { "alterplacementgroupmembership", NewAlterPlacementGroupMembershipCommand },
         { "altervolume", NewAlterVolumeCommand },
         { "assignvolume", NewAssignVolumeCommand },
+        { "backupvolume", NewBackupVolumeCommand },
         { "checkrange", NewCheckRangeCommand },
         { "createcheckpoint", NewCreateCheckpointCommand },
         { "createplacementgroup", NewCreatePlacementGroupCommand },
