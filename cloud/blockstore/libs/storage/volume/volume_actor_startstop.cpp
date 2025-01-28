@@ -354,15 +354,15 @@ void TVolumeActor::HandleGracefulShutdown(
         LOG_ERROR(
             ctx,
             TBlockStoreComponents::VOLUME,
-            "[%lu] GracefulShutdown request was send to "
-            "not DR based disk",
+            "[%lu] GracefulShutdown request was sent to "
+            "non-DR based disk",
             TabletID());
 
         NCloud::Reply(
             ctx,
             *ev,
             std::make_unique<TEvVolume::TEvGracefulShutdownResponse>(
-                MakeError(E_NOT_IMPLEMENTED, "request not supported")));
+                MakeError(E_NOT_IMPLEMENTED, "request is not supported")));
         return;
     }
 

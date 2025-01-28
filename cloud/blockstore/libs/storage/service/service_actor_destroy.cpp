@@ -442,7 +442,11 @@ void TDestroyVolumeActor::HandleTimeout(
     LOG_ERROR(
         ctx,
         TBlockStoreComponents::SERVICE,
-        "Timeout destroy volume request");
+        "Timeout destroy volume request, diskId = %s, destroyIfBroken = %d, "
+        "sync = %d",
+        DiskId,
+        DestroyIfBroken,
+        Sync);
 
     ReplyAndDie(ctx, MakeError(E_TIMEOUT, "Timeout"));
 }
