@@ -545,7 +545,7 @@ void TRestoreValidationActor::HandleListVolumesResponse(
                     ctx,
                     Component,
                     RESTORE_PREFIX << " DiskID " << itr->GetDiskId().Quote()
-                                   << " is found in backup but not in SS");
+                                   << " is found in backup, but not in SS");
             }
             SetErrorDevicesInBackup(itr->GetDeviceUUIDs(), ctx.Now());
             DisksInBackup.erase(itr->GetDiskId());

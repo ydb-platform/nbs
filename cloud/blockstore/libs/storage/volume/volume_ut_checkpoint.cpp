@@ -3772,7 +3772,7 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
         // Reconnect pipe since partition has restarted.
         volume.ReconnectPipe();
 
-        // Shadow disk enter to the error state.
+        // Shadow disk entered the error state.
         auto status =
             volume.GetCheckpointStatus("c1")->Record.GetCheckpointStatus();
 
