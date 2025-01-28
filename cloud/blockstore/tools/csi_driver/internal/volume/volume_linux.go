@@ -19,7 +19,7 @@ limitations under the License.
 
 /* This file was edited for NBS.
 *  Original is from kubernetes.
-*/
+ */
 
 package volume
 
@@ -198,4 +198,3 @@ func walk(path string, info os.FileInfo, walkFunc filepath.WalkFunc) error {
 	}
 	return walkFunc(path, info, nil)
 }
-
