@@ -21,7 +21,7 @@ namespace {
     xxx(TracesUnifiedAgentEndpoint, TString,    ""                            )\
     xxx(TracesSyslogIdentifier,     TString,    ""                            )\
                                                                                \
-    xxx(ProfileLogTimeThreshold,    TDuration,  TDuration::Seconds(15)        )\
+    xxx(ProfileLogTimeThreshold,    TDuration,  TDuration::Seconds(150.0)        )\
     xxx(LWTraceShuttleCount,        ui32,       2000                          )\
                                                                                \
     xxx(CpuWaitServiceName,         TString,    ""                            )\
