@@ -114,32 +114,6 @@ void TCheckRangeActor::ReplyAndDie(
     Die(ctx);
 }
 
-void TCheckRangeActor::ReplyAndDie(
-    const TActorContext& ctx,
-    NProto::TCheckRangeResponse response)
-{
-    auto msg = std::make_unique<TEvService::TEvExecuteActionResponse>(
-        std::move(response.GetError()));
-
-    google::protobuf::util::MessageToJsonString(
-        NPrivateProto::TCheckRangeResponse(),
-        msg->Record.MutableOutput());
-
-    LOG_ERROR(
-        ctx,
-        TBlockStoreComponents::SERVICE,
-        "!!!!!! result : " + response.GetError().GetMessage());
-
-    LWTRACK(
-        ResponseSent_Service,
-        RequestInfo->CallContext->LWOrbit,
-        "ExecuteAction_CheckRange",
-        RequestInfo->CallContext->RequestId);
-
-    NCloud::Reply(ctx, *RequestInfo, std::move(msg));
-    Die(ctx);
-}
-
 ////////////////////////////////////////////////////////////////////////////////
 
 void TCheckRangeActor::HandleCheckRangeResponse(
@@ -151,7 +125,7 @@ void TCheckRangeActor::HandleCheckRangeResponse(
         TBlockStoreComponents::SERVICE,
         "!!!! CheckRangeResponseCatched");
 
-    ReplyAndDie(ctx, std::move(ev->Get()->Record));
+    ReplyAndDie(ctx, std::move(ev->Get()->Record.GetError()));
 }
 
 ////////////////////////////////////////////////////////////////////////////////

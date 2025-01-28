@@ -52,7 +52,7 @@ private:
         std::unique_ptr<TEvVolume::TEvCheckRangeResponse> response);
 
 private:
-    STFUNC(StateCheckRange);
+    STFUNC(StateWork);
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -77,7 +77,7 @@ void TCheckRangeActor::Bootstrap(const TActorContext& ctx)
 
 void TCheckRangeActor::CheckRange(const TActorContext& ctx)
 {
-    Become(&TThis::StateCheckRange);
+    Become(&TThis::StateWork);
 
     auto request = std::make_unique<TEvVolume::TEvCheckRangeRequest>();
     request->Record.SetDiskId(DiskId);
@@ -115,7 +115,7 @@ void TCheckRangeActor::ReplyAndDie(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-STFUNC(TCheckRangeActor::StateCheckRange)
+STFUNC(TCheckRangeActor::StateWork)
 {
     switch (ev->GetTypeRewrite()) {
         HFunc(TEvVolume::TEvCheckRangeResponse, HandleCheckRangeResponse);
