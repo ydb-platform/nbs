@@ -506,17 +506,6 @@ void TReadBlocksActor::ReplyAndDie(
         "ReadBlocks",
         RequestInfo->CallContext->RequestId);
 
-    LOG_ERROR(
-        ctx,
-        TBlockStoreComponents::PARTITION,
-        "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! reply ");
-
-
-    LOG_ERROR(
-        ctx,
-        TBlockStoreComponents::PARTITION,
-        RequestInfo->Sender.ToString());
-
     NCloud::Reply(ctx, *RequestInfo, std::move(response));
     Die(ctx);
 }
@@ -969,10 +958,6 @@ void TPartitionActor::HandleReadBlocksCompleted(
     Actors.Erase(ev->Sender);
 
     FinalizeReadBlocks(ctx, std::move(*ev->Get()));
-    LOG_ERROR(
-        ctx,
-        TBlockStoreComponents::PARTITION,
-        "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! Finalized ");
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1199,11 +1184,6 @@ void TPartitionActor::CompleteReadBlocks(
         args.RequestInfo->CallContext->RequestId);
 
     NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
-
-    LOG_ERROR(
-        ctx,
-        TBlockStoreComponents::PARTITION,
-        "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! Replyed ");
 
     FinalizeReadBlocks(
         ctx,
