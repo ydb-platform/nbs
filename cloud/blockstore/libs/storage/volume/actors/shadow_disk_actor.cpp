@@ -775,7 +775,9 @@ void TShadowDiskActor::HandleShadowDiskAcquired(
     }
 
     if (HasError(msg->Error)) {
-        if (acquireReason != EAcquireReason::PeriodicalReAcquire) {
+        if (msg->Error.GetCode() == E_NOT_FOUND ||
+            acquireReason != EAcquireReason::PeriodicalReAcquire)
+        {
             SetErrorState(ctx);
         }
         return;

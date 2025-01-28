@@ -3725,6 +3725,60 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
         }
     }
 
+    Y_UNIT_TEST(ShouldStopAcquiringAfterENotFound)
+    {
+        NProto::TStorageServiceConfig config;
+        config.SetUseShadowDisksForNonreplDiskCheckpoints(true);
+        config.SetMaxAcquireShadowDiskTotalTimeoutWhenNonBlocked(2000);
+
+        auto runtime = PrepareTestActorRuntime(config);
+
+        auto describeDiskRequestsFilter = [&](TAutoPtr<IEventHandle>& event)
+        {
+            if (event->GetTypeRewrite() ==
+                TEvDiskRegistry::EvDescribeDiskResponse)
+            {   // Simulate response with E_NOT_FOUND error from DiskRegistry.
+                auto* msg =
+                    event->Get<TEvDiskRegistry::TEvDescribeDiskResponse>();
+                msg->Record.MutableError()->SetCode(E_NOT_FOUND);
+            }
+            return TTestActorRuntime::DefaultObserverFunc(event);
+        };
+        runtime->SetObserverFunc(describeDiskRequestsFilter);
+
+        // Create volume.
+        TVolumeClient volume(*runtime);
+        volume.UpdateVolumeConfig(
+            0,
+            0,
+            0,
+            0,
+            false,
+            1,
+            NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
+            32768);
+
+        volume.WaitReady();
+
+        auto clientInfo = CreateVolumeClientInfo(
+            NProto::VOLUME_ACCESS_READ_WRITE,
+            NProto::VOLUME_MOUNT_LOCAL,
+            0);
+        volume.AddClient(clientInfo);
+
+        // Create checkpoint.
+        volume.CreateCheckpoint("c1");
+
+        // Reconnect pipe since partition has restarted.
+        volume.ReconnectPipe();
+
+        // Shadow disk enter to the error state.
+        auto status =
+            volume.GetCheckpointStatus("c1")->Record.GetCheckpointStatus();
+
+        UNIT_ASSERT_EQUAL(NProto::ECheckpointStatus::ERROR, status);
+    }
+
     Y_UNIT_TEST(ShouldBlockWritesWhenReAcquire)
     {
         NProto::TStorageServiceConfig config;
