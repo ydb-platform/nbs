@@ -11,17 +11,10 @@ namespace NCloud::NBlockStore::NStorage {
     const NProto::TVolumeMeta& meta,
     TStringBuf deviceUUID);
 
-[[nodiscard]] std::optional<ui32> FindReplicaIndexByAgentNodeId(
-    const NProto::TVolumeMeta& meta,
-    ui32 agentNodeId);
 [[nodiscard]] std::optional<ui32> FindReplicaIndexByAgentId(
     const NProto::TVolumeMeta& meta,
     TStringBuf agentId);
 
-[[nodiscard]] TVector<NProto::TLaggingDevice> CollectLaggingDevices(
-    const NProto::TVolumeMeta& meta,
-    ui32 replicaIndex,
-    ui32 agentNodeId);
 [[nodiscard]] TVector<NProto::TLaggingDevice> CollectLaggingDevices(
     const NProto::TVolumeMeta& meta,
     ui32 replicaIndex,

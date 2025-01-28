@@ -14,7 +14,6 @@ namespace {
 ////////////////////////////////////////////////////////////////////////////////
 
 using google::protobuf::RepeatedPtrField;
-using TDeviceMatcher = std::function<bool(const NProto::TDeviceConfig& device)>;
 
 struct TLaggingDeviceIndexCmp
 {
@@ -98,10 +97,30 @@ std::optional<TDeviceLocation> FindDeviceLocation(
     return std::nullopt;
 }
 
-[[nodiscard]] std::optional<ui32> FindReplicaIndex(
+}   // namespace
+
+////////////////////////////////////////////////////////////////////////////////
+
+const NProto::TDeviceConfig* FindDeviceConfig(
     const NProto::TVolumeMeta& meta,
-    const TDeviceMatcher& deviceMatcher)
+    TStringBuf deviceUUID)
 {
+    auto deviceLocation = FindDeviceLocation(meta, deviceUUID);
+    if (!deviceLocation) {
+        return nullptr;
+    }
+    return &GetDeviceConfig(meta, *deviceLocation);
+}
+
+std::optional<ui32> FindReplicaIndexByAgentId(
+    const NProto::TVolumeMeta& meta,
+    TStringBuf agentId)
+{
+    const auto deviceMatcher = [agentId](const NProto::TDeviceConfig& device)
+    {
+        return device.GetAgentId() == agentId;
+    };
+
     for (size_t i = 0; i <= meta.ReplicasSize(); i++) {
         const auto& devices = GetReplicaDevices(meta, i);
         if (AnyOf(devices, deviceMatcher)) {
@@ -122,11 +141,16 @@ std::optional<TDeviceLocation> FindDeviceLocation(
     return std::nullopt;
 }
 
-[[nodiscard]] TVector<NProto::TLaggingDevice> CollectLaggingDevices(
+TVector<NProto::TLaggingDevice> CollectLaggingDevices(
     const NProto::TVolumeMeta& meta,
     ui32 replicaIndex,
-    const TDeviceMatcher& deviceMatcher)
+    TStringBuf agentId)
 {
+    const auto deviceMatcher = [agentId](const NProto::TDeviceConfig& device)
+    {
+        return device.GetAgentId() == agentId;
+    };
+
     TVector<NProto::TLaggingDevice> result;
     const auto replicaDevices = GetReplicaDevices(meta, replicaIndex);
     for (int i = 0; i < replicaDevices.size(); i++) {
@@ -161,73 +185,6 @@ std::optional<TDeviceLocation> FindDeviceLocation(
 
     Sort(result, TLaggingDeviceIndexCmp());
     return result;
-}
-
-}   // namespace
-
-////////////////////////////////////////////////////////////////////////////////
-
-const NProto::TDeviceConfig* FindDeviceConfig(
-    const NProto::TVolumeMeta& meta,
-    TStringBuf deviceUUID)
-{
-    auto deviceLocation = FindDeviceLocation(meta, deviceUUID);
-    if (!deviceLocation) {
-        return nullptr;
-    }
-    return &GetDeviceConfig(meta, *deviceLocation);
-}
-
-std::optional<ui32> FindReplicaIndexByAgentNodeId(
-    const NProto::TVolumeMeta& meta,
-    ui32 agentNodeId)
-{
-    const auto deviceMatcher =
-        [agentNodeId](const NProto::TDeviceConfig& device)
-    {
-        return device.GetNodeId() == agentNodeId;
-    };
-
-    return FindReplicaIndex(meta, deviceMatcher);
-}
-
-std::optional<ui32> FindReplicaIndexByAgentId(
-    const NProto::TVolumeMeta& meta,
-    TStringBuf agentId)
-{
-    const auto deviceMatcher = [agentId](const NProto::TDeviceConfig& device)
-    {
-        return device.GetAgentId() == agentId;
-    };
-
-    return FindReplicaIndex(meta, deviceMatcher);
-}
-
-TVector<NProto::TLaggingDevice> CollectLaggingDevices(
-    const NProto::TVolumeMeta& meta,
-    ui32 replicaIndex,
-    ui32 agentNodeId)
-{
-    const auto deviceMatcher =
-        [agentNodeId](const NProto::TDeviceConfig& device)
-    {
-        return device.GetNodeId() == agentNodeId;
-    };
-
-    return CollectLaggingDevices(meta, replicaIndex, deviceMatcher);
-}
-
-TVector<NProto::TLaggingDevice> CollectLaggingDevices(
-    const NProto::TVolumeMeta& meta,
-    ui32 replicaIndex,
-    TStringBuf agentId)
-{
-    const auto deviceMatcher = [agentId](const NProto::TDeviceConfig& device)
-    {
-        return device.GetAgentId() == agentId;
-    };
-
-    return CollectLaggingDevices(meta, replicaIndex, deviceMatcher);
 }
 
 bool HaveCommonRows(

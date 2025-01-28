@@ -130,14 +130,14 @@ void TVolumeActor::HandleDeviceTimeouted(
     }
 
     const auto timeoutedDeviceReplicaIndex =
-        FindReplicaIndexByAgentNodeId(meta, timeoutedDeviceConfig->GetNodeId());
+        FindReplicaIndexByAgentId(meta, timeoutedDeviceConfig->GetAgentId());
     Y_DEBUG_ABORT_UNLESS(timeoutedDeviceReplicaIndex);
 
     TVector<NProto::TLaggingDevice> timeoutedAgentDevices =
         CollectLaggingDevices(
             meta,
             *timeoutedDeviceReplicaIndex,
-            timeoutedDeviceConfig->GetNodeId());
+            timeoutedDeviceConfig->GetAgentId());
     Y_DEBUG_ABORT_UNLESS(!timeoutedAgentDevices.empty());
 
     for (const auto& laggingAgent: meta.GetLaggingAgentsInfo().GetAgents()) {
@@ -223,7 +223,6 @@ void TVolumeActor::HandleDeviceTimeouted(
 
     NProto::TLaggingAgent unavailableAgent;
     unavailableAgent.SetAgentId(timeoutedDeviceConfig->GetAgentId());
-    unavailableAgent.SetNodeId(timeoutedDeviceConfig->GetNodeId());
     unavailableAgent.SetReplicaIndex(*timeoutedDeviceReplicaIndex);
     unavailableAgent.MutableDevices()->Assign(
         std::make_move_iterator(timeoutedAgentDevices.begin()),

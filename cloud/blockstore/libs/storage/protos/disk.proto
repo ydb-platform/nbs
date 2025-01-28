@@ -436,16 +436,13 @@ message TLaggingAgent
     // Agent id.
     string AgentId = 1;
 
-    // Node that agent is running on.
-    uint32 NodeId = 2;
-
     // Index of the mirror disk replica.
     // 0 - main devices
     // 1,2 - replica devices
-    uint32 ReplicaIndex = 3;
+    uint32 ReplicaIndex = 2;
 
     // A list of devices that belong to the agent.
-    repeated TLaggingDevice Devices = 4;
+    repeated TLaggingDevice Devices = 3;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
