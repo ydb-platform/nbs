@@ -584,7 +584,7 @@ void TVolumeProxyActor::HandleRequest(
     // to ourself, enabling standard path for message processing.
     // So we need to handle the cases when message is re-sent or just came from
     // outside. We have to to check if message buffer is present
-    // otherwise it is safe to use Get() to retrieve actual message.s
+    // otherwise it is safe to use Get() to retrieve actual message.
     if (!ev->HasBuffer() && !ev->HasEvent()) {
         auto response = std::make_unique<typename TMethod::TResponse>(
             MakeTabletIsDeadError(E_REJECTED, __LOCATION__));

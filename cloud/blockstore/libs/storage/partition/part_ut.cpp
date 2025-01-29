@@ -939,7 +939,8 @@ public:
         return std::make_unique<TEvVolume::TEvGetScanDiskStatusRequest>();
     }
 
-    std::unique_ptr<TEvVolume::TEvCheckRangeRequest> CreateCheckRangeRequest(TString id, ui32 idx, ui32 size)
+    std::unique_ptr<TEvVolume::TEvCheckRangeRequest>
+    CreateCheckRangeRequest(TString id, ui32 idx, ui32 size)
     {
         auto request = std::make_unique<TEvVolume::TEvCheckRangeRequest>();
         request->Record.SetDiskId(id);
@@ -11402,7 +11403,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
             UNIT_ASSERT_VALUES_EQUAL(S_OK, status);
         };
 
-        checkRange(0, 1024*1024);
+        checkRange(0, 1024 * 1024);
         checkRange(1024, 2048);
         checkRange(1, 1);
         checkRange(1000, 10000);
@@ -11486,7 +11487,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
 
             UNIT_ASSERT_VALUES_EQUAL(E_IO, status);
         };
-        checkRange(0, 1024*1024);
+        checkRange(0, 1024 * 1024);
         checkRange(1024, 2048);
         checkRange(1, 1);
         checkRange(1000, 10000);
@@ -11512,7 +11513,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
     }
 
-    Y_UNIT_TEST(ShouldntCheckRangeWithBigSize)
+    Y_UNIT_TEST(ShouldntCheckRangeWithBigBlockCount)
     {
         constexpr ui32 blockCount = 1024 * 1024;
         constexpr ui32 bytesPerStrype = 1024;

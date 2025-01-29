@@ -1,4 +1,5 @@
 #include "part_actor.h"
+
 #include <cloud/blockstore/libs/service/context.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/core/probes.h>
@@ -25,8 +26,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TCheckRangeActor final
-    : public TActorBootstrapped<TCheckRangeActor>
+class TCheckRangeActor final: public TActorBootstrapped<TCheckRangeActor>
 {
 private:
     const TActorId Tablet;
@@ -72,11 +72,11 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 TCheckRangeActor::TCheckRangeActor(
-        const TActorId& tablet,
-        ui64 blockOffset,
-        ui64 blocksCount,
-        TDuration timeout,
-        TEvVolume::TEvCheckRangeRequest::TPtr&& ev)
+    const TActorId& tablet,
+    ui64 blockOffset,
+    ui64 blocksCount,
+    TDuration timeout,
+    TEvVolume::TEvCheckRangeRequest::TPtr&& ev)
     : Tablet(tablet)
     , FirstBlockOffset(blockOffset)
     , BlocksCount(blocksCount)
@@ -86,8 +86,6 @@ TCheckRangeActor::TCheckRangeActor(
 
 void TCheckRangeActor::Bootstrap(const TActorContext& ctx)
 {
-
-
     SendReadBlocksRequest(ctx);
     Become(&TThis::StateWork);
 }
@@ -161,10 +159,11 @@ void TCheckRangeActor::HandleReadBlocksResponse(
         LOG_ERROR(
             ctx,
             TBlockStoreComponents::VOLUME,
-            "reading error has occurred: " + errorMessage + "   message   " +  msg->Record.GetError().message() );
+            "reading error has occurred: " + errorMessage + "   message   " +
+                msg->Record.GetError().message());
     }
 
-        ReplyAndDie(ctx, msg->Record.GetError());
+    ReplyAndDie(ctx, msg->Record.GetError());
 }
 
 }   // namespace
@@ -216,6 +215,7 @@ void NPartition::TPartitionActor::HandleCheckRange(
             msg->Record.GetBlockCount(),
             Config->GetCompactionRetryTimeout(),
             std::move(ev)));
+
     Actors.Insert(actorId);
 }
 

@@ -14,8 +14,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TCheckRangeCommand final
-    : public TCommand
+class TCheckRangeCommand final: public TCommand
 {
 private:
     TString DiskId;
@@ -40,75 +39,77 @@ public:
     }
 
 protected:
-bool DoExecute() override
-{
-    if (!Proto && !CheckOpts()) {
-        return false;
-    }
-
-    auto& output = GetOutputStream();
-
-    STORAGE_DEBUG("Handling CheckRange");
-
-    ui32 errorCount = 0;
-
-    const ui32 maxBlocksPerRequest = 4 * 1024;
-    ui32 remainingBlocks = BlockCount;
-    ui64 currentBlockIdx = BlockIdx;
-
-    while (remainingBlocks > 0) {
-        bool isOutOfBound = false;
-
-        ui32 blocksInThisRequest = std::min(remainingBlocks, maxBlocksPerRequest);
-
-        auto request = std::make_shared<NProto::TCheckRangeRequest>();
-        request->SetDiskId(DiskId);
-        request->SetBlockIdx(currentBlockIdx);
-        request->SetBlockCount(blocksInThisRequest);
-
-        STORAGE_DEBUG("Sending CheckRange request");
-        const auto requestId = GetRequestId(*request);
-        auto result = WaitFor(ClientEndpoint->CheckRange(
-            MakeIntrusive<TCallContext>(requestId),
-            std::move(request)));
-
-        STORAGE_DEBUG("Received CheckRange response");
-        if (Proto) {
-            SerializeToTextFormat(result, output);
-            return true;
+    bool DoExecute() override
+    {
+        if (!Proto && !CheckOpts()) {
+            return false;
         }
 
-        if (HasError(result)) {
-            if (result.GetError().GetCode() == E_ARGUMENT) {
-                isOutOfBound = true;
-            } else {
-                output << "Error in range [" << currentBlockIdx << ", "
-                       << (currentBlockIdx + blocksInThisRequest - 1)
-                       << "]: " << FormatError(result.GetError()) << Endl;
-                errorCount++;
+        auto& output = GetOutputStream();
+
+        STORAGE_DEBUG("Handling CheckRange");
+
+        ui32 errorCount = 0;
+
+        const ui32 maxBlocksPerRequest = 4 * 1024;
+        ui32 remainingBlocks = BlockCount;
+        ui64 currentBlockIdx = BlockIdx;
+
+        while (remainingBlocks > 0) {
+            bool isOutOfBound = false;
+
+            ui32 blocksInThisRequest =
+                std::min(remainingBlocks, maxBlocksPerRequest);
+
+            auto request = std::make_shared<NProto::TCheckRangeRequest>();
+            request->SetDiskId(DiskId);
+            request->SetBlockIdx(currentBlockIdx);
+            request->SetBlockCount(blocksInThisRequest);
+
+            STORAGE_DEBUG("Sending CheckRange request");
+            const auto requestId = GetRequestId(*request);
+            auto result = WaitFor(ClientEndpoint->CheckRange(
+                MakeIntrusive<TCallContext>(requestId),
+                std::move(request)));
+
+            STORAGE_DEBUG("Received CheckRange response");
+            if (Proto) {
+                SerializeToTextFormat(result, output);
+                return true;
             }
-        } else {
-            output << "Ok in range: [" << currentBlockIdx << ", "
-                   << (currentBlockIdx + blocksInThisRequest - 1) << "]"
-                   << Endl;
+
+            if (HasError(result)) {
+                if (result.GetError().GetCode() == E_ARGUMENT) {
+                    isOutOfBound = true;
+                } else {
+                    output << "Error in range [" << currentBlockIdx << ", "
+                           << (currentBlockIdx + blocksInThisRequest - 1)
+                           << "]: " << FormatError(result.GetError()) << Endl;
+                    errorCount++;
+                }
+            } else {
+                output << "Ok in range: [" << currentBlockIdx << ", "
+                       << (currentBlockIdx + blocksInThisRequest - 1) << "]"
+                       << Endl;
+            }
+
+            remainingBlocks -= blocksInThisRequest;
+            currentBlockIdx += blocksInThisRequest;
+            if (isOutOfBound) {
+                break;
+            }
         }
 
-        remainingBlocks -= blocksInThisRequest;
-        currentBlockIdx += blocksInThisRequest;
-        if (isOutOfBound) {
-            break;
-        }
+        output << "Total errors caught: " << errorCount << Endl;
+        return true;
     }
-
-    output << "Total errors caught: " << errorCount << Endl;
-    return true;
-}
 
 private:
     bool CheckOpts() const
     {
         const auto* diskId = ParseResultPtr->FindLongOptParseResult("disk-id");
-        const auto* blockIdx = ParseResultPtr->FindLongOptParseResult("block-idx");
+        const auto* blockIdx =
+            ParseResultPtr->FindLongOptParseResult("block-idx");
         const auto* blockCount = ParseResultPtr->FindLongOptParseResult("size");
         if (!diskId) {
             STORAGE_ERROR("Disk id is required");
@@ -129,7 +130,7 @@ private:
     }
 };
 
-} // namespace
+}   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
 

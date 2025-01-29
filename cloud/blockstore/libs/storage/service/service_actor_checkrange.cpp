@@ -20,8 +20,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TCheckRangeActor final
-    : public TActorBootstrapped<TCheckRangeActor>
+class TCheckRangeActor final: public TActorBootstrapped<TCheckRangeActor>
 {
 private:
     const TRequestInfoPtr RequestInfo;
@@ -29,6 +28,7 @@ private:
     const TString DiskId;
     const ui64 BlockIdx;
     const ui64 BlockCount;
+
 public:
     TCheckRangeActor(
         TRequestInfoPtr requestInfo,
@@ -58,11 +58,11 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 TCheckRangeActor::TCheckRangeActor(
-        TRequestInfoPtr requestInfo,
-        TStorageConfigPtr config,
-        TString diskId,
-        ui64 blockIdx,
-        ui64 blockCount)
+    TRequestInfoPtr requestInfo,
+    TStorageConfigPtr config,
+    TString diskId,
+    ui64 blockIdx,
+    ui64 blockCount)
     : RequestInfo(std::move(requestInfo))
     , Config(std::move(config))
     , DiskId(std::move(diskId))
@@ -114,7 +114,6 @@ void TCheckRangeActor::ReplyAndDie(
     Die(ctx);
 }
 
-
 ////////////////////////////////////////////////////////////////////////////////
 
 STFUNC(TCheckRangeActor::StateWork)
@@ -138,35 +137,42 @@ void TServiceActor::HandleCheckRange(
 {
     const auto* msg = ev->Get();
 
-    auto requestInfo = CreateRequestInfo(
-        ev->Sender,
-        ev->Cookie,
-        msg->CallContext);
+    auto requestInfo =
+        CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
 
     const auto& request = msg->Record;
 
     if (request.GetDiskId().empty()) {
-        LOG_ERROR(ctx, TBlockStoreComponents::SERVICE,
+        LOG_ERROR(
+            ctx,
+            TBlockStoreComponents::SERVICE,
             "Empty DiskId in CheckRange");
 
         auto response = std::make_unique<TEvService::TEvCheckRangeResponse>(
             MakeError(E_ARGUMENT, "Volume name cannot be empty"));
+
         NCloud::Reply(ctx, *ev, std::move(response));
         return;
     }
 
     if (request.GetBlockCount() == 0) {
-        LOG_ERROR(ctx, TBlockStoreComponents::SERVICE,
-            "Zero BlocksCounts in CheckRange");
+        LOG_ERROR(
+            ctx,
+            TBlockStoreComponents::SERVICE,
+            "Zero BlockCounts in CheckRange");
 
         auto response = std::make_unique<TEvService::TEvCheckRangeResponse>(
             MakeError(E_ARGUMENT, "BlocksCounts shoud be more than zero"));
+
         NCloud::Reply(ctx, *ev, std::move(response));
         return;
     }
 
-    LOG_DEBUG(ctx, TBlockStoreComponents::SERVICE,
-        "CheckRange volume: %s ", request.GetDiskId().Quote().data());
+    LOG_DEBUG(
+        ctx,
+        TBlockStoreComponents::SERVICE,
+        "CheckRange volume: %s ",
+        request.GetDiskId().Quote().data());
 
     NCloud::Register<TCheckRangeActor>(
         ctx,

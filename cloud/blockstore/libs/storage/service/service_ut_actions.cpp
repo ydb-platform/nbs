@@ -1711,8 +1711,8 @@ Y_UNIT_TEST_SUITE(TServiceActionsTest)
         TServiceClient service(env.GetRuntime(), nodeIdx);
         service.CreateVolume("vol0");
 
-        const auto sessionId = service.MountVolume("vol0")->Record.GetSessionId();
-
+        const auto sessionId =
+            service.MountVolume("vol0")->Record.GetSessionId();
 
         service.WriteBlocks(
             "vol0",
@@ -1724,7 +1724,6 @@ Y_UNIT_TEST_SUITE(TServiceActionsTest)
             NPrivateProto::TCheckRangeRequest request;
             request.SetDiskId("vol0");
             request.SetBlockId(0);
-            //request.SetBlocksCount(16777217);
             request.SetBlocksCount(1000);
 
             TString buf;
@@ -1734,9 +1733,9 @@ Y_UNIT_TEST_SUITE(TServiceActionsTest)
             NPrivateProto::TCheckRangeResponse checkRangeResponse;
 
             UNIT_ASSERT(google::protobuf::util::JsonStringToMessage(
-                response->Record.GetOutput(),
-                &checkRangeResponse
-            ).ok());
+                            response->Record.GetOutput(),
+                            &checkRangeResponse)
+                            .ok());
         }
     }
 }

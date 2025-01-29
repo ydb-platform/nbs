@@ -22,8 +22,7 @@ Y_UNIT_TEST_SUITE(TServiceCheckRangeTest)
             512,
             DefaultBlockSize,
             "test_folder",
-            "test_cloud"
-        );
+            "test_cloud");
         ui64 size = 512;
 
         auto response = service.CheckRange(DefaultDiskId, 0, size);
@@ -42,15 +41,13 @@ Y_UNIT_TEST_SUITE(TServiceCheckRangeTest)
             512,
             DefaultBlockSize,
             "test_folder",
-            "test_cloud"
-        );
+            "test_cloud");
         ui64 size = 512;
 
         service.SendCheckRangeRequest(TString(), 0, size);
         auto response = service.RecvCheckRangeResponse();
 
         UNIT_ASSERT(response->GetStatus() == E_ARGUMENT);
-
     }
 
     Y_UNIT_TEST(ShouldFailCheckRangeWithTooBigSize)
@@ -67,15 +64,12 @@ Y_UNIT_TEST_SUITE(TServiceCheckRangeTest)
             2048,
             DefaultBlockSize,
             "test_folder",
-            "test_cloud"
-        );
+            "test_cloud");
 
-        service.SendCheckRangeRequest(DefaultDiskId, 0, bytesPerStrype+1);
+        service.SendCheckRangeRequest(DefaultDiskId, 0, bytesPerStrype + 1);
         auto response = service.RecvCheckRangeResponse();
         UNIT_ASSERT(response->GetStatus() == E_ARGUMENT);
-
     }
-
 }
 
 }   // namespace NCloud::NBlockStore::NStorage
