@@ -317,7 +317,8 @@ type Client interface {
 ////////////////////////////////////////////////////////////////////////////////
 
 type MultiZoneClient interface {
-	// Clones volume and deletes its old version with outdated FillGeneration (if it exists).
+	// Clones volume and deletes its old version with outdated FillGeneration
+	// (if it exists).
 	Clone(
 		ctx context.Context,
 		diskID string,

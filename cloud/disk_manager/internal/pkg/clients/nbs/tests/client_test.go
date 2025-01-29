@@ -25,8 +25,8 @@ import (
 ////////////////////////////////////////////////////////////////////////////////
 
 const (
-	defaultZoneID                     = "zone-a"
-	defaultOtherZoneID                = "zone-b"
+	zoneID                            = "zone-a"
+	otherZoneID                       = "zone-b"
 	defaultSessionRediscoverPeriodMin = "10s"
 	defaultSessionRediscoverPeriodMax = "20s"
 )
@@ -65,10 +65,10 @@ func newClientConfig(
 
 	return &config.ClientConfig{
 		Zones: map[string]*config.Zone{
-			defaultZoneID: {
+			zoneID: {
 				Endpoints: []string{getEndpoint(), getEndpoint()},
 			},
-			defaultOtherZoneID: {
+			otherZoneID: {
 				Endpoints: []string{getOtherZoneEndpoint(), getOtherZoneEndpoint()},
 			},
 		},
@@ -130,7 +130,7 @@ func newClient(t *testing.T, ctx context.Context) nbs.Client {
 	return newClientFull(
 		t,
 		ctx,
-		defaultZoneID,
+		zoneID,
 		nil,
 		defaultSessionRediscoverPeriodMin,
 		defaultSessionRediscoverPeriodMax,
@@ -140,7 +140,7 @@ func newClient(t *testing.T, ctx context.Context) nbs.Client {
 func newTestingClient(t *testing.T, ctx context.Context) nbs.TestingClient {
 	client, err := nbs.NewTestingClient(
 		ctx,
-		defaultZoneID,
+		zoneID,
 		newClientConfig(
 			defaultSessionRediscoverPeriodMin,
 			defaultSessionRediscoverPeriodMax,
@@ -151,12 +151,12 @@ func newTestingClient(t *testing.T, ctx context.Context) nbs.TestingClient {
 }
 
 func newOtherZoneClient(t *testing.T, ctx context.Context) nbs.Client {
-	return newClientFull(t, ctx, defaultOtherZoneID, nil, "10s", "20s")
+	return newClientFull(t, ctx, otherZoneID, nil, "10s", "20s")
 }
 
 func newMultiZoneClient(t *testing.T, ctx context.Context) nbs.MultiZoneClient {
 	factory := newFactory(t, ctx, nil, "10s", "20s")
-	client, err := factory.GetMultiZoneClient(defaultZoneID, defaultOtherZoneID)
+	client, err := factory.GetMultiZoneClient(zoneID, otherZoneID)
 	require.NoError(t, err)
 	return client
 }
@@ -708,7 +708,7 @@ func TestUnassignDeletedDisk(t *testing.T) {
 func TestTokenErrorsShouldBeRetriable(t *testing.T) {
 	ctx := newContext()
 	mockTokenProvider := &mockTokenProvider{}
-	client := newClientFull(t, ctx, defaultZoneID, mockTokenProvider, "10s", "20s")
+	client := newClientFull(t, ctx, zoneID, mockTokenProvider, "10s", "20s")
 
 	mockTokenProvider.On("Token", mock.Anything).Return("", assert.AnError).Times(10)
 	mockTokenProvider.On("Token", mock.Anything).Return("", nil)
@@ -855,7 +855,7 @@ func TestMountRWDoesNotConflictWithBackgroundRediscover(t *testing.T) {
 	client := newClientFull(
 		t,
 		ctx,
-		defaultZoneID,
+		zoneID,
 		nil,
 		"500ms",
 		fmt.Sprintf("%vs", sessionRediscoverPeriodMaxSeconds),
