@@ -328,6 +328,7 @@ Y_UNIT_TEST_SUITE(TVolumeSessionTest)
                     TEvDiskAgent::EvAcquireDevicesResponse)
                 {
                     stollenResponse.reset(event.Release());
+                    return TTestActorRuntimeBase::EEventAction::DROP;
                 }
 
                 return TTestActorRuntime::DefaultObserverFunc(event);
