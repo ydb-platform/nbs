@@ -144,7 +144,16 @@ void TDiskAgentActor::HandleInitAgentCompleted(
             "Create " << count << " IORequestParserActor actors");
         IOParserActors.reserve(count);
         for (ui32 i = 0; i != count; ++i) {
-            auto actor = NDiskAgent::CreateIORequestParserActor(ctx.SelfID);
+            auto actor = NDiskAgent::CreateIORequestParserActor(
+                ctx.SelfID,
+                [](ui32 blockSize, ui64 byteCount)
+                {
+                    return std::shared_ptr<char>(
+                        static_cast<char*>(
+                            std::aligned_alloc(blockSize, byteCount)),
+                        std::free);
+                });
+
             IOParserActors.push_back(ctx.Register(
                 actor.release(),
                 TMailboxType::TinyReadAsFilled,

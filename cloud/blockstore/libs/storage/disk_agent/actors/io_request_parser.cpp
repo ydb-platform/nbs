@@ -21,11 +21,15 @@ class TIORequestParserActor: public TActor<TIORequestParserActor>
 {
 private:
     const TActorId Owner;
+    TStorageBufferAllocator Allocator;
 
 public:
-    explicit TIORequestParserActor(const TActorId& owner)
+    explicit TIORequestParserActor(
+            const TActorId& owner,
+            TStorageBufferAllocator allocator)
         : TActor(&TIORequestParserActor::StateWork)
         , Owner(owner)
+        , Allocator(std::move(allocator))
     {}
 
 private:
@@ -81,10 +85,8 @@ private:
             bytesCount += buffer.size();
         }
 
-        request->Storage.reset(
-            static_cast<char*>(
-                std::aligned_alloc(request->Record.GetBlockSize(), bytesCount)),
-            std::free);
+        request->Storage =
+            Allocator(request->Record.GetBlockSize(), bytesCount);
 
         char* dst = request->Storage.get();
         for (const auto& buffer: request->Record.GetBlocks().GetBuffers()) {
@@ -125,9 +127,11 @@ private:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-std::unique_ptr<IActor> CreateIORequestParserActor(const TActorId& owner)
+std::unique_ptr<IActor> CreateIORequestParserActor(
+    const TActorId& owner,
+    TStorageBufferAllocator allocator)
 {
-    return std::make_unique<TIORequestParserActor>(owner);
+    return std::make_unique<TIORequestParserActor>(owner, std::move(allocator));
 }
 
 }   // namespace NCloud::NBlockStore::NStorage::NDiskAgent

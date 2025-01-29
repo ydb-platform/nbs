@@ -380,7 +380,7 @@ void TDiskAgentActor::HandleParsedWriteDeviceBlocks(
             writeRequest->MutableHeaders()->Swap(request.MutableHeaders());
             writeRequest->SetStartIndex(request.GetStartIndex());
 
-            TStringBuf buffer {writeRequest->Storage.get(), byteCount};
+            TStringBuf buffer{writeRequest->Storage.get(), byteCount};
 
             return self.WriteBlocks(
                 now,
