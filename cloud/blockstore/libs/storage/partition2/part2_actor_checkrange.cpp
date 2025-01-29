@@ -193,13 +193,13 @@ void NPartition2::TPartitionActor::HandleCheckRange(
 {
     const auto* msg = ev->Get();
 
-    if (msg->Record.GetBlockCount() > Config->GetBlocksPerStripe()) {
+    if (msg->Record.GetBlockCount() > Config->GetBytesPerStripe()) {
         auto err = MakeError(
             E_ARGUMENT,
             "Too many blocks requested: " +
                 std::to_string(msg->Record.GetBlockCount()) +
                 " Max blocks per request : " +
-                std::to_string(Config->GetBlocksPerStripe()));
+                std::to_string(Config->GetBytesPerStripe()));
 
         auto response =
             std::make_unique<TEvVolume::TEvCheckRangeResponse>(std::move(err));
