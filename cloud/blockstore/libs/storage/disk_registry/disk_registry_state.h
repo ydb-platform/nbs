@@ -1313,7 +1313,7 @@ private:
         TDiskRegistryDatabase& db,
         const NProto::TAgentConfig& agent);
 
-    static bool NeedToStartMigration(
+    static bool MigrationCanBeStarted(
         const TDiskState& disk,
         const TString& deviceUUID);
 };

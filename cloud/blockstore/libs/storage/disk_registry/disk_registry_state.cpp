@@ -5038,12 +5038,9 @@ void TDiskRegistryState::ApplyAgentStateChange(
                 continue;
             }
 
-            if (!NeedToStartMigration(disk, deviceId)) {
-                // migration already started or finished
-                continue;
+            if (MigrationCanBeStarted(disk, deviceId)) {
+                AddMigration(disk, diskId, deviceId);
             }
-
-            AddMigration(disk, diskId, deviceId);
         } else {
             if (agent.GetState() == NProto::AGENT_STATE_UNAVAILABLE
                     && disk.MasterDiskId)
@@ -6027,7 +6024,7 @@ void TDiskRegistryState::ApplyDeviceStateChange(
         return;
     }
 
-    if (NeedToStartMigration(*disk, uuid)) {
+    if (MigrationCanBeStarted(*disk, uuid)) {
         AddMigration(*disk, diskId, uuid);
     }
 }
@@ -7570,7 +7567,7 @@ std::optional<ui64> TDiskRegistryState::GetDiskBlockCount(
 }
 
 // static
-bool TDiskRegistryState::NeedToStartMigration(
+bool TDiskRegistryState::MigrationCanBeStarted(
     const TDiskState& disk,
     const TString& deviceUUID)
 {
