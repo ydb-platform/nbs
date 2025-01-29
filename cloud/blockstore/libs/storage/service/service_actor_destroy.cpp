@@ -444,7 +444,7 @@ void TDestroyVolumeActor::HandleTimeout(
         TBlockStoreComponents::SERVICE,
         "Timeout destroy volume request, diskId = %s, destroyIfBroken = %d, "
         "sync = %d",
-        DiskId,
+        DiskId.c_str(),
         DestroyIfBroken,
         Sync);
 
