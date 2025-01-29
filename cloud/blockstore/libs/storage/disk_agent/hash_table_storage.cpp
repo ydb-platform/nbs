@@ -109,7 +109,7 @@ struct THashTableStorage final
             return MakeFuture(std::move(response));
         }
 
-        auto sglist = guard.Get();
+        const auto& sglist = guard.Get();
         auto b = request->GetStartIndex();
         auto e = request->GetStartIndex() + request->BlocksCount;
 
@@ -120,11 +120,15 @@ struct THashTableStorage final
             return MakeFuture(std::move(response));
         }
 
-        while (b < e) {
-            Blocks[b] = sglist[b - request->GetStartIndex()].AsStringBuf();
+        TSgList dst(request->BlocksCount);
 
+        while (b < e) {
+            auto& block = Blocks[b];
+            block.resize(request->BlockSize);
+            dst[b - request->GetStartIndex()] = {block.data(), block.size()};
             ++b;
         }
+        SgListCopy(sglist, dst);
 
         return MakeFuture(std::move(response));
     }

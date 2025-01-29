@@ -17,6 +17,24 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+ui64 GetVolumeRequestId(
+    const TEvDiskAgentPrivate::TParsedWriteDeviceBlocksRequest& request)
+{
+    return request.Record.GetVolumeRequestId();
+}
+
+TBlockRange64 BuildRequestBlockRange(
+    const TEvDiskAgentPrivate::TParsedWriteDeviceBlocksRequest& request)
+{
+    Y_ABORT_UNLESS(request.ByteCount % request.Record.GetBlockSize() == 0);
+
+    return TBlockRange64::WithLength(
+        request.Record.GetStartIndex(),
+        request.ByteCount / request.Record.GetBlockSize());
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 template <typename T>
 constexpr bool IsWriteDeviceMethod =
     std::is_same_v<T, TEvDiskAgent::TWriteDeviceBlocksMethod> ||
@@ -113,10 +131,10 @@ std::pair<ui32, TString> HandleException(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-template <typename TMethod, typename TOp>
+template <typename TMethod, typename TEv, typename TOp>
 void TDiskAgentActor::PerformIO(
     const TActorContext& ctx,
-    const typename TMethod::TRequest::TPtr& ev,
+    const TEv& ev,
     TOp operation)
 {
     auto* msg = ev->Get();
@@ -325,6 +343,52 @@ void TDiskAgentActor::HandleWriteDeviceBlocks(
         return;
     }
     PerformIO<TMethod>(ctx, ev, &TDiskAgentState::Write);
+}
+
+void TDiskAgentActor::HandleParsedWriteDeviceBlocks(
+    const TEvDiskAgentPrivate::TEvParsedWriteDeviceBlocksRequest::TPtr& ev,
+    const TActorContext& ctx)
+{
+    BLOCKSTORE_DISK_AGENT_COUNTER(WriteDeviceBlocks);
+
+    using TMethod = TEvDiskAgent::TWriteDeviceBlocksMethod;
+
+    if (CheckIntersection<TMethod>(ctx, ev)) {
+        return;
+    }
+
+    // Attach storage to NProto::TWriteBlocksRequest
+    struct TWriteBlocksRequestWithStorage
+        : NProto::TWriteBlocksRequest
+    {
+        TStorageBuffer Storage;
+    };
+
+    auto* msg = ev->Get();
+
+    PerformIO<TMethod>(
+        ctx,
+        ev,
+        [storage = std::move(msg->Storage), byteCount = msg->ByteCount](
+            TDiskAgentState& self,
+            TInstant now,
+            NProto::TWriteDeviceBlocksRequest request) mutable
+        {
+            auto writeRequest =
+                std::make_shared<TWriteBlocksRequestWithStorage>();
+            writeRequest->Storage = std::move(storage);
+            writeRequest->MutableHeaders()->Swap(request.MutableHeaders());
+            writeRequest->SetStartIndex(request.GetStartIndex());
+
+            TStringBuf buffer {writeRequest->Storage.get(), byteCount};
+
+            return self.WriteBlocks(
+                now,
+                request.GetDeviceUUID(),
+                std::move(writeRequest),
+                request.GetBlockSize(),
+                buffer);
+        });
 }
 
 void TDiskAgentActor::HandleZeroDeviceBlocks(

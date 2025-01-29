@@ -372,13 +372,9 @@ STFUNC(TDiskAgentActor::StateWork)
             TEvDiskAgent::TEvDisableConcreteAgentRequest,
             HandleDisableConcreteAgent);
 
-        case TEvDiskAgentPrivate::EvParsedWriteDeviceBlocksRequest:
-            HandleWriteDeviceBlocks(
-                *reinterpret_cast<
-                    typename TEvDiskAgent::TEvWriteDeviceBlocksRequest::TPtr*>(
-                    &ev),
-                ActorContext());
-            break;
+        HFunc(
+            TEvDiskAgentPrivate::TEvParsedWriteDeviceBlocksRequest,
+            HandleParsedWriteDeviceBlocks);
 
         case TEvDiskAgentPrivate::EvParsedReadDeviceBlocksRequest:
             HandleReadDeviceBlocks(

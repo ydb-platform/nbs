@@ -32,12 +32,10 @@ private:
     STFUNC(StateWork)
     {
         switch (ev->GetTypeRewrite()) {
-            HFunc(NActors::TEvents::TEvPoisonPill, HandlePoisonPill);
+            HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
 
             case TEvDiskAgent::EvWriteDeviceBlocksRequest:
-                HandleRequest<TEvDiskAgent::TEvWriteDeviceBlocksRequest>(
-                    ev,
-                    TEvDiskAgentPrivate::EvParsedWriteDeviceBlocksRequest);
+                HandleWriteDeviceBlocks(ev);
                 break;
 
             case TEvDiskAgent::EvReadDeviceBlocksRequest:
@@ -67,6 +65,48 @@ private:
         Y_UNUSED(ev);
 
         Die(ctx);
+    }
+
+    void HandleWriteDeviceBlocks(TAutoPtr<IEventHandle>& ev)
+    {
+        auto request = std::make_unique<
+            TEvDiskAgentPrivate::TEvParsedWriteDeviceBlocksRequest>();
+
+        // parse protobuf
+        auto* msg = ev->Get<TEvDiskAgent::TEvWriteDeviceBlocksRequest>();
+        request->Record.Swap(&msg->Record);
+
+        ui64 bytesCount = 0;
+        for (const auto& buffer: request->Record.GetBlocks().GetBuffers()) {
+            bytesCount += buffer.size();
+        }
+
+        request->Storage.reset(
+            static_cast<char*>(
+                std::aligned_alloc(request->Record.GetBlockSize(), bytesCount)),
+            std::free);
+
+        char* dst = request->Storage.get();
+        for (const auto& buffer: request->Record.GetBlocks().GetBuffers()) {
+            std::memcpy(dst, buffer.data(), buffer.size());
+            dst += buffer.size();
+        }
+
+        request->ByteCount = bytesCount;
+        request->Record.ClearBlocks();
+
+        auto newEv = std::make_unique<IEventHandle>(
+            ev->Recipient,
+            ev->Sender,
+            request.release(),
+            ev->Flags,
+            ev->Cookie,
+            nullptr,    // forwardOnNondelivery
+            std::move(ev->TraceId));
+
+        newEv->Rewrite(newEv->Type, Owner);
+
+        ActorContext().Send(std::move(newEv));
     }
 
     template <typename TRequest>

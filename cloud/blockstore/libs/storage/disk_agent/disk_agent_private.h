@@ -158,6 +158,17 @@ struct TEvDiskAgentPrivate
     {};
 
     //
+    // ParsedWriteDeviceBlocksRequest
+    //
+
+    struct TParsedWriteDeviceBlocksRequest
+    {
+        NProto::TWriteDeviceBlocksRequest Record;
+        TStorageBuffer Storage;
+        ui64 ByteCount = 0;
+    };
+
+    //
     // Events declaration
     //
 
@@ -206,6 +217,10 @@ struct TEvDiskAgentPrivate
     using TEvCancelSuspensionRequest = TRequestEvent<
         TCancelSuspensionRequest,
         EvCancelSuspensionRequest>;
+
+    using TEvParsedWriteDeviceBlocksRequest = TRequestEvent<
+        TParsedWriteDeviceBlocksRequest,
+        EvParsedWriteDeviceBlocksRequest>;
 
     BLOCKSTORE_DECLARE_EVENTS(UpdateSessionCache)
 };

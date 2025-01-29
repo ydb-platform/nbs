@@ -103,6 +103,13 @@ public:
         TInstant now,
         NProto::TWriteDeviceBlocksRequest request);
 
+    NThreading::TFuture<NProto::TWriteDeviceBlocksResponse> WriteBlocks(
+        TInstant now,
+        const TString& deviceUUID,
+        std::shared_ptr<NProto::TWriteBlocksRequest> request,
+        ui32 blockSize,
+        TStringBuf buffer);
+
     NThreading::TFuture<NProto::TZeroDeviceBlocksResponse> WriteZeroes(
         TInstant now,
         NProto::TZeroDeviceBlocksRequest request);
