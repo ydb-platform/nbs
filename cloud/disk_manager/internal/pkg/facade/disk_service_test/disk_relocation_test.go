@@ -60,7 +60,7 @@ func setupMigrationTest(
 	require.NoError(t, err)
 
 	if params.FillDisk {
-		nbsClient := testcommon.NewNbsClient(t, ctx, params.SrcZoneID)
+		nbsClient := testcommon.NewNbsTestingClient(t, ctx, params.SrcZoneID)
 		_, err = nbsClient.FillDisk(
 			ctx,
 			params.DiskID,
@@ -79,7 +79,7 @@ func successfullyMigrateDisk(
 	params migrationTestParams,
 ) {
 
-	srcZoneNBSClient := testcommon.NewNbsClient(t, ctx, params.SrcZoneID)
+	srcZoneNBSClient := testcommon.NewNbsTestingClient(t, ctx, params.SrcZoneID)
 
 	// Writing some additional data to disk in parallel with migration.
 	waitForWrite, err := srcZoneNBSClient.GoWriteRandomBlocksToNbsDisk(
@@ -145,7 +145,7 @@ func successfullyMigrateDisk(
 	require.Error(t, err)
 	require.ErrorContains(t, err, "Path not found")
 
-	dstZoneNBSClient := testcommon.NewNbsClient(t, ctx, params.DstZoneID)
+	dstZoneNBSClient := testcommon.NewNbsTestingClient(t, ctx, params.DstZoneID)
 
 	err = dstZoneNBSClient.ValidateCrc32(
 		ctx,
@@ -241,7 +241,7 @@ func setupMigrateEmptyOverlayDiskTest(
 		expectedStorageSize = 0
 	}
 
-	srcZoneNBSClient := testcommon.NewNbsClient(t, ctx, params.SrcZoneID)
+	srcZoneNBSClient := testcommon.NewNbsTestingClient(t, ctx, params.SrcZoneID)
 	changedBytes, err := srcZoneNBSClient.GetChangedBytes(
 		ctx,
 		params.DiskID,
@@ -270,7 +270,7 @@ func successfullyMigrateEmptyOverlayDisk(
 		params,
 	)
 
-	dstZoneNBSClient := testcommon.NewNbsClient(t, ctx, params.DstZoneID)
+	dstZoneNBSClient := testcommon.NewNbsTestingClient(t, ctx, params.DstZoneID)
 	changedBytes, err := dstZoneNBSClient.GetChangedBytes(
 		ctx,
 		params.DiskID,
@@ -291,7 +291,7 @@ func migrateDiskInParallel(
 	migrateWithDifferentDstZoneIDs bool,
 ) {
 
-	srcZoneNBSClient := testcommon.NewNbsClient(t, ctx, params.SrcZoneID)
+	srcZoneNBSClient := testcommon.NewNbsTestingClient(t, ctx, params.SrcZoneID)
 
 	// Writing some additional data to disk in parallel with migrations.
 	waitForWrite, err := srcZoneNBSClient.GoWriteRandomBlocksToNbsDisk(
@@ -386,7 +386,7 @@ func migrateDiskInParallel(
 		require.Error(t, err)
 		require.ErrorContains(t, err, "Path not found")
 
-		dstZoneNBSClient := testcommon.NewNbsClient(t, ctx, dstZoneID)
+		dstZoneNBSClient := testcommon.NewNbsTestingClient(t, ctx, dstZoneID)
 		err := dstZoneNBSClient.ValidateCrc32(
 			ctx,
 			params.DiskID,
@@ -411,7 +411,7 @@ func successfullyMigrateEmptyDisk(
 	params migrationTestParams,
 ) {
 
-	srcZoneNBSClient := testcommon.NewNbsClient(t, ctx, params.SrcZoneID)
+	srcZoneNBSClient := testcommon.NewNbsTestingClient(t, ctx, params.SrcZoneID)
 
 	reqCtx := testcommon.GetRequestContext(t, ctx)
 	operation, err := client.MigrateDisk(reqCtx, &disk_manager.MigrateDiskRequest{
@@ -457,7 +457,7 @@ func successfullyMigrateEmptyDisk(
 	require.Error(t, err)
 	require.ErrorContains(t, err, "Path not found")
 
-	dstZoneNBSClient := testcommon.NewNbsClient(t, ctx, params.DstZoneID)
+	dstZoneNBSClient := testcommon.NewNbsTestingClient(t, ctx, params.DstZoneID)
 	err = dstZoneNBSClient.ValidateCrc32(
 		ctx,
 		params.DiskID,
@@ -622,12 +622,12 @@ func TestDiskServiceMigrateDisk(t *testing.T) {
 	testcommon.DeleteDisk(t, ctx, client, diskID)
 
 	// Check that disk is deleted.
-	srcZoneNBSClient := testcommon.NewNbsClient(t, ctx, params.SrcZoneID)
+	srcZoneNBSClient := testcommon.NewNbsTestingClient(t, ctx, params.SrcZoneID)
 	_, err := srcZoneNBSClient.Describe(ctx, params.DiskID)
 	require.Error(t, err)
 	require.ErrorContains(t, err, "Path not found")
 
-	dstZoneNBSClient := testcommon.NewNbsClient(t, ctx, params.DstZoneID)
+	dstZoneNBSClient := testcommon.NewNbsTestingClient(t, ctx, params.DstZoneID)
 	_, err = dstZoneNBSClient.Describe(ctx, params.DiskID)
 	require.Error(t, err)
 	require.ErrorContains(t, err, "Path not found")

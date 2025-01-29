@@ -32,6 +32,7 @@
 #include <cloud/filestore/libs/vfs/probes.h>
 #include <cloud/filestore/libs/vhost/server.h>
 
+#include <cloud/storage/core/libs/aio/service.h>
 #include <cloud/storage/core/libs/common/scheduler.h>
 #include <cloud/storage/core/libs/common/task_queue.h>
 #include <cloud/storage/core/libs/common/thread_pool.h>
@@ -285,6 +286,7 @@ void TBootstrapVhost::InitEndpoints()
         auto serviceConfig = std::make_shared<TLocalFileStoreConfig>(
             *localServiceConfig);
         ThreadPool = CreateThreadPool("svc", serviceConfig->GetNumThreads());
+        FileIOService = CreateThreadedAIOService(serviceConfig->GetNumThreads());
         LocalService = CreateLocalFileStore(
             std::move(serviceConfig),
             Timer,

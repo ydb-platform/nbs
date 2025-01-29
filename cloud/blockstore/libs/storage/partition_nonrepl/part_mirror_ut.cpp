@@ -259,6 +259,10 @@ struct TTestEnv
             )
         );
 
+        Runtime.AddLocalService(
+            MakeStorageServiceId(),
+            TActorSetupCmd(new TStorageServiceMock(), TMailboxType::Simple, 0));
+
         NKikimr::SetupTabletServices(Runtime);
     }
 
@@ -1179,7 +1183,25 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
         TDynamicCountersPtr critEventsCounters = new TDynamicCounters();
         InitCriticalEventsCounter(critEventsCounters);
 
-        TTestEnv env(runtime);
+        NProto::TStorageServiceConfig config;
+        config.SetAutomaticallyEnableBufferCopyingAfterChecksumMismatch(true);
+        TTestEnv env(runtime, config);
+
+        bool tagEnabled = false;
+        runtime.SetEventFilter([&] (auto& runtime, auto& event) {
+            Y_UNUSED(runtime);
+            if (event->GetTypeRewrite() == TEvService::EvAddTagsRequest)
+            {
+                using TRequest =
+                    TEvService::TEvAddTagsRequest;
+                const auto& tags = event->template Get<TRequest>()->Tags;
+                UNIT_ASSERT_VALUES_EQUAL(1, tags.size());
+                UNIT_ASSERT_VALUES_EQUAL(IntermediateWriteBufferTagName, tags[0]);
+                tagEnabled = true;
+            }
+
+            return false;
+        });
 
         const auto range1 = TBlockRange64::WithLength(0, 2);
         env.WriteMirror(range1, 'A');
@@ -1200,6 +1222,7 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
 
         UNIT_ASSERT_VALUES_EQUAL(2, mirroredDiskMinorityChecksumMismatch->Val());
         UNIT_ASSERT_VALUES_EQUAL(2, counters.Simple.ChecksumMismatches.Value);
+        UNIT_ASSERT(tagEnabled);
 
         const auto range3 = TBlockRange64::WithLength(1025, 50);
         env.WriteMirror(range3, 'A');

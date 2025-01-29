@@ -189,7 +189,7 @@ func TestDiskServiceCreateDiskFromImageWithForceNotLayered(t *testing.T) {
 	err = internal_client.WaitOperation(ctx, client, operation.Id)
 	require.NoError(t, err)
 
-	nbsClient := testcommon.NewNbsClient(t, ctx, "zone-a")
+	nbsClient := testcommon.NewNbsTestingClient(t, ctx, "zone-a")
 	err = nbsClient.ValidateCrc32(
 		ctx,
 		diskID,
@@ -353,7 +353,7 @@ func TestDiskServiceCreateDisksFromImageWithConfiguredPool(t *testing.T) {
 		operations = append(operations, operation)
 	}
 
-	nbsClient := testcommon.NewNbsClient(t, ctx, "zone-a")
+	nbsClient := testcommon.NewNbsTestingClient(t, ctx, "zone-a")
 
 	for i, operation := range operations {
 		err := internal_client.WaitOperation(ctx, client, operation.Id)
@@ -435,7 +435,7 @@ func testCreateDiskFromIncrementalSnapshot(
 	err = internal_client.WaitOperation(ctx, client, operation.Id)
 	require.NoError(t, err)
 
-	nbsClient := testcommon.NewNbsClient(t, ctx, "zone-a")
+	nbsClient := testcommon.NewNbsTestingClient(t, ctx, "zone-a")
 	_, err = nbsClient.FillDisk(ctx, diskID1, diskSize)
 	require.NoError(t, err)
 
@@ -551,7 +551,7 @@ func TestDiskServiceCreateDiskFromSnapshot(t *testing.T) {
 	err = internal_client.WaitOperation(ctx, client, operation.Id)
 	require.NoError(t, err)
 
-	nbsClient := testcommon.NewNbsClient(t, ctx, "zone-a")
+	nbsClient := testcommon.NewNbsTestingClient(t, ctx, "zone-a")
 	diskContentInfo, err := nbsClient.FillDisk(ctx, diskID1, diskSize)
 	require.NoError(t, err)
 
@@ -656,7 +656,7 @@ func testCreateDiskFromImage(
 	err = internal_client.WaitOperation(ctx, client, operation.Id)
 	require.NoError(t, err)
 
-	nbsClient := testcommon.NewNbsClient(t, ctx, "zone-a")
+	nbsClient := testcommon.NewNbsTestingClient(t, ctx, "zone-a")
 	err = nbsClient.ValidateCrc32(ctx, diskID, diskContentInfo)
 	require.NoError(t, err)
 
@@ -734,7 +734,7 @@ func TestDiskServiceCreateDiskFromSnapshotOfOverlayDisk(t *testing.T) {
 	err = internal_client.WaitOperation(ctx, client, operation.Id)
 	require.NoError(t, err)
 
-	nbsClient := testcommon.NewNbsClient(t, ctx, "zone-a")
+	nbsClient := testcommon.NewNbsTestingClient(t, ctx, "zone-a")
 
 	diskContentInfo, err := nbsClient.FillDisk(ctx, diskID1, imageSize)
 	require.NoError(t, err)
@@ -1117,7 +1117,7 @@ func TestDiskServiceCreateEncryptedDiskFromSnapshot(t *testing.T) {
 	err = internal_client.WaitOperation(ctx, client, operation.Id)
 	require.NoError(t, err)
 
-	nbsClient := testcommon.NewNbsClient(t, ctx, "zone-a")
+	nbsClient := testcommon.NewNbsTestingClient(t, ctx, "zone-a")
 	diskParams1, err := nbsClient.Describe(ctx, diskID1)
 	require.NoError(t, err)
 

@@ -240,7 +240,6 @@ private:
 
     // The number of blocks that need to be migrated to complete the migration.
     std::optional<ui64> BlockCountToMigrate;
-
 public:
     TVolumeState(
         TStorageConfigPtr storageConfig,
@@ -724,6 +723,8 @@ public:
 
         return Meta.GetResyncNeeded();
     }
+
+    TVector<NProto::TDeviceConfig> GetAllDevicesForAcquireRelease() const;
 
 private:
     bool CanPreemptClient(

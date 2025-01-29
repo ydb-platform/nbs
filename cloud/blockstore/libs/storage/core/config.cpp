@@ -338,7 +338,7 @@ TDuration MSeconds(ui32 value)
     xxx(ColdZoneRequestCountFactor,                ui32,   5                  )\
     xxx(BlockListCacheSizePercentage,              ui32,   100                )\
                                                                                \
-    xxx(WriteRequestBatchingEnabled,               bool,      false           )\
+    xxx(WriteRequestBatchingEnabled,               bool,      true            )\
                                                                                \
     xxx(FreshChannelWriteRequestsEnabled,          bool,      false           )\
                                                                                \
@@ -494,6 +494,7 @@ TDuration MSeconds(ui32 value)
     xxx(VolumeProxyCacheRetryDuration,             TDuration, Seconds(15)     )\
                                                                                \
     xxx(UseDirectCopyRange,                             bool,      false         )\
+    xxx(NonReplicatedVolumeDirectAcquireEnabled,        bool,      false         )\
     xxx(MaxShadowDiskFillBandwidth,                     ui32,      512           )\
     xxx(MaxShadowDiskFillIoDepth,                       ui32,      1             )\
     xxx(BackgroundOperationsTotalBandwidth,             ui32,      1024          )\
@@ -512,6 +513,7 @@ TDuration MSeconds(ui32 value)
     xxx(ScrubbingBandwidth,                             ui64,      20            )\
     xxx(MaxScrubbingBandwidth,                          ui64,      50            )\
     xxx(MinScrubbingBandwidth,                          ui64,      5             )\
+    xxx(AutomaticallyEnableBufferCopyingAfterChecksumMismatch, bool, false       )\
                                                                                   \
     xxx(OptimizeVoidBuffersTransferForReadsEnabled,     bool,      false         )\
     xxx(VolumeHistoryCleanupItemCount,                  ui32,      100'000       )\

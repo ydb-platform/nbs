@@ -269,6 +269,68 @@ Y_UNIT_TEST_SUITE(TLocalIndex)
 
         CheckMissingNodes(pathLen, missingNodes);
     }
+
+    Y_UNIT_TEST_F(ShouldDiscardDeletedNodes, TEnvironment)
+    {
+        RootPath.ForceDelete();
+        RootPath.MkDir();
+
+        StatePath.ForceDelete();
+        StatePath.MkDir();
+
+        auto index = std::make_unique<TLocalIndex>(RootPath, StatePath, 100, Log);
+        auto rootNode = index->LookupNode(RootNodeId);
+
+        // create /dir1
+        auto dir1 = RootPath / "dir1";
+        dir1.MkDir();
+        auto node1 = TIndexNode::Create(*rootNode, dir1.GetName());
+        auto inserted =
+            index->TryInsertNode(node1, RootNodeId, dir1.GetName());
+        UNIT_ASSERT_C(inserted, "Failed to insert node: " << dir1.GetName());
+
+        // create /dir2/dir3/dir4
+        auto dir2 = RootPath / "dir2";
+        dir2.MkDir();
+        auto node2 = TIndexNode::Create(*rootNode, dir2.GetName());
+        inserted =
+            index->TryInsertNode(node2, RootNodeId, dir2.GetName());
+        UNIT_ASSERT_C(inserted, "Failed to insert node: " << dir2.GetName());
+
+        auto dir3 = dir2 / "dir3";
+        dir3.MkDir();
+        auto node3 = TIndexNode::Create(*node2, dir3.GetName());
+        inserted =
+            index->TryInsertNode(node3, node2->GetNodeId(), dir3.GetName());
+        UNIT_ASSERT_C(inserted, "Failed to insert node: " << dir3.GetName());
+
+        auto dir4 = dir3 / "dir4";
+        dir4.MkDir();
+        auto node4 = TIndexNode::Create(*node3, dir4.GetName());
+        inserted =
+            index->TryInsertNode(node4, node3->GetNodeId(), dir4.GetName());
+        UNIT_ASSERT_C(inserted, "Failed to insert node: " << dir4.GetName());
+
+        // delete dir3
+        dir3.ForceDelete();
+        index = std::make_unique<TLocalIndex>(RootPath, StatePath, 100, Log);
+
+        // /dir1 and /dir2 restored
+        UNIT_ASSERT_C(index->LookupNode(node1->GetNodeId()),
+            "Failed to lookup  node id: " << node1->GetNodeId() <<
+            ", node: " << dir1.GetName());
+        UNIT_ASSERT_C(index->LookupNode(node2->GetNodeId()),
+            "Failed to lookup  node id: " << node1->GetNodeId() <<
+            ", node: " << dir2.GetName());
+
+        // dir3/dir4 discarded
+        UNIT_ASSERT_C(!index->LookupNode(node3->GetNodeId()),
+            "Did not failed to lookup node id: " << node3->GetNodeId() <<
+            ", node: " << dir3.GetName());
+        UNIT_ASSERT_C(!index->LookupNode(node4->GetNodeId()),
+            "Did not failed to lookup node id: " << node4->GetNodeId() <<
+            ", node: " << dir4.GetName());
+    }
 };
 
 }   // namespace NCloud::NFileStore
