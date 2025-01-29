@@ -20,6 +20,7 @@ private:
     TString DiskId;
     ui64 BlockIdx;
     ui64 BlockCount;
+    ui64 BlocksPerRequest = 0;
 
 public:
     TCheckRangeCommand(IBlockStorePtr client)
@@ -36,12 +37,16 @@ public:
         Opts.AddLongOption("blocks-count", "number of blocks to check")
             .RequiredArgument("NUM")
             .StoreResult(&BlockCount);
+
+        Opts.AddLongOption("blocks-per-request", "blocks per request")
+            .RequiredArgument("NUM")
+            .StoreResult(&BlocksPerRequest);
     }
 
 protected:
     bool DoExecute() override
     {
-        if (!Proto && !CheckOpts()) {
+        if (!CheckOpts()) {
             return false;
         }
 
@@ -51,15 +56,17 @@ protected:
 
         ui32 errorCount = 0;
 
-        const ui32 maxBlocksPerRequest = 4 * 1024;
         ui32 remainingBlocks = BlockCount;
         ui64 currentBlockIdx = BlockIdx;
+        if (BlocksPerRequest <= 0) {
+            BlocksPerRequest = 1024;
+        }
 
         while (remainingBlocks > 0) {
             bool isOutOfBound = false;
 
             ui32 blocksInThisRequest =
-                std::min(remainingBlocks, maxBlocksPerRequest);
+                std::min(remainingBlocks, BlocksPerRequest);
 
             auto request = std::make_shared<NProto::TCheckRangeRequest>();
             request->SetDiskId(DiskId);
@@ -111,6 +118,7 @@ private:
         const auto* blockIdx =
             ParseResultPtr->FindLongOptParseResult("start-index");
         const auto* blockCount = ParseResultPtr->FindLongOptParseResult("blocks-count");
+
         if (!diskId) {
             STORAGE_ERROR("Disk id is required");
             return false;

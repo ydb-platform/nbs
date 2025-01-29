@@ -30,7 +30,7 @@ class TCheckRangeActor final: public TActorBootstrapped<TCheckRangeActor>
 {
 private:
     const TActorId Tablet;
-    const ui64 FirstBlockOffset;
+    const ui64 BlockIndex;
     const ui64 BlocksCount;
     const TDuration Timeout;
     const TActorId Sender;
@@ -78,7 +78,7 @@ TCheckRangeActor::TCheckRangeActor(
     TDuration timeout,
     TEvVolume::TEvCheckRangeRequest::TPtr&& ev)
     : Tablet(tablet)
-    , FirstBlockOffset(blockOffset)
+    , BlockIndex(blockOffset)
     , BlocksCount(blocksCount)
     , Timeout(std::move(timeout))
     , Ev(std::move(ev))
@@ -94,7 +94,7 @@ void TCheckRangeActor::SendReadBlocksRequest(const TActorContext& ctx)
 {
     auto request = std::make_unique<TEvService::TEvReadBlocksRequest>();
 
-    request->Record.SetStartIndex(FirstBlockOffset);
+    request->Record.SetStartIndex(BlockIndex);
     request->Record.SetBlocksCount(BlocksCount);
 
     auto* headers = request->Record.MutableHeaders();

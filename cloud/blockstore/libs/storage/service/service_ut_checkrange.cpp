@@ -49,6 +49,27 @@ Y_UNIT_TEST_SUITE(TServiceCheckRangeTest)
 
         UNIT_ASSERT(response->GetStatus() == E_ARGUMENT);
     }
+
+    Y_UNIT_TEST(ShouldFailCheckRangeWithZeroSize)
+    {
+        TTestEnv env;
+        NProto::TStorageServiceConfig config;
+        ui32 nodeIdx = SetupTestEnv(env, std::move(config));
+
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+        service.CreateVolume(
+            DefaultDiskId,
+            512,
+            DefaultBlockSize,
+            "test_folder",
+            "test_cloud");
+        ui64 size = 0;
+
+        service.SendCheckRangeRequest(DefaultDiskId, 0, size);
+        auto response = service.RecvCheckRangeResponse();
+
+        UNIT_ASSERT(response->GetStatus() == E_ARGUMENT);
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage
