@@ -248,6 +248,11 @@ public:
 
     std::unique_ptr<TEvService::TEvGetVolumeStatsRequest> CreateGetVolumeStatsRequest();
 
+    std::unique_ptr<TEvService::TEvCheckRangeRequest> CreateCheckRangeRequest(
+        const TString& diskId,
+        const ui64 blockIdx,
+        const ui64 blockCount);
+
     void WaitForVolume(const TString& diskId = DefaultDiskId);
 
 #define BLOCKSTORE_DECLARE_METHOD(name, ns)                                    \

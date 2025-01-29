@@ -564,7 +564,7 @@ private:
         ui64 blockOffset,
         ui64 blocksCount,
         TDuration retryTimeout,
-        const TEvVolume::TEvCheckRangeRequest::TPtr& ev);
+        TEvVolume::TEvCheckRangeRequest::TPtr ev);
 
     bool HandleRequests(STFUNC_SIG);
     bool RejectRequests(STFUNC_SIG);
