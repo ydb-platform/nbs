@@ -109,17 +109,10 @@ void TCheckRangeActor::ReplyAndDie(
     const TActorContext& ctx,
     const NProto::TError& error)
 {
-    {
-    LOG_ERROR(
-        ctx,
-        TBlockStoreComponents::PARTITION,
-        "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! replyanddie");
-
     auto response =
-            std::make_unique<TEvVolume::TEvCheckRangeResponse>(std::move(error));;
+        std::make_unique<TEvVolume::TEvCheckRangeResponse>(std::move(error));
 
     NCloud::Reply(ctx, *Ev, std::move(response));
-    }
 
     Die(ctx);
 }
@@ -162,12 +155,6 @@ void TCheckRangeActor::HandleReadBlocksResponse(
     const TActorContext& ctx)
 {
     const auto* msg = ev->Get();
-
-    LOG_ERROR(
-        ctx,
-        TBlockStoreComponents::VOLUME,
-        "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! CheckRange response "
-        "catched, cur block id = " + std::to_string(FirstBlockOffset));
 
     if (HasError(msg->Record.GetError())) {
         auto errorMessage = msg->Record.GetError().GetMessage();
@@ -230,10 +217,6 @@ void NPartition::TPartitionActor::HandleCheckRange(
             Config->GetCompactionRetryTimeout(),
             std::move(ev)));
     Actors.Insert(actorId);
-
-    //auto response = std::make_unique<TEvVolume::TEvCheckRangeResponse>(std::move(MakeError(S_OK)));
-
-    //NCloud::Reply(ctx, *ev, std::move(response));
 }
 
 }   // namespace NCloud::NBlockStore::NStorage::NPartition
