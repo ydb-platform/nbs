@@ -65,7 +65,7 @@ func checkEncryptedSource(
 	err = internal_client.WaitOperation(ctx, client, operation.Id)
 	require.NoError(t, err)
 
-	nbsClient := testcommon.NewNbsClient(t, ctx, "zone-a")
+	nbsClient := testcommon.NewNbsTestingClient(t, ctx, "zone-a")
 	diskParams, err := nbsClient.Describe(ctx, diskID1)
 	require.NoError(t, err)
 
@@ -133,7 +133,7 @@ func checkUnencryptedImage(
 	err = internal_client.WaitOperation(ctx, client, operation.Id)
 	require.NoError(t, err)
 
-	nbsClient := testcommon.NewNbsClient(t, ctx, "zone-a")
+	nbsClient := testcommon.NewNbsTestingClient(t, ctx, "zone-a")
 	diskParams, err := nbsClient.Describe(ctx, diskID1)
 	require.NoError(t, err)
 
@@ -207,7 +207,7 @@ func testImageServiceCreateImageFromDiskWithKind(
 	err = internal_client.WaitOperation(ctx, client, operation.Id)
 	require.NoError(t, err)
 
-	nbsClient := testcommon.NewNbsClient(t, ctx, "zone-a")
+	nbsClient := testcommon.NewNbsTestingClient(t, ctx, "zone-a")
 	diskContentInfo, err := nbsClient.FillDisk(ctx, diskID, diskSize)
 	require.NoError(t, err)
 
@@ -325,7 +325,7 @@ func TestImageServiceCreateImageFromImage(t *testing.T) {
 	err = internal_client.WaitOperation(ctx, client, operation.Id)
 	require.NoError(t, err)
 
-	nbsClient := testcommon.NewNbsClient(t, ctx, "zone-a")
+	nbsClient := testcommon.NewNbsTestingClient(t, ctx, "zone-a")
 
 	err = nbsClient.ValidateCrc32(ctx, diskID2, diskContentInfo)
 	require.NoError(t, err)
@@ -382,7 +382,7 @@ func TestImageServiceCreateImageFromSnapshot(t *testing.T) {
 	err = internal_client.WaitOperation(ctx, client, operation.Id)
 	require.NoError(t, err)
 
-	nbsClient := testcommon.NewNbsClient(t, ctx, "zone-a")
+	nbsClient := testcommon.NewNbsTestingClient(t, ctx, "zone-a")
 	diskParams, err := nbsClient.Describe(ctx, diskID)
 	require.NoError(t, err)
 
@@ -561,7 +561,7 @@ func testCreateImageFromURL(
 	err = internal_client.WaitOperation(ctx, client, operation.Id)
 	require.NoError(t, err)
 
-	nbsClient := testcommon.NewNbsClient(t, ctx, "zone-a")
+	nbsClient := testcommon.NewNbsTestingClient(t, ctx, "zone-a")
 	err = nbsClient.ValidateCrc32(
 		ctx,
 		diskID,
@@ -733,7 +733,7 @@ func testImageServiceCreateImageFromURLWhichIsOverwrittenInProcess(
 	err = internal_client.WaitOperation(ctx, client, operation.Id)
 	require.NoError(t, err)
 
-	nbsClient := testcommon.NewNbsClient(t, ctx, "zone-a")
+	nbsClient := testcommon.NewNbsTestingClient(t, ctx, "zone-a")
 
 	err = nbsClient.ValidateCrc32(
 		ctx,
@@ -1146,7 +1146,7 @@ func TestImageServiceCreateIncrementalImageFromDisk(t *testing.T) {
 	require.Equal(t, float64(1), meta.Progress)
 	testcommon.RequireCheckpointsAreEmpty(t, ctx, diskID1)
 
-	nbsClient := testcommon.NewNbsClient(t, ctx, "zone-a")
+	nbsClient := testcommon.NewNbsTestingClient(t, ctx, "zone-a")
 	waitForWrite, err := nbsClient.GoWriteRandomBlocksToNbsDisk(ctx, diskID1)
 	require.NoError(t, err)
 	err = waitForWrite()

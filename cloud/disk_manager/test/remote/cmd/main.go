@@ -21,7 +21,6 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs"
 	nbs_client_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs/config"
 	client_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/configs/client/config"
-	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/monitoring/metrics"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/pkg/client"
 	test_config "github.com/ydb-platform/nbs/cloud/disk_manager/test/remote/cmd/config"
 	"github.com/ydb-platform/nbs/cloud/tasks/headers"
@@ -181,23 +180,13 @@ func newContext(config *client_config.ClientConfig) context.Context {
 	)
 }
 
-func newNbsClient(
+func newNbsTestingClient(
 	ctx context.Context,
 	config *nbs_client_config.ClientConfig,
 	zoneID string,
-) (nbs.Client, error) {
+) (nbs.TestingClient, error) {
 
-	factory, err := nbs.NewFactory(
-		ctx,
-		config,
-		metrics.NewEmptyRegistry(),
-		metrics.NewEmptyRegistry(),
-	)
-	if err != nil {
-		return nil, err
-	}
-
-	return factory.GetClient(ctx, zoneID)
+	return nbs.NewTestingClient(ctx, zoneID, config)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -952,7 +941,7 @@ func testCreateDiskFromImageImpl(
 		return resources{}, err
 	}
 
-	nbsClient, err := newNbsClient(ctx, nbsConfig, testConfig.GetZoneID())
+	nbsClient, err := newNbsTestingClient(ctx, nbsConfig, testConfig.GetZoneID())
 	if err != nil {
 		return resources{}, err
 	}
@@ -1145,7 +1134,7 @@ func testRetireBaseDisks(
 		operation := operations[i]
 		diskID := rs.Disks[i]
 
-		nbsClient, err := newNbsClient(ctx, nbsConfig, testConfig.GetZoneID())
+		nbsClient, err := newNbsTestingClient(ctx, nbsConfig, testConfig.GetZoneID())
 		if err != nil {
 			return resources{}, err
 		}
@@ -1217,7 +1206,7 @@ func testCreateDiskFromSnapshotImpl(
 		Snapshots: []string{snapshotID},
 	}
 
-	nbsClient, err := newNbsClient(ctx, nbsConfig, zoneID)
+	nbsClient, err := newNbsTestingClient(ctx, nbsConfig, zoneID)
 	if err != nil {
 		return resources{}, err
 	}
@@ -1413,7 +1402,7 @@ func testCreateImageFromImageImpl(
 		Images: []string{imageID1, imageID2},
 	}
 
-	nbsClient, err := newNbsClient(ctx, nbsConfig, testConfig.GetZoneID())
+	nbsClient, err := newNbsTestingClient(ctx, nbsConfig, testConfig.GetZoneID())
 	if err != nil {
 		return resources{}, err
 	}

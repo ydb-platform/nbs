@@ -49,7 +49,7 @@ func testCreateSnapshotFromDisk(
 	err = internal_client.WaitOperation(ctx, client, operation.Id)
 	require.NoError(t, err)
 
-	nbsClient := testcommon.NewNbsClient(t, ctx, "zone-a")
+	nbsClient := testcommon.NewNbsTestingClient(t, ctx, "zone-a")
 	_, err = nbsClient.FillDisk(ctx, diskID, 64*4096)
 	require.NoError(t, err)
 
@@ -208,7 +208,7 @@ func testCreateIncrementalSnapshotFromDisk(
 	err = internal_client.WaitOperation(ctx, client, operation.Id)
 	require.NoError(t, err)
 
-	nbsClient := testcommon.NewNbsClient(t, ctx, "zone-a")
+	nbsClient := testcommon.NewNbsTestingClient(t, ctx, "zone-a")
 	contentSize := 134217728
 
 	bytes := make([]byte, contentSize)
@@ -337,7 +337,7 @@ func TestSnapshotServiceCreateIncrementalSnapshotAfterDeletionOfBaseSnapshot(t *
 	err = internal_client.WaitOperation(ctx, client, operation.Id)
 	require.NoError(t, err)
 
-	nbsClient := testcommon.NewNbsClient(t, ctx, "zone-a")
+	nbsClient := testcommon.NewNbsTestingClient(t, ctx, "zone-a")
 
 	bytes := make([]byte, diskSize)
 	for i := 0; i < len(bytes); i++ {
@@ -449,7 +449,7 @@ func TestSnapshotServiceCreateIncrementalSnapshotWhileDeletingBaseSnapshot(t *te
 	err = internal_client.WaitOperation(ctx, client, operation.Id)
 	require.NoError(t, err)
 
-	nbsClient := testcommon.NewNbsClient(t, ctx, "zone-a")
+	nbsClient := testcommon.NewNbsTestingClient(t, ctx, "zone-a")
 
 	_, err = nbsClient.FillDisk(ctx, diskID1, uint64(diskSize))
 	require.NoError(t, err)
