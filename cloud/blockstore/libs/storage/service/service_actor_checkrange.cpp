@@ -49,7 +49,7 @@ private:
 
     void ReplyAndDie(
         const TActorContext& ctx,
-        std::unique_ptr<TEvVolume::TEvCheckRangeResponse> response);
+        std::unique_ptr<TEvService::TEvCheckRangeResponse> response);
 
 private:
     STFUNC(StateWork);
@@ -97,16 +97,18 @@ void TCheckRangeActor::HandleCheckRangeResponse(
 {
     const auto* msg = ev->Get();
 
+    LOG_ERROR(ctx, TBlockStoreComponents::SERVICE, "HandleCheckRangeResponse");
+
     const auto& error = msg->GetError();
+
     ReplyAndDie(
         ctx,
-        std::make_unique<TEvVolume::TEvCheckRangeResponse>(error));
+        std::make_unique<TEvService::TEvCheckRangeResponse>(error));
 }
-
 
 void TCheckRangeActor::ReplyAndDie(
     const TActorContext& ctx,
-    std::unique_ptr<TEvVolume::TEvCheckRangeResponse> response)
+    std::unique_ptr<TEvService::TEvCheckRangeResponse> response)
 {
     NCloud::Reply(ctx, *RequestInfo, std::move(response));
     Die(ctx);

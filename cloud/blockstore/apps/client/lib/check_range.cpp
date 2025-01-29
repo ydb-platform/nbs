@@ -40,27 +40,31 @@ public:
     }
 
 protected:
-    bool DoExecute() override
-    {
-        if (!Proto && !CheckOpts()) {
-            return false;
-        }
+bool DoExecute() override
+{
+    if (!Proto && !CheckOpts()) {
+        return false;
+    }
 
-        //auto& input = GetInputStream();
-        auto& output = GetOutputStream();
+    auto& output = GetOutputStream();
 
-        STORAGE_DEBUG("Reading CheckRange request");
+    STORAGE_DEBUG("Handling CheckRange");
+
+    ui32 errorCount = 0;
+
+    const ui32 maxBlocksPerRequest = 4 * 1024;
+    ui32 remainingBlocks = BlockCount;
+    ui64 currentBlockIdx = BlockIdx;
+
+    while (remainingBlocks > 0) {
+        bool isOutOfBound = false;
+
+        ui32 blocksInThisRequest = std::min(remainingBlocks, maxBlocksPerRequest);
+
         auto request = std::make_shared<NProto::TCheckRangeRequest>();
-        /*
-        if (Proto) {
-            ParseFromTextFormat(input, *request);
-        } else {
-            request->SetDiskId(DiskId);
-        }
-        */
         request->SetDiskId(DiskId);
-        request->SetBlockIdx(BlockIdx);
-        request->SetBlockCount(BlockCount);
+        request->SetBlockIdx(currentBlockIdx);
+        request->SetBlockCount(blocksInThisRequest);
 
         STORAGE_DEBUG("Sending CheckRange request");
         const auto requestId = GetRequestId(*request);
@@ -75,13 +79,30 @@ protected:
         }
 
         if (HasError(result)) {
-            output << FormatError(result.GetError()) << Endl;
-            return false;
+            if (result.GetError().GetCode() == E_ARGUMENT) {
+                isOutOfBound = true;
+            } else {
+                output << "Error in range [" << currentBlockIdx << ", "
+                       << (currentBlockIdx + blocksInThisRequest - 1)
+                       << "]: " << FormatError(result.GetError()) << Endl;
+                errorCount++;
+            }
+        } else {
+            output << "Ok in range: [" << currentBlockIdx << ", "
+                   << (currentBlockIdx + blocksInThisRequest - 1) << "]"
+                   << Endl;
         }
 
-        output << "Sucsess: " << Endl;
-        return true;
+        remainingBlocks -= blocksInThisRequest;
+        currentBlockIdx += blocksInThisRequest;
+        if (isOutOfBound) {
+            break;
+        }
     }
+
+    output << "Total errors caught: " << errorCount << Endl;
+    return true;
+}
 
 private:
     bool CheckOpts() const
