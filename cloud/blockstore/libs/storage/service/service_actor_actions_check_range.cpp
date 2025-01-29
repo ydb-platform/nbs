@@ -82,7 +82,7 @@ void TCheckRangeActor::Bootstrap(const TActorContext& ctx)
     LOG_INFO(
         ctx,
         TBlockStoreComponents::SERVICE,
-        "Start scan disk %s",
+        "Start check disrange for %s",
         Request.GetDiskId().c_str());
 
     NCloud::Send(
@@ -120,11 +120,6 @@ void TCheckRangeActor::HandleCheckRangeResponse(
     const TEvVolume::TEvCheckRangeResponse::TPtr& ev,
     const TActorContext& ctx)
 {
-    LOG_ERROR(
-        ctx,
-        TBlockStoreComponents::SERVICE,
-        "!!!! CheckRangeResponseCatched");
-
     ReplyAndDie(ctx, std::move(ev->Get()->Record.GetError()));
 }
 

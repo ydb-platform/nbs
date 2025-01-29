@@ -29,11 +29,11 @@ public:
             .RequiredArgument("STR")
             .StoreResult(&DiskId);
 
-        Opts.AddLongOption("block-idx", "first block index")
+        Opts.AddLongOption("start-index", "start block index")
             .RequiredArgument("NUM")
             .StoreResult(&BlockIdx);
 
-        Opts.AddLongOption("size", "first block index")
+        Opts.AddLongOption("blocks-count", "number of blocks to check")
             .RequiredArgument("NUM")
             .StoreResult(&BlockCount);
     }
@@ -109,20 +109,20 @@ private:
     {
         const auto* diskId = ParseResultPtr->FindLongOptParseResult("disk-id");
         const auto* blockIdx =
-            ParseResultPtr->FindLongOptParseResult("block-idx");
-        const auto* blockCount = ParseResultPtr->FindLongOptParseResult("size");
+            ParseResultPtr->FindLongOptParseResult("start-index");
+        const auto* blockCount = ParseResultPtr->FindLongOptParseResult("blocks-count");
         if (!diskId) {
             STORAGE_ERROR("Disk id is required");
             return false;
         }
 
         if (!blockIdx) {
-            STORAGE_ERROR("Block index is required");
+            STORAGE_ERROR("start-index is required");
             return false;
         }
 
         if (!blockCount) {
-            STORAGE_ERROR("Block count is required");
+            STORAGE_ERROR("blocks-count is required");
             return false;
         }
 

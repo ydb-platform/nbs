@@ -95,12 +95,7 @@ void TCheckRangeActor::HandleCheckRangeResponse(
     const TEvVolume::TEvCheckRangeResponse::TPtr& ev,
     const TActorContext& ctx)
 {
-    const auto* msg = ev->Get();
-
-    LOG_ERROR(ctx, TBlockStoreComponents::SERVICE, "HandleCheckRangeResponse");
-
-    const auto& error = msg->GetError();
-
+    const auto& error = ev->Get()->GetError();
     ReplyAndDie(
         ctx,
         std::make_unique<TEvService::TEvCheckRangeResponse>(error));
@@ -149,7 +144,7 @@ void TServiceActor::HandleCheckRange(
             "Empty DiskId in CheckRange");
 
         auto response = std::make_unique<TEvService::TEvCheckRangeResponse>(
-            MakeError(E_ARGUMENT, "Volume name cannot be empty"));
+            MakeError(E_ARGUMENT, "Volume id cannot be empty"));
 
         NCloud::Reply(ctx, *ev, std::move(response));
         return;

@@ -595,6 +595,20 @@ Y_UNIT_TEST_SUITE(TCommandTest)
 
         UNIT_ASSERT(!ExecuteRequest("ping", argv, client));
     }
+
+    Y_UNIT_TEST(ShouldRequireBlocksCountCheckRange)
+    {
+        auto client = std::make_shared<TTestService>();
+
+        TVector<TString> argv;
+        argv.reserve(4);
+        argv.emplace_back(GetProgramName());
+        argv.emplace_back(TStringBuilder() << "--disk-id=" << DefaultDiskId);
+        argv.emplace_back("--start-index=0");
+
+
+        UNIT_ASSERT(!ExecuteRequest("checkrange", argv, client));
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NClient

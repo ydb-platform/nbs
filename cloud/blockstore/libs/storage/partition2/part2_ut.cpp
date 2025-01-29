@@ -7347,9 +7347,9 @@ Y_UNIT_TEST_SUITE(TPartition2Test)
     Y_UNIT_TEST(ShouldntCheckRangeWithBigBlockCount)
     {
         constexpr ui32 blockCount = 1024 * 1024;
-        constexpr ui32 bytesPerStrype = 1024;
+        constexpr ui32 blocksPerStrype = 1024;
         NProto::TStorageServiceConfig config;
-        config.SetBytesPerStripe(bytesPerStrype);
+        config.SetBlocksPerStripe(bytesPerStrype);
         auto runtime = PrepareTestActorRuntime(config, blockCount);
 
         TPartitionClient partition(*runtime);
@@ -7357,7 +7357,7 @@ Y_UNIT_TEST_SUITE(TPartition2Test)
 
         const ui32 idx = 0;
 
-        partition.SendCheckRangeRequest("id", idx, bytesPerStrype + 1);
+        partition.SendCheckRangeRequest("id", idx, blocksPerStrype + 1);
         const auto response =
             partition.RecvResponse<TEvVolume::TEvCheckRangeResponse>();
 
