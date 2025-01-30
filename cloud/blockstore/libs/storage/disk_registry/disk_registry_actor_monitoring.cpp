@@ -896,7 +896,7 @@ void TDiskRegistryActor::RenderDiskHtmlInfo(
                         TABLEH() { out << "SeqNo"; }
                     }
 
-                    for (const auto& [uuid, seqNo]: info.FinishedMigrations) {
+                    for (const auto& [uuid, seqNo, _]: info.FinishedMigrations) {
                         TABLER() {
                             TABLED() { DumpDeviceLink(out, TabletID(), uuid); }
                             TABLED() { out << seqNo; }
