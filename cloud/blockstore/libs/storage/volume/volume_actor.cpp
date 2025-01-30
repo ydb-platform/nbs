@@ -1125,8 +1125,9 @@ STFUNC(TVolumeActor::StateZombie)
 
         IgnoreFunc(TEvPartition::TEvWaitReadyResponse);
 
-        IgnoreFunc(TEvents::TEvPoisonPill);
-        IgnoreFunc(TEvents::TEvPoisonTaken);
+        HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
+        HFunc(TEvents::TEvPoisonTaken, HandlePoisonTaken);
+        HFunc(TEvTablet::TEvTabletStop, HandleTabletStop);
 
         IgnoreFunc(TEvLocal::TEvTabletMetrics);
 

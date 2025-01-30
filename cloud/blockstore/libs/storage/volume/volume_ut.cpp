@@ -8148,6 +8148,57 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         UNIT_ASSERT(partitionsStopped);
     }
 
+    Y_UNIT_TEST(ShouldGracefulyShutdownVolume)
+    {
+        auto runtime = PrepareTestActorRuntime();
+        TVolumeClient volume(*runtime);
+
+        bool partitionsStopped = false;
+        runtime->SetEventFilter(
+            [&](TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& event)
+            {
+                switch (event->GetTypeRewrite()) {
+                    // Poison pill send to DR based partition actor.
+                    case TEvents::TEvPoisonPill::EventType: {
+                        partitionsStopped = true;
+                        break;
+                    }
+                }
+                return false;
+            });
+
+        volume.UpdateVolumeConfig(
+            // default arguments
+            0,
+            0,
+            0,
+            0,
+            false,
+            1,
+            NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
+            1024,
+            "vol0",
+            "cloud",
+            "folder",
+            1   // partitions count
+        );
+        volume.RebootTablet();
+
+        auto clientInfo = CreateVolumeClientInfo(
+            NProto::VOLUME_ACCESS_READ_WRITE,
+            NProto::VOLUME_MOUNT_LOCAL,
+            false);
+
+        volume.GracefulShutdown();
+        UNIT_ASSERT(partitionsStopped);
+
+        // Check that volume after TEvGracefulShutdownRequest
+        // in zombie state and rejects requsts.
+        volume.SendGetVolumeInfoRequest();
+        auto response = volume.RecvGetVolumeInfoResponse();
+        UNIT_ASSERT_VALUES_EQUAL(response->GetStatus(), E_REJECTED);
+    }
+
     Y_UNIT_TEST(ShouldReturnClientsAndHostnameInStatVolumeResponse)
     {
         auto runtime = PrepareTestActorRuntime();

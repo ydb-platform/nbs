@@ -1110,4 +1110,7 @@ message TStorageServiceConfig
 
     // Enabling direct sending AcquireDevices to disk agent.
     optional bool NonReplicatedVolumeDirectAcquireEnabled = 404;
+
+    // Timeout for TDestroyVolumeActor (in milliseconds)
+    optional uint32 DestroyVolumeTimeout = 405;
 }

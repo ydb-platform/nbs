@@ -551,6 +551,12 @@ TVolumeClient::CreateReadMetaHistoryRequest()
     return std::make_unique<TEvVolumePrivate::TEvReadMetaHistoryRequest>();
 }
 
+std::unique_ptr<TEvVolume::TEvGracefulShutdownRequest>
+TVolumeClient::CreateGracefulShutdownRequest()
+{
+    return std::make_unique<TEvVolume::TEvGracefulShutdownRequest>();
+}
+
 void TVolumeClient::SendRemoteHttpInfo(
     const TString& params,
     HTTP_METHOD method)
