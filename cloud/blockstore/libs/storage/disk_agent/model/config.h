@@ -108,6 +108,7 @@ public:
 
     ui32 GetIOParserActorCount() const;
     bool GetOffloadAllIORequestsParsingEnabled() const;
+    bool GetIOParserActorAllocateStorageEnabled() const;
     bool GetDisableNodeBrokerRegistrationOnDevicelessAgent() const;
     ui32 GetMaxAIOContextEvents() const;
     ui32 GetPathsPerFileIOService() const;

@@ -142,17 +142,24 @@ void TDiskAgentActor::HandleInitAgentCompleted(
             ctx,
             TBlockStoreComponents::DISK_AGENT,
             "Create " << count << " IORequestParserActor actors");
+
+        NDiskAgent::TStorageBufferAllocator allocator;
+        if (AgentConfig->GetIOParserActorAllocateStorageEnabled() &&
+            AgentConfig->GetBackend() == NProto::DISK_AGENT_BACKEND_AIO)
+        {
+            allocator = [](ui64 byteCount)
+            {
+                return std::shared_ptr<char>(
+                    static_cast<char*>(
+                        std::aligned_alloc(DefaultBlockSize, byteCount)),
+                    std::free);
+            };
+        }
+
         IOParserActors.reserve(count);
         for (ui32 i = 0; i != count; ++i) {
-            auto actor = NDiskAgent::CreateIORequestParserActor(
-                ctx.SelfID,
-                [](ui32 blockSize, ui64 byteCount)
-                {
-                    return std::shared_ptr<char>(
-                        static_cast<char*>(
-                            std::aligned_alloc(blockSize, byteCount)),
-                        std::free);
-                });
+            auto actor =
+                NDiskAgent::CreateIORequestParserActor(ctx.SelfID, allocator);
 
             IOParserActors.push_back(ctx.Register(
                 actor.release(),

@@ -80,22 +80,22 @@ private:
         auto* msg = ev->Get<TEvDiskAgent::TEvWriteDeviceBlocksRequest>();
         request->Record.Swap(&msg->Record);
 
-        ui64 bytesCount = 0;
-        for (const auto& buffer: request->Record.GetBlocks().GetBuffers()) {
-            bytesCount += buffer.size();
+        if (Allocator) {
+            ui64 bytesCount = 0;
+            for (const auto& buffer: request->Record.GetBlocks().GetBuffers()) {
+                bytesCount += buffer.size();
+            }
+
+            request->Storage = Allocator(bytesCount);
+            request->StorageSize = bytesCount;
+
+            char* dst = request->Storage.get();
+            for (const auto& buffer: request->Record.GetBlocks().GetBuffers()) {
+                std::memcpy(dst, buffer.data(), buffer.size());
+                dst += buffer.size();
+            }
+            request->Record.ClearBlocks();
         }
-
-        request->Storage =
-            Allocator(request->Record.GetBlockSize(), bytesCount);
-
-        char* dst = request->Storage.get();
-        for (const auto& buffer: request->Record.GetBlocks().GetBuffers()) {
-            std::memcpy(dst, buffer.data(), buffer.size());
-            dst += buffer.size();
-        }
-
-        request->ByteCount = bytesCount;
-        request->Record.ClearBlocks();
 
         auto newEv = std::make_unique<IEventHandle>(
             ev->Recipient,

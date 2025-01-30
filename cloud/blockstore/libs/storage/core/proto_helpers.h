@@ -218,9 +218,13 @@ TBlockRange64 BuildRequestBlockRange(
     const TEvDiskAgent::TEvWriteDeviceBlocksRequest& request);
 
 TBlockRange64 BuildRequestBlockRange(
+    const NProto::TWriteDeviceBlocksRequest& request);
+
+TBlockRange64 BuildRequestBlockRange(
     const TEvDiskAgent::TEvZeroDeviceBlocksRequest& request);
 
 ui64 GetVolumeRequestId(const TEvDiskAgent::TEvWriteDeviceBlocksRequest& request);
+ui64 GetVolumeRequestId(const NProto::TWriteDeviceBlocksRequest& request);
 ui64 GetVolumeRequestId(const TEvDiskAgent::TEvZeroDeviceBlocksRequest& request);
 
 TString LogDevices(const TVector<NProto::TDeviceConfig>& devices);

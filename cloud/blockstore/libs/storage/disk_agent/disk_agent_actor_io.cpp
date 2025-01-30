@@ -26,11 +26,15 @@ ui64 GetVolumeRequestId(
 TBlockRange64 BuildRequestBlockRange(
     const TEvDiskAgentPrivate::TParsedWriteDeviceBlocksRequest& request)
 {
-    Y_ABORT_UNLESS(request.ByteCount % request.Record.GetBlockSize() == 0);
+    if (!request.StorageSize) {
+        return NStorage::BuildRequestBlockRange(request.Record);
+    }
+
+    Y_ABORT_UNLESS(request.StorageSize % request.Record.GetBlockSize() == 0);
 
     return TBlockRange64::WithLength(
         request.Record.GetStartIndex(),
-        request.ByteCount / request.Record.GetBlockSize());
+        request.StorageSize / request.Record.GetBlockSize());
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -357,6 +361,13 @@ void TDiskAgentActor::HandleParsedWriteDeviceBlocks(
         return;
     }
 
+    auto* msg = ev->Get();
+
+    if (!msg->Storage) {
+        PerformIO<TMethod>(ctx, ev, &TDiskAgentState::Write);
+        return;
+    }
+
     // Attach storage to NProto::TWriteBlocksRequest
     struct TWriteBlocksRequestWithStorage
         : NProto::TWriteBlocksRequest
@@ -364,23 +375,22 @@ void TDiskAgentActor::HandleParsedWriteDeviceBlocks(
         TStorageBuffer Storage;
     };
 
-    auto* msg = ev->Get();
-
     PerformIO<TMethod>(
         ctx,
         ev,
-        [storage = std::move(msg->Storage), byteCount = msg->ByteCount](
+        [storage = std::move(msg->Storage), storageSize = msg->StorageSize](
             TDiskAgentState& self,
             TInstant now,
             NProto::TWriteDeviceBlocksRequest request) mutable
         {
             auto writeRequest =
                 std::make_shared<TWriteBlocksRequestWithStorage>();
-            writeRequest->Storage = std::move(storage);
             writeRequest->MutableHeaders()->Swap(request.MutableHeaders());
+            writeRequest->MutableBlocks()->Swap(request.MutableBlocks());
             writeRequest->SetStartIndex(request.GetStartIndex());
+            writeRequest->Storage = std::move(storage);
 
-            TStringBuf buffer{writeRequest->Storage.get(), byteCount};
+            TStringBuf buffer{writeRequest->Storage.get(), storageSize};
 
             return self.WriteBlocks(
                 now,

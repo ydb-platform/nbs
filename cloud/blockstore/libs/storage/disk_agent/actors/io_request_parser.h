@@ -10,7 +10,7 @@ namespace NCloud::NBlockStore::NStorage::NDiskAgent {
 ////////////////////////////////////////////////////////////////////////////////
 
 using TStorageBufferAllocator =
-    std::function<std::shared_ptr<char>(ui32 blockSize, ui64 bytesCount)>;
+    std::function<std::shared_ptr<char>(ui64 bytesCount)>;
 
 std::unique_ptr<NActors::IActor> CreateIORequestParserActor(
     const NActors::TActorId& owner,

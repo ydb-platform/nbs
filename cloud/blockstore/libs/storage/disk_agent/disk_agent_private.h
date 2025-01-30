@@ -165,7 +165,7 @@ struct TEvDiskAgentPrivate
     {
         NProto::TWriteDeviceBlocksRequest Record;
         TStorageBuffer Storage;
-        ui64 ByteCount = 0;
+        ui64 StorageSize = 0;
     };
 
     //
