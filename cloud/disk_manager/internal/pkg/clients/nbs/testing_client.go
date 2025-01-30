@@ -567,7 +567,7 @@ func (c *testingClient) List(ctx context.Context) ([]string, error) {
 	return c.client.nbs.ListVolumes(ctx)
 }
 
-func (c *client) BackupDiskRegistryState(
+func (c *testingClient) BackupDiskRegistryState(
 	ctx context.Context,
 ) (*DiskRegistryBackup, error) {
 
@@ -585,7 +585,7 @@ func (c *client) BackupDiskRegistryState(
 	return &state.Backup, nil
 }
 
-func (c *client) DisableDevices(
+func (c *testingClient) DisableDevices(
 	ctx context.Context,
 	agentID string,
 	deviceUUIDs []string,
