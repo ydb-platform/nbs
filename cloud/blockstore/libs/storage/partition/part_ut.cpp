@@ -11403,10 +11403,10 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
             UNIT_ASSERT_VALUES_EQUAL(S_OK, status);
         };
 
-        checkRange(0, 1024 * 1024);
+        checkRange(0, 1024);
         checkRange(1024, 2048);
         checkRange(1, 1);
-        checkRange(1000, 10000);
+        checkRange(1000, 4096);
     }
 
     Y_UNIT_TEST(ShouldCheckRangeWithBrokenBlocks)
@@ -11487,10 +11487,10 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
 
             UNIT_ASSERT_VALUES_EQUAL(E_IO, status);
         };
-        checkRange(0, 1024 * 1024);
+        checkRange(0, 1024);
         checkRange(1024, 2048);
         checkRange(1, 1);
-        checkRange(1000, 10000);
+        checkRange(1000, 4096);
     }
 
     Y_UNIT_TEST(ShouldSuccessfullyCheckRangeIfDiskIsEmpty)
@@ -11526,7 +11526,10 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
 
         const ui32 idx = 0;
 
-        partition.SendCheckRangeRequest("id", idx, bytesPerStripe + 1);
+        partition.SendCheckRangeRequest(
+            "id",
+            idx,
+            bytesPerStripe / DefaultBlockSize + 1);
         const auto response =
             partition.RecvResponse<TEvVolume::TEvCheckRangeResponse>();
 

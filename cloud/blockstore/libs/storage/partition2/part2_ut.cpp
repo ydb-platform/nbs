@@ -7234,10 +7234,10 @@ Y_UNIT_TEST_SUITE(TPartition2Test)
             UNIT_ASSERT_VALUES_EQUAL(S_OK, status);
         };
 
-        checkRange(0, 1024 * 1024);
+        checkRange(0, 1024);
         checkRange(1024, 2048);
         checkRange(1, 1);
-        checkRange(1000, 10000);
+        checkRange(1000, 4096);
     }
 
     Y_UNIT_TEST(ShouldCheckRangeWithBrokenBlocks)
@@ -7318,10 +7318,10 @@ Y_UNIT_TEST_SUITE(TPartition2Test)
 
             UNIT_ASSERT_VALUES_EQUAL(E_IO, status);
         };
-        checkRange(0, 1024 * 1024);
+        checkRange(0, 1024);
         checkRange(1024, 2048);
         checkRange(1, 1);
-        checkRange(1000, 10000);
+        checkRange(1000, 4096);
     }
 
     Y_UNIT_TEST(ShouldSuccessfullyCheckRangeIfDiskIsEmpty)
@@ -7342,6 +7342,31 @@ Y_UNIT_TEST_SUITE(TPartition2Test)
         runtime->DispatchEvents(options, TDuration::Seconds(1));
 
         UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
+    }
+
+    Y_UNIT_TEST(ShouldntCheckRangeWithBigBlockCount)
+    {
+        constexpr ui32 blockCount = 1024 * 1024;
+        constexpr ui32 bytesPerStripe = 1024;
+        NProto::TStorageServiceConfig config;
+        config.SetBytesPerStripe(bytesPerStripe);
+        auto runtime = PrepareTestActorRuntime(config, blockCount);
+
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+
+        const ui32 idx = 0;
+
+        partition.SendCheckRangeRequest("id", idx, bytesPerStripe/DefaultBlockSize + 1);
+        const auto response =
+            partition.RecvResponse<TEvVolume::TEvCheckRangeResponse>();
+
+        TDispatchOptions options;
+        options.FinalEvents.emplace_back(TEvVolume::EvCheckRangeResponse);
+
+        runtime->DispatchEvents(options, TDuration::Seconds(1));
+
+        UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, response->GetStatus());
     }
 }
 

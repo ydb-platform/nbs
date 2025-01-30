@@ -181,6 +181,18 @@ private:
         const TEvNonreplPartitionPrivate::TEvChecksumBlocksCompleted::TPtr& ev,
         const NActors::TActorContext& ctx);
 
+    NProto::TError DoHandleCheckRange(
+        const NActors::TActorContext& ctx,
+        ui64 blockOffset,
+        ui64 blocksCount);
+
+    NActors::IActorPtr CreateCheckRangeActor(
+        NActors::TActorId tablet,
+        ui64 blockOffset,
+        ui64 blocksCount,
+        TDuration retryTimeout,
+        TEvVolume::TEvCheckRangeRequest::TPtr ev);
+
     bool HandleRequests(STFUNC_SIG);
 
     BLOCKSTORE_IMPLEMENT_REQUEST(ReadBlocks, TEvService);
@@ -198,6 +210,7 @@ private:
     BLOCKSTORE_IMPLEMENT_REQUEST(GetRebuildMetadataStatus, TEvVolume);
     BLOCKSTORE_IMPLEMENT_REQUEST(ScanDisk, TEvVolume);
     BLOCKSTORE_IMPLEMENT_REQUEST(GetScanDiskStatus, TEvVolume);
+    BLOCKSTORE_IMPLEMENT_REQUEST(CheckRange, TEvVolume);
 };
 
 }   // namespace NCloud::NBlockStore::NStorage
