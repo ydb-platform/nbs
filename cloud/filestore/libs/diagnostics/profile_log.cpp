@@ -2,6 +2,7 @@
 
 #include <cloud/storage/core/libs/common/scheduler.h>
 #include <cloud/storage/core/libs/common/timer.h>
+#include <cloud/storage/core/libs/common/verify.h>
 
 #include <library/cpp/eventlog/eventlog.h>
 
