@@ -1487,6 +1487,9 @@ func TestGetChangedBlocksForLightCheckpoints(t *testing.T) {
 	require.NoError(t, err)
 	err = client.DeleteCheckpoint(ctx, diskID, "checkpoint_3")
 	require.NoError(t, err)
+
+	err = client.Delete(ctx, diskID)
+	require.NoError(t, err)
 }
 
 func TestReadFromProxyOverlayDisk(t *testing.T) {
@@ -1745,7 +1748,10 @@ func TestEnsureCheckpointReady(t *testing.T) {
 			break
 		}
 		require.True(t, errors.Is(err, errors.NewInterruptExecutionError()))
+		time.Sleep(time.Microsecond * 100)
 	}
+
+	time.Sleep(time.Minute * 50)
 
 	err = client.DeleteCheckpointData(ctx, diskID, checkpointID)
 	require.NoError(t, err)
@@ -1753,6 +1759,9 @@ func TestEnsureCheckpointReady(t *testing.T) {
 	// Checkpoint without data should have status ERROR.
 	err = client.EnsureCheckpointReady(ctx, diskID, checkpointID)
 	require.True(t, errors.Is(err, errors.NewEmptyRetriableError()))
+
+	err = client.DeleteCheckpoint(ctx, diskID, checkpointID)
+	require.NoError(t, err)
 
 	checkpointID = "checkpoint_2"
 
@@ -1789,5 +1798,12 @@ func TestEnsureCheckpointReady(t *testing.T) {
 			break
 		}
 		require.True(t, errors.Is(err, errors.NewInterruptExecutionError()))
+		time.Sleep(time.Microsecond * 100)
 	}
+
+	err = client.DeleteCheckpoint(ctx, diskID, checkpointID)
+	require.NoError(t, err)
+
+	err = client.Delete(ctx, diskID)
+	require.NoError(t, err)
 }
