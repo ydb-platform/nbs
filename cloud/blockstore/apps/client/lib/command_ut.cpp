@@ -601,13 +601,57 @@ Y_UNIT_TEST_SUITE(TCommandTest)
         auto client = std::make_shared<TTestService>();
 
         TVector<TString> argv;
-        argv.reserve(4);
+        argv.reserve(3);
         argv.emplace_back(GetProgramName());
         argv.emplace_back(TStringBuilder() << "--disk-id=" << DefaultDiskId);
         argv.emplace_back("--start-index=0");
 
+        UNIT_ASSERT(!ExecuteRequest("checkrange", argv, client));
+    }
+
+    Y_UNIT_TEST(ShouldRequireStartIndexCheckRange)
+    {
+        auto client = std::make_shared<TTestService>();
+
+        TVector<TString> argv;
+        argv.reserve(3);
+        argv.emplace_back(GetProgramName());
+        argv.emplace_back(TStringBuilder() << "--disk-id=" << DefaultDiskId);
+        argv.emplace_back("--blocks-count=1024");
 
         UNIT_ASSERT(!ExecuteRequest("checkrange", argv, client));
+    }
+
+    Y_UNIT_TEST(ShouldSplitLargeCheckRangeRequestIntoSeveralRequests)
+    {
+        ui64 defaultMaxBlocksPerRequest = 1024;
+        ui64 expectedNumberOfRequest = 10;
+        ui32 checkRangeCounter = 0;
+        auto blocsCount = defaultMaxBlocksPerRequest * expectedNumberOfRequest;
+
+        auto client = std::make_shared<TTestService>();
+        client->CheckRangeHandler =
+            [&](std::shared_ptr<NProto::TCheckRangeRequest> request)
+        {
+            UNIT_ASSERT(request->GetDiskId() == DefaultDiskId);
+
+            UNIT_ASSERT_VALUES_EQUAL(
+                defaultMaxBlocksPerRequest,
+                request->GetBlocksCount());
+            UNIT_ASSERT(request->GetStartIndex() == 1024 * checkRangeCounter);
+            ++checkRangeCounter;
+            return MakeFuture<NProto::TCheckRangeResponse>();
+        };
+
+        TVector<TString> argv;
+        argv.reserve(4);
+        argv.emplace_back(GetProgramName());
+        argv.emplace_back("--disk-id=" + DefaultDiskId);
+        argv.emplace_back("--start-index=0");
+        argv.emplace_back(TStringBuilder() << "--blocks-count=" << blocsCount);
+
+        UNIT_ASSERT(ExecuteRequest("checkrange", argv, client));
+        UNIT_ASSERT(checkRangeCounter == expectedNumberOfRequest);
     }
 }
 
