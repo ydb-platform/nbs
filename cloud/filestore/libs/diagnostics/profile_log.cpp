@@ -72,12 +72,7 @@ void TProfileLog::Stop()
 void TProfileLog::Write(TRecord record)
 {
     // TODO(proller): Remove debug after bug fix 
-#ifndef NDEBUG
-    if(const bool FileSystemIdEmpty = record.FileSystemId.empty()) {
-        STORAGE_VERIFY_DEBUG_C(FileSystemIdEmpty, "profile-log", "filesystem-id", "Missing filesystem-id");
-        PrintBackTrace();
-    }
-#endif 
+    STORAGE_VERIFY_DEBUG_C(record.FileSystemId.empty(), "profile-log", "filesystem-id", "Missing filesystem-id");
 
     Records.Enqueue(std::move(record));
 }
