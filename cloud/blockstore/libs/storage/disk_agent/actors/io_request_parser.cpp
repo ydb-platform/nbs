@@ -24,7 +24,7 @@ private:
     TStorageBufferAllocator Allocator;
 
 public:
-    explicit TIORequestParserActor(
+    TIORequestParserActor(
             const TActorId& owner,
             TStorageBufferAllocator allocator)
         : TActor(&TIORequestParserActor::StateWork)
@@ -81,8 +81,10 @@ private:
         request->Record.Swap(&msg->Record);
 
         if (Allocator) {
+            const auto& buffers = request->Record.GetBlocks().GetBuffers();
+
             ui64 bytesCount = 0;
-            for (const auto& buffer: request->Record.GetBlocks().GetBuffers()) {
+            for (const auto& buffer: buffers) {
                 bytesCount += buffer.size();
             }
 
@@ -90,7 +92,7 @@ private:
             request->StorageSize = bytesCount;
 
             char* dst = request->Storage.get();
-            for (const auto& buffer: request->Record.GetBlocks().GetBuffers()) {
+            for (const auto& buffer: buffers) {
                 std::memcpy(dst, buffer.data(), buffer.size());
                 dst += buffer.size();
             }

@@ -20,7 +20,7 @@ namespace {
 ui64 GetVolumeRequestId(
     const TEvDiskAgentPrivate::TParsedWriteDeviceBlocksRequest& request)
 {
-    return request.Record.GetVolumeRequestId();
+    return NStorage::GetVolumeRequestId(request.Record);
 }
 
 TBlockRange64 BuildRequestBlockRange(
