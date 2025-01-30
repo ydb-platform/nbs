@@ -32,8 +32,6 @@ private:
     const TActorId Tablet;
     const ui64 BlockIndex;
     const ui64 BlocksCount;
-    const TDuration Timeout;
-    const TActorId Sender;
     const TEvVolume::TEvCheckRangeRequest::TPtr Ev;
 
 public:
@@ -41,7 +39,6 @@ public:
         const TActorId& tablet,
         ui64 blockId,
         ui64 blocksCount,
-        TDuration timeout,
         TEvVolume::TEvCheckRangeRequest::TPtr&& ev);
 
     void Bootstrap(const TActorContext& ctx);
@@ -75,12 +72,10 @@ TCheckRangeActor::TCheckRangeActor(
     const TActorId& tablet,
     ui64 blockOffset,
     ui64 blocksCount,
-    TDuration timeout,
     TEvVolume::TEvCheckRangeRequest::TPtr&& ev)
     : Tablet(tablet)
     , BlockIndex(blockOffset)
     , BlocksCount(blocksCount)
-    , Timeout(std::move(timeout))
     , Ev(std::move(ev))
 {}
 
@@ -174,18 +169,14 @@ NActors::IActorPtr TPartitionActor::CreateCheckRangeActor(
     NActors::TActorId tablet,
     ui64 blockOffset,
     ui64 blocksCount,
-    TDuration retryTimeout,
     TEvVolume::TEvCheckRangeRequest::TPtr ev)
 {
     return std::make_unique<NPartition2::TCheckRangeActor>(
         std::move(tablet),
         blockOffset,
         blocksCount,
-        retryTimeout,
         std::move(ev));
 }
-
-////////////////////////////////////////////////////////////////////////////////
 
 void NPartition2::TPartitionActor::HandleCheckRange(
     const TEvVolume::TEvCheckRangeRequest::TPtr& ev,
@@ -213,7 +204,6 @@ void NPartition2::TPartitionActor::HandleCheckRange(
             SelfId(),
             msg->Record.GetBlockIdx(),
             msg->Record.GetBlockCount(),
-            Config->GetCompactionRetryTimeout(),
             std::move(ev)));
     Actors.insert(actorId);
 }

@@ -21,6 +21,7 @@ private:
     ui64 BlockIdx;
     ui64 BlockCount;
     ui64 BlocksPerRequest = 0;
+    bool ShowSuccess = false;
 
 public:
     TCheckRangeCommand(IBlockStorePtr client)
@@ -41,6 +42,12 @@ public:
         Opts.AddLongOption("blocks-per-request", "blocks per request")
             .RequiredArgument("NUM")
             .StoreResult(&BlocksPerRequest);
+
+        Opts.AddLongOption(
+                "show-success",
+                "show logs for intervals with a successfully completed operation")
+            .RequiredArgument("BOOL")
+            .StoreResult(&ShowSuccess);
     }
 
 protected:
@@ -56,7 +63,7 @@ protected:
 
         ui32 errorCount = 0;
 
-        ui32 remainingBlocks = BlockCount;
+        ui64 remainingBlocks = BlockCount;
         ui64 currentBlockIdx = BlockIdx;
         if (BlocksPerRequest <= 0) {
             BlocksPerRequest = 1024;
@@ -88,6 +95,8 @@ protected:
             if (HasError(result)) {
                 if (result.GetError().GetCode() == E_ARGUMENT) {
                     isOutOfBound = true;
+                    output << "E_ARGUMENT error : "
+                           << FormatError(result.GetError()) << Endl;
                 } else {
                     output << "Error in range [" << currentBlockIdx << ", "
                            << (currentBlockIdx + blocksInThisRequest - 1)
@@ -95,9 +104,11 @@ protected:
                     errorCount++;
                 }
             } else {
-                output << "Ok in range: [" << currentBlockIdx << ", "
-                       << (currentBlockIdx + blocksInThisRequest - 1) << "]"
-                       << Endl;
+                if (ShowSuccess) {
+                    output << "Ok in range: [" << currentBlockIdx << ", "
+                           << (currentBlockIdx + blocksInThisRequest - 1) << "]"
+                           << Endl;
+                }
             }
 
             remainingBlocks -= blocksInThisRequest;

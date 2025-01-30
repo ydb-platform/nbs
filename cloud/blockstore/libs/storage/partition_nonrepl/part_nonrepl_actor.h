@@ -181,16 +181,10 @@ private:
         const TEvNonreplPartitionPrivate::TEvChecksumBlocksCompleted::TPtr& ev,
         const NActors::TActorContext& ctx);
 
-    NProto::TError DoHandleCheckRange(
-        const NActors::TActorContext& ctx,
-        ui64 blockOffset,
-        ui64 blocksCount);
-
     NActors::IActorPtr CreateCheckRangeActor(
         NActors::TActorId tablet,
         ui64 blockOffset,
         ui64 blocksCount,
-        TDuration retryTimeout,
         TEvVolume::TEvCheckRangeRequest::TPtr ev);
 
     bool HandleRequests(STFUNC_SIG);

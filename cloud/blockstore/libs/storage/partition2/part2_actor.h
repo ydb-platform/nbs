@@ -554,16 +554,10 @@ private:
         const NActors::TActorContext& ctx,
         TEvPartitionPrivate::TOperationCompleted operation);
 
-    NProto::TError DoHandleCheckRange(
-        const NActors::TActorContext& ctx,
-        ui64 blockOffset,
-        ui64 blocksCount);
-
     NActors::IActorPtr CreateCheckRangeActor(
         NActors::TActorId tablet,
         ui64 blockOffset,
         ui64 blocksCount,
-        TDuration retryTimeout,
         TEvVolume::TEvCheckRangeRequest::TPtr ev);
 
     bool HandleRequests(STFUNC_SIG);
