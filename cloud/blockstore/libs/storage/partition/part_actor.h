@@ -433,7 +433,7 @@ private:
 
     NActors::IActorPtr CreateCheckRangeActor(
         NActors::TActorId tablet,
-        ui64 blockOffset,
+        ui64 startIndex,
         ui64 blocksCount,
         TEvVolume::TEvCheckRangeRequest::TPtr ev);
 

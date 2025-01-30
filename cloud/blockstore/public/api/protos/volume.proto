@@ -754,11 +754,11 @@ message TCheckRangeRequest
     // Label of volume.
     string DiskId = 2;
 
-    // First block Idx
-    uint64 BlockIdx = 3;
+    // First block index.
+    uint64 StartIndex = 3;
 
-    // BlocksCount
-    uint64 BlockCount = 4;
+    // Number of blobs per batch.
+    uint64 BlocksCount = 4;
 }
 
 message TCheckRangeResponse

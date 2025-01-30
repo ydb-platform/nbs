@@ -1723,7 +1723,7 @@ Y_UNIT_TEST_SUITE(TServiceActionsTest)
         {
             NPrivateProto::TCheckRangeRequest request;
             request.SetDiskId("vol0");
-            request.SetBlockId(0);
+            request.SetStartIndex(0);
             request.SetBlocksCount(1000);
 
             TString buf;

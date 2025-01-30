@@ -30,14 +30,14 @@ class TCheckRangeActor final: public TActorBootstrapped<TCheckRangeActor>
 {
 private:
     const TActorId Tablet;
-    const ui64 BlockIndex;
+    const ui64 StartIndex;
     const ui64 BlocksCount;
     const TEvVolume::TEvCheckRangeRequest::TPtr Ev;
 
 public:
     TCheckRangeActor(
         const TActorId& tablet,
-        ui64 blockId,
+        ui64 startIndex,
         ui64 blocksCount,
         TEvVolume::TEvCheckRangeRequest::TPtr&& ev);
 
@@ -70,11 +70,11 @@ private:
 
 TCheckRangeActor::TCheckRangeActor(
     const TActorId& tablet,
-    ui64 blockOffset,
+    ui64 startIndex,
     ui64 blocksCount,
     TEvVolume::TEvCheckRangeRequest::TPtr&& ev)
     : Tablet(tablet)
-    , BlockIndex(blockOffset)
+    , StartIndex(startIndex)
     , BlocksCount(blocksCount)
     , Ev(std::move(ev))
 {}
@@ -89,7 +89,7 @@ void TCheckRangeActor::SendReadBlocksRequest(const TActorContext& ctx)
 {
     auto request = std::make_unique<TEvService::TEvReadBlocksRequest>();
 
-    request->Record.SetStartIndex(BlockIndex);
+    request->Record.SetStartIndex(StartIndex);
     request->Record.SetBlocksCount(BlocksCount);
 
     auto* headers = request->Record.MutableHeaders();
@@ -163,19 +163,17 @@ void TCheckRangeActor::HandleReadBlocksResponse(
 
 }   // namespace
 
-}   // namespace NCloud::NBlockStore::NStorage::NPartition
-
-namespace NCloud::NBlockStore::NStorage::NPartition {
+//////////////////////////////////////////////////////////////////
 
 NActors::IActorPtr TPartitionActor::CreateCheckRangeActor(
     NActors::TActorId tablet,
-    ui64 blockOffset,
+    ui64 startIndex,
     ui64 blocksCount,
     TEvVolume::TEvCheckRangeRequest::TPtr ev)
 {
     return std::make_unique<NPartition::TCheckRangeActor>(
         std::move(tablet),
-        blockOffset,
+        startIndex,
         blocksCount,
         std::move(ev));
 }
@@ -186,13 +184,13 @@ void NPartition::TPartitionActor::HandleCheckRange(
 {
     const auto* msg = ev->Get();
 
-    if (msg->Record.GetBlockCount() >
+    if (msg->Record.GetBlocksCount() >
         Config->GetBytesPerStripe() /  State->GetBlockSize())
     {
         auto err = MakeError(
             E_ARGUMENT,
             "Too many blocks requested: " +
-                std::to_string(msg->Record.GetBlockCount()) +
+                std::to_string(msg->Record.GetBlocksCount()) +
                 " Max blocks per request : " +
                 std::to_string(
                     Config->GetBytesPerStripe() /  State->GetBlockSize()));
@@ -206,8 +204,8 @@ void NPartition::TPartitionActor::HandleCheckRange(
         ctx,
         CreateCheckRangeActor(
             SelfId(),
-            msg->Record.GetBlockIdx(),
-            msg->Record.GetBlockCount(),
+            msg->Record.GetStartIndex(),
+            msg->Record.GetBlocksCount(),
             std::move(ev)));
 
     Actors.Insert(actorId);

@@ -509,13 +509,13 @@ std::unique_ptr<TEvService::TEvGetVolumeStatsRequest> TServiceClient::CreateGetV
 
 std::unique_ptr<TEvService::TEvCheckRangeRequest> TServiceClient::CreateCheckRangeRequest(
     const TString& diskId,
-    const ui64 blockIdx,
-    const ui64 blockCount)
+    const ui64 startIndex,
+    const ui64 blocksCount)
 {
     auto request = std::make_unique<TEvService::TEvCheckRangeRequest>();
     request->Record.SetDiskId(diskId);
-    request->Record.SetBlockIdx(blockIdx);
-    request->Record.SetBlockCount(blockCount);
+    request->Record.SetStartIndex(startIndex);
+    request->Record.SetBlocksCount(blocksCount);
 
     return request;
 }

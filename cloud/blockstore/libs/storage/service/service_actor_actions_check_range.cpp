@@ -76,8 +76,8 @@ void TCheckRangeActor::Bootstrap(const TActorContext& ctx)
 
     auto request = std::make_unique<TEvVolume::TEvCheckRangeRequest>();
     request->Record.SetDiskId(Request.GetDiskId());
-    request->Record.SetBlockIdx(Request.GetBlockId());
-    request->Record.SetBlockCount(Request.GetBlocksCount());
+    request->Record.SetStartIndex(Request.GetStartIndex());
+    request->Record.SetBlocksCount(Request.GetBlocksCount());
 
     LOG_INFO(
         ctx,

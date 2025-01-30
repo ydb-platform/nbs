@@ -81,8 +81,8 @@ void TCheckRangeActor::CheckRange(const TActorContext& ctx)
 
     auto request = std::make_unique<TEvVolume::TEvCheckRangeRequest>();
     request->Record.SetDiskId(DiskId);
-    request->Record.SetBlockIdx(BlockIdx);
-    request->Record.SetBlockCount(BlockCount);
+    request->Record.SetStartIndex(BlockIdx);
+    request->Record.SetBlocksCount(BlockCount);
 
     NCloud::Send(
         ctx,
@@ -150,7 +150,7 @@ void TServiceActor::HandleCheckRange(
         return;
     }
 
-    if (request.GetBlockCount() == 0) {
+    if (request.GetBlocksCount() == 0) {
         LOG_ERROR(
             ctx,
             TBlockStoreComponents::SERVICE,
@@ -174,8 +174,8 @@ void TServiceActor::HandleCheckRange(
         std::move(requestInfo),
         Config,
         request.GetDiskId(),
-        request.GetBlockIdx(),
-        request.GetBlockCount());
+        request.GetStartIndex(),
+        request.GetBlocksCount());
 }
 
 }   // namespace NCloud::NBlockStore::NStorage
