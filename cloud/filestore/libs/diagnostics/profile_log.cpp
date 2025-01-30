@@ -71,12 +71,14 @@ void TProfileLog::Stop()
 
 void TProfileLog::Write(TRecord record)
 {
-    static bool reported = false;
-    if (!reported && record.FileSystemId.empty()) {
-        reported = true;
-        Cerr << "Profile log record without filesystem id. Trace:\n";
+    // TODO(proller): Remove debug after bug fix 
+#ifndef NDEBUG
+    if(const bool FileSystemIdEmpty = record.FileSystemId.empty()) {
+        STORAGE_VERIFY_DEBUG_C(FileSystemIdEmpty, "profile-log", "filesystem-id", "Missing filesystem-id");
         PrintBackTrace();
     }
+#endif 
+
     Records.Enqueue(std::move(record));
 }
 
