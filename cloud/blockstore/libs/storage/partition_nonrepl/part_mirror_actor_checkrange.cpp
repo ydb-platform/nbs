@@ -1,4 +1,4 @@
-#include "part_nonrepl_actor.h"
+#include "part_mirror_actor.h"
 
 #include <cloud/blockstore/libs/service/context.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
@@ -32,12 +32,13 @@ private:
     const TActorId Tablet;
     const ui64 StartIndex;
     const ui64 BlocksCount;
+    const TActorId Sender;
     const TEvVolume::TEvCheckRangeRequest::TPtr Ev;
 
 public:
     TCheckRangeActor(
         const TActorId& tablet,
-        ui64 blockId,
+        ui64 startIndex,
         ui64 blocksCount,
         TEvVolume::TEvCheckRangeRequest::TPtr&& ev);
 
@@ -83,12 +84,10 @@ void TCheckRangeActor::Bootstrap(const TActorContext& ctx)
 {
     SendReadBlocksRequest(ctx);
     Become(&TThis::StateWork);
-    LOG_ERROR(ctx, TBlockStoreComponents::PARTITION_NONREPL, "!!!!!!!!!!!!!!!!!!! Bootstrap");
 }
 
 void TCheckRangeActor::SendReadBlocksRequest(const TActorContext& ctx)
 {
-    const TString backgroundOpsClientId = "migration";
     auto request = std::make_unique<TEvService::TEvReadBlocksRequest>();
 
     request->Record.SetStartIndex(StartIndex);
@@ -96,7 +95,6 @@ void TCheckRangeActor::SendReadBlocksRequest(const TActorContext& ctx)
 
     auto* headers = request->Record.MutableHeaders();
 
-    headers->SetClientId(backgroundOpsClientId);
     headers->SetIsBackgroundRequest(true);
     NCloud::Send(ctx, Tablet, std::move(request));
 }
@@ -154,6 +152,11 @@ void TCheckRangeActor::HandleReadBlocksResponse(
 
     if (HasError(msg->Record.GetError())) {
         auto errorMessage = msg->Record.GetError().GetMessage();
+        LOG_ERROR(
+            ctx,
+            TBlockStoreComponents::VOLUME,
+            "reading error has occurred: " + errorMessage + "   message   " +
+                msg->Record.GetError().message());
     }
 
     ReplyAndDie(ctx, msg->Record.GetError());
@@ -165,7 +168,7 @@ void TCheckRangeActor::HandleReadBlocksResponse(
 
 namespace NCloud::NBlockStore::NStorage {
 
-NActors::IActorPtr TNonreplicatedPartitionActor::CreateCheckRangeActor(
+NActors::IActorPtr TMirrorPartitionActor::CreateCheckRangeActor(
     NActors::TActorId tablet,
     ui64 startIndex,
     ui64 blocksCount,
@@ -178,14 +181,15 @@ NActors::IActorPtr TNonreplicatedPartitionActor::CreateCheckRangeActor(
         std::move(ev));
 }
 
-void TNonreplicatedPartitionActor::HandleCheckRange(
+
+void TMirrorPartitionActor::HandleCheckRange(
     const TEvVolume::TEvCheckRangeRequest::TPtr& ev,
     const NActors::TActorContext& ctx)
 {
     const auto* msg = ev->Get();
 
     if (msg->Record.GetBlocksCount() >
-        Config->GetBytesPerStripe() /  PartConfig->GetBlockSize())
+        Config->GetBytesPerStripe() /  State.GetBlockSize())
     {
         auto err = MakeError(
             E_ARGUMENT,
@@ -193,22 +197,28 @@ void TNonreplicatedPartitionActor::HandleCheckRange(
                 std::to_string(msg->Record.GetBlocksCount()) +
                 " Max blocks per request : " +
                 std::to_string(
-                    Config->GetBytesPerStripe() /  PartConfig->GetBlockSize()));
+                    Config->GetBytesPerStripe() /  State.GetBlockSize()));
         auto response =
             std::make_unique<TEvVolume::TEvCheckRangeResponse>(std::move(err));
         NCloud::Reply(ctx, *ev, std::move(response));
         return;
     }
 
-    const auto actorId = NCloud::Register(
+    const auto blockRange = TBlockRange64::WithLength(
+        msg->Record.GetStartIndex(),
+        msg->Record.GetBlocksCount());
+
+
+    const auto requestIdentityKey = ev->Cookie;
+    RequestsInProgress.AddReadRequest(requestIdentityKey, blockRange);
+
+    NCloud::Register(
         ctx,
         CreateCheckRangeActor(
             SelfId(),
             msg->Record.GetStartIndex(),
             msg->Record.GetBlocksCount(),
             std::move(ev)));
-
-    RequestsInProgress.AddReadRequest(actorId);
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

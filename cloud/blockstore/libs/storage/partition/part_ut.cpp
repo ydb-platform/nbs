@@ -944,8 +944,8 @@ public:
     {
         auto request = std::make_unique<TEvVolume::TEvCheckRangeRequest>();
         request->Record.SetDiskId(id);
-        request->Record.SetBlockIdx(idx);
-        request->Record.SetBlockCount(size);
+        request->Record.SetStartIndex(idx);
+        request->Record.SetBlocksCount(size);
         return request;
     }
 

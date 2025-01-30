@@ -179,6 +179,12 @@ private:
         const typename TMethod::TRequest::TPtr& ev,
         const NActors::TActorContext& ctx);
 
+    NActors::IActorPtr CreateCheckRangeActor(
+        NActors::TActorId tablet,
+        ui64 startIndex,
+        ui64 blocksCount,
+        TEvVolume::TEvCheckRangeRequest::TPtr ev);
+
     BLOCKSTORE_IMPLEMENT_REQUEST(ReadBlocks, TEvService);
     BLOCKSTORE_IMPLEMENT_REQUEST(WriteBlocks, TEvService);
     BLOCKSTORE_IMPLEMENT_REQUEST(ReadBlocksLocal, TEvService);
@@ -193,6 +199,7 @@ private:
     BLOCKSTORE_IMPLEMENT_REQUEST(GetRebuildMetadataStatus, TEvVolume);
     BLOCKSTORE_IMPLEMENT_REQUEST(ScanDisk, TEvVolume);
     BLOCKSTORE_IMPLEMENT_REQUEST(GetScanDiskStatus, TEvVolume);
+    BLOCKSTORE_IMPLEMENT_REQUEST(CheckRange, TEvVolume);
 };
 
 }   // namespace NCloud::NBlockStore::NStorage

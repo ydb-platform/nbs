@@ -1920,6 +1920,138 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
         }
     }
 
+    Y_UNIT_TEST(ShouldCheckRange)
+    {
+        TTestBasicRuntime runtime;
+
+        TTestEnv env(runtime);
+        TPartitionClient client(runtime, env.ActorId);
+
+        client.WriteBlocks(
+            TBlockRange64::MakeClosedInterval(0, 1024 * 1024),
+            1);
+
+        ui32 status = -1;
+
+        runtime.SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
+                switch (event->GetTypeRewrite()) {
+                    case TEvVolume::EvCheckRangeResponse: {
+                        using TEv = TEvVolume::TEvCheckRangeResponse;
+                        const auto* msg = event->Get<TEv>();
+                        status = msg->GetStatus();
+                        break;
+                    }
+                }
+                return TTestActorRuntime::DefaultObserverFunc(event);
+            });
+
+        const auto checkRange = [&](ui32 idx, ui32 size)
+        {
+            status = -1;
+
+            const auto response = client.CheckRange("id", idx, size);
+
+            TDispatchOptions options;
+            options.FinalEvents.emplace_back(TEvVolume::EvCheckRangeResponse);
+            runtime.DispatchEvents(options, TDuration::Seconds(3));
+
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, status);
+        };
+
+        checkRange(0, 4096);
+        checkRange(1024, 2048);
+        checkRange(1, 1);
+        checkRange(2000, 1000);
+    }
+
+    Y_UNIT_TEST(ShouldCheckRangeWithBrokenBlocks)
+    {
+        TTestBasicRuntime runtime;
+
+        TTestEnv env(runtime);
+        TPartitionClient client(runtime, env.ActorId);
+
+        client.WriteBlocks(
+            TBlockRange64::MakeClosedInterval(0, 1024 * 1024),
+            1);
+
+        ui32 status = -1;
+
+        runtime.SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
+                switch (event->GetTypeRewrite()) {
+                    case TEvVolume::EvCheckRangeResponse: {
+                        using TEv = TEvVolume::TEvCheckRangeResponse;
+                        const auto* msg = event->Get<TEv>();
+                        status = msg->GetStatus();
+                        break;
+                    }
+                }
+
+                return TTestActorRuntime::DefaultObserverFunc(event);
+            });
+
+        const auto checkRange = [&](ui32 idx, ui32 size)
+        {
+            status = -1;
+
+            const auto response = client.CheckRange("id", idx, size);
+
+            TDispatchOptions options;
+            options.FinalEvents.emplace_back(TEvVolume::EvCheckRangeResponse);
+            runtime.DispatchEvents(options, TDuration::Seconds(3));
+
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, status);
+        };
+
+        checkRange(0, 4096);
+        checkRange(1024, 2048);
+        checkRange(1, 1);
+        checkRange(2000, 1000);
+    }
+
+    Y_UNIT_TEST(ShouldSuccessfullyCheckRangeIfDiskIsEmpty)
+    {
+        TTestBasicRuntime runtime;
+
+        TTestEnv env(runtime);
+        TPartitionClient client(runtime, env.ActorId);
+
+        const ui32 idx = 0;
+        const ui32 size = 1;
+        const auto response = client.CheckRange("id", idx, size);
+
+        TDispatchOptions options;
+        options.FinalEvents.emplace_back(TEvVolume::EvCheckRangeResponse);
+
+        runtime.DispatchEvents(options, TDuration::Seconds(1));
+
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
+    }
+
+    Y_UNIT_TEST(ShouldntCheckRangeWithBigBlockCount)
+    {
+        TTestBasicRuntime runtime;
+
+        TTestEnv env(runtime);
+        TPartitionClient client(runtime, env.ActorId);
+
+        const ui32 idx = 0;
+
+        client.SendCheckRangeRequest("id", idx, 16_MB/DefaultBlockSize + 1);
+        const auto response =
+            client.RecvResponse<TEvVolume::TEvCheckRangeResponse>();
+
+        TDispatchOptions options;
+        options.FinalEvents.emplace_back(TEvVolume::EvCheckRangeResponse);
+
+        runtime.DispatchEvents(options, TDuration::Seconds(1));
+
+        UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, response->GetStatus());
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

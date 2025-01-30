@@ -18,8 +18,8 @@ class TCheckRangeCommand final: public TCommand
 {
 private:
     TString DiskId;
-    ui64 BlockIdx;
-    ui64 BlockCount;
+    ui64 StartIndex;
+    ui64 BlocksCount;
     ui64 BlocksPerRequest = 0;
     bool ShowSuccess = false;
 
@@ -33,11 +33,11 @@ public:
 
         Opts.AddLongOption("start-index", "start block index")
             .RequiredArgument("NUM")
-            .StoreResult(&BlockIdx);
+            .StoreResult(&StartIndex);
 
         Opts.AddLongOption("blocks-count", "number of blocks to check")
             .RequiredArgument("NUM")
-            .StoreResult(&BlockCount);
+            .StoreResult(&BlocksCount);
 
         Opts.AddLongOption("blocks-per-request", "blocks per request")
             .RequiredArgument("NUM")
@@ -45,7 +45,8 @@ public:
 
         Opts.AddLongOption(
                 "show-success",
-                "show logs for intervals with a successfully completed operation")
+                "show logs for the intervals where request was successfully "
+                "completed")
             .RequiredArgument("BOOL")
             .StoreResult(&ShowSuccess);
     }
@@ -63,22 +64,21 @@ protected:
 
         ui32 errorCount = 0;
 
-        ui64 remainingBlocks = BlockCount;
-        ui64 currentBlockIdx = BlockIdx;
+        ui64 remainingBlocks = BlocksCount;
+        ui64 currentBlockIndex = StartIndex;
         if (BlocksPerRequest <= 0) {
             BlocksPerRequest = 1024;
         }
 
         while (remainingBlocks > 0) {
-            bool isOutOfBound = false;
 
             ui32 blocksInThisRequest =
                 std::min(remainingBlocks, BlocksPerRequest);
 
             auto request = std::make_shared<NProto::TCheckRangeRequest>();
             request->SetDiskId(DiskId);
-            request->SetBlockIdx(currentBlockIdx);
-            request->SetBlockCount(blocksInThisRequest);
+            request->SetStartIndex(currentBlockIndex);
+            request->SetBlocksCount(blocksInThisRequest);
 
             STORAGE_DEBUG("Sending CheckRange request");
             const auto requestId = GetRequestId(*request);
@@ -94,28 +94,25 @@ protected:
 
             if (HasError(result)) {
                 if (result.GetError().GetCode() == E_ARGUMENT) {
-                    isOutOfBound = true;
                     output << "E_ARGUMENT error : "
                            << FormatError(result.GetError()) << Endl;
+                    break;
                 } else {
-                    output << "Error in range [" << currentBlockIdx << ", "
-                           << (currentBlockIdx + blocksInThisRequest - 1)
+                    output << "Error in range [" << currentBlockIndex << ", "
+                           << (currentBlockIndex + blocksInThisRequest - 1)
                            << "]: " << FormatError(result.GetError()) << Endl;
                     errorCount++;
                 }
             } else {
                 if (ShowSuccess) {
-                    output << "Ok in range: [" << currentBlockIdx << ", "
-                           << (currentBlockIdx + blocksInThisRequest - 1) << "]"
+                    output << "Ok in range: [" << currentBlockIndex << ", "
+                           << (currentBlockIndex + blocksInThisRequest - 1) << "]"
                            << Endl;
                 }
             }
 
             remainingBlocks -= blocksInThisRequest;
-            currentBlockIdx += blocksInThisRequest;
-            if (isOutOfBound) {
-                break;
-            }
+            currentBlockIndex += blocksInThisRequest;
         }
 
         output << "Total errors caught: " << errorCount << Endl;
@@ -128,7 +125,8 @@ private:
         const auto* diskId = ParseResultPtr->FindLongOptParseResult("disk-id");
         const auto* blockIdx =
             ParseResultPtr->FindLongOptParseResult("start-index");
-        const auto* blockCount = ParseResultPtr->FindLongOptParseResult("blocks-count");
+        const auto* blockCount =
+            ParseResultPtr->FindLongOptParseResult("blocks-count");
 
         if (!diskId) {
             STORAGE_ERROR("Disk id is required");
