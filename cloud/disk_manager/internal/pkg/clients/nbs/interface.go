@@ -399,4 +399,13 @@ type TestingClient interface {
 	GetCheckpoints(ctx context.Context, diskID string) ([]string, error)
 
 	List(ctx context.Context) ([]string, error)
+
+	BackupDiskRegistryState(ctx context.Context) (*DiskRegistryBackup, error)
+
+	DisableDevices(
+		ctx context.Context,
+		agentID string,
+		deviceUUIDs []string,
+		message string,
+	) error
 }

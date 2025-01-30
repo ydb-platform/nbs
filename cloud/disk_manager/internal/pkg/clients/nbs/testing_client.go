@@ -3,6 +3,7 @@ package nbs
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"hash/crc32"
 	"math/rand"
@@ -564,4 +565,117 @@ func (c *testingClient) GetCheckpoints(
 
 func (c *testingClient) List(ctx context.Context) ([]string, error) {
 	return c.client.nbs.ListVolumes(ctx)
+}
+
+func (c *client) BackupDiskRegistryState(
+	ctx context.Context,
+) (*DiskRegistryBackup, error) {
+
+	output, err := c.nbs.ExecuteAction(ctx, "backupdiskregistrystate", []byte("{}"))
+	if err != nil {
+		return nil, wrapError(err)
+	}
+
+	var state diskRegistryState
+	err = json.Unmarshal(output, &state)
+	if err != nil {
+		return nil, err
+	}
+
+	return &state.Backup, nil
+}
+
+func (c *client) DisableDevices(
+	ctx context.Context,
+	agentID string,
+	deviceUUIDs []string,
+	message string,
+) error {
+
+	if len(deviceUUIDs) == 0 {
+		return fmt.Errorf("list of devices to disable should contain at least one device")
+	}
+
+	deviceUUIDsField, err := json.Marshal(deviceUUIDs)
+	if err != nil {
+		return nil
+	}
+
+	input := fmt.Sprintf(
+		"{\"DisableAgent\":{\"AgentId\":\"%v\",\"DeviceUUIDs\":%v},\"Message\":\"%v\"}",
+		agentID,
+		string(deviceUUIDsField),
+		message,
+	)
+
+	_, err = c.nbs.ExecuteAction(
+		ctx,
+		"diskregistrychangestate",
+		[]byte(input),
+	)
+
+	return wrapError(err)
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+type diskRegistryCheckpointReplica struct {
+	CheckpointID string `json:"CheckpointId"`
+	SourceDiskID string `json:"SourceDiskId"`
+}
+
+type diskRegistryDisk struct {
+	DiskID            string                        `json:"DiskId"`
+	DeviceUUIDs       []string                      `json:"DeviceUUIDs"`
+	CheckpointReplica diskRegistryCheckpointReplica `json:"CheckpointReplica"`
+}
+
+type diskRegistryDevice struct {
+	DeviceUUID string `json:"DeviceUUID"`
+}
+
+type diskRegistryAgent struct {
+	Devices []diskRegistryDevice `json:"Devices"`
+	AgentID string               `json:"AgentId"`
+}
+
+type DiskRegistryBackup struct {
+	Disks  []diskRegistryDisk  `json:"Disks"`
+	Agents []diskRegistryAgent `json:"Agents"`
+}
+
+type diskRegistryState struct {
+	Backup DiskRegistryBackup `json:"Backup"`
+}
+
+func (b *DiskRegistryBackup) GetDevicesOfDisk(diskID string) []string {
+	for _, disk := range b.Disks {
+		if disk.DiskID == diskID {
+			return disk.DeviceUUIDs
+		}
+	}
+	return nil
+}
+
+func (b *DiskRegistryBackup) GetDevicesOfShadowDisk(
+	originalDiskID string,
+) []string {
+
+	for _, disk := range b.Disks {
+		if disk.CheckpointReplica.SourceDiskID == originalDiskID {
+			return disk.DeviceUUIDs
+		}
+	}
+	return nil
+}
+
+func (b *DiskRegistryBackup) GetAgentIDByDeviceUUId(deviceUUID string) string {
+	for _, agent := range b.Agents {
+		for _, device := range agent.Devices {
+			if device.DeviceUUID == deviceUUID {
+				return agent.AgentID
+			}
+		}
+	}
+	return ""
 }
