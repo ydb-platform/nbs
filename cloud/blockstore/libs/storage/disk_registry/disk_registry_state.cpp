@@ -459,6 +459,17 @@ void TDiskRegistryState::ProcessDisks(TVector<NProto::TDiskConfig> configs)
         disk.MediaKind = NProto::STORAGE_MEDIA_SSD_NONREPLICATED;
         disk.MigrationStartTs = TInstant::MicroSeconds(config.GetMigrationStartTs());
 
+        if (config.DeviceUUIDsSize() == 1) {
+            const auto& deviceId = config.GetDeviceUUIDs()[0];
+            const auto* device = FindDevice(deviceId);
+            if (device &&
+                device->GetPoolKind() == NProto::DEVICE_POOL_KIND_LOCAL &&
+                device->GetBlockSize() == 512)
+            {
+                config.SetStorageMediaKind(NProto::STORAGE_MEDIA_SSD_LOCAL);
+            }
+        }
+
         for (auto& hi: *config.MutableHistory()) {
             disk.History.push_back(std::move(hi));
         }
