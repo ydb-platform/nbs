@@ -2,9 +2,10 @@
 
 #include "profile_log.h"
 
-
 #include <cloud/storage/core/libs/common/scheduler.h>
 #include <cloud/storage/core/libs/common/timer.h>
+#include <cloud/storage/core/libs/common/verify.h>
+
 
 #include <library/cpp/eventlog/eventlog.h>
 
@@ -74,12 +75,9 @@ void TProfileLog::Stop()
 
 void TProfileLog::Write(TRecord record)
 {
-    static bool reported = false;
-    if (!reported && record.FileSystemId.empty()) {
-        reported = true;
-        Cerr << "Profile log record without filesystem id. Trace:\n";
-        PrintBackTrace();
-    }
+    // TODO(proller): Remove debug after bug fix 
+    STORAGE_VERIFY_DEBUG_C(record.FileSystemId.empty(), "", "", "Missing filesystem id in profile log");
+
     Records.Enqueue(std::move(record));
 }
 
