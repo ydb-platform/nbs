@@ -1751,8 +1751,6 @@ func TestEnsureCheckpointReady(t *testing.T) {
 		time.Sleep(time.Microsecond * 100)
 	}
 
-	time.Sleep(time.Minute * 50)
-
 	err = client.DeleteCheckpointData(ctx, diskID, checkpointID)
 	require.NoError(t, err)
 
