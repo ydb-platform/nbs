@@ -623,6 +623,13 @@ func (s *nodeService) nodePublishDiskAsFilesystem(
 			"Staging target path is not mounted: %w", req.VolumeId)
 	}
 
+	readOnly, _ := s.mounter.IsFilesystemRemountedAsReadonly(req.StagingTargetPath)
+	if readOnly {
+		return s.statusErrorf(
+			codes.Internal,
+			"Filesystem was remounted as readonly")
+	}
+
 	mounted, _ = s.mounter.IsMountPoint(req.TargetPath)
 	if !mounted {
 		targetPerm := os.FileMode(0775)
