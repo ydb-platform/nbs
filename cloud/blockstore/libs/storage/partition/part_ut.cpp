@@ -11440,7 +11440,6 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
             const auto& stats = response->Record.GetStats();
             UNIT_ASSERT_VALUES_EQUAL(3, stats.GetMergedBlobsCount());
         }
-
     }
 
     Y_UNIT_TEST(ShouldProcessMultipleRangesUponForceCompaction)
