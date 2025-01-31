@@ -9,11 +9,12 @@ namespace NCloud::NBlockStore::NStorage::NDiskAgent {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-using TStorageBufferAllocator =
-    std::function<std::shared_ptr<char>(ui64 bytesCount)>;
+using TWriteDeviceBlocksRequestParser =
+    std::function<TAutoPtr<NActors::IEventBase>(
+        TAutoPtr<NActors::IEventHandle>& ev)>;
 
 std::unique_ptr<NActors::IActor> CreateIORequestParserActor(
     const NActors::TActorId& owner,
-    TStorageBufferAllocator allocator);
+    TWriteDeviceBlocksRequestParser parser);
 
 }   // namespace NCloud::NBlockStore::NStorage::NDiskAgent

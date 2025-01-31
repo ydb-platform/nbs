@@ -298,6 +298,8 @@ message TDiskAgentConfig
     // If enabled, IOParserActor allocates a storage buffer and copies the
     // request data into it.
     optional bool IOParserActorAllocateStorageEnabled = 39;
+
+    optional bool IOParserActorCustomParsingEnabled = 40;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

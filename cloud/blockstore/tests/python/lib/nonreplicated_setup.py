@@ -223,6 +223,7 @@ def setup_disk_agent_config(
     config.IOParserActorCount = 4
     config.OffloadAllIORequestsParsingEnabled = True
     config.IOParserActorAllocateStorageEnabled = True
+    config.IOParserActorCustomParsingEnabled = True
     config.PathsPerFileIOService = 2
 
     if cached_sessions_path is not None:

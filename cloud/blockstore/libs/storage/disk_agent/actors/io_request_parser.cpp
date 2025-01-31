@@ -21,15 +21,15 @@ class TIORequestParserActor: public TActor<TIORequestParserActor>
 {
 private:
     const TActorId Owner;
-    TStorageBufferAllocator Allocator;
+    TWriteDeviceBlocksRequestParser Parser;
 
 public:
     TIORequestParserActor(
             const TActorId& owner,
-            TStorageBufferAllocator allocator)
+            TWriteDeviceBlocksRequestParser parser)
         : TActor(&TIORequestParserActor::StateWork)
         , Owner(owner)
-        , Allocator(std::move(allocator))
+        , Parser(std::move(parser))
     {}
 
 private:
@@ -73,42 +73,20 @@ private:
 
     void HandleWriteDeviceBlocks(TAutoPtr<IEventHandle>& ev)
     {
-        auto request = std::make_unique<
-            TEvDiskAgentPrivate::TEvParsedWriteDeviceBlocksRequest>();
-
-        // parse protobuf
-        auto* msg = ev->Get<TEvDiskAgent::TEvWriteDeviceBlocksRequest>();
-        request->Record.Swap(&msg->Record);
-
-        if (Allocator) {
-            const auto& buffers = request->Record.GetBlocks().GetBuffers();
-
-            ui64 bytesCount = 0;
-            for (const auto& buffer: buffers) {
-                bytesCount += buffer.size();
-            }
-
-            request->Storage = Allocator(bytesCount);
-            request->StorageSize = bytesCount;
-
-            char* dst = request->Storage.get();
-            for (const auto& buffer: buffers) {
-                std::memcpy(dst, buffer.data(), buffer.size());
-                dst += buffer.size();
-            }
-            request->Record.ClearBlocks();
-        }
+        auto eventBase = Parser(ev);
 
         auto newEv = std::make_unique<IEventHandle>(
             ev->Recipient,
             ev->Sender,
-            request.release(),
+            eventBase.Release(),
             ev->Flags,
             ev->Cookie,
             nullptr,    // forwardOnNondelivery
             std::move(ev->TraceId));
 
-        newEv->Rewrite(newEv->Type, Owner);
+        newEv->Rewrite(
+            TEvDiskAgentPrivate::EvParsedWriteDeviceBlocksRequest,
+            Owner);
 
         ActorContext().Send(std::move(newEv));
     }
@@ -131,9 +109,9 @@ private:
 
 std::unique_ptr<IActor> CreateIORequestParserActor(
     const TActorId& owner,
-    TStorageBufferAllocator allocator)
+    TWriteDeviceBlocksRequestParser parser)
 {
-    return std::make_unique<TIORequestParserActor>(owner, std::move(allocator));
+    return std::make_unique<TIORequestParserActor>(owner, std::move(parser));
 }
 
 }   // namespace NCloud::NBlockStore::NStorage::NDiskAgent

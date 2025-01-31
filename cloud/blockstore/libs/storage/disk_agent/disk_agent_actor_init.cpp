@@ -1,6 +1,7 @@
 #include "disk_agent_actor.h"
 
 #include "actors/io_request_parser.h"
+#include "model/request_parser.h"
 
 #include <cloud/blockstore/libs/diagnostics/request_stats.h>
 #include <cloud/storage/core/libs/common/error.h>
@@ -143,23 +144,36 @@ void TDiskAgentActor::HandleInitAgentCompleted(
             TBlockStoreComponents::DISK_AGENT,
             "Create " << count << " IORequestParserActor actors");
 
-        NDiskAgent::TStorageBufferAllocator allocator;
+        NDiskAgent::TWriteDeviceBlocksRequestParser parser;
+
         if (AgentConfig->GetIOParserActorAllocateStorageEnabled() &&
             AgentConfig->GetBackend() == NProto::DISK_AGENT_BACKEND_AIO)
         {
-            allocator = [](ui64 byteCount)
+            if (AgentConfig->GetIOParserActorCustomParsingEnabled()) {
+                parser = [](TAutoPtr<IEventHandle>& ev) -> TAutoPtr<IEventBase>
+                {
+                    return NDiskAgent::ParseWriteDeviceBlocksRequest(ev)
+                        .release();
+                };
+            } else {
+                parser = [](TAutoPtr<IEventHandle>& ev) -> TAutoPtr<IEventBase>
+                {
+                    return NDiskAgent::CopyWriteDeviceBlocksRequest(ev)
+                        .release();
+                };
+            }
+        } else {
+            parser = [](TAutoPtr<IEventHandle>& ev) -> TAutoPtr<IEventBase>
             {
-                return std::shared_ptr<char>(
-                    static_cast<char*>(
-                        std::aligned_alloc(DefaultBlockSize, byteCount)),
-                    std::free);
+                return NDiskAgent::DefaultWriteDeviceBlocksRequest(ev)
+                    .release();
             };
         }
 
         IOParserActors.reserve(count);
         for (ui32 i = 0; i != count; ++i) {
             auto actor =
-                NDiskAgent::CreateIORequestParserActor(ctx.SelfID, allocator);
+                NDiskAgent::CreateIORequestParserActor(ctx.SelfID, parser);
 
             IOParserActors.push_back(ctx.Register(
                 actor.release(),

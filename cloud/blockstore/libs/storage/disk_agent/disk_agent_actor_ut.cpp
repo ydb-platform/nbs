@@ -4848,6 +4848,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
             config.SetIOParserActorCount(4);
             config.SetOffloadAllIORequestsParsingEnabled(true);
             config.SetIOParserActorAllocateStorageEnabled(true);
+            config.SetIOParserActorCustomParsingEnabled(true);
 
             return config;
         }();

@@ -9,6 +9,12 @@ SRCS(
     device_generator_ut.cpp
     device_guard_ut.cpp
     device_scanner_ut.cpp
+    request_parser_ut.cpp
+)
+
+PEERDIR(
+    contrib/ydb/library/actors/actor_type
+    contrib/ydb/library/actors/interconnect
 )
 
 END()

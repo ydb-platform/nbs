@@ -317,6 +317,7 @@ def generate_disk_agent_txt(
     config.IOParserActorCount = 4
     config.OffloadAllIORequestsParsingEnabled = True
     config.IOParserActorAllocateStorageEnabled = True
+    config.IOParserActorCustomParsingEnabled = True
     config.PathsPerFileIOService = 1
 
     if device_erase_method is not None:
