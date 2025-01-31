@@ -11525,7 +11525,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         config.SetWriteRequestBatchingEnabled(true);
         config.SetWriteBlobThreshold(2_MB);
         auto runtime = PrepareTestActorRuntime(config);
-  
+
         TPartitionClient partition(*runtime);
         partition.WaitReady();
 

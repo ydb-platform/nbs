@@ -1,4 +1,5 @@
 #include "part_mirror_actor.h"
+#include "cloud/blockstore/libs/storage/disk_agent/model/public.h"
 
 #include <cloud/blockstore/libs/service/context.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
@@ -88,6 +89,7 @@ void TCheckRangeActor::Bootstrap(const TActorContext& ctx)
 
 void TCheckRangeActor::SendReadBlocksRequest(const TActorContext& ctx)
 {
+    const TString clientId = TString(BackgroundOpsClientId);
     auto request = std::make_unique<TEvService::TEvReadBlocksRequest>();
 
     request->Record.SetStartIndex(StartIndex);
@@ -95,6 +97,7 @@ void TCheckRangeActor::SendReadBlocksRequest(const TActorContext& ctx)
 
     auto* headers = request->Record.MutableHeaders();
 
+    headers->SetClientId(clientId);
     headers->SetIsBackgroundRequest(true);
     NCloud::Send(ctx, Tablet, std::move(request));
 }
@@ -149,6 +152,7 @@ void TCheckRangeActor::HandleReadBlocksResponse(
     const TActorContext& ctx)
 {
     const auto* msg = ev->Get();
+    auto error = MakeError(S_OK);
 
     if (HasError(msg->Record.GetError())) {
         auto errorMessage = msg->Record.GetError().GetMessage();
@@ -157,9 +161,12 @@ void TCheckRangeActor::HandleReadBlocksResponse(
             TBlockStoreComponents::VOLUME,
             "reading error has occurred: " + errorMessage + "   message   " +
                 msg->Record.GetError().message());
+        auto errorCode =
+            msg->Record.GetError().code() == E_ARGUMENT ? E_ARGUMENT : E_IO;
+        error = MakeError(errorCode, msg->Record.GetError().GetMessage());
     }
 
-    ReplyAndDie(ctx, msg->Record.GetError());
+    ReplyAndDie(ctx, error);
 }
 
 }   // namespace
