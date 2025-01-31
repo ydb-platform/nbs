@@ -5043,15 +5043,15 @@ void TDiskRegistryState::ApplyAgentStateChange(
             continue;
         }
 
-        if (agent.GetState() == NProto::AGENT_STATE_WARNING &&
-            MigrationCanBeStarted(disk, deviceId))
-        {
-            AddMigration(
-                disk,
-                diskId,
-                deviceId,
-                true   // needToReportInvalidMigration
-            );
+        if (agent.GetState() == NProto::AGENT_STATE_WARNING) {
+            if (MigrationCanBeStarted(disk, deviceId)) {
+                AddMigration(
+                    disk,
+                    diskId,
+                    deviceId,
+                    true   // needToReportInvalidMigration
+                );
+            }
         } else {
             if (agent.GetState() == NProto::AGENT_STATE_UNAVAILABLE
                     && disk.MasterDiskId)
