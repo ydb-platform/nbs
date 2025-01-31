@@ -105,6 +105,6 @@ jobs:
       test_threads: 32
       disk_type: 'network-ssd-nonreplicated'
       use_network_cache: "yes"
-      upload_ya_dir: "yes"
+      upload_ya_dir: "no"
       clean_ya_dir: "yes"
       nebius: ${{ vars.GLOBAL_RUN_ON_NEBIUS }}
