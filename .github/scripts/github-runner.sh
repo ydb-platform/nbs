@@ -92,6 +92,9 @@ sudo usermod -a -G docker "${USER_TO_CREATE}"
 sudo echo "${USER_TO_CREATE} ALL=(ALL) NOPASSWD:ALL" | sudo tee "/etc/sudoers.d/99-${USER_TO_CREATE}" > /dev/null
 sudo chmod 0440 "/etc/sudoers.d/99-${USER_TO_CREATE}"
 
+# increase the total number of aio requests to run more tests in parallel, default is 65536
+echo "fs.aio-max-nr=1048576" >> /etc/sysctl.conf
+
 if [ -n "$GITHUB_TOKEN" ] && [ -n "$ORG" ] && [ -n "$TEAM" ]; then
     export LOGINS_FILE
     export KEYS_FILE

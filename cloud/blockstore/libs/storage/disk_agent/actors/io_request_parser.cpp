@@ -21,23 +21,25 @@ class TIORequestParserActor: public TActor<TIORequestParserActor>
 {
 private:
     const TActorId Owner;
+    TStorageBufferAllocator Allocator;
 
 public:
-    explicit TIORequestParserActor(const TActorId& owner)
+    TIORequestParserActor(
+            const TActorId& owner,
+            TStorageBufferAllocator allocator)
         : TActor(&TIORequestParserActor::StateWork)
         , Owner(owner)
+        , Allocator(std::move(allocator))
     {}
 
 private:
     STFUNC(StateWork)
     {
         switch (ev->GetTypeRewrite()) {
-            HFunc(NActors::TEvents::TEvPoisonPill, HandlePoisonPill);
+            HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
 
             case TEvDiskAgent::EvWriteDeviceBlocksRequest:
-                HandleRequest<TEvDiskAgent::TEvWriteDeviceBlocksRequest>(
-                    ev,
-                    TEvDiskAgentPrivate::EvParsedWriteDeviceBlocksRequest);
+                HandleWriteDeviceBlocks(ev);
                 break;
 
             case TEvDiskAgent::EvReadDeviceBlocksRequest:
@@ -69,6 +71,48 @@ private:
         Die(ctx);
     }
 
+    void HandleWriteDeviceBlocks(TAutoPtr<IEventHandle>& ev)
+    {
+        auto request = std::make_unique<
+            TEvDiskAgentPrivate::TEvParsedWriteDeviceBlocksRequest>();
+
+        // parse protobuf
+        auto* msg = ev->Get<TEvDiskAgent::TEvWriteDeviceBlocksRequest>();
+        request->Record.Swap(&msg->Record);
+
+        if (Allocator) {
+            const auto& buffers = request->Record.GetBlocks().GetBuffers();
+
+            ui64 bytesCount = 0;
+            for (const auto& buffer: buffers) {
+                bytesCount += buffer.size();
+            }
+
+            request->Storage = Allocator(bytesCount);
+            request->StorageSize = bytesCount;
+
+            char* dst = request->Storage.get();
+            for (const auto& buffer: buffers) {
+                std::memcpy(dst, buffer.data(), buffer.size());
+                dst += buffer.size();
+            }
+            request->Record.ClearBlocks();
+        }
+
+        auto newEv = std::make_unique<IEventHandle>(
+            ev->Recipient,
+            ev->Sender,
+            request.release(),
+            ev->Flags,
+            ev->Cookie,
+            nullptr,    // forwardOnNondelivery
+            std::move(ev->TraceId));
+
+        newEv->Rewrite(newEv->Type, Owner);
+
+        ActorContext().Send(std::move(newEv));
+    }
+
     template <typename TRequest>
     void HandleRequest(TAutoPtr<IEventHandle>& ev, ui32 typeRewrite)
     {
@@ -85,9 +129,11 @@ private:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-std::unique_ptr<IActor> CreateIORequestParserActor(const TActorId& owner)
+std::unique_ptr<IActor> CreateIORequestParserActor(
+    const TActorId& owner,
+    TStorageBufferAllocator allocator)
 {
-    return std::make_unique<TIORequestParserActor>(owner);
+    return std::make_unique<TIORequestParserActor>(owner, std::move(allocator));
 }
 
 }   // namespace NCloud::NBlockStore::NStorage::NDiskAgent

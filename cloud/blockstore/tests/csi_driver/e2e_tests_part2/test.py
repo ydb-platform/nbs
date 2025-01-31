@@ -168,3 +168,36 @@ def test_node_volume_expand_vm_mode():
         raise
     finally:
         csi.cleanup_after_test(env, volume_name, access_type, [pod_id])
+
+
+def test_publish_volume_must_fail_after_fs_error():
+    env, run = csi.init()
+    try:
+        volume_name = "example-disk"
+        volume_size = 1024 ** 3
+        pod_name = "example-pod"
+        pod_id = "deadbeef1"
+        access_type = "mount"
+        env.csi.create_volume(name=volume_name, size=volume_size)
+        env.csi.stage_volume(volume_name, access_type)
+        env.csi.publish_volume(pod_id, volume_name, pod_name, access_type)
+
+        with open('/sys/fs/ext4/nbd0/trigger_fs_error', 'w') as f:
+            f.write("test error")
+
+        env.csi.unpublish_volume(pod_id, volume_name, access_type)
+
+        stage_path = "/var/lib/kubelet/plugins/kubernetes.io/csi/nbs.csi.nebius.ai/a/globalmount"
+        assert "ro" == get_access_mode(stage_path)
+
+        try:
+            env.csi.publish_volume(pod_id, volume_name, pod_name, access_type)
+            assert False
+        except subprocess.CalledProcessError:
+            pass
+
+    except subprocess.CalledProcessError as e:
+        csi.log_called_process_error(e)
+        raise
+    finally:
+        csi.cleanup_after_test(env, volume_name, access_type, [pod_id])

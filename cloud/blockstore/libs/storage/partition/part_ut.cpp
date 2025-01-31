@@ -74,11 +74,11 @@ TString GetBlockContent(char fill = 0, size_t size = DefaultBlockSize)
 
 TString GetBlocksContent(
     char fill = 0,
-    ui32 blocksCount = 1,
+    ui32 blockCount = 1,
     size_t blockSize = DefaultBlockSize)
 {
     TString result;
-    for (ui32 i = 0; i < blocksCount; ++i) {
+    for (ui32 i = 0; i < blockCount; ++i) {
         result += GetBlockContent(fill, blockSize);
     }
     return result;
@@ -160,7 +160,7 @@ private:
 void InitTestActorRuntime(
     TTestActorRuntime& runtime,
     const NProto::TStorageServiceConfig& config,
-    ui32 blocksCount,
+    ui32 blockCount,
     ui32 channelCount,
     std::unique_ptr<TTabletStorageInfo> tabletInfo,
     TTestPartitionInfo partitionInfo = TTestPartitionInfo(),
@@ -181,7 +181,7 @@ void InitTestActorRuntime(
     partConfig.SetStorageMediaKind(partitionInfo.MediaKind);
 
     partConfig.SetBlockSize(DefaultBlockSize);
-    partConfig.SetBlocksCount(blocksCount);
+    partConfig.SetBlocksCount(blockCount);
 
     auto* cps = partConfig.MutableExplicitChannelProfiles();
     cps->Add()->SetDataKind(static_cast<ui32>(EChannelDataKind::System));
@@ -274,7 +274,7 @@ void InitLogSettings(TTestActorRuntime& runtime)
 
 std::unique_ptr<TTestActorRuntime> PrepareTestActorRuntime(
     NProto::TStorageServiceConfig config = DefaultConfig(),
-    ui32 blocksCount = 1024,
+    ui32 blockCount = 1024,
     TMaybe<ui32> channelsCount = {},
     const TTestPartitionInfo& testPartitionInfo = TTestPartitionInfo(),
     IActorPtr volumeProxy = {},
@@ -322,7 +322,7 @@ std::unique_ptr<TTestActorRuntime> PrepareTestActorRuntime(
     InitTestActorRuntime(
         *runtime,
         config,
-        blocksCount,
+        blockCount,
         channelsCount ? *channelsCount : tabletInfo->Channels.size(),
         std::move(tabletInfo),
         testPartitionInfo,
@@ -797,12 +797,12 @@ public:
 
     std::unique_ptr<TEvVolume::TEvDescribeBlocksRequest> CreateDescribeBlocksRequest(
         ui32 startIndex,
-        ui32 blocksCount,
+        ui32 blockCount,
         const TString& checkpointId = "")
     {
         auto request = std::make_unique<TEvVolume::TEvDescribeBlocksRequest>();
         request->Record.SetStartIndex(startIndex);
-        request->Record.SetBlocksCount(blocksCount);
+        request->Record.SetBlocksCount(blockCount);
         request->Record.SetCheckpointId(checkpointId);
         return request;
     }
@@ -840,11 +840,11 @@ public:
 
     std::unique_ptr<TEvVolume::TEvCompactRangeRequest> CreateCompactRangeRequest(
         ui32 blockIndex,
-        ui32 blocksCount)
+        ui32 blockCount)
     {
         auto request = std::make_unique<TEvVolume::TEvCompactRangeRequest>();
         request->Record.SetStartIndex(blockIndex);
-        request->Record.SetBlocksCount(blocksCount);
+        request->Record.SetBlocksCount(blockCount);
         return request;
     }
 
@@ -1042,20 +1042,20 @@ struct TBlob
     TBlob(
         ui32 number,
         ui8 offset,
-        ui8 blocksCount = 1,
+        ui8 blockCount = 1,
         ui32 channel = 0,
         ui32 generation = 0
     )
         : Number(number)
         , Offset(offset)
-        , BlocksCount(blocksCount)
+        , BlockCount(blockCount)
         , Channel(channel)
         , Generation(generation)
     {}
 
     ui32 Number;
     ui8 Offset;
-    ui8 BlocksCount;
+    ui8 BlockCount;
     ui32 Channel;
     ui32 Generation;
 };
@@ -1091,7 +1091,7 @@ private:
     TString BaseDiskId;
     TString BaseDiskCheckpointId;
     TPartitionContent BasePartitionContent;
-    ui32 BlocksCount;
+    ui32 BlockCount;
     ui32 BaseBlockSize;
 
 public:
@@ -1100,7 +1100,7 @@ public:
         const TString& baseDiskId,
         const TString& baseDiskCheckpointId,
         const TPartitionContent& basePartitionContent,
-        ui32 blocksCount,
+        ui32 blockCount,
         ui32 baseBlockSize = DefaultBlockSize);
 
     void Bootstrap(const TActorContext& ctx);
@@ -1128,13 +1128,13 @@ TTestVolumeProxyActor::TTestVolumeProxyActor(
         const TString& baseDiskId,
         const TString& baseDiskCheckpointId,
         const TPartitionContent& basePartitionContent,
-        ui32 blocksCount,
+        ui32 blockCount,
         ui32 baseBlockSize)
     : BaseTabletId(baseTabletId)
     , BaseDiskId(baseDiskId)
     , BaseDiskCheckpointId(baseDiskCheckpointId)
     , BasePartitionContent(std::move(basePartitionContent))
-    , BlocksCount(blocksCount)
+    , BlockCount(blockCount)
     , BaseBlockSize(baseBlockSize)
 {}
 
@@ -1178,8 +1178,8 @@ void TTestVolumeProxyActor::HandleDescribeBlocksRequest(
             auto* range = blobPiece.AddRanges();
             range->SetBlobOffset(blob.Offset);
             range->SetBlockIndex(blockIndex);
-            range->SetBlocksCount(blob.BlocksCount);
-            blockIndex += blob.BlocksCount;
+            range->SetBlocksCount(blob.BlockCount);
+            blockIndex += blob.BlockCount;
         } else if (std::holds_alternative<TFresh>(descr)) {
             const auto& fresh = std::get<TFresh>(descr);
             auto& freshBlockRange = *response->Record.AddFreshBlockRanges();
@@ -1210,13 +1210,13 @@ void TTestVolumeProxyActor::HandleGetUsedBlocksRequest(
     auto response = std::make_unique<TEvVolume::TEvGetUsedBlocksResponse>();
     ui64 blockIndex = 0;
 
-    TCompressedBitmap bitmap(BlocksCount);
+    TCompressedBitmap bitmap(BlockCount);
 
     for (const auto& descr: BasePartitionContent) {
         if (std::holds_alternative<TBlob>(descr)) {
             const auto& blob = std::get<TBlob>(descr);
-            bitmap.Set(blockIndex, blockIndex + blob.BlocksCount);
-            blockIndex += blob.BlocksCount;
+            bitmap.Set(blockIndex, blockIndex + blob.BlockCount);
+            blockIndex += blob.BlockCount;
         } else if (std::holds_alternative<TFresh>(descr)) {
             bitmap.Set(blockIndex, blockIndex + 1);
             ++blockIndex;
@@ -1271,10 +1271,10 @@ void TTestVolumeProxyActor::HandleGetChangedBlocksRequest(
     for (const auto& descr: BasePartitionContent) {
         if (std::holds_alternative<TBlob>(descr)) {
             const auto& blob = std::get<TBlob>(descr);
-            for (ui64 block = blockIndex; block < blockIndex + blob.BlocksCount; block++) {
+            for (ui64 block = blockIndex; block < blockIndex + blob.BlockCount; block++) {
                 fillBlock(block);
             }
-            blockIndex += blob.BlocksCount;
+            blockIndex += blob.BlockCount;
         } else if (std::holds_alternative<TFresh>(descr)) {
             fillBlock(blockIndex);
             ++blockIndex;
@@ -1376,14 +1376,14 @@ TPartitionWithRuntime SetupOverlayPartition(
     const TPartitionContent& basePartitionContent = {},
     TMaybe<ui32> channelsCount = {},
     ui32 blockSize = DefaultBlockSize,
-    ui32 blocksCount = 1024,
+    ui32 blockCount = 1024,
     const NProto::TStorageServiceConfig& config = DefaultConfig())
 {
     TPartitionWithRuntime result;
 
     result.Runtime = PrepareTestActorRuntime(
         config,
-        blocksCount,
+        blockCount,
         channelsCount,
         {
             "overlay-disk",
@@ -1398,7 +1398,7 @@ TPartitionWithRuntime SetupOverlayPartition(
             "base-disk",
             "checkpoint",
             basePartitionContent,
-            blocksCount,
+            blockCount,
             blockSize));
 
     bool baseDiskIsMapped = false;
@@ -1450,7 +1450,7 @@ TString GetBlocksContent(
             result += TString(blockSize, char(0));
         } else if (std::holds_alternative<TBlob>(descr)) {
             const auto& blob = std::get<TBlob>(descr);
-            for (auto i = 0; i < blob.BlocksCount; ++i) {
+            for (auto i = 0; i < blob.BlockCount; ++i) {
                 const auto blobOffset = blob.Offset + i;
                 // Debugging is easier when block content is equal to blob offset.
                 result += TString(blockSize, char(blobOffset));
@@ -1643,22 +1643,25 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         );
     }
 
-    Y_UNIT_TEST(ShouldBatchSmallWrites)
+    Y_UNIT_TEST(ShouldBatchSmallWritesToMixedChannelIfThresholdExceeded)
     {
         NProto::TStorageServiceConfig config;
         config.SetWriteRequestBatchingEnabled(true);
+        config.SetWriteBlobThreshold(2_MB);
         auto runtime = PrepareTestActorRuntime(config);
 
         TPartitionClient partition(*runtime);
         partition.WaitReady();
 
-        runtime->SetObserverFunc(PartitionBatchWriteCollector(*runtime, 1000));
+        const ui32 blockCount = 1000;
+        runtime->SetObserverFunc(
+            PartitionBatchWriteCollector(*runtime, blockCount));
 
-        for (ui32 i = 0; i < 1000; ++i) {
+        for (ui32 i = 0; i < blockCount; ++i) {
             partition.SendWriteBlocksRequest(i, i);
         }
 
-        for (ui32 i = 0; i < 1000; ++i) {
+        for (ui32 i = 0; i < blockCount; ++i) {
             auto response = partition.RecvWriteBlocksResponse();
             UNIT_ASSERT(SUCCEEDED(response->GetStatus()));
         }
@@ -1666,28 +1669,27 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         auto response = partition.StatPartition();
         const auto& stats = response->Record.GetStats();
         UNIT_ASSERT(stats.GetMixedBlobsCount());
-        UNIT_ASSERT_VALUES_EQUAL(1000, stats.GetUsedBlocksCount());
+        UNIT_ASSERT_VALUES_EQUAL(blockCount - 1, stats.GetMixedBlocksCount());
+        UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMergedBlocksCount());
+        UNIT_ASSERT_VALUES_EQUAL(1, stats.GetFreshBlocksCount());
+        UNIT_ASSERT_VALUES_EQUAL(blockCount, stats.GetUsedBlocksCount());
         UNIT_ASSERT_VALUES_EQUAL(
-            1000,
-            stats.GetUserWriteCounters().GetRequestsCount()
-        );
+            blockCount,
+            stats.GetUserWriteCounters().GetRequestsCount());
         const auto batchCount = stats.GetUserWriteCounters().GetBatchCount();
-        UNIT_ASSERT(batchCount < 1000);
+        UNIT_ASSERT(batchCount < blockCount);
         UNIT_ASSERT(batchCount > 0);
 
-        for (ui32 i = 0; i < 1000; ++i) {
+        for (ui32 i = 0; i < blockCount; ++i) {
             UNIT_ASSERT_VALUES_EQUAL(
                 GetBlockContent(i),
-                GetBlockContent(partition.ReadBlocks(i))
-            );
+                GetBlockContent(partition.ReadBlocks(i)));
         }
 
         UNIT_ASSERT(stats.GetUserWriteCounters().GetExecTime() != 0);
 
         // checking that drain-related counters are in a consistent state
         partition.Drain();
-
-        // TODO: explicitly test the case when mixed blobs are generated via batching
     }
 
     Y_UNIT_TEST(ShouldBatchIntersectingWrites)
@@ -1705,8 +1707,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
             for (ui32 j = 0; j < 100; ++j) {
                 partition.SendWriteBlocksRequest(
                     TBlockRange32::WithLength(i * 100, j + 1),
-                    i + 1
-                );
+                    i + 1);
             }
         }
 
@@ -1718,11 +1719,13 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         auto response = partition.StatPartition();
         const auto& stats = response->Record.GetStats();
         UNIT_ASSERT(stats.GetMixedBlobsCount());
+        UNIT_ASSERT_VALUES_EQUAL(999, stats.GetMixedBlocksCount());
+        UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMergedBlocksCount());
+        UNIT_ASSERT_VALUES_EQUAL(100, stats.GetFreshBlocksCount());
         UNIT_ASSERT_VALUES_EQUAL(1000, stats.GetUsedBlocksCount());
         UNIT_ASSERT_VALUES_EQUAL(
             1000,
-            stats.GetUserWriteCounters().GetRequestsCount()
-        );
+            stats.GetUserWriteCounters().GetRequestsCount());
         const auto batchCount = stats.GetUserWriteCounters().GetBatchCount();
         UNIT_ASSERT(batchCount < 1000);
         UNIT_ASSERT(batchCount > 0);
@@ -1731,8 +1734,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
             for (ui32 j = 0; j < 100; ++j) {
                 UNIT_ASSERT_VALUES_EQUAL(
                     GetBlockContent(i + 1),
-                    GetBlockContent(partition.ReadBlocks(i * 100 + j))
-                );
+                    GetBlockContent(partition.ReadBlocks(i * 100 + j)));
             }
         }
 
@@ -6203,11 +6205,11 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
 
     Y_UNIT_TEST(ShouldCorrectlyCopyUsedBlocksCountForOverlayDisk)
     {
-        ui32 blocksCount =  1024 * 1024 * 1024;
+        ui32 blockCount =  1024 * 1024 * 1024;
         ui32 usedBlocksCount = 0;
 
         TPartitionContent baseContent;
-        for (size_t i = 0; i < blocksCount/4; i += 50) {
+        for (size_t i = 0; i < blockCount/4; i += 50) {
             baseContent.push_back(TBlob(i, 0, 49));
             usedBlocksCount += 49;
             baseContent.push_back(TEmpty());
@@ -6219,7 +6221,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
             baseContent,
             {},
             DefaultBlockSize,
-            blocksCount,
+            blockCount,
             DefaultConfig());
 
         auto& partition = *partitionWithRuntime.Partition;
@@ -6236,7 +6238,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
 
     Y_UNIT_TEST(ShouldCorrectlyCalculateLogicalUsedBlocksCountForOverlayDisk)
     {
-        ui32 blocksCount = 1024 * 128;
+        ui32 blockCount = 1024 * 128;
         TPartitionContent baseContent;
         for (size_t i = 0; i < 100; ++i) {
             baseContent.push_back(TEmpty());
@@ -6254,7 +6256,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
             baseContent,
             {},
             DefaultBlockSize,
-            blocksCount,
+            blockCount,
             DefaultConfig());
 
         auto& partition = *partitionWithRuntime.Partition;
@@ -10091,9 +10093,9 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         config.SetSSDMaxBlobsPerUnit(7);
         config.SetHDDMaxBlobsPerUnit(7);
 
-        ui32 blocksCount =  1024 * 1024;
+        ui32 blockCount =  1024 * 1024;
 
-        auto runtime = PrepareTestActorRuntime(config, blocksCount);
+        auto runtime = PrepareTestActorRuntime(config, blockCount);
 
         TPartitionClient partition(*runtime);
         partition.WaitReady();
@@ -11006,9 +11008,9 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         config.SetSSDMaxBlobsPerUnit(7);
         config.SetHDDMaxBlobsPerUnit(7);
 
-        ui32 blocksCount =  1024 * 1024;
+        ui32 blockCount =  1024 * 1024;
 
-        auto runtime = PrepareTestActorRuntime(config, blocksCount);
+        auto runtime = PrepareTestActorRuntime(config, blockCount);
 
         TPartitionClient partition(*runtime);
         partition.WaitReady();
@@ -11109,9 +11111,9 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         config.SetSSDMaxBlobsPerUnit(999999999);
         config.SetHDDMaxBlobsPerUnit(999999999);
 
-        ui32 blocksCount =  10 * 1024;
+        ui32 blockCount =  10 * 1024;
 
-        auto runtime = PrepareTestActorRuntime(config, blocksCount);
+        auto runtime = PrepareTestActorRuntime(config, blockCount);
 
         TPartitionClient partition(*runtime);
         partition.WaitReady();
@@ -11505,6 +11507,39 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
             const auto& stats = response->Record.GetStats();
             UNIT_ASSERT_VALUES_EQUAL(3, stats.GetMergedBlobsCount());
         }
+    }
+
+    Y_UNIT_TEST(ShouldBatchSmallWritesToFreshChannelIfThresholdNotExceeded)
+    {
+        NProto::TStorageServiceConfig config;
+        config.SetWriteRequestBatchingEnabled(true);
+        config.SetWriteBlobThreshold(2_MB);
+        auto runtime = PrepareTestActorRuntime(config);
+
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+
+        const ui32 blockCount = 500;
+        runtime->SetObserverFunc(
+            PartitionBatchWriteCollector(*runtime, blockCount));
+
+        for (ui32 i = 0; i < blockCount; ++i) {
+            partition.SendWriteBlocksRequest(i, i);
+        }
+
+        for (ui32 i = 0; i < blockCount; ++i) {
+            auto response = partition.RecvWriteBlocksResponse();
+            UNIT_ASSERT(SUCCEEDED(response->GetStatus()));
+        }
+
+        auto response = partition.StatPartition();
+        const auto& stats = response->Record.GetStats();
+        UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedBlocksCount());
+        UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMergedBlocksCount());
+        UNIT_ASSERT_VALUES_EQUAL(blockCount, stats.GetFreshBlocksCount());
+
+        // checking that drain-related counters are in a consistent state
+        partition.Drain();
     }
 }
 
