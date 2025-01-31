@@ -205,9 +205,18 @@ struct TPlacementGroupInfo
 };
 
 ////////////////////////////////////////////////////////////////////////////////
+namespace NTestSuiteTDiskRegistryStateMigrationTest {
+
+struct TTestCaseShouldReportMigrationsWithWrongDeviceOwnership;
+
+}   // namespace NTestSuiteTDiskRegistryStateMigrationTest
+
+////////////////////////////////////////////////////////////////////////////////
 
 class TDiskRegistryState
 {
+    friend struct NTestSuiteTDiskRegistryStateMigrationTest::
+        TTestCaseShouldReportMigrationsWithWrongDeviceOwnership;
     using TAgentId = TString;
     using TDeviceId = TString;
     using TDiskId = TString;
@@ -882,7 +891,9 @@ private:
     void AddMigration(
         const TDiskState& disk,
         const TString& diskId,
-        const TString& sourceDeviceId);
+        const TString& sourceDeviceId,
+        bool needToReportInvalidMigration
+    );
     void FillMigrations();
 
     const TDiskState* FindDiskState(const TDiskId& diskId) const;

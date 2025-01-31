@@ -609,8 +609,20 @@ void TDiskRegistryState::ProcessCheckpoints()
 void TDiskRegistryState::AddMigration(
     const TDiskState& disk,
     const TString& diskId,
-    const TString& sourceDeviceId)
+    const TString& sourceDeviceId,
+    bool needToReportInvalidMigration)
 {
+    if (needToReportInvalidMigration &&
+        !FindPtr(disk.Devices, sourceDeviceId))
+    {
+        ReportDiskRegistryWrongMigratedDeviceOwnership(Sprintf(
+            "%s: device[DeviceUUID = %s] not found in disk[DiskId = %s]",
+            "AddMigration",
+            sourceDeviceId.c_str(),
+            diskId.c_str()));
+        return;
+    }
+
     if (disk.CheckpointReplica.GetCheckpointId()) {
         // Don't start migrations for shadow disks.
         return;
@@ -667,7 +679,7 @@ void TDiskRegistryState::FillMigrations()
             }
 
             if (device->GetState() == NProto::DEVICE_STATE_WARNING) {
-                AddMigration(disk, diskId, uuid);
+                AddMigration(disk, diskId, uuid, false);
 
                 continue;
             }
@@ -677,7 +689,7 @@ void TDiskRegistryState::FillMigrations()
             }
 
             if (agent->GetState() == NProto::AGENT_STATE_WARNING) {
-                AddMigration(disk, diskId, uuid);
+                AddMigration(disk, diskId, uuid, false);
             }
         }
     }
@@ -5022,17 +5034,10 @@ void TDiskRegistryState::ApplyAgentStateChange(
             continue;
         }
 
-        if (agent.GetState() == NProto::AGENT_STATE_WARNING) {
-            if (Find(disk.Devices, deviceId) == disk.Devices.end()) {
-                ReportDiskRegistryWrongMigratedDeviceOwnership(
-                    TStringBuilder() << "ApplyAgentStateChange: device "
-                                     << deviceId << " not found");
-                continue;
-            }
-
-            if (MigrationCanBeStarted(disk, deviceId)) {
-                AddMigration(disk, diskId, deviceId);
-            }
+        if (agent.GetState() == NProto::AGENT_STATE_WARNING &&
+            MigrationCanBeStarted(disk, deviceId))
+        {
+            AddMigration(disk, diskId, deviceId, true);
         } else {
             if (agent.GetState() == NProto::AGENT_STATE_UNAVAILABLE
                     && disk.MasterDiskId)
@@ -6017,7 +6022,7 @@ void TDiskRegistryState::ApplyDeviceStateChange(
     }
 
     if (MigrationCanBeStarted(*disk, uuid)) {
-        AddMigration(*disk, diskId, uuid);
+        AddMigration(*disk, diskId, uuid, true);
     }
 }
 
@@ -6038,7 +6043,7 @@ bool TDiskRegistryState::RestartDeviceMigration(
 
     CancelDeviceMigration(now, db, diskId, disk, sourceId);
 
-    AddMigration(disk, diskId, sourceId);
+    AddMigration(disk, diskId, sourceId, false);
 
     return true;
 }
