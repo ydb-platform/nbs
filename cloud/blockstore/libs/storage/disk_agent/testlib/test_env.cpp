@@ -721,6 +721,7 @@ NProto::TDiskAgentConfig CreateDefaultAgentConfig()
 
     config.SetIOParserActorCount(4);
     config.SetOffloadAllIORequestsParsingEnabled(true);
+    config.SetIOParserActorAllocateStorageEnabled(true);
 
     return config;
 }

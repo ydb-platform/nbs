@@ -4847,6 +4847,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
             auto config = DiskAgentConfig({deviceId});
             config.SetIOParserActorCount(4);
             config.SetOffloadAllIORequestsParsingEnabled(true);
+            config.SetIOParserActorAllocateStorageEnabled(true);
 
             return config;
         }();

@@ -645,35 +645,49 @@ TFuture<NProto::TWriteDeviceBlocksResponse> TDiskAgentState::Write(
     TInstant now,
     NProto::TWriteDeviceBlocksRequest request)
 {
-    CheckIfDeviceIsDisabled(
-        request.GetDeviceUUID(),
-        request.GetHeaders().GetClientId());
-
-    const auto& device = GetDeviceState(
-        request.GetDeviceUUID(),
-        request.GetHeaders().GetClientId(),
-        NProto::VOLUME_ACCESS_READ_WRITE);
-
     auto writeRequest = std::make_shared<NProto::TWriteBlocksRequest>();
     writeRequest->MutableHeaders()->CopyFrom(request.GetHeaders());
     writeRequest->SetStartIndex(request.GetStartIndex());
     writeRequest->MutableBlocks()->Swap(request.MutableBlocks());
 
-    WriteProfileLog(
+    return WriteBlocks(
         now,
         request.GetDeviceUUID(),
-        *writeRequest,
+        std::move(writeRequest),
         request.GetBlockSize(),
-        ESysRequestType::WriteDeviceBlocks
+        {}  // buffer
     );
+}
+
+TFuture<NProto::TWriteDeviceBlocksResponse> TDiskAgentState::WriteBlocks(
+    TInstant now,
+    const TString& deviceUUID,
+    std::shared_ptr<NProto::TWriteBlocksRequest> request,
+    ui32 blockSize,
+    TStringBuf buffer)
+{
+    CheckIfDeviceIsDisabled(
+        deviceUUID,
+        request->GetHeaders().GetClientId());
+
+    const auto& device = GetDeviceState(
+        deviceUUID,
+        request->GetHeaders().GetClientId(),
+        NProto::VOLUME_ACCESS_READ_WRITE);
+
+    WriteProfileLog(
+        now,
+        deviceUUID,
+        *request,
+        blockSize,
+        ESysRequestType::WriteDeviceBlocks);
 
     auto result = device.StorageAdapter->WriteBlocks(
         now,
         MakeIntrusive<TCallContext>(),
-        std::move(writeRequest),
-        request.GetBlockSize(),
-        {} // no data buffer
-    );
+        std::move(request),
+        blockSize,
+        buffer);
 
     return result.Apply(
         [] (const auto& future) {
