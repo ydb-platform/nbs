@@ -137,9 +137,11 @@ struct TEnv
         ProfilePath.DeleteIfExists();
     }
 
-    void ProcessLog()
+    void ProcessLog(bool runScheduler = true)
     {
-        Scheduler->RunAllScheduledTasks();
+        if (runScheduler) {
+            Scheduler->RunAllScheduledTasks();
+        }
 
         EventProcessor.FlatMessages.clear();
         const char* argv[] = {"foo", Settings.FilePath.c_str()};
@@ -368,6 +370,24 @@ Y_UNIT_TEST_SUITE(TProfileLogTest)
             "fs3\t6000000\t4\t300000\t0",
             EventProcessor.FlatMessages[5]
         );
+
+        // Test flush on destruct
+        ProfileLog->Write(
+            {"fs3",
+             TRequestInfoBuilder()
+                 .SetTimestamp(TInstant::Seconds(9))
+                 .SetDuration(TDuration::MilliSeconds(100))
+                 .SetRequestType(4)
+                 .SetError(0)
+                 .Build()});
+
+        ProfileLog = CreateProfileLogStub();
+        ProcessLog(false);
+
+        UNIT_ASSERT_VALUES_EQUAL(7, EventProcessor.FlatMessages.size());
+        UNIT_ASSERT_VALUES_EQUAL(
+            "fs3\t9000000\t4\t100000\t0",
+            EventProcessor.FlatMessages[6]);
     }
 
 }

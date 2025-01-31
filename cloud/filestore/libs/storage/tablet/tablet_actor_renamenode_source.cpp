@@ -268,8 +268,6 @@ void TIndexTabletActor::ExecuteTx_PrepareRenameNodeInSource(
         return RebootTabletOnCommitOverflow(ctx, "PrepareRenameNodeInSource");
     }
 
-    // TODO(#2674): lock NodeRef for any modifications
-
     // OpLogEntryId doesn't have to be a CommitId - it's just convenient
     // to use CommitId here in order not to generate some other unique
     // ui64
@@ -360,6 +358,8 @@ void TIndexTabletActor::CompleteTx_PrepareRenameNodeInSource(
             return;
         }
     }
+
+    UnlockNodeRef({args.ParentNodeId, args.Name});
 
     Metrics.RenameNode.Update(
         1,
@@ -462,9 +462,9 @@ void TIndexTabletActor::ExecuteTx_CommitRenameNodeInSource(
         return RebootTabletOnCommitOverflow(ctx, "CommitRenameNodeInSource");
     }
 
-    if (HasError(args.Response)) {
-        // TODO(#2674): unlock NodeRef (or mb do it in CompleteTx?)
+    UnlockNodeRef({args.Request.GetNodeId(), args.Request.GetName()});
 
+    if (HasError(args.Response)) {
         NProto::TRenameNodeResponse response;
         *response.MutableError() = args.Response.GetError();
         PatchDupCacheEntry(

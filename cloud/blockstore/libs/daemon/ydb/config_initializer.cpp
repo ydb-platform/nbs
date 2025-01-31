@@ -326,7 +326,8 @@ void TConfigInitializerYdb::ApplyDiskAgentConfig(const TString& text)
 
     DiskAgentConfig = std::make_shared<NStorage::TDiskAgentConfig>(
         std::move(config),
-        Rack);
+        Rack,
+        HostPerformanceProfile.NetworkMbitThroughput);
 }
 
 void TConfigInitializerYdb::ApplyDiskRegistryProxyConfig(const TString& text)

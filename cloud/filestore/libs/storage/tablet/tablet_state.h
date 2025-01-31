@@ -573,6 +573,9 @@ public:
         const TString& shardId,
         const TString& shardNodeName);
 
+    bool TryLockNodeRef(TNodeRefKey key);
+    void UnlockNodeRef(TNodeRefKey key);
+
     //
     // Sessions
     //

@@ -17,6 +17,7 @@
 #include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/core/pending_request.h>
 #include <cloud/blockstore/libs/storage/core/request_info.h>
+#include <cloud/blockstore/libs/storage/disk_agent/model/bandwidth_calculator.h>
 #include <cloud/blockstore/libs/storage/disk_agent/model/config.h>
 #include <cloud/blockstore/libs/storage/disk_agent/recent_blocks_tracker.h>
 
@@ -70,6 +71,8 @@ private:
 
     // Pending WaitReady requests
     TDeque<TPendingRequest> PendingRequests;
+
+    TBandwidthCalculator BandwidthCalculator {*AgentConfig};
 
     ERegistrationState RegistrationState = ERegistrationState::NotStarted;
 

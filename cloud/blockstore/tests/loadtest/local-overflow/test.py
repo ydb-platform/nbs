@@ -16,9 +16,9 @@ class TestCase(object):
 
 
 TESTS = [
-    # NOTE: E_BS_OUT_OF_SPACE(2147811330) and E_REJECTED(2147483650) are
-    # considered as a success. E_REJECTED might happen before E_BS_OUT_OF_SPACE
-    # because of BS group disintegration.
+    # NOTE: BS group disintegration may happen before
+    # E_BS_OUT_OF_SPACE(2147483662), in that case retries are timed out and
+    # resulting E_RETRY_TIMEOUT(2147483662) error is considered as a success.
     # At the end of the test we read some data from disk to ensure that tablet
     # is available.
     TestCase(
@@ -31,9 +31,9 @@ TESTS = [
         "cloud/blockstore/tests/loadtest/local-overflow/local-tablet-version-1-throttled.txt",
         ["ThrottlerRejected", "ReassignTablet"],
     ),
-    # NOTE: E_BS_OUT_OF_SPACE(2147811330) and E_REJECTED(2147483650) are
-    # considered as a success. E_REJECTED might happen before E_BS_OUT_OF_SPACE
-    # because of BS group disintegration.
+    # NOTE: BS group disintegration may happen before
+    # E_BS_OUT_OF_SPACE(2147483662), in that case retries are timed out and
+    # resulting E_RETRY_TIMEOUT(2147483662) error is considered as a success.
     # At the end of the test we read some data from disk to ensure that tablet
     # is available.
     TestCase(
@@ -75,7 +75,7 @@ def __run_test(test_case):
     env = LocalLoadTest(
         "",
         storage_config_patches=[storage],
-        dynamic_pdisks=[dict(user_kind=1, disk_size=1024 * 1024 * 1024)
+        dynamic_pdisks=[dict(user_kind=1, disk_size=10 * 1024 * 1024 * 1024)
                         for x in range(test_case.dynamic_disk_count)],
         dynamic_storage_pools=[
             dict(name="dynamic_storage_pool:1",

@@ -217,8 +217,26 @@ void TVolumeActor::UpdateLeakyBucketCounters(const TActorContext& ctx)
 
     auto& simple = VolumeSelfCounters->Simple;
     auto& cumulative = VolumeSelfCounters->Cumulative;
-    const auto& tp = State->GetThrottlingPolicy();
-    ui64 currentRate = tp.CalculateCurrentSpentBudgetShare(ctx.Now()) * 100;
+    auto& tp = State->AccessThrottlingPolicy();
+
+    const auto splittedUsedQuota = tp.TakeSplittedUsedQuota();
+    const auto usedIopsQuotaPercentage = splittedUsedQuota.Iops * 100.0;
+    const auto usedBandwidthQuotaPercentage =
+        splittedUsedQuota.Bandwidth * 100.0;
+
+    cumulative.UsedIopsQuota.Increment(
+        static_cast<ui64>(usedIopsQuotaPercentage));
+    cumulative.UsedBandwidthQuota.Increment(
+        static_cast<ui64>(usedBandwidthQuotaPercentage));
+
+    const auto currentSpentBudgetSharePercentage =
+        100.0 * tp.CalculateCurrentSpentBudgetShare(ctx.Now());
+
+    const auto currentRate = static_cast<ui64>(
+        Min((Config->GetCalculateSplittedUsedQuotaMetric()
+                 ? usedIopsQuotaPercentage + usedBandwidthQuotaPercentage
+                 : currentSpentBudgetSharePercentage),
+            100.0));
     simple.MaxUsedQuota.Set(Max(simple.MaxUsedQuota.Value, currentRate));
     cumulative.UsedQuota.Increment(currentRate);
 }
@@ -1035,6 +1053,9 @@ STFUNC(TVolumeActor::StateWork)
             TEvDiskRegistry::TEvAcquireDiskResponse,
             HandleAcquireDiskResponse);
         HFunc(
+            TEvVolumePrivate::TEvDevicesAcquireFinished,
+            HandleDevicesAcquireFinished);
+        HFunc(
             TEvVolumePrivate::TEvAcquireDiskIfNeeded,
             HandleAcquireDiskIfNeeded);
         HFunc(TEvVolume::TEvReacquireDisk, HandleReacquireDisk);
@@ -1042,6 +1063,9 @@ STFUNC(TVolumeActor::StateWork)
         HFunc(
             TEvDiskRegistry::TEvReleaseDiskResponse,
             HandleReleaseDiskResponse);
+        HFunc(
+            TEvVolumePrivate::TEvDevicesReleaseFinished,
+            HandleDevicesReleasedFinished);
         HFunc(
             TEvDiskRegistry::TEvAllocateDiskResponse,
             HandleAllocateDiskResponse);
@@ -1101,8 +1125,9 @@ STFUNC(TVolumeActor::StateZombie)
 
         IgnoreFunc(TEvPartition::TEvWaitReadyResponse);
 
-        IgnoreFunc(TEvents::TEvPoisonPill);
-        IgnoreFunc(TEvents::TEvPoisonTaken);
+        HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
+        HFunc(TEvents::TEvPoisonTaken, HandlePoisonTaken);
+        HFunc(TEvTablet::TEvTabletStop, HandleTabletStop);
 
         IgnoreFunc(TEvLocal::TEvTabletMetrics);
 

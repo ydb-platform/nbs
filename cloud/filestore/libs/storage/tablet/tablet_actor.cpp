@@ -1180,6 +1180,7 @@ void TIndexTabletActor::RegisterFileStore(const NActors::TActorContext& ctx)
         GetFileSystemId(),
         TabletID(),
         GetGeneration(),
+        GetFileSystem().GetShardNo() > 0,
         std::move(config));
 
     ctx.Send(MakeStorageServiceId(), request.release());

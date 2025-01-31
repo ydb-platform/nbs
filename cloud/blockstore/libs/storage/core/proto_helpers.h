@@ -223,4 +223,5 @@ TBlockRange64 BuildRequestBlockRange(
 ui64 GetVolumeRequestId(const TEvDiskAgent::TEvWriteDeviceBlocksRequest& request);
 ui64 GetVolumeRequestId(const TEvDiskAgent::TEvZeroDeviceBlocksRequest& request);
 
+TString LogDevices(const TVector<NProto::TDeviceConfig>& devices);
 }   // namespace NCloud::NBlockStore::NStorage

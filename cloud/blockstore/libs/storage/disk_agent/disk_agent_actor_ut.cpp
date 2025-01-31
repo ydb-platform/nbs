@@ -349,6 +349,10 @@ struct TCopyRangeFixture: public NUnitTest::TBaseFixture
         config.SetIOParserActorCount(0);
         config.SetBackend(NProto::DISK_AGENT_BACKEND_AIO);
 
+        auto* throttling = config.MutableThrottlingConfig();
+        throttling->SetDirectCopyBandwidthFraction(0.5);
+        throttling->SetDefaultNetworkMbitThroughput(800);
+
         for (const auto& memDevice: config.GetMemoryDevices()) {
             *config.AddMemoryDevices() = PrepareMemoryDevice(
                 memDevice.GetDeviceId(),
@@ -5664,6 +5668,60 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
             TDuration::MicroSeconds(response->Record.GetWriteDuration())
                 .MilliSeconds(),
             10);
+    }
+
+    Y_UNIT_TEST_F(ShouldPerformDirectCopyAndCalcBandwidth, TCopyRangeFixture)
+    {
+        {   // The first disk agent has network bandwidth config. It should
+            // recommend the bandwidth.
+            auto request =
+                std::make_unique<TEvDiskAgent::TEvDirectCopyBlocksRequest>();
+            request->Record.MutableHeaders()->SetClientId(SourceClientId);
+
+            request->Record.SetSourceDeviceUUID("DA1-1");
+            request->Record.SetSourceStartIndex(SourceStartIndex);
+            request->Record.SetBlockSize(BlockSize);
+            request->Record.SetBlockCount(BlockCount);
+
+            request->Record.SetTargetNodeId(Runtime->GetNodeId(1));
+            request->Record.SetTargetClientId(TargetClientId);
+            request->Record.SetTargetDeviceUUID("DA2-1");
+            request->Record.SetTargetStartIndex(TargetStartIndex);
+
+            DiskAgent1->SendRequest(std::move(request));
+            auto response =
+                DiskAgent1
+                    ->RecvResponse<TEvDiskAgent::TEvDirectCopyBlocksResponse>();
+            UNIT_ASSERT(!HasError(response->GetError()));
+            UNIT_ASSERT_VALUES_EQUAL(
+                50_MB,
+                response->Record.GetRecommendedBandwidth());
+        }
+        {   // The second disk agent has no network bandwidth configuration. It
+            // shouldn't recommend the bandwidth.
+            auto request =
+                std::make_unique<TEvDiskAgent::TEvDirectCopyBlocksRequest>();
+            request->Record.MutableHeaders()->SetClientId(TargetClientId);
+
+            request->Record.SetSourceDeviceUUID("DA2-2");
+            request->Record.SetSourceStartIndex(SourceStartIndex);
+            request->Record.SetBlockSize(BlockSize);
+            request->Record.SetBlockCount(BlockCount);
+
+            request->Record.SetTargetNodeId(Runtime->GetNodeId(0));
+            request->Record.SetTargetClientId(ClientId);
+            request->Record.SetTargetDeviceUUID("DA1-1");
+            request->Record.SetTargetStartIndex(TargetStartIndex);
+
+            DiskAgent2->SendRequest(std::move(request));
+            auto response =
+                DiskAgent2
+                    ->RecvResponse<TEvDiskAgent::TEvDirectCopyBlocksResponse>();
+            UNIT_ASSERT(!HasError(response->GetError()));
+            UNIT_ASSERT_VALUES_EQUAL(
+                0,
+                response->Record.GetRecommendedBandwidth());
+        }
     }
 }
 

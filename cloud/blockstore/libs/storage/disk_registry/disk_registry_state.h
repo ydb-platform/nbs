@@ -581,7 +581,7 @@ public:
     }
 
     TVector<TString> CollectBrokenDevices(const NProto::TAgentStats& stats) const;
-    NProto::TError UpdateAgentCounters(const NProto::TAgentStats& source);
+    NProto::TError UpdateAgentCounters(const NProto::TAgentStats& stats);
     void PublishCounters(TInstant now);
 
     void DeleteDiskStateChanges(
@@ -1165,6 +1165,10 @@ private:
         TDiskRegistryDatabase& db,
         const TString& diskId);
 
+    NProto::TError AddDevicesToPendingCleanup(
+        const TString& diskId,
+        TVector<TDeviceId> uuids);
+
     /// Try to update configuration of selected device and its agent
     /// in the disk registry database
     /// @return true if the device updates successfully; otherwise, return false
@@ -1308,6 +1312,10 @@ private:
     void CleanupAgentConfig(
         TDiskRegistryDatabase& db,
         const NProto::TAgentConfig& agent);
+
+    static bool MigrationCanBeStarted(
+        const TDiskState& disk,
+        const TString& deviceUUID);
 };
 
 }   // namespace NCloud::NBlockStore::NStorage

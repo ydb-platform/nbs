@@ -724,21 +724,33 @@ TFuture<NProto::TStartEndpointResponse> TEndpointManager::RestoreSingleEndpoint(
     TCallContextPtr ctx,
     std::shared_ptr<NProto::TStartEndpointRequest> request)
 {
-    return Executor->Execute([
-        weakSelf = weak_from_this(),
-        ctx,
-        request] () mutable -> NProto::TStartEndpointResponse
-    {
-        auto self = weakSelf.lock();
-        if (!self) {
-            return TErrorResponse(E_FAIL, "EndpointManager is destroyed");
-        }
+    return Executor->Execute(
+        [weakSelf = weak_from_this(),
+         ctx,
+         request]() mutable -> NProto::TStartEndpointResponse
+        {
+            auto self = weakSelf.lock();
+            if (!self) {
+                return TErrorResponse(E_FAIL, "EndpointManager is destroyed");
+            }
 
-        return self->StartEndpointImpl(
-            std::move(ctx),
-            std::move(request),
-            true);
-    });
+            auto promise =
+                self->AddProcessingSocket<TStartEndpointMethod>(*request);
+            if (promise.HasValue()) {
+                return promise.ExtractValue();
+            }
+
+            auto socketPath = request->GetUnixSocketPath();
+
+            auto response = self->StartEndpointImpl(
+                std::move(ctx),
+                std::move(request),
+                true);
+            promise.SetValue(response);
+
+            self->RemoveProcessingSocket(socketPath);
+            return response;
+        });
 }
 
 NProto::TStartEndpointResponse TEndpointManager::DoStartEndpoint(
@@ -750,12 +762,16 @@ NProto::TStartEndpointResponse TEndpointManager::DoStartEndpoint(
         return TErrorResponse(E_REJECTED, "endpoint is restoring now");
     }
 
+    // We can have concurrent StartEndpoint and RestoreEndpoint call when the
+    // process starts. AddProcessingSocket should protect us from this race and
+    // delay the StartEndpoint call.
     auto promise = AddProcessingSocket<TStartEndpointMethod>(*request);
     if (promise.HasValue()) {
         return promise.ExtractValue();
     }
 
-    auto response = StartEndpointImpl(std::move(ctx), std::move(request), false);
+    auto response =
+        StartEndpointImpl(std::move(ctx), std::move(request), false);
     promise.SetValue(response);
 
     RemoveProcessingSocket(socketPath);

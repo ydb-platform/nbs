@@ -579,6 +579,16 @@ void TIndexTabletState::RewriteNodeRef(
     InvalidateNodeIndexCache(nodeId, childName);
 }
 
+bool TIndexTabletState::TryLockNodeRef(TNodeRefKey key)
+{
+    return Impl->LockedNodeRefs.insert(std::move(key)).second;
+}
+
+void TIndexTabletState::UnlockNodeRef(TNodeRefKey key)
+{
+    Impl->LockedNodeRefs.erase(std::move(key));
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 bool TIndexTabletState::TryFillGetNodeAttrResult(

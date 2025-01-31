@@ -352,6 +352,35 @@ STFUNC(TModifyTagsActionActor::StateWaitReady)
 
 ////////////////////////////////////////////////////////////////////////////////
 
+void TServiceActor::HandleAddTags(
+    const TEvService::TEvAddTagsRequest::TPtr& ev,
+    const NActors::TActorContext& ctx)
+{
+    auto* msg = ev->Get();
+
+    auto requestInfo = CreateRequestInfo(
+        SelfId(),
+        0,  // cookie
+        MakeIntrusive<TCallContext>());
+
+    NPrivateProto::TModifyTagsRequest modifyTagsRequest;
+    modifyTagsRequest.SetDiskId(msg->DiskId);
+    for (const auto& tag: msg->Tags) {
+        modifyTagsRequest.AddTagsToAdd(tag);
+    }
+
+    TString input;
+    google::protobuf::util::MessageToJsonString(modifyTagsRequest, &input);
+
+    NCloud::Register(
+        ctx,
+        std::make_unique<TModifyTagsActionActor>(
+            std::move(requestInfo),
+            std::move(input)));
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 TResultOrError<IActorPtr> TServiceActor::CreateModifyTagsActionActor(
     TRequestInfoPtr requestInfo,
     TString input)

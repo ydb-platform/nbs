@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/golang/protobuf/ptypes/empty"
+	"github.com/hashicorp/go-retryablehttp"
 	prometheus_client "github.com/prometheus/client_model/go"
 	"github.com/prometheus/common/expfmt"
 	"github.com/stretchr/testify/require"
@@ -114,12 +115,12 @@ func GetQCOW2ImageCrc32(t *testing.T) uint32 {
 }
 
 func UseDefaultQCOW2ImageFile(t *testing.T) {
-	_, err := http.Get(GetQCOW2ImageFileURL() + "/use_default_image")
+	_, err := httpGetWithRetries(GetQCOW2ImageFileURL() + "/use_default_image")
 	require.NoError(t, err)
 }
 
 func UseOtherQCOW2ImageFile(t *testing.T) {
-	_, err := http.Get(GetQCOW2ImageFileURL() + "/use_other_image")
+	_, err := httpGetWithRetries(GetQCOW2ImageFileURL() + "/use_other_image")
 	require.NoError(t, err)
 }
 
@@ -180,12 +181,12 @@ func GetBigRawImageCrc32(t *testing.T) uint32 {
 }
 
 func UseDefaultBigRawImageFile(t *testing.T) {
-	_, err := http.Get(GetBigRawImageURL() + "/use_default_image")
+	_, err := httpGetWithRetries(GetBigRawImageURL() + "/use_default_image")
 	require.NoError(t, err)
 }
 
 func UseOtherBigRawImageFile(t *testing.T) {
-	_, err := http.Get(GetBigRawImageURL() + "/use_other_image")
+	_, err := httpGetWithRetries(GetBigRawImageURL() + "/use_other_image")
 	require.NoError(t, err)
 }
 
@@ -259,59 +260,55 @@ func NewPrivateClient(ctx context.Context) (internal_client.PrivateClient, error
 	)
 }
 
-func NewNbsClient(
-	t *testing.T,
-	ctx context.Context,
-	zoneID string,
-) nbs.Client {
+func newNbsClientClientConfig() *nbs_config.ClientConfig {
 	rootCertsFile := os.Getenv("DISK_MANAGER_RECIPE_ROOT_CERTS_FILE")
 
 	durableClientTimeout := "5m"
 	discoveryClientHardTimeout := "8m"
 	discoveryClientSoftTimeout := "15s"
 
-	factory, err := nbs.NewFactory(
-		ctx,
-		&nbs_config.ClientConfig{
-			Zones: map[string]*nbs_config.Zone{
-				"zone-a": {
-					Endpoints: []string{
-						fmt.Sprintf(
-							"localhost:%v",
-							os.Getenv("DISK_MANAGER_RECIPE_NBS_PORT"),
-						),
-					},
-				},
-				"zone-b": {
-					Endpoints: []string{
-						fmt.Sprintf(
-							"localhost:%v",
-							os.Getenv("DISK_MANAGER_RECIPE_NBS2_PORT"),
-						),
-					},
-				},
-				"zone-c": {
-					Endpoints: []string{
-						fmt.Sprintf(
-							"localhost:%v",
-							os.Getenv("DISK_MANAGER_RECIPE_NBS3_PORT"),
-						),
-					},
+	return &nbs_config.ClientConfig{
+		Zones: map[string]*nbs_config.Zone{
+			"zone-a": {
+				Endpoints: []string{
+					fmt.Sprintf(
+						"localhost:%v",
+						os.Getenv("DISK_MANAGER_RECIPE_NBS_PORT"),
+					),
 				},
 			},
-			RootCertsFile:              &rootCertsFile,
-			DurableClientTimeout:       &durableClientTimeout,
-			DiscoveryClientHardTimeout: &discoveryClientHardTimeout,
-			DiscoveryClientSoftTimeout: &discoveryClientSoftTimeout,
+			"zone-b": {
+				Endpoints: []string{
+					fmt.Sprintf(
+						"localhost:%v",
+						os.Getenv("DISK_MANAGER_RECIPE_NBS2_PORT"),
+					),
+				},
+			},
+			"zone-c": {
+				Endpoints: []string{
+					fmt.Sprintf(
+						"localhost:%v",
+						os.Getenv("DISK_MANAGER_RECIPE_NBS3_PORT"),
+					),
+				},
+			},
 		},
-		metrics.NewEmptyRegistry(),
-		metrics.NewEmptyRegistry(),
-	)
-	require.NoError(t, err)
+		RootCertsFile:              &rootCertsFile,
+		DurableClientTimeout:       &durableClientTimeout,
+		DiscoveryClientHardTimeout: &discoveryClientHardTimeout,
+		DiscoveryClientSoftTimeout: &discoveryClientSoftTimeout,
+	}
+}
 
-	client, err := factory.GetClient(ctx, zoneID)
-	require.NoError(t, err)
+func NewNbsTestingClient(
+	t *testing.T,
+	ctx context.Context,
+	zoneID string,
+) nbs.TestingClient {
 
+	client, err := nbs.NewTestingClient(ctx, zoneID, newNbsClientClientConfig())
+	require.NoError(t, err)
 	return client
 }
 
@@ -348,7 +345,7 @@ func RequireCheckpoint(
 	checkpointID string,
 ) {
 
-	nbsClient := NewNbsClient(t, ctx, "zone-a")
+	nbsClient := NewNbsTestingClient(t, ctx, "zone-a")
 	checkpoints, err := nbsClient.GetCheckpoints(ctx, diskID)
 	require.NoError(t, err)
 
@@ -362,7 +359,7 @@ func RequireCheckpointsAreEmpty(
 	diskID string,
 ) {
 
-	nbsClient := NewNbsClient(t, ctx, "zone-a")
+	nbsClient := NewNbsTestingClient(t, ctx, "zone-a")
 	checkpoints, err := nbsClient.GetCheckpoints(ctx, diskID)
 	require.NoError(t, err)
 	require.Empty(t, checkpoints)
@@ -374,7 +371,7 @@ func WaitForCheckpointsAreEmpty(
 	diskID string,
 ) {
 
-	nbsClient := NewNbsClient(t, ctx, "zone-a")
+	nbsClient := NewNbsTestingClient(t, ctx, "zone-a")
 
 	for {
 		checkpoints, err := nbsClient.GetCheckpoints(ctx, diskID)
@@ -427,7 +424,7 @@ func CreateImage(
 	err = internal_client.WaitOperation(ctx, client, operation.Id)
 	require.NoError(t, err)
 
-	nbsClient := NewNbsClient(t, ctx, "zone-a")
+	nbsClient := NewNbsTestingClient(t, ctx, "zone-a")
 	diskContentInfo, err := nbsClient.FillDisk(ctx, diskID, imageSize)
 	require.NoError(t, err)
 
@@ -576,7 +573,7 @@ func CheckBaseDiskSlotReleased(
 }
 
 func CheckConsistency(t *testing.T, ctx context.Context) {
-	nbsClient := NewNbsClient(t, ctx, "zone-a")
+	nbsClient := NewNbsTestingClient(t, ctx, "zone-a")
 
 	for {
 		ok := true
@@ -666,8 +663,17 @@ func CheckErrorDetails(
 
 ////////////////////////////////////////////////////////////////////////////////
 
+func httpGetWithRetries(url string) (*http.Response, error) {
+	retryableClient := retryablehttp.NewClient()
+	retryableClient.HTTPClient.Timeout = 500 * time.Second
+	retryableClient.RetryWaitMin = time.Second
+	retryableClient.RetryWaitMax = 5 * time.Second
+	retryableClient.RetryMax = 100
+	return retryableClient.Get(url)
+}
+
 func GetCounter(t *testing.T, name string, labels map[string]string) float64 {
-	resp, err := http.Get(
+	resp, err := httpGetWithRetries(
 		fmt.Sprintf(
 			"http://localhost:%s/metrics/",
 			os.Getenv("DISK_MANAGER_RECIPE_DISK_MANAGER_MON_PORT"),

@@ -117,8 +117,9 @@ public:
         LOG_DEBUG(
             ctx,
             TFileStoreComponents::SERVICE,
-            "WriteDataActor started, data size: %lu, offset: %lu"
-            ", aligned size: %lu, aligned offset: %lu",
+            "%s WriteDataActor started, data size: %lu, offset: %lu, aligned "
+            "size: %lu, aligned offset: %lu",
+            LogTag.c_str(),
             WriteRequest.GetBuffer().size(),
             WriteRequest.GetOffset(),
             BlobRange.Length,
@@ -174,7 +175,8 @@ private:
         LOG_DEBUG(
             ctx,
             TFileStoreComponents::SERVICE,
-            "GenerateBlobIds response received: %s",
+            "%s GenerateBlobIds response received: %s",
+            LogTag.c_str(),
             GenerateBlobIdsResponse.DebugString().Quote().c_str());
 
         WriteBlobs(ctx);
@@ -231,7 +233,9 @@ private:
             LOG_DEBUG(
                 ctx,
                 TFileStoreComponents::SERVICE,
-                "Sending TEvPut request to blob storage, blobId: %s, proxy: %s",
+                "%s Sending TEvPut request to blob storage, blobId: %s, proxy: "
+                "%s",
+                LogTag.c_str(),
                 blobId.ToString().c_str(),
                 proxy.ToString().c_str());
             SendToBSProxy(ctx, proxy, request.release(), blobId.Cookie());
@@ -254,7 +258,8 @@ private:
             LOG_WARN(
                 ctx,
                 TFileStoreComponents::SERVICE,
-                "WriteData error: %s",
+                "%s WriteData error: %s",
+                LogTag.c_str(),
                 msg->ErrorReason.Quote().c_str());
             // We still may receive some responses, but we do not want to
             // process them
@@ -264,7 +269,8 @@ private:
         LOG_DEBUG(
             ctx,
             TFileStoreComponents::SERVICE,
-            "TEvPutResult response received: %s",
+            "%s TEvPutResult response received: %s",
+            LogTag.c_str(),
             msg->ToString().c_str());
 
         ui64 blobIdx = msg->Id.Cookie();
@@ -348,7 +354,8 @@ private:
         LOG_DEBUG(
             ctx,
             TFileStoreComponents::SERVICE,
-            "Sending AddData request to tablet: %s",
+            "%s Sending AddData request to tablet: %s",
+            LogTag.c_str(),
             request->Record.DebugString().Quote().c_str());
 
         ctx.Send(MakeIndexTabletProxyServiceId(), request.release());
@@ -386,8 +393,9 @@ private:
         LOG_WARN(
             ctx,
             TFileStoreComponents::SERVICE,
-            "Falling back to WriteData for %lu, %lu, %lu (%lu bytes). Message: "
-            "%s",
+            "%s Falling back to WriteData for %lu, %lu, %lu (%lu bytes). "
+            "Message: %s",
+            LogTag.c_str(),
             WriteRequest.GetNodeId(),
             WriteRequest.GetHandle(),
             WriteRequest.GetOffset(),
@@ -413,7 +421,11 @@ private:
             return;
         }
 
-        LOG_DEBUG(ctx, TFileStoreComponents::SERVICE, "WriteData succeeded");
+        LOG_DEBUG(
+            ctx,
+            TFileStoreComponents::SERVICE,
+            "%s WriteData succeeded",
+            LogTag.c_str());
 
         auto response = std::make_unique<TEvService::TEvWriteDataResponse>();
         response->Record = std::move(msg->Record);
@@ -510,10 +522,12 @@ void TStorageServiceActor::HandleWriteData(
         && (range.IsAligned()
                 || StorageConfig->GetUnalignedThreeStageWriteEnabled());
     if (threeStageWriteEnabled) {
+        auto logTag = filestore.GetFileSystemId();
         LOG_DEBUG(
             ctx,
             TFileStoreComponents::SERVICE,
-            "Using three-stage write for request, size: %lu",
+            "%s Using three-stage write for request, size: %lu",
+            logTag.c_str(),
             msg->Record.GetBuffer().size());
 
         auto [cookie, inflight] = CreateInFlightRequest(
@@ -531,7 +545,7 @@ void TStorageServiceActor::HandleWriteData(
             std::move(msg->Record),
             range,
             std::move(requestInfo),
-            filestore.GetFileSystemId(),
+            std::move(logTag),
             session->RequestStats,
             ProfileLog,
             session->MediaKind);

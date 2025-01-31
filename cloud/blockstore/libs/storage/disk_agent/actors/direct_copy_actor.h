@@ -20,6 +20,7 @@ private:
     const NActors::TActorId Source;
     const TRequestInfoPtr RequestInfo;
     const NProto::TDirectCopyBlocksRequest Request;
+    const ui64 RecommendedBandwidth;
 
     bool AllZeroes = false;
     TInstant ReadStartAt;
@@ -29,7 +30,8 @@ public:
     TDirectCopyActor(
         const NActors::TActorId& source,
         TRequestInfoPtr requestInfo,
-        NProto::TDirectCopyBlocksRequest request);
+        NProto::TDirectCopyBlocksRequest request,
+        ui64 recommendedBandwidth);
 
     void Bootstrap(const NActors::TActorContext& ctx);
 

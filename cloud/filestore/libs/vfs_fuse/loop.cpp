@@ -167,10 +167,13 @@ public:
             }
         }
 
-        STORAGE_INFO("[f:%s] StopAsync: completing left: %ld, requests left: %u",
+        STORAGE_INFO(
+            "[f:%s] StopAsync: completing left: %ld, requests left: %u, "
+            "fuse cancellation code: %u",
             FileSystemId.c_str(),
             completingCount,
-            requestsSize);
+            requestsSize,
+            code);
 
         if (canStop) {
             StopPromise.TrySetValue();
@@ -474,7 +477,8 @@ private:
     {
         STORAGE_INFO("starting FUSE loop");
 
-        ::NCloud::SetCurrentThreadName("FUSE");
+        static std::atomic<ui64> index = 0;
+        ::NCloud::SetCurrentThreadName("FUSE" + ToString(index++));
 
         AtomicSet(ThreadId, pthread_self());
         fuse_session_loop(Session);

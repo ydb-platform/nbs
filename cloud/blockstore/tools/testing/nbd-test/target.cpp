@@ -3,6 +3,7 @@
 #include "options.h"
 #include "runnable.h"
 
+#include <cloud/blockstore/libs/nbd/error_handler.h>
 #include <cloud/blockstore/libs/nbd/server.h>
 #include <cloud/blockstore/libs/nbd/server_handler.h>
 #include <cloud/blockstore/libs/service/device_handler.h>
@@ -129,6 +130,7 @@ void TTestTarget::Init()
         Logging,
         CreateStorageStub(),
         CreateServerStatsStub(),
+        NBD::CreateErrorHandlerStub(),
         storageOptions);
 
     NBD::TServerConfig serverConfig = {

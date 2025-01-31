@@ -84,8 +84,8 @@ void TConfigInitializerCommon::InitDiskAgentConfig()
 
     DiskAgentConfig = std::make_shared<NStorage::TDiskAgentConfig>(
         std::move(diskAgentConfig),
-        Rack
-    );
+        Rack,
+        HostPerformanceProfile.NetworkMbitThroughput);
 }
 
 void TConfigInitializerCommon::InitRdmaConfig()

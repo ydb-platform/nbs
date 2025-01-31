@@ -156,7 +156,7 @@ TMaybe<TByteRange> TReadAheadCache::RegisterDescribe(
 
 void TReadAheadCache::InvalidateCache(ui64 nodeId)
 {
-    NodeStates.clear(nodeId);
+    NodeStates.erase(nodeId);
 }
 
 void TReadAheadCache::OnDestroyHandle(ui64 nodeId, ui64 handle)

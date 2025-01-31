@@ -19,7 +19,7 @@ constexpr TDuration AsyncHandleOpsPeriod = TDuration::MilliSeconds(50);
     xxx(PathPrefix,                  TString,       "nfs_"                    )\
     xxx(DefaultPermissions,          ui32,          0775                      )\
     xxx(IdleSessionTimeout,          TDuration,     TDuration::Seconds(30)    )\
-    xxx(NumThreads,                  ui32,          4                         )\
+    xxx(NumThreads,                  ui32,          8                         )\
     xxx(StatePath,                   TString,       "./"                      )\
     xxx(MaxNodeCount,                ui32,          1000000                   )\
     xxx(MaxHandlePerSessionCount,    ui32,          10000                     )\

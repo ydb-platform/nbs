@@ -173,6 +173,7 @@ void TStorageServiceState::RegisterLocalFileStore(
     const TString& id,
     ui64 tablet,
     ui32 generation,
+    bool isShard,
     NProtoPrivate::TFileSystemConfig config)
 {
     // in case new instance registered before old unregistered or config was updated
@@ -191,6 +192,7 @@ void TStorageServiceState::RegisterLocalFileStore(
             id,
             tablet,
             generation,
+            isShard,
             std::move(config)));
 }
 

@@ -87,16 +87,19 @@ struct TEvService
         const TString FileStoreId;
         const ui64 TabletId;
         const ui64 Generation;
+        const bool IsShard;
         NProtoPrivate::TFileSystemConfig Config;
 
         TRegisterLocalFileStore(
                 TString fileStoreId,
                 ui64 tablet,
                 ui64 generation,
+                bool isShard,
                 NProtoPrivate::TFileSystemConfig config)
             : FileStoreId(std::move(fileStoreId))
             , TabletId(tablet)
             , Generation(generation)
+            , IsShard(isShard)
             , Config(std::move(config))
         {}
     };

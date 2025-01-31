@@ -19,6 +19,7 @@ namespace NCloud::NBlockStore::NStorage {
     xxx(ChangeVolumeBinding,     __VA_ARGS__)                                  \
     xxx(GetVolumeStats,          __VA_ARGS__)                                  \
     xxx(RunVolumesLivenessCheck, __VA_ARGS__)                                  \
+    xxx(AddTags,                 __VA_ARGS__)                                  \
 // BLOCKSTORE_SERVICE_REQUESTS
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -159,6 +160,28 @@ struct TEvService
             , LiveVolumes(std::move(liveVolumes))
         {}
     };
+
+    //
+    // AddTags
+    //
+
+    struct TAddTagsRequest
+    {
+        const TString DiskId;
+        const TVector<TString> Tags;
+
+        TAddTagsRequest() = default;
+
+        TAddTagsRequest(
+                TString diskId,
+                TVector<TString> tags)
+            : DiskId(std::move(diskId))
+            , Tags(std::move(tags))
+        {}
+    };
+
+    struct TAddTagsResponse
+    {};
 
     //
     // VolumeMountStateChanged
@@ -317,8 +340,11 @@ struct TEvService
         EvQueryAgentsInfoRequest = EvBegin + 89,
         EvQueryAgentsInfoResponse = EvBegin + 90,
 
-        EvCheckRangeRequest = EvBegin + 91,
-        EvCheckRangeResponse = EvBegin + 92,
+        EvAddTagsRequest = EvBegin + 91,
+        EvAddTagsResponse = EvBegin + 92,
+
+        EvCheckRangeRequest = EvBegin + 93,
+        EvCheckRangeResponse = EvBegin + 94,
 
         EvEnd
     };

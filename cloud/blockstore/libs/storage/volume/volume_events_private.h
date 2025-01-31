@@ -309,6 +309,22 @@ struct TEvVolumePrivate
     };
 
     //
+    // DevicesAcquireFinished
+    //
+
+    struct TDevicesAcquireFinished
+    {
+    };
+
+    //
+    // DevicesReleaseFinished
+    //
+
+    struct TDevicesReleaseFinished
+    {
+    };
+
+    //
     // Events declaration
     //
 
@@ -330,6 +346,8 @@ struct TEvVolumePrivate
         EvRemoveExpiredVolumeParams,
         EvShadowDiskAcquired,
         EvExternalDrainDone,
+        EvDevicesAcquireFinished,
+        EvDevicesReleaseFinished,
 
         EvEnd
     };
@@ -392,6 +410,12 @@ struct TEvVolumePrivate
         TExternalDrainDone,
         EvExternalDrainDone
     >;
+
+    using TEvDevicesAcquireFinished =
+        TResponseEvent<TDevicesAcquireFinished, EvDevicesAcquireFinished>;
+
+    using TEvDevicesReleaseFinished =
+        TResponseEvent<TDevicesReleaseFinished, EvDevicesReleaseFinished>;
 };
 
 }   // namespace NCloud::NBlockStore::NStorage

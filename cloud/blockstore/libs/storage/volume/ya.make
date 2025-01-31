@@ -7,6 +7,7 @@ SRCS(
 
     volume.cpp
     volume_actor_addclient.cpp
+    volume_actor_acquire.cpp
     volume_actor_allocatedisk.cpp
     volume_actor_change_storage_config.cpp
     volume_actor_checkpoint.cpp
@@ -22,6 +23,7 @@ SRCS(
     volume_actor_read_history.cpp
     volume_actor_read_meta_history.cpp
     volume_actor_reallocatedisk.cpp
+    volume_actor_release.cpp
     volume_actor_removeclient.cpp
     volume_actor_reset_seqnumber.cpp
     volume_actor_resync.cpp

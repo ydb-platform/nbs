@@ -7,6 +7,7 @@
 #include <library/cpp/testing/gbenchmark/benchmark.h>
 
 #include <util/stream/file.h>
+#include <util/system/env.h>
 
 #include <google/protobuf/util/json_util.h>
 
@@ -16,14 +17,16 @@ namespace {
 
 ///////////////////////////////////////////////////////////////////////////////
 
-const TString BackupFile =
-    "cloud/blockstore/tests/recipes/disk-registry-state/data/backup.json";
+const TString BackupFileEnv = "DISK_REGISTRY_BACKUP_PATH";
 
 TString BackupFilePath()
 {
-    auto arcRoot = ArcadiaSourceRoot();
-    Y_ABORT_UNLESS(arcRoot);
-    return JoinFsPaths(arcRoot, BackupFile);
+    auto result = GetEnv(BackupFileEnv);
+    if (!result) {
+        ythrow yexception()
+            << "Environment variable " << BackupFileEnv.Quote() << " not set";
+    }
+    return result;
 }
 
 TString ReadFile(const TString& filePath)

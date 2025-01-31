@@ -1,5 +1,6 @@
 #include "server_handler.h"
 
+#include "error_handler.h"
 #include "protocol.h"
 #include "utils.h"
 
@@ -477,6 +478,7 @@ Y_UNIT_TEST_SUITE(TServerHandlerTest)
             bootstrap->GetLogging(),
             bootstrap->GetStorage(),
             CreateServerStatsStub(),
+            CreateErrorHandlerStub(),
             options);
 
         auto handler = factory->CreateHandler();
@@ -507,6 +509,7 @@ Y_UNIT_TEST_SUITE(TServerHandlerTest)
             bootstrap->GetLogging(),
             bootstrap->GetStorage(),
             CreateServerStatsStub(),
+            CreateErrorHandlerStub(),
             options);
 
         auto handler = factory->CreateHandler();
@@ -543,6 +546,7 @@ Y_UNIT_TEST_SUITE(TServerHandlerTest)
                 bootstrap->GetLogging(),
                 bootstrap->GetStorage(),
                 CreateServerStatsStub(),
+                CreateErrorHandlerStub(),
                 options);
 
             auto handler = factory->CreateHandler();
@@ -563,6 +567,7 @@ Y_UNIT_TEST_SUITE(TServerHandlerTest)
                 bootstrap->GetLogging(),
                 bootstrap->GetStorage(),
                 CreateServerStatsStub(),
+                CreateErrorHandlerStub(),
                 options);
 
             auto handler = factory->CreateHandler();
@@ -584,6 +589,7 @@ Y_UNIT_TEST_SUITE(TServerHandlerTest)
                 bootstrap->GetLogging(),
                 bootstrap->GetStorage(),
                 CreateServerStatsStub(),
+                CreateErrorHandlerStub(),
                 options);
 
             auto handler = factory->CreateHandler();
@@ -660,6 +666,7 @@ Y_UNIT_TEST_SUITE(TServerHandlerTest)
             bootstrap->GetLogging(),
             bootstrap->GetStorage(),
             serverStats,
+            CreateErrorHandlerStub(),
             options);
 
         auto handler = factory->CreateHandler();

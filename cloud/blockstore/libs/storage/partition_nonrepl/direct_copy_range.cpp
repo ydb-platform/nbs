@@ -151,6 +151,7 @@ void TDirectCopyRangeActor::Done(const TActorContext& ctx, NProto::TError error)
             writeTs,
             WriteDuration,
             TVector<IProfileLog::TBlockInfo>(),
+            RecommendedBandwidth,
             AllZeroes,
             RequestInfo->GetExecCycles());
 
@@ -210,6 +211,7 @@ void TDirectCopyRangeActor::HandleDirectCopyBlocksResponse(
         ReadDuration = TDuration::MicroSeconds(msg->Record.GetReadDuration());
         WriteDuration = TDuration::MicroSeconds(msg->Record.GetReadDuration());
         AllZeroes = msg->Record.GetAllZeroes();
+        RecommendedBandwidth = msg->Record.GetRecommendedBandwidth();
     }
 
     Done(ctx, msg->GetError());

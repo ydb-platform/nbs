@@ -1757,6 +1757,67 @@ Y_UNIT_TEST_SUITE(TSessionTest)
         // Unfreeze request handlers
         promise.SetValue();
     }
+
+    Y_UNIT_TEST(ShouldPassErrorFlags)
+    {
+        auto client = std::make_shared<TTestService>();
+
+        size_t sessionNum = 0;
+        client->MountVolumeHandler =
+            [&](std::shared_ptr<NProto::TMountVolumeRequest> request)
+        {
+            NProto::TMountVolumeResponse response;
+            response.SetSessionId(ToString(++sessionNum));
+
+            auto& volume = *response.MutableVolume();
+            volume.SetDiskId(request->GetDiskId());
+            volume.SetBlockSize(4 * 1024);
+            volume.SetBlocksCount(1024);
+
+            return MakeFuture(response);
+        };
+
+        client->UnmountVolumeHandler =
+            [](std::shared_ptr<NProto::TUnmountVolumeRequest> request)
+        {
+            Y_UNUSED(request);
+            return MakeFuture<NProto::TUnmountVolumeResponse>();
+        };
+
+        client->WriteBlocksLocalHandler =
+            [](std::shared_ptr<NProto::TWriteBlocksLocalRequest> request)
+        {
+            Y_UNUSED(request);
+
+            NProto::TError result = MakeError(
+                E_IO_SILENT,
+                "IO error",
+                NCloud::NProto::EF_HW_PROBLEMS_DETECTED);
+            return MakeFuture<NProto::TWriteBlocksLocalResponse>(
+                TErrorResponse(std::move(result)));
+        };
+
+        auto bootstrap = CreateBootstrap(client);
+
+        auto session = bootstrap->GetSession();
+
+        bootstrap->Start();
+
+        {
+            auto res = session->MountVolume().GetValueSync();
+            UNIT_ASSERT_C(!HasError(res), res.GetError().GetMessage());
+        }
+
+        {
+            auto res = WriteBlocks(session);
+            UNIT_ASSERT(res.GetError().GetCode() == E_IO_SILENT);
+            UNIT_ASSERT(
+                res.GetError().GetFlags() ==
+                NCloud::NProto::EF_HW_PROBLEMS_DETECTED);
+        }
+
+        bootstrap->Stop();
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NClient

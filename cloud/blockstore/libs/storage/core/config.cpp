@@ -126,6 +126,7 @@ TDuration MSeconds(ui32 value)
     xxx(ConfigDispatcherSettings,                                              \
         NCloud::NProto::TConfigDispatcherSettings,                             \
         {}                                                                    )\
+    xxx(YdbViewerServiceEnabled,              bool,                  false    )\
 // BLOCKSTORE_STORAGE_CONFIG_RO
 
 #define BLOCKSTORE_STORAGE_CONFIG_RW(xxx)                                      \
@@ -156,10 +157,12 @@ TDuration MSeconds(ui32 value)
     xxx(TargetCompactionBytesPerOp,             ui64,   64_KB                 )\
     xxx(MaxSkippedBlobsDuringCompaction,        ui32,   3                     )\
     xxx(IncrementalCompactionEnabled,           bool,   false                 )\
-    xxx(CompactionRangeCountPerRun,             ui32,   3                     )\
     xxx(CompactionCountPerRunIncreasingThreshold, ui32, 0                     )\
     xxx(CompactionCountPerRunDecreasingThreshold, ui32, 0                     )\
+    xxx(CompactionRangeCountPerRun,             ui32,   3                     )\
     xxx(MaxCompactionRangeCountPerRun,          ui32,   8                     )\
+    xxx(GarbageCompactionRangeCountPerRun,      ui32,   1                     )\
+    xxx(ForcedCompactionRangeCountPerRun,       ui32,   1                     )\
     xxx(CompactionCountPerRunChangingPeriod,    TDuration, Seconds(60)        )\
     xxx(BatchCompactionEnabled,                 bool,   false                 )\
     xxx(BlobPatchingEnabled,                    bool,   false                 )\
@@ -491,6 +494,7 @@ TDuration MSeconds(ui32 value)
     xxx(VolumeProxyCacheRetryDuration,             TDuration, Seconds(15)     )\
                                                                                \
     xxx(UseDirectCopyRange,                             bool,      false         )\
+    xxx(NonReplicatedVolumeDirectAcquireEnabled,        bool,      false         )\
     xxx(MaxShadowDiskFillBandwidth,                     ui32,      512           )\
     xxx(MaxShadowDiskFillIoDepth,                       ui32,      1             )\
     xxx(BackgroundOperationsTotalBandwidth,             ui32,      1024          )\
@@ -509,6 +513,7 @@ TDuration MSeconds(ui32 value)
     xxx(ScrubbingBandwidth,                             ui64,      20            )\
     xxx(MaxScrubbingBandwidth,                          ui64,      50            )\
     xxx(MinScrubbingBandwidth,                          ui64,      5             )\
+    xxx(AutomaticallyEnableBufferCopyingAfterChecksumMismatch, bool, false       )\
                                                                                   \
     xxx(OptimizeVoidBuffersTransferForReadsEnabled,     bool,      false         )\
     xxx(VolumeHistoryCleanupItemCount,                  ui32,      100'000       )\
@@ -523,6 +528,9 @@ TDuration MSeconds(ui32 value)
     xxx(DiskRegistryInitialAgentRejectionThreshold,       double,    50       )\
     xxx(EnableToChangeStatesFromDiskRegistryMonpage,      bool,    false      )\
     xxx(EnableToChangeErrorStatesFromDiskRegistryMonpage, bool,    false      )\
+    xxx(CalculateSplittedUsedQuotaMetric,                 bool,    false      )\
+                                                                               \
+    xxx(DestroyVolumeTimeout,                      TDuration, Seconds(30)     )\
 // BLOCKSTORE_STORAGE_CONFIG_RW
 
 #define BLOCKSTORE_STORAGE_CONFIG(xxx)                                         \

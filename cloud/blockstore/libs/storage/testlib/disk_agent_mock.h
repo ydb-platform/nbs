@@ -100,6 +100,8 @@ private:
             HFunc(TEvDiskAgent::TEvZeroDeviceBlocksRequest, HandleZeroDeviceBlocks);
             HFunc(TEvDiskAgent::TEvChecksumDeviceBlocksRequest, HandleChecksumDeviceBlocks);
             HFunc(TEvDiskAgent::TEvDirectCopyBlocksRequest, HandleDirectCopyBlocks);
+            HFunc(TEvDiskAgent::TEvAcquireDevicesRequest, HandleAcquireDevicesRequest);
+            HFunc(TEvDiskAgent::TEvReleaseDevicesRequest, HandleReleaseDevicesRequest);
 
             default:
                 Y_ABORT("Unexpected event %x", ev->GetTypeRewrite());
@@ -314,6 +316,26 @@ private:
         const NActors::TActorContext& ctx)
     {
         State->CreateDirectCopyActorFunc(ev, ctx, SelfId());
+    }
+
+    void HandleAcquireDevicesRequest(
+        TEvDiskAgent::TEvAcquireDevicesRequest::TPtr& ev,
+        const NActors::TActorContext& ctx)
+    {
+        auto response =
+            std::make_unique<TEvDiskAgent::TEvAcquireDevicesResponse>();
+
+        Reply(ctx, *ev, std::move(response));
+    }
+
+    void HandleReleaseDevicesRequest(
+        TEvDiskAgent::TEvReleaseDevicesRequest::TPtr& ev,
+        const NActors::TActorContext& ctx)
+    {
+        auto response =
+            std::make_unique<TEvDiskAgent::TEvReleaseDevicesResponse>();
+
+        Reply(ctx, *ev, std::move(response));
     }
 };
 
