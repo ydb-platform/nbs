@@ -11351,14 +11351,18 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         config.SetV1GarbageCompactionEnabled(true);
         config.SetCompactionGarbageThreshold(20);
         config.SetCompactionRangeGarbageThreshold(999999);
+
         auto runtime = PrepareTestActorRuntime(config, MaxPartitionBlocksCount);
+
         TPartitionClient partition(*runtime);
         partition.WaitReady();
+
         {
             const auto response = partition.StatPartition();
             const auto& stats = response->Record.GetStats();
             UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMergedBlobsCount());
         }
+
         TAutoPtr<IEventHandle> compactionRequest;
         const auto interceptCompactionRequest =
             [&compactionRequest](TAutoPtr<IEventHandle>& event)
@@ -11376,28 +11380,38 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
             return TTestActorRuntime::DefaultObserverFunc(event);
         };
         runtime->SetObserverFunc(interceptCompactionRequest);
+
         const auto blockRange1 = TBlockRange32::WithLength(0, 1024);
         const auto blockRange2 = TBlockRange32::WithLength(1024 * 1024, 1024);
         const auto blockRange3 =
             TBlockRange32::WithLength(2 * 1024 * 1024, 1024);
+
         partition.WriteBlocks(blockRange1, 1);
         partition.WriteBlocks(blockRange1, 2);
+
         partition.WriteBlocks(blockRange2, 3);
         partition.WriteBlocks(blockRange2, 4);
         partition.WriteBlocks(blockRange2, 5);
+
         partition.WriteBlocks(blockRange3, 6);
         partition.WriteBlocks(blockRange3, 7);
         partition.WriteBlocks(blockRange3, 8);
+
         {
             const auto response = partition.StatPartition();
             const auto& stats = response->Record.GetStats();
             UNIT_ASSERT_VALUES_EQUAL(8, stats.GetMergedBlobsCount());
         }
+
         runtime->DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
+
         UNIT_ASSERT(compactionRequest);
         runtime->Send(compactionRequest.Release());
+
         runtime->DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
+
         partition.Cleanup();
+
         // checking that data wasn't corrupted
         UNIT_ASSERT_VALUES_EQUAL(
             GetBlockContent(2),
@@ -11405,60 +11419,75 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         UNIT_ASSERT_VALUES_EQUAL(
             GetBlockContent(2),
             GetBlockContent(partition.ReadBlocks(blockRange1.End)));
+
         UNIT_ASSERT_VALUES_EQUAL(
             GetBlockContent(5),
             GetBlockContent(partition.ReadBlocks(blockRange2.Start)));
         UNIT_ASSERT_VALUES_EQUAL(
             GetBlockContent(5),
             GetBlockContent(partition.ReadBlocks(blockRange2.End)));
+
         UNIT_ASSERT_VALUES_EQUAL(
             GetBlockContent(8),
             GetBlockContent(partition.ReadBlocks(blockRange3.Start)));
         UNIT_ASSERT_VALUES_EQUAL(
             GetBlockContent(8),
             GetBlockContent(partition.ReadBlocks(blockRange3.End)));
+
         // checking that we now have 1 blob in each of the ranges
         {
             const auto response = partition.StatPartition();
             const auto& stats = response->Record.GetStats();
             UNIT_ASSERT_VALUES_EQUAL(3, stats.GetMergedBlobsCount());
         }
+
     }
+
     Y_UNIT_TEST(ShouldProcessMultipleRangesUponForceCompaction)
     {
         auto config = DefaultConfig();
         config.SetBatchCompactionEnabled(true);
         config.SetForcedCompactionRangeCountPerRun(3);
         config.SetV1GarbageCompactionEnabled(false);
+
         auto runtime = PrepareTestActorRuntime(config, MaxPartitionBlocksCount);
+
         TPartitionClient partition(*runtime);
         partition.WaitReady();
+
         {
             const auto response = partition.StatPartition();
             const auto& stats = response->Record.GetStats();
             UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMergedBlobsCount());
         }
+
         const auto blockRange1 = TBlockRange32::WithLength(0, 1024);
         const auto blockRange2 = TBlockRange32::WithLength(1024 * 1024, 1024);
         const auto blockRange3 =
             TBlockRange32::WithLength(2 * 1024 * 1024, 1024);
+
         partition.WriteBlocks(blockRange1, 1);
         partition.WriteBlocks(blockRange1, 2);
+
         partition.WriteBlocks(blockRange2, 3);
         partition.WriteBlocks(blockRange2, 4);
         partition.WriteBlocks(blockRange2, 5);
+
         partition.WriteBlocks(blockRange3, 6);
         partition.WriteBlocks(blockRange3, 7);
         partition.WriteBlocks(blockRange3, 8);
+
         {
             const auto response = partition.StatPartition();
             const auto& stats = response->Record.GetStats();
             UNIT_ASSERT_VALUES_EQUAL(8, stats.GetMergedBlobsCount());
         }
+
         TCompactionOptions options;
         options.set(ToBit(ECompactionOption::Forced));
         partition.Compaction(0, options);
         partition.Cleanup();
+
         // checking that data wasn't corrupted
         UNIT_ASSERT_VALUES_EQUAL(
             GetBlockContent(2),
@@ -11466,18 +11495,21 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         UNIT_ASSERT_VALUES_EQUAL(
             GetBlockContent(2),
             GetBlockContent(partition.ReadBlocks(blockRange1.End)));
+
         UNIT_ASSERT_VALUES_EQUAL(
             GetBlockContent(5),
             GetBlockContent(partition.ReadBlocks(blockRange2.Start)));
         UNIT_ASSERT_VALUES_EQUAL(
             GetBlockContent(5),
             GetBlockContent(partition.ReadBlocks(blockRange2.End)));
+
         UNIT_ASSERT_VALUES_EQUAL(
             GetBlockContent(8),
             GetBlockContent(partition.ReadBlocks(blockRange3.Start)));
         UNIT_ASSERT_VALUES_EQUAL(
             GetBlockContent(8),
             GetBlockContent(partition.ReadBlocks(blockRange3.End)));
+
         // checking that we now have 1 blob in each of the ranges
         {
             const auto response = partition.StatPartition();
