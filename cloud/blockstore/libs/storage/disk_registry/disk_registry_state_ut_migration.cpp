@@ -415,7 +415,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMigrationTest)
             true);
         UNIT_ASSERT_VALUES_EQUAL(0, configCounter->Val());
 
-        state.AddMigration(state.Disks["foo"], "foo", "wrong-uuid", "report");
+        state.AddMigration(state.Disks["foo"], "foo", "wrong-uuid", true);
         UNIT_ASSERT(state.IsMigrationListEmpty());
 
         UNIT_ASSERT_VALUES_EQUAL(1, configCounter->Val());
