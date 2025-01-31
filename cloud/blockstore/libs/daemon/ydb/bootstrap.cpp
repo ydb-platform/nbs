@@ -16,6 +16,7 @@
 #include <cloud/blockstore/libs/discovery/healthcheck.h>
 #include <cloud/blockstore/libs/discovery/ping.h>
 #include <cloud/blockstore/libs/endpoints/endpoint_events.h>
+#include <cloud/blockstore/libs/kikimr/components.h>
 #include <cloud/blockstore/libs/kms/iface/compute_client.h>
 #include <cloud/blockstore/libs/kms/iface/key_provider.h>
 #include <cloud/blockstore/libs/kms/iface/kms_client.h>
@@ -52,7 +53,9 @@
 #include <cloud/storage/core/libs/common/task_queue.h>
 #include <cloud/storage/core/libs/common/thread_pool.h>
 #include <cloud/storage/core/libs/diagnostics/stats_fetcher.h>
+#include <cloud/storage/core/libs/coroutine/executor.h>
 #include <cloud/storage/core/libs/diagnostics/trace_serializer.h>
+#include <cloud/storage/core/libs/hive_proxy/protos/tablet_boot_info_backup.pb.h>
 #include <cloud/storage/core/libs/iam/iface/client.h>
 #include <cloud/storage/core/libs/iam/iface/config.h>
 #include <cloud/storage/core/libs/kikimr/actorsystem.h>
@@ -66,8 +69,10 @@
 #include <library/cpp/lwtrace/mon/mon_lwtrace.h>
 #include <library/cpp/monlib/dynamic_counters/counters.h>
 #include <library/cpp/monlib/service/pages/mon_page.h>
+#include <library/cpp/protobuf/util/pb_io.h>
 
 #include <util/digest/city.h>
+#include <util/system/file_lock.h>
 #include <util/system/hostname.h>
 
 namespace NCloud::NBlockStore::NServer {
@@ -625,6 +630,68 @@ void TBootstrapYdb::InitAuthService()
             CreateKikimrAuthProvider(ActorSystem));
 
         STORAGE_INFO("AuthService initialized");
+    }
+}
+
+void TBootstrapYdb::Warmup()
+{
+    if (!Configs->StorageConfig ||
+        !Configs->StorageConfig->GetTabletBootInfoBackupFilePath())
+    {
+        return;
+    }
+
+    auto tabletBootInfoBackupFilePath =
+        TFsPath(Configs->StorageConfig->GetTabletBootInfoBackupFilePath());
+    STORAGE_INFO(
+        TStringBuilder()
+        << "trying to read groupIds from tablet boot info file: "
+        << tabletBootInfoBackupFilePath);
+    ::NCloud::NStorage::NHiveProxy::NProto::TTabletBootInfoBackup backupProto;
+
+    try {
+        TFileLock lock(tabletBootInfoBackupFilePath);
+        if (lock.TryAcquire()) {
+            Y_DEFER
+            {
+                lock.Release();
+            };
+            TFileInput input(tabletBootInfoBackupFilePath);
+
+            ParseFromTextFormat(input, backupProto);
+        } else {
+            auto message =
+                TStringBuilder()
+                << "failed to acquire lock on tablet boot info file: "
+                << tabletBootInfoBackupFilePath;
+            STORAGE_ERROR(message);
+            return;
+        }
+    } catch (...) {
+        auto message = TStringBuilder()
+                       << "error during reading tablet boot info file: "
+                       << tabletBootInfoBackupFilePath;
+        STORAGE_ERROR(message);
+        return;
+    }
+
+    STORAGE_INFO("Sending ping messages to groups");
+
+    THashSet<ui32> groupIdsToPing;
+    for (const auto& [_, tabletBootInfo]: backupProto.GetData()) {
+        for (const auto& channel: tabletBootInfo.GetStorageInfo().GetChannels())
+        {
+            for (const auto& historyEntry: channel.GetHistory()) {
+                auto groupId = historyEntry.GetGroupID();
+                auto [_, inserted] = groupIdsToPing.insert(groupId);
+                if (inserted) {
+                    ActorSystem->Send(
+                        NKikimr::MakeBlobStorageProxyID(groupId),
+                        std::make_unique<NKikimr::TEvBlobStorage::TEvStatus>(
+                            TInstant::Max()));
+                }
+            }
+        }
     }
 }
 

@@ -127,6 +127,8 @@ protected:
     void InitKikimrService() override;
     void InitAuthService() override;
 
+    void Warmup() override;
+
 private:
     void InitConfigs();
 };

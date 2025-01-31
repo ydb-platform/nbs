@@ -120,6 +120,8 @@ protected:
     virtual void InitKikimrService() = 0;
     virtual void InitAuthService() = 0;
 
+    virtual void Warmup() = 0;
+
     void InitLWTrace();
     void InitProfileLog();
 
