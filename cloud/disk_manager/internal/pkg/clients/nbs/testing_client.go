@@ -617,6 +617,27 @@ func (c *testingClient) DisableDevices(
 	return wrapError(err)
 }
 
+func (c *testingClient) ChangeDeviceStateToOnline(
+	ctx context.Context,
+	deviceUUID string,
+	message string,
+) error {
+
+	input := fmt.Sprintf(
+		"{\"ChangeDeviceState\":{\"DeviceUUID\":\"%v\",\"State\":0},\"Message\":\"%v\"}",
+		deviceUUID,
+		message,
+	)
+
+	_, err := c.nbs.ExecuteAction(
+		ctx,
+		"diskregistrychangestate",
+		[]byte(input),
+	)
+
+	return wrapError(err)
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 type diskRegistryCheckpointReplica struct {

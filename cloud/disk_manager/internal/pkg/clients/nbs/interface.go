@@ -408,4 +408,10 @@ type TestingClient interface {
 		deviceUUIDs []string,
 		message string,
 	) error
+
+	ChangeDeviceStateToOnline(
+		ctx context.Context,
+		deviceUUID string,
+		message string,
+	) error
 }

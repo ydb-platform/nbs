@@ -1657,6 +1657,8 @@ func TestDiskRegistryDisableDevices(t *testing.T) {
 	err = session.Read(ctx, 0, 1, "", data, &zero)
 	require.Error(t, err)
 
+	err = client.ChangeDeviceStateToOnline(ctx, deviceUUIDs[0], t.Name())
+	require.NoError(t, err)
 	err = client.Delete(ctx, diskID)
 	require.NoError(t, err)
 }
@@ -1772,6 +1774,8 @@ func TestEnsureCheckpointReady(t *testing.T) {
 	)
 	require.NoError(t, err)
 
+	var shadowDiskDeviceUUID string
+
 	go func() {
 		// Disable device to enforce checkpoint status ERROR.
 
@@ -1787,6 +1791,8 @@ func TestEnsureCheckpointReady(t *testing.T) {
 		require.NotEmpty(t, agentID)
 		err = client.DisableDevices(ctx, agentID, deviceUUIDs, t.Name())
 		require.NoError(t, err)
+
+		shadowDiskDeviceUUID = deviceUUIDs[0]
 	}()
 
 	for {
@@ -1799,9 +1805,10 @@ func TestEnsureCheckpointReady(t *testing.T) {
 		time.Sleep(time.Microsecond * 100)
 	}
 
+	err = client.ChangeDeviceStateToOnline(ctx, shadowDiskDeviceUUID, t.Name())
+	require.NoError(t, err)
 	err = client.DeleteCheckpoint(ctx, diskID, checkpointID)
 	require.NoError(t, err)
-
 	err = client.Delete(ctx, diskID)
 	require.NoError(t, err)
 }
