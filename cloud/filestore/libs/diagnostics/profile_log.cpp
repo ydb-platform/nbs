@@ -77,7 +77,13 @@ void TProfileLog::Stop()
 void TProfileLog::Write(TRecord record)
 {
     // TODO(proller): Remove debug after bug fix 
-    STORAGE_VERIFY_DEBUG_C(record.FileSystemId.empty(), "", "", "Missing filesystem id in profile log");
+    //STORAGE_VERIFY_DEBUG_C(record.FileSystemId.empty(), "", "", "Missing filesystem id in profile log");
+    static bool reported = false;
+    if (!reported && record.FileSystemId.empty()) {
+        reported = true;
+        Cerr << "Profile log record without filesystem id. Trace:\n";
+        PrintBackTrace();
+    }
 
     Records.Enqueue(std::move(record));
 }
