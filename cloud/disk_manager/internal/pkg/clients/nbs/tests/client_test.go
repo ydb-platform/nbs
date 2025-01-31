@@ -1693,7 +1693,7 @@ func TestDiskRegistryFindDevicesOfShadowDisk(t *testing.T) {
 
 	retries := 0
 	for {
-		// Waiting for shadow disk to be created.
+		// Waiting for the shadow disk to be created.
 		time.Sleep(time.Second)
 
 		backup, err := client.BackupDiskRegistryState(ctx)
@@ -1744,7 +1744,7 @@ func TestEnsureCheckpointReady(t *testing.T) {
 	require.NoError(t, err)
 
 	for {
-		// Wait until checkpoint state turns to READY.
+		// Waiting until checkpoint status turns to READY.
 		err = client.EnsureCheckpointReady(ctx, diskID, checkpointID)
 		if err == nil {
 			break
@@ -1776,11 +1776,11 @@ func TestEnsureCheckpointReady(t *testing.T) {
 
 	var shadowDiskDeviceUUID string
 
+	// Disabling device to enforce checkpoint status ERROR.
 	go func() {
-		// Disable device to enforce checkpoint status ERROR.
-
-		// Wait for a while for better testing. At the same time, do not wait for
-		// too long: device should be disabled before checkpoint is ready.
+		// Waiting for the shadow disk to be created. At the same time, we do
+		// not wait for too long: device should be disabled before the
+		// checkpoint becomes ready.
 		time.Sleep(time.Second * 1)
 
 		diskRegistryBackup, err := client.BackupDiskRegistryState(ctx)
@@ -1789,6 +1789,7 @@ func TestEnsureCheckpointReady(t *testing.T) {
 		require.Equal(t, 1, len(deviceUUIDs))
 		agentID := diskRegistryBackup.GetAgentIDByDeviceUUId(deviceUUIDs[0])
 		require.NotEmpty(t, agentID)
+
 		err = client.DisableDevices(ctx, agentID, deviceUUIDs, t.Name())
 		require.NoError(t, err)
 
@@ -1796,7 +1797,7 @@ func TestEnsureCheckpointReady(t *testing.T) {
 	}()
 
 	for {
-		// Wait until checkpoint state turns to ERROR.
+		// Waiting until checkpoint status turns to ERROR.
 		err = client.EnsureCheckpointReady(ctx, diskID, checkpointID)
 		if errors.Is(err, errors.NewEmptyRetriableError()) {
 			break

@@ -675,6 +675,7 @@ func (b *DiskRegistryBackup) GetDevicesOfDisk(diskID string) []string {
 			return disk.DeviceUUIDs
 		}
 	}
+
 	return nil
 }
 
@@ -687,6 +688,7 @@ func (b *DiskRegistryBackup) GetDevicesOfShadowDisk(
 			return disk.DeviceUUIDs
 		}
 	}
+
 	return nil
 }
 
@@ -698,5 +700,6 @@ func (b *DiskRegistryBackup) GetAgentIDByDeviceUUId(deviceUUID string) string {
 			}
 		}
 	}
+
 	return ""
 }
