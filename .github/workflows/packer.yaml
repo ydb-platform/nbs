@@ -157,7 +157,7 @@ jobs:
     - name: Set up Nebius CLI
       if: inputs.nebius == 'yes'
       run: |
-        curl -sSL https://storage.ai.nebius.cloud/nebius/install.sh | bash
+        curl -sSL https://storage.eu-north1.nebius.cloud/cli/install.sh | bash
         cat <<EOF > sa.json
         ${sa_json}
         EOF
