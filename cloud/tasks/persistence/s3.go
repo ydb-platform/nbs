@@ -49,16 +49,18 @@ type S3Client struct {
 }
 
 func NewS3Client(
+	ctx context.Context,
 	endpoint string,
 	region string,
 	credentials S3Credentials,
 	callTimeout time.Duration,
 	s3MetricsRegistry metrics.Registry,
+	healthCheckStorage HealthStorage,
 	healthMetricsRegistry metrics.Registry,
 	maxRetriableErrorCount uint64,
 ) (*S3Client, error) {
 
-	s3Metrics := newS3Metrics(callTimeout, s3MetricsRegistry, healthMetricsRegistry)
+	s3Metrics := newS3Metrics(ctx, callTimeout, s3MetricsRegistry, healthCheckStorage, healthMetricsRegistry)
 
 	sessionConfig := &aws.Config{
 		Credentials: aws_credentials.NewStaticCredentials(
@@ -90,8 +92,10 @@ func NewS3Client(
 }
 
 func NewS3ClientFromConfig(
+	ctx context.Context,
 	config *persistence_config.S3Config,
 	s3MetricsRegistry metrics.Registry,
+	healthCheckStorage *healthCheckStorage,
 	healthMetricsRegistry metrics.Registry,
 ) (*S3Client, error) {
 
@@ -109,11 +113,13 @@ func NewS3ClientFromConfig(
 	}
 
 	return NewS3Client(
+		ctx,
 		config.GetEndpoint(),
 		config.GetRegion(),
 		credentials,
 		callTimeout,
 		s3MetricsRegistry,
+		healthCheckStorage,
 		healthMetricsRegistry,
 		config.GetMaxRetriableErrorCount(),
 	)

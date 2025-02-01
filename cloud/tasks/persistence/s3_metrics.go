@@ -123,13 +123,15 @@ func (m *s3Metrics) OnRetry(req *request.Request) {
 }
 
 func newS3Metrics(
+	ctx context.Context,
 	callTimeout time.Duration,
 	s3MetricsRegistry metrics.Registry,
+	healthCheckStorage HealthStorage,
 	healthMetricsRegistry metrics.Registry,
 ) *s3Metrics {
 	return &s3Metrics{
 		callTimeout:       callTimeout,
 		s3MetricsRegistry: s3MetricsRegistry,
-		healthCheck:       NewHealthCheck("s3", healthMetricsRegistry),
+		healthCheck:       NewHealthCheck(ctx, "s3", healthCheckStorage, healthMetricsRegistry),
 	}
 }

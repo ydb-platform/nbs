@@ -7,6 +7,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 	"github.com/ydb-platform/nbs/cloud/tasks/errors"
+	"github.com/ydb-platform/nbs/cloud/tasks/metrics/empty"
 	"github.com/ydb-platform/nbs/cloud/tasks/metrics/mocks"
 )
 
@@ -17,18 +18,22 @@ const maxRetriableErrorCount = 3
 ////////////////////////////////////////////////////////////////////////////////
 
 func newS3Client(
+	ctx context.Context,
 	callTimeout time.Duration,
 	s3MetricsRegistry *mocks.RegistryMock,
+	healthCheckStorage HealthStorage,
 	healthMetricsRegistry *mocks.RegistryMock,
 ) (*S3Client, error) {
 
 	credentials := NewS3Credentials("test", "test")
 	return NewS3Client(
+		ctx,
 		"endpoint",
 		"region",
 		credentials,
 		callTimeout,
 		s3MetricsRegistry,
+		healthCheckStorage,
 		healthMetricsRegistry,
 		maxRetriableErrorCount,
 	)
@@ -40,9 +45,15 @@ func TestS3ShouldSendErrorCanceledMetric(t *testing.T) {
 	ctx, cancel := context.WithCancel(newContext())
 
 	s3MetricsRegistry := mocks.NewRegistryMock()
+
+	db, err := newYDB(ctx, empty.NewRegistry())
+	require.NoError(t, err)
+	defer db.Close(ctx)
+
+	healthCheckStorage := newStorage(t, ctx, db)
 	healthMetricsRegistry := mocks.NewRegistryMock()
 
-	s3, err := newS3Client(10*time.Second /* callTimeout */, s3MetricsRegistry, healthMetricsRegistry)
+	s3, err := newS3Client(ctx, 10*time.Second /* callTimeout */, s3MetricsRegistry, healthCheckStorage, healthMetricsRegistry)
 	require.NoError(t, err)
 
 	cancel()
@@ -68,9 +79,15 @@ func TestS3ShouldSendErrorTimeoutMetric(t *testing.T) {
 	defer cancel()
 
 	s3MetricsRegistry := mocks.NewRegistryMock()
+
+	db, err := newYDB(ctx, empty.NewRegistry())
+	require.NoError(t, err)
+	defer db.Close(ctx)
+
+	healthCheckStorage := newStorage(t, ctx, db)
 	healthMetricsRegistry := mocks.NewRegistryMock()
 
-	s3, err := newS3Client(0 /* callTimeout */, s3MetricsRegistry, healthMetricsRegistry)
+	s3, err := newS3Client(ctx, 0 /* callTimeout */, s3MetricsRegistry, healthCheckStorage, healthMetricsRegistry)
 	require.NoError(t, err)
 
 	s3MetricsRegistry.GetCounter(
@@ -99,9 +116,15 @@ func TestS3ShouldRetryRequests(t *testing.T) {
 	defer cancel()
 
 	s3MetricsRegistry := mocks.NewRegistryMock()
+
+	db, err := newYDB(ctx, empty.NewRegistry())
+	require.NoError(t, err)
+	defer db.Close(ctx)
+
+	healthCheckStorage := newStorage(t, ctx, db)
 	healthMetricsRegistry := mocks.NewRegistryMock()
 
-	s3, err := newS3Client(10*time.Second /* callTimeout */, s3MetricsRegistry, healthMetricsRegistry)
+	s3, err := newS3Client(ctx, 10*time.Second /* callTimeout */, s3MetricsRegistry, healthCheckStorage, healthMetricsRegistry)
 	require.NoError(t, err)
 
 	s3MetricsRegistry.GetCounter(
@@ -125,9 +148,15 @@ func TestS3ShouldSendHealthMetric(t *testing.T) {
 	defer cancel()
 
 	s3MetricsRegistry := mocks.NewRegistryMock()
+
+	db, err := newYDB(ctx, empty.NewRegistry())
+	require.NoError(t, err)
+	defer db.Close(ctx)
+
+	healthCheckStorage := newStorage(t, ctx, db)
 	healthMetricsRegistry := mocks.NewRegistryMock()
 
-	s3, err := newS3Client(10*time.Second /* callTimeout */, s3MetricsRegistry, healthMetricsRegistry)
+	s3, err := newS3Client(ctx, 10*time.Second /* callTimeout */, s3MetricsRegistry, healthCheckStorage, healthMetricsRegistry)
 	require.NoError(t, err)
 
 	s3MetricsRegistry.GetCounter(

@@ -2,13 +2,11 @@ package persistence
 
 import (
 	"context"
+	"fmt"
+	"time"
 
 	"github.com/ydb-platform/nbs/cloud/tasks/logging"
 )
-
-// import (
-// 	"time"
-// )
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -42,10 +40,24 @@ func CreateYDBTables(
 }
 
 type healthCheckStorage struct {
+	db         *YDBClient
+	tablesPath string
 }
 
-func NewStorage(db *YDBClient) *healthCheckStorage {
-	return &healthCheckStorage{}
+type HealthStorage interface {
+	HeartbeatNode(
+		ctx context.Context,
+		// host string,
+		ts time.Time,
+		// value float64,
+	) error
+}
+
+func NewStorage(db *YDBClient) HealthStorage {
+	return &healthCheckStorage{
+		db:         db,
+		tablesPath: db.AbsolutePath("test"),
+	}
 }
 
 // type HealthCheck struct {
@@ -110,3 +122,44 @@ func NewStorage(db *YDBClient) *healthCheckStorage {
 ////////////////////////////////////////////////////////////////////////////////
 
 // Updates heartbeat timestamp and the current number of inflight tasks.
+func (s *healthCheckStorage) heartbeatNode(
+	ctx context.Context,
+	session *Session,
+	// host string,
+	ts time.Time,
+	// value float64,
+) error {
+
+	logging.Debug(
+		ctx,
+		"KEK IS",
+	)
+
+	_, err := session.ExecuteRW(ctx, fmt.Sprintf(`
+		--!syntax_v1
+		pragma TablePathPrefix = "%v";
+		declare $component as Utf8;
+		declare $update_at as Timestamp;
+
+		upsert into nodes (component, update_at)
+		values ($component, $update_at);
+	`, s.tablesPath),
+		ValueParam("$host", UTF8Value("BORIS_BG")),
+		ValueParam("$update_at", TimestampValue(ts)),
+	)
+	return err
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+func (s *healthCheckStorage) HeartbeatNode(
+	ctx context.Context,
+	// host string,
+	ts time.Time,
+	// value float64,
+) error {
+
+	return s.db.Execute(ctx, func(ctx context.Context, session *Session) error {
+		return s.heartbeatNode(ctx, session, ts)
+	})
+}

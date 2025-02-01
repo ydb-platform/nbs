@@ -9,6 +9,7 @@ SRCS(
 
     health.go
     health_storage.go
+    health_storage_mocks.go
 )
 
 GO_TEST_SRCS(

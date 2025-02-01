@@ -18,7 +18,7 @@ func newStorage(
 	t *testing.T,
 	ctx context.Context,
 	db *YDBClient,
-) *healthCheckStorage {
+) HealthStorage {
 
 	err := CreateYDBTables(
 		ctx,
@@ -43,10 +43,10 @@ func TestHealthCheckMetric(t *testing.T) {
 	require.NoError(t, err)
 	defer db.Close(ctx)
 
-	storage := newStorage(t, ctx, db)
+	storage := NewStorageMock()
 
 	registry := mocks.NewRegistryMock()
-	healthCheck := NewHealthCheck("test", storage, registry)
+	healthCheck := NewHealthCheck(ctx, "test", storage, registry)
 
 	gaugeSetWg := sync.WaitGroup{}
 
@@ -59,6 +59,8 @@ func TestHealthCheckMetric(t *testing.T) {
 			gaugeSetWg.Done()
 		},
 	)
+
+	storage.On("HeartbeatNode", ctx, mock.Anything).Return(nil)
 	gaugeSetWg.Wait()
 
 	healthCheck.AccountQuery(nil)
@@ -78,4 +80,6 @@ func TestHealthCheckMetric(t *testing.T) {
 	gaugeSetWg.Wait()
 
 	registry.AssertAllExpectations(t)
+
+	require.NotNil(t, nil)
 }
