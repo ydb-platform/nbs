@@ -908,6 +908,8 @@ private:
         config.SetGuestWritebackCacheEnabled(
             features.GetGuestWritebackCacheEnabled());
 
+        config.SetZeroCopyEnabled(features.GetZeroCopyEnabled());
+
         return std::make_shared<TFileSystemConfig>(config);
     }
 
