@@ -172,6 +172,18 @@ private:
         ui64 seqNo);
 
     void RemoveSession(const TString& sessionId, ui64 seqNo);
+
+    NThreading::TFuture<NProto::TWriteDataResponse>
+    WriteDataAsyncUsingFuseBuffers(
+        NProto::TWriteDataRequest& request,
+        NProto::TProfileLogRequestInfo& logRequest,
+        TFileHandle* handle);
+
+    NThreading::TFuture<NProto::TReadDataResponse>
+    ReadDataAsyncUsingFuseBuffers(
+        NProto::TReadDataRequest& request,
+        NProto::TProfileLogRequestInfo& logRequest,
+        TFileHandle* handle);
 };
 
 ////////////////////////////////////////////////////////////////////////////////

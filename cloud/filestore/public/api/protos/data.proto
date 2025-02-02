@@ -8,6 +8,15 @@ package NCloud.NFileStore.NProto;
 
 option go_package = "github.com/ydb-platform/nbs/cloud/filestore/public/api/protos";
 
+message TFuseBuf
+{
+    // Buffer size in bytes
+    uint64 Size = 1;
+
+    // Buffer address
+    uint64 Address = 2;
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 // CreateHandle request/response
 
@@ -135,6 +144,9 @@ message TReadDataRequest
 
     // Number of bytes to read.
     uint64 Length = 6;
+
+    // Optional fuse buffers where data needs to be read
+    repeated TFuseBuf FuseBufers = 7;
 }
 
 message TReadDataResponse
@@ -147,6 +159,9 @@ message TReadDataResponse
 
     // Bytes read start at buffer offset.
     uint32 BufferOffset = 3;
+
+    // Number of bytes read directly into fuse buffers
+    uint32 FuseBuffersReadBytes = 4;
 
     // Optional response headers.
     TResponseHeaders Headers = 1000;
@@ -177,6 +192,12 @@ message TWriteDataRequest
 
     // Bytes to write start at buffer offset.
     uint32 BufferOffset = 7;
+
+    // Optional fuse buffers with data
+    repeated TFuseBuf FuseBufers = 8;
+
+    // Number of bytes written from fuse buffers
+    uint32 FuseBuffersWriteBytes = 9;
 }
 
 message TWriteDataResponse
