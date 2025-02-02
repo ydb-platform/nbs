@@ -495,6 +495,13 @@ private:
         fuse_req_t req,
         fuse_ino_t ino,
         const TRangeLock& range);
+    ssize_t InitWriteData(
+        std::shared_ptr<NProto::TWriteDataRequest>& request,
+        fuse_bufvec* fuseBufVec,
+        size_t expectedSize);
+    void InitReadData(
+        std::shared_ptr<NProto::TReadDataRequest>& request,
+        fuse_req_t fuseReq);
 };
 
 }   // namespace NCloud::NFileStore::NFuse

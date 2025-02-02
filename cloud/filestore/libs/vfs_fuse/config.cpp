@@ -34,6 +34,8 @@ namespace {
     xxx(DirectIoAlign,              ui32,       4_KB                          )\
                                                                                \
     xxx(GuestWritebackCacheEnabled, bool,       false                         )\
+                                                                               \
+    xxx(ZeroCopyEnabled,            bool,       false                         )\
 // FILESTORE_FUSE_CONFIG
 
 #define FILESTORE_FILESYSTEM_DECLARE_CONFIG(name, type, value)                 \

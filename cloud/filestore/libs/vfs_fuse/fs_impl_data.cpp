@@ -1,5 +1,7 @@
 #include "fs_impl.h"
 
+#include "fuse.h"
+
 #include <cloud/filestore/libs/diagnostics/critical_events.h>
 #include <cloud/filestore/libs/diagnostics/profile_log.h>
 #include <cloud/filestore/libs/diagnostics/profile_log_events.h>
@@ -202,6 +204,43 @@ void TFileSystem::Release(
         });
 }
 
+void TFileSystem::InitReadData(std::shared_ptr<NProto::TReadDataRequest>& request, fuse_req_t fuseReq)
+{
+    if (!Config->GetZeroCopyEnabled()) {
+        return;
+    }
+
+    struct iovec *iov = NULL;
+    int count = 0;
+    int ret = fuse_out_buf(fuseReq, &iov, &count);
+    if (ret == -1  || count <= 1) {
+        return;
+    }
+
+    request->MutableFuseBufers()->Reserve(count - 1);
+
+    size_t remainingSize = request->GetLength();
+    // skip first fuse out iovec where headers are kept rest of the iovecs
+    // contain pointers to data buffers
+    for (int index = 1; index < count; index++) {
+        if (remainingSize == 0) {
+            break;
+        }
+        auto* dstFuseBuf = request->AddFuseBufers();
+        dstFuseBuf->SetAddress(reinterpret_cast<ui64>(iov[index].iov_base));
+        dstFuseBuf->SetSize(std::min(remainingSize, iov[index].iov_len));
+        remainingSize -= iov[index].iov_len;
+    }
+
+    if (remainingSize != 0) {
+        STORAGE_WARN(
+            "Read request length exceeds fuse buffer space, remainingSize="
+            << remainingSize);
+        request->ClearFuseBufers();
+        return;
+    }
+}
+
 void TFileSystem::Read(
     TCallContextPtr callContext,
     fuse_req_t req,
@@ -238,6 +277,8 @@ void TFileSystem::Read(
     request->SetOffset(offset);
     request->SetLength(size);
 
+    InitReadData(request, req);
+
     Session->ReadData(callContext, std::move(request))
         .Subscribe([=, ptr = weak_from_this()] (const auto& future) {
             const auto& response = future.GetValue();
@@ -248,8 +289,12 @@ void TFileSystem::Read(
                     *callContext,
                     response.GetError(),
                     req,
-                    buffer.data() + bufferOffset,
-                    buffer.size() - bufferOffset);
+                    response.GetFuseBuffersReadBytes()
+                        ? NULL
+                        : buffer.data() + bufferOffset,
+                    response.GetFuseBuffersReadBytes()
+                        ? response.GetFuseBuffersReadBytes()
+                        : buffer.size() - bufferOffset);
             }
         });
 }
@@ -307,6 +352,57 @@ void TFileSystem::Write(
         });
 }
 
+ssize_t TFileSystem::InitWriteData(
+    std::shared_ptr<NProto::TWriteDataRequest>& request,
+    fuse_bufvec* fuseBufVec,
+    size_t expectedSize)
+{
+    if (Config->GetZeroCopyEnabled()) {
+        request->SetFuseBuffersWriteBytes(expectedSize);
+        request->MutableFuseBufers()->Reserve(fuseBufVec->count);
+        for (size_t index = 0; index < fuseBufVec->count; index++) {
+            const auto *srcFuseBuf = &fuseBufVec->buf[index];
+            if (srcFuseBuf->size == 0) {
+                continue;
+            }
+
+            auto* dstFuseBuf = request->AddFuseBufers();
+            dstFuseBuf->SetAddress(reinterpret_cast<ui64>(srcFuseBuf->mem));
+            dstFuseBuf->SetSize(srcFuseBuf->size);
+            expectedSize -= srcFuseBuf->size;
+        }
+
+        // expectedSize is computed based on fuse iovecs
+        Y_ABORT_UNLESS(expectedSize == 0);
+
+        return 0;
+    }
+
+    auto align = Config->GetDirectIoEnabled() ? Config->GetDirectIoAlign() : 0;
+    TAlignedBuffer alignedBuffer(expectedSize, align);
+
+    fuse_bufvec dst = FUSE_BUFVEC_INIT(expectedSize);
+    dst.buf[0].mem = (void*)(alignedBuffer.Begin());
+
+    ssize_t res = fuse_buf_copy(
+        &dst, fuseBufVec
+#if !defined(FUSE_VIRTIO)
+        ,fuse_buf_copy_flags(0)
+#endif
+    );
+
+    if (res < 0) {
+        return res;
+    }
+
+    Y_ABORT_UNLESS((size_t)res == expectedSize);
+
+    request->SetBufferOffset(alignedBuffer.AlignedDataOffset());
+    request->SetBuffer(alignedBuffer.TakeBuffer());
+
+    return res;
+}
+
 void TFileSystem::WriteBuf(
     TCallContextPtr callContext,
     fuse_req_t req,
@@ -324,32 +420,18 @@ void TFileSystem::WriteBuf(
         return;
     }
 
-    auto align = Config->GetDirectIoEnabled() ? Config->GetDirectIoAlign() : 0;
-    TAlignedBuffer alignedBuffer(size, align);
+    auto request = StartRequest<NProto::TWriteDataRequest>(ino);
+    request->SetHandle(fi->fh);
+    request->SetOffset(offset);
 
-    fuse_bufvec dst = FUSE_BUFVEC_INIT(size);
-    dst.buf[0].mem = (void*)(alignedBuffer.Begin());
-
-    ssize_t res = fuse_buf_copy(
-        &dst, bufv
-#if !defined(FUSE_VIRTIO)
-        ,fuse_buf_copy_flags(0)
-#endif
-    );
+    ssize_t res = InitWriteData(request, bufv, size);
     if (res < 0) {
         ReplyError(*callContext, MakeError(res), req, res);
         return;
     }
-    Y_ABORT_UNLESS((size_t)res == size);
 
     callContext->Unaligned = !IsAligned(offset, Config->GetBlockSize())
         || !IsAligned(size, Config->GetBlockSize());
-
-    auto request = StartRequest<NProto::TWriteDataRequest>(ino);
-    request->SetHandle(fi->fh);
-    request->SetOffset(offset);
-    request->SetBufferOffset(alignedBuffer.AlignedDataOffset());
-    request->SetBuffer(alignedBuffer.TakeBuffer());
 
     const auto handle = fi->fh;
     const auto reqId = callContext->RequestId;

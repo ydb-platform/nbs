@@ -224,7 +224,12 @@ void InitProfileLogRequestInfo(
     rangeInfo->SetNodeId(request.GetNodeId());
     rangeInfo->SetHandle(request.GetHandle());
     rangeInfo->SetOffset(request.GetOffset());
-    rangeInfo->SetBytes(request.GetBuffer().size());
+    if (request.FuseBufersSize() > 0) {
+        rangeInfo->SetBytes(request.GetFuseBuffersWriteBytes());
+    } else {
+        rangeInfo->SetBytes(request.GetBuffer().size());
+    }
+
 }
 
 template <>
@@ -622,7 +627,11 @@ void FinalizeProfileLogRequestInfo(
         profileLogRequest.AddRanges();
     }
     auto* rangeInfo = profileLogRequest.MutableRanges(0);
-    rangeInfo->SetActualBytes(response.GetBuffer().size());
+    if (response.GetFuseBuffersReadBytes()) {
+        rangeInfo->SetActualBytes(response.GetFuseBuffersReadBytes());
+    } else {
+        rangeInfo->SetActualBytes(response.GetBuffer().size());
+    }
 }
 
 }   // namespace NCloud::NFileStore
