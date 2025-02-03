@@ -297,7 +297,7 @@ void TVolumeActor::HandleStatVolume(
 
     TActiveCheckpointsMap activeCheckpoints = State->GetCheckpointStore().GetActiveCheckpoints();
     TVector<TString> checkpoints(Reserve(activeCheckpoints.size()));
-    for (const auto& [checkpoint, checkpointData] : activeCheckpoints) {
+    for (const auto& [checkpoint, _] : activeCheckpoints) {
         checkpoints.push_back(checkpoint);
     }
 
