@@ -640,52 +640,52 @@ func (c *testingClient) ChangeDeviceStateToOnline(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-type diskRegistryCheckpointReplica struct {
+type diskAgentDevice struct {
+	DeviceUUID string `json:"DeviceUUID"`
+}
+
+type diskAgent struct {
+	Devices []diskAgentDevice `json:"Devices"`
+	AgentID string            `json:"AgentId"`
+}
+
+type diskRegistryBasedDiskCheckpoint struct {
 	CheckpointID string `json:"CheckpointId"`
 	SourceDiskID string `json:"SourceDiskId"`
 }
 
-type diskRegistryDisk struct {
-	DiskID            string                        `json:"DiskId"`
-	DeviceUUIDs       []string                      `json:"DeviceUUIDs"`
-	CheckpointReplica diskRegistryCheckpointReplica `json:"CheckpointReplica"`
-}
-
-type diskRegistryDevice struct {
-	DeviceUUID string `json:"DeviceUUID"`
-}
-
-type diskRegistryAgent struct {
-	Devices []diskRegistryDevice `json:"Devices"`
-	AgentID string               `json:"AgentId"`
+type DiskRegistryBasedDisk struct {
+	DiskID            string                          `json:"DiskId"`
+	DeviceUUIDs       []string                        `json:"DeviceUUIDs"`
+	CheckpointReplica diskRegistryBasedDiskCheckpoint `json:"CheckpointReplica"`
 }
 
 type DiskRegistryBackup struct {
-	Disks  []diskRegistryDisk  `json:"Disks"`
-	Agents []diskRegistryAgent `json:"Agents"`
+	Disks  []DiskRegistryBasedDisk `json:"Disks"`
+	Agents []diskAgent             `json:"Agents"`
 }
 
 type diskRegistryState struct {
 	Backup DiskRegistryBackup `json:"Backup"`
 }
 
-func (b *DiskRegistryBackup) GetDevicesOfDisk(diskID string) []string {
+func (b *DiskRegistryBackup) GetDisk(diskID string) *DiskRegistryBasedDisk {
 	for _, disk := range b.Disks {
 		if disk.DiskID == diskID {
-			return disk.DeviceUUIDs
+			return &disk
 		}
 	}
 
 	return nil
 }
 
-func (b *DiskRegistryBackup) GetDevicesOfShadowDisk(
+func (b *DiskRegistryBackup) GetShadowDisk(
 	originalDiskID string,
-) []string {
+) *DiskRegistryBasedDisk {
 
 	for _, disk := range b.Disks {
 		if disk.CheckpointReplica.SourceDiskID == originalDiskID {
-			return disk.DeviceUUIDs
+			return &disk
 		}
 	}
 

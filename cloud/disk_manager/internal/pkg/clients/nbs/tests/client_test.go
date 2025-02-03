@@ -1593,16 +1593,18 @@ func TestDiskRegistryState(t *testing.T) {
 	backup, err := client.BackupDiskRegistryState(ctx)
 	require.NoError(t, err)
 
-	deviceUUIDs := backup.GetDevicesOfDisk(diskID)
-	require.Equal(t, len(deviceUUIDs), 2)
+	disk := backup.GetDisk(diskID)
+	require.NotNil(t, disk)
+	deviceUUIDs := disk.DeviceUUIDs
+	require.Equal(t, 2, len(deviceUUIDs))
 
 	agentID := backup.GetAgentIDByDeviceUUId(deviceUUIDs[0])
 	require.NotEmpty(t, agentID)
 	agentID = backup.GetAgentIDByDeviceUUId(deviceUUIDs[1])
 	require.NotEmpty(t, agentID)
 
-	deviceUUIDs = backup.GetDevicesOfDisk("nonExistingDiskID")
-	require.Nil(t, deviceUUIDs)
+	disk = backup.GetDisk("nonExistingDiskID")
+	require.Nil(t, disk)
 	agentID = backup.GetAgentIDByDeviceUUId("nonExistingDeviceID")
 	require.Empty(t, agentID)
 
@@ -1628,8 +1630,12 @@ func TestDiskRegistryDisableDevices(t *testing.T) {
 
 	backup, err := client.BackupDiskRegistryState(ctx)
 	require.NoError(t, err)
-	deviceUUIDs := backup.GetDevicesOfDisk(diskID)
-	require.Equal(t, len(deviceUUIDs), 1)
+
+	disk := backup.GetDisk(diskID)
+	require.NotNil(t, disk)
+	deviceUUIDs := disk.DeviceUUIDs
+	require.Equal(t, 1, len(deviceUUIDs))
+
 	agentID := backup.GetAgentIDByDeviceUUId(deviceUUIDs[0])
 	require.NotEmpty(t, agentID)
 
@@ -1679,9 +1685,9 @@ func TestDiskRegistryFindDevicesOfShadowDisk(t *testing.T) {
 
 	backup, err := client.BackupDiskRegistryState(ctx)
 	require.NoError(t, err)
-	deviceUUIDs := backup.GetDevicesOfShadowDisk(diskID)
 	// Shadow disk should not exist because checkpoint is not created yet.
-	require.Nil(t, deviceUUIDs)
+	shadowDisk := backup.GetShadowDisk(diskID)
+	require.Nil(t, shadowDisk)
 
 	checkpointID := "checkpointID"
 	err = client.CreateCheckpoint(ctx, nbs.CheckpointParams{
@@ -1698,10 +1704,12 @@ func TestDiskRegistryFindDevicesOfShadowDisk(t *testing.T) {
 
 		backup, err := client.BackupDiskRegistryState(ctx)
 		require.NoError(t, err)
-		deviceUUIDs := backup.GetDevicesOfShadowDisk(diskID)
 
+		shadowDisk = backup.GetShadowDisk(diskID)
+		require.NotNil(t, shadowDisk)
+		deviceUUIDs := shadowDisk.DeviceUUIDs
 		if len(deviceUUIDs) > 0 {
-			require.Equal(t, len(deviceUUIDs), 1)
+			require.Equal(t, 1, len(deviceUUIDs))
 			break
 		}
 
@@ -1785,8 +1793,12 @@ func TestEnsureCheckpointReady(t *testing.T) {
 
 		diskRegistryBackup, err := client.BackupDiskRegistryState(ctx)
 		require.NoError(t, err)
-		deviceUUIDs := diskRegistryBackup.GetDevicesOfShadowDisk(diskID)
+
+		shadowDisk := diskRegistryBackup.GetShadowDisk(diskID)
+		require.NotNil(t, shadowDisk)
+		deviceUUIDs := shadowDisk.DeviceUUIDs
 		require.Equal(t, 1, len(deviceUUIDs))
+
 		agentID := diskRegistryBackup.GetAgentIDByDeviceUUId(deviceUUIDs[0])
 		require.NotEmpty(t, agentID)
 
