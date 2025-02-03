@@ -205,18 +205,9 @@ struct TPlacementGroupInfo
 };
 
 ////////////////////////////////////////////////////////////////////////////////
-namespace NTestSuiteTDiskRegistryStateMigrationTest {
-
-struct TTestCaseShouldReportMigrationsWithWrongDeviceOwnership;
-
-}   // namespace NTestSuiteTDiskRegistryStateMigrationTest
-
-////////////////////////////////////////////////////////////////////////////////
 
 class TDiskRegistryState
 {
-    friend struct NTestSuiteTDiskRegistryStateMigrationTest::
-        TTestCaseShouldReportMigrationsWithWrongDeviceOwnership;
     using TAgentId = TString;
     using TDeviceId = TString;
     using TDiskId = TString;
