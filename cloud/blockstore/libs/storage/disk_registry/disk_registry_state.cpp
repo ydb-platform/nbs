@@ -611,16 +611,6 @@ void TDiskRegistryState::AddMigration(
     const TString& diskId,
     const TString& sourceDeviceId)
 {
-    if (!FindPtr(disk.Devices, sourceDeviceId))
-    {
-        ReportDiskRegistryWrongMigratedDeviceOwnership(Sprintf(
-            "%s: device[DeviceUUID = %s] not found in disk[DiskId = %s]",
-            "AddMigration",
-            sourceDeviceId.c_str(),
-            diskId.c_str()));
-        return;
-    }
-
     if (disk.CheckpointReplica.GetCheckpointId()) {
         // Don't start migrations for shadow disks.
         return;
@@ -5034,10 +5024,17 @@ void TDiskRegistryState::ApplyAgentStateChange(
 
         if (agent.GetState() == NProto::AGENT_STATE_WARNING) {
             if (MigrationCanBeStarted(disk, deviceId)) {
-                AddMigration(
-                    disk,
-                    diskId,
-                    deviceId);
+                if (!FindPtr(disk.Devices, deviceId)) {
+                    ReportDiskRegistryWrongMigratedDeviceOwnership(Sprintf(
+                        "ApplyAgentStateChange: device[DeviceUUID = %s] not "
+                        "found in disk[DiskId "
+                        "= %s]",
+                        deviceId.c_str(),
+                        diskId.c_str()));
+                    continue;
+                }
+
+                AddMigration(disk, diskId, deviceId);
             }
         } else {
             if (agent.GetState() == NProto::AGENT_STATE_UNAVAILABLE

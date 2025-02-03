@@ -391,53 +391,6 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMigrationTest)
         UNIT_ASSERT_VALUES_EQUAL(0, configCounter->Val());
     }
 
-    Y_UNIT_TEST(ShouldReportMigrationsWithWrongDeviceOwnership)
-    {
-        TTestExecutor executor;
-        executor.WriteTx([&](TDiskRegistryDatabase db) { db.InitSchema(); });
-
-        const TVector agents{
-            AgentConfig(1, {Device("dev-1", "uuid-1.1", "rack-1")}),
-            AgentConfig(2, {Device("dev-1", "uuid-2.1", "rack-1")}),
-            AgentConfig(3, {Device("dev-1", "uuid-3.1", "rack-1")}),
-        };
-
-        TDiskRegistryState state = TDiskRegistryStateBuilder()
-                                       .WithKnownAgents(agents)
-                                       .WithDisks({Disk("foo", {"uuid-1.1"})})
-                                       .Build();
-
-        NMonitoring::TDynamicCountersPtr counters =
-            new NMonitoring::TDynamicCounters();
-        InitCriticalEventsCounter(counters);
-        auto configCounter = counters->GetCounter(
-            "AppCriticalEvents/DiskRegistryWrongMigratedDeviceOwnership",
-            true);
-        UNIT_ASSERT_VALUES_EQUAL(0, configCounter->Val());
-
-        state.AddMigration(state.Disks["foo"], "foo", "wrong-uuid");
-        UNIT_ASSERT(state.IsMigrationListEmpty());
-
-        UNIT_ASSERT_VALUES_EQUAL(1, configCounter->Val());
-
-        executor.WriteTx(
-            [&](TDiskRegistryDatabase db) mutable
-            {
-                bool stateUpdated = false;
-                auto err = state.FinishDeviceMigration(
-                    db,
-                    "foo",
-                    "wrong-uuid-0",
-                    "wrong-uuid-1",
-                    Now(),
-                    &stateUpdated);
-
-                UNIT_ASSERT(!stateUpdated);
-                UNIT_ASSERT(HasError(err));
-            });
-        UNIT_ASSERT_VALUES_EQUAL(2, configCounter->Val());
-    }
-
     Y_UNIT_TEST(ShouldEraseMigrationsForDeletedDisk)
     {
         TTestExecutor executor;
@@ -1222,6 +1175,14 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMigrationTest)
         UNIT_ASSERT_VALUES_EQUAL(0, state.BuildMigrationList().size());
         UNIT_ASSERT(state.IsMigrationListEmpty());
 
+        NMonitoring::TDynamicCountersPtr counters =
+            new NMonitoring::TDynamicCounters();
+        InitCriticalEventsCounter(counters);
+        auto critCounter = counters->GetCounter(
+            "AppCriticalEvents/DiskRegistryWrongMigratedDeviceOwnership",
+            true);
+        UNIT_ASSERT_VALUES_EQUAL(0, critCounter->Val());
+
         executor.WriteTx(
             [&](TDiskRegistryDatabase db)
             {
@@ -1336,6 +1297,10 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMigrationTest)
 
         auto migrationsAfterSecondRequest = state.BuildMigrationList();
         UNIT_ASSERT_VALUES_EQUAL(0, migrationsAfterSecondRequest.size());
+        critCounter = counters->GetCounter(
+            "AppCriticalEvents/DiskRegistryWrongMigratedDeviceOwnership",
+            true);
+        UNIT_ASSERT_VALUES_EQUAL(0, critCounter->Val());
     }
 
     Y_UNIT_TEST(ShouldStartCanceledMigrationAgent)
