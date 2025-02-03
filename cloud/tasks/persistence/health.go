@@ -9,45 +9,53 @@ import (
 
 ////////////////////////////////////////////////////////////////////////////////
 
-type HealthCheck struct {
-	queriesCount              uint64
-	successQueriesCount       uint64
-	storage                   HealthStorage
+type AvailabilityMonitoring struct {
+	componentName       string
+	host                string
+	queriesCount        uint64
+	successQueriesCount uint64
+
+	storage                   *storageYDB
 	registry                  metrics.Registry
 	metricsCollectionInterval time.Duration
 }
 
-func (h *HealthCheck) reportSuccessRate(ctx context.Context) {
+func (h *AvailabilityMonitoring) reportSuccessRate(ctx context.Context) {
 	if h.queriesCount == 0 {
 		h.registry.Gauge("successRate").Set(0)
 		return
 	}
 
-	h.registry.Gauge("successRate").Set(float64(h.successQueriesCount) / float64(h.queriesCount))
-	h.storage.HeartbeatNode(ctx, time.Now())
+	successRate := float64(h.successQueriesCount) / float64(h.queriesCount)
+	h.registry.Gauge("successRate").Set(successRate)
+	h.storage.UpdateAvailabilityRate(ctx, h.componentName, h.host, successRate, time.Now())
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 
-func (h *HealthCheck) AccountQuery(err error) {
+func (h *AvailabilityMonitoring) AccountQuery(err error) {
 	h.queriesCount++
 	if err == nil {
 		h.successQueriesCount++
 	}
 }
 
-func NewHealthCheck(
+func NewAvailabilityMonitoring(
 	ctx context.Context,
 	componentName string,
-	storage HealthStorage,
+	host string,
+	storage *storageYDB,
 	registry metrics.Registry,
-) *HealthCheck {
+) *AvailabilityMonitoring {
 
 	subRegistry := registry.WithTags(map[string]string{
 		"component": componentName,
 	})
 
-	h := HealthCheck{
+	h := AvailabilityMonitoring{
+		componentName: componentName,
+		host:          host,
+
 		storage:                   storage,
 		registry:                  subRegistry,
 		metricsCollectionInterval: 15 * time.Second, // todo
@@ -57,8 +65,13 @@ func NewHealthCheck(
 		ticker := time.NewTicker(h.metricsCollectionInterval)
 		defer ticker.Stop()
 
-		for range ticker.C {
-			h.reportSuccessRate(ctx)
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				h.reportSuccessRate(ctx)
+			}
 		}
 	}()
 

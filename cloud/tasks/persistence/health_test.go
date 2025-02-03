@@ -7,6 +7,7 @@ import (
 
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
+	tasks_config "github.com/ydb-platform/nbs/cloud/tasks/config"
 	"github.com/ydb-platform/nbs/cloud/tasks/errors"
 	"github.com/ydb-platform/nbs/cloud/tasks/metrics/empty"
 	"github.com/ydb-platform/nbs/cloud/tasks/metrics/mocks"
@@ -18,16 +19,18 @@ func newStorage(
 	t *testing.T,
 	ctx context.Context,
 	db *YDBClient,
-) HealthStorage {
+) *storageYDB {
 
+	config := &tasks_config.TasksConfig{}
 	err := CreateYDBTables(
 		ctx,
+		config,
 		db,
 		false, // dropUnusedColums
 	)
 	require.NoError(t, err)
 
-	storage := NewStorage(db)
+	storage := NewStorage(config, db)
 	require.NoError(t, err)
 
 	return storage
@@ -43,10 +46,16 @@ func TestHealthCheckMetric(t *testing.T) {
 	require.NoError(t, err)
 	defer db.Close(ctx)
 
-	storage := NewStorageMock()
-
+	storage := newStorage(t, ctx, db)
 	registry := mocks.NewRegistryMock()
-	healthCheck := NewHealthCheck(ctx, "test", storage, registry)
+
+	availabilityMonitoring := NewAvailabilityMonitoring(
+		ctx,
+		"component",
+		"host",
+		storage,
+		registry,
+	)
 
 	gaugeSetWg := sync.WaitGroup{}
 
@@ -59,14 +68,12 @@ func TestHealthCheckMetric(t *testing.T) {
 			gaugeSetWg.Done()
 		},
 	)
-
-	storage.On("HeartbeatNode", ctx, mock.Anything).Return(nil)
 	gaugeSetWg.Wait()
 
-	healthCheck.AccountQuery(nil)
-	healthCheck.AccountQuery(nil)
-	healthCheck.AccountQuery(nil)
-	healthCheck.AccountQuery(errors.NewEmptyRetriableError())
+	availabilityMonitoring.AccountQuery(nil)
+	availabilityMonitoring.AccountQuery(nil)
+	availabilityMonitoring.AccountQuery(nil)
+	availabilityMonitoring.AccountQuery(errors.NewEmptyRetriableError())
 
 	gaugeSetWg.Add(1)
 	registry.GetGauge(

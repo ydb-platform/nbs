@@ -7,9 +7,10 @@ SRCS(
     ydb_logger.go
     ydb_metrics.go
 
+    common.go
+    storage_ydb.go
     health.go
     health_storage.go
-    health_storage_mocks.go
 )
 
 GO_TEST_SRCS(
