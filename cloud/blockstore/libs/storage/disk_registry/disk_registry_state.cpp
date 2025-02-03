@@ -609,10 +609,9 @@ void TDiskRegistryState::ProcessCheckpoints()
 void TDiskRegistryState::AddMigration(
     const TDiskState& disk,
     const TString& diskId,
-    const TString& sourceDeviceId,
-    bool needToReportInvalidMigration)
+    const TString& sourceDeviceId)
 {
-    if (needToReportInvalidMigration && !FindPtr(disk.Devices, sourceDeviceId))
+    if (!FindPtr(disk.Devices, sourceDeviceId))
     {
         ReportDiskRegistryWrongMigratedDeviceOwnership(Sprintf(
             "%s: device[DeviceUUID = %s] not found in disk[DiskId = %s]",
@@ -678,12 +677,7 @@ void TDiskRegistryState::FillMigrations()
             }
 
             if (device->GetState() == NProto::DEVICE_STATE_WARNING) {
-                AddMigration(
-                    disk,
-                    diskId,
-                    uuid,
-                    false   // needToReportInvalidMigration
-                );
+                AddMigration(disk, diskId, uuid);
 
                 continue;
             }
@@ -693,12 +687,7 @@ void TDiskRegistryState::FillMigrations()
             }
 
             if (agent->GetState() == NProto::AGENT_STATE_WARNING) {
-                AddMigration(
-                    disk,
-                    diskId,
-                    uuid,
-                    false   // needToReportInvalidMigration
-                );
+                AddMigration(disk, diskId, uuid);
             }
         }
     }
@@ -5048,9 +5037,7 @@ void TDiskRegistryState::ApplyAgentStateChange(
                 AddMigration(
                     disk,
                     diskId,
-                    deviceId,
-                    true   // needToReportInvalidMigration
-                );
+                    deviceId);
             }
         } else {
             if (agent.GetState() == NProto::AGENT_STATE_UNAVAILABLE
@@ -6036,12 +6023,7 @@ void TDiskRegistryState::ApplyDeviceStateChange(
     }
 
     if (MigrationCanBeStarted(*disk, uuid)) {
-        AddMigration(
-            *disk,
-            diskId,
-            uuid,
-            true   // needToReportInvalidMigration
-        );
+        AddMigration(*disk, diskId, uuid);
     }
 }
 
@@ -6062,12 +6044,7 @@ bool TDiskRegistryState::RestartDeviceMigration(
 
     CancelDeviceMigration(now, db, diskId, disk, sourceId);
 
-    AddMigration(
-        disk,
-        diskId,
-        sourceId,
-        false   // needToReportInvalidMigration
-    );
+    AddMigration(disk, diskId, sourceId);
 
     return true;
 }

@@ -891,8 +891,7 @@ private:
     void AddMigration(
         const TDiskState& disk,
         const TString& diskId,
-        const TString& sourceDeviceId,
-        bool needToReportInvalidMigration);
+        const TString& sourceDeviceId);
     void FillMigrations();
 
     const TDiskState* FindDiskState(const TDiskId& diskId) const;
