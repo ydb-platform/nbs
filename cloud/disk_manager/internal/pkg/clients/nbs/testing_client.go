@@ -692,7 +692,7 @@ func (b *DiskRegistryBackup) GetShadowDisk(
 	return nil
 }
 
-func (b *DiskRegistryBackup) GetAgentIDByDeviceUUId(deviceUUID string) string {
+func (b *DiskRegistryBackup) GetAgentIDByDeviceUUID(deviceUUID string) string {
 	for _, agent := range b.Agents {
 		for _, device := range agent.Devices {
 			if device.DeviceUUID == deviceUUID {
