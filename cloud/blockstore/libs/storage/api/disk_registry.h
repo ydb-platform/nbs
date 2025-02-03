@@ -53,6 +53,7 @@ namespace NCloud::NBlockStore::NStorage {
     xxx(GetCheckpointDataState,             __VA_ARGS__)                       \
     xxx(SetCheckpointDataState,             __VA_ARGS__)                       \
     xxx(GetAgentNodeId,                     __VA_ARGS__)                       \
+    xxx(AddLaggingDevices,                  __VA_ARGS__)                       \
 // BLOCKSTORE_DISK_REGISTRY_REQUESTS_PROTO
 
 // requests forwarded from service to disk_registry
@@ -210,6 +211,9 @@ struct TEvDiskRegistry
 
         EvQueryAgentsInfoRequest = EvBegin + 75,
         EvQueryAgentsInfoResponse = EvBegin + 76,
+
+        EvAddLaggingDevicesRequest = EvBegin + 77,
+        EvAddLaggingDevicesResponse = EvBegin + 78,
 
         EvEnd
     };

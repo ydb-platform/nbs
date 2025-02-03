@@ -178,6 +178,7 @@ void TVolumeActor::SetupDiskRegistryBasedPartitions(const TActorContext& ctx)
         SelfId(),
         State->GetMeta().GetMuteIOErrors(),
         State->GetFilteredFreshDevices(),
+        State->GetLaggingDevices(),
         maxTimedOutDeviceStateDuration,
         maxTimedOutDeviceStateDurationOverridden,
         useSimpleMigrationBandwidthLimiter);
@@ -259,6 +260,7 @@ void TVolumeActor::SetupDiskRegistryBasedPartitions(const TActorContext& ctx)
     State->SetDiskRegistryBasedPartitionActor(
         WrapNonreplActorIfNeeded(ctx, nonreplicatedActorId, nonreplicatedConfig),
         nonreplicatedConfig);
+    ReportLaggingDevicesToDR(ctx);
 }
 
 NActors::TActorId TVolumeActor::WrapNonreplActorIfNeeded(

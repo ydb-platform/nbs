@@ -135,11 +135,12 @@ struct TTestEnv
                     // only SSD/HDD distinction matters
                     NProto::STORAGE_MEDIA_SSD_NONREPLICATED},
                 VolumeActorId,
-                false, // muteIOErrors
-                THashSet<TString>(), // freshDeviceIds
-                TDuration::Zero(), // maxTimedOutDeviceStateDuration
-                false, // maxTimedOutDeviceStateDurationOverridden
-                true // useSimpleMigrationBandwidthLimiter
+                false,                 // muteIOErrors
+                THashSet<TString>(),   // freshDeviceIds
+                THashSet<TString>(),   // laggingDeviceIds
+                TDuration::Zero(),     // maxTimedOutDeviceStateDuration
+                false,   // maxTimedOutDeviceStateDurationOverridden
+                true     // useSimpleMigrationBandwidthLimiter
             );
 
             auto part = std::make_unique<TNonreplicatedPartitionActor>(

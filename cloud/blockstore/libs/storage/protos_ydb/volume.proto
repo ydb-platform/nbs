@@ -67,6 +67,12 @@ message TVolumeMeta
     // We don't allow clients with old sequential number to mount disk for read/write
     // in order to prevent data corruption during disk filling.
     uint64 FillSeqNumber = 16;
+
+    // A list of agents that lagging behind on writes. Used only for mirror
+    // disks. An agent can exit this state if it starts to respond to requests,
+    // or if the volume has been restarted/reallocated (i.e. the partition has
+    // restarted), or if the DR has replaced all lagging devices.
+    TLaggingAgentsInfo LaggingAgentsInfo = 17;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

@@ -620,6 +620,8 @@ bool TShadowDiskActor::OnMessage(
             TEvService::TEvReadBlocksLocalRequest,
             HandleReadBlocks<TEvService::TReadBlocksLocalMethod>);
 
+        IgnoreFunc(TEvVolumePrivate::TEvDeviceTimeoutedRequest);
+
         // Write/zero request.
         case TEvService::TEvWriteBlocksRequest::EventType: {
             return HandleWriteZeroBlocks<TEvService::TWriteBlocksMethod>(
@@ -806,6 +808,7 @@ void TShadowDiskActor::CreateShadowDiskConfig()
         SelfId(),   // need to handle TEvRdmaUnavailable, TEvReacquireDisk
         true,       // muteIOErrors
         THashSet<TString>(),   // freshDeviceIds
+        THashSet<TString>(),   // laggingDeviceIds
         TDuration(),           // maxTimedOutDeviceStateDuration
         false,                 // maxTimedOutDeviceStateDurationOverridden
         true                   // useSimpleMigrationBandwidthLimiter

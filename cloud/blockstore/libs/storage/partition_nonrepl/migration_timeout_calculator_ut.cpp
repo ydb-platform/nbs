@@ -181,6 +181,7 @@ TNonreplicatedPartitionConfigPtr MakePartitionConfig(
         NActors::TActorId(),
         false,                 // muteIOErrors
         THashSet<TString>(),   // freshDeviceIds
+        THashSet<TString>(),   // laggingDeviceIds
         TDuration::Zero(),     // maxTimedOutDeviceStateDuration
         false,                 // maxTimedOutDeviceStateDurationOverridden
         useSimpleMigrationBandwidthLimiter);

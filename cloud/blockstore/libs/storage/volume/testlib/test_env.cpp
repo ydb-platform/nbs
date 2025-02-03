@@ -533,6 +533,16 @@ std::unique_ptr<TEvVolume::TEvGetStorageConfigRequest> TVolumeClient::CreateGetS
     return request;
 }
 
+std::unique_ptr<TEvVolumePrivate::TEvDeviceTimeoutedRequest>
+TVolumeClient::CreateDeviceTimeoutedRequest(
+    TString deviceUUID)
+{
+    auto request =
+        std::make_unique<TEvVolumePrivate::TEvDeviceTimeoutedRequest>(
+            std::move(deviceUUID));
+    return request;
+}
+
 std::unique_ptr<TEvVolumePrivate::TEvUpdateShadowDiskStateRequest>
 TVolumeClient::CreateUpdateShadowDiskStateRequest(
     TString checkpointId,
@@ -612,9 +622,10 @@ std::unique_ptr<TTestActorRuntime> PrepareTestActorRuntime(
     TDiskRegistryStatePtr diskRegistryState,
     NProto::TFeaturesConfig featuresConfig,
     NRdma::IClientPtr rdmaClient,
-    TDiskAgentStatePtr diskAgentState)
+    TVector<TDiskAgentStatePtr> diskAgentStates)
 {
-    auto runtime = std::make_unique<TTestBasicRuntime>(1);
+    const ui32 agentCount = Max<ui32>(diskAgentStates.size(), 1);
+    auto runtime = std::make_unique<TTestBasicRuntime>(agentCount);
 
     runtime->AppendToLogSettings(
         TBlockStoreComponents::START,
@@ -625,6 +636,13 @@ std::unique_ptr<TTestActorRuntime> PrepareTestActorRuntime(
         runtime->SetLogPriority(i, NLog::PRI_INFO);
     }
     // runtime->SetLogPriority(NLog::InvalidComponent, NLog::PRI_DEBUG);
+
+    runtime->SetRegistrationObserverFunc(
+            [] (auto& runtime, const auto& parentId, const auto& actorId)
+        {
+            Y_UNUSED(parentId);
+            runtime.EnableScheduleForActor(actorId);
+        });
 
     runtime->AddLocalService(
         MakeHiveProxyServiceId(),
@@ -653,36 +671,37 @@ std::unique_ptr<TTestActorRuntime> PrepareTestActorRuntime(
     }
 
     if (diskRegistryState->Devices.empty()) {
-        google::protobuf::RepeatedPtrField<NProto::TDeviceConfig> devices;
+        TVector<NProto::TDeviceConfig> devices;
 
-        *devices.Add() = MakeDevice("uuid0", "dev0", "transport0");
-        *devices.Add() = MakeDevice("uuid1", "dev1", "transport1");
-        *devices.Add() = MakeDevice("uuid2", "dev2", "transport2");
+        devices.push_back(MakeDevice("uuid0", "dev0", "transport0"));
+        devices.push_back(MakeDevice("uuid1", "dev1", "transport1"));
+        devices.push_back(MakeDevice("uuid2", "dev2", "transport2"));
 
         auto dev0m =
             MakeDevice("uuid0_migration", "dev0_migration", "transport0_migration");
         auto dev2m =
             MakeDevice("uuid2_migration", "dev2_migration", "transport2_migration");
 
-        *devices.Add() = dev0m;
-        *devices.Add() = dev2m;
+        devices.push_back(dev0m);
+        devices.push_back(dev2m);
 
-        diskRegistryState->Devices = TVector<NProto::TDeviceConfig>(
-            devices.begin(),
-            devices.end()
-        );
-
+        diskRegistryState->Devices = std::move(devices);
         diskRegistryState->MigrationDevices["uuid0"] = dev0m;
         diskRegistryState->MigrationDevices["uuid2"] = dev2m;
     }
 
     for (auto& d: diskRegistryState->Devices) {
-        d.SetNodeId(runtime->GetNodeId());
+        d.SetNodeId(runtime->GetNodeId(d.GetNodeId()));
     }
 
-    for (auto& [id, d]: diskRegistryState->MigrationDevices) {
-        d.SetNodeId(runtime->GetNodeId());
+    for (auto& [_, d]: diskRegistryState->MigrationDevices) {
+        d.SetNodeId(runtime->GetNodeId(d.GetNodeId()));
     }
+
+    Sort(
+        diskRegistryState->Devices,
+        [](const NProto::TDeviceConfig& lhs, const NProto::TDeviceConfig& rhs)
+        { return lhs.GetNodeId() < rhs.GetNodeId(); });
 
     runtime->AddLocalService(
         MakeDiskRegistryProxyServiceId(),
@@ -694,19 +713,43 @@ std::unique_ptr<TTestActorRuntime> PrepareTestActorRuntime(
     );
     runtime->EnableScheduleForActor(MakeDiskRegistryProxyServiceId());
 
-    runtime->AddLocalService(
-        MakeDiskAgentServiceId(runtime->GetNodeId()),
-        TActorSetupCmd(
+    SetupTabletServices(*runtime);
+
+    for (ui32 i = 0; i < agentCount; i++) {
+        struct TByNodeId
+        {
+            auto operator()(const NProto::TDeviceConfig& device) const
+            {
+                return device.GetNodeId();
+            }
+        };
+        const ui32 nodeId = runtime->GetNodeId(i);
+        auto begin = LowerBoundBy(
+            diskRegistryState->Devices.begin(),
+            diskRegistryState->Devices.end(),
+            nodeId,
+            TByNodeId());
+        auto end = UpperBoundBy(
+            diskRegistryState->Devices.begin(),
+            diskRegistryState->Devices.end(),
+            nodeId,
+            TByNodeId());
+
+        auto state = diskAgentStates.size() > i ? std::move(diskAgentStates[i])
+                                                : TDiskAgentStatePtr();
+        const auto actorId = runtime->Register(
             new TDiskAgentMock(
                 {
-                    diskRegistryState->Devices.begin(),
-                    diskRegistryState->Devices.end(),
+                    begin,
+                    end,
                 },
-                diskAgentState),
-            TMailboxType::Simple,
-            0));
-
-    SetupTabletServices(*runtime);
+                std::move(state)),
+            i);
+        runtime->RegisterService(
+            MakeDiskAgentServiceId(nodeId),
+            actorId,
+            i);
+    }
 
     auto config = CreateTestStorageConfig(
         std::move(storageServiceConfig),
@@ -734,13 +777,6 @@ std::unique_ptr<TTestActorRuntime> PrepareTestActorRuntime(
     TTabletStorageInfoPtr info = CreateTestTabletInfo(
         TestTabletId,
         TTabletTypes::BlockStoreVolume);
-
-    runtime->SetRegistrationObserverFunc(
-            [] (auto& runtime, const auto& parentId, const auto& actorId)
-        {
-            Y_UNUSED(parentId);
-            runtime.EnableScheduleForActor(actorId);
-        });
 
     CreateTestBootstrapper(*runtime, info.Get(), createFunc);
 
