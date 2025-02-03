@@ -164,7 +164,7 @@ auto GenerateAll(ui64 seed)
         auto rack = racks[rand.GenRand() % racks.size()];
 
         NProto::TAgentConfig agent;
-        agent.SetNodeId(i);
+        agent.SetNodeId(i + 1);
         agent.SetAgentId(TStringBuilder() << "Agent_" << i);
         for (size_t j = 0; j < deviceCount; ++j) {
             auto* device = agent.MutableDevices()->Add();
