@@ -56,6 +56,10 @@ inputs:
     required: false
     default: 'no'
     description: 'Use nebius'
+  truncate_enabled:
+    required: false
+    default: 'yes'
+    description: 'Truncate err files'
 
 runs:
   using: composite
@@ -283,8 +287,21 @@ runs:
           find "$TESTS_DATA_DIR" -type f -print0 | xargs -0 -n 10 file -i  | grep "application/x-executable" | awk -F: '{print $1}' | xargs rm
           echo "::endgroup::"
           echo "::group::remove-images-from-tests-data-dir"
-          find "$TESTS_DATA_DIR" -name generated_raw_image -o -name generated_vmdk_image -o -name invalid_qcow2_image -o -name qcow2_fuzzing_image
-          find "$TESTS_DATA_DIR" \( -name generated_raw_image -o -name generated_vmdk_image -o -name invalid_qcow2_image -o -name qcow2_fuzzing_image \) -delete
+          find "$TESTS_DATA_DIR" -name generated_raw_image -o -name generated_vmdk_image -o -name invalid_qcow2_image -o -name qcow2_fuzzing_image -name NVMENBS01
+          find "$TESTS_DATA_DIR" \( -name generated_raw_image -o -name generated_vmdk_image -o -name invalid_qcow2_image -o -name qcow2_fuzzing_image -name NVMENBS01 \) -delete
+          echo "::endgroup::"
+          echo "::group::truncate-err-files::"
+          find "$TESTS_DATA_DIR" -type f -name "*.err" -size +1G -print0 | while IFS= read -r -d '' file; do
+              orig_size=$(du -h "$file" | cut -f1)
+              echo "$file - $orig_size"
+              # shellcheck disable=SC2193
+              if [ "${{ inputs.truncate_enabled }}" == "yes" ]; then
+                truncate -s 1G "$file"
+                echo "... truncated (original size was $orig_size) ..." >> "$file"
+              else
+                echo "not truncated"
+              fi
+          done
           echo "::endgroup::"
           echo "::group::s3-sync"
           if [ "$SYNC_TO_S3" = "true" ];
