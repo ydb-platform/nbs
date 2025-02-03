@@ -31,9 +31,17 @@ void TMirrorPartitionResyncActor::ProcessReadRequestSyncPath(
     const auto range = BuildRequestBlockRange(
         *ev->Get(),
         PartConfig->GetBlockSize());
-
     if (ResyncFinished || State.IsResynced(range)) {
         ForwardRequestWithNondeliveryTracking(ctx, MirrorActorId, *ev);
+        return;
+    }
+
+    // Let's wait for resync, if we have request in certain replica
+    if (ev->Get()->Record.GetHeaders().GetReplicaIndex()) {
+        ProcessReadRequestSlowPath(
+            NActors::IEventHandlePtr(ev.Release()),
+            range,
+            ctx);
         return;
     }
 

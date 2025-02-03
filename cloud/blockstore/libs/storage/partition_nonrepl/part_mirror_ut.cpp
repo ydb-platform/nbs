@@ -824,6 +824,29 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
         }
     }
 
+    Y_UNIT_TEST(ShouldRejectReadWithWrongReplicaIndex)
+    {
+        TTestRuntime runtime;
+        TTestEnv env(runtime);
+
+        TPartitionClient client(runtime, env.ActorId);
+
+        const auto range1 = TBlockRange64::WithLength(0, 100);
+        env.WriteMirror(range1, 'X');
+        env.WriteReplica(0, range1, 'A');
+        env.WriteReplica(1, range1, 'B');
+        env.WriteReplica(2, range1, 'C');
+
+        {
+            client.SendReadBlocksRequest(range1, 4);
+            auto response = client.RecvReadBlocksResponse();
+            UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, response->GetStatus());
+            UNIT_ASSERT_STRING_CONTAINS(
+                response->GetErrorReason(),
+                "incorrect ReplicaIndex");
+        }
+    }
+
     struct TMigrationTestRuntime
     {
         TTestRuntime Runtime;

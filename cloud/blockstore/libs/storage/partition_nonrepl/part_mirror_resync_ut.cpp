@@ -899,6 +899,20 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionResyncTest)
             UNIT_ASSERT_VALUES_EQUAL(TString(DefaultBlockSize, 'B'), block);
         }
 
+        // Check that after resync request to first replica get correct response
+        {
+            TPartitionClient client(runtime, env.ActorId);
+
+            auto response = client.ReadBlocks(range, 1);
+            const auto& blocks = response->Record.GetBlocks();
+            UNIT_ASSERT_VALUES_EQUAL(100, blocks.BuffersSize());
+            for (ui32 i = 0; i < 100; ++i) {
+                UNIT_ASSERT_VALUES_EQUAL(
+                    TString(DefaultBlockSize, 'B'),
+                    blocks.GetBuffers(i));
+            }
+        }
+
         // Make sure resync process is stopped after first range
         for (const auto& block: env.ReadReplica(
                  0,
@@ -937,6 +951,44 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionResyncTest)
 
         {
             client.SendReadBlocksRequest(range);
+            TEST_NO_EVENT(runtime, TEvService::EvReadBlocksResponse);
+
+            env.ReleaseEvents();
+            env.ResyncController.WaitForResyncedRangeCount(1);
+
+            auto response = client.RecvReadBlocksResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                response->GetStatus(),
+                response->GetErrorReason());
+            for (ui32 i = 0; i < range.Size(); ++i) {
+                UNIT_ASSERT_VALUES_EQUAL(
+                    TString(DefaultBlockSize, 'B'),
+                    response->Record.GetBlocks().GetBuffers(i));
+            }
+        }
+    }
+
+    Y_UNIT_TEST(ShouldPostponeReadFromOneReplicaIfRangeNotResynced)
+    {
+        TTestBasicRuntime runtime;
+        TTestEnv env(runtime);
+
+        env.CatchEvents(TEvNonreplPartitionPrivate::EvChecksumBlocksRequest);
+
+        env.StartResync();
+
+        auto range = TBlockRange64::WithLength(100, 100);
+
+        TPartitionClient client(runtime, env.ActorId);
+        env.WriteReplica(0, range, 'A');
+        env.WriteReplica(1, range, 'B');
+        env.WriteReplica(2, range, 'B');
+
+        // Check ReadBlocks from first replica
+
+        {
+            client.SendReadBlocksRequest(range, 1);
             TEST_NO_EVENT(runtime, TEvService::EvReadBlocksResponse);
 
             env.ReleaseEvents();

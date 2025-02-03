@@ -438,8 +438,9 @@ void TMirrorPartitionActor::ReadBlocks(
                         << "Request " << TMethod::Name
                         << " has incorrect ReplicaIndex " << replicaIndex
                         << " disk has " << State.GetReplicaInfos().size()
-                        << "replicas"));
+                        << " replicas"));
             NCloud::Reply(ctx, *ev, std::move(response));
+            return;
         }
 
         const auto& replicaInfo = State.GetReplicaInfos()[replicaIndex - 1];
@@ -451,6 +452,7 @@ void TMirrorPartitionActor::ReadBlocks(
                                      << " cause replica " << replicaIndex
                                      << " has not ready devices"));
             NCloud::Reply(ctx, *ev, std::move(response));
+            return;
         }
         replicaActorIds.insert(State.GetReplicaActors()[replicaIndex - 1]);
     } else {
