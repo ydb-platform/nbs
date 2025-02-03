@@ -177,13 +177,27 @@ private:
 
     const ui64 TenantHiveTabletId;
 
+    const NMonitoring::TDynamicCounterPtr CountersRoot;
+    NMonitoring::TDynamicCounters::TCounterPtr ReconnectPipeCounter;
+    ui64 ReconnectStartTime = 0;
+    NActors::TActorId HiveClientId;
+
 public:
     explicit THiveProxyActor(THiveProxyConfig config);
+
+    THiveProxyActor(
+        THiveProxyConfig config,
+        NMonitoring::TDynamicCounterPtr countersRoot);
 
     void Bootstrap(const NActors::TActorContext& ctx);
 
 private:
     STFUNC(StateWork);
+
+    void SendRequest(
+        const NActors::TActorContext& ctx,
+        ui64 hive,
+        NActors::IEventBase* request);
 
     ui64 GetHive(
         const NActors::TActorContext& ctx,

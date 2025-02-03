@@ -513,7 +513,8 @@ struct TTestEnv
             .TenantHiveTabletId = tenantHive,
         };
         HiveProxyActorId = Runtime.Register(
-            CreateHiveProxy(std::move(config)).release());
+            CreateHiveProxy(
+                std::move(config), Runtime.GetAppData(0).Counters).release());
         Runtime.EnableScheduleForActor(HiveProxyActorId);
         Runtime.RegisterService(MakeHiveProxyServiceId(), HiveProxyActorId);
     }
@@ -1540,6 +1541,45 @@ Y_UNIT_TEST_SUITE(THiveProxyTest)
         runtime.DispatchEvents({}, TDuration::Seconds(6));
         UNIT_ASSERT_VALUES_EQUAL(1, hiveMessages);
         UNIT_ASSERT_VALUES_EQUAL(1, wakeups);
+    }
+
+    Y_UNIT_TEST(ShouldReportHiveReconnectTime)
+    {
+        TTestBasicRuntime runtime;
+        TTestEnv env(runtime);
+
+        auto sender = runtime.AllocateEdgeActor();
+
+        auto counter = env.Runtime.GetAppData(0).Counters
+            ->GetCounter("HiveReconnectTime", true);
+
+        env.SendLockRequest(sender, FakeTablet2);
+        UNIT_ASSERT_VALUES_UNEQUAL(0, counter->Val());
+
+        auto oldVal = counter->Val();
+
+        int hiveLockRequests = 0;
+        runtime.SetObserverFunc([&](TAutoPtr<IEventHandle>& event) {
+                Y_UNUSED(runtime);
+                if (event->GetTypeRewrite() == TEvHive::EvLockTabletExecution) {
+                    ++hiveLockRequests;
+                }
+                return TTestActorRuntime::EEventAction::PROCESS;
+            });
+
+        env.EnableTabletResolverScheduling();
+        env.RebootHive();
+
+        for (int retries = 0; retries < 5 && !hiveLockRequests; ++retries) {
+            // Pipe to hive may take a long time to connect
+            // Wait until hive receives the lock request
+            runtime.DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
+        }
+
+        runtime.SetObserverFunc(&TTestActorRuntime::DefaultObserverFunc);
+
+        // Rebooting hive should reconnect the lock
+        UNIT_ASSERT_GT(counter->Val(), oldVal);
     }
 }
 

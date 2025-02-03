@@ -34,12 +34,19 @@ std::unique_ptr<NTabletPipe::IClientCache> CreateTabletPipeClientCache(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-THiveProxyActor::THiveProxyActor(THiveProxyConfig config)
+THiveProxyActor::THiveProxyActor(
+        THiveProxyConfig config,
+        NMonitoring::TDynamicCounterPtr countersRoot)
     : ClientCache(CreateTabletPipeClientCache(config))
     , LockExpireTimeout(config.HiveLockExpireTimeout)
     , LogComponent(config.LogComponent)
     , TabletBootInfoBackupFilePath(config.TabletBootInfoBackupFilePath)
     , TenantHiveTabletId(config.TenantHiveTabletId)
+    , CountersRoot(std::move(countersRoot))
+{}
+
+THiveProxyActor::THiveProxyActor(THiveProxyConfig config)
+    : THiveProxyActor(std::move(config), {})
 {}
 
 void THiveProxyActor::Bootstrap(const TActorContext& ctx)
@@ -55,9 +62,25 @@ void THiveProxyActor::Bootstrap(const TActorContext& ctx)
         TabletBootInfoBackup = ctx.Register(
             cache.release(), TMailboxType::HTSwap, AppData()->IOPoolId);
     }
+    if (CountersRoot) {
+        ReconnectPipeCounter = CountersRoot->GetCounter("HiveReconnectTime", true);
+    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+
+void THiveProxyActor::SendRequest(
+    const TActorContext& ctx,
+    ui64 hive,
+    IEventBase* request)
+{
+    if (auto clientId = ClientCache->Send(ctx, hive, request);
+        clientId != HiveClientId)
+    {
+        HiveClientId = clientId;
+        ReconnectStartTime = GetCycleCount();
+    }
+}
 
 ui64 THiveProxyActor::GetHive(
     const TActorContext& ctx,
@@ -98,7 +121,7 @@ void THiveProxyActor::SendLockRequest(
     hiveRequest->Record.SetMaxReconnectTimeout(
         LockExpireTimeout.MilliSeconds());
     hiveRequest->Record.SetReconnect(reconnect);
-    ClientCache->Send(ctx, hive, hiveRequest.release());
+    SendRequest(ctx, hive, hiveRequest.release());
 }
 
 void THiveProxyActor::SendUnlockRequest(
@@ -106,7 +129,7 @@ void THiveProxyActor::SendUnlockRequest(
 {
     auto hiveRequest =
         std::make_unique<TEvHive::TEvUnlockTabletExecution>(tabletId);
-    ClientCache->Send(ctx, hive, hiveRequest.release());
+    SendRequest(ctx, hive, hiveRequest.release());
 }
 
 void THiveProxyActor::SendGetTabletStorageInfoRequest(
@@ -115,7 +138,7 @@ void THiveProxyActor::SendGetTabletStorageInfoRequest(
 {
     auto hiveRequest =
         std::make_unique<TEvHive::TEvGetTabletStorageInfo>(tabletId);
-    ClientCache->Send(ctx, hive, hiveRequest.release());
+    SendRequest(ctx, hive, hiveRequest.release());
 }
 
 void THiveProxyActor::SendLockReply(
@@ -198,7 +221,7 @@ void THiveProxyActor::SendTabletMetrics(
         prTabletId.second.OnStatsSend();
     }
     if (record.TabletMetricsSize() > 0) {
-        ClientCache->Send(ctx, hive, event.Release());
+        SendRequest(ctx, hive, event.Release());
     }
 }
 
@@ -216,6 +239,13 @@ void THiveProxyActor::HandleConnect(
         auto error = MakeKikimrError(msg->Status, TStringBuilder()
             << "Connect to hive " << hive << " failed");
         HandleConnectionError(ctx, error, hive, true);
+    } else if (msg->ClientId == HiveClientId && ReconnectStartTime)
+    {
+        if (ReconnectPipeCounter) {
+            ReconnectPipeCounter->Add(
+                CyclesToDuration(GetCycleCount() - ReconnectStartTime).MicroSeconds());
+        }
+        ReconnectStartTime = 0;
     }
 }
 
@@ -227,6 +257,7 @@ void THiveProxyActor::HandleDisconnect(
 
     ui64 hive = msg->TabletId;
     ClientCache->OnDisconnect(ev);
+    HiveClientId = {};
 
     auto error = MakeError(E_REJECTED, TStringBuilder()
         << "Disconnected from hive " << hive);
@@ -241,6 +272,8 @@ void THiveProxyActor::HandleConnectionError(
 {
     Y_UNUSED(error);
     Y_UNUSED(connectFailed);
+
+    HiveClientId = {};
 
     LOG_ERROR_S(ctx, LogComponent,
         "Pipe to hive" << hive << " has been reset ");
@@ -307,6 +340,12 @@ void THiveProxyActor::HandleConnectionError(
 
         for (const auto& actorId: states->Actors) {
             auto clientId = ClientCache->Prepare(ctx, hive);
+            if (!HiveClientId) {
+                HiveClientId = clientId;
+                if (!ReconnectStartTime) {
+                    ReconnectStartTime = GetCycleCount();
+                }
+            }
             NCloud::Send<TEvHiveProxyPrivate::TEvChangeTabletClient>(
                 ctx,
                 actorId,

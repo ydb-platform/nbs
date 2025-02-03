@@ -27,6 +27,8 @@ PEERDIR(
     contrib/ydb/core/tablet_flat
 
     contrib/ydb/library/actors/core
+
+    library/cpp/monlib/dynamic_counters
 )
 
 END()
