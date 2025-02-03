@@ -388,9 +388,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMigrationTest)
         }
 
         UNIT_ASSERT(state.IsMigrationListEmpty());
-        // Now bug is fixed, but, if it reproduce in future, we must report
-        // event.
-        UNIT_ASSERT_VALUES_EQUAL(1, configCounter->Val());
+        UNIT_ASSERT_VALUES_EQUAL(0, configCounter->Val());
     }
 
     Y_UNIT_TEST(ShouldEraseMigrationsForDeletedDisk)
@@ -1177,6 +1175,14 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMigrationTest)
         UNIT_ASSERT_VALUES_EQUAL(0, state.BuildMigrationList().size());
         UNIT_ASSERT(state.IsMigrationListEmpty());
 
+        NMonitoring::TDynamicCountersPtr counters =
+            new NMonitoring::TDynamicCounters();
+        InitCriticalEventsCounter(counters);
+        auto critCounter = counters->GetCounter(
+            "AppCriticalEvents/DiskRegistryWrongMigratedDeviceOwnership",
+            true);
+        UNIT_ASSERT_VALUES_EQUAL(0, critCounter->Val());
+
         executor.WriteTx(
             [&](TDiskRegistryDatabase db)
             {
@@ -1291,6 +1297,10 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMigrationTest)
 
         auto migrationsAfterSecondRequest = state.BuildMigrationList();
         UNIT_ASSERT_VALUES_EQUAL(0, migrationsAfterSecondRequest.size());
+        critCounter = counters->GetCounter(
+            "AppCriticalEvents/DiskRegistryWrongMigratedDeviceOwnership",
+            true);
+        UNIT_ASSERT_VALUES_EQUAL(0, critCounter->Val());
     }
 
     Y_UNIT_TEST(ShouldStartCanceledMigrationAgent)
