@@ -439,9 +439,7 @@ std::optional<NProto::TError> TCheckpointStore::ValidateCheckpointRequest(
 {
     auto makeErrorInvalid = [](TString message)
     {
-        ui32 flags = 0;
-        SetProtoFlag(flags, NProto::EF_SILENT);
-        return MakeError(E_PRECONDITION_FAILED, std::move(message), flags);
+        return MakeError(E_PRECONDITION_FAILED, std::move(message));
     };
 
     auto makeErrorAlready = [](TString message)
