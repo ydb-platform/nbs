@@ -31,6 +31,7 @@ void TMirrorPartitionResyncActor::ProcessReadRequestSyncPath(
     const auto range = BuildRequestBlockRange(
         *ev->Get(),
         PartConfig->GetBlockSize());
+
     if (ResyncFinished || State.IsResynced(range)) {
         ForwardRequestWithNondeliveryTracking(ctx, MirrorActorId, *ev);
         return;

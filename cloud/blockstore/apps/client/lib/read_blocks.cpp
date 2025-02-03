@@ -274,7 +274,10 @@ public:
             .StoreResult(&IODepth)
             .DefaultValue(1);
 
-        Opts.AddLongOption("replica-index", "from which replica(numerate from 1) read data, only for ssd-io disks")
+        Opts.AddLongOption(
+                "replica-index",
+                "from which replica(numerate from 1) read data, only for "
+                "ssd-io disks")
             .RequiredArgument("NUM")
             .StoreResult(&ReplicaIndex);
     }
