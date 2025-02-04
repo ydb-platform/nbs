@@ -4,15 +4,16 @@
 
 #include <cloud/blockstore/libs/kikimr/components.h>
 #include <cloud/blockstore/libs/kikimr/events.h>
+#include <cloud/blockstore/libs/storage/protos/disk.pb.h>
 
 namespace NCloud::NBlockStore::NStorage::NPartition {
 
 ////////////////////////////////////////////////////////////////////////////////
 
 #define BLOCKSTORE_PARTITION_REQUESTS(xxx, ...)                                \
-    xxx(WaitReady,              __VA_ARGS__)                                   \
-    xxx(StatPartition,          __VA_ARGS__)                                   \
-    xxx(Drain,                  __VA_ARGS__)                                   \
+    xxx(WaitReady,                       __VA_ARGS__)                          \
+    xxx(StatPartition,                   __VA_ARGS__)                          \
+    xxx(Drain,                           __VA_ARGS__)                          \
 // BLOCKSTORE_PARTITION_REQUESTS
 
 // requests forwarded from service to partition
@@ -130,18 +131,18 @@ struct TEvPartition
     {
         EvBegin = TBlockStoreEvents::PARTITION_START,
 
-        EvWaitReadyRequest = EvBegin + 1,
-        EvWaitReadyResponse = EvBegin + 2,
+        EvWaitReadyRequest,
+        EvWaitReadyResponse,
 
-        EvStatPartitionRequest = EvBegin + 3,
-        EvStatPartitionResponse = EvBegin + 4,
+        EvStatPartitionRequest,
+        EvStatPartitionResponse,
 
-        EvBackpressureReport = EvBegin + 5,
+        EvBackpressureReport,
 
-        EvDrainRequest = EvBegin + 6,
-        EvDrainResponse = EvBegin + 7,
+        EvDrainRequest,
+        EvDrainResponse,
 
-        EvGarbageCollectorCompleted = EvBegin + 8,
+        EvGarbageCollectorCompleted,
 
         EvAddLaggingAgentRequest = EvBegin + 9,
         EvRemoveLaggingReplicaRequest = EvBegin + 10,

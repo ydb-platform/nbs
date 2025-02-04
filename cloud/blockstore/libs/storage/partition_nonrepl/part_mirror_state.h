@@ -11,6 +11,8 @@
 
 #include <util/generic/vector.h>
 
+#include <ranges>
+
 namespace NCloud::NBlockStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -24,7 +26,13 @@ private:
 
     TMigrations Migrations;
     TVector<TReplicaInfo> ReplicaInfos;
-    TVector<NActors::TActorId> ReplicaActors;
+
+    struct TReplicaActors {
+        NActors::TActorId LaggingProxyActor;
+        NActors::TActorId PartActor;
+    };
+    TVector<TReplicaActors> ReplicaActors;
+    // TVector<NActors::TActorId> LaggingReplicaProxies;
 
     ui32 ReadReplicaIndex = 0;
 
@@ -39,30 +47,57 @@ public:
         TVector<TDevices> replicas);
 
 public:
-    const TVector<TReplicaInfo>& GetReplicaInfos() const
+    [[nodiscard]] const TVector<TReplicaInfo>& GetReplicaInfos() const
     {
         return ReplicaInfos;
     }
 
     void AddReplicaActor(const NActors::TActorId& actorId)
     {
-        ReplicaActors.push_back(actorId);
+        ReplicaActors.push_back({actorId, actorId});
     }
 
-    const TVector<NActors::TActorId>& GetReplicaActors() const
+    [[nodiscard]] auto GetReplicaActors() const
     {
-        return ReplicaActors;
+        return ReplicaActors |
+               std::views::transform([](const TReplicaActors& actors)
+                                     { return actors.LaggingProxyActor; });
     }
+
+    [[nodiscard]] auto GetReplicaActorsBypassingProxies() const
+    {
+        return ReplicaActors |
+               std::views::transform([](const TReplicaActors& actors)
+                                     { return actors.PartActor; });
+    }
+
+    [[nodiscard]] ui32 GetReplicaIndex(NActors::TActorId actorId) const;
+    [[nodiscard]] bool IsReplicaActor(NActors::TActorId actorId) const;
 
     void SetRWClientId(TString rwClientId)
     {
         RWClientId = std::move(rwClientId);
     }
 
-    const TString& GetRWClientId() const
+    [[nodiscard]] const TString& GetRWClientId() const
     {
         return RWClientId;
     }
+
+    [[nodiscard]] bool DevicesReadyForReading(
+        ui32 replicaIndex,
+        const TBlockRange64 blockRange) const;
+
+    void AddLaggingAgent(NProto::TLaggingAgent laggingAgent);
+    void RemoveLaggingAgent(const NProto::TLaggingAgent& laggingAgent);
+    [[nodiscard]] bool HasLaggingAgents(ui32 replicaIndex) const;
+
+    void SetLaggingReplicaProxy(
+        ui32 replicaIndex,
+        const NActors::TActorId& actorId);
+    void ResetLaggingReplicaProxy(ui32 replicaIndex);
+    [[nodiscard]] bool IsLaggingProxySet(ui32 replicaIndex) const;
+    [[nodiscard]] size_t LaggingReplicaCount() const;
 
     [[nodiscard]] NProto::TError Validate();
     void PrepareMigrationConfig();

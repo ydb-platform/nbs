@@ -1,14 +1,17 @@
 LIBRARY()
 
 SRCS(
+    agent_availability_monitoring_actor.cpp
     checksum_range.cpp
     config.cpp
     copy_range.cpp
     direct_copy_range.cpp
+    replica_lagging_agents_io_controller_actor.cpp
     migration_timeout_calculator.cpp
     mirror_request_actor.cpp
     replica_info.cpp
     resync_range.cpp
+    smart_migration_actor.cpp
 
     part_mirror.cpp
     part_mirror_actor.cpp

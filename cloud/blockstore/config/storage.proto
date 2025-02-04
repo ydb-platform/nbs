@@ -1113,4 +1113,18 @@ message TStorageServiceConfig
 
     // Timeout for TDestroyVolumeActor (in milliseconds)
     optional uint32 DestroyVolumeTimeout = 405;
+
+    // Enables lagging devices feature for mirror2 disks.
+    optional bool LaggingDevicesForMirror2Disks = 406;
+
+    // Enables lagging devices feature for mirror3 disks.
+    optional bool LaggingDevicesForMirror3Disks = 407;
+
+    // Devices that are not responding for more than this value considered as
+    // candidates to become lagging.
+    // See doc/blockstore/storage/dynamic_io_mirroring_proposal.md
+    optional uint32 LaggingDeviceTimeoutThreshold = 408;
+
+    // Lagging devices are monitored by periodic requests at this interval.
+    optional uint32 LaggingDevicePingInterval = 409;
 }

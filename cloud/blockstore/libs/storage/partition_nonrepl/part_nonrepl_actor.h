@@ -56,6 +56,7 @@ private:
     enum class EDeviceStatus
     {
         Ok,
+        Unavailable,
         SilentBroken,
         Broken,
     };
@@ -85,7 +86,11 @@ private:
     };
     TVector<TDeviceStat> DeviceStats;
 
-    TRequestsInProgress<NActors::TActorId> RequestsInProgress{
+    struct TRequest
+    {
+        TStackVec<int, 2> DeviceIndices;
+    };
+    TRequestsInProgress<NActors::TActorId, TRequest> RequestsInProgress{
         EAllowedRequests::ReadWrite};
     TDrainActorCompanion DrainActorCompanion{
         RequestsInProgress,
@@ -146,7 +151,8 @@ private:
         const TRequestInfo& requestInfo,
         const TBlockRange64& blockRange,
         TVector<TDeviceRequest>* deviceRequests,
-        TRequestTimeoutPolicy* timeoutPolicy);
+        TRequestTimeoutPolicy* timeoutPolicy,
+        TRequest* request);
 
     void OnRequestCompleted(
         const TEvNonreplPartitionPrivate::TOperationCompleted& operation,
@@ -179,6 +185,14 @@ private:
 
     void HandleChecksumBlocksCompleted(
         const TEvNonreplPartitionPrivate::TEvChecksumBlocksCompleted::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleAgentIsUnavailable(
+        const TEvNonreplPartitionPrivate::TEvAgentIsUnavailable::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleAgentIsBackOnline(
+        const TEvNonreplPartitionPrivate::TEvAgentIsBackOnline::TPtr& ev,
         const NActors::TActorContext& ctx);
 
     bool HandleRequests(STFUNC_SIG);

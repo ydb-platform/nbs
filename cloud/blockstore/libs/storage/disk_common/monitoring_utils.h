@@ -15,6 +15,7 @@ enum EDeviceStateFlags : uint16_t
     DISABLED  = 1 << 1,
     DIRTY     = 1 << 2,
     SUSPENDED = 1 << 3,
+    LAGGING   = 1 << 4,
 };
 
 inline EDeviceStateFlags operator|(EDeviceStateFlags a, EDeviceStateFlags b)

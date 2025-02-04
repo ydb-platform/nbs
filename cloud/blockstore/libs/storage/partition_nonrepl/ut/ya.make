@@ -4,6 +4,7 @@ INCLUDE(${ARCADIA_ROOT}/cloud/storage/core/tests/recipes/medium.inc)
 
 SRCS(
     migration_timeout_calculator_ut.cpp
+    part_mirror_lagging_devices_ut.cpp
     part_mirror_resync_ut.cpp
     part_mirror_state_ut.cpp
     part_mirror_ut.cpp
@@ -11,6 +12,7 @@ SRCS(
     part_nonrepl_migration_ut.cpp
     part_nonrepl_rdma_ut.cpp
     part_nonrepl_ut.cpp
+    replica_lagging_agents_io_controller_ut.cpp
     resync_range_ut.cpp
 )
 

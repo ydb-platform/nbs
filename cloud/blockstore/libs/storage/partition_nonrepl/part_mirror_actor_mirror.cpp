@@ -84,6 +84,17 @@ void TMirrorPartitionActor::MirrorRequest(
         *ev->Get(),
         State.GetBlockSize());
     const auto requestIdentityKey = ev->Cookie;
+
+    // LOG_WARN(
+    //     ctx,
+    //     TBlockStoreComponents::PARTITION,
+    //     "xxxxx AID[%s] [%s] Mirror request with id %lu, sender: %s, size: %lu",
+    //     ctx.SelfID.ToString().c_str(),
+    //     DiskId.c_str(),
+    //     requestIdentityKey,
+    //     ev->Sender.ToString().c_str(),
+    //     range.Size());
+
     if (GetScrubbingRange().Overlaps(range)) {
         if (ResyncRangeStarted) {
             auto response = std::make_unique<typename TMethod::TResponse>(
@@ -104,10 +115,11 @@ void TMirrorPartitionActor::MirrorRequest(
     }
     RequestsInProgress.AddWriteRequest(requestIdentityKey, range);
 
+    auto replicaActors = State.GetReplicaActors();
     NCloud::Register<TMirrorRequestActor<TMethod>>(
         ctx,
         std::move(requestInfo),
-        State.GetReplicaActors(),
+        TVector<NActors::TActorId>(replicaActors.begin(), replicaActors.end()),
         TActorId{},
         std::move(msg->Record),
         State.GetReplicaInfos()[0].Config->GetName(),

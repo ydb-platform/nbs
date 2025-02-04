@@ -5,6 +5,7 @@
 #include "part_nonrepl_common.h"
 #include "part_nonrepl_migration.h"
 #include "resync_range.h"
+#include "replica_lagging_agents_io_controller_actor.h"
 
 #include <cloud/blockstore/libs/diagnostics/critical_events.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
@@ -20,6 +21,8 @@ namespace NCloud::NBlockStore::NStorage {
 using namespace NActors;
 
 using namespace NKikimr;
+
+using TEvPartition = NPartition::TEvPartition;
 
 LWTRACE_USING(BLOCKSTORE_STORAGE_PROVIDER);
 
@@ -77,6 +80,7 @@ TMirrorPartitionActor::~TMirrorPartitionActor()
 
 void TMirrorPartitionActor::Bootstrap(const TActorContext& ctx)
 {
+    Cerr << "xxxxx TMirrorPartitionActor::Bootstrap" << Endl;
     SetupPartitions(ctx);
     ScheduleCountersUpdate(ctx);
 
@@ -89,8 +93,16 @@ void TMirrorPartitionActor::Bootstrap(const TActorContext& ctx)
 
 void TMirrorPartitionActor::KillActors(const TActorContext& ctx)
 {
-    for (const auto& actorId: State.GetReplicaActors()) {
-        NCloud::Send<TEvents::TEvPoisonPill>(ctx, actorId);
+    const size_t replicaCount = State.GetReplicaActors().size();
+    for (size_t i = 0; i < replicaCount; ++i) {
+        if (State.IsLaggingProxySet(i)) {
+            NCloud::Send<TEvents::TEvPoisonPill>(
+                ctx,
+                State.GetReplicaActors()[i]);
+        }
+        NCloud::Send<TEvents::TEvPoisonPill>(
+            ctx,
+            State.GetReplicaActorsBypassingProxies()[i]);
     }
 }
 
@@ -261,8 +273,7 @@ void TMirrorPartitionActor::StartResyncRange(
     const auto& replicaInfos = State.GetReplicaInfos();
     const auto& replicaActors = State.GetReplicaActors();
     for (ui32 i = 0; i < replicaInfos.size(); i++) {
-        if (replicaInfos[i].Config->DevicesReadyForReading(GetScrubbingRange()))
-        {
+        if (State.DevicesReadyForReading(i, GetScrubbingRange())) {
             replicas.emplace_back(
                 replicaInfos[i].Config->GetName(),
                 i,
@@ -314,7 +325,8 @@ void TMirrorPartitionActor::HandlePoisonPill(
 
     KillActors(ctx);
 
-    AliveReplicas = State.GetReplicaActors().size();
+    AliveReplicas =
+        State.GetReplicaActors().size() + State.LaggingReplicaCount();
 
     Poisoner = CreateRequestInfo(
         ev->Sender,
@@ -332,7 +344,7 @@ void TMirrorPartitionActor::HandlePoisonTaken(
     const TEvents::TEvPoisonTaken::TPtr& ev,
     const TActorContext& ctx)
 {
-    if (!FindPtr(State.GetReplicaActors(), ev->Sender)) {
+    if (!State.IsReplicaActor(ev->Sender)) {
         return;
     }
 
@@ -419,7 +431,7 @@ void TMirrorPartitionActor::HandleScrubbingNextRange(
     const auto& replicaInfos = State.GetReplicaInfos();
     const auto& replicaActors = State.GetReplicaActors();
     for (ui32 i = 0; i < replicaInfos.size(); i++) {
-        if (replicaInfos[i].Config->DevicesReadyForReading(scrubbingRange)) {
+        if (State.DevicesReadyForReading(i, scrubbingRange)) {
             replicas.emplace_back(
                 replicaInfos[i].Config->GetName(),
                 i,
@@ -512,6 +524,75 @@ void TMirrorPartitionActor::HandleRangeResynced(
     StartScrubbingRange(ctx, ScrubbingRangeId + 1);
 }
 
+void TMirrorPartitionActor::HandleAddLaggingAgent(
+    const TEvNonreplPartitionPrivate::TEvAddLaggingAgentRequest::TPtr& ev,
+    const TActorContext& ctx)
+{
+    auto* msg = ev->Get();
+    const ui32 replicaIndex = msg->LaggingAgent.GetReplicaIndex();
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::PARTITION,
+        "[%s] Adding lagging agent: %s, replica index: %u",
+        DiskId.c_str(),
+        msg->LaggingAgent.GetAgentId().c_str(),
+        replicaIndex);
+
+    if (!State.IsLaggingProxySet(replicaIndex)) {
+        Y_DEBUG_ABORT_UNLESS(State.GetReplicaInfos().size() > replicaIndex);
+
+        auto proxyActorId = NCloud::Register(
+            ctx,
+            std::make_unique<TReplicaLaggingAgentsIOControllerActor>(
+                Config,
+                State.GetReplicaInfos()[replicaIndex].Config,
+                ProfileLog,
+                BlockDigestGenerator,
+                State.GetRWClientId(),
+                State.GetReplicaActorsBypassingProxies()[replicaIndex],
+                StatActorId,
+                SelfId()));
+        State.SetLaggingReplicaProxy(replicaIndex, proxyActorId);
+    }
+
+    NCloud::Send<TEvNonreplPartitionPrivate::TEvAgentIsUnavailable>(
+        ctx,
+        State.GetReplicaActors()[replicaIndex],
+        0,   // cookie
+        msg->LaggingAgent);
+    State.AddLaggingAgent(std::move(msg->LaggingAgent));
+}
+
+void TMirrorPartitionActor::HandleRemoveLaggingAgent(
+    const TEvNonreplPartitionPrivate::TEvRemoveLaggingAgentRequest::TPtr& ev,
+    const TActorContext& ctx)
+{
+    const auto* msg = ev->Get();
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::PARTITION,
+        "[%s] Removing lagging agent: %s, replica index: %u",
+        DiskId.c_str(),
+        msg->LaggingAgent.GetAgentId().c_str(),
+        msg->LaggingAgent.GetReplicaIndex());
+
+    State.RemoveLaggingAgent(msg->LaggingAgent);
+
+    const ui32 replicaIndex = msg->LaggingAgent.GetReplicaIndex();
+    if (!State.HasLaggingAgents(replicaIndex) &&
+        State.IsLaggingProxySet(replicaIndex))
+    {
+        auto proxy = State.GetReplicaActors()[replicaIndex];
+        State.ResetLaggingReplicaProxy(replicaIndex);
+
+        // Schedule the poison pill to ensure there are no more in-flight
+        // requests to the proxy.
+        ctx.ExecutorThread.Schedule(
+            TDuration::MilliSeconds(50),
+            new IEventHandle(proxy, SelfId(), new TEvents::TEvPoisonPill()));
+    }
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 void TMirrorPartitionActor::HandleRWClientIdChanged(
@@ -581,7 +662,9 @@ STFUNC(TMirrorPartitionActor::StateWork)
         HFunc(TEvService::TEvReadBlocksLocalRequest, HandleReadBlocksLocal);
         HFunc(TEvService::TEvWriteBlocksLocalRequest, HandleWriteBlocksLocal);
 
-        HFunc(NPartition::TEvPartition::TEvDrainRequest, DrainActorCompanion.HandleDrain);
+        HFunc(TEvNonreplPartitionPrivate::TEvAddLaggingAgentRequest, HandleAddLaggingAgent);
+        HFunc(TEvNonreplPartitionPrivate::TEvRemoveLaggingAgentRequest, HandleRemoveLaggingAgent);
+        HFunc(TEvPartition::TEvDrainRequest, DrainActorCompanion.HandleDrain);
         HFunc(TEvService::TEvGetChangedBlocksRequest, DeclineGetChangedBlocks);
         HFunc(
             TEvNonreplPartitionPrivate::TEvGetDeviceForRangeRequest,
@@ -611,6 +694,7 @@ STFUNC(TMirrorPartitionActor::StateWork)
             HandlePartCounters);
 
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
+        IgnoreFunc(TEvents::TEvPoisonTaken);
 
         default:
             HandleUnexpectedEvent(ev, TBlockStoreComponents::PARTITION);

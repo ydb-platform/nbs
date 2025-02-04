@@ -91,6 +91,9 @@ IOutputStream& DumpDeviceState(
     if (flags & EDeviceStateFlags::SUSPENDED) {
         out << " [<font color=DarkCyan>suspended</font>]";
     }
+    if (flags & EDeviceStateFlags::LAGGING) {
+        out << " [<font color=Purple>lagging</font>]";
+    }
     return out;
 }
 

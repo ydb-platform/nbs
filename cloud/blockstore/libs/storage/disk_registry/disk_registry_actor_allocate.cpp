@@ -2,6 +2,8 @@
 
 #include <cloud/blockstore/libs/diagnostics/critical_events.h>
 
+#include <google/protobuf/util/json_util.h>
+
 namespace NCloud::NBlockStore::NStorage {
 
 namespace {
@@ -134,6 +136,7 @@ void TDiskRegistryActor::ExecuteAddDisk(
     args.DeviceMigrations = std::move(result.Migrations);
     args.Replicas = std::move(result.Replicas);
     args.DeviceReplacementUUIDs = std::move(result.DeviceReplacementIds);
+    args.LaggingDevices = std::move(result.LaggingDevices);
     args.IOMode = result.IOMode;
     args.IOModeTs = result.IOModeTs;
     args.MuteIOErrors = result.MuteIOErrors;
@@ -233,6 +236,11 @@ void TDiskRegistryActor::CompleteAddDisk(
 
         for (auto& deviceId: args.DeviceReplacementUUIDs) {
             *response->Record.AddDeviceReplacementUUIDs() = std::move(deviceId);
+        }
+
+        for (auto& laggingDevice: args.LaggingDevices) {
+            *response->Record.AddRemovedLaggingDevices() =
+                std::move(laggingDevice.Device);
         }
 
         response->Record.SetIOMode(args.IOMode);

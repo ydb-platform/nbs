@@ -62,7 +62,7 @@ struct TEnv
             NActors::TActorId(),
             false,   // muteIOErrors
             FreshDeviceIds,
-            THashSet<TString>(),   // laggingDeviceIds
+            THashSet<TString>{},   // outdatedDeviceIds
             TDuration::Zero(),     // maxTimedOutDeviceStateDuration
             false,                 // maxTimedOutDeviceStateDurationOverridden
             true                   // useSimpleMigrationBandwidthLimiter

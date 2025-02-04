@@ -615,6 +615,11 @@ public:
     TCertificate GetNodeRegistrationCert() const;
     TString GetNodeType() const;
 
+    bool GetLaggingDevicesForMirror2Disks() const;
+    bool GetLaggingDevicesForMirror3Disks() const;
+    TDuration GetLaggingDeviceTimeoutThreshold() const;
+    TDuration GetLaggingDevicePingInterval() const;
+
     NCloud::NProto::TConfigDispatcherSettings GetConfigDispatcherSettings() const;
 
     TDuration GetBlobStorageAsyncGetTimeoutHDD() const;

@@ -515,6 +515,11 @@ TDuration MSeconds(ui32 value)
     xxx(MinScrubbingBandwidth,                          ui64,      5             )\
     xxx(AutomaticallyEnableBufferCopyingAfterChecksumMismatch, bool, false       )\
                                                                                   \
+    xxx(LaggingDevicesForMirror2Disks,            bool,      false               )\
+    xxx(LaggingDevicesForMirror3Disks,            bool,      false               )\
+    xxx(LaggingDeviceTimeoutThreshold,            TDuration, Seconds(3)          )\
+    xxx(LaggingDevicePingInterval,                TDuration, MSeconds(500)       )\
+                                                                                  \
     xxx(OptimizeVoidBuffersTransferForReadsEnabled,     bool,      false         )\
     xxx(VolumeHistoryCleanupItemCount,                  ui32,      100'000       )\
     xxx(IdleAgentDeployByCmsDelay,                      TDuration, Hours(1)      )\

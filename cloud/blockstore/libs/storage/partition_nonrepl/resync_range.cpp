@@ -267,6 +267,8 @@ void TResyncRangeActor::HandleReadResponse(
         return;
     }
 
+    // if ()
+
     WriteBlocks(ctx);
 }
 

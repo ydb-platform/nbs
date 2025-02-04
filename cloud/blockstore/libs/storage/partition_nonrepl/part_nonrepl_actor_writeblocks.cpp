@@ -158,7 +158,8 @@ void TDiskAgentWriteActor::HandleWriteDeviceBlocksResponse(
 {
     auto* msg = ev->Get();
 
-    if (HandleError(ctx, msg->GetError(), false)) {
+    if (FAILED(msg->GetError().GetCode())) {
+        HandleError(ctx, msg->GetError(), false);
         return;
     }
 
@@ -243,15 +244,28 @@ void TNonreplicatedPartitionActor::HandleWriteBlocks(
         CalculateWriteRequestBlockCount(msg->Record, PartConfig->GetBlockSize())
     );
 
+    LOG_WARN(
+        ctx,
+        TBlockStoreComponents::PARTITION,
+        "xxxxx AID[%s] TNonreplicatedPartitionActor::HandleWriteBlocks, "
+        "requestId: %lu, sender: %s, "
+        "size: %lu",
+        ctx.SelfID.ToString().c_str(),
+        ev->Cookie,
+        ev->Sender.ToString().c_str(),
+        blockRange.Size());
+
     TVector<TDeviceRequest> deviceRequests;
     TRequestTimeoutPolicy timeoutPolicy;
+    TRequest request;
     bool ok = InitRequests<TEvService::TWriteBlocksMethod>(
         *msg,
         ctx,
         *requestInfo,
         blockRange,
         &deviceRequests,
-        &timeoutPolicy);
+        &timeoutPolicy,
+        &request);
 
     if (!ok) {
         return;
@@ -272,7 +286,7 @@ void TNonreplicatedPartitionActor::HandleWriteBlocks(
         assignVolumeRequestId,
         false); // replyLocal
 
-    RequestsInProgress.AddWriteRequest(actorId);
+    RequestsInProgress.AddWriteRequest(actorId, std::move(request));
 }
 
 void TNonreplicatedPartitionActor::HandleWriteBlocksLocal(
@@ -329,13 +343,15 @@ void TNonreplicatedPartitionActor::HandleWriteBlocksLocal(
 
     TVector<TDeviceRequest> deviceRequests;
     TRequestTimeoutPolicy timeoutPolicy;
+    TRequest request;
     bool ok = InitRequests<TEvService::TWriteBlocksLocalMethod>(
         *msg,
         ctx,
         *requestInfo,
         blockRange,
         &deviceRequests,
-        &timeoutPolicy);
+        &timeoutPolicy,
+        &request);
 
     if (!ok) {
         return;
@@ -386,7 +402,7 @@ void TNonreplicatedPartitionActor::HandleWriteBlocksLocal(
         assignVolumeRequestId,
         true); // replyLocal
 
-    RequestsInProgress.AddWriteRequest(actorId);
+    RequestsInProgress.AddWriteRequest(actorId, std::move(request));
 }
 
 void TNonreplicatedPartitionActor::HandleWriteBlocksCompleted(

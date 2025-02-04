@@ -11,7 +11,7 @@ void TDiskRegistryActor::HandleGetAgentNodeId(
     const TEvDiskRegistry::TEvGetAgentNodeIdRequest::TPtr& ev,
     const TActorContext& ctx)
 {
-    BLOCKSTORE_DISK_REGISTRY_COUNTER(GetDependentDisks);
+    BLOCKSTORE_DISK_REGISTRY_COUNTER(GetAgentNodeId);
 
     auto* msg = ev->Get();
 

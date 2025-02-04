@@ -2,6 +2,7 @@
 
 #include "volume_tx.h"
 
+#include <cloud/blockstore/libs/storage/partition_nonrepl/part_nonrepl_events_private.h>
 #include <cloud/blockstore/libs/storage/volume/model/helpers.h>
 #include <cloud/storage/core/libs/common/media.h>
 #include <cloud/storage/core/libs/diagnostics/critical_events.h>
@@ -13,6 +14,20 @@ using namespace NKikimr;
 using namespace NCloud::NBlockStore::NStorage::NPartition;
 
 LWTRACE_USING(BLOCKSTORE_STORAGE_PROVIDER);
+
+namespace {
+
+bool LaggingDevicesAreAllowed(
+    NProto::EStorageMediaKind mediaKind,
+    const TStorageConfigPtr& config)
+{
+    return (config->GetLaggingDevicesForMirror3Disks() &&
+            mediaKind == NProto::STORAGE_MEDIA_SSD_MIRROR3) ||
+           (config->GetLaggingDevicesForMirror2Disks() &&
+            mediaKind == NProto::STORAGE_MEDIA_SSD_MIRROR2);
+}
+
+}   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -87,16 +102,28 @@ void TVolumeActor::HandleDeviceTimeouted(
         msg->DeviceUUID.c_str());
 
     const auto& meta = State->GetMeta();
-    if (!IsReliableDiskRegistryMediaKind(
-            State->GetConfig().GetStorageMediaKind()))
+    if (!LaggingDevicesAreAllowed(
+            State->GetConfig().GetStorageMediaKind(),
+            Config))
     {
         NCloud::Reply(
             ctx,
             *ev,
             std::make_unique<TEvVolumePrivate::TEvDeviceTimeoutedResponse>(
                 MakeError(
-                    E_PRECONDITION_FAILED,
-                    "Only DR mirror disks can have lagging devices")));
+                    E_INVALID_STATE,
+                    "Disk can't have lagging devices.")));
+        return;
+    }
+
+    if (State->IsMirrorResyncNeeded() || meta.GetResyncIndex() > 0) {
+        NCloud::Reply(
+            ctx,
+            *ev,
+            std::make_unique<TEvVolumePrivate::TEvDeviceTimeoutedResponse>(
+                MakeError(
+                    E_INVALID_STATE,
+                    "Resync is in progress, can't have lagging devices.")));
         return;
     }
 
@@ -277,10 +304,10 @@ void TVolumeActor::HandleSmartMigrationFinished(
         return;
     }
 
-    ExecuteTx<TRemoveLaggingAgent>(
-        ctx,
-        CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext),
-        msg->AgentId);
+    auto requestInfo =
+        CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
+    AddTransaction(*requestInfo);
+    ExecuteTx<TRemoveLaggingAgent>(ctx, std::move(requestInfo), msg->AgentId);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -388,16 +415,11 @@ void TVolumeActor::CompleteRemoveLaggingAgent(
         return;
     }
 
-    if (State->HasLaggingInReplica(args.RemovedLaggingAgent.GetReplicaIndex()))
-    {
-        return;
-    }
-
     NCloud::Send(
         ctx,
         State->GetDiskRegistryBasedPartitionActor(),
-        std::make_unique<TEvPartition::TEvRemoveLaggingReplicaRequest>(
-            args.RemovedLaggingAgent.GetReplicaIndex()));
+        std::make_unique<TEvNonreplPartitionPrivate::TEvRemoveLaggingAgentRequest>(
+            std::move(args.RemovedLaggingAgent)));
 }
 
 }   // namespace NCloud::NBlockStore::NStorage
