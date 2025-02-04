@@ -238,7 +238,7 @@ func testImageServiceCreateImageFromDiskWithKind(
 	require.NoError(t, err)
 	require.Equal(t, float64(1), meta.Progress)
 
-	testcommon.RequireCheckpointsAreEmpty(t, ctx, diskID)
+	testcommon.RequireCheckpoint(t, ctx, diskID, imageID)
 
 	checkUnencryptedImage(
 		t,
@@ -1144,7 +1144,7 @@ func TestImageServiceCreateIncrementalImageFromDisk(t *testing.T) {
 	err = internal_client.GetOperationMetadata(ctx, client, operation.Id, &meta)
 	require.NoError(t, err)
 	require.Equal(t, float64(1), meta.Progress)
-	testcommon.RequireCheckpointsAreEmpty(t, ctx, diskID1)
+	testcommon.RequireCheckpoint(t, ctx, diskID1, imageID1)
 
 	nbsClient := testcommon.NewNbsTestingClient(t, ctx, "zone-a")
 	waitForWrite, err := nbsClient.GoWriteRandomBlocksToNbsDisk(ctx, diskID1)
@@ -1177,7 +1177,7 @@ func TestImageServiceCreateIncrementalImageFromDisk(t *testing.T) {
 	err = internal_client.GetOperationMetadata(ctx, client, operation.Id, &meta)
 	require.NoError(t, err)
 	require.Equal(t, float64(1), meta.Progress)
-	testcommon.RequireCheckpointsAreEmpty(t, ctx, diskID1)
+	testcommon.RequireCheckpoint(t, ctx, diskID1, imageID2)
 
 	testcommon.CheckBaseSnapshot(t, ctx, imageID2, imageID1)
 
@@ -1223,6 +1223,6 @@ func TestImageServiceCreateIncrementalImageFromDisk(t *testing.T) {
 	err = internal_client.WaitOperation(ctx, client, operation.Id)
 	require.NoError(t, err)
 
-	testcommon.RequireCheckpointsAreEmpty(t, ctx, diskID1)
+	testcommon.RequireNoCheckpoints(t, ctx, diskID1)
 	testcommon.CheckConsistency(t, ctx)
 }

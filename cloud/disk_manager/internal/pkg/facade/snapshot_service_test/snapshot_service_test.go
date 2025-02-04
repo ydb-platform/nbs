@@ -12,6 +12,7 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/common"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/facade/testcommon"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -77,7 +78,7 @@ func testCreateSnapshotFromDisk(
 	require.NoError(t, err)
 	require.Equal(t, float64(1), meta.Progress)
 
-	testcommon.RequireCheckpointsAreEmpty(t, ctx, diskID)
+	testcommon.RequireCheckpoint(t, ctx, diskID, snapshotID)
 
 	reqCtx = testcommon.GetRequestContext(t, ctx)
 	operation, err = client.DeleteSnapshot(reqCtx, &disk_manager.DeleteSnapshotRequest{
@@ -604,17 +605,21 @@ func TestSnapshotServiceDeleteIncrementalSnapshotWhileCreating(t *testing.T) {
 	err = internal_client.WaitOperation(ctx, client, deleteOperation.Id)
 	require.NoError(t, err)
 
-	//nolint:sa9003
-	// TODO: remove line above after
-	// https://github.com/ydb-platform/nbs/issues/2008
 	if creationErr == nil {
-		testcommon.RequireCheckpointsAreEmpty(t, ctx, diskID)
+		testcommon.RequireNoCheckpoints(t, ctx, diskID)
 	} else {
-		// Checkpoint that corresponds to base snapshot should not be deleted.
-		// NOTE: we use snapshot id as checkpoint id.
-		// TODO: enable this check after resolving issue
-		// https://github.com/ydb-platform/nbs/issues/2008.
-		// testcommon.RequireCheckpoint(t, ctx, diskID, baseSnapshotID)
+		snapshotID, _, err := testcommon.GetIncremental(
+			ctx,
+			&types.Disk{
+				ZoneId: "zone-a",
+				DiskId: diskID,
+			},
+		)
+
+		require.NoError(t, err)
+		if snapshotID != "" {
+			testcommon.RequireCheckpoint(t, ctx, diskID, baseSnapshotID)
+		}
 	}
 
 	snapshotID2 := t.Name() + "2"
@@ -702,7 +707,7 @@ func TestSnapshotServiceDeleteSnapshot(t *testing.T) {
 	err = internal_client.WaitOperation(ctx, client, operation2.Id)
 	require.NoError(t, err)
 
-	testcommon.RequireCheckpointsAreEmpty(t, ctx, diskID)
+	testcommon.RequireNoCheckpoints(t, ctx, diskID)
 	testcommon.CheckConsistency(t, ctx)
 }
 
