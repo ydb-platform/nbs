@@ -175,6 +175,7 @@ private:
         socket.send(TTaskStatsFamilyIdRequest());
         TNetlinkResponse<TTaskStatsFamilyIdResponse> response;
         socket.receive(response);
+        response.msg.Validate();
         return response.msg.FamilyId;
     }
 
@@ -215,6 +216,7 @@ public:
             socket.send(TTaskStatsRequest(FamilyId, Pid));
             TNetlinkResponse<TTaskStatsResponse> response;
             socket.receive(response);
+            response.msg.Validate();
             auto cpuLack = TDuration::MilliSeconds(
                 response.msg.TaskStats.cpu_delay_total / 1000);
             auto retval = cpuLack - Last;
