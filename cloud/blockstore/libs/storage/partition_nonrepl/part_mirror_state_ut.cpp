@@ -60,11 +60,12 @@ struct TEnv
             4_KB,
             volumeInfo,
             NActors::TActorId(),
-            false, // muteIOErrors
+            false,   // muteIOErrors
             FreshDeviceIds,
-            TDuration::Zero(), // maxTimedOutDeviceStateDuration
-            false, // maxTimedOutDeviceStateDurationOverridden
-            true // useSimpleMigrationBandwidthLimiter
+            THashSet<TString>(),   // laggingDeviceIds
+            TDuration::Zero(),     // maxTimedOutDeviceStateDuration
+            false,                 // maxTimedOutDeviceStateDurationOverridden
+            true                   // useSimpleMigrationBandwidthLimiter
         );
 
         {

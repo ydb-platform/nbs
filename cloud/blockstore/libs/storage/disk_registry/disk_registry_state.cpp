@@ -5023,14 +5023,17 @@ void TDiskRegistryState::ApplyAgentStateChange(
         }
 
         if (agent.GetState() == NProto::AGENT_STATE_WARNING) {
-            if (Find(disk.Devices, deviceId) == disk.Devices.end()) {
-                ReportDiskRegistryWrongMigratedDeviceOwnership(
-                    TStringBuilder() << "ApplyAgentStateChange: device "
-                                     << deviceId << " not found");
-                continue;
-            }
-
             if (MigrationCanBeStarted(disk, deviceId)) {
+                if (!FindPtr(disk.Devices, deviceId)) {
+                    ReportDiskRegistryWrongMigratedDeviceOwnership(Sprintf(
+                        "ApplyAgentStateChange: device[DeviceUUID = %s] not "
+                        "found in disk[DiskId "
+                        "= %s]",
+                        deviceId.c_str(),
+                        diskId.c_str()));
+                    continue;
+                }
+
                 AddMigration(disk, diskId, deviceId);
             }
         } else {

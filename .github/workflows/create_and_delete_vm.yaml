@@ -179,6 +179,7 @@ jobs:
       clean_ya_dir: "no"
       use_network_cache: "yes"
       nebius: ${{ needs.provide-runner.outputs.nebius }}
+      truncate_enabled: ${{ contains(github.event.pull_request.labels.*.name, 'disable_truncate') && 'no' || 'yes' }}
     secrets: inherit
 
   release-runner:

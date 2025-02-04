@@ -132,10 +132,11 @@ struct TTestEnv
             TNonreplicatedPartitionConfig::TVolumeInfo{Now(), params.MediaKind},
             VolumeActorId,
             params.MuteIOErrors,
-            THashSet<TString>(), // freshDeviceIds
-            TDuration::Zero(), // maxTimedOutDeviceStateDuration
-            false, // maxTimedOutDeviceStateDurationOverridden
-            false // useSimpleMigrationBandwidthLimiter
+            THashSet<TString>(),   // freshDeviceIds
+            THashSet<TString>(),   // laggingDeviceIds
+            TDuration::Zero(),     // maxTimedOutDeviceStateDuration
+            false,                 // maxTimedOutDeviceStateDurationOverridden
+            false                  // useSimpleMigrationBandwidthLimiter
         );
 
         auto part = std::make_unique<TNonreplicatedPartitionActor>(

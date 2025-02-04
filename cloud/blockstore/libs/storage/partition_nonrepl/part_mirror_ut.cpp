@@ -201,11 +201,12 @@ struct TTestEnv
                 // only SSD/HDD distinction matters
                 NProto::STORAGE_MEDIA_SSD_MIRROR3},
             VolumeActorId,
-            false, // muteIOErrors
+            false,   // muteIOErrors
             std::move(freshDeviceIds),
-            TDuration::Zero(), // maxTimedOutDeviceStateDuration
-            false, // maxTimedOutDeviceStateDurationOverridden
-            true // useSimpleMigrationBandwidthLimiter
+            THashSet<TString>(),   // laggingDeviceIds
+            TDuration::Zero(),     // maxTimedOutDeviceStateDuration
+            false,                 // maxTimedOutDeviceStateDurationOverridden
+            true                   // useSimpleMigrationBandwidthLimiter
         );
 
         for (auto& replica: replicas) {

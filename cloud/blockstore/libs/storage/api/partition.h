@@ -15,7 +15,7 @@ namespace NCloud::NBlockStore::NStorage::NPartition {
     xxx(Drain,                  __VA_ARGS__)                                   \
 // BLOCKSTORE_PARTITION_REQUESTS
 
-// requests forwarded from service to partion
+// requests forwarded from service to partition
 #define BLOCKSTORE_PARTITION_REQUESTS_FWD_SERVICE(xxx, ...)                    \
     xxx(ReadBlocks,         __VA_ARGS__)                                       \
     xxx(WriteBlocks,        __VA_ARGS__)                                       \
@@ -95,6 +95,34 @@ struct TEvPartition
     };
 
     //
+    // AddLaggingAgent
+    //
+
+    struct TAddLaggingAgentRequest
+    {
+        // 0 - for main devices; 1,2 - for mirror replicas
+        ui32 ReplicaIndex;
+        TString AgentId;
+        TAddLaggingAgentRequest(ui32 replicaIndex, TString agentId)
+            : ReplicaIndex(replicaIndex)
+            , AgentId(std::move(agentId))
+        {}
+    };
+
+    //
+    // RemoveLaggingAgent
+    //
+
+    struct TRemoveLaggingReplicaRequest
+    {
+        // 0 - for main devices; 1,2 - for mirror replicas
+        const ui32 ReplicaIndex;
+        explicit TRemoveLaggingReplicaRequest(ui32 replicaIndex)
+            : ReplicaIndex(replicaIndex)
+        {}
+    };
+
+    //
     // Events declaration
     //
 
@@ -115,6 +143,9 @@ struct TEvPartition
 
         EvGarbageCollectorCompleted = EvBegin + 8,
 
+        EvAddLaggingAgentRequest = EvBegin + 9,
+        EvRemoveLaggingReplicaRequest = EvBegin + 10,
+
         EvEnd
     };
 
@@ -131,6 +162,16 @@ struct TEvPartition
     using TEvGarbageCollectorCompleted = TRequestEvent<
         TGarbageCollectorCompleted,
         EvGarbageCollectorCompleted
+    >;
+
+    using TEvAddLaggingAgentRequest = TRequestEvent<
+        TAddLaggingAgentRequest,
+        EvAddLaggingAgentRequest
+    >;
+
+    using TEvRemoveLaggingReplicaRequest = TRequestEvent<
+        TRemoveLaggingReplicaRequest,
+        EvRemoveLaggingReplicaRequest
     >;
 };
 

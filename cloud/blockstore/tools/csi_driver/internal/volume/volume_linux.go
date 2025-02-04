@@ -17,6 +17,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
+/* This file was edited for NBS.
+*  Original is from kubernetes.
+ */
+
 package volume
 
 import (
@@ -26,9 +30,7 @@ import (
 	"os"
 	"time"
 
-	v1 "k8s.io/api/core/v1"
 	"k8s.io/klog/v2"
-	"k8s.io/kubernetes/pkg/volume/util/types"
 )
 
 const (
@@ -40,7 +42,7 @@ const (
 // SetVolumeOwnership modifies the given volume to be owned by
 // fsGroup, and sets SetGid so that newly created files are owned by
 // fsGroup. If fsGroup is nil nothing is done.
-func SetVolumeOwnership(mounter Mounter, dir string, fsGroup *int64, fsGroupChangePolicy *v1.PodFSGroupChangePolicy, completeFunc func(types.CompleteFuncParam)) error {
+func SetVolumeOwnership(dir string, fsGroup *int64, readonly bool) error {
 	if fsGroup == nil {
 		return nil
 	}
@@ -50,7 +52,7 @@ func SetVolumeOwnership(mounter Mounter, dir string, fsGroup *int64, fsGroupChan
 	})
 	defer timer.Stop()
 
-	if skipPermissionChange(mounter, dir, fsGroup, fsGroupChangePolicy) {
+	if !requiresPermissionChange(dir, fsGroup, readonly) {
 		klog.V(3).InfoS("Skipping permission and ownership change for volume", "path", dir)
 		return nil
 	}
@@ -59,13 +61,9 @@ func SetVolumeOwnership(mounter Mounter, dir string, fsGroup *int64, fsGroupChan
 		if err != nil {
 			return err
 		}
-		return changeFilePermission(path, fsGroup, mounter.GetAttributes().ReadOnly, info)
+		return changeFilePermission(path, fsGroup, readonly, info)
 	})
-	if completeFunc != nil {
-		completeFunc(types.CompleteFuncParam{
-			Err: &err,
-		})
-	}
+
 	return err
 }
 
@@ -102,14 +100,6 @@ func changeFilePermission(filename string, fsGroup *int64, readonly bool, info o
 	}
 
 	return nil
-}
-
-func skipPermissionChange(mounter Mounter, dir string, fsGroup *int64, fsGroupChangePolicy *v1.PodFSGroupChangePolicy) bool {
-	if fsGroupChangePolicy == nil || *fsGroupChangePolicy != v1.FSGroupChangeOnRootMismatch {
-		klog.V(4).InfoS("Perform recursive ownership change for directory", "path", dir)
-		return false
-	}
-	return !requiresPermissionChange(dir, fsGroup, mounter.GetAttributes().ReadOnly)
 }
 
 func requiresPermissionChange(rootDir string, fsGroup *int64, readonly bool) bool {
@@ -208,4 +198,3 @@ func walk(path string, info os.FileInfo, walkFunc filepath.WalkFunc) error {
 	}
 	return walkFunc(path, info, nil)
 }
-
