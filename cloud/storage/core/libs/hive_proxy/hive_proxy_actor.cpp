@@ -36,13 +36,13 @@ std::unique_ptr<NTabletPipe::IClientCache> CreateTabletPipeClientCache(
 
 THiveProxyActor::THiveProxyActor(
         THiveProxyConfig config,
-        NMonitoring::TDynamicCounterPtr countersRoot)
+        NMonitoring::TDynamicCounterPtr counters)
     : ClientCache(CreateTabletPipeClientCache(config))
     , LockExpireTimeout(config.HiveLockExpireTimeout)
     , LogComponent(config.LogComponent)
     , TabletBootInfoBackupFilePath(config.TabletBootInfoBackupFilePath)
     , TenantHiveTabletId(config.TenantHiveTabletId)
-    , CountersRoot(std::move(countersRoot))
+    , Counters(std::move(counters))
 {}
 
 THiveProxyActor::THiveProxyActor(THiveProxyConfig config)
@@ -62,8 +62,8 @@ void THiveProxyActor::Bootstrap(const TActorContext& ctx)
         TabletBootInfoBackup = ctx.Register(
             cache.release(), TMailboxType::HTSwap, AppData()->IOPoolId);
     }
-    if (CountersRoot) {
-        ReconnectPipeCounter = CountersRoot->GetCounter("HiveReconnectTime", true);
+    if (Counters) {
+        HiveReconnectTimeCounter = Counters->GetCounter("HiveReconnectTime", true);
     }
 }
 
@@ -78,7 +78,7 @@ void THiveProxyActor::SendRequest(
         clientId != HiveClientId)
     {
         HiveClientId = clientId;
-        ReconnectStartTime = GetCycleCount();
+        HiveReconnectStartTime = GetCycleCount();
     }
 }
 
@@ -239,13 +239,13 @@ void THiveProxyActor::HandleConnect(
         auto error = MakeKikimrError(msg->Status, TStringBuilder()
             << "Connect to hive " << hive << " failed");
         HandleConnectionError(ctx, error, hive, true);
-    } else if (msg->ClientId == HiveClientId && ReconnectStartTime)
+    } else if (msg->ClientId == HiveClientId && HiveReconnectStartTime)
     {
-        if (ReconnectPipeCounter) {
-            ReconnectPipeCounter->Add(
-                CyclesToDuration(GetCycleCount() - ReconnectStartTime).MicroSeconds());
+        if (HiveReconnectTimeCounter) {
+            HiveReconnectTimeCounter->Add(
+                CyclesToDuration(GetCycleCount() - HiveReconnectStartTime).MicroSeconds());
         }
-        ReconnectStartTime = 0;
+        HiveReconnectStartTime = 0;
     }
 }
 
@@ -342,8 +342,8 @@ void THiveProxyActor::HandleConnectionError(
             auto clientId = ClientCache->Prepare(ctx, hive);
             if (!HiveClientId) {
                 HiveClientId = clientId;
-                if (!ReconnectStartTime) {
-                    ReconnectStartTime = GetCycleCount();
+                if (!HiveReconnectStartTime) {
+                    HiveReconnectStartTime = GetCycleCount();
                 }
             }
             NCloud::Send<TEvHiveProxyPrivate::TEvChangeTabletClient>(

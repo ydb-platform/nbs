@@ -11,16 +11,12 @@ using namespace NActors;
 
 IActorPtr CreateHiveProxy(THiveProxyConfig config)
 {
-    if (config.FallbackMode) {
-        return std::make_unique<THiveProxyFallbackActor>(std::move(config));
-    }
-
-    return std::make_unique<THiveProxyActor>(std::move(config));
+    return CreateHiveProxy(std::move(config), {});
 }
 
 IActorPtr CreateHiveProxy(
     THiveProxyConfig config,
-    NMonitoring::TDynamicCounterPtr CountersRoot)
+    NMonitoring::TDynamicCounterPtr counters)
 {
     if (config.FallbackMode) {
         return std::make_unique<THiveProxyFallbackActor>(std::move(config));
@@ -28,7 +24,7 @@ IActorPtr CreateHiveProxy(
 
     return std::make_unique<THiveProxyActor>(
         std::move(config),
-        std::move(CountersRoot));
+        std::move(counters));
 }
 
 }   // namespace NCloud::NStorage

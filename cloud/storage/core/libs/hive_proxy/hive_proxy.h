@@ -14,6 +14,6 @@ namespace NCloud::NStorage {
 NActors::IActorPtr CreateHiveProxy(THiveProxyConfig config);
 NActors::IActorPtr CreateHiveProxy(
     THiveProxyConfig config,
-    NMonitoring::TDynamicCounterPtr CountersRoot);
+    NMonitoring::TDynamicCounterPtr counters);
 
 }   // namespace NCloud::NStorage

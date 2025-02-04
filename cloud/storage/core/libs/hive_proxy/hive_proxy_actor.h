@@ -177,9 +177,9 @@ private:
 
     const ui64 TenantHiveTabletId;
 
-    const NMonitoring::TDynamicCounterPtr CountersRoot;
-    NMonitoring::TDynamicCounters::TCounterPtr ReconnectPipeCounter;
-    ui64 ReconnectStartTime = 0;
+    const NMonitoring::TDynamicCounterPtr Counters;
+    NMonitoring::TDynamicCounters::TCounterPtr HiveReconnectTimeCounter;
+    ui64 HiveReconnectStartTime = 0;
     NActors::TActorId HiveClientId;
 
 public:
@@ -187,7 +187,7 @@ public:
 
     THiveProxyActor(
         THiveProxyConfig config,
-        NMonitoring::TDynamicCounterPtr countersRoot);
+        NMonitoring::TDynamicCounterPtr counters);
 
     void Bootstrap(const NActors::TActorContext& ctx);
 
