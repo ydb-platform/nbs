@@ -1683,10 +1683,10 @@ func TestDiskRegistryFindDevicesOfShadowDisk(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	backup, err := client.BackupDiskRegistryState(ctx)
+	diskRegistryStateBackup, err := client.BackupDiskRegistryState(ctx)
 	require.NoError(t, err)
 	// Shadow disk should not exist because checkpoint is not created yet.
-	shadowDisk := backup.GetShadowDisk(diskID)
+	shadowDisk := diskRegistryStateBackup.GetShadowDisk(diskID)
 	require.Nil(t, shadowDisk)
 
 	checkpointID := "checkpointID"
@@ -1697,21 +1697,18 @@ func TestDiskRegistryFindDevicesOfShadowDisk(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	for {
-		// Waiting for the shadow disk to be created.
-		time.Sleep(time.Second)
+	diskRegistryStateBackup = nil
+	shadowDisk = nil
 
-		backup, err := client.BackupDiskRegistryState(ctx)
+	// Waiting for the shadow disk to be created.
+	for shadowDisk == nil {
+		diskRegistryStateBackup, err = client.BackupDiskRegistryState(ctx)
 		require.NoError(t, err)
-
-		shadowDisk = backup.GetShadowDisk(diskID)
-		require.NotNil(t, shadowDisk)
-		deviceUUIDs := shadowDisk.DeviceUUIDs
-		if len(deviceUUIDs) > 0 {
-			require.Equal(t, 1, len(deviceUUIDs))
-			break
-		}
+		shadowDisk = diskRegistryStateBackup.GetShadowDisk(diskID)
 	}
+
+	deviceUUIDs := shadowDisk.DeviceUUIDs
+	require.Equal(t, 1, len(deviceUUIDs))
 
 	err = client.DeleteCheckpoint(ctx, diskID, checkpointID)
 	require.NoError(t, err)
@@ -1779,12 +1776,12 @@ func TestEnsureCheckpointReady(t *testing.T) {
 
 	// Disabling device to enforce checkpoint status ERROR.
 	go func() {
-		var diskRegistryStateBackup nbs.DiskRegistryStateBackup
+		var diskRegistryStateBackup *nbs.DiskRegistryStateBackup
 		var shadowDisk *nbs.DiskRegistryBasedDisk
 
 		// Waiting for the shadow disk to be created.
 		for shadowDisk == nil {
-			diskRegistryStateBackup, err := client.BackupDiskRegistryState(ctx)
+			diskRegistryStateBackup, err = client.BackupDiskRegistryState(ctx)
 			require.NoError(t, err)
 			shadowDisk = diskRegistryStateBackup.GetShadowDisk(diskID)
 		}
