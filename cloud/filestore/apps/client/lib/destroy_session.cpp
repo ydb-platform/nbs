@@ -50,7 +50,7 @@ public:
         request->MutableHeaders()->SetClientId(ClientId);
         request->MutableHeaders()->SetSessionSeqNo(SeqNo);
 
-        TCallContextPtr ctx = MakeIntrusive<TCallContext>();
+        TCallContextPtr ctx = MakeIntrusive<TCallContext>(FileSystemId);
         auto response = WaitFor(Client->DestroySession(ctx, std::move(request)));
         CheckResponse(response);
         Print(response, JsonOutput);
