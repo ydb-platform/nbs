@@ -85,7 +85,7 @@ DUMP("profile log write without fs", record.Request.ShortDebugString().Quote());
     }
 
     // TODO(proller): Remove debug after bug fix 
-    STORAGE_VERIFY_DEBUG_C(!record.FileSystemId.empty(), "", record.FileSystemId, "Missing filesystem id in profile log");
+    // STORAGE_VERIFY_DEBUG_C(!record.FileSystemId.empty(), "", record.FileSystemId, "Missing filesystem id in profile log");
  
     Records.Enqueue(std::move(record));
 }
