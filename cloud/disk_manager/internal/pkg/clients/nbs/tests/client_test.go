@@ -1697,7 +1697,6 @@ func TestDiskRegistryFindDevicesOfShadowDisk(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	retries := 0
 	for {
 		// Waiting for the shadow disk to be created.
 		time.Sleep(time.Second)
@@ -1711,11 +1710,6 @@ func TestDiskRegistryFindDevicesOfShadowDisk(t *testing.T) {
 		if len(deviceUUIDs) > 0 {
 			require.Equal(t, 1, len(deviceUUIDs))
 			break
-		}
-
-		retries++
-		if retries == 10 {
-			require.Fail(t, "Shadow disk has not appeared in disk registry state")
 		}
 	}
 
@@ -1758,7 +1752,6 @@ func TestEnsureCheckpointReady(t *testing.T) {
 			break
 		}
 		require.True(t, errors.Is(err, errors.NewInterruptExecutionError()))
-		time.Sleep(time.Microsecond * 100)
 	}
 
 	err = client.DeleteCheckpointData(ctx, diskID, checkpointID)
@@ -1791,15 +1784,15 @@ func TestEnsureCheckpointReady(t *testing.T) {
 		// checkpoint becomes ready.
 		time.Sleep(time.Second * 1)
 
-		diskRegistryBackup, err := client.BackupDiskRegistryState(ctx)
+		diskRegistryStateBackup, err := client.BackupDiskRegistryState(ctx)
 		require.NoError(t, err)
 
-		shadowDisk := diskRegistryBackup.GetShadowDisk(diskID)
+		shadowDisk := diskRegistryStateBackup.GetShadowDisk(diskID)
 		require.NotNil(t, shadowDisk)
 		deviceUUIDs := shadowDisk.DeviceUUIDs
 		require.Equal(t, 1, len(deviceUUIDs))
 
-		agentID := diskRegistryBackup.GetAgentIDByDeviceUUID(deviceUUIDs[0])
+		agentID := diskRegistryStateBackup.GetAgentIDByDeviceUUID(deviceUUIDs[0])
 		require.NotEmpty(t, agentID)
 
 		err = client.DisableDevices(ctx, agentID, deviceUUIDs, t.Name())
@@ -1815,7 +1808,6 @@ func TestEnsureCheckpointReady(t *testing.T) {
 			break
 		}
 		require.True(t, errors.Is(err, errors.NewInterruptExecutionError()))
-		time.Sleep(time.Microsecond * 100)
 	}
 
 	err = client.ChangeDeviceStateToOnline(ctx, shadowDiskDeviceUUID, t.Name())

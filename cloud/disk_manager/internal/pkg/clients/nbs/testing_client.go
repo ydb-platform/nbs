@@ -569,7 +569,7 @@ func (c *testingClient) List(ctx context.Context) ([]string, error) {
 
 func (c *testingClient) BackupDiskRegistryState(
 	ctx context.Context,
-) (*DiskRegistryBackup, error) {
+) (*DiskRegistryStateBackup, error) {
 
 	output, err := c.nbs.ExecuteAction(ctx, "backupdiskregistrystate", []byte("{}"))
 	if err != nil {
@@ -660,16 +660,19 @@ type DiskRegistryBasedDisk struct {
 	CheckpointReplica diskRegistryBasedDiskCheckpoint `json:"CheckpointReplica"`
 }
 
-type DiskRegistryBackup struct {
+type DiskRegistryStateBackup struct {
 	Disks  []DiskRegistryBasedDisk `json:"Disks"`
 	Agents []diskAgent             `json:"Agents"`
 }
 
 type diskRegistryState struct {
-	Backup DiskRegistryBackup `json:"Backup"`
+	Backup DiskRegistryStateBackup `json:"Backup"`
 }
 
-func (b *DiskRegistryBackup) GetDisk(diskID string) *DiskRegistryBasedDisk {
+func (b *DiskRegistryStateBackup) GetDisk(
+	diskID string,
+) *DiskRegistryBasedDisk {
+
 	for _, disk := range b.Disks {
 		if disk.DiskID == diskID {
 			return &disk
@@ -679,7 +682,7 @@ func (b *DiskRegistryBackup) GetDisk(diskID string) *DiskRegistryBasedDisk {
 	return nil
 }
 
-func (b *DiskRegistryBackup) GetShadowDisk(
+func (b *DiskRegistryStateBackup) GetShadowDisk(
 	originalDiskID string,
 ) *DiskRegistryBasedDisk {
 
@@ -692,7 +695,7 @@ func (b *DiskRegistryBackup) GetShadowDisk(
 	return nil
 }
 
-func (b *DiskRegistryBackup) GetAgentIDByDeviceUUID(deviceUUID string) string {
+func (b *DiskRegistryStateBackup) GetAgentIDByDeviceUUID(deviceUUID string) string {
 	for _, agent := range b.Agents {
 		for _, device := range agent.Devices {
 			if device.DeviceUUID == deviceUUID {

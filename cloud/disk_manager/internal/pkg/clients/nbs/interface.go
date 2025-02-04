@@ -400,7 +400,9 @@ type TestingClient interface {
 
 	List(ctx context.Context) ([]string, error)
 
-	BackupDiskRegistryState(ctx context.Context) (*DiskRegistryBackup, error)
+	BackupDiskRegistryState(
+		ctx context.Context,
+	) (*DiskRegistryStateBackup, error)
 
 	DisableDevices(
 		ctx context.Context,
