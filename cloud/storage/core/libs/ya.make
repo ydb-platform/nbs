@@ -23,4 +23,5 @@ RECURSE(
     version_ydb
     vhost-client
     viewer
+    xslt_render
 )
