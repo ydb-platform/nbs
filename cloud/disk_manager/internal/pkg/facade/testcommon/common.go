@@ -353,7 +353,7 @@ func RequireCheckpoint(
 	require.EqualValues(t, checkpointID, checkpoints[0])
 }
 
-func RequireCheckpointsAreEmpty(
+func RequireNoCheckpoints(
 	t *testing.T,
 	ctx context.Context,
 	diskID string,
@@ -625,6 +625,19 @@ func CheckConsistency(t *testing.T, ctx context.Context) {
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+
+func GetIncremental(
+	ctx context.Context,
+	disk *types.Disk,
+) (string, string, error) {
+
+	storage, err := newSnapshotStorage(ctx)
+	if err != nil {
+		return "", "", err
+	}
+
+	return storage.GetIncremental(ctx, disk)
+}
 
 func GetEncryptionKeyHash(encryptionDesc *types.EncryptionDesc) ([]byte, error) {
 	switch key := encryptionDesc.Key.(type) {
