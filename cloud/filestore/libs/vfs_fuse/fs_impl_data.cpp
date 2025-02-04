@@ -469,7 +469,7 @@ void TFileSystem::Flush(
 
             const auto& response = future.GetValue();
 
-            STORAGE_VERIFY_DEBUG_C(self->Config->GetFileSystemId().empty(), "", "", "Missing filesystem id in profile log for Flush request");
+            STORAGE_VERIFY_DEBUG_C(!self->Config->GetFileSystemId().empty(), "", self->Config->GetFileSystemId(), "Missing filesystem id in profile log for Flush request");
 
             FinalizeProfileLogRequestInfo(
                 std::move(requestInfo),
