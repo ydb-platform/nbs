@@ -539,7 +539,7 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
         };
 
         auto runtime =
-            PrepareTestActorRuntime(config, {}, {}, {}, diskAgentState);
+            PrepareTestActorRuntime(config, {}, {}, {}, {diskAgentState});
 
         struct TReadAndWriteByteCount
         {

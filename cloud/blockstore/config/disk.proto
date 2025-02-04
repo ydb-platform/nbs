@@ -294,6 +294,10 @@ message TDiskAgentConfig
 
     // Settings for traffic shaping.
     optional TDiskAgentThrottlingConfig ThrottlingConfig = 38;
+
+    // If enabled, IOParserActor allocates a storage buffer and copies the
+    // request data into it.
+    optional bool IOParserActorAllocateStorageEnabled = 39;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

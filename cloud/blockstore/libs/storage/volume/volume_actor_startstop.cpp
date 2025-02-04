@@ -178,6 +178,7 @@ void TVolumeActor::SetupDiskRegistryBasedPartitions(const TActorContext& ctx)
         SelfId(),
         State->GetMeta().GetMuteIOErrors(),
         State->GetFilteredFreshDevices(),
+        State->GetLaggingDevices(),
         maxTimedOutDeviceStateDuration,
         maxTimedOutDeviceStateDurationOverridden,
         useSimpleMigrationBandwidthLimiter);
@@ -259,6 +260,7 @@ void TVolumeActor::SetupDiskRegistryBasedPartitions(const TActorContext& ctx)
     State->SetDiskRegistryBasedPartitionActor(
         WrapNonreplActorIfNeeded(ctx, nonreplicatedActorId, nonreplicatedConfig),
         nonreplicatedConfig);
+    ReportLaggingDevicesToDR(ctx);
 }
 
 NActors::TActorId TVolumeActor::WrapNonreplActorIfNeeded(
@@ -344,6 +346,51 @@ void TVolumeActor::StartPartitionsForGc(const TActorContext& ctx)
 {
     StartPartitionsImpl(ctx);
     PartitionsStartedReason = EPartitionsStartedReason::STARTED_FOR_GC;
+}
+
+void TVolumeActor::HandleGracefulShutdown(
+    const TEvVolume::TEvGracefulShutdownRequest::TPtr& ev,
+    const TActorContext& ctx)
+{
+    if (!State->GetDiskRegistryBasedPartitionActor()) {
+        LOG_ERROR(
+            ctx,
+            TBlockStoreComponents::VOLUME,
+            "[%lu] GracefulShutdown request was sent to "
+            "non-DR based disk",
+            TabletID());
+
+        NCloud::Reply(
+            ctx,
+            *ev,
+            std::make_unique<TEvVolume::TEvGracefulShutdownResponse>(
+                MakeError(E_NOT_IMPLEMENTED, "request is not supported")));
+        return;
+    }
+
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::VOLUME,
+        "[%lu] Stop Partition before volume destruction",
+        TabletID());
+
+    auto reqInfo =
+        CreateRequestInfo(ev->Sender, ev->Cookie, ev->Get()->CallContext);
+    StopPartitions(
+        ctx,
+        [reqInfo = std::move(reqInfo)](const auto& ctx)
+        {
+            NCloud::Reply(
+                ctx,
+                *reqInfo,
+                std::make_unique<TEvVolume::TEvGracefulShutdownResponse>());
+        });
+
+    TerminateTransactions(ctx);
+    KillActors(ctx);
+    CancelRequests(ctx);
+
+    BecomeAux(ctx, STATE_ZOMBIE);
 }
 
 void TVolumeActor::StopPartitions(

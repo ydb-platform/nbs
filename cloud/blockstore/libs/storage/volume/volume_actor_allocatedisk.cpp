@@ -4,7 +4,7 @@
 
 #include <cloud/blockstore/libs/diagnostics/critical_events.h>
 #include <cloud/blockstore/libs/storage/api/disk_registry_proxy.h>
-
+#include <cloud/blockstore/libs/storage/volume/model/helpers.h>
 #include <cloud/storage/core/libs/common/media.h>
 
 #include <util/generic/scope.h>
@@ -34,7 +34,6 @@ ui64 GetSize(const TDevices& devs)
 
 ui64 GetBlocks(const NKikimrBlockStore::TVolumeConfig& config)
 {
-    // XXX
     Y_ABORT_UNLESS(config.PartitionsSize() == 1);
     return config.GetPartitions(0).GetBlockCount();
 }
@@ -160,6 +159,7 @@ NProto::TVolumeMeta CreateNewMeta(
     newMeta.SetIOMode(args.IOMode);
     newMeta.SetIOModeTs(args.IOModeTs.MicroSeconds());
     newMeta.SetMuteIOErrors(args.MuteIOErrors);
+    UpdateLaggingDevicesAfterMetaUpdate(newMeta, args.RemovedLaggingDeviceIds);
 
     return newMeta;
 }
@@ -351,11 +351,18 @@ void TVolumeActor::HandleAllocateDiskResponse(
     auto& migrations = *msg->Record.MutableMigrations();
     TVector<TDevices> replicas;
     TVector<TString> freshDeviceIds;
+    TVector<TString> removedLaggingDevices;
     for (auto& msgReplica: *msg->Record.MutableReplicas()) {
         replicas.push_back(std::move(*msgReplica.MutableDevices()));
     }
     for (auto& freshDeviceId: *msg->Record.MutableDeviceReplacementUUIDs()) {
         freshDeviceIds.push_back(std::move(freshDeviceId));
+    }
+    for (auto& removedLaggingDevice:
+         *msg->Record.MutableRemovedLaggingDevices())
+    {
+        removedLaggingDevices.push_back(
+            std::move(*removedLaggingDevice.MutableDeviceUUID()));
     }
 
     if (!CheckAllocationResult(ctx, devices, replicas)) {
@@ -367,6 +374,8 @@ void TVolumeActor::HandleAllocateDiskResponse(
         UnfinishedUpdateVolumeConfig.Migrations = std::move(migrations);
         UnfinishedUpdateVolumeConfig.Replicas = std::move(replicas);
         UnfinishedUpdateVolumeConfig.FreshDeviceIds = std::move(freshDeviceIds);
+        UnfinishedUpdateVolumeConfig.RemovedLaggingDeviceIds =
+            std::move(removedLaggingDevices);
     } else {
         ExecuteTx<TUpdateDevices>(
             ctx,
@@ -374,6 +383,7 @@ void TVolumeActor::HandleAllocateDiskResponse(
             std::move(migrations),
             std::move(replicas),
             std::move(freshDeviceIds),
+            std::move(removedLaggingDevices),
             msg->Record.GetIOMode(),
             TInstant::MicroSeconds(msg->Record.GetIOModeTs()),
             msg->Record.GetMuteIOErrors()
@@ -418,6 +428,7 @@ void TVolumeActor::HandleUpdateDevices(
         std::move(msg->Migrations),
         std::move(msg->Replicas),
         std::move(msg->FreshDeviceIds),
+        std::move(msg->RemovedLaggingDevices),
         msg->IOMode,
         msg->IOModeTs,
         msg->MuteIOErrors);

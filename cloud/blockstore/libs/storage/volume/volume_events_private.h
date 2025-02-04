@@ -25,6 +25,7 @@ namespace NCloud::NBlockStore::NStorage {
     xxx(UpdateCheckpointRequest,            __VA_ARGS__)                       \
     xxx(UpdateShadowDiskState,              __VA_ARGS__)                       \
     xxx(ReadMetaHistory,                    __VA_ARGS__)                       \
+    xxx(DeviceTimeouted,                    __VA_ARGS__)                       \
 // BLOCKSTORE_VOLUME_REQUESTS_PRIVATE
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -133,6 +134,56 @@ struct TEvVolumePrivate
     };
 
     //
+    // DeviceTimeouted
+    //
+
+    struct TDeviceTimeoutedRequest
+    {
+        const TString DeviceUUID;
+
+        explicit TDeviceTimeoutedRequest(TString deviceUUID)
+            : DeviceUUID(std::move(deviceUUID))
+        {}
+    };
+
+    struct TDeviceTimeoutedResponse
+    {
+    };
+
+    //
+    // UpdateSmartMigrationState
+    //
+
+    struct TUpdateSmartMigrationState
+    {
+        TString AgentId;
+        ui64 ProcessedBlockCount;
+        ui64 BlockCountNeedToBeProcessed;
+
+        TUpdateSmartMigrationState(
+                TString agentId,
+                ui64 processedBlockCount,
+                ui64 blockCountNeedToBeProcessed)
+            : AgentId(std::move(agentId))
+            , ProcessedBlockCount(processedBlockCount)
+            , BlockCountNeedToBeProcessed(blockCountNeedToBeProcessed)
+        {}
+    };
+
+    //
+    // SmartMigrationFinished
+    //
+
+    struct TSmartMigrationFinished
+    {
+        const TString AgentId;
+
+        explicit TSmartMigrationFinished(TString agentId)
+            : AgentId(std::move(agentId))
+        {}
+    };
+
+    //
     // UpdateDevices
     //
 
@@ -142,6 +193,7 @@ struct TEvVolumePrivate
         TMigrations Migrations;
         TVector<TDevices> Replicas;
         TVector<TString> FreshDeviceIds;
+        TVector<TString> RemovedLaggingDevices;
         NProto::EVolumeIOMode IOMode;
         TInstant IOModeTs;
         bool MuteIOErrors;
@@ -151,6 +203,7 @@ struct TEvVolumePrivate
                 TMigrations migrations,
                 TVector<TDevices> replicas,
                 TVector<TString> freshDeviceIds,
+                TVector<TString> removedLaggingDevices,
                 NProto::EVolumeIOMode ioMode,
                 TInstant ioModeTs,
                 bool muteIOErrors)
@@ -158,6 +211,7 @@ struct TEvVolumePrivate
             , Migrations(std::move(migrations))
             , Replicas(std::move(replicas))
             , FreshDeviceIds(std::move(freshDeviceIds))
+            , RemovedLaggingDevices(std::move(removedLaggingDevices))
             , IOMode(ioMode)
             , IOModeTs(ioModeTs)
             , MuteIOErrors(muteIOErrors)
@@ -240,6 +294,14 @@ struct TEvVolumePrivate
     //
 
     struct TRemoveExpiredVolumeParams
+    {
+    };
+
+    //
+    // ReportLaggingDevicesToDR
+    //
+
+    struct TReportLaggingDevicesToDR
     {
     };
 
@@ -348,6 +410,9 @@ struct TEvVolumePrivate
         EvExternalDrainDone,
         EvDevicesAcquireFinished,
         EvDevicesReleaseFinished,
+        EvReportLaggingDevicesToDR,
+        EvUpdateSmartMigrationState,
+        EvSmartMigrationFinished,
 
         EvEnd
     };
@@ -394,6 +459,21 @@ struct TEvVolumePrivate
     using TEvUpdateReadWriteClientInfo = TRequestEvent<
         TUpdateReadWriteClientInfo,
         EvUpdateReadWriteClientInfo
+    >;
+
+    using TEvUpdateSmartMigrationState = TRequestEvent<
+        TUpdateSmartMigrationState,
+        EvUpdateSmartMigrationState
+    >;
+
+    using TEvSmartMigrationFinished = TRequestEvent<
+        TSmartMigrationFinished,
+        EvSmartMigrationFinished
+    >;
+
+    using TEvReportLaggingDevicesToDR = TRequestEvent<
+        TReportLaggingDevicesToDR,
+        EvReportLaggingDevicesToDR
     >;
 
     using TEvRemoveExpiredVolumeParams = TRequestEvent<

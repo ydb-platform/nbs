@@ -19,6 +19,12 @@ namespace {
 
 const TString BackupFileEnv = "DISK_REGISTRY_BACKUP_PATH";
 
+enum ERegisterAgent
+{
+    ChangeNodeId,
+    KeepNodeId,
+};
+
 TString BackupFilePath()
 {
     auto result = GetEnv(BackupFileEnv);
@@ -103,13 +109,51 @@ static void PublishCounters_DisableFullGroups(benchmark::State& benchmarkState)
     }
 }
 
+static void DoRegisterAgent(benchmark::State& benchmarkState, bool changeNodeId)
+{
+    auto state = Load(true);
+    auto agents = state.GetAgents();
+
+    TTestExecutor executor;
+    executor.WriteTx([&](TDiskRegistryDatabase db) { db.InitSchema(); });
+
+    TVector<size_t> agentsToRegister;
+    for (size_t i = 0; i < agents.size(); ++i) {
+        auto& agent = agents[i];
+        if (agent.GetNodeId() != 0) {
+            agentsToRegister.push_back(i);
+            if (changeNodeId) {
+                agent.SetNodeId(agentsToRegister.size());
+            }
+        }
+    }
+
+    size_t i = 0;
+    for (const auto _: benchmarkState) {
+        size_t agentIndex = agentsToRegister[(i++) % agentsToRegister.size()];
+        auto& agent = agents[agentIndex];
+        if (changeNodeId) {
+            agent.SetNodeId(agent.GetNodeId() + agentsToRegister.size());
+        }
+        executor.WriteTx(
+            [&](TDiskRegistryDatabase db)
+            {
+                auto [r, error] =
+                    state.RegisterAgent(db, agent, TInstant::Now());
+
+                if (HasError(error)) {
+                    Cout << error.GetMessage() << Endl;
+                }
+            });
+    }
+}
+
 void DoCreateDeleteDisk(
     benchmark::State& benchmarkState,
     const TDiskRegistryState::TAllocateDiskParams& diskParams)
 {
     TTestExecutor executor;
-    executor.WriteTx([&](TDiskRegistryDatabase db) mutable
-                     { db.InitSchema(); });
+    executor.WriteTx([&](TDiskRegistryDatabase db) { db.InitSchema(); });
 
     auto state = Load(false);
     for (const auto _: benchmarkState) {
@@ -166,6 +210,15 @@ void DoCreateDeleteDisk(
     }                                                    \
     BENCHMARK(CreateDeleteMirrorDisk_##deviceCount);
 
+#define REGISTER_AGENT(changeNodeId)                                   \
+    void RegisterAgent##changeNodeId(benchmark::State& benchmarkState) \
+    {                                                                  \
+        DoRegisterAgent(                                               \
+            benchmarkState,                                            \
+            (changeNodeId) == ERegisterAgent::ChangeNodeId);           \
+    }                                                                  \
+    BENCHMARK(RegisterAgent##changeNodeId);
+
 BENCHMARK(PublishCounters_All);
 BENCHMARK(PublishCounters_DisableFullGroups);
 CREATE_AND_DELETE_NRD_DISK(1);
@@ -174,6 +227,8 @@ CREATE_AND_DELETE_NRD_DISK(100);
 CREATE_AND_DELETE_MIRROR_DISK(1);
 CREATE_AND_DELETE_MIRROR_DISK(10);
 CREATE_AND_DELETE_MIRROR_DISK(100);
+REGISTER_AGENT(KeepNodeId);
+REGISTER_AGENT(ChangeNodeId);
 
 ///////////////////////////////////////////////////////////////////////////////
 

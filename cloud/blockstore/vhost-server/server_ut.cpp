@@ -290,7 +290,21 @@ public:
         TSimpleStats prevStats;
         TCompleteStats stats;
         for (int i = 0; i != 5; ++i) {
+            // Save critical events from previous attempt.
+            auto critEvents = std::move(stats.CriticalEvents);
+
             stats = Server->GetStats(prevStats);
+
+            // Combine critical events from previous and current attempt.
+            if (critEvents) {
+                for (auto& critEvent: stats.CriticalEvents) {
+                    critEvents.push_back(std::move(critEvent));
+                }
+                stats.CriticalEvents = std::move(critEvents);
+            }
+
+            // Check that the current attempt to get statistics has brought
+            // everything we need.
             if (func(stats)) {
                 break;
             }

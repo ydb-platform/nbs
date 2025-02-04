@@ -414,15 +414,21 @@ TBlockRange64 BuildRequestBlockRange(
 TBlockRange64 BuildRequestBlockRange(
     const TEvDiskAgent::TEvWriteDeviceBlocksRequest& request)
 {
+    return BuildRequestBlockRange(request.Record);
+}
+
+TBlockRange64 BuildRequestBlockRange(
+    const NProto::TWriteDeviceBlocksRequest& request)
+{
     ui64 totalSize = 0;
-    for (const auto& buffer: request.Record.GetBlocks().GetBuffers()) {
+    for (const auto& buffer: request.GetBlocks().GetBuffers()) {
         totalSize += buffer.length();
     }
-    Y_ABORT_UNLESS(totalSize % request.Record.GetBlockSize() == 0);
+    Y_ABORT_UNLESS(totalSize % request.GetBlockSize() == 0);
 
     return TBlockRange64::WithLength(
-        request.Record.GetStartIndex(),
-        totalSize / request.Record.GetBlockSize());
+        request.GetStartIndex(),
+        totalSize / request.GetBlockSize());
 }
 
 TBlockRange64 BuildRequestBlockRange(
@@ -436,7 +442,12 @@ TBlockRange64 BuildRequestBlockRange(
 ui64 GetVolumeRequestId(
     const TEvDiskAgent::TEvWriteDeviceBlocksRequest& request)
 {
-    return request.Record.GetVolumeRequestId();
+    return GetVolumeRequestId(request.Record);
+}
+
+ui64 GetVolumeRequestId(const NProto::TWriteDeviceBlocksRequest& request)
+{
+    return request.GetVolumeRequestId();
 }
 
 ui64 GetVolumeRequestId(const TEvDiskAgent::TEvZeroDeviceBlocksRequest& request)

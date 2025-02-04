@@ -545,6 +545,7 @@ func TestPublishUnpublishDiskForInfrakuber(t *testing.T) {
 
 	mounter.On("IsMountPoint", stagingTargetPath).Return(true, nil)
 	mounter.On("IsMountPoint", targetPath).Return(false, nil)
+	mounter.On("IsFilesystemRemountedAsReadonly", stagingTargetPath).Return(false, nil)
 
 	mounter.On("Mount", stagingTargetPath, targetPath, "", []string{"bind"}).Return(nil)
 

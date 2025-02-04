@@ -338,7 +338,7 @@ TDuration MSeconds(ui32 value)
     xxx(ColdZoneRequestCountFactor,                ui32,   5                  )\
     xxx(BlockListCacheSizePercentage,              ui32,   100                )\
                                                                                \
-    xxx(WriteRequestBatchingEnabled,               bool,      true            )\
+    xxx(WriteRequestBatchingEnabled,               bool,      false           )\
                                                                                \
     xxx(FreshChannelWriteRequestsEnabled,          bool,      false           )\
                                                                                \
@@ -529,6 +529,8 @@ TDuration MSeconds(ui32 value)
     xxx(EnableToChangeStatesFromDiskRegistryMonpage,      bool,    false      )\
     xxx(EnableToChangeErrorStatesFromDiskRegistryMonpage, bool,    false      )\
     xxx(CalculateSplittedUsedQuotaMetric,                 bool,    false      )\
+                                                                               \
+    xxx(DestroyVolumeTimeout,                      TDuration, Seconds(30)     )\
 // BLOCKSTORE_STORAGE_CONFIG_RW
 
 #define BLOCKSTORE_STORAGE_CONFIG(xxx)                                         \

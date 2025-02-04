@@ -15,6 +15,7 @@ SRCS(
     volume_actor_forward.cpp
     volume_actor_forward_trackused.cpp
     volume_actor_initschema.cpp
+    volume_actor_lagging_agents.cpp
     volume_actor_loadstate.cpp
     volume_actor_migration.cpp
     volume_actor_monitoring_checkpoint.cpp

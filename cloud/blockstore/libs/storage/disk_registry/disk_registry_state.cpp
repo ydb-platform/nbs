@@ -2975,7 +2975,7 @@ auto TDiskRegistryState::DeallocateSimpleDisk(
         }
     }
 
-    for (const auto& [uuid, seqNo]: disk.FinishedMigrations) {
+    for (const auto& [uuid, seqNo, _]: disk.FinishedMigrations) {
         Y_UNUSED(seqNo);
 
         if (DeviceList.ReleaseDevice(uuid)) {
@@ -4874,7 +4874,7 @@ NProto::TDiskConfig TDiskRegistryState::BuildDiskConfig(
     config.SetStorageMediaKind(diskState.MediaKind);
     config.SetMigrationStartTs(diskState.MigrationStartTs.MicroSeconds());
 
-    for (const auto& [uuid, seqNo]: diskState.FinishedMigrations) {
+    for (const auto& [uuid, seqNo, _]: diskState.FinishedMigrations) {
         Y_UNUSED(seqNo);
         auto& m = *config.AddFinishedMigrations();
         m.SetDeviceId(uuid);
@@ -5023,19 +5023,19 @@ void TDiskRegistryState::ApplyAgentStateChange(
         }
 
         if (agent.GetState() == NProto::AGENT_STATE_WARNING) {
-            if (disk.MigrationSource2Target.contains(deviceId)) {
-                // migration already started
-                continue;
-            }
+            if (MigrationCanBeStarted(disk, deviceId)) {
+                if (!FindPtr(disk.Devices, deviceId)) {
+                    ReportDiskRegistryWrongMigratedDeviceOwnership(Sprintf(
+                        "ApplyAgentStateChange: device[DeviceUUID = %s] not "
+                        "found in disk[DiskId "
+                        "= %s]",
+                        deviceId.c_str(),
+                        diskId.c_str()));
+                    continue;
+                }
 
-            if (Find(disk.Devices, deviceId) == disk.Devices.end()) {
-                ReportDiskRegistryWrongMigratedDeviceOwnership(
-                    TStringBuilder() << "ApplyAgentStateChange: device "
-                                     << deviceId << " not found");
-                continue;
+                AddMigration(disk, diskId, deviceId);
             }
-
-            AddMigration(disk, diskId, deviceId);
         } else {
             if (agent.GetState() == NProto::AGENT_STATE_UNAVAILABLE
                     && disk.MasterDiskId)
@@ -6019,7 +6019,7 @@ void TDiskRegistryState::ApplyDeviceStateChange(
         return;
     }
 
-    if (!disk->MigrationSource2Target.contains(uuid)) {
+    if (MigrationCanBeStarted(*disk, uuid)) {
         AddMigration(*disk, diskId, uuid);
     }
 }
@@ -6092,10 +6092,8 @@ void TDiskRegistryState::CancelDeviceMigration(
 
     const ui64 seqNo = AddReallocateRequest(db, diskId);
 
-    disk.FinishedMigrations.push_back({
-        .DeviceId = targetId,
-        .SeqNo = seqNo
-    });
+    disk.FinishedMigrations.push_back(
+        {.DeviceId = targetId, .SeqNo = seqNo, .IsCanceled = true});
 
     NProto::TDiskHistoryItem historyItem;
     historyItem.SetTimestamp(now.MicroSeconds());
@@ -6164,7 +6162,9 @@ NProto::TError TDiskRegistryState::FinishDeviceMigration(
 
     const ui64 seqNo = AddReallocateRequest(db, diskId);
     *devIt = targetId;
-    disk.FinishedMigrations.push_back({.DeviceId = sourceId, .SeqNo = seqNo});
+
+    disk.FinishedMigrations.push_back(
+        {.DeviceId = sourceId, .SeqNo = seqNo, .IsCanceled = false});
 
     if (disk.MasterDiskId) {
         const bool replaced =
@@ -7559,6 +7559,26 @@ std::optional<ui64> TDiskRegistryState::GetDiskBlockCount(
         return std::nullopt;
     }
     return diskInfo.GetBlocksCount();
+}
+
+// static
+bool TDiskRegistryState::MigrationCanBeStarted(
+    const TDiskState& disk,
+    const TString& deviceUUID)
+{
+    if (disk.MigrationSource2Target.contains(deviceUUID)) {
+        // migration already started
+        return false;
+    }
+
+    for (const auto& m: disk.FinishedMigrations) {
+        if (m.DeviceId == deviceUUID && !m.IsCanceled) {
+            // there is a finished migration for the device
+            return false;
+        }
+    }
+
+    return true;
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

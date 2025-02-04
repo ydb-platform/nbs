@@ -34,6 +34,7 @@ private:
     const bool DestroyIfBroken;
     const bool Sync;
     const ui64 FillGeneration;
+    const TDuration Timeout;
 
     bool IsDiskRegistryBased = false;
     bool VolumeNotFoundInSS = false;
@@ -47,7 +48,8 @@ public:
         TString diskId,
         bool destroyIfBroken,
         bool sync,
-        ui64 fillGeneration);
+        ui64 fillGeneration,
+        TDuration timeout);
 
     void Bootstrap(const TActorContext& ctx);
 
@@ -57,6 +59,7 @@ private:
     void NotifyDiskRegistry(const TActorContext& ctx);
     void StatVolume(const TActorContext& ctx);
     void DeallocateDisk(const TActorContext& ctx);
+    void GracefulShutdown(const TActorContext& ctx);
     NProto::TError CheckIfDestructionIsAllowed() const;
 
     void HandleModifyResponse(
@@ -79,6 +82,15 @@ private:
         const TEvDiskRegistry::TEvDeallocateDiskResponse::TPtr& ev,
         const TActorContext& ctx);
 
+    void HandleGracefulShutdownResponse(
+        const TEvVolume::TEvGracefulShutdownResponse::TPtr&
+            ev,
+        const TActorContext& ctx);
+
+    void HandleTimeout(
+        const TEvents::TEvWakeup::TPtr& ev,
+        const TActorContext& ctx);
+
     void ReplyAndDie(const TActorContext& ctx, NProto::TError error);
 
 private:
@@ -95,7 +107,8 @@ TDestroyVolumeActor::TDestroyVolumeActor(
         TString diskId,
         bool destroyIfBroken,
         bool sync,
-        ui64 fillGeneration)
+        ui64 fillGeneration,
+        TDuration timeout)
     : Sender(sender)
     , Cookie(cookie)
     , AttachedDiskDestructionTimeout(attachedDiskDestructionTimeout)
@@ -105,10 +118,12 @@ TDestroyVolumeActor::TDestroyVolumeActor(
     , DestroyIfBroken(destroyIfBroken)
     , Sync(sync)
     , FillGeneration(fillGeneration)
+    , Timeout(timeout)
 {}
 
 void TDestroyVolumeActor::Bootstrap(const TActorContext& ctx)
 {
+    ctx.Schedule(Timeout, new TEvents::TEvWakeup());
     if (DestroyIfBroken) {
         WaitReady(ctx);
     } else {
@@ -178,6 +193,13 @@ void TDestroyVolumeActor::DeallocateDisk(const TActorContext& ctx)
     request->Record.SetSync(Sync);
 
     NCloud::Send(ctx, MakeDiskRegistryProxyServiceId(), std::move(request));
+}
+
+void TDestroyVolumeActor::GracefulShutdown(const TActorContext& ctx)
+{
+    auto request = std::make_unique<TEvVolume::TEvGracefulShutdownRequest>();
+    request->Record.SetDiskId(DiskId);
+    NCloud::Send(ctx, MakeVolumeProxyServiceId(), std::move(request));
 }
 
 NProto::TError TDestroyVolumeActor::CheckIfDestructionIsAllowed() const
@@ -270,9 +292,16 @@ void TDestroyVolumeActor::HandleMarkDiskForCleanupResponse(
 
     // disk is broken and will be removed by DR at some point
     if (error.GetCode() == E_NOT_FOUND) {
-        LOG_INFO(ctx, TBlockStoreComponents::SERVICE,
-            "volume %s not found in registry", DiskId.Quote().data());
-    } else if (HasError(error)) {
+        LOG_INFO(
+            ctx,
+            TBlockStoreComponents::SERVICE,
+            "volume %s not found in registry",
+            DiskId.Quote().data());
+        DestroyVolume(ctx);
+        return;
+    }
+
+    if (HasError(error)) {
         LOG_ERROR(ctx, TBlockStoreComponents::SERVICE,
             "Volume %s: unable to notify DR about disk destruction: %s",
             DiskId.Quote().data(),
@@ -282,7 +311,7 @@ void TDestroyVolumeActor::HandleMarkDiskForCleanupResponse(
         return;
     }
 
-    DestroyVolume(ctx);
+    GracefulShutdown(ctx);
 }
 
 void TDestroyVolumeActor::HandleDeallocateDiskResponse(
@@ -383,6 +412,45 @@ void TDestroyVolumeActor::HandleStatVolumeResponse(
     }
 }
 
+void TDestroyVolumeActor::HandleGracefulShutdownResponse(
+    const TEvVolume::TEvGracefulShutdownResponse::TPtr& ev,
+    const TActorContext& ctx)
+{
+    const auto* msg = ev->Get();
+
+    if (auto error = msg->GetError(); HasError(error)) {
+        LOG_ERROR(
+            ctx,
+            TBlockStoreComponents::SERVICE,
+            "Volume %s: unable to gracefully stop volume: %s",
+            DiskId.Quote().data(),
+            FormatError(error).data());
+
+        ReplyAndDie(ctx, std::move(error));
+        return;
+    }
+
+    DestroyVolume(ctx);
+}
+
+void TDestroyVolumeActor::HandleTimeout(
+    const TEvents::TEvWakeup::TPtr& ev,
+    const TActorContext& ctx)
+{
+    Y_UNUSED(ev);
+
+    LOG_ERROR(
+        ctx,
+        TBlockStoreComponents::SERVICE,
+        "Timeout destroy volume request, diskId = %s, destroyIfBroken = %d, "
+        "sync = %d",
+        DiskId.c_str(),
+        DestroyIfBroken,
+        Sync);
+
+    ReplyAndDie(ctx, MakeError(E_TIMEOUT, "Timeout"));
+}
+
 void TDestroyVolumeActor::ReplyAndDie(
     const TActorContext& ctx,
     NProto::TError error)
@@ -411,6 +479,12 @@ STFUNC(TDestroyVolumeActor::StateWork)
         HFunc(
             TEvService::TEvStatVolumeResponse,
             HandleStatVolumeResponse);
+
+        HFunc(
+            TEvVolume::TEvGracefulShutdownResponse,
+            HandleGracefulShutdownResponse);
+
+        HFunc(TEvents::TEvWakeup, HandleTimeout);
 
         default:
             HandleUnexpectedEvent(ev, TBlockStoreComponents::SERVICE);
@@ -449,7 +523,8 @@ void TServiceActor::HandleDestroyVolume(
         diskId,
         destroyIfBroken,
         sync,
-        fillGeneration);
+        fillGeneration,
+        Config->GetDestroyVolumeTimeout());
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

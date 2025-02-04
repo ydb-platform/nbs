@@ -1,4 +1,5 @@
 RECURSE(
     driver
     mounter
+    volume
 )

@@ -1312,6 +1312,10 @@ private:
     void CleanupAgentConfig(
         TDiskRegistryDatabase& db,
         const NProto::TAgentConfig& agent);
+
+    static bool MigrationCanBeStarted(
+        const TDiskState& disk,
+        const TString& deviceUUID);
 };
 
 }   // namespace NCloud::NBlockStore::NStorage
