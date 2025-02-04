@@ -713,6 +713,10 @@ void TDiskRegistryActor::RenderDiskHtmlInfo(
                 << "Search this volume"
                 << "</a>";
         }
+        DIV() {
+            out << "Volume kind: "
+                << NProto::EStorageMediaKind_Name(info.MediaKind);
+        }
         DIV() { out << "State: "; DumpDiskState(out, info.State); }
         DIV() { out << "State timestamp: " << info.StateTs; }
         if (info.MigrationStartTs) {
