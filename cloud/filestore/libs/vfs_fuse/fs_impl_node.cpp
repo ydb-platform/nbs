@@ -56,8 +56,8 @@ void TFileSystem::Forget(
     fuse_ino_t ino,
     unsigned long nlookup)
 {
-    with_lock (CacheLock) {
-        Cache.ForgetNode(ino, nlookup);
+    with_lock (NodeCacheLock) {
+        NodeCache.ForgetNode(ino, nlookup);
     }
 
     ReplyNone(*callContext, {}, req);
@@ -69,9 +69,9 @@ void TFileSystem::ForgetMulti(
     size_t count,
     fuse_forget_data* forgets)
 {
-    with_lock (CacheLock) {
+    with_lock (NodeCacheLock) {
         for (size_t i = 0; i < count; ++i) {
-            Cache.ForgetNode(forgets[i].ino, forgets[i].nlookup);
+            NodeCache.ForgetNode(forgets[i].ino, forgets[i].nlookup);
         }
     }
 
