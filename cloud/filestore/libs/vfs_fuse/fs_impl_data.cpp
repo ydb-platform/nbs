@@ -1,4 +1,5 @@
 #include "fs_impl.h"
+#include "cloud/storage/core/libs/common/verify.h"
 
 #include <cloud/filestore/libs/diagnostics/critical_events.h>
 #include <cloud/filestore/libs/diagnostics/profile_log.h>
@@ -467,6 +468,8 @@ void TFileSystem::Flush(
             }
 
             const auto& response = future.GetValue();
+
+            STORAGE_VERIFY_DEBUG_C(self->Config->GetFileSystemId().empty(), "", "", "Missing filesystem id in profile log for Flush request");
 
             FinalizeProfileLogRequestInfo(
                 std::move(requestInfo),
