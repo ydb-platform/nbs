@@ -162,8 +162,8 @@ void TIndexNode::RemoveXAttr(const TString& name)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TNodeLoader::TNodeLoader(TIndexNodePtr rootNode)
-    : RootHandle(std::move(rootNode->OpenHandle(O_RDONLY)))
+TNodeLoader::TNodeLoader(const TIndexNodePtr& rootNode)
+    : RootHandle(rootNode->OpenHandle(O_RDONLY))
     , RootFileId(RootHandle)
 {
     switch (NLowLevel::TFileId::EFileIdType(RootFileId.FileHandle.handle_type)) {

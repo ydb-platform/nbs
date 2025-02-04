@@ -116,7 +116,7 @@ private:
     NLowLevel::TFileId RootFileId;
 
 public:
-    TNodeLoader(TIndexNodePtr rootNode);
+    TNodeLoader(const TIndexNodePtr& rootNode);
 
     [[nodiscard]] TIndexNodePtr LoadNode(ui64 nodeId) const;
 
@@ -194,9 +194,9 @@ public:
 
     TIndexNodePtr LookupNode(ui64 nodeId)
     {
-        TReadGuard guard(NodesLock);
+        CleanupNodesIfNeeded();
 
-        CleanupNodesNoLock();
+        TReadGuard guard(NodesLock);
 
         TIndexNodePtr node;
 
@@ -220,9 +220,9 @@ public:
     [[nodiscard]] bool
     TryInsertNode(TIndexNodePtr node, ui64 parentNodeId, const TString& name)
     {
-        TWriteGuard guard(NodesLock);
+        CleanupNodesIfNeeded();
 
-        CleanupNodesNoLock();
+        TWriteGuard guard(NodesLock);
 
         auto it = Nodes.find(node->GetNodeId());
         if (it != Nodes.end()) {
@@ -281,7 +281,6 @@ public:
 private:
     void Init(std::shared_ptr<INodeLoader> nodeLoader)
     {
-
         auto root = TIndexNode::CreateRoot(RootPath);
         STORAGE_INFO(
             "Init index, Root=" << RootPath <<
@@ -449,7 +448,7 @@ private:
         return node;
     }
 
-    void CleanupNodesNoLock()
+    void CleanupNodesIfNeeded()
     {
         // Clean nodes only if we can safely load them
         if (!NodeLoader) {
@@ -459,7 +458,7 @@ private:
         // Clean one node per lookup node, or `NodeCleanupBatchSize` nodes if
         // `MaxNodeCount` is reached
         ui32 maxNodesToClean = 1;
-        if(Nodes.size() >= MaxNodeCount) {
+        if (Nodes.size() >= MaxNodeCount) {
             maxNodesToClean = NodeCleanupBatchSize;
             DoCleanupNodes = true;
         }
@@ -473,6 +472,8 @@ private:
             DoCleanupNodes = false;
             return;
         }
+
+        TWriteGuard guard(NodesLock);
 
         auto it = NodeAccessList.begin();
         while (maxNodesToClean && it != NodeAccessList.end()) {
