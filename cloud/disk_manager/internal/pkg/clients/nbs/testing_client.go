@@ -596,7 +596,7 @@ func (c *testingClient) DisableDevices(
 		return fmt.Errorf("list of devices to disable should contain at least one device")
 	}
 
-	deviceUUIDsField, err := json.Marshal(deviceUUIDs)
+	j, err := json.Marshal(deviceUUIDs)
 	if err != nil {
 		return nil
 	}
@@ -604,7 +604,7 @@ func (c *testingClient) DisableDevices(
 	input := fmt.Sprintf(
 		"{\"DisableAgent\":{\"AgentId\":\"%v\",\"DeviceUUIDs\":%v},\"Message\":\"%v\"}",
 		agentID,
-		string(deviceUUIDsField),
+		string(j),
 		message,
 	)
 

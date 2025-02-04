@@ -1779,16 +1779,16 @@ func TestEnsureCheckpointReady(t *testing.T) {
 
 	// Disabling device to enforce checkpoint status ERROR.
 	go func() {
-		// Waiting for the shadow disk to be created. At the same time, we do
-		// not wait for too long: device should be disabled before the
-		// checkpoint becomes ready.
-		time.Sleep(time.Second * 1)
+		var diskRegistryStateBackup nbs.DiskRegistryStateBackup
+		var shadowDisk *nbs.DiskRegistryBasedDisk
 
-		diskRegistryStateBackup, err := client.BackupDiskRegistryState(ctx)
-		require.NoError(t, err)
+		// Waiting for the shadow disk to be created.
+		for shadowDisk == nil {
+			diskRegistryStateBackup, err := client.BackupDiskRegistryState(ctx)
+			require.NoError(t, err)
+			shadowDisk = diskRegistryStateBackup.GetShadowDisk(diskID)
+		}
 
-		shadowDisk := diskRegistryStateBackup.GetShadowDisk(diskID)
-		require.NotNil(t, shadowDisk)
 		deviceUUIDs := shadowDisk.DeviceUUIDs
 		require.Equal(t, 1, len(deviceUUIDs))
 
