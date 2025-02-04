@@ -97,8 +97,8 @@ struct TTaskStatsResponse
 
 template <typename T, size_t MaxMsgSize = 1024>
 union TNetlinkResponse {
-    T msg;
-    ui8 buffer[MaxMsgSize];
+    T Msg;
+    ui8 Buffer[MaxMsgSize];
 
     TNetlinkResponse() {
         static_assert(sizeof(T) < MaxMsgSize);
@@ -112,22 +112,22 @@ class TNetlinkSocket
     const static long kSocketTimeoutMs = 100;
 
 private:
-    TSocket socket;
+    TSocket Socket;
 
 public:
     TNetlinkSocket()
-        : socket(::socket(PF_NETLINK, SOCK_RAW, NETLINK_GENERIC))
+        : Socket(::socket(PF_NETLINK, SOCK_RAW, NETLINK_GENERIC))
     {
-        if (socket < 0) {
+        if (Socket < 0) {
             throw yexception() << "Failed to create netlink socket";
         }
-        socket.SetSocketTimeout(0, kSocketTimeoutMs);
+        Socket.SetSocketTimeout(0, kSocketTimeoutMs);
     }
 
     template <typename TNetlinkMessage>
     void send(const TNetlinkMessage& msg)
     {
-        auto ret = socket.Send(&msg, sizeof(msg));
+        auto ret = Socket.Send(&msg, sizeof(msg));
         if (ret == -1) {
             throw yexception()
                 << "Failed to send netlink message: " << strerror(errno);
@@ -137,18 +137,18 @@ public:
     template <typename T>
     void receive(TNetlinkResponse<T>& response)
     {
-        auto ret = socket.Recv(&response, sizeof(response));
+        auto ret = Socket.Recv(&response, sizeof(response));
         if (ret < 0) {
             throw yexception()
                 << "Failed to receive netlink message: " << strerror(errno);
         }
 
-        if (response.msg.MessageHeader.nlmsg_type == NLMSG_ERROR) {
+        if (response.Msg.MessageHeader.nlmsg_type == NLMSG_ERROR) {
             throw yexception()
                 << "Failed to receive netlink message: kernel returned error";
         }
 
-        if (!NLMSG_OK(&response.msg.MessageHeader, ret)) {
+        if (!NLMSG_OK(&response.Msg.MessageHeader, ret)) {
             throw yexception()
                 << "Failed to parse netlink message: incorrect format";
         }
@@ -175,8 +175,8 @@ private:
         socket.send(TTaskStatsFamilyIdRequest());
         TNetlinkResponse<TTaskStatsFamilyIdResponse> response;
         socket.receive(response);
-        response.msg.Validate();
-        return response.msg.FamilyId;
+        response.Msg.Validate();
+        return response.Msg.FamilyId;
     }
 
 public:
@@ -216,9 +216,9 @@ public:
             socket.send(TTaskStatsRequest(FamilyId, Pid));
             TNetlinkResponse<TTaskStatsResponse> response;
             socket.receive(response);
-            response.msg.Validate();
+            response.Msg.Validate();
             auto cpuLack = TDuration::MilliSeconds(
-                response.msg.TaskStats.cpu_delay_total / 1000);
+                response.Msg.TaskStats.cpu_delay_total / 1000);
             auto retval = cpuLack - Last;
             Last = cpuLack;
             return retval;
