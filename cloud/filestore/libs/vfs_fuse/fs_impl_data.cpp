@@ -468,7 +468,8 @@ void TFileSystem::Flush(
             }
 
             const auto& response = future.GetValue();
-
+            
+            // TODO(proller): Remove debug after bug fix
             STORAGE_VERIFY_DEBUG_C(!self->Config->GetFileSystemId().empty(), "", self->Config->GetFileSystemId(), "Missing filesystem id in profile log for Flush request");
 
             FinalizeProfileLogRequestInfo(
