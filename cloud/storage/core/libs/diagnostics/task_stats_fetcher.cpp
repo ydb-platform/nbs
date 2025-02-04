@@ -109,23 +109,23 @@ union TNetlinkResponse {
 
 class TNetlinkSocket
 {
-    const static long kSocketTimeoutMs = 100;
-
 private:
     TSocket Socket;
+    ui32 SocketTimeoutMs = 100;
 
 public:
-    TNetlinkSocket()
+    TNetlinkSocket(ui32 socketTimeoutMs = 100)
         : Socket(::socket(PF_NETLINK, SOCK_RAW, NETLINK_GENERIC))
+        , SocketTimeoutMs(socketTimeoutMs)
     {
         if (Socket < 0) {
             throw yexception() << "Failed to create netlink socket";
         }
-        Socket.SetSocketTimeout(0, kSocketTimeoutMs);
+        Socket.SetSocketTimeout(0, SocketTimeoutMs);
     }
 
     template <typename TNetlinkMessage>
-    void send(const TNetlinkMessage& msg)
+    void Send(const TNetlinkMessage& msg)
     {
         auto ret = Socket.Send(&msg, sizeof(msg));
         if (ret == -1) {
@@ -135,7 +135,7 @@ public:
     }
 
     template <typename T>
-    void receive(TNetlinkResponse<T>& response)
+    void Receive(TNetlinkResponse<T>& response)
     {
         auto ret = Socket.Recv(&response, sizeof(response));
         if (ret < 0) {
@@ -172,9 +172,9 @@ private:
     ui16 GetFamilyId()
     {
         TNetlinkSocket socket;
-        socket.send(TTaskStatsFamilyIdRequest());
+        socket.Send(TTaskStatsFamilyIdRequest());
         TNetlinkResponse<TTaskStatsFamilyIdResponse> response;
-        socket.receive(response);
+        socket.Receive(response);
         response.Msg.Validate();
         return response.Msg.FamilyId;
     }
@@ -213,9 +213,9 @@ public:
             }
 
             TNetlinkSocket socket;
-            socket.send(TTaskStatsRequest(FamilyId, Pid));
+            socket.Send(TTaskStatsRequest(FamilyId, Pid));
             TNetlinkResponse<TTaskStatsResponse> response;
-            socket.receive(response);
+            socket.Receive(response);
             response.Msg.Validate();
             auto cpuLack = TDuration::MilliSeconds(
                 response.Msg.TaskStats.cpu_delay_total / 1000);
