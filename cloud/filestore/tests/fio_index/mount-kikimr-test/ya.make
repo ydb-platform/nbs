@@ -15,6 +15,8 @@ TEST_SRCS(
     test.py
 )
 
+SKIP_TEST("Suppressed until issue 2831 is resolved")
+
 SET(NFS_FORCE_VERBOSE 1)
 
 INCLUDE(${ARCADIA_ROOT}/cloud/filestore/tests/recipes/service-kikimr.inc)

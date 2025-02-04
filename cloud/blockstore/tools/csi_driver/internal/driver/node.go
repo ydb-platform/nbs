@@ -13,6 +13,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 
@@ -20,6 +21,7 @@ import (
 	nbsapi "github.com/ydb-platform/nbs/cloud/blockstore/public/api/protos"
 	nbsclient "github.com/ydb-platform/nbs/cloud/blockstore/public/sdk/go/client"
 	"github.com/ydb-platform/nbs/cloud/blockstore/tools/csi_driver/internal/mounter"
+	"github.com/ydb-platform/nbs/cloud/blockstore/tools/csi_driver/internal/volume"
 	nfsapi "github.com/ydb-platform/nbs/cloud/filestore/public/api/protos"
 	nfsclient "github.com/ydb-platform/nbs/cloud/filestore/public/sdk/go/client"
 	"golang.org/x/sys/unix"
@@ -57,6 +59,13 @@ var vmModeCapabilities = []*csi.NodeServiceCapability{
 	{
 		Type: &csi.NodeServiceCapability_Rpc{
 			Rpc: &csi.NodeServiceCapability_RPC{
+				Type: csi.NodeServiceCapability_RPC_VOLUME_MOUNT_GROUP,
+			},
+		},
+	},
+	{
+		Type: &csi.NodeServiceCapability_Rpc{
+			Rpc: &csi.NodeServiceCapability_RPC{
 				Type: csi.NodeServiceCapability_RPC_EXPAND_VOLUME,
 			},
 		},
@@ -70,6 +79,13 @@ var podModeCapabilities = []*csi.NodeServiceCapability{
 		Type: &csi.NodeServiceCapability_Rpc{
 			Rpc: &csi.NodeServiceCapability_RPC{
 				Type: csi.NodeServiceCapability_RPC_STAGE_UNSTAGE_VOLUME,
+			},
+		},
+	},
+	{
+		Type: &csi.NodeServiceCapability_Rpc{
+			Rpc: &csi.NodeServiceCapability_RPC{
+				Type: csi.NodeServiceCapability_RPC_VOLUME_MOUNT_GROUP,
 			},
 		},
 	},
@@ -608,6 +624,13 @@ func (s *nodeService) nodePublishDiskAsFilesystem(
 			"Staging target path is not mounted: %w", req.VolumeId)
 	}
 
+	readOnly, _ := s.mounter.IsFilesystemRemountedAsReadonly(req.StagingTargetPath)
+	if readOnly {
+		return s.statusErrorf(
+			codes.Internal,
+			"Filesystem was remounted as readonly")
+	}
+
 	mounted, _ = s.mounter.IsMountPoint(req.TargetPath)
 	if !mounted {
 		targetPerm := os.FileMode(0775)
@@ -641,6 +664,18 @@ func (s *nodeService) nodePublishDiskAsFilesystem(
 		mountOptions)
 	if err != nil {
 		return err
+	}
+
+	if mnt != nil && mnt.VolumeMountGroup != "" {
+		fsGroup, err := strconv.ParseInt(mnt.VolumeMountGroup, 10, 64)
+		if err != nil {
+			return fmt.Errorf("failed to parse volume mount group: %w", err)
+		}
+
+		err = volume.SetVolumeOwnership(req.TargetPath, &fsGroup, req.Readonly)
+		if err != nil {
+			return fmt.Errorf("failed to set volume ownership: %w", err)
+		}
 	}
 
 	return nil
@@ -697,7 +732,7 @@ func (s *nodeService) nodeStageDiskAsFilesystem(
 		return fmt.Errorf("failed to create staging directory: %w", err)
 	}
 
-	mountOptions := []string{}
+	mountOptions := []string{"grpid"}
 	if fsType == "ext4" {
 		mountOptions = append(mountOptions, "errors=remount-ro")
 	}

@@ -8,6 +8,7 @@ SRCS(
     checkpoint.cpp
     checkpoint_light.cpp
     client_state.cpp
+    helpers.cpp
     merge.cpp
     meta.cpp
     requests_inflight.cpp

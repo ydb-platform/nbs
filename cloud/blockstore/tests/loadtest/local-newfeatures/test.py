@@ -43,6 +43,19 @@ def storage_config_with_incremental_batch_compaction():
     return storage
 
 
+def storage_config_with_garbage_batch_compaction():
+    storage = default_storage_config()
+    storage.BatchCompactionEnabled = True
+    storage.GarbageCompactionRangeCountPerRun = 20
+    storage.V1GarbageCompactionEnabled = True
+    storage.CompactionGarbageThreshold = 20
+    storage.CompactionRangeGarbageThreshold = 999999
+    storage.SSDMaxBlobsPerRange = 5
+    storage.HDDMaxBlobsPerRange = 5
+
+    return storage
+
+
 def storage_config_with_incremental_compaction_and_patching():
     storage = storage_config_with_incremental_compaction()
     storage.BlobPatchingEnabled = True

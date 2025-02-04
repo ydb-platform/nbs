@@ -150,6 +150,22 @@ message TStorageDiscoveryConfig
 
 ////////////////////////////////////////////////////////////////////////////////
 
+message TDiskAgentThrottlingConfig
+{
+    // Host limits.
+    optional string InfraThrottlingConfigPath = 1;
+    optional uint32 DefaultNetworkMbitThroughput = 2;
+
+    // Fraction of network throughput utilized for migrations and shadow
+    // disk fill.
+    optional double DirectCopyBandwidthFraction = 3;
+
+    // Maximum bandwidth for one device in MiB/s.
+    optional uint64 MaxDeviceBandwidthMiB = 4;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 message TDiskAgentConfig
 {
     optional bool Enabled = 1;
@@ -275,6 +291,13 @@ message TDiskAgentConfig
     }
 
     repeated TPathToSerialNumber PathToSerialNumberMapping = 37;
+
+    // Settings for traffic shaping.
+    optional TDiskAgentThrottlingConfig ThrottlingConfig = 38;
+
+    // If enabled, IOParserActor allocates a storage buffer and copies the
+    // request data into it.
+    optional bool IOParserActorAllocateStorageEnabled = 39;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

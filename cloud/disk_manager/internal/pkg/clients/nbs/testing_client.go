@@ -10,6 +10,8 @@ import (
 
 	"github.com/ydb-platform/nbs/cloud/blockstore/public/api/protos"
 	nbs_client "github.com/ydb-platform/nbs/cloud/blockstore/public/sdk/go/client"
+	nbs_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs/config"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/monitoring/metrics"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
 	"github.com/ydb-platform/nbs/cloud/tasks/logging"
 	"golang.org/x/sync/errgroup"
@@ -17,7 +19,46 @@ import (
 
 ////////////////////////////////////////////////////////////////////////////////
 
-func (c *client) FillDisk(
+type testingClient struct {
+	client
+}
+
+func newFactory(
+	ctx context.Context,
+	client_config *nbs_config.ClientConfig,
+) (*factory, error) {
+
+	return newFactoryWithCreds(
+		ctx,
+		client_config,
+		nil, // creds
+		metrics.NewEmptyRegistry(),
+		metrics.NewEmptyRegistry(),
+	)
+}
+
+func NewTestingClient(
+	ctx context.Context,
+	zoneID string,
+	client_config *nbs_config.ClientConfig,
+) (TestingClient, error) {
+
+	factory, err := newFactory(ctx, client_config)
+	if err != nil {
+		return nil, err
+	}
+
+	c, err := factory.getClient(ctx, zoneID)
+	if err != nil {
+		return nil, err
+	}
+
+	return &testingClient{client: *c}, nil
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+func (c *testingClient) FillDisk(
 	ctx context.Context,
 	diskID string,
 	contentSize uint64,
@@ -26,7 +67,7 @@ func (c *client) FillDisk(
 	return c.FillEncryptedDisk(ctx, diskID, contentSize, nil)
 }
 
-func (c *client) FillEncryptedDisk(
+func (c *testingClient) FillEncryptedDisk(
 	ctx context.Context,
 	diskID string,
 	contentSize uint64,
@@ -113,7 +154,7 @@ func (c *client) FillEncryptedDisk(
 	}, nil
 }
 
-func (c *client) GoWriteRandomBlocksToNbsDisk(
+func (c *testingClient) GoWriteRandomBlocksToNbsDisk(
 	ctx context.Context,
 	diskID string,
 ) (func() error, error) {
@@ -186,7 +227,7 @@ func (c *client) GoWriteRandomBlocksToNbsDisk(
 	return errGroup.Wait, nil
 }
 
-func (c *client) CalculateCrc32(
+func (c *testingClient) CalculateCrc32(
 	diskID string,
 	contentSize uint64,
 ) (DiskContentInfo, error) {
@@ -194,7 +235,7 @@ func (c *client) CalculateCrc32(
 	return c.CalculateCrc32WithEncryption(diskID, contentSize, nil)
 }
 
-func (c *client) CalculateCrc32WithEncryption(
+func (c *testingClient) CalculateCrc32WithEncryption(
 	diskID string,
 	contentSize uint64,
 	encryption *types.EncryptionDesc,
@@ -202,7 +243,7 @@ func (c *client) CalculateCrc32WithEncryption(
 
 	ctx := setupStderrLogger(context.Background())
 
-	nbsClient, _, err := c.nbs.DiscoverInstance(ctx)
+	nbsClient, _, err := c.client.nbs.DiscoverInstance(ctx)
 	if err != nil {
 		return DiskContentInfo{}, err
 	}
@@ -339,7 +380,7 @@ func (c *client) CalculateCrc32WithEncryption(
 	}, nil
 }
 
-func (c *client) ValidateCrc32(
+func (c *testingClient) ValidateCrc32(
 	ctx context.Context,
 	diskID string,
 	expectedDiskContentInfo DiskContentInfo,
@@ -353,7 +394,7 @@ func (c *client) ValidateCrc32(
 	)
 }
 
-func (c *client) ValidateCrc32WithEncryption(
+func (c *testingClient) ValidateCrc32WithEncryption(
 	ctx context.Context,
 	diskID string,
 	expectedDiskContentInfo DiskContentInfo,
@@ -409,13 +450,13 @@ func (c *client) ValidateCrc32WithEncryption(
 	return nil
 }
 
-func (c *client) MountForReadWrite(
+func (c *testingClient) MountForReadWrite(
 	diskID string,
 ) (func(), error) {
 
 	ctx := setupStderrLogger(context.Background())
 
-	nbsClient, _, err := c.nbs.DiscoverInstance(ctx)
+	nbsClient, _, err := c.client.nbs.DiscoverInstance(ctx)
 	if err != nil {
 		return func() {}, err
 	}
@@ -447,7 +488,7 @@ func (c *client) MountForReadWrite(
 	return unmountFunc, nil
 }
 
-func (c *client) Write(
+func (c *testingClient) Write(
 	diskID string,
 	startIndex int,
 	bytes []byte,
@@ -455,7 +496,7 @@ func (c *client) Write(
 
 	ctx := setupStderrLogger(context.Background())
 
-	nbsClient, _, err := c.nbs.DiscoverInstance(ctx)
+	nbsClient, _, err := c.client.nbs.DiscoverInstance(ctx)
 	if err != nil {
 		return err
 	}
@@ -513,25 +554,14 @@ func (c *client) Write(
 	return nil
 }
 
-////////////////////////////////////////////////////////////////////////////////
-
-type checkpoint struct {
-	CheckpointID string `json:"CheckpointId"`
-	// We don't need other checkpoint fields.
-}
-
-type partitionInfo struct {
-	Checkpoints []checkpoint `json:"Checkpoints"`
-	// We don't need other partitionInfo fields.
-}
-
-func (c *client) GetCheckpoints(
+func (c *testingClient) GetCheckpoints(
 	ctx context.Context,
 	diskID string,
 ) ([]string, error) {
-	return c.nbs.GetCheckpoints(ctx, diskID)
+
+	return c.client.nbs.GetCheckpoints(ctx, diskID)
 }
 
-func (c *client) List(ctx context.Context) ([]string, error) {
-	return c.nbs.ListVolumes(ctx)
+func (c *testingClient) List(ctx context.Context) ([]string, error) {
+	return c.client.nbs.ListVolumes(ctx)
 }

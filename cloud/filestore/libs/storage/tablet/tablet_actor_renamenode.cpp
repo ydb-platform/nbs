@@ -64,6 +64,15 @@ void TIndexTabletActor::HandleRenameNode(
         session->DropDupEntry(requestId);
     }
 
+    if (!TryLockNodeRef({msg->Record.GetNodeId(), msg->Record.GetName()})) {
+        auto response = std::make_unique<TEvService::TEvRenameNodeResponse>(
+            MakeError(E_REJECTED, TStringBuilder() << "node ref "
+                << msg->Record.GetNodeId() << " " << msg->Record.GetName()
+                << " is locked for RenameNode"));
+        NCloud::Reply(ctx, *ev, std::move(response));
+        return;
+    }
+
     auto requestInfo = CreateRequestInfo(
         ev->Sender,
         ev->Cookie,
@@ -87,6 +96,8 @@ void TIndexTabletActor::HandleRenameNode(
             auto response = std::make_unique<TEvService::TEvRenameNodeResponse>(
                 MakeError(E_ARGUMENT, std::move(message)));
             NCloud::Reply(ctx, *requestInfo, std::move(response));
+
+            UnlockNodeRef({msg->Record.GetNodeId(), msg->Record.GetName()});
             return;
         }
 
@@ -125,6 +136,7 @@ void TIndexTabletActor::HandleRenameNode(
                         : GetMainFileSystemId());
             }
 
+            UnlockNodeRef({msg->Record.GetNodeId(), msg->Record.GetName()});
             return;
         }
     }
@@ -473,6 +485,8 @@ void TIndexTabletActor::CompleteTx_RenameNode(
     const TActorContext& ctx,
     TTxIndexTablet::TRenameNode& args)
 {
+    UnlockNodeRef({args.ParentNodeId, args.Name});
+
     InvalidateNodeCaches(args.ParentNodeId);
     InvalidateNodeCaches(args.NewParentNodeId);
     if (args.ChildRef) {

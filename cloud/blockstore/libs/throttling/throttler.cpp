@@ -530,8 +530,10 @@ private:
     {
         ui64 quota = 0;
         with_lock (ThrottlerLock) {
-            quota = static_cast<ui64>(ceil(ThrottlerPolicy
-                ->CalculateCurrentSpentBudgetShare(Timer->Now()) * 100.0));
+            quota = static_cast<ui64>(
+                ThrottlerPolicy->CalculateCurrentSpentBudgetShare(
+                    Timer->Now()) *
+                100.0);
         }
         ThrottlerMetrics->UpdateUsedQuota(quota);
         ThrottlerMetrics->UpdateMaxUsedQuota();

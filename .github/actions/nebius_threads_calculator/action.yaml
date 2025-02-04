@@ -34,19 +34,19 @@ runs:
         if [[ $tests_size == *"large"* ]]; then
           case "$vm_preset" in
             "80vcpu-320gb")
-                test_threads=20
+                test_threads=16
                 build_threads=80
             ;;
             "64vcpu-256gb")
-                test_threads=18
+                test_threads=14
                 build_threads=64
             ;;
             "48vcpu-192gb")
-                test_threads=16
+                test_threads=12
                 build_threads=48
             ;;
             "32vcpu-128gb")
-                test_threads=12
+                test_threads=10
                 build_threads=32
             ;;
             "16vcpu-64gb")
@@ -73,11 +73,11 @@ runs:
         else
           case "$vm_preset" in
             "80vcpu-320gb")
-                test_threads=32
+                test_threads=24
                 build_threads=80
             ;;
             "64vcpu-256gb")
-                test_threads=24
+                test_threads=20
                 build_threads=64
             ;;
             "48vcpu-192gb")

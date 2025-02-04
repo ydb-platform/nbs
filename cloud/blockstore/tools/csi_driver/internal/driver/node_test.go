@@ -6,10 +6,13 @@ import (
 	"context"
 	"fmt"
 	"io/fs"
+	"log"
 	"os"
 	"os/exec"
+	"os/user"
 	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
@@ -439,12 +442,24 @@ func TestStagedPublishUnpublishLocalFilestoreForKubevirt(t *testing.T) {
 func TestPublishUnpublishDiskForInfrakuber(t *testing.T) {
 	tempDir := t.TempDir()
 
+	groupId := ""
+	currentUser, err := user.Current()
+	require.NoError(t, err)
+	groups, err := currentUser.GroupIds()
+	require.NoError(t, err)
+	for _, group := range groups {
+		if group != "" && group != "0" {
+			groupId = group
+		}
+	}
+	log.Printf("groupId: %s", groupId)
+
 	nbsClient := mocks.NewNbsClientMock()
 	mounter := csimounter.NewMock()
 
 	ipcType := nbs.EClientIpcType_IPC_NBD
 	nbdDeviceFile := filepath.Join(tempDir, "dev", "nbd3")
-	err := os.MkdirAll(nbdDeviceFile, fs.FileMode(0755))
+	err = os.MkdirAll(nbdDeviceFile, fs.FileMode(0755))
 	require.NoError(t, err)
 
 	ctx := context.Background()
@@ -477,7 +492,11 @@ func TestPublishUnpublishDiskForInfrakuber(t *testing.T) {
 	)
 
 	volumeCapability := csi.VolumeCapability{
-		AccessType: &csi.VolumeCapability_Mount{},
+		AccessType: &csi.VolumeCapability_Mount{
+			Mount: &csi.VolumeCapability_MountVolume{
+				VolumeMountGroup: groupId,
+			},
+		},
 		AccessMode: &csi.VolumeCapability_AccessMode{
 			Mode: csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER,
 		},
@@ -512,7 +531,7 @@ func TestPublishUnpublishDiskForInfrakuber(t *testing.T) {
 	mockCallIsMountPoint := mounter.On("IsMountPoint", stagingTargetPath).Return(false, nil)
 
 	mounter.On("FormatAndMount", nbdDeviceFile, stagingTargetPath, "ext4",
-		[]string{"errors=remount-ro"}).Return(nil)
+		[]string{"grpid", "errors=remount-ro"}).Return(nil)
 
 	_, err = nodeService.NodeStageVolume(ctx, &csi.NodeStageVolumeRequest{
 		VolumeId:          diskId,
@@ -526,6 +545,7 @@ func TestPublishUnpublishDiskForInfrakuber(t *testing.T) {
 
 	mounter.On("IsMountPoint", stagingTargetPath).Return(true, nil)
 	mounter.On("IsMountPoint", targetPath).Return(false, nil)
+	mounter.On("IsFilesystemRemountedAsReadonly", stagingTargetPath).Return(false, nil)
 
 	mounter.On("Mount", stagingTargetPath, targetPath, "", []string{"bind"}).Return(nil)
 
@@ -548,8 +568,11 @@ func TestPublishUnpublishDiskForInfrakuber(t *testing.T) {
 	assert.True(t, fileInfo.IsDir())
 	assert.Equal(t, fs.FileMode(0775), fileInfo.Mode().Perm())
 
-	_, err = exec.Command("ls", "-ldn", targetPath).CombinedOutput()
+	output, err := exec.Command("ls", "-ldn", targetPath).CombinedOutput()
 	assert.False(t, os.IsNotExist(err))
+	log.Printf("Target path: %s", output)
+	fields := strings.Fields(string(output))
+	assert.Equal(t, groupId, fields[3])
 
 	mockCallCleanupMountPoint := mounter.On("CleanupMountPoint", targetPath).Return(nil)
 

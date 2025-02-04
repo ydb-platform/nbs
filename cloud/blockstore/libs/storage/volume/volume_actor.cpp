@@ -1,7 +1,6 @@
 #include "volume_actor.h"
 
 #include "volume_database.h"
-#include "volume_tx.h"
 
 #include <cloud/blockstore/libs/storage/api/bootstrapper.h>
 #include <cloud/blockstore/libs/storage/api/service.h>
@@ -217,8 +216,26 @@ void TVolumeActor::UpdateLeakyBucketCounters(const TActorContext& ctx)
 
     auto& simple = VolumeSelfCounters->Simple;
     auto& cumulative = VolumeSelfCounters->Cumulative;
-    const auto& tp = State->GetThrottlingPolicy();
-    ui64 currentRate = tp.CalculateCurrentSpentBudgetShare(ctx.Now()) * 100;
+    auto& tp = State->AccessThrottlingPolicy();
+
+    const auto splittedUsedQuota = tp.TakeSplittedUsedQuota();
+    const auto usedIopsQuotaPercentage = splittedUsedQuota.Iops * 100.0;
+    const auto usedBandwidthQuotaPercentage =
+        splittedUsedQuota.Bandwidth * 100.0;
+
+    cumulative.UsedIopsQuota.Increment(
+        static_cast<ui64>(usedIopsQuotaPercentage));
+    cumulative.UsedBandwidthQuota.Increment(
+        static_cast<ui64>(usedBandwidthQuotaPercentage));
+
+    const auto currentSpentBudgetSharePercentage =
+        100.0 * tp.CalculateCurrentSpentBudgetShare(ctx.Now());
+
+    const auto currentRate = static_cast<ui64>(
+        Min((Config->GetCalculateSplittedUsedQuotaMetric()
+                 ? usedIopsQuotaPercentage + usedBandwidthQuotaPercentage
+                 : currentSpentBudgetSharePercentage),
+            100.0));
     simple.MaxUsedQuota.Set(Max(simple.MaxUsedQuota.Value, currentRate));
     cumulative.UsedQuota.Increment(currentRate);
 }
@@ -1035,6 +1052,9 @@ STFUNC(TVolumeActor::StateWork)
             TEvDiskRegistry::TEvAcquireDiskResponse,
             HandleAcquireDiskResponse);
         HFunc(
+            TEvVolumePrivate::TEvDevicesAcquireFinished,
+            HandleDevicesAcquireFinished);
+        HFunc(
             TEvVolumePrivate::TEvAcquireDiskIfNeeded,
             HandleAcquireDiskIfNeeded);
         HFunc(TEvVolume::TEvReacquireDisk, HandleReacquireDisk);
@@ -1042,6 +1062,9 @@ STFUNC(TVolumeActor::StateWork)
         HFunc(
             TEvDiskRegistry::TEvReleaseDiskResponse,
             HandleReleaseDiskResponse);
+        HFunc(
+            TEvVolumePrivate::TEvDevicesReleaseFinished,
+            HandleDevicesReleasedFinished);
         HFunc(
             TEvDiskRegistry::TEvAllocateDiskResponse,
             HandleAllocateDiskResponse);
@@ -1062,6 +1085,22 @@ STFUNC(TVolumeActor::StateWork)
         HFunc(TEvVolume::TEvUpdateMigrationState, HandleUpdateMigrationState);
         HFunc(TEvVolume::TEvUpdateResyncState, HandleUpdateResyncState);
         HFunc(TEvVolume::TEvResyncFinished, HandleResyncFinished);
+
+        HFunc(
+            TEvDiskRegistry::TEvAddLaggingDevicesResponse,
+            HandleAddLaggingDevicesResponse);
+        HFunc(
+            TEvVolumePrivate::TEvReportLaggingDevicesToDR,
+            HandleReportLaggingDevicesToDR);
+        HFunc(
+            TEvVolumePrivate::TEvDeviceTimeoutedRequest,
+            HandleDeviceTimeouted);
+        HFunc(
+            TEvVolumePrivate::TEvUpdateSmartMigrationState,
+            HandleUpdateSmartMigrationState);
+        HFunc(
+            TEvVolumePrivate::TEvSmartMigrationFinished,
+            HandleSmartMigrationFinished);
 
         HFunc(
             TEvPartitionCommonPrivate::TEvLongRunningOperation,
@@ -1096,13 +1135,18 @@ STFUNC(TVolumeActor::StateZombie)
         IgnoreFunc(TEvVolumePrivate::TEvUpdateThrottlerState);
         IgnoreFunc(TEvVolumePrivate::TEvUpdateReadWriteClientInfo);
         IgnoreFunc(TEvVolumePrivate::TEvRemoveExpiredVolumeParams);
+        IgnoreFunc(TEvVolumePrivate::TEvReportLaggingDevicesToDR);
+        IgnoreFunc(TEvVolumePrivate::TEvDeviceTimeoutedRequest);
+        IgnoreFunc(TEvVolumePrivate::TEvUpdateSmartMigrationState);
+        IgnoreFunc(TEvVolumePrivate::TEvSmartMigrationFinished);
 
         IgnoreFunc(TEvStatsService::TEvVolumePartCounters);
 
         IgnoreFunc(TEvPartition::TEvWaitReadyResponse);
 
-        IgnoreFunc(TEvents::TEvPoisonPill);
-        IgnoreFunc(TEvents::TEvPoisonTaken);
+        HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
+        HFunc(TEvents::TEvPoisonTaken, HandlePoisonTaken);
+        HFunc(TEvTablet::TEvTabletStop, HandleTabletStop);
 
         IgnoreFunc(TEvLocal::TEvTabletMetrics);
 
@@ -1113,6 +1157,8 @@ STFUNC(TVolumeActor::StateZombie)
         IgnoreFunc(TEvVolumePrivate::TEvUpdateShadowDiskStateRequest);
 
         IgnoreFunc(TEvDiskRegistryProxy::TEvGetDrTabletInfoResponse);
+
+        IgnoreFunc(TEvDiskRegistry::TEvAddLaggingDevicesResponse);
 
         default:
             if (!RejectRequests(ev)) {

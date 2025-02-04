@@ -40,6 +40,15 @@ void TVolumeActor::AcquireDisk(
         "Acquiring disk " << State->GetDiskId()
     );
 
+    if (Config->GetNonReplicatedVolumeDirectAcquireEnabled()) {
+        SendAcquireDevicesToAgents(
+            std::move(clientId),
+            accessMode,
+            mountSeqNumber,
+            ctx);
+        return;
+    }
+
     auto request = std::make_unique<TEvDiskRegistry::TEvAcquireDiskRequest>();
 
     request->Record.SetDiskId(State->GetDiskId());
@@ -178,6 +187,13 @@ void TVolumeActor::HandleAcquireDiskResponse(
     // agents
     auto& record = msg->Record;
 
+    HandleDevicesAcquireFinishedImpl(record.GetError(), ctx);
+}
+
+void TVolumeActor::HandleDevicesAcquireFinishedImpl(
+    const NProto::TError& error,
+    const NActors::TActorContext& ctx)
+{
     ScheduleAcquireDiskIfNeeded(ctx);
 
     if (AcquireReleaseDiskRequests.empty()) {
@@ -193,7 +209,7 @@ void TVolumeActor::HandleAcquireDiskResponse(
     auto& request = AcquireReleaseDiskRequests.front();
     auto& cr = request.ClientRequest;
 
-    if (HasError(record.GetError())) {
+    if (HasError(error)) {
         LOG_DEBUG_S(
             ctx,
             TBlockStoreComponents::VOLUME,
@@ -201,8 +217,8 @@ void TVolumeActor::HandleAcquireDiskResponse(
         );
 
         if (cr) {
-            auto response = std::make_unique<TEvVolume::TEvAddClientResponse>(
-                record.GetError());
+            auto response =
+                std::make_unique<TEvVolume::TEvAddClientResponse>(error);
             response->Record.MutableVolume()->SetDiskId(cr->DiskId);
             response->Record.SetClientId(cr->GetClientId());
             response->Record.SetTabletId(TabletID());

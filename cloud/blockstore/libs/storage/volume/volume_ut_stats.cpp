@@ -534,11 +534,12 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
                 ctx,
                 owner,
                 CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext),
-                std::move(record));
+                std::move(record),
+                1000);
         };
 
         auto runtime =
-            PrepareTestActorRuntime(config, {}, {}, {}, diskAgentState);
+            PrepareTestActorRuntime(config, {}, {}, {}, {diskAgentState});
 
         struct TReadAndWriteByteCount
         {

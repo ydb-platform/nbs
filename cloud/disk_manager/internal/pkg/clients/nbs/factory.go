@@ -278,6 +278,23 @@ func (f *factory) initMultiZoneClients() {
 	}
 }
 
+func (f *factory) getClient(
+	ctx context.Context,
+	zoneID string,
+) (*client, error) {
+
+	client, ok := f.clients[zoneID]
+	if !ok {
+		return nil, errors.NewNonRetriableErrorf(
+			"unknown zone %q, available zones: %q",
+			zoneID,
+			f.GetZones(),
+		)
+	}
+
+	return &client, nil
+}
+
 func (f *factory) GetZones() []string {
 	return maps.Keys(f.clients)
 }
@@ -292,16 +309,7 @@ func (f *factory) GetClient(
 	zoneID string,
 ) (Client, error) {
 
-	client, ok := f.clients[zoneID]
-	if !ok {
-		return nil, errors.NewNonRetriableErrorf(
-			"unknown zone %q, available zones: %q",
-			zoneID,
-			f.GetZones(),
-		)
-	}
-
-	return &client, nil
+	return f.getClient(ctx, zoneID)
 }
 
 func (f *factory) GetClientFromDefaultZone(
@@ -348,13 +356,13 @@ func (f *factory) GetMultiZoneClient(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-func NewFactoryWithCreds(
+func newFactoryWithCreds(
 	ctx context.Context,
 	config *nbs_config.ClientConfig,
 	creds auth.Credentials,
 	clientMetricsRegistry metrics.Registry,
 	sessionMetricsRegistry metrics.Registry,
-) (Factory, error) {
+) (*factory, error) {
 
 	if config.GetDisableAuthentication() {
 		creds = nil
@@ -372,6 +380,23 @@ func NewFactoryWithCreds(
 	}
 
 	return f, nil
+}
+
+func NewFactoryWithCreds(
+	ctx context.Context,
+	config *nbs_config.ClientConfig,
+	creds auth.Credentials,
+	clientMetricsRegistry metrics.Registry,
+	sessionMetricsRegistry metrics.Registry,
+) (Factory, error) {
+
+	return newFactoryWithCreds(
+		ctx,
+		config,
+		creds,
+		clientMetricsRegistry,
+		sessionMetricsRegistry,
+	)
 }
 
 func NewFactory(

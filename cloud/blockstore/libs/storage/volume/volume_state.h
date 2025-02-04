@@ -240,7 +240,6 @@ private:
 
     // The number of blocks that need to be migrated to complete the migration.
     std::optional<ui64> BlockCountToMigrate;
-
 public:
     TVolumeState(
         TStorageConfigPtr storageConfig,
@@ -308,6 +307,12 @@ public:
     void UpdateFillSeqNumberInMeta(ui64 fillSeqNumber) {
         Meta.SetFillSeqNumber(fillSeqNumber);
     }
+
+    void AddLaggingAgent(NProto::TLaggingAgent agent);
+    std::optional<NProto::TLaggingAgent> RemoveLaggingAgent(
+        const TString& agentId);
+    [[nodiscard]] bool HasLaggingInReplica(ui32 replicaIndex) const;
+    [[nodiscard]] THashSet<TString> GetLaggingDevices() const;
 
     void SetStartPartitionsNeeded(bool startPartitionsNeeded)
     {
@@ -724,6 +729,8 @@ public:
 
         return Meta.GetResyncNeeded();
     }
+
+    TVector<NProto::TDeviceConfig> GetAllDevicesForAcquireRelease() const;
 
 private:
     bool CanPreemptClient(

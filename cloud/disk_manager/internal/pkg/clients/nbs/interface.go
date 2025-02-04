@@ -161,6 +161,12 @@ type Client interface {
 		checkpointID string,
 	) error
 
+	EnsureCheckpointReady(
+		ctx context.Context,
+		diskID string,
+		checkpointID string,
+	) error
+
 	Resize(
 		ctx context.Context,
 		saveState func() error,
@@ -306,70 +312,13 @@ type Client interface {
 		diskID string,
 		fillGeneration uint64,
 	) error
-
-	// Used in tests.
-	FillDisk(
-		ctx context.Context,
-		diskID string,
-		contentSize uint64,
-	) (DiskContentInfo, error)
-
-	// Used in tests.
-	FillEncryptedDisk(
-		ctx context.Context,
-		diskID string,
-		contentSize uint64,
-		encryption *types.EncryptionDesc,
-	) (DiskContentInfo, error)
-
-	// Used in tests.
-	GoWriteRandomBlocksToNbsDisk(
-		ctx context.Context,
-		diskID string,
-	) (func() error, error)
-
-	// Used in tests.
-	ValidateCrc32(
-		ctx context.Context,
-		diskID string,
-		expectedDiskContentInfo DiskContentInfo,
-	) error
-
-	// Used in tests.
-	ValidateCrc32WithEncryption(
-		ctx context.Context,
-		diskID string,
-		expectedDiskContentInfo DiskContentInfo,
-		encryption *types.EncryptionDesc,
-	) error
-
-	// Used in tests.
-	CalculateCrc32(diskID string, contentSize uint64) (DiskContentInfo, error)
-
-	// Used in tests.
-	CalculateCrc32WithEncryption(
-		diskID string,
-		contentSize uint64,
-		encryption *types.EncryptionDesc,
-	) (DiskContentInfo, error)
-
-	// Used in tests.
-	MountForReadWrite(diskID string) (func(), error)
-
-	// Used in tests.
-	Write(diskID string, startIndex int, bytes []byte) error
-
-	// Used in tests.
-	GetCheckpoints(ctx context.Context, diskID string) ([]string, error)
-
-	// Used in tests.
-	List(ctx context.Context) ([]string, error)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 
 type MultiZoneClient interface {
-	// Clones volume and deletes its old version with outdated FillGeneration (if it exists).
+	// Clones volume and deletes its old version with outdated FillGeneration
+	// (if it exists).
 	Clone(
 		ctx context.Context,
 		diskID string,
@@ -396,4 +345,58 @@ type Factory interface {
 		srcZoneID string,
 		dstZoneID string,
 	) (MultiZoneClient, error)
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+// Used in tests.
+type TestingClient interface {
+	Client
+
+	FillDisk(
+		ctx context.Context,
+		diskID string,
+		contentSize uint64,
+	) (DiskContentInfo, error)
+
+	FillEncryptedDisk(
+		ctx context.Context,
+		diskID string,
+		contentSize uint64,
+		encryption *types.EncryptionDesc,
+	) (DiskContentInfo, error)
+
+	GoWriteRandomBlocksToNbsDisk(
+		ctx context.Context,
+		diskID string,
+	) (func() error, error)
+
+	ValidateCrc32(
+		ctx context.Context,
+		diskID string,
+		expectedDiskContentInfo DiskContentInfo,
+	) error
+
+	ValidateCrc32WithEncryption(
+		ctx context.Context,
+		diskID string,
+		expectedDiskContentInfo DiskContentInfo,
+		encryption *types.EncryptionDesc,
+	) error
+
+	CalculateCrc32(diskID string, contentSize uint64) (DiskContentInfo, error)
+
+	CalculateCrc32WithEncryption(
+		diskID string,
+		contentSize uint64,
+		encryption *types.EncryptionDesc,
+	) (DiskContentInfo, error)
+
+	MountForReadWrite(diskID string) (func(), error)
+
+	Write(diskID string, startIndex int, bytes []byte) error
+
+	GetCheckpoints(ctx context.Context, diskID string) ([]string, error)
+
+	List(ctx context.Context) ([]string, error)
 }

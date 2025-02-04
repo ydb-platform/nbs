@@ -260,59 +260,55 @@ func NewPrivateClient(ctx context.Context) (internal_client.PrivateClient, error
 	)
 }
 
-func NewNbsClient(
-	t *testing.T,
-	ctx context.Context,
-	zoneID string,
-) nbs.Client {
+func newNbsClientClientConfig() *nbs_config.ClientConfig {
 	rootCertsFile := os.Getenv("DISK_MANAGER_RECIPE_ROOT_CERTS_FILE")
 
 	durableClientTimeout := "5m"
 	discoveryClientHardTimeout := "8m"
 	discoveryClientSoftTimeout := "15s"
 
-	factory, err := nbs.NewFactory(
-		ctx,
-		&nbs_config.ClientConfig{
-			Zones: map[string]*nbs_config.Zone{
-				"zone-a": {
-					Endpoints: []string{
-						fmt.Sprintf(
-							"localhost:%v",
-							os.Getenv("DISK_MANAGER_RECIPE_NBS_PORT"),
-						),
-					},
-				},
-				"zone-b": {
-					Endpoints: []string{
-						fmt.Sprintf(
-							"localhost:%v",
-							os.Getenv("DISK_MANAGER_RECIPE_NBS2_PORT"),
-						),
-					},
-				},
-				"zone-c": {
-					Endpoints: []string{
-						fmt.Sprintf(
-							"localhost:%v",
-							os.Getenv("DISK_MANAGER_RECIPE_NBS3_PORT"),
-						),
-					},
+	return &nbs_config.ClientConfig{
+		Zones: map[string]*nbs_config.Zone{
+			"zone-a": {
+				Endpoints: []string{
+					fmt.Sprintf(
+						"localhost:%v",
+						os.Getenv("DISK_MANAGER_RECIPE_NBS_PORT"),
+					),
 				},
 			},
-			RootCertsFile:              &rootCertsFile,
-			DurableClientTimeout:       &durableClientTimeout,
-			DiscoveryClientHardTimeout: &discoveryClientHardTimeout,
-			DiscoveryClientSoftTimeout: &discoveryClientSoftTimeout,
+			"zone-b": {
+				Endpoints: []string{
+					fmt.Sprintf(
+						"localhost:%v",
+						os.Getenv("DISK_MANAGER_RECIPE_NBS2_PORT"),
+					),
+				},
+			},
+			"zone-c": {
+				Endpoints: []string{
+					fmt.Sprintf(
+						"localhost:%v",
+						os.Getenv("DISK_MANAGER_RECIPE_NBS3_PORT"),
+					),
+				},
+			},
 		},
-		metrics.NewEmptyRegistry(),
-		metrics.NewEmptyRegistry(),
-	)
-	require.NoError(t, err)
+		RootCertsFile:              &rootCertsFile,
+		DurableClientTimeout:       &durableClientTimeout,
+		DiscoveryClientHardTimeout: &discoveryClientHardTimeout,
+		DiscoveryClientSoftTimeout: &discoveryClientSoftTimeout,
+	}
+}
 
-	client, err := factory.GetClient(ctx, zoneID)
-	require.NoError(t, err)
+func NewNbsTestingClient(
+	t *testing.T,
+	ctx context.Context,
+	zoneID string,
+) nbs.TestingClient {
 
+	client, err := nbs.NewTestingClient(ctx, zoneID, newNbsClientClientConfig())
+	require.NoError(t, err)
 	return client
 }
 
@@ -349,7 +345,7 @@ func RequireCheckpoint(
 	checkpointID string,
 ) {
 
-	nbsClient := NewNbsClient(t, ctx, "zone-a")
+	nbsClient := NewNbsTestingClient(t, ctx, "zone-a")
 	checkpoints, err := nbsClient.GetCheckpoints(ctx, diskID)
 	require.NoError(t, err)
 
@@ -363,7 +359,7 @@ func RequireCheckpointsAreEmpty(
 	diskID string,
 ) {
 
-	nbsClient := NewNbsClient(t, ctx, "zone-a")
+	nbsClient := NewNbsTestingClient(t, ctx, "zone-a")
 	checkpoints, err := nbsClient.GetCheckpoints(ctx, diskID)
 	require.NoError(t, err)
 	require.Empty(t, checkpoints)
@@ -375,7 +371,7 @@ func WaitForCheckpointsAreEmpty(
 	diskID string,
 ) {
 
-	nbsClient := NewNbsClient(t, ctx, "zone-a")
+	nbsClient := NewNbsTestingClient(t, ctx, "zone-a")
 
 	for {
 		checkpoints, err := nbsClient.GetCheckpoints(ctx, diskID)
@@ -428,7 +424,7 @@ func CreateImage(
 	err = internal_client.WaitOperation(ctx, client, operation.Id)
 	require.NoError(t, err)
 
-	nbsClient := NewNbsClient(t, ctx, "zone-a")
+	nbsClient := NewNbsTestingClient(t, ctx, "zone-a")
 	diskContentInfo, err := nbsClient.FillDisk(ctx, diskID, imageSize)
 	require.NoError(t, err)
 
@@ -577,7 +573,7 @@ func CheckBaseDiskSlotReleased(
 }
 
 func CheckConsistency(t *testing.T, ctx context.Context) {
-	nbsClient := NewNbsClient(t, ctx, "zone-a")
+	nbsClient := NewNbsTestingClient(t, ctx, "zone-a")
 
 	for {
 		ok := true

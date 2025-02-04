@@ -5050,10 +5050,12 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
 
     Y_UNIT_TEST(ShouldDoLiteReallocations)
     {
-        auto runtime = PrepareTestActorRuntime();
+        auto state = MakeIntrusive<TDiskRegistryState>();
+        auto runtime = PrepareTestActorRuntime(
+            NProto::TStorageServiceConfig(), state);
 
-        const auto expectedBlockCount = DefaultDeviceBlockSize * DefaultDeviceBlockCount
-            / DefaultBlockSize;
+        const auto expectedBlockCount =
+            DefaultDeviceBlockSize * DefaultDeviceBlockCount / DefaultBlockSize;
         const auto expectedDeviceCount = 3;
 
         TVolumeClient volume(*runtime);
@@ -5077,6 +5079,9 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
             auto metaHistory = volume.ReadMetaHistory();
             UNIT_ASSERT_VALUES_EQUAL(S_OK, metaHistory->Error.GetCode());
             UNIT_ASSERT_VALUES_EQUAL(1, metaHistory->MetaHistory.size());
+            UNIT_ASSERT_VALUES_EQUAL(
+                0,
+                metaHistory->MetaHistory[0].Meta.GetIOModeTs());
         }
 
         {
@@ -5149,6 +5154,34 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
             auto metaHistory = volume.ReadMetaHistory();
             UNIT_ASSERT_VALUES_EQUAL(S_OK, metaHistory->Error.GetCode());
             UNIT_ASSERT_VALUES_EQUAL(2, metaHistory->MetaHistory.size());
+            UNIT_ASSERT_VALUES_EQUAL(
+                0,
+                metaHistory->MetaHistory[1].Meta.GetIOModeTs());
+        }
+
+        runtime->SetEventFilter([](TTestActorRuntimeBase&,
+                                   TAutoPtr<IEventHandle>&) { return false; });
+        auto now = Now();
+        state->Disks["vol0"].IOModeTs = now;
+        volume.ReallocateDisk();
+        {
+            // Lite reallocation happened. Meta history still contains 2 items.
+            auto metaHistory = volume.ReadMetaHistory();
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, metaHistory->Error.GetCode());
+            UNIT_ASSERT_VALUES_EQUAL(2, metaHistory->MetaHistory.size());
+        }
+
+        state->Disks["vol0"].MuteIOErrors = true;
+        volume.ReallocateDisk();
+        {
+            // No lite reallocation, since MuteIOErrors has changed. Meta
+            // history contains 3 items now.
+            auto metaHistory = volume.ReadMetaHistory();
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, metaHistory->Error.GetCode());
+            UNIT_ASSERT_VALUES_EQUAL(3, metaHistory->MetaHistory.size());
+            UNIT_ASSERT_VALUES_EQUAL(
+                now.MicroSeconds(),
+                metaHistory->MetaHistory.back().Meta.GetIOModeTs());
         }
     }
 
@@ -8113,6 +8146,57 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
 
         // All partitions sent gc report => partitions should stop
         UNIT_ASSERT(partitionsStopped);
+    }
+
+    Y_UNIT_TEST(ShouldGracefulyShutdownVolume)
+    {
+        auto runtime = PrepareTestActorRuntime();
+        TVolumeClient volume(*runtime);
+
+        bool partitionsStopped = false;
+        runtime->SetEventFilter(
+            [&](TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& event)
+            {
+                switch (event->GetTypeRewrite()) {
+                    // Poison pill send to DR based partition actor.
+                    case TEvents::TEvPoisonPill::EventType: {
+                        partitionsStopped = true;
+                        break;
+                    }
+                }
+                return false;
+            });
+
+        volume.UpdateVolumeConfig(
+            // default arguments
+            0,
+            0,
+            0,
+            0,
+            false,
+            1,
+            NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
+            1024,
+            "vol0",
+            "cloud",
+            "folder",
+            1   // partitions count
+        );
+        volume.RebootTablet();
+
+        auto clientInfo = CreateVolumeClientInfo(
+            NProto::VOLUME_ACCESS_READ_WRITE,
+            NProto::VOLUME_MOUNT_LOCAL,
+            false);
+
+        volume.GracefulShutdown();
+        UNIT_ASSERT(partitionsStopped);
+
+        // Check that volume after TEvGracefulShutdownRequest
+        // in zombie state and rejects requsts.
+        volume.SendGetVolumeInfoRequest();
+        auto response = volume.RecvGetVolumeInfoResponse();
+        UNIT_ASSERT_VALUES_EQUAL(response->GetStatus(), E_REJECTED);
     }
 
     Y_UNIT_TEST(ShouldReturnClientsAndHostnameInStatVolumeResponse)

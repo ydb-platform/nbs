@@ -34,7 +34,7 @@ Set `<rows-num>` as maximum number of rows in the output. Default is **20**.
 
 `--cookie <token>`
 
-Specify `<token>` to be used for the current request. Creation of new session for each request is a costy operation. `<token>` is base64 string representation of the token.
+Specify `<token>` to be used for the current request. Creation of new session for each request is a costly operation. `<token>` is base64 string representation of the token.
 
 `--all`
 

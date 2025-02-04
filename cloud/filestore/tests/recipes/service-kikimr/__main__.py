@@ -42,7 +42,7 @@ def start(argv):
 
     kikimr_binary_path = common.binary_path("cloud/storage/core/tools/testing/ydb/bin/ydbd")
     if args.kikimr_package_path is not None:
-        kikimr_binary_path = common.build_path("{}/Berkanavt/kikimr/bin/kikimr".format(args.kikimr_package_path))
+        kikimr_binary_path = common.build_path("{}/ydbd".format(args.kikimr_package_path))
 
     kikimr_configurator = KikimrConfigGenerator(
         erasure=None,

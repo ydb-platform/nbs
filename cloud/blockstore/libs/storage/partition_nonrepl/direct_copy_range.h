@@ -36,6 +36,7 @@ private:
     TInstant StartTs;
     TDuration ReadDuration;
     TDuration WriteDuration;
+    ui64 RecommendedBandwidth = 0;
     bool AllZeroes = false;
 
     TDeviceInfoResponse SourceInfo;

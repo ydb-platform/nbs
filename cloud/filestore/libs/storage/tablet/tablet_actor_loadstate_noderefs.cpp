@@ -10,7 +10,7 @@ bool TIndexTabletActor::ValidateTx_LoadNodeRefs(
     const TActorContext& ctx,
     TTxIndexTablet::TLoadNodeRefs& args)
 {
-    LOG_INFO(
+    LOG_DEBUG(
         ctx,
         TFileStoreComponents::TABLET,
         "%s LoadingNodeRefs (nodeId: %lu, name: %s, maxNodeRefs: %lu)",
@@ -36,7 +36,7 @@ bool TIndexTabletActor::PrepareTx_LoadNodeRefs(
         args.NextNodeId,
         args.NextCookie);
 
-    LOG_INFO(
+    LOG_DEBUG(
         ctx,
         TFileStoreComponents::TABLET,
         "%s LoadingNodeRefs (nodeId: %lu, name: %s, maxNodeRefs: %lu), read "
@@ -55,7 +55,7 @@ void TIndexTabletActor::CompleteTx_LoadNodeRefs(
     const TActorContext& ctx,
     TTxIndexTablet::TLoadNodeRefs& args)
 {
-    LOG_INFO(
+    LOG_DEBUG(
         ctx,
         TFileStoreComponents::TABLET,
         "%s LoadNodeRefs iteration completed, next nodeId: %lu, next cookie: "
@@ -65,12 +65,13 @@ void TIndexTabletActor::CompleteTx_LoadNodeRefs(
         args.NextCookie.c_str());
 
     if (args.NextCookie || args.NextNodeId) {
-        ctx.Send(
-            SelfId(),
+        ctx.Schedule(
+            args.SchedulePeriod,
             new TEvIndexTabletPrivate::TEvLoadNodeRefsRequest(
                 args.NextNodeId,
                 args.NextCookie,
-                args.MaxNodeRefs));
+                args.MaxNodeRefs,
+                args.SchedulePeriod));
     } else {
         LOG_INFO(
             ctx,
@@ -90,7 +91,7 @@ void TIndexTabletActor::HandleLoadNodeRefsRequest(
 {
     auto* msg = ev->Get();
 
-    LOG_INFO(
+    LOG_DEBUG(
         ctx,
         TFileStoreComponents::TABLET,
         "%s LoadNodeRefs iteration started (nodeId: %lu, name: %s, "
@@ -109,7 +110,8 @@ void TIndexTabletActor::HandleLoadNodeRefsRequest(
         std::move(requestInfo),
         msg->NodeId,
         msg->Cookie,
-        msg->MaxNodeRefs);
+        msg->MaxNodeRefs,
+        msg->SchedulePeriod);
 }
 
 }   // namespace NCloud::NFileStore::NStorage

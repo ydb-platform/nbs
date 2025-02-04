@@ -452,6 +452,9 @@ public:
 
     std::unique_ptr<TEvVolume::TEvGetStorageConfigRequest> CreateGetStorageConfigRequest();
 
+    std::unique_ptr<TEvVolumePrivate::TEvDeviceTimeoutedRequest>
+    CreateDeviceTimeoutedRequest(TString deviceUUID);
+
     std::unique_ptr<TEvVolumePrivate::TEvUpdateShadowDiskStateRequest> CreateUpdateShadowDiskStateRequest(
         TString checkpointId,
         TEvVolumePrivate::TEvUpdateShadowDiskStateRequest::EReason reason,
@@ -459,6 +462,9 @@ public:
 
     std::unique_ptr<TEvVolumePrivate::TEvReadMetaHistoryRequest>
     CreateReadMetaHistoryRequest();
+
+    std::unique_ptr<TEvVolume::TEvGracefulShutdownRequest>
+    CreateGracefulShutdownRequest();
 
     void SendRemoteHttpInfo(
         const TString& params,
@@ -526,7 +532,7 @@ inline NProto::TDeviceConfig MakeDevice(
     const TString& transportId)
 {
     NProto::TDeviceConfig device;
-    device.SetAgentId("Mulder");
+    device.SetAgentId("agent-1");
     device.SetNodeId(0);
     device.SetBlocksCount(DefaultDeviceBlockCount);
     device.SetDeviceUUID(uuid);
@@ -543,7 +549,7 @@ std::unique_ptr<TTestActorRuntime> PrepareTestActorRuntime(
     TDiskRegistryStatePtr diskRegistryState = {},
     NProto::TFeaturesConfig featuresConfig = {},
     NRdma::IClientPtr rdmaClient = {},
-    TDiskAgentStatePtr diskAgentState = {});
+    TVector<TDiskAgentStatePtr> diskAgentStates = {});
 
 struct TTestRuntimeBuilder
 {

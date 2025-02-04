@@ -8,12 +8,12 @@
 #include <cloud/blockstore/libs/spdk/iface/config.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/disk_registry_proxy/model/config.h>
-
 #include <cloud/storage/core/libs/common/proto_helpers.h>
 #include <cloud/storage/core/libs/features/features_config.h>
 #include <cloud/storage/core/libs/kikimr/actorsystem.h>
 #include <cloud/storage/core/libs/version/version.h>
 
+#include <library/cpp/json/json_reader.h>
 #include <library/cpp/protobuf/util/pb_io.h>
 
 #include <util/datetime/base.h>
@@ -23,7 +23,53 @@
 
 namespace NCloud::NBlockStore::NServer {
 
+namespace {
+
 ////////////////////////////////////////////////////////////////////////////////
+
+std::optional<NJson::TJsonValue> ReadJsonFile(
+    TLog& Log,
+    const TString& filename)
+{
+    if (filename.empty()) {
+        return std::nullopt;
+    }
+
+    try {
+        TFileInput in(filename);
+        return NJson::ReadJsonTree(&in, true);
+    } catch (...) {
+        STORAGE_ERROR(
+            "Failed to read file: " << filename.Quote() << " with error: "
+                                    << CurrentExceptionMessage().c_str());
+        return std::nullopt;
+    }
+}
+
+ui32 ReadNetworkMbitThroughput(
+    TLog& Log,
+    const NProto::TDiskAgentConfig& diskAgentConfig)
+{
+    const auto& config = diskAgentConfig.GetThrottlingConfig();
+    ui32 networkThroughput = config.GetDefaultNetworkMbitThroughput();
+
+    if (auto json = ReadJsonFile(Log, config.GetInfraThrottlingConfigPath())) {
+        try {
+            if (auto* value = json->GetValueByPath("interfaces.[0].eth0.speed"))
+            {
+                networkThroughput = FromString<ui32>(value->GetStringSafe());
+            }
+        } catch (...) {
+            STORAGE_ERROR(
+                "Failed to read NetworkMbitThroughput. Error: "
+                << CurrentExceptionMessage().c_str());
+        }
+    }
+
+    return networkThroughput;
+}
+
+}   // namespace
 
 void TConfigInitializer::ApplyCMSConfigs(NKikimrConfig::TAppConfig cmsConfig)
 {
@@ -167,10 +213,11 @@ void TConfigInitializer::InitDiskAgentConfig()
     SetupDiskAgentConfig(diskAgentConfig);
     ApplySpdkEnvConfig(diskAgentConfig.GetSpdkEnvConfig());
 
+    const ui32 networkMbitThroughput = ReadNetworkMbitThroughput(Log, diskAgentConfig);
     DiskAgentConfig = std::make_shared<NStorage::TDiskAgentConfig>(
         std::move(diskAgentConfig),
-        Rack
-    );
+        Rack,
+        networkMbitThroughput);
 }
 
 void TConfigInitializer::InitDiskRegistryProxyConfig()
@@ -428,9 +475,11 @@ void TConfigInitializer::ApplyDiskAgentConfig(const TString& text)
             DiskAgentConfig->GetStorageDiscoveryConfig());
     }
 
+    const ui32 networkMbitThroughput = ReadNetworkMbitThroughput(Log, config);
     DiskAgentConfig = std::make_shared<NStorage::TDiskAgentConfig>(
         std::move(config),
-        Rack);
+        Rack,
+        networkMbitThroughput);
 }
 
 void TConfigInitializer::ApplyDiskRegistryProxyConfig(const TString& text)

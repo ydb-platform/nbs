@@ -713,6 +713,29 @@ Y_UNIT_TEST_SUITE(TReadAheadTest)
                 blobPieces[0].GetRanges(0).GetBlobOffset());
         }
     }
+
+    Y_UNIT_TEST(ShouldInvalidateNodes)
+    {
+        TDefaultCache cache;
+
+        RegisterResult(cache, 111, 0, 1_MB);
+        RegisterResult(cache, 111, 1_MB, 1_MB);
+        RegisterResult(cache, 111, 2_MB, 1_MB);
+        RegisterResult(cache, 222, 100_MB, 1_MB);
+        RegisterResult(cache, 222, 105_MB, 1_MB);
+
+        // both nodes should be present in cache
+        UNIT_ASSERT_VALUES_EQUAL(
+            Expected(111, 0, 128_KB, 0),
+            FillResult(cache, 111, 0, 128_KB));
+
+        cache.InvalidateCache(111);
+
+        // the first node should be evicted, the second should be present
+        UNIT_ASSERT_VALUES_EQUAL(
+            Expected(222, 100_MB, 128_KB, 0),
+            FillResult(cache, 222, 100_MB, 128_KB));
+    }
 }
 
 }   // namespace NCloud::NFileStore::NStorage

@@ -4964,6 +4964,429 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
                 listNodesResponse.GetNodes(0).GetId());
         }
     }
+
+    SERVICE_TEST_SID_SELECT_IN_LEADER_ONLY(
+        ShouldLockSourceNodeRefsUponRenameNodeWithDirectoriesInShards)
+    {
+        config.SetMultiTabletForwardingEnabled(true);
+        config.SetDirectoryCreationInShardsEnabled(true);
+        TTestEnv env({}, config);
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+        TFileSystemConfig fsConfig;
+        fsConfig.DirectoryCreationInShardsEnabled = true;
+        CreateFileSystem(service, fsConfig);
+
+        auto headers = service.InitSession(fsConfig.FsId, "client");
+
+        // creating 2 dirs - we'll move a file from one dir to another
+
+        ui64 dir1Id = service.CreateNode(
+            headers,
+            TCreateNodeArgs::Directory(RootNodeId, "dir1")
+        )->Record.GetNode().GetId();
+
+        ui64 dir2Id = service.CreateNode(
+            headers,
+            TCreateNodeArgs::Directory(RootNodeId, "dir2")
+        )->Record.GetNode().GetId();
+
+        UNIT_ASSERT_VALUES_UNEQUAL(0, ExtractShardNo(dir1Id));
+        UNIT_ASSERT_VALUES_UNEQUAL(0, ExtractShardNo(dir2Id));
+        UNIT_ASSERT_VALUES_UNEQUAL(
+            ExtractShardNo(dir1Id),
+            ExtractShardNo(dir2Id));
+
+        // creating a file which we will move
+
+        ui64 node1Id = service.CreateNode(
+            headers,
+            TCreateNodeArgs::File(dir1Id, "file1")
+        )->Record.GetNode().GetId();
+
+        // configuring an interceptor to make RenameNode get stuck in the shard
+        // in charge of dir1
+
+        TEventHelper evHelper(env);
+        evHelper.CatchEvent(TEvIndexTablet::EvRenameNodeInDestinationRequest);
+
+        service.SendRenameNodeRequest(
+            headers,
+            dir1Id,
+            "file1",
+            dir2Id,
+            "file2",
+            0);
+
+        ui32 iterations = 0;
+        while (!evHelper.Event && iterations++ < 100) {
+            env.GetRuntime().DispatchEvents({}, TDuration::MilliSeconds(50));
+        }
+
+        UNIT_ASSERT(evHelper.Event);
+        evHelper.ShouldIntercept = false;
+
+        // listing dir1 - at this point our file should still be seen there
+
+        {
+            auto listNodesResponse = service.ListNodes(
+                headers,
+                fsConfig.FsId,
+                dir1Id)->Record;
+
+            UNIT_ASSERT_VALUES_EQUAL(1, listNodesResponse.NamesSize());
+            UNIT_ASSERT_VALUES_EQUAL(1, listNodesResponse.NodesSize());
+            UNIT_ASSERT_VALUES_EQUAL("file1", listNodesResponse.GetNames(0));
+        }
+
+        // unlinking of that file should be unallowed since we have an inflight
+        // RenameNode operation
+
+        service.SendUnlinkNodeRequest(headers, dir1Id, "file1");
+        {
+            auto unlinkResponse = service.RecvUnlinkNodeResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_REJECTED,
+                unlinkResponse->GetError().GetCode(),
+                unlinkResponse->GetError().GetMessage());
+        }
+
+        // renaming should not be allowed as well
+
+        service.SendRenameNodeRequest(
+            headers,
+            dir1Id,
+            "file1",
+            dir1Id,
+            "file1_moved",
+            0);
+
+        {
+            auto renameResponse = service.RecvRenameNodeResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_REJECTED,
+                renameResponse->GetError().GetCode(),
+                renameResponse->GetError().GetMessage());
+        }
+
+        // listing dir1 - our file should still be there
+
+        {
+            auto listNodesResponse = service.ListNodes(
+                headers,
+                fsConfig.FsId,
+                dir1Id)->Record;
+
+            UNIT_ASSERT_VALUES_EQUAL(1, listNodesResponse.NamesSize());
+            UNIT_ASSERT_VALUES_EQUAL(1, listNodesResponse.NodesSize());
+            UNIT_ASSERT_VALUES_EQUAL("file1", listNodesResponse.GetNames(0));
+        }
+
+        // unblocking the inflight RenameNode op
+
+        env.GetRuntime().Send(evHelper.Event.Release());
+
+        {
+            auto renameResponse = service.RecvRenameNodeResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                renameResponse->GetError().GetCode(),
+                renameResponse->GetError().GetMessage());
+        }
+
+        // now the file should finally be moved
+
+        {
+            auto listNodesResponse = service.ListNodes(
+                headers,
+                fsConfig.FsId,
+                dir1Id)->Record;
+
+            UNIT_ASSERT_VALUES_EQUAL(0, listNodesResponse.NamesSize());
+            UNIT_ASSERT_VALUES_EQUAL(0, listNodesResponse.NodesSize());
+        }
+
+        {
+            auto listNodesResponse = service.ListNodes(
+                headers,
+                fsConfig.FsId,
+                dir2Id)->Record;
+
+            UNIT_ASSERT_VALUES_EQUAL(1, listNodesResponse.NamesSize());
+            UNIT_ASSERT_VALUES_EQUAL(1, listNodesResponse.NodesSize());
+            UNIT_ASSERT_VALUES_EQUAL("file2", listNodesResponse.GetNames(0));
+            UNIT_ASSERT_VALUES_EQUAL(
+                node1Id,
+                listNodesResponse.GetNodes(0).GetId());
+        }
+
+        // RenameNode and UnlinkNode ops should work again
+
+        ui64 node2Id = service.CreateNode(
+            headers,
+            TCreateNodeArgs::File(dir1Id, "file1")
+        )->Record.GetNode().GetId();
+        UNIT_ASSERT_VALUES_UNEQUAL(node1Id, node2Id);
+
+        service.SendRenameNodeRequest(
+            headers,
+            dir1Id,
+            "file1",
+            dir1Id,
+            "file1_moved",
+            0);
+
+        {
+            auto renameResponse = service.RecvRenameNodeResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                renameResponse->GetError().GetCode(),
+                renameResponse->GetError().GetMessage());
+        }
+
+        ui64 node3Id = service.CreateNode(
+            headers,
+            TCreateNodeArgs::File(dir1Id, "file1")
+        )->Record.GetNode().GetId();
+        UNIT_ASSERT_VALUES_UNEQUAL(node1Id, node3Id);
+        UNIT_ASSERT_VALUES_UNEQUAL(node2Id, node3Id);
+
+        service.SendUnlinkNodeRequest(headers, dir1Id, "file1");
+        {
+            auto unlinkResponse = service.RecvUnlinkNodeResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                unlinkResponse->GetError().GetCode(),
+                unlinkResponse->GetError().GetMessage());
+        }
+
+        {
+            auto listNodesResponse = service.ListNodes(
+                headers,
+                fsConfig.FsId,
+                dir1Id)->Record;
+
+            UNIT_ASSERT_VALUES_EQUAL(1, listNodesResponse.NamesSize());
+            UNIT_ASSERT_VALUES_EQUAL(1, listNodesResponse.NodesSize());
+            UNIT_ASSERT_VALUES_EQUAL("file1_moved", listNodesResponse.GetNames(0));
+            UNIT_ASSERT_VALUES_EQUAL(
+                node2Id,
+                listNodesResponse.GetNodes(0).GetId());
+        }
+    }
+
+    SERVICE_TEST_SID_SELECT_IN_LEADER_ONLY(
+        ShouldRestoreNodeRefLocksUponLeaderRestartWithDirectoriesInShards)
+    {
+        config.SetMultiTabletForwardingEnabled(true);
+        config.SetDirectoryCreationInShardsEnabled(true);
+        TTestEnv env({}, config);
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+        TFileSystemConfig fsConfig;
+        fsConfig.DirectoryCreationInShardsEnabled = true;
+        const auto fsInfo = CreateFileSystem(service, fsConfig);
+
+        auto headers = service.InitSession(fsConfig.FsId, "client");
+
+        // creating 2 dirs - we'll move a file from one dir to another
+
+        ui64 dir1Id = service.CreateNode(
+            headers,
+            TCreateNodeArgs::Directory(RootNodeId, "dir1")
+        )->Record.GetNode().GetId();
+
+        ui64 dir2Id = service.CreateNode(
+            headers,
+            TCreateNodeArgs::Directory(RootNodeId, "dir2")
+        )->Record.GetNode().GetId();
+
+        UNIT_ASSERT_VALUES_UNEQUAL(0, ExtractShardNo(dir1Id));
+        UNIT_ASSERT_VALUES_UNEQUAL(0, ExtractShardNo(dir2Id));
+        UNIT_ASSERT_VALUES_UNEQUAL(
+            ExtractShardNo(dir1Id),
+            ExtractShardNo(dir2Id));
+
+        // creating a file which we will move
+
+        service.CreateNode(headers, TCreateNodeArgs::File(dir1Id, "file1"));
+
+        // configuring an interceptor to make RenameNode get stuck in the shard
+        // in charge of dir1
+
+        TEventHelper evHelper(env);
+        evHelper.CatchEvent(TEvIndexTablet::EvRenameNodeInDestinationRequest);
+
+        service.SendRenameNodeRequest(
+            headers,
+            dir1Id,
+            "file1",
+            dir2Id,
+            "file2",
+            0);
+
+        ui32 iterations = 0;
+        while (!evHelper.Event && iterations++ < 100) {
+            env.GetRuntime().DispatchEvents({}, TDuration::MilliSeconds(50));
+        }
+
+        UNIT_ASSERT(evHelper.Event);
+
+        // rebooting the shard in charge of dir1 to trigger OpLog replay which
+        // should lock the affected NodeRef
+
+        const ui64 tabletId = ExtractShardNo(dir1Id) == 1
+            ? fsInfo.Shard1TabletId : fsInfo.Shard2TabletId;
+        TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
+        tablet.RebootTablet();
+
+        {
+            auto renameResponse = service.RecvRenameNodeResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_REJECTED,
+                renameResponse->GetError().GetCode(),
+                renameResponse->GetError().GetMessage());
+        }
+
+        // remaking session since CreateSessionActor doesn't do it by itself
+        // because EvWakeup never arrives because Scheduling doesn't work by
+        // default and RegistrationObservers get reset after RebootTablet
+        headers = service.InitSession(fsConfig.FsId, "client");
+
+        // unlinking of that file should be unallowed since we have an inflight
+        // RenameNode operation
+
+        service.SendUnlinkNodeRequest(headers, dir1Id, "file1");
+        {
+            auto unlinkResponse = service.RecvUnlinkNodeResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_REJECTED,
+                unlinkResponse->GetError().GetCode(),
+                unlinkResponse->GetError().GetMessage());
+        }
+
+        // renaming should not be allowed as well
+
+        service.SendRenameNodeRequest(
+            headers,
+            dir1Id,
+            "file1",
+            dir1Id,
+            "file1_moved",
+            0);
+
+        {
+            auto renameResponse = service.RecvRenameNodeResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_REJECTED,
+                renameResponse->GetError().GetCode(),
+                renameResponse->GetError().GetMessage());
+        }
+    }
+
+    SERVICE_TEST_SID_SELECT_IN_LEADER_ONLY(
+        ShouldProcessRenameNodeInDestinationErrorWithDirectoriesInShards)
+    {
+        config.SetMultiTabletForwardingEnabled(true);
+        config.SetDirectoryCreationInShardsEnabled(true);
+        TTestEnv env({}, config);
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+        TFileSystemConfig fsConfig;
+        fsConfig.DirectoryCreationInShardsEnabled = true;
+        CreateFileSystem(service, fsConfig);
+
+        auto headers = service.InitSession(fsConfig.FsId, "client");
+
+        // creating 2 dirs - we'll move a file from one dir to another
+
+        ui64 dir1Id = service.CreateNode(
+            headers,
+            TCreateNodeArgs::Directory(RootNodeId, "dir1")
+        )->Record.GetNode().GetId();
+
+        ui64 dir2Id = service.CreateNode(
+            headers,
+            TCreateNodeArgs::Directory(RootNodeId, "dir2")
+        )->Record.GetNode().GetId();
+
+        UNIT_ASSERT_VALUES_UNEQUAL(0, ExtractShardNo(dir1Id));
+        UNIT_ASSERT_VALUES_UNEQUAL(0, ExtractShardNo(dir2Id));
+        UNIT_ASSERT_VALUES_UNEQUAL(
+            ExtractShardNo(dir1Id),
+            ExtractShardNo(dir2Id));
+
+        // creating a file which we will try move
+
+        ui64 node1Id = service.CreateNode(
+            headers,
+            TCreateNodeArgs::File(dir1Id, "file1")
+        )->Record.GetNode().GetId();
+
+        // creating a file which will prevent the move from succeeding
+
+        ui64 node2Id = service.CreateNode(
+            headers,
+            TCreateNodeArgs::File(dir2Id, "file2")
+        )->Record.GetNode().GetId();
+
+        UNIT_ASSERT_VALUES_UNEQUAL(node1Id, node2Id);
+
+        service.SendRenameNodeRequest(
+            headers,
+            dir1Id,
+            "file1",
+            dir2Id,
+            "file2",
+            ProtoFlag(NProto::TRenameNodeRequest::F_NOREPLACE));
+
+        {
+            auto renameResponse = service.RecvRenameNodeResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_FS_EXIST,
+                renameResponse->GetError().GetCode(),
+                renameResponse->GetError().GetMessage());
+        }
+
+        // listing the nodes in dir1 and dir2 - no changes should be done
+
+        {
+            auto listNodesResponse = service.ListNodes(
+                headers,
+                fsConfig.FsId,
+                dir1Id)->Record;
+
+            UNIT_ASSERT_VALUES_EQUAL(1, listNodesResponse.NamesSize());
+            UNIT_ASSERT_VALUES_EQUAL(1, listNodesResponse.NodesSize());
+            UNIT_ASSERT_VALUES_EQUAL(
+                node1Id,
+                listNodesResponse.GetNodes(0).GetId());
+            UNIT_ASSERT_VALUES_EQUAL("file1", listNodesResponse.GetNames(0));
+        }
+
+        {
+            auto listNodesResponse = service.ListNodes(
+                headers,
+                fsConfig.FsId,
+                dir2Id)->Record;
+
+            UNIT_ASSERT_VALUES_EQUAL(1, listNodesResponse.NamesSize());
+            UNIT_ASSERT_VALUES_EQUAL(1, listNodesResponse.NodesSize());
+            UNIT_ASSERT_VALUES_EQUAL(
+                node2Id,
+                listNodesResponse.GetNodes(0).GetId());
+            UNIT_ASSERT_VALUES_EQUAL("file2", listNodesResponse.GetNames(0));
+        }
+    }
 }
 
 }   // namespace NCloud::NFileStore::NStorage

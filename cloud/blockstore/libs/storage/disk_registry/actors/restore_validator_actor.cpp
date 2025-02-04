@@ -233,7 +233,7 @@ TStringBuf NormalizeMirrorId(TStringBuf diskId) {
 
 bool CheckMirrorDiskId(
     const TSet<TString>& disksInSS,
-    const TVector<NProto::TDiskConfig> disksInBackup,
+    const TVector<NProto::TDiskConfig>& disksInBackup,
     const NProto::TDiskConfig& disk)
 {
     const TString& diskId = disk.GetDiskId();
@@ -532,12 +532,21 @@ void TRestoreValidationActor::HandleListVolumesResponse(
                 ValidSnapshot.DisksToCleanup,
                 NormalizeMirrorId(itr->GetDiskId())))
         {
-            LOG_WARN_S(
-                ctx,
-                Component,
-                RESTORE_PREFIX
-                    << " DiskID " << itr->GetDiskId().Quote()
-                    << " is found in backup but not in SS");
+            const bool isShadowDisk =
+                !itr->GetCheckpointReplica().GetCheckpointId().empty();
+            if (isShadowDisk) {
+                LOG_WARN_S(
+                    ctx,
+                    Component,
+                    RESTORE_PREFIX << " ShadowDisk " << itr->GetDiskId().Quote()
+                                   << " is found in backup");
+            } else {
+                LOG_WARN_S(
+                    ctx,
+                    Component,
+                    RESTORE_PREFIX << " DiskID " << itr->GetDiskId().Quote()
+                                   << " is found in backup, but not in SS");
+            }
             SetErrorDevicesInBackup(itr->GetDeviceUUIDs(), ctx.Now());
             DisksInBackup.erase(itr->GetDiskId());
             itr = ValidSnapshot.Disks.erase(itr);

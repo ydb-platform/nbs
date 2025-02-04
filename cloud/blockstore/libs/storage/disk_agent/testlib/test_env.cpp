@@ -352,8 +352,8 @@ TTestEnv TTestEnvBuilder::Build()
     );
     auto agentConfig = std::make_shared<TDiskAgentConfig>(
         std::move(AgentConfigProto),
-        "the-rack"
-    );
+        "the-rack",
+        0);
 
     if (!Spdk && agentConfig->GetBackend() == NProto::DISK_AGENT_BACKEND_SPDK) {
         Spdk = NSpdk::CreateEnvStub();
@@ -402,7 +402,8 @@ TTestEnv TTestEnvBuilder::Build()
             config,
             std::make_shared<TDiskAgentConfig>(
                 std::move(SecondAgentConfigProto),
-                "the-rack"),
+                "the-rack",
+                0),
             nullptr,   // rdmaConfig
             Spdk,
             allocator,
@@ -720,6 +721,7 @@ NProto::TDiskAgentConfig CreateDefaultAgentConfig()
 
     config.SetIOParserActorCount(4);
     config.SetOffloadAllIORequestsParsingEnabled(true);
+    config.SetIOParserActorAllocateStorageEnabled(true);
 
     return config;
 }

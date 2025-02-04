@@ -1852,10 +1852,11 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
         });
 
         auto config1 = AgentConfig(1000, {
-            Device("dev-1", "uuid-1", "rack-1"),
+            Device("dev-1", "uuid-1.1"),
         });
         auto config2 = AgentConfig(1001, {
-            Device("dev-2", "uuid-2", "rack-2"),
+            Device("dev-1", "uuid-2.1"),
+            Device("dev-3", "uuid-2.3"),
         });
 
         auto monitoring = CreateMonitoringServiceStub();
@@ -1865,8 +1866,15 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
 
         TDiskRegistryState state = TDiskRegistryStateBuilder()
             .With(diskRegistryGroup)
-            .WithConfig({ config1 })
+            .WithConfig({ config1, config2 })
             .Build();
+
+        config2 = AgentConfig(1001, {
+            Device("dev-1", "uuid-2.1"),
+            // add an unknown device to #1001
+            Device("dev-2", "uuid-2.2"),
+            Device("dev-3", "uuid-2.3"),
+        });
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) {
             UNIT_ASSERT_SUCCESS(RegisterAgent(state, db, config1));
@@ -1877,9 +1885,9 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
 
         {
             NProto::TAgentStats stats;
-            stats.SetNodeId(1000);
+            stats.SetNodeId(1001);
             auto* d = stats.AddDeviceStats();
-            d->SetDeviceUUID("garbage");
+            d->SetDeviceUUID("uuid-1.1"); // uuid-1.1 belongs to agent-1000
 
             auto error = state.UpdateAgentCounters(stats);
             UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, error.GetCode());
@@ -1888,14 +1896,78 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
         {
             NProto::TAgentStats stats;
             stats.SetNodeId(1001);
-            auto* d = stats.AddDeviceStats();
-            d->SetDeviceUUID("uuid-2");
+
+            {
+                auto* d = stats.AddDeviceStats();
+                d->SetDeviceUUID("uuid-2.1");
+                d->SetDeviceName("dev-1");
+                d->SetBytesRead(4_KB);
+                d->SetNumReadOps(1);
+            }
+
+            {
+                auto* d = stats.AddDeviceStats();
+                d->SetDeviceUUID("uuid-2.2");
+                d->SetDeviceName("dev-2");
+                d->SetBytesRead(8_KB);
+                d->SetNumReadOps(2);
+            }
+
+            {
+                auto* d = stats.AddDeviceStats();
+                d->SetDeviceUUID("uuid-2.3");
+                d->SetDeviceName("dev-3");
+                d->SetBytesRead(12_KB);
+                d->SetNumReadOps(3);
+            }
 
             auto error = state.UpdateAgentCounters(stats);
-            UNIT_ASSERT_VALUES_EQUAL(S_FALSE, error.GetCode());
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
         }
 
         state.PublishCounters(Now());
+
+        UNIT_ASSERT(diskRegistryGroup->FindSubgroup("agent", "agent-1000"));
+
+        auto counters = diskRegistryGroup->FindSubgroup("agent", "agent-1001");
+        UNIT_ASSERT(counters);
+
+        auto totalReadCount = counters->FindCounter("ReadCount");
+        UNIT_ASSERT(totalReadCount);
+        UNIT_ASSERT_VALUES_EQUAL(4, totalReadCount->Val());
+
+        auto totalReadBytes = counters->FindCounter("ReadBytes");
+        UNIT_ASSERT(totalReadBytes);
+        UNIT_ASSERT_VALUES_EQUAL(16_KB, totalReadBytes->Val());
+
+        {
+            auto device = counters->FindSubgroup("device", "agent-1001:dev-1");
+            UNIT_ASSERT(device);
+
+            auto readCount = device->FindCounter("ReadCount");
+            UNIT_ASSERT(readCount);
+            UNIT_ASSERT_VALUES_EQUAL(1, readCount->Val());
+
+            auto readBytes = device->FindCounter("ReadBytes");
+            UNIT_ASSERT(readBytes);
+            UNIT_ASSERT_VALUES_EQUAL(4_KB, readBytes->Val());
+        }
+
+        // no metrics for the unknown device
+        UNIT_ASSERT(!counters->FindSubgroup("device", "agent-1001:dev-2"));
+
+        {
+            auto device = counters->FindSubgroup("device", "agent-1001:dev-3");
+            UNIT_ASSERT(device);
+
+            auto readCount = device->FindCounter("ReadCount");
+            UNIT_ASSERT(readCount);
+            UNIT_ASSERT_VALUES_EQUAL(3, readCount->Val());
+
+            auto readBytes = device->FindCounter("ReadBytes");
+            UNIT_ASSERT(readBytes);
+            UNIT_ASSERT_VALUES_EQUAL(12_KB, readBytes->Val());
+        }
     }
 
     Y_UNIT_TEST(ShouldRemoveAgentWithSameId)
@@ -11509,6 +11581,198 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
             {});
     }
 
+    Y_UNIT_TEST(ShouldAddToPendingCleanupOnlyWhenNecessary)
+    {
+        const auto agent1 = AgentConfig(
+            1,
+            {
+                Device("dev-1", "uuid-1.1", "rack-1"),
+                Device("dev-1", "uuid-1.2", "rack-1"),
+                Device("dev-1", "uuid-1.3", "rack-1"),
+                Device("dev-1", "uuid-1.4", "rack-1"),
+            });
+
+        const auto agent2 = AgentConfig(
+            2,
+            {
+                Device("dev-1", "uuid-2.1", "rack-2"),
+                Device("dev-2", "uuid-2.2", "rack-2"),
+                Device("dev-3", "uuid-2.3", "rack-2"),
+                Device("dev-4", "uuid-2.4", "rack-2"),
+            });
+
+        TTestExecutor executor;
+        executor.WriteTx([&](TDiskRegistryDatabase db) { db.InitSchema(); });
+
+        TDiskRegistryState state =
+            TDiskRegistryStateBuilder()
+                .WithKnownAgents({agent1, agent2})
+                .WithDisks(
+                    {Disk("disk-1", {"uuid-1.1", "uuid-1.2"}),
+                     Disk("disk-2", {"uuid-2.1", "uuid-2.2"})})
+                .Build();
+
+        auto moveDeviceToState =
+            [&](TString deviceId, NProto::EDeviceState deviceState)
+        {
+            executor.WriteTx(
+                [&](TDiskRegistryDatabase db) mutable
+                {
+                    TString affectedDisk;
+                    const auto error = state.UpdateDeviceState(
+                        db,
+                        deviceId,
+                        deviceState,
+                        Now(),
+                        "test",
+                        affectedDisk);
+                    UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
+                });
+        };
+
+        auto replaceDevice =
+            [&](TString diskId, auto fromDevId, auto toDevId, auto manual)
+        {
+            executor.WriteTx(
+                [&](TDiskRegistryDatabase db) mutable
+                {
+                    bool updated = false;
+                    const auto error = state.ReplaceDevice(
+                        db,
+                        diskId,
+                        fromDevId,
+                        toDevId,
+                        Now(),
+                        "",   // message
+                        manual,
+                        &updated);
+                    UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
+                });
+        };
+
+        auto checkDevices = [&](TString diskId,
+                                TVector<TString> diskDevices,
+                                TVector<TString> dirtyDevices,
+                                TVector<TString> autoReplacedDevices)
+        {
+            TVector<TDeviceConfig> devices;
+            const auto error = state.GetDiskDevices(diskId, devices);
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
+            UNIT_ASSERT_VALUES_EQUAL(diskDevices.size(), devices.size());
+            for (ui32 i = 0; i < diskDevices.size(); i++) {
+                UNIT_ASSERT_EQUAL(
+                    NProto::DEVICE_STATE_ONLINE,
+                    devices[i].GetState());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    diskDevices[i],
+                    devices[i].GetDeviceUUID());
+            }
+
+            TDiskInfo info;
+            UNIT_ASSERT_SUCCESS(state.GetDiskInfo(diskId, info));
+            // device replacement list should be empty for non-mirrored disks
+            ASSERT_VECTORS_EQUAL(TVector<TString>{}, info.DeviceReplacementIds);
+
+            auto stateDirtyDevices = state.GetDirtyDevices();
+            UNIT_ASSERT_VALUES_EQUAL(
+                dirtyDevices.size(),
+                stateDirtyDevices.size());
+            Sort(stateDirtyDevices, TByDeviceUUID());
+            for (ui32 i = 0; i < dirtyDevices.size(); i++) {
+                UNIT_ASSERT_VALUES_EQUAL(
+                    dirtyDevices[i],
+                    stateDirtyDevices[i].GetDeviceUUID());
+            }
+
+            TVector<TAutomaticallyReplacedDeviceInfo> stateAutoReplacedDevices(
+                state.GetAutomaticallyReplacedDevices().begin(),
+                state.GetAutomaticallyReplacedDevices().end());
+            UNIT_ASSERT_VALUES_EQUAL(
+                autoReplacedDevices.size(),
+                stateAutoReplacedDevices.size());
+            SortBy(
+                stateAutoReplacedDevices,
+                [](auto& x) { return x.DeviceId; });
+            for (ui32 i = 0; i < autoReplacedDevices.size(); i++) {
+                UNIT_ASSERT_VALUES_EQUAL(
+                    autoReplacedDevices[i],
+                    stateAutoReplacedDevices[i].DeviceId);
+            }
+        };
+
+        // Automatic replacements shouldn't be be added to pending cleanup.
+        replaceDevice("disk-1", "uuid-1.1", "uuid-1.3", false /* manual */);
+        checkDevices(
+            "disk-1",
+            {"uuid-1.3", "uuid-1.2"},
+            {"uuid-1.1"},
+            {"uuid-1.1"});
+        // Device is broken. The pending cleanup is empty.
+        UNIT_ASSERT(!state.HasPendingCleanup("disk-1"));
+
+        // Manual replacements also does not add to pending cleanup since the
+        // source device state is changing to ERROR.
+        replaceDevice("disk-1", "uuid-1.2", "uuid-1.4", true /* manual */);
+        UNIT_ASSERT(!state.HasPendingCleanup("disk-1"));
+        checkDevices(
+            "disk-1",
+            {"uuid-1.3", "uuid-1.4"},
+            {"uuid-1.1", "uuid-1.2"},
+            {"uuid-1.1"});
+
+        moveDeviceToState("uuid-2.1", NProto::DEVICE_STATE_WARNING);
+
+        // Start a migration.
+        executor.WriteTx(
+            [&](TDiskRegistryDatabase db)
+            {
+                const auto migrations = state.BuildMigrationList();
+                UNIT_ASSERT_VALUES_EQUAL(1, migrations.size());
+
+                UNIT_ASSERT_VALUES_EQUAL("disk-2", migrations[0].DiskId);
+                UNIT_ASSERT_VALUES_EQUAL(
+                    "uuid-2.1",
+                    migrations[0].SourceDeviceId);
+
+                auto r =
+                    state.StartDeviceMigration(Now(), db, "disk-2", "uuid-2.1");
+                UNIT_ASSERT_SUCCESS(r.GetError());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    "uuid-2.3",
+                    r.GetResult().GetDeviceUUID());
+            });
+        UNIT_ASSERT(!state.HasPendingCleanup("disk-2"));
+
+        // Finish the migration.
+        executor.WriteTx(
+            [&](TDiskRegistryDatabase db) mutable
+            {
+                bool updated = false;
+                const auto error = state.FinishDeviceMigration(
+                    db,
+                    "disk-2",
+                    "uuid-2.1",
+                    "uuid-2.3",
+                    Now(),
+                    &updated);
+
+                UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
+                UNIT_ASSERT(updated);
+            });
+        UNIT_ASSERT(!state.HasPendingCleanup("disk-2"));
+
+        executor.WriteTx(
+            [&](TDiskRegistryDatabase db)
+            {
+                auto disksToReallocate = state.GetDisksToReallocate();
+                UNIT_ASSERT_VALUES_EQUAL(2, disksToReallocate.size());
+                for (auto& [diskId, seqNo]: disksToReallocate) {
+                    state.DeleteDiskToReallocate(db, diskId, seqNo);
+                }
+            });
+        UNIT_ASSERT(state.HasPendingCleanup("disk-2"));
+    }
+
     Y_UNIT_TEST(ShouldPreserveDeviceErrorState)
     {
         const TString errorMessage = "broken device";
@@ -11968,9 +12232,8 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
                 device.SetId(leakedSuspendedDevice);
                 db.UpdateSuspendedDevice(device);
                 db.AddAutomaticallyReplacedDevice(
-                    TAutomaticallyReplacedDeviceInfo{
-                        leakedAutomaticallyReplacedDevice,
-                        Now()});
+                    {.DeviceId = leakedAutomaticallyReplacedDevice,
+                     .ReplacementTs = Now()});
             });
 
         // Register agent.
@@ -12056,4 +12319,5 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
             });
     }
 }
+
 }   // namespace NCloud::NBlockStore::NStorage

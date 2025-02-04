@@ -78,6 +78,39 @@ func (m *mounter) IsFilesystemExisted(device string) (bool, error) {
 	return err == nil && string(out) != "", nil
 }
 
+func (m *mounter) IsFilesystemRemountedAsReadonly(mountPoint string) (bool, error) {
+	mountInfoList, err := mount.ParseMountInfo("/proc/self/mountinfo")
+	if err != nil {
+		return false, err
+	}
+
+	for _, mountInfo := range mountInfoList {
+		if mountInfo.MountPoint == mountPoint {
+			// The filesystem was remounted as read-only
+			// if the mount options included a read-write option, while
+			// the superblock options specified a read-only option.
+			var readWriteFs = false
+			for _, mountOption := range mountInfo.MountOptions {
+				if mountOption == "rw" {
+					readWriteFs = true
+					break
+				}
+			}
+
+			if !readWriteFs {
+				return false, nil
+			}
+
+			for _, superOption := range mountInfo.SuperOptions {
+				if superOption == "ro" {
+					return true, nil
+				}
+			}
+		}
+	}
+	return false, nil
+}
+
 func (m *mounter) MakeFilesystem(device string, fsType string) ([]byte, error) {
 	options := []string{"-t", fsType}
 	if fsType == "ext4" {

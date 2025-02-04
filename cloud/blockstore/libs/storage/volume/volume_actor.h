@@ -236,6 +236,7 @@ private:
         TMigrations Migrations;
         TVector<TDevices> Replicas;
         TVector<TString> FreshDeviceIds;
+        TVector<TString> RemovedLaggingDeviceIds;
 
         void Clear()
         {
@@ -474,6 +475,8 @@ private:
 
     void SetupDiskRegistryBasedPartitions(const NActors::TActorContext& ctx);
 
+    void ReportLaggingDevicesToDR(const NActors::TActorContext& ctx);
+
     void DumpUsageStats(
         const NActors::TActorContext& ctx,
         TVolumeActor::EStatus status);
@@ -657,6 +660,10 @@ private:
         const TEvVolumePrivate::TEvWriteOrZeroCompleted::TPtr& ev,
         const NActors::TActorContext& ctx);
 
+    void HandleReportLaggingDevicesToDR(
+        const TEvVolumePrivate::TEvReportLaggingDevicesToDR::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
     template <typename TMethod>
     bool ReplyToOriginalRequest(
         const NActors::TActorContext& ctx,
@@ -716,11 +723,25 @@ private:
         const TEvDiskRegistry::TEvAcquireDiskResponse::TPtr& ev,
         const NActors::TActorContext& ctx);
 
+    void HandleDevicesAcquireFinishedImpl(
+        const NProto::TError& error,
+        const NActors::TActorContext& ctx);
+
     void AcquireDisk(
         const NActors::TActorContext& ctx,
         TString clientId,
         NProto::EVolumeAccessMode accessMode,
         ui64 mountSeqNumber);
+
+    void SendAcquireDevicesToAgents(
+        TString clientId,
+        NProto::EVolumeAccessMode accessMode,
+        ui64 mountSeqNumber,
+        const NActors::TActorContext& ctx);
+
+    void HandleDevicesAcquireFinished(
+        const TEvVolumePrivate::TEvDevicesAcquireFinished::TPtr& ev,
+        const NActors::TActorContext& ctx);
 
     void AcquireDiskIfNeeded(const NActors::TActorContext& ctx);
 
@@ -742,10 +763,26 @@ private:
         const TEvDiskRegistry::TEvReleaseDiskResponse::TPtr& ev,
         const NActors::TActorContext& ctx);
 
+    void HandleDevicesReleasedFinishedImpl(
+        const NProto::TError& error,
+        const NActors::TActorContext& ctx);
+
     void ReleaseDisk(const NActors::TActorContext& ctx, const TString& clientId);
+
+    void SendReleaseDevicesToAgents(
+        const TString& clientId,
+        const NActors::TActorContext& ctx);
+
+    void HandleDevicesReleasedFinished(
+        const TEvVolumePrivate::TEvDevicesReleaseFinished::TPtr& ev,
+        const NActors::TActorContext& ctx);
 
     void HandleAllocateDiskResponse(
         const TEvDiskRegistry::TEvAllocateDiskResponse::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleAddLaggingDevicesResponse(
+        const TEvDiskRegistry::TEvAddLaggingDevicesResponse::TPtr& ev,
         const NActors::TActorContext& ctx);
 
     void ScheduleAllocateDiskIfNeeded(const NActors::TActorContext& ctx);
@@ -966,6 +1003,14 @@ private:
 
     void HandleReadBlocksLocalResponse(
         const TEvService::TEvReadBlocksLocalResponse::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleSmartMigrationFinished(
+        const TEvVolumePrivate::TEvSmartMigrationFinished::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleUpdateSmartMigrationState(
+        const TEvVolumePrivate::TEvUpdateSmartMigrationState::TPtr& ev,
         const NActors::TActorContext& ctx);
 
     void CreateCheckpointLightRequest(

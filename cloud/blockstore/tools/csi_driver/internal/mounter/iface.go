@@ -12,6 +12,7 @@ type Interface interface {
 	HasBlockDevice(device string) (bool, error)
 
 	IsFilesystemExisted(device string) (bool, error)
+	IsFilesystemRemountedAsReadonly(mountPoint string) (bool, error)
 	MakeFilesystem(device string, fsType string) ([]byte, error)
 
 	NeedResize(devicePath string, deviceMountPath string) (bool, error)

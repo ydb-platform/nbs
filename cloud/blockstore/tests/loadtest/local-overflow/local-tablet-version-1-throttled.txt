@@ -1,6 +1,7 @@
 Vertices {
     Test {
         CreateVolumeRequest {
+            StorageMediaKind: STORAGE_MEDIA_HDD
             BlocksCount: 20000000
             BlockSize: 4096
             PerformanceProfile {
@@ -28,7 +29,7 @@ Vertices {
         }
         TestDuration: 60
         SuccessOnError: 2147811330
-        SuccessOnError: 2147483650
+        SuccessOnError: 2147483662
         Name: "Test for localhost tablet version 1 with throttling"
     }
 }

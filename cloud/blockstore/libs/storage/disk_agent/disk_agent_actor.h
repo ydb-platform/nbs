@@ -17,6 +17,7 @@
 #include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/core/pending_request.h>
 #include <cloud/blockstore/libs/storage/core/request_info.h>
+#include <cloud/blockstore/libs/storage/disk_agent/model/bandwidth_calculator.h>
 #include <cloud/blockstore/libs/storage/disk_agent/model/config.h>
 #include <cloud/blockstore/libs/storage/disk_agent/recent_blocks_tracker.h>
 
@@ -70,6 +71,8 @@ private:
 
     // Pending WaitReady requests
     TDeque<TPendingRequest> PendingRequests;
+
+    TBandwidthCalculator BandwidthCalculator {*AgentConfig};
 
     ERegistrationState RegistrationState = ERegistrationState::NotStarted;
 
@@ -134,10 +137,10 @@ private:
 
     void SendRegisterRequest(const NActors::TActorContext& ctx);
 
-    template <typename TMethod, typename TOp>
+    template <typename TMethod, typename TEv, typename TOp>
     void PerformIO(
         const NActors::TActorContext& ctx,
-        const typename TMethod::TRequest::TPtr& ev,
+        const TEv& ev,
         TOp operation);
 
     template <typename TMethod, typename TRequestPtr>
@@ -220,6 +223,10 @@ private:
 
     void HandleCancelSuspension(
         const TEvDiskAgentPrivate::TEvCancelSuspensionRequest::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleParsedWriteDeviceBlocks(
+        const TEvDiskAgentPrivate::TEvParsedWriteDeviceBlocksRequest::TPtr& ev,
         const NActors::TActorContext& ctx);
 
     bool HandleRequests(STFUNC_SIG);

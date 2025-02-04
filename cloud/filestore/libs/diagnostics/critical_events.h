@@ -53,6 +53,7 @@ namespace NCloud::NFileStore{
     xxx(UnexpectedLocalNode)                                                   \
     xxx(NoRenameNodeInDestinationRequest)                                      \
     xxx(BadChildRefUponCommitRenameNodeInSource)                               \
+    xxx(FailedToLockNodeRef)                                                   \
 // FILESTORE_IMPOSSIBLE_EVENTS
 
 ////////////////////////////////////////////////////////////////////////////////

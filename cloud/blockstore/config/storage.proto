@@ -682,7 +682,8 @@ message TStorageServiceConfig
     // Number of ranges to process in a single Compaction run.
     optional uint32 CompactionRangeCountPerRun = 264;
 
-    // Specifies whether to use CompactionRangeCountPerRun.
+    // Specifies whether to use CompactionRangeCountPerRun,
+    // GarbageCompactionRangeCountPerRun and ForcedCompactionRangeCountPerRun.
     optional bool BatchCompactionEnabled = 265;
 
     // Timeout before allowing infra to withdraw our unavailable agents.
@@ -1089,4 +1090,27 @@ message TStorageServiceConfig
 
     // Enable buttons for device state changing, when they in error state.
     optional bool EnableToChangeErrorStatesFromDiskRegistryMonpage = 398;
+
+    // Enabling UsedQuota calculation as UsedIopsQuota + UsedBandwidthQuota
+    optional bool CalculateSplittedUsedQuotaMetric = 399;
+
+    // Number of ranges to process in a single Compaction run
+    // in the garbage mode if batch compaction enabled.
+    optional uint32 GarbageCompactionRangeCountPerRun = 400;
+
+    // Number of ranges to process in a single Compaction run
+    // in the range mode if batch compaction enabled.
+    optional uint32 ForcedCompactionRangeCountPerRun = 401;
+
+    optional bool YdbViewerServiceEnabled = 402;
+
+    // When enabled, tag "use-intermediate-write-buffer" will be added
+    // after scrubbing finds a mismatch
+    optional bool AutomaticallyEnableBufferCopyingAfterChecksumMismatch = 403;
+
+    // Enabling direct sending AcquireDevices to disk agent.
+    optional bool NonReplicatedVolumeDirectAcquireEnabled = 404;
+
+    // Timeout for TDestroyVolumeActor (in milliseconds)
+    optional uint32 DestroyVolumeTimeout = 405;
 }

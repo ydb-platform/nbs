@@ -1,0 +1,10 @@
+{
+    "compute_cores_num": 16,
+    "interfaces": [
+        {
+            "eth0": {
+                "speed": "300"
+            }
+        }
+    ]
+}

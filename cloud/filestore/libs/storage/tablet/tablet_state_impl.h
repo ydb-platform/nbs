@@ -16,6 +16,7 @@
 #include <cloud/filestore/libs/storage/tablet/model/large_blocks.h>
 #include <cloud/filestore/libs/storage/tablet/model/mixed_blocks.h>
 #include <cloud/filestore/libs/storage/tablet/model/node_index_cache.h>
+#include <cloud/filestore/libs/storage/tablet/model/node_ref.h>
 #include <cloud/filestore/libs/storage/tablet/model/range_locks.h>
 #include <cloud/filestore/libs/storage/tablet/model/read_ahead.h>
 #include <cloud/filestore/libs/storage/tablet/model/shard_balancer.h>
@@ -62,6 +63,7 @@ struct TIndexTabletState::TImpl
     TInMemoryIndexState InMemoryIndexState;
     TSet<ui64> OrphanNodeIds;
     TSet<TString> PendingNodeCreateInShardNames;
+    THashSet<TNodeRefKey, TNodeRefKeyHash> LockedNodeRefs;
 
     TCheckpointStore Checkpoints;
     TChannels Channels;

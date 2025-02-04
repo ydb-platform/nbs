@@ -588,6 +588,18 @@ void TDiskRegistryActor::HandleOperationCompleted(
     Actors.erase(ev->Sender);
 }
 
+void TDiskRegistryActor::HandleAddLaggingDevices(
+    const TEvDiskRegistry::TEvAddLaggingDevicesRequest::TPtr& ev,
+    const TActorContext& ctx)
+{
+    Y_UNUSED(ev);
+    Y_UNUSED(ctx);
+
+    BLOCKSTORE_DISK_REGISTRY_COUNTER(AddLaggingDevices);
+
+    // TODO(komarevtsev-d): Implement this.
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 STFUNC(TDiskRegistryActor::StateBoot)
@@ -879,19 +891,6 @@ bool ToLogicalBlocks(NProto::TDeviceConfig& device, ui32 logicalBlockSize)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TString LogDevices(const TVector<NProto::TDeviceConfig>& devices)
-{
-    TStringBuilder sb;
-    sb << "( ";
-    for (const auto& d: devices) {
-        sb << d.GetDeviceUUID() << "@" << d.GetAgentId() << " ";
-    }
-    sb << ")";
-    return sb;
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
 void TDiskRegistryActor::OnDiskAcquired(
     TVector<TAgentAcquireDevicesCachedRequest> sentAcquireRequests)
 {
@@ -943,6 +942,9 @@ void TDiskRegistryActor::SendCachedAcquireRequestsToAgent(
     const TActorContext& ctx,
     const NProto::TAgentConfig& config)
 {
+    if (Config->GetNonReplicatedVolumeDirectAcquireEnabled()) {
+        return;
+    }
     auto& acquireCacheByAgentId = State->GetAcquireCacheByAgentId();
     auto cacheIt = acquireCacheByAgentId.find(config.GetAgentId());
     if (cacheIt == acquireCacheByAgentId.end()) {

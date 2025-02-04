@@ -19,15 +19,18 @@ class TDiskAgentConfig
 private:
     NProto::TDiskAgentConfig Config;
     TString Rack;
+    ui32 NetworkMbitThroughput = 0;
 
 public:
     TDiskAgentConfig() = default;
 
     TDiskAgentConfig(
             NProto::TDiskAgentConfig config,
-            TString rack)
+            TString rack,
+            ui32 networkMbitThroughput)
         : Config(std::move(config))
         , Rack(std::move(rack))
+        , NetworkMbitThroughput(networkMbitThroughput)
     {}
 
     bool GetEnabled() const;
@@ -105,6 +108,7 @@ public:
 
     ui32 GetIOParserActorCount() const;
     bool GetOffloadAllIORequestsParsingEnabled() const;
+    bool GetIOParserActorAllocateStorageEnabled() const;
     bool GetDisableNodeBrokerRegistrationOnDevicelessAgent() const;
     ui32 GetMaxAIOContextEvents() const;
     ui32 GetPathsPerFileIOService() const;
@@ -118,6 +122,16 @@ public:
     const auto& GetPathToSerialNumberMapping() const
     {
         return Config.GetPathToSerialNumberMapping();
+    }
+
+    const NProto::TDiskAgentThrottlingConfig& GetThrottlerConfig() const
+    {
+        return Config.GetThrottlingConfig();
+    }
+
+    ui32 GetNetworkMbitThroughput() const
+    {
+        return NetworkMbitThroughput;
     }
 
     void Dump(IOutputStream& out) const;

@@ -23,7 +23,7 @@ runs:
     - name: install nebius cli
       shell: bash
       run: |
-        curl -sSL https://storage.ai.nebius.cloud/nebius/install.sh | bash
+        curl -sSL https://storage.eu-north1.nebius.cloud/cli/install.sh | bash
     - name: configure nebius cli
       shell: bash
       run: |

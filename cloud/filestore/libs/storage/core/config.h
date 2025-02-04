@@ -241,6 +241,7 @@ public:
     ui64 GetInMemoryIndexCacheNodesToNodeRefsCapacityRatio() const;
     bool GetInMemoryIndexCacheLoadOnTabletStart() const;
     ui64 GetInMemoryIndexCacheLoadOnTabletStartRowsPerTx() const;
+    TDuration GetInMemoryIndexCacheLoadSchedulePeriod() const;
 
     bool GetAsyncDestroyHandleEnabled() const;
     TDuration GetAsyncHandleOperationPeriod() const;
@@ -302,6 +303,8 @@ public:
 
     bool GetGuestWritebackCacheEnabled() const;
     ui64 GetMixedBlocksOffloadedRangesCapacity() const;
+
+    bool GetYdbViewerServiceEnabled() const;
 };
 
 }   // namespace NCloud::NFileStore::NStorage

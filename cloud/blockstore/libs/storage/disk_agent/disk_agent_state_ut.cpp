@@ -114,7 +114,7 @@ auto CreateSpdkConfig()
         device.SetDeviceId("uuid-" + ToString(i + 1));
     }
 
-    return std::make_shared<TDiskAgentConfig>(std::move(config), "rack");
+    return std::make_shared<TDiskAgentConfig>(std::move(config), "rack", 1000);
 }
 
 struct TNullConfigParams
@@ -150,7 +150,7 @@ auto CreateNullConfig(TNullConfigParams params)
     config.SetCachedConfigPath(std::move(params.CachedConfigPath));
     config.SetCachedSessionsPath(std::move(params.CachedSessionsPath));
 
-    return std::make_shared<TDiskAgentConfig>(std::move(config), "rack");
+    return std::make_shared<TDiskAgentConfig>(std::move(config), "rack", 1000);
 }
 
 TStorageConfigPtr CreateStorageConfig()
@@ -736,7 +736,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
                 size_t errors,
                 bool checkLockedDevices)
             {
-                auto config = std::make_shared<TDiskAgentConfig>(cfg, "rack");
+                auto config = std::make_shared<TDiskAgentConfig>(cfg, "rack", 1000);
 
                 TDiskAgentState state(
                     CreateStorageConfig(),
@@ -812,7 +812,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
 
         TDiskAgentState state(
             CreateStorageConfig(),
-            std::make_shared<TDiskAgentConfig>(std::move(config), "rack"),
+            std::make_shared<TDiskAgentConfig>(std::move(config), "rack", 1000),
             nullptr,    // spdk
             CreateTestAllocator(),
             NServer::CreateNullStorageProvider(),
