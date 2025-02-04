@@ -253,6 +253,7 @@ jobs:
       clean_ya_dir: ${{ github.event == 'workflow_dispatch' && 'no' || inputs.clean_ya_dir }}
       use_network_cache: ${{ github.event == 'workflow_dispatch' && 'yes'|| inputs.use_network_cache }}
       nebius: ${{ needs.provide-runner.outputs.nebius }}
+      truncate_enabled: ${{ contains(github.event.pull_request.labels.*.name, 'disable_truncate') && 'no' || 'yes' }}
     secrets: inherit
 
   sleep-if-needed:
