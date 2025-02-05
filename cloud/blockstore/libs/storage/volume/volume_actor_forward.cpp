@@ -880,7 +880,6 @@ BLOCKSTORE_FORWARD_REQUEST(RebuildMetadata,          TEvVolume)
 BLOCKSTORE_FORWARD_REQUEST(GetRebuildMetadataStatus, TEvVolume)
 BLOCKSTORE_FORWARD_REQUEST(ScanDisk,                 TEvVolume)
 BLOCKSTORE_FORWARD_REQUEST(GetScanDiskStatus,        TEvVolume)
-BLOCKSTORE_FORWARD_REQUEST(CheckRange,               TEvVolume)
 
 
 #undef BLOCKSTORE_FORWARD_REQUEST

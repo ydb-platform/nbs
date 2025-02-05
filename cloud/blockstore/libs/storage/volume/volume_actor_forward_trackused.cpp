@@ -220,7 +220,6 @@ GENERATE_NO_IMPL(RebuildMetadata,          TEvVolume)
 GENERATE_NO_IMPL(GetRebuildMetadataStatus, TEvVolume)
 GENERATE_NO_IMPL(ScanDisk,                 TEvVolume)
 GENERATE_NO_IMPL(GetScanDiskStatus,        TEvVolume)
-GENERATE_NO_IMPL(CheckRange,               TEvVolume)
 
 #undef GENERATE_IMPL
 

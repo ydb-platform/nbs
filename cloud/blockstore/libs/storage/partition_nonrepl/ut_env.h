@@ -467,7 +467,6 @@ public:
     BLOCKSTORE_DECLARE_METHOD(ZeroBlocks, TEvService);
     BLOCKSTORE_DECLARE_METHOD(CheckRange, TEvService);
     BLOCKSTORE_DECLARE_METHOD(ChecksumBlocks, TEvNonreplPartitionPrivate);
-    BLOCKSTORE_DECLARE_METHOD(CheckRange, TEvVolume);
 
 #undef BLOCKSTORE_DECLARE_METHOD
 };
