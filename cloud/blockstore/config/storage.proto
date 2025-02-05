@@ -1113,4 +1113,11 @@ message TStorageServiceConfig
 
     // Timeout for TDestroyVolumeActor (in milliseconds)
     optional uint32 DestroyVolumeTimeout = 405;
+
+    // Minimum compaction data size (in bytes) that lets us write the data to
+    // blobstorage (as a merged blob) else we will write it to mixed channel.
+    optional uint32 CompactionToMergedThreshold = 406;
+
+    // Overrides CompactionToMergedThreshold for SSD volumes.
+    optional uint32 CompactionToMergedThresholdSSD = 407;
 }

@@ -11541,6 +11541,246 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         // checking that drain-related counters are in a consistent state
         partition.Drain();
     }
+
+    Y_UNIT_TEST(ShouldAutomaticallyRunCompactionToMixed)
+    {
+        static constexpr ui32 compactionThreshold = 4;
+
+        auto config = DefaultConfig();
+        config.SetHDDMaxBlobsPerRange(compactionThreshold);
+        config.SetCompactionToMergedThreshold(17_KB);
+
+        auto runtime = PrepareTestActorRuntime(config);
+
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+
+        // WriteBlobThreshold == 1MB by default but block size is 4kb so no data
+        // will be written to merged channel, instead of data will be written to
+        // fresh channel and after flush will be moved to mixed channel.
+        for (size_t i = 1; i < compactionThreshold; ++i) {
+            partition.WriteBlocks(i, i);
+            partition.Flush();
+        }
+
+        {
+            auto response = partition.StatPartition();
+            const auto& stats = response->Record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(
+                compactionThreshold - 1,
+                stats.GetMixedBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(
+                compactionThreshold - 1,
+                stats.GetMixedBlocksCount());
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMergedBlobsCount());
+        }
+
+        // compaction will be started after write below (HDDMaxBlobsPerRange == 4)
+        partition.WriteBlocks(0, 0);
+        partition.Flush();
+
+        // wait for background operations completion
+        runtime->DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
+
+        // compacted 4 blocks with size 4 * 4096kb and it is less than
+        // threshold (17kb) so whole data will be in mixed channel
+        {
+            auto response = partition.StatPartition();
+            const auto& stats = response->Record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(
+                compactionThreshold + 1,
+                stats.GetMixedBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(
+                compactionThreshold * 2,
+                stats.GetMixedBlocksCount());
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMergedBlobsCount());
+        }
+
+        partition.Cleanup();
+
+        {
+            auto response = partition.StatPartition();
+            const auto& stats = response->Record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(1, stats.GetMixedBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(
+                compactionThreshold,
+                stats.GetMixedBlocksCount());
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMergedBlobsCount());
+        }
+    }
+
+    Y_UNIT_TEST(CompactionShouldWriteToDifferentChannelsDependsOnThreshold)
+    {
+        auto config = DefaultConfig();
+        config.SetCompactionToMergedThreshold(17_KB);
+
+        auto runtime = PrepareTestActorRuntime(config);
+
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+
+        partition.WriteBlocks(1, 1);
+        partition.Flush();
+        partition.WriteBlocks(2, 2);
+        partition.Flush();
+
+        {
+            auto response = partition.StatPartition();
+            const auto& stats = response->Record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(2, stats.GetMixedBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMergedBlobsCount());
+        }
+
+        partition.WriteBlocks(0, 0);
+
+        // compaction with data size less threshold (3 * 4096 < 17kb) will be
+        // write data to mixed channel
+        partition.Compaction();
+
+        {
+            auto response = partition.StatPartition();
+            const auto& stats = response->Record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(3, stats.GetMixedBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMergedBlobsCount());
+        }
+
+        partition.WriteBlocks(TBlockRange32::WithLength(3, 5), 3);
+        partition.Flush();
+
+        // compaction with data size greater threshold (8 * 4096 > 17kb) will be
+        // write data to merged channel
+        partition.Compaction();
+
+        {
+            auto response = partition.StatPartition();
+            const auto& stats = response->Record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(4, stats.GetMixedBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(1, stats.GetMergedBlobsCount());
+        }
+
+        partition.Cleanup();
+
+        {
+            auto response = partition.StatPartition();
+            const auto& stats = response->Record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(1, stats.GetMergedBlobsCount());
+        }
+    }
+
+    Y_UNIT_TEST(CompactionShouldMoveDataFromMergedToMixedInCaseThreshold)
+    {
+        auto config = DefaultConfig();
+        config.SetWriteBlobThreshold(3_KB);
+        config.SetCompactionToMergedThreshold(17_KB);
+
+        auto runtime = PrepareTestActorRuntime(config);
+
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+
+        // whole data will be written to merged channel directly because
+        // WriteBlobThreshold == 3kb and block size is 4kb
+        for (int i = 0; i < 4; ++i) {
+            partition.WriteBlocks(i, i);
+        }
+
+        {
+            auto response = partition.StatPartition();
+            const auto& stats = response->Record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetFreshBlocksCount());
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(4, stats.GetMergedBlobsCount());
+        }
+
+        // Compaction will be moved data to mixed channel because
+        // 4 * 4096 < 17kb
+        partition.Compaction();
+
+        {
+            auto response = partition.StatPartition();
+            const auto& stats = response->Record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetFreshBlocksCount());
+            UNIT_ASSERT_VALUES_EQUAL(1, stats.GetMixedBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(4, stats.GetMergedBlobsCount());
+        }
+
+        partition.Cleanup();
+
+        {
+            auto response = partition.StatPartition();
+            const auto& stats = response->Record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetFreshBlocksCount());
+            UNIT_ASSERT_VALUES_EQUAL(1, stats.GetMixedBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMergedBlobsCount());
+        }
+
+        for (int i = 0; i < 4; ++i) {
+            UNIT_ASSERT_VALUES_EQUAL(
+                GetBlockContent(i),
+                GetBlockContent(partition.ReadBlocks(i))
+            );
+        }
+    }
+
+    Y_UNIT_TEST(CompactionToMixedFromBlobWithHoles)
+    {
+        auto config = DefaultConfig();
+        config.SetWriteBlobThreshold(12_KB);
+        config.SetCompactionToMergedThreshold(1_MB);
+
+        auto runtime = PrepareTestActorRuntime(config);
+
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+
+        // write data to fresh channel and data with size more than 12kb
+        // to merged channel
+        partition.WriteBlocks(TBlockRange32::WithLength(5, 5), '5');   // merged
+        partition.WriteBlocks(TBlockRange32::WithLength(12, 1), '6');  // fresh
+        partition.WriteBlocks(TBlockRange32::WithLength(35, 20), '7'); // merged
+
+        {
+            auto response = partition.StatPartition();
+            const auto& stats = response->Record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(1, stats.GetFreshBlocksCount());
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(2, stats.GetMergedBlobsCount());
+        }
+
+        // Compaction will be moved data to mixed channel because compaction
+        // threshold is 1MB but full size of data is 55 * 4096
+        partition.Flush();
+        partition.Compaction();
+        partition.Cleanup();
+
+        {
+            auto response = partition.StatPartition();
+            const auto& stats = response->Record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetFreshBlocksCount());
+            UNIT_ASSERT_VALUES_EQUAL(1, stats.GetMixedBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMergedBlobsCount());
+        }
+
+        for (int i = 5; i < 10; ++i) {
+            UNIT_ASSERT_VALUES_EQUAL(
+                GetBlockContent('5'),
+                GetBlockContent(partition.ReadBlocks(i))
+            );
+        }
+        for (int i = 12; i < 13; ++i) {
+            UNIT_ASSERT_VALUES_EQUAL(
+                GetBlockContent('6'),
+                GetBlockContent(partition.ReadBlocks(i))
+            );
+        }
+        for (int i = 35; i < 55; ++i) {
+            UNIT_ASSERT_VALUES_EQUAL(
+                GetBlockContent('7'),
+                GetBlockContent(partition.ReadBlocks(i))
+            );
+        }
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage::NPartition
