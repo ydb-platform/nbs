@@ -418,9 +418,9 @@ func testCases() []differentChunkStorageTestCase {
 func checkIncremental(
 	t *testing.T,
 	f *fixture,
+	disk *types.Disk,
 	expectedSnapshotID string,
 	expectedCheckpointID string,
-	disk *types.Disk,
 ) {
 
 	snapshotID, checkpointID, err := f.storage.GetIncremental(f.ctx, disk)
@@ -507,12 +507,14 @@ func TestSnapshotsCreateIncrementalSnapshot(t *testing.T) {
 			f := createFixture(t)
 			defer f.teardown()
 
+			disk := types.Disk{
+				ZoneId: "zone",
+				DiskId: "disk",
+			}
+
 			snapshot1 := SnapshotMeta{
-				ID: "snapshot1",
-				Disk: &types.Disk{
-					ZoneId: "zone",
-					DiskId: "disk",
-				},
+				ID:           "snapshot1",
+				Disk:         &disk,
 				CheckpointID: "checkpoint1",
 				CreateTaskID: "create1",
 			}
@@ -522,10 +524,7 @@ func TestSnapshotsCreateIncrementalSnapshot(t *testing.T) {
 			require.NotNil(t, created)
 			require.Empty(t, created.BaseSnapshotID)
 			require.Empty(t, created.BaseCheckpointID)
-			checkIncremental(t, f, "", "", &types.Disk{
-				ZoneId: "zone",
-				DiskId: "disk",
-			})
+			checkIncremental(t, f, &disk, "", "")
 
 			created, err = f.storage.CreateSnapshot(f.ctx, SnapshotMeta{
 				ID: "snapshot2",
@@ -543,10 +542,7 @@ func TestSnapshotsCreateIncrementalSnapshot(t *testing.T) {
 
 			err = f.storage.SnapshotCreated(f.ctx, snapshot1.ID, 0, 0, 0, nil)
 			require.NoError(t, err)
-			checkIncremental(t, f, "snapshot1", "checkpoint1", &types.Disk{
-				ZoneId: "zone",
-				DiskId: "disk",
-			})
+			checkIncremental(t, f, &disk, "snapshot1", "checkpoint1")
 
 			snapshot3 := SnapshotMeta{
 				ID: "snapshot3",
@@ -567,10 +563,7 @@ func TestSnapshotsCreateIncrementalSnapshot(t *testing.T) {
 
 			err = f.storage.SnapshotCreated(f.ctx, snapshot3.ID, 0, 0, 0, nil)
 			require.NoError(t, err)
-			checkIncremental(t, f, "snapshot3", "checkpoint3", &types.Disk{
-				ZoneId: "zone",
-				DiskId: "disk",
-			})
+			checkIncremental(t, f, &disk, "snapshot3", "checkpoint3")
 
 			snapshot4 := SnapshotMeta{
 				ID: "snapshot4",
@@ -591,10 +584,7 @@ func TestSnapshotsCreateIncrementalSnapshot(t *testing.T) {
 
 			err = f.storage.SnapshotCreated(f.ctx, snapshot4.ID, 0, 0, 0, nil)
 			require.NoError(t, err)
-			checkIncremental(t, f, "snapshot4", "checkpoint4", &types.Disk{
-				ZoneId: "zone",
-				DiskId: "disk",
-			})
+			checkIncremental(t, f, &disk, "snapshot4", "checkpoint4")
 
 			_, err = f.storage.DeletingSnapshot(f.ctx, snapshot1.ID, "delete1")
 			require.NoError(t, err)
