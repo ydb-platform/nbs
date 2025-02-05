@@ -20,7 +20,7 @@
 #include <cloud/storage/core/libs/common/thread_pool.h>
 #include <cloud/storage/core/libs/common/timer.h>
 #include <cloud/storage/core/libs/daemon/mlock.h>
-#include <cloud/storage/core/libs/diagnostics/cgroup_stats_fetcher.h>
+#include <cloud/storage/core/libs/diagnostics/stats_fetcher.h>
 #include <cloud/storage/core/libs/diagnostics/critical_events.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 #include <cloud/storage/core/libs/diagnostics/monitoring.h>
@@ -92,7 +92,7 @@ void TBootstrapCommon::Start()
     FILESTORE_LOG_START_COMPONENT(BackgroundThreadPool);
     FILESTORE_LOG_START_COMPONENT(ProfileLog);
     FILESTORE_LOG_START_COMPONENT(RequestStatsUpdater);
-    FILESTORE_LOG_START_COMPONENT(CgroupStatsFetcher);
+    FILESTORE_LOG_START_COMPONENT(StatsFetcher);
 
     StartComponents();
 
@@ -121,7 +121,7 @@ void TBootstrapCommon::Stop()
 
     StopComponents();
 
-    FILESTORE_LOG_STOP_COMPONENT(CgroupStatsFetcher);
+    FILESTORE_LOG_STOP_COMPONENT(StatsFetcher);
     FILESTORE_LOG_STOP_COMPONENT(RequestStatsUpdater);
     FILESTORE_LOG_STOP_COMPONENT(ProfileLog);
     FILESTORE_LOG_STOP_COMPONENT(BackgroundThreadPool);
@@ -276,16 +276,16 @@ void TBootstrapCommon::InitActorSystem()
     STORAGE_INFO("TraceSerializer initialized");
 
     auto cpuWaitFilename = Configs->DiagnosticsConfig->GetCpuWaitFilename();
-    CgroupStatsFetcher = BuildCgroupStatsFetcher(
+    StatsFetcher = NCloud::NStorage::BuildStatsFetcher(
+        Configs->DiagnosticsConfig->GetStatsFetcherType(),
         cpuWaitFilename.empty()
             ? NCloud::NStorage::BuildCpuWaitStatsFilename(
                   Configs->DiagnosticsConfig->GetCpuWaitServiceName())
             : std::move(cpuWaitFilename),
         Log,
-        logging,
-        "FILESTORE_CGROUPS");
+        logging);
 
-    STORAGE_INFO("CgroupStatsFetcher initialized");
+    STORAGE_INFO("StatsFetcher initialized");
 
     NStorage::TActorSystemArgs args;
     args.NodeId = nodeId;
@@ -297,7 +297,7 @@ void TBootstrapCommon::InitActorSystem()
     args.DiagnosticsConfig = Configs->DiagnosticsConfig;
     args.Metrics = Metrics;
     args.UserCounters = UserCounters;
-    args.CgroupStatsFetcher = CgroupStatsFetcher;
+    args.StatsFetcher = StatsFetcher;
     args.ModuleFactories = ModuleFactories;
 
     ActorSystem = NStorage::CreateActorSystem(args);

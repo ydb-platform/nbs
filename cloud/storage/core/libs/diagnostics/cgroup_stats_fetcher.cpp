@@ -1,13 +1,11 @@
-#include "cgroup_stats_fetcher.h"
+#include "stats_fetcher.h"
 
+#include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/diagnostics/critical_events.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
-#include <util/datetime/cputimer.h>
 #include <util/generic/yexception.h>
 #include <util/string/builder.h>
-#include <util/string/cast.h>
-#include <util/string/printf.h>
 #include <util/system/file.h>
 
 namespace NCloud::NStorage {
@@ -17,7 +15,7 @@ namespace {
 ////////////////////////////////////////////////////////////////////////////////
 
 struct TCgroupStatsFetcher final
-    : public ICgroupStatsFetcher
+    : public IStatsFetcher
 {
 private:
     const TString ComponentName;
@@ -122,30 +120,11 @@ public:
     }
 };
 
-////////////////////////////////////////////////////////////////////////////////
-
-struct TCgroupStatsFetcherStub final
-    : public ICgroupStatsFetcher
-{
-    void Start() override
-    {
-    }
-
-    void Stop() override
-    {
-    }
-
-    TResultOrError<TDuration> GetCpuWait() override
-    {
-        return TDuration::Zero();
-    }
-};
-
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
 
-ICgroupStatsFetcherPtr CreateCgroupStatsFetcher(
+IStatsFetcherPtr CreateCgroupStatsFetcher(
     TString componentName,
     ILoggingServicePtr logging,
     TString statsFile)
@@ -155,40 +134,5 @@ ICgroupStatsFetcherPtr CreateCgroupStatsFetcher(
         std::move(logging),
         std::move(statsFile));
 }
-
-ICgroupStatsFetcherPtr CreateCgroupStatsFetcherStub()
-{
-    return std::make_shared<TCgroupStatsFetcherStub>();
-}
-
-TString BuildCpuWaitStatsFilename(const TString& serviceName)
-{
-    static constexpr auto CpuWaitStatsFilenameTemplate =
-        "/sys/fs/cgroup/cpu/system.slice/%s.service/cpuacct.wait";
-    if (!serviceName.empty()) {
-        return Sprintf(CpuWaitStatsFilenameTemplate, serviceName.c_str());
-    }
-    return {};
-}
-
-NCloud::NStorage::ICgroupStatsFetcherPtr BuildCgroupStatsFetcher(
-    TString cpuWaitFilename,
-    const TLog& log,
-    ILoggingServicePtr logging,
-    TString componentName)
-{
-    if (cpuWaitFilename.empty()) {
-        const auto& Log = log;
-        STORAGE_INFO(
-            "CpuWaitServiceName and CpuWaitFilename are empty, can't build "
-            "CgroupStatsFetcher");
-        return CreateCgroupStatsFetcherStub();
-    }
-
-    return CreateCgroupStatsFetcher(
-        std::move(componentName),
-        std::move(logging),
-        std::move(cpuWaitFilename));
-};
 
 }   // namespace NCloud::NStorage
