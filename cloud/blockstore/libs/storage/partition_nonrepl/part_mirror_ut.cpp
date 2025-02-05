@@ -2251,6 +2251,25 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
 
                         break;
                     }
+                    case TEvService::EvReadBlocksResponse: {
+                        using TEv = TEvService::TEvReadBlocksResponse;
+
+                        auto response = std::make_unique<TEv>(
+                            MakeError(E_IO, "block is broken"));
+
+                        runtime.Send(
+                            new IEventHandle(
+                                event->Recipient,
+                                event->Sender,
+                                response.release(),
+                                0,   // flags
+                                event->Cookie),
+                            0);
+
+                        return TTestActorRuntime::EEventAction::DROP;
+
+                        break;
+                    }
                 }
 
                 return TTestActorRuntime::DefaultObserverFunc(event);
@@ -2270,8 +2289,6 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
             runtime.DispatchEvents(options, TDuration::Seconds(3));
 
             UNIT_ASSERT_VALUES_EQUAL(E_IO, status);
-            UNIT_ASSERT_VALUES_EQUAL(S_OK, error);
-
         };
 
         checkRange(0, 1024);

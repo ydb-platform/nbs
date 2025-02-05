@@ -156,7 +156,7 @@ void TCheckRangeActor::HandleReadBlocksResponse(
             ctx,
             TBlockStoreComponents::VOLUME,
             "reading error has occurred: " + errorMessage + "   message   " +
-                msg->Record.GetError().message());
+                msg->Record.GetError().GetMessage());
         auto errorCode =
             msg->Record.GetError().code() == E_ARGUMENT ? E_ARGUMENT : E_IO;
         error = MakeError(errorCode, msg->Record.GetError().GetMessage());
@@ -187,17 +187,16 @@ void NPartition::TPartitionActor::HandleCheckRange(
     const TActorContext& ctx)
 {
     const auto* msg = ev->Get();
+    const ui64 maxBlocksPerRequest =
+        Config->GetBytesPerStripe() / State->GetBlockSize();
 
-    if (msg->Record.GetBlocksCount() >
-        Config->GetBytesPerStripe() /  State->GetBlockSize())
-    {
+    if (msg->Record.GetBlocksCount() > maxBlocksPerRequest) {
         auto err = MakeError(
             E_ARGUMENT,
             "Too many blocks requested: " +
                 std::to_string(msg->Record.GetBlocksCount()) +
                 " Max blocks per request : " +
-                std::to_string(
-                    Config->GetBytesPerStripe() /  State->GetBlockSize()));
+                std::to_string(maxBlocksPerRequest));
         auto response =
             std::make_unique<TEvService::TEvCheckRangeResponse>(std::move(err));
         NCloud::Reply(ctx, *ev, std::move(response));

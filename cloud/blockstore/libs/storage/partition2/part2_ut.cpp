@@ -7314,8 +7314,6 @@ Y_UNIT_TEST_SUITE(TPartition2Test)
             TDispatchOptions options;
             options.FinalEvents.emplace_back(TEvService::EvCheckRangeResponse);
 
-            sleep(5);
-
             UNIT_ASSERT_VALUES_EQUAL(E_IO, status);
         };
         checkRange(0, 1024);
