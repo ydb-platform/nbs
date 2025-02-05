@@ -575,6 +575,8 @@ void TBootstrapYdb::InitKikimrService()
     args.EndpointEventHandler = EndpointEventHandler;
     args.RootKmsKeyProvider = RootKmsKeyProvider;
 
+    args.TemporaryServer = Configs->Options->TemporaryServer;
+
     ActorSystem = NStorage::CreateActorSystem(args);
 
     if (args.IsDiskRegistrySpareNode) {

@@ -1105,6 +1105,18 @@ Y_UNIT_TEST_SUITE(THiveProxyTest)
         UNIT_ASSERT(env.HiveState->DownNodeIds.contains(sender.NodeId()));
     }
 
+    Y_UNIT_TEST(DontBackupWithEmptyBootInfoFilePath)
+    {
+        TString cacheFilePath = "";
+
+        TTestBasicRuntime runtime;
+        TTestEnv env(runtime, cacheFilePath);
+
+        auto sender = runtime.AllocateEdgeActor();
+
+        env.SendBackupTabletBootInfos(sender, S_FALSE);
+    }
+
     Y_UNIT_TEST(BootExternalInFallbackMode)
     {
         TString cacheFilePath =
