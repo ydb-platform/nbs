@@ -763,13 +763,13 @@ func TestSnapshotServiceDeleteSnapshotWhenCreationIsInFlight(t *testing.T) {
 	err = internal_client.WaitOperation(ctx, client, operation.Id)
 	require.NoError(t, err)
 
-	_ = internal_client.WaitOperation(ctx, client, createOp.Id)
+	createErr := internal_client.WaitOperation(ctx, client, createOp.Id)
 
 	// Should wait here because checkpoint is deleted on |createOp| operation
 	// cancel (and exact time of this event is unknown).
-	// TODO: enable this check after resolving issue
-	// https://github.com/ydb-platform/nbs/issues/2008.
-	// testcommon.WaitForCheckpointsAreEmpty(t, ctx, diskID)
+	if createErr != nil {
+		testcommon.WaitForCheckpointsAreEmpty(t, ctx, diskID)
+	}
 
 	testcommon.CheckConsistency(t, ctx)
 }
