@@ -36,6 +36,7 @@ namespace NCloud::NBlockStore::NStorage {
     xxx(ChangeStorageConfig,      __VA_ARGS__)                                 \
     xxx(GetStorageConfig,         __VA_ARGS__)                                 \
     xxx(GracefulShutdown,         __VA_ARGS__)                                 \
+
 // BLOCKSTORE_VOLUME_REQUESTS
 
 // requests forwarded from service to volume
