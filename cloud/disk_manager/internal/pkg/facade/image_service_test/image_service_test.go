@@ -1223,6 +1223,6 @@ func TestImageServiceCreateIncrementalImageFromDisk(t *testing.T) {
 	err = internal_client.WaitOperation(ctx, client, operation.Id)
 	require.NoError(t, err)
 
-	testcommon.RequireNoCheckpoints(t, ctx, diskID1)
+	testcommon.RequireCheckpointsDoNotExist(t, ctx, diskID1)
 	testcommon.CheckConsistency(t, ctx)
 }

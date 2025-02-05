@@ -606,18 +606,15 @@ func TestSnapshotServiceDeleteIncrementalSnapshotWhileCreating(t *testing.T) {
 	require.NoError(t, err)
 
 	if creationErr == nil {
-		testcommon.RequireNoCheckpoints(t, ctx, diskID)
+		testcommon.RequireCheckpointsDoNotExist(t, ctx, diskID)
 	} else {
-		snapshotID, _, err := testcommon.GetIncremental(
-			ctx,
-			&types.Disk{
-				ZoneId: "zone-a",
-				DiskId: diskID,
-			},
-		)
-
+		snapshotID, _, err := testcommon.GetIncremental(ctx, &types.Disk{
+			ZoneId: "zone-a",
+			DiskId: diskID,
+		})
 		require.NoError(t, err)
-		if snapshotID != "" {
+
+		if len(snapshotID) > 0 {
 			testcommon.RequireCheckpoint(t, ctx, diskID, baseSnapshotID)
 		}
 	}
@@ -707,7 +704,7 @@ func TestSnapshotServiceDeleteSnapshot(t *testing.T) {
 	err = internal_client.WaitOperation(ctx, client, operation2.Id)
 	require.NoError(t, err)
 
-	testcommon.RequireNoCheckpoints(t, ctx, diskID)
+	testcommon.RequireCheckpointsDoNotExist(t, ctx, diskID)
 	testcommon.CheckConsistency(t, ctx)
 }
 

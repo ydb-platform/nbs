@@ -353,7 +353,7 @@ func RequireCheckpoint(
 	require.EqualValues(t, checkpointID, checkpoints[0])
 }
 
-func RequireNoCheckpoints(
+func RequireCheckpointsDoNotExist(
 	t *testing.T,
 	ctx context.Context,
 	diskID string,
