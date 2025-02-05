@@ -26,16 +26,16 @@ private:
     const TRequestInfoPtr RequestInfo;
     const TStorageConfigPtr Config;
     const TString DiskId;
-    const ui64 BlockIdx;
-    const ui64 BlockCount;
+    const ui64 StartIndex;
+    const ui64 BlocksCount;
 
 public:
     TCheckRangeActor(
         TRequestInfoPtr requestInfo,
         TStorageConfigPtr config,
         TString diskId,
-        ui64 blockIdx,
-        ui64 blockCount);
+        ui64 startIndex,
+        ui64 blocksCount);
 
     void Bootstrap(const TActorContext& ctx);
 
@@ -61,13 +61,13 @@ TCheckRangeActor::TCheckRangeActor(
     TRequestInfoPtr requestInfo,
     TStorageConfigPtr config,
     TString diskId,
-    ui64 blockIdx,
-    ui64 blockCount)
+    ui64 startIndex,
+    ui64 blocksCount)
     : RequestInfo(std::move(requestInfo))
     , Config(std::move(config))
     , DiskId(std::move(diskId))
-    , BlockIdx(blockIdx)
-    , BlockCount(blockCount)
+    , StartIndex(startIndex)
+    , BlocksCount(blocksCount)
 {}
 
 void TCheckRangeActor::Bootstrap(const TActorContext& ctx)
@@ -81,8 +81,8 @@ void TCheckRangeActor::CheckRange(const TActorContext& ctx)
 
     auto request = std::make_unique<TEvService::TEvCheckRangeRequest>();
     request->Record.SetDiskId(DiskId);
-    request->Record.SetStartIndex(BlockIdx);
-    request->Record.SetBlocksCount(BlockCount);
+    request->Record.SetStartIndex(StartIndex);
+    request->Record.SetBlocksCount(BlocksCount);
 
     NCloud::Send(
         ctx,

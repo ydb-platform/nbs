@@ -82,7 +82,7 @@ void TCheckRangeActor::Bootstrap(const TActorContext& ctx)
     LOG_INFO(
         ctx,
         TBlockStoreComponents::SERVICE,
-        "Start check disrange for %s",
+        "Start check disk range for %s",
         Request.GetDiskId().c_str());
 
     NCloud::Send(
