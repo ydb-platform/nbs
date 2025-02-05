@@ -170,7 +170,7 @@ private:
     TRWMutex NodesLock;
     TLog Log;
     std::shared_ptr<INodeLoader> NodeLoader;
-    TIntrusiveList<TIndexNode> NodeAccessList;
+    TIntrusiveList<TIndexNode> NodeInserOrderList;
     bool DoCleanupNodes = false;
 
 public:
@@ -194,24 +194,33 @@ public:
 
     TIndexNodePtr LookupNode(ui64 nodeId)
     {
-        CleanupNodesIfNeeded();
+        TReadGuard rGuard(NodesLock);
 
-        TReadGuard guard(NodesLock);
-
-        TIndexNodePtr node;
+        CleanupNodesIfNeeded<TReadGuard>();
 
         auto it = Nodes.find(nodeId);
         if (it != Nodes.end()) {
-            node = *it;
-        } else {
-            node = LoadNodeById(nodeId);
-            if (node) {
-                Nodes.insert(node);
-            }
+            return *it;
         }
 
-        if (nodeId != RootNodeId && node) {
-            NodeAccessList.PushBack(node.get());
+        if (!NodeLoader) {
+            return nullptr;
+        }
+
+        // slow path
+        rGuard.Release();
+        TWriteGuard wGuard(NodesLock);
+
+        // recheck
+        it = Nodes.find(nodeId);
+        if (it != Nodes.end()) {
+            return *it;
+        }
+
+        auto node = LoadNodeById(nodeId);
+        if (node) {
+            Nodes.insert(node);
+            NodeInserOrderList.PushBack(node.get());
         }
 
         return node;
@@ -220,9 +229,9 @@ public:
     [[nodiscard]] bool
     TryInsertNode(TIndexNodePtr node, ui64 parentNodeId, const TString& name)
     {
-        CleanupNodesIfNeeded();
-
         TWriteGuard guard(NodesLock);
+
+        CleanupNodesIfNeeded<TWriteGuard>();
 
         auto it = Nodes.find(node->GetNodeId());
         if (it != Nodes.end()) {
@@ -250,7 +259,7 @@ public:
             node->SetRecordIndex(recordIndex);
         }
 
-        NodeAccessList.PushBack(node.get());
+        NodeInserOrderList.PushBack(node.get());
         Nodes.emplace(std::move(node));
         return true;
     }
@@ -259,7 +268,7 @@ public:
     {
         TWriteGuard guard(NodesLock);
 
-        return ForgetNodeNoLock(nodeId);
+        return ForgetNodeWriteLocked(nodeId);
     }
 
     void Clear()
@@ -390,7 +399,7 @@ private:
                     auto node =
                         TIndexNode::Create(**parentNodeIt, pathElemRecord->Name);
                     node->SetRecordIndex(pathElemIndex);
-                    NodeAccessList.PushBack(node.get());
+                    NodeInserOrderList.PushBack(node.get());
                     Nodes.insert(node);
 
                     STORAGE_TRACE(
@@ -432,7 +441,8 @@ private:
         return nullptr;
     }
 
-    TIndexNodePtr ForgetNodeNoLock(ui64 nodeId)
+    // NodesLock write lock is taken
+    TIndexNodePtr ForgetNodeWriteLocked(ui64 nodeId)
     {
         TIndexNodePtr node = nullptr;
         auto it = Nodes.find(nodeId);
@@ -448,6 +458,8 @@ private:
         return node;
     }
 
+    // called under read or write lock
+    template<typename TLockGuard>
     void CleanupNodesIfNeeded()
     {
         // Clean nodes only if we can safely load them
@@ -455,32 +467,45 @@ private:
             return;
         }
 
-        // Clean one node per lookup node, or `NodeCleanupBatchSize` nodes if
-        // `MaxNodeCount` is reached
-        ui32 maxNodesToClean = 1;
-        if (Nodes.size() >= MaxNodeCount) {
-            maxNodesToClean = NodeCleanupBatchSize;
-            DoCleanupNodes = true;
-        }
-
-        if (!DoCleanupNodes) {
+        bool isNodeLimitReached = Nodes.size() >= MaxNodeCount;
+        if (!isNodeLimitReached && !DoCleanupNodes) {
             return;
         }
 
-        // Stop cleanup when the number of nodes in use drops to half the limit.
-        if (DoCleanupNodes && (Nodes.size() <= (MaxNodeCount / 2))) {
-            DoCleanupNodes = false;
-            return;
+        // slow path
+
+        // if called under read lock upgrade it to write lock
+        if constexpr (std::is_same_v<TLockGuard, TReadGuard>) {
+            NodesLock.ReleaseRead();
+            NodesLock.AcquireWrite();
+
+            // recheck
+            isNodeLimitReached = Nodes.size() >= MaxNodeCount;
+            if (!isNodeLimitReached && !DoCleanupNodes) {
+                NodesLock.ReleaseWrite();
+                NodesLock.AcquireRead();
+                return;
+            }
         }
 
-        TWriteGuard guard(NodesLock);
+        // Don't clean if nodes ocupation reduced to half
+        DoCleanupNodes = Nodes.size() > (MaxNodeCount / 2);
 
-        auto it = NodeAccessList.begin();
-        while (maxNodesToClean && it != NodeAccessList.end()) {
-            auto nodeId = it->GetNodeId();
-            ++it;
-            --maxNodesToClean;
-            ForgetNodeNoLock(nodeId);
+        if (DoCleanupNodes) {
+            ui32 maxNodesToClean = isNodeLimitReached ? NodeCleanupBatchSize : 1;
+            auto it = NodeInserOrderList.begin();
+            while (maxNodesToClean && it != NodeInserOrderList.end()) {
+                auto nodeId = it->GetNodeId();
+                ++it;
+                --maxNodesToClean;
+                ForgetNodeWriteLocked(nodeId);
+            }
+        }
+
+        // if called under read lock downgrade write lock to read lock
+        if constexpr (std::is_same_v<TLockGuard, TReadGuard>) {
+            NodesLock.ReleaseWrite();
+            NodesLock.AcquireRead();
         }
     }
 };
