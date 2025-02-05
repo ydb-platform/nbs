@@ -633,7 +633,7 @@ void TBootstrapYdb::InitAuthService()
     }
 }
 
-void TBootstrapYdb::Warmup()
+void TBootstrapYdb::WarmupBSGroupsConnections()
 {
     if (!Configs->StorageConfig ||
         !Configs->StorageConfig->GetTabletBootInfoBackupFilePath())
@@ -647,7 +647,7 @@ void TBootstrapYdb::Warmup()
         TStringBuilder()
         << "trying to read groupIds from tablet boot info file: "
         << tabletBootInfoBackupFilePath);
-    ::NCloud::NStorage::NHiveProxy::NProto::TTabletBootInfoBackup backupProto;
+    NCloud::NStorage::NHiveProxy::NProto::TTabletBootInfoBackup backupProto;
 
     try {
         TFileLock lock(tabletBootInfoBackupFilePath);
@@ -677,13 +677,13 @@ void TBootstrapYdb::Warmup()
 
     STORAGE_INFO("Sending ping messages to groups");
 
-    THashSet<ui32> groupIdsToPing;
+    THashSet<ui32> groupIdsToWarmup;
     for (const auto& [_, tabletBootInfo]: backupProto.GetData()) {
         for (const auto& channel: tabletBootInfo.GetStorageInfo().GetChannels())
         {
             for (const auto& historyEntry: channel.GetHistory()) {
                 auto groupId = historyEntry.GetGroupID();
-                auto [_, inserted] = groupIdsToPing.insert(groupId);
+                auto [_, inserted] = groupIdsToWarmup.insert(groupId);
                 if (inserted) {
                     ActorSystem->Send(
                         NKikimr::MakeBlobStorageProxyID(groupId),

@@ -44,7 +44,7 @@ protected:
     void InitKikimrService() override;
     void InitAuthService() override;
 
-    void Warmup() override;
+    void WarmupBSGroupsConnections() override;
 };
 
 }   // namespace NCloud::NBlockStore::NServer

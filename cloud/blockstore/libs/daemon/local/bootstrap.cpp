@@ -47,7 +47,7 @@ void TBootstrapLocal::InitAuthService()
     // do nothing
 }
 
-void TBootstrapLocal::Warmup()
+void TBootstrapLocal::WarmupBSGroupsConnections()
 {
     // do nothing
 }
