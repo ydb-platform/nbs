@@ -614,8 +614,12 @@ func TestSnapshotServiceDeleteIncrementalSnapshotWhileCreating(t *testing.T) {
 		})
 		require.NoError(t, err)
 
+		// If there is a record about this disk left in incrementality table,
+		// checkpoint that corresponds to base snapshot should not be deleted.
 		if len(snapshotID) > 0 {
 			testcommon.RequireCheckpoint(t, ctx, diskID, baseSnapshotID)
+		} else {
+			testcommon.RequireCheckpointsDoNotExist(t, ctx, diskID)
 		}
 	}
 
@@ -762,9 +766,9 @@ func TestSnapshotServiceDeleteSnapshotWhenCreationIsInFlight(t *testing.T) {
 
 	createErr := internal_client.WaitOperation(ctx, client, createOp.Id)
 
-	// Should wait here because checkpoint is deleted on |createOp| operation
-	// cancel (and exact time of this event is unknown).
 	if createErr != nil {
+		// Should wait here because checkpoint is deleted on |createOp| operation
+		// cancel (and exact time of this event is unknown).
 		testcommon.WaitForCheckpointsAreEmpty(t, ctx, diskID)
 	}
 
