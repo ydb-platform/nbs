@@ -507,7 +507,12 @@ ui32 ComputeShardCount(
 {
     const double fileStoreSize = blocksCount * blockSize;
 
-    const ui32 shardCount = std::floor(fileStoreSize / shardAllocationUnit);
+    if (fileStoreSize < shardAllocationUnit) {
+        // No need in using sharding for small enough filesystems
+        return 0;
+    }
+
+    const ui32 shardCount = std::ceil(fileStoreSize / shardAllocationUnit);
     return Min(shardCount, MaxShardCount);
 }
 
