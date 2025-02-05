@@ -321,9 +321,7 @@ func wrapError(e error) error {
 			return errors.NewRetriableError(e)
 		}
 
-		// Public errors handling.
-		// TODO: Should be reconsidered after NBS-1853 when ClientError will
-		// have public/internal flag.
+		// TODO: some of these errors should be public.
 		switch clientErr.Code {
 		case nbs_client.E_PRECONDITION_FAILED:
 			e = errors.NewDetailedError(
@@ -331,7 +329,7 @@ func wrapError(e error) error {
 				&errors.ErrorDetails{
 					Code:     codes.PreconditionFailed,
 					Message:  clientErr.Message,
-					Internal: false,
+					Internal: true,
 				},
 			)
 		case nbs_client.E_RESOURCE_EXHAUSTED:
@@ -340,7 +338,7 @@ func wrapError(e error) error {
 				&errors.ErrorDetails{
 					Code:     codes.ResourceExhausted,
 					Message:  clientErr.Message,
-					Internal: false,
+					Internal: true,
 				},
 			)
 		}
