@@ -2,8 +2,8 @@ LIBRARY()
 
 SRCS(
     busy_idle_calculator.cpp
-    cgroup_stats_fetcher.cpp
     counters_helper.cpp
+    cgroup_stats_fetcher.cpp
     critical_events.cpp
     executor_counters.cpp
     histogram_types.cpp
@@ -15,7 +15,9 @@ SRCS(
     postpone_time_predictor.cpp
     request_counters.cpp
     solomon_counters.cpp
+    stats_fetcher.cpp
     stats_updater.cpp
+    task_stats_fetcher.cpp
     trace_processor_mon.cpp
     trace_processor.cpp
     trace_reader.cpp
@@ -46,4 +48,5 @@ PEERDIR(
 
 END()
 
+RECURSE_FOR_TESTS(qemu_ut)
 RECURSE_FOR_TESTS(ut)
