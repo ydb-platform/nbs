@@ -150,13 +150,12 @@ void TCheckRangeActor::HandleReadBlocksResponse(
     auto error = MakeError(S_OK);
 
     if (HasError(msg->Record.GetError())) {
-        auto errorMessage = msg->Record.GetError().GetMessage();
+        const auto& errorMessage = msg->Record.GetError().GetMessage();
         LOG_ERROR(
             ctx,
-            TBlockStoreComponents::VOLUME,
-            "reading error has occurred: " + errorMessage + "   message   " +
-                msg->Record.GetError().GetMessage());
-        auto errorCode =
+            TBlockStoreComponents::PARTITION,
+            "reading error has occurred: " + errorMessage);
+        const auto& errorCode =
             msg->Record.GetError().code() == E_ARGUMENT ? E_ARGUMENT : E_IO;
         error = MakeError(errorCode, msg->Record.GetError().GetMessage());
     }
