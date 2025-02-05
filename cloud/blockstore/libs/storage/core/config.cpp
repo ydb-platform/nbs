@@ -531,6 +531,7 @@ TDuration MSeconds(ui32 value)
     xxx(CalculateSplittedUsedQuotaMetric,                 bool,    false      )\
                                                                                \
     xxx(DestroyVolumeTimeout,                      TDuration, Seconds(30)     )\
+    xxx(CompactionMergedBlobThresholdHDD,          ui32,      0               )\
 // BLOCKSTORE_STORAGE_CONFIG_RW
 
 #define BLOCKSTORE_STORAGE_CONFIG(xxx)                                         \
