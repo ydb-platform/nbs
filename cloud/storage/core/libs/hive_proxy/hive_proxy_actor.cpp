@@ -74,11 +74,9 @@ void THiveProxyActor::SendRequest(
     ui64 hive,
     IEventBase* request)
 {
-    if (auto clientId = ClientCache->Send(ctx, hive, request);
-        clientId != HiveClientId)
-    {
-        HiveClientId = clientId;
-        HiveReconnectStartTime = GetCycleCount();
+    ClientCache->Send(ctx, hive, request);
+    if (HiveDisconnected) {
+        HiveReconnectStartCycles = GetCycleCount();
     }
 }
 
@@ -239,13 +237,14 @@ void THiveProxyActor::HandleConnect(
         auto error = MakeKikimrError(msg->Status, TStringBuilder()
             << "Connect to hive " << hive << " failed");
         HandleConnectionError(ctx, error, hive, true);
-    } else if (msg->ClientId == HiveClientId && HiveReconnectStartTime)
+    } else if (HiveReconnectStartCycles)
     {
         if (HiveReconnectTimeCounter) {
             HiveReconnectTimeCounter->Add(
-                CyclesToDuration(GetCycleCount() - HiveReconnectStartTime).MicroSeconds());
+                CyclesToDuration(GetCycleCount() - HiveReconnectStartCycles).MicroSeconds());
         }
-        HiveReconnectStartTime = 0;
+        HiveReconnectStartCycles = 0;
+        HiveDisconnected = false;
     }
 }
 
@@ -257,7 +256,6 @@ void THiveProxyActor::HandleDisconnect(
 
     ui64 hive = msg->TabletId;
     ClientCache->OnDisconnect(ev);
-    HiveClientId = {};
 
     auto error = MakeError(E_REJECTED, TStringBuilder()
         << "Disconnected from hive " << hive);
@@ -273,7 +271,7 @@ void THiveProxyActor::HandleConnectionError(
     Y_UNUSED(error);
     Y_UNUSED(connectFailed);
 
-    HiveClientId = {};
+    HiveDisconnected = true;
 
     LOG_ERROR_S(ctx, LogComponent,
         "Pipe to hive" << hive << " has been reset ");
@@ -340,11 +338,8 @@ void THiveProxyActor::HandleConnectionError(
 
         for (const auto& actorId: states->Actors) {
             auto clientId = ClientCache->Prepare(ctx, hive);
-            if (!HiveClientId) {
-                HiveClientId = clientId;
-                if (!HiveReconnectStartTime) {
-                    HiveReconnectStartTime = GetCycleCount();
-                }
+            if (!HiveReconnectStartCycles) {
+                HiveReconnectStartCycles = GetCycleCount();
             }
             NCloud::Send<TEvHiveProxyPrivate::TEvChangeTabletClient>(
                 ctx,

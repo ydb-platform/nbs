@@ -179,8 +179,8 @@ private:
 
     const NMonitoring::TDynamicCounterPtr Counters;
     NMonitoring::TDynamicCounters::TCounterPtr HiveReconnectTimeCounter;
-    ui64 HiveReconnectStartTime = 0;
-    NActors::TActorId HiveClientId;
+    ui64 HiveReconnectStartCycles = 0;
+    bool HiveDisconnected = true;
 
 public:
     explicit THiveProxyActor(THiveProxyConfig config);

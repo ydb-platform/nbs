@@ -1570,7 +1570,7 @@ Y_UNIT_TEST_SUITE(THiveProxyTest)
         env.EnableTabletResolverScheduling();
         env.RebootHive();
 
-        for (int retries = 0; retries < 5 && !hiveLockRequests; ++retries) {
+        while (!hiveLockRequests) {
             // Pipe to hive may take a long time to connect
             // Wait until hive receives the lock request
             runtime.DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
