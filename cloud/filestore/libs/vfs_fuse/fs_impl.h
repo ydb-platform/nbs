@@ -2,10 +2,10 @@
 
 #include "public.h"
 
-#include "cache.h"
 #include "config.h"
 #include "fs.h"
 #include "handle_ops_queue.h"
+#include "node_cache.h"
 
 #include <cloud/filestore/libs/diagnostics/request_stats.h>
 #include <cloud/filestore/libs/service/context.h>
@@ -75,12 +75,14 @@ private:
 
     NVFS::TFSyncQueue FSyncQueue;
 
-    TCache Cache;
-    TMutex CacheLock;
+    TNodeCache NodeCache;
+    TMutex NodeCacheLock;
+
     THashMap<ui64, std::shared_ptr<TDirectoryHandle>> DirectoryHandles;
+    TMutex DirectoryHandlesLock;
 
     TXAttrCache XAttrCache;
-    TMutex XAttrLock;
+    TMutex XAttrCacheLock;
 
     THandleOpsQueuePtr HandleOpsQueue;
     TMutex HandleOpsQueueLock;
@@ -384,7 +386,7 @@ private:
         fuse_ino_t ino,
         uint64_t fh);
 
-    bool UpdateNodesCache(
+    bool UpdateNodeCache(
         const NProto::TNodeAttr& attrs,
         fuse_entry_param& entry);
 

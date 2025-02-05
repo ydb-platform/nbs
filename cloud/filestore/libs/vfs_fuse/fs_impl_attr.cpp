@@ -215,7 +215,7 @@ void TFileSystem::GetXAttr(
         return;
     }
 
-    with_lock (XAttrLock) {
+    with_lock (XAttrCacheLock) {
         if (auto xattr = XAttrCache.Get(ino, name)) {
             if (xattr->Value) {
                 ReplyXAttrInt(*callContext, {}, req, *xattr->Value, size);
@@ -327,7 +327,7 @@ void TFileSystem::RemoveXAttr(
             self->FSyncQueue.Dequeue(reqId, error, TNodeId {ino});
 
             if (CheckResponse(self, *callContext, req, response)) {
-                with_lock (self->XAttrLock) {
+                with_lock (self->XAttrCacheLock) {
                     self->XAttrCache.Forget(ino, name);
                 }
 
