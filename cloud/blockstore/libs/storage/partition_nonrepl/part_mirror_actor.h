@@ -180,6 +180,11 @@ private:
         const typename TMethod::TRequest::TPtr& ev,
         const NActors::TActorContext& ctx);
 
+    TResultOrError<TSet<NActors::TActorId>> SelectReplicasToReadFrom(
+        ui32 replicaIndex,
+        TBlockRange64 blockRange,
+        const TString& methodName);
+
     BLOCKSTORE_IMPLEMENT_REQUEST(ReadBlocks, TEvService);
     BLOCKSTORE_IMPLEMENT_REQUEST(WriteBlocks, TEvService);
     BLOCKSTORE_IMPLEMENT_REQUEST(ReadBlocksLocal, TEvService);

@@ -277,7 +277,7 @@ public:
         Opts.AddLongOption(
                 "replica-index",
                 "from which replica(numerate from 1) read data, only for "
-                "ssd-io disks")
+                "mirror* disks")
             .RequiredArgument("NUM")
             .StoreResult(&ReplicaIndex);
     }

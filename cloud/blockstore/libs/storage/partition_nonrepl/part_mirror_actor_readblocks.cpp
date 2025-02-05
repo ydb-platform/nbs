@@ -391,68 +391,30 @@ STFUNC(TRequestActor<TMethod>::StateWork)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-template <typename TMethod>
-void TMirrorPartitionActor::ReadBlocks(
-    const typename TMethod::TRequest::TPtr& ev,
-    const TActorContext& ctx)
+auto TMirrorPartitionActor::SelectReplicasToReadFrom(
+    ui32 replicaIndex,
+    TBlockRange64 blockRange,
+    const TString& methodName) -> TResultOrError<TSet<TActorId>>
 {
-    auto requestInfo = CreateRequestInfo(
-        ev->Sender,
-        ev->Cookie,
-        ev->Get()->CallContext);
-
-    if (HasError(Status)) {
-        Reply(
-            ctx,
-            *requestInfo,
-            std::make_unique<typename TMethod::TResponse>(Status));
-
-        return;
-    }
-
-    auto& record = ev->Get()->Record;
-
-    const auto blockRange = TBlockRange64::WithLength(
-        record.GetStartIndex(),
-        record.GetBlocksCount());
-
-    if (ResyncRangeStarted && GetScrubbingRange().Overlaps(blockRange)) {
-        auto response = std::make_unique<typename TMethod::TResponse>(
-            MakeError(
-                E_REJECTED,
-                TStringBuilder()
-                    << "Request " << TMethod::Name
-                    << " intersects with currently resyncing range"));
-        NCloud::Reply(ctx, *ev, std::move(response));
-        return;
-    }
-
-    const auto replicaIndex = record.GetHeaders().GetReplicaIndex();
     TSet<TActorId> replicaActorIds;
     if (replicaIndex) {
         if (replicaIndex > State.GetReplicaInfos().size()) {
-            auto response =
-                std::make_unique<typename TMethod::TResponse>(MakeError(
-                    E_ARGUMENT,
-                    TStringBuilder()
-                        << "Request " << TMethod::Name
-                        << " has incorrect ReplicaIndex " << replicaIndex
-                        << " disk has " << State.GetReplicaInfos().size()
-                        << " replicas"));
-            NCloud::Reply(ctx, *ev, std::move(response));
-            return;
+            return MakeError(
+                E_ARGUMENT,
+                TStringBuilder()
+                    << "Request " << methodName
+                    << " has incorrect ReplicaIndex " << replicaIndex
+                    << " disk has " << State.GetReplicaInfos().size()
+                    << " replicas");
         }
 
         const auto& replicaInfo = State.GetReplicaInfos()[replicaIndex - 1];
         if (!replicaInfo.Config->DevicesReadyForReading(blockRange)) {
-            auto response =
-                std::make_unique<typename TMethod::TResponse>(MakeError(
-                    E_REJECTED,
-                    TStringBuilder() << "Cannot process " << TMethod::Name
-                                     << " cause replica " << replicaIndex
-                                     << " has not ready devices"));
-            NCloud::Reply(ctx, *ev, std::move(response));
-            return;
+            return MakeError(
+                E_REJECTED,
+                TStringBuilder()
+                    << "Cannot process " << methodName << " cause replica "
+                    << replicaIndex << " has not ready devices");
         }
         replicaActorIds.insert(State.GetReplicaActors()[replicaIndex - 1]);
     } else {
@@ -464,12 +426,7 @@ void TMirrorPartitionActor::ReadBlocks(
             const auto error =
                 State.NextReadReplica(blockRange, &replicaActorId);
             if (HasError(error)) {
-                Reply(
-                    ctx,
-                    *requestInfo,
-                    std::make_unique<typename TMethod::TResponse>(error));
-
-                return;
+                return error;
             }
 
             if (!replicaActorIds.insert(replicaActorId).second) {
@@ -478,7 +435,52 @@ void TMirrorPartitionActor::ReadBlocks(
         }
     }
 
-    LOG_DEBUG(ctx, TBlockStoreComponents::PARTITION_WORKER,
+    return replicaActorIds;
+}
+
+template <typename TMethod>
+void TMirrorPartitionActor::ReadBlocks(
+    const typename TMethod::TRequest::TPtr& ev,
+    const TActorContext& ctx)
+{
+    using TResponse = TMethod::TResponse;
+
+    auto requestInfo =
+        CreateRequestInfo(ev->Sender, ev->Cookie, ev->Get()->CallContext);
+
+    if (HasError(Status)) {
+        Reply(ctx, *requestInfo, std::make_unique<TResponse>(Status));
+
+        return;
+    }
+
+    auto& record = ev->Get()->Record;
+
+    const auto blockRange = TBlockRange64::WithLength(
+        record.GetStartIndex(),
+        record.GetBlocksCount());
+
+    if (ResyncRangeStarted && GetScrubbingRange().Overlaps(blockRange)) {
+        auto response = std::make_unique<TResponse>(MakeError(
+            E_REJECTED,
+            TStringBuilder() << "Request " << TMethod::Name
+                             << " intersects with currently resyncing range"));
+        NCloud::Reply(ctx, *ev, std::move(response));
+        return;
+    }
+
+    const auto replicaIndex = record.GetHeaders().GetReplicaIndex();
+    auto [replicaActorIds, error] =
+        SelectReplicasToReadFrom(replicaIndex, blockRange, TMethod::Name);
+
+    if (HasError(error)) {
+        NCloud::Reply(ctx, *ev, std::make_unique<TResponse>(error));
+        return;
+    }
+
+    LOG_DEBUG(
+        ctx,
+        TBlockStoreComponents::PARTITION_WORKER,
         "[%s] Will read %s from %u replicas",
         DiskId.c_str(),
         DescribeRange(blockRange).c_str(),
