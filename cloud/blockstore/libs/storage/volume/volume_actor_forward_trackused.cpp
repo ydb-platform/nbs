@@ -208,6 +208,7 @@ GENERATE_IMPL(WriteBlocksLocal,   TEvService)
 GENERATE_NO_IMPL(CreateCheckpoint,    TEvService)
 GENERATE_NO_IMPL(DeleteCheckpoint,    TEvService)
 GENERATE_NO_IMPL(GetCheckpointStatus, TEvService)
+GENERATE_NO_IMPL(CheckRange,          TEvService)
 
 GENERATE_NO_IMPL(DescribeBlocks,           TEvVolume)
 GENERATE_NO_IMPL(GetUsedBlocks,            TEvVolume)
@@ -219,6 +220,7 @@ GENERATE_NO_IMPL(RebuildMetadata,          TEvVolume)
 GENERATE_NO_IMPL(GetRebuildMetadataStatus, TEvVolume)
 GENERATE_NO_IMPL(ScanDisk,                 TEvVolume)
 GENERATE_NO_IMPL(GetScanDiskStatus,        TEvVolume)
+GENERATE_NO_IMPL(CheckRange,               TEvVolume)
 
 #undef GENERATE_IMPL
 
