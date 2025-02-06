@@ -6,6 +6,7 @@ SRCS(
     auth_scheme.cpp
     context.cpp
     device_handler.cpp
+    memory_safe_storage.cpp
     request_helpers.cpp
     request.cpp
     service_auth.cpp

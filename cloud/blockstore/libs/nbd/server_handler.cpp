@@ -953,7 +953,8 @@ IServerHandlerFactoryPtr CreateServerHandlerFactory(
         std::move(storage),
         options.ClientId,
         options.BlockSize,
-        options.UnalignedRequestsDisabled);
+        options.UnalignedRequestsDisabled,
+        options.CheckBufferModificationDuringWriting);
 
     return std::make_shared<TServerHandlerFactory>(
         std::move(logging),

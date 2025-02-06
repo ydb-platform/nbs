@@ -32,14 +32,16 @@ struct TDefaultDeviceHandlerFactory final
         IStoragePtr storage,
         TString clientId,
         ui32 blockSize,
-        bool unalignedRequestsDisabled) override
+        bool unalignedRequestsDisabled,
+        bool checkBufferModificationDuringWriting) override
     {
         if (unalignedRequestsDisabled) {
             return std::make_shared<TAlignedDeviceHandler>(
                 std::move(storage),
                 std::move(clientId),
                 blockSize,
-                MaxSubRequestSize);
+                MaxSubRequestSize,
+                checkBufferModificationDuringWriting);
         }
 
         return std::make_shared<TUnalignedDeviceHandler>(
@@ -47,7 +49,8 @@ struct TDefaultDeviceHandlerFactory final
             std::move(clientId),
             blockSize,
             MaxSubRequestSize,
-            MaxUnalignedRequestSize);
+            MaxUnalignedRequestSize,
+            checkBufferModificationDuringWriting);
     }
 };
 

@@ -471,12 +471,14 @@ TUnalignedDeviceHandler::TUnalignedDeviceHandler(
         TString clientId,
         ui32 blockSize,
         ui32 maxSubRequestSize,
-        ui32 maxUnalignedRequestSize)
+        ui32 maxUnalignedRequestSize,
+        bool checkBufferModificationDuringWriting)
     : Backend(std::make_shared<TAlignedDeviceHandler>(
           std::move(storage),
           std::move(clientId),
           blockSize,
-          maxSubRequestSize))
+          maxSubRequestSize,
+          checkBufferModificationDuringWriting))
     , BlockSize(blockSize)
     , MaxUnalignedBlockCount(maxUnalignedRequestSize / BlockSize)
 {}

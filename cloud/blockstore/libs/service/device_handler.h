@@ -45,7 +45,8 @@ struct IDeviceHandlerFactory
         IStoragePtr storage,
         TString clientId,
         ui32 blockSize,
-        bool unalignedRequestsDisabled) = 0;
+        bool unalignedRequestsDisabled,
+        bool checkBufferModificationDuringWriting) = 0;
 };
 
 ////////////////////////////////////////////////////////////////////////////////

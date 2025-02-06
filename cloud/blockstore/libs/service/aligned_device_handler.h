@@ -57,7 +57,8 @@ public:
         IStoragePtr storage,
         TString clientId,
         ui32 blockSize,
-        ui32 maxSubRequestSize);
+        ui32 maxSubRequestSize,
+        bool checkBufferModificationDuringWriting);
 
     // implements IDeviceHandler
     NThreading::TFuture<NProto::TReadBlocksLocalResponse> Read(

@@ -26,6 +26,7 @@ struct TStorageOptions
     ui64 BlocksCount = 0;
     ui32 VhostQueuesCount = 0;
     bool UnalignedRequestsDisabled = false;
+    bool CheckBufferModificationDuringWriting = false;
 };
 
 ////////////////////////////////////////////////////////////////////////////////

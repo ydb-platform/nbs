@@ -421,7 +421,8 @@ public:
             std::move(storage),
             options.ClientId,
             options.BlockSize,
-            options.UnalignedRequestsDisabled);
+            options.UnalignedRequestsDisabled,
+            options.CheckBufferModificationDuringWriting);
 
         auto endpoint = std::make_shared<TEndpoint>(
             AppCtx,
