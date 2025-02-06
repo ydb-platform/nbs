@@ -458,13 +458,15 @@ ui32 NodesLimit(
     xxx(BoostPercentage,                        __VA_ARGS__)                   \
 // PERFORMANCE_PROFILE_PARAMETERS_AU
 
+}   // namespace
+
 void SetupFileStorePerformanceAndChannels(
     bool allocateMixed0Channel,
-    const ui32 allocationUnitCount,
     const TStorageConfig& config,
     NKikimrFileStore::TConfig& fileStore,
     const NProto::TFileStorePerformanceProfile& clientProfile)
 {
+    ui32 allocationUnitCount = ComputeAllocationUnitCount(config, fileStore);
     OverrideStorageMediaKind(config, fileStore);
 
 #define SETUP_PARAMETER_SIMPLE(name, ...)                                      \
@@ -496,8 +498,6 @@ void SetupFileStorePerformanceAndChannels(
         fileStore);
 }
 
-}   // namespace
-
 ////////////////////////////////////////////////////////////////////////////////
 
 ui32 ComputeShardCount(
@@ -511,20 +511,6 @@ ui32 ComputeShardCount(
     return Min(shardCount, MaxShardCount);
 }
 
-void SetupFileStorePerformanceAndChannels(
-    bool allocateMixed0Channel,
-    const TStorageConfig& config,
-    NKikimrFileStore::TConfig& fileStore,
-    const NProto::TFileStorePerformanceProfile& clientProfile)
-{
-    SetupFileStorePerformanceAndChannels(
-        allocateMixed0Channel,
-        ComputeAllocationUnitCount(config, fileStore),
-        config,
-        fileStore,
-        clientProfile);
-}
-
 TMultiShardFileStoreConfig SetupMultiShardFileStorePerformanceAndChannels(
     const TStorageConfig& config,
     const NKikimrFileStore::TConfig& fileStore,
@@ -535,7 +521,6 @@ TMultiShardFileStoreConfig SetupMultiShardFileStorePerformanceAndChannels(
     result.MainFileSystemConfig = fileStore;
     SetupFileStorePerformanceAndChannels(
         false, // allocateMixed0Channel
-        1, // allocationUnitCount
         config,
         result.MainFileSystemConfig,
         clientProfile);
