@@ -2298,6 +2298,10 @@ Y_UNIT_TEST_SUITE(TModel)
         StorageConfig.SetAutomaticShardCreationEnabled(true);
         StorageConfig.SetShardAllocationUnit(4_TB);
         StorageConfig.SetAutomaticallyCreatedShardSize(5_TB);
+        StorageConfig.SetSSDMaxWriteIops(Max<ui32>());
+
+        auto OldMaxWriteIops = ClientPerformanceProfile.GetMaxWriteIops();
+        ClientPerformanceProfile.ClearMaxWriteIops();
 
         KikimrConfig.SetBlocksCount(4_TB / 4_KB);
         auto fs = SetupMultiShardFileStorePerformanceAndChannels(
@@ -2306,6 +2310,13 @@ Y_UNIT_TEST_SUITE(TModel)
             ClientPerformanceProfile,
             0);
         UNIT_ASSERT_VALUES_EQUAL(1, fs.ShardConfigs.size());
+        // MaxWriteIops per allocation unit is 1000, so (4096 GiB / 32 GiB) *
+        // 1000 = 128000
+        UNIT_ASSERT_VALUES_EQUAL(
+            128000,
+            fs.MainFileSystemConfig.GetPerformanceProfileMaxWriteIops());
+
+        ClientPerformanceProfile.SetMaxWriteIops(OldMaxWriteIops);
 
         KikimrConfig.SetBlocksCount(4_TB / 4_KB + 1);
         fs = SetupMultiShardFileStorePerformanceAndChannels(
