@@ -408,7 +408,7 @@ auto TMirrorPartitionActor::SelectReplicasToReadFrom(
     }
 
     if (replicaIndex) {
-        const auto& replicaInfo = State.GetReplicaInfos()[replicaIndex - 1];
+        const auto& replicaInfo = replicaInfos[replicaIndex - 1];
         if (!replicaInfo.Config->DevicesReadyForReading(blockRange)) {
             return MakeError(
                 E_REJECTED,
