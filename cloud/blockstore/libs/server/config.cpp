@@ -101,6 +101,9 @@ constexpr TDuration Seconds(int s)
     xxx(NodeRegistrationToken,       TString,               "root@builtin"    )\
     xxx(EndpointStorageNotImplementedErrorIsFatal,  bool,   false             )\
     xxx(VhostServerTimeoutAfterParentExit, TDuration,       Seconds(60)       )\
+    xxx(ChecksumFlags,                                                         \
+        NProto::EChecksumFlags,                                                \
+        NProto::CHECKSUM_FLAGS_NONE                                           )
 // BLOCKSTORE_SERVER_CONFIG
 
 #define BLOCKSTORE_SERVER_DECLARE_CONFIG(name, type, value)                    \
@@ -233,6 +236,26 @@ void DumpImpl(
             break;
         default:
             os << "(Unknown EEndpointStorageType value "
+                << static_cast<int>(value)
+                << ")";
+            break;
+    }
+}
+
+template <>
+void DumpImpl(
+    const NProto::EChecksumFlags& value,
+    IOutputStream& os)
+{
+    switch (value) {
+        case NProto::CHECKSUM_FLAGS_NONE:
+            os << "CHECKSUM_FLAGS_NONE";
+            break;
+        case NProto::CHECKSUM_FLAGS_CHECK_FOR_MIRROR:
+            os << "CHECKSUM_FLAGS_CHECK_FOR_MIRROR";
+            break;
+        default:
+            os << "(Unknown EChecksumFlags value "
                 << static_cast<int>(value)
                 << ")";
             break;

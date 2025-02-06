@@ -413,7 +413,8 @@ void TBootstrapBase::Init()
         STORAGE_INFO("VHOST Server initialized");
 
         auto vhostEndpointListener = CreateVhostEndpointListener(
-            VhostServer);
+            VhostServer,
+            Configs->ServerConfig->GetChecksumFlags());
 
         if (Configs->ServerConfig->GetVhostServerPath()
                 && !Configs->Options->TemporaryServer)
