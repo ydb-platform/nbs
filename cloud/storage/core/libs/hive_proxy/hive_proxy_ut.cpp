@@ -514,7 +514,8 @@ struct TTestEnv
         };
         HiveProxyActorId = Runtime.Register(
             CreateHiveProxy(
-                std::move(config), Runtime.GetAppData(0).Counters).release());
+                std::move(config),
+                Runtime.GetAppData(0).Counters).release());
         Runtime.EnableScheduleForActor(HiveProxyActorId);
         Runtime.RegisterService(MakeHiveProxyServiceId(), HiveProxyActorId);
     }

@@ -237,11 +237,11 @@ void THiveProxyActor::HandleConnect(
         auto error = MakeKikimrError(msg->Status, TStringBuilder()
             << "Connect to hive " << hive << " failed");
         HandleConnectionError(ctx, error, hive, true);
-    } else if (HiveReconnectStartCycles)
-    {
+    } else if (HiveReconnectStartCycles) {
         if (HiveReconnectTimeCounter) {
             HiveReconnectTimeCounter->Add(
-                CyclesToDuration(GetCycleCount() - HiveReconnectStartCycles).MicroSeconds());
+                CyclesToDuration(
+                    GetCycleCount() - HiveReconnectStartCycles).MicroSeconds());
         }
         HiveReconnectStartCycles = 0;
         HiveDisconnected = false;
