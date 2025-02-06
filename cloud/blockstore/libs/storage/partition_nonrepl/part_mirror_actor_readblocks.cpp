@@ -394,20 +394,20 @@ STFUNC(TRequestActor<TMethod>::StateWork)
 auto TMirrorPartitionActor::SelectReplicasToReadFrom(
     ui32 replicaIndex,
     TBlockRange64 blockRange,
-    const TString& methodName) -> TResultOrError<TSet<TActorId>>
+    const TStringBuf& methodName) -> TResultOrError<TSet<TActorId>>
 {
-    TSet<TActorId> replicaActorIds;
-    if (replicaIndex) {
-        if (replicaIndex > State.GetReplicaInfos().size()) {
-            return MakeError(
-                E_ARGUMENT,
-                TStringBuilder()
-                    << "Request " << methodName
-                    << " has incorrect ReplicaIndex " << replicaIndex
-                    << " disk has " << State.GetReplicaInfos().size()
-                    << " replicas");
-        }
+    const auto& replicaInfos = State.GetReplicaInfos();
 
+    if (replicaIndex > replicaInfos.size()) {
+        return MakeError(
+            E_ARGUMENT,
+            TStringBuilder()
+                << "Request " << methodName << " has incorrect ReplicaIndex "
+                << replicaIndex << " disk has " << replicaInfos.size()
+                << " replicas");
+    }
+
+    if (replicaIndex) {
         const auto& replicaInfo = State.GetReplicaInfos()[replicaIndex - 1];
         if (!replicaInfo.Config->DevicesReadyForReading(blockRange)) {
             return MakeError(
@@ -416,22 +416,22 @@ auto TMirrorPartitionActor::SelectReplicasToReadFrom(
                     << "Cannot process " << methodName << " cause replica "
                     << replicaIndex << " has not ready devices");
         }
-        replicaActorIds.insert(State.GetReplicaActors()[replicaIndex - 1]);
-    } else {
-        const ui32 readReplicaCount = Min<ui32>(
-            Max<ui32>(1, Config->GetMirrorReadReplicaCount()),
-            State.GetReplicaInfos().size());
-        for (ui32 i = 0; i < readReplicaCount; ++i) {
-            TActorId replicaActorId;
-            const auto error =
-                State.NextReadReplica(blockRange, &replicaActorId);
-            if (HasError(error)) {
-                return error;
-            }
+        return TSet<TActorId>{State.GetReplicaActors()[replicaIndex - 1]};
+    }
 
-            if (!replicaActorIds.insert(replicaActorId).second) {
-                break;
-            }
+    TSet<TActorId> replicaActorIds;
+    const ui32 readReplicaCount = Min<ui32>(
+        Max<ui32>(1, Config->GetMirrorReadReplicaCount()),
+        replicaInfos.size());
+    for (ui32 i = 0; i < readReplicaCount; ++i) {
+        TActorId replicaActorId;
+        const auto error = State.NextReadReplica(blockRange, &replicaActorId);
+        if (HasError(error)) {
+            return error;
+        }
+
+        if (!replicaActorIds.insert(replicaActorId).second) {
+            break;
         }
     }
 

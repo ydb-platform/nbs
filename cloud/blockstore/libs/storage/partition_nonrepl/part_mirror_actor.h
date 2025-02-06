@@ -183,7 +183,7 @@ private:
     TResultOrError<TSet<NActors::TActorId>> SelectReplicasToReadFrom(
         ui32 replicaIndex,
         TBlockRange64 blockRange,
-        const TString& methodName);
+        const TStringBuf& methodName);
 
     BLOCKSTORE_IMPLEMENT_REQUEST(ReadBlocks, TEvService);
     BLOCKSTORE_IMPLEMENT_REQUEST(WriteBlocks, TEvService);

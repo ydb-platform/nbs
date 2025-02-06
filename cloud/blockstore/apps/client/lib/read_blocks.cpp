@@ -462,9 +462,7 @@ private:
             request->BlockSize = Volume.GetBlockSize();
             request->Sglist = holder.GetGuardedSgList();
             PrepareHeaders(*request->MutableHeaders());
-            if (ReplicaIndex) {
-                request->MutableHeaders()->SetReplicaIndex(ReplicaIndex);
-            }
+            request->MutableHeaders()->SetReplicaIndex(ReplicaIndex);
 
             auto future = Session->ReadBlocksLocal(
                 MakeIntrusive<TCallContext>(),
