@@ -138,15 +138,20 @@ public:
         // HiveProxy
         //
 
-        auto hiveProxy = CreateHiveProxy({
-            .PipeClientRetryCount = Args.StorageConfig->GetPipeClientRetryCount(),
-            .PipeClientMinRetryTime = Args.StorageConfig->GetPipeClientMinRetryTime(),
-            .HiveLockExpireTimeout = Args.StorageConfig->GetHiveLockExpireTimeout(),
-            .LogComponent = TBlockStoreComponents::HIVE_PROXY,
-            .TabletBootInfoBackupFilePath = Args.StorageConfig->GetTabletBootInfoBackupFilePath(),
-            .FallbackMode = Args.StorageConfig->GetHiveProxyFallbackMode(),
-            .TenantHiveTabletId = Args.StorageConfig->GetTenantHiveTabletId(),
-        });
+        auto hiveProxy = CreateHiveProxy(
+            {
+                .PipeClientRetryCount = Args.StorageConfig->GetPipeClientRetryCount(),
+                .PipeClientMinRetryTime = Args.StorageConfig->GetPipeClientMinRetryTime(),
+                .HiveLockExpireTimeout = Args.StorageConfig->GetHiveLockExpireTimeout(),
+                .LogComponent = TBlockStoreComponents::HIVE_PROXY,
+                .TabletBootInfoBackupFilePath = Args.StorageConfig->GetTabletBootInfoBackupFilePath(),
+                .FallbackMode = Args.StorageConfig->GetHiveProxyFallbackMode(),
+                .TenantHiveTabletId = Args.StorageConfig->GetTenantHiveTabletId(),
+            },
+            appData
+                ->Counters
+                ->GetSubgroup("counters", "blockstore")
+                ->GetSubgroup("component", "service"));
 
         setup->LocalServices.emplace_back(
             MakeHiveProxyServiceId(),

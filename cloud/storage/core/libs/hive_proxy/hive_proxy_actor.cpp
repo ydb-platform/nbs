@@ -34,12 +34,19 @@ std::unique_ptr<NTabletPipe::IClientCache> CreateTabletPipeClientCache(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-THiveProxyActor::THiveProxyActor(THiveProxyConfig config)
+THiveProxyActor::THiveProxyActor(
+        THiveProxyConfig config,
+        NMonitoring::TDynamicCounterPtr counters)
     : ClientCache(CreateTabletPipeClientCache(config))
     , LockExpireTimeout(config.HiveLockExpireTimeout)
     , LogComponent(config.LogComponent)
     , TabletBootInfoBackupFilePath(config.TabletBootInfoBackupFilePath)
     , TenantHiveTabletId(config.TenantHiveTabletId)
+    , Counters(std::move(counters))
+{}
+
+THiveProxyActor::THiveProxyActor(THiveProxyConfig config)
+    : THiveProxyActor(std::move(config), {})
 {}
 
 void THiveProxyActor::Bootstrap(const TActorContext& ctx)
@@ -55,9 +62,23 @@ void THiveProxyActor::Bootstrap(const TActorContext& ctx)
         TabletBootInfoBackup = ctx.Register(
             cache.release(), TMailboxType::HTSwap, AppData()->IOPoolId);
     }
+    if (Counters) {
+        HiveReconnectTimeCounter = Counters->GetCounter("HiveReconnectTime", true);
+    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+
+void THiveProxyActor::SendRequest(
+    const TActorContext& ctx,
+    ui64 hive,
+    IEventBase* request)
+{
+    ClientCache->Send(ctx, hive, request);
+    if (HiveDisconnected) {
+        HiveReconnectStartCycles = GetCycleCount();
+    }
+}
 
 ui64 THiveProxyActor::GetHive(
     const TActorContext& ctx,
@@ -98,7 +119,7 @@ void THiveProxyActor::SendLockRequest(
     hiveRequest->Record.SetMaxReconnectTimeout(
         LockExpireTimeout.MilliSeconds());
     hiveRequest->Record.SetReconnect(reconnect);
-    ClientCache->Send(ctx, hive, hiveRequest.release());
+    SendRequest(ctx, hive, hiveRequest.release());
 }
 
 void THiveProxyActor::SendUnlockRequest(
@@ -106,7 +127,7 @@ void THiveProxyActor::SendUnlockRequest(
 {
     auto hiveRequest =
         std::make_unique<TEvHive::TEvUnlockTabletExecution>(tabletId);
-    ClientCache->Send(ctx, hive, hiveRequest.release());
+    SendRequest(ctx, hive, hiveRequest.release());
 }
 
 void THiveProxyActor::SendGetTabletStorageInfoRequest(
@@ -115,7 +136,7 @@ void THiveProxyActor::SendGetTabletStorageInfoRequest(
 {
     auto hiveRequest =
         std::make_unique<TEvHive::TEvGetTabletStorageInfo>(tabletId);
-    ClientCache->Send(ctx, hive, hiveRequest.release());
+    SendRequest(ctx, hive, hiveRequest.release());
 }
 
 void THiveProxyActor::SendLockReply(
@@ -198,7 +219,7 @@ void THiveProxyActor::SendTabletMetrics(
         prTabletId.second.OnStatsSend();
     }
     if (record.TabletMetricsSize() > 0) {
-        ClientCache->Send(ctx, hive, event.Release());
+        SendRequest(ctx, hive, event.Release());
     }
 }
 
@@ -216,6 +237,14 @@ void THiveProxyActor::HandleConnect(
         auto error = MakeKikimrError(msg->Status, TStringBuilder()
             << "Connect to hive " << hive << " failed");
         HandleConnectionError(ctx, error, hive, true);
+    } else if (HiveReconnectStartCycles) {
+        if (HiveReconnectTimeCounter) {
+            HiveReconnectTimeCounter->Add(
+                CyclesToDuration(
+                    GetCycleCount() - HiveReconnectStartCycles).MicroSeconds());
+        }
+        HiveReconnectStartCycles = 0;
+        HiveDisconnected = false;
     }
 }
 
@@ -241,6 +270,8 @@ void THiveProxyActor::HandleConnectionError(
 {
     Y_UNUSED(error);
     Y_UNUSED(connectFailed);
+
+    HiveDisconnected = true;
 
     LOG_ERROR_S(ctx, LogComponent,
         "Pipe to hive" << hive << " has been reset ");
@@ -307,6 +338,9 @@ void THiveProxyActor::HandleConnectionError(
 
         for (const auto& actorId: states->Actors) {
             auto clientId = ClientCache->Prepare(ctx, hive);
+            if (!HiveReconnectStartCycles) {
+                HiveReconnectStartCycles = GetCycleCount();
+            }
             NCloud::Send<TEvHiveProxyPrivate::TEvChangeTabletClient>(
                 ctx,
                 actorId,

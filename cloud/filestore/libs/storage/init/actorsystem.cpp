@@ -124,16 +124,21 @@ public:
         // HiveProxy
         //
 
-        auto hiveProxy = CreateHiveProxy({
-            .PipeClientRetryCount = Args.StorageConfig->GetPipeClientRetryCount(),
-            .PipeClientMinRetryTime = Args.StorageConfig->GetPipeClientMinRetryTime(),
-            // HiveLockExpireTimeout, used by NBS, doesn't matter
-            .HiveLockExpireTimeout = TDuration::Seconds(1),
-            .LogComponent = TFileStoreComponents::HIVE_PROXY,
-            .TabletBootInfoBackupFilePath = Args.StorageConfig->GetTabletBootInfoBackupFilePath(),
-            .FallbackMode = Args.StorageConfig->GetHiveProxyFallbackMode(),
-            .TenantHiveTabletId = Args.StorageConfig->GetTenantHiveTabletId(),
-        });
+        auto hiveProxy = CreateHiveProxy(
+            {
+                .PipeClientRetryCount = Args.StorageConfig->GetPipeClientRetryCount(),
+                .PipeClientMinRetryTime = Args.StorageConfig->GetPipeClientMinRetryTime(),
+                // HiveLockExpireTimeout, used by NBS, doesn't matter
+                .HiveLockExpireTimeout = TDuration::Seconds(1),
+                .LogComponent = TFileStoreComponents::HIVE_PROXY,
+                .TabletBootInfoBackupFilePath = Args.StorageConfig->GetTabletBootInfoBackupFilePath(),
+                .FallbackMode = Args.StorageConfig->GetHiveProxyFallbackMode(),
+                .TenantHiveTabletId = Args.StorageConfig->GetTenantHiveTabletId(),
+            },
+            appData
+                ->Counters
+                ->GetSubgroup("counters", "filestore")
+                ->GetSubgroup("component", "service"));
 
         setup->LocalServices.emplace_back(
             MakeHiveProxyServiceId(),
