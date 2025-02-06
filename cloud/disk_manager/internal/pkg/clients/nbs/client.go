@@ -325,7 +325,6 @@ func wrapErrorWithInternalFlag(e error, internal bool) error {
 			return errors.NewRetriableError(e)
 		}
 
-		// TODO: some of these errors should be public.
 		switch clientErr.Code {
 		case nbs_client.E_PRECONDITION_FAILED:
 			e = errors.NewDetailedError(
