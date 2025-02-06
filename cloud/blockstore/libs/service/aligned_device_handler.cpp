@@ -1,7 +1,7 @@
 #include "aligned_device_handler.h"
 
+#include <cloud/blockstore/libs/service/checksum_storage_wrapper.h>
 #include <cloud/blockstore/libs/service/context.h>
-#include <cloud/blockstore/libs/service/memory_safe_storage.h>
 #include <cloud/blockstore/libs/service/storage.h>
 
 #include <util/string/builder.h>
@@ -137,7 +137,7 @@ TAlignedDeviceHandler::TAlignedDeviceHandler(
         bool checkBufferModificationDuringWriting)
     : Storage(
           checkBufferModificationDuringWriting
-              ? CreateMemorySafeStorageWrapper(std::move(storage))
+              ? CreateChecksumStorageWrapper(std::move(storage))
               : std::move(storage))
     , ClientId(std::move(clientId))
     , BlockSize(blockSize)

@@ -1,4 +1,4 @@
-#include "memory_safe_storage.h"
+#include "checksum_storage_wrapper.h"
 
 #include "storage.h"
 
@@ -59,14 +59,14 @@ TSgList RebaseSgList(const TSgList& src, TBlockDataRef newPtr)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TMemorySafeStorageWrapper final
-    : public std::enable_shared_from_this<TMemorySafeStorageWrapper>
+class TChecksumStorageWrapper final
+    : public std::enable_shared_from_this<TChecksumStorageWrapper>
     , public IStorage
 {
     const IStoragePtr Storage;
 
 public:
-    explicit TMemorySafeStorageWrapper(IStoragePtr storage)
+    explicit TChecksumStorageWrapper(IStoragePtr storage)
         : Storage(std::move(storage))
     {}
 
@@ -109,7 +109,7 @@ public:
 };
 
 TFuture<NProto::TWriteBlocksLocalResponse>
-TMemorySafeStorageWrapper::WriteBlocksLocal(
+TChecksumStorageWrapper::WriteBlocksLocal(
     TCallContextPtr callContext,
     std::shared_ptr<NProto::TWriteBlocksLocalRequest> request)
 {
@@ -144,7 +144,7 @@ TMemorySafeStorageWrapper::WriteBlocksLocal(
         });
 }
 
-TStorageBuffer TMemorySafeStorageWrapper::AllocateBuffer(size_t bytesCount)
+TStorageBuffer TChecksumStorageWrapper::AllocateBuffer(size_t bytesCount)
 {
     auto buffer = Storage->AllocateBuffer(bytesCount);
     if (!buffer) {
@@ -156,7 +156,7 @@ TStorageBuffer TMemorySafeStorageWrapper::AllocateBuffer(size_t bytesCount)
 }
 
 TFuture<NProto::TWriteBlocksLocalResponse>
-TMemorySafeStorageWrapper::RetryWriteBlocksLocal(
+TChecksumStorageWrapper::RetryWriteBlocksLocal(
     TCallContextPtr callContext,
     std::shared_ptr<NProto::TWriteBlocksLocalRequest> request)
 {
@@ -185,9 +185,9 @@ TMemorySafeStorageWrapper::RetryWriteBlocksLocal(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-IStoragePtr CreateMemorySafeStorageWrapper(IStoragePtr storage)
+IStoragePtr CreateChecksumStorageWrapper(IStoragePtr storage)
 {
-    return std::make_shared<TMemorySafeStorageWrapper>(std::move(storage));
+    return std::make_shared<TChecksumStorageWrapper>(std::move(storage));
 }
 
 }   // namespace NCloud::NBlockStore

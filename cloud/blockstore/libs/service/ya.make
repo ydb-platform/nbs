@@ -4,9 +4,9 @@ SRCS(
     aligned_device_handler.cpp
     auth_provider.cpp
     auth_scheme.cpp
+    checksum_storage_wrapper.cpp
     context.cpp
     device_handler.cpp
-    memory_safe_storage.cpp
     request_helpers.cpp
     request.cpp
     service_auth.cpp
