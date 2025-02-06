@@ -597,6 +597,7 @@ private:
     TIntrusivePtr<TCallContext> CreateCallContext()
     {
         return MakeIntrusive<TCallContext>(
+            FileSystemId,
             LastRequestId.fetch_add(1, std::memory_order_relaxed));
     }
 
