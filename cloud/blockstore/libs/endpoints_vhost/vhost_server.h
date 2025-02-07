@@ -12,6 +12,6 @@ namespace NCloud::NBlockStore::NServer {
 
 IEndpointListenerPtr CreateVhostEndpointListener(
     NVhost::IServerPtr server,
-    NProto::EChecksumFlags checksumFlags);
+    const NProto::TChecksumFlags& checksumFlags);
 
 }   // namespace NCloud::NBlockStore::NServer

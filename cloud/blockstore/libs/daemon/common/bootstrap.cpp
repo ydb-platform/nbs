@@ -386,7 +386,8 @@ void TBootstrapBase::Init()
         auto nbdEndpointListener = CreateNbdEndpointListener(
             NbdServer,
             Logging,
-            ServerStats);
+            ServerStats,
+            Configs->ServerConfig->GetChecksumFlags());
 
         endpointListeners.emplace(
             NProto::IPC_NBD,

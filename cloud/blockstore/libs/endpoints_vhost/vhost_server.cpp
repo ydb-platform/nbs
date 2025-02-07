@@ -11,16 +11,6 @@ using namespace NThreading;
 
 namespace {
 
-constexpr ui32 ProtoFlag(int value)
-{
-    return value ? 1 << (value - 1) : value;
-}
-
-constexpr bool HasFlag(ui32 flags, ui32 value)
-{
-    return flags & ProtoFlag(value);
-}
-
 ////////////////////////////////////////////////////////////////////////////////
 
 class TVhostEndpointListener final
@@ -28,14 +18,14 @@ class TVhostEndpointListener final
 {
 private:
     const NVhost::IServerPtr Server;
-    const NProto::EChecksumFlags ChecksumFlags;
+    const NProto::TChecksumFlags ChecksumFlags;
 
 public:
     TVhostEndpointListener(
             NVhost::IServerPtr server,
-            NProto::EChecksumFlags checksumFlags)
+            NProto::TChecksumFlags  checksumFlags)
         : Server(std::move(server))
-        , ChecksumFlags(checksumFlags)
+        , ChecksumFlags(std::move(checksumFlags))
     {}
 
     TFuture<NProto::TError> StartEndpoint(
@@ -52,9 +42,7 @@ public:
         options.VhostQueuesCount = request.GetVhostQueuesCount();
         options.UnalignedRequestsDisabled = request.GetUnalignedRequestsDisabled();
         options.CheckBufferModificationDuringWriting =
-            HasFlag(
-                ChecksumFlags,
-                NProto::CHECKSUM_FLAGS_CHECK_FOR_MIRROR) &&
+            ChecksumFlags.GetCheckBufferModificationForMirrorDisk() &&
             IsReliableDiskRegistryMediaKind(volume.GetStorageMediaKind());
 
         return Server->StartEndpoint(
@@ -104,7 +92,7 @@ public:
 
 IEndpointListenerPtr CreateVhostEndpointListener(
     NVhost::IServerPtr server,
-    NProto::EChecksumFlags checksumFlags)
+    const NProto::TChecksumFlags& checksumFlags)
 {
     return std::make_shared<TVhostEndpointListener>(
         std::move(server),

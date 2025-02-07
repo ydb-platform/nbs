@@ -128,7 +128,9 @@ public:
             std::move(testStorage),
             "testClientId",
             BlockSize,
-            unalignedRequestsDisabled);
+            unalignedRequestsDisabled,   // unalignedRequestsDisabled,
+            false                        // checkBufferModificationDuringWriting
+        );
     }
 
     TCallContextPtr WriteSectors(ui64 firstSector, ui64 totalSectors, char data)
@@ -340,7 +342,9 @@ Y_UNIT_TEST_SUITE(TDeviceHandlerTest)
             storage,
             clientId,
             blockSize,
-            false);
+            false,   // unalignedRequestsDisabled,
+            false    // checkBufferModificationDuringWriting
+        );
 
         std::array<bool, deviceBlocksCount> zeroBlocks;
         for (auto& zeroBlock: zeroBlocks) {
@@ -402,7 +406,9 @@ Y_UNIT_TEST_SUITE(TDeviceHandlerTest)
             storage,
             clientId,
             blockSize,
-            true);
+            true,   // unalignedRequestsDisabled,
+            false   // checkBufferModificationDuringWriting
+        );
 
         ui32 startIndex = 42;
         ui32 blocksCount = 17;
@@ -488,7 +494,9 @@ Y_UNIT_TEST_SUITE(TDeviceHandlerTest)
             storage,
             clientId,
             blockSize,
-            true);
+            true,   // unalignedRequestsDisabled,
+            false   // checkBufferModificationDuringWriting
+        );
 
         {
             auto future = device->Read(
@@ -601,7 +609,9 @@ Y_UNIT_TEST_SUITE(TDeviceHandlerTest)
             storage,
             clientId,
             blockSize,
-            unalignedRequestDisabled);
+            unalignedRequestDisabled,   // unalignedRequestsDisabled,
+            false                       // checkBufferModificationDuringWriting
+        );
 
         storage->ZeroBlocksHandler = [&] (
             TCallContextPtr callContext,
@@ -711,11 +721,14 @@ Y_UNIT_TEST_SUITE(TDeviceHandlerTest)
 
         auto storage = std::make_shared<TTestStorage>();
 
-        auto deviceHandler = CreateDefaultDeviceHandlerFactory()->CreateDeviceHandler(
-            storage,
-            clientId,
-            blockSize,
-            false);
+        auto deviceHandler =
+            CreateDefaultDeviceHandlerFactory()->CreateDeviceHandler(
+                storage,
+                clientId,
+                blockSize,
+                false,   // unalignedRequestsDisabled,
+                false    // checkBufferModificationDuringWriting
+            );
 
         storage->WriteBlocksLocalHandler = [&] (
             TCallContextPtr callContext,
@@ -774,11 +787,14 @@ Y_UNIT_TEST_SUITE(TDeviceHandlerTest)
 
         auto storage = std::make_shared<TTestStorage>();
 
-        auto deviceHandler = CreateDefaultDeviceHandlerFactory()->CreateDeviceHandler(
-            storage,
-            clientId,
-            blockSize,
-            false);
+        auto deviceHandler =
+            CreateDefaultDeviceHandlerFactory()->CreateDeviceHandler(
+                storage,
+                clientId,
+                blockSize,
+                false,   // unalignedRequestsDisabled,
+                false    // checkBufferModificationDuringWriting
+            );
 
         storage->WriteBlocksLocalHandler = [&] (
             TCallContextPtr callContext,

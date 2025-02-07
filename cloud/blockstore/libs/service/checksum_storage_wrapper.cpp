@@ -26,11 +26,11 @@ TErrorResponse CreateRequestDestroyedResponse()
     return {E_CANCELLED, "request destroyed"};
 }
 
-ui32 CalcChecksum(const TGuardedSgList& sgList)
+std::optional<ui32> CalcChecksum(const TGuardedSgList& sgList)
 {
     auto guard = sgList.Acquire();
     if (!guard) {
-        return 0;
+        return std::nullopt;
     }
 
     const TSgList& blockList = guard.Get();
@@ -115,11 +115,17 @@ TChecksumStorageWrapper::WriteBlocksLocal(
 {
     auto requestCopy =
         std::make_shared<NProto::TWriteBlocksLocalRequest>(*request);
-    ui32 checksum = CalcChecksum(request->Sglist);
+    auto checksumBefore = CalcChecksum(request->Sglist);
+    if (!checksumBefore) {
+        return MakeFuture<NProto::TWriteBlocksLocalResponse>(
+            CreateRequestDestroyedResponse());
+    }
+
     auto result = Storage->WriteBlocksLocal(callContext, std::move(request));
+
     return result.Apply(
         [callContext = std::move(callContext),
-         checksum = checksum,
+         checksumBefore = *checksumBefore,
          requestCopy = std::move(requestCopy),
          weakSelf = weak_from_this()](const auto& future) mutable
         {
@@ -128,10 +134,9 @@ TChecksumStorageWrapper::WriteBlocksLocal(
                 return MakeFuture(std::move(response));
             }
 
-            ui32 checksumAfter =
-                checksum ? CalcChecksum(requestCopy->Sglist) : 0;
+            auto checksumAfter = CalcChecksum(requestCopy->Sglist);
 
-            if (checksum != checksumAfter && checksumAfter) {
+            if (checksumAfter && checksumBefore != *checksumAfter) {
                 if (auto self = weakSelf.lock()) {
                     return self->RetryWriteBlocksLocal(
                         std::move(callContext),

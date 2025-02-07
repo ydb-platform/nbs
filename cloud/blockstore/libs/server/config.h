@@ -135,7 +135,7 @@ public:
     bool GetEndpointStorageNotImplementedErrorIsFatal() const;
     TDuration GetVhostServerTimeoutAfterParentExit() const;
     TString GetNodeRegistrationToken() const;
-    NProto::EChecksumFlags GetChecksumFlags() const;
+    NProto::TChecksumFlags GetChecksumFlags() const;
 
     void Dump(IOutputStream& out) const override;
     void DumpHtml(IOutputStream& out) const override;

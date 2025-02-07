@@ -26,10 +26,12 @@ message TLocation
 
 ////////////////////////////////////////////////////////////////////////////////
 
-enum EChecksumFlags
+message TChecksumFlags
 {
-    CHECKSUM_FLAGS_NONE = 0;
-    CHECKSUM_FLAGS_CHECK_FOR_MIRROR = 1;
+    // If enabled, the checksum for data buffer calculated before and after
+    // writing. This is done to ensure that the same data is written to all
+    // mirror disk replicas.
+    optional bool CheckBufferModificationForMirrorDisk = 1;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -213,8 +215,8 @@ message TServerConfig
     // the parent process die.
     optional uint32 VhostServerTimeoutAfterParentExit = 118;
 
-    //
-    optional EChecksumFlags ChecksumFlags = 119;
+    // Flags for managing checksums.
+    optional TChecksumFlags ChecksumFlags = 119;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
