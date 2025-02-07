@@ -1910,7 +1910,7 @@ Y_UNIT_TEST_SUITE(TVolumeStateTest)
         {
             auto state = makeState(
                 NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
-                NProto::ENCRYPTION_DEFAULT_AES_XTS);
+                NProto::ENCRYPTION_AT_REST);
 
             UNIT_ASSERT(!state.GetTrackUsedBlocks());
         }

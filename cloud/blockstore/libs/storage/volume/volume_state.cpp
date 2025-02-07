@@ -285,7 +285,7 @@ bool TVolumeState::ShouldTrackUsedBlocks() const
     const auto mode = Meta.GetVolumeConfig().GetEncryptionDesc().GetMode();
 
     return mode != NProto::NO_ENCRYPTION &&
-           mode != NProto::ENCRYPTION_DEFAULT_AES_XTS;
+           mode != NProto::ENCRYPTION_AT_REST;
 }
 
 void TVolumeState::Reset()

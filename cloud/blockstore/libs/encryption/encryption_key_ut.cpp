@@ -81,7 +81,7 @@ Y_UNIT_TEST_SUITE(TEncryptionKeyTest)
         const TString encryptionKey = "01234567890123456789012345678901";
 
         NProto::TEncryptionSpec spec;
-        spec.SetMode(NProto::ENCRYPTION_DEFAULT_AES_XTS);
+        spec.SetMode(NProto::ENCRYPTION_AT_REST);
         auto& keyPath = *spec.MutableKeyPath();
         keyPath.MutableKmsKey()->SetKekId("nbs");
         keyPath.MutableKmsKey()->SetEncryptedDEK("42");

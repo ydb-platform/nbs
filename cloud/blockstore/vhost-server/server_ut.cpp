@@ -36,8 +36,8 @@ IOutputStream& operator<<(
         case NCloud::NBlockStore::NProto::ENCRYPTION_AES_XTS:
             out << "ENCRYPTION_AES_XTS";
             return out;
-        case NCloud::NBlockStore::NProto::ENCRYPTION_DEFAULT_AES_XTS:
-            out << "ENCRYPTION_DEFAULT_AES_XTS";
+        case NCloud::NBlockStore::NProto::ENCRYPTION_AT_REST:
+            out << "ENCRYPTION_AT_REST";
             return out;
         default:
             break;

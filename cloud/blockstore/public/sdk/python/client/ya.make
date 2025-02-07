@@ -2,6 +2,7 @@ PY3_LIBRARY()
 
 PEERDIR(
     cloud/blockstore/public/api/grpc
+    cloud/blockstore/public/api/protos
     cloud/blockstore/public/sdk/python/protos
     contrib/python/requests/py3
 )
