@@ -801,13 +801,15 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
         env.WriteReplica(1, range1, 'B');
         env.WriteReplica(2, range1, 'C');
 
+        // Check that with 0 replica index we read all replicas round-robin
+        for (char c: TVector{'A', 'B', 'C'})
         {
             auto response = client.ReadBlocks(range1, 0);
             const auto& blocks = response->Record.GetBlocks();
             UNIT_ASSERT_VALUES_EQUAL(100, blocks.BuffersSize());
             for (ui32 i = 0; i < 100; ++i) {
                 UNIT_ASSERT_VALUES_EQUAL(
-                    TString(DefaultBlockSize, 'A'),
+                    TString(DefaultBlockSize, c),
                     blocks.GetBuffers(i));
             }
         }
