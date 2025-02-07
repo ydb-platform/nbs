@@ -49,7 +49,7 @@ TString BuildCpuWaitStatsFilename(const TString& serviceName)
 
 IStatsFetcherPtr BuildStatsFetcher(
     NProto::EStatsFetcherType statsFetcherType,
-    TString cpuWaitFilename,
+    const TString& cpuWaitFilename,
     const TLog& log,
     ILoggingServicePtr logging)
 {
@@ -66,7 +66,7 @@ IStatsFetcherPtr BuildStatsFetcher(
             return CreateCgroupStatsFetcher(
                 "STORAGE_STATS",
                 std::move(logging),
-                std::move(cpuWaitFilename));
+                cpuWaitFilename);
         }
         case NCloud::NProto::TASKSTATS:
             return CreateTaskStatsFetcher(
