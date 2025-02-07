@@ -13,7 +13,7 @@ from library.python.retry import retry
 import library.python.testing.recipe
 
 from .qemu import Qemu
-from .common import get_mount_paths, env_with_guest_index
+from .common import SshToGuest, get_mount_paths, env_with_guest_index
 
 logger = logging.getLogger(__name__)
 
@@ -68,7 +68,8 @@ def start_instance(args, inst_index):
 
     vhost_socket = ""
     if virtio == "fs":
-        vhost_socket = os.getenv("NFS_VHOST_SOCKET")
+        vhost_socket = os.getenv(
+            env_with_guest_index("NFS_VHOST_SOCKET", inst_index))
     elif virtio == "blk":
         vhost_socket = os.getenv("NBS_VHOST_SOCKET")
 
@@ -432,43 +433,6 @@ def _wait_ssh(daemon, ssh):
         raise QemuKvmRecipeException("qemu is dead")
 
     ssh("exit 0")
-
-
-class SshToGuest(object):
-    def __init__(self, user, port, key):
-        self.user = user
-        self.port = port
-        self.key = key
-
-    def get_command(self, command, timeout=None):
-        cmd = []
-
-        if timeout is not None:
-            cmd = ["timeout", str(timeout)]
-
-        cmd += [
-            "ssh",
-            "-n",
-            "-F", os.devnull,
-            "-o", "StrictHostKeyChecking=no",
-            "-o", "UserKnownHostsFile=" + os.devnull,
-            "-o", "ConnectTimeout=10",
-            "-o", "ServerAliveInterval=10",
-            "-o", "ServerAliveCountMax=10",
-            "-i", self.key,
-            "-l", self.user,
-            "-p", str(self.port),
-            "127.0.0.1",
-            command
-        ]
-
-        logger.info("ssh execute command: '{}'".format(" ".join(cmd)))
-
-        return cmd
-
-    def __call__(self, command, timeout=None):
-        yatest.common.execute(self.get_command(command, timeout))
-
 
 def recipe_set_env(key, val, guest_index=0):
     library.python.testing.recipe.set_env(env_with_guest_index(key, guest_index), val)

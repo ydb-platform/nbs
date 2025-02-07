@@ -1,6 +1,44 @@
 import os
+import logging
 import yatest.common as common
 
+logger = logging.getLogger(__name__)
+
+
+class SshToGuest(object):
+    def __init__(self, user, port, key):
+        self.user = user
+        self.port = port
+        self.key = key
+
+    def get_command(self, command, timeout=None):
+        cmd = []
+
+        if timeout is not None:
+            cmd = ["timeout", str(timeout)]
+
+        cmd += [
+            "ssh",
+            "-n",
+            "-F", os.devnull,
+            "-o", "StrictHostKeyChecking=no",
+            "-o", "UserKnownHostsFile=" + os.devnull,
+            "-o", "ConnectTimeout=10",
+            "-o", "ServerAliveInterval=10",
+            "-o", "ServerAliveCountMax=10",
+            "-i", self.key,
+            "-l", self.user,
+            "-p", str(self.port),
+            "127.0.0.1",
+            command
+        ]
+
+        logger.info("ssh execute command: '{}'".format(" ".join(cmd)))
+
+        return cmd
+
+    def __call__(self, command, timeout=None):
+        common.execute(self.get_command(command, timeout))
 
 def env_with_guest_index(env, guest_index):
     if guest_index == 0:
