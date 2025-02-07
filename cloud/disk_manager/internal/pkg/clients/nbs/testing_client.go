@@ -567,6 +567,8 @@ func (c *testingClient) List(ctx context.Context) ([]string, error) {
 	return c.client.nbs.ListVolumes(ctx)
 }
 
+////////////////////////////////////////////////////////////////////////////////
+
 func (c *testingClient) BackupDiskRegistryState(
 	ctx context.Context,
 ) (*DiskRegistryStateBackup, error) {
@@ -613,7 +615,6 @@ func (c *testingClient) DisableDevices(
 		"diskregistrychangestate",
 		[]byte(input),
 	)
-
 	return wrapError(err)
 }
 
@@ -634,7 +635,6 @@ func (c *testingClient) ChangeDeviceStateToOnline(
 		"diskregistrychangestate",
 		[]byte(input),
 	)
-
 	return wrapError(err)
 }
 
@@ -655,9 +655,9 @@ type diskRegistryBasedDiskCheckpoint struct {
 }
 
 type DiskRegistryBasedDisk struct {
-	DiskID            string                          `json:"DiskId"`
-	DeviceUUIDs       []string                        `json:"DeviceUUIDs"`
-	CheckpointReplica diskRegistryBasedDiskCheckpoint `json:"CheckpointReplica"`
+	DiskID      string                          `json:"DiskId"`
+	DeviceUUIDs []string                        `json:"DeviceUUIDs"`
+	Checkpoint  diskRegistryBasedDiskCheckpoint `json:"CheckpointReplica"`
 }
 
 type DiskRegistryStateBackup struct {
@@ -687,7 +687,7 @@ func (b *DiskRegistryStateBackup) GetShadowDisk(
 ) *DiskRegistryBasedDisk {
 
 	for _, disk := range b.Disks {
-		if disk.CheckpointReplica.SourceDiskID == originalDiskID {
+		if disk.Checkpoint.SourceDiskID == originalDiskID {
 			return &disk
 		}
 	}

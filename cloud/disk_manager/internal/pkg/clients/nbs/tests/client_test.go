@@ -1576,7 +1576,7 @@ func TestReadFromProxyOverlayDiskWithMultipartitionBaseDisk(t *testing.T) {
 	require.NoError(t, err)
 }
 
-func TestDiskRegistryState(t *testing.T) {
+func TestBackupDiskRegistryState(t *testing.T) {
 	ctx := newContext()
 	client := newTestingClient(t, ctx)
 
@@ -1656,7 +1656,7 @@ func TestDiskRegistryDisableDevices(t *testing.T) {
 	data := make([]byte, 4096)
 	rand.Read(data)
 
-	// Device is disabled, all read and write requests should return error.
+	// Device is disabled, all read and write requests should return an error.
 	err = session.Write(ctx, 0, data)
 	require.Error(t, err)
 	zero := false
@@ -1772,31 +1772,25 @@ func TestEnsureCheckpointReady(t *testing.T) {
 	)
 	require.NoError(t, err)
 
-	var shadowDiskDeviceUUID string
+	var diskRegistryStateBackup *nbs.DiskRegistryStateBackup
+	var shadowDisk *nbs.DiskRegistryBasedDisk
 
-	// Disabling device to enforce checkpoint status ERROR.
-	go func() {
-		var diskRegistryStateBackup *nbs.DiskRegistryStateBackup
-		var shadowDisk *nbs.DiskRegistryBasedDisk
-
-		// Waiting for the shadow disk to be created.
-		for shadowDisk == nil {
-			diskRegistryStateBackup, err = client.BackupDiskRegistryState(ctx)
-			require.NoError(t, err)
-			shadowDisk = diskRegistryStateBackup.GetShadowDisk(diskID)
-		}
-
-		deviceUUIDs := shadowDisk.DeviceUUIDs
-		require.Equal(t, 1, len(deviceUUIDs))
-
-		agentID := diskRegistryStateBackup.GetAgentIDByDeviceUUID(deviceUUIDs[0])
-		require.NotEmpty(t, agentID)
-
-		err = client.DisableDevices(ctx, agentID, deviceUUIDs, t.Name())
+	// Waiting for the shadow disk to be created.
+	for shadowDisk == nil {
+		diskRegistryStateBackup, err = client.BackupDiskRegistryState(ctx)
 		require.NoError(t, err)
+		shadowDisk = diskRegistryStateBackup.GetShadowDisk(diskID)
+	}
 
-		shadowDiskDeviceUUID = deviceUUIDs[0]
-	}()
+	deviceUUIDs := shadowDisk.DeviceUUIDs
+	require.Equal(t, 1, len(deviceUUIDs))
+	shadowDiskDeviceUUID := deviceUUIDs[0]
+
+	agentID := diskRegistryStateBackup.GetAgentIDByDeviceUUID(shadowDiskDeviceUUID)
+	require.NotEmpty(t, agentID)
+
+	err = client.DisableDevices(ctx, agentID, deviceUUIDs, t.Name())
+	require.NoError(t, err)
 
 	for {
 		// Waiting until checkpoint status turns to ERROR.
