@@ -2,7 +2,6 @@ package snapshots
 
 import (
 	"context"
-	"fmt"
 	"time"
 
 	"github.com/golang/protobuf/proto"
@@ -96,8 +95,6 @@ func (t *createSnapshotFromDiskTask) run(
 		return err
 	}
 
-	fmt.Printf("%v CHECK scheduling dataplane task\n", time.Now())
-
 	taskID, err := t.scheduler.ScheduleZonalTask(
 		headers.SetIncomingIdempotencyKey(ctx, selfTaskID+"_run"),
 		"dataplane.CreateSnapshotFromDisk",
@@ -117,13 +114,10 @@ func (t *createSnapshotFromDiskTask) run(
 
 	t.state.DataplaneTaskID = taskID
 
-	fmt.Printf("%v CHECK waiting for dataplane task\n", time.Now())
 	response, err := t.scheduler.WaitTask(ctx, execCtx, taskID)
 	if err != nil {
-		fmt.Printf("%v CHECK wait for dataplane task error: %v\n", time.Now(), err.Error())
 		return err
 	}
-	fmt.Printf("%v CHECK wait for dataplane task: success\n", time.Now())
 
 	typedResponse, ok := response.(*dataplane_protos.CreateSnapshotFromDiskResponse)
 	if !ok {
@@ -132,7 +126,6 @@ func (t *createSnapshotFromDiskTask) run(
 			response,
 		)
 	}
-	fmt.Printf("%v CHECK dataplane task response: %+v\n", time.Now(), typedResponse)
 
 	// TODO: estimate should be applied before resource creation, not after.
 	execCtx.SetEstimate(performance.Estimate(
