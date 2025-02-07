@@ -20,6 +20,7 @@ struct TOptions final: TOptionsBase
     TString StoredEndpointsPath;
     TDuration NbdRequestTimeout = TDuration::Minutes(10);
     TDuration NbdReconnectDelay = TDuration::MilliSeconds(100);
+    bool WithoutLibnl = false;
 
     TOptions();
 

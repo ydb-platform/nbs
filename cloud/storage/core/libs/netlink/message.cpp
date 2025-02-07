@@ -1,6 +1,6 @@
 #include "message.h"
 
-namespace NCloud::NNetlink {
+namespace NCloud::NNetlink::NLibnl {
 
 TNestedAttribute::TNestedAttribute(nl_msg* message, int attribute)
     : Message(message)
@@ -52,4 +52,4 @@ void TMessage::Put(int attribute, void* data, size_t size)
     }
 }
 
-}   // namespace NCloud::NNetlink
+}   // namespace NCloud::NNetlink::NLibnl

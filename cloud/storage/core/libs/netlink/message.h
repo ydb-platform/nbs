@@ -5,6 +5,8 @@
 
 namespace NCloud::NNetlink {
 
+namespace NLibnl {
+
 ////////////////////////////////////////////////////////////////////////////////
 
 class TNestedAttribute
@@ -44,5 +46,56 @@ public:
         Put(attribute, &data, sizeof(T));
     }
 };
+
+}  // namespace NLibnl
+
+////////////////////////////////////////////////////////////////////////////////
+
+#pragma pack(push, NLMSG_ALIGNTO)
+
+struct TNetlinkError
+{
+    ::nlmsghdr MessageHeader;
+    ::nlmsgerr MessageError;
+};
+
+struct TNetlinkHeader
+{
+    ::nlmsghdr MessageHeader;
+    ::genlmsghdr GenericHeader;
+
+    TNetlinkHeader() = default;
+
+    TNetlinkHeader(uint32_t len, uint16_t type, uint8_t cmd, bool ack)
+        : MessageHeader{len, type, NLM_F_REQUEST, 0, 0}
+        , GenericHeader{cmd, 1, 0}
+    {
+        if (ack) {
+            MessageHeader.nlmsg_flags |= NLM_F_ACK;
+        }
+    }
+};
+
+struct TNetlinkMessage
+{
+    TNetlinkHeader Headers;
+
+    void Validate()
+    {}
+};
+
+template <typename TMessage = TNetlinkMessage, size_t MaxMsgSize = 1024>
+union TNetlinkResponse {
+    TMessage Msg;
+    TNetlinkError NetlinkError;
+    ui8 Buffer[MaxMsgSize];
+
+    TNetlinkResponse()
+    {
+        static_assert(sizeof(TMessage) < MaxMsgSize);
+    }
+};
+
+#pragma pack(pop)
 
 }   // namespace NCloud::NNetlink
