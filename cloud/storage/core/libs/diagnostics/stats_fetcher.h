@@ -46,7 +46,7 @@ TString BuildCpuWaitStatsFilename(const TString& serviceName);
 
 IStatsFetcherPtr BuildStatsFetcher(
     NProto::EStatsFetcherType statsFetcherType,
-    const TString& cpuWaitFilename,
+    TString cpuWaitFilename,
     const TLog& log,
     ILoggingServicePtr logging);
 
