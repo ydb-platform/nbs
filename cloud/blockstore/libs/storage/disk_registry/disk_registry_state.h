@@ -956,7 +956,9 @@ private:
     TResultOrError<NProto::TDeviceConfig> FindDevice(
         const NProto::TDeviceConfig& deviceConfig) const;
 
-    NProto::EDiskState CalculateDiskState(const TDiskState& disk) const;
+    NProto::EDiskState CalculateDiskState(
+        const TString& diskId,
+        const TDiskState& disk) const;
 
     bool TryUpdateDiskState(
         TDiskRegistryDatabase& db,

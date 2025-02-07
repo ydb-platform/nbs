@@ -424,22 +424,12 @@ void TDiskRegistryState::AllowNotifications(
     const TDiskId& diskId,
     const TDiskState& disk)
 {
-    // currently we don't want to notify users about mirrored disks since they are not
-    // supposed to break
-    if (disk.MasterDiskId) {
-        return;
-    }
-
     // We do not want to notify the user about the breakdowns of the shadow disks.
     if (disk.CheckpointReplica.GetCheckpointId()) {
         return;
     }
 
-
-    Y_DEBUG_ABORT_UNLESS(IsDiskRegistryMediaKind(disk.MediaKind));
-    if (!IsReliableDiskRegistryMediaKind(disk.MediaKind)) {
-        NotificationSystem.AllowNotifications(diskId);
-    }
+    NotificationSystem.AllowNotifications(diskId);
 }
 
 void TDiskRegistryState::ProcessDisks(TVector<NProto::TDiskConfig> configs)
@@ -5547,6 +5537,13 @@ bool TDiskRegistryState::TryUpdateDiskState(
         oldState,
         newState,
         timestamp);
+    if (disk.MasterDiskId) {
+        TryUpdateDiskState(
+            db,
+            disk.MasterDiskId,
+            Disks.at(disk.MasterDiskId),
+            timestamp);
+    }
 
     return true;
 }
@@ -5604,8 +5601,20 @@ void TDiskRegistryState::DeleteDiskStateUpdate(
 }
 
 NProto::EDiskState TDiskRegistryState::CalculateDiskState(
+    const TString& diskId,
     const TDiskState& disk) const
 {
+    for (ui32 i = 0; i < disk.ReplicaCount; ++i) {
+        auto replicaId = GetReplicaDiskId(diskId, i);
+        if (GetDiskState(replicaId) == NProto::DISK_STATE_WARNING) {
+            return NProto::DISK_STATE_WARNING;
+        }
+    }
+    // There are no devices in master disk, so we can return now.
+    if (disk.ReplicaCount != 0) {
+        return NProto::DISK_STATE_ONLINE;
+    }
+
     NProto::EDiskState state = NProto::DISK_STATE_ONLINE;
 
     for (const auto& uuid: disk.Devices) {
@@ -7527,7 +7536,7 @@ NProto::TError TDiskRegistryState::CreateDiskFromDevices(
     disk.Devices = deviceIds;
     disk.LogicalBlockSize = blockSize;
     disk.StateTs = now;
-    disk.State = CalculateDiskState(disk);
+    disk.State = CalculateDiskState(diskId, disk);
     disk.MediaKind = mediaKind;
 
     for (auto& uuid: deviceIds) {
@@ -7609,7 +7618,7 @@ NProto::TError TDiskRegistryState::ChangeDiskDevice(
 
     *sourceDevicePtr = targetDeviceId;
     diskState->StateTs = now;
-    diskState->State = CalculateDiskState(*diskState);
+    diskState->State = CalculateDiskState(diskId, *diskState);
 
     DeviceList.MarkDeviceAllocated(diskId, targetDeviceId);
     DeviceList.MarkDeviceAsClean(targetDeviceId);
@@ -7643,7 +7652,7 @@ NProto::TError TDiskRegistryState::ChangeDiskDevice(
     DeviceList.UpdateDevices(*sourceAgent, DevicePoolConfigs);
     UpdateAgent(db, *sourceAgent);
 
-    diskState->State = CalculateDiskState(*diskState);
+    diskState->State = CalculateDiskState(diskId, *diskState);
     db.UpdateDisk(BuildDiskConfig(diskId, *diskState));
 
     AddReallocateRequest(db, diskId);
