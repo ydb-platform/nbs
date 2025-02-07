@@ -66,7 +66,7 @@ IStatsFetcherPtr BuildStatsFetcher(
             return CreateCgroupStatsFetcher(
                 "STORAGE_STATS",
                 std::move(logging),
-                std::move(cpuWaitFilename));
+                cpuWaitFilename);
         }
         case NCloud::NProto::TASKSTATS:
             return CreateTaskStatsFetcher(
