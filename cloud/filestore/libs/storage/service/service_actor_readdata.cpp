@@ -601,8 +601,7 @@ void TReadDataActor::HandleError(
     const TActorContext& ctx,
     const NProto::TError& error)
 {
-    auto response = std::make_unique<TEvService::TEvReadDataResponse>(
-        std::move(error));
+    auto response = std::make_unique<TEvService::TEvReadDataResponse>(error);
     NCloud::Reply(ctx, *RequestInfo, std::move(response));
     Die(ctx);
 }
