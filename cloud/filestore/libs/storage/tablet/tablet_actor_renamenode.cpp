@@ -105,6 +105,7 @@ void TIndexTabletActor::HandleRenameNode(
             ExtractShardNo(msg->Record.GetNewParentId());
         if (newParentShardNo != GetFileSystem().GetShardNo()) {
             if (newParentShardNo > static_cast<ui32>(shardIds.size())) {
+                UnlockNodeRef({msg->Record.GetNodeId(), msg->Record.GetName()});
                 auto message = ReportInvalidShardNo(
                     TStringBuilder() << "RenameNode: "
                         << msg->Record.ShortDebugString() << " newParentShardNo"
@@ -117,6 +118,7 @@ void TIndexTabletActor::HandleRenameNode(
             } else if (newParentShardNo == 0
                     && msg->Record.GetNewParentId() != RootNodeId)
             {
+                UnlockNodeRef({msg->Record.GetNodeId(), msg->Record.GetName()});
                 auto message = ReportInvalidShardNo(
                     TStringBuilder() << "RenameNode: "
                         << msg->Record.ShortDebugString() << " newParentShardNo"
@@ -135,8 +137,6 @@ void TIndexTabletActor::HandleRenameNode(
                         ? shardIds[newParentShardNo - 1]
                         : GetMainFileSystemId());
             }
-
-            UnlockNodeRef({msg->Record.GetNodeId(), msg->Record.GetName()});
             return;
         }
     }
