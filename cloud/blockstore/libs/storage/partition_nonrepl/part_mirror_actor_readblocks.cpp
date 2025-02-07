@@ -391,21 +391,65 @@ STFUNC(TRequestActor<TMethod>::StateWork)
 
 ////////////////////////////////////////////////////////////////////////////////
 
+auto TMirrorPartitionActor::SelectReplicasToReadFrom(
+    ui32 replicaIndex,
+    TBlockRange64 blockRange,
+    const TStringBuf& methodName) -> TResultOrError<TSet<TActorId>>
+{
+    const auto& replicaInfos = State.GetReplicaInfos();
+
+    if (replicaIndex > replicaInfos.size()) {
+        return MakeError(
+            E_ARGUMENT,
+            TStringBuilder()
+                << "Request " << methodName << " has incorrect ReplicaIndex "
+                << replicaIndex << " disk has " << replicaInfos.size()
+                << " replicas");
+    }
+
+    if (replicaIndex) {
+        const auto& replicaInfo = replicaInfos[replicaIndex - 1];
+        if (!replicaInfo.Config->DevicesReadyForReading(blockRange)) {
+            return MakeError(
+                E_REJECTED,
+                TStringBuilder()
+                    << "Cannot process " << methodName << " cause replica "
+                    << replicaIndex << " has not ready devices");
+        }
+        return TSet<TActorId>{State.GetReplicaActors()[replicaIndex - 1]};
+    }
+
+    TSet<TActorId> replicaActorIds;
+    const ui32 readReplicaCount = Min<ui32>(
+        Max<ui32>(1, Config->GetMirrorReadReplicaCount()),
+        replicaInfos.size());
+    for (ui32 i = 0; i < readReplicaCount; ++i) {
+        TActorId replicaActorId;
+        const auto error = State.NextReadReplica(blockRange, &replicaActorId);
+        if (HasError(error)) {
+            return error;
+        }
+
+        if (!replicaActorIds.insert(replicaActorId).second) {
+            break;
+        }
+    }
+
+    return replicaActorIds;
+}
+
 template <typename TMethod>
 void TMirrorPartitionActor::ReadBlocks(
     const typename TMethod::TRequest::TPtr& ev,
     const TActorContext& ctx)
 {
-    auto requestInfo = CreateRequestInfo(
-        ev->Sender,
-        ev->Cookie,
-        ev->Get()->CallContext);
+    using TResponse = TMethod::TResponse;
+
+    auto requestInfo =
+        CreateRequestInfo(ev->Sender, ev->Cookie, ev->Get()->CallContext);
 
     if (HasError(Status)) {
-        Reply(
-            ctx,
-            *requestInfo,
-            std::make_unique<typename TMethod::TResponse>(Status));
+        Reply(ctx, *requestInfo, std::make_unique<TResponse>(Status));
 
         return;
     }
@@ -417,38 +461,26 @@ void TMirrorPartitionActor::ReadBlocks(
         record.GetBlocksCount());
 
     if (ResyncRangeStarted && GetScrubbingRange().Overlaps(blockRange)) {
-        auto response = std::make_unique<typename TMethod::TResponse>(
-            MakeError(
-                E_REJECTED,
-                TStringBuilder()
-                    << "Request " << TMethod::Name
-                    << " intersects with currently resyncing range"));
+        auto response = std::make_unique<TResponse>(MakeError(
+            E_REJECTED,
+            TStringBuilder() << "Request " << TMethod::Name
+                             << " intersects with currently resyncing range"));
         NCloud::Reply(ctx, *ev, std::move(response));
         return;
     }
 
-    TSet<TActorId> replicaActorIds;
-    const ui32 readReplicaCount = Min<ui32>(
-        Max<ui32>(1, Config->GetMirrorReadReplicaCount()),
-        State.GetReplicaInfos().size());
-    for (ui32 i = 0; i < readReplicaCount; ++i) {
-        TActorId replicaActorId;
-        const auto error = State.NextReadReplica(blockRange, &replicaActorId);
-        if (HasError(error)) {
-            Reply(
-                ctx,
-                *requestInfo,
-                std::make_unique<typename TMethod::TResponse>(error));
+    const auto replicaIndex = record.GetHeaders().GetReplicaIndex();
+    auto [replicaActorIds, error] =
+        SelectReplicasToReadFrom(replicaIndex, blockRange, TMethod::Name);
 
-            return;
-        }
-
-        if (!replicaActorIds.insert(replicaActorId).second) {
-            break;
-        }
+    if (HasError(error)) {
+        NCloud::Reply(ctx, *ev, std::make_unique<TResponse>(error));
+        return;
     }
 
-    LOG_DEBUG(ctx, TBlockStoreComponents::PARTITION_WORKER,
+    LOG_DEBUG(
+        ctx,
+        TBlockStoreComponents::PARTITION_WORKER,
         "[%s] Will read %s from %u replicas",
         DiskId.c_str(),
         DescribeRange(blockRange).c_str(),

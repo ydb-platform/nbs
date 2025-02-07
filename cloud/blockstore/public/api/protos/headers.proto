@@ -78,4 +78,8 @@ message THeaders
 
     // This flag controls the optimization of data transmission over the network.
     EOptimizeNetworkTransfer OptimizeNetworkTransfer = 10;
+
+    // For which replica this request will be performed.
+    // Only for network-ssd-io-m* disks.
+    uint32 ReplicaIndex = 11;
 }
