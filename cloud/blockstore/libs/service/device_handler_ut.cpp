@@ -902,6 +902,59 @@ Y_UNIT_TEST_SUITE(TDeviceHandlerTest)
         // Execute last request
         env.RunWriteService();
     }
+
+    Y_UNIT_TEST(ShouldCopyBufferWhenClientModifyBuffer)
+    {
+        const auto clientId = "testClientId";
+        const ui32 blockSize = DefaultBlockSize;
+        const ui64 deviceBlocksCount = 8*1024;
+        const ui64 blocksCountLimit = deviceBlocksCount / 4;
+
+        auto storage = std::make_shared<TTestStorage>();
+
+        auto factory = CreateDeviceHandlerFactory(blocksCountLimit * blockSize);
+        auto deviceHandler = factory->CreateDeviceHandler(
+            storage,
+            clientId,
+            blockSize,
+            false,   // unalignedRequestsDisabled,
+            true    // checkBufferModificationDuringWriting
+        );
+
+        ui32 writeAttempts  = 0;
+
+        auto buffer = TString(DefaultBlockSize, 'g');
+        TSgList sgList{{buffer.data(), buffer.size()}};
+        storage->WriteBlocksLocalHandler =
+            [&](TCallContextPtr ctx,
+                std::shared_ptr<NProto::TWriteBlocksLocalRequest> request)
+        {
+            Y_UNUSED(ctx);
+
+            // Bad client modifies the contents of the memory
+            buffer[writeAttempts] = 'x';
+            ++writeAttempts;
+
+            // We should see the first memory change, but not the second, since
+            // the memory has already been copied.
+            auto guard = request->Sglist.Acquire();
+            const auto& src = guard.Get();
+            UNIT_ASSERT_VALUES_EQUAL('x', src[0].AsStringBuf()[0]);
+            UNIT_ASSERT_VALUES_EQUAL('g', src[0].AsStringBuf()[1]);
+
+            return MakeFuture<NProto::TWriteBlocksLocalResponse>();
+        };
+
+        auto future = deviceHandler->Write(
+            MakeIntrusive<TCallContext>(),
+            0,
+            blockSize,
+            TGuardedSgList(sgList));
+
+        const auto& response = future.GetValue(TDuration::Seconds(5));
+        UNIT_ASSERT(!HasError(response));
+        UNIT_ASSERT_VALUES_EQUAL(2, writeAttempts);
+    }
 }
 
 }   // namespace NCloud::NBlockStore
