@@ -1,4 +1,4 @@
-#include "cgroup_stats_fetcher.h"
+#include "stats_fetcher.h"
 
 #include "critical_events.h"
 

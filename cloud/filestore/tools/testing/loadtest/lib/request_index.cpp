@@ -653,7 +653,7 @@ private:
 
     TIntrusivePtr<TCallContext> CreateCallContext()
     {
-        return MakeIntrusive<TCallContext>(AtomicIncrement(LastRequestId));
+        return MakeIntrusive<TCallContext>(FileSystemId, AtomicIncrement(LastRequestId));
     }
 };
 

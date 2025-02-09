@@ -28,7 +28,7 @@ class TVolumeBalancerActor final
 private:
     const TStorageConfigPtr StorageConfig;
     const IVolumeStatsPtr VolumeStats;
-    const NCloud::NStorage::ICgroupStatsFetcherPtr CgroupStatsFetcher;
+    const NCloud::NStorage::IStatsFetcherPtr StatsFetcher;
     const IVolumeBalancerSwitchPtr VolumeBalancerSwitch;
     const NActors::TActorId ServiceActorId;
 
@@ -50,7 +50,7 @@ public:
     TVolumeBalancerActor(
         TStorageConfigPtr storageConfig,
         IVolumeStatsPtr volumeStats,
-        NCloud::NStorage::ICgroupStatsFetcherPtr cgroupStatsFetcher,
+        NCloud::NStorage::IStatsFetcherPtr statsFetcher,
         IVolumeBalancerSwitchPtr volumeBalancerSwitch,
         NActors::TActorId serviceActorId);
 

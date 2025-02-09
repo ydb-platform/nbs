@@ -143,13 +143,17 @@ bool TCreateVolumeActor::ShouldCreateVolumeWithEncryptionAtRest() const
     }
 
     return IsDiskRegistryMediaKind(GetStorageMediaKind()) &&
-        // Client did not request encryption with the provided key
-        Request.GetEncryptionSpec().GetMode() == NProto::NO_ENCRYPTION &&
-        (Config->GetEncryptionAtRestForDiskRegistryBasedDisksEnabled() ||
-         Config->IsEncryptionAtRestForDiskRegistryBasedDisksFeatureEnabled(
-             Request.GetCloudId(),
-             Request.GetFolderId(),
-             Request.GetDiskId()));
+            // Direct request for encryption at rest
+           (Request.GetEncryptionSpec().GetMode() ==
+                NProto::ENCRYPTION_AT_REST ||
+            // Client did not request encryption with the provided key
+            (Request.GetEncryptionSpec().GetMode() == NProto::NO_ENCRYPTION &&
+            // and the feature is enabled for the disk/cloud/folder
+             (Config->GetEncryptionAtRestForDiskRegistryBasedDisksEnabled() ||
+              Config->IsEncryptionAtRestForDiskRegistryBasedDisksFeatureEnabled(
+                  Request.GetCloudId(),
+                  Request.GetFolderId(),
+                  Request.GetDiskId()))));
 }
 
 void TCreateVolumeActor::CreateVolume(const TActorContext& ctx)
@@ -331,7 +335,7 @@ void TCreateVolumeActor::HandleCreateEncryptionKeyResponse(
                             << " with default AES XTS encryption");
 
     NKikimrBlockStore::TEncryptionDesc encryptionDesc;
-    encryptionDesc.SetMode(NProto::ENCRYPTION_DEFAULT_AES_XTS);
+    encryptionDesc.SetMode(NProto::ENCRYPTION_AT_REST);
 
     auto& dek = *encryptionDesc.MutableEncryptedDataKey();
     dek.SetKekId(msg.KmsKey.GetKekId());

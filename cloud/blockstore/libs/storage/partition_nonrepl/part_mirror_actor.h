@@ -179,6 +179,11 @@ private:
     void ReadBlocks(
         const typename TMethod::TRequest::TPtr& ev,
         const NActors::TActorContext& ctx);
+        
+    TResultOrError<TSet<NActors::TActorId>> SelectReplicasToReadFrom(
+        ui32 replicaIndex,
+        TBlockRange64 blockRange,
+        const TStringBuf& methodName);
 
     NActors::IActorPtr CreateCheckRangeActor(
         NActors::TActorId tablet,

@@ -1,0 +1,15 @@
+syntax = "proto2";
+
+package NCloud.NProto;
+
+option go_package = "github.com/ydb-platform/nbs/cloud/storage/core/protos";
+
+////////////////////////////////////////////////////////////////////////////////
+// CPU stats montitoring type
+
+enum EStatsFetcherType
+{
+    CGROUP = 0;
+    TASKSTATS = 1;
+};
+

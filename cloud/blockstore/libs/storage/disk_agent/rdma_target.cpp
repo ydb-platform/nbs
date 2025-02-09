@@ -456,7 +456,7 @@ private:
     template <typename T>
     TList<T> ProcessPostponedRequests(
         TThreadSafeData::TAccess& token,
-        TList<T>& postponedRequests) const
+        TList<T>* postponedRequests) const
     {
         TList<T> readyToExecute;
         auto executeNotOverlappedRequests = [&](T& postponedRequest) {
@@ -493,7 +493,7 @@ private:
             return false;
         };
 
-        std::erase_if(postponedRequests, executeNotOverlappedRequests);
+        std::erase_if(*postponedRequests, executeNotOverlappedRequests);
         return readyToExecute;
     }
 
@@ -513,9 +513,9 @@ private:
                 token->RecentBlocksTracker.AddRecorded(volumeRequestId, range);
             }
             readyToExecuteWriteRequests =
-                ProcessPostponedRequests(token, token->PostponedWriteRequests);
+                ProcessPostponedRequests(token, &token->PostponedWriteRequests);
             readyToExecuteZeroRequests =
-                ProcessPostponedRequests(token, token->PostponedZeroRequests);
+                ProcessPostponedRequests(token, &token->PostponedZeroRequests);
         }
 
         for (auto& continuationData: readyToExecuteWriteRequests) {

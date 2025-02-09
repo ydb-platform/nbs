@@ -794,7 +794,7 @@ private:
             return MakeFuture<TResultOrError<IBlockStorePtr>>(Client);
         }
 
-        if (desc.GetMode() != NProto::ENCRYPTION_DEFAULT_AES_XTS) {
+        if (desc.GetMode() != NProto::ENCRYPTION_AT_REST) {
             return MakeFuture<TResultOrError<IBlockStorePtr>>(
                 MakeError(E_ARGUMENT, "Unexpected encryption mode"));
         }

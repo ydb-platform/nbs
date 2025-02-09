@@ -1,4 +1,4 @@
-#include "cache.h"
+#include "node_cache.h"
 
 #include <cloud/filestore/libs/service/request.h>
 
@@ -8,7 +8,7 @@ namespace NCloud::NFileStore::NFuse {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TNode* TCache::AddNode(const NProto::TNodeAttr& attrs)
+TNode* TNodeCache::AddNode(const NProto::TNodeAttr& attrs)
 {
     auto [it, inserted] = Nodes.emplace(attrs);
     Y_ABORT_UNLESS(inserted, "failed to insert %s",
@@ -18,7 +18,7 @@ TNode* TCache::AddNode(const NProto::TNodeAttr& attrs)
     return node;
 }
 
-TNode* TCache::TryAddNode(const NProto::TNodeAttr& attrs)
+TNode* TNodeCache::TryAddNode(const NProto::TNodeAttr& attrs)
 {
     auto* node = FindNode(attrs.GetId());
     if (!node) {
@@ -31,7 +31,7 @@ TNode* TCache::TryAddNode(const NProto::TNodeAttr& attrs)
     return node;
 }
 
-void TCache::ForgetNode(ui64 ino, size_t count)
+void TNodeCache::ForgetNode(ui64 ino, size_t count)
 {
     auto it = Nodes.find(ino);
     if (it == Nodes.end()) {
@@ -49,7 +49,7 @@ void TCache::ForgetNode(ui64 ino, size_t count)
     }
 }
 
-TNode* TCache::FindNode(ui64 ino)
+TNode* TNodeCache::FindNode(ui64 ino)
 {
     auto it = Nodes.find(ino);
     return it != Nodes.end() ? (TNode*)&*it : nullptr;

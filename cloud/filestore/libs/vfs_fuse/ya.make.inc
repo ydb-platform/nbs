@@ -1,5 +1,4 @@
 SRCS(
-    cache.cpp
     config.cpp
     file_ring_buffer.cpp
     fs.cpp
@@ -13,6 +12,7 @@ SRCS(
     handle_ops_queue.cpp
     log.cpp
     loop.cpp
+    node_cache.cpp
 )
 
 PEERDIR(

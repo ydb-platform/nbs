@@ -333,11 +333,16 @@ public:
         return std::unique_ptr<TResponse>(handle->Release<TResponse>().Release());
     }
 
-    auto CreateReadBlocksRequest(const TBlockRange64& blockRange)
+    auto CreateReadBlocksRequest(
+        const TBlockRange64& blockRange,
+        ui32 replicaIndex = 0)
     {
         auto request = std::make_unique<TEvService::TEvReadBlocksRequest>();
         request->Record.SetStartIndex(blockRange.Start);
         request->Record.SetBlocksCount(blockRange.Size());
+        if (replicaIndex) {
+            request->Record.MutableHeaders()->SetReplicaIndex(replicaIndex);
+        }
 
         return request;
     }

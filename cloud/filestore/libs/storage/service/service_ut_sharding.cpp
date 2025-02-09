@@ -3717,6 +3717,9 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
 
         service.ResizeFileStore(fsId, (4_GB - 4_KB) / 4_KB);
 
+        expected = TVector<TString>{
+            fsId, fsId + "_s1", fsId + "_s2", fsId + "_s3", fsId + "_s4"
+        };
         listing = service.ListFileStores();
         fsIds = listing->Record.GetFileStores();
         ids = TVector<TString>(fsIds.begin(), fsIds.end());
@@ -3725,9 +3728,6 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
 
         service.ResizeFileStore(fsId, 4_GB / 4_KB);
 
-        expected = TVector<TString>{
-            fsId, fsId + "_s1", fsId + "_s2", fsId + "_s3", fsId + "_s4"
-        };
         listing = service.ListFileStores();
         fsIds = listing->Record.GetFileStores();
         ids = TVector<TString>(fsIds.begin(), fsIds.end());

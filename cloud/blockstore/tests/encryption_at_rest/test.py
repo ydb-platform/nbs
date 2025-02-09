@@ -7,7 +7,7 @@ import yatest.common as yatest_common
 import cloud.blockstore.tests.python.lib.daemon as daemon
 
 from cloud.blockstore.public.api.protos.encryption_pb2 import \
-    ENCRYPTION_DEFAULT_AES_XTS
+    ENCRYPTION_AT_REST, TEncryptionSpec
 
 from cloud.blockstore.public.sdk.python.client import CreateClient, Session
 from cloud.blockstore.public.sdk.python.protos import TCmsActionRequest, \
@@ -151,33 +151,43 @@ def start_disk_agent(ydb, nbs, agent_id):
     disk_agent.stop()
 
 
-def test_create_volume_with_default_ecnryption(nbs, disk_agent):
+@pytest.mark.parametrize('method', ['features', 'encryption_spec'])
+def test_create_volume_with_default_ecnryption(nbs, disk_agent, method):
 
     client = CreateClient(f"localhost:{nbs.port}")
 
+    # Feature EncryptionAtRestForDiskRegistryBasedDisks is enabled for vol0
+    disk_id = "vol0"
+    encryption_spec = None
+
+    if method == 'encryption_spec':
+        disk_id = "nrd0"
+        encryption_spec = TEncryptionSpec(Mode=ENCRYPTION_AT_REST)
+
     client.create_volume(
-        disk_id="vol0",
+        disk_id=disk_id,
         block_size=4096,
         blocks_count=2*DEVICE_SIZE//4096,
-        storage_media_kind=STORAGE_MEDIA_SSD_NONREPLICATED)
+        storage_media_kind=STORAGE_MEDIA_SSD_NONREPLICATED,
+        encryption_spec=encryption_spec)
 
-    session = Session(client, "vol0", "")
-    vol0 = session.mount_volume()['Volume']
+    session = Session(client, disk_id, "")
+    volume = session.mount_volume()['Volume']
 
     def read_first_block():
-        with open(vol0.Devices[0].DeviceName, 'rb') as f:
-            f.seek(vol0.Devices[0].PhysicalOffset)
+        with open(volume.Devices[0].DeviceName, 'rb') as f:
+            f.seek(volume.Devices[0].PhysicalOffset)
             return f.read(4096)
 
     # check that the first block is clean
     raw_data = read_first_block()
     assert raw_data.count(0) == 4096
 
-    assert len(vol0.Devices) == 2
-    assert vol0.EncryptionDesc.Mode == ENCRYPTION_DEFAULT_AES_XTS
+    assert len(volume.Devices) == 2
+    assert volume.EncryptionDesc.Mode == ENCRYPTION_AT_REST
 
-    assert vol0.EncryptionDesc.EncryptionKey.KekId == KEK_ID
-    assert len(vol0.EncryptionDesc.EncryptionKey.EncryptedDEK) == 512
+    assert volume.EncryptionDesc.EncryptionKey.KekId == KEK_ID
+    assert len(volume.EncryptionDesc.EncryptionKey.EncryptedDEK) == 512
 
     expected_data = os.urandom(4096)
 
@@ -198,7 +208,7 @@ def test_create_volume_with_default_ecnryption(nbs, disk_agent):
     response = json.loads(client.execute_action(
         action="UpdateUsedBlocks",
         input_bytes=json.dumps({
-            "DiskId": "vol0",
+            "DiskId": disk_id,
             "StartIndices": [0],
             "BlockCounts": [1],
             "Used": True

@@ -87,7 +87,7 @@ private:
     ITraceSerializerPtr TraceSerializer;
     NLogbroker::IServicePtr LogbrokerService;
     NNotify::IServicePtr NotifyService;
-    NCloud::NStorage::ICgroupStatsFetcherPtr CgroupStatsFetcher;
+    NCloud::NStorage::IStatsFetcherPtr StatsFetcher;
     NIamClient::IIamTokenClientPtr IamTokenClient;
     IComputeClientPtr ComputeClient;
     IKmsClientPtr KmsClient;
@@ -115,7 +115,7 @@ protected:
     IStartable* GetTraceSerializer() override;
     IStartable* GetLogbrokerService() override;
     IStartable* GetNotifyService() override;
-    IStartable* GetCgroupStatsFetcher() override;
+    IStartable* GetStatsFetcher() override;
     IStartable* GetIamTokenClient() override;
     IStartable* GetComputeClient() override;
     IStartable* GetKmsClient() override;

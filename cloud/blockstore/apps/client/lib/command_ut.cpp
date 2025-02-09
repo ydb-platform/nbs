@@ -372,6 +372,75 @@ Y_UNIT_TEST_SUITE(TCommandTest)
         UNIT_ASSERT(!ExecuteRequest("readblocks", argv, client));
     }
 
+    Y_UNIT_TEST(ShouldAddReplicaIndexToReadRequestHeadersIfOptionIsSet)
+    {
+        auto client = std::make_shared<TTestService>();
+
+        const ui64 volumeBlocksCount = 4096;
+        TString sessionId = CreateGuidAsString();
+        TString mountToken = CreateGuidAsString();
+
+        client->MountVolumeHandler =
+            [&](std::shared_ptr<NProto::TMountVolumeRequest> request)
+        {
+            UNIT_ASSERT(request->GetDiskId() == DefaultDiskId);
+            UNIT_ASSERT(
+                request->GetVolumeMountMode() == NProto::VOLUME_MOUNT_REMOTE);
+            UNIT_ASSERT(request->GetToken() == mountToken);
+
+            NProto::TMountVolumeResponse response;
+            response.SetSessionId(sessionId);
+
+            auto& volume = *response.MutableVolume();
+            volume.SetDiskId(DefaultDiskId);
+            volume.SetBlockSize(DefaultBlockSize);
+            volume.SetBlocksCount(volumeBlocksCount);
+
+            return MakeFuture(response);
+        };
+        client->UnmountVolumeHandler =
+            [&](std::shared_ptr<NProto::TUnmountVolumeRequest> request)
+        {
+            UNIT_ASSERT(request->GetDiskId() == DefaultDiskId);
+            UNIT_ASSERT(request->GetSessionId() == sessionId);
+            return MakeFuture<NProto::TUnmountVolumeResponse>();
+        };
+
+        const ui32 replicaIndex = 3;
+        bool handlerCalled = false;
+        client->ReadBlocksLocalHandler =
+            [&](std::shared_ptr<NProto::TReadBlocksLocalRequest> request)
+        {
+            handlerCalled = true;
+
+            UNIT_ASSERT(request->GetDiskId() == DefaultDiskId);
+            UNIT_ASSERT(
+                request->GetHeaders().GetReplicaIndex() == replicaIndex);
+
+            auto guard = request->Sglist.Acquire();
+            UNIT_ASSERT(guard);
+            const auto& sglist = guard.Get();
+
+            for (ui64 i = 0; i < sglist.size(); ++i) {
+                auto* dstPtr = const_cast<char*>(sglist[i].Data());
+                memset(dstPtr, 0, sglist[i].Size());
+            }
+
+            return MakeFuture(NProto::TReadBlocksLocalResponse());
+        };
+
+        TVector<TString> argv;
+        argv.reserve(5);
+        argv.emplace_back(GetProgramName());
+        argv.emplace_back(TStringBuilder() << "--token=" << mountToken);
+        argv.emplace_back(TStringBuilder() << "--disk-id=" << DefaultDiskId);
+        argv.emplace_back("--read-all");
+        argv.emplace_back("--replica-index=3");
+
+        UNIT_ASSERT(ExecuteRequest("readblocks", argv, client));
+        UNIT_ASSERT(handlerCalled);
+    }
+
     Y_UNIT_TEST(ShouldSplitLargeWriteVolumeRequestIntoSeveralRequests)
     {
         auto client = std::make_shared<TTestService>();

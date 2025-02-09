@@ -1,7 +1,7 @@
-#include "cache.h"
 #include "fs.h"
 #include "log.h"
 #include "loop.h"
+#include "node_cache.h"
 
 #include <cloud/filestore/libs/client/config.h>
 #include <cloud/filestore/libs/client/session.h>

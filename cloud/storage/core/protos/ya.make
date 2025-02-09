@@ -11,6 +11,7 @@ SRCS(
     authorization_mode.proto
     certificate.proto
     config_dispatcher_settings.proto
+    diagnostics.proto
     endpoints.proto
     error.proto
     media.proto

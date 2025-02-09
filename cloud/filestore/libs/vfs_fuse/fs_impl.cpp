@@ -111,7 +111,7 @@ bool TFileSystem::ValidateNodeId(
     return true;
 }
 
-bool TFileSystem::UpdateNodesCache(
+bool TFileSystem::UpdateNodeCache(
     const NProto::TNodeAttr& attrs,
     fuse_entry_param& entry)
 {
@@ -119,12 +119,12 @@ bool TFileSystem::UpdateNodesCache(
         return false;
     }
 
-    with_lock (CacheLock) {
-        auto* node = Cache.TryAddNode(attrs);
+    with_lock (NodeCacheLock) {
+        auto* node = NodeCache.TryAddNode(attrs);
         Y_ABORT_UNLESS(node);
 
         entry.ino = attrs.GetId();
-        entry.generation = Cache.Generation();
+        entry.generation = NodeCache.Generation();
         entry.attr_timeout = Config->GetAttrTimeout().Seconds();
         entry.entry_timeout = Config->GetEntryTimeout().Seconds();
 
@@ -141,7 +141,7 @@ void TFileSystem::UpdateXAttrCache(
     ui64 version,
     const NProto::TError& error)
 {
-    TGuard g{XAttrLock};
+    TGuard g{XAttrCacheLock};
     if (HasError(error)) {
         if (STATUS_FROM_CODE(error.GetCode()) == NProto::E_FS_NOXATTR) {
             XAttrCache.AddAbsent(ino, name);
@@ -162,7 +162,7 @@ void TFileSystem::ReplyCreate(
     STORAGE_TRACE("inserting node: " << DumpMessage(attrs));
 
     fuse_entry_param entry = {};
-    if (!UpdateNodesCache(attrs, entry)) {
+    if (!UpdateNodeCache(attrs, entry)) {
         ReplyError(callContext, MakeError(E_FS_IO), req, EIO);
         return;
     }
@@ -173,8 +173,8 @@ void TFileSystem::ReplyCreate(
     const int res = ReplyCreate(callContext, error, req, &entry, &fi);
     if (res == -ENOENT) {
         // syscall was interrupted
-        with_lock (CacheLock) {
-            Cache.ForgetNode(entry.ino, 1);
+        with_lock (NodeCacheLock) {
+            NodeCache.ForgetNode(entry.ino, 1);
         }
     }
 }
@@ -188,7 +188,7 @@ void TFileSystem::ReplyEntry(
     STORAGE_TRACE("inserting node: " << DumpMessage(attrs));
 
     fuse_entry_param entry = {};
-    if (!UpdateNodesCache(attrs, entry)) {
+    if (!UpdateNodeCache(attrs, entry)) {
         ReplyError(callContext, MakeError(E_FS_IO), req, EIO);
         return;
     }
@@ -196,8 +196,8 @@ void TFileSystem::ReplyEntry(
     const int res = ReplyEntry(callContext, error, req, &entry);
     if (res == -ENOENT) {
         // syscall was interrupted
-        with_lock (CacheLock) {
-            Cache.ForgetNode(entry.ino, 1);
+        with_lock (NodeCacheLock) {
+            NodeCache.ForgetNode(entry.ino, 1);
         }
     }
 }
@@ -229,7 +229,7 @@ void TFileSystem::ReplyAttr(
     const NProto::TNodeAttr& attrs)
 {
     fuse_entry_param entry = {};
-    if (!UpdateNodesCache(attrs, entry)) {
+    if (!UpdateNodeCache(attrs, entry)) {
         ReplyError(callContext, MakeError(E_FS_IO), req, EIO);
         return;
     }

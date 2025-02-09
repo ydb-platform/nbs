@@ -2,6 +2,7 @@ from concurrent import futures
 from datetime import datetime
 
 import cloud.blockstore.public.sdk.python.protos as protos
+from cloud.blockstore.public.api.protos.encryption_pb2 import TEncryptionSpec
 
 from google.protobuf.json_format import ParseDict
 
@@ -65,6 +66,7 @@ class _SafeClient(object):
             base_disk_id: str = "",
             base_disk_checkpoint_id: str = "",
             partitions_count: int = 1,
+            encryption_spec: TEncryptionSpec | None = None,
             storage_pool_name: str | None = None,
             idempotence_id: str | None = None,
             timestamp: datetime | None = None,
@@ -84,6 +86,7 @@ class _SafeClient(object):
             BaseDiskId=base_disk_id,
             BaseDiskCheckpointId=base_disk_checkpoint_id,
             PartitionsCount=partitions_count,
+            EncryptionSpec=encryption_spec,
             StoragePoolName=storage_pool_name
         )
         return self.__impl.create_volume_async(
@@ -108,6 +111,7 @@ class _SafeClient(object):
             base_disk_id: str = "",
             base_disk_checkpoint_id: str = "",
             partitions_count: int = 1,
+            encryption_spec: TEncryptionSpec | None = None,
             storage_pool_name: str | None = None,
             idempotence_id: str | None = None,
             timestamp: datetime | None = None,
@@ -127,6 +131,7 @@ class _SafeClient(object):
             BaseDiskId=base_disk_id,
             BaseDiskCheckpointId=base_disk_checkpoint_id,
             PartitionsCount=partitions_count,
+            EncryptionSpec=encryption_spec,
             StoragePoolName=storage_pool_name
         )
         self.__impl.create_volume(

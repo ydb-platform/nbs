@@ -119,7 +119,7 @@ IOutputStream& operator <<(
                 break;
             }
 
-            case NProto::ENCRYPTION_DEFAULT_AES_XTS: {
+            case NProto::ENCRYPTION_AT_REST: {
                 const auto& key = desc.GetEncryptedDataKey();
                 DIV() { out << "Kek Id: " << key.GetKekId().Quote(); }
                 DIV() {

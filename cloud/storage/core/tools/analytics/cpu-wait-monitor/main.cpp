@@ -1,4 +1,4 @@
-#include <cloud/storage/core/libs/diagnostics/cgroup_stats_fetcher.h>
+#include <cloud/storage/core/libs/diagnostics/stats_fetcher.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
 #include <library/cpp/getopt/small/last_getopt.h>

@@ -51,7 +51,7 @@
 #include <cloud/storage/core/libs/common/proto_helpers.h>
 #include <cloud/storage/core/libs/common/task_queue.h>
 #include <cloud/storage/core/libs/common/thread_pool.h>
-#include <cloud/storage/core/libs/diagnostics/cgroup_stats_fetcher.h>
+#include <cloud/storage/core/libs/diagnostics/stats_fetcher.h>
 #include <cloud/storage/core/libs/diagnostics/trace_serializer.h>
 #include <cloud/storage/core/libs/iam/iface/client.h>
 #include <cloud/storage/core/libs/iam/iface/config.h>
@@ -131,7 +131,7 @@ IStartable* TBootstrapYdb::GetYdbStorage()         { return YdbStorage.get(); }
 IStartable* TBootstrapYdb::GetTraceSerializer()    { return TraceSerializer.get(); }
 IStartable* TBootstrapYdb::GetLogbrokerService()   { return LogbrokerService.get(); }
 IStartable* TBootstrapYdb::GetNotifyService()      { return NotifyService.get(); }
-IStartable* TBootstrapYdb::GetCgroupStatsFetcher() { return CgroupStatsFetcher.get(); }
+IStartable* TBootstrapYdb::GetStatsFetcher()       { return StatsFetcher.get(); }
 IStartable* TBootstrapYdb::GetIamTokenClient()     { return IamTokenClient.get(); }
 IStartable* TBootstrapYdb::GetComputeClient()      { return ComputeClient.get(); }
 IStartable* TBootstrapYdb::GetKmsClient()          { return KmsClient.get(); }
@@ -499,11 +499,11 @@ void TBootstrapYdb::InitKikimrService()
 
     STORAGE_INFO("ProfileLog initialized");
 
-    CgroupStatsFetcher = BuildCgroupStatsFetcher(
+    StatsFetcher = NCloud::NStorage::BuildStatsFetcher(
+        Configs->DiagnosticsConfig->GetStatsFetcherType(),
         Configs->DiagnosticsConfig->GetCpuWaitFilename(),
         Log,
-        logging,
-        "BLOCKSTORE_CGROUPS");
+        logging);
 
     if (Configs->StorageConfig->GetBlockDigestsEnabled()) {
         if (Configs->StorageConfig->GetUseTestBlockDigestGenerator()) {
@@ -553,7 +553,7 @@ void TBootstrapYdb::InitKikimrService()
     args.LogbrokerService = LogbrokerService;
     args.NotifyService = NotifyService;
     args.VolumeStats = VolumeStats;
-    args.CgroupStatsFetcher = CgroupStatsFetcher;
+    args.StatsFetcher = StatsFetcher;
     args.RdmaServer = nullptr;
     args.RdmaClient = RdmaClient;
     args.Logging = logging;

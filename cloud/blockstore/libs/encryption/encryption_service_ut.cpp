@@ -325,9 +325,7 @@ Y_UNIT_TEST_SUITE(TMultipleEncryptionServiceTest)
             keyRequested = true;
 
             UNIT_ASSERT_VALUES_EQUAL(testDiskId, diskId);
-            UNIT_ASSERT_EQUAL(
-                NProto::ENCRYPTION_DEFAULT_AES_XTS,
-                spec.GetMode());
+            UNIT_ASSERT_EQUAL(NProto::ENCRYPTION_AT_REST, spec.GetMode());
 
             UNIT_ASSERT_C(spec.HasKeyPath(), spec);
             UNIT_ASSERT_C(spec.GetKeyPath().HasKmsKey(), spec);
@@ -370,8 +368,7 @@ Y_UNIT_TEST_SUITE(TMultipleEncryptionServiceTest)
             volume.SetBlockSize(DefaultBlockSize);
             volume.SetBlocksCount(volumeBlocksCount);
 
-            volume.MutableEncryptionDesc()->SetMode(
-                NProto::ENCRYPTION_DEFAULT_AES_XTS);
+            volume.MutableEncryptionDesc()->SetMode(NProto::ENCRYPTION_AT_REST);
 
             NProto::TKmsKey& key =
                 *volume.MutableEncryptionDesc()->MutableEncryptionKey();

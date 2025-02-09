@@ -38,7 +38,7 @@ private:
         STORAGE_DEBUG("Sending ExecuteAction request");
         const auto requestId = GetRequestId(*request);
         auto result = WaitFor(Client->ExecuteAction(
-            MakeIntrusive<TCallContext>(requestId),
+            MakeIntrusive<TCallContext>(FileSystemId, requestId),
             std::move(request)));
 
         STORAGE_DEBUG("Received ExecuteAction response");
