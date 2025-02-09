@@ -626,15 +626,18 @@ UnixCredentialsGuard::~UnixCredentialsGuard()
 
 TFileId::TFileId(const TFileHandle& handle)
     : FileHandle{
-            .handle_bytes = sizeof(Buffer),
-            .handle_type = 0,
-            .f_handle = {},
-        }
+          .handle_bytes = sizeof(Buffer),
+          .handle_type = 0,
+          .f_handle = {},
+      }
 {
     int mountId = 0;
-    int ret = name_to_handle_at(handle, "", &FileHandle, &mountId, AT_EMPTY_PATH);
-    Y_ENSURE_EX(ret != -1, TServiceError(GetSystemErrorCode())
-        << "name_to_handle_at failed: " << LastSystemErrorText());
+    int ret =
+        name_to_handle_at(handle, "", &FileHandle, &mountId, AT_EMPTY_PATH);
+    Y_ENSURE_EX(
+        ret != -1,
+        TServiceError(GetSystemErrorCode())
+            << "name_to_handle_at failed: " << LastSystemErrorText());
 }
 
 TFileHandle TFileId::Open(const TFileHandle& mountHandle, int flags)

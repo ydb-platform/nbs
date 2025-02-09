@@ -170,8 +170,8 @@ private:
     TRWMutex NodesLock;
     TLog Log;
     std::shared_ptr<INodeLoader> NodeLoader;
-    TIntrusiveList<TIndexNode> NodeInserOrderList;
-    bool DoCleanupNodes = false;
+    TIntrusiveList<TIndexNode> NodeInsertOrderList;
+    bool ShouldCleanupNodes = false;
 
 public:
     TLocalIndex(
@@ -188,8 +188,9 @@ public:
         , OpenNodeByHandleEnabled(openNodeByHandleEnabled)
         , NodeCleanupBatchSize(nodeCleanupBatchSize)
         , Log(std::move(log))
+        , NodeLoader(std::move(nodeLoader))
     {
-        Init(std::move(nodeLoader));
+        Init();
     }
 
     TIndexNodePtr LookupNode(ui64 nodeId)
@@ -220,7 +221,7 @@ public:
         auto node = LoadNodeById(nodeId);
         if (node) {
             Nodes.insert(node);
-            NodeInserOrderList.PushBack(node.get());
+            NodeInsertOrderList.PushBack(node.get());
         }
 
         return node;
@@ -259,7 +260,7 @@ public:
             node->SetRecordIndex(recordIndex);
         }
 
-        NodeInserOrderList.PushBack(node.get());
+        NodeInsertOrderList.PushBack(node.get());
         Nodes.emplace(std::move(node));
         return true;
     }
@@ -288,7 +289,7 @@ public:
     }
 
 private:
-    void Init(std::shared_ptr<INodeLoader> nodeLoader)
+    void Init()
     {
         auto root = TIndexNode::CreateRoot(RootPath);
         STORAGE_INFO(
@@ -298,9 +299,7 @@ private:
 
         if (OpenNodeByHandleEnabled) {
             try {
-                if (nodeLoader) {
-                    NodeLoader = std::move(nodeLoader);
-                } else {
+                if (!NodeLoader) {
                     NodeLoader = std::make_unique<TNodeLoader>(root);
                 }
 
@@ -399,7 +398,7 @@ private:
                     auto node =
                         TIndexNode::Create(**parentNodeIt, pathElemRecord->Name);
                     node->SetRecordIndex(pathElemIndex);
-                    NodeInserOrderList.PushBack(node.get());
+                    NodeInsertOrderList.PushBack(node.get());
                     Nodes.insert(node);
 
                     STORAGE_TRACE(
@@ -468,7 +467,7 @@ private:
         }
 
         bool isNodeLimitReached = Nodes.size() >= MaxNodeCount;
-        if (!isNodeLimitReached && !DoCleanupNodes) {
+        if (!isNodeLimitReached && !ShouldCleanupNodes) {
             return;
         }
 
@@ -481,7 +480,7 @@ private:
 
             // recheck
             isNodeLimitReached = Nodes.size() >= MaxNodeCount;
-            if (!isNodeLimitReached && !DoCleanupNodes) {
+            if (!isNodeLimitReached && !ShouldCleanupNodes) {
                 NodesLock.ReleaseWrite();
                 NodesLock.AcquireRead();
                 return;
@@ -489,12 +488,12 @@ private:
         }
 
         // Don't clean if nodes ocupation reduced to half
-        DoCleanupNodes = Nodes.size() > (MaxNodeCount / 2);
+        ShouldCleanupNodes = Nodes.size() > (MaxNodeCount / 2);
 
-        if (DoCleanupNodes) {
+        if (ShouldCleanupNodes) {
             ui32 maxNodesToClean = isNodeLimitReached ? NodeCleanupBatchSize : 1;
-            auto it = NodeInserOrderList.begin();
-            while (maxNodesToClean && it != NodeInserOrderList.end()) {
+            auto it = NodeInsertOrderList.begin();
+            while (maxNodesToClean && it != NodeInsertOrderList.end()) {
                 auto nodeId = it->GetNodeId();
                 ++it;
                 --maxNodesToClean;

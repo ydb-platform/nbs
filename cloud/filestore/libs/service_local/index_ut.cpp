@@ -432,7 +432,6 @@ Y_UNIT_TEST_SUITE(TLocalIndex)
                 nodes[nodeIndex].use_count(),
                 "Node #" << nodeIndex << ", NodeId=" << nodes[nodeIndex]->GetNodeId()
                 << (isNodeInCache ? "doesn't " :  " ") << "exist in node cache");
-
         };
 
         // fill node cache RootNode + 6 nodes = 7/8 nodes
