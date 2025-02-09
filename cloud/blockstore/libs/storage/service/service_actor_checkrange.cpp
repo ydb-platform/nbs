@@ -96,9 +96,12 @@ void TCheckRangeActor::HandleCheckRangeResponse(
     const TActorContext& ctx)
 {
     const auto& error = ev->Get()->GetError();
+    auto response = std::make_unique<TEvService::TEvCheckRangeResponse>(error);
+    response->Record.MutableStatus()->CopyFrom(ev->Get()->Record.GetStatus());
+
     ReplyAndDie(
         ctx,
-        std::make_unique<TEvService::TEvCheckRangeResponse>(error));
+        std::move(response));
 }
 
 void TCheckRangeActor::ReplyAndDie(

@@ -850,11 +850,11 @@ public:
     }
 
     std::unique_ptr<TEvService::TEvCheckRangeRequest>
-    CreateCheckRangeRequest(TString id, ui32 idx, ui32 size)
+    CreateCheckRangeRequest(TString id, ui32 startIndex, ui32 size)
     {
         auto request = std::make_unique<TEvService::TEvCheckRangeRequest>();
         request->Record.SetDiskId(id);
-        request->Record.SetStartIndex(idx);
+        request->Record.SetStartIndex(startIndex);
         request->Record.SetBlocksCount(size);
         return request;
     }
@@ -7174,7 +7174,7 @@ Y_UNIT_TEST_SUITE(TPartition2Test)
         UNIT_ASSERT_VALUES_EQUAL(E_TRY_AGAIN, response->GetStatus());
     }
 
-    Y_UNIT_TEST(ShouldCheckRange)
+  Y_UNIT_TEST(ShouldCheckRange)
     {
         constexpr ui32 blockCount = 1024 * 1024;
         auto runtime = PrepareTestActorRuntime(DefaultConfig(), blockCount);
@@ -7206,6 +7206,7 @@ Y_UNIT_TEST_SUITE(TPartition2Test)
         partition.ZeroBlocks(TBlockRange32::MakeClosedInterval(5024, 5033));
 
         ui32 status = -1;
+        ui32 error = -1;
 
         runtime->SetObserverFunc(
             [&](TAutoPtr<IEventHandle>& event)
@@ -7214,7 +7215,8 @@ Y_UNIT_TEST_SUITE(TPartition2Test)
                     case TEvService::EvCheckRangeResponse: {
                         using TEv = TEvService::TEvCheckRangeResponse;
                         const auto* msg = event->Get<TEv>();
-                        status = msg->GetStatus();
+                        error = msg->GetStatus();
+                        status = msg->Record.GetStatus().GetCode();
                         break;
                     }
                 }
@@ -7232,6 +7234,7 @@ Y_UNIT_TEST_SUITE(TPartition2Test)
             runtime->DispatchEvents(options, TDuration::Seconds(3));
 
             UNIT_ASSERT_VALUES_EQUAL(S_OK, status);
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, error);
         };
 
         checkRange(0, 1024);
@@ -7269,6 +7272,7 @@ Y_UNIT_TEST_SUITE(TPartition2Test)
             1);
 
         ui32 status = -1;
+        ui32 error = -1;
 
         runtime->SetObserverFunc(
             [&](TAutoPtr<IEventHandle>& event)
@@ -7277,7 +7281,9 @@ Y_UNIT_TEST_SUITE(TPartition2Test)
                     case TEvService::EvCheckRangeResponse: {
                         using TEv = TEvService::TEvCheckRangeResponse;
                         const auto* msg = event->Get<TEv>();
-                        status = msg->GetStatus();
+                        status = msg->Record.GetStatus().GetCode();
+                        error = msg->Record.GetError().GetCode();
+
                         break;
                     }
                     case TEvService::EvReadBlocksResponse: {
@@ -7315,6 +7321,7 @@ Y_UNIT_TEST_SUITE(TPartition2Test)
             options.FinalEvents.emplace_back(TEvService::EvCheckRangeResponse);
 
             UNIT_ASSERT_VALUES_EQUAL(E_IO, status);
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, error);
         };
         checkRange(0, 1024);
         checkRange(1024, 2048);
@@ -7340,6 +7347,7 @@ Y_UNIT_TEST_SUITE(TPartition2Test)
         runtime->DispatchEvents(options, TDuration::Seconds(1));
 
         UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, response->Record.GetStatus().GetCode());
     }
 
     Y_UNIT_TEST(ShouldntCheckRangeWithBigBlockCount)

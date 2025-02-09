@@ -46,6 +46,7 @@ public:
 private:
     void ReplyAndDie(
         const TActorContext& ctx,
+        const NProto::TError& status,
         const NProto::TError& error = {});
 
     void HandleReadBlocksResponse(
@@ -100,10 +101,13 @@ void TCheckRangeActor::SendReadBlocksRequest(const TActorContext& ctx)
 
 void TCheckRangeActor::ReplyAndDie(
     const TActorContext& ctx,
+    const NProto::TError& status,
     const NProto::TError& error)
 {
     auto response =
         std::make_unique<TEvService::TEvCheckRangeResponse>(std::move(error));
+        response->Record.MutableStatus()->CopyFrom(status);
+
     NCloud::Reply(ctx, *Ev, std::move(response));
 
     Die(ctx);
@@ -147,7 +151,7 @@ void TCheckRangeActor::HandleReadBlocksResponse(
     const TActorContext& ctx)
 {
     const auto* msg = ev->Get();
-    auto error = MakeError(S_OK);
+    auto status = MakeError(S_OK);
 
     if (HasError(msg->Record.GetError())) {
         const auto& errorMessage = msg->Record.GetError().GetMessage();
@@ -157,10 +161,10 @@ void TCheckRangeActor::HandleReadBlocksResponse(
             "reading error has occurred: " + errorMessage);
         const auto& errorCode =
             msg->Record.GetError().code() == E_ARGUMENT ? E_ARGUMENT : E_IO;
-        error = MakeError(errorCode, msg->Record.GetError().GetMessage());
+        status = MakeError(errorCode, msg->Record.GetError().GetMessage());
     }
 
-    ReplyAndDie(ctx, error);
+    ReplyAndDie(ctx, status);
 }
 
 }   // namespace

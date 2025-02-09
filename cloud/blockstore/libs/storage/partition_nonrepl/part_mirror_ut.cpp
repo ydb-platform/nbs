@@ -1956,6 +1956,7 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
             1);
 
         ui32 status = -1;
+        ui32 error = -1;
 
         runtime.SetObserverFunc(
             [&](TAutoPtr<IEventHandle>& event)
@@ -1964,7 +1965,9 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
                     case TEvService::EvCheckRangeResponse: {
                         using TEv = TEvService::TEvCheckRangeResponse;
                         const auto* msg = event->Get<TEv>();
-                        status = msg->GetStatus();
+                        error = msg->GetStatus();
+                        status = msg->Record.GetStatus().GetCode();
+
                         break;
                     }
                 }
@@ -1974,6 +1977,7 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
         const auto checkRange = [&](ui32 idx, ui32 size)
         {
             status = -1;
+            error = -1;
 
             const auto response = client.CheckRange("id", idx, size);
 
@@ -1982,6 +1986,7 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
             runtime.DispatchEvents(options, TDuration::Seconds(3));
 
             UNIT_ASSERT_VALUES_EQUAL(S_OK, status);
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, error);
         };
 
         checkRange(0, 4096);
@@ -2002,6 +2007,7 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
             1);
 
         ui32 status = -1;
+        ui32 error = -1;
 
         runtime.SetObserverFunc(
             [&](TAutoPtr<IEventHandle>& event)
@@ -2010,7 +2016,9 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
                     case TEvService::EvCheckRangeResponse: {
                         using TEv = TEvService::TEvCheckRangeResponse;
                         const auto* msg = event->Get<TEv>();
-                        status = msg->GetStatus();
+                        error = msg->GetStatus();
+                        status = msg->Record.GetStatus().GetCode();
+
                         break;
                     }
                     case TEvService::EvReadBlocksResponse: {
@@ -2040,6 +2048,7 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
         const auto checkRange = [&](ui32 idx, ui32 size)
         {
             status = -1;
+            error = -1;
 
             client.SendCheckRangeRequest("id", idx, size);
             const auto response =
@@ -2050,6 +2059,8 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
             runtime.DispatchEvents(options, TDuration::Seconds(3));
 
             UNIT_ASSERT_VALUES_EQUAL(E_IO, status);
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, error);
+
         };
 
         checkRange(0, 4096);
@@ -2075,6 +2086,7 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
         runtime.DispatchEvents(options, TDuration::Seconds(1));
 
         UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, response->Record.GetStatus().GetCode());
     }
 
     Y_UNIT_TEST(ShouldntCheckRangeWithBigBlockCount)

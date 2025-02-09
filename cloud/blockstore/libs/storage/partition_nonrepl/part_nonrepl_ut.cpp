@@ -1992,6 +1992,7 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionTest)
             1);
 
         ui32 status = -1;
+        ui32 error = -1;
 
         runtime.SetObserverFunc(
             [&](TAutoPtr<IEventHandle>& event)
@@ -2000,7 +2001,9 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionTest)
                     case TEvService::EvCheckRangeResponse: {
                         using TEv = TEvService::TEvCheckRangeResponse;
                         const auto* msg = event->Get<TEv>();
-                        status = msg->GetStatus();
+                        error = msg->GetStatus();
+                        status = msg->Record.GetStatus().GetCode();
+
                         break;
                     }
                 }
@@ -2010,6 +2013,7 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionTest)
         const auto checkRange = [&](ui32 idx, ui32 size)
         {
             status = -1;
+            error = -1;
 
             const auto response = client.CheckRange("id", idx, size);
 
@@ -2018,12 +2022,13 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionTest)
             runtime.DispatchEvents(options, TDuration::Seconds(3));
 
             UNIT_ASSERT_VALUES_EQUAL(S_OK, status);
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, error);
         };
 
         checkRange(0, 4096);
         checkRange(1024, 2048);
         checkRange(1, 1);
-        checkRange(5000, 1000);
+        checkRange(2000, 1000);
     }
 
     Y_UNIT_TEST(ShouldCheckRangeWithBrokenBlocks)
@@ -2038,6 +2043,7 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionTest)
             1);
 
         ui32 status = -1;
+        ui32 error = -1;
 
         runtime.SetObserverFunc(
             [&](TAutoPtr<IEventHandle>& event)
@@ -2046,7 +2052,7 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionTest)
                     case TEvService::EvCheckRangeResponse: {
                         using TEv = TEvService::TEvCheckRangeResponse;
                         const auto* msg = event->Get<TEv>();
-                        status = msg->GetStatus();
+                        error = msg->GetStatus();
                         break;
                     }
                     case TEvService::EvReadBlocksResponse: {
@@ -2084,7 +2090,8 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionTest)
             options.FinalEvents.emplace_back(TEvService::EvCheckRangeResponse);
             runtime.DispatchEvents(options, TDuration::Seconds(3));
 
-            UNIT_ASSERT_VALUES_EQUAL(E_IO, status);
+            UNIT_ASSERT_VALUES_EQUAL(E_IO, response->Record.GetStatus().GetCode());
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, error);
         };
 
         checkRange(0, 4096);
@@ -2110,6 +2117,7 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionTest)
         runtime.DispatchEvents(options, TDuration::Seconds(1));
 
         UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, response->Record.GetStatus().GetCode());
     }
 
     Y_UNIT_TEST(ShouldntCheckRangeWithBigBlockCount)

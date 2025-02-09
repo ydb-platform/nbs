@@ -766,6 +766,9 @@ message TCheckRangeResponse
     // Optional error, set only if error happened.
     NCloud.NProto.TError Error = 1;
 
+    // Status of ReadBlocks operation.
+    NCloud.NProto.TError Status = 2;
+
     // Request traces.
-    NCloud.NProto.TTraceInfo Trace = 2;
+    NCloud.NProto.TTraceInfo Trace = 3;
 }
