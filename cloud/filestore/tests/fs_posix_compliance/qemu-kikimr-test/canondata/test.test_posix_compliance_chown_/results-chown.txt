@@ -181,7 +181,7 @@ ok 1
 ok 2
 ok 3
 ok 4
-not ok 5
+ok 5
 TEST SUITE[chown, 03.t] 1..12
 ok 1
 ok 2
