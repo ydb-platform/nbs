@@ -36,6 +36,8 @@ void TFileSystem::Lookup(
                         error,
                         req,
                         response.GetNode());
+                } else if (error.GetCode() == E_FS_NAMETOOLONG) {
+                    self->ReplyError(*callContext, error, req, ENAMETOOLONG);
                 } else {
                     fuse_entry_param entry = {};
                     entry.entry_timeout =
