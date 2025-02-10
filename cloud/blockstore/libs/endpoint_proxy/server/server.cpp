@@ -206,6 +206,7 @@ struct TRestartAlarmContext: TRequestContextBase
         SetAlarm();
     }
 
+    // context will be held by grpc until CQ->Next returns it
     void SetAlarm()
     {
         Alarm.Set(
@@ -289,6 +290,7 @@ struct TServer: IEndpointProxyServer
         {
             Y_UNUSED(e);
 
+            // context will be held by grpc until CQ->Next returns it
             new TRestartAlarmContext(
                 Endpoint,
                 CQ,
@@ -535,7 +537,13 @@ struct TServer: IEndpointProxyServer
             auto* restartAlarmContext =
                 dynamic_cast<TRestartAlarmContext*>(requestContext);
             if (restartAlarmContext) {
-                if (!ProcessAlarm(restartAlarmContext)) {
+                if (ProcessAlarm(restartAlarmContext)) {
+                    // reset the alarm in case of an error, context will be
+                    // held by grpc until CQ->Next returns it
+                    restartAlarmContext->SetAlarm();
+                } else {
+                    // unlike requests, alarms don't need to wait for async
+                    // writer, so can be freed immediately
                     delete restartAlarmContext;
                 }
                 continue;
@@ -1007,7 +1015,6 @@ struct TServer: IEndpointProxyServer
                 STORAGE_ERROR(tag
                     << "Unable to restart proxy endpoint, retry in "
                     << context->Backoff.GetDelay());
-                context->SetAlarm();
                 return true;
             }
         }
