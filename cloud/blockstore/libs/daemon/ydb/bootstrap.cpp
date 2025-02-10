@@ -47,7 +47,9 @@
 #include <cloud/blockstore/libs/ydbstats/ydbstats.h>
 #include <cloud/blockstore/libs/ydbstats/ydbstorage.h>
 
+#include <cloud/storage/core/libs/actors/helpers.h>
 #include <cloud/storage/core/libs/aio/service.h>
+#include <cloud/storage/core/libs/api/hive_proxy.h>
 #include <cloud/storage/core/libs/common/file_io_service.h>
 #include <cloud/storage/core/libs/common/proto_helpers.h>
 #include <cloud/storage/core/libs/common/task_queue.h>
@@ -55,6 +57,7 @@
 #include <cloud/storage/core/libs/coroutine/executor.h>
 #include <cloud/storage/core/libs/diagnostics/stats_fetcher.h>
 #include <cloud/storage/core/libs/diagnostics/trace_serializer.h>
+#include <cloud/storage/core/libs/hive_proxy/tablet_boot_info.h>
 #include <cloud/storage/core/libs/hive_proxy/protos/tablet_boot_info_backup.pb.h>
 #include <cloud/storage/core/libs/iam/iface/client.h>
 #include <cloud/storage/core/libs/iam/iface/config.h>
@@ -86,6 +89,8 @@ using namespace NCloud::NIamClient;
 
 using namespace NCloud::NStorage;
 
+using namespace NActors;
+
 namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -95,6 +100,70 @@ NRdma::TClientConfigPtr CreateRdmaClientConfig(
 {
     return std::make_shared<NRdma::TClientConfig>(config->GetClient());
 }
+
+class TGetTabletBootInfoActor final
+    : public NActors::TActorBootstrapped<TGetTabletBootInfoActor>
+{
+private:
+    using TEvRequest = typename NCloud::NStorage::TEvHiveProxy::
+        TEvListTabletBootInfoBackupsRequest;
+    using TEvResponse = typename NCloud::NStorage::TEvHiveProxy::
+        TEvListTabletBootInfoBackupsResponse;
+
+private:
+    NThreading::TPromise<TVector<TTabletBootInfo>> Promise;
+    const TDuration RequestTimeout;
+
+public:
+    explicit TGetTabletBootInfoActor(
+        NThreading::TPromise<TVector<TTabletBootInfo>> promise,
+        TDuration requestTimeout)
+        : Promise(std::move(promise))
+        , RequestTimeout(requestTimeout)
+    {}
+
+    void Bootstrap(const TActorContext& ctx)
+    {
+        TThis::Become(&TThis::StateWork);
+
+        auto req = std::make_unique<TEvRequest>();
+
+        NCloud::Send(ctx, MakeHiveProxyServiceId(), std::move(req));
+        ctx.Schedule(RequestTimeout, new TEvents::TEvWakeup());
+    }
+
+private:
+    STFUNC(StateWork)
+    {
+        switch (ev->GetTypeRewrite()) {
+            HFunc(TEvResponse, HandleResponse);
+            HFunc(TEvents::TEvWakeup, HandleTimeout);
+
+            default:
+                HandleUnexpectedEvent(ev, TBlockStoreComponents::SERVICE_PROXY);
+                break;
+        }
+    }
+
+    void HandleTimeout(
+        const TEvents::TEvWakeup::TPtr& ev,
+        const NActors::TActorContext& ctx)
+    {
+        Y_UNUSED(ev);
+        Promise.SetValue({});
+        Die(ctx);
+    }
+
+    void HandleResponse(const TEvResponse::TPtr& ev, const TActorContext& ctx)
+    {
+        TVector<TTabletBootInfo> valueToSet = {};
+        if (!HasError(ev->Get()->GetError())) {
+            valueToSet = std::move(ev->Get()->TabletBootInfos);
+        }
+        Promise.SetValue(std::move(valueToSet));
+        Die(ctx);
+    }
+};
 
 }   // namespace
 
@@ -641,48 +710,27 @@ void TBootstrapYdb::WarmupBSGroupsConnections()
         return;
     }
 
-    auto tabletBootInfoBackupFilePath =
-        TFsPath(Configs->StorageConfig->GetTabletBootInfoBackupFilePath());
-    STORAGE_INFO(
-        TStringBuilder()
-        << "trying to read groupIds from tablet boot info file: "
-        << tabletBootInfoBackupFilePath);
-    NCloud::NStorage::NHiveProxy::NProto::TTabletBootInfoBackup backupProto;
+    auto promise = NThreading::NewPromise<TVector<TTabletBootInfo>>();
+    auto future = promise.GetFuture();
 
-    try {
-        TFileLock lock(tabletBootInfoBackupFilePath);
-        if (lock.TryAcquire()) {
-            Y_DEFER
-            {
-                lock.Release();
-            };
-            TFileInput input(tabletBootInfoBackupFilePath);
+    ActorSystem->Register(std::make_unique<TGetTabletBootInfoActor>(
+        std::move(promise),
+        TDuration::Seconds(1)));
 
-            ParseFromTextFormat(input, backupProto);
-        } else {
-            auto message =
-                TStringBuilder()
-                << "failed to acquire lock on tablet boot info file: "
-                << tabletBootInfoBackupFilePath;
-            STORAGE_ERROR(message);
-            return;
-        }
-    } catch (...) {
-        auto message = TStringBuilder()
-                       << "error during reading tablet boot info file: "
-                       << tabletBootInfoBackupFilePath;
-        STORAGE_ERROR(message);
+    const auto& resp = future.GetValueSync();
+    if (resp.empty()) {
+        STORAGE_ERROR("Can't get tablet boot info");
         return;
     }
 
-    STORAGE_INFO("Sending ping messages to groups");
+    THashSet<ui64> groupIdsToWarmup;
 
-    THashSet<ui32> groupIdsToWarmup;
-    for (const auto& [_, tabletBootInfo]: backupProto.GetData()) {
-        for (const auto& channel: tabletBootInfo.GetStorageInfo().GetChannels())
+    for (const auto& tabletBootInfo: resp) {
+
+        for (const auto& channel: tabletBootInfo.StorageInfo->Channels)
         {
-            for (const auto& historyEntry: channel.GetHistory()) {
-                auto groupId = historyEntry.GetGroupID();
+            for (const auto& historyEntry: channel.History) {
+                auto groupId = historyEntry.GroupID;
                 auto [_, inserted] = groupIdsToWarmup.insert(groupId);
                 if (inserted) {
                     ActorSystem->Send(
@@ -693,6 +741,10 @@ void TBootstrapYdb::WarmupBSGroupsConnections()
             }
         }
     }
+
+    STORAGE_INFO(
+        "Sended ping messages to %zu groups",
+        groupIdsToWarmup.size());
 }
 
 }   // namespace NCloud::NBlockStore::NServer

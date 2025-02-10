@@ -29,6 +29,8 @@ private:
     const TFsPath BackupFilePath;
     const bool ReadOnlyMode = false;
 
+    std::optional<NHiveProxy::NProto::TTabletBootInfoBackup>
+        LoadedFromDiskBackupProto;
     NHiveProxy::NProto::TTabletBootInfoBackup BackupProto;
     const TFsPath TmpBackupFilePath;
 
@@ -63,7 +65,7 @@ private:
         const NActors::TActorContext& ctx);
 
     void HandleListTabletBootInfoBackups(
-        const TEvHiveProxyPrivate::TEvListTabletBootInfoBackupsRequest::TPtr& ev,
+        const TEvHiveProxy::TEvListTabletBootInfoBackupsRequest::TPtr& ev,
         const NActors::TActorContext& ctx);
 };
 
