@@ -3,8 +3,8 @@
 #include "public.h"
 
 #include <util/generic/string.h>
-#include <util/generic/vector.h>
 #include <util/generic/utility.h>
+#include <util/generic/vector.h>
 #include <util/system/error.h>
 
 namespace NCloud::NBlockStore::NRdma {
@@ -18,11 +18,12 @@ TOut SafeCast(TIn value)
     return static_cast<TOut>(value);
 }
 
-inline TString SafeLastSystemErrorText() {
+inline TString SafeLastSystemErrorText()
+{
     int err = LastSystemError();
-    char buf[64];
-    strerror_r(err, buf, sizeof(buf));
-    return TString(buf);
+    char buf[64]{};
+    const char* result = strerror_r(err, buf, sizeof(buf));
+    return TString(result);
 }
 
 }   // namespace NCloud::NBlockStore::NRdma
