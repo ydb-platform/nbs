@@ -60,6 +60,7 @@ class CrashProcessor(object):
         try:
             self.sender.send(
                 timestamp=crash_info.time,
+                core_file=None,
                 coredump="Thread 1 (LWP 0):\n#0  0x0000000000000000 in main () at main.cc:0\n",
                 info=crash_info.info,
                 service_name=crash_info.service,
@@ -81,6 +82,7 @@ class CrashProcessor(object):
 
             self.sender.send(
                 timestamp=crash_info.time,
+                core_file=crash_info.corefile,
                 coredump=backtrace,
                 info=crash_info.info,
                 service_name=service_name,
