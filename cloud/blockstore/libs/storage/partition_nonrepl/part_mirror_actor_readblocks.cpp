@@ -8,8 +8,6 @@
 #include <cloud/blockstore/libs/storage/api/undelivered.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
 
-#include <ranges>
-
 #include <cloud/storage/core/libs/common/verify.h>
 
 namespace NCloud::NBlockStore::NStorage {
@@ -68,7 +66,6 @@ private:
     const TString DiskId;
     const NActors::TActorId ParentActorId;
     const ui64 RequestIdentityKey;
-    const bool SendResponseToParent;
 
     using TResponseProto = typename TMethod::TResponse::ProtoRecordType;
     using TBase = TActorBootstrapped<TRequestActor<TMethod>>;
@@ -86,8 +83,7 @@ public:
         const TBlockRange64 range,
         TString diskId,
         TActorId parentActorId,
-        ui64 requestIdentityKey,
-        bool sendResponseToParent);
+        ui64 requestIdentityKey);
 
     void Bootstrap(const TActorContext& ctx);
 
@@ -131,8 +127,7 @@ TRequestActor<TMethod>::TRequestActor(
         const TBlockRange64 range,
         TString diskId,
         TActorId parentActorId,
-        ui64 requestIdentityKey,
-        bool sendResponseToParent)
+        ui64 requestIdentityKey)
     : RequestInfo(std::move(requestInfo))
     , Partitions(partitions)
     , Request(std::move(request))
@@ -140,7 +135,6 @@ TRequestActor<TMethod>::TRequestActor(
     , DiskId(std::move(diskId))
     , ParentActorId(parentActorId)
     , RequestIdentityKey(requestIdentityKey)
-    , SendResponseToParent(sendResponseToParent)
     , ResponseChecksums(Partitions.size(), 0)
 {}
 
@@ -234,17 +228,13 @@ void TRequestActor<TMethod>::Done(const TActorContext& ctx)
     auto response = std::make_unique<typename TMethod::TResponse>();
     response->Record = std::move(Response);
 
-    if (SendResponseToParent) {
-        NCloud::Send(ctx, ParentActorId, std::move(response));
-    } else {
-        NCloud::Reply(ctx, *RequestInfo, std::move(response));
+    NCloud::Reply(ctx, *RequestInfo, std::move(response));
 
-        auto completion = std::make_unique<
-            TEvNonreplPartitionPrivate::TEvMirroredReadCompleted>(
+    auto completion =
+        std::make_unique<TEvNonreplPartitionPrivate::TEvMirroredReadCompleted>(
             RequestIdentityKey,
             ChecksumMismatchObserved);
-        NCloud::Send(ctx, ParentActorId, std::move(completion));
-    }
+    NCloud::Send(ctx, ParentActorId, std::move(completion));
 
     TBase::Die(ctx);
 }
@@ -401,8 +391,6 @@ STFUNC(TRequestActor<TMethod>::StateWork)
     }
 }
 
-////////////////////////////////////////////////////////////////////////////////
-
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -510,8 +498,7 @@ void TMirrorPartitionActor::ReadBlocks(
             blockRange,
             State.GetReplicaInfos()[0].Config->GetName(),
             SelfId(),
-            requestIdentityKey,
-            false);
+            requestIdentityKey);
 
         return;
     }

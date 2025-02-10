@@ -78,8 +78,7 @@ private:
         auto completion = std::make_unique<
             TEvNonreplPartitionPrivate::TEvMirroredReadCompleted>(
             RequestIdentityKey,
-            false
-            );
+            false);
         NCloud::Send(ctx, ParentActorId, std::move(completion));
 
         NCloud::Reply(ctx, *RequestInfo, std::move(response));

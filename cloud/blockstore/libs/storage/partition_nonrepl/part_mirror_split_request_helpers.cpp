@@ -30,7 +30,7 @@ NSplitRequest::TSplittedRequest<TMethod> SplitRequestGeneralRead(
 }
 
 template <typename TMethod>
-NProto::TReadBlocksResponse GeneralReadUnify(
+NProto::TReadBlocksResponse UnifyResponsesGeneralRead(
     std::span<const TUnifyResponsesContext<TMethod>> responsesToUnify,
     size_t blockSize)
 {
@@ -139,7 +139,7 @@ NProto::TReadBlocksResponse UnifyResponsesRead(
         responsesToUnify,
     size_t blockSize)
 {
-    return GeneralReadUnify<TEvService::TReadBlocksMethod>(
+    return UnifyResponsesGeneralRead<TEvService::TReadBlocksMethod>(
         responsesToUnify,
         blockSize);
 }
@@ -149,7 +149,7 @@ NProto::TReadBlocksResponse UnifyResponsesReadLocal(
         responsesToUnify,
     size_t blockSize)
 {
-    return GeneralReadUnify<TEvService::TReadBlocksLocalMethod>(
+    return UnifyResponsesGeneralRead<TEvService::TReadBlocksLocalMethod>(
         responsesToUnify,
         blockSize);
 }
