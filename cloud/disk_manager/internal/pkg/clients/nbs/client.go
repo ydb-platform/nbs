@@ -150,6 +150,8 @@ func toEncryptionMode(
 		return protos.EEncryptionMode_NO_ENCRYPTION, nil
 	case types.EncryptionMode_ENCRYPTION_AES_XTS:
 		return protos.EEncryptionMode_ENCRYPTION_AES_XTS, nil
+	case types.EncryptionMode_ENCRYPTION_AT_REST:
+		return protos.EEncryptionMode_ENCRYPTION_AT_REST, nil
 	default:
 		return 0, errors.NewNonRetriableErrorf(
 			"unknown encryption mode %v",
@@ -167,6 +169,8 @@ func fromEncryptionMode(
 		return types.EncryptionMode_NO_ENCRYPTION, nil
 	case protos.EEncryptionMode_ENCRYPTION_AES_XTS:
 		return types.EncryptionMode_ENCRYPTION_AES_XTS, nil
+	case protos.EEncryptionMode_ENCRYPTION_AT_REST:
+		return types.EncryptionMode_ENCRYPTION_AT_REST, nil
 	default:
 		return 0, errors.NewNonRetriableErrorf(
 			"unknown encryption mode %v",
@@ -231,14 +235,33 @@ func getEncryptionDesc(
 		return nil, err
 	}
 
-	resultDesc := types.EncryptionDesc{
-		Mode: encryptionMode,
-		Key: &types.EncryptionDesc_KeyHash{
-			KeyHash: encryptionDesc.KeyHash,
-		},
+	if encryptionDesc.EncryptionKey != nil && len(encryptionDesc.KeyHash) != 0 {
+		return nil, errors.NewNonRetriableErrorf("ill-formed EncryptionDesc")
 	}
 
-	return &resultDesc, nil
+	var resultDesc *types.EncryptionDesc
+
+	if encryptionDesc.EncryptionKey != nil {
+		resultDesc = &types.EncryptionDesc{
+			Mode: encryptionMode,
+			Key: &types.EncryptionDesc_KmsKey{
+				KmsKey: &types.KmsKey{
+					KekId:        encryptionDesc.EncryptionKey.KekId,
+					EncryptedDEK: encryptionDesc.EncryptionKey.EncryptedDEK,
+					TaskId:       encryptionDesc.EncryptionKey.TaskId,
+				},
+			},
+		}
+	} else {
+		resultDesc = &types.EncryptionDesc{
+			Mode: encryptionMode,
+			Key: &types.EncryptionDesc_KeyHash{
+				KeyHash: encryptionDesc.KeyHash,
+			},
+		}
+	}
+
+	return resultDesc, nil
 }
 
 func toPlacementStrategy(
