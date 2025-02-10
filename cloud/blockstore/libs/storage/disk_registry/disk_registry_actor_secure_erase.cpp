@@ -1,9 +1,10 @@
 #include "disk_registry_actor.h"
 
-#include <cloud/blockstore/libs/storage/disk_registry/model/device_list.h>
-
 #include <cloud/blockstore/libs/kikimr/events.h>
 #include <cloud/blockstore/libs/storage/api/disk_agent.h>
+#include <cloud/blockstore/libs/storage/disk_registry/model/device_list.h>
+
+#include <contrib/ydb/library/actors/core/executor_thread.h>
 
 namespace NCloud::NBlockStore::NStorage {
 
