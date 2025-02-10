@@ -7,6 +7,7 @@
 
 #include <contrib/ydb/library/actors/core/actor.h>
 #include <contrib/ydb/library/actors/core/events.h>
+#include <contrib/ydb/library/actors/core/executor_thread.h>
 
 #include <util/generic/hash.h>
 

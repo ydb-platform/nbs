@@ -4,6 +4,8 @@
 #include <cloud/blockstore/libs/storage/api/disk_registry_proxy.h>
 #include <cloud/blockstore/libs/storage/core/request_info.h>
 
+#include <contrib/ydb/library/actors/core/executor_thread.h>
+
 namespace NCloud::NBlockStore::NStorage {
 
 using namespace NActors;
