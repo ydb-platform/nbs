@@ -657,7 +657,7 @@ void TSplittedRequestActor<TMethod>::HandlePoisonPill(
 auto TMirrorPartitionActor::SelectReplicasToReadFrom(
     ui32 replicaIndex,
     TBlockRange64 blockRange,
-    const TStringBuf& methodName) -> TResultOrError<TSet<TActorId>>
+    const TStringBuf& methodName) -> TResultOrError<TVector<TActorId>>
 {
     const auto& replicaInfos = State.GetReplicaInfos();
 
@@ -679,10 +679,10 @@ auto TMirrorPartitionActor::SelectReplicasToReadFrom(
                     << "Cannot process " << methodName << " cause replica "
                     << replicaIndex << " has not ready devices");
         }
-        return TSet<TActorId>{State.GetReplicaActors()[replicaIndex - 1]};
+        return TVector<TActorId>{State.GetReplicaActors()[replicaIndex - 1]};
     }
 
-    TSet<TActorId> replicaActorIds;
+    TVector<TActorId> replicaActorIds;
     const ui32 readReplicaCount = Min<ui32>(
         Max<ui32>(1, Config->GetMirrorReadReplicaCount()),
         replicaInfos.size());
@@ -693,9 +693,11 @@ auto TMirrorPartitionActor::SelectReplicasToReadFrom(
             return error;
         }
 
-        if (!replicaActorIds.insert(replicaActorId).second) {
+        if (FindPtr(replicaActorIds, replicaActorId)) {
             break;
         }
+
+        replicaActorIds.emplace_back(replicaActorId);
     }
 
     return replicaActorIds;
@@ -763,6 +765,14 @@ void TMirrorPartitionActor::ReadBlocks(
 
     auto blockRangeSplittedByDeviceBorders =
         State.SplitRangeByDeviceBorders(blockRange);
+    // There is no sense to split request if it covers only one device.
+    if (blockRangeSplittedByDeviceBorders.size() == 1) {
+        NCloud::Reply(
+            ctx,
+            *ev,
+            std::make_unique<typename TMethod::TResponse>(std::move(error)));
+        return;
+    }
     TVector<TVector<TActorId>> actorIdsForRequests;
     for (auto blockSubRange: blockRangeSplittedByDeviceBorders) {
         auto actorIdsOrError = GetPartitionsToReadBlockRange(blockSubRange);
