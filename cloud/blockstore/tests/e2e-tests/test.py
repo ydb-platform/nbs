@@ -213,7 +213,6 @@ def test_stop_start():
         )
 
         result = run(
-            "destroyvolume --disk-id {volume_name} input=volume_name"
             "destroyvolume",
             "--disk-id",
             volume_name,
