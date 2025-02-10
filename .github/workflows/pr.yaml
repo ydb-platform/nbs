@@ -186,7 +186,7 @@ jobs:
           test_target_components=${test_target_components%,}
 
           # Determine build_target and test_target based on conditions
-          if [ "$true_count" -eq 4 ] || [ "$false_count" -eq 4 ]; then
+          if [ "$true_count" -eq 5 ] || [ "$false_count" -eq 5 ]; then
               build_target="cloud/blockstore/apps/,cloud/filestore/apps/,cloud/disk_manager/,cloud/tasks/,cloud/storage/"
               build_target_asan="cloud/blockstore/apps/,cloud/filestore/apps/,cloud/storage/"
               build_target_tsan="cloud/blockstore/apps/,cloud/filestore/apps/,cloud/storage/"
