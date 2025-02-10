@@ -190,9 +190,9 @@ def test_stop_start():
         proc = subprocess.Popen(
             [
                 "dd",
-                "if=" + str(nbd_device),
+                "if=" + nbd_device,
                 "iflag=direct",
-                "of=" + str(data_file),
+                "of=" + data_file,
                 "bs=" + str(block_size),
                 "count=" + str(blocks_count)
             ],
