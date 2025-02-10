@@ -204,10 +204,15 @@ func run(
 		s3Bucket = snapshotConfig.GetS3Bucket()
 		// TODO: remove when s3 will always be initialized.
 		if s3Config != nil {
-			registry := mon.NewRegistry("s3_client")
+			s3MetricsRegistry := mon.NewRegistry("s3_client")
+			healthMetricsRegistry := mon.NewRegistry("health")
 
 			var err error
-			s3, err = persistence.NewS3ClientFromConfig(s3Config, registry)
+			s3, err = persistence.NewS3ClientFromConfig(
+				s3Config,
+				s3MetricsRegistry,
+				healthMetricsRegistry,
+			)
 			if err != nil {
 				return err
 			}

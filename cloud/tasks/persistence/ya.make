@@ -6,11 +6,17 @@ SRCS(
     ydb.go
     ydb_logger.go
     ydb_metrics.go
+
+    common.go
+    storage_ydb.go
+    health.go
+    health_storage.go
 )
 
 GO_TEST_SRCS(
     s3_test.go
     ydb_test.go
+    health_test.go
 )
 
 END()
