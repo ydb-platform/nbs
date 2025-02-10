@@ -37,6 +37,12 @@ TOptions::TOptions()
         .Handler1T<TString>([this] (const auto& s) {
             NbdRequestTimeout = TDuration::Parse(s);
         });
+
+    Opts.AddLongOption("nbd-reconnect-delay")
+        .OptionalArgument("NUM")
+        .Handler1T<TString>([this] (const auto& s) {
+            NbdReconnectDelay = TDuration::Parse(s);
+        });
 }
 
 void TOptions::Parse(int argc, char** argv)

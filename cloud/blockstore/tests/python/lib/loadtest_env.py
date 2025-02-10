@@ -56,6 +56,8 @@ class LocalLoadTest:
             access_service_type=AccessService,
             load_configs_from_cms=True,
             stored_endpoints_path=None,
+            nbd_request_timeout=None,
+            nbd_reconnect_delay=None,
     ):
 
         self.__endpoint = endpoint
@@ -127,7 +129,9 @@ class LocalLoadTest:
                 working_dir=self.nbs.cwd,
                 unix_socket_path=server_app_config.ServerConfig.EndpointProxySocketPath,
                 with_netlink=with_netlink,
-                stored_endpoints_path=stored_endpoints_path)
+                stored_endpoints_path=stored_endpoints_path,
+                nbd_request_timeout=nbd_request_timeout,
+                nbd_reconnect_delay=nbd_reconnect_delay)
 
         if run_kikimr:
             self.nbs.setup_cms(self.kikimr_cluster.client)
