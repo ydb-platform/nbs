@@ -304,7 +304,7 @@ private:
                 }
 
                 STORAGE_INFO(
-                    "UseNodeFileHandles, Root=" << RootPath <<
+                    "Inititialize NodeLoader, Root=" << RootPath <<
                     ", Inode=" << root->Stat().INode <<
                     ", NodeLoader=" << NodeLoader->ToString());
             } catch (...) {
@@ -440,7 +440,7 @@ private:
         return nullptr;
     }
 
-    // NodesLock write lock is taken
+    // NodesLock write lock should be taken
     TIndexNodePtr ForgetNodeWriteLocked(ui64 nodeId)
     {
         TIndexNodePtr node = nullptr;
