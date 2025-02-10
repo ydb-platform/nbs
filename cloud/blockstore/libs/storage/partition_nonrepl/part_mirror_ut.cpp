@@ -870,12 +870,19 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
         runtime.AdvanceCurrentTime(100ms);
         runtime.DispatchEvents({}, 100ms);
 
-        const auto diskRangeFirst = TBlockRange64::WithLength(0, 2048);
-        client.WriteBlocksLocal(diskRangeFirst, TString(DefaultBlockSize, 'A'));
+        const TVector<TBlockRange64> diskRanges = {
+            TBlockRange64::WithLength(2047, 1),
+            TBlockRange64::WithLength(2048, 1),
+            TBlockRange64::WithLength(2049, 1),
+            TBlockRange64::WithLength(2050, 1),
+            TBlockRange64::WithLength(2051, 1),
+        };
 
-        const auto diskRangeSecond = TBlockRange64::WithLength(2048, 3072);
-        client.WriteBlocksLocal(diskRangeSecond, TString(DefaultBlockSize, 'B'));
-
+        for (size_t i = 0; i < diskRanges.size(); ++i) {
+            client.WriteBlocksLocal(
+                diskRanges[i],
+                TString(DefaultBlockSize, '0' + i));
+        }
 
         {
             auto nodeId = runtime.GetNodeId(0);
@@ -901,29 +908,29 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
             runtime.DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
         }
 
-#define TEST_READ(blockRange)                              \
-    {                                                      \
-        TVector<TString> blocks;                           \
-                                                           \
-        client.ReadBlocksLocal(                            \
-            blockRange,                                    \
-            TGuardedSgList(ResizeBlocks(                   \
-                blocks,                                    \
-                blockRange.Size(),                         \
-                TString(DefaultBlockSize, '\0'))));        \
-                                                           \
-        ui64 blockIndex = blockRange.Start;                \
-        for (const auto& block: blocks) {                  \
-            for (auto c: block) {                          \
-                if (diskRangeFirst.Contains(blockIndex)) { \
-                    UNIT_ASSERT_VALUES_EQUAL('A', c);      \
-                } else {                                   \
-                    UNIT_ASSERT_VALUES_EQUAL('B', c);      \
-                }                                          \
-            }                                              \
-            ++blockIndex;                                  \
-        }                                                  \
-    }                                                      \
+#define TEST_READ(blockRange)                                    \
+    {                                                            \
+        TVector<TString> blocks;                                 \
+                                                                 \
+        client.ReadBlocksLocal(                                  \
+            blockRange,                                          \
+            TGuardedSgList(ResizeBlocks(                         \
+                blocks,                                          \
+                blockRange.Size(),                               \
+                TString(DefaultBlockSize, '\0'))));              \
+                                                                 \
+        ui64 blockIndex = diskRanges.front().Start;              \
+        for (const auto& block: blocks) {                        \
+            for (auto c: block) {                                \
+                for (size_t i = 0; i < diskRanges.size(); ++i) { \
+                    if (diskRanges[i].Contains(blockIndex)) {    \
+                        UNIT_ASSERT_VALUES_EQUAL('0' + i, c);    \
+                    }                                            \
+                }                                                \
+            }                                                    \
+            ++blockIndex;                                        \
+        }                                                        \
+    }                                                            \
     // TEST_READ
 
         // doing multiple reads to check that none of them targets fresh devices

@@ -64,8 +64,7 @@ Y_UNIT_TEST_SUITE(TSplitRequestTest)
         auto maybeSplittedRequest =
             NSplitRequest::SplitRequest<TEvService::TReadBlocksMethod>(
                 request,
-                blockRangeSplittedByDeviceBorders,
-                TVector(actorsForEachRequests));
+                blockRangeSplittedByDeviceBorders);
 
         UNIT_ASSERT(maybeSplittedRequest.has_value());
         auto splittedRequest = std::move(maybeSplittedRequest.value());
@@ -79,13 +78,6 @@ Y_UNIT_TEST_SUITE(TSplitRequestTest)
             UNIT_ASSERT_VALUES_EQUAL(
                 partSplitted.BlockRangeForRequest,
                 blockRangeSplittedByDeviceBorders[i]);
-
-            UNIT_ASSERT_VALUES_EQUAL(
-                partSplitted.Partitions.size(),
-                actorsForEachRequests[i].size());
-            for (const auto& actorId: partSplitted.Partitions) {
-                UNIT_ASSERT(FindPtr(actorsForEachRequests[i], actorId));
-            }
 
             UNIT_ASSERT_VALUES_EQUAL(
                 request.GetDiskId(),
@@ -146,24 +138,16 @@ Y_UNIT_TEST_SUITE(TSplitRequestTest)
             TBlockRange64::WithLength(12, 1),
         };
 
-        TVector<TVector<TActorId>> actorsForEachRequests{
-            {MakeActorId(0), MakeActorId(1)},
-            {MakeActorId(2), MakeActorId(3)},
-            {MakeActorId(4), MakeActorId(5)},
-            {MakeActorId(6), MakeActorId(7)},
-        };
-
         auto maybeSplittedRequest =
             NSplitRequest::SplitRequest<TEvService::TReadBlocksLocalMethod>(
                 request,
-                blockRangeSplittedByDeviceBorders,
-                TVector(actorsForEachRequests));
+                blockRangeSplittedByDeviceBorders);
 
         UNIT_ASSERT(maybeSplittedRequest.has_value());
         auto splittedRequest = std::move(maybeSplittedRequest.value());
         UNIT_ASSERT_VALUES_EQUAL(
             splittedRequest.size(),
-            actorsForEachRequests.size());
+            blockRangeSplittedByDeviceBorders.size());
 
         TSgList overallSglist;
         for (size_t i = 0; i < splittedRequest.size(); ++i) {
@@ -172,13 +156,6 @@ Y_UNIT_TEST_SUITE(TSplitRequestTest)
             UNIT_ASSERT_VALUES_EQUAL(
                 partSplitted.BlockRangeForRequest,
                 blockRangeSplittedByDeviceBorders[i]);
-
-            UNIT_ASSERT_VALUES_EQUAL(
-                partSplitted.Partitions.size(),
-                actorsForEachRequests[i].size());
-            for (const auto& actorId: partSplitted.Partitions) {
-                UNIT_ASSERT(FindPtr(actorsForEachRequests[i], actorId));
-            }
 
             UNIT_ASSERT_VALUES_EQUAL(
                 request.GetDiskId(),
@@ -208,12 +185,10 @@ Y_UNIT_TEST_SUITE(TSplitRequestTest)
             auto guard = partSplittedRequest.Sglist.Acquire();
             const auto& splittedSglist = guard.Get();
             size_t overallSize = 0;
-            for (size_t i = 0; i < splittedSglist.size(); ++i) {
-                UNIT_ASSERT_VALUES_EQUAL(
-                    splittedSglist[i].Size() % request.BlockSize,
-                    0);
-                overallSize += splittedSglist[i].Size();
-                overallSglist.emplace_back(splittedSglist[i]);
+            for (auto buf: splittedSglist) {
+                UNIT_ASSERT_VALUES_EQUAL(buf.Size() % request.BlockSize, 0);
+                overallSize += buf.Size();
+                overallSglist.emplace_back(buf);
             }
             UNIT_ASSERT_VALUES_EQUAL(
                 overallSize,
@@ -260,15 +235,10 @@ Y_UNIT_TEST_SUITE(TSplitRequestTest)
             TBlockRange64::WithLength(0, 3),
         };
 
-        TVector<TVector<TActorId>> actorsForEachRequests{
-            {MakeActorId(0), MakeActorId(1)},
-        };
-
         auto maybeSplittedRequest =
             NSplitRequest::SplitRequest<TEvService::TReadBlocksLocalMethod>(
                 request,
-                blockRangeSplittedByDeviceBorders,
-                actorsForEachRequests);
+                blockRangeSplittedByDeviceBorders);
 
         UNIT_ASSERT(!maybeSplittedRequest.has_value());
     }
@@ -315,8 +285,7 @@ Y_UNIT_TEST_SUITE(TSplitRequestTest)
         auto maybeSplittedRequest =
             NSplitRequest::SplitRequest<TEvService::TReadBlocksLocalMethod>(
                 request,
-                blockRangeSplittedByDeviceBorders,
-                TVector(actorsForEachRequests));
+                blockRangeSplittedByDeviceBorders);
 
         UNIT_ASSERT(!maybeSplittedRequest.has_value());
     }
@@ -355,7 +324,7 @@ Y_UNIT_TEST_SUITE(TSplitRequestTest)
         }
 
         auto unifiedResponse =
-            UnifyResponses(MakeConstArrayRef(responses), blockSize);
+            UnifyResponses<TEvService::TReadBlocksMethod>(responses, blockSize);
         UNIT_ASSERT(!HasError(unifiedResponse.GetError()));
         UNIT_ASSERT_VALUES_EQUAL(
             unifiedResponse.GetThrottlerDelay(),
@@ -376,6 +345,38 @@ Y_UNIT_TEST_SUITE(TSplitRequestTest)
                 ++blocksReviewed;
             }
         }
+    }
+
+    Y_UNIT_TEST(ShouldCorrectlyUnifyReadLocalResponses)
+    {
+        TVector<NSplitRequest::TUnifyResponsesContext<
+            TEvService::TReadBlocksLocalMethod>>
+            responses;
+
+        const size_t iterationsCount = 20;
+
+        const size_t blockSize = 100;
+        size_t throttlerDelaySum = 0;
+        for (size_t blocksCount = 1; blocksCount <= iterationsCount;
+             ++blocksCount)
+        {
+            NProto::TReadBlocksResponse response;
+
+            response.SetThrottlerDelay(blocksCount);
+            throttlerDelaySum += blocksCount;
+            response.SetAllZeroes(false);
+            responses.push_back({std::move(response), blocksCount});
+        }
+
+        auto unifiedResponse =
+            UnifyResponses<TEvService::TReadBlocksLocalMethod>(
+                responses,
+                blockSize);
+        UNIT_ASSERT(!HasError(unifiedResponse.GetError()));
+        UNIT_ASSERT_VALUES_EQUAL(
+            unifiedResponse.GetThrottlerDelay(),
+            throttlerDelaySum);
+        UNIT_ASSERT(!unifiedResponse.GetAllZeroes());
     }
 
     Y_UNIT_TEST(ShouldFillZeroedResponses)
@@ -399,7 +400,7 @@ Y_UNIT_TEST_SUITE(TSplitRequestTest)
             };
 
         auto unifiedResponse =
-            UnifyResponses(MakeConstArrayRef(responses), blockSize);
+            UnifyResponses<TEvService::TReadBlocksMethod>(responses, blockSize);
 
         UNIT_ASSERT_VALUES_EQUAL(unifiedResponse.GetBlocks().BuffersSize(), 2);
         UNIT_ASSERT_VALUES_EQUAL(
@@ -430,7 +431,7 @@ Y_UNIT_TEST_SUITE(TSplitRequestTest)
             };
 
         auto unifiedResponse =
-            UnifyResponses(MakeConstArrayRef(responses), blockSize);
+            UnifyResponses<TEvService::TReadBlocksMethod>(responses, blockSize);
 
         UNIT_ASSERT_VALUES_EQUAL(unifiedResponse.GetBlocks().BuffersSize(), 0);
         UNIT_ASSERT(unifiedResponse.GetAllZeroes());
@@ -455,7 +456,7 @@ Y_UNIT_TEST_SUITE(TSplitRequestTest)
             };
 
         auto unifiedResponse =
-            UnifyResponses(MakeConstArrayRef(responses), blockSize);
+            UnifyResponses<TEvService::TReadBlocksMethod>(responses, blockSize);
 
         UNIT_ASSERT_VALUES_EQUAL(
             unifiedResponse.GetError().GetCode(),

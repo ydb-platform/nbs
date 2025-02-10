@@ -118,9 +118,6 @@ private:
     void StartResyncRange(const NActors::TActorContext& ctx);
     void AddTagForBufferCopying(const NActors::TActorContext& ctx);
 
-    TResultOrError<TVector<NActors::TActorId>> GetPartitionsToReadBlockRange(
-        const TBlockRange64 blockRange);
-
 private:
     STFUNC(StateWork);
     STFUNC(StateZombie);
