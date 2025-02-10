@@ -150,6 +150,8 @@ func toEncryptionMode(
 		return protos.EEncryptionMode_NO_ENCRYPTION, nil
 	case types.EncryptionMode_ENCRYPTION_AES_XTS:
 		return protos.EEncryptionMode_ENCRYPTION_AES_XTS, nil
+	case types.EncryptionMode_ENCRYPTION_AT_REST:
+		return protos.EEncryptionMode_ENCRYPTION_AT_REST, nil
 	default:
 		return 0, errors.NewNonRetriableErrorf(
 			"unknown encryption mode %v",
