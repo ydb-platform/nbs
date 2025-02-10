@@ -33,6 +33,8 @@ namespace NCloud::NBlockStore {
     xxx(MirroredDiskDeviceReplacementRateLimitExceeded)                        \
     xxx(MirroredDiskMinorityChecksumMismatch)                                  \
     xxx(MirroredDiskMajorityChecksumMismatch)                                  \
+    xxx(MirroredDiskChecksumMismatchUponRead)                                  \
+    xxx(MirroredDiskChecksumMismatchUponWrite)                                 \
     xxx(CounterUpdateRace)                                                     \
     xxx(EndpointStartingError)                                                 \
     xxx(ResyncFailed)                                                          \
@@ -64,7 +66,6 @@ namespace NCloud::NBlockStore {
     xxx(DiskRegistryPurgeHostError)                                            \
     xxx(DiskRegistryCleanupAgentConfigError)                                   \
     xxx(DiskRegistryOccupiedDeviceConfigurationHasChanged)                     \
-    xxx(MirroredDiskChecksumMismatchUponRead)                                  \
     xxx(DiskRegistryWrongMigratedDeviceOwnership)                              \
     xxx(DiskRegistryInitialAgentRejectionThresholdExceeded)                    \
 // BLOCKSTORE_CRITICAL_EVENTS

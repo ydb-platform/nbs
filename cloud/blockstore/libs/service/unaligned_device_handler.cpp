@@ -468,6 +468,7 @@ TZeroRequest::TResponseFuture TZeroRequest::ModifyAndWrite()
 
 TUnalignedDeviceHandler::TUnalignedDeviceHandler(
         IStoragePtr storage,
+        TString diskId,
         TString clientId,
         ui32 blockSize,
         ui32 maxSubRequestSize,
@@ -475,6 +476,7 @@ TUnalignedDeviceHandler::TUnalignedDeviceHandler(
         bool checkBufferModificationDuringWriting)
     : Backend(std::make_shared<TAlignedDeviceHandler>(
           std::move(storage),
+          std::move(diskId),
           std::move(clientId),
           blockSize,
           maxSubRequestSize,

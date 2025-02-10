@@ -8,4 +8,8 @@ SRCS(
     storage_ut.cpp
 )
 
+PEERDIR(
+    cloud/blockstore/libs/diagnostics
+)
+
 END()

@@ -951,6 +951,7 @@ IServerHandlerFactoryPtr CreateServerHandlerFactory(
 {
     auto deviceHandler = deviceHandlerFactory->CreateDeviceHandler(
         std::move(storage),
+        options.DiskId,
         options.ClientId,
         options.BlockSize,
         options.UnalignedRequestsDisabled,

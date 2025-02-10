@@ -3,7 +3,9 @@
 #include "storage.h"
 
 #include <cloud/blockstore/libs/common/block_checksum.h>
+#include <cloud/blockstore/libs/common/block_range.h>
 #include <cloud/blockstore/libs/common/iovector.h>
+#include <cloud/blockstore/libs/diagnostics/critical_events.h>
 #include <cloud/blockstore/libs/service/context.h>
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/common/sglist.h>
@@ -64,10 +66,12 @@ class TChecksumStorageWrapper final
     , public IStorage
 {
     const IStoragePtr Storage;
+    const TString DiskId;
 
 public:
-    explicit TChecksumStorageWrapper(IStoragePtr storage)
+    TChecksumStorageWrapper(IStoragePtr storage, TString diskId)
         : Storage(std::move(storage))
+        , DiskId(std::move(diskId))
     {}
 
     TFuture<NProto::TZeroBlocksResponse> ZeroBlocks(
@@ -165,6 +169,12 @@ TChecksumStorageWrapper::RetryWriteBlocksLocal(
     TCallContextPtr callContext,
     std::shared_ptr<NProto::TWriteBlocksLocalRequest> request)
 {
+    const auto range = TBlockRange64::WithLength(
+        request->GetStartIndex(),
+        request->BlocksCount);
+    ReportMirroredDiskChecksumMismatchUponWrite(
+        TStringBuilder() << "d:" << DiskId << ", r:" << range);
+
     auto guard = request->Sglist.Acquire();
     if (!guard) {
         return MakeFuture<NProto::TWriteBlocksLocalResponse>(
@@ -190,9 +200,11 @@ TChecksumStorageWrapper::RetryWriteBlocksLocal(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-IStoragePtr CreateChecksumStorageWrapper(IStoragePtr storage)
+IStoragePtr CreateChecksumStorageWrapper(IStoragePtr storage, TString diskId)
 {
-    return std::make_shared<TChecksumStorageWrapper>(std::move(storage));
+    return std::make_shared<TChecksumStorageWrapper>(
+        std::move(storage),
+        std::move(diskId));
 }
 
 }   // namespace NCloud::NBlockStore

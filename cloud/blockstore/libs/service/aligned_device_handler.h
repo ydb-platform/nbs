@@ -55,6 +55,7 @@ private:
 public:
     TAlignedDeviceHandler(
         IStoragePtr storage,
+        TString diskId,
         TString clientId,
         ui32 blockSize,
         ui32 maxSubRequestSize,

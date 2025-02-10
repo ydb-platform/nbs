@@ -43,6 +43,7 @@ struct IDeviceHandlerFactory
 
     virtual IDeviceHandlerPtr CreateDeviceHandler(
         IStoragePtr storage,
+        TString diskId,
         TString clientId,
         ui32 blockSize,
         bool unalignedRequestsDisabled,

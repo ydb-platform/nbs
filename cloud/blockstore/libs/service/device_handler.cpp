@@ -30,6 +30,7 @@ struct TDefaultDeviceHandlerFactory final
 
     IDeviceHandlerPtr CreateDeviceHandler(
         IStoragePtr storage,
+        TString diskId,
         TString clientId,
         ui32 blockSize,
         bool unalignedRequestsDisabled,
@@ -38,6 +39,7 @@ struct TDefaultDeviceHandlerFactory final
         if (unalignedRequestsDisabled) {
             return std::make_shared<TAlignedDeviceHandler>(
                 std::move(storage),
+                std::move(diskId),
                 std::move(clientId),
                 blockSize,
                 MaxSubRequestSize,
@@ -46,6 +48,7 @@ struct TDefaultDeviceHandlerFactory final
 
         return std::make_shared<TUnalignedDeviceHandler>(
             std::move(storage),
+            std::move(diskId),
             std::move(clientId),
             blockSize,
             MaxSubRequestSize,

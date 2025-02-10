@@ -131,14 +131,16 @@ TBlocksInfo TBlocksInfo::MakeAligned() const
 
 TAlignedDeviceHandler::TAlignedDeviceHandler(
         IStoragePtr storage,
+        TString diskId,
         TString clientId,
         ui32 blockSize,
         ui32 maxSubRequestSize,
         bool checkBufferModificationDuringWriting)
     : Storage(
-          checkBufferModificationDuringWriting
-              ? CreateChecksumStorageWrapper(std::move(storage))
-              : std::move(storage))
+          checkBufferModificationDuringWriting ? CreateChecksumStorageWrapper(
+                                                     std::move(storage),
+                                                     std::move(diskId))
+                                               : std::move(storage))
     , ClientId(std::move(clientId))
     , BlockSize(blockSize)
     , MaxBlockCount(maxSubRequestSize / BlockSize)
