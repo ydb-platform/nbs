@@ -110,15 +110,7 @@ void TCheckRangeActor::ReplyAndDie(
 {
     auto response =
         std::make_unique<TEvService::TEvCheckRangeResponse>(std::move(error));
-        response->Record.MutableStatus()->SetCode(status.GetCode());
-        response->Record.MutableStatus()->SetMessage(status.GetMessage());
-
-        LOG_ERROR(
-            ctx,
-            TBlockStoreComponents::PARTITION,
-            "status code = " + ToString(status.GetCode()) +
-                " msg status code = " +
-                ToString(response->Record.GetStatus().GetCode()));
+        response->Record.MutableStatus()->CopyFrom(status);
 
         NCloud::Reply(ctx, *Ev, std::move(response));
 
