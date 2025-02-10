@@ -458,13 +458,15 @@ ui32 NodesLimit(
     xxx(BoostPercentage,                        __VA_ARGS__)                   \
 // PERFORMANCE_PROFILE_PARAMETERS_AU
 
+}   // namespace
+
 void SetupFileStorePerformanceAndChannels(
     bool allocateMixed0Channel,
-    const ui32 allocationUnitCount,
     const TStorageConfig& config,
     NKikimrFileStore::TConfig& fileStore,
     const NProto::TFileStorePerformanceProfile& clientProfile)
 {
+    ui32 allocationUnitCount = ComputeAllocationUnitCount(config, fileStore);
     OverrideStorageMediaKind(config, fileStore);
 
 #define SETUP_PARAMETER_SIMPLE(name, ...)                                      \
@@ -496,8 +498,6 @@ void SetupFileStorePerformanceAndChannels(
         fileStore);
 }
 
-}   // namespace
-
 ////////////////////////////////////////////////////////////////////////////////
 
 ui32 ComputeShardCount(
@@ -507,22 +507,13 @@ ui32 ComputeShardCount(
 {
     const double fileStoreSize = blocksCount * blockSize;
 
-    const ui32 shardCount = std::floor(fileStoreSize / shardAllocationUnit);
-    return Min(shardCount, MaxShardCount);
-}
+    if (fileStoreSize < shardAllocationUnit) {
+        // No need in using sharding for small enough filesystems
+        return 0;
+    }
 
-void SetupFileStorePerformanceAndChannels(
-    bool allocateMixed0Channel,
-    const TStorageConfig& config,
-    NKikimrFileStore::TConfig& fileStore,
-    const NProto::TFileStorePerformanceProfile& clientProfile)
-{
-    SetupFileStorePerformanceAndChannels(
-        allocateMixed0Channel,
-        ComputeAllocationUnitCount(config, fileStore),
-        config,
-        fileStore,
-        clientProfile);
+    const ui32 shardCount = std::ceil(fileStoreSize / shardAllocationUnit);
+    return Min(shardCount, MaxShardCount);
 }
 
 TMultiShardFileStoreConfig SetupMultiShardFileStorePerformanceAndChannels(
@@ -535,7 +526,6 @@ TMultiShardFileStoreConfig SetupMultiShardFileStorePerformanceAndChannels(
     result.MainFileSystemConfig = fileStore;
     SetupFileStorePerformanceAndChannels(
         false, // allocateMixed0Channel
-        1, // allocationUnitCount
         config,
         result.MainFileSystemConfig,
         clientProfile);

@@ -87,7 +87,7 @@ using TNodeMap = THashSet<TNode, TNodeOps::THash, TNodeOps::TEqual>;
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TCache
+class TNodeCache
 {
 private:
     TNodeMap Nodes;

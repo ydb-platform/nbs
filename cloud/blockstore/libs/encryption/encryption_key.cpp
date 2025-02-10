@@ -39,7 +39,7 @@ ui32 GetExpectedKeyLength(NProto::EEncryptionMode mode)
         case NProto::NO_ENCRYPTION:
             return 0;
         case NProto::ENCRYPTION_AES_XTS:
-        case NProto::ENCRYPTION_DEFAULT_AES_XTS:
+        case NProto::ENCRYPTION_AT_REST:
             return 32;
         default:
             ythrow TServiceError(E_ARGUMENT)
@@ -81,7 +81,7 @@ public:
         }
 
         if (keyPath.HasKmsKey()) {
-            if (spec.GetMode() == NProto::ENCRYPTION_DEFAULT_AES_XTS) {
+            if (spec.GetMode() == NProto::ENCRYPTION_AT_REST) {
                 return ReadKeyFromRootKMS(keyPath.GetKmsKey(), diskId, len);
             }
 

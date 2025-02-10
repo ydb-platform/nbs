@@ -213,7 +213,7 @@ public:
 
 void TFileSystem::ClearDirectoryCache()
 {
-    with_lock (CacheLock) {
+    with_lock (DirectoryHandlesLock) {
         STORAGE_DEBUG("clear directory cache of size %lu",
             DirectoryHandles.size());
         DirectoryHandles.clear();
@@ -233,7 +233,7 @@ void TFileSystem::OpenDir(
 
     ui64 id = 0;
     auto handle = std::make_shared<TDirectoryHandle>(ino);
-    with_lock (CacheLock) {
+    with_lock (DirectoryHandlesLock) {
         do {
             id = RandomNumber<ui64>();
         } while (!DirectoryHandles.try_emplace(id, handle).second);
@@ -246,7 +246,7 @@ void TFileSystem::OpenDir(
     const int res = ReplyOpen(*callContext, {}, req, &info);
     if (res != 0) {
         // syscall was interrupted
-        with_lock (CacheLock) {
+        with_lock (DirectoryHandlesLock) {
             DirectoryHandles.erase(id);
         }
     }
@@ -265,7 +265,7 @@ void TFileSystem::ReadDir(
         << " size:" << size);
 
     std::shared_ptr<TDirectoryHandle> handle;
-    with_lock (CacheLock) {
+    with_lock (DirectoryHandlesLock) {
         auto it = DirectoryHandles.find(fi->fh);
         if (it == DirectoryHandles.end()) {
             ReplyError(
@@ -386,7 +386,7 @@ void TFileSystem::ReleaseDir(
 {
     STORAGE_DEBUG("ReleaseDir #" << ino);
 
-    with_lock (CacheLock) {
+    with_lock (DirectoryHandlesLock) {
         auto it = DirectoryHandles.find(fi->fh);
         if (it != DirectoryHandles.end()) {
             CheckDirectoryHandle(req, ino, *it->second, Log, __func__);
@@ -405,7 +405,7 @@ bool TFileSystem::ValidateDirectoryHandle(
     uint64_t fh)
 {
     std::shared_ptr<TDirectoryHandle> handle;
-    with_lock (CacheLock) {
+    with_lock (DirectoryHandlesLock) {
         auto it = DirectoryHandles.find(fh);
         if (it == DirectoryHandles.end()) {
             ReplyError(

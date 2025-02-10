@@ -4,6 +4,7 @@ package NCloud.NFileStore.NProto;
 
 option go_package = "github.com/ydb-platform/nbs/cloud/filestore/config";
 
+import "cloud/storage/core/protos/diagnostics.proto";
 import "cloud/storage/core/protos/trace.proto";
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -137,4 +138,7 @@ message TDiagnosticsConfig
 
     // Performance profile for SSD filesystems.
     optional TFileSystemPerformanceProfile SSDFileSystemPerformanceProfile = 27;
+
+    // Type of fetching CPU stats
+    optional NCloud.NProto.EStatsFetcherType StatsFetcherType = 28;
 }

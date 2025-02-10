@@ -62,7 +62,6 @@ constexpr auto NBD_CONNECTION_TIMEOUT = TDuration::Days(1);
 constexpr auto NBD_RECONFIGURE_CONNECTED = true;
 constexpr auto NBD_DELETE_DEVICE = false;
 
-constexpr auto MIN_RECONNECT_DELAY = TDuration::MilliSeconds(100);
 constexpr auto MAX_RECONNECT_DELAY = TDuration::Minutes(10);
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -71,6 +70,22 @@ TString ReadFile(const TString& name)
 {
     return TFileInput(name).ReadAll();
 }
+
+////////////////////////////////////////////////////////////////////////////////
+
+struct TEndpoint: std::enable_shared_from_this<TEndpoint>
+{
+    IBlockStorePtr Client;
+    NBD::IDevicePtr NbdDevice;
+    std::unique_ptr<TNetworkAddress> ListenAddress;
+    IProxyRequestStatsPtr RequestStats;
+
+    TString UnixSocketPath;
+    TString InternalUnixSocketPath;
+    TString NbdDevicePath;
+
+    NBD::TStorageOptions NbdOptions;
+};
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -174,21 +189,24 @@ struct TResizeRequestContext: TRequestContextBase
 
 struct TRestartAlarmContext: TRequestContextBase
 {
-    TString Socket;
+    std::weak_ptr<TEndpoint> Endpoint;
     grpc::ServerCompletionQueue& CQ;
     TBackoffDelayProvider Backoff;
     grpc::Alarm Alarm;
 
     TRestartAlarmContext(
-            TString socket,
-            grpc::ServerCompletionQueue& cq)
-        : Socket(std::move(socket))
+            std::weak_ptr<TEndpoint> endpoint,
+            grpc::ServerCompletionQueue& cq,
+            TDuration minReconnectDelay,
+            TDuration maxReconnectDelay)
+        : Endpoint(std::move(endpoint))
         , CQ(cq)
-        , Backoff{MIN_RECONNECT_DELAY, MAX_RECONNECT_DELAY}
+        , Backoff{minReconnectDelay, maxReconnectDelay}
     {
         SetAlarm();
     }
 
+    // context will be held by grpc until CQ->Next returns it
     void SetAlarm()
     {
         Alarm.Set(
@@ -251,36 +269,33 @@ struct TServer: IEndpointProxyServer
     THolder<IThreadFactory::IThread> Thread;
 
     NBD::IServerPtr NbdServer;
-    struct TEndpoint
-    {
-        IBlockStorePtr Client;
-        NBD::IDevicePtr NbdDevice;
-        std::unique_ptr<TNetworkAddress> ListenAddress;
-        IProxyRequestStatsPtr RequestStats;
-
-        TString UnixSocketPath;
-        TString InternalUnixSocketPath;
-        TString NbdDevicePath;
-
-        NBD::TStorageOptions NbdOptions;
-    };
     THashMap<TString, std::shared_ptr<TEndpoint>> Socket2Endpoint;
 
     struct TErrorHandler: NBD::IErrorHandler
     {
-        TString Socket;
+        std::weak_ptr<TEndpoint> Endpoint;
         grpc::ServerCompletionQueue& CQ;
+        TDuration ReconnectDelay;
 
-        TErrorHandler(TString socket, grpc::ServerCompletionQueue& cq)
-            : Socket(std::move(socket))
+        TErrorHandler(
+                std::weak_ptr<TEndpoint> endpoint,
+                grpc::ServerCompletionQueue& cq,
+                TDuration reconnectDelay)
+            : Endpoint(std::move(endpoint))
             , CQ(cq)
+            , ReconnectDelay(reconnectDelay)
         {}
 
         void ProcessException(std::exception_ptr e) override
         {
             Y_UNUSED(e);
 
-            new TRestartAlarmContext(Socket, CQ);
+            // context will be held by grpc until CQ->Next returns it
+            new TRestartAlarmContext(
+                Endpoint,
+                CQ,
+                ReconnectDelay,
+                MAX_RECONNECT_DELAY);
         }
     };
 
@@ -522,7 +537,13 @@ struct TServer: IEndpointProxyServer
             auto* restartAlarmContext =
                 dynamic_cast<TRestartAlarmContext*>(requestContext);
             if (restartAlarmContext) {
-                if (!ProcessAlarm(restartAlarmContext)) {
+                if (ProcessAlarm(restartAlarmContext)) {
+                    // reset the alarm in case of an error, context will be
+                    // held by grpc until CQ->Next returns it
+                    restartAlarmContext->SetAlarm();
+                } else {
+                    // unlike requests, alarms don't need to wait for async
+                    // writer, so can be freed immediately
                     delete restartAlarmContext;
                 }
                 continue;
@@ -921,7 +942,10 @@ struct TServer: IEndpointProxyServer
                 ep.RequestStats,
                 ep.NbdOptions.BlockSize),
             CreateServerStatsStub(),
-            std::make_shared<TErrorHandler>(ep.UnixSocketPath, *CQ),
+            std::make_shared<TErrorHandler>(
+                ep.shared_from_this(),
+                *CQ,
+                Config.NbdReconnectDelay),
             ep.NbdOptions);
 
         // TODO fix StartEndpoint signature - it's actually synchronous
@@ -981,22 +1005,18 @@ struct TServer: IEndpointProxyServer
     // returns true in case of an error
     bool ProcessAlarm(TRestartAlarmContext* context)
     {
-        const auto tag = TStringBuilder()
-            << "UnixSocketPath: " << context->Socket.Quote() << " - ";
+        if (auto ep = context->Endpoint.lock()) {
+            const auto tag = TStringBuilder()
+                << "UnixSocketPath: " << ep->UnixSocketPath.Quote() << " - ";
 
-        if (auto& ep = Socket2Endpoint[context->Socket]; ep) {
             STORAGE_INFO(tag << "Restarting proxy endpoint");
 
             if (DoProcessAlarm(*ep, tag)) {
                 STORAGE_ERROR(tag
                     << "Unable to restart proxy endpoint, retry in "
                     << context->Backoff.GetDelay());
-                context->SetAlarm();
                 return true;
             }
-        } else {
-            STORAGE_WARN(tag << "Unable to restart proxy endpoint: "
-                << "original endpoint stopped");
         }
         return false;
     }

@@ -41,6 +41,8 @@ namespace {
                                                                                \
     xxx(HDDFileSystemPerformanceProfile,    TFileSystemPerformanceProfile, {} )\
     xxx(SSDFileSystemPerformanceProfile,    TFileSystemPerformanceProfile, {} )\
+                                                                               \
+    xxx(StatsFetcherType, NCloud::NProto::EStatsFetcherType, NCloud::NProto::EStatsFetcherType::CGROUP )\
 // FILESTORE_DIAGNOSTICS_CONFIG
 
 #define FILESTORE_DIAGNOSTICS_DECLARE_CONFIG(name, type, value)                \
@@ -226,4 +228,13 @@ void Out<NCloud::NFileStore::TFileSystemPerformanceProfile>(
     ConvertFromValue(value.StatFileStore, v.MutableStatFileStore());
 
     SerializeToTextFormat(v, out);
+}
+
+template <>
+void Out<NCloud::NProto::EStatsFetcherType>(
+    IOutputStream& out,
+    NCloud::NProto::EStatsFetcherType statsFetcherType)
+{
+    out << NCloud::NProto::EStatsFetcherType_Name(
+        statsFetcherType);
 }

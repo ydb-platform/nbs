@@ -33,7 +33,9 @@ ENDPOINT_PROXY_PATH = common.binary_path(
 def init(
         with_netlink=True,
         with_endpoint_proxy=True,
-        stored_endpoints_path=None
+        stored_endpoints_path=None,
+        nbd_request_timeout=None,
+        nbd_reconnect_delay=None,
 ):
     server_config_patch = TServerConfig()
     server_config_patch.NbdEnabled = True
@@ -71,7 +73,9 @@ def init(
         use_in_memory_pdisks=True,
         with_endpoint_proxy=with_endpoint_proxy,
         with_netlink=with_netlink,
-        stored_endpoints_path=stored_endpoints_path)
+        stored_endpoints_path=stored_endpoints_path,
+        nbd_request_timeout=nbd_request_timeout,
+        nbd_reconnect_delay=nbd_reconnect_delay)
 
     client_config_path = Path(yatest_common.output_path()) / "client-config.txt"
     client_config = TClientAppConfig()
@@ -121,6 +125,101 @@ def log_called_process_error(exc):
         exc.stdout,
         exc_info=exc,
     )
+
+
+def test_stop_start():
+    env, run = init(
+        with_netlink=True,
+        with_endpoint_proxy=True,
+        nbd_reconnect_delay="1s")
+
+    volume_name = "example-disk"
+    block_size = 4096
+    blocks_count = 10000
+    nbd_device = "/dev/nbd0"
+    socket_path = "/tmp/nbd.sock"
+    data_file = "data"
+
+    try:
+        result = run(
+            "createvolume",
+            "--disk-id",
+            volume_name,
+            "--blocks-count",
+            str(blocks_count),
+            "--block-size",
+            str(block_size),
+        )
+        assert result.returncode == 0
+
+        result = run(
+            "startendpoint",
+            "--disk-id",
+            volume_name,
+            "--socket",
+            socket_path,
+            "--ipc-type",
+            "nbd",
+            "--persistent",
+            "--nbd-device",
+            nbd_device
+        )
+        assert result.returncode == 0
+
+        result = run(
+            "stopendpoint",
+            "--socket",
+            socket_path,
+        )
+        assert result.returncode == 0
+
+        result = run(
+            "startendpoint",
+            "--disk-id",
+            volume_name,
+            "--socket",
+            socket_path,
+            "--ipc-type",
+            "nbd",
+            "--persistent",
+            "--nbd-device",
+            nbd_device
+        )
+        assert result.returncode == 0
+
+        proc = subprocess.Popen(
+            [
+                "dd",
+                "if=" + nbd_device,
+                "iflag=direct",
+                "of=" + data_file,
+                "bs=" + str(block_size),
+                "count=" + str(blocks_count)
+            ],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT)
+        proc.communicate(timeout=60)
+        assert proc.returncode == 0
+
+    except subprocess.CalledProcessError as e:
+        log_called_process_error(e)
+        raise
+
+    finally:
+        run(
+            "stopendpoint",
+            "--socket",
+            socket_path,
+        )
+
+        result = run(
+            "destroyvolume",
+            "--disk-id",
+            volume_name,
+            input=volume_name,
+        )
+
+        cleanup_after_test(env)
 
 
 @pytest.mark.parametrize('with_netlink,with_endpoint_proxy',

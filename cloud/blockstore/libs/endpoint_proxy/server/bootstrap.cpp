@@ -29,6 +29,7 @@ void TBootstrap::Init()
         Options.Netlink,
         Options.StoredEndpointsPath,
         Options.NbdRequestTimeout,
+        Options.NbdReconnectDelay,
     },
     CreateWallClockTimer(),
     Scheduler,

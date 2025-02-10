@@ -204,6 +204,7 @@ private:
     ui32 IODepth = 0;
     bool ReadAll = false;
     bool Repair = false;
+    ui32 ReplicaIndex = 0;
 
     TLockFreeStack<TReadResponse> ReadyBatches;
     TAutoEvent Ready;
@@ -272,6 +273,13 @@ public:
             .RequiredArgument("NUM")
             .StoreResult(&IODepth)
             .DefaultValue(1);
+
+        Opts.AddLongOption(
+                "replica-index",
+                "from which replica(numerate from 1) read data, only for "
+                "mirror* disks")
+            .RequiredArgument("NUM")
+            .StoreResult(&ReplicaIndex);
     }
 
 protected:
@@ -454,6 +462,7 @@ private:
             request->BlockSize = Volume.GetBlockSize();
             request->Sglist = holder.GetGuardedSgList();
             PrepareHeaders(*request->MutableHeaders());
+            request->MutableHeaders()->SetReplicaIndex(ReplicaIndex);
 
             auto future = Session->ReadBlocksLocal(
                 MakeIntrusive<TCallContext>(),

@@ -2293,19 +2293,46 @@ Y_UNIT_TEST_SUITE(TModel)
     {
         using namespace ::NCloud::NProto;
         KikimrConfig.SetBlockSize(4_KB);
-        KikimrConfig.SetBlocksCount(4_TB / 4_KB);
 
         // Disable media type override.
         StorageConfig.SetAutomaticShardCreationEnabled(true);
         StorageConfig.SetShardAllocationUnit(4_TB);
         StorageConfig.SetAutomaticallyCreatedShardSize(5_TB);
+        StorageConfig.SetSSDMaxWriteIops(Max<ui32>());
 
+        auto OldMaxWriteIops = ClientPerformanceProfile.GetMaxWriteIops();
+        ClientPerformanceProfile.ClearMaxWriteIops();
+
+        KikimrConfig.SetBlocksCount(4_TB / 4_KB);
         auto fs = SetupMultiShardFileStorePerformanceAndChannels(
             StorageConfig,
             KikimrConfig,
             ClientPerformanceProfile,
             0);
         UNIT_ASSERT_VALUES_EQUAL(1, fs.ShardConfigs.size());
+        // MaxWriteIops per allocation unit is 1000, so (4096 GiB / 32 GiB) *
+        // 1000 = 128000
+        UNIT_ASSERT_VALUES_EQUAL(
+            128000,
+            fs.MainFileSystemConfig.GetPerformanceProfileMaxWriteIops());
+
+        ClientPerformanceProfile.SetMaxWriteIops(OldMaxWriteIops);
+
+        KikimrConfig.SetBlocksCount(4_TB / 4_KB + 1);
+        fs = SetupMultiShardFileStorePerformanceAndChannels(
+            StorageConfig,
+            KikimrConfig,
+            ClientPerformanceProfile,
+            0);
+        UNIT_ASSERT_VALUES_EQUAL(2, fs.ShardConfigs.size());
+
+        KikimrConfig.SetBlocksCount(5_TB / 4_KB);
+        fs = SetupMultiShardFileStorePerformanceAndChannels(
+            StorageConfig,
+            KikimrConfig,
+            ClientPerformanceProfile,
+            0);
+        UNIT_ASSERT_VALUES_EQUAL(2, fs.ShardConfigs.size());
 
         KikimrConfig.SetBlocksCount(16_TB / 4_KB);
         fs = SetupMultiShardFileStorePerformanceAndChannels(

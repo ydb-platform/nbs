@@ -19,6 +19,26 @@ NProto::TCreateSessionResponse TLocalFileSystem::CreateSession(
     TWriteGuard guard(SessionsLock);
 
     auto session = FindSession(clientId, sessionId, sessionSeqNo);
+
+    const auto makeResponse = [&sessionSeqNo, this](const TSessionPtr& session)
+    {
+        NProto::TCreateSessionResponse response;
+        session->GetInfo(*response.MutableSession(), sessionSeqNo);
+
+        *response.MutableFileStore() = Store;
+
+        auto* features = response.MutableFileStore()->MutableFeatures();
+        features->SetDirectIoEnabled(Config->GetDirectIoEnabled());
+        features->SetDirectIoAlign(Config->GetDirectIoAlign());
+        features->SetGuestWritebackCacheEnabled(
+            Config->GetGuestWritebackCacheEnabled());
+        features->SetAsyncDestroyHandleEnabled(
+            Config->GetAsyncDestroyHandleEnabled());
+        features->SetAsyncHandleOperationPeriod(
+            Config->GetAsyncHandleOperationPeriod().MilliSeconds());
+        return response;
+    };
+
     if (session) {
         if (session->ClientId != clientId) {
             return TErrorResponse(E_FS_INVALID_SESSION, TStringBuilder()
@@ -27,9 +47,7 @@ NProto::TCreateSessionResponse TLocalFileSystem::CreateSession(
 
         session->AddSubSession(sessionSeqNo, readOnly);
 
-        NProto::TCreateSessionResponse response;
-        session->GetInfo(*response.MutableSession(), sessionSeqNo);
-        return response;
+        return makeResponse(session);
     }
 
     if (sessionId) {
@@ -41,9 +59,7 @@ NProto::TCreateSessionResponse TLocalFileSystem::CreateSession(
     if (it != SessionsByClient.end()) {
         (*it->second)->AddSubSession(sessionSeqNo, readOnly);
 
-        NProto::TCreateSessionResponse response;
-        (*it->second)->GetInfo(*response.MutableSession(), sessionSeqNo);
-        return response;
+        return makeResponse(*it->second);
     }
 
     auto clientSessionStatePath = StatePath / ("client_" + clientId);
@@ -71,22 +87,7 @@ NProto::TCreateSessionResponse TLocalFileSystem::CreateSession(
         SessionsById.emplace(session->SessionId, SessionsList.begin());
     Y_ABORT_UNLESS(inserted2);
 
-    NProto::TCreateSessionResponse response;
-    session->GetInfo(*response.MutableSession(), sessionSeqNo);
-
-    *response.MutableFileStore() = Store;
-
-    auto* features = response.MutableFileStore()->MutableFeatures();
-    features->SetDirectIoEnabled(Config->GetDirectIoEnabled());
-    features->SetDirectIoAlign(Config->GetDirectIoAlign());
-    features->SetGuestWritebackCacheEnabled(
-        Config->GetGuestWritebackCacheEnabled());
-    features->SetAsyncDestroyHandleEnabled(
-        Config->GetAsyncDestroyHandleEnabled());
-    features->SetAsyncHandleOperationPeriod(
-        Config->GetAsyncHandleOperationPeriod().MilliSeconds());
-
-    return response;
+    return makeResponse(session);
 }
 
 NProto::TPingSessionResponse TLocalFileSystem::PingSession(

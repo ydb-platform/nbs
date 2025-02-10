@@ -12,8 +12,9 @@ enum EEncryptionMode
     NO_ENCRYPTION = 0;
     ENCRYPTION_AES_XTS = 1;
 
-    // Default AES XTS encryption. Encrypted DEK is stored in VolumeConfig.
-    ENCRYPTION_DEFAULT_AES_XTS = 2;
+    // Encryption at rest. Encrypted DEK is stored in VolumeConfig.
+    // AES XTS is used.
+    ENCRYPTION_AT_REST = 2;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

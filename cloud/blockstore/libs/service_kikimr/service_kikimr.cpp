@@ -142,7 +142,7 @@ private:
         }
     }
 
-    void CompleteRequest(const TActorContext& ctx, TResponseProto& response)
+    void CompleteRequest(const TActorContext& ctx, TResponseProto&& response)
     {
         try {
             Response.SetValue(std::move(response));
@@ -184,7 +184,7 @@ private:
             TRequestInfo(T::Request, CallContext->RequestId, DiskId)
             << " response received");
 
-        CompleteRequest(ctx, msg->Record);
+        CompleteRequest(ctx, std::move(msg->Record));
 
         TThis::Die(ctx);
     }
@@ -210,7 +210,7 @@ private:
         error.SetCode(E_TIMEOUT);
         error.SetMessage("Timeout");
 
-        CompleteRequest(ctx, response);
+        CompleteRequest(ctx, std::move(response));
 
         TThis::Die(ctx);
     }

@@ -11,13 +11,12 @@
 #include <cloud/blockstore/libs/storage/api/volume_balancer.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/core/proto_helpers.h>
-
-#include <cloud/storage/core/libs/diagnostics/cgroup_stats_fetcher.h>
-
-#include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
+#include <cloud/storage/core/libs/diagnostics/stats_fetcher.h>
 
 #include <contrib/ydb/core/base/appdata.h>
 #include <contrib/ydb/core/mon/mon.h>
+#include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
+#include <contrib/ydb/library/actors/core/executor_thread.h>
 
 #include <util/datetime/base.h>
 #include <util/generic/algorithm.h>
@@ -140,12 +139,12 @@ STFUNC(TRemoteVolumeStatActor::StateWork)
 TVolumeBalancerActor::TVolumeBalancerActor(
         TStorageConfigPtr storageConfig,
         IVolumeStatsPtr volumeStats,
-        NCloud::NStorage::ICgroupStatsFetcherPtr cgroupStatsFetcher,
+        NCloud::NStorage::IStatsFetcherPtr statsFetcher,
         IVolumeBalancerSwitchPtr volumeBalancerSwitch,
         TActorId serviceActorId)
     : StorageConfig(std::move(storageConfig))
     , VolumeStats(std::move(volumeStats))
-    , CgroupStatsFetcher(std::move(cgroupStatsFetcher))
+    , StatsFetcher(std::move(statsFetcher))
     , VolumeBalancerSwitch(std::move(volumeBalancerSwitch))
     , ServiceActorId(serviceActorId)
     , State(std::make_unique<TVolumeBalancerState>(StorageConfig))
@@ -246,7 +245,7 @@ void TVolumeBalancerActor::HandleGetVolumeStatsResponse(
         auto now = ctx.Now();
 
         auto interval = (now - LastCpuWaitQuery).MicroSeconds();
-        auto [cpuWait, error] = CgroupStatsFetcher->GetCpuWait();
+        auto [cpuWait, error] = StatsFetcher->GetCpuWait();
         if (HasError(error)) {
             *CpuWaitFailure = 1;
             LOG_TRACE_S(

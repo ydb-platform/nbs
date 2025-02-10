@@ -4,6 +4,7 @@
 #include <cloud/blockstore/libs/storage/core/request_info.h>
 
 #include <contrib/ydb/core/base/appdata.h>
+#include <contrib/ydb/library/actors/core/executor_thread.h>
 
 namespace NCloud::NBlockStore::NStorage {
 
