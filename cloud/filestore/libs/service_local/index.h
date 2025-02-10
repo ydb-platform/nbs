@@ -487,7 +487,7 @@ private:
             }
         }
 
-        // Don't clean if nodes ocupation reduced to half
+        // Don't clean if nodes occupation reduced to half
         ShouldCleanupNodes = Nodes.size() > (MaxNodeCount / 2);
 
         if (ShouldCleanupNodes) {
