@@ -23,6 +23,7 @@ func RegisterForExecution(
 	config *config.DataplaneConfig,
 	metricsRegistry metrics.Registry,
 	migrationDstStorage storage.Storage,
+	useS3InMigration bool,
 ) error {
 
 	err := taskRegistry.RegisterForExecution("dataplane.CreateSnapshotFromDisk", func() tasks.Task {
@@ -95,6 +96,7 @@ func RegisterForExecution(
 				srcStorage: storage,
 				dstStorage: migrationDstStorage,
 				config:     config,
+				useS3:      useS3InMigration,
 			}
 		})
 		if err != nil {

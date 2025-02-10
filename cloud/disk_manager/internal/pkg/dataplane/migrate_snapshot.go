@@ -21,6 +21,7 @@ type migrateSnapshotTask struct {
 	config     *config.DataplaneConfig
 	request    *protos.MigrateSnapshotToAnotherDatabaseRequest
 	state      *protos.MigrateSnapshotTaskState
+	useS3      bool
 }
 
 func (t *migrateSnapshotTask) Save() ([]byte, error) {
@@ -80,7 +81,7 @@ func (t *migrateSnapshotTask) Run(
 		t.request.SrcSnapshotId,
 		t.dstStorage,
 		true, // ignoreZeroChunks
-		t.request.UseS3,
+		t.useS3,
 	)
 	defer target.Close(ctx)
 

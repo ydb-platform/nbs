@@ -8,7 +8,6 @@ option go_package = "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg
 
 message MigrateSnapshotToAnotherDatabaseRequest {
   string SrcSnapshotId = 1;
-  bool UseS3 = 2;
 }
 
 message MigrateSnapshotToAnotherDatabaseResponse {

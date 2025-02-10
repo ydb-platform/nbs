@@ -169,7 +169,7 @@ ImagesConfig: <
 SnapshotsConfig: <
     DeletedSnapshotExpirationTimeout: "1s"
     ClearDeletedSnapshotsTaskScheduleInterval: "2s"
-    UseS3Percentage: 100
+    UseS3Percentage: {use_s3_percentage}
     UseProxyOverlayDisk: true
 >
 LoggingConfig: <
@@ -453,7 +453,7 @@ class DiskManagerLauncher:
                             s3_port=migration_dst_s3_port,
                             s3_credentials_file=migration_dst_s3_credentials_file,
                         )
-                    )
+                    ),
                 ))
         else:
             with open(self.client_config_file, "w") as f:
@@ -483,6 +483,7 @@ class DiskManagerLauncher:
                     base_disk_id_prefix=base_disk_id_prefix,
                     creation_and_deletion_allowed_only_for_disks_with_id_prefix=creation_and_deletion_allowed_only_for_disks_with_id_prefix,
                     disable_disk_registry_based_disks="true" if disable_disk_registry_based_disks else "false",
+                    use_s3_percentage="0" if s3_port is None else "100",
                 )
                 f.write(self.__server_config)
 

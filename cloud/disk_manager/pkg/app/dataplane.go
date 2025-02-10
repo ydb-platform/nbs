@@ -49,6 +49,7 @@ func initDataplane(
 	)
 	migrationDstStorageConfig := dataplaneConfig.GetMigrationDstSnapshotConfig()
 	var migrationDstStorage snapshot_storage.Storage
+	var useS3InSnapshotMigration bool
 	if migrationDstDB != nil {
 		migrationDstStorage, err = snapshot_storage.NewStorage(
 			migrationDstStorageConfig,
@@ -56,6 +57,9 @@ func initDataplane(
 			migrationDstDB,
 			migrationDstS3,
 		)
+		if migrationDstS3 != nil {
+			useS3InSnapshotMigration = true
+		}
 		if err != nil {
 			return err
 		}
@@ -71,5 +75,6 @@ func initDataplane(
 		dataplaneConfig,
 		snapshotMetricsRegistry,
 		migrationDstStorage,
+		useS3InSnapshotMigration,
 	)
 }
