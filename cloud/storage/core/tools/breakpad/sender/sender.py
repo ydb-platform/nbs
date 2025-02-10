@@ -4,12 +4,14 @@ import logging
 import socket
 import subprocess
 from email.mime.text import MIMEText
+from enum import Enum
 
 import requests
 from library.python.retry import retry
 
 from .conductor import Conductor
 from .coredump_formatter import CoredumpFormatter
+from .sentry import SentrySender, SentryFormatter
 
 logger = logging.getLogger(__name__)
 
@@ -17,6 +19,9 @@ logger = logging.getLogger(__name__)
 class SenderError(Exception):
     pass
 
+class AggregatorType(Enum):
+    Cores = 1
+    Sentry = 2
 
 class Sender(object):
     CRASH_TYPE_CORE = "crash"
@@ -27,32 +32,37 @@ class Sender(object):
         super(Sender, self).__init__()
         self._logger = logger.getChild(self.__class__.__name__)
         self.aggregator_url = aggregator_url
+        self.aggregator_type = AggregatorType.Sentry if \
+            "sentry.io" in aggregator_url else AggregatorType.Cores
         self.project = project
         self.emails = emails
 
         self._formatted_coredump = None
+        self._formatted_current_thread = None
         self._core_url = None
         self._metadata = None
+        self.core_file = None
         self.coredump = None
         self.info = None
         self.service_name = None
         self.crash_type = None
         self.timestamp = None
         self.logfile = None
+        self.server = socket.getfqdn() or "unknown"
 
     def _collect_metadata(self):
-        cgroup = Conductor().primary_group
-        server = socket.getfqdn()
+        cgroup = Conductor().primary_group if self.aggregator_type == AggregatorType.Cores else None
         self._metadata = dict(
             ctype=cgroup if cgroup else "unknown",
-            server=server if server else "unknown",
-            service=self.service_name if self.service_name else "unknown",
+            server=self.server,
+            service=self.service_name,
             time=str(self.timestamp),
-
         )
 
     def _format_coredump(self):
-        self._formatted_coredump = CoredumpFormatter().format(self.coredump)
+        coredump_formatter = CoredumpFormatter(self.coredump)
+        self._formatted_coredump = coredump_formatter.format()
+        self._formatted_current_thread = coredump_formatter.format_only_current_thread()
 
     def _header(self):
         return "Process {service} {crash_type}ed on {server} cluster {ctype}".format(
@@ -65,14 +75,38 @@ class Sender(object):
             return self.coredump
         return self.info + "\n" + self.coredump
 
+    def _post_crash_to_cores(self):
+        url = self.aggregator_url + "/corecomes"
+        return requests.post(
+            url, params=self._metadata, data=self._get_coredump_with_info(),
+            timeout=self.AGGREGATOR_TIMEOUT)
+
+    def _post_crash_to_sentry(self):
+        timestamp = int(self.timestamp)
+        formatter = SentryFormatter()
+        event_envelope = formatter.create_event_envelope(
+            self.service_name, timestamp, self.server,
+            self.core_file, self._formatted_current_thread)
+        sender = SentrySender(self.aggregator_url)
+        return sender.send(event_envelope, timeout=self.AGGREGATOR_TIMEOUT)
+
     @retry(max_times=10, delay=60)
     def _do_send_to_aggregator(self):
-        url = self.aggregator_url + "/corecomes"
-        self._logger.info("Send crash info to aggregator %s", url)
-        response = requests.post(url, params=self._metadata, data=self._get_coredump_with_info(), timeout=self.AGGREGATOR_TIMEOUT)
+        url = self.aggregator_url
+        self._logger.info("Sending crash info to aggregator %s", url)
+
+        if self.aggregator_type == AggregatorType.Cores:
+            response = self._post_crash_to_cores()
+        elif self.aggregator_type == AggregatorType.Sentry:
+            response = self._post_crash_to_sentry()
+        else:
+            raise SenderError(f"Unknown aggregator type f{self.aggregator_type}")
+
         if response.status_code != 200:
-            self._logger.error("send info %s code %d", url, response.status_code)
-            raise SenderError("Error send info to aggregator")
+            msg = f"Error sending crash to aggregator {url}: \
+                code {response.status_code}, {response.text}"
+            self._logger.error(msg)
+            raise SenderError(msg)
 
         self._logger.info("Get response from aggregator: %r", response.text)
 
@@ -134,12 +168,13 @@ class Sender(object):
         if self._core_url:
             self._logger.info("URL %s", self._core_url)
 
-    def send(self, timestamp, coredump, info, service_name, crash_type, logfile):
+    def send(self, timestamp, core_file, coredump, info, service_name, crash_type, logfile):
         self._core_url = None
         self.timestamp = timestamp
+        self.core_file = core_file
         self.coredump = coredump
         self.info = info
-        self.service_name = service_name
+        self.service_name = service_name or "unknown"
         self.crash_type = crash_type
         self.logfile = logfile
 
