@@ -332,3 +332,68 @@ def test_do_not_restore_endpoint_with_missing_volume():
     assert result.returncode == 0
     assert 0 == len(os.listdir(endpoints_dir))
     cleanup_after_test(env)
+
+
+def test_restore_endpoint_when_socket_directory_does_not_exist():
+    # Scenario:
+    # 1. run nbs
+    # 2. create volume and start endpoint
+    # 4. copy endpoint to backup directory
+    # 5. stop endpoint
+    # 6. stop nbs
+    # 7. copy endpoint from backup directory to endpoints directory
+    # 8. remove socket directory
+    # 8. run nbs
+    # 9. check that endpoint was restored
+    env, run = init()
+
+    test_hash = hash(common.context.test_name)
+
+    volume_name = "example-disk"
+    block_size = 4096
+    blocks_count = 10000
+    nbd_device = Path("/dev/nbd0")
+    socket_dir = Path("/tmp") / volume_name
+    socket_dir.mkdir()
+    socket_path = socket_dir / "nbd.sock"
+    try:
+        result = run(
+            "createvolume",
+            "--disk-id",
+            volume_name,
+            "--blocks-count",
+            str(blocks_count),
+            "--block-size",
+            str(block_size),
+        )
+        assert result.returncode == 0
+
+        result = run(
+            "startendpoint",
+            "--disk-id",
+            volume_name,
+            "--socket",
+            socket_path,
+            "--ipc-type",
+            "nbd",
+            "--persistent",
+            "--nbd-device",
+            nbd_device
+        )
+
+        shutil.rmtree(socket_dir)
+
+        env.nbs.restart()
+
+        result = run(
+            "listendpoints",
+            "--wait-for-restoring",
+        )
+        assert result.returncode == 0
+        assert socket_path.exists()
+
+    except subprocess.CalledProcessError as e:
+        log_called_process_error(e)
+        raise
+
+    cleanup_after_test(env)
