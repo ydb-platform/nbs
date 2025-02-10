@@ -187,8 +187,6 @@ def test_stop_start():
         )
         assert result.returncode == 0
 
-        args = [
-        ]
         proc = subprocess.Popen(
             [
                 "dd",
