@@ -19,6 +19,7 @@ struct TOptions final: TOptionsBase
     bool Netlink = false;
     TString StoredEndpointsPath;
     TDuration NbdRequestTimeout = TDuration::Minutes(10);
+    TDuration NbdReconnectDelay = TDuration::MilliSeconds(100);
 
     TOptions();
 

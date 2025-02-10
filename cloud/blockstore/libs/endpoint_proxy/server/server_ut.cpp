@@ -58,7 +58,8 @@ Y_UNIT_TEST_SUITE(TServerTest)
             unixSocketPath,
             false,
             "",
-            TDuration::Seconds(1));
+            TDuration::Seconds(1),
+            TDuration::MilliSeconds(100));
 
         auto server = CreateServer(
             serverConfig,
