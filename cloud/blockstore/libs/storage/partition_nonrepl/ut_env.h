@@ -335,13 +335,17 @@ public:
 
     auto CreateReadBlocksRequest(
         const TBlockRange64& blockRange,
-        ui32 replicaIndex = 0)
+        ui32 replicaIndex = 0,
+        ui32 replicaCount = 0)
     {
         auto request = std::make_unique<TEvService::TEvReadBlocksRequest>();
         request->Record.SetStartIndex(blockRange.Start);
         request->Record.SetBlocksCount(blockRange.Size());
         if (replicaIndex) {
             request->Record.MutableHeaders()->SetReplicaIndex(replicaIndex);
+        }
+        if (replicaCount) {
+            request->Record.MutableHeaders()->SetReplicaCount(replicaCount);
         }
 
         return request;

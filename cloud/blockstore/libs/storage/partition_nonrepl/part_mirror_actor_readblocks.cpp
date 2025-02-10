@@ -393,6 +393,7 @@ STFUNC(TRequestActor<TMethod>::StateWork)
 
 auto TMirrorPartitionActor::SelectReplicasToReadFrom(
     ui32 replicaIndex,
+    ui32 replicaCount,
     TBlockRange64 blockRange,
     const TStringBuf& methodName) -> TResultOrError<TSet<TActorId>>
 {
@@ -419,10 +420,23 @@ auto TMirrorPartitionActor::SelectReplicasToReadFrom(
         return TSet<TActorId>{State.GetReplicaActors()[replicaIndex - 1]};
     }
 
+    if (replicaCount > 1) {
+        if (replicaCount > replicaInfos.size()) {
+            return MakeError(
+                E_ARGUMENT,
+                TStringBuilder()
+                    << "Request " << methodName
+                    << " has incorrect ReplicaCount " << replicaIndex
+                    << " disk has " << replicaInfos.size() << " replicas");
+        }
+    }
+
     TSet<TActorId> replicaActorIds;
-    const ui32 readReplicaCount = Min<ui32>(
-        Max<ui32>(1, Config->GetMirrorReadReplicaCount()),
-        replicaInfos.size());
+    const ui32 readReplicaCount =
+        replicaCount ? replicaCount
+                     : Min<ui32>(
+                           Max<ui32>(1, Config->GetMirrorReadReplicaCount()),
+                           replicaInfos.size());
     for (ui32 i = 0; i < readReplicaCount; ++i) {
         TActorId replicaActorId;
         const auto error = State.NextReadReplica(blockRange, &replicaActorId);
@@ -434,6 +448,8 @@ auto TMirrorPartitionActor::SelectReplicasToReadFrom(
             break;
         }
     }
+    ALOG_WARN(TBlockStoreComponents::PARTITION_WORKER,
+        "replicaCount = " << replicaCount);
 
     return replicaActorIds;
 }
@@ -470,8 +486,11 @@ void TMirrorPartitionActor::ReadBlocks(
     }
 
     const auto replicaIndex = record.GetHeaders().GetReplicaIndex();
+    const ui32 replicaCount = 0;
+    replicaCount = record.GetHeaders().GetReplicaCount();
+
     auto [replicaActorIds, error] =
-        SelectReplicasToReadFrom(replicaIndex, blockRange, TMethod::Name);
+        SelectReplicasToReadFrom(replicaIndex, replicaCount, blockRange, TMethod::Name);
 
     if (HasError(error)) {
         NCloud::Reply(ctx, *ev, std::make_unique<TResponse>(error));
