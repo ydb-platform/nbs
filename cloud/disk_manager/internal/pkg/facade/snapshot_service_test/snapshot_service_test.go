@@ -976,3 +976,124 @@ func TestSnapshotServiceDeleteSnapshotWhenCreationIsInFlight(t *testing.T) {
 
 	testcommon.CheckConsistency(t, ctx)
 }
+
+////////////////////////////////////////////////////////////////////////////////
+
+func testCreateSnapshotFromDiskWithFailedShadowDisk(
+	t *testing.T,
+	diskKind disk_manager.DiskKind,
+	diskBlockSize uint32,
+	diskSize uint64,
+	waitDurationBeforeDisableDevice time.Duration,
+) {
+
+	ctx := testcommon.NewContext()
+
+	client, err := testcommon.NewClient(ctx)
+	require.NoError(t, err)
+	defer client.Close()
+
+	diskID := t.Name()
+
+	reqCtx := testcommon.GetRequestContext(t, ctx)
+	operation, err := client.CreateDisk(reqCtx, &disk_manager.CreateDiskRequest{
+		Src: &disk_manager.CreateDiskRequest_SrcEmpty{
+			SrcEmpty: &empty.Empty{},
+		},
+		Size: int64(diskSize),
+		Kind: diskKind,
+		DiskId: &disk_manager.DiskId{
+			ZoneId: "zone-a",
+			DiskId: diskID,
+		},
+		BlockSize: int64(diskBlockSize),
+	})
+	require.NoError(t, err)
+	require.NotEmpty(t, operation)
+	err = internal_client.WaitOperation(ctx, client, operation.Id)
+	require.NoError(t, err)
+
+	nbsClient := testcommon.NewNbsTestingClient(t, ctx, "zone-a")
+	_, err = nbsClient.FillDisk(ctx, diskID, diskSize)
+	require.NoError(t, err)
+
+	snapshotID := t.Name()
+
+	reqCtx = testcommon.GetRequestContext(t, ctx)
+	operation, err = client.CreateSnapshot(reqCtx, &disk_manager.CreateSnapshotRequest{
+		Src: &disk_manager.DiskId{
+			ZoneId: "zone-a",
+			DiskId: diskID,
+		},
+		SnapshotId: snapshotID,
+		FolderId:   "folder",
+	})
+	require.NoError(t, err)
+	require.NotEmpty(t, operation)
+
+	time.Sleep(waitDurationBeforeDisableDevice)
+
+	// Finding agent and devices of shadow disk.
+	diskRegistryStateBackup, err := nbsClient.BackupDiskRegistryState(ctx)
+	require.NoError(t, err)
+	shadowDisk := diskRegistryStateBackup.GetShadowDisk(diskID)
+	if shadowDisk == nil {
+		// OK: shadow disk is not created yet or it was already deleted.
+		return
+	}
+	deviceUUIDs := shadowDisk.DeviceUUIDs
+	require.Equal(t, 1, len(deviceUUIDs))
+	agentID := diskRegistryStateBackup.GetAgentIDByDeviceUUID(deviceUUIDs[0])
+	require.NotEmpty(t, agentID)
+
+	// Disabling device to enforce checkpoint status ERROR.
+	err = nbsClient.DisableDevices(ctx, agentID, deviceUUIDs, t.Name())
+	require.NoError(t, err)
+
+	response := disk_manager.CreateSnapshotResponse{}
+	err = internal_client.WaitResponse(ctx, client, operation.Id, &response)
+	if err != nil {
+		// OK: dataplane task failed with 'Device disabled' error, but shadow
+		// disk was filled successfully.
+		// TODO: improve this test after https://github.com/ydb-platform/nbs/issues/1950#issuecomment-2541530203
+		require.Contains(t, err.Error(), "Device disabled")
+		return
+	}
+	require.Equal(t, int64(diskSize), response.Size)
+
+	meta := disk_manager.CreateSnapshotMetadata{}
+	err = internal_client.GetOperationMetadata(ctx, client, operation.Id, &meta)
+	if err != nil {
+		// OK: dataplane task failed with 'Device disabled' error, but shadow
+		// disk was filled successfully.
+		// TODO: improve this test after https://github.com/ydb-platform/nbs/issues/1950#issuecomment-2541530203
+		require.Contains(t, err.Error(), "Device disabled")
+		return
+	}
+	require.Equal(t, float64(1), meta.Progress)
+
+	testcommon.RequireCheckpointsAreEmpty(t, ctx, diskID)
+	testcommon.CheckConsistency(t, ctx)
+}
+
+func TestSnapshotServiceCreateSnapshotFromDiskWithFailedShadowDiskShort(t *testing.T) {
+	testCreateSnapshotFromDiskWithFailedShadowDisk(
+		t,
+		disk_manager.DiskKind_DISK_KIND_SSD_NONREPLICATED,
+		4096,        // diskBlockSize
+		262144*4096, // diskSize
+		// Need to add some variance for better testing.
+		common.RandomDuration(0*time.Second, 3*time.Second), // waitDurationBeforeDisableDevice
+	)
+}
+
+func TestSnapshotServiceCreateSnapshotFromDiskWithFailedShadowDiskLong(t *testing.T) {
+	testCreateSnapshotFromDiskWithFailedShadowDisk(
+		t,
+		disk_manager.DiskKind_DISK_KIND_SSD_NONREPLICATED,
+		4096,        // diskBlockSize
+		262144*4096, // diskSize
+		// Need to add some variance for better testing.
+		common.RandomDuration(3*time.Second, 40*time.Second), // waitDurationBeforeDisableDevice
+	)
+}

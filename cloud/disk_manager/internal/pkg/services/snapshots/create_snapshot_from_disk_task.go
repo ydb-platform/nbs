@@ -2,6 +2,7 @@ package snapshots
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/golang/protobuf/proto"
@@ -47,7 +48,6 @@ func (t *createSnapshotFromDiskTask) run(
 	ctx context.Context,
 	execCtx tasks.ExecutionContext,
 	nbsClient nbs.Client,
-	checkpointID string,
 ) error {
 
 	disk := t.request.SrcDisk
@@ -62,7 +62,6 @@ func (t *createSnapshotFromDiskTask) run(
 		ID:                t.request.DstSnapshotId,
 		FolderID:          t.request.FolderId,
 		Disk:              disk,
-		CheckpointID:      checkpointID,
 		CreateRequest:     t.request,
 		CreateTaskID:      selfTaskID,
 		CreatingAt:        time.Now(),
@@ -79,20 +78,28 @@ func (t *createSnapshotFromDiskTask) run(
 		return nil
 	}
 
-	err = nbsClient.CreateCheckpoint(
-		ctx,
-		nbs.CheckpointParams{
-			DiskID:       disk.DiskId,
-			CheckpointID: checkpointID,
-		},
-	)
-	if err != nil {
-		return err
-	}
+	if t.state.CheckpointID == "" {
+		err = t.updateCheckpoint(ctx, nbsClient)
+		if err != nil {
+			return err
+		}
 
-	err = nbsClient.EnsureCheckpointReady(ctx, disk.DiskId, checkpointID)
-	if err != nil {
-		return err
+		err = t.ensureCheckpointReady(
+			ctx,
+			execCtx,
+			nbsClient,
+			disk.DiskId,
+			t.getCurrentCheckpointID(),
+		)
+		if err != nil {
+			return err
+		}
+
+		t.state.CheckpointID = t.getCurrentCheckpointID()
+		err = execCtx.SaveState(ctx)
+		if err != nil {
+			return err
+		}
 	}
 
 	taskID, err := t.scheduler.ScheduleZonalTask(
@@ -102,7 +109,7 @@ func (t *createSnapshotFromDiskTask) run(
 		disk.ZoneId,
 		&dataplane_protos.CreateSnapshotFromDiskRequest{
 			SrcDisk:             disk,
-			SrcDiskCheckpointId: checkpointID,
+			SrcDiskCheckpointId: t.state.CheckpointID,
 			DstSnapshotId:       t.request.DstSnapshotId,
 			UseS3:               t.request.UseS3,
 			UseProxyOverlayDisk: t.request.UseProxyOverlayDisk,
@@ -144,7 +151,7 @@ func (t *createSnapshotFromDiskTask) run(
 	return t.storage.SnapshotCreated(
 		ctx,
 		t.request.DstSnapshotId,
-		checkpointID,
+		t.state.CheckpointID,
 		time.Now(),
 		uint64(t.state.SnapshotSize),
 		uint64(t.state.SnapshotStorageSize),
@@ -157,15 +164,13 @@ func (t *createSnapshotFromDiskTask) Run(
 ) error {
 
 	disk := t.request.SrcDisk
-	// NOTE: we use snapshot id as checkpoint id.
-	checkpointID := t.request.DstSnapshotId
 
 	nbsClient, err := t.nbsFactory.GetClient(ctx, disk.ZoneId)
 	if err != nil {
 		return err
 	}
 
-	err = t.run(ctx, execCtx, nbsClient, checkpointID)
+	err = t.run(ctx, execCtx, nbsClient)
 	if err != nil {
 		return err
 	}
@@ -176,10 +181,10 @@ func (t *createSnapshotFromDiskTask) Run(
 	}
 
 	if diskParams.IsDiskRegistryBasedDisk {
-		return nbsClient.DeleteCheckpoint(ctx, disk.DiskId, checkpointID)
+		return nbsClient.DeleteCheckpoint(ctx, disk.DiskId, t.state.CheckpointID)
 	}
 
-	return nbsClient.DeleteCheckpointData(ctx, disk.DiskId, checkpointID)
+	return nbsClient.DeleteCheckpointData(ctx, disk.DiskId, t.state.CheckpointID)
 }
 
 func (t *createSnapshotFromDiskTask) Cancel(
@@ -194,11 +199,7 @@ func (t *createSnapshotFromDiskTask) Cancel(
 		return err
 	}
 
-	// NOTE: we use snapshot id as checkpoint id.
-	checkpointID := t.request.DstSnapshotId
-
-	// NBS-1873: should always delete checkpoint.
-	err = nbsClient.DeleteCheckpoint(ctx, disk.DiskId, checkpointID)
+	err = t.cleanupCheckpoints(ctx, nbsClient)
 	if err != nil {
 		return err
 	}
@@ -276,4 +277,98 @@ func (t *createSnapshotFromDiskTask) GetResponse() proto.Message {
 		Size:        t.state.SnapshotSize,
 		StorageSize: t.state.SnapshotStorageSize,
 	}
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+func (t *createSnapshotFromDiskTask) ensureCheckpointReady(
+	ctx context.Context,
+	execCtx tasks.ExecutionContext,
+	nbsClient nbs.Client,
+	diskID string,
+	checkpointID string,
+) error {
+
+	err := nbsClient.EnsureCheckpointReady(ctx, diskID, checkpointID)
+	// TODO:_ hmm, too complicated?
+	if errors.Is(err, errors.NewEmptyRetriableError()) {
+		// TODO:_ comment? log?
+		t.state.CheckpointIteration++
+		saveStateErr := execCtx.SaveState(ctx)
+		if err != nil {
+			return saveStateErr
+		}
+	}
+
+	return err
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+func (t *createSnapshotFromDiskTask) makeCheckpointID(index int) string {
+	if index == 0 {
+		return t.request.DstSnapshotId
+	}
+	return fmt.Sprintf("%v_%v", t.request.DstSnapshotId, index)
+}
+
+func (t *createSnapshotFromDiskTask) getCurrentCheckpointID() string {
+	return t.makeCheckpointID(int(t.state.CheckpointIteration))
+}
+
+func (t *createSnapshotFromDiskTask) deletePreviousCheckpoint(
+	ctx context.Context,
+	nbsClient nbs.Client,
+) error {
+
+	if t.state.CheckpointIteration == 0 {
+		// No previous checkpoint, nothing to do.
+		return nil
+	}
+
+	checkpointID := t.makeCheckpointID(
+		int(t.state.CheckpointIteration) - 1,
+	)
+
+	return nbsClient.DeleteCheckpoint(
+		ctx,
+		t.request.SrcDisk.DiskId,
+		checkpointID,
+	)
+}
+
+func (t *createSnapshotFromDiskTask) updateCheckpoint(
+	ctx context.Context,
+	nbsClient nbs.Client,
+) error {
+
+	err := t.deletePreviousCheckpoint(ctx, nbsClient)
+	if err != nil {
+		return err
+	}
+
+	return nbsClient.CreateCheckpoint(
+		ctx,
+		nbs.CheckpointParams{
+			DiskID:       t.request.SrcDisk.DiskId,
+			CheckpointID: t.getCurrentCheckpointID(),
+		},
+	)
+}
+
+func (t *createSnapshotFromDiskTask) cleanupCheckpoints(
+	ctx context.Context,
+	nbsClient nbs.Client,
+) error {
+
+	err := t.deletePreviousCheckpoint(ctx, nbsClient)
+	if err != nil {
+		return err
+	}
+
+	return nbsClient.DeleteCheckpoint(
+		ctx,
+		t.request.SrcDisk.DiskId,
+		t.getCurrentCheckpointID(),
+	)
 }
