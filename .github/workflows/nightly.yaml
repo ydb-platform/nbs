@@ -49,13 +49,13 @@ on:
         type: string
         required: false
         #default: 'cloud/tasks/'
-        default: 'cloud/blockstore/apps/,cloud/filestore/apps/,cloud/disk_manager/,cloud/tasks/'
+        default: 'cloud/blockstore/apps/,cloud/filestore/apps/,cloud/disk_manager/,cloud/tasks/,cloud/storage/'
       test_target:
         description: 'Test target'
         type: string
         required: false
         #default: 'cloud/tasks/'
-        default: 'cloud/blockstore/,cloud/filestore/,cloud/disk_manager/,cloud/tasks/'
+        default: 'cloud/blockstore/,cloud/filestore/,cloud/disk_manager/,cloud/tasks/,cloud/storage/'
       nebius:
         description: 'Run on new nebius runners'
         type: choice
@@ -96,8 +96,8 @@ jobs:
     uses: ./.github/workflows/build_and_test_on_demand.yaml
     secrets: inherit
     with:
-      build_target: 'cloud/blockstore/apps/,cloud/filestore/apps/,cloud/disk_manager/,cloud/tasks/'
-      test_target: 'cloud/blockstore/,cloud/filestore/,cloud/disk_manager/,cloud/tasks/'
+      build_target: 'cloud/blockstore/apps/,cloud/filestore/apps/,cloud/disk_manager/,cloud/tasks/,cloud/storage/'
+      test_target: 'cloud/blockstore/,cloud/filestore/,cloud/disk_manager/,cloud/tasks/,cloud/storage/'
       build_preset: relwithdebinfo
       cache_update_build: true
       cache_update_tests: false

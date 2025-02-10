@@ -163,8 +163,8 @@ jobs:
       runner_label: ${{ needs.provide-runner.outputs.label }}
       runner_instance_id: ${{ needs.provide-runner.outputs.instance-id }}
       runner_ipv4: ${{ needs.provide-runner.outputs.runner_ipv4 }}
-      build_target: ${{ needs.provide-runner.outputs.large_tests == 'yes' && 'cloud/blockstore/apps/,cloud/filestore/apps/,cloud/disk_manager/,cloud/tasks/' || 'cloud/tasks' }}
-      test_target:  ${{ needs.provide-runner.outputs.large_tests == 'yes' && 'cloud/blockstore/,cloud/filestore/,cloud/disk_manager/,cloud/tasks/' || 'cloud/tasks' }}
+      build_target: ${{ needs.provide-runner.outputs.large_tests == 'yes' && 'cloud/blockstore/apps/,cloud/filestore/apps/,cloud/disk_manager/,cloud/tasks/,cloud/storage/' || 'cloud/tasks' }}
+      test_target:  ${{ needs.provide-runner.outputs.large_tests == 'yes' && 'cloud/blockstore/,cloud/filestore/,cloud/disk_manager/,cloud/tasks/,cloud/storage/' || 'cloud/tasks' }}
       build_preset: "relwithdebinfo"
       run_build: true
       run_tests: true
