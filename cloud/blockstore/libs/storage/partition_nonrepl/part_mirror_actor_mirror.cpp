@@ -22,9 +22,9 @@ void TMirrorPartitionActor::HandleWriteOrZeroCompleted(
 {
     const auto requestIdentityKey = ev->Get()->RequestCounter;
     TBlockRange64 range;
-    RequestsInProgress.ExtractRequest(requestIdentityKey, &range);
+    WriteRequestsInProgress.ExtractRequest(requestIdentityKey, &range);
     DrainActorCompanion.ProcessDrainRequests(ctx);
-    for (const auto& [id, request]: RequestsInProgress.AllRequests()) {
+    for (const auto& [id, request]: ReadRequestsInProgress.AllRequests()) {
         if (range.Overlaps(request.Value)) {
             DirtyReadRequestIds.insert(id);
         }
@@ -45,7 +45,7 @@ void TMirrorPartitionActor::HandleMirroredReadCompleted(
     Y_UNUSED(ctx);
 
     const auto requestIdentityKey = ev->Get()->RequestCounter;
-    RequestsInProgress.RemoveRequest(requestIdentityKey);
+    ReadRequestsInProgress.RemoveRequest(requestIdentityKey);
     auto it = DirtyReadRequestIds.find(requestIdentityKey);
     if (it == DirtyReadRequestIds.end()) {
         if (ev->Get()->ChecksumMismatchObserved) {
@@ -97,12 +97,12 @@ void TMirrorPartitionActor::MirrorRequest(
         }
         WriteIntersectsWithScrubbing = true;
     }
-    for (const auto& [id, request]: RequestsInProgress.AllRequests()) {
+    for (const auto& [id, request]: ReadRequestsInProgress.AllRequests()) {
         if (range.Overlaps(request.Value)) {
             DirtyReadRequestIds.insert(id);
         }
     }
-    RequestsInProgress.AddWriteRequest(requestIdentityKey, range);
+    WriteRequestsInProgress.AddWriteRequest(requestIdentityKey, range);
 
     NCloud::Register<TMirrorRequestActor<TMethod>>(
         ctx,
