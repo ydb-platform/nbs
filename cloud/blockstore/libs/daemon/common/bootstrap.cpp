@@ -386,7 +386,8 @@ void TBootstrapBase::Init()
         auto nbdEndpointListener = CreateNbdEndpointListener(
             NbdServer,
             Logging,
-            ServerStats);
+            ServerStats,
+            Configs->ServerConfig->GetChecksumFlags());
 
         endpointListeners.emplace(
             NProto::IPC_NBD,
@@ -413,7 +414,8 @@ void TBootstrapBase::Init()
         STORAGE_INFO("VHOST Server initialized");
 
         auto vhostEndpointListener = CreateVhostEndpointListener(
-            VhostServer);
+            VhostServer,
+            Configs->ServerConfig->GetChecksumFlags());
 
         if (Configs->ServerConfig->GetVhostServerPath()
                 && !Configs->Options->TemporaryServer)

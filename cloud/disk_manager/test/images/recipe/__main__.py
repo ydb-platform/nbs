@@ -122,7 +122,7 @@ def start(argv):
 
     ubuntu1604_image_file_path = yatest_common.build_path("cloud/disk_manager/test/images/resources/qcow2_images/ubuntu1604-ci-stable")
     if os.path.exists(ubuntu1604_image_file_path):
-        ubuntu1604_image_file_size = 1902575616
+        ubuntu1604_image_file_size = 4162256896
         ubuntu1604_image_file_server = ImageFileServerLauncher(
             ubuntu1604_image_file_path,
             ubuntu1604_image_file_size,
@@ -130,8 +130,8 @@ def start(argv):
         ubuntu1604_image_file_server.start()
         set_env("DISK_MANAGER_RECIPE_QCOW2_UBUNTU1604_IMAGE_FILE_SERVER_PORT", str(ubuntu1604_image_file_server.port))
         # size and crc32 after converting to raw image
-        set_env("DISK_MANAGER_RECIPE_QCOW2_UBUNTU1604_IMAGE_SIZE", "15246295040")
-        set_env("DISK_MANAGER_RECIPE_QCOW2_UBUNTU1604_IMAGE_CRC32", "1189208160")
+        set_env("DISK_MANAGER_RECIPE_QCOW2_UBUNTU1604_IMAGE_SIZE", "15246508032")
+        set_env("DISK_MANAGER_RECIPE_QCOW2_UBUNTU1604_IMAGE_CRC32", "3937858947")
         image_map_file_path = yatest_common.source_path("cloud/disk_manager/test/images/recipe/data/qcow2_ubuntu1604_image_map.json")
         set_env("DISK_MANAGER_RECIPE_QCOW2_UBUNTU1604_IMAGE_MAP_FILE", image_map_file_path)
 

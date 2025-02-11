@@ -4,10 +4,12 @@
 #include <cloud/blockstore/libs/service/context.h>
 #include <cloud/blockstore/libs/service/storage_test.h>
 #include <cloud/storage/core/libs/common/error.h>
-
 #include <cloud/storage/core/libs/common/sglist.h>
 #include <cloud/storage/core/libs/common/sglist_test.h>
+#include <cloud/storage/core/libs/diagnostics/critical_events.h>
+#include <cloud/storage/core/libs/diagnostics/monitoring.h>
 
+#include <library/cpp/monlib/dynamic_counters/counters.h>
 #include <library/cpp/testing/unittest/registar.h>
 
 #include <array>
@@ -20,6 +22,15 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+auto SetupCriticalEvents()
+{
+    NMonitoring::TDynamicCountersPtr counters =
+        new NMonitoring::TDynamicCounters();
+    InitCriticalEventsCounter(counters);
+    return counters;
+}
+
+////////////////////////////////////////////////////////////////////////////////
 class TTestEnvironment
 {
 private:
@@ -126,9 +137,12 @@ public:
         auto factory = CreateDeviceHandlerFactory(maxBlockCount * BlockSize);
         DeviceHandler = factory->CreateDeviceHandler(
             std::move(testStorage),
+            "disk1",
             "testClientId",
             BlockSize,
-            unalignedRequestsDisabled);
+            unalignedRequestsDisabled,   // unalignedRequestsDisabled,
+            false                        // checkBufferModificationDuringWriting
+        );
     }
 
     TCallContextPtr WriteSectors(ui64 firstSector, ui64 totalSectors, char data)
@@ -328,6 +342,7 @@ Y_UNIT_TEST_SUITE(TDeviceHandlerTest)
 
     Y_UNIT_TEST(ShouldSliceHugeZeroRequest)
     {
+        const auto diskId = "disk1";
         const auto clientId = "testClientId";
         const ui32 blockSize = DefaultBlockSize;
         const ui64 deviceBlocksCount = 8*1024;
@@ -338,9 +353,12 @@ Y_UNIT_TEST_SUITE(TDeviceHandlerTest)
         auto factory = CreateDeviceHandlerFactory(blocksCountLimit * blockSize);
         auto deviceHandler = factory->CreateDeviceHandler(
             storage,
+            diskId,
             clientId,
             blockSize,
-            false);
+            false,   // unalignedRequestsDisabled,
+            false    // checkBufferModificationDuringWriting
+        );
 
         std::array<bool, deviceBlocksCount> zeroBlocks;
         for (auto& zeroBlock: zeroBlocks) {
@@ -393,6 +411,7 @@ Y_UNIT_TEST_SUITE(TDeviceHandlerTest)
 
     Y_UNIT_TEST(ShouldHandleAlignedRequestsWhenUnalignedRequestsDisabled)
     {
+        const auto diskId = "disk1";
         const auto clientId = "testClientId";
         const ui32 blockSize = DefaultBlockSize;
 
@@ -400,9 +419,12 @@ Y_UNIT_TEST_SUITE(TDeviceHandlerTest)
 
         auto device = CreateDefaultDeviceHandlerFactory()->CreateDeviceHandler(
             storage,
+            diskId,
             clientId,
             blockSize,
-            true);
+            true,   // unalignedRequestsDisabled,
+            false   // checkBufferModificationDuringWriting
+        );
 
         ui32 startIndex = 42;
         ui32 blocksCount = 17;
@@ -479,6 +501,7 @@ Y_UNIT_TEST_SUITE(TDeviceHandlerTest)
 
     Y_UNIT_TEST(ShouldNotHandleUnalignedRequestsWhenUnalignedRequestsDisabled)
     {
+        const auto diskId = "disk1";
         const auto clientId = "testClientId";
         const ui32 blockSize = DefaultBlockSize;
 
@@ -486,9 +509,12 @@ Y_UNIT_TEST_SUITE(TDeviceHandlerTest)
 
         auto device = CreateDefaultDeviceHandlerFactory()->CreateDeviceHandler(
             storage,
+            diskId,
             clientId,
             blockSize,
-            true);
+            true,   // unalignedRequestsDisabled,
+            false   // checkBufferModificationDuringWriting
+        );
 
         {
             auto future = device->Read(
@@ -586,6 +612,7 @@ Y_UNIT_TEST_SUITE(TDeviceHandlerTest)
 
     void DoShouldSliceHugeZeroRequest(bool requestUnaligned, bool unalignedRequestDisabled)
     {
+        const auto diskId = "disk1";
         const auto clientId = "testClientId";
         const ui32 blockSize = DefaultBlockSize;
         const ui64 deviceBlocksCount = 12;
@@ -599,9 +626,12 @@ Y_UNIT_TEST_SUITE(TDeviceHandlerTest)
         auto factory = CreateDeviceHandlerFactory(blocksCountLimit * blockSize);
         auto deviceHandler = factory->CreateDeviceHandler(
             storage,
+            diskId,
             clientId,
             blockSize,
-            unalignedRequestDisabled);
+            unalignedRequestDisabled,   // unalignedRequestsDisabled,
+            false                       // checkBufferModificationDuringWriting
+        );
 
         storage->ZeroBlocksHandler = [&] (
             TCallContextPtr callContext,
@@ -706,16 +736,21 @@ Y_UNIT_TEST_SUITE(TDeviceHandlerTest)
 
     Y_UNIT_TEST(ShouldReturnErrorForHugeUnalignedReadWriteRequests)
     {
+        const auto diskId = "disk1";
         const auto clientId = "testClientId";
         const ui32 blockSize = DefaultBlockSize;
 
         auto storage = std::make_shared<TTestStorage>();
 
-        auto deviceHandler = CreateDefaultDeviceHandlerFactory()->CreateDeviceHandler(
-            storage,
-            clientId,
-            blockSize,
-            false);
+        auto deviceHandler =
+            CreateDefaultDeviceHandlerFactory()->CreateDeviceHandler(
+                storage,
+                diskId,
+                clientId,
+                blockSize,
+                false,   // unalignedRequestsDisabled,
+                false    // checkBufferModificationDuringWriting
+            );
 
         storage->WriteBlocksLocalHandler = [&] (
             TCallContextPtr callContext,
@@ -769,16 +804,21 @@ Y_UNIT_TEST_SUITE(TDeviceHandlerTest)
 
     Y_UNIT_TEST(ShouldReturnErrorForInvalidBufferSize)
     {
+        const auto diskId = "disk1";
         const auto clientId = "testClientId";
         const ui32 blockSize = DefaultBlockSize;
 
         auto storage = std::make_shared<TTestStorage>();
 
-        auto deviceHandler = CreateDefaultDeviceHandlerFactory()->CreateDeviceHandler(
-            storage,
-            clientId,
-            blockSize,
-            false);
+        auto deviceHandler =
+            CreateDefaultDeviceHandlerFactory()->CreateDeviceHandler(
+                storage,
+                diskId,
+                clientId,
+                blockSize,
+                false,   // unalignedRequestsDisabled,
+                false    // checkBufferModificationDuringWriting
+            );
 
         storage->WriteBlocksLocalHandler = [&] (
             TCallContextPtr callContext,
@@ -885,6 +925,67 @@ Y_UNIT_TEST_SUITE(TDeviceHandlerTest)
 
         // Execute last request
         env.RunWriteService();
+    }
+
+    Y_UNIT_TEST(ShouldCopyBufferWhenClientModifiesBuffer)
+    {
+        const auto diskId = "disk1";
+        const auto clientId = "testClientId";
+        const ui32 blockSize = DefaultBlockSize;
+        const ui64 deviceBlocksCount = 8*1024;
+        const ui64 blocksCountLimit = deviceBlocksCount / 4;
+
+        auto storage = std::make_shared<TTestStorage>();
+
+        auto factory = CreateDeviceHandlerFactory(blocksCountLimit * blockSize);
+        auto deviceHandler = factory->CreateDeviceHandler(
+            storage,
+            diskId,
+            clientId,
+            blockSize,
+            false,   // unalignedRequestsDisabled,
+            true    // checkBufferModificationDuringWriting
+        );
+
+        ui32 writeAttempts  = 0;
+
+        auto buffer = TString(DefaultBlockSize, 'g');
+        TSgList sgList{{buffer.data(), buffer.size()}};
+        storage->WriteBlocksLocalHandler =
+            [&](TCallContextPtr ctx,
+                std::shared_ptr<NProto::TWriteBlocksLocalRequest> request)
+        {
+            Y_UNUSED(ctx);
+
+            // Bad client modifies the contents of the memory
+            buffer[writeAttempts] = 'x';
+            ++writeAttempts;
+
+            // We should see the first memory change, but not the second, since
+            // the memory has already been copied.
+            auto guard = request->Sglist.Acquire();
+            const auto& src = guard.Get();
+            UNIT_ASSERT_VALUES_EQUAL('x', src[0].AsStringBuf()[0]);
+            UNIT_ASSERT_VALUES_EQUAL('g', src[0].AsStringBuf()[1]);
+
+            return MakeFuture<NProto::TWriteBlocksLocalResponse>();
+        };
+
+        auto counters = SetupCriticalEvents();
+        auto mirroredDiskChecksumMismatchUponWrite = counters->GetCounter(
+            "AppCriticalEvents/MirroredDiskChecksumMismatchUponWrite",
+            true);
+
+        auto future = deviceHandler->Write(
+            MakeIntrusive<TCallContext>(),
+            0,
+            blockSize,
+            TGuardedSgList(sgList));
+
+        const auto& response = future.GetValue(TDuration::Seconds(5));
+        UNIT_ASSERT(!HasError(response));
+        UNIT_ASSERT_VALUES_EQUAL(2, writeAttempts);
+        UNIT_ASSERT_VALUES_EQUAL(1, mirroredDiskChecksumMismatchUponWrite->Val());
     }
 }
 

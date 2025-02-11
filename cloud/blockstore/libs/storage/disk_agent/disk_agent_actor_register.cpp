@@ -4,7 +4,6 @@
 #include <cloud/blockstore/libs/storage/core/request_info.h>
 
 #include <contrib/ydb/core/base/appdata.h>
-#include <contrib/ydb/library/actors/core/executor_thread.h>
 
 namespace NCloud::NBlockStore::NStorage {
 
@@ -243,9 +242,9 @@ void TDiskAgentActor::HandleRegisterAgentResponse(
 
         auto request = std::make_unique<TEvDiskAgentPrivate::TEvRegisterAgentRequest>();
 
-        ctx.ExecutorThread.Schedule(
+        ctx.Schedule(
             AgentConfig->GetRegisterRetryTimeout(),
-            new IEventHandle(ctx.SelfID, ctx.SelfID, request.get()));
+            std::make_unique<IEventHandle>(ctx.SelfID, ctx.SelfID, request.get()));
 
         request.release();
     }

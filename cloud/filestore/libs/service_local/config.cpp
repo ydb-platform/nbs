@@ -28,6 +28,8 @@ constexpr TDuration AsyncHandleOpsPeriod = TDuration::MilliSeconds(50);
     xxx(GuestWritebackCacheEnabled,  bool,          false                     )\
     xxx(AsyncDestroyHandleEnabled,   bool,          false                     )\
     xxx(AsyncHandleOperationPeriod,  TDuration,     AsyncHandleOpsPeriod      )\
+    xxx(OpenNodeByHandleEnabled,     bool,          false                     )\
+    xxx(NodeCleanupBatchSize,        ui32,          1000                      )\
 // FILESTORE_SERVICE_CONFIG
 
 #define FILESTORE_SERVICE_DECLARE_CONFIG(name, type, value)                    \

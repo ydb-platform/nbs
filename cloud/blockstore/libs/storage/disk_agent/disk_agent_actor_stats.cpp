@@ -4,8 +4,6 @@
 #include <cloud/blockstore/libs/storage/api/disk_registry_proxy.h>
 #include <cloud/blockstore/libs/storage/core/request_info.h>
 
-#include <contrib/ydb/library/actors/core/executor_thread.h>
-
 namespace NCloud::NBlockStore::NStorage {
 
 using namespace NActors;
@@ -136,9 +134,9 @@ void TStatsActor::ScheduleUpdateStats(const TActorContext& ctx)
 
     auto request = std::make_unique<TEvents::TEvWakeup>();
 
-    ctx.ExecutorThread.Schedule(
+    ctx.Schedule(
         UpdateCountersInterval,
-        new IEventHandle(ctx.SelfID, ctx.SelfID, request.release()));
+        std::make_unique<IEventHandle>(ctx.SelfID, ctx.SelfID, request.release()));
 }
 
 ////////////////////////////////////////////////////////////////////////////////

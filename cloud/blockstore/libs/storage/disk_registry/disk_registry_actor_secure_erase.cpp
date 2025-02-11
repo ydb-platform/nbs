@@ -4,8 +4,6 @@
 #include <cloud/blockstore/libs/storage/api/disk_agent.h>
 #include <cloud/blockstore/libs/storage/disk_registry/model/device_list.h>
 
-#include <contrib/ydb/library/actors/core/executor_thread.h>
-
 namespace NCloud::NBlockStore::NStorage {
 
 using namespace NActors;
@@ -366,9 +364,9 @@ void TDiskRegistryActor::SecureErase(const TActorContext& ctx)
                 ctx.Now().MicroSeconds(),
                 deadline.MicroSeconds());
 
-            ctx.ExecutorThread.Schedule(
+            ctx.Schedule(
                 deadline,
-                new IEventHandle(ctx.SelfID, ctx.SelfID, request.release()));
+                std::make_unique<IEventHandle>(ctx.SelfID, ctx.SelfID, request.release()));
         } else {
             LOG_INFO(
                 ctx,

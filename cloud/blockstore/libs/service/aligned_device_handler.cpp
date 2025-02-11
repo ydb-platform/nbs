@@ -1,5 +1,6 @@
 #include "aligned_device_handler.h"
 
+#include <cloud/blockstore/libs/service/checksum_storage_wrapper.h>
 #include <cloud/blockstore/libs/service/context.h>
 #include <cloud/blockstore/libs/service/storage.h>
 
@@ -130,10 +131,16 @@ TBlocksInfo TBlocksInfo::MakeAligned() const
 
 TAlignedDeviceHandler::TAlignedDeviceHandler(
         IStoragePtr storage,
+        TString diskId,
         TString clientId,
         ui32 blockSize,
-        ui32 maxSubRequestSize)
-    : Storage(std::move(storage))
+        ui32 maxSubRequestSize,
+        bool checkBufferModificationDuringWriting)
+    : Storage(
+          checkBufferModificationDuringWriting ? CreateChecksumStorageWrapper(
+                                                     std::move(storage),
+                                                     std::move(diskId))
+                                               : std::move(storage))
     , ClientId(std::move(clientId))
     , BlockSize(blockSize)
     , MaxBlockCount(maxSubRequestSize / BlockSize)

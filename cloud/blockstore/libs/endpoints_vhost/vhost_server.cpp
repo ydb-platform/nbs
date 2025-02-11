@@ -3,6 +3,7 @@
 #include <cloud/blockstore/libs/client/session.h>
 #include <cloud/blockstore/libs/endpoints/endpoint_listener.h>
 #include <cloud/blockstore/libs/vhost/server.h>
+#include <cloud/storage/core/libs/common/media.h>
 
 namespace NCloud::NBlockStore::NServer {
 
@@ -17,10 +18,14 @@ class TVhostEndpointListener final
 {
 private:
     const NVhost::IServerPtr Server;
+    const NProto::TChecksumFlags ChecksumFlags;
 
 public:
-    TVhostEndpointListener(NVhost::IServerPtr server)
+    TVhostEndpointListener(
+            NVhost::IServerPtr server,
+            NProto::TChecksumFlags checksumFlags)
         : Server(std::move(server))
+        , ChecksumFlags(std::move(checksumFlags))
     {}
 
     TFuture<NProto::TError> StartEndpoint(
@@ -36,6 +41,9 @@ public:
         options.BlocksCount = volume.GetBlocksCount();
         options.VhostQueuesCount = request.GetVhostQueuesCount();
         options.UnalignedRequestsDisabled = request.GetUnalignedRequestsDisabled();
+        options.CheckBufferModificationDuringWriting =
+            ChecksumFlags.GetCheckBufferModificationForMirrorDisk() &&
+            IsReliableDiskRegistryMediaKind(volume.GetStorageMediaKind());
 
         return Server->StartEndpoint(
             request.GetUnixSocketPath(),
@@ -83,10 +91,12 @@ public:
 ////////////////////////////////////////////////////////////////////////////////
 
 IEndpointListenerPtr CreateVhostEndpointListener(
-    NVhost::IServerPtr server)
+    NVhost::IServerPtr server,
+    const NProto::TChecksumFlags& checksumFlags)
 {
     return std::make_shared<TVhostEndpointListener>(
-        std::move(server));
+        std::move(server),
+        checksumFlags);
 }
 
 }   // namespace NCloud::NBlockStore::NServer

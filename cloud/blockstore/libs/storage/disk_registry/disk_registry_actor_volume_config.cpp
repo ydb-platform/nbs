@@ -297,9 +297,9 @@ void TDiskRegistryActor::HandleUpdateVolumeConfigResponse(
     {
         auto* request = new TEvDiskRegistryPrivate::TEvUpdateVolumeConfigRequest(diskId);
 
-        ctx.ExecutorThread.Schedule(
+        ctx.Schedule(
             BackoffDelayProvider.GetDelay(),
-            new IEventHandle(
+            std::make_unique<IEventHandle>(
                 ctx.SelfID,
                 ctx.SelfID,
                 request,

@@ -419,9 +419,11 @@ public:
     {
         auto deviceHandler = AppCtx.DeviceHandlerFactory->CreateDeviceHandler(
             std::move(storage),
+            options.DiskId,
             options.ClientId,
             options.BlockSize,
-            options.UnalignedRequestsDisabled);
+            options.UnalignedRequestsDisabled,
+            options.CheckBufferModificationDuringWriting);
 
         auto endpoint = std::make_shared<TEndpoint>(
             AppCtx,

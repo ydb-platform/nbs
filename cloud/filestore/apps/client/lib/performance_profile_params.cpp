@@ -17,7 +17,7 @@ TPerformanceProfileParams::TPerformanceProfileParams(NLastGetopt::TOpts& opts)
 
     opts.AddLongOption(
             "performance-profile-max-read-bandwidth",
-            "File system performance profile max read bandwidth")
+            "File system performance profile max read bandwidth (in bytes)")
         .RequiredArgument("NUM")
         .StoreResult(&MaxReadBandwidth);
 
@@ -29,7 +29,7 @@ TPerformanceProfileParams::TPerformanceProfileParams(NLastGetopt::TOpts& opts)
 
     opts.AddLongOption(
             "performance-profile-max-write-bandwidth",
-            "File system performance profile max write bandwidth")
+            "File system performance profile max write bandwidth (in bytes)")
         .RequiredArgument("NUM")
         .StoreResult(&MaxWriteBandwidth);
 

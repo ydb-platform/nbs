@@ -1,5 +1,7 @@
 #include "config.h"
 
+#include <cloud/storage/core/libs/common/proto_helpers.h>
+
 #include <library/cpp/monlib/service/pages/templates.h>
 
 #include <util/generic/size_literals.h>
@@ -101,6 +103,7 @@ constexpr TDuration Seconds(int s)
     xxx(NodeRegistrationToken,       TString,               "root@builtin"    )\
     xxx(EndpointStorageNotImplementedErrorIsFatal,  bool,   false             )\
     xxx(VhostServerTimeoutAfterParentExit, TDuration,       Seconds(60)       )\
+    xxx(ChecksumFlags,               NProto::TChecksumFlags, {}               )
 // BLOCKSTORE_SERVER_CONFIG
 
 #define BLOCKSTORE_SERVER_DECLARE_CONFIG(name, type, value)                    \
@@ -149,25 +152,6 @@ TAffinity ConvertValue<TAffinity, NProto::TAffinity>(
 {
     TVector<ui8> vec(value.GetCPU().begin(), value.GetCPU().end());
     return TAffinity(std::move(vec));
-}
-
-template <typename T>
-bool IsEmpty(const T& t)
-{
-    return !t;
-}
-
-template <typename T>
-bool IsEmpty(
-    const google::protobuf::RepeatedPtrField<T>& value)
-{
-    return value.empty();
-}
-
-template <>
-bool IsEmpty(const NProto::TAffinity& value)
-{
-    return value.GetCPU().empty();
 }
 
 template <typename T>
@@ -264,9 +248,10 @@ TServerAppConfig::TServerAppConfig(NProto::TServerAppConfig appConfig)
 #define BLOCKSTORE_CONFIG_GETTER(name, type, ...)                              \
 type TServerAppConfig::Get##name() const                                       \
 {                                                                              \
-    const auto value = ServerConfig->Get##name();                              \
-    return !IsEmpty(value) ? ConvertValue<type>(value) : Default##name;        \
-}                                                                              \
+    return NCloud::HasField(*ServerConfig, #name)                              \
+                ? ConvertValue<type>(ServerConfig->Get##name())                \
+                : Default##name;                                               \
+}
 // BLOCKSTORE_CONFIG_GETTER
 
 BLOCKSTORE_SERVER_CONFIG(BLOCKSTORE_CONFIG_GETTER)

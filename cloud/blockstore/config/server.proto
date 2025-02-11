@@ -26,6 +26,16 @@ message TLocation
 
 ////////////////////////////////////////////////////////////////////////////////
 
+message TChecksumFlags
+{
+    // If enabled, the checksum for data buffer calculated before and after
+    // writing. This is done to ensure that the same data is written to all
+    // mirror disk replicas.
+    optional bool CheckBufferModificationForMirrorDisk = 1;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 message TServerConfig
 {
     // Host name or address to listen on.
@@ -204,6 +214,9 @@ message TServerConfig
     // How many seconds will the external vhost server continue to work after
     // the parent process die.
     optional uint32 VhostServerTimeoutAfterParentExit = 118;
+
+    // Flags for managing checksums.
+    optional TChecksumFlags ChecksumFlags = 119;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
