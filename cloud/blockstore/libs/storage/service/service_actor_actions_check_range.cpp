@@ -120,7 +120,11 @@ void TCheckRangeActor::HandleCheckRangeResponse(
     const TEvService::TEvCheckRangeResponse::TPtr& ev,
     const TActorContext& ctx)
 {
-    ReplyAndDie(ctx, std::move(ev->Get()->Record.GetError()));
+    if (ev->Get()->Record.HasError()) {
+        return ReplyAndDie(ctx, std::move(ev->Get()->Record.GetError()));
+    } else {
+        ReplyAndDie(ctx, std::move(ev->Get()->Record.GetStatus()));
+    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
