@@ -2,6 +2,7 @@ package tests
 
 import (
 	"hash/crc32"
+	"strings"
 	"testing"
 	"time"
 
@@ -985,6 +986,7 @@ func testCreateSnapshotFromDiskWithFailedShadowDisk(
 	diskBlockSize uint32,
 	diskSize uint64,
 	waitDurationBeforeDisableDevice time.Duration,
+	withCancel bool,
 ) {
 
 	ctx := testcommon.NewContext()
@@ -1031,6 +1033,7 @@ func testCreateSnapshotFromDiskWithFailedShadowDisk(
 	require.NoError(t, err)
 	require.NotEmpty(t, operation)
 
+	// Waiting before disabling device of shadow disk.
 	time.Sleep(waitDurationBeforeDisableDevice)
 
 	// Finding agent and devices of shadow disk.
@@ -1050,27 +1053,54 @@ func testCreateSnapshotFromDiskWithFailedShadowDisk(
 	err = nbsClient.DisableDevices(ctx, agentID, deviceUUIDs, t.Name())
 	require.NoError(t, err)
 
+	if withCancel {
+		// Waiting before cancelling operation.
+		// time.Sleep(waitDurationBeforeDisableDevice / 2)  // TODO:_ uncomment
+
+		_, err = client.CancelOperation(ctx, &disk_manager.CancelOperationRequest{
+			OperationId: operation.Id,
+		})
+		require.NoError(t, err)
+	}
+
+	var wasCancelled bool
+
+	checkError := func(err error) {
+		if err == nil {
+			return
+		}
+
+		if withCancel && strings.Contains(err.Error(), "Cancelled by client") {
+			wasCancelled = true
+			return
+		}
+
+		// TODO:_ text ok? Can we check error code here?
+		if strings.Contains(err.Error(), "Device disabled") {
+			// OK: dataplane task failed with 'Device disabled' error, but shadow
+			// disk was filled successfully.
+			// TODO: improve this test after https://github.com/ydb-platform/nbs/issues/1950#issuecomment-2541530203
+			return
+		}
+
+		require.Fail(t, "Unexpected error: %v", err.Error())
+	}
+
 	response := disk_manager.CreateSnapshotResponse{}
 	err = internal_client.WaitResponse(ctx, client, operation.Id, &response)
-	if err != nil {
-		// OK: dataplane task failed with 'Device disabled' error, but shadow
-		// disk was filled successfully.
-		// TODO: improve this test after https://github.com/ydb-platform/nbs/issues/1950#issuecomment-2541530203
-		require.Contains(t, err.Error(), "Device disabled")
-		return
-	}
-	require.Equal(t, int64(diskSize), response.Size)
+	checkError(err)
 
-	meta := disk_manager.CreateSnapshotMetadata{}
-	err = internal_client.GetOperationMetadata(ctx, client, operation.Id, &meta)
-	if err != nil {
-		// OK: dataplane task failed with 'Device disabled' error, but shadow
-		// disk was filled successfully.
-		// TODO: improve this test after https://github.com/ydb-platform/nbs/issues/1950#issuecomment-2541530203
-		require.Contains(t, err.Error(), "Device disabled")
-		return
+	if !wasCancelled {
+		require.Equal(t, int64(diskSize), response.Size)
+
+		meta := disk_manager.CreateSnapshotMetadata{}
+		err = internal_client.GetOperationMetadata(ctx, client, operation.Id, &meta)
+		checkError(err)
+		require.Equal(t, float64(1), meta.Progress)
 	}
-	require.Equal(t, float64(1), meta.Progress)
+
+	// TODO:_ try to create disk from snapshot?
+	// TODO:_ add cancellation
 
 	testcommon.RequireCheckpointsAreEmpty(t, ctx, diskID)
 	testcommon.CheckConsistency(t, ctx)
@@ -1084,6 +1114,7 @@ func TestSnapshotServiceCreateSnapshotFromDiskWithFailedShadowDiskShort(t *testi
 		262144*4096, // diskSize
 		// Need to add some variance for better testing.
 		common.RandomDuration(0*time.Second, 3*time.Second), // waitDurationBeforeDisableDevice
+		false, // WithCancel
 	)
 }
 
@@ -1095,5 +1126,30 @@ func TestSnapshotServiceCreateSnapshotFromDiskWithFailedShadowDiskLong(t *testin
 		262144*4096, // diskSize
 		// Need to add some variance for better testing.
 		common.RandomDuration(3*time.Second, 40*time.Second), // waitDurationBeforeDisableDevice
+		false, // WithCancel
+	)
+}
+
+func TestSnapshotServiceCreateSnapshotFromDiskWithFailedShadowDiskCancelShort(t *testing.T) {
+	testCreateSnapshotFromDiskWithFailedShadowDisk(
+		t,
+		disk_manager.DiskKind_DISK_KIND_SSD_NONREPLICATED,
+		4096,        // diskBlockSize
+		262144*4096, // diskSize
+		// Need to add some variance for better testing.
+		common.RandomDuration(0*time.Second, 3*time.Second), // waitDurationBeforeDisableDevice
+		true, // WithCancel
+	)
+}
+
+func TestSnapshotServiceCreateSnapshotFromDiskWithFailedShadowDiskCancelLong(t *testing.T) {
+	testCreateSnapshotFromDiskWithFailedShadowDisk(
+		t,
+		disk_manager.DiskKind_DISK_KIND_SSD_NONREPLICATED,
+		4096,        // diskBlockSize
+		262144*4096, // diskSize
+		// Need to add some variance for better testing.
+		common.RandomDuration(3*time.Second, 40*time.Second), // waitDurationBeforeDisableDevice
+		true, // WithCancel
 	)
 }

@@ -290,12 +290,10 @@ func (t *createSnapshotFromDiskTask) ensureCheckpointReady(
 ) error {
 
 	err := nbsClient.EnsureCheckpointReady(ctx, diskID, checkpointID)
-	// TODO:_ hmm, too complicated?
 	if errors.Is(err, errors.NewEmptyRetriableError()) {
-		// TODO:_ comment? log?
 		t.state.CheckpointIteration++
 		saveStateErr := execCtx.SaveState(ctx)
-		if err != nil {
+		if saveStateErr != nil {
 			return saveStateErr
 		}
 	}

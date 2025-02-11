@@ -938,7 +938,7 @@ func (c *client) EnsureCheckpointReady(
 
 	case CheckpointStatusError:
 		return errors.NewRetriableErrorf(
-			"creating checkpoint with id %v for disk %v ended with an error", // TODO:_ why creating? Maybe filling?
+			"checkpoint with id %v for disk %v is broken",
 			checkpointID,
 			diskID,
 		)

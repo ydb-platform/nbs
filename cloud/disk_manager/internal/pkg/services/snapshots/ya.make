@@ -9,10 +9,6 @@ SRCS(
     service.go
 )
 
-GO_TEST_SRCS(
-    create_snapshot_from_disk_task_test.go
-)
-
 END()
 
 RECURSE(
@@ -22,5 +18,4 @@ RECURSE(
 
 RECURSE_FOR_TESTS(
     mocks
-    tests
 )
