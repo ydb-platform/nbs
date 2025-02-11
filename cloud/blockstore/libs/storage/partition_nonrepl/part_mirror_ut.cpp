@@ -2030,13 +2030,14 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
 
                 return TTestActorRuntime::DefaultObserverFunc(event);
             });
+        ui32 replicaCount = 3;
 
         const auto readBlocks = [&](ui32 idx, ui32 size)
         {
             requests = 0;
             const auto range = TBlockRange64::WithLength(idx, size);
 
-            auto response = client.ReadBlocks(range, 0, 3);
+            auto response = client.ReadBlocks(range, 0, replicaCount);
 
 
             TDispatchOptions options;
@@ -2045,9 +2046,8 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
 
             // When requesting a read for three replicas, two checksums will be
             // calculated in HandleChecksumResponse and the last one in
-            // HandleResponse, without sending TEvReadBlocksResponse
-            UNIT_ASSERT_VALUES_EQUAL(2, requests);
-
+            // HandleResponse, without sending TEvChecksumBlocksRequest
+            UNIT_ASSERT_VALUES_EQUAL(replicaCount - 1, requests);
         };
 
         readBlocks(0, 4096);
