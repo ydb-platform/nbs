@@ -12,6 +12,13 @@ from cloud.filestore.tests.python.lib.client import FilestoreCliClient, create_e
 logger = logging.getLogger(__name__)
 
 
+def env_with_index(env, index):
+    if index == 0:
+        return env
+
+    return "{}__{}".format(env, index)
+
+
 def start(argv):
     parser = argparse.ArgumentParser()
     parser.add_argument("--filesystem", action="store", default="nfs_share")
@@ -21,6 +28,7 @@ def start(argv):
     parser.add_argument("--shard-count", action="store", default=0, type=int)
     parser.add_argument("--read-only", action="store_true", default=False)
     parser.add_argument("--verbose", action="store_true", default=False)
+    parser.add_argument("--endpoint-count", action="store", default=1, type=int)
     args = parser.parse_args(argv)
 
     port = os.getenv("NFS_SERVER_PORT")
@@ -55,34 +63,38 @@ def start(argv):
             "ShardFileSystemIds": shards,
         })
 
-    socket = create_endpoint(
-        client,
-        args.filesystem,
-        args.socket_path,
-        args.socket_prefix,
-        os.getenv("NFS_VHOST_ENDPOINT_STORAGE_DIR", None),
-        args.mount_seqno,
-        args.read_only)
+    set_env("NFS_VHOST_SOCKET_COUNT", args.endpoint_count)
+    for i in range(args.endpoint_count):
+        socket = create_endpoint(
+            client,
+            args.filesystem,
+            args.socket_path,
+            args.socket_prefix,
+            os.getenv("NFS_VHOST_ENDPOINT_STORAGE_DIR", None),
+            args.mount_seqno,
+            args.read_only)
 
-    set_env("NFS_VHOST_SOCKET", socket)
+        set_env(env_with_index("NFS_VHOST_SOCKET", i), socket)
 
 
 def stop(argv):
     vhost_port = os.getenv("NFS_VHOST_PORT")
-    socket = os.getenv("NFS_VHOST_SOCKET")
+    endpoint_count = int(os.getenv("NFS_VHOST_SOCKET_COUNT"))
+    for i in range(endpoint_count):
+        socket = os.getenv(env_with_index("NFS_VHOST_SOCKET", i))
 
-    if not vhost_port or not socket or not os.path.exists(socket):
-        return
+        if not vhost_port or not socket or not os.path.exists(socket):
+            return
 
-    client_path = common.binary_path(
-        "cloud/filestore/apps/client/filestore-client")
+        client_path = common.binary_path(
+            "cloud/filestore/apps/client/filestore-client")
 
-    client = FilestoreCliClient(
-        client_path, port=None,
-        vhost_port=vhost_port,
-        verbose=True,
-        cwd=common.output_path())
-    client.stop_endpoint(socket)
+        client = FilestoreCliClient(
+            client_path, port=None,
+            vhost_port=vhost_port,
+            verbose=True,
+            cwd=common.output_path())
+        client.stop_endpoint(socket)
 
 
 if __name__ == "__main__":
