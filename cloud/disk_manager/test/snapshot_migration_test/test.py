@@ -8,6 +8,8 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import NamedTuple
 
+import pytest
+
 import contrib.ydb.tests.library.common.yatest_common as yatest_common
 
 from contrib.ydb.tests.library.harness.kikimr_runner import get_unique_path_for_current_test, ensure_path_exists
@@ -49,9 +51,11 @@ class _MigrationTestSetup:
         self,
         use_s3_source: bool = False,
         use_s3_destination: bool = False,
+        use_source_s3_for_destination: bool = False,
     ):
         self.use_s3_source = use_s3_source
-        self.user_s3_destination = use_s3_destination
+        self.use_s3_destination = use_s3_destination
+        self.use_source_s3_for_destination = use_source_s3_for_destination
 
         certs_dir = Path(yatest_common.source_path("cloud/blockstore/tests/certs"))
         self._root_certs_file = certs_dir / "server.crt"
@@ -96,6 +100,30 @@ class _MigrationTestSetup:
         self.metadata_service.start()
         self.base_disk_id_prefix = "base-"
 
+        self.source_s3 = None
+        self.destination_s3 = None
+        self.s3_credentials_file = None
+
+        if self.use_s3_source or self.use_s3_destination:
+            working_dir = Path(get_unique_path_for_current_test(
+                output_path=yatest_common.output_path(),
+                sub_folder=""
+            ))
+            working_dir.mkdir(parents=True, exist_ok=True)
+            self.s3_credentials_file = (working_dir / 's3_credentials.json')
+            self.s3_credentials_file.write_text(json.dumps({"id": "test", "secret": "test"}))
+
+        if self.use_s3_source:
+            self.source_s3 = S3Launcher()
+            self.source_s3.start()
+
+        if self.use_s3_destination:
+            if not self.use_source_s3_for_destination:
+                self.destination_s3 = S3Launcher()
+                self.destination_s3.start()
+            else:
+                self.destination_s3 = self.source_s3
+
         self.initial_cpl_disk_manager = DiskManagerLauncher(
             hostname="localhost0",
             ydb_port=self.ydb.port,
@@ -113,6 +141,7 @@ class _MigrationTestSetup:
             disable_disk_registry_based_disks=True,
             with_nemesis=False,
             metadata_url=self.metadata_service.url,
+            s3_port=self.source_s3.port if self.source_s3 is not None else None,
         )
         self.initial_dpl_disk_manager = DiskManagerLauncher(
             hostname="localhost0",
@@ -133,6 +162,10 @@ class _MigrationTestSetup:
             dataplane_ydb_port=self.ydb.port,
             with_nemesis=False,
             metadata_url=self.metadata_service.url,
+            s3_port=self.source_s3.port if self.source_s3 is not None else None,
+            s3_credentials_file=str(self.s3_credentials_file) if self.s3_credentials_file is not None else None,
+            migration_dst_s3_port=self.destination_s3.port if self.destination_s3 is not None else None,
+            migration_dst_s3_credentials_file=str(self.s3_credentials_file) if self.s3_credentials_file is not None else None,
         )
 
         self.initial_cpl_disk_manager.start()
@@ -160,6 +193,12 @@ class _MigrationTestSetup:
             self.secondary_ydb.stop()
         with handle_process_lookup_error():
             self.ydb.stop()
+        with handle_process_lookup_error():
+            if self.source_s3 is not None:
+                self.source_s3.stop()
+        with handle_process_lookup_error():
+            if self.destination_s3 is not None:
+                self.destination_s3.stop()
 
     def admin(self, *args: str):
         return subprocess.check_output(
@@ -314,11 +353,23 @@ class _MigrationTestSetup:
             dataplane_ydb_port=self.secondary_ydb.port,
             with_nemesis=False,
             metadata_url=self.metadata_service.url,
+            s3_port=self.destination_s3.port if self.destination_s3 is not None else None,
+            s3_credentials_file=str(self.s3_credentials_file) if self.s3_credentials_file is not None else None,
         )
         self.secondary_dpl_disk_manager.start()
 
 
-def test_disk_manager_backup_restore():
+@pytest.mark.parametrize(
+    "use_s3_source, use_s3_destination, use_source_s3_for_destination",
+    [
+        (True, False, False),
+        (False, True, False),
+        (True, True, False),
+        (True, True, True),
+        (False, False, False),
+    ]
+)
+def test_disk_manager_backup_restore(use_s3_source, use_s3_destination, use_source_s3_for_destination):
     with _MigrationTestSetup() as setup:
         disk_size = 1024 * 1024 * 1024
         initial_disk_id = "example"
