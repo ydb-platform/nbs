@@ -486,8 +486,7 @@ void TMirrorPartitionActor::ReadBlocks(
     }
 
     const auto replicaIndex = record.GetHeaders().GetReplicaIndex();
-    const ui32 replicaCount = 0;
-    replicaCount = record.GetHeaders().GetReplicaCount();
+    const auto replicaCount = record.GetHeaders().GetReplicaCount();
 
     auto [replicaActorIds, error] =
         SelectReplicasToReadFrom(replicaIndex, replicaCount, blockRange, TMethod::Name);
