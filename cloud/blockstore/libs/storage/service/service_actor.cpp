@@ -7,7 +7,6 @@
 
 #include <contrib/ydb/core/base/appdata.h>
 #include <contrib/ydb/core/mon/mon.h>
-#include <contrib/ydb/library/actors/core/executor_thread.h>
 
 namespace NCloud::NBlockStore::NStorage {
 
@@ -61,7 +60,7 @@ void TServiceActor::RegisterPages(const TActorContext& ctx)
         auto* rootPage = mon->RegisterIndexPage("blockstore", "BlockStore");
 
         mon->RegisterActorPage(rootPage, "service", "Service",
-            false, ctx.ExecutorThread.ActorSystem, SelfId());
+            false, ctx.ActorSystem(), SelfId());
     }
 }
 

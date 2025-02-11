@@ -323,9 +323,9 @@ void TDiskRegistryActor::StartMigration(const NActors::TActorContext& ctx)
             ctx.Now().MicroSeconds(),
             deadline.MicroSeconds());
 
-        ctx.ExecutorThread.Schedule(
+        ctx.Schedule(
             deadline,
-            new IEventHandle(ctx.SelfID, ctx.SelfID, request.release()));
+            std::make_unique<IEventHandle>(ctx.SelfID, ctx.SelfID, request.release()));
     } else {
         LOG_INFO(ctx, TBlockStoreComponents::DISK_REGISTRY,
             "[%lu] Sending device migration request",

@@ -190,6 +190,10 @@ namespace NActors {
          */
         void Schedule(TDuration delta, IEventBase* ev, ISchedulerCookie* cookie = nullptr) const;
 
+        void Schedule(TInstant deadline, std::unique_ptr<IEventHandle> ev, ISchedulerCookie* cookie = nullptr) const;
+        void Schedule(TMonotonic deadline, std::unique_ptr<IEventHandle> ev, ISchedulerCookie* cookie = nullptr) const;
+        void Schedule(TDuration delta, std::unique_ptr<IEventHandle> ev, ISchedulerCookie* cookie = nullptr) const;
+
         TActorContext MakeFor(const TActorId& otherId) const {
             return TActorContext(Mailbox, ExecutorThread, EventStart, otherId);
         }

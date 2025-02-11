@@ -16,7 +16,6 @@
 #include <contrib/ydb/core/base/appdata.h>
 #include <contrib/ydb/core/mon/mon.h>
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
-#include <contrib/ydb/library/actors/core/executor_thread.h>
 
 #include <util/datetime/base.h>
 #include <util/generic/algorithm.h>
@@ -165,7 +164,7 @@ void TVolumeBalancerActor::RegisterPages(const TActorContext& ctx)
         auto* rootPage = mon->RegisterIndexPage("blockstore", "BlockStore");
 
         mon->RegisterActorPage(rootPage, "balancer", "Balancer",
-            false, ctx.ExecutorThread.ActorSystem, SelfId());
+            false, ctx.ActorSystem(), SelfId());
     }
 }
 

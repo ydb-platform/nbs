@@ -133,7 +133,7 @@ private:
         NKikimr::NTabletPipe::TClientConfig pipeConfig(
             NKikimr::NTabletPipe::TClientRetryPolicy::WithRetries());
 
-        auto pipe = ctx.ExecutorThread.RegisterActor(
+        auto pipe = ctx.Register(
             NKikimr::NTabletPipe::CreateClient(
                 ctx.SelfID,
                 TestTabletId,

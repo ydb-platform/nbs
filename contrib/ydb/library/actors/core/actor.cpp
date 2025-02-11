@@ -173,6 +173,18 @@ namespace NActors {
         ExecutorThread.Schedule(delta, new IEventHandle(SelfID, TActorId(), ev), cookie);
     }
 
+    void TActorContext::Schedule(TInstant deadline, std::unique_ptr<IEventHandle> ev, ISchedulerCookie* cookie) const {
+        ExecutorThread.Schedule(deadline, ev.release(), cookie);
+    }
+
+    void TActorContext::Schedule(TMonotonic deadline, std::unique_ptr<IEventHandle> ev, ISchedulerCookie* cookie) const {
+        ExecutorThread.Schedule(deadline, ev.release(), cookie);
+    }
+
+    void TActorContext::Schedule(TDuration delta, std::unique_ptr<IEventHandle> ev, ISchedulerCookie* cookie) const {
+        ExecutorThread.Schedule(delta, ev.release(), cookie);
+    }
+
     void IActor::Schedule(TInstant deadline, IEventBase* ev, ISchedulerCookie* cookie) const noexcept {
         TlsActivationContext->ExecutorThread.Schedule(deadline, new IEventHandle(SelfActorId, TActorId(), ev), cookie);
     }
