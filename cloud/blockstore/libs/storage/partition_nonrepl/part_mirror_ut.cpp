@@ -2007,7 +2007,7 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
 
     Y_UNIT_TEST(ShouldReadFromAllReplicas)
     {
-        constexpr         ui32 replicaCount = 3;
+        constexpr ui32 replicaCount = 3;
 
         TTestBasicRuntime runtime;
         TTestEnv env(runtime);

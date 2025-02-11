@@ -46,6 +46,15 @@ void TMirrorPartitionResyncActor::ProcessReadRequestSyncPath(
         return;
     }
 
+    // Wait for resync, if we have request for all replicas
+    if (ev->Get()->Record.GetHeaders().GetReplicaCount()) {
+        ProcessReadRequestSlowPath(
+            NActors::IEventHandlePtr(ev.Release()),
+            range,
+            ctx);
+        return;
+    }
+
     TVector<TReplicaDescriptor> replicas;
     // filtering out replicas with fresh devices
     for (ui32 i = 0; i < Replicas.size(); ++i) {
