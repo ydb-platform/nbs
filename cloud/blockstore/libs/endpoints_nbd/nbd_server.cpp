@@ -7,6 +7,7 @@
 #include <cloud/blockstore/libs/nbd/server.h>
 #include <cloud/blockstore/libs/nbd/server_handler.h>
 #include <cloud/blockstore/libs/service/device_handler.h>
+#include <cloud/storage/core/libs/common/media.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
 namespace NCloud::NBlockStore::NServer {
@@ -25,15 +26,18 @@ private:
     const NBD::IServerPtr Server;
     const ILoggingServicePtr Logging;
     const IServerStatsPtr ServerStats;
+    const NProto::TChecksumFlags ChecksumFlags;
 
 public:
     TNbdEndpointListener(
             NBD::IServerPtr server,
             ILoggingServicePtr logging,
-            IServerStatsPtr serverStats)
+            IServerStatsPtr serverStats,
+            NProto::TChecksumFlags checksumFlags)
         : Server(std::move(server))
         , Logging(std::move(logging))
         , ServerStats(std::move(serverStats))
+        , ChecksumFlags(std::move(checksumFlags))
     {}
 
     TFuture<NProto::TError> StartEndpoint(
@@ -48,6 +52,9 @@ public:
         options.BlocksCount = volume.GetBlocksCount();
         options.UnalignedRequestsDisabled = request.GetUnalignedRequestsDisabled();
         options.SendMinBlockSize = request.GetSendNbdMinBlockSize();
+        options.CheckBufferModificationDuringWriting =
+            ChecksumFlags.GetCheckBufferModificationForMirrorDisk() &&
+            IsReliableDiskRegistryMediaKind(volume.GetStorageMediaKind());
 
         auto requestFactory = CreateServerHandlerFactory(
             CreateDefaultDeviceHandlerFactory(),
@@ -109,12 +116,14 @@ public:
 IEndpointListenerPtr CreateNbdEndpointListener(
     NBD::IServerPtr server,
     ILoggingServicePtr logging,
-    IServerStatsPtr serverStats)
+    IServerStatsPtr serverStats,
+    NProto::TChecksumFlags checksumFlags)
 {
     return std::make_shared<TNbdEndpointListener>(
         std::move(server),
         std::move(logging),
-        std::move(serverStats));
+        std::move(serverStats),
+        std::move(checksumFlags));
 }
 
 }   // namespace NCloud::NBlockStore::NServer

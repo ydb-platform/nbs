@@ -124,6 +124,7 @@ struct TStorageOptions
     TString CheckpointId;
     bool UnalignedRequestsDisabled = false;
     bool SendMinBlockSize = false;
+    bool CheckBufferModificationDuringWriting = false;
 };
 
 ////////////////////////////////////////////////////////////////////////////////

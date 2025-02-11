@@ -30,24 +30,30 @@ struct TDefaultDeviceHandlerFactory final
 
     IDeviceHandlerPtr CreateDeviceHandler(
         IStoragePtr storage,
+        TString diskId,
         TString clientId,
         ui32 blockSize,
-        bool unalignedRequestsDisabled) override
+        bool unalignedRequestsDisabled,
+        bool checkBufferModificationDuringWriting) override
     {
         if (unalignedRequestsDisabled) {
             return std::make_shared<TAlignedDeviceHandler>(
                 std::move(storage),
+                std::move(diskId),
                 std::move(clientId),
                 blockSize,
-                MaxSubRequestSize);
+                MaxSubRequestSize,
+                checkBufferModificationDuringWriting);
         }
 
         return std::make_shared<TUnalignedDeviceHandler>(
             std::move(storage),
+            std::move(diskId),
             std::move(clientId),
             blockSize,
             MaxSubRequestSize,
-            MaxUnalignedRequestSize);
+            MaxUnalignedRequestSize,
+            checkBufferModificationDuringWriting);
     }
 };
 
