@@ -995,7 +995,7 @@ func testCreateSnapshotFromDiskWithFailedShadowDisk(
 	require.NoError(t, err)
 	defer client.Close()
 
-	diskID := t.Name()
+	diskID := t.Name() + "1"
 
 	reqCtx := testcommon.GetRequestContext(t, ctx)
 	operation, err := client.CreateDisk(reqCtx, &disk_manager.CreateDiskRequest{
@@ -1019,6 +1019,9 @@ func testCreateSnapshotFromDiskWithFailedShadowDisk(
 	_, err = nbsClient.FillDisk(ctx, diskID, diskSize)
 	require.NoError(t, err)
 
+	diskContentInfo, err := nbsClient.CalculateCrc32(diskID, diskSize)
+	require.NoError(t, err)
+
 	snapshotID := t.Name()
 
 	reqCtx = testcommon.GetRequestContext(t, ctx)
@@ -1040,18 +1043,19 @@ func testCreateSnapshotFromDiskWithFailedShadowDisk(
 	diskRegistryStateBackup, err := nbsClient.BackupDiskRegistryState(ctx)
 	require.NoError(t, err)
 	shadowDisk := diskRegistryStateBackup.GetShadowDisk(diskID)
-	if shadowDisk == nil {
-		// OK: shadow disk is not created yet or it was already deleted.
-		return
-	}
-	deviceUUIDs := shadowDisk.DeviceUUIDs
-	require.Equal(t, 1, len(deviceUUIDs))
-	agentID := diskRegistryStateBackup.GetAgentIDByDeviceUUID(deviceUUIDs[0])
-	require.NotEmpty(t, agentID)
 
-	// Disabling device to enforce checkpoint status ERROR.
-	err = nbsClient.DisableDevices(ctx, agentID, deviceUUIDs, t.Name())
-	require.NoError(t, err)
+	// No shadow disk is OK: shadow disk might be not created yet or it might be
+	// already deleted.
+	if shadowDisk != nil {
+		deviceUUIDs := shadowDisk.DeviceUUIDs
+		require.Equal(t, 1, len(deviceUUIDs))
+		agentID := diskRegistryStateBackup.GetAgentIDByDeviceUUID(deviceUUIDs[0])
+		require.NotEmpty(t, agentID)
+
+		// Disabling device to enforce checkpoint status ERROR.
+		err = nbsClient.DisableDevices(ctx, agentID, deviceUUIDs, t.Name())
+		require.NoError(t, err)
+	}
 
 	if withCancel {
 		// Waiting before cancelling operation.
@@ -1096,6 +1100,29 @@ func testCreateSnapshotFromDiskWithFailedShadowDisk(
 	}
 
 	testcommon.RequireCheckpointsAreEmpty(t, ctx, diskID)
+
+	diskID2 := t.Name() + "2"
+
+	reqCtx = testcommon.GetRequestContext(t, ctx)
+	operation, err = client.CreateDisk(reqCtx, &disk_manager.CreateDiskRequest{
+		Src: &disk_manager.CreateDiskRequest_SrcSnapshotId{
+			SrcSnapshotId: snapshotID,
+		},
+		Size: int64(diskSize),
+		Kind: disk_manager.DiskKind_DISK_KIND_SSD,
+		DiskId: &disk_manager.DiskId{
+			ZoneId: "zone-a",
+			DiskId: diskID2,
+		},
+	})
+	require.NoError(t, err)
+	require.NotEmpty(t, operation)
+	err = internal_client.WaitOperation(ctx, client, operation.Id)
+	require.NoError(t, err)
+
+	err = nbsClient.ValidateCrc32(ctx, diskID2, diskContentInfo)
+	require.NoError(t, err)
+
 	testcommon.CheckConsistency(t, ctx)
 }
 
