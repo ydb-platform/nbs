@@ -2719,3 +2719,12 @@ int fuse_session_exited(struct fuse_session *se)
 {
     return se->exited;
 }
+
+int fuse_out_buf(fuse_req_t req, struct iovec **iov, int *count)
+{
+    if (!fuse_lowlevel_is_virtio(req->se)) {
+        return -1;
+    }
+
+    return virtio_out_buf(req->se, req->ch, iov, count);
+}

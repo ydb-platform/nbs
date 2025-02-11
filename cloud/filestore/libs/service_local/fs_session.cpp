@@ -36,6 +36,7 @@ NProto::TCreateSessionResponse TLocalFileSystem::CreateSession(
             Config->GetAsyncDestroyHandleEnabled());
         features->SetAsyncHandleOperationPeriod(
             Config->GetAsyncHandleOperationPeriod().MilliSeconds());
+        features->SetZeroCopyEnabled(Config->GetZeroCopyEnabled());
         return response;
     };
 

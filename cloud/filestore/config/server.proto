@@ -104,6 +104,9 @@ message TLocalServiceConfig
 
     // Number of nodes to clean in each iteration
     optional uint32 NodeCleanupBatchSize = 15;
+
+    // Enable zero copy in read/write requests
+    optional bool ZeroCopyEnabled = 16;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
