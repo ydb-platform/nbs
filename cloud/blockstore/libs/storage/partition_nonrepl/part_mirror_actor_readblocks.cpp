@@ -448,8 +448,6 @@ auto TMirrorPartitionActor::SelectReplicasToReadFrom(
             break;
         }
     }
-    ALOG_WARN(TBlockStoreComponents::PARTITION_WORKER,
-        "replicaCount = " << replicaCount);
 
     return replicaActorIds;
 }
