@@ -13,6 +13,7 @@ import (
 	performance_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/performance/config"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/resources"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/snapshots/protos"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/pkg/client/codes"
 	"github.com/ydb-platform/nbs/cloud/tasks"
 	"github.com/ydb-platform/nbs/cloud/tasks/errors"
 	"github.com/ydb-platform/nbs/cloud/tasks/headers"
@@ -123,6 +124,14 @@ func (t *createSnapshotFromDiskTask) run(
 
 	response, err := t.scheduler.WaitTask(ctx, execCtx, taskID)
 	if err != nil {
+		if nbs.IsIOError(err) {
+			return errors.NewDetailedError(err, &errors.ErrorDetails{
+				Code:     codes.Aborted,
+				Message:  "Snapshot creation failed, please retry", // TODO:_ should user know about it?
+				Internal: false,
+			})
+			// TODO:_ public => silent... Are we sure?
+		}
 		return err
 	}
 
