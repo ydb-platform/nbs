@@ -29,7 +29,7 @@ IReplayRequestGenerator::IReplayRequestGenerator(
 
     NEventLog::TOptions options;
     options.FileName = Spec.GetFileName();
-
+    options.ForceStrongOrdering = true;
     if (const auto sleep = Spec.GetMaxSleepMcs()) {
         MaxSleepMcs = sleep;
     }
@@ -78,7 +78,6 @@ void IReplayRequestGenerator::Advance()
                 Spec.GetFileSystemIdFilter().c_str());
             continue;
         }
-
 
         if (TargetFilesystemId.empty() && !fileSystemId.empty()) {
             TargetFilesystemId = fileSystemId;
@@ -213,18 +212,24 @@ IReplayRequestGenerator::ExecuteNextRequest()
             }
 
             STORAGE_DEBUG(
-                "Event=%zu Msg=%zd: Processing typename=%s type=%d name=%s "
+                "Event=%zu Msg=%zd Mcs=%lu: Processing typename=%s "
+                "type=%d name=%s "
                 "data=%s",
                 EventsProcessed,
                 EventMessageNumber,
+                request.GetTimestampMcs(),
                 request.GetTypeName().c_str(),
                 request.GetRequestType(),
                 RequestName(request.GetRequestType()).c_str(),
                 request.ShortDebugString().Quote().c_str());
 
-            const auto future = ProcessRequest(request);
-            if (future.Initialized()) {
-                return future;
+            try {
+                const auto future = ProcessRequest(request);
+                if (future.Initialized()) {
+                    return future;
+                }
+            } catch (const std::exception& ex) {
+                STORAGE_ERROR("request exception: %s", ex.what());
             }
         }
     }

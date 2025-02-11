@@ -311,9 +311,7 @@ private:
                 nodeName =
                     KnownLogNodes[logRequest.GetNodeInfo().GetNodeId()].Name;
             }
-            const auto parentPath = parentNode == InvalidNodeId
-                                        ? PathByNode(RootNodeId) / LostName
-                                        : PathByNode(parentNode);
+            const auto parentPath = PathByNode(parentNode);
             if (nodeName.empty() && parentPath.IsDirectory()) {
                 nodeName =
                     KnownLogNodes[logRequest.GetNodeInfo().GetParentNodeId()]
@@ -485,7 +483,8 @@ private:
         TGuard<TMutex> guard(StateLock);
         const auto& range = logRequest.GetRanges(0);
         auto handleLocal = GetLocalHandleId(range.GetHandle());
-        if (handleLocal == InvalidHandle) {
+        if (handleLocal == InvalidHandle || !OpenHandles.contains(handleLocal))
+        {
             NCloud::NFileStore::NProto::TProfileLogRequestInfo requestCreate =
                 logRequest;
             requestCreate.MutableNodeInfo()->SetNodeId(range.GetNodeId());
@@ -493,7 +492,9 @@ private:
             DoCreateHandle(requestCreate);
 
             handleLocal = GetLocalHandleId(range.GetHandle());
-            if (handleLocal == InvalidHandle) {
+            if (handleLocal == InvalidHandle ||
+                !OpenHandles.contains(handleLocal))
+            {
                 STORAGE_DEBUG(
                     "Read: no handle %lu ranges size=%d map size=%zu",
                     range.GetHandle(),
@@ -674,6 +675,9 @@ private:
         if (const auto& it = NodePath.find(nodeid); it != NodePath.end()) {
             return it->second;
         }
+        if (nodeid == InvalidNodeId) {
+            return PathByNode(RootNodeId) / LostName;
+        }
         return {};
     }
 
@@ -768,8 +772,7 @@ private:
 
         if (nodeid) {
             NodesLogToLocal[logRequest.GetNodeInfo().GetNodeId()] = nodeid;
-            NodePath[nodeid] = PathByNode(parentNode) /
-                               logRequest.GetNodeInfo().GetNewNodeName();
+            NodePath[nodeid] = fullName;
         }
 
         return MakeFuture(
