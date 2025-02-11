@@ -26,6 +26,44 @@ public:
 
 ////////////////////////////////////////////////////////////////////////////////
 
+struct TFileId
+{
+    enum class EFileIdType
+    {
+        Lustre = 0x97,
+        Weka = 0x27
+    };
+
+    struct file_handle FileHandle;
+    union {
+        struct
+        {
+            ui64 Seq;
+            ui32 Oid;
+            ui32 Ver;
+            ui64 ParentSeq;
+            ui32 ParentOid;
+            ui32 ParentVer;
+        } LustreFid;
+        struct
+        {
+            ui64 Id;
+            ui64 Context;
+            ui64 ParentId;
+            ui64 ParentContext;
+        } WekaInodeId;
+        char Buffer[MAX_HANDLE_SZ] = {};
+    };
+
+    TFileId(const TFileHandle& handle);
+    TFileId(const TFileId& fileId) = default;
+
+    TFileHandle Open(const TFileHandle& mountHandle, int flags);
+    TString ToString() const;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
 TFileHandle Open(const TString& path, int flags, int mode);
 TFileHandle Open(const TFileHandle& handle, int flags, int mode);
 TFileHandle OpenAt(

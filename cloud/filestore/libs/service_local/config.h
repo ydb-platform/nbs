@@ -32,12 +32,15 @@ public:
     bool GetDirectIoEnabled() const;
     ui32 GetDirectIoAlign() const;
     bool GetGuestWritebackCacheEnabled() const;
+    ui32 GetNodeCleanupBatchSize() const;
 
     void Dump(IOutputStream& out) const;
     void DumpHtml(IOutputStream& out) const;
 
     bool GetAsyncDestroyHandleEnabled() const;
     TDuration GetAsyncHandleOperationPeriod() const;
+
+    bool GetOpenNodeByHandleEnabled() const;
 };
 
 }   // namespace NCloud::NFileStore

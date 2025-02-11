@@ -7,6 +7,7 @@
 #include <util/generic/algorithm.h>
 #include <util/generic/map.h>
 #include <util/generic/scope.h>
+#include <util/stream/format.h>
 #include <util/string/builder.h>
 
 #include <array>
@@ -621,5 +622,60 @@ UnixCredentialsGuard::~UnixCredentialsGuard()
     syscall(SYS_setresgid, -1, OriginalGid, -1);
 }
 
+////////////////////////////////////////////////////////////////////////////////
+
+TFileId::TFileId(const TFileHandle& handle)
+    : FileHandle{
+          .handle_bytes = sizeof(Buffer),
+          .handle_type = 0,
+          .f_handle = {},
+      }
+{
+    int mountId = 0;
+    int ret =
+        name_to_handle_at(handle, "", &FileHandle, &mountId, AT_EMPTY_PATH);
+    Y_ENSURE_EX(
+        ret != -1,
+        TServiceError(GetSystemErrorCode())
+            << "name_to_handle_at failed: " << LastSystemErrorText());
+}
+
+TFileHandle TFileId::Open(const TFileHandle& mountHandle, int flags)
+{
+    int fd =  open_by_handle_at(mountHandle, &FileHandle, flags);
+    Y_ENSURE_EX(fd != -1, TServiceError(GetSystemErrorCode())
+        << "open_by_handle_at failed: " << LastSystemErrorText());
+    return fd;
+}
+
+TString TFileId::ToString() const
+{
+    TStringBuilder out;
+    out << "FileId[Bytes=" << FileHandle.handle_bytes
+        << ", Type=" << Hex(FileHandle.handle_type);
+
+    switch (EFileIdType(FileHandle.handle_type)) {
+    case EFileIdType::Lustre:
+        out << ", Lustre(Seq=" << Hex(LustreFid.Seq)
+            << ", Oid=" << Hex(LustreFid.Oid)
+            << ", Ver=" << Hex(LustreFid.Ver)
+            << ", ParentSeq=" << Hex(LustreFid.ParentSeq)
+            << ", ParentOid=" << Hex(LustreFid.ParentOid)
+            << ", ParentVer=" << Hex(LustreFid.ParentVer)
+            << ")";
+        break;
+    case EFileIdType::Weka:
+        out << ", Weka(Id=" << Hex(WekaInodeId.Id)
+            << ", Context=" << Hex(WekaInodeId.Context)
+            << ", ParentId=" << Hex(WekaInodeId.ParentId)
+            << ", ParentContext=" << Hex(WekaInodeId.ParentContext)
+            << ")";
+        break;
+    }
+
+    out << ", Buffer=" << HexText(TStringBuf(Buffer, FileHandle.handle_bytes));
+    out << "]";
+    return out;
+}
 
 }   // namespace NCloud::NFileStore::NLowLevel
