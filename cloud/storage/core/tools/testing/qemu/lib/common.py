@@ -40,6 +40,7 @@ class SshToGuest(object):
     def __call__(self, command, timeout=None):
         common.execute(self.get_command(command, timeout))
 
+
 def env_with_guest_index(env, guest_index):
     if guest_index == 0:
         return env

@@ -434,6 +434,7 @@ def _wait_ssh(daemon, ssh):
 
     ssh("exit 0")
 
+
 def recipe_set_env(key, val, guest_index=0):
     library.python.testing.recipe.set_env(env_with_guest_index(key, guest_index), val)
 
