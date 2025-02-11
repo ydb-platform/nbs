@@ -282,7 +282,6 @@ void TIndexTabletActor::ExecuteTx_PrepareRenameNodeInSource(
     shardRequest->SetFlags(args.Request.GetFlags());
     shardRequest->SetSourceNodeShardId(args.ChildRef->ShardId);
     shardRequest->SetSourceNodeShardNodeName(args.ChildRef->ShardNodeName);
-    shardRequest->SetSourceNodeShardNodeName(args.ChildRef->ShardNodeName);
     *shardRequest->MutableOriginalRequest() = args.Request;
 
     db.WriteOpLogEntry(args.OpLogEntry);

@@ -151,7 +151,7 @@ void TLinkActor::HandleShardResponse(
         msg->Record.GetNode().DebugString().Quote().c_str());
 
     auto request = std::make_unique<TEvService::TEvCreateNodeRequest>();
-    // By setting the shard filesystem id, we let the leader know that he
+    // By setting the shard filesystem id, we let the filesystem know that we
     // should not verify the target node existence and just create a nodeRef
     CreateNodeRequest.SetShardFileSystemId(ShardId);
     CreateNodeRequest.MutableLink()->SetTargetNode(
@@ -159,15 +159,15 @@ void TLinkActor::HandleShardResponse(
     CreateNodeRequest.MutableLink()->SetShardNodeName(ShardNodeName);
     ShardResponse = std::move(msg->Record);
 
-    request->Record = std::move(CreateNodeRequest);
-
     LOG_DEBUG(
         ctx,
         TFileStoreComponents::SERVICE,
-        "[%s] Creating nodeRef in leader for %lu, %s",
+        "[%s] Creating nodeRef in leader for %s, %lu",
         LogTag.c_str(),
-        ShardResponse.GetNode().GetId(),
+        ShardResponse.ShortDebugString().Quote().c_str(),
         CreateNodeRequest.GetLink().GetTargetNode());
+
+    request->Record = std::move(CreateNodeRequest);
 
     ctx.Send(MakeIndexTabletProxyServiceId(), request.release());
 
@@ -293,7 +293,8 @@ void TStorageServiceActor::HandleCreateNode(
 
     auto& headers = *msg->Record.MutableHeaders();
     headers.SetBehaveAsDirectoryTablet(
-        StorageConfig->GetDirectoryCreationInShardsEnabled());
+        StorageConfig->GetDirectoryCreationInShardsEnabled() &&
+        !msg->Record.HasLink());
     if (auto shardNo = ExtractShardNo(msg->Record.GetNodeId())) {
         // parent directory is managed by a shard
         auto [shardId, error] = SelectShard(
