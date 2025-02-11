@@ -163,12 +163,23 @@ IEventBasePtr CreateReadBlocksResponse(
 
 IEventBasePtr CreateReadBlocksResponse(
     bool replyLocal,
-    const NProto::TError& error)
+    const NProto::TError& error,
+    TVector<TString> failedBlobs)
 {
     if (replyLocal) {
-        return std::make_unique<TEvService::TEvReadBlocksLocalResponse>(error);
+        auto response = std::make_unique<TEvService::TEvReadBlocksLocalResponse>(error);
+        for (ui32 i = 0; i < failedBlobs.size(); ++i) {
+            auto* blobId = response->Record.MutableScanDiskResults()->Add();
+            *blobId = std::move(failedBlobs[i]);
+        }
+        return response;
     } else {
-        return std::make_unique<TEvService::TEvReadBlocksResponse>(error);
+        auto response = std::make_unique<TEvService::TEvReadBlocksResponse>(error);
+        for (ui32 i = 0; i < failedBlobs.size(); ++i) {
+            auto* blobId = response->Record.MutableScanDiskResults()->Add();
+            *blobId = std::move(failedBlobs[i]);
+        }
+        return response;
     }
 }
 
@@ -268,6 +279,7 @@ private:
     const TBlockRange32 ReadRange;
     const bool ReplyLocal;
     const bool ChecksumsEnabled;
+    const bool ReportBlobIdsOnFailure;
 
     const ui64 CommitId;
 
@@ -282,6 +294,8 @@ private:
 
     bool WaitBaseDiskRequests = false;
 
+    TVector<TString> FailedBlobs;
+
 public:
     TReadBlocksActor(
         TRequestInfoPtr requestInfo,
@@ -293,6 +307,7 @@ public:
         const TBlockRange32& readRange,
         bool replyLocal,
         bool checksumsEnabled,
+        bool reportBlobIdsOnFailure,
         ui64 commitId,
         TReadBlocksRequests ownRequests,
         TVector<IProfileLog::TBlockInfo> blockInfos,
@@ -307,7 +322,10 @@ private:
         bool baseDisk);
 
     void NotifyCompleted(const TActorContext& ctx, const NProto::TError& error);
-    bool HandleError(const TActorContext& ctx, const NProto::TError& error);
+    bool HandleError(
+        const TActorContext& ctx,
+        const NProto::TError& error,
+        const TBatchRequest& batch);
 
     void ReplyAndDie(
         const TActorContext& ctx,
@@ -347,6 +365,7 @@ TReadBlocksActor::TReadBlocksActor(
         const TBlockRange32& readRange,
         bool replyLocal,
         bool checksumsEnabled,
+        bool reportBlobIdsOnFailure,
         ui64 commitId,
         TReadBlocksRequests ownRequests,
         TVector<IProfileLog::TBlockInfo> blockInfos,
@@ -360,6 +379,7 @@ TReadBlocksActor::TReadBlocksActor(
     , ReadRange(readRange)
     , ReplyLocal(replyLocal)
     , ChecksumsEnabled(checksumsEnabled)
+    , ReportBlobIdsOnFailure(reportBlobIdsOnFailure)
     , CommitId(commitId)
     , OwnRequests(std::move(ownRequests))
     , BlockInfos(std::move(blockInfos))
@@ -482,10 +502,22 @@ void TReadBlocksActor::NotifyCompleted(
 
 bool TReadBlocksActor::HandleError(
     const TActorContext& ctx,
-    const NProto::TError& error)
+    const NProto::TError& error,
+    const TBatchRequest& batch)
 {
     if (FAILED(error.GetCode())) {
-        auto response = CreateReadBlocksResponse(ReplyLocal, error);
+        if (ReportBlobIdsOnFailure && batch.BlobId) {
+            if (batch.BlobId) {
+                FailedBlobs.emplace_back(batch.BlobId.ToString());
+            } else {
+                FailedBlobs.emplace_back("base disk describe");
+            }
+            // scan disk should try to read all the data and report broken blobs
+            if (RequestsCompleted < RequestsScheduled || WaitBaseDiskRequests) {
+                return false;
+            }
+        }
+        auto response = CreateReadBlocksResponse(ReplyLocal, error, FailedBlobs);
         ReplyAndDie(ctx, std::move(response), error);
         return true;
     }
@@ -527,7 +559,7 @@ bool TReadBlocksActor::VerifyChecksums(
             batch.Checksums[i]);
 
         if (HasError(error)) {
-            HandleError(ctx, error);
+            HandleError(ctx, error, batch);
             return false;
         }
     }
@@ -545,22 +577,22 @@ void TReadBlocksActor::HandleReadBlobResponse(
 
     RequestInfo->AddExecCycles(msg->ExecCycles);
 
+    ui32 batchIndex = ev->Cookie;
+    auto& batch = BatchRequests[batchIndex];
+    Y_ABORT_UNLESS(batchIndex < BatchRequests.size());
+
+    RequestsCompleted += batch.Requests.size();
+    Y_ABORT_UNLESS(RequestsCompleted <= RequestsScheduled);
+
     const auto& error = msg->GetError();
-    if (HandleError(ctx, error)) {
+    if (HandleError(ctx, error, batch)) {
         return;
     }
-
-    ui32 batchIndex = ev->Cookie;
-
-    Y_ABORT_UNLESS(batchIndex < BatchRequests.size());
-    auto& batch = BatchRequests[batchIndex];
 
     if (!VerifyChecksums(ctx, msg->BlockChecksums, batch)) {
         return;
     }
 
-    RequestsCompleted += batch.Requests.size();
-    Y_ABORT_UNLESS(RequestsCompleted <= RequestsScheduled);
     if (RequestsCompleted < RequestsScheduled) {
         return;
     }
@@ -591,11 +623,11 @@ void TReadBlocksActor::HandleDescribeBlocksCompleted(
     auto* msg = ev->Get();
     const auto& error = msg->GetError();
 
-    if (HandleError(ctx, error)) {
+    WaitBaseDiskRequests = false;
+
+    if (HandleError(ctx, error, {})) {
         return;
     }
-
-    WaitBaseDiskRequests = false;
 
     TReadBlocksRequests requests;
     for (auto&& blockMark: std::move(msg->BlockMarks)) {
@@ -645,7 +677,7 @@ void TReadBlocksActor::HandlePoisonPill(
 
     auto error = MakeError(E_REJECTED, "tablet is shutting down");
 
-    auto response = CreateReadBlocksResponse(ReplyLocal, error);
+    auto response = CreateReadBlocksResponse(ReplyLocal, error, FailedBlobs);
     ReplyAndDie(ctx, std::move(response), error);
 }
 
@@ -886,7 +918,8 @@ void TPartitionActor::HandleReadBlocksRequest(
         commitId,
         ConvertRangeSafe(readRange),
         std::move(readHandler),
-        replyLocal);
+        replyLocal,
+        msg->Record.GetRangeCheck());
 }
 
 TMaybe<ui64> TPartitionActor::VerifyReadBlocksCheckpoint(
@@ -908,7 +941,8 @@ TMaybe<ui64> TPartitionActor::VerifyReadBlocksCheckpoint(
                     E_NOT_FOUND,
                     TStringBuilder()
                         << "checkpoint not found: " << checkpointId.Quote(),
-                    flags));
+                    flags),
+                    {});
 
             LWTRACK(
                 ResponseSent_Partition,
@@ -930,7 +964,8 @@ void TPartitionActor::ReadBlocks(
     ui64 commitId,
     const TBlockRange32& readRange,
     IReadBlocksHandlerPtr readHandler,
-    bool replyLocal)
+    bool replyLocal,
+    bool isCheckRange)
 {
     State->GetCleanupQueue().AcquireBarrier(commitId);
 
@@ -948,7 +983,8 @@ void TPartitionActor::ReadBlocks(
         commitId,
         readRange,
         std::move(readHandler),
-        replyLocal);
+        replyLocal,
+        isCheckRange);
 }
 
 void TPartitionActor::HandleReadBlocksCompleted(
@@ -1067,7 +1103,8 @@ void TPartitionActor::CompleteReadBlocks(
             flags);
         auto response = CreateReadBlocksResponse(
             args.ReplyLocal,
-            std::move(error));
+            error,
+            {});
 
         LWTRACK(
             ResponseSent_Partition,
@@ -1138,6 +1175,7 @@ void TPartitionActor::CompleteReadBlocks(
             args.ReadRange,
             args.ReplyLocal,
             args.ChecksumsEnabled,
+            false,
             args.CommitId,
             std::move(requests),
             std::move(args.BlockInfos),
