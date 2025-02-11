@@ -2005,7 +2005,7 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
         }
     }
 
-    Y_UNIT_TEST(ShouldCheckRangeWithBrokenBlocks)
+    Y_UNIT_TEST(ShouldReadFromAllReplicas)
     {
         TTestBasicRuntime runtime;
 
