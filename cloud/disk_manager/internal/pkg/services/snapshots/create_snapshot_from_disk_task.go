@@ -127,10 +127,9 @@ func (t *createSnapshotFromDiskTask) run(
 		if nbs.IsIOError(err) {
 			return errors.NewDetailedError(err, &errors.ErrorDetails{
 				Code:     codes.Aborted,
-				Message:  "Snapshot creation failed, please retry", // TODO:_ should user know about it?
+				Message:  "Snapshot creation failed, please retry",
 				Internal: false,
 			})
-			// TODO:_ public => silent... Are we sure?
 		}
 		return err
 	}
@@ -313,9 +312,6 @@ func (t *createSnapshotFromDiskTask) ensureCheckpointReady(
 ////////////////////////////////////////////////////////////////////////////////
 
 func (t *createSnapshotFromDiskTask) makeCheckpointID(index int) string {
-	if index == 0 {
-		return t.request.DstSnapshotId
-	}
 	return fmt.Sprintf("%v_%v", t.request.DstSnapshotId, index)
 }
 
