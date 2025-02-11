@@ -55,6 +55,7 @@ struct TTestStats
 
     TString Name;
     bool Success = true;
+    bool WantExit = false;
     TMap<NProto::EAction, TStats> ActionStats;
 };
 
@@ -546,6 +547,14 @@ private:
                     FileSystemId,
                     headers);
                 break;
+            case NProto::TLoadTest::kReplayGrpcSpec:
+                RequestGenerator = CreateReplayRequestGeneratorGRPC(
+                    Config.GetReplayGrpcSpec(),
+                    Logging,
+                    Session,
+                    FileSystemId,
+                    headers);
+                break;
             default:
                 ythrow yexception()
                     << MakeTestTag()
@@ -571,7 +580,7 @@ private:
 
     bool ShouldStop() const
     {
-        return !TestStats.Success || LimitsReached();
+        return TestStats.WantExit || !TestStats.Success || LimitsReached();
     }
 
     bool LimitsReached() const
@@ -591,7 +600,7 @@ private:
         auto self = weak_from_this();
         const auto future = RequestGenerator->ExecuteNextRequest();
         if (!future.Initialized()) {
-            TestStats.Success = false;
+            TestStats.WantExit = true;
             return false;
         }
         ++CurrentIoDepth;
