@@ -2032,23 +2032,17 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
                 return TTestActorRuntime::DefaultObserverFunc(event);
             });
 
-        const auto readBlocks = [&](ui32 idx, ui32 size)
-        {
-            checksumRequestCount = 0;
-            const auto range = TBlockRange64::WithLength(idx, size);
+        const auto range = TBlockRange64::WithLength(0, 4_MB);
 
-            auto response = client.ReadBlocks(range, 0, replicaCount);
+        auto response = client.ReadBlocks(range, 0, replicaCount);
 
-            TDispatchOptions options;
-            options.FinalEvents.emplace_back(TEvService::EvReadBlocksResponse);
-            runtime.DispatchEvents(options, TDuration::Seconds(3));
+        TDispatchOptions options;
+        options.FinalEvents.emplace_back(TEvService::EvReadBlocksResponse);
+        runtime.DispatchEvents(options, TDuration::Seconds(3));
 
-            // When requesting a read for three replicas, Readings are made from
-            // one replica, and checksums are calculated from the other two.
-            UNIT_ASSERT_VALUES_EQUAL(replicaCount - 1, checksumRequestCount);
-        };
-
-        readBlocks(0, 4096);
+        // When requesting a read for three replicas, Readings are made from
+        // one replica, and checksums are calculated from the other two.
+        UNIT_ASSERT_VALUES_EQUAL(replicaCount - 1, checksumRequestCount);
     }
 
 }
