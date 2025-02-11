@@ -426,8 +426,8 @@ auto TMirrorPartitionActor::SelectReplicasToReadFrom(
                 E_ARGUMENT,
                 TStringBuilder()
                     << "Request " << methodName
-                    << " has incorrect ReplicaCount " << replicaIndex
-                    << " disk has " << replicaInfos.size() << " replicas");
+                    << " has incorrect ReplicaCount " << replicaCount
+                    << " disk has only " << replicaInfos.size() << " replicas");
         }
     }
 
