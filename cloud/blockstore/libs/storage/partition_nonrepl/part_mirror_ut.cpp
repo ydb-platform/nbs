@@ -2014,7 +2014,7 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
         TPartitionClient client(runtime, env.ActorId);
 
         client.WriteBlocks(
-            TBlockRange64::MakeClosedInterval(0, 1024 * 1024),
+            TBlockRange64::MakeClosedInterval(0, 8_MB),
             1);
 
         ui32 checksumRequestCount = 0;
