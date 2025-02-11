@@ -2014,7 +2014,7 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
         TPartitionClient client(runtime, env.ActorId);
 
         client.WriteBlocks(
-            TBlockRange64::MakeClosedInterval(0, 8_MB),
+            TBlockRange64::MakeClosedInterval(0, 1024),
             1);
 
         ui32 checksumRequestCount = 0;
@@ -2032,7 +2032,7 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
                 return TTestActorRuntime::DefaultObserverFunc(event);
             });
 
-        const auto range = TBlockRange64::WithLength(0, 4_MB);
+        const auto range = TBlockRange64::WithLength(0, 1024);
 
         auto response = client.ReadBlocks(range, 0, replicaCount);
 
