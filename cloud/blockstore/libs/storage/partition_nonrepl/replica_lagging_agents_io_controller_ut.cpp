@@ -9,6 +9,7 @@
 #include <cloud/blockstore/libs/storage/disk_agent/model/public.h>
 #include <cloud/blockstore/libs/storage/partition_nonrepl/part_mirror_actor.h>
 #include <cloud/blockstore/libs/storage/protos/disk.pb.h>
+#include <cloud/blockstore/libs/storage/testlib/diagnostics.h>
 #include <cloud/blockstore/libs/storage/testlib/disk_agent_mock.h>
 #include <cloud/blockstore/libs/storage/testlib/ut_helpers.h>
 #include <cloud/storage/core/libs/common/sglist_test.h>
@@ -203,6 +204,7 @@ struct TTestEnv
 
         auto mirrorPartition = std::make_unique<TMirrorPartitionActor>(
             Config,
+            CreateDiagnosticsConfig(),
             CreateProfileLogStub(),
             CreateBlockDigestGeneratorStub(),
             "",   // rwClientId
@@ -314,20 +316,23 @@ struct TTestEnv
         }
     }
 
-    void
-    ReadFromPartitionAndCheckContents(TBlockRange64 range, char content)
+    void ReadFromPartitionAndCheckContents(TBlockRange64 range, char content)
     {
         ReadAndCheckContents(MirrorPartActorId, range, content);
     }
 
-    void
-    ReadFromControllerAndCheckContents(ui32 index, TBlockRange64 range, char content)
+    void ReadFromControllerAndCheckContents(
+        ui32 index,
+        TBlockRange64 range,
+        char content)
     {
         ReadAndCheckContents(GetControllerActorId(index), range, content);
     }
 
-    void
-    ReadFromReplicaAndCheckContents(ui32 index, TBlockRange64 range, char content)
+    void ReadFromReplicaAndCheckContents(
+        ui32 index,
+        TBlockRange64 range,
+        char content)
     {
         ReadAndCheckContents(ReplicaActors[index], range, content);
     }
@@ -348,7 +353,6 @@ struct TTestEnv
             const auto& device = devices[i];
             if (device.GetNodeId() == nodeId) {
                 laggingAgent.SetAgentId(device.GetAgentId());
-                laggingAgent.SetNodeId(device.GetNodeId());
                 laggingAgent.SetReplicaIndex(0);
 
                 NProto::TLaggingDevice* laggingDevice =
@@ -375,6 +379,7 @@ struct TTestEnv
             auto controller =
                 std::make_unique<TReplicaLaggingAgentsIOControllerActor>(
                     Config,
+                    CreateDiagnosticsConfig(),
                     PartConfig->Fork(GetReplicaDevices(replicaIndex)),
                     CreateProfileLogStub(),
                     CreateBlockDigestGeneratorStub(),
@@ -473,20 +478,20 @@ Y_UNIT_TEST_SUITE(TReplicaLaggingAgentsIOControllerActorTest)
         const auto fullDiskRange = TBlockRange64::WithLength(
             0,
             DeviceBlockCount * DeviceCountPerReplica);
-        env.WriteBlocks(fullDiskRange, 'A');
+        env.WriteBlocksToPartition(fullDiskRange, 'A');
 
         // Second row in the first column is lagging.
-        auto laggingAgent = env.AddLaggingAgent(runtime.GetNodeId(1), 0);
-        const auto controllerId = env.Controllers[0];
+        env.AddLaggingAgent(runtime.GetNodeId(1), 0);
 
-        // Writes across the first and second devices should write only to the first one.
+        // Writes across the first and second devices should write only to the
+        // first one.
         const auto firstAndSecondDevices =
             TBlockRange64::WithLength(DeviceBlockCount - 1, 2);
         const auto firstDevice =
             TBlockRange64::WithLength(DeviceBlockCount - 1, 1);
         const auto secondDeviceOneBlock =
             TBlockRange64::WithLength(DeviceBlockCount, 1);
-        env.WriteBlocks(controllerId, firstAndSecondDevices, 'B');
+        env.WriteBlocksToController(0, firstAndSecondDevices, 'B');
         env.ReadFromReplicaAndCheckContents(0, firstDevice, 'B');
         env.ReadFromReplicaAndCheckContents(0, secondDeviceOneBlock, 'A');
 
@@ -541,9 +546,7 @@ Y_UNIT_TEST_SUITE(TReplicaLaggingAgentsIOControllerActorTest)
         UNIT_ASSERT(seenMigrationReads);
         UNIT_ASSERT(seenMigrationWrites);
         UNIT_ASSERT(seenMigrationFinish);
-        env.ReadFromPartitionAndCheckContents(
-            firstAndSecondDevices,
-            'B');
+        env.ReadFromPartitionAndCheckContents(firstAndSecondDevices, 'B');
     }
 
     Y_UNIT_TEST(ShouldBasic)
@@ -565,17 +568,10 @@ Y_UNIT_TEST_SUITE(TReplicaLaggingAgentsIOControllerActorTest)
 
         // Second row in the first column is lagging.
         auto laggingAgent = env.AddLaggingAgent(runtime.GetNodeId(1), 0);
-        const auto controllerId = env.Controllers[0];
-
-        const auto firstAndSecondDevices =
-            TBlockRange64::WithLength(DeviceBlockCount - 1, 2);
-        const auto firstDevice =
-            TBlockRange64::WithLength(DeviceBlockCount - 1, 1);
-        const auto secondDeviceOneBlock =
-            TBlockRange64::WithLength(DeviceBlockCount, 1);
 
         // Mark first half as dirty.
-        const auto secondDeviceFirstHalf = TBlockRange64::WithLength(DeviceBlockCount, DeviceBlockCount / 2);
+        const auto secondDeviceFirstHalf =
+            TBlockRange64::WithLength(DeviceBlockCount, DeviceBlockCount / 2);
         env.WriteBlocksToController(0, secondDeviceFirstHalf, 'B');
 
         bool seenHealthCheck = false;
@@ -603,12 +599,14 @@ Y_UNIT_TEST_SUITE(TReplicaLaggingAgentsIOControllerActorTest)
                 return false;
             });
 
-        // Health check should happen and notify the controller that the replica is back online.
-        // Migration should start imm after that and we wait for its finish. ??
+        // Health check should happen and notify the controller that the replica
+        // is back online. Migration should start imm after that and we wait for
+        // its finish. ??
         runtime.AdvanceCurrentTime(env.Config->GetLaggingDevicePingInterval());
         {
             runtime.DispatchEvents(
-            {.FinalEvents = {{TEvVolumePrivate::EvSmartMigrationFinished}}});
+                {.FinalEvents = {
+                     {TEvVolumePrivate::EvSmartMigrationFinished}}});
         }
 
         // The agent is lagging again.
@@ -617,18 +615,23 @@ Y_UNIT_TEST_SUITE(TReplicaLaggingAgentsIOControllerActorTest)
         env.AddLaggingAgent(runtime.GetNodeId(1), 0);
 
         // Mark second half as dirty.
-        const auto secondDeviceSecondHalf = TBlockRange64::MakeClosedInterval(DeviceBlockCount * 1.5, DeviceBlockCount * 2 - 1);
+        const auto secondDeviceSecondHalf = TBlockRange64::MakeClosedInterval(
+            DeviceBlockCount * 1.5,
+            DeviceBlockCount * 2 - 1);
         env.WriteBlocksToController(0, secondDeviceSecondHalf, 'C');
 
         // Wait for migration finish.
         runtime.AdvanceCurrentTime(env.Config->GetLaggingDevicePingInterval());
         {
             runtime.DispatchEvents(
-            {.FinalEvents = {{TEvVolumePrivate::EvSmartMigrationFinished}}});
+                {.FinalEvents = {
+                     {TEvVolumePrivate::EvSmartMigrationFinished}}});
         }
 
         // Migration should migrate whole second device.
-        env.ReadFromPartitionAndCheckContents(TBlockRange64::WithLength(DeviceBlockCount, DeviceBlockCount), '0');
+        env.ReadFromPartitionAndCheckContents(
+            TBlockRange64::WithLength(DeviceBlockCount, DeviceBlockCount),
+            '0');
     }
 
     Y_UNIT_TEST(LaggingAgentTwice)
@@ -671,7 +674,6 @@ Y_UNIT_TEST_SUITE(TReplicaLaggingAgentsIOControllerActorTest)
                 return false;
             });
 
-
         // First row in the first column is lagging.
         env.AddLaggingAgent(runtime.GetNodeId(0), 0);
 
@@ -679,14 +681,17 @@ Y_UNIT_TEST_SUITE(TReplicaLaggingAgentsIOControllerActorTest)
         runtime.AdvanceCurrentTime(env.Config->GetLaggingDevicePingInterval());
         {
             runtime.DispatchEvents(
-            {.FinalEvents = {{TEvVolumePrivate::EvSmartMigrationFinished}}});
+                {.FinalEvents = {
+                     {TEvVolumePrivate::EvSmartMigrationFinished}}});
         }
 
         // Third row in the first column is lagging.
         env.AddLaggingAgent(runtime.GetNodeId(2), 0);
 
-        const auto secondDeviceSecondHalf = TBlockRange64::MakeClosedInterval(DeviceBlockCount * 1.5, DeviceBlockCount * 2 - 1);
-        env.WriteBlocksToController(0, )
+        const auto secondDeviceSecondHalf = TBlockRange64::MakeClosedInterval(
+            DeviceBlockCount * 1.5,
+            DeviceBlockCount * 2 - 1);
+        env.WriteBlocksToController(0, secondDeviceSecondHalf, 'A');
     }
 
     Y_UNIT_TEST(MultipleLaggingAgentsOnOneReplica)

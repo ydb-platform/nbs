@@ -45,6 +45,7 @@ private:
 public:
     TSmartMigrationActor(
         TStorageConfigPtr config,
+        TDiagnosticsConfigPtr diagnosticsConfig,
         TNonreplicatedPartitionConfigPtr partConfig,
         IProfileLogPtr profileLog,
         IBlockDigestGeneratorPtr blockDigestGenerator,

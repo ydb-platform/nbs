@@ -545,6 +545,7 @@ void TMirrorPartitionActor::HandleAddLaggingAgent(
             ctx,
             std::make_unique<TReplicaLaggingAgentsIOControllerActor>(
                 Config,
+                DiagnosticsConfig,
                 State.GetReplicaInfos()[replicaIndex].Config,
                 ProfileLog,
                 BlockDigestGenerator,

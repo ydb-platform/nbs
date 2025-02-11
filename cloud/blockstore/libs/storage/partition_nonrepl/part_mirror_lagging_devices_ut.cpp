@@ -9,6 +9,7 @@
 #include <cloud/blockstore/libs/storage/api/volume.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/protos/disk.pb.h>
+#include <cloud/blockstore/libs/storage/testlib/diagnostics.h>
 #include <cloud/blockstore/libs/storage/testlib/disk_agent_mock.h>
 #include <cloud/blockstore/libs/storage/testlib/ut_helpers.h>
 #include <cloud/storage/core/libs/common/sglist_test.h>
@@ -182,6 +183,7 @@ struct TTestEnv
 
         auto mirrorPartition = std::make_unique<TMirrorPartitionActor>(
             Config,
+            CreateDiagnosticsConfig(),
             CreateProfileLogStub(),
             CreateBlockDigestGeneratorStub(),
             "",   // rwClientId
@@ -285,14 +287,13 @@ struct TTestEnv
         }
     }
 
-    void AddLaggingAgent(ui32 nodeId)
+    void AddLaggingAgent(const TString& agentId)
     {
         NProto::TLaggingAgent laggingAgent;
         for (int i = 0; i < Devices.size(); i++) {
             const auto& device = Devices[i];
-            if (device.GetNodeId() == nodeId) {
+            if (device.GetAgentId() == agentId) {
                 laggingAgent.SetAgentId(device.GetAgentId());
-                laggingAgent.SetNodeId(device.GetNodeId());
                 laggingAgent.SetReplicaIndex(0);
 
                 NProto::TLaggingDevice* laggingDevice =
@@ -307,9 +308,8 @@ struct TTestEnv
         {
             for (int i = 0; i < Replicas[replicaIndex].size(); i++) {
                 const auto& device = Replicas[replicaIndex][i];
-                if (device.GetNodeId() == nodeId) {
+                if (device.GetAgentId() == agentId) {
                     laggingAgent.SetAgentId(device.GetAgentId());
-                    laggingAgent.SetNodeId(device.GetNodeId());
                     laggingAgent.SetReplicaIndex(replicaIndex + 1);
 
                     NProto::TLaggingDevice* laggingDevice =
@@ -323,7 +323,7 @@ struct TTestEnv
         Y_DEBUG_ABORT_UNLESS(!laggingAgent.GetAgentId().empty());
         LaggingAgents.push_back(laggingAgent);
 
-        Cerr << "Add lagging: " << laggingAgent.GetAgentId() << ":" << laggingAgent.GetNodeId() << Endl;
+        Cerr << "Add lagging: " << laggingAgent.GetAgentId() << Endl;
         for (const auto& laggingDevice: laggingAgent.GetDevices()) {
             Cerr << "device: " << laggingDevice.GetDeviceUUID() << ":" << laggingDevice.GetRowIndex() << Endl;
         }
@@ -338,12 +338,12 @@ struct TTestEnv
         Runtime.DispatchEvents({}, TDuration::MilliSeconds(10));
     }
 
-    void RemoveLaggingAgent(ui32 nodeId)
+    void RemoveLaggingAgent(const TString& agentId)
     {
         auto* laggingAgent = FindIfPtr(
             LaggingAgents,
-            [nodeId](const NProto::TLaggingAgent& laggingAgent)
-            { return laggingAgent.GetNodeId() == nodeId; });
+            [&agentId](const NProto::TLaggingAgent& laggingAgent)
+            { return laggingAgent.GetAgentId() == agentId; });
         Y_DEBUG_ABORT_UNLESS(laggingAgent);
 
         TPartitionClient client(Runtime, MirrorPartActorId);
@@ -535,7 +535,7 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionLaggingDevicesTest)
         readActors.clear();
 
         // First replica is lagging.
-        env.AddLaggingAgent(env.Devices[0].GetNodeId());
+        env.AddLaggingAgent(env.Devices[0].GetAgentId());
 
         // Read blocks three times. We should not read from the lagging replica.
         env.ReadAndCheckContents(fullDiskRange, 'A');
@@ -581,7 +581,7 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionLaggingDevicesTest)
             });
 
         // First replica is lagging.
-        env.AddLaggingAgent(env.Replicas[0][0].GetNodeId());
+        env.AddLaggingAgent(env.Replicas[0][0].GetAgentId());
 
         constexpr ui32 RequestSize = 1024;
         const auto firstRow = TBlockRange64::WithLength(0, RequestSize);
@@ -772,7 +772,7 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionLaggingDevicesTest)
             });
 
         // uuid-7 is lagging
-        env.AddLaggingAgent(env.Replicas[1][1].GetNodeId());
+        env.AddLaggingAgent(env.Replicas[1][1].GetAgentId());
         // 1 from mirror partition, 1 from lagging proxy, 2 from migration
         // partition
         UNIT_ASSERT_VALUES_EQUAL(4, unavailableAgents.size());
@@ -781,13 +781,13 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionLaggingDevicesTest)
         unavailableAgents.clear();
 
         // uuid-8 is lagging
-        env.AddLaggingAgent(env.Replicas[1][2].GetNodeId());
+        env.AddLaggingAgent(env.Replicas[1][2].GetAgentId());
         UNIT_ASSERT_VALUES_EQUAL(4, unavailableAgents.size());
         UNIT_ASSERT_VALUES_EQUAL(1, mirrorActorChildren.size());
         unavailableAgents.clear();
 
         // uuid-3 is lagging
-        env.AddLaggingAgent(env.Replicas[0][0].GetNodeId());
+        env.AddLaggingAgent(env.Replicas[0][0].GetAgentId());
         UNIT_ASSERT_VALUES_EQUAL(2, unavailableAgents.size());
         UNIT_ASSERT_VALUES_EQUAL(2, mirrorActorChildren.size());
         TActorId replica0Proxy = mirrorActorChildren.back();
@@ -820,7 +820,7 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionLaggingDevicesTest)
         readActors.clear();
 
         // uuid-3 is ok now.
-        env.RemoveLaggingAgent(env.Replicas[0][1].GetNodeId());
+        env.RemoveLaggingAgent(env.Replicas[0][1].GetAgentId());
         UNIT_ASSERT(FindPtr(mirrorActorChildren, replica0Proxy));
 
         env.ReadAndCheckContents(firstAndSecondRows, 'B');
@@ -836,7 +836,7 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionLaggingDevicesTest)
         UNIT_ASSERT(!FindPtr(mirrorActorChildren, replica0Proxy));
 
         // uuid-7 is ok now.
-        env.RemoveLaggingAgent(env.Replicas[1][1].GetNodeId());
+        env.RemoveLaggingAgent(env.Replicas[1][1].GetAgentId());
         runtime.AdvanceCurrentTime(TDuration::MilliSeconds(50));
         runtime.DispatchEvents({}, TDuration::Seconds(1));
         UNIT_ASSERT(FindPtr(mirrorActorChildren, replica1Proxy));
@@ -851,7 +851,7 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionLaggingDevicesTest)
         readActors.clear();
 
         // uuid-8 is ok now.
-        env.RemoveLaggingAgent(env.Replicas[1][2].GetNodeId());
+        env.RemoveLaggingAgent(env.Replicas[1][2].GetAgentId());
 
         // Scheduled poison pill has killed the proxy actor.
         runtime.AdvanceCurrentTime(TDuration::MilliSeconds(50));

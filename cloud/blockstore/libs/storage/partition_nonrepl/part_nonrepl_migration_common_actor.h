@@ -170,6 +170,7 @@ public:
     TNonreplicatedPartitionMigrationCommonActor(
         IMigrationOwner* migrationOwner,
         TStorageConfigPtr config,
+        TDiagnosticsConfigPtr diagnosticsConfig,
         TString diskId,
         ui64 blockCount,
         ui64 blockSize,

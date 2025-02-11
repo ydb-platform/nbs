@@ -23,6 +23,7 @@ LWTRACE_USING(BLOCKSTORE_STORAGE_PROVIDER);
 
 TSmartMigrationActor::TSmartMigrationActor(
         TStorageConfigPtr config,
+        TDiagnosticsConfigPtr diagnosticsConfig,
         TNonreplicatedPartitionConfigPtr partConfig,
         IProfileLogPtr profileLog,
         IBlockDigestGeneratorPtr blockDigestGenerator,
@@ -35,6 +36,7 @@ TSmartMigrationActor::TSmartMigrationActor(
     : TNonreplicatedPartitionMigrationCommonActor(
           this,
           config,
+          std::move(diagnosticsConfig),
           partConfig->GetName(),
           partConfig->GetBlockCount(),
           partConfig->GetBlockSize(),

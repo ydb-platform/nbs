@@ -38,6 +38,7 @@ private:
         NActors::TActorBootstrapped<TReplicaLaggingAgentsIOControllerActor>;
 
     const TStorageConfigPtr Config;
+    const TDiagnosticsConfigPtr DiagnosticsConfig;
     const TNonreplicatedPartitionConfigPtr PartConfig;
     const IProfileLogPtr ProfileLog;
     const IBlockDigestGeneratorPtr BlockDigestGenerator;
@@ -66,6 +67,7 @@ private:
 public:
     TReplicaLaggingAgentsIOControllerActor(
         TStorageConfigPtr config,
+        TDiagnosticsConfigPtr diagnosticsConfig,
         TNonreplicatedPartitionConfigPtr partConfig,
         IProfileLogPtr profileLog,
         IBlockDigestGeneratorPtr blockDigestGenerator,

@@ -285,6 +285,7 @@ STFUNC(TSplitRequestSenderActor<TMethod>::StateWork)
 
 TReplicaLaggingAgentsIOControllerActor::TReplicaLaggingAgentsIOControllerActor(
     TStorageConfigPtr config,
+    TDiagnosticsConfigPtr diagnosticsConfig,
     TNonreplicatedPartitionConfigPtr partConfig,
     IProfileLogPtr profileLog,
     IBlockDigestGeneratorPtr blockDigestGenerator,
@@ -293,6 +294,7 @@ TReplicaLaggingAgentsIOControllerActor::TReplicaLaggingAgentsIOControllerActor(
     TActorId statActorId,
     TActorId mirrorPartitionActor)
     : Config(std::move(config))
+    , DiagnosticsConfig(std::move(diagnosticsConfig))
     , PartConfig(std::move(partConfig))
     , ProfileLog(std::move(profileLog))
     , BlockDigestGenerator(std::move(blockDigestGenerator))
@@ -418,6 +420,7 @@ void TReplicaLaggingAgentsIOControllerActor::HandleAgentIsBackOnline(
                 ctx,
                 std::make_unique<TSmartMigrationActor>(
                     Config,
+                    DiagnosticsConfig,
                     PartConfig,
                     ProfileLog,
                     BlockDigestGenerator,
