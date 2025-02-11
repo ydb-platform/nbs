@@ -23,7 +23,7 @@ private:
 public:
     TVhostEndpointListener(
             NVhost::IServerPtr server,
-            NProto::TChecksumFlags  checksumFlags)
+            NProto::TChecksumFlags checksumFlags)
         : Server(std::move(server))
         , ChecksumFlags(std::move(checksumFlags))
     {}

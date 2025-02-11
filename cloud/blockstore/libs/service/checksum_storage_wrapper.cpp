@@ -173,7 +173,7 @@ TChecksumStorageWrapper::RetryWriteBlocksLocal(
         request->GetStartIndex(),
         request->BlocksCount);
     ReportMirroredDiskChecksumMismatchUponWrite(
-        TStringBuilder() << "d:" << DiskId << ", r:" << range);
+        TStringBuilder() << " disk: " << DiskId << ", range: " << range);
 
     auto guard = request->Sglist.Acquire();
     if (!guard) {

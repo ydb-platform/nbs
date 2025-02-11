@@ -927,7 +927,7 @@ Y_UNIT_TEST_SUITE(TDeviceHandlerTest)
         env.RunWriteService();
     }
 
-    Y_UNIT_TEST(ShouldCopyBufferWhenClientModifyBuffer)
+    Y_UNIT_TEST(ShouldCopyBufferWhenClientModifiesBuffer)
     {
         const auto diskId = "disk1";
         const auto clientId = "testClientId";
