@@ -2045,7 +2045,7 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
 
             // When requesting a read for three replicas, two checksums will be
             // calculated in HandleChecksumResponse and the last one in
-            // HandleResponse.
+            // HandleResponse, without sending TEvReadBlocksResponse
             UNIT_ASSERT_VALUES_EQUAL(2, requests);
 
         };
