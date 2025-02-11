@@ -1,10 +1,10 @@
 import hashlib
 import json
 import logging
-import os
 import subprocess
 import time
 
+from contextlib import contextmanager
 from pathlib import Path
 from typing import NamedTuple
 
@@ -30,6 +30,14 @@ def compute_checksum(file_path: str) -> str:
     return hash_sha256.hexdigest()
 
 
+@contextmanager
+def handle_process_lookup_error():
+    try:
+        yield
+    except ProcessLookupError:
+        pass
+
+
 class _MigrationTestSetup:
 
     class _Disk(NamedTuple):
@@ -45,10 +53,13 @@ class _MigrationTestSetup:
         self.use_s3_source = use_s3_source
         self.user_s3_destination = use_s3_destination
 
-        certs_dir = yatest_common.source_path("cloud/blockstore/tests/certs")
-        self._root_certs_file = os.path.join(certs_dir, "server.crt")
-        self._cert_file = os.path.join(certs_dir, "server.crt")
-        self._cert_key_file = os.path.join(certs_dir, "server.key")
+        certs_dir = Path(yatest_common.source_path("cloud/blockstore/tests/certs"))
+        self._root_certs_file = certs_dir / "server.crt"
+        _logger.info(certs_dir.exists())
+        self._cert_file = certs_dir / "server.crt"
+        _logger.info(self._cert_file.exists())
+        self._cert_key_file = certs_dir / "server.key"
+        _logger.info(self._cert_key_file.exists())
 
         ydb_binary_path = yatest_common.binary_path("cloud/storage/core/tools/testing/ydb/bin/ydbd")
         if ydb_binary_path is None:
@@ -71,9 +82,9 @@ class _MigrationTestSetup:
             self.ydb.port,
             self.ydb.domains_txt,
             self.ydb.dynamic_storage_pools,
-            self._root_certs_file,
-            self._cert_file,
-            self._cert_key_file,
+            str(self._root_certs_file),
+            str(self._cert_file),
+            str(self._cert_key_file),
             ydb_binary_path=ydb_binary_path,
             nbs_binary_path=nbs_binary_path,
             disk_agent_binary_path=disk_agent_binary_path,
@@ -91,12 +102,12 @@ class _MigrationTestSetup:
             nbs_port=self.nbs.port,
             nbs2_port=self.nbs.port,
             nbs3_port=self.nbs.port,
-            root_certs_file=self._root_certs_file,
+            root_certs_file=str(self._root_certs_file),
             idx=0,
             is_dataplane=False,
             disk_manager_binary_path=self.disk_manager_binary_path,
-            cert_file=self._cert_file,
-            cert_key_file=self._cert_key_file,
+            cert_file=str(self._cert_file),
+            cert_key_file=str(self._cert_key_file),
             base_disk_id_prefix=self.base_disk_id_prefix,
             creation_and_deletion_allowed_only_for_disks_with_id_prefix="",
             disable_disk_registry_based_disks=True,
@@ -109,12 +120,12 @@ class _MigrationTestSetup:
             nbs_port=self.nbs.port,
             nbs2_port=self.nbs.port,
             nbs3_port=self.nbs.port,
-            root_certs_file=self._root_certs_file,
+            root_certs_file=str(self._root_certs_file),
             idx=0,
             is_dataplane=True,
             disk_manager_binary_path=self.disk_manager_binary_path,
-            cert_file=self._cert_file,
-            cert_key_file=self._cert_key_file,
+            cert_file=str(self._cert_file),
+            cert_key_file=str(self._cert_key_file),
             base_disk_id_prefix=self.base_disk_id_prefix,
             creation_and_deletion_allowed_only_for_disks_with_id_prefix="",
             disable_disk_registry_based_disks=True,
@@ -128,6 +139,27 @@ class _MigrationTestSetup:
         self.initial_dpl_disk_manager.start()
         self.client_config_path = self.initial_cpl_disk_manager.client_config_file
         self.server_config_path = self.initial_cpl_disk_manager.config_file
+        self.secondary_dpl_disk_manager = None
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        with handle_process_lookup_error():
+            self.initial_cpl_disk_manager.stop()
+        with handle_process_lookup_error():
+            self.initial_dpl_disk_manager.stop()
+        if self.secondary_dpl_disk_manager is not None:
+            with handle_process_lookup_error():
+                self.secondary_dpl_disk_manager.stop()
+        with handle_process_lookup_error():
+            self.metadata_service.stop()
+        with handle_process_lookup_error():
+            self.nbs.stop()
+        with handle_process_lookup_error():
+            self.secondary_ydb.stop()
+        with handle_process_lookup_error():
+            self.ydb.stop()
 
     def admin(self, *args: str):
         return subprocess.check_output(
@@ -220,7 +252,7 @@ class _MigrationTestSetup:
                 raise TimeoutError("Timed out snapshot migration")
             output = self.admin("tasks", "get", "--id", task_id)
             status = json.loads(output)["status"]
-            if status == "":
+            if status == "finished":
                 break
 
             time.sleep(0.1)
@@ -236,6 +268,9 @@ class _MigrationTestSetup:
                 "--start-index", "0",
                 "--output",
                 str(data_file),
+                "--io-depth",
+                "32",
+                "--read-all"
             )
             return compute_checksum(str(data_file))
         finally:
@@ -255,6 +290,8 @@ class _MigrationTestSetup:
             str(size),
             "--src-snapshot-id",
             snapshot_id,
+            "--id",
+            disk_id,
         )
 
     def switch_dataplane_to_new_db(self):
@@ -265,12 +302,12 @@ class _MigrationTestSetup:
             nbs_port=self.nbs.port,
             nbs2_port=self.nbs.port,
             nbs3_port=self.nbs.port,
-            root_certs_file=self._root_certs_file,
+            root_certs_file=str(self._root_certs_file),
             idx=0,
             is_dataplane=True,
             disk_manager_binary_path=self.disk_manager_binary_path,
-            cert_file=self._cert_file,
-            cert_key_file=self._cert_key_file,
+            cert_file=str(self._cert_file),
+            cert_key_file=str(self._cert_key_file),
             base_disk_id_prefix=self.base_disk_id_prefix,
             creation_and_deletion_allowed_only_for_disks_with_id_prefix="",
             disable_disk_registry_based_disks=True,
@@ -282,17 +319,17 @@ class _MigrationTestSetup:
 
 
 def test_disk_manager_backup_restore():
-    setup = _MigrationTestSetup()
-    disk_size = 1024 * 1024 * 1024
-    initial_disk_id = "example"
-    snapshot_id = "snapshot1"
-    setup.create_new_disk(initial_disk_id, disk_size)
-    checksum = setup.fill_disk("example")
-    setup.create_snapshot(source_disk_id=initial_disk_id, snapshot_id=snapshot_id)
-    setup.migrate_snapshot(snapshot_id)
-    setup.switch_dataplane_to_new_db()
-    new_disk = "new_example"
-    setup.create_disk_from_snapshot(snapshot_id=snapshot_id, disk_id=new_disk, size=disk_size)
-    setup.checksum_disk(new_disk)
-    new_checksum = setup.checksum_disk(new_disk)
-    assert new_checksum == checksum
+    with _MigrationTestSetup() as setup:
+        disk_size = 1024 * 1024 * 1024
+        initial_disk_id = "example"
+        snapshot_id = "snapshot1"
+        setup.create_new_disk(initial_disk_id, disk_size)
+        checksum = setup.fill_disk("example")
+        setup.create_snapshot(source_disk_id=initial_disk_id, snapshot_id=snapshot_id)
+        setup.migrate_snapshot(snapshot_id)
+        setup.switch_dataplane_to_new_db()
+        new_disk = "new_example"
+        setup.create_disk_from_snapshot(snapshot_id=snapshot_id, disk_id=new_disk, size=disk_size)
+        setup.checksum_disk(new_disk)
+        new_checksum = setup.checksum_disk(new_disk)
+        assert new_checksum == checksum
