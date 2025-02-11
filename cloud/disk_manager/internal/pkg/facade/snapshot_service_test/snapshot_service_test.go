@@ -1055,7 +1055,7 @@ func testCreateSnapshotFromDiskWithFailedShadowDisk(
 
 	if withCancel {
 		// Waiting before cancelling operation.
-		// time.Sleep(waitDurationBeforeDisableDevice / 2)  // TODO:_ uncomment
+		time.Sleep(waitDurationBeforeDisableDevice / 2)
 
 		_, err = client.CancelOperation(ctx, &disk_manager.CancelOperationRequest{
 			OperationId: operation.Id,
@@ -1063,23 +1063,20 @@ func testCreateSnapshotFromDiskWithFailedShadowDisk(
 		require.NoError(t, err)
 	}
 
-	var wasCancelled bool
-
 	checkError := func(err error) {
 		if err == nil {
 			return
 		}
 
 		if withCancel && strings.Contains(err.Error(), "Cancelled by client") {
-			wasCancelled = true
 			return
 		}
 
-		// TODO:_ text ok? Can we check error code here?
 		if strings.Contains(err.Error(), "Device disabled") {
 			// OK: dataplane task failed with 'Device disabled' error, but shadow
 			// disk was filled successfully.
 			// TODO: improve this test after https://github.com/ydb-platform/nbs/issues/1950#issuecomment-2541530203
+			// testcommon.CheckErrorDetails(t, err, codes.Aborted, "", false /*internal*/)  // TODO:_ uncomment? Remove?
 			return
 		}
 
@@ -1090,17 +1087,14 @@ func testCreateSnapshotFromDiskWithFailedShadowDisk(
 	err = internal_client.WaitResponse(ctx, client, operation.Id, &response)
 	checkError(err)
 
-	if !wasCancelled {
+	if err == nil {
 		require.Equal(t, int64(diskSize), response.Size)
 
 		meta := disk_manager.CreateSnapshotMetadata{}
 		err = internal_client.GetOperationMetadata(ctx, client, operation.Id, &meta)
-		checkError(err)
+		require.NoError(t, err)
 		require.Equal(t, float64(1), meta.Progress)
 	}
-
-	// TODO:_ try to create disk from snapshot?
-	// TODO:_ add cancellation
 
 	testcommon.RequireCheckpointsAreEmpty(t, ctx, diskID)
 	testcommon.CheckConsistency(t, ctx)
