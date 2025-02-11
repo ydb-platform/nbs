@@ -11,11 +11,12 @@ using namespace NActors;
 namespace {
 
 template <typename TMethod>
-NSplitRequest::TSplittedRequest<TMethod> SplitRequestGeneralRead(
+auto SplitRequestGeneralRead(
     const TRequestRecordType<TMethod>& originalRequest,
     std::span<const TBlockRange64> blockRangeSplittedByDeviceBorders)
+    -> TSplitRequest<TMethod>
 {
-    NSplitRequest::TSplittedRequest<TMethod> result;
+    TSplitRequest<TMethod> result;
     result.reserve(blockRangeSplittedByDeviceBorders.size());
 
     for (auto blockRange: blockRangeSplittedByDeviceBorders) {
@@ -30,9 +31,9 @@ NSplitRequest::TSplittedRequest<TMethod> SplitRequestGeneralRead(
 }
 
 template <typename TMethod>
-NProto::TReadBlocksResponse UnifyResponsesGeneralRead(
-    std::span<const TUnifyResponsesContext<TMethod>> responsesToUnify,
-    size_t blockSize)
+auto MergeResponsesGeneralRead(
+    std::span<TMergeResponsesContext<TMethod>> responsesToUnify,
+    size_t blockSize) -> NProto::TReadBlocksResponse
 {
     NProto::TReadBlocksResponse result;
 
@@ -61,15 +62,15 @@ NProto::TReadBlocksResponse UnifyResponsesGeneralRead(
     if (allBlocksEmpty) {
         return result;
     }
-    for (const auto& [response, blocksCountRequested]: responsesToUnify) {
-        auto blocks = response.GetBlocks();
+    for (auto& [response, blocksCountRequested]: responsesToUnify) {
+        auto& blocks = response.GetBlocks();
 
         if (blocks.BuffersSize() == 0) {
             for (size_t i = 0; i < blocksCountRequested; ++i) {
                 result.MutableBlocks()->AddBuffers(TString(blockSize, '\0'));
             }
         } else {
-            for (auto buffer: blocks.GetBuffers()) {
+            for (auto& buffer: blocks.GetBuffers()) {
                 result.MutableBlocks()->AddBuffers(std::move(buffer));
             }
         }
@@ -81,19 +82,20 @@ NProto::TReadBlocksResponse UnifyResponsesGeneralRead(
 }
 }   // namespace
 
-TSplittedRequest<TEvService::TReadBlocksMethod> SplitRequestRead(
+auto SplitReadRequest(
     const NProto::TReadBlocksRequest& originalRequest,
     std::span<const TBlockRange64> blockRangeSplittedByDeviceBorders)
+    -> TSplitRequest<TEvService::TReadBlocksMethod>
 {
     return SplitRequestGeneralRead<TEvService::TReadBlocksMethod>(
         originalRequest,
         blockRangeSplittedByDeviceBorders);
 }
 
-std::optional<TSplittedRequest<TEvService::TReadBlocksLocalMethod>>
-SplitRequestReadLocal(
+auto SplitReadRequest(
     const NProto::TReadBlocksLocalRequest& originalRequest,
     std::span<const TBlockRange64> blockRangeSplittedByDeviceBorders)
+    -> TSplitRequest<TEvService::TReadBlocksLocalMethod>
 {
     auto result = SplitRequestGeneralRead<TEvService::TReadBlocksLocalMethod>(
         originalRequest,
@@ -101,12 +103,12 @@ SplitRequestReadLocal(
 
     auto guard = originalRequest.Sglist.Acquire();
     if (!guard) {
-        return std::nullopt;
+        return {};
     }
 
     const auto& originalSglist = guard.Get();
     if (originalSglist.size() == 0) {
-        return std::nullopt;
+        return {};
     }
 
     TSgListBlockRange sglistBlockRange(
@@ -124,7 +126,7 @@ SplitRequestReadLocal(
         if (newSglistBuffersSize != blocksNeeded * originalRequest.BlockSize) {
             // It means that we doesn't have enough buffers in original request,
             // so it is incorrect.
-            return std::nullopt;
+            return {};
         }
 
         result[i].Request.Sglist =
@@ -134,22 +136,22 @@ SplitRequestReadLocal(
     return result;
 }
 
-NProto::TReadBlocksResponse UnifyResponsesRead(
-    std::span<const TUnifyResponsesContext<TEvService::TReadBlocksMethod>>
+auto MergeReadResponses(
+    std::span<TMergeResponsesContext<TEvService::TReadBlocksMethod>>
         responsesToUnify,
-    size_t blockSize)
+    size_t blockSize) -> NProto::TReadBlocksResponse
 {
-    return UnifyResponsesGeneralRead<TEvService::TReadBlocksMethod>(
+    return MergeResponsesGeneralRead<TEvService::TReadBlocksMethod>(
         responsesToUnify,
         blockSize);
 }
 
-NProto::TReadBlocksResponse UnifyResponsesReadLocal(
-    std::span<const TUnifyResponsesContext<TEvService::TReadBlocksLocalMethod>>
+auto MergeReadResponses(
+    std::span<TMergeResponsesContext<TEvService::TReadBlocksLocalMethod>>
         responsesToUnify,
-    size_t blockSize)
+    size_t blockSize) -> NProto::TReadBlocksResponse
 {
-    return UnifyResponsesGeneralRead<TEvService::TReadBlocksLocalMethod>(
+    return MergeResponsesGeneralRead<TEvService::TReadBlocksLocalMethod>(
         responsesToUnify,
         blockSize);
 }

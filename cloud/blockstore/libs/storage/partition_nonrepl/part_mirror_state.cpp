@@ -202,8 +202,8 @@ NProto::TError TMirrorPartitionState::NextReadReplica(
         << DescribeRange(readRange) << " targets only fresh/dummy devices");
 }
 
-TVector<TBlockRange64> TMirrorPartitionState::SplitRangeByDeviceBorders(
-    const TBlockRange64 readRange)
+auto TMirrorPartitionState::SplitRangeByDeviceBorders(
+    const TBlockRange64 readRange) -> TVector<TBlockRange64>
 {
     return PartConfig->SplitBlockRangeByDevicesBorder(readRange);
 }

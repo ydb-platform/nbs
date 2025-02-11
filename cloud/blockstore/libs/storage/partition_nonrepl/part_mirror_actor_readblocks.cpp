@@ -1,7 +1,7 @@
 #include "part_mirror_actor.h"
 
 #include "mirror_request_actor.h"
-#include "part_mirror_split_request_actor.h"
+#include "part_mirror_split_read_blocks_actor.h"
 #include "part_mirror_split_request_helpers.h"
 
 #include <cloud/blockstore/libs/common/block_checksum.h>
@@ -478,46 +478,12 @@ void TMirrorPartitionActor::ReadBlocks(
     const auto replicaIndex = record.GetHeaders().GetReplicaIndex();
     auto [replicaActorIds, error] =
         SelectReplicasToReadFrom(replicaIndex, blockRange, TMethod::Name);
-    if (!HasError(error)) {
-        LOG_DEBUG(
-            ctx,
-            TBlockStoreComponents::PARTITION_WORKER,
-            "[%s] Will read %s from %u replicas",
-            DiskId.c_str(),
-            DescribeRange(blockRange).c_str(),
-            replicaActorIds.size());
-
-        const auto requestIdentityKey = GetNextRequestIdentifier();
-        ReadRequestsInProgress.AddReadRequest(requestIdentityKey, blockRange);
-
-        NCloud::Register<TRequestActor<TMethod>>(
-            ctx,
-            std::move(requestInfo),
-            std::move(replicaActorIds),
-            std::move(record),
-            blockRange,
-            State.GetReplicaInfos()[0].Config->GetName(),
-            SelfId(),
-            requestIdentityKey);
-
-        return;
-    }
-
-    auto blockRangeSplittedByDeviceBorders =
-        State.SplitRangeByDeviceBorders(blockRange);
-    // There is no sense to split request if it covers only one device.
-    if (blockRangeSplittedByDeviceBorders.size() == 1 || replicaIndex) {
-        NCloud::Reply(
-            ctx,
-            *ev,
-            std::make_unique<typename TMethod::TResponse>(std::move(error)));
-        return;
-    }
-
-    for (auto range: blockRangeSplittedByDeviceBorders) {
-        TActorId replicaActorId;
-        const auto error = State.NextReadReplica(range, &replicaActorId);
-        if (HasError(error)) {
+    if (HasError(error)) {
+        auto blockRangeSplitByDeviceBorders =
+            State.SplitRangeByDeviceBorders(blockRange);
+        // There is no sense to split request if it covers only one device or
+        // replica.
+        if (blockRangeSplitByDeviceBorders.size() == 1 || replicaIndex) {
             NCloud::Reply(
                 ctx,
                 *ev,
@@ -525,38 +491,73 @@ void TMirrorPartitionActor::ReadBlocks(
                     std::move(error)));
             return;
         }
-    }
 
-    auto splittedRequest = SplitRequest<TMethod>(
-        record,
-        blockRangeSplittedByDeviceBorders);
+        for (auto range: blockRangeSplitByDeviceBorders) {
+            TActorId replicaActorId;
+            const auto error = State.NextReadReplica(range, &replicaActorId);
+            if (HasError(error)) {
+                NCloud::Reply(
+                    ctx,
+                    *ev,
+                    std::make_unique<typename TMethod::TResponse>(
+                        std::move(error)));
+                return;
+            }
+        }
 
-    if (!splittedRequest) {
-        NCloud::Reply(
+        auto splitRequests =
+            SplitReadRequest(record, blockRangeSplitByDeviceBorders);
+
+        if (!splitRequests) {
+            NCloud::Reply(
+                ctx,
+                *ev,
+                std::make_unique<typename TMethod::TResponse>(
+                    MakeError(E_INVALID_STATE, "can't split request")));
+            return;
+        }
+
+        const auto requestIdentityKey = GetNextRequestIdentifier();
+        ReadRequestsInProgress.AddReadRequest(requestIdentityKey, blockRange);
+
+        LOG_DEBUG(
             ctx,
-            *ev,
-            std::make_unique<typename TMethod::TResponse>(
-                MakeError(E_INVALID_STATE, "can't split request")));
+            TBlockStoreComponents::PARTITION_WORKER,
+            "[%s] Split original range %s by device borders. Will try to read "
+            "with few requests",
+            DiskId.c_str(),
+            DescribeRange(blockRange).c_str());
+
+        NCloud::Register<TSplitReadBlocksActor<TMethod>>(
+            ctx,
+            std::move(requestInfo),
+            std::move(splitRequests),
+            SelfId(),
+            State.GetBlockSize(),
+            requestIdentityKey);
+
         return;
     }
-
-    const auto requestIdentityKey = GetNextRequestIdentifier();
-    ReadRequestsInProgress.AddReadRequest(requestIdentityKey, blockRange);
 
     LOG_DEBUG(
         ctx,
         TBlockStoreComponents::PARTITION_WORKER,
-        "[%s] Split original range %s by device borders. Will try to read with "
-        "few requests",
+        "[%s] Will read %s from %u replicas",
         DiskId.c_str(),
-        DescribeRange(blockRange).c_str());
+        DescribeRange(blockRange).c_str(),
+        replicaActorIds.size());
 
-    NCloud::Register<NSplitRequest::TSplittedRequestActor<TMethod>>(
+    const auto requestIdentityKey = GetNextRequestIdentifier();
+    ReadRequestsInProgress.AddReadRequest(requestIdentityKey, blockRange);
+
+    NCloud::Register<TRequestActor<TMethod>>(
         ctx,
         std::move(requestInfo),
-        std::move(splittedRequest.value()),
+        std::move(replicaActorIds),
+        std::move(record),
+        blockRange,
+        State.GetReplicaInfos()[0].Config->GetName(),
         SelfId(),
-        State.GetBlockSize(),
         requestIdentityKey);
 }
 

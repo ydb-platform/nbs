@@ -283,8 +283,8 @@ public:
         return MakeError(code, std::move(message), flags);
     }
 
-    TVector<TBlockRange64> SplitBlockRangeByDevicesBorder(
-        const TBlockRange64 blockRange)
+    auto SplitBlockRangeByDevicesBorder(const TBlockRange64 blockRange)
+        -> TVector<TBlockRange64>
     {
         TVector<TBlockRange64> result;
         VisitDeviceRequests(

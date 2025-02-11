@@ -13,30 +13,25 @@
 namespace NCloud::NBlockStore::NStorage::NSplitRequest {
 
 template <typename TMethod>
-class TSplittedRequestActor final
-    : public NActors::TActorBootstrapped<TSplittedRequestActor<TMethod>>
+class TSplitReadBlocksActor final
+    : public NActors::TActorBootstrapped<TSplitReadBlocksActor<TMethod>>
 {
 private:
-    using TRequestRecordType = TMethod::TRequest::ProtoRecordType;
-    using TResponseRecordType = TMethod::TResponse::ProtoRecordType;
-
-private:
     const TRequestInfoPtr RequestInfo;
-    TSplittedRequest<TMethod> Requests;
+    TSplitRequest<TMethod> Requests;
     const NActors::TActorId ParentActorId;
     const ui64 BlockSize;
     const ui64 RequestIdentityKey;
 
     ui32 PendingRequests = 0;
-    TVector<TUnifyResponsesContext<TMethod>> Responses;
+    TVector<TMergeResponsesContext<TMethod>> Responses;
 
-    using TResponseProto = typename TMethod::TResponse::ProtoRecordType;
-    using TBase = NActors::TActorBootstrapped<TSplittedRequestActor<TMethod>>;
+    using TBase = NActors::TActorBootstrapped<TSplitReadBlocksActor<TMethod>>;
 
 public:
-    TSplittedRequestActor(
+    TSplitReadBlocksActor(
             TRequestInfoPtr requestInfo,
-            TSplittedRequest<TMethod> requests,
+            TSplitRequest<TMethod> requests,
             NActors::TActorId parentActorId,
             ui64 blockSize,
             ui64 requestIdentityKey)
@@ -59,7 +54,7 @@ public:
                 ctx,
                 ParentActorId,
                 std::move(req),
-                RequestInfo->Cookie + i + 1);
+                RequestInfo->Cookie + i);
             ++PendingRequests;
         }
 
@@ -72,7 +67,7 @@ private:
         auto response =
             std::make_unique<typename TMethod::TResponse>(std::move(error));
         if (!HasError(response->GetError())) {
-            response->Record = UnifyResponses<TMethod>(Responses, BlockSize);
+            response->Record = MergeReadResponses(Responses, BlockSize);
         }
 
         auto completion = std::make_unique<
@@ -95,7 +90,7 @@ private:
             return;
         }
 
-        auto responseIdx = ev->Cookie - RequestInfo->Cookie - 1;
+        auto responseIdx = ev->Cookie - RequestInfo->Cookie;
         Responses[responseIdx].Response = std::move(msg->Record);
 
         if (--PendingRequests == 0) {
@@ -106,8 +101,6 @@ private:
 private:
     STFUNC(StateWork)
     {
-        TRequestScope timer(*RequestInfo);
-
         switch (ev->GetTypeRewrite()) {
             HFunc(NActors::TEvents::TEvPoisonPill, HandlePoisonPill);
 

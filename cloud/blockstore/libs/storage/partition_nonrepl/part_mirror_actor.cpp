@@ -302,7 +302,7 @@ void TMirrorPartitionActor::ReplyAndDie(const TActorContext& ctx)
     Die(ctx);
 }
 
-ui64 TMirrorPartitionActor::GetNextRequestIdentifier()
+auto TMirrorPartitionActor::GetNextRequestIdentifier() -> ui64
 {
     return RequestIdentifierCounter++;
 }
@@ -401,10 +401,8 @@ void TMirrorPartitionActor::HandleScrubbingNextRange(
     WriteIntersectsWithScrubbing = false;
     auto scrubbingRange = GetScrubbingRange();
 
-    for (const auto& [key, requestInfo]: WriteRequestsInProgress.AllRequests()) {
-        // if (!requestInfo.Write) {
-        //     continue;
-        // }
+    for (const auto& [key, requestInfo]: WriteRequestsInProgress.AllRequests())
+    {
         const auto& requestRange = requestInfo.Value;
         if (scrubbingRange.Overlaps(requestRange)) {
             LOG_DEBUG(

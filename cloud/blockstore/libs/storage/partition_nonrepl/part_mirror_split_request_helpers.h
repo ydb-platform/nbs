@@ -30,69 +30,33 @@ struct TRequestToBlockRange
 };
 
 template <typename TMethod>
-using TSplittedRequest = TVector<TRequestToBlockRange<TMethod>>;
+using TSplitRequest = TVector<TRequestToBlockRange<TMethod>>;
 
-TSplittedRequest<TEvService::TReadBlocksMethod> SplitRequestRead(
+auto SplitReadRequest(
     const NProto::TReadBlocksRequest& originalRequest,
-    std::span<const TBlockRange64> blockRangeSplittedByDeviceBorders);
-
-std::optional<TSplittedRequest<TEvService::TReadBlocksLocalMethod>>
-SplitRequestReadLocal(
-    const NProto::TReadBlocksLocalRequest& originalRequest,
-    std::span<const TBlockRange64> blockRangeSplittedByDeviceBorders);
-
-template <typename TMethod>
-std::optional<TSplittedRequest<TMethod>> SplitRequest(
-    const TRequestRecordType<TMethod>& originalRequest,
     std::span<const TBlockRange64> blockRangeSplittedByDeviceBorders)
-{
-    if constexpr (std::is_same_v<TMethod, TEvService::TReadBlocksMethod>) {
-        return SplitRequestRead(
-            originalRequest,
-            blockRangeSplittedByDeviceBorders);
-    } else if constexpr (
-        std::is_same_v<TMethod, TEvService::TReadBlocksLocalMethod>)
-    {
-        return SplitRequestReadLocal(
-            originalRequest,
-            blockRangeSplittedByDeviceBorders);
-    } else {
-        return {};
-    }
-}
+    -> TSplitRequest<TEvService::TReadBlocksMethod>;
+
+auto SplitReadRequest(
+    const NProto::TReadBlocksLocalRequest& originalRequest,
+    std::span<const TBlockRange64> blockRangeSplittedByDeviceBorders)
+    -> TSplitRequest<TEvService::TReadBlocksLocalMethod>;
 
 template <typename TMethod>
-struct TUnifyResponsesContext
+struct TMergeResponsesContext
 {
     TResponseRecordType<TMethod> Response;
     size_t BlocksCountRequested;
 };
 
-NProto::TReadBlocksResponse UnifyResponsesRead(
-    std::span<const TUnifyResponsesContext<TEvService::TReadBlocksMethod>>
+auto MergeReadResponses(
+    std::span<TMergeResponsesContext<TEvService::TReadBlocksMethod>>
         responsesToUnify,
-    size_t blockSize);
+    size_t blockSize) -> NProto::TReadBlocksResponse;
 
-NProto::TReadBlocksResponse UnifyResponsesReadLocal(
-    std::span<const TUnifyResponsesContext<TEvService::TReadBlocksLocalMethod>>
+auto MergeReadResponses(
+    std::span<TMergeResponsesContext<TEvService::TReadBlocksLocalMethod>>
         responsesToUnify,
-    size_t blockSize);
-
-template <typename TMethod>
-TResponseRecordType<TMethod> UnifyResponses(
-    std::span<const TUnifyResponsesContext<TMethod>> responsesToUnify,
-    size_t blockSize)
-{
-    if constexpr (
-        std::is_same_v<TMethod, TEvService::TReadBlocksMethod>)
-    {
-        return UnifyResponsesRead(responsesToUnify, blockSize);
-    } else if constexpr (std::is_same_v<TMethod, TEvService::TReadBlocksLocalMethod>) {
-        return UnifyResponsesReadLocal(responsesToUnify, blockSize);
-    }
-    else {
-        return {};
-    }
-}
+    size_t blockSize) -> NProto::TReadBlocksResponse;
 
 }   // namespace NCloud::NBlockStore::NStorage::NSplitRequest
