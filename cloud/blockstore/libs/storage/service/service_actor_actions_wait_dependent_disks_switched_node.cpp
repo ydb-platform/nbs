@@ -8,7 +8,6 @@
 
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 #include <contrib/ydb/library/actors/core/events.h>
-#include <contrib/ydb/library/actors/core/executor_thread.h>
 #include <contrib/ydb/library/actors/core/hfunc.h>
 #include <contrib/ydb/library/actors/core/log.h>
 
@@ -182,9 +181,9 @@ void TWaitDependentDisksToSwitchNodeActor::ScheduleGetVolumeInfoRequest(
 
     auto request = std::make_unique<TEvVolume::TEvGetVolumeInfoRequest>();
     request->Record.SetDiskId(DependentDiskStates[cookie].GetDiskId());
-    ctx.ExecutorThread.Schedule(
+    ctx.Schedule(
         RetryTimeout,
-        new IEventHandle(
+        std::make_unique<IEventHandle>(
             MakeVolumeProxyServiceId(),
             SelfId(),
             request.release(),
@@ -263,9 +262,9 @@ void TWaitDependentDisksToSwitchNodeActor::HandleGetDependentDisksResponse(
                 TEvDiskRegistry::TEvGetDependentDisksRequest>();
             request->Record.SetHost(Request.GetAgentId());
 
-            ctx.ExecutorThread.Schedule(
+            ctx.Schedule(
                 RetryTimeout,
-                new IEventHandle(
+                std::make_unique<IEventHandle>(
                     MakeDiskRegistryProxyServiceId(),
                     SelfId(),
                     request.release()));

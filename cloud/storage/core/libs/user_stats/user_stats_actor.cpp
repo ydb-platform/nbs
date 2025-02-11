@@ -6,7 +6,6 @@
 
 #include <contrib/ydb/core/base/appdata.h>
 #include <contrib/ydb/library/actors/core/actor.h>
-#include <contrib/ydb/library/actors/core/executor_thread.h>
 
 #include <library/cpp/monlib/dynamic_counters/encode.h>
 #include <library/cpp/monlib/encode/json/json.h>
@@ -45,7 +44,7 @@ void TUserStatsActor::RegisterPages(const NActors::TActorContext& ctx)
         auto* rootPage = mon->RegisterIndexPage(Path, Title);
 
         mon->RegisterActorPage(rootPage, "user_stats/human", "UserStats",
-            true, ctx.ExecutorThread.ActorSystem, SelfId());
+            true, ctx.ActorSystem(), SelfId());
 
         mon->Register(new TMonPageWrapper(
             Path + "/user_stats/json",

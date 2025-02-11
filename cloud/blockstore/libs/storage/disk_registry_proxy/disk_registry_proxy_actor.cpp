@@ -16,7 +16,6 @@
 #include <contrib/ydb/core/mon/mon.h>
 #include <contrib/ydb/core/tablet/tablet_pipe_client_cache.h>
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
-#include <contrib/ydb/library/actors/core/executor_thread.h>
 #include <contrib/ydb/library/actors/core/log.h>
 
 #include <library/cpp/monlib/service/pages/templates.h>
@@ -81,9 +80,9 @@ void TDiskRegistryProxyActor::LookupTablet(const TActorContext& ctx)
         Config->GetOwner(),
         Config->GetOwnerIdx());
 
-    ctx.ExecutorThread.Schedule(
+    ctx.Schedule(
         Config->GetLookupTimeout(),
-        new IEventHandle(
+        std::make_unique<IEventHandle>(
             ctx.SelfID,
             ctx.SelfID,
             new TEvents::TEvWakeup(),
@@ -179,7 +178,7 @@ void TDiskRegistryProxyActor::RegisterPages(const TActorContext& ctx)
         auto* rootPage = mon->RegisterIndexPage("blockstore", "BlockStore");
 
         mon->RegisterActorPage(rootPage, "disk_registry_proxy", "DiskRegistryProxy",
-            false, ctx.ExecutorThread.ActorSystem, SelfId());
+            false, ctx.ActorSystem(), SelfId());
     }
 }
 

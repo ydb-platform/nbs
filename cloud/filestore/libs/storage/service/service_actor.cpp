@@ -2,7 +2,6 @@
 
 #include <contrib/ydb/core/base/appdata.h>
 #include <contrib/ydb/core/mon/mon.h>
-#include <contrib/ydb/library/actors/core/executor_thread.h>
 
 namespace NCloud::NFileStore::NStorage {
 
@@ -51,7 +50,7 @@ void TStorageServiceActor::RegisterPages(const NActors::TActorContext& ctx)
         auto* rootPage = mon->RegisterIndexPage("filestore", "FileStore");
 
         mon->RegisterActorPage(rootPage, "service", "Service",
-            false, ctx.ExecutorThread.ActorSystem, SelfId());
+            false, ctx.ActorSystem(), SelfId());
     }
 }
 

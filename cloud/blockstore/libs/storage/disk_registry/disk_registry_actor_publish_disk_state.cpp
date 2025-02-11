@@ -52,9 +52,9 @@ void TDiskRegistryActor::PublishDiskStates(const TActorContext& ctx)
             ctx.Now().MicroSeconds(),
             deadline.MicroSeconds());
 
-        ctx.ExecutorThread.Schedule(
+        ctx.Schedule(
             deadline,
-            new IEventHandle(ctx.SelfID, ctx.SelfID, request.get()));
+            std::make_unique<IEventHandle>(ctx.SelfID, ctx.SelfID, request.get()));
         request.release();
     } else {
         LOG_INFO(ctx, TBlockStoreComponents::DISK_REGISTRY,

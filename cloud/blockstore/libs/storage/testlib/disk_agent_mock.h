@@ -7,7 +7,6 @@
 
 #include <contrib/ydb/library/actors/core/actor.h>
 #include <contrib/ydb/library/actors/core/events.h>
-#include <contrib/ydb/library/actors/core/executor_thread.h>
 
 #include <util/generic/hash.h>
 
@@ -82,7 +81,7 @@ private:
                 0,   // flags
                 request.Cookie);
 
-            ctx.ExecutorThread.Schedule(State->ResponseDelay, event.release());
+            ctx.Schedule(State->ResponseDelay, std::move(event));
 
             return;
         }
