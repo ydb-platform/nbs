@@ -427,13 +427,6 @@ func IsAlterPlacementGroupMembershipPublicError(e error) bool {
 	return false
 }
 
-func IsIOError(e error) bool {
-	clientErr := nbs_client.GetClientError(e)
-
-	return clientErr.Code == nbs_client.E_IO ||
-		clientErr.Code == nbs_client.E_IO_SILENT
-}
-
 ////////////////////////////////////////////////////////////////////////////////
 
 func setupStderrLogger(ctx context.Context) context.Context {

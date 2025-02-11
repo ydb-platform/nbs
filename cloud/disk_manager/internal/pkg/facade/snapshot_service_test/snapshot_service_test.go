@@ -1063,7 +1063,7 @@ func testCreateSnapshotFromDiskWithFailedShadowDisk(
 		require.NoError(t, err)
 	}
 
-	checkError := func(err error) {
+	checkOperationError := func(err error) {
 		if err == nil {
 			return
 		}
@@ -1076,7 +1076,6 @@ func testCreateSnapshotFromDiskWithFailedShadowDisk(
 			// OK: dataplane task failed with 'Device disabled' error, but shadow
 			// disk was filled successfully.
 			// TODO: improve this test after https://github.com/ydb-platform/nbs/issues/1950#issuecomment-2541530203
-			// testcommon.CheckErrorDetails(t, err, codes.Aborted, "", false /*internal*/)  // TODO:_ uncomment? Remove?
 			return
 		}
 
@@ -1085,7 +1084,7 @@ func testCreateSnapshotFromDiskWithFailedShadowDisk(
 
 	response := disk_manager.CreateSnapshotResponse{}
 	err = internal_client.WaitResponse(ctx, client, operation.Id, &response)
-	checkError(err)
+	checkOperationError(err)
 
 	if err == nil {
 		require.Equal(t, int64(diskSize), response.Size)
