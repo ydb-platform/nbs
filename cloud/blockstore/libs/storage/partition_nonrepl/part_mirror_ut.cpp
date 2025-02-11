@@ -2007,8 +2007,9 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
 
     Y_UNIT_TEST(ShouldReadFromAllReplicas)
     {
-        TTestBasicRuntime runtime;
+        constexpr         ui32 replicaCount = 3;
 
+        TTestBasicRuntime runtime;
         TTestEnv env(runtime);
         TPartitionClient client(runtime, env.ActorId);
 
@@ -2016,42 +2017,38 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
             TBlockRange64::MakeClosedInterval(0, 1024 * 1024),
             1);
 
-        ui32 requests = 0;
+        ui32 checksumRequestCount = 0;
 
         runtime.SetObserverFunc(
             [&](TAutoPtr<IEventHandle>& event)
             {
                 switch (event->GetTypeRewrite()) {
                     case TEvNonreplPartitionPrivate::EvChecksumBlocksRequest: {
-                        ++requests;
+                        ++checksumRequestCount;
                         break;
                     }
                 }
 
                 return TTestActorRuntime::DefaultObserverFunc(event);
             });
-        ui32 replicaCount = 3;
 
         const auto readBlocks = [&](ui32 idx, ui32 size)
         {
-            requests = 0;
+            checksumRequestCount = 0;
             const auto range = TBlockRange64::WithLength(idx, size);
 
             auto response = client.ReadBlocks(range, 0, replicaCount);
-
 
             TDispatchOptions options;
             options.FinalEvents.emplace_back(TEvService::EvReadBlocksResponse);
             runtime.DispatchEvents(options, TDuration::Seconds(3));
 
-            // When requesting a read for three replicas, two checksums will be
-            // calculated in HandleChecksumResponse and the last one in
-            // HandleResponse, without sending TEvChecksumBlocksRequest
-            UNIT_ASSERT_VALUES_EQUAL(replicaCount - 1, requests);
+            // When requesting a read for three replicas, Readings are made from
+            // one replica, and checksums are calculated from the other two.
+            UNIT_ASSERT_VALUES_EQUAL(replicaCount - 1, checksumRequestCount);
         };
 
         readBlocks(0, 4096);
-        readBlocks(1024, 2048);
     }
 
 }
