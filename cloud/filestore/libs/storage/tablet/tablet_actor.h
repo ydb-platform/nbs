@@ -623,7 +623,8 @@ private:
         const typename TMethod::TRequest::TPtr& ev,
         const NActors::TActorContext& ctx,
         const std::function<NProto::TError(
-            const typename TMethod::TRequest::ProtoRecordType&)>& validator = {});
+            const typename TMethod::TRequest::ProtoRecordType&)>& validator = {},
+        bool validateSession = true);
 
     template <typename TMethod>
     void CompleteResponse(
