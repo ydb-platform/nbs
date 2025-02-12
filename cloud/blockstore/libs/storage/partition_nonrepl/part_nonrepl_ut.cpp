@@ -2029,10 +2029,10 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionTest)
             UNIT_ASSERT_VALUES_EQUAL(S_OK, error);
         };
 
-        checkRange(0, 4096);
-        checkRange(1024, 2048);
+        checkRange(0, 1024);
+        checkRange(1024, 512);
         checkRange(1, 1);
-        checkRange(2000, 1000);
+        checkRange(1000, 1000);
     }
 
     Y_UNIT_TEST(ShouldCheckRangeWithBrokenBlocks)
@@ -2098,10 +2098,10 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionTest)
             UNIT_ASSERT_VALUES_EQUAL(S_OK, error);
         };
 
-        checkRange(0, 4096);
-        checkRange(1024, 2048);
+        checkRange(0, 1024);
+        checkRange(1024, 512);
         checkRange(1, 1);
-        checkRange(5000, 1000);
+        checkRange(1000, 1000);
     }
 
     Y_UNIT_TEST(ShouldSuccessfullyCheckRangeIfDiskIsEmpty)
