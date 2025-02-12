@@ -38,6 +38,7 @@ def kill_processes(service_name: str):
         return
 
     with open(pids_file_name) as f:
+        exception = None
         for s in f.readlines():
             pid_and_command = s.split()
             pid = int(pid_and_command[0])
@@ -50,7 +51,9 @@ def kill_processes(service_name: str):
                 process = _BareProcess(command, pid)
                 execution = _Execution(command, process, None, None)
                 execution.verify_no_coredumps()
-                raise e
+                exception = e
+        if exception is not None:
+            raise exception
 
 
 def _get_pids_file_name(service_name: str):

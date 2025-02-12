@@ -19,9 +19,9 @@ type migrateSnapshotTask struct {
 	srcStorage storage.Storage
 	dstStorage storage.Storage
 	config     *config.DataplaneConfig
-	request    *protos.MigrateSnapshotToAnotherDatabaseRequest
-	state      *protos.MigrateSnapshotTaskState
 	useS3      bool
+	request    *protos.MigrateSnapshotRequest
+	state      *protos.MigrateSnapshotTaskState
 }
 
 func (t *migrateSnapshotTask) Save() ([]byte, error) {
@@ -32,7 +32,7 @@ func (t *migrateSnapshotTask) Load(
 	request, state []byte,
 ) error {
 
-	t.request = &protos.MigrateSnapshotToAnotherDatabaseRequest{}
+	t.request = &protos.MigrateSnapshotRequest{}
 	err := proto.Unmarshal(request, t.request)
 	if err != nil {
 		return err
@@ -175,7 +175,7 @@ func (t *migrateSnapshotTask) GetMetadata(
 }
 
 func (t *migrateSnapshotTask) GetResponse() proto.Message {
-	return &protos.MigrateSnapshotToAnotherDatabaseResponse{
+	return &protos.MigrateSnapshotResponse{
 		SnapshotSize:        t.state.SnapshotSize,
 		SnapshotStorageSize: t.state.SnapshotStorageSize,
 		TransferredDataSize: t.state.TransferredDataSize,

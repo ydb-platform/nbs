@@ -4,7 +4,6 @@ import logging
 import subprocess
 import time
 
-from contextlib import contextmanager
 from pathlib import Path
 from typing import NamedTuple
 
@@ -32,14 +31,6 @@ def compute_checksum(file_path: str) -> str:
     return hash_sha256.hexdigest()
 
 
-@contextmanager
-def handle_process_lookup_error():
-    try:
-        yield
-    except ProcessLookupError:
-        pass
-
-
 class _MigrationTestSetup:
 
     class _Disk(NamedTuple):
@@ -49,13 +40,13 @@ class _MigrationTestSetup:
 
     def __init__(
         self,
-        use_s3_source: bool = False,
-        use_s3_destination: bool = False,
-        use_source_s3_for_destination: bool = False,
+        use_s3_as_src: bool = False,
+        use_s3_as_dst: bool = False,
+        use_src_s3_for_dst: bool = False,
     ):
-        self.use_s3_source = use_s3_source
-        self.use_s3_destination = use_s3_destination
-        self.use_source_s3_for_destination = use_source_s3_for_destination
+        self.use_s3_as_src = use_s3_as_src
+        self.use_s3_as_dst = use_s3_as_dst
+        self.use_src_s3_for_dst = use_src_s3_for_dst
 
         certs_dir = Path(yatest_common.source_path("cloud/blockstore/tests/certs"))
         self._root_certs_file = certs_dir / "server.crt"
@@ -73,10 +64,6 @@ class _MigrationTestSetup:
         self.disk_manager_binary_path = yatest_common.binary_path("cloud/disk_manager/cmd/disk-manager/disk-manager")
         self.blockstore_client_binary_path = yatest_common.binary_path("cloud/blockstore/apps/client/blockstore-client")
         self.disk_manager_admin_binary_path = yatest_common.binary_path("cloud/disk_manager/cmd/disk-manager-admin/disk-manager-admin")
-
-        self.default_cloud_id = "cloud_id"
-        self.default_folder_id = "folder_id"
-        self.default_zone = "zone-a"
 
         self.ydb = YDBLauncher(ydb_binary_path=ydb_binary_path)
         self.ydb.start()
@@ -100,11 +87,11 @@ class _MigrationTestSetup:
         self.metadata_service.start()
         self.base_disk_id_prefix = "base-"
 
-        self.source_s3 = None
-        self.destination_s3 = None
+        self.src_s3 = None
+        self.dst_s3 = None
         self.s3_credentials_file = None
 
-        if self.use_s3_source or self.use_s3_destination:
+        if self.use_s3_as_src or self.use_s3_as_dst:
             working_dir = Path(get_unique_path_for_current_test(
                 output_path=yatest_common.output_path(),
                 sub_folder=""
@@ -113,58 +100,48 @@ class _MigrationTestSetup:
             self.s3_credentials_file = (working_dir / 's3_credentials.json')
             self.s3_credentials_file.write_text(json.dumps({"id": "test", "secret": "test"}))
 
-        if self.use_s3_source:
-            self.source_s3 = S3Launcher()
-            self.source_s3.start()
+        if self.use_s3_as_src:
+            self.src_s3 = S3Launcher()
+            self.src_s3.start()
 
-        if self.use_s3_destination:
-            if not self.use_source_s3_for_destination:
-                self.destination_s3 = S3Launcher()
-                self.destination_s3.start()
+        if self.use_s3_as_dst:
+            if not self.use_src_s3_for_dst:
+                self.dst_s3 = S3Launcher()
+                self.dst_s3.start()
             else:
-                self.destination_s3 = self.source_s3
+                self.dst_s3 = self.src_s3
+
+        self.common_parameters = dict(
+            hostname="localhost0",
+            ydb_port=self.ydb.port,
+            nbs_port=self.nbs.port,
+            nbs2_port=self.nbs.port,
+            nbs3_port=self.nbs.port,
+            root_certs_file=str(self._root_certs_file),
+            cert_file=str(self._cert_file),
+            cert_key_file=str(self._cert_key_file),
+            idx=0,
+            disk_manager_binary_path=self.disk_manager_binary_path,
+            base_disk_id_prefix=self.base_disk_id_prefix,
+            creation_and_deletion_allowed_only_for_disks_with_id_prefix="",
+            disable_disk_registry_based_disks=True,
+            with_nemesis=False,
+            metadata_url=self.metadata_service.url,
+        )
 
         self.initial_cpl_disk_manager = DiskManagerLauncher(
-            hostname="localhost0",
-            ydb_port=self.ydb.port,
-            nbs_port=self.nbs.port,
-            nbs2_port=self.nbs.port,
-            nbs3_port=self.nbs.port,
-            root_certs_file=str(self._root_certs_file),
-            idx=0,
+            **self.common_parameters,  # type: ignore
             is_dataplane=False,
-            disk_manager_binary_path=self.disk_manager_binary_path,
-            cert_file=str(self._cert_file),
-            cert_key_file=str(self._cert_key_file),
-            base_disk_id_prefix=self.base_disk_id_prefix,
-            creation_and_deletion_allowed_only_for_disks_with_id_prefix="",
-            disable_disk_registry_based_disks=True,
-            with_nemesis=False,
-            metadata_url=self.metadata_service.url,
-            s3_port=self.source_s3.port if self.source_s3 is not None else None,
+            s3_port=self.src_s3.port if self.src_s3 is not None else None,
         )
         self.initial_dpl_disk_manager = DiskManagerLauncher(
-            hostname="localhost0",
-            ydb_port=self.ydb.port,
-            nbs_port=self.nbs.port,
-            nbs2_port=self.nbs.port,
-            nbs3_port=self.nbs.port,
-            root_certs_file=str(self._root_certs_file),
-            idx=0,
+            **self.common_parameters,  # type: ignore
             is_dataplane=True,
-            disk_manager_binary_path=self.disk_manager_binary_path,
-            cert_file=str(self._cert_file),
-            cert_key_file=str(self._cert_key_file),
-            base_disk_id_prefix=self.base_disk_id_prefix,
-            creation_and_deletion_allowed_only_for_disks_with_id_prefix="",
-            disable_disk_registry_based_disks=True,
             migration_dst_ydb_port=self.secondary_ydb.port,
             dataplane_ydb_port=self.ydb.port,
-            with_nemesis=False,
-            metadata_url=self.metadata_service.url,
-            s3_port=self.source_s3.port if self.source_s3 is not None else None,
+            s3_port=self.src_s3.port if self.src_s3 is not None else None,
             s3_credentials_file=str(self.s3_credentials_file) if self.s3_credentials_file is not None else None,
-            migration_dst_s3_port=self.destination_s3.port if self.destination_s3 is not None else None,
+            migration_dst_s3_port=self.dst_s3.port if self.dst_s3 is not None else None,
             migration_dst_s3_credentials_file=str(self.s3_credentials_file) if self.s3_credentials_file is not None else None,
         )
 
@@ -178,27 +155,15 @@ class _MigrationTestSetup:
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
-        with handle_process_lookup_error():
-            self.initial_cpl_disk_manager.stop()
-        with handle_process_lookup_error():
-            self.initial_dpl_disk_manager.stop()
-        if self.secondary_dpl_disk_manager is not None:
-            with handle_process_lookup_error():
-                self.secondary_dpl_disk_manager.stop()
-        with handle_process_lookup_error():
-            self.metadata_service.stop()
-        with handle_process_lookup_error():
-            self.nbs.stop()
-        with handle_process_lookup_error():
-            self.secondary_ydb.stop()
-        with handle_process_lookup_error():
-            self.ydb.stop()
-        with handle_process_lookup_error():
-            if self.source_s3 is not None:
-                self.source_s3.stop()
-        with handle_process_lookup_error():
-            if self.destination_s3 is not None:
-                self.destination_s3.stop()
+        try:
+            DiskManagerLauncher.stop()
+        except ProcessLookupError:
+            pass
+        MetadataServiceLauncher.stop()
+        NbsLauncher.stop()
+        YDBLauncher.stop()
+        if self.src_s3 is not None or self.dst_s3 is not None:
+            S3Launcher.stop()
 
     def admin(self, *args: str):
         return subprocess.check_output(
@@ -225,10 +190,10 @@ class _MigrationTestSetup:
             "disks",
             "create",
             "--cloud-id",
-            self.default_cloud_id,
+            "cloud",
             "--folder-id",
-            self.default_folder_id,
-            "--zone-id", self.default_zone,
+            "folder",
+            "--zone-id", "zone-a",
             "--size", str(size),
             "--id", disk_id
         )
@@ -267,13 +232,13 @@ class _MigrationTestSetup:
         finally:
             data_file.unlink(missing_ok=True)
 
-    def create_snapshot(self, source_disk_id: str, snapshot_id: str):
+    def create_snapshot(self, src_disk_id: str, snapshot_id: str):
         self.admin(
             "snapshots",
             "create",
             "--id", snapshot_id,
-            "--zone-id", self.default_zone,
-            "--src-disk-id", source_disk_id,
+            "--zone-id", "zone-a",
+            "--src-disk-id", src_disk_id,
             "--folder-id", "test",
         )
 
@@ -294,7 +259,7 @@ class _MigrationTestSetup:
             if status == "finished":
                 break
 
-            time.sleep(0.1)
+            time.sleep(1)
 
     def checksum_disk(self, disk_id: str):
         unique_test_dir = Path(get_unique_path_for_current_test(yatest_common.output_path(), ""))
@@ -320,11 +285,11 @@ class _MigrationTestSetup:
             "disks",
             "create",
             "--folder-id",
-            self.default_folder_id,
+            "folder",
             "--cloud-id",
-            self.default_cloud_id,
+            "cloud",
             "--zone-id",
-            self.default_zone,
+            "zone-a",
             "--size",
             str(size),
             "--src-snapshot-id",
@@ -336,31 +301,17 @@ class _MigrationTestSetup:
     def switch_dataplane_to_new_db(self):
         self.initial_dpl_disk_manager.stop_daemon()
         self.secondary_dpl_disk_manager = DiskManagerLauncher(
-            hostname="localhost0",
-            ydb_port=self.ydb.port,
-            nbs_port=self.nbs.port,
-            nbs2_port=self.nbs.port,
-            nbs3_port=self.nbs.port,
-            root_certs_file=str(self._root_certs_file),
-            idx=0,
+            **self.common_parameters,  # type: ignore
             is_dataplane=True,
-            disk_manager_binary_path=self.disk_manager_binary_path,
-            cert_file=str(self._cert_file),
-            cert_key_file=str(self._cert_key_file),
-            base_disk_id_prefix=self.base_disk_id_prefix,
-            creation_and_deletion_allowed_only_for_disks_with_id_prefix="",
-            disable_disk_registry_based_disks=True,
             dataplane_ydb_port=self.secondary_ydb.port,
-            with_nemesis=False,
-            metadata_url=self.metadata_service.url,
-            s3_port=self.destination_s3.port if self.destination_s3 is not None else None,
+            s3_port=self.dst_s3.port if self.dst_s3 is not None else None,
             s3_credentials_file=str(self.s3_credentials_file) if self.s3_credentials_file is not None else None,
         )
         self.secondary_dpl_disk_manager.start()
 
 
 @pytest.mark.parametrize(
-    "use_s3_source, use_s3_destination, use_source_s3_for_destination",
+    "use_s3_as_src, use_s3_as_dst, use_src_s3_for_dst",
     [
         (True, False, False),
         (False, True, False),
@@ -369,14 +320,14 @@ class _MigrationTestSetup:
         (False, False, False),
     ]
 )
-def test_disk_manager_backup_restore(use_s3_source, use_s3_destination, use_source_s3_for_destination):
+def test_disk_manager_dataplane_migration(use_s3_as_src, use_s3_as_dst, use_src_s3_for_dst):
     with _MigrationTestSetup() as setup:
         disk_size = 1024 * 1024 * 1024
         initial_disk_id = "example"
         snapshot_id = "snapshot1"
         setup.create_new_disk(initial_disk_id, disk_size)
         checksum = setup.fill_disk("example")
-        setup.create_snapshot(source_disk_id=initial_disk_id, snapshot_id=snapshot_id)
+        setup.create_snapshot(src_disk_id=initial_disk_id, snapshot_id=snapshot_id)
         setup.migrate_snapshot(snapshot_id)
         setup.switch_dataplane_to_new_db()
         new_disk = "new_example"

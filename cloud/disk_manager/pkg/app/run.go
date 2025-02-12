@@ -216,12 +216,12 @@ func run(
 
 		var migrationDstDB *persistence.YDBClient
 		var migrationDstS3 *persistence.S3Client
-		migrationDstStorageConfig := dataplaneConfig.GetMigrationDstSnapshotConfig()
-		if migrationDstStorageConfig != nil {
+		migrationDstSnapshotConfig := dataplaneConfig.GetMigrationDstSnapshotConfig()
+		if migrationDstSnapshotConfig != nil {
 			migrationYdbClientRegistry := mon.NewRegistry("migration_ydb_client")
 			migrationDstDB, err = persistence.NewYDBClient(
 				ctx,
-				migrationDstStorageConfig.GetPersistenceConfig(),
+				migrationDstSnapshotConfig.GetPersistenceConfig(),
 				migrationYdbClientRegistry,
 				persistence.WithCredentials(creds),
 			)
@@ -230,7 +230,7 @@ func run(
 			}
 			defer migrationDstDB.Close(ctx)
 
-			migrationDstS3Config := migrationDstStorageConfig.GetPersistenceConfig().GetS3Config()
+			migrationDstS3Config := migrationDstSnapshotConfig.GetPersistenceConfig().GetS3Config()
 			if migrationDstS3Config != nil {
 				registry := mon.NewRegistry("migration_s3_client")
 				migrationDstS3, err = persistence.NewS3ClientFromConfig(migrationDstS3Config, registry)

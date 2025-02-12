@@ -208,6 +208,7 @@ S3Config: <
     CredentialsFilePath: "{s3_credentials_file}"
 >
 """
+
 DATAPLANE_CONFIG_TEMPLATE = """
 TasksConfig: <
     ZoneIds: ["zone-a", "zone-b", "zone-c"]
@@ -327,6 +328,7 @@ MIGRATION_CONFIG_TEMPLATE = """
         ChunkBlobsS3KeyPrefix: "snapshot/chunks"
     >
 """
+
 SERVICE_NAME = "disk_manager"
 
 

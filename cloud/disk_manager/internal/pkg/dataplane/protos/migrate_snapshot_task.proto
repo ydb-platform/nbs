@@ -6,11 +6,11 @@ option go_package = "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg
 
 ////////////////////////////////////////////////////////////////////////////////
 
-message MigrateSnapshotToAnotherDatabaseRequest {
+message MigrateSnapshotRequest {
   string SrcSnapshotId = 1;
 }
 
-message MigrateSnapshotToAnotherDatabaseResponse {
+message MigrateSnapshotResponse {
   uint64 SnapshotSize = 1;
   uint64 SnapshotStorageSize = 2;
   uint64 TransferredDataSize = 3;

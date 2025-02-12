@@ -384,7 +384,7 @@ func (c *scheduleMigrateSnapshotTaskCmd) run() error {
 		),
 		"dataplane.MigrateSnapshotTask",
 		"",
-		&dataplane_protos.MigrateSnapshotToAnotherDatabaseRequest{
+		&dataplane_protos.MigrateSnapshotRequest{
 			SrcSnapshotId: c.snapshotID,
 		},
 	)

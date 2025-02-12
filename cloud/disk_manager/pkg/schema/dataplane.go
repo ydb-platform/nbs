@@ -59,15 +59,15 @@ func initDataplane(
 		return err
 	}
 
-	migrationDstStorageConfig := config.GetDataplaneConfig().GetMigrationDstSnapshotConfig()
-	if migrationDstStorageConfig == nil {
+	migrationDstSnapshotConfig := config.GetDataplaneConfig().GetMigrationDstSnapshotConfig()
+	if migrationDstSnapshotConfig == nil {
 		return nil
 	}
 
-	migrationDestinationPersistenceConfig := migrationDstStorageConfig.GetPersistenceConfig()
+	migrationDstPersistenceConfig := migrationDstSnapshotConfig.GetPersistenceConfig()
 	migrationDstDB, err := persistence.NewYDBClient(
 		ctx,
-		migrationDestinationPersistenceConfig,
+		migrationDstPersistenceConfig,
 		metrics.NewEmptyRegistry(),
 		persistence.WithCredentials(creds),
 	)
@@ -85,7 +85,7 @@ func initDataplane(
 	}
 	return schema.Create(
 		ctx,
-		migrationDstStorageConfig,
+		migrationDstSnapshotConfig,
 		migrationDstDB,
 		migrationDstS3,
 		dropUnusedColumns,

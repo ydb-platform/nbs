@@ -21,7 +21,6 @@ DEPENDS(
 DATA(
     arcadia/cloud/blockstore/tests/certs/server.crt
     arcadia/cloud/blockstore/tests/certs/server.key
-    arcadia/cloud/blockstore/tests/loadtest/local-auth
 )
 
 PEERDIR(
