@@ -62,11 +62,14 @@ private:
     TDuration CpuUsage;
 
     THashSet<ui64> DirtyReadRequestIds;
-    TRequestsInProgress<ui64, TBlockRange64> RequestsInProgress{
-        EAllowedRequests::ReadWrite};
+    TRequestsInProgress<ui64, TBlockRange64> WriteRequestsInProgress{
+        EAllowedRequests::WriteOnly};
     TDrainActorCompanion DrainActorCompanion{
-        RequestsInProgress,
+        WriteRequestsInProgress,
         DiskId};
+
+    TRequestsInProgress<ui64, TBlockRange64> ReadRequestsInProgress{
+        EAllowedRequests::ReadOnly};
     TGetDeviceForRangeCompanion GetDeviceForRangeCompanion{
         TGetDeviceForRangeCompanion::EAllowedOperation::Read};
 
@@ -84,6 +87,8 @@ private:
     bool ScrubbingRangeRescheduled  = false;
     bool ResyncRangeStarted = false;
     ui32 ChecksumMismatches = 0;
+
+    ui64 RequestIdentifierCounter = 0;
 
 public:
     TMirrorPartitionActor(
@@ -117,6 +122,7 @@ private:
         ui64 scrubbingRangeId);
     void StartResyncRange(const NActors::TActorContext& ctx);
     void AddTagForBufferCopying(const NActors::TActorContext& ctx);
+    ui64 GetNextRequestIdentifier();
 
 private:
     STFUNC(StateWork);
@@ -180,7 +186,7 @@ private:
         const typename TMethod::TRequest::TPtr& ev,
         const NActors::TActorContext& ctx);
 
-    TResultOrError<TSet<NActors::TActorId>> SelectReplicasToReadFrom(
+    TResultOrError<TVector<NActors::TActorId>> SelectReplicasToReadFrom(
         ui32 replicaIndex,
         TBlockRange64 blockRange,
         const TStringBuf& methodName);
