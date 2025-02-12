@@ -32,4 +32,5 @@ message DataplaneConfig {
     optional uint32 UselessReplicationIterationsBeforeAbort = 15 [default = 100];
 
     optional string ProxyOverlayDiskIdPrefix = 16 [default = "proxy-"];
+    optional snapshot.SnapshotConfig MigrationDstSnapshotConfig = 17;
 }

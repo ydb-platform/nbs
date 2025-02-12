@@ -178,7 +178,8 @@ func run(
 	var s3 *persistence.S3Client
 	var s3Bucket string
 
-	if config.GetDataplaneConfig() == nil {
+	dataplaneConfig := config.GetDataplaneConfig()
+	if dataplaneConfig == nil {
 		logging.Info(ctx, "Registering dataplane tasks")
 		err = dataplane.Register(ctx, taskRegistry)
 		if err != nil {
@@ -187,7 +188,7 @@ func run(
 		}
 	} else {
 		logging.Info(ctx, "Initializing YDB client for snapshot database")
-		snapshotConfig := config.GetDataplaneConfig().GetSnapshotConfig()
+		snapshotConfig := dataplaneConfig.GetSnapshotConfig()
 		snapshotDB, err := persistence.NewYDBClient(
 			ctx,
 			snapshotConfig.GetPersistenceConfig(),
@@ -213,6 +214,32 @@ func run(
 			}
 		}
 
+		var migrationDstDB *persistence.YDBClient
+		var migrationDstS3 *persistence.S3Client
+		migrationDstSnapshotConfig := dataplaneConfig.GetMigrationDstSnapshotConfig()
+		if migrationDstSnapshotConfig != nil {
+			migrationYdbClientRegistry := mon.NewRegistry("migration_ydb_client")
+			migrationDstDB, err = persistence.NewYDBClient(
+				ctx,
+				migrationDstSnapshotConfig.GetPersistenceConfig(),
+				migrationYdbClientRegistry,
+				persistence.WithCredentials(creds),
+			)
+			if err != nil {
+				return err
+			}
+			defer migrationDstDB.Close(ctx)
+
+			migrationDstS3Config := migrationDstSnapshotConfig.GetPersistenceConfig().GetS3Config()
+			if migrationDstS3Config != nil {
+				registry := mon.NewRegistry("migration_s3_client")
+				migrationDstS3, err = persistence.NewS3ClientFromConfig(migrationDstS3Config, registry)
+				if err != nil {
+					return err
+				}
+			}
+		}
+
 		err = initDataplane(
 			ctx,
 			config,
@@ -222,6 +249,8 @@ func run(
 			taskScheduler,
 			nbsFactory,
 			s3,
+			migrationDstDB,
+			migrationDstS3,
 		)
 		if err != nil {
 			logging.Error(ctx, "Failed to initialize dataplane: %v", err)

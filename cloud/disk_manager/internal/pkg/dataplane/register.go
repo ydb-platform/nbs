@@ -22,6 +22,8 @@ func RegisterForExecution(
 	legacyStorage storage.Storage,
 	config *config.DataplaneConfig,
 	metricsRegistry metrics.Registry,
+	migrationDstStorage storage.Storage,
+	useS3InMigration bool,
 ) error {
 
 	err := taskRegistry.RegisterForExecution("dataplane.CreateSnapshotFromDisk", func() tasks.Task {
@@ -86,6 +88,20 @@ func RegisterForExecution(
 	})
 	if err != nil {
 		return err
+	}
+
+	if migrationDstStorage != nil {
+		err = taskRegistry.RegisterForExecution("dataplane.MigrateSnapshotTask", func() tasks.Task {
+			return &migrateSnapshotTask{
+				srcStorage: storage,
+				dstStorage: migrationDstStorage,
+				config:     config,
+				useS3:      useS3InMigration,
+			}
+		})
+		if err != nil {
+			return err
+		}
 	}
 
 	err = taskRegistry.RegisterForExecution("dataplane.TransferFromSnapshotToDisk", func() tasks.Task {
@@ -254,6 +270,7 @@ var newTaskByTaskType = map[string]func() tasks.Task{
 	"dataplane.CreateSnapshotFromSnapshot":       func() tasks.Task { return &createSnapshotFromSnapshotTask{} },
 	"dataplane.CreateSnapshotFromURL":            func() tasks.Task { return &createSnapshotFromURLTask{} },
 	"dataplane.CreateSnapshotFromLegacySnapshot": func() tasks.Task { return &createSnapshotFromLegacySnapshotTask{} },
+	"dataplane.MigrateSnapshotTask":              func() tasks.Task { return &migrateSnapshotTask{} },
 	"dataplane.TransferFromSnapshotToDisk":       func() tasks.Task { return &transferFromSnapshotToDiskTask{} },
 	"dataplane.TransferFromLegacySnapshotToDisk": func() tasks.Task { return &transferFromSnapshotToDiskTask{} },
 	"dataplane.TransferFromDiskToDisk":           func() tasks.Task { return &transferFromDiskToDiskTask{} },
