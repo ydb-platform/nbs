@@ -24,4 +24,8 @@ message CreateSnapshotFromDiskTaskState {
     int64 SnapshotSize = 4;
     int64 SnapshotStorageSize = 5;
     string DataplaneTaskID = 6;
+
+    // Needed for shadow disk based checkpoints.
+    int32 CheckpointIteration = 7;
+    string CheckpointID = 8;
 }
