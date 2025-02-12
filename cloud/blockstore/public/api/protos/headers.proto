@@ -82,4 +82,8 @@ message THeaders
     // For which replica this request will be performed.
     // Only for network-ssd-io-m* disks.
     uint32 ReplicaIndex = 11;
+
+    // For how many replicas will this read request be executed.
+    // Only for network-ssd-io-m* disks.
+    uint32 ReplicaCount = 12;
 }

@@ -64,6 +64,19 @@ public:
         return RWClientId;
     }
 
+    ui32 GetReadReplicaIndex() const
+    {
+        return ReadReplicaIndex;
+    }
+
+    void SetReadReplicaIndex(ui32 readReplicaIndex)
+    {
+        if (readReplicaIndex < 0 || readReplicaIndex >= ReplicaActors.size()) {
+            return;
+        }
+        ReadReplicaIndex = readReplicaIndex;
+    }
+
     [[nodiscard]] NProto::TError Validate();
     void PrepareMigrationConfig();
     [[nodiscard]] bool PrepareMigrationConfigForWarningDevices();

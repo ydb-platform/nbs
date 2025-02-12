@@ -393,6 +393,7 @@ STFUNC(TRequestActor<TMethod>::StateWork)
 
 auto TMirrorPartitionActor::SelectReplicasToReadFrom(
     ui32 replicaIndex,
+    ui32 replicaCount,
     TBlockRange64 blockRange,
     const TStringBuf& methodName) -> TResultOrError<TSet<TActorId>>
 {
@@ -407,22 +408,28 @@ auto TMirrorPartitionActor::SelectReplicasToReadFrom(
                 << " replicas");
     }
 
-    if (replicaIndex) {
-        const auto& replicaInfo = replicaInfos[replicaIndex - 1];
-        if (!replicaInfo.Config->DevicesReadyForReading(blockRange)) {
-            return MakeError(
-                E_REJECTED,
-                TStringBuilder()
-                    << "Cannot process " << methodName << " cause replica "
-                    << replicaIndex << " has not ready devices");
-        }
-        return TSet<TActorId>{State.GetReplicaActors()[replicaIndex - 1]};
+
+    if (replicaCount > replicaInfos.size()) {
+        return MakeError(
+            E_ARGUMENT,
+            TStringBuilder()
+                << "Request " << methodName << " has incorrect ReplicaCount "
+                << replicaCount << " disk has only " << replicaInfos.size()
+                << " replicas");
     }
 
     TSet<TActorId> replicaActorIds;
-    const ui32 readReplicaCount = Min<ui32>(
-        Max<ui32>(1, Config->GetMirrorReadReplicaCount()),
-        replicaInfos.size());
+    ui32 readReplicaCount =
+        replicaCount ? replicaCount
+                     : Min<ui32>(
+                           Max<ui32>(1, Config->GetMirrorReadReplicaCount()),
+                           replicaInfos.size());
+
+    if (replicaIndex) {
+        State.SetReadReplicaIndex(replicaIndex - 1);
+        readReplicaCount = 1;
+    }
+
     for (ui32 i = 0; i < readReplicaCount; ++i) {
         TActorId replicaActorId;
         const auto error = State.NextReadReplica(blockRange, &replicaActorId);
@@ -433,6 +440,35 @@ auto TMirrorPartitionActor::SelectReplicasToReadFrom(
         if (!replicaActorIds.insert(replicaActorId).second) {
             break;
         }
+    }
+
+    if (replicaIndex &&
+        State.GetReplicaActors()[replicaIndex - 1] != *replicaActorIds.begin())
+    {
+        return MakeError(
+            E_REJECTED,
+            TStringBuilder()
+                << "Cannot process " << methodName << " cause replica "
+                << replicaIndex << " has not ready devices");
+    }
+
+    if (replicaCount && replicaActorIds.size() != replicaCount){
+        TStringBuilder indexes;
+        for (ui32 i = 0; i < replicaCount; i++) {
+            if (!replicaActorIds.contains(State.GetReplicaActors()[i])) {
+                if (!indexes.empty()) {
+                    indexes << ", ";
+                }
+                indexes << i;
+            }
+        }
+        return MakeError(
+            E_REJECTED,
+            TStringBuilder()
+                << "Cannot process " << methodName << " on " << replicaCount
+                << " replicas, since devices of the following replicas "
+                   "are not ready: ["
+                << indexes << "]");
     }
 
     return replicaActorIds;
@@ -470,8 +506,10 @@ void TMirrorPartitionActor::ReadBlocks(
     }
 
     const auto replicaIndex = record.GetHeaders().GetReplicaIndex();
+    const auto replicaCount = record.GetHeaders().GetReplicaCount();
+
     auto [replicaActorIds, error] =
-        SelectReplicasToReadFrom(replicaIndex, blockRange, TMethod::Name);
+        SelectReplicasToReadFrom(replicaIndex, replicaCount, blockRange, TMethod::Name);
 
     if (HasError(error)) {
         NCloud::Reply(ctx, *ev, std::make_unique<TResponse>(error));

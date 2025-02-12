@@ -182,6 +182,7 @@ private:
 
     TResultOrError<TSet<NActors::TActorId>> SelectReplicasToReadFrom(
         ui32 replicaIndex,
+        ui32 replicaCount,
         TBlockRange64 blockRange,
         const TStringBuf& methodName);
 
