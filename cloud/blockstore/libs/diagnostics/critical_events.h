@@ -35,6 +35,7 @@ namespace NCloud::NBlockStore {
     xxx(MirroredDiskMajorityChecksumMismatch)                                  \
     xxx(MirroredDiskChecksumMismatchUponRead)                                  \
     xxx(MirroredDiskChecksumMismatchUponWrite)                                 \
+    xxx(MirroredDiskAddTagFailed)                                              \
     xxx(CounterUpdateRace)                                                     \
     xxx(EndpointStartingError)                                                 \
     xxx(ResyncFailed)                                                          \

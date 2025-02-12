@@ -359,7 +359,7 @@ void TServiceActor::HandleAddTags(
     auto* msg = ev->Get();
 
     auto requestInfo = CreateRequestInfo(
-        SelfId(),
+        ev->Sender,
         0,  // cookie
         MakeIntrusive<TCallContext>());
 
