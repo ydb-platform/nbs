@@ -1105,15 +1105,27 @@ Y_UNIT_TEST_SUITE(THiveProxyTest)
         UNIT_ASSERT(env.HiveState->DownNodeIds.contains(sender.NodeId()));
     }
 
+    Y_UNIT_TEST(DontBackupWithEmptyBootInfoFilePath)
+    {
+        TString backupFilePath = "";
+
+        TTestBasicRuntime runtime;
+        TTestEnv env(runtime, backupFilePath);
+
+        auto sender = runtime.AllocateEdgeActor();
+
+        env.SendBackupTabletBootInfos(sender, S_FALSE);
+    }
+
     Y_UNIT_TEST(BootExternalInFallbackMode)
     {
-        TString cacheFilePath =
-            "BootExternalInFallbackMode.tablet_boot_info_cache.txt";;
+        TString backupFilePath =
+            "BootExternalInFallbackMode.tablet_boot_info_backup.txt";
         bool fallbackMode = false;
 
         {
             TTestBasicRuntime runtime;
-            TTestEnv env(runtime, cacheFilePath, fallbackMode);
+            TTestEnv env(runtime, backupFilePath, fallbackMode);
 
             TTabletStorageInfoPtr expected = CreateTestTabletInfo(
                 FakeTablet2,
@@ -1139,7 +1151,7 @@ Y_UNIT_TEST_SUITE(THiveProxyTest)
         fallbackMode = true;
         {
             TTestBasicRuntime runtime;
-            TTestEnv env(runtime, cacheFilePath, fallbackMode);
+            TTestEnv env(runtime, backupFilePath, fallbackMode);
 
             auto sender = runtime.AllocateEdgeActor();
 
