@@ -740,7 +740,10 @@ TFuture<NProto::TStartEndpointResponse> TEndpointManager::RestoreSingleEndpoint(
                 return promise.ExtractValue();
             }
 
-            auto socketPath = request->GetUnixSocketPath();
+            auto socketPath = TFsPath(request->GetUnixSocketPath());
+            if (!socketPath.Parent().Exists()) {
+                socketPath.Parent().MkDir();
+            }
 
             auto response = self->StartEndpointImpl(
                 std::move(ctx),
