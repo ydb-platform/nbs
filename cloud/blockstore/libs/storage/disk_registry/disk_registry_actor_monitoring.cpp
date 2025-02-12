@@ -803,13 +803,12 @@ void TDiskRegistryActor::RenderDiskHtmlInfo(
                     flags |= EDeviceStateFlags::FRESH;
                 }
 
-                if (FindIfPtr(
+                if (AnyOf(
                         info.LaggingDevices,
                         [&uuid = device.GetDeviceUUID()](
                             const TLaggingDevice& laggingDevice)
                         {
-                            return uuid ==
-                                   laggingDevice.Device.GetDeviceUUID();
+                            return uuid == laggingDevice.Device.GetDeviceUUID();
                         }))
                 {
                     flags |= EDeviceStateFlags::LAGGING;

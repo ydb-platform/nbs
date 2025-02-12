@@ -2,6 +2,8 @@
 
 #include "disk_registry_database.h"
 
+#include <cloud/blockstore/libs/storage/core/proto_helpers.h>
+
 namespace NCloud::NBlockStore::NStorage {
 
 using namespace NActors;
@@ -41,8 +43,8 @@ void TDiskRegistryActor::HandleAddLaggingDevices(
             .c_str());
 
     TVector<NProto::TLaggingDevice> laggingDevices(
-        msg->Record.GetLaggingDevices().begin(),
-        msg->Record.GetLaggingDevices().end());
+        std::make_move_iterator(msg->Record.MutableLaggingDevices()->begin()),
+        std::make_move_iterator(msg->Record.MutableLaggingDevices()->end()));
     ExecuteTx<TAddLaggingDevices>(
         ctx,
         std::move(requestInfo),

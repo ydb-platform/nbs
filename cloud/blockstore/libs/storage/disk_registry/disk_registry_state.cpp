@@ -549,19 +549,20 @@ void TDiskRegistryState::ProcessDisks(TVector<NProto::TDiskConfig> configs)
 
         auto getSeqNo = [this](const TDiskId& diskId)
         {
-            ui64 seqNo = NotificationSystem.GetDiskSeqNo(diskId);
+            const TString diskIdToNotify = GetDiskIdToNotify(diskId);
+            ui64 seqNo = NotificationSystem.GetDiskSeqNo(diskIdToNotify);
             if (!seqNo) {
                 ReportDiskRegistryNoScheduledNotification(
-                    TStringBuilder()
-                    << "No scheduled notification for disk " << diskId.Quote());
-                seqNo = NotificationSystem.AddReallocateRequest(diskId);
+                    TStringBuilder() << "No scheduled notification for disk "
+                                     << diskIdToNotify.Quote());
+                seqNo = NotificationSystem.AddReallocateRequest(diskIdToNotify);
             }
 
             return seqNo;
         };
 
         if (!config.GetFinishedMigrations().empty()) {
-            const ui64 seqNo = getSeqNo(GetDiskIdToNotify(diskId));
+            const ui64 seqNo = getSeqNo(diskId);
 
             for (const auto& m: config.GetFinishedMigrations()) {
                 const auto& uuid = m.GetDeviceId();
@@ -574,7 +575,7 @@ void TDiskRegistryState::ProcessDisks(TVector<NProto::TDiskConfig> configs)
         }
 
         if (!config.GetLaggingDevices().empty()) {
-            const ui64 seqNo = getSeqNo(GetDiskIdToNotify(diskId));
+            const ui64 seqNo = getSeqNo(diskId);
             for (const auto& laggingDevice: config.GetLaggingDevices()) {
                 disk.LaggingDevices.emplace_back(laggingDevice, seqNo);
             }
@@ -4851,14 +4852,11 @@ void TDiskRegistryState::RemoveLaggingDevices(
         return;
     }
 
-    auto& laggingDevices = disk->LaggingDevices;
-    const auto [end, _] = std::ranges::remove_if(
-        laggingDevices,
+    const size_t removedCount = std::erase_if(
+        disk->LaggingDevices,
         [&](const TLaggingDevice& laggingDevice)
         { return laggingDevice.SeqNo <= seqNo; });
-
-    if (end != laggingDevices.end()) {
-        laggingDevices.erase(end, laggingDevices.end());
+    if (removedCount) {
         db.UpdateDisk(BuildDiskConfig(diskId, *disk));
     }
 }
@@ -6151,7 +6149,7 @@ void TDiskRegistryState::CancelDeviceMigration(
     UpdatePlacementGroup(db, diskId, disk, "CancelDeviceMigration");
 }
 
-void TDiskRegistryState::AbortMigrationAndReplaceDevice(
+NProto::TError TDiskRegistryState::AbortMigrationAndReplaceDevice(
     TInstant now,
     TDiskRegistryDatabase& db,
     const TDiskId& diskId,
@@ -6168,7 +6166,7 @@ void TDiskRegistryState::AbortMigrationAndReplaceDevice(
     // become "fresh" to the volume and the source will be released and marked
     // as dirty.
     if (migrationsIt == disk.MigrationSource2Target.end()) {
-        ReplaceDeviceWithoutDiskStateUpdate(
+        return ReplaceDeviceWithoutDiskStateUpdate(
             db,
             disk,
             diskId,
@@ -6180,7 +6178,6 @@ void TDiskRegistryState::AbortMigrationAndReplaceDevice(
                 "AbortMigrationAndReplaceDevice"),
             false   // manual
         );
-        return;
     }
 
     const TDeviceId targetId = migrationsIt->second;
@@ -6189,16 +6186,20 @@ void TDiskRegistryState::AbortMigrationAndReplaceDevice(
 
     auto sourceDeviceIt = Find(disk.Devices, sourceId);
     Y_DEBUG_ABORT_UNLESS(sourceDeviceIt != disk.Devices.end());
+    if (sourceDeviceIt == disk.Devices.end()) {
+        return MakeError(
+            E_NOT_FOUND,
+            TStringBuilder()
+                << "Disk " << diskId << " does not contain device " << sourceId
+                << ". Failed to abort migration and replace device.");
+    }
     *sourceDeviceIt = targetId;
 
     auto* masterDiskState = Disks.FindPtr(disk.MasterDiskId);
     Y_DEBUG_ABORT_UNLESS(masterDiskState);
     if (masterDiskState) {
-        auto it = Find(
-            masterDiskState->DeviceReplacementIds.begin(),
-            masterDiskState->DeviceReplacementIds.end(),
-            targetId);
-        Y_DEBUG_ABORT_UNLESS(it == masterDiskState->DeviceReplacementIds.end());
+        Y_DEBUG_ABORT_UNLESS(
+            !FindPtr(masterDiskState->DeviceReplacementIds, targetId));
         masterDiskState->DeviceReplacementIds.push_back(targetId);
     }
 
@@ -6235,6 +6236,7 @@ void TDiskRegistryState::AbortMigrationAndReplaceDevice(
     db.UpdateDisk(BuildDiskConfig(diskId, disk));
     db.UpdateDisk(BuildDiskConfig(disk.MasterDiskId, *masterDiskState));
     UpdatePlacementGroup(db, diskId, disk, "AbortMigrationAndReplaceDevice");
+    return {};
 }
 
 void TDiskRegistryState::ResetMigrationStartTsIfNeeded(TDiskState& disk)
@@ -6338,6 +6340,18 @@ NProto::TError TDiskRegistryState::AddLaggingDevices(
                 << static_cast<int>(diskState.MediaKind));
     }
 
+    // Erase devices that are already known to be lagging.
+    EraseIf(
+        laggingDevices,
+        [&](const auto& device)
+        {
+            const auto& uuid = device.GetDeviceUUID();
+            return AnyOf(
+                diskState.LaggingDevices,
+                [&uuid](const TLaggingDevice& laggingDevice)
+                { return laggingDevice.Device.GetDeviceUUID() == uuid; });
+        });
+
     if (laggingDevices.empty()) {
         return MakeError(S_FALSE, "Lagging devices list is empty");
     }
@@ -6345,27 +6359,10 @@ NProto::TError TDiskRegistryState::AddLaggingDevices(
     TVector<TDeviceId> addedLaggingDevices;
     addedLaggingDevices.reserve(laggingDevices.size());
     THashSet<std::pair<TString, TDiskState*>> replicasToUpdate;
-    std::optional<ui64> reallocateSeqNo;
+    const ui64 reallocateSeqNo = AddReallocateRequest(db, diskId);
     for (const auto& laggingDevice: laggingDevices) {
         const auto& laggingDeviceUUID = laggingDevice.GetDeviceUUID();
-        auto it = FindIf(
-            diskState.LaggingDevices,
-            [&laggingDeviceUUID](const auto& device)
-            { return device.Device.GetDeviceUUID() == laggingDeviceUUID; });
-        if (it != diskState.LaggingDevices.end()) {
-            // The device is already known to be lagging.
-            continue;
-        }
-
-        Y_DEFER
-        {
-            if (!reallocateSeqNo.has_value()) {
-                reallocateSeqNo = AddReallocateRequest(db, diskId);
-            }
-            diskState.LaggingDevices.emplace_back(
-                laggingDevice,
-                *reallocateSeqNo);
-        };
+        diskState.LaggingDevices.emplace_back(laggingDevice, reallocateSeqNo);
 
         auto replicaId = FindDisk(laggingDeviceUUID);
         if (replicaId.empty()) {
@@ -6391,20 +6388,24 @@ NProto::TError TDiskRegistryState::AddLaggingDevices(
 
         // The device can be either a migration source, a target of migration or
         // a regular replica device.
-        if (replicaState->MigrationSource2Target.contains(laggingDeviceUUID) ||
-            Migrations.contains(TDeviceMigration{replicaId, laggingDeviceUUID}))
-        {
+        const bool isMigrationSource =
+            replicaState->MigrationSource2Target.contains(laggingDeviceUUID) ||
+            Migrations.contains(TDeviceMigration{replicaId, laggingDeviceUUID});
+        const bool isMigrationTarget =
+            replicaState->MigrationTarget2Source.contains(laggingDeviceUUID);
+        if (isMigrationSource) {
             // Just snap a target device into the disk and discard the lagging
             // one.
-            AbortMigrationAndReplaceDevice(
+            auto error = AbortMigrationAndReplaceDevice(
                 now,
                 db,
                 replicaId,
                 *replicaState,
                 laggingDeviceUUID);
-        } else if (
-            replicaState->MigrationTarget2Source.contains(laggingDeviceUUID))
-        {
+            if (HasError(error)) {
+                ReportDiskRegistryCouldNotAddLaggingDevice(FormatError(error));
+            }
+        } else if (isMigrationTarget) {
             // Restart the migration with a new device.
             const bool success = RestartDeviceMigration(
                 now,

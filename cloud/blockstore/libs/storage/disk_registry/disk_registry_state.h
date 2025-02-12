@@ -1049,7 +1049,7 @@ private:
         TDiskState& disk,
         const TDeviceId& sourceId);
 
-    void AbortMigrationAndReplaceDevice(
+    NProto::TError AbortMigrationAndReplaceDevice(
         TInstant now,
         TDiskRegistryDatabase& db,
         const TDiskId& diskId,
