@@ -1249,21 +1249,30 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
         config.SetAutomaticallyEnableBufferCopyingAfterChecksumMismatch(true);
         TTestEnv env(runtime, config);
 
-        bool tagEnabled = false;
-        runtime.SetEventFilter([&] (auto& runtime, auto& event) {
-            Y_UNUSED(runtime);
-            if (event->GetTypeRewrite() == TEvService::EvAddTagsRequest)
+        bool addTagRequest = false;
+        bool addTagResponse = false;
+        runtime.SetEventFilter(
+            [&](auto& runtime, auto& event)
             {
-                using TRequest =
-                    TEvService::TEvAddTagsRequest;
-                const auto& tags = event->template Get<TRequest>()->Tags;
-                UNIT_ASSERT_VALUES_EQUAL(1, tags.size());
-                UNIT_ASSERT_VALUES_EQUAL(IntermediateWriteBufferTagName, tags[0]);
-                tagEnabled = true;
-            }
+                Y_UNUSED(runtime);
+                if (event->GetTypeRewrite() == TEvService::EvAddTagsRequest) {
+                    using TRequest = TEvService::TEvAddTagsRequest;
+                    const auto& tags = event->template Get<TRequest>()->Tags;
+                    UNIT_ASSERT_VALUES_EQUAL(1, tags.size());
+                    UNIT_ASSERT_VALUES_EQUAL(
+                        IntermediateWriteBufferTagName,
+                        tags[0]);
+                    addTagRequest = true;
+                }
 
-            return false;
-        });
+                if (event->GetTypeRewrite() ==
+                    TEvService::EvExecuteActionResponse) {
+                    UNIT_ASSERT(addTagRequest);
+                    addTagResponse = true;
+                }
+
+                return false;
+            });
 
         const auto range1 = TBlockRange64::WithLength(0, 2);
         env.WriteMirror(range1, 'A');
@@ -1284,7 +1293,7 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
 
         UNIT_ASSERT_VALUES_EQUAL(2, mirroredDiskMinorityChecksumMismatch->Val());
         UNIT_ASSERT_VALUES_EQUAL(2, counters.Simple.ChecksumMismatches.Value);
-        UNIT_ASSERT(tagEnabled);
+        UNIT_ASSERT(addTagResponse);
 
         const auto range3 = TBlockRange64::WithLength(1025, 50);
         env.WriteMirror(range3, 'A');
@@ -1307,6 +1316,54 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
         // check that all ranges was resynced and there is no more mismatches
         UNIT_ASSERT_VALUES_EQUAL(3, counters.Simple.ChecksumMismatches.Value);
         UNIT_ASSERT_VALUES_EQUAL(3, mirroredDiskMinorityChecksumMismatch->Val());
+    }
+
+    Y_UNIT_TEST(ShouldReportAddTagFailedCritEvent)
+    {
+        using namespace NMonitoring;
+
+        TDynamicCountersPtr critEventsCounters = new TDynamicCounters();
+        InitCriticalEventsCounter(critEventsCounters);
+
+        TTestRuntime runtime;
+
+        NProto::TStorageServiceConfig config;
+        config.SetAutomaticallyEnableBufferCopyingAfterChecksumMismatch(true);
+        TTestEnv env(runtime, config);
+
+        runtime.SetEventFilter(
+            [&](auto& runtime, auto& event)
+            {
+                Y_UNUSED(runtime);
+                if (event->GetTypeRewrite() ==
+                    TEvService::EvExecuteActionResponse) {
+                    auto response =
+                        std::make_unique<TEvService::TEvExecuteActionResponse>(
+                            MakeError(E_REJECTED, "error"));
+
+                    runtime.Send(new IEventHandle(
+                        event->Recipient,
+                        event->Sender,
+                        response.release(),
+                        0,   // flags
+                        event->Cookie));
+                    return true;
+                }
+
+                return false;
+            });
+
+        const auto range1 = TBlockRange64::WithLength(0, 2);
+        env.WriteMirror(range1, 'A');
+        env.WriteReplica(1, range1, 'B');
+        env.WriteReplica(2, range1, 'B');
+
+        WaitUntilScrubbingFinishesCurrentCycle(env);
+
+        auto addTagFailed = critEventsCounters->GetCounter(
+            "AppCriticalEvents/MirroredDiskAddTagFailed",
+            true);
+        UNIT_ASSERT_VALUES_EQUAL(1, addTagFailed->Val());
     }
 
     Y_UNIT_TEST(ShouldPostponeScrubbingIfIntersectingWritePending)
