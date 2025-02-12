@@ -197,11 +197,7 @@ void TDiskRegistryActor::CompleteUpdateAgentState(
 
     NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
 
-    // Sometimes we remove agent during update, in that case we should not to
-    // schedule that msg? because it will result in error.
-    if (args.State == NProto::AGENT_STATE_UNAVAILABLE &&
-        State->GetAgentState(args.AgentId))
-    {
+    if (args.State == NProto::AGENT_STATE_UNAVAILABLE) {
         ScheduleSwitchAgentDisksToReadOnly(ctx, args.AgentId);
     }
 }
