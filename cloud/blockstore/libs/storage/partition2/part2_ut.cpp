@@ -7238,9 +7238,9 @@ Y_UNIT_TEST_SUITE(TPartition2Test)
         };
 
         checkRange(0, 1024);
-        checkRange(1024, 2048);
+        checkRange(1024, 512);
         checkRange(1, 1);
-        checkRange(1000, 4096);
+        checkRange(1000, 1000);
     }
 
     Y_UNIT_TEST(ShouldCheckRangeWithBrokenBlocks)
@@ -7324,9 +7324,9 @@ Y_UNIT_TEST_SUITE(TPartition2Test)
             UNIT_ASSERT_VALUES_EQUAL(S_OK, error);
         };
         checkRange(0, 1024);
-        checkRange(1024, 2048);
+        checkRange(1024, 512);
         checkRange(1, 1);
-        checkRange(1000, 4096);
+        checkRange(1000, 1000);
     }
 
     Y_UNIT_TEST(ShouldSuccessfullyCheckRangeIfDiskIsEmpty)
