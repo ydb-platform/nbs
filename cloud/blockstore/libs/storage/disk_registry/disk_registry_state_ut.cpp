@@ -11167,12 +11167,18 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
             online.MutableDiskBackOnline()->SetDiskId(diskId);
 
             ui64 seqNo = 0;
-            auto add = [&state, &db, &seqNo] (auto notif) {
+            auto add = [&state, &db, &seqNo](auto notif)
+            {
                 notif.SetSeqNo(++seqNo);
-                state.AddUserNotification(db, std::move(notif));
+                state.AddUserNotification(
+                    db,
+                    std::move(notif),
+                    NDiskRegistry::ENotificationLevel::AllNotifications);
             };
 
-            state.AllowNotifications(diskId);
+            state.AllowNotifications(
+                diskId,
+                NDiskRegistry::ENotificationLevel::AllNotifications);
 
             add(error);
             add(error);
@@ -11217,6 +11223,86 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
             });
             UNIT_ASSERT_VALUES_EQUAL(2, count);
         });
+    }
+
+    Y_UNIT_TEST(ShouldSupportDifferentNotificationLevels)
+    {
+        NDiskRegistry::TNotificationSystem state(
+            CreateStorageConfig(CreateDefaultStorageConfigProto()),
+            {},
+            {},
+            {},
+            {},
+            0,
+            {});
+
+        TTestExecutor executor;
+        executor.WriteTx([](TDiskRegistryDatabase db) { db.InitSchema(); });
+
+        const TString diskId = "disk";
+        ui64 seqNo = 0;
+
+        auto add = [&state, &seqNo](auto& db, auto notif, auto level)
+        {
+            notif.SetSeqNo(++seqNo);
+            state.AddUserNotification(db, std::move(notif), level);
+        };
+
+        executor.WriteTx(
+            [&state, &diskId, &add](TDiskRegistryDatabase db)
+            {
+                NProto::TUserNotification error;
+                error.MutableDiskError()->SetDiskId(diskId);
+
+                NProto::TUserNotification online;
+                online.MutableDiskBackOnline()->SetDiskId(diskId);
+
+                state.AllowNotifications(
+                    diskId,
+                    NDiskRegistry::ENotificationLevel::MigrationNotifications);
+
+                add(db,
+                    error,
+                    NDiskRegistry::ENotificationLevel::AllNotifications);
+                add(db,
+                    online,
+                    NDiskRegistry::ENotificationLevel::MigrationNotifications);
+            });
+
+        {
+            TVector<NProto::TUserNotification> userNotifications;
+            state.GetUserNotifications(userNotifications);
+
+            UNIT_ASSERT_VALUES_EQUAL(1, userNotifications.size());
+            UNIT_ASSERT(userNotifications[0].HasDiskBackOnline());
+        }
+
+        executor.WriteTx(
+            [&state, &diskId, &add](TDiskRegistryDatabase db)
+            {
+                NProto::TUserNotification error;
+                error.MutableDiskError()->SetDiskId(diskId);
+
+                state.AllowNotifications(
+                    diskId,
+                    NDiskRegistry::ENotificationLevel::AllNotifications);
+
+                add(db,
+                    error,
+                    NDiskRegistry::ENotificationLevel::AllNotifications);
+            });
+
+        {
+            TVector<NProto::TUserNotification> userNotifications;
+            state.GetUserNotifications(userNotifications);
+            SortBy(
+                userNotifications,
+                [](const auto& notif) { return notif.GetSeqNo(); });
+
+            UNIT_ASSERT_VALUES_EQUAL(2, userNotifications.size());
+            UNIT_ASSERT(userNotifications[0].HasDiskBackOnline());
+            UNIT_ASSERT(userNotifications[1].HasDiskError());
+        }
     }
 
     Y_UNIT_TEST(ShouldPullInLegacyDiskErrorUserNotifications)

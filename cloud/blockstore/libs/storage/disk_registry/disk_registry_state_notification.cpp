@@ -24,6 +24,13 @@ NProto::TUserNotification MakeBlankNotification(
     return notif;
 }
 
+bool MsgSupportedByNotificationLevel(
+    ENotificationLevel msgLevel,
+    ENotificationLevel supportedLevel)
+{
+    return msgLevel <= supportedLevel;
+}
+
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -90,11 +97,23 @@ void TNotificationSystem::PullInUserNotifications(
     }
 }
 
+bool TNotificationSystem::IsNotificationSupported(const TDiskId& diskId, ENotificationLevel level)
+{
+    auto* supportedLevel = SupportsNotifications.FindPtr(diskId);
+    if (!supportedLevel) {
+        return false;
+    }
+
+    return MsgSupportedByNotificationLevel(level, *supportedLevel);
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
-void TNotificationSystem::AllowNotifications(const TDiskId& diskId)
+void TNotificationSystem::AllowNotifications(
+    const TDiskId& diskId,
+    ENotificationLevel notificationLevel)
 {
-    SupportsNotifications.insert(diskId);
+    SupportsNotifications[diskId] = notificationLevel;
 }
 
 void TNotificationSystem::DeleteDisk(
@@ -118,12 +137,13 @@ void TNotificationSystem::DeleteDisk(
 
 void TNotificationSystem::AddUserNotification(
     TDiskRegistryDatabase& db,
-    NProto::TUserNotification notification)
+    NProto::TUserNotification notification,
+    ENotificationLevel level)
 {
     const auto& id = GetEntityId(notification);
 
     // Note: Only disk events supported at the moment
-    if (!SupportsNotifications.contains(id)) {
+    if (!IsNotificationSupported(id, level)) {
         return;
     }
 
@@ -290,21 +310,33 @@ void TNotificationSystem::OnDiskStateChanged(
     db.UpdateDiskState(diskState, seqNo);
     db.WriteLastDiskStateSeqNo(DiskStateSeqNo);
 
+    ENotificationLevel diskStateChangeNotificationLevel =
+        ENotificationLevel::MigrationNotifications;
     if (newState >= NProto::DISK_STATE_TEMPORARILY_UNAVAILABLE) {
         if (oldState < NProto::DISK_STATE_TEMPORARILY_UNAVAILABLE) {
+            diskStateChangeNotificationLevel =
+                ENotificationLevel::AllNotifications;
             auto notif = MakeBlankNotification(seqNo, timestamp);
             notif.MutableDiskError()->SetDiskId(diskId);
-            AddUserNotification(db, std::move(notif));
-         }
+            AddUserNotification(
+                db,
+                std::move(notif),
+                diskStateChangeNotificationLevel);
+        }
     } else {
         if (oldState >= NProto::DISK_STATE_TEMPORARILY_UNAVAILABLE) {
+            diskStateChangeNotificationLevel =
+                ENotificationLevel::AllNotifications;
             auto notif = MakeBlankNotification(seqNo, timestamp);
             notif.MutableDiskBackOnline()->SetDiskId(diskId);
-            AddUserNotification(db, std::move(notif));
+            AddUserNotification(
+                db,
+                std::move(notif),
+                diskStateChangeNotificationLevel);
         }
     }
 
-    if (SupportsNotifications.contains(diskId)) {
+    if (IsNotificationSupported(diskId, diskStateChangeNotificationLevel)) {
         DiskStateUpdates.emplace_back(std::move(diskState), seqNo);
     }
 }

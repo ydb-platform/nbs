@@ -6,6 +6,12 @@ namespace NCloud::NBlockStore::NStorage::NDiskRegistry {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+enum class ENotificationLevel
+{
+    MigrationNotifications = 0,
+    AllNotifications = 1,
+};
+
 class TNotificationSystem
 {
     using TDiskId = TString;
@@ -33,7 +39,7 @@ class TNotificationSystem
 private:
     const TStorageConfigPtr StorageConfig;
 
-    THashSet<TDiskId> SupportsNotifications;
+    THashMap<TDiskId, ENotificationLevel> SupportsNotifications;
 
     // notify users
     TUserNotifications UserNotifications;
@@ -60,12 +66,15 @@ public:
         ui64 diskStateSeqNo,
         TVector<TDiskId> outdatedVolumes);
 
-    void AllowNotifications(const TDiskId& diskId);
+    void AllowNotifications(
+        const TDiskId& diskId,
+        ENotificationLevel notificationLevel);
     void DeleteDisk(TDiskRegistryDatabase& db, const TDiskId& diskId);
 
     void AddUserNotification(
         TDiskRegistryDatabase& db,
-        NProto::TUserNotification notification);
+        NProto::TUserNotification notification,
+        ENotificationLevel level);
 
     void DeleteUserNotification(
         TDiskRegistryDatabase& db,
@@ -122,6 +131,10 @@ private:
     void PullInUserNotifications(
         TVector<TString> errorNotifications,
         TVector<NProto::TUserNotification> userNotifications);
+
+    bool IsNotificationSupported(
+        const TDiskId& diskId,
+        ENotificationLevel level);
 };
 
 }   // namespace NCloud::NBlockStore::NStorage::NDiskRegistry

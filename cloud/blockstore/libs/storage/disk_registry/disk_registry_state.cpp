@@ -423,21 +423,25 @@ void TDiskRegistryState::AllowNotifications(
     const TDiskId& diskId,
     const TDiskState& disk)
 {
-    // currently we don't want to notify users about mirrored disks since they are not
-    // supposed to break
-    if (disk.MasterDiskId) {
-        return;
-    }
-
     // We do not want to notify the user about the breakdowns of the shadow disks.
     if (disk.CheckpointReplica.GetCheckpointId()) {
         return;
     }
 
+    // currently we don't want to notify users about mirrored disks errors since
+    // they are not supposed to break
+    if (disk.ReplicaCount > 0) {
+        NotificationSystem.AllowNotifications(
+            diskId,
+            NDiskRegistry::ENotificationLevel::MigrationNotifications);
+        return;
+    }
 
     Y_DEBUG_ABORT_UNLESS(IsDiskRegistryMediaKind(disk.MediaKind));
     if (!IsReliableDiskRegistryMediaKind(disk.MediaKind)) {
-        NotificationSystem.AllowNotifications(diskId);
+        NotificationSystem.AllowNotifications(
+            diskId,
+            NDiskRegistry::ENotificationLevel::AllNotifications);
     }
 }
 
@@ -4838,7 +4842,10 @@ void TDiskRegistryState::AddUserNotification(
     TDiskRegistryDatabase& db,
     NProto::TUserNotification notification)
 {
-    NotificationSystem.AddUserNotification(db, std::move(notification));
+    NotificationSystem.AddUserNotification(
+        db,
+        std::move(notification),
+        NDiskRegistry::ENotificationLevel::AllNotifications);
 }
 
 void TDiskRegistryState::DeleteUserNotification(
@@ -5498,9 +5505,11 @@ bool TDiskRegistryState::TryUpdateDiskState(
 
     UpdateAndReallocateDisk(db, diskId, disk);
 
+    const auto& diskIdToNotify = disk.MasterDiskId ? disk.MasterDiskId : diskId;
+
     NotificationSystem.OnDiskStateChanged(
         db,
-        diskId,
+        diskIdToNotify,
         oldState,
         newState,
         timestamp);
