@@ -544,3 +544,7 @@ class DiskManagerLauncher:
     @property
     def monitoring_port(self):
         return self.__monitoring_port
+
+    @property
+    def pid(self) -> int:
+        return self.__daemon.pid

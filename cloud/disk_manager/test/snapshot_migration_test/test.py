@@ -141,6 +141,7 @@ class _MigrationTestSetup:
         self.client_config_path = self.initial_cpl_disk_manager.client_config_file
         self.server_config_path = self.initial_cpl_disk_manager.config_file
         self.secondary_dpl_disk_manager = None
+        self.initial_dpl_pid = self.initial_dpl_disk_manager.pid
 
     def __enter__(self):
         return self
@@ -148,8 +149,14 @@ class _MigrationTestSetup:
     def __exit__(self, exc_type, exc_val, exc_tb):
         try:
             DiskManagerLauncher.stop()
-        except ProcessLookupError:
-            pass
+        except ProcessLookupError as e:
+            pids = getattr(e, "pids", [])
+            if len(pids) != 1:
+                raise e
+            [pid] = pids
+            if self.initial_dpl_pid != pid:
+                raise e
+
         MetadataServiceLauncher.stop()
         NbsLauncher.stop()
         YDBLauncher.stop()

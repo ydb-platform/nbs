@@ -39,6 +39,7 @@ def kill_processes(service_name: str):
 
     with open(pids_file_name) as f:
         exception = None
+        pids = []
         for s in f.readlines():
             pid_and_command = s.split()
             pid = int(pid_and_command[0])
@@ -51,8 +52,10 @@ def kill_processes(service_name: str):
                 process = _BareProcess(command, pid)
                 execution = _Execution(command, process, None, None)
                 execution.verify_no_coredumps()
+                pids.append(pid)
                 exception = e
         if exception is not None:
+            setattr(exception, "pids", pids)
             raise exception
 
 
