@@ -89,6 +89,7 @@ namespace NCloud::NBlockStore {
     xxx(DiskRegistryDeviceNotFound)                                            \
     xxx(DiskRegistryNoScheduledNotification)                                   \
     xxx(DiskRegistryDeviceDoesNotBelongToDisk)                                 \
+    xxx(DiskRegistryCouldNotAddLaggingDevice)                                  \
     xxx(ResyncUnexpectedWriteOrZeroCounter)                                    \
     xxx(MonitoringSvgTemplatesNotFound)                                        \
     xxx(DiskRegistryUnexpectedAffectedDisks)                                   \

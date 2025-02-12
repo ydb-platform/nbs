@@ -587,18 +587,6 @@ void TDiskRegistryActor::HandleOperationCompleted(
     Actors.erase(ev->Sender);
 }
 
-void TDiskRegistryActor::HandleAddLaggingDevices(
-    const TEvDiskRegistry::TEvAddLaggingDevicesRequest::TPtr& ev,
-    const TActorContext& ctx)
-{
-    Y_UNUSED(ev);
-    Y_UNUSED(ctx);
-
-    BLOCKSTORE_DISK_REGISTRY_COUNTER(AddLaggingDevices);
-
-    // TODO(komarevtsev-d): Implement this.
-}
-
 ////////////////////////////////////////////////////////////////////////////////
 
 STFUNC(TDiskRegistryActor::StateBoot)
