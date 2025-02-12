@@ -6,6 +6,7 @@
 #include <cloud/blockstore/libs/service/request_helpers.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/core/probes.h>
+#include <cloud/blockstore/libs/storage/core/proto_helpers.h>
 
 #include <cloud/storage/core/libs/common/alloc.h>
 #include <cloud/storage/core/libs/common/block_buffer.h>
@@ -40,6 +41,7 @@ struct TRangeCompactionInfo
     const ui32 BlobsSkippedByCompaction;
     const ui32 BlocksSkippedByCompaction;
     const TVector<ui32> BlockChecksums;
+    const EChannelDataKind ChannelDataKind;
 
     TGuardedBuffer<TBlockBuffer> BlobContent;
     TVector<ui32> ZeroBlocks;
@@ -59,6 +61,7 @@ struct TRangeCompactionInfo
             ui32 blobsSkippedByCompaction,
             ui32 blocksSkippedByCompaction,
             TVector<ui32> blockChecksums,
+            EChannelDataKind channelDataKind,
             TBlockBuffer blobContent,
             TVector<ui32> zeroBlocks,
             TAffectedBlobs affectedBlobs,
@@ -72,6 +75,7 @@ struct TRangeCompactionInfo
         , BlobsSkippedByCompaction(blobsSkippedByCompaction)
         , BlocksSkippedByCompaction(blocksSkippedByCompaction)
         , BlockChecksums(std::move(blockChecksums))
+        , ChannelDataKind(channelDataKind)
         , BlobContent(std::move(blobContent))
         , ZeroBlocks(std::move(zeroBlocks))
         , AffectedBlobs(std::move(affectedBlobs))
@@ -549,6 +553,7 @@ void TCompactionActor::WriteBlobs(const TActorContext& ctx)
 
 void TCompactionActor::AddBlobs(const TActorContext& ctx)
 {
+    TVector<TAddMixedBlob> mixedBlobs;
     TVector<TAddMergedBlob> mergedBlobs;
     TVector<TMergedBlobCompactionInfo> blobCompactionInfos;
     TAffectedBlobs affectedBlobs;
@@ -560,7 +565,8 @@ void TCompactionActor::AddBlobs(const TActorContext& ctx)
         TBlockMask skipMask,
         const TVector<ui32>& blockChecksums,
         ui32 blobsSkipped,
-        ui32 blocksSkipped)
+        ui32 blocksSkipped,
+        EChannelDataKind channelDataKind)
     {
         while (skipMask.Get(range.End - range.Start)) {
             Y_ABORT_UNLESS(range.End > range.Start);
@@ -571,9 +577,27 @@ void TCompactionActor::AddBlobs(const TActorContext& ctx)
             --range.End;
         }
 
-        mergedBlobs.emplace_back(blobId, range, skipMask, blockChecksums);
-
-        blobCompactionInfos.push_back({blobsSkipped, blocksSkipped});
+        if (channelDataKind == EChannelDataKind::Merged) {
+            mergedBlobs.emplace_back(blobId, range, skipMask, blockChecksums);
+            blobCompactionInfos.push_back({blobsSkipped, blocksSkipped});
+        } else if (channelDataKind == EChannelDataKind::Mixed) {
+            TVector<ui32> blockIndexes(Reserve(range.Size()));
+            for (auto blockIndex = range.Start; blockIndex <= range.End;
+                 ++blockIndex)
+            {
+                if (!skipMask.Get(blockIndex - range.Start)) {
+                    blockIndexes.emplace_back(blockIndex);
+                }
+            }
+            mixedBlobs.emplace_back(blobId, std::move(blockIndexes), blockChecksums);
+        } else {
+            LOG_ERROR(
+                ctx,
+                TBlockStoreComponents::PARTITION,
+                "[%lu] unexpected channel data kind %u",
+                TabletId,
+                static_cast<int>(channelDataKind));
+        }
     };
 
     for (auto& rc: RangeCompactionInfos) {
@@ -584,7 +608,8 @@ void TCompactionActor::AddBlobs(const TActorContext& ctx)
                 rc.DataBlobSkipMask,
                 rc.BlockChecksums,
                 rc.BlobsSkippedByCompaction,
-                rc.BlocksSkippedByCompaction);
+                rc.BlocksSkippedByCompaction,
+                rc.ChannelDataKind);
         }
 
         if (rc.ZeroBlobId) {
@@ -602,7 +627,8 @@ void TCompactionActor::AddBlobs(const TActorContext& ctx)
                 rc.ZeroBlobSkipMask,
                 rc.BlockChecksums,
                 blobsSkipped,
-                blocksSkipped);
+                blocksSkipped,
+                rc.ChannelDataKind);
         }
 
         if (rc.DataBlobId && rc.ZeroBlobId) {
@@ -664,7 +690,7 @@ void TCompactionActor::AddBlobs(const TActorContext& ctx)
     auto request = std::make_unique<TEvPartitionPrivate::TEvAddBlobsRequest>(
         RequestInfo->CallContext,
         CommitId,
-        TVector<TAddMixedBlob>(),
+        std::move(mixedBlobs),
         std::move(mergedBlobs),
         TVector<TAddFreshBlob>(),
         ADD_COMPACTION_RESULT,
@@ -1481,9 +1507,7 @@ namespace {
 
 void PrepareRangeCompaction(
     const TStorageConfig& config,
-    const TString& cloudId,
-    const TString& folderId,
-    const TString& diskId,
+    const bool incrementalCompactionEnabled,
     const ui64 commitId,
     const bool fullCompaction,
     const TActorContext& ctx,
@@ -1494,19 +1518,10 @@ void PrepareRangeCompaction(
     TPartitionState& state,
     TTxPartition::TRangeCompaction& args)
 {
-    const bool incrementalCompactionEnabledForCloud =
-        config.IsIncrementalCompactionFeatureEnabled(cloudId, folderId, diskId);
-    const bool incrementalCompactionEnabled =
-        config.GetIncrementalCompactionEnabled()
-        || incrementalCompactionEnabledForCloud;
-
     TCompactionBlockVisitor visitor(args, commitId);
     state.FindFreshBlocks(visitor, args.BlockRange, commitId);
     visitor.KeepTrackOfAffectedBlocks = true;
-    ready &= state.FindMixedBlocksForCompaction(
-        db,
-        visitor,
-        args.RangeIdx);
+    ready &= state.FindMixedBlocksForCompaction(db, visitor, args.RangeIdx);
     visitor.KeepTrackOfAffectedBlocks = false;
     ready &= db.FindMergedBlocks(
         visitor,
@@ -1528,10 +1543,7 @@ void PrepareRangeCompaction(
         }
     }
 
-    if (ready
-            && incrementalCompactionEnabled
-            && !fullCompaction)
-    {
+    if (ready && incrementalCompactionEnabled && !fullCompaction) {
         THashMap<TPartialBlobId, ui32, TPartialBlobIdHash> liveBlocks;
         for (const auto& m: args.BlockMarks) {
             if (m.CommitId && m.BlobId) {
@@ -1546,12 +1558,9 @@ void PrepareRangeCompaction(
         }
 
         Sort(
-            blobIds.begin(),
-            blobIds.end(),
-            [&] (const TPartialBlobId& l, const TPartialBlobId& r) {
-                return liveBlocks[l] < liveBlocks[r];
-            }
-        );
+            blobIds,
+            [&](const TPartialBlobId& l, const TPartialBlobId& r)
+            { return liveBlocks[l] < liveBlocks[r]; });
 
         auto it = blobIds.begin();
         args.BlobsSkipped = blobIds.size();
@@ -1559,8 +1568,9 @@ void PrepareRangeCompaction(
 
         while (it != blobIds.end()) {
             const auto bytes = blocks * state.GetBlockSize();
-            const auto blobCountOk = args.BlobsSkipped
-                <= config.GetMaxSkippedBlobsDuringCompaction();
+            const auto blobCountOk =
+                args.BlobsSkipped <=
+                config.GetMaxSkippedBlobsDuringCompaction();
             const auto byteCountOk =
                 bytes >= config.GetTargetCompactionBytesPerOp();
 
@@ -1608,6 +1618,7 @@ void PrepareRangeCompaction(
         }
 
         if (liveBlocks.size()) {
+            // TODO: need make UTs
             TAffectedBlocks affectedBlocks;
             for (const auto& b: args.AffectedBlocks) {
                 if (!skippedBlockIndices.contains(b.BlockIndex)) {
@@ -1652,6 +1663,7 @@ void PrepareRangeCompaction(
 
 void CompleteRangeCompaction(
     const bool blobPatchingEnabled,
+    const ui32 compactionThreshold,
     const ui64 commitId,
     TTabletStorageInfo& tabletStorageInfo,
     TPartitionState& state,
@@ -1666,11 +1678,14 @@ void CompleteRangeCompaction(
 
     // at first we count number of data blocks
     size_t dataBlocksCount = 0, zeroBlocksCount = 0;
+
     for (const auto& mark: args.BlockMarks) {
         if (mark.CommitId) {
+            const bool isFresh = !mark.BlockContent.Empty();
+            const bool isMixedOrMerged = !IsDeletionMarker(mark.BlobId);
             // there could be fresh block OR merged/mixed block
-            Y_ABORT_UNLESS(!(mark.BlockContent && !IsDeletionMarker(mark.BlobId)));
-            if (mark.BlockContent || !IsDeletionMarker(mark.BlobId)) {
+            Y_ABORT_UNLESS(!(isFresh && isMixedOrMerged));
+            if (isFresh || isMixedOrMerged) {
                 ++dataBlocksCount;
             } else {
                 ++zeroBlocksCount;
@@ -1682,19 +1697,26 @@ void CompleteRangeCompaction(
     TPartialBlobId dataBlobId, zeroBlobId;
     TBlockMask dataBlobSkipMask, zeroBlobSkipMask;
 
+    auto channelDataKind = EChannelDataKind::Merged;
     if (dataBlocksCount) {
         ui32 skipped = 0;
         for (const auto& mark: args.BlockMarks) {
-            if (!mark.BlockContent && IsDeletionMarker(mark.BlobId)) {
+            const bool isFresh = !mark.BlockContent.Empty();
+            const bool isMixedOrMerged = !IsDeletionMarker(mark.BlobId);
+            if (!isFresh && !isMixedOrMerged) {
                 ++skipped;
             }
         }
 
+        const auto blobSize = (args.BlockRange.Size() - skipped) * state.GetBlockSize();
+        if (blobSize < compactionThreshold) {
+            channelDataKind = EChannelDataKind::Mixed;
+        }
         dataBlobId = state.GenerateBlobId(
-            EChannelDataKind::Merged,
+            channelDataKind,
             compactionPermissions,
             commitId,
-            (args.BlockRange.Size() - skipped) * state.GetBlockSize(),
+            blobSize,
             result.size());
     }
 
@@ -1706,7 +1728,7 @@ void CompleteRangeCompaction(
         // compaction range but for the last actual block that's referenced by
         // the corresponding blob
         zeroBlobId = state.GenerateBlobId(
-            EChannelDataKind::Merged,
+            channelDataKind,
             compactionPermissions,
             commitId,
             0,
@@ -1789,14 +1811,15 @@ void CompleteRangeCompaction(
                     zeroBlobSkipMask.Set(blockIndex - args.BlockRange.Start);
                 }
 
-                if (!patchingCandidate
-                        && blobPatchingEnabled
-                        && mark.BlobId.BlobSize() == dataBlobId.BlobSize())
-                {
-                    patchingCandidate = mark.BlobId;
-                    ++patchingCandidateChangedBlockCount;
-                } else if (patchingCandidate == mark.BlobId) {
-                    ++patchingCandidateChangedBlockCount;
+                if (blobPatchingEnabled) {
+                    if (!patchingCandidate &&
+                        mark.BlobId.BlobSize() == dataBlobId.BlobSize())
+                    {
+                        patchingCandidate = mark.BlobId;
+                        ++patchingCandidateChangedBlockCount;
+                    } else if (patchingCandidate == mark.BlobId) {
+                        ++patchingCandidateChangedBlockCount;
+                    }
                 }
             } else {
                 dataBlobSkipMask.Set(blockIndex - args.BlockRange.Start);
@@ -1877,6 +1900,7 @@ void CompleteRangeCompaction(
         args.BlobsSkipped,
         args.BlocksSkipped,
         std::move(blockChecksums),
+        channelDataKind,
         std::move(blobContent),
         std::move(zeroBlocks),
         std::move(args.AffectedBlobs),
@@ -1901,6 +1925,15 @@ bool TPartitionActor::PrepareCompaction(
     TRequestScope timer(*args.RequestInfo);
     TPartitionDatabase db(tx.DB);
 
+    const bool incrementalCompactionEnabled =
+        Config->GetIncrementalCompactionEnabled() ||
+        Config->IsIncrementalCompactionFeatureEnabled(
+            PartitionConfig.GetCloudId(),
+            PartitionConfig.GetFolderId(),
+            PartitionConfig.GetDiskId());
+    const bool fullCompaction =
+        args.CompactionOptions.test(ToBit(ECompactionOption::Full));
+
     bool ready = true;
 
     THashSet<TPartialBlobId, TPartialBlobIdHash> affectedBlobIds;
@@ -1908,11 +1941,9 @@ bool TPartitionActor::PrepareCompaction(
     for (auto& rangeCompaction: args.RangeCompactions) {
         PrepareRangeCompaction(
             *Config,
-            PartitionConfig.GetCloudId(),
-            PartitionConfig.GetFolderId(),
-            PartitionConfig.GetDiskId(),
+            incrementalCompactionEnabled,
             args.CommitId,
-            args.CompactionOptions.test(ToBit(ECompactionOption::Full)),
+            fullCompaction,
             ctx,
             TabletID(),
             affectedBlobIds,
@@ -1967,6 +1998,9 @@ void TPartitionActor::CompleteCompaction(
 
         CompleteRangeCompaction(
             blobPatchingEnabled,
+            GetCompactionToMergedThreshold(
+                *Config,
+                PartitionConfig.GetStorageMediaKind()),
             args.CommitId,
             *Info(),
             *State,
