@@ -880,6 +880,11 @@ void TBootstrapBase::Start()
     START_KIKIMR_COMPONENT(ActorSystem);
     START_COMMON_COMPONENT(EndpointProxyClient);
     START_COMMON_COMPONENT(EndpointManager);
+
+    // Start to restore endpoints before starting server and nbd server to avoid
+    // the race between stop endpoint calls from clients and restore endpoint
+    auto restoreFuture = EndpointManager->RestoreEndpoints();
+
     START_COMMON_COMPONENT(Service);
     START_COMMON_COMPONENT(VhostServer);
     START_COMMON_COMPONENT(NbdServer);
@@ -897,7 +902,6 @@ void TBootstrapBase::Start()
     // order
     START_COMMON_COMPONENT(Scheduler);
 
-    auto restoreFuture = EndpointManager->RestoreEndpoints();
     if (!Configs->Options->TemporaryServer) {
         auto balancerSwitch = VolumeBalancerSwitch;
         restoreFuture.Subscribe([=] (const auto& future) {
