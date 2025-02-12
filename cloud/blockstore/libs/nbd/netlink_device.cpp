@@ -10,9 +10,221 @@
 #include <util/generic/scope.h>
 #include <util/stream/mem.h>
 
+
 namespace NCloud::NBlockStore::NBD {
 
 namespace {
+
+////////////////////////////////////////////////////////////////////////////////
+
+void ValidateAttribute(const ::nlattr& attribute, ui16 expectedAttribute)
+{
+    if (attribute.nla_type != expectedAttribute) {
+        throw yexception() << "Invalid attribute type: " << attribute.nla_type
+                           << " Expected attribute type: " << expectedAttribute;
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+// Documentation:
+// https://github.com/torvalds/linux/blob/master/Documentation/accounting/taskstats.rst
+
+#pragma pack(push, NLMSG_ALIGNTO)
+
+struct TNbdFamilyIdRequest
+{
+    ::nlmsghdr MessageHeader =
+        {sizeof(TNbdFamilyIdRequest), GENL_ID_CTRL, NLM_F_REQUEST, 0, 0};
+    ::genlmsghdr GenericHeader = {CTRL_CMD_GETFAMILY, 1, 0};
+    ::nlattr FamilyNameAttr = {
+        sizeof(FamilyName) + NLA_HDRLEN,
+        CTRL_ATTR_FAMILY_NAME};
+    const char FamilyName[sizeof(NBD_GENL_FAMILY_NAME)] = NBD_GENL_FAMILY_NAME;
+};
+
+struct TNbdFamilyIdResponse
+{
+    ::nlmsghdr MessageHeader;
+    ::genlmsghdr GenericHeader;
+    ::nlattr FamilyNameAttr;
+    char FamilyName[sizeof(NBD_GENL_FAMILY_NAME)];
+    alignas(NLMSG_ALIGNTO)::nlattr FamilyIdAttr;
+    ui16 FamilyId;
+
+    void Validate()
+    {
+        ValidateAttribute(FamilyNameAttr, CTRL_ATTR_FAMILY_NAME);
+        ValidateAttribute(FamilyIdAttr, CTRL_ATTR_FAMILY_ID);
+    }
+};
+
+struct TNbdStatusRequest
+{
+    ::nlmsghdr MessageHeader;
+    ::genlmsghdr GenericHeader;
+    ::nlattr DeviceIndexAttr;
+    ui32 DeviceIndex;
+
+    TNbdStatusRequest(ui16 familyId, ui32 deviceIndex)
+        : MessageHeader{sizeof(TNbdStatusRequest), familyId, NLM_F_REQUEST, 0, 0}
+        , GenericHeader{NBD_CMD_STATUS, 1, 0}
+        , DeviceIndexAttr{sizeof(DeviceIndex) + NLA_HDRLEN, NBD_ATTR_INDEX}
+        , DeviceIndex(deviceIndex)
+    {}
+};
+
+struct TNbdStatusResponse {
+    ::nlmsghdr MessageHeader;
+    ::genlmsghdr GenericHeader;
+
+    ::nlattr NbdDeviceListAttr; //NBD_ATTR_DEVICE_LIST
+    ::nlattr NbdDeviceItemAttr; // NBD_DEVICE_ITEM
+    ::nlattr NbdDeviceIndex;
+    ui32 Index;
+    ::nlattr NbdDeviceConnectedAttr; // NBD_DEVICE_CONNECTED
+    ui8 Connected;
+};
+
+struct TNbdConfigureDeviceRequest
+{
+    ::nlmsghdr MessageHeader;
+    ::genlmsghdr GenericHeader;
+    ::nlattr DeviceIndexAttr;
+    ui32 DeviceIndex;
+    ::nlattr DeviceSizeAttr;
+    ui64 DeviceSizeInBytes;
+    ::nlattr BlockSizeAttr;
+    ui64 BlockSizeInBytes;
+    ::nlattr ServerFlagsAttr;
+    ui64 ServerFlags;
+    ::nlattr RequestTimeoutAttr;
+    ui64 RequestTimeout;
+    ::nlattr ConnectionTimeoutAttr;
+    ui64 ConnectionTimeout;
+    ::nlattr SocketsAttr;
+    ::nlattr SocketItemAttr;
+    ::nlattr SocketFdAttr;
+    ui32 SocketFd;
+
+    TNbdConfigureDeviceRequest(
+        ui16 familyId,
+        bool connected,
+        ui32 deviceIndex,
+        ui64 deviceSizeInBytes,
+        ui64 blockSizeInBytes,
+        ui64 serverFlags,
+        ui64 requestTimeout,
+        ui64 connectionTimeout,
+        ui32 socketFd)
+        : MessageHeader{sizeof(TNbdConfigureDeviceRequest), familyId, NLM_F_REQUEST, 0, 0}
+        , GenericHeader{static_cast<ui8>(connected ? NBD_CMD_RECONFIGURE : NBD_CMD_CONNECT), 1, 0}
+        , DeviceIndexAttr{sizeof(DeviceIndex) + NLA_HDRLEN, NBD_ATTR_INDEX}
+        , DeviceIndex(deviceIndex)
+        , DeviceSizeAttr{sizeof(DeviceSizeInBytes) + NLA_HDRLEN, NBD_ATTR_SIZE_BYTES}
+        , DeviceSizeInBytes(deviceSizeInBytes)
+        , BlockSizeAttr{sizeof(BlockSizeInBytes) + NLA_HDRLEN, NBD_ATTR_BLOCK_SIZE_BYTES}
+        , BlockSizeInBytes(blockSizeInBytes)
+        , ServerFlagsAttr{sizeof(ServerFlags) + NLA_HDRLEN, NBD_ATTR_SERVER_FLAGS}
+        , ServerFlags(serverFlags)
+        , RequestTimeoutAttr{sizeof(RequestTimeout) + NLA_HDRLEN, NBD_ATTR_TIMEOUT}
+        , RequestTimeout(requestTimeout)
+        , ConnectionTimeoutAttr{sizeof(ConnectionTimeout) + NLA_HDRLEN, NBD_ATTR_DEAD_CONN_TIMEOUT}
+        , ConnectionTimeout(connectionTimeout)
+        , SocketsAttr{sizeof(SocketFd) + 3 * NLA_HDRLEN, NBD_ATTR_SOCKETS}
+        , SocketItemAttr{sizeof(SocketFd) + 2 * NLA_HDRLEN, NBD_SOCK_ITEM}
+        , SocketFdAttr{sizeof(SocketFd) + NLA_HDRLEN, NBD_SOCK_FD}
+        , SocketFd(socketFd)
+    {}
+};
+
+struct TNbdConfigureDeviceResponse
+{
+    ::nlmsghdr MessageHeader;
+    ::genlmsghdr GenericHeader;
+};
+
+struct TNetlinkError {
+    ::nlmsghdr MessageHeader;
+    ::nlmsgerr Error;
+};
+
+#pragma pack(pop)
+
+////////////////////////////////////////////////////////////////////////////////
+
+template <typename T, size_t MaxMsgSize = 1024>
+union TNetlinkResponse {
+    T Msg;
+    TNetlinkError Error;
+    ui8 Buffer[MaxMsgSize];
+
+    TNetlinkResponse() {
+        static_assert(sizeof(T) < MaxMsgSize);
+    }
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+class TNtlnkSocket
+{
+private:
+    TSocket Socket;
+    ui32 SocketTimeoutMs = 100;
+
+public:
+    TNtlnkSocket(ui32 socketTimeoutMs = 100)
+        : Socket(::socket(PF_NETLINK, SOCK_RAW, NETLINK_GENERIC))
+        , SocketTimeoutMs(socketTimeoutMs)
+    {
+        if (Socket < 0) {
+            throw yexception() << "Failed to create netlink socket";
+        }
+        Socket.SetSocketTimeout(0, SocketTimeoutMs);
+    }
+
+    template <typename TNetlinkMessage>
+    void Send(const TNetlinkMessage& msg)
+    {
+        auto ret = Socket.Send(&msg, sizeof(msg));
+        if (ret == -1) {
+            throw yexception()
+                << "Failed to send netlink message: " << strerror(errno);
+        }
+    }
+
+    template <typename T>
+    void Receive(TNetlinkResponse<T>& response)
+    {
+        auto ret = Socket.Recv(&response, sizeof(response));
+        if (ret < 0) {
+            throw yexception()
+                << "Failed to receive netlink message: " << strerror(errno);
+        }
+
+        if (response.Error.MessageHeader.nlmsg_type == NLMSG_ERROR) {
+            throw yexception()
+                << "Failed to receive netlink message: kernel returned error: "
+                << response.Error.Error.error << " message size: " << ret;
+        }
+
+        if (!NLMSG_OK(&response.Msg.MessageHeader, ret)) {
+            throw yexception()
+                << "Failed to parse netlink message: incorrect format";
+        }
+        return;
+    }
+};
+
+ui16 GetFamilyId()
+{
+    TNtlnkSocket socket;
+    socket.Send(TNbdFamilyIdRequest());
+    TNetlinkResponse<TNbdFamilyIdResponse> response;
+    socket.Receive(response);
+    response.Msg.Validate();
+    return response.Msg.FamilyId;
+}
 
 using namespace NThreading;
 
@@ -147,20 +359,21 @@ TFuture<NProto::TError> TNetlinkDevice::Stop(bool deleteDevice)
 TFuture<NProto::TError> TNetlinkDevice::Resize(ui64 deviceSizeInBytes)
 {
     try {
-        TNetlinkSocket socket("nbd");
-        TNetlinkMessage message(socket.GetFamily(), NBD_CMD_RECONFIGURE);
-
-        message.Put(NBD_ATTR_INDEX, DeviceIndex);
-        message.Put(NBD_ATTR_SIZE_BYTES, deviceSizeInBytes);
-
-        {
-            auto attr = message.Nest(NBD_ATTR_SOCKETS);
-            auto item = message.Nest(NBD_SOCK_ITEM);
-            message.Put(NBD_SOCK_FD, static_cast<ui32>(Socket));
-        }
-
-        socket.Send(message);
-
+        const auto& info = Handler->GetExportInfo();
+        TNtlnkSocket socket;
+        TNbdConfigureDeviceRequest request(
+            GetFamilyId(),
+            true,
+            DeviceIndex,
+            deviceSizeInBytes,
+            static_cast<ui64>(info.MinBlockSize),
+            static_cast<ui64>(info.Flags),
+            RequestTimeout.Seconds(),
+            ConnectionTimeout.Seconds(),
+            static_cast<ui32>(Socket));
+        socket.Send(request);
+        TNetlinkResponse<TNbdConfigureDeviceRequest> response;
+        socket.Receive(response);
     } catch (const TServiceError& e) {
         return MakeFuture(MakeError(
             e.GetCode(),
@@ -211,16 +424,24 @@ void TNetlinkDevice::DisconnectSocket()
 // or reconfigure (if Reconfigure == true) specified device
 void TNetlinkDevice::Connect()
 {
-    TNetlinkSocket socket("nbd");
-    socket.SetCallback(
-        NL_CB_VALID,
-        [device = shared_from_this()](auto* nlmsg) {
-            return device->StatusHandler(nlmsg);
-        });
-
-    TNetlinkMessage message(socket.GetFamily(), NBD_CMD_STATUS);
-    message.Put(NBD_ATTR_INDEX, DeviceIndex);
-    socket.Send(message);
+    try {
+        TNtlnkSocket socket;
+        TNbdStatusRequest request(GetFamilyId(), DeviceIndex);
+        socket.Send(request);
+        TNetlinkResponse<TNbdStatusResponse> response;
+        socket.Receive(response);
+        DoConnect(response.Msg.Connected);
+    } catch (const TServiceError& e) {
+        StartResult.SetValue(MakeError(
+            e.GetCode(),
+            TStringBuilder()
+                << "unable to configure " << DeviceName << ": " << e.what()));
+    } catch (std::exception& e) {
+        StartResult.SetValue(MakeError(
+            E_FAIL,
+            TStringBuilder()
+                << "unable to configure " << DeviceName << ": " << e.what()));
+    }
 }
 
 void TNetlinkDevice::Disconnect()
@@ -237,48 +458,28 @@ void TNetlinkDevice::Disconnect()
 void TNetlinkDevice::DoConnect(bool connected)
 {
     try {
-        auto command = NBD_CMD_CONNECT;
-        if (connected) {
-            if (!Reconfigure) {
-                throw TServiceError(E_FAIL) << "device is already in use";
-            }
-            command = NBD_CMD_RECONFIGURE;
-            STORAGE_INFO(DeviceName << " is already in use, reconfigure");
-        } else {
-            STORAGE_INFO("connect " << DeviceName);
+        if (connected && !Reconfigure) {
+            throw TServiceError(E_FAIL) << "device is already in use";
         }
-
-        TNetlinkSocket socket("nbd");
-        TNetlinkMessage message(socket.GetFamily(), command);
-
         const auto& info = Handler->GetExportInfo();
-        message.Put(NBD_ATTR_INDEX, DeviceIndex);
-        message.Put(NBD_ATTR_SIZE_BYTES, static_cast<ui64>(info.Size));
-        message.Put(
-            NBD_ATTR_BLOCK_SIZE_BYTES,
-            static_cast<ui64>(info.MinBlockSize));
-        message.Put(NBD_ATTR_SERVER_FLAGS, static_cast<ui64>(info.Flags));
-
-        if (RequestTimeout) {
-            message.Put(NBD_ATTR_TIMEOUT, RequestTimeout.Seconds());
-        }
-
-        if (ConnectionTimeout) {
-            message.Put(
-                NBD_ATTR_DEAD_CONN_TIMEOUT,
-                ConnectionTimeout.Seconds());
-        }
-
-        {
-            auto attr = message.Nest(NBD_ATTR_SOCKETS);
-            auto item = message.Nest(NBD_SOCK_ITEM);
-            message.Put(NBD_SOCK_FD, static_cast<ui32>(Socket));
-        }
-
-        socket.Send(message);
+        TNtlnkSocket socket;
+        TNbdConfigureDeviceRequest request(
+            GetFamilyId(),
+            connected,
+            DeviceIndex,
+            static_cast<ui64>(info.Size),
+            static_cast<ui64>(info.MinBlockSize),
+            static_cast<ui64>(info.Flags),
+            RequestTimeout.Seconds(),
+            ConnectionTimeout.Seconds(),
+            static_cast<ui32>(Socket));
+        socket.Send(request);
+        TNetlinkResponse<TNbdConfigureDeviceResponse> response;
+        socket.Receive(response);
         StartResult.SetValue(MakeError(S_OK));
 
     } catch (const TServiceError& e) {
+        STORAGE_ERROR("unable to configure device: " << e.what());
         StartResult.SetValue(MakeError(
             e.GetCode(),
             TStringBuilder()
