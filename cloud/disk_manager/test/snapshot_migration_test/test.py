@@ -180,10 +180,8 @@ class _MigrationTestSetup:
         self.admin(
             "disks",
             "create",
-            "--cloud-id",
-            "cloud",
-            "--folder-id",
-            "folder",
+            "--cloud-id", "cloud",
+            "--folder-id", "folder",
             "--zone-id", "zone-a",
             "--size", str(size),
             "--id", disk_id
@@ -230,15 +228,14 @@ class _MigrationTestSetup:
             "--id", snapshot_id,
             "--zone-id", "zone-a",
             "--src-disk-id", src_disk_id,
-            "--folder-id", "test",
+            "--folder-id", "folder",
         )
 
     def migrate_snapshot(self, snapshot_id: str, timeout_sec=360):
         stdout = self.admin(
             "snapshots",
             "schedule_migrate_snapshot_task",
-            "--id",
-            snapshot_id,
+            "--id", snapshot_id,
         )
         task_id = stdout.replace("Task: ", "").replace("\n", "")
         started_at = time.monotonic()
@@ -261,10 +258,8 @@ class _MigrationTestSetup:
                 "readblocks",
                 "--disk-id", disk_id,
                 "--start-index", "0",
-                "--output",
-                str(data_file),
-                "--io-depth",
-                "32",
+                "--output", str(data_file),
+                "--io-depth", "32",
                 "--read-all"
             )
             return compute_checksum(str(data_file))
@@ -275,18 +270,12 @@ class _MigrationTestSetup:
         self.admin(
             "disks",
             "create",
-            "--folder-id",
-            "folder",
-            "--cloud-id",
-            "cloud",
-            "--zone-id",
-            "zone-a",
-            "--size",
-            str(size),
-            "--src-snapshot-id",
-            snapshot_id,
-            "--id",
-            disk_id,
+            "--folder-id", "folder",
+            "--cloud-id", "cloud",
+            "--zone-id", "zone-a",
+            "--size", str(size),
+            "--src-snapshot-id", snapshot_id,
+            "--id", disk_id,
         )
 
     def switch_dataplane_to_new_db(self):
@@ -306,7 +295,6 @@ class _MigrationTestSetup:
     [
         (True, False),
         (False, True),
-        (True, True),
         (True, True),
         (False, False),
     ]
