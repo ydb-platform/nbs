@@ -420,14 +420,44 @@ auto TMirrorPartitionActor::SelectReplicasToReadFrom(
         return TSet<TActorId>{State.GetReplicaActors()[replicaIndex - 1]};
     }
 
-    if (replicaCount > 1) {
-        if (replicaCount > replicaInfos.size()) {
+    if (replicaCount > replicaInfos.size()) {
+        return MakeError(
+            E_ARGUMENT,
+            TStringBuilder()
+                << "Request " << methodName << " has incorrect ReplicaCount "
+                << replicaCount << " disk has only " << replicaInfos.size()
+                << " replicas");
+    }
+
+    if (replicaCount) {
+        ui32 readyReplicas = 0;
+        TSet<ui32> unreadyActorIndexes;
+
+        for (ui32 i = 0; i < replicaInfos.size(); ++i) {
+            const auto& replicaInfo = replicaInfos[i];
+            if (replicaInfo.Config->DevicesReadyForReading(blockRange)) {
+                ++readyReplicas;
+            } else {
+                unreadyActorIndexes.insert(i);
+            }
+        }
+
+        if (readyReplicas < replicaCount) {
+            TStringBuilder indexes;
+            for (ui32 index: unreadyActorIndexes) {
+                if (!indexes.empty()) {
+                    indexes << ", ";
+                }
+                indexes << index;
+            }
+
             return MakeError(
-                E_ARGUMENT,
+                E_REJECTED,
                 TStringBuilder()
-                    << "Request " << methodName
-                    << " has incorrect ReplicaCount " << replicaCount
-                    << " disk has only " << replicaInfos.size() << " replicas");
+                    << "Cannot process " << methodName << " on " << replicaCount
+                    << " replicas, since devices of the following replicas "
+                       "are not ready: ["
+                    << indexes << "]");
         }
     }
 

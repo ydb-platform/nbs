@@ -2034,7 +2034,7 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
 
         const auto range = TBlockRange64::WithLength(0, 1024);
 
-        auto response = client.ReadBlocks(range, 0, replicaCount);
+        client.ReadBlocks(range, 0, replicaCount);
 
         TDispatchOptions options;
         options.FinalEvents.emplace_back(TEvService::EvReadBlocksResponse);
@@ -2043,6 +2043,26 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
         // When requesting a read for three replicas, Readings are made from
         // one replica, and checksums are calculated from the other two.
         UNIT_ASSERT_VALUES_EQUAL(replicaCount - 1, checksumRequestCount);
+    }
+
+    Y_UNIT_TEST(ShouldRejectReadWithWrongReplicaCount)
+    {
+        TTestRuntime runtime;
+        TTestEnv env(runtime);
+
+        TPartitionClient client(runtime, env.ActorId);
+
+        const auto range = TBlockRange64::WithLength(0, 100);
+        env.WriteMirror(range, 'X');
+
+        {
+            client.SendReadBlocksRequest(range, 0, 4);
+            auto response = client.RecvReadBlocksResponse();
+            UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, response->GetStatus());
+            UNIT_ASSERT_STRING_CONTAINS(
+                response->GetErrorReason(),
+                "has incorrect ReplicaCount");
+        }
     }
 
 }
