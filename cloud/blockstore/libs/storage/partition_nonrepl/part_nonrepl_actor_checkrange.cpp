@@ -110,11 +110,11 @@ void TCheckRangeActor::ReplyAndDie(
 {
     auto response =
         std::make_unique<TEvService::TEvCheckRangeResponse>(std::move(error));
-        response->Record.MutableStatus()->CopyFrom(status);
+    response->Record.MutableStatus()->CopyFrom(status);
 
-        NCloud::Reply(ctx, *Ev, std::move(response));
+    NCloud::Reply(ctx, *Ev, std::move(response));
 
-        Die(ctx);
+    Die(ctx);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -195,8 +195,12 @@ void TNonreplicatedPartitionActor::HandleCheckRange(
     const NActors::TActorContext& ctx)
 {
     const auto* msg = ev->Get();
-    const ui64 maxBlocksPerRequest =
+
+    ui64 BlocksPerStripe =
         Config->GetBytesPerStripe() / PartConfig->GetBlockSize();
+    // We process 4 MB of data at a time.
+    const ui64 maxBlocksPerRequest =
+        std::min(BlocksPerStripe, 4_MB / PartConfig->GetBlockSize());
 
     if (msg->Record.GetBlocksCount() > maxBlocksPerRequest) {
         auto err = MakeError(
