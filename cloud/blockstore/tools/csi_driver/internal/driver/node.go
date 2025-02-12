@@ -732,7 +732,7 @@ func (s *nodeService) nodeStageDiskAsFilesystem(
 		return fmt.Errorf("failed to create staging directory: %w", err)
 	}
 
-	mountOptions := []string{"grpid"}
+	mountOptions := []string{"grpid", "discard"}
 	if fsType == "ext4" {
 		mountOptions = append(mountOptions, "errors=remount-ro")
 	}
