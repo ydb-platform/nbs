@@ -36,6 +36,9 @@ namespace NCloud::NBlockStore::NStorage {
     xxx(ChangeStorageConfig,      __VA_ARGS__)                                 \
     xxx(GetStorageConfig,         __VA_ARGS__)                                 \
     xxx(GracefulShutdown,         __VA_ARGS__)                                 \
+    xxx(LinkLeaderVolumeToFollower,         __VA_ARGS__)                       \
+    xxx(UnlinkLeaderVolumeFromFollower,     __VA_ARGS__)                       \
+
 
 // BLOCKSTORE_VOLUME_REQUESTS
 
@@ -339,6 +342,12 @@ struct TEvVolume
 
         EvCheckRangeRequest = EvBegin + 62,
         EvCheckRangeResponse = EvBegin + 63,
+
+        EvLinkLeaderVolumeToFollowerRequest = EvBegin + 64,
+        EvLinkLeaderVolumeToFollowerResponse = EvBegin + 65,
+
+        EvUnlinkLeaderVolumeFromFollowerRequest = EvBegin + 66,
+        EvUnlinkLeaderVolumeFromFollowerResponse = EvBegin + 67,
 
         EvEnd
     };
