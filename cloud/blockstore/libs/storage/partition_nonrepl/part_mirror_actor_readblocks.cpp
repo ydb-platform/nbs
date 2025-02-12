@@ -408,17 +408,6 @@ auto TMirrorPartitionActor::SelectReplicasToReadFrom(
                 << " replicas");
     }
 
-    if (replicaIndex) {
-        const auto& replicaInfo = replicaInfos[replicaIndex - 1];
-        if (!replicaInfo.Config->DevicesReadyForReading(blockRange)) {
-            return MakeError(
-                E_REJECTED,
-                TStringBuilder()
-                    << "Cannot process " << methodName << " cause replica "
-                    << replicaIndex << " has not ready devices");
-        }
-        return TSet<TActorId>{State.GetReplicaActors()[replicaIndex - 1]};
-    }
 
     if (replicaCount > replicaInfos.size()) {
         return MakeError(
@@ -429,44 +418,18 @@ auto TMirrorPartitionActor::SelectReplicasToReadFrom(
                 << " replicas");
     }
 
-    if (replicaCount) {
-        ui32 readyReplicas = 0;
-        TSet<ui32> unreadyActorIndexes;
-
-        for (ui32 i = 0; i < replicaInfos.size(); ++i) {
-            const auto& replicaInfo = replicaInfos[i];
-            if (replicaInfo.Config->DevicesReadyForReading(blockRange)) {
-                ++readyReplicas;
-            } else {
-                unreadyActorIndexes.insert(i);
-            }
-        }
-
-        if (readyReplicas < replicaCount) {
-            TStringBuilder indexes;
-            for (ui32 index: unreadyActorIndexes) {
-                if (!indexes.empty()) {
-                    indexes << ", ";
-                }
-                indexes << index;
-            }
-
-            return MakeError(
-                E_REJECTED,
-                TStringBuilder()
-                    << "Cannot process " << methodName << " on " << replicaCount
-                    << " replicas, since devices of the following replicas "
-                       "are not ready: ["
-                    << indexes << "]");
-        }
-    }
-
     TSet<TActorId> replicaActorIds;
-    const ui32 readReplicaCount =
+    ui32 readReplicaCount =
         replicaCount ? replicaCount
                      : Min<ui32>(
                            Max<ui32>(1, Config->GetMirrorReadReplicaCount()),
                            replicaInfos.size());
+
+    if (replicaIndex) {
+        State.SetReadReplicaIndex(replicaIndex - 1);
+        readReplicaCount = 1;
+    }
+
     for (ui32 i = 0; i < readReplicaCount; ++i) {
         TActorId replicaActorId;
         const auto error = State.NextReadReplica(blockRange, &replicaActorId);
@@ -477,6 +440,35 @@ auto TMirrorPartitionActor::SelectReplicasToReadFrom(
         if (!replicaActorIds.insert(replicaActorId).second) {
             break;
         }
+    }
+
+    if (replicaIndex &&
+        State.GetReplicaActors()[replicaIndex - 1] != *replicaActorIds.begin())
+    {
+        return MakeError(
+            E_REJECTED,
+            TStringBuilder()
+                << "Cannot process " << methodName << " cause replica "
+                << replicaIndex << " has not ready devices");
+    }
+
+    if (replicaCount && replicaActorIds.size() != replicaCount){
+        TStringBuilder indexes;
+        for (ui32 i = 0; i < replicaCount; i++) {
+            if (!replicaActorIds.contains(State.GetReplicaActors()[i])) {
+                if (!indexes.empty()) {
+                    indexes << ", ";
+                }
+                indexes << i;
+            }
+        }
+        return MakeError(
+            E_REJECTED,
+            TStringBuilder()
+                << "Cannot process " << methodName << " on " << replicaCount
+                << " replicas, since devices of the following replicas "
+                   "are not ready: ["
+                << indexes << "]");
     }
 
     return replicaActorIds;
