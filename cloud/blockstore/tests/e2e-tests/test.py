@@ -347,8 +347,6 @@ def test_restore_endpoint_when_socket_directory_does_not_exist():
     # 9. check that endpoint was restored
     env, run = init()
 
-    test_hash = hash(common.context.test_name)
-
     volume_name = "example-disk"
     block_size = 4096
     blocks_count = 10000
