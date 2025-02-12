@@ -10,53 +10,27 @@ namespace NCloud::NBlockStore::NStorage::NSplitRequest {
 ////////////////////////////////////////////////////////////////////////////////
 
 template <typename TMethod>
-using TRequestRecordType = TMethod::TRequest::ProtoRecordType;
-
-template <typename TMethod>
 using TResponseRecordType = TMethod::TResponse::ProtoRecordType;
-
-template <typename TMethod>
-struct TRequestToBlockRange
-{
-    TRequestRecordType<TMethod> Request;
-    TBlockRange64 BlockRangeForRequest;
-
-    TRequestToBlockRange(
-            TRequestRecordType<TMethod> request,
-            TBlockRange64 blockRangeForRequest)
-        : Request(std::move(request))
-        , BlockRangeForRequest(blockRangeForRequest)
-    {}
-};
-
-template <typename TMethod>
-using TSplitRequest = TVector<TRequestToBlockRange<TMethod>>;
 
 auto SplitReadRequest(
     const NProto::TReadBlocksRequest& originalRequest,
     std::span<const TBlockRange64> blockRangeSplittedByDeviceBorders)
-    -> TSplitRequest<TEvService::TReadBlocksMethod>;
+    -> TVector<NProto::TReadBlocksRequest>;
 
 auto SplitReadRequest(
     const NProto::TReadBlocksLocalRequest& originalRequest,
     std::span<const TBlockRange64> blockRangeSplittedByDeviceBorders)
-    -> TSplitRequest<TEvService::TReadBlocksLocalMethod>;
+    -> TVector<NProto::TReadBlocksLocalRequest>;
 
-template <typename TMethod>
-struct TMergeResponsesContext
+struct TSplitReadBlocksResponse
 {
-    TResponseRecordType<TMethod> Response;
-    size_t BlocksCountRequested;
+    NProto::TReadBlocksResponse Response;
+    ui64 BlocksCountRequested = 0;
 };
 
 auto MergeReadResponses(
-    std::span<TMergeResponsesContext<TEvService::TReadBlocksMethod>>
-        responsesToUnify,
-    size_t blockSize) -> NProto::TReadBlocksResponse;
-
-auto MergeReadResponses(
-    std::span<TMergeResponsesContext<TEvService::TReadBlocksLocalMethod>>
-        responsesToUnify,
+    std::span<TSplitReadBlocksResponse>
+        responsesToMerge,
     size_t blockSize) -> NProto::TReadBlocksResponse;
 
 }   // namespace NCloud::NBlockStore::NStorage::NSplitRequest

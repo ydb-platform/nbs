@@ -12,26 +12,31 @@
 
 namespace NCloud::NBlockStore::NStorage::NSplitRequest {
 
+////////////////////////////////////////////////////////////////////////////////
+
 template <typename TMethod>
 class TSplitReadBlocksActor final
     : public NActors::TActorBootstrapped<TSplitReadBlocksActor<TMethod>>
 {
 private:
+    using TRequestProtoType = TMethod::TRequest::ProtoRecordType;
+
+private:
     const TRequestInfoPtr RequestInfo;
-    TSplitRequest<TMethod> Requests;
+    TVector<TRequestProtoType> Requests;
     const NActors::TActorId ParentActorId;
     const ui64 BlockSize;
     const ui64 RequestIdentityKey;
 
     ui32 PendingRequests = 0;
-    TVector<TMergeResponsesContext<TMethod>> Responses;
+    TVector<TSplitReadBlocksResponse> Responses;
 
     using TBase = NActors::TActorBootstrapped<TSplitReadBlocksActor<TMethod>>;
 
 public:
     TSplitReadBlocksActor(
             TRequestInfoPtr requestInfo,
-            TSplitRequest<TMethod> requests,
+            TVector<TRequestProtoType> requests,
             NActors::TActorId parentActorId,
             ui64 blockSize,
             ui64 requestIdentityKey)
@@ -46,8 +51,9 @@ public:
     {
         Responses.resize(Requests.size());
         for (size_t i = 0; i < Requests.size(); ++i) {
-            Responses[i].BlocksCountRequested =
-                Requests[i].BlockRangeForRequest.Size();
+            Responses[i].BlocksCountRequested = TBlockRange64::WithLength(
+                Requests[i].GetStartIndex(),
+                Requests[i].GetBlocksCount());
             auto req = std::make_unique<typename TMethod::TRequest>();
             req->Record = std::move(Requests[i].Request);
             NCloud::Send(
@@ -86,7 +92,7 @@ private:
     {
         auto* msg = ev->Get();
         if (HasError(msg->GetError())) {
-            ReplyAndDie(ctx, std::move(msg->GetError()));
+            ReplyAndDie(ctx, msg->GetError());
             return;
         }
 

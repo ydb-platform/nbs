@@ -487,14 +487,14 @@ void TMirrorPartitionActor::ReadBlocks(
             NCloud::Reply(
                 ctx,
                 *ev,
-                std::make_unique<typename TMethod::TResponse>(
+                std::make_unique<TResponse>(
                     std::move(error)));
             return;
         }
 
         for (auto range: blockRangeSplitByDeviceBorders) {
             TActorId replicaActorId;
-            const auto error = State.NextReadReplica(range, &replicaActorId);
+            auto error = State.NextReadReplica(range, &replicaActorId);
             if (HasError(error)) {
                 NCloud::Reply(
                     ctx,

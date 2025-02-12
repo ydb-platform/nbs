@@ -6,13 +6,15 @@ namespace NCloud::NBlockStore::NStorage::NSplitRequest {
 
 using namespace NActors;
 
+////////////////////////////////////////////////////////////////////////////////
+
 namespace {
 TActorId MakeActorId(ui32 num)
 {
     return TActorId(num, num, num, num);
 }
 
-TSgList UnifySglist(const TSgList& sglist)
+TSgList MergeSglist(const TSgList& sglist)
 {
     TSgList result = {sglist[0]};
     for (size_t i = 1; i < sglist.size(); ++i) {
@@ -70,29 +72,28 @@ Y_UNIT_TEST_SUITE(TSplitRequestTest)
             actorsForEachRequests.size());
 
         for (size_t i = 0; i < splitRequest.size(); ++i) {
-            const auto& partSplitted = splitRequest[i];
-            const auto& partSplittedRequest = partSplitted.Request;
+            const auto& partSplit = splitRequest[i];
             UNIT_ASSERT_VALUES_EQUAL(
-                partSplitted.BlockRangeForRequest,
+                TBlockRange64::WithLength(
+                    partSplit.GetStartIndex(),
+                    partSplit.GetBlocksCount()),
                 blockRangeSplittedByDeviceBorders[i]);
 
             UNIT_ASSERT_VALUES_EQUAL(
                 request.GetDiskId(),
-                partSplittedRequest.GetDiskId());
-            UNIT_ASSERT_VALUES_EQUAL(
-                request.GetFlags(),
-                partSplittedRequest.GetFlags());
+                partSplit.GetDiskId());
+            UNIT_ASSERT_VALUES_EQUAL(request.GetFlags(), partSplit.GetFlags());
             UNIT_ASSERT_VALUES_EQUAL(
                 request.GetCheckpointId(),
-                partSplittedRequest.GetCheckpointId());
+                partSplit.GetCheckpointId());
             UNIT_ASSERT_VALUES_EQUAL(
                 request.GetSessionId(),
-                partSplittedRequest.GetSessionId());
+                partSplit.GetSessionId());
             UNIT_ASSERT_VALUES_EQUAL(
-                partSplittedRequest.GetStartIndex(),
+                partSplit.GetStartIndex(),
                 blockRangeSplittedByDeviceBorders[i].Start);
             UNIT_ASSERT_VALUES_EQUAL(
-                partSplittedRequest.GetBlocksCount(),
+                partSplit.GetBlocksCount(),
                 blockRangeSplittedByDeviceBorders[i].Size());
         }
     }
@@ -145,38 +146,33 @@ Y_UNIT_TEST_SUITE(TSplitRequestTest)
 
         TSgList overallSglist;
         for (size_t i = 0; i < splitRequest.size(); ++i) {
-            const auto& partSplitted = splitRequest[i];
-            const auto& partSplittedRequest = partSplitted.Request;
+            const auto& partSplit = splitRequest[i];
             UNIT_ASSERT_VALUES_EQUAL(
-                partSplitted.BlockRangeForRequest,
+                TBlockRange64::WithLength(
+                    partSplit.GetStartIndex(),
+                    partSplit.GetBlocksCount()),
                 blockRangeSplittedByDeviceBorders[i]);
 
             UNIT_ASSERT_VALUES_EQUAL(
                 request.GetDiskId(),
-                partSplittedRequest.GetDiskId());
-            UNIT_ASSERT_VALUES_EQUAL(
-                request.GetFlags(),
-                partSplittedRequest.GetFlags());
+                partSplit.GetDiskId());
+            UNIT_ASSERT_VALUES_EQUAL(request.GetFlags(), partSplit.GetFlags());
             UNIT_ASSERT_VALUES_EQUAL(
                 request.GetCheckpointId(),
-                partSplittedRequest.GetCheckpointId());
+                partSplit.GetCheckpointId());
             UNIT_ASSERT_VALUES_EQUAL(
                 request.GetSessionId(),
-                partSplittedRequest.GetSessionId());
+                partSplit.GetSessionId());
             UNIT_ASSERT_VALUES_EQUAL(
                 blockRangeSplittedByDeviceBorders[i].Start,
-                partSplittedRequest.GetStartIndex());
+                partSplit.GetStartIndex());
             UNIT_ASSERT_VALUES_EQUAL(
                 blockRangeSplittedByDeviceBorders[i].Size(),
-                partSplittedRequest.GetBlocksCount());
-            UNIT_ASSERT_VALUES_EQUAL(
-                request.BlockSize,
-                partSplittedRequest.BlockSize);
-            UNIT_ASSERT_VALUES_EQUAL(
-                request.CommitId,
-                partSplittedRequest.CommitId);
+                partSplit.GetBlocksCount());
+            UNIT_ASSERT_VALUES_EQUAL(request.BlockSize, partSplit.BlockSize);
+            UNIT_ASSERT_VALUES_EQUAL(request.CommitId, partSplit.CommitId);
 
-            auto guard = partSplittedRequest.Sglist.Acquire();
+            auto guard = partSplit.Sglist.Acquire();
             const auto& splittedSglist = guard.Get();
             size_t overallSize = 0;
             for (auto buf: splittedSglist) {
@@ -186,15 +182,14 @@ Y_UNIT_TEST_SUITE(TSplitRequestTest)
             }
             UNIT_ASSERT_VALUES_EQUAL(
                 overallSize,
-                partSplittedRequest.BlockSize *
-                    partSplittedRequest.GetBlocksCount());
+                partSplit.BlockSize * partSplit.GetBlocksCount());
         }
 
-        auto unifiedSglist = UnifySglist(overallSglist);
-        UNIT_ASSERT_VALUES_EQUAL(unifiedSglist.size(), sglist.size());
-        for (size_t i = 0; i < unifiedSglist.size(); ++i) {
-            UNIT_ASSERT_EQUAL(unifiedSglist[i].Data(), sglist[i].Data());
-            UNIT_ASSERT_VALUES_EQUAL(unifiedSglist[i].Size(), sglist[i].Size());
+        auto mergedSglist = MergeSglist(overallSglist);
+        UNIT_ASSERT_VALUES_EQUAL(mergedSglist.size(), sglist.size());
+        for (size_t i = 0; i < mergedSglist.size(); ++i) {
+            UNIT_ASSERT_EQUAL(mergedSglist[i].Data(), sglist[i].Data());
+            UNIT_ASSERT_VALUES_EQUAL(mergedSglist[i].Size(), sglist[i].Size());
         }
     }
 
@@ -280,10 +275,9 @@ Y_UNIT_TEST_SUITE(TSplitRequestTest)
         UNIT_ASSERT(!splitRequest);
     }
 
-    Y_UNIT_TEST(ShouldCorrectlyUnifyReadResponses)
+    Y_UNIT_TEST(ShouldCorrectlyMergeReadResponses)
     {
-        TVector<TMergeResponsesContext<TEvService::TReadBlocksMethod>>
-            responses;
+        TVector<TSplitReadBlocksResponse> responses;
 
         const size_t iterationsCount = 20;
 
@@ -309,7 +303,7 @@ Y_UNIT_TEST_SUITE(TSplitRequestTest)
             response.SetThrottlerDelay(blocksCount);
             throttlerDelaySum += blocksCount;
             response.SetAllZeroes(false);
-            responses.push_back({std::move(response), blocksCount});
+            responses.emplace_back(std::move(response), blocksCount);
         }
 
         auto mergedResponse = MergeReadResponses(responses, blockSize);
@@ -325,7 +319,7 @@ Y_UNIT_TEST_SUITE(TSplitRequestTest)
         {
             for (size_t blockI = 0; blockI < blocksCount; ++blockI) {
                 const auto& block =
-                    mergedResponse.GetBlocks().GetBuffers()[blocksReviewed];
+                    mergedResponse.GetBlocks().GetBuffers(blocksReviewed);
                 UNIT_ASSERT_VALUES_EQUAL(
                     block,
                     TString(blockSize, '0' + blocksCount));
@@ -333,34 +327,6 @@ Y_UNIT_TEST_SUITE(TSplitRequestTest)
                 ++blocksReviewed;
             }
         }
-    }
-
-    Y_UNIT_TEST(ShouldCorrectlyUnifyReadLocalResponses)
-    {
-        TVector<TMergeResponsesContext<TEvService::TReadBlocksLocalMethod>>
-            responses;
-
-        const size_t iterationsCount = 20;
-
-        const size_t blockSize = 100;
-        size_t throttlerDelaySum = 0;
-        for (size_t blocksCount = 1; blocksCount <= iterationsCount;
-             ++blocksCount)
-        {
-            NProto::TReadBlocksResponse response;
-
-            response.SetThrottlerDelay(blocksCount);
-            throttlerDelaySum += blocksCount;
-            response.SetAllZeroes(false);
-            responses.push_back({std::move(response), blocksCount});
-        }
-
-        auto mergedResponse = MergeReadResponses(responses, blockSize);
-        UNIT_ASSERT(!HasError(mergedResponse.GetError()));
-        UNIT_ASSERT_VALUES_EQUAL(
-            mergedResponse.GetThrottlerDelay(),
-            throttlerDelaySum);
-        UNIT_ASSERT(!mergedResponse.GetAllZeroes());
     }
 
     Y_UNIT_TEST(ShouldFillZeroedResponses)
@@ -376,11 +342,10 @@ Y_UNIT_TEST_SUITE(TSplitRequestTest)
         resp2.SetAllZeroes(false);
         resp2.MutableBlocks()->AddBuffers(TString(blockSize, '1'));
 
-        TVector<TMergeResponsesContext<TEvService::TReadBlocksMethod>>
-            responses{
-                {.Response = resp1, .BlocksCountRequested = 1},
-                {.Response = resp2, .BlocksCountRequested = 1},
-            };
+        TVector<TSplitReadBlocksResponse> responses{
+            {.Response = resp1, .BlocksCountRequested = 1},
+            {.Response = resp2, .BlocksCountRequested = 1},
+        };
 
         auto mergedResponse = MergeReadResponses(responses, blockSize);
 
@@ -405,11 +370,10 @@ Y_UNIT_TEST_SUITE(TSplitRequestTest)
         resp2.ClearBlocks();
         resp2.SetAllZeroes(true);
 
-        TVector<TMergeResponsesContext<TEvService::TReadBlocksMethod>>
-            responses{
-                {.Response = resp1, .BlocksCountRequested = 1},
-                {.Response = resp2, .BlocksCountRequested = 1},
-            };
+        TVector<TSplitReadBlocksResponse> responses{
+            {.Response = resp1, .BlocksCountRequested = 1},
+            {.Response = resp2, .BlocksCountRequested = 1},
+        };
 
         auto mergedResponse = MergeReadResponses(responses, blockSize);
 
@@ -428,11 +392,10 @@ Y_UNIT_TEST_SUITE(TSplitRequestTest)
         resp2.ClearBlocks();
         resp2.SetAllZeroes(true);
 
-        TVector<TMergeResponsesContext<TEvService::TReadBlocksMethod>>
-            responses{
-                {.Response = resp1, .BlocksCountRequested = 1},
-                {.Response = resp2, .BlocksCountRequested = 1},
-            };
+        TVector<TSplitReadBlocksResponse> responses{
+            {.Response = resp1, .BlocksCountRequested = 1},
+            {.Response = resp2, .BlocksCountRequested = 1},
+        };
 
         auto mergedResponse = MergeReadResponses(responses, blockSize);
 
