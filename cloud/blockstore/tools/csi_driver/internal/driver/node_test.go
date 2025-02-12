@@ -531,7 +531,7 @@ func TestPublishUnpublishDiskForInfrakuber(t *testing.T) {
 	mockCallIsMountPoint := mounter.On("IsMountPoint", stagingTargetPath).Return(false, nil)
 
 	mounter.On("FormatAndMount", nbdDeviceFile, stagingTargetPath, "ext4",
-		[]string{"grpid", "errors=remount-ro"}).Return(nil)
+		[]string{"grpid", "discard", "errors=remount-ro"}).Return(nil)
 
 	_, err = nodeService.NodeStageVolume(ctx, &csi.NodeStageVolumeRequest{
 		VolumeId:          diskId,
