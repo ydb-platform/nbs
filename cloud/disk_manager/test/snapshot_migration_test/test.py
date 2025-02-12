@@ -38,15 +38,9 @@ class _MigrationTestSetup:
         blocks_count: int
         id: str
 
-    def __init__(
-        self,
-        use_s3_as_src: bool = False,
-        use_s3_as_dst: bool = False,
-        use_src_s3_for_dst: bool = False,
-    ):
+    def __init__(self, use_s3_as_src: bool = False, use_s3_as_dst: bool = False):
         self.use_s3_as_src = use_s3_as_src
         self.use_s3_as_dst = use_s3_as_dst
-        self.use_src_s3_for_dst = use_src_s3_for_dst
 
         certs_dir = Path(yatest_common.source_path("cloud/blockstore/tests/certs"))
         self._root_certs_file = certs_dir / "server.crt"
@@ -105,11 +99,8 @@ class _MigrationTestSetup:
             self.src_s3.start()
 
         if self.use_s3_as_dst:
-            if not self.use_src_s3_for_dst:
-                self.dst_s3 = S3Launcher()
-                self.dst_s3.start()
-            else:
-                self.dst_s3 = self.src_s3
+            self.dst_s3 = S3Launcher()
+            self.dst_s3.start()
 
         self.common_parameters = dict(
             hostname="localhost0",
@@ -311,17 +302,20 @@ class _MigrationTestSetup:
 
 
 @pytest.mark.parametrize(
-    "use_s3_as_src, use_s3_as_dst, use_src_s3_for_dst",
+    "use_s3_as_src, use_s3_as_dst",
     [
-        (True, False, False),
-        (False, True, False),
-        (True, True, False),
-        (True, True, True),
-        (False, False, False),
+        (True, False),
+        (False, True),
+        (True, True),
+        (True, True),
+        (False, False),
     ]
 )
-def test_disk_manager_dataplane_migration(use_s3_as_src, use_s3_as_dst, use_src_s3_for_dst):
-    with _MigrationTestSetup() as setup:
+def test_disk_manager_dataplane_migration(use_s3_as_src, use_s3_as_dst):
+    with _MigrationTestSetup(
+        use_s3_as_src=use_s3_as_src,
+        use_s3_as_dst=use_s3_as_dst,
+    ) as setup:
         disk_size = 1024 * 1024 * 1024
         initial_disk_id = "example"
         snapshot_id = "snapshot1"
