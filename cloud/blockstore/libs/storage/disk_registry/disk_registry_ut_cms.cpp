@@ -1440,6 +1440,41 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
                 response->GetStatus());
         }
     }
+
+    Y_UNIT_TEST_F(
+        ShouldNotScheduleSwitchAgentDiskToReadOnlyAfterAgentRemoving,
+        TFixture)
+    {
+        const auto agent = CreateAgentConfig("agent-1", {});
+
+        SetUpRuntime(TTestRuntimeBuilder().WithAgents({agent}).Build());
+
+        DiskRegistry->SetWritableState(true);
+
+        DiskRegistry->UpdateConfig(CreateRegistryConfig(0, {agent}));
+
+        RegisterAndWaitForAgents(*Runtime, {agent});
+
+        {
+            DiskRegistry->ChangeAgentState(
+                "agent-1",
+                NProto::AGENT_STATE_UNAVAILABLE);
+        }
+
+        // Check that no scheduled switch events.
+        auto scheduledEvents = Runtime->CaptureScheduledEvents();
+        for (auto event: scheduledEvents) {
+            UNIT_ASSERT(
+                event.Event->GetTypeRewrite() !=
+                TEvDiskRegistryPrivate::EvSwitchAgentDisksToReadOnlyRequest);
+        }
+
+        // Sending Disable agent because it checks that agent exists, and if it
+        // is not true, response with E_NOT_FOUND.
+        DiskRegistry->SendDisableAgentRequest("agent-1");
+        auto response = DiskRegistry->RecvDisableAgentResponse();
+        UNIT_ASSERT_VALUES_EQUAL(E_NOT_FOUND, response->GetError().GetCode());
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

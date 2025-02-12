@@ -546,6 +546,10 @@ void TDiskRegistryActor::ScheduleSwitchAgentDisksToReadOnly(
     const NActors::TActorContext& ctx,
     TString agentId)
 {
+    // Switching disk of unknown agent will result in error.
+    if (State->GetAgentState(agentId).Empty()) {
+        return;
+    }
     auto timeout = Config->GetNonReplicatedDiskSwitchToReadOnlyTimeout();
 
     auto deadline = timeout.ToDeadLine(ctx.Now());
