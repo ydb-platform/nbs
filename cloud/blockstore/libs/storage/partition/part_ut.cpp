@@ -11541,6 +11541,55 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         // checking that drain-related counters are in a consistent state
         partition.Drain();
     }
+
+    Y_UNIT_TEST(ShouldReturnBlobsIdsOfFailedBlobsDuringReadIfRequested)
+    {
+        auto config = DefaultConfig();
+        config.SetWriteBlobThreshold(100_KB);
+        auto runtime = PrepareTestActorRuntime(
+            config,
+            MaxPartitionBlocksCount
+        );
+
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+
+        {
+            const auto blockRange = TBlockRange32::WithLength(
+                0,
+                512);
+            partition.WriteBlocks(blockRange, 1);
+        }
+
+        {
+            const auto blockRange = TBlockRange32::WithLength(
+                512,
+                512);
+            partition.WriteBlocks(blockRange, 1);
+        }
+
+        runtime->SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+            switch (event->GetTypeRewrite()) {
+                case TEvPartitionCommonPrivate::TEvReadBlobRequest: {
+                    return TTestActorRuntime::EEventAction::DROP;
+                }
+            }
+            return TTestActorRuntime::DefaultObserverFunc(event);
+        });
+
+
+        const auto blockRange = TBlockRange32::WithLength(
+            0,
+            1024);
+        auto request = partition.CreateReadBlocksRequest(blockRange, {});
+        request->Record.SetRangeCheck(true);
+
+        partition.SendToPipe(std::move(request));
+
+        auto response = partition.RecvReadBlocksResponse();
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
+        UNIT_ASSERT_VALUES_EQUAL(response->Record.GetFailedBlobs().size(), 2);
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage::NPartition

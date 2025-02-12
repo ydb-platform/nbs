@@ -279,7 +279,8 @@ private:
         ui64 commitId,
         const TBlockRange32& readRange,
         IReadBlocksHandlerPtr readHandler,
-        bool replyLocal);
+        bool replyLocal,
+        bool isCheckRange);
 
     void DescribeBlocks(
         const NActors::TActorContext& ctx,
