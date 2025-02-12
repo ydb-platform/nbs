@@ -35,10 +35,11 @@ public:
     void Bootstrap(const TActorContext& ctx);
 
 private:
-    void ReplyAndDie(const TActorContext& ctx, NProto::TError error);
     void ReplyAndDie(
         const TActorContext& ctx,
-        NProto::TCheckRangeResponse response);
+        NProto::TError error,
+        NPrivateProto::TCheckRangeResponse response);
+    void ReplyAndDie(const TActorContext& ctx, NProto::TError error);
 
 private:
     STFUNC(StateWork);
@@ -114,17 +115,40 @@ void TCheckRangeActor::ReplyAndDie(
     Die(ctx);
 }
 
+void TCheckRangeActor::ReplyAndDie(
+    const TActorContext& ctx,
+    NProto::TError error,
+    NPrivateProto::TCheckRangeResponse response)
+{
+    auto msg = std::make_unique<TEvService::TEvExecuteActionResponse>(error);
+
+    google::protobuf::util::MessageToJsonString(
+        response,
+        msg->Record.MutableOutput());
+
+    LWTRACK(
+        ResponseSent_Service,
+        RequestInfo->CallContext->LWOrbit,
+        "ExecuteAction_CheckRange",
+        RequestInfo->CallContext->RequestId);
+
+    NCloud::Reply(ctx, *RequestInfo, std::move(msg));
+    Die(ctx);
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 void TCheckRangeActor::HandleCheckRangeResponse(
     const TEvService::TEvCheckRangeResponse::TPtr& ev,
     const TActorContext& ctx)
 {
-    if (ev->Get()->Record.HasError()) {
-        return ReplyAndDie(ctx, std::move(ev->Get()->Record.GetError()));
-    } else {
-        ReplyAndDie(ctx, std::move(ev->Get()->Record.GetStatus()));
-    }
+    auto response = NPrivateProto::TCheckRangeResponse();
+    response.MutableStatus()->CopyFrom(ev->Get()->Record.GetStatus());
+
+    return ReplyAndDie(
+        ctx,
+        std::move(ev->Get()->Record.GetError()),
+        std::move(response));
 }
 
 ////////////////////////////////////////////////////////////////////////////////
