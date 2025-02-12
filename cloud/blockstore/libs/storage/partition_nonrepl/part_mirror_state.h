@@ -71,7 +71,10 @@ public:
 
     void SetReadReplicaIndex(ui32 readReplicaIndex)
     {
-        ReadReplicaIndex = readReplicaIndex % ReplicaActors.size();
+        if (readReplicaIndex < 0 || readReplicaIndex >= ReplicaActors.size()) {
+            return;
+        }
+        ReadReplicaIndex = readReplicaIndex;
     }
 
     [[nodiscard]] NProto::TError Validate();
