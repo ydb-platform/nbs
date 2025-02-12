@@ -359,14 +359,41 @@ void TServiceActor::HandleAddTags(
     auto* msg = ev->Get();
 
     auto requestInfo = CreateRequestInfo(
-        SelfId(),
-        0,  // cookie
+        ev->Sender,
+        ev->Cookie,
         MakeIntrusive<TCallContext>());
 
     NPrivateProto::TModifyTagsRequest modifyTagsRequest;
     modifyTagsRequest.SetDiskId(msg->DiskId);
     for (const auto& tag: msg->Tags) {
         modifyTagsRequest.AddTagsToAdd(tag);
+    }
+
+    TString input;
+    google::protobuf::util::MessageToJsonString(modifyTagsRequest, &input);
+
+    NCloud::Register(
+        ctx,
+        std::make_unique<TModifyTagsActionActor>(
+            std::move(requestInfo),
+            std::move(input)));
+}
+
+void TServiceActor::HandleRemoveTags(
+    const TEvService::TEvRemoveTagsRequest::TPtr& ev,
+    const NActors::TActorContext& ctx)
+{
+    auto* msg = ev->Get();
+
+    auto requestInfo = CreateRequestInfo(
+        ev->Sender,
+        ev->Cookie,
+        MakeIntrusive<TCallContext>());
+
+    NPrivateProto::TModifyTagsRequest modifyTagsRequest;
+    modifyTagsRequest.SetDiskId(msg->DiskId);
+    for (const auto& tag: msg->Tags) {
+        modifyTagsRequest.AddTagsToRemove(tag);
     }
 
     TString input;

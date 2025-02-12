@@ -12,6 +12,7 @@ SRCS(
     create_placement_group.cpp
     create_volume.cpp
     create_volume_from_device.cpp
+    create_volume_link.cpp
     delete_checkpoint.cpp
     describe_disk_registry_config.cpp
     describe_endpoint.cpp
@@ -20,6 +21,7 @@ SRCS(
     describe_volume_model.cpp
     destroy_placement_group.cpp
     destroy_volume.cpp
+    destroy_volume_link.cpp
     discover_instances.cpp
     endpoint_proxy.cpp
     execute_action.cpp
