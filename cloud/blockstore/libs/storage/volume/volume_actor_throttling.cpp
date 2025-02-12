@@ -234,6 +234,7 @@ GENERATE_IMPL(GetChangedBlocks,      TEvService)
 GENERATE_IMPL(GetCheckpointStatus,   TEvService)
 GENERATE_IMPL(ReadBlocksLocal,       TEvService)
 GENERATE_IMPL(WriteBlocksLocal,      TEvService)
+GENERATE_IMPL(CheckRange,            TEvService)
 
 GENERATE_IMPL(DescribeBlocks,           TEvVolume)
 GENERATE_IMPL(GetUsedBlocks,            TEvVolume)

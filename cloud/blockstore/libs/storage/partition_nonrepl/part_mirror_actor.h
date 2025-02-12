@@ -185,11 +185,18 @@ private:
         TBlockRange64 blockRange,
         const TStringBuf& methodName);
 
+    NActors::IActorPtr CreateCheckRangeActor(
+        NActors::TActorId tablet,
+        ui64 startIndex,
+        ui64 blocksCount,
+        TEvService::TEvCheckRangeRequest::TPtr ev);
+
     BLOCKSTORE_IMPLEMENT_REQUEST(ReadBlocks, TEvService);
     BLOCKSTORE_IMPLEMENT_REQUEST(WriteBlocks, TEvService);
     BLOCKSTORE_IMPLEMENT_REQUEST(ReadBlocksLocal, TEvService);
     BLOCKSTORE_IMPLEMENT_REQUEST(WriteBlocksLocal, TEvService);
     BLOCKSTORE_IMPLEMENT_REQUEST(ZeroBlocks, TEvService);
+    BLOCKSTORE_IMPLEMENT_REQUEST(CheckRange, TEvService);
     BLOCKSTORE_IMPLEMENT_REQUEST(Drain, NPartition::TEvPartition);
 
     BLOCKSTORE_IMPLEMENT_REQUEST(DescribeBlocks, TEvVolume);

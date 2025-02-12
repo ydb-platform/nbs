@@ -51,6 +51,7 @@ namespace NCloud::NBlockStore::NStorage {
     xxx(GetCheckpointStatus,  __VA_ARGS__)                                     \
     xxx(ReadBlocksLocal,      __VA_ARGS__)                                     \
     xxx(WriteBlocksLocal,     __VA_ARGS__)                                     \
+    xxx(CheckRange,           __VA_ARGS__)                                     \
 // BLOCKSTORE_VOLUME_REQUESTS_FWD_SERVICE
 
 // responses which are forwarded back via volume (volume has handlers for these)
@@ -79,6 +80,7 @@ namespace NCloud::NBlockStore::NStorage {
     xxx(GetCheckpointStatus,  __VA_ARGS__)                                     \
     xxx(ReadBlocksLocal,      __VA_ARGS__)                                     \
     xxx(WriteBlocksLocal,     __VA_ARGS__)                                     \
+    xxx(CheckRange,           __VA_ARGS__)                                     \
 // BLOCKSTORE_VOLUME_HANDLED_RESPONSES_FWD_SERVICE
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -334,6 +336,9 @@ struct TEvVolume
 
         EvGracefulShutdownRequest = EvBegin + 60,
         EvGracefulShutdownResponse = EvBegin + 61,
+
+        EvCheckRangeRequest = EvBegin + 62,
+        EvCheckRangeResponse = EvBegin + 63,
 
         EvEnd
     };

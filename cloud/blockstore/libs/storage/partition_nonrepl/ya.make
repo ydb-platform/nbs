@@ -12,6 +12,7 @@ SRCS(
 
     part_mirror.cpp
     part_mirror_actor.cpp
+    part_mirror_actor_checkrange.cpp
     part_mirror_actor_get_device_for_range.cpp
     part_mirror_actor_mirror.cpp
     part_mirror_actor_readblocks.cpp
@@ -30,6 +31,7 @@ SRCS(
 
     part_nonrepl.cpp
     part_nonrepl_actor.cpp
+    part_nonrepl_actor_checkrange.cpp
     part_nonrepl_actor_base_request.cpp
     part_nonrepl_actor_checksumblocks.cpp
     part_nonrepl_actor_readblocks.cpp

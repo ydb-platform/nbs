@@ -3,6 +3,7 @@ syntax = "proto3";
 package NCloud.NBlockStore.NPrivateProto;
 
 import "cloud/blockstore/private/api/protos/blob.proto";
+import "cloud/storage/core/protos/error.proto";
 
 option go_package = "github.com/ydb-platform/nbs/cloud/blockstore/private/api/protos";
 
@@ -293,4 +294,24 @@ message TFinishFillDiskRequest
 
 message TFinishFillDiskResponse
 {
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// CheckRange request/response.
+
+message TCheckRangeRequest
+{
+    string DiskId = 1;
+
+    // First block index.
+    uint32 StartIndex = 2;
+
+    // Number of blobs per batch.
+    uint32 BlocksCount = 3;
+}
+
+message TCheckRangeResponse
+{
+    // Status of ReadBlocks operation.
+    NCloud.NProto.TError Status = 1;
 }
