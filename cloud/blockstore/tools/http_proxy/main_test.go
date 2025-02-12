@@ -521,6 +521,26 @@ func (s *mockBlockstoreServer) QueryAgentsInfo(
 	return res, args.Error(1)
 }
 
+func (s *mockBlockstoreServer) CreateVolumeLink(
+	ctx context.Context,
+	req *blockstore_protos.TCreateVolumeLinkRequest,
+) (*blockstore_protos.TCreateVolumeLinkResponse, error) {
+
+	args := s.Called(ctx, req)
+	res, _ := args.Get(0).(*blockstore_protos.TCreateVolumeLinkResponse)
+	return res, args.Error(1)
+}
+
+func (s *mockBlockstoreServer) DestroyVolumeLink(
+	ctx context.Context,
+	req *blockstore_protos.TDestroyVolumeLinkRequest,
+) (*blockstore_protos.TDestroyVolumeLinkResponse, error) {
+
+	args := s.Called(ctx, req)
+	res, _ := args.Get(0).(*blockstore_protos.TDestroyVolumeLinkResponse)
+	return res, args.Error(1)
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 func runMockBlockstoreServer(
