@@ -150,8 +150,16 @@ class _MigrationTestSetup:
         try:
             DiskManagerLauncher.stop()
         except ProcessLookupError as e:
+            # stop() tries to terminate all disk-manager processes created with DiskManagerLauncher
+            # and raises ProcessLookupError, since one of processes is already terminated.
+            # Compare pids list for terminated process pid to ensure we do not miss process crashes.
             pids = getattr(e, "pids", [])
             if len(pids) != 1:
+                _logger.error(
+                    "Unexpected %s occurred while stopping Disk-Manager pids: '%s'",
+                    e.__class__.__name__,
+                    ",".join(pids)
+                )
                 raise e
             [pid] = pids
             if self.initial_dpl_pid != pid:
