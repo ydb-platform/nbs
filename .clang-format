@@ -269,6 +269,7 @@ StatementMacros:
   - Q_UNUSED
   - QT_REQUIRE_VERSION
   - HFunc
+  - xxx
 TabWidth:        8
 UseTab:          Never
 WhitespaceSensitiveMacros:
@@ -278,4 +279,3 @@ WhitespaceSensitiveMacros:
   - PP_STRINGIZE
   - STRINGIZE
 ...
-
