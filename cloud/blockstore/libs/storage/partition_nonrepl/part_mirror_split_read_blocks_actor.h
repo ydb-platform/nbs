@@ -51,11 +51,9 @@ public:
     {
         Responses.resize(Requests.size());
         for (size_t i = 0; i < Requests.size(); ++i) {
-            Responses[i].BlocksCountRequested = TBlockRange64::WithLength(
-                Requests[i].GetStartIndex(),
-                Requests[i].GetBlocksCount());
+            Responses[i].BlocksCountRequested = Requests[i].GetBlocksCount();
             auto req = std::make_unique<typename TMethod::TRequest>();
-            req->Record = std::move(Requests[i].Request);
+            req->Record = std::move(Requests[i]);
             NCloud::Send(
                 ctx,
                 ParentActorId,

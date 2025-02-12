@@ -29,8 +29,7 @@ struct TSplitReadBlocksResponse
 };
 
 auto MergeReadResponses(
-    std::span<TSplitReadBlocksResponse>
-        responsesToMerge,
+    std::span<TSplitReadBlocksResponse> responsesToMerge,
     size_t blockSize) -> NProto::TReadBlocksResponse;
 
 }   // namespace NCloud::NBlockStore::NStorage::NSplitRequest
