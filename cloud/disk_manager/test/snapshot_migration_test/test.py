@@ -304,7 +304,7 @@ def test_disk_manager_dataplane_migration(use_s3_as_src, use_s3_as_dst):
         use_s3_as_src=use_s3_as_src,
         use_s3_as_dst=use_s3_as_dst,
     ) as setup:
-        disk_size = 1024 * 1024 * 1024
+        disk_size = 16 * 1024 * 1024
         initial_disk_id = "example"
         snapshot_id = "snapshot1"
         setup.create_new_disk(initial_disk_id, disk_size)
