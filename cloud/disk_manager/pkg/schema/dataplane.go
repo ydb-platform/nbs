@@ -75,7 +75,7 @@ func initDataplane(
 		return err
 	}
 
-	migrationDstS3Config := snapshotConfig.GetPersistenceConfig().GetS3Config()
+	migrationDstS3Config := migrationDstPersistenceConfig.GetS3Config()
 	var migrationDstS3 *persistence.S3Client
 	if migrationDstS3Config != nil {
 		migrationDstS3, err = persistence.NewS3ClientFromConfig(migrationDstS3Config, metrics.NewEmptyRegistry())
