@@ -617,7 +617,7 @@ func TestSnapshotServiceDeleteIncrementalSnapshotWhileCreating(t *testing.T) {
 		})
 		require.NoError(t, err)
 
-		// In case of snapshot creation failure baseSnapshot may be already
+		// In case of snapshot1 creation failure base snapshot may be already
 		// deleted from incremental table and then checkpoint should not exist
 		// on the disk. Otherwise checkpoint should exist.
 		if len(snapshotID) > 0 {
@@ -770,7 +770,7 @@ func TestSnapshotServiceDeleteSnapshotWhenCreationIsInFlight(t *testing.T) {
 
 	err = internal_client.WaitOperation(ctx, client, createOp.Id)
 
-	// In case snapshot creation ends up successfuly,
+	// If snapshot creation ends up successfuly,
 	// there should be a checkpoint without data.
 	if err == nil {
 		testcommon.RequireCheckpoint(t, ctx, diskID, snapshotID)
