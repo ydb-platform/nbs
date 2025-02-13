@@ -281,7 +281,7 @@ func (s *legacyStorage) GetSnapshotMeta(
 func (s *legacyStorage) GetIncremental(
 	ctx context.Context,
 	disk *types.Disk,
-) (string, string, error) {
+) (snapshotID string, checkpointID string, err error {
 
 	return "", "", task_errors.NewNonRetriableErrorf("not implemented")
 }

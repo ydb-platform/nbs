@@ -142,5 +142,5 @@ type Storage interface {
 	GetIncremental(
 		ctx context.Context,
 		disk *types.Disk,
-	) (string, string, error)
+	) (snapshotID string, checkpointID string, err error)
 }
