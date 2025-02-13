@@ -486,8 +486,10 @@ void TMirrorPartitionActor::ReadBlocks(
         DescribeRange(blockRange).c_str(),
         replicaActorIds.size());
 
-    const auto requestIdentityKey = ev->Cookie;
-    RequestsInProgress.AddReadRequest(requestIdentityKey, blockRange);
+    const auto requestIdentityKey = GetNextRequestIdentifier();
+    RequestsInProgress.AddReadRequest(
+        requestIdentityKey,
+        {blockRange, ev->Cookie});
 
     NCloud::Register<TRequestActor<TMethod>>(
         ctx,

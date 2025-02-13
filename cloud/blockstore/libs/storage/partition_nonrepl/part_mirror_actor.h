@@ -45,6 +45,12 @@ class TMirrorPartitionActor final
     : public NActors::TActorBootstrapped<TMirrorPartitionActor>
 {
 private:
+    struct TRequestCtx {
+        TBlockRange64 BlockRange;
+        ui64 Cookie = 0;
+    };
+
+private:
     const TStorageConfigPtr Config;
     const TDiagnosticsConfigPtr DiagnosticsConfig;
     const IProfileLogPtr ProfileLog;
@@ -62,7 +68,7 @@ private:
     TDuration CpuUsage;
 
     THashSet<ui64> DirtyReadRequestIds;
-    TRequestsInProgress<ui64, TBlockRange64> RequestsInProgress{
+    TRequestsInProgress<ui64, TRequestCtx> RequestsInProgress{
         EAllowedRequests::ReadWrite};
     TDrainActorCompanion DrainActorCompanion{
         RequestsInProgress,
@@ -84,6 +90,7 @@ private:
     bool ScrubbingRangeRescheduled  = false;
     bool ResyncRangeStarted = false;
     ui32 ChecksumMismatches = 0;
+    ui64 RequestIdentifierCounter = 0;
 
 public:
     TMirrorPartitionActor(
@@ -117,6 +124,7 @@ private:
         ui64 scrubbingRangeId);
     void StartResyncRange(const NActors::TActorContext& ctx);
     void AddTagForBufferCopying(const NActors::TActorContext& ctx);
+    ui64 GetNextRequestIdentifier();
 
 private:
     STFUNC(StateWork);

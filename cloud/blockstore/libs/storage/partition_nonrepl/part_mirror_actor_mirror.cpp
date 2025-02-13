@@ -21,20 +21,33 @@ void TMirrorPartitionActor::HandleWriteOrZeroCompleted(
     const TActorContext& ctx)
 {
     const auto requestIdentityKey = ev->Get()->RequestCounter;
-    TBlockRange64 range;
-    RequestsInProgress.ExtractRequest(requestIdentityKey, &range);
+    TRequestCtx reqCtx;
+    RequestsInProgress.ExtractRequest(requestIdentityKey, &reqCtx);
     DrainActorCompanion.ProcessDrainRequests(ctx);
+    auto [range, reqCookie] = reqCtx;
     for (const auto& [id, request]: RequestsInProgress.AllRequests()) {
-        if (range.Overlaps(request.Value)) {
+        if (range.Overlaps(request.Value.BlockRange)) {
             DirtyReadRequestIds.insert(id);
         }
     }
 
     if (ResyncActorId) {
-        ForwardRequestWithNondeliveryTracking(
-            ctx,
+        auto completion = std::make_unique<
+            TEvNonreplPartitionPrivate::TEvWriteOrZeroCompleted>(
+            reqCookie,
+            ev->Get()->TotalCycles,
+            ev->Get()->FollowerGotNonRetriableError);
+
+        auto undeliveredRequestActor = MakeUndeliveredHandlerServiceId();
+        auto newEv = std::make_unique<IEventHandle>(
             ResyncActorId,
-            *ev);
+            ev->Sender,
+            completion.release(),
+            ev->Flags | IEventHandle::FlagForwardOnNondelivery,
+            ev->Cookie,
+            &undeliveredRequestActor);
+
+        ctx.Send(std::move(newEv));
     }
 }
 
@@ -83,7 +96,7 @@ void TMirrorPartitionActor::MirrorRequest(
     const auto range = BuildRequestBlockRange(
         *ev->Get(),
         State.GetBlockSize());
-    const auto requestIdentityKey = ev->Cookie;
+    const auto requestIdentityKey = GetNextRequestIdentifier();
     if (GetScrubbingRange().Overlaps(range)) {
         if (ResyncRangeStarted) {
             auto response = std::make_unique<typename TMethod::TResponse>(
@@ -98,11 +111,11 @@ void TMirrorPartitionActor::MirrorRequest(
         WriteIntersectsWithScrubbing = true;
     }
     for (const auto& [id, request]: RequestsInProgress.AllRequests()) {
-        if (range.Overlaps(request.Value)) {
+        if (range.Overlaps(request.Value.BlockRange)) {
             DirtyReadRequestIds.insert(id);
         }
     }
-    RequestsInProgress.AddWriteRequest(requestIdentityKey, range);
+    RequestsInProgress.AddWriteRequest(requestIdentityKey, {range, ev->Cookie});
 
     NCloud::Register<TMirrorRequestActor<TMethod>>(
         ctx,
