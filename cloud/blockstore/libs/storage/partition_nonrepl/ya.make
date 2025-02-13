@@ -16,6 +16,7 @@ SRCS(
     part_mirror_actor_mirror.cpp
     part_mirror_actor_readblocks.cpp
     part_mirror_actor_stats.cpp
+    part_mirror_split_request_helpers.cpp
     part_mirror_state.cpp
 
     part_mirror_resync.cpp

@@ -283,6 +283,25 @@ public:
         return MakeError(code, std::move(message), flags);
     }
 
+    auto SplitBlockRangeByDevicesBorder(const TBlockRange64 blockRange)
+        -> TVector<TBlockRange64>
+    {
+        TVector<TBlockRange64> result;
+        VisitDeviceRequests(
+            blockRange,
+            [&](const ui32 i,
+                const TBlockRange64 requestRange,
+                const TBlockRange64 relativeRange)
+            {
+                Y_UNUSED(relativeRange);
+                Y_UNUSED(i);
+                result.emplace_back(requestRange);
+                return false;
+            });
+
+        return result;
+    }
+
 private:
     TBlockRange64 DeviceRange(ui32 i) const
     {
