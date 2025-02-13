@@ -59,7 +59,10 @@ func TestFacadeShouldSendErrorMetrics(t *testing.T) {
 
 	// All grpc counters are created after GRPC API is created,
 	// so we need to wait for GRPC API to start.
-	_, err = client.ListPlacementGroups(ctx, &disk_manager.ListPlacementGroupsRequest{ZoneId: "zone-a"})
+	_, err = client.ListPlacementGroups(
+		ctx,
+		&disk_manager.ListPlacementGroupsRequest{ZoneId: "zone-a"},
+	)
 	require.NoError(t, err)
 	errorsCount := testcommon.GetCounter(
 		t,
