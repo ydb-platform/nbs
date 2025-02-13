@@ -231,11 +231,11 @@ void TVolumeActor::UpdateLeakyBucketCounters(const TActorContext& ctx)
     const auto currentSpentBudgetSharePercentage =
         100.0 * tp.CalculateCurrentSpentBudgetShare(ctx.Now());
 
-    const auto currentRate = static_cast<ui64>(
+    const auto currentRate = static_cast<ui64>(round(
         Min((Config->GetCalculateSplittedUsedQuotaMetric()
                  ? usedIopsQuotaPercentage + usedBandwidthQuotaPercentage
                  : currentSpentBudgetSharePercentage),
-            100.0));
+            100.0)));
     simple.MaxUsedQuota.Set(Max(simple.MaxUsedQuota.Value, currentRate));
     cumulative.UsedQuota.Increment(currentRate);
 }
