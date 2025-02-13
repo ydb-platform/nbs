@@ -442,7 +442,7 @@ auto TMirrorPartitionActor::SelectReplicasToReadFrom(
         }
     }
 
-    // If the desired replica is available, the index will increase by one. If
+    // If required replica is available, the index will increase by one. If
     // not, the next replica in the list will be selected, and the index will
     // continue to increase.
     if (replicaIndex && State.GetReadReplicaIndex() != replicaIndex) {
