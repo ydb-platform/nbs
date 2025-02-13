@@ -2644,6 +2644,37 @@ auto TDiskRegistryState::CreateDiskPlacementInfo(
     };
 }
 
+TResultOrError<TDiskRegistryState::TAgentId>
+TDiskRegistryState::GetAgentIdSuitableForLocalDiskAllocationAfterCleanup(
+    const TVector<TString>& agentIds,
+    const TString& poolName,
+    const ui64 totalByteCount) const
+{
+    for (const auto& agentId: agentIds) {
+        auto [infos, error] = QueryAvailableStorage(
+            agentId,
+            poolName,
+            NProto::DEVICE_POOL_KIND_LOCAL);
+
+        if (HasError(error)) {
+            return {error};
+        }
+
+        auto totalSize = totalByteCount;
+        for (auto& chunks: infos) {
+            auto [size, count, free, dirty] = chunks;
+            Y_UNUSED(count);
+            auto chunksSize = (free + dirty) * size;
+            totalSize = totalSize < chunksSize ? 0UL : totalSize - chunksSize;
+            if (totalSize == 0UL) {
+                return {agentId};
+            }
+        }
+    }
+
+    return {""};
+}
+
 NProto::TError TDiskRegistryState::AllocateSimpleDisk(
     TInstant now,
     TDiskRegistryDatabase& db,
@@ -6676,7 +6707,7 @@ auto TDiskRegistryState::QueryAvailableStorage(
         return TVector<TAgentStorageInfo>{};
     }
 
-    THashMap<ui64, ui32> chunks;
+    THashMap<ui64, TAgentStorageInfo> chunks;
 
     for (const auto& device: agent->GetDevices()) {
         if (device.GetPoolKind() != poolKind) {
@@ -6687,6 +6718,9 @@ auto TDiskRegistryState::QueryAvailableStorage(
             continue;
         }
 
+        const ui64 au = GetAllocationUnit(device.GetPoolName());
+        auto& auChunks = chunks[au];
+        auChunks.ChunkSize = au;
         if (device.GetState() != NProto::DEVICE_STATE_ONLINE) {
             continue;
         }
@@ -6695,16 +6729,19 @@ auto TDiskRegistryState::QueryAvailableStorage(
             continue;
         }
 
-        const ui64 au = GetAllocationUnit(device.GetPoolName());
-
-        ++chunks[au];
+        if (DeviceList.IsDirtyDevice(device.GetDeviceUUID())) {
+            auChunks.DirtyChunks++;
+        } else if (!DeviceList.IsAllocatedDevice(device.GetDeviceUUID())) {
+            auChunks.FreeChunks++;
+        }
+        auChunks.ChunkCount++;
     }
 
     TVector<TAgentStorageInfo> infos;
     infos.reserve(chunks.size());
 
-    for (auto [size, count]: chunks) {
-        infos.push_back({ size, count });
+    for (auto [size, counts]: chunks) {
+        infos.push_back(counts);
     }
 
     return infos;
