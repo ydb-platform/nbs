@@ -8,7 +8,17 @@ SPLIT_FACTOR(4)
 SIZE(LARGE)
 TAG(ya:fat ya:force_sandbox ya:sandbox_coverage sb:ssd)
 
-INCLUDE(${ARCADIA_ROOT}/devtools/large_on_multi_slots.inc)
+IF (ARCADIA_SANDBOX_SINGLESLOT)
+    TAG(
+        ya:large_tests_on_single_slots
+        ya:large_tests_on_ya_make_2
+    )
+ELSE()
+    TAG(
+        ya:large_tests_on_multi_slots
+        ya:large_tests_on_ya_make_2
+    )
+ENDIF()
 
 REQUIREMENTS(
     cpu:8
