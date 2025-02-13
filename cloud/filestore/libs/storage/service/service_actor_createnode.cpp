@@ -112,6 +112,10 @@ void TLinkActor::CreateNodeInShard(const TActorContext& ctx)
     // Explicitly pick the shard name to reuse afterwards in the leader
     request->Record.SetName(ShardNodeName);
 
+    // The `CreateNodeInShard` is is sent to the shard, and thus there is no
+    // need to consider this shard as a standalone filesystem
+    request->Record.MutableHeaders()->ClearBehaveAsDirectoryTablet();
+
     LOG_DEBUG(
         ctx,
         TFileStoreComponents::SERVICE,
@@ -293,8 +297,7 @@ void TStorageServiceActor::HandleCreateNode(
 
     auto& headers = *msg->Record.MutableHeaders();
     headers.SetBehaveAsDirectoryTablet(
-        StorageConfig->GetDirectoryCreationInShardsEnabled() &&
-        !msg->Record.HasLink());
+        StorageConfig->GetDirectoryCreationInShardsEnabled());
     if (auto shardNo = ExtractShardNo(msg->Record.GetNodeId())) {
         // parent directory is managed by a shard
         auto [shardId, error] = SelectShard(
