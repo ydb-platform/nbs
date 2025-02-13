@@ -17,7 +17,8 @@ template <typename TMethod>
 TSession* TIndexTabletActor::AcceptRequest(
     const typename TMethod::TRequest::TPtr& ev,
     const NActors::TActorContext& ctx,
-    const std::function<NProto::TError(const typename TMethod::TRequest::ProtoRecordType&)>& validator,
+    const std::function<NProto::TError(
+        const typename TMethod::TRequest::ProtoRecordType&)>& validator,
     bool validateSession)
 {
     auto* msg = ev->Get();

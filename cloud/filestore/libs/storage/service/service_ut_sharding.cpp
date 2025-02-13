@@ -4573,9 +4573,13 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
 
         auto headers = service.InitSession(fsConfig.FsId, "client");
 
-        const auto dirId = service.CreateNode(
-            headers,
-            TCreateNodeArgs::Directory(RootNodeId, "dir"))->Record.GetNode().GetId();
+        const auto dirId =
+            service
+                .CreateNode(
+                    headers,
+                    TCreateNodeArgs::Directory(RootNodeId, "dir"))
+                ->Record.GetNode()
+                .GetId();
 
         const auto file1Id = service.CreateNode(
             headers,

@@ -112,8 +112,8 @@ void TLinkActor::CreateNodeInShard(const TActorContext& ctx)
     // Explicitly pick the shard name to reuse afterwards in the leader
     request->Record.SetName(ShardNodeName);
 
-    // The `CreateNodeInShard` is is sent to the shard, and thus there is no
-    // need to consider this shard as a standalone filesystem
+    // The `CreateNodeInShard` is sent to the shard, and thus there is no need
+    // to consider this shard as a standalone filesystem
     request->Record.MutableHeaders()->ClearBehaveAsDirectoryTablet();
 
     LOG_DEBUG(
