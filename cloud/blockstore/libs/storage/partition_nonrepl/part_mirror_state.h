@@ -64,11 +64,6 @@ public:
         return RWClientId;
     }
 
-    ui32 GetReadReplicaIndex() const
-    {
-        return ReadReplicaIndex;
-    }
-
     void SetReadReplicaIndex(ui32 readReplicaIndex)
     {
         if (readReplicaIndex < 0 || readReplicaIndex >= ReplicaActors.size()) {

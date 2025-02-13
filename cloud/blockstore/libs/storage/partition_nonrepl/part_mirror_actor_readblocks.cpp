@@ -443,7 +443,7 @@ auto TMirrorPartitionActor::SelectReplicasToReadFrom(
     // If required replica is available, the index will increase by one. If
     // not, the next replica in the list will be selected, and the index will
     // continue to increase.
-    if (replicaIndex && State.GetReadReplicaIndex() != replicaIndex) {
+    if (replicaIndex && *replicaActorIds.begin() != State.GetReplicaActors()[replicaIndex-1]) {
         return MakeError(
             E_REJECTED,
             TStringBuilder()
@@ -451,15 +451,22 @@ auto TMirrorPartitionActor::SelectReplicasToReadFrom(
                 << replicaIndex << " has not ready devices");
     }
 
-    if (replicaCount && replicaActorIds.size() != replicaCount){
+    if (replicaCount && replicaActorIds.size() != replicaCount) {
         TStringBuilder indexes;
-        for (ui32 i = 0; i < replicaCount; i++) {
-            if (!replicaActorIds.contains(State.GetReplicaActors()[i])) {
-                if (!indexes.empty()) {
-                    indexes << ", ";
-                }
-                indexes << i;
+
+        TSet<TActorId> unready_actorsId;
+        std::set_difference(
+            State.GetReplicaActors().begin(),
+            State.GetReplicaActors().end(),
+            replicaActorIds.begin(),
+            replicaActorIds.end(),
+            std::inserter(unready_actorsId, unready_actorsId.end()));
+
+        for (const auto& actorId: unready_actorsId) {
+            if (!indexes.empty()) {
+                indexes << ", ";
             }
+            indexes << actorId;
         }
         return MakeError(
             E_REJECTED,

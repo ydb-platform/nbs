@@ -37,17 +37,11 @@ void TMirrorPartitionResyncActor::ProcessReadRequestSyncPath(
         return;
     }
 
-    // Let's wait for resync, if we have request in certain replica
-    if (ev->Get()->Record.GetHeaders().GetReplicaIndex()) {
-        ProcessReadRequestSlowPath(
-            NActors::IEventHandlePtr(ev.Release()),
-            range,
-            ctx);
-        return;
-    }
-
-    // Wait for resync, if we have request for all replicas
-    if (ev->Get()->Record.GetHeaders().GetReplicaCount()) {
+    // Let's wait for resync, if we have request in certain replica or request
+    // for all replicas
+    if (ev->Get()->Record.GetHeaders().GetReplicaIndex() ||
+        ev->Get()->Record.GetHeaders().GetReplicaCount())
+    {
         ProcessReadRequestSlowPath(
             NActors::IEventHandlePtr(ev.Release()),
             range,
