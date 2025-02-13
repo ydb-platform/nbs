@@ -47,8 +47,20 @@ class TDeviceList
 
         // sorted by {PoolKind, BlockSize}
         TVector<NProto::TDeviceConfig> FreeDevices;
+        // sorted by {PoolKind, BlockSize}
+        TVector<NProto::TDeviceConfig> FreeDirtyDevices;
 
         ui64 TotalSize = 0;
+
+        TVector<NProto::TDeviceConfig> FreeDevicesIncludingDirty() const
+        {
+            TVector<NProto::TDeviceConfig> freeIncludingDirty = FreeDevices;
+            std::copy(
+                FreeDirtyDevices.begin(),
+                FreeDirtyDevices.end(),
+                std::back_inserter(freeIncludingDirty));
+            return freeIncludingDirty;
+        }
     };
 
     using TDeviceRange = std::tuple<
@@ -149,6 +161,10 @@ public:
         const TAllocationQuery& query);
 
     bool CanAllocateDevices(const TAllocationQuery& query);
+    bool CanAllocateWithDirtyDevices(const TAllocationQuery& query);
+    bool CanAllocateWithDirtyDevices(
+        const TAllocationQuery& query,
+        const TString& poolName);
 
     bool MarkDeviceAsClean(const TDeviceId& uuid);
     void MarkDeviceAsDirty(const TDeviceId& uuid);
@@ -171,14 +187,23 @@ public:
     void ForgetDevice(const TString& id);
 
 private:
+    std::pair<TVector<TDeviceRange>, ui64> FindMatchingDeviceRanges(
+        const TAllocationQuery& query,
+        const TVector<NProto::TDeviceConfig>& nodeDevices,
+        ui64 totalSize,
+        const TNodeId& nodeId,
+        const TString& poolName,
+        const TString& rack);
     TVector<TDeviceRange> CollectDevices(
         const TAllocationQuery& query,
         const TString& poolName);
     TVector<TDeviceRange> CollectDevices(const TAllocationQuery& query);
     [[nodiscard]] TVector<TRack> SelectRacks(
         const TAllocationQuery& query,
-        const TString& poolName) const;
+        const TString& poolName,
+        bool withFreeDirty = false) const;
     void RemoveDeviceFromFreeList(const TDeviceId& id);
+    void RemoveDeviceFromFreeListAndPutToFreeDirty(const TDeviceId& id);
     void UpdateInAllDevices(
         const TDeviceId& id,
         const NProto::TDeviceConfig& device);
