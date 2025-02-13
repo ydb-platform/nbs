@@ -1,4 +1,4 @@
-name: Prepare VM for build (used only in act)
+name: Prepare VM for build (used only in act or on github runners)
 description: Install required packages
 runs:
   using: composite
@@ -14,8 +14,8 @@ runs:
         sudo pip install https://github.com/librarian/python-sdk/releases/download/v0.1.1/nebiusai-0.1.1-py3-none-any.whl
         # shellcheck disable=SC2102
         sudo pip3 install pytest pytest-timeout pytest-xdist setproctitle grpcio grpcio-tools \
-             PyHamcrest tornado xmltodict pyarrow boto3 psutil yandexcloud==0.330.0 PyGithub==2.5.0 pyinstaller \
-             cryptography packaging six pyyaml rapidgzip pyOpenSSL typing-extensions==4.10.0
+             PyHamcrest tornado xmltodict pyarrow boto3 psutil PyGithub==2.5.0 pyinstaller \
+             cryptography==41.0.7 protobuf==4.25.6 packaging six pyyaml rapidgzip pyOpenSSL typing-extensions==4.10.0
     - name: add user github to kvm group if exists
       shell: bash
       run: |
