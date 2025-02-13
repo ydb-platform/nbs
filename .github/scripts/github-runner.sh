@@ -69,9 +69,9 @@ xmltodict
 pyarrow
 boto3
 psutil
-yandexcloud==0.330.0
 PyGithub==2.5.0
-cryptography
+cryptography==41.0.7
+protobuf==4.25.6
 pyOpenSSL==24.2.1
 packaging
 rapidgzip
