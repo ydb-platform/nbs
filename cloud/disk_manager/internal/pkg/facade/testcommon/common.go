@@ -367,7 +367,7 @@ func RequireCheckpointsDoNotExist(
 	require.Empty(t, checkpoints)
 }
 
-func WaitForCheckpointsAreEmpty(
+func WaitForCheckpointsDoNotExist(
 	t *testing.T,
 	ctx context.Context,
 	diskID string,
@@ -385,7 +385,7 @@ func WaitForCheckpointsAreEmpty(
 
 		logging.Warn(
 			ctx,
-			"waitForCheckpointsAreEmpty proceeding to next iteration",
+			"WaitForCheckpointsDoNotExist proceeding to next iteration",
 		)
 
 		<-time.After(100 * time.Millisecond)

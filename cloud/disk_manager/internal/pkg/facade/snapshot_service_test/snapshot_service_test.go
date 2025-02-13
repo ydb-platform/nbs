@@ -171,7 +171,7 @@ func TestSnapshotServiceCancelCreateSnapshotFromDisk(t *testing.T) {
 
 	// Should wait here because checkpoint is deleted on operation cancel (and
 	// exact time of this event is unknown).
-	testcommon.WaitForCheckpointsAreEmpty(t, ctx, diskID)
+	testcommon.WaitForCheckpointsDoNotExist(t, ctx, diskID)
 
 	testcommon.CheckConsistency(t, ctx)
 }
@@ -605,6 +605,9 @@ func TestSnapshotServiceDeleteIncrementalSnapshotWhileCreating(t *testing.T) {
 	err = internal_client.WaitOperation(ctx, client, deleteOperation.Id)
 	require.NoError(t, err)
 
+	// In case of successful snapshot1 creation, snapshot1 should be deleted
+	// and checkpoint should be deleted too.
+	// Otherwise we should check incremental table.
 	if creationErr == nil {
 		testcommon.RequireCheckpointsDoNotExist(t, ctx, diskID)
 	} else {
@@ -614,8 +617,9 @@ func TestSnapshotServiceDeleteIncrementalSnapshotWhileCreating(t *testing.T) {
 		})
 		require.NoError(t, err)
 
-		// If there is a record about this disk left in incrementality table,
-		// checkpoint that corresponds to base snapshot should not be deleted.
+		// In case of snapshot creation failure baseSnapshot may be already
+		// deleted from incremental table and then checkpoint should not exist
+		// on the disk. Otherwise checkpoint should exist.
 		if len(snapshotID) > 0 {
 			testcommon.RequireCheckpoint(t, ctx, diskID, baseSnapshotID)
 		} else {
@@ -764,12 +768,16 @@ func TestSnapshotServiceDeleteSnapshotWhenCreationIsInFlight(t *testing.T) {
 	err = internal_client.WaitOperation(ctx, client, operation.Id)
 	require.NoError(t, err)
 
-	createErr := internal_client.WaitOperation(ctx, client, createOp.Id)
+	err = internal_client.WaitOperation(ctx, client, createOp.Id)
 
-	if createErr != nil {
-		// Should wait here because checkpoint is deleted on |createOp| operation
-		// cancel (and exact time of this event is unknown).
-		testcommon.WaitForCheckpointsAreEmpty(t, ctx, diskID)
+	// In case snapshot creation ends up successfuly,
+	// there should be a checkpoint without data.
+	if err == nil {
+		testcommon.RequireCheckpoint(t, ctx, diskID, snapshotID)
+	} else {
+		// Should wait here because checkpoint is deleted on |createOp|
+		// operation cancel (and exact time of this event is unknown).
+		testcommon.WaitForCheckpointsDoNotExist(t, ctx, diskID)
 	}
 
 	testcommon.CheckConsistency(t, ctx)
