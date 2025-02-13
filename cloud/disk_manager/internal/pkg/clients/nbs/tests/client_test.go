@@ -1488,7 +1488,7 @@ func TestGetChangedBlocksForLightCheckpoints(t *testing.T) {
 	err = client.DeleteCheckpoint(ctx, diskID, "checkpoint_3")
 	require.NoError(t, err)
 
-	err = client.Delete(ctx, diskID)
+	err = client.DeleteSync(ctx, diskID)
 	require.NoError(t, err)
 }
 
@@ -1608,7 +1608,7 @@ func TestBackupDiskRegistryState(t *testing.T) {
 	agentID = backup.GetAgentIDByDeviceUUID("nonExistingDeviceID")
 	require.Empty(t, agentID)
 
-	err = client.Delete(ctx, diskID)
+	err = client.DeleteSync(ctx, diskID)
 	require.NoError(t, err)
 }
 
@@ -1651,7 +1651,6 @@ func TestDiskRegistryDisableDevices(t *testing.T) {
 	)
 	require.NoError(t, err)
 	require.NotNil(t, session)
-	defer session.Close(ctx)
 
 	data := make([]byte, 4096)
 	rand.Read(data)
@@ -1665,7 +1664,11 @@ func TestDiskRegistryDisableDevices(t *testing.T) {
 
 	err = client.ChangeDeviceStateToOnline(ctx, deviceUUIDs[0], t.Name())
 	require.NoError(t, err)
-	err = client.Delete(ctx, diskID)
+
+	// Need to close session before disk deletion. Otherwise, DeleteSync will
+	// receive E_INVALID_SESSION errors.
+	session.Close(ctx)
+	err = client.DeleteSync(ctx, diskID)
 	require.NoError(t, err)
 }
 
@@ -1712,7 +1715,7 @@ func TestDiskRegistryFindDevicesOfShadowDisk(t *testing.T) {
 
 	err = client.DeleteCheckpoint(ctx, diskID, checkpointID)
 	require.NoError(t, err)
-	err = client.Delete(ctx, diskID)
+	err = client.DeleteSync(ctx, diskID)
 	require.NoError(t, err)
 }
 
@@ -1803,8 +1806,9 @@ func TestEnsureCheckpointReady(t *testing.T) {
 
 	err = client.ChangeDeviceStateToOnline(ctx, shadowDiskDeviceUUID, t.Name())
 	require.NoError(t, err)
+
 	err = client.DeleteCheckpoint(ctx, diskID, checkpointID)
 	require.NoError(t, err)
-	err = client.Delete(ctx, diskID)
+	err = client.DeleteSync(ctx, diskID)
 	require.NoError(t, err)
 }
