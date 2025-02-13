@@ -1340,7 +1340,7 @@ func TestGetChangedBlocksForLightCheckpoints(t *testing.T) {
 
 	err := client.Create(ctx, nbs.CreateDiskParams{
 		ID:          diskID,
-		BlocksCount: 262144,
+		BlocksCount: 131072,
 		BlockSize:   blockSize,
 		Kind:        types.DiskKind_DISK_KIND_SSD_NONREPLICATED,
 	})
@@ -1584,7 +1584,7 @@ func TestBackupDiskRegistryState(t *testing.T) {
 
 	err := client.Create(ctx, nbs.CreateDiskParams{
 		ID:          diskID,
-		BlocksCount: 2 * 262144,
+		BlocksCount: 2 * 131072,
 		BlockSize:   4096,
 		Kind:        types.DiskKind_DISK_KIND_SSD_NONREPLICATED,
 	})
@@ -1620,7 +1620,7 @@ func TestDiskRegistryDisableDevices(t *testing.T) {
 
 	err := client.Create(ctx, nbs.CreateDiskParams{
 		ID:          diskID,
-		BlocksCount: 262144,
+		BlocksCount: 131072,
 		BlockSize:   4096,
 		Kind:        types.DiskKind_DISK_KIND_SSD_NONREPLICATED,
 	})
@@ -1677,7 +1677,7 @@ func TestDiskRegistryFindDevicesOfShadowDisk(t *testing.T) {
 
 	err := client.Create(ctx, nbs.CreateDiskParams{
 		ID:          diskID,
-		BlocksCount: 262144,
+		BlocksCount: 131072,
 		BlockSize:   4096,
 		Kind:        types.DiskKind_DISK_KIND_SSD_NONREPLICATED,
 	})
@@ -1724,7 +1724,7 @@ func TestEnsureCheckpointReady(t *testing.T) {
 
 	err := client.Create(ctx, nbs.CreateDiskParams{
 		ID:              diskID,
-		BlocksCount:     262144,
+		BlocksCount:     131072,
 		BlockSize:       4096,
 		Kind:            types.DiskKind_DISK_KIND_SSD_NONREPLICATED,
 		PartitionsCount: 2,
