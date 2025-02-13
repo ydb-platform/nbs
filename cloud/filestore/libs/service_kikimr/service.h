@@ -10,6 +10,8 @@ namespace NCloud::NFileStore {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-IFileStoreServicePtr CreateKikimrFileStore(IActorSystemPtr actorSystem);
+IFileStoreServicePtr CreateKikimrFileStore(
+    IActorSystemPtr actorSystem,
+    bool writeBackCacheEnabled);
 
 }   // namespace NCloud::NFileStore

@@ -10,6 +10,8 @@
 #include <contrib/ydb/library/actors/core/hfunc.h>
 #include <contrib/ydb/library/actors/core/log.h>
 
+#include <type_traits>
+
 namespace NCloud::NFileStore {
 
 using namespace NActors;
@@ -72,6 +74,8 @@ private:
     std::shared_ptr<TRequest> Request;
     TPromise<TResponse> Response;
 
+    NActors::TActorId WriteBackCache;
+
 public:
     static constexpr const char ActorName[] = "NCloud::NFileStore::TRequestActor<T>";
 
@@ -79,10 +83,12 @@ public:
     TRequestActor(
             TCallContextPtr callContext,
             std::shared_ptr<TRequest> request,
-            TPromise<TResponse> response)
+            TPromise<TResponse> response,
+            NActors::TActorId writeBackCache = {})
         : CallContext(std::move(callContext))
         , Request(std::move(request))
         , Response(std::move(response))
+        , WriteBackCache(std::move(writeBackCache))
     {}
 
     void Bootstrap(const TActorContext& ctx)
@@ -103,7 +109,11 @@ private:
             *Request
         );
 
-        NCloud::Send(ctx, MakeStorageServiceId(), std::move(request));
+        if (WriteBackCache) {
+            NCloud::Send(ctx, WriteBackCache, std::move(request));
+        } else {
+            NCloud::Send(ctx, MakeStorageServiceId(), std::move(request));
+        }
     }
 
     void HandleResponse(
@@ -246,16 +256,49 @@ private:
 
 ////////////////////////////////////////////////////////////////////////////////
 
+class TWriteBackCacheActor final
+    : public TActor<TWriteBackCacheActor>
+{
+public:
+    static constexpr const char ActorName[] =
+        "NCloud::NFileStore::TWriteBackCacheActor";
+
+public:
+    TWriteBackCacheActor()
+        : TActor<TThis>(&TThis::StateWork)
+    {}
+
+private:
+    STFUNC(StateWork)
+    {
+        switch (ev->GetTypeRewrite()) {
+            default:
+                HandleUnexpectedEvent(ev, TFileStoreComponents::SERVICE_PROXY);
+                break;
+        }
+    }
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
 class TKikimrFileStore final
     : public IFileStoreService
 {
 private:
     const IActorSystemPtr ActorSystem;
+    NActors::TActorId WriteBackCache;
 
 public:
-    TKikimrFileStore(IActorSystemPtr actorSystem)
+    TKikimrFileStore(
+            IActorSystemPtr actorSystem,
+            bool writeBackCacheEnabled)
         : ActorSystem(std::move(actorSystem))
-    {}
+    {
+        if (writeBackCacheEnabled) {
+            WriteBackCache = ActorSystem->Register(
+                std::make_unique<TWriteBackCacheActor>());
+        }
+    }
 
     void Start() override
     {}
@@ -305,6 +348,28 @@ private:
             std::move(response)));
     }
 
+    template<
+        typename T,
+        typename std::disjunction<
+            typename std::is_same<T, TCreateHandleMethod>::type,
+            typename std::is_same<T, TDestroyHandleMethod>::type,
+            typename std::is_same<T, TReadDataMethod>::type,
+            typename std::is_same<T, TWriteDataMethod>::type
+        >::type
+    >
+    void ExecuteRequest(
+        TCallContextPtr callContext,
+        std::shared_ptr<typename T::TRequest> request,
+        TPromise<typename T::TResponse> response)
+    {
+        ActorSystem->Register(
+            std::make_unique<TRequestActor<T>>(
+                std::move(callContext),
+                std::move(request),
+                std::move(response),
+                WriteBackCache));
+    }
+
     template<>
     void ExecuteRequest<TFsyncMethod>(
         TCallContextPtr callContext,
@@ -348,9 +413,13 @@ private:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-IFileStoreServicePtr CreateKikimrFileStore(IActorSystemPtr actorSystem)
+IFileStoreServicePtr CreateKikimrFileStore(
+    IActorSystemPtr actorSystem,
+    bool writeBackCacheEnabled)
 {
-    return std::make_shared<TKikimrFileStore>(std::move(actorSystem));
+    return std::make_shared<TKikimrFileStore>(
+        std::move(actorSystem),
+        writeBackCacheEnabled);
 }
 
 }   // namespace NCloud::NFileStore
