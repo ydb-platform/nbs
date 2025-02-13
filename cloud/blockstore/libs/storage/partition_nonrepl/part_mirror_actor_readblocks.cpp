@@ -390,7 +390,7 @@ STFUNC(TRequestActor<TMethod>::StateWork)
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
-
+// replicaIndex must be greater than 0
 auto TMirrorPartitionActor::SelectReplicasToReadFrom(
     ui32 replicaIndex,
     ui32 replicaCount,
@@ -416,7 +416,7 @@ auto TMirrorPartitionActor::SelectReplicasToReadFrom(
                 << " replicas");
     }
 
-    TSet<TActorId> replicaActorIds;
+    TSet<ui32> replicaIndexes;
     ui32 readReplicaCount =
         replicaCount ? replicaCount
                      : Min<ui32>(
@@ -429,13 +429,13 @@ auto TMirrorPartitionActor::SelectReplicasToReadFrom(
     }
 
     for (ui32 i = 0; i < readReplicaCount; ++i) {
-        TActorId replicaActorId;
-        const auto error = State.NextReadReplica(blockRange, &replicaActorId);
+        ui32 replicaIndex = 0;
+        const auto error = State.NextReadReplica(blockRange, replicaIndex);
         if (HasError(error)) {
             return error;
         }
 
-        if (!replicaActorIds.insert(replicaActorId).second) {
+        if (!replicaIndexes.insert(replicaIndex).second) {
             break;
         }
     }
@@ -443,7 +443,7 @@ auto TMirrorPartitionActor::SelectReplicasToReadFrom(
     // If required replica is available, the index will increase by one. If
     // not, the next replica in the list will be selected, and the index will
     // continue to increase.
-    if (replicaIndex && *replicaActorIds.begin() != State.GetReplicaActors()[replicaIndex-1]) {
+    if (replicaIndex && *replicaIndexes.begin() != replicaIndex-1) {
         return MakeError(
             E_REJECTED,
             TStringBuilder()
@@ -451,22 +451,24 @@ auto TMirrorPartitionActor::SelectReplicasToReadFrom(
                 << replicaIndex << " has not ready devices");
     }
 
-    if (replicaCount && replicaActorIds.size() != replicaCount) {
+    if (replicaCount && replicaIndexes.size() != replicaCount) {
         TStringBuilder indexes;
+        std::vector<ui32> allIndexes(replicaCount);
+        std::iota(allIndexes.begin(), allIndexes.end(), 0);
 
-        TSet<TActorId> unready_actorsId;
+        TSet<ui32> unreadyActorIndexes;
         std::set_difference(
-            State.GetReplicaActors().begin(),
-            State.GetReplicaActors().end(),
-            replicaActorIds.begin(),
-            replicaActorIds.end(),
-            std::inserter(unready_actorsId, unready_actorsId.end()));
+            allIndexes.begin(),
+            allIndexes.end(),
+            replicaIndexes.begin(),
+            replicaIndexes.end(),
+            std::inserter(unreadyActorIndexes, unreadyActorIndexes.end()));
 
-        for (const auto& actorId: unready_actorsId) {
+        for (const auto& actorIndexes: unreadyActorIndexes) {
             if (!indexes.empty()) {
                 indexes << ", ";
             }
-            indexes << actorId;
+            indexes << actorIndexes;
         }
         return MakeError(
             E_REJECTED,
@@ -475,6 +477,11 @@ auto TMirrorPartitionActor::SelectReplicasToReadFrom(
                 << " replicas, since devices of the following replicas "
                    "are not ready: ["
                 << indexes << "]");
+    }
+
+    TSet<TActorId> replicaActorIds;
+    for (const auto& replicaIndex: replicaIndexes) {
+        replicaActorIds.insert(State.GetReplicaActors()[replicaIndex]);
     }
 
     return replicaActorIds;

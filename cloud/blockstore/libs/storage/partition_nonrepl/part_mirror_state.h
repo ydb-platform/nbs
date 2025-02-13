@@ -79,7 +79,7 @@ public:
 
     [[nodiscard]] NProto::TError NextReadReplica(
         const TBlockRange64 readRange,
-        NActors::TActorId* actorId);
+        ui32& replicaIndex);
 
     ui32 GetBlockSize() const;
 
