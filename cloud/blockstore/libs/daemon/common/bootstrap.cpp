@@ -880,17 +880,15 @@ void TBootstrapBase::Start()
     START_COMMON_COMPONENT(FileIOServiceProvider);
     START_KIKIMR_COMPONENT(ActorSystem);
     START_COMMON_COMPONENT(EndpointProxyClient);
+    START_COMMON_COMPONENT(Executor);
     START_COMMON_COMPONENT(EndpointManager);
-
     // Start to restore endpoints before starting server and nbd server to avoid
     // the race between stop endpoint calls from clients and restore endpoint
     auto restoreFuture = EndpointManager->RestoreEndpoints();
-
     START_COMMON_COMPONENT(Service);
     START_COMMON_COMPONENT(VhostServer);
     START_COMMON_COMPONENT(NbdServer);
     START_COMMON_COMPONENT(GrpcEndpointListener);
-    START_COMMON_COMPONENT(Executor);
     START_COMMON_COMPONENT(Server);
     START_COMMON_COMPONENT(ServerStatsUpdater);
     START_COMMON_COMPONENT(BackgroundThreadPool);
