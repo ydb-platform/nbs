@@ -486,7 +486,7 @@ void TMirrorPartitionActor::ReadBlocks(
         DescribeRange(blockRange).c_str(),
         replicaActorIds.size());
 
-    const auto requestIdentityKey = GetNextRequestIdentifier();
+    const auto requestIdentityKey = TakeNextRequestIdentifier();
     RequestsInProgress.AddReadRequest(
         requestIdentityKey,
         {blockRange, ev->Cookie});

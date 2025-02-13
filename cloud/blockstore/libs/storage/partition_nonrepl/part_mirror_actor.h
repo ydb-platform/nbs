@@ -124,7 +124,7 @@ private:
         ui64 scrubbingRangeId);
     void StartResyncRange(const NActors::TActorContext& ctx);
     void AddTagForBufferCopying(const NActors::TActorContext& ctx);
-    ui64 GetNextRequestIdentifier();
+    ui64 TakeNextRequestIdentifier();
 
 private:
     STFUNC(StateWork);

@@ -96,7 +96,7 @@ void TMirrorPartitionActor::MirrorRequest(
     const auto range = BuildRequestBlockRange(
         *ev->Get(),
         State.GetBlockSize());
-    const auto requestIdentityKey = GetNextRequestIdentifier();
+    const auto requestIdentityKey = TakeNextRequestIdentifier();
     if (GetScrubbingRange().Overlaps(range)) {
         if (ResyncRangeStarted) {
             auto response = std::make_unique<typename TMethod::TResponse>(

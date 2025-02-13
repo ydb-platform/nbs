@@ -302,7 +302,7 @@ void TMirrorPartitionActor::ReplyAndDie(const TActorContext& ctx)
     Die(ctx);
 }
 
-auto TMirrorPartitionActor::GetNextRequestIdentifier() -> ui64
+auto TMirrorPartitionActor::TakeNextRequestIdentifier() -> ui64
 {
     return RequestIdentifierCounter++;
 }
