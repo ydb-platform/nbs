@@ -28,6 +28,8 @@ struct TAgentStorageInfo
 {
     ui64 ChunkSize = 0;
     ui32 ChunkCount = 0;
+    ui32 DirtyChunks = 0;
+    ui32 FreeChunks = 0;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -879,6 +881,12 @@ public:
     void RemoveOrphanDevices(
         TDiskRegistryDatabase& db,
         const TVector<TString>& orphanDevicesIds);
+
+    TResultOrError<TAgentId>
+    GetAgentIdSuitableForLocalDiskAllocationAfterCleanup(
+        const TVector<TString>& agentIds,
+        const TString& poolName,
+        const ui64 blocksToAllocate) const;
 
 private:
     void ProcessConfig(const NProto::TDiskRegistryConfig& config);
