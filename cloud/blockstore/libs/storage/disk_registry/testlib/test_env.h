@@ -1057,6 +1057,20 @@ public:
         return request;
     }
 
+    auto CreateAddLaggingDevicesRequest(
+        const TString& diskId,
+        TVector<NProto::TLaggingDevice> laggingDevices)
+    {
+        auto request =
+            std::make_unique<TEvDiskRegistry::TEvAddLaggingDevicesRequest>();
+        request->Record.SetDiskId(diskId);
+        for (auto& laggingDevice: laggingDevices) {
+            *request->Record.AddLaggingDevices() = std::move(laggingDevice);
+        }
+
+        return request;
+    }
+
     auto CreateUpdateDiskRegistryAgentListParamsRequest(
         const TVector<TString>& agentIds,
         TDuration newNonReplicatedAgentMinTimeoutMs,
