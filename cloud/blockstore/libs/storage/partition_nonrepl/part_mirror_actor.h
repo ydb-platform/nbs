@@ -47,7 +47,7 @@ class TMirrorPartitionActor final
     struct TRequestCtx
     {
         TBlockRange64 BlockRange;
-        ui64 Cookie = 0;
+        ui64 RequestId = 0;
     };
 
 private:

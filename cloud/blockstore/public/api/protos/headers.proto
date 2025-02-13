@@ -86,4 +86,6 @@ message THeaders
     // For how many replicas will this read request be executed.
     // Only for STORAGE_MEDIA_SSD_MIRROR* disks.
     uint32 ReplicaCount = 12;
+
+    uint32 VolumeRequestId = 13;
 }

@@ -541,7 +541,7 @@ void TMirrorPartitionActor::ReadBlocks(
     const auto requestIdentityKey = TakeNextRequestIdentifier();
     RequestsInProgress.AddReadRequest(
         requestIdentityKey,
-        {blockRange, ev->Cookie});
+        {blockRange, record.GetHeaders().GetVolumeRequestId()});
 
     NCloud::Register<TRequestActor<TMethod>>(
         ctx,

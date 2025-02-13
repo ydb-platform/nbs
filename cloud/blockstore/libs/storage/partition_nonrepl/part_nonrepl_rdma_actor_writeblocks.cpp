@@ -252,7 +252,8 @@ void TNonreplicatedPartitionRdmaActor::HandleWriteBlocks(
         deviceRequest.SetStartIndex(r.DeviceBlockRange.Start);
         deviceRequest.SetBlockSize(PartConfig->GetBlockSize());
         if (assignVolumeRequestId) {
-            deviceRequest.SetVolumeRequestId(requestInfo->Cookie);
+            deviceRequest.SetVolumeRequestId(
+                msg->Record.GetHeaders().GetVolumeRequestId());
             deviceRequest.SetMultideviceRequest(deviceRequests.size() > 1);
         }
 
@@ -403,7 +404,8 @@ void TNonreplicatedPartitionRdmaActor::HandleWriteBlocksLocal(
         deviceRequest.SetStartIndex(r.DeviceBlockRange.Start);
         deviceRequest.SetBlockSize(PartConfig->GetBlockSize());
         if (assignVolumeRequestId) {
-            deviceRequest.SetVolumeRequestId(requestInfo->Cookie);
+            deviceRequest.SetVolumeRequestId(
+                msg->Record.GetHeaders().GetVolumeRequestId());
             deviceRequest.SetMultideviceRequest(deviceRequests.size() > 1);
         }
 

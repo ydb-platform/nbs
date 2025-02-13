@@ -93,19 +93,18 @@ struct TEvNonreplPartitionPrivate
 
     struct TWriteOrZeroCompleted
     {
-        const ui64 RequestCounter;
+        const ui64 RequestId;
         const ui64 TotalCycles;
         const bool FollowerGotNonRetriableError;
 
         TWriteOrZeroCompleted(
-                ui64 requestCounter,
+                ui64 requestId,
                 ui64 totalCycles,
                 bool followerGotNonRetriableError)
-            : RequestCounter(requestCounter)
+            : RequestId(requestId)
             , TotalCycles(totalCycles)
             , FollowerGotNonRetriableError(followerGotNonRetriableError)
-        {
-        }
+        {}
     };
 
     //

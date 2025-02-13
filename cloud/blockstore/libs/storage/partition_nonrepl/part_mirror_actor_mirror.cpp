@@ -21,7 +21,7 @@ void TMirrorPartitionActor::HandleWriteOrZeroCompleted(
     const TActorContext& ctx)
 {
     auto* msg = ev->Get();
-    const auto requestIdentityKey = msg->RequestCounter;
+    const auto requestIdentityKey = msg->RequestId;
     auto completeRequest =
         RequestsInProgress.ExtractRequest(requestIdentityKey);
     if (!completeRequest) {
@@ -119,7 +119,9 @@ void TMirrorPartitionActor::MirrorRequest(
             DirtyReadRequestIds.insert(id);
         }
     }
-    RequestsInProgress.AddWriteRequest(requestIdentityKey, {range, ev->Cookie});
+    RequestsInProgress.AddWriteRequest(
+        requestIdentityKey,
+        {range, ev->Get()->Record.GetHeaders().GetVolumeRequestId()});
 
     NCloud::Register<TMirrorRequestActor<TMethod>>(
         ctx,

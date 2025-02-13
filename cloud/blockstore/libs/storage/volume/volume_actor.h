@@ -139,9 +139,10 @@ class TVolumeActor final
             TCallContext& callContext,
             NProto::TError error);
 
-        const NActors::TActorId Caller;
-        const ui64 CallerCookie;
-        const TCallContextPtr CallContext;
+        const TRequestInfo OriginalRequestInfo;
+        // const NActors::TActorId Caller;
+        // const ui64 CallerCookie;
+        // const TCallContextPtr CallContext;
         const TCallContextPtr ForkedContext;
         const ui64 ReceiveTime;
         TCancelRoutine* const CancelRoutine;
@@ -155,9 +156,7 @@ class TVolumeActor final
                 ui64 receiveTime,
                 TCancelRoutine cancelRoutine,
                 bool isMultipartitionWriteOrZero)
-            : Caller(caller)
-            , CallerCookie(callerCookie)
-            , CallContext(std::move(callContext))
+            : OriginalRequestInfo(caller, callerCookie, std::move(callContext))
             , ForkedContext(std::move(forkedContext))
             , ReceiveTime(receiveTime)
             , CancelRoutine(cancelRoutine)

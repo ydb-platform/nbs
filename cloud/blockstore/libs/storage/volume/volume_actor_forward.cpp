@@ -203,6 +203,7 @@ typename TMethod::TRequest::TPtr TVolumeActor::WrapRequest(
         }
     }
 
+    msg->Record.MutableHeaders()->SetVolumeRequestId(volumeRequestId);
     // We wrap the original message so that the response goes through
     // TVolumeActor
     auto selfId = SelfId();
@@ -421,22 +422,22 @@ bool TVolumeActor::ReplyToOriginalRequest(
     const TVolumeRequest& volumeRequest = it->second;
 
     if (volumeRequest.ForkedContext) {
-        volumeRequest.CallContext->LWOrbit.Join(
+        volumeRequest.OriginalRequestInfo.CallContext->LWOrbit.Join(
             volumeRequest.ForkedContext->LWOrbit);
     }
 
     FillResponse<TMethod>(
         *response,
-        *volumeRequest.CallContext,
+        *volumeRequest.OriginalRequestInfo.CallContext,
         volumeRequest.ReceiveTime);
 
     // forward response to the caller
     auto event = std::make_unique<IEventHandle>(
-        volumeRequest.Caller,
+        volumeRequest.OriginalRequestInfo.Sender,
         sender,
         response.release(),
         flags,
-        volumeRequest.CallerCookie);
+        volumeRequest.OriginalRequestInfo.Cookie);
     ctx.Send(std::move(event));
 
     if (volumeRequest.IsMultipartitionWriteOrZero) {
