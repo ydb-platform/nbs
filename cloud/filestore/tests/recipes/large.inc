@@ -35,4 +35,6 @@ REQUIREMENTS(
     ram:30
 )
 
+INCLUDE(${ARCADIA_ROOT}/devtools/large_on_multi_slots.inc)
+
 DATA(arcadia/cloud/filestore/tests/common_configs)

@@ -30,6 +30,8 @@ ENDIF()
 FORK_SUBTESTS()
 SPLIT_FACTOR(8)
 
+INCLUDE(${ARCADIA_ROOT}/devtools/large_on_multi_slots.inc)
+
 REQUIREMENTS(
     cpu:8
     ram:30
