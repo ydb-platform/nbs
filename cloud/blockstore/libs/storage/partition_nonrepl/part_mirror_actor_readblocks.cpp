@@ -407,8 +407,6 @@ auto TMirrorPartitionActor::SelectReplicasToReadFrom(
                 << replicaIndex << " disk has " << replicaInfos.size()
                 << " replicas");
     }
-
-
     if (replicaCount > replicaInfos.size()) {
         return MakeError(
             E_ARGUMENT,
