@@ -358,9 +358,7 @@ func RequireCheckpointsDoNotExist(
 	ctx context.Context,
 	diskID string,
 ) {
-	// TODO: enable this method after resolving this issue
-	// https://github.com/ydb-platform/nbs/issues/2008.
-	return
+
 	nbsClient := NewNbsTestingClient(t, ctx, "zone-a")
 	checkpoints, err := nbsClient.GetCheckpoints(ctx, diskID)
 	require.NoError(t, err)
