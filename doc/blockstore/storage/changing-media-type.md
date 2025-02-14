@@ -11,7 +11,7 @@ Currently, the volume media-type is set when creating it. Sometimes it is necess
 4. As the source partition for TMigrationActor, give the source disk partition.
 5. As the destination partition for TMigrationActor, give the proxy partition, which wraps the newly created volume.
 6. Perform data migration as usual
-7. Make changes to the SchemeShard so that when volume restart, a tablet of new volume wiil be created.
+7. Make changes to the SchemeShard so that when volume restart, a tablet of new volume will be created.
 8. Delete the source disk.
 
 Step 1. Create new volume.
@@ -19,7 +19,6 @@ Step 1. Create new volume.
 flowchart TD
     A[Source Volume:Tablet_1]  --> B[Source volume partition]
     C[NewVolume:Tablet_2] --> D[Destination volume partition]
-    
 ```
 
 Step 2. Data transfer.
@@ -32,7 +31,7 @@ flowchart TD
     E --> F[Destination volume partition]
 ```
 
-Step 3. Modify shcheme shard and destroy source tablets.
+Step 3. Modify scheme shard and destroy source tablets.
 ```mermaid
 flowchart TD
     A[Source Volume:Tablet_2]  --> F[Destination volume partition]
