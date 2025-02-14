@@ -2065,6 +2065,29 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
         }
     }
 
+    Y_UNIT_TEST(ShouldRejectReadFromAllReplicaIfRangeNotResynced)
+    {
+        constexpr ui32 replicaCount = 3;
+
+        TTestBasicRuntime runtime;
+        TTestEnv env(runtime);
+
+        auto range = TBlockRange64::WithLength(100, 100);
+
+        TPartitionClient client(runtime, env.ActorId);
+        env.WriteReplica(0, range, 'A');
+        env.WriteReplica(1, range, 'C');
+        env.WriteReplica(2, range, 'C');
+
+        {
+            client.SendReadBlocksRequest(range, 0, replicaCount);
+            auto response = client.RecvReadBlocksResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_REJECTED,
+                response->GetStatus(),
+                response->GetErrorReason());
+        }
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage
