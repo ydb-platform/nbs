@@ -450,7 +450,6 @@ auto TMirrorPartitionActor::SelectReplicasToReadFrom(
     }
 
     if (replicaCount && replicaIndexes.size() != replicaCount) {
-        TStringBuilder indexes;
         std::vector<ui32> allIndexes(replicaCount);
         std::iota(allIndexes.begin(), allIndexes.end(), 0);
 
@@ -468,7 +467,7 @@ auto TMirrorPartitionActor::SelectReplicasToReadFrom(
                 << "Cannot process " << methodName << " on " << replicaCount
                 << " replicas, since devices of the following replicas "
                    "are not ready: ["
-                << JoinSeq(",", indexes) << "]");
+                << JoinSeq(",", unreadyActorIndexes) << "]");
     }
 
     TSet<TActorId> replicaActorIds;
