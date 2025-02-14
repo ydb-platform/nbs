@@ -34,7 +34,7 @@ void TMirrorPartitionActor::HandleGetDeviceForRange(
 
     ui32 replicaIndex = 0;
     auto error = State.NextReadReplica(msg->BlockRange, replicaIndex);
-    TActorId replicaActorId = State.GetReplicaActors()[replicaIndex];
+    TActorId replicaActorId = State.GetReplicaActor(replicaIndex);
 
     if (HasError(error)) {
         replyError(std::move(error));
