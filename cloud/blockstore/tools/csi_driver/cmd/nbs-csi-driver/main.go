@@ -32,6 +32,7 @@ func main() {
 	flag.StringVar(&cfg.NfsLocalHost, "nfs-local-host", "localhost", "NFS local host")
 	flag.UintVar(&cfg.NfsLocalFilestorePort, "nfs-local-filestore-port", 9023, "NFS local filestore port")
 	flag.UintVar(&cfg.NfsLocalEndpointPort, "nfs-local-endpoint-port", 9024, "NFS local endpoint port")
+	flag.StringVar(&cfg.MountOptions, "mount-options", "grpid", "Comma-separated list of filesystem mount options")
 
 	flag.Parse()
 

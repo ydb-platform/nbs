@@ -74,6 +74,7 @@ func doTestPublishUnpublishVolumeForKubevirt(t *testing.T, backend string, devic
 		nfsClient,
 		nfsLocalClient,
 		mounter,
+		[]string{},
 	)
 
 	accessMode := csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER
@@ -266,6 +267,7 @@ func doTestStagedPublishUnpublishVolumeForKubevirt(t *testing.T, backend string,
 		nfsClient,
 		nfsLocalClient,
 		mounter,
+		[]string{},
 	)
 
 	accessMode := csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER
@@ -489,6 +491,7 @@ func TestPublishUnpublishDiskForInfrakuber(t *testing.T) {
 		nil,
 		nil, // nfsLocalClient
 		mounter,
+		[]string{"grpid", "discard"},
 	)
 
 	volumeCapability := csi.VolumeCapability{
@@ -531,7 +534,7 @@ func TestPublishUnpublishDiskForInfrakuber(t *testing.T) {
 	mockCallIsMountPoint := mounter.On("IsMountPoint", stagingTargetPath).Return(false, nil)
 
 	mounter.On("FormatAndMount", nbdDeviceFile, stagingTargetPath, "ext4",
-		[]string{"grpid", "errors=remount-ro"}).Return(nil)
+		[]string{"grpid", "discard", "errors=remount-ro"}).Return(nil)
 
 	_, err = nodeService.NodeStageVolume(ctx, &csi.NodeStageVolumeRequest{
 		VolumeId:          diskId,
@@ -644,6 +647,7 @@ func TestPublishUnpublishDeviceForInfrakuber(t *testing.T) {
 		nil,
 		nil, // nfsLocalClient
 		mounter,
+		[]string{},
 	)
 
 	volumeCapability := csi.VolumeCapability{
@@ -797,6 +801,7 @@ func TestGetVolumeStatCapabilitiesWithoutVmMode(t *testing.T) {
 		nil,
 		nil, // nfsLocalClient
 		mounter,
+		[]string{},
 	)
 
 	ctx := context.Background()
@@ -863,6 +868,7 @@ func TestGetVolumeStatCapabilitiesWithVmMode(t *testing.T) {
 		nil,
 		nil, // nfsLocalClient
 		mounter,
+		[]string{},
 	)
 
 	ctx := context.Background()
@@ -919,6 +925,7 @@ func TestPublishDeviceWithReadWriteManyModeIsNotSupportedWithNBS(t *testing.T) {
 		nil,
 		nil, // nfsLocalClient
 		mounter,
+		[]string{},
 	)
 
 	_, err := nodeService.NodeStageVolume(ctx, &csi.NodeStageVolumeRequest{
@@ -999,6 +1006,7 @@ func TestGrpcTimeoutForIKubevirt(t *testing.T) {
 		nfsClient,
 		nfsLocalClient,
 		mounter,
+		[]string{},
 	)
 
 	accessMode := csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER
@@ -1085,6 +1093,7 @@ func TestGrpcTimeoutForInfrakuber(t *testing.T) {
 		nil,
 		nil,
 		mounter,
+		[]string{},
 	)
 
 	volumeCapability := csi.VolumeCapability{
