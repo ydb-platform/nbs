@@ -21,10 +21,12 @@ void TMirrorPartitionActor::HandleWriteOrZeroCompleted(
     const TActorContext& ctx)
 {
     const auto requestIdentityKey = ev->Get()->RequestCounter;
-    TRequestCtx reqCtx;
-    RequestsInProgress.ExtractRequest(requestIdentityKey, &reqCtx);
+    auto optReqCtx = RequestsInProgress.ExtractRequest(requestIdentityKey);
+    if (!optReqCtx) {
+        return;
+    }
     DrainActorCompanion.ProcessDrainRequests(ctx);
-    auto [range, reqCookie] = reqCtx;
+    auto [range, reqCookie] = optReqCtx.value();
     for (const auto& [id, request]: RequestsInProgress.AllRequests()) {
         if (range.Overlaps(request.Value.BlockRange)) {
             DirtyReadRequestIds.insert(id);

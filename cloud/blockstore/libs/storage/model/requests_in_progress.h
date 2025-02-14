@@ -108,25 +108,24 @@ public:
 
     bool RemoveRequest(const TKey& key)
     {
-        TValue v;
-        return ExtractRequest(key, &v);
+        return ExtractRequest(key).has_value();
     }
 
-    bool ExtractRequest(const TKey& key, TValue* value)
+    std::optional<TValue> ExtractRequest(const TKey& key)
     {
         auto it = RequestsInProgress.find(key);
 
         if (it == RequestsInProgress.end()) {
             Y_DEBUG_ABORT_UNLESS(0);
-            return false;
+            return std::nullopt;
         }
 
         if (it->second.Write) {
             --WriteRequestCount;
         }
-        *value = std::move(it->second.Value);
+        TValue res = std::move(it->second.Value);
         RequestsInProgress.erase(it);
-        return true;
+        return res;
     }
 
     const TRequests& AllRequests() const
