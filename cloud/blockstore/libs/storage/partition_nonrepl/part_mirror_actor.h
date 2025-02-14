@@ -44,7 +44,6 @@ TDuration CalculateScrubbingInterval(
 class TMirrorPartitionActor final
     : public NActors::TActorBootstrapped<TMirrorPartitionActor>
 {
-private:
     struct TRequestCtx {
         TBlockRange64 BlockRange;
         ui64 Cookie = 0;
