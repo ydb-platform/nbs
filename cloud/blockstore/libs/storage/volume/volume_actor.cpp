@@ -223,10 +223,9 @@ void TVolumeActor::UpdateLeakyBucketCounters(const TActorContext& ctx)
     const auto usedBandwidthQuotaPercentage =
         splittedUsedQuota.Bandwidth * 100.0;
 
-    cumulative.UsedIopsQuota.Increment(
-        static_cast<ui64>(usedIopsQuotaPercentage));
+    cumulative.UsedIopsQuota.Increment(std::round(usedIopsQuotaPercentage));
     cumulative.UsedBandwidthQuota.Increment(
-        static_cast<ui64>(usedBandwidthQuotaPercentage));
+        std::round(usedBandwidthQuotaPercentage));
 
     const auto currentSpentBudgetSharePercentage =
         100.0 * tp.CalculateCurrentSpentBudgetShare(ctx.Now());
