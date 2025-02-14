@@ -139,7 +139,7 @@ bool TIndexTabletActor::PrepareTx_RenameNodeInDestination(
             return true;
         }
 
-        if (args.NewChildRef->ShardId.empty()) {
+        if (!args.NewChildRef->IsExternal()) {
             auto message = ReportRenameNodeRequestForLocalNode(TStringBuilder()
                 << "RenameNodeInDestination: "
                 << args.Request.ShortDebugString());
@@ -208,7 +208,7 @@ void TIndexTabletActor::ExecuteTx_RenameNodeInDestination(
             args.Response.SetOldTargetNodeShardId(args.NewChildRef->ShardId);
             args.Response.SetOldTargetNodeShardNodeName(
                 args.NewChildRef->ShardNodeName);
-        } else if (args.NewChildRef->ShardId.empty()) {
+        } else if (!args.NewChildRef->IsExternal()) {
             auto message = ReportUnexpectedLocalNode(TStringBuilder()
                 << "RenameNodeInDestination: "
                 << args.Request.ShortDebugString());

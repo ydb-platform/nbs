@@ -38,6 +38,15 @@ public:
         TString ShardNodeName;
         ui64 MinCommitId;
         ui64 MaxCommitId;
+
+        // There are two types of node refs: those that point to nodes in the
+        // same filesystem as the parent and those that point to nodes in
+        // another filesystem. The latter ones have ShardId and ShardNodeName
+        // specified instead of ChildNodeId
+        bool IsExternal() const
+        {
+            return !ShardId.empty();
+        }
     };
 
     struct TNodeAttr

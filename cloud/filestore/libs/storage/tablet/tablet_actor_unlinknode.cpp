@@ -336,7 +336,7 @@ bool TIndexTabletActor::PrepareTx_UnlinkNode(
         return false;   // not ready
     }
 
-    if (args.ChildRef->ShardId) {
+    if (args.ChildRef->IsExternal()) {
         return true;
     }
 
@@ -389,7 +389,7 @@ void TIndexTabletActor::ExecuteTx_UnlinkNode(
         return RebootTabletOnCommitOverflow(ctx, "UnlinkNode");
     }
 
-    if (args.ChildRef->ShardId) {
+    if (args.ChildRef->IsExternal()) {
         UnlinkExternalNode(
             db,
             args.ParentNodeId,
@@ -470,7 +470,7 @@ void TIndexTabletActor::CompleteTx_UnlinkNode(
     }
 
     if (!HasError(args.Error)) {
-        if (args.ChildRef->ShardId) {
+        if (args.ChildRef->IsExternal()) {
             LOG_DEBUG(ctx, TFileStoreComponents::TABLET,
                 "%s Unlinking node in shard upon UnlinkNode: %s, %s",
                 LogTag.c_str(),

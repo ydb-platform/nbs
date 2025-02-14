@@ -191,7 +191,7 @@ bool TIndexTabletActor::PrepareTx_RenameNode(
         return true;
     }
 
-    if (args.ChildRef->ShardId.empty()) {
+    if (!args.ChildRef->IsExternal()) {
         if (!ReadNode(
                 db,
                 args.ChildRef->ChildNodeId,
@@ -245,7 +245,7 @@ bool TIndexTabletActor::PrepareTx_RenameNode(
             return true;
         }
 
-        if (args.NewChildRef->ShardId.empty()) {
+        if (!args.NewChildRef->IsExternal()) {
             // read new child node to unlink it
             if (!ReadNode(
                     db,
@@ -383,7 +383,7 @@ void TIndexTabletActor::ExecuteTx_RenameNode(
                 args.NewChildRef->ChildNodeId,
                 args.NewChildRef->ShardId,
                 args.NewChildRef->ShardNodeName);
-        } else if (args.NewChildRef->ShardId.empty()) {
+        } else if (!args.NewChildRef->IsExternal()) {
             if (!args.NewChildNode) {
                 auto message = ReportNewChildNodeIsNull(TStringBuilder()
                     << "RenameNode: " << args.Request.ShortDebugString());
