@@ -390,7 +390,7 @@ STFUNC(TRequestActor<TMethod>::StateWork)
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
-// replicaIndex must be greater than 0
+// If you need to read from a specific replica, replicaIndex must be greater than 0
 auto TMirrorPartitionActor::SelectReplicasToReadFrom(
     ui32 replicaIndex,
     ui32 replicaCount,

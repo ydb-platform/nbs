@@ -2061,7 +2061,7 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
             UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, response->GetStatus());
             UNIT_ASSERT_STRING_CONTAINS(
                 response->GetErrorReason(),
-                "has incorrect ReplicaCount");
+                "has incorrect replica count");
         }
     }
 
