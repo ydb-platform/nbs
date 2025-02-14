@@ -743,3 +743,45 @@ message TDescribeVolumeModelResponse
     // Volume model information.
     TVolumeModel VolumeModel = 2;
 }
+
+////////////////////////////////////////////////////////////////////////////////
+// Create volumes link
+
+message TCreateVolumeLinkRequest
+{
+    // Optional request headers.
+    THeaders Headers = 1;
+
+    // Id of leader disk.
+    string LeaderDiskId = 2;
+
+    // Id of follower disk.
+    string FollowerDiskId = 3;
+}
+
+message TCreateVolumeLinkResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// Destroy volumes link
+
+message TDestroyVolumeLinkRequest
+{
+    // Optional request headers.
+    THeaders Headers = 1;
+
+    // Id of leader disk.
+    string LeaderDiskId = 2;
+
+    // Id of follower disk.
+    string FollowerDiskId = 3;
+}
+
+message TDestroyVolumeLinkResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+}

@@ -528,6 +528,14 @@ public:
         TCallContextPtr ctx,
         std::shared_ptr<NProto::TAssignVolumeRequest> request) override;
 
+    TFuture<NProto::TCreateVolumeLinkResponse> CreateVolumeLink(
+        TCallContextPtr ctx,
+        std::shared_ptr<NProto::TCreateVolumeLinkRequest> request) override;
+
+    TFuture<NProto::TDestroyVolumeLinkResponse> DestroyVolumeLink(
+        TCallContextPtr ctx,
+        std::shared_ptr<NProto::TDestroyVolumeLinkRequest> request) override;
+
 #define BLOCKSTORE_IMPLEMENT_METHOD(name, ...)                                 \
     TFuture<NProto::T##name##Response> name(                                   \
         TCallContextPtr ctx,                                                   \
@@ -989,6 +997,30 @@ TFuture<NProto::TAssignVolumeResponse> TLocalService::AssignVolume(
         *response.MutableVolume() = VolumeManager.DescribeVolume(diskId);
         return MakeFuture(response);
     });
+}
+
+TFuture<NProto::TCreateVolumeLinkResponse> TLocalService::CreateVolumeLink(
+    TCallContextPtr ctx,
+    std::shared_ptr<NProto::TCreateVolumeLinkRequest> request)
+{
+    Y_UNUSED(ctx);
+    Y_UNUSED(request);
+
+    NProto::TCreateVolumeLinkResponse response;
+    *response.MutableError() = MakeError(E_NOT_IMPLEMENTED);
+    return MakeFuture(response);
+}
+
+TFuture<NProto::TDestroyVolumeLinkResponse> TLocalService::DestroyVolumeLink(
+    TCallContextPtr ctx,
+    std::shared_ptr<NProto::TDestroyVolumeLinkRequest> request)
+{
+    Y_UNUSED(ctx);
+    Y_UNUSED(request);
+
+    NProto::TDestroyVolumeLinkResponse response;
+    *response.MutableError() = MakeError(E_NOT_IMPLEMENTED);
+    return MakeFuture(response);
 }
 
 }   // namespace

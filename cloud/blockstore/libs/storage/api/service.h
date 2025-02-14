@@ -343,6 +343,12 @@ struct TEvService
         EvAddTagsRequest = EvBegin + 91,
         EvAddTagsResponse = EvBegin + 92,
 
+        EvCreateVolumeLinkRequest = EvBegin + 93,
+        EvCreateVolumeLinkResponse = EvBegin + 94,
+
+        EvDestroyVolumeLinkRequest = EvBegin + 95,
+        EvDestroyVolumeLinkResponse = EvBegin + 96,
+
         EvEnd
     };
 
