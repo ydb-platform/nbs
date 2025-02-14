@@ -1,6 +1,7 @@
 #include "part_mirror_actor.h"
 
 #include "mirror_request_actor.h"
+#include "util/string/join.h"
 
 #include <cloud/blockstore/libs/common/block_checksum.h>
 #include <cloud/blockstore/libs/storage/api/undelivered.h>
@@ -390,30 +391,30 @@ STFUNC(TRequestActor<TMethod>::StateWork)
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
-// If you need to read from a specific replica, replicaIndex must be greater than 0
+
 auto TMirrorPartitionActor::SelectReplicasToReadFrom(
-    ui32 replicaIndex,
+    std::optional<ui32> replicaIndex,
     ui32 replicaCount,
     TBlockRange64 blockRange,
     const TStringBuf& methodName) -> TResultOrError<TSet<TActorId>>
 {
     const auto& replicaInfos = State.GetReplicaInfos();
 
-    if (replicaIndex > replicaInfos.size()) {
+    if (replicaIndex.has_value() && replicaIndex.value() >= replicaInfos.size()) {
         return MakeError(
             E_ARGUMENT,
             TStringBuilder()
                 << "Request " << methodName << " has incorrect ReplicaIndex "
-                << replicaIndex << " disk has " << replicaInfos.size()
+                << replicaIndex.value() << " disk has " << replicaInfos.size()
                 << " replicas");
     }
     if (replicaCount > replicaInfos.size()) {
         return MakeError(
             E_ARGUMENT,
-            TStringBuilder()
-                << "Request " << methodName << " has incorrect replica count: "
-                << replicaCount << ". Disk " << DiskId <<  " has only " << replicaInfos.size()
-                << " replicas");
+            TStringBuilder() << "Request " << methodName
+                             << " has incorrect replica count: " << replicaCount
+                             << ". Disk " << DiskId << " has only "
+                             << replicaInfos.size() << " replicas");
     }
 
     TSet<ui32> replicaIndexes;
@@ -424,7 +425,7 @@ auto TMirrorPartitionActor::SelectReplicasToReadFrom(
                            replicaInfos.size());
 
     if (replicaIndex) {
-        State.SetReadReplicaIndex(replicaIndex - 1);
+        State.SetReadReplicaIndex(replicaIndex.value());
         readReplicaCount = 1;
     }
 
@@ -440,15 +441,12 @@ auto TMirrorPartitionActor::SelectReplicasToReadFrom(
         }
     }
 
-    // If required replica is available, the index will increase by one. If
-    // not, the next replica in the list will be selected, and the index will
-    // continue to increase.
-    if (replicaIndex && *replicaIndexes.begin() != replicaIndex-1) {
+    if (replicaIndex && *replicaIndexes.begin() != replicaIndex.value()) {
         return MakeError(
             E_REJECTED,
             TStringBuilder()
                 << "Cannot process " << methodName << " cause replica "
-                << replicaIndex << " has not ready devices");
+                << replicaIndex.value() << " has not ready devices");
     }
 
     if (replicaCount && replicaIndexes.size() != replicaCount) {
@@ -464,19 +462,13 @@ auto TMirrorPartitionActor::SelectReplicasToReadFrom(
             replicaIndexes.end(),
             std::inserter(unreadyActorIndexes, unreadyActorIndexes.end()));
 
-        for (const auto& actorIndexes: unreadyActorIndexes) {
-            if (!indexes.empty()) {
-                indexes << ", ";
-            }
-            indexes << actorIndexes;
-        }
         return MakeError(
             E_REJECTED,
             TStringBuilder()
                 << "Cannot process " << methodName << " on " << replicaCount
                 << " replicas, since devices of the following replicas "
                    "are not ready: ["
-                << indexes << "]");
+                << JoinSeq(",", indexes) << "]");
     }
 
     TSet<TActorId> replicaActorIds;
@@ -518,11 +510,17 @@ void TMirrorPartitionActor::ReadBlocks(
         return;
     }
 
-    const auto replicaIndex = record.GetHeaders().GetReplicaIndex();
+    const std::optional<ui32> replicaIndex =
+        record.GetHeaders().GetReplicaIndex() > 0
+            ? std::make_optional(record.GetHeaders().GetReplicaIndex() - 1)
+            : std::nullopt;
     const auto replicaCount = record.GetHeaders().GetReplicaCount();
 
-    auto [replicaActorIds, error] =
-        SelectReplicasToReadFrom(replicaIndex, replicaCount, blockRange, TMethod::Name);
+    auto [replicaActorIds, error] = SelectReplicasToReadFrom(
+        replicaIndex,
+        replicaCount,
+        blockRange,
+        TMethod::Name);
 
     if (HasError(error)) {
         NCloud::Reply(ctx, *ev, std::make_unique<TResponse>(error));
