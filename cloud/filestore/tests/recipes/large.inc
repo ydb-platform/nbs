@@ -27,6 +27,18 @@ ELSE()
     )
 ENDIF()
 
+IF (ARCADIA_SANDBOX_SINGLESLOT)
+    TAG(
+        ya:large_tests_on_single_slots
+        ya:large_tests_on_ya_make_2
+    )
+ELSE()
+    TAG(
+        ya:large_tests_on_multi_slots
+        ya:large_tests_on_ya_make_2
+    )
+ENDIF()
+
 FORK_SUBTESTS()
 SPLIT_FACTOR(8)
 

@@ -1,5 +1,7 @@
 PY3TEST()
 
+ENV(ARCADIA_SANDBOX_SINGLESLOT="true")
+
 SRCDIR(${ARCADIA_ROOT}/cloud/blockstore/tests/loadtest/local-nonrepl)
 INCLUDE(${ARCADIA_ROOT}/cloud/blockstore/tests/loadtest/local-nonrepl/ya.make.inc)
 
