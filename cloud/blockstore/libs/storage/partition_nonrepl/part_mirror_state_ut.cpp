@@ -111,7 +111,7 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionStateTest)
             TBlockRange64::WithLength(startIndex, blockCount);                 \
         const auto error = state.NextReadReplica(blockRange, actorIndex);      \
         UNIT_ASSERT_VALUES_EQUAL_C(S_OK, error.GetCode(), error.GetMessage()); \
-        NActors::TActorId actorId = state.GetReplicaActors()[actorIndex];      \
+        NActors::TActorId actorId = state.GetReplicaActor(actorIndex);         \
         UNIT_ASSERT_VALUES_EQUAL(expected, actorId);                           \
 }                                                                              \
 // TEST_READ_REPLICA

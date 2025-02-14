@@ -54,6 +54,12 @@ public:
         return ReplicaActors;
     }
 
+    const NActors::TActorId& GetReplicaActor(ui32 index) const
+    {
+        Y_DEBUG_ABORT_UNLESS(index < ReplicaActors.size());
+        return ReplicaActors[index];
+    }
+
     void SetRWClientId(TString rwClientId)
     {
         RWClientId = std::move(rwClientId);

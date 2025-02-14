@@ -400,12 +400,12 @@ auto TMirrorPartitionActor::SelectReplicasToReadFrom(
 {
     const auto& replicaInfos = State.GetReplicaInfos();
 
-    if (replicaIndex.has_value() && replicaIndex.value() >= replicaInfos.size()) {
+    if (replicaIndex && *replicaIndex >= replicaInfos.size()) {
         return MakeError(
             E_ARGUMENT,
             TStringBuilder()
                 << "Request " << methodName << " has incorrect ReplicaIndex "
-                << replicaIndex.value() << " disk has " << replicaInfos.size()
+                << *replicaIndex << " disk has " << replicaInfos.size()
                 << " replicas");
     }
     if (replicaCount > replicaInfos.size()) {
@@ -425,7 +425,7 @@ auto TMirrorPartitionActor::SelectReplicasToReadFrom(
                            replicaInfos.size());
 
     if (replicaIndex) {
-        State.SetReadReplicaIndex(replicaIndex.value());
+        State.SetReadReplicaIndex(*replicaIndex);
         readReplicaCount = 1;
     }
 
@@ -441,12 +441,12 @@ auto TMirrorPartitionActor::SelectReplicasToReadFrom(
         }
     }
 
-    if (replicaIndex && *replicaIndexes.begin() != replicaIndex.value()) {
+    if (replicaIndex && *replicaIndexes.begin() != *replicaIndex) {
         return MakeError(
             E_REJECTED,
             TStringBuilder()
                 << "Cannot process " << methodName << " cause replica "
-                << replicaIndex.value() << " has not ready devices");
+                << *replicaIndex << " has not ready devices");
     }
 
     if (replicaCount && replicaIndexes.size() != replicaCount) {
@@ -473,7 +473,7 @@ auto TMirrorPartitionActor::SelectReplicasToReadFrom(
 
     TSet<TActorId> replicaActorIds;
     for (const auto& replicaIndex: replicaIndexes) {
-        replicaActorIds.insert(State.GetReplicaActors()[replicaIndex]);
+        replicaActorIds.insert(State.GetReplicaActor(replicaIndex));
     }
 
     return replicaActorIds;
