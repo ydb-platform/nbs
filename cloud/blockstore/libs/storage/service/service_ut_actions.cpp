@@ -254,7 +254,7 @@ Y_UNIT_TEST_SUITE(TServiceActionsTest)
             service.SendAddTagsRequest(
                 DefaultDiskId,
                 TVector{TString("tag")});
-            auto response = service.RecvExecuteActionResponse();
+            auto response = service.RecvAddTagsResponse();
             UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
         }
 

@@ -1266,7 +1266,7 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
                 }
 
                 if (event->GetTypeRewrite() ==
-                    TEvService::EvExecuteActionResponse) {
+                    TEvService::EvAddTagsResponse) {
                     UNIT_ASSERT(addTagRequest);
                     addTagResponse = true;
                 }
@@ -1336,9 +1336,9 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
             {
                 Y_UNUSED(runtime);
                 if (event->GetTypeRewrite() ==
-                    TEvService::EvExecuteActionResponse) {
+                    TEvService::EvAddTagsResponse) {
                     auto response =
-                        std::make_unique<TEvService::TEvExecuteActionResponse>(
+                        std::make_unique<TEvService::TEvAddTagsResponse>(
                             MakeError(E_REJECTED, "error"));
 
                     runtime.Send(new IEventHandle(

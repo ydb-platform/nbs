@@ -532,8 +532,8 @@ void TMirrorPartitionActor::HandleRWClientIdChanged(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void TMirrorPartitionActor::HandleExecuteActionResponse(
-    const TEvService::TEvExecuteActionResponse::TPtr& ev,
+void TMirrorPartitionActor::HandleAddTagsResponse(
+    const TEvService::TEvAddTagsResponse::TPtr& ev,
     const NActors::TActorContext& ctx)
 {
     const auto* msg = ev->Get();
@@ -636,8 +636,8 @@ STFUNC(TMirrorPartitionActor::StateWork)
             HandlePartCounters);
 
         HFunc(
-            TEvService::TEvExecuteActionResponse,
-            HandleExecuteActionResponse);
+            TEvService::TEvAddTagsResponse,
+            HandleAddTagsResponse);
 
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
 
@@ -683,7 +683,7 @@ STFUNC(TMirrorPartitionActor::StateZombie)
         IgnoreFunc(TEvVolume::TEvRWClientIdChanged);
         IgnoreFunc(TEvVolume::TEvDiskRegistryBasedPartitionCounters);
 
-        IgnoreFunc(TEvService::TEvExecuteActionResponse);
+        IgnoreFunc(TEvService::TEvAddTagsResponse);
 
         IgnoreFunc(TEvents::TEvPoisonPill);
         HFunc(TEvents::TEvPoisonTaken, HandlePoisonTaken);

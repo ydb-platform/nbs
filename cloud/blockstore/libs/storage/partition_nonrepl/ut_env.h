@@ -277,7 +277,7 @@ private:
             CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
 
         auto response =
-            std::make_unique<TEvService::TEvExecuteActionResponse>();
+            std::make_unique<TEvService::TEvAddTagsResponse>();
 
         NCloud::Reply(ctx, *requestInfo, std::move(response));
     }
