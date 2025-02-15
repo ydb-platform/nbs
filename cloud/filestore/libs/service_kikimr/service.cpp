@@ -1,5 +1,7 @@
 #include "service.h"
 
+#include "write_back_cache_actor.h"
+
 #include <cloud/filestore/libs/service/context.h>
 #include <cloud/filestore/libs/service/filestore.h>
 #include <cloud/filestore/libs/storage/api/service.h>
@@ -256,36 +258,12 @@ private:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TWriteBackCacheActor final
-    : public TActor<TWriteBackCacheActor>
-{
-public:
-    static constexpr const char ActorName[] =
-        "NCloud::NFileStore::TWriteBackCacheActor";
-
-public:
-    TWriteBackCacheActor()
-        : TActor<TThis>(&TThis::StateWork)
-    {}
-
-private:
-    STFUNC(StateWork)
-    {
-        switch (ev->GetTypeRewrite()) {
-            default:
-                HandleUnexpectedEvent(ev, TFileStoreComponents::SERVICE_PROXY);
-                break;
-        }
-    }
-};
-
-////////////////////////////////////////////////////////////////////////////////
-
 class TKikimrFileStore final
     : public IFileStoreService
 {
 private:
     const IActorSystemPtr ActorSystem;
+    const bool WriteBackCacheEnabled;
     NActors::TActorId WriteBackCache;
 
 public:
@@ -293,15 +271,16 @@ public:
             IActorSystemPtr actorSystem,
             bool writeBackCacheEnabled)
         : ActorSystem(std::move(actorSystem))
+        , WriteBackCacheEnabled(writeBackCacheEnabled)
+    {}
+
+    void Start() override
     {
-        if (writeBackCacheEnabled) {
+        if (WriteBackCacheEnabled) {
             WriteBackCache = ActorSystem->Register(
                 std::make_unique<TWriteBackCacheActor>());
         }
     }
-
-    void Start() override
-    {}
 
     void Stop() override
     {}

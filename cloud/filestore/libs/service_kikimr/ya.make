@@ -3,6 +3,7 @@ LIBRARY()
 SRCS(
     auth_provider_kikimr.cpp
     service.cpp
+    write_back_cache_actor.cpp
 )
 
 PEERDIR(
