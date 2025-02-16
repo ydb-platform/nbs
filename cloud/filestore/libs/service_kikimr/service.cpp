@@ -263,22 +263,24 @@ class TKikimrFileStore final
 {
 private:
     const IActorSystemPtr ActorSystem;
-    const bool WriteBackCacheEnabled;
+    const TServiceKikimrConfig Config;
+
     NActors::TActorId WriteBackCache;
 
 public:
     TKikimrFileStore(
             IActorSystemPtr actorSystem,
-            bool writeBackCacheEnabled)
+            TServiceKikimrConfig config)
         : ActorSystem(std::move(actorSystem))
-        , WriteBackCacheEnabled(writeBackCacheEnabled)
+        , Config(std::move(config))
     {}
 
     void Start() override
     {
-        if (WriteBackCacheEnabled) {
+        if (Config.WriteBackCacheFilePath) {
             WriteBackCache = ActorSystem->Register(
-                std::make_unique<TWriteBackCacheActor>());
+                std::make_unique<TWriteBackCacheActor>(
+                    Config.WriteBackCacheFilePath));
         }
     }
 
@@ -394,11 +396,11 @@ private:
 
 IFileStoreServicePtr CreateKikimrFileStore(
     IActorSystemPtr actorSystem,
-    bool writeBackCacheEnabled)
+    TServiceKikimrConfig config)
 {
     return std::make_shared<TKikimrFileStore>(
         std::move(actorSystem),
-        writeBackCacheEnabled);
+        std::move(config));
 }
 
 }   // namespace NCloud::NFileStore

@@ -12,6 +12,6 @@ namespace NCloud::NFileStore {
 
 IFileStoreServicePtr CreateKikimrFileStore(
     IActorSystemPtr actorSystem,
-    bool writeBackCacheEnabled);
+    TServiceKikimrConfig config);
 
 }   // namespace NCloud::NFileStore

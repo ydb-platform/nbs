@@ -6,6 +6,8 @@
 #include <contrib/ydb/library/actors/core/hfunc.h>
 #include <contrib/ydb/library/actors/core/log.h>
 
+#include <util/generic/string.h>
+
 namespace NCloud::NFileStore {
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -17,8 +19,11 @@ public:
     static constexpr const char ActorName[] =
         "NCloud::NFileStore::TWriteBackCacheActor";
 
+private:
+    TString FilePath;
+
 public:
-    TWriteBackCacheActor();
+    TWriteBackCacheActor(TString filePath);
 
 private:
     void HandleCreateHandle(

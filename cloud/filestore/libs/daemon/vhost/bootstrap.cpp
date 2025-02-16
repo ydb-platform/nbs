@@ -132,7 +132,7 @@ public:
             case NDaemon::EServiceKind::Kikimr: {
                 fileStore = CreateKikimrFileStore(
                     ActorSystem,
-                    false /* writeBackCacheEnabled */);
+                    TServiceKikimrConfig{});
                 break;
             }
 
