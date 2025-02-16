@@ -305,6 +305,9 @@ public:
     ui64 GetMixedBlocksOffloadedRangesCapacity() const;
 
     bool GetYdbViewerServiceEnabled() const;
+
+    bool GetGuestCacheDisabled() const;
+    bool GetExtendedAttributesDisabled() const;
 };
 
 }   // namespace NCloud::NFileStore::NStorage

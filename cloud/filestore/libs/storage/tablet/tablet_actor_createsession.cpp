@@ -46,6 +46,10 @@ void FillFeatures(const TStorageConfig& config, NProto::TFileStore& fileStore)
 
     features->SetGuestWritebackCacheEnabled(
         config.GetGuestWritebackCacheEnabled());
+
+    features->SetGuestCacheDisabled(config.GetGuestCacheDisabled());
+    features->SetExtendedAttributesDisabled(
+        config.GetExtendedAttributesDisabled());
 }
 
 ////////////////////////////////////////////////////////////////////////////////

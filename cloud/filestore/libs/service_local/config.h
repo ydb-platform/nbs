@@ -34,6 +34,8 @@ public:
     bool GetGuestWritebackCacheEnabled() const;
     ui32 GetNodeCleanupBatchSize() const;
     bool GetZeroCopyEnabled() const;
+    bool GetGuestCacheDisabled() const;
+    bool GetExtendedAttributesDisabled() const;
 
     void Dump(IOutputStream& out) const;
     TString DumpStr() const;
