@@ -209,7 +209,7 @@ void TNetlinkDevice::DisconnectSocket()
     Socket.Close();
 }
 
-// queries device status eand registers callback that will connect
+// queries device status and registers callback that will connect
 // or reconfigure (if Reconfigure == true) specified device
 void TNetlinkDevice::Connect()
 {
@@ -701,8 +701,7 @@ void TNetlinkDevice::DisconnectSocket()
     Socket.Close();
 }
 
-// queries device status eand registers callback that will connect
-// or reconfigure (if Reconfigure == true) specified device
+// queries device status and configure/reconfigure device
 void TNetlinkDevice::Connect()
 {
     try {
