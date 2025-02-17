@@ -770,11 +770,11 @@ func TestSnapshotServiceDeleteSnapshotWhenCreationIsInFlight(t *testing.T) {
 
 	err = internal_client.WaitOperation(ctx, client, createOp.Id)
 
-	// If snapshot creation ends up successfuly,
-	// there should be a checkpoint without data.
-	if err == nil {
-		testcommon.RequireCheckpoint(t, ctx, diskID, snapshotID)
-	} else {
+	// If snapshot creation ends up successfuly, there may be two cases:
+	// Snapshot was created and then deleted, so should be no checkpoints left
+	// or snapshot deletion ended up before creation, snapshot was not deleted,
+	// so there should be a checkpoint.
+	if err != nil {
 		// Should wait here because checkpoint is deleted on |createOp|
 		// operation cancel (and exact time of this event is unknown).
 		testcommon.WaitForCheckpointsDoNotExist(t, ctx, diskID)
