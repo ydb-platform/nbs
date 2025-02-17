@@ -2020,7 +2020,7 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
         ui32 checksumResponseCount = 0;
 
         TActorId recepient;
-        TMap<TActorId, TVector<TActorId>> actorIds;
+        TMap<TActorId, TSet<TActorId>> actorIds;
         runtime.SetObserverFunc(
             [&](TAutoPtr<IEventHandle>& event)
             {
@@ -2028,11 +2028,11 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
                     case TEvNonreplPartitionPrivate::EvChecksumBlocksResponse: {
                         ++checksumResponseCount;
                         recepient = event->Recipient;
-                        actorIds[event->Recipient].push_back(event->Sender);
+                        actorIds[event->Recipient].insert(event->Sender);
                         break;
                     }
                     case TEvService::EvReadBlocksResponse: {
-                        actorIds[event->Recipient].push_back(event->Sender);
+                        actorIds[event->Recipient].insert(event->Sender);
                         break;
                     }
                 }
