@@ -178,18 +178,16 @@ private:
             for (const auto& channel: tabletBootInfo.StorageInfo->Channels) {
                 auto relevantHistoryEntrys =
                     channel.History | std::views::reverse |
+                    std::views::filter(
+                        [&](const auto& el)
+                        { return groupIds.insert(el.GroupID).second; }) |
                     std::views::take(GroupsPerChannelToWarmup);
                 for (const auto& historyEntry: relevantHistoryEntrys) {
-                    auto groupId = historyEntry.GroupID;
-                    auto [_, inserted] = groupIds.insert(groupId);
-                    if (inserted) {
-                        NCloud::Send(
-                            ctx,
-                            NKikimr::MakeBlobStorageProxyID(groupId),
-                            std::make_unique<
-                                NKikimr::TEvBlobStorage::TEvStatus>(
-                                TInstant::Max()));
-                    }
+                    NCloud::Send(
+                        ctx,
+                        NKikimr::MakeBlobStorageProxyID(historyEntry.GroupID),
+                        std::make_unique<NKikimr::TEvBlobStorage::TEvStatus>(
+                            TInstant::Max()));
                 }
             }
         }
