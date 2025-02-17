@@ -8,13 +8,13 @@
 #include <util/system/filemap.h>
 #include <util/system/tempfile.h>
 
-namespace NCloud::NFileStore {
+namespace NCloud {
 
 namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TString Dump(const TVector<TBrokenFileRingBufferEntry>& entries)
+TString Dump(const TVector<TFileRingBuffer::TBrokenFileEntry>& entries)
 {
     TStringBuilder sb;
 
@@ -141,7 +141,7 @@ struct TReferenceImplementation
 
     auto Validate() const
     {
-        return TVector<TBrokenFileRingBufferEntry>();
+        return TVector<TFileRingBuffer::TBrokenFileEntry>();
     }
 };
 
@@ -354,4 +354,4 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
     }
 }
 
-}   // namespace NCloud::NFileStore
+}   // namespace NCloud

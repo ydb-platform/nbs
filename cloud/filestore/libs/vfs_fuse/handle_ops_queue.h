@@ -2,9 +2,9 @@
 
 #include "public.h"
 
-#include "file_ring_buffer.h"
-
 #include <cloud/filestore/libs/vfs_fuse/protos/queue_entry.pb.h>
+
+#include <cloud/storage/core/libs/common/file_ring_buffer.h>
 
 #include <util/generic/queue.h>
 
@@ -36,8 +36,6 @@ public:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-THandleOpsQueuePtr CreateHandleOpsQueue(
-    const TString& filePath,
-    ui32 size);
+THandleOpsQueuePtr CreateHandleOpsQueue(const TString& filePath, ui32 size);
 
 }   // namespace NCloud::NFileStore::NFuse

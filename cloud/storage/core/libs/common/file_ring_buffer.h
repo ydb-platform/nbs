@@ -3,19 +3,20 @@
 #include <util/generic/string.h>
 #include <util/generic/vector.h>
 
-namespace NCloud::NFileStore {
+namespace NCloud {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TBrokenFileRingBufferEntry
-{
-    TString Data;
-    ui32 ExpectedChecksum = 0;
-    ui32 ActualChecksum = 0;
-};
-
 class TFileRingBuffer
 {
+public:
+    struct TBrokenFileEntry
+    {
+        TString Data;
+        ui32 ExpectedChecksum = 0;
+        ui32 ActualChecksum = 0;
+    };
+
 private:
     class TImpl;
     std::unique_ptr<TImpl> Impl;
@@ -30,7 +31,7 @@ public:
     void Pop();
     ui32 Size() const;
     bool Empty() const;
-    TVector<TBrokenFileRingBufferEntry> Validate() const;
+    TVector<TBrokenFileEntry> Validate() const;
 };
 
-}   // namespace NCloud::NFileStore
+}   // namespace NCloud

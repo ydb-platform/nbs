@@ -9,7 +9,7 @@
 
 #include <functional>
 
-namespace NCloud::NFileStore {
+namespace NCloud {
 
 namespace {
 
@@ -254,7 +254,7 @@ public:
 
     auto Validate() const
     {
-        TVector<TBrokenFileRingBufferEntry> entries;
+        TVector<TBrokenFileEntry> entries;
 
         Visit([&] (ui32 checksum, TStringBuf entry) {
             const ui32 actualChecksum = Crc32c(entry.data(), entry.size());
@@ -305,9 +305,9 @@ bool TFileRingBuffer::Empty() const
     return Impl->Empty();
 }
 
-TVector<TBrokenFileRingBufferEntry> TFileRingBuffer::Validate() const
+TVector<TFileRingBuffer::TBrokenFileEntry> TFileRingBuffer::Validate() const
 {
     return Impl->Validate();
 }
 
-}   // namespace NCloud::NFileStore
+}   // namespace NCloud
