@@ -371,16 +371,6 @@ int TNetlinkDevice::StatusHandler(nl_msg* nlmsg)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void ValidateAttribute(const ::nlattr& attribute, ui16 expectedAttribute)
-{
-    if (attribute.nla_type != expectedAttribute) {
-        throw TIoException() << "Invalid attribute type: " << attribute.nla_type
-                           << " Expected attribute type: " << expectedAttribute;
-    }
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
 using NNetlink::TNetlinkHeader;
 
 #pragma pack(push, NLMSG_ALIGNTO)
@@ -413,8 +403,8 @@ struct TNetlinkFamilyIdResponse
 
     void Validate()
     {
-        ValidateAttribute(FamilyNameAttr, CTRL_ATTR_FAMILY_NAME);
-        ValidateAttribute(FamilyIdAttr, CTRL_ATTR_FAMILY_ID);
+        NNetlink::ValidateAttribute(FamilyNameAttr, CTRL_ATTR_FAMILY_NAME);
+        NNetlink::ValidateAttribute(FamilyIdAttr, CTRL_ATTR_FAMILY_ID);
     }
 };
 
@@ -442,9 +432,9 @@ struct TNbdStatusResponse {
 
     void Validate()
     {
-        ValidateAttribute(NbdDeviceListAttr, NBD_ATTR_DEVICE_LIST);
-        ValidateAttribute(NbdDeviceItemAttr, NBD_DEVICE_ITEM);
-        ValidateAttribute(NbdDeviceIndex, NBD_DEVICE_INDEX);
+        NNetlink::ValidateAttribute(NbdDeviceListAttr, NBD_ATTR_DEVICE_LIST);
+        NNetlink::ValidateAttribute(NbdDeviceItemAttr, NBD_DEVICE_ITEM);
+        NNetlink::ValidateAttribute(NbdDeviceIndex, NBD_DEVICE_INDEX);
     }
 };
 

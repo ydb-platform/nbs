@@ -66,7 +66,7 @@ struct TNetlinkHeader
 
     TNetlinkHeader() = default;
 
-    TNetlinkHeader(uint32_t len, uint16_t type, uint8_t cmd)
+    TNetlinkHeader(ui32 len, ui16 type, ui8 cmd)
         : MessageHeader{len, type, NLM_F_REQUEST | NLM_F_ACK, 0, 0}
         , GenericHeader{cmd, 1, 0}
     {
@@ -92,6 +92,10 @@ union TNetlinkResponse {
         static_assert(sizeof(TMessage) < MaxMsgSize);
     }
 };
+
+////////////////////////////////////////////////////////////////////////////////
+
+void ValidateAttribute(const ::nlattr& attribute, ui16 expectedAttribute);
 
 #pragma pack(pop)
 
