@@ -2043,6 +2043,7 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
         const auto range = TBlockRange64::WithLength(0, 1024);
 
         client.ReadBlocks(range, 0, replicaCount);
+
         TDispatchOptions options;
         options.FinalEvents.emplace_back(TEvService::EvReadBlocksResponse);
         runtime.DispatchEvents(options, TDuration::Seconds(3));
