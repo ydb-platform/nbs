@@ -83,7 +83,7 @@ void TDiskAgentActor::HandleSecureEraseDevice(
             ev->Cookie,
             ev->Get()->CallContext));
 
-    if (SecureErasePendingRequests.size() > 1 || pendingRequests.size() > 1) {
+    if (!State->CanStartSecureEraseForDevice(deviceId)) {
         LOG_INFO_S(ctx, TBlockStoreComponents::DISK_AGENT,
             "Postpone secure erase for " << deviceId.Quote());
 
@@ -129,23 +129,27 @@ void TDiskAgentActor::HandleSecureEraseCompleted(
 
         SecureErasePendingRequests.erase(it);
     }
+    State->SecureErasingFinished(msg->DeviceId);
 
     // erase next device
 
-    while (!SecureErasePendingRequests.empty()) {
-        auto it = SecureErasePendingRequests.begin();
-
-        auto& [deviceId, pendingRequests] = *it;
-
+    TVector<TString> devicesToErase;
+    for (const auto& [deviceUUID, pendingRequests]: SecureErasePendingRequests) {
         Y_DEBUG_ABORT_UNLESS(!pendingRequests.empty());
 
+
         if (pendingRequests.empty()) {
-            SecureErasePendingRequests.erase(it);
+            devicesToErase.emplace_back(deviceUUID);
             continue;
         }
 
-        SecureErase(ctx, deviceId);
-        break;
+        if (State->CanStartSecureEraseForDevice(deviceUUID)) {
+            SecureErase(ctx, deviceUUID);
+        }
+    }
+
+    for (const auto& uuid: devicesToErase) {
+        SecureErasePendingRequests.erase(uuid);
     }
 }
 

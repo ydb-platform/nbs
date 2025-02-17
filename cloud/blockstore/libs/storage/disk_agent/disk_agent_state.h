@@ -24,6 +24,7 @@
 #include <library/cpp/threading/future/future.h>
 
 #include <util/generic/hash.h>
+#include <util/generic/hash_set.h>
 #include <util/generic/vector.h>
 
 namespace NCloud::NBlockStore::NStorage {
@@ -65,6 +66,8 @@ private:
 
     TRdmaTargetConfigPtr RdmaTargetConfig;
     TOldRequestCounters OldRequestCounters;
+
+    THashSet<TString> SecureEraseDevices;
 
 public:
     TDiskAgentState(
@@ -166,6 +169,9 @@ public:
     void SetPartiallySuspended(bool partiallySuspended);
     bool GetPartiallySuspended() const;
 
+    bool CanStartSecureEraseForDevice(const TString& uuid) const;
+    void SecureErasingFinished(const TString& uuid);
+
 private:
     const TDeviceState& GetDeviceState(
         const TString& uuid,
@@ -199,6 +205,8 @@ private:
     void RestoreSessions(TDeviceClient& client) const;
 
     void CheckIfDeviceIsDisabled(const TString& uuid, const TString& clientId);
+
+    bool CanStartSecureEraseForDevice(const NProto::TDeviceConfig& device) const;
 };
 
 }   // namespace NCloud::NBlockStore::NStorage

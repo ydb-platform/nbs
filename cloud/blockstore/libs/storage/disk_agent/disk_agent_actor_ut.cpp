@@ -1984,6 +1984,49 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
         diskAgent.SecureEraseDevice("MemoryDevice1");
     }
 
+    Y_UNIT_TEST(ShouldSecureEraseFewDevice)
+    {
+        TTestBasicRuntime runtime;
+
+        auto config = DiskAgentConfig({
+            "MemoryDevice1",
+            "MemoryDevice2",
+            "MemoryDevice3",
+        });
+
+        config.SetMaxParallelSecureErasesAllowed(2);
+
+        auto env = TTestEnvBuilder(runtime).With(std::move(config)).Build();
+
+        std::unique_ptr<IEventHandle>
+            completeEvent;
+        runtime.SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
+                if (event->GetTypeRewrite() == TEvDiskAgentPrivate::EvSecureEraseCompleted && !completeEvent) {
+                    completeEvent.reset(event.Release());
+                    return TTestActorRuntimeBase::EEventAction::DROP;
+                }
+
+                return TTestActorRuntime::DefaultObserverFunc(event);
+            });
+
+        TDiskAgentClient diskAgent(runtime);
+        diskAgent.WaitReady();
+
+        diskAgent.SendSecureEraseDeviceRequest("MemoryDevice1");
+
+        using namespace std::chrono_literals;
+        runtime.DispatchEvents({}, 100ms);
+        UNIT_ASSERT(completeEvent);
+
+        diskAgent.SecureEraseDevice("MemoryDevice2");
+
+        runtime.Send(completeEvent.release());
+        auto response = diskAgent.RecvSecureEraseDeviceResponse();
+        UNIT_ASSERT(!HasError(response->Record));
+    }
+
     Y_UNIT_TEST(ShouldUpdateStats)
     {
         auto const workingDir = TryGetRamDrivePath();

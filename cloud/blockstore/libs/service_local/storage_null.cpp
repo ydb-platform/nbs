@@ -83,6 +83,85 @@ public:
     };
 };
 
+////////////////////////////////////////////////////////////////////////////////
+
+class TControlledStorage final: public IStorage
+{
+    TFuture<void> WaitForFuture;
+
+public:
+    explicit TControlledStorage(TFuture<void> waitFor)
+        : WaitForFuture(std::move(waitFor))
+    {}
+
+    TFuture<NProto::TZeroBlocksResponse> ZeroBlocks(
+        TCallContextPtr callContext,
+        std::shared_ptr<NProto::TZeroBlocksRequest> request) override
+    {
+        Y_UNUSED(callContext);
+        Y_UNUSED(request);
+
+        return WaitForFuture.Apply(
+            [](TFuture<void> future)
+            {
+                Y_UNUSED(future);
+                return NProto::TZeroBlocksResponse();
+            });
+    }
+
+    TFuture<NProto::TReadBlocksLocalResponse> ReadBlocksLocal(
+        TCallContextPtr callContext,
+        std::shared_ptr<NProto::TReadBlocksLocalRequest> request) override
+    {
+        Y_UNUSED(callContext);
+        Y_UNUSED(request);
+
+        return WaitForFuture.Apply(
+            [](TFuture<void> future)
+            {
+                Y_UNUSED(future);
+                return NProto::TReadBlocksLocalResponse();
+            });
+    }
+
+    TFuture<NProto::TWriteBlocksLocalResponse> WriteBlocksLocal(
+        TCallContextPtr callContext,
+        std::shared_ptr<NProto::TWriteBlocksLocalRequest> request) override
+    {
+        Y_UNUSED(callContext);
+        Y_UNUSED(request);
+
+        return WaitForFuture.Apply(
+            [](TFuture<void> future)
+            {
+                Y_UNUSED(future);
+                return NProto::TWriteBlocksLocalResponse();
+            });
+    }
+
+    TFuture<NProto::TError> EraseDevice(
+        NProto::EDeviceEraseMethod method) override
+    {
+        Y_UNUSED(method);
+
+        return WaitForFuture.Apply(
+            [](TFuture<void> future)
+            {
+                Y_UNUSED(future);
+                return NProto::TError();
+            });
+    }
+
+    TStorageBuffer AllocateBuffer(size_t bytesCount) override
+    {
+        Y_UNUSED(bytesCount);
+        return nullptr;
+    }
+
+    void ReportIOError() override
+    {}
+};
+
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -97,6 +176,13 @@ IStorageProviderPtr CreateNullStorageProvider()
 IStoragePtr CreateNullStorage()
 {
     return std::make_shared<TNullStorage>();
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+IStoragePtr CreateControlledStorage(TFuture<void> waitFor)
+{
+    return std::make_shared<TControlledStorage>(std::move(waitFor));
 }
 
 }   // namespace NCloud::NBlockStore::NServer

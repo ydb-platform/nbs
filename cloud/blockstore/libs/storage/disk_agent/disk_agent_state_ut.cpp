@@ -127,6 +127,7 @@ struct TNullConfigParams
 
     TString CachedConfigPath;
     TString CachedSessionsPath;
+    uint MaxParallelSecureErasesAllowed = 0;
 };
 
 auto CreateNullConfig(TNullConfigParams params)
@@ -149,6 +150,11 @@ auto CreateNullConfig(TNullConfigParams params)
 
     config.SetCachedConfigPath(std::move(params.CachedConfigPath));
     config.SetCachedSessionsPath(std::move(params.CachedSessionsPath));
+
+    if (params.MaxParallelSecureErasesAllowed) {
+        config.SetMaxParallelSecureErasesAllowed(
+            params.MaxParallelSecureErasesAllowed);
+    }
 
     return std::make_shared<TDiskAgentConfig>(std::move(config), "rack", 1000);
 }
@@ -304,6 +310,39 @@ struct TStorageProvider: IStorageProvider
         return MakeErrorFuture<IStoragePtr>(
             std::make_exception_ptr(yexception() << "oops")
         );
+    }
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+struct TControlledStorageProvider: IStorageProvider
+{
+    THashMap<TString, TPromise<void>> Paths;
+
+    TControlledStorageProvider(TVector<TString> paths)
+    {
+        for (auto& p: paths) {
+            Paths[p] = NewPromise<void>();
+        }
+    }
+
+    TFuture<IStoragePtr> CreateStorage(
+        const NProto::TVolume& volume,
+        const TString& clientId,
+        NProto::EVolumeAccessMode accessMode) override
+    {
+        Y_UNUSED(clientId);
+        Y_UNUSED(accessMode);
+
+        auto* promise = Paths.FindPtr(volume.GetDiskId());
+
+        if (promise) {
+            return MakeFuture(
+                NServer::CreateControlledStorage(promise->GetFuture()));
+        }
+
+        return MakeErrorFuture<IStoragePtr>(
+            std::make_exception_ptr(yexception() << "oops"));
     }
 };
 
@@ -2098,6 +2137,95 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
             UNIT_ASSERT_VALUES_EQUAL("uuid-1", devices[0].GetDeviceUUID());
             UNIT_ASSERT_VALUES_EQUAL("uuid-2", devices[1].GetDeviceUUID());
             UNIT_ASSERT_VALUES_EQUAL("uuid-3", devices[2].GetDeviceUUID());
+        }
+    }
+
+    Y_UNIT_TEST_F(ShouldCorrectlySecureEraseFewDevices, TFiles)
+    {
+        auto config = CreateNullConfig(
+            {.Files = Nvme3s, .MaxParallelSecureErasesAllowed = 2});
+
+        auto storageProvider =
+            std::make_shared<TControlledStorageProvider>(TVector<TString>{
+                config->GetFileDevices()[0].GetPath(),
+                config->GetFileDevices()[1].GetPath(),
+                config->GetFileDevices()[2].GetPath(),
+            });
+
+        TDiskAgentState state(
+            CreateStorageConfig(),
+            config,
+            nullptr,   // spdk
+            CreateTestAllocator(),
+            storageProvider,
+            CreateProfileLogStub(),
+            CreateBlockDigestGeneratorStub(),
+            CreateLoggingService("console"),
+            nullptr,   // rdmaServer
+            NvmeManager,
+            nullptr,   // rdmaTargetConfig
+            TOldRequestCounters());
+
+        auto future = state.Initialize();
+        const auto& r = future.GetValue(WaitTimeout);
+
+        UNIT_ASSERT_VALUES_EQUAL(0, r.Errors.size());
+        UNIT_ASSERT_VALUES_EQUAL(3, r.Configs.size());
+
+        const TString clientId = "client";
+
+        try {
+            state.AcquireDevices(
+                {"uuid-1", "uuid-2", "uuid-3"},
+                clientId,
+                TInstant::Seconds(1),
+                NProto::VOLUME_ACCESS_READ_WRITE,
+                0,
+                "vol0",
+                0);
+        } catch (const TServiceError& e) {
+            UNIT_ASSERT_C(false, e.GetMessage());
+        }
+
+        try {
+            state.ReleaseDevices(
+                {"uuid-1", "uuid-2", "uuid-3"},
+                clientId,
+                "vol0",
+                0);
+        } catch (const TServiceError& e) {
+            UNIT_ASSERT_C(false, e.GetMessage());
+        }
+
+        UNIT_ASSERT(state.CanStartSecureEraseForDevice("uuid-1"));
+        auto future1 = state.SecureErase("uuid-1", {});
+        UNIT_ASSERT(!state.CanStartSecureEraseForDevice("uuid-1"));
+
+
+        UNIT_ASSERT(state.CanStartSecureEraseForDevice("uuid-2"));
+        auto future2 = state.SecureErase("uuid-2", {});
+        UNIT_ASSERT(!state.CanStartSecureEraseForDevice("uuid-1"));
+        UNIT_ASSERT(!state.CanStartSecureEraseForDevice("uuid-2"));
+
+        UNIT_ASSERT(!state.CanStartSecureEraseForDevice("uuid-3"));
+
+        storageProvider->Paths[config->GetFileDevices()[0].GetPath()]
+            .SetValue();
+        UNIT_ASSERT(future1.HasValue());
+        state.SecureErasingFinished("uuid-1");
+
+        UNIT_ASSERT(state.CanStartSecureEraseForDevice("uuid-3"));
+        auto future3 = state.SecureErase("uuid-3", {});
+        storageProvider->Paths[config->GetFileDevices()[1].GetPath()]
+            .SetValue();
+        storageProvider->Paths[config->GetFileDevices()[2].GetPath()]
+            .SetValue();
+
+        try {
+            future2.GetValue(WaitTimeout);
+            future3.GetValue(WaitTimeout);
+        } catch (const TServiceError& e) {
+            UNIT_ASSERT_C(false, e.GetMessage());
         }
     }
 }

@@ -761,6 +761,12 @@ TFuture<NProto::TError> TDiskAgentState::SecureErase(
         return MakeFuture(NProto::TError());
     }
 
+    Y_DEBUG_ABORT_UNLESS(CanStartSecureEraseForDevice(device.Config));
+    if (!CanStartSecureEraseForDevice(device.Config)) {
+        return MakeFuture(MakeError(E_REJECTED));
+    }
+    SecureEraseDevices.emplace(device.Config.GetDeviceName());
+
     auto onDeviceSecureEraseFinish =
         [weakRdmaTarget = std::weak_ptr<IRdmaTarget>(RdmaTarget),
          uuid](const TFuture<NProto::TError>& future)
@@ -953,6 +959,29 @@ void TDiskAgentState::SetPartiallySuspended(bool partiallySuspended)
 bool TDiskAgentState::GetPartiallySuspended() const
 {
     return PartiallySuspended;
+}
+
+bool TDiskAgentState::CanStartSecureEraseForDevice(const TString& uuid) const
+{
+    const auto& device = GetDeviceStateImpl(uuid);
+    return CanStartSecureEraseForDevice(device.Config);
+}
+
+void TDiskAgentState::SecureErasingFinished(const TString& uuid)
+{
+    const auto& device = GetDeviceStateImpl(uuid);
+    auto it = SecureEraseDevices.find(device.Config.GetDeviceName());
+    Y_DEBUG_ABORT_UNLESS(it != SecureEraseDevices.end());
+    SecureEraseDevices.erase(it);
+}
+
+bool TDiskAgentState::CanStartSecureEraseForDevice(
+    const NProto::TDeviceConfig& device) const
+{
+    const auto& name = device.GetDeviceName();
+    return !SecureEraseDevices.contains(name) &&
+           SecureEraseDevices.size() <
+               AgentConfig->GetMaxParallelSecureErasesAllowed();
 }
 
 void TDiskAgentState::RestoreSessions(TDeviceClient& client) const
