@@ -375,39 +375,6 @@ using NNetlink::TNetlinkHeader;
 
 #pragma pack(push, NLMSG_ALIGNTO)
 
-template<ui32 FamilyNameLength>
-struct TNetlinkFamilyIdRequest
-{
-    TNetlinkHeader Headers = {
-        sizeof(TNetlinkFamilyIdRequest<FamilyNameLength>),
-        GENL_ID_CTRL,
-        CTRL_CMD_GETFAMILY};
-    ::nlattr FamilyNameAttr = {
-        sizeof(FamilyName) + NLA_HDRLEN,
-        CTRL_ATTR_FAMILY_NAME};
-    std::array<char, FamilyNameLength> FamilyName;
-
-    TNetlinkFamilyIdRequest(const char* familyName) {
-        memcpy(&FamilyName[0], familyName, FamilyNameLength);
-    }
-};
-
-template<ui32 FamilyNameLength>
-struct TNetlinkFamilyIdResponse
-{
-    TNetlinkHeader Headers;
-    ::nlattr FamilyNameAttr;
-    std::array<char, FamilyNameLength> FamilyName;
-    alignas(NLMSG_ALIGNTO)::nlattr FamilyIdAttr;
-    ui16 FamilyId;
-
-    void Validate()
-    {
-        NNetlink::ValidateAttribute(FamilyNameAttr, CTRL_ATTR_FAMILY_NAME);
-        NNetlink::ValidateAttribute(FamilyIdAttr, CTRL_ATTR_FAMILY_ID);
-    }
-};
-
 struct TNbdStatusRequest
 {
     TNetlinkHeader Headers;
@@ -761,10 +728,11 @@ ui16 TNetlinkDevice::GetFamilyId()
 {
     if (FamilyId == 0) {
         NNetlink::TNetlinkSocket socket;
-        socket.Send(TNetlinkFamilyIdRequest<sizeof(NBD_GENL_FAMILY_NAME)>(
-            NBD_GENL_FAMILY_NAME));
+        socket.Send(
+            NNetlink::TNetlinkFamilyIdRequest<sizeof(NBD_GENL_FAMILY_NAME)>(
+                NBD_GENL_FAMILY_NAME));
         NNetlink::TNetlinkResponse<
-            TNetlinkFamilyIdResponse<sizeof(NBD_GENL_FAMILY_NAME)>>
+            NNetlink::TNetlinkFamilyIdResponse<sizeof(NBD_GENL_FAMILY_NAME)>>
             response;
         socket.Receive(response);
         FamilyId = response.Msg.FamilyId;

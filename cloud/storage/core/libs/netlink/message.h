@@ -51,6 +51,10 @@ public:
 
 ////////////////////////////////////////////////////////////////////////////////
 
+void ValidateAttribute(const ::nlattr& attribute, ui16 expectedAttribute);
+
+////////////////////////////////////////////////////////////////////////////////
+
 #pragma pack(push, NLMSG_ALIGNTO)
 
 struct TNetlinkError
@@ -93,9 +97,38 @@ union TNetlinkResponse {
     }
 };
 
-////////////////////////////////////////////////////////////////////////////////
+template<ui32 FamilyNameLength>
+struct TNetlinkFamilyIdRequest
+{
+    TNetlinkHeader Headers = {
+        sizeof(TNetlinkFamilyIdRequest<FamilyNameLength>),
+        GENL_ID_CTRL,
+        CTRL_CMD_GETFAMILY};
+    ::nlattr FamilyNameAttr = {
+        sizeof(FamilyName) + NLA_HDRLEN,
+        CTRL_ATTR_FAMILY_NAME};
+    std::array<char, FamilyNameLength> FamilyName;
 
-void ValidateAttribute(const ::nlattr& attribute, ui16 expectedAttribute);
+    TNetlinkFamilyIdRequest(const char* familyName) {
+        memcpy(&FamilyName[0], familyName, FamilyNameLength);
+    }
+};
+
+template<ui32 FamilyNameLength>
+struct TNetlinkFamilyIdResponse
+{
+    TNetlinkHeader Headers;
+    ::nlattr FamilyNameAttr;
+    std::array<char, FamilyNameLength> FamilyName;
+    alignas(NLMSG_ALIGNTO)::nlattr FamilyIdAttr;
+    ui16 FamilyId;
+
+    void Validate()
+    {
+        ValidateAttribute(FamilyNameAttr, CTRL_ATTR_FAMILY_NAME);
+        ValidateAttribute(FamilyIdAttr, CTRL_ATTR_FAMILY_ID);
+    }
+};
 
 #pragma pack(pop)
 
