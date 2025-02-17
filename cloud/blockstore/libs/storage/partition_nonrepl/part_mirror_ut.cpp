@@ -2032,7 +2032,7 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
                         break;
                     }
                     case TEvService::EvReadBlocksRequest: {
-                        if (sender != event->Sender) {
+                        if (sender == event->Sender) {
                             actorIds.insert(event->Recipient);
                         }
                         break;
