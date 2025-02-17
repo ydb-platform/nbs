@@ -1,6 +1,6 @@
 PY3TEST()
 
-ENV(ARCADIA_SANDBOX_SINGLESLOT="true")
+SET(ARCADIA_SANDBOX_SINGLESLOT TRUE)
 
 INCLUDE(${ARCADIA_ROOT}/cloud/blockstore/tests/loadtest/local-nonrepl/ya.make.inc)
 

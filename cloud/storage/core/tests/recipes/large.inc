@@ -12,7 +12,6 @@ IF (SANITIZER_TYPE)
         sb:ttl=3
         sb:logs_ttl=3
         sb:ssd
-        sb:MULTISLOT
         sb:cores=64
     )
 ELSE()
@@ -22,7 +21,6 @@ ELSE()
         sb:ttl=3
         sb:logs_ttl=3
         sb:ssd
-        sb:MULTISLOT
         sb:cores=16
     )
 ENDIF()
