@@ -172,7 +172,7 @@ public:
     void AsyncReadV(
         TFileHandle& file,
         i64 offset,
-        TVector<TArrayRef<char>> buffers,
+        const TVector<TArrayRef<char>>& buffers,
         TFileIOCompletion* completion) override
     {
         auto req = std::make_unique<iocb>();
@@ -218,7 +218,7 @@ public:
     void AsyncWriteV(
         TFileHandle& file,
         i64 offset,
-        TVector<TArrayRef<const char>> buffers,
+        const TVector<TArrayRef<const char>>& buffers,
         TFileIOCompletion* completion) override
     {
         auto req = std::make_unique<iocb>();
@@ -337,12 +337,12 @@ public:
     void AsyncReadV(
         TFileHandle& file,
         i64 offset,
-        TVector<TArrayRef<char>> buffers,
+        const TVector<TArrayRef<char>>& buffers,
         TFileIOCompletion* completion) override
     {
         auto index = NextService++;
         IoServices[index % IoServices.size()]
-            ->AsyncReadV(file, offset, std::move(buffers), completion);
+            ->AsyncReadV(file, offset, buffers, completion);
     }
 
     void AsyncWrite(
@@ -359,12 +359,12 @@ public:
     void AsyncWriteV(
         TFileHandle& file,
         i64 offset,
-        TVector<TArrayRef<const char>> buffers,
+        const TVector<TArrayRef<const char>>& buffers,
         TFileIOCompletion* completion) override
     {
         auto index = NextService++;
         IoServices[index % IoServices.size()]
-            ->AsyncWriteV(file, offset, std::move(buffers), completion);
+            ->AsyncWriteV(file, offset, buffers, completion);
     }
 
     void Start() override

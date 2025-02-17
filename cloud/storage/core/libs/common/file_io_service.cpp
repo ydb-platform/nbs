@@ -41,7 +41,7 @@ class TFileIOServiceStub final
     void AsyncReadV(
         TFileHandle& file,
         i64 offset,
-        TVector<TArrayRef<char>> buffers,
+        const TVector<TArrayRef<char>>& buffers,
         TFileIOCompletion* completion) override
     {
         Y_UNUSED(file, offset);
@@ -76,7 +76,7 @@ class TFileIOServiceStub final
     void AsyncWriteV(
         TFileHandle& file,
         i64 offset,
-        TVector<TArrayRef<const char>> buffers,
+        const TVector<TArrayRef<const char>>& buffers,
         TFileIOCompletion* completion) override
     {
         Y_UNUSED(file, offset);
@@ -125,14 +125,14 @@ TFuture<ui32> IFileIOService::AsyncWrite(
 TFuture<ui32> IFileIOService::AsyncWriteV(
     TFileHandle& file,
     i64 offset,
-    TVector<TArrayRef<const char>> buffers)
+    const TVector<TArrayRef<const char>>& buffers)
 {
     auto p = NewPromise<ui32>();
 
     AsyncWriteV(
         file,
         offset,
-        std::move(buffers),
+        buffers,
         [=] (const auto& error, ui32 bytes) mutable {
             if (HasError(error)) {
                 auto ex = std::make_exception_ptr(TServiceError{error});
@@ -173,14 +173,14 @@ TFuture<ui32> IFileIOService::AsyncRead(
 TFuture<ui32> IFileIOService::AsyncReadV(
     TFileHandle& file,
     i64 offset,
-    TVector<TArrayRef<char>> buffers)
+    const TVector<TArrayRef<char>>& buffers)
 {
     auto p = NewPromise<ui32>();
 
     AsyncReadV(
         file,
         offset,
-        std::move(buffers),
+        buffers,
         [=] (const auto& error, ui32 bytes) mutable {
             if (HasError(error)) {
                 auto ex = std::make_exception_ptr(TServiceError{error});

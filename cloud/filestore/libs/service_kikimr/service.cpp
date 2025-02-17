@@ -292,6 +292,35 @@ public:
             std::move(responseHandler));
     }
 
+    TFuture<NProto::TReadDataLocalResponse> ReadDataLocal(
+        TCallContextPtr callContext,
+        std::shared_ptr<NProto::TReadDataLocalRequest> request) override
+    {
+        auto response = NewPromise<NProto::TReadDataResponse>();
+        ExecuteRequest<TReadDataMethod>(
+            std::move(callContext),
+            std::move(request),
+            response);
+        return response.GetFuture().Apply(
+            [](TFuture<NProto::TReadDataResponse> f)
+            {
+                NProto::TReadDataLocalResponse response(f.ExtractValue());
+                return response;
+            });
+    }
+
+    TFuture<NProto::TWriteDataLocalResponse> WriteDataLocal(
+        TCallContextPtr callContext,
+        std::shared_ptr<NProto::TWriteDataLocalRequest> request) override
+    {
+        auto response = NewPromise<NProto::TWriteDataResponse>();
+        ExecuteRequest<TWriteDataMethod>(
+            std::move(callContext),
+            std::move(request),
+            response);
+        return response.GetFuture();
+    }
+
 private:
     template <typename T>
     void ExecuteRequest(

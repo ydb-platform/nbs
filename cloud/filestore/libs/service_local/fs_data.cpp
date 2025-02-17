@@ -94,28 +94,28 @@ NProto::TDestroyHandleResponse TLocalFileSystem::DestroyHandle(
     return {};
 }
 
-TFuture<NProto::TReadDataResponse>
-TLocalFileSystem::ReadDataAsyncUsingFuseBuffers(
-    NProto::TReadDataRequest& request,
-    NProto::TProfileLogRequestInfo& logRequest,
-    TFileHandle* handle)
+TFuture<NProto::TReadDataLocalResponse> TLocalFileSystem::ReadDataLocalAsync(
+    NProto::TReadDataLocalRequest& request,
+    NProto::TProfileLogRequestInfo& logRequest)
 {
-    TVector<TArrayRef<char>> buffers;
-    for (const auto& fuseBuf: request.GetFuseBufers()) {
-        buffers.emplace_back(
-            reinterpret_cast<char*>(fuseBuf.GetAddress()),
-            fuseBuf.GetSize());
+    STORAGE_TRACE("ReadDataLocal " << DumpMessage(request));
+
+    auto session = GetSession(request);
+    auto* handle = session->LookupHandle(request.GetHandle());
+    if (!handle || !handle->IsOpen()) {
+        return MakeFuture<NProto::TReadDataLocalResponse>(
+            TErrorResponse(ErrorInvalidHandle(request.GetHandle())));
     }
 
-    auto promise = NewPromise<NProto::TReadDataResponse>();
-    FileIOService->AsyncReadV(*handle, request.GetOffset(), std::move(buffers))
+    auto promise = NewPromise<NProto::TReadDataLocalResponse>();
+    FileIOService->AsyncReadV(*handle, request.GetOffset(), request.Buffers)
         .Subscribe(
             [&logRequest, promise](const TFuture<ui32>& f) mutable
             {
-                NProto::TReadDataResponse response;
+                NProto::TReadDataLocalResponse response;
                 try {
                     auto bytesRead = f.GetValue();
-                    response.SetFuseBuffersReadBytes(bytesRead);
+                    response.Length = bytesRead;
                 } catch (const TServiceError& e) {
                     *response.MutableError() = MakeError(MAKE_FILESTORE_ERROR(
                         ErrnoToFileStoreError(STATUS_FROM_CODE(e.GetCode()))));
@@ -140,10 +140,6 @@ TFuture<NProto::TReadDataResponse> TLocalFileSystem::ReadDataAsync(
     if (!handle || !handle->IsOpen()) {
         return MakeFuture<NProto::TReadDataResponse>(
             TErrorResponse(ErrorInvalidHandle(request.GetHandle())));
-    }
-
-    if (request.FuseBufersSize() > 0) {
-        return ReadDataAsyncUsingFuseBuffers(request, logRequest, handle);
     }
 
     auto align = Config->GetDirectIoEnabled() ? Config->GetDirectIoAlign() : 0;
@@ -173,29 +169,29 @@ TFuture<NProto::TReadDataResponse> TLocalFileSystem::ReadDataAsync(
     return promise;
 }
 
-TFuture<NProto::TWriteDataResponse>
-TLocalFileSystem::WriteDataAsyncUsingFuseBuffers(
-    NProto::TWriteDataRequest& request,
-    NProto::TProfileLogRequestInfo& logRequest,
-    TFileHandle* handle)
+TFuture<NProto::TWriteDataLocalResponse> TLocalFileSystem::WriteDataLocalAsync(
+    NProto::TWriteDataLocalRequest& request,
+    NProto::TProfileLogRequestInfo& logRequest)
 {
-    TVector<TArrayRef<const char>> buffers;
-    for (const auto& fuseBuf: request.GetFuseBufers()) {
-        buffers.emplace_back(
-            reinterpret_cast<const char*>(fuseBuf.GetAddress()),
-            fuseBuf.GetSize());
+    STORAGE_TRACE("WriteDataLocal " << DumpMessage(request));
+
+    auto session = GetSession(request);
+    auto* handle = session->LookupHandle(request.GetHandle());
+    if (!handle || !handle->IsOpen()) {
+        return MakeFuture<NProto::TWriteDataLocalResponse>(
+            TErrorResponse(ErrorInvalidHandle(request.GetHandle())));
     }
 
-    auto promise = NewPromise<NProto::TWriteDataResponse>();
-    FileIOService->AsyncWriteV(*handle, request.GetOffset(), std::move(buffers))
+    auto promise = NewPromise<NProto::TWriteDataLocalResponse>();
+    FileIOService->AsyncWriteV(*handle, request.GetOffset(), request.Buffers)
         .Subscribe(
             [this,
              &logRequest,
              promise,
-             bytesExpected = request.GetFuseBuffersWriteBytes()](
+             bytesExpected = request.Length](
                 const TFuture<ui32>& f) mutable
             {
-                NProto::TWriteDataResponse response;
+                NProto::TWriteDataLocalResponse response;
                 try {
                     auto bytesWritten = f.GetValue();
                     if (bytesWritten != bytesExpected) {
@@ -229,10 +225,6 @@ TFuture<NProto::TWriteDataResponse> TLocalFileSystem::WriteDataAsync(
     if (!handle || !handle->IsOpen()) {
         return MakeFuture<NProto::TWriteDataResponse>(
             TErrorResponse(ErrorInvalidHandle(request.GetHandle())));
-    }
-
-    if (request.FuseBufersSize() > 0) {
-        return WriteDataAsyncUsingFuseBuffers(request, logRequest, handle);
     }
 
     auto b = std::move(*request.MutableBuffer());
