@@ -71,6 +71,14 @@ struct TCompactionMap::TImpl
         ui32 Range = 0;
 
         std::array<TRangeStat, GroupSize> Stats {};
+
+        void init(TGroupNode& group) {
+            BlockIndex = group.BlockIndex;
+            Score = group.Score;
+            GarbageBlockCount = group.GarbageBlockCount;
+            Range = group.Range;
+            std::swap(Stats, group.Stats);
+        }
     };
 
     using TGroupList = TIntrusiveListWithAutoDelete<TGroupNode, TDelete>;
@@ -109,6 +117,10 @@ struct TCompactionMap::TImpl
 
     TVector<TCompactionCounter> GetTopsFromGroups(size_t groupCount) const
     {
+        if (!groupCount) {
+            return {};
+        }
+
         TVector<TCompactionCounter> tops(Reserve(groupCount));
 
         auto it = GroupByScore.Begin();
@@ -332,6 +344,20 @@ struct TCompactionMap::TImpl
     {
         return NonEmptyRangeCount;
     }
+
+    ui32 GetUsedBlockCount(
+        ui32 blockIndex,
+        ui32 blockCount,
+        const TCompressedBitmap* used) const
+    {
+        if (!used) {
+            return blockCount;
+        }
+        const auto usedBlockCount = used->Count(
+            blockIndex,
+            Min(static_cast<ui64>(blockIndex + RangeSize), used->Capacity()));
+        return usedBlockCount;
+    }
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -343,28 +369,26 @@ TCompactionMap::TCompactionMap(ui32 rangeSize, ICompactionPolicyPtr policy)
 TCompactionMap::~TCompactionMap()
 {}
 
+TCompactionMap::TCompactionMap(TCompactionMap&& cm)
+    : Impl(std::move(cm.Impl))
+{}
+
+TCompactionMap& TCompactionMap::operator=(TCompactionMap&& cm) noexcept
+{
+    Impl = std::move(cm.Impl);
+    return *this;
+}
+
 void TCompactionMap::Update(
     const TVector<TCompactionCounter>& counters,
     const TCompressedBitmap* used)
 {
     for (const auto& c: counters) {
-        auto usedBlockCount = c.Stat.BlockCount;
-
-        if (used) {
-            usedBlockCount = used->Count(
-                c.BlockIndex,
-                Min(
-                    static_cast<ui64>(c.BlockIndex + Impl->RangeSize),
-                    used->Capacity()
-                )
-            );
-        }
-
         Impl->Update(
             c.BlockIndex,
             c.Stat.BlobCount,
             c.Stat.BlockCount,
-            usedBlockCount,
+            Impl->GetUsedBlockCount(c.BlockIndex, c.Stat.BlockCount, used),
             c.Stat.BlobCount < 2   // compacted
         );
     }
@@ -393,6 +417,16 @@ void TCompactionMap::Update(
 
     Impl->GroupByScore.Insert(group);
     Impl->GroupByGarbageBlockCount.Insert(group);
+}
+
+void TCompactionMap::Update(TCompactionMap& cm)
+{
+    for (auto& group: cm.Impl->Groups) {
+        auto* freshGroup = Impl->AddGroup(group.BlockIndex);
+        freshGroup->init(group);
+        Impl->GroupByScore.Insert(freshGroup);
+        Impl->GroupByGarbageBlockCount.Insert(freshGroup);
+    }
 }
 
 void TCompactionMap::RegisterRead(ui32 blockIndex, ui32 blobCount, ui32 blockCount)
@@ -475,6 +509,10 @@ TCompactionCounter TCompactionMap::GetTopByGarbageBlockCount() const
 
 TVector<TCompactionCounter> TCompactionMap::GetTop(size_t count) const
 {
+    if (Impl->Groups.Empty()) {
+        return {};
+    }
+
     TVector<TCompactionCounter> result(Reserve(Impl->Groups.Size() * GroupSize));
 
     for (const auto& group: Impl->Groups) {
@@ -498,6 +536,10 @@ TVector<TCompactionCounter> TCompactionMap::GetTop(size_t count) const
 TVector<TCompactionCounter> TCompactionMap::GetTopByGarbageBlockCount(
     size_t count) const
 {
+    if (Impl->Groups.Empty()) {
+        return {};
+    }
+
     TVector<TCompactionCounter> result(Reserve(Impl->Groups.Size() * GroupSize));
 
     for (const auto& group: Impl->Groups) {
@@ -524,6 +566,10 @@ TVector<TCompactionCounter> TCompactionMap::GetTopByGarbageBlockCount(
 
 TVector<ui32> TCompactionMap::GetNonEmptyRanges() const
 {
+    if (Impl->Groups.Empty()) {
+        return {};
+    }
+
     TVector<ui32> result(Reserve(Impl->Groups.Size() * GroupSize));
 
     for (const auto& group: Impl->Groups) {

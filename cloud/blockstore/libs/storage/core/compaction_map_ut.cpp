@@ -268,6 +268,91 @@ Y_UNIT_TEST_SUITE(TCompactionMapTest)
             UNIT_ASSERT_VALUES_EQUAL(nonEmptyCount, 99);
         }
     }
+
+    Y_UNIT_TEST(UpdateCompactionMapFromAnother)
+    {
+        // create 2 compaction map with not ready state (for async loading)
+        TCompactionMap map1(RangeSize, BuildDefaultCompactionPolicy(5));
+        TCompactionMap map2(RangeSize, BuildDefaultCompactionPolicy(5));
+
+        for (size_t i = 1; i <= 30; ++i) {
+            map1.Update(GetGroupIndex(i), i, i, i, false);
+        }
+        for (size_t i = 16; i <= 45; ++i) {
+            map2.Update(GetGroupIndex(i), i * 2, i * 2, i * 2, false);
+        }
+
+        {
+            const auto nonEmptyCount = map1.GetNonEmptyRanges().size();
+            UNIT_ASSERT_VALUES_EQUAL(nonEmptyCount, 30);
+            auto rangeStat = map1.Get(GetGroupIndex(30));
+            UNIT_ASSERT_VALUES_EQUAL(rangeStat.BlobCount, 30);
+            rangeStat = map1.Get(GetGroupIndex(31));
+            UNIT_ASSERT_VALUES_EQUAL(rangeStat.BlobCount, 0);
+        }
+        {
+            const auto nonEmptyCount = map2.GetNonEmptyRanges().size();
+            UNIT_ASSERT_VALUES_EQUAL(nonEmptyCount, 30);
+            auto rangeStat = map2.Get(GetGroupIndex(30));
+            UNIT_ASSERT_VALUES_EQUAL(rangeStat.BlobCount, 60);
+            rangeStat = map2.Get(GetGroupIndex(31));
+            UNIT_ASSERT_VALUES_EQUAL(rangeStat.BlobCount, 62);
+        }
+
+        map1.Update(map2);
+        {
+            const auto nonEmptyCount = map1.GetNonEmptyRanges().size();
+            UNIT_ASSERT_VALUES_EQUAL(nonEmptyCount, 45);
+            auto rangeStat = map1.Get(GetGroupIndex(30));
+            UNIT_ASSERT_VALUES_EQUAL(rangeStat.BlobCount, 60);
+            rangeStat = map1.Get(GetGroupIndex(31));
+            UNIT_ASSERT_VALUES_EQUAL(rangeStat.BlobCount, 62);
+        }
+        {
+            const auto nonEmptyCount = map2.GetNonEmptyRanges().size();
+            UNIT_ASSERT_VALUES_EQUAL(nonEmptyCount, 15);
+            auto rangeStat = map2.Get(GetGroupIndex(30));
+            UNIT_ASSERT_VALUES_EQUAL(rangeStat.BlobCount, 30);
+            rangeStat = map2.Get(GetGroupIndex(31));
+            UNIT_ASSERT_VALUES_EQUAL(rangeStat.BlobCount, 0);
+        }
+
+        map2 = std::move(map1);
+        {
+            const auto nonEmptyCount = map2.GetNonEmptyRanges().size();
+            UNIT_ASSERT_VALUES_EQUAL(nonEmptyCount, 45);
+            auto rangeStat = map2.Get(GetGroupIndex(30));
+            UNIT_ASSERT_VALUES_EQUAL(rangeStat.BlobCount, 60);
+            rangeStat = map2.Get(GetGroupIndex(31));
+            UNIT_ASSERT_VALUES_EQUAL(rangeStat.BlobCount, 62);
+        }
+    }
+
+    Y_UNIT_TEST(UpdateCompactionMapFromEmptyMap)
+    {
+        TCompactionMap map1(RangeSize, BuildDefaultCompactionPolicy(5));
+        TCompactionMap map2(RangeSize, BuildDefaultCompactionPolicy(5));
+
+        for (size_t i = 1; i <= 30; ++i) {
+            map1.Update(GetGroupIndex(i), i, i, i, false);
+        }
+
+        map1.Update(map2);
+
+        {
+            const auto nonEmptyCount = map2.GetNonEmptyRanges().size();
+            UNIT_ASSERT_VALUES_EQUAL(nonEmptyCount, 0);
+        }
+
+        map2 = std::move(map1);
+
+        {
+            const auto nonEmptyCount = map2.GetNonEmptyRanges().size();
+            UNIT_ASSERT_VALUES_EQUAL(nonEmptyCount, 30);
+            auto rangeStat = map2.Get(GetGroupIndex(15));
+            UNIT_ASSERT_VALUES_EQUAL(rangeStat.BlobCount, 15);
+        }
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

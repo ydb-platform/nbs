@@ -588,6 +588,10 @@ private:
         const TEvPartitionPrivate::TEvCompactionCompleted::TPtr& ev,
         const NActors::TActorContext& ctx);
 
+    void HandleLoadCompactionMapCompleted(
+        const TEvPartitionPrivate::TEvLoadCompactionMapCompleted::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
     void HandleMetadataRebuildCompleted(
         const TEvPartitionPrivate::TEvMetadataRebuildCompleted::TPtr& ev,
         const NActors::TActorContext& ctx);

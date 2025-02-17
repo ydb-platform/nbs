@@ -9,6 +9,7 @@
 #include <cloud/blockstore/libs/storage/core/compaction_options.h>
 #include <cloud/blockstore/libs/storage/core/compaction_type.h>
 #include <cloud/blockstore/libs/storage/core/request_info.h>
+#include <cloud/blockstore/libs/storage/core/compaction_map.h>
 #include <cloud/blockstore/libs/storage/model/channel_data_kind.h>
 #include <cloud/blockstore/libs/storage/model/channel_permissions.h>
 #include <cloud/blockstore/libs/storage/partition/model/blob_to_confirm.h>
@@ -863,6 +864,15 @@ struct TEvPartitionPrivate
     };
 
     //
+    // LoadCompactionMapCompleted
+    //
+
+    struct TLoadCompactionMapCompleted
+    {
+        TCompactionMap CompactionMap;
+    };
+
+    //
     // Events declaration
     //
 
@@ -892,6 +902,7 @@ struct TEvPartitionPrivate
         EvPatchBlobCompleted,
         EvAddConfirmedBlobsCompleted,
         EvConfirmBlobsCompleted,
+        EvLoadCompactionMapCompleted,
 
         EvEnd
     };
@@ -921,6 +932,7 @@ struct TEvPartitionPrivate
     using TEvPatchBlobCompleted = TResponseEvent<TPatchBlobCompleted, EvPatchBlobCompleted>;
     using TEvAddConfirmedBlobsCompleted = TResponseEvent<TOperationCompleted, EvAddConfirmedBlobsCompleted>;
     using TEvConfirmBlobsCompleted = TResponseEvent<TConfirmBlobsCompleted, EvConfirmBlobsCompleted>;
+    using TEvLoadCompactionMapCompleted = TResponseEvent<TLoadCompactionMapCompleted, EvLoadCompactionMapCompleted>;
 };
 
 }   // namespace NCloud::NBlockStore::NStorage::NPartition

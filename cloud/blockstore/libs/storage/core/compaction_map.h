@@ -53,6 +53,9 @@ public:
     TCompactionMap(ui32 rangeSize, ICompactionPolicyPtr policy);
     ~TCompactionMap();
 
+    TCompactionMap(TCompactionMap&& cm);
+    TCompactionMap& operator=(TCompactionMap&& cm) noexcept;
+
     static void UpdateCompactionCounter(ui32 source, ui16* target)
     {
         *target = source > Max<ui16>() ? Max<ui16>() : source;
@@ -61,13 +64,14 @@ public:
     void Update(
         const TVector<TCompactionCounter>& counters,
         const TCompressedBitmap* used);
-
     void Update(
         ui32 blockIndex,
         ui32 blobCount,
         ui32 blockCount,
         ui32 usedBlockCount,
         bool compacted);
+    void Update(TCompactionMap& cm);
+
     void RegisterRead(ui32 blockIndex, ui32 blobCount, ui32 blockCount);
     void Clear();
 
