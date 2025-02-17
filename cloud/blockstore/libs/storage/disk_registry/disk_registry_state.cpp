@@ -5513,7 +5513,16 @@ bool TDiskRegistryState::TryUpdateDiskState(
 {
     Y_DEBUG_ABORT_UNLESS(!IsMasterDisk(diskId));
 
-    const auto newState = CalculateDiskState(disk);
+    return TryUpdateDiskStateImpl(db, diskId, disk, timestamp);
+}
+
+bool TDiskRegistryState::TryUpdateDiskStateImpl(
+    TDiskRegistryDatabase& db,
+    const TString& diskId,
+    TDiskState& disk,
+    TInstant timestamp)
+{
+    const auto newState = CalculateDiskState(diskId, disk);
     const auto oldState = disk.State;
 
     if (oldState == newState) {
@@ -5538,7 +5547,7 @@ bool TDiskRegistryState::TryUpdateDiskState(
         newState,
         timestamp);
     if (disk.MasterDiskId) {
-        TryUpdateDiskState(
+        TryUpdateDiskStateImpl(
             db,
             disk.MasterDiskId,
             Disks.at(disk.MasterDiskId),

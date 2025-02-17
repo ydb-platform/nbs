@@ -971,6 +971,12 @@ private:
         TDiskState& disk,
         TInstant timestamp);
 
+    bool TryUpdateDiskStateImpl(
+        TDiskRegistryDatabase& db,
+        const TString& diskId,
+        TDiskState& disk,
+        TInstant timestamp);
+
     NProto::TError TryToRemoveAgentDevices(
         TDiskRegistryDatabase& db,
         const TAgentId& agentId);
