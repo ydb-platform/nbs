@@ -532,6 +532,7 @@ TDuration MSeconds(ui32 value)
                                                                                \
     xxx(DestroyVolumeTimeout,                      TDuration, Seconds(30)     )\
     xxx(CompactionMergedBlobThresholdHDD,          ui32,      0               )\
+    xxx(GroupsCountPerChannelToWarmup,             ui32,      1               )\
 // BLOCKSTORE_STORAGE_CONFIG_RW
 
 #define BLOCKSTORE_STORAGE_CONFIG(xxx)                                         \

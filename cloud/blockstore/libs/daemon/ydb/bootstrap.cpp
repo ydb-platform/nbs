@@ -73,6 +73,8 @@
 #include <util/digest/city.h>
 #include <util/system/hostname.h>
 
+#include <ranges>
+
 namespace NCloud::NBlockStore::NServer {
 
 using namespace NMonitoring;
@@ -108,13 +110,16 @@ private:
 private:
     NThreading::TPromise<void> Promise;
     const TDuration Timeout;
+    const ui32 GroupsPerChannelToWarmup;
 
 public:
     TWarmupBSGroupConnectionsActor(
             NThreading::TPromise<void> promise,
-            TDuration timeout)
+            TDuration timeout,
+            ui32 groupsPerChannelToWarmup)
         : Promise(std::move(promise))
         , Timeout(timeout)
+        , GroupsPerChannelToWarmup(groupsPerChannelToWarmup)
     {}
 
     void Bootstrap(const TActorContext& ctx)
@@ -171,7 +176,10 @@ private:
         THashSet<ui64> groupIds;
         for (const auto& tabletBootInfo: tabletBootInfos) {
             for (const auto& channel: tabletBootInfo.StorageInfo->Channels) {
-                for (const auto& historyEntry: channel.History) {
+                auto relevantHistoryEntrys =
+                    channel.History | std::views::reverse |
+                    std::views::take(GroupsPerChannelToWarmup);
+                for (const auto& historyEntry: relevantHistoryEntrys) {
                     auto groupId = historyEntry.GroupID;
                     auto [_, inserted] = groupIds.insert(groupId);
                     if (inserted) {
@@ -744,7 +752,8 @@ void TBootstrapYdb::WarmupBSGroupConnections()
 
     ActorSystem->Register(std::make_unique<TWarmupBSGroupConnectionsActor>(
         std::move(promise),
-        TDuration::Seconds(1)));
+        TDuration::Seconds(1),
+        Configs->StorageConfig->GetGroupsCountPerChannelToWarmup()));
 
     future.Wait();
 }
