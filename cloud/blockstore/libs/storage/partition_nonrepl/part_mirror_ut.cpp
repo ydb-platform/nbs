@@ -2019,22 +2019,20 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
 
         ui32 checksumResponseCount = 0;
 
-        TSet<TActorId> actorIds;
         TActorId recepient;
+        TMap<TActorId, TVector<TActorId>> actorIds;
         runtime.SetObserverFunc(
             [&](TAutoPtr<IEventHandle>& event)
             {
                 switch (event->GetTypeRewrite()) {
-                    case TEvService::EvReadBlocksResponse: {
-                        if (recepient == event->Recipient) {
-                            actorIds.insert(event->Sender);
-                        }
-                        break;
-                    }
                     case TEvNonreplPartitionPrivate::EvChecksumBlocksResponse: {
                         ++checksumResponseCount;
                         recepient = event->Recipient;
-                        actorIds.insert(event->Sender);
+                        actorIds[event->Recipient].push_back(event->Sender);
+                        break;
+                    }
+                    case TEvService::EvReadBlocksResponse: {
+                        actorIds[event->Recipient].push_back(event->Sender);
                         break;
                     }
                 }
@@ -2045,7 +2043,6 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
         const auto range = TBlockRange64::WithLength(0, 1024);
 
         client.ReadBlocks(range, 0, replicaCount);
-
         TDispatchOptions options;
         options.FinalEvents.emplace_back(TEvService::EvReadBlocksResponse);
         runtime.DispatchEvents(options, TDuration::Seconds(3));
@@ -2053,7 +2050,7 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
         // When requesting a read for three replicas, Readings are made from
         // one replica, and checksums are calculated from the other two.
         UNIT_ASSERT_VALUES_EQUAL(replicaCount - 1, checksumResponseCount);
-        UNIT_ASSERT_VALUES_EQUAL(replicaCount, actorIds.size());
+        UNIT_ASSERT_VALUES_EQUAL(replicaCount, actorIds[recepient].size());
     }
 
     Y_UNIT_TEST(ShouldRejectReadWithWrongReplicaCount)
