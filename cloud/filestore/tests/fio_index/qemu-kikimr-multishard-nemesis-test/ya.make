@@ -26,7 +26,7 @@ SET(VHOST_RESTART_FLAG 1)
 SET(FILESTORE_SHARD_COUNT 5)
 SET(
     NFS_STORAGE_CONFIG_PATCH
-    cloud/filestore/tests/loadtest/service-kikimr-newfeatures-test/nfs-storage.txt
+    cloud/filestore/tests/common_configs/nfs-storage-newfeatures-patch.txt
 )
 SET(NFS_FORCE_VERBOSE 1)
 
