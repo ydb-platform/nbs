@@ -42,13 +42,11 @@ TTabletBootInfoBackup::TTabletBootInfoBackup(
 void TTabletBootInfoBackup::Bootstrap(const TActorContext& ctx)
 {
     Become(&TThis::StateWork);
-    LoadedFromDiskBackupProto = NHiveProxy::NProto::TTabletBootInfoBackup();
+    InitialBackupProto = NHiveProxy::NProto::TTabletBootInfoBackup();
     try {
         TFile file(BackupFilePath, OpenExisting | RdOnly | Seq);
         TUnbufferedFileInput input(file);
-        auto& backupToLoad =
-            ReadOnlyMode ? BackupProto : LoadedFromDiskBackupProto.value();
-        MergeFromTextFormat(input, backupToLoad);
+        MergeFromTextFormat(input, InitialBackupProto.value());
         LOG_INFO_S(
             ctx,
             LogComponent,
@@ -62,7 +60,7 @@ void TTabletBootInfoBackup::Bootstrap(const TActorContext& ctx)
             LogComponent,
             "TabletBootInfoBackup: can't load from file: "
                 << CurrentExceptionMessage());
-        BackupProto.Clear();
+        InitialBackupProto.reset();
     }
 
     if (!ReadOnlyMode) {
@@ -80,10 +78,11 @@ void TTabletBootInfoBackup::ScheduleBackup(const TActorContext& ctx)
 
 NProto::TError TTabletBootInfoBackup::Backup(const TActorContext& ctx)
 {
+    Y_DEBUG_ABORT_UNLESS(!ReadOnlyMode);
     NProto::TError error;
 
     // We don't need this anymore, because backup file will be overwritten.
-    LoadedFromDiskBackupProto.reset();
+    InitialBackupProto.reset();
 
     try {
         TFileLock lock(TmpBackupFilePath);
@@ -144,8 +143,9 @@ void TTabletBootInfoBackup::HandleReadTabletBootInfoBackup(
 
     std::unique_ptr<TResponse> response;
 
-    auto it = BackupProto.GetData().find(msg->TabletId);
-    if (it == BackupProto.GetData().end()) {
+    const auto& backupProto = InitialBackupProto.value_or(BackupProto);
+    auto it = backupProto.GetData().find(msg->TabletId);
+    if (it == backupProto.GetData().end()) {
         LOG_DEBUG_S(ctx, LogComponent,
             "TabletBootInfoBackup: no data for tablet " << msg->TabletId);
         response = std::make_unique<TResponse>(MakeError(E_NOT_FOUND));
@@ -176,9 +176,8 @@ void TTabletBootInfoBackup::HandleUpdateTabletBootInfoBackup(
 
     auto& data = *BackupProto.MutableData();
     data[msg->StorageInfo->TabletID] = info;
-    if (LoadedFromDiskBackupProto) {
-        (*LoadedFromDiskBackupProto
-              ->MutableData())[msg->StorageInfo->TabletID] = info;
+    if (InitialBackupProto) {
+        (*InitialBackupProto->MutableData())[msg->StorageInfo->TabletID] = info;
     }
 
     LOG_DEBUG_S(ctx, LogComponent,
@@ -208,9 +207,14 @@ void TTabletBootInfoBackup::HandleListTabletBootInfoBackups(
     const TActorContext& ctx)
 {
     TVector<TTabletBootInfo> infos;
-    const auto& backupProtoToList =
-        LoadedFromDiskBackupProto.value_or(BackupProto);
-    for (const auto& [_, info]: backupProtoToList.GetData()) {
+    // At the bootstrap, we load the backup into InitialBackupProto so that we
+    // can respond with non-empty data before the first
+    // UpdateTabletBootInfoBackup request. After the first backup (10 seconds),
+    // we consider this information to be irrelevant and set InitialBackupProto
+    // to std::nullopt.
+    const auto& backupProto =
+        InitialBackupProto.value_or(BackupProto);
+    for (const auto& [_, info]: backupProto.GetData()) {
         infos.emplace_back(
             NKikimr::TabletStorageInfoFromProto(info.GetStorageInfo()),
             info.GetSuggestedGeneration());

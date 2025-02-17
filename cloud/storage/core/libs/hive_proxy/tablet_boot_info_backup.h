@@ -29,8 +29,9 @@ private:
     const TFsPath BackupFilePath;
     const bool ReadOnlyMode = false;
 
-    std::optional<NHiveProxy::NProto::TTabletBootInfoBackup>
-        LoadedFromDiskBackupProto;
+    // Proto from BackupFilePath will be loaded into this variable. After the
+    // first backup, this information will be overwritten and not used.
+    std::optional<NHiveProxy::NProto::TTabletBootInfoBackup> InitialBackupProto;
     NHiveProxy::NProto::TTabletBootInfoBackup BackupProto;
     const TFsPath TmpBackupFilePath;
 

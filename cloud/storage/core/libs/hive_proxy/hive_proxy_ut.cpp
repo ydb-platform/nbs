@@ -1622,17 +1622,17 @@ Y_UNIT_TEST_SUITE(THiveProxyTest)
         UNIT_ASSERT_GT(counter->Val(), oldVal);
     }
 
-    Y_UNIT_TEST(ShouldRestoreTabletBooInfo)
+    Y_UNIT_TEST(ShouldLoadTabletBootInfoAtStartup)
     {
-        TString cacheFilePath =
-            "BootExternalInFallbackMode.tablet_boot_info_cache.txt";
+        TString backupFilePath =
+            "BootExternal.tablet_boot_info_backup.txt";
 
         NKikimr::TTabletStorageInfoPtr storageInfo;
 
-        TVector<TVector<ui64>> expectedChannelsGroups;
+        TVector<TVector<ui64>> expectedGroupIds;
         {
             TTestBasicRuntime runtime;
-            TTestEnv env(runtime, cacheFilePath, false);
+            TTestEnv env(runtime, backupFilePath, false);
 
             TTabletStorageInfoPtr expected = CreateTestTabletInfo(
                 FakeTablet2,
@@ -1652,9 +1652,9 @@ Y_UNIT_TEST_SUITE(THiveProxyTest)
             runtime.DispatchEvents(TDispatchOptions(), TDuration::Seconds(15));
 
             for (auto& channel: result.StorageInfo->Channels) {
-                expectedChannelsGroups.emplace_back();
+                expectedGroupIds.emplace_back();
                 for (auto& historyEntry: channel.History) {
-                    expectedChannelsGroups.back().emplace_back(
+                    expectedGroupIds.back().emplace_back(
                         historyEntry.GroupID);
                 }
             }
@@ -1664,7 +1664,7 @@ Y_UNIT_TEST_SUITE(THiveProxyTest)
 
         {
             TTestBasicRuntime runtime;
-            TTestEnv env(runtime, cacheFilePath, false);
+            TTestEnv env(runtime, backupFilePath, false);
 
             auto sender = runtime.AllocateEdgeActor();
 
@@ -1673,19 +1673,16 @@ Y_UNIT_TEST_SUITE(THiveProxyTest)
             UNIT_ASSERT_VALUES_EQUAL(
                 FakeTablet2,
                 result.TabletBootInfos[0].StorageInfo->TabletID);
-            TVector<TVector<ui64>> actualChannelsGroups;
+            TVector<TVector<ui64>> actualGroupIds;
             for (auto& channel: result.TabletBootInfos[0].StorageInfo->Channels)
             {
-                actualChannelsGroups.emplace_back();
+                actualGroupIds.emplace_back();
                 for (auto& historyEntry: channel.History) {
-                    actualChannelsGroups.back().emplace_back(
-                        historyEntry.GroupID);
+                    actualGroupIds.back().emplace_back(historyEntry.GroupID);
                 }
             }
 
-            UNIT_ASSERT_VALUES_EQUAL(
-                expectedChannelsGroups,
-                actualChannelsGroups);
+            UNIT_ASSERT_VALUES_EQUAL(expectedGroupIds, actualGroupIds);
         }
     }
 }
