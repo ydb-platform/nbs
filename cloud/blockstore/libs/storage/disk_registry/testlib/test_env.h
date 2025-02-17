@@ -1088,6 +1088,14 @@ public:
         return request;
     }
 
+    auto CreateDisableAgentRequest(const TString& agentId) {
+        auto request =
+            std::make_unique<TEvDiskRegistry::TEvDisableAgentRequest>();
+        request->Record.SetAgentId(agentId);
+
+        return request;
+    }
+
 #define BLOCKSTORE_DECLARE_METHOD(name, ns)                                    \
     template <typename... Args>                                                \
     void Send##name##Request(Args&&... args)                                   \
