@@ -900,7 +900,7 @@ void TBootstrapBase::Start()
     START_COMMON_COMPONENT(Scheduler);
 
     if (!Configs->Options->TemporaryServer) {
-        WarmupBSGroupsConnections();
+        WarmupBSGroupConnections();
     }
 
     auto restoreFuture = EndpointManager->RestoreEndpoints();
