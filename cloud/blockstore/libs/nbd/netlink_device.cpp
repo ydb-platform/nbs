@@ -391,8 +391,7 @@ struct TNetlinkFamilyIdRequest
     TNetlinkHeader Headers = {
         sizeof(TNetlinkFamilyIdRequest<FamilyNameLength>),
         GENL_ID_CTRL,
-        CTRL_CMD_GETFAMILY,
-        false};
+        CTRL_CMD_GETFAMILY};
     ::nlattr FamilyNameAttr = {
         sizeof(FamilyName) + NLA_HDRLEN,
         CTRL_ATTR_FAMILY_NAME};
@@ -426,7 +425,7 @@ struct TNbdStatusRequest
     ui32 DeviceIndex;
 
     TNbdStatusRequest(ui16 familyId, ui32 deviceIndex)
-        : Headers{sizeof(TNbdStatusRequest), familyId, NBD_CMD_STATUS, false}
+        : Headers{sizeof(TNbdStatusRequest), familyId, NBD_CMD_STATUS}
         , DeviceIndexAttr{sizeof(DeviceIndex) + NLA_HDRLEN, NBD_ATTR_INDEX}
         , DeviceIndex(deviceIndex)
     {}
@@ -479,7 +478,7 @@ struct TNbdConfigureDeviceRequest
         ui64 requestTimeout,
         ui64 connectionTimeout,
         ui32 socketFd)
-        : Headers{sizeof(TNbdConfigureDeviceRequest), familyId, static_cast<ui8>(connected ? NBD_CMD_RECONFIGURE : NBD_CMD_CONNECT), connected}
+        : Headers{sizeof(TNbdConfigureDeviceRequest), familyId, static_cast<ui8>(connected ? NBD_CMD_RECONFIGURE : NBD_CMD_CONNECT)}
         , DeviceIndexAttr{sizeof(DeviceIndex) + NLA_HDRLEN, NBD_ATTR_INDEX}
         , DeviceIndex(deviceIndex)
         , DeviceSizeAttr{sizeof(DeviceSizeInBytes) + NLA_HDRLEN, NBD_ATTR_SIZE_BYTES}
@@ -506,7 +505,7 @@ struct TNbdDisconnectRequest
     ui32 DeviceIndex;
 
     TNbdDisconnectRequest(ui16 familyId, ui32 deviceIndex)
-        : Headers{sizeof(TNbdStatusRequest), familyId, NBD_CMD_DISCONNECT, true}
+        : Headers{sizeof(TNbdStatusRequest), familyId, NBD_CMD_DISCONNECT}
         , DeviceIndexAttr{sizeof(DeviceIndex) + NLA_HDRLEN, NBD_ATTR_INDEX}
         , DeviceIndex(deviceIndex)
     {}

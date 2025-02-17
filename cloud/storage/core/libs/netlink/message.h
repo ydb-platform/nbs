@@ -66,13 +66,10 @@ struct TNetlinkHeader
 
     TNetlinkHeader() = default;
 
-    TNetlinkHeader(uint32_t len, uint16_t type, uint8_t cmd, bool ack)
-        : MessageHeader{len, type, NLM_F_REQUEST, 0, 0}
+    TNetlinkHeader(uint32_t len, uint16_t type, uint8_t cmd)
+        : MessageHeader{len, type, NLM_F_REQUEST | NLM_F_ACK, 0, 0}
         , GenericHeader{cmd, 1, 0}
     {
-        if (ack) {
-            MessageHeader.nlmsg_flags |= NLM_F_ACK;
-        }
     }
 };
 
