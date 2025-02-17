@@ -448,6 +448,8 @@ struct TNbdConfigureDeviceRequest
         , RequestTimeout(requestTimeout)
         , ConnectionTimeoutAttr{sizeof(ConnectionTimeout) + NLA_HDRLEN, NBD_ATTR_DEAD_CONN_TIMEOUT}
         , ConnectionTimeout(connectionTimeout)
+        // attribute length is calculated as size of payload + number of nested
+        // attributes * attribute header length
         , SocketsAttr{sizeof(SocketFd) + 3 * NLA_HDRLEN, NBD_ATTR_SOCKETS}
         , SocketItemAttr{sizeof(SocketFd) + 2 * NLA_HDRLEN, NBD_SOCK_ITEM}
         , SocketFdAttr{sizeof(SocketFd) + NLA_HDRLEN, NBD_SOCK_FD}
