@@ -1808,3 +1808,18 @@ func TestEnsureCheckpointReady(t *testing.T) {
 	err = client.Delete(ctx, diskID)
 	require.NoError(t, err)
 }
+
+func TestAlterPlacementGroupMembership(t *testing.T) {
+	ctx := newContext()
+	client := newTestingClient(t, ctx)
+
+	client.CreatePlacementGroup(
+		ctx,
+		"group",
+		types.PlacementStrategy_PLACEMENT_STRATEGY_SPREAD,
+		0,
+	)
+
+	client.AlterPlacementGroupMembership()
+
+}
