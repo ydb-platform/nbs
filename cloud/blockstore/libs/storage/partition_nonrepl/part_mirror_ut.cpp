@@ -2019,12 +2019,22 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
 
         ui32 checksumRequestCount = 0;
 
+        TSet<TActorId> actorIds;
+        TActorId sender;
         runtime.SetObserverFunc(
             [&](TAutoPtr<IEventHandle>& event)
             {
                 switch (event->GetTypeRewrite()) {
                     case TEvNonreplPartitionPrivate::EvChecksumBlocksRequest: {
+                        sender = event->Sender;
                         ++checksumRequestCount;
+                        actorIds.insert(event->Recipient);
+                        break;
+                    }
+                    case TEvService::EvReadBlocksRequest: {
+                        if (sender != event->Sender) {
+                            actorIds.insert(event->Recipient);
+                        }
                         break;
                     }
                 }
@@ -2043,6 +2053,7 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
         // When requesting a read for three replicas, Readings are made from
         // one replica, and checksums are calculated from the other two.
         UNIT_ASSERT_VALUES_EQUAL(replicaCount - 1, checksumRequestCount);
+        UNIT_ASSERT_VALUES_EQUAL(replicaCount, actorIds.size());
     }
 
     Y_UNIT_TEST(ShouldRejectReadWithWrongReplicaCount)

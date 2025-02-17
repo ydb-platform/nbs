@@ -1,13 +1,14 @@
 #include "part_mirror_actor.h"
 
 #include "mirror_request_actor.h"
-#include "util/string/join.h"
 
 #include <cloud/blockstore/libs/common/block_checksum.h>
 #include <cloud/blockstore/libs/storage/api/undelivered.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
 
 #include <cloud/storage/core/libs/common/verify.h>
+
+#include <util/string/join.h>
 
 namespace NCloud::NBlockStore::NStorage {
 
@@ -394,7 +395,7 @@ STFUNC(TRequestActor<TMethod>::StateWork)
 
 auto TMirrorPartitionActor::SelectReplicasToReadFrom(
     std::optional<ui32> replicaIndex,
-    ui32 replicaCount,
+    std::optional<ui32> replicaCount,
     TBlockRange64 blockRange,
     const TStringBuf& methodName) -> TResultOrError<TSet<TActorId>>
 {
@@ -408,7 +409,7 @@ auto TMirrorPartitionActor::SelectReplicasToReadFrom(
                 << *replicaIndex << " disk has " << replicaInfos.size()
                 << " replicas");
     }
-    if (replicaCount > replicaInfos.size()) {
+    if (replicaCount && *replicaCount > replicaInfos.size()) {
         return MakeError(
             E_ARGUMENT,
             TStringBuilder() << "Request " << methodName
@@ -419,7 +420,7 @@ auto TMirrorPartitionActor::SelectReplicasToReadFrom(
 
     TSet<ui32> replicaIndexes;
     ui32 readReplicaCount =
-        replicaCount ? replicaCount
+        replicaCount ? *replicaCount
                      : Min<ui32>(
                            Max<ui32>(1, Config->GetMirrorReadReplicaCount()),
                            replicaInfos.size());
@@ -449,8 +450,8 @@ auto TMirrorPartitionActor::SelectReplicasToReadFrom(
                 << *replicaIndex << " has not ready devices");
     }
 
-    if (replicaCount && replicaIndexes.size() != replicaCount) {
-        std::vector<ui32> allIndexes(replicaCount);
+    if (replicaCount && replicaIndexes.size() != *replicaCount) {
+        std::vector<ui32> allIndexes(*replicaCount);
         std::iota(allIndexes.begin(), allIndexes.end(), 0);
 
         TSet<ui32> unreadyActorIndexes;
@@ -513,7 +514,10 @@ void TMirrorPartitionActor::ReadBlocks(
         record.GetHeaders().GetReplicaIndex() > 0
             ? std::make_optional(record.GetHeaders().GetReplicaIndex() - 1)
             : std::nullopt;
-    const auto replicaCount = record.GetHeaders().GetReplicaCount();
+    const std::optional<ui32> replicaCount =
+        record.GetHeaders().GetReplicaCount() > 0
+            ? std::make_optional(record.GetHeaders().GetReplicaCount())
+            : std::nullopt;
 
     auto [replicaActorIds, error] = SelectReplicasToReadFrom(
         replicaIndex,
