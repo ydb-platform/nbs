@@ -423,7 +423,8 @@ void TIndexTabletActor::ExecuteTx_RenameNode(
             // to use CommitId here in order not to generate some other unique
             // ui64
             args.OpLogEntry.SetEntryId(args.CommitId);
-            auto* shardRequest = args.OpLogEntry.MutableUnlinkNodeRequest();
+            auto* shardRequest =
+                args.OpLogEntry.MutableUnlinkNodeInShardRequest();
             shardRequest->MutableHeaders()->CopyFrom(
                 args.Request.GetHeaders());
             shardRequest->SetFileSystemId(args.NewChildRef->ShardId);
@@ -510,18 +511,20 @@ void TIndexTabletActor::CompleteTx_RenameNode(
 
     if (!HasError(args.Error)) {
         auto& op = args.OpLogEntry;
-        if (op.HasUnlinkNodeRequest()) {
+        if (op.HasUnlinkNodeInShardRequest()) {
             // rename + unlink is pretty rare so let's keep INFO level here
-            LOG_INFO(ctx, TFileStoreComponents::TABLET,
+            LOG_INFO(
+                ctx,
+                TFileStoreComponents::TABLET,
                 "%s Unlinking node in shard upon RenameNode: %s, %s",
                 LogTag.c_str(),
-                op.GetUnlinkNodeRequest().GetFileSystemId().c_str(),
-                op.GetUnlinkNodeRequest().GetName().c_str());
+                op.GetUnlinkNodeInShardRequest().GetFileSystemId().c_str(),
+                op.GetUnlinkNodeInShardRequest().GetName().c_str());
 
             RegisterUnlinkNodeInShardActor(
                 ctx,
                 args.RequestInfo,
-                std::move(*op.MutableUnlinkNodeRequest()),
+                std::move(*op.MutableUnlinkNodeInShardRequest()),
                 args.RequestId,
                 args.OpLogEntry.GetEntryId(),
                 std::move(args.Response));

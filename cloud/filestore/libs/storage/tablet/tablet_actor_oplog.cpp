@@ -32,11 +32,11 @@ void TIndexTabletActor::ReplayOpLog(
                 op.GetEntryId(),
                 {} // response
             );
-        } else if (op.HasUnlinkNodeRequest()) {
+        } else if (op.HasUnlinkNodeInShardRequest()) {
             RegisterUnlinkNodeInShardActor(
                 ctx,
                 nullptr, // requestInfo
-                op.GetUnlinkNodeRequest(),
+                op.GetUnlinkNodeInShardRequest(),
                 0, // requestId
                 op.GetEntryId(),
                 {} // result

@@ -204,7 +204,7 @@ message TOpLogEntry
 
     oneof Request {
         TCreateNodeRequest CreateNodeRequest = 101;
-        TUnlinkNodeRequest UnlinkNodeRequest = 102;
+        NProtoPrivate.TUnlinkNodeInShardRequest UnlinkNodeInShardRequest = 102;
         NProtoPrivate.TRenameNodeInDestinationRequest RenameNodeInDestinationRequest = 103;
     }
 }

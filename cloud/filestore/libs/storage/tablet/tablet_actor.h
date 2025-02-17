@@ -596,7 +596,7 @@ private:
     void RegisterUnlinkNodeInShardActor(
         const NActors::TActorContext& ctx,
         TRequestInfoPtr requestInfo,
-        NProto::TUnlinkNodeRequest request,
+        NProtoPrivate::TUnlinkNodeInShardRequest request,
         ui64 requestId,
         ui64 opLogEntryId,
         TUnlinkNodeInShardResult result);
