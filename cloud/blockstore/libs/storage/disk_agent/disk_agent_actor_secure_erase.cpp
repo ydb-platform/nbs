@@ -129,7 +129,7 @@ void TDiskAgentActor::HandleSecureEraseCompleted(
 
         SecureErasePendingRequests.erase(it);
     }
-    State->SecureErasingFinished(msg->DeviceId);
+    State->SecureEraseFinished(msg->DeviceId);
 
     // erase next device
 

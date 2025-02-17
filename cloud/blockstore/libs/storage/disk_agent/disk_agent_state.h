@@ -170,7 +170,7 @@ public:
     bool GetPartiallySuspended() const;
 
     bool CanStartSecureEraseForDevice(const TString& uuid) const;
-    void SecureErasingFinished(const TString& uuid);
+    void SecureEraseFinished(const TString& uuid);
 
 private:
     const TDeviceState& GetDeviceState(

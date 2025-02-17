@@ -514,6 +514,10 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
         }
 
         {
+            Y_DEFER
+            {
+                state.SecureEraseFinished("uuid-1");
+            };
             auto error = state.SecureErase("uuid-1", {}).GetValue(WaitTimeout);
             UNIT_ASSERT(!HasError(error));
         }
@@ -675,6 +679,10 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
         }
 
         {
+            Y_DEFER
+            {
+                state.SecureEraseFinished("uuid-1");
+            };
             auto error = state.SecureErase("uuid-1", {}).GetValue(WaitTimeout);
             UNIT_ASSERT(!HasError(error));
         }
@@ -744,6 +752,10 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
         }
 
         try {
+            Y_DEFER
+            {
+                state.SecureEraseFinished("uuid-3");
+            };
             state.SecureErase("uuid-3", {}).GetValue(WaitTimeout);
 
             UNIT_ASSERT(false);
@@ -1079,6 +1091,10 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
 
         // secure erase should succeed as long as there are no active clients
         {
+            Y_DEFER
+            {
+                state->SecureEraseFinished("uuid-1");
+            };
             auto error = state->SecureErase("uuid-1", {}).GetValue(WaitTimeout);
             UNIT_ASSERT(!HasError(error));
         }
@@ -1137,6 +1153,10 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
 
         // secure erase should fail - there are active clients
         try {
+            Y_DEFER
+            {
+                state->SecureEraseFinished("uuid-1");
+            };
             auto error = state->SecureErase(
                 "uuid-1",
                 TInstant::Seconds(1)
@@ -1153,6 +1173,10 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
         // after the inactivity period secure erase should succeed - our
         // clients are no longer considered 'active'
         try {
+            Y_DEFER
+            {
+                state->SecureEraseFinished("uuid-1");
+            };
             auto error = state->SecureErase(
                 "uuid-1",
                 TInstant::Seconds(111)
@@ -2212,7 +2236,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
         storageProvider->Paths[config->GetFileDevices()[0].GetPath()]
             .SetValue();
         UNIT_ASSERT(future1.HasValue());
-        state.SecureErasingFinished("uuid-1");
+        state.SecureEraseFinished("uuid-1");
 
         UNIT_ASSERT(state.CanStartSecureEraseForDevice("uuid-3"));
         auto future3 = state.SecureErase("uuid-3", {});

@@ -761,12 +761,6 @@ TFuture<NProto::TError> TDiskAgentState::SecureErase(
         return MakeFuture(NProto::TError());
     }
 
-    Y_DEBUG_ABORT_UNLESS(CanStartSecureEraseForDevice(device.Config));
-    if (!CanStartSecureEraseForDevice(device.Config)) {
-        return MakeFuture(MakeError(E_REJECTED));
-    }
-    SecureEraseDevices.emplace(device.Config.GetDeviceName());
-
     auto onDeviceSecureEraseFinish =
         [weakRdmaTarget = std::weak_ptr<IRdmaTarget>(RdmaTarget),
          uuid](const TFuture<NProto::TError>& future)
@@ -783,6 +777,12 @@ TFuture<NProto::TError> TDiskAgentState::SecureErase(
             return MakeFuture(std::move(error));
         }
     }
+
+    Y_DEBUG_ABORT_UNLESS(CanStartSecureEraseForDevice(device.Config));
+    if (!CanStartSecureEraseForDevice(device.Config)) {
+        return MakeFuture(MakeError(E_REJECTED));
+    }
+    SecureEraseDevices.emplace(device.Config.GetDeviceName());
 
     return device.StorageAdapter
         ->EraseDevice(AgentConfig->GetDeviceEraseMethod())
@@ -967,11 +967,13 @@ bool TDiskAgentState::CanStartSecureEraseForDevice(const TString& uuid) const
     return CanStartSecureEraseForDevice(device.Config);
 }
 
-void TDiskAgentState::SecureErasingFinished(const TString& uuid)
+void TDiskAgentState::SecureEraseFinished(const TString& uuid)
 {
     const auto& device = GetDeviceStateImpl(uuid);
     auto it = SecureEraseDevices.find(device.Config.GetDeviceName());
-    Y_DEBUG_ABORT_UNLESS(it != SecureEraseDevices.end());
+    if (it == SecureEraseDevices.end()) {
+        return;
+    }
     SecureEraseDevices.erase(it);
 }
 
