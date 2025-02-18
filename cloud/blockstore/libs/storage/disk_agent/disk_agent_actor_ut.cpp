@@ -2016,7 +2016,6 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
 
         diskAgent.SendSecureEraseDeviceRequest("MemoryDevice1");
 
-        using namespace std::chrono_literals;
         runtime.DispatchEvents({}, 100ms);
         UNIT_ASSERT(completeEvent);
 
