@@ -353,21 +353,19 @@ func RequireCheckpoint(
 	require.EqualValues(t, checkpointID, checkpoints[0])
 }
 
-func RequireCheckpointsAreEmpty(
+func RequireCheckpointsDoNotExist(
 	t *testing.T,
 	ctx context.Context,
 	diskID string,
 ) {
-	// TODO: enable this method after resolving this issue
-	// https://github.com/ydb-platform/nbs/issues/2008.
-	return
+
 	nbsClient := NewNbsTestingClient(t, ctx, "zone-a")
 	checkpoints, err := nbsClient.GetCheckpoints(ctx, diskID)
 	require.NoError(t, err)
 	require.Empty(t, checkpoints)
 }
 
-func WaitForCheckpointsAreEmpty(
+func WaitForCheckpointsDoNotExist(
 	t *testing.T,
 	ctx context.Context,
 	diskID string,
@@ -385,7 +383,7 @@ func WaitForCheckpointsAreEmpty(
 
 		logging.Warn(
 			ctx,
-			"waitForCheckpointsAreEmpty proceeding to next iteration",
+			"WaitForCheckpointsDoNotExist proceeding to next iteration",
 		)
 
 		<-time.After(100 * time.Millisecond)
@@ -625,6 +623,19 @@ func CheckConsistency(t *testing.T, ctx context.Context) {
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+
+func GetIncremental(
+	ctx context.Context,
+	disk *types.Disk,
+) (string, string, error) {
+
+	storage, err := newSnapshotStorage(ctx)
+	if err != nil {
+		return "", "", err
+	}
+
+	return storage.GetIncremental(ctx, disk)
+}
 
 func GetEncryptionKeyHash(encryptionDesc *types.EncryptionDesc) ([]byte, error) {
 	switch key := encryptionDesc.Key.(type) {

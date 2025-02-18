@@ -238,3 +238,22 @@ func (s *storageYDB) GetSnapshotMeta(
 	)
 	return snapshotMeta, err
 }
+
+func (s *storageYDB) GetIncremental(
+	ctx context.Context,
+	disk *types.Disk,
+) (snapshotID string, checkpointID string, err error) {
+
+	err = s.db.Execute(
+		ctx,
+		func(ctx context.Context, session *persistence.Session) (err error) {
+			snapshotID, checkpointID, err = s.getIncremental(
+				ctx,
+				session,
+				disk,
+			)
+			return err
+		},
+	)
+	return snapshotID, checkpointID, err
+}

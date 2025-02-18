@@ -12,6 +12,7 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/common"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/facade/testcommon"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -77,7 +78,7 @@ func testCreateSnapshotFromDisk(
 	require.NoError(t, err)
 	require.Equal(t, float64(1), meta.Progress)
 
-	testcommon.RequireCheckpointsAreEmpty(t, ctx, diskID)
+	testcommon.RequireCheckpoint(t, ctx, diskID, snapshotID)
 
 	reqCtx = testcommon.GetRequestContext(t, ctx)
 	operation, err = client.DeleteSnapshot(reqCtx, &disk_manager.DeleteSnapshotRequest{
@@ -170,7 +171,7 @@ func TestSnapshotServiceCancelCreateSnapshotFromDisk(t *testing.T) {
 
 	// Should wait here because checkpoint is deleted on operation cancel (and
 	// exact time of this event is unknown).
-	testcommon.WaitForCheckpointsAreEmpty(t, ctx, diskID)
+	testcommon.WaitForCheckpointsDoNotExist(t, ctx, diskID)
 
 	testcommon.CheckConsistency(t, ctx)
 }
@@ -604,17 +605,26 @@ func TestSnapshotServiceDeleteIncrementalSnapshotWhileCreating(t *testing.T) {
 	err = internal_client.WaitOperation(ctx, client, deleteOperation.Id)
 	require.NoError(t, err)
 
-	//nolint:sa9003
-	// TODO: remove line above after
-	// https://github.com/ydb-platform/nbs/issues/2008
+	// In case of successful snapshot1 creation, snapshot1 should be deleted
+	// and checkpoint should be deleted too.
+	// Otherwise we should check incremental table.
 	if creationErr == nil {
-		testcommon.RequireCheckpointsAreEmpty(t, ctx, diskID)
+		testcommon.RequireCheckpointsDoNotExist(t, ctx, diskID)
 	} else {
-		// Checkpoint that corresponds to base snapshot should not be deleted.
-		// NOTE: we use snapshot id as checkpoint id.
-		// TODO: enable this check after resolving issue
-		// https://github.com/ydb-platform/nbs/issues/2008.
-		// testcommon.RequireCheckpoint(t, ctx, diskID, baseSnapshotID)
+		snapshotID, _, err := testcommon.GetIncremental(ctx, &types.Disk{
+			ZoneId: "zone-a",
+			DiskId: diskID,
+		})
+		require.NoError(t, err)
+
+		// In case of snapshot1 creation failure base snapshot may be already
+		// deleted from incremental table and then checkpoint should not exist
+		// on the disk. Otherwise checkpoint should exist.
+		if len(snapshotID) > 0 {
+			testcommon.RequireCheckpoint(t, ctx, diskID, baseSnapshotID)
+		} else {
+			testcommon.RequireCheckpointsDoNotExist(t, ctx, diskID)
+		}
 	}
 
 	snapshotID2 := t.Name() + "2"
@@ -702,7 +712,7 @@ func TestSnapshotServiceDeleteSnapshot(t *testing.T) {
 	err = internal_client.WaitOperation(ctx, client, operation2.Id)
 	require.NoError(t, err)
 
-	testcommon.RequireCheckpointsAreEmpty(t, ctx, diskID)
+	testcommon.RequireCheckpointsDoNotExist(t, ctx, diskID)
 	testcommon.CheckConsistency(t, ctx)
 }
 
@@ -758,13 +768,17 @@ func TestSnapshotServiceDeleteSnapshotWhenCreationIsInFlight(t *testing.T) {
 	err = internal_client.WaitOperation(ctx, client, operation.Id)
 	require.NoError(t, err)
 
-	_ = internal_client.WaitOperation(ctx, client, createOp.Id)
+	err = internal_client.WaitOperation(ctx, client, createOp.Id)
 
-	// Should wait here because checkpoint is deleted on |createOp| operation
-	// cancel (and exact time of this event is unknown).
-	// TODO: enable this check after resolving issue
-	// https://github.com/ydb-platform/nbs/issues/2008.
-	// testcommon.WaitForCheckpointsAreEmpty(t, ctx, diskID)
+	// If snapshot creation ends up successfuly, there may be two cases:
+	// Snapshot was created and then deleted, so should be no checkpoints left
+	// or snapshot deletion ended up before creation, snapshot was not deleted,
+	// so there should be a checkpoint.
+	if err != nil {
+		// Should wait here because checkpoint is deleted on |createOp|
+		// operation cancel (and exact time of this event is unknown).
+		testcommon.WaitForCheckpointsDoNotExist(t, ctx, diskID)
+	}
 
 	testcommon.CheckConsistency(t, ctx)
 }
