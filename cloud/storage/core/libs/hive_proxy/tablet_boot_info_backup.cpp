@@ -89,6 +89,9 @@ NProto::TError TTabletBootInfoBackup::Backup(const TActorContext& ctx)
         TFileLock lock(TmpBackupFilePath);
 
         if (lock.TryAcquire()) {
+            Y_DEFER {
+                lock.Release();
+            };
             TFileOutput output(TmpBackupFilePath);
             SerializeToTextFormat(BackupProto, output);
             TmpBackupFilePath.RenameTo(BackupFilePath);
@@ -174,6 +177,11 @@ void TTabletBootInfoBackup::HandleUpdateTabletBootInfoBackup(
     NKikimr::TabletStorageInfoToProto(
         *msg->StorageInfo, info.MutableStorageInfo());
     info.SetSuggestedGeneration(msg->SuggestedGeneration);
+
+    if (ReadOnlyMode && InitialBackupProto) {
+        BackupProto = std::move(InitialBackupProto.value());
+        InitialBackupProto.reset();
+    }
 
     auto& data = *BackupProto.MutableData();
     data[msg->StorageInfo->TabletID] = info;
