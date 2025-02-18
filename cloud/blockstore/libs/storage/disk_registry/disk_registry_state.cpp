@@ -429,7 +429,13 @@ void TDiskRegistryState::AllowNotifications(
         return;
     }
 
-    NotificationSystem.AllowNotifications(diskId);
+    if (!IsReliableDiskRegistryMediaKind(disk.MediaKind)) {
+        NotificationSystem.AllowNotifications(diskId);
+    }
+
+    if (disk.MasterDiskId) {
+        NotificationSystem.AllowNotifications(disk.MasterDiskId);
+    }
 }
 
 void TDiskRegistryState::ProcessDisks(TVector<NProto::TDiskConfig> configs)
@@ -5513,15 +5519,6 @@ bool TDiskRegistryState::TryUpdateDiskState(
 {
     Y_DEBUG_ABORT_UNLESS(!IsMasterDisk(diskId));
 
-    return TryUpdateDiskStateImpl(db, diskId, disk, timestamp);
-}
-
-bool TDiskRegistryState::TryUpdateDiskStateImpl(
-    TDiskRegistryDatabase& db,
-    const TString& diskId,
-    TDiskState& disk,
-    TInstant timestamp)
-{
     const auto newState = CalculateDiskState(diskId, disk);
     const auto oldState = disk.State;
 
@@ -5547,12 +5544,44 @@ bool TDiskRegistryState::TryUpdateDiskStateImpl(
         newState,
         timestamp);
     if (disk.MasterDiskId) {
-        TryUpdateDiskStateImpl(
+        TryUpdateMasterDiskState(
             db,
             disk.MasterDiskId,
             Disks.at(disk.MasterDiskId),
             timestamp);
     }
+
+    return true;
+}
+
+bool TDiskRegistryState::TryUpdateMasterDiskState(
+    TDiskRegistryDatabase& db,
+    const TString& diskId,
+    TDiskState& disk,
+    TInstant timestamp)
+{
+    Y_DEBUG_ABORT_UNLESS(IsMasterDisk(diskId));
+    const auto newState = CalculateDiskState(diskId, disk);
+    const auto oldState = disk.State;
+
+    if (oldState == newState) {
+        return false;
+    }
+
+    disk.State = newState;
+    disk.StateTs = timestamp;
+
+    NProto::TDiskHistoryItem historyItem;
+    historyItem.SetTimestamp(timestamp.MicroSeconds());
+    historyItem.SetMessage(
+        TStringBuilder() << "state changed: " << static_cast<int>(oldState)
+                         << " -> " << static_cast<int>(newState));
+    disk.History.push_back(std::move(historyItem));
+
+    db.UpdateDisk(BuildDiskConfig(diskId, disk));
+
+    NotificationSystem
+        .OnDiskStateChanged(db, diskId, oldState, newState, timestamp);
 
     return true;
 }
@@ -5613,7 +5642,7 @@ NProto::EDiskState TDiskRegistryState::CalculateDiskState(
     const TString& diskId,
     const TDiskState& disk) const
 {
-    for (ui32 i = 0; i < disk.ReplicaCount; ++i) {
+    for (ui32 i = 0; i < disk.ReplicaCount + 1; ++i) {
         auto replicaId = GetReplicaDiskId(diskId, i);
         if (GetDiskState(replicaId) == NProto::DISK_STATE_WARNING) {
             return NProto::DISK_STATE_WARNING;

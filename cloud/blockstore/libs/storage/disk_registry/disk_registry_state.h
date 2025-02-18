@@ -971,7 +971,7 @@ private:
         TDiskState& disk,
         TInstant timestamp);
 
-    bool TryUpdateDiskStateImpl(
+    bool TryUpdateMasterDiskState(
         TDiskRegistryDatabase& db,
         const TString& diskId,
         TDiskState& disk,
