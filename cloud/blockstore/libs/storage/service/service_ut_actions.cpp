@@ -249,6 +249,30 @@ Y_UNIT_TEST_SUITE(TServiceActionsTest)
             UNIT_ASSERT_VALUES_EQUAL("", config.GetTagsStr());
         }
 
+        // Test AddTagsRequest
+        {
+            service.SendAddTagsRequest(
+                DefaultDiskId,
+                TVector{TString("tag")});
+            auto response = service.RecvAddTagsResponse();
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
+        }
+
+        {
+            NPrivateProto::TDescribeVolumeRequest request;
+            request.SetDiskId(DefaultDiskId);
+            TString buf;
+            google::protobuf::util::MessageToJsonString(request, &buf);
+            auto response = service.ExecuteAction("DescribeVolume", buf);
+            NKikimrSchemeOp::TBlockStoreVolumeDescription pathDescr;
+            UNIT_ASSERT(google::protobuf::util::JsonStringToMessage(
+                response->Record.GetOutput(),
+                &pathDescr
+            ).ok());
+            const auto& config = pathDescr.GetVolumeConfig();
+            UNIT_ASSERT_VALUES_EQUAL("tag", config.GetTagsStr());
+        }
+
         service.DestroyVolume();
     }
 

@@ -532,6 +532,31 @@ void TMirrorPartitionActor::HandleRWClientIdChanged(
 
 ////////////////////////////////////////////////////////////////////////////////
 
+void TMirrorPartitionActor::HandleAddTagsResponse(
+    const TEvService::TEvAddTagsResponse::TPtr& ev,
+    const NActors::TActorContext& ctx)
+{
+    const auto* msg = ev->Get();
+    auto error = msg->GetError();
+
+    if (HasError(error)) {
+        ReportMirroredDiskAddTagFailed(
+            TStringBuilder()
+            << "Failed to add " << IntermediateWriteBufferTagName
+            << " tag for disk [" << DiskId << "] with "
+            << FormatError(error));
+        return;
+    }
+    LOG_WARN(
+        ctx,
+        TBlockStoreComponents::PARTITION,
+        "[%s] %s tag added for disk",
+        DiskId.c_str(),
+        IntermediateWriteBufferTagName);
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 #define BLOCKSTORE_HANDLE_UNIMPLEMENTED_REQUEST(name, ns)                      \
     void TMirrorPartitionActor::Handle##name(                                  \
         const ns::TEv##name##Request::TPtr& ev,                                \
@@ -610,6 +635,10 @@ STFUNC(TMirrorPartitionActor::StateWork)
             TEvVolume::TEvDiskRegistryBasedPartitionCounters,
             HandlePartCounters);
 
+        HFunc(
+            TEvService::TEvAddTagsResponse,
+            HandleAddTagsResponse);
+
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
 
         default:
@@ -653,6 +682,8 @@ STFUNC(TMirrorPartitionActor::StateZombie)
 
         IgnoreFunc(TEvVolume::TEvRWClientIdChanged);
         IgnoreFunc(TEvVolume::TEvDiskRegistryBasedPartitionCounters);
+
+        IgnoreFunc(TEvService::TEvAddTagsResponse);
 
         IgnoreFunc(TEvents::TEvPoisonPill);
         HFunc(TEvents::TEvPoisonTaken, HandlePoisonTaken);

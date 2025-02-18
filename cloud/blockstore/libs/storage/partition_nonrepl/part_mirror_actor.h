@@ -162,6 +162,10 @@ private:
         const TEvNonreplPartitionPrivate::TEvGetDeviceForRangeRequest::TPtr& ev,
         const NActors::TActorContext& ctx);
 
+    void HandleAddTagsResponse(
+        const TEvService::TEvAddTagsResponse::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
     void HandlePoisonPill(
         const NActors::TEvents::TEvPoisonPill::TPtr& ev,
         const NActors::TActorContext& ctx);
