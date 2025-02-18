@@ -70,12 +70,12 @@ pyarrow
 boto3
 psutil
 PyGithub==2.5.0
-cryptography==41.0.7
-protobuf==4.25.6
-pyOpenSSL==24.2.1
+cryptography
+protobuf
+pyOpenSSL
 packaging
 rapidgzip
-typing-extensions==4.10.0
+typing-extensions
 nebius
 EOF
 sudo pip3 install -r /tmp/requirements.txt

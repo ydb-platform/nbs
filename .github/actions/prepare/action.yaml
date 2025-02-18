@@ -14,7 +14,7 @@ runs:
         # shellcheck disable=SC2102
         sudo pip3 install pytest pytest-timeout pytest-xdist setproctitle grpcio grpcio-tools \
              PyHamcrest tornado xmltodict pyarrow boto3 psutil PyGithub==2.5.0 pyinstaller \
-             cryptography==41.0.7 protobuf==4.25.6 packaging six pyyaml rapidgzip pyOpenSSL typing-extensions==4.10.0 nebius
+             cryptography protobuf packaging six pyyaml rapidgzip pyOpenSSL typing-extensions nebius
     - name: add user github to kvm group if exists
       shell: bash
       run: |

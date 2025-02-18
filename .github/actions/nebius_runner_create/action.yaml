@@ -94,7 +94,7 @@ runs:
     - name: install dependencies
       shell: bash
       run: |
-        pip install PyGithub==2.2.0 nebius
+        pip install PyGithub==2.5.0 nebius
     - name: create vm
       id: create-vm
       shell: bash
