@@ -729,10 +729,13 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
             strictSLADisksSufferCounter->Val());
 
         // a bunch of fast requests
+        const auto fastRequestCyclesCount =
+            DurationToCyclesSafe(TDuration::MilliSeconds(10));
         for (ui32 i = 0; i < 5; ++i) {
+            now = GetCycleCount();
             volume->RequestCompleted(
                 EBlockStoreRequest::WriteBlocks,
-                now - Min(now, DurationToCyclesSafe(TDuration::MilliSeconds(10))),
+                now - Min(now, fastRequestCyclesCount),
                 {},
                 1_MB,
                 {},
@@ -758,10 +761,13 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
         UNIT_ASSERT_VALUES_EQUAL(0, strictSLADisksSufferCounter->Val());
 
         // a bunch of slow but not critically slow requests
+        const auto slowRequestCyclesCount =
+            DurationToCyclesSafe(TDuration::MilliSeconds(110));
         for (ui32 i = 0; i < 20; ++i) {
+            now = GetCycleCount();
             volume->RequestCompleted(
                 EBlockStoreRequest::WriteBlocks,
-                now - Min(now, DurationToCyclesSafe(TDuration::MilliSeconds(110))),
+                now - Min(now, slowRequestCyclesCount),
                 {},
                 1_MB,
                 {},
