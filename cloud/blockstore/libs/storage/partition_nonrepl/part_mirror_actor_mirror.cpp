@@ -20,13 +20,15 @@ void TMirrorPartitionActor::HandleWriteOrZeroCompleted(
     const TEvNonreplPartitionPrivate::TEvWriteOrZeroCompleted::TPtr& ev,
     const TActorContext& ctx)
 {
-    const auto requestIdentityKey = ev->Get()->RequestCounter;
-    auto optReqCtx = RequestsInProgress.ExtractRequest(requestIdentityKey);
-    if (!optReqCtx) {
+    auto* msg = ev->Get();
+    const auto requestIdentityKey = msg->RequestCounter;
+    auto completeRequest =
+        RequestsInProgress.ExtractRequest(requestIdentityKey);
+    if (!completeRequest) {
         return;
     }
     DrainActorCompanion.ProcessDrainRequests(ctx);
-    auto [range, reqCookie] = optReqCtx.value();
+    auto [range, reqCookie] = completeRequest.value();
     for (const auto& [id, request]: RequestsInProgress.AllRequests()) {
         if (range.Overlaps(request.Value.BlockRange)) {
             DirtyReadRequestIds.insert(id);
@@ -37,8 +39,8 @@ void TMirrorPartitionActor::HandleWriteOrZeroCompleted(
         auto completion = std::make_unique<
             TEvNonreplPartitionPrivate::TEvWriteOrZeroCompleted>(
             reqCookie,
-            ev->Get()->TotalCycles,
-            ev->Get()->FollowerGotNonRetriableError);
+            msg->TotalCycles,
+            msg->FollowerGotNonRetriableError);
 
         auto undeliveredRequestActor = MakeUndeliveredHandlerServiceId();
         auto newEv = std::make_unique<IEventHandle>(
