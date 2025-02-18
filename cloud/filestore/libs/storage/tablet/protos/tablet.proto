@@ -204,7 +204,11 @@ message TOpLogEntry
 
     oneof Request {
         TCreateNodeRequest CreateNodeRequest = 101;
-        NProtoPrivate.TUnlinkNodeInShardRequest UnlinkNodeInShardRequest = 102;
+        // Deprecated in favor of TUnlinkNodeInShardRequest as
+        // UnlinkNodeInShardRequest has information about the original unlink
+        // request.
+        TUnlinkNodeRequest UnlinkNodeRequest = 102 [deprecated = true];
         NProtoPrivate.TRenameNodeInDestinationRequest RenameNodeInDestinationRequest = 103;
+        NProtoPrivate.TUnlinkNodeInShardRequest UnlinkNodeInShardRequest = 104;
     }
 }

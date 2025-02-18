@@ -32,6 +32,27 @@ void TIndexTabletActor::ReplayOpLog(
                 op.GetEntryId(),
                 {} // response
             );
+        } else if (op.HasUnlinkNodeRequest()) {
+            // This case is kept for backward compatibility with old oplog
+            // entries
+            NProtoPrivate::TUnlinkNodeInShardRequest request;
+            request.MutableHeaders()->CopyFrom(
+                op.GetUnlinkNodeRequest().GetHeaders());
+            request.SetFileSystemId(
+                op.GetUnlinkNodeRequest().GetFileSystemId());
+            request.SetNodeId(op.GetUnlinkNodeRequest().GetNodeId());
+            request.SetName(op.GetUnlinkNodeRequest().GetName());
+            request.SetUnlinkDirectory(
+                op.GetUnlinkNodeRequest().GetUnlinkDirectory());
+
+            RegisterUnlinkNodeInShardActor(
+                ctx,
+                nullptr,   // requestInfo
+                std::move(request),
+                0,   // requestId
+                op.GetEntryId(),
+                {}   // result
+            );
         } else if (op.HasUnlinkNodeInShardRequest()) {
             RegisterUnlinkNodeInShardActor(
                 ctx,
@@ -58,9 +79,15 @@ void TIndexTabletActor::ReplayOpLog(
                    // requestId)
                 op.GetEntryId());
         } else {
-            TABLET_VERIFY_C(
-                0,
-                "Unexpected OpLog entry: " << op.DebugString().Quote());
+            const TString message = ReportUnknownOpLogEntry(
+                TStringBuilder() << "OpLogEntry: " << op.DebugString().Quote());
+
+            LOG_ERROR(
+                ctx,
+                TFileStoreComponents::TABLET,
+                "%s %s",
+                LogTag.c_str(),
+                message.c_str());
         }
     }
 }
