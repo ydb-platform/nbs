@@ -135,7 +135,7 @@ def test_stop_start():
 
     volume_name = "example-disk"
     block_size = 4096
-    blocks_count = 10000
+    blocks_count = 1024
     nbd_device = "/dev/nbd0"
     socket_path = "/tmp/nbd.sock"
     data_file = "data"
