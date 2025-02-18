@@ -729,8 +729,6 @@ struct TTxIndexTablet
 
         NProto::TOpLogEntry OpLogEntry;
 
-        NProto::TUnlinkNodeResponse Response;
-
         TUnlinkNode(
                 TRequestInfoPtr requestInfo,
                 NProto::TUnlinkNodeRequest request)
@@ -749,7 +747,6 @@ struct TTxIndexTablet
             ChildNode.Clear();
             ChildRef.Clear();
             OpLogEntry.Clear();
-            Response.Clear();
         }
     };
 

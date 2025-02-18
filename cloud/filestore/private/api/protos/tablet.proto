@@ -799,3 +799,27 @@ message TRenameNodeInDestinationResponse
     // Optional response headers.
     NProto.TResponseHeaders Headers = 1000;
 }
+
+////////////////////////////////////////////////////////////////////////////////
+// UnlinkNodeInShard request/response
+
+message TUnlinkNodeInShardRequest
+{
+    // Optional request headers.
+    NProto.THeaders Headers = 1;
+
+    // FileSystem identifier.
+    string FileSystemId = 2;
+
+    // Parent node.
+    uint64 NodeId = 3;
+
+    // Reference to remove.
+    bytes Name = 4;
+
+    // Unlink directory node if empty.
+    bool UnlinkDirectory = 5;
+
+    // Original request that caused this unlink.
+    NProto.TUnlinkNodeRequest OriginalRequest = 6;
+}

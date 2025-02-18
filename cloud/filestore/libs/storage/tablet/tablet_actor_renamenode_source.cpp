@@ -240,7 +240,7 @@ bool TIndexTabletActor::PrepareTx_PrepareRenameNodeInSource(
         return true;
     }
 
-    if (args.ChildRef->ShardId.empty()) {
+    if (!args.ChildRef->IsExternal()) {
         auto message = ReportRenameNodeRequestForLocalNode(TStringBuilder()
             << "PrepareRenameNodeInSource: "
             << args.Request.ShortDebugString());
@@ -438,7 +438,7 @@ bool TIndexTabletActor::PrepareTx_CommitRenameNodeInSource(
         return false;   // not ready
     }
 
-    if (!args.ChildRef || args.ChildRef->ShardId.empty()) {
+    if (!args.ChildRef || !args.ChildRef->IsExternal()) {
         auto message = ReportBadChildRefUponCommitRenameNodeInSource(
             TStringBuilder() << "CommitRenameNodeInSource: "
             << args.Request.ShortDebugString());

@@ -387,7 +387,7 @@ bool TIndexTabletActor::PrepareTx_GetNodeAttrBatch(
         }
 
         auto* nodeAttr = nodeResult->MutableNode();
-        if (refs[i]->ShardId) {
+        if (refs[i]->IsExternal()) {
             nodeAttr->SetShardFileSystemId(refs[i]->ShardId);
             nodeAttr->SetShardNodeName(refs[i]->ShardNodeName);
             continue;

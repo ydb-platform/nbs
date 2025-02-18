@@ -36,7 +36,7 @@ private:
     const TString LogTag;
     TRequestInfoPtr RequestInfo;
     const TActorId ParentId;
-    const NProto::TUnlinkNodeRequest Request;
+    const NProtoPrivate::TUnlinkNodeInShardRequest Request;
     const ui64 RequestId;
     const ui64 OpLogEntryId;
     TUnlinkNodeInShardResult Result;
@@ -46,7 +46,7 @@ public:
         TString logTag,
         TRequestInfoPtr requestInfo,
         const TActorId& parentId,
-        NProto::TUnlinkNodeRequest request,
+        NProtoPrivate::TUnlinkNodeInShardRequest request,
         ui64 requestId,
         ui64 opLogEntryId,
         TUnlinkNodeInShardResult result);
@@ -75,7 +75,7 @@ TUnlinkNodeInShardActor::TUnlinkNodeInShardActor(
         TString logTag,
         TRequestInfoPtr requestInfo,
         const TActorId& parentId,
-        NProto::TUnlinkNodeRequest request,
+        NProtoPrivate::TUnlinkNodeInShardRequest request,
         ui64 requestId,
         ui64 opLogEntryId,
         TUnlinkNodeInShardResult result)
@@ -97,7 +97,12 @@ void TUnlinkNodeInShardActor::Bootstrap(const TActorContext& ctx)
 void TUnlinkNodeInShardActor::SendRequest(const TActorContext& ctx)
 {
     auto request = std::make_unique<TEvService::TEvUnlinkNodeRequest>();
-    request->Record = Request;
+    request->Record.MutableHeaders()->CopyFrom(Request.GetHeaders());
+    request->Record.SetFileSystemId(Request.GetFileSystemId());
+    request->Record.SetNodeId(Request.GetNodeId());
+    request->Record.SetName(Request.GetName());
+    request->Record.SetUnlinkDirectory(Request.GetUnlinkDirectory());
+
     request->Record.MutableHeaders()->SetBehaveAsDirectoryTablet(false);
 
     LOG_DEBUG(
@@ -336,7 +341,7 @@ bool TIndexTabletActor::PrepareTx_UnlinkNode(
         return false;   // not ready
     }
 
-    if (args.ChildRef->ShardId) {
+    if (args.ChildRef->IsExternal()) {
         return true;
     }
 
@@ -363,7 +368,7 @@ bool TIndexTabletActor::PrepareTx_UnlinkNode(
         }
 
         if (!args.Request.GetUnlinkDirectory()) {
-            // should expliciltly unlink directory node
+            // should explicitly unlink directory node
             args.Error = ErrorIsDirectory(args.ParentNodeId);
             return true;
         }
@@ -389,7 +394,7 @@ void TIndexTabletActor::ExecuteTx_UnlinkNode(
         return RebootTabletOnCommitOverflow(ctx, "UnlinkNode");
     }
 
-    if (args.ChildRef->ShardId) {
+    if (args.ChildRef->IsExternal()) {
         UnlinkExternalNode(
             db,
             args.ParentNodeId,
@@ -402,11 +407,13 @@ void TIndexTabletActor::ExecuteTx_UnlinkNode(
         // OpLogEntryId doesn't have to be a CommitId - it's just convenient to
         // use CommitId here in order not to generate some other unique ui64
         args.OpLogEntry.SetEntryId(args.CommitId);
-        auto* shardRequest = args.OpLogEntry.MutableUnlinkNodeRequest();
-        shardRequest->CopyFrom(args.Request);
+        auto* shardRequest = args.OpLogEntry.MutableUnlinkNodeInShardRequest();
+        shardRequest->MutableHeaders()->CopyFrom(args.Request.GetHeaders());
         shardRequest->SetFileSystemId(args.ChildRef->ShardId);
         shardRequest->SetNodeId(RootNodeId);
         shardRequest->SetName(args.ChildRef->ShardNodeName);
+        shardRequest->SetUnlinkDirectory(args.Request.GetUnlinkDirectory());
+        shardRequest->MutableOriginalRequest()->CopyFrom(args.Request);
 
         db.WriteOpLogEntry(args.OpLogEntry);
     } else {
@@ -470,7 +477,7 @@ void TIndexTabletActor::CompleteTx_UnlinkNode(
     }
 
     if (!HasError(args.Error)) {
-        if (args.ChildRef->ShardId) {
+        if (args.ChildRef->IsExternal()) {
             LOG_DEBUG(ctx, TFileStoreComponents::TABLET,
                 "%s Unlinking node in shard upon UnlinkNode: %s, %s",
                 LogTag.c_str(),
@@ -480,10 +487,10 @@ void TIndexTabletActor::CompleteTx_UnlinkNode(
             RegisterUnlinkNodeInShardActor(
                 ctx,
                 args.RequestInfo,
-                args.OpLogEntry.GetUnlinkNodeRequest(),
+                args.OpLogEntry.GetUnlinkNodeInShardRequest(),
                 args.RequestId,
                 args.OpLogEntry.GetEntryId(),
-                std::move(args.Response));
+                NProto::TUnlinkNodeResponse{});
 
             return;
         }
@@ -600,7 +607,7 @@ void TIndexTabletActor::HandleNodeUnlinkedInShard(
 void TIndexTabletActor::RegisterUnlinkNodeInShardActor(
     const NActors::TActorContext& ctx,
     TRequestInfoPtr requestInfo,
-    NProto::TUnlinkNodeRequest request,
+    NProtoPrivate::TUnlinkNodeInShardRequest request,
     ui64 requestId,
     ui64 opLogEntryId,
     TUnlinkNodeInShardResult result)
