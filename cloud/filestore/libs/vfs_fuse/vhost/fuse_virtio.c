@@ -94,7 +94,8 @@ static void iov_copy_to_iov(
             }
 
             // iov with NULL iov_base can be placed if data was already copied
-            // to dst buffers. This is done when zero copy enabled in read
+            // to dst buffers. This is done when zero copy is enabled for read
+            // requests
             if (src_iov[0].iov_base) {
                 memcpy(dst_iov[0].iov_base + dst_offset,
                        src_iov[0].iov_base + src_offset, dst_len);

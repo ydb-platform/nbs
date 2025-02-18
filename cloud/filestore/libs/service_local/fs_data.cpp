@@ -115,7 +115,7 @@ TFuture<NProto::TReadDataLocalResponse> TLocalFileSystem::ReadDataLocalAsync(
                 NProto::TReadDataLocalResponse response;
                 try {
                     auto bytesRead = f.GetValue();
-                    response.Length = bytesRead;
+                    response.BytesRead = bytesRead;
                 } catch (const TServiceError& e) {
                     *response.MutableError() = MakeError(MAKE_FILESTORE_ERROR(
                         ErrnoToFileStoreError(STATUS_FROM_CODE(e.GetCode()))));
@@ -188,7 +188,7 @@ TFuture<NProto::TWriteDataLocalResponse> TLocalFileSystem::WriteDataLocalAsync(
             [this,
              &logRequest,
              promise,
-             bytesExpected = request.Length](
+             bytesExpected = request.BytesToWrite](
                 const TFuture<ui32>& f) mutable
             {
                 NProto::TWriteDataLocalResponse response;

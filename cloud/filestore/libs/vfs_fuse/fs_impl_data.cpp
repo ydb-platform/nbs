@@ -270,7 +270,7 @@ void TFileSystem::ReadLocal(
                     response.GetError(),
                     req,
                     nullptr,
-                    response.Length);
+                    response.BytesRead);
             }
         });
 }
@@ -402,7 +402,7 @@ void TFileSystem::WriteBufLocal(
     auto request = StartRequest<NProto::TWriteDataLocalRequest>(ino);
     request->SetHandle(fi->fh);
     request->SetOffset(offset);
-    request->Length = size;
+    request->BytesToWrite = size;
     request->Buffers.reserve(bufv->count);
 
     for (size_t index = 0; index < bufv->count; ++index) {

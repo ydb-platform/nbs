@@ -495,18 +495,18 @@ private:
         fuse_req_t req,
         fuse_ino_t ino,
         const TRangeLock& range);
-    void WriteBufLocal(
-        TCallContextPtr callContext,
-        fuse_req_t req,
-        fuse_ino_t ino,
-        fuse_bufvec* bufv,
-        off_t offset,
-        fuse_file_info* fi);
     void ReadLocal(
         TCallContextPtr callContext,
         fuse_req_t req,
         fuse_ino_t ino,
         size_t size,
+        off_t offset,
+        fuse_file_info* fi);
+    void WriteBufLocal(
+        TCallContextPtr callContext,
+        fuse_req_t req,
+        fuse_ino_t ino,
+        fuse_bufvec* bufv,
         off_t offset,
         fuse_file_info* fi);
 };

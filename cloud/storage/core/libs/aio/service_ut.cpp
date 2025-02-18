@@ -124,7 +124,6 @@ Y_UNIT_TEST_SUITE(TAioTest)
 
         {
             auto result = service->AsyncWriteV(fileData, offset, constBuffers);
-
             UNIT_ASSERT_VALUES_EQUAL(length, result.GetValueSync());
         }
 
@@ -134,7 +133,6 @@ Y_UNIT_TEST_SUITE(TAioTest)
 
         {
             auto result = service->AsyncReadV(fileData, offset, buffers);
-
             UNIT_ASSERT_VALUES_EQUAL(length, result.GetValueSync());
         }
 

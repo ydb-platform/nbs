@@ -42,15 +42,14 @@ struct TReadDataLocalResponse
 
     TReadDataLocalResponse(const TReadDataResponse& base)
         : TReadDataResponse(base)
-    {
-    }
+    {}
+
     TReadDataLocalResponse(TReadDataResponse&& base)
         : TReadDataResponse(std::move(base))
-    {
-    }
+    {}
 
     // number of bytes read
-    ui64 Length = 0;
+    ui64 BytesRead = 0;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -59,7 +58,7 @@ struct TWriteDataLocalRequest
     : public TWriteDataRequest
 {
     TVector<TArrayRef<const char>> Buffers;
-    ui64 Length = 0;
+    ui64 BytesToWrite = 0;
 };
 
 using TWriteDataLocalResponse = TWriteDataResponse;
