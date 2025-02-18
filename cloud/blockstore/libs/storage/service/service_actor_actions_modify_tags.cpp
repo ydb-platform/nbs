@@ -363,8 +363,8 @@ void TServiceActor::HandleAddTags(
 
     auto requestInfo = CreateRequestInfo(
         ev->Sender,
-        0,  // cookie
-        MakeIntrusive<TCallContext>());
+        ev->Cookie,
+        msg->CallContext);
 
     NPrivateProto::TModifyTagsRequest modifyTagsRequest;
     modifyTagsRequest.SetDiskId(msg->DiskId);
