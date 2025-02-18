@@ -236,7 +236,7 @@ func (s *StorageMock) GetSnapshotMeta(
 
 func (s *StorageMock) GetIncremental(
 	ctx context.Context,
-	snapshotID string,
+	disk *types.Disk,
 ) (snapshotID string, checkpointID string, err error) {
 
 	args := s.Called(ctx, snapshotID)
