@@ -1705,6 +1705,137 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         tablet.DestroyHandle(handle);
     }
 
+    TABLET_TEST_4K_ONLY(ShouldAutomaticallyRunCompactionDueToGarbageWhenRangeContainsSingleBlob)
+    {
+        const auto block = tabletConfig.BlockSize;
+
+        NProto::TStorageConfig storageConfig;
+        storageConfig.SetNewCompactionEnabled(true);
+        storageConfig.SetCompactionThresholdAverage(999'999);
+        storageConfig.SetGarbageCompactionThresholdAverage(20);
+        storageConfig.SetCompactionThreshold(999'999);
+        storageConfig.SetCleanupThreshold(999'999);
+        storageConfig.SetUseMixedBlocksInsteadOfAliveBlocksInCompaction(true);
+        storageConfig.SetWriteBlobThreshold(block);
+
+        TTestEnv env({}, std::move(storageConfig));
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(
+            env.GetRuntime(),
+            nodeIdx,
+            tabletId,
+            tabletConfig);
+        tablet.InitSession("client", "session");
+
+        auto id = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
+        auto handle = CreateHandle(tablet, id);
+
+        tablet.WriteData(handle, 0, block * BlockGroupSize, 'a');
+
+        // 1. Write one extra block.
+        // Garbage fraction is 1 / BlockGroupSize < 20% => compaction shouldn't
+        // have been triggered
+
+        tablet.WriteData(handle, 0, block, 'b');
+
+        ui32 rangeId = GetMixedRangeIndex(id, 0);
+
+        tablet.Cleanup(rangeId);
+        {
+            auto response = tablet.GetStorageStats();
+            const auto& stats = response->Record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(2, stats.GetMixedBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(
+                BlockGroupSize + 1,
+                stats.GetMixedBlocksCount());
+            UNIT_ASSERT_VALUES_EQUAL(
+                BlockGroupSize,
+                stats.GetUsedBlocksCount());
+            UNIT_ASSERT_VALUES_EQUAL(1, stats.GetGarbageBlocksCount());
+        }
+
+        // 2. Write some more extra blocks.
+        // Garbage fraction >= 20% => compaction should've been triggered
+
+        auto numBlocksToTriggerCompactionAfterOverwrite =
+            static_cast<ui32>(ceil(0.2 * BlockGroupSize));
+
+        tablet.WriteData(
+            handle,
+            0,
+            block * (numBlocksToTriggerCompactionAfterOverwrite - 1),
+            'c');
+
+        tablet.Cleanup(rangeId);
+        {
+            auto response = tablet.GetStorageStats();
+            const auto& stats = response->Record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(1, stats.GetMixedBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(
+                BlockGroupSize,
+                stats.GetMixedBlocksCount());
+            UNIT_ASSERT_VALUES_EQUAL(
+                BlockGroupSize,
+                stats.GetUsedBlocksCount());
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetGarbageBlocksCount());
+        }
+
+        // 3. Truncate the file by 1 block.
+        // Garbage fraction is 1 / (BlockGroupSize - 1) < 20% => compaction
+        // shouldn't have been triggered
+        {
+            TSetNodeAttrArgs args(id);
+            args.SetFlag(NProto::TSetNodeAttrRequest::F_SET_ATTR_SIZE);
+            args.SetSize((BlockGroupSize - 1) * block);
+            tablet.SetNodeAttr(args);
+        }
+
+        tablet.Cleanup(rangeId);
+        {
+            auto response = tablet.GetStorageStats();
+            const auto& stats = response->Record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(1, stats.GetMixedBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(
+                BlockGroupSize,
+                stats.GetMixedBlocksCount());
+            UNIT_ASSERT_VALUES_EQUAL(
+                BlockGroupSize - 1,
+                stats.GetUsedBlocksCount());
+            UNIT_ASSERT_VALUES_EQUAL(1, stats.GetGarbageBlocksCount());
+        }
+
+        // 4. Truncate the file by 20% of blocks.
+        // Garbage fraction >= 20% => compaction should've been triggered
+
+        auto numBlocksToTriggerCompactionAfterTruncation =
+            static_cast<ui32>(BlockGroupSize / 1.2);
+
+        TSetNodeAttrArgs args(id);
+        args.SetFlag(NProto::TSetNodeAttrRequest::F_SET_ATTR_SIZE);
+        args.SetSize(numBlocksToTriggerCompactionAfterTruncation * block);
+        tablet.SetNodeAttr(args);
+
+        tablet.Cleanup(rangeId);
+        {
+            auto response = tablet.GetStorageStats();
+            const auto& stats = response->Record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(1, stats.GetMixedBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(
+                numBlocksToTriggerCompactionAfterTruncation,
+                stats.GetMixedBlocksCount());
+            UNIT_ASSERT_VALUES_EQUAL(
+                numBlocksToTriggerCompactionAfterTruncation,
+                stats.GetUsedBlocksCount());
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetGarbageBlocksCount());
+        }
+
+        tablet.DestroyHandle(handle);
+    }
+
     TABLET_TEST(ShouldAutomaticallyRunCleanup)
     {
         const auto block = tabletConfig.BlockSize;
