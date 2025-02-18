@@ -569,9 +569,9 @@ void THiveProxyActor::HandleListTabletBootInfoBackups(
     if (TabletBootInfoBackup) {
         ctx.Send(ev->Forward(TabletBootInfoBackup));
     } else {
-        auto response =
-            std::make_unique<TEvHiveProxy::TEvBackupTabletBootInfosResponse>(
-                MakeError(S_FALSE));
+        auto response = std::make_unique<
+            TEvHiveProxy::TEvListTabletBootInfoBackupsResponse>(
+            MakeError(S_FALSE));
         NCloud::Reply(ctx, *ev, std::move(response));
     }
 }

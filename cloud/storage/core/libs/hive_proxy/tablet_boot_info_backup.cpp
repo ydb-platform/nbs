@@ -79,6 +79,7 @@ void TTabletBootInfoBackup::ScheduleBackup(const TActorContext& ctx)
 NProto::TError TTabletBootInfoBackup::Backup(const TActorContext& ctx)
 {
     Y_DEBUG_ABORT_UNLESS(!ReadOnlyMode);
+
     NProto::TError error;
 
     // We don't need this anymore, because backup file will be overwritten.
@@ -176,9 +177,6 @@ void TTabletBootInfoBackup::HandleUpdateTabletBootInfoBackup(
 
     auto& data = *BackupProto.MutableData();
     data[msg->StorageInfo->TabletID] = info;
-    if (InitialBackupProto) {
-        (*InitialBackupProto->MutableData())[msg->StorageInfo->TabletID] = info;
-    }
 
     LOG_DEBUG_S(ctx, LogComponent,
         "TabletBootInfoBackup: updated data for tablet "
@@ -207,11 +205,6 @@ void TTabletBootInfoBackup::HandleListTabletBootInfoBackups(
     const TActorContext& ctx)
 {
     TVector<TTabletBootInfo> infos;
-    // At the bootstrap, we load the backup into InitialBackupProto so that we
-    // can respond with non-empty data before the first
-    // UpdateTabletBootInfoBackup request. After the first backup (10 seconds),
-    // we consider this information to be irrelevant and set InitialBackupProto
-    // to std::nullopt.
     const auto& backupProto =
         InitialBackupProto.value_or(BackupProto);
     for (const auto& [_, info]: backupProto.GetData()) {

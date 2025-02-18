@@ -140,7 +140,7 @@ private:
             HFunc(TEvents::TEvWakeup, HandleTimeout);
 
             default:
-                HandleUnexpectedEvent(ev, TBlockStoreComponents::BOOTSTRAPPER);
+                HandleUnexpectedEvent(ev, TBlockStoreComponents::SERVICE);
                 break;
         }
     }
@@ -165,9 +165,9 @@ private:
         if (HasError(ev->Get()->GetError())) {
             LOG_ERROR(
                 ctx,
-                TBlockStoreComponents::BOOTSTRAPPER,
-                "Can't get tablet boot info from backup to warm up group "
-                "connections. Error: %s",
+                TBlockStoreComponents::SERVICE,
+                "Can't list tablet boot info backups to warm up BS group "
+                "connections: %s",
                 FormatError(ev->Get()->GetError()).c_str());
             return;
         }
@@ -176,13 +176,13 @@ private:
         THashSet<ui64> groupIds;
         for (const auto& tabletBootInfo: tabletBootInfos) {
             for (const auto& channel: tabletBootInfo.StorageInfo->Channels) {
-                auto relevantHistoryEntrys =
+                auto historyEntries =
                     channel.History | std::views::reverse |
                     std::views::filter(
                         [&](const auto& el)
                         { return groupIds.insert(el.GroupID).second; }) |
                     std::views::take(GroupsPerChannelToWarmup);
-                for (const auto& historyEntry: relevantHistoryEntrys) {
+                for (const auto& historyEntry: historyEntries) {
                     NCloud::Send(
                         ctx,
                         NKikimr::MakeBlobStorageProxyID(historyEntry.GroupID),
@@ -194,7 +194,7 @@ private:
 
         LOG_INFO(
             ctx,
-            TBlockStoreComponents::BOOTSTRAPPER,
+            TBlockStoreComponents::SERVICE,
             "Sent status messages to %zu groups in order to warm them up",
             groupIds.size());
     }
@@ -750,8 +750,8 @@ void TBootstrapYdb::WarmupBSGroupConnections()
 
     ActorSystem->Register(std::make_unique<TWarmupBSGroupConnectionsActor>(
         std::move(promise),
-        TDuration::Seconds(1),
-        Configs->StorageConfig->GetGroupsCountPerChannelToWarmup()));
+        Configs->StorageConfig->GetWarmupBSGroupConnectionsTimeout(),
+        Configs->StorageConfig->GetBSGroupsPerChannelToWarmup()));
 
     future.Wait();
 }

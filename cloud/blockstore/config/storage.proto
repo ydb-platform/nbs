@@ -1118,5 +1118,7 @@ message TStorageServiceConfig
     // a merged blob, otherwise it is written as a mixed blob.
     optional uint32 CompactionMergedBlobThresholdHDD = 406;
 
-    optional uint32 GroupsCountPerChannelToWarmup = 407;
+    optional uint32 BSGroupsPerChannelToWarmup = 407;
+
+    optional uint32 WarmupBSGroupConnectionsTimeout = 408;
 }
