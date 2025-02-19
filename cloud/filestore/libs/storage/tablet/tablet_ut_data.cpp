@@ -6684,12 +6684,14 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         std::array<ui64, nodeCount> ids;
         for (ui32 i = 0; i < nodeCount; i++) {
             auto name = Sprintf("test%u", i);
-            ids[i] = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, name));
+            ids[i] =
+                CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, name));
             UNIT_ASSERT_VALUES_EQUAL(ids[i], i + 2);
         }
 
         // Write data to each node then run compaction manually and ensure
-        // that the data has been consolidated to a single blob
+        // that the data has been consolidated to a single blob by calling
+        // compaction manually.
 
         for (ui32 i = 0; i < nodeCount; i++) {
             auto handle = CreateHandle(tablet, ids[i]);
@@ -6703,8 +6705,11 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
             UNIT_ASSERT_VALUES_EQUAL(0, stats.GetGarbageBlocksCount());
             UNIT_ASSERT_VALUES_EQUAL(1, stats.CompactionRangeStatsSize());
             UNIT_ASSERT_VALUES_EQUAL(
-                "r=1177944064 b=14 d=896 g=896",
-                CompactionRangeToString(stats.GetCompactionRangeStats(0)));
+                14,
+                stats.GetCompactionRangeStats(0).GetBlobCount());
+            UNIT_ASSERT_VALUES_EQUAL(
+                nodeCount * BlockGroupSize,
+                stats.GetCompactionRangeStats(0).GetGarbageBlockCount());
         }
 
         ui32 rangeId = GetMixedRangeIndex(ids[0], 0);
@@ -6712,12 +6717,15 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         {
             auto response = tablet.GetStorageStats(1);
             const auto& stats = response->Record.GetStats();
-            // Check that the range has been compacted
             UNIT_ASSERT_VALUES_EQUAL(0, stats.GetGarbageBlocksCount());
             UNIT_ASSERT_VALUES_EQUAL(0, stats.CompactionRangeStatsSize());
         }
 
-        // Truncate files to 1 block
+        // Truncate files to 1 block.
+        // The amount of garbage blocks should be equal to the number of
+        // deleted blocks in both filesystem and compaction statistics.
+        // If the number of garbage blocks is zero in the compaction statistics,
+        // it means that the range will be skipped from compaction.
 
         for (ui32 i = 0; i < nodeCount; i++) {
             TSetNodeAttrArgs args(ids[i]);
@@ -6735,8 +6743,11 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
                 stats.GetGarbageBlocksCount());
             UNIT_ASSERT_VALUES_EQUAL(1, stats.CompactionRangeStatsSize());
             UNIT_ASSERT_VALUES_EQUAL(
-                "r=1177944064 b=1 d=0 g=882",
-                CompactionRangeToString(stats.GetCompactionRangeStats(0)));
+                1,
+                stats.GetCompactionRangeStats(0).GetBlobCount());
+            UNIT_ASSERT_VALUES_EQUAL(
+                nodeCount * (BlockGroupSize - 1),
+                stats.GetCompactionRangeStats(0).GetGarbageBlockCount());
         }
 
         // Delete all files but the first one
@@ -6754,8 +6765,11 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
                 stats.GetGarbageBlocksCount());
             UNIT_ASSERT_VALUES_EQUAL(1, stats.CompactionRangeStatsSize());
             UNIT_ASSERT_VALUES_EQUAL(
-                "r=1177944064 b=1 d=0 g=895",
-                CompactionRangeToString(stats.GetCompactionRangeStats(0)));
+                1,
+                stats.GetCompactionRangeStats(0).GetBlobCount());
+            UNIT_ASSERT_VALUES_EQUAL(
+                nodeCount * BlockGroupSize - 1,
+                stats.GetCompactionRangeStats(0).GetGarbageBlockCount());
         }
     }
 }
