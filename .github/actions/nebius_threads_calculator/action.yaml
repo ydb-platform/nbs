@@ -33,6 +33,30 @@ runs:
         test_threads=0
         if [[ $tests_size == *"large"* ]]; then
           case "$vm_preset" in
+            "256vcpu-1024gb")
+                test_threads=64
+                build_threads=256
+            ;;
+            "224vcpu-896gb")
+                test_threads=56
+                build_threads=224
+            ;;
+            "192vcpu-768gb")
+                test_threads=48
+                build_threads=192
+            ;;
+            "160vcpu-640gb")
+                test_threads=40
+                build_threads=160
+            ;;
+            "128vcpu-512gb")
+                test_threads=32
+                build_threads=128
+            ;;
+            "96vcpu-384gb")
+                test_threads=24
+                build_threads=96
+            ;;
             "80vcpu-320gb")
                 test_threads=16
                 build_threads=80
@@ -72,6 +96,30 @@ runs:
           esac
         else
           case "$vm_preset" in
+          "256vcpu-1024gb")
+                test_threads=64
+                build_threads=256
+            ;;
+            "224vcpu-896gb")
+                test_threads=56
+                build_threads=224
+            ;;
+            "192vcpu-768gb")
+                test_threads=48
+                build_threads=192
+            ;;
+            "160vcpu-640gb")
+                test_threads=40
+                build_threads=160
+            ;;
+            "128vcpu-512gb")
+                test_threads=32
+                build_threads=128
+            ;;
+            "96vcpu-384gb")
+                test_threads=28
+                build_threads=96
+            ;;
             "80vcpu-320gb")
                 test_threads=24
                 build_threads=80

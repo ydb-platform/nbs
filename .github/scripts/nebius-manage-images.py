@@ -1,32 +1,48 @@
 import os
-import json
-import grpc
+import asyncio
 import math
 import logging
 import argparse
 from github import Github
-from datetime import datetime, timezone
-from nebius.compute.v1.image_pb2 import Image, ImageStatus
-from nebius.compute.v1.image_service_pb2 import ListImagesRequest
-
-from nebius.compute.v1.image_service_pb2_grpc import ImageServiceStub
-import nebius.compute.v1.image_service_pb2 as image_service_pb2
-from nebiusai import SDK, RetryInterceptor, backoff_linear_with_jitter
-
-logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s: %(levelname)s: %(message)s"
+from nebius.sdk import SDK
+from nebius.aio.service_error import RequestError
+from nebius.api.nebius.compute.v1 import (
+    ListImagesRequest,
+    ImageServiceClient,
 )
-logger = logging.getLogger(__name__)
+
+SENSITIVE_DATA_VALUES = {}
+if os.environ.get("GITHUB_TOKEN"):
+    SENSITIVE_DATA_VALUES["github_token"] = os.environ.get("GITHUB_TOKEN")
+
+
+class MaskingFormatter(logging.Formatter):
+    @staticmethod
+    def mask_sensitive_data(msg):
+        # Iterate over the patterns and replace sensitive data with '***'
+        for pattern_name, pattern in SENSITIVE_DATA_VALUES.items():
+            msg = msg.replace(pattern, f"[{pattern_name}=***]")
+        return msg
+
+    def format(self, record):
+        original = logging.Formatter.format(self, record)
+        return self.mask_sensitive_data(original)
+
+
+formatter = MaskingFormatter("%(asctime)s: %(levelname)s: %(message)s")
+console_handler = logging.StreamHandler()
+console_handler.setLevel(logging.INFO)
+console_handler.setFormatter(formatter)
+
+logger = logging.getLogger()
+logger.addHandler(console_handler)
+logger.setLevel(logging.INFO)
 
 # they won't appear in the list of images
 # but they will be protected from deletion anyway
 PROTECTED_IMAGE_IDS = [
     "computeimage-e00f4cy4p43wx8gm4v",
 ]
-
-
-def status_to_string(image: Image) -> str:
-    return ImageStatus.State.Name(image.status.state)
 
 
 def convert_size(size_bytes):
@@ -39,7 +55,7 @@ def convert_size(size_bytes):
     return f"{s} {size_name[i]}"
 
 
-def main(
+async def main(
     sdk: SDK,
     github_token: str,
     github_repository: str,
@@ -68,19 +84,21 @@ def main(
     else:
         logger.info("Would set %s (new) = %s", image_variable_name, new_image_id)
 
+    service = ImageServiceClient(sdk)
     request = ListImagesRequest(
         parent_id=parent_id,
         filter=f"family IN ('{image_family_name}') AND status = 'READY'",
     )
+    try:
+        response = await service.list(request)
+    except RequestError as e:
+        logger.error("Failed to list images", exc_info=True)
+        raise e
 
-    client = sdk.client(image_service_pb2, ImageServiceStub)
-    response = client.List(request)
     candidate_images = []
     for image in response.items:
-        status = status_to_string(image)
-        created_at = datetime.fromtimestamp(
-            image.metadata.created_at.seconds, tz=timezone.utc
-        )
+        status = image.status.state.name
+        created_at = image.metadata.created_at
         storage_size = convert_size(image.status.storage_size_bytes)
         min_disk_size = convert_size(image.status.min_disk_size_bytes)
         prefix = " (PROTECTED)"
@@ -158,25 +176,15 @@ if __name__ == "__main__":
     args = parser.parse_args()
     logger.info(args)
 
-    interceptor = RetryInterceptor(
-        max_retry_count=30,
-        retriable_codes=[grpc.StatusCode.UNAVAILABLE],
-        back_off_func=backoff_linear_with_jitter(5, 0),
-    )
-
-    with open(args.service_account_key, "r") as fp:
-        sdk = SDK(
-            service_account_key=json.load(fp),
-            endpoint=args.api_endpoint,
-            interceptor=interceptor,
+    sdk = SDK(credentials_file_name=args.service_account_key)
+    asyncio.run(
+        main(
+            sdk=sdk,
+            github_token=args.github_token,
+            github_repository=args.github_repo,
+            new_image_id=args.new_image_id,
+            image_variable_name=args.image_variable_name,
+            update_image_id=args.update_image_id,
+            parent_id=args.parent_id,
         )
-
-    main(
-        sdk=sdk,
-        github_token=args.github_token,
-        github_repository=args.github_repo,
-        new_image_id=args.new_image_id,
-        image_variable_name=args.image_variable_name,
-        update_image_id=args.update_image_id,
-        parent_id=args.parent_id,
     )
