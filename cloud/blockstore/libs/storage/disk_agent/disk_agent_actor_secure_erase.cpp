@@ -10,12 +10,22 @@ using namespace NActors;
 
 ////////////////////////////////////////////////////////////////////////////////
 
+bool TDiskAgentActor::CanStartSecureErase(const TString& uuid)
+{
+    const auto& name = State->GetDeviceName(uuid);
+    return !SecureEraseDevicesNames.contains(name) &&
+           SecureEraseDevicesNames.size() <
+               AgentConfig->GetMaxParallelSecureErasesAllowed();
+}
+
 void TDiskAgentActor::SecureErase(
     const NActors::TActorContext& ctx,
     const TString& deviceId)
 {
     LOG_INFO_S(ctx, TBlockStoreComponents::DISK_AGENT,
         "Start secure erase for " << deviceId.Quote());
+
+    SecureEraseDevicesNames.emplace(State->GetDeviceName(deviceId));
 
     auto* actorSystem = ctx.ActorSystem();
     auto replyTo = ctx.SelfID;
@@ -83,7 +93,7 @@ void TDiskAgentActor::HandleSecureEraseDevice(
             ev->Cookie,
             ev->Get()->CallContext));
 
-    if (!State->CanStartSecureEraseForDevice(deviceId)) {
+    if (!CanStartSecureErase(deviceId)) {
         LOG_INFO_S(ctx, TBlockStoreComponents::DISK_AGENT,
             "Postpone secure erase for " << deviceId.Quote());
 
@@ -129,7 +139,7 @@ void TDiskAgentActor::HandleSecureEraseCompleted(
 
         SecureErasePendingRequests.erase(it);
     }
-    State->SecureEraseFinished(msg->DeviceId);
+    SecureEraseDevicesNames.erase(State->GetDeviceName(msg->DeviceId));
 
     // erase next device
 
@@ -143,7 +153,7 @@ void TDiskAgentActor::HandleSecureEraseCompleted(
             continue;
         }
 
-        if (State->CanStartSecureEraseForDevice(deviceUUID)) {
+        if (CanStartSecureErase(deviceUUID)) {
             SecureErase(ctx, deviceUUID);
         }
     }
