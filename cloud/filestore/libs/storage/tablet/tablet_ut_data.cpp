@@ -6650,6 +6650,114 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
             UNIT_ASSERT_VALUES_EQUAL(0, stats.CompactionRangeStatsSize());
         }
     }
+
+    TABLET_TEST_4K_ONLY(ShouldIncrementGarbageBlockCountOnBlockDeletion)
+    {
+        const auto block = tabletConfig.BlockSize;
+        const auto nodeCount = NodeGroupSize - 2;
+
+        NProto::TStorageConfig storageConfig;
+        storageConfig.SetNewCompactionEnabled(true);
+        storageConfig.SetCompactionThresholdAverage(999'999);
+        storageConfig.SetGarbageCompactionThresholdAverage(999'999);
+        storageConfig.SetCompactionThreshold(999'999);
+        storageConfig.SetCleanupThreshold(999'999);
+        storageConfig.SetUseMixedBlocksInsteadOfAliveBlocksInCompaction(true);
+        storageConfig.SetWriteBlobThreshold(block);
+
+        TTestEnv env({}, std::move(storageConfig));
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(
+            env.GetRuntime(),
+            nodeIdx,
+            tabletId,
+            tabletConfig);
+        tablet.InitSession("client", "session");
+
+        // The node values should be in [2, NodeGroupSize) range - their data
+        // should be written into the same range
+
+        std::array<ui64, nodeCount> ids;
+        for (ui32 i = 0; i < nodeCount; i++) {
+            auto name = Sprintf("test%u", i);
+            ids[i] = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, name));
+            UNIT_ASSERT_VALUES_EQUAL(ids[i], i + 2);
+        }
+
+        // Write data to each node then run compaction manually and ensure
+        // that the data has been consolidated to a single blob
+
+        for (ui32 i = 0; i < nodeCount; i++) {
+            auto handle = CreateHandle(tablet, ids[i]);
+            tablet.WriteData(handle, 0, block * BlockGroupSize, 'a');
+            tablet.DestroyHandle(handle);
+        }
+
+        {
+            auto response = tablet.GetStorageStats(1);
+            const auto& stats = response->Record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetGarbageBlocksCount());
+            UNIT_ASSERT_VALUES_EQUAL(1, stats.CompactionRangeStatsSize());
+            UNIT_ASSERT_VALUES_EQUAL(
+                "r=1177944064 b=14 d=896 g=896",
+                CompactionRangeToString(stats.GetCompactionRangeStats(0)));
+        }
+
+        ui32 rangeId = GetMixedRangeIndex(ids[0], 0);
+        tablet.Compaction(rangeId);
+        {
+            auto response = tablet.GetStorageStats(1);
+            const auto& stats = response->Record.GetStats();
+            // Check that the range has been compacted
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetGarbageBlocksCount());
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.CompactionRangeStatsSize());
+        }
+
+        // Truncate files to 1 block
+
+        for (ui32 i = 0; i < nodeCount; i++) {
+            TSetNodeAttrArgs args(ids[i]);
+            args.SetFlag(NProto::TSetNodeAttrRequest::F_SET_ATTR_SIZE);
+            args.SetSize(block);
+            tablet.SetNodeAttr(args);
+        }
+
+        tablet.Cleanup(rangeId);
+        {
+            auto response = tablet.GetStorageStats(1);
+            const auto& stats = response->Record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(
+                nodeCount * (BlockGroupSize - 1),
+                stats.GetGarbageBlocksCount());
+            UNIT_ASSERT_VALUES_EQUAL(1, stats.CompactionRangeStatsSize());
+            UNIT_ASSERT_VALUES_EQUAL(
+                "r=1177944064 b=1 d=0 g=882",
+                CompactionRangeToString(stats.GetCompactionRangeStats(0)));
+        }
+
+        // Delete all files but the first one
+        for (ui32 i = 1; i < nodeCount; i++) {
+            auto name = Sprintf("test%u", i);
+            tablet.UnlinkNode(RootNodeId, name, false);
+        }
+
+        tablet.Cleanup(rangeId);
+        {
+            auto response = tablet.GetStorageStats(1);
+            const auto& stats = response->Record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(
+                nodeCount * BlockGroupSize - 1,
+                stats.GetGarbageBlocksCount());
+            UNIT_ASSERT_VALUES_EQUAL(1, stats.CompactionRangeStatsSize());
+            UNIT_ASSERT_VALUES_EQUAL(
+                "r=1177944064 b=1 d=0 g=895",
+                CompactionRangeToString(stats.GetCompactionRangeStats(0)));
+        }
+    }
 }
 
 }   // namespace NCloud::NFileStore::NStorage
