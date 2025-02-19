@@ -301,6 +301,11 @@ void TMirrorPartitionActor::ReplyAndDie(const TActorContext& ctx)
     Die(ctx);
 }
 
+auto TMirrorPartitionActor::TakeNextRequestIdentifier() -> ui64
+{
+    return RequestIdentifierCounter++;
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 void TMirrorPartitionActor::HandlePoisonPill(
@@ -399,7 +404,7 @@ void TMirrorPartitionActor::HandleScrubbingNextRange(
         if (!requestInfo.Write) {
             continue;
         }
-        const auto& requestRange = requestInfo.Value;
+        const auto& requestRange = requestInfo.Value.BlockRange;
         if (scrubbingRange.Overlaps(requestRange)) {
             LOG_DEBUG(
                 ctx,
