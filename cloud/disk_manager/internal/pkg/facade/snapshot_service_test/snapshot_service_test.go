@@ -115,7 +115,7 @@ func TestSnapshotServiceCreateSnapshotFromSsdNonreplicatedDisk(t *testing.T) {
 		t,
 		disk_manager.DiskKind_DISK_KIND_SSD_NONREPLICATED,
 		4096,        // diskBlockSize
-		262144*4096, // diskSize
+		131072*4096, // diskSize
 	)
 }
 
@@ -124,7 +124,7 @@ func TestSnapshotServiceCreateSnapshotFromHddNonreplicatedDisk(t *testing.T) {
 		t,
 		disk_manager.DiskKind_DISK_KIND_HDD_NONREPLICATED,
 		4096,        // diskBlockSize
-		262144*4096, // diskSize
+		131072*4096, // diskSize
 	)
 }
 
@@ -305,7 +305,7 @@ func TestSnapshotServiceCreateIncrementalSnapshotFromSsdNonreplicatedDisk(t *tes
 	testCreateIncrementalSnapshotFromDisk(
 		t,
 		disk_manager.DiskKind_DISK_KIND_SSD_NONREPLICATED,
-		262144*4096, // diskSize
+		131072*4096, // diskSize
 	)
 }
 

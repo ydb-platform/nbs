@@ -63,7 +63,7 @@ func TestDiskServiceShouldCreateSsdNonreplIfFolderIsInAllowedList(t *testing.T) 
 		Src: &disk_manager.CreateDiskRequest_SrcEmpty{
 			SrcEmpty: &empty.Empty{},
 		},
-		Size: 262144 * 4096,
+		Size: 131072 * 4096,
 		Kind: disk_manager.DiskKind_DISK_KIND_SSD_NONREPLICATED,
 		DiskId: &disk_manager.DiskId{
 			ZoneId: "zone-a",
@@ -93,7 +93,7 @@ func TestDiskServiceShouldFailToCreateSsdNonreplIfNotAllowed(t *testing.T) {
 		Src: &disk_manager.CreateDiskRequest_SrcEmpty{
 			SrcEmpty: &empty.Empty{},
 		},
-		Size: 262144 * 4096,
+		Size: 131072 * 4096,
 		Kind: disk_manager.DiskKind_DISK_KIND_SSD_NONREPLICATED,
 		DiskId: &disk_manager.DiskId{
 			ZoneId: "zone-a",
@@ -518,7 +518,7 @@ func TestDiskServiceCreateSsdNonreplDiskFromIncrementalSnapshot(t *testing.T) {
 	testCreateDiskFromIncrementalSnapshot(
 		t,
 		disk_manager.DiskKind_DISK_KIND_SSD_NONREPLICATED,
-		262144*4096,
+		131072*4096,
 	)
 }
 
@@ -700,7 +700,7 @@ func TestDiskServiceCreateSsdNonreplDiskFromPooledImage(t *testing.T) {
 		disk_manager.DiskKind_DISK_KIND_SSD_NONREPLICATED,
 		32*1024*4096, // imageSize
 		true,         // pooled
-		262144*4096,  // diskSize
+		131072*4096,  // diskSize
 	)
 }
 
