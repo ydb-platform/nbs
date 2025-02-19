@@ -422,22 +422,22 @@ bool TVolumeActor::ReplyToOriginalRequest(
     const TVolumeRequest& volumeRequest = it->second;
 
     if (volumeRequest.ForkedContext) {
-        volumeRequest.OriginalRequestInfo.CallContext->LWOrbit.Join(
+        volumeRequest.CallContext->LWOrbit.Join(
             volumeRequest.ForkedContext->LWOrbit);
     }
 
     FillResponse<TMethod>(
         *response,
-        *volumeRequest.OriginalRequestInfo.CallContext,
+        *volumeRequest.CallContext,
         volumeRequest.ReceiveTime);
 
     // forward response to the caller
     auto event = std::make_unique<IEventHandle>(
-        volumeRequest.OriginalRequestInfo.Sender,
+        volumeRequest.Caller,
         sender,
         response.release(),
         flags,
-        volumeRequest.OriginalRequestInfo.Cookie);
+        volumeRequest.CallerCookie);
     ctx.Send(std::move(event));
 
     if (volumeRequest.IsMultipartitionWriteOrZero) {
