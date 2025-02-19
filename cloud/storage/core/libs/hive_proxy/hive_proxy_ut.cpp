@@ -1456,13 +1456,11 @@ Y_UNIT_TEST_SUITE(THiveProxyTest)
         for (ui32 i = 0; i < LookupCount; ++i) {
             env.SendLookupTabletRequestAsync(sender, FakeHiveTablet, 0, 1);
         }
-        runtime.DispatchEvents([&] () {
-            TDispatchOptions opts;
-            opts.CustomFinalCondition = [&] () {
+        runtime.DispatchEvents(TDispatchOptions{
+            .CustomFinalCondition = [&]()
+            {
                 return hiveLookupCount && lookupCount == LookupCount;
-            };
-            return opts;
-        }());
+            }});
 
         UNIT_ASSERT_VALUES_EQUAL(1, hiveLookupCount);
 
@@ -1475,7 +1473,7 @@ Y_UNIT_TEST_SUITE(THiveProxyTest)
                     sender);
             UNIT_ASSERT(ev);
             const auto* msg = ev->Get();
-            UNIT_ASSERT_VALUES_EQUAL(msg->GetStatus(), E_REJECTED);
+            UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, msg->GetStatus());
         }
 
         auto sendReply =
@@ -1500,7 +1498,6 @@ Y_UNIT_TEST_SUITE(THiveProxyTest)
                 switch (ev->GetTypeRewrite()) {
                     case TEvHive::EvLookupTablet: {
                         sendReply(runtime, ev);
-
                         return true;
                     }
                 }
@@ -1511,7 +1508,7 @@ Y_UNIT_TEST_SUITE(THiveProxyTest)
         for (ui32 i = 0; i < LookupCount; ++i) {
             const auto& response =
                 env.SendLookupTabletRequest(sender, FakeHiveTablet, 0, 1, S_OK);
-            UNIT_ASSERT_VALUES_EQUAL(response.TabletId, FakeTablet2);
+            UNIT_ASSERT_VALUES_EQUAL(FakeTablet2, response.TabletId);
         }
     }
 
