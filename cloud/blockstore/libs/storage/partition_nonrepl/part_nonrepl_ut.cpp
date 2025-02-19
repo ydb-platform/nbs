@@ -1662,10 +1662,10 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionTest)
                     'A');
                 request->Record.MutableHeaders()->SetIsBackgroundRequest(
                     isBackground);
+                request->Record.MutableHeaders()->SetVolumeRequestId(volumeRequestId);
                 client.SendRequest(
                     client.GetActorId(),
-                    std::move(request),
-                    volumeRequestId);
+                    std::move(request));
                 runtime.AdvanceCurrentTime(TDuration::Seconds(1));
                 runtime.DispatchEvents();
                 auto response = client.RecvWriteBlocksResponse();
@@ -1690,6 +1690,8 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionTest)
                     data);
                 request->Record.MutableHeaders()->SetIsBackgroundRequest(
                     isBackground);
+                request->Record.MutableHeaders()->SetVolumeRequestId(
+                    volumeRequestId);
                 client.SendRequest(
                     client.GetActorId(),
                     std::move(request),
@@ -1715,6 +1717,8 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionTest)
                     TBlockRange64::WithLength(1024, 3072));
                 request->Record.MutableHeaders()->SetIsBackgroundRequest(
                     isBackground);
+                request->Record.MutableHeaders()->SetVolumeRequestId(
+                    volumeRequestId);
                 client.SendRequest(
                     client.GetActorId(),
                     std::move(request),
