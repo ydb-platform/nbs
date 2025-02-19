@@ -28,7 +28,7 @@ void TMirrorPartitionActor::HandleWriteOrZeroCompleted(
         return;
     }
     DrainActorCompanion.ProcessDrainRequests(ctx);
-    auto [range, reqCookie] = completeRequest.value();
+    auto [range, volumeRequestId] = completeRequest.value();
     for (const auto& [id, request]: RequestsInProgress.AllRequests()) {
         if (range.Overlaps(request.Value.BlockRange)) {
             DirtyReadRequestIds.insert(id);
@@ -38,7 +38,7 @@ void TMirrorPartitionActor::HandleWriteOrZeroCompleted(
     if (ResyncActorId) {
         auto completion = std::make_unique<
             TEvNonreplPartitionPrivate::TEvWriteOrZeroCompleted>(
-            reqCookie,
+            volumeRequestId,
             msg->TotalCycles,
             msg->FollowerGotNonRetriableError);
 
