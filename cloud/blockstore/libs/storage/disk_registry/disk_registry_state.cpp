@@ -5519,6 +5519,15 @@ bool TDiskRegistryState::TryUpdateDiskState(
 {
     Y_DEBUG_ABORT_UNLESS(!IsMasterDisk(diskId));
 
+    return TryUpdateDiskStateImpl(db, diskId, disk, timestamp);
+}
+
+bool TDiskRegistryState::TryUpdateDiskStateImpl(
+    TDiskRegistryDatabase& db,
+    const TString& diskId,
+    TDiskState& disk,
+    TInstant timestamp)
+{
     const auto newState = CalculateDiskState(diskId, disk);
     const auto oldState = disk.State;
 
@@ -5535,7 +5544,11 @@ bool TDiskRegistryState::TryUpdateDiskState(
         << static_cast<int>(oldState) << " -> " << static_cast<int>(newState));
     disk.History.push_back(std::move(historyItem));
 
-    UpdateAndReallocateDisk(db, diskId, disk);
+    if (IsMasterDisk(diskId)) {
+        db.UpdateDisk(BuildDiskConfig(diskId, disk));
+    } else {
+        UpdateAndReallocateDisk(db, diskId, disk);
+    }
 
     NotificationSystem.OnDiskStateChanged(
         db,
@@ -5544,44 +5557,13 @@ bool TDiskRegistryState::TryUpdateDiskState(
         newState,
         timestamp);
     if (disk.MasterDiskId) {
-        TryUpdateMasterDiskState(
-            db,
-            disk.MasterDiskId,
-            Disks.at(disk.MasterDiskId),
-            timestamp);
+        auto* masterDisk = Disks.FindPtr(disk.MasterDiskId);
+        Y_DEBUG_ABORT_UNLESS(masterDisk);
+        if (!masterDisk) {
+            return false;
+        }
+        TryUpdateDiskStateImpl(db, disk.MasterDiskId, *masterDisk, timestamp);
     }
-
-    return true;
-}
-
-bool TDiskRegistryState::TryUpdateMasterDiskState(
-    TDiskRegistryDatabase& db,
-    const TString& diskId,
-    TDiskState& disk,
-    TInstant timestamp)
-{
-    Y_DEBUG_ABORT_UNLESS(IsMasterDisk(diskId));
-    const auto newState = CalculateDiskState(diskId, disk);
-    const auto oldState = disk.State;
-
-    if (oldState == newState) {
-        return false;
-    }
-
-    disk.State = newState;
-    disk.StateTs = timestamp;
-
-    NProto::TDiskHistoryItem historyItem;
-    historyItem.SetTimestamp(timestamp.MicroSeconds());
-    historyItem.SetMessage(
-        TStringBuilder() << "state changed: " << static_cast<int>(oldState)
-                         << " -> " << static_cast<int>(newState));
-    disk.History.push_back(std::move(historyItem));
-
-    db.UpdateDisk(BuildDiskConfig(diskId, disk));
-
-    NotificationSystem
-        .OnDiskStateChanged(db, diskId, oldState, newState, timestamp);
 
     return true;
 }
