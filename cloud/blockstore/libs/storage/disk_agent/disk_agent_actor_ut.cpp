@@ -1984,7 +1984,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
         diskAgent.SecureEraseDevice("MemoryDevice1");
     }
 
-    Y_UNIT_TEST(ShouldSecureEraseFewDevice)
+    Y_UNIT_TEST(ShouldSecureEraseMultipleDevices)
     {
         TTestBasicRuntime runtime;
 
