@@ -374,7 +374,8 @@ jobs:
         token: ${{ secrets.GH_PERSONAL_ACCESS_TOKEN }}
         vm_parent_id: ${{ vars.NEBIUS_PARENT_ID }}
         vm_name: ${{ format('packer-run-{0}-{1}', github.run_id, github.run_attempt) }}
-        vm_preset: "2vcpu-8gb"
+        vm_platform_id: ${{ vars.NEBIUS_PLATFORM_ID }}
+        vm_preset: "4vcpu-16gb"
         vm_disk_type: 'network-ssd-nonreplicated'
         vm_disk_size: 93
         vm_subnet: ${{ vars.NEBIUS_SUBNET_ID }}

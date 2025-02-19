@@ -443,9 +443,9 @@ async def create_vm(sdk: SDK, args: argparse.Namespace, attempt: int = 0):
     logger.info("attempt mod args.downgrade_after = %d", attempt % args.downgrade_after)
     logger.info("attempt > 0 = %s", attempt > 0)
     if args.allow_downgrade and attempt % args.downgrade_after == 0 and attempt > 0:
-        current_preset_index = PRESETS.index(args.preset)
+        current_preset_index = PRESETS[args.platform_id].index(args.preset)
         if current_preset_index > 0:
-            args.preset = PRESETS[current_preset_index - 1]
+            args.preset = PRESETS[args.platform_id][current_preset_index - 1]
             logger.info("Downgrading to %s preset", args.preset)
 
     runner_github_label = generate_github_label()
@@ -735,12 +735,16 @@ async def main() -> None:
     )
     create.add_argument("--name", default="", help="VM name")
     create.add_argument("--platform-id", default="cpu-e2", help="Platform ID")
+    choices = []
+    for key in PRESETS.keys():
+        for preset in PRESETS[key]:
+            choices.append(preset)
+    choices = list(set(choices))
+    choices = sorted(choices, key=lambda x: int(x.split("vcpu")[0]))
     create.add_argument(
         "--preset",
         type=str,
-        choices=list(
-            set([value for item, values in PRESETS.items() for value in values])
-        ),
+        choices=choices,
         default="2vcpu-8gb",
         required=True,
         help="Instance preset (some presets are available only for specific platforms)",
