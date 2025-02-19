@@ -185,7 +185,8 @@ private:
         const NActors::TActorContext& ctx);
 
     TResultOrError<TSet<NActors::TActorId>> SelectReplicasToReadFrom(
-        ui32 replicaIndex,
+        std::optional<ui32> replicaIndex,
+        std::optional<ui32> replicaCount,
         TBlockRange64 blockRange,
         const TStringBuf& methodName);
 

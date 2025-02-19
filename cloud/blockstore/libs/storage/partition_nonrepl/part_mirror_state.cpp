@@ -186,14 +186,13 @@ bool TMirrorPartitionState::PrepareMigrationConfigForFreshDevices()
 
 NProto::TError TMirrorPartitionState::NextReadReplica(
     const TBlockRange64 readRange,
-    NActors::TActorId* actorId)
+    ui32& replicaIndex)
 {
-    ui32 replicaIndex = 0;
+    replicaIndex = 0;
     for (ui32 i = 0; i < ReplicaActors.size(); ++i) {
         replicaIndex = ReadReplicaIndex++ % ReplicaActors.size();
         const auto& replicaInfo = ReplicaInfos[replicaIndex];
         if (replicaInfo.Config->DevicesReadyForReading(readRange)) {
-            *actorId = ReplicaActors[replicaIndex];
             return {};
         }
     }

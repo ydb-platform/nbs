@@ -54,6 +54,12 @@ public:
         return ReplicaActors;
     }
 
+    const NActors::TActorId& GetReplicaActor(ui32 index) const
+    {
+        Y_DEBUG_ABORT_UNLESS(index < ReplicaActors.size());
+        return ReplicaActors[index];
+    }
+
     void SetRWClientId(TString rwClientId)
     {
         RWClientId = std::move(rwClientId);
@@ -64,6 +70,14 @@ public:
         return RWClientId;
     }
 
+    void SetReadReplicaIndex(ui32 readReplicaIndex)
+    {
+        if (readReplicaIndex < 0 || readReplicaIndex >= ReplicaActors.size()) {
+            return;
+        }
+        ReadReplicaIndex = readReplicaIndex;
+    }
+
     [[nodiscard]] NProto::TError Validate();
     void PrepareMigrationConfig();
     [[nodiscard]] bool PrepareMigrationConfigForWarningDevices();
@@ -71,7 +85,7 @@ public:
 
     [[nodiscard]] NProto::TError NextReadReplica(
         const TBlockRange64 readRange,
-        NActors::TActorId* actorId);
+        ui32& replicaIndex);
 
     ui32 GetBlockSize() const;
 

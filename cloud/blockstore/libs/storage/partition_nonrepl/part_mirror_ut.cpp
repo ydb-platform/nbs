@@ -2062,6 +2062,98 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
         }
     }
 
+    Y_UNIT_TEST(ShouldReadFromAllReplicas)
+    {
+        constexpr ui32 replicaCount = 3;
+
+        TTestBasicRuntime runtime;
+        TTestEnv env(runtime);
+        TPartitionClient client(runtime, env.ActorId);
+
+        client.WriteBlocks(
+            TBlockRange64::MakeClosedInterval(0, 1024),
+            1);
+
+        ui32 checksumResponseCount = 0;
+
+        TActorId recepient;
+        TMap<TActorId, TSet<TActorId>> actorIds;
+        runtime.SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
+                switch (event->GetTypeRewrite()) {
+                    case TEvNonreplPartitionPrivate::EvChecksumBlocksResponse: {
+                        ++checksumResponseCount;
+                        recepient = event->Recipient;
+                        actorIds[event->Recipient].insert(event->Sender);
+                        break;
+                    }
+                    case TEvService::EvReadBlocksResponse: {
+                        actorIds[event->Recipient].insert(event->Sender);
+                        break;
+                    }
+                }
+
+                return TTestActorRuntime::DefaultObserverFunc(event);
+            });
+
+        const auto range = TBlockRange64::WithLength(0, 1024);
+
+        client.ReadBlocks(range, 0, replicaCount);
+
+        TDispatchOptions options;
+        options.FinalEvents.emplace_back(TEvService::EvReadBlocksResponse);
+        runtime.DispatchEvents(options, TDuration::Seconds(3));
+
+        // When requesting a read for three replicas, Readings are made from
+        // one replica, and checksums are calculated from the other two.
+        UNIT_ASSERT_VALUES_EQUAL(replicaCount - 1, checksumResponseCount);
+        UNIT_ASSERT_VALUES_EQUAL(replicaCount, actorIds[recepient].size());
+    }
+
+    Y_UNIT_TEST(ShouldRejectReadWithWrongReplicaCount)
+    {
+        TTestRuntime runtime;
+        TTestEnv env(runtime);
+
+        TPartitionClient client(runtime, env.ActorId);
+
+        const auto range = TBlockRange64::WithLength(0, 100);
+        env.WriteMirror(range, 'X');
+
+        {
+            client.SendReadBlocksRequest(range, 0, 4);
+            auto response = client.RecvReadBlocksResponse();
+            UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, response->GetStatus());
+            UNIT_ASSERT_STRING_CONTAINS(
+                response->GetErrorReason(),
+                "has incorrect replica count");
+        }
+    }
+
+    Y_UNIT_TEST(ShouldRejectReadFromAllReplicaIfRangeNotResynced)
+    {
+        constexpr ui32 replicaCount = 3;
+
+        TTestBasicRuntime runtime;
+        TTestEnv env(runtime);
+
+        auto range = TBlockRange64::WithLength(100, 100);
+
+        TPartitionClient client(runtime, env.ActorId);
+        env.WriteReplica(0, range, 'A');
+        env.WriteReplica(1, range, 'C');
+        env.WriteReplica(2, range, 'C');
+
+        {
+            client.SendReadBlocksRequest(range, 0, replicaCount);
+            auto response = client.RecvReadBlocksResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_REJECTED,
+                response->GetStatus(),
+                response->GetErrorReason());
+        }
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage
