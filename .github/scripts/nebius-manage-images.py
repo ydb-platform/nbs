@@ -92,8 +92,8 @@ async def main(
     try:
         response = await service.list(request)
     except RequestError as e:
-        logger.error("Failed to list images: %s", e)
-        return
+        logger.error("Failed to list images", exc_info=True)
+        raise e
 
     candidate_images = []
     for image in response.items:

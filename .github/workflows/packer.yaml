@@ -136,7 +136,7 @@ jobs:
         version: 1.10.2
     - name: install dependencies
       run: |
-        pip install PyGithub==2.5.0 grpcio grpcio-tools nebius
+        pip install PyGithub==2.5.0 grpcio grpcio-tools nebius==0.2.6
         echo "PATH=$PATH:$HOME/nebius-cloud/bin:$HOME/.nebius/bin" >> $GITHUB_ENV
 
     - name: Set up NCP
