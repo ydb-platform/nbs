@@ -51,4 +51,7 @@ message TFileSystemConfig
 
     // Enable Writeback cache on guest (fuse client)
     optional bool GuestWritebackCacheEnabled = 15;
+
+    // Enable zero copy for read/write requests
+    optional bool ZeroCopyEnabled = 16;
 }

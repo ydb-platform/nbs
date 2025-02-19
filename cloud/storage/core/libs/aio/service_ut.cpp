@@ -84,6 +84,65 @@ Y_UNIT_TEST_SUITE(TAioTest)
         }
     }
 
+    Y_UNIT_TEST(ShouldReadWriteV)
+    {
+        auto service = CreateAIOService();
+        service->Start();
+        Y_DEFER { service->Stop(); };
+
+        const ui32 blockSize = 4_KB;
+        const ui64 blockCount = 1024;
+        const auto filePath = TryGetRamDrivePath() / "test";
+
+        TFileHandle fileData(filePath, OpenAlways | RdWr | DirectAligned | Sync);
+        fileData.Resize(blockCount * blockSize);
+
+        const ui64 requestStartIndex = 20;
+        const ui64 requestBlockCount = 200;
+        const ui64 length = requestBlockCount * blockSize;
+        const i64 offset = requestStartIndex * blockSize;
+
+        std::shared_ptr<char> memory {
+            static_cast<char*>(std::aligned_alloc(blockSize, length)),
+            std::free
+        };
+
+        TVector<TArrayRef<char>> buffers;
+        buffers.emplace_back(memory.get(), 20 * blockSize);
+        buffers.emplace_back(memory.get() + 20 * blockSize, 80 * blockSize);
+        buffers.emplace_back(memory.get() + 100 * blockSize, 40 * blockSize);
+        buffers.emplace_back(memory.get() + 140 * blockSize, 60 * blockSize);
+
+        TVector<TArrayRef<const char>> constBuffers;
+        for (auto& buffer: buffers) {
+            constBuffers.emplace_back(buffer.data(), buffer.size());
+        }
+
+        for (auto& buffer: buffers) {
+            std::memset(buffer.data(), 'X', buffer.size());
+        }
+
+        {
+            auto result = service->AsyncWriteV(fileData, offset, constBuffers);
+            UNIT_ASSERT_VALUES_EQUAL(length, result.GetValueSync());
+        }
+
+        for (auto& buffer: buffers) {
+            std::memset(buffer.data(), '.', buffer.size());
+        }
+
+        {
+            auto result = service->AsyncReadV(fileData, offset, buffers);
+            UNIT_ASSERT_VALUES_EQUAL(length, result.GetValueSync());
+        }
+
+        for (auto& buffer: buffers) {
+            for (char val: buffer) {
+                UNIT_ASSERT_VALUES_EQUAL('X', val);
+            }
+        }
+    }
+
     Y_UNIT_TEST(ShouldRetryIoSetupErrors)
     {
         const auto eventCountLimit =

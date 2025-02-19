@@ -33,8 +33,10 @@ public:
     ui32 GetDirectIoAlign() const;
     bool GetGuestWritebackCacheEnabled() const;
     ui32 GetNodeCleanupBatchSize() const;
+    bool GetZeroCopyEnabled() const;
 
     void Dump(IOutputStream& out) const;
+    TString DumpStr() const;
     void DumpHtml(IOutputStream& out) const;
 
     bool GetAsyncDestroyHandleEnabled() const;

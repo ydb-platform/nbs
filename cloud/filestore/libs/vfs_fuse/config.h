@@ -44,6 +44,8 @@ public:
 
     bool GetGuestWritebackCacheEnabled() const;
 
+    bool GetZeroCopyEnabled() const;
+
     void Dump(IOutputStream& out) const;
     void DumpHtml(IOutputStream& out) const;
 };
