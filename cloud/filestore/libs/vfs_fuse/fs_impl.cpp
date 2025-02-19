@@ -33,7 +33,8 @@ TFileSystem::TFileSystem(
         IFileStorePtr session,
         IRequestStatsPtr stats,
         ICompletionQueuePtr queue,
-        THandleOpsQueuePtr handleOpsQueue)
+        THandleOpsQueuePtr handleOpsQueue,
+        THostWriteBackCachePtr hostWriteBackCache)
     : Logging(std::move(logging))
     , ProfileLog(std::move(profileLog))
     , Timer(std::move(timer))
@@ -48,6 +49,7 @@ TFileSystem::TFileSystem(
         Config->GetXAttrCacheLimit(),
         Config->GetXAttrCacheTimeout())
     , HandleOpsQueue(std::move(handleOpsQueue))
+    , HostWriteBackCache(std::move(hostWriteBackCache))
 {
     Log = Logging->CreateLog("NFS_FUSE");
 }

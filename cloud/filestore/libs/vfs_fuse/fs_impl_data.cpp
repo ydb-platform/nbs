@@ -62,11 +62,11 @@ void TFileSystem::Create(
     auto request = StartRequest<NProto::TCreateHandleRequest>(parent);
     request->SetName(std::move(name));
     request->SetMode(mode & ~(S_IFMT));
-    // Kernel read requests can occur even on write-only files when writeback
+    // Kernel read requests can occur even on write-only files when write-back
     // caching is enabled (read-modify-write non page aligned range). Open
     // files with read/write access to support this.
     const auto overrideRead =
-        Config->GetGuestWritebackCacheEnabled()
+        Config->GetGuestWriteBackCacheEnabled()
             ? ProtoFlag(NProto::TCreateHandleRequest::E_READ)
             : 0;
     request->SetFlags(flags | overrideRead);
@@ -115,11 +115,11 @@ void TFileSystem::Open(
     }
 
     auto request = StartRequest<NProto::TCreateHandleRequest>(ino);
-    // Kernel read requests can occur even on write-only files when writeback
+    // Kernel read requests can occur even on write-only files when write-back
     // caching is enabled (read-modify-write non page aligned range). Open
     // files with read/write access to support this.
     const auto overrideRead =
-        Config->GetGuestWritebackCacheEnabled()
+        Config->GetGuestWriteBackCacheEnabled()
             ? ProtoFlag(NProto::TCreateHandleRequest::E_READ)
             : 0;
     request->SetFlags(flags | overrideRead);

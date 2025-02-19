@@ -49,8 +49,8 @@ message TFileSystemConfig
     // Aligment needed for buffers when using direct io
     optional uint32 DirectIoAlign = 14;
 
-    // Enable Writeback cache on guest (fuse client)
-    optional bool GuestWritebackCacheEnabled = 15;
+    // Enable write-back cache on guest (FUSE client)
+    optional bool GuestWriteBackCacheEnabled = 15;
 
     // Enable zero copy for read/write requests
     optional bool ZeroCopyEnabled = 16;
@@ -61,4 +61,7 @@ message TFileSystemConfig
 
     // Don't support extended attributes
     optional bool ExtendedAttributesDisabled = 18;
+
+    // Enable write-back cache on host (FUSE server)
+    optional bool HostWriteBackCacheEnabled = 19;
 }

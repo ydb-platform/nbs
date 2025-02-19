@@ -42,7 +42,8 @@ public:
     bool GetDirectIoEnabled() const;
     ui32 GetDirectIoAlign() const;
 
-    bool GetGuestWritebackCacheEnabled() const;
+    bool GetGuestWriteBackCacheEnabled() const;
+    bool GetHostWriteBackCacheEnabled() const;
 
     bool GetZeroCopyEnabled() const;
 

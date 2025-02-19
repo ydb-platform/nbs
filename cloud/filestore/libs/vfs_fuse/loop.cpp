@@ -4,6 +4,7 @@
 #include "fs.h"
 #include "fuse.h"
 #include "handle_ops_queue.h"
+#include "host_write_back_cache.h"
 #include "log.h"
 
 #include <cloud/filestore/libs/client/session.h>
@@ -51,6 +52,7 @@ namespace {
 ////////////////////////////////////////////////////////////////////////////////
 
 static constexpr TStringBuf HandleOpsQueueFileName = "handle_ops_queue";
+static constexpr TStringBuf HostWriteBackCacheFileName = "write_back_cache";
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -515,6 +517,7 @@ private:
     TFileSystemConfigPtr FileSystemConfig;
 
     bool HandleOpsQueueInitialized = false;
+    bool HostWriteBackCacheInitialized = false;
 
 public:
     TFileSystemLoop(
@@ -625,6 +628,22 @@ public:
                             ReportHandleOpsQueueCreatingOrDeletingError(
                                 TStringBuilder()
                                 << "Failed to remove session's HandleOpsQueue"
+                                << ", reason: " << err.AsStrBuf());
+                        }
+                    }
+
+                    // We need to cleanup HostWriteBackCache file and directories
+                    if (p->HostWriteBackCacheInitialized) {
+                        auto fsPath =
+                            TFsPath(p->Config->GetHostWriteBackCachePath()) /
+                            p->Config->GetFileSystemId();
+                        TString sessionDir = fsPath / p->SessionId;
+                        try {
+                            NFs::RemoveRecursive(sessionDir);
+                        } catch (const TSystemError& err) {
+                            ReportHostWriteBackCacheCreatingOrDeletingError(
+                                TStringBuilder()
+                                << "Failed to remove session's HostWriteBackCache"
                                 << ", reason: " << err.AsStrBuf());
                         }
                     }
@@ -791,31 +810,53 @@ private:
                 Log,
                 StorageMediaKind);
             FileSystemConfig = MakeFileSystemConfig(filestore);
-            std::unique_ptr<THandleOpsQueue> handleOpsQueue;
 
+            SessionId = response.GetSession().GetSessionId();
+
+            THandleOpsQueuePtr handleOpsQueue;
             if (FileSystemConfig->GetAsyncDestroyHandleEnabled()) {
                 TString path =
                     TFsPath(Config->GetHandleOpsQueuePath()) /
                     FileSystemConfig->GetFileSystemId() /
-                    response.GetSession().GetSessionId();
+                    SessionId;
                 if (!NFs::MakeDirectoryRecursive(path)) {
                     TString msg = TStringBuilder()
                                   << "Failed to create directories for "
                                      "HandleOpsQueue, path: "
                                   << path;
                     ReportHandleOpsQueueCreatingOrDeletingError(msg);
-                    return MakeError(
-                        E_FAIL,
-                        msg);
+                    return MakeError(E_FAIL, msg);
                 }
                 auto file = TFsPath(path) / HandleOpsQueueFileName;
                 file.Touch();
                 handleOpsQueue = CreateHandleOpsQueue(
                     file.GetPath(),
                     Config->GetHandleOpsQueueSize());
-                SessionId = response.GetSession().GetSessionId();
                 HandleOpsQueueInitialized = true;
             }
+
+            THostWriteBackCachePtr hostWriteBackCache;
+            if (FileSystemConfig->GetHostWriteBackCacheEnabled()) {
+                TString path =
+                    TFsPath(Config->GetHostWriteBackCachePath()) /
+                    FileSystemConfig->GetFileSystemId() /
+                    SessionId;
+                if (!NFs::MakeDirectoryRecursive(path)) {
+                    TString msg = TStringBuilder()
+                                  << "Failed to create directories for "
+                                     "HostWriteBackCache, path: "
+                                  << path;
+                    ReportHostWriteBackCacheCreatingOrDeletingError(msg);
+                    return MakeError(E_FAIL, msg);
+                }
+                auto file = TFsPath(path) / HostWriteBackCacheFileName;
+                file.Touch();
+                hostWriteBackCache = CreateHostWriteBackCache(
+                    file.GetPath(),
+                    Config->GetHostWriteBackCacheSize());
+                HostWriteBackCacheInitialized = true;
+            }
+
             FileSystem = CreateFileSystem(
                 Logging,
                 ProfileLog,
@@ -825,7 +866,8 @@ private:
                 Session,
                 RequestStats,
                 CompletionQueue,
-                std::move(handleOpsQueue));
+                std::move(handleOpsQueue),
+                std::move(hostWriteBackCache));
 
             RequestStats->RegisterIncompleteRequestProvider(CompletionQueue);
 
@@ -905,8 +947,11 @@ private:
         config.SetDirectIoEnabled(features.GetDirectIoEnabled());
         config.SetDirectIoAlign(features.GetDirectIoAlign());
 
-        config.SetGuestWritebackCacheEnabled(
-            features.GetGuestWritebackCacheEnabled());
+        config.SetGuestWriteBackCacheEnabled(
+            features.GetGuestWriteBackCacheEnabled());
+
+        config.SetHostWriteBackCacheEnabled(
+            features.GetHostWriteBackCacheEnabled());
 
         config.SetZeroCopyEnabled(features.GetZeroCopyEnabled());
 
@@ -945,7 +990,7 @@ private:
         // e.g. left from a crash or smth, paranoid mode
         ResetSessionState(SessionThread->GetSession().Dump());
 
-        if (FileSystemConfig->GetGuestWritebackCacheEnabled()) {
+        if (FileSystemConfig->GetGuestWriteBackCacheEnabled()) {
             conn->want |= FUSE_CAP_WRITEBACK_CACHE;
         }
 

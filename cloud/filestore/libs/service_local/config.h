@@ -31,7 +31,7 @@ public:
     ui32 GetMaxHandlePerSessionCount() const;
     bool GetDirectIoEnabled() const;
     ui32 GetDirectIoAlign() const;
-    bool GetGuestWritebackCacheEnabled() const;
+    bool GetGuestWriteBackCacheEnabled() const;
     ui32 GetNodeCleanupBatchSize() const;
     bool GetZeroCopyEnabled() const;
     bool GetGuestPageCacheDisabled() const;
@@ -45,6 +45,8 @@ public:
     TDuration GetAsyncHandleOperationPeriod() const;
 
     bool GetOpenNodeByHandleEnabled() const;
+
+    bool GetHostWriteBackCacheEnabled() const;
 };
 
 }   // namespace NCloud::NFileStore

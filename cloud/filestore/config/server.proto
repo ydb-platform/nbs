@@ -90,8 +90,8 @@ message TLocalServiceConfig
     // Aligment needed for buffers when using direct io
     optional uint32 DirectIoAlign = 10;
 
-    // Enable Writeback cache on guest (fuse client)
-    optional bool GuestWritebackCacheEnabled = 11;
+    // Enable write-back cache on guest (FUSE client)
+    optional bool GuestWriteBackCacheEnabled = 11;
 
     // Async processing of destroy handle requests
     optional bool AsyncDestroyHandleEnabled = 12;
@@ -114,6 +114,9 @@ message TLocalServiceConfig
 
     // Don't support extended attributes
     optional bool ExtendedAttributesDisabled = 18;
+
+    // Enable write-back cache on host (FUSE server)
+    optional bool HostWriteBackCacheEnabled = 19;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

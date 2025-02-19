@@ -301,13 +301,15 @@ public:
     ui64 GetShardBalancerMinFreeSpaceReserve() const;
     bool GetDirectoryCreationInShardsEnabled() const;
 
-    bool GetGuestWritebackCacheEnabled() const;
+    bool GetGuestWriteBackCacheEnabled() const;
     ui64 GetMixedBlocksOffloadedRangesCapacity() const;
 
     bool GetYdbViewerServiceEnabled() const;
 
     bool GetGuestPageCacheDisabled() const;
     bool GetExtendedAttributesDisabled() const;
+
+    bool GetHostWriteBackCacheEnabled() const;
 };
 
 }   // namespace NCloud::NFileStore::NStorage

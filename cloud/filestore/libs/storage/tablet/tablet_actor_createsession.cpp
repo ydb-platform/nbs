@@ -44,12 +44,15 @@ void FillFeatures(const TStorageConfig& config, NProto::TFileStore& fileStore)
     features->SetAsyncHandleOperationPeriod(
         config.GetAsyncHandleOperationPeriod().MilliSeconds());
 
-    features->SetGuestWritebackCacheEnabled(
-        config.GetGuestWritebackCacheEnabled());
+    features->SetGuestWriteBackCacheEnabled(
+        config.GetGuestWriteBackCacheEnabled());
 
     features->SetGuestPageCacheDisabled(config.GetGuestPageCacheDisabled());
     features->SetExtendedAttributesDisabled(
         config.GetExtendedAttributesDisabled());
+
+    features->SetHostWriteBackCacheEnabled(
+        config.GetHostWriteBackCacheEnabled());
 }
 
 ////////////////////////////////////////////////////////////////////////////////

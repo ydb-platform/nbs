@@ -34,6 +34,7 @@ namespace NCloud::NFileStore{
     xxx(RenameNodeRequestSentToWrongShard)                                     \
     xxx(RenameNodeRequestForLocalNode)                                         \
     xxx(InvalidShardNo)                                                        \
+    xxx(HostWriteBackCacheCreatingOrDeletingError)                             \
 // FILESTORE_CRITICAL_EVENTS
 
 #define FILESTORE_IMPOSSIBLE_EVENTS(xxx)                                       \

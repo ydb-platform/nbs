@@ -26,7 +26,7 @@ constexpr TDuration AsyncHandleOpsPeriod = TDuration::MilliSeconds(50);
     xxx(MaxHandlePerSessionCount,    ui32,          10000                     )\
     xxx(DirectIoEnabled,             bool,          false                     )\
     xxx(DirectIoAlign,               ui32,          4_KB                      )\
-    xxx(GuestWritebackCacheEnabled,  bool,          false                     )\
+    xxx(GuestWriteBackCacheEnabled,  bool,          false                     )\
     xxx(AsyncDestroyHandleEnabled,   bool,          false                     )\
     xxx(AsyncHandleOperationPeriod,  TDuration,     AsyncHandleOpsPeriod      )\
     xxx(OpenNodeByHandleEnabled,     bool,          false                     )\
@@ -34,6 +34,7 @@ constexpr TDuration AsyncHandleOpsPeriod = TDuration::MilliSeconds(50);
     xxx(ZeroCopyEnabled,             bool,          false                     )\
     xxx(GuestPageCacheDisabled,      bool,          false                     )\
     xxx(ExtendedAttributesDisabled,  bool,          false                     )\
+    xxx(HostWriteBackCacheEnabled,   bool,          false                     )\
 // FILESTORE_SERVICE_CONFIG
 
 #define FILESTORE_SERVICE_DECLARE_CONFIG(name, type, value)                    \

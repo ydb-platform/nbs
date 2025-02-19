@@ -5,6 +5,7 @@
 #include "config.h"
 #include "fs.h"
 #include "handle_ops_queue.h"
+#include "host_write_back_cache.h"
 #include "node_cache.h"
 
 #include <cloud/filestore/libs/diagnostics/request_stats.h>
@@ -22,6 +23,7 @@
 
 #include <util/datetime/base.h>
 #include <util/generic/hash.h>
+#include <util/generic/queue.h>
 #include <util/generic/string.h>
 #include <util/system/align.h>
 #include <util/system/mutex.h>
@@ -90,6 +92,8 @@ private:
     TQueue<TReleaseRequest> DelayedReleaseQueue;
     TMutex DelayedReleaseQueueLock;
 
+    THostWriteBackCachePtr HostWriteBackCache;
+
 public:
     TFileSystem(
         ILoggingServicePtr logging,
@@ -100,7 +104,8 @@ public:
         IFileStorePtr session,
         IRequestStatsPtr stats,
         ICompletionQueuePtr queue,
-        THandleOpsQueuePtr handleOpsQueue);
+        THandleOpsQueuePtr handleOpsQueue,
+        THostWriteBackCachePtr hostWriteBackCache);
 
     ~TFileSystem();
 

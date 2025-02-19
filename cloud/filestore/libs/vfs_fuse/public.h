@@ -23,4 +23,7 @@ using ICompletionQueuePtr = std::shared_ptr<ICompletionQueue>;
 class THandleOpsQueue;
 using THandleOpsQueuePtr = std::unique_ptr<THandleOpsQueue>;
 
+class THostWriteBackCache;
+using THostWriteBackCachePtr = std::unique_ptr<THostWriteBackCache>;
+
 }   // namespace NCloud::NFileStore::NFuse
