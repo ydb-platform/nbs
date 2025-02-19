@@ -97,7 +97,7 @@ union TNetlinkResponse {
     }
 };
 
-template<ui32 FamilyNameLength>
+template <size_t FamilyNameLength>
 struct TNetlinkFamilyIdRequest
 {
     TNetlinkHeader Headers = {
@@ -109,12 +109,13 @@ struct TNetlinkFamilyIdRequest
         CTRL_ATTR_FAMILY_NAME};
     std::array<char, FamilyNameLength> FamilyName;
 
-    TNetlinkFamilyIdRequest(const char* familyName) {
+    TNetlinkFamilyIdRequest(const char (&familyName)[FamilyNameLength])
+    {
         memcpy(&FamilyName[0], familyName, FamilyNameLength);
     }
 };
 
-template<ui32 FamilyNameLength>
+template<size_t FamilyNameLength>
 struct TNetlinkFamilyIdResponse
 {
     TNetlinkHeader Headers;

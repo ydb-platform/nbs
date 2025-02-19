@@ -100,4 +100,16 @@ public:
     }
 };
 
+template <size_t FamilyNameLength>
+ui16 GetFamilyId(const char (&familyName)[FamilyNameLength])
+{
+    NNetlink::TNetlinkSocket socket;
+    socket.Send(NNetlink::TNetlinkFamilyIdRequest(familyName));
+    NNetlink::TNetlinkResponse<
+        NNetlink::TNetlinkFamilyIdResponse<FamilyNameLength>>
+        response;
+    socket.Receive(response);
+    return response.Msg.FamilyId;
+}
+
 }   // namespace NCloud::NNetlink

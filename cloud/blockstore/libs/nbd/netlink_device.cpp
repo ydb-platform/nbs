@@ -426,15 +426,15 @@ struct TNbdConfigureDeviceRequest
     ui32 SocketFd;
 
     TNbdConfigureDeviceRequest(
-        ui16 familyId,
-        bool connected,
-        ui32 deviceIndex,
-        ui64 deviceSizeInBytes,
-        ui64 blockSizeInBytes,
-        ui64 serverFlags,
-        ui64 requestTimeout,
-        ui64 connectionTimeout,
-        ui32 socketFd)
+            ui16 familyId,
+            bool connected,
+            ui32 deviceIndex,
+            ui64 deviceSizeInBytes,
+            ui64 blockSizeInBytes,
+            ui64 serverFlags,
+            ui64 requestTimeout,
+            ui64 connectionTimeout,
+            ui32 socketFd)
         : Headers{sizeof(TNbdConfigureDeviceRequest), familyId, static_cast<ui8>(connected ? NBD_CMD_RECONFIGURE : NBD_CMD_CONNECT)}
         , DeviceIndexAttr{sizeof(DeviceIndex) + NLA_HDRLEN, NBD_ATTR_INDEX}
         , DeviceIndex(deviceIndex)
@@ -486,7 +486,6 @@ private:
     const TDuration ConnectionTimeout;
     const bool Reconfigure;
 
-    ui16 FamilyId;
     TLog Log;
     IClientHandlerPtr Handler;
     TSocket Socket;
@@ -538,7 +537,6 @@ TNetlinkDevice::TNetlinkDevice(
     , RequestTimeout(requestTimeout)
     , ConnectionTimeout(connectionTimeout)
     , Reconfigure(reconfigure)
-    , FamilyId(0)
 {
     Log = Logging->CreateLog("BLOCKSTORE_NBD");
 }
@@ -728,19 +726,8 @@ void TNetlinkDevice::DoConnect(bool connected)
 
 ui16 TNetlinkDevice::GetFamilyId()
 {
-    if (FamilyId == 0) {
-        NNetlink::TNetlinkSocket socket;
-        socket.Send(
-            NNetlink::TNetlinkFamilyIdRequest<sizeof(NBD_GENL_FAMILY_NAME)>(
-                NBD_GENL_FAMILY_NAME));
-        NNetlink::TNetlinkResponse<
-            NNetlink::TNetlinkFamilyIdResponse<sizeof(NBD_GENL_FAMILY_NAME)>>
-            response;
-        socket.Receive(response);
-        FamilyId = response.Msg.FamilyId;
-    }
-
-    return FamilyId;
+    static ui16 familyId = NNetlink::GetFamilyId(NBD_GENL_FAMILY_NAME);
+    return familyId;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
