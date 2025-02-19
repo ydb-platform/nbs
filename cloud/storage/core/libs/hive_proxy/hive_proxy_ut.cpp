@@ -1434,6 +1434,50 @@ Y_UNIT_TEST_SUITE(THiveProxyTest)
         TTestEnv env(runtime, EExternalBootOptions::IGNORE);
         TActorId sender = runtime.AllocateEdgeActor();
 
+        ui64 lookupCount = 0;
+        ui64 hiveLookupCount = 0;
+        runtime.SetEventFilter(
+            [&](auto&, TAutoPtr<IEventHandle>& ev)
+            {
+                switch (ev->GetTypeRewrite()) {
+                    case TEvHive::EvLookupTablet: {
+                        ++hiveLookupCount;
+                        return true;
+                    }
+                    case TEvHiveProxy::EvLookupTabletRequest: {
+                        ++lookupCount;
+                        return false;
+                    }
+                }
+
+                return false;
+            });
+
+        for (ui32 i = 0; i < LookupCount; ++i) {
+            env.SendLookupTabletRequestAsync(sender, FakeHiveTablet, 0, 1);
+        }
+        runtime.DispatchEvents([&] () {
+            TDispatchOptions opts;
+            opts.CustomFinalCondition = [&] () {
+                return hiveLookupCount && lookupCount == LookupCount;
+            };
+            return opts;
+        }());
+
+        UNIT_ASSERT_VALUES_EQUAL(1, hiveLookupCount);
+
+        env.EnableTabletResolverScheduling();
+        env.RebootHive();
+
+        for (ui32 i = 0; i < LookupCount; ++i) {
+            auto ev =
+                runtime.GrabEdgeEvent<TEvHiveProxy::TEvLookupTabletResponse>(
+                    sender);
+            UNIT_ASSERT(ev);
+            const auto* msg = ev->Get();
+            UNIT_ASSERT_VALUES_EQUAL(msg->GetStatus(), E_REJECTED);
+        }
+
         auto sendReply =
             [&](TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& ev)
         {
@@ -1450,15 +1494,12 @@ Y_UNIT_TEST_SUITE(THiveProxyTest)
                 ev->Cookie));
         };
 
-        ui32 receivedlookupCount = 0;
         runtime.SetEventFilter(
             [&](auto&, TAutoPtr<IEventHandle>& ev)
             {
                 switch (ev->GetTypeRewrite()) {
                     case TEvHive::EvLookupTablet: {
-                        if (++receivedlookupCount == 2) {
-                            sendReply(runtime, ev);
-                        }
+                        sendReply(runtime, ev);
 
                         return true;
                     }
@@ -1468,35 +1509,9 @@ Y_UNIT_TEST_SUITE(THiveProxyTest)
             });
 
         for (ui32 i = 0; i < LookupCount; ++i) {
-            env.SendLookupTabletRequestAsync(sender, FakeHiveTablet, 0, 1);
-        }
-        runtime.DispatchEvents({}, TDuration::Seconds(1));
-        UNIT_ASSERT_VALUES_EQUAL(receivedlookupCount, 1);
-
-        runtime.Register(CreateTabletKiller(FakeHiveTablet));
-        runtime.DispatchEvents({}, TDuration::Seconds(1));
-        for (ui32 i = 0; i < LookupCount; ++i) {
-            auto ev =
-                runtime.GrabEdgeEvent<TEvHiveProxy::TEvLookupTabletResponse>(
-                    sender);
-            UNIT_ASSERT(ev);
-            const auto* msg = ev->Get();
-            UNIT_ASSERT_VALUES_EQUAL(msg->GetStatus(), E_REJECTED);
-        }
-
-        for (ui32 i = 0; i < LookupCount; ++i) {
-            env.SendLookupTabletRequestAsync(sender, FakeHiveTablet, 0, 1);
-        }
-        runtime.DispatchEvents({}, TDuration::Seconds(1));
-        UNIT_ASSERT_VALUES_EQUAL(receivedlookupCount, 2);
-        for (ui32 i = 0; i < LookupCount; ++i) {
-            auto ev =
-                runtime.GrabEdgeEvent<TEvHiveProxy::TEvLookupTabletResponse>(
-                    sender);
-            UNIT_ASSERT(ev);
-            const auto* msg = ev->Get();
-            UNIT_ASSERT_VALUES_EQUAL(msg->GetStatus(), S_OK);
-            UNIT_ASSERT_VALUES_EQUAL(msg->TabletId, FakeTablet2);
+            const auto& response =
+                env.SendLookupTabletRequest(sender, FakeHiveTablet, 0, 1, S_OK);
+            UNIT_ASSERT_VALUES_EQUAL(response.TabletId, FakeTablet2);
         }
     }
 
