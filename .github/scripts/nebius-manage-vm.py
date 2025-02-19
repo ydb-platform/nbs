@@ -330,12 +330,20 @@ async def create_disk(sdk: SDK, args: argparse.Namespace) -> str:
     else:
         logger.info("Creating disk with request %s", disk_request)
 
+    request = None
     try:
         request = await service.create(disk_request)
         await request.wait()
     except TypeError as e:
-        logger.error("Failed to create disk request")
-        raise e
+        logger.error("Failed to create disk request: %s", e)
+        raise
+    except RequestError as e:
+        logger.error("Failed to create disk with request: %s", disk_request)
+        logger.error("Response: %s", str(e.status))
+        if request is not None:
+            logger.error("Removing created instance with ID %s", request.resource_id)
+            remove_vm_by_id(sdk, request.resource_id)
+        raise
 
     logger.info(
         "Created disk with ID %s status:%s",
@@ -348,9 +356,9 @@ async def create_disk(sdk: SDK, args: argparse.Namespace) -> str:
 
 def retry_create_vm(func: callable) -> callable:
     @functools.wraps(func)
-    def wrapper(sdk: SDK, args: argparse.Namespace) -> callable:
+    async def wrapper(sdk: SDK, args: argparse.Namespace) -> callable:
         total_time_limit = 30 * 60
-        retry_interval = 5 * 60
+        retry_interval = 5
         start_time = time.time()
         attempt = 0
         while time.time() - start_time < total_time_limit:
@@ -360,7 +368,7 @@ def retry_create_vm(func: callable) -> callable:
                     time.ctime(time.time()),
                     attempt,
                 )
-                result = func(sdk, args, attempt)
+                result = await func(sdk, args, attempt)
                 logger.info("VM created successfully at %s", time.ctime(time.time()))
                 return result
             except RequestError as e:
@@ -383,7 +391,7 @@ def retry_create_vm(func: callable) -> callable:
                     time.time() < next_run_time
                     and time.time() - start_time < total_time_limit  # noqa: W503
                 ):
-                    time.sleep(1)
+                    await asyncio.sleep(1)
             except Exception as e:
                 logger.error("Failed to create VM: %s", e)
                 raise e
@@ -497,24 +505,23 @@ async def create_vm(sdk: SDK, args: argparse.Namespace, attempt: int = 0):
     else:
         logger.info("Creating VM with request: %s", instance_request)
 
+    request = None
     try:
         request = await service.create(instance_request)
         await request.wait()
     except TypeError as e:
-        logger.error("Failed to create VM, removing created disk")
-        remove_disk_by_id(sdk, args, disk_id)
+        logger.error("Failed to create VM, removing created disk: %s", e)
+        await remove_disk_by_id(sdk, args, disk_id)
         raise e
 
     except RequestError as e:
         logger.error("Failed to create VM with request: %s", instance_request)
+        await remove_disk_by_id(sdk, args, disk_id)
         logger.error("Response: %s", str(e.status))
         if request is not None:
             logger.error("Removing created instance with ID %s", request.resource_id)
             remove_vm_by_id(sdk, request.resource_id)
-
-        remove_disk_by_id(sdk, args, disk_id)
-
-        raise
+        raise e
     instance_id = request.resource_id
     instance = await service.get(GetInstanceRequest(id=instance_id))
     name = instance.metadata.name
