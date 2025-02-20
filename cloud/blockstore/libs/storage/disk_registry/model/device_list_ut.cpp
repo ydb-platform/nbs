@@ -873,6 +873,104 @@ Y_UNIT_TEST_SUITE(TDeviceListTest)
         }
     }
 
+    Y_UNIT_TEST(ShouldTellIfCanAllocateLocalDevicesWithDirty)
+    {
+        // Initially: agent/w 2 clean local devices
+        const int deviceCount = 2;
+        const TString localPoolName = "local-ssd";
+
+        const auto poolConfigs = CreateDevicePoolConfigs(
+            {{localPoolName, 93_GB, NProto::DEVICE_POOL_KIND_LOCAL}});
+
+        TDeviceList deviceList;
+
+        auto agent = CreateAgentConfig(
+            "agent",
+            1,
+            "rack",
+            localPoolName,
+            {"dev1", "dev2"},
+            deviceCount);
+
+        for (int i = 0; i != deviceCount; ++i) {
+            auto& device = *agent.MutableDevices(i);
+            device.SetPoolKind(NProto::DEVICE_POOL_KIND_LOCAL);
+        }
+
+        UNIT_ASSERT_VALUES_EQUAL(2, agent.DevicesSize());
+        deviceList.UpdateDevices(agent, poolConfigs);
+
+        auto makeAllocationQuery = [&] (ui32 n) {
+            return TDeviceList::TAllocationQuery{
+                    .ForbiddenRacks = {},
+                    .LogicalBlockSize = DefaultBlockSize,
+                    .BlockCount = n * DefaultBlockCount,
+                    .PoolKind = NProto::DEVICE_POOL_KIND_LOCAL,
+                    .NodeIds = {1,},
+                };
+        };
+        auto checkAllocation = [&] (ui32 n) {
+            TDeviceList::TAllocationQuery query = makeAllocationQuery(n);
+            bool canAllocate = deviceList.CanAllocateDevices(query);
+            bool canAllocateWithDirty = deviceList.CanAllocateWithDirtyDevices(query);
+            return std::make_pair(canAllocate, canAllocateWithDirty);
+        };
+        auto allocate =  [&] (ui32 n) {
+            TDeviceList::TAllocationQuery query = makeAllocationQuery(n);
+            return deviceList.AllocateDevices(
+                "disk-id", query);
+        };
+
+        // 1. canAllocate, canAllocateWithDirty (2 devices)
+        {
+            auto [canAllocate, canAllocateWithDirty] = checkAllocation(2);
+            UNIT_ASSERT(canAllocate);
+            UNIT_ASSERT(canAllocateWithDirty);
+        }
+
+        // Mark one as dirty
+        deviceList.MarkDeviceAsDirty("agent-1");
+        UNIT_ASSERT_VALUES_EQUAL(1, deviceList.GetDirtyDevices().size());
+
+        // 2. !canAllocate, canAllocateWithDirty (2 devices)
+        {
+            auto [canAllocate, canAllocateWithDirty] = checkAllocation(2);
+            UNIT_ASSERT(!canAllocate);
+            UNIT_ASSERT(canAllocateWithDirty);
+        }
+
+        // Allocate one device
+        {
+            auto devices = allocate(1);
+            UNIT_ASSERT_VALUES_EQUAL(1, devices.size());
+            UNIT_ASSERT_VALUES_EQUAL("agent-2", devices[0].GetDeviceUUID());
+        }
+
+        // 3. !canAllocate, !canAllocateWithDirty (2 devices)
+        {
+            auto [canAllocate, canAllocateWithDirty] = checkAllocation(2);
+            UNIT_ASSERT(!canAllocate);
+            UNIT_ASSERT(!canAllocateWithDirty);
+        }
+
+        // 4. canAllocate, canAllocateWithDirty (1 device)
+        {
+            auto [canAllocate, canAllocateWithDirty] = checkAllocation(1);
+            UNIT_ASSERT(!canAllocate);
+            UNIT_ASSERT(canAllocateWithDirty);
+        }
+
+        // Suspend the dirty device
+        deviceList.SuspendDevice("agent-1");
+
+        // 5. !canAllocate, !canAllocateWithDirty (1 device)
+        {
+            auto [canAllocate, canAllocateWithDirty] = checkAllocation(1);
+            UNIT_ASSERT(!canAllocate);
+            UNIT_ASSERT(!canAllocateWithDirty);
+        }
+    }
+
     Y_UNIT_TEST(ShouldAllocateFromGlobalPoolByPoolName)
     {
         const TString rotPoolName = "rot";
