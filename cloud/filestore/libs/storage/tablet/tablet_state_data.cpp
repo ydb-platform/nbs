@@ -671,23 +671,21 @@ void TIndexTabletState::WriteMixedBlocks(
     InvalidateReadAheadCache(block.NodeId);
 }
 
-bool TIndexTabletState::WriteMixedBlocks(
+TWriteMixedBlocksResult TIndexTabletState::WriteMixedBlocks(
     TIndexTabletDatabase& db,
     const TPartialBlobId& blobId,
     /*const*/ TVector<TBlock>& blocks)
 {
     ui32 rangeId = GetMixedRangeIndex(blocks);
 
-    if (WriteMixedBlocks(db, rangeId, blobId, blocks)) {
+    auto result = WriteMixedBlocks(db, rangeId, blobId, blocks);
+    if (result.NewBlob) {
         AddNewBlob(db, blobId);
-
-        return true;
     }
-
-    return false;
+    return result;
 }
 
-bool TIndexTabletState::WriteMixedBlocks(
+TWriteMixedBlocksResult TIndexTabletState::WriteMixedBlocks(
     TIndexTabletDatabase& db,
     ui32 rangeId,
     const TPartialBlobId& blobId,
@@ -704,7 +702,7 @@ bool TIndexTabletState::WriteMixedBlocks(
     if (!rebaseResult.LiveBlocks) {
         AddGarbageBlob(db, blobId);
 
-        return false;
+        return {.GarbageBlocksCount = 0, .NewBlob = false};
     }
 
     if (rebaseResult.GarbageBlocks) {
@@ -746,7 +744,7 @@ bool TIndexTabletState::WriteMixedBlocks(
 
     InvalidateReadAheadCache(blocks[0].NodeId);
 
-    return true;
+    return {.GarbageBlocksCount = rebaseResult.GarbageBlocks, .NewBlob = true};
 }
 
 void TIndexTabletState::DeleteMixedBlocks(
@@ -761,7 +759,7 @@ void TIndexTabletState::DeleteMixedBlocks(
     AddGarbageBlob(db, blobId);
 }
 
-void TIndexTabletState::DeleteMixedBlocks(
+TDeleteMixedBlocksResult TIndexTabletState::DeleteMixedBlocks(
     TIndexTabletDatabase& db,
     ui32 rangeId,
     const TPartialBlobId& blobId,
@@ -783,6 +781,8 @@ void TIndexTabletState::DeleteMixedBlocks(
 
     DecrementMixedBlobsCount(db);
     DecrementMixedBlocksCount(db, blocks.size());
+
+    return { stats.GarbageBlocks };
 }
 
 TRebaseResult TIndexTabletState::RebaseMixedBlocks(TVector<TBlock>& blocks) const
@@ -866,7 +866,7 @@ bool TIndexTabletState::UpdateBlockLists(
 {
     const auto rangeId = GetMixedRangeIndex(blob.Blocks);
     DeleteMixedBlocks(db, rangeId, blob.BlobId, blob.Blocks);
-    return WriteMixedBlocks(db, rangeId, blob.BlobId, blob.Blocks);
+    return WriteMixedBlocks(db, rangeId, blob.BlobId, blob.Blocks).NewBlob;
 }
 
 ui32 TIndexTabletState::CleanupBlockDeletions(
@@ -878,6 +878,8 @@ ui32 TIndexTabletState::CleanupBlockDeletions(
         Impl->MixedBlocks.ApplyDeletionMarkersAndGetMetas(rangeId);
 
     ui64 removedBlobs = 0;
+    ui32 deletedGarbageBlocksCount = 0;
+    ui32 newGarbageBlocksCount = 0;
     TVector<TMixedBlobMeta> updatedBlobs;
     for (auto& blob: affectedBlobs) {
         const bool affected =
@@ -888,18 +890,22 @@ ui32 TIndexTabletState::CleanupBlockDeletions(
             continue;
         }
 
-        DeleteMixedBlocks(
+        auto deleteBlocksResult = DeleteMixedBlocks(
             db,
             rangeId,
             blob.BlobMeta.BlobId,
             blob.BlobMeta.Blocks);
 
-        bool written = WriteMixedBlocks(
+        auto writeBlocksResult = WriteMixedBlocks(
             db,
             rangeId,
             blob.BlobMeta.BlobId,
             blob.BlobMeta.Blocks);
-        if (!written) {
+
+        deletedGarbageBlocksCount += deleteBlocksResult.GarbageBlocksCount;
+        newGarbageBlocksCount += writeBlocksResult.GarbageBlocksCount;
+
+        if (!writeBlocksResult.NewBlob) {
             ++removedBlobs;
         }
 
@@ -953,12 +959,19 @@ ui32 TIndexTabletState::CleanupBlockDeletions(
 
     auto stats = GetCompactionStats(rangeId);
     // FIXME: return SafeDecrement after NBS-4475
-    stats.BlobsCount = (stats.BlobsCount > removedBlobs)
-        ? (stats.BlobsCount - removedBlobs) : 0;
-    stats.DeletionsCount = 0;
-    if (stats.BlobsCount == 0) {
+    if (stats.BlobsCount > removedBlobs) {
+        stats.BlobsCount = stats.BlobsCount - removedBlobs;
+        if (stats.GarbageBlocksCount > deletedGarbageBlocksCount) {
+            stats.GarbageBlocksCount -= deletedGarbageBlocksCount;
+            stats.GarbageBlocksCount += newGarbageBlocksCount;
+        } else {
+            stats.GarbageBlocksCount = newGarbageBlocksCount;
+        }
+    } else {
+        stats.BlobsCount = 0;
         stats.GarbageBlocksCount = 0;
     }
+    stats.DeletionsCount = 0;
 
     db.WriteCompactionMap(
         rangeId,
