@@ -132,6 +132,9 @@ void TFileSystem::Open(
 
                 fuse_file_info fi = {};
                 fi.fh = response.GetHandle();
+                if (self->Config->GetGuestPageCacheDisabled()) {
+                    fi.direct_io = 1;
+                }
 
                 self->ReplyOpen(*callContext, response.GetError(), req, &fi);
             }

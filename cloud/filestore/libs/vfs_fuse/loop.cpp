@@ -910,6 +910,10 @@ private:
 
         config.SetZeroCopyEnabled(features.GetZeroCopyEnabled());
 
+        config.SetGuestPageCacheDisabled(features.GetGuestPageCacheDisabled());
+        config.SetExtendedAttributesDisabled(
+            features.GetExtendedAttributesDisabled());
+
         return std::make_shared<TFileSystemConfig>(config);
     }
 

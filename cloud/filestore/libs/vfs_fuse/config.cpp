@@ -36,6 +36,8 @@ namespace {
     xxx(GuestWritebackCacheEnabled, bool,       false                         )\
                                                                                \
     xxx(ZeroCopyEnabled,            bool,       false                         )\
+    xxx(GuestPageCacheDisabled,     bool,       false                         )\
+    xxx(ExtendedAttributesDisabled, bool,       false                         )\
 // FILESTORE_FUSE_CONFIG
 
 #define FILESTORE_FILESYSTEM_DECLARE_CONFIG(name, type, value)                 \
