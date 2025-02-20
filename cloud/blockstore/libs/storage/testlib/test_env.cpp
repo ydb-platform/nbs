@@ -3,6 +3,7 @@
 #include "test_runtime.h"
 
 #include "disk_registry_proxy_mock.h"
+#include "root_kms_key_provider_mock.h"
 
 #include <cloud/blockstore/libs/diagnostics/block_digest.h>
 #include <cloud/blockstore/libs/diagnostics/config.h>
@@ -378,7 +379,7 @@ ui32 TTestEnv::CreateBlockStoreNode(
         nullptr, // rdmaClient
         CreateVolumeStatsStub(),
         std::move(manuallyPreemptedVolumes),
-        CreateRootKmsKeyProviderStub());
+        CreateRootKmsKeyProviderMock());
 
     auto storageServiceId = Runtime.Register(
         storageService.release(),
