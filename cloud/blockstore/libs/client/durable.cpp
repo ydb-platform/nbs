@@ -474,29 +474,34 @@ public:
         : Config(std::move(config))
     {}
 
-    TRetrySpec ShouldRetry(TRetryState& state, const NProto::TError& error) override
+    TRetrySpec ShouldRetry(
+        TRetryState& state,
+        const NProto::TError& error) override
     {
         TRetrySpec spec;
         spec.IsRetriableError =
             GetErrorKind(error) == EErrorKind::ErrorRetriable;
 
-        if (spec.IsRetriableError) {
-            if (TInstant::Now() - state.Started < Config->GetRetryTimeout()) {
-                const auto newRetryTimeout =
-                    state.RetryTimeout + Config->GetRetryTimeoutIncrement();
-                spec.ShouldRetry = true;
-                spec.Backoff = newRetryTimeout;
-                if (IsConnectionError(error) &&
-                        spec.Backoff > Config->GetConnectionErrorMaxRetryTimeout())
-                {
-                    spec.Backoff = Config->GetConnectionErrorMaxRetryTimeout();
-                } else {
-                    state.RetryTimeout = newRetryTimeout;
-                }
-
-                return spec;
-            }
+        if (!spec.IsRetriableError ||
+            TInstant::Now() - state.Started >= Config->GetRetryTimeout())
+        {
+            return spec;
         }
+
+        const auto newRetryTimeout =
+            state.Retries > 0
+                ? (state.RetryTimeout + Config->GetRetryTimeoutIncrement())
+                : Config->GetInitialRetryTimeout();
+        spec.ShouldRetry = true;
+        spec.Backoff = newRetryTimeout;
+        if (IsConnectionError(error) &&
+            spec.Backoff > Config->GetConnectionErrorMaxRetryTimeout())
+        {
+            spec.Backoff = Config->GetConnectionErrorMaxRetryTimeout();
+        } else {
+            state.RetryTimeout = newRetryTimeout;
+        }
+
         return spec;
     }
 };

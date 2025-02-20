@@ -185,6 +185,9 @@ message TClientConfig
 
     // Max request timeout (in milliseconds)
     optional uint32 RequestTimeoutMax = 42;
+
+    // First retry timeout (in milliseconds).
+    optional uint32 InitialRetryTimeout = 43;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

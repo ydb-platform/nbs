@@ -39,6 +39,7 @@ TDuration MSeconds(ui64 x)
     xxx(RequestTimeoutIncrementOnRetry, TDuration,      Seconds(30)           )\
     xxx(RequestTimeoutMax,              TDuration,      Minutes(2)            )\
     xxx(RetryTimeout,                   TDuration,      Minutes(5)            )\
+    xxx(InitialRetryTimeout,            TDuration,      MSeconds(500)         )\
     xxx(RetryTimeoutIncrement,          TDuration,      MSeconds(500)         )\
     xxx(ConnectionErrorMaxRetryTimeout, TDuration,      MSeconds(100)         )\
     xxx(GrpcReconnectBackoff,           TDuration,      MSeconds(100)         )\

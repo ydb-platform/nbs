@@ -759,6 +759,7 @@ Y_UNIT_TEST_SUITE(TDurableClientTest)
         NProto::TClientAppConfig configProto;
         auto& clientConfigProto = *configProto.MutableClientConfig();
         clientConfigProto.SetRetryTimeoutIncrement(2'000);
+        clientConfigProto.SetInitialRetryTimeout(2'000);
         clientConfigProto.SetConnectionErrorMaxRetryTimeout(3'000);
         auto config = std::make_shared<TClientAppConfig>(configProto);
 
@@ -771,17 +772,73 @@ Y_UNIT_TEST_SUITE(TDurableClientTest)
             UNIT_ASSERT(spec.ShouldRetry);
             UNIT_ASSERT_VALUES_EQUAL(TDuration::Seconds(2), spec.Backoff);
 
+            state.Retries++;
             spec = policy->ShouldRetry(state, MakeError(E_REJECTED));
             UNIT_ASSERT(spec.ShouldRetry);
             UNIT_ASSERT_VALUES_EQUAL(TDuration::Seconds(4), spec.Backoff);
 
+            state.Retries++;
             spec = policy->ShouldRetry(state, MakeError(E_GRPC_UNAVAILABLE));
             UNIT_ASSERT(spec.ShouldRetry);
             UNIT_ASSERT_VALUES_EQUAL(TDuration::Seconds(3), spec.Backoff);
 
+            state.Retries++;
             spec = policy->ShouldRetry(state, MakeError(E_REJECTED));
             UNIT_ASSERT(spec.ShouldRetry);
             UNIT_ASSERT_VALUES_EQUAL(TDuration::Seconds(6), spec.Backoff);
+        }
+
+        {
+            TRetryState state;
+
+            auto spec = policy->ShouldRetry(state, MakeError(S_OK));
+            UNIT_ASSERT(!spec.ShouldRetry);
+            UNIT_ASSERT_VALUES_EQUAL(TDuration::Zero(), spec.Backoff);
+
+            state.Retries++;
+            spec = policy->ShouldRetry(state, MakeError(E_GRPC_UNAVAILABLE));
+            UNIT_ASSERT(spec.ShouldRetry);
+            UNIT_ASSERT_VALUES_EQUAL(TDuration::Seconds(2), spec.Backoff);
+
+            state.Retries++;
+            spec = policy->ShouldRetry(state, MakeError(E_GRPC_UNAVAILABLE));
+            UNIT_ASSERT(spec.ShouldRetry);
+            UNIT_ASSERT_VALUES_EQUAL(TDuration::Seconds(3), spec.Backoff);
+        }
+    }
+
+    Y_UNIT_TEST(ShouldCalculateCorrectTimeoutWithNonDefaultInitialTimeout)
+    {
+        NProto::TClientAppConfig configProto;
+        auto& clientConfigProto = *configProto.MutableClientConfig();
+        clientConfigProto.SetRetryTimeoutIncrement(3'000);
+        clientConfigProto.SetConnectionErrorMaxRetryTimeout(7'000);
+        clientConfigProto.SetInitialRetryTimeout(2'000);
+        auto config = std::make_shared<TClientAppConfig>(configProto);
+
+        auto policy = CreateRetryPolicy(config);
+
+        {
+            TRetryState state;
+
+            auto spec = policy->ShouldRetry(state, MakeError(E_REJECTED));
+            UNIT_ASSERT(spec.ShouldRetry);
+            UNIT_ASSERT_VALUES_EQUAL(TDuration::Seconds(2), spec.Backoff);
+
+            state.Retries++;
+            spec = policy->ShouldRetry(state, MakeError(E_REJECTED));
+            UNIT_ASSERT(spec.ShouldRetry);
+            UNIT_ASSERT_VALUES_EQUAL(TDuration::Seconds(5), spec.Backoff);
+
+            state.Retries++;
+            spec = policy->ShouldRetry(state, MakeError(E_GRPC_UNAVAILABLE));
+            UNIT_ASSERT(spec.ShouldRetry);
+            UNIT_ASSERT_VALUES_EQUAL(TDuration::Seconds(7), spec.Backoff);
+
+            state.Retries++;
+            spec = policy->ShouldRetry(state, MakeError(E_REJECTED));
+            UNIT_ASSERT(spec.ShouldRetry);
+            UNIT_ASSERT_VALUES_EQUAL(TDuration::Seconds(8), spec.Backoff);
         }
 
         {
@@ -795,9 +852,20 @@ Y_UNIT_TEST_SUITE(TDurableClientTest)
             UNIT_ASSERT(spec.ShouldRetry);
             UNIT_ASSERT_VALUES_EQUAL(TDuration::Seconds(2), spec.Backoff);
 
+            state.Retries++;
             spec = policy->ShouldRetry(state, MakeError(E_GRPC_UNAVAILABLE));
             UNIT_ASSERT(spec.ShouldRetry);
-            UNIT_ASSERT_VALUES_EQUAL(TDuration::Seconds(3), spec.Backoff);
+            UNIT_ASSERT_VALUES_EQUAL(TDuration::Seconds(5), spec.Backoff);
+
+            state.Retries++;
+            spec = policy->ShouldRetry(state, MakeError(E_GRPC_UNAVAILABLE));
+            UNIT_ASSERT(spec.ShouldRetry);
+            UNIT_ASSERT_VALUES_EQUAL(TDuration::Seconds(7), spec.Backoff);
+
+            state.Retries++;
+            spec = policy->ShouldRetry(state, MakeError(E_GRPC_UNAVAILABLE));
+            UNIT_ASSERT(spec.ShouldRetry);
+            UNIT_ASSERT_VALUES_EQUAL(TDuration::Seconds(7), spec.Backoff);
         }
     }
 
@@ -928,7 +996,10 @@ Y_UNIT_TEST_SUITE(TDurableClientTest)
 
         NProto::TClientAppConfig configProto;
         auto& clientConfigProto = *configProto.MutableClientConfig();
-        clientConfigProto.SetRetryTimeoutIncrement(TDuration::Seconds(1).MilliSeconds());
+        clientConfigProto.SetRetryTimeoutIncrement(
+            TDuration::Seconds(2).MilliSeconds());
+        clientConfigProto.SetInitialRetryTimeout(
+            TDuration::Seconds(1).MilliSeconds());
         auto config = std::make_shared<TClientAppConfig>(configProto);
 
         auto policy = CreateRetryPolicy(config);
@@ -964,15 +1035,22 @@ Y_UNIT_TEST_SUITE(TDurableClientTest)
         const auto& response = future.GetValueSync();
         UNIT_ASSERT(SUCCEEDED(response.GetError().GetCode()));
 
-        auto expectedDelay = TDuration::Seconds(1);
-        auto errorText = TStringBuilder() <<
-            "Request was posponed for " <<
-            callContext->Time(EProcessingStage::Postponed) <<
-            " which is less than " <<
-            expectedDelay;
+        const auto actualDelay = callContext->Time(EProcessingStage::Postponed);
+        {
+            constexpr auto ExpectedDelay = TDuration::Seconds(1);
+            auto errorText = TStringBuilder()
+                             << "Request was posponed for " << actualDelay
+                             << " which is less than " << ExpectedDelay;
+            UNIT_ASSERT_GE_C(actualDelay, ExpectedDelay, errorText);
+        }
 
-        UNIT_ASSERT_GE_C(
-            callContext->Time(EProcessingStage::Postponed), expectedDelay, errorText);
+        {
+            constexpr auto ExpectedDelay = TDuration::Seconds(2);
+            auto errorText = TStringBuilder()
+                             << "Request was posponed for " << actualDelay
+                             << " which is more than " << ExpectedDelay;
+            UNIT_ASSERT_LT_C(actualDelay, ExpectedDelay, errorText);
+        }
     }
 
     Y_UNIT_TEST(ShouldNotCountBackoffTimeAsPostponedForNotThrottledRequests)
