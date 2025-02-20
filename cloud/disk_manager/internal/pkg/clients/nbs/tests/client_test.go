@@ -12,6 +12,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
+	nbs_client "github.com/ydb-platform/nbs/cloud/blockstore/public/sdk/go/client"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/auth"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs/config"
@@ -208,6 +209,35 @@ func writeBlocksToSession(
 	rand.Read(bytes)
 	err := session.Write(ctx, startIndex, bytes)
 	require.NoError(t, err)
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+func checkClientError(
+	t *testing.T,
+	e error,
+	code uint32,
+	message string,
+) {
+
+	var clientErr *nbs_client.ClientError
+	if errors.As(e, &clientErr) {
+		require.Equal(t, code, clientErr.Code)
+		if len(message) != 0 {
+			require.Contains(t, clientErr.Message, message)
+		}
+	} else {
+		require.Fail(t, "Not a client error: %v", e.Error())
+	}
+}
+
+func isErrorInternal(e error) bool {
+	var detailedErr *errors.DetailedError
+	if errors.As(e, &detailedErr) {
+		return detailedErr.Details.Internal
+	}
+
+	return true
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1723,11 +1753,10 @@ func TestEnsureCheckpointReady(t *testing.T) {
 	diskID := t.Name()
 
 	err := client.Create(ctx, nbs.CreateDiskParams{
-		ID:              diskID,
-		BlocksCount:     262144,
-		BlockSize:       4096,
-		Kind:            types.DiskKind_DISK_KIND_SSD_NONREPLICATED,
-		PartitionsCount: 2,
+		ID:          diskID,
+		BlocksCount: 262144,
+		BlockSize:   4096,
+		Kind:        types.DiskKind_DISK_KIND_SSD_NONREPLICATED,
 	})
 	require.NoError(t, err)
 
@@ -1833,11 +1862,10 @@ func TestAlterPlacementGroupMembership(t *testing.T) {
 
 	for _, diskID := range []string{diskID0, diskID1} {
 		err := client.Create(ctx, nbs.CreateDiskParams{
-			ID:              diskID,
-			BlocksCount:     262144,
-			BlockSize:       4096,
-			Kind:            types.DiskKind_DISK_KIND_SSD_NONREPLICATED,
-			PartitionsCount: 2,
+			ID:          diskID,
+			BlocksCount: 262144,
+			BlockSize:   4096,
+			Kind:        types.DiskKind_DISK_KIND_SSD_NONREPLICATED,
 		})
 		require.NoError(t, err)
 	}
@@ -1899,6 +1927,36 @@ func TestAlterPlacementGroupMembership(t *testing.T) {
 	}
 }
 
+func TestAlterPlacementGroupMembershipBecauseGroupDoesNotExist(t *testing.T) {
+	ctx := newContext()
+	client := newTestingClient(t, ctx)
+
+	diskID := t.Name()
+
+	err := client.Create(ctx, nbs.CreateDiskParams{
+		ID:          diskID,
+		BlocksCount: 262144,
+		BlockSize:   4096,
+		Kind:        types.DiskKind_DISK_KIND_SSD_NONREPLICATED,
+	})
+	require.NoError(t, err)
+
+	err = client.AlterPlacementGroupMembership(
+		ctx,
+		func() error { return nil }, // saveState
+		"non_existing_group",
+		0,                // placementPartitionIndex
+		[]string{diskID}, // disksToAdd
+		[]string{},       // disksToRemove
+	)
+	require.Error(t, err)
+	checkClientError(t, err, nbs_client.E_NOT_FOUND, "")
+	require.True(t, isErrorInternal(err))
+
+	err = client.DeleteSync(ctx, diskID)
+	require.NoError(t, err)
+}
+
 func TestAlterPlacementGroupMembershipBecauseDiskIsInAnotherGroup(t *testing.T) {
 	ctx := newContext()
 	client := newTestingClient(t, ctx)
@@ -1919,11 +1977,10 @@ func TestAlterPlacementGroupMembershipBecauseDiskIsInAnotherGroup(t *testing.T) 
 	diskID := t.Name()
 
 	err := client.Create(ctx, nbs.CreateDiskParams{
-		ID:              diskID,
-		BlocksCount:     262144,
-		BlockSize:       4096,
-		Kind:            types.DiskKind_DISK_KIND_SSD_NONREPLICATED,
-		PartitionsCount: 2,
+		ID:          diskID,
+		BlocksCount: 262144,
+		BlockSize:   4096,
+		Kind:        types.DiskKind_DISK_KIND_SSD_NONREPLICATED,
 	})
 	require.NoError(t, err)
 
@@ -1946,10 +2003,8 @@ func TestAlterPlacementGroupMembershipBecauseDiskIsInAnotherGroup(t *testing.T) 
 		[]string{},       // disksToRemove
 	)
 	require.Error(t, err)
-	fmt.Printf("CHECK error: %v", err.Error())
-	// Got error:
-	// Detailed error, Details=Code:4 Message:"failed to add some disks", Silent=true: SEVERITY_ERROR | FACILITY_NULL | 15 failed to add some disks
-	// OK
+	checkClientError(t, err, nbs_client.E_PRECONDITION_FAILED, "")
+	require.False(t, isErrorInternal(err))
 
 	for _, groupID := range []string{groupID0, groupID1} {
 		err = client.DeletePlacementGroup(ctx, groupID)
@@ -1958,39 +2013,6 @@ func TestAlterPlacementGroupMembershipBecauseDiskIsInAnotherGroup(t *testing.T) 
 
 	err = client.DeleteSync(ctx, diskID)
 	require.NoError(t, err)
-}
-
-func TestAlterPlacementGroupMembershipBecauseGroupDoesNotExist(t *testing.T) {
-	ctx := newContext()
-	client := newTestingClient(t, ctx)
-
-	diskID := t.Name()
-
-	err := client.Create(ctx, nbs.CreateDiskParams{
-		ID:              diskID,
-		BlocksCount:     262144,
-		BlockSize:       4096,
-		Kind:            types.DiskKind_DISK_KIND_SSD_NONREPLICATED,
-		PartitionsCount: 2,
-	})
-	require.NoError(t, err)
-
-	err = client.AlterPlacementGroupMembership(
-		ctx,
-		func() error { return nil }, // saveState
-		"non_existing_group",
-		0,                // placementPartitionIndex
-		[]string{diskID}, // disksToAdd
-		[]string{},       // disksToRemove
-	)
-	require.Error(t, err)
-	fmt.Printf("CHECK error: %v", err.Error())
-
-	err = client.DeleteSync(ctx, diskID)
-	require.NoError(t, err)
-	// Got error:
-	// Non retriable error, Silent=true: E_NOT_FOUND no such group: non_existing_group
-	// OK
 }
 
 func TestAlterPlacementGroupMembershipBecauseOfTooManyDisksInGroup(t *testing.T) {
@@ -2011,11 +2033,10 @@ func TestAlterPlacementGroupMembershipBecauseOfTooManyDisksInGroup(t *testing.T)
 	for i := 0; i < diskCount; i++ {
 		diskIDs = append(diskIDs, t.Name()+strconv.Itoa(i))
 		err := client.Create(ctx, nbs.CreateDiskParams{
-			ID:              diskIDs[i],
-			BlocksCount:     262144,
-			BlockSize:       4096,
-			Kind:            types.DiskKind_DISK_KIND_SSD_NONREPLICATED,
-			PartitionsCount: 2, // TODO:_ why two partitions ???
+			ID:          diskIDs[i],
+			BlocksCount: 262144,
+			BlockSize:   4096,
+			Kind:        types.DiskKind_DISK_KIND_SSD_NONREPLICATED,
 		})
 		require.NoError(t, err)
 	}
@@ -2029,17 +2050,14 @@ func TestAlterPlacementGroupMembershipBecauseOfTooManyDisksInGroup(t *testing.T)
 		[]string{}, // disksToRemove
 	)
 	require.Error(t, err)
-	fmt.Printf("CHECK error: %v", err.Error())
-	// HMM this is also valid: some disks are in one agent
-	// Detailed error, Details=Code:4 Message:"failed to add some disks", Silent=true: SEVERITY_ERROR | FACILITY_NULL | 15 failed to add some disks
-	// This is after changing config:
-	// Detailed error, Details=Code:2 Message:"max disk count in group exceeded, max: 2", Silent=true: E_RESOURCE_EXHAUSTED max disk count in group exceeded, max: 2
+	checkClientError(t, err, nbs_client.E_RESOURCE_EXHAUSTED, "")
+	require.False(t, isErrorInternal(err))
 
 	err = client.DeletePlacementGroup(ctx, groupID)
 	require.NoError(t, err)
 
-	for i := 0; i < diskCount; i++ {
-		err = client.DeleteSync(ctx, diskIDs[i])
+	for _, diskID := range diskIDs {
+		err = client.DeleteSync(ctx, diskID)
 		require.NoError(t, err)
 	}
 }
