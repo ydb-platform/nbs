@@ -46,7 +46,7 @@ public:
 
     bool GetZeroCopyEnabled() const;
 
-    bool GetGuestCacheDisabled() const;
+    bool GetGuestPageCacheDisabled() const;
     bool GetExtendedAttributesDisabled() const;
 
     void Dump(IOutputStream& out) const;

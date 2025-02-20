@@ -518,9 +518,9 @@ message TStorageConfig
     // During the InMemoryIndexCache load, the time between the batches loading
     optional uint32 InMemoryIndexCacheLoadSchedulePeriod = 417;  // in ms
 
-    // Guest (fuse client) will use direct io to read/write regardless
-    // of whether file is opened with O_DIRECT
-    optional bool GuestCacheDisabled = 418;
+    // Guest (FUSE client) will use direct IO for read/write requests
+    // regardless of whether file is opened with O_DIRECT or not
+    optional bool GuestPageCacheDisabled = 418;
 
     // Don't support extended attributes
     optional bool ExtendedAttributesDisabled = 419;

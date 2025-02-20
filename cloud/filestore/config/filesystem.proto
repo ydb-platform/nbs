@@ -55,9 +55,9 @@ message TFileSystemConfig
     // Enable zero copy for read/write requests
     optional bool ZeroCopyEnabled = 16;
 
-    // Guest (fuse client) will use direct io to read/write regardless
-    // of whether file is opened with O_DIRECT
-    optional bool GuestCacheDisabled = 17;
+    // Guest (FUSE client) will use direct IO for read/write requests
+    // regardless of whether file is opened with O_DIRECT or not
+    optional bool GuestPageCacheDisabled = 17;
 
     // Don't support extended attributes
     optional bool ExtendedAttributesDisabled = 18;

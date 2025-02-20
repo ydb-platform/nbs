@@ -910,7 +910,7 @@ private:
 
         config.SetZeroCopyEnabled(features.GetZeroCopyEnabled());
 
-        config.SetGuestCacheDisabled(features.GetGuestCacheDisabled());
+        config.SetGuestPageCacheDisabled(features.GetGuestPageCacheDisabled());
         config.SetExtendedAttributesDisabled(
             features.GetExtendedAttributesDisabled());
 

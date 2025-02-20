@@ -306,7 +306,7 @@ public:
 
     bool GetYdbViewerServiceEnabled() const;
 
-    bool GetGuestCacheDisabled() const;
+    bool GetGuestPageCacheDisabled() const;
     bool GetExtendedAttributesDisabled() const;
 };
 

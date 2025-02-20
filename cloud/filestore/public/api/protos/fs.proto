@@ -28,7 +28,7 @@ message TFileStoreFeatures
     bool ThreeStageWriteDisabledForHDD = 13;
     bool GuestWritebackCacheEnabled = 14;
     bool ZeroCopyEnabled = 15;
-    bool GuestCacheDisabled = 16;
+    bool GuestPageCacheDisabled = 16;
     bool ExtendedAttributesDisabled = 17;
 }
 

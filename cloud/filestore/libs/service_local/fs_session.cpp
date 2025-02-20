@@ -37,7 +37,7 @@ NProto::TCreateSessionResponse TLocalFileSystem::CreateSession(
         features->SetAsyncHandleOperationPeriod(
             Config->GetAsyncHandleOperationPeriod().MilliSeconds());
         features->SetZeroCopyEnabled(Config->GetZeroCopyEnabled());
-        features->SetGuestCacheDisabled(Config->GetGuestCacheDisabled());
+        features->SetGuestPageCacheDisabled(Config->GetGuestPageCacheDisabled());
         features->SetExtendedAttributesDisabled(Config->GetExtendedAttributesDisabled());
         return response;
     };
