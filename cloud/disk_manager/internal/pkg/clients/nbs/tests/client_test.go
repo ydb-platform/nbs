@@ -12,13 +12,13 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
-	nbs_client "github.com/ydb-platform/nbs/cloud/blockstore/public/sdk/go/client"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/auth"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs/config"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/common"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/monitoring/metrics"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/pkg/client/codes"
 	"github.com/ydb-platform/nbs/cloud/tasks/errors"
 	"github.com/ydb-platform/nbs/cloud/tasks/logging"
 )
@@ -213,27 +213,30 @@ func writeBlocksToSession(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-func checkClientError(
+func checkErrorDetails(
 	t *testing.T,
-	e error,
-	code uint32,
-	message string,
+	err error,
+	expectedCode codes.Code,
+	expectedMessage string,
+	expectedInternal bool,
 ) {
 
-	var clientErr *nbs_client.ClientError
-	if errors.As(e, &clientErr) {
-		require.Equal(t, code, clientErr.Code)
-		if len(message) != 0 {
-			require.Contains(t, clientErr.Message, message)
+	var detailedErr *errors.DetailedError
+	if errors.As(err, &detailedErr) {
+		details := detailedErr.Details
+		require.Equal(t, expectedCode, codes.Code(details.Code))
+		if len(expectedMessage) != 0 {
+			require.Contains(t, details.Message, expectedMessage)
 		}
+		require.Equal(t, expectedInternal, details.Internal)
 	} else {
-		require.Fail(t, "Not a client error: %v", e.Error())
+		require.Fail(t, "Not a detailed error: %v", err.Error())
 	}
 }
 
-func isErrorInternal(e error) bool {
+func isInternalError(err error) bool {
 	var detailedErr *errors.DetailedError
-	if errors.As(e, &detailedErr) {
+	if errors.As(err, &detailedErr) {
 		return detailedErr.Details.Internal
 	}
 
@@ -1927,7 +1930,7 @@ func TestAlterPlacementGroupMembership(t *testing.T) {
 	}
 }
 
-func TestAlterPlacementGroupMembershipBecauseGroupDoesNotExist(t *testing.T) {
+func TestAlterPlacementGroupMembershipFailureBecauseGroupDoesNotExist(t *testing.T) {
 	ctx := newContext()
 	client := newTestingClient(t, ctx)
 
@@ -1950,14 +1953,13 @@ func TestAlterPlacementGroupMembershipBecauseGroupDoesNotExist(t *testing.T) {
 		[]string{},       // disksToRemove
 	)
 	require.Error(t, err)
-	checkClientError(t, err, nbs_client.E_NOT_FOUND, "")
-	require.True(t, isErrorInternal(err))
+	require.True(t, isInternalError(err))
 
 	err = client.DeleteSync(ctx, diskID)
 	require.NoError(t, err)
 }
 
-func TestAlterPlacementGroupMembershipBecauseDiskIsInAnotherGroup(t *testing.T) {
+func TestAlterPlacementGroupMembershipFailureBecauseDiskIsInAnotherGroup(t *testing.T) {
 	ctx := newContext()
 	client := newTestingClient(t, ctx)
 
@@ -2003,8 +2005,7 @@ func TestAlterPlacementGroupMembershipBecauseDiskIsInAnotherGroup(t *testing.T) 
 		[]string{},       // disksToRemove
 	)
 	require.Error(t, err)
-	checkClientError(t, err, nbs_client.E_PRECONDITION_FAILED, "")
-	require.False(t, isErrorInternal(err))
+	checkErrorDetails(t, err, codes.PreconditionFailed, "", false)
 
 	for _, groupID := range []string{groupID0, groupID1} {
 		err = client.DeletePlacementGroup(ctx, groupID)
@@ -2015,7 +2016,7 @@ func TestAlterPlacementGroupMembershipBecauseDiskIsInAnotherGroup(t *testing.T) 
 	require.NoError(t, err)
 }
 
-func TestAlterPlacementGroupMembershipBecauseOfTooManyDisksInGroup(t *testing.T) {
+func TestAlterPlacementGroupMembershipFailureBecauseOfTooManyDisksInGroup(t *testing.T) {
 	ctx := newContext()
 	client := newTestingClient(t, ctx)
 
@@ -2050,8 +2051,7 @@ func TestAlterPlacementGroupMembershipBecauseOfTooManyDisksInGroup(t *testing.T)
 		[]string{}, // disksToRemove
 	)
 	require.Error(t, err)
-	checkClientError(t, err, nbs_client.E_RESOURCE_EXHAUSTED, "")
-	require.False(t, isErrorInternal(err))
+	checkErrorDetails(t, err, codes.ResourceExhausted, "", false)
 
 	err = client.DeletePlacementGroup(ctx, groupID)
 	require.NoError(t, err)
