@@ -45,7 +45,7 @@ struct IRetryPolicy
 
 IRetryPolicyPtr CreateRetryPolicy(
     TClientAppConfigPtr config,
-    NProto::EStorageMediaKind mediaKind = NProto::STORAGE_MEDIA_DEFAULT);
+    NProto::EStorageMediaKind mediaKind);
 
 IBlockStorePtr CreateDurableClient(
     TClientAppConfigPtr config,

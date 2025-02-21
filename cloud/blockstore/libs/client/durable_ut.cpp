@@ -87,7 +87,7 @@ Y_UNIT_TEST_SUITE(TDurableClientTest)
 
         auto config = std::make_shared<TClientAppConfig>();
 
-        auto policy = CreateRetryPolicy(config);
+        auto policy = CreateRetryPolicy(config, NProto::STORAGE_MEDIA_DEFAULT);
 
         auto timer = CreateCpuCycleTimer();
         auto scheduler = CreateScheduler(timer);
@@ -142,7 +142,7 @@ Y_UNIT_TEST_SUITE(TDurableClientTest)
 
         auto config = std::make_shared<TClientAppConfig>();
 
-        auto policy = CreateRetryPolicy(config);
+        auto policy = CreateRetryPolicy(config, NProto::STORAGE_MEDIA_DEFAULT);
 
         auto timer = CreateCpuCycleTimer();
         auto scheduler = CreateScheduler(timer);
@@ -204,7 +204,7 @@ Y_UNIT_TEST_SUITE(TDurableClientTest)
 
         auto config = std::make_shared<TClientAppConfig>();
 
-        auto policy = CreateRetryPolicy(config);
+        auto policy = CreateRetryPolicy(config, NProto::STORAGE_MEDIA_DEFAULT);
 
         auto timer = CreateCpuCycleTimer();
         auto scheduler = CreateScheduler(timer);
@@ -244,7 +244,7 @@ Y_UNIT_TEST_SUITE(TDurableClientTest)
 
         auto config = std::make_shared<TClientAppConfig>();
 
-        auto policy = CreateRetryPolicy(config);
+        auto policy = CreateRetryPolicy(config, NProto::STORAGE_MEDIA_DEFAULT);
 
         auto timer = CreateCpuCycleTimer();
         auto scheduler = CreateScheduler(timer);
@@ -306,7 +306,7 @@ Y_UNIT_TEST_SUITE(TDurableClientTest)
 
         auto config = std::make_shared<TClientAppConfig>();
 
-        auto policy = CreateRetryPolicy(config);
+        auto policy = CreateRetryPolicy(config, NProto::STORAGE_MEDIA_DEFAULT);
 
         auto timer = CreateCpuCycleTimer();
         auto scheduler = CreateScheduler(timer);
@@ -368,7 +368,7 @@ Y_UNIT_TEST_SUITE(TDurableClientTest)
 
         auto config = std::make_shared<TClientAppConfig>();
 
-        auto policy = CreateRetryPolicy(config);
+        auto policy = CreateRetryPolicy(config, NProto::STORAGE_MEDIA_DEFAULT);
 
         auto requestStats = CreateRequestStatsStub();
         auto volumeStats = CreateVolumeStatsStub();
@@ -524,7 +524,7 @@ Y_UNIT_TEST_SUITE(TDurableClientTest)
 
         auto config = std::make_shared<TClientAppConfig>();
 
-        auto policy = CreateRetryPolicy(config);
+        auto policy = CreateRetryPolicy(config, NProto::STORAGE_MEDIA_DEFAULT);
 
         auto timer = CreateCpuCycleTimer();
         auto scheduler = CreateScheduler(timer);
@@ -687,7 +687,7 @@ Y_UNIT_TEST_SUITE(TDurableClientTest)
 
         auto config = std::make_shared<TClientAppConfig>();
 
-        auto policy = CreateRetryPolicy(config);
+        auto policy = CreateRetryPolicy(config, NProto::STORAGE_MEDIA_DEFAULT);
 
         auto timer = CreateCpuCycleTimer();
         auto scheduler = CreateScheduler(timer);
@@ -754,17 +754,18 @@ Y_UNIT_TEST_SUITE(TDurableClientTest)
         UNIT_ASSERT_VALUES_EQUAL(writeRequestsCount, maxRequestsCount);
     }
 
-    Y_UNIT_TEST(ShouldCalculateCorrectTimeoutWithYDBDisks)
+    Y_UNIT_TEST(ShouldCalculateCorrectTimeoutForYDBDisks)
     {
         NProto::TClientAppConfig configProto;
         auto& clientConfigProto = *configProto.MutableClientConfig();
         clientConfigProto.SetRetryTimeoutIncrement(2'000);
-        clientConfigProto.SetDiskRegistryBasedDiskInitialRetryTimeout(500);
         clientConfigProto.SetYDBBasedDiskInitialRetryTimeout(1'000);
         clientConfigProto.SetConnectionErrorMaxRetryTimeout(4'000);
+        // Should not be used in this test.
+        clientConfigProto.SetDiskRegistryBasedDiskInitialRetryTimeout(500);
         auto config = std::make_shared<TClientAppConfig>(configProto);
 
-        auto policy = CreateRetryPolicy(config);
+        auto policy = CreateRetryPolicy(config, NProto::STORAGE_MEDIA_DEFAULT);
 
         {
             TRetryState state;
@@ -822,13 +823,15 @@ Y_UNIT_TEST_SUITE(TDurableClientTest)
         }
     }
 
-    Y_UNIT_TEST(ShouldCalculateCorrectTimeoutWithDiskRegistryMediaKind)
+    Y_UNIT_TEST(ShouldCalculateCorrectTimeoutForDiskRegistryBasedDisk)
     {
         NProto::TClientAppConfig configProto;
         auto& clientConfigProto = *configProto.MutableClientConfig();
         clientConfigProto.SetRetryTimeoutIncrement(3'000);
         clientConfigProto.SetConnectionErrorMaxRetryTimeout(7'000);
         clientConfigProto.SetDiskRegistryBasedDiskInitialRetryTimeout(2'000);
+        // Should not be used in this test.
+        clientConfigProto.SetYDBBasedDiskInitialRetryTimeout(500);
         auto config = std::make_shared<TClientAppConfig>(configProto);
 
         auto policy =
@@ -902,7 +905,7 @@ Y_UNIT_TEST_SUITE(TDurableClientTest)
         appConfig.SetRetryTimeout(300);
         auto config = std::make_shared<TClientAppConfig>(clientAppConfig);
 
-        auto policy = CreateRetryPolicy(config);
+        auto policy = CreateRetryPolicy(config, NProto::STORAGE_MEDIA_DEFAULT);
 
         auto timer = CreateCpuCycleTimer();
         auto scheduler = CreateScheduler(timer);
@@ -949,7 +952,7 @@ Y_UNIT_TEST_SUITE(TDurableClientTest)
         clientConfigProto.SetRetryTimeoutIncrement(1);
         auto config = std::make_shared<TClientAppConfig>(configProto);
 
-        auto policy = CreateRetryPolicy(config);
+        auto policy = CreateRetryPolicy(config, NProto::STORAGE_MEDIA_DEFAULT);
 
         auto timer = CreateCpuCycleTimer();
         auto scheduler = CreateScheduler(timer);
@@ -1054,11 +1057,11 @@ Y_UNIT_TEST_SUITE(TDurableClientTest)
 
         const auto actualDelay = callContext->Time(EProcessingStage::Postponed);
         {
-            constexpr auto ExpectedDelay = TDuration::Seconds(1);
+            constexpr auto expectedDelay = TDuration::Seconds(1);
             auto errorText = TStringBuilder()
                              << "Request was posponed for " << actualDelay
-                             << " which is less than " << ExpectedDelay;
-            UNIT_ASSERT_GE_C(actualDelay, ExpectedDelay, errorText);
+                             << " which is less than " << expectedDelay;
+            UNIT_ASSERT_GE_C(actualDelay, expectedDelay, errorText);
         }
 
         {
@@ -1092,7 +1095,7 @@ Y_UNIT_TEST_SUITE(TDurableClientTest)
         clientConfigProto.SetRetryTimeoutIncrement(TDuration::Seconds(1).MilliSeconds());
         auto config = std::make_shared<TClientAppConfig>(configProto);
 
-        auto policy = CreateRetryPolicy(config);
+        auto policy = CreateRetryPolicy(config, NProto::STORAGE_MEDIA_DEFAULT);
 
         auto timer = CreateCpuCycleTimer();
         auto scheduler = CreateScheduler(timer);
@@ -1161,7 +1164,7 @@ Y_UNIT_TEST_SUITE(TDurableClientTest)
         clientConfigProto.SetRequestTimeoutMax(TDuration::Minutes(2).MilliSeconds());
         auto config = std::make_shared<TClientAppConfig>(configProto);
 
-        auto policy = CreateRetryPolicy(config);
+        auto policy = CreateRetryPolicy(config, NProto::STORAGE_MEDIA_DEFAULT);
 
         auto timer = CreateCpuCycleTimer();
         auto scheduler = CreateScheduler(timer);
