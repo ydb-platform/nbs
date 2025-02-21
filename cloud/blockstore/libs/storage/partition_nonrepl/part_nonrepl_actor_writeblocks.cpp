@@ -95,7 +95,8 @@ void TDiskAgentWriteActor::SendRequest(const TActorContext& ctx)
         request->Record.SetStartIndex(deviceRequest.DeviceBlockRange.Start);
         request->Record.SetBlockSize(PartConfig->GetBlockSize());
         if (AssignVolumeRequestId) {
-            request->Record.SetVolumeRequestId(RequestInfo->Cookie);
+            request->Record.SetVolumeRequestId(
+                Request.GetHeaders().GetVolumeRequestId());
             request->Record.SetMultideviceRequest(DeviceRequests.size() > 1);
         }
 
