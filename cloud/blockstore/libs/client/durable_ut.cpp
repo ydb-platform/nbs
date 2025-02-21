@@ -754,13 +754,14 @@ Y_UNIT_TEST_SUITE(TDurableClientTest)
         UNIT_ASSERT_VALUES_EQUAL(writeRequestsCount, maxRequestsCount);
     }
 
-    Y_UNIT_TEST(ShouldCalculateCorrectTimeout)
+    Y_UNIT_TEST(ShouldCalculateCorrectTimeoutWithYDBDisks)
     {
         NProto::TClientAppConfig configProto;
         auto& clientConfigProto = *configProto.MutableClientConfig();
         clientConfigProto.SetRetryTimeoutIncrement(2'000);
-        clientConfigProto.SetInitialDiskRegistryVolumeRetryTimeout(1'000);
-        clientConfigProto.SetConnectionErrorMaxRetryTimeout(3'000);
+        clientConfigProto.SetDiskRegistryBasedDiskInitialRetryTimeout(500);
+        clientConfigProto.SetYDBBasedDiskInitialRetryTimeout(1'000);
+        clientConfigProto.SetConnectionErrorMaxRetryTimeout(4'000);
         auto config = std::make_shared<TClientAppConfig>(configProto);
 
         auto policy = CreateRetryPolicy(config);
@@ -770,22 +771,22 @@ Y_UNIT_TEST_SUITE(TDurableClientTest)
 
             auto spec = policy->ShouldRetry(state, MakeError(E_REJECTED));
             UNIT_ASSERT(spec.ShouldRetry);
-            UNIT_ASSERT_VALUES_EQUAL(TDuration::Seconds(2), spec.Backoff);
+            UNIT_ASSERT_VALUES_EQUAL(TDuration::Seconds(1), spec.Backoff);
 
             state.Retries++;
             spec = policy->ShouldRetry(state, MakeError(E_REJECTED));
-            UNIT_ASSERT(spec.ShouldRetry);
-            UNIT_ASSERT_VALUES_EQUAL(TDuration::Seconds(4), spec.Backoff);
-
-            state.Retries++;
-            spec = policy->ShouldRetry(state, MakeError(E_GRPC_UNAVAILABLE));
             UNIT_ASSERT(spec.ShouldRetry);
             UNIT_ASSERT_VALUES_EQUAL(TDuration::Seconds(3), spec.Backoff);
 
             state.Retries++;
+            spec = policy->ShouldRetry(state, MakeError(E_GRPC_UNAVAILABLE));
+            UNIT_ASSERT(spec.ShouldRetry);
+            UNIT_ASSERT_VALUES_EQUAL(TDuration::Seconds(4), spec.Backoff);
+
+            state.Retries++;
             spec = policy->ShouldRetry(state, MakeError(E_REJECTED));
             UNIT_ASSERT(spec.ShouldRetry);
-            UNIT_ASSERT_VALUES_EQUAL(TDuration::Seconds(6), spec.Backoff);
+            UNIT_ASSERT_VALUES_EQUAL(TDuration::Seconds(5), spec.Backoff);
         }
 
         {
@@ -795,15 +796,29 @@ Y_UNIT_TEST_SUITE(TDurableClientTest)
             UNIT_ASSERT(!spec.ShouldRetry);
             UNIT_ASSERT_VALUES_EQUAL(TDuration::Zero(), spec.Backoff);
 
-            state.Retries++;
             spec = policy->ShouldRetry(state, MakeError(E_GRPC_UNAVAILABLE));
             UNIT_ASSERT(spec.ShouldRetry);
-            UNIT_ASSERT_VALUES_EQUAL(TDuration::Seconds(2), spec.Backoff);
+            UNIT_ASSERT_VALUES_EQUAL(TDuration::Seconds(1), spec.Backoff);
 
             state.Retries++;
             spec = policy->ShouldRetry(state, MakeError(E_GRPC_UNAVAILABLE));
             UNIT_ASSERT(spec.ShouldRetry);
             UNIT_ASSERT_VALUES_EQUAL(TDuration::Seconds(3), spec.Backoff);
+
+            state.Retries++;
+            spec = policy->ShouldRetry(state, MakeError(E_GRPC_UNAVAILABLE));
+            UNIT_ASSERT(spec.ShouldRetry);
+            UNIT_ASSERT_VALUES_EQUAL(TDuration::Seconds(4), spec.Backoff);
+
+            state.Retries++;
+            spec = policy->ShouldRetry(state, MakeError(E_GRPC_UNAVAILABLE));
+            UNIT_ASSERT(spec.ShouldRetry);
+            UNIT_ASSERT_VALUES_EQUAL(TDuration::Seconds(4), spec.Backoff);
+
+            state.Retries++;
+            spec = policy->ShouldRetry(state, MakeError(E_REJECTED));
+            UNIT_ASSERT(spec.ShouldRetry);
+            UNIT_ASSERT_VALUES_EQUAL(TDuration::Seconds(5), spec.Backoff);
         }
     }
 
@@ -813,7 +828,7 @@ Y_UNIT_TEST_SUITE(TDurableClientTest)
         auto& clientConfigProto = *configProto.MutableClientConfig();
         clientConfigProto.SetRetryTimeoutIncrement(3'000);
         clientConfigProto.SetConnectionErrorMaxRetryTimeout(7'000);
-        clientConfigProto.SetInitialDiskRegistryVolumeRetryTimeout(2'000);
+        clientConfigProto.SetDiskRegistryBasedDiskInitialRetryTimeout(2'000);
         auto config = std::make_shared<TClientAppConfig>(configProto);
 
         auto policy =
@@ -999,7 +1014,7 @@ Y_UNIT_TEST_SUITE(TDurableClientTest)
         auto& clientConfigProto = *configProto.MutableClientConfig();
         clientConfigProto.SetRetryTimeoutIncrement(
             TDuration::Seconds(2).MilliSeconds());
-        clientConfigProto.SetInitialDiskRegistryVolumeRetryTimeout(
+        clientConfigProto.SetDiskRegistryBasedDiskInitialRetryTimeout(
             TDuration::Seconds(1).MilliSeconds());
         auto config = std::make_shared<TClientAppConfig>(configProto);
 

@@ -518,8 +518,8 @@ IRetryPolicyPtr CreateRetryPolicy(
 {
     const auto initialRetryTimeout =
         IsDiskRegistryMediaKind(mediaKind)
-            ? config->GetInitialDiskRegistryVolumeRetryTimeout()
-            : config->GetRetryTimeoutIncrement();
+            ? config->GetDiskRegistryBasedDiskInitialRetryTimeout()
+            : config->GetYDBBasedDiskInitialRetryTimeout();
     return std::make_shared<TRetryPolicy>(
         std::move(config),
         initialRetryTimeout);
