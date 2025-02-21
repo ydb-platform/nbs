@@ -1,9 +1,6 @@
 #pragma once
 
-#include <util/generic/fwd.h>
 #include <util/string/cast.h>
-
-#include <memory.h>
 
 namespace NCloud {
 
@@ -14,9 +11,9 @@ class TXmlNodeWrapper final
 public:
     enum class ESource
     {
+        ROOT_NAME,
         FILE,
         STRING,
-        ROOT_NAME,
     };
 
     TXmlNodeWrapper(const TString& source, ESource type);
@@ -36,14 +33,14 @@ public:
         return *this;
     }
 
-    TString ToString(TString enc = "") const;
+    TString ToString(TString encoding = "") const;
 
 private:
     struct TImpl;
 
-    explicit TXmlNodeWrapper(std::unique_ptr<TImpl> impl);
-
     std::unique_ptr<TImpl> Impl;
+
+    explicit TXmlNodeWrapper(std::unique_ptr<TImpl> impl);
 
     TXmlNodeWrapper AddChildImpl(TString tag, TString content);
 };

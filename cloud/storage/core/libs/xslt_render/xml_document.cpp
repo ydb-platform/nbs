@@ -9,7 +9,7 @@ namespace {
 using namespace NXml;
 using namespace NCloud;
 
-TDocument::Source ToTDocumentSource(TXmlNodeWrapper::ESource source)
+TDocument::Source ToDocumentSource(TXmlNodeWrapper::ESource source)
 {
     switch (source) {
         case TXmlNodeWrapper::ESource::ROOT_NAME:
@@ -30,7 +30,7 @@ namespace NCloud {
 struct TXmlNodeWrapper::TImpl
 {
     TImpl(const TString& source, ESource type)
-        : Document(std::make_shared<TDocument>(source, ToTDocumentSource(type)))
+        : Document(std::make_shared<TDocument>(source, ToDocumentSource(type)))
         , Node(Document->Root())
     {}
 
@@ -51,19 +51,19 @@ TXmlNodeWrapper::TXmlNodeWrapper(const TString& source, ESource type)
 
 TXmlNodeWrapper::~TXmlNodeWrapper() = default;
 
-TXmlNodeWrapper TXmlNodeWrapper::AddChildImpl(TString tag, TString content = "")
+TString TXmlNodeWrapper::ToString(TString encoding) const
 {
-    auto child = Impl->Node.AddChild(std::move(tag), std::move(content));
-    return TXmlNodeWrapper(std::make_unique<TImpl>(Impl->ToNewNode(child)));
-}
-
-TString TXmlNodeWrapper::ToString(TString enc) const
-{
-    return Impl->Node.ToString(std::move(enc));
+    return Impl->Node.ToString(std::move(encoding));
 }
 
 TXmlNodeWrapper::TXmlNodeWrapper(std::unique_ptr<TImpl> impl)
     : Impl(std::move(impl))
 {}
+
+TXmlNodeWrapper TXmlNodeWrapper::AddChildImpl(TString tag, TString content = "")
+{
+    auto child = Impl->Node.AddChild(std::move(tag), std::move(content));
+    return TXmlNodeWrapper(std::make_unique<TImpl>(Impl->ToNewNode(child)));
+}
 
 }   // namespace NCloud

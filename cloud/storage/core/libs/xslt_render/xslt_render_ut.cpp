@@ -18,8 +18,8 @@ Y_UNIT_TEST_SUITE(TXsltRenderTest)
             NResource::Find("xslt_render/ut/xml1"),
             TXmlNodeWrapper::ESource::STRING);
         TStringStream result;
-        int resultCode = renderer.Render(document, result);
-        UNIT_ASSERT_VALUES_EQUAL(resultCode, 0);
+        auto error = renderer.Render(document, result);
+        UNIT_ASSERT_VALUES_EQUAL(0, error.GetCode());
         UNIT_ASSERT_VALUES_EQUAL(
             NResource::Find("xslt_render/ut/result1"),
             result.Str());
@@ -29,7 +29,6 @@ Y_UNIT_TEST_SUITE(TXsltRenderTest)
     {
         TXslRenderer renderer(NResource::Find("xslt_render/ut/style1").c_str());
         TString data = NResource::Find("xslt_render/ut/xml1");
-        TString resultStr = NResource::Find("xslt_render/ut/result1");
         std::vector<std::shared_ptr<std::thread>> threads;
         for (size_t i = 0; i < 1000; i++) {
             threads.push_back(std::make_shared<std::thread>(
@@ -39,9 +38,11 @@ Y_UNIT_TEST_SUITE(TXsltRenderTest)
                         data,
                         TXmlNodeWrapper::ESource::STRING);
                     TStringStream result;
-                    int resultCode = renderer.Render(document, result);
-                    UNIT_ASSERT_VALUES_EQUAL(resultCode, 0);
-                    UNIT_ASSERT_VALUES_EQUAL(resultStr, result.Str());
+                    auto error = renderer.Render(document, result);
+                    UNIT_ASSERT_VALUES_EQUAL(0, error.GetCode());
+                    UNIT_ASSERT_VALUES_EQUAL(
+                        NResource::Find("xslt_render/ut/result1"),
+                        result.Str());
                 }));
         }
         for (auto& thread: threads) {

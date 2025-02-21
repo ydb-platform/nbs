@@ -2,6 +2,8 @@
 
 #include "xml_document.h"
 
+#include <cloud/storage/core/libs/common/error.h>
+
 #include <util/stream/output.h>
 
 #include <memory.h>
@@ -17,7 +19,7 @@ public:
 
     ~TXslRenderer();
 
-    int Render(const TXmlNodeWrapper& document, IOutputStream& out);
+    NProto::TError Render(const TXmlNodeWrapper& document, IOutputStream& out);
 
 private:
     struct TImpl;

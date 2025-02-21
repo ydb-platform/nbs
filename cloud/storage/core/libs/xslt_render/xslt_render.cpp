@@ -5,6 +5,8 @@
 #include <contrib/libs/libxslt/libxslt/transform.h>
 #include <contrib/libs/libxslt/libxslt/xsltutils.h>
 
+#include <util/generic/scope.h>
+
 namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -54,7 +56,9 @@ TXslRenderer::TXslRenderer(const char* xsl)
 
 TXslRenderer::~TXslRenderer() = default;
 
-int TXslRenderer::Render(const TXmlNodeWrapper& document, IOutputStream& out)
+NProto::TError TXslRenderer::Render(
+    const TXmlNodeWrapper& document,
+    IOutputStream& out)
 {
     auto documentStr = document.ToString("utf-8");
 
@@ -63,11 +67,19 @@ int TXslRenderer::Render(const TXmlNodeWrapper& document, IOutputStream& out)
         nullptr,
         "utf-8",
         0);
+    Y_DEFER {
+        xmlFreeDoc(sourceDoc);
+    };
 
-    int returnCode = 0;
     xmlDocPtr result = xsltApplyStylesheet(Impl->Stylesheet, sourceDoc, {});
+    Y_DEFER {
+        xmlFreeDoc(result);
+    };
     if (result != nullptr) {
         xmlChar* buffer = nullptr;
+        Y_DEFER {
+            xmlFree(buffer);
+        };
         int bufferSize = 0;
 
         if (!xsltSaveResultToString(
@@ -78,16 +90,13 @@ int TXslRenderer::Render(const TXmlNodeWrapper& document, IOutputStream& out)
         {
             out << reinterpret_cast<char*>(buffer);
         } else {
-            returnCode = -2;
+            return MakeError(E_FAIL, "Unable to serialize XSLT result");
         }
-        xmlFree(buffer);
     } else {
-        returnCode = -1;
+        return MakeError(E_FAIL, "Unable to apply stylesheet");
     }
 
-    xmlFreeDoc(result);
-    xmlFreeDoc(sourceDoc);
-    return returnCode;
+    return {};
 }
 
 }   // namespace NCloud

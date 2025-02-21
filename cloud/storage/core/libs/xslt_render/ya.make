@@ -6,6 +6,7 @@ SRCS(
 )
 
 PEERDIR(
+    cloud/storage/core/libs/common
     library/cpp/xml/document
     contrib/libs/libxslt
 )
