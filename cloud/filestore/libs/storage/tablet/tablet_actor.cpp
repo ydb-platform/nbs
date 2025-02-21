@@ -682,10 +682,8 @@ void TIndexTabletActor::HandleGetFileSystemTopology(
     auto response =
         std::make_unique<TEvIndexTablet::TEvGetFileSystemTopologyResponse>();
 
-    if (IsMainTablet()) {
-        *response->Record.MutableShardFileSystemIds() =
-            GetFileSystem().GetShardFileSystemIds();
-    }
+    *response->Record.MutableShardFileSystemIds() =
+        GetFileSystem().GetShardFileSystemIds();
     response->Record.SetShardNo(GetFileSystem().GetShardNo());
     response->Record.SetDirectoryCreationInShardsEnabled(
         GetFileSystem().GetDirectoryCreationInShardsEnabled());

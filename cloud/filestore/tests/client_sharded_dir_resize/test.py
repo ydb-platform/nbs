@@ -16,7 +16,9 @@ SHARD_SIZE = 1024 * 1024 * 1024
 
 def __init_test():
     port = os.getenv("NFS_SERVER_PORT")
-    binary_path = common.binary_path("cloud/filestore/apps/client/filestore-client")
+    binary_path = common.binary_path(
+        "cloud/filestore/apps/client/filestore-client"
+    )
     client = FilestoreCliClient(binary_path, port, cwd=common.output_path())
 
     results_path = common.output_path() + "/results.txt"
@@ -47,6 +49,9 @@ def set_storage_config(storage_config: TStorageConfig):
         f.write(text_format.MessageToString(storage_config))
 
 
+RESTART_INTERVAL = 20
+
+
 def set_directory_sharding_enabled(directory_sharding_enabled: bool):
     logging.info(
         f"Setting DirectoryCreationInShardsEnabled to {directory_sharding_enabled}"
@@ -57,24 +62,40 @@ def set_directory_sharding_enabled(directory_sharding_enabled: bool):
     sleep(RESTART_INTERVAL * 1.5)
 
 
-RESTART_INTERVAL = 20
-
-
 def verify_filesystem_topology(
-        client: FilestoreCliClient,
-        filesystem_id: str,
-        expected_shard_count: int,
-        directory_sharding_enabled: bool):
-    result = client.execute_action("getfilesystemtopology", {"FileSystemId": filesystem_id})
+    client: FilestoreCliClient,
+    filesystem_id: str,
+    expected_shard_count: int,
+    directory_sharding_enabled: bool,
+):
+    result = client.execute_action(
+        "getfilesystemtopology", {"FileSystemId": filesystem_id}
+    )
     topology = json.loads(result)
     shards = topology.get("ShardFileSystemIds", [])
     assert len(shards) == expected_shard_count
     for idx, shard_id in enumerate(shards):
         assert shard_id == f"{filesystem_id}_s{idx + 1}"
-        shard_topology = json.loads(client.execute_action("getfilesystemtopology", {"FileSystemId": shard_id}))
+        shard_topology = json.loads(
+            client.execute_action(
+                "getfilesystemtopology", {"FileSystemId": shard_id}
+            )
+        )
         assert shard_topology.get("ShardNo", 0) == idx + 1
-        # assert shard_topology.get("DirectoryCreationInShardsEnabled", False) == directory_sharding_enabled
-    assert topology.get("DirectoryCreationInShardsEnabled", False) == directory_sharding_enabled
+        # ShardFileSystemIds should be empty for shards with directory
+        # sharding feature disabled and non-empty otherwise
+        if directory_sharding_enabled:
+            assert shard_topology.get("ShardFileSystemIds", []) == shards
+        else:
+            assert len(shard_topology.get("ShardFileSystemIds", [])) == 0
+        assert (
+            shard_topology.get("DirectoryCreationInShardsEnabled", False)
+            == directory_sharding_enabled
+        )
+    assert (
+        topology.get("DirectoryCreationInShardsEnabled", False)
+        == directory_sharding_enabled
+    )
 
 
 def test_should_correctly_maintain_sharding_types():
@@ -85,14 +106,16 @@ def test_should_correctly_maintain_sharding_types():
         "test_cloud",
         "test_folder",
         BLOCK_SIZE,
-        int(SHARD_SIZE / BLOCK_SIZE) - 1)
+        int(SHARD_SIZE / BLOCK_SIZE) - 1,
+    )
 
     client.create(
         "fs1",
         "test_cloud",
         "test_folder",
         BLOCK_SIZE,
-        int(SHARD_SIZE / BLOCK_SIZE) - 1)
+        int(SHARD_SIZE / BLOCK_SIZE) - 1,
+    )
 
     verify_filesystem_topology(client, "fs0", 0, False)
     verify_filesystem_topology(client, "fs1", 0, False)
@@ -107,20 +130,20 @@ def test_should_correctly_maintain_sharding_types():
         "test_cloud",
         "test_folder",
         BLOCK_SIZE,
-        int(SHARD_SIZE / BLOCK_SIZE) - 1)
-
+        int(SHARD_SIZE / BLOCK_SIZE) - 1,
+    )
 
     client.create(
         "fs3",
         "test_cloud",
         "test_folder",
         BLOCK_SIZE,
-        3 * int(SHARD_SIZE / BLOCK_SIZE))
+        3 * int(SHARD_SIZE / BLOCK_SIZE),
+    )
 
     verify_filesystem_topology(client, "fs2", 0, True)
     verify_filesystem_topology(client, "fs3", 3, True)
 
-    sleep(10)
     client.resize("fs0", 2 * int(SHARD_SIZE / BLOCK_SIZE))
     verify_filesystem_topology(client, "fs0", 2, False)
 

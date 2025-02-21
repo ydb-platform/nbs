@@ -114,6 +114,8 @@ void Convert(
     fileStore.SetStorageMediaKind(fileSystem.GetStorageMediaKind());
     fileStore.MutableShardFileSystemIds()->CopyFrom(
         fileSystem.GetShardFileSystemIds());
+    fileStore.MutableFeatures()->SetDirectoryCreationInShardsEnabled(
+        fileSystem.GetDirectoryCreationInShardsEnabled());
 }
 
 ////////////////////////////////////////////////////////////////////////////////

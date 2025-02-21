@@ -310,7 +310,8 @@ void TAlterFileStoreActor::HandleGetFileSystemTopologyResponse(
     for (auto& shardId: *msg->Record.MutableShardFileSystemIds()) {
         ShardIds.push_back(std::move(shardId));
     }
-    DirectoryCreationInShardsEnabled = msg->Record.GetDirectoryCreationInShardsEnabled();
+    DirectoryCreationInShardsEnabled =
+        msg->Record.GetDirectoryCreationInShardsEnabled();
 
     ui32 shardsToCheck =
         Min<ui32>(ShardIds.size(), FileStoreConfig.ShardConfigs.size());
@@ -336,6 +337,7 @@ void TAlterFileStoreActor::HandleGetFileSystemTopologyResponse(
         ShardsToConfigure = 0;
     } else {
         ShardsToCreate -= Min<ui32>(ShardsToCreate, ShardIds.size());
+        ShardsToConfigure = FileStoreConfig.ShardConfigs.size();
     }
 
     if (ShardsToCreate) {
@@ -437,7 +439,6 @@ void TAlterFileStoreActor::ConfigureShards(const TActorContext& ctx)
             i // cookie
         );
     }
-    ShardsToConfigure = FileStoreConfig.ShardConfigs.size();
 }
 
 void TAlterFileStoreActor::HandleConfigureShardResponse(
