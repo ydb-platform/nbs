@@ -28,6 +28,7 @@ message TFileStoreFeatures
     bool ThreeStageWriteDisabledForHDD = 13;
     bool GuestWritebackCacheEnabled = 14;
     bool ZeroCopyEnabled = 15;
+    bool DirectoryCreationInShardsEnabled = 16;
 }
 
 message TFileStore

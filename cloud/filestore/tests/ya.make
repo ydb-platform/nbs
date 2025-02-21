@@ -9,6 +9,7 @@ RECURSE_FOR_TESTS(
     client
     client_sharded
     client_sharded_dir
+    client_sharded_dir_resize
     config_dispatcher
     endpoints
     fio

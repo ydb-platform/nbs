@@ -212,6 +212,7 @@ void TCreateFileStoreActor::ConfigureShards(const TActorContext& ctx)
             for (const auto& shard: FileStoreConfig.ShardConfigs) {
                 request->Record.AddShardFileSystemIds(shard.GetFileSystemId());
             }
+            request->Record.SetDirectoryCreationInShardsEnabled(true);
         }
 
         LOG_INFO(
@@ -239,6 +240,8 @@ void TCreateFileStoreActor::ConfigureMainFileStore(const TActorContext& ctx)
     for (const auto& shard: FileStoreConfig.ShardConfigs) {
         request->Record.AddShardFileSystemIds(shard.GetFileSystemId());
     }
+    request->Record.SetDirectoryCreationInShardsEnabled(
+        StorageConfig->GetDirectoryCreationInShardsEnabled());
 
     LOG_INFO(
         ctx,
@@ -300,6 +303,13 @@ void TCreateFileStoreActor::HandleCreateFileStoreResponse(
     MainFileSystemCreated = true;
     if (ShardsToCreate) {
         CreateShards(ctx);
+        return;
+    }
+    if (StorageConfig->GetDirectoryCreationInShardsEnabled()) {
+        // If no shards are to be created, but directory sharding is enabled, we
+        // need to configure the main filestore in order to set the
+        // DirectoryCreationInShardsEnabled flag in the main filestore
+        ConfigureMainFileStore(ctx);
         return;
     }
 
