@@ -18,6 +18,7 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/common"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/monitoring/metrics"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/pkg/client/codes"
 	"github.com/ydb-platform/nbs/cloud/tasks/errors"
 	"github.com/ydb-platform/nbs/cloud/tasks/logging"
 )
@@ -212,22 +213,46 @@ func writeBlocksToSession(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-func TestCreateDisk(t *testing.T) {
-	ctx := newContext()
-	client := newClient(t, ctx)
+func checkErrorDetails(
+	t *testing.T,
+	err error,
+	expectedCode codes.Code,
+	expectedMessage string,
+	expectedInternal bool,
+) {
 
-	diskID := t.Name()
+	var detailedErr *errors.DetailedError
+	if errors.As(err, &detailedErr) {
+		details := detailedErr.Details
+		require.Equal(t, expectedCode, codes.Code(details.Code))
+		if len(expectedMessage) != 0 {
+			require.Contains(t, details.Message, expectedMessage)
+		}
+		require.Equal(t, expectedInternal, details.Internal)
+	} else {
+		require.Fail(t, "Not a detailed error: %v", err.Error())
+	}
+}
+
+func isInternalError(err error) bool {
+	var detailedErr *errors.DetailedError
+	if errors.As(err, &detailedErr) {
+		return detailedErr.Details.Internal
+	}
+
+	return true
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+func createStandardSSDDisk(
+	t *testing.T,
+	ctx context.Context,
+	client nbs.Client,
+	diskID string,
+) {
 
 	err := client.Create(ctx, nbs.CreateDiskParams{
-		ID:          diskID,
-		BlocksCount: 10,
-		BlockSize:   4096,
-		Kind:        types.DiskKind_DISK_KIND_SSD,
-	})
-	require.NoError(t, err)
-
-	// Creating the same disk twice is not an error
-	err = client.Create(ctx, nbs.CreateDiskParams{
 		ID:          diskID,
 		BlocksCount: 10,
 		BlockSize:   4096,
@@ -236,21 +261,52 @@ func TestCreateDisk(t *testing.T) {
 	require.NoError(t, err)
 }
 
+func createStandardSSDNonreplDisk(
+	t *testing.T,
+	ctx context.Context,
+	client nbs.Client,
+	diskID string,
+) {
+
+	err := client.Create(ctx, nbs.CreateDiskParams{
+		ID:          diskID,
+		BlocksCount: 262144,
+		BlockSize:   4096,
+		Kind:        types.DiskKind_DISK_KIND_SSD_NONREPLICATED,
+	})
+	require.NoError(t, err)
+}
+
+func deleteSync(
+	t *testing.T,
+	ctx context.Context,
+	client nbs.Client,
+	diskID string,
+) {
+
+	require.NoError(t, client.DeleteSync(ctx, diskID))
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+func TestCreateDisk(t *testing.T) {
+	ctx := newContext()
+	client := newClient(t, ctx)
+
+	diskID := t.Name()
+	createStandardSSDDisk(t, ctx, client, diskID)
+	// Creating the same disk twice is not an error
+	createStandardSSDDisk(t, ctx, client, diskID)
+}
+
 func TestDeleteDisk(t *testing.T) {
 	ctx := newContext()
 	client := newClient(t, ctx)
 
 	diskID := t.Name()
+	createStandardSSDDisk(t, ctx, client, diskID)
 
-	err := client.Create(ctx, nbs.CreateDiskParams{
-		ID:          diskID,
-		BlocksCount: 10,
-		BlockSize:   4096,
-		Kind:        types.DiskKind_DISK_KIND_SSD,
-	})
-	require.NoError(t, err)
-
-	err = client.Delete(ctx, diskID)
+	err := client.Delete(ctx, diskID)
 	require.NoError(t, err)
 
 	// Deleting the same disk twice is not an error.
@@ -267,16 +323,9 @@ func TestDeleteDiskSync(t *testing.T) {
 	client := newClient(t, ctx)
 
 	diskID := t.Name()
+	createStandardSSDDisk(t, ctx, client, diskID)
 
-	err := client.Create(ctx, nbs.CreateDiskParams{
-		ID:          diskID,
-		BlocksCount: 10,
-		BlockSize:   4096,
-		Kind:        types.DiskKind_DISK_KIND_SSD,
-	})
-	require.NoError(t, err)
-
-	err = client.DeleteSync(ctx, diskID)
+	err := client.DeleteSync(ctx, diskID)
 	require.NoError(t, err)
 
 	// Deleting the same disk twice is not an error.
@@ -293,16 +342,9 @@ func TestCreateDeleteCheckpoint(t *testing.T) {
 	client := newClient(t, ctx)
 
 	diskID := t.Name()
+	createStandardSSDDisk(t, ctx, client, diskID)
 
-	err := client.Create(ctx, nbs.CreateDiskParams{
-		ID:          diskID,
-		BlocksCount: 10,
-		BlockSize:   4096,
-		Kind:        types.DiskKind_DISK_KIND_SSD,
-	})
-	require.NoError(t, err)
-
-	err = client.CreateCheckpoint(
+	err := client.CreateCheckpoint(
 		ctx,
 		nbs.CheckpointParams{
 			DiskID:       diskID,
@@ -330,16 +372,9 @@ func TestDeleteCheckpointData(t *testing.T) {
 	client := newClient(t, ctx)
 
 	diskID := t.Name()
+	createStandardSSDDisk(t, ctx, client, diskID)
 
-	err := client.Create(ctx, nbs.CreateDiskParams{
-		ID:          diskID,
-		BlocksCount: 10,
-		BlockSize:   4096,
-		Kind:        types.DiskKind_DISK_KIND_SSD,
-	})
-	require.NoError(t, err)
-
-	err = client.CreateCheckpoint(
+	err := client.CreateCheckpoint(
 		ctx,
 		nbs.CheckpointParams{
 			DiskID:       diskID,
@@ -360,16 +395,9 @@ func TestResizeDisk(t *testing.T) {
 	client := newClient(t, ctx)
 
 	diskID := t.Name()
+	createStandardSSDDisk(t, ctx, client, diskID)
 
-	err := client.Create(ctx, nbs.CreateDiskParams{
-		ID:          diskID,
-		BlocksCount: 10,
-		BlockSize:   4096,
-		Kind:        types.DiskKind_DISK_KIND_SSD,
-	})
-	require.NoError(t, err)
-
-	err = client.Resize(
+	err := client.Resize(
 		ctx,
 		func() error { return nil },
 		diskID,
@@ -383,14 +411,7 @@ func TestResizeDiskConcurrently(t *testing.T) {
 	client := newClient(t, ctx)
 
 	diskID := t.Name()
-
-	err := client.Create(ctx, nbs.CreateDiskParams{
-		ID:          diskID,
-		BlocksCount: 10,
-		BlockSize:   4096,
-		Kind:        types.DiskKind_DISK_KIND_SSD,
-	})
-	require.NoError(t, err)
+	createStandardSSDDisk(t, ctx, client, diskID)
 
 	errs := make(chan error)
 	workers := 3
@@ -421,16 +442,9 @@ func TestResizeDiskFailureBecauseSizeIsNotDivisibleByBlockSize(t *testing.T) {
 	client := newClient(t, ctx)
 
 	diskID := t.Name()
+	createStandardSSDDisk(t, ctx, client, diskID)
 
-	err := client.Create(ctx, nbs.CreateDiskParams{
-		ID:          diskID,
-		BlocksCount: 10,
-		BlockSize:   4096,
-		Kind:        types.DiskKind_DISK_KIND_SSD,
-	})
-	require.NoError(t, err)
-
-	err = client.Resize(
+	err := client.Resize(
 		ctx,
 		func() error { return nil },
 		diskID,
@@ -444,16 +458,9 @@ func TestResizeDiskFailureBecauseSizeDecreaseIsForbidden(t *testing.T) {
 	client := newClient(t, ctx)
 
 	diskID := t.Name()
+	createStandardSSDDisk(t, ctx, client, diskID)
 
-	err := client.Create(ctx, nbs.CreateDiskParams{
-		ID:          diskID,
-		BlocksCount: 10,
-		BlockSize:   4096,
-		Kind:        types.DiskKind_DISK_KIND_SSD,
-	})
-	require.NoError(t, err)
-
-	err = client.Resize(
+	err := client.Resize(
 		ctx,
 		func() error { return nil },
 		diskID,
@@ -467,16 +474,9 @@ func TestResizeDiskFailureWhileChekpointing(t *testing.T) {
 	client := newClient(t, ctx)
 
 	diskID := t.Name()
+	createStandardSSDDisk(t, ctx, client, diskID)
 
-	err := client.Create(ctx, nbs.CreateDiskParams{
-		ID:          diskID,
-		BlocksCount: 10,
-		BlockSize:   4096,
-		Kind:        types.DiskKind_DISK_KIND_SSD,
-	})
-	require.NoError(t, err)
-
-	err = client.Resize(
+	err := client.Resize(
 		ctx,
 		func() error { return assert.AnError },
 		diskID,
@@ -648,16 +648,9 @@ func TestAssignDisk(t *testing.T) {
 	client := newClient(t, ctx)
 
 	diskID := t.Name()
+	createStandardSSDDisk(t, ctx, client, diskID)
 
-	err := client.Create(ctx, nbs.CreateDiskParams{
-		ID:          diskID,
-		BlocksCount: 10,
-		BlockSize:   4096,
-		Kind:        types.DiskKind_DISK_KIND_SSD,
-	})
-	require.NoError(t, err)
-
-	err = client.Assign(ctx, nbs.AssignDiskParams{
+	err := client.Assign(ctx, nbs.AssignDiskParams{
 		ID:         diskID,
 		InstanceID: "InstanceID",
 		Token:      "Token",
@@ -671,16 +664,9 @@ func TestUnassignDisk(t *testing.T) {
 	client := newClient(t, ctx)
 
 	diskID := t.Name()
+	createStandardSSDDisk(t, ctx, client, diskID)
 
-	err := client.Create(ctx, nbs.CreateDiskParams{
-		ID:          diskID,
-		BlocksCount: 10,
-		BlockSize:   4096,
-		Kind:        types.DiskKind_DISK_KIND_SSD,
-	})
-	require.NoError(t, err)
-
-	err = client.Unassign(ctx, diskID)
+	err := client.Unassign(ctx, diskID)
 	require.NoError(t, err)
 }
 
@@ -689,16 +675,9 @@ func TestUnassignDeletedDisk(t *testing.T) {
 	client := newClient(t, ctx)
 
 	diskID := t.Name()
+	createStandardSSDDisk(t, ctx, client, diskID)
 
-	err := client.Create(ctx, nbs.CreateDiskParams{
-		ID:          diskID,
-		BlocksCount: 10,
-		BlockSize:   4096,
-		Kind:        types.DiskKind_DISK_KIND_SSD,
-	})
-	require.NoError(t, err)
-
-	err = client.Delete(ctx, diskID)
+	err := client.Delete(ctx, diskID)
 	require.NoError(t, err)
 
 	err = client.Unassign(ctx, diskID)
@@ -815,14 +794,7 @@ func TestMountRW(t *testing.T) {
 	client := newClient(t, ctx)
 
 	diskID := t.Name()
-
-	err := client.Create(ctx, nbs.CreateDiskParams{
-		ID:          diskID,
-		BlocksCount: 10,
-		BlockSize:   4096,
-		Kind:        types.DiskKind_DISK_KIND_SSD,
-	})
-	require.NoError(t, err)
+	createStandardSSDDisk(t, ctx, client, diskID)
 
 	session, err := client.MountRW(
 		ctx,
@@ -862,14 +834,7 @@ func TestMountRWDoesNotConflictWithBackgroundRediscover(t *testing.T) {
 	)
 
 	diskID := t.Name()
-
-	err := client.Create(ctx, nbs.CreateDiskParams{
-		ID:          diskID,
-		BlocksCount: 10,
-		BlockSize:   4096,
-		Kind:        types.DiskKind_DISK_KIND_SSD,
-	})
-	require.NoError(t, err)
+	createStandardSSDDisk(t, ctx, client, diskID)
 
 	session, err := client.MountRW(
 		ctx,
@@ -1335,16 +1300,7 @@ func TestGetChangedBlocksForLightCheckpoints(t *testing.T) {
 	client := newClient(t, ctx)
 
 	diskID := t.Name()
-
-	blockSize := uint32(4096)
-
-	err := client.Create(ctx, nbs.CreateDiskParams{
-		ID:          diskID,
-		BlocksCount: 262144,
-		BlockSize:   blockSize,
-		Kind:        types.DiskKind_DISK_KIND_SSD_NONREPLICATED,
-	})
-	require.NoError(t, err)
+	createStandardSSDNonreplDisk(t, ctx, client, diskID)
 
 	session, err := client.MountRW(
 		ctx,
@@ -1617,14 +1573,7 @@ func TestDiskRegistryDisableDevices(t *testing.T) {
 	client := newTestingClient(t, ctx)
 
 	diskID := t.Name()
-
-	err := client.Create(ctx, nbs.CreateDiskParams{
-		ID:          diskID,
-		BlocksCount: 262144,
-		BlockSize:   4096,
-		Kind:        types.DiskKind_DISK_KIND_SSD_NONREPLICATED,
-	})
-	require.NoError(t, err)
+	createStandardSSDNonreplDisk(t, ctx, client, diskID)
 
 	writeBlocks(t, ctx, client, diskID, 0 /* startIndex */, 1 /* blockCount */)
 
@@ -1674,14 +1623,7 @@ func TestDiskRegistryFindDevicesOfShadowDisk(t *testing.T) {
 	client := newTestingClient(t, ctx)
 
 	diskID := t.Name()
-
-	err := client.Create(ctx, nbs.CreateDiskParams{
-		ID:          diskID,
-		BlocksCount: 262144,
-		BlockSize:   4096,
-		Kind:        types.DiskKind_DISK_KIND_SSD_NONREPLICATED,
-	})
-	require.NoError(t, err)
+	createStandardSSDNonreplDisk(t, ctx, client, diskID)
 
 	diskRegistryStateBackup, err := client.BackupDiskRegistryState(ctx)
 	require.NoError(t, err)
@@ -1721,19 +1663,11 @@ func TestEnsureCheckpointReady(t *testing.T) {
 	client := newTestingClient(t, ctx)
 
 	diskID := t.Name()
-
-	err := client.Create(ctx, nbs.CreateDiskParams{
-		ID:              diskID,
-		BlocksCount:     262144,
-		BlockSize:       4096,
-		Kind:            types.DiskKind_DISK_KIND_SSD_NONREPLICATED,
-		PartitionsCount: 2,
-	})
-	require.NoError(t, err)
+	createStandardSSDNonreplDisk(t, ctx, client, diskID)
 
 	checkpointID := "checkpoint_1"
 
-	err = client.CreateCheckpoint(
+	err := client.CreateCheckpoint(
 		ctx,
 		nbs.CheckpointParams{
 			DiskID:       diskID,
@@ -1806,5 +1740,187 @@ func TestEnsureCheckpointReady(t *testing.T) {
 	err = client.DeleteCheckpoint(ctx, diskID, checkpointID)
 	require.NoError(t, err)
 	err = client.Delete(ctx, diskID)
+	require.NoError(t, err)
+}
+
+func TestAlterPlacementGroupMembership(t *testing.T) {
+	ctx := newContext()
+	client := newTestingClient(t, ctx)
+
+	groupID := t.Name() + "_group"
+
+	err := client.CreatePlacementGroup(
+		ctx,
+		groupID,
+		types.PlacementStrategy_PLACEMENT_STRATEGY_SPREAD,
+		0, // placementPartitionCount
+	)
+	require.NoError(t, err)
+
+	groupIDs, err := client.ListPlacementGroups(ctx)
+	require.NoError(t, err)
+	require.Equal(t, 1, len(groupIDs))
+	require.Equal(t, groupID, groupIDs[0])
+
+	diskID0 := t.Name() + "0"
+	diskID1 := t.Name() + "1"
+	createStandardSSDNonreplDisk(t, ctx, client, diskID0)
+	createStandardSSDNonreplDisk(t, ctx, client, diskID1)
+	defer deleteSync(t, ctx, client, diskID0)
+	defer deleteSync(t, ctx, client, diskID1)
+
+	err = client.AlterPlacementGroupMembership(
+		ctx,
+		func() error { return nil }, // saveState
+		groupID,
+		0,                 // placementPartitionIndex
+		[]string{diskID0}, // disksToAdd
+		[]string{},        // disksToRemove
+	)
+	require.NoError(t, err)
+
+	group, err := client.DescribePlacementGroup(ctx, groupID)
+	require.NoError(t, err)
+	require.Equal(t, 1, len(group.DiskIDs))
+	require.Equal(t, diskID0, group.DiskIDs[0])
+
+	err = client.AlterPlacementGroupMembership(
+		ctx,
+		func() error { return nil }, // saveState
+		groupID,
+		0,                 // placementPartitionIndex
+		[]string{diskID1}, // disksToAdd
+		[]string{diskID0}, // disksToRemove
+	)
+	require.NoError(t, err)
+
+	group, err = client.DescribePlacementGroup(ctx, groupID)
+	require.NoError(t, err)
+	require.Equal(t, 1, len(group.DiskIDs))
+	require.Equal(t, diskID1, group.DiskIDs[0])
+
+	err = client.AlterPlacementGroupMembership(
+		ctx,
+		func() error { return nil }, // saveState
+		groupID,
+		0,                 // placementPartitionIndex
+		[]string{},        // disksToAdd
+		[]string{diskID1}, // disksToRemove
+	)
+	require.NoError(t, err)
+
+	group, err = client.DescribePlacementGroup(ctx, groupID)
+	require.NoError(t, err)
+	require.Empty(t, group.DiskIDs)
+
+	err = client.DeletePlacementGroup(ctx, groupID)
+	require.NoError(t, err)
+
+	groupIDs, err = client.ListPlacementGroups(ctx)
+	require.NoError(t, err)
+	require.Empty(t, groupIDs)
+}
+
+func TestAlterPlacementGroupMembershipFailureBecauseGroupDoesNotExist(t *testing.T) {
+	ctx := newContext()
+	client := newTestingClient(t, ctx)
+
+	diskID := t.Name()
+	createStandardSSDNonreplDisk(t, ctx, client, diskID)
+	defer deleteSync(t, ctx, client, diskID)
+
+	err := client.AlterPlacementGroupMembership(
+		ctx,
+		func() error { return nil }, // saveState
+		"non_existing_group",
+		0,                // placementPartitionIndex
+		[]string{diskID}, // disksToAdd
+		[]string{},       // disksToRemove
+	)
+	require.Error(t, err)
+	require.True(t, isInternalError(err))
+}
+
+func TestAlterPlacementGroupMembershipFailureBecauseDiskIsInAnotherGroup(t *testing.T) {
+	ctx := newContext()
+	client := newTestingClient(t, ctx)
+
+	groupID0 := t.Name() + "_group0"
+	groupID1 := t.Name() + "_group1"
+
+	for _, groupID := range []string{groupID0, groupID1} {
+		err := client.CreatePlacementGroup(
+			ctx,
+			groupID,
+			types.PlacementStrategy_PLACEMENT_STRATEGY_SPREAD,
+			0, // placementPartitionCount
+		)
+		require.NoError(t, err)
+	}
+
+	diskID := t.Name()
+	createStandardSSDNonreplDisk(t, ctx, client, diskID)
+	defer deleteSync(t, ctx, client, diskID)
+
+	err := client.AlterPlacementGroupMembership(
+		ctx,
+		func() error { return nil }, // saveState
+		groupID0,
+		0,                // placementPartitionIndex
+		[]string{diskID}, // disksToAdd
+		[]string{},       // disksToRemove
+	)
+	require.NoError(t, err)
+
+	err = client.AlterPlacementGroupMembership(
+		ctx,
+		func() error { return nil }, // saveState
+		groupID1,
+		0,                // placementPartitionIndex
+		[]string{diskID}, // disksToAdd
+		[]string{},       // disksToRemove
+	)
+	require.Error(t, err)
+	checkErrorDetails(t, err, codes.PreconditionFailed, "", false)
+
+	for _, groupID := range []string{groupID0, groupID1} {
+		err = client.DeletePlacementGroup(ctx, groupID)
+		require.NoError(t, err)
+	}
+}
+
+func TestAlterPlacementGroupMembershipFailureBecauseOfTooManyDisksInGroup(t *testing.T) {
+	ctx := newContext()
+	client := newTestingClient(t, ctx)
+
+	groupID := t.Name() + "_group"
+	err := client.CreatePlacementGroup(
+		ctx,
+		groupID,
+		types.PlacementStrategy_PLACEMENT_STRATEGY_SPREAD,
+		0, // placementPartitionCount
+	)
+	require.NoError(t, err)
+
+	var diskIDs []string
+	diskCount := 3
+	for i := 0; i < diskCount; i++ {
+		diskIDs = append(diskIDs, t.Name()+strconv.Itoa(i))
+		createStandardSSDNonreplDisk(t, ctx, client, diskIDs[i])
+		defer deleteSync(t, ctx, client, diskIDs[i])
+	}
+
+	err = client.AlterPlacementGroupMembership(
+		ctx,
+		func() error { return nil }, // saveState
+		groupID,
+		0,          // placementPartitionIndex
+		diskIDs,    // disksToAdd
+		[]string{}, // disksToRemove
+	)
+	require.Error(t, err)
+	checkErrorDetails(t, err, codes.ResourceExhausted, "", false)
+
+	err = client.DeletePlacementGroup(ctx, groupID)
 	require.NoError(t, err)
 }
