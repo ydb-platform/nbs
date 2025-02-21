@@ -61,8 +61,9 @@ private:
     const NActors::TActorId ParentActorId;
     const bool MuteIOErrors;
     const THashSet<TString> FreshDeviceIds;
-    // List of devices that have outdated data. Can only appear on mirror disks.
-    const THashSet<TString> LaggingDeviceIds;
+    // List of devices that previously were lagging and now have outdated data.
+    // Can only appear on mirror disks.
+    const THashSet<TString> OutdatedDeviceIds;
     const TDuration MaxTimedOutDeviceStateDuration;
     const bool MaxTimedOutDeviceStateDurationOverridden;
     const bool UseSimpleMigrationBandwidthLimiter;
@@ -79,7 +80,7 @@ public:
             NActors::TActorId parentActorId,
             bool muteIOErrors,
             THashSet<TString> freshDeviceIds,
-            THashSet<TString> laggingDeviceIds,
+            THashSet<TString> outdatedDeviceIds,
             TDuration maxTimedOutDeviceStateDuration,
             bool maxTimedOutDeviceStateDurationOverridden,
             bool useSimpleMigrationBandwidthLimiter)
@@ -91,7 +92,7 @@ public:
         , ParentActorId(std::move(parentActorId))
         , MuteIOErrors(muteIOErrors)
         , FreshDeviceIds(std::move(freshDeviceIds))
-        , LaggingDeviceIds(std::move(laggingDeviceIds))
+        , OutdatedDeviceIds(std::move(outdatedDeviceIds))
         , MaxTimedOutDeviceStateDuration(maxTimedOutDeviceStateDuration)
         , MaxTimedOutDeviceStateDurationOverridden(maxTimedOutDeviceStateDurationOverridden)
         , UseSimpleMigrationBandwidthLimiter(useSimpleMigrationBandwidthLimiter)
@@ -109,15 +110,15 @@ public:
     TNonreplicatedPartitionConfigPtr Fork(TDevices devices) const
     {
         THashSet<TString> freshDeviceIds;
-        THashSet<TString> laggingDeviceIds;
+        THashSet<TString> outdatedDeviceIds;
         for (const auto& device: devices) {
             const auto& uuid = device.GetDeviceUUID();
 
             if (FreshDeviceIds.contains(uuid)) {
                 freshDeviceIds.insert(uuid);
             }
-            if (LaggingDeviceIds.contains(uuid)) {
-                laggingDeviceIds.insert(uuid);
+            if (OutdatedDeviceIds.contains(uuid)) {
+                outdatedDeviceIds.insert(uuid);
             }
         }
 
@@ -130,7 +131,7 @@ public:
             ParentActorId,
             MuteIOErrors,
             std::move(freshDeviceIds),
-            std::move(laggingDeviceIds),
+            std::move(outdatedDeviceIds),
             MaxTimedOutDeviceStateDuration,
             MaxTimedOutDeviceStateDurationOverridden,
             UseSimpleMigrationBandwidthLimiter
@@ -187,9 +188,9 @@ public:
         return FreshDeviceIds;
     }
 
-    const THashSet<TString>& GetLaggingDeviceIds() const
+    const THashSet<TString>& GetOutdatedDeviceIds() const
     {
-        return LaggingDeviceIds;
+        return OutdatedDeviceIds;
     }
 
     auto GetMaxTimedOutDeviceStateDuration() const
@@ -234,20 +235,37 @@ public:
 
     bool DevicesReadyForReading(const TBlockRange64 blockRange) const
     {
-        return VisitDeviceRequests(
+        return DevicesReadyForReading(blockRange, {});
+    }
+
+    bool DevicesReadyForReading(
+        const TBlockRange64 blockRange,
+        const THashSet<ui32>& excludeIndexes) const
+    {
+        Cerr << "DevicesReadyForReading ? " << blockRange << ". excludeIndexes: ";
+        for (const auto ind: excludeIndexes) {
+            Cerr << ind << ", ";
+        }
+        Cerr << Endl;
+
+        const bool result = VisitDeviceRequests(
             blockRange,
-            [&] (
-                const ui32 i,
+            [&](const ui32 i,
                 const TBlockRange64 requestRange,
                 const TBlockRange64 relativeRange)
             {
                 Y_UNUSED(requestRange);
                 Y_UNUSED(relativeRange);
 
-                return !Devices[i].GetDeviceUUID()
-                    || FreshDeviceIds.contains(Devices[i].GetDeviceUUID())
-                    || LaggingDeviceIds.contains(Devices[i].GetDeviceUUID());
+                Cerr << Devices[i].GetDeviceUUID() << ":" << i << "; " << excludeIndexes.contains(i) << "; " << FreshDeviceIds.contains(Devices[i].GetDeviceUUID()) << "; " << OutdatedDeviceIds.contains(Devices[i].GetDeviceUUID()) << Endl;
+
+                return !Devices[i].GetDeviceUUID() ||
+                       excludeIndexes.contains(i) ||
+                       FreshDeviceIds.contains(Devices[i].GetDeviceUUID()) ||
+                       OutdatedDeviceIds.contains(Devices[i].GetDeviceUUID());
             });
+        Cerr << "READY: " << result << Endl;
+        return result;
     }
 
     void AugmentErrorFlags(NCloud::NProto::TError& error) const

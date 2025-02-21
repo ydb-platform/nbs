@@ -8,6 +8,7 @@
 #include <cloud/blockstore/libs/storage/core/probes.h>
 #include <cloud/blockstore/libs/storage/core/proto_helpers.h>
 #include <cloud/blockstore/libs/storage/core/unimplemented.h>
+#include <cloud/blockstore/libs/storage/disk_agent/model/public.h>
 
 #include <contrib/ydb/core/base/appdata.h>
 
@@ -44,6 +45,7 @@ bool TNonreplicatedPartitionActor::TDeviceStat::CooldownPassed(
 {
     switch (DeviceStatus) {
         case EDeviceStatus::Ok:
+        case EDeviceStatus::Unavailable:
             return false;
         case EDeviceStatus::SilentBroken:
             return BrokenTransitionTs + cooldownTimeout < now;
@@ -155,7 +157,9 @@ TRequestTimeoutPolicy TNonreplicatedPartitionActor::MakeTimeoutPolicyForRequest(
 
     const bool hasTimeouts = worstDeviceStatus != EDeviceStatus::Ok ||
                              longestTimedOutStateDuration != TDuration();
-    if (!hasTimeouts) {
+    // When a device is unavailable, we shouldn't increase timeouts. There won't
+    // be any huge requests, just small probings.
+    if (!hasTimeouts || worstDeviceStatus == EDeviceStatus::Unavailable) {
         // If there were no timeouts, then we slightly increase the timeout for
         // the time of the longest response among the last ones.
         return TRequestTimeoutPolicy{
@@ -193,7 +197,8 @@ TRequestTimeoutPolicy TNonreplicatedPartitionActor::MakeTimeoutPolicyForRequest(
     };
 
     switch (worstDeviceStatus) {
-        case EDeviceStatus::Ok: {
+        case EDeviceStatus::Ok:
+        case EDeviceStatus::Unavailable: {
             break;
         }
         case EDeviceStatus::SilentBroken: {
@@ -214,6 +219,14 @@ TRequestTimeoutPolicy TNonreplicatedPartitionActor::MakeTimeoutPolicyForRequest(
 void TNonreplicatedPartitionActor::Bootstrap(const TActorContext& ctx)
 {
     Become(&TThis::StateWork);
+
+    LOG_WARN(
+        ctx,
+        TBlockStoreComponents::PARTITION,
+        "xxxxx TNonreplicatedPartitionActor::Bootstrap: AID[%s], agentId = %s",
+        ctx.SelfID.ToString().c_str(),
+        PartConfig->GetDevices()[0].GetAgentId().c_str());
+
     ScheduleCountersUpdate(ctx);
 }
 
@@ -246,7 +259,8 @@ bool TNonreplicatedPartitionActor::InitRequests(
     const TRequestInfo& requestInfo,
     const TBlockRange64& blockRange,
     TVector<TDeviceRequest>* deviceRequests,
-    TRequestTimeoutPolicy* timeoutPolicy)
+    TRequestTimeoutPolicy* timeoutPolicy,
+    TRequest* request)
 {
     auto reply = [=] (
         const TActorContext& ctx,
@@ -312,10 +326,29 @@ bool TNonreplicatedPartitionActor::InitRequests(
     }
 
     for (const auto& dr: *deviceRequests) {
+        if (PartConfig->GetOutdatedDeviceIds().contains(
+                dr.Device.GetDeviceUUID()) &&
+            msg.Record.GetHeaders().GetClientId() != CheckHealthClientId)
+        {
+            reply(
+                ctx,
+                requestInfo,
+                PartConfig->MakeError(
+                    E_REJECTED,
+                    TStringBuilder()
+                        << "Device " << dr.Device.GetDeviceUUID()
+                        << "is lagging behind on data. All IO operations, "
+                           "except for health checks, are prohibited."));
+            return false;
+        }
+
+        request->DeviceIndices.push_back(dr.DeviceIdx);
+
+        TDeviceStat& deviceStat = DeviceStats[dr.DeviceIdx];
         if (dr.Device.GetNodeId() == 0) {
             // Accessing a non-allocated device causes the disk to break.
-            DeviceStats[dr.DeviceIdx].BrokenTransitionTs = ctx.Now();
-            DeviceStats[dr.DeviceIdx].DeviceStatus = EDeviceStatus::Broken;
+            deviceStat.BrokenTransitionTs = ctx.Now();
+            deviceStat.DeviceStatus = EDeviceStatus::Broken;
 
             reply(
                 ctx,
@@ -324,6 +357,21 @@ bool TNonreplicatedPartitionActor::InitRequests(
                     TStringBuilder() << "unavailable device requested: "
                                      << dr.Device.GetDeviceUUID()));
             return false;
+        }
+
+        if (DeviceStats[dr.DeviceIdx].DeviceStatus == EDeviceStatus::Ok &&
+            deviceStat.GetTimedOutStateDuration(ctx.Now()) >
+                Config->GetLaggingDeviceTimeoutThreshold())
+        {
+            auto request =
+                std::make_unique<TEvVolumePrivate::TEvDeviceTimeoutedRequest>(
+                    PartConfig->GetDevices()[dr.DeviceIdx].GetDeviceUUID());
+            NCloud::Send(
+                ctx,
+                PartConfig->GetParentActorId(),
+                std::move(request),
+                dr.DeviceIdx   // cookie
+            );
         }
     }
 
@@ -341,7 +389,8 @@ template bool TNonreplicatedPartitionActor::InitRequests<TEvService::TWriteBlock
     const TRequestInfo& requestInfo,
     const TBlockRange64& blockRange,
     TVector<TDeviceRequest>* deviceRequests,
-    TRequestTimeoutPolicy* timeoutPolicy);
+    TRequestTimeoutPolicy* timeoutPolicy,
+    TRequest* request);
 
 template bool TNonreplicatedPartitionActor::InitRequests<TEvService::TWriteBlocksLocalMethod>(
     const TEvService::TWriteBlocksLocalMethod::TRequest& msg,
@@ -349,7 +398,8 @@ template bool TNonreplicatedPartitionActor::InitRequests<TEvService::TWriteBlock
     const TRequestInfo& requestInfo,
     const TBlockRange64& blockRange,
     TVector<TDeviceRequest>* deviceRequests,
-    TRequestTimeoutPolicy* timeoutPolicy);
+    TRequestTimeoutPolicy* timeoutPolicy,
+    TRequest* request);
 
 template bool TNonreplicatedPartitionActor::InitRequests<TEvService::TZeroBlocksMethod>(
     const TEvService::TZeroBlocksMethod::TRequest& msg,
@@ -357,7 +407,8 @@ template bool TNonreplicatedPartitionActor::InitRequests<TEvService::TZeroBlocks
     const TRequestInfo& requestInfo,
     const TBlockRange64& blockRange,
     TVector<TDeviceRequest>* deviceRequests,
-    TRequestTimeoutPolicy* timeoutPolicy);
+    TRequestTimeoutPolicy* timeoutPolicy,
+    TRequest* request);
 
 template bool TNonreplicatedPartitionActor::InitRequests<TEvService::TReadBlocksMethod>(
     const TEvService::TReadBlocksMethod::TRequest& msg,
@@ -365,7 +416,8 @@ template bool TNonreplicatedPartitionActor::InitRequests<TEvService::TReadBlocks
     const TRequestInfo& requestInfo,
     const TBlockRange64& blockRange,
     TVector<TDeviceRequest>* deviceRequests,
-    TRequestTimeoutPolicy* timeoutPolicy);
+    TRequestTimeoutPolicy* timeoutPolicy,
+    TRequest* request);
 
 template bool TNonreplicatedPartitionActor::InitRequests<TEvService::TReadBlocksLocalMethod>(
     const TEvService::TReadBlocksLocalMethod::TRequest& msg,
@@ -373,7 +425,8 @@ template bool TNonreplicatedPartitionActor::InitRequests<TEvService::TReadBlocks
     const TRequestInfo& requestInfo,
     const TBlockRange64& blockRange,
     TVector<TDeviceRequest>* deviceRequests,
-    TRequestTimeoutPolicy* timeoutPolicy);
+    TRequestTimeoutPolicy* timeoutPolicy,
+    TRequest* request);
 
 template bool TNonreplicatedPartitionActor::InitRequests<TEvNonreplPartitionPrivate::TChecksumBlocksMethod>(
     const TEvNonreplPartitionPrivate::TChecksumBlocksMethod::TRequest& msg,
@@ -381,7 +434,8 @@ template bool TNonreplicatedPartitionActor::InitRequests<TEvNonreplPartitionPriv
     const TRequestInfo& requestInfo,
     const TBlockRange64& blockRange,
     TVector<TDeviceRequest>* deviceRequests,
-    TRequestTimeoutPolicy* timeoutPolicy);
+    TRequestTimeoutPolicy* timeoutPolicy,
+    TRequest* request);
 
 void TNonreplicatedPartitionActor::OnRequestCompleted(
     const TEvNonreplPartitionPrivate::TOperationCompleted& operation,
@@ -430,7 +484,8 @@ void TNonreplicatedPartitionActor::OnRequestTimeout(
     }
 
     switch (stat.DeviceStatus) {
-        case EDeviceStatus::Ok: {
+        case EDeviceStatus::Ok:
+        case EDeviceStatus::Unavailable: {
             if (stat.GetTimedOutStateDuration(now) >
                 GetMaxTimedOutDeviceStateDuration())
             {
@@ -466,6 +521,81 @@ void TNonreplicatedPartitionActor::HandleUpdateCounters(
 
     SendStats(ctx);
     ScheduleCountersUpdate(ctx);
+}
+
+void TNonreplicatedPartitionActor::HandleDeviceTimeoutedResponse(
+    const TEvVolumePrivate::TEvDeviceTimeoutedResponse::TPtr& ev,
+    const TActorContext& ctx)
+{
+    const auto* msg = ev->Get();
+    LOG_DEBUG(
+        ctx,
+        TBlockStoreComponents::PARTITION,
+        "[%s] Attempted to deem device %s as lagging. Result: %s",
+        PartConfig->GetName().c_str(),
+        PartConfig->GetDevices()[ev->Cookie].GetDeviceUUID().c_str(),
+        (HasError(msg->GetError()) ? FormatError(msg->GetError()).c_str()
+                                   : "Ok"));
+}
+
+void TNonreplicatedPartitionActor::HandleAgentIsUnavailable(
+    const TEvNonreplPartitionPrivate::TEvAgentIsUnavailable::TPtr& ev,
+    const TActorContext& ctx)
+{
+    const auto* msg = ev->Get();
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::PARTITION,
+        "[%s] Agent %s has become unavailable",
+        PartConfig->GetName().c_str(),
+        msg->LaggingAgent.GetAgentId().c_str());
+
+    for (const auto& laggingDevice: msg->LaggingAgent.GetDevices()) {
+        Y_DEBUG_ABORT_UNLESS(DeviceStats.size() > laggingDevice.GetRowIndex());
+        DeviceStats[laggingDevice.GetRowIndex()].DeviceStatus =
+            EDeviceStatus::Unavailable;
+    }
+
+    for (const auto& [actorId, requestInfo]: RequestsInProgress.AllRequests()) {
+        for (int deviceIndex: requestInfo.Value.DeviceIndices) {
+            if (PartConfig->GetDevices()[deviceIndex].GetAgentId() ==
+                msg->LaggingAgent.GetAgentId())
+            {
+                // Reject the request.
+                // TODO: implement fast reject (via error flags).
+                NCloud::Send<TEvNonreplPartitionPrivate::TEvCancelRequest>(
+                    ctx,
+                    actorId,
+                    0,   // cookie
+                    TEvNonreplPartitionPrivate::TCancelRequest::EReason::
+                        Canceled);
+                break;
+            }
+        }
+    }
+}
+
+void TNonreplicatedPartitionActor::HandleAgentIsBackOnline(
+    const TEvNonreplPartitionPrivate::TEvAgentIsBackOnline::TPtr& ev,
+    const TActorContext& ctx)
+{
+    const auto* msg = ev->Get();
+
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::PARTITION,
+        "[%s] Agent %s is back online",
+        PartConfig->GetName().c_str(),
+        msg->AgentId.c_str());
+
+    for (int i = 0; i < PartConfig->GetDevices().size(); ++i) {
+        const auto& device = PartConfig->GetDevices().at(i);
+        if (device.GetAgentId() == msg->AgentId &&
+            DeviceStats[i].DeviceStatus <= EDeviceStatus::Unavailable)
+        {
+            DeviceStats[i].DeviceStatus = EDeviceStatus::Ok;
+        }
+    }
 }
 
 void TNonreplicatedPartitionActor::ReplyAndDie(const NActors::TActorContext& ctx)
@@ -538,6 +668,9 @@ STFUNC(TNonreplicatedPartitionActor::StateWork)
         HFunc(TEvService::TEvReadBlocksLocalRequest, HandleReadBlocksLocal);
         HFunc(TEvService::TEvWriteBlocksLocalRequest, HandleWriteBlocksLocal);
 
+        HFunc(TEvNonreplPartitionPrivate::TEvAgentIsUnavailable, HandleAgentIsUnavailable);
+        HFunc(TEvNonreplPartitionPrivate::TEvAgentIsBackOnline, HandleAgentIsBackOnline);
+
         HFunc(NPartition::TEvPartition::TEvDrainRequest, DrainActorCompanion.HandleDrain);
         HFunc(TEvService::TEvGetChangedBlocksRequest, DeclineGetChangedBlocks);
         HFunc(
@@ -558,6 +691,8 @@ STFUNC(TNonreplicatedPartitionActor::StateWork)
         HFunc(TEvVolume::TEvGetRebuildMetadataStatusRequest, HandleGetRebuildMetadataStatus);
         HFunc(TEvVolume::TEvScanDiskRequest, HandleScanDisk);
         HFunc(TEvVolume::TEvGetScanDiskStatusRequest, HandleGetScanDiskStatus);
+
+        HFunc(TEvVolumePrivate::TEvDeviceTimeoutedResponse, HandleDeviceTimeoutedResponse);
 
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
 
@@ -605,6 +740,7 @@ STFUNC(TNonreplicatedPartitionActor::StateZombie)
         HFunc(TEvVolume::TEvGetScanDiskStatusRequest, RejectGetScanDiskStatus);
 
         IgnoreFunc(TEvents::TEvPoisonPill);
+        IgnoreFunc(TEvVolumePrivate::TEvDeviceTimeoutedResponse);
         IgnoreFunc(TEvVolume::TEvRWClientIdChanged);
 
         default:

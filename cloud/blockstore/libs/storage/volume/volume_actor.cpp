@@ -1095,11 +1095,11 @@ STFUNC(TVolumeActor::StateWork)
             TEvVolumePrivate::TEvDeviceTimeoutedRequest,
             HandleDeviceTimeouted);
         HFunc(
-            TEvVolumePrivate::TEvUpdateSmartMigrationState,
-            HandleUpdateSmartMigrationState);
+            TEvVolumePrivate::TEvUpdateLaggingAgentMigrationState,
+            HandleUpdateLaggingAgentMigrationState);
         HFunc(
-            TEvVolumePrivate::TEvSmartMigrationFinished,
-            HandleSmartMigrationFinished);
+            TEvVolumePrivate::TEvLaggingAgentMigrationFinished,
+            HandleLaggingAgentMigrationFinished);
 
         HFunc(
             TEvPartitionCommonPrivate::TEvLongRunningOperation,
@@ -1136,8 +1136,8 @@ STFUNC(TVolumeActor::StateZombie)
         IgnoreFunc(TEvVolumePrivate::TEvRemoveExpiredVolumeParams);
         IgnoreFunc(TEvVolumePrivate::TEvReportLaggingDevicesToDR);
         IgnoreFunc(TEvVolumePrivate::TEvDeviceTimeoutedRequest);
-        IgnoreFunc(TEvVolumePrivate::TEvUpdateSmartMigrationState);
-        IgnoreFunc(TEvVolumePrivate::TEvSmartMigrationFinished);
+        IgnoreFunc(TEvVolumePrivate::TEvUpdateLaggingAgentMigrationState);
+        IgnoreFunc(TEvVolumePrivate::TEvLaggingAgentMigrationFinished);
 
         IgnoreFunc(TEvStatsService::TEvVolumePartCounters);
 

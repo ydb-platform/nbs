@@ -3,6 +3,8 @@ AuthorizationMode: AUTHORIZATION_IGNORE
 AllocationUnitNonReplicatedSSD: 1
 NonReplicatedDiskRecyclingPeriod: 5000
 NonReplicatedMigrationStartAllowed: true
+MirroredMigrationStartAllowed: true
+MaxMigrationIoDepth: 1
 AllocationUnitMirror2SSD: 1
 AllocationUnitMirror3SSD: 1
 MirroredMigrationStartAllowed: true
@@ -11,9 +13,14 @@ UseShadowDisksForNonreplDiskCheckpoints: true
 MaxShadowDiskFillIoDepth: 4
 OptimizeVoidBuffersTransferForReadsEnabled: true
 MaxShadowDiskFillBandwidth: 1000
-MaxMigrationBandwidth: 1000
-AssignIdToWriteAndZeroRequestsEnabled: true
-RejectLateRequestsAtDiskAgentEnabled: true
+MaxMigrationBandwidth: 50
+AssignIdToWriteAndZeroRequestsEnabled: false
+RejectLateRequestsAtDiskAgentEnabled: false
+NonReplicatedAgentMaxTimeout: 300000
+NonReplicatedAgentMinTimeout: 300000
+AutomaticallyReplacedDevicesFreezePeriod: 100
 UseDirectCopyRange: true
 EnableToChangeStatesFromDiskRegistryMonpage: true
 EnableToChangeErrorStatesFromDiskRegistryMonpage: true
+LaggingDevicesForMirror2DisksEnabled: true
+LaggingDevicesForMirror3DisksEnabled: true

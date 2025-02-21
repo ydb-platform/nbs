@@ -203,7 +203,7 @@ struct TTestEnv
             VolumeActorId,
             false,   // muteIOErrors
             std::move(freshDeviceIds),
-            THashSet<TString>(),   // laggingDeviceIds
+            THashSet<TString>{},   // outdatedDeviceIds
             TDuration::Zero(),     // maxTimedOutDeviceStateDuration
             false,                 // maxTimedOutDeviceStateDurationOverridden
             true                   // useSimpleMigrationBandwidthLimiter

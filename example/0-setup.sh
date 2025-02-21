@@ -108,22 +108,19 @@ AcquireRequired: true
 FileDevices: {
     Path: "$BIN_DIR/data/local-1024-1.bin"
     DeviceId: "local-1024-1"
-    BlockSize: 512
-    PoolName: "local-ssd"
+    BlockSize: 4096
 }
 
 FileDevices: {
     Path: "$BIN_DIR/data/local-1024-2.bin"
     DeviceId: "local-1024-2"
-    BlockSize: 512
-    PoolName: "local-ssd"
+    BlockSize: 4096
 }
 
 FileDevices: {
     Path: "$BIN_DIR/data/local-1024-3.bin"
     DeviceId: "local-1024-3"
-    BlockSize: 512
-    PoolName: "local-ssd"
+    BlockSize: 4096
 }
 
 ThrottlingConfig: {

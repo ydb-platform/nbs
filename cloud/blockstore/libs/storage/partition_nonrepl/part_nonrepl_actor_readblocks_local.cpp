@@ -17,6 +17,8 @@ using namespace NActors;
 
 using namespace NKikimr;
 
+using EReason = TEvNonreplPartitionPrivate::TCancelRequest::EReason;
+
 LWTRACE_USING(BLOCKSTORE_STORAGE_PROVIDER);
 
 namespace {
@@ -150,7 +152,8 @@ void TDiskAgentReadLocalActor::HandleReadDeviceBlocksResponse(
 {
     auto* msg = ev->Get();
 
-    if (HandleError(ctx, msg->GetError(), false)) {
+    if (FAILED(msg->GetError().GetCode())) {
+        HandleError(ctx, msg->GetError(), false);
         return;
     }
 
@@ -236,15 +239,29 @@ void TNonreplicatedPartitionActor::HandleReadBlocksLocal(
         msg->Record.GetStartIndex(),
         msg->Record.GetBlocksCount());
 
+    LOG_WARN(
+        ctx,
+        TBlockStoreComponents::PARTITION,
+        "xxxxx AID[%s] TNonreplicatedPartitionActor::HandleReadBlocksLocal"
+        ", sender: %lu"
+        ", size: %lu"
+        ", agentId = %s",
+        ctx.SelfID.ToString().c_str(),
+        ev->Sender.ToString().c_str(),
+        blockRange.Size(),
+        PartConfig->GetDevices()[0].GetAgentId().c_str());
+
     TVector<TDeviceRequest> deviceRequests;
     TRequestTimeoutPolicy timeoutPolicy;
+    TRequest request;
     bool ok = InitRequests<TEvService::TReadBlocksLocalMethod>(
         *msg,
         ctx,
         *requestInfo,
         blockRange,
         &deviceRequests,
-        &timeoutPolicy);
+        &timeoutPolicy,
+        &request);
 
     if (!ok) {
         return;
@@ -264,7 +281,7 @@ void TNonreplicatedPartitionActor::HandleReadBlocksLocal(
         PartConfig,
         SelfId());
 
-    RequestsInProgress.AddReadRequest(actorId);
+    RequestsInProgress.AddReadRequest(actorId, std::move(request));
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

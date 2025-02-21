@@ -122,6 +122,8 @@ private:
         const NActors::TActorContext& ctx)
     {
         const auto& request = ev->Get()->Record;
+        Cerr << "xxx HandleReadDeviceBlocks: " << request.GetDeviceUUID()
+             << "; size: " << request.GetBlocksCount() << Endl;
 
         auto response =
             std::make_unique<TEvDiskAgent::TEvReadDeviceBlocksResponse>();
@@ -177,6 +179,8 @@ private:
         const NActors::TActorContext& ctx)
     {
         const auto& request = ev->Get()->Record;
+        Cerr << "xxx HandleWriteDeviceBlocks: " << request.GetDeviceUUID()
+             << "; size: " << request.GetBlocks().GetBuffers().size() << Endl;
 
         auto response =
             std::make_unique<TEvDiskAgent::TEvWriteDeviceBlocksResponse>();
