@@ -5,6 +5,7 @@ SRCS(
     diagnostics.cpp
     disk_agent_mock.cpp
     disk_registry_proxy_mock.cpp
+    root_kms_key_provider_mock.cpp
     service_client.cpp
     ss_proxy_client.cpp
     ss_proxy_mock.cpp
