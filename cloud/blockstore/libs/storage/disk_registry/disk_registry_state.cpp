@@ -5544,11 +5544,7 @@ bool TDiskRegistryState::TryUpdateDiskStateImpl(
         << static_cast<int>(oldState) << " -> " << static_cast<int>(newState));
     disk.History.push_back(std::move(historyItem));
 
-    if (IsMasterDisk(diskId)) {
-        db.UpdateDisk(BuildDiskConfig(diskId, disk));
-    } else {
-        UpdateAndReallocateDisk(db, diskId, disk);
-    }
+    UpdateAndReallocateDisk(db, diskId, disk);
 
     NotificationSystem.OnDiskStateChanged(
         db,
@@ -5560,6 +5556,10 @@ bool TDiskRegistryState::TryUpdateDiskStateImpl(
         auto* masterDisk = Disks.FindPtr(disk.MasterDiskId);
         Y_DEBUG_ABORT_UNLESS(masterDisk);
         if (!masterDisk) {
+            ReportDiskRegistryDiskNotFound(
+                TStringBuilder()
+                << "TryUpdateDiskState:DiskId: " << disk.MasterDiskId);
+
             return false;
         }
         TryUpdateDiskStateImpl(db, disk.MasterDiskId, *masterDisk, timestamp);
