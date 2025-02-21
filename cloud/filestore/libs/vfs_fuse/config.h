@@ -49,7 +49,7 @@ public:
     bool GetGuestPageCacheDisabled() const;
     bool GetExtendedAttributesDisabled() const;
 
-    bool GetHostWriteBackCacheEnabled() const;
+    bool GetServerWriteBackCacheEnabled() const;
 
     void Dump(IOutputStream& out) const;
     void DumpHtml(IOutputStream& out) const;

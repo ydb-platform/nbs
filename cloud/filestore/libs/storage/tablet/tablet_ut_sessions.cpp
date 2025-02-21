@@ -843,7 +843,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Sessions)
             TDuration::MilliSeconds(100).MilliSeconds());
         config.SetGuestPageCacheDisabled(true);
         config.SetExtendedAttributesDisabled(true);
-        config.SetHostWriteBackCacheEnabled(true);
+        config.SetServerWriteBackCacheEnabled(true);
 
         features.SetTwoStageReadEnabled(true);
         features.SetEntryTimeout(TDuration::Seconds(10).MilliSeconds());
@@ -857,7 +857,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Sessions)
             TDuration::MilliSeconds(100).MilliSeconds());
         features.SetGuestPageCacheDisabled(true);
         features.SetExtendedAttributesDisabled(true);
-        features.SetHostWriteBackCacheEnabled(true);
+        features.SetServerWriteBackCacheEnabled(true);
 
         DoTestShouldReturnFeaturesInCreateSessionResponse(config, features);
     }

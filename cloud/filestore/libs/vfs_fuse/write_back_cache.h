@@ -8,20 +8,20 @@ namespace NCloud::NFileStore::NFuse {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class THostWriteBackCache
+class TWriteBackCache
 {
 private:
     TFileRingBuffer RequestsToProcess;
 
 public:
-    THostWriteBackCache(const TString& filePath, ui32 size);
+    TWriteBackCache(const TString& filePath, ui32 size);
 
     // TODO: implement me
 };
 
 ////////////////////////////////////////////////////////////////////////////////
 
-THostWriteBackCachePtr CreateHostWriteBackCache(
+TWriteBackCachePtr CreateWriteBackCache(
     const TString& filePath,
     ui32 size);
 

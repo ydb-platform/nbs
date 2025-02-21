@@ -115,8 +115,8 @@ message TLocalServiceConfig
     // Don't support extended attributes
     optional bool ExtendedAttributesDisabled = 18;
 
-    // Enable write-back cache on host (FUSE server)
-    optional bool HostWriteBackCacheEnabled = 19;
+    // Enable write-back cache on FUSE server
+    optional bool ServerWriteBackCacheEnabled = 19;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

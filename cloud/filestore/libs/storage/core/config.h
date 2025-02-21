@@ -309,7 +309,7 @@ public:
     bool GetGuestPageCacheDisabled() const;
     bool GetExtendedAttributesDisabled() const;
 
-    bool GetHostWriteBackCacheEnabled() const;
+    bool GetServerWriteBackCacheEnabled() const;
 };
 
 }   // namespace NCloud::NFileStore::NStorage

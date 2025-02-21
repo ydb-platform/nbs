@@ -51,8 +51,8 @@ void FillFeatures(const TStorageConfig& config, NProto::TFileStore& fileStore)
     features->SetExtendedAttributesDisabled(
         config.GetExtendedAttributesDisabled());
 
-    features->SetHostWriteBackCacheEnabled(
-        config.GetHostWriteBackCacheEnabled());
+    features->SetServerWriteBackCacheEnabled(
+        config.GetServerWriteBackCacheEnabled());
 }
 
 ////////////////////////////////////////////////////////////////////////////////

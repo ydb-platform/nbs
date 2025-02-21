@@ -39,8 +39,8 @@ NProto::TCreateSessionResponse TLocalFileSystem::CreateSession(
         features->SetZeroCopyEnabled(Config->GetZeroCopyEnabled());
         features->SetGuestPageCacheDisabled(Config->GetGuestPageCacheDisabled());
         features->SetExtendedAttributesDisabled(Config->GetExtendedAttributesDisabled());
-        features->SetHostWriteBackCacheEnabled(
-            Config->GetHostWriteBackCacheEnabled());
+        features->SetServerWriteBackCacheEnabled(
+            Config->GetServerWriteBackCacheEnabled());
         return response;
     };
 

@@ -4,8 +4,8 @@
 #include "fs.h"
 #include "fuse.h"
 #include "handle_ops_queue.h"
-#include "host_write_back_cache.h"
 #include "log.h"
+#include "write_back_cache.h"
 
 #include <cloud/filestore/libs/client/session.h>
 #include <cloud/filestore/libs/diagnostics/critical_events.h>
@@ -52,7 +52,7 @@ namespace {
 ////////////////////////////////////////////////////////////////////////////////
 
 static constexpr TStringBuf HandleOpsQueueFileName = "handle_ops_queue";
-static constexpr TStringBuf HostWriteBackCacheFileName = "write_back_cache";
+static constexpr TStringBuf WriteBackCacheFileName = "write_back_cache";
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -517,7 +517,7 @@ private:
     TFileSystemConfigPtr FileSystemConfig;
 
     bool HandleOpsQueueInitialized = false;
-    bool HostWriteBackCacheInitialized = false;
+    bool WriteBackCacheInitialized = false;
 
 public:
     TFileSystemLoop(
@@ -632,18 +632,18 @@ public:
                         }
                     }
 
-                    // We need to cleanup HostWriteBackCache file and directories
-                    if (p->HostWriteBackCacheInitialized) {
+                    // We need to cleanup WriteBackCache file and directories
+                    if (p->WriteBackCacheInitialized) {
                         auto fsPath =
-                            TFsPath(p->Config->GetHostWriteBackCachePath()) /
+                            TFsPath(p->Config->GetWriteBackCachePath()) /
                             p->Config->GetFileSystemId();
                         TString sessionDir = fsPath / p->SessionId;
                         try {
                             NFs::RemoveRecursive(sessionDir);
                         } catch (const TSystemError& err) {
-                            ReportHostWriteBackCacheCreatingOrDeletingError(
+                            ReportWriteBackCacheCreatingOrDeletingError(
                                 TStringBuilder()
-                                << "Failed to remove session's HostWriteBackCache"
+                                << "Failed to remove session's WriteBackCache"
                                 << ", reason: " << err.AsStrBuf());
                         }
                     }
@@ -835,26 +835,26 @@ private:
                 HandleOpsQueueInitialized = true;
             }
 
-            THostWriteBackCachePtr hostWriteBackCache;
-            if (FileSystemConfig->GetHostWriteBackCacheEnabled()) {
+            TWriteBackCachePtr writeBackCache;
+            if (FileSystemConfig->GetServerWriteBackCacheEnabled()) {
                 TString path =
-                    TFsPath(Config->GetHostWriteBackCachePath()) /
+                    TFsPath(Config->GetWriteBackCachePath()) /
                     FileSystemConfig->GetFileSystemId() /
                     SessionId;
                 if (!NFs::MakeDirectoryRecursive(path)) {
                     TString msg = TStringBuilder()
                                   << "Failed to create directories for "
-                                     "HostWriteBackCache, path: "
+                                     "WriteBackCache, path: "
                                   << path;
-                    ReportHostWriteBackCacheCreatingOrDeletingError(msg);
+                    ReportWriteBackCacheCreatingOrDeletingError(msg);
                     return MakeError(E_FAIL, msg);
                 }
-                auto file = TFsPath(path) / HostWriteBackCacheFileName;
+                auto file = TFsPath(path) / WriteBackCacheFileName;
                 file.Touch();
-                hostWriteBackCache = CreateHostWriteBackCache(
+                writeBackCache = CreateWriteBackCache(
                     file.GetPath(),
-                    Config->GetHostWriteBackCacheSize());
-                HostWriteBackCacheInitialized = true;
+                    Config->GetWriteBackCacheSize());
+                WriteBackCacheInitialized = true;
             }
 
             FileSystem = CreateFileSystem(
@@ -867,7 +867,7 @@ private:
                 RequestStats,
                 CompletionQueue,
                 std::move(handleOpsQueue),
-                std::move(hostWriteBackCache));
+                std::move(writeBackCache));
 
             RequestStats->RegisterIncompleteRequestProvider(CompletionQueue);
 
@@ -950,8 +950,8 @@ private:
         config.SetGuestWriteBackCacheEnabled(
             features.GetGuestWriteBackCacheEnabled());
 
-        config.SetHostWriteBackCacheEnabled(
-            features.GetHostWriteBackCacheEnabled());
+        config.SetServerWriteBackCacheEnabled(
+            features.GetServerWriteBackCacheEnabled());
 
         config.SetZeroCopyEnabled(features.GetZeroCopyEnabled());
 

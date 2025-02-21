@@ -46,7 +46,7 @@ public:
 
     bool GetOpenNodeByHandleEnabled() const;
 
-    bool GetHostWriteBackCacheEnabled() const;
+    bool GetServerWriteBackCacheEnabled() const;
 };
 
 }   // namespace NCloud::NFileStore

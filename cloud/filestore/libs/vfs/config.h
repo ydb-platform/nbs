@@ -43,8 +43,8 @@ public:
     TString GetHandleOpsQueuePath() const;
     ui32 GetHandleOpsQueueSize() const;
 
-    TString GetHostWriteBackCachePath() const;
-    ui32 GetHostWriteBackCacheSize() const;
+    TString GetWriteBackCachePath() const;
+    ui32 GetWriteBackCacheSize() const;
 
     void Dump(IOutputStream& out) const;
     void DumpHtml(IOutputStream& out) const;

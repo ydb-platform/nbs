@@ -525,6 +525,6 @@ message TStorageConfig
     // Don't support extended attributes
     optional bool ExtendedAttributesDisabled = 419;
 
-    // Enable write-back cache on host (FUSE server)
-    optional bool HostWriteBackCacheEnabled = 420;
+    // Enable write-back cache on FUSE server
+    optional bool ServerWriteBackCacheEnabled = 420;
 }

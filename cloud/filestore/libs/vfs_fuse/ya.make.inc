@@ -9,10 +9,10 @@ SRCS(
     fs_impl_node.cpp
     fs_impl_stat.cpp
     handle_ops_queue.cpp
-    host_write_back_cache.cpp
     log.cpp
     loop.cpp
     node_cache.cpp
+    write_back_cache.cpp
 )
 
 PEERDIR(

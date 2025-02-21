@@ -250,7 +250,7 @@ using TAliases = NProto::TStorageConfig::TFilestoreAliases;
     xxx(GuestPageCacheDisabled,                    bool,     false            )\
     xxx(ExtendedAttributesDisabled,                bool,     false            )\
                                                                                \
-    xxx(HostWriteBackCacheEnabled,      bool,      false                      )\
+    xxx(ServerWriteBackCacheEnabled,    bool,      false                      )\
 // FILESTORE_STORAGE_CONFIG
 
 #define FILESTORE_STORAGE_CONFIG_REF(xxx)                                      \

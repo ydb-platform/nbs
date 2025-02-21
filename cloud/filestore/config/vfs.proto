@@ -45,12 +45,12 @@ message TVFSConfig
     // Max HandleOpsQueue size in bytes.
     optional uint32 HandleOpsQueueSize = 14;
 
-    // Path to the directory where HostWriteBackCache is stored for all
+    // Path to the directory where WriteBackCache is stored for all
     // sessions. Will create a directory with filesystem id as name
     // (and a subdirectory with session id as name) if not present.
-    optional string HostWriteBackCachePath = 15;
+    optional string WriteBackCachePath = 15;
 
-    // Max HostWriteBackCache size in bytes.
-    optional uint32 HostWriteBackCacheSize = 16;
+    // Max WriteBackCache size in bytes.
+    optional uint32 WriteBackCacheSize = 16;
 
 }

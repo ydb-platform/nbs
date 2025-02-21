@@ -30,7 +30,7 @@ message TFileStoreFeatures
     bool ZeroCopyEnabled = 15;
     bool GuestPageCacheDisabled = 16;
     bool ExtendedAttributesDisabled = 17;
-    bool HostWriteBackCacheEnabled = 18;
+    bool ServerWriteBackCacheEnabled = 18;
 }
 
 message TFileStore
