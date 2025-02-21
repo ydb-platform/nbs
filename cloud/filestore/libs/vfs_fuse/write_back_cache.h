@@ -21,8 +21,6 @@ public:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TWriteBackCachePtr CreateWriteBackCache(
-    const TString& filePath,
-    ui32 size);
+TWriteBackCachePtr CreateWriteBackCache(const TString& filePath, ui32 size);
 
 }   // namespace NCloud::NFileStore::NFuse

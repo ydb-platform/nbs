@@ -10,9 +10,7 @@ TWriteBackCache::TWriteBackCache(const TString& filePath, ui32 size)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TWriteBackCachePtr CreateWriteBackCache(
-    const TString& filePath,
-    ui32 size)
+TWriteBackCachePtr CreateWriteBackCache(const TString& filePath, ui32 size)
 {
     return std::make_unique<TWriteBackCache>(filePath, size);
 }
