@@ -759,7 +759,7 @@ Y_UNIT_TEST_SUITE(TDurableClientTest)
         NProto::TClientAppConfig configProto;
         auto& clientConfigProto = *configProto.MutableClientConfig();
         clientConfigProto.SetRetryTimeoutIncrement(2'000);
-        clientConfigProto.SetInitialRetryTimeout(2'000);
+        clientConfigProto.SetInitialDiskRegistryVolumeRetryTimeout(1'000);
         clientConfigProto.SetConnectionErrorMaxRetryTimeout(3'000);
         auto config = std::make_shared<TClientAppConfig>(configProto);
 
@@ -807,16 +807,17 @@ Y_UNIT_TEST_SUITE(TDurableClientTest)
         }
     }
 
-    Y_UNIT_TEST(ShouldCalculateCorrectTimeoutWithNonDefaultInitialTimeout)
+    Y_UNIT_TEST(ShouldCalculateCorrectTimeoutWithDiskRegistryMediaKind)
     {
         NProto::TClientAppConfig configProto;
         auto& clientConfigProto = *configProto.MutableClientConfig();
         clientConfigProto.SetRetryTimeoutIncrement(3'000);
         clientConfigProto.SetConnectionErrorMaxRetryTimeout(7'000);
-        clientConfigProto.SetInitialRetryTimeout(2'000);
+        clientConfigProto.SetInitialDiskRegistryVolumeRetryTimeout(2'000);
         auto config = std::make_shared<TClientAppConfig>(configProto);
 
-        auto policy = CreateRetryPolicy(config);
+        auto policy =
+            CreateRetryPolicy(config, NProto::STORAGE_MEDIA_SSD_MIRROR3);
 
         {
             TRetryState state;
@@ -998,11 +999,12 @@ Y_UNIT_TEST_SUITE(TDurableClientTest)
         auto& clientConfigProto = *configProto.MutableClientConfig();
         clientConfigProto.SetRetryTimeoutIncrement(
             TDuration::Seconds(2).MilliSeconds());
-        clientConfigProto.SetInitialRetryTimeout(
+        clientConfigProto.SetInitialDiskRegistryVolumeRetryTimeout(
             TDuration::Seconds(1).MilliSeconds());
         auto config = std::make_shared<TClientAppConfig>(configProto);
 
-        auto policy = CreateRetryPolicy(config);
+        auto policy =
+            CreateRetryPolicy(config, NProto::STORAGE_MEDIA_SSD_MIRROR3);
 
         auto timer = CreateCpuCycleTimer();
         auto scheduler = CreateScheduler(timer);

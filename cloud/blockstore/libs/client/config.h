@@ -55,7 +55,7 @@ public:
     TDuration GetRequestTimeoutIncrementOnRetry() const;
     TDuration GetRequestTimeoutMax() const;
     TDuration GetRetryTimeout() const;
-    TDuration GetInitialRetryTimeout() const;
+    TDuration GetInitialDiskRegistryVolumeRetryTimeout() const;
     TDuration GetRetryTimeoutIncrement() const;
     TDuration GetConnectionErrorMaxRetryTimeout() const;
     TDuration GetGrpcReconnectBackoff() const;

@@ -12,6 +12,7 @@
 
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/common/format.h>
+#include <cloud/storage/core/libs/common/media.h>
 #include <cloud/storage/core/libs/common/scheduler.h>
 #include <cloud/storage/core/libs/common/timer.h>
 
@@ -463,15 +464,16 @@ private:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TRetryPolicy final
-    : public IRetryPolicy
+class TRetryPolicy final: public IRetryPolicy
 {
 private:
     TClientAppConfigPtr Config;
+    TDuration InitialRetryTimeout;
 
 public:
-    TRetryPolicy(TClientAppConfigPtr config)
+    TRetryPolicy(TClientAppConfigPtr config, TDuration initialRetryTimeout)
         : Config(std::move(config))
+        , InitialRetryTimeout(initialRetryTimeout)
     {}
 
     TRetrySpec ShouldRetry(
@@ -491,7 +493,7 @@ public:
         const auto newRetryTimeout =
             state.Retries > 0
                 ? (state.RetryTimeout + Config->GetRetryTimeoutIncrement())
-                : Config->GetInitialRetryTimeout();
+                : InitialRetryTimeout;
         spec.ShouldRetry = true;
         spec.Backoff = newRetryTimeout;
         if (IsConnectionError(error) &&
@@ -510,9 +512,17 @@ public:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-IRetryPolicyPtr CreateRetryPolicy(TClientAppConfigPtr config)
+IRetryPolicyPtr CreateRetryPolicy(
+    TClientAppConfigPtr config,
+    NProto::EStorageMediaKind mediaKind)
 {
-    return std::make_shared<TRetryPolicy>(std::move(config));
+    const auto initialRetryTimeout =
+        IsDiskRegistryMediaKind(mediaKind)
+            ? config->GetInitialDiskRegistryVolumeRetryTimeout()
+            : config->GetRetryTimeoutIncrement();
+    return std::make_shared<TRetryPolicy>(
+        std::move(config),
+        initialRetryTimeout);
 }
 
 IBlockStorePtr CreateDurableClient(

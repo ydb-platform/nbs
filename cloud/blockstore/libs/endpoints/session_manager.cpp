@@ -638,7 +638,8 @@ TResultOrError<TEndpointPtr> TSessionManager::CreateEndpoint(
             {{ EErrorKind::ErrorFatal, E_REJECTED }});
     }
 
-    auto retryPolicy = CreateRetryPolicy(clientConfig);
+    auto retryPolicy =
+        CreateRetryPolicy(clientConfig, volume.GetStorageMediaKind());
 
     if (!Options.DisableDurableClient
             && (volume.GetStorageMediaKind() != NProto::STORAGE_MEDIA_SSD_LOCAL
