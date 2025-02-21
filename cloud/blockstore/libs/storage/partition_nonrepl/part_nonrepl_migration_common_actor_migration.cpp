@@ -23,19 +23,21 @@ LWTRACE_USING(BLOCKSTORE_STORAGE_PROVIDER);
 
 void TNonreplicatedPartitionMigrationCommonActor::InitWork(
     const NActors::TActorContext& ctx,
-    NActors::TActorId srcActorId,
+    NActors::TActorId migrationSrcActorId,
+    NActors::TActorId userSrcActorId,
     NActors::TActorId dstActorId,
     std::unique_ptr<TMigrationTimeoutCalculator> timeoutCalculator)
 {
-    SrcActorId = srcActorId;
+    MigrationSrcActorId = migrationSrcActorId;
+    UserSrcActorId = userSrcActorId;
     DstActorId = dstActorId;
     TimeoutCalculator = std::move(timeoutCalculator);
     STORAGE_CHECK_PRECONDITION(TimeoutCalculator);
 
-    PoisonPillHelper.TakeOwnership(ctx, SrcActorId);
+    PoisonPillHelper.TakeOwnership(ctx, UserSrcActorId);
     PoisonPillHelper.TakeOwnership(ctx, DstActorId);
 
-    GetDeviceForRangeCompanion.SetDelegate(SrcActorId);
+    GetDeviceForRangeCompanion.SetDelegate(UserSrcActorId);
 
     if (DstActorId == NActors::TActorId{}) {
         ProcessingBlocks.AbortProcessing();
@@ -101,7 +103,7 @@ void TNonreplicatedPartitionMigrationCommonActor::MigrateRange(
                 MakeIntrusive<TCallContext>()),
             BlockSize,
             range,
-            SrcActorId,
+            MigrationSrcActorId,
             DstActorId,
             RWClientId,
             BlockDigestGenerator);
@@ -114,7 +116,7 @@ void TNonreplicatedPartitionMigrationCommonActor::MigrateRange(
                 MakeIntrusive<TCallContext>()),
             BlockSize,
             range,
-            SrcActorId,
+            MigrationSrcActorId,
             DstActorId,
             RWClientId,
             BlockDigestGenerator);
@@ -125,7 +127,7 @@ void TNonreplicatedPartitionMigrationCommonActor::MigrateRange(
 
 bool TNonreplicatedPartitionMigrationCommonActor::IsMigrationAllowed() const
 {
-    return SrcActorId && DstActorId && MigrationEnabled;
+    return MigrationSrcActorId && DstActorId && MigrationEnabled;
 }
 
 bool TNonreplicatedPartitionMigrationCommonActor::IsMigrationFinished() const

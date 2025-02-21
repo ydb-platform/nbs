@@ -109,7 +109,24 @@ void TMirrorPartitionActor::SetupPartitions(const TActorContext& ctx)
 
     for (const auto& replicaInfo: State.GetReplicaInfos()) {
         IActorPtr actor;
-        if (replicaInfo.Migrations.size()) {
+        if (replicaInfo.Migrations.size() &&
+            State.GetTypeOfMigrationPreparedFor() ==
+                TMirrorPartitionState::EMigrationConfPreparedType::
+                    PreparedForFresh)
+        {
+            actor = CreateNonreplicatedPartitionMigration(
+                Config,
+                DiagnosticsConfig,
+                ProfileLog,
+                BlockDigestGenerator,
+                0,  // initialMigrationIndex
+                State.GetRWClientId(),
+                replicaInfo.Config,
+                replicaInfo.Migrations,
+                RdmaClient,
+                SelfId(),
+                SelfId());
+        } else if (replicaInfo.Migrations.size()) {
             actor = CreateNonreplicatedPartitionMigration(
                 Config,
                 DiagnosticsConfig,

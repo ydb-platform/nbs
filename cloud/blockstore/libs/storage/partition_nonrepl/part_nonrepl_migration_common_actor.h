@@ -96,7 +96,8 @@ private:
     const ui32 MaxIoDepth;
     TString RWClientId;
 
-    NActors::TActorId SrcActorId;
+    NActors::TActorId MigrationSrcActorId;
+    NActors::TActorId UserSrcActorId;
     NActors::TActorId DstActorId;
     std::unique_ptr<TMigrationTimeoutCalculator> TimeoutCalculator;
 
@@ -173,7 +174,8 @@ public:
     // Called from the inheritor to initialize migration.
     void InitWork(
         const NActors::TActorContext& ctx,
-        NActors::TActorId srcActorId,
+        NActors::TActorId migrationSrcActorId,
+        NActors::TActorId userSrcActorId,
         NActors::TActorId dstActorId,
         std::unique_ptr<TMigrationTimeoutCalculator> timeoutCalculator);
 

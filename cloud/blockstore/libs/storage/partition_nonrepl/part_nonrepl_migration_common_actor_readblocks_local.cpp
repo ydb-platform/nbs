@@ -14,7 +14,7 @@ void TNonreplicatedPartitionMigrationCommonActor::HandleReadBlocksLocal(
 {
     ForwardRequestWithNondeliveryTracking(
         ctx,
-        SrcActorId,
+        UserSrcActorId,
         *ev);
 }
 

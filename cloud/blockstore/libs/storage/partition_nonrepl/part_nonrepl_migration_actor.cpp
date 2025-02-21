@@ -25,7 +25,8 @@ TNonreplicatedPartitionMigrationActor::TNonreplicatedPartitionMigrationActor(
         TNonreplicatedPartitionConfigPtr srcConfig,
         google::protobuf::RepeatedPtrField<NProto::TDeviceMigration> migrations,
         NRdma::IClientPtr rdmaClient,
-        NActors::TActorId statActorId)
+        NActors::TActorId statActorId,
+        std::optional<NActors::TActorId> migrationSrcActorId)
     : TNonreplicatedPartitionMigrationCommonActor(
           static_cast<IMigrationOwner*>(this),
           config,
@@ -42,14 +43,17 @@ TNonreplicatedPartitionMigrationActor::TNonreplicatedPartitionMigrationActor(
     , SrcConfig(std::move(srcConfig))
     , Migrations(std::move(migrations))
     , RdmaClient(std::move(rdmaClient))
+    , MigrationSrcActorId(migrationSrcActorId)
 {}
 
 void TNonreplicatedPartitionMigrationActor::OnBootstrap(
     const NActors::TActorContext& ctx)
 {
+    auto srcActorId = CreateSrcActor(ctx);\
     InitWork(
         ctx,
-        CreateSrcActor(ctx),
+        MigrationSrcActorId.value_or(srcActorId),
+        srcActorId,
         CreateDstActor(ctx),
         std::make_unique<TMigrationTimeoutCalculator>(
             GetConfig()->GetMaxMigrationBandwidth(),
@@ -160,12 +164,27 @@ void TNonreplicatedPartitionMigrationActor::FinishMigration(
 NActors::TActorId TNonreplicatedPartitionMigrationActor::CreateSrcActor(
     const NActors::TActorContext& ctx)
 {
+    auto devices = SrcConfig->GetDevices();
+    for (auto& device: devices) {
+        auto* migrationTarget = FindIfPtr(
+            Migrations,
+            [&](const NProto::TDeviceMigration& m)
+            {
+                return m.GetTargetDevice().GetDeviceUUID() ==
+                       device.GetDeviceUUID();
+            });
+
+        if (migrationTarget) {
+            device.ClearDeviceUUID();
+        }
+    }
+
     return NCloud::Register(
         ctx,
         CreateNonreplicatedPartition(
             GetConfig(),
             GetDiagnosticsConfig(),
-            SrcConfig,
+            SrcConfig->Fork(std::move(devices)),
             SelfId(),
             RdmaClient));
 }
@@ -187,13 +206,25 @@ NActors::TActorId TNonreplicatedPartitionMigrationActor::CreateDstActor(
     ui64 blockIndex = 0;
     auto devices = SrcConfig->GetDevices();
     for (auto& device: devices) {
-        auto* migration = FindIfPtr(
+        Cerr << "Device uuid: " << device.GetDeviceUUID() << Endl;
+        auto* migrationSource = FindIfPtr(
             Migrations,
             [&](const NProto::TDeviceMigration& m)
-            { return m.GetSourceDeviceId() == device.GetDeviceUUID(); });
+            {
+                return m.HasSourceDeviceId() &&
+                       m.GetSourceDeviceId() == device.GetDeviceUUID();
+            });
 
-        if (migration) {
-            const auto& target = migration->GetTargetDevice();
+        auto* migrationTarget = FindIfPtr(
+            Migrations,
+            [&](const NProto::TDeviceMigration& m)
+            {
+                return m.GetTargetDevice().GetDeviceUUID() ==
+                       device.GetDeviceUUID();
+            });
+
+        if (migrationSource) {
+            const auto& target = migrationSource->GetTargetDevice();
 
             if (device.GetBlocksCount() != target.GetBlocksCount()) {
                 LOG_ERROR(
@@ -211,8 +242,8 @@ NActors::TActorId TNonreplicatedPartitionMigrationActor::CreateDstActor(
                 return {};
             }
 
-            device.CopyFrom(migration->GetTargetDevice());
-        } else {
+            device.CopyFrom(migrationSource->GetTargetDevice());
+        } else if (!migrationTarget) {
             // Skip this device for migration
             MarkMigratedBlocks(
                 TBlockRange64::WithLength(blockIndex, device.GetBlocksCount()));

@@ -851,6 +851,7 @@ void TShadowDiskActor::CreateShadowDiskPartitionActor(
         InitWork(
             ctx,
             SrcActorId,
+            SrcActorId,
             DstActorId,
             std::make_unique<TMigrationTimeoutCalculator>(
                 GetConfig()->GetMaxShadowDiskFillBandwidth(),

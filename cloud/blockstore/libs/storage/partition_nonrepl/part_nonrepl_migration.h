@@ -24,6 +24,7 @@ NActors::IActorPtr CreateNonreplicatedPartitionMigration(
     TNonreplicatedPartitionConfigPtr partConfig,
     google::protobuf::RepeatedPtrField<NProto::TDeviceMigration> migrations,
     NRdma::IClientPtr rdmaClient,
-    NActors::TActorId statActorId);
+    NActors::TActorId statActorId,
+    std::optional<NActors::TActorId> srcActorId = std::nullopt);
 
 }   // namespace NCloud::NBlockStore::NStorage
