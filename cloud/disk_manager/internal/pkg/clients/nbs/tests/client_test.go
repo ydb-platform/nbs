@@ -1753,7 +1753,7 @@ func TestAlterPlacementGroupMembership(t *testing.T) {
 		ctx,
 		groupID,
 		types.PlacementStrategy_PLACEMENT_STRATEGY_SPREAD,
-		0,
+		0, // placementPartitionCount
 	)
 	require.NoError(t, err)
 
@@ -1853,7 +1853,7 @@ func TestAlterPlacementGroupMembershipFailureBecauseDiskIsInAnotherGroup(t *test
 			ctx,
 			groupID,
 			types.PlacementStrategy_PLACEMENT_STRATEGY_SPREAD,
-			0,
+			0, // placementPartitionCount
 		)
 		require.NoError(t, err)
 	}
@@ -1898,7 +1898,7 @@ func TestAlterPlacementGroupMembershipFailureBecauseOfTooManyDisksInGroup(t *tes
 		ctx,
 		groupID,
 		types.PlacementStrategy_PLACEMENT_STRATEGY_SPREAD,
-		0,
+		0, // placementPartitionCount
 	)
 	require.NoError(t, err)
 
