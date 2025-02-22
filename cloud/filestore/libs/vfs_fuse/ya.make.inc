@@ -28,4 +28,5 @@ PEERDIR(
     cloud/storage/core/libs/diagnostics
 
     library/cpp/lwtrace
+    library/cpp/threading/future/subscription
 )

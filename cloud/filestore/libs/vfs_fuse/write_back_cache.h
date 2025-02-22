@@ -2,25 +2,47 @@
 
 #include "public.h"
 
-#include <cloud/storage/core/libs/common/file_ring_buffer.h>
+#include <cloud/filestore/libs/service/context.h>
+#include <cloud/filestore/libs/service/filestore.h>
+
+#include <memory>
 
 namespace NCloud::NFileStore::NFuse {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TWriteBackCache
+class TWriteBackCache final
 {
 private:
-    TFileRingBuffer RequestsToProcess;
+    class TImpl;
+    std::shared_ptr<TImpl> Impl;
 
 public:
-    TWriteBackCache(const TString& filePath, ui32 size);
+    TWriteBackCache(
+        IFileStorePtr session,
+        const TString& filePath,
+        ui32 capacity);
 
-    // TODO: implement me
+    ~TWriteBackCache();
+
+    NThreading::TFuture<NProto::TReadDataResponse> ReadData(
+        TCallContextPtr callContext,
+        std::shared_ptr<NProto::TReadDataRequest> request);
+
+    NThreading::TFuture<NProto::TWriteDataResponse> WriteData(
+        TCallContextPtr callContext,
+        std::shared_ptr<NProto::TWriteDataRequest> request);
+
+    NThreading::TFuture<void> FlushData(ui64 handle);
+
+    NThreading::TFuture<void> FlushAllData();
 };
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TWriteBackCachePtr CreateWriteBackCache(const TString& filePath, ui32 size);
+TWriteBackCachePtr CreateWriteBackCache(
+    IFileStorePtr session,
+    const TString& filePath,
+    ui32 capacity);
 
 }   // namespace NCloud::NFileStore::NFuse
