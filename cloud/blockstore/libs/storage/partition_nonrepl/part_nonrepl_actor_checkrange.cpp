@@ -16,7 +16,7 @@
 #include <util/generic/xrange.h>
 #include <util/stream/str.h>
 
-namespace NCloud::NBlockStore::NStorage::NPartition {
+namespace NCloud::NBlockStore::NStorage {
 
 using namespace NActors;
 
@@ -34,14 +34,14 @@ private:
     const TActorId Tablet;
     const ui64 StartIndex;
     const ui64 BlocksCount;
-    const TEvService::TEvCheckRangeRequest::TPtr Ev;
+    const TRequestInfoPtr RequestInfo;
 
 public:
     TCheckRangeActor(
         const TActorId& tablet,
         ui64 blockId,
         ui64 blocksCount,
-        TEvService::TEvCheckRangeRequest::TPtr&& ev);
+        TRequestInfoPtr&& requestInfo);
 
     void Bootstrap(const TActorContext& ctx);
 
@@ -75,11 +75,11 @@ TCheckRangeActor::TCheckRangeActor(
     const TActorId& tablet,
     ui64 startIndex,
     ui64 blocksCount,
-    TEvService::TEvCheckRangeRequest::TPtr&& ev)
+    TRequestInfoPtr&& requestInfo)
     : Tablet(tablet)
     , StartIndex(startIndex)
     , BlocksCount(blocksCount)
-    , Ev(std::move(ev))
+    , RequestInfo(std::move(requestInfo))
 {}
 
 void TCheckRangeActor::Bootstrap(const TActorContext& ctx)
@@ -90,7 +90,7 @@ void TCheckRangeActor::Bootstrap(const TActorContext& ctx)
 
 void TCheckRangeActor::SendReadBlocksRequest(const TActorContext& ctx)
 {
-    const TString clientId = TString(CheckRangeClientId);
+    const TString clientId{CheckRangeClientId};
     auto request = std::make_unique<TEvService::TEvReadBlocksRequest>();
 
     request->Record.SetStartIndex(StartIndex);
@@ -112,7 +112,7 @@ void TCheckRangeActor::ReplyAndDie(
         std::make_unique<TEvService::TEvCheckRangeResponse>(std::move(error));
     response->Record.MutableStatus()->CopyFrom(status);
 
-    NCloud::Reply(ctx, *Ev, std::move(response));
+    NCloud::Reply(ctx, *RequestInfo, std::move(response));
 
     Die(ctx);
 }
@@ -147,7 +147,7 @@ void TCheckRangeActor::HandlePoisonPill(
 
     auto error = MakeError(E_REJECTED, "tablet is shutting down");
 
-    ReplyAndDie(ctx, error);
+    ReplyAndDie(ctx, MakeError(S_OK), error);
 }
 
 void TCheckRangeActor::HandleReadBlocksResponse(
@@ -157,15 +157,13 @@ void TCheckRangeActor::HandleReadBlocksResponse(
     const auto* msg = ev->Get();
     auto status = MakeError(S_OK);
 
-    if (HasError(msg->Record.GetError())) {
-        const auto& errorMessage = msg->Record.GetError().GetMessage();
-        LOG_ERROR(
+    const auto& error = msg->Record.GetError();
+    if (HasError(error)) {
+        LOG_ERROR_S(
             ctx,
             TBlockStoreComponents::PARTITION,
-            "reading error has occurred: " + errorMessage);
-        const auto& errorCode =
-            msg->Record.GetError().code() == E_ARGUMENT ? E_ARGUMENT : E_IO;
-        status = MakeError(errorCode, msg->Record.GetError().GetMessage());
+            "reading error has occurred: " << FormatError(error));
+        status = error;
     }
 
     ReplyAndDie(ctx, status);
@@ -173,22 +171,7 @@ void TCheckRangeActor::HandleReadBlocksResponse(
 
 }   // namespace
 
-}   // namespace NCloud::NBlockStore::NStorage::NPartition
-
-namespace NCloud::NBlockStore::NStorage {
-
-NActors::IActorPtr TNonreplicatedPartitionActor::CreateCheckRangeActor(
-    NActors::TActorId tablet,
-    ui64 startIndex,
-    ui64 blocksCount,
-    TEvService::TEvCheckRangeRequest::TPtr ev)
-{
-    return std::make_unique<NPartition::TCheckRangeActor>(
-        std::move(tablet),
-        startIndex,
-        blocksCount,
-        std::move(ev));
-}
+//////////////////////////////////////////////////////////////////
 
 void TNonreplicatedPartitionActor::HandleCheckRange(
     const TEvService::TEvCheckRangeRequest::TPtr& ev,
@@ -196,32 +179,32 @@ void TNonreplicatedPartitionActor::HandleCheckRange(
 {
     const auto* msg = ev->Get();
 
-    ui64 BlocksPerStripe =
+    ui64 blocksPerStripe =
         Config->GetBytesPerStripe() / PartConfig->GetBlockSize();
     // We process 4 MB of data at a time.
     const ui64 maxBlocksPerRequest =
-        std::min(BlocksPerStripe, 4_MB / PartConfig->GetBlockSize());
+        Min<ui64>(blocksPerStripe, 4_MB / PartConfig->GetBlockSize());
 
     if (msg->Record.GetBlocksCount() > maxBlocksPerRequest) {
         auto err = MakeError(
             E_ARGUMENT,
-            "Too many blocks requested: " +
-                std::to_string(msg->Record.GetBlocksCount()) +
-                " Max blocks per request : " +
-                std::to_string(maxBlocksPerRequest));
+            TStringBuilder() << "Too many blocks requested: "
+                             << std::to_string(msg->Record.GetBlocksCount())
+                             << " Max blocks per request : "
+                             << std::to_string(maxBlocksPerRequest));
+
         auto response =
             std::make_unique<TEvService::TEvCheckRangeResponse>(std::move(err));
         NCloud::Reply(ctx, *ev, std::move(response));
         return;
     }
 
-    const auto actorId = NCloud::Register(
+    const auto actorId = NCloud::Register<TCheckRangeActor>(
         ctx,
-        CreateCheckRangeActor(
-            SelfId(),
-            msg->Record.GetStartIndex(),
-            msg->Record.GetBlocksCount(),
-            std::move(ev)));
+        SelfId(),
+        msg->Record.GetStartIndex(),
+        msg->Record.GetBlocksCount(),
+        CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext));
 
     RequestsInProgress.AddReadRequest(actorId);
 }

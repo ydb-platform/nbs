@@ -431,12 +431,6 @@ private:
         TDuration retryTimeout,
         TBlockBuffer blockBuffer);
 
-    NActors::IActorPtr CreateCheckRangeActor(
-        NActors::TActorId tablet,
-        ui64 startIndex,
-        ui64 blocksCount,
-        TEvService::TEvCheckRangeRequest::TPtr ev);
-
 private:
     STFUNC(StateBoot);
     STFUNC(StateInit);

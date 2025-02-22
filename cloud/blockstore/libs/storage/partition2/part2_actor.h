@@ -554,12 +554,6 @@ private:
         const NActors::TActorContext& ctx,
         TEvPartitionPrivate::TOperationCompleted operation);
 
-    NActors::IActorPtr CreateCheckRangeActor(
-        NActors::TActorId tablet,
-        ui64 startIndex,
-        ui64 blocksCount,
-        TEvService::TEvCheckRangeRequest::TPtr ev);
-
     bool HandleRequests(STFUNC_SIG);
     bool RejectRequests(STFUNC_SIG);
 
