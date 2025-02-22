@@ -472,8 +472,8 @@ message TStorageConfig
     // Affects shard count calculation if AutomaticShardCreationEnabled is on.
     optional uint64 ShardAllocationUnit = 406;
 
-    // Enable Writeback cache on guest (fuse client)
-    optional bool GuestWritebackCacheEnabled = 407;
+    // Enable write-back cache on guest (FUSE client)
+    optional bool GuestWriteBackCacheEnabled = 407;
 
     // Ignore orphan sessions upon filestore sessions check during destruction
     // attempts.
@@ -525,4 +525,6 @@ message TStorageConfig
     // Don't support extended attributes
     optional bool ExtendedAttributesDisabled = 419;
 
+    // Enable write-back cache on FUSE server
+    optional bool ServerWriteBackCacheEnabled = 420;
 }

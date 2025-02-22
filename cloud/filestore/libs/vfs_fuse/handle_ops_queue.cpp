@@ -57,7 +57,7 @@ ui64 THandleOpsQueue::Size() const
 
 ////////////////////////////////////////////////////////////////////////////////
 
-std::unique_ptr<THandleOpsQueue> CreateHandleOpsQueue(
+THandleOpsQueuePtr CreateHandleOpsQueue(
     const TString& filePath,
     ui32 size)
 {
