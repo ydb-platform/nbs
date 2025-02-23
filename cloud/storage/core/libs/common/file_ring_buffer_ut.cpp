@@ -109,6 +109,15 @@ struct TReferenceImplementation
         return Q.front();
     }
 
+    TStringBuf Back() const
+    {
+        if (!Q) {
+            return {};
+        }
+
+        return Q.back();
+    }
+
     void Pop()
     {
         if (!Q) {
@@ -168,9 +177,16 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
 
         UNIT_ASSERT(!rb.Push(GenerateData(rb.Size())));   // too long
         UNIT_ASSERT(!rb.Push(""));              // empty
+
         UNIT_ASSERT(rb.Push("vasya"));
+        UNIT_ASSERT_VALUES_EQUAL("vasya", rb.Back());
+
         UNIT_ASSERT(rb.Push("petya"));
+        UNIT_ASSERT_VALUES_EQUAL("petya", rb.Back());
+
         UNIT_ASSERT(rb.Push("vasya2"));
+        UNIT_ASSERT_VALUES_EQUAL("vasya2", rb.Back());
+
         UNIT_ASSERT(rb.Push("petya2"));
         UNIT_ASSERT(!rb.Push("vasya3"));        // out of space
 
@@ -257,7 +273,7 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
     Y_UNIT_TEST(ShouldValidate)
     {
         const auto f = TTempFileHandle();
-        const ui32 len = 64;
+        const ui32 len = 128;
         TFileRingBuffer rb(f.GetName(), len);
 
         UNIT_ASSERT(rb.Push("vasya"));
@@ -269,7 +285,7 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
         TFileMap m(f.GetName(), TMemoryMapCommon::oRdWr);
         m.Map(0, len);
         char* data = static_cast<char*>(m.Ptr());
-        data[20] = 'A';
+        data[24] = 'A';
 
         UNIT_ASSERT_VALUES_EQUAL(
             "data=vasya ecsum=3387363649 csum=3387363646",
