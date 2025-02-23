@@ -7,8 +7,6 @@
 #include <util/system/compiler.h>
 #include <util/system/filemap.h>
 
-#include <functional>
-
 namespace NCloud {
 
 namespace {
@@ -83,8 +81,6 @@ private:
         }
     }
 
-    using TVisitor = std::function<void(ui32 checksum, TStringBuf entry)>;
-
     ui32 VisitEntry(const TVisitor& visitor, ui32 pos) const
     {
         const auto* b = Data + pos;
@@ -105,22 +101,6 @@ private:
         }
         visitor(eh->Checksum, {b + sizeof(TEntryHeader), eh->Size});
         return pos + sizeof(TEntryHeader) + eh->Size;
-    }
-
-    void Visit(const TVisitor& visitor) const
-    {
-        ui32 pos = Header()->ReadPos;
-        while (pos > Header()->WritePos && pos != INVALID_POS) {
-            pos = VisitEntry(visitor, pos);
-        }
-
-        while (pos < Header()->WritePos && pos != INVALID_POS) {
-            pos = VisitEntry(visitor, pos);
-            if (!pos) {
-                // can happen if the buffer is corrupted
-                break;
-            }
-        }
     }
 
 public:
@@ -227,6 +207,30 @@ public:
         return result;
     }
 
+    TStringBuf Back() const
+    {
+        if (Empty()) {
+            return {};
+        }
+
+        const auto* b = Data + Header()->WritePos;
+        if (b + sizeof(TEntryHeader) > End) {
+            // corruption
+            // TODO: report?
+            return {};
+        }
+
+        const auto* eh = reinterpret_cast<const TEntryHeader*>(b);
+        TStringBuf result{b + sizeof(TEntryHeader), eh->Size};
+        if (result.data() + result.size() > End) {
+            // corruption
+            // TODO: report?
+            return {};
+        }
+
+        return result;
+    }
+
     void Pop()
     {
         auto data = Front();
@@ -268,6 +272,22 @@ public:
 
         return entries;
     }
+
+    void Visit(const TVisitor& visitor) const
+    {
+        ui32 pos = Header()->ReadPos;
+        while (pos > Header()->WritePos && pos != INVALID_POS) {
+            pos = VisitEntry(visitor, pos);
+        }
+
+        while (pos < Header()->WritePos && pos != INVALID_POS) {
+            pos = VisitEntry(visitor, pos);
+            if (!pos) {
+                // can happen if the buffer is corrupted
+                break;
+            }
+        }
+    }
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -290,6 +310,11 @@ TStringBuf TFileRingBuffer::Front() const
     return Impl->Front();
 }
 
+TStringBuf TFileRingBuffer::Back() const
+{
+    return Impl->Back();
+}
+
 void TFileRingBuffer::Pop()
 {
     Impl->Pop();
@@ -308,6 +333,11 @@ bool TFileRingBuffer::Empty() const
 TVector<TFileRingBuffer::TBrokenFileEntry> TFileRingBuffer::Validate() const
 {
     return Impl->Validate();
+}
+
+void TFileRingBuffer::Visit(const TVisitor& visitor) const
+{
+    return Impl->Visit(visitor);
 }
 
 }   // namespace NCloud
