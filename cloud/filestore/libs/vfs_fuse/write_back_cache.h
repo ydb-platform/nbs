@@ -5,24 +5,25 @@
 #include <cloud/filestore/libs/service/context.h>
 #include <cloud/filestore/libs/service/filestore.h>
 
-#include <cloud/storage/core/libs/common/file_ring_buffer.h>
+#include <memory>
 
 namespace NCloud::NFileStore::NFuse {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TWriteBackCache
+class TWriteBackCache final
 {
 private:
-    const IFileStorePtr Session;
-
-    TFileRingBuffer RequestsToProcess;
+    class TImpl;
+    std::unique_ptr<TImpl> Impl;
 
 public:
     TWriteBackCache(
         IFileStorePtr session,
         const TString& filePath,
         ui32 size);
+
+    ~TWriteBackCache();
 
     NThreading::TFuture<NProto::TReadDataResponse> ReadData(
         TCallContextPtr callContext,
@@ -32,6 +33,7 @@ public:
         std::shared_ptr<NProto::TWriteDataRequest> request);
 
     NThreading::TFuture<void> FlushData(ui64 handle);
+
     NThreading::TFuture<void> FlushAllData();
 };
 
