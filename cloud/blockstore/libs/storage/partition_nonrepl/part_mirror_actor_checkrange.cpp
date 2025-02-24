@@ -198,13 +198,6 @@ void TMirrorPartitionActor::HandleCheckRange(
         return;
     }
 
-    const auto blockRange = TBlockRange64::WithLength(
-        msg->Record.GetStartIndex(),
-        msg->Record.GetBlocksCount());
-
-    const auto requestIdentityKey = ev->Cookie;
-    RequestsInProgress.AddReadRequest(requestIdentityKey, {blockRange, msg->Record.GetHeaders().GetVolumeRequestId()});
-
     NCloud::Register<TCheckRangeActor>(
         ctx,
         SelfId(),
