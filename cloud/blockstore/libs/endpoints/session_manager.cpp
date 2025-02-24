@@ -205,26 +205,26 @@ public:
         TCallContextPtr callContext,
         std::shared_ptr<NProto::TMountVolumeRequest> request) override
     {
-        TString instanceId = request->GetInstanceId();
+        const TString instanceId = request->GetInstanceId();
         PrepareRequestHeaders(*request->MutableHeaders(), *callContext);
         auto future = Service->MountVolume(
             std::move(callContext),
             std::move(request));
 
         return future.Apply(
-            [instanceId = std::move(instanceId),
-             weakThis = weak_from_this()](const auto& f)
+            [=, weakSelf = weak_from_this()](const auto& f)
             {
-                auto sharedThis = weakThis.lock();
-                if (!sharedThis) {
+                auto self = weakSelf.lock();
+                if (!self) {
                     return f;
                 }
+
                 const auto& response = f.GetValue();
 
                 if (!HasError(response) && response.HasVolume()) {
-                    sharedThis->ServerStats->MountVolume(
+                    self->ServerStats->MountVolume(
                         response.GetVolume(),
-                        sharedThis->ClientId,
+                        self->ClientId,
                         instanceId);
                 }
                 return f;
@@ -243,20 +243,19 @@ public:
             std::move(request));
 
         return future.Apply(
-            [weakThis = weak_from_this(),
-             diskId = std::move(diskId)](const auto& f)
+            [=, weakSelf = weak_from_this()](const auto& f)
             {
-                auto sharedThis = weakThis.lock();
-                if (!sharedThis) {
+                auto self = weakSelf.lock();
+                if (!self) {
                     return f;
                 }
 
                 const auto& response = f.GetValue();
 
                 if (!HasError(response)) {
-                    sharedThis->ServerStats->UnmountVolume(
+                    self->ServerStats->UnmountVolume(
                         diskId,
-                        sharedThis->ClientId);
+                        self->ClientId);
                 }
                 return f;
             });
