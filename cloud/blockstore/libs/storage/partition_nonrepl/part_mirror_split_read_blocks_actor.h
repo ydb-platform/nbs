@@ -54,11 +54,7 @@ public:
         for (size_t i = 0; i < Requests.size(); ++i) {
             auto req = std::make_unique<typename TMethod::TRequest>();
             req->Record = std::move(Requests[i]);
-            NCloud::Send(
-                ctx,
-                ParentActorId,
-                std::move(req),
-                RequestInfo->Cookie + i);
+            NCloud::Send(ctx, ParentActorId, std::move(req), i);
             ++PendingRequests;
         }
 
@@ -94,7 +90,7 @@ private:
             return;
         }
 
-        auto responseIdx = ev->Cookie - RequestInfo->Cookie;
+        const auto responseIdx = ev->Cookie;
         Responses[responseIdx] = std::move(msg->Record);
 
         if (--PendingRequests == 0) {
