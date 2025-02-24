@@ -151,6 +151,7 @@ public:
 
 class TStorageDataClient final
     : public TClientBase
+    , public std::enable_shared_from_this<TStorageDataClient>
 {
 private:
     const IStoragePtr Storage;
@@ -204,24 +205,30 @@ public:
         TCallContextPtr callContext,
         std::shared_ptr<NProto::TMountVolumeRequest> request) override
     {
-        const TString instanceId = request->GetInstanceId();
+        TString instanceId = request->GetInstanceId();
         PrepareRequestHeaders(*request->MutableHeaders(), *callContext);
         auto future = Service->MountVolume(
             std::move(callContext),
             std::move(request));
 
-        const auto& serverStats = ServerStats;
-        return future.Apply([=] (const auto& f) {
-            const auto& response = f.GetValue();
+        return future.Apply(
+            [instanceId = std::move(instanceId),
+             weakThis = weak_from_this()](const auto& f)
+            {
+                auto sharedThis = weakThis.lock();
+                if (!sharedThis) {
+                    return f;
+                }
+                const auto& response = f.GetValue();
 
-            if (!HasError(response) && response.HasVolume()) {
-                serverStats->MountVolume(
-                    response.GetVolume(),
-                    ClientId,
-                    instanceId);
-            }
-            return f;
-        });
+                if (!HasError(response) && response.HasVolume()) {
+                    sharedThis->ServerStats->MountVolume(
+                        response.GetVolume(),
+                        sharedThis->ClientId,
+                        instanceId);
+                }
+                return f;
+            });
     }
 
     TFuture<NProto::TUnmountVolumeResponse> UnmountVolume(
@@ -235,15 +242,24 @@ public:
             std::move(callContext),
             std::move(request));
 
-        const auto& serverStats = ServerStats;
-        return future.Apply([=, diskId = std::move(diskId)] (const auto& f) {
-            const auto& response = f.GetValue();
+        return future.Apply(
+            [weakThis = weak_from_this(),
+             diskId = std::move(diskId)](const auto& f)
+            {
+                auto sharedThis = weakThis.lock();
+                if (!sharedThis) {
+                    return f;
+                }
 
-            if (!HasError(response)) {
-                serverStats->UnmountVolume(diskId, ClientId);
-            }
-            return f;
-        });
+                const auto& response = f.GetValue();
+
+                if (!HasError(response)) {
+                    sharedThis->ServerStats->UnmountVolume(
+                        diskId,
+                        sharedThis->ClientId);
+                }
+                return f;
+            });
     }
 
 private:
