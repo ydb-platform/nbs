@@ -49,7 +49,7 @@ TNonreplicatedPartitionMigrationActor::TNonreplicatedPartitionMigrationActor(
 void TNonreplicatedPartitionMigrationActor::OnBootstrap(
     const NActors::TActorContext& ctx)
 {
-    auto srcActorId = CreateSrcActor(ctx);\
+    auto srcActorId = CreateSrcActor(ctx);
     InitWork(
         ctx,
         MigrationSrcActorId.value_or(srcActorId),
@@ -166,15 +166,14 @@ NActors::TActorId TNonreplicatedPartitionMigrationActor::CreateSrcActor(
 {
     auto devices = SrcConfig->GetDevices();
     for (auto& device: devices) {
-        auto* migrationTarget = FindIfPtr(
-            Migrations,
-            [&](const NProto::TDeviceMigration& m)
-            {
-                return m.GetTargetDevice().GetDeviceUUID() ==
-                       device.GetDeviceUUID();
-            });
-
-        if (migrationTarget) {
+        if (AnyOf(
+                Migrations,
+                [&](const NProto::TDeviceMigration& m)
+                {
+                    return m.GetTargetDevice().GetDeviceUUID() ==
+                           device.GetDeviceUUID();
+                }))
+        {
             device.ClearDeviceUUID();
         }
     }
@@ -206,7 +205,6 @@ NActors::TActorId TNonreplicatedPartitionMigrationActor::CreateDstActor(
     ui64 blockIndex = 0;
     auto devices = SrcConfig->GetDevices();
     for (auto& device: devices) {
-        Cerr << "Device uuid: " << device.GetDeviceUUID() << Endl;
         auto* migrationSource = FindIfPtr(
             Migrations,
             [&](const NProto::TDeviceMigration& m)
@@ -215,7 +213,7 @@ NActors::TActorId TNonreplicatedPartitionMigrationActor::CreateDstActor(
                        m.GetSourceDeviceId() == device.GetDeviceUUID();
             });
 
-        auto* migrationTarget = FindIfPtr(
+        const auto isMigrationTarget = AnyOf(
             Migrations,
             [&](const NProto::TDeviceMigration& m)
             {
@@ -243,7 +241,7 @@ NActors::TActorId TNonreplicatedPartitionMigrationActor::CreateDstActor(
             }
 
             device.CopyFrom(migrationSource->GetTargetDevice());
-        } else if (!migrationTarget) {
+        } else if (!isMigrationTarget) {
             // Skip this device for migration
             MarkMigratedBlocks(
                 TBlockRange64::WithLength(blockIndex, device.GetBlocksCount()));
