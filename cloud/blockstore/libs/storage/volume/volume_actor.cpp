@@ -1138,6 +1138,7 @@ STFUNC(TVolumeActor::StateZombie)
         IgnoreFunc(TEvVolumePrivate::TEvDeviceTimeoutedRequest);
         IgnoreFunc(TEvVolumePrivate::TEvUpdateSmartMigrationState);
         IgnoreFunc(TEvVolumePrivate::TEvSmartMigrationFinished);
+        IgnoreFunc(TEvVolumePrivate::TEvAcquireDiskIfNeeded);
 
         IgnoreFunc(TEvStatsService::TEvVolumePartCounters);
 
