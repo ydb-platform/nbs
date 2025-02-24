@@ -429,6 +429,7 @@ void TDiskRegistryState::AllowNotifications(
         return;
     }
 
+    Y_DEBUG_ABORT_UNLESS(IsDiskRegistryMediaKind(disk.MediaKind));
     if (!IsReliableDiskRegistryMediaKind(disk.MediaKind)) {
         NotificationSystem.AllowNotifications(diskId);
     }
@@ -5624,14 +5625,13 @@ NProto::EDiskState TDiskRegistryState::CalculateDiskState(
     const TString& diskId,
     const TDiskState& disk) const
 {
-    for (ui32 i = 0; i < disk.ReplicaCount + 1; ++i) {
-        auto replicaId = GetReplicaDiskId(diskId, i);
-        if (GetDiskState(replicaId) == NProto::DISK_STATE_WARNING) {
-            return NProto::DISK_STATE_WARNING;
-        }
-    }
-    // There are no devices in master disk, so we can return now.
     if (disk.ReplicaCount != 0) {
+        for (ui32 i = 0; i < disk.ReplicaCount + 1; ++i) {
+            auto replicaId = GetReplicaDiskId(diskId, i);
+            if (GetDiskState(replicaId) == NProto::DISK_STATE_WARNING) {
+                return NProto::DISK_STATE_WARNING;
+            }
+        }
         return NProto::DISK_STATE_ONLINE;
     }
 
