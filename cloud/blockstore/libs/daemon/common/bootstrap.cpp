@@ -556,7 +556,9 @@ void TBootstrapBase::Init()
             Logging,
             Configs->ServerConfig->GetNbdRequestTimeout(),
             Configs->ServerConfig->GetNbdConnectionTimeout(),
-            true);  // reconfigure
+            true,   // reconfigure
+            false   // without libnl
+        );
     }
 
     // The only case we want kernel to retry requests is when the socket is dead

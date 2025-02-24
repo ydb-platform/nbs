@@ -16,7 +16,7 @@ class EndpointProxy(Daemon):
         command = [yatest_common.binary_path(
             "cloud/blockstore/apps/endpoint_proxy/blockstore-endpoint-proxy")]
         command += [
-            "--unix-socket-path", unix_socket_path, "--verbose"
+            "--unix-socket-path", unix_socket_path, "--verbose", "--without-libnl",
         ]
         if stored_endpoints_path:
             command += ["--stored-endpoints-path", stored_endpoints_path]
