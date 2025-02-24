@@ -82,7 +82,25 @@ void TDiskAgentActor::HandleSecureEraseDevice(
     const auto& request = ev->Get()->Record;
     const auto& deviceId = request.GetDeviceUUID();
 
-    LOG_INFO_S(ctx, TBlockStoreComponents::DISK_AGENT,
+    if (!State->FindDeviceConfig(deviceId)) {
+        LOG_WARN(
+            ctx,
+            TBlockStoreComponents::DISK_AGENT,
+            "Received secure erase for unknown device[deviceUUID = %s]",
+            deviceId.c_str());
+        NCloud::Reply(
+            ctx,
+            *ev,
+            std::make_unique<TEvDiskAgent::TEvSecureEraseDeviceResponse>(
+                MakeError(
+                    E_NOT_FOUND,
+                    Sprintf("Unknown deviceId = %s", deviceId.c_str()))));
+        return;
+    }
+
+    LOG_INFO_S(
+        ctx,
+        TBlockStoreComponents::DISK_AGENT,
         "Secure erase device " << deviceId.Quote());
 
     auto& pendingRequests = SecureErasePendingRequests[deviceId];

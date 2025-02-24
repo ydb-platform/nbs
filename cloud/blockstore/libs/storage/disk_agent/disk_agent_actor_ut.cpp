@@ -2026,6 +2026,26 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
         UNIT_ASSERT(!HasError(response->Record));
     }
 
+    Y_UNIT_TEST(ShouldNotProcessUnknownDevices)
+    {
+        TTestBasicRuntime runtime;
+
+        auto env = TTestEnvBuilder(runtime)
+                       .With(DiskAgentConfig({
+                           "MemoryDevice1",
+                           "MemoryDevice2",
+                           "MemoryDevice3",
+                       }))
+                       .Build();
+
+        TDiskAgentClient diskAgent(runtime);
+        diskAgent.WaitReady();
+
+        diskAgent.SendSecureEraseDeviceRequest("UnknownDevice");
+        auto resp = diskAgent.RecvSecureEraseDeviceResponse();
+        UNIT_ASSERT_VALUES_EQUAL(E_NOT_FOUND, resp->GetError().GetCode());
+    }
+
     Y_UNIT_TEST(ShouldUpdateStats)
     {
         auto const workingDir = TryGetRamDrivePath();
