@@ -451,6 +451,7 @@ func TestResizeDiskFailureBecauseSizeIsNotDivisibleByBlockSize(t *testing.T) {
 		65537,
 	)
 	require.Error(t, err)
+	require.True(t, isInternalError(err))
 }
 
 func TestResizeDiskFailureBecauseSizeDecreaseIsForbidden(t *testing.T) {
@@ -467,6 +468,7 @@ func TestResizeDiskFailureBecauseSizeDecreaseIsForbidden(t *testing.T) {
 		20480,
 	)
 	require.Error(t, err)
+	require.True(t, isInternalError(err))
 }
 
 func TestResizeDiskFailureWhileChekpointing(t *testing.T) {
@@ -641,6 +643,7 @@ func TestRebaseDisk(t *testing.T) {
 	require.Error(t, err)
 	require.True(t, errors.Is(err, errors.NewEmptyNonRetriableError()))
 	require.ErrorContains(t, err, "unexpected")
+	require.True(t, isInternalError(err))
 }
 
 func TestAssignDisk(t *testing.T) {
@@ -783,10 +786,12 @@ func TestIsNotFoundError(t *testing.T) {
 	_, err := client.Describe(ctx, "unexisting")
 	require.Error(t, err)
 	require.True(t, nbs.IsNotFoundError(err))
+	require.True(t, isInternalError(err))
 
 	// Should work even if error is wrapped.
 	err = errors.NewNonRetriableError(err)
 	require.True(t, nbs.IsNotFoundError(err))
+	require.True(t, isInternalError(err))
 }
 
 func TestMountRW(t *testing.T) {
@@ -857,6 +862,7 @@ func TestMountRWDoesNotConflictWithBackgroundRediscover(t *testing.T) {
 	err = session.Write(ctx, 0, block)
 	require.Error(t, err)
 	require.True(t, errors.Is(err, errors.NewEmptyRetriableError()))
+	require.True(t, isInternalError(err))
 
 	session, err = client.MountRW(
 		ctx,
@@ -910,10 +916,12 @@ func TestFreeze(t *testing.T) {
 	err = session.Write(ctx, 0, bytes)
 	require.Error(t, err)
 	require.True(t, errors.Is(err, errors.NewEmptyRetriableError()))
+	require.True(t, isInternalError(err))
 
 	err = session.Zero(ctx, 0, 1)
 	require.Error(t, err)
 	require.True(t, errors.Is(err, errors.NewEmptyRetriableError()))
+	require.True(t, isInternalError(err))
 
 	data := make([]byte, 4096)
 	zero := false
@@ -948,6 +956,7 @@ func TestScanDisk(t *testing.T) {
 
 	_, err = client.GetScanDiskStatus(ctx, diskID)
 	require.Error(t, err)
+	require.True(t, isInternalError(err))
 
 	batchSize := uint32(10)
 
@@ -1068,6 +1077,7 @@ func TestCloneDiskFromOneZoneToAnother(t *testing.T) {
 	require.Error(t, err)
 	require.True(t, errors.Is(err, errors.NewEmptyNonRetriableError()))
 	require.ErrorContains(t, err, "Path not found")
+	require.True(t, isInternalError(err))
 
 	err = client.Create(ctx, nbs.CreateDiskParams{
 		ID:          diskID,
@@ -1112,6 +1122,7 @@ func TestCloneDiskFromOneZoneToAnother(t *testing.T) {
 	)
 	require.Error(t, err)
 	require.True(t, errors.CanRetry(err))
+	require.True(t, isInternalError(err))
 
 	// Next attempt should succeed.
 	err = multiZoneClient.Clone(
@@ -1134,6 +1145,7 @@ func TestCloneDiskFromOneZoneToAnother(t *testing.T) {
 	)
 	require.Error(t, err)
 	require.ErrorContains(t, err, "config mismatch")
+	require.True(t, isInternalError(err))
 
 	err = otherZoneClient.FinishFillDisk(
 		ctx,
@@ -1165,6 +1177,7 @@ func TestCloneDiskFromOneZoneToAnother(t *testing.T) {
 	require.Error(t, err)
 	require.True(t, errors.Is(err, errors.NewEmptyNonRetriableError()))
 	require.ErrorContains(t, err, "filling is finished")
+	require.True(t, isInternalError(err))
 
 	// Old disk-target should survive.
 	params, err = otherZoneClient.Describe(ctx, diskID)
@@ -1184,6 +1197,7 @@ func TestCloneDiskFromOneZoneToAnother(t *testing.T) {
 	)
 	require.Error(t, err)
 	require.True(t, !errors.CanRetry(err))
+	require.True(t, isInternalError(err))
 }
 
 func TestCloneDiskFromOneZoneToAnotherConcurrently(t *testing.T) {
@@ -1281,6 +1295,7 @@ func TestFinishFillDisk(t *testing.T) {
 	)
 	require.Error(t, err)
 	require.ErrorContains(t, err, "Wrong FillGeneration")
+	require.True(t, isInternalError(err))
 
 	err = otherZoneClient.FinishFillDisk(
 		ctx,
@@ -1608,9 +1623,11 @@ func TestDiskRegistryDisableDevices(t *testing.T) {
 	// Device is disabled, all read and write requests should return an error.
 	err = session.Write(ctx, 0, data)
 	require.Error(t, err)
+	require.True(t, isInternalError(err))
 	zero := false
 	err = session.Read(ctx, 0, 1, "", data, &zero)
 	require.Error(t, err)
+	require.True(t, isInternalError(err))
 
 	err = client.ChangeDeviceStateToOnline(ctx, deviceUUIDs[0], t.Name())
 	require.NoError(t, err)
