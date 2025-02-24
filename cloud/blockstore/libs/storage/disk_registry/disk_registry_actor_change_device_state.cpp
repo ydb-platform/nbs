@@ -98,7 +98,7 @@ void TChangeDeviceStateActor::Notify(
     BuildNotifyPageWithRedirect(
         out,
         std::move(message),
-        TStringBuilder() << "./app?action=dev&TabletId=" << TabletID
+        TStringBuilder() << "./app?action=dev&TabletID=" << TabletID
                          << "&DeviceUUID=" << DeviceUUID,
         alertLevel);
 
