@@ -6656,6 +6656,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         const auto block = tabletConfig.BlockSize;
         const auto nodeCount = NodeGroupSize - 2;
 
+        // Disable conditions for automatic compaction and cleanup triggering
         NProto::TStorageConfig storageConfig;
         storageConfig.SetNewCompactionEnabled(true);
         storageConfig.SetCompactionThresholdAverage(999'999);
@@ -6689,6 +6690,15 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
             UNIT_ASSERT_VALUES_EQUAL(ids[i], i + 2);
         }
 
+        ui32 rangeId = GetMixedRangeIndex(ids[0], 0);
+
+        // Check that all the nodes share the same range
+        for (ui32 i = 1; i < nodeCount; i++) {
+            UNIT_ASSERT_VALUES_EQUAL(
+                rangeId,
+                GetMixedRangeIndex(ids[i], 0));
+        }
+
         // Write data to each node then run compaction manually and ensure
         // that the data has been consolidated to a single blob by calling
         // compaction manually.
@@ -6712,7 +6722,6 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
                 stats.GetCompactionRangeStats(0).GetGarbageBlockCount());
         }
 
-        ui32 rangeId = GetMixedRangeIndex(ids[0], 0);
         tablet.Compaction(rangeId);
         {
             auto response = tablet.GetStorageStats(1);
@@ -6777,6 +6786,8 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
     {
         const auto block = tabletConfig.BlockSize;
 
+        // Disable conditions for automatic compaction and cleanup triggering
+        // except 20% garbage threshold
         NProto::TStorageConfig storageConfig;
         storageConfig.SetNewCompactionEnabled(true);
         storageConfig.SetCompactionThresholdAverage(999'999);
@@ -6809,7 +6820,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
 
         // Truncate the file and run cleanup manually.
         // The garbage fraction should be below the threshold.
-        // Automatic compaction shouldn't have place because.
+        // Automatic compaction shouldn't have place.
         {
             TSetNodeAttrArgs args(id);
             args.SetFlag(NProto::TSetNodeAttrRequest::F_SET_ATTR_SIZE);
@@ -6836,7 +6847,13 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
 
         // Truncate the file a bit more and run cleanup manually.
         // The garbage fraction should be above the threshold.
-        // Automatic compaction shouldn't have place because.
+        // Automatic compaction should've been triggered.
+        {
+            TSetNodeAttrArgs args(id);
+            args.SetFlag(NProto::TSetNodeAttrRequest::F_SET_ATTR_SIZE);
+            args.SetSize(block * blocksCountToTriggerCompaction);
+            tablet.SetNodeAttr(args);
+        }
         {
             TSetNodeAttrArgs args(id);
             args.SetFlag(NProto::TSetNodeAttrRequest::F_SET_ATTR_SIZE);

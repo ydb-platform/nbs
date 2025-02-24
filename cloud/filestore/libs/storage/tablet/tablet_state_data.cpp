@@ -699,17 +699,17 @@ TWriteMixedBlocksResult TIndexTabletState::WriteMixedBlocks(
 
     auto rebaseResult = RebaseMixedBlocks(blocks);
 
-    if (!rebaseResult.LiveBlocks) {
+    if (!rebaseResult.LiveBlocksCount) {
         AddGarbageBlob(db, blobId);
 
         return {.GarbageBlocksCount = 0, .NewBlob = false};
     }
 
-    if (rebaseResult.GarbageBlocks) {
-        IncrementGarbageBlocksCount(db, rebaseResult.GarbageBlocks);
+    if (rebaseResult.GarbageBlocksCount) {
+        IncrementGarbageBlocksCount(db, rebaseResult.GarbageBlocksCount);
     }
-    if (rebaseResult.CheckpointBlocks) {
-        IncrementCheckpointBlocksCount(db, rebaseResult.CheckpointBlocks);
+    if (rebaseResult.CheckpointBlocksCount) {
+        IncrementCheckpointBlocksCount(db, rebaseResult.CheckpointBlocksCount);
     }
 
     for (ui64 checkpointId: rebaseResult.UsedCheckpoints) {
@@ -724,8 +724,8 @@ TWriteMixedBlocksResult TIndexTabletState::WriteMixedBlocks(
         rangeId,
         blobId,
         blockList,
-        rebaseResult.GarbageBlocks,
-        rebaseResult.CheckpointBlocks);
+        rebaseResult.GarbageBlocksCount,
+        rebaseResult.CheckpointBlocksCount);
 
     IncrementMixedBlobsCount(db);
     IncrementMixedBlocksCount(db, blocks.size());
@@ -736,15 +736,18 @@ TWriteMixedBlocksResult TIndexTabletState::WriteMixedBlocks(
             blobId,
             std::move(blockList),
             TMixedBlobStats {
-                rebaseResult.GarbageBlocks,
-                rebaseResult.CheckpointBlocks
+                rebaseResult.GarbageBlocksCount,
+                rebaseResult.CheckpointBlocksCount
             });
         TABLET_VERIFY(added);
     }
 
     InvalidateReadAheadCache(blocks[0].NodeId);
 
-    return {.GarbageBlocksCount = rebaseResult.GarbageBlocks, .NewBlob = true};
+    return {
+        .GarbageBlocksCount = rebaseResult.GarbageBlocksCount,
+        .NewBlob = true
+    };
 }
 
 void TIndexTabletState::DeleteMixedBlocks(
@@ -770,11 +773,11 @@ TDeleteMixedBlocksResult TIndexTabletState::DeleteMixedBlocks(
     bool removed = Impl->MixedBlocks.RemoveBlocks(rangeId, blobId, &stats);
     TABLET_VERIFY(removed);
 
-    if (stats.GarbageBlocks) {
-        DecrementGarbageBlocksCount(db, stats.GarbageBlocks);
+    if (stats.GarbageBlocksCount) {
+        DecrementGarbageBlocksCount(db, stats.GarbageBlocksCount);
     }
-    if (stats.CheckpointBlocks) {
-        DecrementCheckpointBlocksCount(db, stats.CheckpointBlocks);
+    if (stats.CheckpointBlocksCount) {
+        DecrementCheckpointBlocksCount(db, stats.CheckpointBlocksCount);
     }
 
     db.DeleteMixedBlocks(rangeId, blobId);
@@ -782,7 +785,7 @@ TDeleteMixedBlocksResult TIndexTabletState::DeleteMixedBlocks(
     DecrementMixedBlobsCount(db);
     DecrementMixedBlocksCount(db, blocks.size());
 
-    return { stats.GarbageBlocks };
+    return {.GarbageBlocksCount = stats.GarbageBlocksCount};
 }
 
 TRebaseResult TIndexTabletState::RebaseMixedBlocks(TVector<TBlock>& blocks) const
@@ -1002,11 +1005,11 @@ void TIndexTabletState::RewriteMixedBlocks(
     /*const*/ TMixedBlobMeta& blob,
     const TMixedBlobStats& stats)
 {
-    if (stats.GarbageBlocks) {
-        DecrementGarbageBlocksCount(db, stats.GarbageBlocks);
+    if (stats.GarbageBlocksCount) {
+        DecrementGarbageBlocksCount(db, stats.GarbageBlocksCount);
     }
-    if (stats.CheckpointBlocks) {
-        DecrementCheckpointBlocksCount(db, stats.CheckpointBlocks);
+    if (stats.CheckpointBlocksCount) {
+        DecrementCheckpointBlocksCount(db, stats.CheckpointBlocksCount);
     }
 
     db.DeleteMixedBlocks(rangeId, blob.BlobId);
@@ -1016,17 +1019,17 @@ void TIndexTabletState::RewriteMixedBlocks(
 
     auto rebaseResult = RebaseMixedBlocks(blob.Blocks);
 
-    if (!rebaseResult.LiveBlocks) {
+    if (!rebaseResult.LiveBlocksCount) {
         DeleteMixedBlocks(db, blob.BlobId, blob.Blocks);
 
         return;
     }
 
-    if (rebaseResult.GarbageBlocks) {
-        IncrementGarbageBlocksCount(db, rebaseResult.GarbageBlocks);
+    if (rebaseResult.GarbageBlocksCount) {
+        IncrementGarbageBlocksCount(db, rebaseResult.GarbageBlocksCount);
     }
-    if (rebaseResult.CheckpointBlocks) {
-        IncrementCheckpointBlocksCount(db, rebaseResult.CheckpointBlocks);
+    if (rebaseResult.CheckpointBlocksCount) {
+        IncrementCheckpointBlocksCount(db, rebaseResult.CheckpointBlocksCount);
     }
 
     for (ui64 checkpointId: rebaseResult.UsedCheckpoints) {
@@ -1039,8 +1042,8 @@ void TIndexTabletState::RewriteMixedBlocks(
         rangeId,
         blob.BlobId,
         blockList,
-        rebaseResult.GarbageBlocks,
-        rebaseResult.CheckpointBlocks);
+        rebaseResult.GarbageBlocksCount,
+        rebaseResult.CheckpointBlocksCount);
 
     if (Impl->MixedBlocks.IsLoaded(rangeId)) {
         bool removed = Impl->MixedBlocks.RemoveBlocks(rangeId, blob.BlobId);
@@ -1051,8 +1054,8 @@ void TIndexTabletState::RewriteMixedBlocks(
             blob.BlobId,
             std::move(blockList),
             TMixedBlobStats {
-                rebaseResult.GarbageBlocks,
-                rebaseResult.CheckpointBlocks
+                rebaseResult.GarbageBlocksCount,
+                rebaseResult.CheckpointBlocksCount
             });
         TABLET_VERIFY(added);
     }
