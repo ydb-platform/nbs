@@ -258,7 +258,11 @@ func run(
 			migrationDstS3Config := migrationDstSnapshotConfig.GetPersistenceConfig().GetS3Config()
 			if migrationDstS3Config != nil {
 				registry := mon.NewRegistry("migration_s3_client")
-				migrationDstS3, err = persistence.NewS3ClientFromConfig(migrationDstS3Config, registry)
+				migrationDstS3, err = persistence.NewS3ClientFromConfig(
+					migrationDstS3Config,
+					registry,
+					nil, // availabilityMonitoring
+				)
 				if err != nil {
 					return err
 				}
