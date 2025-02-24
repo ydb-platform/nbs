@@ -514,12 +514,18 @@ public:
 
 IRetryPolicyPtr CreateRetryPolicy(
     TClientAppConfigPtr config,
-    NProto::EStorageMediaKind mediaKind)
+    std::optional<NProto::EStorageMediaKind> mediaKind)
 {
-    const auto initialRetryTimeout =
-        IsDiskRegistryMediaKind(mediaKind)
-            ? config->GetDiskRegistryBasedDiskInitialRetryTimeout()
-            : config->GetYDBBasedDiskInitialRetryTimeout();
+    TDuration initialRetryTimeout = config->GetRetryTimeoutIncrement();
+    if (mediaKind.has_value()) {
+        if (IsDiskRegistryMediaKind(*mediaKind)) {
+            initialRetryTimeout =
+                config->GetDiskRegistryBasedDiskInitialRetryTimeout();
+        } else {
+            initialRetryTimeout = config->GetYDBBasedDiskInitialRetryTimeout();
+        }
+    }
+
     return std::make_shared<TRetryPolicy>(
         std::move(config),
         initialRetryTimeout);

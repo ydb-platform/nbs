@@ -512,8 +512,7 @@ void TCommand::Init()
 
         auto endpoint = Client->CreateEndpoint();
 
-        auto retryPolicy =
-            CreateRetryPolicy(ClientConfig, NProto::STORAGE_MEDIA_DEFAULT);
+        auto retryPolicy = CreateRetryPolicy(ClientConfig, std::nullopt);
 
         ClientEndpoint = CreateDurableClient(
             ClientConfig,

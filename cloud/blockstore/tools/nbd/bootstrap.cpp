@@ -427,8 +427,7 @@ void TBootstrap::InitControlClient()
 
     ClientEndpoint = Client->CreateEndpoint();
 
-    auto retryPolicy =
-        CreateRetryPolicy(ClientConfig, NProto::STORAGE_MEDIA_DEFAULT);
+    auto retryPolicy = CreateRetryPolicy(ClientConfig, std::nullopt);
 
     ClientEndpoint = CreateDurableClient(
         ClientConfig,

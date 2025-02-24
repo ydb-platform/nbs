@@ -853,7 +853,7 @@ Y_UNIT_TEST_SUITE(TSocketEndpointListenerTest)
         auto clientEndpoint = CreateDurableClient(
             config,
             bootstrap.GetClientEndpoint(),
-            CreateRetryPolicy(config, NProto::STORAGE_MEDIA_DEFAULT),
+            CreateRetryPolicy(config, std::nullopt),
             logging,
             bootstrap.GetTimer(),
             bootstrap.GetScheduler(),

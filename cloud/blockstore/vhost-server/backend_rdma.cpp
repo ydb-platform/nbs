@@ -98,9 +98,7 @@ private:
 
 public:
     explicit TRetryPolicy(NClient::TClientAppConfigPtr config)
-        : Impl(NClient::CreateRetryPolicy(
-              std::move(config),
-              NProto::STORAGE_MEDIA_DEFAULT))
+        : Impl(NClient::CreateRetryPolicy(std::move(config), std::nullopt))
     {}
 
     NClient::TRetrySpec ShouldRetry(

@@ -888,6 +888,75 @@ Y_UNIT_TEST_SUITE(TDurableClientTest)
         }
     }
 
+    Y_UNIT_TEST(ShouldCalculateCorrectTimeoutForDefaultPolicy)
+    {
+        NProto::TClientAppConfig configProto;
+        auto& clientConfigProto = *configProto.MutableClientConfig();
+        clientConfigProto.SetRetryTimeoutIncrement(3'000);
+        clientConfigProto.SetConnectionErrorMaxRetryTimeout(7'000);
+        // Should not be used in this test.
+        clientConfigProto.SetDiskRegistryBasedDiskInitialRetryTimeout(500);
+        clientConfigProto.SetYDBBasedDiskInitialRetryTimeout(500);
+        auto config = std::make_shared<TClientAppConfig>(configProto);
+
+        auto policy = CreateRetryPolicy(config, std::nullopt);
+
+        {
+            TRetryState state;
+
+            auto spec = policy->ShouldRetry(state, MakeError(E_REJECTED));
+            UNIT_ASSERT(spec.ShouldRetry);
+            UNIT_ASSERT_VALUES_EQUAL(TDuration::Seconds(3), spec.Backoff);
+
+            state.Retries++;
+            spec = policy->ShouldRetry(state, MakeError(E_REJECTED));
+            UNIT_ASSERT(spec.ShouldRetry);
+            UNIT_ASSERT_VALUES_EQUAL(TDuration::Seconds(6), spec.Backoff);
+
+            state.Retries++;
+            spec = policy->ShouldRetry(state, MakeError(E_GRPC_UNAVAILABLE));
+            UNIT_ASSERT(spec.ShouldRetry);
+            UNIT_ASSERT_VALUES_EQUAL(TDuration::Seconds(7), spec.Backoff);
+
+            state.Retries++;
+            spec = policy->ShouldRetry(state, MakeError(E_REJECTED));
+            UNIT_ASSERT(spec.ShouldRetry);
+            UNIT_ASSERT_VALUES_EQUAL(TDuration::Seconds(9), spec.Backoff);
+        }
+
+        {
+            TRetryState state;
+
+            auto spec = policy->ShouldRetry(state, MakeError(S_OK));
+            UNIT_ASSERT(!spec.ShouldRetry);
+            UNIT_ASSERT_VALUES_EQUAL(TDuration::Zero(), spec.Backoff);
+
+            spec = policy->ShouldRetry(state, MakeError(E_GRPC_UNAVAILABLE));
+            UNIT_ASSERT(spec.ShouldRetry);
+            UNIT_ASSERT_VALUES_EQUAL(TDuration::Seconds(3), spec.Backoff);
+
+            state.Retries++;
+            spec = policy->ShouldRetry(state, MakeError(E_GRPC_UNAVAILABLE));
+            UNIT_ASSERT(spec.ShouldRetry);
+            UNIT_ASSERT_VALUES_EQUAL(TDuration::Seconds(6), spec.Backoff);
+
+            state.Retries++;
+            spec = policy->ShouldRetry(state, MakeError(E_GRPC_UNAVAILABLE));
+            UNIT_ASSERT(spec.ShouldRetry);
+            UNIT_ASSERT_VALUES_EQUAL(TDuration::Seconds(7), spec.Backoff);
+
+            state.Retries++;
+            spec = policy->ShouldRetry(state, MakeError(E_GRPC_UNAVAILABLE));
+            UNIT_ASSERT(spec.ShouldRetry);
+            UNIT_ASSERT_VALUES_EQUAL(TDuration::Seconds(7), spec.Backoff);
+
+            state.Retries++;
+            spec = policy->ShouldRetry(state, MakeError(E_REJECTED));
+            UNIT_ASSERT(spec.ShouldRetry);
+            UNIT_ASSERT_VALUES_EQUAL(TDuration::Seconds(9), spec.Backoff);
+        }
+    }
+
     Y_UNIT_TEST(ShouldReturnNonRetriableErrorAfterRetryTimeout)
     {
         auto client = std::make_shared<TTestService>();
