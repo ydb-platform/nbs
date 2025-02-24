@@ -870,17 +870,14 @@ public:
     TImpl(size_t size)
         : ChunkCount(ComputeChunkCount(size))
         , CompressedChunkCount(ChunkCount)
-        , Chunks(new TChunk[ChunkCount])
+        , Chunks(std::make_unique<TChunk[]>(ChunkCount))
     {
     }
 
-    ~TImpl()
-    {
-        delete[] Chunks;
-    }
+    ~TImpl() = default;
 
 public:
-    TRangeSerializer RangeSerializer(ui64 b, ui64 e) const
+    [[nodiscard]] TRangeSerializer RangeSerializer(ui64 b, ui64 e) const
     {
         const auto rangeInfo = NPrivate::RangeInfo<ui64, CHUNK_SIZE>(b, e);
         return {*this, rangeInfo.First, rangeInfo.Last};
@@ -995,12 +992,12 @@ public:
         return target.Count();
     }
 
-    ui64 Count() const
+    [[nodiscard]] ui64 Count() const
     {
         return Count(0, ChunkCount * CHUNK_SIZE);
     }
 
-    ui64 Count(ui64 b, ui64 e) const
+    [[nodiscard]] ui64 Count(ui64 b, ui64 e) const
     {
         const auto rangeInfo = NPrivate::RangeInfo<ui64, CHUNK_SIZE>(b, e);
         Y_DEBUG_ABORT_UNLESS(rangeInfo.Last < ChunkCount);
@@ -1024,13 +1021,13 @@ public:
         return c;
     }
 
-    bool Test(ui64 i) const
+    [[nodiscard]] bool Test(ui64 i) const
     {
         Y_DEBUG_ABORT_UNLESS(i / CHUNK_SIZE < ChunkCount);
         return Chunks[i / CHUNK_SIZE].Test(i % CHUNK_SIZE);
     }
 
-    ui64 MemSize() const {
+    [[nodiscard]] ui64 MemSize() const {
         Y_DEBUG_ABORT_UNLESS(ChunkCount >= CompressedChunkCount);
         const auto plainChunkCount = ChunkCount - CompressedChunkCount;
         return ChunkCount * sizeof(TChunk)
@@ -1038,9 +1035,9 @@ public:
     }
 
 private:
-    ui64 ChunkCount;
+    const ui64 ChunkCount;
     ui64 CompressedChunkCount;
-    TChunk* Chunks;
+    const std::unique_ptr<TChunk[]> Chunks;
 
     friend class TCompressedBitmap::TRangeSerializer;
 };
@@ -1058,15 +1055,10 @@ TCompressedBitmap::TRangeSerializer::TRangeSerializer(
     for (ui64 i = First; i <= Last; ++i) {
         size += TCompressedBitmap::TImpl::ByteSize(Parent->Chunks[i]);
     }
-    Buffer = size ? new char[size] : nullptr;
+    Buffer = size ? std::make_unique<char[]>(size) : nullptr;
 }
 
-TCompressedBitmap::TRangeSerializer::~TRangeSerializer()
-{
-    if (Buffer) {
-        delete[] Buffer;
-    }
-}
+TCompressedBitmap::TRangeSerializer::~TRangeSerializer() = default;
 
 bool TCompressedBitmap::TRangeSerializer::Next(TSerializedChunk* sc)
 {
@@ -1081,8 +1073,8 @@ bool TCompressedBitmap::TRangeSerializer::Next(TSerializedChunk* sc)
     Y_DEBUG_ABORT_UNLESS(First < Parent->ChunkCount);
     const auto& chunk = Parent->Chunks[First];
     sc->ChunkIdx = First;
-    auto len = TCompressedBitmap::TImpl::Serialize(chunk, Buffer + BufferPos);
-    sc->Data = TStringBuf(Buffer + BufferPos, len);
+    auto len = TCompressedBitmap::TImpl::Serialize(chunk, Buffer.get() + BufferPos);
+    sc->Data = TStringBuf(Buffer.get() + BufferPos, len);
     BufferPos += len;
     ++First;
     return true;
@@ -1096,9 +1088,11 @@ TCompressedBitmap::TCompressedBitmap(size_t size)
 
 TCompressedBitmap::~TCompressedBitmap() = default;
 
-TCompressedBitmap::TCompressedBitmap(TCompressedBitmap&& other) = default;
+TCompressedBitmap::TCompressedBitmap(
+    TCompressedBitmap&& other) noexcept = default;
 
-TCompressedBitmap& TCompressedBitmap::operator=(TCompressedBitmap&& other) = default;
+TCompressedBitmap& TCompressedBitmap::operator=(
+    TCompressedBitmap&& other) noexcept = default;
 
 void TCompressedBitmap::Clear()
 {

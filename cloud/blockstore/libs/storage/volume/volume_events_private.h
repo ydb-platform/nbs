@@ -151,34 +151,34 @@ struct TEvVolumePrivate
     };
 
     //
-    // UpdateSmartMigrationState
+    // UpdateLaggingAgentMigrationState
     //
 
-    struct TUpdateSmartMigrationState
+    struct TUpdateLaggingAgentMigrationState
     {
         TString AgentId;
-        ui64 ProcessedBlockCount;
-        ui64 BlockCountNeedToBeProcessed;
+        ui64 CleanBlockCount;
+        ui64 DirtyBlockCount;
 
-        TUpdateSmartMigrationState(
-                TString agentId,
-                ui64 processedBlockCount,
-                ui64 blockCountNeedToBeProcessed)
+        TUpdateLaggingAgentMigrationState(
+            TString agentId,
+            ui64 cleanBlockCount,
+            ui64 dirtyBlockCount)
             : AgentId(std::move(agentId))
-            , ProcessedBlockCount(processedBlockCount)
-            , BlockCountNeedToBeProcessed(blockCountNeedToBeProcessed)
+            , CleanBlockCount(cleanBlockCount)
+            , DirtyBlockCount(dirtyBlockCount)
         {}
     };
 
     //
-    // SmartMigrationFinished
+    // LaggingAgentMigrationFinished
     //
 
-    struct TSmartMigrationFinished
+    struct TLaggingAgentMigrationFinished
     {
         const TString AgentId;
 
-        explicit TSmartMigrationFinished(TString agentId)
+        explicit TLaggingAgentMigrationFinished(TString agentId)
             : AgentId(std::move(agentId))
         {}
     };
@@ -411,8 +411,8 @@ struct TEvVolumePrivate
         EvDevicesAcquireFinished,
         EvDevicesReleaseFinished,
         EvReportLaggingDevicesToDR,
-        EvUpdateSmartMigrationState,
-        EvSmartMigrationFinished,
+        EvUpdateLaggingAgentMigrationState,
+        EvLaggingAgentMigrationFinished,
 
         EvEnd
     };
@@ -461,14 +461,14 @@ struct TEvVolumePrivate
         EvUpdateReadWriteClientInfo
     >;
 
-    using TEvUpdateSmartMigrationState = TRequestEvent<
-        TUpdateSmartMigrationState,
-        EvUpdateSmartMigrationState
+    using TEvUpdateLaggingAgentMigrationState = TRequestEvent<
+        TUpdateLaggingAgentMigrationState,
+        EvUpdateLaggingAgentMigrationState
     >;
 
-    using TEvSmartMigrationFinished = TRequestEvent<
-        TSmartMigrationFinished,
-        EvSmartMigrationFinished
+    using TEvLaggingAgentMigrationFinished = TRequestEvent<
+        TLaggingAgentMigrationFinished,
+        EvLaggingAgentMigrationFinished
     >;
 
     using TEvReportLaggingDevicesToDR = TRequestEvent<

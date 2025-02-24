@@ -101,6 +101,7 @@ namespace NCloud::NBlockStore {
     xxx(OverlappingRangesDuringMigrationDetected)                              \
     xxx(StartExternalEndpointError)                                            \
     xxx(EmptyRequestSgList)                                                    \
+    xxx(LaggingAgentsProxyWrongRecipientActor)                                 \
 // BLOCKSTORE_IMPOSSIBLE_EVENTS
 
 ////////////////////////////////////////////////////////////////////////////////

@@ -50,8 +50,10 @@ Y_UNIT_TEST_SUITE(TLaggingAgentVolumeTest)
         for (ui32 i = 0; i < AgentCount; i++) {
             agentStates.push_back(TDiskAgentStatePtr{});
         }
+        NProto::TStorageServiceConfig storageServiceConfig;
+        storageServiceConfig.SetLaggingDevicesForMirror3DisksEnabled(true);
         auto runtime = PrepareTestActorRuntime(
-            {},
+            std::move(storageServiceConfig),
             diskRegistryState,
             {},
             {},
@@ -96,26 +98,32 @@ Y_UNIT_TEST_SUITE(TLaggingAgentVolumeTest)
             "agent-3",
             replicas[1].GetDevices(0).GetAgentId());
 
-        std::optional<TEvPartition::TAddLaggingAgentRequest>
+        std::optional<TEvNonreplPartitionPrivate::TAddLaggingAgentRequest>
             addLaggingAgentRequest;
         runtime->SetEventFilter(
             [&](TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& event)
             {
                 switch (event->GetTypeRewrite()) {
-                    case TEvPartition::EvAddLaggingAgentRequest: {
-                        auto* msg = event->Get<
-                            TEvPartition::TEvAddLaggingAgentRequest>();
+                    case TEvNonreplPartitionPrivate::EvAddLaggingAgentRequest: {
+                        auto* msg = event->Get<TEvNonreplPartitionPrivate::
+                                                   TEvAddLaggingAgentRequest>();
                         UNIT_ASSERT(!addLaggingAgentRequest.has_value());
                         addLaggingAgentRequest = *msg;
                         return true;
                     }
-                    case TEvPartition::EvRemoveLaggingReplicaRequest: {
-                        auto* msg = event->Get<
-                            TEvPartition::TEvRemoveLaggingReplicaRequest>();
+                    case TEvNonreplPartitionPrivate::
+                        EvRemoveLaggingAgentRequest: {
+                        auto* msg =
+                            event->Get<TEvNonreplPartitionPrivate::
+                                           TEvRemoveLaggingAgentRequest>();
                         UNIT_ASSERT(addLaggingAgentRequest.has_value());
                         UNIT_ASSERT_VALUES_EQUAL(
-                            msg->ReplicaIndex,
-                            addLaggingAgentRequest->ReplicaIndex);
+                            msg->LaggingAgent.GetAgentId(),
+                            addLaggingAgentRequest->LaggingAgent.GetAgentId());
+                        UNIT_ASSERT_VALUES_EQUAL(
+                            msg->LaggingAgent.GetReplicaIndex(),
+                            addLaggingAgentRequest->LaggingAgent
+                                .GetReplicaIndex());
                         addLaggingAgentRequest.reset();
                         return true;
                     }
@@ -129,8 +137,10 @@ Y_UNIT_TEST_SUITE(TLaggingAgentVolumeTest)
         UNIT_ASSERT(addLaggingAgentRequest.has_value());
         UNIT_ASSERT_VALUES_EQUAL(
             replicas[0].GetDevices(0).GetAgentId(),
-            addLaggingAgentRequest->AgentId);
-        UNIT_ASSERT_VALUES_EQUAL(1, addLaggingAgentRequest->ReplicaIndex);
+            addLaggingAgentRequest->LaggingAgent.GetAgentId());
+        UNIT_ASSERT_VALUES_EQUAL(
+            1,
+            addLaggingAgentRequest->LaggingAgent.GetReplicaIndex());
 
         // Can't add more lagging devices in the same row.
         volume.SendDeviceTimeoutedRequest("uuid-3.0");
@@ -141,8 +151,8 @@ Y_UNIT_TEST_SUITE(TLaggingAgentVolumeTest)
 
         // Agent devices are now up-to-date.
         volume.SendToPipe(
-            std::make_unique<TEvVolumePrivate::TEvSmartMigrationFinished>(
-                "agent-2"));
+            std::make_unique<
+                TEvVolumePrivate::TEvLaggingAgentMigrationFinished>("agent-2"));
         runtime->DispatchEvents({}, TDuration::Seconds(1));
         UNIT_ASSERT(!addLaggingAgentRequest.has_value());
 
@@ -151,8 +161,10 @@ Y_UNIT_TEST_SUITE(TLaggingAgentVolumeTest)
         UNIT_ASSERT(addLaggingAgentRequest.has_value());
         UNIT_ASSERT_VALUES_EQUAL(
             devices[0].GetAgentId(),
-            addLaggingAgentRequest->AgentId);
-        UNIT_ASSERT_VALUES_EQUAL(0, addLaggingAgentRequest->ReplicaIndex);
+            addLaggingAgentRequest->LaggingAgent.GetAgentId());
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            addLaggingAgentRequest->LaggingAgent.GetReplicaIndex());
     }
 
     Y_UNIT_TEST(ShouldHandleTabletReboot)
@@ -168,8 +180,10 @@ Y_UNIT_TEST_SUITE(TLaggingAgentVolumeTest)
         for (ui32 i = 0; i < AgentCount; i++) {
             agentStates.push_back(TDiskAgentStatePtr{});
         }
+        NProto::TStorageServiceConfig storageServiceConfig;
+        storageServiceConfig.SetLaggingDevicesForMirror3DisksEnabled(true);
         auto runtime = PrepareTestActorRuntime(
-            {},
+            std::move(storageServiceConfig),
             diskRegistryState,
             {},
             {},
@@ -203,23 +217,35 @@ Y_UNIT_TEST_SUITE(TLaggingAgentVolumeTest)
         UNIT_ASSERT_VALUES_EQUAL(2, replicas.size());
         const auto& replica1Devices = replicas[0].GetDevices();
         UNIT_ASSERT_VALUES_EQUAL(3, replica1Devices.size());
-        UNIT_ASSERT_VALUES_EQUAL("uuid-2.0", replica1Devices[0].GetDeviceUUID());
+        UNIT_ASSERT_VALUES_EQUAL(
+            "uuid-2.0",
+            replica1Devices[0].GetDeviceUUID());
         UNIT_ASSERT_VALUES_EQUAL("agent-2", replica1Devices[0].GetAgentId());
-        UNIT_ASSERT_VALUES_EQUAL("uuid-2.1", replica1Devices[1].GetDeviceUUID());
+        UNIT_ASSERT_VALUES_EQUAL(
+            "uuid-2.1",
+            replica1Devices[1].GetDeviceUUID());
         UNIT_ASSERT_VALUES_EQUAL("agent-2", replica1Devices[1].GetAgentId());
-        UNIT_ASSERT_VALUES_EQUAL("uuid-5.0", replica1Devices[2].GetDeviceUUID());
+        UNIT_ASSERT_VALUES_EQUAL(
+            "uuid-5.0",
+            replica1Devices[2].GetDeviceUUID());
         UNIT_ASSERT_VALUES_EQUAL("agent-5", replica1Devices[2].GetAgentId());
 
         const auto& replica2Devices = replicas[1].GetDevices();
         UNIT_ASSERT_VALUES_EQUAL(3, replica2Devices.size());
-        UNIT_ASSERT_VALUES_EQUAL("uuid-3.0", replica2Devices[0].GetDeviceUUID());
+        UNIT_ASSERT_VALUES_EQUAL(
+            "uuid-3.0",
+            replica2Devices[0].GetDeviceUUID());
         UNIT_ASSERT_VALUES_EQUAL("agent-3", replica2Devices[0].GetAgentId());
-        UNIT_ASSERT_VALUES_EQUAL("uuid-3.1", replica2Devices[1].GetDeviceUUID());
+        UNIT_ASSERT_VALUES_EQUAL(
+            "uuid-3.1",
+            replica2Devices[1].GetDeviceUUID());
         UNIT_ASSERT_VALUES_EQUAL("agent-3", replica2Devices[1].GetAgentId());
-        UNIT_ASSERT_VALUES_EQUAL("uuid-6.0", replica2Devices[2].GetDeviceUUID());
+        UNIT_ASSERT_VALUES_EQUAL(
+            "uuid-6.0",
+            replica2Devices[2].GetDeviceUUID());
         UNIT_ASSERT_VALUES_EQUAL("agent-6", replica2Devices[2].GetAgentId());
 
-        std::optional<TEvPartition::TAddLaggingAgentRequest>
+        std::optional<TEvNonreplPartitionPrivate::TAddLaggingAgentRequest>
             addLaggingAgentRequest;
         std::optional<NProto::TAddLaggingDevicesRequest>
             addLaggingDevicesRequest;
@@ -227,9 +253,9 @@ Y_UNIT_TEST_SUITE(TLaggingAgentVolumeTest)
             [&](TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& event)
             {
                 switch (event->GetTypeRewrite()) {
-                    case TEvPartition::EvAddLaggingAgentRequest: {
-                        auto* msg = event->Get<
-                            TEvPartition::TEvAddLaggingAgentRequest>();
+                    case TEvNonreplPartitionPrivate::EvAddLaggingAgentRequest: {
+                        auto* msg = event->Get<TEvNonreplPartitionPrivate::
+                                                   TEvAddLaggingAgentRequest>();
                         UNIT_ASSERT(!addLaggingAgentRequest.has_value());
                         addLaggingAgentRequest = *msg;
                         return true;
@@ -250,8 +276,10 @@ Y_UNIT_TEST_SUITE(TLaggingAgentVolumeTest)
         UNIT_ASSERT(addLaggingAgentRequest.has_value());
         UNIT_ASSERT_VALUES_EQUAL(
             devices[1].GetAgentId(),
-            addLaggingAgentRequest->AgentId);
-        UNIT_ASSERT_VALUES_EQUAL(0, addLaggingAgentRequest->ReplicaIndex);
+            addLaggingAgentRequest->LaggingAgent.GetAgentId());
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            addLaggingAgentRequest->LaggingAgent.GetReplicaIndex());
 
         {
             addLaggingAgentRequest.reset();
@@ -262,7 +290,7 @@ Y_UNIT_TEST_SUITE(TLaggingAgentVolumeTest)
             UNIT_ASSERT(addLaggingAgentRequest.has_value());
             UNIT_ASSERT_VALUES_EQUAL(
                 devices[0].GetAgentId(),
-                addLaggingAgentRequest->AgentId);
+                addLaggingAgentRequest->LaggingAgent.GetAgentId());
         }
 
         {
@@ -281,7 +309,7 @@ Y_UNIT_TEST_SUITE(TLaggingAgentVolumeTest)
         UNIT_ASSERT(addLaggingAgentRequest.has_value());
         UNIT_ASSERT_VALUES_EQUAL(
             replica2Devices[2].GetAgentId(),
-            addLaggingAgentRequest->AgentId);
+            addLaggingAgentRequest->LaggingAgent.GetAgentId());
 
         // Rebooting the volume tablet should report lagging devices to the DR.
         UNIT_ASSERT(!addLaggingDevicesRequest.has_value());
@@ -327,8 +355,10 @@ Y_UNIT_TEST_SUITE(TLaggingAgentVolumeTest)
         for (ui32 i = 0; i < AgentCount; i++) {
             agentStates.push_back(TDiskAgentStatePtr{});
         }
+        NProto::TStorageServiceConfig storageServiceConfig;
+        storageServiceConfig.SetLaggingDevicesForMirror3DisksEnabled(true);
         auto runtime = PrepareTestActorRuntime(
-            {},
+            std::move(storageServiceConfig),
             diskRegistryState,
             {},
             {},
@@ -358,7 +388,7 @@ Y_UNIT_TEST_SUITE(TLaggingAgentVolumeTest)
             [&](TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& event)
             {
                 switch (event->GetTypeRewrite()) {
-                    case TEvPartition::EvAddLaggingAgentRequest: {
+                    case TEvNonreplPartitionPrivate::EvAddLaggingAgentRequest: {
                         return true;
                     }
                     case TEvDiskRegistry::EvAddLaggingDevicesRequest: {
@@ -446,8 +476,10 @@ Y_UNIT_TEST_SUITE(TLaggingAgentVolumeTest)
         for (ui32 i = 0; i < AgentCount; i++) {
             agentStates.push_back(TDiskAgentStatePtr{});
         }
+        NProto::TStorageServiceConfig storageServiceConfig;
+        storageServiceConfig.SetLaggingDevicesForMirror3DisksEnabled(true);
         auto runtime = PrepareTestActorRuntime(
-            {},
+            std::move(storageServiceConfig),
             diskRegistryState,
             {},
             {},
@@ -520,7 +552,7 @@ Y_UNIT_TEST_SUITE(TLaggingAgentVolumeTest)
             "uuid-migration-2",
             migrations[1].GetTargetDevice().GetDeviceUUID());
 
-        std::optional<TEvPartition::TAddLaggingAgentRequest>
+        std::optional<TEvNonreplPartitionPrivate::TAddLaggingAgentRequest>
             addLaggingAgentRequest;
         std::optional<NProto::TAddLaggingDevicesRequest>
             addLaggingDevicesRequest;
@@ -528,9 +560,9 @@ Y_UNIT_TEST_SUITE(TLaggingAgentVolumeTest)
             [&](TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& event)
             {
                 switch (event->GetTypeRewrite()) {
-                    case TEvPartition::EvAddLaggingAgentRequest: {
-                        auto* msg = event->Get<
-                            TEvPartition::TEvAddLaggingAgentRequest>();
+                    case TEvNonreplPartitionPrivate::EvAddLaggingAgentRequest: {
+                        auto* msg = event->Get<TEvNonreplPartitionPrivate::
+                                                   TEvAddLaggingAgentRequest>();
                         UNIT_ASSERT(!addLaggingAgentRequest.has_value());
                         addLaggingAgentRequest = *msg;
                         return true;
@@ -549,16 +581,24 @@ Y_UNIT_TEST_SUITE(TLaggingAgentVolumeTest)
         volume.DeviceTimeouted("uuid-migration-1");
 
         UNIT_ASSERT(addLaggingAgentRequest.has_value());
-        UNIT_ASSERT_VALUES_EQUAL("agent-7", addLaggingAgentRequest->AgentId);
-        UNIT_ASSERT_VALUES_EQUAL(0, addLaggingAgentRequest->ReplicaIndex);
+        UNIT_ASSERT_VALUES_EQUAL(
+            "agent-7",
+            addLaggingAgentRequest->LaggingAgent.GetAgentId());
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            addLaggingAgentRequest->LaggingAgent.GetReplicaIndex());
         addLaggingAgentRequest.reset();
 
         // Device in the second replica is timeouted.
         volume.DeviceTimeouted("uuid-migration-2");
 
         UNIT_ASSERT(addLaggingAgentRequest.has_value());
-        UNIT_ASSERT_VALUES_EQUAL("agent-8", addLaggingAgentRequest->AgentId);
-        UNIT_ASSERT_VALUES_EQUAL(2, addLaggingAgentRequest->ReplicaIndex);
+        UNIT_ASSERT_VALUES_EQUAL(
+            "agent-8",
+            addLaggingAgentRequest->LaggingAgent.GetAgentId());
+        UNIT_ASSERT_VALUES_EQUAL(
+            2,
+            addLaggingAgentRequest->LaggingAgent.GetReplicaIndex());
 
         {
             addLaggingAgentRequest.reset();
@@ -597,6 +637,95 @@ Y_UNIT_TEST_SUITE(TLaggingAgentVolumeTest)
             metaHistoryResponse->MetaHistory.back()
                 .Meta.GetLaggingAgentsInfo()
                 .AgentsSize());
+    }
+
+    Y_UNIT_TEST(ShouldReturnErrorWhenFeatureIsDisabled)
+    {
+        constexpr ui32 AgentCount = 3;
+        constexpr ui32 DevicePerAgentCount = 3;
+        auto diskRegistryState = MakeIntrusive<TDiskRegistryState>();
+        diskRegistryState->Devices =
+            MakeDeviceList(AgentCount, DevicePerAgentCount);
+        diskRegistryState->AllocateDiskReplicasOnDifferentNodes = true;
+        diskRegistryState->ReplicaCount = 1;
+        TVector<TDiskAgentStatePtr> agentStates;
+        for (ui32 i = 0; i < AgentCount; i++) {
+            agentStates.push_back(TDiskAgentStatePtr{});
+        }
+        NProto::TStorageServiceConfig storageServiceConfig;
+        storageServiceConfig.SetLaggingDevicesForMirror3DisksEnabled(false);
+        storageServiceConfig.SetLaggingDevicesForMirror2DisksEnabled(true);
+        auto runtime = PrepareTestActorRuntime(
+            std::move(storageServiceConfig),
+            diskRegistryState,
+            {},
+            {},
+            std::move(agentStates));
+
+        TVolumeClient volume(*runtime);
+        const ui64 blockCount = DefaultDeviceBlockCount *
+                                DefaultDeviceBlockSize / DefaultBlockSize * 3;
+        volume.UpdateVolumeConfig(
+            0,
+            0,
+            0,
+            0,
+            false,
+            1,   // version
+            NCloud::NProto::STORAGE_MEDIA_SSD_MIRROR2,
+            blockCount);
+        volume.WaitReady();
+
+        auto stat = volume.StatVolume();
+        const auto& replicas = stat->Record.GetVolume().GetReplicas();
+        UNIT_ASSERT_VALUES_EQUAL(1, replicas.size());
+
+        std::optional<TEvNonreplPartitionPrivate::TAddLaggingAgentRequest>
+            addLaggingAgentRequest;
+        runtime->SetEventFilter(
+            [&](TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& event)
+            {
+                switch (event->GetTypeRewrite()) {
+                    case TEvNonreplPartitionPrivate::EvAddLaggingAgentRequest: {
+                        auto* msg = event->Get<TEvNonreplPartitionPrivate::
+                                                   TEvAddLaggingAgentRequest>();
+                        UNIT_ASSERT(!addLaggingAgentRequest.has_value());
+                        addLaggingAgentRequest = *msg;
+                        return true;
+                    }
+                }
+                return false;
+            });
+
+        // Lagging agent should be added.
+        {
+            volume.DeviceTimeouted("uuid-1.0");
+            UNIT_ASSERT(addLaggingAgentRequest.has_value());
+            addLaggingAgentRequest.reset();
+        }
+
+        // Make volume a mirror-3 type.
+        diskRegistryState->ReplicaCount = 2;
+        volume.UpdateVolumeConfig(
+            0,
+            0,
+            0,
+            0,
+            false,
+            2,   // version
+            NCloud::NProto::STORAGE_MEDIA_SSD_MIRROR3,
+            blockCount);
+        volume.WaitReady();
+
+        // Feature is disabled for mirror-3 disks.
+        {
+            volume.SendDeviceTimeoutedRequest("uuid-1.1");
+            auto response = volume.RecvDeviceTimeoutedResponse();
+            UNIT_ASSERT_VALUES_EQUAL(
+                E_PRECONDITION_FAILED,
+                response->GetError().GetCode());
+            UNIT_ASSERT(!addLaggingAgentRequest.has_value());
+        }
     }
 }
 

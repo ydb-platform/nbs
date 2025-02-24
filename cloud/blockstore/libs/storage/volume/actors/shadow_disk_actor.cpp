@@ -852,6 +852,7 @@ void TShadowDiskActor::CreateShadowDiskPartitionActor(
             ctx,
             SrcActorId,
             DstActorId,
+            true,   // takeOwnershipOverActors
             std::make_unique<TMigrationTimeoutCalculator>(
                 GetConfig()->GetMaxShadowDiskFillBandwidth(),
                 GetConfig()->GetExpectedDiskAgentSize(),
@@ -1226,7 +1227,7 @@ void TShadowDiskActor::HandleGetChangedBlocks(
     auto range = TBlockRange64::WithLength(
         msg->Record.GetStartIndex(),
         msg->Record.GetBlocksCount());
-    response->Record.SetMask(GetChangedBlocks(range));
+    response->Record.SetMask(GetNonZeroBlocks(range));
 
     NCloud::Reply(ctx, *ev, std::move(response));
 }

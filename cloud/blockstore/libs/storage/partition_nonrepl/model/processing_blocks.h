@@ -19,8 +19,8 @@ constexpr ui64 ProcessingRangeSize = 4_MB;
 class TProcessingBlocks
 {
 private:
-    const ui64 BlockCount;
-    const ui32 BlockSize;
+    ui64 BlockCount;
+    ui32 BlockSize;
     std::unique_ptr<TCompressedBitmap> BlockMap;
     std::optional<ui64> LastReportedProcessingIndex;
     ui64 CurrentProcessingIndex = 0;
@@ -31,6 +31,14 @@ public:
         ui64 blockCount,
         ui32 blockSize,
         ui64 initialProcessingIndex);
+
+    TProcessingBlocks(
+        ui64 blockCount,
+        ui32 blockSize,
+        TCompressedBitmap blockMap);
+
+    TProcessingBlocks(TProcessingBlocks&& other) noexcept;
+    TProcessingBlocks& operator=(TProcessingBlocks&& other) noexcept;
 
 public:
     void AbortProcessing();
