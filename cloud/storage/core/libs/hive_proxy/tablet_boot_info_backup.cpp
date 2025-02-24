@@ -65,6 +65,9 @@ void TTabletBootInfoBackup::Bootstrap(const TActorContext& ctx)
 
     if (!ReadOnlyMode) {
         ScheduleBackup(ctx);
+    } else if (InitialBackupProto) {
+        BackupProto = std::move(InitialBackupProto.value());
+        InitialBackupProto.reset();
     }
 
     LOG_INFO_S(ctx, LogComponent,
@@ -177,11 +180,6 @@ void TTabletBootInfoBackup::HandleUpdateTabletBootInfoBackup(
     NKikimr::TabletStorageInfoToProto(
         *msg->StorageInfo, info.MutableStorageInfo());
     info.SetSuggestedGeneration(msg->SuggestedGeneration);
-
-    if (ReadOnlyMode && InitialBackupProto) {
-        BackupProto = std::move(InitialBackupProto.value());
-        InitialBackupProto.reset();
-    }
 
     auto& data = *BackupProto.MutableData();
     data[msg->StorageInfo->TabletID] = info;
