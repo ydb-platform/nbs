@@ -82,7 +82,11 @@ func initDataplane(
 	migrationDstS3Config := migrationDstPersistenceConfig.GetS3Config()
 	var migrationDstS3 *persistence.S3Client
 	if migrationDstS3Config != nil {
-		migrationDstS3, err = persistence.NewS3ClientFromConfig(migrationDstS3Config, metrics.NewEmptyRegistry())
+		migrationDstS3, err = persistence.NewS3ClientFromConfig(
+			migrationDstS3Config,
+			metrics.NewEmptyRegistry(),
+			nil, // availabilityMonitoring
+		)
 		if err != nil {
 			return err
 		}
