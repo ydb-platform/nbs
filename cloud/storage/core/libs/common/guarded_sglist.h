@@ -101,15 +101,16 @@ public:
     // Creates a new TGuardedSgList that depends on the current one. The
     // connection is one-way, Close() called from a new object does not
     // terminate access to the original one.
-    TGuardedSgList CreateDepender() const;
+    [[nodiscard]] TGuardedSgList CreateDepender() const;
+    [[nodiscard]] TGuardedSgList CreateDepender(TSgList sglist) const;
 
     // Creates a new TGuardedSgList that is equal to the current one. A two-way
     // connection is created, Close() called on the new object also terminates
     // access to the original one.
-    TGuardedSgList Create(TSgList sglist) const;
+    [[nodiscard]] TGuardedSgList Create(TSgList sglist) const;
 
     // Checks if the sglist is empty.
-    bool Empty() const;
+    [[nodiscard]] bool Empty() const;
 
     // Sets a new sglist.
     void SetSgList(TSgList sglist);
@@ -135,7 +136,7 @@ public:
     // It is necessary to get access for a minimum time.
     // Always check whether access has been obtained.
     // This is non-blocking call.
-    TGuard Acquire() const;
+    [[nodiscard]] TGuard Acquire() const;
 
     // Terminates memory access of all associated TGuardedSgList on other
     // threads.

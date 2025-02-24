@@ -1123,4 +1123,18 @@ message TStorageServiceConfig
 
     // Timeout to warm up connections to BS groups at the bootstrap.
     optional uint32 WarmupBSGroupConnectionsTimeout = 408;
+
+    // Enables lagging devices feature for mirror2 disks.
+    optional bool LaggingDevicesForMirror2DisksEnabled = 409;
+
+    // Enables lagging devices feature for mirror3 disks.
+    optional bool LaggingDevicesForMirror3DisksEnabled = 410;
+
+    // Devices that are not responding for more than this value considered as
+    // candidates to become lagging.
+    // See doc/blockstore/storage/dynamic_io_mirroring_proposal.md
+    optional uint32 LaggingDeviceTimeoutThreshold = 411;
+
+    // Lagging devices are monitored by periodic requests at this interval.
+    optional uint32 LaggingDevicePingInterval = 412;
 }
