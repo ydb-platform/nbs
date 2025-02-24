@@ -78,7 +78,14 @@ func testCreateSnapshotFromDisk(
 	require.NoError(t, err)
 	require.Equal(t, float64(1), meta.Progress)
 
-	testcommon.RequireCheckpoint(t, ctx, diskID, snapshotID)
+	diskParams, err := nbsClient.Describe(ctx, diskID)
+	require.NoError(t, err)
+
+	if diskParams.IsDiskRegistryBasedDisk {
+		testcommon.RequireCheckpointsDoNotExist(t, ctx, diskID)
+	} else {
+		testcommon.RequireCheckpoint(t, ctx, diskID, snapshotID)
+	}
 
 	reqCtx = testcommon.GetRequestContext(t, ctx)
 	operation, err = client.DeleteSnapshot(reqCtx, &disk_manager.DeleteSnapshotRequest{
