@@ -63,11 +63,11 @@ void TTabletBootInfoBackup::Bootstrap(const TActorContext& ctx)
         InitialBackupProto.reset();
     }
 
-    if (!ReadOnlyMode) {
-        ScheduleBackup(ctx);
-    } else if (InitialBackupProto) {
+    if (ReadOnlyMode && InitialBackupProto) {
         BackupProto = std::move(InitialBackupProto.value());
         InitialBackupProto.reset();
+    } else if (!ReadOnlyMode) {
+        ScheduleBackup(ctx);
     }
 
     LOG_INFO_S(ctx, LogComponent,

@@ -150,7 +150,7 @@ private:
         const NActors::TActorContext& ctx)
     {
         Y_UNUSED(ev);
-        LOG_ERROR(
+        LOG_WARN(
             ctx,
             TBlockStoreComponents::SERVICE,
             "TWarmupBSGroupConnectionsActor timed out while waiting for "
