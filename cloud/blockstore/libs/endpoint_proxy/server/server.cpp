@@ -651,7 +651,7 @@ struct TServer: IEndpointProxyServer
         ep.Client->Start();
         STORAGE_INFO(tag << "Started NBD client endpoint");
 
-        auto retryPolicy = CreateRetryPolicy(ClientConfig);
+        auto retryPolicy = CreateRetryPolicy(ClientConfig, std::nullopt);
         ep.RequestStats = CreateProxyRequestStats();
         auto volumeStats = CreateVolumeStatsStub();
         ep.Client = CreateDurableClient(

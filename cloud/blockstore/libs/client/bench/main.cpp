@@ -89,7 +89,7 @@ struct TBootstrap
         return NClient::CreateDurableClient(
             Config,
             std::move(client),
-            CreateRetryPolicy(Config),
+            CreateRetryPolicy(Config, std::nullopt),
             Logging,
             Timer,
             Scheduler,
