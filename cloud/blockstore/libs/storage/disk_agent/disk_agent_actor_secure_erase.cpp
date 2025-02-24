@@ -165,7 +165,6 @@ void TDiskAgentActor::HandleSecureEraseCompleted(
     for (const auto& [deviceUUID, pendingRequests]: SecureErasePendingRequests) {
         Y_DEBUG_ABORT_UNLESS(!pendingRequests.empty());
 
-
         if (pendingRequests.empty()) {
             devicesToErase.emplace_back(deviceUUID);
             continue;

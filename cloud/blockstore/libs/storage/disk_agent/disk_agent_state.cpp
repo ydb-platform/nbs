@@ -315,7 +315,9 @@ const TString& TDiskAgentState::GetDeviceName(const TString& uuid) const
     return it->second.Config.GetDeviceName();
 }
 
-const NProto::TDeviceConfig* TDiskAgentState::FindDeviceConfig(const TString& uuid) const {
+const NProto::TDeviceConfig* TDiskAgentState::FindDeviceConfig(
+    const TString& uuid) const
+{
     const auto* device = Devices.FindPtr(uuid);
     if (!device) {
         return nullptr;
