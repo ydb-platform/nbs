@@ -636,7 +636,11 @@ public:
     [[nodiscard]] bool GetNonReplicatedVolumeDirectAcquireEnabled() const;
     [[nodiscard]] TDuration GetDestroyVolumeTimeout() const;
 
+<<<<<<< HEAD
     ui32 GetCompactionMergedBlobThresholdHDD() const;
+=======
+    ui32 GetCheckRangeMaxRangeSize() const;
+>>>>>>> add CheckRangeMaxRangeSize to configs
 };
 
 ui64 GetAllocationUnit(

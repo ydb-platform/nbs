@@ -1117,4 +1117,7 @@ message TStorageServiceConfig
     // Minimum compacted blob size (in bytes) that lets us write the data as
     // a merged blob, otherwise it is written as a mixed blob.
     optional uint32 CompactionMergedBlobThresholdHDD = 406;
+
+    // Maximum size of CheckRange request
+    optional uint32 CheckRangeMaxRangeSize = 407;
 }

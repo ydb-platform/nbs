@@ -181,9 +181,8 @@ void TNonreplicatedPartitionActor::HandleCheckRange(
 
     ui64 blocksPerStripe =
         Config->GetBytesPerStripe() / PartConfig->GetBlockSize();
-    // We process 4 MB of data at a time.
     const ui64 maxBlocksPerRequest =
-        Min<ui64>(blocksPerStripe, 4_MB / PartConfig->GetBlockSize());
+        Min<ui64>(blocksPerStripe, Config->GetCheckRangeMaxRangeSize() / PartConfig->GetBlockSize());
 
     if (msg->Record.GetBlocksCount() > maxBlocksPerRequest) {
         auto err = MakeError(

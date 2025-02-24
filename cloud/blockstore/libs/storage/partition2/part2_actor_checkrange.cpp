@@ -176,9 +176,8 @@ void NPartition2::TPartitionActor::HandleCheckRange(
     const auto* msg = ev->Get();
 
     ui64 blocksPerStripe = Config->GetBytesPerStripe() / State->GetBlockSize();
-    // We process 4 MB of data at a time.
     const ui64 maxBlocksPerRequest =
-        Min<ui64>(blocksPerStripe, 4_MB / State->GetBlockSize());
+        Min<ui64>(blocksPerStripe, Config->GetCheckRangeMaxRangeSize() / State->GetBlockSize());
 
     if (msg->Record.GetBlocksCount() > maxBlocksPerRequest) {
         auto err = MakeError(
