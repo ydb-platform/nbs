@@ -97,7 +97,7 @@ private:
     TString RWClientId;
 
     NActors::TActorId MigrationSrcActorId;
-    NActors::TActorId UserSrcActorId;
+    NActors::TActorId SrcActorId;
     NActors::TActorId DstActorId;
     std::unique_ptr<TMigrationTimeoutCalculator> TimeoutCalculator;
 
@@ -175,7 +175,7 @@ public:
     void InitWork(
         const NActors::TActorContext& ctx,
         NActors::TActorId migrationSrcActorId,
-        NActors::TActorId userSrcActorId,
+        NActors::TActorId srcActorId,
         NActors::TActorId dstActorId,
         std::unique_ptr<TMigrationTimeoutCalculator> timeoutCalculator);
 

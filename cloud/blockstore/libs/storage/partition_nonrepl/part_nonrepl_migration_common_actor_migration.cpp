@@ -24,20 +24,20 @@ LWTRACE_USING(BLOCKSTORE_STORAGE_PROVIDER);
 void TNonreplicatedPartitionMigrationCommonActor::InitWork(
     const NActors::TActorContext& ctx,
     NActors::TActorId migrationSrcActorId,
-    NActors::TActorId userSrcActorId,
+    NActors::TActorId srcActorId,
     NActors::TActorId dstActorId,
     std::unique_ptr<TMigrationTimeoutCalculator> timeoutCalculator)
 {
     MigrationSrcActorId = migrationSrcActorId;
-    UserSrcActorId = userSrcActorId;
+    SrcActorId = srcActorId;
     DstActorId = dstActorId;
     TimeoutCalculator = std::move(timeoutCalculator);
     STORAGE_CHECK_PRECONDITION(TimeoutCalculator);
 
-    PoisonPillHelper.TakeOwnership(ctx, UserSrcActorId);
+    PoisonPillHelper.TakeOwnership(ctx, SrcActorId);
     PoisonPillHelper.TakeOwnership(ctx, DstActorId);
 
-    GetDeviceForRangeCompanion.SetDelegate(UserSrcActorId);
+    GetDeviceForRangeCompanion.SetDelegate(SrcActorId);
 
     if (DstActorId == NActors::TActorId{}) {
         ProcessingBlocks.AbortProcessing();

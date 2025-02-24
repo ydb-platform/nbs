@@ -44,7 +44,7 @@ void TNonreplicatedPartitionMigrationCommonActor::MirrorRequest(
         // TODO(drbasic) use WriteAndZeroRequestsInProgress
         ForwardRequestWithNondeliveryTracking(
             ctx,
-            UserSrcActorId,
+            SrcActorId,
             *ev);
 
         return;
@@ -105,7 +105,7 @@ void TNonreplicatedPartitionMigrationCommonActor::MirrorRequest(
     NCloud::Register<TMirrorRequestActor<TMethod>>(
         ctx,
         std::move(requestInfo),
-        TVector<TActorId>{UserSrcActorId},
+        TVector<TActorId>{SrcActorId},
         DstActorId,
         std::move(msg->Record),
         DiskId,

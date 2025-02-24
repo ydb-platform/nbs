@@ -14,7 +14,7 @@ void TNonreplicatedPartitionMigrationCommonActor::HandlePartCounters(
 {
     auto* msg = ev->Get();
 
-    if (ev->Sender == UserSrcActorId) {
+    if (ev->Sender == SrcActorId) {
         SrcCounters = std::move(msg->DiskCounters);
     } else if (ev->Sender == DstActorId) {
         DstCounters = std::move(msg->DiskCounters);
