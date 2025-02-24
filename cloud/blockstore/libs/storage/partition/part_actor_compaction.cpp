@@ -1314,15 +1314,12 @@ void TPartitionActor::HandleCompaction(
 
     const auto& cm = State->GetCompactionMap();
 
-    if (msg->BlockIndex.Defined()) {
-        if (batchCompactionEnabled) {
-            tops = cm.GetNonEmptyRanges(
-                *msg->BlockIndex, Config->GetForcedCompactionRangeCountPerRun());
-        } else {
-            const auto startIndex = cm.GetRangeStart(*msg->BlockIndex);
+    if (msg->BlockIndices.Defined()) {
+        for (const auto blockIndex: *msg->BlockIndices) {
+            const auto startIndex = cm.GetRangeStart(blockIndex);
             tops.push_back({startIndex, cm.Get(startIndex)});
         }
-        State->OnNewCompactionRange();
+        State->OnNewCompactionRange(msg->BlockIndices->size());
     } else if (msg->Mode == TEvPartitionPrivate::GarbageCompaction) {
         if (batchCompactionEnabled &&
             Config->GetGarbageCompactionRangeCountPerRun() > 1)
