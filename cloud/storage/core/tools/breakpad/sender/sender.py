@@ -4,7 +4,6 @@ import logging
 import socket
 import subprocess
 from email.mime.text import MIMEText
-from enum import Enum
 
 import requests
 from library.python.retry import retry
@@ -19,23 +18,21 @@ logger = logging.getLogger(__name__)
 class SenderError(Exception):
     pass
 
-class AggregatorType(Enum):
-    Cores = 1
-    Sentry = 2
-
 class Sender(object):
     CRASH_TYPE_CORE = "crash"
     CRASH_TYPE_OOM = "oom"
+    AGGREGATOR_TYPE_CORES = 'cores'
+    AGGREGATOR_TYPE_SENTRY = 'sentry'
     AGGREGATOR_TIMEOUT = 60  # Seconds
 
-    def __init__(self, aggregator_url, project, emails):
+    def __init__(self, aggregator_type, aggregator_url, project, emails, ca_file):
         super(Sender, self).__init__()
         self._logger = logger.getChild(self.__class__.__name__)
+        self.aggregator_type = aggregator_type
         self.aggregator_url = aggregator_url
-        self.aggregator_type = AggregatorType.Sentry if \
-            "sentry.io" in aggregator_url else AggregatorType.Cores
         self.project = project
         self.emails = emails
+        self.ca_file = ca_file
 
         self._formatted_coredump = None
         self._formatted_current_thread = None
@@ -51,7 +48,8 @@ class Sender(object):
         self.server = socket.getfqdn() or "unknown"
 
     def _collect_metadata(self):
-        cgroup = Conductor().primary_group if self.aggregator_type == AggregatorType.Cores else None
+        cgroup = Conductor().primary_group \
+            if self.aggregator_type == self.AGGREGATOR_TYPE_CORES else None
         self._metadata = dict(
             ctype=cgroup if cgroup else "unknown",
             server=self.server,
@@ -87,7 +85,7 @@ class Sender(object):
         event_envelope = formatter.create_event_envelope(
             self.service_name, timestamp, self.server,
             self.core_file, self._formatted_current_thread)
-        sender = SentrySender(self.aggregator_url)
+        sender = SentrySender(self.aggregator_url, self.ca_file)
         return sender.send(event_envelope, timeout=self.AGGREGATOR_TIMEOUT)
 
     @retry(max_times=10, delay=60)
@@ -95,9 +93,9 @@ class Sender(object):
         url = self.aggregator_url
         self._logger.info("Sending crash info to aggregator %s", url)
 
-        if self.aggregator_type == AggregatorType.Cores:
+        if self.aggregator_type == self.AGGREGATOR_TYPE_CORES:
             response = self._post_crash_to_cores()
-        elif self.aggregator_type == AggregatorType.Sentry:
+        elif self.aggregator_type == self.AGGREGATOR_TYPE_SENTRY:
             response = self._post_crash_to_sentry()
         else:
             raise SenderError(f"Unknown aggregator type f{self.aggregator_type}")

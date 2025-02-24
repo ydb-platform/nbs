@@ -102,7 +102,8 @@ class SentryFormatter(object):
         }
         return attachment_item_header, attachment_data
 
-    def create_event_envelope(self, service, timestamp, server, minidump_path: str, backtrace: str):
+    def create_event_envelope(self, service, timestamp, server,
+                              minidump_path: str, backtrace: str):
         event_id = uuid4().hex  # generate a unique event ID
 
         envelope_header = self._get_envelope_header(event_id)
@@ -131,7 +132,7 @@ class SentryFormatter(object):
 
 
 class SentrySender(object):
-    def __init__(self, dsn: str):
+    def __init__(self, dsn: str, ca_file: str):
         # Sentry DSN "https://<PUBLIC_KEY>@<SENTRY_HOST>/<PROJECT_ID>"
         dsn_parsed = urlparse(dsn)
 
@@ -141,10 +142,13 @@ class SentrySender(object):
 
         self.endpoint_url = f"https://{sentry_host}/api/{project_id}/envelope/"
         self.sentry_auth = f"Sentry sentry_key={public_key}, sentry_client=custom-python-script/1.0"
+        self.ca_file = ca_file
 
     def send(self, envelope_bytes: str, timeout: float):
         headers = {
             "Content-Type": "application/x-sentry-envelope",
             "X-Sentry-Auth": self.sentry_auth,
         }
-        return requests.post(self.endpoint_url, data=envelope_bytes, headers=headers, timeout=timeout)
+
+        return requests.post(self.endpoint_url, data=envelope_bytes,
+                             headers=headers, timeout=timeout, verify=self.ca_file)
