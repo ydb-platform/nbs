@@ -86,8 +86,8 @@ void TDiskAgentActor::HandleSecureEraseDevice(
         LOG_WARN(
             ctx,
             TBlockStoreComponents::DISK_AGENT,
-            "Received secure erase for unknown device[deviceUUID = %s]",
-            deviceId.c_str());
+            "Received secure erase for unknown device %s",
+            deviceId.Quote().c_str());
         NCloud::Reply(
             ctx,
             *ev,
