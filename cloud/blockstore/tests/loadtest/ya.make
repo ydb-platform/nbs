@@ -22,4 +22,5 @@ RECURSE(
     local-throttling
     local-user-metrics
     local-v2
+    compaction
 )

@@ -1,0 +1,27 @@
+Vertices {
+    Test {
+        CreateVolumeRequest {
+            DiskId: "@volume"
+            BlocksCount: 1073741824
+            StorageMediaKind: STORAGE_MEDIA_HYBRID
+            BlockSize: 4096
+        }
+        ArtificialLoadSpec {
+            Ranges {
+                Start: 65535
+                End: 165534
+                WriteRate: 50
+                ReadRate: 50
+                LoadType: LOAD_TYPE_RANDOM
+                IoDepth: 32
+                MinRequestSize: 0
+                MaxRequestSize: 256
+            }
+        }
+        TestDuration: 120
+        Name: "The test for write data to any channels and compact it to mixed channel"
+        Verify: true
+        ValidationRangeStart: 65535
+        ValidationRangeBlockCount: 100000
+    }
+}
