@@ -6650,6 +6650,227 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
             UNIT_ASSERT_VALUES_EQUAL(0, stats.CompactionRangeStatsSize());
         }
     }
+
+    TABLET_TEST_4K_ONLY(ShouldIncrementGarbageBlockCountOnBlockDeletion)
+    {
+        const auto block = tabletConfig.BlockSize;
+        const auto nodeCount = NodeGroupSize - 2;
+
+        // Disable conditions for automatic compaction and cleanup triggering
+        NProto::TStorageConfig storageConfig;
+        storageConfig.SetNewCompactionEnabled(true);
+        storageConfig.SetCompactionThresholdAverage(999'999);
+        storageConfig.SetGarbageCompactionThresholdAverage(999'999);
+        storageConfig.SetCompactionThreshold(999'999);
+        storageConfig.SetCleanupThreshold(999'999);
+        storageConfig.SetUseMixedBlocksInsteadOfAliveBlocksInCompaction(true);
+        storageConfig.SetWriteBlobThreshold(block);
+
+        TTestEnv env({}, std::move(storageConfig));
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(
+            env.GetRuntime(),
+            nodeIdx,
+            tabletId,
+            tabletConfig);
+        tablet.InitSession("client", "session");
+
+        // The node values should be in [2, NodeGroupSize) range - their data
+        // should be written into the same range
+
+        std::array<ui64, nodeCount> ids;
+        for (ui32 i = 0; i < nodeCount; i++) {
+            auto name = Sprintf("test%u", i);
+            ids[i] =
+                CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, name));
+            UNIT_ASSERT_VALUES_EQUAL(ids[i], i + 2);
+        }
+
+        ui32 rangeId = GetMixedRangeIndex(ids[0], 0);
+
+        // Check that all the nodes share the same range
+        for (ui32 i = 1; i < nodeCount; i++) {
+            UNIT_ASSERT_VALUES_EQUAL(
+                rangeId,
+                GetMixedRangeIndex(ids[i], 0));
+        }
+
+        // Write data to each node then run compaction manually and ensure
+        // that the data has been consolidated to a single blob by calling
+        // compaction manually.
+
+        for (ui32 i = 0; i < nodeCount; i++) {
+            auto handle = CreateHandle(tablet, ids[i]);
+            tablet.WriteData(handle, 0, block * BlockGroupSize, 'a');
+            tablet.DestroyHandle(handle);
+        }
+
+        {
+            auto response = tablet.GetStorageStats(1);
+            const auto& stats = response->Record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetGarbageBlocksCount());
+            UNIT_ASSERT_VALUES_EQUAL(1, stats.CompactionRangeStatsSize());
+            UNIT_ASSERT_VALUES_EQUAL(
+                14,
+                stats.GetCompactionRangeStats(0).GetBlobCount());
+            UNIT_ASSERT_VALUES_EQUAL(
+                nodeCount * BlockGroupSize,
+                stats.GetCompactionRangeStats(0).GetGarbageBlockCount());
+        }
+
+        tablet.Compaction(rangeId);
+        {
+            auto response = tablet.GetStorageStats(1);
+            const auto& stats = response->Record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetGarbageBlocksCount());
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.CompactionRangeStatsSize());
+        }
+
+        // Truncate files to 1 block.
+        // The amount of garbage blocks should be equal to the number of
+        // deleted blocks in both filesystem and compaction statistics.
+        // If the number of garbage blocks is zero in the compaction statistics,
+        // it means that the range will be skipped from compaction.
+
+        for (ui32 i = 0; i < nodeCount; i++) {
+            TSetNodeAttrArgs args(ids[i]);
+            args.SetFlag(NProto::TSetNodeAttrRequest::F_SET_ATTR_SIZE);
+            args.SetSize(block);
+            tablet.SetNodeAttr(args);
+        }
+
+        tablet.Cleanup(rangeId);
+        {
+            auto response = tablet.GetStorageStats(1);
+            const auto& stats = response->Record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(
+                nodeCount * (BlockGroupSize - 1),
+                stats.GetGarbageBlocksCount());
+            UNIT_ASSERT_VALUES_EQUAL(1, stats.CompactionRangeStatsSize());
+            UNIT_ASSERT_VALUES_EQUAL(
+                1,
+                stats.GetCompactionRangeStats(0).GetBlobCount());
+            UNIT_ASSERT_VALUES_EQUAL(
+                nodeCount * (BlockGroupSize - 1),
+                stats.GetCompactionRangeStats(0).GetGarbageBlockCount());
+        }
+
+        // Delete all files but the first one
+        for (ui32 i = 1; i < nodeCount; i++) {
+            auto name = Sprintf("test%u", i);
+            tablet.UnlinkNode(RootNodeId, name, false);
+        }
+
+        tablet.Cleanup(rangeId);
+        {
+            auto response = tablet.GetStorageStats(1);
+            const auto& stats = response->Record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(
+                nodeCount * BlockGroupSize - 1,
+                stats.GetGarbageBlocksCount());
+            UNIT_ASSERT_VALUES_EQUAL(1, stats.CompactionRangeStatsSize());
+            UNIT_ASSERT_VALUES_EQUAL(
+                1,
+                stats.GetCompactionRangeStats(0).GetBlobCount());
+            UNIT_ASSERT_VALUES_EQUAL(
+                nodeCount * BlockGroupSize - 1,
+                stats.GetCompactionRangeStats(0).GetGarbageBlockCount());
+        }
+    }
+
+    TABLET_TEST_4K_ONLY(ShouldAutomaticallyRunCompactionDueToGarbageForSingleBlobs)
+    {
+        const auto block = tabletConfig.BlockSize;
+
+        // Disable conditions for automatic compaction and cleanup triggering
+        // except 20% garbage threshold
+        NProto::TStorageConfig storageConfig;
+        storageConfig.SetNewCompactionEnabled(true);
+        storageConfig.SetCompactionThresholdAverage(999'999);
+        storageConfig.SetGarbageCompactionThresholdAverage(20);
+        storageConfig.SetCompactionThreshold(999'999);
+        storageConfig.SetCleanupThreshold(999'999);
+        storageConfig.SetUseMixedBlocksInsteadOfAliveBlocksInCompaction(true);
+        storageConfig.SetWriteBlobThreshold(block);
+
+        TTestEnv env({}, std::move(storageConfig));
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(
+            env.GetRuntime(),
+            nodeIdx,
+            tabletId,
+            tabletConfig);
+        tablet.InitSession("client", "session");
+
+        auto id = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
+        auto handle = CreateHandle(tablet, id);
+
+        tablet.WriteData(handle, 0, block * BlockGroupSize, 'a');
+
+        int blocksCountToTriggerCompaction =
+            static_cast<int>(BlockGroupSize / 1.2);
+
+        // Truncate the file and run cleanup manually.
+        // The garbage fraction should be below the threshold.
+        // Automatic compaction shouldn't have place.
+        {
+            TSetNodeAttrArgs args(id);
+            args.SetFlag(NProto::TSetNodeAttrRequest::F_SET_ATTR_SIZE);
+            args.SetSize(block * (blocksCountToTriggerCompaction + 1));
+            tablet.SetNodeAttr(args);
+        }
+
+        ui32 rangeId = GetMixedRangeIndex(id, 0);
+        tablet.Cleanup(rangeId);
+        {
+            auto response = tablet.GetStorageStats(1);
+            const auto& stats = response->Record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(
+                BlockGroupSize - blocksCountToTriggerCompaction - 1,
+                stats.GetGarbageBlocksCount());
+            UNIT_ASSERT_VALUES_EQUAL(1, stats.CompactionRangeStatsSize());
+            UNIT_ASSERT_VALUES_EQUAL(
+                1,
+                stats.GetCompactionRangeStats(0).GetBlobCount());
+            UNIT_ASSERT_VALUES_EQUAL(
+                2 * BlockGroupSize - blocksCountToTriggerCompaction - 1,
+                stats.GetCompactionRangeStats(0).GetGarbageBlockCount());
+        }
+
+        // Truncate the file a bit more and run cleanup manually.
+        // The garbage fraction should be above the threshold.
+        // Automatic compaction should've been triggered.
+        {
+            TSetNodeAttrArgs args(id);
+            args.SetFlag(NProto::TSetNodeAttrRequest::F_SET_ATTR_SIZE);
+            args.SetSize(block * blocksCountToTriggerCompaction);
+            tablet.SetNodeAttr(args);
+        }
+        {
+            TSetNodeAttrArgs args(id);
+            args.SetFlag(NProto::TSetNodeAttrRequest::F_SET_ATTR_SIZE);
+            args.SetSize(block * blocksCountToTriggerCompaction);
+            tablet.SetNodeAttr(args);
+        }
+
+        tablet.Cleanup(rangeId);
+        {
+            auto response = tablet.GetStorageStats(1);
+            const auto& stats = response->Record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetGarbageBlocksCount());
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.CompactionRangeStatsSize());
+        }
+
+        tablet.DestroyHandle(handle);
+    }
 }
 
 }   // namespace NCloud::NFileStore::NStorage
