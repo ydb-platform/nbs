@@ -521,8 +521,6 @@ BLOCKSTORE_HANDLE_UNIMPLEMENTED_REQUEST(CompactRange,             TEvVolume);
 BLOCKSTORE_HANDLE_UNIMPLEMENTED_REQUEST(GetCompactionStatus,      TEvVolume);
 BLOCKSTORE_HANDLE_UNIMPLEMENTED_REQUEST(RebuildMetadata,          TEvVolume);
 BLOCKSTORE_HANDLE_UNIMPLEMENTED_REQUEST(GetRebuildMetadataStatus, TEvVolume);
-BLOCKSTORE_HANDLE_UNIMPLEMENTED_REQUEST(ScanDisk,                 TEvVolume);
-BLOCKSTORE_HANDLE_UNIMPLEMENTED_REQUEST(GetScanDiskStatus,        TEvVolume);
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -556,8 +554,6 @@ STFUNC(TNonreplicatedPartitionActor::StateWork)
         HFunc(TEvVolume::TEvCompactRangeRequest, HandleCompactRange);
         HFunc(TEvVolume::TEvRebuildMetadataRequest, HandleRebuildMetadata);
         HFunc(TEvVolume::TEvGetRebuildMetadataStatusRequest, HandleGetRebuildMetadataStatus);
-        HFunc(TEvVolume::TEvScanDiskRequest, HandleScanDisk);
-        HFunc(TEvVolume::TEvGetScanDiskStatusRequest, HandleGetScanDiskStatus);
         HFunc(TEvService::TEvCheckRangeRequest, HandleCheckRange);
 
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
@@ -602,8 +598,6 @@ STFUNC(TNonreplicatedPartitionActor::StateZombie)
         HFunc(TEvVolume::TEvCompactRangeRequest, RejectCompactRange);
         HFunc(TEvVolume::TEvRebuildMetadataRequest, RejectRebuildMetadata);
         HFunc(TEvVolume::TEvGetRebuildMetadataStatusRequest, RejectGetRebuildMetadataStatus);
-        HFunc(TEvVolume::TEvScanDiskRequest, RejectScanDisk);
-        HFunc(TEvVolume::TEvGetScanDiskStatusRequest, RejectGetScanDiskStatus);
 
         IgnoreFunc(TEvents::TEvPoisonPill);
         IgnoreFunc(TEvVolume::TEvRWClientIdChanged);

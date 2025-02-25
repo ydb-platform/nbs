@@ -155,9 +155,6 @@ void GenerateActionsJS(IOutputStream& out)
         function rebuildMetadata(rangesPerBatch) {
             document.forms['RebuildMetadata_' + rangesPerBatch].submit();
         }
-        function scanDisk(blobsPerBatch) {
-            document.forms['ScanDisk_' + blobsPerBatch].submit();
-        }
         </script>
     )___";
 }
@@ -440,30 +437,6 @@ void BuildRebuildMetadataButton(IOutputStream& out, ui64 tabletId, ui32 rangesPe
             << "Are you sure you want to rebuild partition metadata in batches of "
             << rangesPerBatch << " ranges each?",
         TStringBuilder() << "rebuildMetadata(\"" << rangesPerBatch << "\");");
-}
-
-void BuildScanDiskButton(IOutputStream& out, ui64 tabletId, ui32 blobsPerBatch)
-{
-    out << "<p><a href='' data-toggle='modal' data-target='#scan-disk-"
-        << blobsPerBatch
-        << "'>Scan Disk in batches of " << blobsPerBatch << " blobs each</a></p>";
-
-    out << "<form method='POST' name='ScanDisk_" << blobsPerBatch << "' style='display:none'>"
-        << "<input type='hidden' name='TabletID' value='" << tabletId << "'/>"
-        << "<input type='hidden' name='BatchSize' value='" << blobsPerBatch << "'/>"
-        << "<input type='hidden' name='action' value='scanDisk'/>"
-        << "<input class='btn btn-primary' type='button' value='Scan Disk'"
-        << " data-toggle='modal' data-target='#scan-disk-" << blobsPerBatch << "'/>"
-        << "</form>";
-
-    BuildConfirmActionDialog(
-        out,
-        TStringBuilder() << "scan-disk-" << blobsPerBatch,
-        "Scan Disk",
-        TStringBuilder()
-            << "Are you sure you want to scan disk in batches of "
-            << blobsPerBatch << " blobs each?",
-        TStringBuilder() << "scanDisk(\"" << blobsPerBatch << "\");");
 }
 
 void BuildConfirmActionDialog(

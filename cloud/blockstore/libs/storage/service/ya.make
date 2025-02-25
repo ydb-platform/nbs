@@ -39,7 +39,6 @@ SRCS(
     service_actor_actions_replace_device.cpp
     service_actor_actions_reset_tablet.cpp
     service_actor_actions_restore_disk_registry_state.cpp
-    service_actor_actions_scan_disk.cpp
     service_actor_actions_set_user_id.cpp
     service_actor_actions_setup_channels.cpp
     service_actor_actions_suspend_device.cpp

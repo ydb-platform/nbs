@@ -218,8 +218,6 @@ GENERATE_NO_IMPL(GetCompactionStatus,      TEvVolume)
 GENERATE_NO_IMPL(DeleteCheckpointData,     TEvVolume)
 GENERATE_NO_IMPL(RebuildMetadata,          TEvVolume)
 GENERATE_NO_IMPL(GetRebuildMetadataStatus, TEvVolume)
-GENERATE_NO_IMPL(ScanDisk,                 TEvVolume)
-GENERATE_NO_IMPL(GetScanDiskStatus,        TEvVolume)
 
 #undef GENERATE_IMPL
 

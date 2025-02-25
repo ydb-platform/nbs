@@ -305,11 +305,6 @@ void DumpMetadataRebuildInfo(IOutputStream& out, ui64 current, ui64 total)
     DumpProgress(out, current, total);
 }
 
-void DumpScanDiskInfo(IOutputStream& out, ui64 current, ui64 total)
-{
-    DumpProgress(out, current, total);
-}
-
 void DumpCompactionScoreHistory(
     IOutputStream& out,
     const TTsRingBuffer<TCompactionScores>& scoreHistory)
@@ -384,8 +379,7 @@ void TPartitionActor::HandleHttpInfo(
         {"collectGarbage",   &TPartitionActor::HandleHttpInfo_CollectGarbage  },
         {"compact",          &TPartitionActor::HandleHttpInfo_ForceCompaction },
         {"compactAll",       &TPartitionActor::HandleHttpInfo_ForceCompaction },
-        {"rebuildMetadata",  &TPartitionActor::HandleHttpInfo_RebuildMetadata },
-        {"scanDisk",         &TPartitionActor::HandleHttpInfo_ScanDisk        }
+        {"rebuildMetadata",  &TPartitionActor::HandleHttpInfo_RebuildMetadata }
     }};
 
     static const THttpHandlers getActions {{
@@ -606,20 +600,6 @@ void TPartitionActor::HandleHttpInfo_Default(
                     TAG(TH3) {
                         BuildMenuButton(out, "scan-disk");
                         out << "Scan disk";
-                    }
-
-                    if (State->IsScanDiskStarted()) {
-                        const auto progress = State->GetScanDiskProgress();
-                        DumpScanDiskInfo(
-                            out,
-                            progress.ProcessedBlobs,
-                            progress.TotalBlobs);
-                    } else {
-                        out << "<div class='collapse form-group' id='scan-disk'>";
-                        for (const auto blobsPerBatch : {1, 10, 100}) {
-                            BuildScanDiskButton(out, TabletID(), blobsPerBatch);
-                        }
-                        out << "</div>";
                     }
                 }
 

@@ -878,8 +878,6 @@ BLOCKSTORE_FORWARD_REQUEST(GetCompactionStatus,      TEvVolume)
 BLOCKSTORE_FORWARD_REQUEST(DeleteCheckpointData,     TEvVolume)
 BLOCKSTORE_FORWARD_REQUEST(RebuildMetadata,          TEvVolume)
 BLOCKSTORE_FORWARD_REQUEST(GetRebuildMetadataStatus, TEvVolume)
-BLOCKSTORE_FORWARD_REQUEST(ScanDisk,                 TEvVolume)
-BLOCKSTORE_FORWARD_REQUEST(GetScanDiskStatus,        TEvVolume)
 
 
 #undef BLOCKSTORE_FORWARD_REQUEST

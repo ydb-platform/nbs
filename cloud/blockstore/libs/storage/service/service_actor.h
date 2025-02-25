@@ -335,14 +335,6 @@ private:
         TRequestInfoPtr requestInfo,
         TString input);
 
-    TResultOrError<NActors::IActorPtr> CreateScanDiskActionActor(
-        TRequestInfoPtr requestInfo,
-        TString input);
-
-    TResultOrError<NActors::IActorPtr> CreateScanDiskStatusActionActor(
-        TRequestInfoPtr requestInfo,
-        TString input);
-
     TResultOrError<NActors::IActorPtr> CreateMigrationDiskRegistryDeviceActor(
         TRequestInfoPtr requestInfo,
         TString input);

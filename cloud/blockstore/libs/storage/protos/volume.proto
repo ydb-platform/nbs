@@ -526,30 +526,6 @@ message TGetRebuildMetadataStatusResponse
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-// ScanDisk request/response.
-
-message TScanDiskRequest
-{
-    // Optional request headers.
-    THeaders Headers = 1;
-
-    // Label of volume.
-    string DiskId = 2;
-
-    // Number of blobs per batch.
-    uint32 BatchSize = 3;
-}
-
-message TScanDiskResponse
-{
-    // Optional error, set only if error happened.
-    NCloud.NProto.TError Error = 1;
-
-    // Request traces.
-    NCloud.NProto.TTraceInfo Trace = 2;
-}
-
-////////////////////////////////////////////////////////////////////////////////
 // GetVolumeInfo request/response.
 
 message TGetVolumeInfoRequest

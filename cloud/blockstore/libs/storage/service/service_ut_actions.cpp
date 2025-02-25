@@ -704,62 +704,6 @@ Y_UNIT_TEST_SUITE(TServiceActionsTest)
         }
     }
 
-    Y_UNIT_TEST(ShouldScanDiskForPartitionVersion1)
-    {
-        TTestEnv env;
-        NProto::TStorageServiceConfig config;
-        const ui32 nodeIdx = SetupTestEnv(env, std::move(config));
-
-        TServiceClient service(env.GetRuntime(), nodeIdx);
-        service.CreateVolume("vol0");
-
-        const auto sessionId = service.MountVolume("vol0")->Record.GetSessionId();
-
-        service.WriteBlocks(
-            "vol0",
-            TBlockRange64::WithLength(0, 1024),
-            sessionId,
-            char(1));
-
-        {
-            NPrivateProto::TScanDiskRequest request;
-            request.SetDiskId("vol0");
-            request.SetBatchSize(100);
-
-            TString buf;
-            google::protobuf::util::MessageToJsonString(request, &buf);
-
-            const auto response = service.ExecuteAction("scandisk", buf);
-            NPrivateProto::TScanDiskResponse scanDiskResponse;
-            UNIT_ASSERT(google::protobuf::util::JsonStringToMessage(
-                response->Record.GetOutput(),
-                &scanDiskResponse
-            ).ok());
-        }
-
-        {
-            NPrivateProto::TGetScanDiskStatusRequest request;
-            request.SetDiskId("vol0");
-
-            TString buf;
-            google::protobuf::util::MessageToJsonString(request, &buf);
-
-            const auto response = service.ExecuteAction("getscandiskstatus", buf);
-            NPrivateProto::TGetScanDiskStatusResponse scanDiskResponse;
-            UNIT_ASSERT(google::protobuf::util::JsonStringToMessage(
-                response->Record.GetOutput(),
-                &scanDiskResponse
-            ).ok());
-
-            UNIT_ASSERT_VALUES_EQUAL(
-                1,
-                scanDiskResponse.GetProgress().GetTotal());
-            UNIT_ASSERT_VALUES_EQUAL(
-                0,
-                scanDiskResponse.GetProgress().GetBrokenBlobs().size());
-        }
-    }
-
     Y_UNIT_TEST(ShouldForceMigrate)
     {
         auto drState = MakeIntrusive<TDiskRegistryState>();

@@ -957,14 +957,6 @@ private:
         const TEvVolume::TEvGetRebuildMetadataStatusResponse::TPtr& ev,
         const NActors::TActorContext& ctx);
 
-    void HandleScanDiskResponse(
-        const TEvVolume::TEvScanDiskResponse::TPtr& ev,
-        const NActors::TActorContext& ctx);
-
-    void HandleGetScanDiskStatusResponse(
-        const TEvVolume::TEvGetScanDiskStatusResponse::TPtr& ev,
-        const NActors::TActorContext& ctx);
-
     void HandleReadBlocksResponse(
         const TEvService::TEvReadBlocksResponse::TPtr& ev,
         const NActors::TActorContext& ctx);

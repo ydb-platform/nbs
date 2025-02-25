@@ -38,8 +38,6 @@ namespace NCloud::NBlockStore::NStorage::NPartition {
     xxx(DeleteCheckpointData,     __VA_ARGS__)                                 \
     xxx(RebuildMetadata,          __VA_ARGS__)                                 \
     xxx(GetRebuildMetadataStatus, __VA_ARGS__)                                 \
-    xxx(ScanDisk,                 __VA_ARGS__)                                 \
-    xxx(GetScanDiskStatus,        __VA_ARGS__)                                 \
 // BLOCKSTORE_PARTITION_REQUESTS_FWD_VOLUME
 
 ////////////////////////////////////////////////////////////////////////////////

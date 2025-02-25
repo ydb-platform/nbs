@@ -171,7 +171,6 @@ using TFlushedCommitIds = TVector<TFlushedCommitId>;
     xxx(Compaction,                __VA_ARGS__)                                \
     xxx(MetadataRebuildUsedBlocks, __VA_ARGS__)                                \
     xxx(MetadataRebuildBlockCount, __VA_ARGS__)                                \
-    xxx(ScanDiskBatch,             __VA_ARGS__)                                \
     xxx(Cleanup,                   __VA_ARGS__)                                \
     xxx(CollectGarbage,            __VA_ARGS__)                                \
     xxx(AddGarbage,                __VA_ARGS__)                                \
@@ -531,56 +530,6 @@ struct TEvPartitionPrivate
     };
 
     //
-    // ScanDiskBatch
-    //
-
-    struct TScanDiskBatchRequest
-    {
-        const TPartialBlobId BlobId;
-        const ui32 Count = 0;
-        const TPartialBlobId FinalBlobId;
-
-        TScanDiskBatchRequest(
-                TPartialBlobId blobId,
-                ui32 count,
-                TPartialBlobId finalBlobId)
-            : BlobId(blobId)
-            , Count(count)
-            , FinalBlobId(finalBlobId)
-        {}
-    };
-
-    struct TScanDiskBatchResponse
-    {
-        struct TBlobMark {
-            NKikimr::TLogoBlobID BlobId;
-            ui32 BSGroupId;
-
-            TBlobMark(
-                    const NKikimr::TLogoBlobID& blobId,
-                    ui32 bSGroupId)
-                : BlobId(blobId)
-                , BSGroupId(bSGroupId)
-            {}
-        };
-
-        TVector<TBlobMark> BlobsInBatch;
-        TPartialBlobId LastVisitedBlobId;
-        bool IsScanCompleted = false;
-
-        TScanDiskBatchResponse() = default;
-
-        TScanDiskBatchResponse(
-                TVector<TBlobMark> blobs,
-                TPartialBlobId lastVisitedBlobId,
-                bool isScanCompleted)
-            : BlobsInBatch(std::move(blobs))
-            , LastVisitedBlobId(lastVisitedBlobId)
-            , IsScanCompleted(isScanCompleted)
-        {}
-    };
-
-    //
     // Cleanup
     //
 
@@ -803,20 +752,6 @@ struct TEvPartitionPrivate
     };
 
     //
-    // ScanDiskCompleted
-    //
-
-    struct TScanDiskCompleted
-        : TOperationCompleted
-    {
-        TVector<NKikimr::TLogoBlobID> BrokenBlobs;
-
-        TScanDiskCompleted(TVector<NKikimr::TLogoBlobID> brokenBlobs)
-            : BrokenBlobs(std::move(brokenBlobs))
-        {}
-    };
-
-    //
     // LoadStateCompleted
     //
 
@@ -876,7 +811,6 @@ struct TEvPartitionPrivate
         EvCollectGarbageCompleted,
         EvForcedCompactionCompleted,
         EvMetadataRebuildCompleted,
-        EvScanDiskCompleted,
         EvLoadStateCompleted,
         EvGetChangedBlocksCompleted,
         EvPatchBlobCompleted,
@@ -905,7 +839,6 @@ struct TEvPartitionPrivate
     using TEvCollectGarbageCompleted = TResponseEvent<TOperationCompleted, EvCollectGarbageCompleted>;
     using TEvForcedCompactionCompleted = TResponseEvent<TForcedCompactionCompleted, EvForcedCompactionCompleted>;
     using TEvMetadataRebuildCompleted = TResponseEvent<TOperationCompleted, EvMetadataRebuildCompleted>;
-    using TEvScanDiskCompleted = TResponseEvent<TScanDiskCompleted, EvScanDiskCompleted>;
     using TEvLoadStateCompleted = TResponseEvent<TLoadStateCompleted, EvLoadStateCompleted>;
     using TEvGetChangedBlocksCompleted = TResponseEvent<TOperationCompleted, EvGetChangedBlocksCompleted>;
     using TEvPatchBlobCompleted = TResponseEvent<TPatchBlobCompleted, EvPatchBlobCompleted>;

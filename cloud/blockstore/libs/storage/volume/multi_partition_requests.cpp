@@ -556,42 +556,6 @@ bool ToPartitionRequests<TEvVolume::TGetRebuildMetadataStatusMethod>(
 }
 
 template <>
-bool ToPartitionRequests<TEvVolume::TScanDiskMethod>(
-    const TPartitionInfoList& partitions,
-    const ui32 blockSize,
-    const ui32 blocksPerStripe,
-    const TEvVolume::TScanDiskMethod::TRequest::TPtr& ev,
-    TVector<TPartitionRequest<TEvVolume::TScanDiskMethod>>* requests,
-    TBlockRange64* blockRange)
-{
-    return ToPartitionRequestsSimple(
-        partitions,
-        blockSize,
-        blocksPerStripe,
-        ev,
-        requests,
-        blockRange);
-}
-
-template <>
-bool ToPartitionRequests<TEvVolume::TGetScanDiskStatusMethod>(
-    const TPartitionInfoList& partitions,
-    const ui32 blockSize,
-    const ui32 blocksPerStripe,
-    const TEvVolume::TGetScanDiskStatusMethod::TRequest::TPtr& ev,
-    TVector<TPartitionRequest<TEvVolume::TGetScanDiskStatusMethod>>* requests,
-    TBlockRange64* blockRange)
-{
-    return ToPartitionRequestsSimple(
-        partitions,
-        blockSize,
-        blocksPerStripe,
-        ev,
-        requests,
-        blockRange);
-}
-
-template <>
 bool ToPartitionRequests<TEvVolume::TGetUsedBlocksMethod>(
     const TPartitionInfoList& partitions,
     const ui32 blockSize,

@@ -207,49 +207,6 @@ message TGetRebuildMetadataStatusResponse
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-// ScanDisk request/response.
-
-message TScanDiskRequest
-{
-    string DiskId = 1;
-
-    // Number of blobs per batch.
-    uint32 BatchSize = 2;
-}
-
-message TScanDiskResponse
-{
-}
-
-////////////////////////////////////////////////////////////////////////////////
-// GetScanDiskStatus request/response.
-
-message TScanDiskProgress
-{
-    // Number of blobs processed so far.
-    uint64 Processed = 1;
-
-    // Total number of blobs to process.
-    uint64 Total = 2;
-
-    // Is operation completed.
-    bool IsCompleted = 3;
-
-    // Blobs processed with error.
-    repeated TLogoBlobID BrokenBlobs = 4;
-}
-
-message TGetScanDiskStatusRequest
-{
-    string DiskId = 1;
-}
-
-message TGetScanDiskStatusResponse
-{
-    TScanDiskProgress Progress = 1;
-}
-
-////////////////////////////////////////////////////////////////////////////////
 // SetupChannels request/response.
 
 message TVolumeChannelsToPoolsKinds

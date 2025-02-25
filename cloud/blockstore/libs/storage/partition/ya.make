@@ -34,7 +34,6 @@ SRCS(
     part_actor_patchblob.cpp
     part_actor_readblob.cpp
     part_actor_readblocks.cpp
-    part_actor_scan_disk.cpp
     part_actor_statpartition.cpp
     part_actor_stats.cpp
     part_actor_trimfreshlog.cpp

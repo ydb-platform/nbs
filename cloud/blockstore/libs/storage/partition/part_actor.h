@@ -422,15 +422,6 @@ private:
         ui64 mergedBlocksCount,
         TDuration retryTimeout);
 
-    TBlockBuffer CreateScanDiskBlockBuffer(ui32 blobsPerBatch);
-
-    NActors::IActorPtr CreateScanDiskActor(
-        NActors::TActorId tablet,
-        ui64 blobsPerBatch,
-        ui64 finalCommitId,
-        TDuration retryTimeout,
-        TBlockBuffer blockBuffer);
-
 private:
     STFUNC(StateBoot);
     STFUNC(StateInit);
@@ -499,11 +490,6 @@ private:
         TRequestInfoPtr requestInfo);
 
     void HandleHttpInfo_RebuildMetadata(
-        const NActors::TActorContext& ctx,
-        const TCgiParameters& params,
-        TRequestInfoPtr requestInfo);
-
-    void HandleHttpInfo_ScanDisk(
         const NActors::TActorContext& ctx,
         const TCgiParameters& params,
         TRequestInfoPtr requestInfo);
@@ -592,10 +578,6 @@ private:
         const TEvPartitionPrivate::TEvMetadataRebuildCompleted::TPtr& ev,
         const NActors::TActorContext& ctx);
 
-    void HandleScanDiskCompleted(
-        const TEvPartitionPrivate::TEvScanDiskCompleted::TPtr& ev,
-        const NActors::TActorContext& ctx);
-
     void HandleCollectGarbageCompleted(
         const TEvPartitionPrivate::TEvCollectGarbageCompleted::TPtr& ev,
         const NActors::TActorContext& ctx);
@@ -632,10 +614,6 @@ private:
         const NActors::TActorContext& ctx,
         NProto::ERebuildMetadataType type,
         ui32 rangesPerBatch);
-
-    NProto::TError DoHandleScanDisk(
-        const NActors::TActorContext& ctx,
-        ui32 blobsPerBatch);
 
     void MapBaseDiskIdToTabletId(const NActors::TActorContext& ctx);
     void ClearBaseDiskIdToTabletIdMapping(const NActors::TActorContext& ctx);
