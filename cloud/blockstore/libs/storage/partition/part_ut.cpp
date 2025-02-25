@@ -11576,6 +11576,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         }
 
         {
+            auto response = partition.StatPartition();
             const auto& stats = response->Record.GetStats();
             UNIT_ASSERT_VALUES_EQUAL(
                 compactionThreshold - 1,
@@ -11685,6 +11686,65 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         auto config = DefaultConfig();
         config.SetWriteBlobThreshold(3_KB);
         config.SetCompactionMergedBlobThresholdHDD(17_KB);
+
+        auto runtime = PrepareTestActorRuntime(
+            config,
+            1024,
+            {},
+            {.MediaKind = NCloud::NProto::STORAGE_MEDIA_HYBRID});
+
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+
+        // all data should be written to a merged channel directly because data
+        // size is less than threshold
+        for (int i = 0; i < 4; ++i) {
+            partition.WriteBlocks(i, i);
+        }
+
+        {
+            auto response = partition.StatPartition();
+            const auto& stats = response->Record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetFreshBlocksCount());
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(4, stats.GetMergedBlobsCount());
+        }
+
+        // data should be moved to a mixed channel as a result of compaction,
+        // because data is less than threshold
+        partition.Compaction();
+
+        {
+            auto response = partition.StatPartition();
+            const auto& stats = response->Record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetFreshBlocksCount());
+            UNIT_ASSERT_VALUES_EQUAL(1, stats.GetMixedBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(4, stats.GetMergedBlobsCount());
+        }
+
+        partition.Cleanup();
+
+        {
+            auto response = partition.StatPartition();
+            const auto& stats = response->Record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetFreshBlocksCount());
+            UNIT_ASSERT_VALUES_EQUAL(1, stats.GetMixedBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMergedBlobsCount());
+        }
+
+        for (int i = 0; i < 4; ++i) {
+            UNIT_ASSERT_VALUES_EQUAL(
+                GetBlockContent(i),
+                GetBlockContent(partition.ReadBlocks(i))
+            );
+        }
+    }
+
+    Y_UNIT_TEST(CompactionShouldMoveMergedBlobWithHolesToMixedChannel)
+    {
+        auto config = DefaultConfig();
+        config.SetWriteBlobThreshold(12_KB);
+        config.SetCompactionMergedBlobThresholdHDD(1_MB);
 
         auto runtime = PrepareTestActorRuntime(
             config,
@@ -11815,6 +11875,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
                 GetBlocksContent(partition.ReadBlocks(i))
             );
         }
+
         for (ui32 i = 45; i < 65; ++i) {
             UNIT_ASSERT_VALUES_EQUAL(
                 GetBlocksContent('3'),
