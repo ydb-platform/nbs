@@ -3,6 +3,8 @@
 #include <contrib/ydb/core/base/appdata.h>
 #include <contrib/ydb/core/base/hive.h>
 #include <contrib/ydb/core/mind/local.h>
+#include <contrib/ydb/core/statistics/aggregator/aggregator.h>
+#include <contrib/ydb/core/sys_view/processor/processor.h>
 #include <contrib/ydb/core/tx/coordinator/coordinator.h>
 #include <contrib/ydb/core/tx/mediator/mediator.h>
 #include <contrib/ydb/core/tx/schemeshard/schemeshard.h>
@@ -25,7 +27,10 @@ ui64 GetHiveTabletId(const TActorContext& ctx)
     return domainsInfo.GetHive(hiveUid);
 }
 
-void ConfigureTenantSystemTablets(const TAppData& appData, TLocalConfig& localConfig)
+void ConfigureTenantSystemTablets(
+    const TAppData& appData,
+    TLocalConfig& localConfig,
+    bool allowAdditionalSystemTablets)
 {
     localConfig.TabletClassInfo.emplace(
         TTabletTypes::SchemeShard,
@@ -66,6 +71,28 @@ void ConfigureTenantSystemTablets(const TAppData& appData, TLocalConfig& localCo
                 appData.SystemPoolId,
                 TMailboxType::Revolving,
                 appData.SystemPoolId)));
+
+    if (allowAdditionalSystemTablets) {
+        localConfig.TabletClassInfo.emplace(
+            TTabletTypes::SysViewProcessor,
+            TLocalConfig::TTabletClassInfo(
+                MakeIntrusive<TTabletSetupInfo>(
+                    &NSysView::CreateSysViewProcessor,
+                    TMailboxType::Revolving,
+                    appData.UserPoolId,
+                    TMailboxType::Revolving,
+                    appData.UserPoolId)));
+
+        localConfig.TabletClassInfo.emplace(
+            TTabletTypes::StatisticsAggregator,
+            TLocalConfig::TTabletClassInfo(
+                MakeIntrusive<TTabletSetupInfo>(
+                    &NStat::CreateStatisticsAggregator,
+                    TMailboxType::Revolving,
+                    appData.UserPoolId,
+                    TMailboxType::Revolving,
+                    appData.UserPoolId)));
+    }
 }
 
 }   // namespace NCloud::NStorage

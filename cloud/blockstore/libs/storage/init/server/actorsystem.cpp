@@ -467,7 +467,11 @@ public:
                         appData->SystemPoolId),
                     priority);
 
-            ConfigureTenantSystemTablets(*appData, *localConfig);
+            ConfigureTenantSystemTablets(
+                *appData,
+                *localConfig,
+                StorageConfig->GetAllowAdditionalSystemTablets()
+            );
 
             auto tenantPoolConfig = MakeIntrusive<TTenantPoolConfig>(localConfig);
             tenantPoolConfig->AddStaticSlot(StorageConfig->GetSchemeShardDir());
