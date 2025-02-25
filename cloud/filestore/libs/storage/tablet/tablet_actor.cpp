@@ -524,16 +524,23 @@ TCleanupInfo TIndexTabletActor::GetCleanupInfo() const
     auto [cleanupRangeId, cleanupScore] = GetRangeToCleanup();
     const auto& stats = GetFileSystemStats();
     const auto compactionStats = GetCompactionMapStats(0);
-    // FIXME: the sparsity of range usage is not taken into account
-    // It is possible that there are a total of 64 blocks in a range,
-    // 63 or them marked as deleted and 1 is used. In this case the
-    // range will not be cleaned.
-    // It is better to take into account the number of used blocks in the range
-    // but this information is not available in the compaction stats.
-    // The total number of used blocks can be taken from the file system stats.
-    const auto rangeCount = compactionStats.UsedRangesCount;
-    const auto avgCleanupScore = rangeCount
-        ? static_cast<double>(stats.GetDeletionMarkersCount()) / rangeCount
+
+    // Initially, the condition was based on the average number of deletion
+    // markers per used range without taking sparsity into account.
+    // It could lead to the situation when the range is not cleaned because
+    // the number of deletion markers is low despite the fact that the ratio
+    // between the number of deletion markers and the number of used blocks
+    // is very high.
+    //
+    // The new condition is based on the average number of deletion markers
+    // per used block. For the compatibility with the old condition, the
+    // number of blocks is converted to the number of ranges taking the
+    // assumption that the ranges are fully filled.
+    const auto rangeCount = static_cast<double>(stats.GetUsedBlocksCount()) /
+        (BlockGroupSize * NodeGroupSize);
+    const auto avgCleanupScore = rangeCount > 0.0
+        ? static_cast<double>(stats.GetDeletionMarkersCount()) /
+        rangeCount
         : 0;
     const bool shouldCleanup =
         avgCleanupScore >= Config->GetCleanupThresholdAverage();
