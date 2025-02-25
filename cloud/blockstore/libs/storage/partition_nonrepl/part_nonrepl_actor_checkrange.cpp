@@ -1,10 +1,9 @@
 #include "part_nonrepl_actor.h"
 
-#include "cloud/blockstore/libs/storage/disk_agent/model/public.h"
-
 #include <cloud/blockstore/libs/service/context.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/core/probes.h>
+#include <cloud/blockstore/libs/storage/disk_agent/model/public.h>
 
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 
@@ -39,7 +38,7 @@ private:
 public:
     TCheckRangeActor(
         const TActorId& tablet,
-        ui64 blockId,
+        ui64 startIndex,
         ui64 blocksCount,
         TRequestInfoPtr&& requestInfo);
 
@@ -97,9 +96,9 @@ void TCheckRangeActor::SendReadBlocksRequest(const TActorContext& ctx)
     request->Record.SetBlocksCount(BlocksCount);
 
     auto* headers = request->Record.MutableHeaders();
-
     headers->SetClientId(clientId);
     headers->SetIsBackgroundRequest(true);
+
     NCloud::Send(ctx, Tablet, std::move(request));
 }
 
@@ -181,8 +180,9 @@ void TNonreplicatedPartitionActor::HandleCheckRange(
 
     ui64 blocksPerStripe =
         Config->GetBytesPerStripe() / PartConfig->GetBlockSize();
-    const ui64 maxBlocksPerRequest =
-        Min<ui64>(blocksPerStripe, Config->GetCheckRangeMaxRangeSize() / PartConfig->GetBlockSize());
+    const ui64 maxBlocksPerRequest = Min<ui64>(
+        blocksPerStripe,
+        Config->GetCheckRangeMaxRangeSize() / PartConfig->GetBlockSize());
 
     if (msg->Record.GetBlocksCount() > maxBlocksPerRequest) {
         auto err = MakeError(
@@ -191,7 +191,6 @@ void TNonreplicatedPartitionActor::HandleCheckRange(
                              << std::to_string(msg->Record.GetBlocksCount())
                              << " Max blocks per request : "
                              << std::to_string(maxBlocksPerRequest));
-
         auto response =
             std::make_unique<TEvService::TEvCheckRangeResponse>(std::move(err));
         NCloud::Reply(ctx, *ev, std::move(response));

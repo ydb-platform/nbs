@@ -5,6 +5,7 @@
 #include <cloud/blockstore/libs/service/context.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/core/probes.h>
+#include <cloud/blockstore/libs/storage/disk_agent/model/public.h>
 
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 
@@ -34,7 +35,6 @@ private:
     const TActorId Tablet;
     const ui64 StartIndex;
     const ui64 BlocksCount;
-    const TActorId Sender;
     const TRequestInfoPtr RequestInfo;
 
 public:
@@ -101,6 +101,7 @@ void TCheckRangeActor::SendReadBlocksRequest(const TActorContext& ctx)
 
     headers->SetClientId(clientId);
     headers->SetIsBackgroundRequest(true);
+
     NCloud::Send(ctx, Tablet, std::move(request));
 }
 
@@ -181,8 +182,9 @@ void TMirrorPartitionActor::HandleCheckRange(
     const auto* msg = ev->Get();
 
     ui64 blocksPerStripe = Config->GetBytesPerStripe() / State.GetBlockSize();
-    const ui64 maxBlocksPerRequest =
-        Min<ui64>(blocksPerStripe, Config->GetCheckRangeMaxRangeSize() / State.GetBlockSize());
+    const ui64 maxBlocksPerRequest = Min<ui64>(
+        blocksPerStripe,
+        Config->GetCheckRangeMaxRangeSize() / State.GetBlockSize());
 
     if (msg->Record.GetBlocksCount() > maxBlocksPerRequest) {
         auto err = MakeError(

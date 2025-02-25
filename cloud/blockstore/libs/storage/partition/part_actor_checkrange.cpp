@@ -39,8 +39,7 @@ public:
         const TActorId& tablet,
         ui64 startIndex,
         ui64 blocksCount,
-        TRequestInfoPtr&& requestInfo
-);
+        TRequestInfoPtr&& requestInfo);
 
     void Bootstrap(const TActorContext& ctx);
 
@@ -177,8 +176,9 @@ void NPartition::TPartitionActor::HandleCheckRange(
     const auto* msg = ev->Get();
 
     ui64 blocksPerStripe = Config->GetBytesPerStripe() / State->GetBlockSize();
-    const ui64 maxBlocksPerRequest =
-        Min<ui64>(blocksPerStripe, Config->GetCheckRangeMaxRangeSize() / State->GetBlockSize());
+    const ui64 maxBlocksPerRequest = Min<ui64>(
+        blocksPerStripe,
+        Config->GetCheckRangeMaxRangeSize() / State->GetBlockSize());
 
     if (msg->Record.GetBlocksCount() > maxBlocksPerRequest) {
         auto err = MakeError(
