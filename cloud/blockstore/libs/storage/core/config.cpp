@@ -532,7 +532,7 @@ TDuration MSeconds(ui32 value)
                                                                                \
     xxx(DestroyVolumeTimeout,                      TDuration, Seconds(30)     )\
     xxx(CompactionMergedBlobThresholdHDD,          ui32,      0               )\
-
+                                                                               \
     xxx(BSGroupsPerChannelToWarmup,                ui32,      1               )\
     xxx(WarmupBSGroupConnectionsTimeout,           TDuration, Seconds(1)      )\
                                                                                \
