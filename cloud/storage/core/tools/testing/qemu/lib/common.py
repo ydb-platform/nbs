@@ -29,6 +29,7 @@ class SshToGuest(object):
             "-i", self.key,
             "-l", self.user,
             "-p", str(self.port),
+            "-o LogLevel=error",
             "127.0.0.1",
             command
         ]
@@ -38,7 +39,7 @@ class SshToGuest(object):
         return cmd
 
     def __call__(self, command, timeout=None):
-        common.execute(self.get_command(command, timeout))
+        return common.execute(self.get_command(command, timeout))
 
 
 def env_with_guest_index(env, guest_index):
