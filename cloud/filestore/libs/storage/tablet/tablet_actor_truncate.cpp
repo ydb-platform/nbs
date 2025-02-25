@@ -350,6 +350,7 @@ void TIndexTabletActor::CompleteTx_TruncateRange(
             std::move(args.Error));
     NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
 
+    EnqueueBlobIndexOpIfNeeded(ctx);
     EnqueueCollectGarbageIfNeeded(ctx);
 }
 
