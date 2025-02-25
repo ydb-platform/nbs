@@ -151,6 +151,7 @@ public:
 
 class TStorageDataClient final
     : public TClientBase
+    , public std::enable_shared_from_this<TStorageDataClient>
 {
 private:
     const IStoragePtr Storage;
@@ -210,18 +211,24 @@ public:
             std::move(callContext),
             std::move(request));
 
-        const auto& serverStats = ServerStats;
-        return future.Apply([=] (const auto& f) {
-            const auto& response = f.GetValue();
+        return future.Apply(
+            [=, weakSelf = weak_from_this()](const auto& f)
+            {
+                auto self = weakSelf.lock();
+                if (!self) {
+                    return f;
+                }
 
-            if (!HasError(response) && response.HasVolume()) {
-                serverStats->MountVolume(
-                    response.GetVolume(),
-                    ClientId,
-                    instanceId);
-            }
-            return f;
-        });
+                const auto& response = f.GetValue();
+
+                if (!HasError(response) && response.HasVolume()) {
+                    self->ServerStats->MountVolume(
+                        response.GetVolume(),
+                        self->ClientId,
+                        instanceId);
+                }
+                return f;
+            });
     }
 
     TFuture<NProto::TUnmountVolumeResponse> UnmountVolume(
@@ -235,15 +242,23 @@ public:
             std::move(callContext),
             std::move(request));
 
-        const auto& serverStats = ServerStats;
-        return future.Apply([=, diskId = std::move(diskId)] (const auto& f) {
-            const auto& response = f.GetValue();
+        return future.Apply(
+            [=, weakSelf = weak_from_this()](const auto& f)
+            {
+                auto self = weakSelf.lock();
+                if (!self) {
+                    return f;
+                }
 
-            if (!HasError(response)) {
-                serverStats->UnmountVolume(diskId, ClientId);
-            }
-            return f;
-        });
+                const auto& response = f.GetValue();
+
+                if (!HasError(response)) {
+                    self->ServerStats->UnmountVolume(
+                        diskId,
+                        self->ClientId);
+                }
+                return f;
+            });
     }
 
 private:
