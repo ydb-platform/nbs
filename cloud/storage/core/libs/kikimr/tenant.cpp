@@ -27,7 +27,10 @@ ui64 GetHiveTabletId(const TActorContext& ctx)
     return domainsInfo.GetHive(hiveUid);
 }
 
-void ConfigureTenantSystemTablets(const TAppData& appData, TLocalConfig& localConfig)
+void ConfigureTenantSystemTablets(
+    const TAppData& appData,
+    TLocalConfig& localConfig,
+    bool allowAdditionalSystemTablets)
 {
     localConfig.TabletClassInfo.emplace(
         TTabletTypes::SchemeShard,
@@ -69,26 +72,27 @@ void ConfigureTenantSystemTablets(const TAppData& appData, TLocalConfig& localCo
                 TMailboxType::Revolving,
                 appData.SystemPoolId)));
 
-    localConfig.TabletClassInfo.emplace(
-        TTabletTypes::SysViewProcessor,
-        TLocalConfig::TTabletClassInfo(
-            MakeIntrusive<TTabletSetupInfo>(
-                &NSysView::CreateSysViewProcessor,
-                TMailboxType::Revolving,
-                appData.UserPoolId,
-                TMailboxType::Revolving,
-                appData.UserPoolId)));
+    if (allowAdditionalSystemTablets) {
+        localConfig.TabletClassInfo.emplace(
+            TTabletTypes::SysViewProcessor,
+            TLocalConfig::TTabletClassInfo(
+                MakeIntrusive<TTabletSetupInfo>(
+                    &NSysView::CreateSysViewProcessor,
+                    TMailboxType::Revolving,
+                    appData.UserPoolId,
+                    TMailboxType::Revolving,
+                    appData.UserPoolId)));
 
-    localConfig.TabletClassInfo.emplace(
-        TTabletTypes::StatisticsAggregator,
-        TLocalConfig::TTabletClassInfo(
-            MakeIntrusive<TTabletSetupInfo>(
-                &NStat::CreateStatisticsAggregator,
-                TMailboxType::Revolving,
-                appData.UserPoolId,
-                TMailboxType::Revolving,
-                appData.UserPoolId)));
-
+        localConfig.TabletClassInfo.emplace(
+            TTabletTypes::StatisticsAggregator,
+            TLocalConfig::TTabletClassInfo(
+                MakeIntrusive<TTabletSetupInfo>(
+                    &NStat::CreateStatisticsAggregator,
+                    TMailboxType::Revolving,
+                    appData.UserPoolId,
+                    TMailboxType::Revolving,
+                    appData.UserPoolId)));
+    }
 }
 
 }   // namespace NCloud::NStorage
