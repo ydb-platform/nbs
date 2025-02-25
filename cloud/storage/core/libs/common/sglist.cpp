@@ -37,6 +37,38 @@ bool AppendBufferToSgList(TSgList& sglist, TBlockDataRef buffer, ui32 blockSize)
 
 ////////////////////////////////////////////////////////////////////////////////
 
+TSgListBlockRange::TSgListBlockRange(const TSgList& sglist, ui32 blockSize)
+    : BlockSize(blockSize)
+    , End(sglist.end())
+    , It(sglist.begin())
+{}
+
+TSgList TSgListBlockRange::Next(ui64 blockCount)
+{
+    TSgList sglist;
+    while (blockCount) {
+        Y_DEBUG_ABORT_UNLESS(HasNext());
+
+        const auto remains = It->Size() / BlockSize - Offset;
+        const auto n = std::min(remains, blockCount);
+
+        sglist.push_back({It->Data() + Offset * BlockSize, n * BlockSize});
+        blockCount -= n;
+        Offset += n;
+
+        if (n == remains) {
+            Offset = 0;
+            ++It;
+        }
+    }
+
+    return sglist;
+}
+
+[[nodiscard]] bool TSgListBlockRange::HasNext() const {
+    return It != End;
+}
+
 size_t SgListGetSize(const TSgList& sglist)
 {
     size_t len = 0;
