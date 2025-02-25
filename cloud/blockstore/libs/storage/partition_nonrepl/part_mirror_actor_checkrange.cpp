@@ -1,7 +1,5 @@
 #include "part_mirror_actor.h"
 
-#include "cloud/blockstore/libs/storage/disk_agent/model/public.h"
-
 #include <cloud/blockstore/libs/service/context.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/core/probes.h>
