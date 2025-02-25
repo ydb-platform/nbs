@@ -90,6 +90,9 @@ public:
     ui32 GetBlockSize() const;
 
     ui64 GetBlockCount() const;
+
+    TVector<TBlockRange64> SplitRangeByDeviceBorders(
+        const TBlockRange64 readRange) const;
 };
 
 }   // namespace NCloud::NBlockStore::NStorage
