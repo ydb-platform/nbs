@@ -134,6 +134,8 @@ public:
         return NetworkMbitThroughput;
     }
 
+    ui32 GetMaxParallelSecureErasesAllowed() const;
+
     void Dump(IOutputStream& out) const;
     void DumpHtml(IOutputStream& out) const;
 };

@@ -29,6 +29,7 @@
 
 #include <util/generic/deque.h>
 #include <util/generic/hash.h>
+#include <util/generic/hash_set.h>
 
 namespace NCloud::NBlockStore::NStorage {
 
@@ -80,6 +81,7 @@ private:
     TOldRequestCounters OldRequestCounters;
 
     THashMap<TString, TDeque<TRequestInfoPtr>> SecureErasePendingRequests;
+    THashSet<TString> SecureEraseDevicesNames;
 
     const bool RejectLateRequestsAtDiskAgentEnabled =
         Config->GetRejectLateRequestsAtDiskAgentEnabled();
@@ -149,6 +151,8 @@ private:
         const TRequestPtr& ev);
 
     void RenderDevices(IOutputStream& out) const;
+
+    bool CanStartSecureErase(const TString& uuid);
 
     void SecureErase(
         const NActors::TActorContext& ctx,

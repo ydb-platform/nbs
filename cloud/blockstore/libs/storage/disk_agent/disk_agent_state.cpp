@@ -304,7 +304,7 @@ const TDiskAgentState::TDeviceState& TDiskAgentState::GetDeviceStateImpl(
     return it->second;
 }
 
-TString TDiskAgentState::GetDeviceName(const TString& uuid) const
+const TString& TDiskAgentState::GetDeviceName(const TString& uuid) const
 {
     auto it = Devices.find(uuid);
     if (it == Devices.cend()) {
@@ -313,6 +313,17 @@ TString TDiskAgentState::GetDeviceName(const TString& uuid) const
     }
 
     return it->second.Config.GetDeviceName();
+}
+
+const NProto::TDeviceConfig* TDiskAgentState::FindDeviceConfig(
+    const TString& uuid) const
+{
+    const auto* device = Devices.FindPtr(uuid);
+    if (!device) {
+        return nullptr;
+    }
+
+    return &device->Config;
 }
 
 TVector<NProto::TDeviceConfig> TDiskAgentState::GetDevices() const

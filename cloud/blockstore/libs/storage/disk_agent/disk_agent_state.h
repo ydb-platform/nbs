@@ -122,7 +122,8 @@ public:
 
     void CheckIOTimeouts(TInstant now);
 
-    TString GetDeviceName(const TString& uuid) const;
+    const TString& GetDeviceName(const TString& uuid) const;
+    const NProto::TDeviceConfig* FindDeviceConfig(const TString& uuid) const;
 
     TVector<NProto::TDeviceConfig> GetDevices() const;
     TVector<NProto::TDeviceConfig> GetEnabledDevices() const;
