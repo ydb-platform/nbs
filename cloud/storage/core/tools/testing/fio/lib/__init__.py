@@ -3,6 +3,8 @@ import json
 import logging
 import os
 import subprocess
+import threading
+import time
 import uuid
 
 import yatest.common as common
@@ -175,12 +177,25 @@ class TestCase:
         cmd += ["--filename", file_name]
         return cmd
 
-    def get_index_fio_cmd(self, fio_bin, directory):
+    def get_index_fio_cmd(self, fio_bin, directory, verbose=False):
         cmd = self.get_common_fio_cmd(fio_bin)
         cmd += [
             "--directory", directory,
             "--numjobs", str(self.numjobs)
         ]
+        if verbose:
+            cmd += [
+                "--write_iolog",
+                os.path.join(common.output_path(), f"{self.name}.iolog"),
+                "--log_issue_time",
+                "1",
+                "--write_lat_log",
+                os.path.join(common.output_path(), f"{self.name}.lat.log"),
+                "--write_bw_log",
+                os.path.join(common.output_path(), f"{self.name}.bw.log"),
+                "--log_offset",
+                "1",
+            ]
         if self.fsync > 0:
             cmd += ["--fsync", str(self.fsync)]
         if self.fdatasync > 0:
@@ -280,8 +295,11 @@ def _lay_out_files(directory, name, jobs, size):
         _lay_out_file('{}/{}.{}.0'.format(directory, name, i), size)
 
 
-def _execute_command(cmd, fail_on_errors):
-    logger.info("execute " + " ".join(cmd))
+def _execute_command(cmd, fail_on_errors, debug=False):
+    if debug:
+        strace_file = os.path.join(common.output_path(), "strace_" + str(uuid.uuid4()) + ".log")
+        cmd = ["strace", "-f", "-o", strace_file] + cmd
+    print("execute " + " ".join(cmd))
     ex = common.execute(
         cmd,
         stdout=subprocess.PIPE,
@@ -301,9 +319,9 @@ def _execute_command(cmd, fail_on_errors):
 def run_test(file_name, test, fail_on_errors=False):
     # fio lays out the test file using the job blocksize, which may exhaust the
     # run time limit, so do it ourselves
-    logger.info("laying out file " + file_name)
+    print("laying out file " + file_name)
     _lay_out_file(file_name, test.size)
-    logger.info("laid out")
+    print("laid out")
 
     fio_bin = _get_fio_bin()
     cmd = test.get_fio_cmd(fio_bin, file_name)
@@ -311,14 +329,113 @@ def run_test(file_name, test, fail_on_errors=False):
     return _execute_command(cmd, fail_on_errors)
 
 
-def run_index_test(directory, test, fail_on_errors=False):
+def run_index_test(directory, test, fail_on_errors=False, verbose=False):
     # fio lays out the test file using the job blocksize, which may exhaust the
     # run time limit, so do it ourselves
-    logger.info("laying out files in directory " + directory)
+    print("laying out files in directory " + directory)
     _lay_out_files(directory, test.name, test.numjobs, test.size)
-    logger.info("laid out")
+    print("laid out")
 
     fio_bin = _get_fio_bin()
-    cmd = test.get_index_fio_cmd(fio_bin, directory)
+    cmd = test.get_index_fio_cmd(fio_bin, directory, verbose)
 
-    return _execute_command(cmd, fail_on_errors)
+    parent_pids = {str(os.getpid())}
+
+    def monitor_fio_progress():
+        nonlocal cmd, parent_pids
+        period_sec = 0.001
+        pid_seen = False
+        start_time = time.time()
+        timout = 60
+        while True:
+            # use pgrep to find the fio process
+
+            pgrep_process = subprocess.Popen(
+                ["pgrep", "-P", ",".join(list(parent_pids))],
+                stdout=subprocess.PIPE,
+            )
+
+            stdout = pgrep_process.stdout.read() if pgrep_process.stdout else ""
+            stdout = stdout.decode("utf-8")
+            if len(stdout) > 0:
+                fio_pids = list(map(int, stdout.split()))
+                logging.info(
+                    "Fio process is still running with PIDs: {}".format(
+                        fio_pids
+                    )
+                )
+                # os.system("ps -p {} -o pid,ppid,cmd,%cpu,%mem,etime".format(",".join(map(str, fio_pids))))
+                status_process = subprocess.Popen(
+                    [
+                        "ps",
+                        "-F",
+                        "-p",
+                        ",".join(map(str, fio_pids)),
+                    ],
+                    stdout=subprocess.PIPE,
+                )
+                status_process.wait()
+                logging.info(
+                    "Fio process status: "
+                    + status_process.stdout.read().decode("utf-8")
+                    if status_process.stdout
+                    else ""
+                )
+                pid_seen = True
+                parent_pids = parent_pids.union(set(map(str, fio_pids)))
+
+                if time.time() - start_time > timout:
+                    logging.error("Fio process has timed out")
+                    try:
+                        with open(
+                            common.output_path() + "/dmesg.txt", "w"
+                        ) as dmesg_output:
+                            subprocess.run(
+                                ["sudo", "-n", "dmesg", "-T"],
+                                stdout=dmesg_output,
+                                stderr=dmesg_output,
+                                timeout=10,
+                            )
+                            logging.info("Saved dmesg output to dmesg.txt")
+                    except Exception as dmesg_error:
+                        logging.info(
+                            f"Failed to save dmesg output: {dmesg_error}"
+                        )
+                    os.system("id")
+                    os.system("sudo id")
+
+                    for pid in fio_pids:
+                        with open(
+                            common.output_path() + f"/strace_{pid}.txt", "w"
+                        ) as strace_output:
+                            try:
+                                subprocess.run(
+                                    ["sudo", "strace", "-p", str(pid)],
+                                    stdout=strace_output,
+                                    stderr=strace_output,
+                                    timeout=10,
+                                )
+                                logging.info(
+                                    f"Saved strace output for PID {pid} to strace_{pid}.txt"
+                                )
+                            except Exception as strace_error:
+                                logging.info(
+                                    f"Failed to save strace output: {strace_error}"
+                                )
+                    break
+
+            else:
+                if pid_seen:
+                    logging.info("Fio process has finished")
+                    break
+                else:
+                    logging.info("Fio process has not started yet")
+
+            time.sleep(period_sec)
+
+    # Monitoring process to report the progress of the test
+    monitoring_thread = threading.Thread(target=monitor_fio_progress, args=())
+    monitoring_thread.start()
+
+    # This will call popen and wait for the process to finish
+    return _execute_command(cmd, fail_on_errors, debug=verbose)
