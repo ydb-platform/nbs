@@ -1052,6 +1052,7 @@ STFUNC(TIndexTabletActor::StateZombie)
         IgnoreFunc(TEvIndexTabletPrivate::TEvCleanupResponse);
         IgnoreFunc(TEvIndexTabletPrivate::TEvCollectGarbageResponse);
         IgnoreFunc(TEvIndexTabletPrivate::TEvFlushResponse);
+        IgnoreFunc(TEvIndexTabletPrivate::TEvFlushBytesResponse);
 
         IgnoreFunc(TEvFileStore::TEvUpdateConfig);
 
