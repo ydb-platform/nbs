@@ -217,7 +217,7 @@ public:
             TNetlinkResponse<TTaskStatsResponse> response;
             socket.Receive(response);
             response.Msg.Validate();
-            auto cpuLack = TDuration::MilliSeconds(
+            auto cpuLack = TDuration::MicroSeconds(
                 response.Msg.TaskStats.cpu_delay_total / 1000);
             auto retval = cpuLack - Last;
             Last = cpuLack;
