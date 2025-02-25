@@ -127,6 +127,7 @@ DisksConfig: <
     DisableDiskRegistryBasedDisks: {disable_disk_registry_based_disks}
     DiskRegistryBasedDisksFolderIdAllowList: "folder"
     DiskRegistryBasedDisksFolderIdAllowList: "another-folder"
+    DiskRegistryBasedDisksFolderIdAllowList: "encrypted-folder"
 >
 PoolsConfig: <
     MaxActiveSlots: 10
