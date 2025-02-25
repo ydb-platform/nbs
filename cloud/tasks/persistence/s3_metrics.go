@@ -24,8 +24,9 @@ func s3CallDurationBuckets() metrics.DurationBuckets {
 ////////////////////////////////////////////////////////////////////////////////
 
 type s3Metrics struct {
-	registry    metrics.Registry
-	callTimeout time.Duration
+	callTimeout            time.Duration
+	registry               metrics.Registry
+	availabilityMonitoring *AvailabilityMonitoring
 }
 
 func (m *s3Metrics) StatCall(
@@ -49,6 +50,10 @@ func (m *s3Metrics) StatCall(
 		timeoutCounter := subRegistry.Counter("errors/timeout")
 		canceledCounter := subRegistry.Counter("errors/canceled")
 		timeHistogram := subRegistry.DurationHistogram("time", s3CallDurationBuckets())
+
+		if m.availabilityMonitoring != nil {
+			m.availabilityMonitoring.AccountQuery(*err)
+		}
 
 		if time.Since(start) >= m.callTimeout {
 			logging.Error(
@@ -119,9 +124,15 @@ func (m *s3Metrics) OnRetry(req *request.Request) {
 	retryCounter.Inc()
 }
 
-func newS3Metrics(registry metrics.Registry, callTimeout time.Duration) *s3Metrics {
+func newS3Metrics(
+	callTimeout time.Duration,
+	registry metrics.Registry,
+	availabilityMonitoring *AvailabilityMonitoring,
+) *s3Metrics {
+
 	return &s3Metrics{
-		registry:    registry,
-		callTimeout: callTimeout,
+		callTimeout:            callTimeout,
+		registry:               registry,
+		availabilityMonitoring: availabilityMonitoring,
 	}
 }

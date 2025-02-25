@@ -36,6 +36,7 @@ const (
 	TypeUint32    = ydb_types.TypeUint32
 	TypeInt64     = ydb_types.TypeInt64
 	TypeUint64    = ydb_types.TypeUint64
+	TypeDouble    = ydb_types.TypeDouble
 	TypeTimestamp = ydb_types.TypeTimestamp
 	TypeString    = ydb_types.TypeString
 	TypeBytes     = ydb_types.TypeBytes
