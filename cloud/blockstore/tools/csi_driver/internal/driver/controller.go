@@ -7,8 +7,6 @@ import (
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	nbsapi "github.com/ydb-platform/nbs/cloud/blockstore/public/api/protos"
 	nbsclient "github.com/ydb-platform/nbs/cloud/blockstore/public/sdk/go/client"
-	nfsapi "github.com/ydb-platform/nbs/cloud/filestore/public/api/protos"
-	nfsclient "github.com/ydb-platform/nbs/cloud/filestore/public/sdk/go/client"
 	storagecoreapi "github.com/ydb-platform/nbs/cloud/storage/core/protos"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -63,22 +61,16 @@ type nbsServerControllerService struct {
 
 	localFsOverrides LocalFilestoreOverrideMap
 
-	nbsClient      nbsclient.ClientIface
-	nfsClient      nfsclient.ClientIface
-	nfsLocalClient nfsclient.ClientIface
+	nbsClient nbsclient.ClientIface
 }
 
 func newNBSServerControllerService(
 	fsOverrides LocalFilestoreOverrideMap,
-	nbsClient nbsclient.ClientIface,
-	nfsClient nfsclient.ClientIface,
-	nfsLocalClient nfsclient.ClientIface) csi.ControllerServer {
+	nbsClient nbsclient.ClientIface) csi.ControllerServer {
 
 	return &nbsServerControllerService{
 		localFsOverrides: fsOverrides,
 		nbsClient:        nbsClient,
-		nfsClient:        nfsClient,
-		nfsLocalClient:   nfsLocalClient,
 	}
 }
 
@@ -126,8 +118,9 @@ func (c *nbsServerControllerService) CreateVolume(
 
 	var err error
 	if parameters["backend"] == "nfs" {
-		err = c.createFileStore(ctx, req.Name, requiredBytes)
-		// TODO (issues/464): return codes.AlreadyExists if volume exists
+		return nil, status.Errorf(
+			codes.Unimplemented,
+			"Failed to create filestore")
 	} else {
 		err = c.createDisk(ctx, req.Name, requiredBytes, parameters)
 		if err != nil {
@@ -174,36 +167,6 @@ func (c *nbsServerControllerService) createDisk(
 	return err
 }
 
-func (c *nbsServerControllerService) getNfsClient(fileSystemId string) nfsclient.ClientIface {
-	_, ok := c.localFsOverrides[fileSystemId]
-	if !ok {
-		return c.nfsClient
-	}
-
-	return c.nfsLocalClient
-}
-
-func (c *nbsServerControllerService) createFileStore(
-	ctx context.Context,
-	fileSystemId string,
-	requiredBytes int64) error {
-
-	nfsClient := c.getNfsClient(fileSystemId)
-	if nfsClient == nil {
-		return status.Errorf(codes.Internal, "NFS client wasn't created")
-	}
-
-	_, err := nfsClient.CreateFileStore(ctx, &nfsapi.TCreateFileStoreRequest{
-		FileSystemId:     fileSystemId,
-		CloudId:          "fakeCloud",
-		FolderId:         "fakeFolder",
-		BlockSize:        diskBlockSize,
-		BlocksCount:      uint64(requiredBytes) / uint64(diskBlockSize),
-		StorageMediaKind: storagecoreapi.EStorageMediaKind_STORAGE_MEDIA_SSD,
-	})
-	return err
-}
-
 func (c *nbsServerControllerService) DeleteVolume(
 	ctx context.Context,
 	req *csi.DeleteVolumeRequest) (*csi.DeleteVolumeResponse, error) {
@@ -216,32 +179,19 @@ func (c *nbsServerControllerService) DeleteVolume(
 			"VolumeId missing in DeleteVolumeRequest")
 	}
 
-	// Trying to destroy both disk and filestore,
-	// because the resource's type is unknown here.
-	// When we miss we get S_FALSE/S_ALREADY code (err == nil).
-
-	if c.nbsClient != nil {
-		_, err := c.nbsClient.DestroyVolume(ctx, &nbsapi.TDestroyVolumeRequest{
-			DiskId: req.VolumeId,
-		})
-		if err != nil {
-			return nil, status.Errorf(
-				codes.Internal,
-				"Failed to destroy disk: %w", err)
-		}
+	if c.nbsClient == nil {
+		return nil, status.Errorf(
+			codes.Internal,
+			"Failed to destroy volume: invalid nbs client")
 	}
 
-	nfsClient := c.getNfsClient(req.VolumeId)
-
-	if nfsClient != nil {
-		_, err := nfsClient.DestroyFileStore(ctx, &nfsapi.TDestroyFileStoreRequest{
-			FileSystemId: req.VolumeId,
-		})
-		if err != nil {
-			return nil, status.Errorf(
-				codes.Internal,
-				"Failed to destroy filestore: %w", err)
-		}
+	_, err := c.nbsClient.DestroyVolume(ctx, &nbsapi.TDestroyVolumeRequest{
+		DiskId: req.VolumeId,
+	})
+	if err != nil {
+		return nil, status.Errorf(
+			codes.Internal,
+			"Failed to destroy disk: %w", err)
 	}
 
 	return &csi.DeleteVolumeResponse{}, nil
