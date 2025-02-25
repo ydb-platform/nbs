@@ -1123,4 +1123,7 @@ message TStorageServiceConfig
 
     // Timeout to warm up connections to BS groups at the bootstrap.
     optional uint32 WarmupBSGroupConnectionsTimeout = 408;
+ 
+    // Maximum size of CheckRange request
+    optional uint32 CheckRangeMaxRangeSize = 409;
 }
