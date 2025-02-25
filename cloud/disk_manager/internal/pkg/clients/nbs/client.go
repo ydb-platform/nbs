@@ -236,7 +236,9 @@ func getEncryptionDesc(
 	}
 
 	if encryptionDesc.EncryptionKey != nil && len(encryptionDesc.KeyHash) != 0 {
-		return nil, errors.NewNonRetriableErrorf("ill-formed EncryptionDesc")
+		return nil, errors.NewNonRetriableErrorf(
+			"ill-formed EncryptionDesc: EncryptionKey and KeyHash cannot be " +
+				"provided simultaneously")
 	}
 
 	var resultDesc *types.EncryptionDesc
@@ -252,12 +254,16 @@ func getEncryptionDesc(
 				},
 			},
 		}
-	} else {
+	} else if len(encryptionDesc.KeyHash) != 0 {
 		resultDesc = &types.EncryptionDesc{
 			Mode: encryptionMode,
 			Key: &types.EncryptionDesc_KeyHash{
 				KeyHash: encryptionDesc.KeyHash,
 			},
+		}
+	} else {
+		resultDesc = &types.EncryptionDesc{
+			Mode: encryptionMode,
 		}
 	}
 

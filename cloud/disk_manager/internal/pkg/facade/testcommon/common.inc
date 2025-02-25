@@ -1,6 +1,3 @@
-# Fake Root KMS must be started before starting NBS
-INCLUDE(${ARCADIA_ROOT}/cloud/blockstore/tests/recipes/fake-root-kms/recipe.inc)
-
 SET_APPEND(RECIPE_ARGS --multiple-disk-managers)
 INCLUDE(${ARCADIA_ROOT}/cloud/disk_manager/test/recipe/recipe.inc)
 INCLUDE(${ARCADIA_ROOT}/cloud/disk_manager/test/images/recipe/recipe.inc)
