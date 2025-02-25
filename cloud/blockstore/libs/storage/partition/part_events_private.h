@@ -445,20 +445,20 @@ struct TEvPartitionPrivate
     struct TCompactionRequest
     {
         ECompactionMode Mode = RangeCompaction;
-        TMaybe<ui32> BlockIndex;
+        TMaybe<TVector<ui32>> BlockIndices;
         TCompactionOptions CompactionOptions;
 
         TCompactionRequest() = default;
 
         TCompactionRequest(
-                ui32 blockIndex,
+                TVector<ui32> blockIndices,
                 TCompactionOptions compactionOptions)
-            : BlockIndex(blockIndex)
+            : BlockIndices(std::move(blockIndices))
             , CompactionOptions(compactionOptions)
         {}
 
-        TCompactionRequest(ui32 blockIndex)
-            : TCompactionRequest(blockIndex, {})
+        TCompactionRequest(TVector<ui32> blockIndices)
+            : TCompactionRequest(std::move(blockIndices), {})
         {}
 
         TCompactionRequest(ECompactionMode mode)
