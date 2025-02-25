@@ -89,8 +89,8 @@ class CoredumpFormatter(object):
         self.stacks.sort()
 
     def format(self):
-        traces = ["\n".join(line) for _, line in self.stacks]
-        return "\n".join(self.info) + "\n\n" + ("\n\n".join(traces))
+        backtraces = ["\n".join(line) for _, line in self.stacks]
+        return "\n".join(self.info) + "\n\n" + ("\n\n".join(backtraces))
 
     def format_current_thread(self):
         info = "\n".join(self.info) + f"\nTotal threads: {len(self.stacks)}"
