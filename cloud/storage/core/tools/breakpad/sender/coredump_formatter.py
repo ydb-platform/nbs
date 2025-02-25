@@ -4,7 +4,8 @@ import re
 
 
 class CoredumpFormatter(object):
-    CURRENT_THREAD_RE = re.compile(r'^\[Current thread is (\d+) \(LWP \d+\)\]$')
+    CURRENT_THREAD_RE = re.compile(
+        r'^\[Current thread is (\d+) \(LWP \d+\)\]$')
     NEW_STACK_RE = re.compile(r'^Thread (\d+) \(LWP \d+\):$')
     ADDR_RE = re.compile(r' (0x[0-9a-fA-F]+ in )')
     PATH_RE = re.compile(r' at ((.+?):(\d+)(?::(\d+))?)')
@@ -88,12 +89,12 @@ class CoredumpFormatter(object):
         self.stacks.sort()
 
     def format(self):
-        return "\n".join(self.info) + "\n\n" + ("\n\n".join(["\n".join(stack_lines) for _, stack_lines in self.stacks]))
+        traces = ["\n".join(line) for _, line in self.stacks]
+        return "\n".join(self.info) + "\n\n" + ("\n\n".join(traces))
 
-    def format_only_current_thread(self):
-        info = f"\n".join(self.info) + f"\nTotal threads num: {len(self.stacks)}"
-        threads = ["\n".join(stack_lines) for thread, stack_lines in self.stacks
-            if thread == self.current_thread
-        ]
+    def format_current_thread(self):
+        info = "\n".join(self.info) + f"\nTotal threads: {len(self.stacks)}"
+        backtraces = ["\n".join(line) for thread, line in self.stacks
+                      if thread == self.current_thread]
 
-        return info + "\n\n" + "\n\n".join(threads)
+        return info + "\n\n" + "\n\n".join(backtraces)

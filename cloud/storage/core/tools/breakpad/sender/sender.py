@@ -18,6 +18,7 @@ logger = logging.getLogger(__name__)
 class SenderError(Exception):
     pass
 
+
 class Sender(object):
     CRASH_TYPE_CORE = "crash"
     CRASH_TYPE_OOM = "oom"
@@ -25,7 +26,8 @@ class Sender(object):
     AGGREGATOR_TYPE_SENTRY = 'sentry'
     AGGREGATOR_TIMEOUT = 60  # Seconds
 
-    def __init__(self, aggregator_type, aggregator_url, project, emails, ca_file):
+    def __init__(self, aggregator_type, aggregator_url, project, emails,
+                 ca_file):
         super(Sender, self).__init__()
         self._logger = logger.getChild(self.__class__.__name__)
         self.aggregator_type = aggregator_type
@@ -58,15 +60,16 @@ class Sender(object):
         )
 
     def _format_coredump(self):
-        coredump_formatter = CoredumpFormatter(self.coredump)
-        self._formatted_coredump = coredump_formatter.format()
-        self._formatted_current_thread = coredump_formatter.format_only_current_thread()
+        formatter = CoredumpFormatter(self.coredump)
+        self._formatted_coredump = formatter.format()
+        self._formatted_current_thread = formatter.format_current_thread()
 
     def _header(self):
-        return "Process {service} {crash_type}ed on {server} cluster {ctype}".format(
-            crash_type=self.crash_type,
-            **self._metadata
-        )
+        return "Process {service} {crash_type}ed" \
+               "on {server} cluster {ctype}".format(
+                   crash_type=self.crash_type,
+                   **self._metadata
+               )
 
     def _get_coredump_with_info(self):
         if not self.info:
@@ -98,7 +101,7 @@ class Sender(object):
         elif self.aggregator_type == self.AGGREGATOR_TYPE_SENTRY:
             response = self._post_crash_to_sentry()
         else:
-            raise SenderError(f"Unknown aggregator type f{self.aggregator_type}")
+            raise SenderError(f"Unknown aggregator: {self.aggregator_type}")
 
         if response.status_code != 200:
             msg = f"Error sending crash to aggregator {url}: \
@@ -112,7 +115,8 @@ class Sender(object):
         try:
             self._do_send_to_aggregator()
         except Exception as e:
-            self._logger.error("gave up on sending core dump to the aggregator: %r", e)
+            self._logger.error(
+                "gave up on sending core dump to the aggregator: %r", e)
             pass
 
     @retry(max_times=10, delay=60)
@@ -131,10 +135,11 @@ class Sender(object):
             message_body.append(self._formatted_coredump)
 
         message = MIMEText("\n".join(message_body))
-        message["Subject"] = "[{ctype}] {crash_type} {service} on {server}".format(
-            crash_type=self.crash_type,
-            **self._metadata
-        )
+        message["Subject"] = \
+            "[{ctype}] {crash_type} {service} on {server}".format(
+                crash_type=self.crash_type,
+                **self._metadata
+            )
         message["From"] = "{server} <{address}>".format(
             server=self._metadata.get("server", "unknown"),
             address=mail_from
@@ -142,7 +147,8 @@ class Sender(object):
         message["To"] = mail_to
 
         try:
-            sendmail = subprocess.Popen(["/usr/sbin/sendmail", "-t"], stdin=subprocess.PIPE)
+            sendmail = subprocess.Popen(
+                ["/usr/sbin/sendmail", "-t"], stdin=subprocess.PIPE)
             sendmail.communicate(message.as_string().encode("utf-8"))
             sendmail.wait()
         except Exception as e:
@@ -158,7 +164,8 @@ class Sender(object):
                     fd.write("URL: " + self._core_url + "\n")
                 fd.write(self._formatted_coredump + "\n")
         except IOError as e:
-            self._logger.error("Can't write info to file %s %r", self.logfile, e)
+            self._logger.error(
+                "Can't write info to file %s %r", self.logfile, e)
             self._logger.debug("Exception", exc_info=True)
 
     def _write_to_stdout(self):
@@ -166,7 +173,8 @@ class Sender(object):
         if self._core_url:
             self._logger.info("URL %s", self._core_url)
 
-    def send(self, timestamp, core_file, coredump, info, service_name, crash_type, logfile):
+    def send(self, timestamp, core_file, coredump, info, service_name,
+             crash_type, logfile):
         self._core_url = None
         self.timestamp = timestamp
         self.core_file = core_file
