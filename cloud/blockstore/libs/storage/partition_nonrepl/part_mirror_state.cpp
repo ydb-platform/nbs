@@ -64,11 +64,10 @@ NProto::TError TMirrorPartitionState::Validate()
 
 void TMirrorPartitionState::PrepareMigrationConfig()
 {
-    using enum EMigrationConfPreparedType;
+    using enum EMigrationConfigState;
     if (MigrationConfigPrepared != NotPrepared) {
         return;
     }
-
 
     if (PrepareMigrationConfigForFreshDevices()) {
         MigrationConfigPrepared = PreparedForFresh;

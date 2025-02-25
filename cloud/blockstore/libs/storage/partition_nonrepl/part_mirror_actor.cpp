@@ -110,12 +110,9 @@ void TMirrorPartitionActor::SetupPartitions(const TActorContext& ctx)
     for (const auto& replicaInfo: State.GetReplicaInfos()) {
         IActorPtr actor;
         if (replicaInfo.Migrations.size()) {
-            auto migrationSrcActorId =
-                State.GetTypeOfMigrationPreparedFor() ==
-                        TMirrorPartitionState::EMigrationConfPreparedType::
-                            PreparedForFresh
-                    ? std::make_optional(SelfId())
-                    : std::nullopt;
+            auto migrationSrcActorId = State.IsMigrationConfigPreparedForFresh()
+                                           ? std::make_optional(SelfId())
+                                           : std::nullopt;
             actor = CreateNonreplicatedPartitionMigration(
                 Config,
                 DiagnosticsConfig,

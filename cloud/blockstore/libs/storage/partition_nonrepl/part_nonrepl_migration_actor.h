@@ -33,7 +33,7 @@ public:
         google::protobuf::RepeatedPtrField<NProto::TDeviceMigration> migrations,
         NRdma::IClientPtr rdmaClient,
         NActors::TActorId statActorId,
-        std::optional<NActors::TActorId> migrationSrcActorId = std::nullopt);
+        std::optional<NActors::TActorId> migrationSrcActorId);
 
     // IMigrationOwner implementation
     void OnBootstrap(const NActors::TActorContext& ctx) override;
@@ -44,6 +44,19 @@ public:
         ui64 migrationIndex) override;
     void OnMigrationFinished(const NActors::TActorContext& ctx) override;
     void OnMigrationError(const NActors::TActorContext& ctx) override;
+
+private:
+
+    bool IsMigrationTarget(const NProto::TDeviceConfig& device) const
+    {
+        return AnyOf(
+            Migrations,
+            [&](const NProto::TDeviceMigration& m)
+            {
+                return m.GetTargetDevice().GetDeviceUUID() ==
+                       device.GetDeviceUUID();
+            });
+    }
 
 private:
     void PrepareForMigration(const NActors::TActorContext& ctx);

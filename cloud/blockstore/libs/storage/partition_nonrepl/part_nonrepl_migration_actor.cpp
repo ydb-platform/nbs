@@ -166,14 +166,7 @@ NActors::TActorId TNonreplicatedPartitionMigrationActor::CreateSrcActor(
 {
     auto devices = SrcConfig->GetDevices();
     for (auto& device: devices) {
-        if (AnyOf(
-                Migrations,
-                [&](const NProto::TDeviceMigration& m)
-                {
-                    return m.GetTargetDevice().GetDeviceUUID() ==
-                           device.GetDeviceUUID();
-                }))
-        {
+        if (IsMigrationTarget(device)) {
             device.ClearDeviceUUID();
         }
     }
@@ -205,7 +198,7 @@ NActors::TActorId TNonreplicatedPartitionMigrationActor::CreateDstActor(
     ui64 blockIndex = 0;
     auto devices = SrcConfig->GetDevices();
     for (auto& device: devices) {
-        auto* migrationSource = FindIfPtr(
+        auto* migration = FindIfPtr(
             Migrations,
             [&](const NProto::TDeviceMigration& m)
             {
@@ -213,16 +206,8 @@ NActors::TActorId TNonreplicatedPartitionMigrationActor::CreateDstActor(
                        m.GetSourceDeviceId() == device.GetDeviceUUID();
             });
 
-        const auto isMigrationTarget = AnyOf(
-            Migrations,
-            [&](const NProto::TDeviceMigration& m)
-            {
-                return m.GetTargetDevice().GetDeviceUUID() ==
-                       device.GetDeviceUUID();
-            });
-
-        if (migrationSource) {
-            const auto& target = migrationSource->GetTargetDevice();
+        if (migration) {
+            const auto& target = migration->GetTargetDevice();
 
             if (device.GetBlocksCount() != target.GetBlocksCount()) {
                 LOG_ERROR(
@@ -240,8 +225,8 @@ NActors::TActorId TNonreplicatedPartitionMigrationActor::CreateDstActor(
                 return {};
             }
 
-            device.CopyFrom(migrationSource->GetTargetDevice());
-        } else if (!isMigrationTarget) {
+            device.CopyFrom(migration->GetTargetDevice());
+        } else if (!IsMigrationTarget(device)) {
             // Skip this device for migration
             MarkMigratedBlocks(
                 TBlockRange64::WithLength(blockIndex, device.GetBlocksCount()));
