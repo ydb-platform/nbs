@@ -578,7 +578,14 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMigrationTest)
             UNIT_ASSERT_VALUES_EQUAL(1, affectedDisks.size());
             UNIT_ASSERT_VALUES_EQUAL(affectedReplica, affectedDisks[0]);
 
-            UNIT_ASSERT_VALUES_EQUAL(0, state.GetDiskStateUpdates().size());
+            // We should change master disk state to warning.
+            UNIT_ASSERT_VALUES_EQUAL(1, state.GetDiskStateUpdates().size());
+            UNIT_ASSERT_VALUES_EQUAL(
+                "disk-1",
+                state.GetDiskStateUpdates()[0].State.GetDiskId());
+            UNIT_ASSERT(
+                NProto::DISK_STATE_WARNING ==
+                state.GetDiskStateUpdates()[0].State.GetState());
             UNIT_ASSERT_VALUES_EQUAL(
                 NProto::EDiskState_Name(NProto::DISK_STATE_WARNING),
                 NProto::EDiskState_Name(state.GetDiskState(affectedReplica)));
@@ -862,7 +869,15 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMigrationTest)
 
             UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
             UNIT_ASSERT(updated);
-            UNIT_ASSERT_VALUES_EQUAL(0, state.GetDiskStateUpdates().size());
+
+            UNIT_ASSERT_VALUES_EQUAL(2, state.GetDiskStateUpdates().size());
+            UNIT_ASSERT_VALUES_EQUAL(
+                "disk-1",
+                state.GetDiskStateUpdates()[1].State.GetDiskId());
+            UNIT_ASSERT(
+                NProto::DISK_STATE_ONLINE ==
+                state.GetDiskStateUpdates()[1].State.GetState());
+
             UNIT_ASSERT_EQUAL(
                 NProto::EDiskState_Name(NProto::DISK_STATE_ONLINE),
                 NProto::EDiskState_Name(state.GetDiskState(affectedReplica)));
