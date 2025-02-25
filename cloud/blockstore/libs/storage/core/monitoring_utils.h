@@ -84,11 +84,6 @@ void BuildRebuildMetadataButton(
     ui64 tabletId,
     ui32 rangesPerBatch);
 
-void BuildScanDiskButton(
-    IOutputStream& out,
-    ui64 tabletId,
-    ui32 blobsPerBatch);
-
 void BuildConfirmActionDialog(
     IOutputStream& out,
     const TString& id,

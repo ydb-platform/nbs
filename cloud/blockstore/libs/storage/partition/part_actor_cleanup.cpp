@@ -30,10 +30,6 @@ void TPartitionActor::EnqueueCleanupIfNeeded(const TActorContext& ctx)
         return;
     }
 
-    if (State->IsScanDiskStarted()) {
-        return;
-    }
-
     auto& scoreHistory = State->GetCleanupScoreHistory();
     const auto now = ctx.Now();
     if (scoreHistory.LastTs() + Config->GetMaxCleanupDelay() <= now) {
@@ -141,13 +137,6 @@ void TPartitionActor::HandleCleanup(
         State->GetCleanupState().SetStatus(EOperationStatus::Idle);
 
         replyError(ctx, *requestInfo, E_TRY_AGAIN, "Metadata rebuild is running");
-        return;
-    }
-
-    if (State->IsScanDiskStarted()) {
-        State->GetCleanupState().SetStatus(EOperationStatus::Idle);
-
-        replyError(ctx, *requestInfo, E_TRY_AGAIN, "Scan disk is running");
         return;
     }
 

@@ -190,76 +190,6 @@ struct TMetadataRebuildState
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TScanDiskProgress
-{
-    ui64 ProcessedBlobs = 0;
-    ui64 TotalBlobs = 0;
-    bool IsCompleted = false;
-    TVector<NKikimr::TLogoBlobID> BrokenBlobs;
-};
-
-////////////////////////////////////////////////////////////////////////////////
-
-struct TScanDiskState
-{
-    bool Started = false;
-    bool EverStarted = false;
-
-    TVector<NKikimr::TLogoBlobID> BrokenBlobs;
-    ui64 ProcessedBlobs = 0;
-    ui64 TotalBlobs = 0;
-
-    ui64 BlobsToBeProcessed = 0;
-
-    bool IsStarted() const
-    {
-        return Started;
-    }
-
-    bool HasProgress() const
-    {
-        return EverStarted;
-    }
-
-    void Start(ui64 totalMixedBlobs, ui64 totalMergedBlobs)
-    {
-        Started = true;
-        EverStarted = true;
-        BrokenBlobs.clear();
-        ProcessedBlobs = 0;
-        TotalBlobs = totalMixedBlobs + totalMergedBlobs;
-        BlobsToBeProcessed = 0;
-    }
-
-    TScanDiskProgress GetProgress() const
-    {
-        return {ProcessedBlobs, TotalBlobs, !Started, BrokenBlobs};
-    }
-
-    void UpdateProcessedBlobs()
-    {
-        ProcessedBlobs += BlobsToBeProcessed;
-        BlobsToBeProcessed = 0;
-    }
-
-    void UpdateBlobsToBeProcessed(ui64 toBeProcessed)
-    {
-        BlobsToBeProcessed = toBeProcessed;
-    }
-
-    void SetBrokenBlobs(TVector<NKikimr::TLogoBlobID> blobIds)
-    {
-        BrokenBlobs = std::move(blobIds);
-    }
-
-    void Complete()
-    {
-        Started = false;
-    }
-};
-
-////////////////////////////////////////////////////////////////////////////////
-
 struct TChannelState
 {
     EChannelPermissions Permissions = EChannelPermission::UserWritesAllowed
@@ -997,55 +927,6 @@ public:
     {
         Stats.SetMixedBlocksCount(mixed);
         Stats.SetMergedBlocksCount(merged);
-    }
-
-    //
-    // Scan Disk
-    //
-
-private:
-    TScanDiskState ScanDiskState;
-
-public:
-    bool IsScanDiskStarted() const
-    {
-        return ScanDiskState.IsStarted();
-    }
-
-    bool HasScanDiskProgress() const
-    {
-        return ScanDiskState.HasProgress();
-    }
-
-    void StartScanDisk()
-    {
-        ScanDiskState.Start(
-            GetMixedBlobsCount(),
-            GetMergedBlobsCount());
-    }
-
-    TScanDiskProgress GetScanDiskProgress() const
-    {
-        return ScanDiskState.GetProgress();
-    }
-
-    void UpdateScanDiskProgress()
-    {
-        ScanDiskState.UpdateProcessedBlobs();
-    }
-
-    void UpdateScanDiskBlobsToBeProcessed(ui64 toBeProcessed)
-    {
-        ScanDiskState.UpdateBlobsToBeProcessed(toBeProcessed);
-    }
-
-    void SetBrokenBlobs(TVector<NKikimr::TLogoBlobID> blobIds) {
-        ScanDiskState.SetBrokenBlobs(std::move(blobIds));
-    }
-
-    void CompleteScanDisk()
-    {
-        ScanDiskState.Complete();
     }
 
     //

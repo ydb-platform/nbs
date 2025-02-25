@@ -200,51 +200,6 @@ private:
     }
 
     void Merge(
-        NProto::TScanDiskResponse& src,
-        ui32 requestNo,
-        NProto::TScanDiskResponse& dst)
-    {
-        Y_UNUSED(requestNo);
-        if (FAILED(src.GetError().GetCode())) {
-            *dst.MutableError() = std::move(*src.MutableError());
-        }
-    }
-
-    void Merge(
-        NProto::TGetScanDiskStatusResponse& src,
-        ui32 requestNo,
-        NProto::TGetScanDiskStatusResponse& dst)
-    {
-        Y_UNUSED(requestNo);
-
-        if (FAILED(src.GetError().GetCode())) {
-            *dst.MutableError() = std::move(*src.MutableError());
-        } else {
-            const auto& srcProgress = src.GetProgress();
-            const auto& dstProgress = dst.GetProgress();
-
-            dst.MutableProgress()->SetProcessed(
-                srcProgress.GetProcessed() + dstProgress.GetProcessed());
-            dst.MutableProgress()->SetTotal(
-                srcProgress.GetTotal() + dstProgress.GetTotal());
-
-            const bool dstIsCompleted = Responses
-                ? dstProgress.GetIsCompleted()
-                : true;
-            dst.MutableProgress()->SetIsCompleted(
-                srcProgress.GetIsCompleted() && dstIsCompleted);
-
-            const auto& srcBrokenBlobs = srcProgress.GetBrokenBlobs();
-            for (int i = 0; i < srcBrokenBlobs.size(); ++i) {
-                auto& dstBrokenBlob = *dst.MutableProgress()->AddBrokenBlobs();
-                dstBrokenBlob.SetRawX1(srcBrokenBlobs.at(i).GetRawX1());
-                dstBrokenBlob.SetRawX2(srcBrokenBlobs.at(i).GetRawX2());
-                dstBrokenBlob.SetRawX3(srcBrokenBlobs.at(i).GetRawX3());
-            }
-        }
-    }
-
-    void Merge(
         NProto::TDescribeBlocksResponse& src,
         ui32 requestNo,
         NProto::TDescribeBlocksResponse& dst)

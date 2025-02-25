@@ -196,8 +196,6 @@ private:
     BLOCKSTORE_IMPLEMENT_REQUEST(GetCompactionStatus, TEvVolume);
     BLOCKSTORE_IMPLEMENT_REQUEST(RebuildMetadata, TEvVolume);
     BLOCKSTORE_IMPLEMENT_REQUEST(GetRebuildMetadataStatus, TEvVolume);
-    BLOCKSTORE_IMPLEMENT_REQUEST(ScanDisk, TEvVolume);
-    BLOCKSTORE_IMPLEMENT_REQUEST(GetScanDiskStatus, TEvVolume);
 };
 
 }   // namespace NCloud::NBlockStore::NStorage

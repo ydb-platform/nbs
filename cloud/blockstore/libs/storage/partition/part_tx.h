@@ -59,7 +59,6 @@ namespace NCloud::NBlockStore::NStorage::NPartition {
     xxx(UpdateLogicalUsedBlocks,    __VA_ARGS__)                               \
     xxx(MetadataRebuildUsedBlocks,  __VA_ARGS__)                               \
     xxx(MetadataRebuildBlockCount,  __VA_ARGS__)                               \
-    xxx(ScanDiskBatch,              __VA_ARGS__)                               \
     xxx(AddUnconfirmedBlobs,        __VA_ARGS__)                               \
     xxx(ConfirmBlobs,               __VA_ARGS__)                               \
 // BLOCKSTORE_PARTITION_TRANSACTIONS
@@ -529,43 +528,6 @@ struct TTxPartition
             MixedBlockCount = 0;
             MergedBlockCount = 0;
             LastReadBlobId = {};
-        }
-    };
-
-    //
-    // ScanDiskBatch
-    //
-
-    struct TScanDiskBatch
-    {
-        const TRequestInfoPtr RequestInfo;
-        const TPartialBlobId StartBlobId;
-        const ui32 BlobCountToVisit = 0;
-        const TPartialBlobId FinalBlobId;
-
-        using TBlobMark =
-            TEvPartitionPrivate::TScanDiskBatchResponse::TBlobMark;
-
-        TVector<TBlobMark> BlobsToReadInCurrentBatch;
-        ui32 VisitCount = 0;
-        TPartialBlobId LastVisitedBlobId;
-
-        TScanDiskBatch(
-                TRequestInfoPtr requestInfo,
-                TPartialBlobId startBlobId,
-                ui32 blobCountToRead,
-                TPartialBlobId finalBlobId)
-            : RequestInfo(std::move(requestInfo))
-            , StartBlobId(startBlobId)
-            , BlobCountToVisit(blobCountToRead)
-            , FinalBlobId(finalBlobId)
-        {}
-
-        void Clear()
-        {
-            BlobsToReadInCurrentBatch.clear();
-            VisitCount = 0;
-            LastVisitedBlobId = TPartialBlobId();
         }
     };
 

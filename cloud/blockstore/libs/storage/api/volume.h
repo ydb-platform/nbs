@@ -29,8 +29,6 @@ namespace NCloud::NBlockStore::NStorage {
     xxx(UpdateUsedBlocks,         __VA_ARGS__)                                 \
     xxx(RebuildMetadata,          __VA_ARGS__)                                 \
     xxx(GetRebuildMetadataStatus, __VA_ARGS__)                                 \
-    xxx(ScanDisk,                 __VA_ARGS__)                                 \
-    xxx(GetScanDiskStatus,        __VA_ARGS__)                                 \
     xxx(GetVolumeInfo,            __VA_ARGS__)                                 \
     xxx(UpdateVolumeParams,       __VA_ARGS__)                                 \
     xxx(ChangeStorageConfig,      __VA_ARGS__)                                 \
@@ -63,8 +61,6 @@ namespace NCloud::NBlockStore::NStorage {
     xxx(DeleteCheckpointData,     __VA_ARGS__)                                 \
     xxx(RebuildMetadata,          __VA_ARGS__)                                 \
     xxx(GetRebuildMetadataStatus, __VA_ARGS__)                                 \
-    xxx(ScanDisk,                 __VA_ARGS__)                                 \
-    xxx(GetScanDiskStatus,        __VA_ARGS__)                                 \
 // BLOCKSTORE_VOLUME_HANDLED_RESPONSES
 
 // responses for the requests forwarded from service which are forwarded back
@@ -301,12 +297,6 @@ struct TEvVolume
 
         EvUpdateResyncState = EvBegin + 39,
         EvResyncStateUpdated = EvBegin + 40,
-
-        EvScanDiskRequest = EvBegin + 41,
-        EvScanDiskResponse = EvBegin + 42,
-
-        EvGetScanDiskStatusRequest = EvBegin + 43,
-        EvGetScanDiskStatusResponse = EvBegin + 44,
 
         EvResyncFinished = EvBegin + 45,
 
