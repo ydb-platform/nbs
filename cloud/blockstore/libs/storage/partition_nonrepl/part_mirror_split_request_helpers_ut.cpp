@@ -6,9 +6,10 @@ namespace NCloud::NBlockStore::NStorage {
 
 using namespace NActors;
 
+namespace {
+
 ////////////////////////////////////////////////////////////////////////////////
 
-namespace {
 TActorId MakeActorId(ui32 num)
 {
     return TActorId(num, num, num, num);
@@ -32,6 +33,8 @@ TSgList MergeSglist(const TSgList& sglist)
 
 }   // namespace
 
+////////////////////////////////////////////////////////////////////////////////
+
 Y_UNIT_TEST_SUITE(TSplitRequestTest)
 {
     Y_UNIT_TEST(ShouldSplitReadRequest)
@@ -49,35 +52,29 @@ Y_UNIT_TEST_SUITE(TSplitRequestTest)
         request.SetSessionId("session-1");
 
         TVector<TBlockRange64> blockRangeSplittedByDeviceBorders{
-            // block range splitted by device borders, sizeof device == 4 blocks
+            // block range split by device borders, sizeof device == 4 blocks
             TBlockRange64::WithLength(2, 2),
             TBlockRange64::WithLength(4, 4),
             TBlockRange64::WithLength(8, 4),
             TBlockRange64::WithLength(12, 1),
         };
 
-        TVector<TVector<TActorId>> actorsForEachRequests{
-            {MakeActorId(0), MakeActorId(1)},
-            {MakeActorId(2), MakeActorId(3)},
-            {MakeActorId(4), MakeActorId(5)},
-            {MakeActorId(6), MakeActorId(7)},
-        };
-
-        auto splitRequest =
+        auto splitRequestOrError =
             SplitReadRequest(request, blockRangeSplittedByDeviceBorders);
 
-        UNIT_ASSERT(splitRequest);
+        UNIT_ASSERT(!HasError(splitRequestOrError));
+        auto splitRequest = splitRequestOrError.ExtractResult();
         UNIT_ASSERT_VALUES_EQUAL(
-            splitRequest.size(),
-            actorsForEachRequests.size());
+            blockRangeSplittedByDeviceBorders.size(),
+            splitRequest.size());
 
         for (size_t i = 0; i < splitRequest.size(); ++i) {
             const auto& partSplit = splitRequest[i];
             UNIT_ASSERT_VALUES_EQUAL(
+                blockRangeSplittedByDeviceBorders[i],
                 TBlockRange64::WithLength(
                     partSplit.GetStartIndex(),
-                    partSplit.GetBlocksCount()),
-                blockRangeSplittedByDeviceBorders[i]);
+                    partSplit.GetBlocksCount()));
 
             UNIT_ASSERT_VALUES_EQUAL(
                 request.GetDiskId(),
@@ -90,11 +87,11 @@ Y_UNIT_TEST_SUITE(TSplitRequestTest)
                 request.GetSessionId(),
                 partSplit.GetSessionId());
             UNIT_ASSERT_VALUES_EQUAL(
-                partSplit.GetStartIndex(),
-                blockRangeSplittedByDeviceBorders[i].Start);
+                blockRangeSplittedByDeviceBorders[i].Start,
+                partSplit.GetStartIndex());
             UNIT_ASSERT_VALUES_EQUAL(
-                partSplit.GetBlocksCount(),
-                blockRangeSplittedByDeviceBorders[i].Size());
+                blockRangeSplittedByDeviceBorders[i].Size(),
+                partSplit.GetBlocksCount());
         }
     }
 
@@ -104,7 +101,6 @@ Y_UNIT_TEST_SUITE(TSplitRequestTest)
 
         const ui32 startBlock = 2;
         const ui32 blocksCount = 10;
-        // const auto deviceSizeInBlocks = 4;
         const auto blockSize = 100;
 
         request.SetDiskId("disk-1");
@@ -128,7 +124,7 @@ Y_UNIT_TEST_SUITE(TSplitRequestTest)
         request.Sglist = TGuardedSgList(sglist);
 
         TVector<TBlockRange64> blockRangeSplittedByDeviceBorders{
-            // block range splitted by device borders, sizeof device == 4
+            // block range split by device borders, sizeof device == 4
             // blocks
             TBlockRange64::WithLength(2, 2),
             TBlockRange64::WithLength(4, 4),
@@ -136,10 +132,11 @@ Y_UNIT_TEST_SUITE(TSplitRequestTest)
             TBlockRange64::WithLength(12, 1),
         };
 
-        auto splitRequest =
+        auto splitRequestOrError =
             SplitReadRequest(request, blockRangeSplittedByDeviceBorders);
 
-        UNIT_ASSERT(splitRequest);
+        UNIT_ASSERT(!HasError(splitRequestOrError));
+        auto splitRequest = splitRequestOrError.ExtractResult();
         UNIT_ASSERT_VALUES_EQUAL(
             splitRequest.size(),
             blockRangeSplittedByDeviceBorders.size());
@@ -148,10 +145,10 @@ Y_UNIT_TEST_SUITE(TSplitRequestTest)
         for (size_t i = 0; i < splitRequest.size(); ++i) {
             const auto& partSplit = splitRequest[i];
             UNIT_ASSERT_VALUES_EQUAL(
+                blockRangeSplittedByDeviceBorders[i],
                 TBlockRange64::WithLength(
                     partSplit.GetStartIndex(),
-                    partSplit.GetBlocksCount()),
-                blockRangeSplittedByDeviceBorders[i]);
+                    partSplit.GetBlocksCount()));
 
             UNIT_ASSERT_VALUES_EQUAL(
                 request.GetDiskId(),
@@ -173,23 +170,23 @@ Y_UNIT_TEST_SUITE(TSplitRequestTest)
             UNIT_ASSERT_VALUES_EQUAL(request.CommitId, partSplit.CommitId);
 
             auto guard = partSplit.Sglist.Acquire();
-            const auto& splittedSglist = guard.Get();
+            const auto& splitSglist = guard.Get();
             size_t overallSize = 0;
-            for (auto buf: splittedSglist) {
-                UNIT_ASSERT_VALUES_EQUAL(buf.Size() % request.BlockSize, 0);
+            for (auto buf: splitSglist) {
+                UNIT_ASSERT_VALUES_EQUAL(0, buf.Size() % request.BlockSize);
                 overallSize += buf.Size();
                 overallSglist.emplace_back(buf);
             }
             UNIT_ASSERT_VALUES_EQUAL(
-                overallSize,
-                partSplit.BlockSize * partSplit.GetBlocksCount());
+                partSplit.BlockSize * partSplit.GetBlocksCount(),
+                overallSize);
         }
 
         auto mergedSglist = MergeSglist(overallSglist);
-        UNIT_ASSERT_VALUES_EQUAL(mergedSglist.size(), sglist.size());
+        UNIT_ASSERT_VALUES_EQUAL(sglist.size(), mergedSglist.size());
         for (size_t i = 0; i < mergedSglist.size(); ++i) {
-            UNIT_ASSERT_EQUAL(mergedSglist[i].Data(), sglist[i].Data());
-            UNIT_ASSERT_VALUES_EQUAL(mergedSglist[i].Size(), sglist[i].Size());
+            UNIT_ASSERT_EQUAL(sglist[i].Data(), mergedSglist[i].Data());
+            UNIT_ASSERT_VALUES_EQUAL(sglist[i].Size(), mergedSglist[i].Size());
         }
     }
 
@@ -219,15 +216,15 @@ Y_UNIT_TEST_SUITE(TSplitRequestTest)
         request.Sglist = TGuardedSgList(sglist);
 
         TVector<TBlockRange64> blockRangeSplittedByDeviceBorders{
-            // block range splitted by device borders, sizeof device == 4
+            // block range split by device borders, sizeof device == 4
             // blocks
             TBlockRange64::WithLength(0, 3),
         };
 
-        auto splitRequest =
+        auto splitRequestOrError =
             SplitReadRequest(request, blockRangeSplittedByDeviceBorders);
 
-        UNIT_ASSERT(!splitRequest);
+        UNIT_ASSERT(HasError(splitRequestOrError));
     }
 
     Y_UNIT_TEST(ShouldHandleClosedSglist)
@@ -258,7 +255,7 @@ Y_UNIT_TEST_SUITE(TSplitRequestTest)
         request.Sglist = guardedSglist;
 
         TVector<TBlockRange64> blockRangeSplittedByDeviceBorders{
-            // block range splitted by device borders, sizeof device == 4
+            // block range split by device borders, sizeof device == 4
             // blocks
             TBlockRange64::WithLength(0, 3),
         };
@@ -269,10 +266,10 @@ Y_UNIT_TEST_SUITE(TSplitRequestTest)
 
         guardedSglist.Close();
 
-        auto splitRequest =
+        auto splitRequestOrError =
             SplitReadRequest(request, blockRangeSplittedByDeviceBorders);
 
-        UNIT_ASSERT(!splitRequest);
+        UNIT_ASSERT(HasError(splitRequestOrError));
     }
 
     Y_UNIT_TEST(ShouldCorrectlyMergeReadResponses)
@@ -309,8 +306,8 @@ Y_UNIT_TEST_SUITE(TSplitRequestTest)
         auto mergedResponse = MergeReadResponses(responses);
         UNIT_ASSERT(!HasError(mergedResponse.GetError()));
         UNIT_ASSERT_VALUES_EQUAL(
-            mergedResponse.GetThrottlerDelay(),
-            throttlerDelaySum);
+            throttlerDelaySum,
+            mergedResponse.GetThrottlerDelay());
         UNIT_ASSERT(!mergedResponse.GetAllZeroes());
 
         size_t blocksReviewed = 0;
@@ -321,8 +318,8 @@ Y_UNIT_TEST_SUITE(TSplitRequestTest)
                 const auto& block =
                     mergedResponse.GetBlocks().GetBuffers(blocksReviewed);
                 UNIT_ASSERT_VALUES_EQUAL(
-                    block,
-                    TString(blockSize, '0' + blocksCount));
+                    TString(blockSize, '0' + blocksCount),
+                    block);
 
                 ++blocksReviewed;
             }
@@ -343,12 +340,12 @@ Y_UNIT_TEST_SUITE(TSplitRequestTest)
         auto mergedResponse = MergeReadResponses(responses);
 
         UNIT_ASSERT_VALUES_EQUAL(
-            mergedResponse.GetError().GetCode(),
-            E_REJECTED);
+            E_REJECTED,
+            mergedResponse.GetError().GetCode());
         UNIT_ASSERT_VALUES_EQUAL(
-            mergedResponse.GetError().GetMessage(),
-            "reject");
+            "reject",
+            mergedResponse.GetError().GetMessage());
     }
 }
 
-}   // namespace NCloud::NBlockStore::NStorage::NSplitRequest
+}   // namespace NCloud::NBlockStore::NStorage

@@ -12,12 +12,12 @@ namespace NCloud::NBlockStore::NStorage {
 auto SplitReadRequest(
     const NProto::TReadBlocksRequest& originalRequest,
     std::span<const TBlockRange64> requestBlockRanges)
-    -> TVector<NProto::TReadBlocksRequest>;
+    -> TResultOrError<TVector<NProto::TReadBlocksRequest>>;
 
 auto SplitReadRequest(
     const NProto::TReadBlocksLocalRequest& originalRequest,
     std::span<const TBlockRange64> requestBlockRanges)
-    -> TVector<NProto::TReadBlocksLocalRequest>;
+    -> TResultOrError<TVector<NProto::TReadBlocksLocalRequest>>;
 
 auto MergeReadResponses(std::span<NProto::TReadBlocksResponse> responsesToMerge)
     -> NProto::TReadBlocksResponse;

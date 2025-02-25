@@ -2,6 +2,8 @@
 
 namespace NCloud {
 
+////////////////////////////////////////////////////////////////////////////////
+
 TSgListBlockRange::TSgListBlockRange(const TSgList& sglist, ui32 blockSize)
     : BlockSize(blockSize)
     , It(sglist.begin())

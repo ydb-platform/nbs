@@ -202,7 +202,7 @@ NProto::TError TMirrorPartitionState::NextReadReplica(
 }
 
 auto TMirrorPartitionState::SplitRangeByDeviceBorders(
-    const TBlockRange64 readRange) -> TVector<TBlockRange64>
+    const TBlockRange64 readRange) const -> TVector<TBlockRange64>
 {
     return PartConfig->SplitBlockRangeByDevicesBorder(readRange);
 }

@@ -11,7 +11,7 @@ using namespace NActors;
 auto SplitReadRequest(
     const NProto::TReadBlocksRequest& originalRequest,
     std::span<const TBlockRange64> requestBlockRanges)
-    -> TVector<NProto::TReadBlocksRequest>
+    -> TResultOrError<TVector<NProto::TReadBlocksRequest>>
 {
     auto result = TVector<NProto::TReadBlocksRequest>();
     result.reserve(requestBlockRanges.size());
@@ -30,19 +30,19 @@ auto SplitReadRequest(
 auto SplitReadRequest(
     const NProto::TReadBlocksLocalRequest& originalRequest,
     std::span<const TBlockRange64> requestBlockRanges)
-    -> TVector<NProto::TReadBlocksLocalRequest>
+    -> TResultOrError<TVector<NProto::TReadBlocksLocalRequest>>
 {
     auto guard = originalRequest.Sglist.Acquire();
     if (!guard) {
-        return {};
+        return MakeError(E_FAIL, "can't acquire sglist guard");
     }
 
     const auto& originalSglist = guard.Get();
     if (originalSglist.empty()) {
-        return {};
+        return MakeError(E_FAIL, "empty sglist");
     }
 
-    auto result = TVector<NProto::TReadBlocksLocalRequest>();
+    TVector<NProto::TReadBlocksLocalRequest> result;
     result.reserve(requestBlockRanges.size());
 
     auto sglistBlockRange =
@@ -56,7 +56,7 @@ auto SplitReadRequest(
         {
             // It means that we doesn't have enough buffers in original request,
             // so it is incorrect.
-            return {};
+            return MakeError(E_FAIL, "not enough buffers size for request");
         }
 
         auto& copyRequest = result.emplace_back(originalRequest);
@@ -106,4 +106,4 @@ auto MergeReadResponses(std::span<NProto::TReadBlocksResponse> responsesToMerge)
     return result;
 }
 
-}   // namespace NCloud::NBlockStore::NStorage::NSplitRequest
+}   // namespace NCloud::NBlockStore::NStorage

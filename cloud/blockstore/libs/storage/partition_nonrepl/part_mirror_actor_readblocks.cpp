@@ -398,11 +398,11 @@ STFUNC(TRequestActor<TMethod>::StateWork)
 
 ////////////////////////////////////////////////////////////////////////////////
 
+template <typename TMethod>
 auto TMirrorPartitionActor::SelectReplicasToReadFrom(
     std::optional<ui32> replicaIndex,
     std::optional<ui32> replicaCount,
-    TBlockRange64 blockRange,
-    const TStringBuf& methodName) -> TResultOrError<TVector<TActorId>>
+    TBlockRange64 blockRange) -> TResultOrError<TVector<TActorId>>
 {
     const auto& replicaInfos = State.GetReplicaInfos();
 
@@ -410,14 +410,14 @@ auto TMirrorPartitionActor::SelectReplicasToReadFrom(
         return MakeError(
             E_ARGUMENT,
             TStringBuilder()
-                << "Request " << methodName << " has incorrect ReplicaIndex "
+                << "Request " << TMethod::Name << " has incorrect ReplicaIndex "
                 << *replicaIndex << " disk has " << replicaInfos.size()
                 << " replicas");
     }
     if (replicaCount && *replicaCount > replicaInfos.size()) {
         return MakeError(
             E_ARGUMENT,
-            TStringBuilder() << "Request " << methodName
+            TStringBuilder() << "Request " << TMethod::Name
                              << " has incorrect replica count: " << replicaCount
                              << ". Disk " << DiskId << " has only "
                              << replicaInfos.size() << " replicas");
@@ -453,7 +453,7 @@ auto TMirrorPartitionActor::SelectReplicasToReadFrom(
         return MakeError(
             E_REJECTED,
             TStringBuilder()
-                << "Cannot process " << methodName << " cause replica "
+                << "Cannot process " << TMethod::Name << " cause replica "
                 << *replicaIndex << " has not ready devices");
     }
 
@@ -465,12 +465,12 @@ auto TMirrorPartitionActor::SelectReplicasToReadFrom(
         std::ranges::set_difference(
             allIndexes,
             replicaIndexes,
-            std::inserter(unreadyActorIndexes, unreadyActorIndexes.end()));
+            std::back_inserter(unreadyActorIndexes));
 
         return MakeError(
             E_REJECTED,
             TStringBuilder()
-                << "Cannot process " << methodName << " on " << replicaCount
+                << "Cannot process " << TMethod::Name << " on " << replicaCount
                 << " replicas, since devices of the following replicas "
                    "are not ready: ["
                 << JoinSeq(",", unreadyActorIndexes) << "]");
@@ -521,26 +521,33 @@ void TMirrorPartitionActor::ReadBlocks(
             ? std::make_optional(record.GetHeaders().GetReplicaCount())
             : std::nullopt;
 
-    auto [replicaActorIds, error] = SelectReplicasToReadFrom(
+    auto [replicaActorIds, error] = SelectReplicasToReadFrom<TMethod>(
         replicaIndex,
         replicaCount,
-        blockRange,
-        TMethod::Name);
+        blockRange);
 
-    if (HasError(error) && replicaIndex) {
+    bool tryToSplitRequest =
+        error.GetCode() == E_INVALID_STATE && !replicaIndex;
+    if (HasError(error) && !tryToSplitRequest) {
         NCloud::Reply(ctx, *ev, std::make_unique<TResponse>(std::move(error)));
         return;
     }
-    if (HasError(error)) {
+    if (tryToSplitRequest) {
         auto splitError = SplitReadBlocks<TMethod>(ev, ctx);
-        auto& errorToReply =
-            splitError.GetCode() == E_NOT_IMPLEMENTED ? error : splitError;
 
         if (HasError(splitError)) {
+            LOG_LOG(
+                ctx,
+                splitError.GetCode() == E_FAIL ? NLog::PRI_ERROR
+                                               : NLog::PRI_DEBUG,
+                TBlockStoreComponents::PARTITION,
+                "Can't split read request: %s",
+                FormatError(splitError).c_str());
+
             NCloud::Reply(
                 ctx,
                 *ev,
-                std::make_unique<TResponse>(std::move(errorToReply)));
+                std::make_unique<TResponse>(std::move(error)));
         }
         return;
     }
@@ -588,28 +595,32 @@ NProto::TError TMirrorPartitionActor::SplitReadBlocks(
     // There is no sense to split request if it covers only one device or
     // replica.
     if (blockRangeSplitByDeviceBorders.size() == 1) {
-        return MakeError(E_NOT_IMPLEMENTED, "not supported");
+        return MakeError(E_INVALID_STATE, "no sense to split such request");
     }
 
     for (auto range: blockRangeSplitByDeviceBorders) {
         ui32 replicaIndex = 0;
         auto error = State.NextReadReplica(range, replicaIndex);
         if (HasError(error)) {
-            return std::move(error);
+            return error;
         }
     }
 
-    auto splitRequests =
+    auto splitRequestOrError =
         SplitReadRequest(record, blockRangeSplitByDeviceBorders);
 
-    if (!splitRequests) {
-        return MakeError(E_INVALID_STATE, "can't split request");
+    if (HasError(splitRequestOrError)) {
+        return MakeError(
+            splitRequestOrError.GetError().GetCode(),
+            TStringBuilder() << "can't split request: "
+                             << splitRequestOrError.GetError().GetMessage());
     }
+    auto splitRequest = splitRequestOrError.ExtractResult();
 
     const auto requestIdentityKey = TakeNextRequestIdentifier();
     RequestsInProgress.AddReadRequest(
         requestIdentityKey,
-        {blockRange, ev->Cookie});
+        {blockRange, record.GetHeaders().GetVolumeRequestId()});
 
     LOG_DEBUG(
         ctx,
@@ -625,7 +636,7 @@ NProto::TError TMirrorPartitionActor::SplitReadBlocks(
     NCloud::Register<TSplitReadBlocksActor<TMethod>>(
         ctx,
         std::move(requestInfo),
-        std::move(splitRequests),
+        std::move(splitRequest),
         SelfId(),
         State.GetBlockSize(),
         requestIdentityKey);
