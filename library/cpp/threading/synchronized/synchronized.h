@@ -11,6 +11,17 @@ namespace NThreading {
         {
         }
 
+        TSynchronized(TSynchronized&& other)
+            : Value(std::move(other.Value))
+        {
+        }
+
+        template<class ... Args>
+        TSynchronized(Args&&...args)
+            : Value(std::forward<Args>(args)...)
+        {
+        }
+
         class TAccess {
         public:
             TAccess(M& mutex, T& value)
