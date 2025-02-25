@@ -899,6 +899,10 @@ void TBootstrapBase::Start()
     // order
     START_COMMON_COMPONENT(Scheduler);
 
+    if (!Configs->Options->TemporaryServer) {
+        WarmupBSGroupConnections();
+    }
+
     auto restoreFuture = EndpointManager->RestoreEndpoints();
     if (!Configs->Options->TemporaryServer) {
         auto balancerSwitch = VolumeBalancerSwitch;

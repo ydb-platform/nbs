@@ -16,6 +16,7 @@
 #include <cloud/blockstore/libs/discovery/healthcheck.h>
 #include <cloud/blockstore/libs/discovery/ping.h>
 #include <cloud/blockstore/libs/endpoints/endpoint_events.h>
+#include <cloud/blockstore/libs/kikimr/components.h>
 #include <cloud/blockstore/libs/kms/iface/compute_client.h>
 #include <cloud/blockstore/libs/kms/iface/key_provider.h>
 #include <cloud/blockstore/libs/kms/iface/kms_client.h>
@@ -46,7 +47,9 @@
 #include <cloud/blockstore/libs/ydbstats/ydbstats.h>
 #include <cloud/blockstore/libs/ydbstats/ydbstorage.h>
 
+#include <cloud/storage/core/libs/actors/helpers.h>
 #include <cloud/storage/core/libs/aio/service.h>
+#include <cloud/storage/core/libs/api/hive_proxy.h>
 #include <cloud/storage/core/libs/common/file_io_service.h>
 #include <cloud/storage/core/libs/common/proto_helpers.h>
 #include <cloud/storage/core/libs/common/task_queue.h>
@@ -70,6 +73,8 @@
 #include <util/digest/city.h>
 #include <util/system/hostname.h>
 
+#include <ranges>
+
 namespace NCloud::NBlockStore::NServer {
 
 using namespace NMonitoring;
@@ -81,6 +86,8 @@ using namespace NCloud::NIamClient;
 
 using namespace NCloud::NStorage;
 
+using namespace NActors;
+
 namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -90,6 +97,113 @@ NRdma::TClientConfigPtr CreateRdmaClientConfig(
 {
     return std::make_shared<NRdma::TClientConfig>(config->GetClient());
 }
+
+class TWarmupBSGroupConnectionsActor final
+    : public NActors::TActorBootstrapped<TWarmupBSGroupConnectionsActor>
+{
+private:
+    using TRequest = typename NCloud::NStorage::TEvHiveProxy::
+        TEvListTabletBootInfoBackupsRequest;
+    using TResponse = typename NCloud::NStorage::TEvHiveProxy::
+        TEvListTabletBootInfoBackupsResponse;
+
+private:
+    NThreading::TPromise<void> Promise;
+    const TDuration Timeout;
+    const ui32 GroupsPerChannelToWarmup;
+
+public:
+    TWarmupBSGroupConnectionsActor(
+            NThreading::TPromise<void> promise,
+            TDuration timeout,
+            ui32 groupsPerChannelToWarmup)
+        : Promise(std::move(promise))
+        , Timeout(timeout)
+        , GroupsPerChannelToWarmup(groupsPerChannelToWarmup)
+    {}
+
+    void Bootstrap(const TActorContext& ctx)
+    {
+        TThis::Become(&TThis::StateWork);
+
+        auto req = std::make_unique<TRequest>();
+
+        NCloud::Send(ctx, MakeHiveProxyServiceId(), std::move(req));
+        ctx.Schedule(Timeout, new TEvents::TEvWakeup());
+    }
+
+private:
+    STFUNC(StateWork)
+    {
+        switch (ev->GetTypeRewrite()) {
+            HFunc(TResponse, HandleResponse);
+            HFunc(TEvents::TEvWakeup, HandleTimeout);
+
+            default:
+                HandleUnexpectedEvent(ev, TBlockStoreComponents::SERVICE);
+                break;
+        }
+    }
+
+    void HandleTimeout(
+        const TEvents::TEvWakeup::TPtr& ev,
+        const NActors::TActorContext& ctx)
+    {
+        Y_UNUSED(ev);
+        LOG_WARN(
+            ctx,
+            TBlockStoreComponents::SERVICE,
+            "TWarmupBSGroupConnectionsActor timed out while waiting for "
+            "the TEvListTabletBootInfoBackupResponse");
+        Promise.SetValue();
+        Die(ctx);
+    }
+
+    void HandleResponse(const TResponse::TPtr& ev, const TActorContext& ctx)
+    {
+        Y_DEFER
+        {
+            Promise.SetValue();
+            Die(ctx);
+        };
+
+        if (HasError(ev->Get()->GetError())) {
+            LOG_ERROR(
+                ctx,
+                TBlockStoreComponents::SERVICE,
+                "Can't list tablet boot info backups to warm up BS group "
+                "connections: %s",
+                FormatError(ev->Get()->GetError()).c_str());
+            return;
+        }
+
+        auto tabletBootInfos = std::move(ev->Get()->TabletBootInfos);
+        THashSet<ui64> groupIds;
+        for (const auto& tabletBootInfo: tabletBootInfos) {
+            for (const auto& channel: tabletBootInfo.StorageInfo->Channels) {
+                auto historyEntries =
+                    channel.History | std::views::reverse |
+                    std::views::filter(
+                        [&](const auto& el)
+                        { return groupIds.insert(el.GroupID).second; }) |
+                    std::views::take(GroupsPerChannelToWarmup);
+                for (const auto& historyEntry: historyEntries) {
+                    NCloud::Send(
+                        ctx,
+                        NKikimr::MakeBlobStorageProxyID(historyEntry.GroupID),
+                        std::make_unique<NKikimr::TEvBlobStorage::TEvStatus>(
+                            TInstant::Max()));
+                }
+            }
+        }
+
+        LOG_INFO(
+            ctx,
+            TBlockStoreComponents::SERVICE,
+            "Sent status messages to %zu groups in order to warm them up",
+            groupIds.size());
+    }
+};
 
 }   // namespace
 
@@ -626,6 +740,25 @@ void TBootstrapYdb::InitAuthService()
 
         STORAGE_INFO("AuthService initialized");
     }
+}
+
+void TBootstrapYdb::WarmupBSGroupConnections()
+{
+    if (!Configs->StorageConfig ||
+        !Configs->StorageConfig->GetTabletBootInfoBackupFilePath())
+    {
+        return;
+    }
+
+    auto promise = NThreading::NewPromise<void>();
+    auto future = promise.GetFuture();
+
+    ActorSystem->Register(std::make_unique<TWarmupBSGroupConnectionsActor>(
+        std::move(promise),
+        Configs->StorageConfig->GetWarmupBSGroupConnectionsTimeout(),
+        Configs->StorageConfig->GetBSGroupsPerChannelToWarmup()));
+
+    future.Wait();
 }
 
 }   // namespace NCloud::NBlockStore::NServer

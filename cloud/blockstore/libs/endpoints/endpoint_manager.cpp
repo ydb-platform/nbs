@@ -470,7 +470,7 @@ public:
         NProto::TClientAppConfig config;
         *config.MutableClientConfig() = options.ClientConfig;
         auto appConfig = std::make_shared<TClientAppConfig>(std::move(config));
-        auto retryPolicy = CreateRetryPolicy(appConfig);
+        auto retryPolicy = CreateRetryPolicy(appConfig, std::nullopt);
 
         client = CreateDurableClient(
             std::move(appConfig),

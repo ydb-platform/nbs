@@ -825,7 +825,8 @@ IBlockStorePtr TPlugin::CreateClientEndpoint(
         clientEndpoint = Client->CreateDataEndpoint();
     }
 
-    auto retryPolicy = CreateRetryPolicy(Config);
+    auto retryPolicy =
+        CreateRetryPolicy(Config, VolumeStats->GetStorageMediaKind(diskId));
 
     clientEndpoint = CreateDurableClient(
         Config,

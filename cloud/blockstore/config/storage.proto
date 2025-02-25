@@ -1118,6 +1118,12 @@ message TStorageServiceConfig
     // a merged blob, otherwise it is written as a mixed blob.
     optional uint32 CompactionMergedBlobThresholdHDD = 406;
 
+    // The maximum number of BS groups that we can warm up for each channel at the bootstrap.
+    optional uint32 BSGroupsPerChannelToWarmup = 407;
+
+    // Timeout to warm up connections to BS groups at the bootstrap.
+    optional uint32 WarmupBSGroupConnectionsTimeout = 408;
+ 
     // Maximum size of CheckRange request
-    optional uint32 CheckRangeMaxRangeSize = 407;
+    optional uint32 CheckRangeMaxRangeSize = 409;
 }

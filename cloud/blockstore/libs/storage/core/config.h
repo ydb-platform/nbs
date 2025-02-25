@@ -637,6 +637,10 @@ public:
     [[nodiscard]] TDuration GetDestroyVolumeTimeout() const;
 
     ui32 GetCompactionMergedBlobThresholdHDD() const;
+
+    [[nodiscard]] ui32 GetBSGroupsPerChannelToWarmup() const;
+    [[nodiscard]] TDuration GetWarmupBSGroupConnectionsTimeout() const;
+
     ui32 GetCheckRangeMaxRangeSize() const;
 };
 
