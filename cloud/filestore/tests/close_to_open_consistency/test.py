@@ -4,19 +4,19 @@ import string
 
 from cloud.storage.core.tools.testing.qemu.lib.common import env_with_guest_index, SshToGuest
 
-TEST_FILE_PREFIX = "test"
+TEST_FILE_PREFIX = "close_to_open_consistency_test"
 
 
-def createFile(ssh: SshToGuest, dir: str, fileName: str):
-    return ssh(f"sudo touch {dir}/{fileName}")
+def create_file(ssh: SshToGuest, dir: str, file_name: str):
+    return ssh(f"sudo touch {dir}/{file_name}")
 
 
-def writeToFile(ssh: SshToGuest, dir: str, fileName: str, data: str):
-    return ssh(f"sudo bash -c 'echo {data} >> {dir}/{fileName}'")
+def write_to_file(ssh: SshToGuest, dir: str, file_name: str, data: str):
+    return ssh(f"sudo bash -c 'echo {data} >> {dir}/{file_name}'")
 
 
-def readFromFile(ssh: SshToGuest, dir: str, fileName: str):
-    return ssh(f"sudo bash -c 'cat {dir}/{fileName}'")
+def read_from_file(ssh: SshToGuest, dir: str, file_name: str):
+    return ssh(f"sudo bash -c 'cat {dir}/{file_name}'")
 
 
 def test():
@@ -29,22 +29,22 @@ def test():
     ssh2 = SshToGuest(user="qemu", port=port2, key=ssh_key)
 
     for i in range(3):
-        filename = f"{TEST_FILE_PREFIX}_{i}.txt"
-        res1 = createFile(ssh1, mount_dir, filename)
+        file_name = f"{TEST_FILE_PREFIX}_{i}.txt"
+        res1 = create_file(ssh1, mount_dir, file_name)
         assert 0 == res1.returncode
 
         expected = ''
         for j in range(10):
-            randomStr = ''.join(
+            random_str = ''.join(
                 random.choices(string.ascii_letters + string.digits, k=10))
 
-            res1 = writeToFile(ssh1, mount_dir, filename, randomStr)
+            res1 = write_to_file(ssh1, mount_dir, file_name, random_str)
             assert 0 == res1.returncode
 
-            expected += randomStr + '\n'
+            expected += random_str + '\n'
 
-            res1 = readFromFile(ssh1, mount_dir, filename)
-            res2 = readFromFile(ssh2, mount_dir, filename)
+            res1 = read_from_file(ssh1, mount_dir, file_name)
+            res2 = read_from_file(ssh2, mount_dir, file_name)
 
             assert 0 == res1.returncode
             assert 0 == res2.returncode

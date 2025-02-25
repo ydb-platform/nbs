@@ -367,8 +367,8 @@ def _prepare_test_environment(ssh, virtio):
         # Mount virtiofs directory
         mount_path = "/mnt/fs0"
         vm_env["NFS_MOUNT_PATH"] = mount_path
-
         library.python.testing.recipe.set_env("NFS_MOUNT_PATH", mount_path)
+
         ssh("sudo mkdir -p {}".format(mount_path))
         ssh("sudo mount -t virtiofs fs0 {} -o rw".format(mount_path),
             timeout=300)
