@@ -239,6 +239,72 @@ struct TEvNonreplPartitionPrivate
     };
 
     //
+    // CancelRequest
+    //
+
+    struct TCancelRequest
+    {
+        enum class EReason {
+            Timeouted,
+            Canceled
+        };
+
+        EReason Reason = EReason::Timeouted;
+    };
+
+    //
+    // AddLaggingAgent
+    //
+
+    struct TAddLaggingAgentRequest
+    {
+        NProto::TLaggingAgent LaggingAgent;
+
+        explicit TAddLaggingAgentRequest(NProto::TLaggingAgent laggingAgent)
+            : LaggingAgent(std::move(laggingAgent))
+        {}
+    };
+
+    //
+    // RemoveLaggingAgent
+    //
+
+    struct TRemoveLaggingAgentRequest
+    {
+        NProto::TLaggingAgent LaggingAgent;
+
+        explicit TRemoveLaggingAgentRequest(NProto::TLaggingAgent laggingAgent)
+            : LaggingAgent(std::move(laggingAgent))
+        {}
+    };
+
+    //
+    // AgentIsUnavailable
+    //
+
+    struct TAgentIsUnavailable
+    {
+        const NProto::TLaggingAgent LaggingAgent;
+
+        explicit TAgentIsUnavailable(NProto::TLaggingAgent laggingAgent)
+            : LaggingAgent(std::move(laggingAgent))
+        {}
+    };
+
+    //
+    // AgentIsBackOnline
+    //
+
+    struct TAgentIsBackOnline
+    {
+        const TString AgentId;
+
+        explicit TAgentIsBackOnline(TString agentId)
+            : AgentId(std::move(agentId))
+        {}
+    };
+
+    //
     // Events declaration
     //
 
@@ -261,6 +327,11 @@ struct TEvNonreplPartitionPrivate
         EvReadResyncFastPathResponse,
         EvGetDeviceForRangeRequest,
         EvGetDeviceForRangeResponse,
+        EvCancelRequest,
+        EvAddLaggingAgentRequest,
+        EvRemoveLaggingAgentRequest,
+        EvAgentIsUnavailable,
+        EvAgentIsBackOnline,
 
         BLOCKSTORE_PARTITION_NONREPL_REQUESTS_PRIVATE(BLOCKSTORE_DECLARE_EVENT_IDS)
 
@@ -319,6 +390,28 @@ struct TEvNonreplPartitionPrivate
     using TEvGetDeviceForRangeResponse = TResponseEvent<
         TGetDeviceForRangeResponse,
         EvGetDeviceForRangeResponse
+    >;
+
+    using TEvCancelRequest = TRequestEvent<TCancelRequest, EvCancelRequest>;
+
+    using TEvAddLaggingAgentRequest = TRequestEvent<
+        TAddLaggingAgentRequest,
+        EvAddLaggingAgentRequest
+    >;
+
+    using TEvRemoveLaggingAgentRequest = TRequestEvent<
+        TRemoveLaggingAgentRequest,
+        EvRemoveLaggingAgentRequest
+    >;
+
+    using TEvAgentIsUnavailable = TRequestEvent<
+        TAgentIsUnavailable,
+        EvAgentIsUnavailable
+    >;
+
+    using TEvAgentIsBackOnline = TRequestEvent<
+        TAgentIsBackOnline,
+        EvAgentIsBackOnline
     >;
 
     BLOCKSTORE_PARTITION_NONREPL_REQUESTS_PRIVATE(BLOCKSTORE_DECLARE_PROTO_EVENTS)

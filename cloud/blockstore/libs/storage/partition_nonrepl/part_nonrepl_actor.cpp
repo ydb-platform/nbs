@@ -561,6 +561,9 @@ STFUNC(TNonreplicatedPartitionActor::StateWork)
 
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
 
+        IgnoreFunc(TEvNonreplPartitionPrivate::TEvAgentIsUnavailable);
+        IgnoreFunc(TEvNonreplPartitionPrivate::TEvAgentIsBackOnline);
+
         IgnoreFunc(TEvVolume::TEvRWClientIdChanged);
 
         default:

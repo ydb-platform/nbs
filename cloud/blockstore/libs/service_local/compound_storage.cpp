@@ -113,41 +113,6 @@ private:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TSgListBlockRange
-{
-    const ui32 BlockSize;
-
-    TSgList::const_iterator It;
-    ui64 Offset = 0;
-
-    TSgListBlockRange(const TSgList& sglist, ui32 blockSize)
-         : BlockSize(blockSize)
-         , It(sglist.begin())
-    {}
-
-    TSgList Next(ui64 blockCount)
-    {
-        TSgList sglist;
-        while (blockCount) {
-            const auto remains = It->Size() / BlockSize - Offset;
-            const auto n = std::min(remains, blockCount);
-
-            sglist.push_back({ It->Data() + Offset * BlockSize, n * BlockSize });
-            blockCount -= n;
-            Offset += n;
-
-            if (n == remains) {
-                Offset = 0;
-                ++It;
-            }
-        }
-
-        return sglist;
-    }
-};
-
-////////////////////////////////////////////////////////////////////////////////
-
 struct TReadBlocksCtx
 {
     TPromise<NProto::TReadBlocksResponse> Promise;
