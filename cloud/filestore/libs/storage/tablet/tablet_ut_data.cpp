@@ -1848,11 +1848,10 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         auto id = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
         auto handle = CreateHandle(tablet, id);
 
-        // Allocating 16_MB of used data - this corresponds to the size of
-        // 4 fully filled compaction ranges
+        // allocating 4 compaction ranges
         TSetNodeAttrArgs args(id);
         args.SetFlag(NProto::TSetNodeAttrRequest::F_SET_ATTR_SIZE);
-        args.SetSize(16_MB);
+        args.SetSize(1_MB);
         tablet.SetNodeAttr(args);
 
         tablet.WriteData(handle, 0, 2 * block, 'a');
@@ -1868,7 +1867,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         }
 
         // Cleanup should've been triggered when the number of deletion markers
-        // hits 12 (an average of 3 markers per fully filled range)
+        // hits 12 (an average of 3 markers per range)
         tablet.WriteData(handle, 2 * block, 2 * block, 'e');
 
         {
@@ -6927,6 +6926,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         storageConfig.SetCompactionThreshold(999'999);
         storageConfig.SetUseMixedBlocksInsteadOfAliveBlocksInCompaction(true);
         storageConfig.SetWriteBlobThreshold(block);
+        storageConfig.SetCalculateCleanupScoreBasedOnUsedBlocksCount(true);
 
         TTestEnv env({}, std::move(storageConfig));
         env.CreateSubDomain("nfs");
