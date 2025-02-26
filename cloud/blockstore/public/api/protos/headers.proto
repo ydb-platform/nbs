@@ -87,6 +87,7 @@ message THeaders
     // Only for STORAGE_MEDIA_SSD_MIRROR* disks.
     uint32 ReplicaCount = 12;
 
-    // Monotonously increasing request ID counter needed by the disk agent to order write requests.
-    uint32 VolumeRequestId = 13;
+    // Monotonously increasing request ID counter needed by the disk agent to
+    // order write requests.
+    uint64 VolumeRequestId = 13;
 }
