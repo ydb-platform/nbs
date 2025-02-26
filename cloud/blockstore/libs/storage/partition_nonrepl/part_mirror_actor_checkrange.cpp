@@ -6,13 +6,8 @@
 #include <cloud/blockstore/libs/storage/disk_agent/model/public.h>
 #include <cloud/blockstore/libs/storage/partition_common/actor_checkrange.h>
 
-#include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
-
 #include <util/datetime/base.h>
-#include <util/generic/algorithm.h>
-#include <util/generic/guid.h>
 #include <util/generic/string.h>
-#include <util/generic/vector.h>
 #include <util/generic/xrange.h>
 #include <util/stream/str.h>
 
@@ -28,16 +23,10 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TCheckRangeActor final: public TActorBootstrapped<TCheckRangeActor>
+class TMirrorCheckRangeActor final: public TCheckRangeActor
 {
-private:
-    const TActorId Tablet;
-    const ui64 StartIndex;
-    const ui64 BlocksCount;
-    const TRequestInfoPtr RequestInfo;
-
 public:
-    TCheckRangeActor(
+    TMirrorCheckRangeActor(
         const TActorId& tablet,
         ui64 startIndex,
         ui64 blocksCount,
@@ -46,49 +35,20 @@ public:
     void Bootstrap(const TActorContext& ctx);
 
 private:
-    void ReplyAndDie(
-        const TActorContext& ctx,
-        const NProto::TError& status,
-        const NProto::TError& error = {});
-
-    void HandleReadBlocksResponse(
-        const TEvService::TEvReadBlocksResponse::TPtr& ev,
-        const TActorContext& ctx);
-
-    void SendReadBlocksRequest(const TActorContext& ctx);
-
-private:
-    STFUNC(StateWork);
-
-    void HandleWakeup(
-        const TEvents::TEvWakeup::TPtr& ev,
-        const TActorContext& ctx);
-
-    void HandlePoisonPill(
-        const TEvents::TEvPoisonPill::TPtr& ev,
-        const TActorContext& ctx);
+    void SendReadBlocksRequest(const TActorContext& ctx) override;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TCheckRangeActor::TCheckRangeActor(
+TMirrorCheckRangeActor::TMirrorCheckRangeActor(
     const TActorId& tablet,
     ui64 startIndex,
     ui64 blocksCount,
     TRequestInfoPtr&& requestInfo)
-    : Tablet(tablet)
-    , StartIndex(startIndex)
-    , BlocksCount(blocksCount)
-    , RequestInfo(std::move(requestInfo))
+    : TCheckRangeActor(tablet, startIndex, blocksCount, std::move(requestInfo))
 {}
 
-void TCheckRangeActor::Bootstrap(const TActorContext& ctx)
-{
-    SendReadBlocksRequest(ctx);
-    Become(&TThis::StateWork);
-}
-
-void TCheckRangeActor::SendReadBlocksRequest(const TActorContext& ctx)
+void TMirrorCheckRangeActor::SendReadBlocksRequest(const TActorContext& ctx)
 {
     const TString clientId{CheckRangeClientId};
     auto request = std::make_unique<TEvService::TEvReadBlocksRequest>();
@@ -102,72 +62,6 @@ void TCheckRangeActor::SendReadBlocksRequest(const TActorContext& ctx)
     headers->SetIsBackgroundRequest(true);
 
     NCloud::Send(ctx, Tablet, std::move(request));
-}
-
-void TCheckRangeActor::ReplyAndDie(
-    const TActorContext& ctx,
-    const NProto::TError& status,
-    const NProto::TError& error)
-{
-    auto response =
-        std::make_unique<TEvService::TEvCheckRangeResponse>(std::move(error));
-    response->Record.MutableStatus()->CopyFrom(status);
-
-    NCloud::Reply(ctx, *RequestInfo, std::move(response));
-
-    Die(ctx);
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
-STFUNC(TCheckRangeActor::StateWork)
-{
-    switch (ev->GetTypeRewrite()) {
-        HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
-        HFunc(TEvents::TEvWakeup, HandleWakeup);
-        HFunc(TEvService::TEvReadBlocksResponse, HandleReadBlocksResponse);
-        default:
-            HandleUnexpectedEvent(ev, TBlockStoreComponents::PARTITION_WORKER);
-            break;
-    }
-}
-
-void TCheckRangeActor::HandleWakeup(
-    const TEvents::TEvWakeup::TPtr& ev,
-    const TActorContext& ctx)
-{
-    Y_UNUSED(ev);
-    SendReadBlocksRequest(ctx);
-}
-
-void TCheckRangeActor::HandlePoisonPill(
-    const TEvents::TEvPoisonPill::TPtr& ev,
-    const TActorContext& ctx)
-{
-    Y_UNUSED(ev);
-
-    auto error = MakeError(E_REJECTED, "tablet is shutting down");
-
-    ReplyAndDie(ctx, MakeError(S_OK), error);
-}
-
-void TCheckRangeActor::HandleReadBlocksResponse(
-    const TEvService::TEvReadBlocksResponse::TPtr& ev,
-    const TActorContext& ctx)
-{
-    const auto* msg = ev->Get();
-    auto status = MakeError(S_OK);
-
-    const auto& error = msg->Record.GetError();
-    if (HasError(error)) {
-        LOG_ERROR_S(
-            ctx,
-            TBlockStoreComponents::PARTITION,
-            "reading error has occurred: " << FormatError(error));
-        status = error;
-    }
-
-    ReplyAndDie(ctx, status);
 }
 
 }   // namespace
@@ -192,7 +86,7 @@ void TMirrorPartitionActor::HandleCheckRange(
         return;
     }
 
-    NCloud::Register<TCheckRangeActor>(
+    NCloud::Register<TMirrorCheckRangeActor>(
         ctx,
         SelfId(),
         msg->Record.GetStartIndex(),
