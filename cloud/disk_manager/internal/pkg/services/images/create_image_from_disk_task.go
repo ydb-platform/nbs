@@ -183,6 +183,15 @@ func (t *createImageFromDiskTask) Run(
 		return err
 	}
 
+	diskParams, err := nbsClient.Describe(ctx, t.request.SrcDisk.DiskId)
+	if err != nil {
+		return err
+	}
+
+	if diskParams.IsDiskRegistryBasedDisk {
+		return nbsClient.DeleteCheckpoint(ctx, disk.DiskId, checkpointID)
+	}
+
 	return nbsClient.DeleteCheckpointData(ctx, disk.DiskId, checkpointID)
 }
 
