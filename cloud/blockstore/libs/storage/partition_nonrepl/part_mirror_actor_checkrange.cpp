@@ -26,8 +26,7 @@ class TMirrorCheckRangeActor final: public TCheckRangeActor
 public:
     TMirrorCheckRangeActor(
         const TActorId& partition,
-        ui64 startIndex,
-        ui64 blocksCount,
+        NProto::TCheckRangeRequest&& request,
         TRequestInfoPtr&& requestInfo);
 
     void Bootstrap(const TActorContext& ctx);
@@ -40,10 +39,9 @@ private:
 
 TMirrorCheckRangeActor::TMirrorCheckRangeActor(
     const TActorId& partition,
-    ui64 startIndex,
-    ui64 blocksCount,
+    NProto::TCheckRangeRequest&& request,
     TRequestInfoPtr&& requestInfo)
-    : TCheckRangeActor(partition, startIndex, blocksCount, std::move(requestInfo))
+    : TCheckRangeActor(partition, std::move(request), std::move(requestInfo))
 {}
 
 void TMirrorCheckRangeActor::SendReadBlocksRequest(const TActorContext& ctx)
@@ -51,8 +49,8 @@ void TMirrorCheckRangeActor::SendReadBlocksRequest(const TActorContext& ctx)
     const TString clientId{CheckRangeClientId};
     auto request = std::make_unique<TEvService::TEvReadBlocksRequest>();
 
-    request->Record.SetStartIndex(StartIndex);
-    request->Record.SetBlocksCount(BlocksCount);
+    request->Record.SetStartIndex(Request.GetStartIndex());
+    request->Record.SetBlocksCount(Request.GetBlocksCount());
 
     auto* headers = request->Record.MutableHeaders();
 

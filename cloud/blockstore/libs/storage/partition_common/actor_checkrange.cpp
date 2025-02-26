@@ -15,12 +15,10 @@ using namespace NActors;
 
 TCheckRangeActor::TCheckRangeActor(
     const TActorId& partition,
-    ui64 startIndex,
-    ui64 blocksCount,
+    NProto::TCheckRangeRequest&& request,
     TRequestInfoPtr&& requestInfo)
     : Partition(partition)
-    , StartIndex(startIndex)
-    , BlocksCount(blocksCount)
+    , Request(std::move(request))
     , RequestInfo(std::move(requestInfo))
 {}
 
@@ -34,8 +32,8 @@ void TCheckRangeActor::SendReadBlocksRequest(const TActorContext& ctx)
 {
     auto request = std::make_unique<TEvService::TEvReadBlocksRequest>();
 
-    request->Record.SetStartIndex(StartIndex);
-    request->Record.SetBlocksCount(BlocksCount);
+    request->Record.SetStartIndex(Request.GetStartIndex());
+    request->Record.SetBlocksCount(Request.GetBlocksCount());
 
     auto* headers = request->Record.MutableHeaders();
 

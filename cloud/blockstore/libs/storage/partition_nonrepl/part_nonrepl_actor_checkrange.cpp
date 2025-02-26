@@ -28,8 +28,7 @@ class TNonreplCheckRangeActor final: public TCheckRangeActor
 public:
     TNonreplCheckRangeActor(
         const TActorId& partition,
-        ui64 startIndex,
-        ui64 blocksCount,
+        NProto::TCheckRangeRequest&& request,
         TRequestInfoPtr&& requestInfo);
 
     void Bootstrap(const TActorContext& ctx);
@@ -42,14 +41,9 @@ private:
 
 TNonreplCheckRangeActor::TNonreplCheckRangeActor(
     const TActorId& partition,
-    ui64 startIndex,
-    ui64 blocksCount,
+    NProto::TCheckRangeRequest&& request,
     TRequestInfoPtr&& requestInfo)
-    : TCheckRangeActor(
-          partition,
-          startIndex,
-          blocksCount,
-          std::move(requestInfo))
+    : TCheckRangeActor(partition, std::move(request), std::move(requestInfo))
 {}
 
 void TNonreplCheckRangeActor::SendReadBlocksRequest(const TActorContext& ctx)
@@ -57,8 +51,8 @@ void TNonreplCheckRangeActor::SendReadBlocksRequest(const TActorContext& ctx)
     const TString clientId{CheckRangeClientId};
     auto request = std::make_unique<TEvService::TEvReadBlocksRequest>();
 
-    request->Record.SetStartIndex(StartIndex);
-    request->Record.SetBlocksCount(BlocksCount);
+    request->Record.SetStartIndex(Request.GetStartIndex());
+    request->Record.SetBlocksCount(Request.GetBlocksCount());
 
     auto* headers = request->Record.MutableHeaders();
     headers->SetClientId(clientId);
@@ -75,10 +69,10 @@ void TNonreplicatedPartitionActor::HandleCheckRange(
     const TEvService::TEvCheckRangeRequest::TPtr& ev,
     const NActors::TActorContext& ctx)
 {
-    const auto* msg = ev->Get();
+    auto& record = ev->Get()->Record;
 
     auto error = ValidateBlocksCount(
-        msg->Record.GetBlocksCount(),
+        record.GetBlocksCount(),
         Config->GetBytesPerStripe(),
         PartConfig->GetBlockSize(),
         Config->GetCheckRangeMaxRangeSize());
@@ -93,9 +87,8 @@ void TNonreplicatedPartitionActor::HandleCheckRange(
     const auto actorId = NCloud::Register<TNonreplCheckRangeActor>(
         ctx,
         SelfId(),
-        msg->Record.GetStartIndex(),
-        msg->Record.GetBlocksCount(),
-        CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext));
+        std::move(record),
+        CreateRequestInfo(ev->Sender, ev->Cookie, ev->Get()->CallContext));
 
     RequestsInProgress.AddReadRequest(actorId);
 }

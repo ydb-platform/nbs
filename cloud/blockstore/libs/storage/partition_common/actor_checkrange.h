@@ -16,15 +16,13 @@ class TCheckRangeActor: public NActors::TActorBootstrapped<TCheckRangeActor>
 {
 protected:
     const NActors::TActorId Partition;
-    const ui64 StartIndex;
-    const ui64 BlocksCount;
+    const NProto::TCheckRangeRequest Request;
     const TRequestInfoPtr RequestInfo;
 
 public:
     TCheckRangeActor(
         const NActors::TActorId& partition,
-        ui64 startIndex,
-        ui64 blocksCount,
+        NProto::TCheckRangeRequest&& request,
         TRequestInfoPtr&& requestInfo);
 
     void Bootstrap(const NActors::TActorContext& ctx);

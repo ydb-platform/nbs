@@ -23,10 +23,10 @@ void TPartitionActor::HandleCheckRange(
     const TEvService::TEvCheckRangeRequest::TPtr& ev,
     const TActorContext& ctx)
 {
-    const auto* msg = ev->Get();
+    auto& record = ev->Get()->Record;
 
     auto error = ValidateBlocksCount(
-        msg->Record.GetBlocksCount(),
+        record.GetBlocksCount(),
         Config->GetBytesPerStripe(),
         State->GetBlockSize(),
         Config->GetCheckRangeMaxRangeSize());
@@ -41,9 +41,8 @@ void TPartitionActor::HandleCheckRange(
     const auto actorId = NCloud::Register<TCheckRangeActor>(
         ctx,
         SelfId(),
-        msg->Record.GetStartIndex(),
-        msg->Record.GetBlocksCount(),
-        CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext));
+        std::move(record),
+        CreateRequestInfo(ev->Sender, ev->Cookie, ev->Get()->CallContext));
 
     Actors.Insert(actorId);
 }
