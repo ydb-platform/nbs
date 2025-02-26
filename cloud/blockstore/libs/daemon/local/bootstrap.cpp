@@ -52,6 +52,11 @@ void TBootstrapLocal::WarmupBSGroupConnections()
     // do nothing
 }
 
+void TBootstrapLocal::InitRdmaRequestServer()
+{
+    // do nothing
+}
+
 TProgramShouldContinue& TBootstrapLocal::GetShouldContinue()
 {
     return ShouldContinue;

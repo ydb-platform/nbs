@@ -136,6 +136,8 @@ public:
     TDuration GetVhostServerTimeoutAfterParentExit() const;
     TString GetNodeRegistrationToken() const;
     NProto::TChecksumFlags GetChecksumFlags() const;
+    [[nodiscard]] bool GetRdmaTargetEnabled() const;
+    [[nodiscard]] NProto::TRdmaTarget GetRdmaTarget() const;
 
     void Dump(IOutputStream& out) const override;
     void DumpHtml(IOutputStream& out) const override;
