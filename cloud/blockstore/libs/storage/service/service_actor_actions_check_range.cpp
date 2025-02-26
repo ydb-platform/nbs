@@ -147,7 +147,7 @@ void TCheckRangeActor::HandleCheckRangeResponse(
 
     return ReplyAndDie(
         ctx,
-        std::move(ev->Get()->Record.GetError()),
+        ev->Get()->Record.GetError(),
         std::move(response));
 }
 

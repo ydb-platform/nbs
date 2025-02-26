@@ -3,6 +3,7 @@
 #include <cloud/blockstore/libs/service/context.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/core/probes.h>
+#include <cloud/blockstore/libs/storage/partition_common/actor_checkrange.h>
 
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 
@@ -175,21 +176,14 @@ void NPartition2::TPartitionActor::HandleCheckRange(
 {
     const auto* msg = ev->Get();
 
-    ui64 blocksPerStripe = Config->GetBytesPerStripe() / State->GetBlockSize();
-    const ui64 maxBlocksPerRequest = Min<ui64>(
-        blocksPerStripe,
-        Config->GetCheckRangeMaxRangeSize() / State->GetBlockSize());
-
-    if (msg->Record.GetBlocksCount() > maxBlocksPerRequest) {
-        auto err = MakeError(
-            E_ARGUMENT,
-            TStringBuilder() << "Too many blocks requested: "
-                             << std::to_string(msg->Record.GetBlocksCount())
-                             << " Max blocks per request : "
-                             << std::to_string(maxBlocksPerRequest));
-
+    if (auto error = ValidateBlocksCount(
+            msg->Record.GetBlocksCount(),
+            Config->GetBytesPerStripe(),
+            State->GetBlockSize(),
+            Config->GetCheckRangeMaxRangeSize()))
+    {
         auto response =
-            std::make_unique<TEvService::TEvCheckRangeResponse>(std::move(err));
+            std::make_unique<TEvService::TEvCheckRangeResponse>(*error);
         NCloud::Reply(ctx, *ev, std::move(response));
         return;
     }
