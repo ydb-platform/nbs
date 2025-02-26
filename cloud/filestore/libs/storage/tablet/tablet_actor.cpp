@@ -1250,11 +1250,11 @@ bool TIndexTabletActor::BehaveAsShard(const NProto::THeaders& headers) const
     // shards)
     //
     // Note that checking both that ShardFileSystemIds is not empty and that the
-    // DirectoryCreationInShardsEnabled flag is set might be excessive, because they are
-    // both supposed to be set at the same time
+    // DirectoryCreationInShardsEnabled flag is set might be excessive, because
+    // they are both supposed to be set at the same time
     if (headers.GetBehaveAsDirectoryTablet() &&
         !GetFileSystem().GetShardFileSystemIds().empty() &&
-        !GetFileSystem().GetDirectoryCreationInShardsEnabled())
+        GetFileSystem().GetDirectoryCreationInShardsEnabled())
     {
         return false;
     }

@@ -169,6 +169,8 @@ void TCreateFileStoreActor::CreateMainFileStore(const TActorContext& ctx)
             *StorageConfig,
             config,
             Request.GetPerformanceProfile());
+
+        FileStoreConfig.MainFileSystemConfig = config;
     }
 
     auto request = std::make_unique<TEvSSProxy::TEvCreateFileStoreRequest>(

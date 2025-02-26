@@ -82,11 +82,11 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 TLinkActor::TLinkActor(
-        TRequestInfoPtr requestInfo,
-        NProto::TCreateNodeRequest createNodeRequest,
-        TString shardId,
-        TString logTag,
-        IProfileLogPtr profileLog)
+    TRequestInfoPtr requestInfo,
+    NProto::TCreateNodeRequest createNodeRequest,
+    TString shardId,
+    TString logTag,
+    IProfileLogPtr profileLog)
     : RequestInfo(std::move(requestInfo))
     , CreateNodeRequest(std::move(createNodeRequest))
     , ShardId(std::move(shardId))
@@ -363,10 +363,10 @@ void TStorageServiceActor::HandleCreateNode(
         }
     } else {
         const bool multiTabletForwardingEnabled =
-            StorageConfig->GetMultiTabletForwardingEnabled()
-            && !headers.GetDisableMultiTabletForwarding()
-            && (msg->Record.HasFile()
-                || filestore.GetFeatures().GetDirectoryCreationInShardsEnabled());
+            StorageConfig->GetMultiTabletForwardingEnabled() &&
+            !headers.GetDisableMultiTabletForwarding() &&
+            (msg->Record.HasFile() ||
+             filestore.GetFeatures().GetDirectoryCreationInShardsEnabled());
 
         if (multiTabletForwardingEnabled) {
             if (const auto& shardId = session->SelectShard()) {

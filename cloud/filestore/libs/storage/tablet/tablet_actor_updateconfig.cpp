@@ -467,19 +467,6 @@ void TIndexTabletActor::CompleteTx_ConfigureAsShard(
         std::make_unique<TEvIndexTablet::TEvConfigureAsShardResponse>();
 
     NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
-
-    if (google::protobuf::util::MessageDifferencer::Equals(
-            args.FileSystem,
-            GetFileSystem()))
-    {
-        LOG_INFO(
-            ctx,
-            TFileStoreComponents::TABLET,
-            "%s Suiciding after reconfiguration to fetch the new shard list",
-            LogTag.c_str());
-
-        Suicide(ctx);
-    }
 }
 
 }   // namespace NCloud::NFileStore::NStorage

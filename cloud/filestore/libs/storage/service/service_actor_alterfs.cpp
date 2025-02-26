@@ -423,7 +423,8 @@ void TAlterFileStoreActor::ConfigureShards(const TActorContext& ctx)
                 request->Record.AddShardFileSystemIds(shard.GetFileSystemId());
             }
         }
-        request->Record.SetDirectoryCreationInShardsEnabled(DirectoryCreationInShardsEnabled);
+        request->Record.SetDirectoryCreationInShardsEnabled(
+            DirectoryCreationInShardsEnabled);
 
         LOG_INFO(
             ctx,
@@ -484,7 +485,8 @@ void TAlterFileStoreActor::ConfigureMainFileStore(const TActorContext& ctx)
     for (const auto& shard: FileStoreConfig.ShardConfigs) {
         request->Record.AddShardFileSystemIds(shard.GetFileSystemId());
     }
-    request->Record.SetDirectoryCreationInShardsEnabled(DirectoryCreationInShardsEnabled);
+    request->Record.SetDirectoryCreationInShardsEnabled(
+        DirectoryCreationInShardsEnabled);
 
     LOG_INFO(
         ctx,
