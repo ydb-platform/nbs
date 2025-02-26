@@ -1802,10 +1802,11 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         auto id = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
         auto handle = CreateHandle(tablet, id);
 
-        // allocating 4 compaction ranges
+        // Allocating 16_MB of used data - this corresponds to the size of
+        // 4 fully filled compaction ranges
         TSetNodeAttrArgs args(id);
         args.SetFlag(NProto::TSetNodeAttrRequest::F_SET_ATTR_SIZE);
-        args.SetSize(1_MB);
+        args.SetSize(16_MB);
         tablet.SetNodeAttr(args);
 
         tablet.WriteData(handle, 0, 2 * block, 'a');
@@ -1820,6 +1821,8 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
             UNIT_ASSERT_VALUES_EQUAL(stats.GetDeletionMarkersCount(), 11);
         }
 
+        // Cleanup should've been triggered when the number of deletion markers
+        // hits 12 (an average of 3 markers per fully filled range)
         tablet.WriteData(handle, 2 * block, 2 * block, 'e');
 
         {
@@ -6854,14 +6857,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
             args.SetSize(block * blocksCountToTriggerCompaction);
             tablet.SetNodeAttr(args);
         }
-        {
-            TSetNodeAttrArgs args(id);
-            args.SetFlag(NProto::TSetNodeAttrRequest::F_SET_ATTR_SIZE);
-            args.SetSize(block * blocksCountToTriggerCompaction);
-            tablet.SetNodeAttr(args);
-        }
 
-        tablet.Cleanup(rangeId);
         {
             auto response = tablet.GetStorageStats(1);
             const auto& stats = response->Record.GetStats();
