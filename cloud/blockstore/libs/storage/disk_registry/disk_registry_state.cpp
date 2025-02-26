@@ -2644,7 +2644,7 @@ auto TDiskRegistryState::CreateDiskPlacementInfo(
     };
 }
 
-TResultOrError<TDiskRegistryState::TAgentId>
+TDiskRegistryState::TAgentId
 TDiskRegistryState::GetAgentIdSuitableForLocalDiskAllocationAfterCleanup(
     const TVector<TString>& agentIds,
     const TString& poolName,
@@ -2657,22 +2657,21 @@ TDiskRegistryState::GetAgentIdSuitableForLocalDiskAllocationAfterCleanup(
             NProto::DEVICE_POOL_KIND_LOCAL);
 
         if (HasError(error)) {
-            return {error};
+            continue;
         }
 
-        auto totalSize = totalByteCount;
-        for (auto& chunks: infos) {
-            auto [size, count, free, dirty] = chunks;
-            Y_UNUSED(count);
-            auto chunksSize = (free + dirty) * size;
-            totalSize = totalSize < chunksSize ? 0UL : totalSize - chunksSize;
-            if (totalSize == 0UL) {
-                return {agentId};
+        ui64 totalSize = totalByteCount;
+        for (const auto& chunks: infos) {
+            const ui64 chunksSize =
+                (chunks.FreeChunks + chunks.DirtyChunks) * chunks.ChunkSize;
+            if (totalSize <= chunksSize) {
+                return agentId;
             }
+            totalSize -= chunksSize;
         }
     }
 
-    return {""};
+    return "";
 }
 
 NProto::TError TDiskRegistryState::AllocateSimpleDisk(
@@ -6740,8 +6739,8 @@ auto TDiskRegistryState::QueryAvailableStorage(
     TVector<TAgentStorageInfo> infos;
     infos.reserve(chunks.size());
 
-    for (auto [size, counts]: chunks) {
-        infos.push_back(counts);
+    for (auto [size, info]: chunks) {
+        infos.push_back(info);
     }
 
     return infos;
