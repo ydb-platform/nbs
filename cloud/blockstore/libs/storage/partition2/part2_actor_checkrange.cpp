@@ -5,14 +5,13 @@
 #include <cloud/blockstore/libs/storage/core/probes.h>
 #include <cloud/blockstore/libs/storage/partition_common/actor_checkrange.h>
 
-
 #include <util/generic/string.h>
 #include <util/generic/xrange.h>
 #include <util/stream/str.h>
 
-namespace NCloud::NBlockStore::NStorage {
+namespace NCloud::NBlockStore::NStorage::NPartition2 {
 
-void NPartition2::TPartitionActor::HandleCheckRange(
+void TPartitionActor::HandleCheckRange(
     const TEvService::TEvCheckRangeRequest::TPtr& ev,
     const TActorContext& ctx)
 {
@@ -39,4 +38,4 @@ void NPartition2::TPartitionActor::HandleCheckRange(
     Actors.insert(actorId);
 }
 
-}   // namespace NCloud::NBlockStore::NStorage
+}   // namespace NCloud::NBlockStore::NStorage::NPartition2

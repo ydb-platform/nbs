@@ -5,12 +5,11 @@
 #include <cloud/blockstore/libs/storage/core/probes.h>
 #include <cloud/blockstore/libs/storage/partition_common/actor_checkrange.h>
 
-
 #include <util/generic/string.h>
 #include <util/generic/xrange.h>
 #include <util/stream/str.h>
 
-namespace NCloud::NBlockStore::NStorage {
+namespace NCloud::NBlockStore::NStorage::NPartition {
 
 using namespace NActors;
 
@@ -18,7 +17,7 @@ using namespace NKikimr;
 
 LWTRACE_USING(BLOCKSTORE_STORAGE_PROVIDER);
 
-void NPartition::TPartitionActor::HandleCheckRange(
+void TPartitionActor::HandleCheckRange(
     const TEvService::TEvCheckRangeRequest::TPtr& ev,
     const TActorContext& ctx)
 {
@@ -46,4 +45,4 @@ void NPartition::TPartitionActor::HandleCheckRange(
     Actors.Insert(actorId);
 }
 
-}   // namespace NCloud::NBlockStore::NStorage
+}   // namespace NCloud::NBlockStore::NStorage::NPartition
