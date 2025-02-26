@@ -8,53 +8,53 @@
 
 namespace NCloud::NBlockStore::NStorage {
 
-using namespace NActors;
-using namespace NKikimr;
+////////////////////////////////////////////////////////////////////////////////
 
 LWTRACE_USING(BLOCKSTORE_STORAGE_PROVIDER);
 
-class TCheckRangeActor: public TActorBootstrapped<TCheckRangeActor>
+class TCheckRangeActor: public NActors::TActorBootstrapped<TCheckRangeActor>
 {
 protected:
-    const TActorId Tablet;
+    const NActors::TActorId Partition;
     const ui64 StartIndex;
     const ui64 BlocksCount;
     const TRequestInfoPtr RequestInfo;
 
 public:
     TCheckRangeActor(
-        const TActorId& tablet,
+        const NActors::TActorId& partition,
         ui64 startIndex,
         ui64 blocksCount,
         TRequestInfoPtr&& requestInfo);
 
-    void Bootstrap(const TActorContext& ctx);
+    void Bootstrap(const NActors::TActorContext& ctx);
 
 private:
+    void ReplyAndDie(const NActors::TActorContext& ctx, const NProto::TError& error);
+
     void ReplyAndDie(
-        const TActorContext& ctx,
-        const NProto::TError& status,
-        const NProto::TError& error = {});
+        const NActors::TActorContext& ctx,
+        std::unique_ptr<TEvService::TEvCheckRangeResponse>);
 
     void HandleReadBlocksResponse(
         const TEvService::TEvReadBlocksResponse::TPtr& ev,
-        const TActorContext& ctx);
+        const NActors::TActorContext& ctx);
 
-    virtual void SendReadBlocksRequest(const TActorContext& ctx);
+    virtual void SendReadBlocksRequest(const NActors::TActorContext& ctx);
 
 private:
     STFUNC(StateWork);
 
     void HandleWakeup(
-        const TEvents::TEvWakeup::TPtr& ev,
-        const TActorContext& ctx);
+        const NActors::TEvents::TEvWakeup::TPtr& ev,
+        const NActors::TActorContext& ctx);
 
     void HandlePoisonPill(
-        const TEvents::TEvPoisonPill::TPtr& ev,
-        const TActorContext& ctx);
+        const NActors::TEvents::TEvPoisonPill::TPtr& ev,
+        const NActors::TActorContext& ctx);
 };
 
-std::optional<NProto::TError> ValidateBlocksCount(
+NProto::TError ValidateBlocksCount(
     ui64 blocksCount,
     ui64 bytesPerStripe,
     ui64 blockSize,

@@ -27,7 +27,7 @@ class TNonreplCheckRangeActor final: public TCheckRangeActor
 {
 public:
     TNonreplCheckRangeActor(
-        const TActorId& tablet,
+        const TActorId& partition,
         ui64 startIndex,
         ui64 blocksCount,
         TRequestInfoPtr&& requestInfo);
@@ -41,11 +41,15 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 TNonreplCheckRangeActor::TNonreplCheckRangeActor(
-    const TActorId& tablet,
+    const TActorId& partition,
     ui64 startIndex,
     ui64 blocksCount,
     TRequestInfoPtr&& requestInfo)
-    : TCheckRangeActor(tablet, startIndex, blocksCount, std::move(requestInfo))
+    : TCheckRangeActor(
+          partition,
+          startIndex,
+          blocksCount,
+          std::move(requestInfo))
 {}
 
 void TNonreplCheckRangeActor::SendReadBlocksRequest(const TActorContext& ctx)
@@ -60,7 +64,7 @@ void TNonreplCheckRangeActor::SendReadBlocksRequest(const TActorContext& ctx)
     headers->SetClientId(clientId);
     headers->SetIsBackgroundRequest(true);
 
-    NCloud::Send(ctx, Tablet, std::move(request));
+    NCloud::Send(ctx, Partition, std::move(request));
 }
 
 }   // namespace
@@ -73,14 +77,15 @@ void TNonreplicatedPartitionActor::HandleCheckRange(
 {
     const auto* msg = ev->Get();
 
-    if (auto error = ValidateBlocksCount(
-            msg->Record.GetBlocksCount(),
-            Config->GetBytesPerStripe(),
-            PartConfig->GetBlockSize(),
-            Config->GetCheckRangeMaxRangeSize()))
-    {
+    auto error = ValidateBlocksCount(
+        msg->Record.GetBlocksCount(),
+        Config->GetBytesPerStripe(),
+        PartConfig->GetBlockSize(),
+        Config->GetCheckRangeMaxRangeSize());
+
+    if (HasError(error)) {
         auto response =
-            std::make_unique<TEvService::TEvCheckRangeResponse>(*error);
+            std::make_unique<TEvService::TEvCheckRangeResponse>(error);
         NCloud::Reply(ctx, *ev, std::move(response));
         return;
     }

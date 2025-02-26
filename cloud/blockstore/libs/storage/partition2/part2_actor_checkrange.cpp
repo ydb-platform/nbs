@@ -11,31 +11,30 @@
 
 namespace NCloud::NBlockStore::NStorage::NPartition2 {
 
+////////////////////////////////////////////////////////////////////////////////
+
 void TPartitionActor::HandleCheckRange(
     const TEvService::TEvCheckRangeRequest::TPtr& ev,
-    const TActorContext& ctx)
+    const NActors::TActorContext& ctx)
 {
     const auto* msg = ev->Get();
 
-    if (auto error = ValidateBlocksCount(
-            msg->Record.GetBlocksCount(),
-            Config->GetBytesPerStripe(),
-            State->GetBlockSize(),
-            Config->GetCheckRangeMaxRangeSize()))
-    {
+    auto error = ValidateBlocksCount(
+        msg->Record.GetBlocksCount(),
+        Config->GetBytesPerStripe(),
+        State->GetBlockSize(),
+        Config->GetCheckRangeMaxRangeSize());
+
+    if (HasError(error)) {
         auto response =
-            std::make_unique<TEvService::TEvCheckRangeResponse>(*error);
+            std::make_unique<TEvService::TEvCheckRangeResponse>(error);
         NCloud::Reply(ctx, *ev, std::move(response));
         return;
     }
 
-    const auto actorId = NCloud::Register<TCheckRangeActor>(
-        ctx,
-        SelfId(),
-        msg->Record.GetStartIndex(),
-        msg->Record.GetBlocksCount(),
-        CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext));
-    Actors.insert(actorId);
+    auto response = std::make_unique<TEvService::TEvCheckRangeResponse>(
+        MakeError(E_NOT_IMPLEMENTED));
+    NCloud::Reply(ctx, *ev, std::move(response));
 }
 
 }   // namespace NCloud::NBlockStore::NStorage::NPartition2

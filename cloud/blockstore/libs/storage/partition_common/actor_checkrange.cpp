@@ -9,12 +9,16 @@
 
 namespace NCloud::NBlockStore::NStorage {
 
+using namespace NActors;
+
+////////////////////////////////////////////////////////////////////////////////
+
 TCheckRangeActor::TCheckRangeActor(
-    const TActorId& tablet,
+    const TActorId& partition,
     ui64 startIndex,
     ui64 blocksCount,
     TRequestInfoPtr&& requestInfo)
-    : Tablet(tablet)
+    : Partition(partition)
     , StartIndex(startIndex)
     , BlocksCount(blocksCount)
     , RequestInfo(std::move(requestInfo))
@@ -36,17 +40,26 @@ void TCheckRangeActor::SendReadBlocksRequest(const TActorContext& ctx)
     auto* headers = request->Record.MutableHeaders();
 
     headers->SetIsBackgroundRequest(true);
-    NCloud::Send(ctx, Tablet, std::move(request));
+    NCloud::Send(ctx, Partition, std::move(request));
 }
 
 void TCheckRangeActor::ReplyAndDie(
     const TActorContext& ctx,
-    const NProto::TError& status,
     const NProto::TError& error)
 {
-    auto response = std::make_unique<TEvService::TEvCheckRangeResponse>(error);
-    response->Record.MutableStatus()->CopyFrom(status);
+    auto response =
+        std::make_unique<TEvService::TEvCheckRangeResponse>(std::move(error));
+    response->Record.MutableStatus()->CopyFrom(MakeError(S_OK));
 
+    NCloud::Reply(ctx, *RequestInfo, std::move(response));
+
+    Die(ctx);
+}
+
+void TCheckRangeActor::ReplyAndDie(
+    const TActorContext& ctx,
+    std::unique_ptr<TEvService::TEvCheckRangeResponse> response)
+{
     NCloud::Reply(ctx, *RequestInfo, std::move(response));
 
     Die(ctx);
@@ -80,7 +93,7 @@ void TCheckRangeActor::HandlePoisonPill(
 
     auto error = MakeError(E_REJECTED, "tablet is shutting down");
 
-    ReplyAndDie(ctx, MakeError(S_OK), error);
+    ReplyAndDie(ctx, error);
 }
 
 void TCheckRangeActor::HandleReadBlocksResponse(
@@ -99,17 +112,22 @@ void TCheckRangeActor::HandleReadBlocksResponse(
         status = error;
     }
 
-    ReplyAndDie(ctx, status);
+    auto response =
+        std::make_unique<TEvService::TEvCheckRangeResponse>(MakeError(S_OK));
+    response->Record.MutableStatus()->CopyFrom(status);
+
+    ReplyAndDie(ctx, std::move(response));
 }
 
-std::optional<NProto::TError> ValidateBlocksCount(
+NProto::TError ValidateBlocksCount(
     ui64 blocksCount,
     ui64 bytesPerStripe,
     ui64 blockSize,
     ui64 checkRangeMaxRangeSize)
 {
-    ui64 maxBlocksPerRequest =
-        Min<ui64>(bytesPerStripe / blockSize, checkRangeMaxRangeSize / blockSize);
+    ui64 maxBlocksPerRequest = Min<ui64>(
+        bytesPerStripe / blockSize,
+        checkRangeMaxRangeSize / blockSize);
 
     if (blocksCount > maxBlocksPerRequest) {
         return MakeError(
@@ -118,7 +136,7 @@ std::optional<NProto::TError> ValidateBlocksCount(
                 << "Too many blocks requested: " << blocksCount
                 << " Max blocks per request: " << maxBlocksPerRequest);
     }
-    return std::nullopt;
+    return {};
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

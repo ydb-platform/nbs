@@ -642,7 +642,7 @@ public:
     [[nodiscard]] TDuration GetWarmupBSGroupConnectionsTimeout() const;
     [[nodiscard]] bool GetAllowAdditionalSystemTablets() const;
 
-    ui32 GetCheckRangeMaxRangeSize() const;
+    [[nodiscard]] ui32 GetCheckRangeMaxRangeSize() const;
 };
 
 ui64 GetAllocationUnit(

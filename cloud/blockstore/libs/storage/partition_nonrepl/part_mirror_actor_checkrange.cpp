@@ -15,8 +15,6 @@ namespace NCloud::NBlockStore::NStorage {
 
 using namespace NActors;
 
-using namespace NKikimr;
-
 LWTRACE_USING(BLOCKSTORE_STORAGE_PROVIDER);
 
 namespace {
@@ -27,7 +25,7 @@ class TMirrorCheckRangeActor final: public TCheckRangeActor
 {
 public:
     TMirrorCheckRangeActor(
-        const TActorId& tablet,
+        const TActorId& partition,
         ui64 startIndex,
         ui64 blocksCount,
         TRequestInfoPtr&& requestInfo);
@@ -41,11 +39,11 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 TMirrorCheckRangeActor::TMirrorCheckRangeActor(
-    const TActorId& tablet,
+    const TActorId& partition,
     ui64 startIndex,
     ui64 blocksCount,
     TRequestInfoPtr&& requestInfo)
-    : TCheckRangeActor(tablet, startIndex, blocksCount, std::move(requestInfo))
+    : TCheckRangeActor(partition, startIndex, blocksCount, std::move(requestInfo))
 {}
 
 void TMirrorCheckRangeActor::SendReadBlocksRequest(const TActorContext& ctx)
@@ -61,7 +59,7 @@ void TMirrorCheckRangeActor::SendReadBlocksRequest(const TActorContext& ctx)
     headers->SetClientId(clientId);
     headers->SetIsBackgroundRequest(true);
 
-    NCloud::Send(ctx, Tablet, std::move(request));
+    NCloud::Send(ctx, Partition, std::move(request));
 }
 
 }   // namespace
@@ -74,24 +72,22 @@ void TMirrorPartitionActor::HandleCheckRange(
 {
     const auto* msg = ev->Get();
 
-    if (auto error = ValidateBlocksCount(
-            msg->Record.GetBlocksCount(),
-            Config->GetBytesPerStripe(),
-            State.GetBlockSize(),
-            Config->GetCheckRangeMaxRangeSize()))
-    {
+    auto error = ValidateBlocksCount(
+        msg->Record.GetBlocksCount(),
+        Config->GetBytesPerStripe(),
+        State.GetBlockSize(),
+        Config->GetCheckRangeMaxRangeSize());
+
+    if (HasError(error)) {
         auto response =
-            std::make_unique<TEvService::TEvCheckRangeResponse>(*error);
+            std::make_unique<TEvService::TEvCheckRangeResponse>(error);
         NCloud::Reply(ctx, *ev, std::move(response));
         return;
     }
 
-    NCloud::Register<TMirrorCheckRangeActor>(
-        ctx,
-        SelfId(),
-        msg->Record.GetStartIndex(),
-        msg->Record.GetBlocksCount(),
-        CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext));
+    auto response = std::make_unique<TEvService::TEvCheckRangeResponse>(
+        MakeError(E_NOT_IMPLEMENTED));
+    NCloud::Reply(ctx, *ev, std::move(response));
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

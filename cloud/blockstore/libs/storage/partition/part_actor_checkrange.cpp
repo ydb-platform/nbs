@@ -17,20 +17,23 @@ using namespace NKikimr;
 
 LWTRACE_USING(BLOCKSTORE_STORAGE_PROVIDER);
 
+////////////////////////////////////////////////////////////////////////////////
+
 void TPartitionActor::HandleCheckRange(
     const TEvService::TEvCheckRangeRequest::TPtr& ev,
     const TActorContext& ctx)
 {
     const auto* msg = ev->Get();
 
-    if (auto error = ValidateBlocksCount(
-            msg->Record.GetBlocksCount(),
-            Config->GetBytesPerStripe(),
-            State->GetBlockSize(),
-            Config->GetCheckRangeMaxRangeSize()))
-    {
+    auto error = ValidateBlocksCount(
+        msg->Record.GetBlocksCount(),
+        Config->GetBytesPerStripe(),
+        State->GetBlockSize(),
+        Config->GetCheckRangeMaxRangeSize());
+
+    if (HasError(error)) {
         auto response =
-            std::make_unique<TEvService::TEvCheckRangeResponse>(*error);
+            std::make_unique<TEvService::TEvCheckRangeResponse>(error);
         NCloud::Reply(ctx, *ev, std::move(response));
         return;
     }
