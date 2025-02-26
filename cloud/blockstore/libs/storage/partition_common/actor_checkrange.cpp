@@ -109,7 +109,7 @@ std::optional<NProto::TError> ValidateBlocksCount(
     ui64 checkRangeMaxRangeSize)
 {
     ui64 maxBlocksPerRequest =
-        Min(bytesPerStripe / blockSize, checkRangeMaxRangeSize / blockSize);
+        Min<ui64>(bytesPerStripe / blockSize, checkRangeMaxRangeSize / blockSize);
 
     if (blocksCount > maxBlocksPerRequest) {
         return MakeError(
