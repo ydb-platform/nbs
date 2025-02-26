@@ -12,11 +12,10 @@ TEST_SRCS(
     discovery_ut.py
     future_ut.py
     grpc_client_ut.py
-    http_client_ut.py
     session_ut.py
 )
 
-USE_RECIPE(cloud/blockstore/tests/recipes/local-null/local-null-recipe with-http-proxy)
+USE_RECIPE(cloud/blockstore/tests/recipes/local-null/local-null-recipe)
 
 PEERDIR(
     cloud/blockstore/public/api/grpc
@@ -35,7 +34,6 @@ DATA(
 DEPENDS(
     cloud/blockstore/apps/server_lightweight
     cloud/blockstore/tests/recipes/local-null
-    cloud/blockstore/tools/http_proxy
 )
 
 INCLUDE(${ARCADIA_ROOT}/cloud/storage/core/opensource.inc)

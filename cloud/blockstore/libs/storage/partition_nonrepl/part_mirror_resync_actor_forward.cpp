@@ -18,7 +18,7 @@ void TMirrorPartitionResyncActor::HandleWriteOrZeroCompleted(
 {
     Y_UNUSED(ctx);
 
-    const auto requestIdentityKey = ev->Get()->RequestCounter;
+    const auto requestIdentityKey = ev->Get()->RequestId;
     if (!WriteAndZeroRequestsInProgress.RemoveRequest(requestIdentityKey)) {
         ReportResyncUnexpectedWriteOrZeroCounter(TStringBuilder()
             << "No WriteOrZero request for counter " << requestIdentityKey);
@@ -56,20 +56,11 @@ void TMirrorPartitionResyncActor::ForwardRequest(
         }
     }
 
-    const auto requestIdentityKey = ev->Cookie;
+    const auto requestIdentityKey =
+        ev->Get()->Record.GetHeaders().GetVolumeRequestId();
     WriteAndZeroRequestsInProgress.AddWriteRequest(requestIdentityKey, range);
 
-    auto undeliveredRequestActor = MakeUndeliveredHandlerServiceId();
-
-    auto event = std::make_unique<IEventHandle>(
-        MirrorActorId,
-        ev->Sender,
-        ev->ReleaseBase().Release(),
-        ev->Flags | IEventHandle::FlagForwardOnNondelivery,
-        requestIdentityKey,
-        &undeliveredRequestActor);
-
-    ctx.Send(event.release());
+    ForwardRequestWithNondeliveryTracking(ctx, MirrorActorId, *ev);
 }
 
 ////////////////////////////////////////////////////////////////////////////////

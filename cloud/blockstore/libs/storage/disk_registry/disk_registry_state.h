@@ -37,6 +37,7 @@ struct TDiskInfo
     TVector<NProto::TDeviceConfig> Devices;
     TVector<NProto::TDeviceMigration> Migrations;
     TVector<TFinishedMigration> FinishedMigrations;
+    TVector<TLaggingDevice> LaggingDevices;
     TVector<TVector<NProto::TDeviceConfig>> Replicas;
     TString MasterDiskId;
     ui32 LogicalBlockSize = 0;
@@ -268,6 +269,8 @@ class TDiskRegistryState
             NProto::STORAGE_MEDIA_SSD_NONREPLICATED;
 
         TVector<NProto::TDiskHistoryItem> History;
+
+        TVector<TLaggingDevice> LaggingDevices;
     };
 
     struct TVolumeDeviceOverrides
@@ -395,6 +398,7 @@ public:
         TVector<NProto::TDeviceMigration> Migrations;
         TVector<TVector<NProto::TDeviceConfig>> Replicas;
         TVector<TString> DeviceReplacementIds;
+        TVector<TLaggingDevice> LaggingDevices;
 
         NProto::EVolumeIOMode IOMode = {};
         TInstant IOModeTs;
@@ -765,6 +769,12 @@ public:
         const TDeviceId& deviceId,
         bool isReplacement);
 
+    [[nodiscard]] NProto::TError AddLaggingDevices(
+        TInstant now,
+        TDiskRegistryDatabase& db,
+        const TDiskId& diskId,
+        TVector<NProto::TLaggingDevice> laggingDevices);
+
     NProto::TError SuspendDevice(TDiskRegistryDatabase& db, const TDeviceId& id);
 
     void SuspendDeviceIfNeeded(
@@ -1039,6 +1049,13 @@ private:
         TDiskState& disk,
         const TDeviceId& sourceId);
 
+    NProto::TError AbortMigrationAndReplaceDevice(
+        TInstant now,
+        TDiskRegistryDatabase& db,
+        const TDiskId& diskId,
+        TDiskState& disk,
+        const TDeviceId& sourceId);
+
     void DeleteDeviceMigration(
         const TDiskId& diskId,
         const TDeviceId& sourceId);
@@ -1072,6 +1089,11 @@ private:
         const NProto::TDeviceConfig& device);
 
     void RemoveFinishedMigrations(
+        TDiskRegistryDatabase& db,
+        const TString& diskId,
+        ui64 seqNo);
+
+    void RemoveLaggingDevices(
         TDiskRegistryDatabase& db,
         const TString& diskId,
         ui64 seqNo);

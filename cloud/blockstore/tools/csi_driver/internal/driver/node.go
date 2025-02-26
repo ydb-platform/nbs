@@ -123,6 +123,7 @@ type nodeService struct {
 	nfsLocalClient nfsclient.EndpointClientIface
 	mounter        mounter.Interface
 	volumeOps      *sync.Map
+	mountOptions   []string
 }
 
 func newNodeService(
@@ -136,7 +137,8 @@ func newNodeService(
 	nbsClient nbsclient.ClientIface,
 	nfsClient nfsclient.EndpointClientIface,
 	nfsLocalClient nfsclient.EndpointClientIface,
-	mounter mounter.Interface) csi.NodeServer {
+	mounter mounter.Interface,
+	mountOptions []string) csi.NodeServer {
 
 	return &nodeService{
 		nodeId:              nodeId,
@@ -151,6 +153,7 @@ func newNodeService(
 		targetBlkPathRegexp: regexp.MustCompile(targetBlkPathPattern),
 		localFsOverrides:    localFsOverrides,
 		volumeOps:           new(sync.Map),
+		mountOptions:        mountOptions,
 	}
 }
 
@@ -732,7 +735,7 @@ func (s *nodeService) nodeStageDiskAsFilesystem(
 		return fmt.Errorf("failed to create staging directory: %w", err)
 	}
 
-	mountOptions := []string{"grpid"}
+	mountOptions := s.mountOptions
 	if fsType == "ext4" {
 		mountOptions = append(mountOptions, "errors=remount-ro")
 	}

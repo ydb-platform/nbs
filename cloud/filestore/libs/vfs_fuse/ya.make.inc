@@ -1,6 +1,5 @@
 SRCS(
     config.cpp
-    file_ring_buffer.cpp
     fs.cpp
     fs_impl.cpp
     fs_impl_attr.cpp
@@ -13,6 +12,7 @@ SRCS(
     log.cpp
     loop.cpp
     node_cache.cpp
+    write_back_cache.cpp
 )
 
 PEERDIR(

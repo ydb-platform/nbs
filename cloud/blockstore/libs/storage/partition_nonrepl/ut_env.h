@@ -9,6 +9,7 @@
 #include <cloud/blockstore/libs/storage/api/stats_service.h>
 #include <cloud/blockstore/libs/storage/api/volume.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
+#include <cloud/blockstore/libs/storage/core/request_info.h>
 #include <cloud/blockstore/libs/storage/stats_service/stats_service_events_private.h>
 #include <cloud/storage/core/libs/common/sglist_test.h>
 #include <cloud/storage/core/libs/kikimr/helpers.h>
@@ -270,8 +271,15 @@ private:
         const TEvService::TEvAddTagsRequest::TPtr& ev,
         const NActors::TActorContext& ctx)
     {
-        Y_UNUSED(ev);
-        Y_UNUSED(ctx);
+        auto* msg = ev->Get();
+
+        auto requestInfo =
+            CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
+
+        auto response =
+            std::make_unique<TEvService::TEvAddTagsResponse>();
+
+        NCloud::Reply(ctx, *requestInfo, std::move(response));
     }
 };
 
@@ -335,13 +343,17 @@ public:
 
     auto CreateReadBlocksRequest(
         const TBlockRange64& blockRange,
-        ui32 replicaIndex = 0)
+        ui32 replicaIndex = 0,
+        ui32 replicaCount = 0)
     {
         auto request = std::make_unique<TEvService::TEvReadBlocksRequest>();
         request->Record.SetStartIndex(blockRange.Start);
         request->Record.SetBlocksCount(blockRange.Size());
         if (replicaIndex) {
             request->Record.MutableHeaders()->SetReplicaIndex(replicaIndex);
+        }
+        if (replicaCount) {
+            request->Record.MutableHeaders()->SetReplicaCount(replicaCount);
         }
 
         return request;

@@ -243,7 +243,7 @@ public:
             // it allows to properly register in system and not to break things e.g. Viewer
             tabletType = TTabletTypes::TypeInvalid;
         } else {
-            ConfigureTenantSystemTablets(*appData, *localConfig);
+            ConfigureTenantSystemTablets(*appData, *localConfig, false);
         }
 
         localConfig->TabletClassInfo[tabletType] =

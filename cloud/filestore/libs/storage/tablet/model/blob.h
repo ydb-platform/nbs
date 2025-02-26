@@ -16,8 +16,8 @@ namespace NCloud::NFileStore::NStorage {
 
 struct TMixedBlobStats
 {
-    ui32 GarbageBlocks = 0;
-    ui32 CheckpointBlocks = 0;
+    ui32 GarbageBlocksCount = 0;
+    ui32 CheckpointBlocksCount = 0;
 };
 
 ////////////////////////////////////////////////////////////////////////////////

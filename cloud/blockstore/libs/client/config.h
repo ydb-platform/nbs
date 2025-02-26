@@ -58,6 +58,8 @@ public:
     TDuration GetRetryTimeoutIncrement() const;
     TDuration GetConnectionErrorMaxRetryTimeout() const;
     TDuration GetGrpcReconnectBackoff() const;
+    TDuration GetDiskRegistryBasedDiskInitialRetryTimeout() const;
+    TDuration GetYDBBasedDiskInitialRetryTimeout() const;
     ui32 GetMemoryQuotaBytes() const;
     ui32 GetSecurePort() const;
     bool GetSkipCertVerification() const;

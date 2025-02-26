@@ -49,13 +49,18 @@ def start(argv):
 
     if args.shard_count > 0:
         shards = []
-        for i in range(args.shard_count):
+        shard_ids = [
+            args.filesystem + "_shard_" + str(i) for i in range(args.shard_count)
+        ]
+        for i, shard_id in enumerate(shard_ids):
             shard_id = args.filesystem + "_shard_" + str(i)
             client.create(shard_id, "test_cloud", "test_folder")
             shards.append(shard_id)
             client.execute_action("configureasshard", {
                 "FileSystemId": shard_id,
                 "ShardNo": i + 1,
+                "ShardFileSystemIds": shard_ids,
+                "MainFileSystemId": args.filesystem,
             })
 
         client.execute_action("configureshards", {

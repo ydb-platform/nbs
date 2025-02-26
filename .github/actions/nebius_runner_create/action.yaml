@@ -25,6 +25,9 @@ inputs:
   vm_name:
     required: true
     description: "vm name"
+  vm_platform_id:
+    required: true
+    description: "vm platform id"
   vm_preset:
     required: true
     description: "vm cpu"
@@ -94,8 +97,7 @@ runs:
     - name: install dependencies
       shell: bash
       run: |
-        pip install https://github.com/librarian/python-sdk/releases/download/v0.1.1/nebiusai-0.1.1-py3-none-any.whl
-        pip install PyGithub==2.2.0
+        pip install PyGithub==2.5.0 nebius==0.2.6
     - name: create vm
       id: create-vm
       shell: bash
@@ -106,6 +108,7 @@ runs:
           --service-account-key "${SERVICE_ACCOUNT_KEY}" \
           --name "${VM_NAME}" \
           --parent-id "${VM_PARENT_ID}" \
+          --platform-id "${VM_PLATFORM_ID}" \
           --preset "${VM_PRESET}" --disk-size "${VM_DISK_SIZE}" \
           --disk-type "${VM_DISK_TYPE}" \
           --subnet-id "${VM_SUBNET}" \
@@ -120,6 +123,7 @@ runs:
         REPO: ${{ inputs.repo }}
         VM_NAME: ${{ inputs.vm_name }}
         VM_PARENT_ID: ${{ inputs.vm_parent_id }}
+        VM_PLATFORM_ID: ${{ inputs.vm_platform_id }}
         VM_PRESET: ${{ inputs.vm_preset }}
         VM_DISK_SIZE: ${{ inputs.vm_disk_size }}
         VM_DISK_TYPE: ${{ inputs.vm_disk_type }}

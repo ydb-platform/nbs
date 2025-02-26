@@ -130,8 +130,6 @@ struct TEvHiveProxyPrivate
         EvReadTabletBootInfoBackupRequest,
         EvReadTabletBootInfoBackupResponse,
         EvUpdateTabletBootInfoBackupRequest,
-        EvListTabletBootInfoBackupsRequest,
-        EvListTabletBootInfoBackupsResponse,
 
         EvEnd
     };
@@ -150,10 +148,6 @@ struct TEvHiveProxyPrivate
         TReadTabletBootInfoBackupResponse, EvReadTabletBootInfoBackupResponse>;
     using TEvUpdateTabletBootInfoBackupRequest = TRequestEvent<
         TUpdateTabletBootInfoBackupRequest, EvUpdateTabletBootInfoBackupRequest>;
-    using TEvListTabletBootInfoBackupsRequest = TRequestEvent<
-        TListTabletBootInfoBackupsRequest, EvListTabletBootInfoBackupsRequest>;
-    using TEvListTabletBootInfoBackupsResponse = TRequestEvent<
-        TListTabletBootInfoBackupsResponse, EvListTabletBootInfoBackupsResponse>;
 };
 
 }   // namespace NCloud::NStorage

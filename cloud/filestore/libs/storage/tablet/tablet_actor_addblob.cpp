@@ -221,13 +221,12 @@ private:
                         group.size());
                 });
 
-            bool written = Tablet.WriteMixedBlocks(db, blob.BlobId, blob.Blocks);
-            if (written) {
+            auto writeBlocksResult = Tablet.WriteMixedBlocks(db, blob.BlobId, blob.Blocks);
+            if (writeBlocksResult.NewBlob) {
                 ui32 rangeId = Tablet.GetMixedRangeIndex(blob.Blocks);
                 AccessCompactionRangeInfo(rangeId).Stats.BlobsCount += 1;
-                // conservative estimate
                 AccessCompactionRangeInfo(rangeId).Stats.GarbageBlocksCount +=
-                    blob.Blocks.size();
+                    writeBlocksResult.GarbageBlocksCount;
             }
         }
 
@@ -262,10 +261,12 @@ private:
 
             const auto rangeId = Tablet.GetMixedRangeIndex(blob.Blocks);
             auto& stats = AccessCompactionRangeInfo(rangeId).Stats;
-            if (Tablet.WriteMixedBlocks(db, blob.BlobId, blob.Blocks)) {
+            auto writeBlocksResult =
+                Tablet.WriteMixedBlocks(db, blob.BlobId, blob.Blocks);
+            if (writeBlocksResult.NewBlob) {
                 stats.BlobsCount += 1;
-                // conservative estimate
-                stats.GarbageBlocksCount += blob.Blocks.size();
+                stats.GarbageBlocksCount +=
+                    writeBlocksResult.GarbageBlocksCount;
             }
         }
     }
@@ -301,10 +302,11 @@ private:
         for (auto& blob: args.MixedBlobs) {
             const auto rangeId = Tablet.GetMixedRangeIndex(blob.Blocks);
             auto& stats = AccessCompactionRangeInfo(rangeId).Stats;
-            if (Tablet.WriteMixedBlocks(db, blob.BlobId, blob.Blocks)) {
+            auto writeBlocksResult =
+                Tablet.WriteMixedBlocks(db, blob.BlobId, blob.Blocks);
+            if (writeBlocksResult.NewBlob) {
                 stats.BlobsCount += 1;
-                // conservative estimate
-                stats.GarbageBlocksCount += blob.Blocks.size();
+                stats.GarbageBlocksCount += writeBlocksResult.GarbageBlocksCount;
             }
         }
     }
@@ -341,7 +343,7 @@ private:
         THashSet<ui32> writtenRangeIds;
         for (auto& blob: args.MixedBlobs) {
             const auto rangeId = Tablet.GetMixedRangeIndex(blob.Blocks);
-            if (Tablet.WriteMixedBlocks(db, blob.BlobId, blob.Blocks)) {
+            if (Tablet.WriteMixedBlocks(db, blob.BlobId, blob.Blocks).NewBlob) {
                 writtenRangeIds.insert(rangeId);
             }
 

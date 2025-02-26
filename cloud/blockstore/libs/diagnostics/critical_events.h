@@ -35,6 +35,7 @@ namespace NCloud::NBlockStore {
     xxx(MirroredDiskMajorityChecksumMismatch)                                  \
     xxx(MirroredDiskChecksumMismatchUponRead)                                  \
     xxx(MirroredDiskChecksumMismatchUponWrite)                                 \
+    xxx(MirroredDiskAddTagFailed)                                              \
     xxx(CounterUpdateRace)                                                     \
     xxx(EndpointStartingError)                                                 \
     xxx(ResyncFailed)                                                          \
@@ -89,6 +90,7 @@ namespace NCloud::NBlockStore {
     xxx(DiskRegistryDeviceNotFound)                                            \
     xxx(DiskRegistryNoScheduledNotification)                                   \
     xxx(DiskRegistryDeviceDoesNotBelongToDisk)                                 \
+    xxx(DiskRegistryCouldNotAddLaggingDevice)                                  \
     xxx(ResyncUnexpectedWriteOrZeroCounter)                                    \
     xxx(MonitoringSvgTemplatesNotFound)                                        \
     xxx(DiskRegistryUnexpectedAffectedDisks)                                   \

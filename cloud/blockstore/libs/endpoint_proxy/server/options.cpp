@@ -43,6 +43,10 @@ TOptions::TOptions()
         .Handler1T<TString>([this] (const auto& s) {
             NbdReconnectDelay = TDuration::Parse(s);
         });
+
+    Opts.AddLongOption("without-libnl")
+        .NoArgument()
+        .SetFlag(&WithoutLibnl);
 }
 
 void TOptions::Parse(int argc, char** argv)

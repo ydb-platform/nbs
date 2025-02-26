@@ -15,6 +15,7 @@ SRCS(
     context.cpp
     error.cpp
     file_io_service.cpp
+    file_ring_buffer.cpp
     format.cpp
     guarded_sglist.cpp
     helpers.cpp
@@ -45,6 +46,7 @@ PEERDIR(
     cloud/storage/core/protos
 
     library/cpp/deprecated/atomic
+    library/cpp/digest/crc32c
     library/cpp/json/writer
     library/cpp/logger
     library/cpp/lwtrace

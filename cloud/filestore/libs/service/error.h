@@ -36,7 +36,6 @@ NProto::TError ErrorIsNotEmpty(ui64 nodeId);
 //
 
 NProto::TError ErrorNameTooLong(const TString& name);
-NProto::TError ErrorSymlinkTooLong(const TString& link);
 NProto::TError ErrorMaxLink(ui64 nodeId);
 NProto::TError ErrorFileTooBig();
 NProto::TError ErrorNoSpaceLeft();

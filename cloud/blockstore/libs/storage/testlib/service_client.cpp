@@ -507,6 +507,16 @@ std::unique_ptr<TEvService::TEvGetVolumeStatsRequest> TServiceClient::CreateGetV
     return request;
 }
 
+std::unique_ptr<TEvService::TEvAddTagsRequest>
+TServiceClient::CreateAddTagsRequest(
+    const TString& diskId,
+    const TVector<TString>& tagsToAdd)
+{
+    auto request =
+        std::make_unique<TEvService::TEvAddTagsRequest>(diskId, tagsToAdd);
+    return request;
+}
+
 void TServiceClient::WaitForVolume(const TString& diskId)
 {
     auto request = std::make_unique<TEvVolume::TEvWaitReadyRequest>();

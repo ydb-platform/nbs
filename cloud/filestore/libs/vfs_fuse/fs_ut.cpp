@@ -312,11 +312,11 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         UNIT_ASSERT_VALUES_EQUAL(1, fsyncCalledWithDataSync.load());
     }
 
-    void CheckCreateOpenHandleRequest(bool isCreate, bool isWritebackCacheEnabled)
+    void CheckCreateOpenHandleRequest(bool isCreate, bool isWriteBackCacheEnabled)
     {
         NProto::TFileStoreFeatures features;
-        if (isWritebackCacheEnabled) {
-            features.SetGuestWritebackCacheEnabled(true);
+        if (isWriteBackCacheEnabled) {
+            features.SetGuestWriteBackCacheEnabled(true);
         }
 
         TBootstrap bootstrap(
@@ -329,7 +329,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         bootstrap.Service->CreateHandleHandler =
             [&](auto callContext, auto request)
         {
-            if (isWritebackCacheEnabled) {
+            if (isWriteBackCacheEnabled) {
                 UNIT_ASSERT(HasFlag(
                     request->GetFlags(),
                     NProto::TCreateHandleRequest::E_READ));
@@ -351,7 +351,6 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
 
         bootstrap.Start();
 
-
         auto req = std::make_shared<TCreateHandleRequest>("/file1", RootNodeId);
         req->In->Body.flags |= O_WRONLY;
         auto handle = bootstrap.Fuse->SendRequest<TCreateHandleRequest>(req);
@@ -365,7 +364,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         }
     }
 
-    Y_UNIT_TEST(ShouldHandleCreateHandleRequestWithGuestWritebackCacheEnabled)
+    Y_UNIT_TEST(ShouldHandleCreateHandleRequestWithGuestWriteBackCacheEnabled)
     {
         CheckCreateOpenHandleRequest(
             true,   // Create Handle
@@ -377,7 +376,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         );
     }
 
-    Y_UNIT_TEST(ShouldHandleOpenHandleRequestWithGuestWritebackCacheEnabled)
+    Y_UNIT_TEST(ShouldHandleOpenHandleRequestWithGuestWriteBackCacheEnabled)
     {
         CheckCreateOpenHandleRequest(
             false,   // Open Handle

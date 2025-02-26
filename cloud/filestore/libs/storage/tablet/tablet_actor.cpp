@@ -479,7 +479,6 @@ TCompactionInfo TIndexTabletActor::GetCompactionInfo() const
     // TODO: use GarbageCompactionThreshold
 
     bool shouldCompactByGarbage = Config->GetNewCompactionEnabled()
-        && compactionScore > 1
         && avgGarbagePercentage
             >= Config->GetGarbageCompactionThresholdAverage();
 
@@ -1053,6 +1052,7 @@ STFUNC(TIndexTabletActor::StateZombie)
         IgnoreFunc(TEvIndexTabletPrivate::TEvCleanupResponse);
         IgnoreFunc(TEvIndexTabletPrivate::TEvCollectGarbageResponse);
         IgnoreFunc(TEvIndexTabletPrivate::TEvFlushResponse);
+        IgnoreFunc(TEvIndexTabletPrivate::TEvFlushBytesResponse);
 
         IgnoreFunc(TEvFileStore::TEvUpdateConfig);
 

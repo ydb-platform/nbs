@@ -203,6 +203,7 @@ typename TMethod::TRequest::TPtr TVolumeActor::WrapRequest(
         }
     }
 
+    msg->Record.MutableHeaders()->SetVolumeRequestId(volumeRequestId);
     // We wrap the original message so that the response goes through
     // TVolumeActor
     auto selfId = SelfId();

@@ -30,12 +30,17 @@ NProto::TCreateSessionResponse TLocalFileSystem::CreateSession(
         auto* features = response.MutableFileStore()->MutableFeatures();
         features->SetDirectIoEnabled(Config->GetDirectIoEnabled());
         features->SetDirectIoAlign(Config->GetDirectIoAlign());
-        features->SetGuestWritebackCacheEnabled(
-            Config->GetGuestWritebackCacheEnabled());
+        features->SetGuestWriteBackCacheEnabled(
+            Config->GetGuestWriteBackCacheEnabled());
         features->SetAsyncDestroyHandleEnabled(
             Config->GetAsyncDestroyHandleEnabled());
         features->SetAsyncHandleOperationPeriod(
             Config->GetAsyncHandleOperationPeriod().MilliSeconds());
+        features->SetZeroCopyEnabled(Config->GetZeroCopyEnabled());
+        features->SetGuestPageCacheDisabled(Config->GetGuestPageCacheDisabled());
+        features->SetExtendedAttributesDisabled(Config->GetExtendedAttributesDisabled());
+        features->SetServerWriteBackCacheEnabled(
+            Config->GetServerWriteBackCacheEnabled());
         return response;
     };
 

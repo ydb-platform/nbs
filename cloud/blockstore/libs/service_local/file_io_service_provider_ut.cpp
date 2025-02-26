@@ -38,6 +38,18 @@ struct TTestFileIOService
         Y_UNUSED(completion);
     }
 
+    void AsyncReadV(
+        TFileHandle& file,
+        i64 offset,
+        const TVector<TArrayRef<char>>& buffers,
+        TFileIOCompletion* completion) override
+    {
+        Y_UNUSED(file);
+        Y_UNUSED(offset);
+        Y_UNUSED(buffers);
+        Y_UNUSED(completion);
+    }
+
     void AsyncWrite(
         TFileHandle& file,
         i64 offset,
@@ -47,6 +59,18 @@ struct TTestFileIOService
         Y_UNUSED(file);
         Y_UNUSED(offset);
         Y_UNUSED(buffer);
+        Y_UNUSED(completion);
+    }
+
+    void AsyncWriteV(
+        TFileHandle& file,
+        i64 offset,
+        const TVector<TArrayRef<const char>>& buffers,
+        TFileIOCompletion* completion) override
+    {
+        Y_UNUSED(file);
+        Y_UNUSED(offset);
+        Y_UNUSED(buffers);
         Y_UNUSED(completion);
     }
 };

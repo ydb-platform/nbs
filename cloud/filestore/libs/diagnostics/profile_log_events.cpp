@@ -3,6 +3,7 @@
 #include "profile_log.h"
 
 #include <cloud/filestore/libs/diagnostics/events/profile_events.ev.pb.h>
+#include <cloud/filestore/libs/service/request.h>
 #include <cloud/filestore/private/api/protos/tablet.pb.h>
 #include <cloud/filestore/public/api/protos/action.pb.h>
 #include <cloud/filestore/public/api/protos/checkpoint.pb.h>
@@ -182,6 +183,18 @@ void InitProfileLogRequestInfo(
 template <>
 void InitProfileLogRequestInfo(
     NProto::TProfileLogRequestInfo& profileLogRequest,
+    const NProto::TReadDataLocalRequest& request)
+{
+    auto* rangeInfo = profileLogRequest.AddRanges();
+    rangeInfo->SetNodeId(request.GetNodeId());
+    rangeInfo->SetHandle(request.GetHandle());
+    rangeInfo->SetOffset(request.GetOffset());
+    rangeInfo->SetBytes(request.GetLength());
+}
+
+template <>
+void InitProfileLogRequestInfo(
+    NProto::TProfileLogRequestInfo& profileLogRequest,
     const NProtoPrivate::TDescribeDataRequest& request)
 {
     auto* rangeInfo = profileLogRequest.AddRanges();
@@ -225,6 +238,18 @@ void InitProfileLogRequestInfo(
     rangeInfo->SetHandle(request.GetHandle());
     rangeInfo->SetOffset(request.GetOffset());
     rangeInfo->SetBytes(request.GetBuffer().size());
+}
+
+template <>
+void InitProfileLogRequestInfo(
+    NProto::TProfileLogRequestInfo& profileLogRequest,
+    const NProto::TWriteDataLocalRequest& request)
+{
+    auto* rangeInfo = profileLogRequest.AddRanges();
+    rangeInfo->SetNodeId(request.GetNodeId());
+    rangeInfo->SetHandle(request.GetHandle());
+    rangeInfo->SetOffset(request.GetOffset());
+    rangeInfo->SetBytes(request.BytesToWrite);
 }
 
 template <>
@@ -623,6 +648,18 @@ void FinalizeProfileLogRequestInfo(
     }
     auto* rangeInfo = profileLogRequest.MutableRanges(0);
     rangeInfo->SetActualBytes(response.GetBuffer().size());
+}
+
+template <>
+void FinalizeProfileLogRequestInfo(
+    NProto::TProfileLogRequestInfo& profileLogRequest,
+    const NProto::TReadDataLocalResponse& response)
+{
+    if (profileLogRequest.RangesSize() == 0) {
+        profileLogRequest.AddRanges();
+    }
+    auto* rangeInfo = profileLogRequest.MutableRanges(0);
+    rangeInfo->SetActualBytes(response.BytesRead);
 }
 
 }   // namespace NCloud::NFileStore

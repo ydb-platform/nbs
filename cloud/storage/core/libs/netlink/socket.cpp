@@ -1,6 +1,6 @@
 #include "socket.h"
 
-namespace NCloud::NNetlink {
+namespace NCloud::NNetlink::NLibnl {
 
 TSocket::TSocket(TString family)
     : Socket(nl_socket_alloc(), [](auto* socket) { nl_socket_free(socket); })

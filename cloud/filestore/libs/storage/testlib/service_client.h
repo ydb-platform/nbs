@@ -615,6 +615,13 @@ public:
     }                                                                          \
                                                                                \
     template <typename... Args>                                                \
+    std::unique_ptr<ns::TEv##name##Response> SendAndRecv##name(Args&&... args) \
+    {                                                                          \
+        Send##name##Request(std::forward<Args>(args)...);                      \
+        return Recv##name##Response();                                         \
+    }                                                                          \
+                                                                               \
+    template <typename... Args>                                                \
     std::unique_ptr<ns::TEv##name##Response> name(Args&&... args)              \
     {                                                                          \
         auto request = Create##name##Request(std::forward<Args>(args)...);     \

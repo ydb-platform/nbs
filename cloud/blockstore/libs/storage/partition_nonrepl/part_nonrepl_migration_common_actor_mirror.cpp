@@ -20,7 +20,7 @@ void TNonreplicatedPartitionMigrationCommonActor::HandleWriteOrZeroCompleted(
     const TActorContext& ctx)
 {
     auto * msg = ev->Get();
-    const auto counter = msg->RequestCounter;
+    const auto counter = msg->RequestId;
     if (!WriteAndZeroRequestsInProgress.RemoveRequest(counter)) {
         Y_DEBUG_ABORT_UNLESS(0);
     }

@@ -38,6 +38,31 @@ func makeShardID(s string) uint64 {
 
 func (s *storageYDB) getIncremental(
 	ctx context.Context,
+	session *persistence.Session,
+	disk *types.Disk,
+) (snapshotID string, checkpointID string, err error) {
+
+	tx, err := session.BeginRWTransaction(ctx)
+	if err != nil {
+		return "", "", err
+	}
+	defer tx.Rollback(ctx)
+
+	snapshotID, checkpointID, err = s.getIncrementalTx(ctx, tx, disk)
+	if err != nil {
+		return "", "", err
+	}
+
+	err = tx.Commit(ctx)
+	if err != nil {
+		return "", "", err
+	}
+
+	return snapshotID, checkpointID, err
+}
+
+func (s *storageYDB) getIncrementalTx(
+	ctx context.Context,
 	tx *persistence.Transaction,
 	disk *types.Disk,
 ) (snapshotID string, checkpointID string, err error) {
@@ -142,7 +167,7 @@ func (s *storageYDB) createSnapshot(
 		state.diskID = snapshotMeta.Disk.DiskId
 		state.checkpointID = snapshotMeta.CheckpointID
 
-		baseSnapshotID, baseCheckpointID, err := s.getIncremental(
+		baseSnapshotID, baseCheckpointID, err := s.getIncrementalTx(
 			ctx,
 			tx,
 			snapshotMeta.Disk,

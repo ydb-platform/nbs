@@ -2,9 +2,11 @@
 
 #include <contrib/libs/grpc/include/grpc/grpc.h>
 #include <contrib/libs/grpc/include/grpc/support/log.h>
+#include <contrib/libs/grpc/src/core/lib/surface/init.h>
 
 #include <library/cpp/logger/log.h>
 
+#include <util/system/atexit.h>
 #include <util/system/src_location.h>
 
 #include <atomic>
@@ -115,6 +117,12 @@ void GrpcLoggerInit(TLog log, bool enableTracing)
         return;
     }
     Y_UNUSED(tmp.release());
+
+    // Prevent race condition on asynchronous gRPC shutdown:
+    // grpc_shutdown_internal writes to the GrpcLog, but the TTempBufManager
+    // singletone is in the process of being deleted. Priority must be higher
+    // than that of TTempBufManager, which is equal to 2
+    AtExit(grpc_maybe_wait_for_async_shutdown, 3);
 
     gpr_set_log_verbosity(severity);
     gpr_set_log_function(AddLog);

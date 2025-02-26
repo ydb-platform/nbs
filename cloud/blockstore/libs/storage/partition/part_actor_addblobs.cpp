@@ -87,17 +87,35 @@ public:
 
     void Execute(const TActorContext& ctx, TPartitionDatabase& db)
     {
-        for (const auto& blob: Args.MixedBlobs) {
+        if (Args.Mode == ADD_COMPACTION_RESULT) {
+            Y_ABORT_UNLESS(
+                Args.MixedBlobs.size() ==
+                Args.MixedBlobCompactionInfos.size());
+        }
+
+        for (ui32 i = 0; i < Args.MixedBlobs.size(); ++i) {
+            const auto& blob = Args.MixedBlobs[i];
             ProcessNewBlob(ctx, db, blob);
             UpdateCompactionCounters(blob);
             if (Args.Mode == EAddBlobMode::ADD_WRITE_RESULT) {
                 UpdateUsedBlocks(db, blob);
             }
+
+            if (Args.Mode == ADD_COMPACTION_RESULT) {
+                const auto& cm = State.GetCompactionMap();
+                const auto blockIndex = cm.GetRangeStart(BlockIndex(blob, 0));
+                auto& rangeInfo = CompactionCounters[blockIndex];
+                rangeInfo.BlobsSkippedByCompaction =
+                    Args.MixedBlobCompactionInfos[i].BlobsSkippedByCompaction;
+                rangeInfo.BlocksSkippedByCompaction =
+                    Args.MixedBlobCompactionInfos[i].BlocksSkippedByCompaction;
+            }
         }
 
         if (Args.Mode == ADD_COMPACTION_RESULT) {
-            Y_ABORT_UNLESS(Args.MergedBlobs.size()
-                    == Args.MergedBlobCompactionInfos.size());
+            Y_ABORT_UNLESS(
+                Args.MergedBlobs.size() ==
+                Args.MergedBlobCompactionInfos.size());
         }
 
         for (ui32 i = 0; i < Args.MergedBlobs.size(); ++i) {
@@ -111,7 +129,8 @@ public:
             if (Args.Mode == ADD_COMPACTION_RESULT) {
                 const auto& cm = State.GetCompactionMap();
                 const auto blockIndex = cm.GetRangeStart(blob.BlockRange.Start);
-                Y_DEBUG_ABORT_UNLESS(blockIndex == cm.GetRangeStart(blob.BlockRange.End));
+                Y_DEBUG_ABORT_UNLESS(
+                    blockIndex == cm.GetRangeStart(blob.BlockRange.End));
                 auto& rangeInfo = CompactionCounters[blockIndex];
                 rangeInfo.BlobsSkippedByCompaction =
                     Args.MergedBlobCompactionInfos[i].BlobsSkippedByCompaction;
@@ -641,6 +660,7 @@ void TPartitionActor::HandleAddBlobs(
         msg->Mode,
         std::move(msg->AffectedBlobs),
         std::move(msg->AffectedBlocks),
+        std::move(msg->MixedBlobCompactionInfos),
         std::move(msg->MergedBlobCompactionInfos));
 }
 

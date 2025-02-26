@@ -54,5 +54,40 @@ func initDataplane(
 		}
 	}
 
-	return schema.Create(ctx, snapshotConfig, snapshotDB, s3, dropUnusedColumns)
+	err = schema.Create(ctx, snapshotConfig, snapshotDB, s3, dropUnusedColumns)
+	if err != nil {
+		return err
+	}
+
+	migrationDstSnapshotConfig := config.GetDataplaneConfig().GetMigrationDstSnapshotConfig()
+	if migrationDstSnapshotConfig == nil {
+		return nil
+	}
+
+	migrationDstPersistenceConfig := migrationDstSnapshotConfig.GetPersistenceConfig()
+	migrationDstDB, err := persistence.NewYDBClient(
+		ctx,
+		migrationDstPersistenceConfig,
+		metrics.NewEmptyRegistry(),
+		persistence.WithCredentials(creds),
+	)
+	if err != nil {
+		return err
+	}
+
+	migrationDstS3Config := migrationDstPersistenceConfig.GetS3Config()
+	var migrationDstS3 *persistence.S3Client
+	if migrationDstS3Config != nil {
+		migrationDstS3, err = persistence.NewS3ClientFromConfig(migrationDstS3Config, metrics.NewEmptyRegistry())
+		if err != nil {
+			return err
+		}
+	}
+	return schema.Create(
+		ctx,
+		migrationDstSnapshotConfig,
+		migrationDstDB,
+		migrationDstS3,
+		dropUnusedColumns,
+	)
 }

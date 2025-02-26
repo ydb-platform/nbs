@@ -43,7 +43,7 @@ using TAliases = NProto::TStorageConfig::TFilestoreAliases;
     xxx(GarbageCompactionThresholdAverage,  ui32,   10                        )\
     xxx(CompactRangeGarbagePercentageThreshold, ui32,    0                    )\
     xxx(CompactRangeAverageBlobSizeThreshold,   ui32,    0                    )\
-    xxx(GuestWritebackCacheEnabled,         bool,   false                     )\
+    xxx(GuestWriteBackCacheEnabled,         bool,   false                     )\
     xxx(NewCompactionEnabled,               bool,   false                     )\
     xxx(UseMixedBlocksInsteadOfAliveBlocksInCompaction, bool,   false         )\
     xxx(CollectGarbageThreshold,            ui32,   4_MB                      )\
@@ -243,10 +243,14 @@ using TAliases = NProto::TStorageConfig::TFilestoreAliases;
                                                                                \
     xxx(DestroyFilestoreDenyList,       TVector<TString>,          {}         )\
                                                                                \
-    xxx(SSProxyFallbackMode,            bool,     false                       )\
+    xxx(SSProxyFallbackMode,            bool,      false                      )\
                                                                                \
     xxx(MixedBlocksOffloadedRangesCapacity,        ui64,     0                )\
     xxx(YdbViewerServiceEnabled,                   bool,     false            )\
+    xxx(GuestPageCacheDisabled,                    bool,     false            )\
+    xxx(ExtendedAttributesDisabled,                bool,     false            )\
+                                                                               \
+    xxx(ServerWriteBackCacheEnabled,    bool,      false                      )\
 // FILESTORE_STORAGE_CONFIG
 
 #define FILESTORE_STORAGE_CONFIG_REF(xxx)                                      \

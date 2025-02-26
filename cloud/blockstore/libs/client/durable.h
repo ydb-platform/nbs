@@ -43,7 +43,9 @@ struct IRetryPolicy
 
 ////////////////////////////////////////////////////////////////////////////////
 
-IRetryPolicyPtr CreateRetryPolicy(TClientAppConfigPtr config);
+IRetryPolicyPtr CreateRetryPolicy(
+    TClientAppConfigPtr config,
+    std::optional<NProto::EStorageMediaKind> mediaKind);
 
 IBlockStorePtr CreateDurableClient(
     TClientAppConfigPtr config,

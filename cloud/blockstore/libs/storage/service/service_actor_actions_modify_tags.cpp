@@ -39,10 +39,16 @@ private:
     NPrivateProto::TModifyTagsRequest Request;
     NKikimrBlockStore::TVolumeConfig VolumeConfig;
 
+    using TResponseCreateFunc =
+        std::function<NActors::IEventBasePtr(NProto::TError)>;
+
+    TResponseCreateFunc CreateResponse;
+
 public:
     TModifyTagsActionActor(
         TRequestInfoPtr requestInfo,
-        TString input);
+        TString input,
+        TResponseCreateFunc createResponse);
 
     void Bootstrap(const TActorContext& ctx);
 
@@ -82,9 +88,11 @@ private:
 
 TModifyTagsActionActor::TModifyTagsActionActor(
         TRequestInfoPtr requestInfo,
-        TString input)
+        TString input,
+        TResponseCreateFunc createResponse)
     : RequestInfo(std::move(requestInfo))
     , Input(std::move(input))
+    , CreateResponse(std::move(createResponse))
 {}
 
 bool TModifyTagsActionActor::ValidateTag(
@@ -195,12 +203,7 @@ void TModifyTagsActionActor::ReplyAndDie(
     const TActorContext& ctx,
     NProto::TError error)
 {
-    auto response =
-        std::make_unique<TEvService::TEvExecuteActionResponse>(std::move(error));
-    google::protobuf::util::MessageToJsonString(
-        NPrivateProto::TModifyTagsResponse(),
-        response->Record.MutableOutput()
-    );
+    auto response = CreateResponse(std::move(error));
 
     LWTRACK(
         ResponseSent_Service,
@@ -359,9 +362,9 @@ void TServiceActor::HandleAddTags(
     auto* msg = ev->Get();
 
     auto requestInfo = CreateRequestInfo(
-        SelfId(),
-        0,  // cookie
-        MakeIntrusive<TCallContext>());
+        ev->Sender,
+        ev->Cookie,
+        msg->CallContext);
 
     NPrivateProto::TModifyTagsRequest modifyTagsRequest;
     modifyTagsRequest.SetDiskId(msg->DiskId);
@@ -376,7 +379,14 @@ void TServiceActor::HandleAddTags(
         ctx,
         std::make_unique<TModifyTagsActionActor>(
             std::move(requestInfo),
-            std::move(input)));
+            std::move(input),
+            [](NProto::TError error)
+            {
+                auto response =
+                    std::make_unique<TEvService::TEvAddTagsResponse>(
+                        std::move(error));
+                return response;
+            }));
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -387,7 +397,17 @@ TResultOrError<IActorPtr> TServiceActor::CreateModifyTagsActionActor(
 {
     return {std::make_unique<TModifyTagsActionActor>(
         std::move(requestInfo),
-        std::move(input))};
+        std::move(input),
+        [](NProto::TError error)
+        {
+            auto response =
+                std::make_unique<TEvService::TEvExecuteActionResponse>(
+                    std::move(error));
+            google::protobuf::util::MessageToJsonString(
+                NPrivateProto::TModifyTagsResponse(),
+                response->Record.MutableOutput());
+            return response;
+        })};
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

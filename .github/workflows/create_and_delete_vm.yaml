@@ -138,6 +138,7 @@ jobs:
           token: ${{ secrets.GH_PERSONAL_ACCESS_TOKEN }}
           vm_parent_id: ${{ vars.NEBIUS_PARENT_ID }}
           vm_name: ${{ github.event.pull_request.number && format('pr-{0}{1}-{2}-{3}', github.event.pull_request.number, inputs.vm_name_suffix, github.run_id, github.run_attempt) || format('run-{0}-{1}', github.run_id, github.run_attempt) }}
+          vm_platform_id: ${{ vars.NEBIUS_PLATFORM_ID }}
           vm_preset: ${{ env.large_tests == 'true' && '80vcpu-320gb' || '16vcpu-64gb' }}
           vm_disk_type: ${{ inputs.disk_type || 'network-ssd-nonreplicated' }}
           vm_disk_size: 1023

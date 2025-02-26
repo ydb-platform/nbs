@@ -15,6 +15,7 @@
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/common/timer.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
+#include <cloud/storage/core/libs/grpc/init.h>
 
 #include <library/cpp/monlib/dynamic_counters/counters.h>
 #include <library/cpp/testing/unittest/registar.h>
@@ -301,6 +302,9 @@ public:
             NCloud::NStorage::NUserStats::CreateUserCounterSupplierStub());
 
         ServerConfig = CreateConfig(serverConfig);
+
+        auto grpcLog = Logging->CreateLog("GRPC");
+        GrpcLoggerInit(grpcLog, true /* enableTracing */);
 
         Server = TSetup::CreateTestServer(
             ServerConfig,

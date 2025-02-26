@@ -4,4 +4,5 @@ RECURSE(
     mocks
     recipe
     remote
+    snapshot_migration_test
 )

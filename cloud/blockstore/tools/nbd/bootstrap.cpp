@@ -300,7 +300,8 @@ void TBootstrap::Start()
                 Options->ConnectDevice,
                 Options->RequestTimeout,
                 Options->ConnectionTimeout,
-                Options->Reconfigure);
+                Options->Reconfigure,
+                false); // withoutLibnl
         } else {
             // The only case we want kernel to retry requests is when the socket
             // is dead due to nbd server restart. And since we can't configure
@@ -426,7 +427,7 @@ void TBootstrap::InitControlClient()
 
     ClientEndpoint = Client->CreateEndpoint();
 
-    auto retryPolicy = CreateRetryPolicy(ClientConfig);
+    auto retryPolicy = CreateRetryPolicy(ClientConfig, std::nullopt);
 
     ClientEndpoint = CreateDurableClient(
         ClientConfig,

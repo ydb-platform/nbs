@@ -38,10 +38,19 @@ message TVFSConfig
     optional uint32 MaxBackground = 12;
 
     // Path to the directory where HandleOpsQueue is stored for all sessions.
-    // Will create a directory with the filesystemId
-    // and a subdirectory with the sessionId if not present.
+    // Will create a directory with filesystem id as name
+    // (and a subdirectory with session id as name) if not present.
     optional string HandleOpsQueuePath = 13;
 
     // Max HandleOpsQueue size in bytes.
     optional uint32 HandleOpsQueueSize = 14;
+
+    // Path to the directory where WriteBackCache is stored for all
+    // sessions. Will create a directory with filesystem id as name
+    // (and a subdirectory with session id as name) if not present.
+    optional string WriteBackCachePath = 15;
+
+    // Max WriteBackCache size in bytes.
+    optional uint32 WriteBackCacheSize = 16;
+
 }

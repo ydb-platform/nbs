@@ -596,7 +596,7 @@ private:
     void RegisterUnlinkNodeInShardActor(
         const NActors::TActorContext& ctx,
         TRequestInfoPtr requestInfo,
-        NProto::TUnlinkNodeRequest request,
+        NProtoPrivate::TUnlinkNodeInShardRequest request,
         ui64 requestId,
         ui64 opLogEntryId,
         TUnlinkNodeInShardResult result);
@@ -623,7 +623,8 @@ private:
         const typename TMethod::TRequest::TPtr& ev,
         const NActors::TActorContext& ctx,
         const std::function<NProto::TError(
-            const typename TMethod::TRequest::ProtoRecordType&)>& validator = {});
+            const typename TMethod::TRequest::ProtoRecordType&)>& validator = {},
+        bool validateSession = true);
 
     template <typename TMethod>
     void CompleteResponse(

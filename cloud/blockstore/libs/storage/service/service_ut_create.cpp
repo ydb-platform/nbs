@@ -1827,6 +1827,88 @@ Y_UNIT_TEST_SUITE(TServiceCreateVolumeTest)
         createVolume("vol_4");
         successfullyDestroy("vol_4", 0);
     }
+
+    Y_UNIT_TEST(ShouldCreateVolumeWithDefaultEncryption)
+    {
+        TTestEnv env;
+        NProto::TStorageServiceConfig config;
+        NProto::TFeaturesConfig featuresConfig;
+        auto* feature = featuresConfig.AddFeatures();
+        feature->SetName("EncryptionAtRestForDiskRegistryBasedDisks");
+        feature->MutableWhitelist()->AddFolderIds("encrypted-folder");
+
+        ui32 nodeIdx = SetupTestEnv(env, config, featuresConfig);
+
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+
+        {
+            service.CreateVolume(
+                "vol0",
+                93_GB / DefaultBlockSize,
+                DefaultBlockSize,
+                "encrypted-folder",
+                TString(),   // cloudId
+                NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
+                NProto::TVolumePerformanceProfile(),
+                TString(),   // placementGroupId
+                0,           // placementPartitionIndex
+                0,           // partitionsCount
+                NProto::TEncryptionSpec{});
+
+            auto response = service.DescribeVolume("vol0");
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
+            auto desc = response->Record.GetVolume().GetEncryptionDesc();
+            UNIT_ASSERT_EQUAL(NProto::ENCRYPTION_AT_REST, desc.GetMode());
+            UNIT_ASSERT_VALUES_EQUAL("", desc.GetKeyHash());
+            UNIT_ASSERT_VALUES_UNEQUAL("", desc.GetEncryptionKey().GetKekId());
+            UNIT_ASSERT_VALUES_UNEQUAL(
+                "",
+                desc.GetEncryptionKey().GetEncryptedDEK());
+        }
+
+        {
+            service.CreateVolume(
+                "baseDisk",
+                93_GB / DefaultBlockSize,
+                DefaultBlockSize,
+                "",   // folderId
+                "",   // cloudId
+                NCloud::NProto::STORAGE_MEDIA_SSD,
+                NProto::TVolumePerformanceProfile(),
+                TString(),   // placementGroupId
+                0,           // placementPartitionIndex
+                0,           // partitionsCount
+                NProto::TEncryptionSpec(),
+                true   // isSystem
+            );
+
+            service.SendCreateVolumeRequest(
+                "vol1",
+                93_GB / DefaultBlockSize,
+                DefaultBlockSize,
+                "encrypted-folder",
+                TString(),   // cloudId
+                NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
+                NProto::TVolumePerformanceProfile(),
+                TString(),   // placementGroupId
+                0,           // placementPartitionIndex
+                0,           // partitionsCount
+                NProto::TEncryptionSpec{},
+                false,   // isSystem
+                "baseDisk",
+                "baseDiskCheckpointId");
+
+            auto response = service.RecvCreateVolumeResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_NOT_IMPLEMENTED,
+                response->GetStatus(),
+                response->GetErrorReason());
+            UNIT_ASSERT_C(
+                response->GetErrorReason().Contains(
+                    "Encrypted overlay disks are not supported"),
+                response->GetErrorReason());
+        }
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

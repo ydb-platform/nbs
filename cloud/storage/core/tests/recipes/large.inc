@@ -12,7 +12,6 @@ IF (SANITIZER_TYPE)
         sb:ttl=3
         sb:logs_ttl=3
         sb:ssd
-        sb:MULTISLOT
         sb:cores=64
     )
 ELSE()
@@ -22,8 +21,19 @@ ELSE()
         sb:ttl=3
         sb:logs_ttl=3
         sb:ssd
-        sb:MULTISLOT
         sb:cores=16
+    )
+ENDIF()
+
+IF (ARCADIA_SANDBOX_SINGLESLOT)
+    TAG(
+        ya:large_tests_on_single_slots
+        ya:large_tests_on_ya_make_2
+    )
+ELSE()
+    TAG(
+        ya:large_tests_on_multi_slots
+        ya:large_tests_on_ya_make_2
     )
 ENDIF()
 

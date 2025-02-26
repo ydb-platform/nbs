@@ -562,4 +562,18 @@ void THiveProxyActor::HandleBackupTabletBootInfos(
     }
 }
 
+void THiveProxyActor::HandleListTabletBootInfoBackups(
+    const TEvHiveProxy::TEvListTabletBootInfoBackupsRequest::TPtr& ev,
+    const NActors::TActorContext& ctx)
+{
+    if (TabletBootInfoBackup) {
+        ctx.Send(ev->Forward(TabletBootInfoBackup));
+    } else {
+        auto response = std::make_unique<
+            TEvHiveProxy::TEvListTabletBootInfoBackupsResponse>(
+            MakeError(S_FALSE));
+        NCloud::Reply(ctx, *ev, std::move(response));
+    }
+}
+
 }   // namespace NCloud::NStorage

@@ -1735,6 +1735,16 @@ void fuse_req_interrupt_func(fuse_req_t req, fuse_interrupt_func_t func,
 int fuse_req_interrupted(fuse_req_t req);
 
 /**
+ * Get fuse request output iovec
+ *
+ * @param req request handle
+ * @param iov buffer iovec (output)
+ * @param count iovec size (output)
+ * @return 0 on success, -1 on failure.
+ */
+int fuse_out_buf(fuse_req_t req, struct iovec **iov, int *count);
+
+/**
  * Check if the session is connected via virtio
  *
  * @param se session object
@@ -1927,7 +1937,7 @@ void fuse_session_destroy(struct fuse_session *se);
 /**
  * Suspend a session
  * Same as fuse_session_destroy but without call op.destroy
- * 
+ *
  * @param se the session
  */
 void fuse_session_suspend(struct fuse_session *se);

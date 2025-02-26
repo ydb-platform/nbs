@@ -259,14 +259,13 @@ void TMirrorPartitionActor::StartResyncRange(
 
     TVector<TReplicaDescriptor> replicas;
     const auto& replicaInfos = State.GetReplicaInfos();
-    const auto& replicaActors = State.GetReplicaActors();
     for (ui32 i = 0; i < replicaInfos.size(); i++) {
         if (replicaInfos[i].Config->DevicesReadyForReading(GetScrubbingRange()))
         {
             replicas.emplace_back(
                 replicaInfos[i].Config->GetName(),
                 i,
-                replicaActors[i]);
+                State.GetReplicaActor(i));
         }
     }
 
@@ -300,6 +299,11 @@ void TMirrorPartitionActor::ReplyAndDie(const TActorContext& ctx)
 {
     NCloud::Reply(ctx, *Poisoner, std::make_unique<TEvents::TEvPoisonTaken>());
     Die(ctx);
+}
+
+auto TMirrorPartitionActor::TakeNextRequestIdentifier() -> ui64
+{
+    return RequestIdentifierCounter++;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -400,7 +404,7 @@ void TMirrorPartitionActor::HandleScrubbingNextRange(
         if (!requestInfo.Write) {
             continue;
         }
-        const auto& requestRange = requestInfo.Value;
+        const auto& requestRange = requestInfo.Value.BlockRange;
         if (scrubbingRange.Overlaps(requestRange)) {
             LOG_DEBUG(
                 ctx,
@@ -417,13 +421,12 @@ void TMirrorPartitionActor::HandleScrubbingNextRange(
 
     TVector<TReplicaDescriptor> replicas;
     const auto& replicaInfos = State.GetReplicaInfos();
-    const auto& replicaActors = State.GetReplicaActors();
     for (ui32 i = 0; i < replicaInfos.size(); i++) {
         if (replicaInfos[i].Config->DevicesReadyForReading(scrubbingRange)) {
             replicas.emplace_back(
                 replicaInfos[i].Config->GetName(),
                 i,
-                replicaActors[i]);
+                State.GetReplicaActor(i));
         }
     }
 
@@ -532,6 +535,31 @@ void TMirrorPartitionActor::HandleRWClientIdChanged(
 
 ////////////////////////////////////////////////////////////////////////////////
 
+void TMirrorPartitionActor::HandleAddTagsResponse(
+    const TEvService::TEvAddTagsResponse::TPtr& ev,
+    const NActors::TActorContext& ctx)
+{
+    const auto* msg = ev->Get();
+    auto error = msg->GetError();
+
+    if (HasError(error)) {
+        ReportMirroredDiskAddTagFailed(
+            TStringBuilder()
+            << "Failed to add " << IntermediateWriteBufferTagName
+            << " tag for disk [" << DiskId << "] with "
+            << FormatError(error));
+        return;
+    }
+    LOG_WARN(
+        ctx,
+        TBlockStoreComponents::PARTITION,
+        "[%s] %s tag added for disk",
+        DiskId.c_str(),
+        IntermediateWriteBufferTagName);
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 #define BLOCKSTORE_HANDLE_UNIMPLEMENTED_REQUEST(name, ns)                      \
     void TMirrorPartitionActor::Handle##name(                                  \
         const ns::TEv##name##Request::TPtr& ev,                                \
@@ -610,6 +638,10 @@ STFUNC(TMirrorPartitionActor::StateWork)
             TEvVolume::TEvDiskRegistryBasedPartitionCounters,
             HandlePartCounters);
 
+        HFunc(
+            TEvService::TEvAddTagsResponse,
+            HandleAddTagsResponse);
+
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
 
         default:
@@ -653,6 +685,8 @@ STFUNC(TMirrorPartitionActor::StateZombie)
 
         IgnoreFunc(TEvVolume::TEvRWClientIdChanged);
         IgnoreFunc(TEvVolume::TEvDiskRegistryBasedPartitionCounters);
+
+        IgnoreFunc(TEvService::TEvAddTagsResponse);
 
         IgnoreFunc(TEvents::TEvPoisonPill);
         HFunc(TEvents::TEvPoisonTaken, HandlePoisonTaken);

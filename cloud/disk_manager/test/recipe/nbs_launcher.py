@@ -76,6 +76,10 @@ class NbsLauncher:
         storage_config_patch.InactiveClientsTimeout = 60000  # 1 min
         storage_config_patch.AgentRequestTimeout = 5000      # 5 sec
         storage_config_patch.UseShadowDisksForNonreplDiskCheckpoints = True
+
+        # Needed for tests on blockstore client https://github.com/ydb-platform/nbs/pull/3067
+        storage_config_patch.MaxDisksInPlacementGroup = 2
+
         if destruction_allowed_only_for_disks_with_id_prefixes:
             storage_config_patch.DestructionAllowedOnlyForDisksWithIdPrefixes.extend(destruction_allowed_only_for_disks_with_id_prefixes)
 

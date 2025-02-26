@@ -93,8 +93,13 @@ static void iov_copy_to_iov(
                 dst_len = src_len;
             }
 
-            memcpy(dst_iov[0].iov_base + dst_offset,
-                   src_iov[0].iov_base + src_offset, dst_len);
+            // iov with NULL iov_base can be placed if data was already copied
+            // to dst buffers. This is done when zero copy is enabled for read
+            // requests
+            if (src_iov[0].iov_base) {
+                memcpy(dst_iov[0].iov_base + dst_offset,
+                       src_iov[0].iov_base + src_offset, dst_len);
+            }
             src_len -= dst_len;
             to_copy -= dst_len;
             src_offset += dst_len;
@@ -483,4 +488,15 @@ int virtio_send_data_iov(
 
     // TODO
     return -1;
+}
+
+int virtio_out_buf(struct fuse_session *se, struct fuse_chan *ch,
+                   struct iovec **iov, int *count)
+{
+    Y_UNUSED(se);
+
+    struct fuse_virtio_request* req = VIRTIO_REQ_FROM_CHAN(ch);
+    *iov = req->out.iov;
+    *count = req->out.count;
+    return 0;
 }

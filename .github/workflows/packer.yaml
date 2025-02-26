@@ -136,8 +136,7 @@ jobs:
         version: 1.10.2
     - name: install dependencies
       run: |
-        pip install https://github.com/librarian/python-sdk/releases/download/v0.1.1/nebiusai-0.1.1-py3-none-any.whl
-        pip install PyGithub==2.2.0 grpcio grpcio-tools yandexcloud==0.258.0
+        pip install PyGithub==2.5.0 nebius==0.2.6
         echo "PATH=$PATH:$HOME/nebius-cloud/bin:$HOME/.nebius/bin" >> $GITHUB_ENV
 
     - name: Set up NCP
@@ -375,7 +374,8 @@ jobs:
         token: ${{ secrets.GH_PERSONAL_ACCESS_TOKEN }}
         vm_parent_id: ${{ vars.NEBIUS_PARENT_ID }}
         vm_name: ${{ format('packer-run-{0}-{1}', github.run_id, github.run_attempt) }}
-        vm_preset: "2vcpu-8gb"
+        vm_platform_id: ${{ vars.NEBIUS_PLATFORM_ID }}
+        vm_preset: "4vcpu-16gb"
         vm_disk_type: 'network-ssd-nonreplicated'
         vm_disk_size: 93
         vm_subnet: ${{ vars.NEBIUS_SUBNET_ID }}

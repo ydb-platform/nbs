@@ -6,6 +6,7 @@
 #include "fs.h"
 #include "handle_ops_queue.h"
 #include "node_cache.h"
+#include "write_back_cache.h"
 
 #include <cloud/filestore/libs/diagnostics/request_stats.h>
 #include <cloud/filestore/libs/service/context.h>
@@ -22,6 +23,7 @@
 
 #include <util/datetime/base.h>
 #include <util/generic/hash.h>
+#include <util/generic/queue.h>
 #include <util/generic/string.h>
 #include <util/system/align.h>
 #include <util/system/mutex.h>
@@ -90,6 +92,8 @@ private:
     TQueue<TReleaseRequest> DelayedReleaseQueue;
     TMutex DelayedReleaseQueueLock;
 
+    TWriteBackCachePtr WriteBackCache;
+
 public:
     TFileSystem(
         ILoggingServicePtr logging,
@@ -100,7 +104,8 @@ public:
         IFileStorePtr session,
         IRequestStatsPtr stats,
         ICompletionQueuePtr queue,
-        THandleOpsQueuePtr handleOpsQueue);
+        THandleOpsQueuePtr handleOpsQueue,
+        TWriteBackCachePtr writeBackCache);
 
     ~TFileSystem();
 
@@ -495,6 +500,20 @@ private:
         fuse_req_t req,
         fuse_ino_t ino,
         const TRangeLock& range);
+    void ReadLocal(
+        TCallContextPtr callContext,
+        fuse_req_t req,
+        fuse_ino_t ino,
+        size_t size,
+        off_t offset,
+        fuse_file_info* fi);
+    void WriteBufLocal(
+        TCallContextPtr callContext,
+        fuse_req_t req,
+        fuse_ino_t ino,
+        fuse_bufvec* bufv,
+        off_t offset,
+        fuse_file_info* fi);
 };
 
 }   // namespace NCloud::NFileStore::NFuse

@@ -693,8 +693,8 @@ void TDiskRegistryActor::RenderDiskHtmlInfo(
                 out << " (Replica of " << info.MasterDiskId << ")";
             }
             if (info.CheckpointId) {
-                out << " (Replica of " << info.SourceDiskId << " for checkpoint "
-                    << info.CheckpointId.Quote() << ")";
+                out << " (Shadow disk of " << info.SourceDiskId
+                    << " for checkpoint " << info.CheckpointId.Quote() << ")";
             }
         }
 
@@ -806,6 +806,18 @@ void TDiskRegistryActor::RenderDiskHtmlInfo(
                 {
                     flags |= EDeviceStateFlags::FRESH;
                 }
+
+                if (AnyOf(
+                        info.LaggingDevices,
+                        [&uuid = device.GetDeviceUUID()](
+                            const TLaggingDevice& laggingDevice)
+                        {
+                            return uuid == laggingDevice.Device.GetDeviceUUID();
+                        }))
+                {
+                    flags |= EDeviceStateFlags::LAGGING;
+                }
+
                 DumpDeviceState(out, device.GetState(), flags);
             }
             TABLED() {

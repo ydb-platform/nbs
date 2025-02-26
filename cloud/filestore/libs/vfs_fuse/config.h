@@ -42,7 +42,14 @@ public:
     bool GetDirectIoEnabled() const;
     ui32 GetDirectIoAlign() const;
 
-    bool GetGuestWritebackCacheEnabled() const;
+    bool GetGuestWriteBackCacheEnabled() const;
+
+    bool GetZeroCopyEnabled() const;
+
+    bool GetGuestPageCacheDisabled() const;
+    bool GetExtendedAttributesDisabled() const;
+
+    bool GetServerWriteBackCacheEnabled() const;
 
     void Dump(IOutputStream& out) const;
     void DumpHtml(IOutputStream& out) const;
