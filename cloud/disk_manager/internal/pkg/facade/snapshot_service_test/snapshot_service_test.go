@@ -1099,7 +1099,7 @@ func testCreateSnapshotFromDiskWithFailedShadowDisk(
 		require.Equal(t, float64(1), meta.Progress)
 	}
 
-	testcommon.RequireCheckpointsAreEmpty(t, ctx, diskID)
+	testcommon.RequireCheckpointsDoNotExist(t, ctx, diskID)
 
 	diskID2 := t.Name() + "2"
 
