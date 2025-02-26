@@ -983,10 +983,9 @@ func TestSnapshotServiceDeleteSnapshotWhenCreationIsInFlight(t *testing.T) {
 func testCreateSnapshotFromDiskWithFailedShadowDisk(
 	t *testing.T,
 	diskKind disk_manager.DiskKind,
-	diskBlockSize uint32,
 	diskSize uint64,
-	waitDurationBeforeDisableDevice time.Duration,
-	withCancel bool,
+	waitBeforeDisablingDeviceDuration time.Duration,
+	shouldCancelOperation bool,
 ) {
 
 	ctx := testcommon.NewContext()
@@ -996,6 +995,7 @@ func testCreateSnapshotFromDiskWithFailedShadowDisk(
 	defer client.Close()
 
 	diskID := t.Name() + "1"
+	diskBlockSize := 4096
 
 	reqCtx := testcommon.GetRequestContext(t, ctx)
 	operation, err := client.CreateDisk(reqCtx, &disk_manager.CreateDiskRequest{
@@ -1037,15 +1037,15 @@ func testCreateSnapshotFromDiskWithFailedShadowDisk(
 	require.NotEmpty(t, operation)
 
 	// Waiting before disabling device of shadow disk.
-	time.Sleep(waitDurationBeforeDisableDevice)
+	time.Sleep(waitBeforeDisablingDeviceDuration)
 
 	// Finding agent and devices of shadow disk.
 	diskRegistryStateBackup, err := nbsClient.BackupDiskRegistryState(ctx)
 	require.NoError(t, err)
 	shadowDisk := diskRegistryStateBackup.GetShadowDisk(diskID)
 
-	// No shadow disk is OK: shadow disk might be not created yet or it might be
-	// already deleted.
+	// No shadow disk is OK: shadow disk could have not been created yet or it
+	// might be already deleted.
 	if shadowDisk != nil {
 		deviceUUIDs := shadowDisk.DeviceUUIDs
 		require.Equal(t, 1, len(deviceUUIDs))
@@ -1057,9 +1057,9 @@ func testCreateSnapshotFromDiskWithFailedShadowDisk(
 		require.NoError(t, err)
 	}
 
-	if withCancel {
+	if shouldCancelOperation {
 		// Waiting before cancelling operation.
-		time.Sleep(waitDurationBeforeDisableDevice / 2)
+		time.Sleep(waitBeforeDisablingDeviceDuration / 2)
 
 		_, err = client.CancelOperation(ctx, &disk_manager.CancelOperationRequest{
 			OperationId: operation.Id,
@@ -1072,7 +1072,7 @@ func testCreateSnapshotFromDiskWithFailedShadowDisk(
 			return
 		}
 
-		if withCancel && strings.Contains(err.Error(), "Cancelled by client") {
+		if shouldCancelOperation && strings.Contains(err.Error(), "Cancelled by client") {
 			return
 		}
 
@@ -1130,10 +1130,9 @@ func TestSnapshotServiceCreateSnapshotFromDiskWithFailedShadowDiskShort(t *testi
 	testCreateSnapshotFromDiskWithFailedShadowDisk(
 		t,
 		disk_manager.DiskKind_DISK_KIND_SSD_NONREPLICATED,
-		4096,        // diskBlockSize
 		262144*4096, // diskSize
 		// Need to add some variance for better testing.
-		common.RandomDuration(0*time.Second, 3*time.Second), // waitDurationBeforeDisableDevice
+		common.RandomDuration(0*time.Second, 3*time.Second), // waitBeforeDisablingDeviceDuration
 		false, // WithCancel
 	)
 }
@@ -1142,10 +1141,9 @@ func TestSnapshotServiceCreateSnapshotFromDiskWithFailedShadowDiskLong(t *testin
 	testCreateSnapshotFromDiskWithFailedShadowDisk(
 		t,
 		disk_manager.DiskKind_DISK_KIND_SSD_NONREPLICATED,
-		4096,        // diskBlockSize
 		262144*4096, // diskSize
 		// Need to add some variance for better testing.
-		common.RandomDuration(3*time.Second, 40*time.Second), // waitDurationBeforeDisableDevice
+		common.RandomDuration(3*time.Second, 40*time.Second), // waitBeforeDisablingDeviceDuration
 		false, // WithCancel
 	)
 }
@@ -1154,10 +1152,9 @@ func TestSnapshotServiceCreateSnapshotFromDiskWithFailedShadowDiskCancelShort(t 
 	testCreateSnapshotFromDiskWithFailedShadowDisk(
 		t,
 		disk_manager.DiskKind_DISK_KIND_SSD_NONREPLICATED,
-		4096,        // diskBlockSize
 		262144*4096, // diskSize
 		// Need to add some variance for better testing.
-		common.RandomDuration(0*time.Second, 3*time.Second), // waitDurationBeforeDisableDevice
+		common.RandomDuration(0*time.Second, 3*time.Second), // waitBeforeDisablingDeviceDuration
 		true, // WithCancel
 	)
 }
@@ -1166,10 +1163,9 @@ func TestSnapshotServiceCreateSnapshotFromDiskWithFailedShadowDiskCancelLong(t *
 	testCreateSnapshotFromDiskWithFailedShadowDisk(
 		t,
 		disk_manager.DiskKind_DISK_KIND_SSD_NONREPLICATED,
-		4096,        // diskBlockSize
 		262144*4096, // diskSize
 		// Need to add some variance for better testing.
-		common.RandomDuration(3*time.Second, 40*time.Second), // waitDurationBeforeDisableDevice
+		common.RandomDuration(3*time.Second, 40*time.Second), // waitBeforeDisablingDeviceDuration
 		true, // WithCancel
 	)
 }
