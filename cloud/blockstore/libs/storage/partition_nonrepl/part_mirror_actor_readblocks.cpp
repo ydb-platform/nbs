@@ -398,11 +398,11 @@ STFUNC(TRequestActor<TMethod>::StateWork)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-template <typename TMethod>
 auto TMirrorPartitionActor::SelectReplicasToReadFrom(
     std::optional<ui32> replicaIndex,
     std::optional<ui32> replicaCount,
-    TBlockRange64 blockRange) -> TResultOrError<TVector<TActorId>>
+    TBlockRange64 blockRange,
+    const TStringBuf methodName) -> TResultOrError<TVector<TActorId>>
 {
     const auto& replicaInfos = State.GetReplicaInfos();
 
@@ -410,14 +410,14 @@ auto TMirrorPartitionActor::SelectReplicasToReadFrom(
         return MakeError(
             E_ARGUMENT,
             TStringBuilder()
-                << "Request " << TMethod::Name << " has incorrect ReplicaIndex "
+                << "Request " << methodName << " has incorrect ReplicaIndex "
                 << *replicaIndex << " disk has " << replicaInfos.size()
                 << " replicas");
     }
     if (replicaCount && *replicaCount > replicaInfos.size()) {
         return MakeError(
             E_ARGUMENT,
-            TStringBuilder() << "Request " << TMethod::Name
+            TStringBuilder() << "Request " << methodName
                              << " has incorrect replica count: " << replicaCount
                              << ". Disk " << DiskId << " has only "
                              << replicaInfos.size() << " replicas");
@@ -453,7 +453,7 @@ auto TMirrorPartitionActor::SelectReplicasToReadFrom(
         return MakeError(
             E_REJECTED,
             TStringBuilder()
-                << "Cannot process " << TMethod::Name << " cause replica "
+                << "Cannot process " << methodName << " cause replica "
                 << *replicaIndex << " has not ready devices");
     }
 
@@ -470,7 +470,7 @@ auto TMirrorPartitionActor::SelectReplicasToReadFrom(
         return MakeError(
             E_REJECTED,
             TStringBuilder()
-                << "Cannot process " << TMethod::Name << " on " << replicaCount
+                << "Cannot process " << methodName << " on " << replicaCount
                 << " replicas, since devices of the following replicas "
                    "are not ready: ["
                 << JoinSeq(",", unreadyActorIndexes) << "]");
@@ -521,10 +521,11 @@ void TMirrorPartitionActor::ReadBlocks(
             ? std::make_optional(record.GetHeaders().GetReplicaCount())
             : std::nullopt;
 
-    auto [replicaActorIds, error] = SelectReplicasToReadFrom<TMethod>(
+    auto [replicaActorIds, error] = SelectReplicasToReadFrom(
         replicaIndex,
         replicaCount,
-        blockRange);
+        blockRange,
+        TMethod::Name);
 
     bool tryToSplitRequest =
         error.GetCode() == E_INVALID_STATE && !replicaIndex;
@@ -538,8 +539,8 @@ void TMirrorPartitionActor::ReadBlocks(
         if (HasError(splitError)) {
             LOG_LOG(
                 ctx,
-                splitError.GetCode() == E_FAIL ? NLog::PRI_ERROR
-                                               : NLog::PRI_DEBUG,
+                splitError.GetCode() == E_ARGUMENT ? NLog::PRI_ERROR
+                                                   : NLog::PRI_DEBUG,
                 TBlockStoreComponents::PARTITION,
                 "Can't split read request: %s",
                 FormatError(splitError).c_str());
@@ -606,16 +607,11 @@ NProto::TError TMirrorPartitionActor::SplitReadBlocks(
         }
     }
 
-    auto splitRequestOrError =
+    auto [splitRequest, error] =
         SplitReadRequest(record, blockRangeSplitByDeviceBorders);
-
-    if (HasError(splitRequestOrError)) {
-        return MakeError(
-            splitRequestOrError.GetError().GetCode(),
-            TStringBuilder() << "can't split request: "
-                             << splitRequestOrError.GetError().GetMessage());
+    if (HasError(error)) {
+        return error;
     }
-    auto splitRequest = splitRequestOrError.ExtractResult();
 
     const auto requestIdentityKey = TakeNextRequestIdentifier();
     RequestsInProgress.AddReadRequest(

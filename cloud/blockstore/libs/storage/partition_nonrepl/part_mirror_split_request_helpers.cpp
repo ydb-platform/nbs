@@ -34,12 +34,12 @@ auto SplitReadRequest(
 {
     auto guard = originalRequest.Sglist.Acquire();
     if (!guard) {
-        return MakeError(E_FAIL, "can't acquire sglist guard");
+        return MakeError(E_CANCELLED, "can't acquire sglist guard");
     }
 
     const auto& originalSglist = guard.Get();
     if (originalSglist.empty()) {
-        return MakeError(E_FAIL, "empty sglist");
+        return MakeError(E_ARGUMENT, "empty sglist");
     }
 
     TVector<NProto::TReadBlocksLocalRequest> result;
@@ -56,7 +56,7 @@ auto SplitReadRequest(
         {
             // It means that we doesn't have enough buffers in original request,
             // so it is incorrect.
-            return MakeError(E_FAIL, "not enough buffers size for request");
+            return MakeError(E_ARGUMENT, "not enough buffers size for request");
         }
 
         auto& copyRequest = result.emplace_back(originalRequest);
