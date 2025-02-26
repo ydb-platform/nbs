@@ -121,8 +121,7 @@ def start_instance(args, inst_index):
             ssh("sudo mkdir -p {} && sudo ln -s {} {}".format(
                 os.path.dirname(real_path), path, real_path))
 
-    if args.invoke_test:
-        _prepare_test_environment(ssh, virtio)
+    _prepare_test_environment(ssh, virtio)
 
     if args.invoke_test:
         recipe_set_env("TEST_COMMAND_WRAPPER",
@@ -368,6 +367,7 @@ def _prepare_test_environment(ssh, virtio):
         # Mount virtiofs directory
         mount_path = "/mnt/fs0"
         vm_env["NFS_MOUNT_PATH"] = mount_path
+        library.python.testing.recipe.set_env("NFS_MOUNT_PATH", mount_path)
 
         ssh("sudo mkdir -p {}".format(mount_path))
         ssh("sudo mount -t virtiofs fs0 {} -o rw".format(mount_path),
@@ -379,10 +379,13 @@ def _prepare_test_environment(ssh, virtio):
         # Use virtio-blk device
         ssh("sudo lsblk")
         vm_env["NBS_DEVICE_PATH"] = _get_nbs_device_path()
+        library.python.testing.recipe.set_env(
+            "NBS_DEVICE_PATH", _get_nbs_device_path())
     elif virtio == "nfs":
         # Mount NFS share
         mount_path = "/mnt/nfs0"
         vm_env["NFS_MOUNT_PATH"] = mount_path
+        library.python.testing.recipe.set_env("NFS_MOUNT_PATH", mount_path)
         nfs_port = os.getenv("NFS_GANESHA_PORT")
 
         ssh("sudo mkdir -p {}".format(mount_path))

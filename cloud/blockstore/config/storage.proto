@@ -1123,7 +1123,11 @@ message TStorageServiceConfig
 
     // Timeout to warm up connections to BS groups at the bootstrap.
     optional uint32 WarmupBSGroupConnectionsTimeout = 408;
- 
+
+    // Allow SysViewProcessor and StatisticsAggregator tablets for compatibility
+    // with newer versions of ydb (24-2 and older)
+    optional bool AllowAdditionalSystemTablets = 409;
+
     // Maximum size of CheckRange request
-    optional uint32 CheckRangeMaxRangeSize = 409;
+    optional uint32 CheckRangeMaxRangeSize = 410;
 }

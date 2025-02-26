@@ -148,6 +148,17 @@ struct TMiscNodeStats
     i64 OrphanNodesCount{0};
 };
 
+struct TWriteMixedBlocksResult
+{
+    ui32 GarbageBlocksCount = 0;
+    bool NewBlob = false;
+};
+
+struct TDeleteMixedBlocksResult
+{
+    ui32 GarbageBlocksCount = 0;
+};
+
 ////////////////////////////////////////////////////////////////////////////////
 
 class TIndexTabletState
@@ -894,7 +905,7 @@ public:
         const TBlock& block,
         ui32 blocksCount);
 
-    bool WriteMixedBlocks(
+    TWriteMixedBlocksResult WriteMixedBlocks(
         TIndexTabletDatabase& db,
         const TPartialBlobId& blobId,
         /*const*/ TVector<TBlock>& blocks);
@@ -939,13 +950,13 @@ public:
     ui32 CalculateMixedIndexRangeGarbageBlockCount(ui32 rangeId) const;
 
 private:
-    bool WriteMixedBlocks(
+    TWriteMixedBlocksResult WriteMixedBlocks(
         TIndexTabletDatabase& db,
         ui32 rangeId,
         const TPartialBlobId& blobId,
         /*const*/ TVector<TBlock>& blocks);
 
-    void DeleteMixedBlocks(
+    TDeleteMixedBlocksResult DeleteMixedBlocks(
         TIndexTabletDatabase& db,
         ui32 rangeId,
         const TPartialBlobId& blobId,

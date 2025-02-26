@@ -1683,7 +1683,7 @@ void CompleteRangeCompaction(
 
     for (const auto& mark: args.BlockMarks) {
         if (mark.CommitId) {
-            const bool isFresh = !mark.BlockContent.Empty();
+            const bool isFresh = !mark.BlockContent.empty();
             const bool isMixedOrMerged = !IsDeletionMarker(mark.BlobId);
             // there could be fresh block OR merged/mixed block
             Y_ABORT_UNLESS(!(isFresh && isMixedOrMerged));
@@ -1703,7 +1703,7 @@ void CompleteRangeCompaction(
     if (dataBlocksCount) {
         ui32 skipped = 0;
         for (const auto& mark: args.BlockMarks) {
-            const bool isFresh = !mark.BlockContent.Empty();
+            const bool isFresh = !mark.BlockContent.empty();
             const bool isMixedOrMerged = !IsDeletionMarker(mark.BlobId);
             if (!isFresh && !isMixedOrMerged) {
                 ++skipped;

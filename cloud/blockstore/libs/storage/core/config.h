@@ -640,6 +640,7 @@ public:
 
     [[nodiscard]] ui32 GetBSGroupsPerChannelToWarmup() const;
     [[nodiscard]] TDuration GetWarmupBSGroupConnectionsTimeout() const;
+    [[nodiscard]] bool GetAllowAdditionalSystemTablets() const;
 
     ui32 GetCheckRangeMaxRangeSize() const;
 };
