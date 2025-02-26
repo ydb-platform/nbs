@@ -20,7 +20,6 @@ Tests {
         ReplayFsSpec {
             FileName: \"""" + _get_bindir() + "/" + name + ".log" + """\"
             ReplayRoot: \"""" + dir_out_path + """\"
-            #CreateOnRead: FullSize
         }
         IODepth: 64
     }
