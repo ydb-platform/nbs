@@ -1345,28 +1345,26 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
                 // We can allocate disk of 2 devices on agent-1
                 {
                     const auto allocationParams = makeAllocationQuery(2);
-                    auto [suitableAgentId, error] =
+                    auto suitableAgentId =
                         state
                             .GetAgentIdSuitableForLocalDiskAllocationAfterCleanup(
                                 allocationParams.AgentIds,
                                 allocationParams.PoolName,
                                 allocationParams.BlockSize *
                                     allocationParams.BlocksCount);
-                    UNIT_ASSERT(!HasError(error));
                     UNIT_ASSERT_STRINGS_EQUAL(suitableAgentId, "agent-1");
                 };
 
                 // There's no agent on which we can allocate disk of 3 devices
                 {
                     const auto allocationParams = makeAllocationQuery(3);
-                    auto [suitableAgentId, error] =
+                    auto suitableAgentId =
                         state
                             .GetAgentIdSuitableForLocalDiskAllocationAfterCleanup(
                                 allocationParams.AgentIds,
                                 allocationParams.PoolName,
                                 allocationParams.BlockSize *
                                     allocationParams.BlocksCount);
-                    UNIT_ASSERT(!HasError(error));
                     UNIT_ASSERT(!suitableAgentId);
                 };
 
@@ -1380,14 +1378,13 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
                 // agent-2 is still suitable
                 {
                     const auto allocationParams = makeAllocationQuery(2);
-                    auto [suitableAgentId, error] =
+                    auto suitableAgentId =
                         state
                             .GetAgentIdSuitableForLocalDiskAllocationAfterCleanup(
                                 allocationParams.AgentIds,
                                 allocationParams.PoolName,
                                 allocationParams.BlockSize *
                                     allocationParams.BlocksCount);
-                    UNIT_ASSERT(!HasError(error));
                     UNIT_ASSERT_STRINGS_EQUAL(suitableAgentId, "agent-2");
                 };
 
@@ -1407,14 +1404,13 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
                 // agent-2
                 {
                     const auto allocationParams = makeAllocationQuery(2);
-                    auto [suitableAgentId, error] =
+                    auto suitableAgentId =
                         state
                             .GetAgentIdSuitableForLocalDiskAllocationAfterCleanup(
                                 allocationParams.AgentIds,
                                 allocationParams.PoolName,
                                 allocationParams.BlockSize *
                                     allocationParams.BlocksCount);
-                    UNIT_ASSERT(!HasError(error));
                     UNIT_ASSERT(!suitableAgentId);
                 };
             });

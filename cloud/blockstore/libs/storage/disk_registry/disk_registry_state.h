@@ -882,8 +882,7 @@ public:
         TDiskRegistryDatabase& db,
         const TVector<TString>& orphanDevicesIds);
 
-    TResultOrError<TAgentId>
-    GetAgentIdSuitableForLocalDiskAllocationAfterCleanup(
+    TAgentId GetAgentIdSuitableForLocalDiskAllocationAfterCleanup(
         const TVector<TString>& agentIds,
         const TString& poolName,
         const ui64 blocksToAllocate) const;
