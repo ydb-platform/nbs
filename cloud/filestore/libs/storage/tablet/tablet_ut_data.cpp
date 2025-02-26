@@ -1632,8 +1632,6 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
             UNIT_ASSERT_VALUES_EQUAL(
                 256,
                 stats.GetAllocatedCompactionRanges());
-            // only two ranges are returned since other one is marked with the
-            // 'compacted' flag and thus skipped during top ranges gathering
             UNIT_ASSERT_VALUES_EQUAL(3, stats.CompactionRangeStatsSize());
             UNIT_ASSERT_VALUES_EQUAL(
                 "r=1177944064 b=4 d=0 g=57",
