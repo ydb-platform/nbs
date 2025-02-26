@@ -361,6 +361,10 @@ private:
     TServerConfigPtr CreateConfig(const NProto::TServerConfig& config)
     {
         auto serverConfig = config;
+        serverConfig.SetKeepAliveEnabled(true);
+        serverConfig.SetKeepAliveIdleTimeout(500);
+        serverConfig.SetKeepAliveProbeTimeout(500);
+        serverConfig.SetKeepAliveProbesCount(5);
         serverConfig.SetPort(PortManager.GetPort(9021));
         if (serverConfig.GetRootCertsFile()) {
             serverConfig.SetSecurePort(PortManager.GetPort(9022));
