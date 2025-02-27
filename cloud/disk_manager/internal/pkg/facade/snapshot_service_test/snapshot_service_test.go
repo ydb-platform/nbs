@@ -85,7 +85,7 @@ func testCreateSnapshotFromDisk(
 	if diskParams.IsDiskRegistryBasedDisk {
 		testcommon.RequireCheckpointsDoNotExist(t, ctx, diskID)
 	} else {
-		testcommon.RequireCheckpoint(t, ctx, diskID, snapshotID)
+		testcommon.RequireCheckpoint(t, ctx, diskID, snapshotID+"_0")
 	}
 
 	reqCtx = testcommon.GetRequestContext(t, ctx)
@@ -629,7 +629,7 @@ func TestSnapshotServiceDeleteIncrementalSnapshotWhileCreating(t *testing.T) {
 		// deleted from incremental table and then checkpoint should not exist
 		// on the disk. Otherwise checkpoint should exist.
 		if len(snapshotID) > 0 {
-			testcommon.RequireCheckpoint(t, ctx, diskID, baseSnapshotID)
+			testcommon.RequireCheckpoint(t, ctx, diskID, baseSnapshotID+"_0")
 		} else {
 			testcommon.RequireCheckpointsDoNotExist(t, ctx, diskID)
 		}
