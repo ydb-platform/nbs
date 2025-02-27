@@ -85,7 +85,7 @@ func testCreateSnapshotFromDisk(
 	if diskParams.IsDiskRegistryBasedDisk {
 		testcommon.RequireCheckpointsDoNotExist(t, ctx, diskID)
 	} else {
-		testcommon.RequireCheckpoint(t, ctx, diskID, snapshotID)
+		testcommon.RequireCheckpoint(t, ctx, diskID, snapshotID+"_0")
 	}
 
 	reqCtx = testcommon.GetRequestContext(t, ctx)
