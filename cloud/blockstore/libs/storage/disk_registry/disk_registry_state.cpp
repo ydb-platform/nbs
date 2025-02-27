@@ -5520,7 +5520,26 @@ bool TDiskRegistryState::TryUpdateDiskState(
 {
     Y_DEBUG_ABORT_UNLESS(!IsMasterDisk(diskId));
 
-    return TryUpdateDiskStateImpl(db, diskId, disk, timestamp);
+    const bool updated = TryUpdateDiskStateImpl(db, diskId, disk, timestamp);
+
+    if (disk.MasterDiskId) {
+        auto* masterDisk = Disks.FindPtr(disk.MasterDiskId);
+
+        if (masterDisk) {
+            TryUpdateDiskStateImpl(
+                db,
+                disk.MasterDiskId,
+                *masterDisk,
+                timestamp);
+        } else {
+            Y_DEBUG_ABORT_UNLESS(masterDisk);
+            ReportDiskRegistryDiskNotFound(
+                TStringBuilder()
+                << "TryUpdateDiskState: DiskId: " << disk.MasterDiskId);
+        }
+    }
+
+    return updated;
 }
 
 bool TDiskRegistryState::TryUpdateDiskStateImpl(
@@ -5553,18 +5572,6 @@ bool TDiskRegistryState::TryUpdateDiskStateImpl(
         oldState,
         newState,
         timestamp);
-    if (disk.MasterDiskId) {
-        auto* masterDisk = Disks.FindPtr(disk.MasterDiskId);
-        Y_DEBUG_ABORT_UNLESS(masterDisk);
-        if (!masterDisk) {
-            ReportDiskRegistryDiskNotFound(
-                TStringBuilder()
-                << "TryUpdateDiskState:DiskId: " << disk.MasterDiskId);
-
-            return false;
-        }
-        TryUpdateDiskStateImpl(db, disk.MasterDiskId, *masterDisk, timestamp);
-    }
 
     return true;
 }
