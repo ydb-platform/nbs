@@ -41,7 +41,6 @@ public:
 
 private:
     void CheckRange(const TActorContext& ctx);
-    void DescribeDiskRegistryVolume(const TActorContext& ctx);
 
     void HandleCheckRangeResponse(
         const TEvService::TEvCheckRangeResponse::TPtr& ev,

@@ -17,10 +17,10 @@ void TPartitionActor::HandleCheckRange(
     const TEvService::TEvCheckRangeRequest::TPtr& ev,
     const NActors::TActorContext& ctx)
 {
-    const auto* msg = ev->Get();
+    auto& record = ev->Get()->Record;
 
     auto error = ValidateBlocksCount(
-        msg->Record.GetBlocksCount(),
+        record.GetBlocksCount(),
         Config->GetBytesPerStripe(),
         State->GetBlockSize(),
         Config->GetCheckRangeMaxRangeSize());
@@ -32,9 +32,13 @@ void TPartitionActor::HandleCheckRange(
         return;
     }
 
-    auto response = std::make_unique<TEvService::TEvCheckRangeResponse>(
-        MakeError(E_NOT_IMPLEMENTED));
-    NCloud::Reply(ctx, *ev, std::move(response));
+    const auto actorId = NCloud::Register<TCheckRangeActor>(
+        ctx,
+        SelfId(),
+        std::move(record),
+        CreateRequestInfo(ev->Sender, ev->Cookie, ev->Get()->CallContext));
+
+    Actors.insert(actorId);
 }
 
 }   // namespace NCloud::NBlockStore::NStorage::NPartition2

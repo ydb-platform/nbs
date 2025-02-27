@@ -26,10 +26,7 @@ namespace {
 class TNonreplCheckRangeActor final: public TCheckRangeActor
 {
 public:
-    TNonreplCheckRangeActor(
-        const TActorId& partition,
-        NProto::TCheckRangeRequest&& request,
-        TRequestInfoPtr&& requestInfo);
+    using TCheckRangeActor::TCheckRangeActor;
 
     void Bootstrap(const TActorContext& ctx);
 
@@ -38,13 +35,6 @@ private:
 };
 
 ////////////////////////////////////////////////////////////////////////////////
-
-TNonreplCheckRangeActor::TNonreplCheckRangeActor(
-    const TActorId& partition,
-    NProto::TCheckRangeRequest&& request,
-    TRequestInfoPtr&& requestInfo)
-    : TCheckRangeActor(partition, std::move(request), std::move(requestInfo))
-{}
 
 void TNonreplCheckRangeActor::SendReadBlocksRequest(const TActorContext& ctx)
 {
