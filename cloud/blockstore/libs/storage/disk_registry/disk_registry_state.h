@@ -875,7 +875,7 @@ public:
     TAgentId GetAgentIdSuitableForLocalDiskAllocationAfterCleanup(
         const TVector<TString>& agentIds,
         const TString& poolName,
-        const ui64 blocksToAllocate) const;
+        const ui64 totalByteCount) const;
 
 private:
     void ProcessConfig(const NProto::TDiskRegistryConfig& config);

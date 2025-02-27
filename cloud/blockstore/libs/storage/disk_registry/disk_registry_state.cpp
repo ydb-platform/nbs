@@ -2644,11 +2644,10 @@ auto TDiskRegistryState::CreateDiskPlacementInfo(
     };
 }
 
-TDiskRegistryState::TAgentId
-TDiskRegistryState::GetAgentIdSuitableForLocalDiskAllocationAfterCleanup(
+auto TDiskRegistryState::GetAgentIdSuitableForLocalDiskAllocationAfterCleanup(
     const TVector<TString>& agentIds,
     const TString& poolName,
-    const ui64 totalByteCount) const
+    const ui64 totalByteCount) const -> TAgentId
 {
     for (const auto& agentId: agentIds) {
         auto [infos, error] = QueryAvailableStorage(
@@ -2671,7 +2670,7 @@ TDiskRegistryState::GetAgentIdSuitableForLocalDiskAllocationAfterCleanup(
         }
     }
 
-    return "";
+    return {};
 }
 
 NProto::TError TDiskRegistryState::AllocateSimpleDisk(
