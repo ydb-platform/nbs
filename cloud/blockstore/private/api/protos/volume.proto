@@ -308,10 +308,16 @@ message TCheckRangeRequest
 
     // Number of blobs per batch.
     uint32 BlocksCount = 3;
+
+    // Dont return checksum (skip checksum calculating)
+    bool IsChecksumNeeded = 4;
 }
 
 message TCheckRangeResponse
 {
     // Status of ReadBlocks operation.
     NCloud.NProto.TError Status = 1;
+
+    // checksum of blocks
+    repeated uint32 Checksums = 2;
 }

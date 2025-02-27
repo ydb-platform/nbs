@@ -334,7 +334,7 @@ public:
         , Version(0)
     {}
     virtual ~TTabletStorageInfo() {}
-
+///////////////////////////
     const TTabletChannelInfo* ChannelInfo(ui32 channel) const {
         if (Channels.size() <= channel) {
             return nullptr;
