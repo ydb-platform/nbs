@@ -88,13 +88,14 @@ void TDiskAgentActor::HandleSecureEraseDevice(
             TBlockStoreComponents::DISK_AGENT,
             "Received secure erase for unknown device %s",
             deviceId.Quote().c_str());
-        NCloud::Reply(
-            ctx,
-            *ev,
+
+        auto response =
             std::make_unique<TEvDiskAgent::TEvSecureEraseDeviceResponse>(
                 MakeError(
                     E_NOT_FOUND,
-                    Sprintf("Unknown deviceId = %s", deviceId.c_str()))));
+                    TStringBuilder()
+                        << "Device " << deviceId.Quote() << " not found"));
+        NCloud::Reply(ctx, *ev, std::move(response));
         return;
     }
 
