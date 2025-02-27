@@ -7016,9 +7016,6 @@ auto TDiskRegistryState::QueryAvailableStorage(
             continue;
         }
 
-        const ui64 au = GetAllocationUnit(device.GetPoolName());
-        auto& auChunks = chunks[au];
-        auChunks.ChunkSize = au;
         if (device.GetState() != NProto::DEVICE_STATE_ONLINE) {
             continue;
         }
@@ -7026,6 +7023,10 @@ auto TDiskRegistryState::QueryAvailableStorage(
         if (DeviceList.IsSuspendedDevice(device.GetDeviceUUID())) {
             continue;
         }
+
+        const ui64 au = GetAllocationUnit(device.GetPoolName());
+        auto& auChunks = chunks[au];
+        auChunks.ChunkSize = au;
 
         if (DeviceList.IsDirtyDevice(device.GetDeviceUUID())) {
             auChunks.DirtyChunks++;
