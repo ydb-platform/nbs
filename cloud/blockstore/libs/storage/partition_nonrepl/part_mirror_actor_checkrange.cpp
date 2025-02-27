@@ -17,50 +17,6 @@ using namespace NActors;
 
 LWTRACE_USING(BLOCKSTORE_STORAGE_PROVIDER);
 
-namespace {
-
-////////////////////////////////////////////////////////////////////////////////
-
-class TMirrorCheckRangeActor final: public TCheckRangeActor
-{
-public:
-    TMirrorCheckRangeActor(
-        const TActorId& partition,
-        NProto::TCheckRangeRequest&& request,
-        TRequestInfoPtr&& requestInfo);
-
-    void Bootstrap(const TActorContext& ctx);
-
-private:
-    void SendReadBlocksRequest(const TActorContext& ctx) override;
-};
-
-////////////////////////////////////////////////////////////////////////////////
-
-TMirrorCheckRangeActor::TMirrorCheckRangeActor(
-    const TActorId& partition,
-    NProto::TCheckRangeRequest&& request,
-    TRequestInfoPtr&& requestInfo)
-    : TCheckRangeActor(partition, std::move(request), std::move(requestInfo))
-{}
-
-void TMirrorCheckRangeActor::SendReadBlocksRequest(const TActorContext& ctx)
-{
-    const TString clientId{CheckRangeClientId};
-    auto request = std::make_unique<TEvService::TEvReadBlocksRequest>();
-
-    request->Record.SetStartIndex(Request.GetStartIndex());
-    request->Record.SetBlocksCount(Request.GetBlocksCount());
-
-    auto* headers = request->Record.MutableHeaders();
-
-    headers->SetClientId(clientId);
-    headers->SetIsBackgroundRequest(true);
-
-    NCloud::Send(ctx, Partition, std::move(request));
-}
-
-}   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
 

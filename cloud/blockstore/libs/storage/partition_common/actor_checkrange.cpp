@@ -47,7 +47,6 @@ void TCheckRangeActor::ReplyAndDie(
 {
     auto response =
         std::make_unique<TEvService::TEvCheckRangeResponse>(std::move(error));
-    response->Record.MutableStatus()->CopyFrom(MakeError(S_OK));
 
     NCloud::Reply(ctx, *RequestInfo, std::move(response));
 
@@ -63,24 +62,17 @@ void TCheckRangeActor::ReplyAndDie(
     Die(ctx);
 }
 
+////////////////////////////////////////////////////////////////////////////////
+
 STFUNC(TCheckRangeActor::StateWork)
 {
     switch (ev->GetTypeRewrite()) {
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
-        HFunc(TEvents::TEvWakeup, HandleWakeup);
         HFunc(TEvService::TEvReadBlocksResponse, HandleReadBlocksResponse);
         default:
             HandleUnexpectedEvent(ev, TBlockStoreComponents::PARTITION_WORKER);
             break;
     }
-}
-
-void TCheckRangeActor::HandleWakeup(
-    const TEvents::TEvWakeup::TPtr& ev,
-    const TActorContext& ctx)
-{
-    Y_UNUSED(ev);
-    SendReadBlocksRequest(ctx);
 }
 
 void TCheckRangeActor::HandlePoisonPill(
