@@ -16,6 +16,40 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+class TLoadCompactionMapActor final
+    : public TActorBootstrapped<TLoadCompactionMapActor>
+{
+public:
+    TLoadCompactionMapActor(
+        const TActorId& tablet,
+        ui32 rangeSize,
+        ICompactionPolicyPtr policy,
+        TCompressedBitmap* usedBlocks,
+        TVector<TCompactionCounter> compactionCounters)
+        : Tablet(tablet)
+        , CompactionMap(rangeSize, std::move(policy))
+        , UsedBlocks(std::move(*usedBlocks))
+        , CompactionCounters(std::move(compactionCounters))
+    {}
+
+    void Bootstrap(const TActorContext& ctx)
+    {
+        CompactionMap.Update(CompactionCounters, &UsedBlocks);
+
+        auto request = std::make_unique<
+            TEvPartitionPrivate::TEvLoadCompactionMapCompleted>(
+            std::move(CompactionMap));
+
+        NCloud::Send(ctx, Tablet, std::move(request));
+    }
+
+private:
+    const TActorId Tablet;
+    TCompactionMap CompactionMap;
+    TCompressedBitmap UsedBlocks;
+    TVector<TCompactionCounter> CompactionCounters;
+};
+
 ui64 GetLastCollectCommitId(const TMaybe<NProto::TPartitionMeta>& meta)
 {
     return meta ? meta->GetLastCollectCommitId() : 0;
@@ -218,10 +252,24 @@ void TPartitionActor::CompleteLoadState(
     State->InitFreshBlocks(args.FreshBlocks);
     State->GetUsedBlocks() = std::move(args.UsedBlocks);
     State->AccessStats().SetUsedBlocksCount(State->GetUsedBlocks().Count());
-    State->GetCompactionMap().Update(
-        args.CompactionMap,
-        &State->GetUsedBlocks()
-    );
+
+    if (Config->GetCompactionMapLoadingSynchronously()) {
+        State->GetCompactionMap().Update(
+            args.CompactionMap,
+            &State->GetUsedBlocks());
+    } else {
+        auto actor = NCloud::Register<TLoadCompactionMapActor>(
+            ctx,
+            SelfId(),
+            State->GetBlocksCount(),
+            std::move(
+                BuildCompactionPolicy(partitionConfig, *Config, SiblingCount)),
+            &State->GetUsedBlocks(),
+            std::move(args.CompactionMap));
+
+        Actors.Insert(actor);
+    }
+
     State->GetCheckpoints().Add(args.Checkpoints);
     State->GetCheckpoints().SetCheckpointMappings(args.CheckpointId2CommitId);
     State->GetCleanupQueue().Add(args.CleanupQueue);
@@ -360,6 +408,22 @@ void TPartitionActor::CompleteUpdateLogicalUsedBlocks(
     } else {
         ExecuteTx<TUpdateLogicalUsedBlocks>(ctx, args.UpdatedToIdx);
     }
+}
+
+void TPartitionActor::HandleLoadCompactionMapCompleted(
+    const TEvPartitionPrivate::TEvLoadCompactionMapCompleted::TPtr& ev,
+    const NActors::TActorContext& ctx)
+{
+    LOG_DEBUG(ctx, TBlockStoreComponents::PARTITION,
+        "[%lu] Compaction map is loaded",
+        TabletID());
+
+    auto& freshCompactionMap = State->GetCompactionMap();
+    auto& loadedCompactionMap = ev->Get()->CompactionMap;
+    loadedCompactionMap.Update(freshCompactionMap);
+    freshCompactionMap = std::move(loadedCompactionMap);
+
+    Actors.Erase(ev->Sender);
 }
 
 }   // namespace NCloud::NBlockStore::NStorage::NPartition

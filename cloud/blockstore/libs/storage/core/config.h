@@ -641,6 +641,8 @@ public:
     [[nodiscard]] ui32 GetBSGroupsPerChannelToWarmup() const;
     [[nodiscard]] TDuration GetWarmupBSGroupConnectionsTimeout() const;
     [[nodiscard]] bool GetAllowAdditionalSystemTablets() const;
+
+    bool GetCompactionMapLoadingSynchronously() const;
 };
 
 ui64 GetAllocationUnit(
