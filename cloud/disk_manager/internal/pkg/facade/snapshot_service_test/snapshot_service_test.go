@@ -1087,10 +1087,15 @@ func testCreateSnapshotFromDiskWithFailedShadowDisk(
 	}
 
 	response := disk_manager.CreateSnapshotResponse{}
-	err = internal_client.WaitResponse(ctx, client, operation.Id, &response)
-	checkOperationError(err)
+	operationErr := internal_client.WaitResponse(
+		ctx,
+		client,
+		operation.Id,
+		&response,
+	)
+	checkOperationError(operationErr)
 
-	if err == nil {
+	if operationErr == nil {
 		require.Equal(t, int64(diskSize), response.Size)
 
 		meta := disk_manager.CreateSnapshotMetadata{}
@@ -1099,8 +1104,15 @@ func testCreateSnapshotFromDiskWithFailedShadowDisk(
 		require.Equal(t, float64(1), meta.Progress)
 	}
 
-	testcommon.RequireCheckpointsDoNotExist(t, ctx, diskID)
+	// Should wait here because checkpoint could be deleted on operation cancel
+	// (and exact time of this event is unknown).
+	testcommon.WaitForCheckpointsDoNotExist(t, ctx, diskID)
 
+	if operationErr != nil {
+		return
+	}
+
+	// If snapshot was created successfully, should create disk from this snapshot.
 	diskID2 := t.Name() + "2"
 
 	reqCtx = testcommon.GetRequestContext(t, ctx)
