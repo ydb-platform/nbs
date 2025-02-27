@@ -17,7 +17,6 @@ using namespace NActors;
 
 LWTRACE_USING(BLOCKSTORE_STORAGE_PROVIDER);
 
-
 ////////////////////////////////////////////////////////////////////////////////
 
 void TMirrorPartitionActor::HandleCheckRange(
