@@ -84,7 +84,7 @@ func (t *createSnapshotFromDiskTask) run(
 			return err
 		}
 
-		err = t.ensureCheckpointReady(
+		err = t.handleCheckpointStatus(
 			ctx,
 			execCtx,
 			nbsClient,
@@ -281,7 +281,10 @@ func (t *createSnapshotFromDiskTask) GetResponse() proto.Message {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-func (t *createSnapshotFromDiskTask) ensureCheckpointReady(
+// Proceed creating snapshot if checkpoint is ready.
+// Retry with the same iteration if checkpoint in not ready yet.
+// Retry with new iteration if checkpoint is broken.
+func (t *createSnapshotFromDiskTask) handleCheckpointStatus(
 	ctx context.Context,
 	execCtx tasks.ExecutionContext,
 	nbsClient nbs.Client,
