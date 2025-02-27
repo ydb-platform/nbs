@@ -951,7 +951,7 @@ func testCreateSnapshotFromDiskWithFailedShadowDisk(
 	testcommon.CheckConsistency(t, ctx)
 }
 
-func TestSnapshotServiceCreateSnapshotFromDiskWithFailedShadowDiskShort(t *testing.T) {
+func TestSnapshotServiceCreateSnapshotFromDiskWithFailedShadowDiskWithShortDelay(t *testing.T) {
 	testCreateSnapshotFromDiskWithFailedShadowDisk(
 		t,
 		disk_manager.DiskKind_DISK_KIND_SSD_NONREPLICATED,
@@ -962,7 +962,7 @@ func TestSnapshotServiceCreateSnapshotFromDiskWithFailedShadowDiskShort(t *testi
 	)
 }
 
-func TestSnapshotServiceCreateSnapshotFromDiskWithFailedShadowDiskLong(t *testing.T) {
+func TestSnapshotServiceCreateSnapshotFromDiskWithFailedShadowDiskWithLongDelay(t *testing.T) {
 	testCreateSnapshotFromDiskWithFailedShadowDisk(
 		t,
 		disk_manager.DiskKind_DISK_KIND_SSD_NONREPLICATED,
@@ -973,7 +973,7 @@ func TestSnapshotServiceCreateSnapshotFromDiskWithFailedShadowDiskLong(t *testin
 	)
 }
 
-func TestSnapshotServiceCreateSnapshotFromDiskWithFailedShadowDiskCancelShort(t *testing.T) {
+func TestSnapshotServiceCreateSnapshotFromDiskWithFailedShadowDiskWithTaskCancelAndShortDelay(t *testing.T) {
 	testCreateSnapshotFromDiskWithFailedShadowDisk(
 		t,
 		disk_manager.DiskKind_DISK_KIND_SSD_NONREPLICATED,
@@ -984,7 +984,7 @@ func TestSnapshotServiceCreateSnapshotFromDiskWithFailedShadowDiskCancelShort(t 
 	)
 }
 
-func TestSnapshotServiceCreateSnapshotFromDiskWithFailedShadowDiskCancelLong(t *testing.T) {
+func TestSnapshotServiceCreateSnapshotFromDiskWithFailedShadowDiskWithTaskCancelAndLongDelay(t *testing.T) {
 	testCreateSnapshotFromDiskWithFailedShadowDisk(
 		t,
 		disk_manager.DiskKind_DISK_KIND_SSD_NONREPLICATED,
