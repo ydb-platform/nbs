@@ -7176,7 +7176,7 @@ Y_UNIT_TEST_SUITE(TPartition2Test)
 
     Y_UNIT_TEST(ShouldCheckRange)
     {
-        constexpr ui32 blockCount = 1024 * 1a024;
+        constexpr ui32 blockCount = 1024 * 1024;
         auto runtime = PrepareTestActorRuntime(DefaultConfig(), blockCount);
 
         TPartitionClient partition(*runtime);
