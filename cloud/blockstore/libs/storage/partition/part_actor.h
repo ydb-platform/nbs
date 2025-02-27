@@ -148,6 +148,7 @@ private:
 public:
     TPartitionActor(
         const NActors::TActorId& owner,
+        ///////////////////////////////////////
         NKikimr::TTabletStorageInfoPtr storage,
         TStorageConfigPtr config,
         TDiagnosticsConfigPtr diagnosticsConfig,

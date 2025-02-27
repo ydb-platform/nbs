@@ -11902,6 +11902,31 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
             );
         }
     }
+
+    Y_UNIT_TEST(ShouldCleanupTabletHistory)
+    {
+        constexpr ui32 blockCount = 1024 * 1024;
+        auto runtime = PrepareTestActorRuntime(DefaultConfig(), blockCount);
+
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+
+        const auto cleanupTabletHistory = [&](ui32 idx, ui32 size)
+        {
+
+            const auto response = partition.CleanupTabletHistory("id");
+
+            TDispatchOptions options;
+            options.FinalEvents.emplace_back(TEvService::EvCleanupTabletHistoryResponse);
+            runtime->DispatchEvents(options, TDuration::Seconds(3));
+
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, status);
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, error);
+        };
+
+        cleanupTabletHistory();
+
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage::NPartition

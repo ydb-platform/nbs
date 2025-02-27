@@ -36,6 +36,7 @@ namespace NCloud::NBlockStore::NStorage {
     xxx(ChangeStorageConfig,      __VA_ARGS__)                                 \
     xxx(GetStorageConfig,         __VA_ARGS__)                                 \
     xxx(GracefulShutdown,         __VA_ARGS__)                                 \
+    xxx(CleanupTabletHistory,    __VA_ARGS__)                                 \
 
 // BLOCKSTORE_VOLUME_REQUESTS
 
@@ -65,6 +66,7 @@ namespace NCloud::NBlockStore::NStorage {
     xxx(GetRebuildMetadataStatus, __VA_ARGS__)                                 \
     xxx(ScanDisk,                 __VA_ARGS__)                                 \
     xxx(GetScanDiskStatus,        __VA_ARGS__)                                 \
+    xxx(CleanupTabletHistory,    __VA_ARGS__)                                 \
 // BLOCKSTORE_VOLUME_HANDLED_RESPONSES
 
 // responses for the requests forwarded from service which are forwarded back
@@ -334,6 +336,9 @@ struct TEvVolume
 
         EvGracefulShutdownRequest = EvBegin + 60,
         EvGracefulShutdownResponse = EvBegin + 61,
+
+        EvCleanupTabletHistoryRequest = EvBegin + 64,
+        EvCleanupTabletHistoryResponse = EvBegin + 65,
 
         EvEnd
     };
