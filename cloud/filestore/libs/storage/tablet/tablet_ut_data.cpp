@@ -7086,10 +7086,9 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
             UNIT_ASSERT_VALUES_EQUAL(
                 2,
                 stats.GetCompactionRangeStats(0).GetBlobCount());
-            /* TODO: https://github.com/ydb-platform/nbs/issues/3096
             UNIT_ASSERT_VALUES_EQUAL(
                 4,
-                stats.GetCompactionRangeStats(0).GetDeletionCount()); */
+                stats.GetCompactionRangeStats(0).GetDeletionCount());
         }
 
         tablet.DestroyHandle(handle);
