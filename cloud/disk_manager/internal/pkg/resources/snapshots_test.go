@@ -370,34 +370,6 @@ func TestSnapshotsGetSnapshot(t *testing.T) {
 	requireSnapshotsAreEqual(t, snapshot, *s)
 }
 
-func TestSnapshotsCreatedWithAnotherCheckpoint(t *testing.T) {
-	ctx, cancel := context.WithCancel(newContext())
-	defer cancel()
-
-	db, err := newYDB(ctx)
-	require.NoError(t, err)
-	defer db.Close(ctx)
-
-	storage := newStorage(t, ctx, db)
-
-	testCreatedWithAnotherCheckpoint(
-		t,
-		ctx,
-		storage,
-		"snapshot-A",
-		"",
-		"checkpoint-2",
-	)
-	testCreatedWithAnotherCheckpoint(
-		t,
-		ctx,
-		storage,
-		"snapshot-B",
-		"checkpoint-1",
-		"checkpoint-2",
-	)
-}
-
 func testCreatedWithAnotherCheckpoint(
 	t *testing.T,
 	ctx context.Context,
@@ -454,4 +426,32 @@ func testCreatedWithAnotherCheckpoint(
 	require.NoError(t, err)
 	require.Equal(t, snapshot.ID, created.ID)
 	require.Equal(t, checkpointID2, created.CheckpointID)
+}
+
+func TestSnapshotsCreatedWithAnotherCheckpoint(t *testing.T) {
+	ctx, cancel := context.WithCancel(newContext())
+	defer cancel()
+
+	db, err := newYDB(ctx)
+	require.NoError(t, err)
+	defer db.Close(ctx)
+
+	storage := newStorage(t, ctx, db)
+
+	testCreatedWithAnotherCheckpoint(
+		t,
+		ctx,
+		storage,
+		"snapshot-A",
+		"",
+		"checkpoint-2",
+	)
+	testCreatedWithAnotherCheckpoint(
+		t,
+		ctx,
+		storage,
+		"snapshot-B",
+		"checkpoint-1",
+		"checkpoint-2",
+	)
 }
