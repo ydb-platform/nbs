@@ -673,3 +673,25 @@ message TGracefulShutdownResponse
     // Request traces.
     NCloud.NProto.TTraceInfo Trace = 2;
 }
+
+////////////////////////////////////////////////////////////////////////////////
+// CleanupTabletHistory request/response.
+
+message TCleanupTabletHistoryRequest
+{
+    // Optional request headers.
+    THeaders Headers = 1;
+
+    string DiskId = 2;
+}
+
+message TSCleanupTabletHistoryResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+
+    // Request traces.
+    NCloud.NProto.TTraceInfo Trace = 2;
+
+    uint32 ToBeDelited = 3;
+}

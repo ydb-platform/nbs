@@ -294,3 +294,16 @@ message TFinishFillDiskRequest
 message TFinishFillDiskResponse
 {
 }
+
+////////////////////////////////////////////////////////////////////////////////
+// CleanupTabletHistory request/response.
+
+message TCleanupTabletHistoryRequest
+{
+    string DiskId = 1;
+}
+
+message TSCleanupTabletHistoryResponse
+{
+    uint32 ToBeDelited = 1;
+}
