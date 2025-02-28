@@ -191,26 +191,6 @@ private:
         }
     }
 
-    const NProto::TDeviceConfig* AllocateNextDevice(i32 prevNodeId)
-    {
-        for (int i = 0; i < State->Devices.ysize(); i++) {
-            if (State->DeviceIsAllocated[i]) {
-                continue;
-            }
-
-            if (State->AllocateDiskReplicasOnDifferentNodes &&
-                static_cast<i32>(State->Devices[i].GetNodeId()) <= prevNodeId)
-            {
-                continue;
-            }
-
-            State->DeviceIsAllocated[i] = true;
-            return &State->Devices[i];
-        }
-
-        return nullptr;
-    }
-
     void HandleAllocateDisk(
         const TEvDiskRegistry::TEvAllocateDiskRequest::TPtr& ev,
         const NActors::TActorContext& ctx)
@@ -260,7 +240,7 @@ private:
                         disk.Devices[i].GetBlocksCount() *
                             disk.Devices[i].GetBlockSize());
             } else {
-                const auto* device = AllocateNextDevice(prevNodeId);
+                const auto* device = State->AllocateNextDevice(prevNodeId);
                 if (!device) {
                     break;
                 }
@@ -277,7 +257,7 @@ private:
                             replica[i].GetBlocksCount() *
                                 replica[i].GetBlockSize());
                 } else {
-                    const auto* device = AllocateNextDevice(prevNodeId);
+                    const auto* device = State->AllocateNextDevice(prevNodeId);
                     if (!device) {
                         break;
                     }

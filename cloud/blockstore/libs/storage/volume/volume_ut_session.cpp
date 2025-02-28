@@ -4,6 +4,7 @@
 #include <cloud/blockstore/libs/storage/partition_common/events_private.h>
 #include <cloud/blockstore/libs/storage/partition_nonrepl/model/processing_blocks.h>
 #include <cloud/blockstore/libs/storage/stats_service/stats_service_events_private.h>
+#include <cloud/blockstore/libs/storage/testlib/ut_helpers.h>
 
 #include <util/system/hostname.h>
 
@@ -26,6 +27,23 @@ using namespace NTestVolumeHelpers;
 namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
+
+TVector<NProto::TDeviceConfig> MakeDeviceList(ui32 agentCount, ui32 deviceCount)
+{
+    TVector<NProto::TDeviceConfig> result;
+    for (ui32 i = 1; i <= agentCount; i++) {
+        for (ui32 j = 0; j < deviceCount; j++) {
+            auto device = MakeDevice(
+                Sprintf("uuid-%u.%u", i, j),
+                Sprintf("dev%u", j),
+                Sprintf("transport%u-%u", i, j));
+            device.SetNodeId(i - 1);
+            device.SetAgentId(Sprintf("agent-%u", i));
+            result.push_back(std::move(device));
+        }
+    }
+    return result;
+}
 
 struct TFixture: public NUnitTest::TBaseFixture
 {
@@ -457,6 +475,244 @@ Y_UNIT_TEST_SUITE(TVolumeSessionTest)
 
         UNIT_ASSERT_EQUAL(response->GetError().GetCode(), E_REJECTED);
         UNIT_ASSERT_EQUAL(response->GetError().GetMessage(), "not delivered");
+    }
+}
+
+Y_UNIT_TEST_SUITE(TVolumeAcquireReleaseTest)
+{
+    Y_UNIT_TEST(ShouldReleaseReplacedDevices)
+    {
+        constexpr ui32 AgentCount = 3;
+        NProto::TStorageServiceConfig config;
+        config.SetAcquireNonReplicatedDevices(true);
+        config.SetNonReplicatedVolumeDirectAcquireEnabled(true);
+        config.SetClientRemountPeriod(TDuration::Seconds(1).MilliSeconds());
+        auto diskRegistryState = MakeIntrusive<TDiskRegistryState>();
+
+        diskRegistryState->Devices = MakeDeviceList(AgentCount, 3);
+        diskRegistryState->AllocateDiskReplicasOnDifferentNodes = true;
+        diskRegistryState->ReplicaCount = 2;
+        TVector<TDiskAgentStatePtr> agentStates;
+        for (ui32 i = 0; i < AgentCount; i++) {
+            agentStates.push_back(TDiskAgentStatePtr{});
+        }
+
+        auto runtime = PrepareTestActorRuntime(
+            config,
+            diskRegistryState,
+            {},
+            {},
+            std::move(agentStates));
+        auto volume = TVolumeClient(*runtime);
+
+        struct TDeviceRequests
+        {
+            THashSet<TString> AcquiredDevices;
+            TVector<TString> ReleasedDevices;
+        };
+        THashMap<TString, TDeviceRequests> clientRequests;
+        runtime->SetEventFilter(
+            [&](TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& event)
+            {
+                switch (event->GetTypeRewrite()) {
+                    case TEvDiskAgent::EvAcquireDevicesRequest: {
+                        auto* msg =
+                            event
+                                ->Get<TEvDiskAgent::TEvAcquireDevicesRequest>();
+                        const auto& devices = msg->Record.GetDeviceUUIDs();
+                        const auto& clientId =
+                            msg->Record.GetHeaders().GetClientId();
+                        clientRequests[clientId].AcquiredDevices.insert(
+                            devices.begin(),
+                            devices.end());
+                        break;
+                    }
+                    case TEvDiskAgent::EvReleaseDevicesRequest: {
+                        auto* msg =
+                            event
+                                ->Get<TEvDiskAgent::TEvReleaseDevicesRequest>();
+                        const auto& devices = msg->Record.GetDeviceUUIDs();
+                        const auto& clientId =
+                            msg->Record.GetHeaders().GetClientId();
+                        clientRequests[clientId].ReleasedDevices.insert(
+                            clientRequests[clientId].ReleasedDevices.end(),
+                            devices.begin(),
+                            devices.end());
+                        break;
+                    }
+                }
+
+                return false;
+            });
+
+        // Create mirror-3 disk with one device per replica.
+        constexpr ui64 BlockCount =
+            DefaultDeviceBlockCount * DefaultDeviceBlockSize / DefaultBlockSize;
+        volume.UpdateVolumeConfig(
+            0,
+            0,
+            0,
+            0,
+            false,
+            1,
+            NCloud::NProto::STORAGE_MEDIA_SSD_MIRROR3,
+            BlockCount);
+        volume.WaitReady();
+
+        // Add clients.
+        auto clientInfoRW = CreateVolumeClientInfo(
+            NProto::VOLUME_ACCESS_READ_WRITE,
+            NProto::VOLUME_MOUNT_LOCAL,
+            0);
+        auto clientInfoRO = CreateVolumeClientInfo(
+            NProto::VOLUME_ACCESS_READ_ONLY,
+            NProto::VOLUME_MOUNT_REMOTE,
+            0);
+        volume.AddClient(clientInfoRW);
+        volume.AddClient(clientInfoRO);
+
+        // Devices for both clients should be acquired.
+        {
+            TDispatchOptions options;
+            options.CustomFinalCondition = [&]
+            {
+                return clientRequests[clientInfoRW.GetClientId()]
+                               .AcquiredDevices.size() == 3 &&
+                       clientRequests[clientInfoRO.GetClientId()]
+                               .AcquiredDevices.size() == 3;
+            };
+            runtime->DispatchEvents(options, TDuration::Seconds(10));
+        }
+
+        // No reason to release.
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            clientRequests[clientInfoRW.GetClientId()].ReleasedDevices.size());
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            clientRequests[clientInfoRO.GetClientId()].ReleasedDevices.size());
+
+        // Reallocate disk.
+        volume.ReallocateDisk();
+        volume.ReconnectPipe();
+        volume.WaitReady();
+
+        // Release shouldn't be sent.
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            clientRequests[clientInfoRW.GetClientId()].ReleasedDevices.size());
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            clientRequests[clientInfoRO.GetClientId()].ReleasedDevices.size());
+
+        // Replace two devices.
+        auto stat = volume.StatVolume();
+        const auto& volumeConfig = stat->Record.GetVolume();
+        TVector<TString> replacedDevices = {
+            volumeConfig.GetDevices(0).GetDeviceUUID(),
+            volumeConfig.GetReplicas(0).GetDevices(0).GetDeviceUUID()};
+        UNIT_ASSERT(
+            diskRegistryState->ReplaceDevice("vol0", replacedDevices[0]));
+        UNIT_ASSERT(
+            diskRegistryState->ReplaceDevice("vol0", replacedDevices[1]));
+
+        // Reallocate disk.
+        volume.ReallocateDisk();
+        volume.ReconnectPipe();
+        volume.WaitReady();
+
+        // Wait for the release.
+        {
+            TDispatchOptions options;
+            options.CustomFinalCondition = [&]
+            {
+                return !clientRequests[clientInfoRW.GetClientId()]
+                            .ReleasedDevices.empty() &&
+                       !clientRequests[clientInfoRO.GetClientId()]
+                            .ReleasedDevices.empty();
+            };
+            runtime->DispatchEvents(options, TDuration::Seconds(10));
+        }
+        // Replaced devices should be released.
+        ASSERT_VECTOR_CONTENTS_EQUAL(
+            replacedDevices,
+            clientRequests[clientInfoRW.GetClientId()].ReleasedDevices);
+        ASSERT_VECTOR_CONTENTS_EQUAL(
+            replacedDevices,
+            clientRequests[clientInfoRO.GetClientId()].ReleasedDevices);
+
+        // Start migration.
+        stat = volume.StatVolume();
+        UNIT_ASSERT(diskRegistryState->StartDeviceMigration(
+            stat->Record.GetVolume().GetDevices(0).GetDeviceUUID()));
+
+        clientRequests[clientInfoRW.GetClientId()].ReleasedDevices.clear();
+        clientRequests[clientInfoRO.GetClientId()].ReleasedDevices.clear();
+        clientRequests[clientInfoRW.GetClientId()].AcquiredDevices.clear();
+        clientRequests[clientInfoRO.GetClientId()].AcquiredDevices.clear();
+
+        // Reallocate disk.
+        volume.ReallocateDisk();
+        volume.ReconnectPipe();
+        volume.WaitReady();
+
+        // All replica devices and target migration for both clients should be
+        // acquired.
+        {
+            TDispatchOptions options;
+            options.CustomFinalCondition = [&]
+            {
+                return clientRequests[clientInfoRW.GetClientId()]
+                               .AcquiredDevices.size() == 4 &&
+                       clientRequests[clientInfoRO.GetClientId()]
+                               .AcquiredDevices.size() == 4;
+            };
+            runtime->DispatchEvents(options, TDuration::Seconds(10));
+        }
+
+        // Release shouldn't be sent.
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            clientRequests[clientInfoRW.GetClientId()].ReleasedDevices.size());
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            clientRequests[clientInfoRO.GetClientId()].ReleasedDevices.size());
+
+        // Check that the volume is migrating.
+        stat = volume.StatVolume();
+        const auto& migrations = stat->Record.GetVolume().GetMigrations();
+        UNIT_ASSERT_VALUES_EQUAL(1, migrations.size());
+        UNIT_ASSERT_VALUES_EQUAL(
+            stat->Record.GetVolume().GetDevices(0).GetDeviceUUID(),
+            migrations[0].GetSourceDeviceId());
+
+        // Finish migration.
+        diskRegistryState->MigrationMode = EMigrationMode::Finish;
+
+        // Reallocate disk.
+        volume.ReallocateDisk();
+        volume.ReconnectPipe();
+        volume.WaitReady();
+
+        // Wait for the release.
+        {
+            TDispatchOptions options;
+            options.CustomFinalCondition = [&]
+            {
+                return !clientRequests[clientInfoRW.GetClientId()]
+                            .ReleasedDevices.empty() &&
+                       !clientRequests[clientInfoRO.GetClientId()]
+                            .ReleasedDevices.empty();
+            };
+            runtime->DispatchEvents(options, TDuration::Seconds(10));
+        }
+        // Source device should be released.
+        ASSERT_VECTOR_CONTENTS_EQUAL(
+            TVector<TString>{migrations[0].GetSourceDeviceId()},
+            clientRequests[clientInfoRW.GetClientId()].ReleasedDevices);
+        ASSERT_VECTOR_CONTENTS_EQUAL(
+            TVector<TString>{migrations[0].GetSourceDeviceId()},
+            clientRequests[clientInfoRO.GetClientId()].ReleasedDevices);
     }
 }
 }   // namespace NCloud::NBlockStore::NStorage

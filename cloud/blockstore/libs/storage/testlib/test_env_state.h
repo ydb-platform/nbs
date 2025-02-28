@@ -64,6 +64,10 @@ struct TDiskRegistryState: TAtomicRefCount<TDiskRegistryState>
 
     bool AllocateDiskReplicasOnDifferentNodes = false;
     bool WritableState = false;
+
+    const NProto::TDeviceConfig* AllocateNextDevice(i32 prevNodeId);
+    bool ReplaceDevice(const TString& diskId, const TString& deviceUUID);
+    bool StartDeviceMigration(const TString& deviceUUID);
 };
 
 using TDiskRegistryStatePtr = TIntrusivePtr<TDiskRegistryState>;

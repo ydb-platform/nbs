@@ -156,6 +156,7 @@ struct TTxVolume
         bool MuteIOErrors;
 
         bool LiteReallocation = false;
+        TVector<NProto::TDeviceConfig> ReplacedDevices;
 
         TUpdateDevices(
                 TDevices devices,

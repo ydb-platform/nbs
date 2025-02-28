@@ -21,17 +21,33 @@ LWTRACE_USING(BLOCKSTORE_STORAGE_PROVIDER);
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void TVolumeActor::ReleaseDisk(const TActorContext& ctx, const TString& clientId)
+void TVolumeActor::ReleaseDisk(
+    const TActorContext& ctx,
+    const TString& clientId,
+    const TVector<NProto::TDeviceConfig>& devicesToRelease)
 {
-    auto request = std::make_unique<TEvDiskRegistry::TEvReleaseDiskRequest>();
+    if (Config->GetNonReplicatedVolumeDirectAcquireEnabled()) {
+        SendReleaseDevicesToAgents(clientId, ctx, devicesToRelease);
+        return;
+    }
 
+    // Only direct acquire protocol allows to release specific devices.
+    if (!devicesToRelease.empty()) {
+        Y_DEBUG_ABORT_UNLESS(
+            !AcquireReleaseDiskRequests.empty() &&
+            !AcquireReleaseDiskRequests.front().ClientRequest);
+        HandleDevicesReleasedFinishedImpl(
+            MakeError(
+                E_NOT_IMPLEMENTED,
+                "Can't release specific devices through Disk Registry."),
+            ctx);
+        return;
+    }
+
+    auto request = std::make_unique<TEvDiskRegistry::TEvReleaseDiskRequest>();
     request->Record.SetDiskId(State->GetDiskId());
     request->Record.MutableHeaders()->SetClientId(clientId);
     request->Record.SetVolumeGeneration(Executor()->Generation());
-    if (Config->GetNonReplicatedVolumeDirectAcquireEnabled()) {
-        SendReleaseDevicesToAgents(clientId, ctx);
-        return;
-    }
     NCloud::Send(
         ctx,
         MakeDiskRegistryProxyServiceId(),
@@ -85,6 +101,8 @@ void TVolumeActor::HandleDevicesReleasedFinishedImpl(
             ProcessNextPendingClientRequest(ctx);
         }
     } else if (cr) {
+        // This shouldn't be release of replaced devices.
+        Y_DEBUG_ABORT_UNLESS(request.DevicesToRelease.empty());
         ExecuteTx<TRemoveClient>(
             ctx,
             std::move(cr->RequestInfo),
