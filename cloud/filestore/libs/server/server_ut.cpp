@@ -365,6 +365,7 @@ private:
         if (serverConfig.GetRootCertsFile()) {
             serverConfig.SetSecurePort(PortManager.GetPort(9022));
         }
+
         return  std::make_shared<TServerConfig>(std::move(serverConfig));
     }
 };
