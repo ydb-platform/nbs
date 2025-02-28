@@ -222,7 +222,7 @@ func (c *createDisk) run() error {
 	var encryptionDesc *disk_manager.EncryptionDesc
 	if c.encrypted {
 		encryptionDesc = &disk_manager.EncryptionDesc{
-			Mode: disk_manager.EncryptionMode_ENCRYPTION_AES_XTS,
+			Mode: disk_manager.EncryptionMode_ENCRYPTION_AT_REST,
 		}
 	}
 
@@ -312,7 +312,7 @@ func newCreateDiskCmd(clientConfig *client_config.ClientConfig) *cobra.Command {
 	cmd.Flags().StringVar(&c.storagePoolName, "storage-pool-name", "", "storage pool name")
 	cmd.Flags().Var(&c.agentIds, "agent-id", "agent id (several agents can be added at a time)")
 
-	cmd.Flags().BoolVar(&c.encrypted, "encrypted", false, "create encrypted disk")
+	cmd.Flags().BoolVar(&c.encrypted, "encrypted", false, "create disk with encryption at rest")
 
 	return cmd
 }
