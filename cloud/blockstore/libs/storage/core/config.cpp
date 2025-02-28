@@ -536,6 +536,8 @@ TDuration MSeconds(ui32 value)
     xxx(BSGroupsPerChannelToWarmup,                ui32,      1               )\
     xxx(WarmupBSGroupConnectionsTimeout,           TDuration, Seconds(1)      )\
     xxx(AllowAdditionalSystemTablets,              bool,      false           )\
+                                                                               \
+    xxx(CheckRangeMaxRangeSize,                    ui32,      4_MB            )\
 // BLOCKSTORE_STORAGE_CONFIG_RW
 
 #define BLOCKSTORE_STORAGE_CONFIG(xxx)                                         \

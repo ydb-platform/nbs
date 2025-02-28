@@ -252,6 +252,11 @@ public:
         const TString& diskId,
         const TVector<TString>& tagsToAdd);
 
+    std::unique_ptr<TEvService::TEvCheckRangeRequest> CreateCheckRangeRequest(
+        const TString& diskId,
+        const ui64 blockIdx,
+        const ui64 blockCount);
+
     void WaitForVolume(const TString& diskId = DefaultDiskId);
 
 #define BLOCKSTORE_DECLARE_METHOD(name, ns)                                    \

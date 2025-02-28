@@ -25,6 +25,7 @@ namespace NCloud::NBlockStore::NStorage::NPartition {
     xxx(GetChangedBlocks,   __VA_ARGS__)                                       \
     xxx(ReadBlocksLocal,    __VA_ARGS__)                                       \
     xxx(WriteBlocksLocal,   __VA_ARGS__)                                       \
+    xxx(CheckRange,         __VA_ARGS__)                                       \
 // BLOCKSTORE_PARTITION_REQUESTS_FWD_SERVICE
 
 // requests forwarded from volume to partion

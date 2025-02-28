@@ -422,6 +422,16 @@ public:
         return request;
     }
 
+    std::unique_ptr<TEvService::TEvCheckRangeRequest>
+    CreateCheckRangeRequest(TString id, ui32 startIndex, ui32 size)
+    {
+        auto request = std::make_unique<TEvService::TEvCheckRangeRequest>();
+        request->Record.SetDiskId(id);
+        request->Record.SetStartIndex(startIndex);
+        request->Record.SetBlocksCount(size);
+        return request;
+    }
+
 
 #define BLOCKSTORE_DECLARE_METHOD(name, ns)                                    \
     template <typename... Args>                                                \
@@ -455,6 +465,7 @@ public:
     BLOCKSTORE_DECLARE_METHOD(ReadBlocksLocal, TEvService);
     BLOCKSTORE_DECLARE_METHOD(WriteBlocksLocal, TEvService);
     BLOCKSTORE_DECLARE_METHOD(ZeroBlocks, TEvService);
+    BLOCKSTORE_DECLARE_METHOD(CheckRange, TEvService);
     BLOCKSTORE_DECLARE_METHOD(ChecksumBlocks, TEvNonreplPartitionPrivate);
 
 #undef BLOCKSTORE_DECLARE_METHOD
