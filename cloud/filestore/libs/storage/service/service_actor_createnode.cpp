@@ -82,11 +82,11 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 TLinkActor::TLinkActor(
-    TRequestInfoPtr requestInfo,
-    NProto::TCreateNodeRequest createNodeRequest,
-    TString shardId,
-    TString logTag,
-    IProfileLogPtr profileLog)
+        TRequestInfoPtr requestInfo,
+        NProto::TCreateNodeRequest createNodeRequest,
+        TString shardId,
+        TString logTag,
+        IProfileLogPtr profileLog)
     : RequestInfo(std::move(requestInfo))
     , CreateNodeRequest(std::move(createNodeRequest))
     , ShardId(std::move(shardId))
