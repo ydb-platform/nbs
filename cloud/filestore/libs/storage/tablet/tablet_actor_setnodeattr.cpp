@@ -226,6 +226,8 @@ void TIndexTabletActor::CompleteTx_SetNodeAttr(
         ctx);
 
     NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
+
+    EnqueueBlobIndexOpIfNeeded(ctx);
 }
 
 }   // namespace NCloud::NFileStore::NStorage
