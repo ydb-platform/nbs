@@ -621,6 +621,18 @@ Y_UNIT_TEST_SUITE(TVolumeAcquireReleaseTest)
         volume.ReconnectPipe();
         volume.WaitReady();
 
+        // Wait for the release.
+        {
+            TDispatchOptions options;
+            options.CustomFinalCondition = [&]
+            {
+                return !clientRequests[clientInfoRW.GetClientId()]
+                            .ReleasedDevices.empty() &&
+                       !clientRequests[clientInfoRO.GetClientId()]
+                            .ReleasedDevices.empty();
+            };
+            runtime->DispatchEvents(options, TDuration::Seconds(10));
+        }
         // Replaced devices should be released.
         ASSERT_VECTOR_CONTENTS_EQUAL(
             replacedDevices,
@@ -682,6 +694,18 @@ Y_UNIT_TEST_SUITE(TVolumeAcquireReleaseTest)
         volume.ReconnectPipe();
         volume.WaitReady();
 
+        // Wait for the release.
+        {
+            TDispatchOptions options;
+            options.CustomFinalCondition = [&]
+            {
+                return !clientRequests[clientInfoRW.GetClientId()]
+                            .ReleasedDevices.empty() &&
+                       !clientRequests[clientInfoRO.GetClientId()]
+                            .ReleasedDevices.empty();
+            };
+            runtime->DispatchEvents(options, TDuration::Seconds(10));
+        }
         // Source device should be released.
         ASSERT_VECTOR_CONTENTS_EQUAL(
             TVector<TString>{migrations[0].GetSourceDeviceId()},

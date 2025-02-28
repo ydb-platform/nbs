@@ -4,7 +4,6 @@
 
 #include <cloud/blockstore/libs/diagnostics/critical_events.h>
 #include <cloud/blockstore/libs/storage/api/disk_registry_proxy.h>
-#include <cloud/blockstore/libs/storage/volume/actors/release_devices_actor.h>
 #include <cloud/blockstore/libs/storage/volume/model/helpers.h>
 #include <cloud/storage/core/libs/common/media.h>
 
@@ -569,25 +568,7 @@ void TVolumeActor::ExecuteUpdateDevices(
         db.WriteMetaHistory(State->GetMetaHistory().size(), metaHistoryItem);
         State->AddMetaHistory(std::move(metaHistoryItem));
 
-        // Try to release devices that don't belong to the volume anymore. This
-        // task is not critical, and in case of failure, the acquire will become
-        // obsolete in some time.
-        auto replacedDevices = GetReplacedDevices(oldMeta, newMeta);
-        if (!replacedDevices.empty()) {
-            for (const auto& [clientId, _]: State->GetClients()) {
-                NCloud::Register(
-                    ctx,
-                    std::make_unique<TReleaseDevicesActor>(
-                        TActorId(),   // We won't be able to retry this request,
-                                      // so no need to receive a response.
-                        State->GetDiskId(),
-                        clientId,
-                        Executor()->Generation(),
-                        Config->GetAgentRequestTimeout(),
-                        replacedDevices,
-                        oldMeta.GetMuteIOErrors()));
-            }
-        }
+        args.ReplacedDevices = GetReplacedDevices(oldMeta, newMeta);
     }
 
     db.WriteMeta(newMeta);
@@ -629,6 +610,14 @@ void TVolumeActor::CompleteUpdateDevices(
     SendVolumeConfigUpdated(ctx);
     StartPartitionsForUse(ctx);
     ResetServicePipes(ctx);
+    if (!args.LiteReallocation) {
+        // Non-lite reallocation means that new devices could have been added.
+        AcquireDiskIfNeeded(ctx);
+        // Try to release devices that don't belong to the volume anymore. This
+        // task is not critical, and in case of failure, the acquire will become
+        // obsolete in some time.
+        ReleaseReplacedDevices(ctx, args.ReplacedDevices);
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage
