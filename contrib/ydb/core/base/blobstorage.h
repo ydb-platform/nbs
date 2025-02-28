@@ -333,8 +333,8 @@ public:
         , TabletType(tabletType)
         , Version(0)
     {}
-    virtual ~TTabletStorageInfo() {}
-
+        virtual ~TTabletStorageInfo() {}
+///////////////////////////
     const TTabletChannelInfo* ChannelInfo(ui32 channel) const {
         if (Channels.size() <= channel) {
             return nullptr;

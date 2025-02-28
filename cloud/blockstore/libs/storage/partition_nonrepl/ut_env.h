@@ -423,12 +423,13 @@ public:
     }
 
     std::unique_ptr<TEvService::TEvCheckRangeRequest>
-    CreateCheckRangeRequest(TString id, ui32 startIndex, ui32 size)
+    CreateCheckRangeRequest(TString id, ui32 startIndex, ui32 size, bool isChecksumNeeded = false)
     {
         auto request = std::make_unique<TEvService::TEvCheckRangeRequest>();
         request->Record.SetDiskId(id);
         request->Record.SetStartIndex(startIndex);
         request->Record.SetBlocksCount(size);
+        request->Record.SetIsChecksumNeeded(isChecksumNeeded);
         return request;
     }
 

@@ -7,6 +7,7 @@ SRCS(
     assign_volume.cpp
     backup_volume.cpp
     bootstrap.cpp
+    check_range.cpp
     command.cpp
     create_checkpoint.cpp
     create_placement_group.cpp

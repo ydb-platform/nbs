@@ -2144,6 +2144,44 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionTest)
 
         UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, response->GetStatus());
     }
+
+    Y_UNIT_TEST(ShouldCheckRangeIdenticalChecksums)
+    {
+        TTestBasicRuntime runtime;
+
+        TTestEnv env(runtime);
+        TPartitionClient partition1(runtime, env.ActorId);
+        TPartitionClient partition2(runtime, env.ActorId);
+
+        partition1.WriteBlocks(
+            TBlockRange64::MakeClosedInterval(0, 1024 * 1024),
+            1);
+
+        partition1.WriteBlocks(
+            TBlockRange64::MakeClosedInterval(0, 1024 * 1024),
+            1);
+
+        const auto checkRange = [&](ui32 idx, ui32 size)
+        {
+            const auto response1 = partition1.CheckRange("id", idx, size, false);
+            const auto response2 = partition2.CheckRange("id", idx, size, false);
+
+            TDispatchOptions options;
+            options.FinalEvents.emplace_back(TEvService::EvCheckRangeResponse);
+            runtime.DispatchEvents(options, TDuration::Seconds(3));
+
+            const auto& checksums1 = response1.get()->Record.GetChecksums();
+            const auto& checksums2 = response2.get()->Record.GetChecksums();
+
+            UNIT_ASSERT_VALUES_EQUAL(response1.get()->Record.ChecksumsSize(), response2.get()->Record.ChecksumsSize());
+            for (size_t i = 0; i < response1.get()->Record.ChecksumsSize(); ++i) {
+                UNIT_ASSERT_VALUES_EQUAL(checksums1.at(i), checksums2.at(i));
+            }
+        };
+
+        checkRange(0, 1024);
+        checkRange(1024, 512);
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

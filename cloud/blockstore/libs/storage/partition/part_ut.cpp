@@ -940,12 +940,13 @@ public:
     }
 
     std::unique_ptr<TEvService::TEvCheckRangeRequest>
-    CreateCheckRangeRequest(TString id, ui32 startIndex, ui32 size)
+    CreateCheckRangeRequest(TString id, ui32 startIndex, ui32 size, bool isChecksumNeeded = false)
     {
         auto request = std::make_unique<TEvService::TEvCheckRangeRequest>();
         request->Record.SetDiskId(id);
         request->Record.SetStartIndex(startIndex);
         request->Record.SetBlocksCount(size);
+        request->Record.SetIsChecksumNeeded(isChecksumNeeded);
         return request;
     }
 
@@ -12086,6 +12087,53 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         runtime->DispatchEvents(options, TDuration::Seconds(1));
 
         UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, response->GetStatus());
+    }
+
+    Y_UNIT_TEST(ShouldCheckRangeIdenticalChecksums)
+    {
+        constexpr ui32 blockCount = 1024 * 1024;
+
+        auto runtime = PrepareTestActorRuntime(DefaultConfig(), blockCount);
+
+        TPartitionClient partition1(*runtime);
+        TPartitionClient partition2(*runtime);
+
+        partition1.WaitReady();
+        partition2.WaitReady();
+
+        const auto writeData = [&](TPartitionClient& partition)
+        {
+            partition.WriteBlocks(
+                TBlockRange32::MakeClosedInterval(0, 1024 * 10),
+                42);
+            partition.WriteBlocks(
+                TBlockRange32::MakeClosedInterval(1024 * 5, 1024 * 15),
+                99);
+        };
+
+        writeData(partition1);
+        writeData(partition2);
+
+        const auto checkRange = [&](ui32 idx, ui32 size)
+        {
+            const auto response1 = partition1.CheckRange("id", idx, size, false);
+            const auto response2 = partition2.CheckRange("id", idx, size, false);
+
+            TDispatchOptions options;
+            options.FinalEvents.emplace_back(TEvService::EvCheckRangeResponse);
+            runtime->DispatchEvents(options, TDuration::Seconds(3));
+
+            const auto& checksums1 = response1.get()->Record.GetChecksums();
+            const auto& checksums2 = response2.get()->Record.GetChecksums();
+
+            UNIT_ASSERT_VALUES_EQUAL(response1.get()->Record.ChecksumsSize(), response2.get()->Record.ChecksumsSize());
+            for (size_t i = 0; i < response1.get()->Record.ChecksumsSize(); ++i) {
+                UNIT_ASSERT_VALUES_EQUAL(checksums1.at(i), checksums2.at(i));
+            }
+        };
+
+        checkRange(0, 1024);
+        checkRange(1024, 512);
     }
 }
 
