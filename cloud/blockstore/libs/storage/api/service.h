@@ -343,7 +343,7 @@ struct TEvService
         EvAddTagsRequest = EvBegin + 91,
         EvAddTagsResponse = EvBegin + 92,
 
-        EvCleanupTabletHistoryequest = EvBegin + 95,
+        EvCleanupTabletHistoryRequest = EvBegin + 95,
         EvCleanupTabletHistoryResponse = EvBegin + 96,
 
         EvEnd

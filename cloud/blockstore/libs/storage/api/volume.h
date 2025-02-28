@@ -36,7 +36,7 @@ namespace NCloud::NBlockStore::NStorage {
     xxx(ChangeStorageConfig,      __VA_ARGS__)                                 \
     xxx(GetStorageConfig,         __VA_ARGS__)                                 \
     xxx(GracefulShutdown,         __VA_ARGS__)                                 \
-    xxx(CleanupTabletHistory,    __VA_ARGS__)                                 \
+    xxx(CleanupTabletHistory,     __VA_ARGS__)                                 \
 
 // BLOCKSTORE_VOLUME_REQUESTS
 
@@ -237,6 +237,30 @@ struct TEvVolume
 
         explicit TPreparePartitionMigrationResponse(bool isMigrationAllowed)
             : IsMigrationAllowed(isMigrationAllowed)
+        {}
+    };
+
+    //
+    // CleanupTabletHistoryRequest
+    //
+    struct TCleanupTabletHistoryRequest
+    {
+        TString TabletId;
+
+        explicit TCleanupTabletHistoryRequest(TString tabletId)
+            : TabletId(std::move(tabletId))
+        {}
+    };
+
+    //
+    // CleanupTabletHistoryResponse
+    //
+    struct TCleanupTabletHistoryResponse
+    {
+        ui32  ToBeDelited;
+
+        explicit TCleanupTabletHistoryResponse(ui32 toBeDelited)
+            : ToBeDelited(toBeDelited)
         {}
     };
 
