@@ -48,6 +48,7 @@ message TFileSystem
     bool AutomaticShardCreationEnabled = 15;
     uint64 ShardAllocationUnit = 16;
     string MainFileSystemId = 17;
+    bool DirectoryCreationInShardsEnabled = 18;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

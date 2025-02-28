@@ -105,4 +105,19 @@ IActorPtr TStorageServiceActor::CreateRestartTabletActionActor(
         std::move(input));
 }
 
+////////////////////////////////////////////////////////////////////////////////
+// GetFileSystemTopology
+
+IActorPtr TStorageServiceActor::CreateGetFileSystemTopologyActionActor(
+    TRequestInfoPtr requestInfo,
+    TString input)
+{
+    using TGetFileSystemTopologyActor = TTabletActionActor<
+        TEvIndexTablet::TEvGetFileSystemTopologyRequest,
+        TEvIndexTablet::TEvGetFileSystemTopologyResponse>;
+    return std::make_unique<TGetFileSystemTopologyActor>(
+        std::move(requestInfo),
+        std::move(input));
+}
+
 }   // namespace NCloud::NFileStore::NStorage

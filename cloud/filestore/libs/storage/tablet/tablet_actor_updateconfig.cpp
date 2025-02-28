@@ -162,6 +162,8 @@ void TIndexTabletActor::HandleUpdateConfig(
     newConfig.SetAutomaticShardCreationEnabled(
         oldConfig.GetAutomaticShardCreationEnabled());
     newConfig.SetShardAllocationUnit(oldConfig.GetShardAllocationUnit());
+    newConfig.SetDirectoryCreationInShardsEnabled(
+        oldConfig.GetDirectoryCreationInShardsEnabled());
 
     // Config update occured due to alter/resize.
     if (auto error = ValidateUpdateConfigRequest(oldConfig, newConfig)) {
@@ -344,6 +346,15 @@ void TIndexTabletActor::ExecuteTx_ConfigureShards(
     auto config = GetFileSystem();
     *config.MutableShardFileSystemIds() =
         std::move(*args.Request.MutableShardFileSystemIds());
+    config.SetDirectoryCreationInShardsEnabled(
+        args.Request.GetDirectoryCreationInShardsEnabled());
+
+    LOG_INFO(
+        ctx,
+        TFileStoreComponents::TABLET,
+        "%s Configuring shards in ExecuteTx_ConfigureShards, target config: %s",
+        LogTag.c_str(),
+        config.ShortDebugString().c_str());
 
     UpdateConfig(db, *Config, config, GetThrottlingConfig());
 }
@@ -429,13 +440,15 @@ void TIndexTabletActor::ExecuteTx_ConfigureAsShard(
 
     TIndexTabletDatabase db(tx.DB);
 
-    auto config = GetFileSystem();
-    config.SetShardNo(args.Request.GetShardNo());
-    config.SetMainFileSystemId(args.Request.GetMainFileSystemId());
-    *config.MutableShardFileSystemIds() =
+    args.FileSystem = GetFileSystem();
+    args.FileSystem.SetShardNo(args.Request.GetShardNo());
+    args.FileSystem.SetMainFileSystemId(args.Request.GetMainFileSystemId());
+    *args.FileSystem.MutableShardFileSystemIds() =
         std::move(*args.Request.MutableShardFileSystemIds());
+    args.FileSystem.SetDirectoryCreationInShardsEnabled(
+        args.Request.GetDirectoryCreationInShardsEnabled());
 
-    UpdateConfig(db, *Config, config, GetThrottlingConfig());
+    UpdateConfig(db, *Config, args.FileSystem, GetThrottlingConfig());
 }
 
 void TIndexTabletActor::CompleteTx_ConfigureAsShard(

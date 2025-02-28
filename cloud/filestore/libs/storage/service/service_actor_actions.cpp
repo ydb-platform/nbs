@@ -99,6 +99,10 @@ void TStorageServiceActor::HandleExecuteAction(
         {
             "restarttablet",
             &TStorageServiceActor::CreateRestartTabletActionActor
+        },
+        {
+            "getfilesystemtopology",
+            &TStorageServiceActor::CreateGetFileSystemTopologyActionActor
         }
     };
 

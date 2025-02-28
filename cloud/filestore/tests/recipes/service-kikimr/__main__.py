@@ -104,6 +104,7 @@ def start(argv):
     access_service_type = AccessService
     if os.getenv("ACCESS_SERVICE_TYPE") == "new":
         access_service_type = NewAccessService
+    restart_interval = get_restart_interval(args.restart_interval)
     filestore_configurator = FilestoreServerConfigGenerator(
         binary_path=filestore_binary_path,
         app_config=server_config,
@@ -111,7 +112,7 @@ def start(argv):
         verbose=args.verbose,
         kikimr_port=kikimr_port,
         domain=domain,
-        restart_interval=get_restart_interval(args.restart_interval),
+        restart_interval=restart_interval,
         access_service_port=access_service_port,
         storage_config=storage_config,
         secure=secure,
@@ -131,6 +132,7 @@ def start(argv):
     set_env("NFS_MON_PORT", str(filestore_configurator.mon_port))
     set_env("NFS_DOMAIN", str(domain))
     set_env("NFS_CONFIG_DIR", str(filestore_configurator.configs_dir))
+    set_env("NFS_RESTART_INTERVAL", restart_interval)
     if secure:
         set_env("NFS_SERVER_SECURE_PORT", str(filestore_configurator.secure_port))
 

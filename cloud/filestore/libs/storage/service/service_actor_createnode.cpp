@@ -297,7 +297,7 @@ void TStorageServiceActor::HandleCreateNode(
 
     auto& headers = *msg->Record.MutableHeaders();
     headers.SetBehaveAsDirectoryTablet(
-        StorageConfig->GetDirectoryCreationInShardsEnabled());
+        filestore.GetFeatures().GetDirectoryCreationInShardsEnabled());
     if (auto shardNo = ExtractShardNo(msg->Record.GetNodeId())) {
         // parent directory is managed by a shard
         auto [shardId, error] = SelectShard(
@@ -363,10 +363,10 @@ void TStorageServiceActor::HandleCreateNode(
         }
     } else {
         const bool multiTabletForwardingEnabled =
-            StorageConfig->GetMultiTabletForwardingEnabled()
-            && !headers.GetDisableMultiTabletForwarding()
-            && (msg->Record.HasFile()
-                || StorageConfig->GetDirectoryCreationInShardsEnabled());
+            StorageConfig->GetMultiTabletForwardingEnabled() &&
+            !headers.GetDisableMultiTabletForwarding() &&
+            (msg->Record.HasFile() ||
+             filestore.GetFeatures().GetDirectoryCreationInShardsEnabled());
 
         if (multiTabletForwardingEnabled) {
             if (const auto& shardId = session->SelectShard()) {
