@@ -22,18 +22,24 @@ protected:
     TString FileSystemIdFilter;
     const ::NCloud::NFileStore::NProto::THeaders Headers;
     NClient::ISessionPtr Session;
-
+    ssize_t EventMessageNumber = 0;
     ui64 TimestampMcs = 0;
     TInstant Started;
 
     // Do not sleep too much if timestamps in log are broken
-    constexpr static auto MaxSleepMcs = 1000000;
+    ui64 MaxSleepMcs = 1000000;
 
 private:
     THolder<NEventLog::IIterator> CurrentEvent;
     TConstEventPtr EventPtr;
-    int EventMessageNumber = 0;
     const NProto::TProfileLogRecord* MessagePtr{};
+    size_t EventsProcessed = 0;
+    size_t EventsSkipped = 0;
+    double Sleeps = 0;
+    size_t MessagesProcessed = 0;
+    static constexpr TDuration StatusEverySeconds = TDuration::Seconds(10);
+    TInstant NextStatusAt = TInstant::Now() + StatusEverySeconds;
+
     TFuture<TCompletedRequest> ProcessRequest(
         const NProto::TProfileLogRequestInfo& request);
 
@@ -58,7 +64,7 @@ public:
     virtual TFuture<TCompletedRequest> DoReadData(
         const NCloud::NFileStore::NProto::
             TProfileLogRequestInfo& /*unused*/) = 0;
-    virtual TFuture<TCompletedRequest> DoWrite(
+    virtual TFuture<TCompletedRequest> DoWriteData(
         const NCloud::NFileStore::NProto::
             TProfileLogRequestInfo& /*unused*/) = 0;
     virtual TFuture<TCompletedRequest> DoCreateNode(
