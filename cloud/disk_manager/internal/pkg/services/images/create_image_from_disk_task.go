@@ -94,6 +94,12 @@ func (t *createImageFromDiskTask) run(
 	}
 
 	err = nbsClient.EnsureCheckpointReady(ctx, disk.DiskId, checkpointID)
+	if errors.Is(err, errors.NewEmptyRetriableError()) {
+		deleteErr := nbsClient.DeleteCheckpoint(ctx, disk.DiskId, checkpointID)
+		if deleteErr != nil {
+			return deleteErr
+		}
+	}
 	if err != nil {
 		return err
 	}
