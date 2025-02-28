@@ -68,7 +68,7 @@ TCheckRangeActor::TCheckRangeActor(
 void TCheckRangeActor::Bootstrap(const TActorContext& ctx)
 {
     //Do Work
-    LOG_ERROR(ctx, TBlockStoreComponents::PARTITION_WORKER, "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! AAAAAAAAAAAAAA");
+    LOG_ERROR(ctx, TBlockStoreComponents::PARTITION_WORKER, "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! Bootstraped");
     Become(&TThis::StateWork);
 }
 
