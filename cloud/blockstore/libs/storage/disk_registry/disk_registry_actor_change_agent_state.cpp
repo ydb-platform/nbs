@@ -97,7 +97,7 @@ void TChangeAgentStateActor::Notify(
     BuildNotifyPageWithRedirect(
         out,
         std::move(message),
-        TStringBuilder() << "./app?action=agent&TabletId=" << TabletID
+        TStringBuilder() << "./app?action=agent&TabletID=" << TabletID
                          << "&AgentID=" << AgentID,
         alertLevel);
 

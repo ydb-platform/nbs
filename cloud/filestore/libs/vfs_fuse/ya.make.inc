@@ -12,6 +12,7 @@ SRCS(
     log.cpp
     loop.cpp
     node_cache.cpp
+    write_back_cache.cpp
 )
 
 PEERDIR(

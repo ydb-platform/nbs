@@ -238,7 +238,14 @@ func testImageServiceCreateImageFromDiskWithKind(
 	require.NoError(t, err)
 	require.Equal(t, float64(1), meta.Progress)
 
-	testcommon.RequireCheckpoint(t, ctx, diskID, imageID)
+	diskParams, err := nbsClient.Describe(ctx, diskID)
+	require.NoError(t, err)
+
+	if diskParams.IsDiskRegistryBasedDisk {
+		testcommon.RequireCheckpointsDoNotExist(t, ctx, diskID)
+	} else {
+		testcommon.RequireCheckpoint(t, ctx, diskID, imageID)
+	}
 
 	checkUnencryptedImage(
 		t,

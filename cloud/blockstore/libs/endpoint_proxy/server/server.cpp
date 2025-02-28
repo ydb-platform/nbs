@@ -651,7 +651,7 @@ struct TServer: IEndpointProxyServer
         ep.Client->Start();
         STORAGE_INFO(tag << "Started NBD client endpoint");
 
-        auto retryPolicy = CreateRetryPolicy(ClientConfig);
+        auto retryPolicy = CreateRetryPolicy(ClientConfig, std::nullopt);
         ep.RequestStats = CreateProxyRequestStats();
         auto volumeStats = CreateVolumeStatsStub();
         ep.Client = CreateDurableClient(
@@ -977,7 +977,8 @@ struct TServer: IEndpointProxyServer
                 ep.NbdDevicePath,
                 Config.NbdRequestTimeout,
                 NBD_CONNECTION_TIMEOUT,
-                NBD_RECONFIGURE_CONNECTED);
+                NBD_RECONFIGURE_CONNECTED,
+                Config.WithoutLibnl);
         } else {
             // The only case we want kernel to retry requests is when the socket
             // is dead due to nbd server restart. And since we can't configure

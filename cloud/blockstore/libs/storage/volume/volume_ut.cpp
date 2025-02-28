@@ -1,6 +1,7 @@
 #include "volume_ut.h"
 
 #include <cloud/blockstore/libs/storage/api/volume_proxy.h>
+#include <cloud/blockstore/libs/storage/model/composite_id.h>
 #include <cloud/blockstore/libs/storage/partition_common/events_private.h>
 #include <cloud/blockstore/libs/storage/partition_nonrepl/model/processing_blocks.h>
 #include <cloud/blockstore/libs/storage/stats_service/stats_service_events_private.h>
@@ -2966,21 +2967,23 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
 
         ui64 writeRequestId = 0;
         ui64 zeroRequestId = 0;
-        auto checkDeviceRequest = [&](TAutoPtr<IEventHandle>& event) {
+        auto checkDeviceRequest = [&](TAutoPtr<IEventHandle>& event)
+        {
             if (event->GetTypeRewrite() ==
                 TEvDiskAgent::EvWriteDeviceBlocksRequest)
             {
-                auto* msg = event->Get<TEvDiskAgent::TEvWriteDeviceBlocksRequest>();
+                auto* msg =
+                    event->Get<TEvDiskAgent::TEvWriteDeviceBlocksRequest>();
                 UNIT_ASSERT_VALUES_EQUAL(0, writeRequestId);
                 writeRequestId = msg->Record.GetVolumeRequestId();
             }
             if (event->GetTypeRewrite() ==
                 TEvDiskAgent::EvZeroDeviceBlocksRequest)
             {
-                auto* msg = event->Get<TEvDiskAgent::TEvZeroDeviceBlocksRequest>();
+                auto* msg =
+                    event->Get<TEvDiskAgent::TEvZeroDeviceBlocksRequest>();
                 UNIT_ASSERT_VALUES_EQUAL(0, zeroRequestId);
                 zeroRequestId = msg->Record.GetVolumeRequestId();
-
             }
             return TTestActorRuntime::DefaultObserverFunc(event);
         };
@@ -2992,6 +2995,21 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         UNIT_ASSERT_VALUES_UNEQUAL(0, writeRequestId);
         UNIT_ASSERT_VALUES_UNEQUAL(0, zeroRequestId);
         UNIT_ASSERT_GT(zeroRequestId, writeRequestId);
+
+        // Reboot tablet and check the generation.
+        writeRequestId = zeroRequestId = 0;
+        volume.RebootTablet();
+        volume.WaitReady();
+
+        volume.WriteBlocks(GetBlockRangeById(0), clientInfo.GetClientId(), 's');
+        volume.ZeroBlocks(GetBlockRangeById(0), clientInfo.GetClientId());
+
+        UNIT_ASSERT_LT(
+            0,
+            TCompositeId::FromRaw(writeRequestId).GetGeneration());
+        UNIT_ASSERT_LT(0, TCompositeId::FromRaw(zeroRequestId).GetGeneration());
+        UNIT_ASSERT_LE(0, TCompositeId::FromRaw(writeRequestId).GetRequestId());
+        UNIT_ASSERT_LE(0, TCompositeId::FromRaw(zeroRequestId).GetRequestId());
     }
 
     Y_UNIT_TEST(ShouldFillRequestIdInDeviceBlocksRequest)

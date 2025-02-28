@@ -2,6 +2,8 @@
 
 namespace NCloud::NNetlink {
 
+namespace NLibnl {
+
 TNestedAttribute::TNestedAttribute(nl_msg* message, int attribute)
     : Message(message)
 {
@@ -49,6 +51,18 @@ void TMessage::Put(int attribute, void* data, size_t size)
         throw TServiceError(E_FAIL)
             << "unable to put attribute " << attribute << ": "
             << nl_geterror(err);
+    }
+}
+
+}   // namespace NLibnl
+
+////////////////////////////////////////////////////////////////////////////////
+
+void ValidateAttribute(const ::nlattr& attribute, ui16 expectedAttribute)
+{
+    if (attribute.nla_type != expectedAttribute) {
+        throw TIoException() << "Invalid attribute type: " << attribute.nla_type
+                           << " Expected attribute type: " << expectedAttribute;
     }
 }
 

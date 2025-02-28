@@ -635,6 +635,12 @@ public:
     bool GetAutomaticallyEnableBufferCopyingAfterChecksumMismatch() const;
     [[nodiscard]] bool GetNonReplicatedVolumeDirectAcquireEnabled() const;
     [[nodiscard]] TDuration GetDestroyVolumeTimeout() const;
+
+    ui32 GetCompactionMergedBlobThresholdHDD() const;
+
+    [[nodiscard]] ui32 GetBSGroupsPerChannelToWarmup() const;
+    [[nodiscard]] TDuration GetWarmupBSGroupConnectionsTimeout() const;
+    [[nodiscard]] bool GetAllowAdditionalSystemTablets() const;
 };
 
 ui64 GetAllocationUnit(

@@ -21,14 +21,14 @@ void TMirrorPartitionActor::HandleWriteOrZeroCompleted(
     const TActorContext& ctx)
 {
     auto* msg = ev->Get();
-    const auto requestIdentityKey = msg->RequestCounter;
+    const auto requestIdentityKey = msg->RequestId;
     auto completeRequest =
         RequestsInProgress.ExtractRequest(requestIdentityKey);
     if (!completeRequest) {
         return;
     }
     DrainActorCompanion.ProcessDrainRequests(ctx);
-    auto [range, reqCookie] = completeRequest.value();
+    auto [range, volumeRequestId] = completeRequest.value();
     for (const auto& [id, request]: RequestsInProgress.AllRequests()) {
         if (range.Overlaps(request.Value.BlockRange)) {
             DirtyReadRequestIds.insert(id);
@@ -38,7 +38,7 @@ void TMirrorPartitionActor::HandleWriteOrZeroCompleted(
     if (ResyncActorId) {
         auto completion = std::make_unique<
             TEvNonreplPartitionPrivate::TEvWriteOrZeroCompleted>(
-            reqCookie,
+            volumeRequestId,
             msg->TotalCycles,
             msg->FollowerGotNonRetriableError);
 
@@ -119,7 +119,9 @@ void TMirrorPartitionActor::MirrorRequest(
             DirtyReadRequestIds.insert(id);
         }
     }
-    RequestsInProgress.AddWriteRequest(requestIdentityKey, {range, ev->Cookie});
+    RequestsInProgress.AddWriteRequest(
+        requestIdentityKey,
+        {range, ev->Get()->Record.GetHeaders().GetVolumeRequestId()});
 
     NCloud::Register<TMirrorRequestActor<TMethod>>(
         ctx,

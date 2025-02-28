@@ -62,14 +62,14 @@ struct TTaskStatsRequest
 {
     ::nlmsghdr MessageHeader;
     ::genlmsghdr GenericHeader;
-    ::nlattr PidAttr;
-    ui32 Pid;
+    ::nlattr TgidAttr;
+    ui32 Tgid;
 
-    TTaskStatsRequest(ui16 familyId, ui32 pid)
+    TTaskStatsRequest(ui16 familyId, ui32 tgid)
         : MessageHeader{sizeof(TTaskStatsRequest), familyId, NLM_F_REQUEST, 0, 0}
         , GenericHeader{TASKSTATS_CMD_GET, 1, 0}
-        , PidAttr{sizeof(Pid) + NLA_HDRLEN, TASKSTATS_CMD_ATTR_PID}
-        , Pid(pid)
+        , TgidAttr{sizeof(Tgid) + NLA_HDRLEN, TASKSTATS_CMD_ATTR_TGID}
+        , Tgid(tgid)
     {}
 };
 
@@ -77,16 +77,16 @@ struct TTaskStatsResponse
 {
     ::nlmsghdr MessageHeader;
     ::genlmsghdr GenericHeader;
-    ::nlattr AggrPidAttr;
-    ::nlattr PidAttr;
-    ui32 Pid;
+    ::nlattr AggrTgidAttr;
+    ::nlattr TgidAttr;
+    ui32 Tgid;
     ::nlattr TaskStatsAttr;
     ::taskstats TaskStats;
 
     void Validate()
     {
-        ValidateAttribute(AggrPidAttr, TASKSTATS_TYPE_AGGR_PID);
-        ValidateAttribute(PidAttr, TASKSTATS_TYPE_PID);
+        ValidateAttribute(AggrTgidAttr, TASKSTATS_TYPE_AGGR_TGID);
+        ValidateAttribute(TgidAttr, TASKSTATS_TYPE_TGID);
         ValidateAttribute(TaskStatsAttr, TASKSTATS_TYPE_STATS);
     }
 };
@@ -217,7 +217,7 @@ public:
             TNetlinkResponse<TTaskStatsResponse> response;
             socket.Receive(response);
             response.Msg.Validate();
-            auto cpuLack = TDuration::MilliSeconds(
+            auto cpuLack = TDuration::MicroSeconds(
                 response.Msg.TaskStats.cpu_delay_total / 1000);
             auto retval = cpuLack - Last;
             Last = cpuLack;

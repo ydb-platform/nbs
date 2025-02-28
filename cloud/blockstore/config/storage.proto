@@ -1113,4 +1113,18 @@ message TStorageServiceConfig
 
     // Timeout for TDestroyVolumeActor (in milliseconds)
     optional uint32 DestroyVolumeTimeout = 405;
+
+    // Minimum compacted blob size (in bytes) that lets us write the data as
+    // a merged blob, otherwise it is written as a mixed blob.
+    optional uint32 CompactionMergedBlobThresholdHDD = 406;
+
+    // The maximum number of BS groups that we can warm up for each channel at the bootstrap.
+    optional uint32 BSGroupsPerChannelToWarmup = 407;
+
+    // Timeout to warm up connections to BS groups at the bootstrap.
+    optional uint32 WarmupBSGroupConnectionsTimeout = 408;
+
+    // Allow SysViewProcessor and StatisticsAggregator tablets for compatibility
+    // with newer versions of ydb (24-2 and older)
+    optional bool AllowAdditionalSystemTablets = 409;
 }

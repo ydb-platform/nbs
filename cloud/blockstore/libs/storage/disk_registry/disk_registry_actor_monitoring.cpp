@@ -693,8 +693,8 @@ void TDiskRegistryActor::RenderDiskHtmlInfo(
                 out << " (Replica of " << info.MasterDiskId << ")";
             }
             if (info.CheckpointId) {
-                out << " (Replica of " << info.SourceDiskId << " for checkpoint "
-                    << info.CheckpointId.Quote() << ")";
+                out << " (Shadow disk of " << info.SourceDiskId
+                    << " for checkpoint " << info.CheckpointId.Quote() << ")";
             }
         }
 

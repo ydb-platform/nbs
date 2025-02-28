@@ -307,6 +307,10 @@ func fromScanDiskProgress(
 ////////////////////////////////////////////////////////////////////////////////
 
 func wrapError(e error) error {
+	return wrapErrorWithInternalFlag(e, true)
+}
+
+func wrapErrorWithInternalFlag(e error, internal bool) error {
 	if IsNotFoundError(e) {
 		return errors.NewSilentNonRetriableError(e)
 	}
@@ -321,9 +325,6 @@ func wrapError(e error) error {
 			return errors.NewRetriableError(e)
 		}
 
-		// Public errors handling.
-		// TODO: Should be reconsidered after NBS-1853 when ClientError will
-		// have public/internal flag.
 		switch clientErr.Code {
 		case nbs_client.E_PRECONDITION_FAILED:
 			e = errors.NewDetailedError(
@@ -331,7 +332,7 @@ func wrapError(e error) error {
 				&errors.ErrorDetails{
 					Code:     codes.PreconditionFailed,
 					Message:  clientErr.Message,
-					Internal: false,
+					Internal: internal,
 				},
 			)
 		case nbs_client.E_RESOURCE_EXHAUSTED:
@@ -340,7 +341,7 @@ func wrapError(e error) error {
 				&errors.ErrorDetails{
 					Code:     codes.ResourceExhausted,
 					Message:  clientErr.Message,
-					Internal: false,
+					Internal: internal,
 				},
 			)
 		}
@@ -379,6 +380,22 @@ func IsGetChangedBlocksNotSupportedError(e error) bool {
 	// TODO: don't check E_ARGUMENT after https://github.com/ydb-platform/nbs/issues/1297#issuecomment-2149816298
 	return clientErr.Code == nbs_client.E_ARGUMENT && strings.Contains(clientErr.Error(), "Disk registry based disks can not handle GetChangedBlocks requests for normal checkpoints") ||
 		clientErr.Code == nbs_client.E_NOT_IMPLEMENTED
+}
+
+func IsAlterPlacementGroupMembershipPublicError(e error) bool {
+	clientErr := nbs_client.GetClientError(e)
+
+	if clientErr.Code == nbs_client.E_RESOURCE_EXHAUSTED &&
+		strings.Contains(clientErr.Message, "max disk count in group exceeded") {
+		return true
+	}
+
+	if clientErr.Code == nbs_client.E_PRECONDITION_FAILED &&
+		strings.Contains(clientErr.Message, "failed to add some disks") {
+		return true
+	}
+
+	return false
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -2041,7 +2058,11 @@ func (c *client) alterPlacementGroupMembership(
 		disksToRemove,
 		configVersion,
 	)
-	return wrapError(err)
+
+	return wrapErrorWithInternalFlag(
+		err,
+		!IsAlterPlacementGroupMembershipPublicError(err),
+	)
 }
 
 func (c *client) listPlacementGroups(

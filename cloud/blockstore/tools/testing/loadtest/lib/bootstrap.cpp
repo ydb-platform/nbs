@@ -386,7 +386,7 @@ IBlockStorePtr TBootstrap::CreateClient(TVector<ui32> nonretriableErrorCodes)
     auto clientEndpoint = client->CreateEndpoint();
 
     auto retryPolicy = std::make_shared<TRetryPolicyImpl>(
-        CreateRetryPolicy(ClientConfig),
+        CreateRetryPolicy(ClientConfig, std::nullopt),
         std::move(nonretriableErrorCodes));
 
     return CreateDurableClient(
@@ -484,7 +484,7 @@ IBlockStorePtr TBootstrap::CreateDurableDataClient(
     TVector<ui32> nonretriableErrorCodes)
 {
     auto retryPolicy = std::make_shared<TRetryPolicyImpl>(
-        CreateRetryPolicy(ClientConfig),
+        CreateRetryPolicy(ClientConfig, std::nullopt),
         std::move(nonretriableErrorCodes));
 
     return CreateDurableClient(

@@ -441,7 +441,8 @@ IFileSystemPtr CreateFileSystem(
     IFileStorePtr session,
     IRequestStatsPtr stats,
     ICompletionQueuePtr queue,
-    THandleOpsQueuePtr handleOpsQueue)
+    THandleOpsQueuePtr handleOpsQueue,
+    TWriteBackCachePtr writeBackCache)
 {
     return std::make_shared<TFileSystem>(
         std::move(logging),
@@ -452,7 +453,8 @@ IFileSystemPtr CreateFileSystem(
         std::move(session),
         std::move(stats),
         std::move(queue),
-        std::move(handleOpsQueue));
+        std::move(handleOpsQueue),
+        std::move(writeBackCache));
 }
 
 }   // namespace NCloud::NFileStore::NFuse

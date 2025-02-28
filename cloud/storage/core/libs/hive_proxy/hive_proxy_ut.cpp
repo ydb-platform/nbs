@@ -700,6 +700,21 @@ struct TTestEnv
         return *msg;
     }
 
+    TEvHiveProxy::TListTabletBootInfoBackupsResponse
+    SendListTabletBootInfoBackups(const TActorId& sender, ui32 errorCode)
+    {
+        Runtime.Send(new IEventHandle(
+            MakeHiveProxyServiceId(),
+            sender,
+            new TEvHiveProxy::TEvListTabletBootInfoBackupsRequest()));
+        auto ev = Runtime.GrabEdgeEvent<
+            TEvHiveProxy::TEvListTabletBootInfoBackupsResponse>(sender);
+        UNIT_ASSERT(ev);
+        const auto* msg = ev->Get();
+        UNIT_ASSERT_VALUES_EQUAL(msg->GetStatus(), errorCode);
+        return *msg;
+    }
+
     void SendCreateTabletRequestAsync(
         const TActorId& sender,
         ui64 hiveId,
@@ -1605,6 +1620,70 @@ Y_UNIT_TEST_SUITE(THiveProxyTest)
 
         // Rebooting hive should reconnect the lock
         UNIT_ASSERT_GT(counter->Val(), oldVal);
+    }
+
+    Y_UNIT_TEST(ShouldLoadTabletBootInfoAtStartup)
+    {
+        TString backupFilePath =
+            "BootExternal.tablet_boot_info_backup.txt";
+
+        NKikimr::TTabletStorageInfoPtr storageInfo;
+
+        TVector<TVector<ui64>> expectedGroupIds;
+        {
+            TTestBasicRuntime runtime;
+            TTestEnv env(runtime, backupFilePath, false);
+
+            TTabletStorageInfoPtr expected = CreateTestTabletInfo(
+                FakeTablet2,
+                TTabletTypes::BlockStorePartition);
+            env.HiveState->StorageInfos[FakeTablet2] = expected;
+
+            auto sender = runtime.AllocateEdgeActor();
+
+            auto result =
+                env.SendBootExternalRequest(sender, FakeTablet2, S_OK);
+            UNIT_ASSERT(result.StorageInfo);
+            UNIT_ASSERT_VALUES_EQUAL(FakeTablet2, result.StorageInfo->TabletID);
+            UNIT_ASSERT_VALUES_EQUAL(1u, result.SuggestedGeneration);
+
+            // Smoke check for background sync (15 seconds should be enough).
+            runtime.AdvanceCurrentTime(TDuration::Seconds(15));
+            runtime.DispatchEvents(TDispatchOptions(), TDuration::Seconds(15));
+
+            for (auto& channel: result.StorageInfo->Channels) {
+                expectedGroupIds.emplace_back();
+                for (auto& historyEntry: channel.History) {
+                    expectedGroupIds.back().emplace_back(
+                        historyEntry.GroupID);
+                }
+            }
+            storageInfo = result.StorageInfo;
+            env.SendBackupTabletBootInfos(sender, S_OK);
+        }
+
+        {
+            TTestBasicRuntime runtime;
+            TTestEnv env(runtime, backupFilePath, false);
+
+            auto sender = runtime.AllocateEdgeActor();
+
+            auto result = env.SendListTabletBootInfoBackups(sender, S_OK);
+            UNIT_ASSERT_VALUES_EQUAL(1, result.TabletBootInfos.size());
+            UNIT_ASSERT_VALUES_EQUAL(
+                FakeTablet2,
+                result.TabletBootInfos[0].StorageInfo->TabletID);
+            TVector<TVector<ui64>> actualGroupIds;
+            for (auto& channel: result.TabletBootInfos[0].StorageInfo->Channels)
+            {
+                actualGroupIds.emplace_back();
+                for (auto& historyEntry: channel.History) {
+                    actualGroupIds.back().emplace_back(historyEntry.GroupID);
+                }
+            }
+
+            UNIT_ASSERT_VALUES_EQUAL(expectedGroupIds, actualGroupIds);
+        }
     }
 }
 

@@ -9,7 +9,7 @@ FROM_SANDBOX(
 
 FROM_SANDBOX(
     FILE
-    3064742393
+    8091212496
     RENAME RESOURCE
     OUT_NOAUTO qcow2_images/ubuntu1604-ci-stable
 )

@@ -6,8 +6,6 @@
 
 #include <cloud/storage/core/libs/common/file_ring_buffer.h>
 
-#include <util/generic/queue.h>
-
 namespace NCloud::NFileStore::NFuse {
 
 ////////////////////////////////////////////////////////////////////////////////

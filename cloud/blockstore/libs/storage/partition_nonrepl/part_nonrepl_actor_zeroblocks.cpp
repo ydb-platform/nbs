@@ -90,7 +90,8 @@ void TDiskAgentZeroActor::SendRequest(const TActorContext& ctx)
         request->Record.SetBlockSize(BlockSize);
         request->Record.SetBlocksCount(deviceRequest.DeviceBlockRange.Size());
         if (AssignVolumeRequestId) {
-            request->Record.SetVolumeRequestId(RequestInfo->Cookie);
+            request->Record.SetVolumeRequestId(
+                Request.GetHeaders().GetVolumeRequestId());
             request->Record.SetMultideviceRequest(DeviceRequests.size() > 1);
         }
 
