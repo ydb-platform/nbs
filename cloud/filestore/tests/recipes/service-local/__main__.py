@@ -59,6 +59,7 @@ def start(argv):
 
 def stop(argv):
     logging.info(os.system("ss -tpna"))
+    logging.info(os.system("ps aux"))
 
     if not os.path.exists(PID_FILE_NAME):
         return
