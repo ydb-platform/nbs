@@ -1,6 +1,7 @@
 PY3TEST()
 
 INCLUDE(${ARCADIA_ROOT}/cloud/filestore/tests/recipes/medium.inc)
+SPLIT_FACTOR(1)
 
 TEST_SRCS(
     test.py
