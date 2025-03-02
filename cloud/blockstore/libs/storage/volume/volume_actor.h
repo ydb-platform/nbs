@@ -1005,6 +1005,14 @@ private:
         const TEvService::TEvReadBlocksLocalResponse::TPtr& ev,
         const NActors::TActorContext& ctx);
 
+    void HandleSmartMigrationFinished(
+        const TEvVolumePrivate::TEvSmartMigrationFinished::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleUpdateSmartMigrationState(
+        const TEvVolumePrivate::TEvUpdateSmartMigrationState::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
     void HandleCutTabletHistoryResponse(
         const TEvVolume::TEvCutTabletHistoryResponse::TPtr& ev,
         const NActors::TActorContext& ctx);
