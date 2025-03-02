@@ -12,7 +12,7 @@
 #include <stdlib.h>
 #include <errno.h>
 
-int fuse_session_loop(struct fuse_session *se)
+int fuse_session_loop(struct fuse_session *se, int queue_index)
 {
 	int res = 0;
 	struct fuse_chan *ch = fuse_session_next_chan(se, NULL);
