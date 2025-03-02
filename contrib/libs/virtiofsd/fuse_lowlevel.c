@@ -2684,9 +2684,9 @@ int fuse_session_mount(struct fuse_session *se)
     return virtio_session_mount(se);
 }
 
-int fuse_session_loop(struct fuse_session *se)
+int fuse_session_loop(struct fuse_session *se, int queue_index)
 {
-    return virtio_session_loop(se);
+    return virtio_session_loop(se, queue_index);
 }
 
 int fuse_session_fd(struct fuse_session *se)
