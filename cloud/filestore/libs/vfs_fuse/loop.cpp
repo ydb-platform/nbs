@@ -415,6 +415,63 @@ public:
 
 ////////////////////////////////////////////////////////////////////////////////
 
+class TSessionQueueThread final
+    : public ISimpleThread
+{
+private:
+    TSession& Session;
+    ui32 SessionIndex = 0;
+    ui32 QueueIndex = 0;
+    TLog Log;
+
+    pthread_t ThreadId = 0;
+
+public:
+    TSessionQueueThread(
+        TSession& session,
+        ui32 sessionIndex,
+        ui32 queueIndex,
+        TLog log)
+        : Session(session)
+        , SessionIndex(sessionIndex)
+        , QueueIndex(queueIndex)
+        , Log(std::move(log))
+    {}
+
+    void Start()
+    {
+        ISimpleThread::Start();
+    }
+
+    void StopThread()
+    {
+        STORAGE_INFO("stopping FUSE loop " << SessionIndex << "." << QueueIndex);
+
+        if (auto threadId = AtomicGet(ThreadId)) {
+            // session loop may get stuck on sem_wait/read.
+            // Interrupt it by sending the thread a signal.
+            pthread_kill(threadId, SIGUSR1);
+        }
+
+        Join();
+
+        STORAGE_INFO("stopped FUSE loop "  << SessionIndex << "." << QueueIndex);
+    }
+
+private:
+    void* ThreadProc() override
+    {
+        ::NCloud::SetCurrentThreadName(
+            "FUSE" + ToString(SessionIndex) + "." + ToString(QueueIndex),
+            4);
+
+        AtomicSet(ThreadId, pthread_self());
+        fuse_session_loop(Session);
+
+        return nullptr;
+    }
+};
+
 class TSessionThread final
     : public ISimpleThread
 {
@@ -422,7 +479,7 @@ private:
     TLog Log;
     TSession Session;
 
-    pthread_t ThreadId = 0;
+    TVector<std::unique_ptr<TSessionQueueThread>> QueueThreads;
 
 public:
     TSessionThread(
@@ -433,11 +490,16 @@ public:
             void* context)
         : Log(std::move(log))
         , Session(config, ops, state, context)
-    {}
+    {
+        static std::atomic<ui64> NextSessionIndex = 0;
+        ui64 sessionIndex = NextSessionIndex++;
+
+        QueueThreads.push_back(std::make_unique<TSessionQueueThread>(Session, sessionIndex, 0, Log));
+    }
 
     void Start()
     {
-        ISimpleThread::Start();
+        QueueThreads[0]->Start();
     }
 
     void StopThread()
@@ -445,13 +507,7 @@ public:
         STORAGE_INFO("stopping FUSE loop");
 
         Session.Exit();
-        if (auto threadId = AtomicGet(ThreadId)) {
-            // session loop may get stuck on sem_wait/read.
-            // Interrupt it by sending the thread a signal.
-            pthread_kill(threadId, SIGUSR1);
-        }
-
-        Join();
+        QueueThreads[0]->StopThread();
 
         STORAGE_INFO("stopped FUSE loop");
     }
@@ -477,14 +533,6 @@ public:
 private:
     void* ThreadProc() override
     {
-        STORAGE_INFO("starting FUSE loop");
-
-        static std::atomic<ui64> index = 0;
-        ::NCloud::SetCurrentThreadName("FUSE" + ToString(index++));
-
-        AtomicSet(ThreadId, pthread_self());
-        fuse_session_loop(Session);
-
         return nullptr;
     }
 };
