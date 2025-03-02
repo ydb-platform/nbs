@@ -438,7 +438,6 @@ struct TTxIndexTablet
     {
         const TRequestInfoPtr RequestInfo;
         NProtoPrivate::TConfigureAsShardRequest Request;
-        NProto::TFileSystem FileSystem;
 
         TConfigureAsShard(
                 TRequestInfoPtr requestInfo,

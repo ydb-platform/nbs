@@ -440,15 +440,15 @@ void TIndexTabletActor::ExecuteTx_ConfigureAsShard(
 
     TIndexTabletDatabase db(tx.DB);
 
-    args.FileSystem = GetFileSystem();
-    args.FileSystem.SetShardNo(args.Request.GetShardNo());
-    args.FileSystem.SetMainFileSystemId(args.Request.GetMainFileSystemId());
-    *args.FileSystem.MutableShardFileSystemIds() =
+    auto config = GetFileSystem();
+    config.SetShardNo(args.Request.GetShardNo());
+    config.SetMainFileSystemId(args.Request.GetMainFileSystemId());
+    *config.MutableShardFileSystemIds() =
         std::move(*args.Request.MutableShardFileSystemIds());
-    args.FileSystem.SetDirectoryCreationInShardsEnabled(
+    config.SetDirectoryCreationInShardsEnabled(
         args.Request.GetDirectoryCreationInShardsEnabled());
 
-    UpdateConfig(db, *Config, args.FileSystem, GetThrottlingConfig());
+    UpdateConfig(db, *Config, config, GetThrottlingConfig());
 }
 
 void TIndexTabletActor::CompleteTx_ConfigureAsShard(

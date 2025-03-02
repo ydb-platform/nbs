@@ -2,6 +2,7 @@ import os
 from google.protobuf import text_format
 from cloud.filestore.config.storage_pb2 import TStorageConfig
 
+
 def get_restart_interval():
     restart_interval = os.getenv("NFS_RESTART_INTERVAL")
     assert (

@@ -841,7 +841,6 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Sessions)
         config.SetAsyncDestroyHandleEnabled(true);
         config.SetAsyncHandleOperationPeriod(
             TDuration::MilliSeconds(100).MilliSeconds());
-        config.SetDirectoryCreationInShardsEnabled(true);
         config.SetGuestPageCacheDisabled(true);
         config.SetExtendedAttributesDisabled(true);
         config.SetServerWriteBackCacheEnabled(true);
@@ -856,7 +855,6 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Sessions)
         features.SetAsyncDestroyHandleEnabled(true);
         features.SetAsyncHandleOperationPeriod(
             TDuration::MilliSeconds(100).MilliSeconds());
-        features.SetDirectoryCreationInShardsEnabled(true);
         features.SetGuestPageCacheDisabled(true);
         features.SetExtendedAttributesDisabled(true);
         features.SetServerWriteBackCacheEnabled(true);
