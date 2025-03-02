@@ -414,6 +414,10 @@ private:
     TResultOrError<NActors::IActorPtr> CreateBackupTabletBootInfosActor(
         TRequestInfoPtr requestInfo,
         TString input);
+
+    TResultOrError<NActors::IActorPtr> CreateCutTabletHistoryActionActor(
+        TRequestInfoPtr requestInfo,
+        TString input);
 };
 
 ////////////////////////////////////////////////////////////////////////////////

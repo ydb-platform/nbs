@@ -245,5 +245,6 @@ GENERATE_IMPL(RebuildMetadata,          TEvVolume)
 GENERATE_IMPL(GetRebuildMetadataStatus, TEvVolume)
 GENERATE_IMPL(ScanDisk,                 TEvVolume)
 GENERATE_IMPL(GetScanDiskStatus,        TEvVolume)
+GENERATE_IMPL(CutTabletHistory,         TEvVolume)
 
 }   // namespace NCloud::NBlockStore::NStorage
