@@ -294,3 +294,16 @@ message TFinishFillDiskRequest
 message TFinishFillDiskResponse
 {
 }
+
+////////////////////////////////////////////////////////////////////////////////
+// CutTabletHistory request/response.
+
+message TCutTabletHistoryRequest
+{
+    string DiskId = 1;
+}
+
+message TCutTabletHistoryResponse
+{
+    uint32 ToBeDelited = 1;
+}

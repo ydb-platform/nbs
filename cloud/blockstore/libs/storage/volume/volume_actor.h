@@ -1005,12 +1005,8 @@ private:
         const TEvService::TEvReadBlocksLocalResponse::TPtr& ev,
         const NActors::TActorContext& ctx);
 
-    void HandleSmartMigrationFinished(
-        const TEvVolumePrivate::TEvSmartMigrationFinished::TPtr& ev,
-        const NActors::TActorContext& ctx);
-
-    void HandleUpdateSmartMigrationState(
-        const TEvVolumePrivate::TEvUpdateSmartMigrationState::TPtr& ev,
+    void HandleCutTabletHistoryResponse(
+        const TEvVolume::TEvCutTabletHistoryResponse::TPtr& ev,
         const NActors::TActorContext& ctx);
 
     void CreateCheckpointLightRequest(

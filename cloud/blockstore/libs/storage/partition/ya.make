@@ -10,6 +10,7 @@ SRCS(
     part_actor_changedblocks.cpp
     part_actor_checkpoint.cpp
     part_actor_cleanup.cpp
+    part_actor_cleanuptablethistory.cpp
     part_actor_collectgarbage.cpp
     part_actor_compaction.cpp
     part_actor_compactrange.cpp
