@@ -530,6 +530,7 @@ BLOCKSTORE_HANDLE_UNIMPLEMENTED_REQUEST(RebuildMetadata,          TEvVolume);
 BLOCKSTORE_HANDLE_UNIMPLEMENTED_REQUEST(GetRebuildMetadataStatus, TEvVolume);
 BLOCKSTORE_HANDLE_UNIMPLEMENTED_REQUEST(ScanDisk,                 TEvVolume);
 BLOCKSTORE_HANDLE_UNIMPLEMENTED_REQUEST(GetScanDiskStatus,        TEvVolume);
+BLOCKSTORE_HANDLE_UNIMPLEMENTED_REQUEST(CutTabletHistory,         TEvVolume);
 
 ////////////////////////////////////////////////////////////////////////////////
 

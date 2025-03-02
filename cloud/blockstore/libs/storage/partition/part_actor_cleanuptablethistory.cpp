@@ -70,7 +70,7 @@ TCutTabletHistoryActor::TCutTabletHistoryActor(
 
 void TCutTabletHistoryActor::Bootstrap(const TActorContext& ctx)
 {
-    LOG_ERROR(ctx, TBlockStoreComponents::PARTITION_WORKER, "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! AAAAAAAAAAAAAA");
+    LOG_ERROR(ctx, TBlockStoreComponents::PARTITION_WORKER, "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! Bootstraped");
     LOG_ERROR_S(ctx, TBlockStoreComponents::PARTITION_WORKER, "" << CountToBeDeleted());
 
     Become(&TThis::StateWork);

@@ -11351,7 +11351,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         TPartitionClient partition(*runtime);
         partition.WaitReady();
 
-    //    const auto response = partition.CutTabletHistory("id");
+        const auto response = partition.CutTabletHistory("id");
 
         TDispatchOptions options;
         options.FinalEvents.emplace_back(TEvVolume::EvCutTabletHistoryResponse);

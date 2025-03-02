@@ -158,6 +158,7 @@ private:
     BLOCKSTORE_IMPLEMENT_REQUEST(GetRebuildMetadataStatus, TEvVolume);
     BLOCKSTORE_IMPLEMENT_REQUEST(ScanDisk, TEvVolume);
     BLOCKSTORE_IMPLEMENT_REQUEST(GetScanDiskStatus, TEvVolume);
+    BLOCKSTORE_IMPLEMENT_REQUEST(CutTabletHistory, TEvVolume);
 };
 
 }   // namespace NCloud::NBlockStore::NStorage
