@@ -26,28 +26,30 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TCutTabletHistoryActor final: public TActorBootstrapped<TCutTabletHistoryActor>
+class TCutTabletHistoryActor final
+    : public TActorBootstrapped<TCutTabletHistoryActor>
 {
 private:
     const TActorId Tablet;
-    const NKikimr::TTabletStorageInfoPtr& Storage;
+    const NKikimr::TTabletStorageInfoPtr TabletInfo;
     const TRequestInfoPtr RequestInfo;
     std::unordered_map<ui32, ui32> cutFromGeneration;
 
 public:
     TCutTabletHistoryActor(
         const TActorId& tablet,
-        const NKikimr::TTabletStorageInfoPtr& storage,
+        NKikimr::TTabletStorageInfoPtr tabletInfo,
         TRequestInfoPtr&& requestInfo);
 
     void Bootstrap(const TActorContext& ctx);
 
-    ui32 CountToBeDeleted();
+    ui32 CountToBeDeleted(const TActorContext& ctx);
 
 private:
     void ReplyAndDie(
         const TActorContext& ctx,
-        const NProto::TError& error);
+        const NProto::TError& error,
+        const ui32 = 0);
 
 private:
     STFUNC(StateWork);
@@ -61,33 +63,51 @@ private:
 
 TCutTabletHistoryActor::TCutTabletHistoryActor(
     const TActorId& tablet,
-    const NKikimr::TTabletStorageInfoPtr& storage,
+    NKikimr::TTabletStorageInfoPtr tabletInfo,
     TRequestInfoPtr&& requestInfo)
     : Tablet(tablet)
-    , Storage(storage)
+    , TabletInfo(std::move(tabletInfo))
     , RequestInfo(std::move(requestInfo))
 {}
 
 void TCutTabletHistoryActor::Bootstrap(const TActorContext& ctx)
 {
-    LOG_ERROR(ctx, TBlockStoreComponents::PARTITION_WORKER, "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! Bootstraped");
-    LOG_ERROR_S(ctx, TBlockStoreComponents::PARTITION_WORKER, "" << CountToBeDeleted());
+    LOG_ERROR(
+        ctx,
+        TBlockStoreComponents::PARTITION_WORKER,
+        "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! Bootstraped");
+    auto result = CountToBeDeleted(ctx);
+    LOG_ERROR_S(ctx, TBlockStoreComponents::PARTITION_WORKER, "" << result);
+    ReplyAndDie(ctx, {}, result);
 
     Become(&TThis::StateWork);
 }
 
-ui32 TCutTabletHistoryActor::CountToBeDeleted(){
+ui32 TCutTabletHistoryActor::CountToBeDeleted(const TActorContext& ctx)
+{
+    Y_UNUSED(ctx);
     TVector<std::unordered_map<ui32, ui32>> channelGroupMaxGeneration;
+
     std::unordered_set<ui32> groups;
-    const auto chanels = Storage->Channels;
+    if (!TabletInfo->Channels || TabletInfo->Channels.empty()) {
+        return 0;
+    }
+
+    const auto chanels = TabletInfo->Channels;
     ui32 total = 0;
-    for (const auto& chanel : chanels){
-        auto history = Storage->ChannelInfo(chanel.Channel)->History;
+
+    channelGroupMaxGeneration.resize(chanels.size());
+    for (const auto& chanel: chanels) {
+        auto history = TabletInfo->ChannelInfo(chanel.Channel)->History;
         total += history.size();
 
-        for (ui32 i = 0; i < history.size(); ++i){
+        for (ui32 i = 0; i < history.size(); ++i) {
             const auto& historyRecord = history[i];
-            channelGroupMaxGeneration[i][historyRecord.GroupID] = Max<ui32>(channelGroupMaxGeneration[i][historyRecord.GroupID], historyRecord.FromGeneration);
+
+            channelGroupMaxGeneration[i][historyRecord.GroupID] = Max<ui32>(
+                channelGroupMaxGeneration[i][historyRecord.GroupID],
+                historyRecord.FromGeneration);
+
             groups.insert(historyRecord.GroupID);
         }
     }
@@ -110,17 +130,19 @@ ui32 TCutTabletHistoryActor::CountToBeDeleted(){
             cutFromGeneration[group] = minGeneration;
         }
     }
-    return total-groupsRemain;
+    return total - groupsRemain;
 }
 
 void TCutTabletHistoryActor::ReplyAndDie(
     const TActorContext& ctx,
-    const NProto::TError& error)
+    const NProto::TError& error,
+    const ui32 result)
 {
-    Y_UNUSED(error);
-    auto response = std::make_unique<TEvVolume::TEvCutTabletHistoryResponse>(std::move(error));
+    auto response = std::make_unique<TEvVolume::TEvCutTabletHistoryResponse>(
+        std::move(error));
+    response.get()->Record.SetToBeDelited(result);
 
-    //NCloud::Reply(ctx, *Ev, std::move(response));
+    NCloud::Reply(ctx, *RequestInfo, std::move(response));
 
     Die(ctx);
 }
@@ -156,7 +178,7 @@ void NPartition::TPartitionActor::HandleCutTabletHistory(
     const TEvVolume::TEvCutTabletHistoryRequest::TPtr& ev,
     const TActorContext& ctx)
 {
-    //const auto* msg = ev->Get();
+    // const auto* msg = ev->Get();
 
     const auto actorId = NCloud::Register<TCutTabletHistoryActor>(
         ctx,
