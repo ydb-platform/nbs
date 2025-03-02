@@ -38,7 +38,7 @@ private:
     void ReplyAndDie(const TActorContext& ctx, NProto::TError error);
     void ReplyAndDie(
         const TActorContext& ctx,
-        TEvService::TEvCutTabletHistoryResponse response);
+        TEvVolume::TEvCutTabletHistoryResponse response);
 
 private:
     STFUNC(StateWork);
@@ -67,7 +67,7 @@ void TCutTabletHistoryActor::Bootstrap(const TActorContext& ctx)
         return;
     }
 
-    auto request = std::make_unique<TEvService::TEvCutTabletHistoryRequest>();
+    auto request = std::make_unique<TEvVolume::TEvCutTabletHistoryRequest>();
     request->Record.SetDiskId(Request.GetDiskId());
 
     LOG_INFO(
