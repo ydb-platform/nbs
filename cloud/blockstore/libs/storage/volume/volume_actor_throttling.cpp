@@ -97,6 +97,28 @@ TThrottlingRequestInfo BuildThrottlingRequestInfo(
     };
 }
 
+template <typename TMethod>
+bool GetThrottlingEnabled(
+    const TStorageConfig& config,
+    const NProto::TPartitionConfig& partitionConfig)
+{
+    if (!partitionConfig.GetPerformanceProfile().GetThrottlingEnabled()) {
+        return false;
+    }
+
+    switch (partitionConfig.GetStorageMediaKind()) {
+        case NCloud::NProto::EStorageMediaKind::STORAGE_MEDIA_SSD:
+            if constexpr (IsZeroMethod<TMethod>) {
+                return config.GetThrottlingEnabledSSDZeroBlocks();
+            } else {
+                return config.GetThrottlingEnabledSSD();
+            }
+
+        default:
+            return config.GetThrottlingEnabled();
+    }
+}
+
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -169,7 +191,7 @@ NProto::TError TVolumeActor::Throttle(
 
     if (!RequiresThrottling<TMethod>
             || throttlingDisabled
-            || !GetThrottlingEnabled(*Config, State->GetConfig()))
+            || !GetThrottlingEnabled<TMethod>(*Config, State->GetConfig()))
     {
         return ok;
     }

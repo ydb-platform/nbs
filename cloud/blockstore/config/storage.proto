@@ -1144,4 +1144,7 @@ message TStorageServiceConfig
 
     // Lagging devices are monitored by periodic requests at this interval.
     optional uint32 LaggingDevicePingInterval = 414;
+
+    // Throttle ZeroBlock requests for SSD drives
+    optional bool ThrottlingEnabledSSDZeroBlocks = 415;
 }
