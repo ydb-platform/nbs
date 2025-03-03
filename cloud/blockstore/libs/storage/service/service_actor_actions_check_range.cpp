@@ -142,8 +142,14 @@ void TCheckRangeActor::HandleCheckRangeResponse(
     const TEvService::TEvCheckRangeResponse::TPtr& ev,
     const TActorContext& ctx)
 {
+    auto record = ev->Get()->Record;
     auto response = NPrivateProto::TCheckRangeResponse();
     response.MutableStatus()->CopyFrom(ev->Get()->Record.GetStatus());
+    auto checksums = response.GetChecksums();
+
+    for (ui32 i = 0; i < record.ChecksumsSize(); ++i) {
+        checksums.Add(response.checksums().at(i));
+    }
 
     return ReplyAndDie(
         ctx,

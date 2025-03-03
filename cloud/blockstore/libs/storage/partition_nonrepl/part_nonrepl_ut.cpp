@@ -2144,6 +2144,74 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionTest)
 
         UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, response->GetStatus());
     }
+
+    Y_UNIT_TEST(ShouldGetSameChecksumsWhileCheckRangeSimmilarDisks)
+    {
+        TTestBasicRuntime runtime;
+
+        TTestEnv env(runtime);
+        TPartitionClient partition1(runtime, env.ActorId);
+        TPartitionClient partition2(runtime, env.ActorId);
+
+        partition1.WriteBlocks(
+            TBlockRange64::MakeClosedInterval(0, 1024 * 1024),
+            1);
+
+        partition2.WriteBlocks(
+            TBlockRange64::MakeClosedInterval(0, 1024 * 1024),
+            1);
+
+        const auto response1 = partition1.CheckRange("id", 0, 1024, true);
+        const auto response2 = partition2.CheckRange("id", 0, 1024, true);
+
+        const auto& checksums1 = response1.get()->Record.GetChecksums();
+        const auto& checksums2 = response2.get()->Record.GetChecksums();
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            response1.get()->Record.ChecksumsSize(),
+            response2.get()->Record.ChecksumsSize());
+        for (size_t i = 0; i < response1.get()->Record.ChecksumsSize(); ++i) {
+            UNIT_ASSERT_VALUES_EQUAL(checksums1.at(i), checksums2.at(i));
+        }
+    }
+
+    Y_UNIT_TEST(ShouldGetDifferentChecksumsWhileCheckRangeDifferentDisks)
+    {
+        TTestBasicRuntime runtime;
+
+        TTestEnv env(runtime);
+        TPartitionClient partition1(runtime, env.ActorId);
+        TPartitionClient partition2(runtime, env.ActorId);
+
+        partition1.WriteBlocks(
+            TBlockRange64::MakeClosedInterval(0, 1024 * 1024),
+            1);
+
+        partition2.WriteBlocks(
+            TBlockRange64::MakeClosedInterval(0, 1024 * 1024),
+            77);
+
+        const auto response1 = partition1.CheckRange("id", 0, 1024, true);
+        const auto response2 = partition2.CheckRange("id", 0, 1024, true);
+
+        const auto& checksums1 = response1.get()->Record.GetChecksums();
+        const auto& checksums2 = response2.get()->Record.GetChecksums();
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            response1.get()->Record.ChecksumsSize(),
+            response2.get()->Record.ChecksumsSize());
+
+        ui32 totalChecksums = 0;
+        ui32 differentChecksums = 0;
+        for (size_t i = 0; i < response1.get()->Record.ChecksumsSize(); ++i) {
+            if (checksums1.at(i) != checksums2.at(i)) {
+                ++differentChecksums;
+            }
+            ++totalChecksums;
+        }
+
+        UNIT_ASSERT(differentChecksums * 2 < totalChecksums);
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage
