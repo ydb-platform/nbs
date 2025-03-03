@@ -26,7 +26,7 @@ TNonreplicatedPartitionMigrationActor::TNonreplicatedPartitionMigrationActor(
         google::protobuf::RepeatedPtrField<NProto::TDeviceMigration> migrations,
         NRdma::IClientPtr rdmaClient,
         NActors::TActorId statActorId,
-        std::optional<NActors::TActorId> migrationSrcActorId)
+        NActors::TActorId migrationSrcActorId)
     : TNonreplicatedPartitionMigrationCommonActor(
           static_cast<IMigrationOwner*>(this),
           config,
@@ -52,7 +52,7 @@ void TNonreplicatedPartitionMigrationActor::OnBootstrap(
     auto srcActorId = CreateSrcActor(ctx);
     InitWork(
         ctx,
-        MigrationSrcActorId.value_or(srcActorId),
+        MigrationSrcActorId ? MigrationSrcActorId : srcActorId,
         srcActorId,
         CreateDstActor(ctx),
         std::make_unique<TMigrationTimeoutCalculator>(
@@ -202,7 +202,7 @@ NActors::TActorId TNonreplicatedPartitionMigrationActor::CreateDstActor(
             Migrations,
             [&](const NProto::TDeviceMigration& m)
             {
-                return m.HasSourceDeviceId() &&
+                return m.GetSourceDeviceId() &&
                        m.GetSourceDeviceId() == device.GetDeviceUUID();
             });
 

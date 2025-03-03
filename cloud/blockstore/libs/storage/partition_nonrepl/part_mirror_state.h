@@ -17,8 +17,8 @@ namespace NCloud::NBlockStore::NStorage {
 
 class TMirrorPartitionState
 {
-public:
-    enum class EMigrationConfigState {
+    enum class EMigrationConfigState
+    {
         NotPrepared,
         PreparedForFresh,
         PreparedForWarning,
@@ -91,7 +91,8 @@ public:
     [[nodiscard]] bool PrepareMigrationConfigForWarningDevices();
     [[nodiscard]] bool PrepareMigrationConfigForFreshDevices();
 
-    bool IsMigrationConfigPreparedForFresh() const {
+    [[nodiscard]] bool IsMigrationConfigPreparedForFresh() const
+    {
         return MigrationConfigPrepared ==
                EMigrationConfigState::PreparedForFresh;
     }

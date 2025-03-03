@@ -186,7 +186,7 @@ message TSuspendedDevice
 message TDeviceMigration
 {
     // Migration source device id.
-    optional string SourceDeviceId = 1;
+    string SourceDeviceId = 1;
 
     // Migration target device config.
     TDeviceConfig TargetDevice = 2;

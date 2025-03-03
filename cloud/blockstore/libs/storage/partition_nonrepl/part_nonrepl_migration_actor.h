@@ -16,7 +16,7 @@ private:
     TNonreplicatedPartitionConfigPtr SrcConfig;
     google::protobuf::RepeatedPtrField<NProto::TDeviceMigration> Migrations;
     NRdma::IClientPtr RdmaClient;
-    std::optional<NActors::TActorId> MigrationSrcActorId;
+    NActors::TActorId MigrationSrcActorId;
 
     bool UpdatingMigrationState = false;
     bool MigrationFinished = false;
@@ -33,7 +33,7 @@ public:
         google::protobuf::RepeatedPtrField<NProto::TDeviceMigration> migrations,
         NRdma::IClientPtr rdmaClient,
         NActors::TActorId statActorId,
-        std::optional<NActors::TActorId> migrationSrcActorId);
+        NActors::TActorId migrationSrcActorId);
 
     // IMigrationOwner implementation
     void OnBootstrap(const NActors::TActorContext& ctx) override;
