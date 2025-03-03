@@ -15,8 +15,8 @@ import (
 
 type createShadowDiskBasedCheckpointTask struct {
 	nbsFactory nbs_client.Factory
-	request *protos.CreateShadowDiskBasedCheckpointRequest
-	state   *protos.CreateShadowDiskBasedCheckpointTaskState
+	request    *protos.CreateShadowDiskBasedCheckpointRequest
+	state      *protos.CreateShadowDiskBasedCheckpointTaskState
 }
 
 func (t *createShadowDiskBasedCheckpointTask) Save() ([]byte, error) {
