@@ -1023,6 +1023,10 @@ private:
         const TEvVolumePrivate::TEvUpdateSmartMigrationState::TPtr& ev,
         const NActors::TActorContext& ctx);
 
+    void HandleCheckRangeResponse(
+        const TEvService::TEvCheckRangeResponse::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
     void CreateCheckpointLightRequest(
         const NActors::TActorContext& ctx,
         ui64 requestId,

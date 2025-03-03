@@ -507,6 +507,7 @@ std::unique_ptr<TEvService::TEvGetVolumeStatsRequest> TServiceClient::CreateGetV
     return request;
 }
 
+
 std::unique_ptr<TEvService::TEvAddTagsRequest>
 TServiceClient::CreateAddTagsRequest(
     const TString& diskId,
@@ -514,6 +515,18 @@ TServiceClient::CreateAddTagsRequest(
 {
     auto request =
         std::make_unique<TEvService::TEvAddTagsRequest>(diskId, tagsToAdd);
+    return request;
+}
+
+std::unique_ptr<TEvService::TEvCheckRangeRequest> TServiceClient::CreateCheckRangeRequest(
+    const TString& diskId,
+    const ui64 startIndex,
+    const ui64 blocksCount)
+{
+    auto request = std::make_unique<TEvService::TEvCheckRangeRequest>();
+    request->Record.SetDiskId(diskId);
+    request->Record.SetStartIndex(startIndex);
+    request->Record.SetBlocksCount(blocksCount);
     return request;
 }
 

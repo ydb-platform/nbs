@@ -1127,4 +1127,7 @@ message TStorageServiceConfig
     // Allow SysViewProcessor and StatisticsAggregator tablets for compatibility
     // with newer versions of ydb (24-2 and older)
     optional bool AllowAdditionalSystemTablets = 409;
+
+    // Maximum size of CheckRange request
+    optional uint32 CheckRangeMaxRangeSize = 410;
 }
