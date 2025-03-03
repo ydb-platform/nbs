@@ -7467,6 +7467,7 @@ Y_UNIT_TEST_SUITE(TPartition2Test)
 
         UNIT_ASSERT(differentChecksums * 2 < totalChecksums);
     }
+}
 
 }   // namespace NCloud::NBlockStore::NStorage::NPartition2
 
