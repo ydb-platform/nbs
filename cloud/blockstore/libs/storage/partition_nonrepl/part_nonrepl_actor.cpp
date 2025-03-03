@@ -525,7 +525,6 @@ BLOCKSTORE_HANDLE_UNIMPLEMENTED_REQUEST(ScanDisk,                 TEvVolume);
 BLOCKSTORE_HANDLE_UNIMPLEMENTED_REQUEST(GetScanDiskStatus,        TEvVolume);
 BLOCKSTORE_HANDLE_UNIMPLEMENTED_REQUEST(CutTabletHistory,         TEvVolume);
 
-
 ////////////////////////////////////////////////////////////////////////////////
 
 STFUNC(TNonreplicatedPartitionActor::StateWork)
