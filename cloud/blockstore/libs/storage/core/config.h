@@ -657,6 +657,10 @@ public:
     [[nodiscard]] bool GetAllowAdditionalSystemTablets() const;
 
     [[nodiscard]] ui32 GetCheckRangeMaxRangeSize() const;
+    [[nodiscard]] bool GetAsyncDeallocLocalDisk() const;
+    [[nodiscard]] TDuration GetLocalDiskCreationTotalTimeout() const;
+    [[nodiscard]] TDuration GetMinLocalDiskCreationRetryDelay() const;
+    [[nodiscard]] TDuration GetMaxLocalDiskCreationRetryDelay() const;
 };
 
 ui64 GetAllocationUnit(

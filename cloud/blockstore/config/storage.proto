@@ -1144,4 +1144,11 @@ message TStorageServiceConfig
 
     // Lagging devices are monitored by periodic requests at this interval.
     optional uint32 LaggingDevicePingInterval = 414;
+    // Local disk async deallocation and sync allocation
+    optional bool AsyncDeallocLocalDisk = 415;
+    // Timeout for attempts to create local disk
+    optional uint32 LocalDiskCreationTotalTimeout = 416;
+    // Delay between attempts to create local disk
+    optional uint32 MinLocalDiskCreationRetryDelay = 417;
+    optional uint32 MaxLocalDiskCreationRetryDelay = 418;
 }

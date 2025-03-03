@@ -543,6 +543,11 @@ TDuration MSeconds(ui32 value)
     xxx(AllowAdditionalSystemTablets,              bool,      false           )\
                                                                                \
     xxx(CheckRangeMaxRangeSize,                    ui32,      4_MB            )\
+                                                                               \
+    xxx(AsyncDeallocLocalDisk,              bool,       false           )\
+    xxx(LocalDiskCreationTotalTimeout,      TDuration,  Minutes(10)     )\
+    xxx(MinLocalDiskCreationRetryDelay,     TDuration,  Seconds(5)      )\
+    xxx(MaxLocalDiskCreationRetryDelay,     TDuration,  Seconds(100)    )\
 // BLOCKSTORE_STORAGE_CONFIG_RW
 
 #define BLOCKSTORE_STORAGE_CONFIG(xxx)                                         \
