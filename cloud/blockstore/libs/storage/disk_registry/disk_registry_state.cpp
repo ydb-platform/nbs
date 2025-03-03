@@ -2653,11 +2653,12 @@ auto TDiskRegistryState::CreateDiskPlacementInfo(
 }
 
 auto TDiskRegistryState::GetAgentIdSuitableForLocalDiskAllocationAfterCleanup(
-    const TVector<TString>& agentIds,
+    const THashSet<TNodeId>& nodeIds,
     const TString& poolName,
     const ui64 totalByteCount) const -> TAgentId
 {
-    for (const auto& agentId: agentIds) {
+    for (const TNodeId& nodeId: nodeIds) {
+        const auto agentId = GetAgentId(nodeId);
         auto [infos, error] = QueryAvailableStorage(
             agentId,
             poolName,
@@ -2793,6 +2794,24 @@ NProto::TError TDiskRegistryState::AllocateSimpleDisk(
     }
 
     auto allocatedDevices = DeviceList.AllocateDevices(params.DiskId, query);
+
+    if (!allocatedDevices && query.PoolKind == NProto::DEVICE_POOL_KIND_LOCAL &&
+        StorageConfig->GetAsyncDeallocLocalDisk())
+    {
+        auto agentId = GetAgentIdSuitableForLocalDiskAllocationAfterCleanup(
+            query.NodeIds,
+            query.PoolName,
+            query.GetTotalByteCount());
+        if (agentId) {
+            return MakeError(
+                E_TRY_AGAIN,
+                TStringBuilder()
+                    << "can't allocate disk with " << blocksToAllocate
+                    << " blocks x " << params.BlockSize
+                    << " bytes. can after cleanup. one of suitable agents: "
+                    << agentId.Quote().c_str());
+        }
+    }
 
     if (!allocatedDevices) {
         onError();

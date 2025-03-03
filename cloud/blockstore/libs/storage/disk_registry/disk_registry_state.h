@@ -882,11 +882,6 @@ public:
         TDiskRegistryDatabase& db,
         const TVector<TString>& orphanDevicesIds);
 
-    TAgentId GetAgentIdSuitableForLocalDiskAllocationAfterCleanup(
-        const TVector<TString>& agentIds,
-        const TString& poolName,
-        const ui64 totalByteCount) const;
-
 private:
     void ProcessConfig(const NProto::TDiskRegistryConfig& config);
     void ProcessDisks(TVector<NProto::TDiskConfig> disks);
@@ -1349,6 +1344,11 @@ private:
     void CleanupAgentConfig(
         TDiskRegistryDatabase& db,
         const NProto::TAgentConfig& agent);
+
+    TAgentId GetAgentIdSuitableForLocalDiskAllocationAfterCleanup(
+        const THashSet<TNodeId>& nodeIds,
+        const TString& poolName,
+        const ui64 totalByteCount) const;
 
     static bool MigrationCanBeStarted(
         const TDiskState& disk,

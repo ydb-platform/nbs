@@ -949,6 +949,115 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         UNIT_ASSERT_VALUES_EQUAL(0, migratedRanges);
     }
 
+    Y_UNIT_TEST(ShouldRetryAllocationForLocalDisks)
+    {
+        NProto::TStorageServiceConfig config;
+        config.SetNonReplicatedSecureEraseTimeout(Max<ui32>());
+        config.SetNonReplicatedDontSuspendDevices(true);
+        config.SetAsyncDeallocLocalDisk(true);
+
+        auto state = MakeIntrusive<TDiskRegistryState>();
+        state->CurrentErrorCode = E_TRY_AGAIN;
+        auto runtime = PrepareTestActorRuntime(config, state);
+
+        TVolumeClient volume(*runtime);
+        volume.UpdateVolumeConfig(
+            0,
+            0,
+            0,
+            0,
+            false,
+            1,
+            NCloud::NProto::STORAGE_MEDIA_SSD_LOCAL);
+
+        {
+            auto response = volume.TryRecvResponse<
+                TEvBlockStore::TEvUpdateVolumeConfigResponse>(WaitTimeout);
+            UNIT_ASSERT(!response);
+        }
+
+        volume.SendStatVolumeRequest();
+        TAutoPtr<IEventHandle> handle;
+        runtime->GrabEdgeEventRethrow<TEvService::TEvStatVolumeResponse>(
+            handle,
+            WaitTimeout);
+
+        // partition should be offline due to disk allocation error, request
+        // postponed
+        UNIT_ASSERT(!handle);
+
+        // client addition should still work
+        auto clientInfo = CreateVolumeClientInfo(
+            NProto::VOLUME_ACCESS_READ_WRITE,
+            NProto::VOLUME_MOUNT_LOCAL,
+            0);
+        volume.AddClient(clientInfo);
+
+        // but volume ops should produce meaningful errors
+        {
+            volume.SendReadBlocksRequest(
+                TBlockRange64::MakeOneBlock(0),
+                clientInfo.GetClientId());
+            auto resp = volume.RecvReadBlocksResponse();
+            UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, resp->GetStatus());
+        }
+
+        {
+            volume.SendWriteBlocksRequest(
+                TBlockRange64::MakeOneBlock(0),
+                clientInfo.GetClientId(),
+                1);
+            auto resp = volume.RecvWriteBlocksResponse();
+            UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, resp->GetStatus());
+        }
+
+        {
+            volume.SendZeroBlocksRequest(
+                TBlockRange64::MakeOneBlock(0),
+                clientInfo.GetClientId());
+            auto resp = volume.RecvZeroBlocksResponse();
+            UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, resp->GetStatus());
+        }
+
+        state->CurrentErrorCode = S_OK;
+        // waiting for background reallocation
+        for (size_t i = 0; i < 10; ++i) {
+            volume.SendStatVolumeRequest();
+            TAutoPtr<IEventHandle> handle;
+            runtime->GrabEdgeEventRethrow<TEvService::TEvStatVolumeResponse>(
+                handle,
+                WaitTimeout);
+
+            if (handle) {
+                break;
+            }
+
+            runtime->AdvanceCurrentTime(TDuration::Seconds(5));
+            runtime->DispatchEvents({}, TDuration::Seconds(5));
+        }
+
+        // after disk reallocation volume resets clients pipes
+        // so we need to reestablish pipe again
+        volume.ReconnectPipe();
+        volume.AddClient(clientInfo);
+
+        auto stat = volume.RecvStatVolumeResponse();
+        const auto& devices = stat->Record.GetVolume().GetDevices();
+        UNIT_ASSERT_VALUES_EQUAL(1, devices.size());
+
+        // now requests should work
+        {
+            volume.SendReadBlocksRequest(
+                TBlockRange64::MakeOneBlock(0),
+                clientInfo.GetClientId());
+            auto resp = volume.RecvReadBlocksResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                resp->GetStatus(),
+                resp->GetErrorReason());
+        }
+    }
+
     void DoShouldEnsureRejectWriteZeroRequestsOverlappingWithMigrating(
         ui32 ioDepth)
     {
