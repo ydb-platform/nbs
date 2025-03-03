@@ -84,9 +84,9 @@ private:
             return false;
         }
 
-        const auto* checkpointId =
+        const auto* followerDiskId =
             ParseResultPtr->FindLongOptParseResult("follower-disk-id");
-        if (!checkpointId) {
+        if (!followerDiskId) {
             STORAGE_ERROR("Follower Disk id is required");
             return false;
         }

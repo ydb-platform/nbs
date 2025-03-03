@@ -15,6 +15,12 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+enum EDescribeKind : ui64
+{
+    DESCRIBE_KIND_LEADER = 0,
+    DESCRIBE_KIND_FOLLOWER = 1
+};
+
 class TCreateVolumeLinkActor final
     : public TActorBootstrapped<TCreateVolumeLinkActor>
 {
@@ -83,12 +89,12 @@ void TCreateVolumeLinkActor::DescribeVolume(const TActorContext& ctx)
         ctx,
         MakeSSProxyServiceId(),
         std::make_unique<TEvSSProxy::TEvDescribeVolumeRequest>(LeaderDiskId),
-        0);
+        DESCRIBE_KIND_LEADER);
     NCloud::Send(
         ctx,
         MakeSSProxyServiceId(),
         std::make_unique<TEvSSProxy::TEvDescribeVolumeRequest>(FollowerDiskId),
-        1);
+        DESCRIBE_KIND_FOLLOWER);
 }
 
 void TCreateVolumeLinkActor::LinkVolumes(const TActorContext& ctx)
@@ -106,8 +112,8 @@ void TCreateVolumeLinkActor::LinkVolumes(const TActorContext& ctx)
         auto errorMessage =
             TStringBuilder()
             << "The size of the leader disk " << LeaderDiskId.Quote()
-            << "is larger than the follower disk " << FollowerDiskId.Quote() << " "
-            << sourceSize << " > " << targetSize;
+            << "is larger than the follower disk " << FollowerDiskId.Quote()
+            << " " << sourceSize << " > " << targetSize;
         LOG_ERROR(ctx, TBlockStoreComponents::SERVICE, errorMessage.c_str());
 
         ReplyAndDie(
@@ -140,8 +146,10 @@ void TCreateVolumeLinkActor::HandleDescribeVolumeResponse(
     const TActorContext& ctx)
 {
     const auto* msg = ev->Get();
-    const auto& diskId = ev->Cookie == 0 ? LeaderDiskId : FollowerDiskId;
-    auto& volume = ev->Cookie == 0 ? LeaderVolume : FollowerVolume;
+    const auto& diskId =
+        (ev->Cookie == DESCRIBE_KIND_LEADER) ? LeaderDiskId : FollowerDiskId;
+    auto& volume =
+        (ev->Cookie == DESCRIBE_KIND_LEADER) ? LeaderVolume : FollowerVolume;
 
     const auto& error = msg->GetError();
     if (FAILED(error.GetCode())) {
@@ -253,8 +261,9 @@ void TServiceActor::HandleCreateVolumeLink(
             "Source and Target should be different in CreateVolumeLink");
 
         auto response =
-            std::make_unique<TEvService::TEvCreateVolumeLinkResponse>(
-                MakeError(E_ARGUMENT, "Leader and Follower should be different"));
+            std::make_unique<TEvService::TEvCreateVolumeLinkResponse>(MakeError(
+                E_ARGUMENT,
+                "Leader and Follower should be different"));
         NCloud::Reply(ctx, *ev, std::move(response));
         return;
     }

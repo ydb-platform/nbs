@@ -208,18 +208,6 @@ void TServiceActor::HandleDestroyVolumeLink(
         NCloud::Reply(ctx, *ev, std::move(response));
         return;
     }
-    if (request.GetLeaderDiskId() == request.GetFollowerDiskId()) {
-        LOG_ERROR(
-            ctx,
-            TBlockStoreComponents::SERVICE,
-            "Leader and Follower should be different in DestroyVolumeLink");
-
-        auto response =
-            std::make_unique<TEvService::TEvDestroyVolumeLinkResponse>(
-                MakeError(E_ARGUMENT, "Leader and Follower should be different"));
-        NCloud::Reply(ctx, *ev, std::move(response));
-        return;
-    }
 
     LOG_DEBUG(
         ctx,

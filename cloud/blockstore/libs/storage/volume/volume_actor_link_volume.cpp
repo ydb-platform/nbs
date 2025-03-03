@@ -1,14 +1,8 @@
 #include "volume_actor.h"
 
-#include <cloud/blockstore/libs/storage/core/probes.h>
-
 namespace NCloud::NBlockStore::NStorage {
 
 using namespace NActors;
-using namespace NKikimr;
-using namespace NKikimr::NTabletFlatExecutor;
-
-LWTRACE_USING(BLOCKSTORE_STORAGE_PROVIDER);
 
 ////////////////////////////////////////////////////////////////////////////////
 
