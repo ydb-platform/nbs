@@ -249,7 +249,19 @@ func RegisterForExecution(
 			}
 		},
 	)
-	return err
+	if err != nil {
+		return error
+	}
+
+	err = taskRegistry.RegisterForExecution(
+		"dataplane.CreateShadowDiskBasedCheckpointTask",
+		func() tasks.Task {
+			return &createShadowDiskBasedCheckpointTask{
+				nbsFactory: nbsFactory,
+			}
+		},
+	)
+	return error
 }
 
 func Register(ctx context.Context, taskRegistry *tasks.Registry) error {
@@ -278,4 +290,5 @@ var newTaskByTaskType = map[string]func() tasks.Task{
 	"dataplane.DeleteSnapshot":                   func() tasks.Task { return &deleteSnapshotTask{} },
 	"dataplane.DeleteSnapshotData":               func() tasks.Task { return &deleteSnapshotDataTask{} },
 	"dataplane.DeleteDiskFromIncremental":        func() tasks.Task { return &deleteDiskFromIncrementalTask{} },
+	"dataplane.CreateShadowDiskBasedCheckpoint":  func() tasks.Task { return &createShadowDiskBasedCheckpoint{} },
 }
