@@ -12,6 +12,7 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/common"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/facade/testcommon"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -598,6 +599,7 @@ func TestSnapshotServiceDeleteIncrementalSnapshotWhileCreating(t *testing.T) {
 
 	// Need to add some variance for better testing.
 	common.WaitForRandomDuration(1*time.Millisecond, 3*time.Second)
+	// common.WaitForRandomDuration(2000*time.Millisecond, 3*time.Second)
 
 	reqCtx = testcommon.GetRequestContext(t, ctx)
 	deleteOperation, err := client.DeleteSnapshot(reqCtx, &disk_manager.DeleteSnapshotRequest{
@@ -616,9 +618,18 @@ func TestSnapshotServiceDeleteIncrementalSnapshotWhileCreating(t *testing.T) {
 	// or snapshot deletion ended up before creation, snapshot was not deleted,
 	// so there should be a checkpoint.
 	if creationErr != nil {
-		// should wait here because checkpoint is deleted on |createOperation|
-		// operation cancel (and exact time of this event is unknown).
-		testcommon.WaitForCheckpointsDoNotExist(t, ctx, diskID)
+		snapshotID, _, err := testcommon.GetIncremental(ctx, &types.Disk{
+			ZoneId: "zone-a",
+			DiskId: diskID,
+		})
+		require.NoError(t, err)
+		// If snapshot creation is cancelled, there may be two cases:
+		// it was cancelled before or after changing base snapshot
+		if snapshotID == baseSnapshotID {
+			testcommon.RequireCheckpoint(t, ctx, diskID, snapshotID)
+		} else {
+			testcommon.WaitForCheckpointsDoNotExist(t, ctx, diskID)
+		}
 	}
 
 	snapshotID2 := t.Name() + "2"
