@@ -929,9 +929,9 @@ public:
         ForcedCompactionState.OperationId = operationId;
     }
 
-    void OnNewCompactionRange()
+    void OnNewCompactionRange(ui32 rangesCount)
     {
-        ++ForcedCompactionState.Progress;
+        ForcedCompactionState.Progress += rangesCount;
     }
 
     void ResetForcedCompaction()

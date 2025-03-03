@@ -49,7 +49,10 @@ namespace {
     xxx(MaxAIOContextEvents,                ui32,       1024                  )\
     xxx(PathsPerFileIOService,              ui32,       0                     )\
     xxx(DisableBrokenDevices,               bool,       0                     )\
+                                                                               \
     xxx(IOParserActorAllocateStorageEnabled, bool,       0                    )\
+                                                                               \
+    xxx(MaxParallelSecureErasesAllowed,     ui32,       1                     )\
 // BLOCKSTORE_AGENT_CONFIG
 
 #define BLOCKSTORE_DECLARE_CONFIG(name, type, value)                           \

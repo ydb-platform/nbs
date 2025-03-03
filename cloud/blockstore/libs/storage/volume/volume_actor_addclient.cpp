@@ -76,7 +76,7 @@ void TVolumeActor::ProcessNextAcquireReleaseDiskRequest(const TActorContext& ctx
                 request.MountSeqNumber
             );
         } else {
-            ReleaseDisk(ctx, request.ClientId);
+            ReleaseDisk(ctx, request.ClientId, request.DevicesToRelease);
         }
     }
 }
@@ -167,7 +167,8 @@ void TVolumeActor::HandleReacquireDisk(
     {
         AcquireReleaseDiskRequests.emplace_back(
             TString(AnyWriterClientId),
-            nullptr);
+            nullptr,
+            TVector<NProto::TDeviceConfig>{});
         if (AcquireReleaseDiskRequests.size() == 1) {
             ProcessNextAcquireReleaseDiskRequest(ctx);
         }
@@ -319,8 +320,8 @@ void TVolumeActor::ProcessNextPendingClientRequest(const TActorContext& ctx)
             if (request->RemovedClientId) {
                 AcquireReleaseDiskRequests.emplace_back(
                     request->RemovedClientId,
-                    request
-                );
+                    request,
+                    TVector<NProto::TDeviceConfig>{});
             } else {
                 AcquireReleaseDiskRequests.emplace_back(
                     request->AddedClientInfo.GetClientId(),

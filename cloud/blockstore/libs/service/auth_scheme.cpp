@@ -74,6 +74,7 @@ TPermissionList GetRequestPermissions(EBlockStoreRequest requestType)
         case EBlockStoreRequest::ZeroBlocks:
         case EBlockStoreRequest::ReadBlocksLocal:
         case EBlockStoreRequest::WriteBlocksLocal:
+        case EBlockStoreRequest::CheckRange:
             return CreatePermissionList({});
 
         case EBlockStoreRequest::MountVolume:
@@ -133,6 +134,10 @@ TPermissionList GetRequestPermissions(EBlockStoreRequest requestType)
         case EBlockStoreRequest::DescribeDiskRegistryConfig:
         case EBlockStoreRequest::UpdateDiskRegistryConfig:
             return TPermissionList().Flip();  // Require admin permissions.
+
+        case EBlockStoreRequest::CreateVolumeLink:
+        case EBlockStoreRequest::DestroyVolumeLink:
+                return CreatePermissionList({EPermission::Update});
 
         case EBlockStoreRequest::MAX:
             Y_ABORT("EBlockStoreRequest::MAX is not valid");

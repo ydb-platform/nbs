@@ -82,6 +82,20 @@ service TBlockStoreService
         };
     }
 
+    rpc CreateVolumeLink(TCreateVolumeLinkRequest) returns (TCreateVolumeLinkResponse) {
+        option (google.api.http) = {
+            post: "/create_volume_link"
+            body: "*"
+        };
+    }
+
+    rpc DestroyVolumeLink(TDestroyVolumeLinkRequest) returns (TDestroyVolumeLinkResponse) {
+        option (google.api.http) = {
+            post: "/destroy_volume_link"
+            body: "*"
+        };
+    }
+
     //
     // Volume information and statistics.
     //
@@ -153,6 +167,17 @@ service TBlockStoreService
     rpc ZeroBlocks(TZeroBlocksRequest) returns (TZeroBlocksResponse) {
         option (google.api.http) = {
             post: "/zero_blocks"
+            body: "*"
+        };
+    }
+
+    //
+    //CheckRange operation
+    //
+
+    rpc CheckRange(TCheckRangeRequest) returns (TCheckRangeResponse) {
+        option (google.api.http) = {
+            post: "/check_range"
             body: "*"
         };
     }

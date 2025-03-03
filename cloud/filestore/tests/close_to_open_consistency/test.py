@@ -1,20 +1,26 @@
 import os
 import random
+from retrying import retry
 import string
 
 from cloud.storage.core.tools.testing.qemu.lib.common import env_with_guest_index, SshToGuest
 
 TEST_FILE_PREFIX = "close_to_open_consistency_test"
+RETRY_COUNT = 3
+WAIT_TIMEOUT = 1000  # 1sec
 
 
+@retry(stop_max_attempt_number=RETRY_COUNT, wait_fixed=WAIT_TIMEOUT)
 def create_file(ssh: SshToGuest, dir: str, file_name: str):
     return ssh(f"sudo touch {dir}/{file_name}")
 
 
+@retry(stop_max_attempt_number=RETRY_COUNT, wait_fixed=WAIT_TIMEOUT)
 def write_to_file(ssh: SshToGuest, dir: str, file_name: str, data: str):
     return ssh(f"sudo bash -c 'echo {data} >> {dir}/{file_name}'")
 
 
+@retry(stop_max_attempt_number=RETRY_COUNT, wait_fixed=WAIT_TIMEOUT)
 def read_from_file(ssh: SshToGuest, dir: str, file_name: str):
     return ssh(f"sudo bash -c 'cat {dir}/{file_name}'")
 

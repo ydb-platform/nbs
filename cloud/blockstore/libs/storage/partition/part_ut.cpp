@@ -939,6 +939,16 @@ public:
         return std::make_unique<TEvVolume::TEvGetScanDiskStatusRequest>();
     }
 
+    std::unique_ptr<TEvService::TEvCheckRangeRequest>
+    CreateCheckRangeRequest(TString id, ui32 startIndex, ui32 size)
+    {
+        auto request = std::make_unique<TEvService::TEvCheckRangeRequest>();
+        request->Record.SetDiskId(id);
+        request->Record.SetStartIndex(startIndex);
+        request->Record.SetBlocksCount(size);
+        return request;
+    }
+
 #define BLOCKSTORE_DECLARE_METHOD(name, ns)                                    \
     template <typename... Args>                                                \
     void Send##name##Request(Args&&... args)                                   \
@@ -11452,10 +11462,27 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
             UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMergedBlobsCount());
         }
 
+        TVector<size_t> rangeSizes;
+        const auto interceptCompactionRequest =
+            [&rangeSizes](TAutoPtr<IEventHandle>& event)
+        {
+            if (event->GetTypeRewrite() ==
+                TEvPartitionPrivate::EvCompactionRequest)
+            {
+                auto* msg =
+                    event->Get<TEvPartitionPrivate::TEvCompactionRequest>();
+                rangeSizes.push_back(msg->RangeBlockIndices.size());
+            }
+            return TTestActorRuntime::DefaultObserverFunc(event);
+        };
+        runtime->SetObserverFunc(interceptCompactionRequest);
+
         const auto blockRange1 = TBlockRange32::WithLength(0, 1024);
         const auto blockRange2 = TBlockRange32::WithLength(1024 * 1024, 1024);
         const auto blockRange3 =
             TBlockRange32::WithLength(2 * 1024 * 1024, 1024);
+        const auto blockRange4 =
+            TBlockRange32::WithLength(3 * 1024 * 1024, 1024);
 
         partition.WriteBlocks(blockRange1, 1);
         partition.WriteBlocks(blockRange1, 2);
@@ -11468,16 +11495,21 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         partition.WriteBlocks(blockRange3, 7);
         partition.WriteBlocks(blockRange3, 8);
 
+        partition.WriteBlocks(blockRange4, 9);
+
         {
             const auto response = partition.StatPartition();
             const auto& stats = response->Record.GetStats();
-            UNIT_ASSERT_VALUES_EQUAL(8, stats.GetMergedBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(9, stats.GetMergedBlobsCount());
         }
 
-        TCompactionOptions options;
-        options.set(ToBit(ECompactionOption::Forced));
-        partition.Compaction(0, options);
+        partition.SendCompactRangeRequest(0, 0);
+        runtime->DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
         partition.Cleanup();
+
+        UNIT_ASSERT_EQUAL(2, rangeSizes.size());
+        UNIT_ASSERT_EQUAL(3, rangeSizes[0]);
+        UNIT_ASSERT_EQUAL(1, rangeSizes[1]);
 
         // checking that data wasn't corrupted
         UNIT_ASSERT_VALUES_EQUAL(
@@ -11501,11 +11533,18 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
             GetBlockContent(8),
             GetBlockContent(partition.ReadBlocks(blockRange3.End)));
 
+        UNIT_ASSERT_VALUES_EQUAL(
+            GetBlockContent(9),
+            GetBlockContent(partition.ReadBlocks(blockRange4.Start)));
+        UNIT_ASSERT_VALUES_EQUAL(
+            GetBlockContent(9),
+            GetBlockContent(partition.ReadBlocks(blockRange4.End)));
+
         // checking that we now have 1 blob in each of the ranges
         {
             const auto response = partition.StatPartition();
             const auto& stats = response->Record.GetStats();
-            UNIT_ASSERT_VALUES_EQUAL(3, stats.GetMergedBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(4, stats.GetMergedBlobsCount());
         }
     }
 
@@ -11872,6 +11911,210 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
                 GetBlocksContent(partition.ReadBlocks(i))
             );
         }
+    }
+
+    Y_UNIT_TEST(ShouldCheckRange)
+    {
+        constexpr ui32 blockCount = 1024 * 1024;
+        auto runtime = PrepareTestActorRuntime(DefaultConfig(), blockCount);
+
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+
+        partition.WriteBlocks(
+            TBlockRange32::MakeClosedInterval(0, 1024 * 10),
+            1);
+        partition.WriteBlocks(
+            TBlockRange32::MakeClosedInterval(1024 * 5, 1024 * 11),
+            1);
+
+        const auto step = 16;
+        for (ui32 i = 1024 * 10; i < 1024 * 12; i += step) {
+            partition.WriteBlocks(TBlockRange32::WithLength(i, step), 1);
+        }
+
+        for (ui32 i = 1024 * 20; i < 1024 * 21; i += step) {
+            partition.WriteBlocks(TBlockRange32::WithLength(i, step + 1), 1);
+        }
+
+        partition.WriteBlocks(
+            TBlockRange32::MakeClosedInterval(1001111, 1001210),
+            1);
+
+        partition.ZeroBlocks(TBlockRange32::MakeClosedInterval(1024, 3023));
+        partition.ZeroBlocks(TBlockRange32::MakeClosedInterval(5024, 5033));
+
+        ui32 status = -1;
+        ui32 error = -1;
+
+        runtime->SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
+                switch (event->GetTypeRewrite()) {
+                    case TEvService::EvCheckRangeResponse: {
+                        using TEv = TEvService::TEvCheckRangeResponse;
+                        const auto* msg = event->Get<TEv>();
+                        error = msg->GetStatus();
+                        status = msg->Record.GetStatus().GetCode();
+                        break;
+                    }
+                }
+                return TTestActorRuntime::DefaultObserverFunc(event);
+            });
+
+        const auto checkRange = [&](ui32 idx, ui32 size)
+        {
+            status = -1;
+
+            const auto response = partition.CheckRange("id", idx, size);
+
+            TDispatchOptions options;
+            options.FinalEvents.emplace_back(TEvService::EvCheckRangeResponse);
+            runtime->DispatchEvents(options, TDuration::Seconds(3));
+
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, status);
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, error);
+        };
+
+        checkRange(0, 1024);
+        checkRange(1024, 512);
+        checkRange(1, 1);
+        checkRange(1000, 1000);
+    }
+
+    Y_UNIT_TEST(ShouldCheckRangeWithBrokenBlocks)
+    {
+        constexpr ui32 blockCount = 1024 * 1024;
+        auto runtime = PrepareTestActorRuntime(DefaultConfig(), blockCount);
+
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+
+        partition.WriteBlocks(
+            TBlockRange32::MakeClosedInterval(0, 1024 * 10),
+            1);
+        partition.WriteBlocks(
+            TBlockRange32::MakeClosedInterval(1024 * 5, 1024 * 11),
+            1);
+
+        const auto step = 16;
+        for (ui32 i = 1024 * 10; i < 1024 * 12; i += step) {
+            partition.WriteBlocks(TBlockRange32::WithLength(i, step), 1);
+        }
+
+        for (ui32 i = 1024 * 20; i < 1024 * 21; i += step) {
+            partition.WriteBlocks(TBlockRange32::WithLength(i, step + 1), 1);
+        }
+
+        partition.WriteBlocks(
+            TBlockRange32::MakeClosedInterval(1001111, 1001210),
+            1);
+
+        ui32 status = -1;
+        ui32 error = -1;
+
+        runtime->SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
+                switch (event->GetTypeRewrite()) {
+                    case TEvService::EvCheckRangeResponse: {
+                        using TEv = TEvService::TEvCheckRangeResponse;
+                        const auto* msg = event->Get<TEv>();
+                        status = msg->Record.GetStatus().GetCode();
+                        error = msg->Record.GetError().GetCode();
+
+                        break;
+                    }
+                    case TEvService::EvReadBlocksResponse: {
+                        using TEv = TEvService::TEvReadBlocksResponse;
+
+                        auto response = std::make_unique<TEv>(
+                            MakeError(E_IO, "block is broken"));
+
+                        runtime->Send(
+                            new IEventHandle(
+                                event->Recipient,
+                                event->Sender,
+                                response.release(),
+                                0,   // flags
+                                event->Cookie),
+                            0);
+
+                        return TTestActorRuntime::EEventAction::DROP;
+
+                        break;
+                    }
+                }
+                return TTestActorRuntime::DefaultObserverFunc(event);
+            });
+
+        const auto checkRange = [&](ui32 idx, ui32 size)
+        {
+            status = -1;
+
+            partition.SendCheckRangeRequest("id", idx, size);
+            const auto response =
+                partition.RecvResponse<TEvService::TEvCheckRangeResponse>();
+
+            TDispatchOptions options;
+            options.FinalEvents.emplace_back(TEvService::EvCheckRangeResponse);
+
+            UNIT_ASSERT_VALUES_EQUAL(E_IO, status);
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, error);
+        };
+        checkRange(0, 1024);
+        checkRange(1024, 512);
+        checkRange(1, 1);
+        checkRange(1000, 1000);
+    }
+
+    Y_UNIT_TEST(ShouldSuccessfullyCheckRangeIfDiskIsEmpty)
+    {
+        constexpr ui32 blockCount = 1024 * 1024;
+        auto runtime = PrepareTestActorRuntime(DefaultConfig(), blockCount);
+
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+
+        const ui32 idx = 0;
+        const ui32 size = 1;
+        const auto response = partition.CheckRange("id", idx, size);
+
+        TDispatchOptions options;
+        options.FinalEvents.emplace_back(TEvService::EvCheckRangeResponse);
+
+        runtime->DispatchEvents(options, TDuration::Seconds(1));
+
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, response->Record.GetStatus().GetCode());
+    }
+
+    Y_UNIT_TEST(ShouldntCheckRangeWithBigBlockCount)
+    {
+        constexpr ui32 blockCount = 1024 * 1024;
+        constexpr ui32 bytesPerStripe = 1024;
+        NProto::TStorageServiceConfig config;
+        config.SetBytesPerStripe(bytesPerStripe);
+        auto runtime = PrepareTestActorRuntime(config, blockCount);
+
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+
+        const ui32 idx = 0;
+
+        partition.SendCheckRangeRequest(
+            "id",
+            idx,
+            bytesPerStripe / DefaultBlockSize + 1);
+        const auto response =
+            partition.RecvResponse<TEvService::TEvCheckRangeResponse>();
+
+        TDispatchOptions options;
+        options.FinalEvents.emplace_back(TEvService::EvCheckRangeResponse);
+
+        runtime->DispatchEvents(options, TDuration::Seconds(1));
+
+        UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, response->GetStatus());
     }
 }
 

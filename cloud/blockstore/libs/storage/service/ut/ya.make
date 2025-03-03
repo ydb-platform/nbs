@@ -6,6 +6,7 @@ SRCS(
     service_state_ut.cpp
     service_ut_actions.cpp
     service_ut_alter.cpp
+    service_ut_checkrange.cpp
     service_ut_create_from_device.cpp
     service_ut_create.cpp
     service_ut_describe_model.cpp
@@ -13,6 +14,7 @@ SRCS(
     service_ut_destroy.cpp
     service_ut_forward.cpp
     service_ut_inactive_clients.cpp
+    service_ut_link_volume.cpp
     service_ut_list.cpp
     service_ut_manually_preempted_volumes.cpp
     service_ut_mount.cpp

@@ -256,42 +256,16 @@ Y_UNIT_TEST_SUITE(TCompactionMapTest)
 
         {
             const auto nonEmptyCount = map.GetNonEmptyRanges().size();
-            const auto nonEmptyRanges = map.GetNonEmptyRanges(GetGroupIndex(1), 10);
             UNIT_ASSERT_VALUES_EQUAL(nonEmptyCount, map.GetNonEmptyRangeCount());
             UNIT_ASSERT_VALUES_EQUAL(nonEmptyCount, 100);
-            UNIT_ASSERT_VALUES_EQUAL(nonEmptyRanges.size(), 10);
-            UNIT_ASSERT_VALUES_EQUAL(nonEmptyRanges[0].BlockIndex, GetGroupIndex(1));
         }
 
         // empty range must be skipped
         map.Update(GetGroupIndex(46), 0, blockCount, usedBlockCount, false);
         {
             const auto nonEmptyCount = map.GetNonEmptyRanges().size();
-            const auto nonEmptyRanges = map.GetNonEmptyRanges(GetGroupIndex(45), 10);
             UNIT_ASSERT_VALUES_EQUAL(nonEmptyCount, map.GetNonEmptyRangeCount());
             UNIT_ASSERT_VALUES_EQUAL(nonEmptyCount, 99);
-            UNIT_ASSERT_VALUES_EQUAL(nonEmptyRanges.size(), 10);
-            UNIT_ASSERT_VALUES_EQUAL(nonEmptyRanges[1].BlockIndex, GetGroupIndex(47));
-        }
-
-        // if first range is empty need to start from first non empty after it
-        map.Update(GetGroupIndex(45), 0, blockCount, usedBlockCount, false);
-        {
-            const auto nonEmptyRanges = map.GetNonEmptyRanges(GetGroupIndex(45), 10);
-            UNIT_ASSERT_VALUES_EQUAL(nonEmptyRanges.size(), 10);
-            UNIT_ASSERT_VALUES_EQUAL(nonEmptyRanges[0].BlockIndex, GetGroupIndex(47));
-        }
-
-        {
-            const auto nonEmptyRanges = map.GetNonEmptyRanges(GetGroupIndex(95), 10);
-            UNIT_ASSERT_VALUES_EQUAL(nonEmptyRanges.size(), 6);
-        }
-
-        map.Update(GetGroupIndex(96), 0, blockCount, usedBlockCount, false);
-        map.Update(GetGroupIndex(99), 0, blockCount, usedBlockCount, false);
-        {
-            const auto nonEmptyRanges = map.GetNonEmptyRanges(GetGroupIndex(95), 10);
-            UNIT_ASSERT_VALUES_EQUAL(nonEmptyRanges.size(), 4);
         }
     }
 }

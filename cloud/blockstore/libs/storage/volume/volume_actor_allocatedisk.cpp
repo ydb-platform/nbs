@@ -567,6 +567,8 @@ void TVolumeActor::ExecuteUpdateDevices(
         TVolumeMetaHistoryItem metaHistoryItem{ctx.Now(), newMeta};
         db.WriteMetaHistory(State->GetMetaHistory().size(), metaHistoryItem);
         State->AddMetaHistory(std::move(metaHistoryItem));
+
+        args.ReplacedDevices = GetReplacedDevices(oldMeta, newMeta);
     }
 
     db.WriteMeta(newMeta);
@@ -608,6 +610,14 @@ void TVolumeActor::CompleteUpdateDevices(
     SendVolumeConfigUpdated(ctx);
     StartPartitionsForUse(ctx);
     ResetServicePipes(ctx);
+    if (!args.LiteReallocation) {
+        // Non-lite reallocation means that new devices could have been added.
+        AcquireDiskIfNeeded(ctx);
+        // Try to release devices that don't belong to the volume anymore. This
+        // task is not critical, and in case of failure, the acquire will become
+        // obsolete in some time.
+        ReleaseReplacedDevices(ctx, args.ReplacedDevices);
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage
