@@ -6755,6 +6755,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
             tablet.DestroyHandle(handle);
         }
 
+        // Before compaction
         {
             auto response = tablet.GetStorageStats(1);
             const auto& stats = response->Record.GetStats();
