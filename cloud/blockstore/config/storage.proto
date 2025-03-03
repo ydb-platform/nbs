@@ -1130,4 +1130,7 @@ message TStorageServiceConfig
 
     // Maximum size of CheckRange request
     optional uint32 CheckRangeMaxRangeSize = 410;
+
+    // Throttle ZeroBlock requests for SSD drives
+    optional bool ThrottlingEnabledSSDZeroBlocks = 411;
 }
