@@ -102,6 +102,7 @@ void TCheckRangeActor::HandleCheckRangeResponse(
     const auto& error = ev->Get()->GetError();
     auto response = std::make_unique<TEvService::TEvCheckRangeResponse>(error);
     response->Record.MutableStatus()->CopyFrom(ev->Get()->Record.GetStatus());
+    response->Record.MutableChecksums()->CopyFrom(response->Record.GetChecksums());
 
     ReplyAndDie(
         ctx,
