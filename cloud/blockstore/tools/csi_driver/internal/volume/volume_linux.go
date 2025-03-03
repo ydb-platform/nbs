@@ -53,7 +53,7 @@ func SetVolumeOwnership(dir string, fsGroup *int64, readonly bool) error {
 	defer timer.Stop()
 
 	if !requiresPermissionChange(dir, fsGroup, readonly) {
-		klog.V(3).InfoS("Skipping permission and ownership change for volume", "path", dir)
+		klog.InfoS("Skipping permission and ownership change for volume", "path", dir)
 		return nil
 	}
 
@@ -115,7 +115,7 @@ func requiresPermissionChange(rootDir string, fsGroup *int64, readonly bool) boo
 	}
 
 	if int(stat.Gid) != int(*fsGroup) {
-		klog.V(4).InfoS("Expected group ownership of volume did not match with Gid", "path", rootDir, "GID", stat.Gid)
+		klog.InfoS("Expected group ownership of volume did not match with Gid", "path", rootDir, "GID", stat.Gid)
 		return true
 	}
 	unixPerms := rwMask
@@ -139,7 +139,7 @@ func requiresPermissionChange(rootDir string, fsGroup *int64, readonly bool) boo
 	//     unixPerms: 770, filePerms: 750 : 770&750 = 750 (perms on directory is NOT a superset)
 	// We also need to check if setgid bits are set in permissions of the directory.
 	if (unixPerms&filePerm != unixPerms) || (fsInfo.Mode()&os.ModeSetgid == 0) {
-		klog.V(4).InfoS("Performing recursive ownership change on rootDir because of mismatching mode", "path", rootDir)
+		klog.InfoS("Performing recursive ownership change on rootDir because of mismatching mode", "path", rootDir)
 		return true
 	}
 	return false
