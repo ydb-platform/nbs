@@ -32,4 +32,3 @@ Here is the list of these settings:
 * `GetNodeAttrBatchEnabled: true` - enables fetching NodeAttr (stat) in large batches for multitablet filesystems
 * `UnalignedThreeStageWriteEnabled: true` - causes unaligned writes to follow the efficient ThreeStageWrite datapath
 * `UseMixedBlocksInsteadOfAliveBlocksInCompaction: true` - see the description in storage.proto (this flag basically fixes garbage level-based compaction triggers)
-* `CalculateCleanupScoreBasedOnUsedBlocksCount` - makes Cleanup running more aggressive
