@@ -63,6 +63,7 @@ type Config struct {
 	LocalFilestoreOverridePath string
 	NfsLocalHost               string
 	NfsLocalFilestorePort      uint
+	NfsLocalFilestoreSocket    string
 	NfsLocalEndpointPort       uint
 	NfsLocalEndpointSocket     string
 	MountOptions               string
@@ -141,10 +142,10 @@ func createClients(cfg Config) (*driverClients, error) {
 	}
 
 	var nfsLocalFilestoreClient nfsclient.ClientIface
-	if cfg.NfsLocalFilestorePort != 0 {
+	if cfg.NfsLocalFilestoreSocket != "" || cfg.NfsLocalFilestorePort != 0 {
 		nfsLocalFilestoreClient, err = nfsclient.NewGrpcClient(
 			&nfsclient.GrpcClientOpts{
-				Endpoint: getEndpoint("", cfg.NfsLocalHost, cfg.NfsLocalFilestorePort),
+				Endpoint: getEndpoint(cfg.NfsLocalFilestoreSocket, cfg.NfsLocalHost, cfg.NfsLocalFilestorePort),
 			}, nfsclient.NewStderrLog(nfsclient.LOG_DEBUG),
 		)
 		if err != nil {
