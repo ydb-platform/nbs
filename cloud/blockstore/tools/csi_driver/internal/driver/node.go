@@ -24,6 +24,7 @@ import (
 	"github.com/ydb-platform/nbs/cloud/blockstore/tools/csi_driver/internal/volume"
 	nfsapi "github.com/ydb-platform/nbs/cloud/filestore/public/api/protos"
 	nfsclient "github.com/ydb-platform/nbs/cloud/filestore/public/sdk/go/client"
+	storagecoreapi "github.com/ydb-platform/nbs/cloud/storage/core/protos"
 	"golang.org/x/sys/unix"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -124,6 +125,7 @@ type nodeService struct {
 	mounter        mounter.Interface
 	volumeOps      *sync.Map
 	mountOptions   []string
+	discard        bool
 }
 
 func newNodeService(
@@ -138,7 +140,8 @@ func newNodeService(
 	nfsClient nfsclient.EndpointClientIface,
 	nfsLocalClient nfsclient.EndpointClientIface,
 	mounter mounter.Interface,
-	mountOptions []string) csi.NodeServer {
+	mountOptions []string,
+	discard bool) csi.NodeServer {
 
 	return &nodeService{
 		nodeId:              nodeId,
@@ -154,6 +157,7 @@ func newNodeService(
 		localFsOverrides:    localFsOverrides,
 		volumeOps:           new(sync.Map),
 		mountOptions:        mountOptions,
+		discard:             discard,
 	}
 }
 
@@ -738,6 +742,10 @@ func (s *nodeService) nodeStageDiskAsFilesystem(
 	mountOptions := s.mountOptions
 	if fsType == "ext4" {
 		mountOptions = append(mountOptions, "errors=remount-ro")
+	}
+
+	if s.discard && getStorageMediaKind(req.VolumeContext) == storagecoreapi.EStorageMediaKind_STORAGE_MEDIA_SSD {
+		mountOptions = append(mountOptions, "discard")
 	}
 
 	if mnt != nil {

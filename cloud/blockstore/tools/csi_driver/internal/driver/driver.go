@@ -65,6 +65,7 @@ type Config struct {
 	NfsLocalFilestorePort      uint
 	NfsLocalEndpointPort       uint
 	MountOptions               string
+	Discard                    bool
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -254,7 +255,8 @@ func NewDriver(cfg Config) (*Driver, error) {
 			clients.nfsEndpointClient,
 			clients.nfsLocalEndpointClient,
 			mounter.NewMounter(),
-			strings.Split(cfg.MountOptions, ",")))
+			strings.Split(cfg.MountOptions, ","),
+			cfg.Discard))
 
 	return &Driver{
 		grpcServer: grpcServer,
