@@ -37,6 +37,7 @@ private:
     size_t EventsSkipped = 0;
     double Sleeps = 0;
     size_t MessagesProcessed = 0;
+    size_t MessagesSkipped = 0;
     static constexpr TDuration StatusEverySeconds = TDuration::Seconds(10);
     TInstant NextStatusAt = TInstant::Now() + StatusEverySeconds;
 

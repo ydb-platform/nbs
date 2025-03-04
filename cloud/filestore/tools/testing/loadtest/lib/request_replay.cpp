@@ -176,16 +176,50 @@ IReplayRequestGenerator::ExecuteNextRequest()
                 if (NextStatusAt <= current) {
                     NextStatusAt = current + StatusEverySeconds;
                     STORAGE_INFO(
-                        "Current event=%zu skipped=%zu Msg=%zd TotalMsg=%zu "
-                        "Sleeps=%f",
+                        "Current event=%zu Skipped=%zu Msg=%zd TotalMsg=%zu "
+                        "Skipped=%zu "
+                        "Sleeps=%f "
+                        "Time=%s",
                         EventsProcessed,
                         EventsSkipped,
                         EventMessageNumber,
                         MessagesProcessed,
-                        Sleeps)
+                        MessagesSkipped,
+                        Sleeps,
+                        TInstant::MicroSeconds(TimestampMcs).ToString().c_str()
+                    )
                 }
 
                 auto diff = current - Started;
+                if (const i64 realtime = Spec.GetRealTime()) {
+                    constexpr auto OneMillion = 1000000LL;
+                    const i64 dayMcs = realtime * OneMillion;
+                    const i64 nowDayStart =
+                        (current.MicroSeconds() / dayMcs) * dayMcs;
+                    const i64 logDayStart = (TimestampMcs / dayMcs) * dayMcs;
+                    const i64 nowDayMcs = current.MicroSeconds() - nowDayStart;
+                    const i64 logDayMcs = TimestampMcs - logDayStart;
+                    constexpr auto TolerateSecondsLogPast = 100;
+                    if (nowDayMcs - TolerateSecondsLogPast * OneMillion >
+                        logDayMcs)
+                    {
+                        ++MessagesSkipped;
+                        continue;
+                    }
+
+                    constexpr auto TolerateSecondsFuture = 1000;
+
+                    if (nowDayMcs < logDayMcs) {
+                        const auto sleepMcs = logDayMcs - nowDayMcs;
+                        if (sleepMcs / OneMillion > TolerateSecondsFuture) {
+                            return {};
+                        }
+
+                        auto sleep = TDuration::MicroSeconds(sleepMcs);
+                        Sleeps += sleep.SecondsFloat();
+                        Sleep(sleep);
+                    }
+                }
 
                 if (timediff > diff.MicroSeconds()) {
                     auto sleep =
@@ -204,12 +238,15 @@ IReplayRequestGenerator::ExecuteNextRequest()
             }
 
             STORAGE_DEBUG(
-                "Event=%zu Msg=%zd Mcs=%lu: Processing typename=%s "
+                "Event=%zu Msg=%zd Mcs=%lu T=%s: Processing typename=%s "
                 "type=%d name=%s "
                 "data=%s",
                 EventsProcessed,
                 EventMessageNumber,
                 request.GetTimestampMcs(),
+                TInstant::MicroSeconds(request.GetTimestampMcs())
+                    .ToString()
+                    .c_str(),
                 request.GetTypeName().c_str(),
                 request.GetRequestType(),
                 RequestName(request.GetRequestType()).c_str(),
