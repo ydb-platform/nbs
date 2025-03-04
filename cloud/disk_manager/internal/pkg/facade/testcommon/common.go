@@ -369,6 +369,7 @@ func WaitForCheckpointsDoNotExist(
 	t *testing.T,
 	ctx context.Context,
 	diskID string,
+	awaitedCheckpoints ...string,
 ) {
 
 	nbsClient := NewNbsTestingClient(t, ctx, "zone-a")
@@ -377,7 +378,21 @@ func WaitForCheckpointsDoNotExist(
 		checkpoints, err := nbsClient.GetCheckpoints(ctx, diskID)
 		require.NoError(t, err)
 
-		if len(checkpoints) == 0 {
+		found := false
+
+		for _, awaitedCheckpoint := range awaitedCheckpoints {
+			for _, checkpoint := range checkpoints {
+				if awaitedCheckpoint == checkpoint {
+					found = true
+					break
+				}
+			}
+			if found {
+				break
+			}
+		}
+
+		if !found {
 			return
 		}
 

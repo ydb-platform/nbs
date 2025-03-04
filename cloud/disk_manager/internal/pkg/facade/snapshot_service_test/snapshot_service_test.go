@@ -623,10 +623,14 @@ func TestSnapshotServiceDeleteIncrementalSnapshotWhileCreating(t *testing.T) {
 			DiskId: diskID,
 		})
 		require.NoError(t, err)
-		// If snapshot creation is cancelled, there may be two cases:
-		// it was cancelled before or after changing base snapshot
-		if snapshotID == baseSnapshotID {
-			testcommon.RequireCheckpoint(t, ctx, diskID, snapshotID)
+
+		// In case of snapshot1 creation failure base snapshot may be already
+		// deleted from incremental table and then checkpoint should not exist
+		// on the disk. Otherwise base snapshot checkpoint should exist.
+		if len(snapshotID) > 0 {
+			testcommon.WaitForCheckpointsDoNotExist(t, ctx, diskID, snapshotID1)
+			require.Equal(t, snapshotID, baseSnapshotID)
+			testcommon.RequireCheckpoint(t, ctx, diskID, baseSnapshotID)
 		} else {
 			testcommon.WaitForCheckpointsDoNotExist(t, ctx, diskID)
 		}
