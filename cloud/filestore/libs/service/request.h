@@ -4,6 +4,7 @@
 
 #include <util/generic/string.h>
 #include <util/stream/output.h>
+#include <google/protobuf/text_format.h>
 
 namespace google::protobuf {
     class Message;
@@ -203,6 +204,12 @@ TRequestInfo GetRequestInfo(const T& request);
 
 template <typename T>
 consteval bool HasResponseHeaders();
+
+struct TTextPrinter : google::protobuf::TextFormat::Printer {
+    explicit TTextPrinter(ui32 size);
+};
+
+TTextPrinter& GetTextPrinter(ui32 size);
 
 TString DumpMessage(const google::protobuf::Message& message);
 

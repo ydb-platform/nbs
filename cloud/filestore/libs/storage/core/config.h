@@ -310,6 +310,8 @@ public:
     bool GetExtendedAttributesDisabled() const;
 
     bool GetServerWriteBackCacheEnabled() const;
+
+    ui32 GetTruncateLogStringFieldLongerThan() const;
 };
 
 }   // namespace NCloud::NFileStore::NStorage

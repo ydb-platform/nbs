@@ -7,6 +7,8 @@
 #include <util/random/random.h>
 #include <util/string/builder.h>
 
+#include "public.h"
+
 #include <google/protobuf/message.h>
 #include <google/protobuf/text_format.h>
 
@@ -39,11 +41,12 @@ struct TSizePrinter
 struct TTextPrinter
     : google::protobuf::TextFormat::Printer
 {
-    TTextPrinter()
+    TTextPrinter(ui32 size)
     {
+
         SetSingleLineMode(true);
         SetExpandAny(true);
-        SetTruncateStringFieldLongerThan(64);
+        SetTruncateStringFieldLongerThan(size);
 
         RegisterFieldValuePrinter(
             NProto::TWriteDataRequest::descriptor()->FindFieldByLowercaseName("buffer"),
@@ -84,10 +87,15 @@ IOutputStream& operator <<(IOutputStream& out, const TRequestInfo& info)
 
 ////////////////////////////////////////////////////////////////////////////////
 
+TTextPrinter& GetTextPrinter(ui32 size){
+    static TTextPrinter TextPrinter(size);
+    return TextPrinter;
+}
+
 TString DumpMessage(const google::protobuf::Message& message)
 {
     TString result;
-    Singleton<TTextPrinter>()->PrintToString(message, &result);
+    GetTextPrinter(0).PrintToString(message, &result);
 
     // single line mode currently might have an extra space at the end
     if (result.size() > 0 && result.back() == ' ') {
