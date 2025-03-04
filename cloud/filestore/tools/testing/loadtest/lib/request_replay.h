@@ -24,7 +24,7 @@ protected:
     const ::NCloud::NFileStore::NProto::THeaders Headers;
     NClient::ISessionPtr Session;
     ssize_t EventMessageNumber = 0;
-    ui64 TimestampMcs = 0;
+    ui64 TimestampMicroSeconds = 0;
     TInstant Started;
 
     // Do not sleep too much if timestamps in log are broken

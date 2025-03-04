@@ -167,9 +167,10 @@ IReplayRequestGenerator::ExecuteNextRequest()
                 MessagePtr->GetRequests()[--EventMessageNumber];
             {
                 ++MessagesProcessed;
-                ui64 timediff = (request.GetTimestampMcs() - TimestampMcs) *
+                ui64 timediff =
+                    (request.GetTimestampMcs() - TimestampMicroSeconds) *
                                 Spec.GetTimeScale();
-                TimestampMcs = request.GetTimestampMcs();
+                TimestampMicroSeconds = request.GetTimestampMcs();
                 if (timediff > MaxSleepMcs) {
                     STORAGE_DEBUG(
                         "Ignore too long timediff=%lu MaxSleepMcs=%lu ",
@@ -179,10 +180,10 @@ IReplayRequestGenerator::ExecuteNextRequest()
                     timediff = 0;
                 }
 
-                const auto current = TInstant::Now();
+                const auto currentInstant = TInstant::Now();
 
-                if (NextStatusAt <= current) {
-                    NextStatusAt = current + StatusEverySeconds;
+                if (NextStatusAt <= currentInstant) {
+                    NextStatusAt = currentInstant + StatusEverySeconds;
                     STORAGE_INFO(
                         "Current event=%zu Skipped=%zu Msg=%zd TotalMsg=%zu "
                         "Skipped=%zu "
@@ -194,32 +195,48 @@ IReplayRequestGenerator::ExecuteNextRequest()
                         MessagesProcessed,
                         MessagesSkipped,
                         Sleeps,
-                        TInstant::MicroSeconds(TimestampMcs).ToString().c_str()
-                    )
+                        TInstant::MicroSeconds(TimestampMicroSeconds)
+                            .ToString()
+                            .c_str())
                 }
 
-                auto diff = current - Started;
-                if (const i64 realtime = Spec.GetRealTime()) {
+                if (const i64 realTimeAlignseconds = Spec.GetRealTime()) {
+                    constexpr auto RealtimeToleratePastSeconds = 100;
+                    constexpr auto RealtimeTolerateFutureSeconds = 1000;
                     constexpr auto OneMillion = 1000000LL;
-                    const i64 dayMcs = realtime * OneMillion;
-                    const i64 nowDayStart =
-                        (current.MicroSeconds() / dayMcs) * dayMcs;
-                    const i64 logDayStart = (TimestampMcs / dayMcs) * dayMcs;
-                    const i64 nowDayMcs = current.MicroSeconds() - nowDayStart;
-                    const i64 logDayMcs = TimestampMcs - logDayStart;
-                    constexpr auto TolerateSecondsLogPast = 100;
-                    if (nowDayMcs - TolerateSecondsLogPast * OneMillion >
-                        logDayMcs)
+                    const i64 alignMicroSeconds =
+                        realTimeAlignseconds * OneMillion;
+                    const i64 currentMicroSeconds =
+                        currentInstant.MicroSeconds() +
+                        Spec.GetRealTimeOffset() * OneMillion;
+                    const i64 nowPeriodStart =
+                        (currentMicroSeconds / alignMicroSeconds) *
+                        alignMicroSeconds;
+                    const i64 logPeriodStart =
+                        (TimestampMicroSeconds / alignMicroSeconds) *
+                        alignMicroSeconds;
+                    const i64 nowRelativeMicroSeconds =
+                        currentMicroSeconds - nowPeriodStart;
+                    const i64 logRelativeMicroSeconds =
+                        TimestampMicroSeconds - logPeriodStart;
+
+                    if (nowRelativeMicroSeconds -
+                            RealtimeToleratePastSeconds * OneMillion >
+                        logRelativeMicroSeconds)
                     {
+                        const auto secondsToNext = (nowRelativeMicroSeconds -
+                                                    logRelativeMicroSeconds) /
+                                                   OneMillion;
                         ++MessagesSkipped;
                         continue;
                     }
 
-                    constexpr auto TolerateSecondsFuture = 1000;
-
-                    if (nowDayMcs < logDayMcs) {
-                        const auto sleepMcs = logDayMcs - nowDayMcs;
-                        if (sleepMcs / OneMillion > TolerateSecondsFuture) {
+                    if (nowRelativeMicroSeconds < logRelativeMicroSeconds) {
+                        const auto sleepMcs =
+                            logRelativeMicroSeconds - nowRelativeMicroSeconds;
+                        if (sleepMcs / OneMillion >
+                            RealtimeTolerateFutureSeconds)
+                        {
                             return {};
                         }
 
@@ -229,6 +246,7 @@ IReplayRequestGenerator::ExecuteNextRequest()
                     }
                 }
 
+                const auto diff = currentInstant - Started;
                 if (timediff > diff.MicroSeconds()) {
                     auto sleep =
                         TDuration::MicroSeconds(timediff - diff.MicroSeconds());
@@ -242,7 +260,7 @@ IReplayRequestGenerator::ExecuteNextRequest()
                     Sleeps += sleep.SecondsFloat();
                 }
 
-                Started = current;
+                Started = currentInstant;
             }
 
             STORAGE_DEBUG(
