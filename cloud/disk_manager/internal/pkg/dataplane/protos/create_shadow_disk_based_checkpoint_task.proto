@@ -23,6 +23,6 @@ message CreateShadowDiskBasedCheckpointTaskState {
     string CheckpointID = 2;
 }
 
-// TODO:_ do we need it?
 message CreateShadowDiskBasedCheckpointMetadata {
+    string CheckpointID = 1;
 }

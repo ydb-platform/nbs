@@ -88,7 +88,9 @@ func (t *createShadowDiskBasedCheckpointTask) GetMetadata(
 	ctx context.Context,
 ) (proto.Message, error) {
 
-	return &empty.Empty{}, nil
+	return &disk_manager.CreateShadowDiskBasedCheckpointMetadata{
+		CheckpointID: t.state.CheckpointID,
+	}, nil
 }
 
 func (t *createShadowDiskBasedCheckpointTask) GetResponse() proto.Message {
