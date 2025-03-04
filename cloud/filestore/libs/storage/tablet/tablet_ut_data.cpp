@@ -7041,15 +7041,15 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         }
     }
 
-    TABLET_TEST_4K_ONLY(CheckCompactionStatsAddBlobWriteBatch)
+    TABLET_TEST(CheckCompactionStatsAddBlobWriteBatch)
     {
         const auto block = tabletConfig.BlockSize;
 
         NProto::TStorageConfig storageConfig;
         storageConfig.SetWriteBatchEnabled(true);
         storageConfig.SetWriteBatchTimeout(1); // 1 ms
-        storageConfig.SetWriteBlobThreshold(4_KB);
-        storageConfig.SetMaxBlobSize(8_KB);
+        storageConfig.SetWriteBlobThreshold(block);
+        storageConfig.SetMaxBlobSize(2 * block);
 
         TTestEnv env({}, std::move(storageConfig));
         env.CreateSubDomain("nfs");
