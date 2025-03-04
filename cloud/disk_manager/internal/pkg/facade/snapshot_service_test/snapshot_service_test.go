@@ -599,7 +599,6 @@ func TestSnapshotServiceDeleteIncrementalSnapshotWhileCreating(t *testing.T) {
 
 	// Need to add some variance for better testing.
 	common.WaitForRandomDuration(1*time.Millisecond, 3*time.Second)
-	// common.WaitForRandomDuration(2000*time.Millisecond, 3*time.Second)
 
 	reqCtx = testcommon.GetRequestContext(t, ctx)
 	deleteOperation, err := client.DeleteSnapshot(reqCtx, &disk_manager.DeleteSnapshotRequest{
