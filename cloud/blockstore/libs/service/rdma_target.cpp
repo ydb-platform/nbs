@@ -338,20 +338,11 @@ private:
 
 #undef BLOCKSTORE_DECLARE_HANDLE_REQUEST_FUNCTION
 
-    static size_t SerializeReadBlocksResponseToBuffer(
+    static TResultOrError<size_t> SerializeReadBlocksResponseToBuffer(
         const NProto::TReadBlocksResponse& response,
         TRequestDetails& requestDetails)
     {
         const auto& blocks = response.GetBlocks();
-        const auto& error = response.GetError();
-
-        if (HasError(error)) {
-            return NRdma::TProtoMessageSerializer::Serialize(
-                requestDetails.Out,
-                TBlockStoreServerProtocol::EvReadBlocksResponse,
-                0,
-                response);
-        }
 
         NProto::TReadBlocksResponse proto;
         proto.MutableTrace()->CopyFrom(response.GetTrace());
@@ -368,20 +359,16 @@ private:
         auto totalLen =
             NRdma::TProtoMessageSerializer::MessageByteSize(proto, tailSize);
         if (dataBuffer.size() < totalLen) {
-            NProto::TReadBlocksResponse proto;
-            *proto.MutableError() = MakeError(
+            return MakeError(
                 E_ARGUMENT,
                 "Output buffer is too smal, can't response to request");
-            return NRdma::TProtoMessageSerializer::Serialize(
-                requestDetails.Out,
-                TBlockStoreServerProtocol::EvReadBlocksResponse,
-                0,
-                proto);
         }
 
         dataBuffer = dataBuffer.RSeek(blocksCount * blockSize);
         for (const auto& buffer: blocks.GetBuffers()) {
-            proto.MutableBlocks()->AddBuffers();
+            proto.MutableBlocks()
+                ->AddBuffers();   // Add empty blocks to pass count of blocks to
+                                  // help in restoring request.
             char* dataBufferBegin = const_cast<char*>(dataBuffer.Data());
             MemCopy(dataBufferBegin, buffer.Data(), blockSize);
             dataBuffer = dataBuffer.RSeek(dataBuffer.size() - blockSize);
@@ -404,9 +391,25 @@ private:
         TFuture<NProto::TReadBlocksResponse> future) const
     {
         const auto& response = future.GetValue();
-        size_t bytes =
+        if (HasError(response.GetError()) ||
+            response.GetBlocks().BuffersSize() == 0)
+        {
+            HandleResponse(
+                requestDetails,
+                std::move(future),
+                TBlockStoreServerProtocol::EvReadBlocksResponse);
+            return;
+        }
+        auto [bytes, error] =
             SerializeReadBlocksResponseToBuffer(response, requestDetails);
         if (auto ep = Endpoint.lock()) {
+            if (HasError(error)) {
+                ep->SendError(
+                    requestDetails.Context,
+                    error.GetCode(),
+                    error.GetMessage());
+                return;
+            }
             ep->SendResponse(requestDetails.Context, bytes);
         }
     }
@@ -464,7 +467,7 @@ private:
 class TRdmaTarget final: public IStartable
 {
 private:
-    const TRdmaTargetConfigPtr Config;
+    const TBlockstoreServerRdmaTargetConfigPtr Config;
 
     ILoggingServicePtr Logging;
     NRdma::IServerPtr Server;
@@ -476,7 +479,7 @@ private:
 
 public:
     TRdmaTarget(
-            TRdmaTargetConfigPtr rdmaTargetConfig,
+            TBlockstoreServerRdmaTargetConfigPtr rdmaTargetConfig,
             ILoggingServicePtr logging,
             NRdma::IServerPtr server,
             IBlockStorePtr service,
@@ -514,7 +517,7 @@ public:
 }   // namespace
 
 IStartablePtr CreateBlockstoreServerRdmaTarget(
-    TRdmaTargetConfigPtr rdmaTargetConfig,
+    TBlockstoreServerRdmaTargetConfigPtr rdmaTargetConfig,
     ILoggingServicePtr logging,
     NRdma::IServerPtr server,
     IBlockStorePtr service)

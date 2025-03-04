@@ -13,13 +13,14 @@ namespace NCloud::NBlockStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TRdmaTargetConfig
+struct TBlockstoreServerRdmaTargetConfig
 {
     TString Host = "localhost";
     ui32 Port = 10088;
     ui32 WorkerThreads = 1;
 
-    explicit TRdmaTargetConfig(const NProto::TRdmaTarget& target)
+    explicit TBlockstoreServerRdmaTargetConfig(
+        const NProto::TRdmaTarget& target)
     {
         const auto& endpoint = target.GetEndpoint();
 
@@ -37,13 +38,13 @@ struct TRdmaTargetConfig
     }
 };
 
-using TRdmaTargetConfigPtr = std::shared_ptr<TRdmaTargetConfig>;
+using TBlockstoreServerRdmaTargetConfigPtr =
+    std::shared_ptr<TBlockstoreServerRdmaTargetConfig>;
 
 IStartablePtr CreateBlockstoreServerRdmaTarget(
-    TRdmaTargetConfigPtr rdmaTargetConfig,
+    TBlockstoreServerRdmaTargetConfigPtr rdmaTargetConfig,
     ILoggingServicePtr logging,
     NRdma::IServerPtr server,
-    IBlockStorePtr service,
-    TExecutorPtr executor);
+    IBlockStorePtr service);
 
 }   // namespace NCloud::NBlockStore::NStorage
