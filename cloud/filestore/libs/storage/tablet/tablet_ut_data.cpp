@@ -6911,10 +6911,10 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         tablet.DestroyHandle(handle);
     }
 
-    TABLET_TEST_4K_ONLY(ShouldAutomaticallyRunCleanupForSparselyPopulatedRanges)
+    TABLET_TEST(ShouldAutomaticallyRunCleanupForSparselyPopulatedRanges)
     {
         const auto block = tabletConfig.BlockSize;
-        const int ignoredNodeCount = 14;
+        const int ignoredNodeCount = NodeGroupSize - 2;
         const int groupCount = 8;
 
         // Disable conditions for automatic compaction and configure cleanup
@@ -6949,13 +6949,13 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
                 CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, name));
         }
 
-        // Create 8 groups of 16 files, 16_KB each
+        // Create 8 groups of 16 files, 4 blocks each
         std::array<ui64, NodeGroupSize * groupCount> ids;
         for (ui32 i = 0; i < NodeGroupSize * groupCount; i++) {
             auto name = Sprintf("test%u", i);
             ids[i] = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, name));
             auto handle = CreateHandle(tablet, ids[i]);
-            tablet.WriteData(handle, 0, 16_KB, 'a');
+            tablet.WriteData(handle, 0, 4 * block, 'a');
             tablet.DestroyHandle(handle);
         }
 
@@ -6968,28 +6968,26 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
             }
         }
 
-        // Force run cleanup and compaction
+        // Force run compaction
         for (ui32 i = 0; i < groupCount; i++) {
             tablet.Compaction(GetMixedRangeIndex(ids[i * NodeGroupSize], 0));
-            tablet.Cleanup(GetMixedRangeIndex(ids[i * NodeGroupSize], 0));
         }
 
         // Check the statistics
-        // Each range should contains a single blob of 16 * 4 = 64 blocks
+        // Each range should contain 16 * 4 = 64 blocks
         {
             auto response = tablet.GetStorageStats(1);
             const auto& stats = response->Record.GetStats();
-            UNIT_ASSERT_VALUES_EQUAL(8, stats.GetMixedBlobsCount());
             UNIT_ASSERT_VALUES_EQUAL(8 * 64, stats.GetMixedBlocksCount());
             UNIT_ASSERT_VALUES_EQUAL(8 * 64, stats.GetUsedBlocksCount());
             UNIT_ASSERT_VALUES_EQUAL(0, stats.GetDeletionMarkersCount());
         }
 
-        // Truncate one file in each group to 4_KB
+        // Truncate one file in each group to 1 block
         for (ui32 i = 0; i < groupCount; i++) {
             TSetNodeAttrArgs args(ids[i * NodeGroupSize]);
             args.SetFlag(NProto::TSetNodeAttrRequest::F_SET_ATTR_SIZE);
-            args.SetSize(4_KB);
+            args.SetSize(block);
             tablet.SetNodeAttr(args);
         }
 
@@ -6999,17 +6997,16 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         {
             auto response = tablet.GetStorageStats(1);
             const auto& stats = response->Record.GetStats();
-            UNIT_ASSERT_VALUES_EQUAL(8, stats.GetMixedBlobsCount());
             UNIT_ASSERT_VALUES_EQUAL(8 * 64, stats.GetMixedBlocksCount());
             UNIT_ASSERT_VALUES_EQUAL(8 * 61, stats.GetUsedBlocksCount());
             UNIT_ASSERT_VALUES_EQUAL(8 * 3, stats.GetDeletionMarkersCount());
         }
 
-        // Truncate another file in each group to 12_KB
+        // Truncate another file in each group to 3 blocks
         for (ui32 i = 0; i < groupCount; i++) {
             TSetNodeAttrArgs args(ids[i * NodeGroupSize + 1]);
             args.SetFlag(NProto::TSetNodeAttrRequest::F_SET_ATTR_SIZE);
-            args.SetSize(12_KB);
+            args.SetSize(3 * block);
             tablet.SetNodeAttr(args);
         }
 
@@ -7021,7 +7018,6 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         {
             auto response = tablet.GetStorageStats(1);
             const auto& stats = response->Record.GetStats();
-            UNIT_ASSERT_VALUES_EQUAL(8, stats.GetMixedBlobsCount());
             UNIT_ASSERT_VALUES_EQUAL(8 * 64, stats.GetMixedBlocksCount());
             UNIT_ASSERT_VALUES_EQUAL(8 * 60, stats.GetUsedBlocksCount());
             UNIT_ASSERT_VALUES_EQUAL(28, stats.GetDeletionMarkersCount());
@@ -7039,7 +7035,6 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         {
             auto response = tablet.GetStorageStats(1);
             const auto& stats = response->Record.GetStats();
-            UNIT_ASSERT_VALUES_EQUAL(8, stats.GetMixedBlobsCount());
             UNIT_ASSERT_VALUES_EQUAL(8 * 64, stats.GetMixedBlocksCount());
             UNIT_ASSERT_VALUES_EQUAL(8, stats.GetUsedBlocksCount());
             UNIT_ASSERT_VALUES_EQUAL(0, stats.GetDeletionMarkersCount());

@@ -536,11 +536,11 @@ TCleanupInfo TIndexTabletActor::GetCleanupInfo() const
     // per used block. For the compatibility with the old condition, the
     // number of blocks is converted to the number of ranges taking the
     // assumption that the ranges are fully filled.
-    const auto rangeCount =
+    const double rangeCount =
         Config->GetCalculateCleanupScoreBasedOnUsedBlocksCount()
             ? static_cast<double>(stats.GetUsedBlocksCount()) /
                   (BlockGroupSize * NodeGroupSize)
-            : compactionStats.UsedRangesCount;
+            : static_cast<double>(compactionStats.UsedRangesCount);
     const auto avgCleanupScore = rangeCount > 0.0
         ? static_cast<double>(stats.GetDeletionMarkersCount()) / rangeCount
         : 0;
