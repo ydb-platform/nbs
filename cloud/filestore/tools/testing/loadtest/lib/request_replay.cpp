@@ -216,9 +216,6 @@ IReplayRequestGenerator::ExecuteNextRequest()
                             RealtimeToleratePastSeconds * OneMillion >
                         logRelativeMicroSeconds)
                     {
-                        const auto secondsToNext = (nowRelativeMicroSeconds -
-                                                    logRelativeMicroSeconds) /
-                                                   OneMillion;
                         ++MessagesSkipped;
                         continue;
                     }
