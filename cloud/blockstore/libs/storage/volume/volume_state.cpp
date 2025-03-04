@@ -146,6 +146,7 @@ TVolumeState::TVolumeState(
         THashMap<TString, TVolumeClientState> infos,
         TCachedVolumeMountHistory mountHistory,
         TVector<TCheckpointRequest> checkpointRequests,
+        TFollowerDisks followerDisks,
         bool startPartitionsNeeded)
     : StorageConfig(std::move(storageConfig))
     , DiagnosticsConfig(std::move(diagnosticsConfig))
@@ -159,6 +160,7 @@ TVolumeState::TVolumeState(
     , MountHistory(std::move(mountHistory))
     , CheckpointStore(std::move(checkpointRequests), Config->GetDiskId())
     , StartPartitionsNeeded(startPartitionsNeeded)
+    , FollowerDisks(std::move(followerDisks))
 {
     Reset();
 
@@ -879,6 +881,35 @@ TVolumeState::GetAllDevicesForAcquireRelease() const
     }
 
     return resultDevices;
+}
+
+void TVolumeState::AddOrUpdateFollower(TFollowerDiskInfo follower)
+{
+    for (auto& followerInfo: FollowerDisks) {
+        if (followerInfo.Id == follower.Id) {
+            followerInfo = std::move(follower);
+            return;
+        }
+    }
+    FollowerDisks.push_back(std::move(follower));
+}
+
+void TVolumeState::RemoveFollower(const TString& id)
+{
+    EraseIf(
+        FollowerDisks,
+        [&](const TFollowerDiskInfo& follower) { return follower.Id == id; });
+}
+
+std::optional<TFollowerDiskInfo> TVolumeState::GetFollower(
+    const TString& id) const
+{
+    for (const auto& follower: FollowerDisks) {
+        if (follower.Id == id) {
+            return follower;
+        }
+    }
+    return std::nullopt;
 }
 
 bool TVolumeState::CanPreemptClient(

@@ -112,7 +112,7 @@ void TCreateVolumeLinkActor::LinkVolumes(const TActorContext& ctx)
         auto errorMessage =
             TStringBuilder()
             << "The size of the leader disk " << LeaderDiskId.Quote()
-            << "is larger than the follower disk " << FollowerDiskId.Quote()
+            << " is larger than the follower disk " << FollowerDiskId.Quote()
             << " " << sourceSize << " > " << targetSize;
         LOG_ERROR(ctx, TBlockStoreComponents::SERVICE, errorMessage.c_str());
 
