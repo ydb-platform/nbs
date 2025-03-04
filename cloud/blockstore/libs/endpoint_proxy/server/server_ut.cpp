@@ -59,8 +59,7 @@ Y_UNIT_TEST_SUITE(TServerTest)
             false,
             "",
             TDuration::Seconds(1),
-            TDuration::MilliSeconds(100),
-            true);
+            TDuration::MilliSeconds(100));
 
         auto server = CreateServer(
             serverConfig,
