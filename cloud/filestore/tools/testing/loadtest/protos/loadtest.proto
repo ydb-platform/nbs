@@ -105,6 +105,9 @@ message TReplaySpec
     
     // Add O_DIRECT flag to open call
     bool OpenAddDirectFlag = 11;
+
+    // Synchronize replay with real time, value - seconds for align: use 86400 (day)
+    uint64 RealTime = 12;
 }
 
 message TMigrationSpec
