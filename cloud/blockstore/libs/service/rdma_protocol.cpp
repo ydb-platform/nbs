@@ -22,7 +22,7 @@ NRdma::TProtoMessageSerializer* TBlockStoreServerProtocol::Serializer()
     {
         TSerializer()
         {
-            BLOCKSTORE_RDMA_STORAGE_SERVICE(BLOCKSTORE_REGISTER_PROTO)
+            BLOCKSTORE_SERVICE(BLOCKSTORE_REGISTER_PROTO)
         }
     };
 

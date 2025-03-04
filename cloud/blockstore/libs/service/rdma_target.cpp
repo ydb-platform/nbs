@@ -1,6 +1,5 @@
 #include "rdma_target.h"
 
-#include "cloud/storage/core/libs/common/thread_pool.h"
 #include "rdma_protocol.h"
 #include "request_helpers.h"
 #include "service.h"
@@ -8,6 +7,7 @@
 #include <cloud/blockstore/libs/rdma/iface/protobuf.h>
 #include <cloud/blockstore/libs/rdma/iface/protocol.h>
 #include <cloud/blockstore/libs/rdma/iface/server.h>
+#include <cloud/storage/core/libs/common/thread_pool.h>
 #include <cloud/storage/core/libs/coroutine/executor.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
@@ -37,9 +37,28 @@ namespace {
     };                                                                 \
     // BLOCKSTORE_DECLARE_METHOD
 
-BLOCKSTORE_RDMA_STORAGE_SERVICE(BLOCKSTORE_DECLARE_METHOD)
+BLOCKSTORE_SERVICE(BLOCKSTORE_DECLARE_METHOD)
 
 #undef BLOCKSTORE_DECLARE_METHOD
+
+////////////////////////////////////////////////////////////////////////////////
+
+#define BLOCKSTORE_RETURN_TRUE_CASE(name, ...)         \
+    case TBlockStoreServerProtocol::Ev##name##Request: \
+        return true;                                   \
+                                                       \
+        // BLOCKSTORE_RETURN_TRUE_CASE
+
+bool IsLocalRequest(ui32 msgId)
+{
+    switch (msgId) {
+        BLOCKSTORE_LOCAL_SERVICE(BLOCKSTORE_RETURN_TRUE_CASE)
+        default:
+            return false;
+    }
+}
+
+#undef BLOCKSTORE_RETURN_TRUE_CASE
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -58,16 +77,14 @@ class TRequestHandler final
     : public NRdma::IServerHandler
     , public std::enable_shared_from_this<TRequestHandler>
 {
-private:
-    TLog Log;
+    IBlockStorePtr Service;
+    ITaskQueuePtr TaskQueue;
 
+    TLog Log;
     std::weak_ptr<NRdma::IServerEndpoint> Endpoint;
+
     const NRdma::TProtoMessageSerializer* Serializer =
         TBlockStoreServerProtocol::Serializer();
-
-    IBlockStorePtr Service;
-
-    ITaskQueuePtr TaskQueue;
 
 public:
     TRequestHandler(IBlockStorePtr service, ITaskQueuePtr taskQueue)
@@ -145,19 +162,30 @@ private:
         }
         auto parseResult = resultOrError.ExtractResult();
 
-        STORAGE_DEBUG("Processing req with msgId %d", parseResult.MsgId);
+        if (IsLocalRequest(parseResult.MsgId)) {
+            return MakeError(
+                E_NOT_IMPLEMENTED,
+                "Local requests are not supported for blockstore server RDMA "
+                "target");
+        }
+
+        STORAGE_TRACE("Processing req with msgId %u", parseResult.MsgId);
 
         switch (parseResult.MsgId) {
-            BLOCKSTORE_RDMA_STORAGE_SERVICE(BLOCKSTORE_HANDLE_REQUEST)
+            BLOCKSTORE_SERVICE(BLOCKSTORE_HANDLE_REQUEST)
 
             default:
-                return MakeError(E_NOT_IMPLEMENTED);
+                return MakeError(
+                    E_NOT_IMPLEMENTED,
+                    "Request with msg id %u are not supported by blockstore "
+                    "server RDMA target",
+                    parseResult.MsgId);
         }
     }
 #undef BLOCKSTORE_HANDLE_REQUEST
 
     template <typename TMethod, typename THandleMethod>
-    NProto::TError HandleRequest(
+    NProto::TError GeneralHandleRequest(
         void* context,
         TCallContextPtr callContext,
         std::shared_ptr<typename TMethod::TRequest> request,
@@ -167,10 +195,12 @@ private:
         THandleMethod handleMethod) const
     {
         Y_UNUSED(flags);
-        auto future =
-            TMethod::Execute(*Service, callContext, std::move(request));
+        auto future = TMethod::Execute(
+            *Service,
+            std::move(callContext),
+            std::move(request));
         SubscribeForResponse(
-            std::move(future),
+            future,
             TRequestDetails{
                 .Context = context,
                 .Out = out,
@@ -180,71 +210,65 @@ private:
         return {};
     }
 
-    NProto::TError HandleReadBlocksRequest(
+    template <typename TMethod>
+    using THandleMethod = std::function<void(
+        TRequestDetails& requestDetails,
+        TFuture<typename TMethod::TResponse>& future)>;
+
+    template <typename TMethod>
+    NProto::TError HandleRequest(
         void* context,
         TCallContextPtr callContext,
-        std::shared_ptr<NProto::TReadBlocksRequest> request,
+        std::shared_ptr<typename TMethod::TRequest> request,
         TStringBuf requestData,
         TStringBuf out,
-        ui32 flags) const
+        ui32 flags,
+        THandleMethod<TMethod> handleMethod) const
     {
-        return HandleRequest<TReadBlocksMethod>(
+        return GeneralHandleRequest<TMethod>(
             context,
             std::move(callContext),
             std::move(request),
             requestData,
             out,
             flags,
-            &TRequestHandler::HandleReadBlocksResponse);
+            std::move(handleMethod));
     }
 
-    NProto::TError HandleZeroBlocksRequest(
+    template <>
+    NProto::TError HandleRequest<TWriteBlocksMethod>(
         void* context,
         TCallContextPtr callContext,
-        std::shared_ptr<NProto::TZeroBlocksRequest> request,
+        std::shared_ptr<typename TWriteBlocksMethod::TRequest> request,
         TStringBuf requestData,
         TStringBuf out,
-        ui32 flags) const
-    {
-        return HandleRequest<TZeroBlocksMethod>(
-            context,
-            std::move(callContext),
-            std::move(request),
-            requestData,
-            out,
-            flags,
-            &TRequestHandler::HandleZeroBlocksResponse);
-    }
-
-    NProto::TError HandleWriteBlocksRequest(
-        void* context,
-        TCallContextPtr callContext,
-        std::shared_ptr<NProto::TWriteBlocksRequest> request,
-        TStringBuf requestData,
-        TStringBuf out,
-        ui32 flags) const
+        ui32 flags,
+        THandleMethod<TWriteBlocksMethod> handleMethod) const
     {
         if (!HasProtoFlag(flags, NRdma::RDMA_PROTO_FLAG_DATA_AT_THE_END)) {
-            return HandleRequest<TWriteBlocksMethod>(
+            return GeneralHandleRequest<TWriteBlocksMethod>(
                 context,
                 std::move(callContext),
                 std::move(request),
                 requestData,
                 out,
                 flags,
-                &TRequestHandler::HandleWriteBlocksResponse);
+                std::move(handleMethod));
         }
+
         size_t blocksCount = request->GetBlocks().BuffersSize();
         if (blocksCount == 0) {
             return MakeError(
                 E_ARGUMENT,
                 "provide block count with blocks field");
         }
+
         if (requestData.Size() % blocksCount != 0) {
             return MakeError(
                 E_ARGUMENT,
                 "request data is not divisible by blocks count");
         }
+
         auto blockSize = requestData.Size() / blocksCount;
 
         request->MutableBlocks()->ClearBuffers();
@@ -255,49 +279,55 @@ private:
             requestData.Skip(blockSize);
         }
 
-        return HandleRequest<TWriteBlocksMethod>(
+        return GeneralHandleRequest<TWriteBlocksMethod>(
             context,
             std::move(callContext),
             std::move(request),
             requestData,
             out,
             flags,
-            &TRequestHandler::HandleWriteBlocksResponse);
+            std::move(handleMethod));
     }
 
-#define BLOCKSTORE_DECLARE_HANDLE_REQUEST_FUNCTION(name, ...) \
-    NProto::TError Handle##name##Request(                     \
-        void* context,                                        \
-        TCallContextPtr callContext,                          \
-        std::shared_ptr<NProto::T##name##Request> request,    \
-        TStringBuf requestData,                               \
-        TStringBuf out,                                       \
-        ui32 flags) const                                     \
-    {                                                         \
-        return HandleRequest<T##name##Method>(                \
-            context,                                          \
-            std::move(callContext),                           \
-            std::move(request),                               \
-            requestData,                                      \
-            out,                                              \
-            flags,                                            \
-            &TRequestHandler::Handle##name##Response);        \
-    }                                                         \
+#define BLOCKSTORE_DECLARE_HANDLE_REQUEST_FUNCTION(name, ...)                \
+    NProto::TError Handle##name##Request(                                    \
+        void* context,                                                       \
+        TCallContextPtr callContext,                                         \
+        std::shared_ptr<NProto::T##name##Request> request,                   \
+        TStringBuf requestData,                                              \
+        TStringBuf out,                                                      \
+        ui32 flags) const                                                    \
+    {                                                                        \
+        auto methodCall =                                                    \
+            [self = this](                                                   \
+                TRequestDetails& requestDetails,                             \
+                TFuture<typename T##name##Method::TResponse> future)         \
+        {                                                                    \
+            self->Handle##name##Response(requestDetails, std::move(future)); \
+        };                                                                   \
+        return HandleRequest<T##name##Method>(                               \
+            context,                                                         \
+            std::move(callContext),                                          \
+            std::move(request),                                              \
+            requestData,                                                     \
+            out,                                                             \
+            flags,                                                           \
+            std::move(methodCall));                                          \
+    }                                                                        \
     // BLOCKSTORE_DECLARE_HANDLE_REQUEST_FUNCTION
 
-    BLOCKSTORE_RDMA_STORAGE_SERVICE_CONTROL_PLANE(
-        BLOCKSTORE_DECLARE_HANDLE_REQUEST_FUNCTION);
+    BLOCKSTORE_SERVICE(BLOCKSTORE_DECLARE_HANDLE_REQUEST_FUNCTION);
 
 #undef BLOCKSTORE_DECLARE_HANDLE_REQUEST_FUNCTION
 
-    template <typename TFuture>
-    void HandleResponse(
+    template <typename TMethod>
+    void GeneralHandleResponse(
         const TRequestDetails& requestDetails,
-        TFuture future,
+        TFuture<typename TMethod::TResponse>& future,
         uint msgId) const
     {
         const auto& response = future.GetValue();
-        STORAGE_DEBUG("sending response with msgId %d", msgId);
+        STORAGE_TRACE("sending response with msgId %d", msgId);
 
         const size_t totalLen =
             NRdma::TProtoMessageSerializer::MessageByteSize(response, 0);
@@ -321,22 +351,14 @@ private:
         }
     }
 
-#define BLOCKSTORE_DECLARE_HANDLE_RESPONSE_FUNCTION(name, ...) \
-    void Handle##name##Response(                               \
-        const TRequestDetails& requestDetails,                 \
-        TFuture<NProto::T##name##Response> future) const       \
-    {                                                          \
-        HandleResponse(                                        \
-            requestDetails,                                    \
-            std::move(future),                                 \
-            TBlockStoreServerProtocol::Ev##name##Response);    \
-    }                                                          \
-    // BLOCKSTORE_DECLARE_HANDLE_RESPONSE_FUNCTION
-
-    BLOCKSTORE_RDMA_STORAGE_SERVICE_CONTROL_PLANE(
-        BLOCKSTORE_DECLARE_HANDLE_RESPONSE_FUNCTION);
-
-#undef BLOCKSTORE_DECLARE_HANDLE_REQUEST_FUNCTION
+    template <typename TMethod>
+    void HandleResponse(
+        TRequestDetails& requestDetails,
+        TFuture<typename TMethod::TResponse>& future,
+        uint msgId) const
+    {
+        GeneralHandleResponse<TMethod>(requestDetails, future, msgId);
+    }
 
     static TResultOrError<size_t> SerializeReadBlocksResponseToBuffer(
         const NProto::TReadBlocksResponse& response,
@@ -368,7 +390,7 @@ private:
         for (const auto& buffer: blocks.GetBuffers()) {
             proto.MutableBlocks()
                 ->AddBuffers();   // Add empty blocks to pass count of blocks to
-                                  // help in restoring request.
+                                  // help in restoring response.
             char* dataBufferBegin = const_cast<char*>(dataBuffer.Data());
             MemCopy(dataBufferBegin, buffer.Data(), blockSize);
             dataBuffer = dataBuffer.RSeek(dataBuffer.size() - blockSize);
@@ -386,18 +408,20 @@ private:
         return requestDetails.Out.Size();
     }
 
-    void HandleReadBlocksResponse(
+    template <>
+    void HandleResponse<TReadBlocksMethod>(
         TRequestDetails& requestDetails,
-        TFuture<NProto::TReadBlocksResponse> future) const
+        TFuture<NProto::TReadBlocksResponse>& future,
+        uint msgId) const
     {
         const auto& response = future.GetValue();
         if (HasError(response.GetError()) ||
             response.GetBlocks().BuffersSize() == 0)
         {
-            HandleResponse(
+            GeneralHandleResponse<TReadBlocksMethod>(
                 requestDetails,
-                std::move(future),
-                TBlockStoreServerProtocol::EvReadBlocksResponse);
+                future,
+                msgId);
             return;
         }
         auto [bytes, error] =
@@ -414,49 +438,40 @@ private:
         }
     }
 
-    void HandleZeroBlocksResponse(
-        TRequestDetails& requestDetails,
-        TFuture<NProto::TZeroBlocksResponse> future) const
-    {
-        HandleResponse(
-            requestDetails,
-            std::move(future),
-            TBlockStoreServerProtocol::EvZeroBlocksResponse);
-    }
+#define BLOCKSTORE_DECLARE_HANDLE_RESPONSE_FUNCTION(name, ...) \
+    void Handle##name##Response(                               \
+        TRequestDetails& requestDetails,                       \
+        TFuture<NProto::T##name##Response> future) const       \
+    {                                                          \
+        HandleResponse<T##name##Method>(                       \
+            requestDetails,                                    \
+            future,                                            \
+            TBlockStoreServerProtocol::Ev##name##Response);    \
+    }                                                          \
+    // BLOCKSTORE_DECLARE_HANDLE_RESPONSE_FUNCTION
 
-    void HandleWriteBlocksResponse(
-        TRequestDetails& requestDetails,
-        TFuture<NProto::TWriteBlocksResponse> future) const
-    {
-        HandleResponse(
-            requestDetails,
-            std::move(future),
-            TBlockStoreServerProtocol::EvWriteBlocksResponse);
-    }
+    BLOCKSTORE_SERVICE(BLOCKSTORE_DECLARE_HANDLE_RESPONSE_FUNCTION);
+
+#undef BLOCKSTORE_DECLARE_HANDLE_REQUEST_FUNCTION
 
     template <typename TFuture, typename THandleResponseMethod>
     void SubscribeForResponse(
-        TFuture future,
+        TFuture& future,
         TRequestDetails requestDetails,
         THandleResponseMethod handleResponseMethod) const
     {
-        auto handleResponse = [self = shared_from_this(),
-                               requestDetails = requestDetails,
-                               handleResponseMethod =
-                                   handleResponseMethod](TFuture future) mutable
+        auto handleResponse =
+            [self = shared_from_this(),
+             requestDetails = requestDetails,
+             handleResponseMethod =
+                 std::move(handleResponseMethod)](TFuture future) mutable
         {
             self->TaskQueue->ExecuteSimple(
-                [self = self,
-                 future = std::move(future),
+                [future = std::move(future),
                  requestDetails = requestDetails,
-                 handleResponseMethod = handleResponseMethod]() mutable
-                {
-                    const TRequestHandler* obj = self.get();
-                    // Call TRequestHandler::HandleXXXResponse()
-                    (obj->*handleResponseMethod)(
-                        requestDetails,
-                        std::move(future));
-                });
+                 handleResponseMethod =
+                     std::move(handleResponseMethod)]() mutable
+                { handleResponseMethod(requestDetails, future); });
         };
         future.Subscribe(std::move(handleResponse));
     }
@@ -466,7 +481,6 @@ private:
 
 class TRdmaTarget final: public IStartable
 {
-private:
     const TBlockstoreServerRdmaTargetConfigPtr Config;
 
     ILoggingServicePtr Logging;
@@ -482,8 +496,8 @@ public:
             TBlockstoreServerRdmaTargetConfigPtr rdmaTargetConfig,
             ILoggingServicePtr logging,
             NRdma::IServerPtr server,
-            IBlockStorePtr service,
-            ITaskQueuePtr taskQueue)
+            ITaskQueuePtr taskQueue,
+            IBlockStorePtr service)
         : Config(std::move(rdmaTargetConfig))
         , Logging(std::move(logging))
         , Server(std::move(server))
@@ -529,8 +543,8 @@ IStartablePtr CreateBlockstoreServerRdmaTarget(
         std::move(rdmaTargetConfig),
         std::move(logging),
         std::move(server),
-        std::move(service),
-        std::move(threadPool));
+        std::move(threadPool),
+        std::move(service));
 }
 
 }   // namespace NCloud::NBlockStore::NStorage
