@@ -6,6 +6,8 @@ namespace NCloud::NBlockStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+// Copy of BLOCKSTORE_SERVICE requests. Add my own macro to split control plane
+// and data plane requests.
 #define BLOCKSTORE_RDMA_STORAGE_SERVICE_CONTROL_PLANE(xxx, ...)                \
     xxx(Ping,                               __VA_ARGS__)                       \
     xxx(CreateVolume,                       __VA_ARGS__)                       \
@@ -38,6 +40,16 @@ namespace NCloud::NBlockStore::NStorage {
     xxx(CreateVolumeFromDevice,             __VA_ARGS__)                       \
     xxx(ResumeDevice,                       __VA_ARGS__)                       \
     xxx(QueryAgentsInfo,                    __VA_ARGS__)                       \
+    xxx(CheckRange,                         __VA_ARGS__)                       \
+    xxx(CreateVolumeLink,                   __VA_ARGS__)                       \
+    xxx(DestroyVolumeLink,                  __VA_ARGS__)                       \
+    xxx(StartEndpoint,                      __VA_ARGS__)                       \
+    xxx(StopEndpoint,                       __VA_ARGS__)                       \
+    xxx(ListEndpoints,                      __VA_ARGS__)                       \
+    xxx(KickEndpoint,                       __VA_ARGS__)                       \
+    xxx(ListKeyrings,                       __VA_ARGS__)                       \
+    xxx(DescribeEndpoint,                   __VA_ARGS__)                       \
+    xxx(RefreshEndpoint,                    __VA_ARGS__)                       \
 // BLOCKSTORE_RDMA_STORAGE_SERVICE_CONTROL_PLANE
 
 #define BLOCKSTORE_RDMA_STORAGE_SERVICE_DATA_PLANE(xxx, ...)                   \
