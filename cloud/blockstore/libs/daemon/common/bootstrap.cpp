@@ -664,12 +664,11 @@ void TBootstrapBase::Init()
         InitRdmaRequestServer();
         if (RdmaRequestServer) {
             RdmaTarget = CreateBlockstoreServerRdmaTarget(
-                std::make_shared<TRdmaTargetConfig>(
+                std::make_shared<TBlockstoreServerRdmaTargetConfig>(
                     Configs->ServerConfig->GetRdmaTarget()),
                 Logging,
                 RdmaRequestServer,
-                Service,
-                Executor);
+                Service);
             STORAGE_INFO("RDMA Target initialized");
         }
     }
