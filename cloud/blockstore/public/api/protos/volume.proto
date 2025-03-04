@@ -761,7 +761,7 @@ message TCheckRangeRequest
     uint64 BlocksCount = 4;
 
     // Is it necessary to calculate and include checksums in the response
-    bool IsChecksumNeeded = 5;
+    bool CalculateChecksums = 5;
 }
 
 message TCheckRangeResponse

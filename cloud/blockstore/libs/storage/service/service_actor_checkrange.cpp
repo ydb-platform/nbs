@@ -28,7 +28,7 @@ private:
     const TString DiskId;
     const ui64 StartIndex;
     const ui64 BlocksCount;
-    const bool IsChecksumNeeded;
+    const bool CalculateChecksums;
 
 public:
     TCheckRangeActor(
@@ -37,7 +37,7 @@ public:
         TString diskId,
         ui64 startIndex,
         ui64 blocksCount,
-        bool isChecksumNeeded);
+        bool calculateChecksums);
 
     void Bootstrap(const TActorContext& ctx);
 
@@ -64,13 +64,13 @@ TCheckRangeActor::TCheckRangeActor(
     TString diskId,
     ui64 startIndex,
     ui64 blocksCount,
-    bool isChecksumNeeded)
+    bool calculateChecksums)
     : RequestInfo(std::move(requestInfo))
     , Config(std::move(config))
     , DiskId(std::move(diskId))
     , StartIndex(startIndex)
     , BlocksCount(blocksCount)
-    , IsChecksumNeeded(isChecksumNeeded)
+    , CalculateChecksums(calculateChecksums)
 {}
 
 void TCheckRangeActor::Bootstrap(const TActorContext& ctx)
@@ -86,7 +86,7 @@ void TCheckRangeActor::CheckRange(const TActorContext& ctx)
     request->Record.SetDiskId(DiskId);
     request->Record.SetStartIndex(StartIndex);
     request->Record.SetBlocksCount(BlocksCount);
-    request->Record.SetIsChecksumNeeded(IsChecksumNeeded);
+    request->Record.SetCalculateChecksums(CalculateChecksums);
 
     NCloud::Send(
         ctx,
@@ -102,7 +102,7 @@ void TCheckRangeActor::HandleCheckRangeResponse(
     const auto& error = ev->Get()->GetError();
     auto response = std::make_unique<TEvService::TEvCheckRangeResponse>(error);
     response->Record.MutableStatus()->CopyFrom(ev->Get()->Record.GetStatus());
-    response->Record.MutableChecksums()->CopyFrom(response->Record.GetChecksums());
+    response->Record.MutableChecksums()->CopyFrom(ev->Get()->Record.GetChecksums());
 
     ReplyAndDie(
         ctx,
@@ -184,7 +184,7 @@ void TServiceActor::HandleCheckRange(
         request.GetDiskId(),
         request.GetStartIndex(),
         request.GetBlocksCount(),
-        request.GetIsChecksumNeeded());
+        request.GetCalculateChecksums());
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

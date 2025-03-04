@@ -107,13 +107,17 @@ void TCheckRangeActor::HandleReadBlocksResponse(
         std::make_unique<TEvService::TEvCheckRangeResponse>(MakeError(S_OK));
     response->Record.MutableStatus()->CopyFrom(status);
 
-    if (Request.GetIsChecksumNeeded()) {
+    if (Request.GetCalculateChecksums()) {
         TBlockChecksum blockChecksum;
         for (const auto& buffer: ev->Get()->Record.GetBlocks().GetBuffers()) {
             const auto checksum =
                 blockChecksum.Extend(buffer.data(), buffer.size());
             response->Record.MutableChecksums()->Add(checksum);
         }
+               LOG_ERROR_S(
+            ctx,
+            TBlockStoreComponents::PARTITION,
+            " checksums size " << response->Record.ChecksumsSize());
     }
 
     ReplyAndDie(ctx, std::move(response));
