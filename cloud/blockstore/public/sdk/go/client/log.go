@@ -1,9 +1,7 @@
 package client
 
 import (
-	"fmt"
 	"log"
-	"log/syslog"
 	"os"
 
 	"golang.org/x/net/context"
@@ -18,6 +16,7 @@ const (
 	LOG_WARN
 	LOG_INFO
 	LOG_DEBUG
+	LOG_TRACE
 )
 
 type Log interface {
@@ -25,133 +24,58 @@ type Log interface {
 }
 
 type Logger interface {
-	Print(ctx context.Context, v ...interface{})
-	Printf(ctx context.Context, format string, v ...interface{})
+	Trace(ctx context.Context, format string, args ...interface{})
+	Debug(ctx context.Context, format string, args ...interface{})
+	Info(ctx context.Context, format string, args ...interface{})
+	Warn(ctx context.Context, format string, args ...interface{})
+	Error(ctx context.Context, format string, args ...interface{})
+	Fatal(ctx context.Context, format string, args ...interface{})
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 
-type errorLogger struct {
-	writer *syslog.Writer
-}
-
-func (l *errorLogger) Print(ctx context.Context, v ...interface{}) {
-	_ = l.writer.Err(fmt.Sprint(v...))
-}
-
-func (l *errorLogger) Printf(ctx context.Context, format string, v ...interface{}) {
-	_ = l.writer.Err(fmt.Sprintf(format, v...))
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
-type warnLogger struct {
-	writer *syslog.Writer
-}
-
-func (l *warnLogger) Print(ctx context.Context, v ...interface{}) {
-	_ = l.writer.Warning(fmt.Sprint(v...))
-}
-
-func (l *warnLogger) Printf(ctx context.Context, format string, v ...interface{}) {
-	_ = l.writer.Warning(fmt.Sprintf(format, v...))
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
-type infoLogger struct {
-	writer *syslog.Writer
-}
-
-func (l *infoLogger) Print(ctx context.Context, v ...interface{}) {
-	_ = l.writer.Info(fmt.Sprint(v...))
-}
-
-func (l *infoLogger) Printf(ctx context.Context, format string, v ...interface{}) {
-	_ = l.writer.Info(fmt.Sprintf(format, v...))
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
-type debugLogger struct {
-	writer *syslog.Writer
-}
-
-func (l *debugLogger) Print(ctx context.Context, v ...interface{}) {
-	_ = l.writer.Debug(fmt.Sprint(v...))
-}
-
-func (l *debugLogger) Printf(ctx context.Context, format string, v ...interface{}) {
-	_ = l.writer.Debug(fmt.Sprintf(format, v...))
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
-type stdLoggerWrapper struct {
+type defaultLogger struct {
 	logger *log.Logger
-}
-
-func (w *stdLoggerWrapper) Print(ctx context.Context, v ...interface{}) {
-	w.logger.Print(v...)
-}
-
-func (w *stdLoggerWrapper) Printf(ctx context.Context, format string, v ...interface{}) {
-	w.logger.Printf(format, v...)
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
-type logWrapper struct {
 	level  LogLevel
-	logger Logger
 }
 
-func (w *logWrapper) Logger(level LogLevel) Logger {
-	if level <= w.level {
-		return w.logger
+func (e *defaultLogger) write(level LogLevel, format string, args ...interface{}) {
+	if e.level < level {
+		return
 	}
-	return nil
+
+	e.logger.Printf(format, args...)
 }
 
-func NewLog(logger *log.Logger, level LogLevel) Log {
-	if logger == nil {
-		return &logWrapper{level, nil}
-	} else {
-		return &logWrapper{level, &stdLoggerWrapper{logger}}
-	}
+func (e *defaultLogger) Trace(ctx context.Context, format string, args ...interface{}) {
+	e.write(LOG_TRACE, format, args...)
 }
 
-func NewStderrLog(level LogLevel) Log {
+func (e *defaultLogger) Debug(ctx context.Context, format string, args ...interface{}) {
+	e.write(LOG_DEBUG, format, args...)
+}
+
+func (e *defaultLogger) Info(ctx context.Context, format string, args ...interface{}) {
+	e.write(LOG_INFO, format, args...)
+}
+
+func (e *defaultLogger) Warn(ctx context.Context, format string, args ...interface{}) {
+	e.write(LOG_WARN, format, args...)
+}
+
+func (e *defaultLogger) Error(ctx context.Context, format string, args ...interface{}) {
+	e.write(LOG_ERROR, format, args...)
+}
+
+func (e *defaultLogger) Fatal(ctx context.Context, format string, args ...interface{}) {
+	log.Fatalf(format, args...)
+}
+
+func NewLog(logger *log.Logger, level LogLevel) Logger {
+	return &defaultLogger{logger: logger, level: level}
+}
+
+func NewStderrLog(level LogLevel) Logger {
 	logger := log.New(os.Stderr, "", 0)
 	return NewLog(logger, level)
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
-type syslogWrapper struct {
-	level   LogLevel
-	loggers []Logger
-}
-
-func (w *syslogWrapper) Logger(level LogLevel) Logger {
-	if w.loggers == nil {
-		return nil
-	}
-	if level <= w.level {
-		return w.loggers[level]
-	}
-	return nil
-}
-
-func NewSysLog(writer *syslog.Writer, level LogLevel) Log {
-	var loggers []Logger
-	if writer != nil {
-		loggers = []Logger{
-			&errorLogger{writer},
-			&warnLogger{writer},
-			&infoLogger{writer},
-			&debugLogger{writer},
-		}
-	}
-	return &syslogWrapper{level, loggers}
 }

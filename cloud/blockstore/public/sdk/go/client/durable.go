@@ -21,7 +21,7 @@ type durableClient struct {
 	timeout          time.Duration
 	timeoutIncrement time.Duration
 	onError          func(context.Context, ClientError)
-	log              Log
+	log              Logger
 }
 
 func (client *durableClient) executeRequest(
@@ -38,17 +38,15 @@ func (client *durableClient) executeRequest(
 	for delay := client.timeoutIncrement; ; delay += client.timeoutIncrement {
 		resp, err := call(ctx)
 		if err == nil && retryCount > 1 {
-			if logger := client.log.Logger(LOG_INFO); logger != nil {
-				duration := time.Since(started)
-				logger.Printf(
-					ctx,
-					"%s%s completed (retries: %d, duration: %v)",
-					requestName(req),
-					requestDetails(req),
-					retryCount,
-					duration,
-				)
-			}
+			duration := time.Since(started)
+			client.log.Info(
+				ctx,
+				"%s%s completed (retries: %d, duration: %v)",
+				requestName(req),
+				requestDetails(req),
+				retryCount,
+				duration,
+			)
 		}
 
 		cerr := GetClientError(err)
@@ -59,29 +57,25 @@ func (client *durableClient) executeRequest(
 		client.onError(ctx, cerr)
 
 		if !cerr.IsRetriable() {
-			if logger := client.log.Logger(LOG_ERROR); logger != nil {
-				logger.Printf(
-					ctx,
-					"%s%s request failed: %v",
-					requestName(req),
-					requestDetails(req),
-					err,
-				)
-			}
+			client.log.Error(
+				ctx,
+				"%s%s request failed: %v",
+				requestName(req),
+				requestDetails(req),
+				err,
+			)
 			return resp, err
 		}
 
-		if logger := client.log.Logger(LOG_WARN); logger != nil {
-			logger.Printf(
-				ctx,
-				"%s%s retry request (retries: %d, timeout: %v, error: %v)",
-				requestName(req),
-				requestDetails(req),
-				retryCount,
-				client.timeout,
-				err,
-			)
-		}
+		client.log.Warn(
+			ctx,
+			"%s%s retry request (retries: %d, timeout: %v, error: %v)",
+			requestName(req),
+			requestDetails(req),
+			retryCount,
+			client.timeout,
+			err,
+		)
 
 		retryCount++
 		select {
@@ -731,7 +725,7 @@ type DurableClientOpts struct {
 func NewDurableClient(
 	impl ClientIface,
 	opts *DurableClientOpts,
-	log Log,
+	log Logger,
 ) ClientIface {
 
 	retryTimeout := defaultRetryTimeout
