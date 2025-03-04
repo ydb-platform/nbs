@@ -247,12 +247,14 @@ message TCmsRemoveDeviceRequest
 ////////////////////////////////////////////////////////////////////////////////
 // Replace devices
 
-message TDeviceCoordinate {
+message TDeviceCoordinate
+{
     uint64 ReplicaIndex = 1;
     uint64 DeviceIndex = 2;
 }
 
-message TReplaceDevicesRequest {
+message TReplaceDevicesRequest
+{
     // Optional request headers.
     THeaders Headers = 1;
 
