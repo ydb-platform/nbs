@@ -530,5 +530,5 @@ message TStorageConfig
 
     // Truncate strings from google::protobuf::Message
     // that exceed the specified length
-    optional uint32 TruncateLogStringFieldLongerThan = 421
+    optional uint32 TruncateLogStringFieldLongerThan = 421;
 }
