@@ -124,6 +124,7 @@ type nodeService struct {
 	mounter        mounter.Interface
 	volumeOps      *sync.Map
 	mountOptions   []string
+	discard        bool
 }
 
 func newNodeService(
@@ -138,7 +139,8 @@ func newNodeService(
 	nfsClient nfsclient.EndpointClientIface,
 	nfsLocalClient nfsclient.EndpointClientIface,
 	mounter mounter.Interface,
-	mountOptions []string) csi.NodeServer {
+	mountOptions []string,
+	discard bool) csi.NodeServer {
 
 	return &nodeService{
 		nodeId:              nodeId,
@@ -154,6 +156,7 @@ func newNodeService(
 		localFsOverrides:    localFsOverrides,
 		volumeOps:           new(sync.Map),
 		mountOptions:        mountOptions,
+		discard:             discard,
 	}
 }
 
@@ -738,6 +741,10 @@ func (s *nodeService) nodeStageDiskAsFilesystem(
 	mountOptions := s.mountOptions
 	if fsType == "ext4" {
 		mountOptions = append(mountOptions, "errors=remount-ro")
+	}
+
+	if s.discard && !isDiskRegistryMediaKind(getStorageMediaKind(req.VolumeContext)) {
+		mountOptions = append(mountOptions, "discard")
 	}
 
 	if mnt != nil {
