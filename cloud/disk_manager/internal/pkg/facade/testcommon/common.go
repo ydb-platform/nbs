@@ -378,21 +378,20 @@ func WaitForCheckpointsDoNotExist(
 		checkpoints, err := nbsClient.GetCheckpoints(ctx, diskID)
 		require.NoError(t, err)
 
-		found := false
+		checkpointSet := make(map[string]struct{}, len(checkpoints))
+		for _, checkpoint := range checkpoints {
+			checkpointSet[checkpoint] = struct{}{}
+		}
 
+		found := false
 		for _, awaitedCheckpoint := range awaitedCheckpoints {
-			for _, checkpoint := range checkpoints {
-				if awaitedCheckpoint == checkpoint {
-					found = true
-					break
-				}
-			}
-			if found {
+			if _, exists := checkpointSet[awaitedCheckpoint]; exists {
+				found = true
 				break
 			}
 		}
 
-		if !found {
+		if len(checkpoints) == 0 || (!found && len(awaitedCheckpoints) > 0) {
 			return
 		}
 
