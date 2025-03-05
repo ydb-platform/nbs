@@ -8,7 +8,6 @@ option go_package = "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg
 
 ////////////////////////////////////////////////////////////////////////////////
 
-create_shadow_disk_based_checkpoint_task.go
 message CreateShadowDiskBasedCheckpointRequest {
     types.Disk Disk = 1;
     string CheckpointIdPrefix = 2;
@@ -20,9 +19,9 @@ message CreateShadowDiskBasedCheckpointResponse {
 
 message CreateShadowDiskBasedCheckpointTaskState {
     int32 CheckpointIteration = 1;
-    string CheckpointID = 2;
+    string CheckpointId = 2;
 }
 
 message CreateShadowDiskBasedCheckpointMetadata {
-    string CheckpointID = 1;
+    string CheckpointId = 1;
 }

@@ -2,13 +2,13 @@ package dataplane
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/golang/protobuf/proto"
-	"github.com/golang/protobuf/ptypes/empty"
-	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/config"
+	nbs_client "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/protos"
-	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/snapshot/storage"
 	"github.com/ydb-platform/nbs/cloud/tasks"
+	"github.com/ydb-platform/nbs/cloud/tasks/errors"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -39,14 +39,16 @@ func (t *createShadowDiskBasedCheckpointTask) Run(
 	execCtx tasks.ExecutionContext,
 ) error {
 
-	disk := t.request.SrcDisk
+	// TODO:_ add more logs?
+
+	disk := t.request.Disk
 
 	nbsClient, err := t.nbsFactory.GetClient(ctx, disk.ZoneId)
 	if err != nil {
 		return err
 	}
 
-	if t.state.CheckpointID != "" {
+	if t.state.CheckpointId != "" {
 		// Nothing to do.
 		return nil
 	}
@@ -67,7 +69,7 @@ func (t *createShadowDiskBasedCheckpointTask) Run(
 		return err
 	}
 
-	t.state.CheckpointID = t.getCurrentCheckpointID()
+	t.state.CheckpointId = t.getCurrentCheckpointID()  // TODO:_ do not put it in database, but form it using prefix and iteration?
 	return execCtx.SaveState(ctx)
 }
 
@@ -76,7 +78,7 @@ func (t *createShadowDiskBasedCheckpointTask) Cancel(
 	execCtx tasks.ExecutionContext,
 ) error {
 
-	nbsClient, err := t.nbsFactory.GetClient(ctx, t.request.SrcDisk.ZoneId)
+	nbsClient, err := t.nbsFactory.GetClient(ctx, t.request.Disk.ZoneId)
 	if err != nil {
 		return nil
 	}
@@ -88,8 +90,8 @@ func (t *createShadowDiskBasedCheckpointTask) GetMetadata(
 	ctx context.Context,
 ) (proto.Message, error) {
 
-	return &disk_manager.CreateShadowDiskBasedCheckpointMetadata{
-		CheckpointID: t.state.CheckpointID,
+	return &protos.CreateShadowDiskBasedCheckpointMetadata{
+		CheckpointId: t.state.CheckpointId,
 	}, nil
 }
 
@@ -104,10 +106,10 @@ func (t *createShadowDiskBasedCheckpointTask) GetResponse() proto.Message {
 // Proceed creating snapshot if checkpoint is ready.
 // Retry with the same iteration if checkpoint in not ready yet.
 // Retry with new iteration if checkpoint is broken.
-func (t *createSnapshotFromDiskTask) handleCheckpointStatus(
+func (t *createShadowDiskBasedCheckpointTask) handleCheckpointStatus(
 	ctx context.Context,
 	execCtx tasks.ExecutionContext,
-	nbsClient nbs.Client,
+	nbsClient nbs_client.Client,
 	diskID string,
 	checkpointID string,
 ) error {
@@ -126,17 +128,17 @@ func (t *createSnapshotFromDiskTask) handleCheckpointStatus(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-func (t *createSnapshotFromDiskTask) makeCheckpointID(index int) string {
+func (t *createShadowDiskBasedCheckpointTask) makeCheckpointID(index int) string {
 	return fmt.Sprintf("%v_%v", t.request.CheckpointIdPrefix, index)
 }
 
-func (t *createSnapshotFromDiskTask) getCurrentCheckpointID() string {
+func (t *createShadowDiskBasedCheckpointTask) getCurrentCheckpointID() string {
 	return t.makeCheckpointID(int(t.state.CheckpointIteration))
 }
 
-func (t *createSnapshotFromDiskTask) deletePreviousCheckpoint(
+func (t *createShadowDiskBasedCheckpointTask) deletePreviousCheckpoint(
 	ctx context.Context,
-	nbsClient nbs.Client,
+	nbsClient nbs_client.Client,
 ) error {
 
 	if t.state.CheckpointIteration == 0 {
@@ -150,14 +152,14 @@ func (t *createSnapshotFromDiskTask) deletePreviousCheckpoint(
 
 	return nbsClient.DeleteCheckpoint(
 		ctx,
-		t.request.SrcDisk.DiskId,
+		t.request.Disk.DiskId,
 		checkpointID,
 	)
 }
 
-func (t *createSnapshotFromDiskTask) updateCheckpoint(
+func (t *createShadowDiskBasedCheckpointTask) updateCheckpoint(
 	ctx context.Context,
-	nbsClient nbs.Client,
+	nbsClient nbs_client.Client,
 ) error {
 
 	err := t.deletePreviousCheckpoint(ctx, nbsClient)
@@ -167,16 +169,16 @@ func (t *createSnapshotFromDiskTask) updateCheckpoint(
 
 	return nbsClient.CreateCheckpoint(
 		ctx,
-		nbs.CheckpointParams{
-			DiskID:       t.request.SrcDisk.DiskId,
+		nbs_client.CheckpointParams{
+			DiskID:       t.request.Disk.DiskId,
 			CheckpointID: t.getCurrentCheckpointID(),
 		},
 	)
 }
 
-func (t *createSnapshotFromDiskTask) cleanupCheckpoints(
+func (t *createShadowDiskBasedCheckpointTask) cleanupCheckpoints(
 	ctx context.Context,
-	nbsClient nbs.Client,
+	nbsClient nbs_client.Client,
 ) error {
 
 	err := t.deletePreviousCheckpoint(ctx, nbsClient)
@@ -186,7 +188,7 @@ func (t *createSnapshotFromDiskTask) cleanupCheckpoints(
 
 	return nbsClient.DeleteCheckpoint(
 		ctx,
-		t.request.SrcDisk.DiskId,
+		t.request.Disk.DiskId,
 		t.getCurrentCheckpointID(),
 	)
 }

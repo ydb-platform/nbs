@@ -898,7 +898,7 @@ func testCreateSnapshotFromDiskWithFailedShadowDisk(
 			return
 		}
 
-		require.Fail(t, "Unexpected error: %v", err.Error())
+		require.Fail(t, "Unexpected error", err.Error())
 	}
 
 	response := disk_manager.CreateSnapshotResponse{}
