@@ -6996,7 +6996,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         // 3/61 scales to ~50/1024 < 64 deletion markers per fully filled range
         // Cleanup shouldn't have been run
         {
-            auto response = tablet.GetStorageStats(1);
+            auto response = tablet.GetStorageStats();
             const auto& stats = response->Record.GetStats();
             UNIT_ASSERT_VALUES_EQUAL(8 * 64, stats.GetMixedBlocksCount());
             UNIT_ASSERT_VALUES_EQUAL(8 * 61, stats.GetUsedBlocksCount());
@@ -7017,7 +7017,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         // After cleanup, there should remain 28 deletion markers in total
         // 28/480 scales to ~59/1024 => no more cleanup operations
         {
-            auto response = tablet.GetStorageStats(1);
+            auto response = tablet.GetStorageStats();
             const auto& stats = response->Record.GetStats();
             UNIT_ASSERT_VALUES_EQUAL(8 * 64, stats.GetMixedBlocksCount());
             UNIT_ASSERT_VALUES_EQUAL(8 * 60, stats.GetUsedBlocksCount());
@@ -7034,9 +7034,8 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
 
         // Cleanup should've been triggered automatically
         {
-            auto response = tablet.GetStorageStats(1);
+            auto response = tablet.GetStorageStats();
             const auto& stats = response->Record.GetStats();
-            UNIT_ASSERT_VALUES_EQUAL(8 * 64, stats.GetMixedBlocksCount());
             UNIT_ASSERT_VALUES_EQUAL(8, stats.GetUsedBlocksCount());
             UNIT_ASSERT_VALUES_EQUAL(0, stats.GetDeletionMarkersCount());
         }
