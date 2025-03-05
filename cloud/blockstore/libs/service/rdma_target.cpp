@@ -152,15 +152,12 @@ private:
         TStringBuf in,
         TStringBuf out) const
     {
-        auto resultOrError = Serializer->Parse(in);
+        auto [parseResult, error] = Serializer->Parse(in);
 
-        if (HasError(resultOrError.GetError())) {
-            STORAGE_ERROR(
-                "Can't parse input: %s",
-                FormatError(resultOrError.GetError()).c_str())
-            return resultOrError.GetError();
+        if (HasError(error)) {
+            STORAGE_ERROR("Can't parse input: %s", FormatError(error).c_str())
+            return error;
         }
-        auto parseResult = resultOrError.ExtractResult();
 
         if (IsLocalRequest(parseResult.MsgId)) {
             return MakeError(

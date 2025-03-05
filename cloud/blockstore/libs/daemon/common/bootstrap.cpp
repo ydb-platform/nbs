@@ -46,6 +46,7 @@
 #include <cloud/blockstore/libs/nbd/server.h>
 #include <cloud/blockstore/libs/nvme/nvme.h>
 #include <cloud/blockstore/libs/rdma/iface/client.h>
+#include <cloud/blockstore/libs/rdma/iface/config.h>
 #include <cloud/blockstore/libs/rdma/iface/server.h>
 #include <cloud/blockstore/libs/server/config.h>
 #include <cloud/blockstore/libs/server/server.h>
@@ -660,12 +661,12 @@ void TBootstrapBase::Init()
     GrpcEndpointListener->SetClientStorageFactory(
         Server->GetClientStorageFactory());
 
-    if (Configs->ServerConfig->GetRdmaTargetEnabled()) {
+    if (Configs->RdmaConfig->GetBlockstoreServerTargetEnabled()) {
         InitRdmaRequestServer();
         if (RdmaRequestServer) {
             RdmaTarget = CreateBlockstoreServerRdmaTarget(
                 std::make_shared<TBlockstoreServerRdmaTargetConfig>(
-                    Configs->ServerConfig->GetRdmaTarget()),
+                    Configs->RdmaConfig->GetBlockstoreServerTarget()),
                 Logging,
                 RdmaRequestServer,
                 Service);
