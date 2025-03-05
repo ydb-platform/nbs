@@ -192,16 +192,9 @@ func (t *createSnapshotFromDiskTask) Cancel(
 
 	selfTaskID := execCtx.GetTaskID()
 
-	// TODO:_ do not describe in cancel ???
-	diskParams, err := nbsClient.Describe(ctx, t.request.SrcDisk.DiskId)
-	if err != nil {
-		return err
-	}
-
 	err = t.deleteCheckpoint(
 		ctx,
 		nbsClient,
-		diskParams.IsDiskRegistryBasedDisk,
 		selfTaskID,
 	)
 	if err != nil {
@@ -355,13 +348,21 @@ func (t *createSnapshotFromDiskTask) createCheckpoint(
 func (t *createSnapshotFromDiskTask) deleteCheckpoint(
 	ctx context.Context,
 	nbsClient nbs.Client,
-	isDiskRegistryBasedDisk bool,
 	selfTaskID string,
 ) error {
 
 	disk := t.request.SrcDisk
 
-	if !isDiskRegistryBasedDisk {
+	diskParams, err := nbsClient.Describe(ctx, t.request.SrcDisk.DiskId)
+	if err != nil {
+		if nbs.IsNotFoundError(err) {
+			// No need to delete checkpoint if disk does not exist.
+			return nil
+		}
+		return err
+	}
+
+	if !diskParams.IsDiskRegistryBasedDisk {
 		return nbsClient.DeleteCheckpoint(
 			ctx,
 			disk.DiskId,

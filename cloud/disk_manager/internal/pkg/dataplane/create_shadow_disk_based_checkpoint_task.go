@@ -39,8 +39,6 @@ func (t *createShadowDiskBasedCheckpointTask) Run(
 	execCtx tasks.ExecutionContext,
 ) error {
 
-	// TODO:_ add more logs?
-
 	disk := t.request.Disk
 
 	nbsClient, err := t.nbsFactory.GetClient(ctx, disk.ZoneId)
@@ -69,7 +67,7 @@ func (t *createShadowDiskBasedCheckpointTask) Run(
 		return err
 	}
 
-	t.state.CheckpointId = t.getCurrentCheckpointID()  // TODO:_ do not put it in database, but form it using prefix and iteration?
+	t.state.CheckpointId = t.getCurrentCheckpointID()
 	return execCtx.SaveState(ctx)
 }
 
