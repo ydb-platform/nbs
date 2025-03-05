@@ -1772,24 +1772,14 @@ Y_UNIT_TEST_SUITE(TServiceActionsTest)
         const ui32 nodeIdx = SetupTestEnv(env, std::move(config));
 
         TServiceClient service(env.GetRuntime(), nodeIdx);
-        Cerr << "starting CreateVolume" << Endl;
 
         service.CreateVolume(DefaultDiskId);
-
-        Cerr << "starting MountVolume" << Endl;
-
         auto sessionId = service.MountVolume(DefaultDiskId)->Record.GetSessionId();
-
-
-        Cerr << "starting WriteBlocks" << Endl;
-
         service.WriteBlocks(
             DefaultDiskId,
             TBlockRange64::WithLength(0, 1024),
             sessionId,
             char(1));
-
-        Cerr << "starting checkRanges" << Endl;
 
         {
             NPrivateProto::TCheckRangeRequest request;
@@ -1803,8 +1793,6 @@ Y_UNIT_TEST_SUITE(TServiceActionsTest)
 
             const auto response = service.ExecuteAction("CheckRange", buf);
             NPrivateProto::TCheckRangeResponse checkRangeResponse;
-
-            env.GetRuntime().DispatchEvents(TDispatchOptions(), TDuration::Seconds(3));
 
             UNIT_ASSERT(google::protobuf::util::JsonStringToMessage(
                             response->Record.GetOutput(),
