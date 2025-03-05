@@ -87,9 +87,6 @@ Y_UNIT_TEST_SUITE(TServiceCheckRangeTest)
             "test_folder",
             "test_cloud");
 
-        env.GetRuntime().DispatchEvents(TDispatchOptions(), TDuration::Seconds(2));
-
-
         auto response = service.CheckRange(DefaultDiskId, 0, blocksCount, true);
         UNIT_ASSERT(response->GetStatus() == S_OK);
         UNIT_ASSERT_VALUES_EQUAL(response.get()->Record.ChecksumsSize(), blocksCount);

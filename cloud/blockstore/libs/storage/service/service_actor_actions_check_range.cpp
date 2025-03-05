@@ -142,19 +142,17 @@ void TCheckRangeActor::HandleCheckRangeResponse(
     const TEvService::TEvCheckRangeResponse::TPtr& ev,
     const TActorContext& ctx)
 {
-    auto record = ev->Get()->Record;
-    auto response = NPrivateProto::TCheckRangeResponse();
-    response.MutableStatus()->CopyFrom(ev->Get()->Record.GetStatus());
-    auto checksums = response.GetChecksums();
+    auto& record = ev->Get()->Record;
+    NPrivateProto::TCheckRangeResponse response;
+    response.MutableStatus()->CopyFrom(record.GetStatus());
+    response.MutableChecksums()->Swap(record.MutableChecksums());
 
-    for (ui32 i = 0; i < ev->Get()->Record.ChecksumsSize(); ++i) {
-        response.AddChecksums(ev->Get()->Record.GetChecksums().at(i));
-    }
+        LOG_ERROR_S(
+            ctx,
+            TBlockStoreComponents::SERVICE,
+            "size " << response.ChecksumsSize() << " was before "
+                    << ev->Get()->Record.ChecksumsSize());
 
-            LOG_ERROR_S(
-                ctx,
-                TBlockStoreComponents::SERVICE,
-                "size " << response.ChecksumsSize() << " was before " << ev->Get()->Record.ChecksumsSize());
     return ReplyAndDie(
         ctx,
         ev->Get()->Record.GetError(),

@@ -1772,20 +1772,28 @@ Y_UNIT_TEST_SUITE(TServiceActionsTest)
         const ui32 nodeIdx = SetupTestEnv(env, std::move(config));
 
         TServiceClient service(env.GetRuntime(), nodeIdx);
-        service.CreateVolume("vol0");
+        Cerr << "starting CreateVolume" << Endl;
 
-        const auto sessionId =
-            service.MountVolume("vol0")->Record.GetSessionId();
+        service.CreateVolume(DefaultDiskId);
+
+        Cerr << "starting MountVolume" << Endl;
+
+        auto sessionId = service.MountVolume(DefaultDiskId)->Record.GetSessionId();
+
+
+        Cerr << "starting WriteBlocks" << Endl;
 
         service.WriteBlocks(
-            "vol0",
+            DefaultDiskId,
             TBlockRange64::WithLength(0, 1024),
             sessionId,
             char(1));
 
+        Cerr << "starting checkRanges" << Endl;
+
         {
             NPrivateProto::TCheckRangeRequest request;
-            request.SetDiskId("vol0");
+            request.SetDiskId(DefaultDiskId);
             request.SetStartIndex(0);
             request.SetBlocksCount(blockCount);
             request.SetCalculateChecksums(true);

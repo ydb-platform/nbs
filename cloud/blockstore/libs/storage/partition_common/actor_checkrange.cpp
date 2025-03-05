@@ -114,10 +114,11 @@ void TCheckRangeActor::HandleReadBlocksResponse(
                 blockChecksum.Extend(buffer.data(), buffer.size());
             response->Record.MutableChecksums()->Add(checksum);
         }
-               LOG_ERROR_S(
+
+        LOG_ERROR_S(
             ctx,
             TBlockStoreComponents::PARTITION,
-            " checksums size " << response->Record.ChecksumsSize());
+            "checksums size: " << response->Record.ChecksumsSize());
     }
 
     ReplyAndDie(ctx, std::move(response));
