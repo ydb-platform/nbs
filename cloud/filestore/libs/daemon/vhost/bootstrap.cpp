@@ -217,6 +217,8 @@ void TBootstrapVhost::InitComponents()
     }
 
     NVhost::InitLog(Logging);
+    GetTextPrinter(Configs->StorageConfig->GetTruncateLogStringFieldLongerThan());
+
     switch (Configs->VhostServiceConfig->GetEndpointStorageType()) {
         case NCloud::NProto::ENDPOINT_STORAGE_DEFAULT:
         case NCloud::NProto::ENDPOINT_STORAGE_KEYRING: {
@@ -276,8 +278,7 @@ void TBootstrapVhost::InitComponents()
             serverConfigProto.Utf8DebugString().Quote().c_str());
     }
 
-    InitLWTrace();
-}
+    InitLWTrace();}
 
 void TBootstrapVhost::InitConfig()
 {

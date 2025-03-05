@@ -36,29 +36,26 @@ struct TSizePrinter
     }
 };
 
+}   // namespace
+
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TTextPrinter
-    : google::protobuf::TextFormat::Printer
+TTextPrinter::TTextPrinter(ui32 size)
 {
-    TTextPrinter(ui32 size)
-    {
+    SetSingleLineMode(true);
+    SetExpandAny(true);
+    SetTruncateStringFieldLongerThan(size);
 
-        SetSingleLineMode(true);
-        SetExpandAny(true);
-        SetTruncateStringFieldLongerThan(size);
+    RegisterFieldValuePrinter(
+        NProto::TWriteDataRequest::descriptor()->FindFieldByLowercaseName(
+            "buffer"),
+        new TSizePrinter());
 
-        RegisterFieldValuePrinter(
-            NProto::TWriteDataRequest::descriptor()->FindFieldByLowercaseName("buffer"),
-            new TSizePrinter());
-
-        RegisterFieldValuePrinter(
-            NProto::TReadDataResponse::descriptor()->FindFieldByLowercaseName("buffer"),
-            new TSizePrinter());
-    }
-};
-
-}   // namespace
+    RegisterFieldValuePrinter(
+        NProto::TReadDataResponse::descriptor()->FindFieldByLowercaseName(
+            "buffer"),
+        new TSizePrinter());
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 
