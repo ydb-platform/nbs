@@ -977,8 +977,7 @@ struct TServer: IEndpointProxyServer
                 ep.NbdDevicePath,
                 Config.NbdRequestTimeout,
                 NBD_CONNECTION_TIMEOUT,
-                NBD_RECONFIGURE_CONNECTED,
-                Config.WithoutLibnl);
+                NBD_RECONFIGURE_CONNECTED);
         } else {
             // The only case we want kernel to retry requests is when the socket
             // is dead due to nbd server restart. And since we can't configure
