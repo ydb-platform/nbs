@@ -1,0 +1,66 @@
+Vertices {
+    ControlPlaneAction {
+        Name: "create_volume"
+
+        CreateVolumeRequest {
+            DiskId: "vol0"
+            BlocksCount: 524288
+            BlockSize: 4096
+            StorageMediaKind: STORAGE_MEDIA_SSD_MIRROR2
+        }
+    }
+}
+
+Vertices {
+    ControlPlaneAction {
+        Name: "make_devices_fresh"
+
+        ReplaceDevicesRequest {
+            DiskId: "vol0"
+            DevicesToReplace {
+                ReplicaIndex: 0
+                DeviceIndex: 0
+            }
+            DevicesToReplace {
+                ReplicaIndex: 1
+                DeviceIndex: 1
+            }
+        }
+    }
+}
+
+Vertices {
+    Test {
+        Name: "shoot_vol0"
+        VolumeName: "vol0"
+
+        ArtificialLoadSpec {
+            Ranges {
+                Start: 261644
+                End: 262644
+                WriteRate: 100
+                ReadRate: 100
+                ZeroRate: 100
+                LoadType: LOAD_TYPE_RANDOM
+                IoDepth: 20
+                MaxRequestSize: 100
+            }
+        }
+        TestDuration: 60
+        Verify: true
+    }
+}
+
+Dependencies {
+    key: "make_devices_fresh",
+    value {
+        Names: "create_volume"
+    }
+}
+
+Dependencies {
+    key: "shoot_vol0",
+    value {
+        Names: "make_devices_fresh"
+    }
+}
