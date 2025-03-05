@@ -6968,8 +6968,9 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
             }
         }
 
-        // Force run compaction
+        // Force run cleanup and compaction
         for (ui32 i = 0; i < groupCount; i++) {
+            tablet.Cleanup(GetMixedRangeIndex(ids[i * NodeGroupSize], 0));
             tablet.Compaction(GetMixedRangeIndex(ids[i * NodeGroupSize], 0));
         }
 
