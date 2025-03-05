@@ -89,7 +89,7 @@ func (t *createSnapshotFromDiskTask) run(
 	}
 
 	taskID, err := t.scheduler.ScheduleZonalTask(
-		headers.SetIncomingIdempotencyKey(ctx, selfTaskID+"_run"),
+		headers.SetIncomingIdempotencyKey(ctx, selfTaskID+"_create_snapshot"),
 		"dataplane.CreateSnapshotFromDisk",
 		"",
 		disk.ZoneId,
@@ -222,7 +222,7 @@ func (t *createSnapshotFromDiskTask) Cancel(
 	}
 
 	taskID, err := t.scheduler.ScheduleTask(
-		headers.SetIncomingIdempotencyKey(ctx, selfTaskID+"_cancel"),
+		headers.SetIncomingIdempotencyKey(ctx, selfTaskID+"_delete_snapshot"),
 		"dataplane.DeleteSnapshot",
 		"",
 		&dataplane_protos.DeleteSnapshotRequest{
@@ -284,9 +284,9 @@ func (t *createSnapshotFromDiskTask) scheduleCreateShadowDiskBasedCheckpointTask
 	disk := t.request.SrcDisk
 
 	return t.scheduler.ScheduleTask(
-		headers.SetIncomingIdempotencyKey(ctx, selfTaskID+"_create_checkpoint"), // TODO:_ idemp keys ok now?
+		headers.SetIncomingIdempotencyKey(ctx, selfTaskID+"_create_checkpoint"),
 		"dataplane.CreateShadowDiskBasedCheckpoint",
-		"", // TODO:_ do we need description?
+		"Create checkpoint for snapshot "+t.request.DstSnapshotId,
 		&dataplane_protos.CreateShadowDiskBasedCheckpointRequest{
 			Disk:               disk,
 			CheckpointIdPrefix: t.request.DstSnapshotId,
@@ -395,7 +395,10 @@ func (t *createSnapshotFromDiskTask) deleteCheckpoint(
 
 	typedMetadata, ok := metadata.(*dataplane_protos.CreateShadowDiskBasedCheckpointMetadata)
 	if !ok {
-		return nil // TODO:_ return error?
+		return errors.NewNonRetriableErrorf(
+			"invalid create shadow disk based checkpoint metadata type %T",
+			metadata,
+		)
 	}
 	checkpointID := typedMetadata.CheckpointId
 	if checkpointID != "" {
