@@ -2,6 +2,7 @@ package dataplane
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs"
@@ -250,18 +251,23 @@ func RegisterForExecution(
 		},
 	)
 	if err != nil {
-		return error
+		return err
 	}
 
+	fmt.Printf("CHECK: Resistering dataplane.CreateShadowDiskBasedCheckpoint\n")
 	err = taskRegistry.RegisterForExecution(
-		"dataplane.CreateShadowDiskBasedCheckpointTask",
+		"dataplane.CreateShadowDiskBasedCheckpoint",
 		func() tasks.Task {
 			return &createShadowDiskBasedCheckpointTask{
 				nbsFactory: nbsFactory,
 			}
 		},
 	)
-	return error
+	if err != nil {
+		return err
+	}
+	fmt.Printf("CHECK: Resistered dataplane.CreateShadowDiskBasedCheckpoint\n")
+	return nil // TODO:_ clean up here
 }
 
 func Register(ctx context.Context, taskRegistry *tasks.Registry) error {
@@ -290,5 +296,5 @@ var newTaskByTaskType = map[string]func() tasks.Task{
 	"dataplane.DeleteSnapshot":                   func() tasks.Task { return &deleteSnapshotTask{} },
 	"dataplane.DeleteSnapshotData":               func() tasks.Task { return &deleteSnapshotDataTask{} },
 	"dataplane.DeleteDiskFromIncremental":        func() tasks.Task { return &deleteDiskFromIncrementalTask{} },
-	"dataplane.CreateShadowDiskBasedCheckpoint":  func() tasks.Task { return &createShadowDiskBasedCheckpoint{} },
+	"dataplane.CreateShadowDiskBasedCheckpoint":  func() tasks.Task { return &createShadowDiskBasedCheckpointTask{} },
 }

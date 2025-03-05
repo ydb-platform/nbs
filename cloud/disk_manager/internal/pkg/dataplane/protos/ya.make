@@ -4,6 +4,7 @@ ONLY_TAGS(GO_PROTO)
 
 SRCS(
     collect_snapshots_task.proto
+    create_shadow_disk_based_checkpoint_task.proto
     create_snapshot_from_disk_task.proto
     create_snapshot_from_legacy_snapshot_task.proto
     create_snapshot_from_snapshot_task.proto
