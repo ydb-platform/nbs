@@ -278,7 +278,8 @@ void TBootstrapVhost::InitComponents()
             serverConfigProto.Utf8DebugString().Quote().c_str());
     }
 
-    InitLWTrace();}
+    InitLWTrace();
+}
 
 void TBootstrapVhost::InitConfig()
 {
