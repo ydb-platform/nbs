@@ -31,7 +31,9 @@ func main() {
 	flag.StringVar(&cfg.LocalFilestoreOverridePath, "local-filestore-override", "", "Path to file with local filestore override entries")
 	flag.StringVar(&cfg.NfsLocalHost, "nfs-local-host", "localhost", "NFS local host")
 	flag.UintVar(&cfg.NfsLocalFilestorePort, "nfs-local-filestore-port", 0, "NFS local filestore port")
+	flag.StringVar(&cfg.NfsLocalFilestoreSocket, "nfs-local-filestore-socket", "", "NFS local filestore unix socket path")
 	flag.UintVar(&cfg.NfsLocalEndpointPort, "nfs-local-endpoint-port", 0, "NFS local endpoint port")
+	flag.StringVar(&cfg.NfsLocalEndpointSocket, "nfs-local-endpoint-socket", "", "NFS local endpoint unix socket path")
 	flag.StringVar(&cfg.MountOptions, "mount-options", "grpid", "Comma-separated list of filesystem mount options")
 
 	flag.Parse()

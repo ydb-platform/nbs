@@ -29,6 +29,7 @@ enum PlacementStrategy {
 enum EncryptionMode {
     NO_ENCRYPTION = 0;
     ENCRYPTION_AES_XTS = 1;
+    ENCRYPTION_AT_REST = 2;
 }
 
 message KmsKey {

@@ -79,8 +79,6 @@ public:
     TVector<TCompactionCounter> GetTop(size_t count) const;
     TVector<TCompactionCounter> GetTopByGarbageBlockCount(size_t count) const;
     TVector<ui32> GetNonEmptyRanges() const;
-    // Returns non-empty ranges, starting from the blockIndex
-    TVector<TCompactionCounter> GetNonEmptyRanges(ui32 blockIndex, ui32 rangesCount) const;
     ui32 GetNonEmptyRangeCount() const;
     ui32 GetRangeStart(ui32 blockIndex) const;
     ui32 GetRangeIndex(ui32 blockIndex) const;

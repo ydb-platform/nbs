@@ -868,6 +868,7 @@ BLOCKSTORE_FORWARD_REQUEST(GetChangedBlocks,         TEvService)
 BLOCKSTORE_FORWARD_REQUEST(GetCheckpointStatus,      TEvService)
 BLOCKSTORE_FORWARD_REQUEST(ReadBlocksLocal,          TEvService)
 BLOCKSTORE_FORWARD_REQUEST(WriteBlocksLocal,         TEvService)
+BLOCKSTORE_FORWARD_REQUEST(CheckRange,               TEvService)
 
 BLOCKSTORE_FORWARD_REQUEST(DescribeBlocks,           TEvVolume)
 BLOCKSTORE_FORWARD_REQUEST(GetUsedBlocks,            TEvVolume)

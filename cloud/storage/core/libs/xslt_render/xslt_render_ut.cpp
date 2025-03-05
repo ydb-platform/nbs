@@ -27,13 +27,14 @@ Y_UNIT_TEST_SUITE(TXsltRenderTest)
 
     Y_UNIT_TEST(ShouldSupportMultithreading)
     {
-        TXslRenderer renderer(NResource::Find("xslt_render/ut/style1").c_str());
         TString data = NResource::Find("xslt_render/ut/xml1");
         std::vector<std::shared_ptr<std::thread>> threads;
         for (size_t i = 0; i < 1000; i++) {
             threads.push_back(std::make_shared<std::thread>(
                 [&]()
                 {
+                    TXslRenderer renderer(
+                        NResource::Find("xslt_render/ut/style1").c_str());
                     TXmlNodeWrapper document(
                         data,
                         TXmlNodeWrapper::ESource::STRING);

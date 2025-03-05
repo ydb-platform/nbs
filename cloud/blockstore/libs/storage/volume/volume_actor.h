@@ -264,6 +264,7 @@ private:
         NProto::EVolumeAccessMode AccessMode;
         ui64 MountSeqNumber;
         TClientRequestPtr ClientRequest;
+        TVector<NProto::TDeviceConfig> DevicesToRelease;
 
         TAcquireReleaseDiskRequest(
                 TString clientId,
@@ -280,14 +281,16 @@ private:
 
         TAcquireReleaseDiskRequest(
                 TString clientId,
-                TClientRequestPtr clientRequest)
+                TClientRequestPtr clientRequest,
+                TVector<NProto::TDeviceConfig> devicesToRelease)
             : IsAcquire(false)
             , ClientId(std::move(clientId))
-            , AccessMode(NProto::EVolumeAccessMode::VOLUME_ACCESS_READ_WRITE) // doesn't matter
-            , MountSeqNumber(0) // doesn't matter
+            , AccessMode(NProto::EVolumeAccessMode::
+                             VOLUME_ACCESS_READ_WRITE)   // doesn't matter
+            , MountSeqNumber(0)                          // doesn't matter
             , ClientRequest(std::move(clientRequest))
-        {
-        }
+            , DevicesToRelease(std::move(devicesToRelease))
+        {}
     };
     TList<TAcquireReleaseDiskRequest> AcquireReleaseDiskRequests;
     bool AcquireDiskScheduled = false;
@@ -744,6 +747,9 @@ private:
         const NActors::TActorContext& ctx);
 
     void AcquireDiskIfNeeded(const NActors::TActorContext& ctx);
+    void ReleaseReplacedDevices(
+        const NActors::TActorContext& ctx,
+        const TVector<NProto::TDeviceConfig>& replacedDevices);
 
     void ScheduleAcquireDiskIfNeeded(const NActors::TActorContext& ctx);
 
@@ -767,11 +773,15 @@ private:
         const NProto::TError& error,
         const NActors::TActorContext& ctx);
 
-    void ReleaseDisk(const NActors::TActorContext& ctx, const TString& clientId);
+    void ReleaseDisk(
+        const NActors::TActorContext& ctx,
+        const TString& clientId,
+        const TVector<NProto::TDeviceConfig>& devicesToRelease);
 
     void SendReleaseDevicesToAgents(
         const TString& clientId,
-        const NActors::TActorContext& ctx);
+        const NActors::TActorContext& ctx,
+        TVector<NProto::TDeviceConfig> devicesToRelease);
 
     void HandleDevicesReleasedFinished(
         const TEvVolumePrivate::TEvDevicesReleaseFinished::TPtr& ev,
@@ -1011,6 +1021,10 @@ private:
 
     void HandleUpdateSmartMigrationState(
         const TEvVolumePrivate::TEvUpdateSmartMigrationState::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleCheckRangeResponse(
+        const TEvService::TEvCheckRangeResponse::TPtr& ev,
         const NActors::TActorContext& ctx);
 
     void CreateCheckpointLightRequest(

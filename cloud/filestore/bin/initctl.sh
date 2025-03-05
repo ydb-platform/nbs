@@ -13,8 +13,8 @@ SERVER_PORT=${SERVER_PORT:-9021}
 VHOST_PORT=${VHOST_PORT:-9022}
 
 FS=${FS:-"nfs"}
-SHARD_COUNT=${SHARD_COUNT:-0}
 BLOCK_SIZE=${BLOCK_SIZE:-4096}
+BLOCK_COUNT=${BLOCK_COUNT:-1048576} # 4GiB
 MOUNT_POINT=${MOUNT_POINT:-"$HOME/$FS"}
 VHOST_SOCKET_PATH=${VHOST_SOCKET_PATH:-/tmp/vhost.sock}
 
@@ -120,39 +120,9 @@ if [[ "$1" == "create" ]]; then
         --filesystem        "$FS"           \
         --cloud             "cloud"         \
         --folder            "folder"        \
-        --blocks-count      1000000         \
+        --blocks-count      "$BLOCK_COUNT"  \
         --block-size        "$BLOCK_SIZE"   \
         nfs
-
-    if [[ "$SHARD_COUNT" -gt 0 ]]; then
-        echo "creating $SHARD_COUNT shards"
-        shards=""
-        for shard in $(seq 1 $SHARD_COUNT); do
-            echo "creating shard $shard"
-
-            $BIN_DIR/filestore-client create        \
-                --server-port       $SERVER_PORT    \
-                --filesystem        "${FS}_${shard}"\
-                --cloud             "cloud"         \
-                --folder            "folder"        \
-                --blocks-count      1000000         \
-                --block-size        "$BLOCK_SIZE"   \
-                nfs
-
-            $BIN_DIR/filestore-client executeaction     \
-                --server-port       $SERVER_PORT        \
-                --action            configureasshard    \
-                --input-json        "{\"FileSystemId\": \"${FS}_${shard}\", \"ShardNo\": $shard}"
-
-            shards="$shards, \"${FS}_${shard}\""
-        done
-        echo "configuring leader"
-        $BIN_DIR/filestore-client executeaction     \
-            --server-port       $SERVER_PORT        \
-            --action            configureshards     \
-            --input-json        "{\"FileSystemId\": \"$FS\", \"ShardFileSystemIds\": [${shards#, }]}"
-    fi
-
     shift
 fi
 

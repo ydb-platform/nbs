@@ -208,6 +208,7 @@ GENERATE_IMPL(WriteBlocksLocal,   TEvService)
 GENERATE_NO_IMPL(CreateCheckpoint,    TEvService)
 GENERATE_NO_IMPL(DeleteCheckpoint,    TEvService)
 GENERATE_NO_IMPL(GetCheckpointStatus, TEvService)
+GENERATE_NO_IMPL(CheckRange,          TEvService)
 
 GENERATE_NO_IMPL(DescribeBlocks,           TEvVolume)
 GENERATE_NO_IMPL(GetUsedBlocks,            TEvVolume)

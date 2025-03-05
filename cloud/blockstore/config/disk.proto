@@ -298,6 +298,10 @@ message TDiskAgentConfig
     // If enabled, IOParserActor allocates a storage buffer and copies the
     // request data into it.
     optional bool IOParserActorAllocateStorageEnabled = 39;
+
+    // Max secure erase can be run in parallel.
+    // For devices with the same name, only one secure erase is run at a time.
+    optional uint32 MaxParallelSecureErasesAllowed = 40;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

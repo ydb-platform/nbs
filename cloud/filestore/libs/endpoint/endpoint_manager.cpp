@@ -221,9 +221,7 @@ private:
             request->MutableHeaders()->SetOriginFqdn(originFqdn);
 
             auto socketPath = TFsPath(request->GetEndpoint().GetSocketPath());
-            if (!socketPath.Parent().Exists()) {
-                socketPath.Parent().MkDir();
-            }
+            socketPath.Parent().MkDirs();
 
             auto future = StartEndpoint(
                 MakeIntrusive<TCallContext>(requestId),
