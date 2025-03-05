@@ -65,7 +65,7 @@ Y_UNIT_TEST_SUITE(TServiceCheckRangeTest)
             "test_folder",
             "test_cloud");
 
-        service.SendCheckRangeRequest(DefaultDiskId, 0, size, false);
+        service.SendCheckRangeRequest(DefaultDiskId, 0, 0, false);
         auto response = service.RecvCheckRangeResponse();
 
         UNIT_ASSERT(response->GetStatus() == E_ARGUMENT);
