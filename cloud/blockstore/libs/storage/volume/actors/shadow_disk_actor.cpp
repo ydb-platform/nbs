@@ -851,6 +851,7 @@ void TShadowDiskActor::CreateShadowDiskPartitionActor(
         InitWork(
             ctx,
             SrcActorId,
+            SrcActorId,
             DstActorId,
             true,   // takeOwnershipOverActors
             std::make_unique<TMigrationTimeoutCalculator>(

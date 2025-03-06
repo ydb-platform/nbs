@@ -1,3 +1,4 @@
+#include "part_nonrepl_migration.h"
 #include "part_nonrepl_migration_actor.h"
 #include "ut_env.h"
 
@@ -212,7 +213,7 @@ struct TTestEnv
             false                  // useSimpleMigrationBandwidthLimiter
         );
 
-        auto part = std::make_unique<TNonreplicatedPartitionMigrationActor>(
+        auto part = CreateNonreplicatedPartitionMigration(
             std::move(config),
             CreateDiagnosticsConfig(),
             CreateProfileLogStub(),
