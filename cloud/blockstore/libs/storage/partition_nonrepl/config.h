@@ -234,20 +234,28 @@ public:
 
     bool DevicesReadyForReading(const TBlockRange64 blockRange) const
     {
-        return VisitDeviceRequests(
+        return DevicesReadyForReading(blockRange, {});
+    }
+
+    bool DevicesReadyForReading(
+        const TBlockRange64 blockRange,
+        const THashSet<ui32>& excludeIndexes) const
+    {
+        const bool result = VisitDeviceRequests(
             blockRange,
-            [&] (
-                const ui32 i,
+            [&](const ui32 i,
                 const TBlockRange64 requestRange,
                 const TBlockRange64 relativeRange)
             {
                 Y_UNUSED(requestRange);
                 Y_UNUSED(relativeRange);
 
-                return !Devices[i].GetDeviceUUID()
-                    || FreshDeviceIds.contains(Devices[i].GetDeviceUUID())
-                    || LaggingDeviceIds.contains(Devices[i].GetDeviceUUID());
+                return !Devices[i].GetDeviceUUID() ||
+                       excludeIndexes.contains(i) ||
+                       FreshDeviceIds.contains(Devices[i].GetDeviceUUID()) ||
+                       LaggingDeviceIds.contains(Devices[i].GetDeviceUUID());
             });
+        return result;
     }
 
     void AugmentErrorFlags(NCloud::NProto::TError& error) const

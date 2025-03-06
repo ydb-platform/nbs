@@ -366,6 +366,15 @@ public:
         const TString& folderId,
         const TString& diskId) const;
 
+    [[nodiscard]] bool IsLaggingDevicesForMirror2DisksFeatureEnabled(
+        const TString& cloudId,
+        const TString& folderId,
+        const TString& diskId) const;
+    [[nodiscard]] bool IsLaggingDevicesForMirror3DisksFeatureEnabled(
+        const TString& cloudId,
+        const TString& folderId,
+        const TString& diskId) const;
+
     TDuration GetMaxTimedOutDeviceStateDurationFeatureValue(
         const TString& cloudId,
         const TString& folderId,
@@ -614,6 +623,11 @@ public:
     TString GetNodeRegistrationRootCertsFile() const;
     TCertificate GetNodeRegistrationCert() const;
     TString GetNodeType() const;
+
+    [[nodiscard]] bool GetLaggingDevicesForMirror2DisksEnabled() const;
+    [[nodiscard]] bool GetLaggingDevicesForMirror3DisksEnabled() const;
+    [[nodiscard]] TDuration GetLaggingDeviceTimeoutThreshold() const;
+    [[nodiscard]] TDuration GetLaggingDevicePingInterval() const;
 
     NCloud::NProto::TConfigDispatcherSettings GetConfigDispatcherSettings() const;
 

@@ -6,15 +6,19 @@ namespace NCloud {
 
 TSgListBlockRange::TSgListBlockRange(const TSgList& sglist, ui32 blockSize)
     : BlockSize(blockSize)
-    , It(sglist.begin())
     , End(sglist.end())
+    , It(sglist.begin())
 {}
+
+[[nodiscard]] bool TSgListBlockRange::HasNext() const {
+    return It != End;
+}
 
 TSgList TSgListBlockRange::Next(ui64 blockCount)
 {
     TSgList sglist;
     while (blockCount) {
-        if (It == End) {
+        if (!HasNext()) {
             return sglist;
         }
 
