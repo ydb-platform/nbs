@@ -85,8 +85,8 @@ func (t *createImageFromDiskTask) run(
 		ctx,
 		execCtx,
 		nbsClient,
-		diskParams.IsDiskRegistryBasedDisk,
 		selfTaskID,
+		diskParams.IsDiskRegistryBasedDisk,
 	)
 	if err != nil {
 		return err
@@ -222,7 +222,7 @@ func (t *createImageFromDiskTask) Cancel(
 		return err
 	}
 
-	if checkpointTaskID == "" {
+	if checkpointTaskID != "" {
 		_, err = t.scheduler.CancelTask(ctx, checkpointTaskID)
 		if err != nil {
 			return err
@@ -308,18 +308,22 @@ func (t *createImageFromDiskTask) scheduleCreateShadowDiskBasedCheckpointTask(
 	)
 }
 
+func (t *createImageFromDiskTask) getCheckpointIDForReplicatedDisk() string {
+	return t.request.DstImageId
+}
+
 func (t *createImageFromDiskTask) createCheckpoint(
 	ctx context.Context,
 	execCtx tasks.ExecutionContext,
 	nbsClient nbs.Client,
-	isDiskRegistryBasedDisk bool,
 	selfTaskID string,
+	isDiskRegistryBasedDisk bool,
 ) (string, error) {
 
 	disk := t.request.SrcDisk
 
 	if !isDiskRegistryBasedDisk {
-		checkpointID := t.request.DstImageId
+		checkpointID := t.getCheckpointIDForReplicatedDisk()
 
 		err := nbsClient.CreateCheckpoint(
 			ctx,
@@ -366,7 +370,7 @@ func (t *createImageFromDiskTask) getCheckpointID(
 ) (string, error) {
 
 	if !isDiskRegistryBasedDisk {
-		return t.request.DstImageId, nil
+		return t.getCheckpointIDForReplicatedDisk(), nil
 	}
 
 	checkpointTaskID, err := t.scheduler.GetTaskIDByIdempotencyKey(
