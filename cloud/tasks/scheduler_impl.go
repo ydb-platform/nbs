@@ -410,11 +410,10 @@ func (s *scheduler) GetTaskIDByIdempotencyKey(
 ) (string, error) {
 
 	ctx = withComponentLoggingField(ctx)
-	idempotencyKey := headers.GetIdempotencyKey(ctx)
 
 	taskState, err := s.storage.GetTaskByIdempotencyKey(
 		ctx,
-		idempotencyKey,
+		headers.GetIdempotencyKey(ctx),
 		headers.GetAccountID(ctx),
 	)
 	if err != nil {
