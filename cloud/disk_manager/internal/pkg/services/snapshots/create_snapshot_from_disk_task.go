@@ -435,6 +435,9 @@ func (t *createSnapshotFromDiskTask) deleteCheckpoint(
 		selfTaskID,
 		diskParams.IsDiskRegistryBasedDisk,
 	)
+	if err != nil {
+		return err
+	}
 
 	return nbsClient.DeleteCheckpoint(ctx, disk.DiskId, checkpointID)
 }
