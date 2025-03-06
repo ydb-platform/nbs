@@ -176,6 +176,34 @@ func checkUnencryptedImage(
 	require.ErrorContains(t, err, "KeyPath should contain path to encryption key")
 }
 
+////////////////////////////////////////////////////////////////////////////////
+
+func deleteDisk(
+	t *testing.T,
+	ctx context.Context,
+	nbsClient nbs.Client,
+	diskID string,
+) {
+
+	require.NoError(t, nbsClient.Delete(ctx, diskID))
+}
+
+func enableDevice(
+	t *testing.T,
+	ctx context.Context,
+	nbsClient nbs.TestingClient,
+	deviceUUID string,
+) {
+
+	require.NoError(t, nbsClient.ChangeDeviceStateToOnline(
+		ctx,
+		deviceUUID,
+		t.Name()),
+	)
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 func testImageServiceCreateImageFromDiskWithKind(
 	t *testing.T,
 	diskKind disk_manager.DiskKind,
@@ -210,6 +238,8 @@ func testImageServiceCreateImageFromDiskWithKind(
 	nbsClient := testcommon.NewNbsTestingClient(t, ctx, "zone-a")
 	diskContentInfo, err := nbsClient.FillDisk(ctx, diskID, diskSize)
 	require.NoError(t, err)
+
+	defer deleteDisk(t, ctx, nbsClient, diskID)
 
 	imageID := t.Name()
 
@@ -1275,6 +1305,8 @@ func testCreateImageFromDiskWithFailedShadowDisk(
 	_, err = nbsClient.FillDisk(ctx, diskID, diskSize)
 	require.NoError(t, err)
 
+	defer deleteDisk(t, ctx, nbsClient, diskID)
+
 	diskContentInfo, err := nbsClient.CalculateCrc32(diskID, diskSize)
 	require.NoError(t, err)
 
@@ -1315,6 +1347,8 @@ func testCreateImageFromDiskWithFailedShadowDisk(
 		// Disabling device to enforce checkpoint status ERROR.
 		err = nbsClient.DisableDevices(ctx, agentID, deviceUUIDs, t.Name())
 		require.NoError(t, err)
+
+		defer enableDevice(t, ctx, nbsClient, deviceUUIDs[0])
 	}
 
 	if shouldCancelOperation {
@@ -1391,6 +1425,8 @@ func testCreateImageFromDiskWithFailedShadowDisk(
 	require.NotEmpty(t, operation)
 	err = internal_client.WaitOperation(ctx, client, operation.Id)
 	require.NoError(t, err)
+
+	defer deleteDisk(t, ctx, nbsClient, diskID2)
 
 	err = nbsClient.ValidateCrc32(ctx, diskID2, diskContentInfo)
 	require.NoError(t, err)

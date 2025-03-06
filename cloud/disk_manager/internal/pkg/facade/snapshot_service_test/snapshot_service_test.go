@@ -1,6 +1,7 @@
 package tests
 
 import (
+	"context"
 	"hash/crc32"
 	"strings"
 	"testing"
@@ -15,6 +16,32 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/facade/testcommon"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
 )
+
+////////////////////////////////////////////////////////////////////////////////
+
+func deleteDisk(
+	t *testing.T,
+	ctx context.Context,
+	nbsClient nbs.Client,
+	diskID string,
+) {
+
+	require.NoError(t, nbsClient.Delete(ctx, diskID))
+}
+
+func enableDevice(
+	t *testing.T,
+	ctx context.Context,
+	nbsClient nbs.TestingClient,
+	deviceUUID string,
+) {
+
+	require.NoError(t, nbsClient.ChangeDeviceStateToOnline(
+		ctx,
+		deviceUUID,
+		t.Name()),
+	)
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -54,6 +81,8 @@ func testCreateSnapshotFromDisk(
 	nbsClient := testcommon.NewNbsTestingClient(t, ctx, "zone-a")
 	_, err = nbsClient.FillDisk(ctx, diskID, 64*4096)
 	require.NoError(t, err)
+
+	defer deleteDisk(t, ctx, nbsClient, diskID)
 
 	snapshotID := t.Name()
 
@@ -219,6 +248,9 @@ func testCreateIncrementalSnapshotFromDisk(
 	require.NoError(t, err)
 
 	nbsClient := testcommon.NewNbsTestingClient(t, ctx, "zone-a")
+
+	defer deleteDisk(t, ctx, nbsClient, diskID1)
+
 	contentSize := 134217728
 
 	bytes := make([]byte, contentSize)
@@ -287,6 +319,8 @@ func testCreateIncrementalSnapshotFromDisk(
 	require.NotEmpty(t, operation)
 	err = internal_client.WaitOperation(ctx, client, operation.Id)
 	require.NoError(t, err)
+
+	defer deleteDisk(t, ctx, nbsClient, diskID2)
 
 	acc := crc32.NewIEEE()
 	_, err = acc.Write(bytes)
@@ -1019,6 +1053,8 @@ func testCreateSnapshotFromDiskWithFailedShadowDisk(
 	_, err = nbsClient.FillDisk(ctx, diskID, diskSize)
 	require.NoError(t, err)
 
+	defer deleteDisk(t, ctx, nbsClient, diskID)
+
 	diskContentInfo, err := nbsClient.CalculateCrc32(diskID, diskSize)
 	require.NoError(t, err)
 
@@ -1056,6 +1092,8 @@ func testCreateSnapshotFromDiskWithFailedShadowDisk(
 		// Disabling device to enforce checkpoint status ERROR.
 		err = nbsClient.DisableDevices(ctx, agentID, deviceUUIDs, t.Name())
 		require.NoError(t, err)
+
+		defer enableDevice(t, ctx, nbsClient, deviceUUIDs[0])
 	}
 
 	if shouldCancelOperation {
@@ -1132,6 +1170,8 @@ func testCreateSnapshotFromDiskWithFailedShadowDisk(
 	require.NotEmpty(t, operation)
 	err = internal_client.WaitOperation(ctx, client, operation.Id)
 	require.NoError(t, err)
+
+	defer deleteDisk(t, ctx, nbsClient, diskID2)
 
 	err = nbsClient.ValidateCrc32(ctx, diskID2, diskContentInfo)
 	require.NoError(t, err)
