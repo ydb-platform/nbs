@@ -211,7 +211,7 @@ func (t *createSnapshotFromDiskTask) Cancel(
 
 	err = t.deleteCheckpoint(ctx, nbsClient, selfTaskID)
 	if err != nil {
-		return nil
+		return err
 	}
 
 	snapshotMeta, err := t.storage.DeleteSnapshot(
