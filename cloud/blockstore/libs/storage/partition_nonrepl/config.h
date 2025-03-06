@@ -52,6 +52,66 @@ public:
         NProto::EStorageMediaKind MediaKind;
     };
 
+    struct TNonreplicatedPartitionConfigInitParams
+    {
+        TDevices Devices;
+        TVolumeInfo VolumeInfo;
+        TString Name;
+        ui32 BlockSize;
+        NActors::TActorId ParentActorId;
+        NProto::EVolumeIOMode IOMode = NProto::VOLUME_IO_OK;
+        bool MuteIOErrors = false;
+        THashSet<TString> FreshDeviceIds;
+        THashSet<TString> LaggingDeviceIds;
+        TDuration MaxTimedOutDeviceStateDuration;
+        bool MaxTimedOutDeviceStateDurationOverridden = false;
+        bool UseSimpleMigrationBandwidthLimiter = true;
+
+        TNonreplicatedPartitionConfigInitParams(
+                TDevices devices,
+                TVolumeInfo volumeInfo,
+                TString name,
+                ui32 blockSize,
+                NActors::TActorId parentActorId)
+            : Devices(std::move(devices))
+            , VolumeInfo(volumeInfo)
+            , Name(std::move(name))
+            , BlockSize(blockSize)
+            , ParentActorId(parentActorId)
+        {}
+
+        TNonreplicatedPartitionConfigInitParams(
+                TDevices devices,
+                TVolumeInfo volumeInfo,
+                TString name,
+                ui32 blockSize,
+                NActors::TActorId parentActorId,
+                NProto::EVolumeIOMode iOMode,
+                bool muteIOErrors,
+                THashSet<TString> freshDeviceIds,
+                THashSet<TString> laggingDeviceIds,
+                TDuration maxTimedOutDeviceStateDuration,
+                bool maxTimedOutDeviceStateDurationOverridden,
+                bool useSimpleMigrationBandwidthLimiter)
+            : Devices(std::move(devices))
+            , VolumeInfo(volumeInfo)
+            , Name(std::move(name))
+            , BlockSize(blockSize)
+            , ParentActorId(parentActorId)
+            , IOMode(iOMode)
+            , MuteIOErrors(muteIOErrors)
+            , FreshDeviceIds(std::move(freshDeviceIds))
+            , LaggingDeviceIds(std::move(laggingDeviceIds))
+            , MaxTimedOutDeviceStateDuration(maxTimedOutDeviceStateDuration)
+            , MaxTimedOutDeviceStateDurationOverridden(
+                  maxTimedOutDeviceStateDurationOverridden)
+            , UseSimpleMigrationBandwidthLimiter(
+                  useSimpleMigrationBandwidthLimiter)
+        {}
+
+        ~TNonreplicatedPartitionConfigInitParams() = default;
+    };
+
 private:
     TDevices Devices;
     const NProto::EVolumeIOMode IOMode;
@@ -70,31 +130,22 @@ private:
     TVector<ui64> BlockIndices;
 
 public:
-    TNonreplicatedPartitionConfig(
-            TDevices devices,
-            NProto::EVolumeIOMode ioMode,
-            TString name,
-            ui32 blockSize,
-            TVolumeInfo volumeInfo,
-            NActors::TActorId parentActorId,
-            bool muteIOErrors,
-            THashSet<TString> freshDeviceIds,
-            THashSet<TString> laggingDeviceIds,
-            TDuration maxTimedOutDeviceStateDuration,
-            bool maxTimedOutDeviceStateDurationOverridden,
-            bool useSimpleMigrationBandwidthLimiter)
-        : Devices(std::move(devices))
-        , IOMode(ioMode)
-        , Name(std::move(name))
-        , BlockSize(blockSize)
-        , VolumeInfo(volumeInfo)
-        , ParentActorId(std::move(parentActorId))
-        , MuteIOErrors(muteIOErrors)
-        , FreshDeviceIds(std::move(freshDeviceIds))
-        , LaggingDeviceIds(std::move(laggingDeviceIds))
-        , MaxTimedOutDeviceStateDuration(maxTimedOutDeviceStateDuration)
-        , MaxTimedOutDeviceStateDurationOverridden(maxTimedOutDeviceStateDurationOverridden)
-        , UseSimpleMigrationBandwidthLimiter(useSimpleMigrationBandwidthLimiter)
+    explicit TNonreplicatedPartitionConfig(
+            TNonreplicatedPartitionConfigInitParams params)
+        : Devices(std::move(params.Devices))
+        , IOMode(params.IOMode)
+        , Name(std::move(params.Name))
+        , BlockSize(params.BlockSize)
+        , VolumeInfo(params.VolumeInfo)
+        , ParentActorId(std::move(params.ParentActorId))
+        , MuteIOErrors(params.MuteIOErrors)
+        , FreshDeviceIds(std::move(params.FreshDeviceIds))
+        , LaggingDeviceIds(std::move(params.LaggingDeviceIds))
+        , MaxTimedOutDeviceStateDuration(params.MaxTimedOutDeviceStateDuration)
+        , MaxTimedOutDeviceStateDurationOverridden(
+              params.MaxTimedOutDeviceStateDurationOverridden)
+        , UseSimpleMigrationBandwidthLimiter(
+              params.UseSimpleMigrationBandwidthLimiter)
     {
         Y_ABORT_UNLESS(Devices.size());
 
@@ -121,20 +172,21 @@ public:
             }
         }
 
-        return std::make_shared<TNonreplicatedPartitionConfig>(
+        TNonreplicatedPartitionConfigInitParams params{
             std::move(devices),
-            IOMode,
+            VolumeInfo,
             Name,
             BlockSize,
-            VolumeInfo,
             ParentActorId,
+            IOMode,
             MuteIOErrors,
             std::move(freshDeviceIds),
             std::move(laggingDeviceIds),
             MaxTimedOutDeviceStateDuration,
             MaxTimedOutDeviceStateDurationOverridden,
-            UseSimpleMigrationBandwidthLimiter
-        );
+            UseSimpleMigrationBandwidthLimiter};
+        return std::make_shared<TNonreplicatedPartitionConfig>(
+            std::move(params));
     }
 
     const auto& GetDevices() const

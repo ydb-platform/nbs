@@ -53,20 +53,16 @@ struct TEnv
             device->SetDeviceUUID("1_3");
         }
 
-        Config = std::make_shared<TNonreplicatedPartitionConfig>(
-            Devices,
-            NProto::VOLUME_IO_OK,
-            "vol0",
-            4_KB,
-            volumeInfo,
-            NActors::TActorId(),
-            false,   // muteIOErrors
-            FreshDeviceIds,
-            THashSet<TString>(),   // laggingDeviceIds
-            TDuration::Zero(),     // maxTimedOutDeviceStateDuration
-            false,                 // maxTimedOutDeviceStateDurationOverridden
-            true                   // useSimpleMigrationBandwidthLimiter
-        );
+        TNonreplicatedPartitionConfig::TNonreplicatedPartitionConfigInitParams
+            params{
+                Devices,
+                volumeInfo,
+                "vol0",
+                DefaultBlockSize,
+                NActors::TActorId()};
+        params.FreshDeviceIds = FreshDeviceIds;
+        Config =
+            std::make_shared<TNonreplicatedPartitionConfig>(std::move(params));
 
         {
             auto* device = ReplicaDevices.Add();

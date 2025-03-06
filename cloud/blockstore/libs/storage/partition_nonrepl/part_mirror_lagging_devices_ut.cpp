@@ -176,23 +176,21 @@ struct TTestEnv
             std::make_shared<NFeatures::TFeaturesConfig>(
                 NCloud::NProto::TFeaturesConfig()));
 
-        auto partConfig = std::make_shared<TNonreplicatedPartitionConfig>(
-            Devices,
-            NProto::VOLUME_IO_OK,
-            "vol0",
-            DefaultBlockSize,
-            TNonreplicatedPartitionConfig::TVolumeInfo{
-                Now(),
-                // only SSD/HDD distinction matters
-                NProto::STORAGE_MEDIA_SSD_MIRROR3},
-            VolumeActorId,
-            false,   // muteIOErrors
-            std::move(freshDeviceIds),
-            std::move(laggingDeviceIds),
-            TDuration::Zero(),   // maxTimedOutDeviceStateDuration
-            false,               // maxTimedOutDeviceStateDurationOverridden
-            false                // useSimpleMigrationBandwidthLimiter
-        );
+        TNonreplicatedPartitionConfig::TNonreplicatedPartitionConfigInitParams
+            params{
+                Devices,
+                TNonreplicatedPartitionConfig::TVolumeInfo{
+                    Now(),
+                    // only SSD/HDD distinction matters
+                    NProto::STORAGE_MEDIA_SSD_MIRROR3},
+                "vol0",
+                DefaultBlockSize,
+                VolumeActorId};
+        params.FreshDeviceIds = std::move(freshDeviceIds);
+        params.LaggingDeviceIds = std::move(laggingDeviceIds);
+        params.UseSimpleMigrationBandwidthLimiter = false;
+        auto partConfig =
+            std::make_shared<TNonreplicatedPartitionConfig>(std::move(params));
 
         auto mirrorPartition = std::make_unique<TMirrorPartitionActor>(
             Config,
