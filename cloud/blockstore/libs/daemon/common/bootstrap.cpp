@@ -51,7 +51,7 @@
 #include <cloud/blockstore/libs/server/config.h>
 #include <cloud/blockstore/libs/server/server.h>
 #include <cloud/blockstore/libs/service/device_handler.h>
-#include <cloud/blockstore/libs/service/rdma_target.h>
+#include <cloud/blockstore/libs/service_rdma/rdma_target.h>
 #include <cloud/blockstore/libs/service/request_helpers.h>
 #include <cloud/blockstore/libs/service/service.h>
 #include <cloud/blockstore/libs/service/service_error_transform.h>

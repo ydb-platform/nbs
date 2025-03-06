@@ -1,7 +1,5 @@
 #include "rdma_protocol.h"
 
-#include "request.h"
-
 #include <cloud/blockstore/libs/rdma/iface/protobuf.h>
 #include <cloud/blockstore/libs/storage/protos/disk.pb.h>
 

@@ -1,8 +1,7 @@
 #pragma once
 
-#include "request.h"
-
 #include <cloud/blockstore/libs/rdma/iface/public.h>
+#include <cloud/blockstore/libs/service/request.h>
 
 namespace NCloud::NBlockStore::NStorage {
 

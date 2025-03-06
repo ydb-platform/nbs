@@ -1,12 +1,12 @@
 #include "rdma_target.h"
 
 #include "rdma_protocol.h"
-#include "request_helpers.h"
-#include "service.h"
 
 #include <cloud/blockstore/libs/rdma/iface/protobuf.h>
 #include <cloud/blockstore/libs/rdma/iface/protocol.h>
 #include <cloud/blockstore/libs/rdma/iface/server.h>
+#include <cloud/blockstore/libs/service/request_helpers.h>
+#include <cloud/blockstore/libs/service/service.h>
 #include <cloud/storage/core/libs/common/thread_pool.h>
 #include <cloud/storage/core/libs/coroutine/executor.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
@@ -232,6 +232,8 @@ private:
             std::move(handleMethod));
     }
 
+    // TODO: do same thing with read block requests, we need to know block size
+    // to be able to allocate buffer for data.
     template <>
     NProto::TError HandleRequest<TWriteBlocksMethod>(
         void* context,
@@ -242,7 +244,7 @@ private:
         ui32 flags,
         THandleMethod<TWriteBlocksMethod> handleMethod) const
     {
-        if (!HasProtoFlag(flags, NRdma::RDMA_PROTO_FLAG_DATA_AT_THE_END)) {
+        if (!requestData) {
             return GeneralHandleRequest<TWriteBlocksMethod>(
                 context,
                 std::move(callContext),
@@ -253,11 +255,18 @@ private:
                 std::move(handleMethod));
         }
 
-        size_t blocksCount = request->GetBlocks().BuffersSize();
+        TGuardedSgList guardedSgList(
+            {{requestData.Data(), requestData.Size()}});
+
+        auto req = std::make_shared<NProto::TWriteBlocksLocalRequest>();
+        req->CopyFrom(*request);
+
+        req->Sglist = guardedSgList;
+        auto blocksCount = request->GetBlocks().BuffersSize();
         if (blocksCount == 0) {
             return MakeError(
                 E_ARGUMENT,
-                "provide block count with blocks field");
+                "provide blocks count with blocks field");
         }
 
         if (requestData.Size() % blocksCount != 0) {
@@ -266,20 +275,13 @@ private:
                 "request data is not divisible by blocks count");
         }
 
-        auto blockSize = requestData.Size() / blocksCount;
+        req->BlockSize = requestData.Size() / blocksCount;
+        req->BlocksCount = blocksCount;
 
-        request->MutableBlocks()->ClearBuffers();
-        for (size_t i = 0; i < blocksCount; ++i) {
-            request->MutableBlocks()->AddBuffers(
-                TString(requestData.Head(blockSize)));
-
-            requestData.Skip(blockSize);
-        }
-
-        return GeneralHandleRequest<TWriteBlocksMethod>(
+        return GeneralHandleRequest<TWriteBlocksLocalMethod>(
             context,
             std::move(callContext),
-            std::move(request),
+            std::move(req),
             requestData,
             out,
             flags,
@@ -357,52 +359,17 @@ private:
         GeneralHandleResponse<TMethod>(requestDetails, future, msgId);
     }
 
-    static TResultOrError<size_t> SerializeReadBlocksResponseToBuffer(
-        const NProto::TReadBlocksResponse& response,
-        TRequestDetails& requestDetails)
+    template <>
+    void HandleResponse<TWriteBlocksLocalMethod>(
+        TRequestDetails& requestDetails,
+        TFuture<typename TWriteBlocksMethod::TResponse>& future,
+        uint msgId) const
     {
-        const auto& blocks = response.GetBlocks();
-
-        NProto::TReadBlocksResponse proto;
-        proto.MutableTrace()->CopyFrom(response.GetTrace());
-        *proto.MutableUnencryptedBlockMask() =
-            response.GetUnencryptedBlockMask();
-        proto.SetThrottlerDelay(response.GetThrottlerDelay());
-        proto.SetAllZeroes(response.GetAllZeroes());
-
-        auto blocksCount = blocks.BuffersSize();
-        auto blockSize = blocks.GetBuffers(0).Size();
-        auto tailSize = blocksCount * blockSize;
-        auto dataBuffer = requestDetails.Out;
-
-        auto totalLen =
-            NRdma::TProtoMessageSerializer::MessageByteSize(proto, tailSize);
-        if (dataBuffer.size() < totalLen) {
-            return MakeError(
-                E_ARGUMENT,
-                "Output buffer is too smal, can't response to request");
-        }
-
-        dataBuffer = dataBuffer.RSeek(blocksCount * blockSize);
-        for (const auto& buffer: blocks.GetBuffers()) {
-            proto.MutableBlocks()
-                ->AddBuffers();   // Add empty blocks to pass count of blocks to
-                                  // help in restoring response.
-            char* dataBufferBegin = const_cast<char*>(dataBuffer.Data());
-            MemCopy(dataBufferBegin, buffer.Data(), blockSize);
-            dataBuffer = dataBuffer.RSeek(dataBuffer.size() - blockSize);
-        }
-
-        ui32 flags = 0;
-        SetProtoFlag(flags, NRdma::RDMA_PROTO_FLAG_DATA_AT_THE_END);
-
-        NRdma::TProtoMessageSerializer::SerializeWithDataLength(
-            requestDetails.Out,
-            TBlockStoreServerProtocol::EvReadBlocksResponse,
-            flags,
-            proto,
-            tailSize);
-        return requestDetails.Out.Size();
+        Y_UNUSED(msgId);
+        GeneralHandleResponse<TWriteBlocksMethod>(
+            requestDetails,
+            future,
+            TBlockStoreServerProtocol::EvWriteBlocksResponse);
     }
 
     template <>
@@ -421,17 +388,46 @@ private:
                 msgId);
             return;
         }
-        auto [bytes, error] =
-            SerializeReadBlocksResponseToBuffer(response, requestDetails);
-        if (auto ep = Endpoint.lock()) {
-            if (HasError(error)) {
+
+        const auto& resp = future.GetValue();
+
+        NProto::TReadBlocksResponse proto;
+        proto.MutableError()->CopyFrom(resp.GetError());
+        proto.MutableTrace()->CopyFrom(resp.GetTrace());
+        *proto.MutableUnencryptedBlockMask() = resp.GetUnencryptedBlockMask();
+        proto.SetThrottlerDelay(resp.GetThrottlerDelay());
+        proto.SetAllZeroes(resp.GetAllZeroes());
+
+        TSgList buffers;
+        buffers.reserve(resp.GetBlocks().BuffersSize());
+        for (const auto& buf: resp.GetBlocks().GetBuffers()) {
+            buffers.emplace_back(buf.Data(), buf.Size());
+            proto.MutableBlocks()
+                ->AddBuffers();   // Add empty buffers to pass blocks count.
+        }
+
+        auto totalLen = NRdma::TProtoMessageSerializer::MessageByteSize(
+            proto,
+            SgListGetSize(buffers));
+        if (requestDetails.Out.Size() < totalLen) {
+            if (auto ep = Endpoint.lock()) {
                 ep->SendError(
                     requestDetails.Context,
-                    error.GetCode(),
-                    error.GetMessage());
-                return;
+                    E_ARGUMENT,
+                    "output buffer is too smal to serialize response");
             }
-            ep->SendResponse(requestDetails.Context, bytes);
+            return;
+        }
+
+        size_t responseBytes =
+            NRdma::TProtoMessageSerializer::SerializeWithData(
+                requestDetails.Out,
+                TBlockStoreServerProtocol::EvReadBlocksResponse,
+                0,   // flags
+                proto,
+                buffers);
+        if (auto ep = Endpoint.lock()) {
+            ep->SendResponse(requestDetails.Context, responseBytes);
         }
     }
 

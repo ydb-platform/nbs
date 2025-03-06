@@ -7,8 +7,6 @@ SRCS(
     checksum_storage_wrapper.cpp
     context.cpp
     device_handler.cpp
-    rdma_protocol.cpp
-    rdma_target.cpp
     request_helpers.cpp
     request.cpp
     service_auth.cpp
@@ -27,8 +25,6 @@ PEERDIR(
     cloud/blockstore/config
     cloud/blockstore/libs/common
     cloud/blockstore/public/api/protos
-
-    cloud/blockstore/libs/storage/protos
 
     cloud/storage/core/libs/common
 
