@@ -1527,3 +1527,65 @@ func TestListerMetricsCleanup(t *testing.T) {
 
 	registry.AssertAllExpectations(t)
 }
+
+func TestTasksGetTaskIDByIdempotencyKey(t *testing.T) {
+	ctx, cancel := context.WithCancel(newContext())
+	defer cancel()
+
+	db, err := newYDB(ctx)
+	require.NoError(t, err)
+	defer db.Close(ctx)
+
+	s := createServices(t, ctx, db, 2)
+
+	err = registerLongTask(s.registry)
+	require.NoError(t, err)
+
+	failure := errors.NewNonRetriableError(assert.AnError)
+	err = registerFailureTask(s.registry, failure)
+	require.NoError(t, err)
+
+	err = s.startRunners(ctx)
+	require.NoError(t, err)
+
+	reqCtx := getRequestContext(t, ctx)
+	longTaskIdempotencyKey := headers.GetIdempotencyKey(reqCtx)
+	longTaskID, err := scheduleLongTask(reqCtx, s.scheduler)
+	require.NoError(t, err)
+
+	taskID, err := s.scheduler.GetTaskIDByIdempotencyKey(
+		headers.SetIncomingIdempotencyKey(ctx, longTaskIdempotencyKey),
+	)
+	require.NoError(t, err)
+	require.Equal(t, longTaskID, taskID)
+
+	reqCtx = getRequestContext(t, ctx)
+	failureTaskIdempotencyKey := headers.GetIdempotencyKey(reqCtx)
+	require.NotEqual(t, longTaskIdempotencyKey, failureTaskIdempotencyKey)
+	failureTaskID, err := scheduleFailureTask(reqCtx, s.scheduler)
+	require.NoError(t, err)
+
+	err = s.scheduler.WaitTaskEnded(ctx, failureTaskID)
+	require.NoError(t, err)
+
+	taskID, err = s.scheduler.GetTaskIDByIdempotencyKey(
+		headers.SetIncomingIdempotencyKey(ctx, failureTaskID),
+	)
+	require.NoError(t, err)
+	require.Equal(t, failureTaskID, taskID)
+
+	err = s.scheduler.WaitTaskEnded(ctx, longTaskID)
+	require.NoError(t, err)
+
+	taskID, err = s.scheduler.GetTaskIDByIdempotencyKey(
+		headers.SetIncomingIdempotencyKey(ctx, longTaskIdempotencyKey),
+	)
+	require.NoError(t, err)
+	require.Equal(t, longTaskID, taskID)
+
+	taskID, err = s.scheduler.GetTaskIDByIdempotencyKey(
+		headers.SetIncomingIdempotencyKey(ctx, "nonExistingIdempotencyKey"),
+	)
+	require.NoError(t, err)
+	require.Empty(t, taskID)
+}
