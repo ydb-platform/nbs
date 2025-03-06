@@ -51,7 +51,6 @@ func (t *createImageFromDiskTask) run(
 	ctx context.Context,
 	execCtx tasks.ExecutionContext,
 	nbsClient nbs.Client,
-	checkpointID string,
 ) error {
 
 	disk := t.request.SrcDisk
@@ -82,24 +81,13 @@ func (t *createImageFromDiskTask) run(
 		return nil
 	}
 
-	err = nbsClient.CreateCheckpoint(
+	checkpointID, err := t.createCheckpoint(
 		ctx,
-		nbs.CheckpointParams{
-			DiskID:       disk.DiskId,
-			CheckpointID: checkpointID,
-		},
+		execCtx,
+		nbsClient,
+		diskParams.IsDiskRegistryBasedDisk,
+		selfTaskID,
 	)
-	if err != nil {
-		return err
-	}
-
-	err = nbsClient.EnsureCheckpointReady(ctx, disk.DiskId, checkpointID)
-	if errors.Is(err, errors.NewEmptyRetriableError()) {
-		deleteErr := nbsClient.DeleteCheckpoint(ctx, disk.DiskId, checkpointID)
-		if deleteErr != nil {
-			return deleteErr
-		}
-	}
 	if err != nil {
 		return err
 	}
@@ -165,15 +153,13 @@ func (t *createImageFromDiskTask) Run(
 ) error {
 
 	disk := t.request.SrcDisk
-	// NOTE: we use image id as checkpoint id.
-	checkpointID := t.request.DstImageId
 
 	nbsClient, err := t.nbsFactory.GetClient(ctx, disk.ZoneId)
 	if err != nil {
 		return err
 	}
 
-	err = t.run(ctx, execCtx, nbsClient, checkpointID)
+	err = t.run(ctx, execCtx, nbsClient)
 	if err != nil {
 		return err
 	}
@@ -191,6 +177,17 @@ func (t *createImageFromDiskTask) Run(
 	}
 
 	diskParams, err := nbsClient.Describe(ctx, t.request.SrcDisk.DiskId)
+	if err != nil {
+		return err
+	}
+
+	selfTaskID := execCtx.GetTaskID()
+
+	checkpointID, err := t.getCheckpointID(
+		ctx,
+		selfTaskID,
+		diskParams.IsDiskRegistryBasedDisk,
+	)
 	if err != nil {
 		return err
 	}
@@ -214,13 +211,28 @@ func (t *createImageFromDiskTask) Cancel(
 		return err
 	}
 
-	// NOTE: we use image id as checkpoint id.
-	checkpointID := t.request.DstImageId
+	selfTaskID := execCtx.GetTaskID()
 
-	// NBS-1873: Should always delete checkpoint.
-	err = nbsClient.DeleteCheckpoint(ctx, disk.DiskId, checkpointID)
+	checkpointTaskID, err := t.scheduler.GetTaskIDByIdempotencyKey(
+		headers.SetIncomingIdempotencyKey(
+			ctx,
+			t.getIdempotencyKeyForCheckpointTask(selfTaskID),
+		),
+	)
 	if err != nil {
 		return err
+	}
+
+	if checkpointTaskID == "" {
+		_, err = t.scheduler.CancelTask(ctx, checkpointTaskID)
+		if err != nil {
+			return err
+		}
+	}
+
+	err = t.deleteCheckpoint(ctx, nbsClient, selfTaskID)
+	if err != nil {
+		return nil
 	}
 
 	return deleteImage(
@@ -269,6 +281,13 @@ func (t *createImageFromDiskTask) GetResponse() proto.Message {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+func (t *createImageFromDiskTask) getIdempotencyKeyForCheckpointTask(
+	selfTaskID string,
+) string {
+
+	return selfTaskID + "_create_checkpoint"
+}
+
 func (t *createImageFromDiskTask) scheduleCreateShadowDiskBasedCheckpointTask(
 	ctx context.Context,
 	selfTaskID string,
@@ -277,9 +296,12 @@ func (t *createImageFromDiskTask) scheduleCreateShadowDiskBasedCheckpointTask(
 	disk := t.request.SrcDisk
 
 	return t.scheduler.ScheduleTask(
-		headers.SetIncomingIdempotencyKey(ctx, selfTaskID+"_create_checkpoint"), // TODO:_ idemp keys ok now?
+		headers.SetIncomingIdempotencyKey(
+			ctx,
+			t.getIdempotencyKeyForCheckpointTask(selfTaskID),
+		),
 		"dataplane.CreateShadowDiskBasedCheckpoint",
-		"", // TODO:_ do we need description?
+		"Create checkpoint for image "+t.request.DstImageId,
 		&dataplane_protos.CreateShadowDiskBasedCheckpointRequest{
 			Disk:               disk,
 			CheckpointIdPrefix: t.request.DstImageId,
@@ -338,6 +360,51 @@ func (t *createImageFromDiskTask) createCheckpoint(
 	return typedResponse.CheckpointId, nil
 }
 
+func (t *createImageFromDiskTask) getCheckpointID(
+	ctx context.Context,
+	selfTaskID string,
+	isDiskRegistryBasedDisk bool,
+) (string, error) {
+
+	if !isDiskRegistryBasedDisk {
+		return t.request.DstImageId, nil
+	}
+
+	checkpointTaskID, err := t.scheduler.GetTaskIDByIdempotencyKey(
+		headers.SetIncomingIdempotencyKey(
+			ctx,
+			t.getIdempotencyKeyForCheckpointTask(selfTaskID),
+		),
+	)
+	if err != nil {
+		return "", err
+	}
+
+	if checkpointTaskID == "" {
+		return "", nil
+	}
+
+	err = t.scheduler.WaitTaskEnded(ctx, checkpointTaskID)
+	if err != nil {
+		return "", err
+	}
+
+	metadata, err := t.scheduler.GetTaskMetadata(ctx, checkpointTaskID)
+	if err != nil {
+		return "", err
+	}
+
+	typedMetadata, ok := metadata.(*dataplane_protos.CreateShadowDiskBasedCheckpointMetadata)
+	if !ok {
+		return "", errors.NewNonRetriableErrorf(
+			"invalid create shadow disk based checkpoint metadata type %T",
+			metadata,
+		)
+	}
+
+	return typedMetadata.CheckpointId, nil
+}
+
 func (t *createImageFromDiskTask) deleteCheckpoint(
 	ctx context.Context,
 	nbsClient nbs.Client,
@@ -355,45 +422,14 @@ func (t *createImageFromDiskTask) deleteCheckpoint(
 		return err
 	}
 
-	if !diskParams.IsDiskRegistryBasedDisk {
-		return nbsClient.DeleteCheckpoint(
-			ctx,
-			disk.DiskId,
-			t.request.DstImageId, // checkpointID
-		)
-	}
-
-	checkpointTaskID, err := t.scheduleCreateShadowDiskBasedCheckpointTask(
+	checkpointID, err := t.getCheckpointID(
 		ctx,
 		selfTaskID,
+		diskParams.IsDiskRegistryBasedDisk,
 	)
 	if err != nil {
 		return err
 	}
 
-	_, err = t.scheduler.CancelTask(ctx, checkpointTaskID)
-	if err != nil {
-		return err
-	}
-
-	err = t.scheduler.WaitTaskEnded(ctx, checkpointTaskID)
-	if err != nil {
-		return err
-	}
-
-	metadata, err := t.scheduler.GetTaskMetadata(ctx, checkpointTaskID)
-	if err != nil {
-		return err
-	}
-
-	typedMetadata, ok := metadata.(*dataplane_protos.CreateShadowDiskBasedCheckpointMetadata)
-	if !ok {
-		return nil // TODO:_ return error?
-	}
-	checkpointID := typedMetadata.CheckpointId
-	if checkpointID != "" {
-		return nbsClient.DeleteCheckpoint(ctx, disk.DiskId, checkpointID)
-	}
-
-	return nil
+	return nbsClient.DeleteCheckpoint(ctx, disk.DiskId, checkpointID)
 }
