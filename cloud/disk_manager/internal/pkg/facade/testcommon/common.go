@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -369,7 +370,6 @@ func WaitForCheckpointsDoNotExist(
 	t *testing.T,
 	ctx context.Context,
 	diskID string,
-	awaitedCheckpoints ...string,
 ) {
 
 	nbsClient := NewNbsTestingClient(t, ctx, "zone-a")
@@ -378,26 +378,39 @@ func WaitForCheckpointsDoNotExist(
 		checkpoints, err := nbsClient.GetCheckpoints(ctx, diskID)
 		require.NoError(t, err)
 
-		checkpointSet := make(map[string]struct{}, len(checkpoints))
-		for _, checkpoint := range checkpoints {
-			checkpointSet[checkpoint] = struct{}{}
-		}
-
-		found := false
-		for _, awaitedCheckpoint := range awaitedCheckpoints {
-			if _, exists := checkpointSet[awaitedCheckpoint]; exists {
-				found = true
-				break
-			}
-		}
-
-		if len(checkpoints) == 0 || (!found && len(awaitedCheckpoints) > 0) {
+		if len(checkpoints) == 0 {
 			return
 		}
 
 		logging.Warn(
 			ctx,
 			"WaitForCheckpointsDoNotExist proceeding to next iteration",
+		)
+
+		<-time.After(100 * time.Millisecond)
+	}
+}
+
+func WaitForCheckpointDoesNotExist(
+	t *testing.T,
+	ctx context.Context,
+	diskID string,
+	checkpointID string,
+) {
+
+	nbsClient := NewNbsTestingClient(t, ctx, "zone-a")
+
+	for {
+		checkpoints, err := nbsClient.GetCheckpoints(ctx, diskID)
+		require.NoError(t, err)
+
+		if !slices.Contains(checkpoints, checkpointID) {
+			return
+		}
+
+		logging.Warn(
+			ctx,
+			"WaitForCheckpointDoesNotExist proceeding to next iteration",
 		)
 
 		<-time.After(100 * time.Millisecond)

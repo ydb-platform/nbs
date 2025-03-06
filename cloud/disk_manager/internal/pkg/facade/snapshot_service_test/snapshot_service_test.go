@@ -625,7 +625,7 @@ func TestSnapshotServiceDeleteIncrementalSnapshotWhileCreating(t *testing.T) {
 
 		// Should wait here because checkpoint is deleted on |createOperation|
 		// operation cancel (and exact time of this event is unknown).
-		testcommon.WaitForCheckpointsDoNotExist(t, ctx, diskID, snapshotID1)
+		testcommon.WaitForCheckpointDoesNotExist(t, ctx, diskID, snapshotID1)
 		// In case of snapshot1 creation failure base snapshot may be already
 		// deleted from incremental table and then checkpoint should not exist
 		// on the disk. Otherwise base snapshot checkpoint should exist.
