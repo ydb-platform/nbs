@@ -131,7 +131,7 @@ private:
 
 public:
     explicit TNonreplicatedPartitionConfig(
-        TNonreplicatedPartitionConfigInitParams params)
+            TNonreplicatedPartitionConfigInitParams params)
         : Devices(std::move(params.Devices))
         , IOMode(params.IOMode)
         , Name(std::move(params.Name))
