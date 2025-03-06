@@ -48,6 +48,7 @@ def test_load(test_case):
         test_case.name,
         test_case.config_path,
         os.getenv("NFS_SERVER_PORT"),
+        mon_port=os.getenv("NFS_MON_PORT"),
     )
 
     return None

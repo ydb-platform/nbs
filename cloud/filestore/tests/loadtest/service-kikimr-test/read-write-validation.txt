@@ -25,6 +25,7 @@ Tests {
         }
         IODepth: 1
         TestDuration: 60
+        KeepFileStore: true
     }
 }
 Tests {
@@ -54,5 +55,6 @@ Tests {
         }
         IODepth: 1
         TestDuration: 60
+        KeepFileStore: true
     }
 }
