@@ -18,9 +18,10 @@ IReplayRequestGenerator::IReplayRequestGenerator(
         NProto::TReplaySpec spec,
         ILoggingServicePtr logging,
         NClient::ISessionPtr session,
-        TString /*filesystemId*/,
+        TString filesystemId,
         NProto::THeaders headers)
     : Spec(std::move(spec))
+    , TargetFilesystemId(std::move(filesystemId))
     , Headers(std::move(headers))
     , Session(std::move(session))
 {
@@ -28,9 +29,11 @@ IReplayRequestGenerator::IReplayRequestGenerator(
 
     NEventLog::TOptions options;
     options.FileName = Spec.GetFileName();
+    options.ForceStrongOrdering = true;
+    if (const auto sleep = Spec.GetMaxSleepMcs()) {
+        MaxSleepMcs = sleep;
+    }
 
-    // Sort eventlog items by timestamp
-    options.SetForceStrongOrdering(true);
     CurrentEvent = CreateIterator(options);
 }
 
@@ -54,9 +57,8 @@ bool IReplayRequestGenerator::ShouldFailOnError()
 
 void IReplayRequestGenerator::Advance()
 {
-    for (EventPtr = CurrentEvent->Next(); EventPtr;
-         EventPtr = CurrentEvent->Next())
-    {
+    while (EventPtr = CurrentEvent->Next()) {
+        ++EventsProcessed;
         MessagePtr = dynamic_cast<const NProto::TProfileLogRecord*>(
             EventPtr->GetProto());
 
@@ -68,10 +70,20 @@ void IReplayRequestGenerator::Advance()
         if (!Spec.GetFileSystemIdFilter().empty() &&
             fileSystemId != Spec.GetFileSystemIdFilter())
         {
+            ++EventsSkipped;
             STORAGE_DEBUG(
-                "Skipped event with FileSystemId=%s",
-                fileSystemId.c_str());
+                "Skipped events=%zu FileSystemId=%s Filter=%s",
+                EventsSkipped,
+                fileSystemId.c_str(),
+                Spec.GetFileSystemIdFilter().c_str());
             continue;
+        }
+
+        if (TargetFilesystemId.empty() && !fileSystemId.empty()) {
+            TargetFilesystemId = fileSystemId;
+            STORAGE_INFO(
+                "Using FileSystemId from profile log %s",
+                TargetFilesystemId.c_str());
         }
 
         EventMessageNumber = MessagePtr->GetRequests().size();
@@ -87,7 +99,7 @@ TFuture<TCompletedRequest> IReplayRequestGenerator::ProcessRequest(
         case EFileStoreRequest::ReadData:
             return DoReadData(request);
         case EFileStoreRequest::WriteData:
-            return DoWrite(request);
+            return DoWriteData(request);
         case EFileStoreRequest::CreateNode:
             return DoCreateNode(request);
         case EFileStoreRequest::RenameNode:
@@ -114,6 +126,8 @@ TFuture<TCompletedRequest> IReplayRequestGenerator::ProcessRequest(
         case EFileStoreRequest::GenerateBlobIds:
         case EFileStoreRequest::PingSession:
         case EFileStoreRequest::Ping:
+        case EFileStoreRequest::DescribeData:
+        case EFileStoreRequest::AddData:
             return {};
 
         default:
@@ -128,7 +142,7 @@ TFuture<TCompletedRequest> IReplayRequestGenerator::ProcessRequest(
             break;
     }
 
-    STORAGE_INFO(
+    STORAGE_DEBUG(
         "Uninmplemented action=%u %s",
         action,
         RequestName(request.GetRequestType()).c_str());
@@ -148,52 +162,132 @@ IReplayRequestGenerator::ExecuteNextRequest()
             continue;
         }
 
-        for (; EventMessageNumber > 0;) {
+        while (EventMessageNumber > 0) {
             NProto::TProfileLogRequestInfo request =
                 MessagePtr->GetRequests()[--EventMessageNumber];
             {
-                auto timediff = (request.GetTimestampMcs() - TimestampMcs) *
+                ++MessagesProcessed;
+                ui64 timediff =
+                    (request.GetTimestampMcs() - TimestampMicroSeconds) *
                                 Spec.GetTimeScale();
-                TimestampMcs = request.GetTimestampMcs();
+                TimestampMicroSeconds = request.GetTimestampMcs();
                 if (timediff > MaxSleepMcs) {
+                    STORAGE_DEBUG(
+                        "Ignore too long timediff=%lu MaxSleepMcs=%lu ",
+                        timediff,
+                        MaxSleepMcs);
+
                     timediff = 0;
                 }
 
-                const auto current = TInstant::Now();
-                auto diff = current - Started;
+                const auto currentInstant = TInstant::Now();
 
+                if (NextStatusAt <= currentInstant) {
+                    NextStatusAt = currentInstant + StatusEverySeconds;
+                    STORAGE_INFO(
+                        "Current event=%zu Skipped=%zu Msg=%zd TotalMsg=%zu "
+                        "Skipped=%zu "
+                        "Sleeps=%f "
+                        "Time=%s",
+                        EventsProcessed,
+                        EventsSkipped,
+                        EventMessageNumber,
+                        MessagesProcessed,
+                        MessagesSkipped,
+                        Sleeps,
+                        TInstant::MicroSeconds(TimestampMicroSeconds)
+                            .ToString()
+                            .c_str())
+                }
+
+                if (const i64 realTimeAlignseconds = Spec.GetRealTime()) {
+                    constexpr auto RealtimeToleratePastSeconds = 100;
+                    constexpr auto RealtimeTolerateFutureSeconds = 1000;
+                    constexpr auto OneMillion = 1000000LL;
+                    const i64 alignMicroSeconds =
+                        realTimeAlignseconds * OneMillion;
+                    const i64 currentMicroSeconds =
+                        currentInstant.MicroSeconds() +
+                        Spec.GetRealTimeOffset() * OneMillion;
+                    const i64 nowPeriodStart =
+                        (currentMicroSeconds / alignMicroSeconds) *
+                        alignMicroSeconds;
+                    const i64 logPeriodStart =
+                        (TimestampMicroSeconds / alignMicroSeconds) *
+                        alignMicroSeconds;
+                    const i64 nowRelativeMicroSeconds =
+                        currentMicroSeconds - nowPeriodStart;
+                    const i64 logRelativeMicroSeconds =
+                        TimestampMicroSeconds - logPeriodStart;
+
+                    if (nowRelativeMicroSeconds -
+                            RealtimeToleratePastSeconds * OneMillion >
+                        logRelativeMicroSeconds)
+                    {
+                        ++MessagesSkipped;
+                        continue;
+                    }
+
+                    if (nowRelativeMicroSeconds < logRelativeMicroSeconds) {
+                        const auto sleepMcs =
+                            logRelativeMicroSeconds - nowRelativeMicroSeconds;
+                        if (sleepMcs / OneMillion >
+                            RealtimeTolerateFutureSeconds)
+                        {
+                            return {};
+                        }
+
+                        auto sleep = TDuration::MicroSeconds(sleepMcs);
+                        Sleeps += sleep.SecondsFloat();
+                        Sleep(sleep);
+                    }
+                }
+
+                const auto diff = currentInstant - Started;
                 if (timediff > diff.MicroSeconds()) {
                     auto sleep =
                         TDuration::MicroSeconds(timediff - diff.MicroSeconds());
                     STORAGE_DEBUG(
-                        "Sleep=%lu timediff=%f diff=%lu",
+                        "Sleep=%lu timediff=%lu diff=%lu",
                         sleep.MicroSeconds(),
                         timediff,
                         diff.MicroSeconds());
 
                     Sleep(sleep);
+                    Sleeps += sleep.SecondsFloat();
                 }
 
-                Started = current;
+                Started = currentInstant;
             }
 
             STORAGE_DEBUG(
-                "Processing message n=%d typename=%s type=%d name=%s data=%s",
+                "Event=%zu Msg=%zd Mcs=%lu T=%s: Processing typename=%s "
+                "type=%d name=%s "
+                "data=%s",
+                EventsProcessed,
                 EventMessageNumber,
+                request.GetTimestampMcs(),
+                TInstant::MicroSeconds(request.GetTimestampMcs())
+                    .ToString()
+                    .c_str(),
                 request.GetTypeName().c_str(),
                 request.GetRequestType(),
                 RequestName(request.GetRequestType()).c_str(),
                 request.ShortDebugString().Quote().c_str());
 
-            const auto future = ProcessRequest(request);
-            if (future.Initialized()) {
-                return future;
+            try {
+                const auto future = ProcessRequest(request);
+                if (future.Initialized()) {
+                    return future;
+                }
+            } catch (const std::exception& ex) {
+                STORAGE_ERROR("request exception: %s", ex.what());
             }
         }
     }
 
     STORAGE_INFO(
-        "Profile log finished n=%d hasPtr=%d",
+        "Profile log finished n=%zd hasPtr=%d",
         EventMessageNumber,
         !!EventPtr);
 
