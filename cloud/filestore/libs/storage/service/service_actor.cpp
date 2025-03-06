@@ -1,4 +1,5 @@
 #include "service_actor.h"
+#include "cloud/filestore/libs/service/request.h"
 
 #include <contrib/ydb/core/base/appdata.h>
 #include <contrib/ydb/core/mon/mon.h>
@@ -37,6 +38,7 @@ void TStorageServiceActor::Bootstrap(const TActorContext& ctx)
 {
     Become(&TThis::StateWork);
 
+    GetTextPrinter(StorageConfig->GetTruncateLogStringFieldLongerThan());
     RegisterPages(ctx);
     RegisterCounters(ctx);
     ScheduleUpdateStats(ctx);

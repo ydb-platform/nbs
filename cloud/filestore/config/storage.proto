@@ -527,4 +527,8 @@ message TStorageConfig
 
     // Enable write-back cache on FUSE server
     optional bool ServerWriteBackCacheEnabled = 420;
+
+    // Truncate strings from google::protobuf::Message
+    // that exceed the specified length
+    optional uint32 TruncateLogStringFieldLongerThan = 421;
 }
