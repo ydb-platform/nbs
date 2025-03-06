@@ -54,6 +54,19 @@ public:
 
     struct TNonreplicatedPartitionConfigInitParams
     {
+        TDevices Devices;
+        TVolumeInfo VolumeInfo;
+        TString Name;
+        ui32 BlockSize;
+        NActors::TActorId ParentActorId;
+        NProto::EVolumeIOMode IOMode = NProto::VOLUME_IO_OK;
+        bool MuteIOErrors = false;
+        THashSet<TString> FreshDeviceIds;
+        THashSet<TString> LaggingDeviceIds;
+        TDuration MaxTimedOutDeviceStateDuration;
+        bool MaxTimedOutDeviceStateDurationOverridden = false;
+        bool UseSimpleMigrationBandwidthLimiter = true;
+
         TNonreplicatedPartitionConfigInitParams(
                 TDevices devices,
                 TVolumeInfo volumeInfo,
@@ -97,19 +110,6 @@ public:
         {}
 
         ~TNonreplicatedPartitionConfigInitParams() = default;
-
-        TDevices Devices;
-        TVolumeInfo VolumeInfo;
-        TString Name;
-        ui32 BlockSize;
-        NActors::TActorId ParentActorId;
-        NProto::EVolumeIOMode IOMode = NProto::VOLUME_IO_OK;
-        bool MuteIOErrors = false;
-        THashSet<TString> FreshDeviceIds;
-        THashSet<TString> LaggingDeviceIds;
-        TDuration MaxTimedOutDeviceStateDuration;
-        bool MaxTimedOutDeviceStateDurationOverridden = false;
-        bool UseSimpleMigrationBandwidthLimiter = true;
     };
 
 private:
