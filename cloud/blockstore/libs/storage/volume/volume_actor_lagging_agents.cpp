@@ -17,6 +17,8 @@ LWTRACE_USING(BLOCKSTORE_STORAGE_PROVIDER);
 
 namespace {
 
+////////////////////////////////////////////////////////////////////////////////
+
 bool LaggingDevicesAreAllowed(
     NProto::EStorageMediaKind mediaKind,
     const TStorageConfigPtr& config,
