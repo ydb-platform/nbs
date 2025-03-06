@@ -4,6 +4,7 @@
 #include "alter_volume.h"
 #include "assign_volume.h"
 #include "backup_volume.h"
+#include "check_range.h"
 #include "create_checkpoint.h"
 #include "create_placement_group.h"
 #include "create_volume.h"
@@ -60,6 +61,7 @@ struct THandlerFactory
         { "altervolume", NewAlterVolumeCommand },
         { "assignvolume", NewAssignVolumeCommand },
         { "backupvolume", NewBackupVolumeCommand },
+        { "checkrange", NewCheckRangeCommand },
         { "createcheckpoint", NewCreateCheckpointCommand },
         { "createplacementgroup", NewCreatePlacementGroupCommand },
         { "createvolume", NewCreateVolumeCommand },
