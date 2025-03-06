@@ -192,13 +192,26 @@ func (t *createSnapshotFromDiskTask) Cancel(
 
 	selfTaskID := execCtx.GetTaskID()
 
-	err = t.deleteCheckpoint(
-		ctx,
-		nbsClient,
-		selfTaskID,
+	checkpointTaskID, err := t.scheduler.GetTaskIDByIdempotencyKey(
+		headers.SetIncomingIdempotencyKey(
+			ctx,
+			t.getIdempotencyKeyForCheckpointTask(selfTaskID),
+		),
 	)
 	if err != nil {
 		return err
+	}
+
+	if checkpointTaskID == "" {
+		_, err = t.scheduler.CancelTask(ctx, checkpointTaskID)
+		if err != nil {
+			return err
+		}
+	}
+
+	err = t.deleteCheckpoint(ctx, nbsClient, selfTaskID)
+	if err != nil {
+		return nil
 	}
 
 	snapshotMeta, err := t.storage.DeleteSnapshot(
@@ -276,6 +289,13 @@ func (t *createSnapshotFromDiskTask) GetResponse() proto.Message {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+func (t *createSnapshotFromDiskTask) getIdempotencyKeyForCheckpointTask(
+	selfTaskID string,
+) string {
+
+	return selfTaskID + "_create_checkpoint"
+}
+
 func (t *createSnapshotFromDiskTask) scheduleCreateShadowDiskBasedCheckpointTask(
 	ctx context.Context,
 	selfTaskID string,
@@ -284,7 +304,10 @@ func (t *createSnapshotFromDiskTask) scheduleCreateShadowDiskBasedCheckpointTask
 	disk := t.request.SrcDisk
 
 	return t.scheduler.ScheduleTask(
-		headers.SetIncomingIdempotencyKey(ctx, selfTaskID+"_create_checkpoint"),
+		headers.SetIncomingIdempotencyKey(
+			ctx,
+			t.getIdempotencyKeyForCheckpointTask(selfTaskID),
+		),
 		"dataplane.CreateShadowDiskBasedCheckpoint",
 		"Create checkpoint for snapshot "+t.request.DstSnapshotId,
 		&dataplane_protos.CreateShadowDiskBasedCheckpointRequest{
@@ -345,6 +368,51 @@ func (t *createSnapshotFromDiskTask) createCheckpoint(
 	return typedResponse.CheckpointId, nil
 }
 
+func (t *createSnapshotFromDiskTask) getCheckpointID(
+	ctx context.Context,
+	selfTaskID string,
+	isDiskRegistryBasedDisk bool,
+) (string, error) {
+
+	if !isDiskRegistryBasedDisk {
+		return t.request.DstSnapshotId, nil
+	}
+
+	checkpointTaskID, err := t.scheduler.GetTaskIDByIdempotencyKey(
+		headers.SetIncomingIdempotencyKey(
+			ctx,
+			t.getIdempotencyKeyForCheckpointTask(selfTaskID),
+		),
+	)
+	if err != nil {
+		return "", err
+	}
+
+	if checkpointTaskID == "" {
+		return "", nil
+	}
+
+	err = t.scheduler.WaitTaskEnded(ctx, checkpointTaskID)
+	if err != nil {
+		return "", err
+	}
+
+	metadata, err := t.scheduler.GetTaskMetadata(ctx, checkpointTaskID)
+	if err != nil {
+		return "", err
+	}
+
+	typedMetadata, ok := metadata.(*dataplane_protos.CreateShadowDiskBasedCheckpointMetadata)
+	if !ok {
+		return "", errors.NewNonRetriableErrorf(
+			"invalid create shadow disk based checkpoint metadata type %T",
+			metadata,
+		)
+	}
+
+	return typedMetadata.CheckpointId, nil
+}
+
 func (t *createSnapshotFromDiskTask) deleteCheckpoint(
 	ctx context.Context,
 	nbsClient nbs.Client,
@@ -362,48 +430,11 @@ func (t *createSnapshotFromDiskTask) deleteCheckpoint(
 		return err
 	}
 
-	if !diskParams.IsDiskRegistryBasedDisk {
-		return nbsClient.DeleteCheckpoint(
-			ctx,
-			disk.DiskId,
-			t.request.DstSnapshotId, // checkpointID
-		)
-	}
-
-	checkpointTaskID, err := t.scheduleCreateShadowDiskBasedCheckpointTask(
+	checkpointID, err := t.getCheckpointID(
 		ctx,
 		selfTaskID,
+		diskParams.IsDiskRegistryBasedDisk,
 	)
-	if err != nil {
-		return err
-	}
 
-	_, err = t.scheduler.CancelTask(ctx, checkpointTaskID)
-	if err != nil {
-		return err
-	}
-
-	err = t.scheduler.WaitTaskEnded(ctx, checkpointTaskID)
-	if err != nil {
-		return err
-	}
-
-	metadata, err := t.scheduler.GetTaskMetadata(ctx, checkpointTaskID)
-	if err != nil {
-		return err
-	}
-
-	typedMetadata, ok := metadata.(*dataplane_protos.CreateShadowDiskBasedCheckpointMetadata)
-	if !ok {
-		return errors.NewNonRetriableErrorf(
-			"invalid create shadow disk based checkpoint metadata type %T",
-			metadata,
-		)
-	}
-	checkpointID := typedMetadata.CheckpointId
-	if checkpointID != "" {
-		return nbsClient.DeleteCheckpoint(ctx, disk.DiskId, checkpointID)
-	}
-
-	return nil
+	return nbsClient.DeleteCheckpoint(ctx, disk.DiskId, checkpointID)
 }
