@@ -161,9 +161,9 @@ struct TEvVolumePrivate
         ui64 DirtyBlockCount;
 
         TUpdateLaggingAgentMigrationState(
-            TString agentId,
-            ui64 cleanBlockCount,
-            ui64 dirtyBlockCount)
+                TString agentId,
+                ui64 cleanBlockCount,
+                ui64 dirtyBlockCount)
             : AgentId(std::move(agentId))
             , CleanBlockCount(cleanBlockCount)
             , DirtyBlockCount(dirtyBlockCount)

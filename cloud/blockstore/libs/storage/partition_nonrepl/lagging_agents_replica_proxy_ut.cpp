@@ -532,6 +532,18 @@ Y_UNIT_TEST_SUITE(TLaggingAgentsReplicaProxyActorTest)
             [&](TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& event)
             {
                 switch (event->GetTypeRewrite()) {
+                    case TEvNonreplPartitionPrivate::EvChecksumBlocksRequest: {
+                        auto* msg = event->Get<TEvNonreplPartitionPrivate::
+                                                   TEvChecksumBlocksRequest>();
+                        auto clientId = msg->Record.GetHeaders().GetClientId();
+                        if (clientId == CheckHealthClientId) {
+                            UNIT_ASSERT_VALUES_EQUAL(
+                                env.ReplicaActors[0],
+                                event->Recipient);
+                            seenHealthCheck = true;
+                        }
+                        break;
+                    }
                     case TEvService::EvReadBlocksRequest: {
                         if (!FindPtr(env.ReplicaActors, event->Recipient)) {
                             break;
@@ -539,12 +551,7 @@ Y_UNIT_TEST_SUITE(TLaggingAgentsReplicaProxyActorTest)
                         auto* msg =
                             event->Get<TEvService::TEvReadBlocksRequest>();
                         auto clientId = msg->Record.GetHeaders().GetClientId();
-                        if (clientId == CheckHealthClientId) {
-                            UNIT_ASSERT_VALUES_EQUAL(
-                                env.ReplicaActors[0],
-                                event->Recipient);
-                            seenHealthCheck = true;
-                        } else if (clientId == BackgroundOpsClientId) {
+                        if (clientId == BackgroundOpsClientId) {
                             UNIT_ASSERT_VALUES_EQUAL(
                                 env.ReplicaActors[1],
                                 event->Recipient);

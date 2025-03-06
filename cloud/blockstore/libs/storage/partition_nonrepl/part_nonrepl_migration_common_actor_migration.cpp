@@ -35,8 +35,8 @@ void TNonreplicatedPartitionMigrationCommonActor::InitWork(
 
     ActorOwner = takeOwnershipOverActors;
     if (ActorOwner) {
-    PoisonPillHelper.TakeOwnership(ctx, SrcActorId);
-    PoisonPillHelper.TakeOwnership(ctx, DstActorId);
+        PoisonPillHelper.TakeOwnership(ctx, SrcActorId);
+        PoisonPillHelper.TakeOwnership(ctx, DstActorId);
     }
 
     GetDeviceForRangeCompanion.SetDelegate(SrcActorId);

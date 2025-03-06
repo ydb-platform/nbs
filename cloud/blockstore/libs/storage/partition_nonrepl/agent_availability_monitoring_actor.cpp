@@ -1,7 +1,5 @@
 #include "agent_availability_monitoring_actor.h"
 
-#include "part_nonrepl_events_private.h"
-
 #include <cloud/blockstore/libs/storage/api/volume.h>
 #include <cloud/blockstore/libs/storage/disk_agent/model/public.h>
 #include <cloud/storage/core/libs/actors/helpers.h>
@@ -60,13 +58,14 @@ void TAgentAvailabilityMonitoringActor::CheckAgentAvailability(
     LOG_INFO(
         ctx,
         TBlockStoreComponents::PARTITION_WORKER,
-        "[%s] Checking lagging agent %s availability by reading block %lu",
+        "[%s] Checking lagging agent %s availability by reading block %lu "
+        "checksum",
         PartConfig->GetName().c_str(),
-        AgentId.c_str(),
+        AgentId.Quote().c_str(),
         ReadBlockIndex);
 
-    auto request = std::make_unique<TEvService::TEvReadBlocksRequest>();
-
+    auto request = std::make_unique<
+        TEvNonreplPartitionPrivate::TEvChecksumBlocksRequest>();
     request->Record.SetStartIndex(ReadBlockIndex);
     request->Record.SetBlocksCount(1);
     auto* headers = request->Record.MutableHeaders();
@@ -94,22 +93,22 @@ void TAgentAvailabilityMonitoringActor::HandleWakeup(
     ScheduleCheckAvailabilityRequest(ctx);
 }
 
-void TAgentAvailabilityMonitoringActor::HandleReadBlocksUndelivery(
-    const TEvService::TEvReadBlocksRequest::TPtr& ev,
+void TAgentAvailabilityMonitoringActor::HandleChecksumBlocksUndelivery(
+    const TEvNonreplPartitionPrivate::TEvChecksumBlocksRequest::TPtr& ev,
     const TActorContext& ctx)
 {
     Y_UNUSED(ev);
     LOG_DEBUG(
         ctx,
         TBlockStoreComponents::PARTITION_WORKER,
-        "[%s] Couldn't read block from lagging agent %s due to undelivered "
-        "request",
+        "[%s] Couldn't read block checksum from lagging agent %s due to "
+        "undelivered request",
         PartConfig->GetName().c_str(),
-        AgentId.c_str());
+        AgentId.Quote().c_str());
 }
 
-void TAgentAvailabilityMonitoringActor::HandleReadBlocksResponse(
-    const TEvService::TEvReadBlocksResponse::TPtr& ev,
+void TAgentAvailabilityMonitoringActor::HandleChecksumBlocksResponse(
+    const TEvNonreplPartitionPrivate::TEvChecksumBlocksResponse::TPtr& ev,
     const TActorContext& ctx)
 {
     const auto* msg = ev->Get();
@@ -117,9 +116,10 @@ void TAgentAvailabilityMonitoringActor::HandleReadBlocksResponse(
         LOG_DEBUG(
             ctx,
             TBlockStoreComponents::PARTITION_WORKER,
-            "[%s] Couldn't read block from lagging agent %s due to error: %s",
+            "[%s] Couldn't read block checksum from lagging agent %s due to "
+            "error: %s",
             PartConfig->GetName().c_str(),
-            AgentId.c_str(),
+            AgentId.Quote().c_str(),
             FormatError(msg->GetError()).c_str());
 
         return;
@@ -128,9 +128,9 @@ void TAgentAvailabilityMonitoringActor::HandleReadBlocksResponse(
     LOG_INFO(
         ctx,
         TBlockStoreComponents::PARTITION_WORKER,
-        "[%s] Successfully read one block from lagging agent %s",
+        "[%s] Successfully read block checksum from lagging agent %s",
         PartConfig->GetName().c_str(),
-        AgentId.c_str());
+        AgentId.Quote().c_str());
 
     NCloud::Send<TEvNonreplPartitionPrivate::TEvAgentIsBackOnline>(
         ctx,
@@ -152,8 +152,12 @@ void TAgentAvailabilityMonitoringActor::HandlePoisonPill(
 STFUNC(TAgentAvailabilityMonitoringActor::StateWork)
 {
     switch (ev->GetTypeRewrite()) {
-        HFunc(TEvService::TEvReadBlocksResponse, HandleReadBlocksResponse);
-        HFunc(TEvService::TEvReadBlocksRequest, HandleReadBlocksUndelivery);
+        HFunc(
+            TEvNonreplPartitionPrivate::TEvChecksumBlocksResponse,
+            HandleChecksumBlocksResponse);
+        HFunc(
+            TEvNonreplPartitionPrivate::TEvChecksumBlocksRequest,
+            HandleChecksumBlocksUndelivery);
         HFunc(TEvents::TEvWakeup, HandleWakeup);
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
 

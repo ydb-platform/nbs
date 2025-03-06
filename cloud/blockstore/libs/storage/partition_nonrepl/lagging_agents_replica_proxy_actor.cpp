@@ -76,11 +76,11 @@ private:
 
 template <typename TMethod>
 TSplitRequestSenderActor<TMethod>::TSplitRequestSenderActor(
-    TRequestInfoPtr requestInfo,
-    TVector<TSplitRequest> requests,
-    NActors::TActorId parentActorId,
-    TString diskId,
-    ui64 requestId)
+        TRequestInfoPtr requestInfo,
+        TVector<TSplitRequest> requests,
+        NActors::TActorId parentActorId,
+        TString diskId,
+        ui64 requestId)
     : RequestInfo(std::move(requestInfo))
     , Requests(std::move(requests))
     , ParentActorId(parentActorId)
@@ -323,7 +323,7 @@ void TLaggingAgentsReplicaProxyActor::MarkBlocksAsDirty(
         "[%s] Marking block range %s as dirty for agent %s",
         PartConfig->GetName().c_str(),
         range.Print().c_str(),
-        unavailableAgentId.c_str());
+        unavailableAgentId.Quote().c_str());
 
     auto& state = AgentState[unavailableAgentId];
     Y_ABORT_UNLESS(state.CleanBlocksMap);
@@ -352,9 +352,8 @@ void TLaggingAgentsReplicaProxyActor::ReadBlocks(
 {
     // Make sure that read requests are not going to lagging agents.
     const auto* msg = ev->Get();
-    const auto blockRange = TBlockRange64::WithLength(
-        msg->Record.GetStartIndex(),
-        msg->Record.GetBlocksCount());
+    const auto blockRange =
+        BuildRequestBlockRange(*msg, PartConfig->GetBlockSize());
     const auto deviceRequests = PartConfig->ToDeviceRequests(blockRange);
     for (const auto& deviceRequest: deviceRequests) {
         const auto& agentId = deviceRequest.Device.GetAgentId();
@@ -608,7 +607,7 @@ void TLaggingAgentsReplicaProxyActor::HandleAgentIsUnavailable(
         TBlockStoreComponents::PARTITION_WORKER,
         "[%s] Agent %s went unavailable. Creating availability monitor",
         PartConfig->GetName().c_str(),
-        msg->LaggingAgent.GetAgentId().c_str());
+        msg->LaggingAgent.GetAgentId().Quote().c_str());
 
     NCloud::Send(
         ctx,
@@ -672,7 +671,7 @@ void TLaggingAgentsReplicaProxyActor::HandleAgentIsBackOnline(
         TBlockStoreComponents::PARTITION_WORKER,
         "[%s] Agent %s is back online. Starting migration actor",
         PartConfig->GetName().c_str(),
-        msg->AgentId.c_str());
+        msg->AgentId.Quote().c_str());
 
     NCloud::Send(
         ctx,
@@ -699,7 +698,7 @@ void TLaggingAgentsReplicaProxyActor::HandleAgentIsBackOnline(
         "[%s] Starting lagging agent %s migration. Block count: %lu, dirty "
         "block count: %lu",
         PartConfig->GetName().c_str(),
-        msg->AgentId.c_str(),
+        msg->AgentId.Quote().c_str(),
         PartConfig->GetBlockCount(),
         PartConfig->GetBlockCount() - cleanBlocksCopy.Count());
 
@@ -828,11 +827,6 @@ void TLaggingAgentsReplicaProxyActor::ForwardUnhandledEvent(
 STFUNC(TLaggingAgentsReplicaProxyActor::StateZombie)
 {
     switch (ev->GetTypeRewrite()) {
-        // IgnoreFunc(TEvNonreplPartitionPrivate::TEvUpdateCounters);
-        // IgnoreFunc(TEvNonreplPartitionPrivate::TEvScrubbingNextRange);
-        // IgnoreFunc(TEvNonreplPartitionPrivate::TEvChecksumBlocksRequest);
-        // IgnoreFunc(TEvNonreplPartitionPrivate::TEvChecksumBlocksResponse);
-
         HFunc(TEvService::TEvWriteBlocksRequest, RejectWriteBlocks);
         HFunc(TEvService::TEvZeroBlocksRequest, RejectZeroBlocks);
         HFunc(TEvService::TEvWriteBlocksLocalRequest, RejectWriteBlocksLocal);

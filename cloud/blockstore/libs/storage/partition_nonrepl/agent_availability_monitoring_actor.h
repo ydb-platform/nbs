@@ -2,7 +2,8 @@
 
 #include "public.h"
 
-#include <cloud/blockstore/libs/storage/api/service.h>
+#include "part_nonrepl_events_private.h"
+
 #include <cloud/blockstore/libs/storage/core/config.h>
 
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
@@ -46,12 +47,12 @@ private:
 private:
     STFUNC(StateWork);
 
-    void HandleReadBlocksUndelivery(
-        const TEvService::TEvReadBlocksRequest::TPtr& ev,
+    void HandleChecksumBlocksUndelivery(
+        const TEvNonreplPartitionPrivate::TEvChecksumBlocksRequest::TPtr& ev,
         const NActors::TActorContext& ctx);
 
-    void HandleReadBlocksResponse(
-        const TEvService::TEvReadBlocksResponse::TPtr& ev,
+    void HandleChecksumBlocksResponse(
+        const TEvNonreplPartitionPrivate::TEvChecksumBlocksResponse::TPtr& ev,
         const NActors::TActorContext& ctx);
 
     void HandleWakeup(
