@@ -1866,6 +1866,8 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
             UNIT_ASSERT_VALUES_EQUAL(stats.GetDeletionMarkersCount(), 11);
         }
 
+        // Cleanup should've been triggered when the number of deletion markers
+        // hits 12 (an average of 3 markers per range)
         tablet.WriteData(handle, 2 * block, 2 * block, 'e');
 
         {
@@ -6898,14 +6900,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
             args.SetSize(block * blocksCountToTriggerCompaction);
             tablet.SetNodeAttr(args);
         }
-        {
-            TSetNodeAttrArgs args(id);
-            args.SetFlag(NProto::TSetNodeAttrRequest::F_SET_ATTR_SIZE);
-            args.SetSize(block * blocksCountToTriggerCompaction);
-            tablet.SetNodeAttr(args);
-        }
 
-        tablet.Cleanup(rangeId);
         {
             auto response = tablet.GetStorageStats(1);
             const auto& stats = response->Record.GetStats();
@@ -6914,6 +6909,136 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         }
 
         tablet.DestroyHandle(handle);
+    }
+
+    TABLET_TEST(ShouldAutomaticallyRunCleanupForSparselyPopulatedRanges)
+    {
+        const auto block = tabletConfig.BlockSize;
+        const int ignoredNodeCount = NodeGroupSize - 2;
+        const int groupCount = 8;
+
+        // Disable conditions for automatic compaction and configure cleanup
+        NProto::TStorageConfig storageConfig;
+        storageConfig.SetNewCleanupEnabled(true);
+        storageConfig.SetCleanupThresholdAverage(64);
+        storageConfig.SetCompactionThresholdAverage(999'999);
+        storageConfig.SetGarbageCompactionThresholdAverage(999'999);
+        storageConfig.SetCompactionThreshold(999'999);
+        storageConfig.SetUseMixedBlocksInsteadOfAliveBlocksInCompaction(true);
+        storageConfig.SetWriteBlobThreshold(block);
+        storageConfig.SetCalculateCleanupScoreBasedOnUsedBlocksCount(true);
+
+        TTestEnv env({}, std::move(storageConfig));
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(
+            env.GetRuntime(),
+            nodeIdx,
+            tabletId,
+            tabletConfig);
+        tablet.InitSession("client", "session");
+
+        // Create 14 ignored nodes in the first range
+        std::array<ui64, ignoredNodeCount> ignoredIds;
+        for (ui32 i = 0; i < ignoredNodeCount; i++) {
+            auto name = Sprintf("ignored%u", i);
+            ignoredIds[i] =
+                CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, name));
+        }
+
+        // Create 8 groups of 16 files, 4 blocks each
+        std::array<ui64, NodeGroupSize * groupCount> ids;
+        for (ui32 i = 0; i < NodeGroupSize * groupCount; i++) {
+            auto name = Sprintf("test%u", i);
+            ids[i] = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, name));
+            auto handle = CreateHandle(tablet, ids[i]);
+            tablet.WriteData(handle, 0, 4 * block, 'a');
+            tablet.DestroyHandle(handle);
+        }
+
+        // Ensure that all 16-node groups share the same range
+        for (ui32 i = 0; i < groupCount; i++) {
+            for (ui32 j = 1; j < NodeGroupSize; j++) {
+                UNIT_ASSERT_VALUES_EQUAL(
+                    GetMixedRangeIndex(ids[i * NodeGroupSize + j], 0),
+                    GetMixedRangeIndex(ids[i * NodeGroupSize], 0));
+            }
+        }
+
+        // Force run cleanup and compaction
+        for (ui32 i = 0; i < groupCount; i++) {
+            tablet.Cleanup(GetMixedRangeIndex(ids[i * NodeGroupSize], 0));
+            tablet.Compaction(GetMixedRangeIndex(ids[i * NodeGroupSize], 0));
+        }
+
+        // Check the statistics
+        // Each range should contain 16 * 4 = 64 blocks
+        {
+            auto response = tablet.GetStorageStats(1);
+            const auto& stats = response->Record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(8 * 64, stats.GetMixedBlocksCount());
+            UNIT_ASSERT_VALUES_EQUAL(8 * 64, stats.GetUsedBlocksCount());
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetDeletionMarkersCount());
+        }
+
+        // Truncate one file in each group to 1 block
+        for (ui32 i = 0; i < groupCount; i++) {
+            TSetNodeAttrArgs args(ids[i * NodeGroupSize]);
+            args.SetFlag(NProto::TSetNodeAttrRequest::F_SET_ATTR_SIZE);
+            args.SetSize(block);
+            tablet.SetNodeAttr(args);
+        }
+
+        // There should be 3 deletion markers and 61 used blocks in each range
+        // 3/61 scales to ~50/1024 < 64 deletion markers per fully filled range
+        // Cleanup shouldn't have been run
+        {
+            auto response = tablet.GetStorageStats();
+            const auto& stats = response->Record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(8 * 64, stats.GetMixedBlocksCount());
+            UNIT_ASSERT_VALUES_EQUAL(8 * 61, stats.GetUsedBlocksCount());
+            UNIT_ASSERT_VALUES_EQUAL(8 * 3, stats.GetDeletionMarkersCount());
+        }
+
+        // Truncate another file in each group to 3 blocks
+        for (ui32 i = 0; i < groupCount; i++) {
+            TSetNodeAttrArgs args(ids[i * NodeGroupSize + 1]);
+            args.SetFlag(NProto::TSetNodeAttrRequest::F_SET_ATTR_SIZE);
+            args.SetSize(3 * block);
+            tablet.SetNodeAttr(args);
+        }
+
+        // There should be 4 deletion markers and 60 used blocks in each range
+        // 4/60 scales to ~68/1024 > 64 deletion markers per fully filled range
+        // Cleanup should've been run automatically for a single range
+        // After cleanup, there should remain 28 deletion markers in total
+        // 28/480 scales to ~59/1024 => no more cleanup operations
+        {
+            auto response = tablet.GetStorageStats();
+            const auto& stats = response->Record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(8 * 64, stats.GetMixedBlocksCount());
+            UNIT_ASSERT_VALUES_EQUAL(8 * 60, stats.GetUsedBlocksCount());
+            UNIT_ASSERT_VALUES_EQUAL(28, stats.GetDeletionMarkersCount());
+        }
+
+        // Delete 15 files in each group
+        for (ui32 i = 0; i < groupCount; i++) {
+            for (ui32 j = 1; j < NodeGroupSize; j++) {
+                auto name = Sprintf("test%u", i * NodeGroupSize + j);
+                tablet.UnlinkNode(RootNodeId, name, false);
+            }
+        }
+
+        // Cleanup should've been triggered automatically
+        {
+            auto response = tablet.GetStorageStats();
+            const auto& stats = response->Record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(8, stats.GetUsedBlocksCount());
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetDeletionMarkersCount());
+        }
     }
 }
 

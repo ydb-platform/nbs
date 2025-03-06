@@ -524,8 +524,24 @@ TCleanupInfo TIndexTabletActor::GetCleanupInfo() const
     auto [cleanupRangeId, cleanupScore] = GetRangeToCleanup();
     const auto& stats = GetFileSystemStats();
     const auto compactionStats = GetCompactionMapStats(0);
-    const auto rangeCount = compactionStats.UsedRangesCount;
-    const auto avgCleanupScore = rangeCount
+
+    // Initially, the condition was based on the average number of deletion
+    // markers per used range without taking sparsity into account.
+    // It could lead to the situation when the range is not cleaned because
+    // the number of deletion markers is low despite the fact that the ratio
+    // between the number of deletion markers and the number of used blocks
+    // is very high.
+    //
+    // The new condition is based on the average number of deletion markers
+    // per used block. For the compatibility with the old condition, the
+    // number of blocks is converted to the number of ranges taking the
+    // assumption that the ranges are fully filled.
+    const double rangeCount =
+        Config->GetCalculateCleanupScoreBasedOnUsedBlocksCount()
+            ? static_cast<double>(stats.GetUsedBlocksCount()) /
+                  (BlockGroupSize * NodeGroupSize)
+            : static_cast<double>(compactionStats.UsedRangesCount);
+    const auto avgCleanupScore = rangeCount > 0.0
         ? static_cast<double>(stats.GetDeletionMarkersCount()) / rangeCount
         : 0;
     const bool shouldCleanup =
