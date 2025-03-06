@@ -1565,16 +1565,16 @@ func TestTasksGetTaskIDByIdempotencyKey(t *testing.T) {
 	failureTaskID, err := scheduleFailureTask(reqCtx, s.scheduler)
 	require.NoError(t, err)
 
-	err = s.scheduler.WaitTaskEnded(ctx, failureTaskID)
-	require.NoError(t, err)
+	_, err = waitTask(ctx, s.scheduler, failureTaskID)
+	require.Error(t, err)
 
 	taskID, err = s.scheduler.GetTaskIDByIdempotencyKey(
-		headers.SetIncomingIdempotencyKey(ctx, failureTaskID),
+		headers.SetIncomingIdempotencyKey(ctx, failureTaskIdempotencyKey),
 	)
 	require.NoError(t, err)
 	require.Equal(t, failureTaskID, taskID)
 
-	err = s.scheduler.WaitTaskEnded(ctx, longTaskID)
+	_, err = waitTask(ctx, s.scheduler, longTaskID)
 	require.NoError(t, err)
 
 	taskID, err = s.scheduler.GetTaskIDByIdempotencyKey(
