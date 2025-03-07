@@ -3,7 +3,7 @@ package client
 import (
 	"strings"
 
-	protos "github.com/ydb-platform/nbs/cloud/storage/core/protos"
+	"github.com/ydb-platform/nbs/cloud/storage/core/protos"
 )
 
 ////////////////////////////////////////////////////////////////////////////////

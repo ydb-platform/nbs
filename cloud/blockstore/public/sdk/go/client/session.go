@@ -57,7 +57,7 @@ type remounter struct {
 
 type Session struct {
 	client Client
-	log    Log
+	log    Logger
 
 	mountLock sync.Mutex
 	state     mountState
@@ -94,15 +94,13 @@ func (s *Session) MountVolume(
 
 	s.fetchMountHeaders(ctx)
 
-	if logger := s.log.Logger(LOG_DEBUG); logger != nil {
-		logger.Printf(
-			ctx,
-			"Submit MountVolume for %s, client_id: %v, opts: %v",
-			diskId,
-			s.mountHeaders.ClientId,
-			opts,
-		)
-	}
+	s.log.Debug(
+		ctx,
+		"Submit MountVolume for %s, client_id: %v, opts: %v",
+		diskId,
+		s.mountHeaders.ClientId,
+		opts,
+	)
 
 	s.mountLock.Lock()
 	defer s.mountLock.Unlock()
@@ -147,14 +145,12 @@ func (s *Session) UnmountVolume(ctx context.Context) error {
 		}
 	}
 
-	if logger := s.log.Logger(LOG_DEBUG); logger != nil {
-		logger.Printf(
-			ctx,
-			"Submit UnmountVolume for %s, client_id: %v",
-			s.volume.DiskId,
-			s.mountHeaders.ClientId,
-		)
-	}
+	s.log.Debug(
+		ctx,
+		"Submit UnmountVolume for %s, client_id: %v",
+		s.volume.DiskId,
+		s.mountHeaders.ClientId,
+	)
 
 	err := s.client.UnmountVolume(ctx, s.volume.DiskId, s.info.SessionId)
 	if err != nil {
@@ -291,14 +287,12 @@ func (s *Session) ensureVolumeMounted(ctx context.Context) (string, string, erro
 	diskId := s.volume.DiskId
 
 	if s.state == stateMountRequested {
-		if logger := s.log.Logger(LOG_WARN); logger != nil {
-			logger.Printf(
-				ctx,
-				"Force remount volume %s, client_id: %v",
-				diskId,
-				s.mountHeaders.ClientId,
-			)
-		}
+		s.log.Warn(
+			ctx,
+			"Force remount volume %s, client_id: %v",
+			diskId,
+			s.mountHeaders.ClientId,
+		)
 
 		sessionId, err = s.remountVolume(ctx)
 		if err != nil {
@@ -313,15 +307,12 @@ func (s *Session) remountVolume(ctx context.Context) (string, error) {
 
 	ctx = s.setupMountHeaders(ctx)
 	diskId := s.volume.DiskId
-
-	if logger := s.log.Logger(LOG_DEBUG); logger != nil {
-		logger.Printf(
-			ctx,
-			"Remount volume %s, client_id: %v",
-			diskId,
-			s.mountHeaders.ClientId,
-		)
-	}
+	s.log.Debug(
+		ctx,
+		"Remount volume %s, client_id: %v",
+		diskId,
+		s.mountHeaders.ClientId,
+	)
 
 	volume, info, err := s.client.MountVolume(
 		ctx,
@@ -410,15 +401,13 @@ func (s *Session) processMountResponse(
 	}
 
 	if err != nil {
-		if logger := s.log.Logger(LOG_ERROR); logger != nil {
-			logger.Printf(
-				ctx,
-				"MountVolume for %s failed: %v, client_id: %s",
-				diskId,
-				err,
-				s.mountHeaders.ClientId,
-			)
-		}
+		s.log.Error(
+			ctx,
+			"MountVolume for %s failed: %v, client_id: %s",
+			diskId,
+			err,
+			s.mountHeaders.ClientId,
+		)
 
 		// we do not want to hide mount failure from client,
 		// so request will NOT be automatically retried.
@@ -427,14 +416,12 @@ func (s *Session) processMountResponse(
 		return err
 	}
 
-	if logger := s.log.Logger(LOG_DEBUG); logger != nil {
-		logger.Printf(
-			ctx,
-			"Complete MountVolume for %s, client_id: %s",
-			diskId,
-			s.mountHeaders.ClientId,
-		)
-	}
+	s.log.Debug(
+		ctx,
+		"Complete MountVolume for %s, client_id: %s",
+		diskId,
+		s.mountHeaders.ClientId,
+	)
 
 	previousRemountPeriod := s.info.InactiveClientsTimeout
 
@@ -493,7 +480,7 @@ func (s *Session) startRemounter(ctx context.Context) {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-func NewSession(client Client, log Log) *Session {
+func NewSession(client Client, log Logger) *Session {
 
 	return &Session{
 		client: client,
