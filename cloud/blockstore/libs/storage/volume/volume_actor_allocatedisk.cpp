@@ -281,8 +281,12 @@ void TVolumeActor::ScheduleAllocateDiskIfNeeded(const TActorContext& ctx)
 
         DiskAllocationScheduled = true;
 
+        TDuration delay =
+            LocalDiskCreationRetries
+                ? LocalDiskCreationRetryDelayProvider.GetDelayAndIncrease()
+                : TDuration::Seconds(1);
         ctx.Schedule(
-            TDuration::Seconds(1),
+            delay,
             new TEvVolumePrivate::TEvAllocateDiskIfNeeded()
         );
     }
@@ -324,7 +328,19 @@ void TVolumeActor::HandleAllocateDiskResponse(
                 State->GetMeta().GetFreshDeviceIds().end());
         }
 
-        if (GetErrorKind(error) == EErrorKind::ErrorRetriable) {
+        {
+            const auto mediaKind = static_cast<NProto::EStorageMediaKind>(
+                GetNewestConfig().GetStorageMediaKind());
+            const TInstant timeoutElapsedAt =
+                CreationStartedAt + LocalDiskCreationTotalTimeout;
+            LocalDiskCreationRetries = Config->GetAsyncDeallocLocalDisk() &&
+                                       error.code() == E_TRY_AGAIN &&
+                                       timeoutElapsedAt > ctx.Now() &&
+                                       IsDiskRegistryLocalMediaKind(mediaKind);
+        }
+        if (GetErrorKind(error) == EErrorKind::ErrorRetriable ||
+            LocalDiskCreationRetries)
+        {
             ScheduleAllocateDiskIfNeeded(ctx);
         } else {
             if (error.GetCode() != E_BS_RESOURCE_EXHAUSTED) {

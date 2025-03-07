@@ -2652,6 +2652,36 @@ auto TDiskRegistryState::CreateDiskPlacementInfo(
     };
 }
 
+auto TDiskRegistryState::GetAgentIdSuitableForLocalDiskAllocationAfterCleanup(
+    const THashSet<TNodeId>& nodeIds,
+    const TString& poolName,
+    const ui64 totalByteCount) const -> TAgentId
+{
+    for (const TNodeId& nodeId: nodeIds) {
+        const auto agentId = GetAgentId(nodeId);
+        auto [infos, error] = QueryAvailableStorage(
+            agentId,
+            poolName,
+            NProto::DEVICE_POOL_KIND_LOCAL);
+
+        if (HasError(error)) {
+            continue;
+        }
+
+        ui64 totalSize = totalByteCount;
+        for (const auto& chunks: infos) {
+            const ui64 chunksSize =
+                (chunks.FreeChunks + chunks.DirtyChunks) * chunks.ChunkSize;
+            if (totalSize <= chunksSize) {
+                return agentId;
+            }
+            totalSize -= chunksSize;
+        }
+    }
+
+    return {};
+}
+
 NProto::TError TDiskRegistryState::AllocateSimpleDisk(
     TInstant now,
     TDiskRegistryDatabase& db,
@@ -2764,6 +2794,24 @@ NProto::TError TDiskRegistryState::AllocateSimpleDisk(
     }
 
     auto allocatedDevices = DeviceList.AllocateDevices(params.DiskId, query);
+
+    if (!allocatedDevices && query.PoolKind == NProto::DEVICE_POOL_KIND_LOCAL &&
+        StorageConfig->GetAsyncDeallocLocalDisk())
+    {
+        auto agentId = GetAgentIdSuitableForLocalDiskAllocationAfterCleanup(
+            query.NodeIds,
+            query.PoolName,
+            query.GetTotalByteCount());
+        if (agentId) {
+            return MakeError(
+                E_TRY_AGAIN,
+                TStringBuilder()
+                    << "can't allocate disk with " << blocksToAllocate
+                    << " blocks x " << params.BlockSize
+                    << " bytes. can after cleanup. one of suitable agents: "
+                    << agentId.Quote().c_str());
+        }
+    }
 
     if (!allocatedDevices) {
         onError();
@@ -6975,7 +7023,7 @@ auto TDiskRegistryState::QueryAvailableStorage(
         return TVector<TAgentStorageInfo>{};
     }
 
-    THashMap<ui64, ui32> chunks;
+    THashMap<ui64, TAgentStorageInfo> chunks;
 
     for (const auto& device: agent->GetDevices()) {
         if (device.GetPoolKind() != poolKind) {
@@ -6995,15 +7043,22 @@ auto TDiskRegistryState::QueryAvailableStorage(
         }
 
         const ui64 au = GetAllocationUnit(device.GetPoolName());
+        auto& auChunks = chunks[au];
+        auChunks.ChunkSize = au;
 
-        ++chunks[au];
+        if (DeviceList.IsDirtyDevice(device.GetDeviceUUID())) {
+            auChunks.DirtyChunks++;
+        } else if (!DeviceList.IsAllocatedDevice(device.GetDeviceUUID())) {
+            auChunks.FreeChunks++;
+        }
+        auChunks.ChunkCount++;
     }
 
     TVector<TAgentStorageInfo> infos;
     infos.reserve(chunks.size());
 
-    for (auto [size, count]: chunks) {
-        infos.push_back({ size, count });
+    for (auto [size, info]: chunks) {
+        infos.push_back(info);
     }
 
     return infos;

@@ -28,6 +28,8 @@ struct TAgentStorageInfo
 {
     ui64 ChunkSize = 0;
     ui32 ChunkCount = 0;
+    ui32 DirtyChunks = 0;
+    ui32 FreeChunks = 0;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1342,6 +1344,11 @@ private:
     void CleanupAgentConfig(
         TDiskRegistryDatabase& db,
         const NProto::TAgentConfig& agent);
+
+    TAgentId GetAgentIdSuitableForLocalDiskAllocationAfterCleanup(
+        const THashSet<TNodeId>& nodeIds,
+        const TString& poolName,
+        const ui64 totalByteCount) const;
 
     static bool MigrationCanBeStarted(
         const TDiskState& disk,
