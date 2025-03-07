@@ -46,7 +46,7 @@ void TCheckRangeActor::ReplyAndDie(
     const NProto::TError& error)
 {
     auto response =
-        std::make_unique<TEvService::TEvCheckRangeResponse>(std::move(error));
+        std::make_unique<TEvVolume::TEvCheckRangeResponse>(std::move(error));
 
     NCloud::Reply(ctx, *RequestInfo, std::move(response));
 
@@ -55,7 +55,7 @@ void TCheckRangeActor::ReplyAndDie(
 
 void TCheckRangeActor::ReplyAndDie(
     const TActorContext& ctx,
-    std::unique_ptr<TEvService::TEvCheckRangeResponse> response)
+    std::unique_ptr<TEvVolume::TEvCheckRangeResponse> response)
 {
     NCloud::Reply(ctx, *RequestInfo, std::move(response));
 
@@ -103,7 +103,7 @@ void TCheckRangeActor::HandleReadBlocksResponse(
     }
 
     auto response =
-        std::make_unique<TEvService::TEvCheckRangeResponse>(MakeError(S_OK));
+        std::make_unique<TEvVolume::TEvCheckRangeResponse>(MakeError(S_OK));
     response->Record.MutableStatus()->CopyFrom(status);
 
     ReplyAndDie(ctx, std::move(response));

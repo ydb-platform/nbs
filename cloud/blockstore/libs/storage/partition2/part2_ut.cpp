@@ -849,10 +849,10 @@ public:
         return RemoteHttpInfo(params, HTTP_METHOD::HTTP_METHOD_GET);
     }
 
-    std::unique_ptr<TEvService::TEvCheckRangeRequest>
+    std::unique_ptr<TEvVolume::TEvCheckRangeRequest>
     CreateCheckRangeRequest(TString id, ui32 startIndex, ui32 size)
     {
-        auto request = std::make_unique<TEvService::TEvCheckRangeRequest>();
+        auto request = std::make_unique<TEvVolume::TEvCheckRangeRequest>();
         request->Record.SetDiskId(id);
         request->Record.SetStartIndex(startIndex);
         request->Record.SetBlocksCount(size);
@@ -7212,8 +7212,8 @@ Y_UNIT_TEST_SUITE(TPartition2Test)
             [&](TAutoPtr<IEventHandle>& event)
             {
                 switch (event->GetTypeRewrite()) {
-                    case TEvService::EvCheckRangeResponse: {
-                        using TEv = TEvService::TEvCheckRangeResponse;
+                    case TEvVolume::EvCheckRangeResponse: {
+                        using TEv = TEvVolume::TEvCheckRangeResponse;
                         const auto* msg = event->Get<TEv>();
                         error = msg->GetStatus();
                         status = msg->Record.GetStatus().GetCode();
@@ -7230,7 +7230,7 @@ Y_UNIT_TEST_SUITE(TPartition2Test)
             const auto response = partition.CheckRange("id", idx, size);
 
             TDispatchOptions options;
-            options.FinalEvents.emplace_back(TEvService::EvCheckRangeResponse);
+            options.FinalEvents.emplace_back(TEvVolume::EvCheckRangeResponse);
             runtime->DispatchEvents(options, TDuration::Seconds(3));
 
             UNIT_ASSERT_VALUES_EQUAL(S_OK, status);
@@ -7278,8 +7278,8 @@ Y_UNIT_TEST_SUITE(TPartition2Test)
             [&](TAutoPtr<IEventHandle>& event)
             {
                 switch (event->GetTypeRewrite()) {
-                    case TEvService::EvCheckRangeResponse: {
-                        using TEv = TEvService::TEvCheckRangeResponse;
+                    case TEvVolume::EvCheckRangeResponse: {
+                        using TEv = TEvVolume::TEvCheckRangeResponse;
                         const auto* msg = event->Get<TEv>();
                         status = msg->Record.GetStatus().GetCode();
                         error = msg->Record.GetError().GetCode();
@@ -7315,10 +7315,10 @@ Y_UNIT_TEST_SUITE(TPartition2Test)
 
             partition.SendCheckRangeRequest("id", idx, size);
             const auto response =
-                partition.RecvResponse<TEvService::TEvCheckRangeResponse>();
+                partition.RecvResponse<TEvVolume::TEvCheckRangeResponse>();
 
             TDispatchOptions options;
-            options.FinalEvents.emplace_back(TEvService::EvCheckRangeResponse);
+            options.FinalEvents.emplace_back(TEvVolume::EvCheckRangeResponse);
 
             UNIT_ASSERT_VALUES_EQUAL(E_IO, status);
             UNIT_ASSERT_VALUES_EQUAL(S_OK, error);
@@ -7342,7 +7342,7 @@ Y_UNIT_TEST_SUITE(TPartition2Test)
         const auto response = partition.CheckRange("id", idx, size);
 
         TDispatchOptions options;
-        options.FinalEvents.emplace_back(TEvService::EvCheckRangeResponse);
+        options.FinalEvents.emplace_back(TEvVolume::EvCheckRangeResponse);
 
         runtime->DispatchEvents(options, TDuration::Seconds(1));
 
@@ -7368,10 +7368,10 @@ Y_UNIT_TEST_SUITE(TPartition2Test)
             idx,
             bytesPerStripe / DefaultBlockSize + 1);
         const auto response =
-            partition.RecvResponse<TEvService::TEvCheckRangeResponse>();
+            partition.RecvResponse<TEvVolume::TEvCheckRangeResponse>();
 
         TDispatchOptions options;
-        options.FinalEvents.emplace_back(TEvService::EvCheckRangeResponse);
+        options.FinalEvents.emplace_back(TEvVolume::EvCheckRangeResponse);
 
         runtime->DispatchEvents(options, TDuration::Seconds(1));
 

@@ -8,6 +8,7 @@
 
 #include <library/cpp/protobuf/util/pb_io.h>
 
+#include <sstream>
 namespace NCloud::NBlockStore::NClient {
 
 namespace {
@@ -105,14 +106,20 @@ protected:
             ui32 blocksInThisRequest =
                 std::min(remainingBlocks, BlocksPerRequest);
 
-            auto request = std::make_shared<NProto::TCheckRangeRequest>();
-            request->SetDiskId(DiskId);
-            request->SetStartIndex(currentBlockIndex);
-            request->SetBlocksCount(blocksInThisRequest);
+            auto request = std::make_shared<NProto::TExecuteActionRequest>();
+
+            std::ostringstream reqStringStream;
+            reqStringStream << "{" << "\"DiskId\": \"" << DiskId << "\", "
+                            << "\"StartIndex\": " << currentBlockIndex << ", "
+                            << "\"BlocksCount\": " << blocksInThisRequest
+                            << "}";
+
+            request->SetAction("checkrange");
+            request->SetInput(reqStringStream.str());
 
             STORAGE_DEBUG("Sending CheckRange request");
             const auto requestId = GetRequestId(*request);
-            auto result = WaitFor(ClientEndpoint->CheckRange(
+            auto result = WaitFor(ClientEndpoint->ExecuteAction(
                 MakeIntrusive<TCallContext>(requestId),
                 std::move(request)));
 
@@ -121,6 +128,8 @@ protected:
                 SerializeToTextFormat(result, output);
                 return true;
             }
+
+                output<< result.GetOutput().Data();
 
             if (HasError(result)) {
                 if (result.GetError().GetCode() == E_ARGUMENT) {
@@ -133,7 +142,7 @@ protected:
                 output << "CheckRange went wrong : "
                        << FormatError(result.GetError()) << Endl;
                 return true;
-            } else {
+            } /*else {
                 if (result.GetStatus().GetCode() != S_OK) {
                     errorCount++;
                     output << "ReadBlocks error in range [" << currentBlockIndex << ", "
@@ -144,7 +153,7 @@ protected:
                            << (currentBlockIndex + blocksInThisRequest - 1)
                            << "]" << Endl;
                 }
-            }
+            }*/
 
             remainingBlocks -= blocksInThisRequest;
             currentBlockIndex += blocksInThisRequest;

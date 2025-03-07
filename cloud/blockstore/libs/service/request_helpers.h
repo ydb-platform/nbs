@@ -280,7 +280,6 @@ constexpr bool IsControlRequest(EBlockStoreRequest requestType)
         case EBlockStoreRequest::ReadBlocksLocal:
         case EBlockStoreRequest::WriteBlocksLocal:
         case EBlockStoreRequest::QueryAvailableStorage:
-        case EBlockStoreRequest::CheckRange:
             return false;
         case EBlockStoreRequest::CreateVolume:
         case EBlockStoreRequest::DestroyVolume:

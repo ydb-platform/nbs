@@ -20,7 +20,7 @@ LWTRACE_USING(BLOCKSTORE_STORAGE_PROVIDER);
 ////////////////////////////////////////////////////////////////////////////////
 
 void TMirrorPartitionActor::HandleCheckRange(
-    const TEvService::TEvCheckRangeRequest::TPtr& ev,
+    const TEvVolume::TEvCheckRangeRequest::TPtr& ev,
     const NActors::TActorContext& ctx)
 {
     const auto* msg = ev->Get();
@@ -33,12 +33,12 @@ void TMirrorPartitionActor::HandleCheckRange(
 
     if (HasError(error)) {
         auto response =
-            std::make_unique<TEvService::TEvCheckRangeResponse>(error);
+            std::make_unique<TEvVolume::TEvCheckRangeResponse>(error);
         NCloud::Reply(ctx, *ev, std::move(response));
         return;
     }
 
-    auto response = std::make_unique<TEvService::TEvCheckRangeResponse>(
+    auto response = std::make_unique<TEvVolume::TEvCheckRangeResponse>(
         MakeError(E_NOT_IMPLEMENTED));
     NCloud::Reply(ctx, *ev, std::move(response));
 }

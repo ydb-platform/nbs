@@ -188,7 +188,6 @@ private:
     BLOCKSTORE_IMPLEMENT_REQUEST(ReadBlocksLocal, TEvService);
     BLOCKSTORE_IMPLEMENT_REQUEST(WriteBlocksLocal, TEvService);
     BLOCKSTORE_IMPLEMENT_REQUEST(ZeroBlocks, TEvService);
-    BLOCKSTORE_IMPLEMENT_REQUEST(CheckRange, TEvService);
     BLOCKSTORE_IMPLEMENT_REQUEST(DescribeBlocks, TEvVolume);
     BLOCKSTORE_IMPLEMENT_REQUEST(ChecksumBlocks, TEvNonreplPartitionPrivate);
     BLOCKSTORE_IMPLEMENT_REQUEST(Drain, NPartition::TEvPartition);
@@ -199,6 +198,7 @@ private:
     BLOCKSTORE_IMPLEMENT_REQUEST(GetRebuildMetadataStatus, TEvVolume);
     BLOCKSTORE_IMPLEMENT_REQUEST(ScanDisk, TEvVolume);
     BLOCKSTORE_IMPLEMENT_REQUEST(GetScanDiskStatus, TEvVolume);
+    BLOCKSTORE_IMPLEMENT_REQUEST(CheckRange, TEvVolume);
 };
 
 }   // namespace NCloud::NBlockStore::NStorage

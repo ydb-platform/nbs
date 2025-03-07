@@ -14,7 +14,7 @@ namespace NCloud::NBlockStore::NStorage::NPartition2 {
 ////////////////////////////////////////////////////////////////////////////////
 
 void TPartitionActor::HandleCheckRange(
-    const TEvService::TEvCheckRangeRequest::TPtr& ev,
+    const TEvVolume::TEvCheckRangeRequest::TPtr& ev,
     const NActors::TActorContext& ctx)
 {
     auto& record = ev->Get()->Record;
@@ -27,7 +27,7 @@ void TPartitionActor::HandleCheckRange(
 
     if (HasError(error)) {
         auto response =
-            std::make_unique<TEvService::TEvCheckRangeResponse>(error);
+            std::make_unique<TEvVolume::TEvCheckRangeResponse>(error);
         NCloud::Reply(ctx, *ev, std::move(response));
         return;
     }

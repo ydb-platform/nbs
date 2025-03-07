@@ -2002,8 +2002,8 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionTest)
             [&](TAutoPtr<IEventHandle>& event)
             {
                 switch (event->GetTypeRewrite()) {
-                    case TEvService::EvCheckRangeResponse: {
-                        using TEv = TEvService::TEvCheckRangeResponse;
+                    case TEvVolume::EvCheckRangeResponse: {
+                        using TEv = TEvVolume::TEvCheckRangeResponse;
                         const auto* msg = event->Get<TEv>();
                         error = msg->GetStatus();
                         status = msg->Record.GetStatus().GetCode();
@@ -2022,7 +2022,7 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionTest)
             const auto response = client.CheckRange("id", idx, size);
 
             TDispatchOptions options;
-            options.FinalEvents.emplace_back(TEvService::EvCheckRangeResponse);
+            options.FinalEvents.emplace_back(TEvVolume::EvCheckRangeResponse);
             runtime.DispatchEvents(options, TDuration::Seconds(3));
 
             UNIT_ASSERT_VALUES_EQUAL(S_OK, status);
@@ -2053,8 +2053,8 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionTest)
             [&](TAutoPtr<IEventHandle>& event)
             {
                 switch (event->GetTypeRewrite()) {
-                    case TEvService::EvCheckRangeResponse: {
-                        using TEv = TEvService::TEvCheckRangeResponse;
+                    case TEvVolume::EvCheckRangeResponse: {
+                        using TEv = TEvVolume::TEvCheckRangeResponse;
                         const auto* msg = event->Get<TEv>();
                         error = msg->GetStatus();
                         break;
@@ -2088,10 +2088,10 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionTest)
 
             client.SendCheckRangeRequest("id", idx, size);
             const auto response =
-                client.RecvResponse<TEvService::TEvCheckRangeResponse>();
+                client.RecvResponse<TEvVolume::TEvCheckRangeResponse>();
 
             TDispatchOptions options;
-            options.FinalEvents.emplace_back(TEvService::EvCheckRangeResponse);
+            options.FinalEvents.emplace_back(TEvVolume::EvCheckRangeResponse);
             runtime.DispatchEvents(options, TDuration::Seconds(3));
 
             UNIT_ASSERT_VALUES_EQUAL(E_IO, response->Record.GetStatus().GetCode());
@@ -2116,7 +2116,7 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionTest)
         const auto response = client.CheckRange("id", idx, size);
 
         TDispatchOptions options;
-        options.FinalEvents.emplace_back(TEvService::EvCheckRangeResponse);
+        options.FinalEvents.emplace_back(TEvVolume::EvCheckRangeResponse);
 
         runtime.DispatchEvents(options, TDuration::Seconds(1));
 
@@ -2135,10 +2135,10 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionTest)
 
         client.SendCheckRangeRequest("id", idx, 16_MB/DefaultBlockSize + 1);
         const auto response =
-            client.RecvResponse<TEvService::TEvCheckRangeResponse>();
+            client.RecvResponse<TEvVolume::TEvCheckRangeResponse>();
 
         TDispatchOptions options;
-        options.FinalEvents.emplace_back(TEvService::EvCheckRangeResponse);
+        options.FinalEvents.emplace_back(TEvVolume::EvCheckRangeResponse);
 
         runtime.DispatchEvents(options, TDuration::Seconds(1));
 

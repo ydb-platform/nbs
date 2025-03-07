@@ -343,9 +343,6 @@ struct TEvService
         EvAddTagsRequest = EvBegin + 91,
         EvAddTagsResponse = EvBegin + 92,
 
-        EvCheckRangeRequest = EvBegin + 93,
-        EvCheckRangeResponse = EvBegin + 94,
-
         EvEnd
     };
 
