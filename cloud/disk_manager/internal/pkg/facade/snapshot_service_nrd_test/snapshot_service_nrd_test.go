@@ -54,8 +54,6 @@ func testCreateSnapshotFromDiskWithFailedShadowDisk(
 	_, err = nbsClient.FillDisk(ctx, diskID, diskSize)
 	require.NoError(t, err)
 
-	// defer deleteDisk(t, ctx, nbsClient, diskID)
-
 	diskContentInfo, err := nbsClient.CalculateCrc32(diskID, diskSize)
 	require.NoError(t, err)
 
@@ -93,8 +91,6 @@ func testCreateSnapshotFromDiskWithFailedShadowDisk(
 		// Disabling device to enforce checkpoint status ERROR.
 		err = nbsClient.DisableDevices(ctx, agentID, deviceUUIDs, t.Name())
 		require.NoError(t, err)
-
-		// defer enableDevice(t, ctx, nbsClient, deviceUUIDs[0])
 	}
 
 	if shouldCancelOperation {
@@ -171,8 +167,6 @@ func testCreateSnapshotFromDiskWithFailedShadowDisk(
 	require.NotEmpty(t, operation)
 	err = internal_client.WaitOperation(ctx, client, operation.Id)
 	require.NoError(t, err)
-
-	// defer deleteDisk(t, ctx, nbsClient, diskID2)
 
 	err = nbsClient.ValidateCrc32(ctx, diskID2, diskContentInfo)
 	require.NoError(t, err)
