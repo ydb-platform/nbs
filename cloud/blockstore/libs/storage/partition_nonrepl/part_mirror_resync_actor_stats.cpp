@@ -12,20 +12,19 @@ void TMirrorPartitionResyncActor::HandlePartCounters(
     const TEvVolume::TEvDiskRegistryBasedPartitionCounters::TPtr& ev,
     const TActorContext& ctx)
 {
+    Y_UNUSED(ctx);
     auto* msg = ev->Get();
 
-    if (ev->Sender == MirrorActorId) {
+    if (!MirrorCounters) {
         MirrorCounters = std::move(msg->DiskCounters);
         NetworkBytes = msg->NetworkBytes;
         CpuUsage = msg->CpuUsage;
-    } else {
-        LOG_INFO(ctx, TBlockStoreComponents::PARTITION,
-            "Partition %s for disk %s counters not found",
-            ToString(ev->Sender).c_str(),
-            PartConfig->GetName().Quote().c_str());
-
-        Y_DEBUG_ABORT_UNLESS(0);
+        return;
     }
+
+    MirrorCounters->AggregateWith(*msg->DiskCounters);
+    NetworkBytes += msg->NetworkBytes;
+    CpuUsage += msg->CpuUsage;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -38,6 +37,7 @@ void TMirrorPartitionResyncActor::SendStats(const TActorContext& ctx)
 
     if (MirrorCounters) {
         stats->AggregateWith(*MirrorCounters);
+        MirrorCounters.reset();
     }
 
     auto request =

@@ -29,6 +29,7 @@ namespace NCloud::NBlockStore::NStorage {
 
 using namespace NActors;
 using namespace NKikimr;
+using namespace std::chrono_literals;
 
 namespace {
 
@@ -418,6 +419,19 @@ struct TTestEnv
         return StorageStatsServiceState->Counters;
     }
 
+
+    TPartitionDiskCounters GetAggregatedMirrorCounters()
+    {
+        Runtime.AdvanceCurrentTime(UpdateCountersInterval);
+        Runtime.DispatchEvents({}, TDuration::Seconds(1));
+        Runtime.AdvanceCurrentTime(UpdateCountersInterval);
+        Runtime.DispatchEvents({}, TDuration::Seconds(1));
+        Runtime.AdvanceCurrentTime(UpdateCountersInterval);
+        Runtime.DispatchEvents({}, TDuration::Seconds(1));
+
+        return StorageStatsServiceState->AggregatedCounters;
+    }
+
     void AddReplica(TNonreplicatedPartitionConfigPtr partConfig, TString name)
     {
         auto part = std::make_unique<TNonreplicatedPartitionActor>(
@@ -583,6 +597,45 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionResyncTest)
         UNIT_ASSERT_VALUES_EQUAL(
             3 * 1 * DefaultBlockSize * range.Size(),
             counters.RequestCounters.ZeroBlocks.RequestBytes);
+    }
+
+    Y_UNIT_TEST(aboba)
+    {
+        TTestBasicRuntime runtime;
+        TTestEnv env(runtime);
+
+        const auto range = TBlockRange64::WithLength(0, 1024);
+
+        env.ResyncController.SetStopAfterResyncedRangeCount(0);
+        env.StartResync();
+
+        TPartitionClient resyncClient(runtime, env.ActorId);
+
+        // Check WriteBlocks
+        {
+            const ui64 cookie = 11;
+            auto request = resyncClient.CreateReadBlocksRequest(range);
+            resyncClient.SendRequest(
+                resyncClient.GetActorId(),
+                std::move(request),
+                cookie);
+
+            runtime.DispatchEvents({}, 1s);
+
+            runtime.SetObserverFunc(TTestActorRuntime::DefaultObserverFunc);
+
+            using TResponse = TEvService::TEvReadBlocksResponse;
+            auto response = resyncClient.RecvResponse<TResponse>(cookie);
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
+        }
+
+        // Check counters
+        auto counters = env.GetAggregatedMirrorCounters();
+
+        UNIT_ASSERT_VALUES_EQUAL(1, counters.RequestCounters.ReadBlocks.Count);
+        UNIT_ASSERT_VALUES_EQUAL(
+            DefaultBlockSize * range.Size(),
+            counters.RequestCounters.ReadBlocks.RequestBytes);
     }
 
     void DoTestShouldResyncWholeDisk(ui32 blockSize)

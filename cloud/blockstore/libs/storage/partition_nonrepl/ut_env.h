@@ -31,10 +31,12 @@ const ui64 DefaultDeviceBlockSize = 512;
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TStorageStatsServiceState
-    : TAtomicRefCount<TStorageStatsServiceState>
+struct TStorageStatsServiceState: TAtomicRefCount<TStorageStatsServiceState>
 {
     TPartitionDiskCounters Counters{
+        EPublishingPolicy::DiskRegistryBased,
+        EHistogramCounterOption::ReportMultipleCounters};
+    TPartitionDiskCounters AggregatedCounters{
         EPublishingPolicy::DiskRegistryBased,
         EHistogramCounterOption::ReportMultipleCounters};
 };
@@ -89,6 +91,7 @@ private:
         Y_UNUSED(ctx);
 
         State->Counters = *ev->Get()->DiskCounters;
+        State->AggregatedCounters.AggregateWith(*ev->Get()->DiskCounters);
     }
 
     void HandleRegisterTrafficSource(
