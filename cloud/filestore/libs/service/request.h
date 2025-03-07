@@ -209,7 +209,7 @@ struct TTextPrinter : google::protobuf::TextFormat::Printer {
     explicit TTextPrinter(ui32 size);
 };
 
-TTextPrinter& GetTextPrinter(ui32 size);
+TTextPrinter& GetTextPrinter(ui32 size = 0);
 
 TString DumpMessage(const google::protobuf::Message& message);
 

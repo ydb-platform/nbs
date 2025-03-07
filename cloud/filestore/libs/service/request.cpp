@@ -92,7 +92,7 @@ TTextPrinter& GetTextPrinter(ui32 size){
 TString DumpMessage(const google::protobuf::Message& message)
 {
     TString result;
-    GetTextPrinter(0).PrintToString(message, &result);
+    GetTextPrinter().PrintToString(message, &result);
 
     // single line mode currently might have an extra space at the end
     if (result.size() > 0 && result.back() == ' ') {
