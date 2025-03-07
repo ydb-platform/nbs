@@ -599,7 +599,7 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionResyncTest)
             counters.RequestCounters.ZeroBlocks.RequestBytes);
     }
 
-    Y_UNIT_TEST(aboba)
+    Y_UNIT_TEST(ShouldSendStatisticsDuringResync)
     {
         TTestBasicRuntime runtime;
         TTestEnv env(runtime);
@@ -611,7 +611,6 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionResyncTest)
 
         TPartitionClient resyncClient(runtime, env.ActorId);
 
-        // Check WriteBlocks
         {
             const ui64 cookie = 11;
             auto request = resyncClient.CreateReadBlocksRequest(range);
