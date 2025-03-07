@@ -581,7 +581,7 @@ void TVolumeActor::HandleHttpInfo_Default(
     const char* overviewTabName = "Overview";
     const char* historyTabName = "History";
     const char* checkpointsTabName = "Checkpoints";
-    const char* followersTabName = "Followers";
+    const char* linksTabName = "Links";
     const char* tracesTabName = "Traces";
     const char* storageConfigTabName = "StorageConfig";
     const char* rawVolumeConfigTabName = "RawVolumeConfig";
@@ -592,7 +592,7 @@ void TVolumeActor::HandleHttpInfo_Default(
     const char* overviewTab = inactiveTab;
     const char* historyTab = inactiveTab;
     const char* checkpointsTab = inactiveTab;
-    const char* followersTab = inactiveTab;
+    const char* linksTab = inactiveTab;
     const char* tracesTab = inactiveTab;
     const char* storageConfigTab = inactiveTab;
     const char* rawVolumeConfigTab = inactiveTab;
@@ -603,8 +603,8 @@ void TVolumeActor::HandleHttpInfo_Default(
         historyTab = activeTab;
     } else if (tabName == checkpointsTabName) {
         checkpointsTab = activeTab;
-    } else if (tabName == followersTabName) {
-        followersTab = activeTab;
+    } else if (tabName == linksTabName) {
+        linksTab = activeTab;
     } else if (tabName == tracesTabName) {
         tracesTab = activeTab;
     } else if (tabName == storageConfigTabName) {
@@ -633,8 +633,8 @@ void TVolumeActor::HandleHttpInfo_Default(
                     RenderCheckpoints(out);
                 }
 
-                DIV_CLASS_ID(followersTab, followersTabName) {
-                    RenderFollowers(out);
+                DIV_CLASS_ID(linksTab, linksTabName) {
+                    RenderLinks(out);
                 }
 
                 DIV_CLASS_ID(tracesTab, tracesTabName) {
@@ -857,7 +857,7 @@ void TVolumeActor::RenderCheckpoints(IOutputStream& out) const
     }
 }
 
-void TVolumeActor::RenderFollowers(IOutputStream& out) const
+void TVolumeActor::RenderLinks(IOutputStream& out) const
 {
     using namespace NMonitoringUtils;
 
@@ -867,7 +867,7 @@ void TVolumeActor::RenderFollowers(IOutputStream& out) const
                 TABLEHEAD () {
                     TABLER () {
                         TABLEH () {
-                            out << "Id";
+                            out << "UUID";
                         }
                         TABLEH () {
                             out << "Follower";
@@ -883,7 +883,7 @@ void TVolumeActor::RenderFollowers(IOutputStream& out) const
                 for (const auto& follower: State->GetAllFollowers()) {
                     TABLER () {
                         TABLED () {
-                            out << follower.Id;
+                            out << follower.Uuid;
                         }
                         TABLED () {
                             if (follower.ScaleUnitId) {

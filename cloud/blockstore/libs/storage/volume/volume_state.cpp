@@ -886,7 +886,7 @@ TVolumeState::GetAllDevicesForAcquireRelease() const
 void TVolumeState::AddOrUpdateFollower(TFollowerDiskInfo follower)
 {
     for (auto& followerInfo: FollowerDisks) {
-        if (followerInfo.Id == follower.Id) {
+        if (followerInfo.Uuid == follower.Uuid) {
             followerInfo = std::move(follower);
             return;
         }
@@ -894,18 +894,30 @@ void TVolumeState::AddOrUpdateFollower(TFollowerDiskInfo follower)
     FollowerDisks.push_back(std::move(follower));
 }
 
-void TVolumeState::RemoveFollower(const TString& id)
+void TVolumeState::RemoveFollower(const TString& uuid)
 {
     EraseIf(
         FollowerDisks,
-        [&](const TFollowerDiskInfo& follower) { return follower.Id == id; });
+        [&](const TFollowerDiskInfo& follower)
+        { return follower.Uuid == uuid; });
 }
 
-std::optional<TFollowerDiskInfo> TVolumeState::GetFollower(
-    const TString& id) const
+std::optional<TFollowerDiskInfo> TVolumeState::FindFollowerByUuid(
+    const TString& uuid) const
 {
     for (const auto& follower: FollowerDisks) {
-        if (follower.Id == id) {
+        if (follower.Uuid == uuid) {
+            return follower;
+        }
+    }
+    return std::nullopt;
+}
+
+std::optional<TFollowerDiskInfo> TVolumeState::FindFollowerByDiskId(
+    const TString& diskId) const
+{
+    for (const auto& follower: FollowerDisks) {
+        if (follower.FollowerDiskId == diskId) {
             return follower;
         }
     }

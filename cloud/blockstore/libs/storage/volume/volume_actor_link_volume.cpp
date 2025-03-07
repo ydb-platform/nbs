@@ -25,7 +25,7 @@ void TVolumeActor::ExecuteAddFollower(
 {
     Y_DEBUG_ABORT_UNLESS(!args.FollowerDiskId.empty());
 
-    LOG_DEBUG(
+    LOG_INFO(
         ctx,
         TBlockStoreComponents::VOLUME,
         "[%lu] Save follower link %s <- %s",
@@ -36,7 +36,7 @@ void TVolumeActor::ExecuteAddFollower(
     TVolumeDatabase db(tx.DB);
 
     auto newFollower = TFollowerDiskInfo{
-        .Id = CreateGuidAsString(),
+        .Uuid = CreateGuidAsString(),
         .FollowerDiskId = args.FollowerDiskId,
         .ScaleUnitId = "",
         .MigrationBlockIndex = std::nullopt};
@@ -76,10 +76,10 @@ void TVolumeActor::ExecuteRemoveFollower(
 {
     Y_DEBUG_ABORT_UNLESS(!args.Id.empty());
 
-    auto follower = State->GetFollower(args.Id);
+    auto follower = State->FindFollowerByUuid(args.Id);
     Y_DEBUG_ABORT_UNLESS(follower);
 
-    LOG_DEBUG(
+    LOG_INFO(
         ctx,
         TBlockStoreComponents::VOLUME,
         "[%lu] Remove follower link %s <- %s",
@@ -117,15 +117,8 @@ void TVolumeActor::HandleLinkLeaderVolumeToFollower(
         State->GetDiskId().Quote().c_str(),
         msg->Record.GetFollowerDiskId().Quote().c_str());
 
-    bool alreadyExists = false;
-    for (const auto& follower: State->GetAllFollowers()) {
-        if (follower.FollowerDiskId == msg->Record.GetFollowerDiskId()) {
-            alreadyExists = true;
-            break;
-        }
-    }
-    if (alreadyExists) {
-        Reply(
+    if (State->FindFollowerByDiskId(msg->Record.GetFollowerDiskId())) {
+        NCloud::Reply(
             ctx,
             *ev,
             std::make_unique<TEvVolume::TEvLinkLeaderVolumeToFollowerResponse>(
@@ -152,16 +145,10 @@ void TVolumeActor::HandleUnlinkLeaderVolumeFromFollower(
         State->GetDiskId().Quote().c_str(),
         msg->Record.GetFollowerDiskId().Quote().c_str());
 
-    TString id;
-    for (const auto& follower: State->GetAllFollowers()) {
-        if (follower.FollowerDiskId == msg->Record.GetFollowerDiskId()) {
-            id = follower.Id;
-            break;
-        }
-    }
-
-    if (!id) {
-        Reply(
+    auto follower =
+        State->FindFollowerByDiskId(msg->Record.GetFollowerDiskId());
+    if (!follower) {
+        NCloud::Reply(
             ctx,
             *ev,
             std::make_unique<
@@ -173,7 +160,7 @@ void TVolumeActor::HandleUnlinkLeaderVolumeFromFollower(
     ExecuteTx<TRemoveFollower>(
         ctx,
         CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext),
-        id);
+        follower->Uuid);
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

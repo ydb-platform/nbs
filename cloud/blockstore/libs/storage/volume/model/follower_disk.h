@@ -19,13 +19,13 @@ struct TFollowerDiskInfo
         Error = 3,
     };
 
-    TString Id;
+    TString Uuid;
     TString FollowerDiskId;
     TString ScaleUnitId;
     EState State = EState::None;
     std::optional<ui64> MigrationBlockIndex;
 
-    bool operator==(const TFollowerDiskInfo& rh) const;
+    bool operator==(const TFollowerDiskInfo& rhs) const;
 };
 
 using TFollowerDisks = TVector<TFollowerDiskInfo>;

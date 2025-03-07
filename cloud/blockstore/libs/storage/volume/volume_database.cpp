@@ -712,7 +712,7 @@ void TVolumeDatabase::WriteFollower(const TFollowerDiskInfo& follower)
 
     auto& operation =
         Table<TTable>()
-            .Key(follower.Id)
+            .Key(follower.Uuid)
             .Update(
                 NIceDb::TUpdate<TTable::FollowerDiskId>(
                     follower.FollowerDiskId),
@@ -732,7 +732,7 @@ void TVolumeDatabase::DeleteFollower(const TFollowerDiskInfo& follower)
 {
     using TTable = TVolumeSchema::FollowerDisks;
 
-    Table<TTable>().Key(follower.Id).Delete();
+    Table<TTable>().Key(follower.Uuid).Delete();
 }
 
 bool TVolumeDatabase::ReadFollowers(
@@ -750,7 +750,7 @@ bool TVolumeDatabase::ReadFollowers(
 
     while (it.IsValid()) {
         followers.push_back(TFollowerDiskInfo{
-            .Id = it.GetValue<TTable::Id>(),
+            .Uuid = it.GetValue<TTable::Uuid>(),
             .FollowerDiskId = it.GetValue<TTable::FollowerDiskId>(),
             .ScaleUnitId = it.GetValue<TTable::ScaleUnitId>(),
             .State = static_cast<TFollowerDiskInfo::EState>(

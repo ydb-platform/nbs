@@ -275,7 +275,7 @@ struct TVolumeSchema
 
     struct FollowerDisks: public TTableSchema<11>
     {
-        struct Id: public Column<1, NKikimr::NScheme::NTypeIds::String>
+        struct Uuid: public Column<1, NKikimr::NScheme::NTypeIds::String>
         {
         };
 
@@ -297,9 +297,13 @@ struct TVolumeSchema
         {
         };
 
-        using TKey = TableKey<Id>;
-        using TColumns =
-            TableColumns<Id, FollowerDiskId, ScaleUnitId, State, MigratedBlockCount>;
+        using TKey = TableKey<Uuid>;
+        using TColumns = TableColumns<
+            Uuid,
+            FollowerDiskId,
+            ScaleUnitId,
+            State,
+            MigratedBlockCount>;
     };
 
     using TTables = SchemaTables<

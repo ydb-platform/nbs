@@ -1287,12 +1287,12 @@ Y_UNIT_TEST_SUITE(TVolumeDatabaseTest)
         TTestExecutor executor;
 
         TFollowerDiskInfo follower1{
-            .Id = "xxxxx",
+            .Uuid = "xxxxx",
             .FollowerDiskId = "volume_1",
             .ScaleUnitId = "SU_1"};
 
         TFollowerDiskInfo follower2{
-            .Id = "yyyyy",
+            .Uuid = "yyyyy",
             .FollowerDiskId = "volume_2",
             .State = TFollowerDiskInfo::EState::Preparing,
             .MigrationBlockIndex = 100};
