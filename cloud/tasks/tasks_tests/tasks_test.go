@@ -42,12 +42,12 @@ func newContext() context.Context {
 	)
 }
 
-func newYDB(ctx context.Context) (*persistence.YDBClient, error) {
+func newYDB(ctx context.Context, t *testing.T) *persistence.YDBClient {
 	endpoint := os.Getenv("YDB_ENDPOINT")
 	database := os.Getenv("YDB_DATABASE")
 	rootPath := "tasks"
 
-	return persistence.NewYDBClient(
+	db, err := persistence.NewYDBClient(
 		ctx,
 		&persistence_config.PersistenceConfig{
 			Endpoint: &endpoint,
@@ -56,6 +56,9 @@ func newYDB(ctx context.Context) (*persistence.YDBClient, error) {
 		},
 		metrics_empty.NewRegistry(),
 	)
+
+	require.NoError(t, err)
+	return db
 }
 
 func newStorage(
@@ -695,13 +698,12 @@ func TestTasksInitInfra(t *testing.T) {
 	ctx, cancel := context.WithCancel(newContext())
 	defer cancel()
 
-	db, err := newYDB(ctx)
-	require.NoError(t, err)
+	db := newYDB(ctx, t)
 	defer db.Close(ctx)
 
 	s := createServices(t, ctx, db, 2)
 
-	err = s.startRunners(ctx)
+	err := s.startRunners(ctx)
 	require.NoError(t, err)
 }
 
@@ -709,13 +711,12 @@ func TestTasksRunningOneTask(t *testing.T) {
 	ctx, cancel := context.WithCancel(newContext())
 	defer cancel()
 
-	db, err := newYDB(ctx)
-	require.NoError(t, err)
+	db := newYDB(ctx, t)
 	defer db.Close(ctx)
 
 	s := createServices(t, ctx, db, 2)
 
-	err = registerDoublerTask(s.registry)
+	err := registerDoublerTask(s.registry)
 	require.NoError(t, err)
 
 	err = s.startRunners(ctx)
@@ -734,8 +735,7 @@ func TestTasksInflightLimit(t *testing.T) {
 	ctx, cancel := context.WithCancel(newContext())
 	defer cancel()
 
-	db, err := newYDB(ctx)
-	require.NoError(t, err)
+	db := newYDB(ctx, t)
 	defer db.Close(ctx)
 
 	registry := mocks.NewIgnoreUnknownCallsRegistryMock()
@@ -749,7 +749,7 @@ func TestTasksInflightLimit(t *testing.T) {
 		registry,
 	)
 
-	err = registerDoublerTask(s.registry)
+	err := registerDoublerTask(s.registry)
 	require.NoError(t, err)
 
 	err = registerLongTask(s.registry)
@@ -852,13 +852,12 @@ func TestTasksSendEvent(t *testing.T) {
 	ctx, cancel := context.WithCancel(newContext())
 	defer cancel()
 
-	db, err := newYDB(ctx)
-	require.NoError(t, err)
+	db := newYDB(ctx, t)
 	defer db.Close(ctx)
 
 	s := createServices(t, ctx, db, 2)
 
-	err = registerDoublerTask(s.registry)
+	err := registerDoublerTask(s.registry)
 	require.NoError(t, err)
 
 	err = s.startRunners(ctx)
@@ -916,13 +915,12 @@ func TestTasksShouldNotRunTasksThatWereNotRegisteredForExecution(t *testing.T) {
 	ctx, cancel := context.WithCancel(newContext())
 	defer cancel()
 
-	db, err := newYDB(ctx)
-	require.NoError(t, err)
+	db := newYDB(ctx, t)
 	defer db.Close(ctx)
 
 	s := createServices(t, ctx, db, 2)
 
-	err = registerDoublerTask(s.registry)
+	err := registerDoublerTask(s.registry)
 	require.NoError(t, err)
 
 	err = s.registry.Register("sixTimes", func() tasks.Task {
@@ -960,13 +958,12 @@ func TestTasksShouldRestoreRunningAfterRetriableError(t *testing.T) {
 	ctx, cancel := context.WithCancel(newContext())
 	defer cancel()
 
-	db, err := newYDB(ctx)
-	require.NoError(t, err)
+	db := newYDB(ctx, t)
 	defer db.Close(ctx)
 
 	s := createServices(t, ctx, db, 2)
 
-	err = registerUnstableTask(s.registry)
+	err := registerUnstableTask(s.registry)
 	require.NoError(t, err)
 
 	err = s.startRunners(ctx)
@@ -989,13 +986,12 @@ func TestTasksShouldFailRunningAfterRetriableErrorCountExceeded(t *testing.T) {
 	ctx, cancel := context.WithCancel(newContext())
 	defer cancel()
 
-	db, err := newYDB(ctx)
-	require.NoError(t, err)
+	db := newYDB(ctx, t)
 	defer db.Close(ctx)
 
 	s := createServices(t, ctx, db, 2)
 
-	err = registerUnstableTask(s.registry)
+	err := registerUnstableTask(s.registry)
 	require.NoError(t, err)
 
 	err = s.startRunners(ctx)
@@ -1023,15 +1019,14 @@ func TestTasksShouldNotRestoreRunningAfterNonRetriableError(t *testing.T) {
 	ctx, cancel := context.WithCancel(newContext())
 	defer cancel()
 
-	db, err := newYDB(ctx)
-	require.NoError(t, err)
+	db := newYDB(ctx, t)
 	defer db.Close(ctx)
 
 	s := createServices(t, ctx, db, 2)
 
 	failure := errors.NewNonRetriableError(assert.AnError)
 
-	err = registerFailureTask(s.registry, failure)
+	err := registerFailureTask(s.registry, failure)
 	require.NoError(t, err)
 
 	err = s.startRunners(ctx)
@@ -1053,13 +1048,12 @@ func TestTasksRunningTwoConcurrentTasks(t *testing.T) {
 	ctx, cancel := context.WithCancel(newContext())
 	defer cancel()
 
-	db, err := newYDB(ctx)
-	require.NoError(t, err)
+	db := newYDB(ctx, t)
 	defer db.Close(ctx)
 
 	s := createServices(t, ctx, db, 2)
 
-	err = registerDoublerTask(s.registry)
+	err := registerDoublerTask(s.registry)
 	require.NoError(t, err)
 
 	err = s.startRunners(ctx)
@@ -1086,13 +1080,12 @@ func TestTasksRunningTwoConcurrentTasksReverseWaiting(t *testing.T) {
 	ctx, cancel := context.WithCancel(newContext())
 	defer cancel()
 
-	db, err := newYDB(ctx)
-	require.NoError(t, err)
+	db := newYDB(ctx, t)
 	defer db.Close(ctx)
 
 	s := createServices(t, ctx, db, 2)
 
-	err = registerDoublerTask(s.registry)
+	err := registerDoublerTask(s.registry)
 	require.NoError(t, err)
 
 	err = s.startRunners(ctx)
@@ -1121,13 +1114,12 @@ func TestTasksRunningTwoConcurrentTasksOnTwoRunners(t *testing.T) {
 	ctx, cancel := context.WithCancel(newContext())
 	defer cancel()
 
-	db, err := newYDB(ctx)
-	require.NoError(t, err)
+	db := newYDB(ctx, t)
 	defer db.Close(ctx)
 
 	s := createServices(t, ctx, db, 2)
 
-	err = registerDoublerTask(s.registry)
+	err := registerDoublerTask(s.registry)
 	require.NoError(t, err)
 
 	err = s.startRunners(ctx)
@@ -1156,13 +1148,12 @@ func TestTasksRunningTwoConcurrentTasksOnTwoRunnersReverseWaiting(t *testing.T) 
 	ctx, cancel := context.WithCancel(newContext())
 	defer cancel()
 
-	db, err := newYDB(ctx)
-	require.NoError(t, err)
+	db := newYDB(ctx, t)
 	defer db.Close(ctx)
 
 	s := createServices(t, ctx, db, 2)
 
-	err = registerDoublerTask(s.registry)
+	err := registerDoublerTask(s.registry)
 	require.NoError(t, err)
 
 	err = s.startRunners(ctx)
@@ -1189,13 +1180,12 @@ func TestTasksRunningDependentTask(t *testing.T) {
 	ctx, cancel := context.WithCancel(newContext())
 	defer cancel()
 
-	db, err := newYDB(ctx)
-	require.NoError(t, err)
+	db := newYDB(ctx, t)
 	defer db.Close(ctx)
 
 	s := createServices(t, ctx, db, 2)
 
-	err = registerDoublerTask(s.registry)
+	err := registerDoublerTask(s.registry)
 	require.NoError(t, err)
 
 	err = registerSixTimesTask(s.registry, s.scheduler)
@@ -1219,13 +1209,12 @@ func TestTasksRunningDependentTaskOnTwoRunners(t *testing.T) {
 	ctx, cancel := context.WithCancel(newContext())
 	defer cancel()
 
-	db, err := newYDB(ctx)
-	require.NoError(t, err)
+	db := newYDB(ctx, t)
 	defer db.Close(ctx)
 
 	s := createServices(t, ctx, db, 2)
 
-	err = registerDoublerTask(s.registry)
+	err := registerDoublerTask(s.registry)
 	require.NoError(t, err)
 
 	err = registerSixTimesTask(s.registry, s.scheduler)
@@ -1248,13 +1237,12 @@ func TestTasksRunningRegularTasks(t *testing.T) {
 	ctx, cancel := context.WithCancel(newContext())
 	defer cancel()
 
-	db, err := newYDB(ctx)
-	require.NoError(t, err)
+	db := newYDB(ctx, t)
 	defer db.Close(ctx)
 
 	s := createServices(t, ctx, db, 2)
 
-	err = s.registry.RegisterForExecution("regular", func() tasks.Task {
+	err := s.registry.RegisterForExecution("regular", func() tasks.Task {
 		return &regularTask{}
 	})
 	require.NoError(t, err)
@@ -1314,8 +1302,7 @@ func TestHangingTasksMetrics(t *testing.T) {
 	ctx, cancel := context.WithCancel(newContext())
 	defer cancel()
 
-	db, err := newYDB(ctx)
-	require.NoError(t, err)
+	db := newYDB(ctx, t)
 	defer db.Close(ctx)
 
 	registry := mocks.NewIgnoreUnknownCallsRegistryMock()
@@ -1323,7 +1310,7 @@ func TestHangingTasksMetrics(t *testing.T) {
 	config := newHangingTaskTestConfig()
 
 	s := createServicesWithConfig(t, ctx, db, config, registry)
-	err = registerHangingTask(s.registry)
+	err := registerHangingTask(s.registry)
 	require.NoError(t, err)
 
 	err = s.startRunners(ctx)
@@ -1391,8 +1378,7 @@ func TestHangingTasksMetricsAreSetEvenForTasksNotRegisteredForExecution(t *testi
 	ctx, cancel := context.WithCancel(newContext())
 	defer cancel()
 
-	db, err := newYDB(ctx)
-	require.NoError(t, err)
+	db := newYDB(ctx, t)
 	defer db.Close(ctx)
 
 	registry := mocks.NewIgnoreUnknownCallsRegistryMock()
@@ -1400,7 +1386,7 @@ func TestHangingTasksMetricsAreSetEvenForTasksNotRegisteredForExecution(t *testi
 	config := newHangingTaskTestConfig()
 
 	s := createServicesWithConfig(t, ctx, db, config, registry)
-	err = registerLongTaskNotForExecution(s.registry)
+	err := registerLongTaskNotForExecution(s.registry)
 	require.NoError(t, err)
 
 	err = s.startRunners(ctx)
@@ -1428,8 +1414,7 @@ func TestListerMetricsCleanup(t *testing.T) {
 	ctx, cancel := context.WithCancel(newContext())
 	defer cancel()
 
-	db, err := newYDB(ctx)
-	require.NoError(t, err)
+	db := newYDB(ctx, t)
 	// Do not defer db.Close(ctx) in this test.
 
 	registry := mocks.NewIgnoreUnknownCallsRegistryMock()
@@ -1437,7 +1422,7 @@ func TestListerMetricsCleanup(t *testing.T) {
 	config := newHangingTaskTestConfig()
 
 	s := createServicesWithConfig(t, ctx, db, config, registry)
-	err = registerHangingTask(s.registry)
+	err := registerHangingTask(s.registry)
 	require.NoError(t, err)
 
 	err = s.startRunners(ctx)
