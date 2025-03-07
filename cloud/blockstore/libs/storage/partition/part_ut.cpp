@@ -11548,6 +11548,39 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         }
     }
 
+    Y_UNIT_TEST(ShouldSkipEmptyRangesUponForcedCompactionWithMultipleRanges)
+    {
+        auto config = DefaultConfig();
+        config.SetBatchCompactionEnabled(true);
+        config.SetForcedCompactionRangeCountPerRun(3);
+        config.SetV1GarbageCompactionEnabled(false);
+
+        auto runtime = PrepareTestActorRuntime(config, MaxPartitionBlocksCount);
+
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+
+        {
+            const auto response = partition.StatPartition();
+            const auto& stats = response->Record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMergedBlobsCount());
+        }
+
+        const auto blockRange1 = TBlockRange32::WithLength(3 * 1024, 1024);
+        const auto blockRange2 = TBlockRange32::WithLength(4 * 1024, 1024);
+
+        partition.WriteBlocks(blockRange1, 1);
+        partition.WriteBlocks(blockRange2, 2);
+
+        const auto response = partition.CompactRange(0, 5119);
+        UNIT_ASSERT_EQUAL(S_OK, response->GetError().GetCode());
+
+        partition.SendGetCompactionStatusRequest(response->Record.GetOperationId());
+        const auto compactionStatus = partition.RecvGetCompactionStatusResponse();
+        UNIT_ASSERT(SUCCEEDED(compactionStatus->GetStatus()));
+        UNIT_ASSERT_EQUAL(5, compactionStatus->Record.GetTotal());
+    }
+
     Y_UNIT_TEST(ShouldBatchSmallWritesToFreshChannelIfThresholdNotExceeded)
     {
         NProto::TStorageServiceConfig config;
