@@ -45,8 +45,13 @@ void TNonreplicatedPartitionMigrationCommonActor::InitWork(
 
     if (DstActorId == NActors::TActorId{}) {
         ProcessingBlocks.AbortProcessing();
-    } else {
-        ProcessingBlocks.SkipProcessedRanges();
+        return;
+    }
+
+    ProcessingBlocks.SkipProcessedRanges();
+    if (ProcessingBlocks.IsProcessing()) {
+        ProcessingBlocks.SetLastReportedProcessingIndex(
+            ProcessingBlocks.BuildProcessingRange().Start);
     }
 }
 
