@@ -390,6 +390,27 @@ bool TInMemoryIndexState::ReadCheckpointNodes(
     return false;
 }
 
+//
+// MixedIndex
+//
+
+bool TInMemoryIndexState::ReadMixedBlocks(
+    ui32 rangeId,
+    TVector<IIndexTabletDatabase::TMixedBlob>& blobs,
+    IAllocator* alloc)
+{
+    Y_UNUSED(rangeId, blobs, alloc);
+    return false;
+}
+
+bool TInMemoryIndexState::ReadDeletionMarkers(
+    ui32 rangeId,
+    TVector<TDeletionMarker>& deletionMarkers)
+{
+    Y_UNUSED(rangeId, deletionMarkers);
+    return false;
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 void TInMemoryIndexState::UpdateState(

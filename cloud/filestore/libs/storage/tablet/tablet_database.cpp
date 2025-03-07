@@ -1285,7 +1285,7 @@ void TIndexTabletDatabase::DeleteMixedBlocks(
 bool TIndexTabletDatabase::ReadMixedBlocks(
     ui32 rangeId,
     const TPartialBlobId& blobId,
-    TMaybe<TMixedBlob>& blob,
+    TMaybe<IIndexTabletDatabase::TMixedBlob>& blob,
     IAllocator* alloc)
 {
     using TTable = TIndexTabletSchema::MixedBlocks;
@@ -1313,7 +1313,7 @@ bool TIndexTabletDatabase::ReadMixedBlocks(
 
         TBlockList blockList { std::move(blocks), std::move(deletionMarkers) };
 
-        blob = TMixedBlob {
+        blob = IIndexTabletDatabase::TMixedBlob {
             blobId,
             std::move(blockList),
             it.GetValue<TTable::GarbageBlocksCount>(),
@@ -1326,7 +1326,7 @@ bool TIndexTabletDatabase::ReadMixedBlocks(
 
 bool TIndexTabletDatabase::ReadMixedBlocks(
     ui32 rangeId,
-    TVector<TMixedBlob>& blobs,
+    TVector<IIndexTabletDatabase::TMixedBlob>& blobs,
     IAllocator* alloc)
 {
     using TTable = TIndexTabletSchema::MixedBlocks;
@@ -1354,7 +1354,7 @@ bool TIndexTabletDatabase::ReadMixedBlocks(
 
         TBlockList blockList { std::move(blocks), std::move(deletionMarkers) };
 
-        blobs.emplace_back(TMixedBlob {
+        blobs.emplace_back(IIndexTabletDatabase::TMixedBlob {
             blobId,
             std::move(blockList),
             it.GetValue<TTable::GarbageBlocksCount>(),
