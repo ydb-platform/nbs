@@ -57,7 +57,4 @@ message TRdmaConfig
 
     bool DiskAgentTargetEnabled = 5;
     TRdmaTarget DiskAgentTarget = 6;
-
-    bool BlockstoreServerTargetEnabled = 7;
-    TRdmaTarget BlockstoreServerTarget = 8;
 }
