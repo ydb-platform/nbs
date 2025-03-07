@@ -383,24 +383,16 @@ FILESTORE_FILESYSTEM_STATS(FILESTORE_DECLARE_STATS)
 
     void DeleteMixedBlocks(ui32 rangeId, const TPartialBlobId& blobId);
 
-    struct TMixedBlob
-    {
-        TPartialBlobId BlobId;
-        TBlockList BlockList;
-        ui32 GarbageBlocks;
-        ui32 CheckpointBlocks;
-    };
-
     bool ReadMixedBlocks(
         ui32 rangeId,
         const TPartialBlobId& blobId,
-        TMaybe<TMixedBlob>& blob,
+        TMaybe<IIndexTabletDatabase::TMixedBlob>& blob,
         IAllocator* alloc);
 
     bool ReadMixedBlocks(
         ui32 rangeId,
-        TVector<TMixedBlob>& blobs,
-        IAllocator* alloc);
+        TVector<IIndexTabletDatabase::TMixedBlob>& blobs,
+        IAllocator* alloc) override;
 
     //
     // DeletionMarkers
@@ -421,7 +413,7 @@ FILESTORE_FILESYSTEM_STATS(FILESTORE_DECLARE_STATS)
 
     bool ReadDeletionMarkers(
         ui32 rangeId,
-        TVector<TDeletionMarker>& deletionMarkers);
+        TVector<TDeletionMarker>& deletionMarkers) override;
 
     //
     // LargeDeletionMarkers
