@@ -71,6 +71,7 @@ class Coredump(object):
             self.execfile,
             self._corefile,
             "-iex=set auto-load safe-path /",
+            "-iex=set print thread-events off",
             "-ex=thread apply all bt",
             "--batch",
             "-q"
