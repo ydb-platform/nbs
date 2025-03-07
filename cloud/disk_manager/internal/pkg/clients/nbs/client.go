@@ -937,9 +937,8 @@ func (c *client) EnsureCheckpointReady(
 		return errors.NewInterruptExecutionError()
 
 	case CheckpointStatusError:
-		_ = c.DeleteCheckpoint(ctx, diskID, checkpointID)
 		return errors.NewRetriableErrorf(
-			"creating checkpoint with id %v for disk %v ended with an error",
+			"checkpoint with id %v for disk %v is broken",
 			checkpointID,
 			diskID,
 		)

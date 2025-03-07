@@ -15,6 +15,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	tasks_config "github.com/ydb-platform/nbs/cloud/tasks/config"
+	"github.com/ydb-platform/nbs/cloud/tasks/headers"
 	metrics_empty "github.com/ydb-platform/nbs/cloud/tasks/metrics/empty"
 	"github.com/ydb-platform/nbs/cloud/tasks/operation"
 	"github.com/ydb-platform/nbs/cloud/tasks/persistence"
@@ -664,4 +665,35 @@ func TestSchedulerGetOperationCancelled(t *testing.T) {
 			Error: taskError.Proto(),
 		},
 	})
+}
+
+func TestSchedulerGetTaskIDByIdempotencyKey(t *testing.T) {
+	ctx, cancel := context.WithCancel(newContext())
+	defer cancel()
+
+	storage := mocks.NewStorageMock()
+	registry := NewRegistry()
+	scheduler, err := NewScheduler(
+		ctx,
+		registry,
+		storage,
+		defaultConfig(),
+		metrics_empty.NewRegistry(),
+	)
+	require.NoError(t, err)
+
+	idempotencyKey := "idempotencyKey"
+
+	storage.On(
+		"GetTaskByIdempotencyKey",
+		mock.Anything, // ctx
+		idempotencyKey,
+		mock.Anything, // accountID
+	).Return(tasks_storage.TaskState{}, nil)
+
+	scheduler.GetTaskIDByIdempotencyKey(
+		headers.SetIncomingIdempotencyKey(ctx, idempotencyKey),
+	)
+
+	mock.AssertExpectationsForObjects(t, storage)
 }
