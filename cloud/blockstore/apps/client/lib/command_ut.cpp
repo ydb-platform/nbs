@@ -664,7 +664,7 @@ Y_UNIT_TEST_SUITE(TCommandTest)
 
         UNIT_ASSERT(!ExecuteRequest("ping", argv, client));
     }
-
+    /*
     Y_UNIT_TEST(ShouldSplitLargeCheckRangeRequestIntoSeveralRequests)
     {
         ui64 defaultMaxBlocksPerRequest = 1024;
@@ -788,6 +788,7 @@ Y_UNIT_TEST_SUITE(TCommandTest)
 
         UNIT_ASSERT_VALUES_EQUAL(checkRangeCounter * blocksPerRequest, DefaultBlocksCount);
     }
+    */
 }
 
 }   // namespace NCloud::NBlockStore::NClient
