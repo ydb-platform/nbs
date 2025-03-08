@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cloud/blockstore/libs/storage/api/service.h>
+#include <cloud/blockstore/libs/storage/api/volume.h>
 #include <cloud/blockstore/libs/storage/core/probes.h>
 #include <cloud/blockstore/libs/storage/core/request_info.h>
 #include <cloud/blockstore/private/api/protos/volume.pb.h>
@@ -29,7 +30,9 @@ public:
     void Bootstrap(const NActors::TActorContext& ctx);
 
 private:
-    void ReplyAndDie(const NActors::TActorContext& ctx, const NProto::TError& error);
+    void ReplyAndDie(
+        const NActors::TActorContext& ctx,
+        const NProto::TError& error);
 
     void ReplyAndDie(
         const NActors::TActorContext& ctx,
