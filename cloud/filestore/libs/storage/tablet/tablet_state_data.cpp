@@ -1103,6 +1103,13 @@ ui32 TIndexTabletState::CalculateMixedIndexRangeGarbageBlockCount(
     return Impl->MixedBlocks.CalculateGarbageBlockCount(rangeId);
 }
 
+
+TBlobMetaMapStats TIndexTabletState::GetBlobMetaMapStats() const
+{
+    return Impl->MixedBlocks.GetBlobMetaMapStats();
+}
+
+
 ////////////////////////////////////////////////////////////////////////////////
 // LargeBlocks
 
