@@ -12,6 +12,7 @@
 #include <cloud/blockstore/libs/storage/protos/disk.pb.h>
 #include <cloud/blockstore/libs/storage/testlib/diagnostics.h>
 #include <cloud/blockstore/libs/storage/testlib/disk_agent_mock.h>
+#include <cloud/blockstore/libs/storage/testlib/ut_helpers.h>
 #include <cloud/storage/core/libs/common/sglist_test.h>
 
 #include <contrib/ydb/core/testlib/basics/runtime.h>
@@ -2167,7 +2168,9 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionTest)
         const auto& checksums1 = response1->Record.GetChecksums();
         const auto& checksums2 = response2->Record.GetChecksums();
 
-        ASSERT_VECTORS_EQUAL(checksums1, checksums2);
+        ASSERT_VECTORS_EQUAL(
+            TVector<ui32>(checksums1.begin(), checksums1.end()),
+            TVector<ui32>(checksums2.begin(), checksums2.end()));
     }
 
     Y_UNIT_TEST(ShouldGetDifferentChecksumsWhileCheckRangeDifferentDisks)
@@ -2198,7 +2201,7 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionTest)
 
         ui32 totalChecksums = 0;
         ui32 differentChecksums = 0;
-        for (size_t i = 0; i < checksums1.size(); ++i) {
+        for (int i = 0; i < checksums1.size(); ++i) {
             if (checksums1.at(i) != checksums2.at(i)) {
                 ++differentChecksums;
             }
