@@ -123,15 +123,15 @@ void TMirrorPartitionActor::MirrorRequest(
         requestIdentityKey,
         {range, ev->Get()->Record.GetHeaders().GetVolumeRequestId()});
 
-    NCloud::Register<TMirrorRequestActor<TMethod>>(
+    NCloud::Register(
         ctx,
-        std::move(requestInfo),
-        State.GetReplicaActors(),
-        TActorId{},
-        std::move(msg->Record),
-        State.GetReplicaInfos()[0].Config->GetName(),
-        SelfId(),
-        requestIdentityKey);
+        CreateMirrorRequestActor(
+            std::move(requestInfo),
+            State.GetReplicaActors(),
+            std::move(msg->Record),
+            State.GetReplicaInfos()[0].Config->GetName(),   // diskId
+            SelfId(),                                       // parentActorId
+            requestIdentityKey));
 }
 
 ////////////////////////////////////////////////////////////////////////////////

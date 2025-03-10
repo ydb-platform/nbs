@@ -97,18 +97,16 @@ void TNonreplicatedPartitionMigrationCommonActor::MirrorRequest(
         }
     }
 
-    auto requestInfo =
-        CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
-
-    NCloud::Register<TMirrorRequestActor<TMethod>>(
+    NCloud::Register(
         ctx,
-        std::move(requestInfo),
-        ActorOwner ? TVector<TActorId>{SrcActorId} : TVector<TActorId>{},
-        DstActorId,
-        std::move(msg->Record),
-        DiskId,
-        SelfId(),
-        WriteAndZeroRequestsInProgress.AddWriteRequest(range));
+        CreateDeviceMigrationRequestActor(
+            CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext),
+            ActorOwner ? SrcActorId : TActorId{},
+            DstActorId,
+            std::move(msg->Record),
+            DiskId,
+            SelfId(),   // parentActorId
+            WriteAndZeroRequestsInProgress.AddWriteRequest(range)));
 
     if constexpr (IsExactlyWriteMethod<TMethod>) {
         NonZeroRangesMap.MarkChanged(range);
