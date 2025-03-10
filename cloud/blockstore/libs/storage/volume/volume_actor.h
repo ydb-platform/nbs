@@ -479,6 +479,7 @@ private:
 
     void SetupDiskRegistryBasedPartitions(const NActors::TActorContext& ctx);
 
+    bool LaggingDevicesAreAllowed() const;
     void ReportLaggingDevicesToDR(const NActors::TActorContext& ctx);
 
     void DumpUsageStats(
