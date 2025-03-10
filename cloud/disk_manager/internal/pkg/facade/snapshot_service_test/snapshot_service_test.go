@@ -631,7 +631,7 @@ func TestSnapshotServiceDeleteIncrementalSnapshotWhileCreating(t *testing.T) {
 		// deleted from incremental table and then checkpoint should not exist
 		// on the disk. Otherwise base snapshot checkpoint should exist.
 		if len(snapshotID) > 0 {
-			require.Equal(t, snapshotID, baseSnapshotID)
+			require.Equal(t, baseSnapshotID, snapshotID)
 			testcommon.RequireCheckpoint(t, ctx, diskID, baseSnapshotID)
 		} else {
 			testcommon.RequireCheckpointsDoNotExist(t, ctx, diskID)
