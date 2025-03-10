@@ -7,6 +7,7 @@
 #include <cloud/blockstore/libs/storage/core/probes.h>
 #include <cloud/blockstore/libs/storage/core/proto_helpers.h>
 
+#include <cloud/storage/core/libs/common/media.h>
 #include <cloud/storage/core/libs/throttling/tablet_throttler.h>
 
 namespace NCloud::NBlockStore::NStorage {
@@ -106,17 +107,14 @@ bool GetThrottlingEnabled(
         return false;
     }
 
-    switch (partitionConfig.GetStorageMediaKind()) {
-        case NCloud::NProto::EStorageMediaKind::STORAGE_MEDIA_SSD:
-            if constexpr (IsZeroMethod<TMethod>) {
-                return config.GetThrottlingEnabledSSDZeroBlocks();
-            } else {
-                return config.GetThrottlingEnabledSSD();
-            }
-
-        default:
-            return config.GetThrottlingEnabled();
+    if (NCloud::IsDiskRegistryMediaKind(partitionConfig.GetStorageMediaKind()))
+    {
+        return config.GetThrottlingEnabled();
     }
+
+    return IsZeroMethod<TMethod>
+               ? config.GetThrottlingZeroBlocksEnabledYDBBasedDisks()
+               : config.GetThrottlingEnabledSSD();
 }
 
 }   // namespace

@@ -543,7 +543,7 @@ TDuration MSeconds(ui32 value)
     xxx(AllowAdditionalSystemTablets,              bool,      false           )\
                                                                                \
     xxx(CheckRangeMaxRangeSize,                    ui32,      4_MB            )\
-    xxx(ThrottlingEnabledSSDZeroBlocks,            bool,      true            )
+    xxx(ThrottlingZeroBlocksEnabledYDBBasedDisks,  bool,      true            )
 // BLOCKSTORE_STORAGE_CONFIG_RW
 
 #define BLOCKSTORE_STORAGE_CONFIG(xxx)                                         \

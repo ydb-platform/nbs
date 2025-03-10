@@ -658,7 +658,7 @@ public:
 
     [[nodiscard]] ui32 GetCheckRangeMaxRangeSize() const;
 
-    [[nodiscard]] bool GetThrottlingEnabledSSDZeroBlocks() const;
+    [[nodiscard]] bool GetThrottlingZeroBlocksEnabledYDBBasedDisks() const;
 };
 
 ui64 GetAllocationUnit(
