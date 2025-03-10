@@ -89,7 +89,7 @@ Y_UNIT_TEST_SUITE(TServiceCheckRangeTest)
 
         auto response = service.CheckRange(DefaultDiskId, 0, blocksCount, true);
         UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
-        UNIT_ASSERT_VALUES_EQUAL(blocksCount, response.get()->Record.ChecksumsSize());
+        UNIT_ASSERT_VALUES_EQUAL(blocksCount, response->Record.ChecksumsSize());
     }
 }
 

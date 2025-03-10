@@ -7411,15 +7411,10 @@ Y_UNIT_TEST_SUITE(TPartition2Test)
         options.FinalEvents.emplace_back(TEvService::EvCheckRangeResponse);
         runtime->DispatchEvents(options, TDuration::Seconds(3));
 
-        const auto& checksums1 = response1.get()->Record.GetChecksums();
-        const auto& checksums2 = response2.get()->Record.GetChecksums();
+        const auto& checksums1 = response1->Record.GetChecksums();
+        const auto& checksums2 = response2->Record.GetChecksums();
 
-        UNIT_ASSERT_VALUES_EQUAL(
-            response1.get()->Record.ChecksumsSize(),
-            response2.get()->Record.ChecksumsSize());
-        for (size_t i = 0; i < response1.get()->Record.ChecksumsSize(); ++i) {
-            UNIT_ASSERT_VALUES_EQUAL(checksums1.at(i), checksums2.at(i));
-        }
+        ASSERT_VECTORS_EQUAL(checksums1, checksums2);
     }
 
     Y_UNIT_TEST(ShouldGetDifferentChecksumsWhileCheckRangeDifferentDisks)
@@ -7449,16 +7444,16 @@ Y_UNIT_TEST_SUITE(TPartition2Test)
         options.FinalEvents.emplace_back(TEvService::EvCheckRangeResponse);
         runtime->DispatchEvents(options, TDuration::Seconds(3));
 
-        const auto& checksums1 = response1.get()->Record.GetChecksums();
-        const auto& checksums2 = response2.get()->Record.GetChecksums();
+        const auto& checksums1 = response1->Record.GetChecksums();
+        const auto& checksums2 = response2->Record.GetChecksums();
 
         UNIT_ASSERT_VALUES_EQUAL(
-            response1.get()->Record.ChecksumsSize(),
-            response2.get()->Record.ChecksumsSize());
+            checksums1.size(),
+            checksums2.size());
 
         ui32 totalChecksums = 0;
         ui32 differentChecksums = 0;
-        for (size_t i = 0; i < response1.get()->Record.ChecksumsSize(); ++i) {
+        for (size_t i = 0; i < checksums1.size(); ++i) {
             if (checksums1.at(i) != checksums2.at(i)) {
                 ++differentChecksums;
             }
