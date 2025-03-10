@@ -49,7 +49,7 @@ private:
     void ReplyAndDie(
         const TActorContext& ctx,
         const NProto::TError& error,
-        const ui32 = 0);
+        const ui32 result = 0);
 
 private:
     STFUNC(StateWork);
