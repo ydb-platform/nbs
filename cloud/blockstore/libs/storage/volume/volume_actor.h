@@ -435,6 +435,7 @@ private:
         const TVector<TVolumeMetaHistoryItem>& metaHistory,
         IOutputStream& out) const;
     void RenderCheckpoints(IOutputStream& out) const;
+    void RenderLinks(IOutputStream& out) const;
     void RenderTraces(IOutputStream& out) const;
     void RenderStorageConfig(IOutputStream& out) const;
     void RenderRawVolumeConfig(IOutputStream& out) const;
