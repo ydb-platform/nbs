@@ -86,8 +86,8 @@ void TCheckRangeActor::CheckRange(const TActorContext& ctx)
     request->Record.SetDiskId(DiskId);
     request->Record.SetStartIndex(StartIndex);
     request->Record.SetBlocksCount(BlocksCount);
-    auto* headers = request->Record.MutableHeaders();
 
+    auto* headers = request->Record.MutableHeaders();
     headers->SetReplicaCount(ReplicaCount);
 
     NCloud::Send(

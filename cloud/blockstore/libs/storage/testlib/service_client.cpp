@@ -528,7 +528,6 @@ std::unique_ptr<TEvService::TEvCheckRangeRequest> TServiceClient::CreateCheckRan
     request->Record.SetDiskId(diskId);
     request->Record.SetStartIndex(startIndex);
     request->Record.SetBlocksCount(blocksCount);
-
     request->Record.MutableHeaders()->SetReplicaCount(replicaCount);
     return request;
 }
