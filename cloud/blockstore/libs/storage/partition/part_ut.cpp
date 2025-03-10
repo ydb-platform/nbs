@@ -2,6 +2,8 @@
 
 #include "part_events_private.h"
 
+#include <cloud/blockstore/public/api/protos/volume.pb.h>
+
 #include <cloud/blockstore/libs/diagnostics/block_digest.h>
 #include <cloud/blockstore/libs/diagnostics/config.h>
 #include <cloud/blockstore/libs/diagnostics/critical_events.h>
@@ -16,19 +18,19 @@
 #include <cloud/blockstore/libs/storage/core/compaction_options.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/model/channel_data_kind.h>
-#include <cloud/blockstore/libs/storage/partition/model/fresh_blob.h>
 #include <cloud/blockstore/libs/storage/partition/model/fresh_blob_test.h>
+#include <cloud/blockstore/libs/storage/partition/model/fresh_blob.h>
 #include <cloud/blockstore/libs/storage/partition/part.h>
 #include <cloud/blockstore/libs/storage/partition/part_events_private.h>
 #include <cloud/blockstore/libs/storage/partition_common/events_private.h>
 #include <cloud/blockstore/libs/storage/testlib/test_env.h>
 #include <cloud/blockstore/libs/storage/testlib/test_runtime.h>
 #include <cloud/blockstore/libs/storage/testlib/ut_helpers.h>
-#include <cloud/blockstore/public/api/protos/volume.pb.h>
 
 // TODO: invalid reference
 #include <cloud/blockstore/libs/storage/service/service_events_private.h>
 #include <cloud/blockstore/libs/storage/volume/volume_events_private.h>
+
 #include <cloud/storage/core/libs/api/hive_proxy.h>
 #include <cloud/storage/core/libs/common/helpers.h>
 #include <cloud/storage/core/libs/common/sglist_test.h>
