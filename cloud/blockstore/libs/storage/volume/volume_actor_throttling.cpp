@@ -112,9 +112,19 @@ bool GetThrottlingEnabled(
         return config.GetThrottlingEnabled();
     }
 
-    return IsZeroMethod<TMethod>
-               ? config.GetThrottlingZeroBlocksEnabledYDBBasedDisks()
-               : config.GetThrottlingEnabledSSD();
+    bool thottlingEnabled =
+        partitionConfig.GetStorageMediaKind() ==
+                NCloud::NProto::EStorageMediaKind::STORAGE_MEDIA_SSD
+            ? config.GetThrottlingEnabledSSD()
+            : config.GetThrottlingEnabled();
+
+    if (IsZeroMethod<TMethod> &&
+        config.GetDisableZeroBlocksThrottlingForYDBBasedDisks())
+    {
+        thottlingEnabled = false;
+    }
+
+    return thottlingEnabled;
 }
 
 }   // namespace

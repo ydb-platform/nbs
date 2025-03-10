@@ -1145,6 +1145,6 @@ message TStorageServiceConfig
     // Lagging devices are monitored by periodic requests at this interval.
     optional uint32 LaggingDevicePingInterval = 414;
 
-    // Throttle ZeroBlock requests for YDB-based disks
-    optional bool ThrottlingZeroBlocksEnabledYDBBasedDisks = 415;
+    // Disable throttling ZeroBlock requests for YDB-based disks.
+    optional bool DisableZeroBlocksThrottlingForYDBBasedDisks = 415;
 }
