@@ -193,7 +193,7 @@ public:
 
     virtual bool ReadMixedBlocks(
         ui32 rangeId,
-        TVector<IIndexTabletDatabase::TMixedBlob>& blobs,
+        TVector<TMixedBlob>& blobs,
         IAllocator* alloc) = 0;
 
     virtual bool ReadDeletionMarkers(
