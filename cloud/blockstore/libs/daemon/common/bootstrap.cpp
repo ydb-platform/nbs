@@ -237,6 +237,19 @@ void TBootstrapBase::Init()
 
     STORAGE_INFO("Service initialized");
 
+    if (Configs->RdmaConfig->GetBlockstoreServerTargetEnabled()) {
+        InitRdmaRequestServer();
+        if (RdmaRequestServer) {
+            RdmaTarget = CreateBlockstoreServerRdmaTarget(
+                std::make_shared<TBlockstoreServerRdmaTargetConfig>(
+                    Configs->RdmaConfig->GetBlockstoreServerTarget()),
+                Logging,
+                RdmaRequestServer,
+                Service);
+            STORAGE_INFO("RDMA Target initialized");
+        }
+    }
+
     GrpcLog = Logging->CreateLog("GRPC");
     GrpcLoggerInit(
         GrpcLog,
@@ -660,19 +673,6 @@ void TBootstrapBase::Init()
 
     GrpcEndpointListener->SetClientStorageFactory(
         Server->GetClientStorageFactory());
-
-    if (Configs->RdmaConfig->GetBlockstoreServerTargetEnabled()) {
-        InitRdmaRequestServer();
-        if (RdmaRequestServer) {
-            RdmaTarget = CreateBlockstoreServerRdmaTarget(
-                std::make_shared<TBlockstoreServerRdmaTargetConfig>(
-                    Configs->RdmaConfig->GetBlockstoreServerTarget()),
-                Logging,
-                RdmaRequestServer,
-                Service);
-            STORAGE_INFO("RDMA Target initialized");
-        }
-    }
 
     TVector<IIncompleteRequestProviderPtr> requestProviders = {
         Server,
