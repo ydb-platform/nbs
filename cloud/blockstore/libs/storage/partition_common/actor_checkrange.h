@@ -27,15 +27,14 @@ public:
 
     void Bootstrap(const NActors::TActorContext& ctx);
 
-protected:
+private:
     void ReplyAndDie(const NActors::TActorContext& ctx, const NProto::TError& error);
 
     void ReplyAndDie(
         const NActors::TActorContext& ctx,
         std::unique_ptr<TEvService::TEvCheckRangeResponse>);
 
-private:
-    virtual void HandleReadBlocksResponse(
+    void HandleReadBlocksResponse(
         const TEvService::TEvReadBlocksResponse::TPtr& ev,
         const NActors::TActorContext& ctx);
 

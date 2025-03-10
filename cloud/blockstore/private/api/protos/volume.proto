@@ -308,6 +308,9 @@ message TCheckRangeRequest
 
     // Number of blobs per batch.
     uint32 BlocksCount = 3;
+
+    // Number of replicas to read from m3 disks.
+    uint64 ReplicaCount = 4;
 }
 
 message TCheckRangeResponse

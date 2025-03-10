@@ -28,6 +28,7 @@ private:
     const TString DiskId;
     const ui64 StartIndex;
     const ui64 BlocksCount;
+    const ui32 ReplicaCount;
 
 public:
     TCheckRangeActor(
@@ -35,7 +36,8 @@ public:
         TStorageConfigPtr config,
         TString diskId,
         ui64 startIndex,
-        ui64 blocksCount);
+        ui64 blocksCount,
+        ui32 replicaCount);
 
     void Bootstrap(const TActorContext& ctx);
 
@@ -61,12 +63,14 @@ TCheckRangeActor::TCheckRangeActor(
     TStorageConfigPtr config,
     TString diskId,
     ui64 startIndex,
-    ui64 blocksCount)
+    ui64 blocksCount,
+    ui32 replicaCount)
     : RequestInfo(std::move(requestInfo))
     , Config(std::move(config))
     , DiskId(std::move(diskId))
     , StartIndex(startIndex)
     , BlocksCount(blocksCount)
+    , ReplicaCount(replicaCount)
 {}
 
 void TCheckRangeActor::Bootstrap(const TActorContext& ctx)
@@ -82,6 +86,9 @@ void TCheckRangeActor::CheckRange(const TActorContext& ctx)
     request->Record.SetDiskId(DiskId);
     request->Record.SetStartIndex(StartIndex);
     request->Record.SetBlocksCount(BlocksCount);
+    auto* headers = request->Record.MutableHeaders();
+
+    headers->SetReplicaCount(ReplicaCount);
 
     NCloud::Send(
         ctx,
@@ -177,7 +184,8 @@ void TServiceActor::HandleCheckRange(
         Config,
         request.GetDiskId(),
         request.GetStartIndex(),
-        request.GetBlocksCount());
+        request.GetBlocksCount(),
+        request.headers().GetReplicaCount());
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

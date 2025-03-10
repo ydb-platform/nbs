@@ -24,23 +24,10 @@ namespace {
 
 class TMirrorCheckRangeActor final: public TCheckRangeActor
 {
-private:
-    ui32 ReplicaCount;
-    bool IsRecievedError;
-    NProto::TError Status;
-
 public:
-    TMirrorCheckRangeActor(
-        const NActors::TActorId& partition,
-        NProto::TCheckRangeRequest&& request,
-        const ui32 replicaCount,
-        TRequestInfoPtr&& requestInfo);
+    using TCheckRangeActor::TCheckRangeActor;
 
     void Bootstrap(const TActorContext& ctx);
-
-    void HandleReadBlocksResponse(
-        const TEvService::TEvReadBlocksResponse::TPtr& ev,
-        const NActors::TActorContext& ctx) override;
 
 private:
     void SendReadBlocksRequest(const TActorContext& ctx) override;
@@ -48,14 +35,6 @@ private:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TMirrorCheckRangeActor::TMirrorCheckRangeActor(
-    const NActors::TActorId& partition,
-    NProto::TCheckRangeRequest&& request,
-    const ui32 replicaCount,
-    TRequestInfoPtr&& requestInfo)
-    : TCheckRangeActor(partition, std::move(request), std::move(requestInfo))
-    , ReplicaCount(replicaCount)
-{}
 
 void TMirrorCheckRangeActor::SendReadBlocksRequest(const TActorContext& ctx)
 {
@@ -66,50 +45,11 @@ void TMirrorCheckRangeActor::SendReadBlocksRequest(const TActorContext& ctx)
     request->Record.SetBlocksCount(Request.GetBlocksCount());
 
     auto* headers = request->Record.MutableHeaders();
-    headers->SetReplicaCount(ReplicaCount);
+    headers->SetReplicaCount(Request.headers().GetReplicaCount());
     headers->SetClientId(clientId);
     headers->SetIsBackgroundRequest(true);
 
     NCloud::Send(ctx, Partition, std::move(request));
-}
-
-void TMirrorCheckRangeActor::HandleReadBlocksResponse(
-    const TEvService::TEvReadBlocksResponse::TPtr& ev,
-    const TActorContext& ctx)
-{
-    const auto* msg = ev->Get();
-    auto response =
-        std::make_unique<TEvService::TEvCheckRangeResponse>(MakeError(S_OK));
-
-    const auto& error = msg->Record.GetError();
-
-    if (!HasError(error)) {
-    // calculateCheckSums
-    } else {
-        LOG_ERROR_S(
-            ctx,
-            TBlockStoreComponents::PARTITION,
-            "reading error has occurred: " << FormatError(error));
-
-        if (!HasError(Status)) {
-            Status.CopyFrom(error);
-
-            if (error.GetCode() == E_REJECTED) {
-                --ReplicaCount;
-                SendReadBlocksRequest(ctx);
-                return;
-            }
-        } else {
-            Status.MutableMessage()
-                ->append(" \n Error while reading from ")
-                .append(ToString(ReplicaCount))
-                .append(" replicas:\n")
-                .append(error.GetMessage());
-        }
-    }
-
-    response->Record.MutableStatus()->CopyFrom(Status);
-    ReplyAndDie(ctx, std::move(response));
 }
 
 }   // namespace
@@ -134,13 +74,11 @@ void TMirrorPartitionActor::HandleCheckRange(
         NCloud::Reply(ctx, *ev, std::move(response));
         return;
     }
-    auto replicaCount = State.GetReplicaInfos().size();
 
     NCloud::Register<TMirrorCheckRangeActor>(
         ctx,
         SelfId(),
         std::move(record),
-        replicaCount,
         CreateRequestInfo(ev->Sender, ev->Cookie, ev->Get()->CallContext));
 }
 
