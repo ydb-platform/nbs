@@ -26,7 +26,7 @@ Y_UNIT_TEST_SUITE(TServiceCheckRangeTest)
             "test_cloud");
 
         auto response = service.CheckRange(DefaultDiskId, 0, size, false);
-        UNIT_ASSERT(response->GetStatus() == S_OK);
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
     }
 
     Y_UNIT_TEST(ShouldFailCheckRangeWithEmptyDiskId)
@@ -47,7 +47,7 @@ Y_UNIT_TEST_SUITE(TServiceCheckRangeTest)
         service.SendCheckRangeRequest(TString(), 0, size, false);
         auto response = service.RecvCheckRangeResponse();
 
-        UNIT_ASSERT(response->GetStatus() == E_ARGUMENT);
+        UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, response->GetStatus());
     }
 
     Y_UNIT_TEST(ShouldFailCheckRangeWithZeroSize)
@@ -68,7 +68,7 @@ Y_UNIT_TEST_SUITE(TServiceCheckRangeTest)
         service.SendCheckRangeRequest(DefaultDiskId, 0, 0, false);
         auto response = service.RecvCheckRangeResponse();
 
-        UNIT_ASSERT(response->GetStatus() == E_ARGUMENT);
+        UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, response->GetStatus());
     }
 
     Y_UNIT_TEST(ShouldCalculateCheckSumsWhileCheckRange)
@@ -88,8 +88,8 @@ Y_UNIT_TEST_SUITE(TServiceCheckRangeTest)
             "test_cloud");
 
         auto response = service.CheckRange(DefaultDiskId, 0, blocksCount, true);
-        UNIT_ASSERT(response->GetStatus() == S_OK);
-        UNIT_ASSERT_VALUES_EQUAL(response.get()->Record.ChecksumsSize(), blocksCount);
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
+        UNIT_ASSERT_VALUES_EQUAL(blocksCount, response.get()->Record.ChecksumsSize());
     }
 }
 
