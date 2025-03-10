@@ -17,7 +17,7 @@ LWTRACE_USING(BLOCKSTORE_STORAGE_PROVIDER);
 
 ////////////////////////////////////////////////////////////////////////////////
 
-// The TMigrationRequestActor class is used to migrate a new device, it has two
+// The TMigrationRequestActor class is used to migrate a new device. It has two
 // replicas, one is leader and the second is follower. If we receive a fatal
 // error from the follower partition, we do not respond to the client with an
 // error, but at the same time stop the migration. And if we receive a non-fatal
@@ -122,8 +122,11 @@ template <typename TMethod>
 void TMigrationRequestActor<TMethod>::SendRequests(
     const NActors::TActorContext& ctx)
 {
+    PendingRequests = 2;
+
     for (const auto& actorId: {LeaderPartition, FollowerPartition}) {
         if (!actorId) {
+            --PendingRequests;
             continue;
         }
 
@@ -149,8 +152,6 @@ void TMigrationRequestActor<TMethod>::SendRequests(
         );
 
         ctx.Send(std::move(event));
-
-        ++PendingRequests;
     }
 }
 

@@ -43,7 +43,7 @@ private:
 
     TVector<TCallContextPtr> ForkedCallContexts;
     ui32 Responses = 0;
-    TResponseProto LeadersCollectiveResponse;
+    TResponseProto ReplicasCollectiveResponse;
 
 public:
     TMirrorRequestActor(
@@ -146,7 +146,7 @@ template <typename TMethod>
 void TMirrorRequestActor<TMethod>::Done(const NActors::TActorContext& ctx)
 {
     auto response = std::make_unique<typename TMethod::TResponse>();
-    response->Record = std::move(LeadersCollectiveResponse);
+    response->Record = std::move(ReplicasCollectiveResponse);
 
     auto& callContext = *RequestInfo->CallContext;
     for (auto& cc: ForkedCallContexts) {
@@ -177,8 +177,8 @@ void TMirrorRequestActor<TMethod>::UpdateResponse(TResponseProto&& response)
 {
     ProcessMirrorActorError(*response.MutableError());
 
-    if (!HasError(LeadersCollectiveResponse)) {
-        LeadersCollectiveResponse = std::move(response);
+    if (!HasError(ReplicasCollectiveResponse)) {
+        ReplicasCollectiveResponse = std::move(response);
     }
 }
 
@@ -196,7 +196,7 @@ void TMirrorRequestActor<TMethod>::HandleUndelivery(
         DiskId.c_str(),
         TMethod::Name);
 
-    *LeadersCollectiveResponse.MutableError() = MakeError(
+    *ReplicasCollectiveResponse.MutableError() = MakeError(
         E_REJECTED,
         TStringBuilder() << TMethod::Name
                          << " request undelivered to some nonrepl partitions");
@@ -239,8 +239,7 @@ void TMirrorRequestActor<TMethod>::HandlePoisonPill(
 {
     Y_UNUSED(ev);
 
-    LeadersCollectiveResponse.MutableError()->CopyFrom(
-        MakeError(E_REJECTED, "Dead"));
+    *ReplicasCollectiveResponse.MutableError() = MakeError(E_REJECTED, "Dead");
 
     Done(ctx);
 }
