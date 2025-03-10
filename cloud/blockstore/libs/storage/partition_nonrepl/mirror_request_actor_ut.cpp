@@ -59,7 +59,6 @@ public:
             ctx,
             std::move(requestInfo),
             Partitions,
-            TActorId{},   // followerPartition
             msg->Record,
             msg->Record.GetDiskId(),
             SelfId(),   // parentActorId
