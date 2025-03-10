@@ -45,8 +45,6 @@ protected:
     void InitAuthService() override;
 
     void WarmupBSGroupConnections() override;
-
-    void InitRdmaRequestServer() override;
 };
 
 }   // namespace NCloud::NBlockStore::NServer
