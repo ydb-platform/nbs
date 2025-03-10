@@ -113,6 +113,11 @@ int TControlPlaneActionRunner::Run(
                 return RunCmsRemoveDeviceAction(action);
             }
 
+            case NProto::TActionGraph::TControlPlaneAction::kReplaceDevicesRequest:
+            {
+                return RunReplaceDevicesRequest(action);
+            }
+
             default: Y_ABORT_UNLESS(0);
         }
     } catch (...) {
@@ -614,6 +619,65 @@ int TControlPlaneActionRunner::RunCmsRemoveDeviceAction(
     NProtobufJson::Proto2Json(response, log, {});
 
     STORAGE_INFO("ExecuteAction result: " << log);
+
+    return 0;
+}
+
+int TControlPlaneActionRunner::RunReplaceDevicesRequest(
+    const NProto::TActionGraph::TControlPlaneAction& action)
+{
+    const auto& request = action.GetReplaceDevicesRequest();
+    const auto requestId = GetRequestId(request);
+    const auto& diskId = request.GetDiskId();
+
+    TVolumeInfo volumeInfo;
+    VolumeInfos.GetVolumeInfo(diskId, &volumeInfo);
+
+    NProto::TDescribeVolumeRequest describeVolume;
+    describeVolume.SetDiskId(diskId);
+
+    auto describeVolumeResponse = WaitForCompletion(
+        "DescribeVolume",
+        Client->DescribeVolume(
+            MakeIntrusive<TCallContext>(requestId),
+            std::make_shared<NProto::TDescribeVolumeRequest>(describeVolume)),
+        {});
+
+    auto getDeviceUUID = [&](ui64 replicaIdx, ui64 deviceIdx)
+    {
+        if (replicaIdx == 0) {
+            return describeVolumeResponse.GetVolume()
+                .GetDevices()[deviceIdx]
+                .GetDeviceUUID();
+        }
+        return describeVolumeResponse.GetVolume()
+            .GetReplicas()[replicaIdx - 1]
+            .GetDevices()[deviceIdx]
+            .GetDeviceUUID();
+    };
+
+    for (auto& coordinate: request.GetDevicesToReplace()) {
+        auto deviceUUID = getDeviceUUID(
+            coordinate.GetReplicaIndex(),
+            coordinate.GetDeviceIndex());
+
+        NJson::TJsonValue inputJson;
+        inputJson["DiskId"] =
+            diskId + "/" + ToString(coordinate.GetReplicaIndex());
+        inputJson["DeviceId"] = deviceUUID;
+
+        NProto::TExecuteActionRequest executeAction;
+        executeAction.SetAction("ReplaceDevice");
+        executeAction.SetInput(NJson::WriteJson(inputJson));
+
+        WaitForCompletion(
+            "ExecuteAction",
+            Client->ExecuteAction(
+                MakeIntrusive<TCallContext>(requestId),
+                std::make_shared<NProto::TExecuteActionRequest>(
+                    std::move(executeAction))),
+            {});
+    }
 
     return 0;
 }

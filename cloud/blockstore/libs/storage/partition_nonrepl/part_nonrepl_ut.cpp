@@ -124,20 +124,20 @@ struct TTestEnv
             )
         );
 
+        TNonreplicatedPartitionConfig::TNonreplicatedPartitionConfigInitParams
+            partConfigInitParams{
+                ToLogicalBlocks(params.Devices, DefaultBlockSize),
+                TNonreplicatedPartitionConfig::TVolumeInfo{
+                    Now(),
+                    params.MediaKind},
+                "test",
+                DefaultBlockSize,
+                VolumeActorId};
+        partConfigInitParams.IOMode = params.IOMode;
+        partConfigInitParams.MuteIOErrors = params.MuteIOErrors;
+        partConfigInitParams.UseSimpleMigrationBandwidthLimiter = false;
         auto partConfig = std::make_shared<TNonreplicatedPartitionConfig>(
-            ToLogicalBlocks(params.Devices, DefaultBlockSize),
-            params.IOMode,
-            "test",
-            DefaultBlockSize,
-            TNonreplicatedPartitionConfig::TVolumeInfo{Now(), params.MediaKind},
-            VolumeActorId,
-            params.MuteIOErrors,
-            THashSet<TString>(),   // freshDeviceIds
-            THashSet<TString>(),   // laggingDeviceIds
-            TDuration::Zero(),     // maxTimedOutDeviceStateDuration
-            false,                 // maxTimedOutDeviceStateDurationOverridden
-            false                  // useSimpleMigrationBandwidthLimiter
-        );
+            std::move(partConfigInitParams));
 
         auto part = std::make_unique<TNonreplicatedPartitionActor>(
             std::move(config),

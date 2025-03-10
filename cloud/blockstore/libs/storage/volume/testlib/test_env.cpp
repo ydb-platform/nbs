@@ -567,6 +567,30 @@ TVolumeClient::CreateGracefulShutdownRequest()
     return std::make_unique<TEvVolume::TEvGracefulShutdownRequest>();
 }
 
+std::unique_ptr<TEvVolume::TEvLinkLeaderVolumeToFollowerRequest>
+TVolumeClient::CreateLinkLeaderVolumeToFollowerRequest(
+    const TString& leaderDiskId,
+    const TString& followerDiskId)
+{
+    auto result =
+        std::make_unique<TEvVolume::TEvLinkLeaderVolumeToFollowerRequest>();
+    result->Record.SetDiskId(leaderDiskId);
+    result->Record.SetFollowerDiskId(followerDiskId);
+    return result;
+}
+
+std::unique_ptr<TEvVolume::TEvUnlinkLeaderVolumeFromFollowerRequest>
+TVolumeClient::CreateUnlinkLeaderVolumeFromFollowerRequest(
+    const TString& leaderDiskId,
+    const TString& followerDiskId)
+{
+    auto result =
+        std::make_unique<TEvVolume::TEvUnlinkLeaderVolumeFromFollowerRequest>();
+    result->Record.SetDiskId(leaderDiskId);
+    result->Record.SetFollowerDiskId(followerDiskId);
+    return result;
+}
+
 void TVolumeClient::SendRemoteHttpInfo(
     const TString& params,
     HTTP_METHOD method)

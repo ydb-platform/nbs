@@ -25,6 +25,7 @@ PY_SRCS(
     kikimr.py
     loadtest.py
     server.py
+    test_helpers.py
     vhost.py
 )
 

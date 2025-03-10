@@ -1281,6 +1281,76 @@ Y_UNIT_TEST_SUITE(TVolumeDatabaseTest)
                 100, serviceConfig->GetCompactionRangeCountPerRun());
         });
     }
+
+    Y_UNIT_TEST(ShouldStoreFollowers)
+    {
+        TTestExecutor executor;
+
+        TFollowerDiskInfo follower1{
+            .Uuid = "xxxxx",
+            .FollowerDiskId = "volume_1",
+            .ScaleUnitId = "SU_1"};
+
+        TFollowerDiskInfo follower2{
+            .Uuid = "yyyyy",
+            .FollowerDiskId = "volume_2",
+            .State = TFollowerDiskInfo::EState::Preparing,
+            .MigrationBlockIndex = 100};
+
+        executor.WriteTx(
+            [&](TVolumeDatabase db)
+            {
+                db.InitSchema();
+                db.WriteFollower(follower1);
+                db.WriteFollower(follower2);
+            });
+
+        executor.ReadTx(
+            [&](TVolumeDatabase db)
+            {
+                TFollowerDisks readFollowers;
+                UNIT_ASSERT(db.ReadFollowers(readFollowers));
+                UNIT_ASSERT_VALUES_EQUAL(2, readFollowers.size());
+                UNIT_ASSERT_EQUAL(follower1, readFollowers[0]);
+                UNIT_ASSERT_EQUAL(follower2, readFollowers[1]);
+            });
+
+        follower1.MigrationBlockIndex = 200;
+        follower1.State = TFollowerDiskInfo::EState::Ready;
+
+        executor.WriteTx(
+            [&](TVolumeDatabase db)
+            {
+                db.InitSchema();
+                db.WriteFollower(follower1);
+            });
+
+        executor.ReadTx(
+            [&](TVolumeDatabase db)
+            {
+                TFollowerDisks readFollowers;
+                UNIT_ASSERT(db.ReadFollowers(readFollowers));
+                UNIT_ASSERT_VALUES_EQUAL(2, readFollowers.size());
+                UNIT_ASSERT_EQUAL(follower1, readFollowers[0]);
+                UNIT_ASSERT_EQUAL(follower2, readFollowers[1]);
+            });
+
+        executor.WriteTx(
+            [&](TVolumeDatabase db)
+            {
+                db.InitSchema();
+                db.DeleteFollower(follower1);
+            });
+
+        executor.ReadTx(
+            [&](TVolumeDatabase db)
+            {
+                TFollowerDisks readFollowers;
+                UNIT_ASSERT(db.ReadFollowers(readFollowers));
+                UNIT_ASSERT_VALUES_EQUAL(1, readFollowers.size());
+                UNIT_ASSERT_EQUAL(follower2, readFollowers[0]);
+            });
+        }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

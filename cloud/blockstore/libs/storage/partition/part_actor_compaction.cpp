@@ -1317,7 +1317,10 @@ void TPartitionActor::HandleCompaction(
     if (!msg->RangeBlockIndices.empty()) {
         for (const auto blockIndex: msg->RangeBlockIndices) {
             const auto startIndex = cm.GetRangeStart(blockIndex);
-            tops.push_back({startIndex, cm.Get(startIndex)});
+            auto range = cm.Get(startIndex);
+            if (range.BlobCount > 0) {
+                tops.emplace_back(startIndex, std::move(range));
+            }
         }
         State->OnNewCompactionRange(msg->RangeBlockIndices.size());
     } else if (msg->Mode == TEvPartitionPrivate::GarbageCompaction) {

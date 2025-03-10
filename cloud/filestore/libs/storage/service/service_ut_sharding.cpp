@@ -152,7 +152,10 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
             });
     }
 
-    TFileSystemInfo CreateFileSystem(
+    // This function mocks the behavior of the TCreateFileStoreActor
+    // TODO(debnatkh): use single service.CreateFileStore request with
+    // AutomaticShardCreationEnabled
+    static TFileSystemInfo CreateFileSystem(
         TServiceClient& service,
         const TFileSystemConfig& fsConfig)
     {
@@ -212,6 +215,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
             if (fsConfig.DirectoryCreationInShardsEnabled) {
                 *request.AddShardFileSystemIds() = fsConfig.Shard1Id;
                 *request.AddShardFileSystemIds() = fsConfig.Shard2Id;
+                request.SetDirectoryCreationInShardsEnabled(true);
             }
 
             TString buf;
@@ -229,6 +233,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
             if (fsConfig.DirectoryCreationInShardsEnabled) {
                 *request.AddShardFileSystemIds() = fsConfig.Shard1Id;
                 *request.AddShardFileSystemIds() = fsConfig.Shard2Id;
+                request.SetDirectoryCreationInShardsEnabled(true);
             }
 
             TString buf;
@@ -275,6 +280,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
             request.SetFileSystemId(fsConfig.FsId);
             *request.AddShardFileSystemIds() = fsConfig.Shard1Id;
             *request.AddShardFileSystemIds() = fsConfig.Shard2Id;
+            request.SetDirectoryCreationInShardsEnabled(
+                fsConfig.DirectoryCreationInShardsEnabled);
 
             TString buf;
             google::protobuf::util::MessageToJsonString(request, &buf);

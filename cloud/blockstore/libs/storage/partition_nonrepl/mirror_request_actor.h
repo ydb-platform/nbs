@@ -108,7 +108,9 @@ TMirrorRequestActor<TMethod>::TMirrorRequestActor(
     , DiskId(std::move(diskId))
     , ParentActorId(parentActorId)
     , NonreplicatedRequestCounter(nonreplicatedRequestCounter)
-{}
+{
+    Y_DEBUG_ABORT_UNLESS(GetTotalPartitionCount() > 0);
+}
 
 template <typename TMethod>
 void TMirrorRequestActor<TMethod>::Bootstrap(const NActors::TActorContext& ctx)

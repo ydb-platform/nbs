@@ -1072,6 +1072,52 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesCache)
              128},
         });
     }
+
+    Y_UNIT_TEST(ShouldUseInMemoryCacheAndMixedBlocksCacheForReads)
+    {
+        NProto::TStorageConfig storageConfig;
+        storageConfig.SetInMemoryIndexCacheEnabled(true);
+        storageConfig.SetInMemoryIndexCacheNodesCapacity(2);
+        storageConfig.SetInMemoryIndexCacheNodeRefsCapacity(1);
+        storageConfig.SetInMemoryIndexCacheNodeAttrsCapacity(2);
+        storageConfig.SetMixedBlocksOffloadedRangesCapacity(1024);
+        TTestEnv env({}, storageConfig);
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
+        tablet.InitSession("client", "session");
+
+        auto statsBefore = GetTxStats(env, tablet);
+
+        // RW transaction, populates the cache
+        auto id = tablet.CreateNode(TCreateNodeArgs::File(RootNodeId, "test"))
+                      ->Record.GetNode()
+                      .GetId();
+
+        // RW transaction, updates cache
+        auto handle = tablet.CreateHandle(id, TCreateHandleArgs::RDWR)
+                          ->Record.GetHandle();
+
+        // RW transaction
+        tablet.WriteData(handle, 0, 1_MB, '0');
+
+        // RO transaction, cache miss
+        tablet.ReadData(handle, 0, 1_MB);
+        // RO transaction, cache hit
+        tablet.ReadData(handle, 0, 1_MB);
+
+        auto statsAfter = GetTxStats(env, tablet);
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            1,
+            statsAfter.ROCacheHitCount - statsBefore.ROCacheHitCount);
+        UNIT_ASSERT_VALUES_EQUAL(
+            1,
+            statsAfter.ROCacheMissCount - statsBefore.ROCacheMissCount);
+    }
 }
 
 }   // namespace NCloud::NFileStore::NStorage

@@ -888,7 +888,7 @@ public:
     //
 
 public:
-    bool LoadMixedBlocks(TIndexTabletDatabase& db, ui32 rangeId);
+    bool LoadMixedBlocks(IIndexTabletDatabase& db, ui32 rangeId);
     void ReleaseMixedBlocks(ui32 rangeId);
     void ReleaseMixedBlocks(const TSet<ui32>& ranges);
 

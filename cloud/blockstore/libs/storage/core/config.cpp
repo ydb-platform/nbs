@@ -515,6 +515,11 @@ TDuration MSeconds(ui32 value)
     xxx(MinScrubbingBandwidth,                          ui64,      5             )\
     xxx(AutomaticallyEnableBufferCopyingAfterChecksumMismatch, bool, false       )\
                                                                                   \
+    xxx(LaggingDevicesForMirror2DisksEnabled,     bool,      false               )\
+    xxx(LaggingDevicesForMirror3DisksEnabled,     bool,      false               )\
+    xxx(LaggingDeviceTimeoutThreshold,            TDuration, Seconds(5)          )\
+    xxx(LaggingDevicePingInterval,                TDuration, MSeconds(500)       )\
+                                                                                  \
     xxx(OptimizeVoidBuffersTransferForReadsEnabled,     bool,      false         )\
     xxx(VolumeHistoryCleanupItemCount,                  ui32,      100'000       )\
     xxx(IdleAgentDeployByCmsDelay,                      TDuration, Hours(1)      )\
@@ -568,6 +573,8 @@ BLOCKSTORE_STORAGE_CONFIG(BLOCKSTORE_STORAGE_DECLARE_CONFIG)
     xxx(UseNonReplicatedHDDInsteadOfReplicated)                                \
     xxx(AddingUnconfirmedBlobs)                                                \
     xxx(EncryptionAtRestForDiskRegistryBasedDisks)                             \
+    xxx(LaggingDevicesForMirror2Disks)                                         \
+    xxx(LaggingDevicesForMirror3Disks)                                         \
 
 // BLOCKSTORE_BINARY_FEATURES
 

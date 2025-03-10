@@ -798,21 +798,20 @@ void TShadowDiskActor::CreateShadowDiskConfig()
         TInstant(),
         GetCheckpointShadowDiskType(SrcConfig->GetVolumeInfo().MediaKind)};
 
-    DstConfig = std::make_shared<TNonreplicatedPartitionConfig>(
-        ShadowDiskDevices,
-        ReadOnlyMount() ? NProto::VOLUME_IO_ERROR_READ_ONLY
-                        : NProto::VOLUME_IO_OK,
-        ShadowDiskId,
-        SrcConfig->GetBlockSize(),
-        volumeInfo,
-        SelfId(),   // need to handle TEvRdmaUnavailable, TEvReacquireDisk
-        true,       // muteIOErrors
-        THashSet<TString>(),   // freshDeviceIds
-        THashSet<TString>(),   // laggingDeviceIds
-        TDuration(),           // maxTimedOutDeviceStateDuration
-        false,                 // maxTimedOutDeviceStateDurationOverridden
-        true                   // useSimpleMigrationBandwidthLimiter
-    );
+    TNonreplicatedPartitionConfig::TNonreplicatedPartitionConfigInitParams
+        params{
+            ShadowDiskDevices,
+            volumeInfo,
+            ShadowDiskId,
+            SrcConfig->GetBlockSize(),
+            SelfId(),   // need to handle TEvRdmaUnavailable, TEvReacquireDisk
+        };
+    params.MuteIOErrors = true;
+    params.IOMode = ReadOnlyMount() ? NProto::VOLUME_IO_ERROR_READ_ONLY
+                                    : NProto::VOLUME_IO_OK;
+
+    DstConfig =
+        std::make_shared<TNonreplicatedPartitionConfig>(std::move(params));
 }
 
 void TShadowDiskActor::CreateShadowDiskPartitionActor(
@@ -851,7 +850,9 @@ void TShadowDiskActor::CreateShadowDiskPartitionActor(
         InitWork(
             ctx,
             SrcActorId,
+            SrcActorId,
             DstActorId,
+            true,   // takeOwnershipOverActors
             std::make_unique<TMigrationTimeoutCalculator>(
                 GetConfig()->GetMaxShadowDiskFillBandwidth(),
                 GetConfig()->GetExpectedDiskAgentSize(),
@@ -1226,7 +1227,7 @@ void TShadowDiskActor::HandleGetChangedBlocks(
     auto range = TBlockRange64::WithLength(
         msg->Record.GetStartIndex(),
         msg->Record.GetBlocksCount());
-    response->Record.SetMask(GetChangedBlocks(range));
+    response->Record.SetMask(GetNonZeroBlocks(range));
 
     NCloud::Reply(ctx, *ev, std::move(response));
 }

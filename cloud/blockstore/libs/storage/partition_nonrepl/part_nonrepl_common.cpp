@@ -89,36 +89,6 @@ void TDeviceRequestBuilder::BuildNextRequest(TSgList* sglist)
     ++CurrentDeviceIdx;
 }
 
-void TDeviceRequestBuilder::BuildNextRequest(
-    NProto::TWriteDeviceBlocksRequest& r)
-{
-    Y_ABORT_UNLESS(CurrentDeviceIdx < DeviceRequests.size());
-
-    const auto& deviceRequest = DeviceRequests[CurrentDeviceIdx];
-    for (ui32 i = 0; i < deviceRequest.BlockRange.Size(); ++i) {
-        auto& deviceBuffer = *r.MutableBlocks()->AddBuffers();
-        if (CurrentOffsetInBuffer == 0 && Buffer().size() == BlockSize) {
-            deviceBuffer = std::move(Buffer());
-            ++CurrentBufferIdx;
-        } else {
-            const ui32 rem = Buffer().size() - CurrentOffsetInBuffer;
-            Y_ABORT_UNLESS(rem >= BlockSize);
-            deviceBuffer.resize(BlockSize);
-            memcpy(
-                deviceBuffer.begin(),
-                Buffer().data() + CurrentOffsetInBuffer,
-                BlockSize);
-            CurrentOffsetInBuffer += BlockSize;
-            if (CurrentOffsetInBuffer == Buffer().size()) {
-                CurrentOffsetInBuffer = 0;
-                ++CurrentBufferIdx;
-            }
-        }
-    }
-
-    ++CurrentDeviceIdx;
-}
-
 TString& TDeviceRequestBuilder::Buffer()
 {
     return (*Request.MutableBlocks()->MutableBuffers())[CurrentBufferIdx];
