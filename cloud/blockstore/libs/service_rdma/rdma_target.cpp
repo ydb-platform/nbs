@@ -398,12 +398,37 @@ private:
         proto.SetThrottlerDelay(resp.GetThrottlerDelay());
         proto.SetAllZeroes(resp.GetAllZeroes());
 
+        bool hasVoidBlocks = false;
+        size_t blockSize = 0;
+        for (const auto& buf: resp.GetBlocks().GetBuffers()) {
+            if (!buf.Data() || !buf.Size()) {
+                hasVoidBlocks = true;
+            } else {
+                blockSize = buf.Size();
+            }
+
+            proto.MutableBlocks()
+                ->AddBuffers();   // Add empty buffers to pass blocks count.
+        }
+
+        if (!blockSize) {
+            // we can't do anything with only void blocks
+            GeneralHandleResponse<TReadBlocksMethod>(
+                requestDetails,
+                future,
+                msgId);
+            return;
+        }
+
+        auto zeroBlock = hasVoidBlocks ? TString(blockSize, '\0') : TString();
         TSgList buffers;
         buffers.reserve(resp.GetBlocks().BuffersSize());
         for (const auto& buf: resp.GetBlocks().GetBuffers()) {
-            buffers.emplace_back(buf.Data(), buf.Size());
-            proto.MutableBlocks()
-                ->AddBuffers();   // Add empty buffers to pass blocks count.
+            if (!buf.Data() || !buf.Size()) {
+                buffers.emplace_back(zeroBlock.Data(), zeroBlock.Size());
+            } else {
+                buffers.emplace_back(buf.Data(), buf.Size());
+            }
         }
 
         auto totalLen = NRdma::TProtoMessageSerializer::MessageByteSize(
