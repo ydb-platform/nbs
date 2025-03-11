@@ -5,11 +5,15 @@
 #include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/core/probes.h>
 
+#include <util/string/join.h>
+
 using namespace NActors;
 
 LWTRACE_USING(BLOCKSTORE_STORAGE_PROVIDER);
 
 namespace NCloud::NBlockStore::NStorage {
+
+using EReason = TEvNonreplPartitionPrivate::TCancelRequest::EReason;
 
 ///////////////////////////////////////////////////////////////////////////////
 
@@ -43,27 +47,23 @@ void TDiskAgentBaseRequestActor::Bootstrap(const TActorContext& ctx)
         RequestInfo->CallContext->RequestId);
 
     StartTime = ctx.Now();
-    ctx.Schedule(TimeoutPolicy.Timeout, new TEvents::TEvWakeup());
+    ctx.Schedule(
+        TimeoutPolicy.Timeout,
+        new TEvNonreplPartitionPrivate::TEvCancelRequest(EReason::Timeouted));
 
     SendRequest(ctx);
 }
 
-bool TDiskAgentBaseRequestActor::HandleError(
+void TDiskAgentBaseRequestActor::HandleError(
     const TActorContext& ctx,
     NProto::TError error,
     bool timedOut)
 {
-    if (FAILED(error.GetCode())) {
-        ProcessError(*TActorContext::ActorSystem(), *PartConfig, error);
-
-        Done(
-            ctx,
-            MakeResponse(std::move(error)),
-            timedOut ? EStatus::Timeout : EStatus::Fail);
-        return true;
-    }
-
-    return false;
+    ProcessError(*TActorContext::ActorSystem(), *PartConfig, error);
+    Done(
+        ctx,
+        MakeResponse(std::move(error)),
+        timedOut ? EStatus::Timeout : EStatus::Fail);
 }
 
 void TDiskAgentBaseRequestActor::Done(
@@ -102,26 +102,64 @@ void TDiskAgentBaseRequestActor::Done(
     Die(ctx);
 }
 
-void TDiskAgentBaseRequestActor::HandleTimeout(
-    const TEvents::TEvWakeup::TPtr& ev,
+void TDiskAgentBaseRequestActor::HandleCancelRequest(
+    const TEvNonreplPartitionPrivate::TEvCancelRequest::TPtr& ev,
     const TActorContext& ctx)
 {
-    const auto& device = DeviceRequests[ev->Cookie].Device;
-    LOG_WARN_S(
-        ctx,
-        TBlockStoreComponents::PARTITION_WORKER,
-        RequestName << " request #" << RequestId
-                    << " timed out. Disk id: " << PartConfig->GetName().Quote()
-                    << " Device: " << LogDevice(device));
+    const auto* msg = ev->Get();
 
-    TString message = TStringBuilder() << RequestName << " request timed out";
+    TVector<TString> devices;
+    for (const auto& reuqest: DeviceRequests) {
+        devices.push_back(reuqest.Device.GetDeviceUUID());
+    }
+
+    switch (msg->Reason) {
+        case EReason::Timeouted:
+            LOG_WARN(
+                ctx,
+                TBlockStoreComponents::PARTITION_WORKER,
+                "[%s] %s request #%lu timed out. Devices: [%s]",
+                PartConfig->GetName().c_str(),
+                RequestName.c_str(),
+                RequestId,
+                JoinSeq(", ", devices).c_str());
+            HandleError(
+                ctx,
+                PartConfig->MakeError(
+                    TimeoutPolicy.ErrorCode,
+                    TimeoutPolicy.OverrideMessage
+                        ? TimeoutPolicy.OverrideMessage
+                        : (TStringBuilder()
+                           << RequestName << " request timed out")),
+                true);
+            return;
+        case EReason::Canceled:
+            LOG_WARN(
+                ctx,
+                TBlockStoreComponents::PARTITION_WORKER,
+                "[%s] %s request #%lu is canceled from outside. Devices: [%s]",
+                PartConfig->GetName().c_str(),
+                RequestName.c_str(),
+                RequestId,
+                JoinSeq(", ", devices).c_str());
+            HandleError(
+                ctx,
+                PartConfig->MakeError(
+                    E_REJECTED,
+                    TStringBuilder() << RequestName << " request is canceled"),
+                false);
+            return;
+    }
+
+    Y_DEBUG_ABORT_UNLESS(false);
     HandleError(
         ctx,
-        MakeError(
-            TimeoutPolicy.ErrorCode,
-            TimeoutPolicy.OverrideMessage ? TimeoutPolicy.OverrideMessage
-                                          : message),
-        true);
+        PartConfig->MakeError(
+            E_REJECTED,
+            TStringBuilder()
+                << RequestName << " request got an unknown cancel reason: "
+                << static_cast<int>(msg->Reason)),
+        false);
 }
 
 void TDiskAgentBaseRequestActor::StateWork(TAutoPtr<NActors::IEventHandle>& ev)
@@ -133,7 +171,9 @@ void TDiskAgentBaseRequestActor::StateWork(TAutoPtr<NActors::IEventHandle>& ev)
     }
 
     switch (ev->GetTypeRewrite()) {
-        HFunc(TEvents::TEvWakeup, HandleTimeout);
+        HFunc(
+            TEvNonreplPartitionPrivate::TEvCancelRequest,
+            HandleCancelRequest);
 
         default:
             HandleUnexpectedEvent(ev, TBlockStoreComponents::PARTITION_WORKER);
