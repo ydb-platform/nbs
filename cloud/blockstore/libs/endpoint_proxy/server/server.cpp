@@ -79,12 +79,11 @@ struct TEndpoint: std::enable_shared_from_this<TEndpoint>
     NBD::IDevicePtr NbdDevice;
     std::unique_ptr<TNetworkAddress> ListenAddress;
     IProxyRequestStatsPtr RequestStats;
-
     TString UnixSocketPath;
     TString InternalUnixSocketPath;
     TString NbdDevicePath;
-
     NBD::TStorageOptions NbdOptions;
+    std::atomic<ui64> Generation = 0;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -191,16 +190,19 @@ struct TRestartAlarmContext: TRequestContextBase
 {
     std::weak_ptr<TEndpoint> Endpoint;
     grpc::ServerCompletionQueue& CQ;
+    ui64 Generation;
     TBackoffDelayProvider Backoff;
     grpc::Alarm Alarm;
 
     TRestartAlarmContext(
             std::weak_ptr<TEndpoint> endpoint,
             grpc::ServerCompletionQueue& cq,
+            ui64 generation,
             TDuration minReconnectDelay,
             TDuration maxReconnectDelay)
         : Endpoint(std::move(endpoint))
         , CQ(cq)
+        , Generation(generation)
         , Backoff{minReconnectDelay, maxReconnectDelay}
     {
         SetAlarm();
@@ -275,27 +277,36 @@ struct TServer: IEndpointProxyServer
     {
         std::weak_ptr<TEndpoint> Endpoint;
         grpc::ServerCompletionQueue& CQ;
+        ui64 Generation;
         TDuration ReconnectDelay;
+        ui32 RestartEvents;
 
         TErrorHandler(
                 std::weak_ptr<TEndpoint> endpoint,
                 grpc::ServerCompletionQueue& cq,
-                TDuration reconnectDelay)
+                ui64 generation,
+                TDuration reconnectDelay,
+                ui32 restartEvents)
             : Endpoint(std::move(endpoint))
             , CQ(cq)
+            , Generation(generation)
             , ReconnectDelay(reconnectDelay)
+            , RestartEvents(restartEvents)
         {}
 
         void ProcessException(std::exception_ptr e) override
         {
             Y_UNUSED(e);
 
-            // context will be held by grpc until CQ->Next returns it
-            new TRestartAlarmContext(
-                Endpoint,
-                CQ,
-                ReconnectDelay,
-                MAX_RECONNECT_DELAY);
+            for (ui32 i = 0; i < RestartEvents; i++) {
+                // context will be held by grpc until CQ->Next returns it
+                new TRestartAlarmContext(
+                    Endpoint,
+                    CQ,
+                    Generation,
+                    ReconnectDelay,
+                    MAX_RECONNECT_DELAY);
+            }
         }
     };
 
@@ -945,7 +956,9 @@ struct TServer: IEndpointProxyServer
             std::make_shared<TErrorHandler>(
                 ep.shared_from_this(),
                 *CQ,
-                Config.NbdReconnectDelay),
+                ep.Generation,
+                Config.NbdReconnectDelay,
+                Config.RestartEvents),
             ep.NbdOptions);
 
         // TODO fix StartEndpoint signature - it's actually synchronous
@@ -1006,6 +1019,11 @@ struct TServer: IEndpointProxyServer
     bool ProcessAlarm(TRestartAlarmContext* context)
     {
         if (auto ep = context->Endpoint.lock()) {
+            if (context->Generation != ep->Generation) {
+                return false;
+            }
+            ep->Generation++;
+
             const auto tag = TStringBuilder()
                 << "UnixSocketPath: " << ep->UnixSocketPath.Quote() << " - ";
 

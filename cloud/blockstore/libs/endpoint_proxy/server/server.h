@@ -29,6 +29,7 @@ struct TEndpointProxyServerConfig
     TString StoredEndpointsPath;
     TDuration NbdRequestTimeout;
     TDuration NbdReconnectDelay;
+    ui32 RestartEvents;
 
     TEndpointProxyServerConfig(
             ui16 port,
@@ -40,7 +41,8 @@ struct TEndpointProxyServerConfig
             bool netlink,
             TString storedEndpointsPath,
             TDuration nbdRequestTimeout,
-            TDuration nbdReconnectDelay)
+            TDuration nbdReconnectDelay,
+            ui32 restartEvents)
         : Port(port)
         , SecurePort(securePort)
         , RootCertsFile(std::move(rootCertsFile))
@@ -51,6 +53,7 @@ struct TEndpointProxyServerConfig
         , StoredEndpointsPath(std::move(storedEndpointsPath))
         , NbdRequestTimeout(nbdRequestTimeout)
         , NbdReconnectDelay(nbdReconnectDelay)
+        , RestartEvents(restartEvents)
     {
     }
 };
