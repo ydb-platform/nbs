@@ -623,6 +623,7 @@ public:
     TString GetNodeRegistrationRootCertsFile() const;
     TCertificate GetNodeRegistrationCert() const;
     TString GetNodeType() const;
+    bool GetNodeRegistrationUseSsl() const;
 
     [[nodiscard]] bool GetLaggingDevicesForMirror2DisksEnabled() const;
     [[nodiscard]] bool GetLaggingDevicesForMirror3DisksEnabled() const;
