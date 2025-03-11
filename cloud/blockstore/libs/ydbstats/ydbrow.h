@@ -21,6 +21,7 @@ namespace NCloud::NBlockStore::NYdbStats {
     xxx(BlocksCount,                 __VA_ARGS__)                              \
     xxx(BlockSize,                   __VA_ARGS__)                              \
     xxx(StorageMediaKind,            __VA_ARGS__)                              \
+    xxx(VolumeTabletId,              __VA_ARGS__)                              \
     xxx(MixedBytesCount,             __VA_ARGS__)                              \
     xxx(MergedBytesCount,            __VA_ARGS__)                              \
     xxx(FreshBytesCount,             __VA_ARGS__)                              \

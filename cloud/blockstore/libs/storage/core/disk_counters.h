@@ -496,6 +496,10 @@ struct TVolumeSelfSimpleCounters
     using TMeta = TMemberMeta<TCounter TVolumeSelfSimpleCounters::*>;
 
     // Common
+    TCounter VolumeTabletId{
+        EPublishingPolicy::All,
+        TCumulativeCounter::ECounterType::Generic,
+        ECounterExpirationPolicy::Permanent};
     TCounter MaxReadBandwidth{
         EPublishingPolicy::All,
         TCumulativeCounter::ECounterType::Generic,
@@ -594,6 +598,7 @@ struct TVolumeSelfSimpleCounters
         ECounterExpirationPolicy::Permanent};
 
     static constexpr TMeta AllCounters[] = {
+        MakeMeta<&TVolumeSelfSimpleCounters::VolumeTabletId>(),
         MakeMeta<&TVolumeSelfSimpleCounters::MaxReadBandwidth>(),
         MakeMeta<&TVolumeSelfSimpleCounters::MaxWriteBandwidth>(),
         MakeMeta<&TVolumeSelfSimpleCounters::MaxReadIops>(),

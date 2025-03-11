@@ -362,8 +362,12 @@ void TVolumeActor::SendSelfStatsToService(const TActorContext& ctx)
         return;
     }
 
-    const auto& pp = State->GetConfig().GetPerformanceProfile();
     auto& simple = VolumeSelfCounters->Simple;
+
+    simple.VolumeTabletId.Set(TabletID());
+
+    const auto& pp = State->GetConfig().GetPerformanceProfile();
+
     simple.MaxReadBandwidth.Set(pp.GetMaxReadBandwidth());
     simple.MaxWriteBandwidth.Set(pp.GetMaxWriteBandwidth());
     simple.MaxReadIops.Set(pp.GetMaxReadIops());
