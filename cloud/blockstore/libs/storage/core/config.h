@@ -620,9 +620,9 @@ public:
     ui32 GetNodeRegistrationMaxAttempts() const;
     TDuration GetNodeRegistrationTimeout() const;
     TDuration GetNodeRegistrationErrorTimeout() const;
+    TString GetNodeType() const;
     TString GetNodeRegistrationRootCertsFile() const;
     TCertificate GetNodeRegistrationCert() const;
-    TString GetNodeType() const;
     bool GetNodeRegistrationUseSsl() const;
 
     [[nodiscard]] bool GetLaggingDevicesForMirror2DisksEnabled() const;
