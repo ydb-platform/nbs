@@ -7,11 +7,36 @@
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
 #include <library/cpp/protobuf/util/pb_io.h>
+#include <library/cpp/json/easy_parse/json_easy_parser.h>
+#include <library/cpp/json/json_reader.h>
 
 #include <sstream>
 namespace NCloud::NBlockStore::NClient {
 
 namespace {
+
+////////////////////////////////////////////////////////////////////////////////
+
+
+void ExtractStatusValues(const TString& jsonStr, ui32& code, TString& message) {
+    NJson::TJsonValue json;
+
+    if (!NJson::ReadJsonTree(jsonStr, &json)) {
+        std::cerr << "Ошибка разбора JSON" << std::endl;
+        return;
+    }
+
+    NJson::TJsonValue* jsonCode = json.GetValueByPath("Status.Code");
+    NJson::TJsonValue* jsonMsg = json.GetValueByPath("Status.Message");
+
+    if (jsonCode) {
+        code = jsonCode->GetUIntegerSafe();
+    }
+
+    if (jsonMsg) {
+        message = jsonMsg->GetStringSafe();
+    }
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -80,11 +105,6 @@ protected:
         ui64 remainingBlocks = diskBlockCount;
         ui64 currentBlockIndex = StartIndex;
 
-        Cout << remainingBlocks<< Endl;
-        Cout << BlocksCount<< Endl;
-        Cout << diskBlockCount<< Endl;
-        Cout << "-----------"<< Endl;
-
         if (BlocksCount) {
             if (BlocksCount + StartIndex <= diskBlockCount) {
                 remainingBlocks = BlocksCount;
@@ -92,10 +112,6 @@ protected:
                 remainingBlocks = diskBlockCount - StartIndex;
             }
         }
-        Cout << remainingBlocks<< Endl;
-        Cout << BlocksCount<< Endl;
-        Cout << diskBlockCount<< Endl;
-
 
         if (BlocksPerRequest <= 0) {
             BlocksPerRequest = 1024;
@@ -129,8 +145,6 @@ protected:
                 return true;
             }
 
-                output<< result.GetOutput().Data();
-
             if (HasError(result)) {
                 if (result.GetError().GetCode() == E_ARGUMENT) {
                     output << "Wrong argument : "
@@ -142,18 +156,23 @@ protected:
                 output << "CheckRange went wrong : "
                        << FormatError(result.GetError()) << Endl;
                 return true;
-            } /*else {
-                if (result.GetStatus().GetCode() != S_OK) {
+
+            } else {
+                ui32 statusCode;
+                TString statusMessage;
+                ExtractStatusValues(result.GetOutput().Data(), statusCode, statusMessage);
+
+                if (statusCode != S_OK) {
                     errorCount++;
                     output << "ReadBlocks error in range [" << currentBlockIndex << ", "
                            << (currentBlockIndex + blocksInThisRequest - 1)
-                           << "]: " << FormatError(result.GetStatus()) << Endl;
+                           << "]: " << FormatError(MakeError(statusCode, statusMessage)) << Endl;
                 } else if (ShowSuccess) {
                     output << "Ok in range: [" << currentBlockIndex << ", "
                            << (currentBlockIndex + blocksInThisRequest - 1)
                            << "]" << Endl;
                 }
-            }*/
+            }
 
             remainingBlocks -= blocksInThisRequest;
             currentBlockIndex += blocksInThisRequest;
