@@ -246,7 +246,7 @@ void TBootstrapCommon::InitActorSystem()
     registerOpts.SchemeShardDir = Configs->StorageConfig->GetSchemeShardDir();
     registerOpts.NodeBrokerAddress = Configs->Options->NodeBrokerAddress;
     registerOpts.NodeBrokerPort = Configs->Options->NodeBrokerPort;
-    registerOpts.NodeBrokerSslPort = Configs->Options->NodeBrokerSslPort;
+    registerOpts.NodeBrokerSecurePort = Configs->Options->NodeBrokerSecurePort;
     registerOpts.InterconnectPort = Configs->Options->InterconnectPort;
     registerOpts.LoadCmsConfigs = Configs->Options->LoadCmsConfigs;
     registerOpts.UseNodeBrokerSsl = Configs->Options->UseNodeBrokerSsl

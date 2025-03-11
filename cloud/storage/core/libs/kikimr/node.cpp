@@ -389,8 +389,8 @@ TRegisterDynamicNodeResult RegisterDynamicNode(
     if (options.NodeBrokerAddress) {
         addrs.push_back(options.NodeBrokerAddress);
     } else {
-        auto port = options.UseNodeBrokerSsl && options.NodeBrokerSslPort
-            ? options.NodeBrokerSslPort
+        auto port = options.UseNodeBrokerSsl && options.NodeBrokerSecurePort
+            ? options.NodeBrokerSecurePort
             : options.NodeBrokerPort;
         if (port) {
             for (const auto& node: nsConfig.GetNode()) {

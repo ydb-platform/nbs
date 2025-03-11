@@ -415,7 +415,7 @@ void TBootstrapYdb::InitKikimrService()
         .SchemeShardDir = Configs->StorageConfig->GetSchemeShardDir(),
         .NodeBrokerAddress = Configs->Options->NodeBrokerAddress,
         .NodeBrokerPort = Configs->Options->NodeBrokerPort,
-        .NodeBrokerSslPort = Configs->Options->NodeBrokerSslPort,
+        .NodeBrokerSecurePort = Configs->Options->NodeBrokerSecurePort,
         .UseNodeBrokerSsl = Configs->Options->UseNodeBrokerSsl
             || Configs->StorageConfig->GetNodeRegistrationUseSsl(),
         .InterconnectPort = Configs->Options->InterconnectPort,
