@@ -288,7 +288,7 @@ func (t *createImageFromDiskTask) getIdempotencyKeyForCheckpointTask(
 	return selfTaskID + "_create_checkpoint"
 }
 
-func (t *createImageFromDiskTask) scheduleCreateShadowDiskBasedCheckpointTask(
+func (t *createImageFromDiskTask) scheduleCreateDRBasedDiskCheckpointTask(
 	ctx context.Context,
 	selfTaskID string,
 ) (string, error) {
@@ -300,9 +300,9 @@ func (t *createImageFromDiskTask) scheduleCreateShadowDiskBasedCheckpointTask(
 			ctx,
 			t.getIdempotencyKeyForCheckpointTask(selfTaskID),
 		),
-		"dataplane.CreateShadowDiskBasedCheckpoint",
+		"dataplane.CreateDRBasedDiskCheckpoint",
 		"Create checkpoint for image "+t.request.DstImageId,
-		&dataplane_protos.CreateShadowDiskBasedCheckpointRequest{
+		&dataplane_protos.CreateDRBasedDiskCheckpointRequest{
 			Disk:               disk,
 			CheckpointIdPrefix: t.request.DstImageId,
 		},
@@ -340,7 +340,7 @@ func (t *createImageFromDiskTask) createCheckpoint(
 		return checkpointID, nil
 	}
 
-	taskID, err := t.scheduleCreateShadowDiskBasedCheckpointTask(
+	taskID, err := t.scheduleCreateDRBasedDiskCheckpointTask(
 		ctx,
 		selfTaskID,
 	)
@@ -353,10 +353,10 @@ func (t *createImageFromDiskTask) createCheckpoint(
 		return "", err
 	}
 
-	typedResponse, ok := response.(*dataplane_protos.CreateShadowDiskBasedCheckpointResponse)
+	typedResponse, ok := response.(*dataplane_protos.CreateDRBasedDiskCheckpointResponse)
 	if !ok {
 		return "", errors.NewNonRetriableErrorf(
-			"invalid create shadow disk based checkpoint response type %T",
+			"invalid dataplane.CreateDRBasedDiskCheckpoint response type %T",
 			response,
 		)
 	}
@@ -398,10 +398,10 @@ func (t *createImageFromDiskTask) getCheckpointID(
 		return "", err
 	}
 
-	typedMetadata, ok := metadata.(*dataplane_protos.CreateShadowDiskBasedCheckpointMetadata)
+	typedMetadata, ok := metadata.(*dataplane_protos.CreateDRBasedDiskCheckpointMetadata)
 	if !ok {
 		return "", errors.NewNonRetriableErrorf(
-			"invalid create shadow disk based checkpoint metadata type %T",
+			"invalid dataplane.CreateDRBasedDiskCheckpoint metadata type %T",
 			metadata,
 		)
 	}

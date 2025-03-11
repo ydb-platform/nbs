@@ -254,9 +254,9 @@ func RegisterForExecution(
 	}
 
 	return taskRegistry.RegisterForExecution(
-		"dataplane.CreateShadowDiskBasedCheckpoint",
+		"dataplane.CreateDRBasedDiskCheckpoint",
 		func() tasks.Task {
-			return &createShadowDiskBasedCheckpointTask{
+			return &createDRBasedDiskCheckpointTask{
 				nbsFactory: nbsFactory,
 			}
 		},
@@ -289,5 +289,5 @@ var newTaskByTaskType = map[string]func() tasks.Task{
 	"dataplane.DeleteSnapshot":                   func() tasks.Task { return &deleteSnapshotTask{} },
 	"dataplane.DeleteSnapshotData":               func() tasks.Task { return &deleteSnapshotDataTask{} },
 	"dataplane.DeleteDiskFromIncremental":        func() tasks.Task { return &deleteDiskFromIncrementalTask{} },
-	"dataplane.CreateShadowDiskBasedCheckpoint":  func() tasks.Task { return &createShadowDiskBasedCheckpointTask{} },
+	"dataplane.CreateDRBasedDiskCheckpoint":  func() tasks.Task { return &createDRBasedDiskCheckpointTask{} },
 }
