@@ -1151,4 +1151,7 @@ message TStorageServiceConfig
 
     // Local disk async deallocation and sync allocation
     optional bool LocalDiskAsyncDeallocationEnabled = 416;
+
+    // Use SSL for dynamic node registration.
+    optional bool NodeRegistrationUseSsl = 417;
 }

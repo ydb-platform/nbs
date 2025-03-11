@@ -31,6 +31,7 @@ struct TOptionsYdbBase
     TString SchemeShardDir;
     TString NodeBrokerAddress;
     ui32 NodeBrokerPort = 0;
+    ui32 NodeBrokerSslPort = 0;
     bool UseNodeBrokerSsl = false;
     TString LocationFile;
 

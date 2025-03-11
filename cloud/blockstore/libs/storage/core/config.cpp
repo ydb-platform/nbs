@@ -123,6 +123,7 @@ TDuration MSeconds(ui32 value)
     xxx(NodeType,                             TString,               {}       )\
     xxx(NodeRegistrationRootCertsFile,        TString,               {}       )\
     xxx(NodeRegistrationCert,                 TCertificate,          {}       )\
+    xxx(NodeRegistrationUseSsl,               bool,                  false    )\
     xxx(ConfigDispatcherSettings,                                              \
         NCloud::NProto::TConfigDispatcherSettings,                             \
         {}                                                                    )\
