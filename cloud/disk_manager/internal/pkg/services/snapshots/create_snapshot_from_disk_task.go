@@ -115,7 +115,7 @@ func (t *createSnapshotFromDiskTask) run(
 	typedResponse, ok := response.(*dataplane_protos.CreateSnapshotFromDiskResponse)
 	if !ok {
 		return "", errors.NewNonRetriableErrorf(
-			"invalid create snapshot response type %T",
+			"invalid dataplane.CreateSnapshotFromDisk response type %T",
 			response,
 		)
 	}
@@ -296,7 +296,7 @@ func (t *createSnapshotFromDiskTask) getIdempotencyKeyForCheckpointTask(
 	return selfTaskID + "_create_checkpoint"
 }
 
-func (t *createSnapshotFromDiskTask) scheduleCreateShadowDiskBasedCheckpointTask(
+func (t *createSnapshotFromDiskTask) scheduleCreateDRBasedDiskCheckpointTask(
 	ctx context.Context,
 	selfTaskID string,
 ) (string, error) {
@@ -308,9 +308,9 @@ func (t *createSnapshotFromDiskTask) scheduleCreateShadowDiskBasedCheckpointTask
 			ctx,
 			t.getIdempotencyKeyForCheckpointTask(selfTaskID),
 		),
-		"dataplane.CreateShadowDiskBasedCheckpoint",
+		"dataplane.CreateDRBasedDiskCheckpoint",
 		"Create checkpoint for snapshot "+t.request.DstSnapshotId,
-		&dataplane_protos.CreateShadowDiskBasedCheckpointRequest{
+		&dataplane_protos.CreateDRBasedDiskCheckpointRequest{
 			Disk:               disk,
 			CheckpointIdPrefix: t.request.DstSnapshotId,
 		},
@@ -348,7 +348,7 @@ func (t *createSnapshotFromDiskTask) createCheckpoint(
 		return checkpointID, nil
 	}
 
-	taskID, err := t.scheduleCreateShadowDiskBasedCheckpointTask(
+	taskID, err := t.scheduleCreateDRBasedDiskCheckpointTask(
 		ctx,
 		selfTaskID,
 	)
@@ -361,10 +361,10 @@ func (t *createSnapshotFromDiskTask) createCheckpoint(
 		return "", err
 	}
 
-	typedResponse, ok := response.(*dataplane_protos.CreateShadowDiskBasedCheckpointResponse)
+	typedResponse, ok := response.(*dataplane_protos.CreateDRBasedDiskCheckpointResponse)
 	if !ok {
 		return "", errors.NewNonRetriableErrorf(
-			"invalid create shadow disk based checkpoint response type %T",
+			"invalid dataplane.CreateDRBasedDiskCheckpoint response type %T",
 			response,
 		)
 	}
@@ -406,10 +406,10 @@ func (t *createSnapshotFromDiskTask) getCheckpointID(
 		return "", err
 	}
 
-	typedMetadata, ok := metadata.(*dataplane_protos.CreateShadowDiskBasedCheckpointMetadata)
+	typedMetadata, ok := metadata.(*dataplane_protos.CreateDRBasedDiskCheckpointMetadata)
 	if !ok {
 		return "", errors.NewNonRetriableErrorf(
-			"invalid create shadow disk based checkpoint metadata type %T",
+			"invalid dataplane.CreateDRBasedDiskCheckpoint metadata type %T",
 			metadata,
 		)
 	}

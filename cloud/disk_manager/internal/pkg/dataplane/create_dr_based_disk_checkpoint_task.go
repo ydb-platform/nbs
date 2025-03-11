@@ -13,28 +13,28 @@ import (
 
 ////////////////////////////////////////////////////////////////////////////////
 
-type createShadowDiskBasedCheckpointTask struct {
+type createDRBasedDiskCheckpointTask struct {
 	nbsFactory nbs_client.Factory
-	request    *protos.CreateShadowDiskBasedCheckpointRequest
-	state      *protos.CreateShadowDiskBasedCheckpointTaskState
+	request    *protos.CreateDRBasedDiskCheckpointRequest
+	state      *protos.CreateDRBasedDiskCheckpointTaskState
 }
 
-func (t *createShadowDiskBasedCheckpointTask) Save() ([]byte, error) {
+func (t *createDRBasedDiskCheckpointTask) Save() ([]byte, error) {
 	return proto.Marshal(t.state)
 }
 
-func (t *createShadowDiskBasedCheckpointTask) Load(request, state []byte) error {
-	t.request = &protos.CreateShadowDiskBasedCheckpointRequest{}
+func (t *createDRBasedDiskCheckpointTask) Load(request, state []byte) error {
+	t.request = &protos.CreateDRBasedDiskCheckpointRequest{}
 	err := proto.Unmarshal(request, t.request)
 	if err != nil {
 		return err
 	}
 
-	t.state = &protos.CreateShadowDiskBasedCheckpointTaskState{}
+	t.state = &protos.CreateDRBasedDiskCheckpointTaskState{}
 	return proto.Unmarshal(state, t.state)
 }
 
-func (t *createShadowDiskBasedCheckpointTask) Run(
+func (t *createDRBasedDiskCheckpointTask) Run(
 	ctx context.Context,
 	execCtx tasks.ExecutionContext,
 ) error {
@@ -80,7 +80,7 @@ func (t *createShadowDiskBasedCheckpointTask) Run(
 	return execCtx.SaveState(ctx)
 }
 
-func (t *createShadowDiskBasedCheckpointTask) Cancel(
+func (t *createDRBasedDiskCheckpointTask) Cancel(
 	ctx context.Context,
 	execCtx tasks.ExecutionContext,
 ) error {
@@ -93,32 +93,32 @@ func (t *createShadowDiskBasedCheckpointTask) Cancel(
 	return t.cleanupCheckpoints(ctx, nbsClient)
 }
 
-func (t *createShadowDiskBasedCheckpointTask) GetMetadata(
+func (t *createDRBasedDiskCheckpointTask) GetMetadata(
 	ctx context.Context,
 ) (proto.Message, error) {
 
-	return &protos.CreateShadowDiskBasedCheckpointMetadata{
+	return &protos.CreateDRBasedDiskCheckpointMetadata{
 		CheckpointId: t.state.CheckpointId,
 	}, nil
 }
 
-func (t *createShadowDiskBasedCheckpointTask) GetResponse() proto.Message {
-	return &protos.CreateShadowDiskBasedCheckpointResponse{
+func (t *createDRBasedDiskCheckpointTask) GetResponse() proto.Message {
+	return &protos.CreateDRBasedDiskCheckpointResponse{
 		CheckpointId: t.state.CheckpointId,
 	}
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 
-func (t *createShadowDiskBasedCheckpointTask) makeCheckpointID(index int) string {
+func (t *createDRBasedDiskCheckpointTask) makeCheckpointID(index int) string {
 	return fmt.Sprintf("%v_%v", t.request.CheckpointIdPrefix, index)
 }
 
-func (t *createShadowDiskBasedCheckpointTask) getCurrentCheckpointID() string {
+func (t *createDRBasedDiskCheckpointTask) getCurrentCheckpointID() string {
 	return t.makeCheckpointID(int(t.state.CheckpointIteration))
 }
 
-func (t *createShadowDiskBasedCheckpointTask) getCheckpointIDs() (
+func (t *createDRBasedDiskCheckpointTask) getCheckpointIDs() (
 	previousCheckpointID string,
 	currentCheckpointID string,
 ) {
@@ -132,7 +132,7 @@ func (t *createShadowDiskBasedCheckpointTask) getCheckpointIDs() (
 	return
 }
 
-func (t *createShadowDiskBasedCheckpointTask) updateCheckpoints(
+func (t *createDRBasedDiskCheckpointTask) updateCheckpoints(
 	ctx context.Context,
 	nbsClient nbs_client.Client,
 ) error {
@@ -159,7 +159,7 @@ func (t *createShadowDiskBasedCheckpointTask) updateCheckpoints(
 	)
 }
 
-func (t *createShadowDiskBasedCheckpointTask) cleanupCheckpoints(
+func (t *createDRBasedDiskCheckpointTask) cleanupCheckpoints(
 	ctx context.Context,
 	nbsClient nbs_client.Client,
 ) error {
