@@ -1,4 +1,4 @@
-Y_BENCHMARK(blockstore-client-bench)
+G_BENCHMARK(blockstore-client-bench)
 
 ALLOCATOR(TCMALLOC_TC)
 

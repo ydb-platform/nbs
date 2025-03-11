@@ -1,4 +1,4 @@
-Y_BENCHMARK(cloud-blockstore-libs-storage-perf)
+G_BENCHMARK(cloud-blockstore-libs-storage-perf)
 
 BENCHMARK_OPTS(--budget=10)
 

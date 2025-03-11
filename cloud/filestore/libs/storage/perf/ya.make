@@ -1,4 +1,4 @@
-Y_BENCHMARK(cloud-filestore-libs-storage-perf)
+G_BENCHMARK(cloud-filestore-libs-storage-perf)
 
 PEERDIR(
     cloud/filestore/libs/storage/tablet

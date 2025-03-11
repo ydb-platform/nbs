@@ -1,4 +1,4 @@
-Y_BENCHMARK(blockstore-nbd-bench)
+G_BENCHMARK(blockstore-nbd-bench)
 
 TAG(ya:not_autocheck)
 
