@@ -127,8 +127,8 @@ bool TFileSystem::UpdateNodeCache(
 
         entry.ino = attrs.GetId();
         entry.generation = NodeCache.Generation();
-        entry.attr_timeout = Config->GetAttrTimeout().Seconds();
-        entry.entry_timeout = Config->GetEntryTimeout().Seconds();
+        entry.attr_timeout = Config->GetAttrTimeout().SecondsFloat();
+        entry.entry_timeout = Config->GetEntryTimeout().SecondsFloat();
 
         ConvertAttr(Config->GetPreferredBlockSize(), node->Attrs, entry.attr);
     }
@@ -241,7 +241,7 @@ void TFileSystem::ReplyAttr(
         error,
         req,
         &entry.attr,
-        Config->GetAttrTimeout().Seconds());
+        Config->GetAttrTimeout().SecondsFloat());
 }
 
 void TFileSystem::CancelRequest(TCallContextPtr callContext, fuse_req_t req)

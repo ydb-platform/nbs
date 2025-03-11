@@ -388,6 +388,22 @@ func (n nbsService) CmsAction(
 	panic("implement me")
 }
 
+func (n nbsService) CreateVolumeLink(
+	ctx context.Context,
+	request *protos.TCreateVolumeLinkRequest,
+) (*protos.TCreateVolumeLinkResponse, error) {
+	//TODO implement me
+	panic("implement me")
+}
+
+func (n nbsService) DestroyVolumeLink(
+	ctx context.Context,
+	request *protos.TDestroyVolumeLinkRequest,
+) (*protos.TDestroyVolumeLinkResponse, error) {
+	//TODO implement me
+	panic("implement me")
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 type TestContext struct {

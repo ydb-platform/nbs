@@ -675,7 +675,8 @@ message TGracefulShutdownResponse
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-// CheckRange
+// CheckRange request/response.
+
 message TCheckRangeRequest
 {
     // Optional request headers.
@@ -701,4 +702,53 @@ message TCheckRangeResponse
 
     // Request traces.
     NCloud.NProto.TTraceInfo Trace = 3;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// Link volume request/response.
+
+message TLinkLeaderVolumeToFollowerRequest
+{
+    // Optional request headers.
+    THeaders Headers = 1;
+
+    // Leader volume.
+    string DiskId = 2;
+
+    // Follower volume.
+    string FollowerDiskId = 3;
+}
+
+message TLinkLeaderVolumeToFollowerResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+
+    // Request traces.
+    NCloud.NProto.TTraceInfo Trace = 2;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// Unlink volume request/response.
+
+message TUnlinkLeaderVolumeFromFollowerRequest
+{
+    // Optional request headers.
+    THeaders Headers = 1;
+
+    // Leader volume.
+    string DiskId = 2;
+
+    // Follower volume.
+    string FollowerDiskId = 3;
+}
+
+message TUnlinkLeaderVolumeFromFollowerResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+
+    // Request traces.
+    NCloud.NProto.TTraceInfo Trace = 2;
+}
 }

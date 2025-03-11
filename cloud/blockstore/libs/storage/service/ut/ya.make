@@ -13,6 +13,7 @@ SRCS(
     service_ut_destroy.cpp
     service_ut_forward.cpp
     service_ut_inactive_clients.cpp
+    service_ut_link_volume.cpp
     service_ut_list.cpp
     service_ut_manually_preempted_volumes.cpp
     service_ut_mount.cpp

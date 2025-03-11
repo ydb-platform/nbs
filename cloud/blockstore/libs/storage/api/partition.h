@@ -96,34 +96,6 @@ struct TEvPartition
     };
 
     //
-    // AddLaggingAgent
-    //
-
-    struct TAddLaggingAgentRequest
-    {
-        // 0 - for main devices; 1,2 - for mirror replicas
-        ui32 ReplicaIndex;
-        TString AgentId;
-        TAddLaggingAgentRequest(ui32 replicaIndex, TString agentId)
-            : ReplicaIndex(replicaIndex)
-            , AgentId(std::move(agentId))
-        {}
-    };
-
-    //
-    // RemoveLaggingAgent
-    //
-
-    struct TRemoveLaggingReplicaRequest
-    {
-        // 0 - for main devices; 1,2 - for mirror replicas
-        const ui32 ReplicaIndex;
-        explicit TRemoveLaggingReplicaRequest(ui32 replicaIndex)
-            : ReplicaIndex(replicaIndex)
-        {}
-    };
-
-    //
     // Events declaration
     //
 
@@ -163,16 +135,6 @@ struct TEvPartition
     using TEvGarbageCollectorCompleted = TRequestEvent<
         TGarbageCollectorCompleted,
         EvGarbageCollectorCompleted
-    >;
-
-    using TEvAddLaggingAgentRequest = TRequestEvent<
-        TAddLaggingAgentRequest,
-        EvAddLaggingAgentRequest
-    >;
-
-    using TEvRemoveLaggingReplicaRequest = TRequestEvent<
-        TRemoveLaggingReplicaRequest,
-        EvRemoveLaggingReplicaRequest
     >;
 };
 

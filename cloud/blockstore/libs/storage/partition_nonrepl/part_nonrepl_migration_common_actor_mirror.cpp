@@ -97,15 +97,13 @@ void TNonreplicatedPartitionMigrationCommonActor::MirrorRequest(
         }
     }
 
-    auto requestInfo = CreateRequestInfo(
-        ev->Sender,
-        ev->Cookie,
-        msg->CallContext);
+    auto requestInfo =
+        CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
 
     NCloud::Register<TMirrorRequestActor<TMethod>>(
         ctx,
         std::move(requestInfo),
-        TVector<TActorId>{SrcActorId},
+        ActorOwner ? TVector<TActorId>{SrcActorId} : TVector<TActorId>{},
         DstActorId,
         std::move(msg->Record),
         DiskId,
@@ -113,7 +111,7 @@ void TNonreplicatedPartitionMigrationCommonActor::MirrorRequest(
         WriteAndZeroRequestsInProgress.AddWriteRequest(range));
 
     if constexpr (IsExactlyWriteMethod<TMethod>) {
-        ChangedRangesMap.MarkChanged(range);
+        NonZeroRangesMap.MarkChanged(range);
     }
 }
 

@@ -134,6 +134,10 @@ TPermissionList GetRequestPermissions(EBlockStoreRequest requestType)
         case EBlockStoreRequest::UpdateDiskRegistryConfig:
             return TPermissionList().Flip();  // Require admin permissions.
 
+        case EBlockStoreRequest::CreateVolumeLink:
+        case EBlockStoreRequest::DestroyVolumeLink:
+                return CreatePermissionList({EPermission::Update});
+
         case EBlockStoreRequest::MAX:
             Y_ABORT("EBlockStoreRequest::MAX is not valid");
     }

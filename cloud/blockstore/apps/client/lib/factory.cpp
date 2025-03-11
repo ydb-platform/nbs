@@ -9,8 +9,8 @@
 #include "create_placement_group.h"
 #include "create_volume.h"
 #include "create_volume_from_device.h"
+#include "create_volume_link.h"
 #include "delete_checkpoint.h"
-#include "query_agents_info.h"
 #include "describe_disk_registry_config.h"
 #include "describe_endpoint.h"
 #include "describe_placement_group.h"
@@ -18,6 +18,7 @@
 #include "describe_volume_model.h"
 #include "destroy_placement_group.h"
 #include "destroy_volume.h"
+#include "destroy_volume_link.h"
 #include "discover_instances.h"
 #include "endpoint_proxy.h"
 #include "execute_action.h"
@@ -29,6 +30,7 @@
 #include "list_placement_groups.h"
 #include "list_volumes.h"
 #include "ping.h"
+#include "query_agents_info.h"
 #include "query_available_storage.h"
 #include "read_blocks.h"
 #include "refresh_endpoint.h"
@@ -64,6 +66,7 @@ struct THandlerFactory
         { "createplacementgroup", NewCreatePlacementGroupCommand },
         { "createvolume", NewCreateVolumeCommand },
         { "createvolumefromdevice", NewCreateVolumeFromDeviceCommand },
+        { "createvolumelink", NewCreateVolumeLinkCommand },
         { "deletecheckpoint", NewDeleteCheckpointCommand },
         { "getcheckpointstatus", NewGetCheckpointStatusCommand },
         { "describediskregistryconfig", NewDescribeDiskRegistryConfigCommand },
@@ -73,6 +76,7 @@ struct THandlerFactory
         { "describevolumemodel", NewDescribeVolumeModelCommand },
         { "destroyplacementgroup", NewDestroyPlacementGroupCommand },
         { "destroyvolume", NewDestroyVolumeCommand },
+        { "destroyvolumelink", NewDestroyVolumeLinkCommand },
         { "discoverinstances", NewDiscoverInstancesCommand },
         { "executeaction", NewExecuteActionCommand },
         { "getchangedblocks", NewGetChangedBlocksCommand },

@@ -148,9 +148,6 @@ private:
                 block.BlockIndex,
                 blob.BlocksCount);
             AccessCompactionRangeInfo(rangeId).Stats.BlobsCount += 1;
-            // conservative estimate
-            AccessCompactionRangeInfo(rangeId).Stats.GarbageBlocksCount +=
-                blob.BlocksCount;
         }
 
         for (const auto& part: args.UnalignedDataParts) {

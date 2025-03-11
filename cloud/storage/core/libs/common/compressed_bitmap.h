@@ -28,7 +28,7 @@ public:
         const TCompressedBitmap::TImpl* Parent = nullptr;
         ui64 First = 0;
         ui64 Last = 0;
-        char* Buffer = nullptr;
+        std::unique_ptr<char[]> Buffer;
         ui32 BufferPos = 0;
 
     public:
@@ -50,11 +50,11 @@ private:
     size_t Size = 0;
 
 public:
-    TCompressedBitmap(size_t size);
+    explicit TCompressedBitmap(size_t size);
     ~TCompressedBitmap();
 
-    TCompressedBitmap(TCompressedBitmap&& other);
-    TCompressedBitmap& operator=(TCompressedBitmap&& other);
+    TCompressedBitmap(TCompressedBitmap&& other) noexcept;
+    TCompressedBitmap& operator=(TCompressedBitmap&& other) noexcept;
 
     void Clear();
 
@@ -63,13 +63,13 @@ public:
     void Update(const TSerializedChunk& chunk);
     ui64 Update(const TCompressedBitmap& other, ui64 b);
     ui64 Merge(const TSerializedChunk& chunk);
-    ui64 Count() const;
-    ui64 Count(ui64 b, ui64 e) const;
-    bool Test(ui64 i) const;
-    ui64 Capacity() const;
-    ui64 MemSize() const;
+    [[nodiscard]] ui64 Count() const;
+    [[nodiscard]] ui64 Count(ui64 b, ui64 e) const;
+    [[nodiscard]] bool Test(ui64 i) const;
+    [[nodiscard]] ui64 Capacity() const;
+    [[nodiscard]] ui64 MemSize() const;
 
-    TRangeSerializer RangeSerializer(ui64 b, ui64 e) const;
+    [[nodiscard]] TRangeSerializer RangeSerializer(ui64 b, ui64 e) const;
 
     static bool IsZeroChunk(const TSerializedChunk& chunk);
     static std::pair<ui32, ui32> ChunkRange(ui64 b, ui64 e);

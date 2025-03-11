@@ -192,11 +192,16 @@ private:
         const typename TMethod::TRequest::TPtr& ev,
         const NActors::TActorContext& ctx);
 
-    TResultOrError<TSet<NActors::TActorId>> SelectReplicasToReadFrom(
+    template <typename TMethod>
+    NProto::TError SplitReadBlocks(
+        const typename TMethod::TRequest::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    TResultOrError<TVector<NActors::TActorId>> SelectReplicasToReadFrom(
         std::optional<ui32> replicaIndex,
         std::optional<ui32> replicaCount,
         TBlockRange64 blockRange,
-        const TStringBuf& methodName);
+        const TStringBuf methodName);
 
     BLOCKSTORE_IMPLEMENT_REQUEST(ReadBlocks, TEvService);
     BLOCKSTORE_IMPLEMENT_REQUEST(WriteBlocks, TEvService);

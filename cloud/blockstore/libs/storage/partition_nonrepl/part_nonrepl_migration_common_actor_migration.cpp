@@ -23,24 +23,35 @@ LWTRACE_USING(BLOCKSTORE_STORAGE_PROVIDER);
 
 void TNonreplicatedPartitionMigrationCommonActor::InitWork(
     const NActors::TActorContext& ctx,
+    NActors::TActorId migrationSrcActorId,
     NActors::TActorId srcActorId,
     NActors::TActorId dstActorId,
+    bool takeOwnershipOverActors,
     std::unique_ptr<TMigrationTimeoutCalculator> timeoutCalculator)
 {
+    MigrationSrcActorId = migrationSrcActorId;
     SrcActorId = srcActorId;
     DstActorId = dstActorId;
     TimeoutCalculator = std::move(timeoutCalculator);
     STORAGE_CHECK_PRECONDITION(TimeoutCalculator);
 
-    PoisonPillHelper.TakeOwnership(ctx, SrcActorId);
-    PoisonPillHelper.TakeOwnership(ctx, DstActorId);
+    ActorOwner = takeOwnershipOverActors;
+    if (ActorOwner) {
+        PoisonPillHelper.TakeOwnership(ctx, SrcActorId);
+        PoisonPillHelper.TakeOwnership(ctx, DstActorId);
+    }
 
     GetDeviceForRangeCompanion.SetDelegate(SrcActorId);
 
     if (DstActorId == NActors::TActorId{}) {
         ProcessingBlocks.AbortProcessing();
-    } else {
-        ProcessingBlocks.SkipProcessedRanges();
+        return;
+    }
+
+    ProcessingBlocks.SkipProcessedRanges();
+    if (ProcessingBlocks.IsProcessing()) {
+        ProcessingBlocks.SetLastReportedProcessingIndex(
+            ProcessingBlocks.BuildProcessingRange().Start);
     }
 }
 
@@ -50,6 +61,7 @@ void TNonreplicatedPartitionMigrationCommonActor::StartWork(
     MigrationEnabled = true;
     DoRegisterTrafficSource(ctx);
     ScheduleRangeMigration(ctx);
+    NotifyMigrationFinishedIfNeeded(ctx);
 }
 
 void TNonreplicatedPartitionMigrationCommonActor::StartRangeMigration(
@@ -101,7 +113,7 @@ void TNonreplicatedPartitionMigrationCommonActor::MigrateRange(
                 MakeIntrusive<TCallContext>()),
             BlockSize,
             range,
-            SrcActorId,
+            MigrationSrcActorId,
             DstActorId,
             RWClientId,
             BlockDigestGenerator);
@@ -114,7 +126,7 @@ void TNonreplicatedPartitionMigrationCommonActor::MigrateRange(
                 MakeIntrusive<TCallContext>()),
             BlockSize,
             range,
-            SrcActorId,
+            MigrationSrcActorId,
             DstActorId,
             RWClientId,
             BlockDigestGenerator);
@@ -125,7 +137,7 @@ void TNonreplicatedPartitionMigrationCommonActor::MigrateRange(
 
 bool TNonreplicatedPartitionMigrationCommonActor::IsMigrationAllowed() const
 {
-    return SrcActorId && DstActorId && MigrationEnabled;
+    return MigrationSrcActorId && DstActorId && MigrationEnabled;
 }
 
 bool TNonreplicatedPartitionMigrationCommonActor::IsMigrationFinished() const
@@ -314,7 +326,7 @@ void TNonreplicatedPartitionMigrationCommonActor::HandleRangeMigrated(
         static_cast<double>(msg->RecommendedBandwidth) / 1_MB);
 
     if (msg->AllZeroes) {
-        ChangedRangesMap.MarkNotChanged(msg->Range);
+        NonZeroRangesMap.MarkNotChanged(msg->Range);
     }
     TimeoutCalculator->SetRecommendedBandwidth(msg->RecommendedBandwidth);
     NotifyMigrationProgressIfNeeded(ctx, msg->Range);
@@ -365,10 +377,10 @@ void TNonreplicatedPartitionMigrationCommonActor::
     MigrationOwner->OnMigrationFinished(ctx);
 }
 
-TString TNonreplicatedPartitionMigrationCommonActor::GetChangedBlocks(
+TString TNonreplicatedPartitionMigrationCommonActor::GetNonZeroBlocks(
     TBlockRange64 range) const
 {
-    return ChangedRangesMap.GetChangedBlocks(range);
+    return NonZeroRangesMap.GetChangedBlocks(range);
 }
 
 const TStorageConfigPtr&
