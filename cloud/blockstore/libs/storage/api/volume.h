@@ -15,7 +15,6 @@ namespace NCloud::NBlockStore::NStorage {
 ////////////////////////////////////////////////////////////////////////////////
 
 #define BLOCKSTORE_VOLUME_REQUESTS(xxx, ...)                                   \
-
     xxx(AddClient,                                                 __VA_ARGS__)\
     xxx(RemoveClient,                                              __VA_ARGS__)\
     xxx(WaitReady,                                                 __VA_ARGS__)\
