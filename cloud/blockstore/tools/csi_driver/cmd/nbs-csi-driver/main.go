@@ -35,7 +35,7 @@ func main() {
 	flag.UintVar(&cfg.NfsLocalEndpointPort, "nfs-local-endpoint-port", 0, "NFS local endpoint port")
 	flag.StringVar(&cfg.NfsLocalEndpointSocket, "nfs-local-endpoint-socket", "", "NFS local endpoint unix socket path")
 	flag.StringVar(&cfg.MountOptions, "mount-options", "grpid", "Comma-separated list of filesystem mount options")
-	flag.BoolVar(&cfg.Discard, "discard", false, "Enable discard option for mounted filesystem. Applied only for YDB-based disks.")
+	flag.BoolVar(&cfg.UseDiscardForYDBBasedDisks, "use-discard-for-ydb-based-disks", false, "Enable discard option for mounted filesystem. Applied only for YDB-based disks.")
 
 	flag.Parse()
 

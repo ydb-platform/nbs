@@ -124,7 +124,8 @@ type nodeService struct {
 	mounter        mounter.Interface
 	volumeOps      *sync.Map
 	mountOptions   []string
-	discard        bool
+
+	useDiscardForYDBBasedDisks bool
 }
 
 func newNodeService(
@@ -140,23 +141,23 @@ func newNodeService(
 	nfsLocalClient nfsclient.EndpointClientIface,
 	mounter mounter.Interface,
 	mountOptions []string,
-	discard bool) csi.NodeServer {
+	useDiscardForYDBBasedDisks bool) csi.NodeServer {
 
 	return &nodeService{
-		nodeId:              nodeId,
-		clientId:            clientId,
-		vmMode:              vmMode,
-		socketsDir:          socketsDir,
-		nbsClient:           nbsClient,
-		nfsClient:           nfsClient,
-		nfsLocalClient:      nfsLocalClient,
-		mounter:             mounter,
-		targetFsPathRegexp:  regexp.MustCompile(targetFsPathPattern),
-		targetBlkPathRegexp: regexp.MustCompile(targetBlkPathPattern),
-		localFsOverrides:    localFsOverrides,
-		volumeOps:           new(sync.Map),
-		mountOptions:        mountOptions,
-		discard:             discard,
+		nodeId:                     nodeId,
+		clientId:                   clientId,
+		vmMode:                     vmMode,
+		socketsDir:                 socketsDir,
+		nbsClient:                  nbsClient,
+		nfsClient:                  nfsClient,
+		nfsLocalClient:             nfsLocalClient,
+		mounter:                    mounter,
+		targetFsPathRegexp:         regexp.MustCompile(targetFsPathPattern),
+		targetBlkPathRegexp:        regexp.MustCompile(targetBlkPathPattern),
+		localFsOverrides:           localFsOverrides,
+		volumeOps:                  new(sync.Map),
+		mountOptions:               mountOptions,
+		useDiscardForYDBBasedDisks: useDiscardForYDBBasedDisks,
 	}
 }
 
@@ -743,7 +744,7 @@ func (s *nodeService) nodeStageDiskAsFilesystem(
 		mountOptions = append(mountOptions, "errors=remount-ro")
 	}
 
-	if s.discard && !isDiskRegistryMediaKind(getStorageMediaKind(req.VolumeContext)) {
+	if s.useDiscardForYDBBasedDisks && !isDiskRegistryMediaKind(getStorageMediaKind(req.VolumeContext)) {
 		mountOptions = append(mountOptions, "discard")
 	}
 
