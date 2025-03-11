@@ -103,28 +103,17 @@ bool GetThrottlingEnabled(
     const TStorageConfig& config,
     const NProto::TPartitionConfig& partitionConfig)
 {
-    if (!partitionConfig.GetPerformanceProfile().GetThrottlingEnabled()) {
-        return false;
-    }
+    bool throttlingEnabled = GetThrottlingEnabled(config, partitionConfig);
 
-    if (NCloud::IsDiskRegistryMediaKind(partitionConfig.GetStorageMediaKind()))
-    {
-        return config.GetThrottlingEnabled();
-    }
-
-    bool thottlingEnabled =
-        partitionConfig.GetStorageMediaKind() ==
-                NCloud::NProto::EStorageMediaKind::STORAGE_MEDIA_SSD
-            ? config.GetThrottlingEnabledSSD()
-            : config.GetThrottlingEnabled();
-
-    if (IsZeroMethod<TMethod> &&
+    if (throttlingEnabled && IsZeroMethod<TMethod> &&
+        !NCloud::IsDiskRegistryMediaKind(
+            partitionConfig.GetStorageMediaKind()) &&
         config.GetDisableZeroBlocksThrottlingForYDBBasedDisks())
     {
-        thottlingEnabled = false;
+        throttlingEnabled = false;
     }
 
-    return thottlingEnabled;
+    return throttlingEnabled;
 }
 
 }   // namespace
