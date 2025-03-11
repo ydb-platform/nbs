@@ -51,19 +51,28 @@ func (t *createShadowDiskBasedCheckpointTask) Run(
 		return nil
 	}
 
-	err = t.updateCheckpoint(ctx, nbsClient)
+	err = t.updateCheckpoints(ctx, nbsClient)
 	if err != nil {
 		return err
 	}
 
-	err = t.handleCheckpointStatus(
+	// Proceed creating snapshot if checkpoint is ready.
+	// Retry with the same iteration if checkpoint in not ready yet.
+	// Retry with new iteration if checkpoint is broken.
+	err = nbsClient.EnsureCheckpointReady(
 		ctx,
-		execCtx,
-		nbsClient,
 		disk.DiskId,
 		t.getCurrentCheckpointID(),
 	)
 	if err != nil {
+		if errors.Is(err, errors.NewEmptyRetriableError()) {
+			t.state.CheckpointIteration++
+			saveStateErr := execCtx.SaveState(ctx)
+			if saveStateErr != nil {
+				return saveStateErr
+			}
+		}
+
 		return err
 	}
 
@@ -101,31 +110,6 @@ func (t *createShadowDiskBasedCheckpointTask) GetResponse() proto.Message {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-// Proceed creating snapshot if checkpoint is ready.
-// Retry with the same iteration if checkpoint in not ready yet.
-// Retry with new iteration if checkpoint is broken.
-func (t *createShadowDiskBasedCheckpointTask) handleCheckpointStatus(
-	ctx context.Context,
-	execCtx tasks.ExecutionContext,
-	nbsClient nbs_client.Client,
-	diskID string,
-	checkpointID string,
-) error {
-
-	err := nbsClient.EnsureCheckpointReady(ctx, diskID, checkpointID)
-	if errors.Is(err, errors.NewEmptyRetriableError()) {
-		t.state.CheckpointIteration++
-		saveStateErr := execCtx.SaveState(ctx)
-		if saveStateErr != nil {
-			return saveStateErr
-		}
-	}
-
-	return err
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
 func (t *createShadowDiskBasedCheckpointTask) makeCheckpointID(index int) string {
 	return fmt.Sprintf("%v_%v", t.request.CheckpointIdPrefix, index)
 }
@@ -134,42 +118,43 @@ func (t *createShadowDiskBasedCheckpointTask) getCurrentCheckpointID() string {
 	return t.makeCheckpointID(int(t.state.CheckpointIteration))
 }
 
-func (t *createShadowDiskBasedCheckpointTask) deletePreviousCheckpoint(
-	ctx context.Context,
-	nbsClient nbs_client.Client,
-) error {
+func (t *createShadowDiskBasedCheckpointTask) getCheckpointIDs() (
+	previousCheckpointID string,
+	currentCheckpointID string,
+) {
 
-	if t.state.CheckpointIteration == 0 {
-		// No previous checkpoint, nothing to do.
-		return nil
+	if t.state.CheckpointIteration > 0 {
+		previousCheckpointID = t.makeCheckpointID(
+			int(t.state.CheckpointIteration) - 1,
+		)
 	}
-
-	checkpointID := t.makeCheckpointID(
-		int(t.state.CheckpointIteration) - 1,
-	)
-
-	return nbsClient.DeleteCheckpoint(
-		ctx,
-		t.request.Disk.DiskId,
-		checkpointID,
-	)
+	currentCheckpointID = t.getCurrentCheckpointID()
+	return
 }
 
-func (t *createShadowDiskBasedCheckpointTask) updateCheckpoint(
+func (t *createShadowDiskBasedCheckpointTask) updateCheckpoints(
 	ctx context.Context,
 	nbsClient nbs_client.Client,
 ) error {
 
-	err := t.deletePreviousCheckpoint(ctx, nbsClient)
-	if err != nil {
-		return err
+	previousCheckpointID, currentCheckpointID := t.getCheckpointIDs()
+
+	if previousCheckpointID != "" {
+		err := nbsClient.DeleteCheckpoint(
+			ctx,
+			t.request.Disk.DiskId,
+			previousCheckpointID,
+		)
+		if err != nil {
+			return err
+		}
 	}
 
 	return nbsClient.CreateCheckpoint(
 		ctx,
 		nbs_client.CheckpointParams{
 			DiskID:       t.request.Disk.DiskId,
-			CheckpointID: t.getCurrentCheckpointID(),
+			CheckpointID: currentCheckpointID,
 		},
 	)
 }
@@ -179,14 +164,22 @@ func (t *createShadowDiskBasedCheckpointTask) cleanupCheckpoints(
 	nbsClient nbs_client.Client,
 ) error {
 
-	err := t.deletePreviousCheckpoint(ctx, nbsClient)
-	if err != nil {
-		return err
+	previousCheckpointID, currentCheckpointID := t.getCheckpointIDs()
+
+	if previousCheckpointID != "" {
+		err := nbsClient.DeleteCheckpoint(
+			ctx,
+			t.request.Disk.DiskId,
+			previousCheckpointID,
+		)
+		if err != nil {
+			return err
+		}
 	}
 
 	return nbsClient.DeleteCheckpoint(
 		ctx,
 		t.request.Disk.DiskId,
-		t.getCurrentCheckpointID(),
+		currentCheckpointID,
 	)
 }
