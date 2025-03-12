@@ -68,7 +68,7 @@ namespace NCloud::NBlockStore::NStorage {
     xxx(GetRebuildMetadataStatus, __VA_ARGS__)                                 \
     xxx(ScanDisk,                 __VA_ARGS__)                                 \
     xxx(GetScanDiskStatus,        __VA_ARGS__)                                 \
-    xxx(CheckRange,               __VA_ARGS__)                                     \
+    xxx(CheckRange,               __VA_ARGS__)                                 \
 // BLOCKSTORE_VOLUME_HANDLED_RESPONSES
 
 // responses for the requests forwarded from service which are forwarded back
