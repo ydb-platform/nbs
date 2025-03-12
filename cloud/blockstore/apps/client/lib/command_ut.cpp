@@ -15,6 +15,8 @@
 #include <util/system/fs.h>
 #include <util/system/progname.h>
 
+#include <regex>
+
 namespace NCloud::NBlockStore::NClient {
 
 using namespace NThreading;
@@ -66,6 +68,28 @@ bool ExecuteRequest(
     handler->SetClientFactories(MakeClientFactories());
 
     return handler->Run(args.size(), &args[0]);
+}
+
+void parseJson(const TString& input, std::string& disk_id, ui32& start_index, ui32& blocks_count) {
+    std::regex disk_id_regex("\"DiskId\":\\s*\"([^\"]+)\"");
+    std::regex start_index_regex("\"StartIndex\":\\s*(\\d+)");
+    std::regex blocks_count_regex("\"BlocksCount\":\\s*(\\d+)");
+
+    std::smatch match;
+
+    std::string inputString = std::string(input);
+
+    if (std::regex_search(inputString, match, disk_id_regex)) {
+        disk_id = match[1].str();
+    }
+
+    if (std::regex_search(inputString, match, start_index_regex)) {
+        start_index = std::stoi(match[1].str());
+    }
+
+    if (std::regex_search(inputString, match, blocks_count_regex)) {
+        blocks_count = std::stoi(match[1].str());
+    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -663,6 +687,118 @@ Y_UNIT_TEST_SUITE(TCommandTest)
         };
 
         UNIT_ASSERT(!ExecuteRequest("ping", argv, client));
+    }
+
+    Y_UNIT_TEST(ShouldSplitLargeCheckRangeRequestIntoSeveralRequests)
+    {
+        ui64 defaultMaxBlocksPerRequest = 1024;
+        ui64 expectedNumberOfRequest = 10;
+        ui32 checkRangeCounter = 0;
+        auto blocksCount = defaultMaxBlocksPerRequest * expectedNumberOfRequest;
+        auto client = std::make_shared<TTestService>();
+        client->ExecuteActionHandler =
+            [&](std::shared_ptr<NProto::TExecuteActionRequest> request)
+        {
+            TString diskId;
+            ui32 startIndex, blocksCount;
+            parseJson(request->GetInput(), diskId, startIndex, blocksCount);
+
+            UNIT_ASSERT_VALUES_EQUAL(diskId, DefaultDiskId);
+            UNIT_ASSERT_VALUES_EQUAL(defaultMaxBlocksPerRequest, blocksCount);
+            UNIT_ASSERT_VALUES_EQUAL(startIndex, 1024 * checkRangeCounter);
+            ++checkRangeCounter;
+            return MakeFuture<NProto::TExecuteActionResponse>();
+        };
+        client->StatVolumeHandler =
+            [&](std::shared_ptr<NProto::TStatVolumeRequest> request)
+        {
+            UNIT_ASSERT_VALUES_EQUAL(request->GetDiskId(), DefaultDiskId);
+            auto response = NProto::TStatVolumeResponse();
+            response.mutable_volume()->SetBlocksCount(20480);
+            return MakeFuture(response);
+        };
+        TVector<TString> argv;
+        argv.reserve(4);
+        argv.emplace_back(GetProgramName());
+        argv.emplace_back("--disk-id=" + DefaultDiskId);
+        argv.emplace_back("--start-index=0");
+        argv.emplace_back(TStringBuilder() << "--blocks-count=" << blocksCount);
+        UNIT_ASSERT(ExecuteRequest("checkrange", argv, client));
+        UNIT_ASSERT_VALUES_EQUAL(checkRangeCounter, expectedNumberOfRequest);
+    }
+
+    Y_UNIT_TEST(ShouldUseZeroAsDefaultStartIndexInCheckRange)
+    {
+        ui64 defaultMaxBlocksPerRequest = 1024;
+        auto blocksCount = defaultMaxBlocksPerRequest;
+        auto client = std::make_shared<TTestService>();
+        client->ExecuteActionHandler =
+            [&](std::shared_ptr<NProto::TExecuteActionRequest> request)
+        {
+            TString diskId;
+            ui32 startIndex, blocksCount;
+            parseJson(request->GetInput(), diskId, startIndex, blocksCount);
+            UNIT_ASSERT_VALUES_EQUAL(diskId, DefaultDiskId);
+            UNIT_ASSERT_VALUES_EQUAL(startIndex, 0);
+            return MakeFuture<NProto::TExecuteActionResponse>();
+        };
+        client->StatVolumeHandler =
+            [&](const std::shared_ptr<NProto::TStatVolumeRequest>& request)
+        {
+            UNIT_ASSERT_VALUES_EQUAL(request->GetDiskId(), DefaultDiskId);
+            auto response = NProto::TStatVolumeResponse();
+            response.mutable_volume()->SetBlocksCount(DefaultBlocksCount);
+            return MakeFuture(response);
+        };
+        TVector<TString> argv;
+        argv.reserve(3);
+        argv.emplace_back(GetProgramName());
+        argv.emplace_back("--disk-id=" + DefaultDiskId);
+        argv.emplace_back(TStringBuilder() << "--blocks-count=" << blocksCount);
+        UNIT_ASSERT(ExecuteRequest("checkrange", argv, client));
+    }
+
+    Y_UNIT_TEST(
+        ShouldPerformCheckRangeForEntireDiskWhenBlocksCountIsNotSpecified)
+    {
+        ui64 blocksPerRequest = 1024;
+        ui32 checkRangeCounter = 0;
+        auto client = std::make_shared<TTestService>();
+
+        client->ExecuteActionHandler =
+            [&](std::shared_ptr<NProto::TExecuteActionRequest> request)
+        {
+            TString diskId;
+            ui32 startIndex, blocksCount;
+            parseJson(request->GetInput(), diskId, startIndex, blocksCount);
+
+            UNIT_ASSERT_VALUES_EQUAL(diskId, DefaultDiskId);
+            UNIT_ASSERT_VALUES_EQUAL(
+                startIndex,
+                checkRangeCounter * blocksPerRequest);
+            ++checkRangeCounter;
+            return MakeFuture<NProto::TExecuteActionResponse>();
+        };
+
+        client->StatVolumeHandler =
+            [&](std::shared_ptr<NProto::TStatVolumeRequest> request)
+        {
+            UNIT_ASSERT_VALUES_EQUAL(request->GetDiskId(), DefaultDiskId);
+            auto response = NProto::TStatVolumeResponse();
+            response.mutable_volume()->SetBlocksCount(DefaultBlocksCount);
+            return MakeFuture(response);
+        };
+        TVector<TString> argv;
+        argv.reserve(4);
+        argv.emplace_back(GetProgramName());
+        argv.emplace_back("--disk-id=" + DefaultDiskId);
+        argv.emplace_back("--start-index=0");
+        argv.emplace_back(
+            TStringBuilder() << "--blocks-per-request=" << blocksPerRequest);
+        UNIT_ASSERT(ExecuteRequest("checkrange", argv, client));
+        UNIT_ASSERT_VALUES_EQUAL(
+            checkRangeCounter * blocksPerRequest,
+            DefaultBlocksCount);
     }
 }
 

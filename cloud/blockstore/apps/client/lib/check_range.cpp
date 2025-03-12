@@ -22,7 +22,7 @@ void ExtractStatusValues(const TString& jsonStr, ui32& code, TString& message) {
     NJson::TJsonValue json;
 
     if (!NJson::ReadJsonTree(jsonStr, &json)) {
-        std::cerr << "Ошибка разбора JSON" << std::endl;
+        std::cerr << "JSON parsing error" << std::endl;
         return;
     }
 
@@ -86,11 +86,8 @@ protected:
 
         auto& output = GetOutputStream();
 
-        STORAGE_DEBUG("Handling CheckRange");
-
         ui32 errorCount = 0;
 
-        STORAGE_DEBUG("Sending StatVolume request");
         auto statVolumeRequest = std::make_shared<NProto::TStatVolumeRequest>();
         statVolumeRequest->SetDiskId(DiskId);
         const auto statVolumeRequestId = GetRequestId(*statVolumeRequest);
@@ -99,8 +96,6 @@ protected:
             std::move(statVolumeRequest)));
 
         ui64 diskBlockCount = result.GetVolume().blockscount();
-
-        STORAGE_DEBUG("Received StatVolume response");
 
         ui64 remainingBlocks = diskBlockCount;
         ui64 currentBlockIndex = StartIndex;
@@ -133,17 +128,11 @@ protected:
             request->SetAction("checkrange");
             request->SetInput(reqStringStream.str());
 
-            STORAGE_DEBUG("Sending CheckRange request");
             const auto requestId = GetRequestId(*request);
             auto result = WaitFor(ClientEndpoint->ExecuteAction(
                 MakeIntrusive<TCallContext>(requestId),
                 std::move(request)));
 
-            STORAGE_DEBUG("Received CheckRange response");
-            if (Proto) {
-                SerializeToTextFormat(result, output);
-                return true;
-            }
 
             if (HasError(result)) {
                 if (result.GetError().GetCode() == E_ARGUMENT) {
