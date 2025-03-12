@@ -103,17 +103,11 @@ bool GetThrottlingEnabled(
     const TStorageConfig& config,
     const NProto::TPartitionConfig& partitionConfig)
 {
-    bool throttlingEnabled = GetThrottlingEnabled(config, partitionConfig);
-
-    if (throttlingEnabled && IsZeroMethod<TMethod> &&
-        !NCloud::IsDiskRegistryMediaKind(
-            partitionConfig.GetStorageMediaKind()) &&
-        config.GetDisableZeroBlocksThrottlingForYDBBasedDisks())
-    {
-        throttlingEnabled = false;
+    if constexpr (IsZeroMethod<TMethod>) {
+        return GetThrottlingEnabledZeroBlocks(config, partitionConfig);
     }
 
-    return throttlingEnabled;
+    return GetThrottlingEnabled(config, partitionConfig);
 }
 
 }   // namespace
