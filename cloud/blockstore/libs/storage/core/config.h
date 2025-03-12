@@ -689,6 +689,9 @@ public:
     [[nodiscard]] TDuration GetLoadConfigsFromCmsRetryMinDelay() const;
     [[nodiscard]] TDuration GetLoadConfigsFromCmsRetryMaxDelay() const;
     [[nodiscard]] TDuration GetLoadConfigsFromCmsTotalTimeout() const;
+
+    [[nodiscard]] ui32 GetMaxCompactionRangesLoadingPerTx() const;
+    [[nodiscard]] ui32 GetMaxOutOfOrderCompactionMapChunksInflight() const;
 };
 
 ui64 GetAllocationUnit(

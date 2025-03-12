@@ -1252,4 +1252,9 @@ message TStorageServiceConfig
 
     // Maximum number of errors on WriteBlob without tablet restart.
     optional uint32 MaxWriteBlobErrorsBeforeSuicide = 435;
+
+    // Maximum range count to load per 1 iteration (transaction).
+    optional uint32 MaxCompactionRangesLoadingPerTx = 436;
+    // Max inflight for out of order compaction map load requests.
+    optional uint32 MaxOutOfOrderCompactionMapChunksInflight = 437;
 }
