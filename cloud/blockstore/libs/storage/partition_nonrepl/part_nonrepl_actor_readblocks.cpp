@@ -244,7 +244,7 @@ void TNonreplicatedPartitionActor::HandleReadBlocks(
 
     TVector<TDeviceRequest> deviceRequests;
     TRequestTimeoutPolicy timeoutPolicy;
-    TRequest request;
+    TRequestData request;
     bool ok = InitRequests<TEvService::TReadBlocksMethod>(
         *msg,
         ctx,

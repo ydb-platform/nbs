@@ -87,11 +87,11 @@ private:
     };
     TVector<TDeviceStat> DeviceStats;
 
-    struct TRequest
+    struct TRequestData
     {
         TStackVec<int, 2> DeviceIndices;
     };
-    TRequestsInProgress<NActors::TActorId, TRequest> RequestsInProgress{
+    TRequestsInProgress<NActors::TActorId, TRequestData> RequestsInProgress{
         EAllowedRequests::ReadWrite};
     TDrainActorCompanion DrainActorCompanion{
         RequestsInProgress,
@@ -153,7 +153,7 @@ private:
         const TBlockRange64& blockRange,
         TVector<TDeviceRequest>* deviceRequests,
         TRequestTimeoutPolicy* timeoutPolicy,
-        TRequest* request);
+        TRequestData* requestData);
 
     void OnRequestCompleted(
         const TEvNonreplPartitionPrivate::TOperationCompleted& operation,

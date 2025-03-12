@@ -253,7 +253,7 @@ bool TNonreplicatedPartitionActor::InitRequests(
     const TBlockRange64& blockRange,
     TVector<TDeviceRequest>* deviceRequests,
     TRequestTimeoutPolicy* timeoutPolicy,
-    TRequest* request)
+    TRequestData* requestData)
 {
     auto reply = [=] (
         const TActorContext& ctx,
@@ -333,7 +333,7 @@ bool TNonreplicatedPartitionActor::InitRequests(
             return false;
         }
 
-        request->DeviceIndices.push_back(dr.DeviceIdx);
+        requestData->DeviceIndices.push_back(dr.DeviceIdx);
 
         TDeviceStat& deviceStat = DeviceStats[dr.DeviceIdx];
         if (dr.Device.GetNodeId() == 0) {
@@ -378,7 +378,7 @@ template bool TNonreplicatedPartitionActor::InitRequests<TEvService::TWriteBlock
     const TBlockRange64& blockRange,
     TVector<TDeviceRequest>* deviceRequests,
     TRequestTimeoutPolicy* timeoutPolicy,
-    TRequest* request);
+    TRequestData* requestData);
 
 template bool TNonreplicatedPartitionActor::InitRequests<TEvService::TWriteBlocksLocalMethod>(
     const TEvService::TWriteBlocksLocalMethod::TRequest& msg,
@@ -387,7 +387,7 @@ template bool TNonreplicatedPartitionActor::InitRequests<TEvService::TWriteBlock
     const TBlockRange64& blockRange,
     TVector<TDeviceRequest>* deviceRequests,
     TRequestTimeoutPolicy* timeoutPolicy,
-    TRequest* request);
+    TRequestData* requestData);
 
 template bool TNonreplicatedPartitionActor::InitRequests<TEvService::TZeroBlocksMethod>(
     const TEvService::TZeroBlocksMethod::TRequest& msg,
@@ -396,7 +396,7 @@ template bool TNonreplicatedPartitionActor::InitRequests<TEvService::TZeroBlocks
     const TBlockRange64& blockRange,
     TVector<TDeviceRequest>* deviceRequests,
     TRequestTimeoutPolicy* timeoutPolicy,
-    TRequest* request);
+    TRequestData* requestData);
 
 template bool TNonreplicatedPartitionActor::InitRequests<TEvService::TReadBlocksMethod>(
     const TEvService::TReadBlocksMethod::TRequest& msg,
@@ -405,7 +405,7 @@ template bool TNonreplicatedPartitionActor::InitRequests<TEvService::TReadBlocks
     const TBlockRange64& blockRange,
     TVector<TDeviceRequest>* deviceRequests,
     TRequestTimeoutPolicy* timeoutPolicy,
-    TRequest* request);
+    TRequestData* requestData);
 
 template bool TNonreplicatedPartitionActor::InitRequests<TEvService::TReadBlocksLocalMethod>(
     const TEvService::TReadBlocksLocalMethod::TRequest& msg,
@@ -414,7 +414,7 @@ template bool TNonreplicatedPartitionActor::InitRequests<TEvService::TReadBlocks
     const TBlockRange64& blockRange,
     TVector<TDeviceRequest>* deviceRequests,
     TRequestTimeoutPolicy* timeoutPolicy,
-    TRequest* request);
+    TRequestData* requestData);
 
 template bool TNonreplicatedPartitionActor::InitRequests<TEvNonreplPartitionPrivate::TChecksumBlocksMethod>(
     const TEvNonreplPartitionPrivate::TChecksumBlocksMethod::TRequest& msg,
@@ -423,7 +423,7 @@ template bool TNonreplicatedPartitionActor::InitRequests<TEvNonreplPartitionPriv
     const TBlockRange64& blockRange,
     TVector<TDeviceRequest>* deviceRequests,
     TRequestTimeoutPolicy* timeoutPolicy,
-    TRequest* request);
+    TRequestData* requestData);
 
 void TNonreplicatedPartitionActor::OnRequestCompleted(
     const TEvNonreplPartitionPrivate::TOperationCompleted& operation,

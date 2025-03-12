@@ -247,7 +247,7 @@ void TNonreplicatedPartitionActor::HandleWriteBlocks(
 
     TVector<TDeviceRequest> deviceRequests;
     TRequestTimeoutPolicy timeoutPolicy;
-    TRequest request;
+    TRequestData request;
     bool ok = InitRequests<TEvService::TWriteBlocksMethod>(
         *msg,
         ctx,
@@ -333,7 +333,7 @@ void TNonreplicatedPartitionActor::HandleWriteBlocksLocal(
 
     TVector<TDeviceRequest> deviceRequests;
     TRequestTimeoutPolicy timeoutPolicy;
-    TRequest request;
+    TRequestData request;
     bool ok = InitRequests<TEvService::TWriteBlocksLocalMethod>(
         *msg,
         ctx,

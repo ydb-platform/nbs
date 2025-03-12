@@ -204,7 +204,7 @@ void TNonreplicatedPartitionActor::HandleZeroBlocks(
 
     TVector<TDeviceRequest> deviceRequests;
     TRequestTimeoutPolicy timeoutPolicy;
-    TRequest request;
+    TRequestData request;
     bool ok = InitRequests<TEvService::TZeroBlocksMethod>(
         *msg,
         ctx,

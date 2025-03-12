@@ -217,7 +217,7 @@ void TNonreplicatedPartitionActor::HandleChecksumBlocks(
 
     TVector<TDeviceRequest> deviceRequests;
     TRequestTimeoutPolicy timeoutPolicy;
-    TRequest request;
+    TRequestData request;
     bool ok = InitRequests<TEvNonreplPartitionPrivate::TChecksumBlocksMethod>(
         *msg,
         ctx,
