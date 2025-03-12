@@ -2338,13 +2338,9 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionTest)
             runtime.AdvanceCurrentTime(TDuration::Seconds(4));
 
             TAutoPtr<NActors::IEventHandle> handle;
-            try {
-                runtime.GrabEdgeEventRethrow<TEvService::TEvReadBlocksResponse>(
-                    handle,
-                    TDuration::MilliSeconds(10));
-            } catch (...) {
-                // no-op
-            }
+            runtime.GrabEdgeEventRethrow<TEvService::TEvReadBlocksResponse>(
+                handle,
+                TDuration::MilliSeconds(10));
             UNIT_ASSERT(!handle);
 
             runtime.AdvanceCurrentTime(TDuration::Seconds(1));

@@ -109,8 +109,8 @@ void TDiskAgentBaseRequestActor::HandleCancelRequest(
     const auto* msg = ev->Get();
 
     TVector<TString> devices;
-    for (const auto& reuqest: DeviceRequests) {
-        devices.push_back(reuqest.Device.GetDeviceUUID());
+    for (const auto& request: DeviceRequests) {
+        devices.push_back(request.Device.GetDeviceUUID());
     }
 
     switch (msg->Reason) {
