@@ -3,9 +3,10 @@ UNITTEST_FOR(cloud/blockstore/libs/storage/partition)
 INCLUDE(${ARCADIA_ROOT}/cloud/storage/core/tests/recipes/medium.inc)
 
 SRCS(
-    part_database_ut.cpp
-    part_state_ut.cpp
     part_ut.cpp
+    part_state_ut.cpp
+    part_database_ut.cpp
+    part_compaction_map_load_state_ut.cpp
 )
 
 PEERDIR(

@@ -1101,6 +1101,10 @@ void TPartitionActor::ChangeRangeCountPerRunIfNeeded(
 
 void TPartitionActor::EnqueueCompactionIfNeeded(const TActorContext& ctx)
 {
+    if (CompactionMapLoadState) {
+        return;
+    }
+
     if (State->GetCompactionState(ECompactionType::Tablet).Status !=
         EOperationStatus::Idle)
     {
@@ -1109,7 +1113,6 @@ void TPartitionActor::EnqueueCompactionIfNeeded(const TActorContext& ctx)
     }
 
     if (!State->IsCompactionAllowed()) {
-        // not allowed for now
         return;
     }
 

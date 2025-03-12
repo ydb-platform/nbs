@@ -981,9 +981,7 @@ bool TPartitionDatabase::ReadCompactionMap(
 {
     using TTable = TPartitionSchema::CompactionMap;
 
-    auto it = Table<TTable>()
-        .Range()
-        .Select();
+    auto it = Table<TTable>().Range().Select();
 
     if (!it.IsReady()) {
         return false;   // not ready
@@ -1000,9 +998,44 @@ bool TPartitionDatabase::ReadCompactionMap(
                 0,
                 0,
                 false,
-                0
-            }
-        );
+                0});
+
+        if (!it.Next()) {
+            return false;   // not ready
+        }
+    }
+
+    return true;
+}
+
+bool TPartitionDatabase::ReadCompactionMap(
+    TBlockRange32 rangeBlockIndices,
+    TVector<TCompactionCounter>& compactionMap)
+{
+    using TTable = TPartitionSchema::CompactionMap;
+
+    auto it = Table<TTable>().GreaterOrEqual(rangeBlockIndices.Start).Select();
+
+    if (!it.IsReady()) {
+        return false;   // not ready
+    }
+
+    while (it.IsValid()) {
+        const auto blockIndex = it.GetValue<TTable::BlockIndex>();
+        if (blockIndex > rangeBlockIndices.End) {
+            break;
+        }
+        compactionMap.emplace_back(
+            blockIndex,
+            TRangeStat{
+                ProcessCompactionCounter(it.GetValue<TTable::BlobCount>()),
+                ProcessCompactionCounter(it.GetValue<TTable::BlockCount>()),
+                0,
+                0,
+                0,
+                0,
+                false,
+                0});
 
         if (!it.Next()) {
             return false;   // not ready
