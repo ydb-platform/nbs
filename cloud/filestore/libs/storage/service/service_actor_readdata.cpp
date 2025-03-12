@@ -271,16 +271,19 @@ void TReadDataActor::HandleDescribeDataResponse(
     const TActorContext& ctx)
 {
     const auto* msg = ev->Get();
+    const auto& error = msg->GetError();
 
     TABLET_VERIFY(InFlightRequest);
 
-    InFlightRequest->Complete(ctx.Now(), msg->GetError());
+    InFlightRequest->Complete(ctx.Now(), error);
     FinalizeProfileLogRequestInfo(
         InFlightRequest->ProfileLogRequest,
         msg->Record);
 
     if (FAILED(msg->GetStatus())) {
-        ReadData(ctx, FormatError(msg->GetError()));
+        if (error.GetCode() != E_FS_THROTTLED) {
+            ReadData(ctx, FormatError(error));
+        }
         return;
     }
 
