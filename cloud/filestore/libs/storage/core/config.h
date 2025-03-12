@@ -258,6 +258,7 @@ public:
     ui32 GetNodeRegistrationMaxAttempts() const;
     TDuration GetNodeRegistrationTimeout() const;
     TDuration GetNodeRegistrationErrorTimeout() const;
+    bool GetNodeRegistrationUseSsl() const;
 
     ui32 GetBlobCompressionRate() const;
     TString GetBlobCompressionCodec() const;

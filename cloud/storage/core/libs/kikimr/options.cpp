@@ -66,6 +66,10 @@ TOptionsYdbBase::TOptionsYdbBase()
         .RequiredArgument("PORT")
         .StoreResult(&NodeBrokerPort);
 
+    Opts.AddLongOption("node-broker-secure-port")
+        .RequiredArgument("PORT")
+        .StoreResult(&NodeBrokerSecurePort);
+
     Opts.AddLongOption(
         "use-secure-registration",
         "Use secure connection to node broker")

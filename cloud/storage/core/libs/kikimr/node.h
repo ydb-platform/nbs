@@ -23,6 +23,7 @@ struct TRegisterDynamicNodeOptions
 
     TString NodeBrokerAddress;
     ui32 NodeBrokerPort = 0;
+    ui32 NodeBrokerSecurePort = 0;
     bool UseNodeBrokerSsl = false;
 
     ui32 InterconnectPort = 0;

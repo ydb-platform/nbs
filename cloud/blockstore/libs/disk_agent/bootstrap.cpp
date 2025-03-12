@@ -374,7 +374,9 @@ bool TBootstrap::InitKikimrService()
         .SchemeShardDir = Configs->StorageConfig->GetSchemeShardDir(),
         .NodeBrokerAddress = Configs->Options->NodeBrokerAddress,
         .NodeBrokerPort = Configs->Options->NodeBrokerPort,
-        .UseNodeBrokerSsl = Configs->Options->UseNodeBrokerSsl,
+        .NodeBrokerSecurePort = Configs->Options->NodeBrokerSecurePort,
+        .UseNodeBrokerSsl = Configs->Options->UseNodeBrokerSsl
+            || Configs->StorageConfig->GetNodeRegistrationUseSsl(),
         .InterconnectPort = Configs->Options->InterconnectPort,
         .LoadCmsConfigs = Configs->Options->LoadCmsConfigs,
         .Settings = std::move(settings)
