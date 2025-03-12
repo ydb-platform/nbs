@@ -683,6 +683,9 @@ public:
 
     [[nodiscard]] TVector<NProto::TLinkedDiskFillBandwidth>
     GetLinkedDiskFillBandwidth() const;
+
+    [[nodiscard]] ui32 GetMaxCompactionRangesLoadingPerTx() const;
+    [[nodiscard]] ui32 GetMaxOutOfOrderCompactionMapLoadRequestsInQueue() const;
 };
 
 ui64 GetAllocationUnit(
