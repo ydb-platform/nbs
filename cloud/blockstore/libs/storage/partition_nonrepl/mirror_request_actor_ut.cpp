@@ -125,7 +125,7 @@ struct TFixture: public NUnitTest::TBaseFixture
                     ? TActorId{}
                     : event->Recipient;
 
-                runtime.Send(new IEventHandle(
+                runtime.SendAsync(new IEventHandle(
                     event->Sender,
                     sender,
                     new TEvService::TEvWriteBlocksResponse(error),
