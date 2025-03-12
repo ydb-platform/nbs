@@ -99,6 +99,23 @@ class TPartitionActor final
         {}
     };
 
+    struct TCompactionMapLoadState
+    {
+        struct TLoadCompactionMapChunk
+        {
+            ui32 FirstRangeIdx = 0;
+            ui32 RangesPerTx = 0;
+            bool OutOfOrder = false;
+        };
+
+        ui32 RangesPerTx = 0;
+        ui32 FirstRangeIdx = 0;
+        bool Finished = false;
+        THashSet<ui32> LoadedOutOfOrderRangeIds;
+
+        TDeque<TLoadCompactionMapChunk> LoadQueue;
+    };
+
 private:
     const TStorageConfigPtr Config;
     const NProto::TPartitionConfig PartitionConfig;
@@ -112,6 +129,7 @@ private:
     const NBlockCodecs::ICodec* BlobCodec;
 
     std::unique_ptr<TPartitionState> State;
+    TCompactionMapLoadState CompactioMapLoadState;
 
     static const TStateInfo States[];
     EState CurrentState = STATE_BOOT;
@@ -655,6 +673,11 @@ private:
 
     void SetFirstGarbageCollectionCompleted();
     bool IsFirstGarbageCollectionCompleted() const;
+
+    void LoadNextCompactionMapChunk(const NActors::TActorContext& ctx);
+    void HandleLoadCompactionMapChunk(
+        const TEvPartitionPrivate::TEvLoadCompactionMapChunkRequest::TPtr& ev,
+        const NActors::TActorContext& ctx);
 
     BLOCKSTORE_PARTITION_REQUESTS(BLOCKSTORE_IMPLEMENT_REQUEST, TEvPartition)
     BLOCKSTORE_PARTITION_REQUESTS_PRIVATE(BLOCKSTORE_IMPLEMENT_REQUEST, TEvPartitionPrivate)

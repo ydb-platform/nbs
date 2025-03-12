@@ -597,7 +597,11 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
     xxx(DisableZeroBlocksThrottlingForYDBBasedDisks,       bool,   false      )\
                                                                                \
     xxx(LocalDiskAsyncDeallocationEnabled,                 bool,   false      )\
-    xxx(DoNotStopVolumeTabletOnLockLost,                   bool,   false      )
+    xxx(DoNotStopVolumeTabletOnLockLost,                   bool,   false      )\
+                                                                               \
+    xxx(MaxCompactionRangesLoadingPerTx,                ui32,      0          )\
+    xxx(MaxOutOfOrderCompactionMapLoadRequestsInQueue,  ui32,      5          )\
+
 // BLOCKSTORE_STORAGE_CONFIG_RW
 
 #define BLOCKSTORE_STORAGE_CONFIG(xxx)                                         \

@@ -642,6 +642,86 @@ void TPartitionActor::HandleAddBlobs(
 {
     auto* msg = ev->Get();
 
+    if (!CompactioMapLoadState.Finished) {
+        const ui32 limitInQueue =
+            Config->GetMaxOutOfOrderCompactionMapLoadRequestsInQueue();
+
+        bool reject = false;
+
+        const auto& cm = State->GetCompactionMap();
+
+        TVector<ui32> rangeIndecies;
+        for (const auto& blob: msg->MixedBlobs) {
+            if (!blob.Blocks.empty()) {
+                rangeIndecies.emplace_back(cm.GetRangeIndex(blob.Blocks[0]));
+            }
+        }
+        for (const auto& blob: msg->MergedBlobs) {
+            const auto rangeStart = cm.GetRangeStart(blob.BlockRange.Start);
+            Y_DEBUG_ABORT_UNLESS(
+                rangeStart == cm.GetRangeStart(blob.BlockRange.End));
+            rangeIndecies.emplace_back(cm.GetRangeIndex(rangeStart));
+        }
+        for (const auto& blob: msg->FreshBlobs) {
+            if (!blob.Blocks.empty()) {
+                rangeIndecies.emplace_back(
+                    cm.GetRangeIndex(blob.Blocks[0].BlockIndex));
+            }
+        }
+
+        for (const ui32 rangeIndex: rangeIndecies) {
+            if (rangeIndex >= CompactioMapLoadState.FirstRangeIdx &&
+                !CompactioMapLoadState.LoadedOutOfOrderRangeIds.contains(
+                    rangeIndex))
+            {
+                reject = true;
+
+                bool shouldEnqueue = true;
+                ui32 oooRequestsInQueue = 0;
+                for (const auto& req: CompactioMapLoadState.LoadQueue) {
+                    if (!req.OutOfOrder) {
+                        if (rangeIndex >= req.FirstRangeIdx &&
+                            rangeIndex < (req.FirstRangeIdx + req.RangesPerTx))
+                        {
+                            shouldEnqueue = false;
+                            break;
+                        }
+                        continue;
+                    }
+                    if (req.FirstRangeIdx == rangeIndex) {
+                        shouldEnqueue = false;
+                        break;
+                    }
+                    if (++oooRequestsInQueue == limitInQueue) {
+                        shouldEnqueue = false;
+                        break;
+                    }
+                }
+
+                if (shouldEnqueue) {
+                    CompactioMapLoadState.LoadQueue.emplace_back(
+                        rangeIndex,
+                        1,
+                        true);
+                }
+
+                if (oooRequestsInQueue == limitInQueue) {
+                    break;
+                }
+            }
+        }
+
+        if (reject) {
+            const auto error =
+                MakeError(E_REJECTED, "compaction state not loaded yet");
+            auto response =
+                std::make_unique<TEvPartitionPrivate::TEvAddBlobsResponse>(
+                    error);
+            NCloud::Reply(ctx, *ev, std::move(response));
+            return;
+        }
+    }
+
     auto requestInfo = CreateRequestInfo(
         ev->Sender,
         ev->Cookie,
