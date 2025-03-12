@@ -338,7 +338,7 @@ void TNetlinkDevice::Disconnect()
         socket.Receive(response);
         StopResult.SetValue(MakeError(S_OK));
     } catch (const TServiceError& e) {
-        StartResult.SetValue(MakeError(
+        StopResult.SetValue(MakeError(
             e.GetCode(),
             TStringBuilder()
                 << "unable to disconnect " << DeviceName << ": " << e.what()));
