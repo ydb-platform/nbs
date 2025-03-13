@@ -211,18 +211,15 @@ private:
     const ui32 NodeId;
     NRdma::TClientRequestPtr Request;
     TCallContextPtr CallContext;
-    const NRdma::TProtoMessageSerializer& Serializer;
 
 public:
     TExecuteRequestActor(
             ui32 nodeId,
             NRdma::TClientRequestPtr request,
-            TCallContextPtr callContext,
-            const NRdma::TProtoMessageSerializer& serializer)
+            TCallContextPtr callContext)
         : NodeId(nodeId)
         , Request(std::move(request))
         , CallContext(std::move(callContext))
-        , Serializer(serializer)
     {}
 
     void Bootstrap(const TActorContext& ctx)
@@ -244,36 +241,40 @@ public:
 private:
     NProto::TError ExecuteRequest(const TActorContext& ctx)
     {
-        auto [proto, error] = Serializer.Parse(Request->RequestBuffer);
+        auto [proto, error] =
+            TBlockStoreProtocol::Serializer()->Parse(Request->RequestBuffer);
         if (HasError(error)) {
             return error;
         }
 
         switch (proto.MsgId) {
             case TBlockStoreProtocol::ReadDeviceBlocksRequest:
+                Y_ABORT_IF(proto.Data);
                 return SendReadBlocksRequest(
                     ctx,
                     static_cast<NProto::TReadDeviceBlocksRequest&>(
-                        *proto.Proto),
-                    proto.Data);
+                        *proto.Proto));
 
             case TBlockStoreProtocol::WriteDeviceBlocksRequest:
                 return SendWriteBlocksRequest(
                     ctx,
-                    static_cast<NProto::TWriteDeviceBlocksRequest&>(*proto.Proto),
+                    static_cast<NProto::TWriteDeviceBlocksRequest&>(
+                        *proto.Proto),
                     proto.Data);
 
             case TBlockStoreProtocol::ZeroDeviceBlocksRequest:
+                Y_ABORT_IF(proto.Data);
                 return SendZeroBlocksRequest(
                     ctx,
-                    static_cast<NProto::TZeroDeviceBlocksRequest&>(*proto.Proto),
-                    proto.Data);
+                    static_cast<NProto::TZeroDeviceBlocksRequest&>(
+                        *proto.Proto));
 
             case TBlockStoreProtocol::ChecksumDeviceBlocksRequest:
+                Y_ABORT_IF(proto.Data);
                 return SendChecksumBlocksRequest(
                     ctx,
-                    static_cast<NProto::TChecksumDeviceBlocksRequest&>(*proto.Proto),
-                    proto.Data);
+                    static_cast<NProto::TChecksumDeviceBlocksRequest&>(
+                        *proto.Proto));
 
             default:
                 return MakeError(
@@ -284,13 +285,8 @@ private:
 
     NProto::TError SendReadBlocksRequest(
         const TActorContext& ctx,
-        NProto::TReadDeviceBlocksRequest& proto,
-        TStringBuf requestData)
+        NProto::TReadDeviceBlocksRequest& proto)
     {
-        if (Y_UNLIKELY(requestData.length() != 0)) {
-            return MakeError(E_ARGUMENT, "request data must be empty");
-        }
-
         LOG_DEBUG_S(
             ctx,
             TBlockStoreComponents::RDMA,
@@ -324,9 +320,7 @@ private:
         NProto::TWriteDeviceBlocksRequest& proto,
         TStringBuf requestData)
     {
-        if (Y_UNLIKELY(requestData.length() == 0)) {
-            return MakeError(E_ARGUMENT, "empty request data");
-        }
+        Y_ABORT_IF(requestData.empty());
 
         LOG_DEBUG_S(
             ctx,
@@ -359,13 +353,8 @@ private:
 
     NProto::TError SendZeroBlocksRequest(
         const TActorContext& ctx,
-        NProto::TZeroDeviceBlocksRequest& proto,
-        TStringBuf requestData)
+        NProto::TZeroDeviceBlocksRequest& proto)
     {
-        if (Y_UNLIKELY(requestData.length() != 0)) {
-            return MakeError(E_ARGUMENT, "request data must be empty");
-        }
-
         LOG_DEBUG_S(
             ctx,
             TBlockStoreComponents::RDMA,
@@ -396,13 +385,8 @@ private:
 
     NProto::TError SendChecksumBlocksRequest(
         const TActorContext& ctx,
-        NProto::TChecksumDeviceBlocksRequest& proto,
-        TStringBuf requestData)
+        NProto::TChecksumDeviceBlocksRequest& proto)
     {
-        if (Y_UNLIKELY(requestData.length() != 0)) {
-            return MakeError(E_ARGUMENT, "request data must be empty");
-        }
-
         LOG_DEBUG_S(
             ctx,
             TBlockStoreComponents::RDMA,
@@ -617,10 +601,7 @@ public:
             std::make_unique<TEvDiskRegistry::TEvGetAgentNodeIdRequest>();
         request->Record.SetAgentId(AgentId);
 
-        const bool ok =
-            ctx.Send(MakeDiskRegistryProxyServiceId(), request.release());
-
-        Y_ABORT_UNLESS(ok);
+        ctx.Send(MakeDiskRegistryProxyServiceId(), request.release());
 
         ctx.Schedule(30s, new TEvents::TEvWakeup());
     }
@@ -686,16 +667,11 @@ private:
     IActorSystemPtr ActorSystem;
     THashMap<TString, ui32> AgentIdToNodeId;
 
-    const NRdma::TProtoMessageSerializer* Serializer =
-        TBlockStoreProtocol::Serializer();
-
 public:
     explicit TFakeRdmaClientActor(IActorSystemPtr actorSystem)
         : TActor(&TThis::StateWork)
         , ActorSystem(std::move(actorSystem))
-    {
-        Y_ABORT_UNLESS(Serializer);
-    }
+    {}
 
 private:
     void UpdateNodeId(const TActorContext& ctx, const TString& agentId) const
@@ -796,8 +772,7 @@ private:
             ctx,
             nodeId,
             std::move(msg->Request),
-            std::move(msg->CallContext),
-            *Serializer);
+            std::move(msg->CallContext));
     }
 
     void HandleUpdateNodeId(
