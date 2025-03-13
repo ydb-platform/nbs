@@ -96,6 +96,12 @@ func (t *createImageFromDiskTask) run(
 		return err
 	}
 
+	t.state.CheckpointID = checkpointID
+	err = execCtx.SaveState(ctx)
+	if err != nil {
+		return err
+	}
+
 	taskID, err := t.scheduler.ScheduleZonalTask(
 		headers.SetIncomingIdempotencyKey(ctx, selfTaskID+"_run"),
 		"dataplane.CreateSnapshotFromDisk",
@@ -185,25 +191,11 @@ func (t *createImageFromDiskTask) Run(
 		return err
 	}
 
-	selfTaskID := execCtx.GetTaskID()
-
-	checkpointID, err := common.GetCheckpointID(
-		ctx,
-		t.scheduler,
-		t.request.SrcDisk,
-		t.request.DstImageId,
-		selfTaskID,
-		diskParams.IsDiskRegistryBasedDisk,
-	)
-	if err != nil {
-		return err
-	}
-
 	if diskParams.IsDiskRegistryBasedDisk {
-		return nbsClient.DeleteCheckpoint(ctx, disk.DiskId, checkpointID)
+		return nbsClient.DeleteCheckpoint(ctx, disk.DiskId, t.state.CheckpointID)
 	}
 
-	return nbsClient.DeleteCheckpointData(ctx, disk.DiskId, checkpointID)
+	return nbsClient.DeleteCheckpointData(ctx, disk.DiskId, t.state.CheckpointID)
 }
 
 func (t *createImageFromDiskTask) Cancel(
@@ -211,12 +203,10 @@ func (t *createImageFromDiskTask) Cancel(
 	execCtx tasks.ExecutionContext,
 ) error {
 
-	disk := t.request.SrcDisk
-	nbsClient, err := t.nbsFactory.GetClient(ctx, disk.ZoneId)
+	nbsClient, err := t.nbsFactory.GetClient(ctx, t.request.SrcDisk.ZoneId)
 	if err != nil {
 		return err
 	}
-	selfTaskID := execCtx.GetTaskID()
 
 	err = common.CancelCheckpointCreation(
 		ctx,
@@ -224,7 +214,7 @@ func (t *createImageFromDiskTask) Cancel(
 		nbsClient,
 		t.request.SrcDisk,
 		t.request.DstImageId,
-		selfTaskID,
+		execCtx.GetTaskID(),
 	)
 	if err != nil {
 		return err

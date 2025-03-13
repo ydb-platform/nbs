@@ -90,7 +90,7 @@ func (t *createDRBasedDiskCheckpointTask) Cancel(
 		return nil
 	}
 
-	return t.cleanupCheckpoints(ctx, nbsClient)
+	return t.deleteCheckpoints(ctx, nbsClient)
 }
 
 func (t *createDRBasedDiskCheckpointTask) GetMetadata(
@@ -118,18 +118,17 @@ func (t *createDRBasedDiskCheckpointTask) getCurrentCheckpointID() string {
 	return t.makeCheckpointID(int(t.state.CheckpointIteration))
 }
 
-func (t *createDRBasedDiskCheckpointTask) getCheckpointIDs() (
-	previousCheckpointID string,
-	currentCheckpointID string,
-) {
-
+func (t *createDRBasedDiskCheckpointTask) getCheckpointIDs() (string, string) {
+	previousCheckpointID := ""
 	if t.state.CheckpointIteration > 0 {
 		previousCheckpointID = t.makeCheckpointID(
 			int(t.state.CheckpointIteration) - 1,
 		)
 	}
-	currentCheckpointID = t.getCurrentCheckpointID()
-	return
+
+	currentCheckpointID := t.getCurrentCheckpointID()
+
+	return previousCheckpointID, currentCheckpointID
 }
 
 func (t *createDRBasedDiskCheckpointTask) updateCheckpoints(
@@ -159,7 +158,7 @@ func (t *createDRBasedDiskCheckpointTask) updateCheckpoints(
 	)
 }
 
-func (t *createDRBasedDiskCheckpointTask) cleanupCheckpoints(
+func (t *createDRBasedDiskCheckpointTask) deleteCheckpoints(
 	ctx context.Context,
 	nbsClient nbs_client.Client,
 ) error {
