@@ -81,7 +81,7 @@ struct TEvFakeRdmaClient
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TClientRequest: NRdma::TClientRequest
+struct TClientRequest: public NRdma::TClientRequest
 {
     TActorId RdmaActorId;
 
@@ -288,7 +288,7 @@ private:
         TStringBuf requestData)
     {
         if (Y_UNLIKELY(requestData.length() != 0)) {
-            return MakeError(E_ARGUMENT);
+            return MakeError(E_ARGUMENT, "request data must be empty");
         }
 
         LOG_DEBUG_S(
@@ -325,7 +325,7 @@ private:
         TStringBuf requestData)
     {
         if (Y_UNLIKELY(requestData.length() == 0)) {
-            return MakeError(E_ARGUMENT);
+            return MakeError(E_ARGUMENT, "empty request data");
         }
 
         LOG_DEBUG_S(
@@ -363,15 +363,17 @@ private:
         TStringBuf requestData)
     {
         if (Y_UNLIKELY(requestData.length() != 0)) {
-            return MakeError(E_ARGUMENT);
+            return MakeError(E_ARGUMENT, "request data must be empty");
         }
 
         LOG_DEBUG_S(
             ctx,
             TBlockStoreComponents::RDMA,
-            "Send ZeroDeviceBlocks to #" << NodeId << " "
-                                          << proto.GetStartIndex() << ":"
-                                          << proto.GetBlocksCount());
+            "Send ZeroDeviceBlocks to #"
+                << NodeId << " " << proto.GetStartIndex() << ":"
+                << FormatByteSize(
+                       static_cast<ui64>(proto.GetBlocksCount()) *
+                       proto.GetBlocksCount()));
 
         auto request =
             std::make_unique<TEvDiskAgent::TEvZeroDeviceBlocksRequest>(
@@ -398,15 +400,17 @@ private:
         TStringBuf requestData)
     {
         if (Y_UNLIKELY(requestData.length() != 0)) {
-            return MakeError(E_ARGUMENT);
+            return MakeError(E_ARGUMENT, "request data must be empty");
         }
 
         LOG_DEBUG_S(
             ctx,
             TBlockStoreComponents::RDMA,
-            "Send ChecksumDeviceBlocks to #" << NodeId << " "
-                                             << proto.GetStartIndex() << ":"
-                                             << proto.GetBlocksCount());
+            "Send ChecksumDeviceBlocks to #"
+                << NodeId << " " << proto.GetStartIndex() << ":"
+                << FormatByteSize(
+                       static_cast<ui64>(proto.GetBlocksCount()) *
+                       proto.GetBlocksCount()));
 
         auto request =
             std::make_unique<TEvDiskAgent::TEvChecksumDeviceBlocksRequest>(
