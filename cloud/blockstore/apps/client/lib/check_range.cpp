@@ -138,7 +138,7 @@ protected:
         }
 
         if (BlocksPerRequest <= 0) {
-            BlocksPerRequest = 512;
+            BlocksPerRequest = 1024;
         }
 
         while (remainingBlocks > 0) {
