@@ -59,10 +59,10 @@ class TCheckRangeCommand final: public TCommand
 {
 private:
     TString DiskId;
-    ui64 StartIndex = 0;
-    ui64 BlocksCount = 0;
-    ui64 BlocksPerRequest = 0;
-    bool ShowSuccessEnabled = false;
+    ui64 StartIndex;
+    ui64 BlocksCount;
+    ui64 BlocksPerRequest;
+    bool ShowReadErrorsEnabled = false;
     bool SaveResultsEnabled = false;
 
 public:
@@ -86,11 +86,11 @@ public:
             .StoreResult(&BlocksPerRequest);
 
         Opts.AddLongOption(
-                "show-success",
+                "show-read-errors",
                 "show logs for the intervals where request was successfully "
                 "completed")
             .RequiredArgument("BOOL")
-            .StoreResult(&ShowSuccessEnabled);
+            .StoreResult(&ShowReadErrorsEnabled);
 
         Opts.AddLongOption(
                 "save-results",
@@ -109,6 +109,7 @@ protected:
         auto& output = GetOutputStream();
 
         ui32 errorCount = 0;
+        ui32 requestCount = 0;
 
         auto statVolumeRequest = std::make_shared<NProto::TStatVolumeRequest>();
         statVolumeRequest->SetDiskId(DiskId);
@@ -141,7 +142,6 @@ protected:
         }
 
         while (remainingBlocks > 0) {
-
             ui32 blocksInThisRequest =
                 std::min(remainingBlocks, BlocksPerRequest);
 
@@ -161,7 +161,7 @@ protected:
                 MakeIntrusive<TCallContext>(requestId),
                 std::move(request)));
 
-
+            ++requestCount;
             if (HasError(result)) {
                 if (result.GetError().GetCode() == E_ARGUMENT) {
                     output << "Wrong argument : "
@@ -179,15 +179,11 @@ protected:
                 TString statusMessage;
                 ExtractStatusValues(result.GetOutput().Data(), statusCode, statusMessage);
 
-                if (statusCode != S_OK) {
+                if (statusCode != S_OK && ShowReadErrorsEnabled) {
                     errorCount++;
                     output << "ReadBlocks error in range [" << currentBlockIndex << ", "
                            << (currentBlockIndex + blocksInThisRequest - 1)
                            << "]: " << FormatError(MakeError(statusCode, statusMessage)) << Endl;
-                } else if (ShowSuccessEnabled) {
-                    output << "Ok in range: [" << currentBlockIndex << ", "
-                           << (currentBlockIndex + blocksInThisRequest - 1)
-                           << "]" << Endl;
                 }
             }
 
@@ -203,6 +199,7 @@ protected:
             currentBlockIndex += blocksInThisRequest;
         }
 
+        output << "Total requests caught: " << requestCount << Endl;
         output << "Total errors caught: " << errorCount << Endl;
         return true;
     }
