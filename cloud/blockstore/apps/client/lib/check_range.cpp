@@ -59,9 +59,9 @@ class TCheckRangeCommand final: public TCommand
 {
 private:
     TString DiskId;
-    ui64 StartIndex;
-    ui64 BlocksCount;
-    ui64 BlocksPerRequest;
+    ui64 StartIndex = 0;
+    ui64 BlocksCount = 0;
+    ui64 BlocksPerRequest = 0;
     bool ShowReadErrorsEnabled = false;
     bool SaveResultsEnabled = false;
 
