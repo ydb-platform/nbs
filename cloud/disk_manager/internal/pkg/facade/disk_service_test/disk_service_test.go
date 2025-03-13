@@ -20,8 +20,7 @@ import (
 
 const (
 	shardedZoneID = "zone-d"
-	shardID1      = "zone-d-shard-1"
-	shardID2      = "zone-d-shard-2"
+	shardID       = "zone-d-shard-1"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -54,7 +53,7 @@ func testDiskServiceCreateEmptyDiskInZone(t *testing.T, zoneID string) {
 	err = internal_client.WaitOperation(ctx, client, operation.Id)
 	require.NoError(t, err)
 
-	// Need double creation to be sure, that threre would be no error.
+	// Need create twice to be sure, that threre would be no error.
 	operation, err = client.CreateDisk(reqCtx, &request)
 	require.NoError(t, err)
 	require.NotEmpty(t, operation)
@@ -70,6 +69,10 @@ func TestDiskServiceCreateEmptyDisk(t *testing.T) {
 
 func TestDiskServiceCreateEmptyDiskInShardedZone(t *testing.T) {
 	testDiskServiceCreateEmptyDiskInZone(t, shardedZoneID)
+}
+
+func TestDiskServiceCreateEmptyDiskInShard(t *testing.T) {
+	testDiskServiceCreateEmptyDiskInZone(t, shardID)
 }
 
 func TestDiskServiceShouldCreateSsdNonreplIfFolderIsInAllowedList(t *testing.T) {
