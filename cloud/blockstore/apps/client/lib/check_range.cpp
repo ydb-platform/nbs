@@ -6,9 +6,12 @@
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
-#include <library/cpp/protobuf/util/pb_io.h>
 #include <library/cpp/json/easy_parse/json_easy_parser.h>
 #include <library/cpp/json/json_reader.h>
+#include <library/cpp/protobuf/util/pb_io.h>
+
+#include <util/folder/path.h>
+#include <util/stream/file.h>
 
 #include <sstream>
 namespace NCloud::NBlockStore::NClient {
@@ -16,7 +19,6 @@ namespace NCloud::NBlockStore::NClient {
 namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
-
 
 void ExtractStatusValues(const TString& jsonStr, ui32& code, TString& message) {
     NJson::TJsonValue json;
@@ -38,6 +40,19 @@ void ExtractStatusValues(const TString& jsonStr, ui32& code, TString& message) {
     }
 }
 
+void SaveResultToFile(const TString& content, const TString& diskID, ui64 startIndex, ui64 blocksInThisRequest) {
+    const TString folder = "./checkRange_" + diskID;
+    TFsPath dir(folder);
+
+    if (!dir.Exists()) {
+        dir.MkDir();
+    }
+
+    TString fileName = Sprintf("%s/result_%lu_%lu.json", folder.c_str(), startIndex, startIndex + blocksInThisRequest - 1);
+    TOFStream file(fileName, EOpenModeFlag::CreateAlways | EOpenModeFlag::RdWr);
+    file.Write(content);
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 class TCheckRangeCommand final: public TCommand
@@ -47,7 +62,8 @@ private:
     ui64 StartIndex = 0;
     ui64 BlocksCount = 0;
     ui64 BlocksPerRequest = 0;
-    bool ShowSuccess = false;
+    bool ShowSuccessEnabled = false;
+    bool SaveResultsEnabled = false;
 
 public:
     TCheckRangeCommand(IBlockStorePtr client)
@@ -74,7 +90,13 @@ public:
                 "show logs for the intervals where request was successfully "
                 "completed")
             .RequiredArgument("BOOL")
-            .StoreResult(&ShowSuccess);
+            .StoreResult(&ShowSuccessEnabled);
+
+        Opts.AddLongOption(
+                "save-results",
+                "saving result of checkRange operations to the folder './checkRange', each request in own file")
+            .RequiredArgument("BOOL")
+            .StoreResult(&SaveResultsEnabled);
     }
 
 protected:
@@ -95,6 +117,12 @@ protected:
             MakeIntrusive<TCallContext>(statVolumeRequestId),
             std::move(statVolumeRequest)));
 
+        if (HasError(result)) {
+            output << "StatVolume error: " << FormatError(result.GetError())
+                   << Endl;
+            return false;
+        }
+
         ui64 diskBlockCount = result.GetVolume().blockscount();
 
         ui64 remainingBlocks = diskBlockCount;
@@ -109,7 +137,7 @@ protected:
         }
 
         if (BlocksPerRequest <= 0) {
-            BlocksPerRequest = 1024;
+            BlocksPerRequest = 512;
         }
 
         while (remainingBlocks > 0) {
@@ -119,14 +147,14 @@ protected:
 
             auto request = std::make_shared<NProto::TExecuteActionRequest>();
 
-            std::ostringstream reqStringStream;
-            reqStringStream << "{" << "\"DiskId\": \"" << DiskId << "\", "
+            std::ostringstream input;
+            input << "{" << "\"DiskId\": \"" << DiskId << "\", "
                             << "\"StartIndex\": " << currentBlockIndex << ", "
                             << "\"BlocksCount\": " << blocksInThisRequest
                             << "}";
 
             request->SetAction("checkrange");
-            request->SetInput(reqStringStream.str());
+            request->SetInput(input.str());
 
             const auto requestId = GetRequestId(*request);
             auto result = WaitFor(ClientEndpoint->ExecuteAction(
@@ -156,11 +184,19 @@ protected:
                     output << "ReadBlocks error in range [" << currentBlockIndex << ", "
                            << (currentBlockIndex + blocksInThisRequest - 1)
                            << "]: " << FormatError(MakeError(statusCode, statusMessage)) << Endl;
-                } else if (ShowSuccess) {
+                } else if (ShowSuccessEnabled) {
                     output << "Ok in range: [" << currentBlockIndex << ", "
                            << (currentBlockIndex + blocksInThisRequest - 1)
                            << "]" << Endl;
                 }
+            }
+
+            if (SaveResultsEnabled) {
+                SaveResultToFile(
+                    result.GetOutput().Data(),
+                    DiskId,
+                    currentBlockIndex,
+                    blocksInThisRequest);
             }
 
             remainingBlocks -= blocksInThisRequest;
