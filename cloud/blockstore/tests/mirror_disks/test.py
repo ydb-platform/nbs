@@ -11,7 +11,6 @@ from cloud.blockstore.public.sdk.python.protos import TCmsActionRequest, \
     TAction, STORAGE_MEDIA_SSD_MIRROR3
 from cloud.blockstore.tests.python.lib.config import NbsConfigurator, \
     generate_disk_agent_txt
-from cloud.storage.core.config.features_pb2 import TFeaturesConfig
 
 from contrib.ydb.tests.library.harness.kikimr_runner import \
     get_unique_path_for_current_test, ensure_path_exists
@@ -47,17 +46,11 @@ def start_nbs_daemon(ydb):
     storage.AllocationUnitNonReplicatedSSD = allocation_unit
     storage.AllocationUnitMirror3SSD = allocation_unit
     storage.UseNonreplicatedRdmaActor = True
+    storage.UseRdma = True
 
     server = cfg.files['server'].ServerConfig
     server.UseFakeRdmaClient = True
     server.RdmaClientEnabled = True
-
-    features = TFeaturesConfig()
-    feature = features.Features.add()
-    feature.Name = 'UseRdma'
-    feature.Whitelist.EntityIds.append("vol0")
-
-    cfg.files['features'] = features
 
     nbs = daemon.start_nbs(cfg)
 
@@ -177,3 +170,5 @@ def test_fake_rdma_client(ydb, nbs):
 
     for disk_agent in disk_agents:
         disk_agent.kill()
+
+    assert False
