@@ -12,6 +12,7 @@
 #include <cloud/blockstore/libs/storage/protos/disk.pb.h>
 #include <cloud/blockstore/libs/storage/testlib/diagnostics.h>
 #include <cloud/blockstore/libs/storage/testlib/disk_agent_mock.h>
+#include <cloud/blockstore/libs/storage/testlib/ut_helpers.h>
 #include <cloud/storage/core/libs/common/sglist_test.h>
 
 #include <contrib/ydb/core/testlib/basics/runtime.h>
@@ -2143,6 +2144,71 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionTest)
         runtime.DispatchEvents(options, TDuration::Seconds(1));
 
         UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, response->GetStatus());
+    }
+
+    Y_UNIT_TEST(ShouldGetSameChecksumsWhileCheckRangeSimmilarDisks)
+    {
+        TTestBasicRuntime runtime;
+
+        TTestEnv env(runtime);
+        TPartitionClient partition1(runtime, env.ActorId);
+        TPartitionClient partition2(runtime, env.ActorId);
+
+        partition1.WriteBlocks(
+            TBlockRange64::MakeClosedInterval(0, 1024 * 1024),
+            1);
+
+        partition2.WriteBlocks(
+            TBlockRange64::MakeClosedInterval(0, 1024 * 1024),
+            1);
+
+        const auto response1 = partition1.CheckRange("id", 0, 1024, true);
+        const auto response2 = partition2.CheckRange("id", 0, 1024, true);
+
+        const auto& checksums1 = response1->Record.GetChecksums();
+        const auto& checksums2 = response2->Record.GetChecksums();
+
+        ASSERT_VECTORS_EQUAL(
+            TVector<ui32>(checksums1.begin(), checksums1.end()),
+            TVector<ui32>(checksums2.begin(), checksums2.end()));
+    }
+
+    Y_UNIT_TEST(ShouldGetDifferentChecksumsWhileCheckRangeDifferentDisks)
+    {
+        TTestBasicRuntime runtime;
+
+        TTestEnv env(runtime);
+        TPartitionClient partition1(runtime, env.ActorId);
+        TPartitionClient partition2(runtime, env.ActorId);
+
+        partition1.WriteBlocks(
+            TBlockRange64::MakeClosedInterval(0, 1024 * 1024),
+            1);
+
+        partition2.WriteBlocks(
+            TBlockRange64::MakeClosedInterval(0, 1024 * 1024),
+            77);
+
+        const auto response1 = partition1.CheckRange("id", 0, 1024, true);
+        const auto response2 = partition2.CheckRange("id", 0, 1024, true);
+
+        const auto& checksums1 = response1->Record.GetChecksums();
+        const auto& checksums2 = response2->Record.GetChecksums();
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            checksums1.size(),
+            checksums2.size());
+
+        ui32 totalChecksums = 0;
+        ui32 differentChecksums = 0;
+        for (int i = 0; i < checksums1.size(); ++i) {
+            if (checksums1.at(i) != checksums2.at(i)) {
+                ++differentChecksums;
+            }
+            ++totalChecksums;
+        }
+
+        UNIT_ASSERT_LT(differentChecksums * 2, totalChecksums);
     }
 }
 
