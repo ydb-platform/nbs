@@ -107,14 +107,6 @@ func (s *SchedulerMock) SendEvent(
 	return args.Error(0)
 }
 
-func (s *SchedulerMock) GetTaskIDByIdempotencyKey(
-	ctx context.Context,
-) (string, error) {
-
-	args := s.Called(ctx)
-	return args.String(0), args.Error(1)
-}
-
 func (s *SchedulerMock) GetOperation(
 	ctx context.Context,
 	taskID string,
