@@ -172,47 +172,22 @@ struct TFixture
         Runtime->SetEventFilter(
             [this](auto&, TAutoPtr<IEventHandle>& ev)
             {
+#define INVOKE_HANDLER_FUNC(ns, name)                                          \
+    case ns::Ev##name##Request:                                                \
+        if (Handle##name) {                                                    \
+            auto* ptr = reinterpret_cast<ns::TEv##name##Request::TPtr*>(&ev);  \
+            return Handle##name(*ptr);                                         \
+        }
                 switch (ev->GetTypeRewrite()) {
-                    case TEvDiskRegistry::EvGetAgentNodeIdRequest:
-                        if (HandleGetAgentNodeId) {
-                            auto* ptr = reinterpret_cast<
-                                TEvDiskRegistry::TEvGetAgentNodeIdRequest::
-                                    TPtr*>(&ev);
-                            return HandleGetAgentNodeId(*ptr);
-                        }
-
-                    case TEvDiskAgent::EvWriteDeviceBlocksRequest:
-                        if (HandleWriteDeviceBlocks) {
-                            auto* ptr = reinterpret_cast<
-                                TEvDiskAgent::TEvWriteDeviceBlocksRequest::
-                                    TPtr*>(&ev);
-                            return HandleWriteDeviceBlocks(*ptr);
-                        }
-                    case TEvDiskAgent::EvReadDeviceBlocksRequest:
-                        if (HandleReadDeviceBlocks) {
-                            auto* ptr = reinterpret_cast<
-                                TEvDiskAgent::TEvReadDeviceBlocksRequest::
-                                    TPtr*>(&ev);
-                            return HandleReadDeviceBlocks(*ptr);
-                        }
-                    case TEvDiskAgent::EvZeroDeviceBlocksRequest:
-                        if (HandleZeroDeviceBlocks) {
-                            auto* ptr = reinterpret_cast<
-                                TEvDiskAgent::TEvZeroDeviceBlocksRequest::
-                                    TPtr*>(&ev);
-                            return HandleZeroDeviceBlocks(*ptr);
-                        }
-                    case TEvDiskAgent::EvChecksumDeviceBlocksRequest:
-                        if (HandleChecksumDeviceBlocks) {
-                            auto* ptr = reinterpret_cast<
-                                TEvDiskAgent::TEvChecksumDeviceBlocksRequest::
-                                    TPtr*>(&ev);
-                            return HandleChecksumDeviceBlocks(*ptr);
-                        }
+                    INVOKE_HANDLER_FUNC(TEvDiskRegistry, GetAgentNodeId)
+                    INVOKE_HANDLER_FUNC(TEvDiskAgent, WriteDeviceBlocks)
+                    INVOKE_HANDLER_FUNC(TEvDiskAgent, ReadDeviceBlocks)
+                    INVOKE_HANDLER_FUNC(TEvDiskAgent, ZeroDeviceBlocks)
+                    INVOKE_HANDLER_FUNC(TEvDiskAgent, ChecksumDeviceBlocks)
                     default:
                         return false;
                 }
-
+#undef INVOKE_HANDLER_FUNC
                 return false;
             });
     }
