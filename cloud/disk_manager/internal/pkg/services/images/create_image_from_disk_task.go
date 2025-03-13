@@ -190,6 +190,7 @@ func (t *createImageFromDiskTask) Run(
 	checkpointID, err := common.GetCheckpointID(
 		ctx,
 		t.scheduler,
+		t.request.SrcDisk,
 		t.request.DstImageId,
 		selfTaskID,
 		diskParams.IsDiskRegistryBasedDisk,
@@ -211,32 +212,13 @@ func (t *createImageFromDiskTask) Cancel(
 ) error {
 
 	disk := t.request.SrcDisk
-
 	nbsClient, err := t.nbsFactory.GetClient(ctx, disk.ZoneId)
 	if err != nil {
 		return err
 	}
-
 	selfTaskID := execCtx.GetTaskID()
 
-	checkpointTaskID, err := t.scheduler.GetTaskIDByIdempotencyKey(
-		headers.SetIncomingIdempotencyKey(
-			ctx,
-			common.GetIdempotencyKeyForCheckpointTask(selfTaskID),
-		),
-	)
-	if err != nil {
-		return err
-	}
-
-	if checkpointTaskID != "" {
-		_, err = t.scheduler.CancelTask(ctx, checkpointTaskID)
-		if err != nil {
-			return err
-		}
-	}
-
-	err = common.DeleteCheckpoint(
+	err = common.CancelCheckpointCreation(
 		ctx,
 		t.scheduler,
 		nbsClient,
