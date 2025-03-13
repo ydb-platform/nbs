@@ -4,8 +4,10 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"io/ioutil"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
@@ -25,6 +27,16 @@ import (
 
 func withComponentLoggingField(ctx context.Context) context.Context {
 	return logging.WithComponent(ctx, logging.ComponentS3)
+}
+
+func logMessageFromS3SDK(ctx context.Context, args ...interface{}) {
+	logMessage := fmt.Sprintln(args...)
+	logMessage = "S3 SDK: " + logMessage
+	if strings.Contains(logMessage, "ERROR") {
+		logging.Error(ctx, logMessage)
+	} else {
+		logging.Info(ctx, logMessage)
+	}
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -49,6 +61,7 @@ type S3Client struct {
 }
 
 func NewS3Client(
+	ctx context.Context,
 	endpoint string,
 	region string,
 	credentials S3Credentials,
@@ -58,6 +71,11 @@ func NewS3Client(
 ) (*S3Client, error) {
 
 	s3Metrics := newS3Metrics(registry, callTimeout)
+
+	logLevel := aws.LogDebug | aws.LogDebugWithRequestErrors
+	s3Logger := aws.LoggerFunc(func(args ...interface{}) {
+		logMessageFromS3SDK(ctx, args...)
+	})
 
 	sessionConfig := &aws.Config{
 		Credentials: aws_credentials.NewStaticCredentials(
@@ -74,6 +92,8 @@ func NewS3Client(
 			},
 			metrics: s3Metrics,
 		},
+		LogLevel: &logLevel,
+		Logger:   s3Logger,
 	}
 
 	session, err := session.NewSession(sessionConfig)
@@ -89,6 +109,7 @@ func NewS3Client(
 }
 
 func NewS3ClientFromConfig(
+	ctx context.Context,
 	config *persistence_config.S3Config,
 	registry metrics.Registry,
 ) (*S3Client, error) {
@@ -107,6 +128,7 @@ func NewS3ClientFromConfig(
 	}
 
 	return NewS3Client(
+		ctx,
 		config.GetEndpoint(),
 		config.GetRegion(),
 		credentials,

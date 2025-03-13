@@ -97,7 +97,7 @@ func setupEnvironment(
 	)
 	require.NoError(t, err)
 
-	s3, err := test.NewS3Client()
+	s3, err := test.NewS3Client(ctx)
 	require.NoError(t, err)
 
 	storageFolder := fmt.Sprintf("snapshot_chunk_storage_test/%v", t.Name())

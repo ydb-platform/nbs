@@ -48,7 +48,11 @@ func initDataplane(
 	var s3 *persistence.S3Client
 	// TODO: remove when s3 will always be initialized.
 	if s3Config != nil {
-		s3, err = persistence.NewS3ClientFromConfig(s3Config, metrics.NewEmptyRegistry())
+		s3, err = persistence.NewS3ClientFromConfig(
+			ctx,
+			s3Config,
+			metrics.NewEmptyRegistry(),
+		)
 		if err != nil {
 			return err
 		}
@@ -78,7 +82,11 @@ func initDataplane(
 	migrationDstS3Config := migrationDstPersistenceConfig.GetS3Config()
 	var migrationDstS3 *persistence.S3Client
 	if migrationDstS3Config != nil {
-		migrationDstS3, err = persistence.NewS3ClientFromConfig(migrationDstS3Config, metrics.NewEmptyRegistry())
+		migrationDstS3, err = persistence.NewS3ClientFromConfig(
+			ctx,
+			migrationDstS3Config,
+			metrics.NewEmptyRegistry(),
+		)
 		if err != nil {
 			return err
 		}

@@ -18,11 +18,12 @@ import (
 
 ////////////////////////////////////////////////////////////////////////////////
 
-func NewS3Client() (*persistence.S3Client, error) {
+func NewS3Client(ctx context.Context) (*persistence.S3Client, error) {
 	endpoint := fmt.Sprintf("http://localhost:%s", os.Getenv("DISK_MANAGER_RECIPE_S3_PORT"))
 	credentials := persistence.NewS3Credentials("test", "test")
 	callTimeout := 600 * time.Second
 	return persistence.NewS3Client(
+		ctx,
 		endpoint,
 		"test",
 		credentials,

@@ -346,7 +346,7 @@ func createFixture(t *testing.T) *fixture {
 	db, err := newYDB(ctx)
 	require.NoError(t, err)
 
-	s3, err := test.NewS3Client()
+	s3, err := test.NewS3Client(ctx)
 	require.NoError(t, err)
 
 	storageFolder := fmt.Sprintf("storage_ydb_test/%v", t.Name())
