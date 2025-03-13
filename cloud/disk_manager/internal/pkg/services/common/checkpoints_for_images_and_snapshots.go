@@ -13,10 +13,6 @@ import (
 
 ////////////////////////////////////////////////////////////////////////////////
 
-func GetIdempotencyKeyForCheckpointTask(selfTaskID string) string {
-	return selfTaskID + "_create_checkpoint"
-}
-
 func scheduleCreateDRBasedDiskCheckpointTask(
 	ctx context.Context,
 	scheduler tasks.Scheduler,
@@ -26,10 +22,7 @@ func scheduleCreateDRBasedDiskCheckpointTask(
 ) (string, error) {
 
 	return scheduler.ScheduleTask(
-		headers.SetIncomingIdempotencyKey(
-			ctx,
-			GetIdempotencyKeyForCheckpointTask(selfTaskID),
-		),
+		headers.SetIncomingIdempotencyKey(ctx, selfTaskID+"_create_checkpoint"),
 		"dataplane.CreateDRBasedDiskCheckpoint",
 		"Create checkpoint for snapshot/image "+snapshotID,
 		&dataplane_protos.CreateDRBasedDiskCheckpointRequest{
@@ -101,6 +94,7 @@ func CreateCheckpoint(
 func GetCheckpointID(
 	ctx context.Context,
 	scheduler tasks.Scheduler,
+	disk *types.Disk,
 	snapshotID string,
 	selfTaskID string,
 	isDiskRegistryBasedDisk bool,
@@ -110,18 +104,15 @@ func GetCheckpointID(
 		return getCheckpointIDForReplicatedDisk(snapshotID), nil
 	}
 
-	checkpointTaskID, err := scheduler.GetTaskIDByIdempotencyKey(
-		headers.SetIncomingIdempotencyKey(
-			ctx,
-			GetIdempotencyKeyForCheckpointTask(selfTaskID),
-		),
+	checkpointTaskID, err := scheduleCreateDRBasedDiskCheckpointTask(
+		ctx,
+		scheduler,
+		disk,
+		snapshotID,
+		selfTaskID,
 	)
 	if err != nil {
 		return "", err
-	}
-
-	if checkpointTaskID == "" {
-		return "", nil
 	}
 
 	err = scheduler.WaitTaskEnded(ctx, checkpointTaskID)
@@ -145,7 +136,7 @@ func GetCheckpointID(
 	return typedMetadata.CheckpointId, nil
 }
 
-func DeleteCheckpoint(
+func deleteCheckpoint(
 	ctx context.Context,
 	scheduler tasks.Scheduler,
 	nbsClient nbs.Client,
@@ -166,6 +157,7 @@ func DeleteCheckpoint(
 	checkpointID, err := GetCheckpointID(
 		ctx,
 		scheduler,
+		disk,
 		snapshotID,
 		selfTaskID,
 		diskParams.IsDiskRegistryBasedDisk,
@@ -175,4 +167,39 @@ func DeleteCheckpoint(
 	}
 
 	return nbsClient.DeleteCheckpoint(ctx, disk.DiskId, checkpointID)
+}
+
+func CancelCheckpointCreation(
+	ctx context.Context,
+	scheduler tasks.Scheduler,
+	nbsClient nbs.Client,
+	disk *types.Disk,
+	snapshotID string,
+	selfTaskID string,
+) error {
+
+	checkpointTaskID, err := scheduleCreateDRBasedDiskCheckpointTask(
+		ctx,
+		scheduler,
+		disk,
+		snapshotID,
+		selfTaskID,
+	)
+	if err != nil {
+		return err
+	}
+
+	_, err = scheduler.CancelTask(ctx, checkpointTaskID)
+	if err != nil {
+		return err
+	}
+
+	return deleteCheckpoint(
+		ctx,
+		scheduler,
+		nbsClient,
+		disk,
+		snapshotID,
+		selfTaskID,
+	)
 }
