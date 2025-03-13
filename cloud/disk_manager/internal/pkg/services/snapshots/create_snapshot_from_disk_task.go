@@ -187,11 +187,11 @@ func (t *createSnapshotFromDiskTask) Cancel(
 	execCtx tasks.ExecutionContext,
 ) error {
 
-	disk := t.request.SrcDisk
-	nbsClient, err := t.nbsFactory.GetClient(ctx, disk.ZoneId)
+	nbsClient, err := t.nbsFactory.GetClient(ctx, t.request.SrcDisk.ZoneId)
 	if err != nil {
 		return err
 	}
+
 	selfTaskID := execCtx.GetTaskID()
 
 	err = common.CancelCheckpointCreation(
