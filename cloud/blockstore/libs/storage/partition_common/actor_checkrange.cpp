@@ -1,5 +1,6 @@
 #include "actor_checkrange.h"
 
+#include <cloud/blockstore/libs/common/block_checksum.h>
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/protos/error.pb.h>
 
@@ -91,7 +92,8 @@ void TCheckRangeActor::HandleReadBlocksResponse(
     const TActorContext& ctx)
 {
     const auto* msg = ev->Get();
-    auto status = MakeError(S_OK);
+    auto response =
+        std::make_unique<TEvVolume::TEvCheckRangeResponse>(MakeError(S_OK));
 
     const auto& error = msg->Record.GetError();
     if (HasError(error)) {
@@ -99,12 +101,17 @@ void TCheckRangeActor::HandleReadBlocksResponse(
             ctx,
             TBlockStoreComponents::PARTITION,
             "reading error has occurred: " << FormatError(error));
-        status = error;
+        response->Record.MutableStatus()->CopyFrom(error);
+    } else {
+        if (Request.GetCalculateChecksums()) {
+            TBlockChecksum blockChecksum;
+            for (const auto& buffer: msg->Record.GetBlocks().GetBuffers()) {
+                const auto checksum =
+                    blockChecksum.Extend(buffer.data(), buffer.size());
+                response->Record.MutableChecksums()->Add(checksum);
+            }
+        }
     }
-
-    auto response =
-        std::make_unique<TEvVolume::TEvCheckRangeResponse>(MakeError(S_OK));
-    response->Record.MutableStatus()->CopyFrom(status);
 
     ReplyAndDie(ctx, std::move(response));
 }

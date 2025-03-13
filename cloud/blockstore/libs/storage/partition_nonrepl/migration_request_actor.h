@@ -17,38 +17,38 @@ LWTRACE_USING(BLOCKSTORE_STORAGE_PROVIDER);
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void ProcessMirrorActorError(NProto::TError& error);
-
-////////////////////////////////////////////////////////////////////////////////
-
-// The TMirrorRequestActor class is used to write to N replicas for the mirror
-// disk. It should process all errors from replicas into E_REJECTED. Because
-// sooner or later the disk agent will return to work, or the replica will be
-// replaced. All replicas are equivalent and are placed in the Replicas.
+// The TMigrationRequestActor class is used to migrate a new device. It has two
+// replicas, one is leader and the second is follower. If we receive a fatal
+// error from the follower partition, we do not respond to the client with an
+// error, but at the same time stop the migration. And if we receive a non-fatal
+// error, response it to the client. The client will retry the request.
 
 template <typename TMethod>
-class TMirrorRequestActor final
-    : public NActors::TActorBootstrapped<TMirrorRequestActor<TMethod>>
+class TMigrationRequestActor final
+    : public NActors::TActorBootstrapped<TMigrationRequestActor<TMethod>>
 {
 private:
-    using TBase = NActors::TActorBootstrapped<TMirrorRequestActor<TMethod>>;
+    using TBase = NActors::TActorBootstrapped<TMigrationRequestActor<TMethod>>;
     using TResponseProto = typename TMethod::TResponse::ProtoRecordType;
 
     const TRequestInfoPtr RequestInfo;
-    const TVector<NActors::TActorId> Replicas;
+    const NActors::TActorId LeaderPartition;
+    const NActors::TActorId FollowerPartition;
     const typename TMethod::TRequest::ProtoRecordType Request;
     const TString DiskId;
     const NActors::TActorId ParentActorId;
     const ui64 NonreplicatedRequestCounter;
 
     TVector<TCallContextPtr> ForkedCallContexts;
-    ui32 Responses = 0;
-    TResponseProto ReplicasCollectiveResponse;
+    ui32 PendingRequests = 0;
+    TResponseProto LeaderResponse;
+    TResponseProto FollowerResponse;
 
 public:
-    TMirrorRequestActor(
+    TMigrationRequestActor(
         TRequestInfoPtr requestInfo,
-        TVector<NActors::TActorId> replicas,
+        NActors::TActorId leaderPartition,  // may be empty
+        NActors::TActorId followerPartition,
         typename TMethod::TRequest::ProtoRecordType request,
         TString diskId,
         NActors::TActorId parentActorId,
@@ -59,7 +59,10 @@ public:
 private:
     void SendRequests(const NActors::TActorContext& ctx);
     void Done(const NActors::TActorContext& ctx);
-    void UpdateResponse(TResponseProto&& response);
+
+    void UpdateResponse(
+        const NActors::TActorId& sender,
+        TResponseProto&& response);
 
 private:
     STFUNC(StateWork);
@@ -80,25 +83,27 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 template <typename TMethod>
-TMirrorRequestActor<TMethod>::TMirrorRequestActor(
+TMigrationRequestActor<TMethod>::TMigrationRequestActor(
         TRequestInfoPtr requestInfo,
-        TVector<NActors::TActorId> replicas,
+        NActors::TActorId leaderPartition,
+        NActors::TActorId followerPartition,
         typename TMethod::TRequest::ProtoRecordType request,
         TString diskId,
         NActors::TActorId parentActorId,
         ui64 nonreplicatedRequestCounter)
     : RequestInfo(std::move(requestInfo))
-    , Replicas(std::move(replicas))
+    , LeaderPartition(leaderPartition)
+    , FollowerPartition(followerPartition)
     , Request(std::move(request))
     , DiskId(std::move(diskId))
     , ParentActorId(parentActorId)
     , NonreplicatedRequestCounter(nonreplicatedRequestCounter)
 {
-    Y_DEBUG_ABORT_UNLESS(!Replicas.empty());
+    Y_DEBUG_ABORT_UNLESS(FollowerPartition);
 }
 
 template <typename TMethod>
-void TMirrorRequestActor<TMethod>::Bootstrap(const NActors::TActorContext& ctx)
+void TMigrationRequestActor<TMethod>::Bootstrap(const NActors::TActorContext& ctx)
 {
     TRequestScope timer(*RequestInfo);
 
@@ -114,9 +119,17 @@ void TMirrorRequestActor<TMethod>::Bootstrap(const NActors::TActorContext& ctx)
 }
 
 template <typename TMethod>
-void TMirrorRequestActor<TMethod>::SendRequests(const NActors::TActorContext& ctx)
+void TMigrationRequestActor<TMethod>::SendRequests(
+    const NActors::TActorContext& ctx)
 {
-    for (const auto& actorId: Replicas) {
+    PendingRequests = 2;
+
+    for (const auto& actorId: {LeaderPartition, FollowerPartition}) {
+        if (!actorId) {
+            --PendingRequests;
+            continue;
+        }
+
         auto request = std::make_unique<typename TMethod::TRequest>();
         auto& callContext = *RequestInfo->CallContext;
         if (!callContext.LWOrbit.Fork(request->CallContext->LWOrbit)) {
@@ -143,10 +156,20 @@ void TMirrorRequestActor<TMethod>::SendRequests(const NActors::TActorContext& ct
 }
 
 template <typename TMethod>
-void TMirrorRequestActor<TMethod>::Done(const NActors::TActorContext& ctx)
+void TMigrationRequestActor<TMethod>::Done(const NActors::TActorContext& ctx)
 {
+    const bool isFollowerResponseError = HasError(FollowerResponse);
+    const bool isFollowerResponseFatal =
+        isFollowerResponseError &&
+        GetErrorKind(FollowerResponse.GetError()) == EErrorKind::ErrorFatal;
+
     auto response = std::make_unique<typename TMethod::TResponse>();
-    response->Record = std::move(ReplicasCollectiveResponse);
+
+    if (isFollowerResponseError && !isFollowerResponseFatal) {
+        response->Record = std::move(FollowerResponse);
+    } else {
+        response->Record = std::move(LeaderResponse);
+    }
 
     auto& callContext = *RequestInfo->CallContext;
     for (auto& cc: ForkedCallContexts) {
@@ -165,27 +188,30 @@ void TMirrorRequestActor<TMethod>::Done(const NActors::TActorContext& ctx)
         std::make_unique<TEvNonreplPartitionPrivate::TEvWriteOrZeroCompleted>(
             NonreplicatedRequestCounter,
             RequestInfo->GetTotalCycles(),
-            false   // FollowerGotNonRetriableError
-        );
+            isFollowerResponseFatal);
     NCloud::Send(ctx, ParentActorId, std::move(completion));
 
     TBase::Die(ctx);
 }
 
 template <typename TMethod>
-void TMirrorRequestActor<TMethod>::UpdateResponse(TResponseProto&& response)
+void TMigrationRequestActor<TMethod>::UpdateResponse(
+    const NActors::TActorId& sender,
+    TResponseProto&& response)
 {
-    ProcessMirrorActorError(*response.MutableError());
-
-    if (!HasError(ReplicasCollectiveResponse)) {
-        ReplicasCollectiveResponse = std::move(response);
+    // TODO(sharpeye): use cookie to distinguish between a leader's and a
+    // follower's response
+    if (sender == FollowerPartition) {
+        FollowerResponse = std::move(response);
+    } else {
+        LeaderResponse = std::move(response);
     }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 
 template <typename TMethod>
-void TMirrorRequestActor<TMethod>::HandleUndelivery(
+void TMigrationRequestActor<TMethod>::HandleUndelivery(
     const typename TMethod::TRequest::TPtr& ev,
     const NActors::TActorContext& ctx)
 {
@@ -196,12 +222,12 @@ void TMirrorRequestActor<TMethod>::HandleUndelivery(
         DiskId.c_str(),
         TMethod::Name);
 
-    *ReplicasCollectiveResponse.MutableError() = MakeError(
+    *LeaderResponse.MutableError() = MakeError(
         E_REJECTED,
         TStringBuilder() << TMethod::Name
                          << " request undelivered to some nonrepl partitions");
 
-    if (++Responses < Replicas.size()) {
+    if (--PendingRequests) {
         return;
     }
 
@@ -209,23 +235,25 @@ void TMirrorRequestActor<TMethod>::HandleUndelivery(
 }
 
 template <typename TMethod>
-void TMirrorRequestActor<TMethod>::HandleResponse(
+void TMigrationRequestActor<TMethod>::HandleResponse(
     const typename TMethod::TResponse::TPtr& ev,
     const NActors::TActorContext& ctx)
 {
     auto* msg = ev->Get();
 
     if (HasError(msg->Record)) {
-        LOG_ERROR(ctx, TBlockStoreComponents::PARTITION_WORKER,
+        LOG_ERROR(
+            ctx,
+            TBlockStoreComponents::PARTITION_WORKER,
             "[%s] %s got error from nonreplicated partition: %s",
             DiskId.c_str(),
             TMethod::Name,
             FormatError(msg->Record.GetError()).c_str());
     }
 
-    UpdateResponse(std::move(msg->Record));
+    UpdateResponse(ev->Sender, std::move(msg->Record));
 
-    if (++Responses < Replicas.size()) {
+    if (--PendingRequests) {
         return;
     }
 
@@ -233,19 +261,19 @@ void TMirrorRequestActor<TMethod>::HandleResponse(
 }
 
 template <typename TMethod>
-void TMirrorRequestActor<TMethod>::HandlePoisonPill(
+void TMigrationRequestActor<TMethod>::HandlePoisonPill(
     const NActors::TEvents::TEvPoisonPill::TPtr& ev,
     const NActors::TActorContext& ctx)
 {
     Y_UNUSED(ev);
 
-    *ReplicasCollectiveResponse.MutableError() = MakeError(E_REJECTED, "Dead");
+    LeaderResponse.MutableError()->CopyFrom(MakeError(E_REJECTED, "Dead"));
 
     Done(ctx);
 }
 
 template <typename TMethod>
-STFUNC(TMirrorRequestActor<TMethod>::StateWork)
+STFUNC(TMigrationRequestActor<TMethod>::StateWork)
 {
     TRequestScope timer(*RequestInfo);
 
