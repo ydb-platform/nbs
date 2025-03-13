@@ -40,8 +40,11 @@ void ExtractStatusValues(const TString& jsonStr, ui32& code, TString& message) {
     }
 }
 
-void SaveResultToFile(const TString& content, const TString& diskID, ui64 startIndex, ui64 blocksInThisRequest) {
-    const TString folder = "./checkRange_" + diskID;
+void SaveResultToFile(const TString& content, const TString& diskID,const TString& postfix, ui64 startIndex, ui64 blocksInThisRequest) {
+    TString folder = "./checkRange_" + diskID;
+    if (!postfix.Empty()){
+        folder += "_" + postfix;
+    }
     TFsPath dir(folder);
 
     if (!dir.Exists()) {
@@ -64,6 +67,8 @@ private:
     ui64 BlocksPerRequest = 0;
     bool ShowReadErrorsEnabled = false;
     bool SaveResultsEnabled = false;
+    bool CalculateChecksums = false;
+    TString FolderPostfix;
 
 public:
     TCheckRangeCommand(IBlockStorePtr client)
@@ -97,6 +102,18 @@ public:
                 "saving result of checkRange operations to the folder './checkRange', each request in own file")
             .RequiredArgument("BOOL")
             .StoreResult(&SaveResultsEnabled);
+
+        Opts.AddLongOption(
+                "calculate-checksums")
+            .RequiredArgument("BOOL")
+            .StoreResult(&CalculateChecksums);
+
+        Opts.AddLongOption(
+                "folder-postfix",
+                "select folder postfix: full folder name - (checkRange_ + "
+                "DiskId + postfix)")
+            .RequiredArgument("STR")
+            .StoreResult(&FolderPostfix);
     }
 
 protected:
@@ -149,9 +166,10 @@ protected:
 
             std::ostringstream input;
             input << "{" << "\"DiskId\": \"" << DiskId << "\", "
-                            << "\"StartIndex\": " << currentBlockIndex << ", "
-                            << "\"BlocksCount\": " << blocksInThisRequest
-                            << "}";
+                  << "\"StartIndex\": " << currentBlockIndex << ", "
+                  << "\"BlocksCount\": " << blocksInThisRequest << ", "
+                  << "\"CalculateChecksums\": "
+                  << (CalculateChecksums ? "true" : "false") << "}";
 
             request->SetAction("checkrange");
             request->SetInput(input.str());
@@ -191,6 +209,7 @@ protected:
                 SaveResultToFile(
                     result.GetOutput().Data(),
                     DiskId,
+                    FolderPostfix,
                     currentBlockIndex,
                     blocksInThisRequest);
             }
