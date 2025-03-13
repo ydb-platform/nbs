@@ -312,6 +312,7 @@ func (f *factory) GetShards(zoneID string) []string {
 	if !ok {
 		return []string{}
 	}
+
 	return shards.Shards
 }
 

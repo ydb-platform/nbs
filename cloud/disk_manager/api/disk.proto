@@ -20,7 +20,6 @@ enum DiskKind {
 message DiskId {
     string zone_id = 1;
     string disk_id = 2;
-    string shard_id = 3;
 }
 
 message DiskPerformanceProfile {

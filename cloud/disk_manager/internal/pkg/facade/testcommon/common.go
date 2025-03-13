@@ -293,18 +293,6 @@ func newNbsClientClientConfig() *nbs_config.ClientConfig {
 					),
 				},
 			},
-			"zone-d": {
-				Endpoints: []string{
-					fmt.Sprintf(
-						"localhost:%v",
-						os.Getenv("DISK_MANAGER_RECIPE_NBS4_PORT"),
-					),
-					fmt.Sprintf(
-						"localhost:%v",
-						os.Getenv("DISK_MANAGER_RECIPE_NBS5_PORT"),
-					),
-				},
-			},
 			"zone-d-shard-1": {
 				Endpoints: []string{
 					fmt.Sprintf(

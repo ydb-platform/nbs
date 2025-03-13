@@ -4,7 +4,6 @@ import (
 	"context"
 	"math"
 	"math/rand"
-	"slices"
 	"strings"
 
 	"github.com/golang/protobuf/proto"
@@ -168,16 +167,6 @@ func (s *service) prepareZoneId(
 ) (string, error) {
 
 	shards := s.nbsFactory.GetShards(disk.ZoneId)
-
-	if len(disk.ShardId) != 0 {
-		if !slices.Contains(shards, disk.ShardId) {
-			return "", errors.NewInvalidArgumentError(
-				"there's no shard with id %v for zone: %v",
-				disk.ShardId, disk.ZoneId,
-			)
-		}
-		return disk.ShardId, nil
-	}
 
 	if len(shards) == 0 {
 		return disk.ZoneId, nil

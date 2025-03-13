@@ -54,6 +54,7 @@ func testDiskServiceCreateEmptyDiskInZone(t *testing.T, zoneID string) {
 	err = internal_client.WaitOperation(ctx, client, operation.Id)
 	require.NoError(t, err)
 
+	// Need double creation to be sure, that threre would be no error.
 	operation, err = client.CreateDisk(reqCtx, &request)
 	require.NoError(t, err)
 	require.NotEmpty(t, operation)

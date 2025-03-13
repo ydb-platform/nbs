@@ -115,15 +115,6 @@ NbsConfig: <
         >
     >
     Zones: <
-        key: "zone-d"
-        value: <
-            Endpoints: [
-                "localhost:{nbs4_port}",
-                "localhost:{nbs5_port}"
-            ]
-        >
-    >
-    Zones: <
         key: "zone-d-shard-1"
         value: <
             Endpoints: [
@@ -293,15 +284,6 @@ NbsConfig: <
             Endpoints: [
                 "localhost:{nbs3_port}",
                 "localhost:{nbs3_port}"
-            ]
-        >
-    >
-    Zones: <
-        key: "zone-d"
-        value: <
-            Endpoints: [
-                "localhost:{nbs4_port}",
-                "localhost:{nbs5_port}"
             ]
         >
     >
