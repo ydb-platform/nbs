@@ -230,8 +230,9 @@ func (c *createDisk) run() error {
 	req := &disk_manager.CreateDiskRequest{
 		Size: c.size,
 		DiskId: &disk_manager.DiskId{
-			ZoneId: c.zoneID,
-			DiskId: c.diskID,
+			ZoneId:  c.zoneID,
+			DiskId:  c.diskID,
+			ShardId: c.shardID,
 		},
 		BlockSize:       c.blockSize,
 		Kind:            disk_manager.DiskKind(c.kind),
@@ -291,6 +292,13 @@ func newCreateDiskCmd(clientConfig *client_config.ClientConfig) *cobra.Command {
 	if err := cmd.MarkFlagRequired("zone-id"); err != nil {
 		log.Fatalf("Error setting flag zone-id as required: %v", err)
 	}
+
+	cmd.Flags().StringVar(
+		&c.shardID,
+		"shard-id",
+		"",
+		"shard ID in which to create disk; only available for zones with scale units",
+	)
 
 	cmd.Flags().StringVar(&c.diskID, "id", "", "disk ID; required")
 	if err := cmd.MarkFlagRequired("id"); err != nil {
