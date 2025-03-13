@@ -78,13 +78,6 @@ type Scheduler interface {
 
 	SendEvent(ctx context.Context, taskID string, event int64) error
 
-	// Requires "idempotency-key" header in ctx metadata.
-	// Returns id of the task with the same idempotency key.
-	// If there is no such task, returns empty string.
-	GetTaskIDByIdempotencyKey(
-		ctx context.Context,
-	) (string, error)
-
 	// TODO: Does it belong here?
 	GetOperation(ctx context.Context, taskID string) (*operation.Operation, error)
 

@@ -405,27 +405,6 @@ func (s *scheduler) SendEvent(
 	return s.storage.SendEvent(ctx, taskID, event)
 }
 
-func (s *scheduler) GetTaskIDByIdempotencyKey(
-	ctx context.Context,
-) (string, error) {
-
-	ctx = withComponentLoggingField(ctx)
-
-	taskState, err := s.storage.GetTaskByIdempotencyKey(
-		ctx,
-		headers.GetIdempotencyKey(ctx),
-		headers.GetAccountID(ctx),
-	)
-	if err != nil {
-		if errors.Is(err, errors.NewEmptyNotFoundError()) {
-			return "", nil
-		}
-		return "", err
-	}
-
-	return taskState.ID, nil
-}
-
 func (s *scheduler) GetOperation(
 	ctx context.Context,
 	taskID string,
