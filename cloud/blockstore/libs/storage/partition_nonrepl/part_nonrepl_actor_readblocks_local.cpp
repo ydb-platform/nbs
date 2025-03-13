@@ -153,7 +153,7 @@ void TDiskAgentReadLocalActor::HandleReadDeviceBlocksResponse(
     auto* msg = ev->Get();
 
     if (HasError(msg->GetError())) {
-        HandleError(ctx, msg->GetError(), false);
+        HandleError(ctx, msg->GetError(), EStatus::Fail);
         return;
     }
 
@@ -165,7 +165,7 @@ void TDiskAgentReadLocalActor::HandleReadDeviceBlocksResponse(
             PartConfig->MakeError(
                 E_CANCELLED,
                 "failed to acquire sglist in DiskAgentReadActor"),
-            false);
+            EStatus::Fail);
         return;
     }
 

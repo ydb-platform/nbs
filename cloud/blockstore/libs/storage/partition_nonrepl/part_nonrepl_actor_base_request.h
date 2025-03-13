@@ -66,7 +66,7 @@ protected:
     void HandleError(
         const NActors::TActorContext& ctx,
         NProto::TError error,
-        bool timedOut);
+        EStatus status);
 
     void Done(
         const NActors::TActorContext& ctx,

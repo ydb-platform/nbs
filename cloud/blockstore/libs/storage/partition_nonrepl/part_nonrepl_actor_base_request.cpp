@@ -57,13 +57,10 @@ void TDiskAgentBaseRequestActor::Bootstrap(const TActorContext& ctx)
 void TDiskAgentBaseRequestActor::HandleError(
     const TActorContext& ctx,
     NProto::TError error,
-    bool timedOut)
+    EStatus status)
 {
     ProcessError(*TActorContext::ActorSystem(), *PartConfig, error);
-    Done(
-        ctx,
-        MakeResponse(std::move(error)),
-        timedOut ? EStatus::Timeout : EStatus::Fail);
+    Done(ctx, MakeResponse(std::move(error)), status);
 }
 
 void TDiskAgentBaseRequestActor::Done(
@@ -131,7 +128,7 @@ void TDiskAgentBaseRequestActor::HandleCancelRequest(
                         ? TimeoutPolicy.OverrideMessage
                         : (TStringBuilder()
                            << RequestName << " request timed out")),
-                true);
+                EStatus::Timeout);
             return;
         case EReason::Canceled:
             LOG_WARN(
@@ -147,7 +144,7 @@ void TDiskAgentBaseRequestActor::HandleCancelRequest(
                 PartConfig->MakeError(
                     E_REJECTED,
                     TStringBuilder() << RequestName << " request is canceled"),
-                false);
+                EStatus::Fail);
             return;
     }
 
@@ -159,7 +156,7 @@ void TDiskAgentBaseRequestActor::HandleCancelRequest(
             TStringBuilder()
                 << RequestName << " request got an unknown cancel reason: "
                 << static_cast<int>(msg->Reason)),
-        false);
+        EStatus::Fail);
 }
 
 void TDiskAgentBaseRequestActor::StateWork(TAutoPtr<NActors::IEventHandle>& ev)

@@ -252,7 +252,8 @@ public:
         return OutdatedDeviceIds;
     }
 
-    bool GetLaggingDevicesAllowed() const {
+    bool GetLaggingDevicesAllowed() const
+    {
         return LaggingDevicesAllowed;
     }
 

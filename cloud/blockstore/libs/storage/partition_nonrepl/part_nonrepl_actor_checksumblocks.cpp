@@ -149,7 +149,7 @@ void TDiskAgentChecksumActor::HandleChecksumDeviceBlocksResponse(
     auto* msg = ev->Get();
 
     if (HasError(msg->GetError())) {
-        HandleError(ctx, msg->GetError(), false);
+        HandleError(ctx, msg->GetError(), EStatus::Fail);
         return;
     }
 

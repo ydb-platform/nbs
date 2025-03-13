@@ -329,7 +329,7 @@ bool TNonreplicatedPartitionActor::InitRequests(
                     E_REJECTED,
                     TStringBuilder() << "Device " << dr.Device.GetDeviceUUID()
                                      << "is lagging behind on data. All IO "
-                                        "operations, are prohibited."));
+                                        "operations are prohibited."));
             return false;
         }
 
@@ -522,8 +522,7 @@ void TNonreplicatedPartitionActor::HandleDeviceTimeoutedResponse(
         "[%s] Attempted to deem device %s as lagging. Result: %s",
         PartConfig->GetName().c_str(),
         PartConfig->GetDevices()[ev->Cookie].GetDeviceUUID().c_str(),
-        (HasError(msg->GetError()) ? FormatError(msg->GetError()).c_str()
-                                   : "Ok"));
+        FormatError(msg->GetError()).c_str());
 }
 
 void TNonreplicatedPartitionActor::HandleAgentIsUnavailable(
@@ -544,8 +543,8 @@ void TNonreplicatedPartitionActor::HandleAgentIsUnavailable(
             EDeviceStatus::Unavailable;
     }
 
-    for (const auto& [actorId, requestInfo]: RequestsInProgress.AllRequests()) {
-        for (int deviceIndex: requestInfo.Value.DeviceIndices) {
+    for (const auto& [actorId, requestData]: RequestsInProgress.AllRequests()) {
+        for (int deviceIndex: requestData.Value.DeviceIndices) {
             if (PartConfig->GetDevices()[deviceIndex].GetAgentId() ==
                 msg->LaggingAgent.GetAgentId())
             {
@@ -575,7 +574,7 @@ void TNonreplicatedPartitionActor::HandleAgentIsBackOnline(
         msg->AgentId.Quote().c_str());
 
     for (int i = 0; i < PartConfig->GetDevices().size(); ++i) {
-        const auto& device = PartConfig->GetDevices().at(i);
+        const auto& device = PartConfig->GetDevices()[i];
         if (device.GetAgentId() == msg->AgentId &&
             DeviceStats[i].DeviceStatus <= EDeviceStatus::Unavailable)
         {
