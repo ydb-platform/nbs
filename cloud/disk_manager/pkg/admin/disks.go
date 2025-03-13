@@ -200,6 +200,7 @@ type createDisk struct {
 	srcSnapshotID   string
 	size            int64
 	zoneID          string
+	shardID         string
 	diskID          string
 	blockSize       int64
 	kind            diskKind
