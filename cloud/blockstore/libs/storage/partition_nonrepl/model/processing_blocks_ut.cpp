@@ -96,25 +96,31 @@ Y_UNIT_TEST_SUITE(TProcessingBlocksTest)
         UNIT_ASSERT(blocks.IsProcessing());
         range = blocks.BuildProcessingRange();
         UNIT_ASSERT_VALUES_EQUAL(1500, range.Start);
-        UNIT_ASSERT_VALUES_EQUAL(2523, range.End);
+        UNIT_ASSERT_VALUES_EQUAL(2047, range.End);
 
         UNIT_ASSERT(blocks.AdvanceProcessingIndex());
         UNIT_ASSERT(blocks.IsProcessing());
         range = blocks.BuildProcessingRange();
-        UNIT_ASSERT_VALUES_EQUAL(2524, range.Start);
-        UNIT_ASSERT_VALUES_EQUAL(3547, range.End);
+        UNIT_ASSERT_VALUES_EQUAL(2048, range.Start);
+        UNIT_ASSERT_VALUES_EQUAL(3071, range.End);
 
         UNIT_ASSERT(blocks.AdvanceProcessingIndex());
         UNIT_ASSERT(blocks.IsProcessing());
         range = blocks.BuildProcessingRange();
         UNIT_ASSERT_VALUES_EQUAL(33000, range.Start);
-        UNIT_ASSERT_VALUES_EQUAL(34023, range.End);
+        UNIT_ASSERT_VALUES_EQUAL(33791, range.End);
 
         UNIT_ASSERT(blocks.AdvanceProcessingIndex());
         UNIT_ASSERT(blocks.IsProcessing());
         range = blocks.BuildProcessingRange();
-        UNIT_ASSERT_VALUES_EQUAL(34024, range.Start);
-        UNIT_ASSERT_VALUES_EQUAL(35047, range.End);
+        UNIT_ASSERT_VALUES_EQUAL(33792, range.Start);
+        UNIT_ASSERT_VALUES_EQUAL(34815, range.End);
+
+        UNIT_ASSERT(blocks.AdvanceProcessingIndex());
+        UNIT_ASSERT(blocks.IsProcessing());
+        range = blocks.BuildProcessingRange();
+        UNIT_ASSERT_VALUES_EQUAL(34816, range.Start);
+        UNIT_ASSERT_VALUES_EQUAL(35839, range.End);
 
         UNIT_ASSERT(!blocks.AdvanceProcessingIndex());
         UNIT_ASSERT(!blocks.IsProcessing());
