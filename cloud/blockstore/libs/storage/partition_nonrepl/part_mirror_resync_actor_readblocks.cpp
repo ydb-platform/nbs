@@ -52,7 +52,7 @@ void TMirrorPartitionResyncActor::ProcessReadRequestSyncPath(
     TVector<TReplicaDescriptor> replicas;
     // filtering out replicas with fresh devices
     for (ui32 i = 0; i < Replicas.size(); ++i) {
-        if (State.GetReplicaInfos()[i].Config->DevicesReadyForReading(range)) {
+        if (State.DevicesReadyForReading(i, range)) {
             replicas.push_back(Replicas[i]);
         }
     }
