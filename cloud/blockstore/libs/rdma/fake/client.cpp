@@ -454,7 +454,6 @@ private:
         Y_UNUSED(ev);
 
         LOG_ERROR_S(ctx, TBlockStoreComponents::RDMA, "Request timedout");
-
         AbortRequest(std::move(Request), E_REJECTED, "timeout");
 
         Die(ctx);
@@ -482,12 +481,10 @@ private:
         const TEvDiskAgent::TEvReadDeviceBlocksResponse::TPtr& ev,
         const TActorContext& ctx)
     {
-        auto* msg = ev->Get();
-
-        NProto::TReadDeviceBlocksResponse proto = std::move(msg->Record);
+        NProto::TReadDeviceBlocksResponse& proto = ev->Get()->Record;
 
         NProto::TIOVector blocks;
-        blocks.Swap(msg->Record.MutableBlocks());
+        blocks.Swap(proto.MutableBlocks());
 
         const auto& buffers = blocks.GetBuffers();
         ui64 size = 0;
@@ -499,7 +496,7 @@ private:
             ctx,
             TBlockStoreComponents::RDMA,
             "Got ReadDeviceBlocks response from #"
-                << NodeId << ": " << FormatError(msg->GetError()) << ", "
+                << NodeId << ": " << FormatError(proto.GetError()) << ", "
                 << FormatByteSize(size));
 
         TStackVec<TBlockDataRef> parts;
