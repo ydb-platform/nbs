@@ -364,16 +364,6 @@ private:
 
     TVector<ui64> GCCompletedPartitions;
 
-    // Is retrying creation request to disk registry
-    bool LocalDiskCreationRetries = false;
-
-    // Total timeout and first attempt when retrying creation request to disk registry
-    const TDuration LocalDiskCreationTotalTimeout;
-    TInstant CreationStartedAt;
-
-    // Delay provider when retrying creation request to disk registry
-    TBackoffDelayProvider LocalDiskCreationRetryDelayProvider;
-
 public:
     TVolumeActor(
         const NActors::TActorId& owner,

@@ -593,8 +593,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStatePoolsTest)
                 makeLocalDevice("dev-1", "uuid-2.1"),
                 makeLocalDevice("dev-2", "uuid-2.2"),
                 makeLocalDevice("dev-3", "uuid-2.3"),
-                makeLocalDevice("dev-4", "uuid-2.4"),
-                Device("dev-5", "uuid-2.5")
+                Device("dev-4", "uuid-2.4")
             })
         };
 

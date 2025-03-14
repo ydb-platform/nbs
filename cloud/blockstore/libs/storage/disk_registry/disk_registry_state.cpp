@@ -2652,13 +2652,13 @@ auto TDiskRegistryState::CreateDiskPlacementInfo(
     };
 }
 
-auto TDiskRegistryState::GetAgentIdSuitableForLocalDiskAllocationAfterCleanup(
-    const THashSet<TNodeId>& nodeIds,
+bool TDiskRegistryState::CanAllocateLocalDiskAfterSecureErase(
+    const TVector<TString>& agentIds,
     const TString& poolName,
-    const ui64 totalByteCount) const -> TAgentId
+    const ui64 totalByteCount) const
 {
-    for (const TNodeId& nodeId: nodeIds) {
-        const auto agentId = GetAgentId(nodeId);
+    bool canAllocate = false;
+    for (const TString& agentId: agentIds) {
         auto [infos, error] = QueryAvailableStorage(
             agentId,
             poolName,
@@ -2672,14 +2672,30 @@ auto TDiskRegistryState::GetAgentIdSuitableForLocalDiskAllocationAfterCleanup(
         for (const auto& chunks: infos) {
             const ui64 chunksSize =
                 (chunks.FreeChunks + chunks.DirtyChunks) * chunks.ChunkSize;
+            STORAGE_LOG(
+                TLOG_DEBUG,
+                "AgentId=%s TAgentStorageInfo={.ChunkSize=%lu .ChunkCount=%u "
+                ".DirtyChunks=%u .FreeChunks=%u}",
+                agentId.Quote().c_str(),
+                chunks.ChunkSize,
+                chunks.ChunkCount,
+                chunks.DirtyChunks,
+                chunks.FreeChunks);
             if (totalSize <= chunksSize) {
-                return agentId;
+                STORAGE_LOG(
+                    TLOG_DEBUG,
+                    "Agent %s is suitable for allocation after SecureErase. "
+                    "Got requested %lu bytes",
+                    agentId.Quote().c_str(),
+                    totalByteCount);
+                canAllocate = true;
+                break;
             }
             totalSize -= chunksSize;
         }
     }
 
-    return {};
+    return canAllocate;
 }
 
 NProto::TError TDiskRegistryState::AllocateSimpleDisk(
@@ -2794,24 +2810,6 @@ NProto::TError TDiskRegistryState::AllocateSimpleDisk(
     }
 
     auto allocatedDevices = DeviceList.AllocateDevices(params.DiskId, query);
-
-    if (!allocatedDevices && query.PoolKind == NProto::DEVICE_POOL_KIND_LOCAL &&
-        StorageConfig->GetAsyncDeallocLocalDisk())
-    {
-        auto agentId = GetAgentIdSuitableForLocalDiskAllocationAfterCleanup(
-            query.NodeIds,
-            query.PoolName,
-            query.GetTotalByteCount());
-        if (agentId) {
-            return MakeError(
-                E_TRY_AGAIN,
-                TStringBuilder()
-                    << "can't allocate disk with " << blocksToAllocate
-                    << " blocks x " << params.BlockSize
-                    << " bytes. can after cleanup. one of suitable agents: "
-                    << agentId.Quote().c_str());
-        }
-    }
 
     if (!allocatedDevices) {
         onError();

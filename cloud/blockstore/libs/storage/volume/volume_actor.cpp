@@ -84,10 +84,6 @@ TVolumeActor::TVolumeActor(
                 time);
         }
     )
-    , LocalDiskCreationTotalTimeout(Config->GetLocalDiskCreationTotalTimeout())
-    , LocalDiskCreationRetryDelayProvider(
-          Config->GetMinLocalDiskCreationRetryDelay(),
-          Config->GetMaxLocalDiskCreationRetryDelay())
 {}
 
 TVolumeActor::~TVolumeActor()

@@ -2108,8 +2108,6 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
 
         UNIT_ASSERT_EQUAL(secureEraseDeviceRequests.size(), 3UL);
         while (secureEraseDeviceRequests.size() != 1) {
-            std::cout << secureEraseDeviceRequests.back()->ToString()
-                      << std::endl;
             runtime->AdvanceCurrentTime(5min);
             runtime->Send(secureEraseDeviceRequests.back().release());
 

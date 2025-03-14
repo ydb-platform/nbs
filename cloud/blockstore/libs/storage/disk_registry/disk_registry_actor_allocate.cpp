@@ -1,6 +1,7 @@
 #include "disk_registry_actor.h"
 
 #include <cloud/blockstore/libs/diagnostics/critical_events.h>
+#include <cloud/storage/core/libs/common/media.h>
 
 namespace NCloud::NBlockStore::NStorage {
 
@@ -129,6 +130,16 @@ void TDiskRegistryActor::ExecuteAddDisk(
             .MediaKind = args.MediaKind
         },
         &result);
+
+    if (args.Error.GetCode() == E_BS_DISK_ALLOCATION_FAILED &&
+        IsDiskRegistryLocalMediaKind(args.MediaKind) &&
+        State->CanAllocateLocalDiskAfterSecureErase(
+            args.AgentIds,
+            args.PoolName,
+            args.BlocksCount * args.BlockSize))
+    {
+        args.Error = MakeError(E_TRY_AGAIN, "Can allocate local disk after secure erase.");
+    }
 
     args.Devices = std::move(result.Devices);
     args.DeviceMigrations = std::move(result.Migrations);
