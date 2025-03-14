@@ -518,7 +518,7 @@ TDuration MSeconds(ui32 value)
     xxx(LaggingDevicesForMirror2DisksEnabled,     bool,      false               )\
     xxx(LaggingDevicesForMirror3DisksEnabled,     bool,      false               )\
     xxx(LaggingDeviceTimeoutThreshold,            TDuration, Seconds(5)          )\
-    xxx(LaggingDevicePingInterval,                TDuration, MSeconds(500)       )\
+    xxx(LaggingDevicePingInterval,                TDuration, MSeconds(750)       )\
                                                                                   \
     xxx(OptimizeVoidBuffersTransferForReadsEnabled,     bool,      false         )\
     xxx(VolumeHistoryCleanupItemCount,                  ui32,      100'000       )\

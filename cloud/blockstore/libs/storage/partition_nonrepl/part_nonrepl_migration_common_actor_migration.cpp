@@ -89,7 +89,7 @@ void TNonreplicatedPartitionMigrationCommonActor::MigrateRange(
 
     LastRangeMigrationStartTs = ctx.Now();
 
-    LOG_DEBUG(
+    LOG_INFO(
         ctx,
         TBlockStoreComponents::PARTITION,
         "[%s] Migrating range: %s",
@@ -245,6 +245,13 @@ void TNonreplicatedPartitionMigrationCommonActor::HandleRangeMigrated(
     STORAGE_CHECK_PRECONDITION(TimeoutCalculator);
 
     auto* msg = ev->Get();
+
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::PARTITION,
+        "[%s] Migrated range: %s",
+        DiskId.c_str(),
+        DescribeRange(msg->Range).c_str());
 
     ProfileLog->Write({
         .DiskId = DiskId,

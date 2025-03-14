@@ -13,9 +13,9 @@ bool TDisjointRangeSet::TryInsert(TBlockRange64 range)
         BlockSize = range.Size();
     }
 
-    if (range.Size() != *BlockSize) {
-        return false;
-    }
+    // if (range.Size() != *BlockSize) {
+    //     return false;
+    // }
 
     auto it = EndToStart.lower_bound(range.Start);
     if (it != EndToStart.end()) {

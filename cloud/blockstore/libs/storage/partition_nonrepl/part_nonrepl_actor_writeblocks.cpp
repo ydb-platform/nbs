@@ -245,6 +245,18 @@ void TNonreplicatedPartitionActor::HandleWriteBlocks(
         CalculateWriteRequestBlockCount(msg->Record, PartConfig->GetBlockSize())
     );
 
+    LOG_WARN(
+        ctx,
+        TBlockStoreComponents::PARTITION,
+        "xxxxx AID[%s] TNonreplicatedPartitionActor::HandleWriteBlocks"
+        ", sender: %lu"
+        ", size: %lu"
+        ", agentId = %s",
+        ctx.SelfID.ToString().c_str(),
+        ev->Sender.ToString().c_str(),
+        blockRange.Size(),
+        PartConfig->GetDevices()[0].GetAgentId().c_str());
+
     TVector<TDeviceRequest> deviceRequests;
     TRequestTimeoutPolicy timeoutPolicy;
     TRequestData request;

@@ -315,11 +315,14 @@ public:
                 Y_UNUSED(requestRange);
                 Y_UNUSED(relativeRange);
 
+                Cerr << Devices[i].GetDeviceUUID() << ":" << i << "; " << excludeIndexes.contains(i) << "; " << FreshDeviceIds.contains(Devices[i].GetDeviceUUID()) << "; " << OutdatedDeviceIds.contains(Devices[i].GetDeviceUUID()) << Endl;
+
                 return !Devices[i].GetDeviceUUID() ||
                        excludeIndexes.contains(i) ||
                        FreshDeviceIds.contains(Devices[i].GetDeviceUUID()) ||
                        OutdatedDeviceIds.contains(Devices[i].GetDeviceUUID());
             });
+        Cerr << "READY: " << result << Endl;
         return result;
     }
 

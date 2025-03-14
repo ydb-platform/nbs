@@ -11,6 +11,7 @@
 #include <cloud/storage/core/libs/diagnostics/critical_events.h>
 
 #include <util/string/builder.h>
+#include <util/string/vector.h>
 
 namespace NCloud::NBlockStore::NStorage {
 
@@ -253,6 +254,18 @@ void TNonreplicatedPartitionActor::HandleReadBlocks(
         &deviceRequests,
         &timeoutPolicy,
         &request);
+
+    LOG_WARN(
+        ctx,
+        TBlockStoreComponents::PARTITION,
+        "xxxxx AID[%s] TNonreplicatedPartitionActor::HandleReadBlocks"
+        ", sender: %lu"
+        ", size: %lu"
+        ", agentId = %s",
+        ctx.SelfID.ToString().c_str(),
+        ev->Sender.ToString().c_str(),
+        blockRange.Size(),
+        PartConfig->GetDevices()[0].GetAgentId().c_str());
 
     if (!ok) {
         return;

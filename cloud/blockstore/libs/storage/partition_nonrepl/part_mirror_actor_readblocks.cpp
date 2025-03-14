@@ -324,6 +324,14 @@ void TRequestActor<TMethod>::HandleResponse(
     auto& record = msg->Record;
     ProcessMirrorActorError(*record.MutableError());
 
+    LOG_DEBUG(
+        ctx,
+        TBlockStoreComponents::PARTITION_WORKER,
+        "[%s] %s got response from nonreplicated partition: %s",
+        DiskId.c_str(),
+        TMethod::Name,
+        FormatError(record.GetError()).c_str());
+
     if (HasError(record)) {
         LOG_ERROR(ctx, TBlockStoreComponents::PARTITION_WORKER,
             "[%s] %s got error from nonreplicated partition: %s",

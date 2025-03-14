@@ -8,6 +8,7 @@
 #include <cloud/blockstore/libs/storage/core/probes.h>
 #include <cloud/blockstore/libs/storage/core/proto_helpers.h>
 #include <cloud/blockstore/libs/storage/core/unimplemented.h>
+#include <cloud/blockstore/libs/storage/disk_agent/model/public.h>
 
 #include <contrib/ydb/core/base/appdata.h>
 
@@ -355,6 +356,7 @@ bool TNonreplicatedPartitionActor::InitRequests(
             deviceStat.GetTimedOutStateDuration(ctx.Now()) >
                 Config->GetLaggingDeviceTimeoutThreshold())
         {
+            Cerr << "yyyyyy InitRequests for Device " << dr.Device.GetDeviceUUID() << ". Is is timeouted. deviceStat.GetTimedOutStateDuration = " << deviceStat.GetTimedOutStateDuration(ctx.Now()) << Endl;
             NCloud::Send(
                 ctx,
                 PartConfig->GetParentActorId(),
@@ -453,6 +455,8 @@ void TNonreplicatedPartitionActor::OnRequestSuccess(
     ui32 deviceIndex,
     TDuration executionTime)
 {
+    Cerr << "yyyyyy OnRequestSuccess, device " << PartConfig->GetDevices()[deviceIndex].GetDeviceUUID() << Endl;
+
     auto& stat = DeviceStats[deviceIndex];
     stat.FirstTimeoutTs = {};
     stat.ResponseTimes.PushBack(executionTime);
@@ -466,6 +470,8 @@ void TNonreplicatedPartitionActor::OnRequestTimeout(
     TInstant now)
 {
     auto& stat = DeviceStats[deviceIndex];
+
+    Cerr << "yyyyyy OnRequestTimeout, device " << PartConfig->GetDevices()[deviceIndex].GetDeviceUUID() << Endl;
 
     if (!stat.FirstTimeoutTs) {
         stat.FirstTimeoutTs = now - executionTime;

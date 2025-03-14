@@ -22,6 +22,9 @@ enum EErrorFlag
     // Currently set if a problem with nonreplicated disk/agent was detected.
     EF_HW_PROBLEMS_DETECTED = 2;
 
+    // Flag is used to signal that a request can be retried without any timeout.
+    EF_INSTANT_RETRY_ALLOWED = 3;
+
     // TODO: EF_RETRIABLE, EF_CLIENT
 }
 

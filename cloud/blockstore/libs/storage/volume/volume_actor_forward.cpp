@@ -590,6 +590,15 @@ void TVolumeActor::ForwardRequest(
     }
     const ui64 volumeRequestId = VolumeRequestIdGenerator->Advance();
 
+    LOG_WARN(
+        ctx,
+        TBlockStoreComponents::VOLUME,
+        "xxxxx [%lu] %s request with id = %lu, sender: %s",
+        TabletID(),
+        TMethod::Name,
+        volumeRequestId,
+        ev->Sender.ToString().c_str());
+
     if (ShuttingDown) {
         replyError(MakeError(E_REJECTED, "Shutting down"));
         return;

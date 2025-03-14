@@ -107,6 +107,12 @@ void TNonreplicatedPartitionMigrationCommonActor::MirrorRequest(
         SelfId(),   // parentActorId
         WriteAndZeroRequestsInProgress.AddWriteRequest(range));
 
+    // LOG_WARN(
+    //     ctx,
+    //     TBlockStoreComponents::PARTITION,
+    //     "xxxxx Register mirror migration actor: %s",
+    //     mrrId.ToString().c_str());
+
     if constexpr (IsExactlyWriteMethod<TMethod>) {
         NonZeroRangesMap.MarkChanged(range);
     }
