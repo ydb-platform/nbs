@@ -97,10 +97,6 @@ func (t *createImageFromDiskTask) run(
 	}
 
 	t.state.CheckpointID = checkpointID
-	err = execCtx.SaveState(ctx)
-	if err != nil {
-		return err
-	}
 
 	taskID, err := t.scheduler.ScheduleZonalTask(
 		headers.SetIncomingIdempotencyKey(ctx, selfTaskID+"_run"),
@@ -203,21 +199,29 @@ func (t *createImageFromDiskTask) Cancel(
 	execCtx tasks.ExecutionContext,
 ) error {
 
+	disk := t.request.SrcDisk
 	nbsClient, err := t.nbsFactory.GetClient(ctx, t.request.SrcDisk.ZoneId)
 	if err != nil {
 		return err
 	}
 
-	err = common.CancelCheckpointCreation(
+	checkpointID, err := common.CancelCheckpointCreation(
 		ctx,
 		t.scheduler,
 		nbsClient,
-		t.request.SrcDisk,
+		disk,
 		t.request.DstImageId,
 		execCtx.GetTaskID(),
 	)
 	if err != nil {
 		return err
+	}
+
+	if checkpointID != "" {
+		err = nbsClient.DeleteCheckpoint(ctx, disk.DiskId, checkpointID)
+		if err != nil {
+			return err
+		}
 	}
 
 	return deleteImage(

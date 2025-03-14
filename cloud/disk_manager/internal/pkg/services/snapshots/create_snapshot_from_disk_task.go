@@ -187,23 +187,30 @@ func (t *createSnapshotFromDiskTask) Cancel(
 	execCtx tasks.ExecutionContext,
 ) error {
 
+	disk := t.request.SrcDisk
 	nbsClient, err := t.nbsFactory.GetClient(ctx, t.request.SrcDisk.ZoneId)
 	if err != nil {
 		return err
 	}
-
 	selfTaskID := execCtx.GetTaskID()
 
-	err = common.CancelCheckpointCreation(
+	checkpointID, err := common.CancelCheckpointCreation(
 		ctx,
 		t.scheduler,
 		nbsClient,
-		t.request.SrcDisk,
+		disk,
 		t.request.DstSnapshotId,
 		selfTaskID,
 	)
 	if err != nil {
 		return err
+	}
+
+	if checkpointID != "" {
+		err = nbsClient.DeleteCheckpoint(ctx, disk.DiskId, checkpointID)
+		if err != nil {
+			return err
+		}
 	}
 
 	snapshotMeta, err := t.storage.DeleteSnapshot(

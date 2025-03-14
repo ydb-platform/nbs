@@ -127,7 +127,6 @@ func (t *createDRBasedDiskCheckpointTask) getCheckpointIDs() (string, string) {
 	}
 
 	currentCheckpointID := t.getCurrentCheckpointID()
-
 	return previousCheckpointID, currentCheckpointID
 }
 

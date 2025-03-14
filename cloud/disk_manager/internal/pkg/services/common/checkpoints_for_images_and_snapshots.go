@@ -32,10 +32,6 @@ func scheduleCreateDRBasedDiskCheckpointTask(
 	)
 }
 
-func getCheckpointIDForReplicatedDisk(snapshotID string) string {
-	return snapshotID
-}
-
 func CreateCheckpoint(
 	ctx context.Context,
 	execCtx tasks.ExecutionContext,
@@ -48,7 +44,7 @@ func CreateCheckpoint(
 ) (string, error) {
 
 	if !isDiskRegistryBasedDisk {
-		checkpointID := getCheckpointIDForReplicatedDisk(snapshotID)
+		checkpointID := snapshotID
 
 		err := nbsClient.CreateCheckpoint(
 			ctx,
@@ -98,7 +94,20 @@ func CancelCheckpointCreation(
 	disk *types.Disk,
 	snapshotID string,
 	selfTaskID string,
-) error {
+) (string, error) {
+
+	diskParams, err := nbsClient.Describe(ctx, snapshotID)
+	if err != nil {
+		if nbs.IsNotFoundError(err) {
+			// Nothing to do.
+			return "", nil
+		}
+		return "", err
+	}
+
+	if !diskParams.IsDiskRegistryBasedDisk {
+		return snapshotID, nil
+	}
 
 	checkpointTaskID, err := scheduleCreateDRBasedDiskCheckpointTask(
 		ctx,
@@ -108,52 +117,31 @@ func CancelCheckpointCreation(
 		selfTaskID,
 	)
 	if err != nil {
-		return err
+		return "", err
 	}
 
 	_, err = scheduler.CancelTask(ctx, checkpointTaskID)
 	if err != nil {
-		return err
+		return "", err
 	}
 
 	err = scheduler.WaitTaskEnded(ctx, checkpointTaskID)
 	if err != nil {
-		return err
+		return "", err
 	}
 
-	diskParams, err := nbsClient.Describe(ctx, snapshotID)
+	metadata, err := scheduler.GetTaskMetadata(ctx, checkpointTaskID)
 	if err != nil {
-		if nbs.IsNotFoundError(err) {
-			// No need to delete checkpoint if disk does not exist.
-			return nil
-		}
-		return err
+		return "", err
 	}
 
-	checkpointID := ""
-
-	if !diskParams.IsDiskRegistryBasedDisk {
-		checkpointID = getCheckpointIDForReplicatedDisk(snapshotID)
-	} else {
-		metadata, err := scheduler.GetTaskMetadata(ctx, checkpointTaskID)
-		if err != nil {
-			return err
-		}
-
-		typedMetadata, ok := metadata.(*dataplane_protos.CreateDRBasedDiskCheckpointMetadata)
-		if !ok {
-			return errors.NewNonRetriableErrorf(
-				"invalid dataplane.CreateDRBasedDiskCheckpoint metadata type %T",
-				metadata,
-			)
-		}
-
-		checkpointID = typedMetadata.CheckpointId
+	typedMetadata, ok := metadata.(*dataplane_protos.CreateDRBasedDiskCheckpointMetadata)
+	if !ok {
+		return "", errors.NewNonRetriableErrorf(
+			"invalid dataplane.CreateDRBasedDiskCheckpoint metadata type %T",
+			metadata,
+		)
 	}
 
-	if checkpointID == "" {
-		return nil
-	}
-
-	return nbsClient.DeleteCheckpoint(ctx, disk.DiskId, checkpointID)
+	return typedMetadata.CheckpointId, nil
 }
