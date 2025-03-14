@@ -331,27 +331,13 @@ void TNonreplicatedPartitionRdmaActor::NotifyDeviceTimedout(
         }
     }
 
-    SendRdmaUnavailableIfNeeded(ctx, device.GetAgentId());
+    SendRdmaUnavailableIfNeeded(ctx);
 }
 
 void TNonreplicatedPartitionRdmaActor::SendRdmaUnavailableIfNeeded(
-    const TActorContext& ctx,
-    const TString& agentId)
+    const TActorContext& ctx)
 {
     if (SentRdmaUnavailableNotification) {
-        return;
-    }
-
-    bool isDeviceUnavailable = false;
-    for (int i = 0; i < PartConfig->GetDevices().size(); ++i) {
-        const auto& device = PartConfig->GetDevices().at(i);
-        if (device.GetAgentId() == agentId &&
-            DeviceStats[i].DeviceStatus == EDeviceStatus::Unavailable)
-        {
-            return;
-        }
-    }
-    if (isDeviceUnavailable) {
         return;
     }
 
