@@ -23,32 +23,19 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TRdmaRequestReadBlocksLocalContext: public NRdma::IClientHandler
+class TRdmaRequestReadBlocksLocalHandler
+    : public TRdmaDeviceRequestHandler<TRdmaRequestReadBlocksLocalHandler>
 {
-private:
-    TActorSystem* ActorSystem;
-    const TNonreplicatedPartitionConfigPtr PartConfig;
-    const TRequestInfoPtr RequestInfo;
-    const ui32 RequestBlockCount;
-    const NActors::TActorId ParentActorId;
-    const ui64 RequestId;
-    const bool CheckVoidBlocks;
+    using TBase = TRdmaDeviceRequestHandler<TRdmaRequestReadBlocksLocalHandler>;
 
-    TAdaptiveLock Lock;
-    size_t ResponseCount;
+private:
+    const bool CheckVoidBlocks;
     TGuardedSgList SgList;
-    NProto::TError Error;
 
     ui32 VoidBlockCount = 0;
 
-    // Indices of devices that participated in the request.
-    TStackVec<ui32, 2> DeviceIndices;
-
-    // Indices of devices where requests have resulted in errors.
-    TStackVec<ui32, 2> ErrorDeviceIndices;
-
 public:
-    TRdmaRequestReadBlocksLocalContext(
+    TRdmaRequestReadBlocksLocalHandler(
             TActorSystem* actorSystem,
             TNonreplicatedPartitionConfigPtr partConfig,
             TRequestInfoPtr requestInfo,
@@ -58,39 +45,39 @@ public:
             NActors::TActorId parentActorId,
             ui64 requestId,
             bool checkVoidBlocks)
-        : ActorSystem(actorSystem)
-        , PartConfig(std::move(partConfig))
-        , RequestInfo(std::move(requestInfo))
-        , RequestBlockCount(requestBlockCount)
-        , ParentActorId(parentActorId)
-        , RequestId(requestId)
+        : TRdmaDeviceRequestHandler(
+              actorSystem,
+              std::move(partConfig),
+              std::move(requestInfo),
+              requestId,
+              parentActorId,
+              requestBlockCount,
+              requestCount)
         , CheckVoidBlocks(checkVoidBlocks)
-        , ResponseCount(requestCount)
         , SgList(std::move(sglist))
     {}
 
-    void HandleResult(
-        const TDeviceReadRequestContext& reqCtx,
+    NProto::TError ProcessSubResponse(
+        const TDeviceRequestRdmaContext& reqCtx,
         TStringBuf buffer)
     {
+        const auto& readReqCtx =
+            static_cast<const TDeviceReadRequestContext&>(reqCtx);
         auto guard = SgList.Acquire();
         if (!guard) {
-            Error = MakeError(E_CANCELLED, "can't acquire sglist");
-            return;
+            return MakeError(E_CANCELLED, "can't acquire sglist");
         }
         auto* serializer = TBlockStoreProtocol::Serializer();
         auto [result, err] = serializer->Parse(buffer);
 
         if (HasError(err)) {
-            Error = std::move(err);
-            return;
+            return err;
         }
 
         const auto& concreteProto =
             static_cast<NProto::TReadDeviceBlocksResponse&>(*result.Proto);
         if (HasError(concreteProto.GetError())) {
-            Error = concreteProto.GetError();
-            return;
+            return concreteProto.GetError();
         }
 
         TSgList data = guard.Get();
@@ -99,7 +86,7 @@ public:
         ui64 b = 0;
         bool isAllZeroes = CheckVoidBlocks;
         while (offset < result.Data.size()) {
-            ui64 targetBlock = reqCtx.StartIndexOffset + b;
+            ui64 targetBlock = readReqCtx.StartIndexOffset + b;
             Y_ABORT_UNLESS(targetBlock < data.size());
             ui64 bytes =
                 Min(result.Data.size() - offset, data[targetBlock].Size());
@@ -122,77 +109,38 @@ public:
         }
 
         if (isAllZeroes) {
-            VoidBlockCount += reqCtx.BlockCount;
+            VoidBlockCount += readReqCtx.BlockCount;
         }
+
+        return {};
     }
 
-    void HandleResponse(
-        NRdma::TClientRequestPtr req,
-        ui32 status,
-        size_t responseBytes) override
+    std::unique_ptr<TEvNonreplPartitionPrivate::TEvReadBlocksCompleted>
+    CreateCompletionEvent()
     {
-        TRequestScope timer(*RequestInfo);
+        const auto requestBlockCount = GetRequestBlockCount();
+        const bool allZeroes = VoidBlockCount == requestBlockCount;
 
-        auto guard = Guard(Lock);
-
-        auto* reqCtx =
-            static_cast<TDeviceReadRequestContext*>(req->Context.get());
-        auto buffer = req->ResponseBuffer.Head(responseBytes);
-
-        DeviceIndices.emplace_back(reqCtx->DeviceIdx);
-
-        if (status == NRdma::RDMA_PROTO_OK) {
-            HandleResult(*reqCtx, buffer);
-        } else {
-            Error = NRdma::ParseError(buffer);
-            ConvertRdmaErrorIfNeeded(status, Error);
-            if (NeedToNotifyAboutDeviceRequestError(Error)) {
-                ErrorDeviceIndices.emplace_back(reqCtx->DeviceIdx);
-            }
-        }
-
-        if (--ResponseCount != 0) {
-            return;
-        }
-
-        // Got all device responses. Do processing.
-
-        ProcessError(*ActorSystem, *PartConfig, Error);
-
-        const bool allZeroes = VoidBlockCount == RequestBlockCount;
-        auto response =
-            std::make_unique<TEvService::TEvReadBlocksLocalResponse>(Error);
-        response->Record.SetAllZeroes(allZeroes);
-        auto event = std::make_unique<IEventHandle>(
-            RequestInfo->Sender,
-            TActorId(),
-            response.release(),
-            0,
-            RequestInfo->Cookie);
-        ActorSystem->Send(event.release());
-
-        using TCompletionEvent =
-            TEvNonreplPartitionPrivate::TEvReadBlocksCompleted;
-        auto completion = std::make_unique<TCompletionEvent>(std::move(Error));
+        auto completion = TBase::CreateCompletionEvent<
+            TEvNonreplPartitionPrivate::TEvReadBlocksCompleted>();
+        completion->NonVoidBlockCount = allZeroes ? 0 : requestBlockCount;
+        completion->VoidBlockCount = allZeroes ? requestBlockCount : 0;
         auto& counters = *completion->Stats.MutableUserReadCounters();
-        completion->TotalCycles = RequestInfo->GetTotalCycles();
-        completion->DeviceIndices = DeviceIndices;
-        completion->ErrorDeviceIndices = ErrorDeviceIndices;
+        counters.SetBlocksCount(requestBlockCount);
 
-        timer.Finish();
-        completion->ExecCycles = RequestInfo->GetExecCycles();
-        completion->NonVoidBlockCount = allZeroes ? 0 : RequestBlockCount;
-        completion->VoidBlockCount = allZeroes ? RequestBlockCount : 0;
+        return completion;
+    }
 
-        counters.SetBlocksCount(RequestBlockCount);
-        auto completionEvent = std::make_unique<IEventHandle>(
-            ParentActorId,
-            TActorId(),
-            completion.release(),
-            0,
-            RequestId);
+    std::unique_ptr<TEvService::TEvReadBlocksLocalResponse> CreateResponse(
+        NProto::TError error) const
+    {
+        const bool allZeroes = VoidBlockCount == GetRequestBlockCount();
+        auto response =
+            std::make_unique<TEvService::TEvReadBlocksLocalResponse>(
+                std::move(error));
+        response->Record.SetAllZeroes(allZeroes);
 
-        ActorSystem->Send(completionEvent.release());
+        return response;
     }
 };
 
@@ -238,7 +186,7 @@ void TNonreplicatedPartitionRdmaActor::HandleReadBlocksLocal(
 
     const auto requestId = RequestsInProgress.GenerateRequestId();
 
-    auto requestContext = std::make_shared<TRdmaRequestReadBlocksLocalContext>(
+    auto requestContext = std::make_shared<TRdmaRequestReadBlocksLocalHandler>(
         ctx.ActorSystem(),
         PartConfig,
         requestInfo,

@@ -4,6 +4,7 @@
 
 #include "config.h"
 #include "part_nonrepl_events_private.h"
+#include "rdma_device_request_handler.h"
 
 #include <cloud/blockstore/libs/diagnostics/config.h>
 #include <cloud/blockstore/libs/rdma/iface/client.h>
@@ -28,26 +29,11 @@ namespace NCloud::NBlockStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TDeviceRequestRdmaContext: public NRdma::TNullContext
-{
-    ui32 DeviceIdx = 0;
-
-    TDeviceRequestRdmaContext() = default;
-    explicit TDeviceRequestRdmaContext(ui32 deviceIdx)
-        : DeviceIdx(deviceIdx)
-    {}
-};
-
 struct TDeviceReadRequestContext: public TDeviceRequestRdmaContext
 {
     ui64 StartIndexOffset = 0;
     ui64 BlockCount = 0;
 };
-////////////////////////////////////////////////////////////////////////////////
-
-bool NeedToNotifyAboutDeviceRequestError(const NProto::TError& err);
-
-void ConvertRdmaErrorIfNeeded(ui32 rdmaStatus, NProto::TError& err);
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -93,7 +79,8 @@ private:
 
     TRequestInfoPtr Poisoner;
 
-    struct TTimedOutDeviceCtx {
+    struct TTimedOutDeviceCtx
+    {
         TInstant FirstErrorTs;
         bool VolumeWasNotified = false;
     };
