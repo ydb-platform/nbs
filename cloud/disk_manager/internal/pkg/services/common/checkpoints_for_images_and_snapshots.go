@@ -151,5 +151,9 @@ func CancelCheckpointCreation(
 		checkpointID = typedMetadata.CheckpointId
 	}
 
+	if checkpointID == "" {
+		return nil
+	}
+
 	return nbsClient.DeleteCheckpoint(ctx, disk.DiskId, checkpointID)
 }
