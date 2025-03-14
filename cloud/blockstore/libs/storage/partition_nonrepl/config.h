@@ -252,6 +252,11 @@ public:
         return OutdatedDeviceIds;
     }
 
+    bool GetLaggingDevicesAllowed() const
+    {
+        return LaggingDevicesAllowed;
+    }
+
     auto GetMaxTimedOutDeviceStateDuration() const
     {
         return MaxTimedOutDeviceStateDuration;
