@@ -126,9 +126,17 @@ ui64 TProcessingBlocks::GetProcessedBlockCount() const
 
 ui64 TProcessingBlocks::CalculateNextProcessingIndex() const
 {
-    return Min(
-        BlockCount,
-        CurrentProcessingIndex + ProcessingRangeSize / BlockSize);
+    const ui32 blocksInRange = ProcessingRangeSize / BlockSize;
+    Y_DEBUG_ABORT_UNLESS(blocksInRange && IsPowerOf2(blocksInRange));
+
+    // When migrating a lagging replica "CurrentProcessingIndex" can be not
+    // multiple of "ProcessingRangeSize". This can lead to us going "out of
+    // bounds" the lagging agent, which is not ideal.
+    const ui64 rangeStart =
+        CurrentProcessingIndex &
+        InverseMaskLowerBits(MostSignificantBit(blocksInRange));
+
+    return Min(BlockCount, rangeStart + blocksInRange);
 }
 
 }   // namespace NCloud::NBlockStore::NStorage
