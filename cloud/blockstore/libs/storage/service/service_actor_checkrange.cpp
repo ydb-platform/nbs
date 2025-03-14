@@ -38,7 +38,7 @@ public:
         TString diskId,
         ui64 startIndex,
         ui64 blocksCount,
-        ui32 replicaCount);
+        ui32 replicaCount,
         bool calculateChecksums);
 
     void Bootstrap(const TActorContext& ctx);
@@ -66,7 +66,7 @@ TCheckRangeActor::TCheckRangeActor(
     TString diskId,
     ui64 startIndex,
     ui64 blocksCount,
-    ui32 replicaCount)
+    ui32 replicaCount,
     bool calculateChecksums)
     : RequestInfo(std::move(requestInfo))
     , Config(std::move(config))
@@ -191,7 +191,7 @@ void TServiceActor::HandleCheckRange(
         request.GetDiskId(),
         request.GetStartIndex(),
         request.GetBlocksCount(),
-        request.GetCalculateChecksums());
+        request.GetCalculateChecksums(),
         request.headers().GetReplicaCount());
 }
 
