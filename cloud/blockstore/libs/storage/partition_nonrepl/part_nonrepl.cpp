@@ -3,6 +3,8 @@
 #include "part_nonrepl_actor.h"
 #include "part_nonrepl_rdma_actor.h"
 
+#include <cloud/blockstore/libs/storage/partition_nonrepl/part_nonrepl_rdma.h>
+
 namespace NCloud::NBlockStore::NStorage {
 
 using namespace NActors;
@@ -17,7 +19,7 @@ IActorPtr CreateNonreplicatedPartition(
     NRdma::IClientPtr rdmaClient)
 {
     if (rdmaClient) {
-        return std::make_unique<TNonreplicatedPartitionRdmaActor>(
+        return CreateNonreplicatedPartitionRdma(
             std::move(config),
             std::move(diagnosticsConfig),
             std::move(partConfig),
