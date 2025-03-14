@@ -53,6 +53,7 @@ struct TTestEnv
         device.SetBlocksCount(blockCount * k);
         device.SetDeviceUUID(name);
         device.SetBlockSize(DefaultDeviceBlockSize);
+        device.SetAgentId("agent-1");
     }
 
     static TDevices DefaultDevices(ui64 nodeId)
@@ -71,6 +72,7 @@ struct TTestEnv
         bool MuteIOErrors = false;
         NProto::EStorageMediaKind MediaKind =
             NProto::STORAGE_MEDIA_SSD_NONREPLICATED;
+        TDuration MaxTimedOutDeviceStateDuration = TDuration::Seconds(20);
 
         TDevices Devices;
     };
@@ -86,6 +88,13 @@ struct TTestEnv
         , StorageStatsServiceState(MakeIntrusive<TStorageStatsServiceState>())
         , DiskAgentState(std::make_shared<TDiskAgentState>())
     {
+        runtime.SetRegistrationObserverFunc(
+            [] (auto& runtime, const auto& parentId, const auto& actorId)
+        {
+            Y_UNUSED(parentId);
+            runtime.EnableScheduleForActor(actorId);
+        });
+
         if (params.Devices.empty()) {
             params.Devices = DefaultDevices(runtime.GetNodeId(0));
         }
@@ -93,7 +102,8 @@ struct TTestEnv
         SetupLogging();
 
         NProto::TStorageServiceConfig storageConfig;
-        storageConfig.SetMaxTimedOutDeviceStateDuration(20'000);
+        storageConfig.SetMaxTimedOutDeviceStateDuration(
+            params.MaxTimedOutDeviceStateDuration.MilliSeconds());
         if (params.MediaKind == NProto::STORAGE_MEDIA_HDD_NONREPLICATED) {
             storageConfig.SetNonReplicatedMinRequestTimeoutSSD(60'000);
             storageConfig.SetNonReplicatedMaxRequestTimeoutSSD(60'000);
@@ -107,6 +117,7 @@ struct TTestEnv
         }
         storageConfig.SetNonReplicatedAgentMaxTimeout(300'000);
         storageConfig.SetAssignIdToWriteAndZeroRequestsEnabled(true);
+        storageConfig.SetLaggingDeviceTimeoutThreshold(3'000);
 
         auto config = std::make_shared<TStorageConfig>(
             std::move(storageConfig),
@@ -137,6 +148,7 @@ struct TTestEnv
         partConfigInitParams.IOMode = params.IOMode;
         partConfigInitParams.MuteIOErrors = params.MuteIOErrors;
         partConfigInitParams.UseSimpleMigrationBandwidthLimiter = false;
+        partConfigInitParams.LaggingDevicesAllowed = true;
         auto partConfig = std::make_shared<TNonreplicatedPartitionConfig>(
             std::move(partConfigInitParams));
 
@@ -629,13 +641,6 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionTest)
     {
         TTestBasicRuntime runtime;
 
-        runtime.SetRegistrationObserverFunc(
-            [] (auto& runtime, const auto& parentId, const auto& actorId)
-        {
-            Y_UNUSED(parentId);
-            runtime.EnableScheduleForActor(actorId);
-        });
-
         TTestEnv env(runtime);
 
         TPartitionClient client(runtime, env.ActorId);
@@ -678,14 +683,6 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionTest)
     void DoTestShouldHandleTimedoutIO(NProto::EStorageMediaKind mediaKind)
     {
         TTestBasicRuntime runtime;
-
-        runtime.SetRegistrationObserverFunc(
-            [] (auto& runtime, const auto& parentId, const auto& actorId)
-        {
-            Y_UNUSED(parentId);
-            runtime.EnableScheduleForActor(actorId);
-        });
-
         TTestEnv env(runtime, {.MediaKind = mediaKind});
         env.DiskAgentState->ResponseDelay = TDuration::Max();
 
@@ -858,14 +855,6 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionTest)
     void DoTestShouldUseResponseTimeHistoryForTimeouts(NProto::EStorageMediaKind mediaKind)
     {
         TTestBasicRuntime runtime;
-
-        runtime.SetRegistrationObserverFunc(
-            [] (auto& runtime, const auto& parentId, const auto& actorId)
-        {
-            Y_UNUSED(parentId);
-            runtime.EnableScheduleForActor(actorId);
-        });
-
         TTestEnv env(runtime, {.MediaKind = mediaKind});
         env.DiskAgentState->ResponseDelay = TDuration::MilliSeconds(1'200);
 
@@ -946,14 +935,6 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionTest)
     Y_UNIT_TEST(ShouldNotReturnIOErrorUponTimeoutForBackgroundRequests)
     {
         TTestBasicRuntime runtime;
-
-        runtime.SetRegistrationObserverFunc(
-            [] (auto& runtime, const auto& parentId, const auto& actorId)
-        {
-            Y_UNUSED(parentId);
-            runtime.EnableScheduleForActor(actorId);
-        });
-
         TTestEnv env(runtime);
         env.DiskAgentState->ResponseDelay = TDuration::Max();
 
@@ -997,14 +978,6 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionTest)
     Y_UNIT_TEST(ShouldRecoverFromShortTimeoutStreak)
     {
         TTestBasicRuntime runtime;
-
-        runtime.SetRegistrationObserverFunc(
-            [] (auto& runtime, const auto& parentId, const auto& actorId)
-        {
-            Y_UNUSED(parentId);
-            runtime.EnableScheduleForActor(actorId);
-        });
-
         TTestEnv env(runtime);
         env.DiskAgentState->ResponseDelay = TDuration::Max();
 
@@ -1423,14 +1396,6 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionTest)
     Y_UNIT_TEST(ShouldSendStatsToVolume)
     {
         TTestBasicRuntime runtime;
-
-        runtime.SetRegistrationObserverFunc(
-            [] (auto& runtime, const auto& parentId, const auto& actorId)
-        {
-            Y_UNUSED(parentId);
-            runtime.EnableScheduleForActor(actorId);
-        });
-
         TTestEnv env(runtime);
 
         bool done = false;
@@ -1459,14 +1424,6 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionTest)
     Y_UNIT_TEST(ShouldRecoverWithAgentBackFromUnavailable)
     {
         TTestBasicRuntime runtime;
-
-        runtime.SetRegistrationObserverFunc(
-            [] (auto& runtime, const auto& parentId, const auto& actorId)
-        {
-            Y_UNUSED(parentId);
-            runtime.EnableScheduleForActor(actorId);
-        });
-
         TTestEnv env(runtime);
         env.DiskAgentState->ResponseDelay = TDuration::Max();
 
@@ -1540,14 +1497,6 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionTest)
         constexpr size_t RequestCount = 10;
 
         TTestBasicRuntime runtime;
-
-        runtime.SetRegistrationObserverFunc(
-            [] (auto& runtime, const auto& parentId, const auto& actorId)
-        {
-            Y_UNUSED(parentId);
-            runtime.EnableScheduleForActor(actorId);
-        });
-
         TTestEnv env(runtime);
         env.DiskAgentState->ResponseDelay = TDuration::Max();
 
@@ -1593,14 +1542,6 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionTest)
     Y_UNIT_TEST(ShouldUpdateStats)
     {
         TTestBasicRuntime runtime;
-
-        runtime.SetRegistrationObserverFunc(
-            [] (auto& runtime, const auto& parentId, const auto& actorId)
-        {
-            Y_UNUSED(parentId);
-            runtime.EnableScheduleForActor(actorId);
-        });
-
         TTestEnv env(runtime);
 
         auto& counters = env.StorageStatsServiceState->Counters.Cumulative;
@@ -2209,6 +2150,302 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionTest)
         }
 
         UNIT_ASSERT_LT(differentChecksums * 2, totalChecksums);
+    }
+
+    Y_UNIT_TEST(ShouldHandleTimeoutedDevices)
+    {
+        TTestBasicRuntime runtime;
+        TTestEnv env(
+            runtime,
+            {.MediaKind =
+                 NProto::EStorageMediaKind::STORAGE_MEDIA_SSD_MIRROR3});
+
+        TPartitionClient client(runtime, env.ActorId);
+
+        env.KillDiskAgent();
+
+        std::optional<TString> timeoutedDevice;
+        runtime.SetEventFilter(
+            [&](TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& event)
+            {
+                switch (event->GetTypeRewrite()) {
+                    case TEvVolumePrivate::EvDeviceTimeoutedRequest: {
+                        auto* msg = event->Get<
+                            TEvVolumePrivate::TEvDeviceTimeoutedRequest>();
+                        UNIT_ASSERT(!timeoutedDevice.has_value());
+                        timeoutedDevice = msg->DeviceUUID;
+                        return true;
+                    }
+                }
+                return false;
+            });
+
+        // Send the first request. Device timeout timer will start from this
+        // moment.
+        {
+            client.SendReadBlocksRequest(TBlockRange64::WithLength(0, 1024));
+            runtime.AdvanceCurrentTime(TDuration::Seconds(1));
+            runtime.DispatchEvents({}, TDuration::MilliSeconds(10));
+
+            auto response = client.RecvReadBlocksResponse();
+            UNIT_ASSERT_VALUES_EQUAL(E_TIMEOUT, response->GetStatus());
+            UNIT_ASSERT(
+                response->GetErrorReason().Contains("request timed out"));
+            UNIT_ASSERT(!timeoutedDevice.has_value());
+        }
+
+        runtime.AdvanceCurrentTime(TDuration::Seconds(2));
+        runtime.DispatchEvents({}, TDuration::MilliSeconds(10));
+        UNIT_ASSERT(!timeoutedDevice.has_value());
+
+        // After 3 seconds device should be deemed timeouted.
+        {
+            client.SendWriteBlocksRequest(
+                TBlockRange64::WithLength(0, 1024),
+                1);
+            runtime.AdvanceCurrentTime(TDuration::Seconds(1));
+            runtime.DispatchEvents({}, TDuration::MilliSeconds(10));
+            auto response = client.RecvWriteBlocksResponse();
+            UNIT_ASSERT_VALUES_EQUAL(E_TIMEOUT, response->GetStatus());
+            UNIT_ASSERT(
+                response->GetErrorReason().Contains("request timed out"));
+            UNIT_ASSERT(timeoutedDevice.has_value());
+            UNIT_ASSERT_VALUES_EQUAL("vasya", *timeoutedDevice);
+        }
+
+        timeoutedDevice.reset();
+
+        // DeviceTimeouted request should be sent on every timeouted request.
+        {
+            client.SendZeroBlocksRequest(TBlockRange64::WithLength(0, 1024));
+            runtime.AdvanceCurrentTime(TDuration::Seconds(1));
+            runtime.DispatchEvents({}, TDuration::MilliSeconds(10));
+            auto response = client.RecvZeroBlocksResponse();
+            UNIT_ASSERT_VALUES_EQUAL(E_TIMEOUT, response->GetStatus());
+            UNIT_ASSERT(
+                response->GetErrorReason().Contains("request timed out"));
+            UNIT_ASSERT(timeoutedDevice.has_value());
+            UNIT_ASSERT_VALUES_EQUAL("vasya", *timeoutedDevice);
+        }
+
+        // Send requests to the second device.
+        {
+            client.SendWriteBlocksRequest(
+                TBlockRange64::WithLength(2048, 1024),
+                1);
+            client.SendZeroBlocksRequest(TBlockRange64::WithLength(3072, 1024));
+            runtime.DispatchEvents({}, TDuration::MilliSeconds(10));
+        }
+
+        // Both devices are now unavailable.
+        {
+            NProto::TLaggingAgent laggingAgent;
+            laggingAgent.SetAgentId("agent-1");
+            auto* laggingDevice = laggingAgent.AddDevices();
+            laggingDevice->SetRowIndex(0);
+            laggingDevice->SetDeviceUUID("vasya");
+
+            laggingDevice = laggingAgent.AddDevices();
+            laggingDevice->SetRowIndex(1);
+            laggingDevice->SetDeviceUUID("petya");
+            auto agentUnavailableRequest = std::make_unique<
+                TEvNonreplPartitionPrivate::TEvAgentIsUnavailable>(
+                std::move(laggingAgent));
+            client.SendRequest(env.ActorId, std::move(agentUnavailableRequest));
+            runtime.DispatchEvents({}, TDuration::MilliSeconds(10));
+        }
+
+        // Requests should be canceled.
+        {
+            auto response = client.RecvZeroBlocksResponse();
+            UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, response->GetStatus());
+            UNIT_ASSERT_C(
+                response->GetErrorReason().Contains("request is canceled"),
+                response->GetErrorReason());
+        }
+        {
+            auto response = client.RecvWriteBlocksResponse();
+            UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, response->GetStatus());
+            UNIT_ASSERT_C(
+                response->GetErrorReason().Contains("request is canceled"),
+                response->GetErrorReason());
+        }
+
+        timeoutedDevice.reset();
+
+        // When devices are unavailable partition should not send
+        // DeviceTimeouted request.
+        {
+            client.SendWriteBlocksRequest(
+                TBlockRange64::WithLength(0, 1024),
+                1);
+            runtime.AdvanceCurrentTime(TDuration::Seconds(1));
+            runtime.DispatchEvents({}, TDuration::MilliSeconds(10));
+            auto response = client.RecvWriteBlocksResponse();
+            UNIT_ASSERT_VALUES_EQUAL(E_TIMEOUT, response->GetStatus());
+            UNIT_ASSERT(
+                response->GetErrorReason().Contains("request timed out"));
+            UNIT_ASSERT(!timeoutedDevice.has_value());
+        }
+    }
+
+    Y_UNIT_TEST(ShouldHandleAgentBackOnline)
+    {
+        TTestBasicRuntime runtime;
+        TTestEnv env(
+            runtime,
+            {.MediaKind = NProto::EStorageMediaKind::STORAGE_MEDIA_SSD_MIRROR3,
+             .MaxTimedOutDeviceStateDuration = TDuration::Minutes(5)});
+
+        TPartitionClient client(runtime, env.ActorId);
+
+        bool dropIoRequests = true;
+        std::optional<TString> lastTimeoutedDevice;
+        runtime.SetEventFilter(
+            [&](TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& event)
+            {
+                switch (event->GetTypeRewrite()) {
+                    case TEvDiskAgent::EvReadDeviceBlocksRequest:
+                    case TEvDiskAgent::EvWriteDeviceBlocksRequest:
+                    case TEvDiskAgent::EvZeroDeviceBlocksRequest:
+                        return dropIoRequests;
+                    case TEvVolumePrivate::EvDeviceTimeoutedRequest: {
+                        auto* msg = event->Get<
+                            TEvVolumePrivate::TEvDeviceTimeoutedRequest>();
+                        lastTimeoutedDevice = msg->DeviceUUID;
+                        return true;
+                    }
+                }
+                return false;
+            });
+
+        // There are some connectivity issues.
+        for (int i = 0; i < 2; i++) {
+            client.SendReadBlocksRequest(TBlockRange64::WithLength(1024, 2048));
+            runtime.AdvanceCurrentTime(TDuration::Seconds(5));
+            runtime.DispatchEvents({}, TDuration::MilliSeconds(10));
+
+            auto response = client.RecvReadBlocksResponse();
+            UNIT_ASSERT_VALUES_EQUAL(E_TIMEOUT, response->GetStatus());
+            UNIT_ASSERT(
+                response->GetErrorReason().Contains("request timed out"));
+        }
+
+        // Requests timeout is 5 seconds.
+        {
+            client.SendReadBlocksRequest(TBlockRange64::WithLength(0, 1024));
+            runtime.DispatchEvents({}, TDuration::MilliSeconds(10));
+            runtime.AdvanceCurrentTime(TDuration::Seconds(4));
+
+            TAutoPtr<NActors::IEventHandle> handle;
+            runtime.GrabEdgeEventRethrow<TEvService::TEvReadBlocksResponse>(
+                handle,
+                TDuration::MilliSeconds(10));
+            UNIT_ASSERT(!handle);
+
+            runtime.AdvanceCurrentTime(TDuration::Seconds(1));
+            runtime.DispatchEvents({}, TDuration::MilliSeconds(10));
+            runtime.GrabEdgeEventRethrow<TEvService::TEvReadBlocksResponse>(
+                handle,
+                TDuration::MilliSeconds(10));
+            UNIT_ASSERT(handle);
+
+            auto response =
+                handle->Release<TEvService::TEvReadBlocksResponse>();
+            UNIT_ASSERT_VALUES_EQUAL(E_TIMEOUT, response->GetStatus());
+            UNIT_ASSERT(
+                response->GetErrorReason().Contains("request timed out"));
+        }
+
+        // Both devices are now unavailable.
+        {
+            NProto::TLaggingAgent laggingAgent;
+            laggingAgent.SetAgentId("agent-1");
+            auto* laggingDevice = laggingAgent.AddDevices();
+            laggingDevice->SetRowIndex(0);
+            laggingDevice->SetDeviceUUID("vasya");
+
+            laggingDevice = laggingAgent.AddDevices();
+            laggingDevice->SetRowIndex(1);
+            laggingDevice->SetDeviceUUID("petya");
+            auto agentUnavailableRequest = std::make_unique<
+                TEvNonreplPartitionPrivate::TEvAgentIsUnavailable>(
+                std::move(laggingAgent));
+            client.SendRequest(env.ActorId, std::move(agentUnavailableRequest));
+            runtime.DispatchEvents({}, TDuration::MilliSeconds(10));
+        }
+
+        // Requests timeout is 1 second.
+        for (int i = 0; i < 5; i++) {
+            client.SendReadBlocksRequest(TBlockRange64::WithLength(0, 1024));
+            runtime.DispatchEvents({}, TDuration::MilliSeconds(10));
+            runtime.AdvanceCurrentTime(TDuration::Seconds(1));
+
+            TAutoPtr<NActors::IEventHandle> handle;
+            runtime.GrabEdgeEventRethrow<TEvService::TEvReadBlocksResponse>(
+                handle,
+                TDuration::MilliSeconds(10));
+            UNIT_ASSERT(handle);
+
+            auto response =
+                handle->Release<TEvService::TEvReadBlocksResponse>();
+            UNIT_ASSERT_VALUES_EQUAL(E_TIMEOUT, response->GetStatus());
+            UNIT_ASSERT(
+                response->GetErrorReason().Contains("request timed out"));
+        }
+
+        // Do a successful reading from the second device.
+        dropIoRequests = false;
+        {
+            client.ReadBlocks(TBlockRange64::WithLength(2048, 1024));
+        }
+
+        // Requests timeout has been reset to 1 second.
+        dropIoRequests = true;
+        {
+            client.SendReadBlocksRequest(TBlockRange64::WithLength(2048, 1024));
+            runtime.DispatchEvents({}, TDuration::MilliSeconds(10));
+            runtime.AdvanceCurrentTime(TDuration::Seconds(1));
+
+            TAutoPtr<NActors::IEventHandle> handle;
+            runtime.GrabEdgeEventRethrow<TEvService::TEvReadBlocksResponse>(
+                handle,
+                TDuration::MilliSeconds(10));
+            UNIT_ASSERT(handle);
+
+            auto response =
+                handle->Release<TEvService::TEvReadBlocksResponse>();
+            UNIT_ASSERT_VALUES_EQUAL(E_TIMEOUT, response->GetStatus());
+            UNIT_ASSERT(
+                response->GetErrorReason().Contains("request timed out"));
+        }
+
+        // Agent is back online.
+        {
+            auto agentUnavailableRequest = std::make_unique<
+                TEvNonreplPartitionPrivate::TEvAgentIsBackOnline>("agent-1");
+            client.SendRequest(env.ActorId, std::move(agentUnavailableRequest));
+            runtime.DispatchEvents({}, TDuration::MilliSeconds(10));
+        }
+
+        // Requests timeout has been reset to 1 second for the first device.
+        {
+            client.SendReadBlocksRequest(TBlockRange64::WithLength(0, 1024));
+            runtime.DispatchEvents({}, TDuration::MilliSeconds(10));
+            runtime.AdvanceCurrentTime(TDuration::Seconds(1));
+
+            TAutoPtr<NActors::IEventHandle> handle;
+            runtime.GrabEdgeEventRethrow<TEvService::TEvReadBlocksResponse>(
+                handle,
+                TDuration::MilliSeconds(10));
+            UNIT_ASSERT(handle);
+
+            auto response =
+                handle->Release<TEvService::TEvReadBlocksResponse>();
+            UNIT_ASSERT_VALUES_EQUAL(E_TIMEOUT, response->GetStatus());
+            UNIT_ASSERT(
+                response->GetErrorReason().Contains("request timed out"));
+        }
     }
 }
 

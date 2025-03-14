@@ -17,6 +17,8 @@ using namespace NActors;
 
 using namespace NKikimr;
 
+using EReason = TEvNonreplPartitionPrivate::TCancelRequest::EReason;
+
 LWTRACE_USING(BLOCKSTORE_STORAGE_PROVIDER);
 
 namespace {
@@ -150,7 +152,8 @@ void TDiskAgentReadLocalActor::HandleReadDeviceBlocksResponse(
 {
     auto* msg = ev->Get();
 
-    if (HandleError(ctx, msg->GetError(), false)) {
+    if (HasError(msg->GetError())) {
+        HandleError(ctx, msg->GetError(), EStatus::Fail);
         return;
     }
 
@@ -162,7 +165,7 @@ void TDiskAgentReadLocalActor::HandleReadDeviceBlocksResponse(
             PartConfig->MakeError(
                 E_CANCELLED,
                 "failed to acquire sglist in DiskAgentReadActor"),
-            false);
+            EStatus::Fail);
         return;
     }
 
@@ -238,13 +241,15 @@ void TNonreplicatedPartitionActor::HandleReadBlocksLocal(
 
     TVector<TDeviceRequest> deviceRequests;
     TRequestTimeoutPolicy timeoutPolicy;
+    TRequestData request;
     bool ok = InitRequests<TEvService::TReadBlocksLocalMethod>(
         *msg,
         ctx,
         *requestInfo,
         blockRange,
         &deviceRequests,
-        &timeoutPolicy);
+        &timeoutPolicy,
+        &request);
 
     if (!ok) {
         return;
@@ -264,7 +269,7 @@ void TNonreplicatedPartitionActor::HandleReadBlocksLocal(
         PartConfig,
         SelfId());
 
-    RequestsInProgress.AddReadRequest(actorId);
+    RequestsInProgress.AddReadRequest(actorId, std::move(request));
 }
 
 }   // namespace NCloud::NBlockStore::NStorage
