@@ -7443,7 +7443,7 @@ Y_UNIT_TEST_SUITE(TPartition2Test)
         const auto response2 = partition2.CheckRange("id", 0, 1024, true);
 
         TDispatchOptions options;
-        options.FinalEvents.emplace_back(::TEvVolumeEvCheckRangeResponse);
+        options.FinalEvents.emplace_back(TEvVolume::EvCheckRangeResponse);
         runtime->DispatchEvents(options, TDuration::Seconds(3));
 
         const auto& checksums1 = response1->Record.GetChecksums();

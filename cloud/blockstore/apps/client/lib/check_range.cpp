@@ -40,19 +40,15 @@ void ExtractStatusValues(const TString& jsonStr, ui32& code, TString& message) {
     }
 }
 
-void SaveResultToFile(const TString& content, const TString& diskID,const TString& postfix, ui64 startIndex, ui64 blocksInThisRequest) {
-    TString folder = "./checkRange_" + diskID;
-    if (!postfix.Empty()){
-        folder += "_" + postfix;
-    }
-    TFsPath dir(folder);
+void SaveResultToFile(const TString& content, const TString& folderPath, const TString& fileName) {
+    TFsPath dir(folderPath);
 
     if (!dir.Exists()) {
         dir.MkDir();
     }
 
-    TString fileName = Sprintf("%s/result_%lu_%lu.json", folder.c_str(), startIndex, startIndex + blocksInThisRequest - 1);
-    TOFStream file(fileName, EOpenModeFlag::CreateAlways | EOpenModeFlag::RdWr);
+    TString fullFilePath = dir / fileName;
+    TOFStream file(fullFilePath, EOpenModeFlag::CreateAlways | EOpenModeFlag::RdWr);
     file.Write(content);
 }
 
@@ -206,12 +202,20 @@ protected:
             }
 
             if (SaveResultsEnabled) {
+                TString folderPath = "./checkRange_" + DiskId;
+                if (!FolderPostfix.Empty()) {
+                    folderPath += "_" + FolderPostfix;
+                }
+
+                TString fileName = Sprintf(
+                    "result_%lu_%lu.json",
+                    currentBlockIndex,
+                    currentBlockIndex + blocksInThisRequest - 1);
+
                 SaveResultToFile(
                     result.GetOutput().Data(),
-                    DiskId,
-                    FolderPostfix,
-                    currentBlockIndex,
-                    blocksInThisRequest);
+                    folderPath,
+                    fileName);
             }
 
             remainingBlocks -= blocksInThisRequest;
