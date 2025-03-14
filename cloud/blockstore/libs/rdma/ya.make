@@ -1,4 +1,5 @@
 RECURSE(
+    fake
     iface
     impl
 )

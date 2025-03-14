@@ -255,6 +255,7 @@ def generate_log_txt():
         b"BLOCKSTORE_SS_PROXY",
         b"BLOCKSTORE_EXTERNAL_ENDPOINT",
         b"BLOCKSTORE_VHOST",
+        b"BLOCKSTORE_RDMA",
     ]
 
     log_config = TLogConfig()

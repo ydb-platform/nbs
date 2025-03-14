@@ -122,6 +122,7 @@ public:
     TDuration GetMaxBurstTime() const;
     bool DeprecatedGetRdmaClientEnabled() const;
     const NProto::TRdmaClient& DeprecatedGetRdmaClientConfig() const;
+    bool GetUseFakeRdmaClient() const;
     NCloud::NProto::EEndpointStorageType GetEndpointStorageType() const;
     TString GetEndpointStorageDir() const;
     TString GetVhostServerPath() const;

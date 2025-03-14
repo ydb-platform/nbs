@@ -88,6 +88,7 @@ constexpr TDuration Seconds(int s)
     xxx(MaxWriteIops,                ui32,                  0                 )\
     xxx(MaxBurstTime,                TDuration,             Seconds(0)        )\
     xxx(RdmaClientEnabled,           bool,                  false             )\
+    xxx(UseFakeRdmaClient,           bool,                  false             )\
     xxx(EndpointStorageType,                                                   \
         NCloud::NProto::EEndpointStorageType,                                  \
         NCloud::NProto::ENDPOINT_STORAGE_KEYRING                              )\

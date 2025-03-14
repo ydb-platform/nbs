@@ -217,6 +217,9 @@ message TServerConfig
 
     // Flags for managing checksums.
     optional TChecksumFlags ChecksumFlags = 119;
+
+    // Use fake RDMA client (over Interconnect). For use in tests.
+    optional bool UseFakeRdmaClient = 120;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
