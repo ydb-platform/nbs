@@ -1148,4 +1148,6 @@ message TStorageServiceConfig
     // Disable throttling of ZeroBlocks requests for
     // YDB-based ('network-ssd', 'network-hdd') disks.
     optional bool DisableZeroBlocksThrottlingForYDBBasedDisks = 415;
+    // Local disk async deallocation and sync allocation
+    optional bool AsyncDeallocLocalDisk = 416;
 }
