@@ -136,9 +136,7 @@ private:
     void NotifyDeviceTimedout(
         const NActors::TActorContext& ctx,
         const NProto::TDeviceConfig& device);
-    void SendRdmaUnavailableIfNeeded(
-        const NActors::TActorContext& ctx,
-        const TString& agentId);
+    void SendRdmaUnavailableIfNeeded(const NActors::TActorContext& ctx);
     void UpdateStats(const NProto::TPartitionStats& update);
 
     void ReplyAndDie(const NActors::TActorContext& ctx);
