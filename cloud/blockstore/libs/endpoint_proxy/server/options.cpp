@@ -50,10 +50,17 @@ TOptions::TOptions()
         .SetFlag(&WithoutLibnl);
 
     Opts.AddLongOption(
-            "restart-events",
-            "debug option. issue multiple restart events for each io error")
+            "debug-restart-events-count",
+            "issue multiple restart events for each io error. this "
+            "option is used solely to debug nbd server reconnect")
         .RequiredArgument("NUM")
-        .StoreResult(&RestartEvents);
+        .StoreResult(&DebugRestartEventsCount);
+        /*
+        .Handler1T<ui32>([this] (const auto& n) {
+            Y_ENSURE(n, "debug-restart-events-count must be > 0");
+            DebugRestartEventsCount = n;
+        });
+        */
 }
 
 void TOptions::Parse(int argc, char** argv)

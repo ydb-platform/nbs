@@ -190,7 +190,7 @@ struct TRestartAlarmContext: TRequestContextBase
 {
     std::weak_ptr<TEndpoint> Endpoint;
     grpc::ServerCompletionQueue& CQ;
-    ui64 Generation;
+    const ui64 Generation;
     TBackoffDelayProvider Backoff;
     grpc::Alarm Alarm;
 
@@ -277,28 +277,28 @@ struct TServer: IEndpointProxyServer
     {
         std::weak_ptr<TEndpoint> Endpoint;
         grpc::ServerCompletionQueue& CQ;
-        ui64 Generation;
+        const ui64 Generation;
         TDuration ReconnectDelay;
-        ui32 RestartEvents;
+        std::optional<ui32> DebugRestartEventsCount;
 
         TErrorHandler(
                 std::weak_ptr<TEndpoint> endpoint,
                 grpc::ServerCompletionQueue& cq,
                 ui64 generation,
                 TDuration reconnectDelay,
-                ui32 restartEvents)
+                std::optional<ui32> debugRestartEventsCount)
             : Endpoint(std::move(endpoint))
             , CQ(cq)
             , Generation(generation)
             , ReconnectDelay(reconnectDelay)
-            , RestartEvents(restartEvents)
+            , DebugRestartEventsCount(debugRestartEventsCount)
         {}
 
         void ProcessException(std::exception_ptr e) override
         {
             Y_UNUSED(e);
 
-            for (ui32 i = 0; i < RestartEvents; i++) {
+            for (ui32 i = 0; i < DebugRestartEventsCount.value_or(1); i++) {
                 // context will be held by grpc until CQ->Next returns it
                 new TRestartAlarmContext(
                     Endpoint,
@@ -958,7 +958,7 @@ struct TServer: IEndpointProxyServer
                 *CQ,
                 ep.Generation,
                 Config.NbdReconnectDelay,
-                Config.RestartEvents),
+                Config.DebugRestartEventsCount),
             ep.NbdOptions);
 
         // TODO fix StartEndpoint signature - it's actually synchronous

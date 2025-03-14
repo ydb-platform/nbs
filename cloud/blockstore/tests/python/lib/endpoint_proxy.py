@@ -26,13 +26,13 @@ class EndpointProxy(Daemon):
             command += ["--netlink"]
 
         if nbd_request_timeout:
-            command += ["--nbd-request-timeout", nbd_request_timeout]
+            command += ["--nbd-request-timeout", str(nbd_request_timeout)]
 
         if nbd_reconnect_delay:
-            command += ["--nbd-reconnect-delay", nbd_reconnect_delay]
+            command += ["--nbd-reconnect-delay", str(nbd_reconnect_delay)]
 
         if restart_events:
-            command += ["--restart-events", str(restart_events)]
+            command += ["--debug-restart-events-count", str(restart_events)]
 
         super(EndpointProxy, self).__init__(
             commands=[command],

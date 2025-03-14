@@ -145,7 +145,7 @@ def test_multiple_errors():
     env, run = init(
         with_netlink=True,
         with_endpoint_proxy=True,
-        nbd_request_timeout=str(request_timeout),
+        nbd_request_timeout=request_timeout,
         proxy_restart_events=2)
 
     try:
@@ -223,7 +223,7 @@ def test_stop_start():
     env, run = init(
         with_netlink=True,
         with_endpoint_proxy=True,
-        nbd_reconnect_delay="1s")
+        nbd_reconnect_delay=1)
 
     volume_name = "example-disk"
     block_size = 4096
