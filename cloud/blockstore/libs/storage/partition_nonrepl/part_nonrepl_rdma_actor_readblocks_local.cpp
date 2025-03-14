@@ -23,14 +23,12 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TRdmaRequestReadBlocksLocalContext: public NRdma::IClientHandler
+class TRdmaRequestReadBlocksLocalContext: public IRdmaDeviceRequestHandler
 {
 private:
-    TActorSystem* ActorSystem;
     const TNonreplicatedPartitionConfigPtr PartConfig;
     const TRequestInfoPtr RequestInfo;
     const ui32 RequestBlockCount;
-    const NActors::TActorId ParentActorId;
     const ui64 RequestId;
     const bool CheckVoidBlocks;
 
@@ -52,11 +50,10 @@ public:
             NActors::TActorId parentActorId,
             ui64 requestId,
             bool checkVoidBlocks)
-        : ActorSystem(actorSystem)
+        : IRdmaDeviceRequestHandler(actorSystem, parentActorId)
         , PartConfig(std::move(partConfig))
         , RequestInfo(std::move(requestInfo))
         , RequestBlockCount(requestBlockCount)
-        , ParentActorId(parentActorId)
         , RequestId(requestId)
         , CheckVoidBlocks(checkVoidBlocks)
         , ResponseCount(requestCount)
@@ -127,7 +124,11 @@ public:
         if (status == NRdma::RDMA_PROTO_OK) {
             HandleResult(*dr, buffer);
         } else {
-            Error = NRdma::ParseError(buffer);
+            auto err = NRdma::ParseError(buffer);
+            if (NeedToNotifyAboutError(err)) {
+                SendDeviceTimedout(std::move(dr->DeviceUUID));
+            }
+            Error = std::move(err);
         }
 
         if (--ResponseCount != 0) {
@@ -243,7 +244,12 @@ void TNonreplicatedPartitionRdmaActor::HandleReadBlocksLocal(
         return;
     }
 
-    RequestsInProgress.AddReadRequest(requestId);
+    TRequestData requestData;
+    for (const auto& r: deviceRequests){
+        requestData.DeviceIndices.emplace_back(r.DeviceIdx);
+    }
+
+    RequestsInProgress.AddReadRequest(requestId, requestData);
 }
 
 }   // namespace NCloud::NBlockStore::NStorage
