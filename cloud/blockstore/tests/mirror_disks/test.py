@@ -170,5 +170,3 @@ def test_fake_rdma_client(ydb, nbs):
 
     for disk_agent in disk_agents:
         disk_agent.kill()
-
-    assert False
