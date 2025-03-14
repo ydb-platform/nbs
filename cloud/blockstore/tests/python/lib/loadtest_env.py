@@ -58,6 +58,7 @@ class LocalLoadTest:
             stored_endpoints_path=None,
             nbd_request_timeout=None,
             nbd_reconnect_delay=None,
+            proxy_restart_events=None,
     ):
 
         self.__endpoint = endpoint
@@ -131,7 +132,8 @@ class LocalLoadTest:
                 with_netlink=with_netlink,
                 stored_endpoints_path=stored_endpoints_path,
                 nbd_request_timeout=nbd_request_timeout,
-                nbd_reconnect_delay=nbd_reconnect_delay)
+                nbd_reconnect_delay=nbd_reconnect_delay,
+                restart_events=proxy_restart_events)
 
         if run_kikimr:
             self.nbs.setup_cms(self.kikimr_cluster.client)

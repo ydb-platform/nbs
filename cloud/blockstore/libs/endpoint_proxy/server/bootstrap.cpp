@@ -30,6 +30,7 @@ void TBootstrap::Init()
         Options.StoredEndpointsPath,
         Options.NbdRequestTimeout,
         Options.NbdReconnectDelay,
+        Options.DebugRestartEventsCount,
     },
     CreateWallClockTimer(),
     Scheduler,
@@ -44,8 +45,12 @@ void TBootstrap::Start()
 
 void TBootstrap::Stop()
 {
-    Server->Stop();
-    Scheduler->Stop();
+    if (Server) {
+        Server->Stop();
+    }
+    if (Scheduler) {
+        Scheduler->Stop();
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NServer
