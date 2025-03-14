@@ -23,9 +23,11 @@ TMirrorPartitionResyncState::TMirrorPartitionResyncState(
         partConfig->GetBlockSize(),
         initialResyncIndex)
 {
-    ReplicaInfos.push_back({partConfig->Fork(partConfig->GetDevices()), {}});
+    ReplicaInfos.push_back(
+        TReplicaInfo{.Config = partConfig->Fork(partConfig->GetDevices())});
     for (auto& devices: replicaDevices) {
-        ReplicaInfos.push_back({partConfig->Fork(std::move(devices)), {}});
+        ReplicaInfos.push_back(
+            TReplicaInfo{.Config = partConfig->Fork(std::move(devices))});
     }
 }
 
@@ -50,6 +52,14 @@ bool TMirrorPartitionResyncState::SkipResyncedRanges()
 TBlockRange64 TMirrorPartitionResyncState::BuildResyncRange() const
 {
     return ProcessingBlocks.BuildProcessingRange();
+}
+
+bool TMirrorPartitionResyncState::DevicesReadyForReading(
+    ui32 replicaIndex,
+    const TBlockRange64 blockRange) const
+{
+    const auto& replicaInfo = ReplicaInfos[replicaIndex];
+    return replicaInfo.Config->DevicesReadyForReading(blockRange);
 }
 
 bool TMirrorPartitionResyncState::AddPendingResyncRange(ui32 rangeId)
