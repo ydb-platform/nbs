@@ -34,6 +34,10 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+constexpr TDuration RequestTimeout = 30s;
+
+////////////////////////////////////////////////////////////////////////////////
+
 struct TEvFakeRdmaClient
 {
     struct TStartEndpoint
@@ -235,7 +239,7 @@ public:
             return;
         }
 
-        ctx.Schedule(30s, new TEvents::TEvWakeup());
+        NCloud::Schedule<TEvents::TEvWakeup>(ctx, RequestTimeout);
     }
 
 private:
@@ -479,8 +483,13 @@ private:
         const TActorContext& ctx)
     {
         auto* msg = ev->Get();
-        const auto& buffers = msg->Record.GetBlocks().GetBuffers();
 
+        NProto::TReadDeviceBlocksResponse proto = std::move(msg->Record);
+
+        NProto::TIOVector blocks;
+        blocks.Swap(msg->Record.MutableBlocks());
+
+        const auto& buffers = blocks.GetBuffers();
         ui64 size = 0;
         for (const auto& buf: buffers) {
             size += buf.size();
@@ -492,11 +501,6 @@ private:
             "Got ReadDeviceBlocks response from #"
                 << NodeId << ": " << FormatError(msg->GetError()) << ", "
                 << FormatByteSize(size));
-
-        NProto::TReadDeviceBlocksResponse proto;
-        proto.MutableError()->CopyFrom(msg->GetError());
-
-        const auto& blocks = msg->Record.GetBlocks();
 
         TStackVec<TBlockDataRef> parts;
         parts.reserve(blocks.BuffersSize());
@@ -603,7 +607,7 @@ public:
 
         ctx.Send(MakeDiskRegistryProxyServiceId(), request.release());
 
-        ctx.Schedule(30s, new TEvents::TEvWakeup());
+        NCloud::Schedule<TEvents::TEvWakeup>(ctx, RequestTimeout);
     }
 
 private:
@@ -736,7 +740,7 @@ private:
         LOG_INFO_S(
             ctx,
             TBlockStoreComponents::RDMA,
-            "Stop endpoint for " << msg->AgentId);
+            "Stop endpoint for " << msg->AgentId.Quote());
 
         AgentIdToNodeId.erase(msg->AgentId);
         msg->Promise.SetValue();
@@ -785,13 +789,13 @@ private:
             LOG_ERROR_S(
                 ctx,
                 TBlockStoreComponents::RDMA,
-                "Can't update node id for " << msg->AgentId << ": "
+                "Can't update node id for " << msg->AgentId.Quote() << ": "
                                             << FormatError(msg->GetError()));
         } else {
             LOG_INFO_S(
                 ctx,
                 TBlockStoreComponents::RDMA,
-                "Update node id for " << msg->AgentId.Quote() << ": "
+                "Update node id for " << msg->AgentId.Quote() << ": #"
                                       << msg->NodeId);
         }
 

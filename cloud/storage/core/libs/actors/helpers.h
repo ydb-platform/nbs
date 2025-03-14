@@ -117,6 +117,16 @@ inline void Reply(
         request.Cookie);
 }
 
+template <typename T, typename... TArgs>
+inline void Schedule(
+    const NActors::TActorContext& ctx,
+    TDuration delta,
+    TArgs&&... args)
+{
+    auto event = std::make_unique<T>(std::forward<TArgs>(args)...);
+    ctx.Schedule(delta, event.release());
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 #define STORAGE_IMPLEMENT_REQUEST(name, ns)                                    \

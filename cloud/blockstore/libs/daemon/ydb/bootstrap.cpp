@@ -490,11 +490,11 @@ void TBootstrapYdb::InitKikimrService()
         BackgroundScheduler,
         logging,
         monitoring,
-        [this](
+        [percentiles = ClientPercentiles](
             NMonitoring::TDynamicCountersPtr updatedCounters,
             NMonitoring::TDynamicCountersPtr baseCounters)
         {
-            ClientPercentiles->CalculatePercentiles(updatedCounters);
+            percentiles->CalculatePercentiles(updatedCounters);
             UpdateClientStats(
                 std::move(updatedCounters),
                 std::move(baseCounters));
