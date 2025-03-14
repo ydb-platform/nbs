@@ -189,11 +189,11 @@ protected:
                 return true;
 
             } else {
-                ui32 statusCode;
+                ui32 statusCode = 0;
                 TString statusMessage;
                 ExtractStatusValues(result.GetOutput().Data(), statusCode, statusMessage);
 
-                if (statusCode != S_OK && ShowReadErrorsEnabled) {
+                if (statusCode && statusCode != S_OK && ShowReadErrorsEnabled) {
                     errorCount++;
                     output << "ReadBlocks error in range [" << currentBlockIndex << ", "
                            << (currentBlockIndex + blocksInThisRequest - 1)
