@@ -30,6 +30,9 @@ private:
     const ui64 BlocksCount;
     const ui32 ReplicaCount;
 
+    const bool CalculateChecksums;
+
+
 public:
     TCheckRangeActor(
         TRequestInfoPtr requestInfo,
@@ -38,6 +41,7 @@ public:
         ui64 startIndex,
         ui64 blocksCount,
         ui32 replicaCount);
+        bool calculateChecksums);
 
     void Bootstrap(const TActorContext& ctx);
 
@@ -65,12 +69,14 @@ TCheckRangeActor::TCheckRangeActor(
     ui64 startIndex,
     ui64 blocksCount,
     ui32 replicaCount)
+    bool calculateChecksums)
     : RequestInfo(std::move(requestInfo))
     , Config(std::move(config))
     , DiskId(std::move(diskId))
     , StartIndex(startIndex)
     , BlocksCount(blocksCount)
     , ReplicaCount(replicaCount)
+    , CalculateChecksums(calculateChecksums)
 {}
 
 void TCheckRangeActor::Bootstrap(const TActorContext& ctx)
@@ -86,6 +92,7 @@ void TCheckRangeActor::CheckRange(const TActorContext& ctx)
     request->Record.SetDiskId(DiskId);
     request->Record.SetStartIndex(StartIndex);
     request->Record.SetBlocksCount(BlocksCount);
+    request->Record.SetCalculateChecksums(CalculateChecksums);
 
     auto* headers = request->Record.MutableHeaders();
     headers->SetReplicaCount(ReplicaCount);
@@ -104,6 +111,7 @@ void TCheckRangeActor::HandleCheckRangeResponse(
     const auto& error = ev->Get()->GetError();
     auto response = std::make_unique<TEvService::TEvCheckRangeResponse>(error);
     response->Record.MutableStatus()->CopyFrom(ev->Get()->Record.GetStatus());
+    response->Record.MutableChecksums()->Swap(ev->Get()->Record.MutableChecksums());
 
     ReplyAndDie(
         ctx,
@@ -185,6 +193,7 @@ void TServiceActor::HandleCheckRange(
         request.GetDiskId(),
         request.GetStartIndex(),
         request.GetBlocksCount(),
+        request.GetCalculateChecksums());
         request.headers().GetReplicaCount());
 }
 

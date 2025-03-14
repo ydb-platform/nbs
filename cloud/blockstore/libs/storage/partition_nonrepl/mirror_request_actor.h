@@ -21,16 +21,10 @@ void ProcessMirrorActorError(NProto::TError& error);
 
 ////////////////////////////////////////////////////////////////////////////////
 
-// The TMirrorRequestActor class is used for two tasks:
-// 1. To write to N replicas for the mirror disk. In this mode, it should
-// process all errors from replicas into E_REJECT. Because sooner or later the
-// disk agent will return to work, or the replica will be replaced. All replicas
-// are equivalent and are placed in the LeaderPartitions.
-// 2. To migrate a new device, in this case it has two replicas, one is leader
-// and the second is follower. If we receive a fatal error from the follower
-// partition, we do not respond to the client with an error, but at the same
-// time stop the migration. And if we receive a non-fatal error, response it to the
-// client. The client will retry the request.
+// The TMirrorRequestActor class is used to write to N replicas for the mirror
+// disk. It should process all errors from replicas into E_REJECTED. Because
+// sooner or later the disk agent will return to work, or the replica will be
+// replaced. All replicas are equivalent and are placed in the Replicas.
 
 template <typename TMethod>
 class TMirrorRequestActor final
@@ -41,8 +35,7 @@ private:
     using TResponseProto = typename TMethod::TResponse::ProtoRecordType;
 
     const TRequestInfoPtr RequestInfo;
-    const TVector<NActors::TActorId> LeaderPartitions;
-    const NActors::TActorId FollowerPartition;
+    const TVector<NActors::TActorId> Replicas;
     const typename TMethod::TRequest::ProtoRecordType Request;
     const TString DiskId;
     const NActors::TActorId ParentActorId;
@@ -50,14 +43,12 @@ private:
 
     TVector<TCallContextPtr> ForkedCallContexts;
     ui32 Responses = 0;
-    TResponseProto LeadersCollectiveResponse;
-    TResponseProto FollowerResponse;
+    TResponseProto ReplicasCollectiveResponse;
 
 public:
     TMirrorRequestActor(
         TRequestInfoPtr requestInfo,
-        TVector<NActors::TActorId> leaderPartitions,
-        NActors::TActorId followerPartition,
+        TVector<NActors::TActorId> replicas,
         typename TMethod::TRequest::ProtoRecordType request,
         TString diskId,
         NActors::TActorId parentActorId,
@@ -68,11 +59,7 @@ public:
 private:
     void SendRequests(const NActors::TActorContext& ctx);
     void Done(const NActors::TActorContext& ctx);
-    size_t GetTotalPartitionCount() const;
-    void UpdateResponse(
-        const NActors::TActorId& sender,
-        TResponseProto&& response);
-    bool HasFollower() const;
+    void UpdateResponse(TResponseProto&& response);
 
 private:
     STFUNC(StateWork);
@@ -95,20 +82,20 @@ private:
 template <typename TMethod>
 TMirrorRequestActor<TMethod>::TMirrorRequestActor(
         TRequestInfoPtr requestInfo,
-        TVector<NActors::TActorId> leaderPartitions,
-        NActors::TActorId followerPartition,
+        TVector<NActors::TActorId> replicas,
         typename TMethod::TRequest::ProtoRecordType request,
         TString diskId,
         NActors::TActorId parentActorId,
         ui64 nonreplicatedRequestCounter)
     : RequestInfo(std::move(requestInfo))
-    , LeaderPartitions(std::move(leaderPartitions))
-    , FollowerPartition(followerPartition)
+    , Replicas(std::move(replicas))
     , Request(std::move(request))
     , DiskId(std::move(diskId))
     , ParentActorId(parentActorId)
     , NonreplicatedRequestCounter(nonreplicatedRequestCounter)
-{}
+{
+    Y_DEBUG_ABORT_UNLESS(!Replicas.empty());
+}
 
 template <typename TMethod>
 void TMirrorRequestActor<TMethod>::Bootstrap(const NActors::TActorContext& ctx)
@@ -129,7 +116,7 @@ void TMirrorRequestActor<TMethod>::Bootstrap(const NActors::TActorContext& ctx)
 template <typename TMethod>
 void TMirrorRequestActor<TMethod>::SendRequests(const NActors::TActorContext& ctx)
 {
-    auto sendRequest = [&](const NActors::TActorId& actorId) {
+    for (const auto& actorId: Replicas) {
         auto request = std::make_unique<typename TMethod::TRequest>();
         auto& callContext = *RequestInfo->CallContext;
         if (!callContext.LWOrbit.Fork(request->CallContext->LWOrbit)) {
@@ -152,31 +139,14 @@ void TMirrorRequestActor<TMethod>::SendRequests(const NActors::TActorContext& ct
         );
 
         ctx.Send(std::move(event));
-    };
-
-    for (const auto& actorId: LeaderPartitions) {
-        sendRequest(actorId);
-    }
-    if (HasFollower()) {
-        sendRequest(FollowerPartition);
     }
 }
 
 template <typename TMethod>
 void TMirrorRequestActor<TMethod>::Done(const NActors::TActorContext& ctx)
 {
-    const bool isFollowerResponseError =
-        HasFollower() && HasError(FollowerResponse);
-    const bool isFollowerResponseFatal =
-        isFollowerResponseError &&
-        GetErrorKind(FollowerResponse.GetError()) == EErrorKind::ErrorFatal;
-
-    if (isFollowerResponseError && !isFollowerResponseFatal) {
-        UpdateResponse({}, std::move(FollowerResponse));
-    }
-
     auto response = std::make_unique<typename TMethod::TResponse>();
-    response->Record = std::move(LeadersCollectiveResponse);
+    response->Record = std::move(ReplicasCollectiveResponse);
 
     auto& callContext = *RequestInfo->CallContext;
     for (auto& cc: ForkedCallContexts) {
@@ -195,41 +165,21 @@ void TMirrorRequestActor<TMethod>::Done(const NActors::TActorContext& ctx)
         std::make_unique<TEvNonreplPartitionPrivate::TEvWriteOrZeroCompleted>(
             NonreplicatedRequestCounter,
             RequestInfo->GetTotalCycles(),
-            isFollowerResponseFatal);
+            false   // FollowerGotNonRetriableError
+        );
     NCloud::Send(ctx, ParentActorId, std::move(completion));
 
     TBase::Die(ctx);
 }
 
 template <typename TMethod>
-size_t TMirrorRequestActor<TMethod>::GetTotalPartitionCount() const
+void TMirrorRequestActor<TMethod>::UpdateResponse(TResponseProto&& response)
 {
-    return LeaderPartitions.size() + (HasFollower() ? 1 : 0);
-}
+    ProcessMirrorActorError(*response.MutableError());
 
-template <typename TMethod>
-void TMirrorRequestActor<TMethod>::UpdateResponse(
-    const NActors::TActorId& sender,
-    TResponseProto&& response)
-{
-    if (sender == FollowerPartition) {
-        FollowerResponse = std::move(response);
-        return;
+    if (!HasError(ReplicasCollectiveResponse)) {
+        ReplicasCollectiveResponse = std::move(response);
     }
-
-    if (!HasFollower()) {
-        ProcessMirrorActorError(*response.MutableError());
-    }
-
-    if (!HasError(LeadersCollectiveResponse)) {
-        LeadersCollectiveResponse = std::move(response);
-    }
-}
-
-template <typename TMethod>
-bool TMirrorRequestActor<TMethod>::HasFollower() const
-{
-    return FollowerPartition != NActors::TActorId();
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -246,12 +196,12 @@ void TMirrorRequestActor<TMethod>::HandleUndelivery(
         DiskId.c_str(),
         TMethod::Name);
 
-    LeadersCollectiveResponse.MutableError()->CopyFrom(MakeError(
+    *ReplicasCollectiveResponse.MutableError() = MakeError(
         E_REJECTED,
         TStringBuilder() << TMethod::Name
-                         << " request undelivered to some nonrepl partitions"));
+                         << " request undelivered to some nonrepl partitions");
 
-    if (++Responses < GetTotalPartitionCount()) {
+    if (++Responses < Replicas.size()) {
         return;
     }
 
@@ -273,9 +223,9 @@ void TMirrorRequestActor<TMethod>::HandleResponse(
             FormatError(msg->Record.GetError()).c_str());
     }
 
-    UpdateResponse(ev->Sender, std::move(msg->Record));
+    UpdateResponse(std::move(msg->Record));
 
-    if (++Responses < GetTotalPartitionCount()) {
+    if (++Responses < Replicas.size()) {
         return;
     }
 
@@ -289,8 +239,7 @@ void TMirrorRequestActor<TMethod>::HandlePoisonPill(
 {
     Y_UNUSED(ev);
 
-    LeadersCollectiveResponse.MutableError()->CopyFrom(
-        MakeError(E_REJECTED, "Dead"));
+    *ReplicasCollectiveResponse.MutableError() = MakeError(E_REJECTED, "Dead");
 
     Done(ctx);
 }

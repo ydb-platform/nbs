@@ -80,6 +80,7 @@ void TCheckRangeActor::Bootstrap(const TActorContext& ctx)
     request->Record.SetStartIndex(Request.GetStartIndex());
     request->Record.SetBlocksCount(Request.GetBlocksCount());
     request->Record.mutable_headers()->SetReplicaCount(Request.GetReplicaCount());
+    request->Record.SetCalculateChecksums(Request.GetCalculateChecksums());
 
     LOG_INFO(
         ctx,
@@ -143,8 +144,10 @@ void TCheckRangeActor::HandleCheckRangeResponse(
     const TEvService::TEvCheckRangeResponse::TPtr& ev,
     const TActorContext& ctx)
 {
-    auto response = NPrivateProto::TCheckRangeResponse();
-    response.MutableStatus()->CopyFrom(ev->Get()->Record.GetStatus());
+    auto& record = ev->Get()->Record;
+    NPrivateProto::TCheckRangeResponse response;
+    response.MutableStatus()->CopyFrom(record.GetStatus());
+    response.MutableChecksums()->Swap(record.MutableChecksums());
 
     return ReplyAndDie(
         ctx,

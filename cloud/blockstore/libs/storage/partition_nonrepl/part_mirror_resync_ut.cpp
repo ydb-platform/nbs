@@ -257,23 +257,19 @@ struct TTestEnv
             )
         );
 
-        PartConfig = std::make_shared<TNonreplicatedPartitionConfig>(
-            ToLogicalBlocks(devices, BlockSize),
-            NProto::VOLUME_IO_OK,
-            "test",
-            BlockSize,
-            TNonreplicatedPartitionConfig::TVolumeInfo{
-                Now(),
-                // only SSD/HDD distinction matters
-                NProto::STORAGE_MEDIA_SSD_MIRROR3},
-            VolumeActorId,
-            false,   // muteIOErrors
-            std::move(freshDeviceIds),
-            THashSet<TString>(),   // laggingDeviceIds
-            TDuration::Zero(),     // maxTimedOutDeviceStateDuration
-            false,                 // maxTimedOutDeviceStateDurationOverridden
-            true                   // useSimpleMigrationBandwidthLimiter
-        );
+        TNonreplicatedPartitionConfig::TNonreplicatedPartitionConfigInitParams
+            params{
+                ToLogicalBlocks(devices, BlockSize),
+                TNonreplicatedPartitionConfig::TVolumeInfo{
+                    Now(),
+                    // only SSD/HDD distinction matters
+                    NProto::STORAGE_MEDIA_SSD_MIRROR3},
+                "test",
+                BlockSize,
+                VolumeActorId};
+        params.FreshDeviceIds = std::move(freshDeviceIds);
+        PartConfig =
+            std::make_shared<TNonreplicatedPartitionConfig>(std::move(params));
 
         for (auto& replica: Replicas) {
             replica = ToLogicalBlocks(replica, BlockSize);

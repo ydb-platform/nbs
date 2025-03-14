@@ -27,6 +27,7 @@ SRCS(
 
 PEERDIR(
     cloud/storage/core/libs/common
+    cloud/storage/core/libs/netlink
     cloud/storage/core/protos
 
     library/cpp/lwtrace/mon

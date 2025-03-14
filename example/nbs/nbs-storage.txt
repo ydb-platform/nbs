@@ -11,9 +11,12 @@ UseShadowDisksForNonreplDiskCheckpoints: true
 MaxShadowDiskFillIoDepth: 4
 OptimizeVoidBuffersTransferForReadsEnabled: true
 MaxShadowDiskFillBandwidth: 1000
+MaxMigrationIoDepth: 1
 MaxMigrationBandwidth: 1000
 AssignIdToWriteAndZeroRequestsEnabled: true
 RejectLateRequestsAtDiskAgentEnabled: true
 UseDirectCopyRange: true
 EnableToChangeStatesFromDiskRegistryMonpage: true
 EnableToChangeErrorStatesFromDiskRegistryMonpage: true
+LaggingDevicesForMirror2DisksEnabled: true
+LaggingDevicesForMirror3DisksEnabled: true

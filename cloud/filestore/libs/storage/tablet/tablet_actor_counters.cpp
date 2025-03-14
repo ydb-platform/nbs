@@ -343,6 +343,13 @@ void TIndexTabletActor::TMetrics::Register(
         InMemoryIndexStateIsExhaustive,
         EMetricType::MT_ABSOLUTE);
 
+    REGISTER_AGGREGATABLE_SUM(
+        MixedIndexLoadedRanges,
+        EMetricType::MT_ABSOLUTE);
+    REGISTER_AGGREGATABLE_SUM(
+        MixedIndexOffloadedRanges,
+        EMetricType::MT_ABSOLUTE);
+
     REGISTER_AGGREGATABLE_SUM(FreshBytesCount, EMetricType::MT_ABSOLUTE);
     REGISTER_AGGREGATABLE_SUM(DeletedFreshBytesCount, EMetricType::MT_ABSOLUTE);
     REGISTER_AGGREGATABLE_SUM(MixedBytesCount, EMetricType::MT_ABSOLUTE);
@@ -479,7 +486,8 @@ void TIndexTabletActor::TMetrics::Update(
     const TNodeIndexCacheStats& nodeIndexCacheStats,
     const TNodeToSessionCounters& nodeToSessionCounters,
     const TMiscNodeStats& miscNodeStats,
-    const TInMemoryIndexStateStats& inMemoryIndexStateStats)
+    const TInMemoryIndexStateStats& inMemoryIndexStateStats,
+    const TBlobMetaMapStats& blobMetaMapStats)
 {
     const ui32 blockSize = fileSystem.GetBlockSize();
 
@@ -554,6 +562,9 @@ void TIndexTabletActor::TMetrics::Update(
     Store(InMemoryIndexStateNodeAttrsCount, inMemoryIndexStateStats.NodeAttrsCount);
     Store(InMemoryIndexStateNodeAttrsCapacity, inMemoryIndexStateStats.NodeAttrsCapacity);
     Store(InMemoryIndexStateIsExhaustive, inMemoryIndexStateStats.IsNodeRefsExhaustive);
+
+    Store(MixedIndexLoadedRanges, blobMetaMapStats.LoadedRanges);
+    Store(MixedIndexOffloadedRanges, blobMetaMapStats.OffloadedRanges);
 
     Store(
         NodesOpenForWritingBySingleSession,
@@ -698,7 +709,8 @@ void TIndexTabletActor::RegisterStatCounters(TInstant now)
         CalculateNodeIndexCacheStats(),
         GetNodeToSessionCounters(),
         GetMiscNodeStats(),
-        GetInMemoryIndexStateStats());
+        GetInMemoryIndexStateStats(),
+        GetBlobMetaMapStats());
 
     Metrics.Register(fsId, storageMediaKind);
 }
@@ -748,7 +760,8 @@ void TIndexTabletActor::HandleUpdateCounters(
         CalculateNodeIndexCacheStats(),
         GetNodeToSessionCounters(),
         GetMiscNodeStats(),
-        GetInMemoryIndexStateStats());
+        GetInMemoryIndexStateStats(),
+        GetBlobMetaMapStats());
     SendMetricsToExecutor(ctx);
 
     UpdateCountersScheduled = false;

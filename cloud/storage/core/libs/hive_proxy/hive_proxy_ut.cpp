@@ -894,7 +894,7 @@ Y_UNIT_TEST_SUITE(THiveProxyTest)
         }
 
         // Virtual lock owner should receive a lost notification
-        env.WaitLockLost(sender, FakeTablet2);
+        env.WaitLockLost(sender, FakeTablet2, E_REJECTED);
 
         // New lock request should succeed, stealing the lock back
         env.SendLockRequest(sender, FakeTablet2);

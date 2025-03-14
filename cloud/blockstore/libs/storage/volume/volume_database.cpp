@@ -706,4 +706,66 @@ bool TVolumeDatabase::ReadVolumeParams(
     return true;
 }
 
+void TVolumeDatabase::WriteFollower(const TFollowerDiskInfo& follower)
+{
+    using TTable = TVolumeSchema::FollowerDisks;
+
+    Table<TTable>()
+        .Key(follower.Uuid)
+        .Update(
+            NIceDb::TUpdate<TTable::FollowerDiskId>(follower.FollowerDiskId),
+            NIceDb::TUpdate<TTable::ScaleUnitId>(follower.ScaleUnitId),
+            NIceDb::TUpdate<TTable::State>(static_cast<ui32>(follower.State)));
+
+    if (follower.MigrationBlockIndex) {
+        Table<TTable>()
+            .Key(follower.Uuid)
+            .Update(NIceDb::TUpdate<TTable::MigratedBlockCount>(
+                *follower.MigrationBlockIndex));
+    } else {
+        Table<TTable>()
+            .Key(follower.Uuid)
+            .UpdateToNull<TTable::MigratedBlockCount>();
+    }
+}
+
+void TVolumeDatabase::DeleteFollower(const TFollowerDiskInfo& follower)
+{
+    using TTable = TVolumeSchema::FollowerDisks;
+
+    Table<TTable>().Key(follower.Uuid).Delete();
+}
+
+bool TVolumeDatabase::ReadFollowers(
+    TFollowerDisks& followers)
+{
+    using TTable = TVolumeSchema::FollowerDisks;
+
+    followers.clear();
+
+    auto it = Table<TTable>().Range().Select<TTable::TColumns>();
+
+    if (!it.IsReady()) {
+        return false;   // not ready
+    }
+
+    while (it.IsValid()) {
+        followers.push_back(TFollowerDiskInfo{
+            .Uuid = it.GetValue<TTable::Uuid>(),
+            .FollowerDiskId = it.GetValue<TTable::FollowerDiskId>(),
+            .ScaleUnitId = it.GetValue<TTable::ScaleUnitId>(),
+            .State = static_cast<TFollowerDiskInfo::EState>(
+                it.GetValue<TTable::State>()),
+            .MigrationBlockIndex =
+                it.HaveValue<TTable::MigratedBlockCount>()
+                    ? it.GetValue<TTable::MigratedBlockCount>()
+                    : std::optional<ui64>()});
+        if (!it.Next()) {
+            return false;   // not ready
+        }
+    }
+
+    return true;
+}
+
 }   // namespace NCloud::NBlockStore::NStorage

@@ -245,6 +245,25 @@ message TCmsRemoveDeviceRequest
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+// Replace devices
+
+message TDeviceCoordinate
+{
+    uint64 ReplicaIndex = 1;
+    uint64 DeviceIndex = 2;
+}
+
+message TReplaceDevicesRequest
+{
+    // Optional request headers.
+    THeaders Headers = 1;
+
+    string DiskId = 2;
+
+    repeated TDeviceCoordinate DevicesToReplace = 3;
+}
+
+////////////////////////////////////////////////////////////////////////////////
 // Graph of tests
 
 message TActionGraph
@@ -273,6 +292,7 @@ message TActionGraph
             TDescribeVolumeRequest DescribeVolumeRequest = 13;
             TCmsRemoveHostRequest CmsRemoveHostRequest = 14;
             TCmsRemoveDeviceRequest CmsRemoveDeviceRequest = 15;
+            TReplaceDevicesRequest ReplaceDevicesRequest = 16;
         }
     }
 

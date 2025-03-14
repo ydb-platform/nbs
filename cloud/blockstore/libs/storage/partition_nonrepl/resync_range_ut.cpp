@@ -125,23 +125,19 @@ struct TTestEnv
 
             TString name = Sprintf("replica-%d", i);
 
+            TNonreplicatedPartitionConfig::
+                TNonreplicatedPartitionConfigInitParams params{
+                    ToLogicalBlocks(replicaDevices, DefaultBlockSize),
+                    TNonreplicatedPartitionConfig::TVolumeInfo{
+                        Now(),
+                        // only SSD/HDD distinction matters
+                        NProto::STORAGE_MEDIA_SSD_NONREPLICATED},
+                    name,
+                    DefaultBlockSize,
+                    VolumeActorId};
+            params.IOMode = ioMode;
             auto partConfig = std::make_shared<TNonreplicatedPartitionConfig>(
-                ToLogicalBlocks(replicaDevices, DefaultBlockSize),
-                ioMode,
-                name,
-                DefaultBlockSize,
-                TNonreplicatedPartitionConfig::TVolumeInfo{
-                    Now(),
-                    // only SSD/HDD distinction matters
-                    NProto::STORAGE_MEDIA_SSD_NONREPLICATED},
-                VolumeActorId,
-                false,                 // muteIOErrors
-                THashSet<TString>(),   // freshDeviceIds
-                THashSet<TString>(),   // laggingDeviceIds
-                TDuration::Zero(),     // maxTimedOutDeviceStateDuration
-                false,   // maxTimedOutDeviceStateDurationOverridden
-                true     // useSimpleMigrationBandwidthLimiter
-            );
+                std::move(params));
 
             auto part = std::make_unique<TNonreplicatedPartitionActor>(
                 config,

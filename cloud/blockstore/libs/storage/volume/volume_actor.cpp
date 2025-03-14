@@ -1095,11 +1095,11 @@ STFUNC(TVolumeActor::StateWork)
             TEvVolumePrivate::TEvDeviceTimeoutedRequest,
             HandleDeviceTimeouted);
         HFunc(
-            TEvVolumePrivate::TEvUpdateSmartMigrationState,
-            HandleUpdateSmartMigrationState);
+            TEvVolumePrivate::TEvUpdateLaggingAgentMigrationState,
+            HandleUpdateLaggingAgentMigrationState);
         HFunc(
-            TEvVolumePrivate::TEvSmartMigrationFinished,
-            HandleSmartMigrationFinished);
+            TEvVolumePrivate::TEvLaggingAgentMigrationFinished,
+            HandleLaggingAgentMigrationFinished);
 
         HFunc(
             TEvPartitionCommonPrivate::TEvLongRunningOperation,
@@ -1112,13 +1112,6 @@ STFUNC(TVolumeActor::StateWork)
         HFunc(
             TEvDiskRegistryProxy::TEvGetDrTabletInfoResponse,
             HandleGetDrTabletInfoResponse);
-
-        HFunc(
-            TEvVolume::TEvLinkLeaderVolumeToFollowerRequest,
-            HandleLinkLeaderVolumeToFollower);
-        HFunc(
-            TEvVolume::TEvUnlinkLeaderVolumeFromFollowerRequest,
-            HandleUnlinkLeaderVolumeFromFollower);
 
         default:
             if (!HandleRequests(ev) && !HandleDefaultEvents(ev, SelfId())) {
@@ -1143,9 +1136,9 @@ STFUNC(TVolumeActor::StateZombie)
         IgnoreFunc(TEvVolumePrivate::TEvRemoveExpiredVolumeParams);
         IgnoreFunc(TEvVolumePrivate::TEvReportLaggingDevicesToDR);
         IgnoreFunc(TEvVolumePrivate::TEvDeviceTimeoutedRequest);
-        IgnoreFunc(TEvVolumePrivate::TEvUpdateSmartMigrationState);
-        IgnoreFunc(TEvVolumePrivate::TEvSmartMigrationFinished);
         IgnoreFunc(TEvVolumePrivate::TEvAcquireDiskIfNeeded);
+        IgnoreFunc(TEvVolumePrivate::TEvUpdateLaggingAgentMigrationState);
+        IgnoreFunc(TEvVolumePrivate::TEvLaggingAgentMigrationFinished);
 
         IgnoreFunc(TEvStatsService::TEvVolumePartCounters);
 

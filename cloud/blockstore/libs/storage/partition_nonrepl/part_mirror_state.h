@@ -17,6 +17,13 @@ namespace NCloud::NBlockStore::NStorage {
 
 class TMirrorPartitionState
 {
+    enum class EMigrationConfigState
+    {
+        NotPrepared,
+        PreparedForFresh,
+        PreparedForWarning,
+    };
+
 private:
     const TStorageConfigPtr Config;
     const TNonreplicatedPartitionConfigPtr PartConfig;
@@ -28,7 +35,8 @@ private:
 
     ui32 ReadReplicaIndex = 0;
 
-    bool MigrationConfigPrepared = false;
+    EMigrationConfigState MigrationConfigPrepared =
+        EMigrationConfigState::NotPrepared;
 
 public:
     TMirrorPartitionState(
@@ -83,6 +91,12 @@ public:
     [[nodiscard]] bool PrepareMigrationConfigForWarningDevices();
     [[nodiscard]] bool PrepareMigrationConfigForFreshDevices();
 
+    [[nodiscard]] bool IsMigrationConfigPreparedForFresh() const
+    {
+        return MigrationConfigPrepared ==
+               EMigrationConfigState::PreparedForFresh;
+    }
+
     [[nodiscard]] NProto::TError NextReadReplica(
         const TBlockRange64 readRange,
         ui32& replicaIndex);
@@ -90,6 +104,9 @@ public:
     ui32 GetBlockSize() const;
 
     ui64 GetBlockCount() const;
+
+    TVector<TBlockRange64> SplitRangeByDeviceBorders(
+        const TBlockRange64 readRange) const;
 };
 
 }   // namespace NCloud::NBlockStore::NStorage

@@ -556,8 +556,7 @@ void TBootstrapBase::Init()
             Logging,
             Configs->ServerConfig->GetNbdRequestTimeout(),
             Configs->ServerConfig->GetNbdConnectionTimeout(),
-            true,   // reconfigure
-            false   // without libnl
+            true   // reconfigure
         );
     }
 

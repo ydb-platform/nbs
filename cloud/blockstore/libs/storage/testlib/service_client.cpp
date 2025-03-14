@@ -518,17 +518,21 @@ TServiceClient::CreateAddTagsRequest(
     return request;
 }
 
-std::unique_ptr<TEvService::TEvCheckRangeRequest> TServiceClient::CreateCheckRangeRequest(
+std::unique_ptr<TEvService::TEvCheckRangeRequest>
+TServiceClient::CreateCheckRangeRequest(
     const TString& diskId,
     const ui64 startIndex,
     const ui64 blocksCount,
-    const ui32 replicaCount)
+    const ui32 replicaCount,
+    const bool calculateChecksums)
 {
     auto request = std::make_unique<TEvService::TEvCheckRangeRequest>();
     request->Record.SetDiskId(diskId);
     request->Record.SetStartIndex(startIndex);
     request->Record.SetBlocksCount(blocksCount);
+    request->Record.SetCalculateChecksums(calculateChecksums);
     request->Record.MutableHeaders()->SetReplicaCount(replicaCount);
+
     return request;
 }
 

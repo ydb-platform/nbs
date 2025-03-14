@@ -341,7 +341,7 @@ Y_UNIT_TEST_SUITE(TGuardedSgListWithThreadsTest)
 
             const auto acquireTask = [&guardedSgList]() {
                 for (int i = 0; i < 5; ++i) {
-                    guardedSgList.Acquire();
+                    auto guard = guardedSgList.Acquire();
                 }
             };
             for (int i = 0; i < 5; ++i) {
@@ -369,7 +369,7 @@ Y_UNIT_TEST_SUITE(TGuardedSgListWithThreadsTest)
 
             const auto dependerTask = [&guardedSgList]() {
                 for (int i = 0; i < 5; ++i) {
-                    guardedSgList.CreateDepender();
+                    auto sglist = guardedSgList.CreateDepender();
                 }
             };
             for (int i = 0; i < 5; ++i) {
@@ -398,7 +398,7 @@ Y_UNIT_TEST_SUITE(TGuardedSgListWithThreadsTest)
 
             const auto dependerTask = [&depender]() {
                 for (int i = 0; i < 5; ++i) {
-                    depender.Acquire();
+                    auto guard = depender.Acquire();
                 }
             };
             for (int i = 0; i < 5; ++i) {
@@ -406,7 +406,7 @@ Y_UNIT_TEST_SUITE(TGuardedSgListWithThreadsTest)
             }
 
             const auto acquireTask = [&guardedSgList]() {
-                guardedSgList.Acquire();
+                auto guard = guardedSgList.Acquire();
             };
             for (int i = 0; i < 5; ++i) {
                 tasks.Add(acquireTask);

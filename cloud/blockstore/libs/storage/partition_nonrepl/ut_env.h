@@ -11,10 +11,12 @@
 #include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/core/request_info.h>
 #include <cloud/blockstore/libs/storage/stats_service/stats_service_events_private.h>
+#include <cloud/blockstore/libs/storage/volume/volume_events_private.h>
 #include <cloud/storage/core/libs/common/sglist_test.h>
 #include <cloud/storage/core/libs/kikimr/helpers.h>
 
 #include <contrib/ydb/core/testlib/basics/runtime.h>
+#include <contrib/ydb/library/actors/core/log.h>
 
 #include <library/cpp/testing/unittest/registar.h>
 
@@ -147,6 +149,9 @@ private:
 
             HFunc(TEvVolume::TEvPreparePartitionMigrationRequest, HandlePreparePartitionMigration);
             HFunc(TEvVolume::TEvUpdateMigrationState, HandleUpdateMigrationState);
+
+            IgnoreFunc(TEvVolumePrivate::TEvLaggingAgentMigrationFinished);
+            IgnoreFunc(TEvVolumePrivate::TEvDeviceTimeoutedRequest);
 
             default:
                 Y_ABORT("Unexpected event %x", ev->GetTypeRewrite());
@@ -423,13 +428,14 @@ public:
     }
 
     std::unique_ptr<TEvService::TEvCheckRangeRequest>
-    CreateCheckRangeRequest(TString id, ui32 startIndex, ui32 size, ui32 replicaCount = 0)
+    CreateCheckRangeRequest(TString id, ui32 startIndex, ui32 size, ui32 replicaCount = 0, bool calculateChecksums = false)
     {
         auto request = std::make_unique<TEvService::TEvCheckRangeRequest>();
         request->Record.SetDiskId(id);
         request->Record.SetStartIndex(startIndex);
         request->Record.SetBlocksCount(size);
-        request->Record.mutable_headers()->SetReplicaCount(replicaCount);
+        request->Record.SetCalculateChecksums(calculateChecksums);
+
         return request;
     }
 

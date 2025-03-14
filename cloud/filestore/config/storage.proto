@@ -527,4 +527,9 @@ message TStorageConfig
 
     // Enable write-back cache on FUSE server
     optional bool ServerWriteBackCacheEnabled = 420;
+
+    // If enabled, GarbageCompactionThresholdAverage in Cleanup will be compared
+    // to the scaled ratio of DeletedMarkersCount to UsedBlocksCount instead of
+    // UsedRangesCount.
+    optional bool CalculateCleanupScoreBasedOnUsedBlocksCount = 421;
 }

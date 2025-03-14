@@ -12,7 +12,9 @@ enum EErrorFlag
     // Note: sequential flag numbers starting from one are used, not powers of two
 
     EF_NONE = 0;
-    // A flag that makes the target error EErrorKind::ErrorSilent. Such an error does not increment the fatal error counter
+
+    // A flag that makes the target error EErrorKind::ErrorSilent. Such an error
+    // does not increment the fatal error counter.
     // Be careful using EF_SILENT with retriable errors. This flag changes error
     // kind to EErrorKind::ErrorSilent making the error non-retriable.
     EF_SILENT = 1;

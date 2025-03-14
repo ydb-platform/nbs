@@ -16,7 +16,10 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void FillFeatures(const TStorageConfig& config, NProto::TFileStore& fileStore)
+void FillFeatures(
+    const NProto::TFileSystem& fileSystem,
+    const TStorageConfig& config,
+    NProto::TFileStore& fileStore)
 {
     auto* features = fileStore.MutableFeatures();
     features->SetTwoStageReadEnabled(config.GetTwoStageReadEnabled());
@@ -53,6 +56,9 @@ void FillFeatures(const TStorageConfig& config, NProto::TFileStore& fileStore)
 
     features->SetServerWriteBackCacheEnabled(
         config.GetServerWriteBackCacheEnabled());
+
+    features->SetDirectoryCreationInShardsEnabled(
+        fileSystem.GetDirectoryCreationInShardsEnabled());
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -349,7 +355,7 @@ void TIndexTabletActor::CompleteTx_CreateSession(
     response->Record.SetSessionState(session->GetSessionState());
     auto& fileStore = *response->Record.MutableFileStore();
     Convert(GetFileSystem(), fileStore);
-    FillFeatures(*Config, fileStore);
+    FillFeatures(GetFileSystem(), *Config, fileStore);
 
     TVector<TString> shardIds;
     // there's no point in returning shard list unless it's main filesystem

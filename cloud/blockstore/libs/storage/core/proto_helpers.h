@@ -144,6 +144,10 @@ bool GetThrottlingEnabled(
     const TStorageConfig& config,
     const NProto::TPartitionConfig& partitionConfig);
 
+bool GetThrottlingEnabledZeroBlocks(
+    const TStorageConfig& config,
+    const NProto::TPartitionConfig& partitionConfig);
+
 bool CompareVolumeConfigs(
     const NKikimrBlockStore::TVolumeConfig& prevConfig,
     const NKikimrBlockStore::TVolumeConfig& newConfig);

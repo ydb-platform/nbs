@@ -463,15 +463,14 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data_Stress)
             UNIT_ASSERT_VALUES_EQUAL(
                 256,
                 stats.GetAllocatedCompactionRanges());
-            // CompactionRangeStatsSize is 0 since all ranges are marked with
-            // the 'compacted' flag and thus not returned
             UNIT_ASSERT_VALUES_EQUAL(1, stats.CompactionRangeStatsSize());
+            // The amount of GarbageBlocksCount is 0 since the blocks
+            // were not overwritten
             UNIT_ASSERT_VALUES_EQUAL(
                 Sprintf(
-                    "r=1177944064 b=%u d=%u g=%u",
+                    "r=1177944064 b=%u d=%u g=0",
                     (compactionThreshold - 1),
-                    deletionMarkers,
-                    expectedExcessBlobCount * BlockGroupSize),
+                    deletionMarkers),
                 CompactionRangeToString(stats.GetCompactionRangeStats(0)));
         }
     }

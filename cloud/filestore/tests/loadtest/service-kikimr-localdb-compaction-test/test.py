@@ -4,50 +4,22 @@ import os
 import threading
 from time import sleep
 
-import google.protobuf.text_format as text_format
 import pytest
 import yatest.common as common
-from cloud.filestore.config.storage_pb2 import TStorageConfig
 from cloud.filestore.tests.python.lib.loadtest import run_load_test
+from cloud.filestore.tests.python.lib.test_helpers import (
+    get_restart_interval,
+    get_storage_config,
+    write_storage_config,
+)
 
 
-def get_nfs_config(name: str) -> str:
-    configs_dir = os.getenv("NFS_CONFIG_DIR")
-    assert configs_dir is not None, "NFS_CONFIG_DIR is not set"
-    return os.path.join(configs_dir, name)
-
-
-def get_nfs_storage_config_path() -> str:
-    return get_nfs_config("storage.txt")
-
-
-def get_storage_config() -> TStorageConfig:
-    nfs_storage_config_path = get_nfs_storage_config_path()
-    storage_config = TStorageConfig()
-    with open(nfs_storage_config_path) as p:
-        storage_config = text_format.Parse(p.read(), TStorageConfig())
-    return storage_config
-
-
-def set_storage_config(storage_config: TStorageConfig):
-    nfs_storage_config_path = get_nfs_storage_config_path()
-    with open(nfs_storage_config_path, "w") as f:
-        f.write(text_format.MessageToString(storage_config))
-
-
-def set_new_compaction_policy(new_compaction_policy_enabled: bool):
-    logging.info(
-        f"Setting NewLocalDBCompactionPolicyEnabled to {new_compaction_policy_enabled}"
-    )
+def set_new_compaction_policy(enabled: bool):
+    logging.info(f"Setting NewLocalDBCompactionPolicyEnabled to {enabled}")
     storage_config = get_storage_config()
-    storage_config.NewLocalDBCompactionPolicyEnabled = (
-        new_compaction_policy_enabled
-    )
-    set_storage_config(storage_config)
-    sleep(RESTART_INTERVAL * 1.5)
-
-
-RESTART_INTERVAL = 20
+    storage_config.NewLocalDBCompactionPolicyEnabled = enabled
+    write_storage_config(storage_config)
+    sleep(get_restart_interval() * 1.5)
 
 
 class OpType(enum.Enum):

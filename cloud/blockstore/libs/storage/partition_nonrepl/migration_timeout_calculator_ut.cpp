@@ -169,22 +169,20 @@ TNonreplicatedPartitionConfigPtr MakePartitionConfig(
     TDevices devices,
     bool useSimpleMigrationBandwidthLimiter)
 {
-    return std::make_shared<TNonreplicatedPartitionConfig>(
-        devices,
-        NProto::VOLUME_IO_OK,
-        "vol0",
-        4_KB,
-        TNonreplicatedPartitionConfig::TVolumeInfo{
-            Now(),
-            // only SSD/HDD distinction matters
-            NProto::STORAGE_MEDIA_SSD_NONREPLICATED},
-        NActors::TActorId(),
-        false,                 // muteIOErrors
-        THashSet<TString>(),   // freshDeviceIds
-        THashSet<TString>(),   // laggingDeviceIds
-        TDuration::Zero(),     // maxTimedOutDeviceStateDuration
-        false,                 // maxTimedOutDeviceStateDurationOverridden
-        useSimpleMigrationBandwidthLimiter);
+    TNonreplicatedPartitionConfig::TNonreplicatedPartitionConfigInitParams
+        params{
+            std::move(devices),
+            TNonreplicatedPartitionConfig::TVolumeInfo{
+                Now(),
+                // only SSD/HDD distinction matters
+                NProto::STORAGE_MEDIA_SSD_NONREPLICATED},
+            "vol0",
+            DefaultBlockSize,
+            NActors::TActorId()};
+    params.UseSimpleMigrationBandwidthLimiter =
+        useSimpleMigrationBandwidthLimiter;
+
+    return std::make_shared<TNonreplicatedPartitionConfig>(std::move(params));
 }
 
 }   // namespace

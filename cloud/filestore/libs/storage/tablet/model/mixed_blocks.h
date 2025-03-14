@@ -14,6 +14,14 @@ namespace NCloud::NFileStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+struct TBlobMetaMapStats
+{
+    ui64 LoadedRanges = 0;
+    ui64 OffloadedRanges = 0;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
 class TMixedBlocks
 {
 private:
@@ -21,7 +29,7 @@ private:
     std::unique_ptr<TImpl> Impl;
 
 public:
-    TMixedBlocks(IAllocator* allocator);
+    explicit TMixedBlocks(IAllocator* allocator);
     ~TMixedBlocks();
 
     void Reset(ui64 offloadedRangesCapacity);
@@ -75,6 +83,8 @@ public:
     TMixedBlobMeta FindBlob(ui32 rangeId, TPartialBlobId blobId) const;
 
     ui32 CalculateGarbageBlockCount(ui32 rangeId) const;
+
+    [[nodiscard]] TBlobMetaMapStats GetBlobMetaMapStats() const;
 };
 
 }   // namespace NCloud::NFileStore::NStorage

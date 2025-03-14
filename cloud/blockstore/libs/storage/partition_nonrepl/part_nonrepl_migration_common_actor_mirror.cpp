@@ -5,7 +5,7 @@
 #include <cloud/blockstore/libs/storage/core/forward_helpers.h>
 #include <cloud/blockstore/libs/storage/core/probes.h>
 #include <cloud/blockstore/libs/storage/core/proto_helpers.h>
-#include <cloud/blockstore/libs/storage/partition_nonrepl/mirror_request_actor.h>
+#include <cloud/blockstore/libs/storage/partition_nonrepl/migration_request_actor.h>
 
 namespace NCloud::NBlockStore::NStorage {
 
@@ -97,23 +97,18 @@ void TNonreplicatedPartitionMigrationCommonActor::MirrorRequest(
         }
     }
 
-    auto requestInfo = CreateRequestInfo(
-        ev->Sender,
-        ev->Cookie,
-        msg->CallContext);
-
-    NCloud::Register<TMirrorRequestActor<TMethod>>(
+    NCloud::Register<TMigrationRequestActor<TMethod>>(
         ctx,
-        std::move(requestInfo),
-        TVector<TActorId>{SrcActorId},
+        CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext),
+        ActorOwner ? SrcActorId : TActorId{},
         DstActorId,
         std::move(msg->Record),
         DiskId,
-        SelfId(),
+        SelfId(),   // parentActorId
         WriteAndZeroRequestsInProgress.AddWriteRequest(range));
 
     if constexpr (IsExactlyWriteMethod<TMethod>) {
-        ChangedRangesMap.MarkChanged(range);
+        NonZeroRangesMap.MarkChanged(range);
     }
 }
 

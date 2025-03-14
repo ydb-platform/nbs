@@ -469,7 +469,7 @@ bool TIndexTabletActor::PrepareTx_CreateNode(
             && Config->GetShardIdSelectionInLeaderEnabled()
             && !GetFileSystem().GetShardFileSystemIds().empty()
             && (args.Attrs.GetType() == NProto::E_REGULAR_NODE
-                || Config->GetDirectoryCreationInShardsEnabled()
+                || GetFileSystem().GetDirectoryCreationInShardsEnabled()
                 // otherwise there might be some local nodes which breaks
                 // current cross-shard RenameNode implementation
                 && !isMainWithLocalNodes))

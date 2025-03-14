@@ -376,7 +376,10 @@ void THiveProxyActor::HandleLockTabletExecutionLost(
         state->Phase == PHASE_LOCKED,
         TWellKnownEntityTypes::TABLET,
         tabletId);
-    SendLockLostNotification(ctx, state);
+    SendLockLostNotification(
+        ctx,
+        state,
+        MakeError(E_REJECTED, "Lock lost upon HIVE notification"));
     states->LockStates.erase(tabletId);
 }
 

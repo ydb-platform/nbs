@@ -261,9 +261,12 @@ void TStartVolumeActor::HandleTabletLockLost(
         return;
     }
 
+    const auto* msg = ev->Get();
+
     LOG_ERROR(ctx, TBlockStoreComponents::SERVICE,
-        "[%lu] Tablet lock has been lost",
-        VolumeTabletId);
+        "[%lu] Tablet lock has been lost with error: %s",
+        VolumeTabletId,
+        FormatError(msg->Error).data());
 
     auto error = MakeError(E_REJECTED, "Tablet lock has been lost");
     StartShutdown(ctx, error);
@@ -334,7 +337,7 @@ void TStartVolumeActor::ScheduleReboot(const TActorContext& ctx, bool delay)
         RebootSleepDuration = TDuration::Zero();
     }
 
-    LOG_DEBUG(ctx, TBlockStoreComponents::SERVICE,
+    LOG_INFO(ctx, TBlockStoreComponents::SERVICE,
         "[%lu] Sleeping for %s before rebooting tablet",
         VolumeTabletId,
         ToString(RebootSleepDuration).data());
