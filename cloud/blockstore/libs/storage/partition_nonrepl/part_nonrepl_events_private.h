@@ -219,6 +219,7 @@ struct TEvNonreplPartitionPrivate
 
         // Indexes of devices that participated in the request.
         TStackVec<ui32, 2> DeviceIndices;
+        TStackVec<ui32, 2> ErrorDeviceIndices;
 
         ui32 NonVoidBlockCount = 0;
         ui32 VoidBlockCount = 0;

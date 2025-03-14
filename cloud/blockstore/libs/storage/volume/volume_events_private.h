@@ -141,7 +141,7 @@ struct TEvVolumePrivate
 
     struct TDeviceTimedOutRequest
     {
-        const TString DeviceUUID;
+        TString DeviceUUID;
 
         explicit TDeviceTimedOutRequest(TString deviceUUID)
             : DeviceUUID(std::move(deviceUUID))

@@ -41,6 +41,9 @@ private:
 
     ui32 VoidBlockCount = 0;
 
+    TStackVec<ui32, 2> AllDevices;
+    TStackVec<ui32, 2> ErrDevices;
+
 public:
     TRdmaRequestReadBlocksLocalContext(
             TActorSystem* actorSystem,
@@ -61,58 +64,60 @@ public:
         , CheckVoidBlocks(checkVoidBlocks)
         , ResponseCount(requestCount)
         , SgList(std::move(sglist))
-    {
-    }
+    {}
 
     void HandleResult(const TDeviceReadRequestContext& dr, TStringBuf buffer)
     {
-        if (auto guard = SgList.Acquire()) {
-            auto* serializer = TBlockStoreProtocol::Serializer();
-            auto [result, err] = serializer->Parse(buffer);
+        auto guard = SgList.Acquire();
+        if (!guard) {
+            Error = MakeError(E_CANCELLED, "can't acquire sglist");
+            return;
+        }
+        auto* serializer = TBlockStoreProtocol::Serializer();
+        auto [result, err] = serializer->Parse(buffer);
 
-            if (HasError(err)) {
-                Error = std::move(err);
-                return;
-            }
+        if (HasError(err)) {
+            Error = std::move(err);
+            return;
+        }
 
-            const auto& concreteProto =
-                static_cast<NProto::TReadDeviceBlocksResponse&>(*result.Proto);
-            if (HasError(concreteProto.GetError())) {
-                Error = concreteProto.GetError();
-                return;
-            }
+        const auto& concreteProto =
+            static_cast<NProto::TReadDeviceBlocksResponse&>(*result.Proto);
+        if (HasError(concreteProto.GetError())) {
+            Error = concreteProto.GetError();
+            return;
+        }
 
-            TSgList data = guard.Get();
+        TSgList data = guard.Get();
 
-            ui64 offset = 0;
-            ui64 b = 0;
-            bool isAllZeroes = CheckVoidBlocks;
-            while (offset < result.Data.size()) {
-                ui64 targetBlock = dr.StartIndexOffset + b;
-                Y_ABORT_UNLESS(targetBlock < data.size());
-                ui64 bytes =
-                    Min(result.Data.size() - offset, data[targetBlock].Size());
-                Y_ABORT_UNLESS(bytes);
+        ui64 offset = 0;
+        ui64 b = 0;
+        bool isAllZeroes = CheckVoidBlocks;
+        while (offset < result.Data.size()) {
+            ui64 targetBlock = dr.StartIndexOffset + b;
+            Y_ABORT_UNLESS(targetBlock < data.size());
+            ui64 bytes =
+                Min(result.Data.size() - offset, data[targetBlock].Size());
+            Y_ABORT_UNLESS(bytes);
 
-                char* dst = const_cast<char*>(data[targetBlock].Data());
-                const char* src = result.Data.data() + offset;
-
-                if (isAllZeroes) {
-                    isAllZeroes = IsAllZeroes(src, bytes);
-                }
-
-                // may be nullptr for overlay disks
-                if (dst) {
-                    memcpy(dst, src, bytes);
-                }
-
-                offset += bytes;
-                ++b;
-            }
+            char* dst = const_cast<char*>(data[targetBlock].Data());
+            const char* src = result.Data.data() + offset;
 
             if (isAllZeroes) {
-                VoidBlockCount += dr.BlockCount;
+                isAllZeroes = IsAllZeroes(src, bytes);
             }
+
+            // may be nullptr for overlay disks
+            if (dst) {
+                memcpy(dst, src, bytes);
+            }
+
+            offset += bytes;
+            ++b;
+        }
+
+        if (isAllZeroes) {
+            VoidBlockCount += dr.BlockCount;
         }
     }
 
@@ -128,10 +133,15 @@ public:
         auto* dr = static_cast<TDeviceReadRequestContext*>(req->Context.get());
         auto buffer = req->ResponseBuffer.Head(responseBytes);
 
+        AllDevices.emplace_back(dr->DeviceIdx);
+
         if (status == NRdma::RDMA_PROTO_OK) {
             HandleResult(*dr, buffer);
         } else {
             Error = NRdma::ParseError(buffer);
+            if (NeedToNotifyAboutDeviceRequestError(Error)) {
+                ErrDevices.emplace_back(dr->DeviceIdx);
+            }
         }
 
         if (--ResponseCount != 0) {
@@ -159,6 +169,8 @@ public:
         auto completion = std::make_unique<TCompletionEvent>(std::move(Error));
         auto& counters = *completion->Stats.MutableUserReadCounters();
         completion->TotalCycles = RequestInfo->GetTotalCycles();
+        completion->DeviceIndices = AllDevices;
+        completion->ErrorDeviceIndices = ErrDevices;
 
         timer.Finish();
         completion->ExecCycles = RequestInfo->GetExecCycles();

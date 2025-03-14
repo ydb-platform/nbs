@@ -38,6 +38,8 @@ private:
     NActors::TActorId ParentActorId;
     ui64 RequestId;
 
+    TStackVec<ui32, 2> AllDevices;
+    TStackVec<ui32, 2> ErrDevices;
 public:
     TRdmaRequestContext(
             TActorSystem* actorSystem,
@@ -83,11 +85,17 @@ public:
         auto guard = Guard(Lock);
 
         auto buffer = req->ResponseBuffer.Head(responseBytes);
+        auto* dCtx = static_cast<TDeviceRequestContext*>(req->Context.get());
+
+        AllDevices.emplace_back(dCtx->DeviceIdx);
 
         if (status == NRdma::RDMA_PROTO_OK) {
             HandleResult(buffer);
         } else {
             Error = NRdma::ParseError(buffer);
+            if (NeedToNotifyAboutDeviceRequestError(Error)) {
+                ErrDevices.emplace_back(dCtx->DeviceIdx);
+            }
         }
 
         if (--ResponseCount != 0) {
@@ -112,6 +120,8 @@ public:
         auto completion = std::make_unique<TCompletionEvent>(std::move(Error));
         auto& counters = *completion->Stats.MutableUserWriteCounters();
         completion->TotalCycles = RequestInfo->GetTotalCycles();
+        completion->DeviceIndices = AllDevices;
+        completion->ErrorDeviceIndices = ErrDevices;
 
         timer.Finish();
         completion->ExecCycles = RequestInfo->GetExecCycles();
@@ -201,9 +211,12 @@ void TNonreplicatedPartitionRdmaActor::HandleZeroBlocks(
             deviceRequest.SetMultideviceRequest(deviceRequests.size() > 1);
         }
 
+        auto context = std::make_unique<TDeviceRequestContext>();
+        context->DeviceIdx = r.DeviceIdx;
+
         auto [req, err] = ep->AllocateRequest(
             requestContext,
-            nullptr,
+            std::move(context),
             NRdma::TProtoMessageSerializer::MessageByteSize(deviceRequest, 0),
             4_KB);
 

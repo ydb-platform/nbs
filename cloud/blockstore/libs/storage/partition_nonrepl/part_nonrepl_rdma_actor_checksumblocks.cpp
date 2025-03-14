@@ -23,7 +23,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TDeviceChecksumRequestContext: public NRdma::TNullContext
+struct TDeviceChecksumRequestContext: public TDeviceRequestContext
 {
     ui64 RangeStartIndex = 0;
     ui32 RangeSize = 0;
@@ -57,6 +57,9 @@ private:
     NActors::TActorId ParentActorId;
     ui64 RequestId;
 
+    TStackVec<ui32, 2> AllDevices;
+    TStackVec<ui32, 2> ErrDevices;
+
 public:
     TRdmaRequestContext(
             TActorSystem* actorSystem,
@@ -75,7 +78,9 @@ public:
         , RequestId(requestId)
     {}
 
-    void HandleResult(const TDeviceChecksumRequestContext& dc, TStringBuf buffer)
+    void HandleResult(
+        const TDeviceChecksumRequestContext& dc,
+        TStringBuf buffer)
     {
         auto* serializer = TBlockStoreProtocol::Serializer();
         auto [result, err] = serializer->Parse(buffer);
@@ -110,10 +115,15 @@ public:
             static_cast<TDeviceChecksumRequestContext*>(req->Context.get());
         auto buffer = req->ResponseBuffer.Head(responseBytes);
 
+        AllDevices.emplace_back(dc->DeviceIdx);
+
         if (status == NRdma::RDMA_PROTO_OK) {
             HandleResult(*dc, buffer);
         } else {
             Error = NRdma::ParseError(buffer);
+            if (NeedToNotifyAboutDeviceRequestError(Error)) {
+                ErrDevices.emplace_back(dc->DeviceIdx);
+            }
         }
 
         if (--ResponseCount != 0) {
@@ -144,6 +154,8 @@ public:
         auto completion = std::make_unique<TCompletionEvent>(std::move(Error));
         auto& counters = *completion->Stats.MutableSysChecksumCounters();
         completion->TotalCycles = RequestInfo->GetTotalCycles();
+        completion->DeviceIndices = AllDevices;
+        completion->ErrorDeviceIndices = ErrDevices;
 
         timer.Finish();
         completion->ExecCycles = RequestInfo->GetExecCycles();
@@ -225,6 +237,7 @@ void TNonreplicatedPartitionRdmaActor::HandleChecksumBlocks(
         auto dc = std::make_unique<TDeviceChecksumRequestContext>();
         dc->RangeStartIndex = r.BlockRange.Start;
         dc->RangeSize = r.DeviceBlockRange.Size() * PartConfig->GetBlockSize();
+        dc->DeviceIdx = r.DeviceIdx;
 
         NProto::TChecksumDeviceBlocksRequest deviceRequest;
         deviceRequest.MutableHeaders()->CopyFrom(msg->Record.GetHeaders());

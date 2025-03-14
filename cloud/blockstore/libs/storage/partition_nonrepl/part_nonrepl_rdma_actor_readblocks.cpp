@@ -38,8 +38,12 @@ private:
     TAdaptiveLock Lock;
     size_t ResponseCount;
     NProto::TReadBlocksResponse Response;
+    NProto::TError Error;
 
     ui32 VoidBlockCount = 0;
+
+    TStackVec<ui32, 2> AllDevices;
+    TStackVec<ui32, 2> ErrDevices;
 
 public:
     TRdmaRequestReadBlocksContext(
@@ -74,14 +78,14 @@ public:
         auto [result, err] = serializer->Parse(buffer);
 
         if (HasError(err)) {
-            *Response.MutableError() = std::move(err);
+            Error = std::move(err);
             return;
         }
 
         const auto& concreteProto =
             static_cast<NProto::TReadDeviceBlocksResponse&>(*result.Proto);
         if (HasError(concreteProto.GetError())) {
-            *Response.MutableError() = concreteProto.GetError();
+            Error = concreteProto.GetError();
             return;
         }
 
@@ -126,10 +130,15 @@ public:
         auto* dr = static_cast<TDeviceReadRequestContext*>(req->Context.get());
         auto buffer = req->ResponseBuffer.Head(responseBytes);
 
+        AllDevices.emplace_back(dr->DeviceIdx);
+
         if (status == NRdma::RDMA_PROTO_OK) {
             HandleResult(*dr, buffer);
         } else {
-            *Response.MutableError() = NRdma::ParseError(buffer);
+            Error = NRdma::ParseError(buffer);
+            if (NeedToNotifyAboutDeviceRequestError(Error)) {
+                ErrDevices.emplace_back(dr->DeviceIdx);
+            }
         }
 
         if (--ResponseCount != 0) {
@@ -138,7 +147,8 @@ public:
 
         // Got all device responses. Do processing.
 
-        ProcessError(*ActorSystem, *PartConfig, *Response.MutableError());
+        ProcessError(*ActorSystem, *PartConfig, Error);
+        *Response.MutableError() = Error;
         auto error = Response.GetError();
 
         const ui32 blockCount = Response.GetBlocks().BuffersSize();
@@ -163,6 +173,8 @@ public:
         completion->TotalCycles = RequestInfo->GetTotalCycles();
         completion->NonVoidBlockCount = allZeroes ? 0 : blockCount;
         completion->VoidBlockCount = allZeroes ? blockCount : 0;
+        completion->DeviceIndices = AllDevices;
+        completion->ErrorDeviceIndices = ErrDevices;
 
         timer.Finish();
         completion->ExecCycles = RequestInfo->GetExecCycles();
