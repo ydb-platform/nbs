@@ -163,7 +163,7 @@ STFUNC(TReallocateActor::StateWork)
             HandleUpdateDevicesResponse);
 
         default:
-            HandleUnexpectedEvent(ev, TBlockStoreComponents::VOLUME);
+            HANDLE_UNEXPECTED_EVENT(ev, TBlockStoreComponents::VOLUME);
             break;
     }
 }

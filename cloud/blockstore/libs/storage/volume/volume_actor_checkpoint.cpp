@@ -664,7 +664,7 @@ STFUNC(TCheckpointActor<TMethod>::StateDrain)
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
 
         default:
-            HandleUnexpectedEvent(ev, TBlockStoreComponents::VOLUME);
+            HANDLE_UNEXPECTED_EVENT(ev, TBlockStoreComponents::VOLUME);
             break;
     }
 }
@@ -687,7 +687,7 @@ STFUNC(TCheckpointActor<TMethod>::StateDoAction)
         IgnoreFunc(TEvents::TEvWakeup);
 
         default:
-            HandleUnexpectedEvent(ev, TBlockStoreComponents::VOLUME);
+            HANDLE_UNEXPECTED_EVENT(ev, TBlockStoreComponents::VOLUME);
             break;
     }
 }
@@ -706,7 +706,7 @@ STFUNC(TCheckpointActor<TMethod>::StateUpdateCheckpointRequest)
         IgnoreFunc(TEvents::TEvWakeup);
 
         default:
-            HandleUnexpectedEvent(ev, TBlockStoreComponents::VOLUME);
+            HANDLE_UNEXPECTED_EVENT(ev, TBlockStoreComponents::VOLUME);
             break;
     }
 }
