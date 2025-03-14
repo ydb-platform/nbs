@@ -18,9 +18,14 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
 )
 
+const (
+	shardedZoneID = "zone-d"
+	shardID       = "zone-d-shard-1"
+)
+
 ////////////////////////////////////////////////////////////////////////////////
 
-func TestDiskServiceCreateEmptyDisk(t *testing.T) {
+func testDiskServiceCreateEmptyDiskInZone(t *testing.T, zoneID string) {
 	ctx := testcommon.NewContext()
 
 	client, err := testcommon.NewClient(ctx)
@@ -30,23 +35,44 @@ func TestDiskServiceCreateEmptyDisk(t *testing.T) {
 	diskID := t.Name()
 
 	reqCtx := testcommon.GetRequestContext(t, ctx)
-	operation, err := client.CreateDisk(reqCtx, &disk_manager.CreateDiskRequest{
+	request := disk_manager.CreateDiskRequest{
 		Src: &disk_manager.CreateDiskRequest_SrcEmpty{
 			SrcEmpty: &empty.Empty{},
 		},
 		Size: 4096,
 		Kind: disk_manager.DiskKind_DISK_KIND_SSD,
 		DiskId: &disk_manager.DiskId{
-			ZoneId: "zone-a",
+			ZoneId: zoneID,
 			DiskId: diskID,
 		},
-	})
+	}
+
+	operation, err := client.CreateDisk(reqCtx, &request)
+	require.NoError(t, err)
+	require.NotEmpty(t, operation)
+	err = internal_client.WaitOperation(ctx, client, operation.Id)
+	require.NoError(t, err)
+
+	// Need create twice to be sure, that threre would be no error.
+	operation, err = client.CreateDisk(reqCtx, &request)
 	require.NoError(t, err)
 	require.NotEmpty(t, operation)
 	err = internal_client.WaitOperation(ctx, client, operation.Id)
 	require.NoError(t, err)
 
 	testcommon.CheckConsistency(t, ctx)
+}
+
+func TestDiskServiceCreateEmptyDisk(t *testing.T) {
+	testDiskServiceCreateEmptyDiskInZone(t, "zone-a")
+}
+
+func TestDiskServiceCreateEmptyDiskInShardedZone(t *testing.T) {
+	testDiskServiceCreateEmptyDiskInZone(t, shardedZoneID)
+}
+
+func TestDiskServiceCreateEmptyDiskInShard(t *testing.T) {
+	testDiskServiceCreateEmptyDiskInZone(t, shardID)
 }
 
 func TestDiskServiceShouldCreateSsdNonreplIfFolderIsInAllowedList(t *testing.T) {

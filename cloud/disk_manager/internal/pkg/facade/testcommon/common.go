@@ -293,6 +293,27 @@ func newNbsClientClientConfig() *nbs_config.ClientConfig {
 					),
 				},
 			},
+			"zone-d-shard-1": {
+				Endpoints: []string{
+					fmt.Sprintf(
+						"localhost:%v",
+						os.Getenv("DISK_MANAGER_RECIPE_NBS4_PORT"),
+					),
+				},
+			},
+			"zone-d-shard-2": {
+				Endpoints: []string{
+					fmt.Sprintf(
+						"localhost:%v",
+						os.Getenv("DISK_MANAGER_RECIPE_NBS5_PORT"),
+					),
+				},
+			},
+		},
+		Shards: map[string]*nbs_config.ZoneShards{
+			"zone-d": {
+				Shards: []string{"zone-d-shard-1", "zone-d-shard-2"},
+			},
 		},
 		RootCertsFile:              &rootCertsFile,
 		DurableClientTimeout:       &durableClientTimeout,
