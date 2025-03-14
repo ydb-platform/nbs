@@ -435,6 +435,7 @@ public:
         request->Record.SetStartIndex(startIndex);
         request->Record.SetBlocksCount(size);
         request->Record.SetCalculateChecksums(calculateChecksums);
+        request->Record.mutable_headers()->SetReplicaCount(replicaCount);
 
         return request;
     }

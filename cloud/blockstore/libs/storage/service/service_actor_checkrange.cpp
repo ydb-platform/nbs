@@ -29,9 +29,7 @@ private:
     const ui64 StartIndex;
     const ui64 BlocksCount;
     const ui32 ReplicaCount;
-
     const bool CalculateChecksums;
-
 
 public:
     TCheckRangeActor(
