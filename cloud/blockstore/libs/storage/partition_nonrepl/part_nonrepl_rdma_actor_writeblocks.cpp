@@ -31,10 +31,9 @@ struct TDeviceRequestInfo
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TRdmaWriteBlocksResponseHandler: public NRdma::IClientHandler
+class TRdmaWriteBlocksResponseHandler: public IRdmaDeviceRequestHandler
 {
 private:
-    TActorSystem* ActorSystem;
     TNonreplicatedPartitionConfigPtr PartConfig;
     TRequestInfoPtr RequestInfo;
     TAdaptiveLock Lock;
@@ -42,7 +41,6 @@ private:
     const bool ReplyLocal;
     NProto::TError Error;
     const ui32 RequestBlockCount;
-    const NActors::TActorId ParentActorId;
     const ui64 RequestId;
 
 public:
@@ -55,13 +53,12 @@ public:
             ui32 requestBlockCount,
             NActors::TActorId parentActorId,
             ui64 requestId)
-        : ActorSystem(actorSystem)
+        : IRdmaDeviceRequestHandler(actorSystem, parentActorId)
         , PartConfig(std::move(partConfig))
         , RequestInfo(std::move(requestInfo))
         , ResponseCount(requestCount)
         , ReplyLocal(replyLocal)
         , RequestBlockCount(requestBlockCount)
-        , ParentActorId(parentActorId)
         , RequestId(requestId)
     {}
 
@@ -102,11 +99,16 @@ public:
         auto guard = Guard(Lock);
 
         auto buffer = req->ResponseBuffer.Head(responseBytes);
+        auto* dCtx = static_cast<TDeviceRequestContext*>(req->Context.get());
 
         if (status == NRdma::RDMA_PROTO_OK) {
             HandleResult(buffer);
         } else {
-            Error = NRdma::ParseError(buffer);
+            auto err = NRdma::ParseError(buffer);
+            if (NeedToNotifyAboutError(err)) {
+                SendDeviceTimedout(std::move(dCtx->DeviceUUID));
+            }
+            Error = std::move(err);
         }
 
         if (--ResponseCount != 0) {
@@ -257,9 +259,12 @@ void TNonreplicatedPartitionRdmaActor::HandleWriteBlocks(
             deviceRequest.SetMultideviceRequest(deviceRequests.size() > 1);
         }
 
+        auto context = std::make_unique<TDeviceRequestContext>();
+        context->DeviceUUID = r.Device.GetDeviceUUID();
+
         auto [req, err] = ep->AllocateRequest(
             requestResponseHandler,
-            nullptr,
+            std::move(context),
             NRdma::TProtoMessageSerializer::MessageByteSize(
                 deviceRequest,
                 r.DeviceBlockRange.Size() * PartConfig->GetBlockSize()),
@@ -304,7 +309,12 @@ void TNonreplicatedPartitionRdmaActor::HandleWriteBlocks(
             requestInfo->CallContext);
     }
 
-    RequestsInProgress.AddWriteRequest(requestId);
+    TRequestData requestData;
+    for (const auto& r: deviceRequests){
+        requestData.DeviceIndices.emplace_back(r.DeviceIdx);
+    }
+
+    RequestsInProgress.AddWriteRequest(requestId, requestData);
 }
 
 void TNonreplicatedPartitionRdmaActor::HandleWriteBlocksLocal(
@@ -408,10 +418,12 @@ void TNonreplicatedPartitionRdmaActor::HandleWriteBlocksLocal(
                 msg->Record.GetHeaders().GetVolumeRequestId());
             deviceRequest.SetMultideviceRequest(deviceRequests.size() > 1);
         }
+        auto context = std::make_unique<TDeviceRequestContext>();
+        context->DeviceUUID = r.Device.GetDeviceUUID();
 
         auto [req, err] = ep->AllocateRequest(
             requestResponseHandler,
-            nullptr,
+            std::move(context),
             NRdma::TProtoMessageSerializer::MessageByteSize(
                 deviceRequest,
                 r.DeviceBlockRange.Size() * PartConfig->GetBlockSize()),
@@ -457,7 +469,12 @@ void TNonreplicatedPartitionRdmaActor::HandleWriteBlocksLocal(
             requestInfo->CallContext);
     }
 
-    RequestsInProgress.AddWriteRequest(requestId);
+    TRequestData requestData;
+    for (const auto& r: deviceRequests){
+        requestData.DeviceIndices.emplace_back(r.DeviceIdx);
+    }
+
+    RequestsInProgress.AddWriteRequest(requestId, requestData);
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

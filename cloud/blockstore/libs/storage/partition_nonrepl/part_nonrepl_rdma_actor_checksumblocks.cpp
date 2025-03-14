@@ -23,7 +23,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TDeviceChecksumRequestContext: public NRdma::TNullContext
+struct TDeviceChecksumRequestContext: public TDeviceRequestContext
 {
     ui64 RangeStartIndex = 0;
     ui32 RangeSize = 0;
@@ -43,10 +43,9 @@ struct TPartialChecksum
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TRdmaRequestContext: public NRdma::IClientHandler
+class TRdmaRequestContext: public IRdmaDeviceRequestHandler
 {
 private:
-    TActorSystem* ActorSystem;
     TNonreplicatedPartitionConfigPtr PartConfig;
     TRequestInfoPtr RequestInfo;
     TAdaptiveLock Lock;
@@ -54,7 +53,6 @@ private:
     TMap<ui64, TPartialChecksum> Checksums;
     NProto::TError Error;
     const ui32 RequestBlockCount;
-    NActors::TActorId ParentActorId;
     ui64 RequestId;
 
 public:
@@ -66,12 +64,11 @@ public:
             ui32 requestBlockCount,
             NActors::TActorId parentActorId,
             ui64 requestId)
-        : ActorSystem(actorSystem)
+        : IRdmaDeviceRequestHandler(actorSystem, parentActorId)
         , PartConfig(std::move(partConfig))
         , RequestInfo(std::move(requestInfo))
         , ResponseCount(requestCount)
         , RequestBlockCount(requestBlockCount)
-        , ParentActorId(parentActorId)
         , RequestId(requestId)
     {}
 
@@ -113,7 +110,11 @@ public:
         if (status == NRdma::RDMA_PROTO_OK) {
             HandleResult(*dc, buffer);
         } else {
-            Error = NRdma::ParseError(buffer);
+            auto err = NRdma::ParseError(buffer);
+            if (NeedToNotifyAboutError(err)) {
+                SendDeviceTimedout(std::move(dc->DeviceUUID));
+            }
+            Error = std::move(err);
         }
 
         if (--ResponseCount != 0) {
@@ -225,6 +226,7 @@ void TNonreplicatedPartitionRdmaActor::HandleChecksumBlocks(
         auto dc = std::make_unique<TDeviceChecksumRequestContext>();
         dc->RangeStartIndex = r.BlockRange.Start;
         dc->RangeSize = r.DeviceBlockRange.Size() * PartConfig->GetBlockSize();
+        dc->DeviceUUID = r.Device.GetDeviceUUID();
 
         NProto::TChecksumDeviceBlocksRequest deviceRequest;
         deviceRequest.MutableHeaders()->CopyFrom(msg->Record.GetHeaders());
@@ -268,7 +270,12 @@ void TNonreplicatedPartitionRdmaActor::HandleChecksumBlocks(
             requestInfo->CallContext);
     }
 
-    RequestsInProgress.AddReadRequest(requestId);
+    TRequestData requestData;
+    for (const auto& r: deviceRequests){
+        requestData.DeviceIndices.emplace_back(r.DeviceIdx);
+    }
+
+    RequestsInProgress.AddReadRequest(requestId, requestData);
 }
 
 }   // namespace NCloud::NBlockStore::NStorage
