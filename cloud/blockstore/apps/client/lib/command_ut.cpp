@@ -693,7 +693,7 @@ Y_UNIT_TEST_SUITE(TCommandTest)
         {
             TString diskId;
             ui32 startIndex, blocksCount;
-            parseJson(request->GetInput(), diskId, startIndex, blocksCount);
+            ParseJson(request->GetInput(), diskId, startIndex, blocksCount);
 
             UNIT_ASSERT_VALUES_EQUAL(DefaultDiskId, diskId);
             UNIT_ASSERT_VALUES_EQUAL(defaultMaxBlocksPerRequest, blocksCount);
