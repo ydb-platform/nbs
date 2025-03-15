@@ -172,17 +172,6 @@ service TBlockStoreService
     }
 
     //
-    //CheckRange operation
-    //
-
-    rpc CheckRange(TCheckRangeRequest) returns (TCheckRangeResponse) {
-        option (google.api.http) = {
-            post: "/check_range"
-            body: "*"
-        };
-    }
-
-    //
     // Checkpoint operations.
     //
 

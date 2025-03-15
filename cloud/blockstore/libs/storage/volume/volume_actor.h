@@ -1026,7 +1026,7 @@ private:
         const NActors::TActorContext& ctx);
 
     void HandleCheckRangeResponse(
-        const TEvService::TEvCheckRangeResponse::TPtr& ev,
+        const TEvVolume::TEvCheckRangeResponse::TPtr& ev,
         const NActors::TActorContext& ctx);
 
     void CreateCheckpointLightRequest(

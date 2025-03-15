@@ -27,7 +27,7 @@ private:
     const TRequestInfoPtr RequestInfo;
     const TString Input;
 
-    NPrivateProto::TCheckRangeRequest Request;
+    NProto::TCheckRangeRequest Request;
 
 public:
     TCheckRangeActor(TRequestInfoPtr requestInfo, TString input);
@@ -38,14 +38,14 @@ private:
     void ReplyAndDie(
         const TActorContext& ctx,
         NProto::TError error,
-        NPrivateProto::TCheckRangeResponse response);
+        NProto::TCheckRangeResponse response);
     void ReplyAndDie(const TActorContext& ctx, NProto::TError error);
 
 private:
     STFUNC(StateWork);
 
     void HandleCheckRangeResponse(
-        const TEvService::TEvCheckRangeResponse::TPtr& ev,
+        const TEvVolume::TEvCheckRangeResponse::TPtr& ev,
         const TActorContext& ctx);
 };
 
@@ -75,7 +75,7 @@ void TCheckRangeActor::Bootstrap(const TActorContext& ctx)
         return;
     }
 
-    auto request = std::make_unique<TEvService::TEvCheckRangeRequest>();
+    auto request = std::make_unique<TEvVolume::TEvCheckRangeRequest>();
     request->Record.SetDiskId(Request.GetDiskId());
     request->Record.SetStartIndex(Request.GetStartIndex());
     request->Record.SetBlocksCount(Request.GetBlocksCount());
@@ -103,7 +103,7 @@ void TCheckRangeActor::ReplyAndDie(
     auto msg = std::make_unique<TEvService::TEvExecuteActionResponse>(error);
 
     google::protobuf::util::MessageToJsonString(
-        NPrivateProto::TCheckRangeResponse(),
+        NProto::TCheckRangeResponse(),
         msg->Record.MutableOutput());
 
     LWTRACK(
@@ -119,7 +119,7 @@ void TCheckRangeActor::ReplyAndDie(
 void TCheckRangeActor::ReplyAndDie(
     const TActorContext& ctx,
     NProto::TError error,
-    NPrivateProto::TCheckRangeResponse response)
+    NProto::TCheckRangeResponse response)
 {
     auto msg = std::make_unique<TEvService::TEvExecuteActionResponse>(error);
 
@@ -140,11 +140,11 @@ void TCheckRangeActor::ReplyAndDie(
 ////////////////////////////////////////////////////////////////////////////////
 
 void TCheckRangeActor::HandleCheckRangeResponse(
-    const TEvService::TEvCheckRangeResponse::TPtr& ev,
+    const TEvVolume::TEvCheckRangeResponse::TPtr& ev,
     const TActorContext& ctx)
 {
     auto& record = ev->Get()->Record;
-    NPrivateProto::TCheckRangeResponse response;
+    NProto::TCheckRangeResponse response;
     response.MutableStatus()->CopyFrom(record.GetStatus());
     response.MutableChecksums()->Swap(record.MutableChecksums());
 
@@ -159,7 +159,7 @@ void TCheckRangeActor::HandleCheckRangeResponse(
 STFUNC(TCheckRangeActor::StateWork)
 {
     switch (ev->GetTypeRewrite()) {
-        HFunc(TEvService::TEvCheckRangeResponse, HandleCheckRangeResponse);
+        HFunc(TEvVolume::TEvCheckRangeResponse, HandleCheckRangeResponse);
 
         default:
             HandleUnexpectedEvent(ev, TBlockStoreComponents::SERVICE);

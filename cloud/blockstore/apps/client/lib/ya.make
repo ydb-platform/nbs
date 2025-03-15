@@ -7,6 +7,7 @@ SRCS(
     assign_volume.cpp
     backup_volume.cpp
     bootstrap.cpp
+    check_range.cpp
     command.cpp
     create_checkpoint.cpp
     create_placement_group.cpp
@@ -68,6 +69,7 @@ PEERDIR(
     library/cpp/lwtrace/mon
     library/cpp/protobuf/util
     library/cpp/threading/blocking_queue
+    library/cpp/json
 
     contrib/ydb/library/actors/util
 )

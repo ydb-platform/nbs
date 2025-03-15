@@ -618,12 +618,12 @@ bool ToPartitionRequests<TEvVolume::TGetUsedBlocksMethod>(
 }
 
 template <>
-bool ToPartitionRequests<TEvService::TCheckRangeMethod>(
+bool ToPartitionRequests<TEvVolume::TCheckRangeMethod>(
     const TPartitionInfoList& partitions,
     const ui32 blockSize,
     const ui32 blocksPerStripe,
-    const TEvService::TCheckRangeMethod::TRequest::TPtr& ev,
-    TVector<TPartitionRequest<TEvService::TCheckRangeMethod>>* requests,
+    const TEvVolume::TCheckRangeMethod::TRequest::TPtr& ev,
+    TVector<TPartitionRequest<TEvVolume::TCheckRangeMethod>>* requests,
     TBlockRange64* blockRange)
 {
     return ToPartitionRequestsSimple(

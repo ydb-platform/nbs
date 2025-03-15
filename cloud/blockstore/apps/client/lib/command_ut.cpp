@@ -5,6 +5,7 @@
 #include <cloud/blockstore/libs/service/service_test.h>
 #include <cloud/storage/core/libs/common/error.h>
 
+#include <library/cpp/json/json_reader.h>
 #include <library/cpp/protobuf/util/pb_io.h>
 #include <library/cpp/testing/unittest/registar.h>
 #include <library/cpp/threading/future/future.h>
@@ -66,6 +67,21 @@ bool ExecuteRequest(
     handler->SetClientFactories(MakeClientFactories());
 
     return handler->Run(args.size(), &args[0]);
+}
+
+void ParseJson(
+    const TString& input,
+    TString& disk_id,
+    ui32& start_index,
+    ui32& blocks_count)
+{
+    NJson::TJsonValue json;
+
+    UNIT_ASSERT(!NJson::ReadJsonTree(input, &json));
+
+    disk_id = json["DiskId"].GetStringRobust();
+    start_index = json["StartIndex"].GetUIntegerRobust();
+    blocks_count = json["BlocksCount"].GetUIntegerRobust();
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -663,6 +679,118 @@ Y_UNIT_TEST_SUITE(TCommandTest)
         };
 
         UNIT_ASSERT(!ExecuteRequest("ping", argv, client));
+    }
+
+    Y_UNIT_TEST(ShouldSplitLargeCheckRangeRequestIntoSeveralRequests)
+    {
+        ui64 defaultMaxBlocksPerRequest = 1024;
+        ui64 expectedNumberOfRequest = 10;
+        ui32 checkRangeCounter = 0;
+        auto blocksCount = defaultMaxBlocksPerRequest * expectedNumberOfRequest;
+        auto client = std::make_shared<TTestService>();
+        client->ExecuteActionHandler =
+            [&](std::shared_ptr<NProto::TExecuteActionRequest> request)
+        {
+            TString diskId;
+            ui32 startIndex, blocksCount;
+            parseJson(request->GetInput(), diskId, startIndex, blocksCount);
+
+            UNIT_ASSERT_VALUES_EQUAL(DefaultDiskId, diskId);
+            UNIT_ASSERT_VALUES_EQUAL(defaultMaxBlocksPerRequest, blocksCount);
+            UNIT_ASSERT_VALUES_EQUAL(1024 * checkRangeCounter, startIndex);
+            ++checkRangeCounter;
+            return MakeFuture<NProto::TExecuteActionResponse>();
+        };
+        client->StatVolumeHandler =
+            [&](std::shared_ptr<NProto::TStatVolumeRequest> request)
+        {
+            UNIT_ASSERT_VALUES_EQUAL(DefaultDiskId, request->GetDiskId());
+            auto response = NProto::TStatVolumeResponse();
+            response.mutable_volume()->SetBlocksCount(20480);
+            return MakeFuture(response);
+        };
+        TVector<TString> argv;
+        argv.reserve(4);
+        argv.emplace_back(GetProgramName());
+        argv.emplace_back("--disk-id=" + DefaultDiskId);
+        argv.emplace_back("--start-index=0");
+        argv.emplace_back(TStringBuilder() << "--blocks-count=" << blocksCount);
+        UNIT_ASSERT(ExecuteRequest("checkrange", argv, client));
+        UNIT_ASSERT_VALUES_EQUAL(expectedNumberOfRequest, checkRangeCounter);
+    }
+
+    Y_UNIT_TEST(ShouldUseZeroAsDefaultStartIndexInCheckRange)
+    {
+        ui64 defaultMaxBlocksPerRequest = 1024;
+        auto blocksCount = defaultMaxBlocksPerRequest;
+        auto client = std::make_shared<TTestService>();
+        client->ExecuteActionHandler =
+            [&](std::shared_ptr<NProto::TExecuteActionRequest> request)
+        {
+            TString diskId;
+            ui32 startIndex, blocksCount;
+            parseJson(request->GetInput(), diskId, startIndex, blocksCount);
+            UNIT_ASSERT_VALUES_EQUAL(DefaultDiskId, diskId);
+            UNIT_ASSERT_VALUES_EQUAL(0, startIndex);
+            return MakeFuture<NProto::TExecuteActionResponse>();
+        };
+        client->StatVolumeHandler =
+            [&](const std::shared_ptr<NProto::TStatVolumeRequest>& request)
+        {
+            UNIT_ASSERT_VALUES_EQUAL(DefaultDiskId, request->GetDiskId());
+            auto response = NProto::TStatVolumeResponse();
+            response.mutable_volume()->SetBlocksCount(DefaultBlocksCount);
+            return MakeFuture(response);
+        };
+        TVector<TString> argv;
+        argv.reserve(3);
+        argv.emplace_back(GetProgramName());
+        argv.emplace_back("--disk-id=" + DefaultDiskId);
+        argv.emplace_back(TStringBuilder() << "--blocks-count=" << blocksCount);
+        UNIT_ASSERT(ExecuteRequest("checkrange", argv, client));
+    }
+
+    Y_UNIT_TEST(
+        ShouldPerformCheckRangeForEntireDiskWhenBlocksCountIsNotSpecified)
+    {
+        ui64 blocksPerRequest = 1024;
+        ui32 checkRangeCounter = 0;
+        auto client = std::make_shared<TTestService>();
+
+        client->ExecuteActionHandler =
+            [&](std::shared_ptr<NProto::TExecuteActionRequest> request)
+        {
+            TString diskId;
+            ui32 startIndex, blocksCount;
+            parseJson(request->GetInput(), diskId, startIndex, blocksCount);
+
+            UNIT_ASSERT_VALUES_EQUAL(DefaultDiskId, diskId);
+            UNIT_ASSERT_VALUES_EQUAL(
+                checkRangeCounter * blocksPerRequest,
+                startIndex);
+            ++checkRangeCounter;
+            return MakeFuture<NProto::TExecuteActionResponse>();
+        };
+
+        client->StatVolumeHandler =
+            [&](std::shared_ptr<NProto::TStatVolumeRequest> request)
+        {
+            UNIT_ASSERT_VALUES_EQUAL(DefaultDiskId, request->GetDiskId());
+            auto response = NProto::TStatVolumeResponse();
+            response.mutable_volume()->SetBlocksCount(DefaultBlocksCount);
+            return MakeFuture(response);
+        };
+        TVector<TString> argv;
+        argv.reserve(4);
+        argv.emplace_back(GetProgramName());
+        argv.emplace_back("--disk-id=" + DefaultDiskId);
+        argv.emplace_back("--start-index=0");
+        argv.emplace_back(
+            TStringBuilder() << "--blocks-per-request=" << blocksPerRequest);
+        UNIT_ASSERT(ExecuteRequest("checkrange", argv, client));
+        UNIT_ASSERT_VALUES_EQUAL(
+            DefaultBlocksCount,
+            checkRangeCounter * blocksPerRequest);
     }
 }
 
