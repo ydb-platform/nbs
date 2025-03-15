@@ -208,26 +208,43 @@ func run(
 		if s3Config != nil {
 			s3MetricsRegistry := mon.NewRegistry("s3_client")
 
-			availabilityMonitoringMetricsRegistry := mon.NewRegistry("availability_monitoring")
+			banInterval, err := time.ParseDuration(
+				config.TasksConfig.GetAvailabilityMonitoringBanInterval(),
+			)
+			if err != nil {
+				return err
+			}
+
+			maxBanHostsCount := config.TasksConfig.GetAvailabilityMonitoringMaxHostsInBanCount()
+
 			availabilityMonitoringStorage := persistence.NewAvailabilityMonitoringStorage(
 				config.TasksConfig,
 				db,
+				banInterval,
+				maxBanHostsCount,
 			)
+
 			successRateReportingInterval, err := time.ParseDuration(
 				config.TasksConfig.GetAvailabilityMonitoringSuccessRateReportingInterval(),
 			)
 			if err != nil {
 				return err
 			}
+			successRateAvailabilityTrasehold := config.TasksConfig.GetSuccessRateAvailabilityTrasehold()
 
-			availabilityMonitoring := persistence.NewAvailabilityMonitoring(
+			availabilityMonitoringMetricsRegistry := mon.NewRegistry("availability_monitoring")
+			availabilityMonitoring, err := persistence.NewAvailabilityMonitoring(
 				ctx,
 				"s3",
 				hostname,
 				successRateReportingInterval,
+				successRateAvailabilityTrasehold,
 				availabilityMonitoringStorage,
 				availabilityMonitoringMetricsRegistry,
 			)
+			if err != nil {
+				return err
+			}
 
 			s3, err = persistence.NewS3ClientFromConfig(
 				s3Config,

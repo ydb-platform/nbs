@@ -71,5 +71,9 @@ message TasksConfig {
     // database.
     optional uint64 TasksToListLimit = 34 [default = 10000];
 
-    optional string AvailabilityMonitoringSuccessRateReportingInterval  = 35 [default = "15s"];
+    optional string AvailabilityMonitoringSuccessRateReportingInterval = 35 [default = "15s"];
+    optional double SuccessRateAvailabilityTrasehold = 36 [default = 0.99];
+
+    optional string AvailabilityMonitoringBanInterval = 37 [default = "1m"];
+    optional uint64 AvailabilityMonitoringMaxHostsInBanCount = 38 [default = 10];
 }
