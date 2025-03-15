@@ -523,8 +523,8 @@ TServiceClient::CreateCheckRangeRequest(
     const TString& diskId,
     const ui64 startIndex,
     const ui64 blocksCount,
-    const ui32 replicaCount,
-    const bool calculateChecksums)
+    const bool calculateChecksums,
+    const ui32 replicaCount)
 {
     auto request = std::make_unique<TEvService::TEvCheckRangeRequest>();
     request->Record.SetDiskId(diskId);
