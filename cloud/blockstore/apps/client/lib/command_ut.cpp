@@ -5,6 +5,7 @@
 #include <cloud/blockstore/libs/service/service_test.h>
 #include <cloud/storage/core/libs/common/error.h>
 
+#include <library/cpp/json/json_reader.h>
 #include <library/cpp/protobuf/util/pb_io.h>
 #include <library/cpp/testing/unittest/registar.h>
 #include <library/cpp/threading/future/future.h>
@@ -14,8 +15,6 @@
 #include <util/system/file.h>
 #include <util/system/fs.h>
 #include <util/system/progname.h>
-
-#include <regex>
 
 namespace NCloud::NBlockStore::NClient {
 
@@ -70,26 +69,19 @@ bool ExecuteRequest(
     return handler->Run(args.size(), &args[0]);
 }
 
-void parseJson(const TString& input, std::string& disk_id, ui32& start_index, ui32& blocks_count) {
-    std::regex disk_id_regex("\"DiskId\":\\s*\"([^\"]+)\"");
-    std::regex start_index_regex("\"StartIndex\":\\s*(\\d+)");
-    std::regex blocks_count_regex("\"BlocksCount\":\\s*(\\d+)");
+void ParseJson(
+    const TString& input,
+    TString& disk_id,
+    ui32& start_index,
+    ui32& blocks_count)
+{
+    NJson::TJsonValue json;
 
-    std::smatch match;
+    UNIT_ASSERT(!NJson::ReadJsonTree(input, &json));
 
-    std::string inputString = std::string(input);
-
-    if (std::regex_search(inputString, match, disk_id_regex)) {
-        disk_id = match[1].str();
-    }
-
-    if (std::regex_search(inputString, match, start_index_regex)) {
-        start_index = std::stoi(match[1].str());
-    }
-
-    if (std::regex_search(inputString, match, blocks_count_regex)) {
-        blocks_count = std::stoi(match[1].str());
-    }
+    disk_id = json["DiskId"].GetStringRobust();
+    start_index = json["StartIndex"].GetUIntegerRobust();
+    blocks_count = json["BlocksCount"].GetUIntegerRobust();
 }
 
 ////////////////////////////////////////////////////////////////////////////////
