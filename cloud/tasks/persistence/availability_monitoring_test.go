@@ -25,6 +25,8 @@ func newAvailabilityMonitoringStorage(
 ) *AvailabilityMonitoringStorageYDB {
 
 	config := &tasks_config.TasksConfig{}
+	storageFolder := t.Name()
+	config.StorageFolder = &storageFolder
 	err := CreateAvailabilityMonitoringYDBTables(
 		ctx,
 		config.GetStorageFolder(),

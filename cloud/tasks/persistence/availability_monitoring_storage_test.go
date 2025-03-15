@@ -65,6 +65,10 @@ func TestAvailabilityMonitoringStorageYDBUpdateComponentAvailability(t *testing.
 		1,              // maxBanHostsCount
 	)
 
+	// works only if it was set to true
+	// err = storage.UpdateComponentAvailability(ctx, "host", "component1", true)
+	// require.NoError(t, err)
+
 	err = storage.UpdateComponentAvailability(ctx, "host", "component1", false)
 	require.NoError(t, err)
 
@@ -103,6 +107,14 @@ func TestAvailabilityMonitoringStorageYDBUpdateComponentsBackFromUnavailable(t *
 		banInterval, // banInterval
 		1,           // maxBanHostsCount
 	)
+
+	// works only if it was set to true
+	// err = storage.UpdateComponentAvailability(ctx, "host", "component1", true)
+	// require.NoError(t, err)
+	// err = storage.UpdateComponentAvailability(ctx, "host", "component2", true)
+	// require.NoError(t, err)
+	// err = storage.UpdateComponentAvailability(ctx, "host", "component3", true)
+	// require.NoError(t, err)
 
 	err = storage.UpdateComponentAvailability(ctx, "host", "component1", false)
 	require.NoError(t, err)

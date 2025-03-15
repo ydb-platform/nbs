@@ -429,7 +429,7 @@ func (s *AvailabilityMonitoringStorageYDB) updateComponentAvailability(
 			from components_availability
 			where host = $host
 			and component = $component
-			and availability != $availability
+			and availability = $availability
 		`, s.tablesPath),
 			ValueParam("$host", UTF8Value(host)),
 			ValueParam("$component", UTF8Value(component)),
@@ -445,7 +445,7 @@ func (s *AvailabilityMonitoringStorageYDB) updateComponentAvailability(
 		}
 
 		logging.Info(ctx, "pre results is %v", results)
-		if len(results) == 0 {
+		if len(results) > 0 {
 			return tx.Commit(ctx)
 		}
 	}
