@@ -69,7 +69,7 @@ bool ExecuteRequest(
     return handler->Run(args.size(), &args[0]);
 }
 
-void ParseJson(
+void ParseCheckRangeRequestJson(
     const TString& input,
     TString& disk_id,
     ui32& start_index,
@@ -693,7 +693,7 @@ Y_UNIT_TEST_SUITE(TCommandTest)
         {
             TString diskId;
             ui32 startIndex, blocksCount;
-            ParseJson(request->GetInput(), diskId, startIndex, blocksCount);
+            ParseCheckRangeRequestJson(request->GetInput(), diskId, startIndex, blocksCount);
 
             UNIT_ASSERT_VALUES_EQUAL(DefaultDiskId, diskId);
             UNIT_ASSERT_VALUES_EQUAL(defaultMaxBlocksPerRequest, blocksCount);
@@ -729,7 +729,7 @@ Y_UNIT_TEST_SUITE(TCommandTest)
         {
             TString diskId;
             ui32 startIndex, blocksCount;
-            parseJson(request->GetInput(), diskId, startIndex, blocksCount);
+            ParseCheckRangeRequestJson(request->GetInput(), diskId, startIndex, blocksCount);
             UNIT_ASSERT_VALUES_EQUAL(DefaultDiskId, diskId);
             UNIT_ASSERT_VALUES_EQUAL(0, startIndex);
             return MakeFuture<NProto::TExecuteActionResponse>();
@@ -762,7 +762,7 @@ Y_UNIT_TEST_SUITE(TCommandTest)
         {
             TString diskId;
             ui32 startIndex, blocksCount;
-            parseJson(request->GetInput(), diskId, startIndex, blocksCount);
+            ParseCheckRangeRequestJson(request->GetInput(), diskId, startIndex, blocksCount);
 
             UNIT_ASSERT_VALUES_EQUAL(DefaultDiskId, diskId);
             UNIT_ASSERT_VALUES_EQUAL(
