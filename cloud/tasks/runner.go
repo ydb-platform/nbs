@@ -10,6 +10,7 @@ import (
 	"github.com/ydb-platform/nbs/cloud/tasks/headers"
 	"github.com/ydb-platform/nbs/cloud/tasks/logging"
 	"github.com/ydb-platform/nbs/cloud/tasks/metrics"
+	"github.com/ydb-platform/nbs/cloud/tasks/persistence"
 	"github.com/ydb-platform/nbs/cloud/tasks/storage"
 	"github.com/ydb-platform/nbs/cloud/tasks/tracing"
 )
@@ -834,11 +835,55 @@ func startHeartbeats(
 	}
 }
 
+func componentsAreAvailable(
+	components []string,
+	componentsAvailability map[string]bool,
+) bool {
+
+	for _, component := range components {
+		availability, ok := componentsAvailability[component]
+		// mark components that are not monitored as available
+		if ok && !availability {
+			return false
+		}
+	}
+
+	return true
+}
+
+func filterTasksByComponentsAvailability(
+	tasks []storage.TaskInfo,
+	availableComponents []persistence.ComponentsAvailabilityResult,
+	config *tasks_config.TasksConfig,
+) []storage.TaskInfo {
+
+	componentsByTaskTypes := make(map[string][]string)
+	for key, value := range config.GetComponentsByTaskTypes() {
+		componentsByTaskTypes[key] = value.Components
+	}
+
+	componentsAvailability := make(map[string]bool)
+	for _, component := range availableComponents {
+		componentsAvailability[component.Component] = component.Availability
+	}
+
+	filteredTasks := []storage.TaskInfo{}
+	for _, task := range tasks {
+		if len(componentsByTaskTypes[task.TaskType]) == 0 ||
+			componentsAreAvailable(componentsByTaskTypes[task.TaskType], componentsAvailability) {
+			filteredTasks = append(filteredTasks, task)
+		}
+	}
+
+	return filteredTasks
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 func StartRunners(
 	ctx context.Context,
 	taskStorage storage.Storage,
+	availabilityMonitoringStorage *persistence.AvailabilityMonitoringStorageYDB,
 	registry *Registry,
 	runnerMetricsRegistry metrics.Registry,
 	config *tasks_config.TasksConfig,
@@ -901,11 +946,21 @@ func StartRunners(
 	listerReadyToRun := newLister(
 		ctx,
 		func(ctx context.Context, limit uint64) ([]storage.TaskInfo, error) {
-			return taskStorage.ListTasksReadyToRun(
+			availableComponents, err := availabilityMonitoringStorage.GetComponentsAvailabilityResults(ctx, host)
+			if err != nil {
+				return []storage.TaskInfo{}, err
+			}
+
+			readyToRunTasks, err := taskStorage.ListTasksReadyToRun(
 				ctx,
 				limit,
 				taskTypesForExecution,
 			)
+			if err != nil {
+				return []storage.TaskInfo{}, err
+			}
+
+			return filterTasksByComponentsAvailability(readyToRunTasks, availableComponents, config), nil
 		},
 		config.GetRunnersCount(),
 		config.GetTasksToListLimit(),
@@ -916,11 +971,21 @@ func StartRunners(
 	listerReadyToCancel := newLister(
 		ctx,
 		func(ctx context.Context, limit uint64) ([]storage.TaskInfo, error) {
-			return taskStorage.ListTasksReadyToCancel(
+			availableComponents, err := availabilityMonitoringStorage.GetComponentsAvailabilityResults(ctx, host)
+			if err != nil {
+				return []storage.TaskInfo{}, err
+			}
+
+			readyToCancelTasks, err := taskStorage.ListTasksReadyToCancel(
 				ctx,
 				limit,
 				taskTypesForExecution,
 			)
+			if err != nil {
+				return []storage.TaskInfo{}, err
+			}
+
+			return filterTasksByComponentsAvailability(readyToCancelTasks, availableComponents, config), nil
 		},
 		config.GetRunnersCount(),
 		config.GetTasksToListLimit(),
@@ -954,12 +1019,22 @@ func StartRunners(
 	listerStallingWhileRunning := newLister(
 		ctx,
 		func(ctx context.Context, limit uint64) ([]storage.TaskInfo, error) {
-			return taskStorage.ListTasksStallingWhileRunning(
+			availableComponents, err := availabilityMonitoringStorage.GetComponentsAvailabilityResults(ctx, host)
+			if err != nil {
+				return []storage.TaskInfo{}, err
+			}
+
+			stallingWhileRunningTasks, err := taskStorage.ListTasksStallingWhileRunning(
 				ctx,
 				host,
 				limit,
 				taskTypesForExecution,
 			)
+			if err != nil {
+				return []storage.TaskInfo{}, err
+			}
+
+			return filterTasksByComponentsAvailability(stallingWhileRunningTasks, availableComponents, config), nil
 		},
 		config.GetStalkingRunnersCount(),
 		config.GetTasksToListLimit(),
@@ -970,12 +1045,22 @@ func StartRunners(
 	listerStallingWhileCancelling := newLister(
 		ctx,
 		func(ctx context.Context, limit uint64) ([]storage.TaskInfo, error) {
-			return taskStorage.ListTasksStallingWhileCancelling(
+			availableComponents, err := availabilityMonitoringStorage.GetComponentsAvailabilityResults(ctx, host)
+			if err != nil {
+				return []storage.TaskInfo{}, err
+			}
+
+			stallingWhileCancellingTasks, err := taskStorage.ListTasksStallingWhileCancelling(
 				ctx,
 				host,
 				limit,
 				taskTypesForExecution,
 			)
+			if err != nil {
+				return []storage.TaskInfo{}, err
+			}
+
+			return filterTasksByComponentsAvailability(stallingWhileCancellingTasks, availableComponents, config), nil
 		},
 		config.GetStalkingRunnersCount(),
 		config.GetTasksToListLimit(),

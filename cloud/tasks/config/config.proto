@@ -8,6 +8,10 @@ option go_package = "github.com/ydb-platform/nbs/cloud/tasks/config";
 
 ////////////////////////////////////////////////////////////////////////////////
 
+message ComponentsByTaskType {
+    repeated string Components = 1;
+}
+
 message TasksConfig {
     optional string PollForTaskUpdatesPeriod = 1 [default = "1s"];
     optional string PollForTasksPeriodMin = 2 [default = "1s"];
@@ -76,4 +80,6 @@ message TasksConfig {
 
     optional string AvailabilityMonitoringBanInterval = 37 [default = "1m"];
     optional uint64 AvailabilityMonitoringMaxHostsInBanCount = 38 [default = 10];
+
+    map<string, ComponentsByTaskType> ComponentsByTaskTypes = 39;
 }

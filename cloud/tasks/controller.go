@@ -7,6 +7,7 @@ import (
 	tasks_config "github.com/ydb-platform/nbs/cloud/tasks/config"
 	"github.com/ydb-platform/nbs/cloud/tasks/logging"
 	"github.com/ydb-platform/nbs/cloud/tasks/metrics"
+	"github.com/ydb-platform/nbs/cloud/tasks/persistence"
 	"github.com/ydb-platform/nbs/cloud/tasks/storage"
 )
 
@@ -26,11 +27,12 @@ type controller struct {
 	runnersCancel context.CancelFunc
 	running       atomic.Bool
 
-	taskStorage           storage.Storage
-	registry              *Registry
-	runnerMetricsRegistry metrics.Registry
-	config                *tasks_config.TasksConfig
-	host                  string
+	taskStorage                   storage.Storage
+	availabilityMonitoringStorage *persistence.AvailabilityMonitoringStorageYDB
+	registry                      *Registry
+	runnerMetricsRegistry         metrics.Registry
+	config                        *tasks_config.TasksConfig
+	host                          string
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -69,6 +71,7 @@ func (c *controller) startRunners(ctx context.Context) error {
 	err := StartRunners(
 		ctx,
 		c.taskStorage,
+		c.availabilityMonitoringStorage,
 		c.registry,
 		c.runnerMetricsRegistry,
 		c.config,
@@ -96,6 +99,7 @@ func (c *controller) stopRunners() {
 func NewController(
 	ctx context.Context,
 	taskStorage storage.Storage,
+	availabilityMonitoringStorage *persistence.AvailabilityMonitoringStorageYDB,
 	registry *Registry,
 	runnerMetricsRegistry metrics.Registry,
 	config *tasks_config.TasksConfig,
@@ -105,12 +109,13 @@ func NewController(
 	runContext := logging.WithComponent(ctx, logging.ComponentTaskRunner)
 
 	return &controller{
-		runContext:            runContext,
-		running:               atomic.Bool{},
-		taskStorage:           taskStorage,
-		registry:              registry,
-		runnerMetricsRegistry: runnerMetricsRegistry,
-		config:                config,
-		host:                  host,
+		runContext:                    runContext,
+		running:                       atomic.Bool{},
+		taskStorage:                   taskStorage,
+		availabilityMonitoringStorage: availabilityMonitoringStorage,
+		registry:                      registry,
+		runnerMetricsRegistry:         runnerMetricsRegistry,
+		config:                        config,
+		host:                          host,
 	}
 }

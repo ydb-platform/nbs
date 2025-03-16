@@ -97,9 +97,17 @@ func run(config *node_config.Config) error {
 		return err
 	}
 
+	availabilityMonitoringStorage := persistence.NewAvailabilityMonitoringStorage(
+		config.GetTasksConfig(),
+		db,
+		10, // banInterval
+		10, // maxBanHostsCount
+	)
+
 	err = tasks.StartRunners(
 		ctx,
 		storage,
+		availabilityMonitoringStorage,
 		registry,
 		empty.NewRegistry(),
 		config.GetTasksConfig(),

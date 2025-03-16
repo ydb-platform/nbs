@@ -144,10 +144,11 @@ func newDefaultConfig() *tasks_config.TasksConfig {
 ////////////////////////////////////////////////////////////////////////////////
 
 type services struct {
-	config    *tasks_config.TasksConfig
-	registry  *tasks.Registry
-	scheduler tasks.Scheduler
-	storage   tasks_storage.Storage
+	config                        *tasks_config.TasksConfig
+	registry                      *tasks.Registry
+	scheduler                     tasks.Scheduler
+	storage                       tasks_storage.Storage
+	availabilityMonitoringStorage *persistence.AvailabilityMonitoringStorageYDB
 }
 
 func createServicesWithConfig(
@@ -177,11 +178,19 @@ func createServicesWithConfig(
 	)
 	require.NoError(t, err)
 
+	availabilityMonitoringStorage := persistence.NewAvailabilityMonitoringStorage(
+		config,
+		db,
+		10, // banInterval
+		10, // maxBanHostsCount
+	)
+
 	return services{
-		config:    config,
-		registry:  registry,
-		scheduler: scheduler,
-		storage:   storage,
+		config:                        config,
+		registry:                      registry,
+		scheduler:                     scheduler,
+		storage:                       storage,
+		availabilityMonitoringStorage: availabilityMonitoringStorage,
 	}
 }
 
@@ -234,6 +243,7 @@ func (s *services) startRunnersWithMetricsRegistry(
 	return tasks.StartRunners(
 		ctx,
 		s.storage,
+		s.availabilityMonitoringStorage,
 		s.registry,
 		metricsRegistry,
 		s.config,
@@ -1526,4 +1536,205 @@ func TestListerMetricsCleanup(t *testing.T) {
 	waitForValue(t, hangingTasksChannel, 0)
 
 	registry.AssertAllExpectations(t)
+}
+
+func TestTasksShouldNotFilterComponentsIfNoComponentsInAvailabilityMonitoringStorage(t *testing.T) {
+	ctx, cancel := context.WithCancel(newContext())
+	defer cancel()
+
+	db, err := newYDB(ctx)
+	require.NoError(t, err)
+	defer db.Close(ctx)
+
+	registry := mocks.NewIgnoreUnknownCallsRegistryMock()
+
+	config := proto.Clone(newDefaultConfig()).(*tasks_config.TasksConfig)
+
+	componentsByTaskTypes := map[string]*tasks_config.ComponentsByTaskType{
+		"long": {
+			Components: []string{"component1", "component2", "component3"},
+		},
+	}
+	config.ComponentsByTaskTypes = componentsByTaskTypes
+
+	s := createServicesWithConfig(t, ctx, db, config, registry)
+
+	err = registerLongTask(s.registry)
+	require.NoError(t, err)
+
+	err = s.startRunners(ctx)
+	require.NoError(t, err)
+
+	reqCtx := getRequestContext(t, ctx)
+	id, err := scheduleLongTask(reqCtx, s.scheduler)
+	require.NoError(t, err)
+
+	_, err = waitTask(ctx, s.scheduler, id)
+	require.NoError(t, err)
+}
+
+func TestTasksShouldNotFilterComponentsIfNoComponentsInConfig(t *testing.T) {
+	ctx, cancel := context.WithCancel(newContext())
+	defer cancel()
+
+	db, err := newYDB(ctx)
+	require.NoError(t, err)
+	defer db.Close(ctx)
+
+	registry := mocks.NewIgnoreUnknownCallsRegistryMock()
+
+	config := proto.Clone(newDefaultConfig()).(*tasks_config.TasksConfig)
+
+	// componentsByTaskTypes := map[string]*tasks_config.ComponentsByTaskType{
+	// 	"long": {
+	// 		Components: []string{"component1", "component2", "component3"},
+	// 	},
+	// }
+	// config.ComponentsByTaskTypes = componentsByTaskTypes
+
+	s := createServicesWithConfig(t, ctx, db, config, registry)
+
+	err = registerLongTask(s.registry)
+	require.NoError(t, err)
+
+	err = s.availabilityMonitoringStorage.UpdateComponentAvailability(ctx, "localhost", "component1", false)
+	require.NoError(t, err)
+
+	err = s.startRunners(ctx)
+	require.NoError(t, err)
+
+	reqCtx := getRequestContext(t, ctx)
+	id, err := scheduleLongTask(reqCtx, s.scheduler)
+	require.NoError(t, err)
+
+	_, err = waitTask(ctx, s.scheduler, id)
+	require.NoError(t, err)
+}
+
+func TestTasksShouldNotFilterComponentsIfNotAllComponentsAreInStorage(t *testing.T) {
+	ctx, cancel := context.WithCancel(newContext())
+	defer cancel()
+
+	db, err := newYDB(ctx)
+	require.NoError(t, err)
+	defer db.Close(ctx)
+
+	registry := mocks.NewIgnoreUnknownCallsRegistryMock()
+
+	config := proto.Clone(newDefaultConfig()).(*tasks_config.TasksConfig)
+
+	componentsByTaskTypes := map[string]*tasks_config.ComponentsByTaskType{
+		"long": {
+			Components: []string{"component1", "component2", "component3"},
+		},
+	}
+	config.ComponentsByTaskTypes = componentsByTaskTypes
+
+	s := createServicesWithConfig(t, ctx, db, config, registry)
+
+	err = registerLongTask(s.registry)
+	require.NoError(t, err)
+
+	err = s.availabilityMonitoringStorage.UpdateComponentAvailability(ctx, "localhost", "component1", true)
+	require.NoError(t, err)
+
+	err = s.startRunners(ctx)
+	require.NoError(t, err)
+
+	reqCtx := getRequestContext(t, ctx)
+	id, err := scheduleLongTask(reqCtx, s.scheduler)
+	require.NoError(t, err)
+
+	_, err = waitTask(ctx, s.scheduler, id)
+	require.NoError(t, err)
+}
+
+func TestTasksShouldNotFilterComponentsIfAllComponentsAreAvailable(t *testing.T) {
+	ctx, cancel := context.WithCancel(newContext())
+	defer cancel()
+
+	db, err := newYDB(ctx)
+	require.NoError(t, err)
+	defer db.Close(ctx)
+
+	registry := mocks.NewIgnoreUnknownCallsRegistryMock()
+
+	config := proto.Clone(newDefaultConfig()).(*tasks_config.TasksConfig)
+
+	componentsByTaskTypes := map[string]*tasks_config.ComponentsByTaskType{
+		"long": {
+			Components: []string{"component1", "component2", "component3"},
+		},
+	}
+	config.ComponentsByTaskTypes = componentsByTaskTypes
+
+	s := createServicesWithConfig(t, ctx, db, config, registry)
+
+	err = registerLongTask(s.registry)
+	require.NoError(t, err)
+
+	err = s.availabilityMonitoringStorage.UpdateComponentAvailability(ctx, "localhost", "component1", true)
+	require.NoError(t, err)
+	err = s.availabilityMonitoringStorage.UpdateComponentAvailability(ctx, "localhost", "component2", true)
+	require.NoError(t, err)
+	err = s.availabilityMonitoringStorage.UpdateComponentAvailability(ctx, "localhost", "component3", true)
+	require.NoError(t, err)
+
+	err = s.startRunners(ctx)
+	require.NoError(t, err)
+
+	reqCtx := getRequestContext(t, ctx)
+	id, err := scheduleLongTask(reqCtx, s.scheduler)
+	require.NoError(t, err)
+
+	_, err = waitTask(ctx, s.scheduler, id)
+	require.NoError(t, err)
+}
+
+func TestTasksShouldFilterComponents(t *testing.T) {
+	ctx, cancel := context.WithCancel(newContext())
+	defer cancel()
+
+	db, err := newYDB(ctx)
+	require.NoError(t, err)
+	defer db.Close(ctx)
+
+	registry := mocks.NewIgnoreUnknownCallsRegistryMock()
+
+	config := proto.Clone(newDefaultConfig()).(*tasks_config.TasksConfig)
+
+	componentsByTaskTypes := map[string]*tasks_config.ComponentsByTaskType{
+		"long": {
+			Components: []string{"component1", "component2", "component3"},
+		},
+	}
+	config.ComponentsByTaskTypes = componentsByTaskTypes
+
+	s := createServicesWithConfig(t, ctx, db, config, registry)
+
+	err = registerLongTask(s.registry)
+	require.NoError(t, err)
+
+	err = s.availabilityMonitoringStorage.UpdateComponentAvailability(ctx, "localhost", "component1", true)
+	require.NoError(t, err)
+	err = s.availabilityMonitoringStorage.UpdateComponentAvailability(ctx, "localhost", "component2", false)
+	require.NoError(t, err)
+	err = s.availabilityMonitoringStorage.UpdateComponentAvailability(ctx, "localhost", "component3", true)
+	require.NoError(t, err)
+
+	err = s.startRunners(ctx)
+	require.NoError(t, err)
+
+	reqCtx := getRequestContext(t, ctx)
+	id, err := scheduleLongTask(reqCtx, s.scheduler)
+	require.NoError(t, err)
+
+	_, err = waitTaskWithTimeout(ctx, s.scheduler, id, 10*time.Second)
+	require.Error(t, err)
+
+	err = s.availabilityMonitoringStorage.UpdateComponentAvailability(ctx, "localhost", "component2", true)
+	require.NoError(t, err)
+
+	_, err = waitTask(ctx, s.scheduler, id)
+	require.NoError(t, err)
 }
