@@ -77,7 +77,7 @@ void ParseCheckRangeRequestJson(
 {
     NJson::TJsonValue json;
 
-    UNIT_ASSERT(!NJson::ReadJsonTree(input, &json));
+    UNIT_ASSERT(NJson::ReadJsonTree(input, &json));
 
     disk_id = json["DiskId"].GetStringRobust();
     start_index = json["StartIndex"].GetUIntegerRobust();
