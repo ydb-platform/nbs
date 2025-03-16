@@ -176,6 +176,22 @@ func run(
 		return err
 	}
 
+	banInterval, err := time.ParseDuration(
+		config.TasksConfig.GetAvailabilityMonitoringBanInterval(),
+	)
+	if err != nil {
+		return err
+	}
+
+	maxBanHostsCount := config.TasksConfig.GetAvailabilityMonitoringMaxHostsInBanCount()
+
+	availabilityMonitoringStorage := persistence.NewAvailabilityMonitoringStorage(
+		config.TasksConfig,
+		db,
+		banInterval,
+		maxBanHostsCount,
+	)
+
 	var s3 *persistence.S3Client
 	var s3Bucket string
 
@@ -207,22 +223,6 @@ func run(
 		// TODO: remove when s3 will always be initialized.
 		if s3Config != nil {
 			s3MetricsRegistry := mon.NewRegistry("s3_client")
-
-			banInterval, err := time.ParseDuration(
-				config.TasksConfig.GetAvailabilityMonitoringBanInterval(),
-			)
-			if err != nil {
-				return err
-			}
-
-			maxBanHostsCount := config.TasksConfig.GetAvailabilityMonitoringMaxHostsInBanCount()
-
-			availabilityMonitoringStorage := persistence.NewAvailabilityMonitoringStorage(
-				config.TasksConfig,
-				db,
-				banInterval,
-				maxBanHostsCount,
-			)
 
 			successRateReportingInterval, err := time.ParseDuration(
 				config.TasksConfig.GetAvailabilityMonitoringSuccessRateReportingInterval(),
@@ -331,6 +331,7 @@ func run(
 	controller := tasks.NewController(
 		ctx,
 		taskStorage,
+		availabilityMonitoringStorage,
 		taskRegistry,
 		runnerMetricsRegistry,
 		config.GetTasksConfig(),

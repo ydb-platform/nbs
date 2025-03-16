@@ -145,3 +145,56 @@ func TestAvailabilityMonitoringStorageYDBUpdateComponentsBackFromUnavailable(t *
 	require.EqualValues(t, true, results[1].Availability)
 	require.EqualValues(t, true, results[2].Availability)
 }
+
+func TestAvailabilityMonitoringStorageYDBMaxBanHostsCount(t *testing.T) {
+	ctx, cancel := context.WithCancel(newContext())
+	defer cancel()
+
+	db, err := newYDB(ctx, empty.NewRegistry())
+	require.NoError(t, err)
+	defer db.Close(ctx)
+
+	banInterval := 10 * time.Second
+	storage := newAvailabilityMonitoringStorage(
+		t,
+		ctx,
+		db,
+		banInterval, // banInterval
+		2,           // maxBanHostsCount
+	)
+
+	err = storage.UpdateComponentAvailability(ctx, "host1", "component1", false)
+	require.NoError(t, err)
+
+	err = storage.UpdateComponentAvailability(ctx, "host2", "component1", false)
+	require.NoError(t, err)
+
+	err = storage.UpdateComponentAvailability(ctx, "host3", "component1", false)
+	require.NoError(t, err)
+
+	time.Sleep(banInterval)
+
+	results, err := storage.GetComponentsAvailabilityResults(
+		ctx,
+		"host1",
+	)
+	require.NoError(t, err)
+	require.Equal(t, 1, len(results))
+	require.EqualValues(t, false, results[0].Availability)
+
+	results, err = storage.GetComponentsAvailabilityResults(
+		ctx,
+		"host2",
+	)
+	require.NoError(t, err)
+	require.Equal(t, 1, len(results))
+	require.EqualValues(t, false, results[0].Availability)
+
+	results, err = storage.GetComponentsAvailabilityResults(
+		ctx,
+		"host3",
+	)
+	require.NoError(t, err)
+	// availability is true since maxBanHostsLimit is reached
+	require.Equal(t, 0, len(results))
+}

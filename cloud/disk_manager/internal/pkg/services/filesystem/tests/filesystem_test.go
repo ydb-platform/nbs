@@ -230,9 +230,17 @@ func createServices(
 	)
 	require.NoError(t, err)
 
+	availabilityMonitoringStorage := persistence.NewAvailabilityMonitoringStorage(
+		tasksConfig,
+		db,
+		10, // banInterval
+		10, // maxBanHostsCount
+	)
+
 	err = tasks.StartRunners(
 		ctx,
 		taskStorage,
+		availabilityMonitoringStorage,
 		taskRegistry,
 		metrics.NewEmptyRegistry(),
 		tasksConfig,

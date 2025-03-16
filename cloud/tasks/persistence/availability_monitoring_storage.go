@@ -448,6 +448,35 @@ func (s *AvailabilityMonitoringStorageYDB) updateComponentAvailability(
 		if len(results) > 0 {
 			return tx.Commit(ctx)
 		}
+
+		res, err = tx.Execute(ctx, fmt.Sprintf(`
+			--!syntax_v1
+			pragma TablePathPrefix = "%v";
+			declare $host as Utf8;
+			declare $component as Utf8;
+			declare $availability as Bool;
+
+			select *
+			from components_availability
+			where component = $component
+			and availability = $availability
+		`, s.tablesPath),
+			ValueParam("$component", UTF8Value(component)),
+			ValueParam("$availability", BoolValue(availability)))
+		if err != nil {
+			return err
+		}
+		defer res.Close()
+
+		results, err = scanComponentsAvailabilityResults(ctx, res)
+		if err != nil {
+			return err
+		}
+
+		if len(results) >= int(s.maxBanHostsCount) {
+			// nothing to do
+			return tx.Commit(ctx)
+		}
 	}
 
 	_, err = tx.Execute(ctx, fmt.Sprintf(`

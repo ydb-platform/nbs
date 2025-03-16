@@ -78,22 +78,12 @@ func (m *AvailabilityMonitoring) updateComponentsAvailability(
 	logging.Info(ctx, "results is %v", results)
 
 	if !m.isAvailable(results) {
-		logging.Info(ctx, "returning false!!!!!")
+		logging.Info(ctx, "component is unavailable now")
 		err := m.storage.UpdateComponentAvailability(ctx, m.host, m.component, false)
-		logging.Info(ctx, "WTW!!!!!")
-		logging.Info(ctx, "err is %v", err)
 		if err != nil {
 			logging.Info(ctx, "error occured %v", err)
 			return err
 		}
-
-		results, err := m.storage.GetComponentsAvailabilityResults(ctx, m.host)
-		if err != nil {
-			logging.Info(ctx, "error occured %v", err)
-			return err
-		}
-
-		logging.Info(ctx, "results on updating is %v", results)
 	}
 
 	return m.storage.UpdateComponentsBackFromUnavailable(ctx, m.host, m.component)
