@@ -203,7 +203,7 @@ protected:
                     statusCode,
                     statusMessage);
 
-                if (statusCode && statusCode != S_OK) {
+                if (statusCode != S_OK) {
                     errorCount++;
                     if (ShowReadErrorsEnabled){
                         output << "ReadBlocks error in range [" << currentBlockIndex
