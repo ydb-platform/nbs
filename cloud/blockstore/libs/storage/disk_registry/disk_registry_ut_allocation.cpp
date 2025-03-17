@@ -30,7 +30,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-constexpr ui64 LOCAL_DEVICE_SIZE = 99999997952;   // ~ 93.13 GiB
+constexpr ui64 LocalDeviceSize = 99999997952;   // ~ 93.13 GiB
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -56,7 +56,7 @@ auto MakeLocalDevice(const auto* name, const auto* uuid)
 {
     return Device(name, uuid) |
            WithPool("local-ssd", NProto::DEVICE_POOL_KIND_LOCAL) |
-           WithTotalSize(LOCAL_DEVICE_SIZE);
+           WithTotalSize(LocalDeviceSize);
 }
 
 }   // namespace
@@ -1949,7 +1949,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
                         // disable secure erase timeout
                         config.SetNonReplicatedSecureEraseTimeout(Max<ui32>());
                         config.SetNonReplicatedDontSuspendDevices(true);
-                        config.SetLocalDiskAsyncDeallocation(true);
+                        config.SetLocalDiskAsyncDeallocationEnabled(true);
 
                         return config;
                     }())
@@ -1968,7 +1968,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
                 auto* ssd = config.AddDevicePoolConfigs();
                 ssd->SetName("local-ssd");
                 ssd->SetKind(NProto::DEVICE_POOL_KIND_LOCAL);
-                ssd->SetAllocationUnit(LOCAL_DEVICE_SIZE);
+                ssd->SetAllocationUnit(LocalDeviceSize);
 
                 return config;
             }());
@@ -1982,7 +1982,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
 
         // Disk allocation to mark all devices as dirty
         const TString makeDirty = "make_dirty";
-        const ui64 diskSize = LOCAL_DEVICE_SIZE * 3;
+        const ui64 diskSize = LocalDeviceSize * 3;
         {
             auto request =
                 diskRegistry.CreateAllocateDiskRequest(makeDirty, diskSize);

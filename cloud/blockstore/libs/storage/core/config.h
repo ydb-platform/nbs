@@ -659,7 +659,7 @@ public:
     [[nodiscard]] ui32 GetCheckRangeMaxRangeSize() const;
 
     [[nodiscard]] bool GetDisableZeroBlocksThrottlingForYDBBasedDisks() const;
-    [[nodiscard]] bool GetLocalDiskAsyncDeallocation() const;
+    [[nodiscard]] bool GetLocalDiskAsyncDeallocationEnabled() const;
 };
 
 ui64 GetAllocationUnit(

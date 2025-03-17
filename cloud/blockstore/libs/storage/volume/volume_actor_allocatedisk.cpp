@@ -291,8 +291,8 @@ void TVolumeActor::ScheduleAllocateDiskIfNeeded(const TActorContext& ctx)
 ////////////////////////////////////////////////////////////////////////////////
 
 void TVolumeActor::HandleAllocateDiskError(
-    NProto::TError error,
-    const TActorContext& ctx)
+    const TActorContext& ctx,
+    NProto::TError error)
 {
     if (UpdateVolumeConfigInProgress && State) {
         UnfinishedUpdateVolumeConfig.Devices = State->GetMeta().GetDevices();
@@ -314,8 +314,8 @@ void TVolumeActor::HandleAllocateDiskError(
         return;
     }
 
-    if (auto errorCode = error.GetCode();
-        errorCode != E_BS_RESOURCE_EXHAUSTED && errorCode != E_TRY_AGAIN)
+    if (error.GetCode() != E_BS_RESOURCE_EXHAUSTED &&
+        error.GetCode() != E_TRY_AGAIN)
     {
         ReportDiskAllocationFailure();
     }
@@ -323,8 +323,9 @@ void TVolumeActor::HandleAllocateDiskError(
     const auto mediaKind = static_cast<NProto::EStorageMediaKind>(
         GetNewestConfig().GetStorageMediaKind());
     const bool localDiskAllocationRetry =
-        Config->GetLocalDiskAsyncDeallocation() &&
-        error.code() == E_TRY_AGAIN && IsDiskRegistryLocalMediaKind(mediaKind);
+        Config->GetLocalDiskAsyncDeallocationEnabled() &&
+        error.GetCode() == E_TRY_AGAIN &&
+        IsDiskRegistryLocalMediaKind(mediaKind);
 
     if (localDiskAllocationRetry) {
         LOG_WARN(
@@ -360,8 +361,8 @@ void TVolumeActor::HandleAllocateDiskResponse(
 
     auto* msg = ev->Get();
 
-    if (const auto& error = msg->Record.GetError(); FAILED(error.GetCode())) {
-        HandleAllocateDiskError(error, ctx);
+    if (auto error = msg->Record.GetError(); FAILED(error.GetCode())) {
+        HandleAllocateDiskError(ctx, std::move(error));
         return;
     } else {
         LOG_INFO(ctx, TBlockStoreComponents::VOLUME,

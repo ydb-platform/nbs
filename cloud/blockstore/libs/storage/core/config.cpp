@@ -546,7 +546,7 @@ TDuration MSeconds(ui32 value)
                                                                                \
     xxx(DisableZeroBlocksThrottlingForYDBBasedDisks,       bool,   false      )\
                                                                                \
-    xxx(LocalDiskAsyncDeallocation,                        bool,   false      )
+    xxx(LocalDiskAsyncDeallocationEnabled,                 bool,   false      )
 // BLOCKSTORE_STORAGE_CONFIG_RW
 
 #define BLOCKSTORE_STORAGE_CONFIG(xxx)                                         \

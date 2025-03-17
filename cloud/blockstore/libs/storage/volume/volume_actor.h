@@ -794,8 +794,8 @@ private:
         const NActors::TActorContext& ctx);
 
     void HandleAllocateDiskError(
-        NProto::TError error,
-        const NActors::TActorContext& ctx);
+        const NActors::TActorContext& ctx,
+        NProto::TError error);
 
     void HandleAddLaggingDevicesResponse(
         const TEvDiskRegistry::TEvAddLaggingDevicesResponse::TPtr& ev,

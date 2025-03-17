@@ -12368,7 +12368,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
                     {
                         auto config = CreateDefaultStorageConfigProto();
                         config.SetNonReplicatedDontSuspendDevices(true);
-                        config.SetLocalDiskAsyncDeallocation(true);
+                        config.SetLocalDiskAsyncDeallocationEnabled(true);
                         return config;
                     }())
                 .WithAgents(agents)
