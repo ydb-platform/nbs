@@ -87,6 +87,12 @@ public:
             .StoreResult(&BlocksPerRequest);
 
         Opts.AddLongOption(
+                "calculate-checksums")
+            .RequiredArgument("BOOL")
+            .StoreResult(&CalculateChecksums);
+
+
+        Opts.AddLongOption(
                 "show-read-errors",
                 "show logs for the intervals where request was successfully "
                 "completed")
@@ -95,14 +101,9 @@ public:
 
         Opts.AddLongOption(
                 "save-results",
-                "saving result of checkRange operations to the folder './checkRange', each request in own file")
+                "saving result of checkRange operations to the folder './checkRange_$disk-id*', each request in own file")
             .RequiredArgument("BOOL")
             .StoreResult(&SaveResultsEnabled);
-
-        Opts.AddLongOption(
-                "calculate-checksums")
-            .RequiredArgument("BOOL")
-            .StoreResult(&CalculateChecksums);
 
         Opts.AddLongOption(
                 "folder-postfix",
@@ -222,7 +223,7 @@ protected:
             currentBlockIndex += blocksInThisRequest;
         }
 
-        output << "Total requests caught: " << requestCount << Endl;
+        output << "Total requests sended: " << requestCount << Endl;
         output << "Total errors caught: " << errorCount << Endl;
         return true;
     }
