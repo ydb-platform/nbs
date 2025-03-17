@@ -31,6 +31,7 @@ namespace NCloud::NBlockStore::NStorage {
 struct TDeviceRequestContext: public NRdma::TNullContext
 {
     TString DeviceUUID;
+    ui32 DeviceIdx;
 };
 
 struct TDeviceReadRequestContext: public TDeviceRequestContext
