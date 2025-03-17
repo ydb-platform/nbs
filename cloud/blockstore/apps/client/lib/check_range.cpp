@@ -89,14 +89,13 @@ public:
             .RequiredArgument("NUM")
             .StoreResult(&BlocksPerRequest);
 
-        Opts.AddLongOption("calculate-checksums")
+        Opts.AddLongOption("calculate-checksums", "calulate checksums")
             .RequiredArgument("BOOL")
             .StoreResult(&CalculateChecksums);
 
         Opts.AddLongOption(
                 "show-read-errors",
-                "show logs for the intervals where request was successfully "
-                "completed")
+                "show logs for the intervals where errors occurred")
             .RequiredArgument("BOOL")
             .StoreResult(&ShowReadErrorsEnabled);
 
@@ -109,8 +108,8 @@ public:
 
         Opts.AddLongOption(
                 "folder-postfix",
-                "select folder postfix: full folder name - (checkRange_ + "
-                "DiskId + postfix)")
+                "select result folder postfix: full folder name - (checkRange_ "
+                "+ $diskId + _$postfix)")
             .RequiredArgument("STR")
             .StoreResult(&FolderPostfix);
     }
