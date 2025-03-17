@@ -163,7 +163,6 @@ def test_fake_rdma_client(ydb, nbs):
 
     blocks = session.read_blocks(0, 1, checkpoint_id="")
     assert len(blocks) == 1
-    assert not all([x == 0 for x in blocks[0]]), "data corruption!"
     assert expected_data == blocks[0], "data corruption!"
 
     session.unmount_volume()
