@@ -20,7 +20,8 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void ExtractStatusValues(const TString& jsonStr, ui32& code, TString& message) {
+void ExtractStatusValues(const TString& jsonStr, ui32& code, TString& message)
+{
     NJson::TJsonValue json;
 
     if (!NJson::ReadJsonTree(jsonStr, &json)) {
@@ -32,15 +33,19 @@ void ExtractStatusValues(const TString& jsonStr, ui32& code, TString& message) {
     NJson::TJsonValue* jsonMsg = json.GetValueByPath("Status.Message");
 
     if (jsonCode) {
-        code = jsonCode->GetUIntegerSafe();
+        code = jsonCode->GetUIntegerRobust();
     }
 
     if (jsonMsg) {
-        message = jsonMsg->GetStringSafe();
+        message = jsonMsg->GetStringRobust();
     }
 }
 
-void SaveResultToFile(const TString& content, const TString& folderPath, const TString& fileName) {
+void SaveResultToFile(
+    const TString& content,
+    const TString& folderPath,
+    const TString& fileName)
+{
     TFsPath dir(folderPath);
 
     if (!dir.Exists()) {
@@ -48,7 +53,9 @@ void SaveResultToFile(const TString& content, const TString& folderPath, const T
     }
 
     TString fullFilePath = dir / fileName;
-    TOFStream file(fullFilePath, EOpenModeFlag::CreateAlways | EOpenModeFlag::RdWr);
+    TOFStream file(
+        fullFilePath,
+        EOpenModeFlag::CreateAlways | EOpenModeFlag::RdWr);
     file.Write(content);
 }
 
@@ -86,11 +93,9 @@ public:
             .RequiredArgument("NUM")
             .StoreResult(&BlocksPerRequest);
 
-        Opts.AddLongOption(
-                "calculate-checksums")
+        Opts.AddLongOption("calculate-checksums")
             .RequiredArgument("BOOL")
             .StoreResult(&CalculateChecksums);
-
 
         Opts.AddLongOption(
                 "show-read-errors",
@@ -101,7 +106,8 @@ public:
 
         Opts.AddLongOption(
                 "save-results",
-                "saving result of checkRange operations to the folder './checkRange_$disk-id*', each request in own file")
+                "saving result of checkRange operations to the folder "
+                "'./checkRange_$disk-id*', each request in own file")
             .RequiredArgument("BOOL")
             .StoreResult(&SaveResultsEnabled);
 
@@ -192,13 +198,19 @@ protected:
             } else {
                 ui32 statusCode = 0;
                 TString statusMessage;
-                ExtractStatusValues(result.GetOutput().Data(), statusCode, statusMessage);
+                ExtractStatusValues(
+                    result.GetOutput().Data(),
+                    statusCode,
+                    statusMessage);
 
-                if (statusCode && statusCode != S_OK && ShowReadErrorsEnabled) {
+                if (statusCode && statusCode != S_OK) {
                     errorCount++;
-                    output << "ReadBlocks error in range [" << currentBlockIndex << ", "
-                           << (currentBlockIndex + blocksInThisRequest - 1)
-                           << "]: " << FormatError(MakeError(statusCode, statusMessage)) << Endl;
+                    if (ShowReadErrorsEnabled){
+                        output << "ReadBlocks error in range [" << currentBlockIndex
+                               << ", " << (currentBlockIndex + blocksInThisRequest - 1) << "]: "
+                               << FormatError(MakeError(statusCode, statusMessage))
+                               << Endl;
+                    }
                 }
             }
 
