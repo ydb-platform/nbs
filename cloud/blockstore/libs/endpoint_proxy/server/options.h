@@ -21,6 +21,7 @@ struct TOptions final: TOptionsBase
     TDuration NbdRequestTimeout = TDuration::Minutes(10);
     TDuration NbdReconnectDelay = TDuration::MilliSeconds(100);
     bool WithoutLibnl = false;
+    std::optional<ui32> DebugRestartEventsCount;
 
     TOptions();
 
