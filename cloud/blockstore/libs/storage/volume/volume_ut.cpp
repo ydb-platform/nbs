@@ -952,7 +952,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
     Y_UNIT_TEST(ShouldConvertTryAgainToRejectedWhenCanAllocateLocalDiskLater)
     {
         NProto::TStorageServiceConfig config;
-        config.SetAsyncDeallocLocalDisk(true);
+        config.SetLocalDiskAsyncDeallocation(true);
 
         auto state = MakeIntrusive<TDiskRegistryState>();
         state->CurrentErrorCode = E_TRY_AGAIN;

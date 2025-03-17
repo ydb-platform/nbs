@@ -2672,8 +2672,7 @@ bool TDiskRegistryState::CanAllocateLocalDiskAfterSecureErase(
         for (const auto& chunks: infos) {
             const ui64 chunksSize =
                 (chunks.FreeChunks + chunks.DirtyChunks) * chunks.ChunkSize;
-            STORAGE_LOG(
-                TLOG_DEBUG,
+            STORAGE_DEBUG(
                 "AgentId=%s TAgentStorageInfo={.ChunkSize=%lu .ChunkCount=%u "
                 ".DirtyChunks=%u .FreeChunks=%u}",
                 agentId.Quote().c_str(),
@@ -2682,8 +2681,7 @@ bool TDiskRegistryState::CanAllocateLocalDiskAfterSecureErase(
                 chunks.DirtyChunks,
                 chunks.FreeChunks);
             if (totalSize <= chunksSize) {
-                STORAGE_LOG(
-                    TLOG_DEBUG,
+                STORAGE_DEBUG(
                     "Agent %s is suitable for allocation after SecureErase. "
                     "Got requested %lu bytes",
                     agentId.Quote().c_str(),

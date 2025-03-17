@@ -290,6 +290,64 @@ void TVolumeActor::ScheduleAllocateDiskIfNeeded(const TActorContext& ctx)
 
 ////////////////////////////////////////////////////////////////////////////////
 
+void TVolumeActor::HandleAllocateDiskError(
+    NProto::TError error,
+    const TActorContext& ctx)
+{
+    if (UpdateVolumeConfigInProgress && State) {
+        UnfinishedUpdateVolumeConfig.Devices = State->GetMeta().GetDevices();
+        UnfinishedUpdateVolumeConfig.Migrations =
+            State->GetMeta().GetMigrations();
+
+        UnfinishedUpdateVolumeConfig.Replicas.clear();
+        for (auto& r: State->GetMeta().GetReplicas()) {
+            UnfinishedUpdateVolumeConfig.Replicas.push_back(r.GetDevices());
+        }
+
+        UnfinishedUpdateVolumeConfig.FreshDeviceIds.assign(
+            State->GetMeta().GetFreshDeviceIds().begin(),
+            State->GetMeta().GetFreshDeviceIds().end());
+    }
+
+    if (GetErrorKind(error) == EErrorKind::ErrorRetriable) {
+        ScheduleAllocateDiskIfNeeded(ctx);
+        return;
+    }
+
+    if (auto errorCode = error.GetCode();
+        errorCode != E_BS_RESOURCE_EXHAUSTED && errorCode != E_TRY_AGAIN)
+    {
+        ReportDiskAllocationFailure();
+    }
+
+    const auto mediaKind = static_cast<NProto::EStorageMediaKind>(
+        GetNewestConfig().GetStorageMediaKind());
+    const bool localDiskAllocationRetry =
+        Config->GetLocalDiskAsyncDeallocation() &&
+        error.code() == E_TRY_AGAIN && IsDiskRegistryLocalMediaKind(mediaKind);
+
+    if (localDiskAllocationRetry) {
+        LOG_WARN(
+            ctx,
+            TBlockStoreComponents::VOLUME,
+            "[%lu] Local disk allocation failed but can succeed later. "
+            "Converted error code: E_TRY_AGAIN->E_REJECTED. DiskId=%s",
+            TabletID(),
+            GetNewestConfig().GetDiskId().Quote().c_str());
+        error.SetCode(E_REJECTED);
+    } else {
+        LOG_ERROR(
+            ctx,
+            TBlockStoreComponents::VOLUME,
+            "[%lu] Disk allocation failed with error: %s. DiskId=%s",
+            TabletID(),
+            FormatError(error).c_str(),
+            GetNewestConfig().GetDiskId().Quote().c_str());
+    }
+
+    StorageAllocationResult = std::move(error);
+}
+
 void TVolumeActor::HandleAllocateDiskResponse(
     const TEvDiskRegistry::TEvAllocateDiskResponse::TPtr& ev,
     const TActorContext& ctx)
@@ -302,56 +360,8 @@ void TVolumeActor::HandleAllocateDiskResponse(
 
     auto* msg = ev->Get();
 
-    if (auto error = msg->Record.GetError(); FAILED(error.GetCode())) {
-        LOG_ERROR(ctx, TBlockStoreComponents::VOLUME,
-            "[%lu] Disk allocation failed with error: %s. DiskId=%s",
-            TabletID(),
-            FormatError(error).c_str(),
-            GetNewestConfig().GetDiskId().Quote().c_str());
-
-        if (UpdateVolumeConfigInProgress && State) {
-            UnfinishedUpdateVolumeConfig.Devices = State->GetMeta().GetDevices();
-            UnfinishedUpdateVolumeConfig.Migrations =
-                State->GetMeta().GetMigrations();
-
-            UnfinishedUpdateVolumeConfig.Replicas.clear();
-            for (auto& r: State->GetMeta().GetReplicas()) {
-                UnfinishedUpdateVolumeConfig.Replicas.push_back(r.GetDevices());
-            }
-
-            UnfinishedUpdateVolumeConfig.FreshDeviceIds.assign(
-                State->GetMeta().GetFreshDeviceIds().begin(),
-                State->GetMeta().GetFreshDeviceIds().end());
-        }
-
-        if (GetErrorKind(error) == EErrorKind::ErrorRetriable) {
-            ScheduleAllocateDiskIfNeeded(ctx);
-        } else {
-            if (error.GetCode() != E_BS_RESOURCE_EXHAUSTED) {
-                ReportDiskAllocationFailure();
-            }
-
-            const auto mediaKind = static_cast<NProto::EStorageMediaKind>(
-                GetNewestConfig().GetStorageMediaKind());
-            const bool localDiskAllocationRetry =
-                Config->GetAsyncDeallocLocalDisk() &&
-                error.code() == E_TRY_AGAIN &&
-                IsDiskRegistryLocalMediaKind(mediaKind);
-
-            if (localDiskAllocationRetry) {
-                LOG_ERROR(
-                    ctx,
-                    TBlockStoreComponents::VOLUME,
-                    "[%lu] Local disk allocation failed but can succeed later. "
-                    "Converted error code: E_TRY_AGAIN->E_REJECTED. DiskId=%s",
-                    TabletID(),
-                    GetNewestConfig().GetDiskId().Quote().c_str());
-                error.SetCode(E_REJECTED);
-            }
-
-            StorageAllocationResult = std::move(error);
-        }
-
+    if (const auto& error = msg->Record.GetError(); FAILED(error.GetCode())) {
+        HandleAllocateDiskError(error, ctx);
         return;
     } else {
         LOG_INFO(ctx, TBlockStoreComponents::VOLUME,

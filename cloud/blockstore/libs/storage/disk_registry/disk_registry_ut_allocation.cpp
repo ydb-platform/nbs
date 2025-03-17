@@ -28,7 +28,11 @@ using namespace std::chrono_literals;
 
 namespace {
 
+////////////////////////////////////////////////////////////////////////////////
+
 constexpr ui64 LOCAL_DEVICE_SIZE = 99999997952;   // ~ 93.13 GiB
+
+////////////////////////////////////////////////////////////////////////////////
 
 auto GetBackup(TDiskRegistryClient& dr) -> NProto::TDiskRegistryStateBackup
 {
@@ -1924,7 +1928,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
         }
     }
 
-    Y_UNIT_TEST(ShouldRespondWithTryAgainWhenCanAllocateAfterCleanup)
+    Y_UNIT_TEST(ShouldRespondWithTryAgainWhenCanAllocateAfterSecureErase)
     {
         const TVector agents{
             CreateAgentConfig(
@@ -1945,7 +1949,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
                         // disable secure erase timeout
                         config.SetNonReplicatedSecureEraseTimeout(Max<ui32>());
                         config.SetNonReplicatedDontSuspendDevices(true);
-                        config.SetAsyncDeallocLocalDisk(true);
+                        config.SetLocalDiskAsyncDeallocation(true);
 
                         return config;
                     }())
@@ -2010,7 +2014,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
 
         // Intercept all secure erase requests to keep devices dirty
         TVector<std::unique_ptr<IEventHandle>> secureEraseDeviceRequests;
-        auto oldOfn = runtime->SetObserverFunc(
+        runtime->SetObserverFunc(
             [&](TAutoPtr<IEventHandle>& event)
             {
                 if (event->GetTypeRewrite() ==
@@ -2039,27 +2043,9 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
             UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
         }
 
-        // Try to get allocation response
-        auto tryRecvAllocResponse = [&]
-        {
-            TAutoPtr<NActors::IEventHandle> handle;
-            runtime->GrabEdgeEventRethrow<
-                TEvDiskRegistry::TEvAllocateDiskResponse>(handle, WaitTimeout);
-
-            std::unique_ptr<TEvDiskRegistry::TEvAllocateDiskResponse> ptr;
-
-            if (handle) {
-                ptr.reset(
-                    handle->Release<TEvDiskRegistry::TEvAllocateDiskResponse>()
-                        .Release());
-            }
-
-            return ptr;
-        };
-
         // Try to allocate disk with dirty devices. We'll get a E_TRY_AGAIN
         const TString diskId = "local0";
-        auto allocationShouldFail = [&](bool shouldFail)
+        auto tryAllocateDisk = [&](bool shouldFail)
         {
             auto request =
                 diskRegistry.CreateAllocateDiskRequest(diskId, diskSize);
@@ -2069,7 +2055,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
 
             diskRegistry.SendRequest(std::move(request));
 
-            auto response = tryRecvAllocResponse();
+            auto response = diskRegistry.RecvAllocateDiskResponse();
             if (shouldFail) {
                 UNIT_ASSERT(HasError(response->GetError()));
                 UNIT_ASSERT_EQUAL(E_TRY_AGAIN, response->GetStatus());
@@ -2087,7 +2073,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
 
             diskRegistry.SendRequest(std::move(request));
 
-            auto response = tryRecvAllocResponse();
+            auto response = diskRegistry.RecvAllocateDiskResponse();
             UNIT_ASSERT(HasError(response->GetError()));
             UNIT_ASSERT_EQUAL(E_TRY_AGAIN, response->GetStatus());
         }
@@ -2104,7 +2090,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
                 return options;
             }());
 
-        runtime->SetObserverFunc(oldOfn);
+        runtime->SetObserverFunc(TTestActorRuntime::DefaultObserverFunc);
 
         UNIT_ASSERT_EQUAL(secureEraseDeviceRequests.size(), 3UL);
         while (secureEraseDeviceRequests.size() != 1) {
@@ -2116,21 +2102,20 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
             runtime->AdvanceCurrentTime(5min);
             runtime->DispatchEvents({}, 10ms);
 
-            allocationShouldFail(true);
+            tryAllocateDisk(true);
         }
 
         // Still no allocation
-        allocationShouldFail(true);
+        tryAllocateDisk(true);
 
         // Secure erase last device
         runtime->Send(secureEraseDeviceRequests.back().release());
 
         // Adavance time a little
-        runtime->AdvanceCurrentTime(10ms);
         runtime->DispatchEvents({}, 10ms);
 
         // When the last dirty device is clean, we can allocate disk
-        allocationShouldFail(false);
+        tryAllocateDisk(false);
     }
 }
 

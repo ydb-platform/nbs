@@ -138,7 +138,9 @@ void TDiskRegistryActor::ExecuteAddDisk(
             args.PoolName,
             args.BlocksCount * args.BlockSize))
     {
-        args.Error = MakeError(E_TRY_AGAIN, "Can allocate local disk after secure erase.");
+        args.Error = MakeError(
+            E_TRY_AGAIN,
+            "Can allocate local disk after secure erase.");
     }
 
     args.Devices = std::move(result.Devices);

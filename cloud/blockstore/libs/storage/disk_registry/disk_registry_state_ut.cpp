@@ -12325,13 +12325,16 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
         executor.WriteTx([&](TDiskRegistryDatabase db) { db.InitSchema(); });
 
         constexpr ui64 LocalDeviceSize = 99999997952;   // ~ 93.13 GiB
-        constexpr ui64 LocalDeviceDefaultLogicalBlockSize = 512; // 512 B
+        constexpr ui64 LocalDeviceDefaultLogicalBlockSize = 512;   // 512 B
 
         auto makeLocalDevice = [](const auto* name, const auto* uuid)
         {
-            auto device = Device(name, uuid) |
-                   WithPool("local-ssd", NProto::DEVICE_POOL_KIND_LOCAL) |
-                   WithTotalSize(LocalDeviceSize, LocalDeviceDefaultLogicalBlockSize);
+            auto device =
+                Device(name, uuid) |
+                WithPool("local-ssd", NProto::DEVICE_POOL_KIND_LOCAL) |
+                WithTotalSize(
+                    LocalDeviceSize,
+                    LocalDeviceDefaultLogicalBlockSize);
             return device;
         };
 
@@ -12365,12 +12368,13 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
                     {
                         auto config = CreateDefaultStorageConfigProto();
                         config.SetNonReplicatedDontSuspendDevices(true);
-                        config.SetAsyncDeallocLocalDisk(true);
+                        config.SetLocalDiskAsyncDeallocation(true);
                         return config;
                     }())
                 .WithAgents(agents)
-                .WithDirtyDevices(
-                    {TDirtyDevice{"uuid-2", {}},})
+                .WithDirtyDevices({
+                    TDirtyDevice{"uuid-2", {}},
+                })
                 .Build();
 
         auto allocate = [&](auto db, ui32 deviceCount)
@@ -12383,8 +12387,8 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
                 TDiskRegistryState::TAllocateDiskParams{
                     .DiskId = "local0",
                     .BlockSize = LocalDeviceDefaultLogicalBlockSize,
-                    .BlocksCount =
-                        deviceCount * LocalDeviceSize / LocalDeviceDefaultLogicalBlockSize,
+                    .BlocksCount = deviceCount * LocalDeviceSize /
+                                   LocalDeviceDefaultLogicalBlockSize,
                     .AgentIds = {"agent-1"},
                     .PoolName = "local-ssd",
                     .MediaKind = NProto::STORAGE_MEDIA_SSD_LOCAL,
@@ -12452,7 +12456,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
                 // Cannot allocate disk of 1 device
                 UNIT_ASSERT(!canAllocateLater(1));
             });
-        }
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage
