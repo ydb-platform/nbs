@@ -419,15 +419,14 @@ struct TTestEnv
         return StorageStatsServiceState->Counters;
     }
 
-
     TPartitionDiskCounters GetAggregatedMirrorCounters()
     {
         Runtime.AdvanceCurrentTime(UpdateCountersInterval);
-        Runtime.DispatchEvents({}, TDuration::Seconds(1));
+        Runtime.DispatchEvents({}, 10ms);
         Runtime.AdvanceCurrentTime(UpdateCountersInterval);
-        Runtime.DispatchEvents({}, TDuration::Seconds(1));
+        Runtime.DispatchEvents({}, 10ms);
         Runtime.AdvanceCurrentTime(UpdateCountersInterval);
-        Runtime.DispatchEvents({}, TDuration::Seconds(1));
+        Runtime.DispatchEvents({}, 10ms);
 
         return StorageStatsServiceState->AggregatedCounters;
     }

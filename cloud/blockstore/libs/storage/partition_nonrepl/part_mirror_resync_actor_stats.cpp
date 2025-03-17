@@ -12,11 +12,10 @@ void TMirrorPartitionResyncActor::HandlePartCounters(
     const TEvVolume::TEvDiskRegistryBasedPartitionCounters::TPtr& ev,
     const TActorContext& ctx)
 {
-    Y_UNUSED(ctx);
     auto* msg = ev->Get();
 
     bool knownSender = ev->Sender == MirrorActorId;
-    for (auto& replica: Replicas) {
+    for (const auto& replica: Replicas) {
         knownSender |= replica.ActorId == ev->Sender;
     }
 
