@@ -9,41 +9,7 @@
 #include <util/network/socket.h>
 #include <util/system/error.h>
 
-#include <netlink/genl/ctrl.h>
-#include <netlink/genl/genl.h>
-#include <netlink/netlink.h>
-
 namespace NCloud::NNetlink {
-
-namespace NLibnl {
-
-using TResponseHandler = std::function<int(nl_msg*)>;
-
-class TSocket
-{
-private:
-    std::unique_ptr<nl_sock, void(*)(nl_sock*)> Socket;
-    int Family;
-
-public:
-    explicit TSocket(TString family);
-    ~TSocket() = default;
-
-    [[nodiscard]] int GetFamily() const
-    {
-        return Family;
-    }
-
-    void SetCallback(nl_cb_type type, TResponseHandler func);
-
-    static int ResponseHandler(nl_msg* msg, void* arg);
-
-    void Send(nl_msg* message);
-};
-
-}  // namespace NLibnl
-
-////////////////////////////////////////////////////////////////////////////////
 
 class TNetlinkSocket
 {

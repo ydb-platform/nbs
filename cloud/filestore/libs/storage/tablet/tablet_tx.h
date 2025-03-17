@@ -80,6 +80,8 @@ namespace NCloud::NFileStore::NStorage {
                                                                                \
     xxx(LoadNodeRefs,                       __VA_ARGS__)                       \
     xxx(LoadNodes,                          __VA_ARGS__)                       \
+                                                                               \
+    xxx(ReadData,                           __VA_ARGS__)                       \
 // FILESTORE_TABLET_RO_TRANSACTIONS
 
 #define FILESTORE_TABLET_RW_TRANSACTIONS(xxx, ...)                             \
@@ -115,7 +117,6 @@ namespace NCloud::NFileStore::NStorage {
     xxx(ReleaseLock,                        __VA_ARGS__)                       \
     xxx(TestLock,                           __VA_ARGS__)                       \
                                                                                \
-    xxx(ReadData,                           __VA_ARGS__)                       \
     xxx(WriteData,                          __VA_ARGS__)                       \
     xxx(AddData,                            __VA_ARGS__)                       \
     xxx(WriteBatch,                         __VA_ARGS__)                       \
@@ -589,7 +590,7 @@ struct TTxIndexTablet
         TVector<IIndexTabletDatabase::TNodeRef> NodeRefs;
 
         TVector<TIndexTabletDatabase::TCheckpointBlob> Blobs;
-        TVector<TIndexTabletDatabase::TMixedBlob> MixedBlobs;
+        TVector<TIndexTabletDatabase::IIndexTabletDatabase::TMixedBlob> MixedBlobs;
 
         // NOTE: should persist state across tx restarts
         TSet<ui32> MixedBlocksRanges;
@@ -1490,7 +1491,9 @@ struct TTxIndexTablet
     // ReadData
     //
 
-    struct TReadData : TSessionAware
+    struct TReadData
+        : TSessionAware
+        , TIndexStateNodeUpdates
     {
         const TRequestInfoPtr RequestInfo;
         const ui64 Handle;
@@ -1532,6 +1535,7 @@ struct TTxIndexTablet
 
         void Clear()
         {
+            TIndexStateNodeUpdates::Clear();
             CommitId = InvalidCommitId;
             NodeId = InvalidNodeId;
             ReadAheadRange.Clear();

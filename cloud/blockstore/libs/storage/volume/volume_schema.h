@@ -273,6 +273,39 @@ struct TVolumeSchema
         using TColumns = TableColumns<Key, Value, ValidUntil>;
     };
 
+    struct FollowerDisks: public TTableSchema<11>
+    {
+        struct Uuid: public Column<1, NKikimr::NScheme::NTypeIds::String>
+        {
+        };
+
+        struct FollowerDiskId
+            : public Column<2, NKikimr::NScheme::NTypeIds::String>
+        {
+        };
+
+        struct ScaleUnitId: public Column<3, NKikimr::NScheme::NTypeIds::String>
+        {
+        };
+
+        struct State: public Column<4, NKikimr::NScheme::NTypeIds::Uint32>
+        {
+        };
+
+        struct MigratedBlockCount
+            : public Column<5, NKikimr::NScheme::NTypeIds::Uint64>
+        {
+        };
+
+        using TKey = TableKey<Uuid>;
+        using TColumns = TableColumns<
+            Uuid,
+            FollowerDiskId,
+            ScaleUnitId,
+            State,
+            MigratedBlockCount>;
+    };
+
     using TTables = SchemaTables<
         Meta,
         Clients,
@@ -283,7 +316,8 @@ struct TVolumeSchema
         UsedBlocks,
         ThrottlerState,
         MetaHistory,
-        VolumeParams
+        VolumeParams,
+        FollowerDisks
     >;
 };
 

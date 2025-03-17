@@ -43,6 +43,8 @@ namespace NCloud::NBlockStore::NStorage {
     xxx(ReadMetaHistory,                __VA_ARGS__)                           \
     xxx(AddLaggingAgent,                __VA_ARGS__)                           \
     xxx(RemoveLaggingAgent,             __VA_ARGS__)                           \
+    xxx(AddFollower,                    __VA_ARGS__)                           \
+    xxx(RemoveFollower,                 __VA_ARGS__)                           \
 // BLOCKSTORE_VOLUME_TRANSACTIONS
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -77,7 +79,7 @@ struct TTxVolume
         TVector<TRuntimeVolumeParamsValue> VolumeParams;
         TMaybe<bool> StartPartitionsNeeded;
         THashMap<TString, TVolumeClientState> Clients;
-        ui64 MountSeqNumber;
+        ui64 MountSeqNumber = 0;
         TVolumeMountHistorySlice MountHistory;
         TVector<TVolumeDatabase::TPartStats> PartStats;
         TVector<TCheckpointRequest> CheckpointRequests;
@@ -86,10 +88,10 @@ struct TTxVolume
         TMaybe<TCompressedBitmap> UsedBlocks;
         TMaybe<TVolumeDatabase::TThrottlerStateInfo> ThrottlerStateInfo;
         TMaybe<NProto::TStorageServiceConfig> StorageConfig;
+        TFollowerDisks FollowerDisks;
 
-        TLoadState(TInstant oldestLogEntry)
+        explicit TLoadState(TInstant oldestLogEntry)
             : OldestLogEntry(oldestLogEntry)
-            , MountSeqNumber(0)
         {}
 
         void Clear()
@@ -108,6 +110,7 @@ struct TTxVolume
             UsedBlocks.Clear();
             ThrottlerStateInfo.Clear();
             StorageConfig.Clear();
+            FollowerDisks.clear();
         }
     };
 
@@ -504,6 +507,7 @@ struct TTxVolume
             // nothing to do
         }
     };
+
     //
     // UpdateUsedBlocks
     //
@@ -745,6 +749,51 @@ struct TTxVolume
             RemovedLaggingAgent.Clear();
         }
     };
+
+    //
+    // AddFollower
+    //
+
+    struct TAddFollower
+    {
+        const TRequestInfoPtr RequestInfo;
+        const TString FollowerDiskId;
+
+        TAddFollower(
+                TRequestInfoPtr requestInfo,
+                TString followerDiskId)
+            : RequestInfo(std::move(requestInfo))
+            , FollowerDiskId(std::move(followerDiskId))
+        {}
+
+        void Clear()
+        {
+            // nothing to do
+        }
+    };
+
+    //
+    // RemoveFollower
+    //
+
+    struct TRemoveFollower
+    {
+        const TRequestInfoPtr RequestInfo;
+        const TString Id;
+
+        TRemoveFollower(
+                TRequestInfoPtr requestInfo,
+                TString id)
+            : RequestInfo(std::move(requestInfo))
+            , Id(std::move(id))
+        {}
+
+        void Clear()
+        {
+            // nothing to do
+        }
+    };
+
 };
 
 }   // namespace NCloud::NBlockStore::NStorage
