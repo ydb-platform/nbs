@@ -656,13 +656,13 @@ struct TEvIndexTabletPrivate
         NProto::TUnlinkNodeRequest OriginalRequest;
 
         TNodeUnlinkedInShard(
-            TRequestInfoPtr requestInfo,
-            TString sessionId,
-            ui64 requestId,
-            ui64 opLogEntryId,
-            TUnlinkNodeInShardResult result,
-            bool shouldUnlockUponCompletion,
-            NProto::TUnlinkNodeRequest originalRequest)
+                TRequestInfoPtr requestInfo,
+                TString sessionId,
+                ui64 requestId,
+                ui64 opLogEntryId,
+                TUnlinkNodeInShardResult result,
+                bool shouldUnlockUponCompletion,
+                NProto::TUnlinkNodeRequest originalRequest)
             : RequestInfo(std::move(requestInfo))
             , SessionId(std::move(sessionId))
             , RequestId(requestId)

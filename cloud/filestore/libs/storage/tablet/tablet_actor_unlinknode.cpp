@@ -74,14 +74,14 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 TUnlinkNodeInShardActor::TUnlinkNodeInShardActor(
-    TString logTag,
-    TRequestInfoPtr requestInfo,
-    const TActorId& parentId,
-    NProtoPrivate::TUnlinkNodeInShardRequest request,
-    ui64 requestId,
-    ui64 opLogEntryId,
-    TUnlinkNodeInShardResult result,
-    bool shouldUnlockUponCompletion)
+        TString logTag,
+        TRequestInfoPtr requestInfo,
+        const TActorId& parentId,
+        NProtoPrivate::TUnlinkNodeInShardRequest request,
+        ui64 requestId,
+        ui64 opLogEntryId,
+        TUnlinkNodeInShardResult result,
+        bool shouldUnlockUponCompletion)
     : LogTag(std::move(logTag))
     , RequestInfo(std::move(requestInfo))
     , ParentId(parentId)
@@ -425,7 +425,9 @@ void TIndexTabletActor::ExecuteTx_UnlinkNode(
         // unlocked and not removed until the confirmation from the shard is
         // received that the node is unlinked.
 
-        if (!args.Request.GetUnlinkDirectory()) {
+        if (!args.Request.GetUnlinkDirectory() ||
+            !GetFileSystem().GetDirectoryCreationInShardsEnabled())
+        {
             UnlinkExternalNode(
                 db,
                 args.ParentNodeId,
@@ -514,8 +516,7 @@ void TIndexTabletActor::CompleteTx_UnlinkNode(
     // nodeRef will be unlocked afterwards
     if (HasError(args.Error) || !args.ChildRef->IsExternal() ||
         !args.Request.GetUnlinkDirectory() ||
-        // TODO: fix following check
-        !Config->GetDirectoryCreationInShardsEnabled())
+        !GetFileSystem().GetDirectoryCreationInShardsEnabled())
     {
         UnlockNodeRef({args.ParentNodeId, args.Name});
         shouldUnlockUponCompletion = false;

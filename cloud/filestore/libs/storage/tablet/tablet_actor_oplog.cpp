@@ -57,8 +57,7 @@ void TIndexTabletActor::ReplayOpLog(
         } else if (op.HasUnlinkNodeInShardRequest()) {
             bool shouldUnlockUponCompletion =
                 op.GetUnlinkNodeInShardRequest().GetUnlinkDirectory() &&
-                // TODO: fix following condition
-                Config->GetDirectoryCreationInShardsEnabled();
+                GetFileSystem().GetDirectoryCreationInShardsEnabled();
             if (shouldUnlockUponCompletion) {
                 // There is a need to unlock the node ref after the operation is
                 // completed, because the node ref should have been locked
