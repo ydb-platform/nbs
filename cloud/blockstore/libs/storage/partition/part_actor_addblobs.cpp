@@ -68,8 +68,8 @@ private:
         ui32 BlocksSkippedByCompaction = 0;
     };
 
-    TDenseHash<ui32, TRangeInfo> CompactionCounters { -1 };
-    TDenseHash<ui32, ui64> OverwrittenBlocks { -1 };
+    TDenseHash<ui32, TRangeInfo> CompactionCounters { std::numeric_limits<ui32>::max() };
+    TDenseHash<ui32, ui64> OverwrittenBlocks { std::numeric_limits<ui32>::max() };
 
 public:
     TAddBlobsExecutor(
