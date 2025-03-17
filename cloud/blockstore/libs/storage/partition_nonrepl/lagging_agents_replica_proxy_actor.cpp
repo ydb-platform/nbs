@@ -605,7 +605,7 @@ void TLaggingAgentsReplicaProxyActor::HandleAgentIsUnavailable(
     LOG_INFO(
         ctx,
         TBlockStoreComponents::PARTITION_WORKER,
-        "[%s] Agent %s went unavailable. Creating availability monitor",
+        "[%s] Agent %s went unavailable (lagging). Creating availability monitor",
         PartConfig->GetName().c_str(),
         msg->LaggingAgent.GetAgentId().Quote().c_str());
 
@@ -638,7 +638,8 @@ void TLaggingAgentsReplicaProxyActor::HandleAgentIsUnavailable(
     LOG_DEBUG(
         ctx,
         TBlockStoreComponents::PARTITION_WORKER,
-        "[%s] Agent %s Block count: %lu, dirty block count: %lu",
+        "[%s] Lagging agent %s blocks map initialized. Block count: %lu, dirty "
+        "block count: %lu",
         PartConfig->GetName().c_str(),
         agentId.c_str(),
         PartConfig->GetBlockCount(),
@@ -669,7 +670,8 @@ void TLaggingAgentsReplicaProxyActor::HandleAgentIsBackOnline(
     LOG_INFO(
         ctx,
         TBlockStoreComponents::PARTITION_WORKER,
-        "[%s] Agent %s is back online. Starting migration actor",
+        "[%s] Agent %s is back online. Starting migration from healthy replica "
+        "to the lagging",
         PartConfig->GetName().c_str(),
         msg->AgentId.Quote().c_str());
 

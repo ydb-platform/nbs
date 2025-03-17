@@ -105,7 +105,7 @@ TESTS = [
     TestCase(
         "mirror2-restart-nbs",
         "cloud/blockstore/tests/loadtest/local-mirror-lagging/local-mirror2-restart-nbs.txt",
-        agent_count=3,
+        agent_count=2,
         device_count=3,
         restart_interval=30,
         downtime_after_restart=5,
@@ -242,6 +242,8 @@ def __run_test(test_case):
         storage.MaxTimedOutDeviceStateDuration = 60000    # 1 min
         storage.NonReplicatedAgentMinTimeout = 60000      # 1 min
         storage.NonReplicatedAgentMaxTimeout = 60000      # 1 min
+        storage.EnableToChangeStatesFromDiskRegistryMonpage = True
+        storage.EnableToChangeErrorStatesFromDiskRegistryMonpage = True
 
         if test_case.dump_block_digests:
             storage.BlockDigestsEnabled = True
@@ -266,8 +268,6 @@ def __run_test(test_case):
             nbs.nbs_port,
             nbs_client_binary_path
         )
-
-        # nodes with DiskAgents
 
         storage.DisableLocalService = True
 
@@ -302,24 +302,22 @@ def __run_test(test_case):
 
         config_path = __process_config(test_case.config_path, devices_per_agent)
 
-        try:
-            ret = run_test(
-                test_case.name,
-                config_path,
-                nbs.nbs_port,
-                nbs.mon_port,
-                nbs_log_path=nbs.stderr_file_name,
-                client_config=client,
-                env_processes=disk_agents + [nbs],
-            )
-        finally:
-            for disk_agent in disk_agents:
-                disk_agent.stop()
-
-            nbs.stop()
-            kikimr_cluster.stop()
+        ret = run_test(
+            test_case.name,
+            config_path,
+            nbs.nbs_port,
+            nbs.mon_port,
+            nbs_log_path=nbs.stderr_file_name,
+            client_config=client,
+            env_processes=disk_agents + [nbs],
+        )
     finally:
-        __cleanup_file_devices(devices)
+        for disk_agent in disk_agents:
+            disk_agent.stop()
+        if nbs is not None:
+            nbs.stop()
+        if kikimr_cluster is not None:
+            kikimr_cluster.stop()
         assert False, "this is ok :)"
 
     return ret

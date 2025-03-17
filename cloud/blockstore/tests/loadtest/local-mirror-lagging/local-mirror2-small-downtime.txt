@@ -7,20 +7,44 @@ Vertices {
         }
         ArtificialLoadSpec {
             Ranges {
-                Start: 0
-                End: 786431
-                WriteRate: 100
+                Start: 261144
+                End: 263144
+                WriteRate: 80
+                ZeroRate: 20
                 ReadRate: 100
-                ZeroRate: 100
                 LoadType: LOAD_TYPE_RANDOM
-                IoDepth: 1
+                IoDepth: 8
                 RequestSizes {
-                    Probability: 0.2
+                    Probability: 0.4
                     MinSize: 1
                     MaxSize: 2
                 }
                 RequestSizes {
-                    Probability: 0.6
+                    Probability: 0.4
+                    MinSize: 8
+                    MaxSize: 32
+                }
+                RequestSizes {
+                    Probability: 0.2
+                    MinSize: 512
+                    MaxSize: 1024
+                }
+            }
+            Ranges {
+                Start: 523288
+                End: 525288
+                WriteRate: 80
+                ZeroRate: 20
+                ReadRate: 100
+                LoadType: LOAD_TYPE_RANDOM
+                IoDepth: 8
+                RequestSizes {
+                    Probability: 0.4
+                    MinSize: 1
+                    MaxSize: 2
+                }
+                RequestSizes {
+                    Probability: 0.4
                     MinSize: 8
                     MaxSize: 32
                 }
@@ -31,7 +55,7 @@ Vertices {
                 }
             }
         }
-        TestDuration: 60
+        TestDuration: 120
         Verify: true
         Name: "Test for lagging devices of mirror2 disk with small downtime"
     }
