@@ -434,6 +434,11 @@ func (s *service) DeleteDisk(
 		)
 	}
 
+	zoneID, err := s.prepareZoneId(ctx, req.DiskId)
+	if err != nil {
+		return err
+	}
+
 	diskIDPrefix := s.config.GetCreationAndDeletionAllowedOnlyForDisksWithIdPrefix()
 	if len(diskIDPrefix) != 0 && !strings.HasPrefix(req.DiskId.DiskId, diskIDPrefix) {
 		return "", errors.NewInvalidArgumentError(
@@ -449,7 +454,7 @@ func (s *service) DeleteDisk(
 		"",
 		&protos.DeleteDiskRequest{
 			Disk: &types.Disk{
-				ZoneId: req.DiskId.ZoneId,
+				ZoneId: zoneID,
 				DiskId: req.DiskId.DiskId,
 			},
 			Sync: req.Sync,
