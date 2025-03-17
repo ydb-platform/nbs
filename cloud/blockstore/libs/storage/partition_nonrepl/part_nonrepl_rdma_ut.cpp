@@ -544,12 +544,7 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionRdmaTest)
     {
         TTestBasicRuntime runtime;
 
-        TTestEnv env(
-            runtime,
-            NProto::VOLUME_IO_OK,
-            TTestEnv::DefaultDevices(runtime.GetNodeId(0)),
-            false,
-            true);
+        TTestEnv env(runtime);
         TPartitionClient client(runtime, env.ActorId);
 
         TActorId notifiedActor;
