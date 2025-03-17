@@ -34,7 +34,8 @@ private:
     TMigrations Migrations;
     TVector<TReplicaInfo> ReplicaInfos;
 
-    struct TReplicaActors {
+    struct TReplicaActors
+    {
         NActors::TActorId LaggingProxyActorId;
         NActors::TActorId PartActorId;
     };
@@ -67,8 +68,7 @@ public:
     [[nodiscard]] auto GetReplicaActors() const
     {
         return ReplicaActors |
-               std::views::transform([](const TReplicaActors& actors)
-                                     { return actors.LaggingProxyActorId; });
+               std::views::transform(&TReplicaActors::LaggingProxyActorId);
     }
 
     [[nodiscard]] auto GetReplicaActorsVector() const
@@ -88,8 +88,7 @@ public:
     [[nodiscard]] auto GetReplicaActorsBypassingProxies() const
     {
         return ReplicaActors |
-               std::views::transform([](const TReplicaActors& actors)
-                                     { return actors.PartActorId; });
+               std::views::transform(&TReplicaActors::PartActorId);
     }
 
     [[nodiscard]] ui32 GetReplicaIndex(NActors::TActorId actorId) const;
