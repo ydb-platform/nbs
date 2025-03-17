@@ -1,9 +1,8 @@
 #include "part_nonrepl.h"
 
 #include "part_nonrepl_actor.h"
+#include "part_nonrepl_rdma.h"
 #include "part_nonrepl_rdma_actor.h"
-
-#include <cloud/blockstore/libs/storage/partition_nonrepl/part_nonrepl_rdma.h>
 
 namespace NCloud::NBlockStore::NStorage {
 

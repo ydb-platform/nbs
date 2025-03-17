@@ -36,6 +36,7 @@ private:
     size_t ResponseCount;
     TGuardedSgList SgList;
     NProto::TError Error;
+    TStackVec<TString, 2> ErrDevices;
 
     ui32 VoidBlockCount = 0;
 
@@ -130,6 +131,7 @@ public:
         } else {
             auto err = NRdma::ParseError(buffer);
             if (NeedToNotifyAboutError(err)) {
+                ErrDevices.emplace_back(dr->DeviceUUID);
                 SendDeviceTimedout(std::move(dr->DeviceUUID));
             }
             Error = std::move(err);
@@ -165,6 +167,9 @@ public:
         completion->ExecCycles = RequestInfo->GetExecCycles();
         completion->NonVoidBlockCount = allZeroes ? 0 : RequestBlockCount;
         completion->VoidBlockCount = allZeroes ? RequestBlockCount : 0;
+        std::ranges::move(
+            ErrDevices,
+            std::back_inserter(completion->ErrorDevices));
 
         counters.SetBlocksCount(RequestBlockCount);
         auto completionEvent = std::make_unique<IEventHandle>(
