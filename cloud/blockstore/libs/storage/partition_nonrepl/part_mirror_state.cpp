@@ -49,18 +49,13 @@ TMirrorPartitionState::TMirrorPartitionState(
 
 ui32 TMirrorPartitionState::GetReplicaIndex(NActors::TActorId actorId) const
 {
-    auto it = FindIf(
+    return FindIndexIf(
         ReplicaActors,
         [&actorId](const TReplicaActors& replicaActors)
         {
             return replicaActors.LaggingProxyActorId == actorId ||
                    replicaActors.PartActorId == actorId;
         });
-    if (it == ReplicaActors.end()) {
-        return std::numeric_limits<ui32>::max();
-    }
-
-    return std::distance(ReplicaActors.begin(), it);
 }
 
 bool TMirrorPartitionState::IsReplicaActor(NActors::TActorId actorId) const
