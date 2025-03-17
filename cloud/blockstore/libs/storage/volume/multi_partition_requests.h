@@ -453,7 +453,7 @@ STFUNC(TMultiPartitionRequestActor<TMethod>::StateWork)
         HFunc(TMethod::TRequest, HandleUndelivery);
 
         default:
-            HANDLE_UNEXPECTED_EVENT(ev, TBlockStoreComponents::VOLUME);
+            HandleUnexpectedEvent(ev, TBlockStoreComponents::VOLUME);
             break;
     }
 }

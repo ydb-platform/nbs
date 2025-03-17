@@ -1001,7 +1001,10 @@ STFUNC(TVolumeActor::StateInit)
 
         default:
             if (!RejectRequests(ev) && !HandleDefaultEvents(ev, SelfId())) {
-                HANDLE_UNEXPECTED_EVENT(ev, TBlockStoreComponents::VOLUME);
+                HandleUnexpectedEvent(
+                    ev,
+                    TBlockStoreComponents::VOLUME,
+                    __LOCATION__);
             }
             break;
     }
@@ -1115,7 +1118,10 @@ STFUNC(TVolumeActor::StateWork)
 
         default:
             if (!HandleRequests(ev) && !HandleDefaultEvents(ev, SelfId())) {
-                HANDLE_UNEXPECTED_EVENT(ev, TBlockStoreComponents::VOLUME);
+                HandleUnexpectedEvent(
+                    ev,
+                    TBlockStoreComponents::VOLUME,
+                    __LOCATION__);
             }
             break;
     }
@@ -1165,7 +1171,10 @@ STFUNC(TVolumeActor::StateZombie)
 
         default:
             if (!RejectRequests(ev)) {
-                HANDLE_UNEXPECTED_EVENT(ev, TBlockStoreComponents::VOLUME);
+                HandleUnexpectedEvent(
+                    ev,
+                    TBlockStoreComponents::VOLUME,
+                    __LOCATION__);
             }
             break;
     }

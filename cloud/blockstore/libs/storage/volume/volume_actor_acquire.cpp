@@ -342,7 +342,7 @@ STFUNC(TAcquireDevicesActor::StateAcquire)
         HFunc(TEvents::TEvWakeup, HandleWakeup);
 
         default:
-            HANDLE_UNEXPECTED_EVENT(ev, TBlockStoreComponents::VOLUME);
+            HandleUnexpectedEvent(ev, TBlockStoreComponents::VOLUME);
             break;
     }
 }

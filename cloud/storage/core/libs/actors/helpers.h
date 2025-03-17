@@ -31,10 +31,6 @@ void LogUnexpectedEvent(
     TAutoPtr<NActors::IEventHandle>& ev,
     int component);
 
-#define HANDLE_UNEXPECTED_EVENT(ev, component) \
-    HandleUnexpectedEvent(ev, component, __LOCATION__)
-// HANDLE_UNEXPECTED_EVENT
-
 ////////////////////////////////////////////////////////////////////////////////
 
 inline NActors::TActorId Register(

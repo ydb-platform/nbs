@@ -123,7 +123,7 @@ STFUNC(THttpRemoveClientActor::StateWork)
         HFunc(TEvVolume::TEvRemoveClientResponse, HandleRemoveClientResponse);
 
         default:
-            HANDLE_UNEXPECTED_EVENT(ev, TBlockStoreComponents::VOLUME);
+            HandleUnexpectedEvent(ev, TBlockStoreComponents::VOLUME);
             break;
     }
 }

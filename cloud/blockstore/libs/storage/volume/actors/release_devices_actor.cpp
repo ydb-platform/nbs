@@ -160,7 +160,7 @@ STFUNC(TReleaseDevicesActor::StateWork)
             HandleReleaseDevicesUndelivery);
 
         default:
-            HANDLE_UNEXPECTED_EVENT(ev, TBlockStoreComponents::VOLUME);
+            HandleUnexpectedEvent(ev, TBlockStoreComponents::VOLUME);
             break;
     }
 }

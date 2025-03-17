@@ -25,10 +25,7 @@ void LogUnexpectedEvent(
         EventInfo(ev).c_str());
 }
 
-#ifndef NDEBUG
-[[maybe_unused]]
-#endif
-void LogUnexpectedEvent(
+[[maybe_unused]] void LogUnexpectedEvent(
     IEventHandle& ev,
     int component,
     const TString& location)
