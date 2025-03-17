@@ -27,6 +27,9 @@ template <typename TMethod>
 class TMigrationRequestActor final
     : public NActors::TActorBootstrapped<TMigrationRequestActor<TMethod>>
 {
+    static constexpr ui64 LeaderCookie = 1;
+    static constexpr ui64 FollowerCookie = 2;
+
 private:
     using TBase = NActors::TActorBootstrapped<TMigrationRequestActor<TMethod>>;
     using TResponseProto = typename TMethod::TResponse::ProtoRecordType;
@@ -57,7 +60,10 @@ public:
     void Bootstrap(const NActors::TActorContext& ctx);
 
 private:
-    void SendRequests(const NActors::TActorContext& ctx);
+    void SendRequest(
+        const NActors::TActorContext& ctx,
+        const NActors::TActorId& recipient,
+        ui64 cookie);
     void Done(const NActors::TActorContext& ctx);
 
     void UpdateResponse(
@@ -115,44 +121,44 @@ void TMigrationRequestActor<TMethod>::Bootstrap(const NActors::TActorContext& ct
         TMethod::Name,
         RequestInfo->CallContext->RequestId);
 
-    SendRequests(ctx);
+    PendingRequests = 1;
+
+    if (LeaderPartition) {
+        PendingRequests = 2;
+        SendRequest(ctx, LeaderPartition, LeaderCookie);
+    }
+
+    SendRequest(ctx, FollowerPartition, FollowerCookie);
 }
 
 template <typename TMethod>
-void TMigrationRequestActor<TMethod>::SendRequests(
-    const NActors::TActorContext& ctx)
+void TMigrationRequestActor<TMethod>::SendRequest(
+    const NActors::TActorContext& ctx,
+    const NActors::TActorId& recipient,
+    ui64 cookie)
 {
-    PendingRequests = 2;
-
-    for (const auto& actorId: {LeaderPartition, FollowerPartition}) {
-        if (!actorId) {
-            --PendingRequests;
-            continue;
-        }
-
-        auto request = std::make_unique<typename TMethod::TRequest>();
-        auto& callContext = *RequestInfo->CallContext;
-        if (!callContext.LWOrbit.Fork(request->CallContext->LWOrbit)) {
-            LWTRACK(
-                ForkFailed,
-                callContext.LWOrbit,
-                TMethod::Name,
-                callContext.RequestId);
-        }
-        ForkedCallContexts.push_back(request->CallContext);
-        request->Record = Request;
-
-        auto event = std::make_unique<NActors::IEventHandle>(
-            actorId,
-            ctx.SelfID,
-            request.release(),
-            NActors::IEventHandle::FlagForwardOnNondelivery,
-            RequestInfo->Cookie,   // cookie
-            &ctx.SelfID            // forwardOnNondelivery
-        );
-
-        ctx.Send(std::move(event));
+    auto request = std::make_unique<typename TMethod::TRequest>();
+    auto& callContext = *RequestInfo->CallContext;
+    if (!callContext.LWOrbit.Fork(request->CallContext->LWOrbit)) {
+        LWTRACK(
+            ForkFailed,
+            callContext.LWOrbit,
+            TMethod::Name,
+            callContext.RequestId);
     }
+    ForkedCallContexts.push_back(request->CallContext);
+    request->Record = Request;
+
+    auto event = std::make_unique<NActors::IEventHandle>(
+        recipient,
+        ctx.SelfID,
+        request.release(),
+        NActors::IEventHandle::FlagForwardOnNondelivery,
+        cookie,
+        &ctx.SelfID   // forwardOnNondelivery
+    );
+
+    ctx.Send(std::move(event));
 }
 
 template <typename TMethod>
@@ -192,20 +198,6 @@ void TMigrationRequestActor<TMethod>::Done(const NActors::TActorContext& ctx)
     NCloud::Send(ctx, ParentActorId, std::move(completion));
 
     TBase::Die(ctx);
-}
-
-template <typename TMethod>
-void TMigrationRequestActor<TMethod>::UpdateResponse(
-    const NActors::TActorId& sender,
-    TResponseProto&& response)
-{
-    // TODO(sharpeye): use cookie to distinguish between a leader's and a
-    // follower's response
-    if (sender == FollowerPartition) {
-        FollowerResponse = std::move(response);
-    } else {
-        LeaderResponse = std::move(response);
-    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -251,7 +243,17 @@ void TMigrationRequestActor<TMethod>::HandleResponse(
             FormatError(msg->Record.GetError()).c_str());
     }
 
-    UpdateResponse(ev->Sender, std::move(msg->Record));
+    switch (ev->Cookie) {
+        case LeaderCookie:
+            LeaderResponse = std::move(msg->Record);
+            break;
+        case FollowerCookie:
+            FollowerResponse = std::move(msg->Record);
+            break;
+        default:
+            ReportUnexpectedCookie();
+            return;
+    }
 
     if (--PendingRequests) {
         return;
