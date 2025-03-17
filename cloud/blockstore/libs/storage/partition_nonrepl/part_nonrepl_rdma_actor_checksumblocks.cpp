@@ -54,7 +54,8 @@ private:
     size_t ResponseCount;
     TMap<ui64, TPartialChecksum> Checksums;
     NProto::TError Error;
-    TStackVec<TString, 2> ErrDevices;
+    TStackVec<ui32, 2> AllDevices;
+    TStackVec<ui32, 2> ErrDevices;
     const ui32 RequestBlockCount;
     ui64 RequestId;
 
@@ -110,12 +111,14 @@ public:
             static_cast<TDeviceChecksumRequestContext*>(req->Context.get());
         auto buffer = req->ResponseBuffer.Head(responseBytes);
 
+        AllDevices.emplace_back(dc->DeviceIdx);
+
         if (status == NRdma::RDMA_PROTO_OK) {
             HandleResult(*dc, buffer);
         } else {
             auto err = NRdma::ParseError(buffer);
             if (NeedToNotifyAboutError(err)) {
-                ErrDevices.emplace_back(dc->DeviceUUID);
+                ErrDevices.emplace_back(dc->DeviceIdx);
                 SendDeviceTimedout(std::move(dc->DeviceUUID));
             }
             Error = std::move(err);
@@ -149,9 +152,12 @@ public:
         auto completion = std::make_unique<TCompletionEvent>(std::move(Error));
         auto& counters = *completion->Stats.MutableSysChecksumCounters();
         completion->TotalCycles = RequestInfo->GetTotalCycles();
-        std::ranges::move(
+        std::ranges::copy(
             ErrDevices,
             std::back_inserter(completion->ErrorDevices));
+        std::ranges::copy(
+            AllDevices,
+            std::back_inserter(completion->DeviceIndices));
 
         timer.Finish();
         completion->ExecCycles = RequestInfo->GetExecCycles();
@@ -234,6 +240,7 @@ void TNonreplicatedPartitionRdmaActor::HandleChecksumBlocks(
         dc->RangeStartIndex = r.BlockRange.Start;
         dc->RangeSize = r.DeviceBlockRange.Size() * PartConfig->GetBlockSize();
         dc->DeviceUUID = r.Device.GetDeviceUUID();
+        dc->DeviceIdx = r.DeviceIdx;
 
         NProto::TChecksumDeviceBlocksRequest deviceRequest;
         deviceRequest.MutableHeaders()->CopyFrom(msg->Record.GetHeaders());
