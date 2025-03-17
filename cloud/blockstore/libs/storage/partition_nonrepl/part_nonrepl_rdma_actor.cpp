@@ -267,6 +267,7 @@ NProto::TError TNonreplicatedPartitionRdmaActor::SendReadRequests(
         dr->StartIndexOffset = startBlockIndexOffset;
         dr->BlockCount = r.DeviceBlockRange.Size();
         dr->DeviceUUID = r.Device.GetDeviceUUID();
+        dr->DeviceIdx = r.DeviceIdx;
         startBlockIndexOffset += r.DeviceBlockRange.Size();
 
         NProto::TReadDeviceBlocksRequest deviceRequest;
@@ -353,11 +354,11 @@ void TNonreplicatedPartitionRdmaActor::ProcessOperationCompletedErrors(
     const TEvNonreplPartitionPrivate::TOperationCompleted& opCompleted)
 {
     for (size_t dIdx: opCompleted.DeviceIndices) {
-        const auto& deviceUUID = PartConfig->GetDevices()[dIdx].GetDeviceUUID();
-        const auto* errDevice = FindPtr(opCompleted.ErrorDevices, deviceUUID);
+        const auto* errDevice = FindPtr(opCompleted.ErrorDevices, dIdx);
         if (errDevice) {
             continue;
         }
+        const auto& deviceUUID = PartConfig->GetDevices()[dIdx].GetDeviceUUID();
         DeviceTimeouted.erase(deviceUUID);
     }
 }

@@ -40,7 +40,8 @@ private:
     size_t ResponseCount;
     const bool ReplyLocal;
     NProto::TError Error;
-    TStackVec<TString, 2> ErrDevices;
+    TStackVec<ui32, 2> AllDevices;
+    TStackVec<ui32, 2> ErrDevices;
     const ui32 RequestBlockCount;
     const ui64 RequestId;
 
@@ -102,12 +103,14 @@ public:
         auto buffer = req->ResponseBuffer.Head(responseBytes);
         auto* dCtx = static_cast<TDeviceRequestContext*>(req->Context.get());
 
+        AllDevices.emplace_back(dCtx->DeviceIdx);
+
         if (status == NRdma::RDMA_PROTO_OK) {
             HandleResult(buffer);
         } else {
             auto err = NRdma::ParseError(buffer);
             if (NeedToNotifyAboutError(err)) {
-                ErrDevices.emplace_back(dCtx->DeviceUUID);
+                ErrDevices.emplace_back(dCtx->DeviceIdx);
                 SendDeviceTimedout(std::move(dCtx->DeviceUUID));
             }
             Error = std::move(err);
@@ -135,9 +138,12 @@ public:
         auto completion = std::make_unique<TCompletionEvent>(std::move(Error));
         auto& counters = *completion->Stats.MutableUserWriteCounters();
         completion->TotalCycles = RequestInfo->GetTotalCycles();
-        std::ranges::move(
+        std::ranges::copy(
             ErrDevices,
             std::back_inserter(completion->ErrorDevices));
+        std::ranges::copy(
+            AllDevices,
+            std::back_inserter(completion->DeviceIndices));
 
         timer.Finish();
         completion->ExecCycles = RequestInfo->GetExecCycles();
@@ -266,6 +272,7 @@ void TNonreplicatedPartitionRdmaActor::HandleWriteBlocks(
 
         auto context = std::make_unique<TDeviceRequestContext>();
         context->DeviceUUID = r.Device.GetDeviceUUID();
+        context->DeviceIdx = r.DeviceIdx;
 
         auto [req, err] = ep->AllocateRequest(
             requestResponseHandler,
