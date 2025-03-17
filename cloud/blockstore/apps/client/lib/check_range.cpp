@@ -32,13 +32,8 @@ void ExtractStatusValues(const TString& jsonStr, ui32& code, TString& message)
     NJson::TJsonValue* jsonCode = json.GetValueByPath("Status.Code");
     NJson::TJsonValue* jsonMsg = json.GetValueByPath("Status.Message");
 
-    if (jsonCode) {
-        code = jsonCode->GetUIntegerRobust();
-    }
-
-    if (jsonMsg) {
-        message = jsonMsg->GetStringRobust();
-    }
+    code = jsonCode->GetUIntegerRobust();
+    message = jsonMsg->GetStringRobust();
 }
 
 void SaveResultToFile(
