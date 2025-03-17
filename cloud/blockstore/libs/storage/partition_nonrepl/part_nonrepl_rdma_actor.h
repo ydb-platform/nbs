@@ -110,7 +110,11 @@ private:
 
     TRequestInfoPtr Poisoner;
 
-    THashSet<TString> DeviceTimeouted;
+    struct TDeviceTimeoutCtx {
+        TInstant FirstErrorTs;
+        bool ParentWasNotified = false;
+    };
+    THashMap<TString, TDeviceTimeoutCtx> DeviceTimeouted;
     bool SentRdmaUnavailableNotification = false;
 
     const bool AssignIdToWriteAndZeroRequestsEnabled{
@@ -133,9 +137,11 @@ private:
     bool CheckReadWriteBlockRange(const TBlockRange64& range) const;
     void ScheduleCountersUpdate(const NActors::TActorContext& ctx);
     void SendStats(const NActors::TActorContext& ctx);
-    void NotifyDeviceTimedout(
+    void NotifyDeviceTimedoutIfNeeded(
         const NActors::TActorContext& ctx,
-        const NProto::TDeviceConfig& device);
+        const TString& deviceUUID);
+    void ProcessOperationCompletedErrors(
+        const TEvNonreplPartitionPrivate::TOperationCompleted& opCompleted);
     void SendRdmaUnavailableIfNeeded(const NActors::TActorContext& ctx);
     void UpdateStats(const NProto::TPartitionStats& update);
 

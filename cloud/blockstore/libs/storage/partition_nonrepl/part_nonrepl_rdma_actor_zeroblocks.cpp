@@ -33,6 +33,7 @@ private:
     TAdaptiveLock Lock;
     size_t ResponseCount;
     NProto::TError Error;
+    TStackVec<TString, 2> ErrDevices;
     const ui32 RequestBlockCount;
     ui64 RequestId;
 
@@ -87,6 +88,7 @@ public:
         } else {
             auto err = NRdma::ParseError(buffer);
             if (NeedToNotifyAboutError(err)) {
+                ErrDevices.emplace_back(dCtx->DeviceUUID);
                 SendDeviceTimedout(std::move(dCtx->DeviceUUID));
             }
             Error = std::move(err);
@@ -114,6 +116,9 @@ public:
         auto completion = std::make_unique<TCompletionEvent>(std::move(Error));
         auto& counters = *completion->Stats.MutableUserWriteCounters();
         completion->TotalCycles = RequestInfo->GetTotalCycles();
+        std::ranges::move(
+            ErrDevices,
+            std::back_inserter(completion->ErrorDevices));
 
         timer.Finish();
         completion->ExecCycles = RequestInfo->GetExecCycles();

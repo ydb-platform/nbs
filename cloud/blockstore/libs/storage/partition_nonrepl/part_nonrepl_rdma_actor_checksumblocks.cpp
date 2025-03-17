@@ -13,6 +13,8 @@
 #include <util/generic/map.h>
 #include <util/generic/string.h>
 
+#include <algorithm>
+
 namespace NCloud::NBlockStore::NStorage {
 
 using namespace NActors;
@@ -52,6 +54,7 @@ private:
     size_t ResponseCount;
     TMap<ui64, TPartialChecksum> Checksums;
     NProto::TError Error;
+    TStackVec<TString, 2> ErrDevices;
     const ui32 RequestBlockCount;
     ui64 RequestId;
 
@@ -112,6 +115,7 @@ public:
         } else {
             auto err = NRdma::ParseError(buffer);
             if (NeedToNotifyAboutError(err)) {
+                ErrDevices.emplace_back(dc->DeviceUUID);
                 SendDeviceTimedout(std::move(dc->DeviceUUID));
             }
             Error = std::move(err);
@@ -145,6 +149,9 @@ public:
         auto completion = std::make_unique<TCompletionEvent>(std::move(Error));
         auto& counters = *completion->Stats.MutableSysChecksumCounters();
         completion->TotalCycles = RequestInfo->GetTotalCycles();
+        std::ranges::move(
+            ErrDevices,
+            std::back_inserter(completion->ErrorDevices));
 
         timer.Finish();
         completion->ExecCycles = RequestInfo->GetExecCycles();

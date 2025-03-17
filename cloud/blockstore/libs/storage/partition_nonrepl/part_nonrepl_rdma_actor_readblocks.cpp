@@ -36,6 +36,7 @@ private:
     TAdaptiveLock Lock;
     size_t ResponseCount;
     NProto::TReadBlocksResponse Response;
+    TStackVec<TString, 2> ErrDevices;
 
     ui32 VoidBlockCount = 0;
 
@@ -128,6 +129,7 @@ public:
         } else {
             auto err = NRdma::ParseError(buffer);
             if (NeedToNotifyAboutError(err)) {
+                ErrDevices.emplace_back(dr->DeviceUUID);
                 SendDeviceTimedout(std::move(dr->DeviceUUID));
             }
             *Response.MutableError() = std::move(err);
@@ -164,6 +166,9 @@ public:
         completion->TotalCycles = RequestInfo->GetTotalCycles();
         completion->NonVoidBlockCount = allZeroes ? 0 : blockCount;
         completion->VoidBlockCount = allZeroes ? blockCount : 0;
+        std::ranges::move(
+            ErrDevices,
+            std::back_inserter(completion->ErrorDevices));
 
         timer.Finish();
         completion->ExecCycles = RequestInfo->GetExecCycles();

@@ -28,6 +28,8 @@ namespace NCloud::NBlockStore::NStorage {
 using namespace NActors;
 using namespace NKikimr;
 
+using namespace std::chrono_literals;
+
 namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -40,6 +42,7 @@ struct TTestEnv
     TStorageStatsServiceStatePtr StorageStatsServiceState;
     TDiskAgentStatePtr DiskAgentState;
     NRdma::IClientPtr RdmaClient;
+    TStorageConfigPtr Config;
 
     static void AddDevice(
         ui32 nodeId,
@@ -109,6 +112,8 @@ struct TTestEnv
             std::make_shared<NFeatures::TFeaturesConfig>(
                 NCloud::NProto::TFeaturesConfig())
         );
+
+        Config = config;
 
         auto nodeId = Runtime.GetNodeId(0);
 
@@ -549,7 +554,6 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionRdmaTest)
 
         TActorId notifiedActor;
         ui32 notificationCount = 0;
-        ui32 deviceTimedOut = 0;
 
         runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
                 switch (event->GetTypeRewrite()) {
@@ -558,9 +562,6 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionRdmaTest)
                         ++notificationCount;
 
                         break;
-                    }
-                    case TEvVolumePrivate::EvDeviceTimeoutedRequest: {
-                        ++deviceTimedOut;
                     }
                 }
 
@@ -580,7 +581,6 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionRdmaTest)
 
         UNIT_ASSERT_VALUES_EQUAL(env.VolumeActorId, notifiedActor);
         UNIT_ASSERT_VALUES_EQUAL(1, notificationCount);
-        UNIT_ASSERT_VALUES_EQUAL(1, deviceTimedOut);
     }
 
     Y_UNIT_TEST(ShouldHandleRequestSendFailure)
@@ -629,8 +629,10 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionRdmaTest)
         const auto blockRange1 = TBlockRange64::WithLength(1024, 3072);
 
         WRITE_BLOCKS_E(error);
+        runtime.AdvanceCurrentTime(
+            env.Config->GetLaggingDeviceTimeoutThreshold() + 1ms);
         ZERO_BLOCKS_E(error);
-        READ_BLOCKS_E(error, 0);
+        runtime.DispatchEvents({}, 10ms);
 
         THashSet<TString> expected = {"vasya", "petya"};
         UNIT_ASSERT_VALUES_EQUAL(devices.size(), expected.size());
