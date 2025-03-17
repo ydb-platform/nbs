@@ -1,5 +1,6 @@
 #include "check_range.h"
 
+#include <cloud/blockstore/libs/common/block_range.h>
 #include <cloud/blockstore/libs/service/context.h>
 #include <cloud/blockstore/libs/service/request_helpers.h>
 #include <cloud/blockstore/libs/service/service.h>
@@ -13,28 +14,34 @@
 #include <util/folder/path.h>
 #include <util/stream/file.h>
 
-#include <sstream>
-
 namespace NCloud::NBlockStore::NClient {
 
 namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void ExtractStatusValues(const TString& jsonStr, ui32& code, TString& message)
+NProto::TError
+ExtractStatusValues(const TString& jsonStr)
 {
     NJson::TJsonValue json;
+    ui32 code = S_OK;
+    TString message;
 
     if (!NJson::ReadJsonTree(jsonStr, &json)) {
-        std::cerr << "JSON parsing error" << std::endl;
-        return;
+        return MakeError(E_ARGUMENT, "JSON parsing error");
     }
 
     NJson::TJsonValue* jsonCode = json.GetValueByPath("Status.Code");
     NJson::TJsonValue* jsonMsg = json.GetValueByPath("Status.Message");
 
-    code = jsonCode->GetUIntegerRobust();
-    message = jsonMsg->GetStringRobust();
+    if (jsonCode){
+        code = jsonCode->GetUIntegerRobust();
+    }
+    if (jsonMsg){
+        message = jsonMsg->GetStringRobust();
+    }
+
+    return MakeError(code, message);
 }
 
 void SaveResultToFile(
@@ -45,14 +52,25 @@ void SaveResultToFile(
     TFsPath dir(folderPath);
 
     if (!dir.Exists()) {
-        dir.MkDir();
+        dir.MkDirs();
     }
 
     TString fullFilePath = dir / fileName;
     TOFStream file(
         fullFilePath,
-        EOpenModeFlag::CreateAlways | EOpenModeFlag::RdWr);
+        EOpenModeFlag::CreateAlways | EOpenModeFlag::WrOnly);
     file.Write(content);
+}
+
+TString
+CreateNextInput(TBlockRange64 range, TString& diskID, bool calculateChecksums)
+{
+    NJson::TJsonValue input;
+    input["DiskId"] = diskID;
+    input["StartIndex"] = range.Start;
+    input["BlocksCount"] = range.Size();
+    input["CalculateChecksums"] = calculateChecksums;
+    return input.GetStringRobust();
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -139,7 +157,7 @@ protected:
             return false;
         }
 
-        ui64 diskBlockCount = result.GetVolume().blockscount();
+        ui64 diskBlockCount = result.GetVolume().GetBlocksCount();
 
         ui64 remainingBlocks = diskBlockCount;
         ui64 currentBlockIndex = StartIndex;
@@ -160,17 +178,14 @@ protected:
             ui32 blocksInThisRequest =
                 std::min(remainingBlocks, BlocksPerRequest);
 
+            const auto range = TBlockRange64::MakeHalfOpenInterval(
+                currentBlockIndex,
+                currentBlockIndex + blocksInThisRequest);
+
             auto request = std::make_shared<NProto::TExecuteActionRequest>();
 
-            std::ostringstream input;
-            input << "{" << "\"DiskId\": \"" << DiskId << "\", "
-                  << "\"StartIndex\": " << currentBlockIndex << ", "
-                  << "\"BlocksCount\": " << blocksInThisRequest << ", "
-                  << "\"CalculateChecksums\": "
-                  << (CalculateChecksums ? "true" : "false") << "}";
-
             request->SetAction("checkrange");
-            request->SetInput(input.str());
+            request->SetInput(CreateNextInput(range, DiskId, CalculateChecksums));
 
             const auto requestId = GetRequestId(*request);
             auto result = WaitFor(ClientEndpoint->ExecuteAction(
@@ -178,10 +193,9 @@ protected:
                 std::move(request)));
 
             ++requestCount;
-            if (HasError(result)) {
+            if (const auto& error = result.GetError(); HasError(error)) {
                 if (result.GetError().GetCode() == E_ARGUMENT) {
-                    output << "Wrong argument : "
-                           << FormatError(result.GetError()) << Endl;
+                    output << "Wrong argument : " << FormatError(error) << Endl;
                     output << "Total errors caught: " << errorCount << Endl;
                     return true;
                 }
@@ -189,23 +203,15 @@ protected:
                 output << "CheckRange went wrong : "
                        << FormatError(result.GetError()) << Endl;
                 return true;
+            }
 
-            } else {
-                ui32 statusCode = 0;
-                TString statusMessage;
-                ExtractStatusValues(
-                    result.GetOutput().Data(),
-                    statusCode,
-                    statusMessage);
-
-                if (statusCode != S_OK) {
-                    errorCount++;
-                    if (ShowReadErrorsEnabled){
-                        output << "ReadBlocks error in range [" << currentBlockIndex
-                               << ", " << (currentBlockIndex + blocksInThisRequest - 1) << "]: "
-                               << FormatError(MakeError(statusCode, statusMessage))
-                               << Endl;
-                    }
+            const auto& error = ExtractStatusValues(
+                result.GetOutput().Data());
+            if (HasError(error) ) {
+                errorCount++;
+                if (ShowReadErrorsEnabled) {
+                    output << "ReadBlocks error in range " << range << ": "
+                           << FormatError(error) << Endl;
                 }
             }
 
@@ -215,15 +221,10 @@ protected:
                     folderPath += "_" + FolderPostfix;
                 }
 
-                TString fileName = Sprintf(
-                    "result_%lu_%lu.json",
-                    currentBlockIndex,
-                    currentBlockIndex + blocksInThisRequest - 1);
+                TString fileName =
+                    Sprintf("result_%lu_%lu.json", range.Start, range.End);
 
-                SaveResultToFile(
-                    result.GetOutput().Data(),
-                    folderPath,
-                    fileName);
+                SaveResultToFile(result.GetOutput(), folderPath, fileName);
             }
 
             remainingBlocks -= blocksInThisRequest;
