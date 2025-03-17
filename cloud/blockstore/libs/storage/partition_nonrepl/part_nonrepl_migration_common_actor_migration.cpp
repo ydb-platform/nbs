@@ -89,6 +89,8 @@ void TNonreplicatedPartitionMigrationCommonActor::MigrateRange(
 
     LastRangeMigrationStartTs = ctx.Now();
 
+
+
     LOG_DEBUG(
         ctx,
         TBlockStoreComponents::PARTITION,
