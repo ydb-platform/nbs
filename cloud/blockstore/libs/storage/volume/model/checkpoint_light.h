@@ -2,6 +2,7 @@
 
 #include <cloud/blockstore/libs/common/block_range.h>
 #include <cloud/storage/core/libs/common/compressed_bitmap.h>
+#include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/protos/error.pb.h>
 
 #include <util/generic/string.h>

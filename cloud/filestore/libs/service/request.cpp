@@ -43,7 +43,7 @@ struct TTextPrinter
     {
         SetSingleLineMode(true);
         SetExpandAny(true);
-        SetTruncateStringFieldLongerThan(64);
+        SetTruncateStringFieldLongerThan(256);
 
         RegisterFieldValuePrinter(
             NProto::TWriteDataRequest::descriptor()->FindFieldByLowercaseName("buffer"),
