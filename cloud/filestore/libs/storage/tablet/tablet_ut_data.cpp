@@ -5536,7 +5536,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
 
     TABLET_TEST(ShouldTrimFreshBytesDeletionMarkers)
     {
-        const auto block = tabletConfig.BlockSize;
+        const ui64 block = tabletConfig.BlockSize;
 
         NProto::TStorageConfig storageConfig;
         storageConfig.SetFlushBytesThreshold(1_GB);
