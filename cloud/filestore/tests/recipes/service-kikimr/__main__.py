@@ -132,7 +132,7 @@ def start(argv):
     set_env("NFS_MON_PORT", str(filestore_configurator.mon_port))
     set_env("NFS_DOMAIN", str(domain))
     set_env("NFS_CONFIG_DIR", str(filestore_configurator.configs_dir))
-    set_env("NFS_RESTART_INTERVAL", restart_interval)
+    set_env("NFS_RESTART_INTERVAL", str(restart_interval))
     if secure:
         set_env("NFS_SERVER_SECURE_PORT", str(filestore_configurator.secure_port))
 
