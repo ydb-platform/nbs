@@ -432,6 +432,7 @@ void TNonreplicatedPartitionRdmaActor::HandleWriteBlocksLocal(
         }
         auto context = std::make_unique<TDeviceRequestContext>();
         context->DeviceUUID = r.Device.GetDeviceUUID();
+        context->DeviceIdx = r.DeviceIdx;
 
         auto [req, err] = ep->AllocateRequest(
             requestResponseHandler,
