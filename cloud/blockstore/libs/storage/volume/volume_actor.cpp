@@ -1004,7 +1004,7 @@ STFUNC(TVolumeActor::StateInit)
                 HandleUnexpectedEvent(
                     ev,
                     TBlockStoreComponents::VOLUME,
-                    __LOCATION__);
+                    __PRETTY_FUNCTION__);
             }
             break;
     }
@@ -1121,7 +1121,7 @@ STFUNC(TVolumeActor::StateWork)
                 HandleUnexpectedEvent(
                     ev,
                     TBlockStoreComponents::VOLUME,
-                    __LOCATION__);
+                    __PRETTY_FUNCTION__);
             }
             break;
     }
@@ -1174,7 +1174,7 @@ STFUNC(TVolumeActor::StateZombie)
                 HandleUnexpectedEvent(
                     ev,
                     TBlockStoreComponents::VOLUME,
-                    __LOCATION__);
+                    __PRETTY_FUNCTION__);
             }
             break;
     }

@@ -20,12 +20,12 @@ void HandleUnexpectedEvent(
 void HandleUnexpectedEvent(
     TAutoPtr<NActors::IEventHandle>& ev,
     int component,
-    const TSourceLocation& location);
+    const TString& location);
 
 void HandleUnexpectedEvent(
     NActors::IEventHandlePtr& ev,
     int component,
-    const TSourceLocation& location);
+    const TString& location);
 
 void LogUnexpectedEvent(
     TAutoPtr<NActors::IEventHandle>& ev,

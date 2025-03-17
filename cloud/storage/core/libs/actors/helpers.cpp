@@ -57,17 +57,17 @@ void HandleUnexpectedEvent(
 void HandleUnexpectedEvent(
     IEventHandle& ev,
     int component,
-    TSourceLocation location)
+    const TString& location)
 {
 #if defined(NDEBUG)
-    LogUnexpectedEvent(ev, component, ToString(location));
+    LogUnexpectedEvent(ev, component, location);
 #else
     Y_ABORT(
         "[%s] Unexpected event: (0x%08X) %s, %s",
         TlsActivationContext->LoggerSettings()->ComponentName(component),
         ev.GetTypeRewrite(),
         EventInfo(ev).c_str(),
-        ToString(location).c_str());
+        location.c_str());
 #endif
 }
 
@@ -93,7 +93,7 @@ void HandleUnexpectedEvent(
 void HandleUnexpectedEvent(
     TAutoPtr<IEventHandle>& ev,
     int component,
-    const TSourceLocation& location)
+    const TString& location)
 {
     HandleUnexpectedEvent(*ev, component, location);
 }
@@ -101,7 +101,7 @@ void HandleUnexpectedEvent(
 void HandleUnexpectedEvent(
     NActors::IEventHandlePtr& ev,
     int component,
-    const TSourceLocation& location)
+    const TString& location)
 {
     HandleUnexpectedEvent(*ev, component, location);
 }
