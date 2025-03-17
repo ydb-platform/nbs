@@ -51,17 +51,36 @@ void TIndexTabletActor::ReplayOpLog(
                 std::move(request),
                 0,   // requestId
                 op.GetEntryId(),
-                {}   // result
+                {},     // result
+                false   // shouldUnlockUponCompletion
             );
         } else if (op.HasUnlinkNodeInShardRequest()) {
+            bool shouldUnlockUponCompletion =
+                op.GetUnlinkNodeInShardRequest().GetUnlinkDirectory() &&
+                // TODO: fix following condition
+                Config->GetDirectoryCreationInShardsEnabled();
+            if (shouldUnlockUponCompletion) {
+                // There is a need to unlock the node ref after the operation is
+                // completed, because the node ref should have been locked
+                const auto& originalRequest =
+                    op.GetUnlinkNodeInShardRequest().GetOriginalRequest();
+                const bool locked = TryLockNodeRef(
+                    {originalRequest.GetNodeId(), originalRequest.GetName()});
+                if (!locked) {
+                    ReportFailedToLockNodeRef(
+                        TStringBuilder()
+                        << "Request: " << op.ShortUtf8DebugString());
+                }
+            }
+
             RegisterUnlinkNodeInShardActor(
                 ctx,
-                nullptr, // requestInfo
+                nullptr,   // requestInfo
                 op.GetUnlinkNodeInShardRequest(),
-                0, // requestId
+                0,   // requestId
                 op.GetEntryId(),
-                {} // result
-            );
+                {},   // result
+                shouldUnlockUponCompletion);
         } else if (op.HasRenameNodeInDestinationRequest()) {
             const auto& request = op.GetRenameNodeInDestinationRequest();
             const bool locked = TryLockNodeRef({

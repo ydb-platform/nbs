@@ -527,7 +527,9 @@ void TIndexTabletActor::CompleteTx_RenameNode(
                 std::move(*op.MutableUnlinkNodeInShardRequest()),
                 args.RequestId,
                 args.OpLogEntry.GetEntryId(),
-                std::move(args.Response));
+                std::move(args.Response),
+                // TODO(debnatkh): fix following line
+                false);
 
             return;
         }

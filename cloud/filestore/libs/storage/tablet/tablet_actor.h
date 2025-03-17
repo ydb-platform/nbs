@@ -604,7 +604,8 @@ private:
         NProtoPrivate::TUnlinkNodeInShardRequest request,
         ui64 requestId,
         ui64 opLogEntryId,
-        TUnlinkNodeInShardResult result);
+        TUnlinkNodeInShardResult result,
+        bool shouldUnlockUponCompletion);
 
     void RegisterRenameNodeInDestinationActor(
         const NActors::TActorContext& ctx,

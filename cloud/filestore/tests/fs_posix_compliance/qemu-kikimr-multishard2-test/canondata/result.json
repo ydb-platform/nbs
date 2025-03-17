@@ -20,6 +20,9 @@
     "test.test_posix_compliance[open]": {
         "uri": "file://test.test_posix_compliance_open_/results-open.txt"
     },
+    "test.test_posix_compliance[rmdir]": {
+        "uri": "file://test.test_posix_compliance_rmdir_/results-rmdir.txt"
+    },
     "test.test_posix_compliance[symlink]": {
         "uri": "file://test.test_posix_compliance_symlink_/results-symlink.txt"
     },
