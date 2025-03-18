@@ -179,7 +179,6 @@ func (s *service) prepareZoneId(
 
 	if diskMeta == nil {
 		return shards[rand.Intn(len(shards))], nil
-		// TODO: Make more smart shard picker
 	}
 
 	return diskMeta.ZoneID, nil
@@ -449,7 +448,7 @@ func (s *service) DeleteDisk(
 		"",
 		&protos.DeleteDiskRequest{
 			Disk: &types.Disk{
-				ZoneId: zoneID,
+				ZoneId: req.DiskId.ZoneId,
 				DiskId: req.DiskId.DiskId,
 			},
 			Sync: req.Sync,

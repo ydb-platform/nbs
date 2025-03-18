@@ -18,11 +18,15 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
 )
 
+////////////////////////////////////////////////////////////////////////////////
+
 const (
 	defaultZoneId = "zone-a"
 	shardedZoneId = "zone-d"
 	shardId       = "zone-d-shard-1"
 )
+
+////////////////////////////////////////////////////////////////////////////////
 
 type TestCase struct {
 	name   string
@@ -48,14 +52,14 @@ func testCases() []TestCase {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-func testDiskServiceCreateEmptyDiskInZone(t *testing.T, zoneID string) {
+func testDiskServiceCreateEmptyDiskWithZoneID(t *testing.T, zoneID string) {
 	ctx := testcommon.NewContext()
 
 	client, err := testcommon.NewClient(ctx)
 	require.NoError(t, err)
 	defer client.Close()
 
-	diskID := t.Name()
+	diskID := testcommon.ToResourceID(t)
 
 	reqCtx := testcommon.GetRequestContext(t, ctx)
 	request := disk_manager.CreateDiskRequest{
@@ -76,7 +80,7 @@ func testDiskServiceCreateEmptyDiskInZone(t *testing.T, zoneID string) {
 	err = internal_client.WaitOperation(ctx, client, operation.Id)
 	require.NoError(t, err)
 
-	// Need to create twice to be sure, that threre would be no error.
+	// Check idempotency.
 	operation, err = client.CreateDisk(reqCtx, &request)
 	require.NoError(t, err)
 	require.NotEmpty(t, operation)
@@ -88,10 +92,9 @@ func testDiskServiceCreateEmptyDiskInZone(t *testing.T, zoneID string) {
 
 func TestDiskServiceCreateEmptyDisk(t *testing.T) {
 	for _, testCase := range testCases() {
-		t.Run(tesCase.name, testDiskServiceCreateEmptyDiskInZone(
-			t,
-			testCase.zoneId,
-		))
+		t.Run(testCase.name, func(t *testing.T) {
+			testDiskServiceCreateEmptyDiskWithZoneID(t, testCase.zoneId)
+		})
 	}
 }
 
@@ -291,9 +294,9 @@ func TestDiskServiceCancelCreateDiskFromImage(t *testing.T) {
 	testcommon.CheckConsistency(t, ctx)
 }
 
-func testDiskServiceDeleteDiskWhenCreationIsInFlightInZone(
+func testDiskServiceDeleteDiskWhenCreationIsInFlight(
 	t *testing.T,
-	zoneId string,
+	zoneID string,
 ) {
 
 	ctx := testcommon.NewContext()
@@ -302,7 +305,7 @@ func testDiskServiceDeleteDiskWhenCreationIsInFlightInZone(
 	require.NoError(t, err)
 	defer client.Close()
 
-	imageID := t.Name()
+	imageID := testcommon.ToResourceID(t)
 	imageSize := uint64(64 * 1024 * 1024)
 
 	_ = testcommon.CreateImage(
@@ -317,7 +320,7 @@ func testDiskServiceDeleteDiskWhenCreationIsInFlightInZone(
 	// Need to add some variance for better testing.
 	common.WaitForRandomDuration(time.Millisecond, 2*time.Second)
 
-	diskID := t.Name()
+	diskID := testcommon.ToResourceID(t)
 	diskSize := 2 * imageSize
 
 	reqCtx := testcommon.GetRequestContext(t, ctx)
@@ -328,7 +331,7 @@ func testDiskServiceDeleteDiskWhenCreationIsInFlightInZone(
 		Size: int64(diskSize),
 		Kind: disk_manager.DiskKind_DISK_KIND_SSD,
 		DiskId: &disk_manager.DiskId{
-			ZoneId: zoneId,
+			ZoneId: zoneID,
 			DiskId: diskID,
 		},
 	})
@@ -342,22 +345,17 @@ func testDiskServiceDeleteDiskWhenCreationIsInFlightInZone(
 	_ = internal_client.WaitOperation(ctx, client, createOp.Id)
 
 	testcommon.CheckConsistency(t, ctx)
-
 }
 
 func TestDiskServiceDeleteDiskWhenCreationIsInFlight(t *testing.T) {
 	for _, testCase := range testCases() {
-		t.Run(
-			tesCase.name,
-			testDiskServiceDeleteDiskWhenCreationIsInFlightInZone(
-				t,
-				testCase.zoneId,
-			),
-		)
+		t.Run(testCase.name, func(t *testing.T) {
+			testDiskServiceDeleteDiskWhenCreationIsInFlight(t, testCase.zoneId)
+		})
 	}
 }
 
-func testDiskServiceCreateDisksFromImageWithConfiguredPoolInZone(
+func testDiskServiceCreateDisksFromImageWithConfiguredPoolWithZoneID(
 	t *testing.T,
 	zoneID string,
 ) {
@@ -368,7 +366,7 @@ func testDiskServiceCreateDisksFromImageWithConfiguredPoolInZone(
 	require.NoError(t, err)
 	defer client.Close()
 
-	imageID := t.Name()
+	imageID := testcommon.ToResourceID(t)
 	imageSize := uint64(64 * 1024 * 1024)
 
 	diskContentInfo := testcommon.CreateImage(
@@ -387,7 +385,7 @@ func testDiskServiceCreateDisksFromImageWithConfiguredPoolInZone(
 	reqCtx := testcommon.GetRequestContext(t, ctx)
 	operation, err := privateClient.ConfigurePool(reqCtx, &api.ConfigurePoolRequest{
 		ImageId:      imageID,
-		ZoneId:       zoneId,
+		ZoneId:       zoneID,
 		Capacity:     12,
 		UseImageSize: true,
 	})
@@ -400,7 +398,7 @@ func testDiskServiceCreateDisksFromImageWithConfiguredPoolInZone(
 
 	var operations []*disk_manager.Operation
 	for i := 0; i < 20; i++ {
-		diskID := fmt.Sprintf("%v%v", t.Name(), i)
+		diskID := fmt.Sprintf("%v%v", testcommon.ToResourceID(t), i)
 
 		reqCtx = testcommon.GetRequestContext(t, ctx)
 		operation, err = client.CreateDisk(reqCtx, &disk_manager.CreateDiskRequest{
@@ -410,7 +408,7 @@ func testDiskServiceCreateDisksFromImageWithConfiguredPoolInZone(
 			Size: int64(diskSize),
 			Kind: disk_manager.DiskKind_DISK_KIND_SSD,
 			DiskId: &disk_manager.DiskId{
-				ZoneId: zoneId,
+				ZoneId: zoneID,
 				DiskId: diskID,
 			},
 			EncryptionDesc: &disk_manager.EncryptionDesc{},
@@ -420,13 +418,13 @@ func testDiskServiceCreateDisksFromImageWithConfiguredPoolInZone(
 		operations = append(operations, operation)
 	}
 
-	nbsClient := testcommon.NewNbsTestingClient(t, ctx, zoneId)
+	nbsClient := testcommon.NewNbsTestingClient(t, ctx, zoneID)
 
 	for i, operation := range operations {
 		err := internal_client.WaitOperation(ctx, client, operation.Id)
 		require.NoError(t, err)
 
-		diskID := fmt.Sprintf("%v%v", t.Name(), i)
+		diskID := fmt.Sprintf("%v%v", testcommon.ToResourceID(t), i)
 		err = nbsClient.ValidateCrc32(
 			ctx,
 			diskID,
@@ -441,7 +439,7 @@ func testDiskServiceCreateDisksFromImageWithConfiguredPoolInZone(
 
 	operations = nil
 	for i := 0; i < 20; i++ {
-		diskID := fmt.Sprintf("%v%v", t.Name(), i)
+		diskID := fmt.Sprintf("%v%v", testcommon.ToResourceID(t), i)
 
 		reqCtx = testcommon.GetRequestContext(t, ctx)
 		operation, err = client.DeleteDisk(reqCtx, &disk_manager.DeleteDiskRequest{
@@ -475,13 +473,12 @@ func TestDiskServiceCreateDisksFromImageWithConfiguredPool(
 ) {
 
 	for _, testCase := range testCases() {
-		t.Run(
-			tesCase.name,
-			testDiskServiceCreateDisksFromImageWithConfiguredPoolInZone(
+		t.Run(testCase.name, func(t *testing.T) {
+			testDiskServiceCreateDisksFromImageWithConfiguredPoolWithZoneID(
 				t,
 				testCase.zoneId,
-			),
-		)
+			)
+		})
 	}
 }
 
@@ -606,7 +603,7 @@ func TestDiskServiceCreateSsdNonreplDiskFromIncrementalSnapshot(t *testing.T) {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-func testDiskServiceCreateDiskFromSnapshotInZone(t *testing.T, zoneId string) {
+func testDiskServiceCreateDiskFromSnapshotWithZoneID(t *testing.T, zoneId string) {
 	ctx := testcommon.NewContext()
 
 	client, err := testcommon.NewClient(ctx)
@@ -614,7 +611,7 @@ func testDiskServiceCreateDiskFromSnapshotInZone(t *testing.T, zoneId string) {
 	defer client.Close()
 
 	diskSize := uint64(32 * 1024 * 4096)
-	diskID1 := t.Name() + "1"
+	diskID1 := testcommon.ToResourceID(t) + "1"
 
 	reqCtx := testcommon.GetRequestContext(t, ctx)
 	operation, err := client.CreateDisk(reqCtx, &disk_manager.CreateDiskRequest{
@@ -658,7 +655,7 @@ func testDiskServiceCreateDiskFromSnapshotInZone(t *testing.T, zoneId string) {
 	require.NoError(t, err)
 	require.Equal(t, float64(1), snapshotMeta.Progress)
 
-	diskID2 := t.Name() + "2"
+	diskID2 := testcommon.ToResourceID(t) + "2"
 
 	reqCtx = testcommon.GetRequestContext(t, ctx)
 	operation, err = client.CreateDisk(reqCtx, &disk_manager.CreateDiskRequest{
@@ -693,13 +690,9 @@ func testDiskServiceCreateDiskFromSnapshotInZone(t *testing.T, zoneId string) {
 
 func TestDiskServiceCreateDiskFromSnapshot(t *testing.T) {
 	for _, testCase := range testCases() {
-		t.Run(
-			tesCase.name,
-			testDiskServiceCreateDiskFromSnapshotInZone(
-				t,
-				testCase.zoneId,
-			),
-		)
+		t.Run(testCase.name, func(t *testing.T) {
+			testDiskServiceCreateDiskFromSnapshotWithZoneID(t, testCase.zoneId)
+		})
 	}
 }
 

@@ -75,6 +75,12 @@ func newDefaultClientConfig() *client_config.Config {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+func ToResourceID(t *testing.T) string {
+	return strings.ReplaceAll(t.Name(), "/", "_")
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 func GetRawImageFileURL() string {
 	port := os.Getenv("DISK_MANAGER_RECIPE_RAW_IMAGE_FILE_SERVER_PORT")
 	return fmt.Sprintf("http://localhost:%v", port)
@@ -426,7 +432,7 @@ func CreateImage(
 	require.NoError(t, err)
 	defer client.Close()
 
-	diskID := t.Name() + "_temporary_disk_for_image_" + imageID
+	diskID := ToResourceID(t) + "_temporary_disk_for_image_" + imageID
 
 	reqCtx := GetRequestContext(t, ctx)
 	operation, err := client.CreateDisk(reqCtx, &disk_manager.CreateDiskRequest{
