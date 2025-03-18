@@ -221,6 +221,7 @@ void TStatsServiceActor::HandleRegisterVolume(
     const auto* msg = ev->Get();
 
     auto volume = State.GetOrAddVolume(msg->DiskId, msg->Config);
+    volume->VolumeTabletId = msg->TabletId;
 
     if (volume->IsDiskRegistryBased()) {
         volume->PerfCounters = TDiskPerfData(
