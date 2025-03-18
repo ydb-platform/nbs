@@ -198,9 +198,11 @@ protected:
                     return true;
                 }
 
-                output << "CheckRange went wrong : "
-                       << FormatError(result.GetError()) << Endl;
                 errorCount++;
+                if (ShowReadErrorsEnabled) {
+                    output << "CheckRange went wrong in range " << range << ": "
+                           << FormatError(result.GetError()) << Endl;
+                }
             } else {
                 const auto& status  = ExtractStatusValues(result.GetOutput());
 
