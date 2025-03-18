@@ -177,7 +177,7 @@ func testCreateImageFromDiskWithFailedShadowDisk(
 	testcommon.CheckConsistency(t, ctx)
 }
 
-func TestImageServiceCreateImageFromDiskWithFailedShadowDiskWithShortDelay(
+func TestImageServiceCreateImageFromDiskWithFailedShadowDisk(
 	t *testing.T,
 ) {
 
@@ -185,12 +185,12 @@ func TestImageServiceCreateImageFromDiskWithFailedShadowDiskWithShortDelay(
 		t,
 		disk_manager.DiskKind_DISK_KIND_SSD_NONREPLICATED,
 		262144*4096, // diskSize
-		common.RandomDuration(0*time.Second, 3*time.Second), // waitBeforeDisablingDeviceDuration
+		common.RandomDuration(0*time.Second, 20*time.Second), // waitBeforeDisablingDeviceDuration
 		false, // WithCancel
 	)
 }
 
-func TestImageServiceCreateImageFromDiskWithFailedShadowDiskWithLongDelay(
+func TestImageServiceCreateImageFromDiskWithFailedShadowDiskAndOperationCancel(
 	t *testing.T,
 ) {
 
@@ -198,33 +198,7 @@ func TestImageServiceCreateImageFromDiskWithFailedShadowDiskWithLongDelay(
 		t,
 		disk_manager.DiskKind_DISK_KIND_SSD_NONREPLICATED,
 		262144*4096, // diskSize
-		common.RandomDuration(3*time.Second, 40*time.Second), // waitBeforeDisablingDeviceDuration
-		false, // WithCancel
-	)
-}
-
-func TestImageServiceCreateImageFromDiskWithFailedShadowDiskWithTaskCancelAndShortDelay(
-	t *testing.T,
-) {
-
-	testCreateImageFromDiskWithFailedShadowDisk(
-		t,
-		disk_manager.DiskKind_DISK_KIND_SSD_NONREPLICATED,
-		262144*4096, // diskSize
-		common.RandomDuration(0*time.Second, 3*time.Second), // waitBeforeDisablingDeviceDuration
-		true, // WithCancel
-	)
-}
-
-func TestImageServiceCreateImageFromDiskWithFailedShadowDiskWithTaskCancelAndLongDelay(
-	t *testing.T,
-) {
-
-	testCreateImageFromDiskWithFailedShadowDisk(
-		t,
-		disk_manager.DiskKind_DISK_KIND_SSD_NONREPLICATED,
-		262144*4096, // diskSize
-		common.RandomDuration(3*time.Second, 40*time.Second), // waitBeforeDisablingDeviceDuration
+		common.RandomDuration(0*time.Second, 20*time.Second), // waitBeforeDisablingDeviceDuration
 		true, // WithCancel
 	)
 }

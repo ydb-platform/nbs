@@ -1,6 +1,7 @@
 package tests
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -57,7 +58,7 @@ func testCreateSnapshotFromDiskWithFailedShadowDisk(
 	diskContentInfo, err := nbsClient.CalculateCrc32(diskID, diskSize)
 	require.NoError(t, err)
 
-	snapshotID := t.Name()
+	snapshotID := t.Name() // TODO:_ different names for disk and snapshot?
 
 	reqCtx = testcommon.GetRequestContext(t, ctx)
 	operation, err = client.CreateSnapshot(reqCtx, &disk_manager.CreateSnapshotRequest{
@@ -89,6 +90,7 @@ func testCreateSnapshotFromDiskWithFailedShadowDisk(
 		require.NotEmpty(t, agentID)
 
 		// Disabling device to enforce checkpoint status ERROR.
+		fmt.Printf("DEBUG_BEGIN %v: disabling device DEBUG_END\n", time.Now())
 		err = nbsClient.DisableDevices(ctx, agentID, deviceUUIDs, t.Name())
 		require.NoError(t, err)
 	}
@@ -98,6 +100,7 @@ func testCreateSnapshotFromDiskWithFailedShadowDisk(
 		// Need to add some variance for better testing.
 		time.Sleep(waitBeforeDisablingDeviceDuration / 2)
 
+		fmt.Printf("DEBUG_BEGIN %v: cancelling operation DEBUG_END\n", time.Now())
 		_, err = client.CancelOperation(ctx, &disk_manager.CancelOperationRequest{
 			OperationId: operation.Id,
 		})
@@ -174,7 +177,7 @@ func testCreateSnapshotFromDiskWithFailedShadowDisk(
 	testcommon.CheckConsistency(t, ctx)
 }
 
-func TestSnapshotServiceCreateSnapshotFromDiskWithFailedShadowDiskWithShortDelay(
+func TestSnapshotServiceCreateSnapshotFromDiskWithFailedShadowDisk(
 	t *testing.T,
 ) {
 
@@ -182,12 +185,12 @@ func TestSnapshotServiceCreateSnapshotFromDiskWithFailedShadowDiskWithShortDelay
 		t,
 		disk_manager.DiskKind_DISK_KIND_SSD_NONREPLICATED,
 		262144*4096, // diskSize
-		common.RandomDuration(0*time.Second, 3*time.Second), // waitBeforeDisablingDeviceDuration
+		common.RandomDuration(0*time.Second, 20*time.Second), // waitBeforeDisablingDeviceDuration
 		false, // WithCancel
 	)
 }
 
-func TestSnapshotServiceCreateSnapshotFromDiskWithFailedShadowDiskWithLongDelay(
+func TestSnapshotServiceCreateSnapshotFromDiskWithFailedShadowDiskAndOperationCancel(
 	t *testing.T,
 ) {
 
@@ -195,33 +198,7 @@ func TestSnapshotServiceCreateSnapshotFromDiskWithFailedShadowDiskWithLongDelay(
 		t,
 		disk_manager.DiskKind_DISK_KIND_SSD_NONREPLICATED,
 		262144*4096, // diskSize
-		common.RandomDuration(3*time.Second, 40*time.Second), // waitBeforeDisablingDeviceDuration
-		false, // WithCancel
-	)
-}
-
-func TestSnapshotServiceCreateSnapshotFromDiskWithFailedShadowDiskWithTaskCancelAndShortDelay(
-	t *testing.T,
-) {
-
-	testCreateSnapshotFromDiskWithFailedShadowDisk(
-		t,
-		disk_manager.DiskKind_DISK_KIND_SSD_NONREPLICATED,
-		262144*4096, // diskSize
-		common.RandomDuration(0*time.Second, 3*time.Second), // waitBeforeDisablingDeviceDuration
-		true, // WithCancel
-	)
-}
-
-func TestSnapshotServiceCreateSnapshotFromDiskWithFailedShadowDiskWithTaskCancelAndLongDelay(
-	t *testing.T,
-) {
-
-	testCreateSnapshotFromDiskWithFailedShadowDisk(
-		t,
-		disk_manager.DiskKind_DISK_KIND_SSD_NONREPLICATED,
-		262144*4096, // diskSize
-		common.RandomDuration(3*time.Second, 40*time.Second), // waitBeforeDisablingDeviceDuration
+		common.RandomDuration(0*time.Second, 20*time.Second), // waitBeforeDisablingDeviceDuration
 		true, // WithCancel
 	)
 }

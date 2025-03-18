@@ -96,7 +96,7 @@ func CancelCheckpointCreation(
 	selfTaskID string,
 ) (string, error) {
 
-	diskParams, err := nbsClient.Describe(ctx, snapshotID)
+	diskParams, err := nbsClient.Describe(ctx, disk.DiskId)
 	if err != nil {
 		if nbs.IsNotFoundError(err) {
 			// Nothing to do.
