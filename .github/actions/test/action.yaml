@@ -239,6 +239,15 @@ runs:
         sudo -E -H -u github .github/scripts/tests/split-junit.py -o "$JUNIT_REPORT_PARTS" "$JUNIT_REPORT_XML"
         echo "::endgroup::"
 
+    - name: dump VM artifacts
+      shell: bash --noprofile --norc -eo pipefail -x {0}
+      run: |
+        echo "::group::dump-vm-artifacts"
+        # shellcheck disable=SC2024
+        sudo dmesg -T > "$LOG_DIR/dmesg.log"
+        sudo cp /var/log/atop/atop_*.log "$LOG_DIR/"
+        echo "::endgroup::"
+
     - name: archive unitest reports (transformed)
       shell: bash --noprofile --norc -eo pipefail -x {0}
       run: |
