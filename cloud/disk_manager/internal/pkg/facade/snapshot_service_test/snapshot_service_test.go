@@ -708,9 +708,11 @@ func TestSnapshotServiceDeleteIncrementalSnapshotWhileCreating(t *testing.T) {
 	err = internal_client.WaitOperation(ctx, client, deleteOperation.Id)
 	require.NoError(t, err)
 
-	// If snapshot creation ends up successfuly, snapshot creation and
-	// deletion operations were performed sequentially.
-	// These cases are checked in other tests.
+	// If snapshot creation and it's deletion ends up successfuly it means
+	// snapshot creation and deletion operations were performed sequentially.
+	// These cases are checked in other tests:
+	// TestSnapshotServiceDeleteIncrementalSnapshotBeforeCreating and
+	// TestSnapshotServiceDeleteIncrementalSnapshotAfterCreating.
 	if creationErr != nil {
 		snapshotID, _, err := testcommon.GetIncremental(ctx, &types.Disk{
 			ZoneId: "zone-a",
