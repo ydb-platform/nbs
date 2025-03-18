@@ -61,6 +61,9 @@ struct TNetlinkFamilyIdRequest
 
     TNetlinkFamilyIdRequest(const char (&familyName)[FamilyNameLength])
     {
+        // Use memset to resolve the memory sanitizer warning, as this structure
+        //  is transmitted via a socket, and padding may be present depending on
+        //  the length of the family name.
         memset(this, 0, sizeof(TNetlinkFamilyIdRequest<FamilyNameLength>));
         Headers = {
             sizeof(TNetlinkFamilyIdRequest<FamilyNameLength>),
