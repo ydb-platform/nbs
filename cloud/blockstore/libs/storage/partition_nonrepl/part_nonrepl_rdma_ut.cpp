@@ -89,7 +89,7 @@ struct TTestEnv
             NProto::EVolumeIOMode ioMode,
             TDevices devices,
             bool optimizeVoidBuffersTransfer,
-            bool laggingDevicesAllowed =  false)
+            bool laggingDevicesAllowed = false)
         : Runtime(runtime)
         , ActorId(0, "YYY")
         , VolumeActorId(0, "VVV")

@@ -56,7 +56,9 @@ public:
         , ParentActorId(parentActorId)
     {}
 
-    void SendDeviceTimedout(TString deviceUUID);
+    ~IRdmaDeviceRequestHandler() override = default;
+
+    void SendDeviceTimedOut(TString deviceUUID);
     [[nodiscard]] static bool NeedToNotifyAboutError(const NProto::TError& err);
 };
 
@@ -107,11 +109,11 @@ private:
 
     TRequestInfoPtr Poisoner;
 
-    struct TDeviceTimeoutCtx {
+    struct TTimedOutDeviceCtx {
         TInstant FirstErrorTs;
         bool ParentWasNotified = false;
     };
-    THashMap<TString, TDeviceTimeoutCtx> DeviceTimeouted;
+    THashMap<TString, TTimedOutDeviceCtx> TimedOutDeviceCtxByDeviceUUID;
     bool SentRdmaUnavailableNotification = false;
 
     const bool AssignIdToWriteAndZeroRequestsEnabled{
@@ -134,10 +136,10 @@ private:
     bool CheckReadWriteBlockRange(const TBlockRange64& range) const;
     void ScheduleCountersUpdate(const NActors::TActorContext& ctx);
     void SendStats(const NActors::TActorContext& ctx);
-    void NotifyDeviceTimedoutIfNeeded(
+    void NotifyDeviceTimedOutIfNeeded(
         const NActors::TActorContext& ctx,
         const TString& deviceUUID);
-    void ProcessOperationCompletedErrors(
+    void ProcessOperationCompleted(
         const TEvNonreplPartitionPrivate::TOperationCompleted& opCompleted);
     void SendRdmaUnavailableIfNeeded(const NActors::TActorContext& ctx);
     void UpdateStats(const NProto::TPartitionStats& update);

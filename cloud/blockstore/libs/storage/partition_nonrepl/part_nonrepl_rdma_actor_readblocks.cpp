@@ -133,7 +133,7 @@ public:
             auto err = NRdma::ParseError(buffer);
             if (NeedToNotifyAboutError(err)) {
                 ErrDevices.emplace_back(dr->DeviceIdx);
-                SendDeviceTimedout(std::move(dr->DeviceUUID));
+                SendDeviceTimedOut(std::move(dr->DeviceUUID));
             }
             *Response.MutableError() = std::move(err);
         }
@@ -171,7 +171,7 @@ public:
         completion->VoidBlockCount = allZeroes ? blockCount : 0;
         std::ranges::copy(
             ErrDevices,
-            std::back_inserter(completion->ErrorDevices));
+            std::back_inserter(completion->ErrorDeviceIndices));
         std::ranges::copy(
             AllDevices,
             std::back_inserter(completion->DeviceIndices));

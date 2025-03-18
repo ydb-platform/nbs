@@ -92,7 +92,7 @@ public:
             auto err = NRdma::ParseError(buffer);
             if (NeedToNotifyAboutError(err)) {
                 ErrDevices.emplace_back(dCtx->DeviceIdx);
-                SendDeviceTimedout(std::move(dCtx->DeviceUUID));
+                SendDeviceTimedOut(std::move(dCtx->DeviceUUID));
             }
             Error = std::move(err);
         }
@@ -121,7 +121,7 @@ public:
         completion->TotalCycles = RequestInfo->GetTotalCycles();
         std::ranges::copy(
             ErrDevices,
-            std::back_inserter(completion->ErrorDevices));
+            std::back_inserter(completion->ErrorDeviceIndices));
         std::ranges::copy(
             AllDevices,
             std::back_inserter(completion->DeviceIndices));
