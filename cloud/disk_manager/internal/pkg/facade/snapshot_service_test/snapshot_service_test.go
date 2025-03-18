@@ -541,7 +541,7 @@ func TestSnapshotServiceCreateIncrementalSnapshotWhileDeletingBaseSnapshot(t *te
 	testcommon.CheckConsistency(t, ctx)
 }
 
-func TestSnapshotServiceSequentionalDeletionOfIncrementalSnapshot(t *testing.T) {
+func TestSnapshotServiceDeleteIncrementalSnapshotBeforeCreating(t *testing.T) {
 	ctx := testcommon.NewContext()
 
 	client, err := testcommon.NewClient(ctx)
@@ -594,7 +594,6 @@ func TestSnapshotServiceSequentionalDeletionOfIncrementalSnapshot(t *testing.T) 
 	deleteOperation, err := client.DeleteSnapshot(reqCtx, &deleteRequest)
 	require.NoError(t, err)
 	require.NotEmpty(t, deleteOperation)
-
 	err = internal_client.WaitOperation(ctx, client, deleteOperation.Id)
 	require.NoError(t, err)
 
@@ -613,14 +612,6 @@ func TestSnapshotServiceSequentionalDeletionOfIncrementalSnapshot(t *testing.T) 
 	require.NotEmpty(t, createOperation)
 
 	err = internal_client.WaitOperation(ctx, client, createOperation.Id)
-	require.NoError(t, err)
-
-	reqCtx = testcommon.GetRequestContext(t, ctx)
-	deleteOperation, err = client.DeleteSnapshot(reqCtx, &deleteRequest)
-	require.NoError(t, err)
-	require.NotEmpty(t, deleteOperation)
-
-	err = internal_client.WaitOperation(ctx, client, deleteOperation.Id)
 	require.NoError(t, err)
 
 	snapshotID2 := t.Name() + "2"
@@ -754,6 +745,101 @@ func TestSnapshotServiceDeleteIncrementalSnapshotWhileCreating(t *testing.T) {
 		SnapshotId: snapshotID2,
 		FolderId:   "folder",
 	})
+	require.NoError(t, err)
+	require.NotEmpty(t, operation)
+	err = internal_client.WaitOperation(ctx, client, operation.Id)
+	require.NoError(t, err)
+
+	testcommon.CheckConsistency(t, ctx)
+}
+
+func TestSnapshotServiceDeleteIncrementalSnapshotAfterCreating(t *testing.T) {
+	ctx := testcommon.NewContext()
+
+	client, err := testcommon.NewClient(ctx)
+	require.NoError(t, err)
+	defer client.Close()
+
+	diskID := t.Name()
+	diskSize := 134217728
+
+	reqCtx := testcommon.GetRequestContext(t, ctx)
+	operation, err := client.CreateDisk(reqCtx, &disk_manager.CreateDiskRequest{
+		Src: &disk_manager.CreateDiskRequest_SrcEmpty{
+			SrcEmpty: &empty.Empty{},
+		},
+		Size: int64(diskSize),
+		Kind: disk_manager.DiskKind_DISK_KIND_SSD,
+		DiskId: &disk_manager.DiskId{
+			ZoneId: "zone-a",
+			DiskId: diskID,
+		},
+	})
+	require.NoError(t, err)
+	require.NotEmpty(t, operation)
+	err = internal_client.WaitOperation(ctx, client, operation.Id)
+	require.NoError(t, err)
+
+	baseSnapshotID := t.Name() + "_base"
+
+	reqCtx = testcommon.GetRequestContext(t, ctx)
+	operation, err = client.CreateSnapshot(reqCtx, &disk_manager.CreateSnapshotRequest{
+		Src: &disk_manager.DiskId{
+			ZoneId: "zone-a",
+			DiskId: diskID,
+		},
+		SnapshotId: baseSnapshotID,
+		FolderId:   "folder",
+	})
+	require.NoError(t, err)
+	require.NotEmpty(t, operation)
+	err = internal_client.WaitOperation(ctx, client, operation.Id)
+	require.NoError(t, err)
+
+	snapshotID1 := t.Name() + "1"
+
+	deleteRequest := disk_manager.DeleteSnapshotRequest{
+		SnapshotId: snapshotID1,
+	}
+
+	reqCtx = testcommon.GetRequestContext(t, ctx)
+	createOperation, err := client.CreateSnapshot(
+		reqCtx,
+		&disk_manager.CreateSnapshotRequest{
+			Src: &disk_manager.DiskId{
+				ZoneId: "zone-a",
+				DiskId: diskID,
+			},
+			SnapshotId: snapshotID1,
+			FolderId:   "folder",
+		})
+	require.NoError(t, err)
+	require.NotEmpty(t, createOperation)
+
+	err = internal_client.WaitOperation(ctx, client, createOperation.Id)
+	require.NoError(t, err)
+
+	reqCtx = testcommon.GetRequestContext(t, ctx)
+	deleteOperation, err := client.DeleteSnapshot(reqCtx, &deleteRequest)
+	require.NoError(t, err)
+	require.NotEmpty(t, deleteOperation)
+	err = internal_client.WaitOperation(ctx, client, deleteOperation.Id)
+	require.NoError(t, err)
+
+	snapshotID2 := t.Name() + "2"
+
+	// Check that it's possible to create another incremental snapshot.
+	reqCtx = testcommon.GetRequestContext(t, ctx)
+	operation, err = client.CreateSnapshot(
+		reqCtx,
+		&disk_manager.CreateSnapshotRequest{
+			Src: &disk_manager.DiskId{
+				ZoneId: "zone-a",
+				DiskId: diskID,
+			},
+			SnapshotId: snapshotID2,
+			FolderId:   "folder",
+		})
 	require.NoError(t, err)
 	require.NotEmpty(t, operation)
 	err = internal_client.WaitOperation(ctx, client, operation.Id)
