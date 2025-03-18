@@ -169,6 +169,8 @@ private:
         if (HasError(error)) {
             if (error.GetCode() != E_FS_THROTTLED) {
                 WriteData(ctx, error);
+            } else {
+                HandleError(ctx, error);
             }
             return;
         }

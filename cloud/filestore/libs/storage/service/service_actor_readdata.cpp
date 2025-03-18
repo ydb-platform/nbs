@@ -283,6 +283,8 @@ void TReadDataActor::HandleDescribeDataResponse(
     if (FAILED(msg->GetStatus())) {
         if (error.GetCode() != E_FS_THROTTLED) {
             ReadData(ctx, FormatError(error));
+        } else {
+            HandleError(ctx, error);
         }
         return;
     }
