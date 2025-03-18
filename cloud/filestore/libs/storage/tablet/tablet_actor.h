@@ -284,6 +284,7 @@ private:
         TRequestMetrics RenameNode;
         TRequestMetrics UnlinkNode;
         TRequestMetrics StatFileStore;
+        TRequestMetrics GetNodeXAttr;
 
         // background requests
         TCompactionMetrics Compaction;
