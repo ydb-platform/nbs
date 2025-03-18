@@ -3,6 +3,7 @@ package dataplane
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/golang/protobuf/proto"
 	nbs_client "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs"
@@ -38,6 +39,8 @@ func (t *createDRBasedDiskCheckpointTask) Run(
 	ctx context.Context,
 	execCtx tasks.ExecutionContext,
 ) error {
+
+	fmt.Printf("DEBUG_BEGIN %v: iteration %v of checkpoint creation DEBUG_END\n", time.Now(), t.state.CheckpointIteration)
 
 	disk := t.request.Disk
 
