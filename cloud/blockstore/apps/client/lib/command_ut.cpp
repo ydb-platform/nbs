@@ -2,6 +2,7 @@
 #include "factory.h"
 
 #include <cloud/blockstore/libs/client/client.h>
+#include <cloud/blockstore/libs/common/block_range.h>
 #include <cloud/blockstore/libs/service/service_test.h>
 #include <cloud/storage/core/libs/common/error.h>
 
@@ -69,19 +70,17 @@ bool ExecuteRequest(
     return handler->Run(args.size(), &args[0]);
 }
 
-void ParseCheckRangeRequestJson(
-    const TString& input,
-    TString& disk_id,
-    ui32& start_index,
-    ui32& blocks_count)
+std::pair<TString, TBlockRange64> ParseCheckRangeRequestJson(
+    const TString& input)
 {
     NJson::TJsonValue json;
 
     UNIT_ASSERT(NJson::ReadJsonTree(input, &json));
 
-    disk_id = json["DiskId"].GetStringRobust();
-    start_index = json["StartIndex"].GetUIntegerRobust();
-    blocks_count = json["BlocksCount"].GetUIntegerRobust();
+    auto diskId = json["DiskId"].GetStringRobust();
+    ui32 startIndex = json["StartIndex"].GetUIntegerRobust();
+    ui32 blocksCount = json["BlocksCount"].GetUIntegerRobust();
+    return {diskId, TBlockRange64::WithLength(startIndex, blocksCount)};
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -691,13 +690,12 @@ Y_UNIT_TEST_SUITE(TCommandTest)
         client->ExecuteActionHandler =
             [&](std::shared_ptr<NProto::TExecuteActionRequest> request)
         {
-            TString diskId;
-            ui32 startIndex, blocksCount;
-            ParseCheckRangeRequestJson(request->GetInput(), diskId, startIndex, blocksCount);
+            auto [diskId, range] =
+                ParseCheckRangeRequestJson(request->GetInput());
 
             UNIT_ASSERT_VALUES_EQUAL(DefaultDiskId, diskId);
-            UNIT_ASSERT_VALUES_EQUAL(defaultMaxBlocksPerRequest, blocksCount);
-            UNIT_ASSERT_VALUES_EQUAL(1024 * checkRangeCounter, startIndex);
+            UNIT_ASSERT_VALUES_EQUAL(defaultMaxBlocksPerRequest, range.Size());
+            UNIT_ASSERT_VALUES_EQUAL(1024 * checkRangeCounter, range.Start);
             ++checkRangeCounter;
             return MakeFuture<NProto::TExecuteActionResponse>();
         };
@@ -705,8 +703,8 @@ Y_UNIT_TEST_SUITE(TCommandTest)
             [&](std::shared_ptr<NProto::TStatVolumeRequest> request)
         {
             UNIT_ASSERT_VALUES_EQUAL(DefaultDiskId, request->GetDiskId());
-            auto response = NProto::TStatVolumeResponse();
-            response.mutable_volume()->SetBlocksCount(20480);
+            NProto::TStatVolumeResponse response;
+            response.MutableVolume()->SetBlocksCount(20480);
             return MakeFuture(response);
         };
         TVector<TString> argv;
@@ -727,19 +725,18 @@ Y_UNIT_TEST_SUITE(TCommandTest)
         client->ExecuteActionHandler =
             [&](std::shared_ptr<NProto::TExecuteActionRequest> request)
         {
-            TString diskId;
-            ui32 startIndex, blocksCount;
-            ParseCheckRangeRequestJson(request->GetInput(), diskId, startIndex, blocksCount);
+            auto [diskId, range] =
+                ParseCheckRangeRequestJson(request->GetInput());
             UNIT_ASSERT_VALUES_EQUAL(DefaultDiskId, diskId);
-            UNIT_ASSERT_VALUES_EQUAL(0, startIndex);
+            UNIT_ASSERT_VALUES_EQUAL(0, range.Start);
             return MakeFuture<NProto::TExecuteActionResponse>();
         };
         client->StatVolumeHandler =
             [&](const std::shared_ptr<NProto::TStatVolumeRequest>& request)
         {
             UNIT_ASSERT_VALUES_EQUAL(DefaultDiskId, request->GetDiskId());
-            auto response = NProto::TStatVolumeResponse();
-            response.mutable_volume()->SetBlocksCount(DefaultBlocksCount);
+            NProto::TStatVolumeResponse response;
+            response.MutableVolume()->SetBlocksCount(DefaultBlocksCount);
             return MakeFuture(response);
         };
         TVector<TString> argv;
@@ -760,14 +757,13 @@ Y_UNIT_TEST_SUITE(TCommandTest)
         client->ExecuteActionHandler =
             [&](std::shared_ptr<NProto::TExecuteActionRequest> request)
         {
-            TString diskId;
-            ui32 startIndex, blocksCount;
-            ParseCheckRangeRequestJson(request->GetInput(), diskId, startIndex, blocksCount);
+            auto [diskId, range] =
+                ParseCheckRangeRequestJson(request->GetInput());
 
             UNIT_ASSERT_VALUES_EQUAL(DefaultDiskId, diskId);
             UNIT_ASSERT_VALUES_EQUAL(
                 checkRangeCounter * blocksPerRequest,
-                startIndex);
+                range.Start);
             ++checkRangeCounter;
             return MakeFuture<NProto::TExecuteActionResponse>();
         };
@@ -776,8 +772,8 @@ Y_UNIT_TEST_SUITE(TCommandTest)
             [&](std::shared_ptr<NProto::TStatVolumeRequest> request)
         {
             UNIT_ASSERT_VALUES_EQUAL(DefaultDiskId, request->GetDiskId());
-            auto response = NProto::TStatVolumeResponse();
-            response.mutable_volume()->SetBlocksCount(DefaultBlocksCount);
+            NProto::TStatVolumeResponse response;
+            response.MutableVolume()->SetBlocksCount(DefaultBlocksCount);
             return MakeFuture(response);
         };
         TVector<TString> argv;

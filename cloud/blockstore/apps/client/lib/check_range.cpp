@@ -14,64 +14,95 @@
 #include <util/folder/path.h>
 #include <util/stream/file.h>
 
+#include <utility>
+
 namespace NCloud::NBlockStore::NClient {
 
 namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-NProto::TError
-ExtractStatusValues(const TString& jsonStr)
+constexpr ui64 DefaultBlocksPerRequest = 1024;
+
+NProto::TError ExtractStatusValues(const TString& jsonStr)
 {
     NJson::TJsonValue json;
-    ui32 code = S_OK;
-    TString message;
-
     if (!NJson::ReadJsonTree(jsonStr, &json)) {
         return MakeError(E_ARGUMENT, "JSON parsing error");
     }
-
-    NJson::TJsonValue* jsonCode = json.GetValueByPath("Status.Code");
-    NJson::TJsonValue* jsonMsg = json.GetValueByPath("Status.Message");
-
-    if (jsonCode){
-        code = jsonCode->GetUIntegerRobust();
+    NJson::TJsonValue code;
+    if (json.GetValueByPath("Status.Code", code) && !code.IsUInteger()) {
+        return MakeError(E_ARGUMENT, "Status.Code parsing error");
     }
-    if (jsonMsg){
-        message = jsonMsg->GetStringRobust();
+    NJson::TJsonValue message;
+    if (json.GetValueByPath("Status.Message", message) && !message.IsString()) {
+        return MakeError(E_ARGUMENT, "Status.Message parsing error");
     }
 
-    return MakeError(code, message);
+    return MakeError(code.GetUIntegerSafe(S_OK), message.GetString());
 }
 
-void SaveResultToFile(
-    const TString& content,
-    const TString& folderPath,
-    const TString& fileName)
+struct TRequestBuilder
 {
-    TFsPath dir(folderPath);
+    ui32 StartIndex;
+    ui32 RemainingBlocks;
+    ui32 BlocksPerRequest;
+    TBlockRange64 Range;
+    TString DiskId;
+    bool CalculateChecksums;
 
-    if (!dir.Exists()) {
-        dir.MkDirs();
+    TRequestBuilder() = default;
+
+    TRequestBuilder(
+        ui32 startIndex,
+        ui32 remainingBlocks,
+        ui32 blocksPerRequest,
+        TString diskId,
+        bool calculateChecksums)
+        : StartIndex(startIndex)
+        , RemainingBlocks(remainingBlocks)
+        , BlocksPerRequest(blocksPerRequest)
+        , DiskId(std::move(diskId))
+        , CalculateChecksums(calculateChecksums)
+    {}
+
+    bool Next()
+    {
+        if (RemainingBlocks <= 0) {
+            return false;
+        }
+
+        ui32 blocksInThisRequest = std::min(RemainingBlocks, BlocksPerRequest);
+
+        Range = TBlockRange64::MakeHalfOpenInterval(
+            StartIndex,
+            StartIndex + blocksInThisRequest);
+
+        RemainingBlocks -= blocksInThisRequest;
+        StartIndex += blocksInThisRequest;
+
+        return true;
     }
 
-    TString fullFilePath = dir / fileName;
-    TOFStream file(
-        fullFilePath,
-        EOpenModeFlag::CreateAlways | EOpenModeFlag::WrOnly);
-    file.Write(content);
-}
+    std::shared_ptr<NProto::TExecuteActionRequest> Build()
+    {
+        auto request = std::make_shared<NProto::TExecuteActionRequest>();
 
-TString
-CreateNextInput(TBlockRange64 range, TString& diskID, bool calculateChecksums)
-{
-    NJson::TJsonValue input;
-    input["DiskId"] = diskID;
-    input["StartIndex"] = range.Start;
-    input["BlocksCount"] = range.Size();
-    input["CalculateChecksums"] = calculateChecksums;
-    return input.GetStringRobust();
-}
+        request->SetAction("checkrange");
+        request->SetInput(CreateNextInput(Range));
+        return request;
+    }
+
+    TString CreateNextInput(const TBlockRange64& range)
+    {
+        NJson::TJsonValue input;
+        input["DiskId"] = DiskId;
+        input["StartIndex"] = range.Start;
+        input["BlocksCount"] = range.Size();
+        input["CalculateChecksums"] = CalculateChecksums;
+        return input.GetStringRobust();
+    }
+};
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -105,24 +136,24 @@ public:
 
         Opts.AddLongOption("blocks-per-request", "blocks per request")
             .RequiredArgument("NUM")
-            .StoreResult(&BlocksPerRequest);
+            .StoreResultDef(&BlocksPerRequest, DefaultBlocksPerRequest);
 
         Opts.AddLongOption("calculate-checksums", "calulate checksums")
-            .RequiredArgument("BOOL")
-            .StoreResult(&CalculateChecksums);
+            .NoArgument()
+            .StoreTrue(&CalculateChecksums);
 
         Opts.AddLongOption(
                 "show-read-errors",
                 "show logs for the intervals where errors occurred")
-            .RequiredArgument("BOOL")
-            .StoreResult(&ShowReadErrorsEnabled);
+            .NoArgument()
+            .StoreTrue(&ShowReadErrorsEnabled);
 
         Opts.AddLongOption(
                 "save-results",
                 "saving result of checkRange operations to the folder "
                 "'./checkRange_$disk-id*', each request in own file")
-            .RequiredArgument("BOOL")
-            .StoreResult(&SaveResultsEnabled);
+            .NoArgument()
+            .StoreTrue(&SaveResultsEnabled);
 
         Opts.AddLongOption(
                 "folder-postfix",
@@ -144,48 +175,15 @@ protected:
         ui32 errorCount = 0;
         ui32 requestCount = 0;
 
-        auto statVolumeRequest = std::make_shared<NProto::TStatVolumeRequest>();
-        statVolumeRequest->SetDiskId(DiskId);
-        const auto statVolumeRequestId = GetRequestId(*statVolumeRequest);
-        auto result = WaitFor(ClientEndpoint->StatVolume(
-            MakeIntrusive<TCallContext>(statVolumeRequestId),
-            std::move(statVolumeRequest)));
-
-        if (HasError(result)) {
-            output << "StatVolume error: " << FormatError(result.GetError())
-                   << Endl;
+        auto [builder, error] = CreateRequestBuilder();
+        if (HasError(error)) {
+            output << FormatError(error) << Endl;
             return false;
         }
 
-        ui64 diskBlockCount = result.GetVolume().GetBlocksCount();
-
-        ui64 remainingBlocks = diskBlockCount;
-        ui64 currentBlockIndex = StartIndex;
-
-        if (BlocksCount) {
-            if (BlocksCount + StartIndex <= diskBlockCount) {
-                remainingBlocks = BlocksCount;
-            } else {
-                remainingBlocks = diskBlockCount - StartIndex;
-            }
-        }
-
-        if (BlocksPerRequest <= 0) {
-            BlocksPerRequest = 1024;
-        }
-
-        while (remainingBlocks > 0) {
-            ui32 blocksInThisRequest =
-                std::min(remainingBlocks, BlocksPerRequest);
-
-            const auto range = TBlockRange64::MakeHalfOpenInterval(
-                currentBlockIndex,
-                currentBlockIndex + blocksInThisRequest);
-
-            auto request = std::make_shared<NProto::TExecuteActionRequest>();
-
-            request->SetAction("checkrange");
-            request->SetInput(CreateNextInput(range, DiskId, CalculateChecksums));
+        while (builder.Next()) {
+            const auto range = builder.Range;
+            auto request = builder.Build();
 
             const auto requestId = GetRequestId(*request);
             auto result = WaitFor(ClientEndpoint->ExecuteAction(
@@ -202,33 +200,22 @@ protected:
 
                 output << "CheckRange went wrong : "
                        << FormatError(result.GetError()) << Endl;
-                return true;
-            }
-
-            const auto& error = ExtractStatusValues(
-                result.GetOutput().Data());
-            if (HasError(error) ) {
                 errorCount++;
-                if (ShowReadErrorsEnabled) {
-                    output << "ReadBlocks error in range " << range << ": "
-                           << FormatError(error) << Endl;
+            } else {
+                const auto& status  = ExtractStatusValues(result.GetOutput());
+
+                if (HasError(status)) {
+                    errorCount++;
+                    if (ShowReadErrorsEnabled) {
+                        output << "ReadBlocks error in range " << range << ": "
+                               << FormatError(status) << Endl;
+                    }
                 }
             }
 
             if (SaveResultsEnabled) {
-                TString folderPath = "./checkRange_" + DiskId;
-                if (!FolderPostfix.Empty()) {
-                    folderPath += "_" + FolderPostfix;
-                }
-
-                TString fileName =
-                    Sprintf("result_%lu_%lu.json", range.Start, range.End);
-
-                SaveResultToFile(result.GetOutput(), folderPath, fileName);
+                SaveResultToFile(result.GetOutput(), range);
             }
-
-            remainingBlocks -= blocksInThisRequest;
-            currentBlockIndex += blocksInThisRequest;
         }
 
         output << "Total requests sended: " << requestCount << Endl;
@@ -246,7 +233,70 @@ private:
             return false;
         }
 
+        if (BlocksPerRequest < 1)  {
+            STORAGE_ERROR("BlocksPerRequest must be positive");
+            return false;
+        }
+
         return true;
+    }
+
+    TString CreateFilename(const TBlockRange64& range)
+    {
+        TString folderPath = "./checkRange_" + DiskId;
+        if (!FolderPostfix.Empty()) {
+            folderPath += "_" + FolderPostfix;
+        }
+
+        TString fileName =
+            Sprintf("result_%lu_%lu.json", range.Start, range.End);
+
+        return fileName;
+    }
+
+    void SaveResultToFile(const TString& content, const TBlockRange64& range)
+    {
+        TFsPath fileName = CreateFilename(range);
+
+        fileName.Parent().MkDirs();
+
+        TOFStream file(
+            fileName,
+            EOpenModeFlag::CreateAlways | EOpenModeFlag::WrOnly);
+        file.Write(content);
+    }
+
+    TResultOrError<TRequestBuilder> CreateRequestBuilder()
+    {
+        auto statVolumeRequest = std::make_shared<NProto::TStatVolumeRequest>();
+        statVolumeRequest->SetDiskId(DiskId);
+        const auto statVolumeRequestId = GetRequestId(*statVolumeRequest);
+        auto result = WaitFor(ClientEndpoint->StatVolume(
+            MakeIntrusive<TCallContext>(statVolumeRequestId),
+            std::move(statVolumeRequest)));
+
+        if (HasError(result)) {
+            return result.GetError();
+        }
+
+        ui64 diskBlockCount = result.GetVolume().GetBlocksCount();
+
+        ui64 remainingBlocks = diskBlockCount;
+
+        if (BlocksCount) {
+            if (BlocksCount + StartIndex <= diskBlockCount) {
+                remainingBlocks = BlocksCount;
+            } else {
+                remainingBlocks = diskBlockCount - StartIndex;
+            }
+        }
+
+        return TRequestBuilder(
+            StartIndex,
+            remainingBlocks,
+            BlocksPerRequest,
+            DiskId,
+            CalculateChecksums);
     }
 };
 
