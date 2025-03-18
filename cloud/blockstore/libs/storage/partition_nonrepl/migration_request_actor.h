@@ -250,9 +250,16 @@ void TMigrationRequestActor<TMethod>::HandleResponse(
         case FollowerCookie:
             FollowerResponse = std::move(msg->Record);
             break;
-        default:
-            ReportUnexpectedCookie();
+        default: {
+            auto message = ReportUnexpectedCookie(
+                TStringBuilder() << __PRETTY_FUNCTION__ << " #"
+                                 << RequestInfo->CallContext->RequestId
+                                 << " DiskId: " << DiskId << " "
+                                 << " Cookie: " << ev->Cookie);
+
+            LOG_ERROR_S(ctx, TBlockStoreComponents::PARTITION_WORKER, message);
             return;
+        }
     }
 
     if (--PendingRequests) {
