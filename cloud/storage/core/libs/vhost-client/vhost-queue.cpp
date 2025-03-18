@@ -1,6 +1,7 @@
 #include "vhost-queue.h"
 
 #include "monotonic_buffer_resource.h"
+#include <cloud/contrib/vhost/platform.h>
 
 #include <util/generic/scope.h>
 
@@ -23,6 +24,8 @@ TQueue::TQueue(uint32_t size, std::span<char> buffer)
     , ErrFd(eventfd(0, EFD_NONBLOCK))
     , InFlights(size)
 {
+    init_platform_page_size();
+
     memset(buffer.data(), 0, buffer.size());
 
     TMonotonicBufferResource memory {buffer};
@@ -37,7 +40,7 @@ TQueue::TQueue(uint32_t size, std::span<char> buffer)
 
     UsedRings = reinterpret_cast<virtq_used*>(memory.Allocate(
         sizeof(virtq_used) + size * sizeof(virtq_used_elem) + sizeof(uint16_t),
-        PAGE_SIZE).data());
+        platform_page_size).data());
 
     for (uint32_t i = 0; i != size; ++i) {
         FreeBuffers.push(i);
@@ -227,9 +230,9 @@ bool TQueue::WaitCallEvent(TDuration timeout)
 uint32_t TQueue::GetQueueMemSize(uint32_t queueSize)
 {
     return AlignUp(sizeof(virtq_desc) * queueSize
-            + sizeof(uint16_t) * (3 + queueSize), PAGE_SIZE)
+            + sizeof(uint16_t) * (3 + queueSize), platform_page_size)
         + AlignUp(sizeof(uint16_t) * 3
-            + sizeof(struct virtq_used_elem) * queueSize, PAGE_SIZE);
+            + sizeof(struct virtq_used_elem) * queueSize, platform_page_size);
 }
 
 } // namespace NVHostQueue

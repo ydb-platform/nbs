@@ -124,6 +124,8 @@ type nodeService struct {
 	mounter        mounter.Interface
 	volumeOps      *sync.Map
 	mountOptions   []string
+
+	useDiscardForYDBBasedDisks bool
 }
 
 func newNodeService(
@@ -138,22 +140,24 @@ func newNodeService(
 	nfsClient nfsclient.EndpointClientIface,
 	nfsLocalClient nfsclient.EndpointClientIface,
 	mounter mounter.Interface,
-	mountOptions []string) csi.NodeServer {
+	mountOptions []string,
+	useDiscardForYDBBasedDisks bool) csi.NodeServer {
 
 	return &nodeService{
-		nodeId:              nodeId,
-		clientId:            clientId,
-		vmMode:              vmMode,
-		socketsDir:          socketsDir,
-		nbsClient:           nbsClient,
-		nfsClient:           nfsClient,
-		nfsLocalClient:      nfsLocalClient,
-		mounter:             mounter,
-		targetFsPathRegexp:  regexp.MustCompile(targetFsPathPattern),
-		targetBlkPathRegexp: regexp.MustCompile(targetBlkPathPattern),
-		localFsOverrides:    localFsOverrides,
-		volumeOps:           new(sync.Map),
-		mountOptions:        mountOptions,
+		nodeId:                     nodeId,
+		clientId:                   clientId,
+		vmMode:                     vmMode,
+		socketsDir:                 socketsDir,
+		nbsClient:                  nbsClient,
+		nfsClient:                  nfsClient,
+		nfsLocalClient:             nfsLocalClient,
+		mounter:                    mounter,
+		targetFsPathRegexp:         regexp.MustCompile(targetFsPathPattern),
+		targetBlkPathRegexp:        regexp.MustCompile(targetBlkPathPattern),
+		localFsOverrides:           localFsOverrides,
+		volumeOps:                  new(sync.Map),
+		mountOptions:               mountOptions,
+		useDiscardForYDBBasedDisks: useDiscardForYDBBasedDisks,
 	}
 }
 
@@ -734,6 +738,10 @@ func (s *nodeService) nodeStageDiskAsFilesystem(
 	mountOptions := s.mountOptions
 	if fsType == "ext4" {
 		mountOptions = append(mountOptions, "errors=remount-ro")
+	}
+
+	if s.useDiscardForYDBBasedDisks && !isDiskRegistryMediaKind(getStorageMediaKind(req.VolumeContext)) {
+		mountOptions = append(mountOptions, "discard")
 	}
 
 	if mnt != nil {

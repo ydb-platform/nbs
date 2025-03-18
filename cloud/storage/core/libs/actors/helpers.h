@@ -17,9 +17,21 @@ void HandleUnexpectedEvent(
     NActors::IEventHandlePtr& ev,
     int component);
 
+void HandleUnexpectedEvent(
+    TAutoPtr<NActors::IEventHandle>& ev,
+    int component,
+    const TString& location);
+
+void HandleUnexpectedEvent(
+    NActors::IEventHandlePtr& ev,
+    int component,
+    const TString& location);
+
 void LogUnexpectedEvent(
     TAutoPtr<NActors::IEventHandle>& ev,
     int component);
+
+////////////////////////////////////////////////////////////////////////////////
 
 inline NActors::TActorId Register(
     const NActors::TActorContext& ctx,

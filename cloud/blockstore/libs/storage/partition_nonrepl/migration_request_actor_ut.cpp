@@ -141,7 +141,7 @@ Y_UNIT_TEST_SUITE(TMigrationRequestActorTest)
                         "unable to allocate request");
                 }
 
-                runtime.Send(new IEventHandle(
+                runtime.SendAsync(new IEventHandle(
                     event->Sender,
                     event->Recipient,
                     new TEvService::TEvWriteBlocksResponse(error),
@@ -198,7 +198,7 @@ Y_UNIT_TEST_SUITE(TMigrationRequestActorTest)
                     error = MakeError(E_IO, "I/O error");
                 }
 
-                runtime.Send(new IEventHandle(
+                runtime.SendAsync(new IEventHandle(
                     event->Sender,
                     event->Recipient,
                     new TEvService::TEvWriteBlocksResponse(error),
