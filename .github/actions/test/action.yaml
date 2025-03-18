@@ -245,7 +245,7 @@ runs:
         echo "::group::dump-vm-artifacts"
         # shellcheck disable=SC2024
         sudo dmesg -T > "$LOG_DIR/dmesg.log"
-        sudo cp /var/log/atop/atop_*.log "$LOG_DIR/"
+        sudo cp /var/log/atop/atop_* "$LOG_DIR/"
         echo "::endgroup::"
 
     - name: archive unitest reports (transformed)
