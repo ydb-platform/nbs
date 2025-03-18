@@ -356,7 +356,7 @@ bool TNonreplicatedPartitionActor::InitRequests(
             deviceStat.GetTimedOutStateDuration(ctx.Now()) >
                 Config->GetLaggingDeviceTimeoutThreshold())
         {
-            Cerr << "yyyyyy InitRequests for Device " << dr.Device.GetDeviceUUID() << ". Is is timeouted. deviceStat.GetTimedOutStateDuration = " << deviceStat.GetTimedOutStateDuration(ctx.Now()) << Endl;
+            // Cerr << "yyyyyy InitRequests for Device " << dr.Device.GetDeviceUUID() << ". Is is timeouted. deviceStat.GetTimedOutStateDuration = " << deviceStat.GetTimedOutStateDuration(ctx.Now()) << Endl;
             NCloud::Send(
                 ctx,
                 PartConfig->GetParentActorId(),
@@ -455,7 +455,7 @@ void TNonreplicatedPartitionActor::OnRequestSuccess(
     ui32 deviceIndex,
     TDuration executionTime)
 {
-    Cerr << "yyyyyy OnRequestSuccess, device " << PartConfig->GetDevices()[deviceIndex].GetDeviceUUID() << Endl;
+    // Cerr << "yyyyyy OnRequestSuccess, device " << PartConfig->GetDevices()[deviceIndex].GetDeviceUUID() << Endl;
 
     auto& stat = DeviceStats[deviceIndex];
     stat.FirstTimeoutTs = {};
@@ -471,7 +471,7 @@ void TNonreplicatedPartitionActor::OnRequestTimeout(
 {
     auto& stat = DeviceStats[deviceIndex];
 
-    Cerr << "yyyyyy OnRequestTimeout, device " << PartConfig->GetDevices()[deviceIndex].GetDeviceUUID() << Endl;
+    // Cerr << "yyyyyy OnRequestTimeout, device " << PartConfig->GetDevices()[deviceIndex].GetDeviceUUID() << Endl;
 
     if (!stat.FirstTimeoutTs) {
         stat.FirstTimeoutTs = now - executionTime;

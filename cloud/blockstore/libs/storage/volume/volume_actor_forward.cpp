@@ -590,14 +590,17 @@ void TVolumeActor::ForwardRequest(
     }
     const ui64 volumeRequestId = VolumeRequestIdGenerator->Advance();
 
-    LOG_WARN(
-        ctx,
-        TBlockStoreComponents::VOLUME,
-        "xxxxx [%lu] %s request with id = %lu, sender: %s",
-        TabletID(),
-        TMethod::Name,
-        volumeRequestId,
-        ev->Sender.ToString().c_str());
+    if constexpr (IsReadOrWriteMethod<TMethod>) {
+        const auto range = BuildRequestBlockRange(*msg, State->GetBlockSize());
+        LOG_WARN(
+            ctx,
+            TBlockStoreComponents::VOLUME,
+            "xxxxx [%lu] %s request with id = %lu, range = %s",
+            TabletID(),
+            TMethod::Name,
+            volumeRequestId,
+            DescribeRange(range).c_str());
+    }
 
     if (ShuttingDown) {
         replyError(MakeError(E_REJECTED, "Shutting down"));

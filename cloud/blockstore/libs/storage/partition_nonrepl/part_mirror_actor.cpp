@@ -589,12 +589,8 @@ void TMirrorPartitionActor::HandleRemoveLaggingAgent(
         auto proxy = State.GetReplicaActors()[replicaIndex];
         State.ResetLaggingReplicaProxy(replicaIndex);
 
-        Cerr << "schedule poison pill to TReplicaLaggingAgentsIOControllerActor" << Endl;
-        // Schedule the poison pill to ensure there are no more in-flight
-        // requests to the proxy.
-        ctx.ExecutorThread.Schedule(
-            TDuration::MilliSeconds(50),
-            new IEventHandle(proxy, SelfId(), new TEvents::TEvPoisonPill()));
+        Cerr << "send poison pill to TReplicaLaggingAgentsIOControllerActor" << Endl;
+        NCloud::Send<TEvents::TEvPoisonPill>(ctx, proxy);
     }
 }
 

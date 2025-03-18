@@ -251,7 +251,7 @@ bool TMirrorPartitionState::DevicesReadyForReading(
                 laggingDevice.GetDeviceUUID().c_str(), laggingDevice.GetRowIndex());
         }
     }
-    Cerr << "DevicesReadyForReading? replicaIndex = " << replicaIndex << Endl;
+    // Cerr << "DevicesReadyForReading? replicaIndex = " << replicaIndex << Endl;
     return replicaInfo.Config->DevicesReadyForReading(
         blockRange,
         laggingIndexes);

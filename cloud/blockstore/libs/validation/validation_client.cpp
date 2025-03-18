@@ -235,6 +235,7 @@ private:
 
     void ReportInconsistentRead(
         const TVolume& volume,
+        const TOperationRange& range,
         ui64 blockIndex,
         ui64 prevHash,
         ui64 newHash) const;
@@ -483,6 +484,7 @@ void TValidationClient::ReportIncompleteRead(
 
 void TValidationClient::ReportInconsistentRead(
     const TVolume& volume,
+    const TOperationRange& range,
     ui64 blockIndex,
     ui64 prevHash,
     ui64 newHash) const
@@ -491,7 +493,7 @@ void TValidationClient::ReportInconsistentRead(
 
     ReportError(TStringBuilder()
         << "[" << volume.GetDiskId() << "] "
-        << "read inconsistency in block " << blockIndex
+        << "read inconsistency for range " << range << " in block " << blockIndex
         << " written " << prevHash << " read " << newHash);
 }
 
@@ -698,6 +700,7 @@ void TValidationClient::CompleteRead(
             if (blocksWritten[i] != blocksRead[i]) {
                 ReportInconsistentRead(
                     volume,
+                    range,
                     range.Begin + i,
                     blocksWritten[i],
                     blocksRead[i]);
@@ -1111,5 +1114,5 @@ void Out<NCloud::NBlockStore::NClient::TOperationRange>(
     const NCloud::NBlockStore::NClient::TOperationRange& range)
 {
     out << NCloud::NBlockStore::NClient::GetOperationString(range.Op)
-        << "(" << range.Begin << ", " << range.End << ")";
+        << "[" << range.Begin << ".." << range.End << "]";
 }
