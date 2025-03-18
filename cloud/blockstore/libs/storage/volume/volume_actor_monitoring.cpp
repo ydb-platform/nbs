@@ -1058,9 +1058,13 @@ void TVolumeActor::RenderHtmlInfo(IOutputStream& out, TInstant now) const
             }
         }
 
-        DIV_CLASS("row") {
-            DIV_CLASS("col-md-6") {
-                RenderCommonButtons(out);
+        if (State->LaggingDevicesAllowed()) {
+            DIV_CLASS("row")
+            {
+                DIV_CLASS("col-md-6")
+                {
+                    RenderLaggingStatus(out);
+                }
             }
         }
 
@@ -1626,6 +1630,38 @@ void TVolumeActor::RenderResyncStatus(IOutputStream& out) const
     }
 }
 
+void TVolumeActor::RenderLaggingStatus(IOutputStream& out) const
+{
+    HTML(out)
+    {
+        TAG(TH3)
+        {
+            TString statusText = "ok";
+            TString cssClass = "label-success";
+
+            if (State->HasLagging()) {
+                statusText = "has lagging devices";
+                cssClass = "label-info";
+            }
+
+            if (!State->GetNonreplicatedPartitionConfig()
+                     ->GetOutdatedDeviceIds()
+                     .empty())
+            {
+                statusText = "has outdated devices";
+                cssClass = "label-danger";
+            }
+
+            out << "LaggingStatus:";
+
+            SPAN_CLASS_STYLE("label " + cssClass, "margin-left:10px")
+            {
+                out << statusText;
+            }
+        }
+    }
+}
+
 void TVolumeActor::RenderCommonButtons(IOutputStream& out) const
 {
     if (!State) {
@@ -1830,7 +1866,7 @@ void TVolumeActor::HandleHttpInfo_RenderNonreplPartitionInfo(
 
                         return nullptr;
                     };
-
+                auto laggingDevices = State->GetLaggingDevices();
                 auto outputDevices = [&] (const TDevices& devices) {
                     TABLED() {
                         TABLE_CLASS("table table-bordered") {
@@ -1846,6 +1882,12 @@ void TVolumeActor::HandleHttpInfo_RenderNonreplPartitionInfo(
                                     TABLEH() { out << "BlockSize"; }
                                     TABLEH() { out << "Blocks"; }
                                     TABLEH() { out << "BlockRange"; }
+                                    if (State->LaggingDevicesAllowed()) {
+                                        TABLEH()
+                                        {
+                                            out << "LaggingState";
+                                        }
+                                    }
                                 }
                             }
 
@@ -1882,6 +1924,33 @@ void TVolumeActor::HandleHttpInfo_RenderNonreplPartitionInfo(
                                             currentBlockCount,
                                             d.GetBlocksCount());
                                     out << DescribeRange(currentRange);
+                                }
+                                if (State->LaggingDevicesAllowed()) {
+                                    TABLED()
+                                    {
+                                        const auto* stateMsg = "ok";
+                                        const auto* color = "green";
+
+                                        if (laggingDevices.contains(
+                                                d.GetDeviceUUID()))
+                                        {
+                                            stateMsg = "lagging";
+                                            color = "blue";
+                                        }
+
+                                        if (State
+                                                ->GetNonreplicatedPartitionConfig()
+                                                ->GetOutdatedDeviceIds()
+                                                .contains(d.GetDeviceUUID()))
+                                        {
+                                            stateMsg = "outdated";
+                                            color = "red";
+                                        }
+
+                                        out << "<font color=" << color << ">";
+                                        out << stateMsg;
+                                        out << "</font>";
+                                    }
                                 }
                             };
 

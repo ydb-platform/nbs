@@ -429,6 +429,7 @@ private:
     void RenderStatus(IOutputStream& out) const;
     void RenderMigrationStatus(IOutputStream& out) const;
     void RenderResyncStatus(IOutputStream& out) const;
+    void RenderLaggingStatus(IOutputStream& out) const;
     void RenderMountSeqNumber(IOutputStream& out) const;
     void RenderHistory(
         const TVolumeMountHistorySlice& history,
