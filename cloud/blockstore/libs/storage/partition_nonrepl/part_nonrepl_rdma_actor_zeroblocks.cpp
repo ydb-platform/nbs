@@ -257,12 +257,7 @@ void TNonreplicatedPartitionRdmaActor::HandleZeroBlocks(
             requestInfo->CallContext);
     }
 
-    TRequestData requestData;
-    for (const auto& r: deviceRequests){
-        requestData.DeviceIndices.emplace_back(r.DeviceIdx);
-    }
-
-    RequestsInProgress.AddWriteRequest(requestId, requestData);
+    RequestsInProgress.AddWriteRequest(requestId);
 }
 
 }   // namespace NCloud::NBlockStore::NStorage
