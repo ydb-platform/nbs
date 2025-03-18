@@ -606,22 +606,6 @@ void TNonreplicatedPartitionRdmaActor::HandleAgentIsUnavailable(
         DeviceStats[laggingDevice.GetRowIndex()].DeviceStatus =
             EDeviceStatus::Unavailable;
     }
-    using EReason = TEvNonreplPartitionPrivate::TCancelRequest::EReason;
-    for (const auto& [_, requestInfo]: RequestsInProgress.AllRequests()) {
-        for (int deviceIndex: requestInfo.Value.DeviceIndices) {
-            if (PartConfig->GetDevices()[deviceIndex].GetAgentId() ==
-                msg->LaggingAgent.GetAgentId())
-            {
-                NCloud::Send(
-                    ctx,
-                    requestInfo.Value.ActorId,
-                    std::make_unique<
-                        TEvNonreplPartitionPrivate::TEvCancelRequest>(
-                        EReason::Canceled));
-                break;
-            }
-        }
-    }
 }
 
 void TNonreplicatedPartitionRdmaActor::HandleAgentIsBackOnline(

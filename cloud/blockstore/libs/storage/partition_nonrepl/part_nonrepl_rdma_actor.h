@@ -53,10 +53,11 @@ public:
             NActors::TActorSystem* actorSystem,
             NActors::TActorId parentActorId)
         : ActorSystem(actorSystem)
-        , ParentActorId(std::move(parentActorId))
+        , ParentActorId(parentActorId)
     {}
+
     void SendDeviceTimedout(TString deviceUUID);
-    static bool NeedToNotifyAboutError(const NProto::TError& err);
+    [[nodiscard]] static bool NeedToNotifyAboutError(const NProto::TError& err);
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -85,12 +86,7 @@ private:
     };
     TVector<TDeviceStat> DeviceStats;
 
-    struct TRequestData
-    {
-        NActors::TActorId ActorId;
-        TStackVec<int, 2> DeviceIndices;
-    };
-    TRequestsInProgress<ui64, TRequestData> RequestsInProgress{
+    TRequestsInProgress<ui64> RequestsInProgress{
         EAllowedRequests::ReadWrite};
     TDrainActorCompanion DrainActorCompanion{
         RequestsInProgress,

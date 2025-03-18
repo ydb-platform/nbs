@@ -254,12 +254,7 @@ void TNonreplicatedPartitionRdmaActor::HandleReadBlocksLocal(
         return;
     }
 
-    TRequestData requestData;
-    for (const auto& r: deviceRequests){
-        requestData.DeviceIndices.emplace_back(r.DeviceIdx);
-    }
-
-    RequestsInProgress.AddReadRequest(requestId, requestData);
+    RequestsInProgress.AddReadRequest(requestId);
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

@@ -321,12 +321,7 @@ void TNonreplicatedPartitionRdmaActor::HandleWriteBlocks(
             requestInfo->CallContext);
     }
 
-    TRequestData requestData;
-    for (const auto& r: deviceRequests){
-        requestData.DeviceIndices.emplace_back(r.DeviceIdx);
-    }
-
-    RequestsInProgress.AddWriteRequest(requestId, requestData);
+    RequestsInProgress.AddWriteRequest(requestId);
 }
 
 void TNonreplicatedPartitionRdmaActor::HandleWriteBlocksLocal(
@@ -482,12 +477,7 @@ void TNonreplicatedPartitionRdmaActor::HandleWriteBlocksLocal(
             requestInfo->CallContext);
     }
 
-    TRequestData requestData;
-    for (const auto& r: deviceRequests){
-        requestData.DeviceIndices.emplace_back(r.DeviceIdx);
-    }
-
-    RequestsInProgress.AddWriteRequest(requestId, requestData);
+    RequestsInProgress.AddWriteRequest(requestId);
 }
 
 }   // namespace NCloud::NBlockStore::NStorage
