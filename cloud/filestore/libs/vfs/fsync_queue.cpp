@@ -224,7 +224,6 @@ TFSyncQueue::TFSyncQueue(
 
 void TFSyncQueue::Enqueue(TRequestId reqId, TNodeId nodeId, THandle handle)
 {
-    return;
     TRequest request{ .ReqId = reqId, .NodeId = nodeId, .Handle = handle };
 
     STORAGE_TRACE(LogTag << " Request was started " << request);
@@ -240,7 +239,6 @@ void TFSyncQueue::Dequeue(
     TNodeId nodeId,
     THandle handle)
 {
-    return;
     // TODO: Request can finish with error
     Y_UNUSED(error);
 
@@ -257,7 +255,6 @@ TFuture<NProto::TError> TFSyncQueue::WaitForRequests(
     TRequestId reqId,
     TNodeId nodeId)
 {
-    return MakeFuture<NProto::TError>();
     TRequest request{ .ReqId = reqId, .NodeId = nodeId };
 
     STORAGE_TRACE(LogTag
@@ -270,7 +267,6 @@ TFuture<NProto::TError> TFSyncQueue::WaitForRequests(
 
 TFuture<NProto::TError> TFSyncQueue::WaitForDataRequests(TRequestId reqId)
 {
-    return MakeFuture<NProto::TError>();
     // Handle should not be equal to InvalidHandle for global data fsync.
     return WaitForDataRequests(reqId, TNodeId {InvalidNodeId}, THandle {~InvalidHandle});
 }
@@ -280,7 +276,6 @@ TFuture<NProto::TError> TFSyncQueue::WaitForDataRequests(
     TNodeId nodeId,
     THandle handle)
 {
-    return MakeFuture<NProto::TError>();
     TRequest request{ .ReqId = reqId, .NodeId = nodeId, .Handle = handle };
 
     STORAGE_TRACE(LogTag
