@@ -3294,8 +3294,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
     SERVICE_TEST_SIMPLE(ShouldConfigureShardsAutomatically)
     {
         config.SetAutomaticShardCreationEnabled(true);
-        config.SetShardAllocationUnit(1_GB);
-        config.SetAutomaticallyCreatedShardSize(2_GB);
+        config.SetShardAllocationUnitBlocks(1_GB / 4_KB);
+        config.SetAutomaticallyCreatedShardBlocks(2_GB / 4_KB);
         TTestEnv env({}, config);
         env.CreateSubDomain("nfs");
 
@@ -3320,8 +3320,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         ShouldNotConfigureShardsAutomaticallyForSmallFileSystems)
     {
         config.SetAutomaticShardCreationEnabled(true);
-        config.SetShardAllocationUnit(1_GB);
-        config.SetAutomaticallyCreatedShardSize(2_GB);
+        config.SetShardAllocationUnitBlocks(1_GB / 4_KB);
+        config.SetAutomaticallyCreatedShardBlocks(2_GB / 4_KB);
         TTestEnv env({}, config);
         env.CreateSubDomain("nfs");
 
@@ -3338,8 +3338,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
     SERVICE_TEST_SIMPLE(ShouldHandleErrorsDuringShardedFileSystemCreation)
     {
         config.SetAutomaticShardCreationEnabled(true);
-        config.SetShardAllocationUnit(1_GB);
-        config.SetAutomaticallyCreatedShardSize(2_GB);
+        config.SetShardAllocationUnitBlocks(1_GB / 4_KB);
+        config.SetAutomaticallyCreatedShardBlocks(2_GB / 4_KB);
         TTestEnv env({}, config);
         env.CreateSubDomain("nfs");
 
@@ -3501,8 +3501,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
     SERVICE_TEST_SIMPLE(ShouldDeleteShardsAutomatically)
     {
         config.SetAutomaticShardCreationEnabled(true);
-        config.SetShardAllocationUnit(1_GB);
-        config.SetAutomaticallyCreatedShardSize(2_GB);
+        config.SetShardAllocationUnitBlocks(1_GB / 4_KB);
+        config.SetAutomaticallyCreatedShardBlocks(2_GB / 4_KB);
         TTestEnv env({}, config);
         env.CreateSubDomain("nfs");
 
@@ -3552,8 +3552,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
     SERVICE_TEST_SIMPLE(ShouldHandleErrorsDuringShardedFileSystemDestruction)
     {
         config.SetAutomaticShardCreationEnabled(true);
-        config.SetShardAllocationUnit(1_GB);
-        config.SetAutomaticallyCreatedShardSize(2_GB);
+        config.SetShardAllocationUnitBlocks(1_GB / 4_KB);
+        config.SetAutomaticallyCreatedShardBlocks(2_GB / 4_KB);
         TTestEnv env({}, config);
         env.CreateSubDomain("nfs");
 
@@ -3692,8 +3692,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
     SERVICE_TEST_SIMPLE(ShouldAddShardsAutomaticallyUponResize)
     {
         config.SetAutomaticShardCreationEnabled(true);
-        config.SetShardAllocationUnit(1_GB);
-        config.SetAutomaticallyCreatedShardSize(2_GB);
+        config.SetShardAllocationUnitBlocks(1_GB / 4_KB);
+        config.SetAutomaticallyCreatedShardBlocks(2_GB / 4_KB);
         TTestEnv env({}, config);
         env.CreateSubDomain("nfs");
 
@@ -3745,8 +3745,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
     SERVICE_TEST_SIMPLE(ShouldHandleErrorsDuringShardedFileSystemResize)
     {
         config.SetAutomaticShardCreationEnabled(true);
-        config.SetShardAllocationUnit(1_GB);
-        config.SetAutomaticallyCreatedShardSize(2_GB);
+        config.SetShardAllocationUnitBlocks(1_GB / 4_KB);
+        config.SetAutomaticallyCreatedShardBlocks(2_GB / 4_KB);
         TTestEnv env({}, config);
         env.CreateSubDomain("nfs");
 
@@ -4099,8 +4099,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
     SERVICE_TEST_SIMPLE(ShouldNotAutomaticallyAddShardsToShards)
     {
         config.SetAutomaticShardCreationEnabled(true);
-        config.SetShardAllocationUnit(1_GB);
-        config.SetAutomaticallyCreatedShardSize(2_GB);
+        config.SetShardAllocationUnitBlocks(1_GB / 4_KB);
+        config.SetAutomaticallyCreatedShardBlocks(2_GB / 4_KB);
         TTestEnv env({}, config);
         env.CreateSubDomain("nfs");
 
@@ -4272,8 +4272,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         NProto::TStorageConfig config;
         config.SetShardIdSelectionInLeaderEnabled(true);
         config.SetAutomaticShardCreationEnabled(true);
-        config.SetShardAllocationUnit(4_MB);
-        config.SetAutomaticallyCreatedShardSize(4_MB);
+        config.SetShardAllocationUnitBlocks(4_MB / 4_KB);
+        config.SetAutomaticallyCreatedShardBlocks(4_MB / 4_KB);
         config.SetShardBalancerMinFreeSpaceReserve(4_KB);
         config.SetShardBalancerDesiredFreeSpaceReserve(1_MB);
         config.SetMultiTabletForwardingEnabled(true);
@@ -4408,8 +4408,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
     SERVICE_TEST_SIMPLE(ShouldAddExplicitShardCountAutomaticallyUponResize)
     {
         config.SetAutomaticShardCreationEnabled(true);
-        config.SetShardAllocationUnit(4_TB);
-        config.SetAutomaticallyCreatedShardSize(5_TB);
+        config.SetShardAllocationUnitBlocks(4_TB / 4_KB);
+        config.SetAutomaticallyCreatedShardBlocks(5_TB / 4_KB);
         TTestEnv env({}, config);
         env.CreateSubDomain("nfs");
 

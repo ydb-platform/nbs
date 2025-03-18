@@ -228,13 +228,15 @@ bool TIndexTabletState::CalculateExpectedShardCount() const
 
     const auto currentShardCount = FileSystem.ShardFileSystemIdsSize();
     ui64 autoShardCount = 0;
-    if (FileSystem.GetAutomaticShardCreationEnabled()
-            && FileSystem.GetShardAllocationUnit())
+    if (FileSystem.GetAutomaticShardCreationEnabled() &&
+        (FileSystem.GetShardAllocationUnit() ||
+         FileSystem.GetShardAllocationUnitBlocks()))
     {
         autoShardCount = ComputeShardCount(
             FileSystem.GetBlocksCount(),
-            FileSystem.GetBlockSize(),
-            FileSystem.GetShardAllocationUnit());
+            FileSystem.GetShardAllocationUnit()
+                ? FileSystem.GetShardAllocationUnit() / DefaultBlockSize
+                : FileSystem.GetShardAllocationUnitBlocks());
     }
 
     return Max(currentShardCount, autoShardCount);

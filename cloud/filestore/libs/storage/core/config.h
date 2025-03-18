@@ -294,8 +294,8 @@ public:
     bool GetThreeStageWriteDisabledForHDD() const;
 
     bool GetAutomaticShardCreationEnabled() const;
-    ui64 GetShardAllocationUnit() const;
-    ui64 GetAutomaticallyCreatedShardSize() const;
+    ui64 GetShardAllocationUnitBlocks() const;
+    ui64 GetAutomaticallyCreatedShardBlocks() const;
     bool GetEnforceCorrectFileSystemShardCountUponSessionCreation() const;
     bool GetShardIdSelectionInLeaderEnabled() const;
     ui64 GetShardBalancerDesiredFreeSpaceReserve() const;

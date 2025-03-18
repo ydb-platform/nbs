@@ -2296,8 +2296,8 @@ Y_UNIT_TEST_SUITE(TModel)
 
         // Disable media type override.
         StorageConfig.SetAutomaticShardCreationEnabled(true);
-        StorageConfig.SetShardAllocationUnit(4_TB);
-        StorageConfig.SetAutomaticallyCreatedShardSize(5_TB);
+        StorageConfig.SetShardAllocationUnitBlocks(4_TB / 4_KB);
+        StorageConfig.SetAutomaticallyCreatedShardBlocks(5_TB / 4_KB);
         StorageConfig.SetSSDMaxWriteIops(Max<ui32>());
 
         auto OldMaxWriteIops = ClientPerformanceProfile.GetMaxWriteIops();
@@ -2377,8 +2377,8 @@ Y_UNIT_TEST_SUITE(TModel)
 
         // Disable media type override.
         StorageConfig.SetAutomaticShardCreationEnabled(true);
-        StorageConfig.SetShardAllocationUnit(4_TB);
-        StorageConfig.SetAutomaticallyCreatedShardSize(5_TB);
+        StorageConfig.SetShardAllocationUnitBlocks(4_TB / 4_KB);
+        StorageConfig.SetAutomaticallyCreatedShardBlocks(5_TB / 4_KB);
 
         auto fs = SetupMultiShardFileStorePerformanceAndChannels(
             StorageConfig,

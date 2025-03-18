@@ -307,8 +307,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceActionsTest)
     {
         NProto::TStorageConfig storageConfig;
         storageConfig.SetAutomaticShardCreationEnabled(true);
-        storageConfig.SetShardAllocationUnit(1_GB);
-        storageConfig.SetAutomaticallyCreatedShardSize(1_GB);
+        storageConfig.SetShardAllocationUnitBlocks(1_GB / 4_KB);
+        storageConfig.SetAutomaticallyCreatedShardBlocks(1_GB / 4_KB);
         storageConfig.SetMultiTabletForwardingEnabled(true);
 
         NProto::TDiagnosticsConfig diagConfig;

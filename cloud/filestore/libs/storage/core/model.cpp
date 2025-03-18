@@ -2,9 +2,9 @@
 
 #include <cloud/filestore/libs/service/filestore.h>
 #include <cloud/filestore/libs/storage/model/channel_data_kind.h>
-
 #include <cloud/storage/core/protos/media.pb.h>
 
+#include <util/generic/ymath.h>
 #include <util/string/printf.h>
 
 namespace NCloud::NFileStore::NStorage {
@@ -502,17 +502,14 @@ void SetupFileStorePerformanceAndChannels(
 
 ui32 ComputeShardCount(
     const ui64 blocksCount,
-    const ui32 blockSize,
-    const ui64 shardAllocationUnit)
+    const ui64 shardAllocationUnitBlocks)
 {
-    const double fileStoreSize = blocksCount * blockSize;
-
-    if (fileStoreSize < shardAllocationUnit) {
+    if (blocksCount < shardAllocationUnitBlocks) {
         // No need in using sharding for small enough filesystems
         return 0;
     }
 
-    const ui32 shardCount = std::ceil(fileStoreSize / shardAllocationUnit);
+    const ui32 shardCount = CeilDiv(blocksCount, shardAllocationUnitBlocks);
     return Min(shardCount, MaxShardCount);
 }
 
@@ -533,16 +530,14 @@ TMultiShardFileStoreConfig SetupMultiShardFileStorePerformanceAndChannels(
     const auto shardCount = explicitShardCount
         ? explicitShardCount
         : ComputeShardCount(
-            fileStore.GetBlocksCount(),
-            fileStore.GetBlockSize(),
-            config.GetShardAllocationUnit());
+                fileStore.GetBlocksCount(),
+                config.GetShardAllocationUnitBlocks());
     result.ShardConfigs.resize(shardCount);
     for (ui32 i = 0; i < shardCount; ++i) {
         result.ShardConfigs[i] = fileStore;
         result.ShardConfigs[i].ClearVersion();
         result.ShardConfigs[i].SetBlocksCount(
-            config.GetAutomaticallyCreatedShardSize()
-            / fileStore.GetBlockSize());
+            config.GetAutomaticallyCreatedShardBlocks());
         result.ShardConfigs[i].SetFileSystemId(
             Sprintf("%s_s%u", fileStore.GetFileSystemId().c_str(), i + 1));
         SetupFileStorePerformanceAndChannels(

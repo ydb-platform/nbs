@@ -46,7 +46,11 @@ message TFileSystem
     repeated string ShardFileSystemIds = 13;
     uint32 ShardNo = 14;
     bool AutomaticShardCreationEnabled = 15;
-    uint64 ShardAllocationUnit = 16;
+    // Note: ShardAllocationUnit is kept for backward compatibility. For the
+    // newly created filesystems, ShardAllocationUnitBlocks is set upon creation
+    uint64 ShardAllocationUnit = 16 [deprecated = true];
+    uint64 ShardAllocationUnitBlocks = 19;
+
     string MainFileSystemId = 17;
     bool DirectoryCreationInShardsEnabled = 18;
 }
