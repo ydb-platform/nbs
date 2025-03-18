@@ -614,7 +614,6 @@ func TestSnapshotServiceSequentionalDeletionOfIncrementalSnapshot(t *testing.T) 
 
 	err = internal_client.WaitOperation(ctx, client, createOperation.Id)
 	require.NoError(t, err)
-	// Need to add some variance for better testing.
 
 	reqCtx = testcommon.GetRequestContext(t, ctx)
 	deleteOperation, err = client.DeleteSnapshot(reqCtx, &deleteRequest)
