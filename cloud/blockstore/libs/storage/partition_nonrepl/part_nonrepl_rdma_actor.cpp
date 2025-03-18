@@ -330,7 +330,7 @@ void TNonreplicatedPartitionRdmaActor::NotifyDeviceTimedOutIfNeeded(
     auto& timedOutDeviceCtx = it->second;
 
     if (!inserted) {
-        if (timedOutDeviceCtx.ParentWasNotified) {
+        if (timedOutDeviceCtx.VolumeWasNotified) {
             return;
         }
 
@@ -344,13 +344,13 @@ void TNonreplicatedPartitionRdmaActor::NotifyDeviceTimedOutIfNeeded(
                 PartConfig->GetParentActorId(),
                 std::make_unique<TEvVolumePrivate::TEvDeviceTimeoutedRequest>(
                     deviceUUID));
-            timedOutDeviceCtx.ParentWasNotified = true;
+            timedOutDeviceCtx.VolumeWasNotified = true;
         }
         return;
     }
 
     timedOutDeviceCtx.FirstErrorTs = ctx.Now();
-    timedOutDeviceCtx.ParentWasNotified = false;
+    timedOutDeviceCtx.VolumeWasNotified = false;
 }
 
 void TNonreplicatedPartitionRdmaActor::ProcessOperationCompleted(
@@ -606,12 +606,6 @@ void TNonreplicatedPartitionRdmaActor::HandleAgentIsUnavailable(
         "[%s] Agent %s has become unavailable (lagging)",
         PartConfig->GetName().c_str(),
         msg->LaggingAgent.GetAgentId().Quote().c_str());
-
-    for (const auto& laggingDevice: msg->LaggingAgent.GetDevices()) {
-        Y_ABORT_UNLESS(DeviceStats.size() > laggingDevice.GetRowIndex());
-        DeviceStats[laggingDevice.GetRowIndex()].DeviceStatus =
-            EDeviceStatus::Unavailable;
-    }
 }
 
 void TNonreplicatedPartitionRdmaActor::HandleAgentIsBackOnline(
@@ -626,17 +620,6 @@ void TNonreplicatedPartitionRdmaActor::HandleAgentIsBackOnline(
         "[%s] Lagging agent %s is back online",
         PartConfig->GetName().c_str(),
         agentId.Quote().c_str());
-
-    for (int i = 0; i < PartConfig->GetDevices().size(); ++i) {
-        Y_ABORT_UNLESS(DeviceStats.size() > static_cast<size_t>(i));
-        const auto& device = PartConfig->GetDevices().at(i);
-        if (device.GetAgentId() == msg->AgentId &&
-            DeviceStats[i].DeviceStatus <= EDeviceStatus::Unavailable)
-        {
-            TimedOutDeviceCtxByDeviceUUID.erase(device.GetDeviceUUID());
-            DeviceStats[i].DeviceStatus = EDeviceStatus::Ok;
-        }
-    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////

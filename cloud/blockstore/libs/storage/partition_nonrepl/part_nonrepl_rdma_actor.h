@@ -74,19 +74,7 @@ private:
     const NRdma::IClientPtr RdmaClient;
     const NActors::TActorId StatActorId;
 
-    // TODO implement timeouts
-
-    enum class EDeviceStatus
-    {
-        Ok,
-        Unavailable,
-    };
-
-    struct TDeviceStat
-    {
-        EDeviceStatus DeviceStatus = EDeviceStatus::Ok;
-    };
-    TVector<TDeviceStat> DeviceStats;
+    // TODO implement DeviceStats and similar stuff
 
     TRequestsInProgress<ui64> RequestsInProgress{
         EAllowedRequests::ReadWrite};
@@ -111,7 +99,7 @@ private:
 
     struct TTimedOutDeviceCtx {
         TInstant FirstErrorTs;
-        bool ParentWasNotified = false;
+        bool VolumeWasNotified = false;
     };
     THashMap<TString, TTimedOutDeviceCtx> TimedOutDeviceCtxByDeviceUUID;
     bool SentRdmaUnavailableNotification = false;
