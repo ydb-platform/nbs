@@ -659,6 +659,9 @@ public:
     [[nodiscard]] ui32 GetCheckRangeMaxRangeSize() const;
 
     [[nodiscard]] bool GetDisableZeroBlocksThrottlingForYDBBasedDisks() const;
+
+    [[nodiscard]] ui32 GetMaxLinkedDiskFillBandwidth() const;
+    [[nodiscard]] ui32 GetMaxLinkedDiskFillIoDepth() const;
 };
 
 ui64 GetAllocationUnit(

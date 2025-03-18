@@ -544,7 +544,11 @@ TDuration MSeconds(ui32 value)
                                                                                \
     xxx(CheckRangeMaxRangeSize,                    ui32,      4_MB            )\
                                                                                \
-    xxx(DisableZeroBlocksThrottlingForYDBBasedDisks,       bool,   false       )
+    xxx(DisableZeroBlocksThrottlingForYDBBasedDisks,       bool,   false      )\
+                                                                               \
+    xxx(MaxLinkedDiskFillBandwidth,                ui32,      512             )\
+    xxx(MaxLinkedDiskFillIoDepth,                  ui32,      4               )\
+
 // BLOCKSTORE_STORAGE_CONFIG_RW
 
 #define BLOCKSTORE_STORAGE_CONFIG(xxx)                                         \

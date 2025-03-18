@@ -8,9 +8,9 @@
 #include <cloud/blockstore/libs/storage/core/forward_helpers.h>
 #include <cloud/blockstore/libs/storage/core/probes.h>
 #include <cloud/blockstore/libs/storage/core/proto_helpers.h>
+#include <cloud/blockstore/libs/storage/disk_agent/model/public.h>
 #include <cloud/blockstore/libs/storage/volume/model/merge.h>
 #include <cloud/blockstore/libs/storage/volume/model/stripe.h>
-
 #include <cloud/storage/core/libs/common/media.h>
 #include <cloud/storage/core/libs/common/verify.h>
 #include <cloud/storage/core/libs/diagnostics/trace_serializer.h>
@@ -637,30 +637,40 @@ void TVolumeActor::ForwardRequest(
 
     const auto& clientId = GetClientId(*msg);
     auto& clients = State->AccessClients();
-    auto it = clients.end();
+    auto clientsIt = clients.end();
 
     bool throttlingDisabled = false;
     bool forceWrite = false;
     if constexpr (RequiresMount<TMethod>) {
-        it = clients.find(clientId);
-        if (it == clients.end()) {
-            replyError(MakeError(E_BS_INVALID_SESSION, "Invalid session"));
-            return;
+        clientsIt = clients.find(clientId);
+        if (clientsIt == clients.end()) {
+            if (clientId == CopyVolumeClientId) {
+                throttlingDisabled = true;
+                VolumeSelfCounters->Cumulative.ThrottlerSkippedRequests
+                    .Increment(1);
+            } else {
+                replyError(MakeError(
+                    E_BS_INVALID_SESSION,
+                    TStringBuilder() << "Invalid session (" << clientId.Quote()
+                                     << " not found)"));
+                return;
+            }
+        } else {
+            const auto& clientInfo = clientsIt->second;
+
+            throttlingDisabled = HasProtoFlag(
+                clientInfo.GetVolumeClientInfo().GetMountFlags(),
+                NProto::MF_THROTTLING_DISABLED);
+
+            if (RequiresThrottling<TMethod> && throttlingDisabled) {
+                VolumeSelfCounters->Cumulative.ThrottlerSkippedRequests
+                    .Increment(1);
+            }
+
+            forceWrite = HasProtoFlag(
+                clientInfo.GetVolumeClientInfo().GetMountFlags(),
+                NProto::MF_FORCE_WRITE);
         }
-
-        const auto& clientInfo = it->second;
-
-        throttlingDisabled = HasProtoFlag(
-            clientInfo.GetVolumeClientInfo().GetMountFlags(),
-            NProto::MF_THROTTLING_DISABLED);
-
-        if (RequiresThrottling<TMethod> && throttlingDisabled) {
-            VolumeSelfCounters->Cumulative.ThrottlerSkippedRequests.Increment(1);
-        }
-
-        forceWrite = HasProtoFlag(
-            clientInfo.GetVolumeClientInfo().GetMountFlags(),
-            NProto::MF_FORCE_WRITE);
     }
 
     if (RequiresReadWriteAccess<TMethod>
@@ -686,28 +696,27 @@ void TVolumeActor::ForwardRequest(
      *  Mount-related validation.
      */
     if constexpr (RequiresMount<TMethod>) {
-        Y_ABORT_UNLESS(it != clients.end());
+        if (clientsIt != clients.end()) {
+            auto& clientInfo = clientsIt->second;
+            NProto::TError error;
 
-        auto& clientInfo = it->second;
-        NProto::TError error;
-
-        if (ev->Recipient != ev->GetRecipientRewrite()) {
-            error = clientInfo.CheckPipeRequest(
-                ev->Recipient,
-                RequiresReadWriteAccess<TMethod>,
-                TMethod::Name,
-                State->GetDiskId());
-        } else {
-            error = clientInfo.CheckLocalRequest(
-                ev->Sender.NodeId(),
-                RequiresReadWriteAccess<TMethod>,
-                TMethod::Name,
-                State->GetDiskId());
-        }
-
-        if (FAILED(error.GetCode())) {
-            replyError(std::move(error));
-            return;
+            if (ev->Recipient != ev->GetRecipientRewrite()) {
+                error = clientInfo.CheckPipeRequest(
+                    ev->Recipient,
+                    RequiresReadWriteAccess<TMethod>,
+                    TMethod::Name,
+                    State->GetDiskId());
+            } else {
+                error = clientInfo.CheckLocalRequest(
+                    ev->Sender.NodeId(),
+                    RequiresReadWriteAccess<TMethod>,
+                    TMethod::Name,
+                    State->GetDiskId());
+            }
+            if (FAILED(error.GetCode())) {
+                replyError(std::move(error));
+                return;
+            }
         }
 
         if (RequiresReadWriteAccess<TMethod> && !CanExecuteWriteRequest()) {

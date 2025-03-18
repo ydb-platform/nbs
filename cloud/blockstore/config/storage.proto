@@ -1148,4 +1148,9 @@ message TStorageServiceConfig
     // Disable throttling of ZeroBlocks requests for
     // YDB-based ('network-ssd', 'network-hdd') disks.
     optional bool DisableZeroBlocksThrottlingForYDBBasedDisks = 415;
+
+    // Max linked disk fill bandwidth in MiB/s.
+    optional uint32 MaxLinkedDiskFillBandwidth = 416;
+    // Max linked disk fill io depth.
+    optional uint32 MaxLinkedDiskFillIoDepth = 417;
 }

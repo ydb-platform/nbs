@@ -22,9 +22,11 @@ struct TFollowerDiskInfo
     TString Uuid;
     TString FollowerDiskId;
     TString ScaleUnitId;
+
     EState State = EState::None;
     std::optional<ui64> MigrationBlockIndex;
 
+    TString GetDiskIdForPrint() const;
     bool operator==(const TFollowerDiskInfo& rhs) const;
 };
 

@@ -11,13 +11,14 @@
 #include <cloud/blockstore/libs/storage/partition_nonrepl/part_mirror_resync.h>
 #include <cloud/blockstore/libs/storage/partition_nonrepl/part_nonrepl.h>
 #include <cloud/blockstore/libs/storage/partition_nonrepl/part_nonrepl_migration.h>
+#include <cloud/blockstore/libs/storage/volume/actors/follower_disk_actor.h>
 #include <cloud/blockstore/libs/storage/volume/actors/shadow_disk_actor.h>
 #include <cloud/storage/core/libs/common/media.h>
 
-#include <util/string/builder.h>
-
 #include <contrib/ydb/core/base/tablet.h>
 #include <contrib/ydb/core/tablet/tablet_setup.h>
+
+#include <util/string/builder.h>
 
 namespace NCloud::NBlockStore::NStorage {
 
@@ -262,8 +263,18 @@ void TVolumeActor::SetupDiskRegistryBasedPartitions(const TActorContext& ctx)
         }
     }
 
+    // Wrap partition actor
+    GetDeviceForRangeCompanion.SetDelegate(nonreplicatedActorId);
+
+    nonreplicatedActorId =
+        WrapByFollowerActorIfNeeded(ctx, nonreplicatedActorId);
+    nonreplicatedActorId = WrapNonreplActorIfNeeded(
+        ctx,
+        nonreplicatedActorId,
+        nonreplicatedConfig);
+
     State->SetDiskRegistryBasedPartitionActor(
-        WrapNonreplActorIfNeeded(ctx, nonreplicatedActorId, nonreplicatedConfig),
+        nonreplicatedActorId,
         nonreplicatedConfig);
     ReportLaggingDevicesToDR(ctx);
 }
@@ -301,6 +312,34 @@ NActors::TActorId TVolumeActor::WrapNonreplActorIfNeeded(
         DoRegisterVolume(ctx, checkpointInfo.ShadowDiskId);
     }
     return nonreplicatedActorId;
+}
+
+NActors::TActorId TVolumeActor::WrapByFollowerActorIfNeeded(
+    const TActorContext& ctx,
+    NActors::TActorId partitionActorId)
+{
+    for (const auto& follower: State->GetAllFollowers()) {
+        if (follower.State == TFollowerDiskInfo::EState::Error) {
+            continue;
+        }
+        partitionActorId = NCloud::Register<TFolowerDiskActor>(
+            ctx,
+            Config,
+            DiagnosticsConfig,
+            ProfileLog,
+            BlockDigestGenerator,
+            TLeaderVolume{
+                .DiskId = State->GetDiskId(),
+                .BlockCount = State->GetBlocksCount(),
+                .BlockSize = State->GetBlockSize(),
+                .VolumeActorId = SelfId(),
+                .PartitionActorId = partitionActorId,
+                .ClientId = State->GetReadWriteAccessClientId()},
+            TFollowerVolume{
+                .DiskInfo = follower,
+                .VolumeActorId = TActorId()});
+    }
+    return partitionActorId;
 }
 
 void TVolumeActor::RestartDiskRegistryBasedPartition(

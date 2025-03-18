@@ -57,7 +57,7 @@ public:
         TDevices Devices;
         TVolumeInfo VolumeInfo;
         TString Name;
-        ui32 BlockSize;
+        ui32 BlockSize = 0;
         NActors::TActorId ParentActorId;
         NProto::EVolumeIOMode IOMode = NProto::VOLUME_IO_OK;
         bool MuteIOErrors = false;
@@ -67,6 +67,8 @@ public:
         TDuration MaxTimedOutDeviceStateDuration;
         bool MaxTimedOutDeviceStateDurationOverridden = false;
         bool UseSimpleMigrationBandwidthLimiter = true;
+
+        TNonreplicatedPartitionConfigInitParams() = default;
 
         TNonreplicatedPartitionConfigInitParams(
                 TDevices devices,

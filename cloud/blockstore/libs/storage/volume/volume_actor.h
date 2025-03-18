@@ -27,6 +27,7 @@
 #include <cloud/blockstore/libs/storage/core/tablet.h>
 #include <cloud/blockstore/libs/storage/model/composite_id.h>
 #include <cloud/blockstore/libs/storage/partition_common/events_private.h>
+#include <cloud/blockstore/libs/storage/partition_common/get_device_for_range_companion.h>
 #include <cloud/blockstore/libs/storage/partition_common/long_running_operation_companion.h>
 #include <cloud/blockstore/libs/storage/volume/model/requests_inflight.h>
 #include <cloud/blockstore/libs/storage/volume/model/volume_throttler_logger.h>
@@ -363,6 +364,9 @@ private:
     THashMap<ui64, TDiskRegistryBasedPartitionStoppedCallback> OnPartitionStopped;
 
     TVector<ui64> GCCompletedPartitions;
+
+    TGetDeviceForRangeCompanion GetDeviceForRangeCompanion{
+        TGetDeviceForRangeCompanion::EAllowedOperation::ReadWrite};
 
 public:
     TVolumeActor(
@@ -1055,6 +1059,10 @@ private:
         const NActors::TActorContext& ctx,
         NActors::TActorId nonreplicatedActorId,
         std::shared_ptr<TNonreplicatedPartitionConfig> srcConfig);
+
+    NActors::TActorId WrapByFollowerActorIfNeeded(
+        const NActors::TActorContext& ctx,
+        NActors::TActorId partitionActorId);
 
     void RestartDiskRegistryBasedPartition(
         const NActors::TActorContext& ctx,
