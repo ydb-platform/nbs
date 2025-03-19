@@ -1889,7 +1889,7 @@ void TVolumeActor::HandleHttpInfo_RenderNonreplPartitionInfo(
                                     TABLEH() { out << "BlockSize"; }
                                     TABLEH() { out << "Blocks"; }
                                     TABLEH() { out << "BlockRange"; }
-                                    if (State->LaggingDevicesAllowed()) {
+                                    if (LaggingDevicesAreAllowed()) {
                                         TABLEH()
                                         {
                                             out << "LaggingState";
