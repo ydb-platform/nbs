@@ -24,5 +24,4 @@ message CreateImageFromDiskTaskState {
     int64 ImageSize = 4;
     int64 ImageStorageSize = 5;
     string DataplaneTaskID = 6;
-    string CheckpointID = 7;
 }

@@ -409,6 +409,7 @@ func (s *storageYDB) createImage(
 		id:                image.ID,
 		folderID:          image.FolderID,
 		srcDiskID:         image.SrcDiskID,
+		checkpointID:      image.CheckpointID,
 		srcImageID:        image.SrcImageID,
 		srcSnapshotID:     image.SrcSnapshotID,
 		createRequest:     createRequest,

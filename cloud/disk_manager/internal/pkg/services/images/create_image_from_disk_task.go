@@ -52,14 +52,14 @@ func (t *createImageFromDiskTask) run(
 	ctx context.Context,
 	execCtx tasks.ExecutionContext,
 	nbsClient nbs.Client,
-) error {
+) (string, error) {
 
 	disk := t.request.SrcDisk
 	selfTaskID := execCtx.GetTaskID()
 
 	diskParams, err := nbsClient.Describe(ctx, disk.DiskId)
 	if err != nil {
-		return err
+		return "", err
 	}
 
 	imageMeta, err := t.storage.CreateImage(ctx, resources.ImageMeta{
@@ -74,12 +74,12 @@ func (t *createImageFromDiskTask) run(
 		Encryption:        diskParams.EncryptionDesc,
 	})
 	if err != nil {
-		return err
+		return "", err
 	}
 
 	if imageMeta.Ready {
 		// Already created.
-		return nil
+		return imageMeta.CheckpointID, nil
 	}
 
 	checkpointID, err := common.CreateCheckpoint(
@@ -93,10 +93,8 @@ func (t *createImageFromDiskTask) run(
 		diskParams.IsDiskRegistryBasedDisk,
 	)
 	if err != nil {
-		return err
+		return "", err
 	}
-
-	t.state.CheckpointID = checkpointID
 
 	taskID, err := t.scheduler.ScheduleZonalTask(
 		headers.SetIncomingIdempotencyKey(ctx, selfTaskID+"_run"),
@@ -111,19 +109,19 @@ func (t *createImageFromDiskTask) run(
 		},
 	)
 	if err != nil {
-		return err
+		return "", err
 	}
 
 	t.state.DataplaneTaskID = taskID
 
 	response, err := t.scheduler.WaitTask(ctx, execCtx, taskID)
 	if err != nil {
-		return err
+		return "", err
 	}
 
 	typedResponse, ok := response.(*dataplane_protos.CreateSnapshotFromDiskResponse)
 	if !ok {
-		return errors.NewNonRetriableErrorf(
+		return "", errors.NewNonRetriableErrorf(
 			"invalid dataplane.CreateSnapshotFromDisk response type %T",
 			response,
 		)
@@ -140,10 +138,10 @@ func (t *createImageFromDiskTask) run(
 
 	err = execCtx.SaveState(ctx)
 	if err != nil {
-		return err
+		return "", err
 	}
 
-	return t.storage.ImageCreated(
+	err = t.storage.ImageCreated(
 		ctx,
 		t.request.DstImageId,
 		checkpointID,
@@ -151,6 +149,11 @@ func (t *createImageFromDiskTask) run(
 		uint64(t.state.ImageSize),
 		uint64(t.state.ImageStorageSize),
 	)
+	if err != nil {
+		return "", err
+	}
+
+	return checkpointID, nil
 }
 
 func (t *createImageFromDiskTask) Run(
@@ -165,7 +168,7 @@ func (t *createImageFromDiskTask) Run(
 		return err
 	}
 
-	err = t.run(ctx, execCtx, nbsClient)
+	checkpointID, err := t.run(ctx, execCtx, nbsClient)
 	if err != nil {
 		return err
 	}
@@ -188,10 +191,10 @@ func (t *createImageFromDiskTask) Run(
 	}
 
 	if diskParams.IsDiskRegistryBasedDisk {
-		return nbsClient.DeleteCheckpoint(ctx, disk.DiskId, t.state.CheckpointID)
+		return nbsClient.DeleteCheckpoint(ctx, disk.DiskId, checkpointID)
 	}
 
-	return nbsClient.DeleteCheckpointData(ctx, disk.DiskId, t.state.CheckpointID)
+	return nbsClient.DeleteCheckpointData(ctx, disk.DiskId, checkpointID)
 }
 
 func (t *createImageFromDiskTask) Cancel(
