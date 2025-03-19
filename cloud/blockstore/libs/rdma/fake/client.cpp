@@ -441,10 +441,82 @@ private:
                 TEvDiskAgent::TEvChecksumDeviceBlocksResponse,
                 HandleChecksumDeviceBlocksResponse);
 
+            HFunc(
+                TEvDiskAgent::TEvReadDeviceBlocksRequest,
+                HandleReadUndelivery);
+            HFunc(
+                TEvDiskAgent::TEvWriteDeviceBlocksRequest,
+                HandleWriteUndelivery);
+            HFunc(
+                TEvDiskAgent::TEvZeroDeviceBlocksRequest,
+                HandleZeroUndelivery);
+            HFunc(
+                TEvDiskAgent::TEvChecksumDeviceBlocksRequest,
+                HandleChecksumUndelivery);
+
             default:
-                HandleUnexpectedEvent(ev, TBlockStoreComponents::RDMA);
+                HandleUnexpectedEvent(
+                    ev,
+                    TBlockStoreComponents::RDMA,
+                    __PRETTY_FUNCTION__);
                 break;
         }
+    }
+
+    void HandleReadUndelivery(
+        const TEvDiskAgent::TEvReadDeviceBlocksRequest::TPtr& ev,
+        const TActorContext& ctx)
+    {
+        Y_UNUSED(ev);
+
+        AbortRequest(
+            std::move(Request),
+            E_REJECTED,
+            "ReadDeviceBlocks request undelivered");
+
+        Die(ctx);
+    }
+
+    void HandleWriteUndelivery(
+        const TEvDiskAgent::TEvWriteDeviceBlocksRequest::TPtr& ev,
+        const TActorContext& ctx)
+    {
+        Y_UNUSED(ev);
+
+        AbortRequest(
+            std::move(Request),
+            E_REJECTED,
+            "WriteDeviceBlocks request undelivered");
+
+        Die(ctx);
+    }
+
+    void HandleZeroUndelivery(
+        const TEvDiskAgent::TEvZeroDeviceBlocksRequest::TPtr& ev,
+        const TActorContext& ctx)
+    {
+        Y_UNUSED(ev);
+
+        AbortRequest(
+            std::move(Request),
+            E_REJECTED,
+            "ZeroDeviceBlocks request undelivered");
+
+        Die(ctx);
+    }
+
+    void HandleChecksumUndelivery(
+        const TEvDiskAgent::TEvChecksumDeviceBlocksRequest::TPtr& ev,
+        const TActorContext& ctx)
+    {
+        Y_UNUSED(ev);
+
+        AbortRequest(
+            std::move(Request),
+            E_REJECTED,
+            "ChecksumDeviceBlocks request undelivered");
+
+        Die(ctx);
     }
 
     void HandleWakeup(
@@ -617,7 +689,10 @@ private:
 
             HFunc(TEvents::TEvWakeup, HandleWakeup);
             default:
-                HandleUnexpectedEvent(ev, TBlockStoreComponents::RDMA);
+                HandleUnexpectedEvent(
+                    ev,
+                    TBlockStoreComponents::RDMA,
+                    __PRETTY_FUNCTION__);
                 break;
         }
     }
@@ -692,7 +767,10 @@ private:
             HFunc(TEvFakeRdmaClient::TEvUpdateNodeId, HandleUpdateNodeId);
 
             default:
-                HandleUnexpectedEvent(ev, TBlockStoreComponents::RDMA);
+                HandleUnexpectedEvent(
+                    ev,
+                    TBlockStoreComponents::RDMA,
+                    __PRETTY_FUNCTION__);
                 break;
         }
     }
