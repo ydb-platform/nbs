@@ -545,12 +545,11 @@ class TRequestHandle: public IRequestHandle
 
 public:
     TRequestHandle(
-        std::shared_ptr<TClientEndpoint> endpoint,
-        NThreading::TFuture<ui32> reqIdFuture)
+            std::shared_ptr<TClientEndpoint> endpoint,
+            NThreading::TFuture<ui32> reqIdFuture)
         : Endpoint(std::move(endpoint))
         , ReqIdFuture(std::move(reqIdFuture))
     {}
-
 
     ~TRequestHandle() override = default;
 
