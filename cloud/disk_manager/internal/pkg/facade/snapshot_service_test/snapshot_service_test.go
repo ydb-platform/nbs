@@ -616,6 +616,8 @@ func TestSnapshotServiceDeleteIncrementalSnapshotBeforeCreating(t *testing.T) {
 	err = internal_client.WaitOperation(ctx, client, createOperation.Id)
 	require.NoError(t, err)
 
+	testcommon.RequireCheckpoint(t, ctx, diskID, snapshotID1)
+
 	snapshotID2 := t.Name() + "2"
 
 	// Check that it's possible to create another incremental snapshot.
@@ -818,6 +820,8 @@ func TestSnapshotServiceDeleteIncrementalSnapshotAfterCreating(t *testing.T) {
 
 	err = internal_client.WaitOperation(ctx, client, createOperation.Id)
 	require.NoError(t, err)
+
+	testcommon.RequireCheckpoint(t, ctx, diskID, snapshotID1)
 
 	deleteRequest := disk_manager.DeleteSnapshotRequest{
 		SnapshotId: snapshotID1,
