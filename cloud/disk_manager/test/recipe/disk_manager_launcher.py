@@ -191,6 +191,14 @@ ImagesConfig: <
         <
             ZoneId: "zone-c"
             Capacity: 0
+        >,
+        <
+            ZoneId: "zone-d-shard-1"
+            Capacity: 0
+        >,
+        <
+            ZoneId: "zone-d-shard-2"
+            Capacity: 0
         >
     ]
 >
