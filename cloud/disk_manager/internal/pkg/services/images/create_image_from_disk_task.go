@@ -173,6 +173,11 @@ func (t *createImageFromDiskTask) Run(
 		return err
 	}
 
+	// Needed for backwards compatibility.
+	if checkpointID == "" {
+		checkpointID = t.request.DstImageId
+	}
+
 	err = configureImagePools(
 		ctx,
 		execCtx,
@@ -220,11 +225,14 @@ func (t *createImageFromDiskTask) Cancel(
 		return err
 	}
 
-	if checkpointID != "" {
-		err = nbsClient.DeleteCheckpoint(ctx, disk.DiskId, checkpointID)
-		if err != nil {
-			return err
-		}
+	// Needed for backwards compatibility.
+	if checkpointID == "" {
+		checkpointID = t.request.DstImageId
+	}
+
+	err = nbsClient.DeleteCheckpoint(ctx, disk.DiskId, checkpointID)
+	if err != nil {
+		return err
 	}
 
 	return deleteImage(
