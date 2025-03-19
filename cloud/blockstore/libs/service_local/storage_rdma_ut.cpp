@@ -34,11 +34,13 @@ class TDummyClientEndpoint: public NRdma::IClientEndpoint
         return MakeError(E_NOT_IMPLEMENTED);
     }
 
-    void SendRequest(NRdma::TClientRequestPtr req, TCallContextPtr callContext)
-        override
+    NRdma::IRequestHandlePtr SendRequest(
+        NRdma::TClientRequestPtr req,
+        TCallContextPtr callContext) override
     {
         Y_UNUSED(req);
         Y_UNUSED(callContext);
+        return {};
     }
 
     NThreading::TFuture<void> Stop() override
