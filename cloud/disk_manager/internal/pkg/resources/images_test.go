@@ -62,11 +62,11 @@ func TestImagesCreateImage(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, image.ID, created.ID)
 
-	err = storage.ImageCreated(ctx, image.ID, time.Now(), 0, 0)
+	err = storage.ImageCreated(ctx, image.ID, "", time.Now(), 0, 0)
 	require.NoError(t, err)
 
 	// Check idempotency.
-	err = storage.ImageCreated(ctx, image.ID, time.Now(), 0, 0)
+	err = storage.ImageCreated(ctx, image.ID, "", time.Now(), 0, 0)
 	require.NoError(t, err)
 
 	// Check idempotency.
@@ -115,7 +115,7 @@ func TestImagesDeleteImage(t *testing.T) {
 	require.NoError(t, err)
 	requireImagesAreEqual(t, expected, *actual)
 
-	err = storage.ImageCreated(ctx, image.ID, time.Now(), 0, 0)
+	err = storage.ImageCreated(ctx, image.ID, "", time.Now(), 0, 0)
 	require.Error(t, err)
 	require.True(t, errors.Is(err, errors.NewEmptyNonRetriableError()))
 
@@ -140,7 +140,7 @@ func TestImagesDeleteImage(t *testing.T) {
 	require.Error(t, err)
 	require.True(t, errors.Is(err, errors.NewEmptyNonRetriableError()))
 
-	err = storage.ImageCreated(ctx, image.ID, time.Now(), 0, 0)
+	err = storage.ImageCreated(ctx, image.ID, "", time.Now(), 0, 0)
 	require.Error(t, err)
 	require.True(t, errors.Is(err, errors.NewEmptyNonRetriableError()))
 }
@@ -163,7 +163,7 @@ func TestImagesDeleteNonexistentImage(t *testing.T) {
 	err = storage.ImageDeleted(ctx, image.ID, time.Now())
 	require.NoError(t, err)
 
-	err = storage.ImageCreated(ctx, image.ID, time.Now(), 0, 0)
+	err = storage.ImageCreated(ctx, image.ID, "", time.Now(), 0, 0)
 	require.Error(t, err)
 	require.True(t, errors.Is(err, errors.NewEmptyNonRetriableError()))
 
@@ -340,7 +340,7 @@ func TestImagesGetImage(t *testing.T) {
 	require.Equal(t, imageID, i.ID)
 	require.Equal(t, "folder", i.FolderID)
 
-	err = storage.ImageCreated(ctx, imageID, time.Now(), imageSize, imageStorageSize)
+	err = storage.ImageCreated(ctx, imageID, "", time.Now(), imageSize, imageStorageSize)
 	require.NoError(t, err)
 
 	image.Size = imageSize
@@ -351,4 +351,87 @@ func TestImagesGetImage(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, i)
 	requireImagesAreEqual(t, image, *i)
+}
+
+func testImageCreatedWithAnotherCheckpoint(
+	t *testing.T,
+	ctx context.Context,
+	storage Storage,
+	imageID string,
+	checkpointID1 string,
+	checkpointID2 string,
+) {
+
+	image := ImageMeta{
+		ID:           imageID,
+		FolderID:     "folder",
+		SrcDiskID:    "disk",
+		CheckpointID: checkpointID1,
+		CreateRequest: &wrappers.UInt64Value{
+			Value: 1,
+		},
+		CreateTaskID: "create",
+		CreatingAt:   time.Now(),
+		CreatedBy:    "user",
+	}
+
+	created, err := storage.CreateImage(ctx, image)
+	require.NoError(t, err)
+	require.Equal(t, image.ID, created.ID)
+	require.Equal(t, checkpointID1, created.CheckpointID)
+
+	// Check idempotency.
+	created, err = storage.CreateImage(ctx, image)
+	require.NoError(t, err)
+	require.Equal(t, image.ID, created.ID)
+	require.Equal(t, checkpointID1, created.CheckpointID)
+
+	err = storage.ImageCreated(ctx, image.ID, checkpointID2, time.Now(), 0, 0)
+	require.NoError(t, err)
+	s, err := storage.GetImageMeta(ctx, imageID)
+	require.NoError(t, err)
+	require.NotNil(t, s)
+	require.Equal(t, checkpointID2, s.CheckpointID)
+
+	// Check idempotency.
+	err = storage.ImageCreated(ctx, image.ID, checkpointID2, time.Now(), 0, 0)
+	require.NoError(t, err)
+	s, err = storage.GetImageMeta(ctx, imageID)
+	require.NoError(t, err)
+	require.NotNil(t, s)
+	require.Equal(t, checkpointID2, s.CheckpointID)
+
+	// Check idempotency.
+	created, err = storage.CreateImage(ctx, image)
+	require.NoError(t, err)
+	require.Equal(t, image.ID, created.ID)
+	require.Equal(t, checkpointID2, created.CheckpointID)
+}
+
+func TestImagesCreatedWithAnotherCheckpoint(t *testing.T) {
+	ctx, cancel := context.WithCancel(newContext())
+	defer cancel()
+
+	db, err := newYDB(ctx)
+	require.NoError(t, err)
+	defer db.Close(ctx)
+
+	storage := newStorage(t, ctx, db)
+
+	testImageCreatedWithAnotherCheckpoint(
+		t,
+		ctx,
+		storage,
+		"image-A",
+		"",
+		"checkpoint-2",
+	)
+	testImageCreatedWithAnotherCheckpoint(
+		t,
+		ctx,
+		storage,
+		"image-B",
+		"checkpoint-1",
+		"checkpoint-2",
+	)
 }

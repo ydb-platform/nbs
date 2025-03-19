@@ -370,7 +370,7 @@ func TestSnapshotsGetSnapshot(t *testing.T) {
 	requireSnapshotsAreEqual(t, snapshot, *s)
 }
 
-func testCreatedWithAnotherCheckpoint(
+func testSnapshotCreatedWithAnotherCheckpoint(
 	t *testing.T,
 	ctx context.Context,
 	storage Storage,
@@ -438,7 +438,7 @@ func TestSnapshotsCreatedWithAnotherCheckpoint(t *testing.T) {
 
 	storage := newStorage(t, ctx, db)
 
-	testCreatedWithAnotherCheckpoint(
+	testSnapshotCreatedWithAnotherCheckpoint(
 		t,
 		ctx,
 		storage,
@@ -446,7 +446,7 @@ func TestSnapshotsCreatedWithAnotherCheckpoint(t *testing.T) {
 		"",
 		"checkpoint-2",
 	)
-	testCreatedWithAnotherCheckpoint(
+	testSnapshotCreatedWithAnotherCheckpoint(
 		t,
 		ctx,
 		storage,

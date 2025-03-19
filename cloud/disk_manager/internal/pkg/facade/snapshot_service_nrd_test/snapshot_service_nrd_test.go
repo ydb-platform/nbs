@@ -58,7 +58,7 @@ func testCreateSnapshotFromDiskWithFailedShadowDisk(
 	diskContentInfo, err := nbsClient.CalculateCrc32(diskID, diskSize)
 	require.NoError(t, err)
 
-	snapshotID := t.Name() // TODO:_ different names for disk and snapshot?
+	snapshotID := t.Name()
 
 	reqCtx = testcommon.GetRequestContext(t, ctx)
 	operation, err = client.CreateSnapshot(reqCtx, &disk_manager.CreateSnapshotRequest{
