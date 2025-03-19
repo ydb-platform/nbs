@@ -92,6 +92,16 @@ struct IClientHandler
 
 ////////////////////////////////////////////////////////////////////////////////
 
+
+struct IRequestHandle
+{
+    virtual ~IRequestHandle() = default;
+
+    virtual void CancelRequest() = 0;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
 // IClientEndpoint interface is used to create and execute a request.
 struct IClientEndpoint
 {
@@ -103,7 +113,7 @@ struct IClientEndpoint
         size_t requestBytes,
         size_t responseBytes) = 0;
 
-    virtual void SendRequest(
+    virtual IRequestHandlePtr SendRequest(
         TClientRequestPtr req,
         TCallContextPtr callContext) = 0;
 
