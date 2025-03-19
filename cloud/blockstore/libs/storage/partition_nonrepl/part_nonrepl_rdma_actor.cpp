@@ -53,7 +53,6 @@ TNonreplicatedPartitionRdmaActor::TNonreplicatedPartitionRdmaActor(
     , PartConfig(std::move(partConfig))
     , RdmaClient(std::move(rdmaClient))
     , StatActorId(statActorId)
-    , DeviceStats(PartConfig->GetDevices().size())
     , PartCounters(CreatePartitionDiskCounters(
           EPublishingPolicy::DiskRegistryBased,
           DiagnosticsConfig->GetHistogramCounterOptions()))
