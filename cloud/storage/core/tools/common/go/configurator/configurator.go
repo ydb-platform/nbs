@@ -238,8 +238,6 @@ func (g *ConfigGenerator) applyOverrides(
 		)
 	}
 
-	fmt.Println("cfgFile: ", templateName)
-	fmt.Println("override: ", override)
 	var result bytes.Buffer
 	err = tmpl.Execute(&result, override)
 	if err != nil {
