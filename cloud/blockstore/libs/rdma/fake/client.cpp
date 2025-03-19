@@ -9,6 +9,7 @@
 #include <cloud/blockstore/libs/storage/api/disk_agent.h>
 #include <cloud/blockstore/libs/storage/api/disk_registry.h>
 #include <cloud/blockstore/libs/storage/api/disk_registry_proxy.h>
+#include <cloud/blockstore/libs/storage/core/forward_helpers.h>
 #include <cloud/storage/core/libs/actors/helpers.h>
 #include <cloud/storage/core/libs/actors/public.h>
 #include <cloud/storage/core/libs/common/error.h>
@@ -22,6 +23,7 @@
 #include <contrib/ydb/library/actors/core/log.h>
 
 #include <chrono>
+#include <utility>
 
 namespace NCloud::NBlockStore {
 
@@ -54,6 +56,7 @@ struct TEvFakeRdmaClient
 
     struct TSendRequest
     {
+        ui64 ClientReqId;
         TString AgentId;
         NRdma::TClientRequestPtr Request;
         TCallContextPtr CallContext;
@@ -65,6 +68,17 @@ struct TEvFakeRdmaClient
         ui32 NodeId = 0;
     };
 
+    struct TCancelRequest
+    {
+        TString AgentId;
+        ui64 ClientReqId;
+    };
+
+    struct TOperationCompleted
+    {
+        TString AgentId;
+    };
+
     enum EEvents
     {
         EvBegin = EventSpaceBegin(TEvents::ES_USERSPACE),
@@ -73,6 +87,8 @@ struct TEvFakeRdmaClient
         EvStopEndpoint,
         EvSendRequest,
         EvUpdateNodeId,
+        EvCancelRequest,
+        EvOperationCompleted,
 
         EvEnd
     };
@@ -81,6 +97,9 @@ struct TEvFakeRdmaClient
     using TEvStopEndpoint = TRequestEvent<TStopEndpoint, EvStopEndpoint>;
     using TEvSendRequest = TRequestEvent<TSendRequest, EvSendRequest>;
     using TEvUpdateNodeId = TResponseEvent<TUpdateNodeId, EvUpdateNodeId>;
+    using TEvCancelRequest = TRequestEvent<TCancelRequest, EvCancelRequest>;
+    using TEvOperationCompleted =
+        TRequestEvent<TOperationCompleted, EvOperationCompleted>;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -133,6 +152,8 @@ private:
     const TActorId RdmaActorId;
     const TString AgentId;
 
+    std::atomic_uint64_t ReqIdPool{0};
+
 public:
     TClientEndpoint(
         IActorSystemPtr actorSystem,
@@ -155,6 +176,10 @@ public:
     TFuture<void> Stop() override;
 
     void TryForceReconnect() override;
+
+    ui64 TakeNewReqId() {
+        return ReqIdPool.fetch_add(1);
+    }
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -190,17 +215,24 @@ ui64 TClientEndpoint::SendRequest(
 {
     auto request = std::make_unique<TEvFakeRdmaClient::TEvSendRequest>();
 
+    auto clientReqId = TakeNewReqId();
+
+    request->ClientReqId = clientReqId;
     request->AgentId = AgentId;
     request->Request = std::move(req);
     request->CallContext = std::move(callContext);
 
     ActorSystem->Send(RdmaActorId, std::move(request));
-    return 0;
+    return clientReqId;
 }
 
 void TClientEndpoint::CancelRequest(ui64 reqId)
 {
-    Y_UNUSED(reqId);
+    auto request = std::make_unique<TEvFakeRdmaClient::TEvCancelRequest>();
+    request->ClientReqId = reqId;
+    request->AgentId = AgentId;
+
+    ActorSystem->Send(RdmaActorId, std::move(request));
 }
 
 TFuture<void> TClientEndpoint::Stop()
@@ -224,16 +256,22 @@ class TExecuteRequestActor final
     : public TActorBootstrapped<TExecuteRequestActor>
 {
 private:
+    const TActorId Parent;
     const ui32 NodeId;
+    const TString AgentId;
     NRdma::TClientRequestPtr Request;
     TCallContextPtr CallContext;
 
 public:
     TExecuteRequestActor(
+            TActorId parent,
             ui32 nodeId,
+            TString agentId,
             NRdma::TClientRequestPtr request,
             TCallContextPtr callContext)
-        : NodeId(nodeId)
+        : Parent(parent)
+        , NodeId(nodeId)
+        , AgentId(std::move(agentId))
         , Request(std::move(request))
         , CallContext(std::move(callContext))
     {}
@@ -431,6 +469,15 @@ private:
         return {};
     }
 
+    void ReplyAndDie(const TActorContext& ctx)
+    {
+        auto completion =
+            std::make_unique<TEvFakeRdmaClient::TEvOperationCompleted>();
+        completion->AgentId = AgentId;
+        NCloud::Send(ctx, Parent, std::move(completion));
+        Die(ctx);
+    }
+
 private:
     STFUNC(StateWork)
     {
@@ -465,6 +512,7 @@ private:
             HFunc(
                 TEvDiskAgent::TEvChecksumDeviceBlocksRequest,
                 HandleChecksumUndelivery);
+            HFunc(TEvFakeRdmaClient::TEvCancelRequest, HandleCancelRequest);
 
             default:
                 HandleUnexpectedEvent(
@@ -473,6 +521,15 @@ private:
                     __PRETTY_FUNCTION__);
                 break;
         }
+    }
+
+    void HandleCancelRequest(
+        const TEvFakeRdmaClient::TEvCancelRequest::TPtr& ev,
+        const TActorContext& ctx)
+    {
+        Y_UNUSED(ev);
+        AbortRequest(std::move(Request), E_CANCELLED, "request cancelled");
+        ReplyAndDie(ctx);
     }
 
     void HandleReadUndelivery(
@@ -486,7 +543,7 @@ private:
             E_REJECTED,
             "ReadDeviceBlocks request undelivered");
 
-        Die(ctx);
+        ReplyAndDie(ctx);
     }
 
     void HandleWriteUndelivery(
@@ -500,7 +557,7 @@ private:
             E_REJECTED,
             "WriteDeviceBlocks request undelivered");
 
-        Die(ctx);
+        ReplyAndDie(ctx);
     }
 
     void HandleZeroUndelivery(
@@ -514,7 +571,7 @@ private:
             E_REJECTED,
             "ZeroDeviceBlocks request undelivered");
 
-        Die(ctx);
+        ReplyAndDie(ctx);
     }
 
     void HandleChecksumUndelivery(
@@ -528,7 +585,7 @@ private:
             E_REJECTED,
             "ChecksumDeviceBlocks request undelivered");
 
-        Die(ctx);
+        ReplyAndDie(ctx);
     }
 
     void HandleWakeup(
@@ -540,7 +597,7 @@ private:
         LOG_ERROR_S(ctx, TBlockStoreComponents::RDMA, "Request timedout");
         AbortRequest(std::move(Request), E_REJECTED, "timeout");
 
-        Die(ctx);
+        ReplyAndDie(ctx);
     }
 
     template <typename TResponse>
@@ -558,7 +615,7 @@ private:
         auto* handler = Request->Handler.get();
         handler->HandleResponse(std::move(Request), NRdma::RDMA_PROTO_OK, len);
 
-        Die(ctx);
+        ReplyAndDie(ctx);
     }
 
     void HandleReadDeviceBlocksResponse(
@@ -600,7 +657,7 @@ private:
         auto* handler = Request->Handler.get();
         handler->HandleResponse(std::move(Request), NRdma::RDMA_PROTO_OK, len);
 
-        Die(ctx);
+        ReplyAndDie(ctx);
     }
 
     void HandleWriteDeviceBlocksResponse(
@@ -751,10 +808,18 @@ private:
 class TFakeRdmaClientActor
     : public TActor<TFakeRdmaClientActor>
 {
+
+    struct TCancellationInfo {
+        THashMap<ui64, TActorId> ClientReqIdToActorId;
+        THashMap<TActorId, ui64> ActorIdToClientReqId;
+    };
+
     struct TEndpoint
     {
         ui32 NodeId = 0;
         ui32 Refs = 0;
+        std::shared_ptr<TClientEndpoint> Endpoint;
+        TCancellationInfo CancellationInfo;
     };
 
 private:
@@ -783,6 +848,10 @@ private:
             HFunc(TEvFakeRdmaClient::TEvStopEndpoint, HandleStopEndpoint);
             HFunc(TEvFakeRdmaClient::TEvSendRequest, HandleSendRequest);
             HFunc(TEvFakeRdmaClient::TEvUpdateNodeId, HandleUpdateNodeId);
+            HFunc(TEvFakeRdmaClient::TEvCancelRequest, HandleCancelRequest);
+            HFunc(
+                TEvFakeRdmaClient::TEvOperationCompleted,
+                HandleOperationCompleted);
 
             default:
                 HandleUnexpectedEvent(
@@ -823,12 +892,13 @@ private:
                 "Endpoint for " << msg->AgentId.Quote() << " is started");
 
             UpdateNodeId(ctx, msg->AgentId);
+            ep.Endpoint = std::make_shared<TClientEndpoint>(
+                ActorSystem,
+                SelfId(),
+                msg->AgentId);
         }
 
-        msg->Promise.SetValue(std::make_shared<TClientEndpoint>(
-            ActorSystem,
-            SelfId(),
-            msg->AgentId));
+        msg->Promise.SetValue(ep.Endpoint);
     }
 
     void HandleStopEndpoint(
@@ -887,11 +957,26 @@ private:
             return;
         }
 
-        NCloud::Register<TExecuteRequestActor>(
+        auto& info = ep->CancellationInfo;
+
+        LOG_INFO_S(
             ctx,
+            TBlockStoreComponents::RDMA,
+            "Send request agentId" << msg->AgentId.Quote() << ", clientReqId "
+                                   << msg->ClientReqId);
+
+        auto [it, inserted] =
+            info.ClientReqIdToActorId.try_emplace(msg->ClientReqId);
+        Y_ABORT_UNLESS(inserted);
+
+        it->second = NCloud::Register<TExecuteRequestActor>(
+            ctx,
+            SelfId(),
             ep->NodeId,
+            msg->AgentId,
             std::move(msg->Request),
             std::move(msg->CallContext));
+        info.ActorIdToClientReqId[it->second] = it->first;
     }
 
     void HandleUpdateNodeId(
@@ -919,6 +1004,53 @@ private:
 
             ep->NodeId = msg->NodeId;
         }
+    }
+
+    void HandleCancelRequest(
+        const TEvFakeRdmaClient::TEvCancelRequest::TPtr& ev,
+        const TActorContext& ctx)
+    {
+        auto* msg = ev->Get();
+        auto* ep = Endpoints.FindPtr(msg->AgentId);
+        if (!ep) {
+            return;
+        }
+        auto& info = ep->CancellationInfo;
+
+        auto it = info.ClientReqIdToActorId.find(msg->ClientReqId);
+        if (it == info.ClientReqIdToActorId.end()) {
+            return;
+        }
+
+        auto actorId = it->second;
+        ForwardMessageToActor(ev, ctx, actorId);
+    }
+
+    void HandleOperationCompleted(
+        const TEvFakeRdmaClient::TEvOperationCompleted::TPtr& ev,
+        const TActorContext& ctx)
+    {
+        Y_UNUSED(ctx);
+        auto* msg = ev->Get();
+        auto* ep = Endpoints.FindPtr(msg->AgentId);
+        if (!ep) {
+            return;
+        }
+        auto& info = ep->CancellationInfo;
+
+        auto actorId = ev->Sender;
+        auto it = info.ActorIdToClientReqId.find(actorId);
+        auto clientReqId = it->second;
+
+        LOG_INFO_S(
+            ctx,
+            TBlockStoreComponents::RDMA,
+            "op completed agentId" << msg->AgentId.Quote() << ", clientReqId "
+                                   << clientReqId);
+
+        info.ClientReqIdToActorId.erase(clientReqId);
+
+        info.ActorIdToClientReqId.erase(it);
     }
 };
 
