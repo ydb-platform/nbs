@@ -206,11 +206,14 @@ func (t *createSnapshotFromDiskTask) Cancel(
 		return err
 	}
 
-	if checkpointID != "" {
-		err = nbsClient.DeleteCheckpoint(ctx, disk.DiskId, checkpointID)
-		if err != nil {
-			return err
-		}
+	// Needed for backwards compatibility.
+	if checkpointID == "" {
+		checkpointID = t.request.DstSnapshotId
+	}
+
+	err = nbsClient.DeleteCheckpoint(ctx, disk.DiskId, checkpointID)
+	if err != nil {
+		return err
 	}
 
 	snapshotMeta, err := t.storage.DeleteSnapshot(

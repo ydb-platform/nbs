@@ -111,6 +111,9 @@ func (t *createDRBasedDiskCheckpointTask) GetResponse() proto.Message {
 ////////////////////////////////////////////////////////////////////////////////
 
 func (t *createDRBasedDiskCheckpointTask) makeCheckpointID(index int) string {
+	if index == 0 {
+		return t.request.CheckpointIdPrefix
+	}
 	return fmt.Sprintf("%v_%v", t.request.CheckpointIdPrefix, index)
 }
 
