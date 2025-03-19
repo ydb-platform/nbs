@@ -319,15 +319,7 @@ public:
     [[nodiscard]] bool HasLagging() const;
     [[nodiscard]] bool HasLaggingInReplica(ui32 replicaIndex) const;
     [[nodiscard]] THashSet<TString> GetLaggingDevices() const;
-    [[nodiscard]] bool LaggingDevicesAllowed() const
-    {
-        auto mediaKind = GetConfig().GetStorageMediaKind();
-        return IsDiskRegistryMediaKind() &&
-               (mediaKind == NProto::STORAGE_MEDIA_SSD_MIRROR2 &&
-                    StorageConfig->GetLaggingDevicesForMirror2DisksEnabled() ||
-                mediaKind == NProto::STORAGE_MEDIA_SSD_MIRROR3 &&
-                    StorageConfig->GetLaggingDevicesForMirror3DisksEnabled());
-    }
+
     void SetStartPartitionsNeeded(bool startPartitionsNeeded)
     {
         StartPartitionsNeeded = startPartitionsNeeded;

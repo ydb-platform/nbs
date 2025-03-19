@@ -1058,13 +1058,20 @@ void TVolumeActor::RenderHtmlInfo(IOutputStream& out, TInstant now) const
             }
         }
 
-        if (State->LaggingDevicesAllowed()) {
+        if (LaggingDevicesAreAllowed()) {
             DIV_CLASS("row")
             {
                 DIV_CLASS("col-md-6")
                 {
                     RenderLaggingStatus(out);
                 }
+            }
+        }
+
+
+        DIV_CLASS("row") {
+            DIV_CLASS("col-md-6") {
+                RenderCommonButtons(out);
             }
         }
 
