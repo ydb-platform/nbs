@@ -47,60 +47,34 @@ struct TRequestBuilder
     ui32 StartIndex;
     ui32 RemainingBlocks;
     ui32 BlocksPerRequest;
-    TBlockRange64 Range;
-    TString DiskId;
-    bool CalculateChecksums;
 
     TRequestBuilder() = default;
 
     TRequestBuilder(
         ui32 startIndex,
         ui32 remainingBlocks,
-        ui32 blocksPerRequest,
-        TString diskId,
-        bool calculateChecksums)
+        ui32 blocksPerRequest)
         : StartIndex(startIndex)
         , RemainingBlocks(remainingBlocks)
         , BlocksPerRequest(blocksPerRequest)
-        , DiskId(std::move(diskId))
-        , CalculateChecksums(calculateChecksums)
     {}
 
-    bool Next()
+    std::optional<TBlockRange64> Next()
     {
         if (RemainingBlocks <= 0) {
-            return false;
+            return std::nullopt;
         }
 
         ui32 blocksInThisRequest = std::min(RemainingBlocks, BlocksPerRequest);
 
-        Range = TBlockRange64::MakeHalfOpenInterval(
+        TBlockRange64 range = TBlockRange64::MakeHalfOpenInterval(
             StartIndex,
             StartIndex + blocksInThisRequest);
 
         RemainingBlocks -= blocksInThisRequest;
         StartIndex += blocksInThisRequest;
 
-        return true;
-    }
-
-    std::shared_ptr<NProto::TExecuteActionRequest> Build()
-    {
-        auto request = std::make_shared<NProto::TExecuteActionRequest>();
-
-        request->SetAction("checkrange");
-        request->SetInput(CreateNextInput(Range));
-        return request;
-    }
-
-    TString CreateNextInput(const TBlockRange64& range)
-    {
-        NJson::TJsonValue input;
-        input["DiskId"] = DiskId;
-        input["StartIndex"] = range.Start;
-        input["BlocksCount"] = range.Size();
-        input["CalculateChecksums"] = CalculateChecksums;
-        return input.GetStringRobust();
+        return range;
     }
 };
 
@@ -181,9 +155,11 @@ protected:
             return false;
         }
 
-        while (builder.Next()) {
-            const auto& range = builder.Range;
-            auto request = builder.Build();
+        while (std::optional range = builder.Next()) {
+            auto request = std::make_shared<NProto::TExecuteActionRequest>();
+
+            request->SetAction("checkrange");
+            request->SetInput(CreateNextInput(*range));
 
             const auto requestId = GetRequestId(*request);
             auto result = WaitFor(ClientEndpoint->ExecuteAction(
@@ -200,23 +176,23 @@ protected:
 
                 errorCount++;
                 if (ShowReadErrorsEnabled) {
-                    output << "CheckRange went wrong in range " << range << ": "
+                    output << "CheckRange went wrong in range " << *range << ": "
                            << FormatError(error) << Endl;
                 }
             } else {
-                const auto& status  = ExtractStatusValues(result.GetOutput());
+                const auto& status = ExtractStatusValues(result.GetOutput());
 
                 if (HasError(status)) {
                     errorCount++;
                     if (ShowReadErrorsEnabled) {
-                        output << "ReadBlocks error in range " << range << ": "
+                        output << "ReadBlocks error in range " << *range << ": "
                                << FormatError(status) << Endl;
                     }
                 }
             }
 
             if (SaveResultsEnabled) {
-                SaveResultToFile(result.GetOutput(), range);
+                SaveResultToFile(result.GetOutput(), *range);
             }
         }
 
@@ -235,7 +211,7 @@ private:
             return false;
         }
 
-        if (BlocksPerRequest < 1)  {
+        if (BlocksPerRequest < 1) {
             STORAGE_ERROR("BlocksPerRequest must be positive");
             return false;
         }
@@ -243,7 +219,7 @@ private:
         return true;
     }
 
-    TString CreateFilename(const TBlockRange64& range)
+    TString CreateFilename(const TBlockRange64& range) const
     {
         TString folderPath = "./checkRange_" + DiskId;
         if (!FolderPostfix.Empty()) {
@@ -256,7 +232,9 @@ private:
         return fileName;
     }
 
-    void SaveResultToFile(const TString& content, const TBlockRange64& range)
+    void SaveResultToFile(
+        const TString& content,
+        const TBlockRange64& range) const
     {
         TFsPath fileName = CreateFilename(range);
 
@@ -293,12 +271,17 @@ private:
             }
         }
 
-        return TRequestBuilder(
-            StartIndex,
-            remainingBlocks,
-            BlocksPerRequest,
-            DiskId,
-            CalculateChecksums);
+        return TRequestBuilder(StartIndex, remainingBlocks, BlocksPerRequest);
+    }
+
+    TString CreateNextInput(const TBlockRange64& range)
+    {
+        NJson::TJsonValue input;
+        input["DiskId"] = DiskId;
+        input["StartIndex"] = range.Start;
+        input["BlocksCount"] = range.Size();
+        input["CalculateChecksums"] = CalculateChecksums;
+        return input.GetStringRobust();
     }
 };
 
