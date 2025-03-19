@@ -29,6 +29,7 @@ using namespace NKikimr;
 using namespace NMonitoring;
 using namespace NStorage;
 using namespace std::chrono_literals;
+using namespace NThreading;
 
 namespace {
 
@@ -496,6 +497,115 @@ Y_UNIT_TEST_SUITE(TFakeRdmaClientTest)
             const auto& buf = deviceResponse->GetBlocks().GetBuffers(i);
             UNIT_ASSERT_EQUAL(TString(DefaultBlockSize, 'a' + i), buf);
         }
+    }
+
+    Y_UNIT_TEST_F(ShouldCancelRequest, TFixture)
+    {
+        NProto::TWriteDeviceBlocksRequest deviceRequest;
+        deviceRequest.MutableHeaders()->SetClientId("client");
+        deviceRequest.SetDeviceUUID("uuid");
+        deviceRequest.SetStartIndex(42);
+        deviceRequest.SetBlockSize(DefaultBlockSize);
+
+        const TString requestBuffer{DefaultBlockSize, 'X'};
+        TSgList sglist{
+            TBlockDataRef{requestBuffer.data(), requestBuffer.size()}};
+
+        HandleGetAgentNodeId = [&](const auto& ev)
+        {
+            auto response =
+                std::make_unique<TEvDiskRegistry::TEvGetAgentNodeIdResponse>();
+            response->Record.SetNodeId(100500);
+
+            Runtime->SendAsync(new IEventHandle{
+                ev->Sender,
+                TActorId{},
+                response.release(),
+                0,   // flags
+                ev->Cookie});
+
+            return true;
+        };
+
+        auto p = NewPromise<void>();
+
+        HandleWriteDeviceBlocks =
+            [self = this, waitForFuture = p.GetFuture()](const auto& ev)
+        {
+            auto sender = ev->Sender;
+            auto cookie = ev->Cookie;
+            waitForFuture.Subscribe(
+                [self, sender, cookie](const TFuture<void>&)
+                {
+                    auto response = std::make_unique<
+                        TEvDiskAgent::TEvWriteDeviceBlocksResponse>();
+                    self->Runtime->SendAsync(new IEventHandle{
+                        sender,
+                        TActorId{},
+                        response.release(),
+                        0,   // flags
+                        cookie});
+                });
+
+            return true;
+        };
+
+        auto future = RdmaClient->StartEndpoint("node-0001.nbs-dev.net", 10022);
+        Runtime->DispatchEvents({}, 10ms);
+
+        UNIT_ASSERT(future.Wait(15s));
+        NRdma::IClientEndpointPtr ep = future.GetValueSync();
+        UNIT_ASSERT(ep);
+
+        std::optional<NProto::TError> responseError;
+
+        std::atomic_flag received;
+
+        auto handler = Handler(
+            [&](NRdma::TClientRequestPtr request, ui32 status, size_t len)
+            {
+                received.test_and_set();
+
+                UNIT_ASSERT_EQUAL(NRdma::RDMA_PROTO_FAIL, status);
+
+                auto error = NProto::TError();
+                auto parsed =
+                    error.ParseFromArray(request->ResponseBuffer.Data(), len);
+
+                UNIT_ASSERT(parsed);
+
+                UNIT_ASSERT_VALUES_EQUAL(E_CANCELLED, error.GetCode());
+            });
+
+        auto [request, error] = ep->AllocateRequest(
+            handler,
+            nullptr,   // context
+            NRdma::TProtoMessageSerializer::MessageByteSize(
+                deviceRequest,
+                DefaultBlockSize),
+            4_KB);
+
+        UNIT_ASSERT_VALUES_EQUAL_C(S_OK, error.GetCode(), FormatError(error));
+
+        NRdma::TProtoMessageSerializer::SerializeWithData(
+            request->RequestBuffer,
+            TBlockStoreProtocol::WriteDeviceBlocksRequest,
+            0,   // flags
+            deviceRequest,
+            sglist);
+
+        auto reqId =
+            ep->SendRequest(std::move(request), MakeIntrusive<TCallContext>());
+
+        Runtime->DispatchEvents({}, 10ms);
+
+        UNIT_ASSERT(!received.test());
+
+        ep->CancelRequest(reqId);
+
+        Runtime->DispatchEvents({}, 10ms);
+
+        UNIT_ASSERT(received.test());
     }
 }
 
