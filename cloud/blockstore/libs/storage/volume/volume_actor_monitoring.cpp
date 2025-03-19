@@ -1932,7 +1932,7 @@ void TVolumeActor::HandleHttpInfo_RenderNonreplPartitionInfo(
                                             d.GetBlocksCount());
                                     out << DescribeRange(currentRange);
                                 }
-                                if (State->LaggingDevicesAllowed()) {
+                                if (LaggingDevicesAreAllowed()) {
                                     TABLED()
                                     {
                                         const auto* stateMsg = "ok";
