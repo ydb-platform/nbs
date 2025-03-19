@@ -1,7 +1,10 @@
 #include "iovector.h"
+
 #include "block_range.h"
 
 #include <library/cpp/testing/unittest/registar.h>
+
+#include <util/random/random.h>
 
 namespace NCloud::NBlockStore {
 
@@ -47,6 +50,18 @@ TStringBuf SubBuffer(
     size_t blockCount)
 {
     return {buffer.data() + startBlock * BlockSize, blockCount * BlockSize};
+}
+
+void FillRandom(TVector<char>* buffer)
+{
+    for (char& i: *buffer) {
+        i = RandomNumber<ui8>(255);
+    }
+}
+
+void FillZero(TBlockDataRef block)
+{
+    memset(const_cast<char*>(block.Data()), 0, block.Size());
 }
 
 }   // namespace
@@ -202,6 +217,160 @@ Y_UNIT_TEST_SUITE(TIOVectorTest)
             UNIT_ASSERT_VALUES_EQUAL(i < 8 ? 0 : BlockSize, buf.size());
         }
         UNIT_ASSERT_VALUES_EQUAL(8, CountVoidBuffers(ioVector));
+    }
+
+    void DoShouldCopyFromIOVectorToSgList(
+        const ui64 srcBlockCount,
+        const ui32 srcBlockSize,
+        const ui64 dstBlockCount,
+        const ui32 dstBlockSize,
+        bool addEmptySrcBlock = false,
+        bool addEmptyDstBlock = false)
+    {
+        // Preapare source buffer with random.
+        TVector<char> srcBuffer(srcBlockCount * srcBlockSize, 0);
+        NProto::TIOVector srcData;
+        {
+            FillRandom(&srcBuffer);
+            auto srcSgList =
+                ResizeIOVector(srcData, srcBlockCount, srcBlockSize);
+
+            auto bytesCopied = SgListCopy(
+                TBlockDataRef{srcBuffer.data(), srcBuffer.size()},
+                srcSgList);
+            UNIT_ASSERT_VALUES_EQUAL(srcBlockCount * srcBlockSize, bytesCopied);
+
+            if (addEmptySrcBlock) {
+                // make block with index #0 empty.
+                FillZero(TBlockDataRef{
+                    srcBuffer.data(),
+                    srcBlockSize});
+                srcData.MutableBuffers(0)->clear();
+            }
+        }
+
+        // Preapare destination buffer with random.
+        TVector<char> dstBuffer(dstBlockCount * dstBlockSize, 0);
+        auto dstSgList = SgListNormalize(
+                             TBlockDataRef{dstBuffer.data(), dstBuffer.size()},
+                             dstBlockSize)
+                             .ExtractResult();
+        if (addEmptyDstBlock) {
+            // make block with index #0 empty.
+            dstSgList[0] = TBlockDataRef::CreateZeroBlock(dstBlockSize);
+        }
+
+        // copy data with CopyToSgList()
+        auto bytesCopied =
+            CopyToSgList(srcData, srcBlockSize, dstSgList, dstBlockSize);
+        // Check all data copied
+        const size_t expectedBytes =
+            Min(srcBlockCount * srcBlockSize, dstBlockCount * dstBlockSize);
+        UNIT_ASSERT_VALUES_EQUAL(expectedBytes, bytesCopied);
+
+        if (addEmptyDstBlock) {
+            // clear block with index #0 in src buffer since it not transferred to dst.
+            FillZero(TBlockDataRef{
+                srcBuffer.data(),
+                dstBlockSize});
+        }
+
+        // Check src and dst data match.
+        for (size_t i = 0; i < bytesCopied; ++i) {
+            UNIT_ASSERT_VALUES_EQUAL(srcBuffer[i], dstBuffer[i]);
+        }
+    }
+
+    Y_UNIT_TEST(ShouldCopySameBlockSizeSize)
+    {
+        const size_t smallBlock= 10;
+        DoShouldCopyFromIOVectorToSgList(10, smallBlock, 10, smallBlock);
+        DoShouldCopyFromIOVectorToSgList(20, smallBlock, 10, smallBlock);
+        DoShouldCopyFromIOVectorToSgList(5, smallBlock, 10, smallBlock);
+
+        DoShouldCopyFromIOVectorToSgList(
+            10,
+            smallBlock,
+            10,
+            smallBlock,
+            true,
+            false);
+        DoShouldCopyFromIOVectorToSgList(
+            10,
+            smallBlock,
+            10,
+            smallBlock,
+            false,
+            true);
+        DoShouldCopyFromIOVectorToSgList(
+            10,
+            smallBlock,
+            10,
+            smallBlock,
+            true,
+            true);
+    }
+
+    Y_UNIT_TEST(ShouldCopyToLargerBlockSize)
+    {
+        const size_t smallBlock = 10;
+        const size_t bigBlock = 10;
+        DoShouldCopyFromIOVectorToSgList(10, smallBlock, 5, bigBlock);
+        DoShouldCopyFromIOVectorToSgList(20, smallBlock, 5, bigBlock);
+        DoShouldCopyFromIOVectorToSgList(5, smallBlock, 5, bigBlock);
+
+        DoShouldCopyFromIOVectorToSgList(
+            10,
+            smallBlock,
+            5,
+            bigBlock,
+            true,
+            false);
+        DoShouldCopyFromIOVectorToSgList(
+            10,
+            smallBlock,
+            5,
+            bigBlock,
+            false,
+            true);
+        DoShouldCopyFromIOVectorToSgList(
+            10,
+            smallBlock,
+            5,
+            bigBlock,
+            true,
+            true);
+    }
+
+    Y_UNIT_TEST(ShouldCopyToSmallerBlockSize)
+    {
+        const size_t smallBlock = 10;
+        const size_t bigBlock = 10;
+        DoShouldCopyFromIOVectorToSgList(5, bigBlock, 10, smallBlock);
+        DoShouldCopyFromIOVectorToSgList(10, bigBlock, 10, smallBlock);
+        DoShouldCopyFromIOVectorToSgList(2, bigBlock, 10, smallBlock);
+
+        DoShouldCopyFromIOVectorToSgList(
+            5,
+            bigBlock,
+            10,
+            smallBlock,
+            true,
+            false);
+        DoShouldCopyFromIOVectorToSgList(
+            5,
+            bigBlock,
+            10,
+            smallBlock,
+            false,
+            true);
+        DoShouldCopyFromIOVectorToSgList(
+            5,
+            bigBlock,
+            10,
+            smallBlock,
+            true,
+            true);
     }
 }
 

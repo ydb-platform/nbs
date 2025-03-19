@@ -6,16 +6,16 @@ namespace NCloud::NBlockStore {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TSgList ResizeIOVector(NProto::TIOVector& iov, ui32 blocksCount, ui32 blockSize)
+TSgList ResizeIOVector(NProto::TIOVector& iov, ui32 blockCount, ui32 blockSize)
 {
     auto& buffers = *iov.MutableBuffers();
     buffers.Clear();
-    buffers.Reserve(blocksCount);
+    buffers.Reserve(blockCount);
 
     TSgList sglist;
-    sglist.reserve(blocksCount);
+    sglist.reserve(blockCount);
 
-    for (size_t i = 0; i < blocksCount; ++i) {
+    for (size_t i = 0; i < blockCount; ++i) {
         auto& buffer = *buffers.Add();
         buffer.ReserveAndResize(blockSize);
 
@@ -121,6 +121,54 @@ TCopyStats CopyToSgList(
     return result;
 }
 
+size_t CopyToSgList(
+    const NProto::TIOVector& srcData,
+    const ui32 srcBlockSize,
+    const TSgList& dstData,
+    const ui32 dstBlockSize)
+{
+    size_t srcIndex = 0;
+    size_t srcOffset = 0;
+    size_t dstIndex = 0;
+    size_t dstOffset = 0;
+    size_t byteCount = 0;
+    for (; srcIndex < srcData.BuffersSize() && dstIndex < dstData.size();) {
+        const auto& src = srcData.GetBuffers(srcIndex);
+        TBlockDataRef dst = dstData[dstIndex];
+
+        Y_ABORT_UNLESS(src.size() == srcBlockSize || src.size() == 0);
+        Y_ABORT_UNLESS(dst.Size() == dstBlockSize);
+
+        const size_t bytesToCopy =
+            Min<size_t>(srcBlockSize - srcOffset, dst.Size() - dstOffset);
+
+        if (dst.Data()) {
+            char* destBuff = const_cast<char*>(dst.Data()) + dstOffset;
+            if (src.empty()) {
+                memset(destBuff, 0, bytesToCopy);
+            } else {
+                char* srcBuff = const_cast<char*>(src.data()) + srcOffset;
+                memcpy(destBuff, srcBuff, bytesToCopy);
+            }
+        }
+
+        srcOffset += bytesToCopy;
+        dstOffset += bytesToCopy;
+        byteCount += bytesToCopy;
+
+        if (srcOffset == srcBlockSize) {
+            ++srcIndex;
+            srcOffset = 0;
+        }
+        if (dstOffset == dstBlockSize) {
+            ++dstIndex;
+            dstOffset = 0;
+        }
+    }
+
+    return byteCount;
+}
+
 void TrimVoidBuffers(NProto::TIOVector& iov)
 {
     for (auto& buffer: *iov.MutableBuffers()) {
@@ -134,13 +182,13 @@ size_t CopyAndTrimVoidBuffers(
     TBlockDataRef src,
     ui32 blockCount,
     ui32 blockSize,
-    NProto::TIOVector* iov)
+    NProto::TIOVector* dst)
 {
     Y_ABORT_UNLESS(static_cast<size_t>(blockCount) * blockSize == src.Size());
 
     size_t bytesCount = 0;
 
-    auto& buffers = *iov->MutableBuffers();
+    auto& buffers = *dst->MutableBuffers();
     buffers.Clear();
     buffers.Reserve(blockCount);
 
