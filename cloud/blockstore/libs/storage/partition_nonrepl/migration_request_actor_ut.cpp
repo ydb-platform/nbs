@@ -16,6 +16,7 @@
 namespace NCloud::NBlockStore::NStorage {
 
 using namespace NActors;
+using namespace NMonitoring;
 using namespace std::chrono_literals;
 
 namespace {
@@ -290,6 +291,65 @@ Y_UNIT_TEST_SUITE(TMigrationRequestActorTest)
         UNIT_ASSERT(followerGotNonRetriableError.has_value());
         UNIT_ASSERT(followerGotNonRetriableError.value());
     }
+
+// UnexpectedCookie crit. event halts the program in Debug build
+#ifdef NDEBUG
+    Y_UNIT_TEST_F(ShouldHandleInvalidCookie, TFixture)
+    {
+        const ui64 correctCookie = 1000500;
+        const ui64 incorrectCookie = 0x1000500;
+
+        auto counters = MakeIntrusive<TDynamicCounters>();
+        InitCriticalEventsCounter(counters);
+        auto unexpectedCookie =
+            counters->GetCounter("AppCriticalEvents/UnexpectedCookie", true);
+
+        SetupRuntime();
+
+        Runtime.SetEventFilter(
+            [&](auto& runtime, auto& event)
+            {
+                if (event->GetTypeRewrite() !=
+                        TEvService::EvWriteBlocksRequest ||
+                    (event->Recipient != FakeLeader &&
+                     event->Recipient != FakeFollower))
+                {
+                    return false;
+                }
+
+                runtime.SendAsync(new IEventHandle(
+                    event->Sender,
+                    event->Recipient,
+                    new TEvService::TEvWriteBlocksResponse(),
+                    0,   // flags
+                    incorrectCookie));
+
+                return true;
+            });
+
+        TPartitionClient client = PartitionClient();
+
+        UNIT_ASSERT_VALUES_EQUAL(0, unexpectedCookie->Val());
+
+        client.SendRequest(
+            client.GetActorId(),
+            client.CreateWriteBlocksRequest(
+                TBlockRange64::WithLength(0, 1024),
+                'X'),
+            correctCookie);
+
+        Runtime.DispatchEvents({}, 10ms);
+
+        TAutoPtr<NActors::IEventHandle> handle;
+        Runtime.GrabEdgeEventRethrow<TEvService::TEvWriteBlocksResponse>(
+            handle,
+            5s);
+        UNIT_ASSERT(!handle);
+
+        UNIT_ASSERT_VALUES_EQUAL(1, unexpectedCookie->Val());
+    }
+#endif // NDEBUG
+
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

@@ -254,10 +254,13 @@ void TMigrationRequestActor<TMethod>::HandleResponse(
             auto message = ReportUnexpectedCookie(
                 TStringBuilder() << __PRETTY_FUNCTION__ << " #"
                                  << RequestInfo->CallContext->RequestId
-                                 << " DiskId: " << DiskId << " "
+                                 << " DiskId: " << DiskId.Quote() << " "
                                  << " Cookie: " << ev->Cookie);
 
             LOG_ERROR_S(ctx, TBlockStoreComponents::PARTITION_WORKER, message);
+
+            TBase::Die(ctx);
+
             return;
         }
     }
