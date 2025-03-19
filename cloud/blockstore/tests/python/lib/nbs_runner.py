@@ -297,6 +297,7 @@ ModifyScheme {
             b"BLOCKSTORE_DISCOVERY",
             b"BLOCKSTORE_DISK_REGISTRY_PROXY",
             b"BLOCKSTORE_VOLUME",
+            b"BLOCKSTORE_RDMA",
         ]
 
         services_dbg = [

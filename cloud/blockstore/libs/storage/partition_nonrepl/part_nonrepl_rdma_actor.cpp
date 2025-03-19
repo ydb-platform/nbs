@@ -155,10 +155,16 @@ bool TNonreplicatedPartitionRdmaActor::InitRequests(
             if (f->HasException()) {
                 SendRdmaUnavailableIfNeeded(ctx);
 
-                reply(ctx, requestInfo, PartConfig->MakeError(
-                    E_REJECTED,
-                    TStringBuilder() << "endpoint init failed for agent: "
-                    << r.Device.GetAgentId()));
+                auto [_, error] = ResultOrError(*f);
+
+                reply(
+                    ctx,
+                    requestInfo,
+                    PartConfig->MakeError(
+                        E_REJECTED,
+                        TStringBuilder() << "endpoint init failed for agent "
+                                         << r.Device.GetAgentId().Quote()
+                                         << ": " << FormatError(error)));
                 return false;
             }
 
@@ -307,7 +313,7 @@ void TNonreplicatedPartitionRdmaActor::SendRdmaUnavailableIfNeeded(
         std::make_unique<TEvVolume::TEvRdmaUnavailable>()
     );
 
-    ReportRdmaError();
+    ReportRdmaError("RDMA Unavailable");
 
     SentRdmaUnavailableNotification = true;
 }
