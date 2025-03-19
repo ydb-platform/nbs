@@ -234,8 +234,12 @@ bool TIndexTabletState::CalculateExpectedShardCount() const
     {
         autoShardCount = ComputeShardCount(
             FileSystem.GetBlocksCount(),
+            // Old enough filesystems will have shard allocation unit in bytes
+            // and we should convert it to blocks. New ones have
+            // ShardAllocationUnitBlocks explicitly set.
             FileSystem.GetShardAllocationUnit()
-                ? FileSystem.GetShardAllocationUnit() / DefaultBlockSize
+                ? FileSystem.GetShardAllocationUnit() /
+                      FileSystem.GetBlockSize()
                 : FileSystem.GetShardAllocationUnitBlocks());
     }
 
