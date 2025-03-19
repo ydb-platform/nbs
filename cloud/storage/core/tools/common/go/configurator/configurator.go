@@ -40,6 +40,7 @@ type CfgFileOverride struct {
 	IcDiskAgentPort string            `yaml:"icDiskAgentPort"`
 	VHostIcPort     string            `yaml:"vHostIcPort"`
 	CustomOverrides map[string]string `yaml:"customOverrides"`
+	LookupFunc      template.FuncMap
 }
 
 type ClusterSpec struct {
@@ -101,11 +102,13 @@ type ResultConfig struct {
 
 func (g *ConfigGenerator) updateConfigMapFromDir(
 	ctx context.Context,
-	OverridesPath string,
-	configProto *ConfigMap) error {
+	overridesPath string,
+	configProto *ConfigMap,
+	cfgOverride CfgFileOverride,
+) error {
 
 	for resultConfigFileName, configDesc := range *configProto {
-		configProtoPath := path.Join(OverridesPath, configDesc.FileName)
+		configProtoPath := path.Join(overridesPath, configDesc.FileName)
 		g.LogDbg(ctx, "Reading file %v", configProtoPath)
 
 		configData, err := ioutil.ReadFile(configProtoPath)
@@ -117,8 +120,17 @@ func (g *ConfigGenerator) updateConfigMapFromDir(
 			)
 		}
 
+		cfgOverrided, err := g.applyOverrides(
+			ctx,
+			configProtoPath,
+			configData,
+			cfgOverride)
+		if err != nil {
+			return err
+		}
+
 		newConfigProto := proto.Clone(configDesc.Proto)
-		err = proto.UnmarshalText(string(configData), newConfigProto)
+		err = proto.UnmarshalText(cfgOverrided, newConfigProto)
 		if err != nil {
 			return fmt.Errorf(
 				"failed to parse protobuf from config proto file %v: %w",
@@ -136,18 +148,21 @@ func (g *ConfigGenerator) updateConfigMapFromDir(
 func (g *ConfigGenerator) loadOverrides(
 	ctx context.Context,
 	target string,
-	OverridesPath string,
-	configMap *ConfigMap) error {
+	overridesPath string,
+	configMap *ConfigMap,
+	cfgOverride CfgFileOverride,
+) error {
 
-	err := g.updateConfigMapFromDir(ctx, OverridesPath, configMap)
+	err := g.updateConfigMapFromDir(ctx, overridesPath, configMap, cfgOverride)
 	if err != nil {
 		return err
 	}
 
 	return g.updateConfigMapFromDir(
 		ctx,
-		path.Join(OverridesPath, target),
-		configMap)
+		path.Join(overridesPath, target),
+		configMap,
+		cfgOverride)
 }
 
 func (g *ConfigGenerator) loadAllOverrides(
@@ -165,11 +180,13 @@ func (g *ConfigGenerator) loadAllOverrides(
 		zone,
 		target)
 
+	cfgOverride := g.constructCfgOverride(ctx, cluster, zone, seed)
 	err := g.loadOverrides(
 		ctx,
 		target,
 		path.Join(g.spec.OverridesPath, "common"),
-		configMap)
+		configMap,
+		cfgOverride)
 	if err != nil {
 		return err
 	}
@@ -178,7 +195,8 @@ func (g *ConfigGenerator) loadAllOverrides(
 		ctx,
 		target,
 		path.Join(g.spec.OverridesPath, cluster, "common"),
-		configMap)
+		configMap,
+		cfgOverride)
 	if err != nil {
 		return err
 	}
@@ -187,7 +205,8 @@ func (g *ConfigGenerator) loadAllOverrides(
 		ctx,
 		target,
 		path.Join(g.spec.OverridesPath, cluster, zone),
-		configMap)
+		configMap,
+		cfgOverride)
 	if err != nil {
 		return err
 	}
@@ -197,10 +216,40 @@ func (g *ConfigGenerator) loadAllOverrides(
 			ctx,
 			target,
 			path.Join(g.spec.OverridesPath, "common", "seed", zone),
-			configMap)
+			configMap,
+			cfgOverride)
 	}
 
 	return nil
+}
+
+func (g *ConfigGenerator) applyOverrides(
+	ctx context.Context,
+	templateName string,
+	tempateBody []byte,
+	override CfgFileOverride,
+) (string, error) {
+	tmpl, err := template.New(templateName).Funcs(override.LookupFunc).Parse(string(tempateBody))
+	if err != nil {
+		return "", fmt.Errorf(
+			"failed to parse cfg file %v: %w",
+			tempateBody,
+			err,
+		)
+	}
+
+	fmt.Println("cfgFile: ", templateName)
+	fmt.Println("override: ", override)
+	var result bytes.Buffer
+	err = tmpl.Execute(&result, override)
+	if err != nil {
+		return "", fmt.Errorf(
+			"failed to generate cfg file %v: %w",
+			templateName,
+			err,
+		)
+	}
+	return result.String(), nil
 }
 
 func (g *ConfigGenerator) dumpConfigs(
@@ -246,30 +295,18 @@ func (g *ConfigGenerator) dumpConfigs(
 			)
 		}
 
-		tmpl, err := template.New(cfgFile).Funcs(template.FuncMap{
-			"lookup": func(key string, defaultValue string) string {
-				return g.lookupCustomKey(ctx, key, defaultValue, cluster, zone, seed)
-			},
-		}).Parse(string(cfgFileData))
+		override := g.constructCfgOverride(ctx, cluster, zone, seed)
+		cfgOverrided, err := g.applyOverrides(
+			ctx,
+			cfgFile,
+			cfgFileData,
+			override,
+		)
 		if err != nil {
-			return fmt.Errorf(
-				"failed to parse cfg file %v: %w",
-				cfgFileData,
-				err,
-			)
+			return err
 		}
 
-		override := g.constructCfgOverride(cluster, zone, seed)
-		var result bytes.Buffer
-		err = tmpl.Execute(&result, override)
-		if err != nil {
-			return fmt.Errorf(
-				"failed to generate cfg file %v: %w",
-				cfgFile,
-				err,
-			)
-		}
-		resultConfigs = append(resultConfigs, ResultConfig{cfgFile, result.String()})
+		resultConfigs = append(resultConfigs, ResultConfig{cfgFile, cfgOverrided})
 	}
 
 	for _, fileName := range g.spec.ServiceSpec.Clusters[cluster].AdditionalFiles {
@@ -522,6 +559,7 @@ func (g *ConfigGenerator) dumpValues(
 }
 
 func (g *ConfigGenerator) constructCfgOverride(
+	ctx context.Context,
 	cluster string,
 	zone string,
 	seed bool,
@@ -567,7 +605,11 @@ func (g *ConfigGenerator) constructCfgOverride(
 			override.IcPort = seedConfig.IcPort
 		}
 	}
-
+	override.LookupFunc = template.FuncMap{
+		"lookup": func(key string, defaultValue string) string {
+			return g.lookupCustomKey(ctx, key, defaultValue, cluster, zone, seed)
+		},
+	}
 	return override
 }
 
