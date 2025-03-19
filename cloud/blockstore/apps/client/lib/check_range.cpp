@@ -44,9 +44,9 @@ NProto::TError ExtractStatusValues(const TString& jsonStr)
 
 struct TRequestBuilder
 {
-    ui32 StartIndex;
-    ui32 RemainingBlocks;
-    ui32 BlocksPerRequest;
+    ui32 StartIndex = 0;
+    ui32 RemainingBlocks = 0;
+    ui32 BlocksPerRequest = 0;
 
     TRequestBuilder() = default;
 
@@ -176,8 +176,8 @@ protected:
 
                 errorCount++;
                 if (ShowReadErrorsEnabled) {
-                    output << "CheckRange went wrong in range " << *range << ": "
-                           << FormatError(error) << Endl;
+                    output << "CheckRange went wrong in range " << *range
+                           << ": " << FormatError(error) << Endl;
                 }
             } else {
                 const auto& status = ExtractStatusValues(result.GetOutput());
@@ -219,7 +219,7 @@ private:
         return true;
     }
 
-    TString CreateFilename(const TBlockRange64& range) const
+    TString CreateFilename(TBlockRange64 range) const
     {
         TString folderPath = "./checkRange_" + DiskId;
         if (!FolderPostfix.Empty()) {
@@ -232,9 +232,7 @@ private:
         return fileName;
     }
 
-    void SaveResultToFile(
-        const TString& content,
-        const TBlockRange64& range) const
+    void SaveResultToFile(const TString& content, TBlockRange64 range) const
     {
         TFsPath fileName = CreateFilename(range);
 
@@ -274,7 +272,7 @@ private:
         return TRequestBuilder(StartIndex, remainingBlocks, BlocksPerRequest);
     }
 
-    TString CreateNextInput(const TBlockRange64& range)
+    TString CreateNextInput(TBlockRange64 range) const
     {
         NJson::TJsonValue input;
         input["DiskId"] = DiskId;
