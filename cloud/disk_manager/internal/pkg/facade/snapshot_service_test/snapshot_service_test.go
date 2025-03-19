@@ -178,7 +178,8 @@ func TestSnapshotServiceCancelCreateSnapshotFromDisk(t *testing.T) {
 
 	// Should wait here because checkpoint is deleted on operation cancel (and
 	// exact time of this event is unknown).
-	testcommon.WaitForCheckpointsDoNotExist(t, ctx, diskID)
+	testcommon.WaitForCheckpointDoesNotExist(t, ctx, diskID, snapshotID)
+	testcommon.RequireCheckpointsDoNotExist(t, ctx, diskID)
 
 	testcommon.CheckConsistency(t, ctx)
 }
@@ -540,6 +541,98 @@ func TestSnapshotServiceCreateIncrementalSnapshotWhileDeletingBaseSnapshot(t *te
 	testcommon.CheckConsistency(t, ctx)
 }
 
+func TestSnapshotServiceDeleteIncrementalSnapshotBeforeCreating(t *testing.T) {
+	ctx := testcommon.NewContext()
+
+	client, err := testcommon.NewClient(ctx)
+	require.NoError(t, err)
+	defer client.Close()
+
+	diskID := t.Name()
+	diskSize := 134217728
+
+	reqCtx := testcommon.GetRequestContext(t, ctx)
+	operation, err := client.CreateDisk(reqCtx, &disk_manager.CreateDiskRequest{
+		Src: &disk_manager.CreateDiskRequest_SrcEmpty{
+			SrcEmpty: &empty.Empty{},
+		},
+		Size: int64(diskSize),
+		Kind: disk_manager.DiskKind_DISK_KIND_SSD,
+		DiskId: &disk_manager.DiskId{
+			ZoneId: "zone-a",
+			DiskId: diskID,
+		},
+	})
+	require.NoError(t, err)
+	require.NotEmpty(t, operation)
+	err = internal_client.WaitOperation(ctx, client, operation.Id)
+	require.NoError(t, err)
+
+	baseSnapshotID := t.Name() + "_base"
+	reqCtx = testcommon.GetRequestContext(t, ctx)
+	operation, err = client.CreateSnapshot(reqCtx, &disk_manager.CreateSnapshotRequest{
+		Src: &disk_manager.DiskId{
+			ZoneId: "zone-a",
+			DiskId: diskID,
+		},
+		SnapshotId: baseSnapshotID,
+		FolderId:   "folder",
+	})
+	require.NoError(t, err)
+	require.NotEmpty(t, operation)
+	err = internal_client.WaitOperation(ctx, client, operation.Id)
+	require.NoError(t, err)
+
+	snapshotID1 := t.Name() + "1"
+	deleteRequest := disk_manager.DeleteSnapshotRequest{
+		SnapshotId: snapshotID1,
+	}
+	reqCtx = testcommon.GetRequestContext(t, ctx)
+	deleteOperation, err := client.DeleteSnapshot(reqCtx, &deleteRequest)
+	require.NoError(t, err)
+	require.NotEmpty(t, deleteOperation)
+	err = internal_client.WaitOperation(ctx, client, deleteOperation.Id)
+	require.NoError(t, err)
+	testcommon.RequireCheckpoint(t, ctx, diskID, baseSnapshotID)
+
+	reqCtx = testcommon.GetRequestContext(t, ctx)
+	createOperation, err := client.CreateSnapshot(
+		reqCtx,
+		&disk_manager.CreateSnapshotRequest{
+			Src: &disk_manager.DiskId{
+				ZoneId: "zone-a",
+				DiskId: diskID,
+			},
+			SnapshotId: snapshotID1,
+			FolderId:   "folder",
+		})
+	require.NoError(t, err)
+	require.NotEmpty(t, createOperation)
+	err = internal_client.WaitOperation(ctx, client, createOperation.Id)
+	require.NoError(t, err)
+	testcommon.RequireCheckpoint(t, ctx, diskID, snapshotID1)
+
+	snapshotID2 := t.Name() + "2"
+	// Check that it's possible to create another incremental snapshot.
+	reqCtx = testcommon.GetRequestContext(t, ctx)
+	operation, err = client.CreateSnapshot(
+		reqCtx,
+		&disk_manager.CreateSnapshotRequest{
+			Src: &disk_manager.DiskId{
+				ZoneId: "zone-a",
+				DiskId: diskID,
+			},
+			SnapshotId: snapshotID2,
+			FolderId:   "folder",
+		})
+	require.NoError(t, err)
+	require.NotEmpty(t, operation)
+	err = internal_client.WaitOperation(ctx, client, operation.Id)
+	require.NoError(t, err)
+
+	testcommon.CheckConsistency(t, ctx)
+}
+
 func TestSnapshotServiceDeleteIncrementalSnapshotWhileCreating(t *testing.T) {
 	ctx := testcommon.NewContext()
 
@@ -598,7 +691,7 @@ func TestSnapshotServiceDeleteIncrementalSnapshotWhileCreating(t *testing.T) {
 	require.NotEmpty(t, createOperation)
 
 	// Need to add some variance for better testing.
-	common.WaitForRandomDuration(1*time.Second, 3*time.Second)
+	common.WaitForRandomDuration(1*time.Millisecond, 3*time.Second)
 
 	reqCtx = testcommon.GetRequestContext(t, ctx)
 	deleteOperation, err := client.DeleteSnapshot(reqCtx, &disk_manager.DeleteSnapshotRequest{
@@ -606,28 +699,30 @@ func TestSnapshotServiceDeleteIncrementalSnapshotWhileCreating(t *testing.T) {
 	})
 	require.NoError(t, err)
 	require.NotEmpty(t, deleteOperation)
-
 	creationErr := internal_client.WaitOperation(ctx, client, createOperation.Id)
-
 	err = internal_client.WaitOperation(ctx, client, deleteOperation.Id)
 	require.NoError(t, err)
 
-	// In case of successful snapshot1 creation, snapshot1 should be deleted
-	// and checkpoint should be deleted too.
-	// Otherwise we should check incremental table.
-	if creationErr == nil {
-		testcommon.RequireCheckpointsDoNotExist(t, ctx, diskID)
-	} else {
+	// If snapshot creation and it's deletion ends up successfuly it means
+	// snapshot creation and deletion operations were performed sequentially.
+	// These cases are checked in other tests:
+	// TestSnapshotServiceDeleteIncrementalSnapshotBeforeCreating and
+	// TestSnapshotServiceDeleteIncrementalSnapshotAfterCreating.
+	if creationErr != nil {
 		snapshotID, _, err := testcommon.GetIncremental(ctx, &types.Disk{
 			ZoneId: "zone-a",
 			DiskId: diskID,
 		})
 		require.NoError(t, err)
 
+		// Should wait here because checkpoint is deleted on snapshotID1
+		// creation operation cancel (and exact time of this event is unknown).
+		testcommon.WaitForCheckpointDoesNotExist(t, ctx, diskID, snapshotID1)
 		// In case of snapshot1 creation failure base snapshot may be already
 		// deleted from incremental table and then checkpoint should not exist
-		// on the disk. Otherwise checkpoint should exist.
+		// on the disk. Otherwise base snapshot checkpoint should exist.
 		if len(snapshotID) > 0 {
+			require.Equal(t, baseSnapshotID, snapshotID)
 			testcommon.RequireCheckpoint(t, ctx, diskID, baseSnapshotID)
 		} else {
 			testcommon.RequireCheckpointsDoNotExist(t, ctx, diskID)
@@ -635,7 +730,6 @@ func TestSnapshotServiceDeleteIncrementalSnapshotWhileCreating(t *testing.T) {
 	}
 
 	snapshotID2 := t.Name() + "2"
-
 	// Check that it's possible to create another incremental snapshot
 	// (NBS-3192).
 	reqCtx = testcommon.GetRequestContext(t, ctx)
@@ -647,6 +741,98 @@ func TestSnapshotServiceDeleteIncrementalSnapshotWhileCreating(t *testing.T) {
 		SnapshotId: snapshotID2,
 		FolderId:   "folder",
 	})
+	require.NoError(t, err)
+	require.NotEmpty(t, operation)
+	err = internal_client.WaitOperation(ctx, client, operation.Id)
+	require.NoError(t, err)
+
+	testcommon.CheckConsistency(t, ctx)
+}
+
+func TestSnapshotServiceDeleteIncrementalSnapshotAfterCreating(t *testing.T) {
+	ctx := testcommon.NewContext()
+
+	client, err := testcommon.NewClient(ctx)
+	require.NoError(t, err)
+	defer client.Close()
+
+	diskID := t.Name()
+	diskSize := 134217728
+
+	reqCtx := testcommon.GetRequestContext(t, ctx)
+	operation, err := client.CreateDisk(reqCtx, &disk_manager.CreateDiskRequest{
+		Src: &disk_manager.CreateDiskRequest_SrcEmpty{
+			SrcEmpty: &empty.Empty{},
+		},
+		Size: int64(diskSize),
+		Kind: disk_manager.DiskKind_DISK_KIND_SSD,
+		DiskId: &disk_manager.DiskId{
+			ZoneId: "zone-a",
+			DiskId: diskID,
+		},
+	})
+	require.NoError(t, err)
+	require.NotEmpty(t, operation)
+	err = internal_client.WaitOperation(ctx, client, operation.Id)
+	require.NoError(t, err)
+
+	baseSnapshotID := t.Name() + "_base"
+	reqCtx = testcommon.GetRequestContext(t, ctx)
+	operation, err = client.CreateSnapshot(reqCtx, &disk_manager.CreateSnapshotRequest{
+		Src: &disk_manager.DiskId{
+			ZoneId: "zone-a",
+			DiskId: diskID,
+		},
+		SnapshotId: baseSnapshotID,
+		FolderId:   "folder",
+	})
+	require.NoError(t, err)
+	require.NotEmpty(t, operation)
+	err = internal_client.WaitOperation(ctx, client, operation.Id)
+	require.NoError(t, err)
+
+	snapshotID1 := t.Name() + "1"
+	reqCtx = testcommon.GetRequestContext(t, ctx)
+	createOperation, err := client.CreateSnapshot(
+		reqCtx,
+		&disk_manager.CreateSnapshotRequest{
+			Src: &disk_manager.DiskId{
+				ZoneId: "zone-a",
+				DiskId: diskID,
+			},
+			SnapshotId: snapshotID1,
+			FolderId:   "folder",
+		})
+	require.NoError(t, err)
+	require.NotEmpty(t, createOperation)
+	err = internal_client.WaitOperation(ctx, client, createOperation.Id)
+	require.NoError(t, err)
+	testcommon.RequireCheckpoint(t, ctx, diskID, snapshotID1)
+
+	deleteRequest := disk_manager.DeleteSnapshotRequest{
+		SnapshotId: snapshotID1,
+	}
+	reqCtx = testcommon.GetRequestContext(t, ctx)
+	deleteOperation, err := client.DeleteSnapshot(reqCtx, &deleteRequest)
+	require.NoError(t, err)
+	require.NotEmpty(t, deleteOperation)
+	err = internal_client.WaitOperation(ctx, client, deleteOperation.Id)
+	require.NoError(t, err)
+	testcommon.RequireCheckpointsDoNotExist(t, ctx, diskID)
+
+	snapshotID2 := t.Name() + "2"
+	// Check that it's possible to create another incremental snapshot.
+	reqCtx = testcommon.GetRequestContext(t, ctx)
+	operation, err = client.CreateSnapshot(
+		reqCtx,
+		&disk_manager.CreateSnapshotRequest{
+			Src: &disk_manager.DiskId{
+				ZoneId: "zone-a",
+				DiskId: diskID,
+			},
+			SnapshotId: snapshotID2,
+			FolderId:   "folder",
+		})
 	require.NoError(t, err)
 	require.NotEmpty(t, operation)
 	err = internal_client.WaitOperation(ctx, client, operation.Id)
@@ -784,7 +970,8 @@ func TestSnapshotServiceDeleteSnapshotWhenCreationIsInFlight(t *testing.T) {
 	if err != nil {
 		// Should wait here because checkpoint is deleted on |createOp|
 		// operation cancel (and exact time of this event is unknown).
-		testcommon.WaitForCheckpointsDoNotExist(t, ctx, diskID)
+		testcommon.WaitForCheckpointDoesNotExist(t, ctx, diskID, snapshotID)
+		testcommon.RequireCheckpointsDoNotExist(t, ctx, diskID)
 	}
 
 	testcommon.CheckConsistency(t, ctx)
