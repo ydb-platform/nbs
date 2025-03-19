@@ -13,6 +13,7 @@ enum EPollerEvent
     Completion = 0,
     Request = 1,
     Disconnect = 2,
+    CancelRequest = 3,
 };
 
 template <typename T>
