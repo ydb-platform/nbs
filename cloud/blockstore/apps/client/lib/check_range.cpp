@@ -182,7 +182,7 @@ protected:
         }
 
         while (builder.Next()) {
-            const auto range = builder.Range;
+            const auto& range = builder.Range;
             auto request = builder.Build();
 
             const auto requestId = GetRequestId(*request);
@@ -192,7 +192,7 @@ protected:
 
             ++requestCount;
             if (const auto& error = result.GetError(); HasError(error)) {
-                if (result.GetError().GetCode() == E_ARGUMENT) {
+                if (error.GetCode() == E_ARGUMENT) {
                     output << "Wrong argument : " << FormatError(error) << Endl;
                     output << "Total errors caught: " << errorCount << Endl;
                     return true;
@@ -201,7 +201,7 @@ protected:
                 errorCount++;
                 if (ShowReadErrorsEnabled) {
                     output << "CheckRange went wrong in range " << range << ": "
-                           << FormatError(result.GetError()) << Endl;
+                           << FormatError(error) << Endl;
                 }
             } else {
                 const auto& status  = ExtractStatusValues(result.GetOutput());
