@@ -597,6 +597,8 @@ func TestSnapshotServiceDeleteIncrementalSnapshotBeforeCreating(t *testing.T) {
 	err = internal_client.WaitOperation(ctx, client, deleteOperation.Id)
 	require.NoError(t, err)
 
+	testcommon.RequireCheckpoint(t, ctx, diskID, baseSnapshotID)
+
 	reqCtx = testcommon.GetRequestContext(t, ctx)
 	createOperation, err := client.CreateSnapshot(
 		reqCtx,
@@ -800,10 +802,6 @@ func TestSnapshotServiceDeleteIncrementalSnapshotAfterCreating(t *testing.T) {
 
 	snapshotID1 := t.Name() + "1"
 
-	deleteRequest := disk_manager.DeleteSnapshotRequest{
-		SnapshotId: snapshotID1,
-	}
-
 	reqCtx = testcommon.GetRequestContext(t, ctx)
 	createOperation, err := client.CreateSnapshot(
 		reqCtx,
@@ -821,12 +819,18 @@ func TestSnapshotServiceDeleteIncrementalSnapshotAfterCreating(t *testing.T) {
 	err = internal_client.WaitOperation(ctx, client, createOperation.Id)
 	require.NoError(t, err)
 
+	deleteRequest := disk_manager.DeleteSnapshotRequest{
+		SnapshotId: snapshotID1,
+	}
+
 	reqCtx = testcommon.GetRequestContext(t, ctx)
 	deleteOperation, err := client.DeleteSnapshot(reqCtx, &deleteRequest)
 	require.NoError(t, err)
 	require.NotEmpty(t, deleteOperation)
 	err = internal_client.WaitOperation(ctx, client, deleteOperation.Id)
 	require.NoError(t, err)
+
+	testcommon.RequireCheckpointsDoNotExist(t, ctx, diskID)
 
 	snapshotID2 := t.Name() + "2"
 
