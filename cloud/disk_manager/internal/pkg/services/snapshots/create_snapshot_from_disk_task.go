@@ -2,7 +2,6 @@ package snapshots
 
 import (
 	"context"
-	"fmt"
 	"time"
 
 	"github.com/golang/protobuf/proto"
@@ -79,8 +78,6 @@ func (t *createSnapshotFromDiskTask) run(
 		return snapshotMeta.CheckpointID, nil
 	}
 
-	fmt.Printf("DEBUG_BEGIN %v: creating checkpoint DEBUG_END\n", time.Now())
-
 	checkpointID, err := common.CreateCheckpoint(
 		ctx,
 		execCtx,
@@ -94,8 +91,6 @@ func (t *createSnapshotFromDiskTask) run(
 	if err != nil {
 		return "", err
 	}
-
-	fmt.Printf("DEBUG_BEGIN %v: checkpoint created; scheduling dataplane task DEBUG_END\n", time.Now())
 
 	taskID, err := t.scheduler.ScheduleZonalTask(
 		headers.SetIncomingIdempotencyKey(ctx, selfTaskID+"_create_snapshot"),
@@ -120,8 +115,6 @@ func (t *createSnapshotFromDiskTask) run(
 	if err != nil {
 		return "", err
 	}
-
-	fmt.Printf("DEBUG_BEGIN %v: dataplane task finished DEBUG_END\n", time.Now())
 
 	typedResponse, ok := response.(*dataplane_protos.CreateSnapshotFromDiskResponse)
 	if !ok {

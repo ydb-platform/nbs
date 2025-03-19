@@ -1,7 +1,6 @@
 package tests
 
 import (
-	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -90,7 +89,6 @@ func testCreateSnapshotFromDiskWithFailedShadowDisk(
 		require.NotEmpty(t, agentID)
 
 		// Disabling device to enforce checkpoint status ERROR.
-		fmt.Printf("DEBUG_BEGIN %v: disabling device DEBUG_END\n", time.Now())
 		err = nbsClient.DisableDevices(ctx, agentID, deviceUUIDs, t.Name())
 		require.NoError(t, err)
 	}
@@ -100,7 +98,6 @@ func testCreateSnapshotFromDiskWithFailedShadowDisk(
 		// Need to add some variance for better testing.
 		time.Sleep(waitBeforeDisablingDeviceDuration / 2)
 
-		fmt.Printf("DEBUG_BEGIN %v: cancelling operation DEBUG_END\n", time.Now())
 		_, err = client.CancelOperation(ctx, &disk_manager.CancelOperationRequest{
 			OperationId: operation.Id,
 		})
