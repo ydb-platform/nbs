@@ -120,7 +120,7 @@ func (g *ConfigGenerator) updateConfigMapFromDir(
 			)
 		}
 
-		cfgOverrided, err := g.applyOverrides(
+		configOverrided, err := g.applyOverrides(
 			ctx,
 			configProtoPath,
 			configData,
@@ -130,7 +130,7 @@ func (g *ConfigGenerator) updateConfigMapFromDir(
 		}
 
 		newConfigProto := proto.Clone(configDesc.Proto)
-		err = proto.UnmarshalText(cfgOverrided, newConfigProto)
+		err = proto.UnmarshalText(configOverrided, newConfigProto)
 		if err != nil {
 			return fmt.Errorf(
 				"failed to parse protobuf from config proto file %v: %w",
@@ -295,18 +295,19 @@ func (g *ConfigGenerator) dumpConfigs(
 			)
 		}
 
-		override := g.constructCfgOverride(ctx, cluster, zone, seed)
-		cfgOverrided, err := g.applyOverrides(
+		cfgOverride := g.constructCfgOverride(ctx, cluster, zone, seed)
+		configOverrided, err := g.applyOverrides(
 			ctx,
 			cfgFile,
 			cfgFileData,
-			override,
+			cfgOverride,
 		)
 		if err != nil {
 			return err
 		}
 
-		resultConfigs = append(resultConfigs, ResultConfig{cfgFile, cfgOverrided})
+		resultConfig := ResultConfig{cfgFile, configOverrided}
+		resultConfigs = append(resultConfigs, resultConfig)
 	}
 
 	for _, fileName := range g.spec.ServiceSpec.Clusters[cluster].AdditionalFiles {
