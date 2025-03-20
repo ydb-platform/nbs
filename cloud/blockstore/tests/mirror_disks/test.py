@@ -247,7 +247,9 @@ def test_m3_rdma_restart_disk_agent_during_migration(ydb, nbs):
     future = session.write_blocks_async(start_index, [expected_data])
     try:
         future.result(timeout=1)
-        # assert False
+        # we should't reach this line because of write request retries to the
+        # dead agent
+        assert False
     except TimeoutError:
         pass
 
