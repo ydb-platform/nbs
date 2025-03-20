@@ -33,11 +33,7 @@ private:
     const bool CheckVoidBlocks;
 
     TAdaptiveLock Lock;
-    size_t ResponseCount;
     TGuardedSgList SgList;
-    NProto::TError Error;
-    TStackVec<ui32, 2> AllDevices;
-    TStackVec<ui32, 2> ErrDevices;
 
     ui32 VoidBlockCount = 0;
 
@@ -52,19 +48,19 @@ public:
             NActors::TActorId parentActorId,
             ui64 requestId,
             bool checkVoidBlocks)
-        : IRdmaDeviceRequestHandler(actorSystem, parentActorId)
+        : IRdmaDeviceRequestHandler(requestCount, actorSystem, parentActorId)
         , PartConfig(std::move(partConfig))
         , RequestInfo(std::move(requestInfo))
         , RequestBlockCount(requestBlockCount)
         , RequestId(requestId)
         , CheckVoidBlocks(checkVoidBlocks)
-        , ResponseCount(requestCount)
         , SgList(std::move(sglist))
     {
     }
 
-    void HandleResult(const TDeviceReadRequestContext& dr, TStringBuf buffer)
+    void HandleResult(const TDeviceRequestContext& dCtx, TStringBuf buffer) override
     {
+        const auto& dr = static_cast<const TDeviceReadRequestContext&>(dCtx);
         if (auto guard = SgList.Acquire()) {
             auto* serializer = TBlockStoreProtocol::Serializer();
             auto [result, err] = serializer->Parse(buffer);
@@ -122,20 +118,8 @@ public:
 
         auto* dr = static_cast<TDeviceReadRequestContext*>(req->Context.get());
         auto buffer = req->ResponseBuffer.Head(responseBytes);
-        AllDevices.emplace_back(dr->DeviceIdx);
 
-        if (status == NRdma::RDMA_PROTO_OK) {
-            HandleResult(*dr, buffer);
-        } else {
-            auto err = NRdma::ParseError(buffer);
-            if (NeedToNotifyAboutError(err)) {
-                ErrDevices.emplace_back(dr->DeviceIdx);
-                SendDeviceTimedOut(std::move(dr->DeviceUUID));
-            }
-            Error = std::move(err);
-        }
-
-        if (--ResponseCount != 0) {
+        if (!ProcessResponse(*dr, status, buffer)) {
             return;
         }
 
@@ -165,12 +149,7 @@ public:
         completion->ExecCycles = RequestInfo->GetExecCycles();
         completion->NonVoidBlockCount = allZeroes ? 0 : RequestBlockCount;
         completion->VoidBlockCount = allZeroes ? RequestBlockCount : 0;
-        std::ranges::copy(
-            ErrDevices,
-            std::back_inserter(completion->ErrorDeviceIndices));
-        std::ranges::copy(
-            AllDevices,
-            std::back_inserter(completion->DeviceIndices));
+        AddDeviceIndicesToCompleteEvent(*completion);
 
         counters.SetBlocksCount(RequestBlockCount);
         auto completionEvent = std::make_unique<IEventHandle>(

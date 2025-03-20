@@ -31,10 +31,6 @@ private:
     TNonreplicatedPartitionConfigPtr PartConfig;
     TRequestInfoPtr RequestInfo;
     TAdaptiveLock Lock;
-    size_t ResponseCount;
-    NProto::TError Error;
-    TStackVec<ui32, 2> AllDevices;
-    TStackVec<ui32, 2> ErrDevices;
     const ui32 RequestBlockCount;
     ui64 RequestId;
 
@@ -47,16 +43,18 @@ public:
             ui32 requestBlockCount,
             NActors::TActorId parentActorId,
             ui64 requestId)
-        : IRdmaDeviceRequestHandler(actorSystem, parentActorId)
+        : IRdmaDeviceRequestHandler(requestCount, actorSystem, parentActorId)
         , PartConfig(std::move(partConfig))
         , RequestInfo(std::move(requestInfo))
-        , ResponseCount(requestCount)
         , RequestBlockCount(requestBlockCount)
         , RequestId(requestId)
     {}
 
-    void HandleResult(TStringBuf buffer)
+    void HandleResult(
+        const TDeviceRequestContext& dCtx,
+        TStringBuf buffer) override
     {
+        Y_UNUSED(dCtx);
         auto* serializer = TBlockStoreProtocol::Serializer();
         auto [result, err] = serializer->Parse(buffer);
 
@@ -84,20 +82,7 @@ public:
         auto buffer = req->ResponseBuffer.Head(responseBytes);
         auto* dCtx = static_cast<TDeviceRequestContext*>(req->Context.get());
 
-        AllDevices.emplace_back(dCtx->DeviceIdx);
-
-        if (status == NRdma::RDMA_PROTO_OK) {
-            HandleResult(buffer);
-        } else {
-            auto err = NRdma::ParseError(buffer);
-            if (NeedToNotifyAboutError(err)) {
-                ErrDevices.emplace_back(dCtx->DeviceIdx);
-                SendDeviceTimedOut(std::move(dCtx->DeviceUUID));
-            }
-            Error = std::move(err);
-        }
-
-        if (--ResponseCount != 0) {
+        if (!ProcessResponse(*dCtx, status, buffer)) {
             return;
         }
 
@@ -119,12 +104,7 @@ public:
         auto completion = std::make_unique<TCompletionEvent>(std::move(Error));
         auto& counters = *completion->Stats.MutableUserWriteCounters();
         completion->TotalCycles = RequestInfo->GetTotalCycles();
-        std::ranges::copy(
-            ErrDevices,
-            std::back_inserter(completion->ErrorDeviceIndices));
-        std::ranges::copy(
-            AllDevices,
-            std::back_inserter(completion->DeviceIndices));
+        AddDeviceIndicesToCompleteEvent(*completion);
 
         timer.Finish();
         completion->ExecCycles = RequestInfo->GetExecCycles();

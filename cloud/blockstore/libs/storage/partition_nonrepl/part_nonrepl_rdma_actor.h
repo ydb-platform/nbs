@@ -44,15 +44,22 @@ struct TDeviceReadRequestContext: public TDeviceRequestContext
 
 class IRdmaDeviceRequestHandler: public NRdma::IClientHandler
 {
+    ui32 ResponseCount;
+    TStackVec<ui32, 2> AllDevices;
+    TStackVec<ui32, 2> ErrDevices;
+
 protected:
+    NProto::TError Error;
     NActors::TActorSystem* ActorSystem;
     const NActors::TActorId ParentActorId;
 
 public:
     explicit IRdmaDeviceRequestHandler(
+            ui32 responseCount,
             NActors::TActorSystem* actorSystem,
             NActors::TActorId parentActorId)
-        : ActorSystem(actorSystem)
+        : ResponseCount(responseCount)
+        , ActorSystem(actorSystem)
         , ParentActorId(parentActorId)
     {}
 
@@ -60,6 +67,19 @@ public:
 
     void SendDeviceTimedOut(TString deviceUUID);
     [[nodiscard]] static bool NeedToNotifyAboutError(const NProto::TError& err);
+
+    virtual void HandleResult(
+        const TDeviceRequestContext& dCtx,
+        TStringBuf buffer) = 0;
+
+    // Returns true if all responses was received.
+    bool ProcessResponse(
+        TDeviceRequestContext& dCtx,
+        ui32 status,
+        TStringBuf buffer);
+
+    void AddDeviceIndicesToCompleteEvent(
+        TEvNonreplPartitionPrivate::TOperationCompleted& opCompleted);
 };
 
 ////////////////////////////////////////////////////////////////////////////////
