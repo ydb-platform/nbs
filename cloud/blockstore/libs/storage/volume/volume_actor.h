@@ -793,6 +793,10 @@ private:
         const TEvDiskRegistry::TEvAllocateDiskResponse::TPtr& ev,
         const NActors::TActorContext& ctx);
 
+    void HandleAllocateDiskError(
+        const NActors::TActorContext& ctx,
+        NProto::TError error);
+
     void HandleAddLaggingDevicesResponse(
         const TEvDiskRegistry::TEvAddLaggingDevicesResponse::TPtr& ev,
         const NActors::TActorContext& ctx);
