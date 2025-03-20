@@ -1647,6 +1647,7 @@ private:
             try {
                 if (endpoint->CheckState(EEndpointState::Connected)) {
                     hasWork |= endpoint->HandleInputRequests();
+                    hasWork |= endpoint->HandleCancelRequests();
                     hasWork |= endpoint->HandleCompletionEvents();
                 }
                 if (endpoint->CheckState(EEndpointState::Disconnecting)) {
