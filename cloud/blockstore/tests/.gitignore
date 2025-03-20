@@ -45,6 +45,7 @@ recipes/local-null/local-null-recipe
 recipes/notify-mock/notify-mock-recipe
 recipes/resize-disk/resize-disk-recipe
 recipes/service-local/service-local-recipe
+registration/cloud-blockstore-tests-registration
 resize-disk/cloud-blockstore-tests-resize-disk
 session_cache/cloud-blockstore-tests-session_cache
 spare_node/cloud-blockstore-tests-spare_node
