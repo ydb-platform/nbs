@@ -208,7 +208,7 @@ func run(
 			registry := mon.NewRegistry("s3_client")
 
 			var err error
-			s3, err = persistence.NewS3ClientFromConfig(s3Config, registry)
+			s3, err = persistence.NewS3ClientFromConfig(ctx, s3Config, registry)
 			if err != nil {
 				return err
 			}
@@ -233,7 +233,11 @@ func run(
 			migrationDstS3Config := migrationDstSnapshotConfig.GetPersistenceConfig().GetS3Config()
 			if migrationDstS3Config != nil {
 				registry := mon.NewRegistry("migration_s3_client")
-				migrationDstS3, err = persistence.NewS3ClientFromConfig(migrationDstS3Config, registry)
+				migrationDstS3, err = persistence.NewS3ClientFromConfig(
+					ctx,
+					migrationDstS3Config,
+					registry,
+				)
 				if err != nil {
 					return err
 				}

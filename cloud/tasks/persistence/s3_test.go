@@ -17,12 +17,14 @@ const maxRetriableErrorCount = 3
 ////////////////////////////////////////////////////////////////////////////////
 
 func newS3Client(
+	ctx context.Context,
 	metricsRegistry *mocks.RegistryMock,
 	callTimeout time.Duration,
 ) (*S3Client, error) {
 
 	credentials := NewS3Credentials("test", "test")
 	return NewS3Client(
+		ctx,
 		"endpoint",
 		"region",
 		credentials,
@@ -39,7 +41,11 @@ func TestS3ShouldSendErrorCanceledMetric(t *testing.T) {
 
 	metricsRegistry := mocks.NewRegistryMock()
 
-	s3, err := newS3Client(metricsRegistry, 10*time.Second /* callTimeout */)
+	s3, err := newS3Client(
+		ctx,
+		metricsRegistry,
+		10*time.Second, // callTimeout
+	)
 	require.NoError(t, err)
 
 	cancel()
@@ -66,7 +72,7 @@ func TestS3ShouldSendErrorTimeoutMetric(t *testing.T) {
 
 	metricsRegistry := mocks.NewRegistryMock()
 
-	s3, err := newS3Client(metricsRegistry, 0 /* callTimeout */)
+	s3, err := newS3Client(ctx, metricsRegistry, 0 /* callTimeout */)
 	require.NoError(t, err)
 
 	metricsRegistry.GetCounter(
@@ -96,7 +102,11 @@ func TestS3ShouldRetryRequests(t *testing.T) {
 
 	metricsRegistry := mocks.NewRegistryMock()
 
-	s3, err := newS3Client(metricsRegistry, 10*time.Second /* callTimeout */)
+	s3, err := newS3Client(
+		ctx,
+		metricsRegistry,
+		10*time.Second, // callTimeout
+	)
 	require.NoError(t, err)
 
 	metricsRegistry.GetCounter(

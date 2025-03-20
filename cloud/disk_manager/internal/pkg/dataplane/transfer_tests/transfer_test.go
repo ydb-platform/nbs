@@ -280,7 +280,7 @@ func newStorage(
 		ChunkBlobsS3KeyPrefix:     &chunkBlobsS3KeyPrefix,
 	}
 
-	s3, err := test.NewS3Client()
+	s3, err := test.NewS3Client(ctx)
 	require.NoError(t, err)
 
 	err = schema.Create(ctx, config, db, s3, false /* dropUnusedColumns */)
