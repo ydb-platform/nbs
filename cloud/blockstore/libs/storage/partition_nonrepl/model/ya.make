@@ -6,6 +6,7 @@ SRCS(
     changed_ranges_map.cpp
     disjoint_range_set.cpp
     processing_blocks.cpp
+    replica_actors.cpp
 )
 
 PEERDIR(

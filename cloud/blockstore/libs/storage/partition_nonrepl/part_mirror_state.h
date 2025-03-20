@@ -6,12 +6,9 @@
 #include "replica_info.h"
 
 #include <cloud/blockstore/libs/storage/core/public.h>
-
-#include <contrib/ydb/library/actors/core/actorid.h>
+#include <cloud/blockstore/libs/storage/partition_nonrepl/model/replica_actors.h>
 
 #include <util/generic/vector.h>
-
-#include <ranges>
 
 namespace NCloud::NBlockStore::NStorage {
 
@@ -33,13 +30,7 @@ private:
 
     TMigrations Migrations;
     TVector<TReplicaInfo> ReplicaInfos;
-
-    struct TReplicaActors
-    {
-        NActors::TActorId LaggingProxyActorId;
-        NActors::TActorId PartActorId;
-    };
-    TVector<TReplicaActors> ReplicaActors;
+    TReplicaActors ReplicaActors;
 
     ui32 ReadReplicaIndex = 0;
 
@@ -62,33 +53,22 @@ public:
 
     void AddReplicaActor(const NActors::TActorId& actorId)
     {
-        ReplicaActors.push_back({actorId, actorId});
+        ReplicaActors.AddReplicaActor(actorId);
     }
 
     [[nodiscard]] auto GetReplicaActors() const
     {
-        return ReplicaActors |
-               std::views::transform(&TReplicaActors::LaggingProxyActorId);
-    }
-
-    [[nodiscard]] auto GetReplicaActorsVector() const
-    {
-        const auto replicaActors = GetReplicaActors();
-        return TVector<NActors::TActorId>{
-            replicaActors.begin(),
-            replicaActors.end()};
+        return ReplicaActors.GetReplicaActors();
     }
 
     [[nodiscard]] const NActors::TActorId& GetReplicaActor(ui32 index) const
     {
-        Y_DEBUG_ABORT_UNLESS(index < ReplicaActors.size());
-        return ReplicaActors[index].LaggingProxyActorId;
+        return ReplicaActors.GetReplicaActor(index);
     }
 
     [[nodiscard]] auto GetReplicaActorsBypassingProxies() const
     {
-        return ReplicaActors |
-               std::views::transform(&TReplicaActors::PartActorId);
+        return ReplicaActors.GetReplicaActorsBypassingProxies();
     }
 
     [[nodiscard]] ui32 GetReplicaIndex(NActors::TActorId actorId) const;
@@ -106,7 +86,7 @@ public:
 
     void SetReadReplicaIndex(ui32 readReplicaIndex)
     {
-        if (readReplicaIndex < 0 || readReplicaIndex >= ReplicaActors.size()) {
+        if (readReplicaIndex < 0 || readReplicaIndex >= ReplicaActors.Size()) {
             return;
         }
         ReadReplicaIndex = readReplicaIndex;
