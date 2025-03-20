@@ -2675,7 +2675,6 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
             UNIT_ASSERT_VALUES_EQUAL(
                 response.GetStorageConfig().GetThreeStageWriteEnabled(),
                 true);
-            TDispatchOptions options;
             env.GetRuntime().DispatchEvents({}, TDuration::Seconds(1));
         }
 
@@ -2775,6 +2774,136 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         UNIT_ASSERT_VALUES_EQUAL(1, evPuts);
         // clang-format on
     }
+
+    Y_UNIT_TEST(ShouldMulipleStageThrottle)
+    {
+        const auto maxBandwidth = 10000;
+        NProto::TStorageConfig config;
+        config.SetThrottlingEnabled(true);
+        config.SetThreeStageWriteEnabled(true);
+        config.SetTwoStageReadEnabled(true);
+        config.SetUnalignedThreeStageWriteEnabled(true);
+        config.SetMultipleStageRequestThrottlingEnabled(true);
+        config.SetSSDThrottlingEnabled(true);
+        config.SetSSDMaxReadBandwidth(maxBandwidth);
+        config.SetSSDMaxWriteBandwidth(maxBandwidth);
+        config.SetSSDMaxPostponedWeight(0);
+        config.SetSSDMaxPostponedTime(0);
+
+        TTestEnv env({}, config);
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+        const TString fs = "test";
+        const auto blockCount = 1'000;
+        service.CreateFileStore(fs, blockCount);
+
+        {
+            auto resizeRequest =
+                service.CreateResizeFileStoreRequest("test", blockCount);
+            resizeRequest->Record.MutablePerformanceProfile()
+                ->SetThrottlingEnabled(true);
+            resizeRequest->Record.MutablePerformanceProfile()
+                ->SetMaxWriteBandwidth(maxBandwidth);
+            resizeRequest->Record.MutablePerformanceProfile()
+                ->SetMaxReadBandwidth(maxBandwidth);
+            resizeRequest->Record.MutablePerformanceProfile()
+                ->SetMaxPostponedWeight(0);
+            resizeRequest->Record.MutablePerformanceProfile()
+                ->SetMaxPostponedTime(0);
+            resizeRequest->Record.MutablePerformanceProfile()
+                ->SetMaxPostponedCount(0);
+            resizeRequest->Record.MutablePerformanceProfile()
+                ->SetDefaultPostponedRequestWeight(0);
+            service.SendRequest(
+                MakeStorageServiceId(),
+                std::move(resizeRequest));
+            auto resizeResponse = service.RecvResizeFileStoreResponse();
+        }
+
+        auto headers = service.InitSession(fs, "client");
+        ui64 nodeId =
+            service
+                .CreateNode(headers, TCreateNodeArgs::File(RootNodeId, "file"))
+                ->Record.GetNode()
+                .GetId();
+
+        ui64 handle =
+            service
+                .CreateHandle(headers, fs, nodeId, "", TCreateHandleArgs::RDWR)
+                ->Record.GetHandle();
+
+        auto& runtime = env.GetRuntime();
+
+        size_t throttled = 0;
+        auto writeReadData =
+            [&](ui64 offset, ui64 size, [[maybe_unused]] ui64 expectedFilesize)
+        {
+            auto data = GenerateValidateData(size);
+            {
+                auto request = service.CreateWriteDataRequest(
+                    headers,
+                    fs,
+                    nodeId,
+                    handle,
+                    offset,
+                    data);
+                request->CallContext->RequestType =
+                    EFileStoreRequest ::WriteData;
+                service.SendRequest(
+                    MakeStorageServiceId(),
+                    std ::move(request));
+                auto response =
+                    service.RecvResponse<TEvService ::TEvWriteDataResponse>();
+                if (response->GetError().GetCode() == E_FS_THROTTLED) {
+                    ++throttled;
+                }
+            }
+            {
+                auto request = service.CreateReadDataRequest(
+                    headers,
+                    fs,
+                    nodeId,
+                    handle,
+                    offset,
+                    data.size());
+                request->CallContext->RequestType =
+                    EFileStoreRequest ::ReadData;
+                service.SendRequest(
+                    MakeStorageServiceId(),
+                    std ::move(request));
+                auto response =
+                    service.RecvResponse<TEvService ::TEvReadDataResponse>();
+                    DUMP(response->GetError().GetCode(), E_FS_THROTTLED);
+                if (response->GetError().GetCode() == E_FS_THROTTLED) {
+                    ++throttled;
+                }
+            }
+        };
+        constexpr auto size =
+            134217728 + 1;   // Config.DefaultThresholds.MaxPostponedWeight
+        for (auto i = 0; i < 5; ++i) {
+            writeReadData(size * i, size, i * size);
+        }
+
+        UNIT_ASSERT_VALUES_EQUAL(10, throttled);
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            5,
+            runtime.GetCounter(TEvService::EvWriteDataRequest));
+        UNIT_ASSERT_VALUES_EQUAL(
+            10,
+            runtime.GetCounter(TEvIndexTablet::EvGenerateBlobIdsRequest));
+        UNIT_ASSERT_VALUES_EQUAL(
+            5,
+            runtime.GetCounter(TEvService::EvReadDataRequest));
+        UNIT_ASSERT_VALUES_EQUAL(
+            10,
+            runtime.GetCounter(TEvIndexTablet::EvDescribeDataRequest));
+    }
+
 
     Y_UNIT_TEST(ShouldSendBSGroupFlagsToTabletViaAddDataRequests)
     {
