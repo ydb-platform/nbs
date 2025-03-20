@@ -100,12 +100,12 @@ TCopyStats CopyToSgList(
         Y_ABORT_UNLESS(dst.Size() - offsetInBytes >= blockSize);
 
         if (dst.Data()) {
-            char* destBuff = const_cast<char*>(dst.Data()) + offsetInBytes;
+            char* dstBuff = const_cast<char*>(dst.Data()) + offsetInBytes;
             if (src.empty()) {
-                memset(destBuff, 0, blockSize);
+                memset(dstBuff, 0, blockSize);
                 ++result.VoidBlockCount;
             } else {
-                memcpy(destBuff, src.data(), blockSize);
+                memcpy(dstBuff, src.data(), blockSize);
             }
         }
 
@@ -143,12 +143,12 @@ size_t CopyToSgList(
             Min<size_t>(srcBlockSize - srcOffset, dst.Size() - dstOffset);
 
         if (dst.Data()) {
-            char* destBuff = const_cast<char*>(dst.Data()) + dstOffset;
+            char* dstBuff = const_cast<char*>(dst.Data()) + dstOffset;
             if (src.empty()) {
-                memset(destBuff, 0, bytesToCopy);
+                memset(dstBuff, 0, bytesToCopy);
             } else {
                 char* srcBuff = const_cast<char*>(src.data()) + srcOffset;
-                memcpy(destBuff, srcBuff, bytesToCopy);
+                memcpy(dstBuff, srcBuff, bytesToCopy);
             }
         }
 
