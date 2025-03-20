@@ -166,12 +166,14 @@ ImagesConfig: <
             Capacity: 0
         >
     ]
+    RetryFailedCheckpoint: true
 >
 SnapshotsConfig: <
     DeletedSnapshotExpirationTimeout: "1s"
     ClearDeletedSnapshotsTaskScheduleInterval: "2s"
     UseS3Percentage: {use_s3_percentage}
     UseProxyOverlayDisk: true
+    RetryFailedCheckpoint: true
 >
 LoggingConfig: <
     LoggingStderr: <>

@@ -16,4 +16,5 @@ message SnapshotsConfig {
     repeated string UseS3ForFolder = 5;
     optional uint32 UseS3Percentage = 6;
     optional bool UseProxyOverlayDisk = 7;
+    optional bool RetryFailedCheckpoint = 8;
 }
