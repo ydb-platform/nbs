@@ -1,4 +1,5 @@
 #include "buffer.h"
+#include "page_size.h"
 
 #include <util/generic/intrlist.h>
 #include <util/system/align.h>
@@ -129,7 +130,7 @@ public:
 
     TBuffer AcquireBuffer(size_t bytesCount, bool ignoreCache)
     {
-        size_t allocSize = AlignUp(bytesCount, PAGE_SIZE);
+        size_t allocSize = AlignUp(bytesCount, TPageSize::Value);
 
         TChunk* chunk;
         if (!ignoreCache && allocSize <= MAX_CHUNK_ALLOC) {
