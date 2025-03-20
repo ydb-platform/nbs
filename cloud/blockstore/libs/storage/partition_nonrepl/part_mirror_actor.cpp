@@ -548,7 +548,7 @@ void TMirrorPartitionActor::HandleAddLaggingAgent(
         replicaIndex);
 
     if (!State.IsLaggingProxySet(replicaIndex)) {
-        Y_DEBUG_ABORT_UNLESS(State.GetReplicaInfos().size() > replicaIndex);
+        Y_ABORT_UNLESS(replicaIndex < State.GetReplicaInfos().size());
 
         auto proxyActorId = NCloud::Register(
             ctx,

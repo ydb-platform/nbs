@@ -49,19 +49,12 @@ TMirrorPartitionState::TMirrorPartitionState(
 
 ui32 TMirrorPartitionState::GetReplicaIndex(NActors::TActorId actorId) const
 {
-    return FindIndexIf(
-        ReplicaActors,
-        [&actorId](const TReplicaActors& replicaActors)
-        {
-            return replicaActors.LaggingProxyActorId == actorId ||
-                   replicaActors.PartActorId == actorId;
-        });
+    return ReplicaActors.GetReplicaIndex(actorId);
 }
 
 bool TMirrorPartitionState::IsReplicaActor(NActors::TActorId actorId) const
 {
-    const ui32 index = GetReplicaIndex(actorId);
-    return ReplicaActors.size() > index;
+    return ReplicaActors.IsReplicaActor(actorId);
 }
 
 NProto::TError TMirrorPartitionState::Validate()
@@ -208,8 +201,8 @@ NProto::TError TMirrorPartitionState::NextReadReplica(
     ui32& replicaIndex)
 {
     replicaIndex = 0;
-    for (ui32 i = 0; i < ReplicaActors.size(); ++i) {
-        replicaIndex = ReadReplicaIndex++ % ReplicaActors.size();
+    for (ui32 i = 0; i < ReplicaActors.Size(); ++i) {
+        replicaIndex = ReadReplicaIndex++ % ReplicaActors.Size();
         if (DevicesReadyForReading(replicaIndex, readRange)) {
             return {};
         }
@@ -233,8 +226,10 @@ bool TMirrorPartitionState::DevicesReadyForReading(
                 laggingIndexes.insert(laggingDevice.GetRowIndex());
             Y_DEBUG_ABORT_UNLESS(
                 inserted,
-                "deviceUUID: %s, row index = %u",
-                laggingDevice.GetDeviceUUID().c_str(), laggingDevice.GetRowIndex());
+                "Two lagging devices can't have the same row index. Failed to "
+                "insert deviceUUID: %s, row index = %u",
+                laggingDevice.GetDeviceUUID().c_str(),
+                laggingDevice.GetRowIndex());
         }
     }
     return replicaInfo.Config->DevicesReadyForReading(
@@ -244,7 +239,7 @@ bool TMirrorPartitionState::DevicesReadyForReading(
 
 void TMirrorPartitionState::AddLaggingAgent(NProto::TLaggingAgent laggingAgent)
 {
-    Y_DEBUG_ABORT_UNLESS(ReplicaInfos.size() > laggingAgent.GetReplicaIndex());
+    Y_ABORT_UNLESS(laggingAgent.GetReplicaIndex() < ReplicaInfos.size());
     auto& replicaInfo = ReplicaInfos[laggingAgent.GetReplicaIndex()];
     replicaInfo.LaggingAgents[laggingAgent.GetAgentId()] =
         std::move(laggingAgent);
@@ -253,51 +248,37 @@ void TMirrorPartitionState::AddLaggingAgent(NProto::TLaggingAgent laggingAgent)
 void TMirrorPartitionState::RemoveLaggingAgent(
     const NProto::TLaggingAgent& laggingAgent)
 {
-    Y_DEBUG_ABORT_UNLESS(ReplicaInfos.size() > laggingAgent.GetReplicaIndex());
+    Y_ABORT_UNLESS(laggingAgent.GetReplicaIndex() < ReplicaInfos.size());
     auto& replicaInfo = ReplicaInfos[laggingAgent.GetReplicaIndex()];
     replicaInfo.LaggingAgents.erase(laggingAgent.GetAgentId());
 }
 
 bool TMirrorPartitionState::HasLaggingAgents(ui32 replicaIndex) const
 {
-    Y_DEBUG_ABORT_UNLESS(ReplicaInfos.size() > replicaIndex);
+    Y_ABORT_UNLESS(replicaIndex < ReplicaInfos.size());
     return !ReplicaInfos[replicaIndex].LaggingAgents.empty();
 }
 
 void TMirrorPartitionState::ResetLaggingReplicaProxy(ui32 replicaIndex)
 {
-    Y_DEBUG_ABORT_UNLESS(ReplicaActors.size() > replicaIndex);
-    ReplicaActors[replicaIndex].LaggingProxyActorId =
-        ReplicaActors[replicaIndex].PartActorId;
+    ReplicaActors.ResetLaggingReplicaProxy(replicaIndex);
 }
 
 void TMirrorPartitionState::SetLaggingReplicaProxy(
     ui32 replicaIndex,
     const NActors::TActorId& actorId)
 {
-    Y_DEBUG_ABORT_UNLESS(ReplicaActors.size() > replicaIndex);
-    ReplicaActors[replicaIndex].LaggingProxyActorId = actorId;
+    ReplicaActors.SetLaggingReplicaProxy(replicaIndex, actorId);
 }
 
 bool TMirrorPartitionState::IsLaggingProxySet(ui32 replicaIndex) const
 {
-    if (ReplicaActors.size() <= replicaIndex) {
-        return false;
-    }
-
-    return ReplicaActors[replicaIndex].PartActorId !=
-           ReplicaActors[replicaIndex].LaggingProxyActorId;
+    return ReplicaActors.IsLaggingProxySet(replicaIndex);
 }
 
 size_t TMirrorPartitionState::LaggingReplicaCount() const
 {
-    size_t count = 0;
-    for (size_t i = 0; i < ReplicaActors.size(); ++i) {
-        if (IsLaggingProxySet(i)) {
-            ++count;
-        }
-    }
-    return count;
+    return ReplicaActors.LaggingReplicaCount();
 }
 
 auto TMirrorPartitionState::SplitRangeByDeviceBorders(
