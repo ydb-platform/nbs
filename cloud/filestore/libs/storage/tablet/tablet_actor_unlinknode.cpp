@@ -585,7 +585,7 @@ bool TIndexTabletActor::PrepareTx_CompleteUnlinkNode(
 
     TIndexTabletDatabaseProxy db(tx.DB, args.NodeUpdates);
 
-    // TODO(debnath): we should pass commitId from the request, not generate it
+    // TODO(2674): we should pass commitId from the request, not generate it
     args.CommitId = GetCurrentCommitId();
 
     // validate parent node exists

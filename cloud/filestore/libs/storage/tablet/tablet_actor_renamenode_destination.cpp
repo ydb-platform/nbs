@@ -314,7 +314,6 @@ void TIndexTabletActor::CompleteTx_RenameNodeInDestination(
                 args.RequestId,
                 args.OpLogEntry.GetEntryId(),
                 std::move(args.Response),
-                // TODO(debnatkh): reconsider following line
                 false);
 
             return;
