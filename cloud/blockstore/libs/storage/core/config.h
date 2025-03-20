@@ -21,6 +21,12 @@ struct TCertificate
     TString CertPrivateKeyFile;
 };
 
+struct TLinkedDiskFillBandwidth
+{
+    ui32 Bandwidth = 0;
+    ui32 IoDepth = 0;
+};
+
 ////////////////////////////////////////////////////////////////////////////////
 
 class TStorageConfig
@@ -664,6 +670,9 @@ public:
 
     [[nodiscard]] bool GetDisableZeroBlocksThrottlingForYDBBasedDisks() const;
     [[nodiscard]] bool GetLocalDiskAsyncDeallocationEnabled() const;
+
+    [[nodiscard]] TVector<NProto::TLinkedDiskFillBandwidth>
+    GetLinkedDiskFillBandwidth() const;
 };
 
 ui64 GetAllocationUnit(
@@ -674,5 +683,10 @@ void AdaptNodeRegistrationParams(
     const TString& overriddenNodeType,
     const NProto::TServerConfig& serverConfig,
     NProto::TStorageServiceConfig& storageConfig);
+
+TLinkedDiskFillBandwidth GetLinkedDiskFillBandwidth(
+    const TStorageConfig& config,
+    NCloud::NProto::EStorageMediaKind leaderMediaKind,
+    NCloud::NProto::EStorageMediaKind followerMediaKind);
 
 }   // namespace NCloud::NBlockStore::NStorage
