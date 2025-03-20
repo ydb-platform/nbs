@@ -7,12 +7,13 @@
 #include <cloud/blockstore/libs/storage/api/disk_registry_proxy.h>
 #include <cloud/blockstore/libs/storage/api/volume.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
+#include <cloud/blockstore/libs/storage/core/proto_helpers.h>
 #include <cloud/blockstore/libs/storage/disk_agent/model/public.h>
+#include <cloud/blockstore/libs/storage/partition_nonrepl/model/processing_blocks.h>
 #include <cloud/blockstore/libs/storage/protos/disk.pb.h>
 #include <cloud/blockstore/libs/storage/testlib/diagnostics.h>
 #include <cloud/blockstore/libs/storage/testlib/disk_agent_mock.h>
 #include <cloud/blockstore/libs/storage/testlib/ut_helpers.h>
-#include <cloud/storage/core/libs/common/sglist_test.h>
 
 #include <contrib/ydb/core/testlib/basics/runtime.h>
 #include <contrib/ydb/core/testlib/tablet_helpers.h>
@@ -551,6 +552,14 @@ Y_UNIT_TEST_SUITE(TLaggingAgentsReplicaProxyActorTest)
                             event->Get<TEvService::TEvReadBlocksRequest>();
                         auto clientId = msg->Record.GetHeaders().GetClientId();
                         if (clientId == BackgroundOpsClientId) {
+                            constexpr ui64 RangeSize =
+                                ProcessingRangeSize / DefaultBlockSize;
+                            UNIT_ASSERT_VALUES_EQUAL(
+                                ProcessingRangeSize / DefaultBlockSize,
+                                msg->Record.GetBlocksCount());
+                            UNIT_ASSERT_VALUES_EQUAL(
+                                0,
+                                msg->Record.GetStartIndex() % RangeSize);
                             UNIT_ASSERT_VALUES_EQUAL(
                                 env.ReplicaActors[1],
                                 event->Recipient);
@@ -567,6 +576,16 @@ Y_UNIT_TEST_SUITE(TLaggingAgentsReplicaProxyActorTest)
                         if (msg->Record.GetHeaders().GetClientId() ==
                             BackgroundOpsClientId)
                         {
+                            constexpr ui64 RangeSize =
+                                ProcessingRangeSize / DefaultBlockSize;
+                            const auto range =
+                                BuildRequestBlockRange(*msg, DefaultBlockSize);
+                            UNIT_ASSERT_VALUES_EQUAL(
+                                ProcessingRangeSize / DefaultBlockSize,
+                                range.Size());
+                            UNIT_ASSERT_VALUES_EQUAL(
+                                0,
+                                range.Start % RangeSize);
                             UNIT_ASSERT(seenMigrationReads);
                             seenMigrationWrites = true;
                         }
