@@ -44,8 +44,15 @@ int TApp::Run(
         }
 
         if (argc == 2) {
-            NLastGetopt::TOptsParseResult parsedOpts(&opts, argc, argv);
-            return 0;
+            TStringBuf arg(argv[1]);
+            if (arg == "-h" || arg == "--help") {
+                opts.PrintUsage(GetProgramName());
+                return 0;
+            }
+            if (arg == "-V" || arg == "--svnrevision") {
+                NLastGetopt::PrintVersionAndExit(nullptr);
+                return 0;
+            }
         }
 
         auto name = NormalizeCommand(*std::next(argv));
