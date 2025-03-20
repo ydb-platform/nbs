@@ -17,6 +17,7 @@ namespace NCloud::NBlockStore::NYdbStats {
 // YDB_SIMPLE_STRING_COUNTERS
 
 #define YDB_SIMPLE_UINT64_COUNTERS(xxx, ...)                                   \
+    xxx(VolumeTabletId,              __VA_ARGS__)                              \
     xxx(Timestamp,                   __VA_ARGS__)                              \
     xxx(BlocksCount,                 __VA_ARGS__)                              \
     xxx(BlockSize,                   __VA_ARGS__)                              \
