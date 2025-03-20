@@ -316,7 +316,7 @@ public:
     void AddLaggingAgent(NProto::TLaggingAgent agent);
     std::optional<NProto::TLaggingAgent> RemoveLaggingAgent(
         const TString& agentId);
-    [[nodiscard]] bool HasLagging() const;
+    [[nodiscard]] bool HasLaggingAgents() const;
     [[nodiscard]] bool HasLaggingInReplica(ui32 replicaIndex) const;
     [[nodiscard]] THashSet<TString> GetLaggingDevices() const;
 

@@ -1068,7 +1068,6 @@ void TVolumeActor::RenderHtmlInfo(IOutputStream& out, TInstant now) const
             }
         }
 
-
         DIV_CLASS("row") {
             DIV_CLASS("col-md-6") {
                 RenderCommonButtons(out);
@@ -1646,7 +1645,7 @@ void TVolumeActor::RenderLaggingStatus(IOutputStream& out) const
             TString statusText = "ok";
             TString cssClass = "label-success";
 
-            if (State->HasLagging()) {
+            if (State->HasLaggingAgents()) {
                 statusText = "has lagging devices";
                 cssClass = "label-info";
             }
@@ -1873,7 +1872,11 @@ void TVolumeActor::HandleHttpInfo_RenderNonreplPartitionInfo(
 
                         return nullptr;
                     };
+
+                bool renderLaggingState = IsReliableDiskRegistryMediaKind(
+                    State->GetConfig().GetStorageMediaKind());
                 auto laggingDevices = State->GetLaggingDevices();
+
                 auto outputDevices = [&] (const TDevices& devices) {
                     TABLED() {
                         TABLE_CLASS("table table-bordered") {
@@ -1889,7 +1892,7 @@ void TVolumeActor::HandleHttpInfo_RenderNonreplPartitionInfo(
                                     TABLEH() { out << "BlockSize"; }
                                     TABLEH() { out << "Blocks"; }
                                     TABLEH() { out << "BlockRange"; }
-                                    if (LaggingDevicesAreAllowed()) {
+                                    if (renderLaggingState) {
                                         TABLEH()
                                         {
                                             out << "LaggingState";
@@ -1932,7 +1935,7 @@ void TVolumeActor::HandleHttpInfo_RenderNonreplPartitionInfo(
                                             d.GetBlocksCount());
                                     out << DescribeRange(currentRange);
                                 }
-                                if (LaggingDevicesAreAllowed()) {
+                                if (renderLaggingState) {
                                     TABLED()
                                     {
                                         const auto* stateMsg = "ok";
