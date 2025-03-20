@@ -495,15 +495,24 @@ public:
                 ? (state.RetryTimeout + Config->GetRetryTimeoutIncrement())
                 : InitialRetryTimeout;
         spec.ShouldRetry = true;
-        spec.Backoff = newRetryTimeout;
+
+        if (HasProtoFlag(error.GetFlags(), NProto::EF_INSTANT_RETRIABLE) &&
+            !state.DoneInstantRetry)
+        {
+            spec.Backoff = TDuration::Zero();
+            state.DoneInstantRetry = true;
+        } else {
+            spec.Backoff = newRetryTimeout;
+        }
+
         if (IsConnectionError(error) &&
             spec.Backoff > Config->GetConnectionErrorMaxRetryTimeout())
         {
             spec.Backoff = Config->GetConnectionErrorMaxRetryTimeout();
-        } else {
-            state.RetryTimeout = newRetryTimeout;
+            return spec;
         }
 
+        state.RetryTimeout = newRetryTimeout;
         return spec;
     }
 };
