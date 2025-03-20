@@ -18,6 +18,7 @@ import (
 	"github.com/ydb-platform/nbs/cloud/tasks"
 	"github.com/ydb-platform/nbs/cloud/tasks/errors"
 	"github.com/ydb-platform/nbs/cloud/tasks/headers"
+	"github.com/ydb-platform/nbs/cloud/tasks/logging"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -46,6 +47,20 @@ func (t *createImageFromDiskTask) Load(request, state []byte) error {
 
 	t.state = &protos.CreateImageFromDiskTaskState{}
 	return proto.Unmarshal(state, t.state)
+}
+
+func (t *createImageFromDiskTask) checkAndSaveRetryFailedCheckpointOption(
+	ctx context.Context,
+	execCtx tasks.ExecutionContext,
+) error {
+
+	if t.state.RetryFailedCheckpoint && !t.config.GetRetryFailedCheckpoint() {
+		logging.Info(ctx, "Task should be executed with RetryFailedCheckpoint option")
+		return errors.NewInterruptExecutionError()
+	}
+
+	t.state.RetryFailedCheckpoint = t.config.GetRetryFailedCheckpoint()
+	return execCtx.SaveState(ctx)
 }
 
 func (t *createImageFromDiskTask) run(
@@ -161,6 +176,11 @@ func (t *createImageFromDiskTask) Run(
 	execCtx tasks.ExecutionContext,
 ) error {
 
+	err := t.checkAndSaveRetryFailedCheckpointOption(ctx, execCtx)
+	if err != nil {
+		return err
+	}
+
 	disk := t.request.SrcDisk
 
 	nbsClient, err := t.nbsFactory.GetClient(ctx, disk.ZoneId)
@@ -206,6 +226,11 @@ func (t *createImageFromDiskTask) Cancel(
 	ctx context.Context,
 	execCtx tasks.ExecutionContext,
 ) error {
+
+	err := t.checkAndSaveRetryFailedCheckpointOption(ctx, execCtx)
+	if err != nil {
+		return err
+	}
 
 	disk := t.request.SrcDisk
 	nbsClient, err := t.nbsFactory.GetClient(ctx, t.request.SrcDisk.ZoneId)

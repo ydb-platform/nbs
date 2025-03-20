@@ -12,15 +12,18 @@ import (
 	performance_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/performance/config"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/resources"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/common"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/snapshots/config"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/snapshots/protos"
 	"github.com/ydb-platform/nbs/cloud/tasks"
 	"github.com/ydb-platform/nbs/cloud/tasks/errors"
 	"github.com/ydb-platform/nbs/cloud/tasks/headers"
+	"github.com/ydb-platform/nbs/cloud/tasks/logging"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
 
 type createSnapshotFromDiskTask struct {
+	config            *config.SnapshotsConfig
 	performanceConfig *performance_config.PerformanceConfig
 	scheduler         tasks.Scheduler
 	storage           resources.Storage
@@ -42,6 +45,20 @@ func (t *createSnapshotFromDiskTask) Load(request, state []byte) error {
 
 	t.state = &protos.CreateSnapshotFromDiskTaskState{}
 	return proto.Unmarshal(state, t.state)
+}
+
+func (t *createSnapshotFromDiskTask) checkAndSaveRetryFailedCheckpointOption(
+	ctx context.Context,
+	execCtx tasks.ExecutionContext,
+) error {
+
+	if t.state.RetryFailedCheckpoint && !t.config.GetRetryFailedCheckpoint() {
+		logging.Info(ctx, "Task should be executed with RetryFailedCheckpoint option")
+		return errors.NewInterruptExecutionError()
+	}
+
+	t.state.RetryFailedCheckpoint = t.config.GetRetryFailedCheckpoint()
+	return execCtx.SaveState(ctx)
 }
 
 func (t *createSnapshotFromDiskTask) run(
@@ -93,7 +110,7 @@ func (t *createSnapshotFromDiskTask) run(
 	}
 
 	taskID, err := t.scheduler.ScheduleZonalTask(
-		headers.SetIncomingIdempotencyKey(ctx, selfTaskID+"_create_snapshot"),
+		headers.SetIncomingIdempotencyKey(ctx, selfTaskID+"_run"),
 		"dataplane.CreateSnapshotFromDisk",
 		"",
 		disk.ZoneId,
@@ -158,6 +175,11 @@ func (t *createSnapshotFromDiskTask) Run(
 	execCtx tasks.ExecutionContext,
 ) error {
 
+	err := t.checkAndSaveRetryFailedCheckpointOption(ctx, execCtx)
+	if err != nil {
+		return err
+	}
+
 	disk := t.request.SrcDisk
 
 	nbsClient, err := t.nbsFactory.GetClient(ctx, disk.ZoneId)
@@ -186,6 +208,11 @@ func (t *createSnapshotFromDiskTask) Cancel(
 	ctx context.Context,
 	execCtx tasks.ExecutionContext,
 ) error {
+
+	err := t.checkAndSaveRetryFailedCheckpointOption(ctx, execCtx)
+	if err != nil {
+		return err
+	}
 
 	disk := t.request.SrcDisk
 	nbsClient, err := t.nbsFactory.GetClient(ctx, t.request.SrcDisk.ZoneId)
@@ -237,7 +264,7 @@ func (t *createSnapshotFromDiskTask) Cancel(
 	}
 
 	taskID, err := t.scheduler.ScheduleTask(
-		headers.SetIncomingIdempotencyKey(ctx, selfTaskID+"_delete_snapshot"),
+		headers.SetIncomingIdempotencyKey(ctx, selfTaskID+"_cancel"),
 		"dataplane.DeleteSnapshot",
 		"",
 		&dataplane_protos.DeleteSnapshotRequest{

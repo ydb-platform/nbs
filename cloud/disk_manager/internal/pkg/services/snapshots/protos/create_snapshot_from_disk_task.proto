@@ -24,4 +24,5 @@ message CreateSnapshotFromDiskTaskState {
     int64 SnapshotSize = 4;
     int64 SnapshotStorageSize = 5;
     string DataplaneTaskID = 6;
+    bool RetryFailedCheckpoint = 7;
 }

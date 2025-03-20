@@ -39,6 +39,7 @@ func RegisterForExecution(
 
 	err = taskRegistry.RegisterForExecution("snapshots.CreateSnapshotFromDisk", func() tasks.Task {
 		return &createSnapshotFromDiskTask{
+			config:            config,
 			performanceConfig: performanceConfig,
 			scheduler:         taskScheduler,
 			storage:           storage,
