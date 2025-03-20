@@ -18,6 +18,7 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
 	"github.com/ydb-platform/nbs/cloud/tasks"
 	task_errors "github.com/ydb-platform/nbs/cloud/tasks/errors"
+	"github.com/ydb-platform/nbs/cloud/tasks/logging"
 	tasks_storage "github.com/ydb-platform/nbs/cloud/tasks/storage"
 )
 
@@ -160,7 +161,31 @@ type service struct {
 	resourceStorage resources.Storage
 }
 
+func (s *service) prepareZoneId(
+	ctx context.Context,
+	disk *disk_manager.DiskId,
+) (string, error) {
+
+	shards := s.nbsFactory.GetShards(disk.ZoneId)
+
+	if len(shards) == 0 {
+		return disk.ZoneId, nil
+	}
+
+	diskMeta, err := s.resourceStorage.GetDiskMeta(ctx, disk.DiskId)
+	if err != nil {
+		return "", err
+	}
+
+	if diskMeta == nil {
+		return shards[0], nil
+	}
+
+	return diskMeta.ZoneID, nil
+}
+
 func (s *service) prepareCreateDiskParams(
+	ctx context.Context,
 	req *disk_manager.CreateDiskRequest,
 ) (*protos.CreateDiskParams, error) {
 
@@ -171,6 +196,11 @@ func (s *service) prepareCreateDiskParams(
 			"invalid disk id: %v",
 			req.DiskId,
 		)
+	}
+
+	zoneID, err := s.prepareZoneId(ctx, req.DiskId)
+	if err != nil {
+		return nil, err
 	}
 
 	diskIDPrefix := s.config.GetCreationAndDeletionAllowedOnlyForDisksWithIdPrefix()
@@ -247,7 +277,7 @@ func (s *service) prepareCreateDiskParams(
 	return &protos.CreateDiskParams{
 		BlocksCount: blocksCount,
 		Disk: &types.Disk{
-			ZoneId: req.DiskId.ZoneId,
+			ZoneId: zoneID,
 			DiskId: req.DiskId.DiskId,
 		},
 		BlockSize:               blockSize,
@@ -336,10 +366,11 @@ func (s *service) CreateDisk(
 	req *disk_manager.CreateDiskRequest,
 ) (string, error) {
 
-	params, err := s.prepareCreateDiskParams(req)
+	params, err := s.prepareCreateDiskParams(ctx, req)
 	if err != nil {
 		return "", err
 	}
+	logging.Debug(ctx, "Chosen zone for disk %v is %v", params.Disk.DiskId, params.Disk.ZoneId)
 
 	switch src := req.Src.(type) {
 	case *disk_manager.CreateDiskRequest_SrcEmpty:
