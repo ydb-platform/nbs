@@ -2904,7 +2904,6 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
             runtime.GetCounter(TEvIndexTablet::EvDescribeDataRequest));
     }
 
-
     Y_UNIT_TEST(ShouldSendBSGroupFlagsToTabletViaAddDataRequests)
     {
         TTestEnv env;
