@@ -255,10 +255,13 @@ func testDiskServiceCreateDiskFromImageWithForceNotLayeredWithZoneID(
 	err = internal_client.WaitOperation(ctx, client, operation.Id)
 	require.NoError(t, err)
 
-	diskMeta, err := testcommon.GetDiskMeta(ctx, diskID)
-	require.NoError(t, err)
+	if zoneID == shardedZoneId {
+		// NBS client only knows about shards, not about shardedZoneId.
+		diskMeta, err := testcommon.GetDiskMeta(ctx, diskID)
+		require.NoError(t, err)
+		zoneID = diskMeta.ZoneID
+	}
 
-	zoneID = diskMeta.ZoneID
 	nbsClient := testcommon.NewNbsTestingClient(t, ctx, zoneID)
 	err = nbsClient.ValidateCrc32(
 		ctx,
@@ -684,7 +687,7 @@ func TestDiskServiceCreateSsdNonreplDiskFromIncrementalSnapshot(t *testing.T) {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-func testDiskServiceCreateDiskFromSnapshotWithZoneID(t *testing.T, zoneId string) {
+func testDiskServiceCreateDiskFromSnapshotWithZoneID(t *testing.T, zoneID string) {
 	ctx := testcommon.NewContext()
 
 	client, err := testcommon.NewClient(ctx)
@@ -702,7 +705,7 @@ func testDiskServiceCreateDiskFromSnapshotWithZoneID(t *testing.T, zoneId string
 		Size: int64(diskSize),
 		Kind: disk_manager.DiskKind_DISK_KIND_SSD,
 		DiskId: &disk_manager.DiskId{
-			ZoneId: zoneId,
+			ZoneId: zoneID,
 			DiskId: diskID1,
 		},
 	})
@@ -711,16 +714,24 @@ func testDiskServiceCreateDiskFromSnapshotWithZoneID(t *testing.T, zoneId string
 	err = internal_client.WaitOperation(ctx, client, operation.Id)
 	require.NoError(t, err)
 
-	nbsClient := testcommon.NewNbsTestingClient(t, ctx, zoneId)
+	diskZoneID := zoneID
+	if zoneID == shardedZoneId {
+		// NBS client only knows about shards, not about shardedZoneId.
+		diskMeta, err := testcommon.GetDiskMeta(ctx, diskID1)
+		require.NoError(t, err)
+		diskZoneID = diskMeta.ZoneID
+	}
+
+	nbsClient := testcommon.NewNbsTestingClient(t, ctx, diskZoneID)
 	diskContentInfo, err := nbsClient.FillDisk(ctx, diskID1, diskSize)
 	require.NoError(t, err)
 
-	snapshotID1 := t.Name() + "1"
+	snapshotID1 := testcommon.ToResourceID(t) + "1"
 
 	reqCtx = testcommon.GetRequestContext(t, ctx)
 	operation, err = client.CreateSnapshot(reqCtx, &disk_manager.CreateSnapshotRequest{
 		Src: &disk_manager.DiskId{
-			ZoneId: zoneId,
+			ZoneId: diskZoneID,
 			DiskId: diskID1,
 		},
 		SnapshotId: snapshotID1,
@@ -746,7 +757,7 @@ func testDiskServiceCreateDiskFromSnapshotWithZoneID(t *testing.T, zoneId string
 		Size: int64(diskSize),
 		Kind: disk_manager.DiskKind_DISK_KIND_SSD,
 		DiskId: &disk_manager.DiskId{
-			ZoneId: zoneId,
+			ZoneId: zoneID,
 			DiskId: diskID2,
 		},
 	})
@@ -787,6 +798,7 @@ func testCreateDiskFromImage(
 	diskSize uint64,
 	diskFolderId string,
 	encryptionDesc *disk_manager.EncryptionDesc,
+	zoneID string,
 ) {
 
 	ctx := testcommon.NewContext()
@@ -795,7 +807,7 @@ func testCreateDiskFromImage(
 	require.NoError(t, err)
 	defer client.Close()
 
-	imageID := t.Name() + "_image"
+	imageID := testcommon.ToResourceID(t) + "_image"
 
 	diskContentInfo := testcommon.CreateImage(
 		t,
@@ -806,7 +818,7 @@ func testCreateDiskFromImage(
 		pooled,
 	)
 
-	diskID := t.Name()
+	diskID := testcommon.ToResourceID(t)
 
 	reqCtx := testcommon.GetRequestContext(t, ctx)
 	operation, err := client.CreateDisk(reqCtx, &disk_manager.CreateDiskRequest{
@@ -816,7 +828,7 @@ func testCreateDiskFromImage(
 		Size: int64(diskSize),
 		Kind: diskKind,
 		DiskId: &disk_manager.DiskId{
-			ZoneId: defaultZoneId,
+			ZoneId: zoneID,
 			DiskId: diskID,
 		},
 		FolderId:       diskFolderId,
@@ -827,7 +839,14 @@ func testCreateDiskFromImage(
 	err = internal_client.WaitOperation(ctx, client, operation.Id)
 	require.NoError(t, err)
 
-	nbsClient := testcommon.NewNbsTestingClient(t, ctx, defaultZoneId)
+	if zoneID == shardedZoneId {
+		// NBS client only knows about shards, not about shardedZoneId.
+		diskMeta, err := testcommon.GetDiskMeta(ctx, diskID)
+		require.NoError(t, err)
+		zoneID = diskMeta.ZoneID
+	}
+
+	nbsClient := testcommon.NewNbsTestingClient(t, ctx, zoneID)
 
 	if encryptionDesc != nil {
 		encryption, err := disks.PrepareEncryptionDesc(encryptionDesc)
@@ -873,27 +892,37 @@ func testCreateDiskFromImage(
 }
 
 func TestDiskServiceCreateDiskFromImage(t *testing.T) {
-	testCreateDiskFromImage(
-		t,
-		disk_manager.DiskKind_DISK_KIND_SSD,
-		32*1024*4096, // imageSize
-		false,        // pooled
-		32*1024*4096, // diskSize
-		"folder",
-		nil, // encryptionDesc
-	)
+	for _, testCase := range testCases() {
+		t.Run(testCase.name, func(t *testing.T) {
+			testCreateDiskFromImage(
+				t,
+				disk_manager.DiskKind_DISK_KIND_SSD,
+				32*1024*4096, // imageSize
+				false,        // pooled
+				32*1024*4096, // diskSize
+				"folder",
+				nil, // encryptionDesc
+				testCase.zoneId,
+			)
+		})
+	}
 }
 
 func TestDiskServiceCreateSsdNonreplDiskFromPooledImage(t *testing.T) {
-	testCreateDiskFromImage(
-		t,
-		disk_manager.DiskKind_DISK_KIND_SSD_NONREPLICATED,
-		32*1024*4096, // imageSize
-		true,         // pooled
-		262144*4096,  // diskSize
-		"folder",
-		nil, // encryptionDesc
-	)
+	for _, testCase := range testCases() {
+		t.Run(testCase.name, func(t *testing.T) {
+			testCreateDiskFromImage(
+				t,
+				disk_manager.DiskKind_DISK_KIND_SSD_NONREPLICATED,
+				32*1024*4096, // imageSize
+				true,         // pooled
+				262144*4096,  // diskSize
+				"folder",
+				nil, // encryptionDesc
+				testCase.zoneId,
+			)
+		})
+	}
 }
 
 /*
@@ -935,38 +964,50 @@ func TestDiskServiceCreateEncryptedSsdNonreplDiskFromPooledImage(t *testing.T) {
 */
 
 func TestDiskServiceCreateEncryptedSsdNonreplDiskFromImage(t *testing.T) {
-	testCreateDiskFromImage(
-		t,
-		disk_manager.DiskKind_DISK_KIND_SSD_NONREPLICATED,
-		32*1024*4096, // imageSize
-		false,        // pooled
-		262144*4096,  // diskSize
-		"folder",
-		&disk_manager.EncryptionDesc{
-			Mode: disk_manager.EncryptionMode_ENCRYPTION_AES_XTS,
-			Key: &disk_manager.EncryptionDesc_KmsKey{
-				KmsKey: &disk_manager.KmsKey{
-					KekId:        "kekid",
-					EncryptedDek: []byte("encrypteddek"),
-					TaskId:       "taskid",
+	for _, testCase := range testCases() {
+		t.Run(testCase.name, func(t *testing.T) {
+
+			testCreateDiskFromImage(
+				t,
+				disk_manager.DiskKind_DISK_KIND_SSD_NONREPLICATED,
+				32*1024*4096, // imageSize
+				false,        // pooled
+				262144*4096,  // diskSize
+				"folder",
+				&disk_manager.EncryptionDesc{
+					Mode: disk_manager.EncryptionMode_ENCRYPTION_AES_XTS,
+					Key: &disk_manager.EncryptionDesc_KmsKey{
+						KmsKey: &disk_manager.KmsKey{
+							KekId:        "kekid",
+							EncryptedDek: []byte("encrypteddek"),
+							TaskId:       "taskid",
+						},
+					},
 				},
-			},
-		},
-	)
+				testCase.zoneId,
+			)
+		})
+	}
 }
 
 func TestDiskServiceCreateSsdNonreplDiskWithDefaultEncryptionFromImage(
 	t *testing.T,
 ) {
-	testCreateDiskFromImage(
-		t,
-		disk_manager.DiskKind_DISK_KIND_SSD_NONREPLICATED,
-		32*1024*4096, // imageSize
-		false,        // pooled
-		262144*4096,  // diskSize
-		"encrypted-folder",
-		nil, // encryptionDesc
-	)
+
+	for _, testCase := range testCases() {
+		t.Run(testCase.name, func(t *testing.T) {
+			testCreateDiskFromImage(
+				t,
+				disk_manager.DiskKind_DISK_KIND_SSD_NONREPLICATED,
+				32*1024*4096, // imageSize
+				false,        // pooled
+				262144*4096,  // diskSize
+				"encrypted-folder",
+				nil, // encryptionDesc
+				testCase.zoneId,
+			)
+		})
+	}
 }
 
 ////////////////////////////////////////////////////////////////////////////////
