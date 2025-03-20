@@ -1115,6 +1115,10 @@ public:
             }
         }
 
+        STORAGE_INFO("test is going to hang");
+
+        Sleep(TDuration::Minutes(10));
+
         STORAGE_INFO("test is going to finish");
 
         CleanupTest();
