@@ -70,14 +70,14 @@ public:
         auto [result, err] = serializer->Parse(buffer);
 
         if (HasError(err)) {
-            *Response.MutableError() = std::move(err);
+            Error = std::move(err);
             return;
         }
 
         const auto& concreteProto =
             static_cast<NProto::TReadDeviceBlocksResponse&>(*result.Proto);
         if (HasError(concreteProto.GetError())) {
-            *Response.MutableError() = concreteProto.GetError();
+            Error = concreteProto.GetError();
             return;
         }
 
