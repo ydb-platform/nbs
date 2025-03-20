@@ -132,7 +132,7 @@ size_t CopyToSgList(
     size_t dstIndex = 0;
     size_t dstOffset = 0;
     size_t byteCount = 0;
-    for (; srcIndex < srcData.BuffersSize() && dstIndex < dstData.size();) {
+    while (srcIndex < srcData.BuffersSize() && dstIndex < dstData.size()) {
         const auto& src = srcData.GetBuffers(srcIndex);
         TBlockDataRef dst = dstData[dstIndex];
 
