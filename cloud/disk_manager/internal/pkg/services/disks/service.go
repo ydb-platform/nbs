@@ -3,7 +3,6 @@ package disks
 import (
 	"context"
 	"math"
-	"math/rand"
 	"strings"
 
 	"github.com/golang/protobuf/proto"
@@ -19,6 +18,7 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
 	"github.com/ydb-platform/nbs/cloud/tasks"
 	task_errors "github.com/ydb-platform/nbs/cloud/tasks/errors"
+	"github.com/ydb-platform/nbs/cloud/tasks/logging"
 	tasks_storage "github.com/ydb-platform/nbs/cloud/tasks/storage"
 )
 
@@ -178,7 +178,7 @@ func (s *service) prepareZoneId(
 	}
 
 	if diskMeta == nil {
-		return shards[rand.Intn(len(shards))], nil
+		return shards[0], nil
 	}
 
 	return diskMeta.ZoneID, nil
@@ -370,6 +370,7 @@ func (s *service) CreateDisk(
 	if err != nil {
 		return "", err
 	}
+	logging.Debug(ctx, "Chosen zone for disk %v is %v", params.Disk.DiskId, params.Disk.ZoneId)
 
 	switch src := req.Src.(type) {
 	case *disk_manager.CreateDiskRequest_SrcEmpty:

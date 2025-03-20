@@ -115,7 +115,7 @@ NbsConfig: <
         >
     >
     Zones: <
-        key: "zone-d-shard-1"
+        key: "zone-d-1"
         value: <
             Endpoints: [
                 "localhost:{nbs4_port}",
@@ -124,7 +124,7 @@ NbsConfig: <
         >
     >
     Zones: <
-        key: "zone-d-shard-2"
+        key: "zone-d-2"
         value: <
             Endpoints: [
                 "localhost:{nbs5_port}",
@@ -136,8 +136,8 @@ NbsConfig: <
         key: "zone-d"
         value: <
             Shards: [
-                "zone-d-shard-1",
-                "zone-d-shard-2"
+                "zone-d-1",
+                "zone-d-2"
             ]
         >
     >
@@ -193,11 +193,11 @@ ImagesConfig: <
             Capacity: 0
         >,
         <
-            ZoneId: "zone-d-shard-1"
+            ZoneId: "zone-d-1"
             Capacity: 0
         >,
         <
-            ZoneId: "zone-d-shard-2"
+            ZoneId: "zone-d-2"
             Capacity: 0
         >
     ]
@@ -247,7 +247,7 @@ S3Config: <
 
 DATAPLANE_CONFIG_TEMPLATE = """
 TasksConfig: <
-    ZoneIds: ["zone-a", "zone-b", "zone-c"]
+    ZoneIds: ["zone-a", "zone-b", "zone-c", "zone-d-1", "zone-d-2"]
     TaskPingPeriod: "1s"
     PollForTaskUpdatesPeriod: "1s"
     PollForTasksPeriodMin: "1s"
@@ -296,7 +296,7 @@ NbsConfig: <
         >
     >
     Zones: <
-        key: "zone-d-shard-1"
+        key: "zone-d-1"
         value: <
             Endpoints: [
                 "localhost:{nbs4_port}",
@@ -305,7 +305,7 @@ NbsConfig: <
         >
     >
     Zones: <
-        key: "zone-d-shard-2"
+        key: "zone-d-2"
         value: <
             Endpoints: [
                 "localhost:{nbs5_port}",
@@ -317,8 +317,8 @@ NbsConfig: <
         key: "zone-d"
         value: <
             Shards: [
-                "zone-d-shard-1",
-                "zone-d-shard-2"
+                "zone-d-1",
+                "zone-d-2"
             ]
         >
     >
