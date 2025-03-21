@@ -2784,11 +2784,6 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         config.SetTwoStageReadEnabled(true);
         config.SetUnalignedThreeStageWriteEnabled(true);
         config.SetMultipleStageRequestThrottlingEnabled(true);
-        config.SetSSDThrottlingEnabled(true);
-        config.SetSSDMaxReadBandwidth(maxBandwidth);
-        config.SetSSDMaxWriteBandwidth(maxBandwidth);
-        config.SetSSDMaxPostponedWeight(1);
-        config.SetSSDMaxPostponedTime(1);
 
         TTestEnv env({}, config);
         env.CreateSubDomain("nfs");
@@ -2797,27 +2792,23 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
 
         TServiceClient service(env.GetRuntime(), nodeIdx);
         const TString fs = "test";
-        const auto blockCount = 1'000;
-        service.CreateFileStore(fs, blockCount);
-
         {
-            auto resizeRequest =
-                service.CreateResizeFileStoreRequest("test", blockCount);
-            auto performanceProfile =
-                resizeRequest->Record.MutablePerformanceProfile();
-            performanceProfile->SetThrottlingEnabled(true);
-            performanceProfile->SetMaxWriteBandwidth(maxBandwidth);
-            performanceProfile->SetMaxReadBandwidth(maxBandwidth);
-            performanceProfile->SetMaxPostponedWeight(1);
-            performanceProfile->SetMaxPostponedTime(1);
-            performanceProfile->SetMaxPostponedCount(1);
-            performanceProfile->SetDefaultPostponedRequestWeight(1);
-            service.SendRequest(
-                MakeStorageServiceId(),
-                std::move(resizeRequest));
-            auto resizeResponse = service.RecvResizeFileStoreResponse();
-        }
+            const auto blockCount = 1'000;
+            auto request = service.CreateCreateFileStoreRequest(fs, blockCount);
+            {
+                auto performanceProfile =
+                    request->Record.MutablePerformanceProfile();
+                performanceProfile->SetThrottlingEnabled(true);
+                performanceProfile->SetMaxWriteBandwidth(maxBandwidth);
+                performanceProfile->SetMaxReadBandwidth(maxBandwidth);
+                performanceProfile->SetMaxPostponedWeight(1);
+                performanceProfile->SetMaxPostponedTime(1);
+                performanceProfile->SetMaxPostponedCount(1);
+                performanceProfile->SetDefaultPostponedRequestWeight(1);
+            }
 
+            auto resp = service.SendAndRecvCreateFileStore(std::move(request));
+        }
         auto headers = service.InitSession(fs, "client");
         ui64 nodeId =
             service
