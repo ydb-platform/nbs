@@ -36,6 +36,7 @@ enum {
     RDMA_PROTO_CONFIG_MISMATCH  = 2,
     RDMA_PROTO_THROTTLED        = 3,
     RDMA_PROTO_FAIL             = 4,
+    RDMA_PROTO_CANCELED         = 5,
 };
 
 enum {
