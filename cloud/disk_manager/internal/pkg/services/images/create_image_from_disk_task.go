@@ -18,7 +18,6 @@ import (
 	"github.com/ydb-platform/nbs/cloud/tasks"
 	"github.com/ydb-platform/nbs/cloud/tasks/errors"
 	"github.com/ydb-platform/nbs/cloud/tasks/headers"
-	"github.com/ydb-platform/nbs/cloud/tasks/logging"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -47,20 +46,6 @@ func (t *createImageFromDiskTask) Load(request, state []byte) error {
 
 	t.state = &protos.CreateImageFromDiskTaskState{}
 	return proto.Unmarshal(state, t.state)
-}
-
-func (t *createImageFromDiskTask) checkAndSaveRetryFailedCheckpointOption(
-	ctx context.Context,
-	execCtx tasks.ExecutionContext,
-) error {
-
-	if t.state.RetryFailedCheckpoint && !t.config.GetRetryFailedCheckpoint() {
-		logging.Info(ctx, "Task should be executed with RetryFailedCheckpoint option")
-		return errors.NewInterruptExecutionError()
-	}
-
-	t.state.RetryFailedCheckpoint = t.config.GetRetryFailedCheckpoint()
-	return execCtx.SaveState(ctx)
 }
 
 func (t *createImageFromDiskTask) run(
@@ -94,7 +79,12 @@ func (t *createImageFromDiskTask) run(
 
 	if imageMeta.Ready {
 		// Already created.
-		return imageMeta.CheckpointID, nil
+		checkpointID := imageMeta.CheckpointID
+		if checkpointID == "" {
+			// Needed for backwards compatibility.
+			checkpointID = t.request.DstImageId
+		}
+		return checkpointID, nil
 	}
 
 	checkpointID, err := common.CreateCheckpoint(
@@ -106,6 +96,7 @@ func (t *createImageFromDiskTask) run(
 		t.request.DstImageId,
 		selfTaskID,
 		diskParams.IsDiskRegistryBasedDisk,
+		t.request.RetryBrokenDRBasedDiskCheckpoint,
 	)
 	if err != nil {
 		return "", err
@@ -176,11 +167,6 @@ func (t *createImageFromDiskTask) Run(
 	execCtx tasks.ExecutionContext,
 ) error {
 
-	err := t.checkAndSaveRetryFailedCheckpointOption(ctx, execCtx)
-	if err != nil {
-		return err
-	}
-
 	disk := t.request.SrcDisk
 
 	nbsClient, err := t.nbsFactory.GetClient(ctx, disk.ZoneId)
@@ -191,11 +177,6 @@ func (t *createImageFromDiskTask) Run(
 	checkpointID, err := t.run(ctx, execCtx, nbsClient)
 	if err != nil {
 		return err
-	}
-
-	// Needed for backwards compatibility.
-	if checkpointID == "" {
-		checkpointID = t.request.DstImageId
 	}
 
 	err = configureImagePools(
@@ -227,11 +208,6 @@ func (t *createImageFromDiskTask) Cancel(
 	execCtx tasks.ExecutionContext,
 ) error {
 
-	err := t.checkAndSaveRetryFailedCheckpointOption(ctx, execCtx)
-	if err != nil {
-		return err
-	}
-
 	disk := t.request.SrcDisk
 	nbsClient, err := t.nbsFactory.GetClient(ctx, t.request.SrcDisk.ZoneId)
 	if err != nil {
@@ -245,14 +221,10 @@ func (t *createImageFromDiskTask) Cancel(
 		disk,
 		t.request.DstImageId,
 		execCtx.GetTaskID(),
+		*t.config.RetryBrokenDRBasedDiskCheckpoint,
 	)
 	if err != nil {
 		return err
-	}
-
-	// Needed for backwards compatibility.
-	if checkpointID == "" {
-		checkpointID = t.request.DstImageId
 	}
 
 	err = nbsClient.DeleteCheckpoint(ctx, disk.DiskId, checkpointID)

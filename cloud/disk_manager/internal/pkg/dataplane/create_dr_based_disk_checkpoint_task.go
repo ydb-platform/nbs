@@ -57,7 +57,7 @@ func (t *createDRBasedDiskCheckpointTask) Run(
 	}
 
 	// Proceed creating snapshot if checkpoint is ready.
-	// Retry with the same iteration if checkpoint in not ready yet.
+	// Retry with the same iteration if checkpoint is not ready yet.
 	// Retry with new iteration if checkpoint is broken.
 	err = nbsClient.EnsureCheckpointReady(
 		ctx,
@@ -111,9 +111,6 @@ func (t *createDRBasedDiskCheckpointTask) GetResponse() proto.Message {
 ////////////////////////////////////////////////////////////////////////////////
 
 func (t *createDRBasedDiskCheckpointTask) makeCheckpointID(index int) string {
-	if index == 0 {
-		return t.request.CheckpointIdPrefix
-	}
 	return fmt.Sprintf("%v_%v", t.request.CheckpointIdPrefix, index)
 }
 

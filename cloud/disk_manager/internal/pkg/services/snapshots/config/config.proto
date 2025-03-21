@@ -17,4 +17,5 @@ message SnapshotsConfig {
     optional uint32 UseS3Percentage = 6;
     optional bool UseProxyOverlayDisk = 7;
     optional bool RetryFailedCheckpoint = 8;
+    optional bool RetryBrokenDRBasedDiskCheckpoint = 9;
 }

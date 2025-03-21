@@ -22,5 +22,5 @@ message ImagesConfig {
     repeated string UseS3ForFolder = 6;
     optional uint32 UseS3Percentage = 7;
     optional bool ConfigurePoolsByDefault = 8;
-    optional bool RetryFailedCheckpoint = 9;
+    optional bool RetryBrokenDRBasedDiskCheckpoint = 9;
 }

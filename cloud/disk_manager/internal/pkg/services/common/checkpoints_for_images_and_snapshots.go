@@ -41,6 +41,7 @@ func CreateCheckpoint(
 	snapshotID string,
 	selfTaskID string,
 	isDiskRegistryBasedDisk bool,
+	retryBrokenDRBasedDiskCheckpoint bool,
 ) (string, error) {
 
 	if !isDiskRegistryBasedDisk {
@@ -53,6 +54,28 @@ func CreateCheckpoint(
 				CheckpointID: checkpointID,
 			},
 		)
+		if err != nil {
+			return "", err
+		}
+
+		return checkpointID, nil
+	}
+
+	if !retryBrokenDRBasedDiskCheckpoint {
+		checkpointID := snapshotID
+
+		err := nbsClient.CreateCheckpoint(
+			ctx,
+			nbs.CheckpointParams{
+				DiskID:       disk.DiskId,
+				CheckpointID: checkpointID,
+			},
+		)
+		if err != nil {
+			return "", err
+		}
+
+		err = nbsClient.EnsureCheckpointReady(ctx, disk.DiskId, checkpointID)
 		if err != nil {
 			return "", err
 		}
@@ -94,6 +117,7 @@ func CancelCheckpointCreation(
 	disk *types.Disk,
 	snapshotID string,
 	selfTaskID string,
+	retryBrokenDRBasedDiskCheckpoint bool,
 ) (string, error) {
 
 	diskParams, err := nbsClient.Describe(ctx, disk.DiskId)
@@ -106,6 +130,10 @@ func CancelCheckpointCreation(
 	}
 
 	if !diskParams.IsDiskRegistryBasedDisk {
+		return snapshotID, nil
+	}
+
+	if !retryBrokenDRBasedDiskCheckpoint {
 		return snapshotID, nil
 	}
 
