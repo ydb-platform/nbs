@@ -12,18 +12,15 @@ import (
 	performance_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/performance/config"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/resources"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/common"
-	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/snapshots/config"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/snapshots/protos"
 	"github.com/ydb-platform/nbs/cloud/tasks"
 	"github.com/ydb-platform/nbs/cloud/tasks/errors"
 	"github.com/ydb-platform/nbs/cloud/tasks/headers"
-	"github.com/ydb-platform/nbs/cloud/tasks/logging"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
 
 type createSnapshotFromDiskTask struct {
-	config            *config.SnapshotsConfig
 	performanceConfig *performance_config.PerformanceConfig
 	scheduler         tasks.Scheduler
 	storage           resources.Storage
@@ -45,20 +42,6 @@ func (t *createSnapshotFromDiskTask) Load(request, state []byte) error {
 
 	t.state = &protos.CreateSnapshotFromDiskTaskState{}
 	return proto.Unmarshal(state, t.state)
-}
-
-func (t *createSnapshotFromDiskTask) checkAndSaveRetryFailedCheckpointOption(
-	ctx context.Context,
-	execCtx tasks.ExecutionContext,
-) error {
-
-	if t.state.RetryFailedCheckpoint && !t.config.GetRetryFailedCheckpoint() {
-		logging.Info(ctx, "Task should be executed with RetryFailedCheckpoint option")
-		return errors.NewInterruptExecutionError()
-	}
-
-	t.state.RetryFailedCheckpoint = t.config.GetRetryFailedCheckpoint()
-	return execCtx.SaveState(ctx)
 }
 
 func (t *createSnapshotFromDiskTask) run(
@@ -104,6 +87,7 @@ func (t *createSnapshotFromDiskTask) run(
 		t.request.DstSnapshotId,
 		selfTaskID,
 		diskParams.IsDiskRegistryBasedDisk,
+		t.request.RetryBrokenDRBasedDiskCheckpoint,
 	)
 	if err != nil {
 		return "", err
@@ -175,11 +159,6 @@ func (t *createSnapshotFromDiskTask) Run(
 	execCtx tasks.ExecutionContext,
 ) error {
 
-	err := t.checkAndSaveRetryFailedCheckpointOption(ctx, execCtx)
-	if err != nil {
-		return err
-	}
-
 	disk := t.request.SrcDisk
 
 	nbsClient, err := t.nbsFactory.GetClient(ctx, disk.ZoneId)
@@ -209,11 +188,6 @@ func (t *createSnapshotFromDiskTask) Cancel(
 	execCtx tasks.ExecutionContext,
 ) error {
 
-	err := t.checkAndSaveRetryFailedCheckpointOption(ctx, execCtx)
-	if err != nil {
-		return err
-	}
-
 	disk := t.request.SrcDisk
 	nbsClient, err := t.nbsFactory.GetClient(ctx, t.request.SrcDisk.ZoneId)
 	if err != nil {
@@ -228,14 +202,10 @@ func (t *createSnapshotFromDiskTask) Cancel(
 		disk,
 		t.request.DstSnapshotId,
 		selfTaskID,
+		t.request.RetryBrokenDRBasedDiskCheckpoint,
 	)
 	if err != nil {
 		return err
-	}
-
-	// Needed for backwards compatibility.
-	if checkpointID == "" {
-		checkpointID = t.request.DstSnapshotId
 	}
 
 	err = nbsClient.DeleteCheckpoint(ctx, disk.DiskId, checkpointID)
