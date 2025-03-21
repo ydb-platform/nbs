@@ -320,17 +320,16 @@ struct TRetryPolicy final
             return false;
         }
 
-        auto timeout = state.RetryTimeout + Config->GetRetryTimeoutIncrement();
-
         if (HasProtoFlag(error.GetFlags(), NProto::EF_INSTANT_RETRIABLE) &&
             !state.DoneInstantRetry)
         {
             state.Backoff = TDuration::Zero();
             state.DoneInstantRetry = true;
-        } else {
-            state.Backoff = timeout;
+            return true;
         }
 
+        auto timeout = state.RetryTimeout + Config->GetRetryTimeoutIncrement();
+        state.Backoff = timeout;
         if (IsConnectionError(error) &&
             state.Backoff > Config->GetConnectionErrorMaxRetryTimeout())
         {
