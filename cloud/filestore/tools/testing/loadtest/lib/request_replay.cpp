@@ -188,10 +188,11 @@ IReplayRequestGenerator::ExecuteNextRequest()
                 MessagePtr->GetRequests()[--EventMessageNumber];
             {
                 ++MessagesProcessed;
-                ui64 timediff =
-                    (request.GetTimestampMcs() - TimestampMicroSeconds) *
-                    Spec.GetTimeScale();
-                TimestampMicroSeconds = request.GetTimestampMcs();
+                i64 timediff = (static_cast<i64>(request.GetTimestampMcs()) -
+                                TimestampMicroSeconds) *
+                               Spec.GetTimeScale();
+                TimestampMicroSeconds =
+                    static_cast<i64>(request.GetTimestampMcs());
                 const auto timestampSeconds =
                     TimestampMicroSeconds / OneMillion;
                 if (timediff > MaxSleepMcs) {
@@ -223,16 +224,20 @@ IReplayRequestGenerator::ExecuteNextRequest()
                             .c_str())
                 }
 
-                if (timestampSeconds < ReplayTimeFrom->Seconds()) {
+                if (timestampSeconds <
+                    static_cast<i64>(ReplayTimeFrom->Seconds()))
+                {
                     continue;
                 }
 
-                if (timestampSeconds > ReplayTimeTill->Seconds()) {
+                if (timestampSeconds >
+                    static_cast<i64>(ReplayTimeTill->Seconds()))
+                {
                     return {};
                 }
+                constexpr auto RealtimeToleratePastSeconds = 100;
+                constexpr auto RealtimeTolerateFutureSeconds = 1000;
                 if (const i64 realTimeAlignseconds = Spec.GetRealTime()) {
-                    constexpr auto RealtimeToleratePastSeconds = 100;
-                    constexpr auto RealtimeTolerateFutureSeconds = 1000;
                     const i64 alignMicroSeconds =
                         realTimeAlignseconds * OneMillion;
                     const i64 currentMicroSeconds =
@@ -273,9 +278,13 @@ IReplayRequestGenerator::ExecuteNextRequest()
                 }
 
                 const auto diff = currentInstant - Started;
-                if (timediff > diff.MicroSeconds()) {
+                if (timediff > static_cast<i64>(diff.MicroSeconds())) {
                     auto sleep =
                         TDuration::MicroSeconds(timediff - diff.MicroSeconds());
+
+                    if (sleep.Seconds() > RealtimeTolerateFutureSeconds) {
+                        return {};
+                    }
                     STORAGE_DEBUG(
                         "Sleep=%lu timediff=%lu diff=%lu",
                         sleep.MicroSeconds(),
