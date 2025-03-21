@@ -74,7 +74,6 @@ TPermissionList GetRequestPermissions(EBlockStoreRequest requestType)
         case EBlockStoreRequest::ZeroBlocks:
         case EBlockStoreRequest::ReadBlocksLocal:
         case EBlockStoreRequest::WriteBlocksLocal:
-        case EBlockStoreRequest::CheckRange:
             return CreatePermissionList({});
 
         case EBlockStoreRequest::MountVolume:

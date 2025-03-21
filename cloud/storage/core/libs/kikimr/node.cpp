@@ -388,11 +388,16 @@ TRegisterDynamicNodeResult RegisterDynamicNode(
     TVector<TString> addrs;
     if (options.NodeBrokerAddress) {
         addrs.push_back(options.NodeBrokerAddress);
-    } else if (options.NodeBrokerPort) {
-        for (const auto& node: nsConfig.GetNode()) {
-            addrs.emplace_back(Join(":", node.GetHost(), options.NodeBrokerPort));
+    } else {
+        auto port = options.UseNodeBrokerSsl && options.NodeBrokerSecurePort
+            ? options.NodeBrokerSecurePort
+            : options.NodeBrokerPort;
+        if (port) {
+            for (const auto& node: nsConfig.GetNode()) {
+                addrs.emplace_back(Join(":", node.GetHost(), port));
+            }
+            Shuffle(addrs.begin(), addrs.end());
         }
-        Shuffle(addrs.begin(), addrs.end());
     }
 
     if (!addrs) {

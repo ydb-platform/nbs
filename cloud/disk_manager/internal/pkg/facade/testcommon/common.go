@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -365,28 +366,29 @@ func RequireCheckpointsDoNotExist(
 	require.Empty(t, checkpoints)
 }
 
-func WaitForCheckpointsDoNotExist(
+func WaitForCheckpointDoesNotExist(
 	t *testing.T,
 	ctx context.Context,
 	diskID string,
+	checkpointID string,
 ) {
 
 	nbsClient := NewNbsTestingClient(t, ctx, "zone-a")
+	ticker := time.NewTicker(time.Millisecond * 100)
+	defer ticker.Stop()
 
-	for {
+	for range ticker.C {
 		checkpoints, err := nbsClient.GetCheckpoints(ctx, diskID)
 		require.NoError(t, err)
 
-		if len(checkpoints) == 0 {
+		if !slices.Contains(checkpoints, checkpointID) {
 			return
 		}
 
-		logging.Warn(
+		logging.Debug(
 			ctx,
-			"WaitForCheckpointsDoNotExist proceeding to next iteration",
+			"WaitForCheckpointDoesNotExist proceeding to next iteration",
 		)
-
-		<-time.After(100 * time.Millisecond)
 	}
 }
 

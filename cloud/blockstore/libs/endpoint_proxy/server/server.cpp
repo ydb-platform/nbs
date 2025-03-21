@@ -79,12 +79,11 @@ struct TEndpoint: std::enable_shared_from_this<TEndpoint>
     NBD::IDevicePtr NbdDevice;
     std::unique_ptr<TNetworkAddress> ListenAddress;
     IProxyRequestStatsPtr RequestStats;
-
     TString UnixSocketPath;
     TString InternalUnixSocketPath;
     TString NbdDevicePath;
-
     NBD::TStorageOptions NbdOptions;
+    std::atomic<ui64> Generation = 0;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -191,16 +190,19 @@ struct TRestartAlarmContext: TRequestContextBase
 {
     std::weak_ptr<TEndpoint> Endpoint;
     grpc::ServerCompletionQueue& CQ;
+    const ui64 Generation;
     TBackoffDelayProvider Backoff;
     grpc::Alarm Alarm;
 
     TRestartAlarmContext(
             std::weak_ptr<TEndpoint> endpoint,
             grpc::ServerCompletionQueue& cq,
+            ui64 generation,
             TDuration minReconnectDelay,
             TDuration maxReconnectDelay)
         : Endpoint(std::move(endpoint))
         , CQ(cq)
+        , Generation(generation)
         , Backoff{minReconnectDelay, maxReconnectDelay}
     {
         SetAlarm();
@@ -275,27 +277,36 @@ struct TServer: IEndpointProxyServer
     {
         std::weak_ptr<TEndpoint> Endpoint;
         grpc::ServerCompletionQueue& CQ;
+        const ui64 Generation;
         TDuration ReconnectDelay;
+        std::optional<ui32> DebugRestartEventsCount;
 
         TErrorHandler(
                 std::weak_ptr<TEndpoint> endpoint,
                 grpc::ServerCompletionQueue& cq,
-                TDuration reconnectDelay)
+                ui64 generation,
+                TDuration reconnectDelay,
+                std::optional<ui32> debugRestartEventsCount)
             : Endpoint(std::move(endpoint))
             , CQ(cq)
+            , Generation(generation)
             , ReconnectDelay(reconnectDelay)
+            , DebugRestartEventsCount(debugRestartEventsCount)
         {}
 
         void ProcessException(std::exception_ptr e) override
         {
             Y_UNUSED(e);
 
-            // context will be held by grpc until CQ->Next returns it
-            new TRestartAlarmContext(
-                Endpoint,
-                CQ,
-                ReconnectDelay,
-                MAX_RECONNECT_DELAY);
+            for (ui32 i = 0; i < DebugRestartEventsCount.value_or(1); i++) {
+                // context will be held by grpc until CQ->Next returns it
+                new TRestartAlarmContext(
+                    Endpoint,
+                    CQ,
+                    Generation,
+                    ReconnectDelay,
+                    MAX_RECONNECT_DELAY);
+            }
         }
     };
 
@@ -755,9 +766,16 @@ struct TServer: IEndpointProxyServer
         response.SetNbdDevice(ep.NbdDevicePath);
 
         if (ep.NbdDevice) {
-            ep.NbdDevice->Stop(true);
-            STORAGE_INFO(request.ShortDebugString().Quote()
-                << " - Stopped NBD device");
+            auto err = ep.NbdDevice->Stop(true).GetValueSync();
+            if (HasError(err)) {
+                STORAGE_ERROR(
+                    request.ShortDebugString().Quote()
+                    << " - Failed to stop NBD device: " << err.GetCode());
+            } else {
+                STORAGE_INFO(
+                    request.ShortDebugString().Quote()
+                    << " - Stopped NBD device");
+            }
         }
 
         if (ep.ListenAddress) {
@@ -945,7 +963,9 @@ struct TServer: IEndpointProxyServer
             std::make_shared<TErrorHandler>(
                 ep.shared_from_this(),
                 *CQ,
-                Config.NbdReconnectDelay),
+                ep.Generation,
+                Config.NbdReconnectDelay,
+                Config.DebugRestartEventsCount),
             ep.NbdOptions);
 
         // TODO fix StartEndpoint signature - it's actually synchronous
@@ -977,8 +997,7 @@ struct TServer: IEndpointProxyServer
                 ep.NbdDevicePath,
                 Config.NbdRequestTimeout,
                 NBD_CONNECTION_TIMEOUT,
-                NBD_RECONFIGURE_CONNECTED,
-                Config.WithoutLibnl);
+                NBD_RECONFIGURE_CONNECTED);
         } else {
             // The only case we want kernel to retry requests is when the socket
             // is dead due to nbd server restart. And since we can't configure
@@ -1007,6 +1026,11 @@ struct TServer: IEndpointProxyServer
     bool ProcessAlarm(TRestartAlarmContext* context)
     {
         if (auto ep = context->Endpoint.lock()) {
+            if (context->Generation != ep->Generation) {
+                return false;
+            }
+            ep->Generation++;
+
             const auto tag = TStringBuilder()
                 << "UnixSocketPath: " << ep->UnixSocketPath.Quote() << " - ";
 
@@ -1026,8 +1050,13 @@ struct TServer: IEndpointProxyServer
     bool DoProcessAlarm(TEndpoint& ep, const TString& tag)
     {
         if (ep.NbdDevice) {
-            ep.NbdDevice->Stop(NBD_DELETE_DEVICE).GetValueSync();
-            STORAGE_INFO(tag << "Stopped NBD device");
+            auto err = ep.NbdDevice->Stop(NBD_DELETE_DEVICE).GetValueSync();
+            if (HasError(err)) {
+                STORAGE_ERROR(
+                    tag << "Failed to stop NBD device: " << err.GetCode());
+            } else {
+                STORAGE_INFO(tag << "Stopped NBD device");
+            }
         }
 
         if (ep.ListenAddress) {

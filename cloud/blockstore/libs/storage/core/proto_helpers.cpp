@@ -6,6 +6,8 @@
 #include <cloud/blockstore/libs/storage/model/channel_data_kind.h>
 #include <cloud/blockstore/libs/storage/protos/part.pb.h>
 
+#include <cloud/storage/core/libs/common/media.h>
+
 namespace NCloud::NBlockStore::NStorage {
 
 namespace {
@@ -274,6 +276,23 @@ bool GetThrottlingEnabled(
         default:
             return config.GetThrottlingEnabled();
     }
+}
+
+bool GetThrottlingEnabledZeroBlocks(
+    const TStorageConfig& config,
+    const NProto::TPartitionConfig& partitionConfig)
+{
+    bool throttlingEnabled = GetThrottlingEnabled(config, partitionConfig);
+
+    if (throttlingEnabled &&
+        !NCloud::IsDiskRegistryMediaKind(
+            partitionConfig.GetStorageMediaKind()) &&
+        config.GetDisableZeroBlocksThrottlingForYDBBasedDisks())
+    {
+        throttlingEnabled = false;
+    }
+
+    return throttlingEnabled;
 }
 
 ui32 GetWriteBlobThreshold(

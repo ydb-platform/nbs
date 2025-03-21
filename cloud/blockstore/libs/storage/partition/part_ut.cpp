@@ -25,6 +25,7 @@
 #include <cloud/blockstore/libs/storage/partition_common/events_private.h>
 #include <cloud/blockstore/libs/storage/testlib/test_env.h>
 #include <cloud/blockstore/libs/storage/testlib/test_runtime.h>
+#include <cloud/blockstore/libs/storage/testlib/ut_helpers.h>
 
 // TODO: invalid reference
 #include <cloud/blockstore/libs/storage/service/service_events_private.h>
@@ -939,13 +940,14 @@ public:
         return std::make_unique<TEvVolume::TEvGetScanDiskStatusRequest>();
     }
 
-    std::unique_ptr<TEvService::TEvCheckRangeRequest>
-    CreateCheckRangeRequest(TString id, ui32 startIndex, ui32 size)
+    std::unique_ptr<TEvVolume::TEvCheckRangeRequest>
+    CreateCheckRangeRequest(TString id, ui32 startIndex, ui32 size, bool calculateChecksums = false)
     {
-        auto request = std::make_unique<TEvService::TEvCheckRangeRequest>();
+        auto request = std::make_unique<TEvVolume::TEvCheckRangeRequest>();
         request->Record.SetDiskId(id);
         request->Record.SetStartIndex(startIndex);
         request->Record.SetBlocksCount(size);
+        request->Record.SetCalculateChecksums(calculateChecksums);
         return request;
     }
 
@@ -11984,8 +11986,8 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
             [&](TAutoPtr<IEventHandle>& event)
             {
                 switch (event->GetTypeRewrite()) {
-                    case TEvService::EvCheckRangeResponse: {
-                        using TEv = TEvService::TEvCheckRangeResponse;
+                    case TEvVolume::EvCheckRangeResponse: {
+                        using TEv = TEvVolume::TEvCheckRangeResponse;
                         const auto* msg = event->Get<TEv>();
                         error = msg->GetStatus();
                         status = msg->Record.GetStatus().GetCode();
@@ -12002,7 +12004,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
             const auto response = partition.CheckRange("id", idx, size);
 
             TDispatchOptions options;
-            options.FinalEvents.emplace_back(TEvService::EvCheckRangeResponse);
+            options.FinalEvents.emplace_back(TEvVolume::EvCheckRangeResponse);
             runtime->DispatchEvents(options, TDuration::Seconds(3));
 
             UNIT_ASSERT_VALUES_EQUAL(S_OK, status);
@@ -12050,8 +12052,8 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
             [&](TAutoPtr<IEventHandle>& event)
             {
                 switch (event->GetTypeRewrite()) {
-                    case TEvService::EvCheckRangeResponse: {
-                        using TEv = TEvService::TEvCheckRangeResponse;
+                    case TEvVolume::EvCheckRangeResponse: {
+                        using TEv = TEvVolume::TEvCheckRangeResponse;
                         const auto* msg = event->Get<TEv>();
                         status = msg->Record.GetStatus().GetCode();
                         error = msg->Record.GetError().GetCode();
@@ -12087,10 +12089,10 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
 
             partition.SendCheckRangeRequest("id", idx, size);
             const auto response =
-                partition.RecvResponse<TEvService::TEvCheckRangeResponse>();
+                partition.RecvResponse<TEvVolume::TEvCheckRangeResponse>();
 
             TDispatchOptions options;
-            options.FinalEvents.emplace_back(TEvService::EvCheckRangeResponse);
+            options.FinalEvents.emplace_back(TEvVolume::EvCheckRangeResponse);
 
             UNIT_ASSERT_VALUES_EQUAL(E_IO, status);
             UNIT_ASSERT_VALUES_EQUAL(S_OK, error);
@@ -12114,7 +12116,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         const auto response = partition.CheckRange("id", idx, size);
 
         TDispatchOptions options;
-        options.FinalEvents.emplace_back(TEvService::EvCheckRangeResponse);
+        options.FinalEvents.emplace_back(TEvVolume::EvCheckRangeResponse);
 
         runtime->DispatchEvents(options, TDuration::Seconds(1));
 
@@ -12140,14 +12142,100 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
             idx,
             bytesPerStripe / DefaultBlockSize + 1);
         const auto response =
-            partition.RecvResponse<TEvService::TEvCheckRangeResponse>();
+            partition.RecvResponse<TEvVolume::TEvCheckRangeResponse>();
 
         TDispatchOptions options;
-        options.FinalEvents.emplace_back(TEvService::EvCheckRangeResponse);
+        options.FinalEvents.emplace_back(TEvVolume::EvCheckRangeResponse);
 
         runtime->DispatchEvents(options, TDuration::Seconds(1));
 
         UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, response->GetStatus());
+    }
+
+    Y_UNIT_TEST(ShouldGetSameChecksumsWhileCheckRangeSimmilarDisks)
+    {
+        constexpr ui32 blockCount = 1024 * 1024;
+
+        auto runtime = PrepareTestActorRuntime(DefaultConfig(), blockCount);
+
+        TPartitionClient partition1(*runtime);
+        TPartitionClient partition2(*runtime);
+
+        partition1.WaitReady();
+        partition2.WaitReady();
+
+        const auto writeData = [&](TPartitionClient& partition)
+        {
+            partition.WriteBlocks(
+                TBlockRange32::MakeClosedInterval(0, 1024 * 10),
+                42);
+            partition.WriteBlocks(
+                TBlockRange32::MakeClosedInterval(1024 * 5, 1024 * 15),
+                99);
+        };
+
+        writeData(partition1);
+        writeData(partition2);
+
+        const auto response1 = partition1.CheckRange("id", 0, 1024, true);
+        const auto response2 = partition2.CheckRange("id", 0, 1024, true);
+
+        TDispatchOptions options;
+        options.FinalEvents.emplace_back(TEvVolume::EvCheckRangeResponse);
+        runtime->DispatchEvents(options, TDuration::Seconds(3));
+
+        const auto& checksums1 = response1->Record.GetChecksums();
+        const auto& checksums2 = response2->Record.GetChecksums();
+
+        ASSERT_VECTORS_EQUAL(
+            TVector<ui32>(checksums1.begin(), checksums1.end()),
+            TVector<ui32>(checksums2.begin(), checksums2.end()));
+    }
+
+    Y_UNIT_TEST(ShouldGetDifferentChecksumsWhileCheckRangeDifferentDisks)
+    {
+        constexpr ui32 blockCount = 1024 * 1024;
+
+        auto runtime = PrepareTestActorRuntime(DefaultConfig(), blockCount);
+
+        TPartitionClient partition1(*runtime);
+        TPartitionClient partition2(*runtime);
+
+        partition1.WaitReady();
+        partition2.WaitReady();
+
+        partition1.WriteBlocks(
+            TBlockRange32::MakeClosedInterval(0, 1024 * 10),
+            42);
+
+        partition2.WriteBlocks(
+            TBlockRange32::MakeClosedInterval(0, 1024 * 10),
+            99);
+
+        const auto response1 = partition1.CheckRange("id", 0, 1024, true);
+        const auto response2 = partition2.CheckRange("id", 0, 1024, true);
+
+        TDispatchOptions options;
+        options.FinalEvents.emplace_back(TEvVolume::EvCheckRangeResponse);
+        runtime->DispatchEvents(options, TDuration::Seconds(3));
+
+        const auto& checksums1 = response1->Record.GetChecksums();
+        const auto& checksums2 = response2->Record.GetChecksums();
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            checksums1.size(),
+            checksums2.size());
+
+        ui32 totalChecksums = 0;
+        ui32 differentChecksums = 0;
+        for (int i = 0; i < checksums1.size(); ++i) {
+            if (checksums1.at(i) != checksums2.at(i)) {
+                ++differentChecksums;
+            }
+            ++totalChecksums;
+        }
+
+        UNIT_ASSERT(differentChecksums*2 < totalChecksums);
     }
 }
 

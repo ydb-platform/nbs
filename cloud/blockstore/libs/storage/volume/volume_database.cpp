@@ -710,21 +710,22 @@ void TVolumeDatabase::WriteFollower(const TFollowerDiskInfo& follower)
 {
     using TTable = TVolumeSchema::FollowerDisks;
 
-    auto& operation =
-        Table<TTable>()
-            .Key(follower.Uuid)
-            .Update(
-                NIceDb::TUpdate<TTable::FollowerDiskId>(
-                    follower.FollowerDiskId),
-                NIceDb::TUpdate<TTable::ScaleUnitId>(follower.ScaleUnitId),
-                NIceDb::TUpdate<TTable::State>(
-                    static_cast<ui32>(follower.State)));
+    Table<TTable>()
+        .Key(follower.Uuid)
+        .Update(
+            NIceDb::TUpdate<TTable::FollowerDiskId>(follower.FollowerDiskId),
+            NIceDb::TUpdate<TTable::ScaleUnitId>(follower.ScaleUnitId),
+            NIceDb::TUpdate<TTable::State>(static_cast<ui32>(follower.State)));
 
     if (follower.MigrationBlockIndex) {
-        operation.Update(NIceDb::TUpdate<TTable::MigratedBlockCount>(
-            *follower.MigrationBlockIndex));
+        Table<TTable>()
+            .Key(follower.Uuid)
+            .Update(NIceDb::TUpdate<TTable::MigratedBlockCount>(
+                *follower.MigrationBlockIndex));
     } else {
-        operation.UpdateToNull<TTable::MigratedBlockCount>();
+        Table<TTable>()
+            .Key(follower.Uuid)
+            .UpdateToNull<TTable::MigratedBlockCount>();
     }
 }
 
