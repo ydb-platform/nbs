@@ -556,11 +556,11 @@ Y_UNIT_TEST_SUITE(TLaggingAgentsReplicaProxyActorTest)
                                 ProcessingRangeSize,
                                 msg->Record.GetBlocksCount() *
                                     DefaultBlockSize);
-                            constexpr ui64 RangeSize =
+                            const ui64 rangeSize =
                                 ProcessingRangeSize / DefaultBlockSize;
                             UNIT_ASSERT_VALUES_EQUAL(
                                 0,
-                                msg->Record.GetStartIndex() % RangeSize);
+                                msg->Record.GetStartIndex() % rangeSize);
                             UNIT_ASSERT_VALUES_EQUAL(
                                 env.ReplicaActors[1],
                                 event->Recipient);
@@ -582,11 +582,11 @@ Y_UNIT_TEST_SUITE(TLaggingAgentsReplicaProxyActorTest)
                             UNIT_ASSERT_VALUES_EQUAL(
                                 ProcessingRangeSize,
                                 range.Size() * DefaultBlockSize);
-                            constexpr ui64 RangeSize =
+                            const ui64 rangeSize =
                                 ProcessingRangeSize / DefaultBlockSize;
                             UNIT_ASSERT_VALUES_EQUAL(
                                 0,
-                                range.Start % RangeSize);
+                                range.Start % rangeSize);
                             UNIT_ASSERT(seenMigrationReads);
                             seenMigrationWrites = true;
                         }
