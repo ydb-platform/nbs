@@ -364,3 +364,23 @@ jobs:
       cache_update_tests: false
       sleep_after_tests: ${{ contains(github.event.pull_request.labels.*.name, 'sleep') && '7200' || '1' }}
     secrets: inherit
+  final-check:
+    name: Check run status
+    needs:
+      - build_and_test
+    runs-on: ubuntu-latest
+    if: always()
+    permissions:
+      checks: read
+      statuses: read
+    steps:
+      - name: checkout
+        uses: actions/checkout@v4
+        with:
+          sparse-checkout: '.github'
+      - name: Run final check
+        uses: ./.github/actions/final_check
+        with:
+          token: ${{ github.token }}
+          excluded: "Check for correct approvals"
+          self: "Check run status"
