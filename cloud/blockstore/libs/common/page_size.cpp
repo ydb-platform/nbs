@@ -2,7 +2,7 @@
 
 #include <unistd.h>
 
-namespace NCloud::NBlockStore::NRdma {
+namespace NCloud::NBlockStore {
 
 const size_t TPageSize::Value = TPageSize::Get();
 

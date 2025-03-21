@@ -2,7 +2,7 @@
 
 #include <cstddef>
 
-namespace NCloud::NBlockStore::NRdma {
+namespace NCloud::NBlockStore {
 
 class TPageSize
 {

@@ -1,6 +1,6 @@
 #include "storage.h"
 
-#include <cloud/blockstore/libs/rdma/impl/page_size.h>
+#include <cloud/blockstore/libs/common/page_size.h>
 #include <util/random/random.h>
 
 namespace NCloud::NBlockStore {
@@ -9,7 +9,7 @@ namespace NCloud::NBlockStore {
 
 TStorageBuffer IStorage::AllocateBuffer(size_t len)
 {
-    void* p = aligned_alloc(NRdma::TPageSize::Value, len);
+    void* p = aligned_alloc(TPageSize::Value, len);
     return { static_cast<char*>(p), free };
 }
 

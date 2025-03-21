@@ -7,7 +7,6 @@ SRCS(
     event.cpp
     list.cpp
     log.cpp
-    page_size.cpp
     poll.cpp
     rcu.cpp
     server.cpp

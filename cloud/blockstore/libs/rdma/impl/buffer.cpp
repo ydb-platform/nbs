@@ -1,6 +1,6 @@
 #include "buffer.h"
-#include "page_size.h"
 
+#include <cloud/blockstore/libs/common/page_size.h>
 #include <util/generic/intrlist.h>
 #include <util/system/align.h>
 

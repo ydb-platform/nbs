@@ -5,7 +5,7 @@
 #include <util/system/align.h>
 #include <util/system/error.h>
 #include <util/thread/lfstack.h>
-#include <cloud/blockstore/libs/rdma/impl/page_size.h>
+#include <cloud/blockstore/libs/common/page_size.h>
 
 #include <stdlib.h>
 
@@ -26,7 +26,7 @@ class TBufferPool final
     : public IAllocator
 {
 private:
-    const size_t PageSize = NRdma::TPageSize::Value;
+    const size_t PageSize = TPageSize::Value;
     static constexpr size_t NumBuckets = 1024;
     static constexpr size_t MaxSmallAlloc = 32*1024;
 

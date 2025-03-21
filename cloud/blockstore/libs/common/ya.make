@@ -8,6 +8,7 @@ SRCS(
     caching_allocator.cpp
     device_path.cpp
     iovector.cpp
+    page_size.cpp
     typeinfo.cpp
 )
 
