@@ -105,7 +105,7 @@ class _Base(object):
     def __init__(self, endpoint, timeout):
 
         self.__endpoint = endpoint
-        self.__client_id = str(uuid.uuid4())
+        self.__client_id = uuid.uuid4().bytes
 
         self.__timeout = DEFAULT_REQUEST_TIMEOUT
         if timeout is not None:
