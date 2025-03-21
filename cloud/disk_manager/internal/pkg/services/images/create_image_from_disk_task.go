@@ -227,9 +227,11 @@ func (t *createImageFromDiskTask) Cancel(
 		return err
 	}
 
-	err = nbsClient.DeleteCheckpoint(ctx, disk.DiskId, checkpointID)
-	if err != nil {
-		return err
+	if checkpointID != "" {
+		err = nbsClient.DeleteCheckpoint(ctx, disk.DiskId, checkpointID)
+		if err != nil {
+			return err
+		}
 	}
 
 	return deleteImage(
