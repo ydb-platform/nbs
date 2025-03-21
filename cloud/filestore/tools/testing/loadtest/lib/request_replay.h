@@ -29,6 +29,9 @@ protected:
     // Do not sleep too much if timestamps in log are broken
     i64 MaxSleepUs = 1000000;
 
+    std::optional<TInstant> ReplayTimeFrom;
+    std::optional<TInstant> ReplayTimeTill;
+
 private:
     THolder<NEventLog::IIterator> CurrentEvent;
     TConstEventPtr EventPtr;

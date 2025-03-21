@@ -35,8 +35,26 @@ IReplayRequestGenerator::IReplayRequestGenerator(
         MaxSleepUs = sleep;
     }
 
+    if (Spec.GetReplayTimeFrom()) {
+        ReplayTimeFrom.emplace();
+        if (!TInstant::TryParseIso8601(
+                Spec.GetReplayTimeFrom(),
+                ReplayTimeFrom.value()))
+        {
+            ReplayTimeFrom.reset();
+        }
+    }
 
-    
+    if (Spec.GetReplayTimeTill()) {
+        ReplayTimeTill.emplace();
+        if (!TInstant::TryParseIso8601(
+                Spec.GetReplayTimeTill(),
+                ReplayTimeTill.value()))
+        {
+            ReplayTimeTill.reset();
+        }
+    }
+
     CurrentEvent = CreateIterator(options);
     NextStatusAt = TInstant::Now() + StatusEverySeconds;
 }
@@ -153,6 +171,7 @@ IReplayRequestGenerator::ExecuteNextRequest()
     if (!HasNextRequest()) {
         return {};
     }
+    constexpr auto OneMillion = 1000000LL;
 
     for (; EventPtr; Advance()) {
         if (!MessagePtr) {
@@ -168,6 +187,8 @@ IReplayRequestGenerator::ExecuteNextRequest()
                     (request.GetTimestampMcs() - TimestampMicroSeconds) *
                     Spec.GetTimeScale();
                 TimestampMicroSeconds = request.GetTimestampMcs();
+                const auto timestampSeconds =
+                    TimestampMicroSeconds / OneMillion;
                 if (timediff > MaxSleepUs) {
                     STORAGE_DEBUG(
                         "Ignore too long timediff=%lu MaxSleepUs=%lu ",
@@ -197,10 +218,16 @@ IReplayRequestGenerator::ExecuteNextRequest()
                             .c_str())
                 }
 
+                if (timestampSeconds < ReplayTimeFrom->Seconds()) {
+                    continue;
+                }
+
+                if (timestampSeconds > ReplayTimeTill->Seconds()) {
+                    return {};
+                }
                 if (const i64 realTimeAlignseconds = Spec.GetRealTime()) {
                     constexpr auto RealtimeToleratePastSeconds = 100;
                     constexpr auto RealtimeTolerateFutureSeconds = 1000;
-                    constexpr auto OneMillion = 1000000LL;
                     const i64 alignMicroSeconds =
                         realTimeAlignseconds * OneMillion;
                     const i64 currentMicroSeconds =

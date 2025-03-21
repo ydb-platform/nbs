@@ -109,6 +109,9 @@ message TReplaySpec
     // Synchronize replay with real time, value - seconds for align: use 86400 (day)
     uint64 RealTime = 12;
     int64 RealTimeOffset = 13;
+
+    string ReplayTimeFrom = 14; // 2025-02-04T13:58:29.572778Z
+    string ReplayTimeTill = 15;
 }
 
 message TMigrationSpec
