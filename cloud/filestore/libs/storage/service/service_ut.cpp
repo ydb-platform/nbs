@@ -2876,7 +2876,6 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
                     std ::move(request));
                 auto response =
                     service.RecvResponse<TEvService ::TEvReadDataResponse>();
-                    DUMP(response->GetError().GetCode(), E_FS_THROTTLED);
                 if (response->GetError().GetCode() == E_FS_THROTTLED) {
                     ++throttled;
                 }
