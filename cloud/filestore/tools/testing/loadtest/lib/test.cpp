@@ -17,6 +17,7 @@
 #include <cloud/storage/core/libs/diagnostics/histogram.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
+#include <library/cpp/json/json_reader.h>
 #include <library/cpp/protobuf/json/proto2json.h>
 
 #include <util/datetime/base.h>
@@ -1063,6 +1064,29 @@ public:
             TargetFuture.GetValueSync();
         }
 
+        {
+            auto request = std::make_shared<NProto::TExecuteActionRequest>();
+            request->SetAction("getstoragestats");
+            request->SetInput(R"({"FileSystemId": "smoke"})");
+
+            TCallContextPtr ctx = MakeIntrusive<TCallContext>();
+            auto result = Client->ExecuteAction(ctx, request);
+            WaitForCompletion(GetRequestName(*request), result);
+
+            const auto& value = result.GetValueSync();
+            const auto& bytes = value.GetOutput();
+
+            NJson::TJsonValue jvalue;
+            NJson::ReadJsonTree(bytes, &jvalue);
+
+            auto mixedBlocksCount = jvalue["Stats"]["MixedBlocksCount"].GetInteger();
+
+            STORAGE_INFO(
+                "%s storage stats: %lld",
+                MakeTestTag().c_str(),
+                mixedBlocksCount);
+        }
+
         if (Config.HasCreateFileStoreRequest() && !Config.GetKeepFileStore()) {
             auto filesystemId =
                 Config.GetCreateFileStoreRequest().GetFileSystemId();
@@ -1114,10 +1138,6 @@ public:
                 Result.SetException(std::current_exception());
             }
         }
-
-        STORAGE_INFO("test is going to hang");
-
-        Sleep(TDuration::Minutes(10));
 
         STORAGE_INFO("test is going to finish");
 
