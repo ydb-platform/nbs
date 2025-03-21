@@ -36,10 +36,6 @@ def get_local_service_suites():
     return dict().fromkeys(get_all_suites(exclude=["mkfifo"]), [])
 
 
-def get_multishart2_suites():
-    return dict().fromkeys(get_all_suites(exclude=["mkfifo", "rmdir", "rename"]), [])
-
-
 def __run_test_suite(target_path, suite, tests, verbose=False):
     env = os.environ.copy()
 

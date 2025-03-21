@@ -4924,6 +4924,24 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
             E_FS_NOTEMPTY,
             unlinkResponse->GetError().GetCode(),
             unlinkResponse->GetError().GetMessage());
+
+        service.GetNodeAttr(headers, fsConfig.FsId, dirId, "subdir");
+
+        // unlinking the file in subdir
+        service.UnlinkNode(headers, subdirId, "file", false);
+
+        // unlinking subdir should now succeed
+        service.UnlinkNode(headers, dirId, "subdir", true);
+
+        // creating the subdir again
+        subdirId = service
+                       .CreateNode(
+                           headers,
+                           TCreateNodeArgs::Directory(dirId, "subdir"))
+                       ->Record.GetNode()
+                       .GetId();
+        // unlinking the subdir should now succeed
+        service.UnlinkNode(headers, dirId, "subdir", true);
     }
 
     SERVICE_TEST_SID_SELECT_IN_LEADER_ONLY(

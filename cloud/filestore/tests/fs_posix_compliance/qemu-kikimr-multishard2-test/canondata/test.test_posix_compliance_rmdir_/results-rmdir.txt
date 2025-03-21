@@ -1,0 +1,133 @@
+TEST SUITE[rmdir, 00.t] 1..10
+ok 1
+ok 2
+ok 3
+ok 4
+ok 5
+ok 6
+ok 7
+not ok 8
+not ok 9
+ok 10
+TEST SUITE[rmdir, 01.t] 1..14
+ok 1
+ok 2
+ok 3
+ok 4
+ok 5
+ok 6
+ok 7
+ok 8
+ok 9
+ok 10
+ok 11
+ok 12
+ok 13
+ok 14
+TEST SUITE[rmdir, 02.t] 1..4
+ok 1
+ok 2
+ok 3
+ok 4
+TEST SUITE[rmdir, 03.t] 1..12
+ok 1
+ok 2
+ok 3
+ok 4
+ok 5
+ok 6
+ok 7
+ok 8
+ok 9
+ok 10
+ok 11
+ok 12
+TEST SUITE[rmdir, 04.t] 1..4
+ok 1
+ok 2
+ok 3
+ok 4
+TEST SUITE[rmdir, 05.t] 1..6
+ok 1
+ok 2
+ok 3
+ok 4
+ok 5
+ok 6
+TEST SUITE[rmdir, 06.t] 1..20
+ok 1
+ok 2
+ok 3
+ok 4
+ok 5
+ok 6
+ok 7
+ok 8
+ok 9
+ok 10
+ok 11
+ok 12
+ok 13
+ok 14
+ok 15
+ok 16
+ok 17
+ok 18
+ok 19
+ok 20
+TEST SUITE[rmdir, 07.t] 1..10
+ok 1
+ok 2
+ok 3
+ok 4
+ok 5
+ok 6
+ok 7
+ok 8
+ok 9
+ok 10
+TEST SUITE[rmdir, 08.t] 1..10
+ok 1
+ok 2
+ok 3
+ok 4
+ok 5
+ok 6
+ok 7
+ok 8
+ok 9
+ok 10
+TEST SUITE[rmdir, 09.t] 1..1
+ok 1
+TEST SUITE[rmdir, 10.t] 1..1
+ok 1
+TEST SUITE[rmdir, 11.t] 1..15
+ok 1
+ok 2
+ok 3
+ok 4
+ok 5
+ok 6
+ok 7
+ok 8
+ok 9
+ok 10
+ok 11
+ok 12
+ok 13
+ok 14
+ok 15
+TEST SUITE[rmdir, 12.t] 1..6
+ok 1
+ok 2
+ok 3
+ok 4
+ok 5
+ok 6
+TEST SUITE[rmdir, 13.t] 1..1
+ok 1
+TEST SUITE[rmdir, 14.t] 1..1
+ok 1
+TEST SUITE[rmdir, 15.t] 1..2
+ok 1
+ok 2

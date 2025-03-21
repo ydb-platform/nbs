@@ -313,7 +313,8 @@ void TIndexTabletActor::CompleteTx_RenameNodeInDestination(
                 std::move(*op.MutableUnlinkNodeInShardRequest()),
                 args.RequestId,
                 args.OpLogEntry.GetEntryId(),
-                std::move(args.Response));
+                std::move(args.Response),
+                false);
 
             return;
         }
