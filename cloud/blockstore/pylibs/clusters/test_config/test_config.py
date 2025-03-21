@@ -55,7 +55,10 @@ def get_cluster_test_config(name: str, zone_id: str, config_path: str = None) ->
         with open(os.path.join(config_path, f'{name}.json'), 'r') as f:
             template = f.read()
     else:
-        template = resource.find(f'{name}.json').decode('utf8')
+        r = resource.find(f'{name}.json')
+        if not r:
+            raise FileNotFoundError(f"Cannot find ya.make resource with name '{name}.json'")
+        template = r.decode('utf8')
     cfg = json.loads(jinja2.Template(template).render(zone_id=zone_id))
     res = ClusterTestConfig(None, None, None, None, None)
     res.__dict__.update(cfg)
