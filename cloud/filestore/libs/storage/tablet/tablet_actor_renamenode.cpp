@@ -528,7 +528,6 @@ void TIndexTabletActor::CompleteTx_RenameNode(
                 args.RequestId,
                 args.OpLogEntry.GetEntryId(),
                 std::move(args.Response),
-                // TODO(debnatkh): fix following line
                 false);
 
             return;
