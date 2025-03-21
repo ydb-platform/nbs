@@ -112,11 +112,6 @@ func (s *service) CreateImage(
 			)
 		}
 
-		retryBrokenDRBasedDiskCheckpoint := false
-		if s.config.RetryBrokenDRBasedDiskCheckpoint != nil {
-			retryBrokenDRBasedDiskCheckpoint = *s.config.RetryBrokenDRBasedDiskCheckpoint
-		}
-
 		return s.taskScheduler.ScheduleTask(
 			ctx,
 			"images.CreateImageFromDisk",
@@ -130,7 +125,7 @@ func (s *service) CreateImage(
 				FolderId:                         req.FolderId,
 				DiskPools:                        pools,
 				UseS3:                            useS3,
-				RetryBrokenDRBasedDiskCheckpoint: retryBrokenDRBasedDiskCheckpoint,
+				RetryBrokenDRBasedDiskCheckpoint: s.config.GetRetryBrokenDRBasedDiskCheckpoint(),
 			},
 		)
 	default:
