@@ -1,0 +1,27 @@
+name: Check job statuses
+description: Fails if any non-excluded jobs in a workflow run have failed
+
+inputs:
+  token:
+    required: true
+    description: "GitHub token"
+  excluded:
+    required: false
+    description: "Comma-separated list of job names to exclude from failure check"
+    default: ""
+  self:
+    required: true
+    description: "Name of the job running this check (to be excluded automatically)"
+
+runs:
+  using: "composite"
+  steps:
+    - name: Check failed jobs
+      shell: bash
+      run: bash ${GITHUB_ACTION_PATH}/check.sh
+      env:
+        GITHUB_TOKEN: ${{ inputs.token }}
+        GITHUB_RUN_ID: ${{ github.run_id }}
+        REPO: ${{ github.repository }}
+        EXCLUDED_JOBS: ${{ inputs.excluded }}
+        SELF_JOB_NAME: ${{ inputs.self }}
