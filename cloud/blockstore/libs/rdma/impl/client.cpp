@@ -909,7 +909,7 @@ bool TClientEndpoint::HandleCancelRequests()
             auto* handler = cancelledRequest->Handler.get();
             handler->HandleResponse(
                 std::move(cancelledRequest),
-                RDMA_PROTO_CANCELED,
+                RDMA_PROTO_CANCELLED,
                 len);
             ret = true;
         }
