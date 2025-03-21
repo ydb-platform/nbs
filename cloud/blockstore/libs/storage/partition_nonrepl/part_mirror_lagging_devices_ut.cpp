@@ -875,14 +875,12 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionLaggingDevicesTest)
                 Count(readActors, env.ReplicaActors[1]));
         readActors.clear();
 
-        // Scheduled poison pill has killed the proxy actor.
-        runtime.AdvanceCurrentTime(TDuration::MilliSeconds(50));
+        // Poison pill has killed the proxy actor.
         runtime.DispatchEvents({}, TDuration::MilliSeconds(10));
         UNIT_ASSERT(!FindPtr(mirrorActorChildren, replica1Proxy));
 
         // uuid-7 is ok now.
         env.RemoveLaggingAgent("agent-7");
-        runtime.AdvanceCurrentTime(TDuration::MilliSeconds(50));
         runtime.DispatchEvents({}, TDuration::MilliSeconds(10));
         UNIT_ASSERT(FindPtr(mirrorActorChildren, replica2Proxy));
 
@@ -895,8 +893,7 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionLaggingDevicesTest)
         // uuid-8 is ok now.
         env.RemoveLaggingAgent("agent-8");
 
-        // Scheduled poison pill has killed the proxy actor.
-        runtime.AdvanceCurrentTime(TDuration::MilliSeconds(50));
+        // Poison pill has killed the proxy actor.
         runtime.DispatchEvents({}, TDuration::MilliSeconds(10));
         UNIT_ASSERT(!FindPtr(mirrorActorChildren, replica2Proxy));
     }

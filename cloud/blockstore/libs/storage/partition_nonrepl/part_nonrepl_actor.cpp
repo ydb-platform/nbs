@@ -328,7 +328,7 @@ bool TNonreplicatedPartitionActor::InitRequests(
                 PartConfig->MakeError(
                     E_REJECTED,
                     TStringBuilder() << "Device " << dr.Device.GetDeviceUUID()
-                                     << "is lagging behind on data. All IO "
+                                     << " is lagging behind on data. All IO "
                                         "operations are prohibited."));
             return false;
         }
