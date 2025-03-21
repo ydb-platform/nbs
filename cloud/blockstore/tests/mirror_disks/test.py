@@ -6,6 +6,7 @@ import time
 import yatest.common as yatest_common
 import cloud.blockstore.tests.python.lib.daemon as daemon
 
+from cloud.blockstore.public.sdk.python.client.error_codes import EResult
 from cloud.blockstore.public.sdk.python.client import CreateClient, Session
 from cloud.blockstore.public.sdk.python.protos import TCmsActionRequest, \
     TAction, STORAGE_MEDIA_SSD_MIRROR3
@@ -43,6 +44,7 @@ def start_nbs_daemon(ydb):
     cfg.generate_default_nbs_configs()
 
     storage = cfg.files['storage']
+    storage.MirroredMigrationStartAllowed = True
     storage.AllocationUnitNonReplicatedSSD = allocation_unit
     storage.AllocationUnitMirror3SSD = allocation_unit
     storage.UseNonreplicatedRdmaActor = True
@@ -72,6 +74,15 @@ def _add_host(client, agent_id):
     request = TCmsActionRequest()
     action = request.Actions.add()
     action.Type = TAction.ADD_HOST
+    action.Host = agent_id
+
+    return client.cms_action(request)
+
+
+def _remove_host(client, agent_id):
+    request = TCmsActionRequest()
+    action = request.Actions.add()
+    action.Type = TAction.REMOVE_HOST
     action.Host = agent_id
 
     return client.cms_action(request)
@@ -133,7 +144,7 @@ def _create_disk_agent_configurator(ydb, i):
     return cfg
 
 
-def test_fake_rdma_client(ydb, nbs):
+def test_m3_rdma_simple_io(ydb, nbs):
 
     disk_agent_configs = [
         _create_disk_agent_configurator(ydb, i) for i in range(3)]
@@ -164,6 +175,98 @@ def test_fake_rdma_client(ydb, nbs):
     blocks = session.read_blocks(0, 1, checkpoint_id="")
     assert len(blocks) == 1
     assert expected_data == blocks[0], "data corruption!"
+
+    session.unmount_volume()
+
+    for disk_agent in disk_agents:
+        disk_agent.kill()
+
+
+def test_m3_rdma_restart_disk_agent_during_migration(ydb, nbs):
+
+    disk_agent_configs = [
+        _create_disk_agent_configurator(ydb, i) for i in range(4)]
+
+    disk_agents = [daemon.start_disk_agent(cfg) for cfg in disk_agent_configs]
+
+    client = CreateClient(f"localhost:{nbs.port}")
+
+    for i, disk_agent in enumerate(disk_agents):
+        disk_agent.wait_for_registration()
+        _add_host(client, _get_agent_id(i))
+
+    _wait_for_devices_to_be_cleared(client, len(disk_agents))
+
+    client.create_volume(
+        disk_id="vol0",
+        block_size=DEFAULT_BLOCK_SIZE,
+        blocks_count=DEVICE_SIZE//DEFAULT_BLOCK_SIZE,
+        storage_media_kind=STORAGE_MEDIA_SSD_MIRROR3)
+
+    session = Session(client, "vol0", "")
+    volume = session.mount_volume()['Volume']
+
+    assert len(volume.Devices) == 1
+    agent_id = volume.Devices[0].AgentId
+    assert len(agent_id) > 0
+    source_device_id = volume.Devices[0].DeviceUUID
+    assert len(source_device_id) > 0
+
+    # start migration
+
+    response = _remove_host(client, agent_id)
+    assert len(response.ActionResults) == 1
+    assert response.ActionResults[0].Result.Code == EResult.E_TRY_AGAIN.value
+    assert len(response.ActionResults[0].DependentDisks) == 1
+    assert response.ActionResults[0].DependentDisks[0] == "vol0/0"
+
+    while True:
+        response = client.describe_volume("vol0")
+        if len(response.Migrations) == 1:
+            break
+
+    assert response.Migrations[0].SourceDeviceId == source_device_id
+
+    # kill the agent
+    agent_idx = -1
+    for i, disk_agent in enumerate(disk_agents):
+        if _get_agent_id(i) == agent_id:
+            agent_idx = i
+            break
+
+    assert agent_idx != -1
+
+    disk_agents[agent_idx].kill()
+
+    # start a write request
+
+    expected_data = os.urandom(DEFAULT_BLOCK_SIZE)
+
+    start_index = 1024
+
+    future = session.write_blocks_async(start_index, [expected_data])
+    try:
+        future.result(timeout=1)
+        # we should't reach this line because of write request retries to the
+        # dead agent
+        assert False
+    except TimeoutError:
+        pass
+
+    # restart the agent
+
+    disk_agent = daemon.start_disk_agent(disk_agent_configs[agent_idx])
+    disk_agents[agent_idx] = disk_agent
+    disk_agent.wait_for_registration()
+
+    future.result()
+
+    # check
+
+    for i in range(3):
+        blocks = session.read_blocks(start_index, 1, checkpoint_id="")
+        assert len(blocks) == 1
+        assert expected_data == blocks[0], f"data corruption! #{i}"
 
     session.unmount_volume()
 

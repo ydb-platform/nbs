@@ -6,6 +6,7 @@
    cloud/vm                   \
    cloud/contrib              \
    cloud/disk_manager         \
+   contrib/ydb/core/protos    \
    contrib/ydb/library/actors \
    contrib/libs/libxslt       \
    example                    \

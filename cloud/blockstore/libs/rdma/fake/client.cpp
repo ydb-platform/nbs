@@ -441,10 +441,82 @@ private:
                 TEvDiskAgent::TEvChecksumDeviceBlocksResponse,
                 HandleChecksumDeviceBlocksResponse);
 
+            HFunc(
+                TEvDiskAgent::TEvReadDeviceBlocksRequest,
+                HandleReadUndelivery);
+            HFunc(
+                TEvDiskAgent::TEvWriteDeviceBlocksRequest,
+                HandleWriteUndelivery);
+            HFunc(
+                TEvDiskAgent::TEvZeroDeviceBlocksRequest,
+                HandleZeroUndelivery);
+            HFunc(
+                TEvDiskAgent::TEvChecksumDeviceBlocksRequest,
+                HandleChecksumUndelivery);
+
             default:
-                HandleUnexpectedEvent(ev, TBlockStoreComponents::RDMA);
+                HandleUnexpectedEvent(
+                    ev,
+                    TBlockStoreComponents::RDMA,
+                    __PRETTY_FUNCTION__);
                 break;
         }
+    }
+
+    void HandleReadUndelivery(
+        const TEvDiskAgent::TEvReadDeviceBlocksRequest::TPtr& ev,
+        const TActorContext& ctx)
+    {
+        Y_UNUSED(ev);
+
+        AbortRequest(
+            std::move(Request),
+            E_REJECTED,
+            "ReadDeviceBlocks request undelivered");
+
+        Die(ctx);
+    }
+
+    void HandleWriteUndelivery(
+        const TEvDiskAgent::TEvWriteDeviceBlocksRequest::TPtr& ev,
+        const TActorContext& ctx)
+    {
+        Y_UNUSED(ev);
+
+        AbortRequest(
+            std::move(Request),
+            E_REJECTED,
+            "WriteDeviceBlocks request undelivered");
+
+        Die(ctx);
+    }
+
+    void HandleZeroUndelivery(
+        const TEvDiskAgent::TEvZeroDeviceBlocksRequest::TPtr& ev,
+        const TActorContext& ctx)
+    {
+        Y_UNUSED(ev);
+
+        AbortRequest(
+            std::move(Request),
+            E_REJECTED,
+            "ZeroDeviceBlocks request undelivered");
+
+        Die(ctx);
+    }
+
+    void HandleChecksumUndelivery(
+        const TEvDiskAgent::TEvChecksumDeviceBlocksRequest::TPtr& ev,
+        const TActorContext& ctx)
+    {
+        Y_UNUSED(ev);
+
+        AbortRequest(
+            std::move(Request),
+            E_REJECTED,
+            "ChecksumDeviceBlocks request undelivered");
+
+        Die(ctx);
     }
 
     void HandleWakeup(
@@ -617,7 +689,10 @@ private:
 
             HFunc(TEvents::TEvWakeup, HandleWakeup);
             default:
-                HandleUnexpectedEvent(ev, TBlockStoreComponents::RDMA);
+                HandleUnexpectedEvent(
+                    ev,
+                    TBlockStoreComponents::RDMA,
+                    __PRETTY_FUNCTION__);
                 break;
         }
     }
@@ -664,9 +739,15 @@ private:
 class TFakeRdmaClientActor
     : public TActor<TFakeRdmaClientActor>
 {
+    struct TEndpoint
+    {
+        ui32 NodeId = 0;
+        ui32 Refs = 0;
+    };
+
 private:
     IActorSystemPtr ActorSystem;
-    THashMap<TString, ui32> AgentIdToNodeId;
+    THashMap<TString, TEndpoint> Endpoints;
 
 public:
     explicit TFakeRdmaClientActor(IActorSystemPtr actorSystem)
@@ -692,7 +773,10 @@ private:
             HFunc(TEvFakeRdmaClient::TEvUpdateNodeId, HandleUpdateNodeId);
 
             default:
-                HandleUnexpectedEvent(ev, TBlockStoreComponents::RDMA);
+                HandleUnexpectedEvent(
+                    ev,
+                    TBlockStoreComponents::RDMA,
+                    __PRETTY_FUNCTION__);
                 break;
         }
     }
@@ -717,8 +801,15 @@ private:
             TBlockStoreComponents::RDMA,
             "Start endpoint for " << msg->AgentId.Quote());
 
-        const ui32 nodeId = AgentIdToNodeId[msg->AgentId];
-        if (!nodeId) {
+        TEndpoint& ep = Endpoints[msg->AgentId];
+        ++ep.Refs;
+
+        if (ep.Refs == 1) {
+            LOG_INFO_S(
+                ctx,
+                TBlockStoreComponents::RDMA,
+                "Endpoint for " << msg->AgentId.Quote() << " is started");
+
             UpdateNodeId(ctx, msg->AgentId);
         }
 
@@ -739,7 +830,21 @@ private:
             TBlockStoreComponents::RDMA,
             "Stop endpoint for " << msg->AgentId.Quote());
 
-        AgentIdToNodeId.erase(msg->AgentId);
+        auto it = Endpoints.find(msg->AgentId);
+        if (it != Endpoints.end()) {
+            TEndpoint& ep = it->second;
+            Y_ABORT_UNLESS(ep.Refs > 0);
+
+            if (--ep.Refs == 0) {
+                LOG_INFO_S(
+                    ctx,
+                    TBlockStoreComponents::RDMA,
+                    "Endpoint for " << msg->AgentId.Quote() << " is stopped");
+
+                Endpoints.erase(it);
+            }
+        }
+
         msg->Promise.SetValue();
     }
 
@@ -749,29 +854,30 @@ private:
     {
         auto* msg = ev->Get();
 
-        auto it = AgentIdToNodeId.find(msg->AgentId);
-        if (it == AgentIdToNodeId.end()) {
+        TEndpoint* ep = Endpoints.FindPtr(msg->AgentId);
+        if (!ep) {
             AbortRequest(
                 std::move(msg->Request),
                 E_RDMA_UNAVAILABLE,
-                "endpoint is unavailable");
+                TStringBuilder() << "endpoint for " << msg->AgentId.Quote()
+                                 << " is not started");
 
             return;
         }
 
-        const ui32 nodeId = it->second;
-        if (!nodeId) {
+        if (!ep->NodeId) {
             AbortRequest(
                 std::move(msg->Request),
                 E_REJECTED,
-                "node id for the agent is resolving");
+                TStringBuilder() << "node id for " << msg->AgentId.Quote()
+                                 << " is not resolved yet");
 
             return;
         }
 
         NCloud::Register<TExecuteRequestActor>(
             ctx,
-            nodeId,
+            ep->NodeId,
             std::move(msg->Request),
             std::move(msg->CallContext));
     }
@@ -788,17 +894,18 @@ private:
                 TBlockStoreComponents::RDMA,
                 "Can't update node id for " << msg->AgentId.Quote() << ": "
                                             << FormatError(msg->GetError()));
-        } else {
+            return;
+        }
+
+        TEndpoint* ep = Endpoints.FindPtr(msg->AgentId);
+        if (ep) {
             LOG_INFO_S(
                 ctx,
                 TBlockStoreComponents::RDMA,
                 "Update node id for " << msg->AgentId.Quote() << ": #"
                                       << msg->NodeId);
-        }
 
-        auto it = AgentIdToNodeId.find(msg->AgentId);
-        if (it != AgentIdToNodeId.end()) {
-            it->second = msg->NodeId;
+            ep->NodeId = msg->NodeId;
         }
     }
 };

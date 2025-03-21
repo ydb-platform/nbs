@@ -74,6 +74,7 @@ NYdbStats::TYdbRow BuildStatsForUpload(
     out.StorageMediaKind =
         static_cast<ui64>(volume.VolumeInfo.GetStorageMediaKind());
     out.HostName = FQDNHostName();
+    out.VolumeTabletId = volume.VolumeTabletId;
 
     const auto& disk = volume.PerfCounters;
 
@@ -104,6 +105,7 @@ NYdbStats::TYdbRow BuildStatsForUpload(
 #define BLOCKSTORE_SIMPLE_COUNTER(counter)                                     \
         out.counter = disk.VolumeSelfCounters.Simple.counter.Value;            \
 //  BLOCKSTORE_SIMPLE_COUNTER
+
     BLOCKSTORE_SIMPLE_COUNTER(MaxReadBandwidth);
     BLOCKSTORE_SIMPLE_COUNTER(MaxWriteBandwidth);
     BLOCKSTORE_SIMPLE_COUNTER(MaxReadIops);
