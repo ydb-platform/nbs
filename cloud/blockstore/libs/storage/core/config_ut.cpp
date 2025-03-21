@@ -163,6 +163,130 @@ Y_UNIT_TEST_SUITE(TConfigTest)
             defaultConfig->GetSchemeShardDir(),
             config->GetSchemeShardDir());
     }
+
+    Y_UNIT_TEST(ShouldCalcLinkedDisksBandwidthWithoutConfig)
+    {
+        using EStorageMediaKind = NCloud::NProto::EStorageMediaKind;
+        NProto::TStorageServiceConfig globalConfigProto;
+        auto globalConfig = std::make_shared<TStorageConfig>(
+            globalConfigProto,
+            std::make_shared<NFeatures::TFeaturesConfig>());
+        auto ssdToSsd = GetLinkedDiskFillBandwidth(
+            *globalConfig,
+            EStorageMediaKind::STORAGE_MEDIA_SSD,
+            EStorageMediaKind::STORAGE_MEDIA_SSD);
+
+        UNIT_ASSERT_VALUES_EQUAL(100, ssdToSsd.Bandwidth);
+        UNIT_ASSERT_VALUES_EQUAL(1, ssdToSsd.IoDepth);
+    }
+
+    Y_UNIT_TEST(ShouldCalcLinkedDisksBandwidthWithDefault)
+    {
+        using EStorageMediaKind = NCloud::NProto::EStorageMediaKind;
+        NProto::TStorageServiceConfig globalConfigProto;
+        {
+            NProto::TLinkedDiskFillBandwidth defaultBandwidth;
+            defaultBandwidth.SetReadBandwidth(200);
+            defaultBandwidth.SetReadIoDepth(2);
+            defaultBandwidth.SetWriteBandwidth(300);
+            defaultBandwidth.SetWriteIoDepth(3);
+            globalConfigProto.MutableLinkedDiskFillBandwidth()->Add(
+                std::move(defaultBandwidth));
+        }
+
+        auto globalConfig = std::make_shared<TStorageConfig>(
+            globalConfigProto,
+            std::make_shared<NFeatures::TFeaturesConfig>());
+
+        auto ssdToSsd = GetLinkedDiskFillBandwidth(
+            *globalConfig,
+            EStorageMediaKind::STORAGE_MEDIA_SSD,
+            EStorageMediaKind::STORAGE_MEDIA_SSD);
+        UNIT_ASSERT_VALUES_EQUAL(200, ssdToSsd.Bandwidth);
+        UNIT_ASSERT_VALUES_EQUAL(2, ssdToSsd.IoDepth);
+
+        auto ssdToHdd = GetLinkedDiskFillBandwidth(
+            *globalConfig,
+            EStorageMediaKind::STORAGE_MEDIA_SSD,
+            EStorageMediaKind::STORAGE_MEDIA_HDD);
+        UNIT_ASSERT_VALUES_EQUAL(200, ssdToHdd.Bandwidth);
+        UNIT_ASSERT_VALUES_EQUAL(2, ssdToHdd.IoDepth);
+    }
+
+    Y_UNIT_TEST(ShouldCalcLinkedDisksBandwidth)
+    {
+        using EStorageMediaKind = NCloud::NProto::EStorageMediaKind;
+        NProto::TStorageServiceConfig globalConfigProto;
+        {
+            NProto::TLinkedDiskFillBandwidth defaultBandwidth;
+            defaultBandwidth.SetReadBandwidth(150);
+            defaultBandwidth.SetReadIoDepth(2);
+            defaultBandwidth.SetWriteBandwidth(200);
+            defaultBandwidth.SetWriteIoDepth(2);
+            globalConfigProto.MutableLinkedDiskFillBandwidth()->Add(
+                std::move(defaultBandwidth));
+        }
+        {
+            NProto::TLinkedDiskFillBandwidth ssdBandwidth;
+            ssdBandwidth.SetMediaKind(EStorageMediaKind::STORAGE_MEDIA_SSD);
+            ssdBandwidth.SetReadBandwidth(300);
+            ssdBandwidth.SetReadIoDepth(3);
+            ssdBandwidth.SetWriteBandwidth(300);
+            ssdBandwidth.SetWriteIoDepth(2);
+            globalConfigProto.MutableLinkedDiskFillBandwidth()->Add(
+                std::move(ssdBandwidth));
+        }
+        {
+            NProto::TLinkedDiskFillBandwidth nrdBandwidth;
+            nrdBandwidth.SetMediaKind(
+                EStorageMediaKind::STORAGE_MEDIA_SSD_NONREPLICATED);
+            nrdBandwidth.SetReadBandwidth(500);
+            nrdBandwidth.SetReadIoDepth(4);
+            nrdBandwidth.SetWriteBandwidth(400);
+            nrdBandwidth.SetWriteIoDepth(4);
+            globalConfigProto.MutableLinkedDiskFillBandwidth()->Add(
+                std::move(nrdBandwidth));
+        }
+
+        auto globalConfig = std::make_shared<TStorageConfig>(
+            globalConfigProto,
+            std::make_shared<NFeatures::TFeaturesConfig>());
+
+        {
+            auto bandwidth = GetLinkedDiskFillBandwidth(
+                *globalConfig,
+                EStorageMediaKind::STORAGE_MEDIA_SSD,
+                EStorageMediaKind::STORAGE_MEDIA_SSD);
+            UNIT_ASSERT_VALUES_EQUAL(300, bandwidth.Bandwidth);
+            UNIT_ASSERT_VALUES_EQUAL(2, bandwidth.IoDepth);
+        }
+
+        {
+            auto bandwidth = GetLinkedDiskFillBandwidth(
+                *globalConfig,
+                EStorageMediaKind::STORAGE_MEDIA_SSD,
+                EStorageMediaKind::STORAGE_MEDIA_SSD_NONREPLICATED);
+            UNIT_ASSERT_VALUES_EQUAL(300, bandwidth.Bandwidth);
+            UNIT_ASSERT_VALUES_EQUAL(3, bandwidth.IoDepth);
+        }
+
+        {
+            auto bandwidth = GetLinkedDiskFillBandwidth(
+                *globalConfig,
+                EStorageMediaKind::STORAGE_MEDIA_SSD_NONREPLICATED,
+                EStorageMediaKind::STORAGE_MEDIA_HDD);
+            UNIT_ASSERT_VALUES_EQUAL(200, bandwidth.Bandwidth);
+            UNIT_ASSERT_VALUES_EQUAL(2, bandwidth.IoDepth);
+        }
+        {
+            auto bandwidth = GetLinkedDiskFillBandwidth(
+                *globalConfig,
+                EStorageMediaKind::STORAGE_MEDIA_HDD,
+                EStorageMediaKind::STORAGE_MEDIA_SSD_NONREPLICATED);
+            UNIT_ASSERT_VALUES_EQUAL(150, bandwidth.Bandwidth);
+            UNIT_ASSERT_VALUES_EQUAL(2, bandwidth.IoDepth);
+        }
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage
