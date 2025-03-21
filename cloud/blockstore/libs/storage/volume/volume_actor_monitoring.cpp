@@ -1709,6 +1709,39 @@ void TVolumeActor::RenderLaggingStatus(IOutputStream& out) const
     }
 }
 
+void TVolumeActor::RenderLaggingStateForDevice(
+    IOutputStream& out,
+    const NProto::TDeviceConfig& d)
+{
+    const auto* stateMsg = "ok";
+    const auto* color = "green";
+    auto laggingDevices = State->GetLaggingDevices();
+
+    if (laggingDevices.contains(d.GetDeviceUUID())) {
+        stateMsg = "lagging";
+        color = "blue";
+    }
+
+    if (const auto* curMigration = State->GetCurrentlyMigratingLaggingAgent()) {
+        if (*curMigration == d.GetAgentId()) {
+            stateMsg = "migrating";
+            color = "blue";
+        }
+    }
+
+    if (State->GetNonreplicatedPartitionConfig()
+            ->GetOutdatedDeviceIds()
+            .contains(d.GetDeviceUUID()))
+    {
+        stateMsg = "outdated";
+        color = "red";
+    }
+
+    out << "<font color=" << color << ">";
+    out << stateMsg;
+    out << "</font>";
+}
+
 void TVolumeActor::RenderCommonButtons(IOutputStream& out) const
 {
     if (!State) {
@@ -1979,40 +2012,7 @@ void TVolumeActor::HandleHttpInfo_RenderNonreplPartitionInfo(
                                 if (renderLaggingState) {
                                     TABLED()
                                     {
-                                        const auto* stateMsg = "ok";
-                                        const auto* color = "green";
-
-                                        if (laggingDevices.contains(
-                                                d.GetDeviceUUID()))
-                                        {
-                                            stateMsg = "lagging";
-                                            color = "blue";
-                                        }
-
-                                        if (const auto* curMigration =
-                                                State
-                                                    ->GetCurrentlyMigratingLaggingAgent())
-                                        {
-                                            if (*curMigration ==
-                                                d.GetDeviceUUID())
-                                            {
-                                                stateMsg = "migrating";
-                                                color = "blue";
-                                            }
-                                        }
-
-                                        if (State
-                                                ->GetNonreplicatedPartitionConfig()
-                                                ->GetOutdatedDeviceIds()
-                                                .contains(d.GetDeviceUUID()))
-                                        {
-                                            stateMsg = "outdated";
-                                            color = "red";
-                                        }
-
-                                        out << "<font color=" << color << ">";
-                                        out << stateMsg;
-                                        out << "</font>";
+                                        RenderLaggingStateForDevice(out, d);
                                     }
                                 }
                             };
