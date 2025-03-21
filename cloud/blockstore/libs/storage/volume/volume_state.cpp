@@ -207,6 +207,10 @@ void TVolumeState::AddLaggingAgent(NProto::TLaggingAgent agent)
 std::optional<NProto::TLaggingAgent> TVolumeState::RemoveLaggingAgent(
     const TString& agentId)
 {
+    if (agentId == CurrentlyMigratingLaggingAgent.value_or("")) {
+        CurrentlyMigratingLaggingAgent.reset();
+    }
+
     auto agentIdPredicate = [&agentId](const auto& info)
     {
         return info.GetAgentId() == agentId;
@@ -247,6 +251,34 @@ THashSet<TString> TVolumeState::GetLaggingDevices() const
         }
     }
     return laggingDevices;
+}
+
+void TVolumeState::UpdateLaggingAgentMigrationState(
+    TString agentId,
+    ui64 cleanBlocks,
+    ui64 dirtyBlocks)
+{
+    if (dirtyBlocks == 0) {
+        CurrentlyMigratingLaggingAgent = std::nullopt;
+        return;
+    }
+
+    CurrentlyMigratingLaggingAgent = std::move(agentId);
+    Progress.CleanBlocks = cleanBlocks;
+    Progress.DirtyBlocks = dirtyBlocks;
+}
+
+const TString* TVolumeState::GetCurrentlyMigratingLaggingAgent()
+{
+    return CurrentlyMigratingLaggingAgent
+               ? &CurrentlyMigratingLaggingAgent.value()
+               : nullptr;
+}
+
+TVolumeState::TLaggingAgentMigrationProgress
+TVolumeState::GetLaggingAgentMigrationProgres()
+{
+    return Progress;
 }
 
 void TVolumeState::ResetMeta(NProto::TVolumeMeta meta)

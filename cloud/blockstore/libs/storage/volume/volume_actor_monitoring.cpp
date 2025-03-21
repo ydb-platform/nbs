@@ -139,7 +139,7 @@ IOutputStream& operator <<(
 ////////////////////////////////////////////////////////////////////////////////
 
 void OutputProgress(
-    ui64 blocks,
+    std::optional<ui64> blocks,
     ui64 totalBlocks,
     ui32 blockSize,
     std::optional<ui64> blocksToProcess,
@@ -163,7 +163,12 @@ void OutputProgress(
         }
     }
 
-    out << blocks << " (<font color=green>" << processedSize
+    TString index = "?";
+    if(blocks) {
+        index = ToString(blocks.value());
+    }
+
+    out << index << " (<font color=green>" << processedSize
         << "</font> + <font color=red>" << sizeToProcess
         << "</font> = " << totalSize << ", " << readyPercent << "%)";
 }
@@ -1665,6 +1670,42 @@ void TVolumeActor::RenderLaggingStatus(IOutputStream& out) const
                 out << statusText;
             }
         }
+
+        if (!State->HasLaggingAgents() ||
+            !State->GetCurrentlyMigratingLaggingAgent())
+        {
+            return;
+        }
+
+        const auto [cleanBlocks, dirtyBlocks] =
+            State->GetLaggingAgentMigrationProgres();
+        const auto blockSize = State->GetBlockSize();
+
+        TABLE_SORTABLE_CLASS("table table-condensed")
+        {
+            TABLEHEAD()
+            {
+                TABLER()
+                {
+                    TABLED()
+                    {
+                        out << "Lagging agent "
+                            << State->GetCurrentlyMigratingLaggingAgent()
+                                   ->Quote()
+                            << " migration progress: ";
+                    }
+                    TABLED()
+                    {
+                        OutputProgress(
+                            std::nullopt,
+                            cleanBlocks + dirtyBlocks,
+                            blockSize,
+                            dirtyBlocks,
+                            out);
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -1946,6 +1987,18 @@ void TVolumeActor::HandleHttpInfo_RenderNonreplPartitionInfo(
                                         {
                                             stateMsg = "lagging";
                                             color = "blue";
+                                        }
+
+                                        if (const auto* curMigration =
+                                                State
+                                                    ->GetCurrentlyMigratingLaggingAgent())
+                                        {
+                                            if (*curMigration ==
+                                                d.GetDeviceUUID())
+                                            {
+                                                stateMsg = "migrating";
+                                                color = "blue";
+                                            }
                                         }
 
                                         if (State

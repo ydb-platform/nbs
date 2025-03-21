@@ -275,7 +275,7 @@ void TVolumeActor::HandleUpdateLaggingAgentMigrationState(
     const TEvVolumePrivate::TEvUpdateLaggingAgentMigrationState::TPtr& ev,
     const TActorContext& ctx)
 {
-    const auto* msg = ev->Get();
+    auto* msg = ev->Get();
     LOG_INFO(
         ctx,
         TBlockStoreComponents::VOLUME,
@@ -285,7 +285,10 @@ void TVolumeActor::HandleUpdateLaggingAgentMigrationState(
         msg->CleanBlockCount,
         msg->CleanBlockCount + msg->DirtyBlockCount);
 
-    // TODO(komarevtsev-d): Show the progress on the mon page.
+    State->UpdateLaggingAgentMigrationState(
+        std::move(msg->AgentId),
+        msg->CleanBlockCount,
+        msg->DirtyBlockCount);
 }
 
 void TVolumeActor::HandleLaggingAgentMigrationFinished(
