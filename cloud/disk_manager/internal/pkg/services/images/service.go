@@ -121,10 +121,11 @@ func (s *service) CreateImage(
 					ZoneId: src.SrcDiskId.ZoneId,
 					DiskId: src.SrcDiskId.DiskId,
 				},
-				DstImageId: req.DstImageId,
-				FolderId:   req.FolderId,
-				DiskPools:  pools,
-				UseS3:      useS3,
+				DstImageId:                       req.DstImageId,
+				FolderId:                         req.FolderId,
+				DiskPools:                        pools,
+				UseS3:                            useS3,
+				RetryBrokenDRBasedDiskCheckpoint: s.config.GetRetryBrokenDRBasedDiskCheckpoint(),
 			},
 		)
 	default:
