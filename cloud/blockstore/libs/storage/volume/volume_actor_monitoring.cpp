@@ -139,7 +139,7 @@ IOutputStream& operator <<(
 ////////////////////////////////////////////////////////////////////////////////
 
 void OutputProgress(
-    ui64 blocks,
+    std::optional<ui64> blocks,
     ui64 totalBlocks,
     ui32 blockSize,
     std::optional<ui64> blocksToProcess,
@@ -163,7 +163,12 @@ void OutputProgress(
         }
     }
 
-    out << blocks << " (<font color=green>" << processedSize
+    TString index = "?";
+    if(blocks) {
+        index = ToString(blocks.value());
+    }
+
+    out << index << " (<font color=green>" << processedSize
         << "</font> + <font color=red>" << sizeToProcess
         << "</font> = " << totalSize << ", " << readyPercent << "%)";
 }
@@ -1665,7 +1670,76 @@ void TVolumeActor::RenderLaggingStatus(IOutputStream& out) const
                 out << statusText;
             }
         }
+
+        if (!State->HasLaggingAgents() ||
+            !State->GetCurrentlyMigratingLaggingAgent())
+        {
+            return;
+        }
+
+        const auto [cleanBlocks, dirtyBlocks] =
+            State->GetLaggingAgentMigrationProgres();
+        const auto blockSize = State->GetBlockSize();
+
+        TABLE_SORTABLE_CLASS("table table-condensed")
+        {
+            TABLEHEAD()
+            {
+                TABLER()
+                {
+                    TABLED()
+                    {
+                        out << "Lagging agent "
+                            << State->GetCurrentlyMigratingLaggingAgent()
+                                   ->Quote()
+                            << " migration progress: ";
+                    }
+                    TABLED()
+                    {
+                        OutputProgress(
+                            std::nullopt,
+                            cleanBlocks + dirtyBlocks,
+                            blockSize,
+                            dirtyBlocks,
+                            out);
+                    }
+                }
+            }
+        }
     }
+}
+
+void TVolumeActor::RenderLaggingStateForDevice(
+    IOutputStream& out,
+    const NProto::TDeviceConfig& d)
+{
+    const auto* stateMsg = "ok";
+    const auto* color = "green";
+    auto laggingDevices = State->GetLaggingDevices();
+
+    if (laggingDevices.contains(d.GetDeviceUUID())) {
+        stateMsg = "lagging";
+        color = "blue";
+    }
+
+    if (const auto* curMigration = State->GetCurrentlyMigratingLaggingAgent()) {
+        if (*curMigration == d.GetAgentId()) {
+            stateMsg = "migrating";
+            color = "blue";
+        }
+    }
+
+    if (State->GetNonreplicatedPartitionConfig()
+            ->GetOutdatedDeviceIds()
+            .contains(d.GetDeviceUUID()))
+    {
+        stateMsg = "outdated";
+        color = "red";
+    }
+
+    out << "<font color=" << color << ">";
+    out << stateMsg;
+    out << "</font>";
 }
 
 void TVolumeActor::RenderCommonButtons(IOutputStream& out) const
@@ -1938,28 +2012,7 @@ void TVolumeActor::HandleHttpInfo_RenderNonreplPartitionInfo(
                                 if (renderLaggingState) {
                                     TABLED()
                                     {
-                                        const auto* stateMsg = "ok";
-                                        const auto* color = "green";
-
-                                        if (laggingDevices.contains(
-                                                d.GetDeviceUUID()))
-                                        {
-                                            stateMsg = "lagging";
-                                            color = "blue";
-                                        }
-
-                                        if (State
-                                                ->GetNonreplicatedPartitionConfig()
-                                                ->GetOutdatedDeviceIds()
-                                                .contains(d.GetDeviceUUID()))
-                                        {
-                                            stateMsg = "outdated";
-                                            color = "red";
-                                        }
-
-                                        out << "<font color=" << color << ">";
-                                        out << stateMsg;
-                                        out << "</font>";
+                                        RenderLaggingStateForDevice(out, d);
                                     }
                                 }
                             };
