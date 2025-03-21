@@ -289,7 +289,8 @@ Y_UNIT_TEST_SUITE(TDurableClientTest)
             UNIT_ASSERT_VALUES_EQUAL(TDuration::Seconds(3), state.Backoff);
             UNIT_ASSERT(!state.DoneInstantRetry);
 
-            retry = policy->ShouldRetry(state, MakeError(E_REJECTED, "", flags));
+            retry =
+                policy->ShouldRetry(state, MakeError(E_REJECTED, "", flags));
             UNIT_ASSERT(retry);
             UNIT_ASSERT_VALUES_EQUAL(TDuration::Seconds(0), state.Backoff);
             UNIT_ASSERT(state.DoneInstantRetry);
@@ -297,13 +298,14 @@ Y_UNIT_TEST_SUITE(TDurableClientTest)
             state.Retries++;
             retry = policy->ShouldRetry(state, MakeError(E_REJECTED));
             UNIT_ASSERT(retry);
-            UNIT_ASSERT_VALUES_EQUAL(TDuration::Seconds(9), state.Backoff);
+            UNIT_ASSERT_VALUES_EQUAL(TDuration::Seconds(6), state.Backoff);
             UNIT_ASSERT(state.DoneInstantRetry);
 
             state.Retries++;
-            retry = policy->ShouldRetry(state, MakeError(E_REJECTED, "", flags));
+            retry =
+                policy->ShouldRetry(state, MakeError(E_REJECTED, "", flags));
             UNIT_ASSERT(retry);
-            UNIT_ASSERT_VALUES_EQUAL(TDuration::Seconds(12), state.Backoff);
+            UNIT_ASSERT_VALUES_EQUAL(TDuration::Seconds(9), state.Backoff);
             UNIT_ASSERT(state.DoneInstantRetry);
         }
 
@@ -341,7 +343,7 @@ Y_UNIT_TEST_SUITE(TDurableClientTest)
             retry =
                 policy->ShouldRetry(state, MakeError(E_REJECTED, "", flags));
             UNIT_ASSERT(retry);
-            UNIT_ASSERT_VALUES_EQUAL(TDuration::Seconds(12), state.Backoff);
+            UNIT_ASSERT_VALUES_EQUAL(TDuration::Seconds(9), state.Backoff);
             UNIT_ASSERT(state.DoneInstantRetry);
         }
     }

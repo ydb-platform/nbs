@@ -989,13 +989,13 @@ Y_UNIT_TEST_SUITE(TDurableClientTest)
             state.Retries++;
             spec = policy->ShouldRetry(state, MakeError(E_REJECTED));
             UNIT_ASSERT(spec.ShouldRetry);
-            UNIT_ASSERT_VALUES_EQUAL(TDuration::Seconds(9), spec.Backoff);
+            UNIT_ASSERT_VALUES_EQUAL(TDuration::Seconds(6), spec.Backoff);
             UNIT_ASSERT(state.DoneInstantRetry);
 
             state.Retries++;
             spec = policy->ShouldRetry(state, MakeError(E_REJECTED, "", flags));
             UNIT_ASSERT(spec.ShouldRetry);
-            UNIT_ASSERT_VALUES_EQUAL(TDuration::Seconds(12), spec.Backoff);
+            UNIT_ASSERT_VALUES_EQUAL(TDuration::Seconds(9), spec.Backoff);
             UNIT_ASSERT(state.DoneInstantRetry);
         }
 
@@ -1032,7 +1032,7 @@ Y_UNIT_TEST_SUITE(TDurableClientTest)
             state.Retries++;
             spec = policy->ShouldRetry(state, MakeError(E_REJECTED, "", flags));
             UNIT_ASSERT(spec.ShouldRetry);
-            UNIT_ASSERT_VALUES_EQUAL(TDuration::Seconds(12), spec.Backoff);
+            UNIT_ASSERT_VALUES_EQUAL(TDuration::Seconds(9), spec.Backoff);
             UNIT_ASSERT(state.DoneInstantRetry);
         }
     }
