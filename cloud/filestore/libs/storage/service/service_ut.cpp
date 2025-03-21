@@ -2775,7 +2775,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         // clang-format on
     }
 
-    Y_UNIT_TEST(ShouldMulipleStageThrottle)
+    Y_UNIT_TEST(ShouldThrottleMulipleStageReadsAndWrites)
     {
         const auto maxBandwidth = 10000;
         NProto::TStorageConfig config;
@@ -2787,8 +2787,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         config.SetSSDThrottlingEnabled(true);
         config.SetSSDMaxReadBandwidth(maxBandwidth);
         config.SetSSDMaxWriteBandwidth(maxBandwidth);
-        config.SetSSDMaxPostponedWeight(0);
-        config.SetSSDMaxPostponedTime(0);
+        config.SetSSDMaxPostponedWeight(1);
+        config.SetSSDMaxPostponedTime(1);
 
         TTestEnv env({}, config);
         env.CreateSubDomain("nfs");
@@ -2803,20 +2803,15 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         {
             auto resizeRequest =
                 service.CreateResizeFileStoreRequest("test", blockCount);
-            resizeRequest->Record.MutablePerformanceProfile()
-                ->SetThrottlingEnabled(true);
-            resizeRequest->Record.MutablePerformanceProfile()
-                ->SetMaxWriteBandwidth(maxBandwidth);
-            resizeRequest->Record.MutablePerformanceProfile()
-                ->SetMaxReadBandwidth(maxBandwidth);
-            resizeRequest->Record.MutablePerformanceProfile()
-                ->SetMaxPostponedWeight(0);
-            resizeRequest->Record.MutablePerformanceProfile()
-                ->SetMaxPostponedTime(0);
-            resizeRequest->Record.MutablePerformanceProfile()
-                ->SetMaxPostponedCount(0);
-            resizeRequest->Record.MutablePerformanceProfile()
-                ->SetDefaultPostponedRequestWeight(0);
+            auto performanceProfile =
+                resizeRequest->Record.MutablePerformanceProfile();
+            performanceProfile->SetThrottlingEnabled(true);
+            performanceProfile->SetMaxWriteBandwidth(maxBandwidth);
+            performanceProfile->SetMaxReadBandwidth(maxBandwidth);
+            performanceProfile->SetMaxPostponedWeight(1);
+            performanceProfile->SetMaxPostponedTime(1);
+            performanceProfile->SetMaxPostponedCount(1);
+            performanceProfile->SetDefaultPostponedRequestWeight(1);
             service.SendRequest(
                 MakeStorageServiceId(),
                 std::move(resizeRequest));
@@ -2838,53 +2833,38 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         auto& runtime = env.GetRuntime();
 
         size_t throttled = 0;
-        auto writeReadData =
-            [&](ui64 offset, ui64 size, [[maybe_unused]] ui64 expectedFilesize)
+        auto writeReadData = [&](ui64 offset, ui64 size)
         {
             auto data = GenerateValidateData(size);
             {
-                auto request = service.CreateWriteDataRequest(
+                auto response = service.SendAndRecvWriteData(
                     headers,
                     fs,
                     nodeId,
                     handle,
                     offset,
                     data);
-                request->CallContext->RequestType =
-                    EFileStoreRequest ::WriteData;
-                service.SendRequest(
-                    MakeStorageServiceId(),
-                    std ::move(request));
-                auto response =
-                    service.RecvResponse<TEvService ::TEvWriteDataResponse>();
                 if (response->GetError().GetCode() == E_FS_THROTTLED) {
                     ++throttled;
                 }
             }
             {
-                auto request = service.CreateReadDataRequest(
+                auto response = service.SendAndRecvReadData(
                     headers,
                     fs,
                     nodeId,
                     handle,
                     offset,
                     data.size());
-                request->CallContext->RequestType =
-                    EFileStoreRequest ::ReadData;
-                service.SendRequest(
-                    MakeStorageServiceId(),
-                    std ::move(request));
-                auto response =
-                    service.RecvResponse<TEvService ::TEvReadDataResponse>();
                 if (response->GetError().GetCode() == E_FS_THROTTLED) {
                     ++throttled;
                 }
             }
         };
         constexpr auto size =
-            134217728 + 1;   // Config.DefaultThresholds.MaxPostponedWeight
+            128_MB + 1;   // Config.DefaultThresholds.MaxPostponedWeight
         for (auto i = 0; i < 5; ++i) {
-            writeReadData(size * i, size, i * size);
+            writeReadData(size * i, size);
         }
 
         UNIT_ASSERT_VALUES_EQUAL(10, throttled);
