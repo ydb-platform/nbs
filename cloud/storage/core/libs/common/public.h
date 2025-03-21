@@ -19,6 +19,10 @@ namespace NProbeParam {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+#if !defined(PLATFORM_PAGE_SIZE)
+#   define PLATFORM_PAGE_SIZE 4096
+#endif
+
 #if !defined(PLATFORM_CACHE_LINE)
 #   define PLATFORM_CACHE_LINE 64
 #endif
