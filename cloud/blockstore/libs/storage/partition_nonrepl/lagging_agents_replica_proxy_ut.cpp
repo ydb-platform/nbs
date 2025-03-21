@@ -552,11 +552,12 @@ Y_UNIT_TEST_SUITE(TLaggingAgentsReplicaProxyActorTest)
                             event->Get<TEvService::TEvReadBlocksRequest>();
                         auto clientId = msg->Record.GetHeaders().GetClientId();
                         if (clientId == BackgroundOpsClientId) {
+                            UNIT_ASSERT_VALUES_EQUAL(
+                                ProcessingRangeSize,
+                                msg->Record.GetBlocksCount() *
+                                    DefaultBlockSize);
                             constexpr ui64 RangeSize =
                                 ProcessingRangeSize / DefaultBlockSize;
-                            UNIT_ASSERT_VALUES_EQUAL(
-                                ProcessingRangeSize / DefaultBlockSize,
-                                msg->Record.GetBlocksCount());
                             UNIT_ASSERT_VALUES_EQUAL(
                                 0,
                                 msg->Record.GetStartIndex() % RangeSize);
@@ -576,13 +577,13 @@ Y_UNIT_TEST_SUITE(TLaggingAgentsReplicaProxyActorTest)
                         if (msg->Record.GetHeaders().GetClientId() ==
                             BackgroundOpsClientId)
                         {
-                            constexpr ui64 RangeSize =
-                                ProcessingRangeSize / DefaultBlockSize;
                             const auto range =
                                 BuildRequestBlockRange(*msg, DefaultBlockSize);
                             UNIT_ASSERT_VALUES_EQUAL(
-                                ProcessingRangeSize / DefaultBlockSize,
-                                range.Size());
+                                ProcessingRangeSize,
+                                range.Size() * DefaultBlockSize);
+                            constexpr ui64 RangeSize =
+                                ProcessingRangeSize / DefaultBlockSize;
                             UNIT_ASSERT_VALUES_EQUAL(
                                 0,
                                 range.Start % RangeSize);
