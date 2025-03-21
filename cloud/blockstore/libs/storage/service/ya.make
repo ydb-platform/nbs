@@ -57,7 +57,6 @@ SRCS(
     service_actor_assign.cpp
     service_actor_balancer_stats.cpp
     service_actor_check_liveness.cpp
-    service_actor_checkrange.cpp
     service_actor_client_stats.cpp
     service_actor_create.cpp
     service_actor_create_from_device.cpp
