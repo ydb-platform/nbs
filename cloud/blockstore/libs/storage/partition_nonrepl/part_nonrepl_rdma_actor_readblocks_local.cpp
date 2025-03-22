@@ -23,21 +23,17 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TRdmaRequestReadBlocksLocalContext: public NRdma::IClientHandler
+class TRdmaRequestReadBlocksLocalContext: public IRdmaDeviceRequestHandler
 {
 private:
-    TActorSystem* ActorSystem;
     const TNonreplicatedPartitionConfigPtr PartConfig;
     const TRequestInfoPtr RequestInfo;
     const ui32 RequestBlockCount;
-    const NActors::TActorId ParentActorId;
     const ui64 RequestId;
     const bool CheckVoidBlocks;
 
     TAdaptiveLock Lock;
-    size_t ResponseCount;
     TGuardedSgList SgList;
-    NProto::TError Error;
 
     ui32 VoidBlockCount = 0;
 
@@ -52,20 +48,19 @@ public:
             NActors::TActorId parentActorId,
             ui64 requestId,
             bool checkVoidBlocks)
-        : ActorSystem(actorSystem)
+        : IRdmaDeviceRequestHandler(requestCount, actorSystem, parentActorId)
         , PartConfig(std::move(partConfig))
         , RequestInfo(std::move(requestInfo))
         , RequestBlockCount(requestBlockCount)
-        , ParentActorId(parentActorId)
         , RequestId(requestId)
         , CheckVoidBlocks(checkVoidBlocks)
-        , ResponseCount(requestCount)
         , SgList(std::move(sglist))
     {
     }
 
-    void HandleResult(const TDeviceReadRequestContext& dr, TStringBuf buffer)
+    void HandleResult(const TDeviceRequestContext& dCtx, TStringBuf buffer) override
     {
+        const auto& dr = static_cast<const TDeviceReadRequestContext&>(dCtx);
         if (auto guard = SgList.Acquire()) {
             auto* serializer = TBlockStoreProtocol::Serializer();
             auto [result, err] = serializer->Parse(buffer);
@@ -124,13 +119,7 @@ public:
         auto* dr = static_cast<TDeviceReadRequestContext*>(req->Context.get());
         auto buffer = req->ResponseBuffer.Head(responseBytes);
 
-        if (status == NRdma::RDMA_PROTO_OK) {
-            HandleResult(*dr, buffer);
-        } else {
-            Error = NRdma::ParseError(buffer);
-        }
-
-        if (--ResponseCount != 0) {
+        if (!ProcessResponse(*dr, status, buffer)) {
             return;
         }
 
@@ -160,6 +149,7 @@ public:
         completion->ExecCycles = RequestInfo->GetExecCycles();
         completion->NonVoidBlockCount = allZeroes ? 0 : RequestBlockCount;
         completion->VoidBlockCount = allZeroes ? RequestBlockCount : 0;
+        AddDeviceIndicesToCompleteEvent(*completion);
 
         counters.SetBlocksCount(RequestBlockCount);
         auto completionEvent = std::make_unique<IEventHandle>(

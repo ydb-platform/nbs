@@ -25,18 +25,15 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TRdmaRequestReadBlocksContext: public NRdma::IClientHandler
+class TRdmaRequestReadBlocksContext: public IRdmaDeviceRequestHandler
 {
 private:
-    TActorSystem* ActorSystem;
     const TNonreplicatedPartitionConfigPtr PartConfig;
     const TRequestInfoPtr RequestInfo;
-    const NActors::TActorId ParentActorId;
     const ui64 RequestId;
     const bool CheckVoidBlocks;
 
     TAdaptiveLock Lock;
-    size_t ResponseCount;
     NProto::TReadBlocksResponse Response;
 
     ui32 VoidBlockCount = 0;
@@ -51,13 +48,11 @@ public:
             NActors::TActorId parentActorId,
             ui64 requestId,
             bool checkVoidBlocks)
-        : ActorSystem(actorSystem)
+        : IRdmaDeviceRequestHandler(requestCount, actorSystem, parentActorId)
         , PartConfig(std::move(partConfig))
         , RequestInfo(std::move(requestInfo))
-        , ParentActorId(parentActorId)
         , RequestId(requestId)
         , CheckVoidBlocks(checkVoidBlocks)
-        , ResponseCount(requestCount)
     {
         TRequestScope timer(*RequestInfo);
 
@@ -68,20 +63,21 @@ public:
         }
     }
 
-    void HandleResult(const TDeviceReadRequestContext& dr, TStringBuf buffer)
+    void HandleResult(const TDeviceRequestContext& dCtx, TStringBuf buffer) override
     {
+        const auto& dr = static_cast<const TDeviceReadRequestContext&>(dCtx);
         auto* serializer = TBlockStoreProtocol::Serializer();
         auto [result, err] = serializer->Parse(buffer);
 
         if (HasError(err)) {
-            *Response.MutableError() = std::move(err);
+            Error = std::move(err);
             return;
         }
 
         const auto& concreteProto =
             static_cast<NProto::TReadDeviceBlocksResponse&>(*result.Proto);
         if (HasError(concreteProto.GetError())) {
-            *Response.MutableError() = concreteProto.GetError();
+            Error = concreteProto.GetError();
             return;
         }
 
@@ -126,19 +122,14 @@ public:
         auto* dr = static_cast<TDeviceReadRequestContext*>(req->Context.get());
         auto buffer = req->ResponseBuffer.Head(responseBytes);
 
-        if (status == NRdma::RDMA_PROTO_OK) {
-            HandleResult(*dr, buffer);
-        } else {
-            *Response.MutableError() = NRdma::ParseError(buffer);
-        }
-
-        if (--ResponseCount != 0) {
+        if (!ProcessResponse(*dr, status, buffer)) {
             return;
         }
 
         // Got all device responses. Do processing.
 
-        ProcessError(*ActorSystem, *PartConfig, *Response.MutableError());
+        ProcessError(*ActorSystem, *PartConfig, Error);
+        *Response.MutableError() = std::move(Error);
         auto error = Response.GetError();
 
         const ui32 blockCount = Response.GetBlocks().BuffersSize();
@@ -163,6 +154,7 @@ public:
         completion->TotalCycles = RequestInfo->GetTotalCycles();
         completion->NonVoidBlockCount = allZeroes ? 0 : blockCount;
         completion->VoidBlockCount = allZeroes ? blockCount : 0;
+        AddDeviceIndicesToCompleteEvent(*completion);
 
         timer.Finish();
         completion->ExecCycles = RequestInfo->GetExecCycles();
