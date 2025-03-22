@@ -2807,7 +2807,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
                 performanceProfile->SetDefaultPostponedRequestWeight(1);
             }
 
-            auto resp = service.SendAndRecvCreateFileStore(std::move(request));
+            service.SendAndRecvCreateFileStore(std::move(request));
         }
         auto headers = service.InitSession(fs, "client");
         ui64 nodeId =
