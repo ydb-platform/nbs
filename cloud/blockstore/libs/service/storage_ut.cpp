@@ -292,7 +292,7 @@ Y_UNIT_TEST_SUITE(TStorageTest)
         DoShouldHandleTimedOutRequests(runRequest);
     }
 
-    Y_UNIT_TEST(ShouldHandleTimeedOutZeroRequests)
+    Y_UNIT_TEST(ShouldHandleTimedOutZeroRequests)
     {
         auto runRequest =
             [](std::shared_ptr<TStorageAdapter> adapter, TInstant now)

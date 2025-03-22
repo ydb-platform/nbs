@@ -69,6 +69,8 @@ namespace NCloud::NBlockStore {
     xxx(DiskRegistryOccupiedDeviceConfigurationHasChanged)                     \
     xxx(DiskRegistryWrongMigratedDeviceOwnership)                              \
     xxx(DiskRegistryInitialAgentRejectionThresholdExceeded)                    \
+    xxx(ErrorWasSentToTheGuestForReliableDisk)                                 \
+    xxx(ErrorWasSentToTheGuestForNonReliableDisk)                              \
 // BLOCKSTORE_CRITICAL_EVENTS
 
 #define BLOCKSTORE_IMPOSSIBLE_EVENTS(xxx)                                      \

@@ -1,5 +1,6 @@
 #include "aligned_device_handler.h"
 
+#include <cloud/blockstore/libs/diagnostics/critical_events.h>
 #include <cloud/blockstore/libs/service/checksum_storage_wrapper.h>
 #include <cloud/blockstore/libs/service/context.h>
 #include <cloud/blockstore/libs/service/storage.h>
@@ -135,15 +136,17 @@ TAlignedDeviceHandler::TAlignedDeviceHandler(
         TString clientId,
         ui32 blockSize,
         ui32 maxSubRequestSize,
-        bool checkBufferModificationDuringWriting)
+        bool checkBufferModificationDuringWriting,
+        bool isReliableMediaType)
     : Storage(
-          checkBufferModificationDuringWriting ? CreateChecksumStorageWrapper(
-                                                     std::move(storage),
-                                                     std::move(diskId))
-                                               : std::move(storage))
+          checkBufferModificationDuringWriting
+              ? CreateChecksumStorageWrapper(std::move(storage), diskId)
+              : std::move(storage))
+    , DiskId(std::move(diskId))
     , ClientId(std::move(clientId))
     , BlockSize(blockSize)
     , MaxBlockCount(maxSubRequestSize / BlockSize)
+    , IsReliableMediaType(isReliableMediaType)
 {
     Y_ABORT_UNLESS(MaxBlockCount > 0);
 }
@@ -229,7 +232,7 @@ TAlignedDeviceHandler::ExecuteReadRequest(
     TCallContextPtr ctx,
     TBlocksInfo blocksInfo,
     TGuardedSgList sgList,
-    TString checkpointId) const
+    TString checkpointId)
 {
     Y_DEBUG_ABORT_UNLESS(blocksInfo.IsAligned());
 
@@ -248,7 +251,22 @@ TAlignedDeviceHandler::ExecuteReadRequest(
     if (requestBlockCount == blocksInfo.Range.Size()) {
         // The request size is quite small. We do all work at once.
         request->Sglist = std::move(sgList);
-        return Storage->ReadBlocksLocal(std::move(ctx), std::move(request));
+        auto result = Storage->ReadBlocksLocal(std::move(ctx), std::move(request));
+        return result.Apply(
+            [weakPtr = weak_from_this(),
+             range = blocksInfo.Range](const auto& future)
+            {
+                auto response = future.GetValue();
+                if (HasError(response)) {
+                    if (auto self = weakPtr.lock()) {
+                        self->ReportCriticalError(
+                            response.GetError(),
+                            "Read",
+                            range);
+                    }
+                }
+                return MakeFuture(response);
+            });
     }
 
     // Take the list of blocks that we will execute in the first
@@ -261,6 +279,7 @@ TAlignedDeviceHandler::ExecuteReadRequest(
 
     auto result = Storage->ReadBlocksLocal(ctx, std::move(request));
 
+    auto originalRange = blocksInfo.Range;
     blocksInfo.Range = TBlockRange64::WithLength(
         blocksInfo.Range.Start + requestBlockCount,
         blocksInfo.Range.Size() - requestBlockCount);
@@ -271,10 +290,17 @@ TAlignedDeviceHandler::ExecuteReadRequest(
          weakPtr = weak_from_this(),
          blocksInfo = blocksInfo,
          sgList = std::move(sgList),
-         checkpointId = std::move(checkpointId)](const auto& future) mutable
+         checkpointId = std::move(checkpointId),
+         originalRange = originalRange](const auto& future) mutable
         {
             auto response = future.GetValue();
             if (HasError(response)) {
+                if (auto self = weakPtr.lock()) {
+                    self->ReportCriticalError(
+                        response.GetError(),
+                        "Read",
+                        originalRange);
+                }
                 return MakeFuture(response);
             }
 
@@ -294,7 +320,7 @@ TFuture<NProto::TWriteBlocksResponse>
 TAlignedDeviceHandler::ExecuteWriteRequest(
     TCallContextPtr ctx,
     TBlocksInfo blocksInfo,
-    TGuardedSgList sgList) const
+    TGuardedSgList sgList)
 {
     Y_DEBUG_ABORT_UNLESS(blocksInfo.IsAligned());
 
@@ -312,7 +338,23 @@ TAlignedDeviceHandler::ExecuteWriteRequest(
     if (requestBlockCount == blocksInfo.Range.Size()) {
         // The request size is quite small. We do all work at once.
         request->Sglist = std::move(sgList);
-        return Storage->WriteBlocksLocal(std::move(ctx), std::move(request));
+        auto result =
+            Storage->WriteBlocksLocal(std::move(ctx), std::move(request));
+        return result.Apply(
+            [weakPtr = weak_from_this(),
+             range = blocksInfo.Range](const auto& future)
+            {
+                auto response = future.GetValue();
+                if (HasError(response)) {
+                    if (auto self = weakPtr.lock()) {
+                        self->ReportCriticalError(
+                            response.GetError(),
+                            "Write",
+                            range);
+                    }
+                }
+                return MakeFuture(response);
+            });
     }
 
     // Take the list of blocks that we will execute in the first
@@ -325,6 +367,7 @@ TAlignedDeviceHandler::ExecuteWriteRequest(
 
     auto result = Storage->WriteBlocksLocal(ctx, std::move(request));
 
+    auto originalRange = blocksInfo.Range;
     blocksInfo.Range = TBlockRange64::WithLength(
         blocksInfo.Range.Start + requestBlockCount,
         blocksInfo.Range.Size() - requestBlockCount);
@@ -334,10 +377,17 @@ TAlignedDeviceHandler::ExecuteWriteRequest(
         [ctx = std::move(ctx),
          weakPtr = weak_from_this(),
          blocksInfo = blocksInfo,
-         sgList = std::move(sgList)](const auto& future) mutable
+         sgList = std::move(sgList),
+         originalRange = originalRange](const auto& future) mutable
         {
             auto response = future.GetValue();
             if (HasError(response)) {
+                if (auto self = weakPtr.lock()) {
+                    self->ReportCriticalError(
+                        response.GetError(),
+                        "Write",
+                        originalRange);
+                }
                 return MakeFuture(response);
             }
 
@@ -354,7 +404,7 @@ TAlignedDeviceHandler::ExecuteWriteRequest(
 
 TFuture<NProto::TZeroBlocksResponse> TAlignedDeviceHandler::ExecuteZeroRequest(
     TCallContextPtr ctx,
-    TBlocksInfo blocksInfo) const
+    TBlocksInfo blocksInfo)
 {
     Y_DEBUG_ABORT_UNLESS(blocksInfo.IsAligned());
 
@@ -369,23 +419,46 @@ TFuture<NProto::TZeroBlocksResponse> TAlignedDeviceHandler::ExecuteZeroRequest(
 
     if (requestBlockCount == blocksInfo.Range.Size()) {
         // The request size is quite small. We do all work at once.
-        return Storage->ZeroBlocks(std::move(ctx), std::move(request));
+        auto result = Storage->ZeroBlocks(std::move(ctx), std::move(request));
+        return result.Apply(
+            [weakPtr = weak_from_this(),
+             range = blocksInfo.Range](const auto& future)
+            {
+                auto response = future.GetValue();
+                if (HasError(response)) {
+                    if (auto self = weakPtr.lock()) {
+                        self->ReportCriticalError(
+                            response.GetError(),
+                            "Zero",
+                            range);
+                    }
+                }
+                return MakeFuture(response);
+            });
     }
 
     auto result = Storage->ZeroBlocks(ctx, std::move(request));
 
+    auto originalRange = blocksInfo.Range;
     blocksInfo.Range.Start += requestBlockCount;
 
     return result.Apply(
         [ctx = std::move(ctx),
          weakPtr = weak_from_this(),
-         blocksInfo = blocksInfo](const auto& future) mutable
+         blocksInfo = blocksInfo,
+         originalRange = originalRange](const auto& future) mutable
         {
             // Only part of the request was completed. Continue doing the
             // rest of the work
 
             auto response = future.GetValue();
             if (HasError(response)) {
+                if (auto self = weakPtr.lock()) {
+                    self->ReportCriticalError(
+                        response.GetError(),
+                        "Zero",
+                        originalRange);
+                }
                 return MakeFuture(response);
             }
 
@@ -395,6 +468,26 @@ TFuture<NProto::TZeroBlocksResponse> TAlignedDeviceHandler::ExecuteZeroRequest(
             return MakeFuture<NProto::TZeroBlocksResponse>(
                 TErrorResponse(E_CANCELLED));
         });
+}
+
+void TAlignedDeviceHandler::ReportCriticalError(
+    const NProto::TError& error,
+    const TString& operation,
+    TBlockRange64 range)
+{
+    if (!IsReliableMediaType && CriticalErrorReported) {
+        // For non-reliable disks report crit event only once.
+        return;
+    }
+    auto message = TStringBuilder()
+                   << "disk: " << DiskId.Quote() << ", op: " << operation
+                   << ", range: " << range << ", error: " << FormatError(error);
+    if (IsReliableMediaType) {
+        ReportErrorWasSentToTheGuestForReliableDisk(message);
+    } else {
+        ReportErrorWasSentToTheGuestForNonReliableDisk(message);
+    }
+    CriticalErrorReported = true;
 }
 
 }   // namespace NCloud::NBlockStore

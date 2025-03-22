@@ -955,7 +955,8 @@ IServerHandlerFactoryPtr CreateServerHandlerFactory(
         options.ClientId,
         options.BlockSize,
         options.UnalignedRequestsDisabled,
-        options.CheckBufferModificationDuringWriting);
+        options.CheckBufferModificationDuringWriting,
+        options.IsReliableMediaType);
 
     return std::make_shared<TServerHandlerFactory>(
         std::move(logging),

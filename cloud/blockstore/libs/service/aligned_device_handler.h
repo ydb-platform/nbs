@@ -48,9 +48,13 @@ class TAlignedDeviceHandler final
 {
 private:
     const IStoragePtr Storage;
+    const TString DiskId;
     const TString ClientId;
     const ui32 BlockSize;
     const ui32 MaxBlockCount;
+    const bool IsReliableMediaType;
+
+    bool CriticalErrorReported = false;
 
 public:
     TAlignedDeviceHandler(
@@ -59,7 +63,8 @@ public:
         TString clientId,
         ui32 blockSize,
         ui32 maxSubRequestSize,
-        bool checkBufferModificationDuringWriting);
+        bool checkBufferModificationDuringWriting,
+        bool isReliableMediaType);
 
     // implements IDeviceHandler
     NThreading::TFuture<NProto::TReadBlocksLocalResponse> Read(
@@ -85,18 +90,24 @@ public:
         TCallContextPtr ctx,
         TBlocksInfo blocksInfo,
         TGuardedSgList sgList,
-        TString checkpointId) const;
+        TString checkpointId);
 
     // Performs a write. It can only be called for aligned data.
     NThreading::TFuture<NProto::TWriteBlocksResponse> ExecuteWriteRequest(
         TCallContextPtr ctx,
         TBlocksInfo blocksInfo,
-        TGuardedSgList sgList) const;
+        TGuardedSgList sgList);
 
     // Performs a zeroes. It can only be called for aligned data.
     NThreading::TFuture<NProto::TZeroBlocksResponse> ExecuteZeroRequest(
         TCallContextPtr ctx,
-        TBlocksInfo blocksInfo) const;
+        TBlocksInfo blocksInfo);
+
+private:
+    void ReportCriticalError(
+        const NProto::TError& error,
+        const TString& operation,
+        TBlockRange64 range);
 };
 
 ////////////////////////////////////////////////////////////////////////////////
