@@ -47,6 +47,7 @@ struct TRequestBuilder
     ui32 StartIndex = 0;
     ui32 RemainingBlocks = 0;
     ui32 BlocksPerRequest = 0;
+    TBlockRange64 range;
 
     TRequestBuilder() = default;
 
@@ -59,8 +60,11 @@ struct TRequestBuilder
         , BlocksPerRequest(blocksPerRequest)
     {}
 
-    std::optional<TBlockRange64> Next()
+    std::optional<TBlockRange64> Next(bool retryRange)
     {
+        if (retryRange){
+            return range;
+        }
         if (RemainingBlocks <= 0) {
             return std::nullopt;
         }
@@ -91,6 +95,9 @@ private:
     bool SaveResultsEnabled = false;
     bool CalculateChecksums = false;
     TString FolderPostfix;
+    ui32 ReplicaCount = 0;
+    bool IsMirror = false;
+    bool RetryRange = false;
 
 public:
     TCheckRangeCommand(IBlockStorePtr client)
@@ -148,14 +155,14 @@ protected:
 
         ui32 errorCount = 0;
         ui32 requestCount = 0;
+        ui32 mirrorErrorsCount = 0;
 
         auto [builder, error] = CreateRequestBuilder();
         if (HasError(error)) {
             output << FormatError(error) << Endl;
             return false;
         }
-
-        while (std::optional range = builder.Next()) {
+        while (std::optional range = builder.Next(RetryRange)) {
             auto request = std::make_shared<NProto::TExecuteActionRequest>();
 
             request->SetAction("checkrange");
@@ -182,21 +189,36 @@ protected:
             } else {
                 const auto& status = ExtractStatusValues(result.GetOutput());
 
-                if (HasError(status)) {
-                    errorCount++;
-                    if (ShowReadErrorsEnabled) {
-                        output << "ReadBlocks error in range " << *range << ": "
-                               << FormatError(status) << Endl;
+                    if (HasError(status)) {
+                        if (status.GetCode() == E_ARGUMENT && !RetryRange) {
+                            if (ShowReadErrorsEnabled) {
+                                output << "ReadBlocks error while reading all "
+                                          "replicas in range "
+                                       << *range << ": " << FormatError(status)
+                                       << Endl;
+                            }
+                            RetryRange = true;
+                            mirrorErrorsCount++;
+                            continue;
+                        }
+                        errorCount++;
+                        if (ShowReadErrorsEnabled) {
+                            output << "ReadBlocks error in range " << *range
+                                   << ": " << FormatError(status) << Endl;
+                        }
                     }
-                }
             }
 
             if (SaveResultsEnabled) {
                 SaveResultToFile(result.GetOutput(), *range);
             }
+            RetryRange = false;
         }
 
         output << "Total requests sended: " << requestCount << Endl;
+        if (IsMirror && mirrorErrorsCount){
+            output << "Errors while reading all replicas caught: " << mirrorErrorsCount << Endl;
+        }
         output << "Total errors caught: " << errorCount << Endl;
         return true;
     }
@@ -258,6 +280,13 @@ private:
         }
 
         ui64 diskBlockCount = result.GetVolume().GetBlocksCount();
+        if (result.GetVolume().GetStorageMediaKind() == NProto::STORAGE_MEDIA_SSD_MIRROR3){
+            IsMirror = true;
+            ReplicaCount = 3;
+        } else if (result.GetVolume().GetStorageMediaKind() == NProto::STORAGE_MEDIA_SSD_MIRROR2) {
+            IsMirror = true;
+            ReplicaCount = 2;
+        }
 
         ui64 remainingBlocks = diskBlockCount;
 
@@ -272,13 +301,17 @@ private:
         return TRequestBuilder(StartIndex, remainingBlocks, BlocksPerRequest);
     }
 
-    TString CreateNextInput(TBlockRange64 range) const
+    TString CreateNextInput(TBlockRange64 range, bool isRepeated = false) const
     {
         NJson::TJsonValue input;
         input["DiskId"] = DiskId;
         input["StartIndex"] = range.Start;
         input["BlocksCount"] = range.Size();
         input["CalculateChecksums"] = CalculateChecksums;
+        if (!isRepeated){
+            input["ReplicaCount"] = ReplicaCount;
+        }
+
         return input.GetStringRobust();
     }
 };
