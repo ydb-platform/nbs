@@ -34,7 +34,8 @@ struct TDefaultDeviceHandlerFactory final
         TString clientId,
         ui32 blockSize,
         bool unalignedRequestsDisabled,
-        bool checkBufferModificationDuringWriting) override
+        bool checkBufferModificationDuringWriting,
+        bool isReliableMediaType) override
     {
         if (unalignedRequestsDisabled) {
             return std::make_shared<TAlignedDeviceHandler>(
@@ -43,7 +44,8 @@ struct TDefaultDeviceHandlerFactory final
                 std::move(clientId),
                 blockSize,
                 MaxSubRequestSize,
-                checkBufferModificationDuringWriting);
+                checkBufferModificationDuringWriting,
+                isReliableMediaType);
         }
 
         return std::make_shared<TUnalignedDeviceHandler>(
@@ -53,7 +55,8 @@ struct TDefaultDeviceHandlerFactory final
             blockSize,
             MaxSubRequestSize,
             MaxUnalignedRequestSize,
-            checkBufferModificationDuringWriting);
+            checkBufferModificationDuringWriting,
+            isReliableMediaType);
     }
 };
 

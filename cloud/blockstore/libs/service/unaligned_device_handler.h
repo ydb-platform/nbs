@@ -48,7 +48,8 @@ public:
         ui32 blockSize,
         ui32 maxSubRequestSize,
         ui32 maxUnalignedRequestSize,
-        bool checkBufferModificationDuringWriting);
+        bool checkBufferModificationDuringWriting,
+        bool isReliableMediaType);
 
     ~TUnalignedDeviceHandler() override;
 
