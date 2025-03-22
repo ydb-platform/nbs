@@ -62,7 +62,7 @@ struct TRequestBuilder
 
     std::optional<TBlockRange64> Next(bool retryRange)
     {
-        if (retryRange){
+        if (retryRange) {
             return range;
         }
         if (RemainingBlocks <= 0) {
@@ -189,24 +189,24 @@ protected:
             } else {
                 const auto& status = ExtractStatusValues(result.GetOutput());
 
-                    if (HasError(status)) {
-                        if (status.GetCode() == E_ARGUMENT && !RetryRange) {
-                            if (ShowReadErrorsEnabled) {
-                                output << "ReadBlocks error while reading all "
-                                          "replicas in range "
-                                       << *range << ": " << FormatError(status)
-                                       << Endl;
-                            }
-                            RetryRange = true;
-                            mirrorErrorsCount++;
-                            continue;
-                        }
-                        errorCount++;
+                if (HasError(status)) {
+                    if (status.GetCode() == E_ARGUMENT && !RetryRange) {
                         if (ShowReadErrorsEnabled) {
-                            output << "ReadBlocks error in range " << *range
-                                   << ": " << FormatError(status) << Endl;
+                            output << "ReadBlocks error while reading all "
+                                      "replicas in range "
+                                   << *range << ": " << FormatError(status)
+                                   << Endl;
                         }
+                        RetryRange = true;
+                        mirrorErrorsCount++;
+                        continue;
                     }
+                    errorCount++;
+                    if (ShowReadErrorsEnabled) {
+                        output << "ReadBlocks error in range " << *range << ": "
+                               << FormatError(status) << Endl;
+                    }
+                }
             }
 
             if (SaveResultsEnabled) {
@@ -216,8 +216,9 @@ protected:
         }
 
         output << "Total requests sended: " << requestCount << Endl;
-        if (IsMirror && mirrorErrorsCount){
-            output << "Errors while reading all replicas caught: " << mirrorErrorsCount << Endl;
+        if (IsMirror && mirrorErrorsCount) {
+            output << "Errors while reading all replicas caught: "
+                   << mirrorErrorsCount << Endl;
         }
         output << "Total errors caught: " << errorCount << Endl;
         return true;
@@ -280,10 +281,15 @@ private:
         }
 
         ui64 diskBlockCount = result.GetVolume().GetBlocksCount();
-        if (result.GetVolume().GetStorageMediaKind() == NProto::STORAGE_MEDIA_SSD_MIRROR3){
+        if (result.GetVolume().GetStorageMediaKind() ==
+            NProto::STORAGE_MEDIA_SSD_MIRROR3)
+        {
             IsMirror = true;
             ReplicaCount = 3;
-        } else if (result.GetVolume().GetStorageMediaKind() == NProto::STORAGE_MEDIA_SSD_MIRROR2) {
+        } else if (
+            result.GetVolume().GetStorageMediaKind() ==
+            NProto::STORAGE_MEDIA_SSD_MIRROR2)
+        {
             IsMirror = true;
             ReplicaCount = 2;
         }
@@ -308,7 +314,7 @@ private:
         input["StartIndex"] = range.Start;
         input["BlocksCount"] = range.Size();
         input["CalculateChecksums"] = CalculateChecksums;
-        if (!isRepeated){
+        if (!isRepeated) {
             input["ReplicaCount"] = ReplicaCount;
         }
 
