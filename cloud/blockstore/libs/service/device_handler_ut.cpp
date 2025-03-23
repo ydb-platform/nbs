@@ -142,7 +142,7 @@ public:
             BlockSize,
             unalignedRequestsDisabled,   // unalignedRequestsDisabled,
             false,                       // checkBufferModificationDuringWriting
-            false                        // isReliableMediaType
+            false                        // isReliableMediaKind
         );
     }
 
@@ -359,7 +359,7 @@ Y_UNIT_TEST_SUITE(TDeviceHandlerTest)
             blockSize,
             false,   // unalignedRequestsDisabled,
             false,   // checkBufferModificationDuringWriting
-            false    // isReliableMediaType
+            false    // isReliableMediaKind
         );
 
         std::array<bool, deviceBlocksCount> zeroBlocks;
@@ -426,7 +426,7 @@ Y_UNIT_TEST_SUITE(TDeviceHandlerTest)
             blockSize,
             true,    // unalignedRequestsDisabled,
             false,   // checkBufferModificationDuringWriting
-            false    // isReliableMediaType
+            false    // isReliableMediaKind
         );
 
         ui32 startIndex = 42;
@@ -517,7 +517,7 @@ Y_UNIT_TEST_SUITE(TDeviceHandlerTest)
             blockSize,
             true,    // unalignedRequestsDisabled,
             false,   // checkBufferModificationDuringWriting
-            false    // isReliableMediaType
+            false    // isReliableMediaKind
         );
 
         {
@@ -641,7 +641,7 @@ Y_UNIT_TEST_SUITE(TDeviceHandlerTest)
             blockSize,
             unalignedRequestDisabled,   // unalignedRequestsDisabled,
             false,                      // checkBufferModificationDuringWriting
-            false                       // isReliableMediaType
+            false                       // isReliableMediaKind
         );
 
         storage->ZeroBlocksHandler = [&] (
@@ -761,7 +761,7 @@ Y_UNIT_TEST_SUITE(TDeviceHandlerTest)
                 blockSize,
                 false,   // unalignedRequestsDisabled,
                 false,   // checkBufferModificationDuringWriting
-                false    // isReliableMediaType
+                false    // isReliableMediaKind
             );
 
         storage->WriteBlocksLocalHandler = [&] (
@@ -830,7 +830,7 @@ Y_UNIT_TEST_SUITE(TDeviceHandlerTest)
                 blockSize,
                 false,   // unalignedRequestsDisabled,
                 false,   // checkBufferModificationDuringWriting
-                false    // isReliableMediaType
+                false    // isReliableMediaKind
             );
 
         storage->WriteBlocksLocalHandler = [&] (
@@ -958,7 +958,7 @@ Y_UNIT_TEST_SUITE(TDeviceHandlerTest)
             blockSize,
             false,   // unalignedRequestsDisabled,
             true,    // checkBufferModificationDuringWriting
-            false    // isReliableMediaType
+            false    // isReliableMediaKind
         );
 
         ui32 writeAttempts  = 0;
@@ -1020,7 +1020,7 @@ Y_UNIT_TEST_SUITE(TDeviceHandlerTest)
             blockSize,
             false,   // unalignedRequestsDisabled,
             true,    // checkBufferModificationDuringWriting
-            true     // isReliableMediaType
+            true     // isReliableMediaKind
         );
         auto deviceHandlerForNonReliableDisk = factory->CreateDeviceHandler(
             storage,
@@ -1029,7 +1029,7 @@ Y_UNIT_TEST_SUITE(TDeviceHandlerTest)
             blockSize,
             false,   // unalignedRequestsDisabled,
             true,    // checkBufferModificationDuringWriting
-            false    // isReliableMediaType
+            false    // isReliableMediaKind
         );
 
         auto buffer = TString(DefaultBlockSize, 'g');

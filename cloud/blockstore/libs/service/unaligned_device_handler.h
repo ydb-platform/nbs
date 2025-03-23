@@ -49,7 +49,7 @@ public:
         ui32 maxSubRequestSize,
         ui32 maxUnalignedRequestSize,
         bool checkBufferModificationDuringWriting,
-        bool isReliableMediaType);
+        bool isReliableMediaKind);
 
     ~TUnalignedDeviceHandler() override;
 

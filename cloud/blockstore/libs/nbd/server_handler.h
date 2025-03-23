@@ -125,7 +125,7 @@ struct TStorageOptions
     bool UnalignedRequestsDisabled = false;
     bool SendMinBlockSize = false;
     bool CheckBufferModificationDuringWriting = false;
-    bool IsReliableMediaType = false;
+    bool IsReliableMediaKind = false;
 };
 
 ////////////////////////////////////////////////////////////////////////////////

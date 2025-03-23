@@ -474,7 +474,7 @@ TUnalignedDeviceHandler::TUnalignedDeviceHandler(
         ui32 maxSubRequestSize,
         ui32 maxUnalignedRequestSize,
         bool checkBufferModificationDuringWriting,
-        bool isReliableMediaType)
+        bool isReliableMediaKind)
     : Backend(std::make_shared<TAlignedDeviceHandler>(
           std::move(storage),
           std::move(diskId),
@@ -482,7 +482,7 @@ TUnalignedDeviceHandler::TUnalignedDeviceHandler(
           blockSize,
           maxSubRequestSize,
           checkBufferModificationDuringWriting,
-          isReliableMediaType))
+          isReliableMediaKind))
     , BlockSize(blockSize)
     , MaxUnalignedBlockCount(maxUnalignedRequestSize / BlockSize)
 {}

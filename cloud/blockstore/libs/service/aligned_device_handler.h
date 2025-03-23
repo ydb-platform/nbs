@@ -52,7 +52,7 @@ private:
     const TString ClientId;
     const ui32 BlockSize;
     const ui32 MaxBlockCount;
-    const bool IsReliableMediaType;
+    const bool IsReliableMediaKind;
 
     bool CriticalErrorReported = false;
 
@@ -64,7 +64,7 @@ public:
         ui32 blockSize,
         ui32 maxSubRequestSize,
         bool checkBufferModificationDuringWriting,
-        bool isReliableMediaType);
+        bool isReliableMediaKind);
 
     // implements IDeviceHandler
     NThreading::TFuture<NProto::TReadBlocksLocalResponse> Read(

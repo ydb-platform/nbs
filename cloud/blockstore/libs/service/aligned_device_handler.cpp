@@ -137,7 +137,7 @@ TAlignedDeviceHandler::TAlignedDeviceHandler(
         ui32 blockSize,
         ui32 maxSubRequestSize,
         bool checkBufferModificationDuringWriting,
-        bool isReliableMediaType)
+        bool isReliableMediaKind)
     : Storage(
           checkBufferModificationDuringWriting
               ? CreateChecksumStorageWrapper(std::move(storage), diskId)
@@ -146,7 +146,7 @@ TAlignedDeviceHandler::TAlignedDeviceHandler(
     , ClientId(std::move(clientId))
     , BlockSize(blockSize)
     , MaxBlockCount(maxSubRequestSize / BlockSize)
-    , IsReliableMediaType(isReliableMediaType)
+    , IsReliableMediaKind(isReliableMediaKind)
 {
     Y_ABORT_UNLESS(MaxBlockCount > 0);
 }
@@ -475,14 +475,14 @@ void TAlignedDeviceHandler::ReportCriticalError(
     const TString& operation,
     TBlockRange64 range)
 {
-    if (!IsReliableMediaType && CriticalErrorReported) {
+    if (!IsReliableMediaKind && CriticalErrorReported) {
         // For non-reliable disks report crit event only once.
         return;
     }
     auto message = TStringBuilder()
                    << "disk: " << DiskId.Quote() << ", op: " << operation
                    << ", range: " << range << ", error: " << FormatError(error);
-    if (IsReliableMediaType) {
+    if (IsReliableMediaKind) {
         ReportErrorWasSentToTheGuestForReliableDisk(message);
     } else {
         ReportErrorWasSentToTheGuestForNonReliableDisk(message);

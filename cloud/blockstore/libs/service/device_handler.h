@@ -48,7 +48,7 @@ struct IDeviceHandlerFactory
         ui32 blockSize,
         bool unalignedRequestsDisabled,
         bool checkBufferModificationDuringWriting,
-        bool isReliableMediaType) = 0;
+        bool isReliableMediaKind) = 0;
 };
 
 ////////////////////////////////////////////////////////////////////////////////

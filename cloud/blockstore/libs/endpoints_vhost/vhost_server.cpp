@@ -44,9 +44,8 @@ public:
         options.CheckBufferModificationDuringWriting =
             ChecksumFlags.GetCheckBufferModificationForMirrorDisk() &&
             IsReliableDiskRegistryMediaKind(volume.GetStorageMediaKind());
-        options.IsReliableMediaType =
-            !IsDiskRegistryMediaKind(volume.GetStorageMediaKind()) ||
-            IsReliableDiskRegistryMediaKind(volume.GetStorageMediaKind());
+        options.IsReliableMediaKind =
+            IsReliableMediaKind(volume.GetStorageMediaKind());
 
         return Server->StartEndpoint(
             request.GetUnixSocketPath(),
