@@ -1,11 +1,12 @@
 #include "buffer_pool.h"
 
+#include <cloud/storage/core/libs/common/page_size.h>
+
 #include <util/generic/singleton.h>
 #include <util/memory/alloc.h>
 #include <util/system/align.h>
 #include <util/system/error.h>
 #include <util/thread/lfstack.h>
-#include <cloud/blockstore/libs/common/page_size.h>
 
 #include <stdlib.h>
 

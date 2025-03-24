@@ -1,6 +1,7 @@
 #include "storage.h"
 
-#include <cloud/blockstore/libs/common/page_size.h>
+#include <cloud/storage/core/libs/common/page_size.h>
+
 #include <util/random/random.h>
 
 namespace NCloud::NBlockStore {
