@@ -101,6 +101,7 @@ namespace NCloud::NFileStore::NStorage {
                                                                                \
     xxx(CreateNode,                         __VA_ARGS__)                       \
     xxx(UnlinkNode,                         __VA_ARGS__)                       \
+    xxx(CompleteUnlinkNode,                 __VA_ARGS__)                       \
     xxx(RenameNode,                         __VA_ARGS__)                       \
     xxx(PrepareRenameNodeInSource,          __VA_ARGS__)                       \
     xxx(RenameNodeInDestination,            __VA_ARGS__)                       \
@@ -738,6 +739,53 @@ struct TTxIndexTablet
             , Request(std::move(request))
             , ParentNodeId(Request.GetNodeId())
             , Name(Request.GetName())
+        {}
+
+        void Clear()
+        {
+            TIndexStateNodeUpdates::Clear();
+            CommitId = InvalidCommitId;
+            ParentNode.Clear();
+            ChildNode.Clear();
+            ChildRef.Clear();
+            OpLogEntry.Clear();
+        }
+    };
+
+    //
+    // CompleteUnlinkNode
+    //
+
+    struct TCompleteUnlinkNode
+        : TSessionAware
+        , TIndexStateNodeUpdates
+    {
+        const TRequestInfoPtr RequestInfo;
+        const NProto::TUnlinkNodeRequest Request;
+        const ui64 ParentNodeId;
+        const TString Name;
+        ui64 OpLogEntryId;
+        NProto::TUnlinkNodeResponse Response;
+
+        ui64 CommitId = InvalidCommitId;
+        TMaybe<IIndexTabletDatabase::TNode> ParentNode;
+        TMaybe<IIndexTabletDatabase::TNode> ChildNode;
+        TMaybe<IIndexTabletDatabase::TNodeRef> ChildRef;
+
+        NProto::TOpLogEntry OpLogEntry;
+
+        TCompleteUnlinkNode(
+                TRequestInfoPtr requestInfo,
+                NProto::TUnlinkNodeRequest request,
+                ui64 opLogEntryId,
+                NProto::TUnlinkNodeResponse response)
+            : TSessionAware(request)
+            , RequestInfo(std::move(requestInfo))
+            , Request(std::move(request))
+            , ParentNodeId(Request.GetNodeId())
+            , Name(Request.GetName())
+            , OpLogEntryId(opLogEntryId)
+            , Response(std::move(response))
         {}
 
         void Clear()
