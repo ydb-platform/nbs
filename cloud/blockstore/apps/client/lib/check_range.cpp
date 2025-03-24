@@ -222,7 +222,7 @@ private:
     TString CreateFilename(TBlockRange64 range) const
     {
         TString folderPath = "./checkRange_" + DiskId;
-        if (!FolderPostfix.Empty()) {
+        if (!FolderPostfix.empty()) {
             folderPath += "_" + FolderPostfix;
         }
 
