@@ -6,10 +6,11 @@ namespace NCloud::NBlockStore {
 
 class TPageSize
 {
-    static size_t Get();
+    const static size_t Value;
+    static size_t Init();
 
 public:
-    const static size_t Value;
+    static size_t GetPageSize();
 };
 
 }   // namespace NCloud::NBlockStore

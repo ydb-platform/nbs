@@ -4,15 +4,20 @@
 
 namespace NCloud::NBlockStore {
 
-const size_t TPageSize::Value = TPageSize::Get();
+const size_t TPageSize::Value = TPageSize::Init();
 
-size_t TPageSize::Get()
+size_t TPageSize::Init()
 {
-    const auto result = sysconf(_SC_PAGESIZE);
+    const long result = sysconf(_SC_PAGESIZE);
     if (result <= 0) {
         return 4096;
     }
     return result;
+}
+
+size_t TPageSize::GetPageSize()
+{
+    return Value;
 }
 
 }   // namespace NCloud::NBlockStore
