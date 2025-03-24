@@ -826,7 +826,7 @@ Y_UNIT_TEST_SUITE(TCommandTest)
             return MakeFuture(response);
         };
         TVector<TString> argv;
-        argv.reserve(4);
+        argv.reserve(5);
         argv.emplace_back(GetProgramName());
         argv.emplace_back("--disk-id=" + DefaultDiskId);
         argv.emplace_back("--start-index=0");
