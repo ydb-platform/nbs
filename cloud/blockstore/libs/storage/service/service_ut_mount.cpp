@@ -2925,6 +2925,80 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
         UNIT_ASSERT_VALUES_EQUAL(0, startVolumeSeen);
     }
 
+    Y_UNIT_TEST(ShouldMount2)
+    {
+        TTestEnv env;
+        ui32 nodeIdx = SetupTestEnv(env);
+
+        auto& runtime = env.GetRuntime();
+
+        ui64 lockTabletRequestCount = 0;
+
+        TServiceClient service(runtime, nodeIdx);
+        service.CreateVolume();
+        service.AssignVolume();
+
+        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+                switch (event->GetTypeRewrite()) {
+                    case TEvHiveProxy::EvLockTabletRequest: {
+                        ++lockTabletRequestCount;
+                        break;
+                    }
+                }
+                return TTestActorRuntime::DefaultObserverFunc(event);
+            });
+
+        service.MountVolume();
+        UNIT_ASSERT_VALUES_EQUAL(1, lockTabletRequestCount);
+
+        service.MountVolume();
+        UNIT_ASSERT_VALUES_EQUAL(1, lockTabletRequestCount);
+    }
+
+    Y_UNIT_TEST(ShouldMount2LockLost)
+    {
+        TTestEnv env;
+        ui32 nodeIdx = SetupTestEnv(env);
+
+        auto& runtime = env.GetRuntime();
+
+        TActorId startVolumeActorId;
+        ui64 volumeTabletId = 0;
+        ui64 lockTabletRequestCount = 0;
+
+        TServiceClient service(runtime, nodeIdx);
+        service.CreateVolume();
+        service.AssignVolume();
+
+        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+                switch (event->GetTypeRewrite()) {
+                    case TEvHiveProxy::EvLockTabletRequest: {
+                        startVolumeActorId = event->Sender;
+                        ++lockTabletRequestCount;
+                        break;
+                    }
+                    case TEvSSProxy::EvDescribeVolumeResponse: {
+                        auto* msg = event->Get<TEvSSProxy::TEvDescribeVolumeResponse>();
+                        const auto& volumeDescription =
+                            msg->PathDescription.GetBlockStoreVolumeDescription();
+                        volumeTabletId = volumeDescription.GetVolumeTabletId();
+                        break;
+                    }
+                }
+                return TTestActorRuntime::DefaultObserverFunc(event);
+            });
+
+        service.MountVolume();
+        UNIT_ASSERT_VALUES_EQUAL(1, lockTabletRequestCount);
+
+        service.SendRequest(
+            startVolumeActorId,
+            std::make_unique<TEvHiveProxy::TEvTabletLockLost>(volumeTabletId));
+
+        service.MountVolume();
+        UNIT_ASSERT_VALUES_EQUAL(2, lockTabletRequestCount);
+    }
+
     Y_UNIT_TEST(ShouldNotSendVolumeMountedForPingMounts)
     {
         TTestEnv env;
