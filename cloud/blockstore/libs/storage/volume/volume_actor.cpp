@@ -1136,6 +1136,7 @@ STFUNC(TVolumeActor::StateZombie)
 
         HFunc(TEvTablet::TEvTabletDead, HandleTabletDead);
 
+        IgnoreFunc(TEvVolumePrivate::TEvAllocateDiskIfNeeded);
         IgnoreFunc(TEvVolumePrivate::TEvUpdateCounters);
         IgnoreFunc(TEvVolumePrivate::TEvUpdateThrottlerState);
         IgnoreFunc(TEvVolumePrivate::TEvUpdateReadWriteClientInfo);
