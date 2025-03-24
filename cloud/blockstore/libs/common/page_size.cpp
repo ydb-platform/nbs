@@ -4,6 +4,8 @@
 
 namespace NCloud::NBlockStore {
 
+////////////////////////////////////////////////////////////////////////////////
+
 size_t GetPageSize()
 {
     const static size_t size = []() -> size_t
