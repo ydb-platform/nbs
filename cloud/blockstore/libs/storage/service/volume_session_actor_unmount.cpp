@@ -107,7 +107,7 @@ void TUnmountRequestActor::Bootstrap(const TActorContext& ctx)
 {
     Become(&TThis::StateWork);
 
-    RemoveClient(ctx);
+    DescribeVolume(ctx);
 }
 
 void TUnmountRequestActor::DescribeVolume(const TActorContext& ctx)
@@ -181,8 +181,7 @@ void TUnmountRequestActor::HandleVolumeRemoveClientResponse(
             Error.GetCode());
 
         if (GetErrorKind(Error) == EErrorKind::ErrorRetriable) {
-            // check if volume is not destroyed
-            DescribeVolume(ctx);
+            ReplyAndDie(ctx);
         } else {
             ReplyAndDie(ctx);
         }
@@ -203,6 +202,9 @@ void TUnmountRequestActor::HandleDescribeVolumeResponse(
 {
     const auto* msg = ev->Get();
 
+    LOG_WARN(ctx, TBlockStoreComponents::SERVICE,
+        "HandleDescribeVolumeResponse $#");
+
     if (msg->GetStatus() ==
         MAKE_SCHEMESHARD_ERROR(NKikimrScheme::StatusPathDoesNotExist))
     {
@@ -212,6 +214,7 @@ void TUnmountRequestActor::HandleDescribeVolumeResponse(
             ClientId.Quote().data());
 
         Error = MakeError(S_ALREADY, "Volume is already destroyed");
+        ReplyAndDie(ctx);
     } else if (msg->GetStatus() == NKikimrScheme::StatusSuccess) {
         auto volumeTabletId = msg->
             PathDescription.
@@ -221,11 +224,11 @@ void TUnmountRequestActor::HandleDescribeVolumeResponse(
         if (volumeTabletId != TabletId) {
             DiskRecreated = true;
             Error = MakeError(S_ALREADY, "Volume is already destroyed");
+            ReplyAndDie(ctx);
         }
     }
 
-    // let client retry Unmount request
-    ReplyAndDie(ctx);
+    RemoveClient(ctx);
 }
 
 void TUnmountRequestActor::HandleStopVolumeResponse(

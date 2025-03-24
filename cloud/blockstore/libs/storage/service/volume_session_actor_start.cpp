@@ -547,6 +547,8 @@ void TStartVolumeActor::HandleTabletDead(
     const TActorContext& ctx)
 {
     const auto* msg = ev->Get();
+    // StartShutdown(ctx);
+    // return;
 
     Y_ABORT_UNLESS(msg->TabletID == VolumeTabletId,
         "Tablet IDs mismatch: %lu != %lu",

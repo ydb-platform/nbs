@@ -12,6 +12,10 @@ void TVolumeSessionActor::HandleStopVolumeRequest(
     const TEvServicePrivate::TEvStopVolumeRequest::TPtr& ev,
     const TActorContext& ctx)
 {
+
+    LOG_WARN(ctx, TBlockStoreComponents::SERVICE,
+        "HandleStopVolumeRequest $#");
+
     const auto& diskId = VolumeInfo->DiskId;
 
     if (!StartVolumeActor) {
