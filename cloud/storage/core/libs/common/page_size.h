@@ -2,10 +2,10 @@
 
 #include <cstddef>
 
-namespace NCloud::NBlockStore {
+namespace NCloud {
 
 ////////////////////////////////////////////////////////////////////////////////
 
 size_t GetPlatformPageSize();
 
-}   // namespace NCloud::NBlockStore
+}   // namespace NCloud
