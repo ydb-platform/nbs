@@ -52,21 +52,23 @@ protected:
     NProto::TError Error;
     NActors::TActorSystem* ActorSystem;
     const NActors::TActorId ParentActorId;
+    const ui32 RequestBlockCount;
 
 public:
     explicit IRdmaDeviceRequestHandler(
             ui32 responseCount,
             NActors::TActorSystem* actorSystem,
-            NActors::TActorId parentActorId)
+            NActors::TActorId parentActorId,
+            ui32 requestBlockCount)
         : ResponseCount(responseCount)
         , ActorSystem(actorSystem)
         , ParentActorId(parentActorId)
+        , RequestBlockCount(requestBlockCount)
     {}
 
     ~IRdmaDeviceRequestHandler() override = default;
 
     void SendDeviceTimedOut(TString deviceUUID);
-    [[nodiscard]] static bool NeedToNotifyAboutError(const NProto::TError& err);
 
     virtual void HandleResult(
         const TDeviceRequestContext& dCtx,
@@ -78,8 +80,24 @@ public:
         ui32 status,
         TStringBuf buffer);
 
-    void AddDeviceIndicesToCompleteEvent(
-        TEvNonreplPartitionPrivate::TOperationCompleted& opCompleted);
+    template <typename TCompletionEvent>
+    std::unique_ptr<TCompletionEvent> CreateCompletionEvent(
+        NProto::TError error,
+        const TRequestInfo& requestInfo)
+    {
+        auto completion = std::make_unique<TCompletionEvent>(std::move(error));
+
+        completion->DeviceIndices = AllDevices;
+        completion->ErrorDeviceIndices = ErrDevices;
+
+        completion->TotalCycles = requestInfo.GetTotalCycles();
+        completion->ExecCycles = requestInfo.GetExecCycles();
+
+        auto& counters = *completion->Stats.MutableSysChecksumCounters();
+        counters.SetBlocksCount(RequestBlockCount);
+
+        return completion;
+    }
 };
 
 ////////////////////////////////////////////////////////////////////////////////

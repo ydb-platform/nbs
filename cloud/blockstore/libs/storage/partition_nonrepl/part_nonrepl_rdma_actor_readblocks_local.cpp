@@ -28,7 +28,6 @@ class TRdmaRequestReadBlocksLocalContext: public IRdmaDeviceRequestHandler
 private:
     const TNonreplicatedPartitionConfigPtr PartConfig;
     const TRequestInfoPtr RequestInfo;
-    const ui32 RequestBlockCount;
     const ui64 RequestId;
     const bool CheckVoidBlocks;
 
@@ -48,10 +47,13 @@ public:
             NActors::TActorId parentActorId,
             ui64 requestId,
             bool checkVoidBlocks)
-        : IRdmaDeviceRequestHandler(requestCount, actorSystem, parentActorId)
+        : IRdmaDeviceRequestHandler(
+              requestCount,
+              actorSystem,
+              parentActorId,
+              requestBlockCount)
         , PartConfig(std::move(partConfig))
         , RequestInfo(std::move(requestInfo))
-        , RequestBlockCount(requestBlockCount)
         , RequestId(requestId)
         , CheckVoidBlocks(checkVoidBlocks)
         , SgList(std::move(sglist))
@@ -139,19 +141,17 @@ public:
             RequestInfo->Cookie);
         ActorSystem->Send(event.release());
 
+        timer.Finish();
+
         using TCompletionEvent =
             TEvNonreplPartitionPrivate::TEvReadBlocksCompleted;
-        auto completion = std::make_unique<TCompletionEvent>(std::move(Error));
-        auto& counters = *completion->Stats.MutableUserReadCounters();
-        completion->TotalCycles = RequestInfo->GetTotalCycles();
+        auto completion = CreateCompletionEvent<TCompletionEvent>(
+            std::move(Error),
+            *RequestInfo);
 
-        timer.Finish();
-        completion->ExecCycles = RequestInfo->GetExecCycles();
         completion->NonVoidBlockCount = allZeroes ? 0 : RequestBlockCount;
         completion->VoidBlockCount = allZeroes ? RequestBlockCount : 0;
-        AddDeviceIndicesToCompleteEvent(*completion);
 
-        counters.SetBlocksCount(RequestBlockCount);
         auto completionEvent = std::make_unique<IEventHandle>(
             ParentActorId,
             TActorId(),
