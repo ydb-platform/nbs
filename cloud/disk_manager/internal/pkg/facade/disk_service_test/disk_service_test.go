@@ -53,25 +53,6 @@ func testCases() []TestCase {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-func getRealDiskZoneId(
-	t *testing.T,
-	ctx context.Context,
-	zoneID string,
-	diskID string,
-) string {
-
-	if zoneID == shardedZoneId {
-		// We should provide correct zone for NBS client because
-		// only unsharded zones are configured in the NBS client config.
-		diskMeta, err := testcommon.GetDiskMeta(ctx, diskID)
-		require.NoError(t, err)
-		zoneID = diskMeta.ZoneID
-	}
-	return zoneID
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
 func testDiskServiceCreateEmptyDiskWithZoneID(t *testing.T, zoneID string) {
 	ctx := testcommon.NewContext()
 
@@ -79,7 +60,7 @@ func testDiskServiceCreateEmptyDiskWithZoneID(t *testing.T, zoneID string) {
 	require.NoError(t, err)
 	defer client.Close()
 
-	diskID := testcommon.ToResourceID(t)
+	diskID := testcommon.ReplaceUnacceptableSymbolsFromResourceID(t)
 
 	reqCtx := testcommon.GetRequestContext(t, ctx)
 	request := disk_manager.CreateDiskRequest{
@@ -223,7 +204,7 @@ func testDiskServiceCreateDiskFromImageWithForceNotLayeredWithZoneID(
 	require.NoError(t, err)
 	defer client.Close()
 
-	imageID := testcommon.ToResourceID(t)
+	imageID := testcommon.ReplaceUnacceptableSymbolsFromResourceID(t)
 
 	reqCtx := testcommon.GetRequestContext(t, ctx)
 	operation, err := client.CreateImage(reqCtx, &disk_manager.CreateImageRequest{
@@ -241,7 +222,7 @@ func testDiskServiceCreateDiskFromImageWithForceNotLayeredWithZoneID(
 	err = internal_client.WaitOperation(ctx, client, operation.Id)
 	require.NoError(t, err)
 
-	diskID := testcommon.ToResourceID(t)
+	diskID := testcommon.ReplaceUnacceptableSymbolsFromResourceID(t)
 
 	reqCtx = testcommon.GetRequestContext(t, ctx)
 	operation, err = client.CreateDisk(reqCtx, &disk_manager.CreateDiskRequest{
@@ -261,8 +242,11 @@ func testDiskServiceCreateDiskFromImageWithForceNotLayeredWithZoneID(
 	err = internal_client.WaitOperation(ctx, client, operation.Id)
 	require.NoError(t, err)
 
-	zoneID = getRealDiskZoneId(t, ctx, zoneID, diskID)
-	nbsClient := testcommon.NewNbsTestingClient(t, ctx, zoneID)
+	diskMeta, err := testcommon.GetDiskMeta(ctx, diskID)
+	require.NoError(t, err)
+	// We should provide correct zone for NBS client because
+	// only unsharded zones are configured in the NBS client config.
+	nbsClient := testcommon.NewNbsTestingClient(t, ctx, diskMeta.ZoneID)
 	err = nbsClient.ValidateCrc32(
 		ctx,
 		diskID,
@@ -299,7 +283,7 @@ func testDiskServiceCancelCreateDiskFromImageWithZoneID(
 	require.NoError(t, err)
 	defer client.Close()
 
-	imageID := testcommon.ToResourceID(t)
+	imageID := testcommon.ReplaceUnacceptableSymbolsFromResourceID(t)
 	imageSize := uint64(64 * 1024 * 1024)
 
 	_ = testcommon.CreateImage(
@@ -311,7 +295,7 @@ func testDiskServiceCancelCreateDiskFromImageWithZoneID(
 		true, // pooled
 	)
 
-	diskID := testcommon.ToResourceID(t)
+	diskID := testcommon.ReplaceUnacceptableSymbolsFromResourceID(t)
 	diskSize := 2 * imageSize
 
 	reqCtx := testcommon.GetRequestContext(t, ctx)
@@ -352,7 +336,7 @@ func testDiskServiceDeleteDiskWhenCreationIsInFlightWithZoneID(
 	require.NoError(t, err)
 	defer client.Close()
 
-	imageID := testcommon.ToResourceID(t)
+	imageID := testcommon.ReplaceUnacceptableSymbolsFromResourceID(t)
 	imageSize := uint64(64 * 1024 * 1024)
 
 	_ = testcommon.CreateImage(
@@ -367,7 +351,7 @@ func testDiskServiceDeleteDiskWhenCreationIsInFlightWithZoneID(
 	// Need to add some variance for better testing.
 	common.WaitForRandomDuration(time.Millisecond, 2*time.Second)
 
-	diskID := testcommon.ToResourceID(t)
+	diskID := testcommon.ReplaceUnacceptableSymbolsFromResourceID(t)
 	diskSize := 2 * imageSize
 
 	reqCtx := testcommon.GetRequestContext(t, ctx)
@@ -405,18 +389,14 @@ func TestDiskServiceDeleteDiskWhenCreationIsInFlight(t *testing.T) {
 	}
 }
 
-func testDiskServiceCreateDisksFromImageWithConfiguredPoolWithZoneID(
-	t *testing.T,
-	zoneID string,
-) {
-
+func TestDiskServiceCreateDisksFromImageWithConfiguredPool(t *testing.T) {
 	ctx := testcommon.NewContext()
 
 	client, err := testcommon.NewClient(ctx)
 	require.NoError(t, err)
 	defer client.Close()
 
-	imageID := testcommon.ToResourceID(t)
+	imageID := t.Name()
 	imageSize := uint64(64 * 1024 * 1024)
 
 	diskContentInfo := testcommon.CreateImage(
@@ -433,57 +413,32 @@ func testDiskServiceCreateDisksFromImageWithConfiguredPoolWithZoneID(
 	defer privateClient.Close()
 
 	reqCtx := testcommon.GetRequestContext(t, ctx)
-	if zoneID != shardedZoneId {
-		operation, err := privateClient.ConfigurePool(reqCtx, &api.ConfigurePoolRequest{
-			ImageId:      imageID,
-			ZoneId:       zoneID,
-			Capacity:     12,
-			UseImageSize: true,
-		})
-		require.NoError(t, err)
-		require.NotEmpty(t, operation)
-		err = internal_client.WaitOperation(ctx, client, operation.Id)
-		require.NoError(t, err)
-	} else {
-		operation, err := privateClient.ConfigurePool(reqCtx, &api.ConfigurePoolRequest{
-			ImageId:      imageID,
-			ZoneId:       shardId1,
-			Capacity:     12,
-			UseImageSize: true,
-		})
-		require.NoError(t, err)
-		require.NotEmpty(t, operation)
-		err = internal_client.WaitOperation(ctx, client, operation.Id)
-		require.NoError(t, err)
-
-		reqCtx = testcommon.GetRequestContext(t, ctx)
-		operation, err = privateClient.ConfigurePool(reqCtx, &api.ConfigurePoolRequest{
-			ImageId:      imageID,
-			ZoneId:       shardId2,
-			Capacity:     12,
-			UseImageSize: true,
-		})
-		require.NoError(t, err)
-		require.NotEmpty(t, operation)
-		err = internal_client.WaitOperation(ctx, client, operation.Id)
-		require.NoError(t, err)
-	}
+	operation, err := privateClient.ConfigurePool(reqCtx, &api.ConfigurePoolRequest{
+		ImageId:      imageID,
+		ZoneId:       "zone-a",
+		Capacity:     12,
+		UseImageSize: true,
+	})
+	require.NoError(t, err)
+	require.NotEmpty(t, operation)
+	err = internal_client.WaitOperation(ctx, client, operation.Id)
+	require.NoError(t, err)
 
 	diskSize := 2 * imageSize
 
 	var operations []*disk_manager.Operation
 	for i := 0; i < 20; i++ {
-		diskID := fmt.Sprintf("%v%v", testcommon.ToResourceID(t), i)
+		diskID := fmt.Sprintf("%v%v", t.Name(), i)
 
 		reqCtx = testcommon.GetRequestContext(t, ctx)
-		operation, err := client.CreateDisk(reqCtx, &disk_manager.CreateDiskRequest{
+		operation, err = client.CreateDisk(reqCtx, &disk_manager.CreateDiskRequest{
 			Src: &disk_manager.CreateDiskRequest_SrcImageId{
 				SrcImageId: imageID,
 			},
 			Size: int64(diskSize),
 			Kind: disk_manager.DiskKind_DISK_KIND_SSD,
 			DiskId: &disk_manager.DiskId{
-				ZoneId: zoneID,
+				ZoneId: "zone-a",
 				DiskId: diskID,
 			},
 			EncryptionDesc: &disk_manager.EncryptionDesc{},
@@ -493,14 +448,13 @@ func testDiskServiceCreateDisksFromImageWithConfiguredPoolWithZoneID(
 		operations = append(operations, operation)
 	}
 
+	nbsClient := testcommon.NewNbsTestingClient(t, ctx, "zone-a")
+
 	for i, operation := range operations {
 		err := internal_client.WaitOperation(ctx, client, operation.Id)
 		require.NoError(t, err)
 
-		diskID := fmt.Sprintf("%v%v", testcommon.ToResourceID(t), i)
-		diskZoneID := getRealDiskZoneId(t, ctx, zoneID, diskID)
-		nbsClient := testcommon.NewNbsTestingClient(t, ctx, diskZoneID)
-
+		diskID := fmt.Sprintf("%v%v", t.Name(), i)
 		err = nbsClient.ValidateCrc32(
 			ctx,
 			diskID,
@@ -515,10 +469,10 @@ func testDiskServiceCreateDisksFromImageWithConfiguredPoolWithZoneID(
 
 	operations = nil
 	for i := 0; i < 20; i++ {
-		diskID := fmt.Sprintf("%v%v", testcommon.ToResourceID(t), i)
+		diskID := fmt.Sprintf("%v%v", t.Name(), i)
 
 		reqCtx = testcommon.GetRequestContext(t, ctx)
-		operation, err := client.DeleteDisk(reqCtx, &disk_manager.DeleteDiskRequest{
+		operation, err = client.DeleteDisk(reqCtx, &disk_manager.DeleteDiskRequest{
 			DiskId: &disk_manager.DiskId{
 				DiskId: diskID,
 			},
@@ -529,7 +483,7 @@ func testDiskServiceCreateDisksFromImageWithConfiguredPoolWithZoneID(
 	}
 
 	reqCtx = testcommon.GetRequestContext(t, ctx)
-	operation, err := client.DeleteImage(reqCtx, &disk_manager.DeleteImageRequest{
+	operation, err = client.DeleteImage(reqCtx, &disk_manager.DeleteImageRequest{
 		ImageId: imageID,
 	})
 	require.NoError(t, err)
@@ -542,20 +496,6 @@ func testDiskServiceCreateDisksFromImageWithConfiguredPoolWithZoneID(
 	}
 
 	testcommon.CheckConsistency(t, ctx)
-}
-
-func TestDiskServiceCreateDisksFromImageWithConfiguredPool(
-	t *testing.T,
-) {
-
-	for _, testCase := range testCases() {
-		t.Run(testCase.name, func(t *testing.T) {
-			testDiskServiceCreateDisksFromImageWithConfiguredPoolWithZoneID(
-				t,
-				testCase.zoneId,
-			)
-		})
-	}
 }
 
 func testCreateDiskFromIncrementalSnapshot(
@@ -571,7 +511,7 @@ func testCreateDiskFromIncrementalSnapshot(
 	require.NoError(t, err)
 	defer client.Close()
 
-	diskID1 := testcommon.ToResourceID(t) + "1"
+	diskID1 := testcommon.ReplaceUnacceptableSymbolsFromResourceID(t) + "1"
 
 	reqCtx := testcommon.GetRequestContext(t, ctx)
 	operation, err := client.CreateDisk(reqCtx, &disk_manager.CreateDiskRequest{
@@ -581,7 +521,7 @@ func testCreateDiskFromIncrementalSnapshot(
 		Size: int64(diskSize),
 		Kind: diskKind,
 		DiskId: &disk_manager.DiskId{
-			ZoneId: zoneID,
+			ZoneId: defaultZoneId,
 			DiskId: diskID1,
 		},
 		FolderId: "folder",
@@ -591,17 +531,16 @@ func testCreateDiskFromIncrementalSnapshot(
 	err = internal_client.WaitOperation(ctx, client, operation.Id)
 	require.NoError(t, err)
 
-	diskZoneID := getRealDiskZoneId(t, ctx, zoneID, diskID1)
-	nbsClient1 := testcommon.NewNbsTestingClient(t, ctx, diskZoneID)
+	nbsClient1 := testcommon.NewNbsTestingClient(t, ctx, defaultZoneId)
 	_, err = nbsClient1.FillDisk(ctx, diskID1, diskSize)
 	require.NoError(t, err)
 
-	snapshotID1 := testcommon.ToResourceID(t) + "1"
+	snapshotID1 := testcommon.ReplaceUnacceptableSymbolsFromResourceID(t) + "1"
 
 	reqCtx = testcommon.GetRequestContext(t, ctx)
 	operation, err = client.CreateSnapshot(reqCtx, &disk_manager.CreateSnapshotRequest{
 		Src: &disk_manager.DiskId{
-			ZoneId: diskZoneID,
+			ZoneId: defaultZoneId,
 			DiskId: diskID1,
 		},
 		SnapshotId: snapshotID1,
@@ -615,12 +554,12 @@ func testCreateDiskFromIncrementalSnapshot(
 	_, err = nbsClient1.FillDisk(ctx, diskID1, diskSize)
 	require.NoError(t, err)
 
-	snapshotID2 := testcommon.ToResourceID(t) + "2"
+	snapshotID2 := testcommon.ReplaceUnacceptableSymbolsFromResourceID(t) + "2"
 
 	reqCtx = testcommon.GetRequestContext(t, ctx)
 	operation, err = client.CreateSnapshot(reqCtx, &disk_manager.CreateSnapshotRequest{
 		Src: &disk_manager.DiskId{
-			ZoneId: diskZoneID,
+			ZoneId: defaultZoneId,
 			DiskId: diskID1,
 		},
 		SnapshotId: snapshotID2,
@@ -631,7 +570,7 @@ func testCreateDiskFromIncrementalSnapshot(
 	err = internal_client.WaitOperation(ctx, client, operation.Id)
 	require.NoError(t, err)
 
-	diskID2 := testcommon.ToResourceID(t) + "2"
+	diskID2 := testcommon.ReplaceUnacceptableSymbolsFromResourceID(t) + "2"
 
 	reqCtx = testcommon.GetRequestContext(t, ctx)
 	operation, err = client.CreateDisk(reqCtx, &disk_manager.CreateDiskRequest{
@@ -654,8 +593,11 @@ func testCreateDiskFromIncrementalSnapshot(
 	diskContentInfo, err := nbsClient1.CalculateCrc32(diskID1, diskSize)
 	require.NoError(t, err)
 
-	diskZoneID = getRealDiskZoneId(t, ctx, zoneID, diskID2)
-	nbsClient2 := testcommon.NewNbsTestingClient(t, ctx, diskZoneID)
+	diskMeta, err := testcommon.GetDiskMeta(ctx, diskID2)
+	require.NoError(t, err)
+	// We should provide correct zone for NBS client because
+	// only unsharded zones are configured in the NBS client config.
+	nbsClient2 := testcommon.NewNbsTestingClient(t, ctx, diskMeta.ZoneID)
 	err = nbsClient2.ValidateCrc32(ctx, diskID2, diskContentInfo)
 	require.NoError(t, err)
 
@@ -705,7 +647,7 @@ func testDiskServiceCreateDiskFromSnapshotWithZoneID(
 	defer client.Close()
 
 	diskSize := uint64(32 * 1024 * 4096)
-	diskID1 := testcommon.ToResourceID(t) + "1"
+	diskID1 := testcommon.ReplaceUnacceptableSymbolsFromResourceID(t) + "1"
 
 	reqCtx := testcommon.GetRequestContext(t, ctx)
 	operation, err := client.CreateDisk(reqCtx, &disk_manager.CreateDiskRequest{
@@ -724,17 +666,20 @@ func testDiskServiceCreateDiskFromSnapshotWithZoneID(
 	err = internal_client.WaitOperation(ctx, client, operation.Id)
 	require.NoError(t, err)
 
-	diskZoneID := getRealDiskZoneId(t, ctx, zoneID, diskID1)
-	nbsClient := testcommon.NewNbsTestingClient(t, ctx, diskZoneID)
+	diskMeta, err := testcommon.GetDiskMeta(ctx, diskID1)
+	require.NoError(t, err)
+	// We should provide correct zone for NBS client because
+	// only unsharded zones are configured in the NBS client config.
+	nbsClient := testcommon.NewNbsTestingClient(t, ctx, diskMeta.ZoneID)
 	diskContentInfo, err := nbsClient.FillDisk(ctx, diskID1, diskSize)
 	require.NoError(t, err)
 
-	snapshotID1 := testcommon.ToResourceID(t) + "1"
+	snapshotID1 := testcommon.ReplaceUnacceptableSymbolsFromResourceID(t) + "1"
 
 	reqCtx = testcommon.GetRequestContext(t, ctx)
 	operation, err = client.CreateSnapshot(reqCtx, &disk_manager.CreateSnapshotRequest{
 		Src: &disk_manager.DiskId{
-			ZoneId: diskZoneID,
+			ZoneId: defaultZoneId,
 			DiskId: diskID1,
 		},
 		SnapshotId: snapshotID1,
@@ -750,7 +695,7 @@ func testDiskServiceCreateDiskFromSnapshotWithZoneID(
 	require.NoError(t, err)
 	require.Equal(t, float64(1), snapshotMeta.Progress)
 
-	diskID2 := testcommon.ToResourceID(t) + "2"
+	diskID2 := testcommon.ReplaceUnacceptableSymbolsFromResourceID(t) + "2"
 
 	reqCtx = testcommon.GetRequestContext(t, ctx)
 	operation, err = client.CreateDisk(reqCtx, &disk_manager.CreateDiskRequest{
@@ -769,10 +714,15 @@ func testDiskServiceCreateDiskFromSnapshotWithZoneID(
 	err = internal_client.WaitOperation(ctx, client, operation.Id)
 	require.NoError(t, err)
 
-	diskMeta := disk_manager.CreateDiskMetadata{}
-	err = internal_client.GetOperationMetadata(ctx, client, operation.Id, &diskMeta)
+	createDiskMeta := disk_manager.CreateDiskMetadata{}
+	err = internal_client.GetOperationMetadata(
+		ctx,
+		client,
+		operation.Id,
+		&createDiskMeta,
+	)
 	require.NoError(t, err)
-	require.Equal(t, float64(1), diskMeta.Progress)
+	require.Equal(t, float64(1), createDiskMeta.Progress)
 
 	err = nbsClient.ValidateCrc32(ctx, diskID1, diskContentInfo)
 	require.NoError(t, err)
@@ -810,7 +760,7 @@ func testCreateDiskFromImage(
 	require.NoError(t, err)
 	defer client.Close()
 
-	imageID := testcommon.ToResourceID(t) + "_image"
+	imageID := testcommon.ReplaceUnacceptableSymbolsFromResourceID(t) + "_image"
 
 	diskContentInfo := testcommon.CreateImage(
 		t,
@@ -821,7 +771,7 @@ func testCreateDiskFromImage(
 		pooled,
 	)
 
-	diskID := testcommon.ToResourceID(t)
+	diskID := testcommon.ReplaceUnacceptableSymbolsFromResourceID(t)
 
 	reqCtx := testcommon.GetRequestContext(t, ctx)
 	operation, err := client.CreateDisk(reqCtx, &disk_manager.CreateDiskRequest{
@@ -842,8 +792,11 @@ func testCreateDiskFromImage(
 	err = internal_client.WaitOperation(ctx, client, operation.Id)
 	require.NoError(t, err)
 
-	zoneID = getRealDiskZoneId(t, ctx, zoneID, diskID)
-	nbsClient := testcommon.NewNbsTestingClient(t, ctx, zoneID)
+	diskMeta, err := testcommon.GetDiskMeta(ctx, diskID)
+	require.NoError(t, err)
+	// We should provide correct zone for NBS client because
+	// only unsharded zones are configured in the NBS client config.
+	nbsClient := testcommon.NewNbsTestingClient(t, ctx, diskMeta.ZoneID)
 
 	if encryptionDesc != nil {
 		encryption, err := disks.PrepareEncryptionDesc(encryptionDesc)
@@ -1022,7 +975,7 @@ func testDiskServiceCreateDiskFromSnapshotOfOverlayDiskInZone(
 
 	imageSize := uint64(64 * 1024 * 1024)
 
-	diskID1 := testcommon.ToResourceID(t)
+	diskID1 := testcommon.ReplaceUnacceptableSymbolsFromResourceID(t)
 
 	reqCtx := testcommon.GetRequestContext(t, ctx)
 	operation, err := client.CreateDisk(reqCtx, &disk_manager.CreateDiskRequest{
@@ -1046,7 +999,7 @@ func testDiskServiceCreateDiskFromSnapshotOfOverlayDiskInZone(
 	diskContentInfo, err := nbsClient.FillDisk(ctx, diskID1, imageSize)
 	require.NoError(t, err)
 
-	imageID := testcommon.ToResourceID(t) + "_image"
+	imageID := testcommon.ReplaceUnacceptableSymbolsFromResourceID(t) + "_image"
 
 	reqCtx = testcommon.GetRequestContext(t, ctx)
 	operation, err = client.CreateImage(reqCtx, &disk_manager.CreateImageRequest{
@@ -1082,7 +1035,7 @@ func testDiskServiceCreateDiskFromSnapshotOfOverlayDiskInZone(
 	require.NoError(t, err)
 
 	largeDiskSize := uint64(128 * 1024 * 1024 * 1024)
-	diskID2 := testcommon.ToResourceID(t) + "2"
+	diskID2 := testcommon.ReplaceUnacceptableSymbolsFromResourceID(t) + "2"
 
 	reqCtx = testcommon.GetRequestContext(t, ctx)
 	operation, err = client.CreateDisk(reqCtx, &disk_manager.CreateDiskRequest{
@@ -1101,7 +1054,7 @@ func testDiskServiceCreateDiskFromSnapshotOfOverlayDiskInZone(
 	err = internal_client.WaitOperation(ctx, client, operation.Id)
 	require.NoError(t, err)
 
-	snapshotID := testcommon.ToResourceID(t) + "_snapshot"
+	snapshotID := testcommon.ReplaceUnacceptableSymbolsFromResourceID(t) + "_snapshot"
 
 	reqCtx = testcommon.GetRequestContext(t, ctx)
 	operation, err = client.CreateSnapshot(reqCtx, &disk_manager.CreateSnapshotRequest{
@@ -1117,7 +1070,7 @@ func testDiskServiceCreateDiskFromSnapshotOfOverlayDiskInZone(
 	err = internal_client.WaitOperation(ctx, client, operation.Id)
 	require.NoError(t, err)
 
-	diskID3 := testcommon.ToResourceID(t) + "3"
+	diskID3 := testcommon.ReplaceUnacceptableSymbolsFromResourceID(t) + "3"
 
 	reqCtx = testcommon.GetRequestContext(t, ctx)
 	operation, err = client.CreateDisk(reqCtx, &disk_manager.CreateDiskRequest{
@@ -1142,8 +1095,11 @@ func testDiskServiceCreateDiskFromSnapshotOfOverlayDiskInZone(
 	err = nbsClient.ValidateCrc32(ctx, diskID2, diskContentInfo)
 	require.NoError(t, err)
 
-	diskZoneID := getRealDiskZoneId(t, ctx, zoneID, diskID3)
-	otherNbsClient := testcommon.NewNbsTestingClient(t, ctx, diskZoneID)
+	diskMeta, err := testcommon.GetDiskMeta(ctx, diskID3)
+	require.NoError(t, err)
+	// We should provide correct zone for NBS client because
+	// only unsharded zones are configured in the NBS client config.
+	otherNbsClient := testcommon.NewNbsTestingClient(t, ctx, diskMeta.ZoneID)
 	err = otherNbsClient.ValidateCrc32(ctx, diskID3, diskContentInfo)
 	require.NoError(t, err)
 

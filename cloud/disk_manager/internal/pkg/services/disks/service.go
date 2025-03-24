@@ -168,6 +168,7 @@ func (s *service) prepareZoneId(
 	shards := s.nbsFactory.GetShards(disk.ZoneId)
 
 	if len(shards) == 0 {
+		// Get here in the case of an unsharded zone or shard of a zone given.
 		return disk.ZoneId, nil
 	}
 

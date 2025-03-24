@@ -76,7 +76,7 @@ func newDefaultClientConfig() *client_config.Config {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-func ToResourceID(t *testing.T) string {
+func ReplaceUnacceptableSymbolsFromResourceID(t *testing.T) string {
 	return strings.ReplaceAll(t.Name(), "/", "_")
 }
 
@@ -433,7 +433,7 @@ func CreateImage(
 	require.NoError(t, err)
 	defer client.Close()
 
-	diskID := ToResourceID(t) + "_temporary_disk_for_image_" + imageID
+	diskID := ReplaceUnacceptableSymbolsFromResourceID(t) + "_temporary_disk_for_image_" + imageID
 
 	reqCtx := GetRequestContext(t, ctx)
 	operation, err := client.CreateDisk(reqCtx, &disk_manager.CreateDiskRequest{
@@ -523,6 +523,30 @@ func newYDB(ctx context.Context) (*persistence.YDBClient, error) {
 	)
 }
 
+func newResourceStorage(ctx context.Context) (resources.Storage, error) {
+	db, err := newYDB(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	endedMigrationExpirationTimeout, err := time.ParseDuration("30m")
+	if err != nil {
+		return nil, err
+	}
+
+	resourcesStorage, err := resources.NewStorage(
+		"disks",
+		"images",
+		"snapshot",
+		"filesystems",
+		"placement_groups",
+		db,
+		endedMigrationExpirationTimeout,
+	)
+
+	return resourcesStorage, err
+}
+
 func newPoolStorage(ctx context.Context) (pools_storage.Storage, error) {
 	db, err := newYDB(ctx)
 	if err != nil {
@@ -568,30 +592,6 @@ func newSnapshotStorage(ctx context.Context) (snapshot_storage.Storage, error) {
 		db,
 		nil, // do not need s3 here
 	)
-}
-
-func newResourceStorage(ctx context.Context) (resources.Storage, error) {
-	db, err := newYDB(ctx)
-	if err != nil {
-		return nil, err
-	}
-
-	endedMigrationExpirationTimeout, err := time.ParseDuration("30m")
-	if err != nil {
-		return nil, err
-	}
-
-	resourcesStorage, err := resources.NewStorage(
-		"disks",
-		"images",
-		"snapshot",
-		"filesystems",
-		"placement_groups",
-		db,
-		endedMigrationExpirationTimeout,
-	)
-
-	return resourcesStorage, err
 }
 
 ////////////////////////////////////////////////////////////////////////////////
