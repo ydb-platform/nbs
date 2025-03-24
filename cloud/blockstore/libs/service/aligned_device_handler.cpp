@@ -252,7 +252,7 @@ TAlignedDeviceHandler::ExecuteReadRequest(
         // The request size is quite small. We do all work at once.
         request->Sglist = std::move(sgList);
         auto result = Storage->ReadBlocksLocal(std::move(ctx), std::move(request));
-        return result.Apply(
+        return result.Subscribe(
             [weakPtr = weak_from_this(),
              range = blocksInfo.Range](const auto& future)
             {
@@ -285,7 +285,7 @@ TAlignedDeviceHandler::ExecuteReadRequest(
         blocksInfo.Range.Size() - requestBlockCount);
     Y_DEBUG_ABORT_UNLESS(blocksInfo.Range.Size());
 
-    return result.Apply(
+    return result.Subscribe(
         [ctx = std::move(ctx),
          weakPtr = weak_from_this(),
          blocksInfo = blocksInfo,
@@ -340,7 +340,7 @@ TAlignedDeviceHandler::ExecuteWriteRequest(
         request->Sglist = std::move(sgList);
         auto result =
             Storage->WriteBlocksLocal(std::move(ctx), std::move(request));
-        return result.Apply(
+        return result.Subscribe(
             [weakPtr = weak_from_this(),
              range = blocksInfo.Range](const auto& future)
             {
@@ -373,7 +373,7 @@ TAlignedDeviceHandler::ExecuteWriteRequest(
         blocksInfo.Range.Size() - requestBlockCount);
     Y_DEBUG_ABORT_UNLESS(blocksInfo.Range.Size());
 
-    return result.Apply(
+    return result.Subscribe(
         [ctx = std::move(ctx),
          weakPtr = weak_from_this(),
          blocksInfo = blocksInfo,
@@ -420,7 +420,7 @@ TFuture<NProto::TZeroBlocksResponse> TAlignedDeviceHandler::ExecuteZeroRequest(
     if (requestBlockCount == blocksInfo.Range.Size()) {
         // The request size is quite small. We do all work at once.
         auto result = Storage->ZeroBlocks(std::move(ctx), std::move(request));
-        return result.Apply(
+        return result.Subscribe(
             [weakPtr = weak_from_this(),
              range = blocksInfo.Range](const auto& future)
             {
@@ -442,7 +442,7 @@ TFuture<NProto::TZeroBlocksResponse> TAlignedDeviceHandler::ExecuteZeroRequest(
     auto originalRange = blocksInfo.Range;
     blocksInfo.Range.Start += requestBlockCount;
 
-    return result.Apply(
+    return result.Subscribe(
         [ctx = std::move(ctx),
          weakPtr = weak_from_this(),
          blocksInfo = blocksInfo,
@@ -480,10 +480,12 @@ void TAlignedDeviceHandler::ReportCriticalError(
         // Keep the logic synchronized with blockstore/libs/vhost/server.cpp.
         return;
     }
+
     if (!IsReliableMediaKind && CriticalErrorReported) {
         // For non-reliable disks report crit event only once.
         return;
     }
+
     auto message = TStringBuilder()
                    << "disk: " << DiskId.Quote() << ", op: " << operation
                    << ", range: " << range << ", error: " << FormatError(error);

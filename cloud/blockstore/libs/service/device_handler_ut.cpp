@@ -1069,7 +1069,9 @@ Y_UNIT_TEST_SUITE(TDeviceHandlerTest)
             "AppCriticalEvents/ErrorWasSentToTheGuestForNonReliableDisk",
             true);
 
-        {   // Two write errors generate same crit events for reliable disk.
+        {
+            // Two write errors generate same critical events count for reliable
+            // disk.
             reliableCritEvent->Set(0);
             nonReliableCritEvent->Set(0);
             {
@@ -1092,8 +1094,9 @@ Y_UNIT_TEST_SUITE(TDeviceHandlerTest)
             UNIT_ASSERT_VALUES_EQUAL(0, nonReliableCritEvent->Val());
         }
 
-        {   // Two write errors generate only one critEvent for non reliable
-            // disk.
+        {
+            // Two write errors generate only one critical event for non
+            // reliable disk.
             reliableCritEvent->Set(0);
             nonReliableCritEvent->Set(0);
             {
@@ -1116,7 +1119,8 @@ Y_UNIT_TEST_SUITE(TDeviceHandlerTest)
             UNIT_ASSERT_VALUES_EQUAL(1, nonReliableCritEvent->Val());
         }
 
-        {   // Check critEvent for reads.
+        {
+            // Check critical event for read.
             reliableCritEvent->Set(0);
             nonReliableCritEvent->Set(0);
 
@@ -1136,7 +1140,8 @@ Y_UNIT_TEST_SUITE(TDeviceHandlerTest)
             UNIT_ASSERT_VALUES_EQUAL(0, nonReliableCritEvent->Val());
         }
 
-        {   // Check critEvent for zero.
+        {
+            // Check critical event for zero.
             reliableCritEvent->Set(0);
             nonReliableCritEvent->Set(0);
 
