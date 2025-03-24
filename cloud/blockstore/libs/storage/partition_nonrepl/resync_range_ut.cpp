@@ -351,7 +351,7 @@ Y_UNIT_TEST_SUITE(TResyncRangeTest)
         {
             auto counters = env.GetReplicaCounters(1);
             UNIT_ASSERT_VALUES_EQUAL(1, counters.RequestCounters.ChecksumBlocks.Count);
-            UNIT_ASSERT_VALUES_EQUAL(0, counters.RequestCounters.ReadBlocks.Count);
+            UNIT_ASSERT_VALUES_EQUAL(1, counters.RequestCounters.ReadBlocks.Count);
             UNIT_ASSERT_VALUES_EQUAL(2, counters.RequestCounters.WriteBlocks.Count);
 
             auto blocks = env.ReadReplica(1, 0, 3071);
@@ -442,7 +442,7 @@ Y_UNIT_TEST_SUITE(TResyncRangeTest)
         {
             auto counters = env.GetReplicaCounters(1);
             UNIT_ASSERT_VALUES_EQUAL(1, counters.RequestCounters.ChecksumBlocks.Count);
-            UNIT_ASSERT_VALUES_EQUAL(0, counters.RequestCounters.ReadBlocks.Count);
+            UNIT_ASSERT_VALUES_EQUAL(1, counters.RequestCounters.ReadBlocks.Count);
             UNIT_ASSERT_VALUES_EQUAL(2, counters.RequestCounters.WriteBlocks.Count);
 
             auto blocks = env.ReadReplica(1, 0, 3071);
@@ -455,7 +455,7 @@ Y_UNIT_TEST_SUITE(TResyncRangeTest)
         {
             auto counters = env.GetReplicaCounters(2);
             UNIT_ASSERT_VALUES_EQUAL(1, counters.RequestCounters.ChecksumBlocks.Count);
-            UNIT_ASSERT_VALUES_EQUAL(0, counters.RequestCounters.ReadBlocks.Count);
+            UNIT_ASSERT_VALUES_EQUAL(1, counters.RequestCounters.ReadBlocks.Count);
             UNIT_ASSERT_VALUES_EQUAL(2, counters.RequestCounters.WriteBlocks.Count);
 
             auto blocks = env.ReadReplica(2, 0, 3071);
@@ -537,9 +537,9 @@ Y_UNIT_TEST_SUITE(TResyncRangeTest)
         UNIT_ASSERT_VALUES_EQUAL(2, response->ChecksumDuration.Seconds());
 
         UNIT_ASSERT_VALUES_EQUAL(12, response->ReadStartTs.Seconds());
-        UNIT_ASSERT_VALUES_EQUAL(1, response->ReadDuration.Seconds());
+        UNIT_ASSERT_VALUES_EQUAL(2, response->ReadDuration.Seconds());
 
-        UNIT_ASSERT_VALUES_EQUAL(13, response->WriteStartTs.Seconds());
+        UNIT_ASSERT_VALUES_EQUAL(14, response->WriteStartTs.Seconds());
         UNIT_ASSERT_VALUES_EQUAL(1, response->WriteDuration.Seconds());
 
         UNIT_ASSERT_VALUES_EQUAL(1024, response->AffectedBlockInfos.size());
@@ -572,7 +572,7 @@ Y_UNIT_TEST_SUITE(TResyncRangeTest)
         }
 
         {
-            env.InjectError<TEvService::TEvReadBlocksLocalResponse>(
+            env.InjectError<TEvService::TEvReadBlocksResponse>(
                 E_REJECTED, "read error");
 
             auto response = env.ResyncRange(0, 3071, {0, 1});
@@ -581,7 +581,7 @@ Y_UNIT_TEST_SUITE(TResyncRangeTest)
         }
 
         {
-            env.InjectError<TEvService::TEvWriteBlocksLocalResponse>(
+            env.InjectError<TEvService::TEvWriteBlocksResponse>(
                 E_REJECTED, "write error");
 
             auto response = env.ResyncRange(0, 3071, {0, 1});

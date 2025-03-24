@@ -22,6 +22,13 @@ class TResyncRangeActor final
     : public NActors::TActorBootstrapped<TResyncRangeActor>
 {
 private:
+    enum class EStatus
+    {
+        Unknown,
+        Ok,
+        MinorMismatch,
+        MajorMismatch,
+    };
     const TRequestInfoPtr RequestInfo;
     const ui32 BlockSize;
     const TBlockRange64 Range;
@@ -29,10 +36,10 @@ private:
     const TString WriterClientId;
     const IBlockDigestGeneratorPtr BlockDigestGenerator;
 
-    TVector<int> ActorsToResync;
+    EStatus Status = EStatus::Unknown;
+    TVector<size_t> ActorsToResync;
     ui32 ResyncedCount = 0;
-    TGuardedBuffer<TString> Buffer;
-    TGuardedSgList SgList;
+    TVector<NProto::TIOVector> ReadBuffers;
     NProto::TError Error;
 
     TInstant ReadStartTs;
@@ -56,9 +63,20 @@ public:
 
 private:
     void CompareChecksums(const NActors::TActorContext& ctx);
-    void ReadBlocks(const NActors::TActorContext& ctx, int idx);
+    void ResyncMinor(
+        const NActors::TActorContext& ctx,
+        const TVector<ui64>& checksums,
+        ui64 majorChecksum);
+    void ResyncMajor(
+        const NActors::TActorContext& ctx,
+        const TVector<ui64>& checksums);
+    void PrepareWriteBuffer(const NActors::TActorContext& ctx);
+    void ReadBlocks(const NActors::TActorContext& ctx, size_t idx);
     void WriteBlocks(const NActors::TActorContext& ctx);
-    void WriteReplicaBlocks(const NActors::TActorContext& ctx, int idx);
+    void WriteReplicaBlocks(
+        const NActors::TActorContext& ctx,
+        size_t idx,
+        NProto::TIOVector data);
     void Done(const NActors::TActorContext& ctx);
 
 private:
@@ -73,19 +91,19 @@ private:
         const NActors::TActorContext& ctx);
 
     void HandleReadResponse(
-        const TEvService::TEvReadBlocksLocalResponse::TPtr& ev,
+        const TEvService::TEvReadBlocksResponse::TPtr& ev,
         const NActors::TActorContext& ctx);
 
     void HandleReadUndelivery(
-        const TEvService::TEvReadBlocksLocalRequest::TPtr& ev,
+        const TEvService::TEvReadBlocksRequest::TPtr& ev,
         const NActors::TActorContext& ctx);
 
     void HandleWriteResponse(
-        const TEvService::TEvWriteBlocksLocalResponse::TPtr& ev,
+        const TEvService::TEvWriteBlocksResponse::TPtr& ev,
         const NActors::TActorContext& ctx);
 
     void HandleWriteUndelivery(
-        const TEvService::TEvWriteBlocksLocalRequest::TPtr& ev,
+        const TEvService::TEvWriteBlocksRequest::TPtr& ev,
         const NActors::TActorContext& ctx);
 
     void HandlePoisonPill(
