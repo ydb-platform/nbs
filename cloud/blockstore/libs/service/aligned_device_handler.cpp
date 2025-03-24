@@ -475,6 +475,11 @@ void TAlignedDeviceHandler::ReportCriticalError(
     const TString& operation,
     TBlockRange64 range)
 {
+    if (error.GetCode() == E_CANCELLED) {
+        // Do not raise crit event when client disconnected.
+        // Keep the logic synchronized with blockstore/libs/vhost/server.cpp.
+        return;
+    }
     if (!IsReliableMediaKind && CriticalErrorReported) {
         // For non-reliable disks report crit event only once.
         return;

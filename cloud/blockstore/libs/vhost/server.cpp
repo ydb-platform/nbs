@@ -346,6 +346,8 @@ private:
             return TVhostRequest::SUCCESS;
         }
 
+        // Keep the logic the logic synchronized with
+        // TAlignedDeviceHandler::ReportCriticalError().
         bool cancelError =
             error.GetCode() == E_CANCELLED ||
             GetErrorKind(error) == EErrorKind::ErrorRetriable;
