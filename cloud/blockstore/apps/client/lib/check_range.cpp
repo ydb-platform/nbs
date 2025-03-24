@@ -307,14 +307,14 @@ private:
         return TRequestBuilder(StartIndex, remainingBlocks, BlocksPerRequest);
     }
 
-    TString CreateNextInput(TBlockRange64 range, bool isRepeated = false) const
+    TString CreateNextInput(TBlockRange64 range) const
     {
         NJson::TJsonValue input;
         input["DiskId"] = DiskId;
         input["StartIndex"] = range.Start;
         input["BlocksCount"] = range.Size();
         input["CalculateChecksums"] = CalculateChecksums;
-        if (!isRepeated && IsMirror) {
+        if (!RetryRange && IsMirror) {
             input["ReplicaCount"] = ReplicaCount;
         }
 
