@@ -14,6 +14,8 @@
 
 namespace NCloud::NBlockStore::NRdma {
 
+using namespace std::chrono_literals;
+
 ////////////////////////////////////////////////////////////////////////////////
 
 struct TRequestContext: public NRdma::TNullContext
@@ -289,8 +291,8 @@ Y_UNIT_TEST_SUITE(TRdmaClientTest)
         auto verbs = NVerbs::CreateTestVerbs(testContext);
         auto monitoring = CreateMonitoringServiceStub();
         auto clientConfig = std::make_shared<TClientConfig>();
-        clientConfig->MaxReconnectDelay = TDuration::Seconds(1);
-        clientConfig->MaxResponseDelay = TDuration::Seconds(1);
+        clientConfig->MaxReconnectDelay = 1s;
+        clientConfig->MaxResponseDelay = 1s;
 
         auto logging = CreateLoggingService(
             "console",
@@ -311,7 +313,7 @@ Y_UNIT_TEST_SUITE(TRdmaClientTest)
             "::",
             10020);
 
-        auto ep = clientEndpoint.GetValue(TDuration::Seconds(5));
+        auto ep = clientEndpoint.GetValue(5s);
 
         struct TResponse
         {
@@ -341,8 +343,8 @@ Y_UNIT_TEST_SUITE(TRdmaClientTest)
             return ctx;
         };
 
-        size_t requestBytes = 1024;
-        size_t responseBytes = 1024;
+        const size_t requestBytes = 1024;
+        const size_t responseBytes = 1024;
         auto r = ep->AllocateRequest(
             std::make_shared<TClientHandler>(),
             makeContext(),
@@ -361,9 +363,9 @@ Y_UNIT_TEST_SUITE(TRdmaClientTest)
 
         handle->CancelRequest();
 
-        ev.WaitT(TDuration::Seconds(5));
+        ev.WaitT(5s);
         UNIT_ASSERT(response.Received);
-        UNIT_ASSERT_VALUES_EQUAL(E_CANCELLED, response.Status);
+        UNIT_ASSERT_VALUES_EQUAL(RDMA_PROTO_CANCELLED, response.Status);
     }
 
     Y_UNIT_TEST(ShouldReconnect)

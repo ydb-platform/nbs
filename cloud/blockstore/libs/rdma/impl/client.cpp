@@ -92,7 +92,7 @@ struct TRequest
 
     TCallContextPtr CallContext;
     ui32 ReqId = 0;
-    NThreading::TPromise<ui32> ReqIdForRequestHandle;
+    TPromise<ui32> ReqIdForRequestHandle;
 
     TPooledBuffer InBuffer{};
     TPooledBuffer OutBuffer{};
@@ -115,9 +115,9 @@ class TActiveRequests
 {
 private:
     THashMap<ui32, TRequestPtr> Requests;
-    THistory<ui32> CompletedRequests = THistory<ui32>(REQUEST_HISTORY_SIZE);
-    THistory<ui32> TimedOutRequests = THistory<ui32>(REQUEST_HISTORY_SIZE);
-    THistory<ui32> CancelledRequests = THistory<ui32>(REQUEST_HISTORY_SIZE);
+    THistory<ui32> CompletedRequests{REQUEST_HISTORY_SIZE};
+    THistory<ui32> TimedOutRequests{REQUEST_HISTORY_SIZE};
+    THistory<ui32> CancelledRequests{REQUEST_HISTORY_SIZE};
 
 public:
     ui32 CreateId()
@@ -189,7 +189,7 @@ public:
         auto it = Requests.find(reqId);
         if (it != Requests.end()) {
             TRequestPtr req = std::move(it->second);
-            CancelledRequests.Put(it->first);
+            CancelledRequests.Put(reqId);
             Requests.erase(it);
             return req;
         }
@@ -540,12 +540,12 @@ private:
 
 class TRequestHandle: public IRequestHandle
 {
-    std::shared_ptr<TClientEndpoint> Endpoint;
+    std::weak_ptr<TClientEndpoint> Endpoint;
     NThreading::TFuture<ui32> ReqIdFuture;
 
 public:
     TRequestHandle(
-            std::shared_ptr<TClientEndpoint> endpoint,
+            std::weak_ptr<TClientEndpoint> endpoint,
             NThreading::TFuture<ui32> reqIdFuture)
         : Endpoint(std::move(endpoint))
         , ReqIdFuture(std::move(reqIdFuture))
@@ -556,11 +556,14 @@ public:
     void CancelRequest() override
     {
         ReqIdFuture.Subscribe(
-            [endpoint = Endpoint](const NThreading::TFuture<ui32>& reqIdFuture)
+            [weakEndpoint =
+                 Endpoint](const NThreading::TFuture<ui32>& reqIdFuture)
             {
-                auto reqId = std::make_unique<TRequestId>();
-                reqId->ReqId = reqIdFuture.GetValue();
-                endpoint->CancelRequest(std::move(reqId));
+                if (auto endpoint = weakEndpoint.lock()) {
+                    auto reqId = std::make_unique<TRequestId>();
+                    reqId->ReqId = reqIdFuture.GetValue();
+                    endpoint->CancelRequest(std::move(reqId));
+                }
             });
     }
 };
@@ -1225,6 +1228,10 @@ bool TClientEndpoint::ShouldStop() const
 
 void TClientEndpoint::CancelRequest(TRequestIdPtr reqId) noexcept
 {
+    if (!CheckState(EEndpointState::Connected)) {
+        return;
+    }
+
     Counters->RequestEnqueued();
     CancelRequests.Enqueue(std::move(reqId));
 
@@ -1645,9 +1652,9 @@ private:
 
         for (const auto& endpoint: *endpoints) {
             try {
+                hasWork |= endpoint->HandleCancelRequests();
                 if (endpoint->CheckState(EEndpointState::Connected)) {
                     hasWork |= endpoint->HandleInputRequests();
-                    hasWork |= endpoint->HandleCancelRequests();
                     hasWork |= endpoint->HandleCompletionEvents();
                 }
                 if (endpoint->CheckState(EEndpointState::Disconnecting)) {
