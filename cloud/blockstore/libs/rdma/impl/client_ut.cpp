@@ -365,7 +365,7 @@ Y_UNIT_TEST_SUITE(TRdmaClientTest)
 
         ev.WaitT(5s);
         UNIT_ASSERT(response.Received);
-        UNIT_ASSERT_VALUES_EQUAL(RDMA_PROTO_CANCELLED, response.Status);
+        UNIT_ASSERT_VALUES_EQUAL((ui32)RDMA_PROTO_CANCELLED, response.Status);
     }
 
     Y_UNIT_TEST(ShouldReconnect)
