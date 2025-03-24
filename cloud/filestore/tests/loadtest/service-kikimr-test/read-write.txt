@@ -21,6 +21,7 @@ Tests {
         IODepth: 64
         TestDuration: 60
         KeepFileStore: true
+        CollectStorageStats: true
     }
 }
 Tests {
@@ -51,5 +52,6 @@ Tests {
         IODepth: 64
         TestDuration: 60
         KeepFileStore: true
+        CollectStorageStats: true
     }
 }

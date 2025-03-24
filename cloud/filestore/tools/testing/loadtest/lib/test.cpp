@@ -1043,6 +1043,36 @@ public:
         }
     }
 
+    void ReportStorageStats()
+    {
+        NJson::TJsonValue requestInput;
+        requestInput["FileSystemId"] = Config.GetCreateFileStoreRequest()
+            .GetFileSystemId();
+
+        auto request = std::make_shared<NProto::TExecuteActionRequest>();
+        request->SetAction("getstoragestats");
+        request->SetInput(NJson::WriteJson(requestInput));
+
+        TCallContextPtr ctx = MakeIntrusive<TCallContext>();
+        auto result = Client->ExecuteAction(ctx, request);
+        WaitForCompletion(GetRequestName(*request), result);
+
+        const auto& value = result.GetValueSync();
+        const auto& bytes = value.GetOutput();
+
+        NJson::TJsonValue jvalue;
+        NJson::ReadJsonTree(bytes, &jvalue);
+
+        // auto mixedBlocksCount = jvalue.GetMap().at("Stats").GetMap().at("MixedBlocksCount").GetInteger();
+        auto mixedBlocksCount = jvalue["Stats"]["MixedBlocksCount"].GetString();
+
+        STORAGE_INFO(
+            "%s storage stats: %s, %s",
+            MakeTestTag().c_str(),
+            bytes.c_str(),
+            mixedBlocksCount.c_str());
+    }
+
     void CleanupTest()
     {
         if (SourceTest) {
@@ -1062,29 +1092,6 @@ public:
                     MakeTestTag().c_str());
             }
             TargetFuture.GetValueSync();
-        }
-
-        {
-            auto request = std::make_shared<NProto::TExecuteActionRequest>();
-            request->SetAction("getstoragestats");
-            request->SetInput(R"({"FileSystemId": "smoke"})");
-
-            TCallContextPtr ctx = MakeIntrusive<TCallContext>();
-            auto result = Client->ExecuteAction(ctx, request);
-            WaitForCompletion(GetRequestName(*request), result);
-
-            const auto& value = result.GetValueSync();
-            const auto& bytes = value.GetOutput();
-
-            NJson::TJsonValue jvalue;
-            NJson::ReadJsonTree(bytes, &jvalue);
-
-            auto mixedBlocksCount = jvalue["Stats"]["MixedBlocksCount"].GetInteger();
-
-            STORAGE_INFO(
-                "%s storage stats: %lld",
-                MakeTestTag().c_str(),
-                mixedBlocksCount);
         }
 
         if (Config.HasCreateFileStoreRequest() && !Config.GetKeepFileStore()) {
@@ -1140,6 +1147,10 @@ public:
         }
 
         STORAGE_INFO("test is going to finish");
+
+        if (Config.GetCollectStorageStats()) {
+            ReportStorageStats();
+        }
 
         CleanupTest();
 
