@@ -48,7 +48,7 @@ public:
             NActors::TActorId parentActorId,
             ui64 requestId,
             bool checkVoidBlocks)
-        : IRdmaDeviceRequestHandler(requestCount, actorSystem, parentActorId)
+        : IRdmaDeviceRequestHandler(requestCount, actorSystem, parentActorId, 0)
         , PartConfig(std::move(partConfig))
         , RequestInfo(std::move(requestInfo))
         , RequestId(requestId)
@@ -147,19 +147,19 @@ public:
 
         ActorSystem->Send(event.release());
 
+        timer.Finish();
+
         using TCompletionEvent =
             TEvNonreplPartitionPrivate::TEvReadBlocksCompleted;
-        auto completion = std::make_unique<TCompletionEvent>(std::move(error));
-        auto& counters = *completion->Stats.MutableUserReadCounters();
-        completion->TotalCycles = RequestInfo->GetTotalCycles();
+        auto completion = CreateCompletionEvent<TCompletionEvent>(
+            std::move(Error),
+            *RequestInfo);
+
         completion->NonVoidBlockCount = allZeroes ? 0 : blockCount;
         completion->VoidBlockCount = allZeroes ? blockCount : 0;
-        AddDeviceIndicesToCompleteEvent(*completion);
-
-        timer.Finish();
-        completion->ExecCycles = RequestInfo->GetExecCycles();
-
+        auto& counters = *completion->Stats.MutableUserReadCounters();
         counters.SetBlocksCount(blockCount);
+
         auto completionEvent = std::make_unique<IEventHandle>(
             ParentActorId,
             TActorId(),

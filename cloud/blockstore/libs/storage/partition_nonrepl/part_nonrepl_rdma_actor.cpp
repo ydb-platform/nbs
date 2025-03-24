@@ -20,6 +20,17 @@ using namespace NActors;
 
 LWTRACE_USING(BLOCKSTORE_STORAGE_PROVIDER);
 
+namespace {
+
+////////////////////////////////////////////////////////////////////////////////
+
+bool NeedToNotifyAboutDeviceRequestError(const NProto::TError& err)
+{
+    return err.GetCode() == E_RDMA_UNAVAILABLE || err.GetCode() == E_TIMEOUT;
+}
+
+}   // namespace
+
 ////////////////////////////////////////////////////////////////////////////////
 
 void IRdmaDeviceRequestHandler::SendDeviceTimedOut(TString deviceUUID)
@@ -35,11 +46,6 @@ void IRdmaDeviceRequestHandler::SendDeviceTimedOut(TString deviceUUID)
     ActorSystem->Send(event.release());
 }
 
-bool IRdmaDeviceRequestHandler::NeedToNotifyAboutError(const NProto::TError& err)
-{
-    return err.GetCode() == E_RDMA_UNAVAILABLE || err.GetCode() == E_TIMEOUT;
-}
-
 bool IRdmaDeviceRequestHandler::ProcessResponse(
     TDeviceRequestContext& dCtx,
     ui32 status,
@@ -51,19 +57,13 @@ bool IRdmaDeviceRequestHandler::ProcessResponse(
         HandleResult(dCtx, buffer);
     } else {
         auto err = NRdma::ParseError(buffer);
-        if (NeedToNotifyAboutError(err)) {
+        if (NeedToNotifyAboutDeviceRequestError(err)) {
             ErrDevices.emplace_back(dCtx.DeviceIdx);
             SendDeviceTimedOut(std::move(dCtx.DeviceUUID));
         }
         Error = std::move(err);
     }
     return --ResponseCount == 0;
-}
-
-void IRdmaDeviceRequestHandler::AddDeviceIndicesToCompleteEvent(
-    TEvNonreplPartitionPrivate::TOperationCompleted& opCompleted) {
-        opCompleted.DeviceIndices = AllDevices;
-        opCompleted.ErrorDeviceIndices = ErrDevices;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
