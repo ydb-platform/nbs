@@ -87,6 +87,9 @@ void TDeviceGenerator::AddPossibleUUIDSForDevice(
     ui32 maxDeviceCount,
     THashSet<TString>& setToAddUUIDs)
 {
+    if (!maxDeviceCount) {
+        maxDeviceCount = 64;
+    }
     setToAddUUIDs.emplace(
         CreateDeviceId(deviceNumber, poolConfig.GetHashSuffix()));
     for (ui32 i = 0; i < maxDeviceCount; ++i) {
