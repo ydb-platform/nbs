@@ -58,7 +58,8 @@ jobs:
       uses: actions/checkout@v4
       if: github.event.pull_request.head.sha != ''
       with:
-        submodules: true
+        submodules: false
+        sparse-checkout: '.github'
         ref: ${{ github.event.pull_request.head.sha }}
         fetch-depth: ${{ !contains(github.event.pull_request.labels.*.name, 'rebase') && 1 || 0 }}
     - name: Rebase PR
@@ -76,7 +77,8 @@ jobs:
       uses: actions/checkout@v4
       if: github.event.pull_request.head.sha == ''
       with:
-        submodules: true
+        submodules: false
+        sparse-checkout: '.github'
     - name: Prepare VM
       uses: ./.github/actions/prepare
     - name: Prepare env
