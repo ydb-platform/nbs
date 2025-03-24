@@ -52,7 +52,6 @@ private:
     TRequestInfoPtr RequestInfo;
     TAdaptiveLock Lock;
     TMap<ui64, TPartialChecksum> Checksums;
-    const ui32 RequestBlockCount;
     ui64 RequestId;
 
 public:
@@ -64,10 +63,13 @@ public:
             ui32 requestBlockCount,
             NActors::TActorId parentActorId,
             ui64 requestId)
-        : IRdmaDeviceRequestHandler(requestCount, actorSystem, parentActorId)
+        : IRdmaDeviceRequestHandler(
+              requestCount,
+              actorSystem,
+              parentActorId,
+              requestBlockCount)
         , PartConfig(std::move(partConfig))
         , RequestInfo(std::move(requestInfo))
-        , RequestBlockCount(requestBlockCount)
         , RequestId(requestId)
     {}
 
@@ -131,17 +133,14 @@ public:
             RequestInfo->Cookie);
         ActorSystem->Send(event.release());
 
-        using TCompletionEvent =
-            TEvNonreplPartitionPrivate::TEvChecksumBlocksCompleted;
-        auto completion = std::make_unique<TCompletionEvent>(std::move(Error));
-        auto& counters = *completion->Stats.MutableSysChecksumCounters();
-        completion->TotalCycles = RequestInfo->GetTotalCycles();
-        AddDeviceIndicesToCompleteEvent(*completion);
-
         timer.Finish();
-        completion->ExecCycles = RequestInfo->GetExecCycles();
 
-        counters.SetBlocksCount(RequestBlockCount);
+        using TCompletionEvent =
+        TEvNonreplPartitionPrivate::TEvChecksumBlocksCompleted;
+        auto completion = CreateCompletionEvent<TCompletionEvent>(
+            std::move(Error),
+            *RequestInfo);
+
         auto completionEvent = std::make_unique<IEventHandle>(
             ParentActorId,
             TActorId(),
