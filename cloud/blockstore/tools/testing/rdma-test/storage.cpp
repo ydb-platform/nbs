@@ -9,7 +9,7 @@ namespace NCloud::NBlockStore {
 
 TStorageBuffer IStorage::AllocateBuffer(size_t len)
 {
-    void* p = aligned_alloc(TPageSize::GetPageSize(), len);
+    void* p = aligned_alloc(GetPageSize(), len);
     return { static_cast<char*>(p), free };
 }
 

@@ -2,11 +2,9 @@
 
 #include <unistd.h>
 
-namespace NCloud::NBlockStore {
+namespace {
 
-const size_t TPageSize::Value = TPageSize::Init();
-
-size_t TPageSize::Init()
+static size_t PageSizeInit()
 {
     const long result = sysconf(_SC_PAGESIZE);
     if (result <= 0) {
@@ -15,9 +13,15 @@ size_t TPageSize::Init()
     return result;
 }
 
-size_t TPageSize::GetPageSize()
+const size_t pageSizeValue = PageSizeInit();
+
+}   // namespace
+
+namespace NCloud::NBlockStore {
+
+size_t GetPageSize()
 {
-    return Value;
+    return pageSizeValue;
 }
 
 }   // namespace NCloud::NBlockStore
