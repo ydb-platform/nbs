@@ -15,4 +15,4 @@ size_t TPageSize::Get()
     return result;
 }
 
-}   // namespace NCloud::NBlockStore::NRdma
+}   // namespace NCloud::NBlockStore

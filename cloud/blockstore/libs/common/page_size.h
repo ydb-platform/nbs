@@ -12,4 +12,4 @@ public:
     const static size_t Value;
 };
 
-}   // namespace NCloud::NBlockStore::NRdma
+}   // namespace NCloud::NBlockStore
