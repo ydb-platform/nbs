@@ -187,7 +187,6 @@ void TUnlinkNodeInShardActor::HandleUnlinkNodeResponse(
         }
 
         ReplyAndDie(ctx, msg->GetError());
-
         return;
     }
 
@@ -521,6 +520,7 @@ void TIndexTabletActor::CompleteTx_UnlinkNode(
         UnlockNodeRef({args.ParentNodeId, args.Name});
         shouldUnlockUponCompletion = false;
     }
+
     if (!HasError(args.Error)) {
         if (args.ChildRef->IsExternal()) {
             LOG_DEBUG(ctx, TFileStoreComponents::TABLET,
@@ -609,6 +609,22 @@ bool TIndexTabletActor::PrepareTx_CompleteUnlinkNode(
         return false;   // not ready
     }
 
+    if (!args.ChildRef) {
+        args.Error = ErrorInvalidTarget(args.ParentNodeId, args.Name);
+        return true;
+    }
+
+    if (!args.ChildRef->IsExternal()) {
+        // CompleteUnlinkNode should only be called as a completion of
+        // UnlinkNode for external nodes
+        auto message = Sprintf(
+            "CompleteUnlinkNode: %lu, %s is not external",
+            args.ParentNodeId,
+            args.Name.Quote().c_str());
+        args.Error = MakeError(E_INVALID_STATE, std::move(message));
+        return true;
+    }
+
     return true;
 }
 
@@ -617,34 +633,35 @@ void TIndexTabletActor::ExecuteTx_CompleteUnlinkNode(
     TTransactionContext& tx,
     TTxIndexTablet::TCompleteUnlinkNode& args)
 {
+    TIndexTabletDatabaseProxy db(tx.DB, args.NodeUpdates);
+
+    db.DeleteOpLogEntry(args.OpLogEntryId);
+
     // If the original response was an error or prepare stage failed, we don't
     // need to do anything
-    if (FAILED(args.Response.GetError().GetCode()) ||
-        FAILED(args.Error.GetCode()))
-    {
+    if (FAILED(args.Error.GetCode())) {
+        // It should be impossible to achieve this state
+        LOG_ERROR(
+            ctx,
+            TFileStoreComponents::TABLET,
+            "%s CompleteUnlinkNode is in invalid state: %s, original request: "
+            "%s",
+            LogTag.c_str(),
+            FormatError(args.Error).c_str(),
+            args.Request.ShortDebugString().c_str());
+        ReportInvalidNodeRefUponCompleteUnlinkNode(
+            TStringBuilder()
+            << "CompleteUnlinkNode: " << args.Request.ShortDebugString()
+            << ", Error: " << FormatError(args.Error));
         return;
     }
-
-    Y_UNUSED(ctx, tx, args);
-
-    TIndexTabletDatabaseProxy db(tx.DB, args.NodeUpdates);
+    if (FAILED(args.Response.GetError().GetCode())) {
+        return;
+    }
 
     args.CommitId = GenerateCommitId();
     if (args.CommitId == InvalidCommitId) {
         return RebootTabletOnCommitOverflow(ctx, "CompleteUnlinkNode");
-    }
-    if (!args.ChildRef->IsExternal()) {
-        auto message = ReportUnexpectedLocalNode(
-            TStringBuilder()
-            << "CompleteUnlinkNode: " << args.Request.ShortDebugString());
-        args.Error = MakeError(E_INVALID_STATE, std::move(message));
-        LOG_ERROR(
-            ctx,
-            TFileStoreComponents::TABLET,
-            "%s Unexpected local node: %s",
-            LogTag.c_str(),
-            message.c_str());
-        return;
     }
 
     UnlinkExternalNode(
@@ -655,15 +672,12 @@ void TIndexTabletActor::ExecuteTx_CompleteUnlinkNode(
         args.ChildRef->ShardNodeName,
         args.ChildRef->MinCommitId,
         args.CommitId);
-
-    db.DeleteOpLogEntry(args.OpLogEntryId);
 }
 
 void TIndexTabletActor::CompleteTx_CompleteUnlinkNode(
     const TActorContext& ctx,
     TTxIndexTablet::TCompleteUnlinkNode& args)
 {
-    Y_UNUSED(ctx, args);
     LOG_DEBUG(
         ctx,
         TFileStoreComponents::TABLET,
