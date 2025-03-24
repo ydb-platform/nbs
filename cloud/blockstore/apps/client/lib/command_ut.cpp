@@ -8,6 +8,7 @@
 #include <cloud/storage/core/libs/common/error.h>
 
 #include <library/cpp/json/json_reader.h>
+#include <library/cpp/json/json_writer.h>
 #include <library/cpp/protobuf/util/pb_io.h>
 #include <library/cpp/testing/unittest/registar.h>
 #include <library/cpp/threading/future/future.h>
@@ -832,9 +833,14 @@ Y_UNIT_TEST_SUITE(TCommandTest)
             count++;
 
             NProto::TExecuteActionResponse response;
+
+            NJson::TJsonValue input;
             // E_ARGUMENT transforms to 2147483649
-            response.MutableOutput()->append(
-                "{\"Status\":{\"Code\":2147483649,\"Message\":\"E_ARGUMENT\"}}");
+            input["Status"]["Code"] = 2147483649;
+            input["Status"]["Message"] = "E_ARGUMENT";
+
+            TString jsonStr = NJson::WriteJson(input, false);
+            response.MutableOutput()->append(jsonStr);
 
             return MakeFuture(std::move(response));
         };
