@@ -190,7 +190,7 @@ protected:
                 const auto& status = ExtractStatusValues(result.GetOutput());
 
                 if (HasError(status)) {
-                    if (status.GetCode() == E_ARGUMENT && !RetryRange) {
+                    if (status.GetCode() == E_ARGUMENT && !RetryRange && IsMirror) {
                         if (ShowReadErrorsEnabled) {
                             output << "ReadBlocks error while reading all "
                                       "replicas in range "
@@ -314,7 +314,7 @@ private:
         input["StartIndex"] = range.Start;
         input["BlocksCount"] = range.Size();
         input["CalculateChecksums"] = CalculateChecksums;
-        if (!isRepeated) {
+        if (!isRepeated && IsMirror) {
             input["ReplicaCount"] = ReplicaCount;
         }
 
