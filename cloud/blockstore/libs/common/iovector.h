@@ -31,7 +31,8 @@ TCopyStats CopyToSgList(
     ui64 offsetInBlocks,
     ui32 blockSize);
 
-// Copy all data from iov to sglist.
+// Copy all data from iov to sglist. Empty blocks from the srcData are
+// transferred to the dstData as zeros, empty blocks in dstData are ignored.
 size_t CopyToSgList(
     const NProto::TIOVector& srcData,
     const ui32 srcBlockSize,
