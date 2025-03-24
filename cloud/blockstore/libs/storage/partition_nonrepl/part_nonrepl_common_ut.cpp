@@ -15,17 +15,19 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionUtilTest)
     {
         TVector<TDeviceRequest> deviceRequests;
         NProto::TDeviceConfig dummy;
+        const size_t blockCountForFirstDevice = 128;
+        const size_t blockCountForSecondDevice = 1024 - 128;
         deviceRequests.push_back({
             dummy,
             0,
-            TBlockRange64::WithLength(100'000, 128),
-            TBlockRange64::WithLength(0, 100'128)
+            TBlockRange64::WithLength(100'000, blockCountForFirstDevice),
+            TBlockRange64::WithLength(100, blockCountForFirstDevice)
         });
         deviceRequests.push_back({
             dummy,
-            0,
-            TBlockRange64::WithLength(100'128, 1024 - 128),
-            TBlockRange64::WithLength(100'128, 99'000)
+            1,
+            TBlockRange64::WithLength(100'128, blockCountForSecondDevice),
+            TBlockRange64::WithLength(0, blockCountForSecondDevice )
         });
 
         TDeviceRequestBuilder builder(
@@ -56,6 +58,7 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionUtilTest)
     Y_UNIT_TEST(ShouldBuildDeviceRequestsForLargeRequest)
     {
         NProto::TWriteBlocksRequest request;
+        request.SetStartIndex(100'000);
         auto* buffer = request.MutableBlocks()->MutableBuffers()->Add();
         buffer->resize(4_MB, 1);
         for (ui32 i = 0; i < 1024; ++i) {
@@ -68,10 +71,24 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionUtilTest)
     Y_UNIT_TEST(ShouldBuildDeviceRequestsForSmallRequest)
     {
         NProto::TWriteBlocksRequest request;
+        request.SetStartIndex(100'000);
         for (ui32 i = 0; i < 1024; ++i) {
             auto* buffer = request.MutableBlocks()->MutableBuffers()->Add();
             buffer->resize(4_KB, 1);
             memset(buffer->begin(), i + 1, 4_KB);
+        }
+
+        DoTestShouldBuildDeviceRequests(request);
+    }
+
+    Y_UNIT_TEST(ShouldBuildDeviceRequestsWhenFirstDeviceSkiped)
+    {
+        NProto::TWriteBlocksRequest request;
+        request.SetStartIndex(100'000 - 128);
+        for (ui32 i = 0; i < 1024 + 128; ++i) {
+            auto* buffer = request.MutableBlocks()->MutableBuffers()->Add();
+            buffer->resize(4_KB, 1);
+            memset(buffer->begin(), i + 1 - 128, 4_KB);
         }
 
         DoTestShouldBuildDeviceRequests(request);
