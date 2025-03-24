@@ -1,5 +1,6 @@
 #include "disk_agent_state.h"
 
+#include "cloud/blockstore/libs/storage/disk_agent/model/device_generator.h"
 #include "rdma_target.h"
 #include "spdk_initializer.h"
 #include "storage_initializer.h"
@@ -263,6 +264,22 @@ TDiskAgentState::TDiskAgentState(
     , RdmaTargetConfig(std::move(rdmaTargetConfig))
     , OldRequestCounters(std::move(oldRequestCounters))
 {
+    TDeviceGenerator gen(
+        Logging->CreateLog("BLOCKSTORE_DISK_AGENT"),
+        AgentConfig->GetAgentId());
+
+    constexpr int MaxDeviceNumberToIgnoreNotfoundError = 64;
+    for (const auto& pathConf : AgentConfig->GetStorageDiscoveryConfig().GetPathConfigs()) {
+        for (const auto& poolConf : pathConf.GetPoolConfigs()) {
+            for (size_t i =0; i < MaxDeviceNumberToIgnoreNotfoundError; ++i) {
+                gen.AddPossibleUUIDSForDevice(
+                    poolConf,
+                    i,
+                    poolConf.GetMaxDeviceCount(),
+                    DeviceUUIDsToIgnoreNotFoundError);
+            }
+        }
+    }
 }
 
 const TDiskAgentState::TDeviceState& TDiskAgentState::GetDeviceState(
@@ -874,6 +891,7 @@ bool TDiskAgentState::AcquireDevices(
         EnsureAccessToDevices(uuids, clientId, accessMode);
     }
 
+    TVector<TString> unknownDevices;
     auto [updated, error] = DeviceClient->AcquireDevices(
         uuids,
         clientId,
@@ -881,7 +899,8 @@ bool TDiskAgentState::AcquireDevices(
         accessMode,
         mountSeqNumber,
         diskId,
-        volumeGeneration);
+        volumeGeneration,
+        unknownDevices);
 
     Y_DEBUG_ABORT_UNLESS(
         !PartiallySuspended || !updated,
@@ -889,7 +908,14 @@ bool TDiskAgentState::AcquireDevices(
         "suspended state.");
 
     CheckError(error);
-
+    for (auto& unknownUUID : unknownDevices) {
+        if (!DeviceUUIDsToIgnoreNotFoundError.contains(unknownUUID)) {
+            CheckError(MakeError(
+                E_NOT_FOUND,
+                TStringBuilder()
+                    << "Device " << unknownUUID.Quote() << " not found"));
+        }
+    }
     return updated;
 }
 
@@ -994,6 +1020,7 @@ void TDiskAgentState::RestoreSessions(TDeviceClient& client) const
 
         int errors = 0;
 
+        TVector<TString> unknownDevices;
         for (auto& session: sessions) {
             TVector<TString> uuids(
                 std::make_move_iterator(session.MutableDeviceIds()->begin()),
@@ -1007,20 +1034,31 @@ void TDiskAgentState::RestoreSessions(TDeviceClient& client) const
                                       : NProto::VOLUME_ACCESS_READ_WRITE,
                 session.GetMountSeqNumber(),
                 session.GetDiskId(),
-                session.GetVolumeGeneration());
+                session.GetVolumeGeneration(),
+                unknownDevices);
 
-            if (HasError(error)) {
+            auto processError = [&](const NProto::TError& err)
+            {
                 ++errors;
 
-                STORAGE_ERROR("Can't restore session "
-                    << session.GetClientId().Quote() << " from the cache: "
-                    << FormatError(error));
+                STORAGE_ERROR(
+                    "Can't restore session "
+                    << session.GetClientId().Quote()
+                    << " from the cache: " << FormatError(err));
 
                 client.ReleaseDevices(
                     uuids,
                     session.GetClientId(),
                     session.GetDiskId(),
                     session.GetVolumeGeneration());
+            };
+            if (HasError(error)) {
+                processError(error);
+            }
+            for (auto& uuid: unknownDevices) {
+                if (!DeviceUUIDsToIgnoreNotFoundError.contains(uuid)) {
+                    processError(error);
+                }
             }
         }
 

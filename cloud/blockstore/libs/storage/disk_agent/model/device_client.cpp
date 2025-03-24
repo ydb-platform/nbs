@@ -3,9 +3,9 @@
 #include "public.h"
 
 #include <cloud/blockstore/libs/service/request_helpers.h>
-
 #include <cloud/storage/core/libs/common/error.h>
 
+#include <util/generic/hash_set.h>
 #include <util/string/builder.h>
 
 namespace NCloud::NBlockStore::NStorage {
@@ -81,18 +81,20 @@ TResultOrError<bool> TDeviceClient::AcquireDevices(
     NProto::EVolumeAccessMode accessMode,
     ui64 mountSeqNumber,
     const TString& diskId,
-    ui32 volumeGeneration) const
+    ui32 volumeGeneration,
+    TVector<TString>& unknownDevices) const
 {
     if (!clientId) {
         return MakeError(E_ARGUMENT, "empty client id");
     }
 
+    THashSet<TString> unknownDevicesSet;
     // check devices
     for (const auto& uuid: uuids) {
         TDeviceState* deviceState = GetDeviceState(uuid);
         if (!deviceState) {
-            return MakeError(E_NOT_FOUND, TStringBuilder()
-                << "Device " << uuid.Quote() << " not found");
+            unknownDevicesSet.emplace(uuid);
+            continue;
         }
 
         TReadGuard g(deviceState->Lock);
@@ -129,6 +131,9 @@ TResultOrError<bool> TDeviceClient::AcquireDevices(
 
     // acquire devices
     for (const auto& uuid: uuids) {
+        if (unknownDevicesSet.contains(uuid)) {
+            continue;
+        }
         TDeviceState& ds = *GetDeviceState(uuid);
 
         TWriteGuard g(ds.Lock);
@@ -201,6 +206,8 @@ TResultOrError<bool> TDeviceClient::AcquireDevices(
             ds.WriterSession.MountSeqNumber = mountSeqNumber;
         }
     }
+
+    std::ranges::move(unknownDevicesSet, std::back_inserter(unknownDevices));
 
     return {somethingHasChanged};
 }

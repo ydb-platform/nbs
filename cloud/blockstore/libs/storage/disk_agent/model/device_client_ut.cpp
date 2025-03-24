@@ -73,14 +73,24 @@ struct TAcquireParamsBuilder
 
 auto AcquireDevices(TDeviceClient& client, const TAcquireParamsBuilder& builder)
 {
-    return client.AcquireDevices(
+    TVector<TString> unknownDevices;
+    auto [_, error] = client.AcquireDevices(
         builder.Uuids,
         builder.ClientId,
         builder.Now,
         builder.AccessMode,
         builder.MountSeqNumber,
         builder.DiskId,
-        builder.VolumeGeneration).GetError();
+        builder.VolumeGeneration, unknownDevices);
+    if (HasError(error)) {
+        return error;
+    }
+
+    if (!unknownDevices.empty()) {
+        return MakeError(E_NOT_FOUND, "unknown device uuids");
+    }
+
+    return NProto::TError();
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -679,26 +689,32 @@ Y_UNIT_TEST_SUITE(TDeviceClientTest)
 
     Y_UNIT_TEST_F(TestShouldAcquire, TFixture)
     {
-        auto client = CreateClient({
-            .Devices = {"uuid1", "uuid2"}
-        });
+        auto client = CreateClient({.Devices = {"uuid1", "uuid2"}});
 
         UNIT_ASSERT_VALUES_EQUAL(0, client.GetSessions().size());
 
         TInstant now = Now();
 
+        auto acquireDevices = [&](auto volumeGeneration)
         {
+            TVector<TString> unknownDevices;
             auto [updated, error] = client.AcquireDevices(
-                {"uuid2", "uuid1"},     // uuids
-                "writer",               // ClientId
+                {"uuid2", "uuid1"},   // uuids
+                "writer",             // ClientId
                 now,
                 NProto::VOLUME_ACCESS_READ_WRITE,
-                1,                      // MountSeqNumber
-                "vol0",                 // DiskId
-                1                       // VolumeGeneration
-            );
-
+                1,                  // MountSeqNumber
+                "vol0",             // DiskId
+                volumeGeneration,   // VolumeGeneration
+                unknownDevices);
+            UNIT_ASSERT_VALUES_EQUAL(0, unknownDevices.size());
             UNIT_ASSERT_C(!HasError(error), error);
+            return updated;
+        };
+
+        {
+            auto updated = acquireDevices(1);
+
             UNIT_ASSERT(updated);   // new write session
         }
 
@@ -706,17 +722,8 @@ Y_UNIT_TEST_SUITE(TDeviceClientTest)
         now += ReleaseInactiveSessionsTimeout;
 
         {
-            auto [updated, error] = client.AcquireDevices(
-                {"uuid2", "uuid1"},      // uuids
-                "writer",                // ClientId
-                now,
-                NProto::VOLUME_ACCESS_READ_WRITE,
-                1,                       // MountSeqNumber
-                "vol0",                  // DiskId
-                1                        // VolumeGeneration
-            );
+            auto updated = acquireDevices(1);
 
-            UNIT_ASSERT_C(!HasError(error), error);
             // writer session was activated
             UNIT_ASSERT(updated);
         }
@@ -725,17 +732,8 @@ Y_UNIT_TEST_SUITE(TDeviceClientTest)
         now += 5s;
 
         {
-            auto [updated, error] = client.AcquireDevices(
-                {"uuid2", "uuid1"},      // uuids
-                "writer",                // ClientId
-                now,
-                NProto::VOLUME_ACCESS_READ_WRITE,
-                1,                       // MountSeqNumber
-                "vol0",                  // DiskId
-                1                        // VolumeGeneration
-            );
+            auto updated = acquireDevices(1);
 
-            UNIT_ASSERT_C(!HasError(error), error);
             // nothing was changed
             UNIT_ASSERT(!updated);
         }
@@ -743,51 +741,24 @@ Y_UNIT_TEST_SUITE(TDeviceClientTest)
         now += 5s;
 
         {
-            auto [updated, error] = client.AcquireDevices(
-                {"uuid2", "uuid1"},      // uuids
-                "writer",                // ClientId
-                now,
-                NProto::VOLUME_ACCESS_READ_WRITE,
-                1,                       // MountSeqNumber
-                "vol0",                  // DiskId
-                2                        // volumeGeneration
-            );
+            auto updated = acquireDevices(2);
 
-            UNIT_ASSERT_C(!HasError(error), error);
             UNIT_ASSERT(updated);   // new volumeGeneration
         }
 
         now += 5s;
 
         {
-            auto [updated, error] = client.AcquireDevices(
-                {"uuid2", "uuid1"},      // uuids
-                "reader",                // ClientId
-                now,
-                NProto::VOLUME_ACCESS_READ_ONLY,
-                1,                       // MountSeqNumber
-                "vol0",                  // DiskId
-                3                        // VolumeGeneration
-            );
+            auto updated = acquireDevices(3);
 
-            UNIT_ASSERT_C(!HasError(error), error);
             UNIT_ASSERT(updated);   // new read session
         }
 
         now += 5s;
 
         {
-            auto [updated, error] = client.AcquireDevices(
-                {"uuid2", "uuid1"},      // uuids
-                "reader2",               // ClientId
-                now,
-                NProto::VOLUME_ACCESS_READ_ONLY,
-                1,                       // MountSeqNumber
-                "vol0",                  // DiskId
-                3                        // VolumeGeneration
-            );
+            auto updated = acquireDevices(3);
 
-            UNIT_ASSERT_C(!HasError(error), error);
             UNIT_ASSERT(updated);   // new read session
         }
     }

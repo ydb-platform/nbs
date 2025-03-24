@@ -5203,6 +5203,84 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
         }
     }
 
+    Y_UNIT_TEST_F(
+        ShouldIgnorePossibleButUnknownDevicesUUIDsDuringAcquire,
+        TFixture)
+    {
+        const TString uuids[]{
+            "79955ae90189fe8a89ab832a8b0cb57d",   // NVMENBS01
+            "657dabaf3d224c9177b00c437716dfb1",   // NVMENBS02
+            "e85cd1d217c3239507fc0cd180a075fd",   // NVMENBS03
+            "5ea2fcdce0a180a63db2b5f6a5b34221"    // unknown NVMENBS04
+        };
+
+        TTempDir tempDir;
+        const TFsPath rootDir = tempDir.Path() / "dev/disk/by-partlabel";
+
+        rootDir.MkDirs();
+
+        auto prepareFile = [&] (TFsPath name, auto size) {
+            TFile {rootDir / name, EOpenModeFlag::CreateAlways}
+            .Resize(size);
+        };
+
+        // default
+        prepareFile("NVMENBS01", 1024_KB);
+        prepareFile("NVMENBS02", 1024_KB);
+        prepareFile("NVMENBS03", 2000_KB);
+
+
+        auto config = DiskAgentConfig();
+        auto& discovery = *config.MutableStorageDiscoveryConfig();
+
+        {
+            auto& path = *discovery.AddPathConfigs();
+            path.SetPathRegExp(rootDir / "NVMENBS([0-3]{2})");
+
+            auto& def = *path.AddPoolConfigs();
+            def.SetMinSize(1024_KB);
+            def.SetMaxSize(2000_KB);
+
+            auto& defLarge = *path.AddPoolConfigs();
+            defLarge.SetMinSize(9000_KB);
+            defLarge.SetMaxSize(15000_KB);
+        }
+
+        auto env =
+            TTestEnvBuilder(*Runtime)
+                .With(config | WithBackend(NProto::DISK_AGENT_BACKEND_AIO))
+                .Build();
+
+        Runtime->UpdateCurrentTime(Now());
+
+        TDiskAgentClient diskAgent(*Runtime);
+        diskAgent.WaitReady();
+
+        diskAgent.AcquireDevices(
+            TVector{
+                uuids[0],   // NVMENBS01
+                uuids[1],   // NVMENBS02
+                uuids[3],   // unknown NVMENBS04
+            },
+            "reader-1",
+            NProto::VOLUME_ACCESS_READ_ONLY,
+            -1,   // MountSeqNumber
+            "vol0",
+            1000);   // VolumeGeneration
+
+        diskAgent.SendAcquireDevicesRequest(
+            TVector{
+                TString("not possible uuid"),
+            },
+            "reader-1",
+            NProto::VOLUME_ACCESS_READ_ONLY,
+            -1,   // MountSeqNumber
+            "vol0",
+            1000);
+        auto resp = diskAgent.RecvAcquireDevicesResponse();
+        UNIT_ASSERT_VALUES_EQUAL(E_NOT_FOUND, resp->GetError().GetCode());
+    }
+
     Y_UNIT_TEST_F(ShouldPerformDirectCopyToRemoteDiskAgent, TCopyRangeFixture)
     {
         // Setup message filter for checking reads and writes.
