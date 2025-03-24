@@ -18,7 +18,6 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
 	"github.com/ydb-platform/nbs/cloud/tasks"
 	task_errors "github.com/ydb-platform/nbs/cloud/tasks/errors"
-	"github.com/ydb-platform/nbs/cloud/tasks/logging"
 	tasks_storage "github.com/ydb-platform/nbs/cloud/tasks/storage"
 )
 
@@ -370,7 +369,6 @@ func (s *service) CreateDisk(
 	if err != nil {
 		return "", err
 	}
-	logging.Debug(ctx, "Chosen zone for disk %v is %v", params.Disk.DiskId, params.Disk.ZoneId)
 
 	switch src := req.Src.(type) {
 	case *disk_manager.CreateDiskRequest_SrcEmpty:
