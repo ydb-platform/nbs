@@ -130,7 +130,7 @@ public:
 
     TBuffer AcquireBuffer(size_t bytesCount, bool ignoreCache)
     {
-        size_t allocSize = AlignUp(bytesCount, GetPageSize());
+        size_t allocSize = AlignUp(bytesCount, GetPlatformPageSize());
 
         TChunk* chunk;
         if (!ignoreCache && allocSize <= MAX_CHUNK_ALLOC) {

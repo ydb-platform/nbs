@@ -26,7 +26,7 @@ class TBufferPool final
     : public IAllocator
 {
 private:
-    const size_t PageSize = GetPageSize();
+    const size_t PageSize = GetPlatformPageSize();
     static constexpr size_t NumBuckets = 1024;
     static constexpr size_t MaxSmallAlloc = 32*1024;
 

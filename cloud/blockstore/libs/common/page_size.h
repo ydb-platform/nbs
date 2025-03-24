@@ -6,6 +6,6 @@ namespace NCloud::NBlockStore {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-size_t GetPageSize();
+size_t GetPlatformPageSize();
 
 }   // namespace NCloud::NBlockStore
