@@ -76,7 +76,7 @@ struct TRdmaClientTest::TRdmaEndpointImpl
         return NRdma::TClientRequestPtr(std::move(req));
     }
 
-    NRdma::IRequestHandlePtr SendRequest(
+    ui64 SendRequest(
         NRdma::TClientRequestPtr req,
         TCallContextPtr callContext) override
     {
@@ -102,7 +102,7 @@ struct TRdmaClientTest::TRdmaEndpointImpl
                 NRdma::RDMA_PROTO_FAIL,
                 len);
 
-            return {};
+            return 0;
         }
 
         size_t responseBytes = 0;
@@ -247,7 +247,12 @@ struct TRdmaClientTest::TRdmaEndpointImpl
             std::move(req),
             NRdma::RDMA_PROTO_OK,
             responseBytes);
-        return {};
+        return 0;
+    }
+
+    void CancelRequest(ui64 reqId) override
+    {
+        Y_UNUSED(reqId);
     }
 
     NThreading::TFuture<void> Stop() override

@@ -298,11 +298,7 @@ Y_UNIT_TEST_SUITE(TRdmaClientTest)
             "console",
             TLogSettings{TLOG_RESOURCES});
 
-        auto client = CreateClient(
-            verbs,
-            logging,
-            monitoring,
-            clientConfig);
+        auto client = CreateClient(verbs, logging, monitoring, clientConfig);
 
         client->Start();
         Y_DEFER {
@@ -359,9 +355,9 @@ Y_UNIT_TEST_SUITE(TRdmaClientTest)
             DurationToCyclesSafe(clientConfig->MaxResponseDelay) + 1;
 
         callContext->SetRequestStartedCycles(GetCycleCount() - retryDelay);
-        auto handle = ep->SendRequest(std::move(request), callContext);
+        auto reqId = ep->SendRequest(std::move(request), callContext);
 
-        handle->CancelRequest();
+        ep->CancelRequest(reqId);
 
         ev.WaitT(5s);
         UNIT_ASSERT(response.Received);
