@@ -161,7 +161,6 @@ struct TTestEnv
         storageConfig.SetNonReplicatedMaxRequestTimeoutSSD(5'000);
         storageConfig.SetMaxMigrationBandwidth(500);
         storageConfig.SetUseDirectCopyRange(useDirectCopy);
-        storageConfig.SetMigrationIndexCachingInterval(1024);
 
         auto config = std::make_shared<TStorageConfig>(
             std::move(storageConfig),
@@ -336,84 +335,6 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionMigrationTest)
 
     Y_UNIT_TEST(ShouldMirrorRequestsAfterAllDataIsMigratedDirectCopy) {
         DoShouldMirrorRequestsAfterAllDataIsMigrated(true);
-    }
-
-    void DoShouldUpdateMigrationState(bool useDirectCopy)
-    {
-        TTestBasicRuntime runtime;
-        TTestEnv env(
-            runtime,
-            TTestEnv::DefaultDevices(runtime.GetNodeId(0)),
-            TTestEnv::DefaultMigrations(runtime.GetNodeId(0)),
-            NProto::VOLUME_IO_OK,
-            false,
-            nullptr,   // no migration state
-            useDirectCopy);
-
-        TPartitionClient client(runtime, env.ActorId);
-
-        ui32 migrationUpdates = 0;
-        ui64 lastMigrationIndex = 0;
-        ui32 lastBlockCountToMigrate = 0;
-        runtime.SetEventFilter(
-            [&](TTestActorRuntimeBase& runtime,
-                TAutoPtr<IEventHandle>& event) -> bool
-            {
-                Y_UNUSED(runtime);
-
-                if (event->GetTypeRewrite() ==
-                    TEvVolume::EvUpdateMigrationState) {
-                    auto* msg =
-                        event->Get<TEvVolume::TEvUpdateMigrationState>();
-                    migrationUpdates++;
-                    lastMigrationIndex = msg->MigrationIndex;
-                    lastBlockCountToMigrate = msg->BlockCountToMigrate;
-                }
-                return false;
-            });
-
-        // Migrate the first range.
-        {
-            WaitForMigrations(runtime, 1);
-            if (migrationUpdates != 1) {
-                NActors::TDispatchOptions options;
-                options.CustomFinalCondition = [&]()
-                {
-                    return migrationUpdates == 1;
-                };
-                runtime.DispatchEvents(options);
-            }
-        }
-
-        // We should see "lastMigrationIndex" equal to 3072, because the first
-        // device has 2048 blocks and is not migrating.
-        UNIT_ASSERT_VALUES_EQUAL(1, migrationUpdates);
-        UNIT_ASSERT_VALUES_EQUAL(3072, lastMigrationIndex);
-        UNIT_ASSERT_VALUES_EQUAL(2048, lastBlockCountToMigrate);
-
-        {
-            NActors::TDispatchOptions options;
-            options.CustomFinalCondition = [&]()
-            {
-                return migrationUpdates == 2;
-            };
-            runtime.DispatchEvents(options);
-        }
-
-        // The migration of the second range increases the index by 1024 blocks.
-        UNIT_ASSERT_VALUES_EQUAL(2, migrationUpdates);
-        UNIT_ASSERT_VALUES_EQUAL(4096, lastMigrationIndex);
-        UNIT_ASSERT_VALUES_EQUAL(1024, lastBlockCountToMigrate);
-    }
-
-    Y_UNIT_TEST(ShouldUpdateMigrationState)
-    {
-        DoShouldUpdateMigrationState(false);
-    }
-
-    Y_UNIT_TEST(ShouldUpdateMigrationStateDirectCopy)
-    {
-        DoShouldUpdateMigrationState(true);
     }
 
     void DoShouldDoMigrationViaRdma(bool useDirectCopy)

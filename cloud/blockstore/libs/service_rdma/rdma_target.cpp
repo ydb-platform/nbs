@@ -232,8 +232,8 @@ private:
             std::move(handleMethod));
     }
 
-    // TODO: do same thing with read block requests, we need to know block size
-    // to be able to allocate buffer for data.
+    // TODO: convert request to TWriteBlocksLocalRequest and think about same
+    // converting for TReadBlocksRequest
     template <>
     NProto::TError HandleRequest<TWriteBlocksMethod>(
         void* context,
@@ -255,18 +255,11 @@ private:
                 std::move(handleMethod));
         }
 
-        TGuardedSgList guardedSgList(
-            {{requestData.Data(), requestData.Size()}});
-
-        auto req = std::make_shared<NProto::TWriteBlocksLocalRequest>();
-        req->CopyFrom(*request);
-
-        req->Sglist = guardedSgList;
-        auto blocksCount = request->GetBlocks().BuffersSize();
+        size_t blocksCount = request->GetBlocks().BuffersSize();
         if (blocksCount == 0) {
             return MakeError(
                 E_ARGUMENT,
-                "provide blocks count with blocks field");
+                "provide block count with blocks field");
         }
 
         if (requestData.Size() % blocksCount != 0) {
@@ -275,13 +268,20 @@ private:
                 "request data is not divisible by blocks count");
         }
 
-        req->BlockSize = requestData.Size() / blocksCount;
-        req->BlocksCount = blocksCount;
+        auto blockSize = requestData.Size() / blocksCount;
 
-        return GeneralHandleRequest<TWriteBlocksLocalMethod>(
+        request->MutableBlocks()->ClearBuffers();
+        for (size_t i = 0; i < blocksCount; ++i) {
+            request->MutableBlocks()->AddBuffers(
+                TString(requestData.Head(blockSize)));
+
+            requestData.Skip(blockSize);
+        }
+
+        return GeneralHandleRequest<TWriteBlocksMethod>(
             context,
             std::move(callContext),
-            std::move(req),
+            std::move(request),
             requestData,
             out,
             flags,
@@ -398,12 +398,37 @@ private:
         proto.SetThrottlerDelay(resp.GetThrottlerDelay());
         proto.SetAllZeroes(resp.GetAllZeroes());
 
+        bool hasVoidBlocks = false;
+        size_t blockSize = 0;
+        for (const auto& buf: resp.GetBlocks().GetBuffers()) {
+            if (!buf.Data() || !buf.Size()) {
+                hasVoidBlocks = true;
+            } else {
+                blockSize = buf.Size();
+            }
+
+            proto.MutableBlocks()
+                ->AddBuffers();   // Add empty buffers to pass blocks count.
+        }
+
+        if (!blockSize) {
+            // we can't do anything with only void blocks
+            GeneralHandleResponse<TReadBlocksMethod>(
+                requestDetails,
+                future,
+                msgId);
+            return;
+        }
+
+        auto zeroBlock = hasVoidBlocks ? TString(blockSize, '\0') : TString();
         TSgList buffers;
         buffers.reserve(resp.GetBlocks().BuffersSize());
         for (const auto& buf: resp.GetBlocks().GetBuffers()) {
-            buffers.emplace_back(buf.Data(), buf.Size());
-            proto.MutableBlocks()
-                ->AddBuffers();   // Add empty buffers to pass blocks count.
+            if (!buf.Data() || !buf.Size()) {
+                buffers.emplace_back(zeroBlock.Data(), zeroBlock.Size());
+            } else {
+                buffers.emplace_back(buf.Data(), buf.Size());
+            }
         }
 
         auto totalLen = NRdma::TProtoMessageSerializer::MessageByteSize(

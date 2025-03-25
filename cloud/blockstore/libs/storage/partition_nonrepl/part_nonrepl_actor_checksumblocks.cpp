@@ -148,8 +148,7 @@ void TDiskAgentChecksumActor::HandleChecksumDeviceBlocksResponse(
 {
     auto* msg = ev->Get();
 
-    if (HasError(msg->GetError())) {
-        HandleError(ctx, msg->GetError(), EStatus::Fail);
+    if (HandleError(ctx, msg->GetError(), false)) {
         return;
     }
 
@@ -217,15 +216,14 @@ void TNonreplicatedPartitionActor::HandleChecksumBlocks(
 
     TVector<TDeviceRequest> deviceRequests;
     TRequestTimeoutPolicy timeoutPolicy;
-    TRequestData request;
     bool ok = InitRequests<TEvNonreplPartitionPrivate::TChecksumBlocksMethod>(
         *msg,
         ctx,
         *requestInfo,
         blockRange,
         &deviceRequests,
-        &timeoutPolicy,
-        &request);
+        &timeoutPolicy
+    );
 
     if (!ok) {
         return;
@@ -240,7 +238,7 @@ void TNonreplicatedPartitionActor::HandleChecksumBlocks(
         PartConfig,
         SelfId());
 
-    RequestsInProgress.AddReadRequest(actorId, std::move(request));
+    RequestsInProgress.AddReadRequest(actorId);
 }
 
 void TNonreplicatedPartitionActor::HandleChecksumBlocksCompleted(

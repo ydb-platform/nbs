@@ -5,7 +5,6 @@ import os
 import random
 import string
 import time
-import grpc
 from typing import Optional
 import asyncio
 import requests
@@ -517,23 +516,13 @@ async def create_vm(sdk: SDK, args: argparse.Namespace, attempt: int = 0):
 
     except RequestError as e:
         logger.error("Failed to create VM with request: %s", instance_request)
-        logger.error("Response: %s", str(e), exc_info=True)
+        await remove_disk_by_id(sdk, args, disk_id)
+        logger.error("Response: %s", str(e.status), exc_info=True)
         if request is not None:
             logger.error("Removing created instance with ID %s", request.resource_id)
-            await remove_vm_by_id(sdk, request.resource_id)
-            await remove_disk_by_id(sdk, args, disk_id)
-        else:
-            await remove_disk_by_id(sdk, args, disk_id)
+            remove_vm_by_id(sdk, request.resource_id)
         raise e
-
     instance_id = request.resource_id
-    logger.info("Operation status: %s", str(request.status()))
-    if request.status().code != grpc.StatusCode.OK:
-        logger.error("Failed to create VM with request: %s", instance_request)
-        await remove_vm_by_id(sdk, instance_id)
-        await remove_disk_by_id(sdk, args, disk_id)
-        raise RequestError("Failed to create VM")
-
     instance = await service.get(GetInstanceRequest(id=instance_id))
     name = instance.metadata.name
     logger.info("Created VM %s", instance)

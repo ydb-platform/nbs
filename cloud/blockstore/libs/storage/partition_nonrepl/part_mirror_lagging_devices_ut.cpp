@@ -106,7 +106,7 @@ struct TTestEnv
               },
               {},   // migrations
               {},   // freshDeviceIds
-              {},   // outdatedDeviceIds
+              {},   // laggingDeviceIds
               {std::make_shared<TDiskAgentState>(),
                std::make_shared<TDiskAgentState>(),
                std::make_shared<TDiskAgentState>()},
@@ -120,7 +120,7 @@ struct TTestEnv
         TVector<TDevices> replicas,
         TMigrations migrations = {},
         THashSet<TString> freshDeviceIds = {},
-        THashSet<TString> outdatedDeviceIds = {},
+        THashSet<TString> laggingDeviceIds = {},
         TVector<TDiskAgentStatePtr> diskAgentStates = {},
         NProto::TStorageServiceConfig configBase = {})
         : Runtime(runtime)
@@ -187,7 +187,7 @@ struct TTestEnv
                 DefaultBlockSize,
                 VolumeActorId};
         params.FreshDeviceIds = std::move(freshDeviceIds);
-        params.OutdatedDeviceIds = std::move(outdatedDeviceIds);
+        params.LaggingDeviceIds = std::move(laggingDeviceIds);
         params.UseSimpleMigrationBandwidthLimiter = false;
         auto partConfig =
             std::make_shared<TNonreplicatedPartitionConfig>(std::move(params));
@@ -396,7 +396,7 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionLaggingDevicesTest)
             },
             {},                       // migrations
             {},                       // freshDeviceIds
-            {"uuid-1", "uuid-2/1"},   // outdatedDeviceIds
+            {"uuid-1", "uuid-2/1"},   // laggingDeviceIds
             {std::make_shared<TDiskAgentState>(),
              std::make_shared<TDiskAgentState>(),
              std::make_shared<TDiskAgentState>()},
@@ -704,7 +704,7 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionLaggingDevicesTest)
             std::move(replicas),
             std::move(migrations),
             {"uuid-7"},   // freshDeviceIds
-            {},           // outdatedDeviceIds
+            {},           // laggingDeviceIds
             std::move(diskAgentStates),
             {});
 

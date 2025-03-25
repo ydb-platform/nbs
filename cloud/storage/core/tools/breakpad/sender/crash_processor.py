@@ -32,23 +32,16 @@ class CrashProcessor(object):
 
     def _parse_args(self):
         parser = argparse.ArgumentParser(description="Crash dump processor")
-        parser.add_argument("--datadir", type=str, default="/var/tmp/breakpad", metavar="DIR",
-                            help="breakpad-launcher data directory (default: %(default)s)")
-        parser.add_argument("--aggregator-type", type=str, metavar="TYPE",
-                            choices=[Sender.AGGREGATOR_TYPE_CORES,
-                                     Sender.AGGREGATOR_TYPE_SENTRY],
-                            default=Sender.AGGREGATOR_TYPE_CORES,
-                            help="Aggregator type, one of: %(choices)s (default: %(default)s)")
+        parser.add_argument("--datadir", type=str, default="/var/tmp/breakpad", metavar="DIR")
         parser.add_argument("--aggregator-url", type=str,
                             default="http://cores.cloud-preprod.yandex.net", metavar="URL")
-        parser.add_argument("--prj", type=str, default="nbs", help="Project tag (default: %(default)s)")
+        parser.add_argument("--prj", type=str, default="nbs", help="Project tag (default: nbs)")
         parser.add_argument("--limit-window", type=int, default=10*60,
-                            help="Limit window, seconds (default: %(default)s)")
+                            help="Limit window, seconds (default: 10m)")
         parser.add_argument("--limit-cores", type=int, default=5,
-                            help="Limit cores per window (default: %(default)s)")
+                            help="Limit cores per window, (default: 5)")
         parser.add_argument("--config", type=str, metavar="PATH")
         parser.add_argument("--verbose", action="store_true")
-        parser.add_argument("--ca-file", type=str, help="Optional certificate authority file (*.pem)")
 
         # TODO: remove, kept for backward compatibility
         parser.add_argument("--nbs-config", type=str, metavar="PATH")
@@ -67,7 +60,6 @@ class CrashProcessor(object):
         try:
             self.sender.send(
                 timestamp=crash_info.time,
-                core_file=None,
                 coredump="Thread 1 (LWP 0):\n#0  0x0000000000000000 in main () at main.cc:0\n",
                 info=crash_info.info,
                 service_name=crash_info.service,
@@ -89,7 +81,6 @@ class CrashProcessor(object):
 
             self.sender.send(
                 timestamp=crash_info.time,
-                core_file=crash_info.corefile,
                 coredump=backtrace,
                 info=crash_info.info,
                 service_name=service_name,
@@ -143,17 +134,19 @@ class CrashProcessor(object):
 
         return unique_emails
 
+    def get_aggregator_url(self):
+        url = self.config.get("aggregator_url")
+        return url if url else self.args.aggregator_url
+
     def init(self):
         self.set_signals()
         self.storage = CrashInfoStorage(os.path.join(self.args.datadir, "queue"))
 
         self.load_config()
         emails = self.get_config_emails()
-        type = self.config.get("aggregator_type", self.args.aggregator_type)
-        url = self.config.get("aggregator_url", self.args.aggregator_url)
-        ca_file = self.config.get("ca_file", self.args.ca_file)
+        url = self.get_aggregator_url()
 
-        self.sender = Sender(type, url, self.args.prj, emails, ca_file)
+        self.sender = Sender(url, self.args.prj, emails)
         self.limiter = Limiter(
             window_seconds=self.args.limit_window,
             limit=self.args.limit_cores)

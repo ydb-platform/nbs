@@ -184,19 +184,6 @@ public:
         TVector<ui64>& nodes,
         size_t maxCount) override;
 
-    //
-    // MixedIndex
-    //
-
-    bool ReadMixedBlocks(
-        ui32 rangeId,
-        TVector<IIndexTabletDatabase::TMixedBlob>& blobs,
-        IAllocator* alloc) override;
-
-    bool ReadDeletionMarkers(
-        ui32 rangeId,
-        TVector<TDeletionMarker>& deletionMarkers) override;
-
 private:
     // TODO(#1146): use LRU cache / something with better eviction policy
     ui64 NodeRefsCapacity = 0;

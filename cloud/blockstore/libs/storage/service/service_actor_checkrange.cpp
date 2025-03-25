@@ -28,7 +28,6 @@ private:
     const TString DiskId;
     const ui64 StartIndex;
     const ui64 BlocksCount;
-    const bool CalculateChecksums;
 
 public:
     TCheckRangeActor(
@@ -36,8 +35,7 @@ public:
         TStorageConfigPtr config,
         TString diskId,
         ui64 startIndex,
-        ui64 blocksCount,
-        bool calculateChecksums);
+        ui64 blocksCount);
 
     void Bootstrap(const TActorContext& ctx);
 
@@ -63,14 +61,12 @@ TCheckRangeActor::TCheckRangeActor(
     TStorageConfigPtr config,
     TString diskId,
     ui64 startIndex,
-    ui64 blocksCount,
-    bool calculateChecksums)
+    ui64 blocksCount)
     : RequestInfo(std::move(requestInfo))
     , Config(std::move(config))
     , DiskId(std::move(diskId))
     , StartIndex(startIndex)
     , BlocksCount(blocksCount)
-    , CalculateChecksums(calculateChecksums)
 {}
 
 void TCheckRangeActor::Bootstrap(const TActorContext& ctx)
@@ -86,7 +82,6 @@ void TCheckRangeActor::CheckRange(const TActorContext& ctx)
     request->Record.SetDiskId(DiskId);
     request->Record.SetStartIndex(StartIndex);
     request->Record.SetBlocksCount(BlocksCount);
-    request->Record.SetCalculateChecksums(CalculateChecksums);
 
     NCloud::Send(
         ctx,
@@ -102,7 +97,6 @@ void TCheckRangeActor::HandleCheckRangeResponse(
     const auto& error = ev->Get()->GetError();
     auto response = std::make_unique<TEvService::TEvCheckRangeResponse>(error);
     response->Record.MutableStatus()->CopyFrom(ev->Get()->Record.GetStatus());
-    response->Record.MutableChecksums()->Swap(ev->Get()->Record.MutableChecksums());
 
     ReplyAndDie(
         ctx,
@@ -183,8 +177,7 @@ void TServiceActor::HandleCheckRange(
         Config,
         request.GetDiskId(),
         request.GetStartIndex(),
-        request.GetBlocksCount(),
-        request.GetCalculateChecksums());
+        request.GetBlocksCount());
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

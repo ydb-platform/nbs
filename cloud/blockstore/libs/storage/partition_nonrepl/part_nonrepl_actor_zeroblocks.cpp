@@ -147,8 +147,7 @@ void TDiskAgentZeroActor::HandleZeroDeviceBlocksResponse(
 {
     auto* msg = ev->Get();
 
-    if (HasError(msg->GetError())) {
-        HandleError(ctx, msg->GetError(), EStatus::Fail);
+    if (HandleError(ctx, msg->GetError(), false)) {
         return;
     }
 
@@ -204,15 +203,13 @@ void TNonreplicatedPartitionActor::HandleZeroBlocks(
 
     TVector<TDeviceRequest> deviceRequests;
     TRequestTimeoutPolicy timeoutPolicy;
-    TRequestData request;
     bool ok = InitRequests<TEvService::TZeroBlocksMethod>(
         *msg,
         ctx,
         *requestInfo,
         blockRange,
         &deviceRequests,
-        &timeoutPolicy,
-        &request);
+        &timeoutPolicy);
 
     if (!ok) {
         return;
@@ -233,7 +230,7 @@ void TNonreplicatedPartitionActor::HandleZeroBlocks(
         PartConfig->GetBlockSize(),
         assignVolumeRequestId);
 
-    RequestsInProgress.AddWriteRequest(actorId, std::move(request));
+    RequestsInProgress.AddWriteRequest(actorId);
 }
 
 void TNonreplicatedPartitionActor::HandleZeroBlocksCompleted(

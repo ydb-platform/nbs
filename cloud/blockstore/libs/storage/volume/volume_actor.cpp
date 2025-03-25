@@ -1113,6 +1113,13 @@ STFUNC(TVolumeActor::StateWork)
             TEvDiskRegistryProxy::TEvGetDrTabletInfoResponse,
             HandleGetDrTabletInfoResponse);
 
+        HFunc(
+            TEvVolume::TEvLinkLeaderVolumeToFollowerRequest,
+            HandleLinkLeaderVolumeToFollower);
+        HFunc(
+            TEvVolume::TEvUnlinkLeaderVolumeFromFollowerRequest,
+            HandleUnlinkLeaderVolumeFromFollower);
+
         default:
             if (!HandleRequests(ev) && !HandleDefaultEvents(ev, SelfId())) {
                 HandleUnexpectedEvent(ev, TBlockStoreComponents::VOLUME);

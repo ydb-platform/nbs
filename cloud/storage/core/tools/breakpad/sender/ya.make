@@ -15,7 +15,6 @@ PY_SRCS(
     crash_processor.py
     limiter.py
     sender.py
-    sentry.py
 )
 
 PY_MAIN(cloud.storage.core.tools.breakpad.sender.crash_processor:main)

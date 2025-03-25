@@ -18,8 +18,6 @@ using namespace NActors;
 
 using namespace NKikimr;
 
-using EReason = TEvNonreplPartitionPrivate::TCancelRequest::EReason;
-
 LWTRACE_USING(BLOCKSTORE_STORAGE_PROVIDER);
 
 namespace {
@@ -165,8 +163,7 @@ void TDiskAgentReadActor::HandleReadDeviceBlocksResponse(
 {
     auto* msg = ev->Get();
 
-    if (HasError(msg->GetError())) {
-        HandleError(ctx, msg->GetError(), EStatus::Fail);
+    if (HandleError(ctx, msg->GetError(), false)) {
         return;
     }
 
@@ -244,15 +241,13 @@ void TNonreplicatedPartitionActor::HandleReadBlocks(
 
     TVector<TDeviceRequest> deviceRequests;
     TRequestTimeoutPolicy timeoutPolicy;
-    TRequestData request;
     bool ok = InitRequests<TEvService::TReadBlocksMethod>(
         *msg,
         ctx,
         *requestInfo,
         blockRange,
         &deviceRequests,
-        &timeoutPolicy,
-        &request);
+        &timeoutPolicy);
 
     if (!ok) {
         return;
@@ -272,7 +267,7 @@ void TNonreplicatedPartitionActor::HandleReadBlocks(
         PartConfig,
         SelfId());
 
-    RequestsInProgress.AddReadRequest(actorId, std::move(request));
+    RequestsInProgress.AddReadRequest(actorId);
 }
 
 void TNonreplicatedPartitionActor::HandleReadBlocksCompleted(

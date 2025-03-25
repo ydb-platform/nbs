@@ -8,7 +8,6 @@ SRCS(
     direct_copy_range.cpp
     lagging_agent_migration_actor.cpp
     lagging_agents_replica_proxy_actor.cpp
-    migration_request_actor.cpp
     migration_timeout_calculator.cpp
     mirror_request_actor.cpp
     replica_info.cpp

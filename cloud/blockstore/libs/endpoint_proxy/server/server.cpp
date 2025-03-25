@@ -755,16 +755,9 @@ struct TServer: IEndpointProxyServer
         response.SetNbdDevice(ep.NbdDevicePath);
 
         if (ep.NbdDevice) {
-            auto err = ep.NbdDevice->Stop(true).GetValueSync();
-            if (HasError(err)) {
-                STORAGE_ERROR(
-                    request.ShortDebugString().Quote()
-                    << " - Failed to stop NBD device: " << err.GetCode());
-            } else {
-                STORAGE_INFO(
-                    request.ShortDebugString().Quote()
-                    << " - Stopped NBD device");
-            }
+            ep.NbdDevice->Stop(true);
+            STORAGE_INFO(request.ShortDebugString().Quote()
+                << " - Stopped NBD device");
         }
 
         if (ep.ListenAddress) {
@@ -984,7 +977,8 @@ struct TServer: IEndpointProxyServer
                 ep.NbdDevicePath,
                 Config.NbdRequestTimeout,
                 NBD_CONNECTION_TIMEOUT,
-                NBD_RECONFIGURE_CONNECTED);
+                NBD_RECONFIGURE_CONNECTED,
+                Config.WithoutLibnl);
         } else {
             // The only case we want kernel to retry requests is when the socket
             // is dead due to nbd server restart. And since we can't configure
@@ -1032,13 +1026,8 @@ struct TServer: IEndpointProxyServer
     bool DoProcessAlarm(TEndpoint& ep, const TString& tag)
     {
         if (ep.NbdDevice) {
-            auto err = ep.NbdDevice->Stop(NBD_DELETE_DEVICE).GetValueSync();
-            if (HasError(err)) {
-                STORAGE_ERROR(
-                    tag << "Failed to stop NBD device: " << err.GetCode());
-            } else {
-                STORAGE_INFO(tag << "Stopped NBD device");
-            }
+            ep.NbdDevice->Stop(NBD_DELETE_DEVICE).GetValueSync();
+            STORAGE_INFO(tag << "Stopped NBD device");
         }
 
         if (ep.ListenAddress) {

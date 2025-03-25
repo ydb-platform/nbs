@@ -571,14 +571,16 @@ void TIndexTabletState::DeleteFreshBlocks(
 ////////////////////////////////////////////////////////////////////////////////
 // MixedBlocks
 
-bool TIndexTabletState::LoadMixedBlocks(IIndexTabletDatabase& db, ui32 rangeId)
+bool TIndexTabletState::LoadMixedBlocks(
+    TIndexTabletDatabase& db,
+    ui32 rangeId)
 {
     if (Impl->MixedBlocks.IsLoaded(rangeId)) {
         Impl->MixedBlocks.RefRange(rangeId);
         return true;
     }
 
-    TVector<TIndexTabletDatabase::IIndexTabletDatabase::TMixedBlob> blobs;
+    TVector<TIndexTabletDatabase::TMixedBlob> blobs;
     TVector<TDeletionMarker> deletionMarkers;
 
     if (!db.ReadMixedBlocks(rangeId, blobs, AllocatorRegistry.GetAllocator(EAllocatorTag::BlockList)) ||
@@ -1102,13 +1104,6 @@ ui32 TIndexTabletState::CalculateMixedIndexRangeGarbageBlockCount(
 {
     return Impl->MixedBlocks.CalculateGarbageBlockCount(rangeId);
 }
-
-
-TBlobMetaMapStats TIndexTabletState::GetBlobMetaMapStats() const
-{
-    return Impl->MixedBlocks.GetBlobMetaMapStats();
-}
-
 
 ////////////////////////////////////////////////////////////////////////////////
 // LargeBlocks

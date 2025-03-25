@@ -13,7 +13,6 @@ import contrib.ydb.tests.library.common.yatest_common as yatest_common
 
 from contrib.ydb.tests.library.harness.kikimr_runner import get_unique_path_for_current_test, ensure_path_exists
 
-from cloud.disk_manager.test.recipe.common import get_ydb_binary_path
 from cloud.disk_manager.test.recipe.disk_manager_launcher import DiskManagerLauncher
 from cloud.disk_manager.test.recipe.metadata_service_launcher import MetadataServiceLauncher
 from cloud.disk_manager.test.recipe.nbs_launcher import NbsLauncher
@@ -51,7 +50,9 @@ class _MigrationTestSetup:
         self._cert_key_file = certs_dir / "server.key"
         _logger.info(self._cert_key_file.exists())
 
-        ydb_binary_path = get_ydb_binary_path()
+        ydb_binary_path = yatest_common.binary_path("cloud/storage/core/tools/testing/ydb/bin/ydbd")
+        if ydb_binary_path is None:
+            ydb_binary_path = yatest_common.binary_path("contrib/ydb/apps/ydbd/ydbd")
         nbs_binary_path = yatest_common.binary_path("cloud/blockstore/apps/server/nbsd")
         disk_agent_binary_path = yatest_common.binary_path("cloud/blockstore/apps/disk_agent/diskagentd")
         self.disk_manager_binary_path = yatest_common.binary_path("cloud/disk_manager/cmd/disk-manager/disk-manager")

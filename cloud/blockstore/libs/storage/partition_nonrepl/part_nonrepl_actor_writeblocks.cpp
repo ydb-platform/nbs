@@ -159,8 +159,7 @@ void TDiskAgentWriteActor::HandleWriteDeviceBlocksResponse(
 {
     auto* msg = ev->Get();
 
-    if (HasError(msg->GetError())) {
-        HandleError(ctx, msg->GetError(), EStatus::Fail);
+    if (HandleError(ctx, msg->GetError(), false)) {
         return;
     }
 
@@ -247,15 +246,13 @@ void TNonreplicatedPartitionActor::HandleWriteBlocks(
 
     TVector<TDeviceRequest> deviceRequests;
     TRequestTimeoutPolicy timeoutPolicy;
-    TRequestData request;
     bool ok = InitRequests<TEvService::TWriteBlocksMethod>(
         *msg,
         ctx,
         *requestInfo,
         blockRange,
         &deviceRequests,
-        &timeoutPolicy,
-        &request);
+        &timeoutPolicy);
 
     if (!ok) {
         return;
@@ -276,7 +273,7 @@ void TNonreplicatedPartitionActor::HandleWriteBlocks(
         assignVolumeRequestId,
         false); // replyLocal
 
-    RequestsInProgress.AddWriteRequest(actorId, std::move(request));
+    RequestsInProgress.AddWriteRequest(actorId);
 }
 
 void TNonreplicatedPartitionActor::HandleWriteBlocksLocal(
@@ -333,15 +330,13 @@ void TNonreplicatedPartitionActor::HandleWriteBlocksLocal(
 
     TVector<TDeviceRequest> deviceRequests;
     TRequestTimeoutPolicy timeoutPolicy;
-    TRequestData request;
     bool ok = InitRequests<TEvService::TWriteBlocksLocalMethod>(
         *msg,
         ctx,
         *requestInfo,
         blockRange,
         &deviceRequests,
-        &timeoutPolicy,
-        &request);
+        &timeoutPolicy);
 
     if (!ok) {
         return;
@@ -392,7 +387,7 @@ void TNonreplicatedPartitionActor::HandleWriteBlocksLocal(
         assignVolumeRequestId,
         true); // replyLocal
 
-    RequestsInProgress.AddWriteRequest(actorId, std::move(request));
+    RequestsInProgress.AddWriteRequest(actorId);
 }
 
 void TNonreplicatedPartitionActor::HandleWriteBlocksCompleted(

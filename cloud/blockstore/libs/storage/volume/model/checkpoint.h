@@ -1,6 +1,5 @@
 #pragma once
 
-#include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/protos/error.pb.h>
 
 #include <util/datetime/base.h>

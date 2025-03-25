@@ -1,9 +1,5 @@
 Y_BENCHMARK(cloud-blockstore-libs-storage-perf)
 
-IF (SANITIZER_TYPE)
-    TAG(ya:manual)
-ENDIF()
-
 BENCHMARK_OPTS(--budget=10)
 
 PEERDIR(

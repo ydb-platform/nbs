@@ -30,13 +30,13 @@ TDuration TMigrationTimeoutCalculator::CalculateTimeout(
     }
 
     // migration range is 4_MB
-    constexpr double ProcessingRangeSizeMiBs =
-        static_cast<double>(ProcessingRangeSize) / 1_MB;
+    const double processingRangeSizeMiBs =
+        static_cast<double>(ProcessingRangeSize) / (1024 * 1024);
 
     const ui32 limitedBandwidthMiBs =
         Min(MaxMigrationBandwidthMiBs, LimitedBandwidthMiBs);
     const double migrationFactorPerAgent =
-        limitedBandwidthMiBs / ProcessingRangeSizeMiBs;
+        limitedBandwidthMiBs / processingRangeSizeMiBs;
 
     if (PartitionConfig->GetUseSimpleMigrationBandwidthLimiter()) {
         return TDuration::Seconds(1) / migrationFactorPerAgent;
