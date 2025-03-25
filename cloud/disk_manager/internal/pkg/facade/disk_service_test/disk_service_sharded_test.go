@@ -13,7 +13,7 @@ type TestCase struct {
 	zoneId string
 }
 
-func testCases() []TestCase {
+func shardsTestCases() []TestCase {
 	return []TestCase{
 		{
 			name:   "Sharded zone",
@@ -28,8 +28,8 @@ func testCases() []TestCase {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-func TestDiskServiceShardsCreateEmptyDisk(t *testing.T) {
-	for _, testCase := range testCases() {
+func TestDiskServiceInShardsCreateEmptyDisk(t *testing.T) {
+	for _, testCase := range shardsTestCases() {
 		t.Run(testCase.name, func(t *testing.T) {
 			testDiskServiceCreateEmptyDiskWithZoneID(
 				t,
@@ -39,8 +39,8 @@ func TestDiskServiceShardsCreateEmptyDisk(t *testing.T) {
 	}
 }
 
-func TestDiskServiceShardsCreateDiskFromImageWithForceNotLayered(t *testing.T) {
-	for _, testCase := range testCases() {
+func TestDiskServiceInShardsCreateDiskFromImageWithForceNotLayered(t *testing.T) {
+	for _, testCase := range shardsTestCases() {
 		t.Run(testCase.name, func(t *testing.T) {
 			testDiskServiceCreateDiskFromImageWithForceNotLayeredWithZoneID(
 				t,
@@ -50,16 +50,16 @@ func TestDiskServiceShardsCreateDiskFromImageWithForceNotLayered(t *testing.T) {
 	}
 }
 
-func TestDiskServiceShardsCancelCreateDiskFromImageWithZoneID(t *testing.T) {
-	for _, testCase := range testCases() {
+func TestDiskServiceInShardsCancelCreateDiskFromImageWithZoneID(t *testing.T) {
+	for _, testCase := range shardsTestCases() {
 		t.Run(testCase.name, func(t *testing.T) {
 			testDiskServiceCancelCreateDiskFromImageWithZoneID(t, testCase.zoneId)
 		})
 	}
 }
 
-func TestDiskServiceShardsCreateDiskFromIncrementalSnapshot(t *testing.T) {
-	for _, testCase := range testCases() {
+func TestDiskServiceInShardsCreateDiskFromIncrementalSnapshot(t *testing.T) {
+	for _, testCase := range shardsTestCases() {
 		t.Run(testCase.name, func(t *testing.T) {
 			testCreateDiskFromIncrementalSnapshot(
 				t,
@@ -73,8 +73,8 @@ func TestDiskServiceShardsCreateDiskFromIncrementalSnapshot(t *testing.T) {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-func TestDiskServiceShardsCreateSsdNonreplDiskFromIncrementalSnapshot(t *testing.T) {
-	for _, testCase := range testCases() {
+func TestDiskServiceInShardsCreateSsdNonreplDiskFromIncrementalSnapshot(t *testing.T) {
+	for _, testCase := range shardsTestCases() {
 		t.Run(testCase.name, func(t *testing.T) {
 			testCreateDiskFromIncrementalSnapshot(
 				t,
@@ -88,8 +88,8 @@ func TestDiskServiceShardsCreateSsdNonreplDiskFromIncrementalSnapshot(t *testing
 
 ////////////////////////////////////////////////////////////////////////////////
 
-func TestDiskServiceShardsCreateDiskFromSnapshot(t *testing.T) {
-	for _, testCase := range testCases() {
+func TestDiskServiceInShardsCreateDiskFromSnapshot(t *testing.T) {
+	for _, testCase := range shardsTestCases() {
 		t.Run(testCase.name, func(t *testing.T) {
 			testDiskServiceCreateDiskFromSnapshotWithZoneID(t, testCase.zoneId)
 		})
@@ -98,8 +98,8 @@ func TestDiskServiceShardsCreateDiskFromSnapshot(t *testing.T) {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-func TestDiskServiceShardsCreateDiskFromImage(t *testing.T) {
-	for _, testCase := range testCases() {
+func TestDiskServiceInShardsCreateDiskFromImage(t *testing.T) {
+	for _, testCase := range shardsTestCases() {
 		t.Run(testCase.name, func(t *testing.T) {
 			testCreateDiskFromImage(
 				t,
@@ -115,8 +115,8 @@ func TestDiskServiceShardsCreateDiskFromImage(t *testing.T) {
 	}
 }
 
-func TestDiskServiceShardsCreateSsdNonreplDiskFromPooledImage(t *testing.T) {
-	for _, testCase := range testCases() {
+func TestDiskServiceInShardsCreateSsdNonreplDiskFromPooledImage(t *testing.T) {
+	for _, testCase := range shardsTestCases() {
 		t.Run(testCase.name, func(t *testing.T) {
 			testCreateDiskFromImage(
 				t,
@@ -137,7 +137,7 @@ func TestDiskServiceShardsCreateSsdNonreplDiskFromPooledImage(t *testing.T) {
 func TestDiskServiceCreateSsdNonreplDiskWithDefaultEncryptionFromPooledImage(
 	t *testing.T,
 ) {
-	for _, testCase := range testCases() {
+	for _, testCase := range shardsTestCases() {
 		t.Run(testCase.name, func(t *testing.T) {
 			testCreateDiskFromImage(
 				t,
@@ -154,7 +154,7 @@ func TestDiskServiceCreateSsdNonreplDiskWithDefaultEncryptionFromPooledImage(
 }
 
 func TestDiskServiceCreateEncryptedSsdNonreplDiskFromPooledImage(t *testing.T) {
-	for _, testCase := range testCases() {
+	for _, testCase := range shardsTestCases() {
 		t.Run(testCase.name, func(t *testing.T) {
 			testCreateDiskFromImage(
 				t,
@@ -180,8 +180,8 @@ func TestDiskServiceCreateEncryptedSsdNonreplDiskFromPooledImage(t *testing.T) {
 }
 */
 
-func TestDiskServiceShardsCreateEncryptedSsdNonreplDiskFromImage(t *testing.T) {
-	for _, testCase := range testCases() {
+func TestDiskServiceInShardsCreateEncryptedSsdNonreplDiskFromImage(t *testing.T) {
+	for _, testCase := range shardsTestCases() {
 		t.Run(testCase.name, func(t *testing.T) {
 
 			testCreateDiskFromImage(
@@ -207,11 +207,11 @@ func TestDiskServiceShardsCreateEncryptedSsdNonreplDiskFromImage(t *testing.T) {
 	}
 }
 
-func TestDiskServiceShardsCreateSsdNonreplDiskWithDefaultEncryptionFromImage(
+func TestDiskServiceInShardsCreateSsdNonreplDiskWithDefaultEncryptionFromImage(
 	t *testing.T,
 ) {
 
-	for _, testCase := range testCases() {
+	for _, testCase := range shardsTestCases() {
 		t.Run(testCase.name, func(t *testing.T) {
 			testCreateDiskFromImage(
 				t,
@@ -229,8 +229,8 @@ func TestDiskServiceShardsCreateSsdNonreplDiskWithDefaultEncryptionFromImage(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-func TestDiskServiceShardsCreateDiskFromSnapshotOfOverlayDisk(t *testing.T) {
-	for _, testCase := range testCases() {
+func TestDiskServiceInShardsCreateDiskFromSnapshotOfOverlayDisk(t *testing.T) {
+	for _, testCase := range shardsTestCases() {
 		t.Run(testCase.name, func(t *testing.T) {
 			testDiskServiceCreateDiskFromSnapshotOfOverlayDiskInZone(
 				t,

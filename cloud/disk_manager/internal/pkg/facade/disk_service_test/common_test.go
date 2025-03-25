@@ -211,8 +211,8 @@ func testCreateDiskFromIncrementalSnapshot(
 	err = internal_client.WaitOperation(ctx, client, operation.Id)
 	require.NoError(t, err)
 
-	nbsClient1 := testcommon.NewNbsTestingClient(t, ctx, defaultZoneId)
-	_, err = nbsClient1.FillDisk(ctx, diskID1, diskSize)
+	nbsClient := testcommon.NewNbsTestingClient(t, ctx, defaultZoneId)
+	_, err = nbsClient.FillDisk(ctx, diskID1, diskSize)
 	require.NoError(t, err)
 
 	snapshotID1 := testcommon.ReplaceUnacceptableSymbolsFromResourceID(t) + "1"
@@ -231,7 +231,7 @@ func testCreateDiskFromIncrementalSnapshot(
 	err = internal_client.WaitOperation(ctx, client, operation.Id)
 	require.NoError(t, err)
 
-	_, err = nbsClient1.FillDisk(ctx, diskID1, diskSize)
+	_, err = nbsClient.FillDisk(ctx, diskID1, diskSize)
 	require.NoError(t, err)
 
 	snapshotID2 := testcommon.ReplaceUnacceptableSymbolsFromResourceID(t) + "2"
@@ -270,15 +270,15 @@ func testCreateDiskFromIncrementalSnapshot(
 	err = internal_client.WaitOperation(ctx, client, operation.Id)
 	require.NoError(t, err)
 
-	diskContentInfo, err := nbsClient1.CalculateCrc32(diskID1, diskSize)
+	diskContentInfo, err := nbsClient.CalculateCrc32(diskID1, diskSize)
 	require.NoError(t, err)
 
 	diskMeta, err := testcommon.GetDiskMeta(ctx, diskID2)
 	require.NoError(t, err)
 	// We should provide correct zone for NBS client because only unsharded
 	// zones and shards are configured in the NBS client config.
-	nbsClient2 := testcommon.NewNbsTestingClient(t, ctx, diskMeta.ZoneID)
-	err = nbsClient2.ValidateCrc32(ctx, diskID2, diskContentInfo)
+	nbsClient = testcommon.NewNbsTestingClient(t, ctx, diskMeta.ZoneID)
+	err = nbsClient.ValidateCrc32(ctx, diskID2, diskContentInfo)
 	require.NoError(t, err)
 
 	testcommon.DeleteDisk(t, ctx, client, diskID1)
@@ -318,11 +318,7 @@ func testDiskServiceCreateDiskFromSnapshotWithZoneID(
 	err = internal_client.WaitOperation(ctx, client, operation.Id)
 	require.NoError(t, err)
 
-	diskMeta, err := testcommon.GetDiskMeta(ctx, diskID1)
-	require.NoError(t, err)
-	// We should provide correct zone for NBS client because only unsharded
-	// zones and shards are configured in the NBS client config.
-	nbsClient := testcommon.NewNbsTestingClient(t, ctx, diskMeta.ZoneID)
+	nbsClient := testcommon.NewNbsTestingClient(t, ctx, defaultZoneId)
 	diskContentInfo, err := nbsClient.FillDisk(ctx, diskID1, diskSize)
 	require.NoError(t, err)
 
@@ -331,7 +327,7 @@ func testDiskServiceCreateDiskFromSnapshotWithZoneID(
 	reqCtx = testcommon.GetRequestContext(t, ctx)
 	operation, err = client.CreateSnapshot(reqCtx, &disk_manager.CreateSnapshotRequest{
 		Src: &disk_manager.DiskId{
-			ZoneId: diskMeta.ZoneID,
+			ZoneId: defaultZoneId,
 			DiskId: diskID1,
 		},
 		SnapshotId: snapshotID1,
@@ -357,7 +353,7 @@ func testDiskServiceCreateDiskFromSnapshotWithZoneID(
 		Size: int64(diskSize),
 		Kind: disk_manager.DiskKind_DISK_KIND_SSD,
 		DiskId: &disk_manager.DiskId{
-			ZoneId: diskMeta.ZoneID,
+			ZoneId: zoneID,
 			DiskId: diskID2,
 		},
 	})
@@ -379,6 +375,11 @@ func testDiskServiceCreateDiskFromSnapshotWithZoneID(
 	err = nbsClient.ValidateCrc32(ctx, diskID1, diskContentInfo)
 	require.NoError(t, err)
 
+	diskMeta, err := testcommon.GetDiskMeta(ctx, diskID2)
+	require.NoError(t, err)
+	// We should provide correct zone for NBS client because only unsharded
+	// zones and shards are configured in the NBS client config.
+	nbsClient = testcommon.NewNbsTestingClient(t, ctx, diskMeta.ZoneID)
 	err = nbsClient.ValidateCrc32(ctx, diskID2, diskContentInfo)
 	require.NoError(t, err)
 
@@ -625,8 +626,8 @@ func testDiskServiceCreateDiskFromSnapshotOfOverlayDiskInZone(
 	require.NoError(t, err)
 	// We should provide correct zone for NBS client because only unsharded
 	// zones and shards are configured in the NBS client config.
-	otherNbsClient := testcommon.NewNbsTestingClient(t, ctx, diskMeta.ZoneID)
-	err = otherNbsClient.ValidateCrc32(ctx, diskID3, diskContentInfo)
+	nbsClient = testcommon.NewNbsTestingClient(t, ctx, diskMeta.ZoneID)
+	err = nbsClient.ValidateCrc32(ctx, diskID3, diskContentInfo)
 	require.NoError(t, err)
 
 	testcommon.CheckConsistency(t, ctx)
