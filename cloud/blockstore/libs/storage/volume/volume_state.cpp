@@ -11,6 +11,8 @@
 #include <util/stream/str.h>
 #include <util/system/hostname.h>
 
+#include <utility>
+
 namespace NCloud::NBlockStore::NStorage {
 
 using namespace NActors;
@@ -207,7 +209,9 @@ void TVolumeState::AddLaggingAgent(NProto::TLaggingAgent agent)
 std::optional<NProto::TLaggingAgent> TVolumeState::RemoveLaggingAgent(
     const TString& agentId)
 {
-    if (agentId == CurrentlyMigratingLaggingAgent.value_or("")) {
+    if (CurrentlyMigratingLaggingAgent &&
+        agentId == CurrentlyMigratingLaggingAgent->AgentId)
+    {
         CurrentlyMigratingLaggingAgent.reset();
     }
 
@@ -258,27 +262,18 @@ void TVolumeState::UpdateLaggingAgentMigrationState(
     ui64 cleanBlocks,
     ui64 dirtyBlocks)
 {
-    if (dirtyBlocks == 0) {
-        CurrentlyMigratingLaggingAgent = std::nullopt;
-        return;
-    }
-
-    CurrentlyMigratingLaggingAgent = std::move(agentId);
-    Progress.CleanBlocks = cleanBlocks;
-    Progress.DirtyBlocks = dirtyBlocks;
+    CurrentlyMigratingLaggingAgent = TLaggingAgentMigrationInfo{
+        .AgentId = std::move(agentId),
+        .CleanBlocks = cleanBlocks,
+        .DirtyBlocks = dirtyBlocks,
+    };
 }
 
-const TString* TVolumeState::GetCurrentlyMigratingLaggingAgent()
+const TVolumeState::TLaggingAgentMigrationInfo*
+TVolumeState::GetLaggingAgentMigrationInfo()
 {
-    return CurrentlyMigratingLaggingAgent
-               ? &CurrentlyMigratingLaggingAgent.value()
-               : nullptr;
-}
-
-TVolumeState::TLaggingAgentMigrationProgress
-TVolumeState::GetLaggingAgentMigrationProgres()
-{
-    return Progress;
+    return CurrentlyMigratingLaggingAgent ? &(*CurrentlyMigratingLaggingAgent)
+                                          : nullptr;
 }
 
 void TVolumeState::ResetMeta(NProto::TVolumeMeta meta)

@@ -244,12 +244,12 @@ private:
 
     TFollowerDisks FollowerDisks;
 
-    struct TLaggingAgentMigrationProgress {
+    struct TLaggingAgentMigrationInfo {
+        TString AgentId;
         ui64 CleanBlocks;
         ui64 DirtyBlocks;
     };
-    std::optional<TString> CurrentlyMigratingLaggingAgent;
-    TLaggingAgentMigrationProgress Progress;
+    std::optional<TLaggingAgentMigrationInfo> CurrentlyMigratingLaggingAgent;
 
 public:
     TVolumeState(
@@ -330,8 +330,7 @@ public:
         TString agentId,
         ui64 cleanBlocks,
         ui64 dirtyBlocks);
-    const TString* GetCurrentlyMigratingLaggingAgent();
-    TLaggingAgentMigrationProgress GetLaggingAgentMigrationProgres();
+    const TLaggingAgentMigrationInfo* GetLaggingAgentMigrationInfo();
 
     void SetStartPartitionsNeeded(bool startPartitionsNeeded)
     {

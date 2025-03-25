@@ -139,7 +139,7 @@ IOutputStream& operator <<(
 ////////////////////////////////////////////////////////////////////////////////
 
 void OutputProgress(
-    std::optional<ui64> blocks,
+    ui64 blocks,
     ui64 totalBlocks,
     ui32 blockSize,
     std::optional<ui64> blocksToProcess,
@@ -163,12 +163,7 @@ void OutputProgress(
         }
     }
 
-    TString index = "?";
-    if(blocks) {
-        index = ToString(blocks.value());
-    }
-
-    out << index << " (<font color=green>" << processedSize
+    out << blocks << " (<font color=green>" << processedSize
         << "</font> + <font color=red>" << sizeToProcess
         << "</font> = " << totalSize << ", " << readyPercent << "%)";
 }
@@ -1672,13 +1667,13 @@ void TVolumeActor::RenderLaggingStatus(IOutputStream& out) const
         }
 
         if (!State->HasLaggingAgents() ||
-            !State->GetCurrentlyMigratingLaggingAgent())
+            !State->GetLaggingAgentMigrationInfo())
         {
             return;
         }
 
-        const auto [cleanBlocks, dirtyBlocks] =
-            State->GetLaggingAgentMigrationProgres();
+        const auto& [agentId, cleanBlocks, dirtyBlocks] =
+            *State->GetLaggingAgentMigrationInfo();
         const auto blockSize = State->GetBlockSize();
 
         TABLE_SORTABLE_CLASS("table table-condensed")
@@ -1689,15 +1684,13 @@ void TVolumeActor::RenderLaggingStatus(IOutputStream& out) const
                 {
                     TABLED()
                     {
-                        out << "Lagging agent "
-                            << State->GetCurrentlyMigratingLaggingAgent()
-                                   ->Quote()
+                        out << "Lagging agent " << agentId.Quote()
                             << " migration progress: ";
                     }
                     TABLED()
                     {
                         OutputProgress(
-                            std::nullopt,
+                            cleanBlocks,
                             cleanBlocks + dirtyBlocks,
                             blockSize,
                             dirtyBlocks,
@@ -1722,8 +1715,8 @@ void TVolumeActor::RenderLaggingStateForDevice(
         color = "blue";
     }
 
-    if (const auto* curMigration = State->GetCurrentlyMigratingLaggingAgent()) {
-        if (*curMigration == d.GetAgentId()) {
+    if (const auto* curMigration = State->GetLaggingAgentMigrationInfo()) {
+        if (curMigration->AgentId == d.GetAgentId()) {
             stateMsg = "migrating";
             color = "blue";
         }
