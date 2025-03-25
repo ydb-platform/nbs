@@ -20,6 +20,6 @@ jobs:
       build_preset: release-asan
       test_type: "unittest,clang_tidy,gtest,py3test,py2test,pytest,flake8,black,py2_flake8,gofmt"
       cache_update_build: true
-      cache_update_tests: false
+      cache_update_tests: true
       sleep_after_tests: 1
       number_of_retries: 1

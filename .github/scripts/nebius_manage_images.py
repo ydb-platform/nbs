@@ -1,8 +1,7 @@
 import os
 import asyncio
-import math
-import logging
 import argparse
+from .helpers import setup_logger, convert_size
 from github import Github
 from nebius.sdk import SDK
 from nebius.aio.service_error import RequestError
@@ -11,48 +10,13 @@ from nebius.api.nebius.compute.v1 import (
     ImageServiceClient,
 )
 
-SENSITIVE_DATA_VALUES = {}
-if os.environ.get("GITHUB_TOKEN"):
-    SENSITIVE_DATA_VALUES["github_token"] = os.environ.get("GITHUB_TOKEN")
-
-
-class MaskingFormatter(logging.Formatter):
-    @staticmethod
-    def mask_sensitive_data(msg):
-        # Iterate over the patterns and replace sensitive data with '***'
-        for pattern_name, pattern in SENSITIVE_DATA_VALUES.items():
-            msg = msg.replace(pattern, f"[{pattern_name}=***]")
-        return msg
-
-    def format(self, record):
-        original = logging.Formatter.format(self, record)
-        return self.mask_sensitive_data(original)
-
-
-formatter = MaskingFormatter("%(asctime)s: %(levelname)s: %(message)s")
-console_handler = logging.StreamHandler()
-console_handler.setLevel(logging.INFO)
-console_handler.setFormatter(formatter)
-
-logger = logging.getLogger()
-logger.addHandler(console_handler)
-logger.setLevel(logging.INFO)
+logger = setup_logger()
 
 # they won't appear in the list of images
 # but they will be protected from deletion anyway
 PROTECTED_IMAGE_IDS = [
     "computeimage-e00f4cy4p43wx8gm4v",
 ]
-
-
-def convert_size(size_bytes):
-    if size_bytes == 0:
-        return "0 B"
-    size_name = ("B", "KB", "MB", "GB", "TB")
-    i = math.floor(math.log(size_bytes, 1024))
-    p = math.pow(1024, i)
-    s = round(size_bytes / p, 2)
-    return f"{s} {size_name[i]}"
 
 
 async def main(
