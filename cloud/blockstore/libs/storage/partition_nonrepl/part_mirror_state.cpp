@@ -9,6 +9,7 @@
 #include <util/datetime/base.h>
 #include <util/generic/hash.h>
 #include <util/string/builder.h>
+#include <util/string/printf.h>
 
 namespace NCloud::NBlockStore::NStorage {
 
@@ -218,18 +219,20 @@ bool TMirrorPartitionState::DevicesReadyForReading(
     ui32 replicaIndex,
     const TBlockRange64 blockRange) const
 {
+    Y_ABORT_UNLESS(replicaIndex < ReplicaInfos.size());
     const auto& replicaInfo = ReplicaInfos[replicaIndex];
     THashSet<ui32> laggingIndexes;
     for (const auto& [_, laggingAgent]: replicaInfo.LaggingAgents) {
         for (const auto& laggingDevice: laggingAgent.GetDevices()) {
             const auto [_, inserted] =
                 laggingIndexes.insert(laggingDevice.GetRowIndex());
-            Y_DEBUG_ABORT_UNLESS(
+            STORAGE_CHECK_PRECONDITION_C(
                 inserted,
-                "Two lagging devices can't have the same row index. Failed to "
-                "insert deviceUUID: %s, row index = %u",
-                laggingDevice.GetDeviceUUID().c_str(),
-                laggingDevice.GetRowIndex());
+                Sprintf(
+                    "Two lagging devices can't have the same row index. Failed "
+                    "to insert deviceUUID: %s, row index = %u",
+                    laggingDevice.GetDeviceUUID().c_str(),
+                    laggingDevice.GetRowIndex()))
         }
     }
     return replicaInfo.Config->DevicesReadyForReading(

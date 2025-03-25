@@ -13,7 +13,7 @@ TReplicaActors::~TReplicaActors() = default;
 
 ui32 TReplicaActors::Size() const
 {
-    Y_ABORT_UNLESS(PartActorIds.size() == LaggingProxyActorIds.size());
+    Y_DEBUG_ABORT_UNLESS(PartActorIds.size() == LaggingProxyActorIds.size());
     return PartActorIds.size();
 }
 
