@@ -234,62 +234,40 @@ void TCreateVolumeActor::CreateVolumeImpl(
     config.SetIsSystem(Request.GetIsSystem());
     config.SetFillGeneration(Request.GetFillGeneration());
 
-    TVolumeParams volumeParams;
-    volumeParams.BlockSize = GetBlockSize();
-    volumeParams.MediaKind = GetStorageMediaKind();
-    if (!IsDiskRegistryMediaKind(volumeParams.MediaKind)) {
-        TPartitionsInfo partitionsInfo;
-        if (Request.GetPartitionsCount()) {
-            partitionsInfo.PartitionsCount = Request.GetPartitionsCount();
-            partitionsInfo.BlocksCountPerPartition =
-                ComputeBlocksCountPerPartition(
-                    Request.GetBlocksCount(),
-                    Config->GetBytesPerStripe(),
-                    volumeParams.BlockSize,
-                    partitionsInfo.PartitionsCount
-                );
-        } else {
-            partitionsInfo = ComputePartitionsInfo(
-                *Config,
-                Request.GetCloudId(),
-                Request.GetFolderId(),
-                Request.GetDiskId(),
-                GetStorageMediaKind(),
-                Request.GetBlocksCount(),
-                volumeParams.BlockSize,
-                Request.GetIsSystem(),
-                !Request.GetBaseDiskId().empty()
-            );
+    {
+        const TVolumeParams volumeParams = CreateVolumeParams(
+            *Config,
+            TCreateVolumeParamsCtx{
+                .BlockSize = GetBlockSize(),
+                .BlocksCount = Request.GetBlocksCount(),
+                .MediaKind = GetStorageMediaKind(),
+                .PartitionsCount = Request.GetPartitionsCount(),
+                .CloudId = Request.GetCloudId(),
+                .FolderId = Request.GetFolderId(),
+                .DiskId = Request.GetDiskId(),
+                .IsSystem = Request.GetIsSystem(),
+                .IsOverlayDisk = !Request.GetBaseDiskId().empty()});
+
+        if (volumeParams.PartitionsCount > 1) {
+            config.SetBlocksPerStripe(ceil(
+                static_cast<double>(Config->GetBytesPerStripe()) /
+                volumeParams.BlockSize));
         }
-        volumeParams.PartitionsCount = partitionsInfo.PartitionsCount;
-        volumeParams.BlocksCountPerPartition =
-            partitionsInfo.BlocksCountPerPartition;
-    } else {
-        volumeParams.BlocksCountPerPartition = Request.GetBlocksCount();
-        volumeParams.PartitionsCount = 1;
-    }
 
-    if (volumeParams.PartitionsCount > 1) {
-        config.SetBlocksPerStripe(
-            ceil(double(Config->GetBytesPerStripe()) / volumeParams.BlockSize)
-        );
+        ResizeVolume(
+            *Config,
+            volumeParams,
+            {},
+            Request.GetPerformanceProfile(),
+            config);
     }
-
-    ResizeVolume(
-        *Config,
-        volumeParams,
-        {},
-        Request.GetPerformanceProfile(),
-        config
-    );
     config.SetCreationTs(ctx.Now().MicroSeconds());
 
     config.SetPlacementGroupId(Request.GetPlacementGroupId());
     config.SetPlacementPartitionIndex(Request.GetPlacementPartitionIndex());
     if (Request.GetStoragePoolName()) {
         config.SetStoragePoolName(Request.GetStoragePoolName());
-    } else if (volumeParams.MediaKind
-            == NProto::STORAGE_MEDIA_HDD_NONREPLICATED)
+    } else if (GetStorageMediaKind() == NProto::STORAGE_MEDIA_HDD_NONREPLICATED)
     {
         config.SetStoragePoolName(Config->GetNonReplicatedHDDPoolName());
     }

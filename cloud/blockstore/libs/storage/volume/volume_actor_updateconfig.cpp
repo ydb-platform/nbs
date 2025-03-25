@@ -4,8 +4,12 @@
 
 #include <cloud/blockstore/libs/service/context.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
+#include <cloud/blockstore/libs/storage/core/proto_helpers.h>
+#include <cloud/blockstore/libs/storage/core/volume_model.h>
 #include <cloud/blockstore/libs/storage/volume/model/helpers.h>
 #include <cloud/storage/core/libs/common/media.h>
+
+#include <google/protobuf/util/message_differencer.h>
 
 #include <library/cpp/protobuf/util/pb_io.h>
 
@@ -108,6 +112,45 @@ auto BuildNewMeta(
     }
 
     return newMeta;
+}
+
+bool IsPerformanceProfileModified(
+    const TStorageConfig& storageConfig,
+    const TVolumeState& volumeState)
+{
+    const NKikimrBlockStore::TVolumeConfig& volumeConfig =
+        volumeState.GetMeta().GetVolumeConfig();
+
+    auto currentPerformanceProfile =
+        VolumeConfigToVolumePerformanceProfile(volumeConfig);
+
+    NProto::TVolumePerformanceProfile defaultPerformanceProfile;
+    {
+        const TVolumeParams volumeParams = CreateVolumeParams(
+            storageConfig,
+            TCreateVolumeParamsCtx{
+                .BlockSize = volumeState.GetBlockSize(),
+                .BlocksCount = volumeState.GetBlocksCount(),
+                .MediaKind = static_cast<NProto::EStorageMediaKind>(
+                    volumeConfig.GetStorageMediaKind()),
+                .PartitionsCount =
+                    static_cast<ui32>(volumeConfig.GetPartitions().size()),
+                .CloudId = volumeConfig.GetCloudId(),
+                .FolderId = volumeConfig.GetFolderId(),
+                .DiskId = volumeConfig.GetDiskId(),
+                .IsSystem = volumeConfig.GetIsSystem(),
+                .IsOverlayDisk = !volumeConfig.GetBaseDiskId().empty()});
+
+        NKikimrBlockStore::TVolumeConfig defaultVolumeConfig;
+        ResizeVolume(storageConfig, volumeParams, {}, {}, defaultVolumeConfig);
+        defaultPerformanceProfile =
+            VolumeConfigToVolumePerformanceProfile(defaultVolumeConfig);
+    }
+
+    using google::protobuf::util::MessageDifferencer;
+    return !MessageDifferencer::Equals(
+        currentPerformanceProfile,
+        defaultPerformanceProfile);
 }
 
 }   // namespace
@@ -378,6 +421,8 @@ void TVolumeActor::CompleteUpdateConfig(
     ScheduleProcessUpdateVolumeConfig(ctx);
     ScheduleAllocateDiskIfNeeded(ctx);
     UnfinishedUpdateVolumeConfig.Clear();
+    HasPerformanceProfileModifications =
+        IsPerformanceProfileModified(*Config, *State);
     UpdateVolumeConfigInProgress = false;
 }
 

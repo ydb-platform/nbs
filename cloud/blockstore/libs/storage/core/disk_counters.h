@@ -540,6 +540,10 @@ struct TVolumeSelfSimpleCounters
         EPublishingPolicy::All,
         TCumulativeCounter::ECounterType::Generic,
         ECounterExpirationPolicy::Permanent};
+    TCounter HasPerformanceProfileModifications{
+        EPublishingPolicy::All,
+        TCumulativeCounter::ECounterType::Generic,
+        ECounterExpirationPolicy::Permanent};
 
     // BlobStorage-based
     TCounter RealMaxWriteBandwidth{
@@ -605,6 +609,7 @@ struct TVolumeSelfSimpleCounters
         MakeMeta<&TVolumeSelfSimpleCounters::LongRunningReadBlob>(),
         MakeMeta<&TVolumeSelfSimpleCounters::LongRunningWriteBlob>(),
         MakeMeta<&TVolumeSelfSimpleCounters::UseFastPath>(),
+        MakeMeta<&TVolumeSelfSimpleCounters::HasPerformanceProfileModifications>(),
 
         MakeMeta<&TVolumeSelfSimpleCounters::RealMaxWriteBandwidth>(),
         MakeMeta<&TVolumeSelfSimpleCounters::PostponedQueueWeight>(),

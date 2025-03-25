@@ -192,6 +192,7 @@ private:
     TStorageConfigPtr GlobalStorageConfig;
     TStorageConfigPtr Config;
     bool HasStorageConfigPatch = false;
+    bool HasPerformanceProfileModifications = false;
     const TDiagnosticsConfigPtr DiagnosticsConfig;
     const IProfileLogPtr ProfileLog;
     const IBlockDigestGeneratorPtr BlockDigestGenerator;

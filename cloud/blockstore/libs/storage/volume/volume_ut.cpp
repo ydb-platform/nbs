@@ -1,6 +1,8 @@
 #include "volume_ut.h"
 
 #include <cloud/blockstore/libs/storage/api/volume_proxy.h>
+#include <cloud/blockstore/libs/storage/core/proto_helpers.h>
+#include <cloud/blockstore/libs/storage/core/volume_model.h>
 #include <cloud/blockstore/libs/storage/model/composite_id.h>
 #include <cloud/blockstore/libs/storage/partition_common/events_private.h>
 #include <cloud/blockstore/libs/storage/partition_nonrepl/model/processing_blocks.h>
@@ -3949,6 +3951,135 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         volume.RebootTablet();
         volume.WaitReady();
         UNIT_ASSERT_VALUES_EQUAL(9'000, volume.StatVolume()->Record.GetStats().GetBoostBudget());
+    }
+
+    Y_UNIT_TEST(ShouldNoticePerformanceProfileChanges)
+    {
+        NProto::TStorageServiceConfig config;
+        config.SetThrottlingEnabled(true);
+        auto runtime = PrepareTestActorRuntime(config);
+
+        auto storageConfig = std::make_shared<TStorageConfig>(
+            config,
+            std::make_shared<NFeatures::TFeaturesConfig>());
+
+        ui32 hasPerformanceProfileModificationsCounter = 0;
+
+        runtime->SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
+                if (event->Recipient == MakeStorageStatsServiceId() &&
+                    event->GetTypeRewrite() ==
+                        TEvStatsService::EvVolumeSelfCounters)
+                {
+                    auto* msg =
+                        event->Get<TEvStatsService::TEvVolumeSelfCounters>();
+
+                    hasPerformanceProfileModificationsCounter =
+                        msg->VolumeSelfCounters->Simple
+                            .HasPerformanceProfileModifications.Value;
+                }
+
+                return TTestActorRuntime::DefaultObserverFunc(event);
+            });
+
+        TVolumeClient volume(*runtime);
+        NKikimrBlockStore::TVolumeConfig defaultVolumeConfig;
+        {
+            auto request = volume.CreateUpdateVolumeConfigRequest();
+            defaultVolumeConfig = request->Record.GetVolumeConfig();
+            auto volumeParams = CreateVolumeParams(
+                *storageConfig,
+                TCreateVolumeParamsCtx{
+                    .BlockSize = defaultVolumeConfig.GetBlockSize(),
+                    .BlocksCount =
+                        defaultVolumeConfig.GetPartitions(0).GetBlockCount(),
+                    .MediaKind = static_cast<NProto::EStorageMediaKind>(
+                        defaultVolumeConfig.GetStorageMediaKind()),
+                    .PartitionsCount = static_cast<ui32>(
+                        defaultVolumeConfig.GetPartitions().size()),
+                    .CloudId = defaultVolumeConfig.GetCloudId(),
+                    .FolderId = defaultVolumeConfig.GetFolderId(),
+                    .DiskId = defaultVolumeConfig.GetDiskId(),
+                    .IsSystem = defaultVolumeConfig.GetIsSystem(),
+                    .IsOverlayDisk =
+                        !defaultVolumeConfig.GetBaseDiskId().empty()});
+            ResizeVolume(
+                *storageConfig,
+                volumeParams,
+                {},
+                {},
+                defaultVolumeConfig);
+        }
+
+        {
+            auto request = volume.CreateUpdateVolumeConfigRequest();
+            *request->Record.MutableVolumeConfig() = defaultVolumeConfig;
+            volume.SendToPipe(std::move(request));
+            auto response = volume.RecvUpdateVolumeConfigResponse();
+            UNIT_ASSERT_C(
+                response->Record.GetStatus() == NKikimrBlockStore::OK,
+                "Unexpected status: " << NKikimrBlockStore::EStatus_Name(
+                    response->Record.GetStatus()));
+        }
+
+        volume.WaitReady();
+        // Update to the same performance profile settings doesn't count as
+        // change
+        {
+            volume.SendToPipe(
+                std::make_unique<TEvVolumePrivate::TEvUpdateCounters>());
+            runtime->DispatchEvents({}, TDuration::Seconds(1));
+            UNIT_ASSERT_VALUES_EQUAL(
+                0,
+                hasPerformanceProfileModificationsCounter);
+        }
+
+        // Setting at least one parameter a custom value counts
+        {
+            auto request = volume.CreateUpdateVolumeConfigRequest();
+            *request->Record.MutableVolumeConfig() = defaultVolumeConfig;
+            request->Record.MutableVolumeConfig()->SetVersion(2);
+            request->Record.MutableVolumeConfig()
+                ->SetPerformanceProfileBoostTime(10'000);
+            volume.SendToPipe(std::move(request));
+            auto response = volume.RecvUpdateVolumeConfigResponse();
+            UNIT_ASSERT_C(
+                response->Record.GetStatus() == NKikimrBlockStore::OK,
+                "Unexpected status: " << NKikimrBlockStore::EStatus_Name(
+                    response->Record.GetStatus()));
+        }
+
+        {
+            volume.SendToPipe(
+                std::make_unique<TEvVolumePrivate::TEvUpdateCounters>());
+            runtime->DispatchEvents({}, TDuration::Seconds(1));
+            UNIT_ASSERT_VALUES_EQUAL(
+                1,
+                hasPerformanceProfileModificationsCounter);
+        }
+
+        // Reverting back to suggested performance profile disables counter
+        {
+            auto request = volume.CreateUpdateVolumeConfigRequest();
+            *request->Record.MutableVolumeConfig() = defaultVolumeConfig;
+            request->Record.MutableVolumeConfig()->SetVersion(3);
+            volume.SendToPipe(std::move(request));
+            auto response = volume.RecvUpdateVolumeConfigResponse();
+            UNIT_ASSERT_C(
+                response->Record.GetStatus() == NKikimrBlockStore::OK,
+                "Unexpected status: " << NKikimrBlockStore::EStatus_Name(
+                    response->Record.GetStatus()));
+        }
+
+        {
+            volume.SendToPipe(
+                std::make_unique<TEvVolumePrivate::TEvUpdateCounters>());
+            runtime->DispatchEvents({}, TDuration::Seconds(1));
+            UNIT_ASSERT_VALUES_EQUAL(
+                0,
+                hasPerformanceProfileModificationsCounter);
+        }
     }
 
     Y_UNIT_TEST(ShouldMaintainRequestOrderWhenThrottling)

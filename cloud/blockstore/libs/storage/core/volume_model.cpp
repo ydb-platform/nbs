@@ -880,4 +880,43 @@ void ComputeChannelCountLimits(
     }
 }
 
+TVolumeParams CreateVolumeParams(
+    const TStorageConfig& config,
+    const TCreateVolumeParamsCtx& ctx)
+{
+    TVolumeParams volumeParams;
+    volumeParams.BlockSize = ctx.BlockSize;
+    volumeParams.MediaKind = ctx.MediaKind;
+    if (!IsDiskRegistryMediaKind(volumeParams.MediaKind)) {
+        TPartitionsInfo partitionsInfo;
+        if (ctx.PartitionsCount) {
+            partitionsInfo.PartitionsCount = ctx.PartitionsCount;
+            partitionsInfo.BlocksCountPerPartition =
+                ComputeBlocksCountPerPartition(
+                    ctx.BlocksCount,
+                    config.GetBytesPerStripe(),
+                    volumeParams.BlockSize,
+                    partitionsInfo.PartitionsCount);
+        } else {
+            partitionsInfo = ComputePartitionsInfo(
+                config,
+                ctx.CloudId,
+                ctx.FolderId,
+                ctx.DiskId,
+                ctx.MediaKind,
+                ctx.BlocksCount,
+                volumeParams.BlockSize,
+                ctx.IsSystem,
+                ctx.IsOverlayDisk);
+        }
+        volumeParams.PartitionsCount = partitionsInfo.PartitionsCount;
+        volumeParams.BlocksCountPerPartition =
+            partitionsInfo.BlocksCountPerPartition;
+    } else {
+        volumeParams.BlocksCountPerPartition = ctx.BlocksCount;
+        volumeParams.PartitionsCount = 1;
+    }
+    return volumeParams;
+}
+
 }   // namespace NCloud::NBlockStore::NStorage
