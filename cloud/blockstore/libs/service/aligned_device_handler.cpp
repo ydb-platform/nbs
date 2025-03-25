@@ -251,12 +251,13 @@ TAlignedDeviceHandler::ExecuteReadRequest(
     if (requestBlockCount == blocksInfo.Range.Size()) {
         // The request size is quite small. We do all work at once.
         request->Sglist = std::move(sgList);
-        auto result = Storage->ReadBlocksLocal(std::move(ctx), std::move(request));
+        auto result =
+            Storage->ReadBlocksLocal(std::move(ctx), std::move(request));
         return result.Subscribe(
-            [weakPtr = weak_from_this(),
-             range = blocksInfo.Range](const auto& future)
+            [weakPtr = weak_from_this(), range = blocksInfo.Range](
+                const TFuture<NProto::TReadBlocksLocalResponse>& future)
             {
-                auto response = future.GetValue();
+                const auto& response = future.GetValue();
                 if (HasError(response)) {
                     if (auto self = weakPtr.lock()) {
                         self->ReportCriticalError(
@@ -265,7 +266,6 @@ TAlignedDeviceHandler::ExecuteReadRequest(
                             range);
                     }
                 }
-                return MakeFuture(response);
             });
     }
 
@@ -285,15 +285,16 @@ TAlignedDeviceHandler::ExecuteReadRequest(
         blocksInfo.Range.Size() - requestBlockCount);
     Y_DEBUG_ABORT_UNLESS(blocksInfo.Range.Size());
 
-    return result.Subscribe(
+    return result.Apply(
         [ctx = std::move(ctx),
          weakPtr = weak_from_this(),
          blocksInfo = blocksInfo,
          sgList = std::move(sgList),
          checkpointId = std::move(checkpointId),
-         originalRange = originalRange](const auto& future) mutable
+         originalRange = originalRange](
+            const TFuture<NProto::TReadBlocksLocalResponse>& future) mutable
         {
-            auto response = future.GetValue();
+            const auto& response = future.GetValue();
             if (HasError(response)) {
                 if (auto self = weakPtr.lock()) {
                     self->ReportCriticalError(
@@ -301,7 +302,7 @@ TAlignedDeviceHandler::ExecuteReadRequest(
                         "Read",
                         originalRange);
                 }
-                return MakeFuture(response);
+                return future;
             }
 
             if (auto self = weakPtr.lock()) {
@@ -341,10 +342,10 @@ TAlignedDeviceHandler::ExecuteWriteRequest(
         auto result =
             Storage->WriteBlocksLocal(std::move(ctx), std::move(request));
         return result.Subscribe(
-            [weakPtr = weak_from_this(),
-             range = blocksInfo.Range](const auto& future)
+            [weakPtr = weak_from_this(), range = blocksInfo.Range](
+                const TFuture<NProto::TWriteBlocksResponse>& future)
             {
-                auto response = future.GetValue();
+                const auto& response = future.GetValue();
                 if (HasError(response)) {
                     if (auto self = weakPtr.lock()) {
                         self->ReportCriticalError(
@@ -353,7 +354,6 @@ TAlignedDeviceHandler::ExecuteWriteRequest(
                             range);
                     }
                 }
-                return MakeFuture(response);
             });
     }
 
@@ -373,14 +373,15 @@ TAlignedDeviceHandler::ExecuteWriteRequest(
         blocksInfo.Range.Size() - requestBlockCount);
     Y_DEBUG_ABORT_UNLESS(blocksInfo.Range.Size());
 
-    return result.Subscribe(
+    return result.Apply(
         [ctx = std::move(ctx),
          weakPtr = weak_from_this(),
          blocksInfo = blocksInfo,
          sgList = std::move(sgList),
-         originalRange = originalRange](const auto& future) mutable
+         originalRange = originalRange](
+            const TFuture<NProto::TWriteBlocksResponse>& future) mutable
         {
-            auto response = future.GetValue();
+            const auto& response = future.GetValue();
             if (HasError(response)) {
                 if (auto self = weakPtr.lock()) {
                     self->ReportCriticalError(
@@ -388,7 +389,7 @@ TAlignedDeviceHandler::ExecuteWriteRequest(
                         "Write",
                         originalRange);
                 }
-                return MakeFuture(response);
+                return future;
             }
 
             if (auto self = weakPtr.lock()) {
@@ -422,9 +423,9 @@ TFuture<NProto::TZeroBlocksResponse> TAlignedDeviceHandler::ExecuteZeroRequest(
         auto result = Storage->ZeroBlocks(std::move(ctx), std::move(request));
         return result.Subscribe(
             [weakPtr = weak_from_this(),
-             range = blocksInfo.Range](const auto& future)
+             range = blocksInfo.Range](const TFuture<NProto::TZeroBlocksResponse>& future)
             {
-                auto response = future.GetValue();
+                const auto& response = future.GetValue();
                 if (HasError(response)) {
                     if (auto self = weakPtr.lock()) {
                         self->ReportCriticalError(
@@ -433,7 +434,6 @@ TFuture<NProto::TZeroBlocksResponse> TAlignedDeviceHandler::ExecuteZeroRequest(
                             range);
                     }
                 }
-                return MakeFuture(response);
             });
     }
 
@@ -442,16 +442,17 @@ TFuture<NProto::TZeroBlocksResponse> TAlignedDeviceHandler::ExecuteZeroRequest(
     auto originalRange = blocksInfo.Range;
     blocksInfo.Range.Start += requestBlockCount;
 
-    return result.Subscribe(
+    return result.Apply(
         [ctx = std::move(ctx),
          weakPtr = weak_from_this(),
          blocksInfo = blocksInfo,
-         originalRange = originalRange](const auto& future) mutable
+         originalRange = originalRange](
+            const TFuture<NProto::TZeroBlocksResponse>& future) mutable
         {
             // Only part of the request was completed. Continue doing the
             // rest of the work
 
-            auto response = future.GetValue();
+            const auto& response = future.GetValue();
             if (HasError(response)) {
                 if (auto self = weakPtr.lock()) {
                     self->ReportCriticalError(
@@ -459,7 +460,7 @@ TFuture<NProto::TZeroBlocksResponse> TAlignedDeviceHandler::ExecuteZeroRequest(
                         "Zero",
                         originalRange);
                 }
-                return MakeFuture(response);
+                return future;
             }
 
             if (auto self = weakPtr.lock()) {
