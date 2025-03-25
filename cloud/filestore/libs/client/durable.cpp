@@ -328,8 +328,9 @@ struct TRetryPolicy final
             return true;
         }
 
-        auto timeout = state.RetryTimeout + Config->GetRetryTimeoutIncrement();
-        state.Backoff = timeout;
+        const auto newRetryTimeout =
+            state.RetryTimeout + Config->GetRetryTimeoutIncrement();
+        state.Backoff = newRetryTimeout;
         if (IsConnectionError(error) &&
             state.Backoff > Config->GetConnectionErrorMaxRetryTimeout())
         {
@@ -337,7 +338,7 @@ struct TRetryPolicy final
             return true;
         }
 
-        state.RetryTimeout = timeout;
+        state.RetryTimeout = newRetryTimeout;
         return true;
     }
 };
