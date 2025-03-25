@@ -949,6 +949,32 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         UNIT_ASSERT_VALUES_EQUAL(0, migratedRanges);
     }
 
+    Y_UNIT_TEST(ShouldConvertTryAgainToRejectedWhenCanAllocateLocalDiskLater)
+    {
+        NProto::TStorageServiceConfig config;
+        config.SetLocalDiskAsyncDeallocationEnabled(true);
+
+        auto state = MakeIntrusive<TDiskRegistryState>();
+        state->CurrentErrorCode = E_TRY_AGAIN;
+        auto runtime = PrepareTestActorRuntime(config, state);
+
+        TVolumeClient volume(*runtime);
+        volume.UpdateVolumeConfig(
+            0,
+            0,
+            0,
+            0,
+            false,
+            1,
+            NCloud::NProto::STORAGE_MEDIA_SSD_LOCAL);
+
+        volume.SendWaitReadyRequest();
+        {
+            auto response = volume.RecvWaitReadyResponse();
+            UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, response->GetStatus());
+        }
+    }
+
     void DoShouldEnsureRejectWriteZeroRequestsOverlappingWithMigrating(
         ui32 ioDepth)
     {
@@ -9445,6 +9471,66 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         UNIT_ASSERT_VALUES_EQUAL(bdata, results[0]);
         UNIT_ASSERT_VALUES_EQUAL(bdata, results[1]);
         UNIT_ASSERT_VALUES_EQUAL(bdata, results[2]);
+    }
+
+    Y_UNIT_TEST(ShouldManageFollowerLink)
+    {
+        auto runtime = PrepareTestActorRuntime();
+        TVolumeClient volume1(*runtime);
+        TVolumeClient volume2(*runtime);
+
+        volume1.UpdateVolumeConfig(
+            0,
+            0,
+            0,
+            0,
+            false,
+            1,
+            NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
+            7 * 1024,   // block count per partition
+            "vol1");
+
+        volume2.UpdateVolumeConfig(
+            0,
+            0,
+            0,
+            0,
+            false,
+            1,
+            NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
+            7 * 1024,   // block count per partition
+            "vol2");
+
+        {
+            // Create link
+            volume1.LinkLeaderVolumeToFollower("vol1", "vol2");
+
+            // Reboot tablet
+            volume1.RebootTablet();
+            volume1.WaitReady();
+
+            // Should get S_ALREADY since link persisted in local volume
+            // database.
+            volume1.SendLinkLeaderVolumeToFollowerRequest("vol1", "vol2");
+            auto response = volume1.RecvLinkLeaderVolumeToFollowerResponse();
+            UNIT_ASSERT_VALUES_EQUAL(S_ALREADY, response->GetStatus());
+        }
+
+        {
+            // Destroy link
+            volume1.UnlinkLeaderVolumeFromFollower("vol1", "vol2");
+
+            // Reboot tablet
+            volume1.RebootTablet();
+            volume1.WaitReady();
+
+            // Should get S_ALREADY since link persisted in local volume
+            // database.
+            volume1.SendUnlinkLeaderVolumeFromFollowerRequest("vol1", "vol2");
+            auto response =
+                volume1.RecvUnlinkLeaderVolumeFromFollowerResponse();
+            UNIT_ASSERT_VALUES_EQUAL(S_ALREADY, response->GetStatus());
+        }
     }
 }
 

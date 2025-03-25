@@ -198,7 +198,8 @@ jobs:
       - name: checkout
         uses: actions/checkout@v4
         with:
-          submodules: true
+          submodules: false
+          sparse-checkout: '.github'
 
       - name: get reporter name
         uses: haya14busa/action-cond@v1
@@ -247,7 +248,8 @@ jobs:
       - name: checkout
         uses: actions/checkout@v4
         with:
-          submodules: true
+          submodules: false
+          sparse-checkout: '.github'
 
       - name: get reporter name
         uses: haya14busa/action-cond@v1
@@ -290,7 +292,8 @@ jobs:
       - name: checkout
         uses: actions/checkout@v4
         with:
-          submodules: true
+          submodules: false
+          sparse-checkout: '.github'
 
       - name: install action-validator with asdf
         uses: asdf-vm/actions/install@v3

@@ -327,7 +327,16 @@ void TLaggingAgentsReplicaProxyActor::MarkBlocksAsDirty(
 
     auto& state = AgentState[unavailableAgentId];
     Y_ABORT_UNLESS(state.CleanBlocksMap);
-    state.CleanBlocksMap->Unset(range.Start, range.End + 1);
+
+    // We artificially lower the resolution of the "CleanBlocksMap". This is
+    // done because the migration actor migrates by ranges of
+    // "ProcessingRangeSize" anyway. The full resolution here would lead to
+    // migrating not aligned ranges which is not ideal.
+    const ui64 blocksPerRange =
+        ProcessingRangeSize / PartConfig->GetBlockSize();
+    auto alignedStart = AlignDown<ui64>(range.Start, blocksPerRange);
+    auto alignedEnd = AlignUp<ui64>(range.End + 1, blocksPerRange);
+    state.CleanBlocksMap->Unset(alignedStart, alignedEnd);
 }
 
 void TLaggingAgentsReplicaProxyActor::DestroyChildActor(

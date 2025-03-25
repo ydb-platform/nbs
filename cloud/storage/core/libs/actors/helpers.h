@@ -17,9 +17,21 @@ void HandleUnexpectedEvent(
     NActors::IEventHandlePtr& ev,
     int component);
 
+void HandleUnexpectedEvent(
+    TAutoPtr<NActors::IEventHandle>& ev,
+    int component,
+    const TString& location);
+
+void HandleUnexpectedEvent(
+    NActors::IEventHandlePtr& ev,
+    int component,
+    const TString& location);
+
 void LogUnexpectedEvent(
     TAutoPtr<NActors::IEventHandle>& ev,
     int component);
+
+////////////////////////////////////////////////////////////////////////////////
 
 inline NActors::TActorId Register(
     const NActors::TActorContext& ctx,
@@ -115,6 +127,16 @@ inline void Reply(
         response.release(),
         0,  // flags
         request.Cookie);
+}
+
+template <typename T, typename... TArgs>
+inline void Schedule(
+    const NActors::TActorContext& ctx,
+    TDuration delta,
+    TArgs&&... args)
+{
+    auto event = std::make_unique<T>(std::forward<TArgs>(args)...);
+    ctx.Schedule(delta, event.release());
 }
 
 ////////////////////////////////////////////////////////////////////////////////

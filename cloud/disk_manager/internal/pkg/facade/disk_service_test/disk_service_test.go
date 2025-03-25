@@ -671,14 +671,15 @@ func testCreateDiskFromImage(
 			diskContentInfo,
 			encryption,
 		)
+		require.NoError(t, err)
 	} else {
 		err = nbsClient.ValidateCrc32(
 			ctx,
 			diskID,
 			diskContentInfo,
 		)
+		require.NoError(t, err)
 	}
-	require.NoError(t, err)
 
 	diskParams, err := nbsClient.Describe(ctx, diskID)
 	require.NoError(t, err)

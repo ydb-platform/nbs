@@ -45,17 +45,6 @@ public:
     {
         return Config.GetDiskAgentTarget();
     }
-
-    bool GetBlockstoreServerTargetEnabled() const
-    {
-        return Config.GetBlockstoreServerTargetEnabled();
-    }
-
-    const auto& GetBlockstoreServerTarget() const
-    {
-        return Config.GetBlockstoreServerTarget();
-    }
-
 };
 
 }   // namespace NCloud::NBlockStore::NRdma

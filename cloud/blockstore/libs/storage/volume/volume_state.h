@@ -1,29 +1,30 @@
 #pragma once
 
-#include "partition_info.h"
 #include "public.h"
 
-#include <cloud/blockstore/libs/diagnostics/config.h>
+#include "partition_info.h"
+
 #include <cloud/blockstore/libs/common/block_range.h>
+#include <cloud/blockstore/libs/diagnostics/config.h>
 #include <cloud/blockstore/libs/kikimr/components.h>
 #include <cloud/blockstore/libs/kikimr/public.h>
+#include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/core/disk_counters.h>
 #include <cloud/blockstore/libs/storage/core/metrics.h>
 #include <cloud/blockstore/libs/storage/core/public.h>
 #include <cloud/blockstore/libs/storage/partition_nonrepl/public.h>
 #include <cloud/blockstore/libs/storage/protos_ydb/volume.pb.h>
-#include <cloud/blockstore/libs/storage/volume/model/client_state.h>
-#include <cloud/blockstore/libs/storage/volume/model/checkpoint_light.h>
 #include <cloud/blockstore/libs/storage/volume/model/checkpoint.h>
+#include <cloud/blockstore/libs/storage/volume/model/checkpoint_light.h>
+#include <cloud/blockstore/libs/storage/volume/model/client_state.h>
+#include <cloud/blockstore/libs/storage/volume/model/follower_disk.h>
 #include <cloud/blockstore/libs/storage/volume/model/meta.h>
 #include <cloud/blockstore/libs/storage/volume/model/volume_params.h>
 #include <cloud/blockstore/libs/storage/volume/model/volume_throttling_policy.h>
-
 #include <cloud/storage/core/libs/common/compressed_bitmap.h>
 #include <cloud/storage/core/libs/common/error.h>
 
 #include <contrib/ydb/core/base/blobstorage.h>
-
 #include <contrib/ydb/library/actors/core/actorid.h>
 
 #include <util/datetime/base.h>
@@ -240,6 +241,9 @@ private:
 
     // The number of blocks that need to be migrated to complete the migration.
     std::optional<ui64> BlockCountToMigrate;
+
+    TFollowerDisks FollowerDisks;
+
 public:
     TVolumeState(
         TStorageConfigPtr storageConfig,
@@ -251,6 +255,7 @@ public:
         THashMap<TString, TVolumeClientState> infos,
         TCachedVolumeMountHistory mountHistory,
         TVector<TCheckpointRequest> checkpointRequests,
+        TFollowerDisks followerDisks,
         bool startPartitionsNeeded);
 
     const NProto::TVolumeMeta& GetMeta() const
@@ -311,6 +316,7 @@ public:
     void AddLaggingAgent(NProto::TLaggingAgent agent);
     std::optional<NProto::TLaggingAgent> RemoveLaggingAgent(
         const TString& agentId);
+    [[nodiscard]] bool HasLaggingAgents() const;
     [[nodiscard]] bool HasLaggingInReplica(ui32 replicaIndex) const;
     [[nodiscard]] THashSet<TString> GetLaggingDevices() const;
 
@@ -731,6 +737,21 @@ public:
     }
 
     TVector<NProto::TDeviceConfig> GetAllDevicesForAcquireRelease() const;
+
+    //
+    // Followers
+    //
+
+    void AddOrUpdateFollower(TFollowerDiskInfo follower);
+    void RemoveFollower(const TString& uuid);
+    std::optional<TFollowerDiskInfo> FindFollowerByUuid(
+        const TString& uuid) const;
+    std::optional<TFollowerDiskInfo> FindFollowerByDiskId(
+        const TString& diskId) const;
+    const TFollowerDisks& GetAllFollowers() const
+    {
+        return FollowerDisks;
+    }
 
 private:
     bool CanPreemptClient(

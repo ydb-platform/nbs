@@ -581,6 +581,7 @@ void TVolumeActor::HandleHttpInfo_Default(
     const char* overviewTabName = "Overview";
     const char* historyTabName = "History";
     const char* checkpointsTabName = "Checkpoints";
+    const char* linksTabName = "Links";
     const char* tracesTabName = "Traces";
     const char* storageConfigTabName = "StorageConfig";
     const char* rawVolumeConfigTabName = "RawVolumeConfig";
@@ -591,6 +592,7 @@ void TVolumeActor::HandleHttpInfo_Default(
     const char* overviewTab = inactiveTab;
     const char* historyTab = inactiveTab;
     const char* checkpointsTab = inactiveTab;
+    const char* linksTab = inactiveTab;
     const char* tracesTab = inactiveTab;
     const char* storageConfigTab = inactiveTab;
     const char* rawVolumeConfigTab = inactiveTab;
@@ -601,6 +603,8 @@ void TVolumeActor::HandleHttpInfo_Default(
         historyTab = activeTab;
     } else if (tabName == checkpointsTabName) {
         checkpointsTab = activeTab;
+    } else if (tabName == linksTabName) {
+        linksTab = activeTab;
     } else if (tabName == tracesTabName) {
         tracesTab = activeTab;
     } else if (tabName == storageConfigTabName) {
@@ -627,6 +631,10 @@ void TVolumeActor::HandleHttpInfo_Default(
 
                 DIV_CLASS_ID(checkpointsTab, checkpointsTabName) {
                     RenderCheckpoints(out);
+                }
+
+                DIV_CLASS_ID(linksTab, linksTabName) {
+                    RenderLinks(out);
                 }
 
                 DIV_CLASS_ID(tracesTab, tracesTabName) {
@@ -849,6 +857,55 @@ void TVolumeActor::RenderCheckpoints(IOutputStream& out) const
     }
 }
 
+void TVolumeActor::RenderLinks(IOutputStream& out) const
+{
+    using namespace NMonitoringUtils;
+
+    HTML (out) {
+        DIV_CLASS ("row") {
+            TABLE_SORTABLE_CLASS ("table table-bordered") {
+                TABLEHEAD () {
+                    TABLER () {
+                        TABLEH () {
+                            out << "UUID";
+                        }
+                        TABLEH () {
+                            out << "Follower";
+                        }
+                        TABLEH () {
+                            out << "State";
+                        }
+                        TABLEH () {
+                            out << "Migrated blocks";
+                        }
+                    }
+                }
+                for (const auto& follower: State->GetAllFollowers()) {
+                    TABLER () {
+                        TABLED () {
+                            out << follower.Uuid;
+                        }
+                        TABLED () {
+                            if (follower.ScaleUnitId) {
+                                out << follower.ScaleUnitId << "/";
+                            }
+                            out << follower.FollowerDiskId;
+                        }
+                        TABLED () {
+                            out << ToString(follower.State);
+                        }
+                        TABLED () {
+                            if (follower.MigrationBlockIndex) {
+                                out << *follower.MigrationBlockIndex;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
 void TVolumeActor::RenderTraces(IOutputStream& out) const
 {
     using namespace NMonitoringUtils;
@@ -997,6 +1054,16 @@ void TVolumeActor::RenderHtmlInfo(IOutputStream& out, TInstant now) const
             DIV_CLASS("row") {
                 DIV_CLASS("col-md-6") {
                     RenderResyncStatus(out);
+                }
+            }
+        }
+
+        if (LaggingDevicesAreAllowed()) {
+            DIV_CLASS("row")
+            {
+                DIV_CLASS("col-md-6")
+                {
+                    RenderLaggingStatus(out);
                 }
             }
         }
@@ -1569,6 +1636,38 @@ void TVolumeActor::RenderResyncStatus(IOutputStream& out) const
     }
 }
 
+void TVolumeActor::RenderLaggingStatus(IOutputStream& out) const
+{
+    HTML(out)
+    {
+        TAG(TH3)
+        {
+            TString statusText = "ok";
+            TString cssClass = "label-success";
+
+            if (State->HasLaggingAgents()) {
+                statusText = "has lagging devices";
+                cssClass = "label-info";
+            }
+
+            if (!State->GetNonreplicatedPartitionConfig()
+                     ->GetOutdatedDeviceIds()
+                     .empty())
+            {
+                statusText = "has outdated devices";
+                cssClass = "label-danger";
+            }
+
+            out << "LaggingStatus:";
+
+            SPAN_CLASS_STYLE("label " + cssClass, "margin-left:10px")
+            {
+                out << statusText;
+            }
+        }
+    }
+}
+
 void TVolumeActor::RenderCommonButtons(IOutputStream& out) const
 {
     if (!State) {
@@ -1774,6 +1873,10 @@ void TVolumeActor::HandleHttpInfo_RenderNonreplPartitionInfo(
                         return nullptr;
                     };
 
+                bool renderLaggingState = IsReliableDiskRegistryMediaKind(
+                    State->GetConfig().GetStorageMediaKind());
+                auto laggingDevices = State->GetLaggingDevices();
+
                 auto outputDevices = [&] (const TDevices& devices) {
                     TABLED() {
                         TABLE_CLASS("table table-bordered") {
@@ -1789,6 +1892,12 @@ void TVolumeActor::HandleHttpInfo_RenderNonreplPartitionInfo(
                                     TABLEH() { out << "BlockSize"; }
                                     TABLEH() { out << "Blocks"; }
                                     TABLEH() { out << "BlockRange"; }
+                                    if (renderLaggingState) {
+                                        TABLEH()
+                                        {
+                                            out << "LaggingState";
+                                        }
+                                    }
                                 }
                             }
 
@@ -1825,6 +1934,33 @@ void TVolumeActor::HandleHttpInfo_RenderNonreplPartitionInfo(
                                             currentBlockCount,
                                             d.GetBlocksCount());
                                     out << DescribeRange(currentRange);
+                                }
+                                if (renderLaggingState) {
+                                    TABLED()
+                                    {
+                                        const auto* stateMsg = "ok";
+                                        const auto* color = "green";
+
+                                        if (laggingDevices.contains(
+                                                d.GetDeviceUUID()))
+                                        {
+                                            stateMsg = "lagging";
+                                            color = "blue";
+                                        }
+
+                                        if (State
+                                                ->GetNonreplicatedPartitionConfig()
+                                                ->GetOutdatedDeviceIds()
+                                                .contains(d.GetDeviceUUID()))
+                                        {
+                                            stateMsg = "outdated";
+                                            color = "red";
+                                        }
+
+                                        out << "<font color=" << color << ">";
+                                        out << stateMsg;
+                                        out << "</font>";
+                                    }
                                 }
                             };
 

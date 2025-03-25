@@ -745,35 +745,6 @@ message TDescribeVolumeModelResponse
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-// CheckRange
-message TCheckRangeRequest
-{
-    // Optional request headers.
-    THeaders Headers = 1;
-
-    // Label of volume.
-    string DiskId = 2;
-
-    // First block index.
-    uint64 StartIndex = 3;
-
-    // Number of blobs per batch.
-    uint64 BlocksCount = 4;
-}
-
-message TCheckRangeResponse
-{
-    // Optional error, set only if error happened.
-    NCloud.NProto.TError Error = 1;
-
-    // Status of ReadBlocks operation.
-    NCloud.NProto.TError Status = 2;
-
-    // Request traces.
-    NCloud.NProto.TTraceInfo Trace = 3;
-}
-
-////////////////////////////////////////////////////////////////////////////////
 // Create volumes link
 
 message TCreateVolumeLinkRequest

@@ -63,10 +63,10 @@ protected:
     virtual NActors::IEventBasePtr MakeResponse(NProto::TError error) = 0;
     virtual TCompletionEventAndBody MakeCompletionResponse(ui32 blocks) = 0;
 
-    bool HandleError(
+    void HandleError(
         const NActors::TActorContext& ctx,
         NProto::TError error,
-        bool timedOut);
+        EStatus status);
 
     void Done(
         const NActors::TActorContext& ctx,
@@ -76,8 +76,8 @@ protected:
 private:
     void StateWork(TAutoPtr<NActors::IEventHandle>& ev);
 
-    void HandleTimeout(
-        const NActors::TEvents::TEvWakeup::TPtr& ev,
+    void HandleCancelRequest(
+        const TEvNonreplPartitionPrivate::TEvCancelRequest::TPtr& ev,
         const NActors::TActorContext& ctx);
 };
 

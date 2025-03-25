@@ -5,7 +5,7 @@ import yatest.common as common
 
 from cloud.filestore.tests.python.lib.common import get_filestore_mount_path
 
-__suites = compliance.get_multishart2_suites()
+__suites = compliance.get_kikimr_service_suites()
 
 
 @pytest.mark.parametrize("suite", __suites.keys())

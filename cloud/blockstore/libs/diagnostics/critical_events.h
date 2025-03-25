@@ -102,6 +102,7 @@ namespace NCloud::NBlockStore {
     xxx(StartExternalEndpointError)                                            \
     xxx(EmptyRequestSgList)                                                    \
     xxx(LaggingAgentsProxyWrongRecipientActor)                                 \
+    xxx(UnexpectedCookie)                                                      \
 // BLOCKSTORE_IMPOSSIBLE_EVENTS
 
 ////////////////////////////////////////////////////////////////////////////////
