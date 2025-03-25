@@ -71,7 +71,7 @@ struct TRequestBuilder
 
         ui32 blocksInThisRequest = std::min(RemainingBlocks, BlocksPerRequest);
 
-        TBlockRange64 range = TBlockRange64::MakeHalfOpenInterval(
+        range = TBlockRange64::MakeHalfOpenInterval(
             StartIndex,
             StartIndex + blocksInThisRequest);
 
