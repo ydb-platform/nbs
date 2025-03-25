@@ -7,6 +7,7 @@
 #include <cloud/storage/core/libs/common/error.h>
 
 #include <library/cpp/json/json_reader.h>
+#include <library/cpp/json/json_writer.h>
 #include <library/cpp/protobuf/util/pb_io.h>
 #include <library/cpp/testing/unittest/registar.h>
 #include <library/cpp/threading/future/future.h>
@@ -798,7 +799,17 @@ Y_UNIT_TEST_SUITE(TCommandTest)
         client->ExecuteActionHandler =
             [&](std::shared_ptr<NProto::TExecuteActionRequest> request)
         {
-            Y_UNUSED(request);
+            NJson::TJsonValue json;
+
+            UNIT_ASSERT(NJson::ReadJsonTree(request->GetInput(), &json));
+            Cerr<<request->GetInput()<<Endl;
+            ui32 replicaCount = json["ReplicaCount"].GetUIntegerRobust();
+
+            if(count == 0){
+                UNIT_ASSERT_VALUES_EQUAL(3, replicaCount);
+            } else {
+                UNIT_ASSERT_VALUES_UNEQUAL(3, replicaCount);
+            }
             count++;
 
             NProto::TExecuteActionResponse response;
@@ -806,7 +817,7 @@ Y_UNIT_TEST_SUITE(TCommandTest)
             NJson::TJsonValue input;
             // E_ARGUMENT transforms to 2147483649
             input["Status"]["Code"] = 2147483649;
-            input["Status"]["Message"] = "E_ARGUMENT";
+            input["Status"]["Message"] = "Message";
 
             TString jsonStr = NJson::WriteJson(input, false);
             response.MutableOutput()->append(jsonStr);
