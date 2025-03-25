@@ -1,0 +1,33 @@
+name: Prepare nebius cli tool to display various parameters
+description: Install nebius cli and display vm IP
+inputs:
+  instance_id:
+    required: false
+    description: "runner instance-id"
+  instance_name:
+    required: false
+    description: "new instance name"
+
+runs:
+  using: composite
+  steps:
+    - name: set up home
+      shell: bash
+      run: echo "HOME=$GITHUB_WORKSPACE" >> $GITHUB_ENV
+  
+    - name: set up path
+      shell: bash
+      run: echo "PATH=$PATH:$HOME/.nebius/bin" >> $GITHUB_ENV
+
+    - name: Update VM name and set runner to idle
+      shell: bash
+      if: ${{ inputs.instance_id != '' }}
+      id: result
+      run: |
+        set -x
+        LABELS=$(nebius compute instance get --id ${INSTANCE_ID} --format json |  jq -r '.metadata.labels | to_entries | map("\(.key)=\(.value)") | join(",")')
+        LABELS=$(echo $LABELS | sed -e 's/idle=false/idle=true/g' -e "s/run=[^,]*//g" -e "s/pr=[^,]*//g" -e 's/,,/,/g')
+        nebius compute instance update --id $INSTANCE_ID --name $NEW_INSTANCE_NAME --labels $LABELS
+      env:
+        INSTANCE_ID: ${{ inputs.instance_id }}
+        NEW_INSTANCE_NAME: ${{ inputs.instance_name }}
