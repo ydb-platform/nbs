@@ -795,7 +795,7 @@ Y_UNIT_TEST_SUITE(TCommandTest)
         ui64 blocksPerRequest = 1024;
         auto client = std::make_shared<TTestService>();
 
-        ui32 count = 0;
+        ui32 requestCount = 0;
         client->ExecuteActionHandler =
             [&](std::shared_ptr<NProto::TExecuteActionRequest> request)
         {
@@ -805,12 +805,12 @@ Y_UNIT_TEST_SUITE(TCommandTest)
             Cerr<<request->GetInput()<<Endl;
             ui32 replicaCount = json["ReplicaCount"].GetUIntegerRobust();
 
-            if(count == 0){
+            if(requestCount == 0){
                 UNIT_ASSERT_VALUES_EQUAL(3, replicaCount);
             } else {
                 UNIT_ASSERT_VALUES_UNEQUAL(3, replicaCount);
             }
-            count++;
+            requestCount++;
 
             NProto::TExecuteActionResponse response;
 
@@ -846,7 +846,7 @@ Y_UNIT_TEST_SUITE(TCommandTest)
         argv.emplace_back(
             TStringBuilder() << "--blocks-count=" << blocksPerRequest);
         UNIT_ASSERT(ExecuteRequest("checkrange", argv, client));
-        UNIT_ASSERT_VALUES_EQUAL(2, count);
+        UNIT_ASSERT_VALUES_EQUAL(2, requestCount);
     }
 }
 
