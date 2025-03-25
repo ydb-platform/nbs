@@ -151,6 +151,8 @@ public:
 
         completion->NonVoidBlockCount = allZeroes ? 0 : RequestBlockCount;
         completion->VoidBlockCount = allZeroes ? RequestBlockCount : 0;
+        auto& counters = *completion->Stats.MutableUserReadCounters();
+        counters.SetBlocksCount(RequestBlockCount);
 
         auto completionEvent = std::make_unique<IEventHandle>(
             ParentActorId,

@@ -128,6 +128,9 @@ public:
             std::move(Error),
             *RequestInfo);
 
+        auto& counters = *completion->Stats.MutableUserWriteCounters();
+        counters.SetBlocksCount(RequestBlockCount);
+
         auto completionEvent = std::make_unique<IEventHandle>(
             ParentActorId,
             TActorId(),

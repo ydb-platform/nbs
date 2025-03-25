@@ -93,9 +93,6 @@ public:
         completion->TotalCycles = requestInfo.GetTotalCycles();
         completion->ExecCycles = requestInfo.GetExecCycles();
 
-        auto& counters = *completion->Stats.MutableSysChecksumCounters();
-        counters.SetBlocksCount(RequestBlockCount);
-
         return completion;
     }
 };
