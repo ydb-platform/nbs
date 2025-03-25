@@ -515,7 +515,7 @@ func (s *nodeService) nodePublishDiskAsVhostSocket(
 	})
 
 	if err != nil {
-		if s.IsGrpcTimeoutError(err) {
+		if s.IsGrpcTimeoutError(err, false /* nbs */) {
 			s.nbsClient.StopEndpoint(ctx, &nbsapi.TStopEndpointRequest{
 				UnixSocketPath: filepath.Join(endpointDir, nbsSocketName),
 			})
@@ -610,7 +610,7 @@ func (s *nodeService) nodeStageDiskAsVhostSocket(
 	})
 
 	if err != nil {
-		if s.IsGrpcTimeoutError(err) {
+		if s.IsGrpcTimeoutError(err, false /* nbs */) {
 			s.nbsClient.StopEndpoint(ctx, &nbsapi.TStopEndpointRequest{
 				UnixSocketPath: filepath.Join(endpointDir, nbsSocketName),
 			})
@@ -688,12 +688,21 @@ func (s *nodeService) nodePublishDiskAsFilesystem(
 	return nil
 }
 
-func (s *nodeService) IsGrpcTimeoutError(err error) bool {
+func (s *nodeService) IsGrpcTimeoutError(err error, isNfs bool) bool {
 	if err != nil {
-		var clientErr *nbsclient.ClientError
-		if errors.As(err, &clientErr) {
-			if clientErr.Code == nbsclient.E_GRPC_DEADLINE_EXCEEDED {
-				return true
+		if !isNfs {
+			var clientErr *nbsclient.ClientError
+			if errors.As(err, &clientErr) {
+				if clientErr.Code == nbsclient.E_GRPC_DEADLINE_EXCEEDED {
+					return true
+				}
+			}
+		} else {
+			var clientErr *nfsclient.ClientError
+			if errors.As(err, &clientErr) {
+				if clientErr.Code == nfsclient.E_GRPC_DEADLINE_EXCEEDED {
+					return true
+				}
 			}
 		}
 	}
@@ -839,7 +848,7 @@ func (s *nodeService) startNbsEndpointForNBD(
 		},
 	})
 
-	if s.IsGrpcTimeoutError(err) {
+	if s.IsGrpcTimeoutError(err, false /* nbs */) {
 		s.nbsClient.StopEndpoint(ctx, &nbsapi.TStopEndpointRequest{
 			UnixSocketPath: filepath.Join(endpointDir, nbsSocketName),
 		})
@@ -884,9 +893,9 @@ func (s *nodeService) nodePublishFileStoreAsVhostSocket(
 		},
 	})
 	if err != nil {
-		if s.IsGrpcTimeoutError(err) {
-			s.nbsClient.StopEndpoint(ctx, &nbsapi.TStopEndpointRequest{
-				UnixSocketPath: filepath.Join(endpointDir, nbsSocketName),
+		if s.IsGrpcTimeoutError(err, true /* nfs */) {
+			nfsClient.StopEndpoint(ctx, &nfsapi.TStopEndpointRequest{
+				SocketPath: filepath.Join(endpointDir, nfsSocketName),
 			})
 		}
 
@@ -928,9 +937,9 @@ func (s *nodeService) nodeStageFileStoreAsVhostSocket(
 		},
 	})
 	if err != nil {
-		if s.IsGrpcTimeoutError(err) {
-			s.nbsClient.StopEndpoint(ctx, &nbsapi.TStopEndpointRequest{
-				UnixSocketPath: filepath.Join(endpointDir, nbsSocketName),
+		if s.IsGrpcTimeoutError(err, true /* nfs */) {
+			nfsClient.StopEndpoint(ctx, &nfsapi.TStopEndpointRequest{
+				SocketPath: filepath.Join(endpointDir, nfsSocketName),
 			})
 		}
 
