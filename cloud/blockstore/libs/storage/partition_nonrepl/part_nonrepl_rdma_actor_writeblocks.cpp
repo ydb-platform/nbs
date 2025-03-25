@@ -71,7 +71,7 @@ public:
         return std::make_unique<TEvService::TEvWriteBlocksResponse>(Error);
     }
 
-    void HandleResult(
+    void ProcessResponseProto(
         const TDeviceRequestContext& dCtx,
         TStringBuf buffer) override
     {
@@ -253,7 +253,6 @@ void TNonreplicatedPartitionRdmaActor::HandleWriteBlocks(
         }
 
         auto context = std::make_unique<TDeviceRequestContext>();
-        context->DeviceUUID = r.Device.GetDeviceUUID();
         context->DeviceIdx = r.DeviceIdx;
 
         auto [req, err] = ep->AllocateRequest(
@@ -408,7 +407,6 @@ void TNonreplicatedPartitionRdmaActor::HandleWriteBlocksLocal(
             deviceRequest.SetMultideviceRequest(deviceRequests.size() > 1);
         }
         auto context = std::make_unique<TDeviceRequestContext>();
-        context->DeviceUUID = r.Device.GetDeviceUUID();
         context->DeviceIdx = r.DeviceIdx;
 
         auto [req, err] = ep->AllocateRequest(

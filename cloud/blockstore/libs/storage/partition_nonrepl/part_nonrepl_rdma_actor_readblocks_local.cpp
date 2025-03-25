@@ -60,52 +60,57 @@ public:
     {
     }
 
-    void HandleResult(const TDeviceRequestContext& dCtx, TStringBuf buffer) override
+    void ProcessResponseProto(
+        const TDeviceRequestContext& dCtx,
+        TStringBuf buffer) override
     {
         const auto& dr = static_cast<const TDeviceReadRequestContext&>(dCtx);
-        if (auto guard = SgList.Acquire()) {
-            auto* serializer = TBlockStoreProtocol::Serializer();
-            auto [result, err] = serializer->Parse(buffer);
+        auto guard = SgList.Acquire();
+        if (!guard) {
+            Error = MakeError(E_CANCELLED, "can't acquire sglist");
+            return;
+        }
+        auto* serializer = TBlockStoreProtocol::Serializer();
+        auto [result, err] = serializer->Parse(buffer);
 
-            if (HasError(err)) {
-                Error = std::move(err);
-                return;
-            }
+        if (HasError(err)) {
+            Error = std::move(err);
+            return;
+        }
 
-            const auto& concreteProto =
-                static_cast<NProto::TReadDeviceBlocksResponse&>(*result.Proto);
-            if (HasError(concreteProto.GetError())) {
-                Error = concreteProto.GetError();
-                return;
-            }
+        const auto& concreteProto =
+            static_cast<NProto::TReadDeviceBlocksResponse&>(*result.Proto);
+        if (HasError(concreteProto.GetError())) {
+            Error = concreteProto.GetError();
+            return;
+        }
 
-            TSgList data = guard.Get();
+        TSgList data = guard.Get();
 
-            ui64 offset = 0;
-            ui64 b = 0;
-            bool isAllZeroes = CheckVoidBlocks;
-            while (offset < result.Data.size()) {
-                ui64 targetBlock = dr.StartIndexOffset + b;
-                Y_ABORT_UNLESS(targetBlock < data.size());
-                ui64 bytes =
-                    Min(result.Data.size() - offset, data[targetBlock].Size());
-                Y_ABORT_UNLESS(bytes);
+        ui64 offset = 0;
+        ui64 b = 0;
+        bool isAllZeroes = CheckVoidBlocks;
+        while (offset < result.Data.size()) {
+            ui64 targetBlock = dr.StartIndexOffset + b;
+            Y_ABORT_UNLESS(targetBlock < data.size());
+            ui64 bytes =
+                Min(result.Data.size() - offset, data[targetBlock].Size());
+            Y_ABORT_UNLESS(bytes);
 
-                char* dst = const_cast<char*>(data[targetBlock].Data());
-                const char* src = result.Data.data() + offset;
-
-                if (isAllZeroes) {
-                    isAllZeroes = IsAllZeroes(src, bytes);
-                }
-                memcpy(dst, src, bytes);
-
-                offset += bytes;
-                ++b;
-            }
+            char* dst = const_cast<char*>(data[targetBlock].Data());
+            const char* src = result.Data.data() + offset;
 
             if (isAllZeroes) {
-                VoidBlockCount += dr.BlockCount;
+                isAllZeroes = IsAllZeroes(src, bytes);
             }
+            memcpy(dst, src, bytes);
+
+            offset += bytes;
+            ++b;
+        }
+
+        if (isAllZeroes) {
+            VoidBlockCount += dr.BlockCount;
         }
     }
 
