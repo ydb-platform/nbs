@@ -815,8 +815,7 @@ Y_UNIT_TEST_SUITE(TCommandTest)
             NProto::TExecuteActionResponse response;
 
             NJson::TJsonValue input;
-            // E_ARGUMENT transforms to 2147483649
-            input["Status"]["Code"] = 2147483649;
+            input["Status"]["Code"] = E_ARGUMENT;
             input["Status"]["Message"] = "Message";
 
             TString jsonStr = NJson::WriteJson(input, false);
