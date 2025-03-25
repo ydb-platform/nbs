@@ -269,9 +269,11 @@ TDiskAgentState::TDiskAgentState(
         AgentConfig->GetAgentId());
 
     constexpr int MaxDeviceNumberToIgnoreNotfoundError = 64;
-    for (const auto& pathConf : AgentConfig->GetStorageDiscoveryConfig().GetPathConfigs()) {
-        for (const auto& poolConf : pathConf.GetPoolConfigs()) {
-            for (size_t i =0; i < MaxDeviceNumberToIgnoreNotfoundError; ++i) {
+    for (const auto& pathConf:
+         AgentConfig->GetStorageDiscoveryConfig().GetPathConfigs())
+    {
+        for (const auto& poolConf: pathConf.GetPoolConfigs()) {
+            for (size_t i = 0; i < MaxDeviceNumberToIgnoreNotfoundError; ++i) {
                 gen.AddPossibleUUIDSForDevice(
                     poolConf,
                     i,
@@ -910,10 +912,8 @@ bool TDiskAgentState::AcquireDevices(
     CheckError(error);
     for (auto& unknownUUID : unknownDevices) {
         if (!DeviceUUIDsToIgnoreNotFoundError.contains(unknownUUID)) {
-            CheckError(MakeError(
-                E_NOT_FOUND,
-                TStringBuilder()
-                    << "Device " << unknownUUID.Quote() << " not found"));
+            ythrow TServiceError(E_NOT_FOUND)
+                << "Device " << unknownUUID.Quote() << " not found";
         }
     }
     return updated;
@@ -1054,10 +1054,12 @@ void TDiskAgentState::RestoreSessions(TDeviceClient& client) const
             };
             if (HasError(error)) {
                 processError(error);
+                return;
             }
             for (auto& uuid: unknownDevices) {
                 if (!DeviceUUIDsToIgnoreNotFoundError.contains(uuid)) {
                     processError(error);
+                    return;
                 }
             }
         }

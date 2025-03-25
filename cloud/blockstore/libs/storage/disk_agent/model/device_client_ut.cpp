@@ -695,14 +695,15 @@ Y_UNIT_TEST_SUITE(TDeviceClientTest)
 
         TInstant now = Now();
 
-        auto acquireDevices = [&](auto volumeGeneration)
+        auto acquireDevices =
+            [&](const char* clientId, auto accessMode, auto volumeGeneration)
         {
             TVector<TString> unknownDevices;
             auto [updated, error] = client.AcquireDevices(
                 {"uuid2", "uuid1"},   // uuids
-                "writer",             // ClientId
+                clientId,
                 now,
-                NProto::VOLUME_ACCESS_READ_WRITE,
+                accessMode,
                 1,                  // MountSeqNumber
                 "vol0",             // DiskId
                 volumeGeneration,   // VolumeGeneration
@@ -713,7 +714,8 @@ Y_UNIT_TEST_SUITE(TDeviceClientTest)
         };
 
         {
-            auto updated = acquireDevices(1);
+            auto updated =
+                acquireDevices("writer", NProto::VOLUME_ACCESS_READ_WRITE, 1);
 
             UNIT_ASSERT(updated);   // new write session
         }
@@ -722,7 +724,8 @@ Y_UNIT_TEST_SUITE(TDeviceClientTest)
         now += ReleaseInactiveSessionsTimeout;
 
         {
-            auto updated = acquireDevices(1);
+            auto updated =
+                acquireDevices("writer", NProto::VOLUME_ACCESS_READ_WRITE, 1);
 
             // writer session was activated
             UNIT_ASSERT(updated);
@@ -732,7 +735,8 @@ Y_UNIT_TEST_SUITE(TDeviceClientTest)
         now += 5s;
 
         {
-            auto updated = acquireDevices(1);
+            auto updated =
+                acquireDevices("writer", NProto::VOLUME_ACCESS_READ_WRITE, 1);
 
             // nothing was changed
             UNIT_ASSERT(!updated);
@@ -741,7 +745,8 @@ Y_UNIT_TEST_SUITE(TDeviceClientTest)
         now += 5s;
 
         {
-            auto updated = acquireDevices(2);
+            auto updated =
+                acquireDevices("writer", NProto::VOLUME_ACCESS_READ_WRITE, 2);
 
             UNIT_ASSERT(updated);   // new volumeGeneration
         }
@@ -749,7 +754,8 @@ Y_UNIT_TEST_SUITE(TDeviceClientTest)
         now += 5s;
 
         {
-            auto updated = acquireDevices(3);
+            auto updated =
+                acquireDevices("reader", NProto::VOLUME_ACCESS_READ_ONLY, 3);
 
             UNIT_ASSERT(updated);   // new read session
         }
@@ -757,7 +763,8 @@ Y_UNIT_TEST_SUITE(TDeviceClientTest)
         now += 5s;
 
         {
-            auto updated = acquireDevices(3);
+            auto updated =
+                acquireDevices("reader2", NProto::VOLUME_ACCESS_READ_ONLY, 3);
 
             UNIT_ASSERT(updated);   // new read session
         }

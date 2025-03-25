@@ -33,7 +33,6 @@ TRdmaTestEnvironment::TRdmaTestEnvironment(size_t deviceSize, ui32 poolSize)
         uuids,
         Logging->CreateLog("BLOCKSTORE_DISK_AGENT"));
 
-
     TVector<TString> unknownDevices;
     DeviceClient->AcquireDevices(
         uuids,
