@@ -5,7 +5,6 @@ SRCS(
     driver.go
     identity.go
     node.go
-    helper.go
 )
 
 GO_TEST_SRCS(

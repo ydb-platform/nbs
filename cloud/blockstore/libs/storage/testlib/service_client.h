@@ -255,8 +255,7 @@ public:
     std::unique_ptr<TEvService::TEvCheckRangeRequest> CreateCheckRangeRequest(
         const TString& diskId,
         const ui64 blockIdx,
-        const ui64 blockCount,
-        const bool calculateChecksums);
+        const ui64 blockCount);
 
     std::unique_ptr<TEvService::TEvCreateVolumeLinkRequest>
     CreateCreateVolumeLinkRequest(

@@ -6,7 +6,6 @@ import contrib.ydb.tests.library.common.yatest_common as yatest_common
 from contrib.ydb.tests.library.harness.kikimr_runner import get_unique_path_for_current_test, ensure_path_exists
 from library.python.testing.recipe import declare_recipe, set_env
 
-from cloud.disk_manager.test.recipe.common import get_ydb_binary_path
 from cloud.disk_manager.test.recipe.compute_launcher import ComputeLauncher
 from cloud.disk_manager.test.recipe.disk_manager_launcher import DiskManagerLauncher
 from cloud.disk_manager.test.recipe.kms_launcher import KmsLauncher
@@ -80,7 +79,9 @@ def start(argv):
     s3.start()
     set_env("DISK_MANAGER_RECIPE_S3_PORT", str(s3.port))
 
-    ydb_binary_path = get_ydb_binary_path()
+    ydb_binary_path = yatest_common.binary_path("cloud/storage/core/tools/testing/ydb/bin/ydbd")
+    if ydb_binary_path is None:
+        ydb_binary_path = yatest_common.binary_path("contrib/ydb/apps/ydbd/ydbd")
     nbs_binary_path = yatest_common.binary_path("cloud/blockstore/apps/server/nbsd")
     disk_agent_binary_path = yatest_common.binary_path("cloud/blockstore/apps/disk_agent/diskagentd")
     nfs_binary_path = yatest_common.binary_path("cloud/filestore/apps/server/filestore-server")

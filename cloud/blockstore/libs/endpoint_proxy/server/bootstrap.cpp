@@ -30,6 +30,7 @@ void TBootstrap::Init()
         Options.StoredEndpointsPath,
         Options.NbdRequestTimeout,
         Options.NbdReconnectDelay,
+        Options.WithoutLibnl,
     },
     CreateWallClockTimer(),
     Scheduler,

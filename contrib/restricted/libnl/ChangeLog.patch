@@ -1,0 +1,14 @@
+diff --git a/contrib/restricted/libnl/lib/socket.c b/contrib/restricted/libnl/lib/socket.c
+index b0a6530113..b4417e08de 100644
+--- a/contrib/restricted/libnl/lib/socket.c
++++ b/contrib/restricted/libnl/lib/socket.c
+@@ -111,7 +111,7 @@ static uint32_t generate_local_port(void)
+                        nl_write_unlock(&port_map_lock);
+
+                        /* ensure we don't return zero. */
+-                       pid = pid + (n << 22);
++                       pid = pid + ((uint32_t)n << 22);
+                        return pid ? pid : 1024;
+                }
+        }
+

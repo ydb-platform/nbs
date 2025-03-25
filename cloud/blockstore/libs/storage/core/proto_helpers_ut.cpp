@@ -1,6 +1,5 @@
 #include "proto_helpers.h"
 
-#include <cloud/blockstore/libs/storage/core/config.h>
 #include <library/cpp/testing/unittest/registar.h>
 
 namespace NCloud::NBlockStore::NStorage {
@@ -134,100 +133,6 @@ Y_UNIT_TEST_SUITE(TProtoHelpersTest)
         UNIT_ASSERT_VALUES_EQUAL(
             "uuid-3-2-m",
             volume.GetMigrations(3).GetTargetDevice().GetDeviceUUID());
-    }
-
-    Y_UNIT_TEST(TestThrottling)
-    {
-        {
-            NProto::TStorageServiceConfig storageServiceConfig;
-            TStorageConfig config(storageServiceConfig, nullptr);
-            NProto::TPartitionConfig partitionConfig;
-            UNIT_ASSERT(!GetThrottlingEnabled(config, partitionConfig));
-            UNIT_ASSERT(
-                !GetThrottlingEnabledZeroBlocks(config, partitionConfig));
-        }
-
-        {
-            NProto::TStorageServiceConfig storageServiceConfig;
-            storageServiceConfig.SetThrottlingEnabled(true);
-            TStorageConfig config(storageServiceConfig, nullptr);
-            NProto::TPartitionConfig partitionConfig;
-            UNIT_ASSERT(!GetThrottlingEnabled(config, partitionConfig));
-            UNIT_ASSERT(
-                !GetThrottlingEnabledZeroBlocks(config, partitionConfig));
-        }
-
-        {
-            NProto::TStorageServiceConfig storageServiceConfig;
-            storageServiceConfig.SetThrottlingEnabled(true);
-            TStorageConfig config(storageServiceConfig, nullptr);
-            NProto::TPartitionConfig partitionConfig;
-            partitionConfig.mutable_performanceprofile()->SetThrottlingEnabled(
-                true);
-            UNIT_ASSERT(GetThrottlingEnabled(config, partitionConfig));
-            UNIT_ASSERT(
-                GetThrottlingEnabledZeroBlocks(config, partitionConfig));
-        }
-
-        {
-            NProto::TStorageServiceConfig storageServiceConfig;
-            storageServiceConfig.SetThrottlingEnabledSSD(true);
-            TStorageConfig config(storageServiceConfig, nullptr);
-            NProto::TPartitionConfig partitionConfig;
-            partitionConfig.mutable_performanceprofile()->SetThrottlingEnabled(
-                true);
-            partitionConfig.SetStorageMediaKind(
-                ::NCloud::NProto::EStorageMediaKind::STORAGE_MEDIA_HDD);
-            UNIT_ASSERT(!GetThrottlingEnabled(config, partitionConfig));
-            UNIT_ASSERT(
-                !GetThrottlingEnabledZeroBlocks(config, partitionConfig));
-        }
-
-        {
-            NProto::TStorageServiceConfig storageServiceConfig;
-            storageServiceConfig.SetThrottlingEnabledSSD(true);
-            TStorageConfig config(storageServiceConfig, nullptr);
-            NProto::TPartitionConfig partitionConfig;
-            partitionConfig.mutable_performanceprofile()->SetThrottlingEnabled(
-                true);
-            partitionConfig.SetStorageMediaKind(
-                ::NCloud::NProto::EStorageMediaKind::STORAGE_MEDIA_SSD);
-            UNIT_ASSERT(GetThrottlingEnabled(config, partitionConfig));
-            UNIT_ASSERT(
-                GetThrottlingEnabledZeroBlocks(config, partitionConfig));
-        }
-
-        {
-            NProto::TStorageServiceConfig storageServiceConfig;
-            storageServiceConfig.SetThrottlingEnabled(true);
-            storageServiceConfig.SetThrottlingEnabledSSD(true);
-            storageServiceConfig.SetDisableZeroBlocksThrottlingForYDBBasedDisks(
-                true);
-            TStorageConfig config(storageServiceConfig, nullptr);
-            NProto::TPartitionConfig partitionConfig;
-            partitionConfig.mutable_performanceprofile()->SetThrottlingEnabled(
-                true);
-            partitionConfig.SetStorageMediaKind(
-                ::NCloud::NProto::EStorageMediaKind::STORAGE_MEDIA_SSD);
-            UNIT_ASSERT(
-                !GetThrottlingEnabledZeroBlocks(config, partitionConfig));
-        }
-
-        {
-            NProto::TStorageServiceConfig storageServiceConfig;
-            storageServiceConfig.SetThrottlingEnabled(true);
-            storageServiceConfig.SetThrottlingEnabledSSD(true);
-            storageServiceConfig.SetDisableZeroBlocksThrottlingForYDBBasedDisks(
-                true);
-            TStorageConfig config(storageServiceConfig, nullptr);
-            NProto::TPartitionConfig partitionConfig;
-            partitionConfig.mutable_performanceprofile()->SetThrottlingEnabled(
-                true);
-            partitionConfig.SetStorageMediaKind(
-                ::NCloud::NProto::EStorageMediaKind::STORAGE_MEDIA_SSD_MIRROR3);
-            UNIT_ASSERT(
-                GetThrottlingEnabledZeroBlocks(config, partitionConfig));
-        }
     }
 }
 

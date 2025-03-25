@@ -124,8 +124,6 @@ type nodeService struct {
 	mounter        mounter.Interface
 	volumeOps      *sync.Map
 	mountOptions   []string
-
-	useDiscardForYDBBasedDisks bool
 }
 
 func newNodeService(
@@ -140,24 +138,22 @@ func newNodeService(
 	nfsClient nfsclient.EndpointClientIface,
 	nfsLocalClient nfsclient.EndpointClientIface,
 	mounter mounter.Interface,
-	mountOptions []string,
-	useDiscardForYDBBasedDisks bool) csi.NodeServer {
+	mountOptions []string) csi.NodeServer {
 
 	return &nodeService{
-		nodeId:                     nodeId,
-		clientId:                   clientId,
-		vmMode:                     vmMode,
-		socketsDir:                 socketsDir,
-		nbsClient:                  nbsClient,
-		nfsClient:                  nfsClient,
-		nfsLocalClient:             nfsLocalClient,
-		mounter:                    mounter,
-		targetFsPathRegexp:         regexp.MustCompile(targetFsPathPattern),
-		targetBlkPathRegexp:        regexp.MustCompile(targetBlkPathPattern),
-		localFsOverrides:           localFsOverrides,
-		volumeOps:                  new(sync.Map),
-		mountOptions:               mountOptions,
-		useDiscardForYDBBasedDisks: useDiscardForYDBBasedDisks,
+		nodeId:              nodeId,
+		clientId:            clientId,
+		vmMode:              vmMode,
+		socketsDir:          socketsDir,
+		nbsClient:           nbsClient,
+		nfsClient:           nfsClient,
+		nfsLocalClient:      nfsLocalClient,
+		mounter:             mounter,
+		targetFsPathRegexp:  regexp.MustCompile(targetFsPathPattern),
+		targetBlkPathRegexp: regexp.MustCompile(targetBlkPathPattern),
+		localFsOverrides:    localFsOverrides,
+		volumeOps:           new(sync.Map),
+		mountOptions:        mountOptions,
 	}
 }
 
@@ -711,6 +707,10 @@ func (s *nodeService) nodeStageDiskAsFilesystem(
 		return fmt.Errorf("failed to start NBS endpoint: %w", err)
 	}
 
+	if resp.NbdDeviceFile == "" {
+		return fmt.Errorf("NbdDeviceFile shouldn't be empty")
+	}
+
 	logVolume(req.VolumeId, "endpoint started with device: %q", resp.NbdDeviceFile)
 
 	// startNbsEndpointForNBD is async function. Kubelet will retry
@@ -738,10 +738,6 @@ func (s *nodeService) nodeStageDiskAsFilesystem(
 	mountOptions := s.mountOptions
 	if fsType == "ext4" {
 		mountOptions = append(mountOptions, "errors=remount-ro")
-	}
-
-	if s.useDiscardForYDBBasedDisks && !isDiskRegistryMediaKind(getStorageMediaKind(req.VolumeContext)) {
-		mountOptions = append(mountOptions, "discard")
 	}
 
 	if mnt != nil {
@@ -775,6 +771,10 @@ func (s *nodeService) nodeStageDiskAsBlockDevice(
 	resp, err := s.startNbsEndpointForNBD(ctx, "", diskId, req.VolumeContext)
 	if err != nil {
 		return fmt.Errorf("failed to start NBS endpoint: %w", err)
+	}
+
+	if resp.NbdDeviceFile == "" {
+		return fmt.Errorf("NbdDeviceFile shouldn't be empty")
 	}
 
 	logVolume(req.VolumeId, "endpoint started with device: %q", resp.NbdDeviceFile)

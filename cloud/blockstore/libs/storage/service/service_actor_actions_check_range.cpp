@@ -79,7 +79,6 @@ void TCheckRangeActor::Bootstrap(const TActorContext& ctx)
     request->Record.SetDiskId(Request.GetDiskId());
     request->Record.SetStartIndex(Request.GetStartIndex());
     request->Record.SetBlocksCount(Request.GetBlocksCount());
-    request->Record.SetCalculateChecksums(Request.GetCalculateChecksums());
 
     LOG_INFO(
         ctx,
@@ -143,10 +142,8 @@ void TCheckRangeActor::HandleCheckRangeResponse(
     const TEvService::TEvCheckRangeResponse::TPtr& ev,
     const TActorContext& ctx)
 {
-    auto& record = ev->Get()->Record;
-    NPrivateProto::TCheckRangeResponse response;
-    response.MutableStatus()->CopyFrom(record.GetStatus());
-    response.MutableChecksums()->Swap(record.MutableChecksums());
+    auto response = NPrivateProto::TCheckRangeResponse();
+    response.MutableStatus()->CopyFrom(ev->Get()->Record.GetStatus());
 
     return ReplyAndDie(
         ctx,

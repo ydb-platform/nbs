@@ -1,9 +1,5 @@
 Y_BENCHMARK(blockstore-nbd-bench)
 
-IF (SANITIZER_TYPE)
-    TAG(ya:manual)
-ENDIF()
-
 TAG(ya:not_autocheck)
 
 ALLOCATOR(TCMALLOC_TC)

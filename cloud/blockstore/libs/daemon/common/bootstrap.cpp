@@ -572,7 +572,8 @@ void TBootstrapBase::Init()
             Logging,
             Configs->ServerConfig->GetNbdRequestTimeout(),
             Configs->ServerConfig->GetNbdConnectionTimeout(),
-            true   // reconfigure
+            true,   // reconfigure
+            false   // without libnl
         );
     }
 
@@ -672,19 +673,6 @@ void TBootstrapBase::Init()
 
     GrpcEndpointListener->SetClientStorageFactory(
         Server->GetClientStorageFactory());
-
-    if (Configs->RdmaConfig->GetBlockstoreServerTargetEnabled()) {
-        InitRdmaRequestServer();
-        if (RdmaRequestServer) {
-            RdmaTarget = CreateBlockstoreServerRdmaTarget(
-                std::make_shared<TBlockstoreServerRdmaTargetConfig>(
-                    Configs->RdmaConfig->GetBlockstoreServerTarget()),
-                Logging,
-                RdmaRequestServer,
-                Service);
-            STORAGE_INFO("RDMA Target initialized");
-        }
-    }
 
     TVector<IIncompleteRequestProviderPtr> requestProviders = {
         Server,

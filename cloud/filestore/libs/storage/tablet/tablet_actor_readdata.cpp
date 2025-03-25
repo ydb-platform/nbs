@@ -685,8 +685,9 @@ void TIndexTabletActor::HandleDescribeData(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-bool TIndexTabletActor::ValidateTx_ReadData(
+bool TIndexTabletActor::PrepareTx_ReadData(
     const TActorContext& ctx,
+    TTransactionContext& tx,
     TTxIndexTablet::TReadData& args)
 {
     auto* session = FindSession(
@@ -698,18 +699,18 @@ bool TIndexTabletActor::ValidateTx_ReadData(
             args.ClientId,
             args.SessionId,
             args.SessionSeqNo);
-        return false;
+        return true;
     }
 
     auto* handle = FindHandle(args.Handle);
     if (!handle || handle->Session != session) {
         args.Error = ErrorInvalidHandle(args.Handle);
-        return false;
+        return true;
     }
 
     if (!HasFlag(handle->GetFlags(), NProto::TCreateHandleRequest::E_READ)) {
         args.Error = ErrorInvalidHandle(args.Handle);
-        return false;
+        return true;
     }
 
     args.NodeId = handle->GetNodeId();
@@ -741,15 +742,7 @@ bool TIndexTabletActor::ValidateTx_ReadData(
         args.CommitId = GetCurrentCommitId();
     }
 
-    return true;
-}
-
-bool TIndexTabletActor::PrepareTx_ReadData(
-    const TActorContext& ctx,
-    IIndexTabletDatabase& db,
-    TTxIndexTablet::TReadData& args)
-{
-    Y_UNUSED(ctx);
+    TIndexTabletDatabase db(tx.DB);
 
     bool ready = true;
     if (!ReadNode(db, args.NodeId, args.CommitId, args.Node)) {
@@ -781,9 +774,18 @@ bool TIndexTabletActor::PrepareTx_ReadData(
         }
     }
 
-    if (!ready) {
-        return false;
-    }
+    return ready;
+}
+
+void TIndexTabletActor::ExecuteTx_ReadData(
+    const TActorContext& ctx,
+    TTransactionContext& tx,
+    TTxIndexTablet::TReadData& args)
+{
+    Y_UNUSED(ctx);
+    Y_UNUSED(tx);
+
+    FILESTORE_VALIDATE_TX_ERROR(ReadData, args);
 
     TReadDataVisitor visitor(LogTag, args);
 
@@ -823,8 +825,6 @@ bool TIndexTabletActor::PrepareTx_ReadData(
         args.NodeId,
         args.CommitId,
         args.ActualRange());
-
-    return true;
 }
 
 void TIndexTabletActor::CompleteTx_ReadData(

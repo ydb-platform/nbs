@@ -15,35 +15,39 @@ using namespace NCloud::NBlockStore::NStorage::NPartition;
 
 LWTRACE_USING(BLOCKSTORE_STORAGE_PROVIDER);
 
+namespace {
+
 ////////////////////////////////////////////////////////////////////////////////
 
-bool TVolumeActor::LaggingDevicesAreAllowed() const
+bool LaggingDevicesAreAllowed(
+    NProto::EStorageMediaKind mediaKind,
+    const TStorageConfigPtr& config,
+    const NProto::TPartitionConfig& partConfig)
 {
-    switch (State->GetConfig().GetStorageMediaKind()) {
-        case NProto::STORAGE_MEDIA_SSD_MIRROR2: {
-            const auto& partConfig = State->GetConfig();
-            return Config->GetLaggingDevicesForMirror2DisksEnabled() ||
-                   Config->IsLaggingDevicesForMirror2DisksFeatureEnabled(
+    switch (mediaKind) {
+        case NProto::STORAGE_MEDIA_SSD_MIRROR2:
+            return config->GetLaggingDevicesForMirror2DisksEnabled() ||
+                   config->IsLaggingDevicesForMirror2DisksFeatureEnabled(
                        partConfig.GetCloudId(),
                        partConfig.GetFolderId(),
                        partConfig.GetDiskId());
-        }
 
-        case NProto::STORAGE_MEDIA_SSD_MIRROR3: {
-            const auto& partConfig = State->GetConfig();
-            return Config->GetLaggingDevicesForMirror3DisksEnabled() ||
-                   Config->IsLaggingDevicesForMirror3DisksFeatureEnabled(
+        case NProto::STORAGE_MEDIA_SSD_MIRROR3:
+            return config->GetLaggingDevicesForMirror3DisksEnabled() ||
+                   config->IsLaggingDevicesForMirror3DisksFeatureEnabled(
                        partConfig.GetCloudId(),
                        partConfig.GetFolderId(),
                        partConfig.GetDiskId());
-        }
 
         default:
             break;
     }
-
     return false;
 }
+
+}   // namespace
+
+////////////////////////////////////////////////////////////////////////////////
 
 void TVolumeActor::HandleReportLaggingDevicesToDR(
     const TEvVolumePrivate::TEvReportLaggingDevicesToDR::TPtr& ev,
@@ -115,7 +119,11 @@ void TVolumeActor::HandleDeviceTimeouted(
         TabletID(),
         msg->DeviceUUID.c_str());
 
-    if (!LaggingDevicesAreAllowed()) {
+    if (!LaggingDevicesAreAllowed(
+            State->GetConfig().GetStorageMediaKind(),
+            Config,
+            State->GetConfig()))
+    {
         NCloud::Reply(
             ctx,
             *ev,

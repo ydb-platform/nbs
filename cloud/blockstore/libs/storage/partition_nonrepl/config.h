@@ -62,8 +62,7 @@ public:
         NProto::EVolumeIOMode IOMode = NProto::VOLUME_IO_OK;
         bool MuteIOErrors = false;
         THashSet<TString> FreshDeviceIds;
-        THashSet<TString> OutdatedDeviceIds;
-        bool LaggingDevicesAllowed = false;
+        THashSet<TString> LaggingDeviceIds;
         TDuration MaxTimedOutDeviceStateDuration;
         bool MaxTimedOutDeviceStateDurationOverridden = false;
         bool UseSimpleMigrationBandwidthLimiter = true;
@@ -90,8 +89,7 @@ public:
                 NProto::EVolumeIOMode iOMode,
                 bool muteIOErrors,
                 THashSet<TString> freshDeviceIds,
-                THashSet<TString> outdatedDeviceIds,
-                bool laggingDevicesAllowed,
+                THashSet<TString> laggingDeviceIds,
                 TDuration maxTimedOutDeviceStateDuration,
                 bool maxTimedOutDeviceStateDurationOverridden,
                 bool useSimpleMigrationBandwidthLimiter)
@@ -103,8 +101,7 @@ public:
             , IOMode(iOMode)
             , MuteIOErrors(muteIOErrors)
             , FreshDeviceIds(std::move(freshDeviceIds))
-            , OutdatedDeviceIds(std::move(outdatedDeviceIds))
-            , LaggingDevicesAllowed(laggingDevicesAllowed)
+            , LaggingDeviceIds(std::move(laggingDeviceIds))
             , MaxTimedOutDeviceStateDuration(maxTimedOutDeviceStateDuration)
             , MaxTimedOutDeviceStateDurationOverridden(
                   maxTimedOutDeviceStateDurationOverridden)
@@ -124,11 +121,8 @@ private:
     const NActors::TActorId ParentActorId;
     const bool MuteIOErrors;
     const THashSet<TString> FreshDeviceIds;
-    // List of devices that previously were lagging and now have outdated data.
-    // Can only appear on mirror disks.
-    const THashSet<TString> OutdatedDeviceIds;
-    // Whether a replica of a mirror disk is allowed to lag.
-    const bool LaggingDevicesAllowed;
+    // List of devices that have outdated data. Can only appear on mirror disks.
+    const THashSet<TString> LaggingDeviceIds;
     const TDuration MaxTimedOutDeviceStateDuration;
     const bool MaxTimedOutDeviceStateDurationOverridden;
     const bool UseSimpleMigrationBandwidthLimiter;
@@ -146,8 +140,7 @@ public:
         , ParentActorId(std::move(params.ParentActorId))
         , MuteIOErrors(params.MuteIOErrors)
         , FreshDeviceIds(std::move(params.FreshDeviceIds))
-        , OutdatedDeviceIds(std::move(params.OutdatedDeviceIds))
-        , LaggingDevicesAllowed(params.LaggingDevicesAllowed)
+        , LaggingDeviceIds(std::move(params.LaggingDeviceIds))
         , MaxTimedOutDeviceStateDuration(params.MaxTimedOutDeviceStateDuration)
         , MaxTimedOutDeviceStateDurationOverridden(
               params.MaxTimedOutDeviceStateDurationOverridden)
@@ -167,15 +160,15 @@ public:
     TNonreplicatedPartitionConfigPtr Fork(TDevices devices) const
     {
         THashSet<TString> freshDeviceIds;
-        THashSet<TString> outdatedDeviceIds;
+        THashSet<TString> laggingDeviceIds;
         for (const auto& device: devices) {
             const auto& uuid = device.GetDeviceUUID();
 
             if (FreshDeviceIds.contains(uuid)) {
                 freshDeviceIds.insert(uuid);
             }
-            if (OutdatedDeviceIds.contains(uuid)) {
-                outdatedDeviceIds.insert(uuid);
+            if (LaggingDeviceIds.contains(uuid)) {
+                laggingDeviceIds.insert(uuid);
             }
         }
 
@@ -188,8 +181,7 @@ public:
             IOMode,
             MuteIOErrors,
             std::move(freshDeviceIds),
-            std::move(outdatedDeviceIds),
-            LaggingDevicesAllowed,
+            std::move(laggingDeviceIds),
             MaxTimedOutDeviceStateDuration,
             MaxTimedOutDeviceStateDurationOverridden,
             UseSimpleMigrationBandwidthLimiter};
@@ -247,14 +239,9 @@ public:
         return FreshDeviceIds;
     }
 
-    const THashSet<TString>& GetOutdatedDeviceIds() const
+    const THashSet<TString>& GetLaggingDeviceIds() const
     {
-        return OutdatedDeviceIds;
-    }
-
-    bool GetLaggingDevicesAllowed() const
-    {
-        return LaggingDevicesAllowed;
+        return LaggingDeviceIds;
     }
 
     auto GetMaxTimedOutDeviceStateDuration() const
@@ -318,7 +305,7 @@ public:
                 return !Devices[i].GetDeviceUUID() ||
                        excludeIndexes.contains(i) ||
                        FreshDeviceIds.contains(Devices[i].GetDeviceUUID()) ||
-                       OutdatedDeviceIds.contains(Devices[i].GetDeviceUUID());
+                       LaggingDeviceIds.contains(Devices[i].GetDeviceUUID());
             });
         return result;
     }

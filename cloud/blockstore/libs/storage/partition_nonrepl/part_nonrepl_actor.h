@@ -15,7 +15,6 @@
 #include <cloud/blockstore/libs/storage/partition_common/drain_actor_companion.h>
 #include <cloud/blockstore/libs/storage/partition_common/get_device_for_range_companion.h>
 #include <cloud/blockstore/libs/storage/partition_nonrepl/part_nonrepl_events_private.h>
-#include <cloud/blockstore/libs/storage/volume/volume_events_private.h>
 
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 #include <contrib/ydb/library/actors/core/events.h>
@@ -57,7 +56,6 @@ private:
     enum class EDeviceStatus
     {
         Ok,
-        Unavailable,
         SilentBroken,
         Broken,
     };
@@ -87,11 +85,7 @@ private:
     };
     TVector<TDeviceStat> DeviceStats;
 
-    struct TRequestData
-    {
-        TStackVec<int, 2> DeviceIndices;
-    };
-    TRequestsInProgress<NActors::TActorId, TRequestData> RequestsInProgress{
+    TRequestsInProgress<NActors::TActorId> RequestsInProgress{
         EAllowedRequests::ReadWrite};
     TDrainActorCompanion DrainActorCompanion{
         RequestsInProgress,
@@ -152,8 +146,7 @@ private:
         const TRequestInfo& requestInfo,
         const TBlockRange64& blockRange,
         TVector<TDeviceRequest>* deviceRequests,
-        TRequestTimeoutPolicy* timeoutPolicy,
-        TRequestData* requestData);
+        TRequestTimeoutPolicy* timeoutPolicy);
 
     void OnRequestCompleted(
         const TEvNonreplPartitionPrivate::TOperationCompleted& operation,
@@ -186,18 +179,6 @@ private:
 
     void HandleChecksumBlocksCompleted(
         const TEvNonreplPartitionPrivate::TEvChecksumBlocksCompleted::TPtr& ev,
-        const NActors::TActorContext& ctx);
-
-    void HandleDeviceTimeoutedResponse(
-        const TEvVolumePrivate::TEvDeviceTimeoutedResponse::TPtr& ev,
-        const NActors::TActorContext& ctx);
-
-    void HandleAgentIsUnavailable(
-        const TEvNonreplPartitionPrivate::TEvAgentIsUnavailable::TPtr& ev,
-        const NActors::TActorContext& ctx);
-
-    void HandleAgentIsBackOnline(
-        const TEvNonreplPartitionPrivate::TEvAgentIsBackOnline::TPtr& ev,
         const NActors::TActorContext& ctx);
 
     bool HandleRequests(STFUNC_SIG);

@@ -110,7 +110,7 @@ struct TTestEnv
               {},   // migrations
               localRequests,
               {},   // freshDeviceIds
-              {},   // outdatedDeviceIds
+              {},   // laggingDeviceIds
               {}    // configBase
           )
     {}
@@ -122,7 +122,7 @@ struct TTestEnv
         TMigrations migrations,
         bool localRequests,
         THashSet<TString> freshDeviceIds,
-        THashSet<TString> outdatedDeviceIds,
+        THashSet<TString> laggingDeviceIds,
         NProto::TStorageServiceConfig configBase)
         : Runtime(runtime)
         , Devices(std::move(devices))
@@ -188,7 +188,7 @@ struct TTestEnv
                 DefaultBlockSize,
                 VolumeActorId};
         params.FreshDeviceIds = std::move(freshDeviceIds);
-        params.OutdatedDeviceIds = std::move(outdatedDeviceIds);
+        params.LaggingDeviceIds = std::move(laggingDeviceIds);
         PartConfig =
             std::make_shared<TNonreplicatedPartitionConfig>(std::move(params));
 

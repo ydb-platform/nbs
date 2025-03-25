@@ -466,16 +466,6 @@ public:
     std::unique_ptr<TEvVolume::TEvGracefulShutdownRequest>
     CreateGracefulShutdownRequest();
 
-    std::unique_ptr<TEvVolume::TEvLinkLeaderVolumeToFollowerRequest>
-    CreateLinkLeaderVolumeToFollowerRequest(
-        const TString& leaderDiskId,
-        const TString& followerDiskId);
-
-    std::unique_ptr<TEvVolume::TEvUnlinkLeaderVolumeFromFollowerRequest>
-    CreateUnlinkLeaderVolumeFromFollowerRequest(
-        const TString& leaderDiskId,
-        const TString& followerDiskId);
-
     void SendRemoteHttpInfo(
         const TString& params,
         HTTP_METHOD method);

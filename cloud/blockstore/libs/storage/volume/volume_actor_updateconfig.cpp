@@ -351,12 +351,11 @@ void TVolumeActor::CompleteUpdateConfig(
             // TODO: will it get updated later?
             {},   // volume params
             throttlerConfig,
-            {},                            // clients
+            {},   // clients
             TCachedVolumeMountHistory{},   // history
-            {},                            // checkpoint requests
-            {},                            // follower disks
-            false                          // StartPartitionsNeeded
-            ));
+            {},   // checkpoint requests
+            false // StartPartitionsNeeded
+        ));
 
         ResetThrottlingPolicy();
         RegisterCounters(ctx);

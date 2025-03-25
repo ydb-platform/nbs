@@ -47,8 +47,7 @@ bool TVolumeActor::PrepareLoadState(
             args.CheckpointRequests,
             args.OutdatedCheckpointRequestIds),
         db.ReadThrottlerState(args.ThrottlerStateInfo),
-        db.ReadStorageConfig(args.StorageConfig),
-        db.ReadFollowers(args.FollowerDisks),
+        db.ReadStorageConfig(args.StorageConfig)
     };
 
     bool ready = std::accumulate(
@@ -133,7 +132,6 @@ void TVolumeActor::CompleteLoadState(
             std::move(args.Clients),
             std::move(volumeHistory),
             std::move(args.CheckpointRequests),
-            std::move(args.FollowerDisks),
             startPartitionsNeeded);
 
         ResetThrottlingPolicy();

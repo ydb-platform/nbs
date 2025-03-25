@@ -67,7 +67,6 @@ type Config struct {
 	NfsLocalEndpointPort       uint
 	NfsLocalEndpointSocket     string
 	MountOptions               string
-	UseDiscardForYDBBasedDisks bool
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -257,8 +256,7 @@ func NewDriver(cfg Config) (*Driver, error) {
 			clients.nfsEndpointClient,
 			clients.nfsLocalEndpointClient,
 			mounter.NewMounter(),
-			strings.Split(cfg.MountOptions, ","),
-			cfg.UseDiscardForYDBBasedDisks))
+			strings.Split(cfg.MountOptions, ",")))
 
 	return &Driver{
 		grpcServer: grpcServer,

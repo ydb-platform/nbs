@@ -122,7 +122,7 @@ bool TIndexTabletActor::PrepareTx_DeleteCheckpoint(
                         }
                     }
 
-                    TMaybe<IIndexTabletDatabase::TMixedBlob> mixedBlob;
+                    TMaybe<TIndexTabletDatabase::TMixedBlob> mixedBlob;
                     if (!db.ReadMixedBlocks(
                             blob.RangeId,
                             blob.BlobId,

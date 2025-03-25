@@ -2,10 +2,11 @@
 
 #include "volume_state.h"
 
-#include <cloud/blockstore/config/storage.pb.h>
-#include <cloud/blockstore/libs/storage/protos/volume.pb.h>
-#include <cloud/blockstore/libs/storage/volume/model/follower_disk.h>
 #include <cloud/blockstore/libs/storage/volume/model/meta.h>
+
+#include <cloud/blockstore/libs/storage/protos/volume.pb.h>
+#include <cloud/blockstore/config/storage.pb.h>
+
 #include <cloud/storage/core/libs/common/compressed_bitmap.h>
 
 #include <contrib/ydb/core/tablet_flat/flat_cxx_database.h>
@@ -147,13 +148,6 @@ public:
         const TVector<TRuntimeVolumeParamsValue>& volumeParams);
     void DeleteVolumeParams(const TVector<TString>& keys);
     bool ReadVolumeParams(TVector<TRuntimeVolumeParamsValue>& volumeParams);
-
-    //
-    // Follower disks
-    //
-    void WriteFollower(const TFollowerDiskInfo& follower);
-    void DeleteFollower(const TFollowerDiskInfo& follower);
-    bool ReadFollowers(TFollowerDisks& followers);
 };
 
 }   // namespace NCloud::NBlockStore::NStorage

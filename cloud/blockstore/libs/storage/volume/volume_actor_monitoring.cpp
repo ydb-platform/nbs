@@ -581,7 +581,6 @@ void TVolumeActor::HandleHttpInfo_Default(
     const char* overviewTabName = "Overview";
     const char* historyTabName = "History";
     const char* checkpointsTabName = "Checkpoints";
-    const char* linksTabName = "Links";
     const char* tracesTabName = "Traces";
     const char* storageConfigTabName = "StorageConfig";
     const char* rawVolumeConfigTabName = "RawVolumeConfig";
@@ -592,7 +591,6 @@ void TVolumeActor::HandleHttpInfo_Default(
     const char* overviewTab = inactiveTab;
     const char* historyTab = inactiveTab;
     const char* checkpointsTab = inactiveTab;
-    const char* linksTab = inactiveTab;
     const char* tracesTab = inactiveTab;
     const char* storageConfigTab = inactiveTab;
     const char* rawVolumeConfigTab = inactiveTab;
@@ -603,8 +601,6 @@ void TVolumeActor::HandleHttpInfo_Default(
         historyTab = activeTab;
     } else if (tabName == checkpointsTabName) {
         checkpointsTab = activeTab;
-    } else if (tabName == linksTabName) {
-        linksTab = activeTab;
     } else if (tabName == tracesTabName) {
         tracesTab = activeTab;
     } else if (tabName == storageConfigTabName) {
@@ -631,10 +627,6 @@ void TVolumeActor::HandleHttpInfo_Default(
 
                 DIV_CLASS_ID(checkpointsTab, checkpointsTabName) {
                     RenderCheckpoints(out);
-                }
-
-                DIV_CLASS_ID(linksTab, linksTabName) {
-                    RenderLinks(out);
                 }
 
                 DIV_CLASS_ID(tracesTab, tracesTabName) {
@@ -854,55 +846,6 @@ void TVolumeActor::RenderCheckpoints(IOutputStream& out) const
             }
             </script>
         )___";
-    }
-}
-
-void TVolumeActor::RenderLinks(IOutputStream& out) const
-{
-    using namespace NMonitoringUtils;
-
-    HTML (out) {
-        DIV_CLASS ("row") {
-            TABLE_SORTABLE_CLASS ("table table-bordered") {
-                TABLEHEAD () {
-                    TABLER () {
-                        TABLEH () {
-                            out << "UUID";
-                        }
-                        TABLEH () {
-                            out << "Follower";
-                        }
-                        TABLEH () {
-                            out << "State";
-                        }
-                        TABLEH () {
-                            out << "Migrated blocks";
-                        }
-                    }
-                }
-                for (const auto& follower: State->GetAllFollowers()) {
-                    TABLER () {
-                        TABLED () {
-                            out << follower.Uuid;
-                        }
-                        TABLED () {
-                            if (follower.ScaleUnitId) {
-                                out << follower.ScaleUnitId << "/";
-                            }
-                            out << follower.FollowerDiskId;
-                        }
-                        TABLED () {
-                            out << ToString(follower.State);
-                        }
-                        TABLED () {
-                            if (follower.MigrationBlockIndex) {
-                                out << *follower.MigrationBlockIndex;
-                            }
-                        }
-                    }
-                }
-            }
-        }
     }
 }
 

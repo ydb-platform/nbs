@@ -2,12 +2,13 @@
 
 #include "public.h"
 
+#include "tablet_database.h"
+#include "tablet_tx.h"
+
 #include "checkpoint.h"
 #include "helpers.h"
 #include "rebase_logic.h"
 #include "session.h"
-#include "tablet_database.h"
-#include "tablet_tx.h"
 
 #include <cloud/filestore/libs/storage/model/channel_data_kind.h>
 #include <cloud/filestore/libs/storage/tablet/model/alloc.h>
@@ -15,7 +16,6 @@
 #include <cloud/filestore/libs/storage/tablet/model/block.h>
 #include <cloud/filestore/libs/storage/tablet/model/channels.h>
 #include <cloud/filestore/libs/storage/tablet/model/compaction_map.h>
-#include <cloud/filestore/libs/storage/tablet/model/mixed_blocks.h>
 #include <cloud/filestore/libs/storage/tablet/model/node_index_cache.h>
 #include <cloud/filestore/libs/storage/tablet/model/node_session_stat.h>
 #include <cloud/filestore/libs/storage/tablet/model/operation.h>
@@ -888,7 +888,7 @@ public:
     //
 
 public:
-    bool LoadMixedBlocks(IIndexTabletDatabase& db, ui32 rangeId);
+    bool LoadMixedBlocks(TIndexTabletDatabase& db, ui32 rangeId);
     void ReleaseMixedBlocks(ui32 rangeId);
     void ReleaseMixedBlocks(const TSet<ui32>& ranges);
 
@@ -941,8 +941,6 @@ public:
         ui32 rangeId,
         /*const*/ TMixedBlobMeta& blob,
         const TMixedBlobStats& blobStats);
-
-    TBlobMetaMapStats GetBlobMetaMapStats() const;
 
     ui32 GetMixedRangeIndex(ui64 nodeId, ui32 blockIndex) const;
     ui32 GetMixedRangeIndex(ui64 nodeId, ui32 blockIndex, ui32 blocksCount) const;

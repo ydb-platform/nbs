@@ -44,7 +44,6 @@ TOptions::TOptions()
             NbdReconnectDelay = TDuration::Parse(s);
         });
 
-    // deprecated
     Opts.AddLongOption("without-libnl")
         .NoArgument()
         .SetFlag(&WithoutLibnl);
