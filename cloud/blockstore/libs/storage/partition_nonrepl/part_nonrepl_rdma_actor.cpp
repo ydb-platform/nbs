@@ -415,7 +415,7 @@ void TNonreplicatedPartitionRdmaActor::HandleReadBlocksCompleted(
 
     UpdateStats(msg->Stats);
 
-    ProcessOperationCompleted(*msg);
+    ProcessOperationCompleted(ctx, *msg);
 
     const auto requestBytes = msg->Stats.GetUserReadCounters().GetBlocksCount()
         * PartConfig->GetBlockSize();
@@ -450,7 +450,7 @@ void TNonreplicatedPartitionRdmaActor::HandleWriteBlocksCompleted(
 
     UpdateStats(msg->Stats);
 
-    ProcessOperationCompleted(*msg);
+    ProcessOperationCompleted(ctx, *msg);
 
     const auto requestBytes = msg->Stats.GetUserWriteCounters().GetBlocksCount()
         * PartConfig->GetBlockSize();
@@ -481,7 +481,7 @@ void TNonreplicatedPartitionRdmaActor::HandleZeroBlocksCompleted(
 
     UpdateStats(msg->Stats);
 
-    ProcessOperationCompleted(*msg);
+    ProcessOperationCompleted(ctx, *msg);
 
     const auto requestBytes = msg->Stats.GetUserWriteCounters().GetBlocksCount()
         * PartConfig->GetBlockSize();
@@ -510,7 +510,7 @@ void TNonreplicatedPartitionRdmaActor::HandleChecksumBlocksCompleted(
 
     UpdateStats(msg->Stats);
 
-    ProcessOperationCompleted(*msg);
+    ProcessOperationCompleted(ctx, *msg);
 
     const auto requestBytes = msg->Stats.GetSysChecksumCounters().GetBlocksCount()
         * PartConfig->GetBlockSize();
