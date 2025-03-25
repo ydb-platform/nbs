@@ -125,7 +125,7 @@ TAddPipeResult TVolumeClientState::AddPipe(
     } else {
         if (it->second.State == EPipeState::DEACTIVATED) {
             return TAddPipeResult(MakeError(
-                E_BS_INVALID_SESSION,
+                E_REJECTED,
                 "Pipe is already deactivated"));
         }
 
