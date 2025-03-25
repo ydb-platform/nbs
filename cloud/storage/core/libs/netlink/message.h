@@ -1,53 +1,8 @@
 #include <cloud/storage/core/libs/common/error.h>
 
-#include <netlink/genl/ctrl.h>
-#include <netlink/genl/genl.h>
+#include <linux/genetlink.h>
 
 namespace NCloud::NNetlink {
-
-namespace NLibnl {
-
-////////////////////////////////////////////////////////////////////////////////
-
-class TNestedAttribute
-{
-private:
-    nl_msg* Message;
-    nlattr* Attribute;
-
-public:
-    TNestedAttribute(nl_msg* message, int attribute);
-    ~TNestedAttribute();
-};
-
-////////////////////////////////////////////////////////////////////////////////
-
-class TMessage
-{
-private:
-    nl_msg* Message;
-
-public:
-    TMessage(int family, int command);
-    ~TMessage();
-
-    operator nl_msg*() const
-    {
-        return Message;
-    }
-
-    TNestedAttribute Nest(int attribute);
-
-    void Put(int attribute, void* data, size_t size);
-
-    template <typename T>
-    void Put(int attribute, T data)
-    {
-        Put(attribute, &data, sizeof(T));
-    }
-};
-
-}  // namespace NLibnl
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -100,17 +55,23 @@ union TNetlinkResponse {
 template <size_t FamilyNameLength>
 struct TNetlinkFamilyIdRequest
 {
-    TNetlinkHeader Headers = {
-        sizeof(TNetlinkFamilyIdRequest<FamilyNameLength>),
-        GENL_ID_CTRL,
-        CTRL_CMD_GETFAMILY};
-    ::nlattr FamilyNameAttr = {
-        sizeof(FamilyName) + NLA_HDRLEN,
-        CTRL_ATTR_FAMILY_NAME};
+    TNetlinkHeader Headers;
+    ::nlattr FamilyNameAttr;
     std::array<char, FamilyNameLength> FamilyName;
 
     TNetlinkFamilyIdRequest(const char (&familyName)[FamilyNameLength])
     {
+        // Use memset to resolve the "uninitialized bytes" memory sanitizer
+        // warning, as this structure is transmitted via a socket, and padding
+        // may be present depending on the length of the family name.
+        memset(this, 0, sizeof(TNetlinkFamilyIdRequest<FamilyNameLength>));
+        Headers = {
+            sizeof(TNetlinkFamilyIdRequest<FamilyNameLength>),
+            GENL_ID_CTRL,
+            CTRL_CMD_GETFAMILY};
+        FamilyNameAttr = {
+            sizeof(FamilyName) + NLA_HDRLEN,
+            CTRL_ATTR_FAMILY_NAME};
         memcpy(&FamilyName[0], familyName, FamilyNameLength);
     }
 };

@@ -62,11 +62,14 @@ void TMirrorPartitionActor::HandleMirroredReadCompleted(
     Y_UNUSED(ctx);
 
     const auto requestIdentityKey = ev->Get()->RequestCounter;
-    RequestsInProgress.RemoveRequest(requestIdentityKey);
+    auto requestCtx = RequestsInProgress.ExtractRequest(requestIdentityKey);
     auto it = DirtyReadRequestIds.find(requestIdentityKey);
     if (it == DirtyReadRequestIds.end()) {
         if (ev->Get()->ChecksumMismatchObserved) {
-            ReportMirroredDiskChecksumMismatchUponRead();
+            ReportMirroredDiskChecksumMismatchUponRead(
+                TStringBuilder()
+                << " disk: " << DiskId << ", range: "
+                << (requestCtx ? requestCtx->BlockRange.Print() : ""));
         }
     } else {
         DirtyReadRequestIds.erase(it);
@@ -127,10 +130,9 @@ void TMirrorPartitionActor::MirrorRequest(
         ctx,
         std::move(requestInfo),
         State.GetReplicaActors(),
-        TActorId{},
         std::move(msg->Record),
-        State.GetReplicaInfos()[0].Config->GetName(),
-        SelfId(),
+        State.GetReplicaInfos()[0].Config->GetName(),   // diskId
+        SelfId(),                                       // parentActorId
         requestIdentityKey);
 }
 

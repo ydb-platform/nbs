@@ -146,6 +146,7 @@ TVolumeState::TVolumeState(
         THashMap<TString, TVolumeClientState> infos,
         TCachedVolumeMountHistory mountHistory,
         TVector<TCheckpointRequest> checkpointRequests,
+        TFollowerDisks followerDisks,
         bool startPartitionsNeeded)
     : StorageConfig(std::move(storageConfig))
     , DiagnosticsConfig(std::move(diagnosticsConfig))
@@ -159,6 +160,7 @@ TVolumeState::TVolumeState(
     , MountHistory(std::move(mountHistory))
     , CheckpointStore(std::move(checkpointRequests), Config->GetDiskId())
     , StartPartitionsNeeded(startPartitionsNeeded)
+    , FollowerDisks(std::move(followerDisks))
 {
     Reset();
 
@@ -219,6 +221,11 @@ std::optional<NProto::TLaggingAgent> TVolumeState::RemoveLaggingAgent(
         return laggingAgent;
     }
     return std::nullopt;
+}
+
+bool TVolumeState::HasLaggingAgents() const
+{
+    return Meta.GetLaggingAgentsInfo().AgentsSize() != 0;
 }
 
 bool TVolumeState::HasLaggingInReplica(ui32 replicaIndex) const
@@ -879,6 +886,47 @@ TVolumeState::GetAllDevicesForAcquireRelease() const
     }
 
     return resultDevices;
+}
+
+void TVolumeState::AddOrUpdateFollower(TFollowerDiskInfo follower)
+{
+    for (auto& followerInfo: FollowerDisks) {
+        if (followerInfo.Uuid == follower.Uuid) {
+            followerInfo = std::move(follower);
+            return;
+        }
+    }
+    FollowerDisks.push_back(std::move(follower));
+}
+
+void TVolumeState::RemoveFollower(const TString& uuid)
+{
+    EraseIf(
+        FollowerDisks,
+        [&](const TFollowerDiskInfo& follower)
+        { return follower.Uuid == uuid; });
+}
+
+std::optional<TFollowerDiskInfo> TVolumeState::FindFollowerByUuid(
+    const TString& uuid) const
+{
+    for (const auto& follower: FollowerDisks) {
+        if (follower.Uuid == uuid) {
+            return follower;
+        }
+    }
+    return std::nullopt;
+}
+
+std::optional<TFollowerDiskInfo> TVolumeState::FindFollowerByDiskId(
+    const TString& diskId) const
+{
+    for (const auto& follower: FollowerDisks) {
+        if (follower.FollowerDiskId == diskId) {
+            return follower;
+        }
+    }
+    return std::nullopt;
 }
 
 bool TVolumeState::CanPreemptClient(

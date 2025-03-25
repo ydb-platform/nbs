@@ -1001,7 +1001,10 @@ STFUNC(TVolumeActor::StateInit)
 
         default:
             if (!RejectRequests(ev) && !HandleDefaultEvents(ev, SelfId())) {
-                HandleUnexpectedEvent(ev, TBlockStoreComponents::VOLUME);
+                HandleUnexpectedEvent(
+                    ev,
+                    TBlockStoreComponents::VOLUME,
+                    __PRETTY_FUNCTION__);
             }
             break;
     }
@@ -1113,16 +1116,12 @@ STFUNC(TVolumeActor::StateWork)
             TEvDiskRegistryProxy::TEvGetDrTabletInfoResponse,
             HandleGetDrTabletInfoResponse);
 
-        HFunc(
-            TEvVolume::TEvLinkLeaderVolumeToFollowerRequest,
-            HandleLinkLeaderVolumeToFollower);
-        HFunc(
-            TEvVolume::TEvUnlinkLeaderVolumeFromFollowerRequest,
-            HandleUnlinkLeaderVolumeFromFollower);
-
         default:
             if (!HandleRequests(ev) && !HandleDefaultEvents(ev, SelfId())) {
-                HandleUnexpectedEvent(ev, TBlockStoreComponents::VOLUME);
+                HandleUnexpectedEvent(
+                    ev,
+                    TBlockStoreComponents::VOLUME,
+                    __PRETTY_FUNCTION__);
             }
             break;
     }
@@ -1137,6 +1136,7 @@ STFUNC(TVolumeActor::StateZombie)
 
         HFunc(TEvTablet::TEvTabletDead, HandleTabletDead);
 
+        IgnoreFunc(TEvVolumePrivate::TEvAllocateDiskIfNeeded);
         IgnoreFunc(TEvVolumePrivate::TEvUpdateCounters);
         IgnoreFunc(TEvVolumePrivate::TEvUpdateThrottlerState);
         IgnoreFunc(TEvVolumePrivate::TEvUpdateReadWriteClientInfo);
@@ -1172,7 +1172,10 @@ STFUNC(TVolumeActor::StateZombie)
 
         default:
             if (!RejectRequests(ev)) {
-                HandleUnexpectedEvent(ev, TBlockStoreComponents::VOLUME);
+                HandleUnexpectedEvent(
+                    ev,
+                    TBlockStoreComponents::VOLUME,
+                    __PRETTY_FUNCTION__);
             }
             break;
     }

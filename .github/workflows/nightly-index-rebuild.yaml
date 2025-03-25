@@ -13,7 +13,8 @@ jobs:
     - name: Checkout PR
       uses: actions/checkout@v4
       with:
-        submodules: true
+        submodules: false
+        sparse-checkout: '.github'
     - name: Prepare VM
       uses: ./.github/actions/prepare
     - name: Prepare s3cmd

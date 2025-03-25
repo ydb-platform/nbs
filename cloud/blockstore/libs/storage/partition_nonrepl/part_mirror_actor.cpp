@@ -231,13 +231,18 @@ void TMirrorPartitionActor::CompareChecksums(const TActorContext& ctx)
 
         const bool hasQuorum = majorCount > checksums.size() / 2;
         if (hasQuorum) {
-            ReportMirroredDiskMinorityChecksumMismatch();
+            ReportMirroredDiskMinorityChecksumMismatch(
+                TStringBuilder()
+                << " disk: " << DiskId << ", range: " << GetScrubbingRange());
             if (Config->GetResyncRangeAfterScrubbing()) {
                 StartResyncRange(ctx);
                 return;
             }
         } else {
-           ReportMirroredDiskMajorityChecksumMismatch();
+            ReportMirroredDiskMajorityChecksumMismatch(
+                TStringBuilder()
+                << " disk: " << DiskId << ", range: " << GetScrubbingRange()
+            );
         }
     }
 
@@ -626,7 +631,7 @@ STFUNC(TMirrorPartitionActor::StateWork)
         HFunc(TEvVolume::TEvGetRebuildMetadataStatusRequest, HandleGetRebuildMetadataStatus);
         HFunc(TEvVolume::TEvScanDiskRequest, HandleScanDisk);
         HFunc(TEvVolume::TEvGetScanDiskStatusRequest, HandleGetScanDiskStatus);
-        HFunc(TEvService::TEvCheckRangeRequest, HandleCheckRange);
+        HFunc(TEvVolume::TEvCheckRangeRequest, HandleCheckRange);
 
         HFunc(
             TEvNonreplPartitionPrivate::TEvWriteOrZeroCompleted,

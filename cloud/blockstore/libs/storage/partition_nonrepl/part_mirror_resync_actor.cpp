@@ -121,7 +121,7 @@ void TMirrorPartitionResyncActor::SetupPartitions(const TActorContext& ctx)
             Config,
             DiagnosticsConfig,
             replicaInfos[i].Config,
-            TActorId(), // do not send stats
+            SelfId(),
             RdmaClient);
 
         TActorId actorId = NCloud::Register(ctx, std::move(actor));

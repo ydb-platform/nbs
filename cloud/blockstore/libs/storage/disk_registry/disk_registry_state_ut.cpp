@@ -12318,6 +12318,145 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
                         deviceIdPredicateForAutomaticallyReplacedDevices));
             });
     }
+
+    Y_UNIT_TEST(ShouldTellIfCanAllocateLocalDiskAfterSecureErase)
+    {
+        TTestExecutor executor;
+        executor.WriteTx([&](TDiskRegistryDatabase db) { db.InitSchema(); });
+
+        constexpr ui64 LocalDeviceSize = 99999997952;   // ~ 93.13 GiB
+        constexpr ui64 LocalDeviceDefaultLogicalBlockSize = 512;   // 512 B
+
+        auto makeLocalDevice = [](const auto* name, const auto* uuid)
+        {
+            auto device =
+                Device(name, uuid) |
+                WithPool("local-ssd", NProto::DEVICE_POOL_KIND_LOCAL) |
+                WithTotalSize(
+                    LocalDeviceSize,
+                    LocalDeviceDefaultLogicalBlockSize);
+            return device;
+        };
+
+        auto agentConfig = AgentConfig(
+            1,
+            {
+                makeLocalDevice("NVMELOCAL01", "uuid-1"),
+                makeLocalDevice("NVMELOCAL02", "uuid-2"),
+                makeLocalDevice("NVMELOCAL03", "uuid-3"),
+            });
+        const TVector agents{
+            agentConfig,
+        };
+
+        TDiskRegistryState state =
+            TDiskRegistryStateBuilder()
+                .WithConfig(
+                    [&]
+                    {
+                        auto config = MakeConfig(0, agents);
+
+                        auto* pool = config.AddDevicePoolConfigs();
+                        pool->SetName("local-ssd");
+                        pool->SetKind(NProto::DEVICE_POOL_KIND_LOCAL);
+                        pool->SetAllocationUnit(LocalDeviceSize);
+
+                        return config;
+                    }())
+                .WithStorageConfig(
+                    []
+                    {
+                        auto config = CreateDefaultStorageConfigProto();
+                        config.SetNonReplicatedDontSuspendDevices(true);
+                        config.SetLocalDiskAsyncDeallocationEnabled(true);
+                        return config;
+                    }())
+                .WithAgents(agents)
+                .WithDirtyDevices({
+                    TDirtyDevice{"uuid-2", {}},
+                })
+                .Build();
+
+        auto allocate = [&](auto db, ui32 deviceCount)
+        {
+            TDiskRegistryState::TAllocateDiskResult result;
+
+            auto error = state.AllocateDisk(
+                TInstant::Zero(),
+                db,
+                TDiskRegistryState::TAllocateDiskParams{
+                    .DiskId = "local0",
+                    .BlockSize = LocalDeviceDefaultLogicalBlockSize,
+                    .BlocksCount = deviceCount * LocalDeviceSize /
+                                   LocalDeviceDefaultLogicalBlockSize,
+                    .AgentIds = {"agent-1"},
+                    .PoolName = "local-ssd",
+                    .MediaKind = NProto::STORAGE_MEDIA_SSD_LOCAL,
+                },
+                &result);
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
+        };
+
+        auto canAllocateLater = [&](ui32 deviceCount)
+        {
+            return state.CanAllocateLocalDiskAfterSecureErase(
+                {"agent-1"},
+                "local-ssd",
+                deviceCount * LocalDeviceSize);
+        };
+
+        // Register agents.
+        executor.WriteTx(
+            [&](TDiskRegistryDatabase db)
+            {
+                UNIT_ASSERT_SUCCESS(
+                    RegisterAgent(state, db, agentConfig, Now()));
+            });
+
+        UNIT_ASSERT_VALUES_EQUAL(1, state.GetConfig().KnownAgentsSize());
+        UNIT_ASSERT_VALUES_EQUAL(1, state.GetAgents().size());
+        UNIT_ASSERT_VALUES_EQUAL(0, state.GetSuspendedDevices().size());
+        UNIT_ASSERT_VALUES_EQUAL(1, state.GetDirtyDevices().size());
+        UNIT_ASSERT_VALUES_EQUAL(0, state.GetBrokenDevices().size());
+
+        executor.WriteTx(
+            [&](TDiskRegistryDatabase db)
+            {
+                // Can allocate disk of 3 devices
+                UNIT_ASSERT(canAllocateLater(3));
+                {
+                    // Allocate 1 device
+                    allocate(db, 1);
+                }
+                // Cannot allocate disk of 3 devices
+                UNIT_ASSERT(!canAllocateLater(3));
+                // Can allocate disk of 2 devices
+                UNIT_ASSERT(canAllocateLater(2));
+                {
+                    // Suspend 1 device
+                    auto error = state.SuspendDevice(db, "uuid-3");
+                    UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
+                }
+                // Cannot allocate disk of 2 devices
+                UNIT_ASSERT(!canAllocateLater(2));
+                // Can allocate disk of 1 device
+                UNIT_ASSERT(canAllocateLater(1));
+                {
+                    // Move dirty device to warning
+                    TString affectedDisk;
+                    const auto error = state.UpdateDeviceState(
+                        db,
+                        "uuid-2",
+                        NProto::DEVICE_STATE_WARNING,
+                        Now(),
+                        "test",
+                        affectedDisk);
+                    UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
+                }
+                // Cannot allocate disk of 1 device
+                UNIT_ASSERT(!canAllocateLater(1));
+            });
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

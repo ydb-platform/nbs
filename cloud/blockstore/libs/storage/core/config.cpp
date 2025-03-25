@@ -123,6 +123,7 @@ TDuration MSeconds(ui32 value)
     xxx(NodeType,                             TString,               {}       )\
     xxx(NodeRegistrationRootCertsFile,        TString,               {}       )\
     xxx(NodeRegistrationCert,                 TCertificate,          {}       )\
+    xxx(NodeRegistrationUseSsl,               bool,                  false    )\
     xxx(ConfigDispatcherSettings,                                              \
         NCloud::NProto::TConfigDispatcherSettings,                             \
         {}                                                                    )\
@@ -543,6 +544,10 @@ TDuration MSeconds(ui32 value)
     xxx(AllowAdditionalSystemTablets,              bool,      false           )\
                                                                                \
     xxx(CheckRangeMaxRangeSize,                    ui32,      4_MB            )\
+                                                                               \
+    xxx(DisableZeroBlocksThrottlingForYDBBasedDisks,       bool,   false      )\
+                                                                               \
+    xxx(LocalDiskAsyncDeallocationEnabled,                 bool,   false      )
 // BLOCKSTORE_STORAGE_CONFIG_RW
 
 #define BLOCKSTORE_STORAGE_CONFIG(xxx)                                         \
