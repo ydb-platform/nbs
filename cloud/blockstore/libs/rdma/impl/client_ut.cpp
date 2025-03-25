@@ -294,20 +294,18 @@ Y_UNIT_TEST_SUITE(TRdmaClientTest)
         clientConfig->MaxReconnectDelay = 1s;
         clientConfig->MaxResponseDelay = 1s;
 
-        auto logging = CreateLoggingService(
-            "console",
-            TLogSettings{TLOG_RESOURCES});
+        auto logging =
+            CreateLoggingService("console", TLogSettings{TLOG_RESOURCES});
 
         auto client = CreateClient(verbs, logging, monitoring, clientConfig);
 
         client->Start();
-        Y_DEFER {
+        Y_DEFER
+        {
             client->Stop();
         };
 
-        auto clientEndpoint = client->StartEndpoint(
-            "::",
-            10020);
+        auto clientEndpoint = client->StartEndpoint("::", 10020);
 
         auto ep = clientEndpoint.GetValue(5s);
 
