@@ -330,11 +330,13 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionMigrationTest)
             counters.WriteBlocks.RequestBytes);
     }
 
-    Y_UNIT_TEST(ShouldMirrorRequestsAfterAllDataIsMigrated) {
+    Y_UNIT_TEST(ShouldMirrorRequestsAfterAllDataIsMigrated)
+    {
         DoShouldMirrorRequestsAfterAllDataIsMigrated(false);
     }
 
-    Y_UNIT_TEST(ShouldMirrorRequestsAfterAllDataIsMigratedDirectCopy) {
+    Y_UNIT_TEST(ShouldMirrorRequestsAfterAllDataIsMigratedDirectCopy)
+    {
         DoShouldMirrorRequestsAfterAllDataIsMigrated(true);
     }
 
@@ -516,11 +518,13 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionMigrationTest)
         WaitForMigrations(runtime, 3);
     }
 
-    Y_UNIT_TEST(ShouldDoMigrationViaRdma) {
+    Y_UNIT_TEST(ShouldDoMigrationViaRdma)
+    {
         DoShouldDoMigrationViaRdma(false);
     }
 
-    Y_UNIT_TEST(ShouldDoMigrationViaRdmaDirectCopy) {
+    Y_UNIT_TEST(ShouldDoMigrationViaRdmaDirectCopy)
+    {
         DoShouldDoMigrationViaRdma(true);
     }
 
