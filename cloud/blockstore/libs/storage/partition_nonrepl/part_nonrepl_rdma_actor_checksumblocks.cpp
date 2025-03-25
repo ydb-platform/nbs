@@ -141,6 +141,9 @@ public:
             std::move(Error),
             *RequestInfo);
 
+        auto& counters = *completion->Stats.MutableSysChecksumCounters();
+        counters.SetBlocksCount(RequestBlockCount);
+
         auto completionEvent = std::make_unique<IEventHandle>(
             ParentActorId,
             TActorId(),
