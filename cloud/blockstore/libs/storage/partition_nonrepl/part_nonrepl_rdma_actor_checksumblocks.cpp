@@ -216,6 +216,8 @@ void TNonreplicatedPartitionRdmaActor::HandleChecksumBlocks(
 
     TVector<TDeviceRequestInfo> requests;
 
+    TRequestData data;
+
     for (auto& r: deviceRequests) {
         auto ep = AgentId2Endpoint[r.Device.GetAgentId()];
         Y_ABORT_UNLESS(ep);
@@ -223,6 +225,8 @@ void TNonreplicatedPartitionRdmaActor::HandleChecksumBlocks(
         dc->RangeStartIndex = r.BlockRange.Start;
         dc->RangeSize = r.DeviceBlockRange.Size() * PartConfig->GetBlockSize();
         dc->DeviceIdx = r.DeviceIdx;
+
+        data.DeviceIndices.emplace_back(r.DeviceIdx);
 
         NProto::TChecksumDeviceBlocksRequest deviceRequest;
         deviceRequest.MutableHeaders()->CopyFrom(msg->Record.GetHeaders());
@@ -261,12 +265,12 @@ void TNonreplicatedPartitionRdmaActor::HandleChecksumBlocks(
     }
 
     for (auto& request: requests) {
-        request.Endpoint->SendRequest(
+        data.DeviceIndices.emplace_back(request.Endpoint->SendRequest(
             std::move(request.ClientRequest),
-            requestInfo->CallContext);
+            requestInfo->CallContext));
     }
 
-    RequestsInProgress.AddReadRequest(requestId);
+    RequestsInProgress.AddReadRequest(requestId, data);
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

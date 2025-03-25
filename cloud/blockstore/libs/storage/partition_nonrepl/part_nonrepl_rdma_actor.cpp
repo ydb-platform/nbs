@@ -42,6 +42,8 @@ bool IRdmaDeviceRequestHandler::ProcessResponse(
 
     if (status == NRdma::RDMA_PROTO_OK) {
         ProcessResponseProto(dCtx, buffer);
+    } else if (status == NRdma::RDMA_PROTO_CANCELLED) {
+        Error = MakeError(E_REJECTED, "agent became unavailable");
     } else {
         auto err = NRdma::ParseError(buffer);
         if (NeedToNotifyAboutDeviceRequestError(err)) {
@@ -253,7 +255,8 @@ template bool TNonreplicatedPartitionRdmaActor::InitRequests<TEvNonreplPartition
 
 ////////////////////////////////////////////////////////////////////////////////
 
-NProto::TError TNonreplicatedPartitionRdmaActor::SendReadRequests(
+TResultOrError<TNonreplicatedPartitionRdmaActor::TRequestData>
+TNonreplicatedPartitionRdmaActor::SendReadRequests(
     const NActors::TActorContext& ctx,
     TCallContextPtr callContext,
     const NProto::THeaders& headers,
@@ -267,6 +270,7 @@ NProto::TError TNonreplicatedPartitionRdmaActor::SendReadRequests(
     };
 
     TVector<TDeviceRequestInfo> requests;
+    TRequestData reqData;
 
     ui64 startBlockIndexOffset = 0;
     for (auto& r: deviceRequests) {
@@ -279,6 +283,8 @@ NProto::TError TNonreplicatedPartitionRdmaActor::SendReadRequests(
         dr->BlockCount = r.DeviceBlockRange.Size();
         dr->DeviceIdx = r.DeviceIdx;
         startBlockIndexOffset += r.DeviceBlockRange.Size();
+
+        reqData.DeviceIndices.emplace_back(r.DeviceIdx);
 
         NProto::TReadDeviceBlocksRequest deviceRequest;
         deviceRequest.MutableHeaders()->CopyFrom(headers);
@@ -317,12 +323,12 @@ NProto::TError TNonreplicatedPartitionRdmaActor::SendReadRequests(
     }
 
     for (auto& request: requests) {
-        request.Endpoint->SendRequest(
+        reqData.RequestIds.emplace_back(request.Endpoint->SendRequest(
             std::move(request.ClientRequest),
-            callContext);
+            callContext));
     }
 
-    return {};
+    return reqData;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -604,6 +610,33 @@ void TNonreplicatedPartitionRdmaActor::HandleAgentIsUnavailable(
         "[%s] Agent %s has become unavailable (lagging)",
         PartConfig->GetName().c_str(),
         msg->LaggingAgent.GetAgentId().Quote().c_str());
+
+    for (const auto& [_, requestInfo]: RequestsInProgress.AllRequests())
+    {
+        const auto& deviceIndices = requestInfo.Value.DeviceIndices;
+        bool needToCancel = false;
+        for (auto deviceIndex: deviceIndices) {
+            // auto agentId = PartConfig->GetDevices()[deviceIndex].GetAgentId();
+            if (PartConfig->GetDevices()[deviceIndex].GetAgentId() ==
+                msg->LaggingAgent.GetAgentId())
+            {
+                needToCancel = true;
+                break;
+            }
+        }
+
+        if (!needToCancel) {
+            continue;
+        }
+
+        for (size_t i = 0; i < requestInfo.Value.DeviceIndices.size(); ++i) {
+            const auto deviceIdx = deviceIndices[i];
+            auto agentId = PartConfig->GetDevices()[deviceIdx].GetAgentId();
+
+            auto& endpoint = AgentId2Endpoint[agentId];
+            endpoint->CancelRequest(requestInfo.Value.RequestIds[i]);
+        }
+    }
 }
 
 void TNonreplicatedPartitionRdmaActor::HandleAgentIsBackOnline(

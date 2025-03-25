@@ -391,6 +391,8 @@ void TNonreplicatedPartitionRdmaActor::HandleWriteBlocksLocal(
         AssignIdToWriteAndZeroRequestsEnabled &&
         !msg->Record.GetHeaders().GetIsBackgroundRequest();
 
+    TRequestData reqData;
+
     ui64 blocks = 0;
     for (auto& r: deviceRequests) {
         auto ep = AgentId2Endpoint[r.Device.GetAgentId()];
@@ -408,6 +410,8 @@ void TNonreplicatedPartitionRdmaActor::HandleWriteBlocksLocal(
         }
         auto context = std::make_unique<TDeviceRequestContext>();
         context->DeviceIdx = r.DeviceIdx;
+
+        reqData.DeviceIndices.emplace_back(r.DeviceIdx);
 
         auto [req, err] = ep->AllocateRequest(
             requestResponseHandler,
@@ -452,12 +456,12 @@ void TNonreplicatedPartitionRdmaActor::HandleWriteBlocksLocal(
     }
 
     for (auto& request: requests) {
-        request.Endpoint->SendRequest(
+        reqData.RequestIds.emplace_back(request.Endpoint->SendRequest(
             std::move(request.ClientRequest),
-            requestInfo->CallContext);
+            requestInfo->CallContext));
     }
 
-    RequestsInProgress.AddWriteRequest(requestId);
+    RequestsInProgress.AddWriteRequest(requestId, reqData);
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

@@ -108,7 +108,12 @@ private:
 
     // TODO implement DeviceStats and similar stuff
 
-    TRequestsInProgress<ui64> RequestsInProgress{
+    struct TRequestData {
+        TStackVec<ui64, 2> DeviceIndices;
+        TStackVec<ui64, 2> RequestIds;
+    };
+
+    TRequestsInProgress<ui64, TRequestData> RequestsInProgress{
         EAllowedRequests::ReadWrite};
     TDrainActorCompanion DrainActorCompanion{
         RequestsInProgress,
@@ -179,7 +184,7 @@ private:
         const TBlockRange64& blockRange,
         TVector<TDeviceRequest>* deviceRequests);
 
-    NProto::TError SendReadRequests(
+    TResultOrError<TRequestData> SendReadRequests(
         const NActors::TActorContext& ctx,
         TCallContextPtr callContext,
         const NProto::THeaders& headers,

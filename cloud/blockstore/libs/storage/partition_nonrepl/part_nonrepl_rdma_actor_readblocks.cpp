@@ -224,7 +224,7 @@ void TNonreplicatedPartitionRdmaActor::HandleReadBlocks(
         requestId,
         Config->GetOptimizeVoidBuffersTransferForReadsEnabled());
 
-    auto error = SendReadRequests(
+    auto [reqData, error] = SendReadRequests(
         ctx,
         requestInfo->CallContext,
         msg->Record.GetHeaders(),
@@ -241,7 +241,7 @@ void TNonreplicatedPartitionRdmaActor::HandleReadBlocks(
         return;
     }
 
-    RequestsInProgress.AddReadRequest(requestId);
+    RequestsInProgress.AddReadRequest(requestId, reqData);
 }
 
 }   // namespace NCloud::NBlockStore::NStorage
