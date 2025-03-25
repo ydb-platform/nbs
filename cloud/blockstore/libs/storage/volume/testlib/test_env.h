@@ -452,8 +452,8 @@ public:
 
     std::unique_ptr<TEvVolume::TEvGetStorageConfigRequest> CreateGetStorageConfigRequest();
 
-    std::unique_ptr<TEvVolumePrivate::TEvDeviceTimeoutedRequest>
-    CreateDeviceTimeoutedRequest(TString deviceUUID);
+    std::unique_ptr<TEvVolumePrivate::TEvDeviceTimedOutRequest>
+    CreateDeviceTimedOutRequest(TString deviceUUID);
 
     std::unique_ptr<TEvVolumePrivate::TEvUpdateShadowDiskStateRequest> CreateUpdateShadowDiskStateRequest(
         TString checkpointId,

@@ -620,7 +620,7 @@ bool TShadowDiskActor::OnMessage(
             TEvService::TEvReadBlocksLocalRequest,
             HandleReadBlocks<TEvService::TReadBlocksLocalMethod>);
 
-        IgnoreFunc(TEvVolumePrivate::TEvDeviceTimeoutedRequest);
+        IgnoreFunc(TEvVolumePrivate::TEvDeviceTimedOutRequest);
 
         // Write/zero request.
         case TEvService::TEvWriteBlocksRequest::EventType: {

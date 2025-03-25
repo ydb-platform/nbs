@@ -358,7 +358,7 @@ bool TNonreplicatedPartitionActor::InitRequests(
             NCloud::Send(
                 ctx,
                 PartConfig->GetParentActorId(),
-                std::make_unique<TEvVolumePrivate::TEvDeviceTimeoutedRequest>(
+                std::make_unique<TEvVolumePrivate::TEvDeviceTimedOutRequest>(
                     dr.Device.GetDeviceUUID()));
         }
     }
@@ -511,8 +511,8 @@ void TNonreplicatedPartitionActor::HandleUpdateCounters(
     ScheduleCountersUpdate(ctx);
 }
 
-void TNonreplicatedPartitionActor::HandleDeviceTimeoutedResponse(
-    const TEvVolumePrivate::TEvDeviceTimeoutedResponse::TPtr& ev,
+void TNonreplicatedPartitionActor::HandleDeviceTimedOutResponse(
+    const TEvVolumePrivate::TEvDeviceTimedOutResponse::TPtr& ev,
     const TActorContext& ctx)
 {
     const auto* msg = ev->Get();
@@ -676,7 +676,7 @@ STFUNC(TNonreplicatedPartitionActor::StateWork)
         HFunc(TEvVolume::TEvGetScanDiskStatusRequest, HandleGetScanDiskStatus);
         HFunc(TEvVolume::TEvCheckRangeRequest, HandleCheckRange);
 
-        HFunc(TEvVolumePrivate::TEvDeviceTimeoutedResponse, HandleDeviceTimeoutedResponse);
+        HFunc(TEvVolumePrivate::TEvDeviceTimedOutResponse, HandleDeviceTimedOutResponse);
         HFunc(TEvNonreplPartitionPrivate::TEvAgentIsUnavailable, HandleAgentIsUnavailable);
         HFunc(TEvNonreplPartitionPrivate::TEvAgentIsBackOnline, HandleAgentIsBackOnline);
 
@@ -726,7 +726,7 @@ STFUNC(TNonreplicatedPartitionActor::StateZombie)
         HFunc(TEvVolume::TEvGetScanDiskStatusRequest, RejectGetScanDiskStatus);
 
         IgnoreFunc(TEvents::TEvPoisonPill);
-        IgnoreFunc(TEvVolumePrivate::TEvDeviceTimeoutedResponse);
+        IgnoreFunc(TEvVolumePrivate::TEvDeviceTimedOutResponse);
         IgnoreFunc(TEvVolume::TEvRWClientIdChanged);
 
         default:

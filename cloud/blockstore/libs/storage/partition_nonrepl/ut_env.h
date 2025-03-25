@@ -154,7 +154,7 @@ private:
             HFunc(TEvVolume::TEvUpdateMigrationState, HandleUpdateMigrationState);
 
             IgnoreFunc(TEvVolumePrivate::TEvLaggingAgentMigrationFinished);
-            IgnoreFunc(TEvVolumePrivate::TEvDeviceTimeoutedRequest);
+            IgnoreFunc(TEvVolumePrivate::TEvDeviceTimedOutRequest);
 
             default:
                 Y_ABORT("Unexpected event %x", ev->GetTypeRewrite());
