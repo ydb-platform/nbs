@@ -108,12 +108,12 @@ FILESTORE_FILESYSTEM_STATS(FILESTORE_DECLARE_STATS)
     virtual bool ReadNode(
         ui64 nodeId,
         ui64 commitId,
-        TMaybe<IIndexTabletDatabase::TNode>& node) override;
+        TMaybe<TNode>& node) override;
     virtual bool ReadNodes(
         ui64 startNodeId,
         ui64 maxNodes,
         ui64& nextNodeId,
-        TVector<IIndexTabletDatabase::TNode>& nodes) override;
+        TVector<TNode>& nodes) override;
 
     //
     // Nodes_Ver
@@ -130,7 +130,7 @@ FILESTORE_FILESYSTEM_STATS(FILESTORE_DECLARE_STATS)
     virtual bool ReadNodeVer(
         ui64 nodeId,
         ui64 commitId,
-        TMaybe<IIndexTabletDatabase::TNode>& node) override;
+        TMaybe<TNode>& node) override;
 
     //
     // NodeAttrs
@@ -149,12 +149,12 @@ FILESTORE_FILESYSTEM_STATS(FILESTORE_DECLARE_STATS)
         ui64 nodeId,
         ui64 commitId,
         const TString& name,
-        TMaybe<IIndexTabletDatabase::TNodeAttr>& attr) override;
+        TMaybe<TNodeAttr>& attr) override;
 
     virtual bool ReadNodeAttrs(
         ui64 nodeId,
         ui64 commitId,
-        TVector<IIndexTabletDatabase::TNodeAttr>& attrs) override;
+        TVector<TNodeAttr>& attrs) override;
 
     //
     // NodeAttrs_Ver
@@ -177,12 +177,12 @@ FILESTORE_FILESYSTEM_STATS(FILESTORE_DECLARE_STATS)
         ui64 nodeId,
         ui64 commitId,
         const TString& name,
-        TMaybe<IIndexTabletDatabase::TNodeAttr>& attr) override;
+        TMaybe<TNodeAttr>& attr) override;
 
     virtual bool ReadNodeAttrVers(
         ui64 nodeId,
         ui64 commitId,
-        TVector<IIndexTabletDatabase::TNodeAttr>& attrs) override;
+        TVector<TNodeAttr>& attrs) override;
 
     //
     // NodeRefs
@@ -202,13 +202,13 @@ FILESTORE_FILESYSTEM_STATS(FILESTORE_DECLARE_STATS)
         ui64 nodeId,
         ui64 commitId,
         const TString& name,
-        TMaybe<IIndexTabletDatabase::TNodeRef>& ref) override;
+        TMaybe<TNodeRef>& ref) override;
 
     virtual bool ReadNodeRefs(
         ui64 nodeId,
         ui64 commitId,
         const TString& cookie,
-        TVector<IIndexTabletDatabase::TNodeRef>& refs,
+        TVector<TNodeRef>& refs,
         ui32 maxBytes,
         TString* next = nullptr) override;
 
@@ -216,7 +216,7 @@ FILESTORE_FILESYSTEM_STATS(FILESTORE_DECLARE_STATS)
         ui64 startNodeId,
         const TString& startCookie,
         ui64 maxCount,
-        TVector<IIndexTabletDatabase::TNodeRef>& refs,
+        TVector<TNodeRef>& refs,
         ui64& nextNodeId,
         TString& nextCookie) override;
 
@@ -247,12 +247,12 @@ FILESTORE_FILESYSTEM_STATS(FILESTORE_DECLARE_STATS)
         ui64 nodeId,
         ui64 commitId,
         const TString& name,
-        TMaybe<IIndexTabletDatabase::TNodeRef>& ref) override;
+        TMaybe<TNodeRef>& ref) override;
 
     virtual bool ReadNodeRefVers(
         ui64 nodeId,
         ui64 commitId,
-        TVector<IIndexTabletDatabase::TNodeRef>& refs) override;
+        TVector<TNodeRef>& refs) override;
 
     //
     // TruncateQueue
@@ -383,14 +383,6 @@ FILESTORE_FILESYSTEM_STATS(FILESTORE_DECLARE_STATS)
 
     void DeleteMixedBlocks(ui32 rangeId, const TPartialBlobId& blobId);
 
-    struct TMixedBlob
-    {
-        TPartialBlobId BlobId;
-        TBlockList BlockList;
-        ui32 GarbageBlocks;
-        ui32 CheckpointBlocks;
-    };
-
     bool ReadMixedBlocks(
         ui32 rangeId,
         const TPartialBlobId& blobId,
@@ -400,7 +392,7 @@ FILESTORE_FILESYSTEM_STATS(FILESTORE_DECLARE_STATS)
     bool ReadMixedBlocks(
         ui32 rangeId,
         TVector<TMixedBlob>& blobs,
-        IAllocator* alloc);
+        IAllocator* alloc) override;
 
     //
     // DeletionMarkers
@@ -421,7 +413,7 @@ FILESTORE_FILESYSTEM_STATS(FILESTORE_DECLARE_STATS)
 
     bool ReadDeletionMarkers(
         ui32 rangeId,
-        TVector<TDeletionMarker>& deletionMarkers);
+        TVector<TDeletionMarker>& deletionMarkers) override;
 
     //
     // LargeDeletionMarkers
@@ -500,7 +492,7 @@ FILESTORE_FILESYSTEM_STATS(FILESTORE_DECLARE_STATS)
 
     struct TCheckpointBlob
     {
-        ui32 RangeId;
+        ui32 RangeId = 0;
         TPartialBlobId BlobId;
     };
 
@@ -557,13 +549,13 @@ public:
     bool ReadNode(
         ui64 nodeId,
         ui64 commitId,
-        TMaybe<IIndexTabletDatabase::TNode>& node) final;
+        TMaybe<TNode>& node) final;
 
     bool ReadNodes(
         ui64 startNodeId,
         ui64 maxNodes,
         ui64& nextNodeId,
-        TVector<IIndexTabletDatabase::TNode>& nodes) final;
+        TVector<TNode>& nodes) final;
 
     void WriteNode(
         ui64 nodeId,
@@ -628,13 +620,13 @@ public:
         ui64 nodeId,
         ui64 commitId,
         const TString& name,
-        TMaybe<IIndexTabletDatabase::TNodeRef>& ref) override;
+        TMaybe<TNodeRef>& ref) override;
 
     bool ReadNodeRefs(
         ui64 nodeId,
         ui64 commitId,
         const TString& cookie,
-        TVector<IIndexTabletDatabase::TNodeRef>& refs,
+        TVector<TNodeRef>& refs,
         ui32 maxBytes,
         TString* next = nullptr) override;
 
@@ -642,7 +634,7 @@ public:
         ui64 startNodeId,
         const TString& startCookie,
         ui64 maxCount,
-        TVector<IIndexTabletDatabase::TNodeRef>& refs,
+        TVector<TNodeRef>& refs,
         ui64& nextNodeId,
         TString& nextCookie) override;
 

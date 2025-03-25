@@ -426,4 +426,12 @@ ui32 TMixedBlocks::CalculateGarbageBlockCount(ui32 rangeId) const
     return result;
 }
 
+TBlobMetaMapStats TMixedBlocks::GetBlobMetaMapStats() const
+{
+    return {
+        .LoadedRanges = Impl->Ranges.size(),
+        .OffloadedRanges = Impl->OffloadedRanges.size(),
+    };
+}
+
 }   // namespace NCloud::NFileStore::NStorage

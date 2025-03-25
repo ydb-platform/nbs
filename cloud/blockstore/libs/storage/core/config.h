@@ -657,6 +657,8 @@ public:
     [[nodiscard]] bool GetAllowAdditionalSystemTablets() const;
 
     [[nodiscard]] ui32 GetCheckRangeMaxRangeSize() const;
+
+    [[nodiscard]] bool GetDisableZeroBlocksThrottlingForYDBBasedDisks() const;
 };
 
 ui64 GetAllocationUnit(
