@@ -214,10 +214,6 @@ private:
         const TEvNonreplPartitionPrivate::TEvChecksumBlocksCompleted::TPtr& ev,
         const NActors::TActorContext& ctx);
 
-    void HandleDeviceTimeoutedRequest(
-        const TEvVolumePrivate::TEvDeviceTimeoutedRequest::TPtr& ev,
-        const NActors::TActorContext& ctx);
-
     void HandleAgentIsUnavailable(
         const TEvNonreplPartitionPrivate::TEvAgentIsUnavailable::TPtr& ev,
         const NActors::TActorContext& ctx);
