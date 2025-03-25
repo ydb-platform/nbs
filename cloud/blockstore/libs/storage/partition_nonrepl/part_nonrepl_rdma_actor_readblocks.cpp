@@ -63,7 +63,9 @@ public:
         }
     }
 
-    void HandleResult(const TDeviceRequestContext& dCtx, TStringBuf buffer) override
+    void ProcessResponseProto(
+        const TDeviceRequestContext& dCtx,
+        TStringBuf buffer) override
     {
         const auto& dr = static_cast<const TDeviceReadRequestContext&>(dCtx);
         auto* serializer = TBlockStoreProtocol::Serializer();
@@ -129,7 +131,7 @@ public:
         // Got all device responses. Do processing.
 
         ProcessError(*ActorSystem, *PartConfig, Error);
-        *Response.MutableError() = std::move(Error);
+        *Response.MutableError() = Error;
         auto error = Response.GetError();
 
         const ui32 blockCount = Response.GetBlocks().BuffersSize();

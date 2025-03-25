@@ -30,8 +30,7 @@ namespace NCloud::NBlockStore::NStorage {
 
 struct TDeviceRequestContext: public NRdma::TNullContext
 {
-    TString DeviceUUID;
-    ui32 DeviceIdx;
+    ui32 DeviceIdx = 0;
 };
 
 struct TDeviceReadRequestContext: public TDeviceRequestContext
@@ -68,9 +67,7 @@ public:
 
     ~IRdmaDeviceRequestHandler() override = default;
 
-    void SendDeviceTimedOut(TString deviceUUID);
-
-    virtual void HandleResult(
+    virtual void ProcessResponseProto(
         const TDeviceRequestContext& dCtx,
         TStringBuf buffer) = 0;
 
@@ -163,6 +160,7 @@ private:
         const NActors::TActorContext& ctx,
         const TString& deviceUUID);
     void ProcessOperationCompleted(
+        const NActors::TActorContext& ctx,
         const TEvNonreplPartitionPrivate::TOperationCompleted& opCompleted);
     void SendRdmaUnavailableIfNeeded(const NActors::TActorContext& ctx);
     void UpdateStats(const NProto::TPartitionStats& update);
