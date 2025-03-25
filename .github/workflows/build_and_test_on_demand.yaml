@@ -5,11 +5,11 @@ on:
     inputs:
       build_target:
         type: string
-        default: "cloud/blockstore/apps/,cloud/filestore/apps/,cloud/disk_manager/,cloud/tasks/,cloud/storage/"
+        default: "cloud/tasks/"
         description: "limit build to specific target"
       test_target:
         type: string
-        default: "cloud/blockstore/,cloud/filestore/,cloud/disk_manager/,cloud/tasks/,cloud/storage/"
+        default: "cloud/tasks/"
         description: "limit test to specific target"
       build_preset:
         type: choice
@@ -40,7 +40,7 @@ on:
           - small,medium,large
       test_type:
         type: choice
-        default: "unittest"
+        default: "unittest,clang_tidy,gtest,py3test,py2test,pytest,flake8,black,py2_flake8,go_test,gofmt"
         description: "type of tests to run"
         options:
           - unittest,clang_tidy,gtest
@@ -119,15 +119,18 @@ env:
 
 jobs:
   provide-runner:
-    name: Start self-hosted runner (${{ inputs.build_preset }})
+    name: Lock self-hosted runner (${{ inputs.build_preset }})
     timeout-minutes: 60
     if: always()
-    runs-on: ubuntu-latest
+    runs-on: [ self-hosted, "self-hosted", "runner_light"]
     outputs:
-      label: ${{ steps.start-runner.outputs.label }}
-      instance-id: ${{ steps.start-runner.outputs.instance-id }}
-      runner_ipv4: ${{ steps.start-runner.outputs.external-ipv4 }}
-      runner_local_ipv4: ${{ steps.start-runner.outputs.local-ipv4 }}
+      label: ${{ steps.get-runner.outputs.LABEL }}
+      runner_flavor: ${{ steps.get-runner.outputs.RUNNER_FLAVOR }}
+      instance-id: ${{ steps.get-runner.outputs.INSTANCE_ID }}
+      vm_preset: ${{ steps.get-runner.outputs.VM_PRESET }}
+      old-instance-name: ${{ steps.get-runner.outputs.OLD_INSTANCE_NAME }}
+      runner_ipv4: ${{ steps.get-runner.outputs.RUNNER_IPV4 }}
+      runner_local_ipv4: ${{ steps.get-runner.outputs.RUNNER_LOCAL_IPV4 }}
       build_threads: ${{ steps.calculate-threads.outputs.build_threads || '60' }}
       test_threads: ${{ steps.calculate-threads.outputs.test_threads || '32' }}
       link_threads: ${{ steps.calculate-threads.outputs.link_threads || '24' }}
@@ -154,36 +157,43 @@ jobs:
         with:
           submodules: false
           sparse-checkout: '.github'
-      - name: Start runner
-        id: start-runner
-        if: always()
-        uses: ./.github/actions/nebius_runner_create
-        timeout-minutes: 60
+
+      - name: set up nebius cli
+        id: cli
+        uses: ./.github/actions/nebius_cli
         with:
-          org: ydb-platform
-          team: nbs
-          repo_owner: ${{ github.repository_owner }}
-          repo: ${{ github.event.repository.name }}
-          service_account_key: ${{ secrets.NEW_NEBIUS_SA_JSON_CREDENTIALS }}
+          sa_json: ${{ secrets.NEW_NEBIUS_SA_JSON_CREDENTIALS }}
+      - name: set up gh cli
+        id: gh
+        uses: ./.github/actions/gh_cli
+      - name: Select nebius runner
+        id: get-runner
+        uses: ./.github/actions/nebius_runner_select
+        with:
+          parent_id: ${{ vars.NEBIUS_PARENT_ID }}
+          instance_name: ${{ github.event.pull_request.number &&  format('running-pr-{0}-{1}-{2}', github.event.pull_request.number, github.run_id, github.run_attempt) ||  format('running-{0}-{1}-run-{1}-{2}', github.event.repository.owner.login, github.event.repository.name, github.run_id, github.run_attempt) }}
+          flavor: "heavy"
           token: ${{ secrets.GH_PERSONAL_ACCESS_TOKEN }}
-          vm_parent_id: ${{ vars.NEBIUS_PARENT_ID }}
-          vm_name: ${{ github.event.pull_request.number && format('pr-{0}{1}-{2}-{3}', github.event.pull_request.number, inputs.vm_name_suffix, github.run_id, github.run_attempt) || format('run-{0}-{1}', github.run_id, github.run_attempt) }}
-          vm_platform_id: ${{ vars.NEBIUS_PLATFORM_ID }}
-          vm_preset: ${{ vars.NEBIUS_VM_PRESET }}
-          vm_disk_type: ${{ inputs.disk_type || 'network-ssd-nonreplicated' }}
-          vm_disk_size: 1023
-          vm_subnet: ${{ vars.NEBIUS_SUBNET_ID }}
-          vm_image: ${{ vars.NEBIUS_IMAGE_ID_2204 }}
-          vm_labels: ${{ github.event.pull_request.number && format('pr={0},run={1}-{2},repo={3},owner={4}', github.event.pull_request.number, github.run_id, github.run_attempt, github.event.repository.name, github.repository_owner) || format('run={0}-{1},repo={2},owner={3}', github.run_id, github.run_attempt, github.event.repository.name, github.repository_owner) }}
-          vm_user_passwd: ${{ secrets.VM_USER_PASSWD }}
-          vm_allow_downgrade: ${{ env.allow_downgrade == 'true' && 'yes' || 'no' }}
+          
       - name: Calculate threads
         id: calculate-threads
         if: always()
         uses: ./.github/actions/nebius_threads_calculator
         with:
-          vm_preset: ${{ steps.start-runner.outputs.vm-preset }}
+          vm_preset: ${{ steps.get-runner.outputs.VM_PRESET }}
           tests_size: ${{ inputs.test_size }}
+      - name: debug
+        id: debug
+        shell: bash
+        run: |
+          echo "RUNNER_IPV4=${{ steps.get-runner.outputs.RUNNER_IPV4 }}"
+          echo "RUNNER_LOCAL_IPV4=${{ steps.get-runner.outputs.RUNNER_LOCAL_IPV4 }}"
+          echo "INSTANCE_ID=${{ steps.get-runner.outputs.INSTANCE_ID }}"
+          echo "RUNNER_FLAVOR=${{ steps.get-runner.outputs.RUNNER_FLAVOR }}"
+          echo "LABEL=${{ steps.get-runner.outputs.LABEL }}"
+          echo "OLD_INSTANCE_NAME=${{ steps.get-runner.outputs.OLD_INSTANCE_NAME }}"
+          echo "VM_PRESET=${{ steps.get-runner.outputs.VM_PRESET }}"
+          echo "use_network_cache=${{ github.event_name == 'workflow_dispatch' && 'yes'|| inputs.use_network_cache }}"
 
   build-and-test:
     name: Build and test NBS (${{ inputs.build_preset }}) [id=${{ needs.provide-runner.outputs.instance-id }} local_ip=${{ needs.provide-runner.outputs.runner_local_ipv4 }} ip=${{ needs.provide-runner.outputs.runner_ipv4 }}]
@@ -193,6 +203,7 @@ jobs:
     with:
       runner_kind: self-hosted
       runner_label: ${{ needs.provide-runner.outputs.label }}
+      runner_flavor: ${{ needs.provide-runner.outputs.runner_flavor }}
       runner_instance_id: ${{ needs.provide-runner.outputs.instance-id }}
       runner_ipv4: ${{ needs.provide-runner.outputs.runner_ipv4 }}
       build_target: ${{ inputs.build_target }}
@@ -238,7 +249,7 @@ jobs:
       - provide-runner  # required to get output from the start-runner job
       - build-and-test  # required to wait when the main job is done
       - sleep-if-needed # required to wait until all debug is done
-    runs-on: ubuntu-latest
+    runs-on: [ self-hosted, "self-hosted", "runner_light"]
     if: always()
     steps:
       - name: checkout PR
@@ -263,14 +274,14 @@ jobs:
         with:
           submodules: false
           sparse-checkout: '.github'
-      - name: Stop runner
-        uses: ./.github/actions/nebius_runner_remove
-        if: always()
-        timeout-minutes: 60
+      - name: Setup nebius cli
+        id: rename
+        uses: ./.github/actions/nebius_cli
         with:
-          service_account_key: ${{ secrets.NEW_NEBIUS_SA_JSON_CREDENTIALS }}
-          token: ${{ secrets.GH_PERSONAL_ACCESS_TOKEN }}
-          repo_owner: ${{ github.repository_owner }}
-          repo: ${{ github.event.repository.name }}
-          vm_parent_id: ${{ vars.NEBIUS_PARENT_ID }}
-          vm_id: ${{ needs.provide-runner.outputs.instance-id }}
+          sa_json: ${{ secrets.NEW_NEBIUS_SA_JSON_CREDENTIALS }}
+      - name: Release VM
+        id: release
+        uses: ./.github/actions/nebius_runner_release
+        with:
+          instance_id: ${{ needs.provide-runner.outputs.instance-id }}
+          instance_name: ${{ needs.provide-runner.outputs.old-instance-name }}

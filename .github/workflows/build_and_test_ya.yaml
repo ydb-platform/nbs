@@ -21,6 +21,10 @@ on:
         type: string
         default: "linux"
         description: "runner label"
+      runner_flavor:
+        type: string
+        default: "none"
+        description: "runner flavor"
       runner_instance_id:
         type: string
         default: ""
@@ -98,11 +102,15 @@ on:
 jobs:
   build-and-test:
     name: Build and test ${{ inputs.build_preset }} [id=${{ inputs.runner_instance_id }} ip=${{ inputs.runner_ipv4 }}]
-    runs-on: [ self-hosted, "${{ inputs.runner_kind }}", "${{ inputs.runner_label }}" ]
+    runs-on: [ self-hosted, "${{ inputs.runner_kind }}", "${{ inputs.runner_label }}", "runner_${{ inputs.runner_flavor }}" ]
     outputs:
         sleep_after_tests: ${{ steps.failure.outputs.sleep_after_tests }}
     timeout-minutes: 1440
     steps:
+    - name: fix checkout dir
+      shell: bash
+      run: |
+        chown -R root:root $GITHUB_WORKSPACE
     - name: Checkout PR
       uses: actions/checkout@v4
       if: github.event.pull_request.head.sha != ''

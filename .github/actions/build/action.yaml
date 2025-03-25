@@ -231,3 +231,12 @@ runs:
       if: always()
       shell: bash
       run: df -h
+    
+    - name: clean up
+      if: always()
+      shell: bash
+      run: |
+        echo "::group::cleanup"
+        sudo -E -H -u github rm -rf "$TMP_DIR"
+        chown -R root:root $GITHUB_WORKSPACE
+        echo "::endgroup::"
