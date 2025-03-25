@@ -365,7 +365,6 @@ struct TTxPartition
         TAffectedBlocks AffectedBlocks;
         ui32 BlobsSkipped = 0;
         ui32 BlocksSkipped = 0;
-        bool Discarded = false;
         bool ChecksumsEnabled = false;
 
         TRangeCompaction(ui32 rangeIdx, const TBlockRange32& blockRange)
@@ -381,7 +380,6 @@ struct TTxPartition
             AffectedBlocks.clear();
             BlobsSkipped = 0;
             BlocksSkipped = 0;
-            Discarded = false;
             ChecksumsEnabled = false;
         }
 
