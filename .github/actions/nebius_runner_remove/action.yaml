@@ -26,7 +26,7 @@ runs:
     - name: write service account key to file
       shell: bash
       run: |
-        export SERVICE_ACCOUNT_KEY=$(mktemp)
+        export SERVICE_ACCOUNT_KEY=$(mktemp sa.XXXX)
         echo "SERVICE_ACCOUNT_KEY=${SERVICE_ACCOUNT_KEY}" >> $GITHUB_ENV
         echo "${KEY_CONTENTS}" > $SERVICE_ACCOUNT_KEY
       env:
@@ -39,7 +39,8 @@ runs:
       id: remove-vm
       shell: bash
       run: |
-        python .github/scripts/nebius-manage-vm.py remove \
+        export PYTHONPATH=$PYTHONPATH:$GITHUB_WORKSPACE/.github
+        python3 -m scripts.nebius_manage_vm remove \
           --github-repo-owner "${REPO_OWNER}" \
           --github-repo "${REPO}" \
           --service-account-key "${SERVICE_ACCOUNT_KEY}" \
@@ -52,3 +53,7 @@ runs:
         REPO: ${{ inputs.repo }}
         VM_ID: ${{ inputs.vm_id }}
         PARENT_ID: ${{ inputs.vm_parent_id }}
+    - name: cleanup
+      if: always()
+      shell: bash
+      run: rm -f "${SERVICE_ACCOUNT_KEY}"

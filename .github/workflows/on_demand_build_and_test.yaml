@@ -187,7 +187,7 @@ jobs:
 
   build-and-test:
     name: Build and test NBS (${{ inputs.build_preset }}) [id=${{ needs.provide-runner.outputs.instance-id }} local_ip=${{ needs.provide-runner.outputs.runner_local_ipv4 }} ip=${{ needs.provide-runner.outputs.runner_ipv4 }}]
-    uses: ./.github/workflows/build_and_test_ya.yaml
+    uses: ./.github/workflows/on_demand_build_and_test_ya.yaml
     needs:
       - provide-runner
     with:
