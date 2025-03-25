@@ -89,7 +89,8 @@ void TDeviceRequestBuilder::BuildNextRequest(TSgList* sglist)
     ++CurrentDeviceIdx;
 }
 
-TString TDeviceRequestBuilder::TakeBufferAndAdvance() {
+TString TDeviceRequestBuilder::TakeBufferAndAdvance()
+{
     auto& currentBuffer =
         (*Request.MutableBlocks()->MutableBuffers())[CurrentBufferIdx];
 
@@ -101,11 +102,7 @@ TString TDeviceRequestBuilder::TakeBufferAndAdvance() {
         Y_ABORT_UNLESS(
             currentBuffer.size() - CurrentOffsetInBuffer >= BlockSize);
 
-        result.resize(BlockSize);
-        memcpy(
-            result.begin(),
-            currentBuffer.data() + CurrentOffsetInBuffer,
-            BlockSize);
+        result = currentBuffer.substr(CurrentOffsetInBuffer, BlockSize);
         CurrentOffsetInBuffer += BlockSize;
         if (CurrentOffsetInBuffer == currentBuffer.size()) {
             CurrentOffsetInBuffer = 0;
@@ -115,7 +112,8 @@ TString TDeviceRequestBuilder::TakeBufferAndAdvance() {
     return result;
 }
 
-TBlockDataRef TDeviceRequestBuilder::GetBufferAndAdvance() {
+TBlockDataRef TDeviceRequestBuilder::GetBufferAndAdvance()
+{
     auto& currentBuffer =
         (*Request.MutableBlocks()->MutableBuffers())[CurrentBufferIdx];
 

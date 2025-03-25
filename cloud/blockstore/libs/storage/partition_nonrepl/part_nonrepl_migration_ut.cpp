@@ -357,8 +357,8 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionMigrationTest)
         WaitForMigrations(runtime, 3);
 
         const auto blockRange = TBlockRange64::WithLength(2047, 2);
-        const auto buffer_1 = TString(DefaultBlockSize, 'A');
-        const auto buffer_2 = TString(DefaultBlockSize, 'B');
+        const auto buffer1 = TString(DefaultBlockSize, 'A');
+        const auto buffer2 = TString(DefaultBlockSize, 'B');
 
         size_t writeDeviceRequestCount = 0;
         auto checkWriteDeviceRequest =
@@ -377,14 +377,14 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionMigrationTest)
 
                 if (msg->Record.GetStartIndex() == 2047) {
                     const auto& blocks = msg->Record.GetBlocks().GetBuffers();
-                    TBlockDataRef src{buffer_1.data(), buffer_1.size()};
+                    TBlockDataRef src{buffer1.data(), buffer1.size()};
                     TBlockDataRef dst{blocks[0].data(), DefaultBlockSize};
                     UNIT_ASSERT_VALUES_EQUAL(
                         src.AsStringBuf(),
                         dst.AsStringBuf());
                 } else if (msg->Record.GetStartIndex() == 0) {
                     const auto& blocks = msg->Record.GetBlocks().GetBuffers();
-                    TBlockDataRef src{buffer_2.data(), buffer_2.size()};
+                    TBlockDataRef src{buffer2.data(), buffer2.size()};
                     TBlockDataRef dst{blocks[0].data(), DefaultBlockSize};
                     UNIT_ASSERT_VALUES_EQUAL(
                         src.AsStringBuf(),
@@ -401,19 +401,21 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionMigrationTest)
         auto writeRequest =
             std::make_unique<TEvService::TEvWriteBlocksRequest>();
         writeRequest->Record.SetStartIndex(blockRange.Start);
-        writeRequest->Record.MutableBlocks()->AddBuffers(buffer_1);
-        writeRequest->Record.MutableBlocks()->AddBuffers(buffer_2);
+        writeRequest->Record.MutableBlocks()->AddBuffers(buffer1);
+        writeRequest->Record.MutableBlocks()->AddBuffers(buffer2);
         client.SendRequest(client.GetActorId(), std::move(writeRequest));
         auto response = client.RecvWriteBlocksResponse();
         UNIT_ASSERT(SUCCEEDED(response->GetStatus()));
         UNIT_ASSERT_VALUES_EQUAL(3, writeDeviceRequestCount);
     }
 
-    Y_UNIT_TEST(ShouldMirrorRequestsDuringMigration) {
+    Y_UNIT_TEST(ShouldMirrorRequestsDuringMigration)
+    {
         DoShouldMirrorRequestsDuringMigration(false);
     }
 
-    Y_UNIT_TEST(ShouldMirrorRequestsDuringMigrationDirectCopy) {
+    Y_UNIT_TEST(ShouldMirrorRequestsDuringMigrationDirectCopy)
+    {
         DoShouldMirrorRequestsDuringMigration(true);
     }
 
