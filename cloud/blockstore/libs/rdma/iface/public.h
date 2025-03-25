@@ -24,9 +24,6 @@ using IClientPtr = std::shared_ptr<IClient>;
 
 class TNullContext;
 
-struct IRequestHandle;
-using IRequestHandlePtr = std::unique_ptr<IRequestHandle>;
-
 struct TClientRequest;
 using TClientRequestPtr = std::unique_ptr<TClientRequest>;
 
