@@ -657,7 +657,7 @@ func testDiskServiceCreateDiskFromSnapshotWithZoneID(
 		Size: int64(diskSize),
 		Kind: disk_manager.DiskKind_DISK_KIND_SSD,
 		DiskId: &disk_manager.DiskId{
-			ZoneId: zoneID,
+			ZoneId: defaultZoneId,
 			DiskId: diskID1,
 		},
 	})
@@ -666,12 +666,8 @@ func testDiskServiceCreateDiskFromSnapshotWithZoneID(
 	err = internal_client.WaitOperation(ctx, client, operation.Id)
 	require.NoError(t, err)
 
-	diskMeta, err := testcommon.GetDiskMeta(ctx, diskID1)
-	require.NoError(t, err)
-	// We should provide correct zone for NBS client because
-	// only unsharded zones are configured in the NBS client config.
-	nbsClient := testcommon.NewNbsTestingClient(t, ctx, diskMeta.ZoneID)
-	diskContentInfo, err := nbsClient.FillDisk(ctx, diskID1, diskSize)
+	nbsClient1 := testcommon.NewNbsTestingClient(t, ctx, defaultZoneId)
+	diskContentInfo, err := nbsClient1.FillDisk(ctx, diskID1, diskSize)
 	require.NoError(t, err)
 
 	snapshotID1 := testcommon.ReplaceUnacceptableSymbolsFromResourceID(t) + "1"
@@ -724,10 +720,15 @@ func testDiskServiceCreateDiskFromSnapshotWithZoneID(
 	require.NoError(t, err)
 	require.Equal(t, float64(1), createDiskMeta.Progress)
 
-	err = nbsClient.ValidateCrc32(ctx, diskID1, diskContentInfo)
+	err = nbsClient1.ValidateCrc32(ctx, diskID1, diskContentInfo)
 	require.NoError(t, err)
 
-	err = nbsClient.ValidateCrc32(ctx, diskID2, diskContentInfo)
+	diskMeta, err := testcommon.GetDiskMeta(ctx, diskID2)
+	require.NoError(t, err)
+	// We should provide correct zone for NBS client because
+	// only unsharded zones are configured in the NBS client config.
+	nbsClient2 := testcommon.NewNbsTestingClient(t, ctx, diskMeta.ZoneID)
+	err = nbsClient2.ValidateCrc32(ctx, diskID2, diskContentInfo)
 	require.NoError(t, err)
 
 	testcommon.CheckConsistency(t, ctx)
