@@ -532,4 +532,7 @@ message TStorageConfig
     // to the scaled ratio of DeletedMarkersCount to UsedBlocksCount instead of
     // UsedRangesCount.
     optional bool CalculateCleanupScoreBasedOnUsedBlocksCount = 421;
+
+    // Use SSL for dynamic node registration.
+    optional bool NodeRegistrationUseSsl = 422;
 }

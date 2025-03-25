@@ -29,16 +29,16 @@ struct TBlockData
 
 inline IOutputStream& operator<<(IOutputStream& out, const TBlockData& data)
 {
-    out << "{ "
-        << "RequestNumber " << data.RequestNumber
-        << "PartNumber " << data.PartNumber
-        << "BlockIndex " << data.BlockIndex
-        << "RangeIdx " << data.RangeIdx
-        << "RequestTimestamp " << TInstant::MicroSeconds(data.RequestTimestamp)
-        << "TestTimestamp " << TInstant::MicroSeconds(data.TestTimestamp)
-        << "TestId " << data.TestId
-        << "Checksum " << data.Checksum
-        << " }";
+    out << "{"
+        << " RequestNumber " << data.RequestNumber
+        << " PartNumber " << data.PartNumber
+        << " BlockIndex " << data.BlockIndex
+        << " RangeIdx " << data.RangeIdx
+        << " RequestTimestamp " << TInstant::MicroSeconds(data.RequestTimestamp)
+        << " TestTimestamp " << TInstant::MicroSeconds(data.TestTimestamp)
+        << " TestId " << data.TestId
+        << " Checksum " << data.Checksum
+        << "}";
 
     return out;
 }

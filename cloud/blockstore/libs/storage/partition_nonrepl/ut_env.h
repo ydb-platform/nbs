@@ -31,10 +31,12 @@ const ui64 DefaultDeviceBlockSize = 512;
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TStorageStatsServiceState
-    : TAtomicRefCount<TStorageStatsServiceState>
+struct TStorageStatsServiceState: TAtomicRefCount<TStorageStatsServiceState>
 {
     TPartitionDiskCounters Counters{
+        EPublishingPolicy::DiskRegistryBased,
+        EHistogramCounterOption::ReportMultipleCounters};
+    TPartitionDiskCounters AggregatedCounters{
         EPublishingPolicy::DiskRegistryBased,
         EHistogramCounterOption::ReportMultipleCounters};
 };
@@ -89,6 +91,7 @@ private:
         Y_UNUSED(ctx);
 
         State->Counters = *ev->Get()->DiskCounters;
+        State->AggregatedCounters.AggregateWith(*ev->Get()->DiskCounters);
     }
 
     void HandleRegisterTrafficSource(
@@ -427,10 +430,10 @@ public:
         return request;
     }
 
-    std::unique_ptr<TEvService::TEvCheckRangeRequest>
+    std::unique_ptr<TEvVolume::TEvCheckRangeRequest>
     CreateCheckRangeRequest(TString id, ui32 startIndex, ui32 size, bool calculateChecksums = false)
     {
-        auto request = std::make_unique<TEvService::TEvCheckRangeRequest>();
+        auto request = std::make_unique<TEvVolume::TEvCheckRangeRequest>();
         request->Record.SetDiskId(id);
         request->Record.SetStartIndex(startIndex);
         request->Record.SetBlocksCount(size);
@@ -471,7 +474,7 @@ public:
     BLOCKSTORE_DECLARE_METHOD(ReadBlocksLocal, TEvService);
     BLOCKSTORE_DECLARE_METHOD(WriteBlocksLocal, TEvService);
     BLOCKSTORE_DECLARE_METHOD(ZeroBlocks, TEvService);
-    BLOCKSTORE_DECLARE_METHOD(CheckRange, TEvService);
+    BLOCKSTORE_DECLARE_METHOD(CheckRange, TEvVolume);
     BLOCKSTORE_DECLARE_METHOD(ChecksumBlocks, TEvNonreplPartitionPrivate);
 
 #undef BLOCKSTORE_DECLARE_METHOD

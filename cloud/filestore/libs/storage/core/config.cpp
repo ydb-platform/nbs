@@ -203,6 +203,7 @@ using TAliases = NProto::TStorageConfig::TFilestoreAliases;
     xxx(NodeRegistrationRootCertsFile,   TString,               {}            )\
     xxx(NodeRegistrationCert,            TCertificate,          {}            )\
     xxx(NodeRegistrationToken,           TString,               "root@builtin")\
+    xxx(NodeRegistrationUseSsl,          bool,                  false         )\
     xxx(NodeType,                        TString,               {}            )\
     xxx(BlobCompressionRate,             ui32,                  0             )\
     xxx(BlobCompressionCodec,            TString,               "lz4"         )\

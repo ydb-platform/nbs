@@ -159,7 +159,8 @@ jobs:
         uses: actions/checkout@v4
         if: github.event.pull_request.head.sha != ''
         with:
-          submodules: true
+          submodules: false
+          sparse-checkout: '.github'
           ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: ${{ !contains(github.event.pull_request.labels.*.name, 'rebase') && 1 || 0 }}
       - name: rebase PR
@@ -174,7 +175,8 @@ jobs:
         uses: actions/checkout@v4
         if: github.event.pull_request.head.sha == ''
         with:
-          submodules: true
+          submodules: false
+          sparse-checkout: '.github'
       - name: Start runner
         id: start-runner
         if: env.nebius == 'false' && always() || false
@@ -287,7 +289,8 @@ jobs:
         uses: actions/checkout@v4
         if: github.event.pull_request.head.sha != ''
         with:
-          submodules: true
+          submodules: false
+          sparse-checkout: '.github'
           ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: ${{ !contains(github.event.pull_request.labels.*.name, 'rebase') && 1 || 0 }}
       - name: rebase PR
@@ -302,7 +305,8 @@ jobs:
         uses: actions/checkout@v4
         if: github.event.pull_request.head.sha == ''
         with:
-          submodules: true
+          submodules: false
+          sparse-checkout: '.github'
       - name: Stop runner
         uses: ./.github/actions/runner_remove
         if: env.nebius == 'false' && always() || false

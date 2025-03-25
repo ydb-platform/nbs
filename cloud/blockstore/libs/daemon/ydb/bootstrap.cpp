@@ -16,6 +16,7 @@
 #include <cloud/blockstore/libs/discovery/healthcheck.h>
 #include <cloud/blockstore/libs/discovery/ping.h>
 #include <cloud/blockstore/libs/endpoints/endpoint_events.h>
+#include <cloud/blockstore/libs/rdma/fake/client.h>
 #include <cloud/blockstore/libs/kikimr/components.h>
 #include <cloud/blockstore/libs/kms/iface/compute_client.h>
 #include <cloud/blockstore/libs/kms/iface/key_provider.h>
@@ -97,6 +98,55 @@ NRdma::TClientConfigPtr CreateRdmaClientConfig(
 {
     return std::make_shared<NRdma::TClientConfig>(config->GetClient());
 }
+
+////////////////////////////////////////////////////////////////////////////////
+
+class TFakeRdmaClientProxy
+    : public NRdma::IClient
+{
+private:
+    IActorSystemPtr ActorSystem;
+    NRdma::IClientPtr Impl;
+
+public:
+    void Init(IActorSystemPtr actorSystem)
+    {
+        ActorSystem = std::move(actorSystem);
+    }
+
+    void Start() override
+    {
+        Y_ABORT_UNLESS(ActorSystem);
+
+        Impl = CreateFakeRdmaClient(std::move(ActorSystem));
+        Impl->Start();
+    }
+
+    void Stop() override
+    {
+        Y_ABORT_UNLESS(Impl);
+        Impl->Stop();
+        Impl.reset();
+    }
+
+    auto StartEndpoint(TString host, ui32 port)
+        -> NThreading::TFuture<NRdma::IClientEndpointPtr> override
+    {
+        return Impl->StartEndpoint(std::move(host), port);
+    }
+
+    void DumpHtml(IOutputStream& out) const override
+    {
+        Impl->DumpHtml(out);
+    }
+
+    [[nodiscard]] bool IsAlignedDataEnabled() const override
+    {
+        return Impl->IsAlignedDataEnabled();
+    }
+};
+
+////////////////////////////////////////////////////////////////////////////////
 
 class TWarmupBSGroupConnectionsActor final
     : public NActors::TActorBootstrapped<TWarmupBSGroupConnectionsActor>
@@ -365,7 +415,9 @@ void TBootstrapYdb::InitKikimrService()
         .SchemeShardDir = Configs->StorageConfig->GetSchemeShardDir(),
         .NodeBrokerAddress = Configs->Options->NodeBrokerAddress,
         .NodeBrokerPort = Configs->Options->NodeBrokerPort,
-        .UseNodeBrokerSsl = Configs->Options->UseNodeBrokerSsl,
+        .NodeBrokerSecurePort = Configs->Options->NodeBrokerSecurePort,
+        .UseNodeBrokerSsl = Configs->Options->UseNodeBrokerSsl
+            || Configs->StorageConfig->GetNodeRegistrationUseSsl(),
         .InterconnectPort = Configs->Options->InterconnectPort,
         .LoadCmsConfigs = loadCmsConfigs,
         .Settings = std::move(settings)
@@ -408,10 +460,21 @@ void TBootstrapYdb::InitKikimrService()
     auto logging = std::make_shared<TLoggingProxy>();
     auto monitoring = std::make_shared<TMonitoringProxy>();
 
+    std::shared_ptr<TFakeRdmaClientProxy> fakeRdmaClientProxy;
+
     Logging = logging;
     Monitoring = monitoring;
 
-    InitRdmaClient();
+    if (Configs->ServerConfig->GetUseFakeRdmaClient() &&
+        Configs->RdmaConfig->GetClientEnabled())
+    {
+        fakeRdmaClientProxy = std::make_shared<TFakeRdmaClientProxy>();
+        RdmaClient = fakeRdmaClientProxy;
+
+        STORAGE_INFO("Fake RDMA client initialized");
+    } else {
+        InitRdmaClient();
+    }
 
     VolumeStats = CreateVolumeStats(
         monitoring,
@@ -429,12 +492,14 @@ void TBootstrapYdb::InitKikimrService()
         BackgroundScheduler,
         logging,
         monitoring,
-        [=] (
+        [percentiles = ClientPercentiles](
             NMonitoring::TDynamicCountersPtr updatedCounters,
             NMonitoring::TDynamicCountersPtr baseCounters)
         {
-            ClientPercentiles->CalculatePercentiles(updatedCounters);
-            UpdateClientStats(updatedCounters, baseCounters);
+            percentiles->CalculatePercentiles(updatedCounters);
+            UpdateClientStats(
+                std::move(updatedCounters),
+                std::move(baseCounters));
         });
 
     STORAGE_INFO("StatsAggregator initialized");
@@ -700,6 +765,10 @@ void TBootstrapYdb::InitKikimrService()
 
     logging->Init(ActorSystem);
     monitoring->Init(ActorSystem);
+
+    if (fakeRdmaClientProxy) {
+        fakeRdmaClientProxy->Init(ActorSystem);
+    }
 
     if (args.IsDiskRegistrySpareNode) {
         auto rootGroup = Monitoring->GetCounters()

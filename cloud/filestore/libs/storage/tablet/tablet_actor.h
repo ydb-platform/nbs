@@ -284,6 +284,7 @@ private:
         TRequestMetrics RenameNode;
         TRequestMetrics UnlinkNode;
         TRequestMetrics StatFileStore;
+        TRequestMetrics GetNodeXAttr;
 
         // background requests
         TCompactionMetrics Compaction;
@@ -604,7 +605,8 @@ private:
         NProtoPrivate::TUnlinkNodeInShardRequest request,
         ui64 requestId,
         ui64 opLogEntryId,
-        TUnlinkNodeInShardResult result);
+        TUnlinkNodeInShardResult result,
+        bool shouldUnlockUponCompletion);
 
     void RegisterRenameNodeInDestinationActor(
         const NActors::TActorContext& ctx,

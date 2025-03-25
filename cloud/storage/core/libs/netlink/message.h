@@ -55,17 +55,23 @@ union TNetlinkResponse {
 template <size_t FamilyNameLength>
 struct TNetlinkFamilyIdRequest
 {
-    TNetlinkHeader Headers = {
-        sizeof(TNetlinkFamilyIdRequest<FamilyNameLength>),
-        GENL_ID_CTRL,
-        CTRL_CMD_GETFAMILY};
-    ::nlattr FamilyNameAttr = {
-        sizeof(FamilyName) + NLA_HDRLEN,
-        CTRL_ATTR_FAMILY_NAME};
+    TNetlinkHeader Headers;
+    ::nlattr FamilyNameAttr;
     std::array<char, FamilyNameLength> FamilyName;
 
     TNetlinkFamilyIdRequest(const char (&familyName)[FamilyNameLength])
     {
+        // Use memset to resolve the "uninitialized bytes" memory sanitizer
+        // warning, as this structure is transmitted via a socket, and padding
+        // may be present depending on the length of the family name.
+        memset(this, 0, sizeof(TNetlinkFamilyIdRequest<FamilyNameLength>));
+        Headers = {
+            sizeof(TNetlinkFamilyIdRequest<FamilyNameLength>),
+            GENL_ID_CTRL,
+            CTRL_CMD_GETFAMILY};
+        FamilyNameAttr = {
+            sizeof(FamilyName) + NLA_HDRLEN,
+            CTRL_ATTR_FAMILY_NAME};
         memcpy(&FamilyName[0], familyName, FamilyNameLength);
     }
 };

@@ -6,7 +6,6 @@ SRCS(
     service_state_ut.cpp
     service_ut_actions.cpp
     service_ut_alter.cpp
-    service_ut_checkrange.cpp
     service_ut_create_from_device.cpp
     service_ut_create.cpp
     service_ut_describe_model.cpp
