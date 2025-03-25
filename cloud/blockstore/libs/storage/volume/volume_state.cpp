@@ -223,6 +223,11 @@ std::optional<NProto::TLaggingAgent> TVolumeState::RemoveLaggingAgent(
     return std::nullopt;
 }
 
+bool TVolumeState::HasLaggingAgents() const
+{
+    return Meta.GetLaggingAgentsInfo().AgentsSize() != 0;
+}
+
 bool TVolumeState::HasLaggingInReplica(ui32 replicaIndex) const
 {
     for (const auto& agent: Meta.GetLaggingAgentsInfo().GetAgents()) {

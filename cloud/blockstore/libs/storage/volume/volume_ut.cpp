@@ -949,6 +949,32 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         UNIT_ASSERT_VALUES_EQUAL(0, migratedRanges);
     }
 
+    Y_UNIT_TEST(ShouldConvertTryAgainToRejectedWhenCanAllocateLocalDiskLater)
+    {
+        NProto::TStorageServiceConfig config;
+        config.SetLocalDiskAsyncDeallocationEnabled(true);
+
+        auto state = MakeIntrusive<TDiskRegistryState>();
+        state->CurrentErrorCode = E_TRY_AGAIN;
+        auto runtime = PrepareTestActorRuntime(config, state);
+
+        TVolumeClient volume(*runtime);
+        volume.UpdateVolumeConfig(
+            0,
+            0,
+            0,
+            0,
+            false,
+            1,
+            NCloud::NProto::STORAGE_MEDIA_SSD_LOCAL);
+
+        volume.SendWaitReadyRequest();
+        {
+            auto response = volume.RecvWaitReadyResponse();
+            UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, response->GetStatus());
+        }
+    }
+
     void DoShouldEnsureRejectWriteZeroRequestsOverlappingWithMigrating(
         ui32 ioDepth)
     {

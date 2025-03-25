@@ -2675,7 +2675,6 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
             UNIT_ASSERT_VALUES_EQUAL(
                 response.GetStorageConfig().GetThreeStageWriteEnabled(),
                 true);
-            TDispatchOptions options;
             env.GetRuntime().DispatchEvents({}, TDuration::Seconds(1));
         }
 
@@ -2774,6 +2773,105 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         UNIT_ASSERT_VALUES_EQUAL(3, runtime.GetCounter(TEvService::EvWriteDataResponse));
         UNIT_ASSERT_VALUES_EQUAL(1, evPuts);
         // clang-format on
+    }
+
+    Y_UNIT_TEST(ShouldThrottleMulipleStageReadsAndWrites)
+    {
+        const auto maxBandwidth = 10000;
+        NProto::TStorageConfig config;
+        config.SetThrottlingEnabled(true);
+        config.SetThreeStageWriteEnabled(true);
+        config.SetTwoStageReadEnabled(true);
+        config.SetUnalignedThreeStageWriteEnabled(true);
+        config.SetMultipleStageRequestThrottlingEnabled(true);
+
+        TTestEnv env({}, config);
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+        const TString fs = "test";
+        {
+            const auto blockCount = 1'000;
+            auto request = service.CreateCreateFileStoreRequest(fs, blockCount);
+            {
+                auto performanceProfile =
+                    request->Record.MutablePerformanceProfile();
+                performanceProfile->SetThrottlingEnabled(true);
+                performanceProfile->SetMaxWriteBandwidth(maxBandwidth);
+                performanceProfile->SetMaxReadBandwidth(maxBandwidth);
+                performanceProfile->SetMaxPostponedWeight(1);
+                performanceProfile->SetMaxPostponedTime(1);
+                performanceProfile->SetMaxPostponedCount(1);
+                performanceProfile->SetDefaultPostponedRequestWeight(1);
+            }
+
+            service.SendAndRecvCreateFileStore(std::move(request));
+        }
+        auto headers = service.InitSession(fs, "client");
+        ui64 nodeId =
+            service
+                .CreateNode(headers, TCreateNodeArgs::File(RootNodeId, "file"))
+                ->Record.GetNode()
+                .GetId();
+
+        ui64 handle =
+            service
+                .CreateHandle(headers, fs, nodeId, "", TCreateHandleArgs::RDWR)
+                ->Record.GetHandle();
+
+        auto& runtime = env.GetRuntime();
+
+        size_t throttled = 0;
+        auto writeReadData = [&](ui64 offset, ui64 size)
+        {
+            auto data = GenerateValidateData(size);
+            {
+                auto response = service.SendAndRecvWriteData(
+                    headers,
+                    fs,
+                    nodeId,
+                    handle,
+                    offset,
+                    data);
+                if (response->GetError().GetCode() == E_FS_THROTTLED) {
+                    ++throttled;
+                }
+            }
+            {
+                auto response = service.SendAndRecvReadData(
+                    headers,
+                    fs,
+                    nodeId,
+                    handle,
+                    offset,
+                    data.size());
+                if (response->GetError().GetCode() == E_FS_THROTTLED) {
+                    ++throttled;
+                }
+            }
+        };
+        constexpr auto size =
+            128_MB + 1;   // Config.DefaultThresholds.MaxPostponedWeight
+        for (auto i = 0; i < 5; ++i) {
+            writeReadData(size * i, size);
+        }
+
+        UNIT_ASSERT_VALUES_EQUAL(10, throttled);
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            5,
+            runtime.GetCounter(TEvService::EvWriteDataRequest));
+        UNIT_ASSERT_VALUES_EQUAL(
+            10,
+            runtime.GetCounter(TEvIndexTablet::EvGenerateBlobIdsRequest));
+        UNIT_ASSERT_VALUES_EQUAL(
+            5,
+            runtime.GetCounter(TEvService::EvReadDataRequest));
+        UNIT_ASSERT_VALUES_EQUAL(
+            10,
+            runtime.GetCounter(TEvIndexTablet::EvDescribeDataRequest));
     }
 
     Y_UNIT_TEST(ShouldSendBSGroupFlagsToTabletViaAddDataRequests)

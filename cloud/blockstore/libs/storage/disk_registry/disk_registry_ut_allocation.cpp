@@ -26,6 +26,41 @@ using namespace NKikimr;
 using namespace NDiskRegistryTest;
 using namespace std::chrono_literals;
 
+namespace {
+
+////////////////////////////////////////////////////////////////////////////////
+
+constexpr ui64 LocalDeviceSize = 99999997952;   // ~ 93.13 GiB
+
+////////////////////////////////////////////////////////////////////////////////
+
+auto GetBackup(TDiskRegistryClient& dr) -> NProto::TDiskRegistryStateBackup
+{
+    auto response = dr.BackupDiskRegistryState(false   // localDB
+    );
+
+    return response->Record.GetBackup();
+}
+
+auto GetDirtyDeviceCount(TDiskRegistryClient& dr)
+{
+    return GetBackup(dr).DirtyDevicesSize();
+}
+
+auto GetSuspendedDeviceCount(TDiskRegistryClient& dr)
+{
+    return GetBackup(dr).SuspendedDevicesSize();
+}
+
+auto MakeLocalDevice(const auto* name, const auto* uuid)
+{
+    return Device(name, uuid) |
+           WithPool("local-ssd", NProto::DEVICE_POOL_KIND_LOCAL) |
+           WithTotalSize(LocalDeviceSize);
+}
+
+}   // namespace
+
 ////////////////////////////////////////////////////////////////////////////////
 
 Y_UNIT_TEST_SUITE(TDiskRegistryTest)
@@ -1891,6 +1926,196 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
             auto response = diskRegistry.ListBrokenDisks();
             UNIT_ASSERT_VALUES_EQUAL(0, response->DiskIds.size());
         }
+    }
+
+    Y_UNIT_TEST(ShouldRespondWithTryAgainWhenCanAllocateAfterSecureErase)
+    {
+        const TVector agents{
+            CreateAgentConfig(
+                "agent-1",
+                {
+                    MakeLocalDevice("NVMELOCAL01", "uuid-1"),
+                    MakeLocalDevice("NVMELOCAL02", "uuid-2"),
+                    MakeLocalDevice("NVMELOCAL03", "uuid-3"),
+                }),
+        };
+
+        auto runtime =
+            TTestRuntimeBuilder()
+                .With(
+                    []
+                    {
+                        auto config = CreateDefaultStorageConfig();
+                        // disable secure erase timeout
+                        config.SetNonReplicatedSecureEraseTimeout(Max<ui32>());
+                        config.SetNonReplicatedDontSuspendDevices(true);
+                        config.SetLocalDiskAsyncDeallocationEnabled(true);
+
+                        return config;
+                    }())
+                .WithAgents(agents)
+                .Build();
+
+        TDiskRegistryClient diskRegistry(*runtime);
+        diskRegistry.WaitReady();
+        diskRegistry.SetWritableState(true);
+
+        diskRegistry.UpdateConfig(
+            [&]
+            {
+                auto config = CreateRegistryConfig(0, agents);
+
+                auto* ssd = config.AddDevicePoolConfigs();
+                ssd->SetName("local-ssd");
+                ssd->SetKind(NProto::DEVICE_POOL_KIND_LOCAL);
+                ssd->SetAllocationUnit(LocalDeviceSize);
+
+                return config;
+            }());
+
+        RegisterAgents(*runtime, agents.size());
+        WaitForAgents(*runtime, agents.size());
+
+        UNIT_ASSERT_VALUES_EQUAL(0, GetSuspendedDeviceCount(diskRegistry));
+        UNIT_ASSERT_VALUES_EQUAL(3, GetDirtyDeviceCount(diskRegistry));
+        WaitForSecureErase(*runtime, GetDirtyDeviceCount(diskRegistry));
+
+        // Disk allocation to mark all devices as dirty
+        const TString makeDirty = "make_dirty";
+        const ui64 diskSize = LocalDeviceSize * 3;
+        {
+            auto request =
+                diskRegistry.CreateAllocateDiskRequest(makeDirty, diskSize);
+
+            request->Record.SetStorageMediaKind(
+                NProto::STORAGE_MEDIA_SSD_LOCAL);
+
+            diskRegistry.SendRequest(std::move(request));
+
+            auto response = diskRegistry.RecvAllocateDiskResponse();
+            UNIT_ASSERT(!HasError(response->GetError()));
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
+
+            auto& msg = response->Record;
+            SortBy(*msg.MutableDevices(), TByUUID());
+
+            UNIT_ASSERT_VALUES_EQUAL(3, msg.DevicesSize());
+
+            UNIT_ASSERT_VALUES_EQUAL(
+                "NVMELOCAL01",
+                msg.GetDevices(0).GetDeviceName());
+            UNIT_ASSERT_VALUES_EQUAL(
+                "NVMELOCAL02",
+                msg.GetDevices(1).GetDeviceName());
+            UNIT_ASSERT_VALUES_EQUAL(
+                "NVMELOCAL03",
+                msg.GetDevices(2).GetDeviceName());
+        }
+
+        // Intercept all secure erase requests to keep devices dirty
+        TVector<std::unique_ptr<IEventHandle>> secureEraseDeviceRequests;
+        runtime->SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
+                if (event->GetTypeRewrite() ==
+                    TEvDiskAgent::EvSecureEraseDeviceRequest)
+                {
+                    event->DropRewrite();
+                    secureEraseDeviceRequests.push_back(
+                        std::unique_ptr<IEventHandle>{event.Release()});
+
+                    return TTestActorRuntime::EEventAction::DROP;
+                }
+
+                return TTestActorRuntime::DefaultObserverFunc(event);
+            });
+
+        // Disk deallocation to mark all devices as dirty
+        {
+            diskRegistry.MarkDiskForCleanup(makeDirty);
+
+            auto response = diskRegistry.DeallocateDisk(
+                makeDirty,
+                false   // sync
+            );
+
+            UNIT_ASSERT(!HasError(response->GetError()));
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
+        }
+
+        // Try to allocate disk with dirty devices. We'll get a E_TRY_AGAIN
+        const TString diskId = "local0";
+        auto tryAllocateDisk = [&](bool shouldFail)
+        {
+            auto request =
+                diskRegistry.CreateAllocateDiskRequest(diskId, diskSize);
+            request->Record.SetStorageMediaKind(
+                NProto::STORAGE_MEDIA_SSD_LOCAL);
+            *request->Record.AddAgentIds() = agents[0].GetAgentId();
+
+            diskRegistry.SendRequest(std::move(request));
+
+            auto response = diskRegistry.RecvAllocateDiskResponse();
+            if (shouldFail) {
+                UNIT_ASSERT(HasError(response->GetError()));
+                UNIT_ASSERT_EQUAL(E_TRY_AGAIN, response->GetStatus());
+                return;
+            }
+            UNIT_ASSERT(!HasError(response->GetError()));
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
+        };
+        {
+            auto request =
+                diskRegistry.CreateAllocateDiskRequest(diskId, diskSize);
+            request->Record.SetStorageMediaKind(
+                NProto::STORAGE_MEDIA_SSD_LOCAL);
+            *request->Record.AddAgentIds() = agents[0].GetAgentId();
+
+            diskRegistry.SendRequest(std::move(request));
+
+            auto response = diskRegistry.RecvAllocateDiskResponse();
+            UNIT_ASSERT(HasError(response->GetError()));
+            UNIT_ASSERT_EQUAL(E_TRY_AGAIN, response->GetStatus());
+        }
+
+        // Secure erase all devices except one
+        runtime->DispatchEvents(
+            [&]
+            {
+                TDispatchOptions options;
+                options.CustomFinalCondition = [&]
+                {
+                    return secureEraseDeviceRequests.size() == 3;
+                };
+                return options;
+            }());
+
+        runtime->SetObserverFunc(TTestActorRuntime::DefaultObserverFunc);
+
+        UNIT_ASSERT_EQUAL(secureEraseDeviceRequests.size(), 3UL);
+        while (secureEraseDeviceRequests.size() != 1) {
+            runtime->AdvanceCurrentTime(5min);
+            runtime->Send(secureEraseDeviceRequests.back().release());
+
+            secureEraseDeviceRequests.pop_back();
+
+            runtime->AdvanceCurrentTime(5min);
+            runtime->DispatchEvents({}, 10ms);
+
+            tryAllocateDisk(true);
+        }
+
+        // Still no allocation
+        tryAllocateDisk(true);
+
+        // Secure erase last device
+        runtime->Send(secureEraseDeviceRequests.back().release());
+
+        // Adavance time a little
+        runtime->DispatchEvents({}, 10ms);
+
+        // When the last dirty device is clean, we can allocate disk
+        tryAllocateDisk(false);
     }
 }
 

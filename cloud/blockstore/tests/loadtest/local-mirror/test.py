@@ -150,7 +150,7 @@ def __process_config(config_path, devices_per_agent):
     return config_path
 
 
-def __run_test(test_case):
+def __run_test(test_case, use_rdma):
     kikimr_binary_path = yatest_common.binary_path("contrib/ydb/apps/ydbd/ydbd")
 
     configurator = KikimrConfigGenerator(
@@ -205,6 +205,8 @@ def __run_test(test_case):
         server_app_config.ServerConfig.StrictContractValidation = False
         server_app_config.ServerConfig.NbdEnabled = True
         server_app_config.ServerConfig.NbdSocketSuffix = nbd_socket_suffix
+        server_app_config.ServerConfig.UseFakeRdmaClient = use_rdma
+        server_app_config.ServerConfig.RdmaClientEnabled = use_rdma
         server_app_config.KikimrServiceConfig.CopyFrom(TKikimrServiceConfig())
 
         storage = TStorageServiceConfig()
@@ -221,6 +223,8 @@ def __run_test(test_case):
         storage.UseMirrorResync = True
         storage.MirroredMigrationStartAllowed = True
         storage.NodeType = 'main'
+        storage.UseNonreplicatedRdmaActor = use_rdma
+        storage.UseRdma = use_rdma
 
         if test_case.dump_block_digests:
             storage.BlockDigestsEnabled = True
@@ -301,6 +305,7 @@ def __run_test(test_case):
 
 
 @pytest.mark.parametrize("test_case", TESTS, ids=[x.name for x in TESTS])
-def test_load(test_case):
+@pytest.mark.parametrize("use_rdma", [True, False], ids=['rdma', 'no-rdma'])
+def test_load(test_case, use_rdma):
     test_case.config_path = yatest_common.source_path(test_case.config_path)
-    return __run_test(test_case)
+    return __run_test(test_case, use_rdma)

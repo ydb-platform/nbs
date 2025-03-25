@@ -20,6 +20,7 @@ RECURSE(
     loadtest
     loadtest/remote
     local_ssd
+    mirror_disks
     monitoring
     mount
     notify

@@ -429,6 +429,7 @@ private:
     void RenderStatus(IOutputStream& out) const;
     void RenderMigrationStatus(IOutputStream& out) const;
     void RenderResyncStatus(IOutputStream& out) const;
+    void RenderLaggingStatus(IOutputStream& out) const;
     void RenderMountSeqNumber(IOutputStream& out) const;
     void RenderHistory(
         const TVolumeMountHistorySlice& history,
@@ -793,6 +794,10 @@ private:
         const TEvDiskRegistry::TEvAllocateDiskResponse::TPtr& ev,
         const NActors::TActorContext& ctx);
 
+    void HandleAllocateDiskError(
+        const NActors::TActorContext& ctx,
+        NProto::TError error);
+
     void HandleAddLaggingDevicesResponse(
         const TEvDiskRegistry::TEvAddLaggingDevicesResponse::TPtr& ev,
         const NActors::TActorContext& ctx);
@@ -1026,7 +1031,7 @@ private:
         const NActors::TActorContext& ctx);
 
     void HandleCheckRangeResponse(
-        const TEvService::TEvCheckRangeResponse::TPtr& ev,
+        const TEvVolume::TEvCheckRangeResponse::TPtr& ev,
         const NActors::TActorContext& ctx);
 
     void CreateCheckpointLightRequest(
