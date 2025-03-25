@@ -114,8 +114,8 @@ func testDiskServiceCreateDiskFromImageWithForceNotLayeredWithZoneID(
 
 	diskMeta, err := testcommon.GetDiskMeta(ctx, diskID)
 	require.NoError(t, err)
-	// We should provide correct zone for NBS client because
-	// only unsharded zones are configured in the NBS client config.
+	// We should provide correct zone for NBS client because only unsharded
+	// zones and shards are configured in the NBS client config.
 	nbsClient := testcommon.NewNbsTestingClient(t, ctx, diskMeta.ZoneID)
 	err = nbsClient.ValidateCrc32(
 		ctx,
@@ -275,8 +275,8 @@ func testCreateDiskFromIncrementalSnapshot(
 
 	diskMeta, err := testcommon.GetDiskMeta(ctx, diskID2)
 	require.NoError(t, err)
-	// We should provide correct zone for NBS client because
-	// only unsharded zones are configured in the NBS client config.
+	// We should provide correct zone for NBS client because only unsharded
+	// zones and shards are configured in the NBS client config.
 	nbsClient2 := testcommon.NewNbsTestingClient(t, ctx, diskMeta.ZoneID)
 	err = nbsClient2.ValidateCrc32(ctx, diskID2, diskContentInfo)
 	require.NoError(t, err)
@@ -320,8 +320,8 @@ func testDiskServiceCreateDiskFromSnapshotWithZoneID(
 
 	diskMeta, err := testcommon.GetDiskMeta(ctx, diskID1)
 	require.NoError(t, err)
-	// We should provide correct zone for NBS client because
-	// only unsharded zones are configured in the NBS client config.
+	// We should provide correct zone for NBS client because only unsharded
+	// zones and shards are configured in the NBS client config.
 	nbsClient := testcommon.NewNbsTestingClient(t, ctx, diskMeta.ZoneID)
 	diskContentInfo, err := nbsClient.FillDisk(ctx, diskID1, diskSize)
 	require.NoError(t, err)
@@ -438,8 +438,8 @@ func testCreateDiskFromImage(
 
 	diskMeta, err := testcommon.GetDiskMeta(ctx, diskID)
 	require.NoError(t, err)
-	// We should provide correct zone for NBS client because
-	// only unsharded zones are configured in the NBS client config.
+	// We should provide correct zone for NBS client because only unsharded
+	// zones and shards are configured in the NBS client config.
 	nbsClient := testcommon.NewNbsTestingClient(t, ctx, diskMeta.ZoneID)
 
 	if encryptionDesc != nil {
@@ -622,8 +622,8 @@ func testDiskServiceCreateDiskFromSnapshotOfOverlayDiskInZone(
 
 	diskMeta, err := testcommon.GetDiskMeta(ctx, diskID3)
 	require.NoError(t, err)
-	// We should provide correct zone for NBS client because
-	// only unsharded zones are configured in the NBS client config.
+	// We should provide correct zone for NBS client because only unsharded
+	// zones and shards are configured in the NBS client config.
 	otherNbsClient := testcommon.NewNbsTestingClient(t, ctx, diskMeta.ZoneID)
 	err = otherNbsClient.ValidateCrc32(ctx, diskID3, diskContentInfo)
 	require.NoError(t, err)
