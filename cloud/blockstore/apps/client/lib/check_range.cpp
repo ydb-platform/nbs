@@ -217,7 +217,7 @@ protected:
 
         output << "Total requests sended: " << requestCount << Endl;
         if (IsMirror && mirrorErrorsCount) {
-            output << "Errors while reading all replicas caught: "
+            output << "Errors while reading all mirror disk replicas caught: "
                    << mirrorErrorsCount << Endl;
         }
         output << "Total errors caught: " << errorCount << Endl;
