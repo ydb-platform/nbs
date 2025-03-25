@@ -52,7 +52,7 @@ public:
         , RequestId(requestId)
     {}
 
-    void HandleResult(
+    void ProcessResponseProto(
         const TDeviceRequestContext& dCtx,
         TStringBuf buffer) override
     {
@@ -201,7 +201,6 @@ void TNonreplicatedPartitionRdmaActor::HandleZeroBlocks(
         }
 
         auto context = std::make_unique<TDeviceRequestContext>();
-        context->DeviceUUID = r.Device.GetDeviceUUID();
         context->DeviceIdx = r.DeviceIdx;
 
         auto [req, err] = ep->AllocateRequest(

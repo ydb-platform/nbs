@@ -45,7 +45,7 @@ struct TPartialChecksum
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TRdmaRequestContext: public IRdmaDeviceRequestHandler
+class TDeviceChecksumRequestHandler: public IRdmaDeviceRequestHandler
 {
 private:
     TNonreplicatedPartitionConfigPtr PartConfig;
@@ -55,7 +55,7 @@ private:
     ui64 RequestId;
 
 public:
-    TRdmaRequestContext(
+    TDeviceChecksumRequestHandler(
             TActorSystem* actorSystem,
             TNonreplicatedPartitionConfigPtr partConfig,
             TRequestInfoPtr requestInfo,
@@ -73,7 +73,9 @@ public:
         , RequestId(requestId)
     {}
 
-    void HandleResult(const TDeviceRequestContext& dCtx, TStringBuf buffer) override
+    void ProcessResponseProto(
+        const TDeviceRequestContext& dCtx,
+        TStringBuf buffer) override
     {
         const auto& dc =
             static_cast<const TDeviceChecksumRequestContext&>(dCtx);
@@ -197,7 +199,7 @@ void TNonreplicatedPartitionRdmaActor::HandleChecksumBlocks(
 
     const auto requestId = RequestsInProgress.GenerateRequestId();
 
-    auto requestContext = std::make_shared<TRdmaRequestContext>(
+    auto requestContext = std::make_shared<TDeviceChecksumRequestHandler>(
         ctx.ActorSystem(),
         PartConfig,
         requestInfo,
@@ -220,7 +222,6 @@ void TNonreplicatedPartitionRdmaActor::HandleChecksumBlocks(
         auto dc = std::make_unique<TDeviceChecksumRequestContext>();
         dc->RangeStartIndex = r.BlockRange.Start;
         dc->RangeSize = r.DeviceBlockRange.Size() * PartConfig->GetBlockSize();
-        dc->DeviceUUID = r.Device.GetDeviceUUID();
         dc->DeviceIdx = r.DeviceIdx;
 
         NProto::TChecksumDeviceBlocksRequest deviceRequest;

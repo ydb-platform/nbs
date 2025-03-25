@@ -33,19 +33,6 @@ bool NeedToNotifyAboutDeviceRequestError(const NProto::TError& err)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void IRdmaDeviceRequestHandler::SendDeviceTimedOut(TString deviceUUID)
-{
-    auto req = std::make_unique<TEvVolumePrivate::TEvDeviceTimeoutedRequest>(
-        std::move(deviceUUID));
-    auto event = std::make_unique<IEventHandle>(
-        ParentActorId,
-        TActorId(),
-        req.release(),
-        0,
-        0);
-    ActorSystem->Send(event.release());
-}
-
 bool IRdmaDeviceRequestHandler::ProcessResponse(
     TDeviceRequestContext& dCtx,
     ui32 status,
@@ -54,12 +41,11 @@ bool IRdmaDeviceRequestHandler::ProcessResponse(
     AllDevices.emplace_back(dCtx.DeviceIdx);
 
     if (status == NRdma::RDMA_PROTO_OK) {
-        HandleResult(dCtx, buffer);
+        ProcessResponseProto(dCtx, buffer);
     } else {
         auto err = NRdma::ParseError(buffer);
         if (NeedToNotifyAboutDeviceRequestError(err)) {
             ErrDevices.emplace_back(dCtx.DeviceIdx);
-            SendDeviceTimedOut(std::move(dCtx.DeviceUUID));
         }
         Error = std::move(err);
     }
@@ -291,7 +277,6 @@ NProto::TError TNonreplicatedPartitionRdmaActor::SendReadRequests(
         ui64 sz = r.DeviceBlockRange.Size() * PartConfig->GetBlockSize();
         dr->StartIndexOffset = startBlockIndexOffset;
         dr->BlockCount = r.DeviceBlockRange.Size();
-        dr->DeviceUUID = r.Device.GetDeviceUUID();
         dr->DeviceIdx = r.DeviceIdx;
         startBlockIndexOffset += r.DeviceBlockRange.Size();
 
@@ -354,42 +339,42 @@ void TNonreplicatedPartitionRdmaActor::NotifyDeviceTimedOutIfNeeded(
         TTimedOutDeviceCtx{});
     auto& timedOutDeviceCtx = it->second;
 
-    if (!inserted) {
-        if (timedOutDeviceCtx.VolumeWasNotified) {
-            return;
-        }
-
-        auto timePassedSinceFirstError =
-            ctx.Now() - timedOutDeviceCtx.FirstErrorTs;
-        if (timePassedSinceFirstError >=
-            Config->GetLaggingDeviceTimeoutThreshold())
-        {
-            NCloud::Send(
-                ctx,
-                PartConfig->GetParentActorId(),
-                std::make_unique<TEvVolumePrivate::TEvDeviceTimeoutedRequest>(
-                    deviceUUID));
-            timedOutDeviceCtx.VolumeWasNotified = true;
-        }
+    if (inserted) {
+        timedOutDeviceCtx.FirstErrorTs = ctx.Now();
+        timedOutDeviceCtx.VolumeWasNotified = false;
         return;
     }
 
-    timedOutDeviceCtx.FirstErrorTs = ctx.Now();
-    timedOutDeviceCtx.VolumeWasNotified = false;
+    if (timedOutDeviceCtx.VolumeWasNotified) {
+        return;
+    }
+
+    auto timePassedSinceFirstError = ctx.Now() - timedOutDeviceCtx.FirstErrorTs;
+    if (timePassedSinceFirstError >= Config->GetLaggingDeviceTimeoutThreshold())
+    {
+        NCloud::Send(
+            ctx,
+            PartConfig->GetParentActorId(),
+            std::make_unique<TEvVolumePrivate::TEvDeviceTimeoutedRequest>(
+                deviceUUID));
+        timedOutDeviceCtx.VolumeWasNotified = true;
+    }
 }
 
 void TNonreplicatedPartitionRdmaActor::ProcessOperationCompleted(
+    const NActors::TActorContext& ctx,
     const TEvNonreplPartitionPrivate::TOperationCompleted& opCompleted)
 {
+    const auto& devices = PartConfig->GetDevices();
     for (auto idx: opCompleted.DeviceIndices) {
-        Y_ABORT_UNLESS(
-            static_cast<unsigned int>(PartConfig->GetDevices().size()) > idx);
+        Y_ABORT_UNLESS(idx < static_cast<unsigned int>(devices.size()));
         const auto* errDevice = FindPtr(opCompleted.ErrorDeviceIndices, idx);
+        const auto& deviceUUID = devices[idx].GetDeviceUUID();
         if (errDevice) {
+            NotifyDeviceTimedOutIfNeeded(ctx, deviceUUID);
             continue;
         }
 
-        const auto& deviceUUID = PartConfig->GetDevices()[idx].GetDeviceUUID();
         TimedOutDeviceCtxByDeviceUUID.erase(deviceUUID);
     }
 }
@@ -608,18 +593,6 @@ void TNonreplicatedPartitionRdmaActor::HandlePoisonPill(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void TNonreplicatedPartitionRdmaActor::HandleDeviceTimeoutedRequest(
-    const TEvVolumePrivate::TEvDeviceTimeoutedRequest::TPtr& ev,
-    const NActors::TActorContext& ctx)
-{
-    if (!PartConfig->GetLaggingDevicesAllowed()) {
-        return;
-    }
-    auto* msg = ev->Get();
-
-    NotifyDeviceTimedOutIfNeeded(ctx, msg->DeviceUUID);
-}
-
 void TNonreplicatedPartitionRdmaActor::HandleAgentIsUnavailable(
     const TEvNonreplPartitionPrivate::TEvAgentIsUnavailable::TPtr& ev,
     const NActors::TActorContext& ctx)
@@ -737,9 +710,6 @@ STFUNC(TNonreplicatedPartitionRdmaActor::StateWork)
         HFunc(
             TEvNonreplPartitionPrivate::TEvAgentIsUnavailable,
             HandleAgentIsUnavailable);
-        HFunc(
-            TEvVolumePrivate::TEvDeviceTimeoutedRequest,
-            HandleDeviceTimeoutedRequest);
         IgnoreFunc(TEvVolumePrivate::TEvDeviceTimeoutedResponse);
 
         default:
