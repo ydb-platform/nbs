@@ -1665,7 +1665,74 @@ void TVolumeActor::RenderLaggingStatus(IOutputStream& out) const
                 out << statusText;
             }
         }
+
+        if (!State->HasLaggingAgents() ||
+            !State->GetLaggingAgentMigrationInfo())
+        {
+            return;
+        }
+
+        const auto& [agentId, cleanBlocks, dirtyBlocks] =
+            *State->GetLaggingAgentMigrationInfo();
+        const auto blockSize = State->GetBlockSize();
+
+        TABLE_SORTABLE_CLASS("table table-condensed")
+        {
+            TABLEHEAD()
+            {
+                TABLER()
+                {
+                    TABLED()
+                    {
+                        out << "Lagging agent " << agentId.Quote()
+                            << " migration progress: ";
+                    }
+                    TABLED()
+                    {
+                        OutputProgress(
+                            cleanBlocks,
+                            cleanBlocks + dirtyBlocks,
+                            blockSize,
+                            dirtyBlocks,
+                            out);
+                    }
+                }
+            }
+        }
     }
+}
+
+void TVolumeActor::RenderLaggingStateForDevice(
+    IOutputStream& out,
+    const NProto::TDeviceConfig& d)
+{
+    const auto* stateMsg = "ok";
+    const auto* color = "green";
+    auto laggingDevices = State->GetLaggingDevices();
+
+    if (laggingDevices.contains(d.GetDeviceUUID())) {
+        stateMsg = "lagging";
+        color = "blue";
+    }
+
+    if (const auto* curMigration = State->GetLaggingAgentMigrationInfo()) {
+        if (curMigration->AgentId == d.GetAgentId()) {
+            stateMsg = "migrating";
+            color = "blue";
+        }
+    }
+
+    if (State->GetNonreplicatedPartitionConfig()
+            ->GetOutdatedDeviceIds()
+            .contains(d.GetDeviceUUID()))
+    {
+        stateMsg = "outdated";
+        color = "red";
+    }
+
+    out << "<font color=" << color << ">";
+    out << stateMsg;
+    out << "</font>";
 }
 
 void TVolumeActor::RenderCommonButtons(IOutputStream& out) const
@@ -1938,28 +2005,7 @@ void TVolumeActor::HandleHttpInfo_RenderNonreplPartitionInfo(
                                 if (renderLaggingState) {
                                     TABLED()
                                     {
-                                        const auto* stateMsg = "ok";
-                                        const auto* color = "green";
-
-                                        if (laggingDevices.contains(
-                                                d.GetDeviceUUID()))
-                                        {
-                                            stateMsg = "lagging";
-                                            color = "blue";
-                                        }
-
-                                        if (State
-                                                ->GetNonreplicatedPartitionConfig()
-                                                ->GetOutdatedDeviceIds()
-                                                .contains(d.GetDeviceUUID()))
-                                        {
-                                            stateMsg = "outdated";
-                                            color = "red";
-                                        }
-
-                                        out << "<font color=" << color << ">";
-                                        out << stateMsg;
-                                        out << "</font>";
+                                        RenderLaggingStateForDevice(out, d);
                                     }
                                 }
                             };
