@@ -37,7 +37,6 @@ public:
     void AddPossibleUUIDSForDevice(
         const NProto::TStorageDiscoveryConfig::TPoolConfig& poolConfig,
         ui32 deviceNumber,
-        ui32 maxDeviceCount,
         THashSet<TString>& setToAddUUIDs);
 
 private:

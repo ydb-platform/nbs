@@ -83,18 +83,11 @@ TVector<NProto::TFileDeviceArgs> TDeviceGenerator::ExtractResult()
 
 void TDeviceGenerator::AddPossibleUUIDSForDevice(
     const NProto::TStorageDiscoveryConfig::TPoolConfig& poolConfig,
-    ui32 deviceNumber,
-    ui32 maxDeviceCount,
+    ui32 maxDeviceNumber,
     THashSet<TString>& setToAddUUIDs)
 {
-    if (!maxDeviceCount) {
-        maxDeviceCount = 64;
-    }
-    setToAddUUIDs.emplace(
-        CreateDeviceId(deviceNumber, poolConfig.GetHashSuffix()));
-    for (ui32 i = 0; i < maxDeviceCount; ++i) {
-        setToAddUUIDs.emplace(
-            CreateDeviceId(deviceNumber, poolConfig.GetHashSuffix(), i));
+    for (ui32 i = 0; i < maxDeviceNumber; ++i) {
+        setToAddUUIDs.emplace(CreateDeviceId(i, poolConfig.GetHashSuffix()));
     }
 }
 

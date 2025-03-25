@@ -273,13 +273,10 @@ TDiskAgentState::TDiskAgentState(
          AgentConfig->GetStorageDiscoveryConfig().GetPathConfigs())
     {
         for (const auto& poolConf: pathConf.GetPoolConfigs()) {
-            for (size_t i = 0; i < MaxDeviceNumberToIgnoreNotfoundError; ++i) {
-                gen.AddPossibleUUIDSForDevice(
-                    poolConf,
-                    i,
-                    poolConf.GetMaxDeviceCount(),
-                    DeviceUUIDsToIgnoreNotFoundError);
-            }
+            gen.AddPossibleUUIDSForDevice(
+                poolConf,
+                MaxDeviceNumberToIgnoreNotfoundError,
+                DeviceUUIDsToIgnoreNotFoundError);
         }
     }
 }
