@@ -598,13 +598,13 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionRdmaTest)
             [&](TAutoPtr<IEventHandle>& event)
             {
                 switch (event->GetTypeRewrite()) {
-                    case TEvVolumePrivate::EvDeviceTimeoutedRequest: {
+                    case TEvVolumePrivate::EvDeviceTimedOutRequest: {
                         if (event->Recipient != env.VolumeActorId) {
                             break;
                         }
                         notifiedActor = event->Recipient;
                         auto* ev = static_cast<
-                            TEvVolumePrivate::TEvDeviceTimeoutedRequest*>(
+                            TEvVolumePrivate::TEvDeviceTimedOutRequest*>(
                             event->GetBase());
                         devices.emplace(ev->DeviceUUID);
                         ++deviceTimedOut;
@@ -661,13 +661,13 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionRdmaTest)
             [&](TAutoPtr<IEventHandle>& event)
             {
                 switch (event->GetTypeRewrite()) {
-                    case TEvVolumePrivate::EvDeviceTimeoutedRequest: {
+                    case TEvVolumePrivate::EvDeviceTimedOutRequest: {
                         if (event->Recipient != env.VolumeActorId) {
                             break;
                         }
                         notifiedActor = event->Recipient;
                         auto* ev = static_cast<
-                            TEvVolumePrivate::TEvDeviceTimeoutedRequest*>(
+                            TEvVolumePrivate::TEvDeviceTimedOutRequest*>(
                             event->GetBase());
                         devices.emplace(ev->DeviceUUID);
                         ++deviceTimedOut;

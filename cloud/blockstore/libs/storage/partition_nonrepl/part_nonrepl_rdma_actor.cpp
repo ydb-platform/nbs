@@ -361,7 +361,7 @@ void TNonreplicatedPartitionRdmaActor::NotifyDeviceTimedOutIfNeeded(
         NCloud::Send(
             ctx,
             PartConfig->GetParentActorId(),
-            std::make_unique<TEvVolumePrivate::TEvDeviceTimeoutedRequest>(
+            std::make_unique<TEvVolumePrivate::TEvDeviceTimedOutRequest>(
                 deviceUUID));
         timedOutDeviceCtx.VolumeWasNotified = true;
     }
@@ -716,7 +716,7 @@ STFUNC(TNonreplicatedPartitionRdmaActor::StateWork)
         HFunc(
             TEvNonreplPartitionPrivate::TEvAgentIsUnavailable,
             HandleAgentIsUnavailable);
-        IgnoreFunc(TEvVolumePrivate::TEvDeviceTimeoutedResponse);
+        IgnoreFunc(TEvVolumePrivate::TEvDeviceTimedOutResponse);
 
         default:
             if (!HandleRequests(ev)) {
