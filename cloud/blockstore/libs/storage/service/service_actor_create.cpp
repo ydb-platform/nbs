@@ -9,11 +9,12 @@
 #include <cloud/blockstore/libs/storage/core/public.h>
 #include <cloud/blockstore/libs/storage/core/volume_model.h>
 #include <cloud/blockstore/libs/storage/protos/part.pb.h>
-
 #include <cloud/storage/core/libs/common/helpers.h>
 #include <cloud/storage/core/libs/common/media.h>
 
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
+
+#include <library/cpp/string_utils/base64/base64.h>
 
 #include <util/generic/size_literals.h>
 #include <util/string/ascii.h>
@@ -348,7 +349,7 @@ void TCreateVolumeActor::HandleCreateEncryptionKeyResponse(
 
     auto& dek = *encryptionDesc.MutableEncryptedDataKey();
     dek.SetKekId(msg.KmsKey.GetKekId());
-    dek.SetCiphertext(msg.KmsKey.GetEncryptedDEK());
+    dek.SetCiphertext(Base64Encode(msg.KmsKey.GetEncryptedDEK()));
 
     CreateVolumeImpl(ctx, std::move(encryptionDesc));
 }
