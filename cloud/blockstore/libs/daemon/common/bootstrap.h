@@ -78,6 +78,8 @@ protected:
     ITaskQueuePtr RdmaThreadPool;
     NNvme::INvmeManagerPtr NvmeManager;
     IVolumeBalancerSwitchPtr VolumeBalancerSwitch;
+    NRdma::IServerPtr RdmaRequestServer;
+    IStartablePtr RdmaTarget;
 
     TProgramShouldContinue ShouldContinue;
     TVector<TString> PostponedCriticalEvents;
@@ -119,6 +121,7 @@ protected:
     virtual void InitRdmaServer() = 0;
     virtual void InitKikimrService() = 0;
     virtual void InitAuthService() = 0;
+    virtual void InitRdmaRequestServer() = 0;
 
     virtual void WarmupBSGroupConnections() = 0;
 
