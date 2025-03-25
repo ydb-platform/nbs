@@ -180,12 +180,7 @@ void TUnmountRequestActor::HandleVolumeRemoveClientResponse(
             DiskId.Quote().data(),
             Error.GetCode());
 
-        if (GetErrorKind(Error) == EErrorKind::ErrorRetriable) {
-            ReplyAndDie(ctx);
-        } else {
-            ReplyAndDie(ctx);
-        }
-        return;
+        ReplyAndDie(ctx);
     }
 
     if (MountMode == NProto::VOLUME_MOUNT_LOCAL) {
@@ -201,9 +196,6 @@ void TUnmountRequestActor::HandleDescribeVolumeResponse(
     const TActorContext& ctx)
 {
     const auto* msg = ev->Get();
-
-    LOG_WARN(ctx, TBlockStoreComponents::SERVICE,
-        "HandleDescribeVolumeResponse $#");
 
     if (msg->GetStatus() ==
         MAKE_SCHEMESHARD_ERROR(NKikimrScheme::StatusPathDoesNotExist))

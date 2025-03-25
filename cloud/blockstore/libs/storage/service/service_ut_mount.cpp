@@ -2925,7 +2925,7 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
         UNIT_ASSERT_VALUES_EQUAL(0, startVolumeSeen);
     }
 
-    Y_UNIT_TEST(ShouldMount2)
+    Y_UNIT_TEST(ShouldNotLockVolumeOnRemount)
     {
         TTestEnv env;
         ui32 nodeIdx = SetupTestEnv(env);
@@ -2955,7 +2955,7 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
         UNIT_ASSERT_VALUES_EQUAL(1, lockTabletRequestCount);
     }
 
-    Y_UNIT_TEST(ShouldMount2LockLost)
+    Y_UNIT_TEST(ShouldLockVolumeOnRemountAfterLockLost)
     {
         TTestEnv env;
         ui32 nodeIdx = SetupTestEnv(env);
@@ -2995,7 +2995,14 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
             startVolumeActorId,
             std::make_unique<TEvHiveProxy::TEvTabletLockLost>(volumeTabletId));
 
-        service.MountVolume();
+        // Mount volume fails with error because Hive does not lost locks in
+        // reality.
+        service.SendMountVolumeRequest();
+        auto response = service.RecvMountVolumeResponse();
+        UNIT_ASSERT(FAILED(response->GetStatus()));
+        UNIT_ASSERT(response->GetErrorReason().Contains(
+            "Concurrent lock requests detected"));
+
         UNIT_ASSERT_VALUES_EQUAL(2, lockTabletRequestCount);
     }
 

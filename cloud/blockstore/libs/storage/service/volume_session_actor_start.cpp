@@ -56,6 +56,7 @@ private:
     const TString DiskId;
     const ui64 VolumeTabletId;
 
+    bool Started = false;
     NProto::TVolume Volume;
 
     EPendingRequest PendingRequest = EPendingRequest::NONE;
@@ -112,10 +113,16 @@ private:
 
     void ContinueShutdown(const TActorContext& ctx);
 
+    void SendVolumeTabletStatus(const TActorContext& ctx);
+
     TString FormatPendingRequest() const;
 
 private:
     STFUNC(StateWork);
+
+    void HandleStartVolumeRequest(
+        const TEvServicePrivate::TEvStartVolumeRequest::TPtr& ev,
+        const TActorContext& ctx);
 
     void HandlePoisonPill(
         const TEvents::TEvPoisonPill::TPtr& ev,
@@ -151,10 +158,6 @@ private:
 
     void HandleWaitReadyResponse(
         const TEvVolume::TEvWaitReadyResponse::TPtr& ev,
-        const TActorContext& ctx);
-
-    void HandleStartVolumeRequest(
-        const TEvServicePrivate::TEvStartVolumeRequest::TPtr& ev,
         const TActorContext& ctx);
 };
 
@@ -251,14 +254,9 @@ void TStartVolumeActor::HandleLockTabletResponse(
         return;
     }
 
-    if (Volume.GetDiskId() != "") {
-        NCloud::Send<TEvServicePrivate::TEvVolumeTabletStatus>(
-            ctx,
-            SessionActorId,
-            0,  // cookie
-            VolumeTabletId,
-            Volume,
-            VolumeUserActor);
+    if (Started) {
+        SendVolumeTabletStatus(ctx);
+        return;
     }
 
     BootExternal(ctx);
@@ -283,6 +281,20 @@ void TStartVolumeActor::HandleTabletLockLost(
         "[%lu] Tablet lock has been lost with error: %s",
         VolumeTabletId,
         FormatError(msg->Error).data());
+}
+
+void TStartVolumeActor::HandleStartVolumeRequest(
+    const TEvServicePrivate::TEvStartVolumeRequest::TPtr& ev,
+    const TActorContext& ctx)
+{
+    Y_UNUSED(ev);
+
+    if (!VolumeTabletLocked) {
+        LockTablet(ctx);
+        return;
+    }
+
+    SendVolumeTabletStatus(ctx);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -500,10 +512,6 @@ void TStartVolumeActor::HandleTabletRestored(
         msg->TabletID,
         VolumeTabletId);
 
-    LOG_ERROR(ctx, TBlockStoreComponents::SERVICE,
-        "[%lu] WTF WHY I AM HERE?",
-        VolumeTabletId);
-
     if (ev->Sender != VolumeSysActor) {
         // This message is from an unexpected boot attempt
         // Ignore and kill the wrong system tablet
@@ -547,8 +555,6 @@ void TStartVolumeActor::HandleTabletDead(
     const TActorContext& ctx)
 {
     const auto* msg = ev->Get();
-    // StartShutdown(ctx);
-    // return;
 
     Y_ABORT_UNLESS(msg->TabletID == VolumeTabletId,
         "Tablet IDs mismatch: %lu != %lu",
@@ -580,6 +586,7 @@ void TStartVolumeActor::HandleTabletDead(
         PendingRequest = EPendingRequest::NONE;
     }
 
+    Started = false;
     VolumeSysActor = {};
     VolumeUserActor = {};
 
@@ -705,19 +712,11 @@ void TStartVolumeActor::HandleWaitReadyResponse(
 
     const auto& volume = msg->Record.GetVolume();
     Y_ABORT_UNLESS(volume.GetDiskId() == DiskId);
+
+    Started = true;
     Volume = volume;
 
-    LOG_WARN(ctx, TBlockStoreComponents::SERVICE,
-        "[%lu] SEND TEvVolumeTabletStatus from WAIT READY",
-        VolumeTabletId);
-
-    NCloud::Send<TEvServicePrivate::TEvVolumeTabletStatus>(
-        ctx,
-        SessionActorId,
-        0,  // cookie
-        VolumeTabletId,
-        Volume,
-        VolumeUserActor);
+    SendVolumeTabletStatus(ctx);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -765,6 +764,17 @@ void TStartVolumeActor::ContinueShutdown(const TActorContext& ctx)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+
+void TStartVolumeActor::SendVolumeTabletStatus(const TActorContext& ctx)
+{
+    NCloud::Send<TEvServicePrivate::TEvVolumeTabletStatus>(
+        ctx,
+        SessionActorId,
+        0,  // cookie
+        VolumeTabletId,
+        Volume,
+        VolumeUserActor);
+}
 
 TString TStartVolumeActor::FormatPendingRequest() const
 {
@@ -838,25 +848,6 @@ void TStartVolumeActor::HandleWakeup(
     LockTablet(ctx);
 }
 
-void TStartVolumeActor::HandleStartVolumeRequest(
-    const TEvServicePrivate::TEvStartVolumeRequest::TPtr& ev,
-    const TActorContext& ctx)
-{
-    Y_UNUSED(ev);
-
-    if (!VolumeTabletLocked) {
-        LockTablet(ctx);
-    }
-
-    NCloud::Send<TEvServicePrivate::TEvVolumeTabletStatus>(
-        ctx,
-        SessionActorId,
-        0,  // cookie
-        VolumeTabletId,
-        Volume,
-        VolumeUserActor);
-}
-
 ////////////////////////////////////////////////////////////////////////////////
 
 STFUNC(TStartVolumeActor::StateWork)
@@ -866,6 +857,10 @@ STFUNC(TStartVolumeActor::StateWork)
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
 
         IgnoreFunc(TEvLocal::TEvTabletMetrics);
+
+        HFunc(
+            TEvServicePrivate::TEvStartVolumeRequest,
+            HandleStartVolumeRequest);
 
         HFunc(TEvHiveProxy::TEvLockTabletResponse, HandleLockTabletResponse);
         HFunc(TEvHiveProxy::TEvBootExternalResponse, HandleBootExternalResponse);
@@ -877,10 +872,6 @@ STFUNC(TStartVolumeActor::StateWork)
         IgnoreFunc(TEvTablet::TEvReady);
 
         HFunc(TEvVolume::TEvWaitReadyResponse, HandleWaitReadyResponse);
-
-        HFunc(
-            TEvServicePrivate::TEvStartVolumeRequest,
-            HandleStartVolumeRequest);
 
         default:
             HandleUnexpectedEvent(ev, TBlockStoreComponents::SERVICE);
@@ -898,12 +889,8 @@ void TVolumeSessionActor::HandleStartVolumeRequest(
 {
     const auto& diskId = VolumeInfo->DiskId;
 
-    LOG_WARN(ctx, TBlockStoreComponents::SERVICE,
-        "Process volume request %s",
-        diskId.Quote().data());
-
     if (!StartVolumeActor) {
-        LOG_WARN(ctx, TBlockStoreComponents::SERVICE,
+        LOG_DEBUG(ctx, TBlockStoreComponents::SERVICE,
             "Starting volume %s locally",
             diskId.Quote().data());
 
@@ -934,12 +921,6 @@ void TVolumeSessionActor::HandleStartVolumeRequest(
     }
 
     if (VolumeInfo->State == TVolumeInfo::STARTED) {
-        // LOG_DEBUG(ctx, TBlockStoreComponents::SERVICE,
-        //     "Volume is already started");
-        // auto response = std::make_unique<TEvServicePrivate::TEvStartVolumeResponse>(
-        //     *VolumeInfo->VolumeInfo);
-        // NCloud::Reply(ctx, *ev, std::move(response));
-        // return;
         // If volume is already started then start volume actor should only
         // update hive lock.
         auto request = std::make_unique<TEvServicePrivate::TEvStartVolumeRequest>(
@@ -969,8 +950,8 @@ void TVolumeSessionActor::HandleVolumeTabletStatus(
         return;
     }
 
-    LOG_WARN(ctx, TBlockStoreComponents::SERVICE,
-        "[%lu] Volume %s started in volume session",
+    LOG_DEBUG(ctx, TBlockStoreComponents::SERVICE,
+        "[%lu] Volume %s started",
         msg->TabletId,
         diskId.Quote().data());
 
