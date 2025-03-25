@@ -252,7 +252,7 @@ private:
         TString fileName =
             Sprintf("result_%lu_%lu.json", range.Start, range.End);
 
-        return fileName;
+        return folderPath + "/" + fileName;
     }
 
     void SaveResultToFile(const TString& content, TBlockRange64 range) const
