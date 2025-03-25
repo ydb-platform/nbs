@@ -2152,7 +2152,7 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionTest)
         UNIT_ASSERT_LT(differentChecksums * 2, totalChecksums);
     }
 
-    Y_UNIT_TEST(ShouldHandleTimeoutedDevices)
+    Y_UNIT_TEST(ShouldHandleTimedOutDevices)
     {
         TTestBasicRuntime runtime;
         TTestEnv env(
@@ -2164,16 +2164,16 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionTest)
 
         env.KillDiskAgent();
 
-        std::optional<TString> timeoutedDevice;
+        std::optional<TString> timedOutDevice;
         runtime.SetEventFilter(
             [&](TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& event)
             {
                 switch (event->GetTypeRewrite()) {
-                    case TEvVolumePrivate::EvDeviceTimeoutedRequest: {
+                    case TEvVolumePrivate::EvDeviceTimedOutRequest: {
                         auto* msg = event->Get<
-                            TEvVolumePrivate::TEvDeviceTimeoutedRequest>();
-                        UNIT_ASSERT(!timeoutedDevice.has_value());
-                        timeoutedDevice = msg->DeviceUUID;
+                            TEvVolumePrivate::TEvDeviceTimedOutRequest>();
+                        UNIT_ASSERT(!timedOutDevice.has_value());
+                        timedOutDevice = msg->DeviceUUID;
                         return true;
                     }
                 }
@@ -2191,14 +2191,14 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionTest)
             UNIT_ASSERT_VALUES_EQUAL(E_TIMEOUT, response->GetStatus());
             UNIT_ASSERT(
                 response->GetErrorReason().Contains("request timed out"));
-            UNIT_ASSERT(!timeoutedDevice.has_value());
+            UNIT_ASSERT(!timedOutDevice.has_value());
         }
 
         runtime.AdvanceCurrentTime(TDuration::Seconds(2));
         runtime.DispatchEvents({}, TDuration::MilliSeconds(10));
-        UNIT_ASSERT(!timeoutedDevice.has_value());
+        UNIT_ASSERT(!timedOutDevice.has_value());
 
-        // After 3 seconds device should be deemed timeouted.
+        // After 3 seconds device should be deemed timed out.
         {
             client.SendWriteBlocksRequest(
                 TBlockRange64::WithLength(0, 1024),
@@ -2209,13 +2209,13 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionTest)
             UNIT_ASSERT_VALUES_EQUAL(E_TIMEOUT, response->GetStatus());
             UNIT_ASSERT(
                 response->GetErrorReason().Contains("request timed out"));
-            UNIT_ASSERT(timeoutedDevice.has_value());
-            UNIT_ASSERT_VALUES_EQUAL("vasya", *timeoutedDevice);
+            UNIT_ASSERT(timedOutDevice.has_value());
+            UNIT_ASSERT_VALUES_EQUAL("vasya", *timedOutDevice);
         }
 
-        timeoutedDevice.reset();
+        timedOutDevice.reset();
 
-        // DeviceTimeouted request should be sent on every timeouted request.
+        // DeviceTimedOut request should be sent on every timed out request.
         {
             client.SendZeroBlocksRequest(TBlockRange64::WithLength(0, 1024));
             runtime.AdvanceCurrentTime(TDuration::Seconds(1));
@@ -2224,8 +2224,8 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionTest)
             UNIT_ASSERT_VALUES_EQUAL(E_TIMEOUT, response->GetStatus());
             UNIT_ASSERT(
                 response->GetErrorReason().Contains("request timed out"));
-            UNIT_ASSERT(timeoutedDevice.has_value());
-            UNIT_ASSERT_VALUES_EQUAL("vasya", *timeoutedDevice);
+            UNIT_ASSERT(timedOutDevice.has_value());
+            UNIT_ASSERT_VALUES_EQUAL("vasya", *timedOutDevice);
         }
 
         // Send requests to the second device.
@@ -2271,10 +2271,10 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionTest)
                 response->GetErrorReason());
         }
 
-        timeoutedDevice.reset();
+        timedOutDevice.reset();
 
         // When devices are unavailable partition should not send
-        // DeviceTimeouted request.
+        // DeviceTimedOut request.
         {
             client.SendWriteBlocksRequest(
                 TBlockRange64::WithLength(0, 1024),
@@ -2285,7 +2285,7 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionTest)
             UNIT_ASSERT_VALUES_EQUAL(E_TIMEOUT, response->GetStatus());
             UNIT_ASSERT(
                 response->GetErrorReason().Contains("request timed out"));
-            UNIT_ASSERT(!timeoutedDevice.has_value());
+            UNIT_ASSERT(!timedOutDevice.has_value());
         }
     }
 
@@ -2300,7 +2300,7 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionTest)
         TPartitionClient client(runtime, env.ActorId);
 
         bool dropIoRequests = true;
-        std::optional<TString> lastTimeoutedDevice;
+        std::optional<TString> lastTimedOutDevice;
         runtime.SetEventFilter(
             [&](TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& event)
             {
@@ -2309,10 +2309,10 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionTest)
                     case TEvDiskAgent::EvWriteDeviceBlocksRequest:
                     case TEvDiskAgent::EvZeroDeviceBlocksRequest:
                         return dropIoRequests;
-                    case TEvVolumePrivate::EvDeviceTimeoutedRequest: {
+                    case TEvVolumePrivate::EvDeviceTimedOutRequest: {
                         auto* msg = event->Get<
-                            TEvVolumePrivate::TEvDeviceTimeoutedRequest>();
-                        lastTimeoutedDevice = msg->DeviceUUID;
+                            TEvVolumePrivate::TEvDeviceTimedOutRequest>();
+                        lastTimedOutDevice = msg->DeviceUUID;
                         return true;
                     }
                 }
