@@ -92,16 +92,6 @@ struct IClientHandler
 
 ////////////////////////////////////////////////////////////////////////////////
 
-
-struct IRequestHandle
-{
-    virtual ~IRequestHandle() = default;
-
-    virtual void CancelRequest() = 0;
-};
-
-////////////////////////////////////////////////////////////////////////////////
-
 // IClientEndpoint interface is used to create and execute a request.
 struct IClientEndpoint
 {
@@ -113,9 +103,12 @@ struct IClientEndpoint
         size_t requestBytes,
         size_t responseBytes) = 0;
 
-    virtual IRequestHandlePtr SendRequest(
+    // Returns id of sended request. It can be used to cancel this request.
+    virtual ui64 SendRequest(
         TClientRequestPtr req,
         TCallContextPtr callContext) = 0;
+
+    virtual void CancelRequest(ui64 reqId) = 0;
 
     virtual NThreading::TFuture<void> Stop() = 0;
 };

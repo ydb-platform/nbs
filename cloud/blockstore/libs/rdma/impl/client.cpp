@@ -77,9 +77,6 @@ using TCompletionPollerPtr = std::unique_ptr<TCompletionPoller>;
 struct TRequestId;
 using TRequestIdPtr = std::unique_ptr<TRequestId>;
 
-class TRequestHandle;
-using TRequestHandlePtr = std::unique_ptr<TRequestHandle>;
-
 ////////////////////////////////////////////////////////////////////////////////
 
 struct TRequest
@@ -92,7 +89,7 @@ struct TRequest
 
     TCallContextPtr CallContext;
     ui32 ReqId = 0;
-    TPromise<ui32> ReqIdForRequestHandle;
+    ui64 ClientReqId = 0;
 
     TPooledBuffer InBuffer{};
     TPooledBuffer OutBuffer{};
@@ -184,16 +181,22 @@ public:
         return CancelledRequests.Contains(reqId);
     }
 
-    TRequestPtr PopCancelledRequest(ui64 reqId)
+    TVector<TRequestPtr> PopCancelledRequests(
+        const THashSet<ui64>& reqIdsToCancel)
     {
-        auto it = Requests.find(reqId);
-        if (it != Requests.end()) {
-            TRequestPtr req = std::move(it->second);
-            CancelledRequests.Put(reqId);
-            Requests.erase(it);
-            return req;
+        TVector<TRequestPtr> cancelledReqs;
+        for (auto& [rdmaReqId, req]: Requests) {
+            if (reqIdsToCancel.contains(req->ClientReqId)) {
+                CancelledRequests.Put(rdmaReqId);
+                cancelledReqs.emplace_back(std::move(req));
+            }
         }
-        return nullptr;
+
+        for (const auto& req: cancelledReqs) {
+            Requests.erase(req->ReqId);
+        }
+
+        return cancelledReqs;
     }
 
     TVector<TRequestPtr> PopTimedOutRequests(ui64 timeoutCycles)
@@ -388,7 +391,7 @@ struct TReconnect
 
 struct TRequestId: TListNode<TRequestId>
 {
-    ui32 ReqId = 0;
+    ui64 ReqId = 0;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -469,6 +472,8 @@ private:
     TSimpleList<TRequest> QueuedRequests;
     TActiveRequests ActiveRequests;
 
+    std::atomic_uint64_t ReqIdPool{0};
+
 public:
     static TClientEndpoint* FromEvent(rdma_cm_event* event)
     {
@@ -507,13 +512,11 @@ public:
         std::unique_ptr<TNullContext> context,
         size_t requestBytes,
         size_t responseBytes) noexcept override;
-    IRequestHandlePtr SendRequest(
+    ui64 SendRequest(
         TClientRequestPtr creq,
         TCallContextPtr callContext) noexcept override;
+    void CancelRequest(ui64 reqId) noexcept override;
     TFuture<void> Stop() noexcept override;
-
-    // called from external thread
-    void CancelRequest(TRequestIdPtr reqId) noexcept;
 
     // called from CQ thread
     void HandleCompletionEvent(ibv_wc* wc) override;
@@ -535,37 +538,7 @@ private:
     void RecvResponseCompleted(TRecvWr* recv, ibv_wc_status status);
     void AbortRequest(TRequestPtr req, ui32 err, const TString& msg) noexcept;
     void FreeRequest(TRequest* creq) noexcept;
-};
-////////////////////////////////////////////////////////////////////////////////
-
-class TRequestHandle: public IRequestHandle
-{
-    std::weak_ptr<TClientEndpoint> Endpoint;
-    NThreading::TFuture<ui32> ReqIdFuture;
-
-public:
-    TRequestHandle(
-            std::weak_ptr<TClientEndpoint> endpoint,
-            NThreading::TFuture<ui32> reqIdFuture)
-        : Endpoint(std::move(endpoint))
-        , ReqIdFuture(std::move(reqIdFuture))
-    {}
-
-    ~TRequestHandle() override = default;
-
-    void CancelRequest() override
-    {
-        ReqIdFuture.Subscribe(
-            [weakEndpoint =
-                 Endpoint](const NThreading::TFuture<ui32>& reqIdFuture)
-            {
-                if (auto endpoint = weakEndpoint.lock()) {
-                    auto reqId = std::make_unique<TRequestId>();
-                    reqId->ReqId = reqIdFuture.GetValue();
-                    endpoint->CancelRequest(std::move(reqId));
-                }
-            });
-    }
+    uint64_t GetNewReqId() noexcept;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -820,12 +793,14 @@ TResultOrError<TClientRequestPtr> TClientEndpoint::AllocateRequest(
 }
 
 // implements IClientEndpoint
-IRequestHandlePtr TClientEndpoint::SendRequest(
+ui64 TClientEndpoint::SendRequest(
     TClientRequestPtr creq,
     TCallContextPtr callContext) noexcept
 {
     TRequestPtr req(static_cast<TRequest*>(creq.release()));
     req->CallContext = std::move(callContext);
+
+    auto clientReqId = GetNewReqId();
 
     LWTRACK(
         RequestEnqueued,
@@ -833,18 +808,11 @@ IRequestHandlePtr TClientEndpoint::SendRequest(
         req->CallContext->RequestId);
 
     if (!CheckState(EEndpointState::Connected)) {
-        AbortRequest(
-            std::move(req),
-            Status,
-            "endpoint is unavailable");
-        return {};
+        AbortRequest(std::move(req), Status, "endpoint is unavailable");
+        return clientReqId;
     }
-    auto self = shared_from_this();
-    auto reqIdPromise = NewPromise<ui32>();
-    auto reqHandle =
-        std::make_unique<TRequestHandle>(self, reqIdPromise.GetFuture());
 
-    req->ReqIdForRequestHandle = std::move(reqIdPromise);
+    req->ClientReqId = clientReqId;
 
     Counters->RequestEnqueued();
     InputRequests.Enqueue(std::move(req));
@@ -852,7 +820,7 @@ IRequestHandlePtr TClientEndpoint::SendRequest(
     if (WaitMode == EWaitMode::Poll) {
         RequestEvent.Set();
     }
-    return reqHandle;
+    return clientReqId;
 }
 
 bool TClientEndpoint::HandleInputRequests()
@@ -888,6 +856,22 @@ void TClientEndpoint::HandleQueuedRequests()
     }
 }
 
+void TClientEndpoint::CancelRequest(ui64 reqId) noexcept
+{
+    if (!CheckState(EEndpointState::Connected)) {
+        return;
+    }
+
+    auto reqIdforQueue = std::make_unique<TRequestId>();
+    reqIdforQueue->ReqId = reqId;
+    Counters->RequestEnqueued();
+    CancelRequests.Enqueue(std::move(reqIdforQueue));
+
+    if (WaitMode == EWaitMode::Poll) {
+        CancelRequestEvent.Set();
+    }
+}
+
 bool TClientEndpoint::HandleCancelRequests()
 {
     if (WaitMode == EWaitMode::Poll) {
@@ -898,24 +882,44 @@ bool TClientEndpoint::HandleCancelRequests()
     if (!requests) {
         return false;
     }
+    THashSet<ui64> cancelledReqIds;
 
     bool ret = false;
-    while (auto reqId = requests.Dequeue()) {
-        auto cancelledRequest =
-            ActiveRequests.PopCancelledRequest(reqId->ReqId);
-        if (cancelledRequest) {
-            auto len = SerializeError(
-                E_CANCELLED,
-                TStringBuf("request is cancelled"),
-                static_cast<TStringBuf>(cancelledRequest->OutBuffer));
+    while (auto clientReqId = requests.Dequeue()) {
+        cancelledReqIds.emplace(clientReqId->ReqId);
+    }
 
-            auto* handler = cancelledRequest->Handler.get();
-            handler->HandleResponse(
-                std::move(cancelledRequest),
-                RDMA_PROTO_CANCELLED,
-                len);
-            ret = true;
+    auto cancelReq = [&](TRequestPtr reqToCancel)
+    {
+        auto len = SerializeError(
+            E_CANCELLED,
+            TStringBuf("request is cancelled"),
+            static_cast<TStringBuf>(reqToCancel->OutBuffer));
+
+        auto* handler = reqToCancel->Handler.get();
+        handler->HandleResponse(
+            std::move(reqToCancel),
+            RDMA_PROTO_CANCELLED,
+            len);
+        ret = true;
+    };
+
+    // We should filter input requests from cancelled ones to not lost cancel
+    // requests.
+    auto inputRequests = InputRequests.DequeueAll();
+    while (auto inputReq = inputRequests.Dequeue()) {
+        if (!cancelledReqIds.contains(inputReq->ClientReqId)) {
+            InputRequests.Enqueue(std::move(inputReq));
+            continue;
         }
+
+        cancelReq(std::move(inputReq));
+    }
+
+    auto reqsToCancel = ActiveRequests.PopCancelledRequests(cancelledReqIds);
+
+    for (auto& req: reqsToCancel) {
+        cancelReq(std::move(req));
     }
 
     return ret;
@@ -1048,8 +1052,7 @@ void TClientEndpoint::HandleCompletionEvent(ibv_wc* wc)
 
 void TClientEndpoint::SendRequest(TRequestPtr req, TSendWr* send)
 {
-    auto reqId = ActiveRequests.CreateId();
-    req->ReqId = reqId;
+    req->ReqId = ActiveRequests.CreateId();
 
     auto* requestMsg = send->Message<TRequestMessage>();
     Zero(*requestMsg);
@@ -1085,10 +1088,7 @@ void TClientEndpoint::SendRequest(TRequestPtr req, TSendWr* send)
     Counters->SendRequestStarted();
 
     send->context = reinterpret_cast<void*>(static_cast<uintptr_t>(req->ReqId));
-    auto reqIdPromise = std::move(req->ReqIdForRequestHandle);
     ActiveRequests.Push(std::move(req));
-
-    reqIdPromise.SetValue(reqId);
 }
 
 void TClientEndpoint::SendRequestCompleted(
@@ -1226,20 +1226,6 @@ bool TClientEndpoint::ShouldStop() const
     return StopFlag.test();
 }
 
-void TClientEndpoint::CancelRequest(TRequestIdPtr reqId) noexcept
-{
-    if (!CheckState(EEndpointState::Connected)) {
-        return;
-    }
-
-    Counters->RequestEnqueued();
-    CancelRequests.Enqueue(std::move(reqId));
-
-    if (WaitMode == EWaitMode::Poll) {
-        CancelRequestEvent.Set();
-    }
-}
-
 void TClientEndpoint::SetConnection(NVerbs::TConnectionPtr connection) noexcept
 {
     connection->context = this;
@@ -1317,6 +1303,11 @@ void TClientEndpoint::FreeRequest(TRequest* req) noexcept
         SendBuffers.ReleaseBuffer(req->InBuffer);
         RecvBuffers.ReleaseBuffer(req->OutBuffer);
     }
+}
+
+uint64_t TClientEndpoint::GetNewReqId() noexcept
+{
+    return ReqIdPool.fetch_add(1);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
