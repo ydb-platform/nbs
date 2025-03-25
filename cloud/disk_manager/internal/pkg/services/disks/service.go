@@ -169,7 +169,7 @@ func (s *service) prepareZoneId(
 
 	if len(shards) == 0 {
 		// We end up here if an unsharded zone or a shard of a zone is
-		// provided as a parameter.
+		// provided as ZoneId.
 		return disk.ZoneId, nil
 	}
 
