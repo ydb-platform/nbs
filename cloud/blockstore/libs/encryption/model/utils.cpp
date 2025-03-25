@@ -7,14 +7,17 @@ namespace NCloud::NBlockStore {
 
 namespace {
 
-///////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////
 
 const TMap<TString, NProto::EEncryptionMode> EncryptionModes = {
     {"no", NProto::NO_ENCRYPTION},
     {"aes-xts", NProto::ENCRYPTION_AES_XTS},
+    {"default", NProto::ENCRYPTION_AT_REST},
 };
 
 }   // namespace
+
+////////////////////////////////////////////////////////////////////////////////
 
 NProto::EEncryptionMode EncryptionModeFromString(const TString& str)
 {
@@ -42,12 +45,15 @@ NProto::TEncryptionSpec CreateEncryptionSpec(
     const TString& keyPath,
     const TString& keyHash)
 {
-    if (mode == NProto::NO_ENCRYPTION) {
+    if (mode == NProto::NO_ENCRYPTION || mode == NProto::ENCRYPTION_AT_REST) {
         Y_ENSURE(
             keyHash.empty() && keyPath.empty(),
-            "invalid encryption options: set encryption mode or remove key "
-            "hash and key path");
-        return {};
+            "invalid encryption options: set aes-xts encryption mode or remove "
+            "key hash and key path");
+
+        NProto::TEncryptionSpec encryptionSpec;
+        encryptionSpec.SetMode(mode);
+        return encryptionSpec;
     }
 
     Y_ENSURE(
