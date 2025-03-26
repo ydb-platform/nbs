@@ -50,7 +50,6 @@ func TestSnapshotsCreateSnapshot(t *testing.T) {
 			ZoneId: "zone",
 			DiskId: "disk",
 		},
-		CheckpointID: "checkpoint",
 		CreateRequest: &wrappers.UInt64Value{
 			Value: 1,
 		},
@@ -103,7 +102,6 @@ func TestSnapshotsDeleteSnapshot(t *testing.T) {
 			ZoneId: "zone",
 			DiskId: "disk",
 		},
-		CheckpointID: "checkpoint",
 		CreateRequest: &wrappers.UInt64Value{
 			Value: 1,
 		},
@@ -219,7 +217,6 @@ func TestSnapshotsClearDeletedSnapshots(t *testing.T) {
 			ZoneId: "zone",
 			DiskId: "disk",
 		},
-		CheckpointID: "checkpoint",
 		CreateRequest: &wrappers.UInt64Value{
 			Value: 1,
 		},
@@ -318,6 +315,7 @@ func TestSnapshotsGetSnapshot(t *testing.T) {
 	snapshotID := t.Name()
 	snapshotSize := uint64(2 * 1024 * 1024)
 	snapshotStorageSize := uint64(3 * 1024 * 1024)
+	checkpointID := "checkpoint"
 
 	s, err := storage.GetSnapshotMeta(ctx, snapshotID)
 	require.NoError(t, err)
@@ -330,7 +328,6 @@ func TestSnapshotsGetSnapshot(t *testing.T) {
 			ZoneId: "zone",
 			DiskId: "disk",
 		},
-		CheckpointID: "checkpoint",
 		CreateRequest: &wrappers.UInt64Value{
 			Value: 1,
 		},
@@ -353,7 +350,7 @@ func TestSnapshotsGetSnapshot(t *testing.T) {
 	err = storage.SnapshotCreated(
 		ctx,
 		snapshotID,
-		"checkpoint",
+		checkpointID,
 		time.Now(),
 		snapshotSize,
 		snapshotStorageSize,
@@ -362,96 +359,27 @@ func TestSnapshotsGetSnapshot(t *testing.T) {
 
 	snapshot.Size = snapshotSize
 	snapshot.StorageSize = snapshotStorageSize
+	snapshot.CheckpointID = checkpointID
 	snapshot.Ready = true
 
 	s, err = storage.GetSnapshotMeta(ctx, snapshotID)
 	require.NoError(t, err)
 	require.NotNil(t, s)
 	requireSnapshotsAreEqual(t, snapshot, *s)
-}
-
-func testSnapshotCreatedWithAnotherCheckpoint(
-	t *testing.T,
-	ctx context.Context,
-	storage Storage,
-	snapshotID string,
-	checkpointID1 string,
-	checkpointID2 string,
-) {
-
-	snapshot := SnapshotMeta{
-		ID:       snapshotID,
-		FolderID: "folder",
-		Disk: &types.Disk{
-			ZoneId: "zone",
-			DiskId: "disk",
-		},
-		CheckpointID: checkpointID1,
-		CreateRequest: &wrappers.UInt64Value{
-			Value: 1,
-		},
-		CreateTaskID: "create",
-		CreatingAt:   time.Now(),
-		CreatedBy:    "user",
-	}
-
-	created, err := storage.CreateSnapshot(ctx, snapshot)
-	require.NoError(t, err)
-	require.Equal(t, snapshot.ID, created.ID)
-	require.Equal(t, checkpointID1, created.CheckpointID)
 
 	// Check idempotency.
-	created, err = storage.CreateSnapshot(ctx, snapshot)
+	err = storage.SnapshotCreated(
+		ctx,
+		snapshotID,
+		"foo", // checkpointID
+		time.Now(),
+		42,  // snapshotSize
+		713, // snapshotStorageSize
+	)
 	require.NoError(t, err)
-	require.Equal(t, snapshot.ID, created.ID)
-	require.Equal(t, checkpointID1, created.CheckpointID)
 
-	err = storage.SnapshotCreated(ctx, snapshot.ID, checkpointID2, time.Now(), 0, 0)
-	require.NoError(t, err)
-	s, err := storage.GetSnapshotMeta(ctx, snapshotID)
-	require.NoError(t, err)
-	require.NotNil(t, s)
-	require.Equal(t, checkpointID2, s.CheckpointID)
-
-	// Check idempotency.
-	err = storage.SnapshotCreated(ctx, snapshot.ID, checkpointID2, time.Now(), 0, 0)
-	require.NoError(t, err)
 	s, err = storage.GetSnapshotMeta(ctx, snapshotID)
 	require.NoError(t, err)
 	require.NotNil(t, s)
-	require.Equal(t, checkpointID2, s.CheckpointID)
-
-	// Check idempotency.
-	created, err = storage.CreateSnapshot(ctx, snapshot)
-	require.NoError(t, err)
-	require.Equal(t, snapshot.ID, created.ID)
-	require.Equal(t, checkpointID2, created.CheckpointID)
-}
-
-func TestSnapshotsCreatedWithAnotherCheckpoint(t *testing.T) {
-	ctx, cancel := context.WithCancel(newContext())
-	defer cancel()
-
-	db, err := newYDB(ctx)
-	require.NoError(t, err)
-	defer db.Close(ctx)
-
-	storage := newStorage(t, ctx, db)
-
-	testSnapshotCreatedWithAnotherCheckpoint(
-		t,
-		ctx,
-		storage,
-		"snapshot-A",
-		"",
-		"checkpoint-2",
-	)
-	testSnapshotCreatedWithAnotherCheckpoint(
-		t,
-		ctx,
-		storage,
-		"snapshot-B",
-		"checkpoint-1",
-		"checkpoint-2",
-	)
+	requireSnapshotsAreEqual(t, snapshot, *s)
 }

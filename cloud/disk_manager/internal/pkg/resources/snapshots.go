@@ -389,7 +389,6 @@ func (s *storageYDB) createSnapshot(
 		folderID:          snapshot.FolderID,
 		zoneID:            snapshot.Disk.ZoneId,
 		diskID:            snapshot.Disk.DiskId,
-		checkpointID:      snapshot.CheckpointID,
 		createRequest:     createRequest,
 		createTaskID:      snapshot.CreateTaskID,
 		creatingAt:        snapshot.CreatingAt,

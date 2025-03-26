@@ -18,6 +18,7 @@ func requireImagesAreEqual(t *testing.T, expected ImageMeta, actual ImageMeta) {
 	require.Equal(t, expected.ID, actual.ID)
 	require.Equal(t, expected.FolderID, actual.FolderID)
 	require.True(t, proto.Equal(expected.CreateRequest, actual.CreateRequest))
+	require.Equal(t, expected.CheckpointID, actual.CheckpointID)
 	require.Equal(t, expected.CreateTaskID, actual.CreateTaskID)
 	if !expected.CreatingAt.IsZero() {
 		require.WithinDuration(t, expected.CreatingAt, actual.CreatingAt, time.Microsecond)
@@ -62,11 +63,11 @@ func TestImagesCreateImage(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, image.ID, created.ID)
 
-	err = storage.ImageCreated(ctx, image.ID, "", time.Now(), 0, 0)
+	err = storage.ImageCreated(ctx, image.ID, "checkpoint", time.Now(), 0, 0)
 	require.NoError(t, err)
 
 	// Check idempotency.
-	err = storage.ImageCreated(ctx, image.ID, "", time.Now(), 0, 0)
+	err = storage.ImageCreated(ctx, image.ID, "checkpoint", time.Now(), 0, 0)
 	require.NoError(t, err)
 
 	// Check idempotency.
@@ -311,6 +312,7 @@ func TestImagesGetImage(t *testing.T) {
 	imageID := t.Name()
 	imageSize := uint64(2 * 1024 * 1024)
 	imageStorageSize := uint64(3 * 1024 * 1024)
+	checkpointID := "checkpoint"
 
 	i, err := storage.GetImageMeta(ctx, imageID)
 	require.NoError(t, err)
@@ -340,98 +342,39 @@ func TestImagesGetImage(t *testing.T) {
 	require.Equal(t, imageID, i.ID)
 	require.Equal(t, "folder", i.FolderID)
 
-	err = storage.ImageCreated(ctx, imageID, "", time.Now(), imageSize, imageStorageSize)
+	err = storage.ImageCreated(
+		ctx,
+		imageID,
+		checkpointID,
+		time.Now(),
+		imageSize,
+		imageStorageSize,
+	)
 	require.NoError(t, err)
 
 	image.Size = imageSize
 	image.StorageSize = imageStorageSize
+	image.CheckpointID = checkpointID
 	image.Ready = true
 
 	i, err = storage.GetImageMeta(ctx, imageID)
 	require.NoError(t, err)
 	require.NotNil(t, i)
 	requireImagesAreEqual(t, image, *i)
-}
-
-func testImageCreatedWithAnotherCheckpoint(
-	t *testing.T,
-	ctx context.Context,
-	storage Storage,
-	imageID string,
-	checkpointID1 string,
-	checkpointID2 string,
-) {
-
-	image := ImageMeta{
-		ID:           imageID,
-		FolderID:     "folder",
-		SrcDiskID:    "disk",
-		CheckpointID: checkpointID1,
-		CreateRequest: &wrappers.UInt64Value{
-			Value: 1,
-		},
-		CreateTaskID: "create",
-		CreatingAt:   time.Now(),
-		CreatedBy:    "user",
-	}
-
-	created, err := storage.CreateImage(ctx, image)
-	require.NoError(t, err)
-	require.Equal(t, image.ID, created.ID)
-	require.Equal(t, checkpointID1, created.CheckpointID)
 
 	// Check idempotency.
-	created, err = storage.CreateImage(ctx, image)
-	require.NoError(t, err)
-	require.Equal(t, image.ID, created.ID)
-	require.Equal(t, checkpointID1, created.CheckpointID)
-
-	err = storage.ImageCreated(ctx, image.ID, checkpointID2, time.Now(), 0, 0)
-	require.NoError(t, err)
-	s, err := storage.GetImageMeta(ctx, imageID)
-	require.NoError(t, err)
-	require.NotNil(t, s)
-	require.Equal(t, checkpointID2, s.CheckpointID)
-
-	// Check idempotency.
-	err = storage.ImageCreated(ctx, image.ID, checkpointID2, time.Now(), 0, 0)
-	require.NoError(t, err)
-	s, err = storage.GetImageMeta(ctx, imageID)
-	require.NoError(t, err)
-	require.NotNil(t, s)
-	require.Equal(t, checkpointID2, s.CheckpointID)
-
-	// Check idempotency.
-	created, err = storage.CreateImage(ctx, image)
-	require.NoError(t, err)
-	require.Equal(t, image.ID, created.ID)
-	require.Equal(t, checkpointID2, created.CheckpointID)
-}
-
-func TestImagesCreatedWithAnotherCheckpoint(t *testing.T) {
-	ctx, cancel := context.WithCancel(newContext())
-	defer cancel()
-
-	db, err := newYDB(ctx)
-	require.NoError(t, err)
-	defer db.Close(ctx)
-
-	storage := newStorage(t, ctx, db)
-
-	testImageCreatedWithAnotherCheckpoint(
-		t,
+	err = storage.ImageCreated(
 		ctx,
-		storage,
-		"image-A",
-		"",
-		"checkpoint-2",
+		imageID,
+		"foo", // checkpointID
+		time.Now(),
+		42,  // imageSize
+		713, // imageStorageSize
 	)
-	testImageCreatedWithAnotherCheckpoint(
-		t,
-		ctx,
-		storage,
-		"image-B",
-		"checkpoint-1",
-		"checkpoint-2",
-	)
+	require.NoError(t, err)
+
+	i, err = storage.GetImageMeta(ctx, imageID)
+	require.NoError(t, err)
+	require.NotNil(t, i)
+	requireImagesAreEqual(t, image, *i)
 }

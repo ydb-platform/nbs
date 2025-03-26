@@ -51,6 +51,7 @@ func (t *createSnapshotFromDiskTask) run(
 ) (string, error) {
 
 	disk := t.request.SrcDisk
+
 	selfTaskID := execCtx.GetTaskID()
 
 	diskParams, err := nbsClient.Describe(ctx, disk.DiskId)
