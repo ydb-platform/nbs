@@ -3,6 +3,7 @@
 #include <util/generic/utility.h>
 #include <util/system/yassert.h>
 
+#include <bit>
 #include <cmath>
 #include <cstring>
 
@@ -60,18 +61,6 @@ private:
         {
         }
 
-        static ui16 PopCount(ui64 x)
-        {
-            // 64-bit SWAR
-            // https://www.playingwithpointers.com/blog/swar.html
-            ui64 byteSums = x - ((x & 0xAAAAAAAAAAAAAAAAULL) >> 1);
-            byteSums = (byteSums & 0x3333333333333333ULL)
-                + ((byteSums >> 2) & 0x3333333333333333ULL);
-            byteSums = (byteSums + (byteSums >> 4)) & 0x0F0F0F0F0F0F0F0FULL;
-
-            return byteSums * 0x0101010101010101ULL >> 56;
-        }
-
         int Set(ui16 b, ui16 e)
         {
             if (b >= e) {
@@ -83,21 +72,21 @@ private:
             auto rangeInfo = NPrivate::RangeInfo<ui16, 64>(b, e);
 
             if (rangeInfo.First == rangeInfo.Last) {
-                count -= PopCount(Data[rangeInfo.First]);
+                count -= std::popcount(Data[rangeInfo.First]);
                 Data[rangeInfo.First] |= (MASK >> (64 - e + b)) << (b % 64);
-                count += PopCount(Data[rangeInfo.First]);
+                count += std::popcount(Data[rangeInfo.First]);
             } else {
-                count -= PopCount(Data[rangeInfo.First]);
+                count -= std::popcount(Data[rangeInfo.First]);
                 Data[rangeInfo.First] |= MASK << (b % 64);
-                count += PopCount(Data[rangeInfo.First]);
+                count += std::popcount(Data[rangeInfo.First]);
 
-                count -= PopCount(Data[rangeInfo.Last]);
+                count -= std::popcount(Data[rangeInfo.Last]);
                 Data[rangeInfo.Last] |= MASK >> (64 - rangeInfo.EndBit);
-                count += PopCount(Data[rangeInfo.Last]);
+                count += std::popcount(Data[rangeInfo.Last]);
 
                 ++rangeInfo.First;
                 while (rangeInfo.First < rangeInfo.Last) {
-                    count += 64 - PopCount(Data[rangeInfo.First]);
+                    count += 64 - std::popcount(Data[rangeInfo.First]);
                     Data[rangeInfo.First] = MASK;
                     ++rangeInfo.First;
                 }
@@ -123,21 +112,21 @@ private:
             auto rangeInfo = NPrivate::RangeInfo<ui16, 64>(b, e);
 
             if (rangeInfo.First == rangeInfo.Last) {
-                count += PopCount(Data[rangeInfo.First]);
+                count += std::popcount(Data[rangeInfo.First]);
                 Data[rangeInfo.First] &= ~((MASK >> (64 - e + b)) << (b % 64));
-                count -= PopCount(Data[rangeInfo.First]);
+                count -= std::popcount(Data[rangeInfo.First]);
             } else {
-                count += PopCount(Data[rangeInfo.First]);
+                count += std::popcount(Data[rangeInfo.First]);
                 Data[rangeInfo.First] &= ~(MASK << (b % 64));
-                count -= PopCount(Data[rangeInfo.First]);
+                count -= std::popcount(Data[rangeInfo.First]);
 
-                count += PopCount(Data[rangeInfo.Last]);
+                count += std::popcount(Data[rangeInfo.Last]);
                 Data[rangeInfo.Last] &= ~(MASK >> (64 - rangeInfo.EndBit));
-                count -= PopCount(Data[rangeInfo.Last]);
+                count -= std::popcount(Data[rangeInfo.Last]);
 
                 ++rangeInfo.First;
                 while (rangeInfo.First < rangeInfo.Last) {
-                    count += PopCount(Data[rangeInfo.First]);
+                    count += std::popcount(Data[rangeInfo.First]);
                     Data[rangeInfo.First] = 0;
                     ++rangeInfo.First;
                 }
@@ -151,7 +140,7 @@ private:
             ui16 c = 0;
 
             for (ui8 i = 0; i < CHUNK_SIZE / 64; ++i) {
-                c += PopCount(Data[i]);
+                c += std::popcount(Data[i]);
             }
 
             return c;
@@ -177,7 +166,7 @@ private:
 
                 ++rangeInfo.First;
                 while (rangeInfo.First < rangeInfo.Last) {
-                    c += PopCount(Data[rangeInfo.First]);
+                    c += std::popcount(Data[rangeInfo.First]);
                     ++rangeInfo.First;
                 }
             }
