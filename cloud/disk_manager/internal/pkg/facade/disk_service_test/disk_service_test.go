@@ -287,8 +287,6 @@ func TestDiskServiceCreateDisksFromImageWithConfiguredPool(t *testing.T) {
 	testcommon.CheckConsistency(t, ctx)
 }
 
-////////////////////////////////////////////////////////////////////////////////
-
 func TestDiskServiceCreateDiskFromIncrementalSnapshot(t *testing.T) {
 	testCreateDiskFromIncrementalSnapshot(
 		t,
