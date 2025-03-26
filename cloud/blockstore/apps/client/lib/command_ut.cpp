@@ -802,7 +802,6 @@ Y_UNIT_TEST_SUITE(TCommandTest)
             NJson::TJsonValue json;
 
             UNIT_ASSERT(NJson::ReadJsonTree(request->GetInput(), &json));
-            Cerr<<request->GetInput()<<Endl;
             ui32 replicaCount = json["ReplicaCount"].GetUIntegerRobust();
 
             if(requestCount == 0){
