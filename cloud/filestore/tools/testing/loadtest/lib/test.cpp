@@ -1043,7 +1043,7 @@ public:
         }
     }
 
-    void ReportStorageStats()
+    TString GetStorageStats()
     {
         NJson::TJsonValue requestInput;
         requestInput["FileSystemId"] = Config.GetCreateFileStoreRequest()
@@ -1063,14 +1063,58 @@ public:
         NJson::TJsonValue jvalue;
         NJson::ReadJsonTree(bytes, &jvalue);
 
-        // auto mixedBlocksCount = jvalue.GetMap().at("Stats").GetMap().at("MixedBlocksCount").GetInteger();
-        auto mixedBlocksCount = jvalue["Stats"]["MixedBlocksCount"].GetString();
+        const auto& statsNode = jvalue["Stats"];
+        NJson::TJsonValue convertedStats;
+
+        for (const auto& [key, value] : statsNode.GetMap()) {
+            if (value.IsString()) {
+                i64 convertedValue = 0;
+                if (TryFromString<i64>(value.GetString(), convertedValue)) {
+                    convertedStats[key] = convertedValue;
+                } else {
+                    STORAGE_WARN(
+                        "%s failed to convert value for key %s: %s",
+                        MakeTestTag().c_str(),
+                        key.c_str(),
+                        value.GetString().c_str()
+                    );
+                }
+            } else {
+                STORAGE_WARN(
+                    "%s failed to convert value for key %s: not a string",
+                    MakeTestTag().c_str(),
+                    key.c_str()
+                );
+            }
+        }
+
+        return NJson::WriteJson(convertedStats);
+    }
+
+    void ReportStorageStats()
+    {
+        auto prevStatsJsonString = GetStorageStats();
 
         STORAGE_INFO(
-            "%s storage stats: %s, %s",
+            "%s storage stats: %s",
             MakeTestTag().c_str(),
-            bytes.c_str(),
-            mixedBlocksCount.c_str());
+            prevStatsJsonString.c_str());
+
+        while (!ShouldStop()) {
+            Sleep(TDuration::Seconds(1));
+
+            auto statsJsonString = GetStorageStats();
+            if (statsJsonString == prevStatsJsonString) {
+                break;
+            }
+
+            STORAGE_INFO(
+                "%s storage stats: %s",
+                MakeTestTag().c_str(),
+                statsJsonString.c_str());
+
+            prevStatsJsonString = statsJsonString;
+        }
     }
 
     void CleanupTest()

@@ -25,5 +25,6 @@ Tests {
         RequestsCount: 200000
         TestDuration: 60
         KeepFileStore: true
+        CollectStorageStats: true
     }
 }
