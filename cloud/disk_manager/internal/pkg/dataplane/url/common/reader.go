@@ -10,6 +10,7 @@ import (
 
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/url/common/cache"
 	"github.com/ydb-platform/nbs/cloud/tasks/errors"
+	"github.com/ydb-platform/nbs/cloud/tasks/logging"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -222,6 +223,7 @@ func (r *urlReader) ReadBinary(
 		return err
 	}
 
+	logging.Info(ctx, "bytedata is %v", byteData)
 	err = binary.Read(bytes.NewReader(byteData), byteOrder, data)
 	// NBS-3324: interpret all errors as retriable.
 	if err != nil {
