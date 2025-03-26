@@ -73,6 +73,14 @@ func TestDiskServiceInShardsCreateDiskFromIncrementalSnapshot(t *testing.T) {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+func TestDiskServiceInShardsCreateDiskFromSnapshot(t *testing.T) {
+	for _, testCase := range shardsTestCases() {
+		t.Run(testCase.name, func(t *testing.T) {
+			testDiskServiceCreateDiskFromSnapshotWithZoneID(t, testCase.zoneId)
+		})
+	}
+}
+
 func TestDiskServiceInShardsCreateSsdNonreplDiskFromIncrementalSnapshot(t *testing.T) {
 	for _, testCase := range shardsTestCases() {
 		t.Run(testCase.name, func(t *testing.T) {
@@ -82,16 +90,6 @@ func TestDiskServiceInShardsCreateSsdNonreplDiskFromIncrementalSnapshot(t *testi
 				262144*4096,
 				testCase.zoneId,
 			)
-		})
-	}
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
-func TestDiskServiceInShardsCreateDiskFromSnapshot(t *testing.T) {
-	for _, testCase := range shardsTestCases() {
-		t.Run(testCase.name, func(t *testing.T) {
-			testDiskServiceCreateDiskFromSnapshotWithZoneID(t, testCase.zoneId)
 		})
 	}
 }

@@ -19,25 +19,6 @@ import (
 
 ////////////////////////////////////////////////////////////////////////////////
 
-func testCakes() []TestCase {
-	return []TestCase{
-		{
-			name:   "Default zone",
-			zoneId: defaultZoneId,
-		},
-		{
-			name:   "Sharded zone",
-			zoneId: shardedZoneId,
-		},
-		{
-			name:   "Scale unit in sharded zone",
-			zoneId: shardId1,
-		},
-	}
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
 func TestDiskServiceCreateEmptyDisk(t *testing.T) {
 	testDiskServiceCreateEmptyDiskWithZoneID(t, defaultZoneId)
 }
@@ -155,7 +136,7 @@ func TestDiskServiceDeleteDiskWhenCreationIsInFlight(t *testing.T) {
 	require.NoError(t, err)
 	defer client.Close()
 
-	imageID := testcommon.ReplaceUnacceptableSymbolsFromResourceID(t)
+	imageID := t.Name()
 	imageSize := uint64(64 * 1024 * 1024)
 
 	_ = testcommon.CreateImage(
@@ -170,7 +151,7 @@ func TestDiskServiceDeleteDiskWhenCreationIsInFlight(t *testing.T) {
 	// Need to add some variance for better testing.
 	common.WaitForRandomDuration(time.Millisecond, 2*time.Second)
 
-	diskID := testcommon.ReplaceUnacceptableSymbolsFromResourceID(t)
+	diskID := t.Name()
 	diskSize := 2 * imageSize
 
 	reqCtx := testcommon.GetRequestContext(t, ctx)
@@ -325,8 +306,6 @@ func TestDiskServiceCreateSsdNonreplDiskFromIncrementalSnapshot(t *testing.T) {
 		defaultZoneId,
 	)
 }
-
-////////////////////////////////////////////////////////////////////////////////
 
 func TestDiskServiceCreateDiskFromSnapshot(t *testing.T) {
 	testDiskServiceCreateDiskFromSnapshotWithZoneID(t, defaultZoneId)
