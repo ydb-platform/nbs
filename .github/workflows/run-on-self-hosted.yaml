@@ -17,25 +17,43 @@ jobs:
       run: echo "PATH=$PATH:$HOME/nebius-cloud/bin:$HOME/.nebius/bin" >> $GITHUB_ENV
     - name: Set up Nebius CLI
       run: |
-        curl -sSL https://storage.eu-north1.nebius.cloud/cli/install.sh | bash
-        cat <<EOF > sa.json
+        set -x
+        [ ! -f "$HOME/.nebius/bin/nebius" ] && {
+          curl -sSL https://storage.eu-north1.nebius.cloud/cli/install.sh | bash
+          cat <<EOF > sa.json
         ${sa_json}
         EOF
-
-        jq -r '."subject-credentials"."private-key"'  sa.json > private.pem
-        echo "::add-mask::$(jq -r '."subject-credentials"."kid"' sa.json)"
-        public_key_id=$(jq -r '."subject-credentials"."kid"' sa.json)
-        echo "::add-mask::$(jq -r '."subject-credentials"."iss"' sa.json)"
-        service_account_id=$(jq -r '."subject-credentials"."iss"' sa.json)
-        echo "::add-mask::tenant-e00en3r863f7me6wtd"
-        nebius profile create --endpoint api.eu-north1.nebius.cloud \
-                              --profile nbs-github-user-sa \
-                              --parent-id tenant-e00en3r863f7me6wtd \
-                              --public-key-id "${public_key_id}" \
-                              --private-key-file private.pem \
-                              --service-account-id "${service_account_id}"
+        } || echo "Nebius CLI already installed"
+        [ ! -f "$HOME/.nebius/config.yaml" ] && {
+          jq -r '."subject-credentials"."private-key"'  sa.json > private.pem
+          echo "::add-mask::$(jq -r '."subject-credentials"."kid"' sa.json)"
+          public_key_id=$(jq -r '."subject-credentials"."kid"' sa.json)
+          echo "::add-mask::$(jq -r '."subject-credentials"."iss"' sa.json)"
+          service_account_id=$(jq -r '."subject-credentials"."iss"' sa.json)
+          echo "::add-mask::tenant-e00en3r863f7me6wtd"
+          
+          nebius profile create --endpoint api.eu-north1.nebius.cloud \
+                                --profile nbs-github-user-sa \
+                                --parent-id tenant-e00en3r863f7me6wtd \
+                                --public-key-id "${public_key_id}" \
+                                --private-key-file private.pem \
+                                --service-account-id "${service_account_id}"
+          } || echo "Nebius profile already created"
       env:
         sa_json: ${{ secrets.NEW_NEBIUS_SA_JSON_CREDENTIALS }}
+    - name: Update VM name
+      id: update
+      run: |
+        set -x
+        nebius compute instance get --id $INSTANCE_ID --format json > instance.json
+        cat instance.json
+        OLD_INSTANCE_NAME=$(jq -r '.metadata.name' instance.json)
+        DATE=$(date +%s);
+        INSTANCE_NAME="running-${GITHUB_RUN_ID}-ydb-platform-nbs-${DATE}"
+        nebius compute instance update --id $INSTANCE_ID --name $INSTANCE_NAME
+        echo INSTANCE_NAME=$OLD_INSTANCE_NAME >> $GITHUB_OUTPUT
+      env:
+        INSTANCE_ID: ${{ runner.name }}
     - name: List VMs
       id: list
       run: |
@@ -48,6 +66,7 @@ jobs:
         RUNNING_VMS_COUNT=$(wc -l running_vms_filtered.txt | awk '{print $1}')
         NUMBER_VMS_TO_CREATE=$(($MAX_VMS_TO_CREATE - $RUNNING_VMS_COUNT))
         DATE=$(date +%s);
+        echo RUNNER_NAME=$RUNNER_NAME
         if [ $NUMBER_VMS_TO_CREATE -le 0 ]; then
           echo "No VMs to create";
           echo "[]" > vms_to_create.json;
@@ -62,9 +81,20 @@ jobs:
           echo NUMBER_VMS_TO_CREATE=$NUMBER_VMS_TO_CREATE;
           echo VMS_TO_CREATE=$(cat vms_to_create.json);
           echo DATE=$DATE;
+          echo RUNNER_NAME=$RUNNER_NAME;
         } >> $GITHUB_OUTPUT
+        sleep 60
       env:
         PARENT_ID: ${{ vars.NEBIUS_PARENT_ID }}
         MAX_VMS_TO_CREATE: 3
         FILTER: 'standby'
         PROJECT_FILTER: 'ydb-platform-nbs'
+        RUNNER_NAME: ${{ runner.name }}
+    - name: Rename VM to old name
+      id: rename
+      run: |
+        set -x
+        nebius compute instance update --id $INSTANCE_ID --name $INSTANCE_NAME
+      env:
+        INSTANCE_ID: ${{ runner.name }}
+        INSTANCE_NAME: ${{ steps.update.outputs.INSTANCE_NAME }}
