@@ -39,61 +39,6 @@ func TestDiskServiceInShardsCreateEmptyDisk(t *testing.T) {
 	}
 }
 
-func TestDiskServiceInShardsCreateDiskFromImageWithForceNotLayered(t *testing.T) {
-	for _, testCase := range shardsTestCases() {
-		t.Run(testCase.name, func(t *testing.T) {
-			testDiskServiceCreateDiskFromImageWithForceNotLayeredWithZoneID(
-				t,
-				testCase.zoneId,
-			)
-		})
-	}
-}
-
-func TestDiskServiceInShardsCancelCreateDiskFromImageWithZoneID(t *testing.T) {
-	for _, testCase := range shardsTestCases() {
-		t.Run(testCase.name, func(t *testing.T) {
-			testDiskServiceCancelCreateDiskFromImageWithZoneID(t, testCase.zoneId)
-		})
-	}
-}
-
-func TestDiskServiceInShardsCreateDiskFromIncrementalSnapshot(t *testing.T) {
-	for _, testCase := range shardsTestCases() {
-		t.Run(testCase.name, func(t *testing.T) {
-			testCreateDiskFromIncrementalSnapshot(
-				t,
-				disk_manager.DiskKind_DISK_KIND_SSD,
-				128*1024*1024,
-				testCase.zoneId,
-			)
-		})
-	}
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
-func TestDiskServiceInShardsCreateDiskFromSnapshot(t *testing.T) {
-	for _, testCase := range shardsTestCases() {
-		t.Run(testCase.name, func(t *testing.T) {
-			testDiskServiceCreateDiskFromSnapshotWithZoneID(t, testCase.zoneId)
-		})
-	}
-}
-
-func TestDiskServiceInShardsCreateSsdNonreplDiskFromIncrementalSnapshot(t *testing.T) {
-	for _, testCase := range shardsTestCases() {
-		t.Run(testCase.name, func(t *testing.T) {
-			testCreateDiskFromIncrementalSnapshot(
-				t,
-				disk_manager.DiskKind_DISK_KIND_SSD_NONREPLICATED,
-				262144*4096,
-				testCase.zoneId,
-			)
-		})
-	}
-}
-
 ////////////////////////////////////////////////////////////////////////////////
 
 func TestDiskServiceInShardsCreateDiskFromImage(t *testing.T) {
@@ -225,7 +170,63 @@ func TestDiskServiceInShardsCreateSsdNonreplDiskWithDefaultEncryptionFromImage(
 	}
 }
 
+func TestDiskServiceInShardsCreateDiskFromImageWithForceNotLayered(t *testing.T) {
+	for _, testCase := range shardsTestCases() {
+		t.Run(testCase.name, func(t *testing.T) {
+			testDiskServiceCreateDiskFromImageWithForceNotLayeredWithZoneID(
+				t,
+				testCase.zoneId,
+			)
+		})
+	}
+}
+
+func TestDiskServiceInShardsCancelCreateDiskFromImageWithZoneID(t *testing.T) {
+	for _, testCase := range shardsTestCases() {
+		t.Run(testCase.name, func(t *testing.T) {
+			testDiskServiceCancelCreateDiskFromImageWithZoneID(
+				t,
+				testCase.zoneId,
+			)
+		})
+	}
+}
+
 ////////////////////////////////////////////////////////////////////////////////
+
+func TestDiskServiceInShardsCreateDiskFromSnapshot(t *testing.T) {
+	for _, testCase := range shardsTestCases() {
+		t.Run(testCase.name, func(t *testing.T) {
+			testDiskServiceCreateDiskFromSnapshotWithZoneID(t, testCase.zoneId)
+		})
+	}
+}
+
+func TestDiskServiceInShardsCreateDiskFromIncrementalSnapshot(t *testing.T) {
+	for _, testCase := range shardsTestCases() {
+		t.Run(testCase.name, func(t *testing.T) {
+			testCreateDiskFromIncrementalSnapshot(
+				t,
+				disk_manager.DiskKind_DISK_KIND_SSD,
+				128*1024*1024,
+				testCase.zoneId,
+			)
+		})
+	}
+}
+
+func TestDiskServiceInShardsCreateSsdNonreplDiskFromIncrementalSnapshot(t *testing.T) {
+	for _, testCase := range shardsTestCases() {
+		t.Run(testCase.name, func(t *testing.T) {
+			testCreateDiskFromIncrementalSnapshot(
+				t,
+				disk_manager.DiskKind_DISK_KIND_SSD_NONREPLICATED,
+				262144*4096,
+				testCase.zoneId,
+			)
+		})
+	}
+}
 
 func TestDiskServiceInShardsCreateDiskFromSnapshotOfOverlayDisk(t *testing.T) {
 	for _, testCase := range shardsTestCases() {
