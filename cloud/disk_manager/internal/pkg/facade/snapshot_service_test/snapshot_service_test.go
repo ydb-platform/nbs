@@ -177,12 +177,17 @@ func TestSnapshotServiceCancelCreateSnapshotFromDisk(t *testing.T) {
 	testcommon.CancelOperation(t, ctx, client, operation.Id)
 
 	err = internal_client.WaitOperation(ctx, client, operation.Id)
-	require.Error(t, err)
-	require.ErrorContains(t, err, "Cancelled by client")
-	// Should wait here because checkpoint is deleted on operation cancel (and
-	// exact time of this event is unknown).
-	testcommon.WaitForCheckpointDoesNotExist(t, ctx, diskID, snapshotID)
-	testcommon.RequireCheckpointsDoNotExist(t, ctx, diskID)
+	if err == nil {
+		// If snapshot creation ends up successfully, there should be a
+		// checkpoint for the snapshot.
+		testcommon.RequireCheckpoint(t, ctx, diskID, snapshotID)
+	} else {
+		require.ErrorContains(t, err, "Cancelled by client")
+		// Should wait here because checkpoint is deleted on operation cancel (and
+		// exact time of this event is unknown).
+		testcommon.WaitForCheckpointDoesNotExist(t, ctx, diskID, snapshotID)
+		testcommon.RequireCheckpointsDoNotExist(t, ctx, diskID)
+	}
 
 	testcommon.CheckConsistency(t, ctx)
 }
