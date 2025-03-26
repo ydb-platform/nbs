@@ -56,7 +56,7 @@ private:
     const TString DiskId;
     const ui64 VolumeTabletId;
 
-    bool Started = false;
+    bool Ready = false;
     NProto::TVolume Volume;
 
     EPendingRequest PendingRequest = EPendingRequest::NONE;
@@ -254,7 +254,7 @@ void TStartVolumeActor::HandleLockTabletResponse(
         return;
     }
 
-    if (Started) {
+    if (Ready) {
         SendVolumeTabletStatus(ctx);
         return;
     }
@@ -586,7 +586,7 @@ void TStartVolumeActor::HandleTabletDead(
         PendingRequest = EPendingRequest::NONE;
     }
 
-    Started = false;
+    Ready = false;
     VolumeSysActor = {};
     VolumeUserActor = {};
 
@@ -713,7 +713,7 @@ void TStartVolumeActor::HandleWaitReadyResponse(
     const auto& volume = msg->Record.GetVolume();
     Y_ABORT_UNLESS(volume.GetDiskId() == DiskId);
 
-    Started = true;
+    Ready = true;
     Volume = volume;
 
     SendVolumeTabletStatus(ctx);
