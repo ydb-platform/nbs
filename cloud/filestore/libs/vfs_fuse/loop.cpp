@@ -282,6 +282,8 @@ public:
     {
         NProto::TVfsSessionState proto;
         if (!state || !proto.ParseFromString(state)) {
+            fuse_session_initparams(Session);
+
             return;
         }
 
