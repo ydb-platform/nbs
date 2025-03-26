@@ -563,4 +563,8 @@ message TStorageConfig
     // In addition to the actively opened handles the tablet will also keep
     // in memory at most this number of the most recently used nodes
     optional uint64 SessionHandleOffloadedStatsCapacity = 425;
+
+    // Limit CPU consumption by Cleanup when a massive amount
+    // of deletion markers is to be cleaned up after changing settings.
+    optional uint32 CleanupCpuThrottlingThreshold = 426;
 }

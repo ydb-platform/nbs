@@ -121,6 +121,7 @@ void TIndexTabletState::LoadState(
     FileSystem.CopyFrom(fileSystem);
     FileSystemStats.CopyFrom(fileSystemStats);
     TabletStorageInfo.CopyFrom(tabletStorageInfo);
+    DeletionMarkersThrottlingThreshold = fileSystemStats.GetDeletionMarkersCount();
 
     if (FileSystemStats.GetLastNodeId() < RootNodeId) {
         FileSystemStats.SetLastNodeId(RootNodeId);

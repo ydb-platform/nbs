@@ -649,6 +649,109 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Throttling)
         const auto resp = AssertWriteDataResponse(S_OK);
         UNIT_ASSERT(resp->Record.GetHeaders().GetThrottler().GetDelay() > 0);
     }
+
+    TABLET_TEST(ShouldAutomaticallyRunCleanupForSparselyPopulatedRanges)
+    {
+        const auto block = tabletConfig.BlockSize;
+        const auto fileSize = 16_MB;
+        const auto blockCount = fileSize / block;
+
+        // Disable automatic cleanup
+        NProto::TStorageConfig storageConfig;
+        storageConfig.SetNewCleanupEnabled(true);
+        storageConfig.SetCleanupThresholdAverage(999'999);
+        storageConfig.SetWriteBlobThreshold(block);
+
+        TTestEnv env({}, std::move(storageConfig));
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(
+            env.GetRuntime(),
+            nodeIdx,
+            tabletId,
+            tabletConfig);
+        tablet.InitSession("client", "session");
+
+        auto nodeId = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
+        auto handle = CreateHandle(tablet, nodeId);
+        tablet.WriteData(handle, 0, fileSize, 'a');
+        tablet.DestroyHandle(handle);
+
+        TSetNodeAttrArgs args(nodeId);
+        args.SetFlag(NProto::TSetNodeAttrRequest::F_SET_ATTR_SIZE);
+        args.SetSize(block);
+        tablet.SetNodeAttr(args);
+
+        {
+            auto response = tablet.GetStorageStats();
+            const auto& stats = response->Record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(1, stats.GetUsedBlocksCount());
+            UNIT_ASSERT_VALUES_EQUAL(2 * blockCount - 1,
+                stats.GetDeletionMarkersCount());
+        }
+
+        // Enable automatic cleanup and configure throttling to consume 1% of CPU
+        storageConfig.SetCleanupThresholdAverage(64);
+        storageConfig.SetCleanupCpuThrottlingThreshold(1);
+        storageConfig.SetCalculateCleanupScoreBasedOnUsedBlocksCount(true);
+        tablet.ChangeStorageConfig(storageConfig);
+        tablet.RebootTablet();
+        tablet.InitSession("client", "session");
+
+        // Cleanup is expected to run a bit and stop because of throttling
+        ui64 deletionMarkersCount = 0;
+        {
+            auto response = tablet.GetStorageStats();
+            const auto& stats = response->Record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(1, stats.GetUsedBlocksCount());
+            deletionMarkersCount = stats.GetDeletionMarkersCount();
+            UNIT_ASSERT_LT(0, deletionMarkersCount);
+            UNIT_ASSERT_GT(2 * blockCount - 1, deletionMarkersCount);
+        }
+
+        // Advance time and trigger cleanup again by calling a user operation
+        tablet.AdvanceTime(TDuration::Seconds(1));
+        tablet.SetNodeAttr(args);
+
+        // Cleanup is expected to process a bit more blocks
+        {
+            auto response = tablet.GetStorageStats();
+            const auto& stats = response->Record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(1, stats.GetUsedBlocksCount());
+            UNIT_ASSERT_GT(deletionMarkersCount,
+                stats.GetDeletionMarkersCount());
+        }
+
+        // Disable cleanup and spawn deletion markers again
+        storageConfig.SetCleanupThresholdAverage(999'999);
+        storageConfig.SetCalculateCleanupScoreBasedOnUsedBlocksCount(false);
+        tablet.ChangeStorageConfig(storageConfig);
+        tablet.RebootTablet();
+        tablet.InitSession("client", "session");
+
+        handle = CreateHandle(tablet, nodeId);
+        tablet.WriteData(handle, 0, fileSize, 'a');
+        tablet.DestroyHandle(handle);
+        tablet.SetNodeAttr(args);
+
+        // Enable cleanup and configure throttling to consume 100% of CPU
+        storageConfig.SetCleanupThresholdAverage(64);
+        storageConfig.SetCleanupCpuThrottlingThreshold(100);
+        storageConfig.SetCalculateCleanupScoreBasedOnUsedBlocksCount(true);
+        tablet.ChangeStorageConfig(storageConfig);
+        tablet.RebootTablet();
+
+        // Cleanup is expected to process all the blocks
+        {
+            auto response = tablet.GetStorageStats();
+            const auto& stats = response->Record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(1, stats.GetUsedBlocksCount());
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetDeletionMarkersCount());
+        }
+    }
 }
 
 }   // namespace NCloud::NFileStore::NStorage

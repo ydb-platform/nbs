@@ -216,6 +216,11 @@ private:
                 return Rate(now, RequestBytes, PrevRequestBytes);
             }
 
+            double CPU(TInstant now) const
+            {
+                return Rate(now, TimeSumUs, PrevTimeSumUs) * 1e-6;
+            }
+
             ui64 AverageRequestSize() const
             {
                 const auto requestCount =
@@ -666,6 +671,9 @@ private:
     ui32 ScaleCompactionThreshold(ui32 t) const;
     TCompactionInfo GetCompactionInfo() const;
     TCleanupInfo GetCleanupInfo() const;
+    bool ShouldCleanupAfterApplyingThrottlingRules(
+        const NActors::TActorContext& ctx,
+        const TCleanupInfo& cleanupInfo);
     bool IsCloseToBackpressureThresholds(TString* message) const;
 
     void HandleWakeup(

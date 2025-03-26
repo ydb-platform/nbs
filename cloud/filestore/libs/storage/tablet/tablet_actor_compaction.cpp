@@ -323,6 +323,8 @@ void TIndexTabletActor::EnqueueBlobIndexOpIfNeeded(const TActorContext& ctx)
 {
     const auto compactionInfo = GetCompactionInfo();
     const auto cleanupInfo = GetCleanupInfo();
+    const bool shouldCleanup =
+        ShouldCleanupAfterApplyingThrottlingRules(ctx, cleanupInfo);
 
     if (IsBlobIndexOpsQueueEmpty()) {
         auto blobIndexOpsPriority = Config->GetBlobIndexOpsPriority();
@@ -339,7 +341,7 @@ void TIndexTabletActor::EnqueueBlobIndexOpIfNeeded(const TActorContext& ctx)
 
         switch (blobIndexOpsPriority) {
             case NProto::BIOP_CLEANUP_FIRST: {
-                if (cleanupInfo.ShouldCleanup) {
+                if (shouldCleanup) {
                     AddBackgroundBlobIndexOp(EBlobIndexOp::Cleanup);
                 } else if (compactionInfo.ShouldCompact) {
                     AddBackgroundBlobIndexOp(EBlobIndexOp::Compaction);
@@ -350,7 +352,7 @@ void TIndexTabletActor::EnqueueBlobIndexOpIfNeeded(const TActorContext& ctx)
             case NProto::BIOP_COMPACTION_FIRST: {
                 if (compactionInfo.ShouldCompact) {
                     AddBackgroundBlobIndexOp(EBlobIndexOp::Compaction);
-                } else if (cleanupInfo.ShouldCleanup) {
+                } else if (shouldCleanup) {
                     AddBackgroundBlobIndexOp(EBlobIndexOp::Cleanup);
                 }
                 break;
@@ -360,7 +362,7 @@ void TIndexTabletActor::EnqueueBlobIndexOpIfNeeded(const TActorContext& ctx)
                 if (compactionInfo.ShouldCompact) {
                     AddBackgroundBlobIndexOp(EBlobIndexOp::Compaction);
                 }
-                if (cleanupInfo.ShouldCleanup) {
+                if (shouldCleanup) {
                     AddBackgroundBlobIndexOp(EBlobIndexOp::Cleanup);
                 }
                 break;
