@@ -20,3 +20,16 @@ EnableToChangeStatesFromDiskRegistryMonpage: true
 EnableToChangeErrorStatesFromDiskRegistryMonpage: true
 LaggingDevicesForMirror2DisksEnabled: true
 LaggingDevicesForMirror3DisksEnabled: true
+LinkedDiskFillBandwidth {
+  ReadBandwidth: 200
+  WriteBandwidth: 200
+  ReadIoDepth: 2
+  WriteIoDepth: 2
+}
+LinkedDiskFillBandwidth {
+  MediaKind: STORAGE_MEDIA_SSD_NONREPLICATED
+  ReadBandwidth: 300
+  WriteBandwidth: 300
+  ReadIoDepth: 4
+  WriteIoDepth: 4
+}
