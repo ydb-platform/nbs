@@ -39,6 +39,7 @@ git config core.hooksPath .githooks
 If you want to use debugging in VS Code you should to enable the static linkage.
 
 Add section below to '~/.ya/ya.conf'
+```
 [[target_platform]]
 platform_name = "default-linux-x86_64"
 build_type = "relwithdebinfo"
@@ -46,3 +47,4 @@ build_type = "relwithdebinfo"
 
 [target_platform.flags]
 FORCE_STATIC_LINKING="yes"
+```
