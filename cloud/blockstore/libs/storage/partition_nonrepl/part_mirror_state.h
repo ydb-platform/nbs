@@ -11,6 +11,8 @@
 
 #include <util/generic/vector.h>
 
+#include <ranges>
+
 namespace NCloud::NBlockStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -31,7 +33,12 @@ private:
 
     TMigrations Migrations;
     TVector<TReplicaInfo> ReplicaInfos;
-    TVector<NActors::TActorId> ReplicaActors;
+
+    struct TReplicaActors {
+        NActors::TActorId LaggingProxyActorId;
+        NActors::TActorId PartActorId;
+    };
+    TVector<TReplicaActors> ReplicaActors;
 
     ui32 ReadReplicaIndex = 0;
 
@@ -47,33 +54,53 @@ public:
         TVector<TDevices> replicas);
 
 public:
-    const TVector<TReplicaInfo>& GetReplicaInfos() const
+    [[nodiscard]] const TVector<TReplicaInfo>& GetReplicaInfos() const
     {
         return ReplicaInfos;
     }
 
     void AddReplicaActor(const NActors::TActorId& actorId)
     {
-        ReplicaActors.push_back(actorId);
+        ReplicaActors.push_back({actorId, actorId});
     }
 
-    const TVector<NActors::TActorId>& GetReplicaActors() const
+    [[nodiscard]] auto GetReplicaActors() const
     {
-        return ReplicaActors;
+        return ReplicaActors |
+               std::views::transform([](const TReplicaActors& actors)
+                                     { return actors.LaggingProxyActorId; });
     }
 
-    const NActors::TActorId& GetReplicaActor(ui32 index) const
+    [[nodiscard]] auto GetReplicaActorsVector() const
+    {
+        const auto replicaActors = GetReplicaActors();
+        return TVector<NActors::TActorId>{
+            replicaActors.begin(),
+            replicaActors.end()};
+    }
+
+    [[nodiscard]] const NActors::TActorId& GetReplicaActor(ui32 index) const
     {
         Y_DEBUG_ABORT_UNLESS(index < ReplicaActors.size());
-        return ReplicaActors[index];
+        return ReplicaActors[index].LaggingProxyActorId;
     }
+
+    [[nodiscard]] auto GetReplicaActorsBypassingProxies() const
+    {
+        return ReplicaActors |
+               std::views::transform([](const TReplicaActors& actors)
+                                     { return actors.PartActorId; });
+    }
+
+    [[nodiscard]] ui32 GetReplicaIndex(NActors::TActorId actorId) const;
+    [[nodiscard]] bool IsReplicaActor(NActors::TActorId actorId) const;
 
     void SetRWClientId(TString rwClientId)
     {
         RWClientId = std::move(rwClientId);
     }
 
-    const TString& GetRWClientId() const
+    [[nodiscard]] const TString& GetRWClientId() const
     {
         return RWClientId;
     }
@@ -85,6 +112,21 @@ public:
         }
         ReadReplicaIndex = readReplicaIndex;
     }
+
+    [[nodiscard]] bool DevicesReadyForReading(
+        ui32 replicaIndex,
+        const TBlockRange64 blockRange) const;
+
+    void AddLaggingAgent(NProto::TLaggingAgent laggingAgent);
+    void RemoveLaggingAgent(const NProto::TLaggingAgent& laggingAgent);
+    [[nodiscard]] bool HasLaggingAgents(ui32 replicaIndex) const;
+
+    void SetLaggingReplicaProxy(
+        ui32 replicaIndex,
+        const NActors::TActorId& actorId);
+    void ResetLaggingReplicaProxy(ui32 replicaIndex);
+    [[nodiscard]] bool IsLaggingProxySet(ui32 replicaIndex) const;
+    [[nodiscard]] size_t LaggingReplicaCount() const;
 
     [[nodiscard]] NProto::TError Validate();
     void PrepareMigrationConfig();

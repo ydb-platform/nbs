@@ -65,25 +65,26 @@ struct TExt4BlockDigestGenerator final
 
     bool ShouldProcess(ui64 blockIndex, ui32 blockSize) const
     {
-        Y_DEBUG_ABORT_UNLESS(blockSize);
-        if (!blockSize) {
-            return false;
-        }
+        Y_DEBUG_ABORT_UNLESS(blockSize || blockIndex);
+        // Y_DEBUG_ABORT_UNLESS(blockSize);
+        // if (!blockSize) {
+        //     return false;
+        // }
 
-        const auto partitionTableSize = 1_MB;
-        const auto groupSize = 128_MB;
-        const auto blocksInGroup = groupSize / blockSize;
-        const auto fsOffset = partitionTableSize / blockSize;
+        // const auto partitionTableSize = 1_MB;
+        // const auto groupSize = 128_MB;
+        // const auto blocksInGroup = groupSize / blockSize;
+        // const auto fsOffset = partitionTableSize / blockSize;
 
-        if (blockIndex > fsOffset) {
-            blockIndex -= fsOffset;
+        // if (blockIndex > fsOffset) {
+        //     blockIndex -= fsOffset;
 
-            const auto relativeIndex = blockIndex % blocksInGroup;
-            const auto threshold =
-                (DigestedBlocksPercentage / 100.) * blocksInGroup;
+        //     const auto relativeIndex = blockIndex % blocksInGroup;
+        //     const auto threshold =
+        //         (DigestedBlocksPercentage / 100.) * blocksInGroup;
 
-            return relativeIndex <= threshold;
-        }
+        //     return relativeIndex <= threshold;
+        // }
 
         return true;
     }
@@ -162,9 +163,8 @@ struct TBlockDigestGeneratorStub final
 IBlockDigestGeneratorPtr CreateExt4BlockDigestGenerator(
     ui32 digestedBlocksPercentage)
 {
-    return std::make_shared<TExt4BlockDigestGenerator>(
-        digestedBlocksPercentage
-    );
+    Y_UNUSED(digestedBlocksPercentage);
+    return std::make_shared<TTestBlockDigestGenerator>();
 }
 
 IBlockDigestGeneratorPtr CreateTestBlockDigestGenerator()

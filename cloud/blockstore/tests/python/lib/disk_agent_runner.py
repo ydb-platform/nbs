@@ -41,6 +41,7 @@ class LocalDiskAgent(Daemon):
             enable_tls=False,
             discovery_config=None,
             restart_interval=None,
+            downtime_after_restart=None,
             dynamic_storage_pools=None,
             load_configs_from_cms=False,
             kikimr_binary_path=None,
@@ -79,11 +80,16 @@ class LocalDiskAgent(Daemon):
 
         if restart_interval is not None:
             self.__unstable_process_args = [
-                '--restart-interval', str(restart_interval),
-                '--ping-port', str(self.__mon_port),
-                '--ping-success-codes', '200',
-                '--ping-path', '/blockstore/disk_agent'
+                "--restart-interval", str(restart_interval),
+                "--ping-port", str(self.__mon_port),
+                "--ping-success-codes", '200',
+                "--ping-path", "/blockstore/disk_agent",
+                "--ping-timeout", "2",
+                # "-vvvvv",
             ]
+            if downtime_after_restart is not None:
+                self.__unstable_process_args += ['--downtime',
+                                                 str(downtime_after_restart)]
 
         self.__output_path = yatest_common.output_path()
         self.__cwd = get_unique_path_for_current_test(
@@ -534,8 +540,6 @@ ModifyScheme {
                 "cloud/storage/core/tools/testing/unstable-process/storage-unstable-process")
             command = [
                 launcher_path,
-                "--ping-timeout", str(2),
-                # "-vvvvv",
             ] + self.__unstable_process_args
 
             for cmd in commands:

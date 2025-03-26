@@ -425,7 +425,7 @@ def wait_for_free_bytes(mon_port, pool='default'):
 
 
 # wait for DA & secure erase of all available devices
-def wait_for_secure_erase(mon_port, pool='default'):
+def wait_for_secure_erase(mon_port, pool='default', expectedAgents=1):
     seen_zero_free_bytes = False
 
     while True:
@@ -433,7 +433,7 @@ def wait_for_secure_erase(mon_port, pool='default'):
         time.sleep(1)
         sensors = get_nbs_counters(mon_port)['sensors']
         agents = get_sensor_by_name(sensors, 'disk_registry', 'AgentsInOnlineState', 0)
-        if agents == 0:
+        if agents < expectedAgents:
             continue
 
         logging.info("Agents: {}".format(agents))

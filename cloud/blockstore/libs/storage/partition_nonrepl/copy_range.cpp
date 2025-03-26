@@ -41,6 +41,12 @@ void TCopyRangeActor::Bootstrap(const TActorContext& ctx)
 
     Become(&TThis::StateWork);
 
+    LOG_WARN(
+        ctx,
+        TBlockStoreComponents::PARTITION,
+        "xxxxx TCopyRangeActor::Bootstrap: AID[%s]",
+        ctx.SelfID.ToString().c_str());
+
     LWTRACK(
         RequestReceived_PartitionWorker,
         RequestInfo->CallContext->LWOrbit,

@@ -34,7 +34,7 @@ In this state, no matter the block index, a write operation will be performed on
 ## Detailed Design
 
 There will be 3 new entities:
-1) `IncompleteMirrorRWModeController`
+1) `ReplicaLaggingAgentsIOController`
 2) `AgentAvailabilityMonitor`
 3) `SmartMigrationActor`
 
@@ -43,9 +43,9 @@ In the example above, architecture schema will look like this:
 ```mermaid
 flowchart TD
     A[Volume]  --> B[MirrorPartition]
-    B --> C[IncompleteMirrorRWModeController]
-    B --> D[IncompleteMirrorRWModeController]
-    B --> E[IncompleteMirrorRWModeController]
+    B --> C[ReplicaLaggingAgentsIOController]
+    B --> D[ReplicaLaggingAgentsIOController]
+    B --> E[ReplicaLaggingAgentsIOController]
     C --> F[AgentAvailabilityMonitor agent-1]
     C --> G[NonreplicatedPartition]
     F --> G
@@ -59,7 +59,7 @@ flowchart TD
     E --> L
 ```
 
-### IncompleteMirrorRWModeController
+### ReplicaLaggingAgentsIOController
 
 This actor proxies all IO messages between MirrorPartition and `NonreplicatedPartition`. Its purpose is to manage lagging agents in one of the replicas.
 A lagging agent can be either unresponsive or replicating.
@@ -77,18 +77,18 @@ A lagging agent can be either unresponsive or replicating.
     - Doesn't accept reads.
     - Writes are proxied to `SmartMigrationActor`.
 
-There can be 0-1 instances of `IncompleteMirrorRWModeController` per `NonreplicatedPartition`. The presence of the `IncompleteMirrorRWModeController` indicates that the replica has agents that lag behind. `IncompleteMirrorRWModeController` manages the lifetimes of `AgentAvailabilityMonitor` and `SmartMigrationActor` entities.
+There can be 0-1 instances of `ReplicaLaggingAgentsIOController` per `NonreplicatedPartition`. The presence of the `ReplicaLaggingAgentsIOController` indicates that the replica has agents that lag behind. `ReplicaLaggingAgentsIOController` manages the lifetimes of `AgentAvailabilityMonitor` and `SmartMigrationActor` entities.
 
 Since the dirty block map will not be stored persistently, we must handle lagging replica on restart of a partition, volume, or a whole service. In this case, the replication is started. Devices that are lagging behind will be marked as "fresh" and the migration process will start automatically. However, there will be one improvement. `TCopyRangeActor` will check the checksums of block ranges before actual replication, as a lot of data remains the same.
 The "freshness" of the devices should be propagated to the DiskRegistry. This will eliminate the possibility of discarding two replicas with the actual data.
 
 ### AgentAvailabilityMonitor
 
-This is simple actor that periodically reads a block with a small timeout. Once it is succeded, it notifies the `IncompleteMirrorRWModeController` which in response will destroy the `AgentAvailabilityMonitor` and create a `SmartMigrationActor`.
+This is simple actor that periodically reads a block with a small timeout. Once it is succeded, it notifies the `ReplicaLaggingAgentsIOController` which in response will destroy the `AgentAvailabilityMonitor` and create a `SmartMigrationActor`.
 
 ### SmartMigrationActor
 
-`SmartMigrationActor` is an actor that migrates dirty block map (collected by `IncompleteMirrorRWModeController`) from 2 available agents to the lagging one. It inherits from `TNonreplicatedPartitionMigrationCommonActor` since it already has most of the necessary functionality:
+`SmartMigrationActor` is an actor that migrates dirty block map (collected by `ReplicaLaggingAgentsIOController`) from 2 available agents to the lagging one. It inherits from `TNonreplicatedPartitionMigrationCommonActor` since it already has most of the necessary functionality:
 - Copies from one actor to the other
 - Does copying by blocks map
 - Proxies user writes to the `NonreplicatedPartition`
@@ -101,7 +101,7 @@ Example of a sequence diagram when one of the devices becomes unresponsive:
 sequenceDiagram
     participant Volume
     participant MirrorPartition
-    participant IncompleteMirrorRWModeController
+    participant ReplicaLaggingAgentsIOController
     participant AgentAvailabilityMonitor
     participant SmartMigrationActor
     participant NonreplicatedPartition
@@ -110,19 +110,19 @@ sequenceDiagram
     Volume ->> Volume: Decide whether we can avoid IO to the unresponsive agent
     Volume ->> Volume: If ok, save unresponsive agent info persistently
     Volume ->> MirrorPartition: Disable reads and writes to the unresponsive agent
-    MirrorPartition ->> IncompleteMirrorRWModeController: Ensure created
-    IncompleteMirrorRWModeController ->> AgentAvailabilityMonitor: Create
-    IncompleteMirrorRWModeController ->> NonreplicatedPartition: Reject pending requests
+    MirrorPartition ->> ReplicaLaggingAgentsIOController: Ensure created
+    ReplicaLaggingAgentsIOController ->> AgentAvailabilityMonitor: Create
+    ReplicaLaggingAgentsIOController ->> NonreplicatedPartition: Reject pending requests
     AgentAvailabilityMonitor ->> NonreplicatedPartition: Wait until the agent becomes available
     NonreplicatedPartition ->> AgentAvailabilityMonitor: Agent has responded on read request
-    AgentAvailabilityMonitor ->> IncompleteMirrorRWModeController: Report the agent is available
-    IncompleteMirrorRWModeController -x AgentAvailabilityMonitor: Destroy
-    IncompleteMirrorRWModeController ->> MirrorPartition: Enable writes to the lagging agent
-    IncompleteMirrorRWModeController ->> SmartMigrationActor: Create
+    AgentAvailabilityMonitor ->> ReplicaLaggingAgentsIOController: Report the agent is available
+    ReplicaLaggingAgentsIOController -x AgentAvailabilityMonitor: Destroy
+    ReplicaLaggingAgentsIOController ->> MirrorPartition: Enable writes to the lagging agent
+    ReplicaLaggingAgentsIOController ->> SmartMigrationActor: Create
     SmartMigrationActor ->> SmartMigrationActor: Migrate lagging blocks
-    SmartMigrationActor ->> IncompleteMirrorRWModeController: Finished migration
-    IncompleteMirrorRWModeController ->> Volume: Replicas are in sync
+    SmartMigrationActor ->> ReplicaLaggingAgentsIOController: Finished migration
+    ReplicaLaggingAgentsIOController ->> Volume: Replicas are in sync
     Volume ->> Volume: Delete unresponsive agent info from DB
     Volume ->> MirrorPartition: Enable reads to the lagging agent
-    MirrorPartition -x IncompleteMirrorRWModeController: Destroy
+    MirrorPartition -x ReplicaLaggingAgentsIOController: Destroy
 ```

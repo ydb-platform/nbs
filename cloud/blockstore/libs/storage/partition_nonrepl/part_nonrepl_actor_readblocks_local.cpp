@@ -239,6 +239,18 @@ void TNonreplicatedPartitionActor::HandleReadBlocksLocal(
         msg->Record.GetStartIndex(),
         msg->Record.GetBlocksCount());
 
+    LOG_WARN(
+        ctx,
+        TBlockStoreComponents::PARTITION,
+        "xxxxx AID[%s] TNonreplicatedPartitionActor::HandleReadBlocksLocal"
+        ", sender: %lu"
+        ", size: %lu"
+        ", agentId = %s",
+        ctx.SelfID.ToString().c_str(),
+        ev->Sender.ToString().c_str(),
+        blockRange.Size(),
+        PartConfig->GetDevices()[0].GetAgentId().c_str());
+
     TVector<TDeviceRequest> deviceRequests;
     TRequestTimeoutPolicy timeoutPolicy;
     TRequestData request;

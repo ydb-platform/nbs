@@ -130,10 +130,10 @@ void TSplitRequestSenderActor<TMethod>::SendRequests(
         );
         ctx.Send(std::move(event));
 
-        LOG_TRACE(
+        LOG_INFO(
             ctx,
             TBlockStoreComponents::PARTITION_WORKER,
-            "[%s] Splitted %s request #%lu has been sent to %s",
+            "lll [%s] Splitted %s request #%lu has been sent to %s",
             DiskId.c_str(),
             TMethod::Name,
             RequestId,
@@ -296,8 +296,10 @@ TLaggingAgentsReplicaProxyActor::TLaggingAgentsReplicaProxyActor(
     , PoisonPillHelper(this)
 {}
 
-TLaggingAgentsReplicaProxyActor::
-    ~TLaggingAgentsReplicaProxyActor() = default;
+TLaggingAgentsReplicaProxyActor::~TLaggingAgentsReplicaProxyActor()
+{
+    Cerr << "xxxxx TLaggingAgentsReplicaProxyActor dead!" << Endl;
+}
 
 void TLaggingAgentsReplicaProxyActor::Bootstrap(const TActorContext& ctx)
 {
@@ -317,12 +319,12 @@ void TLaggingAgentsReplicaProxyActor::MarkBlocksAsDirty(
     const TString& unavailableAgentId,
     TBlockRange64 range)
 {
-    LOG_TRACE(
+    LOG_INFO(
         ctx,
         TBlockStoreComponents::PARTITION_WORKER,
-        "[%s] Marking block range %s as dirty for agent %s",
+        "lll [%s] Marking block range %s as dirty for lagging agent %s",
         PartConfig->GetName().c_str(),
-        range.Print().c_str(),
+        DescribeRange(range).c_str(),
         unavailableAgentId.Quote().c_str());
 
     auto& state = AgentState[unavailableAgentId];
@@ -414,10 +416,10 @@ void TLaggingAgentsReplicaProxyActor::WriteBlocks(
     }
 
     if (requestsToUnavailable == deviceRequests.size()) {
-        LOG_TRACE(
+        LOG_INFO(
             ctx,
             TBlockStoreComponents::PARTITION_WORKER,
-            "[%s] %s request #%lu with range %s covers only lagging agents. "
+            "lll [%s] %s request #%lu with range %s covers only (you know which 2) agents. "
             "Dropping request",
             PartConfig->GetName().c_str(),
             TMethod::Name,
@@ -435,10 +437,10 @@ void TLaggingAgentsReplicaProxyActor::WriteBlocks(
     Y_DEBUG_ABORT_UNLESS(!requests.empty());
     Y_DEBUG_ABORT_UNLESS(requests.size() <= deviceRequests.size());
 
-    LOG_TRACE(
+    LOG_INFO(
         ctx,
         TBlockStoreComponents::PARTITION_WORKER,
-        "[%s] %s request #%lu with range %s has been split into %u parts. %u "
+        "lll [%s] %s request #%lu with range %s has been split into %u parts. %u "
         "of them will be dropped.",
         PartConfig->GetName().c_str(),
         TMethod::Name,
@@ -614,7 +616,7 @@ void TLaggingAgentsReplicaProxyActor::HandleAgentIsUnavailable(
     LOG_INFO(
         ctx,
         TBlockStoreComponents::PARTITION_WORKER,
-        "[%s] Agent %s went unavailable. Creating availability monitor",
+        "[%s] Agent %s went unavailable (lagging). Creating availability monitor",
         PartConfig->GetName().c_str(),
         msg->LaggingAgent.GetAgentId().Quote().c_str());
 
@@ -647,7 +649,8 @@ void TLaggingAgentsReplicaProxyActor::HandleAgentIsUnavailable(
     LOG_DEBUG(
         ctx,
         TBlockStoreComponents::PARTITION_WORKER,
-        "[%s] Agent %s Block count: %lu, dirty block count: %lu",
+        "[%s] Lagging agent %s blocks map initialized. Block count: %lu, dirty "
+        "block count: %lu",
         PartConfig->GetName().c_str(),
         agentId.c_str(),
         PartConfig->GetBlockCount(),
@@ -678,7 +681,8 @@ void TLaggingAgentsReplicaProxyActor::HandleAgentIsBackOnline(
     LOG_INFO(
         ctx,
         TBlockStoreComponents::PARTITION_WORKER,
-        "[%s] Agent %s is back online. Starting migration actor",
+        "[%s] Agent %s is back online. Starting migration from healthy replica "
+        "to the lagging",
         PartConfig->GetName().c_str(),
         msg->AgentId.Quote().c_str());
 

@@ -196,9 +196,12 @@ NActors::TActorId TNonreplicatedPartitionMigrationActor::CreateDstActor(
         return {};
     }
 
+    Cerr << "CreateDstActor: " << Endl;
+
     ui64 blockIndex = 0;
     auto devices = SrcConfig->GetDevices();
     for (auto& device: devices) {
+        Cerr << device.GetDeviceUUID() << ", ";
         auto* migration = FindIfPtr(
             Migrations,
             [&](const NProto::TDeviceMigration& m)
@@ -231,11 +234,14 @@ NActors::TActorId TNonreplicatedPartitionMigrationActor::CreateDstActor(
             // Skip this device for migration
             MarkMigratedBlocks(
                 TBlockRange64::WithLength(blockIndex, device.GetBlocksCount()));
+            Cerr << "Clear UUID: " << device.GetDeviceUUID() << ", ";
             device.ClearDeviceUUID();
         }
 
         blockIndex += device.GetBlocksCount();
     }
+
+    Cerr << Endl;
 
     return NCloud::Register(
         ctx,

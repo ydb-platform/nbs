@@ -324,6 +324,14 @@ void TRequestActor<TMethod>::HandleResponse(
     auto& record = msg->Record;
     ProcessMirrorActorError(*record.MutableError());
 
+    LOG_DEBUG(
+        ctx,
+        TBlockStoreComponents::PARTITION_WORKER,
+        "[%s] %s got response from nonreplicated partition: %s",
+        DiskId.c_str(),
+        TMethod::Name,
+        FormatError(record.GetError()).c_str());
+
     if (HasError(record)) {
         LOG_ERROR(ctx, TBlockStoreComponents::PARTITION_WORKER,
             "[%s] %s got error from nonreplicated partition: %s",
@@ -553,13 +561,38 @@ void TMirrorPartitionActor::ReadBlocks(
         return;
     }
 
+
+    ui32 index = 0;
+    for (ui32 i = 0; i < State.GetReplicaActorsVector().size(); i++) {
+        if (State.GetReplicaActor(i) == replicaActorIds[0]) {
+            index = i;
+            break;
+        }
+    }
+
+    TVector<TString> replicaAgents;
+    const auto& replcaDevices = State.GetReplicaInfos()[index].Config->GetDevices();
+    for (const auto& device : replcaDevices) {
+        replicaAgents.push_back(device.GetAgentId());
+    }
+
+    TVector<TString> laggingAgents;
+    const auto& laggingAgentstmp = State.GetReplicaInfos()[index].LaggingAgents;
+    for (const auto& agent : laggingAgentstmp) {
+        laggingAgents.push_back(agent.second.GetAgentId());
+    }
+
     LOG_DEBUG(
         ctx,
         TBlockStoreComponents::PARTITION_WORKER,
-        "[%s] Will read %s from %u replicas",
+        "[%s] Will read %s from %u replicas. Replica index = %u. Replica "
+        "agents: [%s]; (you know which) agents: [%s]",
         DiskId.c_str(),
         DescribeRange(blockRange).c_str(),
-        replicaActorIds.size());
+        replicaActorIds.size(),
+        index,
+        JoinSeq(", ", replicaAgents).c_str(),
+        JoinSeq(", ", laggingAgents).c_str());
 
     const auto requestIdentityKey = TakeNextRequestIdentifier();
     RequestsInProgress.AddReadRequest(

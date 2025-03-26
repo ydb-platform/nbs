@@ -129,7 +129,7 @@ void TMirrorPartitionActor::MirrorRequest(
     NCloud::Register<TMirrorRequestActor<TMethod>>(
         ctx,
         std::move(requestInfo),
-        State.GetReplicaActors(),
+        State.GetReplicaActorsVector(),
         std::move(msg->Record),
         State.GetReplicaInfos()[0].Config->GetName(),   // diskId
         SelfId(),                                       // parentActorId

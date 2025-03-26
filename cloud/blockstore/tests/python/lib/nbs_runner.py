@@ -298,6 +298,7 @@ ModifyScheme {
             b"BLOCKSTORE_DISK_REGISTRY_PROXY",
             b"BLOCKSTORE_VOLUME",
             b"BLOCKSTORE_RDMA",
+            # b"BLOCKSTORE_PARTITION_WORKER",
         ]
 
         services_dbg = [
@@ -307,6 +308,7 @@ ModifyScheme {
             b"BLOCKSTORE_DISK_AGENT",
             b"BLOCKSTORE_HIVE_PROXY",
             b"BLOCKSTORE_SS_PROXY",
+            b"BLOCKSTORE_PARTITION_WORKER",
         ]
 
         log_config = TLogConfig()
