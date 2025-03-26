@@ -221,7 +221,7 @@ func (t *createImageFromDiskTask) Cancel(
 		disk,
 		t.request.DstImageId,
 		execCtx.GetTaskID(),
-		*t.config.RetryBrokenDRBasedDiskCheckpoint,
+		t.request.RetryBrokenDRBasedDiskCheckpoint,
 	)
 	if err != nil {
 		return err
