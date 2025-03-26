@@ -178,8 +178,8 @@ func TestSnapshotServiceCancelCreateSnapshotFromDisk(t *testing.T) {
 
 	err = internal_client.WaitOperation(ctx, client, operation.Id)
 	if err == nil {
-		// If snapshot creation ends up successfully, there should be a
-		// checkpoint for the snapshot.
+		// If snapshot creation ends up successfully, there should be
+		// a checkpoint for the snapshot.
 		testcommon.RequireCheckpoint(t, ctx, diskID, snapshotID)
 	} else {
 		require.ErrorContains(t, err, "Cancelled by client")
