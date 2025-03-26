@@ -67,9 +67,7 @@ private:
         const NActors::TActorContext& ctx,
         const TVector<ui64>& checksums,
         ui64 majorChecksum);
-    void ResyncMajor(
-        const NActors::TActorContext& ctx,
-        const TVector<ui64>& checksums);
+    void ResyncMajor(const NActors::TActorContext& ctx);
     void PrepareWriteBuffer(const NActors::TActorContext& ctx);
     void ReadBlocks(const NActors::TActorContext& ctx, size_t idx);
     void WriteBlocks(const NActors::TActorContext& ctx);

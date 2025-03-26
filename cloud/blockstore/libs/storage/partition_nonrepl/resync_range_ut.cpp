@@ -589,6 +589,148 @@ Y_UNIT_TEST_SUITE(TResyncRangeTest)
             UNIT_ASSERT_VALUES_EQUAL("write error", response->GetError().GetMessage());
         }
     }
+
+    Y_UNIT_TEST(ShouldHealMinorBlocksMismatch)
+    {
+        TTestBasicRuntime runtime;
+        TTestEnv env(runtime);
+
+        env.WriteReplica(0, 0, 1023, 'A');
+        env.WriteReplica(1, 0, 1023, 'A');
+        env.WriteReplica(2, 0, 1023, 'A');
+
+        // Make one minor error in each replica.
+        env.WriteReplica(0, 10, 10, 'x');
+        env.WriteReplica(1, 11, 11, 'x');
+        env.WriteReplica(2, 12, 12, 'x');
+
+        auto response = env.ResyncRange(0, 1023, {0, 1, 2});
+        UNIT_ASSERT(!HasError(response->GetError()));
+
+        // Check replica 0
+        {
+            auto blocks = env.ReadReplica(0, 0, 1023);
+            for (const auto& block: blocks) {
+                UNIT_ASSERT_VALUES_EQUAL(TString(DefaultBlockSize, 'A'), block);
+            }
+        }
+
+        // Check replica 1
+        {
+            auto blocks = env.ReadReplica(1, 0, 1023);
+            for (const auto& block: blocks) {
+                UNIT_ASSERT_VALUES_EQUAL(TString(DefaultBlockSize, 'A'), block);
+            }
+        }
+
+        // Check replica 2
+        {
+            auto blocks = env.ReadReplica(2, 0, 1023);
+            for (const auto& block: blocks) {
+                UNIT_ASSERT_VALUES_EQUAL(TString(DefaultBlockSize, 'A'), block);
+            }
+        }
+    }
+
+    Y_UNIT_TEST(ShouldHealMinorErrorsAndSelectBestHealerForMajorSource)
+    {
+        TTestBasicRuntime runtime;
+        TTestEnv env(runtime);
+
+        env.WriteReplica(0, 0, 1023, 'A');
+        env.WriteReplica(1, 0, 1023, 'A');
+        env.WriteReplica(2, 0, 1023, 'A');
+
+        // Add two minor errors for replica #0 and #1 each.
+        // For replica #2 add only one minor error, it should be elected as
+        // major source.
+        env.WriteReplica(0, 11, 11, 'x');
+        env.WriteReplica(0, 12, 12, 'x');
+        env.WriteReplica(1, 13, 13, 'x');
+        env.WriteReplica(1, 14, 14, 'x');
+        env.WriteReplica(2, 15, 15, 'x');
+
+        // Add major error
+        env.WriteReplica(0, 20, 20, 'w');
+        env.WriteReplica(1, 20, 20, 'z');
+
+        auto response = env.ResyncRange(0, 1023, {0, 1, 2});
+        UNIT_ASSERT(!HasError(response->GetError()));
+
+        // Check replica 0
+        {
+            auto blocks = env.ReadReplica(0, 0, 1023);
+            for (const auto& block: blocks) {
+                UNIT_ASSERT_VALUES_EQUAL(TString(DefaultBlockSize, 'A'), block);
+            }
+        }
+
+        // Check replica 1
+        {
+            auto blocks = env.ReadReplica(1, 0, 1023);
+            for (const auto& block: blocks) {
+                UNIT_ASSERT_VALUES_EQUAL(TString(DefaultBlockSize, 'A'), block);
+            }
+        }
+
+        // Check replica 2
+        {
+            auto blocks = env.ReadReplica(2, 0, 1023);
+            for (const auto& block: blocks) {
+                UNIT_ASSERT_VALUES_EQUAL(TString(DefaultBlockSize, 'A'), block);
+            }
+        }
+    }
+
+    Y_UNIT_TEST(ShouldSelectFirstReplicaAsBestHealerWhenAllHaveSameMinorErrors)
+    {
+        TTestBasicRuntime runtime;
+        TTestEnv env(runtime);
+
+        env.WriteReplica(0, 0, 1023, 'A');
+        env.WriteReplica(1, 0, 1023, 'A');
+        env.WriteReplica(2, 0, 1023, 'A');
+
+        // Add two minor errors for each replica.
+        env.WriteReplica(0, 11, 11, 'x');
+        env.WriteReplica(0, 12, 12, 'x');
+        env.WriteReplica(1, 13, 13, 'x');
+        env.WriteReplica(1, 14, 14, 'x');
+        env.WriteReplica(2, 15, 15, 'x');
+        env.WriteReplica(2, 16, 16, 'x');
+
+        // Add major error
+        env.WriteReplica(1, 20, 20, 'w');
+        env.WriteReplica(2, 20, 20, 'z');
+
+        // Replica #0 should be used for fixing major error.
+        auto response = env.ResyncRange(0, 1023, {0, 1, 2});
+        UNIT_ASSERT(!HasError(response->GetError()));
+
+        // Check replica 0
+        {
+            auto blocks = env.ReadReplica(0, 0, 1023);
+            for (const auto& block: blocks) {
+                UNIT_ASSERT_VALUES_EQUAL(TString(DefaultBlockSize, 'A'), block);
+            }
+        }
+
+        // Check replica 1
+        {
+            auto blocks = env.ReadReplica(1, 0, 1023);
+            for (const auto& block: blocks) {
+                UNIT_ASSERT_VALUES_EQUAL(TString(DefaultBlockSize, 'A'), block);
+            }
+        }
+
+        // Check replica 2
+        {
+            auto blocks = env.ReadReplica(2, 0, 1023);
+            for (const auto& block: blocks) {
+                UNIT_ASSERT_VALUES_EQUAL(TString(DefaultBlockSize, 'A'), block);
+            }
+        }
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

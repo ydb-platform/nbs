@@ -6,6 +6,7 @@
 #include <cloud/blockstore/libs/storage/api/disk_agent.h>
 #include <cloud/blockstore/libs/storage/core/probes.h>
 #include <cloud/blockstore/libs/storage/disk_agent/public.h>
+
 #include <cloud/storage/core/libs/common/sglist.h>
 
 #include <util/string/join.h>
@@ -30,15 +31,20 @@ struct TLessComparatorForTBlockDataRef
 
 struct THealStat
 {
+    // How many times replica been used as source for fixing a minor error.
     size_t HealCount = 0;
-    size_t MinorFixCount = 0;
-    size_t MajorFixCount = 0;
+
+    // How many blocks in replica with minor errors has been fixed.
+    size_t MinorErrorCount = 0;
+
+    // How many blocks in replica with major errors has been fixed.
+    size_t MajorErrorCount = 0;
 
     [[nodiscard]] TString Print() const
     {
         return TStringBuilder()
-               << "[heals=" << HealCount << ", minor=" << MinorFixCount
-               << ", major=" << MajorFixCount << "]";
+               << "[healer=" << HealCount << ", minor=" << MinorErrorCount
+               << ", major=" << MajorErrorCount << "]";
     }
 };
 
@@ -109,7 +115,7 @@ void TResyncRangeActor::CompareChecksums(const TActorContext& ctx)
     if (Status == EStatus::MinorMismatch) {
         ResyncMinor(ctx, checksums, majorChecksum);
     } else {
-        ResyncMajor(ctx, checksums);
+        ResyncMajor(ctx);
     }
 }
 
@@ -130,12 +136,10 @@ void TResyncRangeActor::ResyncMinor(
     ReadBlocks(ctx, majorIndx);
 }
 
-void TResyncRangeActor::ResyncMajor(
-    const NActors::TActorContext& ctx,
-    const TVector<ui64>& checksums)
+void TResyncRangeActor::ResyncMajor(const NActors::TActorContext& ctx)
 {
-    ReadBuffers.resize(checksums.size());
-    for (size_t i = 0; i < checksums.size(); i++) {
+    ReadBuffers.resize(Replicas.size());
+    for (size_t i = 0; i < Replicas.size(); i++) {
         ActorsToResync.push_back(i);
         ReadBlocks(ctx, i);
     }
@@ -174,7 +178,7 @@ void TResyncRangeActor::PrepareWriteBuffer(const NActors::TActorContext& ctx)
                             const_cast<char*>(blockReplicas[i].Data()),
                             blockReplicas[healer].Data(),
                             blockReplicas[i].Size());
-                        ++heals[i].MinorFixCount;
+                        ++heals[i].MinorErrorCount;
                     }
                 }
             }
@@ -223,7 +227,7 @@ void TResyncRangeActor::PrepareWriteBuffer(const NActors::TActorContext& ctx)
             }
 
             replicaBuffer = healerBuffer;
-            ++heals[replica].MajorFixCount;
+            ++heals[replica].MajorErrorCount;
         }
     }
 
@@ -231,12 +235,12 @@ void TResyncRangeActor::PrepareWriteBuffer(const NActors::TActorContext& ctx)
         heals,
         size_t{},
         [](size_t count, const THealStat& h)
-        { return count + h.MinorFixCount; });
+        { return count + h.MinorErrorCount; });
     size_t majorFixCount = Accumulate(
         heals,
         size_t{},
         [](size_t count, const THealStat& h)
-        { return count + h.MajorFixCount; });
+        { return count + h.MajorErrorCount; });
     TString replicaStat = Accumulate(
         heals,
         TString(),
@@ -256,10 +260,10 @@ void TResyncRangeActor::PrepareWriteBuffer(const NActors::TActorContext& ctx)
         (majorFixCount == 0 ? " All blocks healed as minor! " : ""),
         replicaStat.c_str());
 
-    // Do writes only to replicas with changes
+    // Do writes only to replicas with fixed errors.
     ActorsToResync.clear();
     for (size_t i = 0; i < Replicas.size(); ++i) {
-        if (heals[i].MinorFixCount || heals[i].MajorFixCount) {
+        if (heals[i].MinorErrorCount || heals[i].MajorErrorCount) {
             ActorsToResync.push_back(i);
         }
     }
