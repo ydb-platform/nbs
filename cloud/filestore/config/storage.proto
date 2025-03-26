@@ -535,4 +535,8 @@ message TStorageConfig
 
     // Use SSL for dynamic node registration.
     optional bool NodeRegistrationUseSsl = 422;
+
+    // Limit CPU consumption by Cleanup when a massive amount
+    // of deletion markers is to be cleaned up after changing settings.
+    optional bool CleanupCpuThrottlingThreshold = 423;
 }
