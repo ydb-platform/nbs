@@ -719,6 +719,59 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionRdmaTest)
         UNIT_ASSERT_VALUES_EQUAL(2, deviceTimedOut);
     }
 
+    Y_UNIT_TEST(ShouldRejectRequestsIfAgentIsUnavailable)
+    {
+        TTestBasicRuntime runtime;
+
+        TTestEnv env(
+            runtime,
+            NProto::VOLUME_IO_OK,
+            TTestEnv::DefaultDevices(runtime.GetNodeId(0)),
+            false,
+            true);
+        TPartitionClient client(runtime, env.ActorId);
+
+        TActorId notifiedActor;
+        ui32 deviceTimedOut = 0;
+        THashSet<TString> devices;
+
+        runtime.SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
+                switch (event->GetTypeRewrite()) {
+                    case TEvVolumePrivate::EvDeviceTimeoutedRequest: {
+                        if (event->Recipient != env.VolumeActorId) {
+                            break;
+                        }
+                        notifiedActor = event->Recipient;
+                        auto* ev = static_cast<
+                            TEvVolumePrivate::TEvDeviceTimeoutedRequest*>(
+                            event->GetBase());
+                        devices.emplace(ev->DeviceUUID);
+                        ++deviceTimedOut;
+                    }
+                }
+
+                return TTestActorRuntime::DefaultObserverFunc(event);
+            });
+
+        auto pr = NThreading::NewPromise<void>();
+        env.Rdma().InjectWaitForFuture(pr.GetFuture());
+        env.Rdma().InitAllEndpoints();
+        const auto error = NProto::TError();
+
+        const auto blockRange1 = TBlockRange64::WithLength(1024, 3072);
+
+        TString data(DefaultBlockSize, 'A');
+        client.SendWriteBlocksLocalRequest(blockRange1, data);
+        runtime.DispatchEvents({}, 10ms);
+        client.SendAgentIsUnavailable(
+            Sprintf("agent-%u", runtime.GetNodeId(0)));
+
+        auto resp = client.RecvWriteBlocksLocalResponse();
+        UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, resp->GetError().GetCode());
+    }
+
     Y_UNIT_TEST(ShouldUpdateStats)
     {
         TTestBasicRuntime runtime;

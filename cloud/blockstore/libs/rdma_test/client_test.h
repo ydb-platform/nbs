@@ -58,6 +58,8 @@ struct TRdmaClientTest: NRdma::IClient
     ui32 InitAllEndpoints();
     ui32 InitAllEndpointsWithError();
 
+    void InjectWaitForFuture(const NThreading::TFuture<void>& waitForFuture);
+
     void SetMessageObserver(TMessageObserver messageObserver);
 };
 

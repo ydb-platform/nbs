@@ -610,13 +610,15 @@ void TNonreplicatedPartitionRdmaActor::HandleAgentIsUnavailable(
         "[%s] Agent %s has become unavailable (lagging)",
         PartConfig->GetName().c_str(),
         msg->LaggingAgent.GetAgentId().Quote().c_str());
+    if (!PartConfig->GetLaggingDevicesAllowed()) {
+        return;
+    }
 
     for (const auto& [_, requestInfo]: RequestsInProgress.AllRequests())
     {
         const auto& deviceIndices = requestInfo.Value.DeviceIndices;
         bool needToCancel = false;
         for (auto deviceIndex: deviceIndices) {
-            // auto agentId = PartConfig->GetDevices()[deviceIndex].GetAgentId();
             if (PartConfig->GetDevices()[deviceIndex].GetAgentId() ==
                 msg->LaggingAgent.GetAgentId())
             {
