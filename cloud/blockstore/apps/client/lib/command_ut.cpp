@@ -814,10 +814,10 @@ Y_UNIT_TEST_SUITE(TCommandTest)
             NProto::TExecuteActionResponse response;
 
             NJson::TJsonValue input;
-            input["Status"]["Code"] = E_ARGUMENT;
+            input["Status"]["Code"] = E_REJECTED;
             input["Status"]["Message"] = "Message";
 
-            TString jsonStr = NJson::WriteJson(input, false);
+            TString jsonStr = NJson::WriteJson(input);
             response.MutableOutput()->append(jsonStr);
 
             return MakeFuture(std::move(response));

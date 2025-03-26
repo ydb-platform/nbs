@@ -190,7 +190,7 @@ protected:
                 const auto& status = ExtractStatusValues(result.GetOutput());
 
                 if (HasError(status)) {
-                    if (status.GetCode() == E_ARGUMENT && !RetryRange && IsMirror) {
+                    if (status.GetCode() == E_REJECTED && !RetryRange && IsMirror) {
                         if (ShowReadErrorsEnabled) {
                             output << "ReadBlocks error while reading all "
                                       "replicas in range "
