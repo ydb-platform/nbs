@@ -40,13 +40,25 @@ TReplicaActors::GetReplicaActorsBypassingProxies() const
     return PartActorIds;
 }
 
-bool TReplicaActors::IsReplicaActor(TActorId actorId) const
+TVector<NActors::TActorId> TReplicaActors::GetAllActors() const
+{
+    TVector<NActors::TActorId> result = GetReplicaActorsBypassingProxies();
+    for (ui32 i = 0; i < Size(); ++i) {
+        if (IsLaggingProxySet(i)) {
+            result.push_back(GetReplicaActor(i));
+        }
+    }
+    Y_DEBUG_ABORT_UNLESS(result.size() == (Size() + LaggingReplicaCount()));
+    return result;
+}
+
+bool TReplicaActors::IsReplicaActor(const TActorId& actorId) const
 {
     const ui32 index = GetReplicaIndex(actorId);
     return index < Size();
 }
 
-ui32 TReplicaActors::GetReplicaIndex(TActorId actorId) const
+ui32 TReplicaActors::GetReplicaIndex(const TActorId& actorId) const
 {
     size_t index = FindIndex(PartActorIds, actorId);
     if (index != NPOS) {

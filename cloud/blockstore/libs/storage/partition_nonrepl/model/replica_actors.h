@@ -26,8 +26,9 @@ public:
     [[nodiscard]] const TVector<NActors::TActorId>& GetReplicaActors() const;
     [[nodiscard]] const TVector<NActors::TActorId>&
     GetReplicaActorsBypassingProxies() const;
-    [[nodiscard]] bool IsReplicaActor(NActors::TActorId actorId) const;
-    [[nodiscard]] ui32 GetReplicaIndex(NActors::TActorId actorId) const;
+    [[nodiscard]] TVector<NActors::TActorId> GetAllActors() const;
+    [[nodiscard]] bool IsReplicaActor(const NActors::TActorId& actorId) const;
+    [[nodiscard]] ui32 GetReplicaIndex(const NActors::TActorId& actorId) const;
 
     void SetLaggingReplicaProxy(
         ui32 replicaIndex,

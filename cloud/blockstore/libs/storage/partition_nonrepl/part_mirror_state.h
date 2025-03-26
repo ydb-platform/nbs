@@ -71,6 +71,10 @@ public:
         return ReplicaActors.GetReplicaActorsBypassingProxies();
     }
 
+    [[nodiscard]] TVector<NActors::TActorId> GetAllActors() const {
+        return ReplicaActors.GetAllActors();
+    }
+
     [[nodiscard]] ui32 GetReplicaIndex(NActors::TActorId actorId) const;
     [[nodiscard]] bool IsReplicaActor(NActors::TActorId actorId) const;
 

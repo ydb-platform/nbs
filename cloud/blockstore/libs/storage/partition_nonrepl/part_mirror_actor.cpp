@@ -90,16 +90,10 @@ void TMirrorPartitionActor::Bootstrap(const TActorContext& ctx)
 
 void TMirrorPartitionActor::KillActors(const TActorContext& ctx)
 {
-    const size_t replicaCount = State.GetReplicaActors().size();
-    for (size_t i = 0; i < replicaCount; ++i) {
-        if (State.IsLaggingProxySet(i)) {
-            NCloud::Send<TEvents::TEvPoisonPill>(
-                ctx,
-                State.GetReplicaActors()[i]);
-        }
+    for (auto actorId : State.GetAllActors()) {
         NCloud::Send<TEvents::TEvPoisonPill>(
             ctx,
-            State.GetReplicaActorsBypassingProxies()[i]);
+            actorId);
     }
 }
 
