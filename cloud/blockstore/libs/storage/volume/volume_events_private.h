@@ -25,7 +25,7 @@ namespace NCloud::NBlockStore::NStorage {
     xxx(UpdateCheckpointRequest,            __VA_ARGS__)                       \
     xxx(UpdateShadowDiskState,              __VA_ARGS__)                       \
     xxx(ReadMetaHistory,                    __VA_ARGS__)                       \
-    xxx(DeviceTimeouted,                    __VA_ARGS__)                       \
+    xxx(DeviceTimedOut,                     __VA_ARGS__)                       \
 // BLOCKSTORE_VOLUME_REQUESTS_PRIVATE
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -134,19 +134,19 @@ struct TEvVolumePrivate
     };
 
     //
-    // DeviceTimeouted
+    // DeviceTimedOut
     //
 
-    struct TDeviceTimeoutedRequest
+    struct TDeviceTimedOutRequest
     {
         const TString DeviceUUID;
 
-        explicit TDeviceTimeoutedRequest(TString deviceUUID)
+        explicit TDeviceTimedOutRequest(TString deviceUUID)
             : DeviceUUID(std::move(deviceUUID))
         {}
     };
 
-    struct TDeviceTimeoutedResponse
+    struct TDeviceTimedOutResponse
     {
     };
 

@@ -21,6 +21,7 @@ struct TRetryState
     TDuration RetryTimeout;
     TDuration Backoff;
     ui32 Retries = 0;
+    bool DoneInstantRetry = false;
 };
 
 ////////////////////////////////////////////////////////////////////////////////

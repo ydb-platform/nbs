@@ -4,8 +4,8 @@
 
 #include <cloud/filestore/libs/service/context.h>
 #include <cloud/filestore/libs/service/filestore_test.h>
-
 #include <cloud/storage/core/libs/common/error.h>
+#include <cloud/storage/core/libs/common/helpers.h>
 #include <cloud/storage/core/libs/common/scheduler.h>
 #include <cloud/storage/core/libs/common/scheduler_test.h>
 #include <cloud/storage/core/libs/common/timer.h>
@@ -266,6 +266,85 @@ Y_UNIT_TEST_SUITE(TDurableClientTest)
             retry = policy->ShouldRetry(state, MakeError(E_GRPC_UNAVAILABLE));
             UNIT_ASSERT(retry);
             UNIT_ASSERT_VALUES_EQUAL(TDuration::Seconds(3), state.Backoff);
+        }
+    }
+
+    Y_UNIT_TEST(ShouldCalculateCorrectTimeoutForInstantRetryFlag)
+    {
+        NProto::TClientConfig proto;
+        proto.SetRetryTimeoutIncrement(3'000);
+        proto.SetConnectionErrorMaxRetryTimeout(7'000);
+
+        auto config = std::make_shared<TClientConfig>(proto);
+        auto policy = CreateRetryPolicy(config);
+
+        ui32 flags = 0;
+        SetProtoFlag(flags, NProto::EF_INSTANT_RETRIABLE);
+
+        {
+            TRetryState state;
+
+            bool retry = policy->ShouldRetry(state, MakeError(E_REJECTED));
+            UNIT_ASSERT(retry);
+            UNIT_ASSERT_VALUES_EQUAL(TDuration::Seconds(3), state.Backoff);
+            UNIT_ASSERT(!state.DoneInstantRetry);
+
+            retry =
+                policy->ShouldRetry(state, MakeError(E_REJECTED, "", flags));
+            UNIT_ASSERT(retry);
+            UNIT_ASSERT_VALUES_EQUAL(TDuration::Seconds(0), state.Backoff);
+            UNIT_ASSERT(state.DoneInstantRetry);
+
+            state.Retries++;
+            retry = policy->ShouldRetry(state, MakeError(E_REJECTED));
+            UNIT_ASSERT(retry);
+            UNIT_ASSERT_VALUES_EQUAL(TDuration::Seconds(6), state.Backoff);
+            UNIT_ASSERT(state.DoneInstantRetry);
+
+            state.Retries++;
+            retry =
+                policy->ShouldRetry(state, MakeError(E_REJECTED, "", flags));
+            UNIT_ASSERT(retry);
+            UNIT_ASSERT_VALUES_EQUAL(TDuration::Seconds(9), state.Backoff);
+            UNIT_ASSERT(state.DoneInstantRetry);
+        }
+
+        {
+            TRetryState state;
+
+            bool retry = policy->ShouldRetry(state, MakeError(E_REJECTED));
+            UNIT_ASSERT(retry);
+            UNIT_ASSERT_VALUES_EQUAL(TDuration::Seconds(3), state.Backoff);
+            UNIT_ASSERT(!state.DoneInstantRetry);
+
+            state.Retries++;
+            retry = policy->ShouldRetry(state, MakeError(E_REJECTED));
+            UNIT_ASSERT(retry);
+            UNIT_ASSERT_VALUES_EQUAL(TDuration::Seconds(6), state.Backoff);
+            UNIT_ASSERT(!state.DoneInstantRetry);
+
+            state.Retries++;
+            retry = policy->ShouldRetry(
+                state,
+                MakeError(E_GRPC_UNAVAILABLE, "", flags));
+            UNIT_ASSERT(retry);
+            UNIT_ASSERT_VALUES_EQUAL(TDuration::Seconds(0), state.Backoff);
+            UNIT_ASSERT(state.DoneInstantRetry);
+
+            state.Retries++;
+            retry = policy->ShouldRetry(
+                state,
+                MakeError(E_GRPC_UNAVAILABLE, "", flags));
+            UNIT_ASSERT(retry);
+            UNIT_ASSERT_VALUES_EQUAL(TDuration::Seconds(7), state.Backoff);
+            UNIT_ASSERT(state.DoneInstantRetry);
+
+            state.Retries++;
+            retry =
+                policy->ShouldRetry(state, MakeError(E_REJECTED, "", flags));
+            UNIT_ASSERT(retry);
+            UNIT_ASSERT_VALUES_EQUAL(TDuration::Seconds(9), state.Backoff);
+            UNIT_ASSERT(state.DoneInstantRetry);
         }
     }
 

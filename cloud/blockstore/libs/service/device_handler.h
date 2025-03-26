@@ -47,7 +47,8 @@ struct IDeviceHandlerFactory
         TString clientId,
         ui32 blockSize,
         bool unalignedRequestsDisabled,
-        bool checkBufferModificationDuringWriting) = 0;
+        bool checkBufferModificationDuringWriting,
+        bool isReliableMediaKind) = 0;
 };
 
 ////////////////////////////////////////////////////////////////////////////////

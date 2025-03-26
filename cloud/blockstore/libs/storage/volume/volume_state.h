@@ -244,6 +244,13 @@ private:
 
     TFollowerDisks FollowerDisks;
 
+    struct TLaggingAgentMigrationInfo {
+        TString AgentId;
+        ui64 CleanBlocks;
+        ui64 DirtyBlocks;
+    };
+    std::optional<TLaggingAgentMigrationInfo> CurrentlyMigratingLaggingAgent;
+
 public:
     TVolumeState(
         TStorageConfigPtr storageConfig,
@@ -319,6 +326,11 @@ public:
     [[nodiscard]] bool HasLaggingAgents() const;
     [[nodiscard]] bool HasLaggingInReplica(ui32 replicaIndex) const;
     [[nodiscard]] THashSet<TString> GetLaggingDevices() const;
+    void UpdateLaggingAgentMigrationState(
+        TString agentId,
+        ui64 cleanBlocks,
+        ui64 dirtyBlocks);
+    const TLaggingAgentMigrationInfo* GetLaggingAgentMigrationInfo();
 
     void SetStartPartitionsNeeded(bool startPartitionsNeeded)
     {

@@ -1095,8 +1095,8 @@ STFUNC(TVolumeActor::StateWork)
             TEvVolumePrivate::TEvReportLaggingDevicesToDR,
             HandleReportLaggingDevicesToDR);
         HFunc(
-            TEvVolumePrivate::TEvDeviceTimeoutedRequest,
-            HandleDeviceTimeouted);
+            TEvVolumePrivate::TEvDeviceTimedOutRequest,
+            HandleDeviceTimedOut);
         HFunc(
             TEvVolumePrivate::TEvUpdateLaggingAgentMigrationState,
             HandleUpdateLaggingAgentMigrationState);
@@ -1136,12 +1136,13 @@ STFUNC(TVolumeActor::StateZombie)
 
         HFunc(TEvTablet::TEvTabletDead, HandleTabletDead);
 
+        IgnoreFunc(TEvVolumePrivate::TEvAllocateDiskIfNeeded);
         IgnoreFunc(TEvVolumePrivate::TEvUpdateCounters);
         IgnoreFunc(TEvVolumePrivate::TEvUpdateThrottlerState);
         IgnoreFunc(TEvVolumePrivate::TEvUpdateReadWriteClientInfo);
         IgnoreFunc(TEvVolumePrivate::TEvRemoveExpiredVolumeParams);
         IgnoreFunc(TEvVolumePrivate::TEvReportLaggingDevicesToDR);
-        IgnoreFunc(TEvVolumePrivate::TEvDeviceTimeoutedRequest);
+        IgnoreFunc(TEvVolumePrivate::TEvDeviceTimedOutRequest);
         IgnoreFunc(TEvVolumePrivate::TEvAcquireDiskIfNeeded);
         IgnoreFunc(TEvVolumePrivate::TEvUpdateLaggingAgentMigrationState);
         IgnoreFunc(TEvVolumePrivate::TEvLaggingAgentMigrationFinished);

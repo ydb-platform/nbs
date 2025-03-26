@@ -6,8 +6,8 @@
 #include <cloud/filestore/libs/service/endpoint.h>
 #include <cloud/filestore/libs/service/filestore.h>
 #include <cloud/filestore/libs/service/request.h>
-
 #include <cloud/storage/core/libs/common/format.h>
+#include <cloud/storage/core/libs/common/helpers.h>
 #include <cloud/storage/core/libs/common/scheduler.h>
 #include <cloud/storage/core/libs/common/timer.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
@@ -307,27 +307,39 @@ struct TRetryPolicy final
 {
     TClientConfigPtr Config;
 
-    TRetryPolicy(TClientConfigPtr config)
+    explicit TRetryPolicy(TClientConfigPtr config)
         : Config(std::move(config))
     {}
 
     bool ShouldRetry(TRetryState& state, const NProto::TError& error) override
     {
         bool isRetriable = IsRetriableError(error);
-        if (isRetriable && TInstant::Now() - state.Started < Config->GetRetryTimeout()) {
-            auto timeout = state.RetryTimeout + Config->GetRetryTimeoutIncrement();
+        if (!isRetriable ||
+            TInstant::Now() - state.Started >= Config->GetRetryTimeout())
+        {
+            return false;
+        }
 
-            state.Backoff = timeout;
-            if (IsConnectionError(error) && state.Backoff > Config->GetConnectionErrorMaxRetryTimeout()) {
-                state.Backoff = Config->GetConnectionErrorMaxRetryTimeout();
-            } else {
-                state.RetryTimeout = timeout;
-            }
-
+        if (HasProtoFlag(error.GetFlags(), NProto::EF_INSTANT_RETRIABLE) &&
+            !state.DoneInstantRetry)
+        {
+            state.Backoff = TDuration::Zero();
+            state.DoneInstantRetry = true;
             return true;
         }
 
-        return false;
+        const auto newRetryTimeout =
+            state.RetryTimeout + Config->GetRetryTimeoutIncrement();
+        state.Backoff = newRetryTimeout;
+        if (IsConnectionError(error) &&
+            state.Backoff > Config->GetConnectionErrorMaxRetryTimeout())
+        {
+            state.Backoff = Config->GetConnectionErrorMaxRetryTimeout();
+            return true;
+        }
+
+        state.RetryTimeout = newRetryTimeout;
+        return true;
     }
 };
 

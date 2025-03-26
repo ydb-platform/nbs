@@ -41,6 +41,12 @@ bool IsDiskRegistryLocalMediaKind(NProto::EStorageMediaKind mediaKind)
     }
 }
 
+bool IsReliableMediaKind(NProto::EStorageMediaKind mediaKind)
+{
+    return !IsDiskRegistryMediaKind(mediaKind) ||
+           IsReliableDiskRegistryMediaKind(mediaKind);
+}
+
 TString MediaKindToString(NProto::EStorageMediaKind mediaKind)
 {
     switch (mediaKind) {

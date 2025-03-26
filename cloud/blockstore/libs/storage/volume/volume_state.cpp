@@ -11,6 +11,8 @@
 #include <util/stream/str.h>
 #include <util/system/hostname.h>
 
+#include <utility>
+
 namespace NCloud::NBlockStore::NStorage {
 
 using namespace NActors;
@@ -207,6 +209,12 @@ void TVolumeState::AddLaggingAgent(NProto::TLaggingAgent agent)
 std::optional<NProto::TLaggingAgent> TVolumeState::RemoveLaggingAgent(
     const TString& agentId)
 {
+    if (CurrentlyMigratingLaggingAgent &&
+        agentId == CurrentlyMigratingLaggingAgent->AgentId)
+    {
+        CurrentlyMigratingLaggingAgent.reset();
+    }
+
     auto agentIdPredicate = [&agentId](const auto& info)
     {
         return info.GetAgentId() == agentId;
@@ -247,6 +255,25 @@ THashSet<TString> TVolumeState::GetLaggingDevices() const
         }
     }
     return laggingDevices;
+}
+
+void TVolumeState::UpdateLaggingAgentMigrationState(
+    TString agentId,
+    ui64 cleanBlocks,
+    ui64 dirtyBlocks)
+{
+    CurrentlyMigratingLaggingAgent = TLaggingAgentMigrationInfo{
+        .AgentId = std::move(agentId),
+        .CleanBlocks = cleanBlocks,
+        .DirtyBlocks = dirtyBlocks,
+    };
+}
+
+const TVolumeState::TLaggingAgentMigrationInfo*
+TVolumeState::GetLaggingAgentMigrationInfo()
+{
+    return CurrentlyMigratingLaggingAgent ? &(*CurrentlyMigratingLaggingAgent)
+                                          : nullptr;
 }
 
 void TVolumeState::ResetMeta(NProto::TVolumeMeta meta)

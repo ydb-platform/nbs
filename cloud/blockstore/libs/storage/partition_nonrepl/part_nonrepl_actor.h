@@ -188,8 +188,8 @@ private:
         const TEvNonreplPartitionPrivate::TEvChecksumBlocksCompleted::TPtr& ev,
         const NActors::TActorContext& ctx);
 
-    void HandleDeviceTimeoutedResponse(
-        const TEvVolumePrivate::TEvDeviceTimeoutedResponse::TPtr& ev,
+    void HandleDeviceTimedOutResponse(
+        const TEvVolumePrivate::TEvDeviceTimedOutResponse::TPtr& ev,
         const NActors::TActorContext& ctx);
 
     void HandleAgentIsUnavailable(

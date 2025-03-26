@@ -245,11 +245,11 @@ struct TEvNonreplPartitionPrivate
     struct TCancelRequest
     {
         enum class EReason {
-            Timeouted,
+            TimedOut,
             Canceled
         };
 
-        EReason Reason = EReason::Timeouted;
+        EReason Reason = EReason::TimedOut;
     };
 
     //
