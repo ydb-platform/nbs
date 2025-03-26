@@ -74,9 +74,6 @@ using TConnectionPollerPtr = std::unique_ptr<TConnectionPoller>;
 class TCompletionPoller;
 using TCompletionPollerPtr = std::unique_ptr<TCompletionPoller>;
 
-struct TRequestId;
-using TRequestIdPtr = std::unique_ptr<TRequestId>;
-
 ////////////////////////////////////////////////////////////////////////////////
 
 struct TRequest
@@ -181,19 +178,21 @@ public:
         return CancelledRequests.Contains(reqId);
     }
 
-    TVector<TRequestPtr> PopCancelledRequests(
+    TSimpleList<TRequest> PopCancelledRequests(
         const THashSet<ui64>& reqIdsToCancel)
     {
-        TVector<TRequestPtr> cancelledReqs;
+        TSimpleList<TRequest> tmpCancelledReqs;
         for (auto& [rdmaReqId, req]: Requests) {
             if (reqIdsToCancel.contains(req->ClientReqId)) {
                 CancelledRequests.Put(rdmaReqId);
-                cancelledReqs.emplace_back(std::move(req));
+                tmpCancelledReqs.Enqueue(std::move(req));
             }
         }
 
-        for (const auto& req: cancelledReqs) {
+        TSimpleList<TRequest> cancelledReqs;
+        while (auto req = tmpCancelledReqs.Dequeue()) {
             Requests.erase(req->ReqId);
+            cancelledReqs.Enqueue(std::move(req));
         }
 
         return cancelledReqs;
@@ -389,7 +388,7 @@ struct TReconnect
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TRequestId: TListNode<TRequestId>
+struct TClientRequestId: TListNode<TClientRequestId>
 {
     ui64 ReqId = 0;
 };
@@ -464,7 +463,7 @@ private:
     ui16 Generation = Max<ui16>();
 
     TLockFreeList<TRequest> InputRequests;
-    TLockFreeList<TRequestId> CancelRequests;
+    TLockFreeList<TClientRequestId> CancelRequests;
     TEventHandle CancelRequestEvent;
     TEventHandle RequestEvent;
     TEventHandle DisconnectEvent;
@@ -862,7 +861,7 @@ void TClientEndpoint::CancelRequest(ui64 reqId) noexcept
         return;
     }
 
-    auto reqIdforQueue = std::make_unique<TRequestId>();
+    auto reqIdforQueue = std::make_unique<TClientRequestId>();
     reqIdforQueue->ReqId = reqId;
     Counters->RequestEnqueued();
     CancelRequests.Enqueue(std::move(reqIdforQueue));
@@ -904,24 +903,33 @@ bool TClientEndpoint::HandleCancelRequests()
         ret = true;
     };
 
-    // We should filter input requests from cancelled ones to not lost cancel
-    // requests.
+    // We should filter input and queued requests from cancelled ones to not
+    // lose cancel requests.
+    auto filteredList = TSimpleList<TRequest>();
+
     auto inputRequests = InputRequests.DequeueAll();
-    while (auto inputReq = inputRequests.Dequeue()) {
-        if (!cancelledReqIds.contains(inputReq->ClientReqId)) {
-            InputRequests.Enqueue(std::move(inputReq));
+    QueuedRequests.Append(std::move(inputRequests));
+
+    while (auto req = QueuedRequests.Dequeue()) {
+        if (!cancelledReqIds.contains(req->ClientReqId)) {
+            filteredList.Enqueue(std::move(req));
             continue;
         }
 
-        cancelReq(std::move(inputReq));
-    }
-
-    auto reqsToCancel = ActiveRequests.PopCancelledRequests(cancelledReqIds);
-
-    for (auto& req: reqsToCancel) {
         cancelReq(std::move(req));
     }
 
+    QueuedRequests.Append(std::move(filteredList));
+
+    auto reqsToCancel = ActiveRequests.PopCancelledRequests(cancelledReqIds);
+
+    while (auto req = reqsToCancel.Dequeue()) {
+        cancelReq(std::move(req));
+    }
+
+    // We move requests from input to queued, so we should handle this new
+    // requests.
+    HandleQueuedRequests();
     return ret;
 }
 
