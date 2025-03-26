@@ -151,18 +151,20 @@ struct Y_PACKED TBufferDesc
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct Y_PACKED TRequestMessage
+struct Y_PACKED TRequestMessageBody
 {
-    union {
-        struct {
-            TMessageHeader Header;
-            ui32 ReqId : 16;
-            ui32 Unused : 16;
-            TBufferDesc In;
-            TBufferDesc Out;
-        };
-        ui8 Padding[RDMA_REQUEST_SIZE];
-    };
+    TMessageHeader Header;
+    ui32 ReqId : 16;
+    ui32 Unused : 16;
+    TBufferDesc In;
+    TBufferDesc Out;
+};
+
+static_assert(sizeof(TRequestMessageBody) == (4 + 2 + 2 + 16 + 16));
+
+struct Y_PACKED TRequestMessage: TRequestMessageBody
+{
+    ui8 Padding[RDMA_REQUEST_SIZE - sizeof(TRequestMessageBody)] = {};
 };
 
 static_assert(sizeof(TRequestMessage) == RDMA_REQUEST_SIZE);
