@@ -27,8 +27,6 @@ class TMirrorCheckRangeActor final: public TCheckRangeActor
 public:
     using TCheckRangeActor::TCheckRangeActor;
 
-    void Bootstrap(const TActorContext& ctx);
-
 private:
     void SendReadBlocksRequest(const TActorContext& ctx) override;
 };

@@ -47,7 +47,6 @@ struct TRequestBuilder
     ui32 StartIndex = 0;
     ui32 RemainingBlocks = 0;
     ui32 BlocksPerRequest = 0;
-    TBlockRange64 range;
 
     TRequestBuilder() = default;
 
@@ -60,18 +59,15 @@ struct TRequestBuilder
         , BlocksPerRequest(blocksPerRequest)
     {}
 
-    std::optional<TBlockRange64> Next(bool retryRange)
+    std::optional<TBlockRange64> Next()
     {
-        if (retryRange) {
-            return range;
-        }
         if (RemainingBlocks <= 0) {
             return std::nullopt;
         }
 
         ui32 blocksInThisRequest = std::min(RemainingBlocks, BlocksPerRequest);
 
-        range = TBlockRange64::MakeHalfOpenInterval(
+        TBlockRange64 range = TBlockRange64::MakeHalfOpenInterval(
             StartIndex,
             StartIndex + blocksInThisRequest);
 
@@ -96,8 +92,6 @@ private:
     bool CalculateChecksums = false;
     TString FolderPostfix;
     ui32 ReplicaCount = 0;
-    bool IsMirror = false;
-    bool RetryRange = false;
 
 public:
     TCheckRangeCommand(IBlockStorePtr client)
@@ -162,11 +156,14 @@ protected:
             output << FormatError(error) << Endl;
             return false;
         }
-        while (std::optional range = builder.Next(RetryRange)) {
+
+        bool isRetry = false;
+        std::optional range = builder.Next();
+        while (range) {
             auto request = std::make_shared<NProto::TExecuteActionRequest>();
 
             request->SetAction("checkrange");
-            request->SetInput(CreateNextInput(*range));
+            request->SetInput(CreateNextInput(*range, isRetry));
 
             const auto requestId = GetRequestId(*request);
             auto result = WaitFor(ClientEndpoint->ExecuteAction(
@@ -190,14 +187,16 @@ protected:
                 const auto& status = ExtractStatusValues(result.GetOutput());
 
                 if (HasError(status)) {
-                    if (status.GetCode() == E_REJECTED && !RetryRange && IsMirror) {
+                    if (status.GetCode() == E_REJECTED && !isRetry &&
+                        ReplicaCount)
+                    {
                         if (ShowReadErrorsEnabled) {
                             output << "ReadBlocks error while reading all "
                                       "replicas in range "
                                    << *range << ": " << FormatError(status)
                                    << Endl;
                         }
-                        RetryRange = true;
+                        isRetry = true;
                         mirrorErrorsCount++;
                         continue;
                     }
@@ -212,11 +211,12 @@ protected:
             if (SaveResultsEnabled) {
                 SaveResultToFile(result.GetOutput(), *range);
             }
-            RetryRange = false;
+            isRetry = false;
+            range = builder.Next();
         }
 
         output << "Total requests sended: " << requestCount << Endl;
-        if (IsMirror && mirrorErrorsCount) {
+        if (ReplicaCount && mirrorErrorsCount) {
             output << "Errors while reading all mirror disk replicas caught: "
                    << mirrorErrorsCount << Endl;
         }
@@ -284,13 +284,11 @@ private:
         if (result.GetVolume().GetStorageMediaKind() ==
             NProto::STORAGE_MEDIA_SSD_MIRROR3)
         {
-            IsMirror = true;
             ReplicaCount = 3;
         } else if (
             result.GetVolume().GetStorageMediaKind() ==
             NProto::STORAGE_MEDIA_SSD_MIRROR2)
         {
-            IsMirror = true;
             ReplicaCount = 2;
         }
 
@@ -307,14 +305,14 @@ private:
         return TRequestBuilder(StartIndex, remainingBlocks, BlocksPerRequest);
     }
 
-    TString CreateNextInput(TBlockRange64 range) const
+    TString CreateNextInput(TBlockRange64 range, bool isRetry) const
     {
         NJson::TJsonValue input;
         input["DiskId"] = DiskId;
         input["StartIndex"] = range.Start;
         input["BlocksCount"] = range.Size();
         input["CalculateChecksums"] = CalculateChecksums;
-        if (!RetryRange && IsMirror) {
+        if (!isRetry && ReplicaCount) {
             input["ReplicaCount"] = ReplicaCount;
         }
 
