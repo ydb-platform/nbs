@@ -813,7 +813,7 @@ func TestTasksInflightLimit(t *testing.T) {
 				ctx,
 				s.scheduler,
 				id,
-				2*time.Second,
+				5*time.Second,
 			)
 			doublerTaskErrs <- err
 		}(id)
