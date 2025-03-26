@@ -21,23 +21,24 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TLessComparatorForTBlockDataRef
+struct TLessComparatorForTStringPtr
 {
-    bool operator()(const TBlockDataRef& lhs, const TBlockDataRef& rhs) const
+    bool operator()(const TString* lhs, const TString* rhs) const
     {
-        return lhs.AsStringBuf() < rhs.AsStringBuf();
+        return *lhs < *rhs;
     }
 };
 
 struct THealStat
 {
-    // How many times replica been used as source for fixing a minor error.
+    // How many times a replica has been used as a source for fixing a minor
+    // error.
     size_t HealCount = 0;
 
-    // How many blocks in replica with minor errors has been fixed.
+    // How many blocks in a replica with minor errors have been fixed.
     size_t MinorErrorCount = 0;
 
-    // How many blocks in replica with major errors has been fixed.
+    // How many blocks in a replica with major errors have been fixed.
     size_t MajorErrorCount = 0;
 
     [[nodiscard]] TString Print() const
@@ -47,6 +48,14 @@ struct THealStat
                << ", major=" << MajorErrorCount << "]";
     }
 };
+
+struct TBlockVariant
+{
+    THealStat& HealStat;
+    TString& Block;
+};
+
+using TBlockVariants = TVector<TBlockVariant>;
 
 }   // namespace
 
@@ -153,32 +162,27 @@ void TResyncRangeActor::PrepareWriteBuffer(const NActors::TActorContext& ctx)
 
     TVector<THealStat> heals(Replicas.size());
 
-    auto healMinors = [&](const TSgList& blockReplicas){
-        TMap<TBlockDataRef, size_t, TLessComparatorForTBlockDataRef> variations;
-        for (TBlockDataRef blockRef: blockReplicas) {
-            variations[blockRef]++;
+    auto healMinors = [&](const TBlockVariants& blockVariants)
+    {
+        TMap<TString*, size_t, TLessComparatorForTStringPtr> variations;
+
+        for (const auto& blockVariant: blockVariants) {
+            variations[&blockVariant.Block]++;
         }
-        if (variations.size()==1) {
+        if (variations.size() == 1) {
             // All replicas match.
             return;
         }
         for (auto [data, count]: variations) {
             if (count > 1) {
                 // We found minor mismatch!
-                size_t healer = 0;
-                for (size_t i = 0; i < blockReplicas.size(); ++i) {
-                    if (blockReplicas[i] == data) {
-                        heals[i].HealCount++;
-                        healer = i;
-                    }
-                }
-                for (size_t i = 0; i < blockReplicas.size(); ++i) {
-                    if (blockReplicas[i] != data) {
-                        std::memcpy(
-                            const_cast<char*>(blockReplicas[i].Data()),
-                            blockReplicas[healer].Data(),
-                            blockReplicas[i].Size());
-                        ++heals[i].MinorErrorCount;
+                for (const auto& blockVariant: blockVariants) {
+                    if (blockVariant.Block == *data) {
+                        ++blockVariant.HealStat.HealCount;
+                    } else {
+                        // Heal block.
+                        blockVariant.Block = *data;
+                        ++blockVariant.HealStat.MinorErrorCount;
                     }
                 }
             }
@@ -188,46 +192,41 @@ void TResyncRangeActor::PrepareWriteBuffer(const NActors::TActorContext& ctx)
     // Let's try to fix range block by block. At the same time, we will
     // calculate which replicas were used to fix the rest of the replicas.
     for (size_t i = 0; i < Range.Size(); ++i) {
-        TSgList blockReplicas;
-        blockReplicas.reserve(ReadBuffers.size());
-        for (const auto& replicaBuffer: ReadBuffers) {
-            const auto& block = replicaBuffer.GetBuffers(i);
-            blockReplicas.push_back(TBlockDataRef{block.data(), block.size()});
+        TBlockVariants blockVariants;
+        blockVariants.reserve(Replicas.size());
+        for (size_t replica = 0; replica < Replicas.size(); ++replica) {
+            blockVariants.push_back(TBlockVariant{
+                .HealStat = heals[replica],
+                .Block = *ReadBuffers[replica].MutableBuffers()->Mutable(i)});
         }
-        healMinors(blockReplicas);
+        healMinors(blockVariants);
     }
 
     // We find the replica that fixed the largest number of blocks and use it as
     // a sample to fix the rest of the replicas.
     size_t bestHealer = 0;
-    for (size_t i = 0; i < Replicas.size(); ++i) {
+    for (size_t i = 1; i < Replicas.size(); ++i) {
         if (heals[bestHealer].HealCount < heals[i].HealCount) {
             bestHealer = i;
         }
     }
 
     for (size_t i = 0; i < Range.Size(); ++i) {
-        const auto& healerBuffer = ReadBuffers[bestHealer].GetBuffers(i);
-        TBlockDataRef healerBlock{healerBuffer.data(), healerBuffer.size()};
+        const auto& healerBlock = ReadBuffers[bestHealer].GetBuffers(i);
 
         for (size_t replica = 0; replica < Replicas.size(); ++replica) {
             if (replica == bestHealer) {
                 continue;
             }
 
-            auto& replicaBuffer =
+            auto& replicaBlock =
                 *ReadBuffers[replica].MutableBuffers()->Mutable(i);
 
-            TBlockDataRef replicaBlock{
-                replicaBuffer.data(),
-                replicaBuffer.size()};
-
-            if (healerBlock == replicaBlock) {
-                continue;
+            if (healerBlock != replicaBlock) {
+                // Replace block.
+                replicaBlock = healerBlock;
+                ++heals[replica].MajorErrorCount;
             }
-
-            replicaBuffer = healerBuffer;
-            ++heals[replica].MajorErrorCount;
         }
     }
 
@@ -251,13 +250,13 @@ void TResyncRangeActor::PrepareWriteBuffer(const NActors::TActorContext& ctx)
         ctx,
         TBlockStoreComponents::PARTITION,
         "[%s] Replica %lu elected as best healer. In range %s %lu blocks were "
-        "healed and %lu blocks were overwritten during resync.%s%s",
+        "healed and %lu blocks were overwritten during resync. %s%s",
         Replicas[bestHealer].ReplicaId.c_str(),
         bestHealer,
         Range.Print().c_str(),
         minorFixCount,
         majorFixCount,
-        (majorFixCount == 0 ? " All blocks healed as minor! " : ""),
+        (majorFixCount == 0 ? "All blocks healed as minor! " : ""),
         replicaStat.c_str());
 
     // Do writes only to replicas with fixed errors.
