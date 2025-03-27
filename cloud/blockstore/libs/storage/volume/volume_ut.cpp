@@ -6606,7 +6606,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
             volumeClient1.SendAddClientRequest(clientInfo);
             auto response = volumeClient1.RecvAddClientResponse();
 
-            UNIT_ASSERT_VALUES_EQUAL(response->GetStatus(), E_BS_INVALID_SESSION);
+            UNIT_ASSERT_VALUES_EQUAL(response->GetStatus(), E_REJECTED);
         }
 
         volumeClient1.RemoveClient(clientInfo.GetClientId());
