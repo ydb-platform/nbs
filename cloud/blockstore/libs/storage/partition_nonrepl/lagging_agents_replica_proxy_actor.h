@@ -9,6 +9,8 @@
 #include <cloud/blockstore/libs/kikimr/helpers.h>
 #include <cloud/blockstore/libs/storage/api/service.h>
 #include <cloud/blockstore/libs/storage/api/volume.h>
+#include <cloud/blockstore/libs/storage/volume/volume_events_private.h>
+
 #include <cloud/storage/core/libs/actors/poison_pill_helper.h>
 #include <cloud/storage/core/libs/common/compressed_bitmap.h>
 
@@ -127,6 +129,10 @@ private:
 
     void HandleAgentIsBackOnline(
         const TEvNonreplPartitionPrivate::TEvAgentIsBackOnline::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleLaggingAgentMigrationFinished(
+        const TEvVolumePrivate::TEvLaggingAgentMigrationFinished::TPtr& ev,
         const NActors::TActorContext& ctx);
 
     void HandleWriteOrZeroCompleted(

@@ -644,10 +644,10 @@ void TLaggingAgentsReplicaProxyActor::HandleAgentIsUnavailable(
         state.CleanBlocksMap->Set(0, PartConfig->GetBlockCount());
     }
 
-    LOG_DEBUG(
+    LOG_INFO(
         ctx,
         TBlockStoreComponents::PARTITION_WORKER,
-        "[%s] Agent %s Block count: %lu, dirty block count: %lu",
+        "[%s] Agent %s block count: %lu, dirty block count: %lu",
         PartConfig->GetName().c_str(),
         agentId.c_str(),
         PartConfig->GetBlockCount(),
@@ -678,7 +678,7 @@ void TLaggingAgentsReplicaProxyActor::HandleAgentIsBackOnline(
     LOG_INFO(
         ctx,
         TBlockStoreComponents::PARTITION_WORKER,
-        "[%s] Agent %s is back online. Starting migration actor",
+        "[%s] Lagging agent %s is back online. Starting migration actor",
         PartConfig->GetName().c_str(),
         msg->AgentId.Quote().c_str());
 
@@ -701,7 +701,7 @@ void TLaggingAgentsReplicaProxyActor::HandleAgentIsBackOnline(
     TCompressedBitmap cleanBlocksCopy(PartConfig->GetBlockCount());
     cleanBlocksCopy.Update(*state.CleanBlocksMap, 0);
 
-    LOG_DEBUG(
+    LOG_INFO(
         ctx,
         TBlockStoreComponents::PARTITION_WORKER,
         "[%s] Starting lagging agent %s migration. Block count: %lu, dirty "
@@ -717,6 +717,7 @@ void TLaggingAgentsReplicaProxyActor::HandleAgentIsBackOnline(
             Config,
             DiagnosticsConfig,
             PartConfig,
+            SelfId(),
             ProfileLog,
             BlockDigestGenerator,
             RwClientId,
@@ -725,6 +726,43 @@ void TLaggingAgentsReplicaProxyActor::HandleAgentIsBackOnline(
             std::move(cleanBlocksCopy),
             msg->AgentId));
     PoisonPillHelper.TakeOwnership(ctx, state.MigrationActorId);
+}
+
+void TLaggingAgentsReplicaProxyActor::HandleLaggingAgentMigrationFinished(
+    const TEvVolumePrivate::TEvLaggingAgentMigrationFinished::TPtr& ev,
+    const NActors::TActorContext& ctx)
+{
+    const auto* msg = ev->Get();
+    Y_DEBUG_ABORT_UNLESS(AgentState.contains(msg->AgentId));
+    if (!AgentState.contains(msg->AgentId)) {
+        return;
+    }
+
+    auto it = AgentState.find(msg->AgentId);
+    auto& state = it->second;
+    switch (state.State) {
+        case EAgentState::Unavailable:
+            return;
+        case EAgentState::Resyncing:
+            break;
+    }
+
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::PARTITION_WORKER,
+        "[%s] Lagging agent %s migration has been finished",
+        PartConfig->GetName().c_str(),
+        msg->AgentId.Quote().c_str());
+
+    Y_DEBUG_ABORT_UNLESS(state.MigrationActorId);
+    Y_DEBUG_ABORT_UNLESS(!state.AvailabilityMonitoringActorId);
+    DestroyChildActor(ctx, &state.MigrationActorId);
+    AgentState.erase(it);
+
+    ctx.Send(std::make_unique<NActors::IEventHandle>(
+        PartConfig->GetParentActorId(),
+        SelfId(),
+        ev->ReleaseBase().Release()));
 }
 
 void TLaggingAgentsReplicaProxyActor::HandleWriteBlocks(
@@ -815,6 +853,9 @@ STFUNC(TLaggingAgentsReplicaProxyActor::StateWork)
         HFunc(
             TEvNonreplPartitionPrivate::TEvAgentIsBackOnline,
             HandleAgentIsBackOnline);
+        HFunc(
+            TEvVolumePrivate::TEvLaggingAgentMigrationFinished,
+            HandleLaggingAgentMigrationFinished);
         HFunc(TEvVolume::TEvRWClientIdChanged, HandleRWClientIdChanged);
 
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
