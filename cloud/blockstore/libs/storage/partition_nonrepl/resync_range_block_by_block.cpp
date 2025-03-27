@@ -21,23 +21,28 @@ namespace {
 
 struct THealStat
 {
+    size_t ReplicaIndex = 0;
+
     // How many times a replica has been used as a source for fixing a minor
     // error.
     size_t HealCount = 0;
 
     // How many blocks in a replica with minor errors have been fixed.
-    size_t MinorErrorCount = 0;
+    size_t FixedMinorErrorCount = 0;
 
     // How many blocks in a replica with major errors have been fixed.
-    size_t MajorErrorCount = 0;
+    size_t FixedMajorErrorCount = 0;
 
-    size_t MajorFoundErrorCount = 0;
+    // How many blocks in a replica with major errors have been found.
+    size_t FoundMajorErrorCount = 0;
 
     [[nodiscard]] TString Print() const
     {
         return TStringBuilder()
-               << "[healer=" << HealCount << ", minor=" << MinorErrorCount
-               << ", major=" << MajorErrorCount << "]";
+               << "[ #" << ReplicaIndex << " score: " << HealCount
+               << ", mi: " << FixedMinorErrorCount
+               << ", mj: " << FixedMajorErrorCount << " / "
+               << FoundMajorErrorCount << "]";
     }
 };
 
@@ -72,11 +77,49 @@ void HealMinors(const TBlockVariants& blockVariants)
                 } else {
                     // Heal block.
                     blockVariant.Block = *data;
-                    ++blockVariant.HealStat.MinorErrorCount;
+                    ++blockVariant.HealStat.FixedMinorErrorCount;
                 }
             }
         }
     }
+}
+
+void AddBlockToRange(ui64 block, TVector<TBlockRange64>& rangesWithMajorError)
+{
+    if (rangesWithMajorError.empty()) {
+        rangesWithMajorError.push_back(TBlockRange64::MakeOneBlock(block));
+    } else {
+        auto& lastRange = rangesWithMajorError.back();
+        if (lastRange.End == block) {
+            // nothing to do, range already updated by another replica.
+        } else if (lastRange.End + 1 == block) {
+            // Enlarge range.
+            lastRange.End = block;
+        } else {
+            // Make new range.
+            rangesWithMajorError.push_back(TBlockRange64::MakeOneBlock(block));
+        }
+    }
+}
+
+TString PrintRanges(const TVector<TBlockRange64>& ranges) {
+    TStringBuilder builder;
+    bool first = true;
+    builder << "[";
+    for (const auto range: ranges) {
+        if (!first) {
+            builder << ",";
+        } else {
+            first = false;
+        }
+        if (range.Size() == 1) {
+            builder << range.Start;
+        } else {
+            builder << range.Print();
+        }
+    }
+    builder << "]";
+    return builder;
 }
 
 }   // namespace
@@ -121,6 +164,9 @@ void TResyncRangeBlockByBlockActor::PrepareWriteBuffers(
     const NActors::TActorContext& ctx)
 {
     TVector<THealStat> healStat(Replicas.size());
+    for (size_t i = 0; i < healStat.size(); ++i) {
+        healStat[i].ReplicaIndex = i;
+    }
 
     // Let's try to fix range block by block. At the same time, we will
     // calculate which replicas were used to fix the rest of the replicas.
@@ -144,6 +190,8 @@ void TResyncRangeBlockByBlockActor::PrepareWriteBuffers(
         }
     }
 
+    TVector<TBlockRange64> rangesWithMajorError;
+
     for (size_t blockIndex = 0; blockIndex < Range.Size(); ++blockIndex) {
         const auto& donorBlock = ReadBuffers[bestHealer].GetBuffers(blockIndex);
 
@@ -159,51 +207,64 @@ void TResyncRangeBlockByBlockActor::PrepareWriteBuffers(
                 continue;
             }
 
+            ++healStat[replica].FoundMajorErrorCount;
+            AddBlockToRange(Range.Start + blockIndex, rangesWithMajorError);
             if (ResyncPolicy ==
                 NProto::EResyncPolicy::MINOR_AND_MAJOR_BLOCK_BY_BLOCK)
             {
                 // Replace block.
                 replicaBlock = donorBlock;
-                ++healStat[replica].MajorErrorCount;
-            } else {
-                ++healStat[replica].MajorFoundErrorCount;
+                ++healStat[replica].FixedMajorErrorCount;
             }
         }
     }
 
-    size_t minorFixCount = Accumulate(
+    size_t fixedMinorErrorCount = Accumulate(
         healStat,
         size_t{},
         [](size_t count, const THealStat& h)
-        { return count + h.MinorErrorCount; });
-    size_t majorFixCount = Accumulate(
+        { return count + h.FixedMinorErrorCount; });
+    size_t fixedMajorErrorCount = Accumulate(
         healStat,
         size_t{},
         [](size_t count, const THealStat& h)
-        { return count + h.MajorErrorCount; });
+        { return count + h.FixedMajorErrorCount; });
+    size_t foundMajorErrorCount = Accumulate(
+        healStat,
+        size_t{},
+        [](size_t count, const THealStat& h)
+        { return count + h.FoundMajorErrorCount; });
+
     TString replicaStat = Accumulate(
         healStat,
         TString(),
         [](const TString& acc, const THealStat& h)
         { return acc.empty() ? h.Print() : acc + " " + h.Print(); });
 
+    TString blocksWithMajorErrors =
+        rangesWithMajorError
+            ? ". Blocks with major errors: " + PrintRanges(rangesWithMajorError)
+            : TString();
+
     LOG_WARN(
         ctx,
         TBlockStoreComponents::PARTITION,
         "[%s] Replica %lu elected as best healer. In range %s %lu blocks were "
-        "healed and %lu blocks were overwritten during resync. %s%s",
+        "healed and %lu/%lu blocks were overwritten during resync. %s%s%s",
         Replicas[bestHealer].ReplicaId.c_str(),
         bestHealer,
         Range.Print().c_str(),
-        minorFixCount,
-        majorFixCount,
-        (majorFixCount == 0 ? "All blocks healed as minor! " : ""),
-        replicaStat.c_str());
+        fixedMinorErrorCount,
+        fixedMajorErrorCount,
+        foundMajorErrorCount,
+        (foundMajorErrorCount == 0 ? "All blocks healed as minor! " : ""),
+        replicaStat.c_str(),
+        blocksWithMajorErrors.c_str());
 
     // Do writes only to replicas with fixed errors.
     ActorsToResync.clear();
     for (size_t i = 0; i < Replicas.size(); ++i) {
-        if (healStat[i].MinorErrorCount || healStat[i].MajorErrorCount) {
+        if (healStat[i].FixedMinorErrorCount || healStat[i].FixedMajorErrorCount) {
             ActorsToResync.push_back(i);
         }
     }
@@ -237,6 +298,11 @@ void TResyncRangeBlockByBlockActor::ReadReplicaBlocks(
 
 void TResyncRangeBlockByBlockActor::WriteBlocks(const TActorContext& ctx)
 {
+    if (!ActorsToResync) {
+        Done(ctx);
+        return;
+    }
+
     for (size_t i = 0; i < ActorsToResync.size(); ++i) {
         WriteReplicaBlocks(ctx, ActorsToResync[i], std::move(ReadBuffers[i]));
     }

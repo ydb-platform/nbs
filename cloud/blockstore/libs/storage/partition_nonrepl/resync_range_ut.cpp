@@ -637,6 +637,58 @@ Y_UNIT_TEST_SUITE(TResyncRangeTest)
         }
     }
 
+    Y_UNIT_TEST(ShouldNotReplaceMajorBlocksMismatchAccordingToPolicy)
+    {
+        TTestBasicRuntime runtime;
+        TTestEnv env(runtime);
+
+        env.WriteReplica(0, 0, 1023, 'A');
+        env.WriteReplica(1, 0, 1023, 'A');
+        env.WriteReplica(2, 0, 1023, 'A');
+
+        // Make major error.
+        const ui64 blockWithMajorError = 10;
+        env.WriteReplica(0, blockWithMajorError, blockWithMajorError, 'x');
+        env.WriteReplica(1, blockWithMajorError, blockWithMajorError, 'y');
+
+        auto response = env.ResyncRange(
+            0,
+            1023,
+            {0, 1, 2},
+            NProto::EResyncPolicy::MINOR_BLOCK_BY_BLOCK);
+        UNIT_ASSERT(!HasError(response->GetError()));
+
+        // Check replica 0
+        {
+            auto blocks = env.ReadReplica(0, 0, 1023);
+            int i = 0;
+            for (const auto& block: blocks) {
+                char expected = i == blockWithMajorError ? 'x' : 'A';
+                UNIT_ASSERT_VALUES_EQUAL(TString(DefaultBlockSize, expected), block);
+                ++i;
+            }
+        }
+
+        // Check replica 1
+        {
+            auto blocks = env.ReadReplica(1, 0, 1023);
+            int i = 0;
+            for (const auto& block: blocks) {
+                char expected = i == blockWithMajorError ? 'y' : 'A';
+                UNIT_ASSERT_VALUES_EQUAL(TString(DefaultBlockSize, expected), block);
+                ++i;
+            }
+        }
+
+        // Check replica 2
+        {
+            auto blocks = env.ReadReplica(2, 0, 1023);
+            for (const auto& block: blocks) {
+                UNIT_ASSERT_VALUES_EQUAL(TString(DefaultBlockSize, 'A'), block);
+            }
+        }
+    }
+
     Y_UNIT_TEST(ShouldHealMinorErrorsAndSelectBestHealerForMajorSource)
     {
         TTestBasicRuntime runtime;
@@ -711,6 +763,8 @@ Y_UNIT_TEST_SUITE(TResyncRangeTest)
         // Add major error
         env.WriteReplica(1, 20, 20, 'w');
         env.WriteReplica(2, 20, 20, 'z');
+        env.WriteReplica(1, 30, 40, 'w');
+        env.WriteReplica(2, 30, 40, 'z');
 
         // Replica #0 should be used for fixing major error.
         auto response = env.ResyncRange(
