@@ -175,12 +175,12 @@ private:
         const NActors::TActorContext& ctx);
 
     void HandleAddLaggingAgent(
-        const TEvNonreplPartitionPrivate::TEvAddLaggingAgentRequest::
-            TPtr& ev,
+        const TEvNonreplPartitionPrivate::TEvAddLaggingAgentRequest::TPtr& ev,
         const NActors::TActorContext& ctx);
 
     void HandleRemoveLaggingAgent(
-        const TEvNonreplPartitionPrivate::TEvRemoveLaggingAgentRequest::TPtr& ev,
+        const TEvNonreplPartitionPrivate::TEvRemoveLaggingAgentRequest::TPtr&
+            ev,
         const NActors::TActorContext& ctx);
 
     void HandlePoisonPill(
@@ -219,6 +219,9 @@ private:
     BLOCKSTORE_IMPLEMENT_REQUEST(ZeroBlocks, TEvService);
     BLOCKSTORE_IMPLEMENT_REQUEST(CheckRange, TEvVolume);
     BLOCKSTORE_IMPLEMENT_REQUEST(Drain, NPartition::TEvPartition);
+    BLOCKSTORE_IMPLEMENT_REQUEST(
+        WaitForInFlightWrites,
+        NPartition::TEvPartition);
 
     BLOCKSTORE_IMPLEMENT_REQUEST(DescribeBlocks, TEvVolume);
     BLOCKSTORE_IMPLEMENT_REQUEST(CompactRange, TEvVolume);

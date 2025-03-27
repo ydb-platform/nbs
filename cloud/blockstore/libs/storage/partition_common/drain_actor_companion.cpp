@@ -14,6 +14,14 @@ namespace NCloud::NBlockStore::NStorage {
 
 LWTRACE_USING(BLOCKSTORE_STORAGE_PROVIDER);
 
+namespace {
+
+////////////////////////////////////////////////////////////////////////////////
+
+constexpr ui32 MaxPendingRequests = 10;
+
+}   // namespace
+
 ////////////////////////////////////////////////////////////////////////////////
 
 TDrainActorCompanion::TDrainActorCompanion(
@@ -52,9 +60,8 @@ void TDrainActorCompanion::HandleDrain(
         "[%s] Start drain",
         LoggingId.c_str());
 
-    const ui32 maxDrainRequests = 10;
-    if (RequestsInProgress.WriteRequestInProgress()
-            && DrainRequests.size() >= maxDrainRequests)
+    if (RequestsInProgress.WriteRequestInProgress() &&
+        DrainRequests.size() >= MaxPendingRequests)
     {
         NCloud::Reply(
             ctx,
@@ -65,7 +72,39 @@ void TDrainActorCompanion::HandleDrain(
     }
 
     DrainRequests.push_back(std::move(requestInfo));
-    ProcessDrainRequests(ctx);
+    DoProcessDrainRequests(ctx);
+}
+
+void TDrainActorCompanion::HandleWaitForInFlightWrites(
+    const NPartition::TEvPartition::TEvWaitForInFlightWritesRequest::TPtr& ev,
+    const NActors::TActorContext& ctx)
+{
+    auto* msg = ev->Get();
+
+    if (WaitForInFlightWritesRequest) {
+        NCloud::Reply(
+            ctx,
+            *ev,
+            std::make_unique<
+                NPartition::TEvPartition::TEvWaitForInFlightWritesResponse>(
+                MakeError(
+                    E_REJECTED,
+                    "Already waiting for in-flight write requests")));
+        return;
+    }
+
+    WaitForInFlightWritesRequest =
+        CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
+
+    LOG_TRACE(
+        ctx,
+        TBlockStoreComponents::PARTITION,
+        "[%s] Start wait for in-flight write requests",
+        LoggingId.c_str());
+
+    Y_DEBUG_ABORT_UNLESS(!RequestsInProgress.IsWaitingForInFlightWrites());
+    RequestsInProgress.WaitForInFlightWrites();
+    DoProcessWaitForInFlightWritesRequests(ctx);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -73,9 +112,22 @@ void TDrainActorCompanion::HandleDrain(
 void TDrainActorCompanion::ProcessDrainRequests(
     const NActors::TActorContext& ctx)
 {
-    if (RequestsInProgress.WriteRequestInProgress()) {
+    DoProcessDrainRequests(ctx);
+    DoProcessWaitForInFlightWritesRequests(ctx);
+}
+
+void TDrainActorCompanion::DoProcessDrainRequests(
+    const NActors::TActorContext& ctx)
+{
+    if (DrainRequests.empty() || RequestsInProgress.WriteRequestInProgress()) {
         return;
     }
+
+    LOG_TRACE(
+        ctx,
+        TBlockStoreComponents::PARTITION,
+        "[%s] Complete drain",
+        LoggingId.c_str());
 
     for (auto& requestInfo: DrainRequests) {
         auto response =
@@ -87,16 +139,31 @@ void TDrainActorCompanion::ProcessDrainRequests(
             "Drain",
             requestInfo->CallContext->RequestId);
 
-        LOG_TRACE(
-            ctx,
-            TBlockStoreComponents::PARTITION,
-            "[%s] Complete drain",
-            LoggingId.c_str());
-
         NCloud::Reply(ctx, *requestInfo, std::move(response));
     }
 
     DrainRequests.clear();
+}
+
+void TDrainActorCompanion::DoProcessWaitForInFlightWritesRequests(
+    const NActors::TActorContext& ctx)
+{
+    if (!WaitForInFlightWritesRequest ||
+        RequestsInProgress.IsWaitingForInFlightWrites())
+    {
+        return;
+    }
+
+    LOG_TRACE(
+        ctx,
+        TBlockStoreComponents::PARTITION,
+        "[%s] Complete wait for in-flight write requests",
+        LoggingId.c_str());
+
+    auto response = std::make_unique<
+        NPartition::TEvPartition::TEvWaitForInFlightWritesResponse>();
+    NCloud::Reply(ctx, *WaitForInFlightWritesRequest, std::move(response));
+    WaitForInFlightWritesRequest.Reset();
 }
 
 }  // namespace NCloud::NBlockStore::NStorage
