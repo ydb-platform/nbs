@@ -71,7 +71,8 @@ public:
         return ReplicaActors.GetReplicaActorsBypassingProxies();
     }
 
-    [[nodiscard]] TVector<NActors::TActorId> GetAllActors() const {
+    [[nodiscard]] TVector<NActors::TActorId> GetAllActors() const
+    {
         return ReplicaActors.GetAllActors();
     }
 

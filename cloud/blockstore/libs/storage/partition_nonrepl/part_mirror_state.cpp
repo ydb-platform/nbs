@@ -228,11 +228,13 @@ bool TMirrorPartitionState::DevicesReadyForReading(
                 laggingIndexes.insert(laggingDevice.GetRowIndex());
             STORAGE_CHECK_PRECONDITION_C(
                 inserted,
-                Sprintf(
-                    "Two lagging devices can't have the same row index. Failed "
-                    "to insert deviceUUID: %s, row index = %u",
-                    laggingDevice.GetDeviceUUID().c_str(),
-                    laggingDevice.GetRowIndex()))
+                TStringBuilder()
+                    << "Two lagging devices can't have the same row index. "
+                       "Failed "
+                       "to insert deviceUUID: "
+                    << laggingDevice.GetDeviceUUID()
+                    << ", row index: " << laggingDevice.GetRowIndex()
+                    << ", blockRange: " << blockRange);
         }
     }
     return replicaInfo.Config->DevicesReadyForReading(
