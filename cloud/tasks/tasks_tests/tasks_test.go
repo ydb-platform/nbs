@@ -809,11 +809,14 @@ func TestTasksInflightLimit(t *testing.T) {
 	doublerTaskErrs := make(chan error)
 	for _, id := range doublerTaskIDs {
 		go func(id string) {
+			// Doubler tasks must finish fast enough: long tasks must not
+			// exhaust the whole limit on inflight tasks due to the limit on
+			// infilght long tasks.
 			_, err := waitTaskWithTimeout(
 				ctx,
 				s.scheduler,
 				id,
-				2*time.Second,
+				5*time.Second,
 			)
 			doublerTaskErrs <- err
 		}(id)
