@@ -137,6 +137,7 @@ func CancelCheckpointCreation(
 		return snapshotID, nil
 	}
 
+	// Calling 'schedule' just to get ID of the task.
 	checkpointTaskID, err := scheduleCreateDRBasedDiskCheckpointTask(
 		ctx,
 		scheduler,
