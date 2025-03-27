@@ -844,6 +844,9 @@ void TLaggingAgentsReplicaProxyActor::HandleLaggingAgentMigrationFinished(
     switch (state.State) {
         case EAgentState::Unavailable:
             return;
+        case EAgentState::WaitingForDrain:
+            Y_DEBUG_ABORT_UNLESS(false);
+            return;
         case EAgentState::Resyncing:
             break;
     }

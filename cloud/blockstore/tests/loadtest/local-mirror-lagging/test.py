@@ -41,7 +41,7 @@ class TestCase(object):
             block_count_per_device=DEFAULT_BLOCK_COUNT_PER_DEVICE,
             agent_count=1,
             dump_block_digests=False,
-            max_migration_bandwidth=1024 * 1024 * 1024):
+            max_migration_bandwidth=300):
         self.name = name
         self.config_path = config_path
         self.nbs_restart_interval = nbs_restart_interval
@@ -77,7 +77,7 @@ TESTS = [
     ),
     TestCase(
         "mirror2-device-per-agent-multiple-replicas",
-        "cloud/blockstore/tests/loadtest/local-mirror-lagging/local-mirror2-device-per-agent.txt",
+        "cloud/blockstore/tests/loadtest/local-mirror-lagging/local-mirror2-device-per-agent-multiple-replicas.txt",
         agent_count=6,
         device_count=1,
         restart_interval=30,
@@ -119,7 +119,8 @@ TESTS = [
         device_count=3,
         restart_interval=30,
         downtime_after_restart=5,
-        nbs_restart_interval=40,
+        nbs_restart_interval=60,
+        max_migration_bandwidth=100,
         dump_block_digests=True,
     ),
 ]
@@ -252,6 +253,7 @@ def __run_test(test_case):
         storage.MaxTimedOutDeviceStateDuration = 60000    # 1 min
         storage.NonReplicatedAgentMinTimeout = 60000      # 1 min
         storage.NonReplicatedAgentMaxTimeout = 60000      # 1 min
+        storage.NonReplicatedSecureEraseTimeout = 1000    # 1 sec
         storage.EnableToChangeStatesFromDiskRegistryMonpage = True
         storage.EnableToChangeErrorStatesFromDiskRegistryMonpage = True
 
