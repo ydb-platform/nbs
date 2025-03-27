@@ -91,6 +91,7 @@ private:
     bool SaveResultsEnabled = false;
     bool CalculateChecksums = false;
     TString FolderPostfix;
+    ui32 ReplicaCount = 0;
 
 public:
     TCheckRangeCommand(IBlockStorePtr client)
@@ -148,6 +149,7 @@ protected:
 
         ui32 errorCount = 0;
         ui32 requestCount = 0;
+        ui32 mirrorErrorsCount = 0;
 
         auto [builder, error] = CreateRequestBuilder();
         if (HasError(error)) {
@@ -155,11 +157,13 @@ protected:
             return false;
         }
 
-        while (std::optional range = builder.Next()) {
+        bool isRetry = false;
+        std::optional range = builder.Next();
+        while (range) {
             auto request = std::make_shared<NProto::TExecuteActionRequest>();
 
             request->SetAction("checkrange");
-            request->SetInput(CreateNextInput(*range));
+            request->SetInput(CreateNextInput(*range, isRetry));
 
             const auto requestId = GetRequestId(*request);
             auto result = WaitFor(ClientEndpoint->ExecuteAction(
@@ -183,6 +187,19 @@ protected:
                 const auto& status = ExtractStatusValues(result.GetOutput());
 
                 if (HasError(status)) {
+                    if (status.GetCode() == E_REJECTED && !isRetry &&
+                        ReplicaCount)
+                    {
+                        if (ShowReadErrorsEnabled) {
+                            output << "ReadBlocks error while reading all "
+                                      "replicas in range "
+                                   << *range << ": " << FormatError(status)
+                                   << Endl;
+                        }
+                        isRetry = true;
+                        mirrorErrorsCount++;
+                        continue;
+                    }
                     errorCount++;
                     if (ShowReadErrorsEnabled) {
                         output << "ReadBlocks error in range " << *range << ": "
@@ -194,9 +211,15 @@ protected:
             if (SaveResultsEnabled) {
                 SaveResultToFile(result.GetOutput(), *range);
             }
+            isRetry = false;
+            range = builder.Next();
         }
 
         output << "Total requests sended: " << requestCount << Endl;
+        if (ReplicaCount && mirrorErrorsCount) {
+            output << "Errors while reading all mirror disk replicas caught: "
+                   << mirrorErrorsCount << Endl;
+        }
         output << "Total errors caught: " << errorCount << Endl;
         return true;
     }
@@ -229,7 +252,7 @@ private:
         TString fileName =
             Sprintf("result_%lu_%lu.json", range.Start, range.End);
 
-        return fileName;
+        return folderPath + "/" + fileName;
     }
 
     void SaveResultToFile(const TString& content, TBlockRange64 range) const
@@ -258,6 +281,16 @@ private:
         }
 
         ui64 diskBlockCount = result.GetVolume().GetBlocksCount();
+        if (result.GetVolume().GetStorageMediaKind() ==
+            NProto::STORAGE_MEDIA_SSD_MIRROR3)
+        {
+            ReplicaCount = 3;
+        } else if (
+            result.GetVolume().GetStorageMediaKind() ==
+            NProto::STORAGE_MEDIA_SSD_MIRROR2)
+        {
+            ReplicaCount = 2;
+        }
 
         ui64 remainingBlocks = diskBlockCount;
 
@@ -272,13 +305,17 @@ private:
         return TRequestBuilder(StartIndex, remainingBlocks, BlocksPerRequest);
     }
 
-    TString CreateNextInput(TBlockRange64 range) const
+    TString CreateNextInput(TBlockRange64 range, bool isRetry) const
     {
         NJson::TJsonValue input;
         input["DiskId"] = DiskId;
         input["StartIndex"] = range.Start;
         input["BlocksCount"] = range.Size();
         input["CalculateChecksums"] = CalculateChecksums;
+        if (!isRetry && ReplicaCount) {
+            input["ReplicaCount"] = ReplicaCount;
+        }
+
         return input.GetStringRobust();
     }
 };

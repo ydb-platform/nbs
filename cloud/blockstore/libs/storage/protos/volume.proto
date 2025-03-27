@@ -693,6 +693,9 @@ message TCheckRangeRequest
 
     // Is it necessary to calculate and include checksums in the response
     bool CalculateChecksums = 5;
+
+    // Number of replicas to read from m3 disks.
+    uint64 ReplicaCount = 6;
 }
 
 message TCheckRangeResponse
