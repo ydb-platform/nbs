@@ -539,6 +539,8 @@ public:
     bool GetForceMirrorResync() const;
     ui32 GetResyncIndexCachingInterval() const;
     TDuration GetResyncAfterClientInactivityInterval() const;
+    NProto::EResyncPolicy GetAutoResyncPolicy() const;
+    NProto::EResyncPolicy GetForceResyncPolicy() const;
     ui32 GetMirrorReadReplicaCount() const;
 
     TString GetManuallyPreemptedVolumesFile() const;
@@ -605,6 +607,8 @@ public:
     ui64 GetScrubbingBandwidth() const;
     ui64 GetMaxScrubbingBandwidth() const;
     ui64 GetMinScrubbingBandwidth() const;
+    bool GetAutomaticallyEnableBufferCopyingAfterChecksumMismatch() const;
+    NProto::EResyncPolicy GetScrubbingResyncPolicy() const;
 
     bool GetOptimizeVoidBuffersTransferForReadsEnabled() const;
 
@@ -647,7 +651,6 @@ public:
 
     bool GetYdbViewerServiceEnabled() const;
 
-    bool GetAutomaticallyEnableBufferCopyingAfterChecksumMismatch() const;
     [[nodiscard]] bool GetNonReplicatedVolumeDirectAcquireEnabled() const;
     [[nodiscard]] TDuration GetDestroyVolumeTimeout() const;
 
