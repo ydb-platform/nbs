@@ -28,6 +28,7 @@ private:
     const TVector<TReplicaDescriptor> Replicas;
     const TString WriterClientId;
     const IBlockDigestGeneratorPtr BlockDigestGenerator;
+    const NProto::EResyncPolicy ResyncPolicy;
 
     TVector<int> ActorsToResync;
     ui32 ResyncedCount = 0;
@@ -40,6 +41,9 @@ private:
     TInstant WriteStartTs;
     TDuration WriteDuration;
     TVector<IProfileLog::TBlockInfo> AffectedBlockInfos;
+    size_t FixedMinorErrorCount = 0;
+    size_t FixedMajorErrorCount = 0;
+    size_t FoundMajorErrorCount = 0;
 
     TChecksumRangeActorCompanion ChecksumRangeActorCompanion{Replicas};
 
@@ -50,7 +54,8 @@ public:
         TBlockRange64 range,
         TVector<TReplicaDescriptor> replicas,
         TString writerClientId,
-        IBlockDigestGeneratorPtr blockDigestGenerator);
+        IBlockDigestGeneratorPtr blockDigestGenerator,
+        NProto::EResyncPolicy resyncPolicy);
 
     void Bootstrap(const NActors::TActorContext& ctx);
 

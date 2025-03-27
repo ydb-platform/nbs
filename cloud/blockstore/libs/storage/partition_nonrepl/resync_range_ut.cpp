@@ -228,7 +228,8 @@ struct TTestEnv
             std::move(replicas),
             "",   // rwClientId
             BlockDigestGenerator,
-            resyncPolicy);
+            resyncPolicy,
+            EBlockRangeChecksumStatus::Unknown);
 
         Runtime.Register(actor.release(), 0);
 

@@ -115,15 +115,16 @@ void TMirrorPartitionResyncActor::ResyncNextRange(const TActorContext& ctx)
         }
     }
 
-    NCloud::Register<TResyncRangeActor>(
-        ctx,
+    auto resyncActor = MakeResyncRangeActor(
         std::move(requestInfo),
         PartConfig->GetBlockSize(),
         resyncRange,
         std::move(replicas),
         State.GetRWClientId(),
-        BlockDigestGenerator
-    );
+        BlockDigestGenerator,
+        ResyncPolicy,
+        EBlockRangeChecksumStatus::Unknown);
+    ctx.Register(resyncActor.release());
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -148,9 +149,12 @@ void TMirrorPartitionResyncActor::HandleRangeResynced(
     const auto rangeId = BlockRange2RangeId(range, PartConfig->GetBlockSize());
 
     LOG_DEBUG(ctx, TBlockStoreComponents::PARTITION,
-        "[%s] Range %s resync finished: %s",
+        "[%s] Range %s resync finished: mi=%lu mj=%lu/%lu %s",
         PartConfig->GetName().c_str(),
         DescribeRange(range).c_str(),
+        msg->FixedMinorErrorCount,
+        msg->FixedMajorErrorCount,
+        msg->FoundMajorErrorCount,
         FormatError(msg->GetError()).c_str());
 
     STORAGE_VERIFY(

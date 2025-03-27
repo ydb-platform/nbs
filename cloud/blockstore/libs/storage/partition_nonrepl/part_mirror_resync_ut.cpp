@@ -350,14 +350,14 @@ struct TTestEnv
             CreateDiagnosticsConfig(),
             CreateProfileLogStub(),
             CreateBlockDigestGeneratorStub(),
-            "", // rwClientId
+            "",   // rwClientId
             PartConfig,
             TMigrations(),
             Replicas,
-            nullptr, // rdmaClient
+            nullptr,   // rdmaClient
             VolumeActorId,
-            initialResyncIndex
-        );
+            initialResyncIndex,
+            NProto::EResyncPolicy::RESYNC_POLICY_MINOR_AND_MAJOR_4MB);
 
         actor->SetRequestIdentityKey(RequestIdentityKey);
 

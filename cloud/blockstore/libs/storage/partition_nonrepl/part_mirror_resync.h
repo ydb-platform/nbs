@@ -4,6 +4,7 @@
 
 #include "config.h"
 
+#include <cloud/blockstore/config/storage.pb.h>
 #include <cloud/blockstore/libs/diagnostics/config.h>
 #include <cloud/blockstore/libs/diagnostics/public.h>
 #include <cloud/blockstore/libs/kikimr/public.h>
@@ -25,6 +26,7 @@ NActors::IActorPtr CreateMirrorPartitionResync(
     TVector<TDevices> replicaDevices,
     NRdma::IClientPtr rdmaClient,
     NActors::TActorId statActorId,
-    ui64 initialResyncIndex);
+    ui64 initialResyncIndex,
+    NProto::EResyncPolicy resyncPolicy);
 
 }   // namespace NCloud::NBlockStore::NStorage

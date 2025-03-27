@@ -286,7 +286,9 @@ void TMirrorPartitionActor::StartResyncRange(
         std::move(replicas),
         State.GetRWClientId(),
         BlockDigestGenerator,
-        resyncPolicy);
+        resyncPolicy,
+        isMinor ? EBlockRangeChecksumStatus::MinorError
+                : EBlockRangeChecksumStatus::MajorError);
     ctx.Register(resyncActor.release());
 }
 
@@ -514,12 +516,14 @@ void TMirrorPartitionActor::HandleRangeResynced(
     const TActorContext& ctx)
 {
     const auto* msg = ev->Get();
-    const auto range = msg->Range;
 
     LOG_WARN(ctx, TBlockStoreComponents::PARTITION,
-        "[%s] Range %s resync finished: %s",
+        "[%s] Range %s resync finished: mi=%lu mj=%lu/%lu %s",
         DiskId.c_str(),
-        DescribeRange(range).c_str(),
+        DescribeRange(msg->Range).c_str(),
+        msg->FixedMinorErrorCount,
+        msg->FixedMajorErrorCount,
+        msg->FoundMajorErrorCount,
         FormatError(msg->GetError()).c_str());
 
     ResyncRangeStarted = false;

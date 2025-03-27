@@ -15,6 +15,14 @@ namespace NCloud::NBlockStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+enum class EBlockRangeChecksumStatus
+{
+    Unknown,
+    MinorError,
+    MajorError,
+    Ok
+};
+
 struct TReplicaDescriptor
 {
     TString ReplicaId;
@@ -43,6 +51,7 @@ std::unique_ptr<NActors::IActor> MakeResyncRangeActor(
     TVector<TReplicaDescriptor> replicas,
     TString writerClientId,
     IBlockDigestGeneratorPtr blockDigestGenerator,
-    NProto::EResyncPolicy resyncPolicy);
+    NProto::EResyncPolicy resyncPolicy,
+    EBlockRangeChecksumStatus checksumStatus);
 
 }   // namespace NCloud::NBlockStore::NStorage
