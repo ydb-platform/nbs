@@ -63,11 +63,11 @@ func TestImagesCreateImage(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, image.ID, created.ID)
 
-	err = storage.ImageCreated(ctx, image.ID, "checkpoint", time.Now(), 0, 0)
+	err = storage.ImageCreated(ctx, image.ID, "", time.Now(), 0, 0)
 	require.NoError(t, err)
 
 	// Check idempotency.
-	err = storage.ImageCreated(ctx, image.ID, "checkpoint", time.Now(), 0, 0)
+	err = storage.ImageCreated(ctx, image.ID, "", time.Now(), 0, 0)
 	require.NoError(t, err)
 
 	// Check idempotency.
