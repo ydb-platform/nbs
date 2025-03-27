@@ -81,7 +81,9 @@ func (t *createImageFromDiskTask) run(
 		// Already created.
 		checkpointID := imageMeta.CheckpointID
 		if checkpointID == "" {
-			// Needed for backwards compatibility.
+			// Temporary solution for backwards compatibility. See
+			// https://github.com/ydb-platform/nbs/issues/1950#issuecomment-2757561542.
+			// TODO: remove it later.
 			checkpointID = t.request.DstImageId
 		}
 		return checkpointID, nil
