@@ -10,6 +10,8 @@
 #include <cloud/blockstore/libs/storage/api/partition.h>
 #include <cloud/blockstore/libs/storage/api/service.h>
 #include <cloud/blockstore/libs/storage/api/volume.h>
+#include <cloud/blockstore/libs/storage/volume/volume_events_private.h>
+
 #include <cloud/storage/core/libs/actors/poison_pill_helper.h>
 #include <cloud/storage/core/libs/common/compressed_bitmap.h>
 
@@ -137,6 +139,10 @@ private:
     void HandleWaitForInFlightWritesResponse(
         const NPartition::TEvPartition::TEvWaitForInFlightWritesResponse::TPtr&
             ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleLaggingAgentMigrationFinished(
+        const TEvVolumePrivate::TEvLaggingAgentMigrationFinished::TPtr& ev,
         const NActors::TActorContext& ctx);
 
     void HandleWriteOrZeroCompleted(
