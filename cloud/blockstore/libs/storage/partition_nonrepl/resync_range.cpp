@@ -6,10 +6,7 @@
 #include <cloud/blockstore/libs/storage/api/disk_agent.h>
 #include <cloud/blockstore/libs/storage/core/probes.h>
 #include <cloud/blockstore/libs/storage/disk_agent/public.h>
-
 #include <cloud/storage/core/libs/common/sglist.h>
-
-#include <util/string/join.h>
 
 namespace NCloud::NBlockStore::NStorage {
 
@@ -17,47 +14,7 @@ using namespace NActors;
 
 LWTRACE_USING(BLOCKSTORE_STORAGE_PROVIDER);
 
-namespace {
-
 ////////////////////////////////////////////////////////////////////////////////
-
-struct TLessComparatorForTStringPtr
-{
-    bool operator()(const TString* lhs, const TString* rhs) const
-    {
-        return *lhs < *rhs;
-    }
-};
-
-struct THealStat
-{
-    // How many times a replica has been used as a source for fixing a minor
-    // error.
-    size_t HealCount = 0;
-
-    // How many blocks in a replica with minor errors have been fixed.
-    size_t MinorErrorCount = 0;
-
-    // How many blocks in a replica with major errors have been fixed.
-    size_t MajorErrorCount = 0;
-
-    [[nodiscard]] TString Print() const
-    {
-        return TStringBuilder()
-               << "[healer=" << HealCount << ", minor=" << MinorErrorCount
-               << ", major=" << MajorErrorCount << "]";
-    }
-};
-
-struct TBlockVariant
-{
-    THealStat& HealStat;
-    TString& Block;
-};
-
-using TBlockVariants = TVector<TBlockVariant>;
-
-}   // namespace
 
 TResyncRangeActor::TResyncRangeActor(
         TRequestInfoPtr requestInfo,
@@ -95,184 +52,64 @@ void TResyncRangeActor::CompareChecksums(const TActorContext& ctx)
     THashMap<ui64, ui32> checksumCount;
     ui32 majorCount = 0;
     ui64 majorChecksum = 0;
+    int majorIdx = 0;
 
-    for (auto checksum : checksums) {
-         if (++checksumCount[checksum] > majorCount) {
+    for (size_t i = 0; i < checksums.size(); i++) {
+        ui64 checksum = checksums[i];
+        if (++checksumCount[checksum] > majorCount) {
             majorCount = checksumCount[checksum];
             majorChecksum = checksum;
+            majorIdx = i;
         }
     }
 
     if (majorCount == Replicas.size()) {
         // all checksums match
-        Status = EStatus::Ok;
         Done(ctx);
         return;
     }
 
-    Status = majorCount == 1 ? EStatus::MajorMismatch : EStatus::MinorMismatch;
-
-    LOG_WARN(
-        ctx,
-        TBlockStoreComponents::PARTITION,
-        "[%s] Resync range %s. %s mismatch, checksums: [%s]",
+    LOG_WARN(ctx, TBlockStoreComponents::PARTITION,
+        "[%s] Resync range %s: majority replica %lu, checksum %lu, count %u of %u",
         Replicas[0].ReplicaId.c_str(),
         DescribeRange(Range).c_str(),
-        (Status == EStatus::MajorMismatch ? "Major" : "Minor"),
-        JoinSeq(", ", checksums).c_str());
+        majorIdx,
+        majorChecksum,
+        majorCount,
+        Replicas.size());
 
-    if (Status == EStatus::MinorMismatch) {
-        ResyncMinor(ctx, checksums, majorChecksum);
-    } else {
-        ResyncMajor(ctx);
-    }
-}
-
-void TResyncRangeActor::ResyncMinor(
-    const NActors::TActorContext& ctx,
-    const TVector<ui64>& checksums,
-    ui64 majorChecksum)
-{
-    ReadBuffers.resize(1);
-    ui64 majorIndx = 0;
     for (size_t i = 0; i < checksums.size(); i++) {
-        if (checksums[i] != majorChecksum) {
-            ActorsToResync.push_back(i);
-        } else {
-            majorIndx = i;
-        }
-    }
-    ReadBlocks(ctx, majorIndx);
-}
+        ui64 checksum = checksums[i];
+        if (checksum != majorChecksum) {
+            LOG_WARN(ctx, TBlockStoreComponents::PARTITION,
+                "[%s] Replica %lu block range %s checksum %lu differs from majority checksum %lu",
+                Replicas[0].ReplicaId.c_str(),
+                Replicas[i].ReplicaIndex,
+                DescribeRange(Range).c_str(),
+                checksum,
+                majorChecksum);
 
-void TResyncRangeActor::ResyncMajor(const NActors::TActorContext& ctx)
-{
-    ReadBuffers.resize(Replicas.size());
-    for (size_t i = 0; i < Replicas.size(); i++) {
-        ActorsToResync.push_back(i);
-        ReadBlocks(ctx, i);
-    }
-}
-
-void TResyncRangeActor::PrepareWriteBuffer(const NActors::TActorContext& ctx)
-{
-    if (Status == EStatus::MinorMismatch) {
-        return;
-    }
-
-    TVector<THealStat> heals(Replicas.size());
-
-    auto healMinors = [&](const TBlockVariants& blockVariants)
-    {
-        TMap<TString*, size_t, TLessComparatorForTStringPtr> variations;
-
-        for (const auto& blockVariant: blockVariants) {
-            variations[&blockVariant.Block]++;
-        }
-        if (variations.size() == 1) {
-            // All replicas match.
-            return;
-        }
-        for (auto [data, count]: variations) {
-            if (count > 1) {
-                // We found minor mismatch!
-                for (const auto& blockVariant: blockVariants) {
-                    if (blockVariant.Block == *data) {
-                        ++blockVariant.HealStat.HealCount;
-                    } else {
-                        // Heal block.
-                        blockVariant.Block = *data;
-                        ++blockVariant.HealStat.MinorErrorCount;
-                    }
-                }
-            }
-        }
-    };
-
-    // Let's try to fix range block by block. At the same time, we will
-    // calculate which replicas were used to fix the rest of the replicas.
-    for (size_t i = 0; i < Range.Size(); ++i) {
-        TBlockVariants blockVariants;
-        blockVariants.reserve(Replicas.size());
-        for (size_t replica = 0; replica < Replicas.size(); ++replica) {
-            blockVariants.push_back(TBlockVariant{
-                .HealStat = heals[replica],
-                .Block = *ReadBuffers[replica].MutableBuffers()->Mutable(i)});
-        }
-        healMinors(blockVariants);
-    }
-
-    // We find the replica that fixed the largest number of blocks and use it as
-    // a sample to fix the rest of the replicas.
-    size_t bestHealer = 0;
-    for (size_t i = 1; i < Replicas.size(); ++i) {
-        if (heals[bestHealer].HealCount < heals[i].HealCount) {
-            bestHealer = i;
-        }
-    }
-
-    for (size_t i = 0; i < Range.Size(); ++i) {
-        const auto& healerBlock = ReadBuffers[bestHealer].GetBuffers(i);
-
-        for (size_t replica = 0; replica < Replicas.size(); ++replica) {
-            if (replica == bestHealer) {
-                continue;
-            }
-
-            auto& replicaBlock =
-                *ReadBuffers[replica].MutableBuffers()->Mutable(i);
-
-            if (healerBlock != replicaBlock) {
-                // Replace block.
-                replicaBlock = healerBlock;
-                ++heals[replica].MajorErrorCount;
-            }
-        }
-    }
-
-    size_t minorFixCount = Accumulate(
-        heals,
-        size_t{},
-        [](size_t count, const THealStat& h)
-        { return count + h.MinorErrorCount; });
-    size_t majorFixCount = Accumulate(
-        heals,
-        size_t{},
-        [](size_t count, const THealStat& h)
-        { return count + h.MajorErrorCount; });
-    TString replicaStat = Accumulate(
-        heals,
-        TString(),
-        [](const TString& acc, const THealStat& h)
-        { return acc.empty() ? h.Print() : acc + " " + h.Print(); });
-
-    LOG_WARN(
-        ctx,
-        TBlockStoreComponents::PARTITION,
-        "[%s] Replica %lu elected as best healer. In range %s %lu blocks were "
-        "healed and %lu blocks were overwritten during resync. %s%s",
-        Replicas[bestHealer].ReplicaId.c_str(),
-        bestHealer,
-        Range.Print().c_str(),
-        minorFixCount,
-        majorFixCount,
-        (majorFixCount == 0 ? "All blocks healed as minor! " : ""),
-        replicaStat.c_str());
-
-    // Do writes only to replicas with fixed errors.
-    ActorsToResync.clear();
-    for (size_t i = 0; i < Replicas.size(); ++i) {
-        if (heals[i].MinorErrorCount || heals[i].MajorErrorCount) {
             ActorsToResync.push_back(i);
         }
     }
+
+    ReadBlocks(ctx, majorIdx);
 }
 
-void TResyncRangeActor::ReadBlocks(const TActorContext& ctx, size_t idx)
+void TResyncRangeActor::ReadBlocks(const TActorContext& ctx, int idx)
 {
-    auto request = std::make_unique<TEvService::TEvReadBlocksRequest>();
+    Buffer = TGuardedBuffer(TString::Uninitialized(Range.Size() * BlockSize));
+
+    auto sgList = Buffer.GetGuardedSgList();
+    auto sgListOrError = SgListNormalize(sgList.Acquire().Get(), BlockSize);
+    Y_ABORT_UNLESS(!HasError(sgListOrError));
+    SgList.SetSgList(sgListOrError.ExtractResult());
+
+    auto request = std::make_unique<TEvService::TEvReadBlocksLocalRequest>();
     request->Record.SetStartIndex(Range.Start);
     request->Record.SetBlocksCount(Range.Size());
+    request->Record.BlockSize = BlockSize;
+    request->Record.Sglist = SgList;
 
     auto* headers = request->Record.MutableHeaders();
     headers->SetIsBackgroundRequest(true);
@@ -292,45 +129,35 @@ void TResyncRangeActor::ReadBlocks(const TActorContext& ctx, size_t idx)
     ReadStartTs = ctx.Now();
 }
 
-void TResyncRangeActor::WriteBlocks(const TActorContext& ctx)
-{
-    for (size_t i = 0; i < ActorsToResync.size(); ++i) {
-        const bool lastReplica = i == ActorsToResync.size() - 1;
-        if (lastReplica) {
-            WriteReplicaBlocks(
-                ctx,
-                ActorsToResync[i],
-                std::move(ReadBuffers[0]));
-        } else {
-            WriteReplicaBlocks(ctx, ActorsToResync[i], ReadBuffers[0]);
-        }
+void TResyncRangeActor::WriteBlocks(const TActorContext& ctx) {
+    for (int idx: ActorsToResync) {
+        WriteReplicaBlocks(ctx, idx);
     }
 
     WriteStartTs = ctx.Now();
 }
 
-void TResyncRangeActor::WriteReplicaBlocks(
-    const TActorContext& ctx,
-    size_t idx,
-    NProto::TIOVector data)
+void TResyncRangeActor::WriteReplicaBlocks(const TActorContext& ctx, int idx)
 {
-    auto request = std::make_unique<TEvService::TEvWriteBlocksRequest>();
+    auto request = std::make_unique<TEvService::TEvWriteBlocksLocalRequest>();
     request->Record.SetStartIndex(Range.Start);
     auto clientId =
         WriterClientId ? WriterClientId : TString(BackgroundOpsClientId);
-    data.Swap(request->Record.MutableBlocks());
+    request->Record.BlocksCount = Range.Size();
+    request->Record.BlockSize = BlockSize;
+    request->Record.Sglist = SgList;
 
     auto* headers = request->Record.MutableHeaders();
     headers->SetIsBackgroundRequest(true);
     headers->SetClientId(std::move(clientId));
 
-    for (size_t i = 0; i < request->Record.GetBlocks().BuffersSize(); ++i) {
-        size_t blockIndex = Range.Start + i;
+    for (const auto blockIndex: xrange(Range)) {
+        auto* data = Buffer.Get().data() + (blockIndex - Range.Start) * BlockSize;
+
         const auto digest = BlockDigestGenerator->ComputeDigest(
             blockIndex,
-            TBlockDataRef(
-                request->Record.GetBlocks().GetBuffers(i).data(),
-                BlockSize));
+            TBlockDataRef(data, BlockSize)
+        );
 
         if (digest.Defined()) {
             AffectedBlockInfos.push_back({blockIndex, *digest});
@@ -412,7 +239,7 @@ void TResyncRangeActor::HandleChecksumResponse(
 }
 
 void TResyncRangeActor::HandleReadUndelivery(
-    const TEvService::TEvReadBlocksRequest::TPtr& ev,
+    const TEvService::TEvReadBlocksLocalRequest::TPtr& ev,
     const TActorContext& ctx)
 {
     ReadDuration = ctx.Now() - ReadStartTs;
@@ -425,13 +252,12 @@ void TResyncRangeActor::HandleReadUndelivery(
 }
 
 void TResyncRangeActor::HandleReadResponse(
-    const TEvService::TEvReadBlocksResponse::TPtr& ev,
+    const TEvService::TEvReadBlocksLocalResponse::TPtr& ev,
     const TActorContext& ctx)
 {
     ReadDuration = ctx.Now() - ReadStartTs;
 
     auto* msg = ev->Get();
-    auto replicaIdx = ev->Cookie;
 
     Error = msg->Record.GetError();
 
@@ -440,21 +266,11 @@ void TResyncRangeActor::HandleReadResponse(
         return;
     }
 
-    msg->Record.MutableBlocks()->Swap(
-        &ReadBuffers[Status == EStatus::MinorMismatch ? 0 : replicaIdx]);
-
-    bool allReadsDone = AllOf(
-        ReadBuffers,
-        [](const NProto::TIOVector& data) { return data.BuffersSize() != 0; });
-    if (!allReadsDone) {
-        return;
-    }
-    PrepareWriteBuffer(ctx);
     WriteBlocks(ctx);
 }
 
 void TResyncRangeActor::HandleWriteUndelivery(
-    const TEvService::TEvWriteBlocksRequest::TPtr& ev,
+    const TEvService::TEvWriteBlocksLocalRequest::TPtr& ev,
     const TActorContext& ctx)
 {
     WriteDuration = ctx.Now() - WriteStartTs;
@@ -467,7 +283,7 @@ void TResyncRangeActor::HandleWriteUndelivery(
 }
 
 void TResyncRangeActor::HandleWriteResponse(
-    const TEvService::TEvWriteBlocksResponse::TPtr& ev,
+    const TEvService::TEvWriteBlocksLocalResponse::TPtr& ev,
     const TActorContext& ctx)
 {
     WriteDuration = ctx.Now() - WriteStartTs;
@@ -509,10 +325,10 @@ STFUNC(TResyncRangeActor::StateWork)
         HFunc(
             TEvNonreplPartitionPrivate::TEvChecksumBlocksResponse,
             HandleChecksumResponse);
-        HFunc(TEvService::TEvReadBlocksRequest, HandleReadUndelivery);
-        HFunc(TEvService::TEvReadBlocksResponse, HandleReadResponse);
-        HFunc(TEvService::TEvWriteBlocksRequest, HandleWriteUndelivery);
-        HFunc(TEvService::TEvWriteBlocksResponse, HandleWriteResponse);
+        HFunc(TEvService::TEvReadBlocksLocalRequest, HandleReadUndelivery);
+        HFunc(TEvService::TEvReadBlocksLocalResponse, HandleReadResponse);
+        HFunc(TEvService::TEvWriteBlocksLocalRequest, HandleWriteUndelivery);
+        HFunc(TEvService::TEvWriteBlocksLocalResponse, HandleWriteResponse);
 
         default:
             HandleUnexpectedEvent(

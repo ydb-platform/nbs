@@ -234,15 +234,16 @@ void TMirrorPartitionActor::CompareChecksums(const TActorContext& ctx)
             ReportMirroredDiskMinorityChecksumMismatch(
                 TStringBuilder()
                 << " disk: " << DiskId << ", range: " << GetScrubbingRange());
-            if (Config->GetResyncRangeAfterScrubbing()) {
-                StartResyncRange(ctx);
-                return;
-            }
         } else {
             ReportMirroredDiskMajorityChecksumMismatch(
                 TStringBuilder()
-                << " disk: " << DiskId << ", range: " << GetScrubbingRange()
-            );
+                << " disk: " << DiskId << ", range: " << GetScrubbingRange());
+        }
+        if (Config->GetResyncRangeAfterScrubbing() &&
+            CanFixMismatch(hasQuorum, Config->GetScrubbingResyncPolicy()))
+        {
+            StartResyncRange(ctx, hasQuorum);
+            return;
         }
     }
 
@@ -250,7 +251,8 @@ void TMirrorPartitionActor::CompareChecksums(const TActorContext& ctx)
 }
 
 void TMirrorPartitionActor::StartResyncRange(
-    const NActors::TActorContext& ctx)
+    const NActors::TActorContext& ctx,
+    bool isMinor)
 {
     LOG_WARN(
         ctx,
@@ -278,14 +280,18 @@ void TMirrorPartitionActor::StartResyncRange(
         }
     }
 
-    NCloud::Register<TResyncRangeActor>(
-        ctx,
+    // Force usage TResyncRangeActor for minor errors.
+    auto resyncPolicy = isMinor ? NProto::EResyncPolicy::MINOR_4MB
+                                : Config->GetScrubbingResyncPolicy();
+    auto resyncActor = MakeResyncRangeActor(
         std::move(requestInfo),
         State.GetBlockSize(),
         GetScrubbingRange(),
         std::move(replicas),
         State.GetRWClientId(),
-        BlockDigestGenerator);
+        BlockDigestGenerator,
+        resyncPolicy);
+    ctx.Register(resyncActor.release());
 }
 
 void TMirrorPartitionActor::AddTagForBufferCopying(

@@ -122,7 +122,7 @@ private:
     void StartScrubbingRange(
         const NActors::TActorContext& ctx,
         ui64 scrubbingRangeId);
-    void StartResyncRange(const NActors::TActorContext& ctx);
+    void StartResyncRange(const NActors::TActorContext& ctx, bool isMinor);
     void AddTagForBufferCopying(const NActors::TActorContext& ctx);
     ui64 TakeNextRequestIdentifier();
 

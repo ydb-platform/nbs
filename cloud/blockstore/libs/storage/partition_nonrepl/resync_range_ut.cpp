@@ -204,7 +204,8 @@ struct TTestEnv
     std::unique_ptr<TEvNonreplPartitionPrivate::TEvRangeResynced> ResyncRange(
         ui64 start,
         ui64 end,
-        TVector<int> idxs)
+        TVector<int> idxs,
+        NProto::EResyncPolicy resyncPolicy = NProto::EResyncPolicy::MINOR_AND_MAJOR_4MB)
     {
         auto sender = Runtime.AllocateEdgeActor(0);
 
@@ -219,14 +220,14 @@ struct TTestEnv
             replicas.push_back(Replicas[idx]);
         }
 
-        auto actor = std::make_unique<TResyncRangeActor>(
+        std::unique_ptr<IActor> actor = MakeResyncRangeActor(
             std::move(requestInfo),
             DefaultBlockSize,
             TBlockRange64::MakeClosedInterval(start, end),
             std::move(replicas),
-            "", // rwClientId
-            BlockDigestGenerator
-        );
+            "",   // rwClientId
+            BlockDigestGenerator,
+            resyncPolicy);
 
         Runtime.Register(actor.release(), 0);
 
@@ -351,7 +352,7 @@ Y_UNIT_TEST_SUITE(TResyncRangeTest)
         {
             auto counters = env.GetReplicaCounters(1);
             UNIT_ASSERT_VALUES_EQUAL(1, counters.RequestCounters.ChecksumBlocks.Count);
-            UNIT_ASSERT_VALUES_EQUAL(1, counters.RequestCounters.ReadBlocks.Count);
+            UNIT_ASSERT_VALUES_EQUAL(0, counters.RequestCounters.ReadBlocks.Count);
             UNIT_ASSERT_VALUES_EQUAL(2, counters.RequestCounters.WriteBlocks.Count);
 
             auto blocks = env.ReadReplica(1, 0, 3071);
@@ -442,7 +443,7 @@ Y_UNIT_TEST_SUITE(TResyncRangeTest)
         {
             auto counters = env.GetReplicaCounters(1);
             UNIT_ASSERT_VALUES_EQUAL(1, counters.RequestCounters.ChecksumBlocks.Count);
-            UNIT_ASSERT_VALUES_EQUAL(1, counters.RequestCounters.ReadBlocks.Count);
+            UNIT_ASSERT_VALUES_EQUAL(0, counters.RequestCounters.ReadBlocks.Count);
             UNIT_ASSERT_VALUES_EQUAL(2, counters.RequestCounters.WriteBlocks.Count);
 
             auto blocks = env.ReadReplica(1, 0, 3071);
@@ -455,7 +456,7 @@ Y_UNIT_TEST_SUITE(TResyncRangeTest)
         {
             auto counters = env.GetReplicaCounters(2);
             UNIT_ASSERT_VALUES_EQUAL(1, counters.RequestCounters.ChecksumBlocks.Count);
-            UNIT_ASSERT_VALUES_EQUAL(1, counters.RequestCounters.ReadBlocks.Count);
+            UNIT_ASSERT_VALUES_EQUAL(0, counters.RequestCounters.ReadBlocks.Count);
             UNIT_ASSERT_VALUES_EQUAL(2, counters.RequestCounters.WriteBlocks.Count);
 
             auto blocks = env.ReadReplica(2, 0, 3071);
@@ -537,9 +538,9 @@ Y_UNIT_TEST_SUITE(TResyncRangeTest)
         UNIT_ASSERT_VALUES_EQUAL(2, response->ChecksumDuration.Seconds());
 
         UNIT_ASSERT_VALUES_EQUAL(12, response->ReadStartTs.Seconds());
-        UNIT_ASSERT_VALUES_EQUAL(2, response->ReadDuration.Seconds());
+        UNIT_ASSERT_VALUES_EQUAL(1, response->ReadDuration.Seconds());
 
-        UNIT_ASSERT_VALUES_EQUAL(14, response->WriteStartTs.Seconds());
+        UNIT_ASSERT_VALUES_EQUAL(13, response->WriteStartTs.Seconds());
         UNIT_ASSERT_VALUES_EQUAL(1, response->WriteDuration.Seconds());
 
         UNIT_ASSERT_VALUES_EQUAL(1024, response->AffectedBlockInfos.size());
@@ -572,7 +573,7 @@ Y_UNIT_TEST_SUITE(TResyncRangeTest)
         }
 
         {
-            env.InjectError<TEvService::TEvReadBlocksResponse>(
+            env.InjectError<TEvService::TEvReadBlocksLocalResponse>(
                 E_REJECTED, "read error");
 
             auto response = env.ResyncRange(0, 3071, {0, 1});
@@ -581,7 +582,7 @@ Y_UNIT_TEST_SUITE(TResyncRangeTest)
         }
 
         {
-            env.InjectError<TEvService::TEvWriteBlocksResponse>(
+            env.InjectError<TEvService::TEvWriteBlocksLocalResponse>(
                 E_REJECTED, "write error");
 
             auto response = env.ResyncRange(0, 3071, {0, 1});
@@ -590,7 +591,7 @@ Y_UNIT_TEST_SUITE(TResyncRangeTest)
         }
     }
 
-    Y_UNIT_TEST(ShouldHealMinorBlocksMismatch)
+    Y_UNIT_TEST(ShouldHealMinorBlocksMismatchBlockByBlock)
     {
         TTestBasicRuntime runtime;
         TTestEnv env(runtime);
@@ -604,7 +605,11 @@ Y_UNIT_TEST_SUITE(TResyncRangeTest)
         env.WriteReplica(1, 11, 11, 'x');
         env.WriteReplica(2, 12, 12, 'x');
 
-        auto response = env.ResyncRange(0, 1023, {0, 1, 2});
+        auto response = env.ResyncRange(
+            0,
+            1023,
+            {0, 1, 2},
+            NProto::EResyncPolicy::MINOR_BLOCK_BY_BLOCK);
         UNIT_ASSERT(!HasError(response->GetError()));
 
         // Check replica 0
@@ -654,7 +659,11 @@ Y_UNIT_TEST_SUITE(TResyncRangeTest)
         env.WriteReplica(0, 20, 20, 'w');
         env.WriteReplica(1, 20, 20, 'z');
 
-        auto response = env.ResyncRange(0, 1023, {0, 1, 2});
+        auto response = env.ResyncRange(
+            0,
+            1023,
+            {0, 1, 2},
+            NProto::EResyncPolicy::MINOR_AND_MAJOR_BLOCK_BY_BLOCK);
         UNIT_ASSERT(!HasError(response->GetError()));
 
         // Check replica 0
@@ -704,7 +713,11 @@ Y_UNIT_TEST_SUITE(TResyncRangeTest)
         env.WriteReplica(2, 20, 20, 'z');
 
         // Replica #0 should be used for fixing major error.
-        auto response = env.ResyncRange(0, 1023, {0, 1, 2});
+        auto response = env.ResyncRange(
+            0,
+            1023,
+            {0, 1, 2},
+            NProto::EResyncPolicy::MINOR_AND_MAJOR_BLOCK_BY_BLOCK);
         UNIT_ASSERT(!HasError(response->GetError()));
 
         // Check replica 0
