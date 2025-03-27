@@ -54,7 +54,6 @@ func startCreateSnapshotFromDiskOperation(
 			FolderId:   "folder",
 		})
 	}
-
 	require.NoError(t, err)
 	require.NotEmpty(t, operation)
 
@@ -101,7 +100,6 @@ func startCreateDiskFromSnapshotOperation(
 			},
 		})
 	}
-
 	require.NoError(t, err)
 	require.NotEmpty(t, operation)
 
@@ -191,7 +189,7 @@ func testCreateSnapshotFromDiskWithFailedShadowDisk(
 	diskContentInfo, err := nbsClient.CalculateCrc32(diskID, diskSize)
 	require.NoError(t, err)
 
-	// We use termin 'snapshot' in names that may relate to either snapshot or image.
+	// We use word 'snapshot' in names that may relate to either snapshot or image.
 	snapshotID := t.Name()
 	operation = startCreateSnapshotFromDiskOperation(
 		t,

@@ -67,11 +67,11 @@ func TestSnapshotsCreateSnapshot(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, snapshot.ID, created.ID)
 
-	err = storage.SnapshotCreated(ctx, snapshot.ID, "checkpoint", time.Now(), 0, 0)
+	err = storage.SnapshotCreated(ctx, snapshot.ID, "", time.Now(), 0, 0)
 	require.NoError(t, err)
 
 	// Check idempotency.
-	err = storage.SnapshotCreated(ctx, snapshot.ID, "checkpoint", time.Now(), 0, 0)
+	err = storage.SnapshotCreated(ctx, snapshot.ID, "", time.Now(), 0, 0)
 	require.NoError(t, err)
 
 	// Check idempotency.
@@ -122,7 +122,7 @@ func TestSnapshotsDeleteSnapshot(t *testing.T) {
 	require.NoError(t, err)
 	requireSnapshotsAreEqual(t, expected, *actual)
 
-	err = storage.SnapshotCreated(ctx, snapshot.ID, "checkpoint", time.Now(), 0, 0)
+	err = storage.SnapshotCreated(ctx, snapshot.ID, "", time.Now(), 0, 0)
 	require.Error(t, err)
 	require.True(t, errors.Is(err, errors.NewEmptyNonRetriableError()))
 
@@ -147,7 +147,7 @@ func TestSnapshotsDeleteSnapshot(t *testing.T) {
 	require.Error(t, err)
 	require.True(t, errors.Is(err, errors.NewEmptyNonRetriableError()))
 
-	err = storage.SnapshotCreated(ctx, snapshot.ID, "checkpoint", time.Now(), 0, 0)
+	err = storage.SnapshotCreated(ctx, snapshot.ID, "", time.Now(), 0, 0)
 	require.Error(t, err)
 	require.True(t, errors.Is(err, errors.NewEmptyNonRetriableError()))
 }
@@ -171,7 +171,7 @@ func TestSnapshotsDeleteNonexistentSnapshot(t *testing.T) {
 	err = storage.SnapshotDeleted(ctx, snapshot.ID, time.Now())
 	require.NoError(t, err)
 
-	err = storage.SnapshotCreated(ctx, snapshot.ID, "checkpoint", time.Now(), 0, 0)
+	err = storage.SnapshotCreated(ctx, snapshot.ID, "", time.Now(), 0, 0)
 	require.Error(t, err)
 	require.True(t, errors.Is(err, errors.NewEmptyNonRetriableError()))
 
