@@ -309,6 +309,35 @@ bool TNonreplicatedPartitionActor::InitRequests(
         return false;
     }
 
+    if constexpr (IsReadMethod<TMethod>) {
+        const bool resyncOrMigrationRead =
+            msg.Record.GetHeaders().GetIsBackgroundRequest() &&
+            msg.Record.GetHeaders().GetClientId() == BackgroundOpsClientId;
+        if (resyncOrMigrationRead) {
+            for (const auto& [_, requestData]: RequestsInProgress.AllRequests())
+            {
+                if (!requestData.Write) {
+                    continue;
+                }
+
+                const auto& inFlightRange = requestData.Value.BlockRange;
+                if (inFlightRange.Overlaps(blockRange)) {
+                    reply(
+                        ctx,
+                        requestInfo,
+                        PartConfig->MakeError(
+                            E_REJECTED,
+                            TStringBuilder()
+                                << "Background read request with range "
+                                << DescribeRange(blockRange).c_str()
+                                << " overlaps with in-flight write request: "
+                                << DescribeRange(inFlightRange).c_str()));
+                    return false;
+                }
+            }
+        }
+    }
+
     if (IsWriteMethod<TMethod> && PartConfig->IsReadOnly() &&
         !msg.Record.GetHeaders().GetIsBackgroundRequest())
     {
@@ -319,6 +348,7 @@ bool TNonreplicatedPartitionActor::InitRequests(
         return false;
     }
 
+    requestData->BlockRange = blockRange;
     for (const auto& dr: *deviceRequests) {
         if (PartConfig->GetOutdatedDeviceIds().contains(
                 dr.Device.GetDeviceUUID()))

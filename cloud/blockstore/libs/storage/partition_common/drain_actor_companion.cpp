@@ -54,7 +54,7 @@ void TDrainActorCompanion::HandleDrain(
         "Drain",
         requestInfo->CallContext->RequestId);
 
-    LOG_TRACE(
+    LOG_DEBUG(
         ctx,
         TBlockStoreComponents::PARTITION,
         "[%s] Start drain",
@@ -96,7 +96,7 @@ void TDrainActorCompanion::HandleWaitForInFlightWrites(
     WaitForInFlightWritesRequest =
         CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
 
-    LOG_TRACE(
+    LOG_DEBUG(
         ctx,
         TBlockStoreComponents::PARTITION,
         "[%s] Start wait for in-flight write requests",
@@ -123,7 +123,7 @@ void TDrainActorCompanion::DoProcessDrainRequests(
         return;
     }
 
-    LOG_TRACE(
+    LOG_DEBUG(
         ctx,
         TBlockStoreComponents::PARTITION,
         "[%s] Complete drain",
@@ -154,7 +154,7 @@ void TDrainActorCompanion::DoProcessWaitForInFlightWritesRequests(
         return;
     }
 
-    LOG_TRACE(
+    LOG_DEBUG(
         ctx,
         TBlockStoreComponents::PARTITION,
         "[%s] Complete wait for in-flight write requests",

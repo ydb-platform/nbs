@@ -253,7 +253,7 @@ void TNonreplicatedPartitionActor::HandleReadBlocksLocal(
 
     TVector<TDeviceRequest> deviceRequests;
     TRequestTimeoutPolicy timeoutPolicy;
-    TRequestData request;
+    TRequestData requestData;
     bool ok = InitRequests<TEvService::TReadBlocksLocalMethod>(
         *msg,
         ctx,
@@ -261,7 +261,7 @@ void TNonreplicatedPartitionActor::HandleReadBlocksLocal(
         blockRange,
         &deviceRequests,
         &timeoutPolicy,
-        &request);
+        &requestData);
 
     if (!ok) {
         return;
@@ -281,7 +281,7 @@ void TNonreplicatedPartitionActor::HandleReadBlocksLocal(
         PartConfig,
         SelfId());
 
-    RequestsInProgress.AddReadRequest(actorId, std::move(request));
+    RequestsInProgress.AddReadRequest(actorId, std::move(requestData));
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

@@ -204,7 +204,7 @@ void TNonreplicatedPartitionActor::HandleZeroBlocks(
 
     TVector<TDeviceRequest> deviceRequests;
     TRequestTimeoutPolicy timeoutPolicy;
-    TRequestData request;
+    TRequestData requestData;
     bool ok = InitRequests<TEvService::TZeroBlocksMethod>(
         *msg,
         ctx,
@@ -212,7 +212,7 @@ void TNonreplicatedPartitionActor::HandleZeroBlocks(
         blockRange,
         &deviceRequests,
         &timeoutPolicy,
-        &request);
+        &requestData);
 
     if (!ok) {
         return;
@@ -233,7 +233,7 @@ void TNonreplicatedPartitionActor::HandleZeroBlocks(
         PartConfig->GetBlockSize(),
         assignVolumeRequestId);
 
-    RequestsInProgress.AddWriteRequest(actorId, std::move(request));
+    RequestsInProgress.AddWriteRequest(actorId, std::move(requestData));
 }
 
 void TNonreplicatedPartitionActor::HandleZeroBlocksCompleted(

@@ -378,6 +378,7 @@ void TLaggingAgentsReplicaProxyActor::ReadBlocks(
                               << "Desired recipient actor is not "
                                  "nonreplicated partition for device: "
                               << deviceRequest.Device.GetDeviceUUID()
+                              << ", in range " << blockRange
                               << ", lagging agent: " << agentId
                               << ", disk id: " << PartConfig->GetName();
             ReportLaggingAgentsProxyWrongRecipientActor(message);

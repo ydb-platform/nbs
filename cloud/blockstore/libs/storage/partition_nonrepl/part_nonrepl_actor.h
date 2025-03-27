@@ -90,6 +90,7 @@ private:
     struct TRequestData
     {
         TStackVec<int, 2> DeviceIndices;
+        TBlockRange64 BlockRange;
     };
     TRequestsInProgress<NActors::TActorId, TRequestData> RequestsInProgress{
         EAllowedRequests::ReadWrite};

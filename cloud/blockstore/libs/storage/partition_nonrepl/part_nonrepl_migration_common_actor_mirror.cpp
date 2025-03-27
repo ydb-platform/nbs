@@ -19,11 +19,21 @@ void TNonreplicatedPartitionMigrationCommonActor::HandleWriteOrZeroCompleted(
     const TEvNonreplPartitionPrivate::TEvWriteOrZeroCompleted::TPtr& ev,
     const TActorContext& ctx)
 {
-    auto * msg = ev->Get();
+    auto* msg = ev->Get();
     const auto counter = msg->RequestId;
     if (!WriteAndZeroRequestsInProgress.RemoveRequest(counter)) {
         Y_DEBUG_ABORT_UNLESS(0);
     }
+
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::PARTITION,
+        "Internal request id %lu completed. IsMigrationAllowed: %d, "
+        "IsMigrationFinished: %d, Error: %s",
+        counter,
+        IsMigrationAllowed(),
+        IsMigrationFinished(),
+        FormatError(msg->Error).c_str());
 
     if (msg->FollowerGotNonRetriableError) {
         OnMigrationNonRetriableError(ctx);
@@ -97,6 +107,18 @@ void TNonreplicatedPartitionMigrationCommonActor::MirrorRequest(
         }
     }
 
+    const auto internalReqId = WriteAndZeroRequestsInProgress.AddWriteRequest(range);
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::PARTITION,
+        "%s %lu in mirror partition: %s, IsMigrationAllowed: %d, "
+        "IsMigrationFinished: %d, internal request id: %lu",
+        TMethod::Name,
+        GetRequestId(msg->Record),
+        range.Print().c_str(),
+        IsMigrationAllowed(),
+        IsMigrationFinished(), internalReqId);
+
     NCloud::Register<TMigrationRequestActor<TMethod>>(
         ctx,
         CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext),
@@ -105,13 +127,7 @@ void TNonreplicatedPartitionMigrationCommonActor::MirrorRequest(
         std::move(msg->Record),
         DiskId,
         SelfId(),   // parentActorId
-        WriteAndZeroRequestsInProgress.AddWriteRequest(range));
-
-    // LOG_WARN(
-    //     ctx,
-    //     TBlockStoreComponents::PARTITION,
-    //     "xxxxx Register mirror migration actor: %s",
-    //     mrrId.ToString().c_str());
+        internalReqId);
 
     if constexpr (IsExactlyWriteMethod<TMethod>) {
         NonZeroRangesMap.MarkChanged(range);

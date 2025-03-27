@@ -217,7 +217,7 @@ void TNonreplicatedPartitionActor::HandleChecksumBlocks(
 
     TVector<TDeviceRequest> deviceRequests;
     TRequestTimeoutPolicy timeoutPolicy;
-    TRequestData request;
+    TRequestData requestData;
     bool ok = InitRequests<TEvNonreplPartitionPrivate::TChecksumBlocksMethod>(
         *msg,
         ctx,
@@ -225,7 +225,7 @@ void TNonreplicatedPartitionActor::HandleChecksumBlocks(
         blockRange,
         &deviceRequests,
         &timeoutPolicy,
-        &request);
+        &requestData);
 
     if (!ok) {
         return;
@@ -240,7 +240,7 @@ void TNonreplicatedPartitionActor::HandleChecksumBlocks(
         PartConfig,
         SelfId());
 
-    RequestsInProgress.AddReadRequest(actorId, std::move(request));
+    RequestsInProgress.AddReadRequest(actorId, std::move(requestData));
 }
 
 void TNonreplicatedPartitionActor::HandleChecksumBlocksCompleted(

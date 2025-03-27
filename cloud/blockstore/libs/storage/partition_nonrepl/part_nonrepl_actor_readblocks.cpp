@@ -245,7 +245,7 @@ void TNonreplicatedPartitionActor::HandleReadBlocks(
 
     TVector<TDeviceRequest> deviceRequests;
     TRequestTimeoutPolicy timeoutPolicy;
-    TRequestData request;
+    TRequestData requestData;
     bool ok = InitRequests<TEvService::TReadBlocksMethod>(
         *msg,
         ctx,
@@ -253,7 +253,7 @@ void TNonreplicatedPartitionActor::HandleReadBlocks(
         blockRange,
         &deviceRequests,
         &timeoutPolicy,
-        &request);
+        &requestData);
 
     LOG_WARN(
         ctx,
@@ -285,7 +285,7 @@ void TNonreplicatedPartitionActor::HandleReadBlocks(
         PartConfig,
         SelfId());
 
-    RequestsInProgress.AddReadRequest(actorId, std::move(request));
+    RequestsInProgress.AddReadRequest(actorId, std::move(requestData));
 }
 
 void TNonreplicatedPartitionActor::HandleReadBlocksCompleted(

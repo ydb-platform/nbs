@@ -13,7 +13,7 @@ Vertices {
                 ZeroRate: 20
                 ReadRate: 100
                 LoadType: LOAD_TYPE_RANDOM
-                IoDepth: 1
+                IoDepth: 20
                 RequestSizes {
                     Probability: 0.4
                     MinSize: 1
@@ -37,7 +37,7 @@ Vertices {
                 ZeroRate: 20
                 ReadRate: 100
                 LoadType: LOAD_TYPE_RANDOM
-                IoDepth: 1
+                IoDepth: 20
                 RequestSizes {
                     Probability: 0.4
                     MinSize: 1
