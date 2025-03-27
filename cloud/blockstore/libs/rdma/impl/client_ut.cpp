@@ -317,10 +317,7 @@ Y_UNIT_TEST_SUITE(TRdmaClientTest)
             size_t Bytes = 0;
         };
 
-        TManualEvent ev;
-        TResponse response;
-
-        auto makeContext = [&]()
+        auto makeContext = [](TResponse& response, TManualEvent& ev)
         {
             auto ctx = std::make_unique<TRequestContext>();
             ctx->Handler = [&](TStringBuf requestBuffer,
@@ -337,14 +334,17 @@ Y_UNIT_TEST_SUITE(TRdmaClientTest)
             return ctx;
         };
 
+        TManualEvent ev1;
+        TResponse response1;
+
         const size_t requestBytes = 1024;
         const size_t responseBytes = 1024;
-        auto r = ep->AllocateRequest(
+        auto r1 = ep->AllocateRequest(
             std::make_shared<TClientHandler>(),
-            makeContext(),
+            makeContext(response1, ev1),
             requestBytes,
             responseBytes);
-        auto request = r.ExtractResult();
+        auto request1 = r1.ExtractResult();
         auto callContext = MakeIntrusive<TCallContext>();
 
         // make sure that time spent on request processing before SendRequest
@@ -353,13 +353,48 @@ Y_UNIT_TEST_SUITE(TRdmaClientTest)
             DurationToCyclesSafe(clientConfig->MaxResponseDelay) + 1;
 
         callContext->SetRequestStartedCycles(GetCycleCount() - retryDelay);
-        auto reqId = ep->SendRequest(std::move(request), callContext);
+        auto reqId1 = ep->SendRequest(std::move(request1), callContext);
 
-        ep->CancelRequest(reqId);
+        TManualEvent ev2;
+        TResponse response2;
 
-        ev.WaitT(5s);
-        UNIT_ASSERT(response.Received);
-        UNIT_ASSERT_VALUES_EQUAL((ui32)RDMA_PROTO_CANCELLED, response.Status);
+        auto r2 = ep->AllocateRequest(
+            std::make_shared<TClientHandler>(),
+            makeContext(response2, ev2),
+            requestBytes,
+            responseBytes);
+        auto request2 = r2.ExtractResult();
+
+        auto reqId2 = ep->SendRequest(std::move(request2), callContext);
+
+        ep->CancelRequest(reqId2);
+
+        ev2.WaitT(5s);
+        UNIT_ASSERT(response2.Received);
+        UNIT_ASSERT_VALUES_EQUAL((ui32)RDMA_PROTO_FAIL, response2.Status);
+
+        NProto::TError error;
+        bool parsed = error.ParseFromArray(
+            response2.Buffer.Head(response2.Bytes).data(),
+            response2.Bytes);
+
+        UNIT_ASSERT(parsed);
+        UNIT_ASSERT_VALUES_EQUAL(E_CANCELLED, error.GetCode());
+
+        UNIT_ASSERT(!response1.Received);
+
+        ep->CancelRequest(reqId1);
+
+        ev1.WaitT(5s);
+        UNIT_ASSERT(response1.Received);
+        UNIT_ASSERT_VALUES_EQUAL((ui32)RDMA_PROTO_FAIL, response1.Status);
+
+        parsed = error.ParseFromArray(
+            response1.Buffer.Head(response1.Bytes).data(),
+            response1.Bytes);
+
+        UNIT_ASSERT(parsed);
+        UNIT_ASSERT_VALUES_EQUAL(E_CANCELLED, error.GetCode());
     }
 
     Y_UNIT_TEST(ShouldReconnect)

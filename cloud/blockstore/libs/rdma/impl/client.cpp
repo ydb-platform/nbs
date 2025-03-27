@@ -179,20 +179,18 @@ public:
     }
 
     TSimpleList<TRequest> PopCancelledRequests(
-        const THashSet<ui64>& reqIdsToCancel)
+        const THashSet<ui64>& tagsToCancel)
     {
-        TSimpleList<TRequest> tmpCancelledReqs;
+        TSimpleList<TRequest> cancelledReqs;
         for (auto& [rdmaReqId, req]: Requests) {
-            if (reqIdsToCancel.contains(req->ClientReqId)) {
+            if (tagsToCancel.contains(req->ClientReqId)) {
                 CancelledRequests.Put(rdmaReqId);
-                tmpCancelledReqs.Enqueue(std::move(req));
+                cancelledReqs.Enqueue(std::move(req));
             }
         }
 
-        TSimpleList<TRequest> cancelledReqs;
-        while (auto req = tmpCancelledReqs.Dequeue()) {
-            Requests.erase(req->ReqId);
-            cancelledReqs.Enqueue(std::move(req));
+        for (const auto& req: cancelledReqs) {
+            Requests.erase(req.ReqId);
         }
 
         return cancelledReqs;
@@ -861,10 +859,10 @@ void TClientEndpoint::CancelRequest(ui64 reqId) noexcept
         return;
     }
 
-    auto reqIdforQueue = std::make_unique<TClientRequestId>();
-    reqIdforQueue->ReqId = reqId;
+    auto reqIdForQueue = std::make_unique<TClientRequestId>();
+    reqIdForQueue->ReqId = reqId;
     Counters->RequestEnqueued();
-    CancelRequests.Enqueue(std::move(reqIdforQueue));
+    CancelRequests.Enqueue(std::move(reqIdForQueue));
 
     if (WaitMode == EWaitMode::Poll) {
         CancelRequestEvent.Set();
@@ -881,50 +879,26 @@ bool TClientEndpoint::HandleCancelRequests()
     if (!requests) {
         return false;
     }
-    THashSet<ui64> cancelledReqIds;
+    THashSet<ui64> reqsToCancel;
 
     bool ret = false;
-    while (auto clientReqId = requests.Dequeue()) {
-        cancelledReqIds.emplace(clientReqId->ReqId);
+    for (const auto& reqId: requests) {
+        reqsToCancel.emplace(reqId.ReqId);
     }
-
-    auto cancelReq = [&](TRequestPtr reqToCancel)
-    {
-        auto len = SerializeError(
-            E_CANCELLED,
-            TStringBuf("request is cancelled"),
-            static_cast<TStringBuf>(reqToCancel->OutBuffer));
-
-        auto* handler = reqToCancel->Handler.get();
-        handler->HandleResponse(
-            std::move(reqToCancel),
-            RDMA_PROTO_CANCELLED,
-            len);
-        ret = true;
-    };
 
     // We should filter input and queued requests from cancelled ones to not
     // lose cancel requests.
-    auto filteredList = TSimpleList<TRequest>();
-
     auto inputRequests = InputRequests.DequeueAll();
     QueuedRequests.Append(std::move(inputRequests));
 
-    while (auto req = QueuedRequests.Dequeue()) {
-        if (!cancelledReqIds.contains(req->ClientReqId)) {
-            filteredList.Enqueue(std::move(req));
-            continue;
-        }
+    auto cancelledReqs = QueuedRequests.DequeueIf(
+        [&](const TRequest& req)
+        { return reqsToCancel.contains(req.ClientReqId); });
 
-        cancelReq(std::move(req));
-    }
+    cancelledReqs.Append(ActiveRequests.PopCancelledRequests(reqsToCancel));
 
-    QueuedRequests.Append(std::move(filteredList));
-
-    auto reqsToCancel = ActiveRequests.PopCancelledRequests(cancelledReqIds);
-
-    while (auto req = reqsToCancel.Dequeue()) {
-        cancelReq(std::move(req));
+    while (auto req = cancelledReqs.Dequeue()) {
+        AbortRequest(std::move(req), E_CANCELLED, "request is cancelled");
     }
 
     // We move requests from input to queued, so we should handle this new
