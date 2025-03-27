@@ -64,19 +64,14 @@ NProto::TError TMirrorPartitionState::Validate()
 
 void TMirrorPartitionState::PrepareMigrationConfig()
 {
-    using enum EMigrationConfigState;
-    if (MigrationConfigPrepared != NotPrepared) {
+    if (MigrationConfigPrepared) {
         return;
     }
 
-    if (PrepareMigrationConfigForFreshDevices()) {
-        MigrationConfigPrepared = PreparedForFresh;
-        return;
-    }
-
-    if (PrepareMigrationConfigForWarningDevices()) {
-        MigrationConfigPrepared = PreparedForWarning;
-        return;
+    if (PrepareMigrationConfigForFreshDevices() ||
+        PrepareMigrationConfigForWarningDevices())
+    {
+        MigrationConfigPrepared = true;
     }
 }
 
@@ -170,10 +165,16 @@ bool TMirrorPartitionState::PrepareMigrationConfigForFreshDevices()
 
         if (!anotherFreshDevices.contains(uuid)) {
             // we found a good device, lets build our migration config
-            auto& targetDevice = devices[deviceIdx];
+            auto targetDevice = devices[deviceIdx];
+            devices[deviceIdx] = anotherDevice;
             auto& migration = *replicaInfo->Migrations.Add();
-            migration.ClearSourceDeviceId();
-            *migration.MutableTargetDevice() = targetDevice;
+            migration.SetSourceDeviceId(uuid);
+            *migration.MutableTargetDevice() = std::move(targetDevice);
+
+            // we need to replace anotherDevice with a dummy device
+            // since now our migration actor will be responsible for
+            // write request replication to this device
+            anotherDevice.SetDeviceUUID({});
 
             return true;
         }

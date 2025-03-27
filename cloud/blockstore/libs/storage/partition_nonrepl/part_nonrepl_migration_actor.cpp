@@ -25,8 +25,7 @@ TNonreplicatedPartitionMigrationActor::TNonreplicatedPartitionMigrationActor(
         TNonreplicatedPartitionConfigPtr srcConfig,
         google::protobuf::RepeatedPtrField<NProto::TDeviceMigration> migrations,
         NRdma::IClientPtr rdmaClient,
-        NActors::TActorId statActorId,
-        NActors::TActorId migrationSrcActorId)
+        NActors::TActorId statActorId)
     : TNonreplicatedPartitionMigrationCommonActor(
           static_cast<IMigrationOwner*>(this),
           config,
@@ -43,17 +42,14 @@ TNonreplicatedPartitionMigrationActor::TNonreplicatedPartitionMigrationActor(
     , SrcConfig(std::move(srcConfig))
     , Migrations(std::move(migrations))
     , RdmaClient(std::move(rdmaClient))
-    , MigrationSrcActorId(migrationSrcActorId)
 {}
 
 void TNonreplicatedPartitionMigrationActor::OnBootstrap(
     const NActors::TActorContext& ctx)
 {
-    auto srcActorId = CreateSrcActor(ctx);
     InitWork(
         ctx,
-        MigrationSrcActorId ? MigrationSrcActorId : srcActorId,
-        srcActorId,
+        CreateSrcActor(ctx),
         CreateDstActor(ctx),
         true,   // takeOwnershipOverActors
         std::make_unique<TMigrationTimeoutCalculator>(
@@ -165,19 +161,12 @@ void TNonreplicatedPartitionMigrationActor::FinishMigration(
 NActors::TActorId TNonreplicatedPartitionMigrationActor::CreateSrcActor(
     const NActors::TActorContext& ctx)
 {
-    auto devices = SrcConfig->GetDevices();
-    for (auto& device: devices) {
-        if (IsMigrationTarget(device)) {
-            device.ClearDeviceUUID();
-        }
-    }
-
     return NCloud::Register(
         ctx,
         CreateNonreplicatedPartition(
             GetConfig(),
             GetDiagnosticsConfig(),
-            SrcConfig->Fork(std::move(devices)),
+            SrcConfig,
             SelfId(),
             RdmaClient));
 }
@@ -202,10 +191,7 @@ NActors::TActorId TNonreplicatedPartitionMigrationActor::CreateDstActor(
         auto* migration = FindIfPtr(
             Migrations,
             [&](const NProto::TDeviceMigration& m)
-            {
-                return m.GetSourceDeviceId() &&
-                       m.GetSourceDeviceId() == device.GetDeviceUUID();
-            });
+            { return m.GetSourceDeviceId() == device.GetDeviceUUID(); });
 
         if (migration) {
             const auto& target = migration->GetTargetDevice();
@@ -227,7 +213,7 @@ NActors::TActorId TNonreplicatedPartitionMigrationActor::CreateDstActor(
             }
 
             device.CopyFrom(migration->GetTargetDevice());
-        } else if (!IsMigrationTarget(device)) {
+        } else {
             // Skip this device for migration
             MarkMigratedBlocks(
                 TBlockRange64::WithLength(blockIndex, device.GetBlocksCount()));
