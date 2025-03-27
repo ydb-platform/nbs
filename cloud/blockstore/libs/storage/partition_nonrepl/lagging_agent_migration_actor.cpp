@@ -51,7 +51,6 @@ void TLaggingAgentMigrationActor::OnBootstrap(const TActorContext& ctx)
     InitWork(
         ctx,
         SourceActorId,
-        SourceActorId,
         TargetActorId,
         false,   // takeOwnershipOverActors
         std::make_unique<TMigrationTimeoutCalculator>(

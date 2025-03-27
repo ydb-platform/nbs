@@ -12,7 +12,10 @@ void TNonreplicatedPartitionMigrationCommonActor::HandleChecksumBlocks(
     const TEvNonreplPartitionPrivate::TEvChecksumBlocksRequest::TPtr& ev,
     const TActorContext& ctx)
 {
-    ForwardRequestWithNondeliveryTracking(ctx, SrcActorId, *ev);
+    ForwardRequestWithNondeliveryTracking(
+        ctx,
+        SrcActorId,
+        *ev);
 }
 
 }   // namespace NCloud::NBlockStore::NStorage
