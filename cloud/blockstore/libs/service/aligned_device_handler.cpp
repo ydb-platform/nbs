@@ -482,9 +482,18 @@ void TAlignedDeviceHandler::ReportCriticalError(
         return;
     }
 
-    if (!IsReliableMediaKind && CriticalErrorReported) {
+    if (IsReliableMediaKind) {
+        CriticalErrorReported.store(true);
+    } else {
         // For non-reliable disks report crit event only once.
-        return;
+        bool old = CriticalErrorReported.load();
+        if (old) {
+            return;
+        }
+        bool ok = CriticalErrorReported.compare_exchange_strong(old, true);
+        if (!ok) {
+            return;
+        }
     }
 
     auto message = TStringBuilder()
@@ -495,7 +504,6 @@ void TAlignedDeviceHandler::ReportCriticalError(
     } else {
         ReportErrorWasSentToTheGuestForNonReliableDisk(message);
     }
-    CriticalErrorReported = true;
 }
 
 }   // namespace NCloud::NBlockStore

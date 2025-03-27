@@ -193,7 +193,7 @@ Y_UNIT_TEST_SUITE(TServerStressTest)
         size_t consumerCount = 16;
         size_t providerCount = 4;
 
-        TString socketPath = "./socket";
+        TString socketPath = "/tmp/socket.stress";
         std::atomic<int> inflight = 0;
         std::atomic<int> completed = 0;
 
