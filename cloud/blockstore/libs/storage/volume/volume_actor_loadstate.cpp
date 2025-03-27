@@ -173,7 +173,7 @@ void TVolumeActor::CompleteLoadState(
 
     if (State && Config) {
         HasPerformanceProfileModifications =
-            VolumeHasPerformanceProfileModifications();
+            State->HasPerformanceProfileModifications(*Config);
     }
 
     StateLoadFinished = true;

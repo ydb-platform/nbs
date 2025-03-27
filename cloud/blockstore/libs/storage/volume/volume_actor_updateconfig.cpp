@@ -4,12 +4,8 @@
 
 #include <cloud/blockstore/libs/service/context.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
-#include <cloud/blockstore/libs/storage/core/proto_helpers.h>
-#include <cloud/blockstore/libs/storage/core/volume_model.h>
 #include <cloud/blockstore/libs/storage/volume/model/helpers.h>
 #include <cloud/storage/core/libs/common/media.h>
-
-#include <google/protobuf/util/message_differencer.h>
 
 #include <library/cpp/protobuf/util/pb_io.h>
 
@@ -117,41 +113,6 @@ auto BuildNewMeta(
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
-
-bool TVolumeActor::VolumeHasPerformanceProfileModifications()
-{
-    const NKikimrBlockStore::TVolumeConfig& volumeConfig =
-        State->GetMeta().GetVolumeConfig();
-
-    auto currentPerformanceProfile =
-        VolumeConfigToVolumePerformanceProfile(volumeConfig);
-
-    NProto::TVolumePerformanceProfile defaultPerformanceProfile;
-    {
-        const TVolumeParams volumeParams = ComputeVolumeParams(
-            *Config,
-            State->GetBlockSize(),
-            State->GetBlocksCount(),
-            static_cast<NProto::EStorageMediaKind>(
-                volumeConfig.GetStorageMediaKind()),
-            static_cast<ui32>(volumeConfig.GetPartitions().size()),
-            volumeConfig.GetCloudId(),
-            volumeConfig.GetFolderId(),
-            volumeConfig.GetDiskId(),
-            volumeConfig.GetIsSystem(),
-            !volumeConfig.GetBaseDiskId().empty());
-
-        NKikimrBlockStore::TVolumeConfig defaultVolumeConfig;
-        ResizeVolume(*Config, volumeParams, {}, {}, defaultVolumeConfig);
-        defaultPerformanceProfile =
-            VolumeConfigToVolumePerformanceProfile(defaultVolumeConfig);
-    }
-
-    using google::protobuf::util::MessageDifferencer;
-    return !MessageDifferencer::Equals(
-        currentPerformanceProfile,
-        defaultPerformanceProfile);
-}
 
 ui32 TVolumeActor::GetCurrentConfigVersion() const
 {
@@ -418,7 +379,7 @@ void TVolumeActor::CompleteUpdateConfig(
     ScheduleAllocateDiskIfNeeded(ctx);
     UnfinishedUpdateVolumeConfig.Clear();
     HasPerformanceProfileModifications =
-        VolumeHasPerformanceProfileModifications();
+        State->HasPerformanceProfileModifications(*Config);
     UpdateVolumeConfigInProgress = false;
 }
 

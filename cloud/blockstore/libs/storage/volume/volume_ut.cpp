@@ -1,7 +1,6 @@
 #include "volume_ut.h"
 
 #include <cloud/blockstore/libs/storage/api/volume_proxy.h>
-#include <cloud/blockstore/libs/storage/core/proto_helpers.h>
 #include <cloud/blockstore/libs/storage/core/volume_model.h>
 #include <cloud/blockstore/libs/storage/model/composite_id.h>
 #include <cloud/blockstore/libs/storage/partition_common/events_private.h>

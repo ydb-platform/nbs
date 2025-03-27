@@ -368,6 +368,8 @@ public:
 
     bool IsDiskRegistryMediaKind() const;
 
+    bool HasPerformanceProfileModifications(const TStorageConfig& config) const;
+
     //
     // Partitions
     //
