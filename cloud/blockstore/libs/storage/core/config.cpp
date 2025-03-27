@@ -468,10 +468,10 @@ TDuration MSeconds(ui32 value)
     xxx(ResyncAfterClientInactivityInterval,       TDuration, Minutes(1)      )\
     xxx(AutoResyncPolicy,                                                      \
         NProto::EResyncPolicy,                                                 \
-        NProto::EResyncPolicy::MINOR_AND_MAJOR_4MB                            )\
+        NProto::EResyncPolicy::RESYNC_POLICY_MINOR_AND_MAJOR_4MB              )\
     xxx(ForceResyncPolicy,                                                     \
         NProto::EResyncPolicy,                                                 \
-        NProto::EResyncPolicy::MINOR_AND_MAJOR_4MB                            )\
+        NProto::EResyncPolicy::RESYNC_POLICY_MINOR_AND_MAJOR_4MB              )\
     xxx(MirrorReadReplicaCount,                    ui32,      0               )\
                                                                                \
     xxx(PingMetricsHalfDecayInterval,              TDuration, Seconds(15)     )\
@@ -523,7 +523,7 @@ TDuration MSeconds(ui32 value)
     xxx(AutomaticallyEnableBufferCopyingAfterChecksumMismatch, bool, false       )\
     xxx(ScrubbingResyncPolicy,                                                    \
         NProto::EResyncPolicy,                                                    \
-        NProto::EResyncPolicy::MINOR_4MB                                         )\
+        NProto::EResyncPolicy::RESYNC_POLICY_MINOR_4MB                           )\
                                                                                   \
     xxx(LaggingDevicesForMirror2DisksEnabled,     bool,      false               )\
     xxx(LaggingDevicesForMirror3DisksEnabled,     bool,      false               )\

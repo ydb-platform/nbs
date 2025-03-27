@@ -52,16 +52,16 @@ enum EVolumePreemptionType
 enum EResyncPolicy
 {
     // Fix only minor mismatches by 4MiB range.
-    MINOR_4MB = 0;
+    RESYNC_POLICY_MINOR_4MB = 0;
 
     // Fix minor and replace major mismatches by 4MiB range.
-    MINOR_AND_MAJOR_4MB = 1;
+    RESYNC_POLICY_MINOR_AND_MAJOR_4MB = 1;
 
     // Fix only minor mismatches with block size range.
-    MINOR_BLOCK_BY_BLOCK = 2;
+    RESYNC_POLICY_MINOR_BLOCK_BY_BLOCK = 2;
 
     // Fix minor and replace major mismatches with block size range.
-    MINOR_AND_MAJOR_BLOCK_BY_BLOCK = 3;
+    RESYNC_POLICY_MINOR_AND_MAJOR_BLOCK_BY_BLOCK = 3;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

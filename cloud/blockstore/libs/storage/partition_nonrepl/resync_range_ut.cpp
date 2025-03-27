@@ -205,7 +205,8 @@ struct TTestEnv
         ui64 start,
         ui64 end,
         TVector<int> idxs,
-        NProto::EResyncPolicy resyncPolicy = NProto::EResyncPolicy::MINOR_AND_MAJOR_4MB)
+        NProto::EResyncPolicy resyncPolicy =
+            NProto::EResyncPolicy::RESYNC_POLICY_MINOR_AND_MAJOR_4MB)
     {
         auto sender = Runtime.AllocateEdgeActor(0);
 
@@ -609,7 +610,7 @@ Y_UNIT_TEST_SUITE(TResyncRangeTest)
             0,
             1023,
             {0, 1, 2},
-            NProto::EResyncPolicy::MINOR_BLOCK_BY_BLOCK);
+            NProto::EResyncPolicy::RESYNC_POLICY_MINOR_BLOCK_BY_BLOCK);
         UNIT_ASSERT(!HasError(response->GetError()));
 
         // Check replica 0
@@ -655,7 +656,7 @@ Y_UNIT_TEST_SUITE(TResyncRangeTest)
             0,
             1023,
             {0, 1, 2},
-            NProto::EResyncPolicy::MINOR_BLOCK_BY_BLOCK);
+            NProto::EResyncPolicy::RESYNC_POLICY_MINOR_BLOCK_BY_BLOCK);
         UNIT_ASSERT(!HasError(response->GetError()));
 
         // Check replica 0
@@ -715,7 +716,7 @@ Y_UNIT_TEST_SUITE(TResyncRangeTest)
             0,
             1023,
             {0, 1, 2},
-            NProto::EResyncPolicy::MINOR_AND_MAJOR_BLOCK_BY_BLOCK);
+            NProto::EResyncPolicy::RESYNC_POLICY_MINOR_AND_MAJOR_BLOCK_BY_BLOCK);
         UNIT_ASSERT(!HasError(response->GetError()));
 
         // Check replica 0
@@ -771,7 +772,7 @@ Y_UNIT_TEST_SUITE(TResyncRangeTest)
             0,
             1023,
             {0, 1, 2},
-            NProto::EResyncPolicy::MINOR_AND_MAJOR_BLOCK_BY_BLOCK);
+            NProto::EResyncPolicy::RESYNC_POLICY_MINOR_AND_MAJOR_BLOCK_BY_BLOCK);
         UNIT_ASSERT(!HasError(response->GetError()));
 
         // Check replica 0

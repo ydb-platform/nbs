@@ -281,7 +281,7 @@ void TMirrorPartitionActor::StartResyncRange(
     }
 
     // Force usage TResyncRangeActor for minor errors.
-    auto resyncPolicy = isMinor ? NProto::EResyncPolicy::MINOR_4MB
+    auto resyncPolicy = isMinor ? NProto::EResyncPolicy::RESYNC_POLICY_MINOR_4MB
                                 : Config->GetScrubbingResyncPolicy();
     auto resyncActor = MakeResyncRangeActor(
         std::move(requestInfo),

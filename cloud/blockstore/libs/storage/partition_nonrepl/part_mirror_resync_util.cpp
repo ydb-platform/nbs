@@ -25,7 +25,8 @@ TBlockRange64 RangeId2BlockRange(ui32 rangeId, ui32 blockSize)
 
 bool CanFixMismatch(bool isMinor, NProto::EResyncPolicy resyncPolicy)
 {
-    return isMinor || resyncPolicy != NProto::EResyncPolicy::MINOR_4MB;
+    return isMinor ||
+           resyncPolicy != NProto::EResyncPolicy::RESYNC_POLICY_MINOR_4MB;
 }
 
 std::unique_ptr<NActors::IActor> MakeResyncRangeActor(
@@ -37,8 +38,9 @@ std::unique_ptr<NActors::IActor> MakeResyncRangeActor(
     IBlockDigestGeneratorPtr blockDigestGenerator,
     NProto::EResyncPolicy resyncPolicy)
 {
-    if (resyncPolicy == NProto::EResyncPolicy::MINOR_4MB ||
-        resyncPolicy == NProto::EResyncPolicy::MINOR_AND_MAJOR_4MB)
+    if (resyncPolicy == NProto::EResyncPolicy::RESYNC_POLICY_MINOR_4MB ||
+        resyncPolicy ==
+            NProto::EResyncPolicy::RESYNC_POLICY_MINOR_AND_MAJOR_4MB)
     {
         return std::make_unique<TResyncRangeActor>(
             std::move(requestInfo),

@@ -69,16 +69,17 @@ void HealMinors(const TBlockVariants& blockVariants)
     }
 
     for (auto [data, count]: variations) {
-        if (count > 1) {
-            // We found minor mismatch!
-            for (const auto& blockVariant: blockVariants) {
-                if (blockVariant.Block == *data) {
-                    ++blockVariant.HealStat.HealCount;
-                } else {
-                    // Heal block.
-                    blockVariant.Block = *data;
-                    ++blockVariant.HealStat.FixedMinorErrorCount;
-                }
+        if (count < 2) {
+            continue;
+        }
+        // We found minor mismatch!
+        for (const auto& blockVariant: blockVariants) {
+            if (blockVariant.Block == *data) {
+                ++blockVariant.HealStat.HealCount;
+            } else {
+                // Heal block.
+                blockVariant.Block = *data;
+                ++blockVariant.HealStat.FixedMinorErrorCount;
             }
         }
     }
@@ -102,7 +103,8 @@ void AddBlockToRange(ui64 block, TVector<TBlockRange64>& rangesWithMajorError)
     }
 }
 
-TString PrintRanges(const TVector<TBlockRange64>& ranges) {
+TString PrintRanges(const TVector<TBlockRange64>& ranges)
+{
     TStringBuilder builder;
     bool first = true;
     builder << "[";
@@ -123,6 +125,8 @@ TString PrintRanges(const TVector<TBlockRange64>& ranges) {
 }
 
 }   // namespace
+
+////////////////////////////////////////////////////////////////////////////////
 
 TResyncRangeBlockByBlockActor::TResyncRangeBlockByBlockActor(
         TRequestInfoPtr requestInfo,
@@ -210,7 +214,7 @@ void TResyncRangeBlockByBlockActor::PrepareWriteBuffers(
             ++healStat[replica].FoundMajorErrorCount;
             AddBlockToRange(Range.Start + blockIndex, rangesWithMajorError);
             if (ResyncPolicy ==
-                NProto::EResyncPolicy::MINOR_AND_MAJOR_BLOCK_BY_BLOCK)
+                NProto::EResyncPolicy::RESYNC_POLICY_MINOR_AND_MAJOR_BLOCK_BY_BLOCK)
             {
                 // Replace block.
                 replicaBlock = donorBlock;
