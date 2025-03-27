@@ -94,6 +94,7 @@ private:
     const ui64 BlockCount;
     const IBlockDigestGeneratorPtr BlockDigestGenerator;
     const ui32 MaxIoDepth;
+    const NActors::TActorId VolumeActorId;
     TString RWClientId;
 
     NActors::TActorId SrcActorId;
@@ -165,7 +166,8 @@ public:
         ui64 initialMigrationIndex,
         TString rwClientId,
         NActors::TActorId statActorId,
-        ui32 maxIoDepth);
+        ui32 maxIoDepth,
+        NActors::TActorId volumeActorId);
 
     TNonreplicatedPartitionMigrationCommonActor(
         IMigrationOwner* migrationOwner,
@@ -179,7 +181,8 @@ public:
         TCompressedBitmap migrationBlockMap,
         TString rwClientId,
         NActors::TActorId statActorId,
-        ui32 maxIoDepth);
+        ui32 maxIoDepth,
+        NActors::TActorId volumeActorId);
 
     ~TNonreplicatedPartitionMigrationCommonActor() override;
 

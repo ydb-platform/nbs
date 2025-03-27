@@ -6,6 +6,7 @@
 #include <cloud/blockstore/libs/storage/api/disk_agent.h>
 #include <cloud/blockstore/libs/storage/core/probes.h>
 #include <cloud/blockstore/libs/storage/disk_agent/public.h>
+#include <cloud/blockstore/libs/storage/volume/volume_events_private.h>
 
 #include <cloud/storage/core/libs/common/sglist.h>
 
@@ -24,7 +25,8 @@ TResyncRangeActor::TResyncRangeActor(
         TVector<TReplicaDescriptor> replicas,
         TString writerClientId,
         IBlockDigestGeneratorPtr blockDigestGenerator,
-        NProto::EResyncPolicy resyncPolicy)
+        NProto::EResyncPolicy resyncPolicy,
+        NActors::TActorId volumeActorId)
     : RequestInfo(std::move(requestInfo))
     , BlockSize(blockSize)
     , Range(range)
@@ -32,6 +34,7 @@ TResyncRangeActor::TResyncRangeActor(
     , WriterClientId(std::move(writerClientId))
     , BlockDigestGenerator(std::move(blockDigestGenerator))
     , ResyncPolicy(resyncPolicy)
+    , VolumeActorId(volumeActorId)
 {
     using EResyncPolicy = NProto::EResyncPolicy;
     Y_DEBUG_ABORT_UNLESS(
@@ -52,6 +55,13 @@ void TResyncRangeActor::Bootstrap(const TActorContext& ctx)
         RequestInfo->CallContext->RequestId);
 
     ChecksumRangeActorCompanion.CalculateChecksums(ctx, Range);
+}
+
+void TResyncRangeActor::GetVolumeRequestId(const NActors::TActorContext& ctx) {
+    NCloud::Send(
+        ctx,
+        VolumeActorId,
+        std::make_unique<TEvVolumePrivate::TEvTakeVolumeRequestIdRequest>());
 }
 
 void TResyncRangeActor::CompareChecksums(const TActorContext& ctx)
@@ -115,6 +125,11 @@ void TResyncRangeActor::CompareChecksums(const TActorContext& ctx)
         }
     }
 
+    if (VolumeActorId) {
+        ResyncIndex = majorIdx;
+        GetVolumeRequestId(ctx);
+        return;
+    }
     ReadBlocks(ctx, majorIdx);
 }
 
@@ -162,6 +177,7 @@ void TResyncRangeActor::WriteBlocks(const TActorContext& ctx) {
 void TResyncRangeActor::WriteReplicaBlocks(const TActorContext& ctx, int idx)
 {
     auto request = std::make_unique<TEvService::TEvWriteBlocksLocalRequest>();
+    request->Record.MutableHeaders()->SetVolumeRequestId(VolumeRequestId);
     request->Record.SetStartIndex(Range.Start);
     auto clientId =
         WriterClientId ? WriterClientId : TString(BackgroundOpsClientId);
@@ -260,6 +276,21 @@ void TResyncRangeActor::HandleChecksumResponse(
     }
 }
 
+void TResyncRangeActor::HandleVolumeRequestId(
+    const TEvVolumePrivate::TEvTakeVolumeRequestIdResponse::TPtr& ev,
+    const NActors::TActorContext& ctx)
+{
+    auto* msg = ev->Get();
+    if (HasError(msg->Error)) {
+        Error = msg->Error;
+        Done(ctx);
+        return;
+    }
+
+    VolumeRequestId = msg->ReqId;
+    ReadBlocks(ctx, ResyncIndex);
+}
+
 void TResyncRangeActor::HandleReadUndelivery(
     const TEvService::TEvReadBlocksLocalRequest::TPtr& ev,
     const TActorContext& ctx)
@@ -347,6 +378,9 @@ STFUNC(TResyncRangeActor::StateWork)
         HFunc(
             TEvNonreplPartitionPrivate::TEvChecksumBlocksResponse,
             HandleChecksumResponse);
+        HFunc(
+            TEvVolumePrivate::TEvTakeVolumeRequestIdResponse,
+            HandleVolumeRequestId);
         HFunc(TEvService::TEvReadBlocksLocalRequest, HandleReadUndelivery);
         HFunc(TEvService::TEvReadBlocksLocalResponse, HandleReadResponse);
         HFunc(TEvService::TEvWriteBlocksLocalRequest, HandleWriteUndelivery);

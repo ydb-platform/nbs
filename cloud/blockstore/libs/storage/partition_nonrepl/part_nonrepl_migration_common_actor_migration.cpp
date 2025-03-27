@@ -114,7 +114,8 @@ void TNonreplicatedPartitionMigrationCommonActor::MigrateRange(
             SrcActorId,
             DstActorId,
             RWClientId,
-            BlockDigestGenerator);
+            BlockDigestGenerator,
+            VolumeActorId);
     } else {
         NCloud::Register<TCopyRangeActor>(
             ctx,
@@ -127,7 +128,8 @@ void TNonreplicatedPartitionMigrationCommonActor::MigrateRange(
             SrcActorId,
             DstActorId,
             RWClientId,
-            BlockDigestGenerator);
+            BlockDigestGenerator,
+            VolumeActorId);
     }
 }
 

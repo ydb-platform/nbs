@@ -29,7 +29,8 @@ TNonreplicatedPartitionMigrationCommonActor::
         ui64 initialMigrationIndex,
         TString rwClientId,
         NActors::TActorId statActorId,
-        ui32 maxIoDepth)
+        ui32 maxIoDepth,
+        NActors::TActorId volumeActorId)
     : MigrationOwner(migrationOwner)
     , Config(std::move(config))
     , DiagnosticsConfig(std::move(diagnosticsConfig))
@@ -39,6 +40,7 @@ TNonreplicatedPartitionMigrationCommonActor::
     , BlockCount(blockCount)
     , BlockDigestGenerator(std::move(digestGenerator))
     , MaxIoDepth(maxIoDepth)
+    , VolumeActorId(volumeActorId)
     , RWClientId(std::move(rwClientId))
     , ProcessingBlocks(blockCount, blockSize, initialMigrationIndex)
     , NonZeroRangesMap(blockCount, blockSize, ProcessingRangeSize)
@@ -60,7 +62,8 @@ TNonreplicatedPartitionMigrationCommonActor::
         TCompressedBitmap migrationBlockMap,
         TString rwClientId,
         NActors::TActorId statActorId,
-        ui32 maxIoDepth)
+        ui32 maxIoDepth,
+        NActors::TActorId volumeActorId)
     : MigrationOwner(migrationOwner)
     , Config(std::move(config))
     , DiagnosticsConfig(std::move(diagnosticsConfig))
@@ -70,6 +73,7 @@ TNonreplicatedPartitionMigrationCommonActor::
     , BlockCount(blockCount)
     , BlockDigestGenerator(std::move(digestGenerator))
     , MaxIoDepth(maxIoDepth)
+    , VolumeActorId(volumeActorId)
     , RWClientId(std::move(rwClientId))
     , ProcessingBlocks(blockCount, blockSize, std::move(migrationBlockMap))
     , NonZeroRangesMap(blockCount, blockSize, ProcessingRangeSize)

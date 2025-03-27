@@ -278,6 +278,11 @@ void TMirrorPartitionActor::StartResyncRange(
         }
     }
 
+    auto volumeActorId =
+    Config->GetAssignIdToWriteAndZeroRequestsEnabled()
+        ? State.GetReplicaInfos()[0].Config->GetParentActorId()
+        : TActorId();
+
     // Force usage TResyncRangeActor for minor errors.
     auto resyncPolicy = isMinor ? NProto::EResyncPolicy::RESYNC_POLICY_MINOR_4MB
                                 : Config->GetScrubbingResyncPolicy();
@@ -290,7 +295,8 @@ void TMirrorPartitionActor::StartResyncRange(
         BlockDigestGenerator,
         resyncPolicy,
         isMinor ? EBlockRangeChecksumStatus::MinorError
-                : EBlockRangeChecksumStatus::MajorError);
+                : EBlockRangeChecksumStatus::MajorError,
+        volumeActorId);
     ctx.Register(resyncActor.release());
 }
 

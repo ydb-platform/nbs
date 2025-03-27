@@ -25,6 +25,7 @@ namespace NCloud::NBlockStore::NStorage {
 
 using namespace NActors;
 using namespace NKikimr;
+using namespace std::chrono_literals;
 
 namespace {
 
@@ -126,7 +127,8 @@ struct TTestEnv
             NProto::EVolumeIOMode ioMode,
             bool useRdma,
             TMigrationStatePtr migrationState,
-            bool useDirectCopy)
+            bool useDirectCopy,
+            bool enableVolumeRequestId = false)
         : Runtime(runtime)
         , ActorId(0, "YYY")
         , VolumeActorId(0, "VVV")
@@ -161,6 +163,9 @@ struct TTestEnv
         storageConfig.SetMaxMigrationBandwidth(500);
         storageConfig.SetUseDirectCopyRange(useDirectCopy);
         storageConfig.SetMigrationIndexCachingInterval(1024);
+        storageConfig.SetAssignIdToWriteAndZeroRequestsEnabled(enableVolumeRequestId);
+        storageConfig.SetRejectLateRequestsAtDiskAgentEnabled(
+            enableVolumeRequestId);
 
         auto config = std::make_shared<TStorageConfig>(
             std::move(storageConfig),
@@ -1237,6 +1242,127 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionMigrationTest)
             auto response = client.RecvResponse<TEvGetDeviceForRangeResponse>();
             UNIT_ASSERT_VALUES_EQUAL(E_ABORTED, response->Error.GetCode());
         }
+    }
+
+    ui64 GetVolumeRequestId(const TAutoPtr<IEventHandle>& event)
+    {
+        switch (event->GetTypeRewrite()) {
+            case TEvDiskAgent::EvDirectCopyBlocksRequest: {
+                auto* ev =
+                    static_cast<TEvDiskAgent::TEvDirectCopyBlocksRequest*>(
+                        event->GetBase());
+
+                return ev->Record.GetHeaders().GetVolumeRequestId();
+            }
+            case TEvService::EvWriteBlocksRequest: {
+                auto* ev = static_cast<TEvService::TEvWriteBlocksRequest*>(
+                    event->GetBase());
+
+                return ev->Record.GetHeaders().GetVolumeRequestId();
+            }
+            case TEvService::EvZeroBlocksRequest: {
+                auto* ev = static_cast<TEvService::TEvZeroBlocksRequest*>(
+                    event->GetBase());
+
+                return ev->Record.GetHeaders().GetVolumeRequestId();
+            }
+            default:
+                return 0;
+        }
+    }
+
+    void ShouldCopyRangeWithCorrectVolumeRequestId(bool useDirectCopy)
+    {
+        TTestBasicRuntime runtime;
+
+        TTestEnv env(
+            runtime,
+            TTestEnv::DefaultDevices(runtime.GetNodeId(0)),
+            TTestEnv::DefaultMigrations(runtime.GetNodeId(0)),
+            NProto::VOLUME_IO_OK,
+            false,
+            nullptr,   // no migration state
+            useDirectCopy,
+            true);
+
+        size_t volumeRequestId = 12345;
+
+        for (size_t i = 0; i < 3; ++i) {
+            auto copyRangeRequestCount = 0;
+            std::unique_ptr<IEventHandle> stollenTakeVolumeRequestIdEvent;
+            TVector<ui64> volumeRequestIds;
+            runtime.SetObserverFunc(
+                [&](TAutoPtr<IEventHandle>& event)
+                {
+
+                    switch (event->GetTypeRewrite()) {
+                        case TEvDiskAgent::EvDirectCopyBlocksRequest:
+                            if (useDirectCopy) {
+                                copyRangeRequestCount += 1;
+                                volumeRequestIds.emplace_back(
+                                    GetVolumeRequestId(event));
+                            }
+                            break;
+                        case TEvService::EvWriteBlocksRequest:
+                        case TEvService::EvZeroBlocksRequest:
+                            if (!useDirectCopy) {
+                                copyRangeRequestCount += 1;
+                                volumeRequestIds.emplace_back(
+                                    GetVolumeRequestId(event));
+                            }
+                            break;
+                        case TEvVolumePrivate::EvTakeVolumeRequestIdRequest:
+                            stollenTakeVolumeRequestIdEvent.reset(event.Release());
+                            return TTestActorRuntimeBase::EEventAction::DROP;
+                        default:
+                            break;
+                    }
+
+
+                    return TTestActorRuntime::DefaultObserverFunc(event);
+                });
+
+            TPartitionClient client(runtime, env.ActorId);
+
+            runtime.AdvanceCurrentTime(5s);
+            runtime.DispatchEvents({}, 10ms);
+
+            UNIT_ASSERT_VALUES_EQUAL(0, copyRangeRequestCount);
+            UNIT_ASSERT(stollenTakeVolumeRequestIdEvent);
+            UNIT_ASSERT_VALUES_EQUAL(
+                env.VolumeActorId,
+                stollenTakeVolumeRequestIdEvent->Recipient);
+
+            runtime.Send(
+                stollenTakeVolumeRequestIdEvent->Sender,
+                env.VolumeActorId,
+                std::make_unique<TEvVolumePrivate::TEvTakeVolumeRequestIdResponse>(
+                    volumeRequestId)
+                    .release());
+
+            NActors::TDispatchOptions options;
+            options.FinalEvents = {NActors::TDispatchOptions::TFinalEventCondition(
+                TEvNonreplPartitionPrivate::EvRangeMigrated)};
+
+            runtime.DispatchEvents(options);
+
+
+            UNIT_ASSERT_VALUES_EQUAL(1, copyRangeRequestCount);
+            UNIT_ASSERT_VALUES_EQUAL(1, volumeRequestIds.size());
+            UNIT_ASSERT_VALUES_EQUAL(volumeRequestId, volumeRequestIds[0]);
+            volumeRequestId += 12345;
+        }
+    }
+
+    Y_UNIT_TEST(ShouldCopyRangeWithCorrectVolumeRequestId)
+    {
+        ShouldCopyRangeWithCorrectVolumeRequestId(false);
+    }
+
+
+    Y_UNIT_TEST(ShouldCopyRangeWithCorrectVolumeRequestIdDirectCopy)
+    {
+        ShouldCopyRangeWithCorrectVolumeRequestId(true);
     }
 }
 
