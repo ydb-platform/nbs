@@ -59,19 +59,6 @@ struct TPartitionsInfo
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TCreateVolumeParamsCtx
-{
-    ui32 BlockSize;
-    ui64 BlocksCount;
-    NCloud::NProto::EStorageMediaKind MediaKind;
-    ui32 PartitionsCount;
-    TString CloudId;
-    TString FolderId;
-    TString DiskId;
-    bool IsSystem;
-    bool IsOverlayDisk;
-};
-
 ui64 ComputeBlocksCountPerPartition(
     const ui64 newBlocksCountPerVolume,
     const ui32 blocksPerStripe,
@@ -117,8 +104,16 @@ void ComputeChannelCountLimits(
     int* wantToAddMixed,
     int* wantToAddFresh);
 
-TVolumeParams CreateVolumeParams(
+TVolumeParams ComputeVolumeParams(
     const TStorageConfig& config,
-    const TCreateVolumeParamsCtx& ctx);
+    ui32 blockSize,
+    ui64 blocksCount,
+    NCloud::NProto::EStorageMediaKind mediaKind,
+    ui32 partitionsCount,
+    const TString& cloudId,
+    const TString& folderId,
+    const TString& diskId,
+    bool isSystem,
+    bool isOverlayDisk);
 
 }   // namespace NCloud::NBlockStore::NStorage

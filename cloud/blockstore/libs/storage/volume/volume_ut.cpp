@@ -3988,22 +3988,18 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         {
             auto request = volume.CreateUpdateVolumeConfigRequest();
             defaultVolumeConfig = request->Record.GetVolumeConfig();
-            auto volumeParams = CreateVolumeParams(
+            auto volumeParams = ComputeVolumeParams(
                 *storageConfig,
-                TCreateVolumeParamsCtx{
-                    .BlockSize = defaultVolumeConfig.GetBlockSize(),
-                    .BlocksCount =
-                        defaultVolumeConfig.GetPartitions(0).GetBlockCount(),
-                    .MediaKind = static_cast<NProto::EStorageMediaKind>(
-                        defaultVolumeConfig.GetStorageMediaKind()),
-                    .PartitionsCount = static_cast<ui32>(
-                        defaultVolumeConfig.GetPartitions().size()),
-                    .CloudId = defaultVolumeConfig.GetCloudId(),
-                    .FolderId = defaultVolumeConfig.GetFolderId(),
-                    .DiskId = defaultVolumeConfig.GetDiskId(),
-                    .IsSystem = defaultVolumeConfig.GetIsSystem(),
-                    .IsOverlayDisk =
-                        !defaultVolumeConfig.GetBaseDiskId().empty()});
+                defaultVolumeConfig.GetBlockSize(),
+                defaultVolumeConfig.GetPartitions(0).GetBlockCount(),
+                static_cast<NProto::EStorageMediaKind>(
+                    defaultVolumeConfig.GetStorageMediaKind()),
+                static_cast<ui32>(defaultVolumeConfig.GetPartitions().size()),
+                defaultVolumeConfig.GetCloudId(),
+                defaultVolumeConfig.GetFolderId(),
+                defaultVolumeConfig.GetDiskId(),
+                defaultVolumeConfig.GetIsSystem(),
+                !defaultVolumeConfig.GetBaseDiskId().empty());
             ResizeVolume(
                 *storageConfig,
                 volumeParams,
@@ -4050,6 +4046,8 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
                     response->Record.GetStatus()));
         }
 
+        volume.WaitReady();
+
         {
             volume.SendToPipe(
                 std::make_unique<TEvVolumePrivate::TEvUpdateCounters>());
@@ -4059,7 +4057,20 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
                 hasPerformanceProfileModificationsCounter);
         }
 
-        // Reverting back to suggested performance profile disables counter
+        volume.RebootTablet();
+        volume.WaitReady();
+
+        // Rebooting volume tablet should not decrease the counter
+        {
+            volume.SendToPipe(
+                std::make_unique<TEvVolumePrivate::TEvUpdateCounters>());
+            runtime->DispatchEvents({}, TDuration::Seconds(1));
+            UNIT_ASSERT_VALUES_EQUAL(
+                1,
+                hasPerformanceProfileModificationsCounter);
+        }
+
+        // Reverting back to suggested performance profile decreases the counter
         {
             auto request = volume.CreateUpdateVolumeConfigRequest();
             *request->Record.MutableVolumeConfig() = defaultVolumeConfig;
@@ -4071,6 +4082,8 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
                 "Unexpected status: " << NKikimrBlockStore::EStatus_Name(
                     response->Record.GetStatus()));
         }
+
+        volume.WaitReady();
 
         {
             volume.SendToPipe(

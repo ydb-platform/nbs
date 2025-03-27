@@ -880,40 +880,48 @@ void ComputeChannelCountLimits(
     }
 }
 
-TVolumeParams CreateVolumeParams(
+TVolumeParams ComputeVolumeParams(
     const TStorageConfig& config,
-    const TCreateVolumeParamsCtx& ctx)
+    ui32 blockSize,
+    ui64 blocksCount,
+    NCloud::NProto::EStorageMediaKind mediaKind,
+    ui32 partitionsCount,
+    const TString& cloudId,
+    const TString& folderId,
+    const TString& diskId,
+    bool isSystem,
+    bool isOverlayDisk)
 {
     TVolumeParams volumeParams;
-    volumeParams.BlockSize = ctx.BlockSize;
-    volumeParams.MediaKind = ctx.MediaKind;
+    volumeParams.BlockSize = blockSize;
+    volumeParams.MediaKind = mediaKind;
     if (!IsDiskRegistryMediaKind(volumeParams.MediaKind)) {
         TPartitionsInfo partitionsInfo;
-        if (ctx.PartitionsCount) {
-            partitionsInfo.PartitionsCount = ctx.PartitionsCount;
+        if (partitionsCount) {
+            partitionsInfo.PartitionsCount = partitionsCount;
             partitionsInfo.BlocksCountPerPartition =
                 ComputeBlocksCountPerPartition(
-                    ctx.BlocksCount,
+                    blocksCount,
                     config.GetBytesPerStripe(),
-                    volumeParams.BlockSize,
+                    blockSize,
                     partitionsInfo.PartitionsCount);
         } else {
             partitionsInfo = ComputePartitionsInfo(
                 config,
-                ctx.CloudId,
-                ctx.FolderId,
-                ctx.DiskId,
-                ctx.MediaKind,
-                ctx.BlocksCount,
-                volumeParams.BlockSize,
-                ctx.IsSystem,
-                ctx.IsOverlayDisk);
+                cloudId,
+                folderId,
+                diskId,
+                mediaKind,
+                blocksCount,
+                blockSize,
+                isSystem,
+                isOverlayDisk);
         }
         volumeParams.PartitionsCount = partitionsInfo.PartitionsCount;
         volumeParams.BlocksCountPerPartition =
             partitionsInfo.BlocksCountPerPartition;
     } else {
-        volumeParams.BlocksCountPerPartition = ctx.BlocksCount;
+        volumeParams.BlocksCountPerPartition = blocksCount;
         volumeParams.PartitionsCount = 1;
     }
     return volumeParams;

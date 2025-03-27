@@ -93,7 +93,7 @@ void VolumeConfigToVolumeModelFields(
 
     volumeModel.SetStorageMediaKind(storageMediaKind);
 
-    auto performanceProfile = volumeModel.MutablePerformanceProfile();
+    auto* performanceProfile = volumeModel.MutablePerformanceProfile();
     VolumeConfigToVolumeModelPerformanceProfile(
         volumeConfig,
         *performanceProfile);

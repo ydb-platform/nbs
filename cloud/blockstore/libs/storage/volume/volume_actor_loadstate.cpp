@@ -171,6 +171,11 @@ void TVolumeActor::CompleteLoadState(
         State->AccessUsedBlocks() = std::move(*args.UsedBlocks);
     }
 
+    if (State && Config) {
+        HasPerformanceProfileModifications =
+            VolumeHasPerformanceProfileModifications();
+    }
+
     StateLoadFinished = true;
     StateLoadTimestamp = ctx.Now();
     NextVolumeConfigVersion = GetCurrentConfigVersion();

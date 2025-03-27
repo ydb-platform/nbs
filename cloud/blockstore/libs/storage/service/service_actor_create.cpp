@@ -235,18 +235,17 @@ void TCreateVolumeActor::CreateVolumeImpl(
     config.SetFillGeneration(Request.GetFillGeneration());
 
     {
-        const TVolumeParams volumeParams = CreateVolumeParams(
+        const TVolumeParams volumeParams = ComputeVolumeParams(
             *Config,
-            TCreateVolumeParamsCtx{
-                .BlockSize = GetBlockSize(),
-                .BlocksCount = Request.GetBlocksCount(),
-                .MediaKind = GetStorageMediaKind(),
-                .PartitionsCount = Request.GetPartitionsCount(),
-                .CloudId = Request.GetCloudId(),
-                .FolderId = Request.GetFolderId(),
-                .DiskId = Request.GetDiskId(),
-                .IsSystem = Request.GetIsSystem(),
-                .IsOverlayDisk = !Request.GetBaseDiskId().empty()});
+            GetBlockSize(),
+            Request.GetBlocksCount(),
+            GetStorageMediaKind(),
+            Request.GetPartitionsCount(),
+            Request.GetCloudId(),
+            Request.GetFolderId(),
+            Request.GetDiskId(),
+            Request.GetIsSystem(),
+            !Request.GetBaseDiskId().empty());
 
         if (volumeParams.PartitionsCount > 1) {
             config.SetBlocksPerStripe(ceil(

@@ -114,35 +114,35 @@ auto BuildNewMeta(
     return newMeta;
 }
 
-bool IsPerformanceProfileModified(
-    const TStorageConfig& storageConfig,
-    const TVolumeState& volumeState)
+}   // namespace
+
+////////////////////////////////////////////////////////////////////////////////
+
+bool TVolumeActor::VolumeHasPerformanceProfileModifications()
 {
     const NKikimrBlockStore::TVolumeConfig& volumeConfig =
-        volumeState.GetMeta().GetVolumeConfig();
+        State->GetMeta().GetVolumeConfig();
 
     auto currentPerformanceProfile =
         VolumeConfigToVolumePerformanceProfile(volumeConfig);
 
     NProto::TVolumePerformanceProfile defaultPerformanceProfile;
     {
-        const TVolumeParams volumeParams = CreateVolumeParams(
-            storageConfig,
-            TCreateVolumeParamsCtx{
-                .BlockSize = volumeState.GetBlockSize(),
-                .BlocksCount = volumeState.GetBlocksCount(),
-                .MediaKind = static_cast<NProto::EStorageMediaKind>(
-                    volumeConfig.GetStorageMediaKind()),
-                .PartitionsCount =
-                    static_cast<ui32>(volumeConfig.GetPartitions().size()),
-                .CloudId = volumeConfig.GetCloudId(),
-                .FolderId = volumeConfig.GetFolderId(),
-                .DiskId = volumeConfig.GetDiskId(),
-                .IsSystem = volumeConfig.GetIsSystem(),
-                .IsOverlayDisk = !volumeConfig.GetBaseDiskId().empty()});
+        const TVolumeParams volumeParams = ComputeVolumeParams(
+            *Config,
+            State->GetBlockSize(),
+            State->GetBlocksCount(),
+            static_cast<NProto::EStorageMediaKind>(
+                volumeConfig.GetStorageMediaKind()),
+            static_cast<ui32>(volumeConfig.GetPartitions().size()),
+            volumeConfig.GetCloudId(),
+            volumeConfig.GetFolderId(),
+            volumeConfig.GetDiskId(),
+            volumeConfig.GetIsSystem(),
+            !volumeConfig.GetBaseDiskId().empty());
 
         NKikimrBlockStore::TVolumeConfig defaultVolumeConfig;
-        ResizeVolume(storageConfig, volumeParams, {}, {}, defaultVolumeConfig);
+        ResizeVolume(*Config, volumeParams, {}, {}, defaultVolumeConfig);
         defaultPerformanceProfile =
             VolumeConfigToVolumePerformanceProfile(defaultVolumeConfig);
     }
@@ -152,10 +152,6 @@ bool IsPerformanceProfileModified(
         currentPerformanceProfile,
         defaultPerformanceProfile);
 }
-
-}   // namespace
-
-////////////////////////////////////////////////////////////////////////////////
 
 ui32 TVolumeActor::GetCurrentConfigVersion() const
 {
@@ -422,7 +418,7 @@ void TVolumeActor::CompleteUpdateConfig(
     ScheduleAllocateDiskIfNeeded(ctx);
     UnfinishedUpdateVolumeConfig.Clear();
     HasPerformanceProfileModifications =
-        IsPerformanceProfileModified(*Config, *State);
+        VolumeHasPerformanceProfileModifications();
     UpdateVolumeConfigInProgress = false;
 }
 
