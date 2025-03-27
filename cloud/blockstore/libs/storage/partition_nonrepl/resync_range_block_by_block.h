@@ -7,6 +7,7 @@
 #include <cloud/blockstore/libs/storage/api/service.h>
 #include <cloud/blockstore/libs/storage/core/request_info.h>
 #include <cloud/blockstore/libs/storage/partition_nonrepl/checksum_range.h>
+#include <cloud/blockstore/libs/storage/volume/volume_events_private.h>
 
 #include <cloud/storage/core/libs/common/error.h>
 
@@ -30,6 +31,7 @@ private:
     const IBlockDigestGeneratorPtr BlockDigestGenerator;
     const NProto::EResyncPolicy ResyncPolicy;
     const bool PerformChecksumPreliminaryCheck;
+    const NActors::TActorId VolumeActorId;
 
     TVector<size_t> ActorsToResync;
     ui32 ResyncedCount = 0;
@@ -41,6 +43,7 @@ private:
     TInstant WriteStartTs;
     TDuration WriteDuration;
     TVector<IProfileLog::TBlockInfo> AffectedBlockInfos;
+    ui64 VolumeRequestId = 0;
 
     TChecksumRangeActorCompanion ChecksumRangeActorCompanion{Replicas};
 
@@ -53,13 +56,16 @@ public:
         TString writerClientId,
         IBlockDigestGeneratorPtr blockDigestGenerator,
         NProto::EResyncPolicy resyncPolicy,
-        bool performChecksumPreliminaryCheck);
+        bool performChecksumPreliminaryCheck,
+        NActors::TActorId volumeActorId);
 
     void Bootstrap(const NActors::TActorContext& ctx);
 
 private:
     void CompareChecksums(const NActors::TActorContext& ctx);
     void PrepareWriteBuffers(const NActors::TActorContext& ctx);
+    void StartReadPhase(const NActors::TActorContext& ctx);
+    void GetVolumeRequestId(const NActors::TActorContext& ctx);
     void ReadBlocks(const NActors::TActorContext& ctx);
     void ReadReplicaBlocks(
         const NActors::TActorContext& ctx,
@@ -80,6 +86,10 @@ private:
 
     void HandleChecksumUndelivery(
         const TEvNonreplPartitionPrivate::TEvChecksumBlocksRequest::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleVolumeRequestId(
+        const TEvVolumePrivate::TEvTakeVolumeRequestIdResponse::TPtr& ev,
         const NActors::TActorContext& ctx);
 
     void HandleReadResponse(

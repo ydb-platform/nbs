@@ -874,6 +874,27 @@ void TVolumeActor::HandleGetStorageConfig(
         std::move(response));
 }
 
+void TVolumeActor::HandleTakeVolumeRequestId(
+    const TEvVolumePrivate::TEvTakeVolumeRequestIdRequest::TPtr& ev,
+    const NActors::TActorContext& ctx)
+{
+    if (!VolumeRequestIdGenerator->CanAdvance()) {
+        auto resp =
+            std::make_unique<TEvVolumePrivate::TEvTakeVolumeRequestIdResponse>(
+                MakeError(
+                    E_REJECTED,
+                    "can't advance request id, restarting tablet"));
+        NCloud::Reply(ctx, *ev, std::move(resp));
+        NCloud::Send(ctx, SelfId(), std::make_unique<TEvents::TEvPoisonPill>());
+        return;
+    }
+
+    auto resp =
+        std::make_unique<TEvVolumePrivate::TEvTakeVolumeRequestIdResponse>(
+            VolumeRequestIdGenerator->Advance());
+    NCloud::Reply(ctx, *ev, std::move(resp));
+}
+
 bool TVolumeActor::HandleRequests(STFUNC_SIG)
 {
     switch (ev->GetTypeRewrite()) {
