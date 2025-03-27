@@ -1993,7 +1993,7 @@ Y_UNIT_TEST_SUITE(TVolumeStateTest)
         UNIT_ASSERT_VALUES_EQUAL("x", followers[0].Uuid);
         UNIT_ASSERT_VALUES_EQUAL("vol1", followers[0].FollowerDiskId);
         UNIT_ASSERT_EQUAL(TFollowerDiskInfo::EState::None, followers[0].State);
-        UNIT_ASSERT_VALUES_EQUAL(
+        UNIT_ASSERT_EQUAL(
             std::nullopt,
             followers[0].MigrationBlockIndex);
 
