@@ -160,7 +160,33 @@ type service struct {
 	resourceStorage resources.Storage
 }
 
+func (s *service) prepareZoneId(
+	ctx context.Context,
+	disk *disk_manager.DiskId,
+) (string, error) {
+
+	shards := s.nbsFactory.GetShards(disk.ZoneId)
+
+	if len(shards) == 0 {
+		// We end up here if an unsharded zone or a shard of a zone is
+		// provided as ZoneId.
+		return disk.ZoneId, nil
+	}
+
+	diskMeta, err := s.resourceStorage.GetDiskMeta(ctx, disk.DiskId)
+	if err != nil {
+		return "", err
+	}
+
+	if diskMeta == nil {
+		return shards[0], nil
+	}
+
+	return diskMeta.ZoneID, nil
+}
+
 func (s *service) prepareCreateDiskParams(
+	ctx context.Context,
 	req *disk_manager.CreateDiskRequest,
 ) (*protos.CreateDiskParams, error) {
 
@@ -171,6 +197,11 @@ func (s *service) prepareCreateDiskParams(
 			"invalid disk id: %v",
 			req.DiskId,
 		)
+	}
+
+	zoneID, err := s.prepareZoneId(ctx, req.DiskId)
+	if err != nil {
+		return nil, err
 	}
 
 	diskIDPrefix := s.config.GetCreationAndDeletionAllowedOnlyForDisksWithIdPrefix()
@@ -247,7 +278,7 @@ func (s *service) prepareCreateDiskParams(
 	return &protos.CreateDiskParams{
 		BlocksCount: blocksCount,
 		Disk: &types.Disk{
-			ZoneId: req.DiskId.ZoneId,
+			ZoneId: zoneID,
 			DiskId: req.DiskId.DiskId,
 		},
 		BlockSize:               blockSize,
@@ -336,7 +367,7 @@ func (s *service) CreateDisk(
 	req *disk_manager.CreateDiskRequest,
 ) (string, error) {
 
-	params, err := s.prepareCreateDiskParams(req)
+	params, err := s.prepareCreateDiskParams(ctx, req)
 	if err != nil {
 		return "", err
 	}

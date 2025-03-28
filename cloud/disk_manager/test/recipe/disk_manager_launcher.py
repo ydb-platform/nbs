@@ -114,6 +114,33 @@ NbsConfig: <
             ]
         >
     >
+    Zones: <
+        key: "zone-d-1"
+        value: <
+            Endpoints: [
+                "localhost:{nbs4_port}",
+                "localhost:{nbs4_port}"
+            ]
+        >
+    >
+    Zones: <
+        key: "zone-d-2"
+        value: <
+            Endpoints: [
+                "localhost:{nbs5_port}",
+                "localhost:{nbs5_port}"
+            ]
+        >
+    >
+    Shards: <
+        key: "zone-d"
+        value: <
+            Shards: [
+                "zone-d-1",
+                "zone-d-2"
+            ]
+        >
+    >
     RootCertsFile: "{root_certs_file}"
     GrpcKeepAlive: <>
     UseGZIPCompression: true
@@ -164,6 +191,14 @@ ImagesConfig: <
         <
             ZoneId: "zone-c"
             Capacity: 0
+        >,
+        <
+            ZoneId: "zone-d-1"
+            Capacity: 0
+        >,
+        <
+            ZoneId: "zone-d-2"
+            Capacity: 0
         >
     ]
 >
@@ -212,7 +247,7 @@ S3Config: <
 
 DATAPLANE_CONFIG_TEMPLATE = """
 TasksConfig: <
-    ZoneIds: ["zone-a", "zone-b", "zone-c"]
+    ZoneIds: ["zone-a", "zone-b", "zone-c", "zone-d-1", "zone-d-2"]
     TaskPingPeriod: "1s"
     PollForTaskUpdatesPeriod: "1s"
     PollForTasksPeriodMin: "1s"
@@ -257,6 +292,33 @@ NbsConfig: <
             Endpoints: [
                 "localhost:{nbs3_port}",
                 "localhost:{nbs3_port}"
+            ]
+        >
+    >
+    Zones: <
+        key: "zone-d-1"
+        value: <
+            Endpoints: [
+                "localhost:{nbs4_port}",
+                "localhost:{nbs4_port}"
+            ]
+        >
+    >
+    Zones: <
+        key: "zone-d-2"
+        value: <
+            Endpoints: [
+                "localhost:{nbs5_port}",
+                "localhost:{nbs5_port}"
+            ]
+        >
+    >
+    Shards: <
+        key: "zone-d"
+        value: <
+            Shards: [
+                "zone-d-1",
+                "zone-d-2"
             ]
         >
     >
@@ -379,6 +441,8 @@ class DiskManagerLauncher:
         nbs_port,
         nbs2_port,
         nbs3_port,
+        nbs4_port,
+        nbs5_port,
         metadata_url,
         root_certs_file,
         idx,
@@ -440,6 +504,8 @@ class DiskManagerLauncher:
                     nbs_port=nbs_port,
                     nbs2_port=nbs2_port,
                     nbs3_port=nbs3_port,
+                    nbs4_port=nbs4_port,
+                    nbs5_port=nbs5_port,
                     monitoring_port=self.__monitoring_port,
                     restarts_count_file=self.__restarts_count_file,
                     metadata_url=metadata_url,
@@ -478,6 +544,8 @@ class DiskManagerLauncher:
                     nbs_port=nbs_port,
                     nbs2_port=nbs2_port,
                     nbs3_port=nbs3_port,
+                    nbs4_port=nbs4_port,
+                    nbs5_port=nbs5_port,
                     monitoring_port=self.__monitoring_port,
                     restarts_count_file=self.__restarts_count_file,
                     metadata_url=metadata_url,

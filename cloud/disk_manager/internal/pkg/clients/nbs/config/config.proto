@@ -12,6 +12,10 @@ message Zone {
     repeated string Endpoints = 1;
 }
 
+message ZoneShards {
+    repeated string Shards = 1;
+}
+
 message GrpcKeepAliveConfig {
     optional string Time = 1 [default = "10s"];
     optional string Timeout = 2 [default = "1s"];
@@ -33,4 +37,5 @@ message ClientConfig {
     optional string SessionRediscoverPeriodMax = 12 [default = "6m"];
     // ServerRequestTimeout is passed to server in headers and handled on the server side.
     optional string ServerRequestTimeout = 13 [default = "20s"];
+    map<string, ZoneShards> Shards = 14;
 }

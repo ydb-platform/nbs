@@ -307,6 +307,15 @@ func (f *factory) GetZones() []string {
 	return maps.Keys(f.clients)
 }
 
+func (f *factory) GetShards(zoneID string) []string {
+	shards, ok := f.config.Shards[zoneID]
+	if !ok {
+		return []string{}
+	}
+
+	return shards.Shards
+}
+
 func (f *factory) HasClient(zoneID string) bool {
 	_, ok := f.clients[zoneID]
 	return ok
