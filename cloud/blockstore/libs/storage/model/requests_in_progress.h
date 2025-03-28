@@ -24,7 +24,12 @@ class TEmptyType
 class IRequestsInProgress
 {
 public:
-    virtual bool WriteRequestInProgress() const = 0;
+    virtual ~IRequestsInProgress() = default;
+
+    [[nodiscard]] virtual bool WriteRequestInProgress() const = 0;
+
+    virtual void WaitForInFlightWrites() = 0;
+    [[nodiscard]] virtual bool IsWaitingForInFlightWrites() const = 0;
 };
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -46,8 +51,10 @@ private:
     size_t WriteRequestCount = 0;
     TKey RequestIdentityKeyCounter = {};
 
+    THashSet<TKey> WaitingForWriteRequests;
+
 public:
-    TRequestsInProgress(EAllowedRequests allowedRequests)
+    explicit TRequestsInProgress(EAllowedRequests allowedRequests)
         : AllowedRequests(allowedRequests)
     {}
 
@@ -121,6 +128,7 @@ public:
         }
 
         if (it->second.Write) {
+            WaitingForWriteRequests.erase(key);
             --WriteRequestCount;
         }
         TValue res = std::move(it->second.Value);
@@ -146,6 +154,20 @@ public:
     bool WriteRequestInProgress() const override
     {
         return WriteRequestCount != 0;
+    }
+
+    void WaitForInFlightWrites() override
+    {
+        for (const auto& [key, value]: RequestsInProgress) {
+            if (value.Write) {
+                WaitingForWriteRequests.insert(key);
+            }
+        }
+    }
+
+    [[nodiscard]] bool IsWaitingForInFlightWrites() const override
+    {
+        return !WaitingForWriteRequests.empty();
     }
 };
 

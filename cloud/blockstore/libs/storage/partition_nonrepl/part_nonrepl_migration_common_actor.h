@@ -208,6 +208,9 @@ public:
     // processed.
     ui64 GetProcessedBlockCount() const;
 
+    // Called from the inheritor to check if migration is allowed.
+    [[nodiscard]] bool IsMigrationAllowed() const;
+
     // IPoisonPillHelperOwner implementation
     void Die(const NActors::TActorContext& ctx) override
     {
@@ -220,7 +223,6 @@ protected:
     const TDiagnosticsConfigPtr& GetDiagnosticsConfig() const;
 
 private:
-    bool IsMigrationAllowed() const;
     bool IsMigrationFinished() const;
     bool IsIoDepthLimitReached() const;
     bool OverlapsWithInflightWriteAndZero(TBlockRange64 range) const;
@@ -303,6 +305,9 @@ private:
     BLOCKSTORE_IMPLEMENT_REQUEST(ZeroBlocks, TEvService);
     BLOCKSTORE_IMPLEMENT_REQUEST(ChecksumBlocks, TEvNonreplPartitionPrivate);
     BLOCKSTORE_IMPLEMENT_REQUEST(Drain, NPartition::TEvPartition);
+    BLOCKSTORE_IMPLEMENT_REQUEST(
+        WaitForInFlightWrites,
+        NPartition::TEvPartition);
 
     BLOCKSTORE_IMPLEMENT_REQUEST(DescribeBlocks, TEvVolume);
     BLOCKSTORE_IMPLEMENT_REQUEST(CompactRange, TEvVolume);
