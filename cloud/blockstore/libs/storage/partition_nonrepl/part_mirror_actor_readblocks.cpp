@@ -198,7 +198,7 @@ void TRequestActor<TMethod>::SendRequests(const TActorContext& ctx)
 template <typename TMethod>
 void TRequestActor<TMethod>::CompareChecksums(const TActorContext& ctx)
 {
-    std::unordered_map<ui32, std::vector<TString>> checksumMap;
+    std::unordered_map<ui32, TVector<TString>> checksumMap;
 
     for (ui32 i = 0; i < ResponseChecksums.size(); ++i) {
         const auto checksum = ResponseChecksums[i];
