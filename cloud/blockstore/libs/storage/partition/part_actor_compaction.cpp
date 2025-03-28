@@ -345,19 +345,30 @@ void TCompactionActor::ReadBlocks(const TActorContext& ctx)
         requests.push_back(&r);
     }
 
-    Sort(requests, [] (const TRequest* l, const TRequest* r) {
-        return l->BlobId < r->BlobId
-            || l->BlobId == r->BlobId && l->BlobOffset < r->BlobOffset;
-    });
+    const auto makeTie = [](const TRequest* request)
+    {
+        return std::tie(
+            request->BlobId,
+            request->RangeCompactionIndex,
+            request->BlobOffset);
+    };
+
+    Sort(
+        requests,
+        [makeTie](const TRequest* l, const TRequest* r)
+        { return makeTie(l) < makeTie(r); });
 
     TBatchRequest current;
+    ui32 currentRangeCompactionIndex = 0;
     for (auto* r: requests) {
         if (IsDeletionMarker(r->BlobId)) {
             ++ReadRequestsCompleted;
             continue;
         }
 
-        if (current.BlobId != r->BlobId) {
+        if (std::tie(current.BlobId, currentRangeCompactionIndex) !=
+            std::tie(r->BlobId, r->RangeCompactionIndex))
+        {
             if (current.BlobOffsets || current.UnchangedBlobOffsets) {
                 BatchRequests.emplace_back(
                     current.BlobId,
@@ -371,6 +382,7 @@ void TCompactionActor::ReadBlocks(const TActorContext& ctx)
             current.GroupId = r->GroupId;
             current.BlobId = r->BlobId;
             current.Proxy = r->Proxy;
+            currentRangeCompactionIndex = r->RangeCompactionIndex;
             current.RangeCompactionInfo =
                 &RangeCompactionInfos[r->RangeCompactionIndex];
         }
@@ -640,29 +652,38 @@ void TCompactionActor::AddBlobs(const TActorContext& ctx)
             Y_ABORT_UNLESS(rc.ZeroBlobSkipMask.Count());
         }
 
-        for (auto it = rc.AffectedBlobs.begin(); it != rc.AffectedBlobs.end(); ) {
-            auto& blockMask = it->second.BlockMask.GetRef();
+        for (auto& [blobId, blob]: rc.AffectedBlobs) {
+            auto& blockMask = blob.BlockMask.GetRef();
 
             // could already be full
             if (IsBlockMaskFull(blockMask, MaxBlocksInBlob)) {
-                ++it;
-
                 continue;
             }
 
             // mask overwritten blocks
-            for (ui16 blobOffset: it->second.Offsets) {
+            for (ui16 blobOffset: blob.Offsets) {
                 blockMask.Set(blobOffset);
             }
 
-            auto& affectedBlob = affectedBlobs[it->first];
-            Y_ABORT_UNLESS(affectedBlob.Offsets.empty());
-            Y_ABORT_UNLESS(affectedBlob.BlockMask.Empty());
-            Y_ABORT_UNLESS(affectedBlob.AffectedBlockIndices.empty());
-            Y_ABORT_UNLESS(affectedBlob.BlobMeta.Empty());
-            affectedBlob = std::move(it->second);
-
-            ++it;
+            auto [blobIt, inserted] =
+                affectedBlobs.try_emplace(blobId, std::move(blob));
+            if (!inserted) {
+                auto& affectedBlob = blobIt->second;
+                affectedBlob.Offsets.insert(
+                    affectedBlob.Offsets.end(),
+                    blob.Offsets.begin(),
+                    blob.Offsets.end());
+                affectedBlob.AffectedBlockIndices.insert(
+                    affectedBlob.AffectedBlockIndices.end(),
+                    blob.AffectedBlockIndices.begin(),
+                    blob.AffectedBlockIndices.end());
+                if (affectedBlob.BlockMask) {
+                    affectedBlob.BlockMask.GetRef() |= blockMask;
+                }
+                if (affectedBlob.BlobMeta && blob.BlobMeta) {
+                    affectedBlob.BlobMeta->MergeFrom(blob.BlobMeta.GetRef());
+                }
+            }
         }
 
         Sort(rc.AffectedBlocks, [] (const auto& l, const auto& r) {
@@ -1515,7 +1536,6 @@ void PrepareRangeCompaction(
     const bool fullCompaction,
     const TActorContext& ctx,
     const ui64 tabletId,
-    THashSet<TPartialBlobId, TPartialBlobIdHash>& affectedBlobIds,
     bool& ready,
     TPartitionDatabase& db,
     TPartitionState& state,
@@ -1532,19 +1552,6 @@ void PrepareRangeCompaction(
         true,   // precharge
         state.GetMaxBlocksInBlob(),
         commitId);
-
-    if (ready) {
-        for (const auto& x: args.AffectedBlobs) {
-            if (affectedBlobIds.contains(x.first)) {
-                args.Discarded = true;
-                return;
-            }
-        }
-
-        for (const auto& x: args.AffectedBlobs) {
-            affectedBlobIds.insert(x.first);
-        }
-    }
 
     if (ready && incrementalCompactionEnabled && !fullCompaction) {
         THashMap<TPartialBlobId, ui32, TPartialBlobIdHash> liveBlocks;
@@ -1938,8 +1945,6 @@ bool TPartitionActor::PrepareCompaction(
 
     bool ready = true;
 
-    THashSet<TPartialBlobId, TPartialBlobIdHash> affectedBlobIds;
-
     for (auto& rangeCompaction: args.RangeCompactions) {
         PrepareRangeCompaction(
             *Config,
@@ -1948,7 +1953,6 @@ bool TPartitionActor::PrepareCompaction(
             fullCompaction,
             ctx,
             TabletID(),
-            affectedBlobIds,
             ready,
             db,
             *State,
@@ -1977,9 +1981,7 @@ void TPartitionActor::CompleteCompaction(
     RemoveTransaction(*args.RequestInfo);
 
     for (auto& rangeCompaction: args.RangeCompactions) {
-        if (!rangeCompaction.Discarded) {
-            State->RaiseRangeTemperature(rangeCompaction.RangeIdx);
-        }
+        State->RaiseRangeTemperature(rangeCompaction.RangeIdx);
     }
 
     const bool blobPatchingEnabledForCloud =
@@ -1993,17 +1995,15 @@ void TPartitionActor::CompleteCompaction(
     TVector<TRangeCompactionInfo> rangeCompactionInfos;
     TVector<TCompactionActor::TRequest> requests;
 
+    const auto mergedBlobThreshold =
+        PartitionConfig.GetStorageMediaKind() ==
+                NCloud::NProto::STORAGE_MEDIA_SSD
+            ? 0
+            : Config->GetCompactionMergedBlobThresholdHDD();
     for (auto& rangeCompaction: args.RangeCompactions) {
-        if (rangeCompaction.Discarded) {
-            continue;
-        }
-
         CompleteRangeCompaction(
             blobPatchingEnabled,
-            PartitionConfig.GetStorageMediaKind() ==
-                    NCloud::NProto::STORAGE_MEDIA_SSD
-                ? 0
-                : Config->GetCompactionMergedBlobThresholdHDD(),
+            mergedBlobThreshold,
             args.CommitId,
             *Info(),
             *State,
