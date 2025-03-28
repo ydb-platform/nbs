@@ -378,6 +378,8 @@ void TVolumeActor::CompleteUpdateConfig(
     ScheduleProcessUpdateVolumeConfig(ctx);
     ScheduleAllocateDiskIfNeeded(ctx);
     UnfinishedUpdateVolumeConfig.Clear();
+    HasPerformanceProfileModifications =
+        State->HasPerformanceProfileModifications(*Config);
     UpdateVolumeConfigInProgress = false;
 }
 
