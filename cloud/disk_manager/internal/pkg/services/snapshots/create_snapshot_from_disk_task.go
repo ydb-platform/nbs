@@ -144,6 +144,7 @@ func (t *createSnapshotFromDiskTask) run(
 	return t.storage.SnapshotCreated(
 		ctx,
 		t.request.DstSnapshotId,
+		checkpointID,
 		time.Now(),
 		uint64(t.state.SnapshotSize),
 		uint64(t.state.SnapshotStorageSize),

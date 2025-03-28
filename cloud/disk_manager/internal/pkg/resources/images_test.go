@@ -18,6 +18,7 @@ func requireImagesAreEqual(t *testing.T, expected ImageMeta, actual ImageMeta) {
 	require.Equal(t, expected.ID, actual.ID)
 	require.Equal(t, expected.FolderID, actual.FolderID)
 	require.True(t, proto.Equal(expected.CreateRequest, actual.CreateRequest))
+	require.Equal(t, expected.CheckpointID, actual.CheckpointID)
 	require.Equal(t, expected.CreateTaskID, actual.CreateTaskID)
 	if !expected.CreatingAt.IsZero() {
 		require.WithinDuration(t, expected.CreatingAt, actual.CreatingAt, time.Microsecond)
@@ -62,11 +63,11 @@ func TestImagesCreateImage(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, image.ID, created.ID)
 
-	err = storage.ImageCreated(ctx, image.ID, time.Now(), 0, 0)
+	err = storage.ImageCreated(ctx, image.ID, "", time.Now(), 0, 0)
 	require.NoError(t, err)
 
 	// Check idempotency.
-	err = storage.ImageCreated(ctx, image.ID, time.Now(), 0, 0)
+	err = storage.ImageCreated(ctx, image.ID, "", time.Now(), 0, 0)
 	require.NoError(t, err)
 
 	// Check idempotency.
@@ -115,7 +116,7 @@ func TestImagesDeleteImage(t *testing.T) {
 	require.NoError(t, err)
 	requireImagesAreEqual(t, expected, *actual)
 
-	err = storage.ImageCreated(ctx, image.ID, time.Now(), 0, 0)
+	err = storage.ImageCreated(ctx, image.ID, "", time.Now(), 0, 0)
 	require.Error(t, err)
 	require.True(t, errors.Is(err, errors.NewEmptyNonRetriableError()))
 
@@ -140,7 +141,7 @@ func TestImagesDeleteImage(t *testing.T) {
 	require.Error(t, err)
 	require.True(t, errors.Is(err, errors.NewEmptyNonRetriableError()))
 
-	err = storage.ImageCreated(ctx, image.ID, time.Now(), 0, 0)
+	err = storage.ImageCreated(ctx, image.ID, "", time.Now(), 0, 0)
 	require.Error(t, err)
 	require.True(t, errors.Is(err, errors.NewEmptyNonRetriableError()))
 }
@@ -163,7 +164,7 @@ func TestImagesDeleteNonexistentImage(t *testing.T) {
 	err = storage.ImageDeleted(ctx, image.ID, time.Now())
 	require.NoError(t, err)
 
-	err = storage.ImageCreated(ctx, image.ID, time.Now(), 0, 0)
+	err = storage.ImageCreated(ctx, image.ID, "", time.Now(), 0, 0)
 	require.Error(t, err)
 	require.True(t, errors.Is(err, errors.NewEmptyNonRetriableError()))
 
@@ -311,10 +312,11 @@ func TestImagesGetImage(t *testing.T) {
 	imageID := t.Name()
 	imageSize := uint64(2 * 1024 * 1024)
 	imageStorageSize := uint64(3 * 1024 * 1024)
+	checkpointID := "checkpoint"
 
-	i, err := storage.GetImageMeta(ctx, imageID)
+	actualImage, err := storage.GetImageMeta(ctx, imageID)
 	require.NoError(t, err)
-	require.Nil(t, i)
+	require.Nil(t, actualImage)
 
 	image := ImageMeta{
 		ID:       imageID,
@@ -333,22 +335,46 @@ func TestImagesGetImage(t *testing.T) {
 
 	image.CreateRequest = nil
 
-	i, err = storage.GetImageMeta(ctx, imageID)
+	actualImage, err = storage.GetImageMeta(ctx, imageID)
 	require.NoError(t, err)
-	require.NotNil(t, i)
-	requireImagesAreEqual(t, image, *i)
-	require.Equal(t, imageID, i.ID)
-	require.Equal(t, "folder", i.FolderID)
+	require.NotNil(t, actualImage)
+	requireImagesAreEqual(t, image, *actualImage)
+	require.Equal(t, imageID, actualImage.ID)
+	require.Equal(t, "folder", actualImage.FolderID)
 
-	err = storage.ImageCreated(ctx, imageID, time.Now(), imageSize, imageStorageSize)
+	err = storage.ImageCreated(
+		ctx,
+		imageID,
+		checkpointID,
+		time.Now(),
+		imageSize,
+		imageStorageSize,
+	)
 	require.NoError(t, err)
 
 	image.Size = imageSize
 	image.StorageSize = imageStorageSize
+	image.CheckpointID = checkpointID
 	image.Ready = true
 
-	i, err = storage.GetImageMeta(ctx, imageID)
+	actualImage, err = storage.GetImageMeta(ctx, imageID)
 	require.NoError(t, err)
-	require.NotNil(t, i)
-	requireImagesAreEqual(t, image, *i)
+	require.NotNil(t, actualImage)
+	requireImagesAreEqual(t, image, *actualImage)
+
+	// Check idempotency.
+	err = storage.ImageCreated(
+		ctx,
+		imageID,
+		"foo", // checkpointID
+		time.Now(),
+		42,  // imageSize
+		713, // imageStorageSize
+	)
+	require.NoError(t, err)
+
+	actualImage, err = storage.GetImageMeta(ctx, imageID)
+	require.NoError(t, err)
+	require.NotNil(t, actualImage)
+	requireImagesAreEqual(t, image, *actualImage)
 }
