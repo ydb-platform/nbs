@@ -443,6 +443,9 @@ message TLaggingAgent
 
     // A list of devices that belong to the agent.
     repeated TLaggingDevice Devices = 3;
+
+    // Time in microseconds when the agent became lagging.
+    uint64 StartedLaggingAtTimestamp = 4;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

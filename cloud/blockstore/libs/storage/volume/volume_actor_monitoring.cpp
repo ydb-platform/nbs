@@ -1667,14 +1667,25 @@ void TVolumeActor::RenderLaggingStatus(IOutputStream& out) const
         }
 
         if (!State->HasLaggingAgents() ||
-            !State->GetLaggingAgentMigrationInfo())
+            State->GetLaggingAgentsMigrationInfo().empty())
         {
             return;
         }
 
-        const auto& [agentId, cleanBlocks, dirtyBlocks] =
-            *State->GetLaggingAgentMigrationInfo();
+        const auto& laggingInfos = State->GetLaggingAgentsMigrationInfo();
         const auto blockSize = State->GetBlockSize();
+
+        ui64 cleanBlocks = 0;
+        ui64 dirtyBlocks = 0;
+        TStringBuilder laggingAgentIds;
+        for (const auto& [laggingAgentId, laggingInfo] : laggingInfos) {
+            if (!laggingAgentIds.empty()) {
+                laggingAgentIds << ", ";
+            }
+            laggingAgentIds << laggingAgentId;
+            cleanBlocks += laggingInfo.CleanBlocks;
+            dirtyBlocks += laggingInfo.DirtyBlocks;
+        }
 
         TABLE_SORTABLE_CLASS("table table-condensed")
         {
@@ -1684,7 +1695,7 @@ void TVolumeActor::RenderLaggingStatus(IOutputStream& out) const
                 {
                     TABLED()
                     {
-                        out << "Lagging agent " << agentId.Quote()
+                        out << "Lagging agents " << laggingAgentIds
                             << " migration progress: ";
                     }
                     TABLED()
@@ -1715,11 +1726,10 @@ void TVolumeActor::RenderLaggingStateForDevice(
         color = "blue";
     }
 
-    if (const auto* curMigration = State->GetLaggingAgentMigrationInfo()) {
-        if (curMigration->AgentId == d.GetAgentId()) {
-            stateMsg = "migrating";
-            color = "blue";
-        }
+    const auto& laggingInfos = State->GetLaggingAgentsMigrationInfo();
+    if (laggingInfos.contains(d.GetAgentId())) {
+        stateMsg = "migrating";
+        color = "blue";
     }
 
     if (State->GetNonreplicatedPartitionConfig()
