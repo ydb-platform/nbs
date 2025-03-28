@@ -1,4 +1,3 @@
-#include "part_nonrepl_migration.h"
 #include "part_nonrepl_migration_actor.h"
 #include "ut_env.h"
 
@@ -211,7 +210,7 @@ struct TTestEnv
         auto partConfig =
             std::make_shared<TNonreplicatedPartitionConfig>(std::move(params));
 
-        auto part = CreateNonreplicatedPartitionMigration(
+        auto part = std::make_unique<TNonreplicatedPartitionMigrationActor>(
             std::move(config),
             CreateDiagnosticsConfig(),
             CreateProfileLogStub(),

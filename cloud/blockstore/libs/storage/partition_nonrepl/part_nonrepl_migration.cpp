@@ -18,8 +18,7 @@ IActorPtr CreateNonreplicatedPartitionMigration(
     TNonreplicatedPartitionConfigPtr partConfig,
     google::protobuf::RepeatedPtrField<NProto::TDeviceMigration> migrations,
     NRdma::IClientPtr rdmaClient,
-    NActors::TActorId statActorId,
-    NActors::TActorId migrationSrcActorId)
+    NActors::TActorId statActorId)
 {
     return std::make_unique<TNonreplicatedPartitionMigrationActor>(
         std::move(config),
@@ -31,8 +30,7 @@ IActorPtr CreateNonreplicatedPartitionMigration(
         std::move(partConfig),
         std::move(migrations),
         std::move(rdmaClient),
-        statActorId,
-        migrationSrcActorId);
+        statActorId);
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

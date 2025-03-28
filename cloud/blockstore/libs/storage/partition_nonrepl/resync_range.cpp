@@ -72,7 +72,7 @@ void TResyncRangeActor::CompareChecksums(const TActorContext& ctx)
 
     LOG_WARN(ctx, TBlockStoreComponents::PARTITION,
         "[%s] Resync range %s: majority replica %lu, checksum %lu, count %u of %u",
-        Replicas[0].Name.c_str(),
+        Replicas[0].ReplicaId.c_str(),
         DescribeRange(Range).c_str(),
         majorIdx,
         majorChecksum,
@@ -84,7 +84,7 @@ void TResyncRangeActor::CompareChecksums(const TActorContext& ctx)
         if (checksum != majorChecksum) {
             LOG_WARN(ctx, TBlockStoreComponents::PARTITION,
                 "[%s] Replica %lu block range %s checksum %lu differs from majority checksum %lu",
-                Replicas[0].Name.c_str(),
+                Replicas[0].ReplicaId.c_str(),
                 Replicas[i].ReplicaIndex,
                 DescribeRange(Range).c_str(),
                 checksum,
@@ -176,7 +176,7 @@ void TResyncRangeActor::WriteReplicaBlocks(const TActorContext& ctx, int idx)
 
     LOG_WARN(ctx, TBlockStoreComponents::PARTITION,
         "[%s] Replica %lu Overwrite block range %s during resync",
-        Replicas[0].Name.c_str(),
+        Replicas[idx].ReplicaId.c_str(),
         Replicas[idx].ReplicaIndex,
         DescribeRange(Range).c_str());
 

@@ -466,6 +466,12 @@ TDuration MSeconds(ui32 value)
     xxx(ForceMirrorResync,                         bool,      false           )\
     xxx(ResyncIndexCachingInterval,                ui32,      65536           )\
     xxx(ResyncAfterClientInactivityInterval,       TDuration, Minutes(1)      )\
+    xxx(AutoResyncPolicy,                                                      \
+        NProto::EResyncPolicy,                                                 \
+        NProto::EResyncPolicy::RESYNC_POLICY_MINOR_AND_MAJOR_4MB              )\
+    xxx(ForceResyncPolicy,                                                     \
+        NProto::EResyncPolicy,                                                 \
+        NProto::EResyncPolicy::RESYNC_POLICY_MINOR_AND_MAJOR_4MB              )\
     xxx(MirrorReadReplicaCount,                    ui32,      0               )\
                                                                                \
     xxx(PingMetricsHalfDecayInterval,              TDuration, Seconds(15)     )\
@@ -515,6 +521,9 @@ TDuration MSeconds(ui32 value)
     xxx(MaxScrubbingBandwidth,                          ui64,      50            )\
     xxx(MinScrubbingBandwidth,                          ui64,      5             )\
     xxx(AutomaticallyEnableBufferCopyingAfterChecksumMismatch, bool, false       )\
+    xxx(ScrubbingResyncPolicy,                                                    \
+        NProto::EResyncPolicy,                                                    \
+        NProto::EResyncPolicy::RESYNC_POLICY_MINOR_4MB                           )\
                                                                                   \
     xxx(LaggingDevicesForMirror2DisksEnabled,     bool,      false               )\
     xxx(LaggingDevicesForMirror3DisksEnabled,     bool,      false               )\
@@ -676,6 +685,11 @@ IOutputStream& operator <<(
     NProto::EVolumePreemptionType pt)
 {
     return out << EVolumePreemptionType_Name(pt);
+}
+
+IOutputStream& operator<<(IOutputStream& out, NProto::EResyncPolicy pt)
+{
+    return out << NProto::EResyncPolicy_Name(pt);
 }
 
 ////////////////////////////////////////////////////////////////////////////////

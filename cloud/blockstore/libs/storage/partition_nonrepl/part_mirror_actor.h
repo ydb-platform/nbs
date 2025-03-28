@@ -106,7 +106,7 @@ public:
         NActors::TActorId statActorId,
         NActors::TActorId resyncActorId);
 
-    ~TMirrorPartitionActor();
+    ~TMirrorPartitionActor() override;
 
     void Bootstrap(const NActors::TActorContext& ctx);
 
@@ -122,7 +122,7 @@ private:
     void StartScrubbingRange(
         const NActors::TActorContext& ctx,
         ui64 scrubbingRangeId);
-    void StartResyncRange(const NActors::TActorContext& ctx);
+    void StartResyncRange(const NActors::TActorContext& ctx, bool isMinor);
     void AddTagForBufferCopying(const NActors::TActorContext& ctx);
     ui64 TakeNextRequestIdentifier();
 
@@ -172,6 +172,15 @@ private:
 
     void HandleAddTagsResponse(
         const TEvService::TEvAddTagsResponse::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleAddLaggingAgent(
+        const TEvNonreplPartitionPrivate::TEvAddLaggingAgentRequest::
+            TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleRemoveLaggingAgent(
+        const TEvNonreplPartitionPrivate::TEvRemoveLaggingAgentRequest::TPtr& ev,
         const NActors::TActorContext& ctx);
 
     void HandlePoisonPill(

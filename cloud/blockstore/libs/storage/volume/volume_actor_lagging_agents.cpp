@@ -281,7 +281,7 @@ void TVolumeActor::HandleUpdateLaggingAgentMigrationState(
         TBlockStoreComponents::VOLUME,
         "[%lu] Lagging agent %s migration progress: %lu/%lu blocks",
         TabletID(),
-        msg->AgentId.c_str(),
+        msg->AgentId.Quote().c_str(),
         msg->CleanBlockCount,
         msg->CleanBlockCount + msg->DirtyBlockCount);
 
@@ -299,9 +299,9 @@ void TVolumeActor::HandleLaggingAgentMigrationFinished(
     LOG_INFO(
         ctx,
         TBlockStoreComponents::VOLUME,
-        "[%lu] Smart migration finished for agent %s",
+        "[%lu] Lagging agent %s migration finished",
         TabletID(),
-        msg->AgentId.c_str());
+        msg->AgentId.Quote().c_str());
 
     if (UpdateVolumeConfigInProgress) {
         // When the volume configuration update is in progress, we don't know at
@@ -316,7 +316,7 @@ void TVolumeActor::HandleLaggingAgentMigrationFinished(
             "[%lu] Lagging agent %s removal may fail because the volume config "
             "update is in progress",
             TabletID(),
-            msg->AgentId.c_str());
+            msg->AgentId.Quote().c_str());
         State->RemoveLaggingAgent(msg->AgentId);
         return;
     }

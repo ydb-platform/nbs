@@ -12,6 +12,7 @@ SRCS(
     migration_timeout_calculator.cpp
     mirror_request_actor.cpp
     replica_info.cpp
+    resync_range_block_by_block.cpp
     resync_range.cpp
 
     part_mirror.cpp

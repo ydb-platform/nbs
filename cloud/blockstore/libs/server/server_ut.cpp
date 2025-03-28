@@ -79,6 +79,7 @@ Y_UNIT_TEST_SUITE(TServerTest)
         TPortManager portManager;
         ui16 port = portManager.GetPort(9001);
         ui16 dataPort = portManager.GetPort(9002);
+        ui16 secureEndpointPort = portManager.GetPort(9003);
 
         auto service = std::make_shared<TTestService>();
         service->PingHandler =
@@ -94,18 +95,20 @@ Y_UNIT_TEST_SUITE(TServerTest)
 
         auto server = testFactory.CreateServerBuilder()
             .SetSecureEndpoint(
-                port,
+                secureEndpointPort,
                 "certs/server.crt",
                 "certs/server.crt",
                 "certs/server.key")
+            .SetPort(port)
             .SetDataPort(dataPort)
             .BuildServer(service);
 
         auto client = testFactory.CreateClientBuilder()
             .SetSecureEndpoint(
-                port,
+                secureEndpointPort,
                 "certs/server.crt",
                 "test")
+            .SetPort(port)
             .SetDataPort(dataPort)
             .BuildClient();
 
@@ -198,6 +201,7 @@ Y_UNIT_TEST_SUITE(TServerTest)
         TPortManager portManager;
         ui16 port = portManager.GetPort(9001);
         ui16 dataPort = portManager.GetPort(9002);
+        ui16 secureEndpointPort = portManager.GetPort(9003);
 
         auto service = std::make_shared<TTestService>();
         service->PingHandler =
@@ -213,7 +217,7 @@ Y_UNIT_TEST_SUITE(TServerTest)
 
         auto server = testFactory.CreateServerBuilder()
             .SetSecureEndpoint(
-                port,
+                secureEndpointPort,
                 "certs/server.crt",
                 {},
                 {})
@@ -223,14 +227,16 @@ Y_UNIT_TEST_SUITE(TServerTest)
             .AddCert(
                 "certs/server.crt",
                 "certs/server.key")
+            .SetPort(port)
             .SetDataPort(dataPort)
             .BuildServer(service);
 
         auto client = testFactory.CreateClientBuilder()
             .SetSecureEndpoint(
-                port,
+                secureEndpointPort,
                 "certs/server.crt",
                 "test")
+            .SetPort(port)
             .SetDataPort(dataPort)
             .BuildClient();
 
@@ -744,6 +750,7 @@ Y_UNIT_TEST_SUITE(TServerTest)
         TPortManager portManager;
         ui16 port = portManager.GetPort(9001);
         ui16 dataPort = portManager.GetPort(9002);
+        ui16 securePort = portManager.GetPort(9003);
 
         auto service = std::make_shared<TTestService>();
         service->ReadBlocksHandler =
@@ -759,18 +766,20 @@ Y_UNIT_TEST_SUITE(TServerTest)
 
         auto server = testFactory.CreateServerBuilder()
             .SetSecureEndpoint(
-                port,
+                securePort,
                 "certs/server.crt",
                 "certs/server.crt",
                 "certs/server.key")
+            .SetPort(port)
             .SetDataPort(dataPort)
             .BuildServer(service);
 
         auto client = testFactory.CreateClientBuilder()
             .SetSecureEndpoint(
-                port,
+                securePort,
                 "certs/server.crt",
                 "test")
+            .SetPort(port)
             .SetDataPort(dataPort)
             .BuildClient();
 

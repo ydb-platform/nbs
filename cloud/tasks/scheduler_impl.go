@@ -511,10 +511,13 @@ func (s *scheduler) WaitTaskSync(
 	wait := func() error {
 		select {
 		case <-ctx.Done():
-			logging.Info(ctx, "waiting cancelled: %v", ctx.Err())
+			logging.Info(ctx, "waiting cancelled, taskID %v: %v", taskID, ctx.Err())
 			return ctx.Err()
 		case <-timeoutChannel:
-			return errors.NewNonRetriableErrorf("scheduler.WaitTaskSync timed out")
+			return errors.NewNonRetriableErrorf(
+				"scheduler.WaitTaskSync timed out, taskID %v",
+				taskID,
+			)
 		case <-time.After(s.pollForTaskUpdatesPeriod):
 		}
 
