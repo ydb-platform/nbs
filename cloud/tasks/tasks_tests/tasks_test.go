@@ -112,6 +112,7 @@ func newDefaultConfig() *tasks_config.TasksConfig {
 	clearEndedTasksLimit := uint64(10)
 	maxRetriableErrorCount := uint64(2)
 	hangingTaskTimeout := "100s"
+	maxPanicCount := uint64(0)
 	inflightTaskPerNodeLimits := map[string]int64{
 		"long": inflightLongTaskPerNodeLimit,
 	}
@@ -132,6 +133,7 @@ func newDefaultConfig() *tasks_config.TasksConfig {
 		ClearEndedTasksLimit:                &clearEndedTasksLimit,
 		MaxRetriableErrorCount:              &maxRetriableErrorCount,
 		HangingTaskTimeout:                  &hangingTaskTimeout,
+		MaxPanicCount:                       &maxPanicCount,
 		InflightTaskPerNodeLimits:           inflightTaskPerNodeLimits,
 	}
 }
