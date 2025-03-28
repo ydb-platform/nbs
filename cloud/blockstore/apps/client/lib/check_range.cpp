@@ -11,6 +11,9 @@
 #include <library/cpp/json/json_reader.h>
 #include <library/cpp/protobuf/util/pb_io.h>
 
+#include <thread>
+#include <chrono>
+
 #include <util/folder/path.h>
 #include <util/stream/file.h>
 
@@ -21,6 +24,8 @@ namespace NCloud::NBlockStore::NClient {
 namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
+
+const int throttleDelayMs = 100;
 
 constexpr ui64 DefaultBlocksPerRequest = 1024;
 
@@ -89,6 +94,7 @@ private:
     ui64 BlocksPerRequest = 0;
     bool ShowReadErrorsEnabled = false;
     bool SaveResultsEnabled = false;
+    bool CompareResultsEnabled = false;
     bool CalculateChecksums = false;
     TString FolderPostfix;
     ui32 ReplicaCount = 0;
@@ -129,6 +135,13 @@ public:
                 "'./checkRange_$disk-id*', each request in own file")
             .NoArgument()
             .StoreTrue(&SaveResultsEnabled);
+
+        Opts.AddLongOption(
+                "compare-results",
+                "compare results of range checking operations from the folder "
+"               './check Range_$disk-id*', with the current ones, before overwrite file with new ones")
+            .NoArgument()
+            .StoreTrue(&CompareResultsEnabled);
 
         Opts.AddLongOption(
                 "folder-postfix",
@@ -208,11 +221,17 @@ protected:
                 }
             }
 
+            if (CompareResultsEnabled){
+                CompareChecksums(result.GetOutput(), *range);
+            }
+
             if (SaveResultsEnabled) {
                 SaveResultToFile(result.GetOutput(), *range);
             }
             isRetry = false;
             range = builder.Next();
+
+            std::this_thread::sleep_for(std::chrono::milliseconds(throttleDelayMs));
         }
 
         output << "Total requests sended: " << requestCount << Endl;
@@ -242,7 +261,7 @@ private:
         return true;
     }
 
-    TString CreateFilename(TBlockRange64 range) const
+    TString GetFilename(TBlockRange64 range) const
     {
         TString folderPath = "./checkRange_" + DiskId;
         if (!FolderPostfix.empty()) {
@@ -257,7 +276,7 @@ private:
 
     void SaveResultToFile(const TString& content, TBlockRange64 range) const
     {
-        TFsPath fileName = CreateFilename(range);
+        TFsPath fileName = GetFilename(range);
 
         fileName.Parent().MkDirs();
 
@@ -317,6 +336,81 @@ private:
         }
 
         return input.GetStringRobust();
+    }
+
+    TString ReadJsonFromFile(TBlockRange64 range)
+    {
+        TString fileName = GetFilename(range);
+        TString result;
+
+        try {
+            TIFStream file(
+                fileName,
+                EOpenModeFlag::OpenExisting | EOpenModeFlag::RdOnly);
+
+            result = file.ReadAll();
+        } catch (...) {
+        }
+
+        return result;
+    }
+
+    void CompareChecksums(const TString& response, TBlockRange64 range)
+    {
+        auto data = ReadJsonFromFile(range);
+
+        NJson::TJsonValue jsonFromFile;
+        NJson::TJsonValue jsonFromRequest;
+
+        if (data == response) {
+            return;
+        }
+
+        if (!NJson::ReadJsonTree(data, &jsonFromFile)) {
+            GetOutputStream()
+                << "Error while parsing json from file " << GetFilename(range)
+                << " for range " << range << Endl;
+            return;
+        }
+
+        if (!NJson::ReadJsonTree(response, &jsonFromRequest)) {
+            GetOutputStream()
+                << "Error while parsing json from response for range " << range
+                << Endl;
+            return;
+        }
+
+        if (!jsonFromFile["Checksums"].IsArray()) {
+            GetOutputStream()
+                << "'Checksums' in saved file is not an array for range "
+                << range << Endl;
+            return;
+        }
+
+        if (!jsonFromRequest["Checksums"].IsArray()) {
+            GetOutputStream()
+                << "'Checksums' in request is not an arrays for range " << range
+                << Endl;
+            return;
+        }
+
+        auto oldChecksums = jsonFromFile["Checksums"].GetArray();
+        auto newChecksums = jsonFromRequest["Checksums"].GetArray();
+
+        if (newChecksums.size() != oldChecksums.size()) {
+            GetOutputStream()
+                << "Different numbers of checksums in range " << range << Endl;
+            return;
+        }
+
+        for (ui32 i = 0; i < oldChecksums.size(); ++i) {
+            if (oldChecksums[i] != newChecksums[i]) {
+                GetOutputStream()
+                    << "Checksums mismatch for " << (range.Start + i)
+                    << " block: old=" << oldChecksums[i]
+                    << ", new=" << newChecksums[i] << Endl;
+            }
+        }
     }
 };
 
