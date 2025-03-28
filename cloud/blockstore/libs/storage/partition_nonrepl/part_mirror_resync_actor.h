@@ -41,6 +41,8 @@ private:
     const TDiagnosticsConfigPtr DiagnosticsConfig;
     const IProfileLogPtr ProfileLog;
     const IBlockDigestGeneratorPtr BlockDigestGenerator;
+    const NProto::EResyncPolicy ResyncPolicy;
+
     TString RWClientId;
     TNonreplicatedPartitionConfigPtr PartConfig;
     TMigrations Migrations;
@@ -99,7 +101,8 @@ public:
         TVector<TDevices> replicaDevices,
         NRdma::IClientPtr rdmaClient,
         NActors::TActorId statActorId,
-        ui64 initialResyncIndex);
+        ui64 initialResyncIndex,
+        NProto::EResyncPolicy resyncPolicy);
 
     ~TMirrorPartitionResyncActor();
 

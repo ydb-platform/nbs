@@ -22,7 +22,6 @@ TBlockRange64 RangeId2BlockRange(ui32 rangeId, ui32 blockSize)
     return TBlockRange64::WithLength(start, resyncRangeBlockCount);
 }
 
-
 bool CanFixMismatch(bool isMinor, NProto::EResyncPolicy resyncPolicy)
 {
     return isMinor ||
@@ -36,7 +35,8 @@ std::unique_ptr<NActors::IActor> MakeResyncRangeActor(
     TVector<TReplicaDescriptor> replicas,
     TString writerClientId,
     IBlockDigestGeneratorPtr blockDigestGenerator,
-    NProto::EResyncPolicy resyncPolicy)
+    NProto::EResyncPolicy resyncPolicy,
+    EBlockRangeChecksumStatus checksumStatus)
 {
     if (resyncPolicy == NProto::EResyncPolicy::RESYNC_POLICY_MINOR_4MB ||
         resyncPolicy ==
@@ -48,7 +48,8 @@ std::unique_ptr<NActors::IActor> MakeResyncRangeActor(
             range,
             std::move(replicas),
             std::move(writerClientId),
-            blockDigestGenerator);
+            std::move(blockDigestGenerator),
+            resyncPolicy);
     }
 
     return std::make_unique<TResyncRangeBlockByBlockActor>(
@@ -57,8 +58,9 @@ std::unique_ptr<NActors::IActor> MakeResyncRangeActor(
         range,
         std::move(replicas),
         std::move(writerClientId),
-        blockDigestGenerator,
-        resyncPolicy);
+        std::move(blockDigestGenerator),
+        resyncPolicy,
+        checksumStatus == EBlockRangeChecksumStatus::Unknown);
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

@@ -343,21 +343,24 @@ struct TTestEnv
         // Runtime.SetLogPriority(NLog::InvalidComponent, NLog::PRI_DEBUG);
     }
 
-    void StartResync(ui64 initialResyncIndex = 0)
+    void StartResync(
+        ui64 initialResyncIndex = 0,
+        NProto::EResyncPolicy resyncPolicy =
+            NProto::EResyncPolicy::RESYNC_POLICY_MINOR_AND_MAJOR_4MB)
     {
         auto actor = std::make_unique<TMirrorPartitionResyncActor>(
             Config,
             CreateDiagnosticsConfig(),
             CreateProfileLogStub(),
             CreateBlockDigestGeneratorStub(),
-            "", // rwClientId
+            "",   // rwClientId
             PartConfig,
             TMigrations(),
             Replicas,
-            nullptr, // rdmaClient
+            nullptr,   // rdmaClient
             VolumeActorId,
-            initialResyncIndex
-        );
+            initialResyncIndex,
+            resyncPolicy);
 
         actor->SetRequestIdentityKey(RequestIdentityKey);
 
@@ -636,7 +639,9 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionResyncTest)
             counters.RequestCounters.ReadBlocks.RequestBytes);
     }
 
-    void DoTestShouldResyncWholeDisk(ui32 blockSize)
+    void DoTestShouldResyncWholeDisk(
+        ui32 blockSize,
+        NProto::EResyncPolicy resyncPolicy)
     {
         TTestBasicRuntime runtime;
         TTestEnv env(runtime, blockSize);
@@ -647,7 +652,7 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionResyncTest)
         env.WriteReplica(1, range, 'B');
         env.WriteReplica(2, range, 'B');
 
-        env.StartResync();
+        env.StartResync(0, resyncPolicy);
         env.ResyncController.WaitForResyncedRangeCount(5);
         UNIT_ASSERT(env.ResyncController.ResyncFinished);
 
@@ -678,14 +683,171 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionResyncTest)
         UNIT_ASSERT_VALUES_EQUAL(5, env.ResyncController.ResyncedRanges.size());
     }
 
-    Y_UNIT_TEST(ShouldResyncWholeDisk)
+    Y_UNIT_TEST(ShouldResyncWholeDisk_MINOR_4MB)
     {
-        DoTestShouldResyncWholeDisk(4_KB);
+        DoTestShouldResyncWholeDisk(4_KB, NProto::RESYNC_POLICY_MINOR_4MB);
+        DoTestShouldResyncWholeDisk(128_KB, NProto::RESYNC_POLICY_MINOR_4MB);
     }
 
-    Y_UNIT_TEST(ShouldResyncWholeDiskWithLargeBlockSize)
+    Y_UNIT_TEST(ShouldResyncWholeDisk_MINOR_AND_MAJOR_4MB)
     {
-        DoTestShouldResyncWholeDisk(128_KB);
+        DoTestShouldResyncWholeDisk(
+            4_KB,
+            NProto::RESYNC_POLICY_MINOR_AND_MAJOR_4MB);
+        DoTestShouldResyncWholeDisk(
+            128_KB,
+            NProto::RESYNC_POLICY_MINOR_AND_MAJOR_4MB);
+    }
+
+    Y_UNIT_TEST(ShouldResyncWholeDisk_MINOR_BLOCK_BY_BLOCK)
+    {
+        DoTestShouldResyncWholeDisk(
+            4_KB,
+            NProto::RESYNC_POLICY_MINOR_BLOCK_BY_BLOCK);
+        DoTestShouldResyncWholeDisk(
+            128_KB,
+            NProto::RESYNC_POLICY_MINOR_BLOCK_BY_BLOCK);
+    }
+
+    Y_UNIT_TEST(ShouldResyncWholeDisk_MINOR_AND_MAJOR_BLOCK_BY_BLOCK)
+    {
+        DoTestShouldResyncWholeDisk(
+            4_KB,
+            NProto::RESYNC_POLICY_MINOR_AND_MAJOR_BLOCK_BY_BLOCK);
+        DoTestShouldResyncWholeDisk(
+            128_KB,
+            NProto::RESYNC_POLICY_MINOR_AND_MAJOR_BLOCK_BY_BLOCK);
+    }
+
+    void DoTestShouldResyncWholeDiskWithMajor(
+        ui32 blockSize,
+        NProto::EResyncPolicy resyncPolicy)
+    {
+        using EResyncPolicy = NProto::EResyncPolicy;
+
+        // When fixing a major error, the result will vary depending on the
+        // policy.
+        // 1. RESYNC_POLICY_MINOR_4_MB will not fix 4MB, we get 'AAAA...' in
+        //    first, 'BBBB...' in second and 'CBBB...' in third replica
+        // 2. RESYNC_POLICY_MINOR_AND_MAJOR_4_MB will select the first replica
+        //    for all 4MB and we will get 'AAAA' in all replicas
+        // 3. RESYNC_POLICY_MINOR_BLOCK_BY_BLOCK will fix all blocks with minor
+        //    errors and we will get 'ABBB...' in first replica, 'BBBB...' in
+        //    second and 'CBBBB...' in third
+        // 4. RESYNC_POLICY_MINOR_AND_MAJOR_BLOCK_BY_BLOCK the heuristic
+        //    will work well and we will get 'BBBB...' in all replicas
+
+        TTestBasicRuntime runtime;
+        TTestEnv env(runtime, blockSize);
+
+        const auto range = TBlockRange64::WithLength(0, 5120 * 4_KB / blockSize);
+        const auto range4MB = TBlockRange64::WithLength(0, 4_MB / blockSize);
+
+        env.WriteMirror(range, 'A');
+        env.WriteReplica(1, range, 'B');
+        env.WriteReplica(2, range, 'B');
+        env.WriteReplica(2, TBlockRange64::MakeOneBlock(0), 'C');
+
+        env.StartResync(0, resyncPolicy);
+        env.ResyncController.WaitForResyncedRangeCount(5);
+        UNIT_ASSERT(env.ResyncController.ResyncFinished);
+
+        // Check individual replicas
+        auto blocks0 = env.ReadReplica(0, range);
+        auto blocks1 = env.ReadReplica(1, range);
+        auto blocks2 = env.ReadReplica(2, range);
+        for (size_t i = 0; i < blocks0.size(); ++i ) {
+            char expected0 = 'B';
+            char expected1 = 'B';
+            char expected2 = 'B';
+            if (i == 0) {
+                switch (resyncPolicy) {
+                    case EResyncPolicy::RESYNC_POLICY_MINOR_4MB: {
+                        expected0 = 'A';
+                        expected2 = 'C';
+                    } break;
+                    case EResyncPolicy::RESYNC_POLICY_MINOR_AND_MAJOR_4MB: {
+                        expected0 = 'A';
+                        expected1 = 'A';
+                        expected2 = 'A';
+                    } break;
+                    case NProto::RESYNC_POLICY_MINOR_BLOCK_BY_BLOCK: {
+                        expected0 = 'A';
+                        expected2 = 'C';
+                    } break;
+                    case NProto::RESYNC_POLICY_MINOR_AND_MAJOR_BLOCK_BY_BLOCK:
+                        break;
+                }
+            }
+            if (i > 0 && range4MB.Contains(i)) {
+                switch (resyncPolicy) {
+                    case EResyncPolicy::RESYNC_POLICY_MINOR_4MB: {
+                        expected0 = 'A';
+                    } break;
+                    case EResyncPolicy::RESYNC_POLICY_MINOR_AND_MAJOR_4MB: {
+                        expected0 = 'A';
+                        expected1 = 'A';
+                        expected2 = 'A';
+                    } break;
+                    case NProto::RESYNC_POLICY_MINOR_BLOCK_BY_BLOCK:
+                    case NProto::RESYNC_POLICY_MINOR_AND_MAJOR_BLOCK_BY_BLOCK:
+                        break;
+                }
+            }
+
+            UNIT_ASSERT_VALUES_EQUAL(TString(blockSize, expected0), blocks0[i]);
+            UNIT_ASSERT_VALUES_EQUAL(TString(blockSize, expected1), blocks1[i]);
+            UNIT_ASSERT_VALUES_EQUAL(TString(blockSize, expected2), blocks2[i]);
+        }
+
+        const ui32 expectedResyncRangeSize = 4_MB;
+        for (const auto& resyncRange: env.ResyncController.ResyncedRanges) {
+            UNIT_ASSERT_VALUES_EQUAL(
+                expectedResyncRangeSize,
+                resyncRange.Size() * blockSize);
+        }
+        UNIT_ASSERT_VALUES_EQUAL(5, env.ResyncController.ResyncedRanges.size());
+    }
+
+    Y_UNIT_TEST(ShouldResyncWholeDiskWithMajor_MINOR_4MB)
+    {
+        DoTestShouldResyncWholeDiskWithMajor(
+            4_KB,
+            NProto::RESYNC_POLICY_MINOR_4MB);
+        DoTestShouldResyncWholeDiskWithMajor(
+            128_KB,
+            NProto::RESYNC_POLICY_MINOR_4MB);
+    }
+
+    Y_UNIT_TEST(ShouldResyncWholeDiskWithMajor_MINOR_AND_MAJOR_4MB)
+    {
+        DoTestShouldResyncWholeDiskWithMajor(
+            4_KB,
+            NProto::RESYNC_POLICY_MINOR_AND_MAJOR_4MB);
+        DoTestShouldResyncWholeDiskWithMajor(
+            128_KB,
+            NProto::RESYNC_POLICY_MINOR_AND_MAJOR_4MB);
+    }
+
+    Y_UNIT_TEST(ShouldResyncWholeDiskWithMajor_MINOR_BLOCK_BY_BLOCK)
+    {
+        DoTestShouldResyncWholeDiskWithMajor(
+            4_KB,
+            NProto::RESYNC_POLICY_MINOR_BLOCK_BY_BLOCK);
+
+        DoTestShouldResyncWholeDiskWithMajor(
+            128_KB,
+            NProto::RESYNC_POLICY_MINOR_BLOCK_BY_BLOCK);
+    }
+
+    Y_UNIT_TEST(ShouldResyncWholeDiskWithMajor_MINOR_AND_MAJOR_BLOCK_BY_BLOCK)
+    {
+        DoTestShouldResyncWholeDiskWithMajor(
+            4_KB,
+            NProto::RESYNC_POLICY_MINOR_AND_MAJOR_BLOCK_BY_BLOCK);
+        DoTestShouldResyncWholeDiskWithMajor(
+            128_KB,
+            NProto::RESYNC_POLICY_MINOR_AND_MAJOR_BLOCK_BY_BLOCK);
     }
 
     Y_UNIT_TEST(ShouldResyncFromStartIndex)

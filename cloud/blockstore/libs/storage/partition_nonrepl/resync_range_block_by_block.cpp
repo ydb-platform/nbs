@@ -135,7 +135,8 @@ TResyncRangeBlockByBlockActor::TResyncRangeBlockByBlockActor(
         TVector<TReplicaDescriptor> replicas,
         TString writerClientId,
         IBlockDigestGeneratorPtr blockDigestGenerator,
-        NProto::EResyncPolicy resyncPolicy)
+        NProto::EResyncPolicy resyncPolicy,
+        bool performChecksumPreliminaryCheck)
     : RequestInfo(std::move(requestInfo))
     , BlockSize(blockSize)
     , Range(range)
@@ -143,7 +144,14 @@ TResyncRangeBlockByBlockActor::TResyncRangeBlockByBlockActor(
     , WriterClientId(std::move(writerClientId))
     , BlockDigestGenerator(std::move(blockDigestGenerator))
     , ResyncPolicy(resyncPolicy)
-{}
+    , PerformChecksumPreliminaryCheck(performChecksumPreliminaryCheck)
+{
+    using EResyncPolicy = NProto::EResyncPolicy;
+    Y_DEBUG_ABORT_UNLESS(
+        ResyncPolicy == EResyncPolicy::RESYNC_POLICY_MINOR_BLOCK_BY_BLOCK ||
+        ResyncPolicy ==
+            EResyncPolicy::RESYNC_POLICY_MINOR_AND_MAJOR_BLOCK_BY_BLOCK);
+}
 
 void TResyncRangeBlockByBlockActor::Bootstrap(const TActorContext& ctx)
 {
@@ -157,11 +165,28 @@ void TResyncRangeBlockByBlockActor::Bootstrap(const TActorContext& ctx)
         "ResyncRangeBlockByBlock",
         RequestInfo->CallContext->RequestId);
 
-    ReadBuffers.resize(Replicas.size());
-    for (size_t replica = 0; replica < Replicas.size(); replica++) {
-        ActorsToResync.push_back(replica);
-        ReadReplicaBlocks(ctx, replica);
+    if (PerformChecksumPreliminaryCheck) {
+        ChecksumRangeActorCompanion.CalculateChecksums(ctx, Range);
+    } else {
+        ReadBlocks(ctx);
     }
+}
+
+void TResyncRangeBlockByBlockActor::CompareChecksums(const TActorContext& ctx)
+{
+    const auto& checksums = ChecksumRangeActorCompanion.GetChecksums();
+    THashMap<ui64, ui32> checksumCount;
+    for (auto checksum : checksums) {
+        ++checksumCount[checksum];
+    }
+
+    if (checksumCount.size() == 1) {
+        // all checksums match
+        Done(ctx);
+        return;
+    }
+
+    ReadBlocks(ctx);
 }
 
 void TResyncRangeBlockByBlockActor::PrepareWriteBuffers(
@@ -271,6 +296,15 @@ void TResyncRangeBlockByBlockActor::PrepareWriteBuffers(
         if (healStat[i].FixedMinorErrorCount || healStat[i].FixedMajorErrorCount) {
             ActorsToResync.push_back(i);
         }
+    }
+}
+
+void TResyncRangeBlockByBlockActor::ReadBlocks(const TActorContext& ctx)
+{
+    ReadBuffers.resize(Replicas.size());
+    for (size_t replica = 0; replica < Replicas.size(); replica++) {
+        ActorsToResync.push_back(replica);
+        ReadReplicaBlocks(ctx, replica);
     }
 }
 
@@ -389,6 +423,35 @@ void TResyncRangeBlockByBlockActor::Done(const TActorContext& ctx)
 
 ////////////////////////////////////////////////////////////////////////////////
 
+void TResyncRangeBlockByBlockActor::HandleChecksumUndelivery(
+    const TEvNonreplPartitionPrivate::TEvChecksumBlocksRequest::TPtr& ev,
+    const TActorContext& ctx)
+{
+    Y_UNUSED(ev);
+
+    ChecksumRangeActorCompanion.HandleChecksumUndelivery(ctx);
+    Error = ChecksumRangeActorCompanion.GetError();
+
+    Done(ctx);
+}
+
+void TResyncRangeBlockByBlockActor::HandleChecksumResponse(
+    const TEvNonreplPartitionPrivate::TEvChecksumBlocksResponse::TPtr& ev,
+    const TActorContext& ctx)
+{
+    ChecksumRangeActorCompanion.HandleChecksumResponse(ev, ctx);
+
+    Error = ChecksumRangeActorCompanion.GetError();
+    if (HasError(Error)) {
+        Done(ctx);
+        return;
+    }
+
+    if (ChecksumRangeActorCompanion.IsFinished()) {
+        CompareChecksums(ctx);
+    }
+}
+
 void TResyncRangeBlockByBlockActor::HandleReadUndelivery(
     const TEvService::TEvReadBlocksRequest::TPtr& ev,
     const TActorContext& ctx)
@@ -481,7 +544,12 @@ STFUNC(TResyncRangeBlockByBlockActor::StateWork)
     switch (ev->GetTypeRewrite()) {
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
 
-
+        HFunc(
+            TEvNonreplPartitionPrivate::TEvChecksumBlocksRequest,
+            HandleChecksumUndelivery);
+        HFunc(
+            TEvNonreplPartitionPrivate::TEvChecksumBlocksResponse,
+            HandleChecksumResponse);
         HFunc(TEvService::TEvReadBlocksRequest, HandleReadUndelivery);
         HFunc(TEvService::TEvReadBlocksResponse, HandleReadResponse);
         HFunc(TEvService::TEvWriteBlocksRequest, HandleWriteUndelivery);

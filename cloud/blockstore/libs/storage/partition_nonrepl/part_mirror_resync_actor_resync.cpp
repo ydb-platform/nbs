@@ -114,15 +114,16 @@ void TMirrorPartitionResyncActor::ResyncNextRange(const TActorContext& ctx)
         }
     }
 
-    NCloud::Register<TResyncRangeActor>(
-        ctx,
+    auto resyncActor = MakeResyncRangeActor(
         std::move(requestInfo),
         PartConfig->GetBlockSize(),
         resyncRange,
         std::move(replicas),
         State.GetRWClientId(),
-        BlockDigestGenerator
-    );
+        BlockDigestGenerator,
+        ResyncPolicy,
+        EBlockRangeChecksumStatus::Unknown);
+    ctx.Register(resyncActor.release());
 }
 
 ////////////////////////////////////////////////////////////////////////////////

@@ -748,6 +748,11 @@ public:
         return Meta.GetResyncNeeded();
     }
 
+    bool IsForceMirrorResync() const
+    {
+        return ForceMirrorResync;
+    }
+
     TVector<NProto::TDeviceConfig> GetAllDevicesForAcquireRelease() const;
 
     //
