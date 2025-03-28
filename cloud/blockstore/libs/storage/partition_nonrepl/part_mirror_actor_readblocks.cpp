@@ -94,6 +94,7 @@ private:
     void SendRequests(const TActorContext& ctx);
     bool HandleError(const TActorContext& ctx, NProto::TError error);
     void CompareChecksums(const TActorContext& ctx);
+    void CompareChecksumsForThreeReplicas(const TActorContext& ctx);
     void Done(const TActorContext& ctx);
 
 private:
@@ -197,6 +198,41 @@ void TRequestActor<TMethod>::SendRequests(const TActorContext& ctx)
 
 template <typename TMethod>
 void TRequestActor<TMethod>::CompareChecksums(const TActorContext& ctx)
+{
+    if (ResponseChecksums.size() > 2){
+        CompareChecksumsForThreeReplicas(ctx);
+        return;
+    }
+
+    ui32 firstChecksum = ResponseChecksums[0];
+    if (!firstChecksum) {
+        // zero is a special value meaning "checksum couldn't be calculated"
+        return;
+    }
+
+    for (ui32 i = 1; i < ResponseChecksums.size(); ++i) {
+        const auto checksum = ResponseChecksums[i];
+        if (firstChecksum != checksum) {
+            LOG_INFO(
+                ctx,
+                TBlockStoreComponents::PARTITION,
+                "[%s] Read range %s: checksum mismatch, %u (%s) != %u (%s)",
+                DiskId.c_str(),
+                DescribeRange(Range).c_str(),
+                firstChecksum,
+                Partitions[0].ToString().c_str(),
+                checksum,
+                Partitions[i].ToString().c_str());
+            *Response.MutableError() =
+                MakeError(E_REJECTED, "Checksum mismatch detected");
+            ChecksumMismatchObserved = true;
+            break;
+        }
+    }
+}
+
+template <typename TMethod>
+void TRequestActor<TMethod>::CompareChecksumsForThreeReplicas(const TActorContext& ctx)
 {
     std::unordered_map<ui32, TVector<TString>> checksumMap;
 
