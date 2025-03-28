@@ -30,7 +30,6 @@ PEERDIR(
     contrib/ydb/library/actors/util
     contrib/ydb/library/actors/protos
     contrib/ydb/library/actors/wilson
-    contrib/ydb/library/keys
 
     contrib/ydb/core/base
     contrib/ydb/core/config/init

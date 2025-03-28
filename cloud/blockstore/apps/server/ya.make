@@ -20,6 +20,7 @@ PEERDIR(
     cloud/storage/core/libs/iam/iface
 
     contrib/ydb/core/security
+    contrib/ydb/library/keys
 
     library/cpp/getopt
 )

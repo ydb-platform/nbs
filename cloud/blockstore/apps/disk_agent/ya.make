@@ -14,6 +14,7 @@ PEERDIR(
     cloud/storage/core/libs/daemon
 
     contrib/ydb/core/security
+    contrib/ydb/library/keys
 
     library/cpp/getopt
 )
