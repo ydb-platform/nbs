@@ -1104,7 +1104,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         const ui64 totalBlockCount = 3 * blocksPerDevice;
         // We are migrating the first and third devices.
         const ui64 totalRangesToMigrate =
-            2 * blocksPerDevice * DefaultBlockSize / ProcessingRangeSize;
+            2 * blocksPerDevice * DefaultBlockSize / MigrationRangeSize;
 
         // creating a nonreplicated disk
         volume.UpdateVolumeConfig(
@@ -1620,7 +1620,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         constexpr auto VolumeBlockCount = BlocksPerDevice * 2.5;
         // We will migrate only the first and third devices.
         constexpr auto MigrationRangesPerDevice =
-            BlocksPerDevice * DefaultBlockSize / ProcessingRangeSize;
+            BlocksPerDevice * DefaultBlockSize / MigrationRangeSize;
         constexpr auto RangesToMigrateCount = MigrationRangesPerDevice * 2;
         constexpr auto TotalRangesInVolume = MigrationRangesPerDevice * 3;
         auto getDeviceBlocks = [&](ui32 deviceIndex) -> TBlockRange64
@@ -1630,7 +1630,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
                 BlocksPerDevice);
         };
         auto getMigrationRangeIndexByBlockStart = [&](ui64 start) -> ui32 {
-            return start * DefaultBlockSize / ProcessingRangeSize;
+            return start * DefaultBlockSize / MigrationRangeSize;
         };
 
         // creating a nonreplicated disk
@@ -1740,7 +1740,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         const auto volumeBlockCount = blocksPerDevice * 2.5;
         // We will migrate only the first and third devices.
         const auto migrationRangesPerDevice =
-            blocksPerDevice * DefaultBlockSize / ProcessingRangeSize;
+            blocksPerDevice * DefaultBlockSize / MigrationRangeSize;
         const auto totalRangesInVolume = migrationRangesPerDevice * 3;
         auto getDeviceBlocks = [&](ui32 deviceIndex) -> TBlockRange64
         {
@@ -1749,7 +1749,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
                 blocksPerDevice);
         };
         auto getMigrationRangeIndexByBlockStart = [&](ui64 start) -> ui32 {
-            return start * DefaultBlockSize / ProcessingRangeSize;
+            return start * DefaultBlockSize / MigrationRangeSize;
         };
 
         // creating a nonreplicated disk
@@ -1845,10 +1845,10 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         const auto blocksPerDevice =
             DefaultDeviceBlockCount * DefaultDeviceBlockSize / DefaultBlockSize;
         const auto migrationRangesPerDevice =
-            blocksPerDevice * DefaultBlockSize / ProcessingRangeSize;
+            blocksPerDevice * DefaultBlockSize / MigrationRangeSize;
         const auto totalRangesToMigrateCount = migrationRangesPerDevice * 2;
         const ui64 blockPerMigratedRange =
-            ProcessingRangeSize / DefaultBlockSize;
+            MigrationRangeSize / DefaultBlockSize;
 
         // creating a nonreplicated disk
         volume.UpdateVolumeConfig(

@@ -28,6 +28,8 @@ namespace NCloud::NBlockStore::NStorage {
 
 using namespace NActors;
 
+using namespace std::chrono_literals;
+
 namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -2513,6 +2515,131 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
         // one replica, and checksums are calculated from the other two.
         UNIT_ASSERT_VALUES_EQUAL(replicaCount - 1, checksumResponseCount);
         UNIT_ASSERT_VALUES_EQUAL(replicaCount, actorIds[recepient].size());
+    }
+
+    Y_UNIT_TEST(ShouldLockAndDrainRangeForWriteIO)
+    {
+        TTestBasicRuntime runtime;
+        TTestEnv env(runtime);
+        TPartitionClient client(runtime, env.ActorId);
+
+        ui64 drainRangeResponseCount = 0;
+
+        std::unique_ptr<IEventHandle> stollenEvent;
+        runtime.SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
+                switch (event->GetTypeRewrite()) {
+                    case TEvNonreplPartitionPrivate::EvWriteOrZeroCompleted: {
+                        stollenEvent.reset(event.Release());
+                        return TTestActorRuntimeBase::EEventAction::DROP;
+                    }
+                    case NPartition::TEvPartition::
+                        EvLockAndDrainRangeResponse: {
+                        drainRangeResponseCount += 1;
+                    }
+                }
+                return TTestActorRuntime::DefaultObserverFunc(event);
+            });
+
+        runtime.AdvanceCurrentTime(100ms);
+        runtime.DispatchEvents({}, 100ms);
+
+        client.SendWriteBlocksRequest(
+            TBlockRange64::MakeClosedInterval(0, 1024),
+            1);
+
+        client.SendLockAndDrainRangeRequest(
+            TBlockRange64::WithLength(0, 1024));
+
+        runtime.DispatchEvents({}, 10ms);
+
+        UNIT_ASSERT_VALUES_EQUAL(0, drainRangeResponseCount);
+
+        runtime.SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
+                switch (event->GetTypeRewrite()) {
+                    case NPartition::TEvPartition::
+                        EvLockAndDrainRangeResponse: {
+                        drainRangeResponseCount += 1;
+                    }
+                }
+                return TTestActorRuntime::DefaultObserverFunc(event);
+            });
+
+        runtime.Send(stollenEvent.release());
+
+        client.RecvWriteBlocksResponse();
+        client.RecvLockAndDrainRangeResponse();
+
+        client.SendWriteBlocksRequest(
+            TBlockRange64::MakeClosedInterval(0, 1024),
+            1);
+
+        auto resp = client.RecvWriteBlocksResponse();
+
+        UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, resp->GetError().GetCode());
+
+        client.SendReleaseRange(TBlockRange64::WithLength(0, 1024));
+
+        runtime.DispatchEvents({}, 10ms);
+
+        client.WriteBlocks(TBlockRange64::MakeClosedInterval(0, 1024), 1);
+    }
+
+    Y_UNIT_TEST(ShouldCancelDrainRequestIfReceivedReleaseBeforeDrainCompleted)
+    {
+        TTestBasicRuntime runtime;
+        TTestEnv env(runtime);
+        TPartitionClient client(runtime, env.ActorId);
+
+        ui64 drainRangeResponseCount = 0;
+
+        std::unique_ptr<IEventHandle> stollenEvent;
+        runtime.SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
+                switch (event->GetTypeRewrite()) {
+                    case TEvNonreplPartitionPrivate::EvWriteOrZeroCompleted: {
+                        stollenEvent.reset(event.Release());
+                        return TTestActorRuntimeBase::EEventAction::DROP;
+                    }
+                    case NPartition::TEvPartition::EvLockAndDrainRangeResponse: {
+                        drainRangeResponseCount += 1;
+                    }
+                }
+                return TTestActorRuntime::DefaultObserverFunc(event);
+            });
+
+            runtime.AdvanceCurrentTime(100ms);
+            runtime.DispatchEvents({}, 100ms);
+
+        client.SendWriteBlocksRequest(TBlockRange64::MakeClosedInterval(0, 1024), 1);
+
+        client.SendLockAndDrainRangeRequest(
+            TBlockRange64::WithLength(0, 1024));
+
+        runtime.DispatchEvents({}, 10ms);
+
+        UNIT_ASSERT_VALUES_EQUAL(0, drainRangeResponseCount);
+
+        runtime.SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
+                switch (event->GetTypeRewrite()) {
+                    case NPartition::TEvPartition::EvLockAndDrainRangeResponse: {
+                        drainRangeResponseCount += 1;
+                    }
+                }
+                return TTestActorRuntime::DefaultObserverFunc(event);
+            });
+
+        client.SendReleaseRange(TBlockRange64::WithLength(0, 1024));
+
+        auto resp = client.RecvLockAndDrainRangeResponse();
+
+        UNIT_ASSERT_VALUES_EQUAL(E_CANCELLED, resp->GetError().GetCode());
     }
 }
 

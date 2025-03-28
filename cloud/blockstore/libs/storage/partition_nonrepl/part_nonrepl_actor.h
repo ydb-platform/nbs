@@ -94,8 +94,11 @@ private:
     {
         TStackVec<int, 2> DeviceIndices;
     };
-    TRequestsInProgress<NActors::TActorId, TRequestData> RequestsInProgress{
-        EAllowedRequests::ReadWrite};
+    TRequestsInProgress<
+        EAllowedRequests::ReadWrite,
+        NActors::TActorId,
+        TRequestData>
+        RequestsInProgress;
     TDrainActorCompanion DrainActorCompanion{
         RequestsInProgress,
         PartConfig->GetName()};

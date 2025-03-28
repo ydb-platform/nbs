@@ -30,7 +30,7 @@ void TMirrorPartitionActor::HandleWriteOrZeroCompleted(
     DrainActorCompanion.ProcessDrainRequests(ctx);
     auto [range, volumeRequestId] = completeRequest.value();
     for (const auto& [id, request]: RequestsInProgress.AllRequests()) {
-        if (range.Overlaps(request.Value.BlockRange)) {
+        if (range.Overlaps(request.BlockRange)) {
             DirtyReadRequestIds.insert(id);
         }
     }
@@ -69,7 +69,7 @@ void TMirrorPartitionActor::HandleMirroredReadCompleted(
             ReportMirroredDiskChecksumMismatchUponRead(
                 TStringBuilder()
                 << " disk: " << DiskId.Quote() << ", range: "
-                << (requestCtx ? requestCtx->BlockRange.Print() : ""));
+                << (requestCtx ? requestCtx->first.Print() : ""));
         }
     } else {
         DirtyReadRequestIds.erase(it);
@@ -90,6 +90,21 @@ void TMirrorPartitionActor::MirrorRequest(
         ev->Cookie,
         msg->CallContext);
 
+
+    const auto range = BuildRequestBlockRange(
+        *ev->Get(),
+        State.GetBlockSize());
+
+    if (BlockRangeRequests.OverlapsWithRequest(range)) {
+        Reply(
+            ctx,
+            *requestInfo,
+            std::make_unique<typename TMethod::TResponse>(MakeError(
+                E_REJECTED,
+                "range is blocked for writing")));
+        return;
+    }
+
     if (HasError(Status)) {
         Reply(
             ctx,
@@ -100,9 +115,6 @@ void TMirrorPartitionActor::MirrorRequest(
         return;
     }
 
-    const auto range = BuildRequestBlockRange(
-        *ev->Get(),
-        State.GetBlockSize());
     const auto requestIdentityKey = TakeNextRequestIdentifier();
     if (GetScrubbingRange().Overlaps(range)) {
         if (ResyncRangeStarted) {
@@ -118,13 +130,15 @@ void TMirrorPartitionActor::MirrorRequest(
         WriteIntersectsWithScrubbing = true;
     }
     for (const auto& [id, request]: RequestsInProgress.AllRequests()) {
-        if (range.Overlaps(request.Value.BlockRange)) {
+        if (range.Overlaps(request.BlockRange)) {
             DirtyReadRequestIds.insert(id);
         }
     }
+
     RequestsInProgress.AddWriteRequest(
         requestIdentityKey,
-        {range, ev->Get()->Record.GetHeaders().GetVolumeRequestId()});
+        range,
+        ev->Get()->Record.GetHeaders().GetVolumeRequestId());
 
     NCloud::Register<TMirrorRequestActor<TMethod>>(
         ctx,

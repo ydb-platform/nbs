@@ -5,6 +5,7 @@
 
 #include <cloud/blockstore/libs/common/block_range.h>
 #include <cloud/blockstore/libs/storage/api/disk_registry.h>
+#include <cloud/blockstore/libs/storage/api/partition.h>
 #include <cloud/blockstore/libs/storage/api/service.h>
 #include <cloud/blockstore/libs/storage/api/stats_service.h>
 #include <cloud/blockstore/libs/storage/api/volume.h>
@@ -463,6 +464,19 @@ public:
         return request;
     }
 
+    std::unique_ptr<NPartition::TEvPartition::TEvLockAndDrainRangeRequest>
+    CreateLockAndDrainRangeRequest(TBlockRange64 range)
+    {
+        return std::make_unique<
+            NPartition::TEvPartition::TEvLockAndDrainRangeRequest>(range);
+    }
+
+    void SendReleaseRange(TBlockRange64 range)
+    {
+        auto req =
+            std::make_unique<NPartition::TEvPartition::TEvReleaseRange>(range);
+        SendRequest(ActorId, std::move(req), ++RequestId);
+    }
 
 #define BLOCKSTORE_DECLARE_METHOD(name, ns)                                    \
     template <typename... Args>                                                \
@@ -498,6 +512,7 @@ public:
     BLOCKSTORE_DECLARE_METHOD(ZeroBlocks, TEvService);
     BLOCKSTORE_DECLARE_METHOD(CheckRange, TEvVolume);
     BLOCKSTORE_DECLARE_METHOD(ChecksumBlocks, TEvNonreplPartitionPrivate);
+    BLOCKSTORE_DECLARE_METHOD(LockAndDrainRange, NPartition::TEvPartition);
 
 #undef BLOCKSTORE_DECLARE_METHOD
 };

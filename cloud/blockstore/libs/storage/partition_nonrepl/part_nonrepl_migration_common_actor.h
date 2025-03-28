@@ -68,6 +68,15 @@ public:
     // Notifies that an non-retriable error occurred during the migration.
     // And the migration was stopped.
     virtual void OnMigrationError(const NActors::TActorContext& ctx) = 0;
+
+    // Actor, to which we should send a LockAndDrain request and wait for a
+    // response before copying the range during migration. After copying, we
+    // should send ReleaseRange to the same actor. If the ActorId is invalid,
+    // there is no need to send either of these messages.
+    virtual NActors::TActorId GetActorToLockAndDrainRange()
+    {
+        return {};
+    }
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -128,8 +137,8 @@ private:
     // calling MigrationOwner->OnMigrationProgress().
     bool MigrationThresholdAchieved = false;
 
-    TRequestsInProgress<ui64, TBlockRange64> WriteAndZeroRequestsInProgress{
-        EAllowedRequests::WriteOnly};
+    TRequestsInProgress<EAllowedRequests::WriteOnly, ui64, TBlockRange64>
+        WriteAndZeroRequestsInProgress;
     TDrainActorCompanion DrainActorCompanion{
         WriteAndZeroRequestsInProgress,
         DiskId};
