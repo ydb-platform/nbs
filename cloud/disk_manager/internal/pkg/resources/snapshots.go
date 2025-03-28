@@ -389,7 +389,6 @@ func (s *storageYDB) createSnapshot(
 		folderID:          snapshot.FolderID,
 		zoneID:            snapshot.Disk.ZoneId,
 		diskID:            snapshot.Disk.DiskId,
-		checkpointID:      snapshot.CheckpointID,
 		createRequest:     createRequest,
 		createTaskID:      snapshot.CreateTaskID,
 		creatingAt:        snapshot.CreatingAt,
@@ -445,6 +444,7 @@ func (s *storageYDB) snapshotCreated(
 	ctx context.Context,
 	session *persistence.Session,
 	snapshotID string,
+	checkpointID string,
 	createdAt time.Time,
 	snapshotSize uint64,
 	snapshotStorageSize uint64,
@@ -505,6 +505,7 @@ func (s *storageYDB) snapshotCreated(
 	}
 
 	state.status = snapshotStatusReady
+	state.checkpointID = checkpointID
 	state.createdAt = createdAt
 	state.size = snapshotSize
 	state.storageSize = snapshotStorageSize
@@ -829,6 +830,7 @@ func (s *storageYDB) CreateSnapshot(
 func (s *storageYDB) SnapshotCreated(
 	ctx context.Context,
 	snapshotID string,
+	checkpointID string,
 	createdAt time.Time,
 	snapshotSize uint64,
 	snapshotStorageSize uint64,
@@ -841,6 +843,7 @@ func (s *storageYDB) SnapshotCreated(
 				ctx,
 				session,
 				snapshotID,
+				checkpointID,
 				createdAt,
 				snapshotSize,
 				snapshotStorageSize,

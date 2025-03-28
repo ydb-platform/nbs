@@ -97,12 +97,20 @@ func (s *StorageMock) CreateImage(
 func (s *StorageMock) ImageCreated(
 	ctx context.Context,
 	imageID string,
+	checkpointID string,
 	createdAt time.Time,
 	imageSize uint64,
 	imageStorageSize uint64,
 ) error {
 
-	args := s.Called(ctx, imageID, createdAt, imageSize, imageStorageSize)
+	args := s.Called(
+		ctx,
+		imageID,
+		checkpointID,
+		createdAt,
+		imageSize,
+		imageStorageSize,
+	)
 	return args.Error(0)
 }
 
@@ -170,12 +178,20 @@ func (s *StorageMock) CreateSnapshot(
 func (s *StorageMock) SnapshotCreated(
 	ctx context.Context,
 	snapshotID string,
+	checkpointID string,
 	createdAt time.Time,
 	snapshotSize uint64,
 	snapshotStorageSize uint64,
 ) error {
 
-	args := s.Called(ctx, snapshotID, createdAt, snapshotSize, snapshotStorageSize)
+	args := s.Called(
+		ctx,
+		snapshotID,
+		checkpointID,
+		createdAt,
+		snapshotSize,
+		snapshotStorageSize,
+	)
 	return args.Error(0)
 }
 
