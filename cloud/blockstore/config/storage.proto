@@ -1178,4 +1178,9 @@ message TStorageServiceConfig
     optional EResyncPolicy AutoResyncPolicy = 419;
     // Resync policy for force-resync.
     optional EResyncPolicy ForceResyncPolicy = 420;
+
+    // Whether the volume should start resync after a successful lagging agent
+    // migration. Resync is started with a special flag and will emit critical
+    // events for any mismatch it finds.
+    optional bool ResyncAfterLaggingAgentMigration = 421;
 }

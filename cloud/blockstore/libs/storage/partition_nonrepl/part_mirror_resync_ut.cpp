@@ -350,13 +350,14 @@ struct TTestEnv
             CreateDiagnosticsConfig(),
             CreateProfileLogStub(),
             CreateBlockDigestGeneratorStub(),
-            "", // rwClientId
+            "",   // rwClientId
             PartConfig,
             TMigrations(),
             Replicas,
-            nullptr, // rdmaClient
+            nullptr,   // rdmaClient
             VolumeActorId,
-            initialResyncIndex
+            initialResyncIndex,
+            false   // critOnChecksumMismatch
         );
 
         actor->SetRequestIdentityKey(RequestIdentityKey);

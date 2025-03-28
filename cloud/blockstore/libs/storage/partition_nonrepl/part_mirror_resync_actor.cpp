@@ -34,11 +34,13 @@ TMirrorPartitionResyncActor::TMirrorPartitionResyncActor(
         TVector<TDevices> replicaDevices,
         NRdma::IClientPtr rdmaClient,
         NActors::TActorId statActorId,
-        ui64 initialResyncIndex)
+        ui64 initialResyncIndex,
+        bool critOnChecksumMismatch)
     : Config(std::move(config))
     , DiagnosticsConfig(std::move(diagnosticsConfig))
     , ProfileLog(std::move(profileLog))
     , BlockDigestGenerator(std::move(digestGenerator))
+    , CritOnChecksumMismatch(critOnChecksumMismatch)
     , RWClientId(std::move(rwClientId))
     , PartConfig(std::move(partConfig))
     , Migrations(std::move(migrations))
@@ -48,9 +50,7 @@ TMirrorPartitionResyncActor::TMirrorPartitionResyncActor(
     , State(Config, RWClientId, PartConfig, ReplicaDevices, initialResyncIndex)
 {}
 
-TMirrorPartitionResyncActor::~TMirrorPartitionResyncActor()
-{
-}
+TMirrorPartitionResyncActor::~TMirrorPartitionResyncActor() = default;
 
 void TMirrorPartitionResyncActor::Bootstrap(const TActorContext& ctx)
 {
