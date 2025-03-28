@@ -34,21 +34,21 @@ TDirectCopyRangeActor::TDirectCopyRangeActor(
         TActorId source,
         TActorId target,
         TString writerClientId,
-        IBlockDigestGeneratorPtr blockDigestGenerator)
-    : BlockSize(blockSize)
-    , Range(range)
+        IBlockDigestGeneratorPtr blockDigestGenerator,
+        NActors::TActorId actorToBlockRangeAndDrain)
+    : TCopyRangeActorCommon(this, actorToBlockRangeAndDrain, range)
+    , BlockSize(blockSize)
     , SourceActor(source)
     , TargetActor(target)
     , WriterClientId(std::move(writerClientId))
     , BlockDigestGenerator(std::move(blockDigestGenerator))
+    , ActorToBlockRangeAndDrain(actorToBlockRangeAndDrain)
     , RequestInfo(std::move(requestInfo))
 {}
 
-void TDirectCopyRangeActor::Bootstrap(const TActorContext& ctx)
+void TDirectCopyRangeActor::ReadyToCopy(const NActors::TActorContext& ctx)
 {
     TRequestScope timer(*RequestInfo);
-
-    Become(&TThis::StateWork);
 
     LWTRACK(
         RequestReceived_PartitionWorker,
@@ -57,6 +57,68 @@ void TDirectCopyRangeActor::Bootstrap(const TActorContext& ctx)
         RequestInfo->CallContext->RequestId);
 
     GetDevicesInfo(ctx);
+}
+
+bool TDirectCopyRangeActor::OnMessage(
+    const NActors::TActorContext& ctx,
+    TAutoPtr<NActors::IEventHandle>& ev)
+{
+    Y_UNUSED(ctx);
+    TRequestScope timer(*RequestInfo);
+
+    switch (ev->GetTypeRewrite()) {
+        HFunc(
+            TEvNonreplPartitionPrivate::TEvGetDeviceForRangeResponse,
+            HandleGetDeviceForRange);
+        HFunc(
+            TEvDiskAgent::TEvDirectCopyBlocksResponse,
+            HandleDirectCopyBlocksResponse);
+        HFunc(
+            TEvDiskAgent::TEvDirectCopyBlocksRequest,
+            HandleDirectCopyUndelivered);
+
+        HFunc(TEvents::TEvWakeup, HandleRangeMigrationTimeout);
+
+        default:
+            return false;
+    }
+    return true;
+}
+
+void TDirectCopyRangeActor::BeforeDie(
+    const NActors::TActorContext& ctx,
+    NProto::TError error)
+{
+    using EExecutionSide =
+        TEvNonreplPartitionPrivate::TEvRangeMigrated::EExecutionSide;
+
+    ProcessError(
+        *NActors::TActorContext::ActorSystem(),
+        *TargetInfo->PartConfig,
+        error);
+
+    const auto writeTs = StartTs + ReadDuration;
+    auto response =
+        std::make_unique<TEvNonreplPartitionPrivate::TEvRangeMigrated>(
+            std::move(error),
+            EExecutionSide::Remote,
+            Range,
+            StartTs,
+            ReadDuration,
+            writeTs,
+            WriteDuration,
+            TVector<IProfileLog::TBlockInfo>(),
+            RecommendedBandwidth,
+            AllZeroes,
+            RequestInfo->GetExecCycles());
+
+    LWTRACK(
+        ResponseSent_PartitionWorker,
+        RequestInfo->CallContext->LWOrbit,
+        "DirectCopyRange",
+        RequestInfo->CallContext->RequestId);
+
+    NCloud::Reply(ctx, *RequestInfo, std::move(response));
 }
 
 void TDirectCopyRangeActor::GetDevicesInfo(const TActorContext& ctx)
@@ -125,43 +187,8 @@ void TDirectCopyRangeActor::Fallback(const TActorContext& ctx)
         SourceActor,
         TargetActor,
         WriterClientId,
-        BlockDigestGenerator);
-
-    Die(ctx);
-}
-
-void TDirectCopyRangeActor::Done(const TActorContext& ctx, NProto::TError error)
-{
-    using EExecutionSide =
-        TEvNonreplPartitionPrivate::TEvRangeMigrated::EExecutionSide;
-
-    ProcessError(
-        *NActors::TActorContext::ActorSystem(),
-        *TargetInfo->PartConfig,
-        error);
-
-    const auto writeTs = StartTs + ReadDuration;
-    auto response =
-        std::make_unique<TEvNonreplPartitionPrivate::TEvRangeMigrated>(
-            std::move(error),
-            EExecutionSide::Remote,
-            Range,
-            StartTs,
-            ReadDuration,
-            writeTs,
-            WriteDuration,
-            TVector<IProfileLog::TBlockInfo>(),
-            RecommendedBandwidth,
-            AllZeroes,
-            RequestInfo->GetExecCycles());
-
-    LWTRACK(
-        ResponseSent_PartitionWorker,
-        RequestInfo->CallContext->LWOrbit,
-        "DirectCopyRange",
-        RequestInfo->CallContext->RequestId);
-
-    NCloud::Reply(ctx, *RequestInfo, std::move(response));
+        BlockDigestGenerator,
+        ActorToBlockRangeAndDrain);
 
     Die(ctx);
 }
@@ -228,40 +255,6 @@ void TDirectCopyRangeActor::HandleRangeMigrationTimeout(
         TStringBuilder() << "Range " << DescribeRange(Range)
                          << " migration timeout");
     Done(ctx, std::move(error));
-}
-
-void TDirectCopyRangeActor::HandlePoisonPill(
-    const TEvents::TEvPoisonPill::TPtr& ev,
-    const TActorContext& ctx)
-{
-    Y_UNUSED(ev);
-
-    Done(ctx, MakeError(E_REJECTED, "Dead"));
-}
-
-STFUNC(TDirectCopyRangeActor::StateWork)
-{
-    TRequestScope timer(*RequestInfo);
-
-    switch (ev->GetTypeRewrite()) {
-        HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
-
-        HFunc(
-            TEvNonreplPartitionPrivate::TEvGetDeviceForRangeResponse,
-            HandleGetDeviceForRange);
-        HFunc(
-            TEvDiskAgent::TEvDirectCopyBlocksResponse,
-            HandleDirectCopyBlocksResponse);
-        HFunc(
-            TEvDiskAgent::TEvDirectCopyBlocksRequest,
-            HandleDirectCopyUndelivered);
-
-        HFunc(TEvents::TEvWakeup, HandleRangeMigrationTimeout);
-
-        default:
-            HandleUnexpectedEvent(ev, TBlockStoreComponents::PARTITION_WORKER);
-            break;
-    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

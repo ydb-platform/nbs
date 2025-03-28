@@ -2,6 +2,7 @@
 
 #include "public.h"
 
+#include <cloud/blockstore/libs/common/block_range.h>
 #include <cloud/blockstore/libs/kikimr/components.h>
 #include <cloud/blockstore/libs/kikimr/events.h>
 
@@ -13,6 +14,7 @@ namespace NCloud::NBlockStore::NStorage::NPartition {
     xxx(WaitReady,              __VA_ARGS__)                                   \
     xxx(StatPartition,          __VA_ARGS__)                                   \
     xxx(Drain,                  __VA_ARGS__)                                   \
+    xxx(BlockRangeAndDrain,     __VA_ARGS__)                                   \
 // BLOCKSTORE_PARTITION_REQUESTS
 
 // requests forwarded from service to partition
@@ -84,6 +86,34 @@ struct TEvPartition
     };
 
     //
+    // BlockRangeAndDrain
+    //
+
+    struct TBlockRangeAndDrainRequest
+    {
+        TBlockRange64 Range;
+        explicit TBlockRangeAndDrainRequest(TBlockRange64 range)
+            : Range(range)
+        {}
+    };
+
+    struct TBlockRangeAndDrainResponse
+    {
+    };
+
+    //
+    // ReleaseRange
+    //
+
+    struct TReleaseRange
+    {
+        TBlockRange64 Range;
+        explicit TReleaseRange(TBlockRange64 range)
+            : Range(range)
+        {}
+    };
+
+    //
     // Garbage collector finish report
     //
 
@@ -119,6 +149,11 @@ struct TEvPartition
         EvAddLaggingAgentRequest = EvBegin + 9,
         EvRemoveLaggingReplicaRequest = EvBegin + 10,
 
+        EvBlockRangeAndDrainRequest = EvBegin + 11,
+        EvBlockRangeAndDrainResponse = EvBegin + 12,
+
+        EvReleaseRange = EvBegin + 13,
+
         EvEnd
     };
 
@@ -126,6 +161,8 @@ struct TEvPartition
         "EvEnd expected to be < TBlockStoreEvents::PARTITION_END");
 
     BLOCKSTORE_PARTITION_REQUESTS(BLOCKSTORE_DECLARE_EVENTS)
+
+    using TEvReleaseRange = TRequestEvent<TReleaseRange, EvReleaseRange>;
 
     using TEvBackpressureReport = TRequestEvent<
         TBackpressureReport,

@@ -639,6 +639,33 @@ void TMirrorPartitionActor::HandleAddTagsResponse(
 
 ////////////////////////////////////////////////////////////////////////////////
 
+void TMirrorPartitionActor::HandleBlockRangeAndDrain(
+    const NPartition::TEvPartition::TEvBlockRangeAndDrainRequest::TPtr& ev,
+    const NActors::TActorContext& ctx)
+{
+    auto* msg = ev->Get();
+    BlockedRanges.Add(msg->Range);
+
+    auto reqInfo = CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
+
+    DrainActorCompanion.AddDrainRangeRequest(
+        ctx,
+        std::move(reqInfo),
+        msg->Range);
+}
+
+void TMirrorPartitionActor::HandleReleaseRange(
+    const NPartition::TEvPartition::TEvReleaseRange::TPtr& ev,
+    const NActors::TActorContext& ctx)
+{
+    Y_UNUSED(ctx);
+    auto* msg = ev->Get();
+
+    BlockedRanges.Rm(msg->Range);
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 #define BLOCKSTORE_HANDLE_UNIMPLEMENTED_REQUEST(name, ns)                      \
     void TMirrorPartitionActor::Handle##name(                                  \
         const ns::TEv##name##Request::TPtr& ev,                                \
@@ -724,6 +751,14 @@ STFUNC(TMirrorPartitionActor::StateWork)
             TEvService::TEvAddTagsResponse,
             HandleAddTagsResponse);
 
+        HFunc(
+            NPartition::TEvPartition::TEvBlockRangeAndDrainRequest,
+            HandleBlockRangeAndDrain);
+
+        HFunc(
+            NPartition::TEvPartition::TEvReleaseRange,
+            HandleReleaseRange);
+
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
         IgnoreFunc(TEvents::TEvPoisonTaken);
 
@@ -770,6 +805,11 @@ STFUNC(TMirrorPartitionActor::StateZombie)
         IgnoreFunc(TEvVolume::TEvDiskRegistryBasedPartitionCounters);
 
         IgnoreFunc(TEvService::TEvAddTagsResponse);
+
+        IgnoreFunc(
+            NPartition::TEvPartition::TEvBlockRangeAndDrainRequest);
+
+        IgnoreFunc(NPartition::TEvPartition::TEvReleaseRange);
 
         IgnoreFunc(TEvents::TEvPoisonPill);
         HFunc(TEvents::TEvPoisonTaken, HandlePoisonTaken);

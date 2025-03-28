@@ -90,6 +90,22 @@ void TMirrorPartitionActor::MirrorRequest(
         ev->Cookie,
         msg->CallContext);
 
+
+    const auto range = BuildRequestBlockRange(
+        *ev->Get(),
+        State.GetBlockSize());
+
+    if (CheckRangeIsBlockedForWriting(range)) {
+        Reply(
+            ctx,
+            *requestInfo,
+            std::make_unique<typename TMethod::TResponse>(MakeError(
+                E_REJECTED,
+                "range is blocked for writing because of migration")));
+        return;
+    }
+
+
     if (HasError(Status)) {
         Reply(
             ctx,
@@ -100,9 +116,7 @@ void TMirrorPartitionActor::MirrorRequest(
         return;
     }
 
-    const auto range = BuildRequestBlockRange(
-        *ev->Get(),
-        State.GetBlockSize());
+
     const auto requestIdentityKey = TakeNextRequestIdentifier();
     if (GetScrubbingRange().Overlaps(range)) {
         if (ResyncRangeStarted) {
@@ -122,8 +136,10 @@ void TMirrorPartitionActor::MirrorRequest(
             DirtyReadRequestIds.insert(id);
         }
     }
-    RequestsInProgress.AddWriteRequest(
+
+    RequestsInProgress.AddWriteRequestWithBlockRangeTracking(
         requestIdentityKey,
+        range,
         {range, ev->Get()->Record.GetHeaders().GetVolumeRequestId()});
 
     NCloud::Register<TMirrorRequestActor<TMethod>>(
@@ -134,6 +150,14 @@ void TMirrorPartitionActor::MirrorRequest(
         State.GetReplicaInfos()[0].Config->GetName(),   // diskId
         SelfId(),                                       // parentActorId
         requestIdentityKey);
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+bool TMirrorPartitionActor::CheckRangeIsBlockedForWriting(
+    TBlockRange64 checkingRange)
+{
+    return BlockedRanges.IsRangeBlocked(checkingRange);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
