@@ -838,6 +838,9 @@ bool TClientEndpoint::HandleInputRequests()
 
 void TClientEndpoint::HandleQueuedRequests()
 {
+    if (!CheckState(EEndpointState::Connected)) {
+        return;
+    }
     while (QueuedRequests) {
         auto* send = SendQueue.Pop();
         if (!send) {
