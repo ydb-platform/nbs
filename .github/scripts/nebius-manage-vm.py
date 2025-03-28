@@ -466,11 +466,12 @@ async def create_vm(sdk: SDK, args: argparse.Namespace, attempt: int = 0):
         args.github_repo,
         runner_registration_token,
         args.github_runner_version,
-        runner_github_label,
+        runner_github_label + ",runner_" + args.runner_flavor,
     )
 
     labels = args.labels
     labels["runner-label"] = runner_github_label
+    labels["runner-flavor"] = args.runner_flavor
 
     disk_id = await create_disk(sdk, args)
     service = InstanceServiceClient(sdk)
@@ -791,6 +792,11 @@ async def main() -> None:
         action=KeyValueAction,
         default="",
         help="Label for the VM (k=v,k2=v2)",
+    )
+    create.add_argument(
+        "--runner-flavor",
+        default="none",
+        help="Additional label for the Github Runner",
     )
 
     create.add_argument("--retry-time", default=10, help="How often to retry (seconds)")

@@ -6,7 +6,27 @@ on:
         description: 'Max VMs to create'
         type: number
         required: true
-        default: 2
+        default: 1
+      vms_ttl:
+        description: 'VMs TTL'
+        type: number
+        required: true
+        default: 86400
+      preset:
+        description: 'VM preset'
+        type: string
+        required: true
+        default: '32vcpu-128gb'
+      disk_size:
+        description: 'Disk size'
+        type: number
+        required: true
+        default: 1023
+      name_prefix:
+        description: 'Name prefix'
+        type: string
+        required: true
+        default: 'heavy'
 
 jobs:
   calculate_missing_vms:
@@ -91,7 +111,7 @@ jobs:
             echo "[]" > vms_to_create.json;
           else
             for i in $(seq 1 $NUMBER_VMS_TO_CREATE); do
-              echo "standby-${GITHUB_RUN_ID}-ydb-platform-nbs-${DATE}-$i";
+              echo "${FILTER}-${GITHUB_RUN_ID}-${PROJECT_FILTER}-${DATE}-$i";
             done | jq -R -s 'split("\n") | map(select(. != ""))' > vms_to_create.json
           fi
           echo VMS_TO_CREATE=$(cat vms_to_create.json)
@@ -105,9 +125,9 @@ jobs:
         env:
           PARENT_ID: ${{ vars.NEBIUS_PARENT_ID }}
           MAX_VMS_TO_CREATE: ${{ github.event.inputs.max_vms_to_create }}
-          FILTER: 'standby'
-          PROJECT_FILTER: 'ydb-platform-nbs'
-          VMS_OLDER_THAN: 60
+          FILTER: ${{ github.event.inputs.name_prefix }}
+          PROJECT_FILTER: ${{ format('{0}-{1}', github.repository_owner, github.event.repository.name) }}
+          VMS_OLDER_THAN: ${{ github.event.inputs.vms_ttl }}
   remove_vms:
     needs: calculate_missing_vms
     name: Remove VMs
@@ -161,12 +181,13 @@ jobs:
           vm_parent_id: ${{ vars.NEBIUS_PARENT_ID }}
           vm_name: ${{ matrix.vms_to_create }}
           vm_platform_id: ${{ vars.NEBIUS_PLATFORM_ID }}
-          vm_preset: '2vcpu-8gb'
+          vm_preset: ${{ github.event.inputs.preset }}
           vm_disk_type: 'network-ssd-nonreplicated'
-          vm_disk_size: 93
+          vm_disk_size: ${{ github.event.inputs.disk_size }}
           vm_subnet: ${{ vars.NEBIUS_SUBNET_ID }}
           vm_image: ${{ vars.NEBIUS_IMAGE_ID_2204 }}
           vm_labels: ${{ format('run={0}-{1},repo={2},owner={3}', github.run_id, github.run_attempt, github.event.repository.name, github.repository_owner) }}
+          vm_flavor: ${{ inputs.name_prefix }}
           vm_user_passwd: ${{ secrets.VM_USER_PASSWD }}
           vm_allow_downgrade: 'no'
     

@@ -5,11 +5,11 @@ on:
     inputs:
       build_target:
         type: string
-        default: "cloud/blockstore/apps/,cloud/filestore/apps/,cloud/disk_manager/,cloud/tasks/,cloud/storage/"
+        default: "cloud/tasks/"
         description: "limit build to specific target"
       test_target:
         type: string
-        default: "cloud/blockstore/,cloud/filestore/,cloud/disk_manager/,cloud/tasks/,cloud/storage/"
+        default: "cloud/tasks/"
         description: "limit test to specific target"
       build_preset:
         type: choice
@@ -144,12 +144,14 @@ jobs:
     name: Start self-hosted runner (${{ inputs.build_preset }})
     timeout-minutes: 60
     if: always()
-    runs-on: ubuntu-latest
+    runs-on: [ self-hosted, "self-hosted", "runner_heavy"]
     outputs:
-      label: ${{ steps.start-runner.outputs.label || steps.start-runner-nebius.outputs.label }}
-      instance-id: ${{ steps.start-runner.outputs.instance-id || steps.start-runner-nebius.outputs.instance-id }}
-      runner_ipv4: ${{ steps.start-runner.outputs.external-ipv4 || steps.start-runner-nebius.outputs.external-ipv4 }}
-      runner_local_ipv4: ${{ steps.start-runner.outputs.local-ipv4 || steps.start-runner-nebius.outputs.local-ipv4 }}
+      label: ${{ steps.get-runner.outputs.LABEL }}
+      runner_flavor: ${{ steps.get-runner.outputs.RUNNER_FLAVOR }}
+      instance-id: ${{ runner.name }}
+      old-instance-name: ${{ steps.get-runner.outputs.OLD_INSTANCE_NAME }}
+      runner_ipv4: ${{ steps.get-runner.outputs.EXTERNAL_IPV4 }}
+      runner_local_ipv4: ${{ steps.get-runner.outputs.LOCAL_IPV4 }}
       build_threads: ${{ steps.calculate-threads.outputs.build_threads || '60' }}
       test_threads: ${{ steps.calculate-threads.outputs.test_threads || '32' }}
       link_threads: ${{ steps.calculate-threads.outputs.link_threads || '24' }}
@@ -177,56 +179,70 @@ jobs:
         with:
           submodules: false
           sparse-checkout: '.github'
-      - name: Start runner
-        id: start-runner
-        if: env.nebius == 'false' && always() || false
-        uses: ./.github/actions/runner_create
-        timeout-minutes: 60
-        with:
-          repo_owner: ${{ github.repository_owner }}
-          repo: ${{ github.event.repository.name }}
-          service_account_key: ${{ secrets.NEBIUS_SA_JSON_CREDENTIALS }}
-          token: ${{ secrets.GH_PERSONAL_ACCESS_TOKEN }}
-          vm_folder: bjeuq5o166dq4ukv3eec
-          vm_name: ${{ github.event.pull_request.number && format('pr-{0}{1}-{2}-{3}', github.event.pull_request.number, inputs.vm_name_suffix, github.run_id, github.run_attempt) || format('run-{0}-{1}', github.run_id, github.run_attempt) }}
-          vm_zone: eu-north1-c
-          vm_cpu: 60
-          vm_memory: 420
-          vm_disk_type: ${{ inputs.disk_type || 'network-ssd-nonreplicated' }}
-          vm_disk_size: 1023
-          vm_subnet: f8uh0ml4rhb45nde9p75
-          vm_image: ${{ vars.IMAGE_ID_2204 }}
-          vm_labels: ${{ github.event.pull_request.number && format('pr={0},run={1}-{2},repo={3},owner={4}', github.event.pull_request.number, github.run_id, github.run_attempt, github.event.repository.name, github.repository_owner) || format('run={0}-{1},repo={2},owner={3}', github.run_id, github.run_attempt, github.event.repository.name, github.repository_owner) }}
-          vm_user_passwd: ${{ secrets.VM_USER_PASSWD }}
-      - name: Start runner (nebius)
-        id: start-runner-nebius
-        if: env.nebius == 'true' && always() || false
-        uses: ./.github/actions/nebius_runner_create
-        timeout-minutes: 60
-        with:
-          org: ydb-platform
-          team: nbs
-          repo_owner: ${{ github.repository_owner }}
-          repo: ${{ github.event.repository.name }}
-          service_account_key: ${{ secrets.NEW_NEBIUS_SA_JSON_CREDENTIALS }}
-          token: ${{ secrets.GH_PERSONAL_ACCESS_TOKEN }}
-          vm_parent_id: ${{ vars.NEBIUS_PARENT_ID }}
-          vm_name: ${{ github.event.pull_request.number && format('pr-{0}{1}-{2}-{3}', github.event.pull_request.number, inputs.vm_name_suffix, github.run_id, github.run_attempt) || format('run-{0}-{1}', github.run_id, github.run_attempt) }}
-          vm_platform_id: ${{ vars.NEBIUS_PLATFORM_ID }}
-          vm_preset: ${{ vars.NEBIUS_VM_PRESET }}
-          vm_disk_type: ${{ inputs.disk_type || 'network-ssd-nonreplicated' }}
-          vm_disk_size: 1023
-          vm_subnet: ${{ vars.NEBIUS_SUBNET_ID }}
-          vm_image: ${{ vars.NEBIUS_IMAGE_ID_2204 }}
-          vm_labels: ${{ github.event.pull_request.number && format('pr={0},run={1}-{2},repo={3},owner={4}', github.event.pull_request.number, github.run_id, github.run_attempt, github.event.repository.name, github.repository_owner) || format('run={0}-{1},repo={2},owner={3}', github.run_id, github.run_attempt, github.event.repository.name, github.repository_owner) }}
-          vm_user_passwd: ${{ secrets.VM_USER_PASSWD }}
-          vm_allow_downgrade: ${{ env.allow_downgrade == 'true' && 'yes' || 'no' }}
+      - name: set up home
+        run: echo "HOME=/root" >> $GITHUB_ENV
+  
+      - name: set up path
+        run: echo "PATH=$PATH:$HOME/nebius-cloud/bin:$HOME/.nebius/bin" >> $GITHUB_ENV
+      - name: Set up Nebius CLI
+        run: |
+          set -x
+          [ ! -f "$HOME/.nebius/bin/nebius" ] && {
+            curl -sSL https://storage.eu-north1.nebius.cloud/cli/install.sh | bash
+            cat <<EOF > sa.json
+          ${sa_json}
+          EOF
+          } || echo "Nebius CLI already installed"
+          [ ! -f "$HOME/.nebius/config.yaml" ] && {
+            jq -r '."subject-credentials"."private-key"'  sa.json > private.pem
+            echo "::add-mask::$(jq -r '."subject-credentials"."kid"' sa.json)"
+            public_key_id=$(jq -r '."subject-credentials"."kid"' sa.json)
+            echo "::add-mask::$(jq -r '."subject-credentials"."iss"' sa.json)"
+            service_account_id=$(jq -r '."subject-credentials"."iss"' sa.json)
+            echo "::add-mask::tenant-e00en3r863f7me6wtd"
+            
+            nebius profile create --endpoint api.eu-north1.nebius.cloud \
+                                  --profile nbs-github-user-sa \
+                                  --parent-id tenant-e00en3r863f7me6wtd \
+                                  --public-key-id "${public_key_id}" \
+                                  --private-key-file private.pem \
+                                  --service-account-id "${service_account_id}"
+            } || echo "Nebius profile already created"
+        env:
+          sa_json: ${{ secrets.NEW_NEBIUS_SA_JSON_CREDENTIALS }}
+      - name: Update VM name and get runner settings
+        id: get-runner
+        run: |
+          set -x
+          nebius compute instance get --id $INSTANCE_ID --format json > instance.json
+          OLD_INSTANCE_NAME=$(jq -r '.metadata.name' instance.json)
+          LABEL=$(jq -r '.metadata.labels."runner-label"' instance.json)
+          RUNNER_FLAVOR=$(jq -r '.metadata.labels."runner-flavor"' instance.json)
+          EXTERNAL_IPV4=$(jq -r '.status.network_interfaces[0].ip_address.public_ip_address' instance.json | sed -e 's/\/32//g')
+          LOCAL_IPV4=$(jq -r '.status.network_interfaces[0].ip_address.address' instance.json | sed -e 's/\/32//g')
+          PRESET=$(jq -r '.spec.resources.preset' instance.json)
+          DATE=$(date +%s);
+          INSTANCE_NAME="running-${GITHUB_RUN_ID}-ydb-platform-nbs-${DATE}"
+          nebius compute instance update --id $INSTANCE_ID --name $INSTANCE_NAME
+          {
+            echo LABEL=$LABEL;
+            echo RUNNER_FLAVOR=$RUNNER_FLAVOR;
+            echo INSTANCE_ID=$INSTANCE_ID;
+            echo RUNNER_IPV4=$EXTERNAL_IPV4;
+            echo RUNNER_LOCAL_IPV4=$LOCAL_IPV4;
+            echo OLD_INSTANCE_NAME=$OLD_INSTANCE_NAME;
+            echo VM_PRESET=$PRESET;
+          } >> $GITHUB_OUTPUT
+        env:
+          INSTANCE_ID: ${{ runner.name }}
+
+
       - name: Calculate threads
         id: calculate-threads
         if: env.nebius == 'true' && always() || false
         uses: ./.github/actions/nebius_threads_calculator
         with:
-          vm_preset: ${{ steps.start-runner-nebius.outputs.vm-preset }}
+          vm_preset: ${{ steps.get-runner.outputs.VM_PRESET }}
           tests_size: ${{ inputs.test_size }}
 
   build-and-test:
@@ -237,6 +253,7 @@ jobs:
     with:
       runner_kind: self-hosted
       runner_label: ${{ needs.provide-runner.outputs.label }}
+      runner_flavor: ${{ needs.provide-runner.outputs.runner_flavor }}
       runner_instance_id: ${{ needs.provide-runner.outputs.instance-id }}
       runner_ipv4: ${{ needs.provide-runner.outputs.runner_ipv4 }}
       build_target: ${{ inputs.build_target }}
@@ -282,7 +299,7 @@ jobs:
       - provide-runner  # required to get output from the start-runner job
       - build-and-test  # required to wait when the main job is done
       - sleep-if-needed # required to wait until all debug is done
-    runs-on: ubuntu-latest
+    runs-on: [ self-hosted, "self-hosted", "runner_heavy", "${{ needs.provide-runner.outputs.label }}" ]
     if: always()
     steps:
       - name: checkout PR
@@ -307,24 +324,11 @@ jobs:
         with:
           submodules: false
           sparse-checkout: '.github'
-      - name: Stop runner
-        uses: ./.github/actions/runner_remove
-        if: env.nebius == 'false' && always() || false
-        timeout-minutes: 60
-        with:
-          service_account_key: ${{ secrets.NEBIUS_SA_JSON_CREDENTIALS }}
-          token: ${{ secrets.GH_PERSONAL_ACCESS_TOKEN }}
-          repo_owner: ${{ github.repository_owner }}
-          repo: ${{ github.event.repository.name }}
-          vm_id: ${{ needs.provide-runner.outputs.instance-id }}
-      - name: Stop runner (nebius)
-        uses: ./.github/actions/nebius_runner_remove
-        if: env.nebius == 'true' && always() || false
-        timeout-minutes: 60
-        with:
-          service_account_key: ${{ secrets.NEW_NEBIUS_SA_JSON_CREDENTIALS }}
-          token: ${{ secrets.GH_PERSONAL_ACCESS_TOKEN }}
-          repo_owner: ${{ github.repository_owner }}
-          repo: ${{ github.event.repository.name }}
-          vm_parent_id: ${{ vars.NEBIUS_PARENT_ID }}
-          vm_id: ${{ needs.provide-runner.outputs.instance-id }}
+      - name: Rename VM to old name
+        id: rename
+        run: |
+          set -x
+          nebius compute instance update --id $INSTANCE_ID --name $INSTANCE_NAME
+        env:
+          INSTANCE_ID: ${{ runner.name }}
+          INSTANCE_NAME: ${{ needs.provide-runner.outputs.old-instance-name }}
