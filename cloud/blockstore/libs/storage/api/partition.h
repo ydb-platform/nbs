@@ -10,9 +10,13 @@ namespace NCloud::NBlockStore::NStorage::NPartition {
 ////////////////////////////////////////////////////////////////////////////////
 
 #define BLOCKSTORE_PARTITION_REQUESTS(xxx, ...)                                \
-    xxx(WaitReady,              __VA_ARGS__)                                   \
-    xxx(StatPartition,          __VA_ARGS__)                                   \
-    xxx(Drain,                  __VA_ARGS__)                                   \
+    xxx(WaitReady,                                                 __VA_ARGS__)\
+    xxx(StatPartition,                                             __VA_ARGS__)\
+    /* Waits until there are no more in-flight write requests. */              \
+    xxx(Drain,                                                     __VA_ARGS__)\
+    /* Waits for current in-flight writes to finish and does not affect any    \
+     * requests that come after. */                                            \
+    xxx(WaitForInFlightWrites,                                     __VA_ARGS__)\
 // BLOCKSTORE_PARTITION_REQUESTS
 
 // requests forwarded from service to partition
@@ -84,6 +88,18 @@ struct TEvPartition
     };
 
     //
+    // WaitForInFlightWrites
+    //
+
+    struct TWaitForInFlightWritesRequest
+    {
+    };
+
+    struct TWaitForInFlightWritesResponse
+    {
+    };
+
+    //
     // Garbage collector finish report
     //
 
@@ -118,6 +134,9 @@ struct TEvPartition
 
         EvAddLaggingAgentRequest = EvBegin + 9,
         EvRemoveLaggingReplicaRequest = EvBegin + 10,
+
+        EvWaitForInFlightWritesRequest = EvBegin + 11,
+        EvWaitForInFlightWritesResponse = EvBegin + 12,
 
         EvEnd
     };

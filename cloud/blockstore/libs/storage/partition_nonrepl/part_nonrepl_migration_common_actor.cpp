@@ -242,6 +242,9 @@ STFUNC(TNonreplicatedPartitionMigrationCommonActor::StateWork)
         HFunc(
             NPartition::TEvPartition::TEvDrainRequest,
             DrainActorCompanion.HandleDrain);
+        HFunc(
+            NPartition::TEvPartition::TEvWaitForInFlightWritesRequest,
+            DrainActorCompanion.HandleWaitForInFlightWrites);
         HFunc(TEvService::TEvGetChangedBlocksRequest, DeclineGetChangedBlocks);
         HFunc(
             TEvNonreplPartitionPrivate::TEvGetDeviceForRangeRequest,
@@ -306,6 +309,9 @@ STFUNC(TNonreplicatedPartitionMigrationCommonActor::StateZombie)
         HFunc(TEvService::TEvWriteBlocksLocalRequest, RejectWriteBlocksLocal);
 
         HFunc(NPartition::TEvPartition::TEvDrainRequest, RejectDrain);
+        HFunc(
+            NPartition::TEvPartition::TEvWaitForInFlightWritesRequest,
+            RejectWaitForInFlightWrites);
         HFunc(TEvService::TEvGetChangedBlocksRequest, DeclineGetChangedBlocks);
         HFunc(
             TEvNonreplPartitionPrivate::TEvGetDeviceForRangeRequest,

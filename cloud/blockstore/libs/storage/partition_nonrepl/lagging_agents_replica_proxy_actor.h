@@ -7,6 +7,7 @@
 
 #include <cloud/blockstore/libs/diagnostics/public.h>
 #include <cloud/blockstore/libs/kikimr/helpers.h>
+#include <cloud/blockstore/libs/storage/api/partition.h>
 #include <cloud/blockstore/libs/storage/api/service.h>
 #include <cloud/blockstore/libs/storage/api/volume.h>
 #include <cloud/storage/core/libs/actors/poison_pill_helper.h>
@@ -45,6 +46,7 @@ private:
     enum class EAgentState : ui8
     {
         Unavailable,
+        WaitingForDrain,
         Resyncing
     };
     struct TAgentState
@@ -56,6 +58,9 @@ private:
         std::unique_ptr<TCompressedBitmap> CleanBlocksMap;
     };
     THashMap<TString, TAgentState> AgentState;
+
+    ui64 DrainRequestCounter = 0;
+    THashMap<ui64, TString> CurrentDrainingAgents;
 
     TPoisonPillHelper PoisonPillHelper;
 
@@ -129,6 +134,11 @@ private:
         const TEvNonreplPartitionPrivate::TEvAgentIsBackOnline::TPtr& ev,
         const NActors::TActorContext& ctx);
 
+    void HandleWaitForInFlightWritesResponse(
+        const NPartition::TEvPartition::TEvWaitForInFlightWritesResponse::TPtr&
+            ev,
+        const NActors::TActorContext& ctx);
+
     void HandleWriteOrZeroCompleted(
         const TEvNonreplPartitionPrivate::TEvWriteOrZeroCompleted::TPtr& ev,
         const NActors::TActorContext& ctx);
@@ -164,6 +174,9 @@ private:
     BLOCKSTORE_IMPLEMENT_REQUEST(ZeroBlocks, TEvService);
     BLOCKSTORE_IMPLEMENT_REQUEST(ReadBlocks, TEvService);
     BLOCKSTORE_IMPLEMENT_REQUEST(ReadBlocksLocal, TEvService);
+    BLOCKSTORE_IMPLEMENT_REQUEST(
+        WaitForInFlightWrites,
+        NPartition::TEvPartition);
 };
 
 }   // namespace NCloud::NBlockStore::NStorage

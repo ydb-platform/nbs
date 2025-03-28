@@ -9,7 +9,9 @@ namespace NCloud::NBlockStore::NStorage {
 
 class TDrainActorCompanion
 {
+private:
     TVector<TRequestInfoPtr> DrainRequests;
+    TRequestInfoPtr WaitForInFlightWritesRequest;
     IRequestsInProgress& RequestsInProgress;
     const TString LoggingId;
 
@@ -26,7 +28,15 @@ public:
         const NPartition::TEvPartition::TEvDrainRequest::TPtr& ev,
         const NActors::TActorContext& ctx);
 
+    void HandleWaitForInFlightWrites(
+        const NPartition::TEvPartition::TEvWaitForInFlightWritesRequest::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
     void ProcessDrainRequests(const NActors::TActorContext& ctx);
+
+private:
+    void DoProcessDrainRequests(const NActors::TActorContext& ctx);
+    void DoProcessWaitForInFlightWritesRequests(const NActors::TActorContext& ctx);
 };
 
 }  // namespace NCloud::NBlockStore::NStorage

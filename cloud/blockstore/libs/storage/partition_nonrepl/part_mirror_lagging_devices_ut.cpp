@@ -310,7 +310,7 @@ struct TTestEnv
              i < TBlockStoreComponents::END;
              ++i)
         {
-            Runtime.SetLogPriority(i, NLog::PRI_DEBUG);
+            Runtime.SetLogPriority(i, NLog::PRI_TRACE);
         }
     }
 
@@ -374,6 +374,27 @@ struct TTestEnv
                 TEvNonreplPartitionPrivate::TEvRemoveLaggingAgentRequest>(
                 *laggingAgent));
     }
+
+    void WaitForMigrationFinishEvent()
+    {
+        Runtime.AdvanceCurrentTime(Config->GetLaggingDevicePingInterval());
+        bool migrationFinished = false;
+        for (int i = 0; i < 100; i++) {
+            migrationFinished = Runtime.DispatchEvents(
+                {.FinalEvents =
+                     {{TEvVolumePrivate::EvLaggingAgentMigrationFinished}}},
+                TDuration::MilliSeconds(10));
+            if (migrationFinished) {
+                break;
+            }
+            Runtime.AdvanceCurrentTime(TDuration::Seconds(4));
+        }
+        if (!migrationFinished) {
+            Runtime.DispatchEvents(
+                {.FinalEvents = {
+                     {TEvVolumePrivate::EvLaggingAgentMigrationFinished}}});
+        }
+    }
 };
 
 }   // namespace
@@ -382,6 +403,38 @@ struct TTestEnv
 
 Y_UNIT_TEST_SUITE(TMirrorPartitionLaggingDevicesTest)
 {
+    Y_UNIT_TEST(ShouldMigrateLaggingDevices)
+    {
+        constexpr ui32 AgentCount = 3;
+        TTestBasicRuntime runtime(AgentCount);
+
+        TTestEnv env(runtime);
+
+        TPartitionClient client(runtime, env.MirrorPartActorId);
+
+        const auto fullDiskRange =
+            TBlockRange64::WithLength(0, DeviceBlockCount * 3);
+        client.WriteBlocks(fullDiskRange, 'A');
+
+        // The second device in the second replica is lagging.
+        env.AddLaggingAgent(env.Replicas[0][1].GetAgentId());
+
+        // Write blocks.
+        const auto firstAndSecondDevices =
+            TBlockRange64::WithLength(DeviceBlockCount - 1, 2);
+        client.WriteBlocks(firstAndSecondDevices, 'B');
+
+        // The second replica is lagging and is untouched.
+        env.ReadAndCheckContents(0, firstAndSecondDevices, 'B');
+        env.ReadAndCheckContents(1, firstAndSecondDevices, 'A');
+        env.ReadAndCheckContents(2, firstAndSecondDevices, 'B');
+
+        env.WaitForMigrationFinishEvent();
+
+        // After the migration all replicas are in sync.
+        env.ReadAndCheckContents(firstAndSecondDevices, 'B');
+    }
+
     Y_UNIT_TEST(ShouldDisableIOForOutdatedDevices)
     {
         constexpr ui32 AgentCount = 3;

@@ -703,6 +703,13 @@ void TPartitionActor::HandleDrain(
     DrainActorCompanion.HandleDrain(ev, ctx);
 }
 
+void TPartitionActor::HandleWaitForInFlightWrites(
+    const TEvPartition::TEvWaitForInFlightWritesRequest::TPtr& ev,
+    const TActorContext& ctx)
+{
+    DrainActorCompanion.HandleWaitForInFlightWrites(ev, ctx);
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 #define BLOCKSTORE_HANDLE_UNIMPLEMENTED_REQUEST(name, ns)                      \
