@@ -50,7 +50,6 @@ func TestSnapshotsCreateSnapshot(t *testing.T) {
 			ZoneId: "zone",
 			DiskId: "disk",
 		},
-		CheckpointID: "checkpoint",
 		CreateRequest: &wrappers.UInt64Value{
 			Value: 1,
 		},
@@ -68,11 +67,11 @@ func TestSnapshotsCreateSnapshot(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, snapshot.ID, created.ID)
 
-	err = storage.SnapshotCreated(ctx, snapshot.ID, time.Now(), 0, 0)
+	err = storage.SnapshotCreated(ctx, snapshot.ID, "", time.Now(), 0, 0)
 	require.NoError(t, err)
 
 	// Check idempotency.
-	err = storage.SnapshotCreated(ctx, snapshot.ID, time.Now(), 0, 0)
+	err = storage.SnapshotCreated(ctx, snapshot.ID, "", time.Now(), 0, 0)
 	require.NoError(t, err)
 
 	// Check idempotency.
@@ -103,7 +102,6 @@ func TestSnapshotsDeleteSnapshot(t *testing.T) {
 			ZoneId: "zone",
 			DiskId: "disk",
 		},
-		CheckpointID: "checkpoint",
 		CreateRequest: &wrappers.UInt64Value{
 			Value: 1,
 		},
@@ -124,7 +122,7 @@ func TestSnapshotsDeleteSnapshot(t *testing.T) {
 	require.NoError(t, err)
 	requireSnapshotsAreEqual(t, expected, *actual)
 
-	err = storage.SnapshotCreated(ctx, snapshot.ID, time.Now(), 0, 0)
+	err = storage.SnapshotCreated(ctx, snapshot.ID, "", time.Now(), 0, 0)
 	require.Error(t, err)
 	require.True(t, errors.Is(err, errors.NewEmptyNonRetriableError()))
 
@@ -149,7 +147,7 @@ func TestSnapshotsDeleteSnapshot(t *testing.T) {
 	require.Error(t, err)
 	require.True(t, errors.Is(err, errors.NewEmptyNonRetriableError()))
 
-	err = storage.SnapshotCreated(ctx, snapshot.ID, time.Now(), 0, 0)
+	err = storage.SnapshotCreated(ctx, snapshot.ID, "", time.Now(), 0, 0)
 	require.Error(t, err)
 	require.True(t, errors.Is(err, errors.NewEmptyNonRetriableError()))
 }
@@ -173,7 +171,7 @@ func TestSnapshotsDeleteNonexistentSnapshot(t *testing.T) {
 	err = storage.SnapshotDeleted(ctx, snapshot.ID, time.Now())
 	require.NoError(t, err)
 
-	err = storage.SnapshotCreated(ctx, snapshot.ID, time.Now(), 0, 0)
+	err = storage.SnapshotCreated(ctx, snapshot.ID, "", time.Now(), 0, 0)
 	require.Error(t, err)
 	require.True(t, errors.Is(err, errors.NewEmptyNonRetriableError()))
 
@@ -219,7 +217,6 @@ func TestSnapshotsClearDeletedSnapshots(t *testing.T) {
 			ZoneId: "zone",
 			DiskId: "disk",
 		},
-		CheckpointID: "checkpoint",
 		CreateRequest: &wrappers.UInt64Value{
 			Value: 1,
 		},
@@ -318,10 +315,11 @@ func TestSnapshotsGetSnapshot(t *testing.T) {
 	snapshotID := t.Name()
 	snapshotSize := uint64(2 * 1024 * 1024)
 	snapshotStorageSize := uint64(3 * 1024 * 1024)
+	checkpointID := "checkpoint"
 
-	s, err := storage.GetSnapshotMeta(ctx, snapshotID)
+	actualSnapshot, err := storage.GetSnapshotMeta(ctx, snapshotID)
 	require.NoError(t, err)
-	require.Nil(t, s)
+	require.Nil(t, actualSnapshot)
 
 	snapshot := SnapshotMeta{
 		ID:       snapshotID,
@@ -330,7 +328,6 @@ func TestSnapshotsGetSnapshot(t *testing.T) {
 			ZoneId: "zone",
 			DiskId: "disk",
 		},
-		CheckpointID: "checkpoint",
 		CreateRequest: &wrappers.UInt64Value{
 			Value: 1,
 		},
@@ -345,20 +342,44 @@ func TestSnapshotsGetSnapshot(t *testing.T) {
 
 	snapshot.CreateRequest = nil
 
-	s, err = storage.GetSnapshotMeta(ctx, snapshotID)
+	actualSnapshot, err = storage.GetSnapshotMeta(ctx, snapshotID)
 	require.NoError(t, err)
-	require.NotNil(t, s)
-	requireSnapshotsAreEqual(t, snapshot, *s)
+	require.NotNil(t, actualSnapshot)
+	requireSnapshotsAreEqual(t, snapshot, *actualSnapshot)
 
-	err = storage.SnapshotCreated(ctx, snapshotID, time.Now(), snapshotSize, snapshotStorageSize)
+	err = storage.SnapshotCreated(
+		ctx,
+		snapshotID,
+		checkpointID,
+		time.Now(),
+		snapshotSize,
+		snapshotStorageSize,
+	)
 	require.NoError(t, err)
 
 	snapshot.Size = snapshotSize
 	snapshot.StorageSize = snapshotStorageSize
+	snapshot.CheckpointID = checkpointID
 	snapshot.Ready = true
 
-	s, err = storage.GetSnapshotMeta(ctx, snapshotID)
+	actualSnapshot, err = storage.GetSnapshotMeta(ctx, snapshotID)
 	require.NoError(t, err)
-	require.NotNil(t, s)
-	requireSnapshotsAreEqual(t, snapshot, *s)
+	require.NotNil(t, actualSnapshot)
+	requireSnapshotsAreEqual(t, snapshot, *actualSnapshot)
+
+	// Check idempotency.
+	err = storage.SnapshotCreated(
+		ctx,
+		snapshotID,
+		"foo", // checkpointID
+		time.Now(),
+		42,  // snapshotSize
+		713, // snapshotStorageSize
+	)
+	require.NoError(t, err)
+
+	actualSnapshot, err = storage.GetSnapshotMeta(ctx, snapshotID)
+	require.NoError(t, err)
+	require.NotNil(t, actualSnapshot)
+	requireSnapshotsAreEqual(t, snapshot, *actualSnapshot)
 }

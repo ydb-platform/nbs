@@ -146,6 +146,7 @@ func (t *createImageFromDiskTask) run(
 	return t.storage.ImageCreated(
 		ctx,
 		t.request.DstImageId,
+		checkpointID,
 		time.Now(),
 		uint64(t.state.ImageSize),
 		uint64(t.state.ImageStorageSize),
