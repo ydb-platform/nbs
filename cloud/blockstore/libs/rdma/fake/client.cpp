@@ -23,6 +23,7 @@
 #include <contrib/ydb/library/actors/core/log.h>
 
 #include <chrono>
+#include <utility>
 
 namespace NCloud::NBlockStore {
 
@@ -69,11 +70,13 @@ struct TEvFakeRdmaClient
 
     struct TCancelRequest
     {
+        TString AgentId;
         ui64 ClientReqId;
     };
 
     struct TOperationCompleted
     {
+        TString AgentId;
     };
 
     enum EEvents
@@ -250,6 +253,7 @@ class TExecuteRequestActor final
 private:
     const TActorId Parent;
     const ui32 NodeId;
+    const TString AgentId;
     NRdma::TClientRequestPtr Request;
     TCallContextPtr CallContext;
 
@@ -257,10 +261,12 @@ public:
     TExecuteRequestActor(
             TActorId parent,
             ui32 nodeId,
+            TString agentId,
             NRdma::TClientRequestPtr request,
             TCallContextPtr callContext)
         : Parent(parent)
         , NodeId(nodeId)
+        , AgentId(std::move(agentId))
         , Request(std::move(request))
         , CallContext(std::move(callContext))
     {}
@@ -460,10 +466,10 @@ private:
 
     void ReplyAndDie(const TActorContext& ctx)
     {
-        NCloud::Send(
-            ctx,
-            Parent,
-            std::make_unique<TEvFakeRdmaClient::TEvOperationCompleted>());
+        auto completion =
+            std::make_unique<TEvFakeRdmaClient::TEvOperationCompleted>();
+        completion->AgentId = AgentId;
+        NCloud::Send(ctx, Parent, std::move(completion));
         Die(ctx);
     }
 
@@ -797,17 +803,23 @@ private:
 class TFakeRdmaClientActor
     : public TActor<TFakeRdmaClientActor>
 {
+
+    struct TCancellationInfo {
+        THashMap<ui64, TActorId> ClientReqIdToActorId;
+        THashMap<TActorId, ui64> ActorIdToClientReqId;
+    };
+
     struct TEndpoint
     {
         ui32 NodeId = 0;
         ui32 Refs = 0;
+        std::shared_ptr<TClientEndpoint> Endpoint;
+        TCancellationInfo CancellationInfo;
     };
 
 private:
     IActorSystemPtr ActorSystem;
     THashMap<TString, TEndpoint> Endpoints;
-    THashMap<ui64, TActorId> ClientReqIdToActorId;
-    THashMap<TActorId, ui64> ActorIdToClientReqId;
 
 public:
     explicit TFakeRdmaClientActor(IActorSystemPtr actorSystem)
@@ -875,12 +887,13 @@ private:
                 "Endpoint for " << msg->AgentId.Quote() << " is started");
 
             UpdateNodeId(ctx, msg->AgentId);
+            ep.Endpoint = std::make_shared<TClientEndpoint>(
+                ActorSystem,
+                SelfId(),
+                msg->AgentId);
         }
 
-        msg->Promise.SetValue(std::make_shared<TClientEndpoint>(
-            ActorSystem,
-            SelfId(),
-            msg->AgentId));
+        msg->Promise.SetValue(ep.Endpoint);
     }
 
     void HandleStopEndpoint(
@@ -939,16 +952,26 @@ private:
             return;
         }
 
-        auto [it, inserted] = ClientReqIdToActorId.try_emplace(msg->ClientReqId);
+        auto& info = ep->CancellationInfo;
+
+        LOG_INFO_S(
+            ctx,
+            TBlockStoreComponents::RDMA,
+            "Send request agentId" << msg->AgentId.Quote() << ", clientReqId "
+                                   << msg->ClientReqId);
+
+        auto [it, inserted] =
+            info.ClientReqIdToActorId.try_emplace(msg->ClientReqId);
         Y_ABORT_UNLESS(inserted);
 
         it->second = NCloud::Register<TExecuteRequestActor>(
             ctx,
             SelfId(),
             ep->NodeId,
+            msg->AgentId,
             std::move(msg->Request),
             std::move(msg->CallContext));
-        ActorIdToClientReqId[it->second] = it->first;
+        info.ActorIdToClientReqId[it->second] = it->first;
     }
 
     void HandleUpdateNodeId(
@@ -982,8 +1005,15 @@ private:
         const TEvFakeRdmaClient::TEvCancelRequest::TPtr& ev,
         const TActorContext& ctx)
     {
-        auto it = ClientReqIdToActorId.find(ev->Get()->ClientReqId);
-        if (it == ClientReqIdToActorId.end()) {
+        auto* msg = ev->Get();
+        auto* ep = Endpoints.FindPtr(msg->AgentId);
+        if (!ep) {
+            return;
+        }
+        auto& info = ep->CancellationInfo;
+
+        auto it = info.ClientReqIdToActorId.find(msg->ClientReqId);
+        if (it == info.ClientReqIdToActorId.end()) {
             return;
         }
 
@@ -996,12 +1026,26 @@ private:
         const TActorContext& ctx)
     {
         Y_UNUSED(ctx);
-        auto actorId = ev->Sender;
-        auto it = ActorIdToClientReqId.find(actorId);
-        auto clientReqId = it->second;
-        ClientReqIdToActorId.erase(clientReqId);
+        auto* msg = ev->Get();
+        auto* ep = Endpoints.FindPtr(msg->AgentId);
+        if (!ep) {
+            return;
+        }
+        auto& info = ep->CancellationInfo;
 
-        ActorIdToClientReqId.erase(it);
+        auto actorId = ev->Sender;
+        auto it = info.ActorIdToClientReqId.find(actorId);
+        auto clientReqId = it->second;
+
+        LOG_INFO_S(
+            ctx,
+            TBlockStoreComponents::RDMA,
+            "op completed agentId" << msg->AgentId.Quote() << ", clientReqId "
+                                   << clientReqId);
+
+        info.ClientReqIdToActorId.erase(clientReqId);
+
+        info.ActorIdToClientReqId.erase(it);
     }
 };
 
