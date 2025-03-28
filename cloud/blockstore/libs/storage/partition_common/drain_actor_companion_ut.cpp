@@ -162,6 +162,12 @@ private:
         drainCompanion.HandleWaitForInFlightWrites(ev, ctx);
     }
 
+    bool HasWriteRequestInRange(TBlockRange64 r) const override {
+        Y_UNUSED(r);
+        Y_ABORT("Unimplemented");
+        return false;
+    }
+
     void HandleSetWriteCount(
         const TEvSetWriteInProgressCount::TPtr& ev,
         const TActorContext& ctx)

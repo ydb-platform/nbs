@@ -1,18 +1,13 @@
 #pragma once
 
 #include <cloud/blockstore/libs/common/block_range.h>
+#include <cloud/blockstore/libs/storage/model/common_constants.h>
+
 #include <cloud/storage/core/libs/common/compressed_bitmap.h>
 
 #include <optional>
 
 namespace NCloud::NBlockStore::NStorage {
-
-////////////////////////////////////////////////////////////////////////////////
-
-// We process 4 MB of data at a time.
-// Keep the value less than MaxBufferSize in
-// cloud/blockstore/libs/rdma/iface/client.h
-constexpr ui64 ProcessingRangeSize = 4_MB;
 
 ////////////////////////////////////////////////////////////////////////////////
 

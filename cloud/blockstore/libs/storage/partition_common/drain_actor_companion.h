@@ -10,6 +10,11 @@ namespace NCloud::NBlockStore::NStorage {
 class TDrainActorCompanion
 {
 private:
+    struct TDrainRangeInfo {
+        TRequestInfoPtr RequestInfo;
+        TBlockRange64 RangeToDrain;
+    };
+    TVector<TDrainRangeInfo> DrainRangeRequests;
     TVector<TRequestInfoPtr> DrainRequests;
     TRequestInfoPtr WaitForInFlightWritesRequest;
     IRequestsInProgress& RequestsInProgress;
@@ -29,10 +34,22 @@ public:
         const NActors::TActorContext& ctx);
 
     void HandleWaitForInFlightWrites(
-        const NPartition::TEvPartition::TEvWaitForInFlightWritesRequest::TPtr& ev,
+        const NPartition::TEvPartition::TEvWaitForInFlightWritesRequest::TPtr&
+            ev,
         const NActors::TActorContext& ctx);
 
     void ProcessDrainRequests(const NActors::TActorContext& ctx);
+
+    void AddDrainRangeRequest(
+        const NActors::TActorContext& ctx,
+        TRequestInfoPtr reqInfo,
+        TBlockRange64 range);
+
+    void ProcessDrainRangeRequests(const NActors::TActorContext& ctx);
+
+    void RemoveDrainRangeRequest(
+        const NActors::TActorContext& ctx,
+        TBlockRange64 range);
 
 private:
     void DoProcessDrainRequests(const NActors::TActorContext& ctx);

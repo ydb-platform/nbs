@@ -4960,7 +4960,7 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
             DefaultDeviceBlockSize * DefaultDeviceBlockCount / DefaultBlockSize;
 
         const ui64 blocksInProcessingRange =
-            ProcessingRangeSize / DefaultBlockSize;
+            MigrationRangeSize / DefaultBlockSize;
 
         TVolumeClient volume(*runtime);
         volume.UpdateVolumeConfig(
