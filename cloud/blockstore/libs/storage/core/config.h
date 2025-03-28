@@ -633,6 +633,7 @@ public:
     [[nodiscard]] bool GetLaggingDevicesForMirror3DisksEnabled() const;
     [[nodiscard]] TDuration GetLaggingDeviceTimeoutThreshold() const;
     [[nodiscard]] TDuration GetLaggingDevicePingInterval() const;
+    [[nodiscard]] bool GetResyncAfterLaggingAgentMigration() const;
 
     NCloud::NProto::TConfigDispatcherSettings GetConfigDispatcherSettings() const;
 

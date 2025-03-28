@@ -96,7 +96,10 @@ void TVolumeActor::HandleResyncFinished(
     const TActorContext& ctx)
 {
     if (UpdateVolumeConfigInProgress) {
-        State->SetResyncNeededInMeta(false);
+        State->SetResyncNeededInMeta(
+            false,   // resyncEnabled
+            false    // alertResyncChecksumMismatch
+        );
 
         return;
     }
@@ -121,7 +124,9 @@ void TVolumeActor::HandleResyncFinished(
     ExecuteTx<TToggleResync>(
         ctx,
         std::move(requestInfo),
-        false);
+        false,   // resyncEnabled
+        false    // alertResyncChecksumMismatch
+    );
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -154,7 +159,9 @@ void TVolumeActor::ExecuteToggleResync(
         State->GetMeta().GetResyncNeeded(),
         args.ResyncEnabled);
 
-    State->SetResyncNeededInMeta(args.ResyncEnabled);
+    State->SetResyncNeededInMeta(
+        args.ResyncEnabled,
+        args.AlertResyncChecksumMismatch);
     TVolumeDatabase db(tx.DB);
     db.WriteMeta(State->GetMeta());
     // MetaHistory update not needed here

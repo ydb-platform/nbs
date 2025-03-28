@@ -228,6 +228,13 @@ void TMirrorPartitionResyncActor::HandleRangeResynced(
         PartConfig->GetName().c_str(),
         DescribeRange(range).c_str());
 
+    if (CritOnChecksumMismatch && msg->WriteStartTs > TInstant()) {
+        ReportMirroredDiskResyncChecksumMismatch(
+            TStringBuilder()
+            << '[' << PartConfig->GetName()
+            << "] Checksum mismatch during resync in range " << msg->Range);
+    }
+
     auto resyncRange = State.BuildResyncRange();
     const auto currentIndex = State.GetLastReportedResyncIndex();
     const auto step = Config->GetResyncIndexCachingInterval();

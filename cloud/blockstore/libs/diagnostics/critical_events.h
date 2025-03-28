@@ -71,6 +71,7 @@ namespace NCloud::NBlockStore {
     xxx(DiskRegistryInitialAgentRejectionThresholdExceeded)                    \
     xxx(ErrorWasSentToTheGuestForReliableDisk)                                 \
     xxx(ErrorWasSentToTheGuestForNonReliableDisk)                              \
+    xxx(MirroredDiskResyncChecksumMismatch)                                    \
 // BLOCKSTORE_CRITICAL_EVENTS
 
 #define BLOCKSTORE_IMPOSSIBLE_EVENTS(xxx)                                      \

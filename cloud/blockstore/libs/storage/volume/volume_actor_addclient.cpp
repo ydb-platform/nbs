@@ -530,7 +530,12 @@ void TVolumeActor::CompleteAddClient(
 
         if (args.WriterChanged || shouldResyncDueToInactivity) {
             State->SetReadWriteError(MakeError(E_REJECTED, "toggling resync"));
-            ExecuteTx<TToggleResync>(ctx, nullptr, true);
+            ExecuteTx<TToggleResync>(
+                ctx,
+                nullptr,   // requestInfo
+                true,      // resyncEnabled
+                false      // alertResyncChecksumMismatch
+            );
         }
     }
 }

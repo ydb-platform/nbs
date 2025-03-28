@@ -243,7 +243,8 @@ void TVolumeActor::SetupDiskRegistryBasedPartitions(const TActorContext& ctx)
                     std::move(replicas),
                     GetRdmaClient(),
                     SelfId(),
-                    State->GetMeta().GetResyncIndex()));
+                    State->GetMeta().GetResyncIndex(),
+                    State->GetMeta().GetAlertResyncChecksumMismatch()));
         } else {
             // mirrored disk (may be in migration state)
             nonreplicatedActorId = NCloud::Register(

@@ -310,9 +310,12 @@ public:
         Meta.SetResyncIndex(resyncIndex);
     }
 
-    void SetResyncNeededInMeta(bool resyncNeeded)
+    void SetResyncNeededInMeta(
+        bool resyncNeeded,
+        bool alertResyncChecksumMismatch)
     {
         Meta.SetResyncNeeded(resyncNeeded);
+        Meta.SetAlertResyncChecksumMismatch(alertResyncChecksumMismatch);
         Meta.SetResyncIndex(0);
     }
 

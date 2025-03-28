@@ -19,7 +19,8 @@ IActorPtr CreateMirrorPartitionResync(
     TVector<TDevices> replicaDevices,
     NRdma::IClientPtr rdmaClient,
     NActors::TActorId statActorId,
-    ui64 initialResyncIndex)
+    ui64 initialResyncIndex,
+    bool critOnChecksumMismatch)
 {
     return std::make_unique<TMirrorPartitionResyncActor>(
         std::move(config),
@@ -32,7 +33,8 @@ IActorPtr CreateMirrorPartitionResync(
         std::move(replicaDevices),
         std::move(rdmaClient),
         statActorId,
-        initialResyncIndex);
+        initialResyncIndex,
+        critOnChecksumMismatch);
 }
 
 }   // namespace NCloud::NBlockStore::NStorage
