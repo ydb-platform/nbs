@@ -77,8 +77,6 @@ void TResyncRangeActor::CompareChecksums(const TActorContext& ctx)
         return;
     }
 
-    FoundMajorErrorCount = majorCount == 1 ? 1 : 0;
-
     if (ResyncPolicy == NProto::EResyncPolicy::RESYNC_POLICY_MINOR_4MB &&
         majorCount == 1)
     {
@@ -92,9 +90,6 @@ void TResyncRangeActor::CompareChecksums(const TActorContext& ctx)
         Done(ctx);
         return;
     }
-
-    FixedMinorErrorCount = majorCount > 1 ? 1 : 0;
-    FixedMajorErrorCount = majorCount == 1 ? 1 : 0;
 
     LOG_WARN(ctx, TBlockStoreComponents::PARTITION,
         "[%s] Resync range %s: majority replica %lu, checksum %lu, count %u of %u",
@@ -211,11 +206,6 @@ void TResyncRangeActor::WriteReplicaBlocks(const TActorContext& ctx, int idx)
 
 void TResyncRangeActor::Done(const TActorContext& ctx)
 {
-    if (HasError(Error)) {
-        FixedMinorErrorCount = 0;
-        FixedMajorErrorCount = 0;
-    }
-
     auto response =
         std::make_unique<TEvNonreplPartitionPrivate::TEvRangeResynced>(
             std::move(Error),
@@ -226,10 +216,7 @@ void TResyncRangeActor::Done(const TActorContext& ctx)
             ReadDuration,
             WriteStartTs,
             WriteDuration,
-            std::move(AffectedBlockInfos),
-            FixedMinorErrorCount,
-            FixedMajorErrorCount,
-            FoundMajorErrorCount);
+            std::move(AffectedBlockInfos));
 
     LWTRACK(
         ResponseSent_PartitionWorker,

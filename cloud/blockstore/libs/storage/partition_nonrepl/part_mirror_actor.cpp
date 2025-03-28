@@ -518,12 +518,9 @@ void TMirrorPartitionActor::HandleRangeResynced(
     const auto* msg = ev->Get();
 
     LOG_WARN(ctx, TBlockStoreComponents::PARTITION,
-        "[%s] Range %s resync finished: mi=%lu mj=%lu/%lu %s",
+        "[%s] Range %s resync finished: %s",
         DiskId.c_str(),
         DescribeRange(msg->Range).c_str(),
-        msg->FixedMinorErrorCount,
-        msg->FixedMajorErrorCount,
-        msg->FoundMajorErrorCount,
         FormatError(msg->GetError()).c_str());
 
     ResyncRangeStarted = false;

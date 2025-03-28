@@ -248,17 +248,17 @@ void TResyncRangeBlockByBlockActor::PrepareWriteBuffers(
         }
     }
 
-    FixedMinorErrorCount = Accumulate(
+    size_t fixedMinorErrorCount = Accumulate(
         healStat,
         size_t{},
         [](size_t count, const THealStat& h)
         { return count + h.FixedMinorErrorCount; });
-    FixedMajorErrorCount = Accumulate(
+    size_t fixedMajorErrorCount = Accumulate(
         healStat,
         size_t{},
         [](size_t count, const THealStat& h)
         { return count + h.FixedMajorErrorCount; });
-    FoundMajorErrorCount = Accumulate(
+    size_t foundMajorErrorCount = Accumulate(
         healStat,
         size_t{},
         [](size_t count, const THealStat& h)
@@ -283,10 +283,10 @@ void TResyncRangeBlockByBlockActor::PrepareWriteBuffers(
         Replicas[bestHealer].ReplicaId.c_str(),
         bestHealer,
         Range.Print().c_str(),
-        FixedMinorErrorCount,
-        FixedMajorErrorCount,
-        FoundMajorErrorCount,
-        (FoundMajorErrorCount == 0 ? "All blocks healed as minor! " : ""),
+        fixedMinorErrorCount,
+        fixedMajorErrorCount,
+        foundMajorErrorCount,
+        (foundMajorErrorCount == 0 ? "All blocks healed as minor! " : ""),
         replicaStat.c_str(),
         blocksWithMajorErrors.c_str());
 
@@ -408,10 +408,7 @@ void TResyncRangeBlockByBlockActor::Done(const TActorContext& ctx)
             ReadDuration,
             WriteStartTs,
             WriteDuration,
-            std::move(AffectedBlockInfos),
-            FixedMinorErrorCount,
-            FixedMajorErrorCount,
-            FoundMajorErrorCount);
+            std::move(AffectedBlockInfos));
 
     LWTRACK(
         ResponseSent_PartitionWorker,

@@ -639,7 +639,8 @@ Y_UNIT_TEST_SUITE(TResyncRangeTest)
         }
     }
 
-    Y_UNIT_TEST(ShouldNotReplaceMajorBlocksMismatchAccordingToPolicy)
+    void DoShouldNotReplaceMajorBlocksMismatchAccordingToPolicy(
+        NProto::EResyncPolicy resyncPolicy)
     {
         TTestBasicRuntime runtime;
         TTestEnv env(runtime);
@@ -653,11 +654,7 @@ Y_UNIT_TEST_SUITE(TResyncRangeTest)
         env.WriteReplica(0, blockWithMajorError, blockWithMajorError, 'x');
         env.WriteReplica(1, blockWithMajorError, blockWithMajorError, 'y');
 
-        auto response = env.ResyncRange(
-            0,
-            1023,
-            {0, 1, 2},
-            NProto::EResyncPolicy::RESYNC_POLICY_MINOR_BLOCK_BY_BLOCK);
+        auto response = env.ResyncRange(0, 1023, {0, 1, 2}, resyncPolicy);
         UNIT_ASSERT(!HasError(response->GetError()));
 
         // Check replica 0
@@ -689,6 +686,18 @@ Y_UNIT_TEST_SUITE(TResyncRangeTest)
                 UNIT_ASSERT_VALUES_EQUAL(TString(DefaultBlockSize, 'A'), block);
             }
         }
+    }
+
+    Y_UNIT_TEST(ShouldNotReplaceMajorBlocksMismatchAccordingToPolicy)
+    {
+        DoShouldNotReplaceMajorBlocksMismatchAccordingToPolicy(
+            NProto::EResyncPolicy::RESYNC_POLICY_MINOR_4MB);
+    }
+
+    Y_UNIT_TEST(ShouldNotReplaceMajorBlocksMismatchAccordingToPolicyBlockByBlock)
+    {
+        DoShouldNotReplaceMajorBlocksMismatchAccordingToPolicy(
+            NProto::EResyncPolicy::RESYNC_POLICY_MINOR_BLOCK_BY_BLOCK);
     }
 
     Y_UNIT_TEST(ShouldHealMinorErrorsAndSelectBestHealerForMajorSource)

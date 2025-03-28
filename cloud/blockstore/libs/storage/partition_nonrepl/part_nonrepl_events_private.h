@@ -147,9 +147,6 @@ struct TEvNonreplPartitionPrivate
         TInstant WriteStartTs;
         TDuration WriteDuration;
         TVector<IProfileLog::TBlockInfo> AffectedBlockInfos;
-        size_t FixedMinorErrorCount;
-        size_t FixedMajorErrorCount;
-        size_t FoundMajorErrorCount;
 
         TRangeResynced(
                 TBlockRange64 range,
@@ -159,10 +156,7 @@ struct TEvNonreplPartitionPrivate
                 TDuration readDuration,
                 TInstant writeStartTs,
                 TDuration writeDuration,
-                TVector<IProfileLog::TBlockInfo> affectedBlockInfos,
-                size_t fixedMinorErrorCount,
-                size_t fixedMajorErrorCount,
-                size_t foundMajorErrorCount)
+                TVector<IProfileLog::TBlockInfo> affectedBlockInfos)
             : Range(range)
             , ChecksumStartTs(checksumStartTs)
             , ChecksumDuration(checksumDuration)
@@ -171,9 +165,6 @@ struct TEvNonreplPartitionPrivate
             , WriteStartTs(writeStartTs)
             , WriteDuration(writeDuration)
             , AffectedBlockInfos(std::move(affectedBlockInfos))
-            , FixedMinorErrorCount(fixedMinorErrorCount)
-            , FixedMajorErrorCount(fixedMajorErrorCount)
-            , FoundMajorErrorCount(foundMajorErrorCount)
         {
         }
     };
