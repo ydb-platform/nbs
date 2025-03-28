@@ -91,6 +91,10 @@ func (t *createEmptyDiskTask) Run(
 		EncryptionDesc:          t.params.EncryptionDesc,
 	})
 	if err != nil {
+		if nbs.IsLocalDisk(t.params.Kind) && nbs.IsTryAgainError(err) {
+			return errors.NewRetriableErrorWithIgnoreRetryLimit(err)
+		}
+
 		return err
 	}
 
