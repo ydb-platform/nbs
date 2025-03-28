@@ -7093,6 +7093,49 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
 
         tablet.DestroyHandle(handle);
     }
+
+    TABLET_TEST(ShouldRunCleanupForEmptyFilesystem)
+    {
+        const auto block = tabletConfig.BlockSize;
+
+        // Disable conditions for automatic compaction and configure cleanup
+        NProto::TStorageConfig storageConfig;
+        storageConfig.SetNewCleanupEnabled(true);
+        storageConfig.SetCleanupThresholdAverage(64);
+        storageConfig.SetCompactionThresholdAverage(999'999);
+        storageConfig.SetGarbageCompactionThresholdAverage(999'999);
+        storageConfig.SetCompactionThreshold(999'999);
+        storageConfig.SetUseMixedBlocksInsteadOfAliveBlocksInCompaction(true);
+        storageConfig.SetWriteBlobThreshold(block);
+        storageConfig.SetCalculateCleanupScoreBasedOnUsedBlocksCount(true);
+
+        TTestEnv env({}, std::move(storageConfig));
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(
+            env.GetRuntime(),
+            nodeIdx,
+            tabletId,
+            tabletConfig);
+        tablet.InitSession("client", "session");
+
+        auto id = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
+        auto handle = CreateHandle(tablet, id);
+        tablet.WriteData(handle, 0, block, 'a');
+        tablet.DestroyHandle(handle);
+        tablet.UnlinkNode(RootNodeId, "test", false);
+
+        // There should be 1 deletion marker and 0 used blocks
+        // Cleanup should've been triggered
+        {
+            auto response = tablet.GetStorageStats();
+            const auto& stats = response->Record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetDeletionMarkersCount());
+        }
+    }
 }
 
 }   // namespace NCloud::NFileStore::NStorage
