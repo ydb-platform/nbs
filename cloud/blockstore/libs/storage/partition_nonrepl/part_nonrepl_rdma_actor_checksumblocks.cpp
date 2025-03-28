@@ -13,6 +13,8 @@
 #include <util/generic/map.h>
 #include <util/generic/string.h>
 
+#include <algorithm>
+
 namespace NCloud::NBlockStore::NStorage {
 
 using namespace NActors;
@@ -23,7 +25,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TDeviceChecksumRequestContext: public NRdma::TNullContext
+struct TDeviceChecksumRequestContext: public TDeviceRequestContext
 {
     ui64 RangeStartIndex = 0;
     ui32 RangeSize = 0;
@@ -43,22 +45,17 @@ struct TPartialChecksum
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TRdmaRequestContext: public NRdma::IClientHandler
+class TDeviceChecksumRequestHandler: public IRdmaDeviceRequestHandler
 {
 private:
-    TActorSystem* ActorSystem;
     TNonreplicatedPartitionConfigPtr PartConfig;
     TRequestInfoPtr RequestInfo;
     TAdaptiveLock Lock;
-    size_t ResponseCount;
     TMap<ui64, TPartialChecksum> Checksums;
-    NProto::TError Error;
-    const ui32 RequestBlockCount;
-    NActors::TActorId ParentActorId;
     ui64 RequestId;
 
 public:
-    TRdmaRequestContext(
+    TDeviceChecksumRequestHandler(
             TActorSystem* actorSystem,
             TNonreplicatedPartitionConfigPtr partConfig,
             TRequestInfoPtr requestInfo,
@@ -66,17 +63,22 @@ public:
             ui32 requestBlockCount,
             NActors::TActorId parentActorId,
             ui64 requestId)
-        : ActorSystem(actorSystem)
+        : IRdmaDeviceRequestHandler(
+              requestCount,
+              actorSystem,
+              parentActorId,
+              requestBlockCount)
         , PartConfig(std::move(partConfig))
         , RequestInfo(std::move(requestInfo))
-        , ResponseCount(requestCount)
-        , RequestBlockCount(requestBlockCount)
-        , ParentActorId(parentActorId)
         , RequestId(requestId)
     {}
 
-    void HandleResult(const TDeviceChecksumRequestContext& dc, TStringBuf buffer)
+    void ProcessResponseProto(
+        const TDeviceRequestContext& dCtx,
+        TStringBuf buffer) override
     {
+        const auto& dc =
+            static_cast<const TDeviceChecksumRequestContext&>(dCtx);
         auto* serializer = TBlockStoreProtocol::Serializer();
         auto [result, err] = serializer->Parse(buffer);
 
@@ -110,13 +112,7 @@ public:
             static_cast<TDeviceChecksumRequestContext*>(req->Context.get());
         auto buffer = req->ResponseBuffer.Head(responseBytes);
 
-        if (status == NRdma::RDMA_PROTO_OK) {
-            HandleResult(*dc, buffer);
-        } else {
-            Error = NRdma::ParseError(buffer);
-        }
-
-        if (--ResponseCount != 0) {
+        if (!ProcessResponse(*dc, status, buffer)) {
             return;
         }
 
@@ -139,16 +135,17 @@ public:
             RequestInfo->Cookie);
         ActorSystem->Send(event.release());
 
-        using TCompletionEvent =
-            TEvNonreplPartitionPrivate::TEvChecksumBlocksCompleted;
-        auto completion = std::make_unique<TCompletionEvent>(std::move(Error));
-        auto& counters = *completion->Stats.MutableSysChecksumCounters();
-        completion->TotalCycles = RequestInfo->GetTotalCycles();
-
         timer.Finish();
-        completion->ExecCycles = RequestInfo->GetExecCycles();
 
+        using TCompletionEvent =
+        TEvNonreplPartitionPrivate::TEvChecksumBlocksCompleted;
+        auto completion = CreateCompletionEvent<TCompletionEvent>(
+            std::move(Error),
+            *RequestInfo);
+
+        auto& counters = *completion->Stats.MutableSysChecksumCounters();
         counters.SetBlocksCount(RequestBlockCount);
+
         auto completionEvent = std::make_unique<IEventHandle>(
             ParentActorId,
             TActorId(),
@@ -202,7 +199,7 @@ void TNonreplicatedPartitionRdmaActor::HandleChecksumBlocks(
 
     const auto requestId = RequestsInProgress.GenerateRequestId();
 
-    auto requestContext = std::make_shared<TRdmaRequestContext>(
+    auto requestContext = std::make_shared<TDeviceChecksumRequestHandler>(
         ctx.ActorSystem(),
         PartConfig,
         requestInfo,
@@ -225,6 +222,7 @@ void TNonreplicatedPartitionRdmaActor::HandleChecksumBlocks(
         auto dc = std::make_unique<TDeviceChecksumRequestContext>();
         dc->RangeStartIndex = r.BlockRange.Start;
         dc->RangeSize = r.DeviceBlockRange.Size() * PartConfig->GetBlockSize();
+        dc->DeviceIdx = r.DeviceIdx;
 
         NProto::TChecksumDeviceBlocksRequest deviceRequest;
         deviceRequest.MutableHeaders()->CopyFrom(msg->Record.GetHeaders());
