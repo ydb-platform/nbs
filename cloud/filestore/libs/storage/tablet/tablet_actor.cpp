@@ -479,8 +479,10 @@ TCompactionInfo TIndexTabletActor::GetCompactionInfo() const
     // TODO: use GarbageCompactionThreshold
 
     bool shouldCompactByGarbage = Config->GetNewCompactionEnabled()
-        && avgGarbagePercentage
-            >= Config->GetGarbageCompactionThresholdAverage();
+        && (rangeCount
+            ? avgGarbagePercentage
+                >= Config->GetGarbageCompactionThresholdAverage()
+            : stored > used);
 
     const bool shouldCompactByBlobs = compactionScore >= compactionThreshold
         || Config->GetNewCompactionEnabled()
@@ -541,11 +543,16 @@ TCleanupInfo TIndexTabletActor::GetCleanupInfo() const
             ? static_cast<double>(stats.GetUsedBlocksCount()) /
                   (BlockGroupSize * NodeGroupSize)
             : static_cast<double>(compactionStats.UsedRangesCount);
+
     const auto avgCleanupScore = rangeCount > 0.0
         ? static_cast<double>(stats.GetDeletionMarkersCount()) / rangeCount
         : 0;
+
     const bool shouldCleanup =
-        avgCleanupScore >= Config->GetCleanupThresholdAverage();
+        rangeCount > 0.0
+            ? avgCleanupScore >= Config->GetCleanupThresholdAverage()
+            : stats.GetDeletionMarkersCount() > 0;
+
     bool isPriority = false;
 
     TString dummy;
