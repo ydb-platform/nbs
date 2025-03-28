@@ -139,6 +139,25 @@ func isDiskRegistryBasedDisk(mediaKind core_protos.EStorageMediaKind) bool {
 	return false
 }
 
+func IsLocalDisk(kind types.DiskKind) bool {
+	mediaKind, err := getStorageMediaKind(kind)
+	if err != nil {
+		return false
+	}
+
+	return isLocalDisk(mediaKind)
+}
+
+func isLocalDisk(mediaKind core_protos.EStorageMediaKind) bool {
+	switch mediaKind {
+	case core_protos.EStorageMediaKind_STORAGE_MEDIA_HDD_LOCAL,
+		core_protos.EStorageMediaKind_STORAGE_MEDIA_SSD_LOCAL:
+		return true
+	}
+
+	return false
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 func toEncryptionMode(
@@ -383,6 +402,17 @@ func isAbortedError(e error) bool {
 	var clientErr *nbs_client.ClientError
 	if errors.As(e, &clientErr) {
 		if clientErr.Code == nbs_client.E_ABORTED {
+			return true
+		}
+	}
+
+	return false
+}
+
+func IsTryAgainError(e error) bool {
+	var clientErr *nbs_client.ClientError
+	if errors.As(e, &clientErr) {
+		if clientErr.Code == nbs_client.E_TRY_AGAIN {
 			return true
 		}
 	}
