@@ -53,6 +53,12 @@ private:
         ui64 migrationIndex) override;
     void OnMigrationFinished(const NActors::TActorContext& ctx) override;
     void OnMigrationError(const NActors::TActorContext& ctx) override;
+
+private:
+    void HandleStartLaggingAgentMigration(
+        const TEvNonreplPartitionPrivate::TEvStartLaggingAgentMigration::TPtr&
+            ev,
+        const NActors::TActorContext& ctx);
 };
 
 }   // namespace NCloud::NBlockStore::NStorage

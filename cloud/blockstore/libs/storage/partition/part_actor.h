@@ -222,9 +222,18 @@ private:
 
     void SendStatsToService(const NActors::TActorContext& ctx);
 
+    // IRequestsInProgress implementation:
     bool WriteRequestInProgress() const override
     {
         return WriteAndZeroRequestsInProgress != 0;
+    }
+
+    void WaitForInFlightWrites() override {
+        Y_ABORT("Unimplemented");
+    }
+
+    bool IsWaitingForInFlightWrites() const override {
+        Y_ABORT("Unimplemented");
     }
 
     template <typename TMethod>
