@@ -94,6 +94,7 @@ private:
     void SendRequests(const TActorContext& ctx);
     bool HandleError(const TActorContext& ctx, NProto::TError error);
     void CompareChecksums(const TActorContext& ctx);
+    void CompareChecksumsForThreeReplicas(const TActorContext& ctx);
     void Done(const TActorContext& ctx);
 
 private:
@@ -198,6 +199,11 @@ void TRequestActor<TMethod>::SendRequests(const TActorContext& ctx)
 template <typename TMethod>
 void TRequestActor<TMethod>::CompareChecksums(const TActorContext& ctx)
 {
+    if (ResponseChecksums.size() > 2){
+        CompareChecksumsForThreeReplicas(ctx);
+        return;
+    }
+
     ui32 firstChecksum = ResponseChecksums[0];
     if (!firstChecksum) {
         // zero is a special value meaning "checksum couldn't be calculated"
@@ -222,6 +228,46 @@ void TRequestActor<TMethod>::CompareChecksums(const TActorContext& ctx)
             ChecksumMismatchObserved = true;
             break;
         }
+    }
+}
+
+template <typename TMethod>
+void TRequestActor<TMethod>::CompareChecksumsForThreeReplicas(const TActorContext& ctx)
+{
+    std::unordered_map<ui32, TVector<TString>> checksumMap;
+
+    for (ui32 i = 0; i < ResponseChecksums.size(); ++i) {
+        const auto checksum = ResponseChecksums[i];
+        if (checksum) {
+            checksumMap[checksum].push_back(Partitions[i].ToString());
+        }
+    }
+
+    if (checksumMap.size() > 1) {
+        TStringBuilder errorMessege;
+        errorMessege << "Checksum mismatch detected: ";
+
+        for (const auto& [checksum, partitions]: checksumMap) {
+            errorMessege << checksum << " (";
+            for (size_t i = 0; i < partitions.size(); ++i) {
+                if (i > 0) {
+                    errorMessege << ", ";
+                }
+                errorMessege << partitions[i];
+            }
+            errorMessege << ") ";
+        }
+
+        LOG_INFO(
+            ctx,
+            TBlockStoreComponents::PARTITION,
+            "[%s] Read range %s: %s",
+            DiskId.c_str(),
+            DescribeRange(Range).c_str(),
+            errorMessege.c_str());
+
+        *Response.MutableError() = MakeError(E_REJECTED, errorMessege);
+        ChecksumMismatchObserved = true;
     }
 }
 
