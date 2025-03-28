@@ -852,6 +852,7 @@ private:
                 auto file = TFsPath(path) / WriteBackCacheFileName;
                 file.Touch();
                 writeBackCache = CreateWriteBackCache(
+                    Session,
                     file.GetPath(),
                     Config->GetWriteBackCacheSize());
                 WriteBackCacheInitialized = true;
