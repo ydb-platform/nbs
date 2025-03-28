@@ -33,6 +33,7 @@ TRdmaTestEnvironment::TRdmaTestEnvironment(size_t deviceSize, ui32 poolSize)
         uuids,
         Logging->CreateLog("BLOCKSTORE_DISK_AGENT"));
 
+    TVector<TString> unknownDevices;
     DeviceClient->AcquireDevices(
         uuids,
         ClientId,
@@ -40,7 +41,9 @@ TRdmaTestEnvironment::TRdmaTestEnvironment(size_t deviceSize, ui32 poolSize)
         NProto::VOLUME_ACCESS_READ_WRITE,
         0,
         "vol0",
-        0);
+        0,
+        unknownDevices);
+    UNIT_ASSERT_VALUES_EQUAL(0, unknownDevices.size());
 
     NProto::TRdmaTarget target;
     target.MutableEndpoint()->SetHost(Host);

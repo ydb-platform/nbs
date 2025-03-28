@@ -34,6 +34,11 @@ public:
 
     TVector<NProto::TFileDeviceArgs> ExtractResult();
 
+    void AddPossibleUUIDSForDevice(
+        const NProto::TStorageDiscoveryConfig::TPoolConfig& poolConfig,
+        ui32 deviceNumber,
+        THashSet<TString>& setToAddUUIDs);
+
 private:
     TString CreateDeviceId(ui32 deviceNumber, const TString& suffix) const;
     TString CreateDeviceId(
