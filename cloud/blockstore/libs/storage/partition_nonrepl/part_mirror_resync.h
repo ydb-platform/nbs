@@ -27,6 +27,7 @@ NActors::IActorPtr CreateMirrorPartitionResync(
     NRdma::IClientPtr rdmaClient,
     NActors::TActorId statActorId,
     ui64 initialResyncIndex,
-    NProto::EResyncPolicy resyncPolicy);
+    NProto::EResyncPolicy resyncPolicy,
+    bool critOnChecksumMismatch);
 
 }   // namespace NCloud::NBlockStore::NStorage

@@ -1199,4 +1199,9 @@ message TStorageServiceConfig
 
     // Linked disk fill bandwidth settings.
     repeated TLinkedDiskFillBandwidth LinkedDiskFillBandwidth = 421;
+
+    // Whether the volume should start resync after a successful lagging agent
+    // migration. Resync is started with a special flag and will emit critical
+    // events for any mismatch it finds.
+    optional bool ResyncAfterLaggingAgentMigration = 422;
 }

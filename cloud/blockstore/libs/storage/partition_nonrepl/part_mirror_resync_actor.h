@@ -42,7 +42,7 @@ private:
     const IProfileLogPtr ProfileLog;
     const IBlockDigestGeneratorPtr BlockDigestGenerator;
     const NProto::EResyncPolicy ResyncPolicy;
-
+    const bool CritOnChecksumMismatch;
     TString RWClientId;
     TNonreplicatedPartitionConfigPtr PartConfig;
     TMigrations Migrations;
@@ -102,7 +102,8 @@ public:
         NRdma::IClientPtr rdmaClient,
         NActors::TActorId statActorId,
         ui64 initialResyncIndex,
-        NProto::EResyncPolicy resyncPolicy);
+        NProto::EResyncPolicy resyncPolicy,
+        bool critOnChecksumMismatch);
 
     ~TMirrorPartitionResyncActor();
 
