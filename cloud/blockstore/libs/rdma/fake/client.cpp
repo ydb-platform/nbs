@@ -228,6 +228,7 @@ void TClientEndpoint::CancelRequest(ui64 reqId)
 {
     auto request = std::make_unique<TEvFakeRdmaClient::TEvCancelRequest>();
     request->ClientReqId = reqId;
+    request->AgentId = AgentId;
 
     ActorSystem->Send(RdmaActorId, std::move(request));
 }
