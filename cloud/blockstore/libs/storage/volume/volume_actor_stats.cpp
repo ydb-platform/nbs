@@ -411,6 +411,21 @@ void TVolumeActor::SendSelfStatsToService(const TActorContext& ctx)
         100 * State->GetMeta().GetResyncIndex() / GetBlocksCount()
     );
 
+    simple.HasLaggingDevices.Set(State->HasLaggingAgents());
+    simple.LaggingDevicesCount.Set(State->GetLaggingDevices().size());
+    {
+        const auto& laggingInfos = State->GetLaggingAgentsMigrationInfo();
+        ui64 cleanBlockCount = 0;
+        ui64 dirtyBlockCount = 0;
+        for (const auto& [_, laggingInfo]: laggingInfos) {
+            cleanBlockCount += laggingInfo.CleanBlocks;
+            dirtyBlockCount += laggingInfo.DirtyBlocks;
+        }
+        simple.LaggingMigrationProgress.Set(
+            100 * cleanBlockCount /
+            Max<ui64>(cleanBlockCount + dirtyBlockCount, 1));
+    }
+
     simple.LastVolumeLoadTime.Set(GetLoadTime().MicroSeconds());
     simple.LastVolumeStartTime.Set(GetStartTime().MicroSeconds());
     simple.HasStorageConfigPatch.Set(HasStorageConfigPatch);

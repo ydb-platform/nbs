@@ -639,6 +639,130 @@ Y_UNIT_TEST_SUITE(TLaggingAgentVolumeTest)
                 .AgentsSize());
     }
 
+    Y_UNIT_TEST(ShouldUpdateCounters)
+    {
+        constexpr ui32 AgentCount = 3;
+        auto diskRegistryState = MakeIntrusive<TDiskRegistryState>();
+        diskRegistryState->Devices = MakeDeviceList(AgentCount, 3);
+        diskRegistryState->AllocateDiskReplicasOnDifferentNodes = true;
+        diskRegistryState->ReplicaCount = 2;
+        TVector<TDiskAgentStatePtr> agentStates;
+        for (ui32 i = 0; i < AgentCount; i++) {
+            agentStates.push_back(TDiskAgentStatePtr{});
+        }
+        NProto::TStorageServiceConfig storageServiceConfig;
+        storageServiceConfig.SetLaggingDevicesForMirror3DisksEnabled(true);
+        auto runtime = PrepareTestActorRuntime(
+            std::move(storageServiceConfig),
+            diskRegistryState,
+            {},
+            {},
+            std::move(agentStates));
+
+        // Create mirror-3 volume with a size of 1 device.
+        TVolumeClient volume(*runtime);
+        const ui64 blockCount =
+            DefaultDeviceBlockCount * DefaultDeviceBlockSize / DefaultBlockSize;
+        volume.UpdateVolumeConfig(
+            0,
+            0,
+            0,
+            0,
+            false,
+            1,   // version
+            NCloud::NProto::STORAGE_MEDIA_SSD_MIRROR3,
+            blockCount);
+
+        volume.WaitReady();
+
+        bool hasLaggingDevices = false;
+        ui64 laggingDevicesCount = 0;
+        ui64 laggingMigrationProgress = 0;
+        runtime->SetEventFilter(
+            [&](TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& event)
+            {
+                switch (event->GetTypeRewrite()) {
+                    case TEvNonreplPartitionPrivate::EvAddLaggingAgentRequest:
+                    case TEvNonreplPartitionPrivate::
+                        EvRemoveLaggingAgentRequest:
+                        return true;
+
+                    case TEvStatsService::EvVolumeSelfCounters: {
+                        if (event->Recipient != MakeStorageStatsServiceId()) {
+                            break;
+                        }
+                        const auto* msg =
+                            event
+                                ->Get<TEvStatsService::TEvVolumeSelfCounters>();
+                        const auto& counters = msg->VolumeSelfCounters->Simple;
+                        hasLaggingDevices = !!counters.HasLaggingDevices.Value;
+                        laggingDevicesCount =
+                            counters.LaggingDevicesCount.Value;
+                        laggingMigrationProgress =
+                            counters.LaggingMigrationProgress.Value;
+                    }
+                }
+                return false;
+            });
+
+        // Device in the first replica is timed out.
+        volume.DeviceTimedOut("uuid-2.0");
+
+        // Update lagging agent migration progress.
+        volume.SendToPipe(
+            std::make_unique<
+                TEvVolumePrivate::TEvUpdateLaggingAgentMigrationState>(
+                "agent-2",
+                0,
+                blockCount));
+        runtime->DispatchEvents({}, TDuration::MilliSeconds(10));
+        runtime->AdvanceCurrentTime(TDuration::Seconds(15));
+        runtime->DispatchEvents(
+            {.CustomFinalCondition =
+                 [&]()
+             {
+                 return hasLaggingDevices;
+             }},
+            TDuration::Seconds(1));
+        UNIT_ASSERT_VALUES_EQUAL(1, laggingDevicesCount);
+        UNIT_ASSERT_VALUES_EQUAL(0, laggingMigrationProgress);
+
+        // Update lagging agent migration progress.
+        volume.SendToPipe(
+            std::make_unique<
+                TEvVolumePrivate::TEvUpdateLaggingAgentMigrationState>(
+                "agent-2",
+                blockCount / 2,
+                blockCount / 2));
+        runtime->DispatchEvents({}, TDuration::MilliSeconds(10));
+        runtime->AdvanceCurrentTime(TDuration::Seconds(15));
+        runtime->DispatchEvents(
+            {.CustomFinalCondition =
+                 [&]()
+             {
+                 return laggingMigrationProgress > 0;
+             }},
+            TDuration::Seconds(1));
+        UNIT_ASSERT_VALUES_EQUAL(1, laggingDevicesCount);
+        UNIT_ASSERT_VALUES_EQUAL(50, laggingMigrationProgress);
+
+        // Agent devices are now up-to-date.
+        volume.SendToPipe(
+            std::make_unique<
+                TEvVolumePrivate::TEvLaggingAgentMigrationFinished>("agent-2"));
+        runtime->DispatchEvents({}, TDuration::MilliSeconds(10));
+        runtime->AdvanceCurrentTime(TDuration::Seconds(15));
+        runtime->DispatchEvents(
+            {.CustomFinalCondition =
+                 [&]()
+             {
+                 return !hasLaggingDevices;
+             }},
+            TDuration::Seconds(1));
+        UNIT_ASSERT_VALUES_EQUAL(0, laggingDevicesCount);
+        UNIT_ASSERT_VALUES_EQUAL(0, laggingMigrationProgress);
+    }
+
     Y_UNIT_TEST(ShouldReturnErrorWhenFeatureIsDisabled)
     {
         constexpr ui32 AgentCount = 3;

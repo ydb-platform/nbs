@@ -209,12 +209,7 @@ void TVolumeState::AddLaggingAgent(NProto::TLaggingAgent agent)
 std::optional<NProto::TLaggingAgent> TVolumeState::RemoveLaggingAgent(
     const TString& agentId)
 {
-    if (CurrentlyMigratingLaggingAgent &&
-        agentId == CurrentlyMigratingLaggingAgent->AgentId)
-    {
-        CurrentlyMigratingLaggingAgent.reset();
-    }
-
+    CurrentlyMigratingLaggingAgents.erase(agentId);
     auto agentIdPredicate = [&agentId](const auto& info)
     {
         return info.GetAgentId() == agentId;
@@ -258,22 +253,20 @@ THashSet<TString> TVolumeState::GetLaggingDevices() const
 }
 
 void TVolumeState::UpdateLaggingAgentMigrationState(
-    TString agentId,
+    const TString& agentId,
     ui64 cleanBlocks,
     ui64 dirtyBlocks)
 {
-    CurrentlyMigratingLaggingAgent = TLaggingAgentMigrationInfo{
-        .AgentId = std::move(agentId),
+    CurrentlyMigratingLaggingAgents[agentId] = TLaggingAgentMigrationInfo{
         .CleanBlocks = cleanBlocks,
         .DirtyBlocks = dirtyBlocks,
     };
 }
 
-const TVolumeState::TLaggingAgentMigrationInfo*
-TVolumeState::GetLaggingAgentMigrationInfo()
+auto TVolumeState::GetLaggingAgentsMigrationInfo() const
+    -> const THashMap<TString, TLaggingAgentMigrationInfo>&
 {
-    return CurrentlyMigratingLaggingAgent ? &(*CurrentlyMigratingLaggingAgent)
-                                          : nullptr;
+    return CurrentlyMigratingLaggingAgents;
 }
 
 void TVolumeState::ResetMeta(NProto::TVolumeMeta meta)
