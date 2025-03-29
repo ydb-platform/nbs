@@ -115,6 +115,7 @@ func newDefaultConfig() *tasks_config.TasksConfig {
 	clearEndedTasksLimit := uint64(10)
 	maxRetriableErrorCount := uint64(2)
 	hangingTaskTimeout := "100s"
+	maxPanicCount := uint64(0)
 	inflightTaskPerNodeLimits := map[string]int64{
 		"long": inflightLongTaskPerNodeLimit,
 	}
@@ -135,6 +136,7 @@ func newDefaultConfig() *tasks_config.TasksConfig {
 		ClearEndedTasksLimit:                &clearEndedTasksLimit,
 		MaxRetriableErrorCount:              &maxRetriableErrorCount,
 		HangingTaskTimeout:                  &hangingTaskTimeout,
+		MaxPanicCount:                       &maxPanicCount,
 		InflightTaskPerNodeLimits:           inflightTaskPerNodeLimits,
 	}
 }
@@ -1325,49 +1327,56 @@ func TestHangingTasksMetrics(t *testing.T) {
 
 	gaugeSetWg := sync.WaitGroup{}
 	gaugeUnsetWg := sync.WaitGroup{}
+	var totalHangingTasksCount atomic.Int32
+	var hangingTasksCount atomic.Int32
 
-	totalHangingTaskCountGaugeSetCall := registry.GetGauge(
-		"totalHangingTaskCount",
-		map[string]string{"type": "tasks.hanging"},
-	).On(
-		"Set",
-		float64(1),
-	).Return(mock.Anything)
-
+	gaugeSetWg.Add(1)
 	registry.GetGauge(
 		"totalHangingTaskCount",
 		map[string]string{"type": "tasks.hanging"},
-	).On(
-		"Set",
-		float64(0),
-	).NotBefore(
-		totalHangingTaskCountGaugeSetCall,
-	).Return(mock.Anything)
+	).On("Set", float64(1)).Return(mock.Anything).Run(
+		func(args mock.Arguments) {
+			if totalHangingTasksCount.CompareAndSwap(0, 1) {
+				gaugeSetWg.Done()
+			}
+		},
+	)
 
-	hangingTasksGaugeSetCall := registry.GetGauge(
+	gaugeSetWg.Add(1)
+	registry.GetGauge(
 		"hangingTasks",
 		map[string]string{"type": "tasks.hanging", "id": taskID},
 	).On("Set", float64(1)).Return(mock.Anything).Run(
 		func(args mock.Arguments) {
-			gaugeSetWg.Done()
+			if hangingTasksCount.CompareAndSwap(0, 1) {
+				gaugeSetWg.Done()
+			}
 		},
 	)
-	gaugeSetWg.Add(1)
 
+	gaugeUnsetWg.Add(1)
+	registry.GetGauge(
+		"totalHangingTaskCount",
+		map[string]string{"type": "tasks.hanging"},
+	).On("Set", float64(0)).Return(mock.Anything).Run(
+		func(args mock.Arguments) {
+			if totalHangingTasksCount.CompareAndSwap(1, 0) {
+				gaugeUnsetWg.Done()
+			}
+		},
+	)
+
+	gaugeUnsetWg.Add(1)
 	registry.GetGauge(
 		"hangingTasks",
 		map[string]string{"type": "tasks.hanging", "id": taskID},
-	).On(
-		"Set",
-		float64(0),
-	).NotBefore(
-		hangingTasksGaugeSetCall,
-	).Return(mock.Anything).Run(
+	).On("Set", float64(0)).Return(mock.Anything).Run(
 		func(args mock.Arguments) {
-			gaugeUnsetWg.Done()
+			if hangingTasksCount.CompareAndSwap(1, 0) {
+				gaugeUnsetWg.Done()
+			}
 		},
 	)
-	gaugeUnsetWg.Add(1)
 
 	gaugeSetWg.Wait()
 	_, err = s.scheduler.CancelTask(ctx, taskID)
@@ -1437,65 +1446,79 @@ func TestListerMetricsCleanup(t *testing.T) {
 
 	gaugeSetWg := sync.WaitGroup{}
 	gaugeUnsetWg := sync.WaitGroup{}
-
-	runningTaskCountGaugeSetCall := registry.GetGauge(
-		"running",
-		map[string]string{"type": "tasks.hanging"},
-	).On(
-		"Set",
-		float64(1),
-	).Return(mock.Anything)
-
-	totalHangingTaskCountGaugeSetCall := registry.GetGauge(
-		"totalHangingTaskCount",
-		map[string]string{"type": "tasks.hanging"},
-	).On(
-		"Set",
-		float64(1),
-	).Return(mock.Anything)
+	var totalHangingTasksCount atomic.Int32
+	var hangingTasksCount atomic.Int32
+	var runningTasksCount atomic.Int32
 
 	gaugeSetWg.Add(1)
-	hangingTasksGaugeSetCall := registry.GetGauge(
+	registry.GetGauge(
+		"running",
+		map[string]string{"type": "tasks.hanging"},
+	).On("Set", float64(1)).Return(mock.Anything).Run(
+		func(args mock.Arguments) {
+			if runningTasksCount.CompareAndSwap(0, 1) {
+				gaugeSetWg.Done()
+			}
+		},
+	)
+
+	gaugeSetWg.Add(1)
+	registry.GetGauge(
+		"totalHangingTaskCount",
+		map[string]string{"type": "tasks.hanging"},
+	).On("Set", float64(1)).Return(mock.Anything).Run(
+		func(args mock.Arguments) {
+			if totalHangingTasksCount.CompareAndSwap(0, 1) {
+				gaugeSetWg.Done()
+			}
+		},
+	)
+
+	gaugeSetWg.Add(1)
+	registry.GetGauge(
 		"hangingTasks",
 		map[string]string{"type": "tasks.hanging", "id": taskID},
 	).On("Set", float64(1)).Return(mock.Anything).Run(
 		func(args mock.Arguments) {
-			gaugeSetWg.Done()
+			if hangingTasksCount.CompareAndSwap(0, 1) {
+				gaugeSetWg.Done()
+			}
 		},
 	)
 
+	gaugeUnsetWg.Add(1)
 	registry.GetGauge(
 		"running",
 		map[string]string{"type": "tasks.hanging"},
-	).On(
-		"Set",
-		float64(0),
-	).NotBefore(
-		runningTaskCountGaugeSetCall,
-	).Return(mock.Anything)
+	).On("Set", float64(0)).Return(mock.Anything).Run(
+		func(args mock.Arguments) {
+			if runningTasksCount.CompareAndSwap(1, 0) {
+				gaugeUnsetWg.Done()
+			}
+		},
+	)
 
+	gaugeUnsetWg.Add(1)
 	registry.GetGauge(
 		"totalHangingTaskCount",
 		map[string]string{"type": "tasks.hanging"},
-	).On(
-		"Set",
-		float64(0),
-	).NotBefore(
-		totalHangingTaskCountGaugeSetCall,
-	).Return(mock.Anything)
+	).On("Set", float64(0)).Return(mock.Anything).Run(
+		func(args mock.Arguments) {
+			if totalHangingTasksCount.CompareAndSwap(1, 0) {
+				gaugeUnsetWg.Done()
+			}
+		},
+	)
 
 	gaugeUnsetWg.Add(1)
 	registry.GetGauge(
 		"hangingTasks",
 		map[string]string{"type": "tasks.hanging", "id": taskID},
-	).On(
-		"Set",
-		float64(0),
-	).NotBefore(
-		hangingTasksGaugeSetCall,
-	).Return(mock.Anything).Run(
+	).On("Set", float64(0)).Return(mock.Anything).Run(
 		func(args mock.Arguments) {
-			gaugeUnsetWg.Done()
+			if hangingTasksCount.CompareAndSwap(1, 0) {
+				gaugeUnsetWg.Done()
+			}
 		},
 	)
 
