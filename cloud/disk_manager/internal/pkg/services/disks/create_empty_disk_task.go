@@ -2,6 +2,7 @@ package disks
 
 import (
 	"context"
+	"strings"
 	"time"
 
 	"github.com/golang/protobuf/proto"
@@ -13,6 +14,12 @@ import (
 	"github.com/ydb-platform/nbs/cloud/tasks"
 	"github.com/ydb-platform/nbs/cloud/tasks/errors"
 )
+
+////////////////////////////////////////////////////////////////////////////////
+
+func (t *createEmptyDiskTask) isLocalDiskAllocationRetries(err error) bool {
+	return nbs.IsLocalDisk(t.params.Kind) && nbs.IsTryAgainError(err) && strings.Contains(err.Error(), "Can allocate local disk after secure erase")
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -91,6 +98,10 @@ func (t *createEmptyDiskTask) Run(
 		EncryptionDesc:          t.params.EncryptionDesc,
 	})
 	if err != nil {
+		if t.isLocalDiskAllocationRetries(err) {
+			return errors.NewRetriableErrorWithIgnoreRetryLimit(err)
+		}
+
 		return err
 	}
 
