@@ -54,7 +54,7 @@ private:
     const ui32 MaxBlockCount;
     const bool IsReliableMediaKind;
 
-    bool CriticalErrorReported = false;
+    std::atomic<bool> CriticalErrorReported = false;
 
 public:
     TAlignedDeviceHandler(
