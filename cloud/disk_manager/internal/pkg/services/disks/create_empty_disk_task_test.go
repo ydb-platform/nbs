@@ -231,7 +231,7 @@ func TestCreateEmptyLocalDiskTaskTryAgainShouldNotIncrementRetriableErrorsCount(
 		Kind:        types.DiskKind_DISK_KIND_SSD_LOCAL,
 		CloudID:     "cloud",
 		FolderID:    "folder",
-	}).Return(&nbs_client.ClientError{Code: nbs_client.E_TRY_AGAIN})
+	}).Return(&nbs_client.ClientError{Code: nbs_client.E_TRY_AGAIN, Message: "Can allocate local disk after secure erase."})
 
 	err := task.Run(ctx, execCtx)
 	mock.AssertExpectationsForObjects(t, storage, nbsFactory, nbsClient, execCtx)

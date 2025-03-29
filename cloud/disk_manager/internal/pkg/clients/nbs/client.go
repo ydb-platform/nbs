@@ -118,15 +118,6 @@ func getDiskKind(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-func IsDiskRegistryBasedDisk(kind types.DiskKind) bool {
-	mediaKind, err := getStorageMediaKind(kind)
-	if err != nil {
-		return false
-	}
-
-	return isDiskRegistryBasedDisk(mediaKind)
-}
-
 func isDiskRegistryBasedDisk(mediaKind core_protos.EStorageMediaKind) bool {
 	switch mediaKind {
 	case core_protos.EStorageMediaKind_STORAGE_MEDIA_SSD_NONREPLICATED,
@@ -137,15 +128,6 @@ func isDiskRegistryBasedDisk(mediaKind core_protos.EStorageMediaKind) bool {
 	}
 
 	return false
-}
-
-func IsLocalDisk(kind types.DiskKind) bool {
-	mediaKind, err := getStorageMediaKind(kind)
-	if err != nil {
-		return false
-	}
-
-	return isLocalDisk(mediaKind)
 }
 
 func isLocalDisk(mediaKind core_protos.EStorageMediaKind) bool {
@@ -407,6 +389,26 @@ func isAbortedError(e error) bool {
 	}
 
 	return false
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+func IsDiskRegistryBasedDisk(kind types.DiskKind) bool {
+	mediaKind, err := getStorageMediaKind(kind)
+	if err != nil {
+		return false
+	}
+
+	return isDiskRegistryBasedDisk(mediaKind)
+}
+
+func IsLocalDisk(kind types.DiskKind) bool {
+	mediaKind, err := getStorageMediaKind(kind)
+	if err != nil {
+		return false
+	}
+
+	return isLocalDisk(mediaKind)
 }
 
 func IsTryAgainError(e error) bool {
