@@ -29,6 +29,50 @@ void DeleteList(T* node)
 ////////////////////////////////////////////////////////////////////////////////
 
 template <typename T>
+class TSimpleListIterator
+{
+    T* Node = nullptr;
+
+public:
+    explicit TSimpleListIterator(T* node)
+        : Node(node)
+    {}
+
+    bool operator!=(const TSimpleListIterator& rhs) const
+    {
+        return !(*this == rhs);
+    }
+
+    bool operator==(const TSimpleListIterator& rhs) const
+    {
+        return Node == rhs.Node;
+    }
+
+    TSimpleListIterator<T>& operator++()
+    {
+        if (!Node) {
+            return *this;
+        }
+
+        Node = Node->Next;
+
+        return *this;
+    }
+
+    T& operator*()
+    {
+        return *Node;
+    }
+
+    T* operator->()
+    {
+        return Node;
+    }
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+template <typename T>
 class TSimpleList
 {
 private:
@@ -62,8 +106,50 @@ public:
                 // list is empty now
                 Head = Tail = nullptr;
             }
+            node->Next = nullptr;
         }
         return node;
+    }
+
+    template <typename TPred>
+    TSimpleList<T> DequeueIf(TPred c)
+    {
+        TSimpleList<T> filteredValues;
+
+        T* firstNotFilteredNode = nullptr;
+        T* lastNotFilteredNode = nullptr;
+        T* curNode = Head;
+
+        while (curNode) {
+            T* next = curNode->Next;
+            if (c(*curNode)) {
+                curNode->Next = nullptr;
+                filteredValues.Enqueue(std::unique_ptr<T>(curNode));
+            } else {
+                if (lastNotFilteredNode) {
+                    lastNotFilteredNode->Next = curNode;
+                }
+                lastNotFilteredNode = curNode;
+                if (!firstNotFilteredNode) {
+                    firstNotFilteredNode = curNode;
+                }
+            }
+            curNode = next;
+        }
+
+        Head = firstNotFilteredNode;
+        Tail = lastNotFilteredNode;
+        return filteredValues;
+    }
+
+    auto begin()
+    {
+        return TSimpleListIterator<T>(Head);
+    }
+
+    auto end()
+    {
+        return TSimpleListIterator<T>(nullptr);
     }
 
     void Enqueue(std::unique_ptr<T> node)

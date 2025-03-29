@@ -3,6 +3,7 @@
 #include <cloud/blockstore/libs/common/block_checksum.h>
 #include <cloud/blockstore/libs/rdma/iface/protobuf.h>
 #include <cloud/blockstore/libs/rdma/iface/protocol.h>
+#include <cloud/blockstore/libs/rdma/iface/public.h>
 #include <cloud/blockstore/libs/service_local/rdma_protocol.h>
 #include <cloud/blockstore/libs/storage/protos/disk.pb.h>
 #include <cloud/storage/core/libs/common/sglist.h>
@@ -75,7 +76,7 @@ struct TRdmaClientTest::TRdmaEndpointImpl
         return NRdma::TClientRequestPtr(std::move(req));
     }
 
-    void SendRequest(
+    ui64 SendRequest(
         NRdma::TClientRequestPtr req,
         TCallContextPtr callContext) override
     {
@@ -101,7 +102,7 @@ struct TRdmaClientTest::TRdmaEndpointImpl
                 NRdma::RDMA_PROTO_FAIL,
                 len);
 
-            return;
+            return 0;
         }
 
         size_t responseBytes = 0;
@@ -246,6 +247,12 @@ struct TRdmaClientTest::TRdmaEndpointImpl
             std::move(req),
             NRdma::RDMA_PROTO_OK,
             responseBytes);
+        return 0;
+    }
+
+    void CancelRequest(ui64 reqId) override
+    {
+        Y_UNUSED(reqId);
     }
 
     NThreading::TFuture<void> Stop() override
