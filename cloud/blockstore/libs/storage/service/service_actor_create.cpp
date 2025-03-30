@@ -266,7 +266,8 @@ void TCreateVolumeActor::CreateVolumeImpl(
     config.SetPlacementPartitionIndex(Request.GetPlacementPartitionIndex());
     if (Request.GetStoragePoolName()) {
         config.SetStoragePoolName(Request.GetStoragePoolName());
-    } else if (GetStorageMediaKind() == NProto::STORAGE_MEDIA_HDD_NONREPLICATED)
+    } else if (
+        config.GetStorageMediaKind() == NProto::STORAGE_MEDIA_HDD_NONREPLICATED)
     {
         config.SetStoragePoolName(Config->GetNonReplicatedHDDPoolName());
     }

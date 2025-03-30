@@ -3962,7 +3962,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
             config,
             std::make_shared<NFeatures::TFeaturesConfig>());
 
-        ui32 hasPerformanceProfileModificationsCounter = 0;
+        ui32 hasProfileModificationsCounter = 0;
 
         runtime->SetObserverFunc(
             [&](TAutoPtr<IEventHandle>& event)
@@ -3974,7 +3974,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
                     auto* msg =
                         event->Get<TEvStatsService::TEvVolumeSelfCounters>();
 
-                    hasPerformanceProfileModificationsCounter =
+                    hasProfileModificationsCounter =
                         msg->VolumeSelfCounters->Simple
                             .HasPerformanceProfileModifications.Value;
                 }
@@ -4025,9 +4025,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
             volume.SendToPipe(
                 std::make_unique<TEvVolumePrivate::TEvUpdateCounters>());
             runtime->DispatchEvents({}, TDuration::Seconds(1));
-            UNIT_ASSERT_VALUES_EQUAL(
-                0,
-                hasPerformanceProfileModificationsCounter);
+            UNIT_ASSERT_VALUES_EQUAL(0, hasProfileModificationsCounter);
         }
 
         // Setting at least one parameter a custom value counts
@@ -4051,9 +4049,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
             volume.SendToPipe(
                 std::make_unique<TEvVolumePrivate::TEvUpdateCounters>());
             runtime->DispatchEvents({}, TDuration::Seconds(1));
-            UNIT_ASSERT_VALUES_EQUAL(
-                1,
-                hasPerformanceProfileModificationsCounter);
+            UNIT_ASSERT_VALUES_EQUAL(1, hasProfileModificationsCounter);
         }
 
         volume.RebootTablet();
@@ -4064,9 +4060,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
             volume.SendToPipe(
                 std::make_unique<TEvVolumePrivate::TEvUpdateCounters>());
             runtime->DispatchEvents({}, TDuration::Seconds(1));
-            UNIT_ASSERT_VALUES_EQUAL(
-                1,
-                hasPerformanceProfileModificationsCounter);
+            UNIT_ASSERT_VALUES_EQUAL(1, hasProfileModificationsCounter);
         }
 
         // Reverting back to suggested performance profile decreases the counter
@@ -4088,9 +4082,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
             volume.SendToPipe(
                 std::make_unique<TEvVolumePrivate::TEvUpdateCounters>());
             runtime->DispatchEvents({}, TDuration::Seconds(1));
-            UNIT_ASSERT_VALUES_EQUAL(
-                0,
-                hasPerformanceProfileModificationsCounter);
+            UNIT_ASSERT_VALUES_EQUAL(0, hasProfileModificationsCounter);
         }
     }
 
