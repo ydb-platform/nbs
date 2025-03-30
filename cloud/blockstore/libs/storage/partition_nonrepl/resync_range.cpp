@@ -23,14 +23,21 @@ TResyncRangeActor::TResyncRangeActor(
         TBlockRange64 range,
         TVector<TReplicaDescriptor> replicas,
         TString writerClientId,
-        IBlockDigestGeneratorPtr blockDigestGenerator)
+        IBlockDigestGeneratorPtr blockDigestGenerator,
+        NProto::EResyncPolicy resyncPolicy)
     : RequestInfo(std::move(requestInfo))
     , BlockSize(blockSize)
     , Range(range)
     , Replicas(std::move(replicas))
     , WriterClientId(std::move(writerClientId))
     , BlockDigestGenerator(std::move(blockDigestGenerator))
-{}
+    , ResyncPolicy(resyncPolicy)
+{
+    using EResyncPolicy = NProto::EResyncPolicy;
+    Y_DEBUG_ABORT_UNLESS(
+        ResyncPolicy == EResyncPolicy::RESYNC_POLICY_MINOR_4MB ||
+        ResyncPolicy == EResyncPolicy::RESYNC_POLICY_MINOR_AND_MAJOR_4MB);
+}
 
 void TResyncRangeActor::Bootstrap(const TActorContext& ctx)
 {
@@ -66,6 +73,20 @@ void TResyncRangeActor::CompareChecksums(const TActorContext& ctx)
 
     if (majorCount == Replicas.size()) {
         // all checksums match
+        Done(ctx);
+        return;
+    }
+
+    if (ResyncPolicy == NProto::EResyncPolicy::RESYNC_POLICY_MINOR_4MB &&
+        majorCount == 1)
+    {
+        LOG_WARN(
+            ctx,
+            TBlockStoreComponents::PARTITION,
+            "[%s] Can't resync range %s with major error due to policy "
+            "restrictions",
+            Replicas[0].ReplicaId.c_str(),
+            DescribeRange(Range).c_str());
         Done(ctx);
         return;
     }
@@ -185,17 +206,17 @@ void TResyncRangeActor::WriteReplicaBlocks(const TActorContext& ctx, int idx)
 
 void TResyncRangeActor::Done(const TActorContext& ctx)
 {
-    auto response = std::make_unique<TEvNonreplPartitionPrivate::TEvRangeResynced>(
-        std::move(Error),
-        Range,
-        ChecksumRangeActorCompanion.GetChecksumStartTs(),
-        ChecksumRangeActorCompanion.GetChecksumDuration(),
-        ReadStartTs,
-        ReadDuration,
-        WriteStartTs,
-        WriteDuration,
-        std::move(AffectedBlockInfos)
-    );
+    auto response =
+        std::make_unique<TEvNonreplPartitionPrivate::TEvRangeResynced>(
+            std::move(Error),
+            Range,
+            ChecksumRangeActorCompanion.GetChecksumStartTs(),
+            ChecksumRangeActorCompanion.GetChecksumDuration(),
+            ReadStartTs,
+            ReadDuration,
+            WriteStartTs,
+            WriteDuration,
+            std::move(AffectedBlockInfos));
 
     LWTRACK(
         ResponseSent_PartitionWorker,
