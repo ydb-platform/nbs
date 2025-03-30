@@ -392,7 +392,7 @@ void TDiskRegistryActor::ExecuteStartMigration(
         } else {
             const auto& target = result.GetResult();
             LOG_INFO(ctx, TBlockStoreComponents::DISK_REGISTRY,
-                "[%lu] Start migration success. DiskId=%s DeviceId=%s TargetId={ %s %u %ul(%ul) }",
+                "[%lu] Start migration success. DiskId=%s DeviceId=%s TargetId={ %s %u %lu(%lu) }",
                 TabletID(),
                 diskId.c_str(),
                 deviceId.c_str(),
@@ -514,7 +514,7 @@ void TDiskRegistryActor::ExecuteStartForceMigration(
     } else {
         const auto& target = result.GetResult();
         LOG_INFO(ctx, TBlockStoreComponents::DISK_REGISTRY,
-            "[%lu] Start force migration success. DiskId=%s DeviceId=%s TargetId={ %s %u %ul(%ul) }",
+            "[%lu] Start force migration success. DiskId=%s DeviceId=%s TargetId={ %s %u %lu(%lu) }",
             TabletID(),
             args.SourceDiskId.c_str(),
             args.SourceDeviceId.c_str(),
