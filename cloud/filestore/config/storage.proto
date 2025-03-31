@@ -545,7 +545,7 @@ message TStorageConfig
     optional bool ServerWriteBackCacheEnabled = 420;
 
     // If enabled, GarbageCompactionThresholdAverage in Cleanup will be compared
-    // to the scaled ratio of DeletedMarkersCount to UsedBlocksCount instead of
+    // to the scaled ratio of DeletionMarkersCount to UsedBlocksCount instead of
     // UsedRangesCount.
     optional bool CalculateCleanupScoreBasedOnUsedBlocksCount = 421;
 
