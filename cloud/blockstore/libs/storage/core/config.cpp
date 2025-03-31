@@ -668,6 +668,12 @@ TVector<TString> ConvertValue(
 }
 
 template <>
+TCertificate ConvertValue(const NCloud::NProto::TCertificate& value)
+{
+    return {value.GetCertFile(), value.GetCertPrivateKeyFile()};
+}
+
+template <>
 TVector<NProto::TLinkedDiskFillBandwidth> ConvertValue(
     const google::protobuf::RepeatedPtrField<NProto::TLinkedDiskFillBandwidth>&
         value)
@@ -679,10 +685,28 @@ TVector<NProto::TLinkedDiskFillBandwidth> ConvertValue(
     return v;
 }
 
-template <>
-TCertificate ConvertValue(const NCloud::NProto::TCertificate& value)
+template <typename T>
+bool IsEmpty(const T& value)
 {
-    return {value.GetCertFile(), value.GetCertPrivateKeyFile()};
+    return !value;
+}
+
+template <>
+bool IsEmpty(const NCloud::NProto::TConfigDispatcherSettings& value)
+{
+    return !value.HasAllowList() && !value.HasDenyList();
+}
+
+template <typename T>
+bool IsEmpty(const google::protobuf::RepeatedPtrField<T>& value)
+{
+    return value.empty();
+}
+
+template <>
+bool IsEmpty(const NCloud::NProto::TCertificate& value)
+{
+    return !value.GetCertFile() && !value.GetCertPrivateKeyFile();
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -836,8 +860,7 @@ void TStorageConfig::SetFeaturesConfig(
     Impl->SetFeaturesConfig(std::move(featuresConfig));
 }
 
-void TStorageConfig::Register(TControlBoard& controlBoard)
-{
+void TStorageConfig::Register(TControlBoard& controlBoard){
 #define BLOCKSTORE_CONFIG_CONTROL(name, type, value)                           \
     controlBoard.RegisterSharedControl(                                        \
         Impl->Control##name,                                                   \
@@ -850,13 +873,14 @@ void TStorageConfig::Register(TControlBoard& controlBoard)
 }
 
 #define BLOCKSTORE_CONFIG_GETTER(name, type, ...)                              \
-type TStorageConfig::Get##name() const                                         \
-{                                                                              \
-    return NCloud::HasField(Impl->StorageServiceConfig, #name)                 \
-                ? ConvertValue<type>(Impl->StorageServiceConfig.Get##name())   \
-                : Default##name;                                               \
-}                                                                              \
-// BLOCKSTORE_CONFIG_GETTER
+    type TStorageConfig::Get##name() const                                     \
+    {                                                                          \
+        bool hasValue = NCloud::HasField(Impl->StorageServiceConfig, #name) && \
+                        !IsEmpty(Impl->StorageServiceConfig.Get##name());      \
+        return hasValue ? ConvertValue<type>(                                  \
+                              Impl->StorageServiceConfig.Get##name())          \
+                        : Default##name;                                       \
+    }   // namespace NCloud::NBlockStore::NStorage
 
 BLOCKSTORE_STORAGE_CONFIG_RO(BLOCKSTORE_CONFIG_GETTER)
 
