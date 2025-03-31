@@ -5592,7 +5592,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
                     {"filesystem", "test"}}, 1},
                 {{
                     {"sensor", "TrimBytes.RequestBytes"},
-                    {"filesystem", "test"}}, block + 1_KB},
+                    {"filesystem", "test"}}, static_cast<i64>(block + 1_KB)},
                 {{
                     {"sensor", "TrimBytes.Count"},
                     {"filesystem", "test"}}, 2},
