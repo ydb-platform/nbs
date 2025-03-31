@@ -1312,6 +1312,21 @@ func newHangingTaskTestConfig() *tasks_config.TasksConfig {
 	return config
 }
 
+func waitForValue(t *testing.T, ch chan (int), expectedValue int) {
+	for {
+		value, ok := <-ch
+		if !ok {
+			require.Fail(t, fmt.Sprintf(
+				"Channel is closed, but value %v was not received",
+				expectedValue,
+			))
+		}
+		if value == expectedValue {
+			return
+		}
+	}
+}
+
 func TestHangingTasksMetrics(t *testing.T) {
 	ctx, cancel := context.WithCancel(newContext())
 	defer cancel()
@@ -1335,64 +1350,53 @@ func TestHangingTasksMetrics(t *testing.T) {
 	taskID, err := scheduleHangingTask(reqCtx, s.scheduler)
 	require.NoError(t, err)
 
-	gaugeSetWg := sync.WaitGroup{}
-	gaugeUnsetWg := sync.WaitGroup{}
-	var totalHangingTasksCount atomic.Int32
-	var hangingTasksCount atomic.Int32
+	totalHangingTasksChannel := make(chan int, 100000)
+	hangingTasksChannel := make(chan int, 100000)
 
-	gaugeSetWg.Add(1)
 	registry.GetGauge(
 		"totalHangingTaskCount",
 		map[string]string{"type": "tasks.hanging"},
 	).On("Set", float64(1)).Return(mock.Anything).Run(
 		func(args mock.Arguments) {
-			if totalHangingTasksCount.CompareAndSwap(0, 1) {
-				gaugeSetWg.Done()
-			}
+			totalHangingTasksChannel <- 1
 		},
 	)
-
-	gaugeSetWg.Add(1)
 	registry.GetGauge(
 		"hangingTasks",
 		map[string]string{"type": "tasks.hanging", "id": taskID},
 	).On("Set", float64(1)).Return(mock.Anything).Run(
 		func(args mock.Arguments) {
-			if hangingTasksCount.CompareAndSwap(0, 1) {
-				gaugeSetWg.Done()
-			}
+			hangingTasksChannel <- 1
 		},
 	)
 
-	gaugeUnsetWg.Add(1)
 	registry.GetGauge(
 		"totalHangingTaskCount",
 		map[string]string{"type": "tasks.hanging"},
 	).On("Set", float64(0)).Return(mock.Anything).Run(
 		func(args mock.Arguments) {
-			if totalHangingTasksCount.CompareAndSwap(1, 0) {
-				gaugeUnsetWg.Done()
-			}
+			totalHangingTasksChannel <- 0
 		},
 	)
-
-	gaugeUnsetWg.Add(1)
 	registry.GetGauge(
 		"hangingTasks",
 		map[string]string{"type": "tasks.hanging", "id": taskID},
 	).On("Set", float64(0)).Return(mock.Anything).Run(
 		func(args mock.Arguments) {
-			if hangingTasksCount.CompareAndSwap(1, 0) {
-				gaugeUnsetWg.Done()
-			}
+			hangingTasksChannel <- 0
 		},
 	)
 
-	gaugeSetWg.Wait()
+	waitForValue(t, totalHangingTasksChannel, 1)
+	waitForValue(t, hangingTasksChannel, 1)
+
 	_, err = s.scheduler.CancelTask(ctx, taskID)
 	require.NoError(t, err)
 	_ = s.scheduler.WaitTaskEnded(ctx, taskID)
-	gaugeUnsetWg.Wait()
+
+	waitForValue(t, totalHangingTasksChannel, 0)
+	waitForValue(t, hangingTasksChannel, 0)
+
 	registry.AssertAllExpectations(t)
 }
 
@@ -1456,88 +1460,71 @@ func TestListerMetricsCleanup(t *testing.T) {
 	taskID, err := scheduleHangingTask(reqCtx, s.scheduler)
 	require.NoError(t, err)
 
-	gaugeSetWg := sync.WaitGroup{}
-	gaugeUnsetWg := sync.WaitGroup{}
-	var totalHangingTasksCount atomic.Int32
-	var hangingTasksCount atomic.Int32
-	var runningTasksCount atomic.Int32
+	totalHangingTasksChannel := make(chan int, 100000)
+	hangingTasksChannel := make(chan int, 100000)
+	runningTasksChannel := make(chan int, 100000)
 
-	gaugeSetWg.Add(1)
 	registry.GetGauge(
 		"running",
 		map[string]string{"type": "tasks.hanging"},
 	).On("Set", float64(1)).Return(mock.Anything).Run(
 		func(args mock.Arguments) {
-			if runningTasksCount.CompareAndSwap(0, 1) {
-				gaugeSetWg.Done()
-			}
+			runningTasksChannel <- 1
 		},
 	)
-
-	gaugeSetWg.Add(1)
 	registry.GetGauge(
 		"totalHangingTaskCount",
 		map[string]string{"type": "tasks.hanging"},
 	).On("Set", float64(1)).Return(mock.Anything).Run(
 		func(args mock.Arguments) {
-			if totalHangingTasksCount.CompareAndSwap(0, 1) {
-				gaugeSetWg.Done()
-			}
+			totalHangingTasksChannel <- 1
 		},
 	)
-
-	gaugeSetWg.Add(1)
 	registry.GetGauge(
 		"hangingTasks",
 		map[string]string{"type": "tasks.hanging", "id": taskID},
 	).On("Set", float64(1)).Return(mock.Anything).Run(
 		func(args mock.Arguments) {
-			if hangingTasksCount.CompareAndSwap(0, 1) {
-				gaugeSetWg.Done()
-			}
+			hangingTasksChannel <- 1
 		},
 	)
 
-	gaugeUnsetWg.Add(1)
 	registry.GetGauge(
 		"running",
 		map[string]string{"type": "tasks.hanging"},
 	).On("Set", float64(0)).Return(mock.Anything).Run(
 		func(args mock.Arguments) {
-			if runningTasksCount.CompareAndSwap(1, 0) {
-				gaugeUnsetWg.Done()
-			}
+			runningTasksChannel <- 0
 		},
 	)
-
-	gaugeUnsetWg.Add(1)
 	registry.GetGauge(
 		"totalHangingTaskCount",
 		map[string]string{"type": "tasks.hanging"},
 	).On("Set", float64(0)).Return(mock.Anything).Run(
 		func(args mock.Arguments) {
-			if totalHangingTasksCount.CompareAndSwap(1, 0) {
-				gaugeUnsetWg.Done()
-			}
+			totalHangingTasksChannel <- 0
 		},
 	)
-
-	gaugeUnsetWg.Add(1)
 	registry.GetGauge(
 		"hangingTasks",
 		map[string]string{"type": "tasks.hanging", "id": taskID},
 	).On("Set", float64(0)).Return(mock.Anything).Run(
 		func(args mock.Arguments) {
-			if hangingTasksCount.CompareAndSwap(1, 0) {
-				gaugeUnsetWg.Done()
-			}
+			hangingTasksChannel <- 0
 		},
 	)
 
-	gaugeSetWg.Wait()
+	waitForValue(t, runningTasksChannel, 1)
+	waitForValue(t, totalHangingTasksChannel, 1)
+	waitForValue(t, hangingTasksChannel, 1)
+
 	// Close connection to YDB to enforce collectListerMetricsTask failure.
 	err = db.Close(ctx)
 	require.NoError(t, err)
-	gaugeUnsetWg.Wait()
+
+	waitForValue(t, runningTasksChannel, 0)
+	waitForValue(t, totalHangingTasksChannel, 0)
+	waitForValue(t, hangingTasksChannel, 0)
+
 	registry.AssertAllExpectations(t)
 }
