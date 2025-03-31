@@ -417,6 +417,8 @@ void TVolumeActor::SendSelfStatsToService(const TActorContext& ctx)
     simple.UseFastPath.Set(
         State->GetUseFastPath() &&
         State->GetMeta().GetMigrations().size() == 0);
+    simple.HasPerformanceProfileModifications.Set(
+        HasPerformanceProfileModifications);
 
     SendVolumeSelfCounters(ctx);
     VolumeSelfCounters = CreateVolumeSelfCounters(

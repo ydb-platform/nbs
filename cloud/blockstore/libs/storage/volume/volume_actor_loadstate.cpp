@@ -136,6 +136,9 @@ void TVolumeActor::CompleteLoadState(
             std::move(args.FollowerDisks),
             startPartitionsNeeded);
 
+        HasPerformanceProfileModifications =
+            State->HasPerformanceProfileModifications(*Config);
+
         ResetThrottlingPolicy();
 
         for (const auto& partStats: args.PartStats) {

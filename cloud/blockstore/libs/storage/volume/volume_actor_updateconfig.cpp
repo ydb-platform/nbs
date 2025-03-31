@@ -363,6 +363,9 @@ void TVolumeActor::CompleteUpdateConfig(
         RegisterVolume(ctx);
     }
 
+    HasPerformanceProfileModifications =
+        State->HasPerformanceProfileModifications(*Config);
+
     Y_ABORT_UNLESS(NextVolumeConfigVersion == GetCurrentConfigVersion());
 
     if (CurrentState == STATE_INIT) {
