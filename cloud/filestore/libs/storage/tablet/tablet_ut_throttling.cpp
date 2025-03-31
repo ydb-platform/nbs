@@ -650,7 +650,9 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Throttling)
         UNIT_ASSERT(resp->Record.GetHeaders().GetThrottler().GetDelay() > 0);
     }
 
-    TABLET_TEST(ShouldAutomaticallyRunCleanupForSparselyPopulatedRanges)
+    // The test is 4K only because for largers blocks the file size
+    // will be enormously higher
+    TABLET_TEST_4K_ONLY(ShouldThrottleCleanupAfterTabletRestart)
     {
         const auto block = tabletConfig.BlockSize;
         const auto fileSize = 16_MB;
