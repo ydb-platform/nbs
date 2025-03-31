@@ -218,7 +218,6 @@ func TestCreateEmptyLocalDiskTaskTryAgainShouldNotIncrementRetriableErrorsCount(
 		state:      &protos.CreateEmptyDiskTaskState{},
 	}
 
-	// TODO: Improve this expectations.
 	storage.On("CreateDisk", ctx, mock.Anything).Return(&resources.DiskMeta{
 		ID: "disk",
 	}, nil)
