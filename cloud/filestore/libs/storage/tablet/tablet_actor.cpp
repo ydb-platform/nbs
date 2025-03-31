@@ -479,10 +479,10 @@ TCompactionInfo TIndexTabletActor::GetCompactionInfo() const
     // TODO: use GarbageCompactionThreshold
 
     bool shouldCompactByGarbage = Config->GetNewCompactionEnabled()
-        && (rangeCount
+        && (used > 0
             ? avgGarbagePercentage
                 >= Config->GetGarbageCompactionThresholdAverage()
-            : stored > used);
+            : stored > 0);
 
     const bool shouldCompactByBlobs = compactionScore >= compactionThreshold
         || Config->GetNewCompactionEnabled()
