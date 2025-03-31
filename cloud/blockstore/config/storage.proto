@@ -1190,13 +1190,13 @@ message TStorageServiceConfig
     // Use SSL for dynamic node registration.
     optional bool NodeRegistrationUseSsl = 417;
 
-    // Linked disk fill bandwidth settings.
-    repeated TLinkedDiskFillBandwidth LinkedDiskFillBandwidth = 418;
-
     // Scrubber policy for resync.
-    optional EResyncPolicy ScrubbingResyncPolicy = 419;
+    optional EResyncPolicy ScrubbingResyncPolicy = 418;
     // Resync policy for auto-resync.
-    optional EResyncPolicy AutoResyncPolicy = 420;
+    optional EResyncPolicy AutoResyncPolicy = 419;
     // Resync policy for force-resync.
-    optional EResyncPolicy ForceResyncPolicy = 421;
+    optional EResyncPolicy ForceResyncPolicy = 420;
+
+    // Linked disk fill bandwidth settings.
+    repeated TLinkedDiskFillBandwidth LinkedDiskFillBandwidth = 421;
 }
