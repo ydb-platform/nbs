@@ -1,10 +1,14 @@
 LIBRARY()
 
+GENERATE_ENUM_SERIALIZATION(volume_as_partition_actor.h)
+
 SRCS(
+    follower_disk_actor.cpp
     forward_write_and_mark_used.cpp
     read_disk_registry_based_overlay.cpp
     release_devices_actor.cpp
     shadow_disk_actor.cpp
+    volume_as_partition_actor.cpp
 )
 
 PEERDIR(
