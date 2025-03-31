@@ -234,40 +234,39 @@ void TCreateVolumeActor::CreateVolumeImpl(
     config.SetIsSystem(Request.GetIsSystem());
     config.SetFillGeneration(Request.GetFillGeneration());
 
-    {
-        const TVolumeParams volumeParams = ComputeVolumeParams(
-            *Config,
-            GetBlockSize(),
-            Request.GetBlocksCount(),
-            GetStorageMediaKind(),
-            Request.GetPartitionsCount(),
-            Request.GetCloudId(),
-            Request.GetFolderId(),
-            Request.GetDiskId(),
-            Request.GetIsSystem(),
-            !Request.GetBaseDiskId().empty());
+    const TVolumeParams volumeParams = ComputeVolumeParams(
+        *Config,
+        GetBlockSize(),
+        Request.GetBlocksCount(),
+        GetStorageMediaKind(),
+        Request.GetPartitionsCount(),
+        Request.GetCloudId(),
+        Request.GetFolderId(),
+        Request.GetDiskId(),
+        Request.GetIsSystem(),
+        !Request.GetBaseDiskId().empty());
 
-        if (volumeParams.PartitionsCount > 1) {
-            config.SetBlocksPerStripe(ceil(
-                static_cast<double>(Config->GetBytesPerStripe()) /
-                volumeParams.BlockSize));
-        }
-
-        ResizeVolume(
-            *Config,
-            volumeParams,
-            {},
-            Request.GetPerformanceProfile(),
-            config);
+    if (volumeParams.PartitionsCount > 1) {
+        config.SetBlocksPerStripe(ceil(
+            static_cast<double>(Config->GetBytesPerStripe()) /
+            volumeParams.BlockSize));
     }
+
+    ResizeVolume(
+        *Config,
+        volumeParams,
+        {},
+        Request.GetPerformanceProfile(),
+        config
+    );
     config.SetCreationTs(ctx.Now().MicroSeconds());
 
     config.SetPlacementGroupId(Request.GetPlacementGroupId());
     config.SetPlacementPartitionIndex(Request.GetPlacementPartitionIndex());
     if (Request.GetStoragePoolName()) {
         config.SetStoragePoolName(Request.GetStoragePoolName());
-    } else if (
-        config.GetStorageMediaKind() == NProto::STORAGE_MEDIA_HDD_NONREPLICATED)
+    } else if (volumeParams.MediaKind
+            == NProto::STORAGE_MEDIA_HDD_NONREPLICATED)
     {
         config.SetStoragePoolName(Config->GetNonReplicatedHDDPoolName());
     }
