@@ -5592,7 +5592,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
                     {"filesystem", "test"}}, 1},
                 {{
                     {"sensor", "TrimBytes.RequestBytes"},
-                    {"filesystem", "test"}}, block + 1_KB},
+                    {"filesystem", "test"}}, static_cast<i64>(block + 1_KB)},
                 {{
                     {"sensor", "TrimBytes.Count"},
                     {"filesystem", "test"}}, 2},
@@ -7039,6 +7039,59 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
             UNIT_ASSERT_VALUES_EQUAL(8, stats.GetUsedBlocksCount());
             UNIT_ASSERT_VALUES_EQUAL(0, stats.GetDeletionMarkersCount());
         }
+    }
+
+    TABLET_TEST(CheckCompactionStatsAddBlobWriteBatch)
+    {
+        const auto block = tabletConfig.BlockSize;
+
+        NProto::TStorageConfig storageConfig;
+        storageConfig.SetWriteBatchEnabled(true);
+        storageConfig.SetWriteBatchTimeout(1); // 1 ms
+        storageConfig.SetWriteBlobThreshold(block);
+        storageConfig.SetMaxBlobSize(2 * block);
+
+        TTestEnv env({}, std::move(storageConfig));
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(
+            env.GetRuntime(),
+            nodeIdx,
+            tabletId,
+            tabletConfig);
+        tablet.InitSession("client", "session");
+
+        auto id = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
+        auto handle = CreateHandle(tablet, id);
+
+        for (ui32 i = 0; i < 4; i++) {
+            auto request =
+                tablet.CreateWriteDataRequest(handle, i * 2 * block, block, 'a');
+            tablet.SendRequest(std::move(request));
+        }
+
+        TDispatchOptions options;
+        env.GetRuntime().DispatchEvents(options);
+
+        {
+            auto response = tablet.GetStorageStats(1);
+            const auto& stats = response->Record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(
+                4,
+                stats.GetMixedBlocksCount());
+            UNIT_ASSERT_VALUES_EQUAL(1, stats.CompactionRangeStatsSize());
+            UNIT_ASSERT_VALUES_EQUAL(
+                2,
+                stats.GetCompactionRangeStats(0).GetBlobCount());
+            UNIT_ASSERT_VALUES_EQUAL(
+                4,
+                stats.GetCompactionRangeStats(0).GetDeletionCount());
+        }
+
+        tablet.DestroyHandle(handle);
     }
 }
 

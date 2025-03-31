@@ -5,6 +5,7 @@ package NCloud.NBlockStore.NProto;
 import "cloud/storage/core/protos/authorization_mode.proto";
 import "cloud/storage/core/protos/certificate.proto";
 import "cloud/storage/core/protos/config_dispatcher_settings.proto";
+import "cloud/storage/core/protos/media.proto";
 
 option go_package = "github.com/ydb-platform/nbs/cloud/blockstore/config";
 
@@ -45,6 +46,23 @@ enum EVolumePreemptionType
     PREEMPTION_MOVE_MOST_HEAVY = 1;
     // Move least resource consumig disk
     PREEMPTION_MOVE_LEAST_HEAVY = 2;
+}
+
+message TLinkedDiskFillBandwidth
+{
+    optional NCloud.NProto.EStorageMediaKind MediaKind = 1;
+
+    // Max linked disk fill bandwidth in MiB/s when used as source.
+    optional uint32 ReadBandwidth = 2;
+
+    // Max linked disk fill bandwidth in MiB/s when used as destination.
+    optional uint32 WriteBandwidth = 3;
+
+    // Max linked disk fill io depth when used as source.
+    optional uint32 ReadIoDepth = 4;
+
+    // Max linked disk fill io depth when used as destination.
+    optional uint32 WriteIoDepth = 5;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1178,4 +1196,7 @@ message TStorageServiceConfig
     optional EResyncPolicy AutoResyncPolicy = 419;
     // Resync policy for force-resync.
     optional EResyncPolicy ForceResyncPolicy = 420;
+
+    // Linked disk fill bandwidth settings.
+    repeated TLinkedDiskFillBandwidth LinkedDiskFillBandwidth = 421;
 }

@@ -4,9 +4,12 @@
 #include <cloud/blockstore/libs/service/request_helpers.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/core/proto_helpers.h>
+#include <cloud/blockstore/libs/storage/core/volume_model.h>
 #include <cloud/blockstore/libs/storage/partition_nonrepl/config.h>
 
 #include <cloud/storage/core/libs/common/media.h>
+
+#include <google/protobuf/util/message_differencer.h>
 
 #include <util/stream/str.h>
 #include <util/system/hostname.h>
@@ -453,6 +456,42 @@ void TVolumeState::FillDeviceInfo(NProto::TVolume& volume) const
 bool TVolumeState::IsDiskRegistryMediaKind() const
 {
     return NCloud::IsDiskRegistryMediaKind(Config->GetStorageMediaKind());
+}
+
+bool TVolumeState::HasPerformanceProfileModifications(
+    const TStorageConfig& config) const
+{
+    const NKikimrBlockStore::TVolumeConfig& volumeConfig =
+        GetMeta().GetVolumeConfig();
+
+    auto currentPerformanceProfile =
+        VolumeConfigToVolumePerformanceProfile(volumeConfig);
+
+    NProto::TVolumePerformanceProfile defaultPerformanceProfile;
+    {
+        const TVolumeParams volumeParams = ComputeVolumeParams(
+            config,
+            GetBlockSize(),
+            GetBlocksCount(),
+            static_cast<NProto::EStorageMediaKind>(
+                volumeConfig.GetStorageMediaKind()),
+            static_cast<ui32>(volumeConfig.GetPartitions().size()),
+            volumeConfig.GetCloudId(),
+            volumeConfig.GetFolderId(),
+            volumeConfig.GetDiskId(),
+            volumeConfig.GetIsSystem(),
+            !volumeConfig.GetBaseDiskId().empty());
+
+        NKikimrBlockStore::TVolumeConfig defaultVolumeConfig;
+        ResizeVolume(config, volumeParams, {}, {}, defaultVolumeConfig);
+        defaultPerformanceProfile =
+            VolumeConfigToVolumePerformanceProfile(defaultVolumeConfig);
+    }
+
+    using google::protobuf::util::MessageDifferencer;
+    return !MessageDifferencer::Equals(
+        currentPerformanceProfile,
+        defaultPerformanceProfile);
 }
 
 ////////////////////////////////////////////////////////////////////////////////

@@ -235,45 +235,22 @@ void TCreateVolumeActor::CreateVolumeImpl(
     config.SetIsSystem(Request.GetIsSystem());
     config.SetFillGeneration(Request.GetFillGeneration());
 
-    TVolumeParams volumeParams;
-    volumeParams.BlockSize = GetBlockSize();
-    volumeParams.MediaKind = GetStorageMediaKind();
-    if (!IsDiskRegistryMediaKind(volumeParams.MediaKind)) {
-        TPartitionsInfo partitionsInfo;
-        if (Request.GetPartitionsCount()) {
-            partitionsInfo.PartitionsCount = Request.GetPartitionsCount();
-            partitionsInfo.BlocksCountPerPartition =
-                ComputeBlocksCountPerPartition(
-                    Request.GetBlocksCount(),
-                    Config->GetBytesPerStripe(),
-                    volumeParams.BlockSize,
-                    partitionsInfo.PartitionsCount
-                );
-        } else {
-            partitionsInfo = ComputePartitionsInfo(
-                *Config,
-                Request.GetCloudId(),
-                Request.GetFolderId(),
-                Request.GetDiskId(),
-                GetStorageMediaKind(),
-                Request.GetBlocksCount(),
-                volumeParams.BlockSize,
-                Request.GetIsSystem(),
-                !Request.GetBaseDiskId().empty()
-            );
-        }
-        volumeParams.PartitionsCount = partitionsInfo.PartitionsCount;
-        volumeParams.BlocksCountPerPartition =
-            partitionsInfo.BlocksCountPerPartition;
-    } else {
-        volumeParams.BlocksCountPerPartition = Request.GetBlocksCount();
-        volumeParams.PartitionsCount = 1;
-    }
+    const TVolumeParams volumeParams = ComputeVolumeParams(
+        *Config,
+        GetBlockSize(),
+        Request.GetBlocksCount(),
+        GetStorageMediaKind(),
+        Request.GetPartitionsCount(),
+        Request.GetCloudId(),
+        Request.GetFolderId(),
+        Request.GetDiskId(),
+        Request.GetIsSystem(),
+        !Request.GetBaseDiskId().empty());
 
     if (volumeParams.PartitionsCount > 1) {
-        config.SetBlocksPerStripe(
-            ceil(double(Config->GetBytesPerStripe()) / volumeParams.BlockSize)
-        );
+        config.SetBlocksPerStripe(ceil(
+            static_cast<double>(Config->GetBytesPerStripe()) /
+            volumeParams.BlockSize));
     }
 
     ResizeVolume(

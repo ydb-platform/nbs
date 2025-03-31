@@ -34,11 +34,13 @@ TMirrorPartitionResyncActor::TMirrorPartitionResyncActor(
         TVector<TDevices> replicaDevices,
         NRdma::IClientPtr rdmaClient,
         NActors::TActorId statActorId,
-        ui64 initialResyncIndex)
+        ui64 initialResyncIndex,
+        NProto::EResyncPolicy resyncPolicy)
     : Config(std::move(config))
     , DiagnosticsConfig(std::move(diagnosticsConfig))
     , ProfileLog(std::move(profileLog))
     , BlockDigestGenerator(std::move(digestGenerator))
+    , ResyncPolicy(resyncPolicy)
     , RWClientId(std::move(rwClientId))
     , PartConfig(std::move(partConfig))
     , Migrations(std::move(migrations))

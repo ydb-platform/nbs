@@ -42,7 +42,7 @@ message TCreateHandleRequest
     THeaders Headers = 1;
 
     // FileSystem identifier.
-    string FileSystemId = 2;
+    bytes FileSystemId = 2;
 
     // Parent node.
     uint64 NodeId = 3;
@@ -63,7 +63,7 @@ message TCreateHandleRequest
     uint64 Gid = 11;
 
     // If set, the node will be created or looked up in the shard FS.
-    string ShardFileSystemId = 12;
+    bytes ShardFileSystemId = 12;
 }
 
 message TCreateHandleResponse
@@ -78,9 +78,9 @@ message TCreateHandleResponse
     TNodeAttr NodeAttr = 3;
 
     // Shard FS id - if the request should be redirected to a shard.
-    string ShardFileSystemId = 4;
+    bytes ShardFileSystemId = 4;
     // Node name in the shard FS (under RootNode).
-    string ShardNodeName = 5;
+    bytes ShardNodeName = 5;
 
     // Optional response headers.
     TResponseHeaders Headers = 1000;
@@ -95,7 +95,7 @@ message TDestroyHandleRequest
     THeaders Headers = 1;
 
     // FileSystem identifier.
-    string FileSystemId = 2;
+    bytes FileSystemId = 2;
 
     // Node.
     uint64 NodeId = 3;
@@ -122,7 +122,7 @@ message TReadDataRequest
     THeaders Headers = 1;
 
     // FileSystem identifier.
-    string FileSystemId = 2;
+    bytes FileSystemId = 2;
 
     // Node.
     uint64 NodeId = 3;
@@ -161,7 +161,7 @@ message TWriteDataRequest
     THeaders Headers = 1;
 
     // FileSystem identifier.
-    string FileSystemId = 2;
+    bytes FileSystemId = 2;
 
     // Node.
     uint64 NodeId = 3;
@@ -208,7 +208,7 @@ message TAllocateDataRequest
     THeaders Headers = 1;
 
     // FileSystem identifier.
-    string FileSystemId = 2;
+    bytes FileSystemId = 2;
 
     // Node.
     uint64 NodeId = 3;
@@ -245,7 +245,7 @@ message TTruncateDataRequest
     THeaders Headers = 1;
 
     // FileSystem identifier.
-    string FileSystemId = 2;
+    bytes FileSystemId = 2;
 
     // Node.
     uint64 NodeId = 3;
@@ -275,7 +275,7 @@ message TFsyncRequest
     THeaders Headers = 1;
 
     // FileSystem identifier.
-    string FileSystemId = 2;
+    bytes FileSystemId = 2;
 
     // Node.
     uint64 NodeId = 3;
@@ -305,7 +305,7 @@ message TFsyncDirRequest
     THeaders Headers = 1;
 
     // FileSystem identifier.
-    string FileSystemId = 2;
+    bytes FileSystemId = 2;
 
     // Node.
     uint64 NodeId = 3;

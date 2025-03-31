@@ -28,6 +28,7 @@ private:
     const TVector<TReplicaDescriptor> Replicas;
     const TString WriterClientId;
     const IBlockDigestGeneratorPtr BlockDigestGenerator;
+    const NProto::EResyncPolicy ResyncPolicy;
 
     TVector<int> ActorsToResync;
     ui32 ResyncedCount = 0;
@@ -50,7 +51,8 @@ public:
         TBlockRange64 range,
         TVector<TReplicaDescriptor> replicas,
         TString writerClientId,
-        IBlockDigestGeneratorPtr blockDigestGenerator);
+        IBlockDigestGeneratorPtr blockDigestGenerator,
+        NProto::EResyncPolicy resyncPolicy);
 
     void Bootstrap(const NActors::TActorContext& ctx);
 

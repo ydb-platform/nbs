@@ -380,6 +380,8 @@ public:
 
     bool IsDiskRegistryMediaKind() const;
 
+    bool HasPerformanceProfileModifications(const TStorageConfig& config) const;
+
     //
     // Partitions
     //
@@ -746,6 +748,11 @@ public:
         }
 
         return Meta.GetResyncNeeded();
+    }
+
+    bool IsForceMirrorResync() const
+    {
+        return ForceMirrorResync;
     }
 
     TVector<NProto::TDeviceConfig> GetAllDevicesForAcquireRelease() const;
