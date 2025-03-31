@@ -267,7 +267,7 @@ func testCreateSnapshotFromDiskWithFailedShadowDisk(
 
 	// Should wait here: if the operation was cancelled, then the checkpoint
 	// was deleted on cancel (and exact time of this event is unknown).
-	testcommon.WaitForCheckpointsDoNotExist(t, ctx, diskID)
+	testcommon.WaitForNoCheckpointsExist(t, ctx, diskID)
 
 	if operationErr != nil {
 		// Nothing more to check.
