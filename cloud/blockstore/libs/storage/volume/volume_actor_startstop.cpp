@@ -11,13 +11,15 @@
 #include <cloud/blockstore/libs/storage/partition_nonrepl/part_mirror_resync.h>
 #include <cloud/blockstore/libs/storage/partition_nonrepl/part_nonrepl.h>
 #include <cloud/blockstore/libs/storage/partition_nonrepl/part_nonrepl_migration.h>
+#include <cloud/blockstore/libs/storage/volume/actors/follower_disk_actor.h>
 #include <cloud/blockstore/libs/storage/volume/actors/shadow_disk_actor.h>
-#include <cloud/storage/core/libs/common/media.h>
 
-#include <util/string/builder.h>
+#include <cloud/storage/core/libs/common/media.h>
 
 #include <contrib/ydb/core/base/tablet.h>
 #include <contrib/ydb/core/tablet/tablet_setup.h>
+
+#include <util/string/builder.h>
 
 namespace NCloud::NBlockStore::NStorage {
 
@@ -267,8 +269,18 @@ void TVolumeActor::SetupDiskRegistryBasedPartitions(const TActorContext& ctx)
         }
     }
 
+    // Wrap partition actor
+    GetDeviceForRangeCompanion.SetDelegate(nonreplicatedActorId);
+
+    nonreplicatedActorId =
+        WrapInFollowerActorIfNeeded(ctx, nonreplicatedActorId);
+    nonreplicatedActorId = WrapNonreplActorIfNeeded(
+        ctx,
+        nonreplicatedActorId,
+        nonreplicatedConfig);
+
     State->SetDiskRegistryBasedPartitionActor(
-        WrapNonreplActorIfNeeded(ctx, nonreplicatedActorId, nonreplicatedConfig),
+        nonreplicatedActorId,
         nonreplicatedConfig);
     ReportLaggingDevicesToDR(ctx);
 }
@@ -306,6 +318,35 @@ NActors::TActorId TVolumeActor::WrapNonreplActorIfNeeded(
         DoRegisterVolume(ctx, checkpointInfo.ShadowDiskId);
     }
     return nonreplicatedActorId;
+}
+
+NActors::TActorId TVolumeActor::WrapInFollowerActorIfNeeded(
+    const TActorContext& ctx,
+    NActors::TActorId partitionActorId)
+{
+    for (const auto& follower: State->GetAllFollowers()) {
+        if (follower.State == TFollowerDiskInfo::EState::Error) {
+            continue;
+        }
+        partitionActorId = NCloud::Register<TFolowerDiskActor>(
+            ctx,
+            Config,
+            DiagnosticsConfig,
+            ProfileLog,
+            BlockDigestGenerator,
+            TLeaderVolume{
+                .MediaKind = State->GetStorageMediaKind(),
+                .DiskId = State->GetDiskId(),
+                .BlockCount = State->GetBlocksCount(),
+                .BlockSize = State->GetBlockSize(),
+                .VolumeActorId = SelfId(),
+                .PartitionActorId = partitionActorId,
+                .ClientId = State->GetReadWriteAccessClientId()},
+            TFollowerVolume{
+                .DiskInfo = follower,
+                .VolumeActorId = TActorId()});
+    }
+    return partitionActorId;
 }
 
 void TVolumeActor::RestartPartition(
@@ -656,36 +697,43 @@ void TVolumeActor::HandleTabletStatus(
     bool suggestOutdated = false;
 
     switch (msg->Status) {
-        case TEvBootstrapper::STARTED:
-            partition->SetStarted(msg->TabletUser);
+        case TEvBootstrapper::STARTED: {
+            auto partitionActorId =
+                WrapInFollowerActorIfNeeded(ctx, msg->TabletUser);
+            partition->SetStarted(partitionActorId);
             NCloud::Send<TEvPartition::TEvWaitReadyRequest>(
                 ctx,
                 msg->TabletUser,
                 msg->TabletId);
             break;
-        case TEvBootstrapper::STOPPED:
+        }
+        case TEvBootstrapper::STOPPED: {
             partition->RetryPolicy.Reset(ctx.Now());
             partition->Bootstrapper = {};
             partition->SetStopped();
             break;
-        case TEvBootstrapper::RACE:
+        }
+        case TEvBootstrapper::RACE: {
             shouldRestart = true;
             partition->RetryPolicy.Reset(ctx.Now());
             break;
-        case TEvBootstrapper::SUGGEST_OUTDATED:
+        }
+        case TEvBootstrapper::SUGGEST_OUTDATED: {
             shouldRestart = true;
             suggestOutdated = true;
             // Retry immediately when hive generation is out of sync
             partition->RetryPolicy.Reset(ctx.Now());
             break;
-        case TEvBootstrapper::FAILED:
+        }
+        case TEvBootstrapper::FAILED: {
             if (partition->State == TPartitionInfo::EState::READY &&
-                    ctx.Now() > partition->RetryPolicy.GetCurrentDeadline())
+                ctx.Now() > partition->RetryPolicy.GetCurrentDeadline())
             {
                 partition->RetryPolicy.Reset(ctx.Now());
             }
             shouldRestart = true;
             break;
+        }
     }
 
     if (shouldRestart) {
