@@ -594,9 +594,12 @@ void TVolumeActor::HandlePoisonTaken(
     const TEvents::TEvPoisonTaken::TPtr& ev,
     const TActorContext& ctx)
 {
-    LOG_INFO(ctx, TBlockStoreComponents::VOLUME,
-        "[%lu] Partition %s stopped",
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::VOLUME,
+        "[%lu][d:%s] Partition %s stopped",
         TabletID(),
+        State ? State->GetDiskId().c_str() : "?",
         ev->Sender.ToString().c_str());
 
     OnDiskRegistryBasedPartitionStopped(
@@ -1024,6 +1027,12 @@ STFUNC(TVolumeActor::StateWork)
         HFunc(
             TEvVolumePrivate::TEvUpdateFollowerStateRequest,
             HandleUpdateFollowerState);
+        HFunc(
+            TEvVolumePrivate::TEvCreateLinkFinished,
+            HandleCreateLinkFinished);
+        HFunc(
+            TEvVolumePrivate::TEvLinkOnFollowerDestroyed,
+            HandleLinkOnFollowerDestroyed);
 
         HFunc(
             TEvDiskRegistryProxy::TEvGetDrTabletInfoResponse,
@@ -1077,14 +1086,17 @@ STFUNC(TVolumeActor::StateZombie)
         IgnoreFunc(TEvPartitionCommonPrivate::TEvLongRunningOperation);
 
         IgnoreFunc(TEvVolumePrivate::TEvUpdateShadowDiskStateRequest);
-        IgnoreFunc(TEvVolumePrivate::TEvUpdateFollowerStateRequest);
 
         IgnoreFunc(TEvDiskRegistryProxy::TEvGetDrTabletInfoResponse);
 
         IgnoreFunc(TEvDiskRegistry::TEvAddLaggingDevicesResponse);
 
+        IgnoreFunc(TEvVolumePrivate::TEvCreateLinkFinished);
+        IgnoreFunc(TEvVolumePrivate::TEvLinkOnFollowerDestroyed);
+        IgnoreFunc(TEvVolumePrivate::TEvUpdateFollowerStateRequest);
         IgnoreFunc(TEvVolume::TEvLinkLeaderVolumeToFollowerRequest);
         IgnoreFunc(TEvVolume::TEvUnlinkLeaderVolumeFromFollowerRequest);
+        IgnoreFunc(TEvVolume::TEvNotifyFollowerVolumeResponse);
 
         default:
             if (!RejectRequests(ev)) {

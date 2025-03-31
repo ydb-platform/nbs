@@ -109,6 +109,13 @@ void TCopyRangeActor::ReadBlocks(const TActorContext& ctx)
 
 void TCopyRangeActor::WriteBlocks(const TActorContext& ctx, NProto::TIOVector blocks)
 {
+    // BlobStorage-based volumes returns empty blocks for zero-blocks.
+    for (auto& block: *blocks.MutableBuffers()) {
+        if (block.empty()) {
+            block.resize(BlockSize);
+        }
+    }
+
     auto request = std::make_unique<TEvService::TEvWriteBlocksRequest>();
     request->Record.SetStartIndex(Range.Start);
     request->Record.MutableBlocks()->Swap(&blocks);

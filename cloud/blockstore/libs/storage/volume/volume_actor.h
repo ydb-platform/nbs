@@ -27,9 +27,11 @@
 #include <cloud/blockstore/libs/storage/core/tablet.h>
 #include <cloud/blockstore/libs/storage/model/composite_id.h>
 #include <cloud/blockstore/libs/storage/partition_common/events_private.h>
+#include <cloud/blockstore/libs/storage/partition_common/get_device_for_range_companion.h>
 #include <cloud/blockstore/libs/storage/partition_common/long_running_operation_companion.h>
 #include <cloud/blockstore/libs/storage/volume/model/requests_inflight.h>
 #include <cloud/blockstore/libs/storage/volume/model/volume_throttler_logger.h>
+
 #include <cloud/storage/core/libs/api/hive_proxy.h>
 #include <cloud/storage/core/protos/trace.pb.h>
 
@@ -731,10 +733,6 @@ private:
         const NActors::TActorContext& ctx,
         ui64 requestId);
 
-    void HandleUpdateShadowDiskStateRequest(
-        const TEvVolumePrivate::TEvUpdateShadowDiskStateRequest::TPtr& ev,
-        const NActors::TActorContext& ctx);
-
     void HandleGetDrTabletInfoResponse(
         const TEvDiskRegistryProxy::TEvGetDrTabletInfoResponse::TPtr& ev,
         const NActors::TActorContext& ctx);
@@ -1082,6 +1080,30 @@ private:
         const NActors::TActorContext& ctx,
         NActors::TActorId nonreplicatedActorId,
         std::shared_ptr<TNonreplicatedPartitionConfig> srcConfig);
+
+    TActorsStack WrapFollowerActorIfNeeded(
+        const NActors::TActorContext& ctx,
+        TActorsStack actors);
+
+    void HandleCreateLinkFinished(
+        const TEvVolumePrivate::TEvCreateLinkFinished::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleLinkOnFollowerDestroyed(
+        const TEvVolumePrivate::TEvLinkOnFollowerDestroyed::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    // Create link to leader volume on follower side
+    void CreateLeaderLink(
+        TRequestInfoPtr requestInfo,
+        TLeaderFollowerLink link,
+        const NActors::TActorContext& ctx);
+
+    // Remove link to leader volume on follower side
+    void DestroyLeaderLink(
+        TRequestInfoPtr requestInfo,
+        TLeaderFollowerLink link,
+        const NActors::TActorContext& ctx);
 
     // Restart partitions. If these were partition of DiskRegistry-based disk,
     // then the onPartitionStopped callback will be called after the partition
