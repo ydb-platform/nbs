@@ -343,6 +343,7 @@ private:
 
             result = file.ReadAll();
         } catch (...) {
+            GetOutputStream() << "Can't read from file " << GetFilename(range);
         }
 
         return result;
