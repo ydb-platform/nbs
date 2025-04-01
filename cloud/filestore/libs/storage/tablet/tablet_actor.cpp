@@ -585,6 +585,37 @@ TCleanupInfo TIndexTabletActor::GetCleanupInfo() const
             || isPriority};
 }
 
+bool TIndexTabletActor::ShouldCleanupAfterApplyingThrottlingRules(
+    const NActors::TActorContext& ctx,
+    const TCleanupInfo& cleanupInfo)
+{
+    if (Config->GetCleanupCpuThrottlingThreshold() && !cleanupInfo.IsPriority) {
+        // Prevent cleanup from consuming too much resources when a massive
+        // amount of deletion markers is to be cleaned up.
+        const auto deletionMarkersCount =
+            GetFileSystemStats().GetDeletionMarkersCount();
+        if (deletionMarkersCount < GetDeletionMarkersThrottlingThreshold()) {
+            if (cleanupInfo.ShouldCleanup) {
+                const auto now = ctx.Now();
+                const double cleanupCpu = Metrics.Cleanup.CPU(now) * 100.0;
+                if (cleanupCpu > Config->GetCleanupCpuThrottlingThreshold()) {
+                    LOG_TRACE(ctx, TFileStoreComponents::TABLET,
+                        "%s Cleanup CPU throttling: %lf > %d",
+                        LogTag.c_str(),
+                        cleanupCpu,
+                        Config->GetCleanupCpuThrottlingThreshold());
+                    return false;
+                }
+            } else {
+                // After cleanup has finished, we can update the threshold
+                // to a lower value
+                SetDeletionMarkersThrottlingThreshold(deletionMarkersCount);
+            }
+        }
+    }
+    return cleanupInfo.ShouldCleanup;
+}
+
 bool TIndexTabletActor::IsCloseToBackpressureThresholds(TString* message) const
 {
     auto bpThresholds = BuildBackpressureThresholds();
