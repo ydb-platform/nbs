@@ -370,7 +370,7 @@ func waitUntilCheckpointsMeetRequirements(
 	t *testing.T,
 	ctx context.Context,
 	diskID string,
-	predicate func([]string) bool,
+	doCheckpointsMeetRequirements func([]string) bool,
 ) {
 
 	nbsClient := NewNbsTestingClient(t, ctx, "zone-a")
@@ -381,7 +381,7 @@ func waitUntilCheckpointsMeetRequirements(
 		checkpoints, err := nbsClient.GetCheckpoints(ctx, diskID)
 		require.NoError(t, err)
 
-		if predicate(checkpoints) {
+		if doCheckpointsMeetRequirements(checkpoints) {
 			return
 		}
 
