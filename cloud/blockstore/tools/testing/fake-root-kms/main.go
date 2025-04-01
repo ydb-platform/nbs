@@ -7,7 +7,6 @@ import (
 	"crypto/sha256"
 	"crypto/tls"
 	"crypto/x509"
-	"encoding/base64"
 	"encoding/json"
 	"encoding/pem"
 	"fmt"
@@ -114,15 +113,7 @@ func (s *rootKmsService) Decrypt(
 		)
 	}
 
-	ciphertext, err := base64.StdEncoding.DecodeString(string(req.Ciphertext))
-	if err != nil {
-		return nil, grpc_status.Error(
-			grpc_codes.InvalidArgument,
-			fmt.Sprintf("failed to decode ciphertext: %v", err),
-		)
-	}
-
-	symmetricKey, err := decryptDEK(ciphertext, privateKey)
+	symmetricKey, err := decryptDEK(req.Ciphertext, privateKey)
 	if err != nil {
 		return nil, grpc_status.Error(
 			grpc_codes.Internal,
