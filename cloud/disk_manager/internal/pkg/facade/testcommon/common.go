@@ -366,7 +366,7 @@ func RequireCheckpointsDoNotExist(
 	require.Empty(t, checkpoints)
 }
 
-func waitForCheckpointsWithPredicate(
+func waitUntilCheckpointsMeetRequirements(
 	t *testing.T,
 	ctx context.Context,
 	diskID string,
@@ -387,7 +387,7 @@ func waitForCheckpointsWithPredicate(
 
 		logging.Debug(
 			ctx,
-			"waitForCheckpointsWithPredicate proceeding to next iteration",
+			"waitUntilCheckpointsMeetRequirements proceeding to next iteration",
 		)
 	}
 }
@@ -399,7 +399,7 @@ func WaitForCheckpointDoesNotExist(
 	checkpointID string,
 ) {
 
-	waitForCheckpointsWithPredicate(
+	waitUntilCheckpointsMeetRequirements(
 		t,
 		ctx,
 		diskID,
@@ -415,7 +415,7 @@ func WaitForNoCheckpointsExist(
 	diskID string,
 ) {
 
-	waitForCheckpointsWithPredicate(
+	waitUntilCheckpointsMeetRequirements(
 		t,
 		ctx,
 		diskID,
