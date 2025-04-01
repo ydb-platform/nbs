@@ -541,11 +541,16 @@ TCleanupInfo TIndexTabletActor::GetCleanupInfo() const
             ? static_cast<double>(stats.GetUsedBlocksCount()) /
                   (BlockGroupSize * NodeGroupSize)
             : static_cast<double>(compactionStats.UsedRangesCount);
+
     const auto avgCleanupScore = rangeCount > 0.0
         ? static_cast<double>(stats.GetDeletionMarkersCount()) / rangeCount
         : 0;
+
     const bool shouldCleanup =
-        avgCleanupScore >= Config->GetCleanupThresholdAverage();
+        rangeCount > 0.0
+            ? avgCleanupScore >= Config->GetCleanupThresholdAverage()
+            : stats.GetDeletionMarkersCount() > 0;
+
     bool isPriority = false;
 
     TString dummy;
