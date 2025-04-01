@@ -91,7 +91,7 @@ func (t *createEmptyDiskTask) Run(
 		EncryptionDesc:          t.params.EncryptionDesc,
 	})
 	if err != nil {
-		if nbs.IsLocalDiskAllocationRetries(err, t.params.Kind) {
+		if nbs.IsLocalDiskAllocationTryAgainError(err, t.params.Kind) {
 			return errors.NewRetriableErrorWithIgnoreRetryLimit(err)
 		}
 

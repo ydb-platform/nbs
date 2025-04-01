@@ -459,8 +459,12 @@ func IsAlterPlacementGroupMembershipPublicError(e error) bool {
 	return false
 }
 
-func IsLocalDiskAllocationRetries(e error, kind types.DiskKind) bool {
-	return IsLocalDisk(kind) && IsTryAgainError(e) && strings.Contains(e.Error(), "Can allocate local disk after secure erase")
+func IsLocalDiskAllocationTryAgainError(e error, kind types.DiskKind) bool {
+	return IsTryAgainError(e) &&
+		IsLocalDisk(kind) &&
+		strings.Contains(
+			e.Error(),
+			"Unable to allocate local disk: secure erase has not finished yet")
 }
 
 ////////////////////////////////////////////////////////////////////////////////
