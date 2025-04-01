@@ -107,7 +107,7 @@ void TUnmountRequestActor::Bootstrap(const TActorContext& ctx)
 {
     Become(&TThis::StateWork);
 
-    RemoveClient(ctx);
+    DescribeVolume(ctx);
 }
 
 void TUnmountRequestActor::DescribeVolume(const TActorContext& ctx)
@@ -180,12 +180,7 @@ void TUnmountRequestActor::HandleVolumeRemoveClientResponse(
             DiskId.Quote().data(),
             Error.GetCode());
 
-        if (GetErrorKind(Error) == EErrorKind::ErrorRetriable) {
-            // check if volume is not destroyed
-            DescribeVolume(ctx);
-        } else {
-            ReplyAndDie(ctx);
-        }
+        ReplyAndDie(ctx);
         return;
     }
 
@@ -212,6 +207,8 @@ void TUnmountRequestActor::HandleDescribeVolumeResponse(
             ClientId.Quote().data());
 
         Error = MakeError(S_ALREADY, "Volume is already destroyed");
+        ReplyAndDie(ctx);
+        return;
     } else if (msg->GetStatus() == NKikimrScheme::StatusSuccess) {
         auto volumeTabletId = msg->
             PathDescription.
@@ -221,11 +218,12 @@ void TUnmountRequestActor::HandleDescribeVolumeResponse(
         if (volumeTabletId != TabletId) {
             DiskRecreated = true;
             Error = MakeError(S_ALREADY, "Volume is already destroyed");
+            ReplyAndDie(ctx);
+            return;
         }
     }
 
-    // let client retry Unmount request
-    ReplyAndDie(ctx);
+    RemoveClient(ctx);
 }
 
 void TUnmountRequestActor::HandleStopVolumeResponse(
