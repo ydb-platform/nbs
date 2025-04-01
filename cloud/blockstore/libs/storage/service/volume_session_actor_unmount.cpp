@@ -181,6 +181,7 @@ void TUnmountRequestActor::HandleVolumeRemoveClientResponse(
             Error.GetCode());
 
         ReplyAndDie(ctx);
+        return;
     }
 
     if (MountMode == NProto::VOLUME_MOUNT_LOCAL) {
@@ -207,6 +208,7 @@ void TUnmountRequestActor::HandleDescribeVolumeResponse(
 
         Error = MakeError(S_ALREADY, "Volume is already destroyed");
         ReplyAndDie(ctx);
+        return;
     } else if (msg->GetStatus() == NKikimrScheme::StatusSuccess) {
         auto volumeTabletId = msg->
             PathDescription.
@@ -217,6 +219,7 @@ void TUnmountRequestActor::HandleDescribeVolumeResponse(
             DiskRecreated = true;
             Error = MakeError(S_ALREADY, "Volume is already destroyed");
             ReplyAndDie(ctx);
+            return;
         }
     }
 

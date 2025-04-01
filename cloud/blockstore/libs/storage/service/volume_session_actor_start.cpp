@@ -714,7 +714,7 @@ void TStartVolumeActor::HandleWaitReadyResponse(
     Y_ABORT_UNLESS(volume.GetDiskId() == DiskId);
 
     Ready = true;
-    Volume = volume;
+    Volume = std::move(volume);
 
     SendVolumeTabletStatus(ctx);
 }
