@@ -220,7 +220,7 @@ void TRequestActor<TMethod>::CompareChecksums(const TActorContext& ctx)
                 if (i != 0) {
                     errorMessage << ", ";
                 }
-                errorMessage << "replica " << Partitions[i].ToString().c_str()
+                errorMessage << "replica " << Partitions[i].ToString()
                              << ": checksum " << ResponseChecksums[i];
             }
 
