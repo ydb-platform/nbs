@@ -107,6 +107,10 @@ jobs:
         sleep_after_tests: ${{ steps.failure.outputs.sleep_after_tests }}
     timeout-minutes: 1440
     steps:
+    - name: fix checkout dir
+      shell: bash
+      run: |
+        chown -R root:root $GITHUB_WORKSPACE
     - name: Checkout PR
       uses: actions/checkout@v4
       if: github.event.pull_request.head.sha != ''

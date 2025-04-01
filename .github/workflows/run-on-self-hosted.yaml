@@ -3,98 +3,56 @@ on:
   workflow_dispatch:
 
 jobs:
-  test:
-    runs-on: [ self-hosted, "self-hosted"]
+  get:
+    runs-on: [ self-hosted, "self-hosted", "runner_heavy" ]
+    outputs:
+      label: ${{ steps.get-runner.outputs.LABEL }}
+      runner_flavor: ${{ steps.get-runner.outputs.RUNNER_FLAVOR }}
+      instance-id: ${{ steps.get-runner.outputs.INSTANCE_ID }}
+      vm_preset: ${{ steps.get-runner.outputs.VM_PRESET }}
+      old-instance-name: ${{ steps.get-runner.outputs.OLD_INSTANCE_NAME }}
+      runner_ipv4: ${{ steps.get-runner.outputs.RUNNER_IPV4 }}
+      runner_local_ipv4: ${{ steps.get-runner.outputs.RUNNER_LOCAL_IPV4 }}
     steps:
     - name: Checkout
       uses: actions/checkout@v4
       with:
         sparse-checkout: '.github'
-    - name: set up home
-      run: echo "HOME=/root" >> $GITHUB_ENV
-
-    - name: set up path
-      run: echo "PATH=$PATH:$HOME/nebius-cloud/bin:$HOME/.nebius/bin" >> $GITHUB_ENV
-    - name: Set up Nebius CLI
-      run: |
-        set -x
-        [ ! -f "$HOME/.nebius/bin/nebius" ] && {
-          curl -sSL https://storage.eu-north1.nebius.cloud/cli/install.sh | bash
-          cat <<EOF > sa.json
-        ${sa_json}
-        EOF
-        } || echo "Nebius CLI already installed"
-        [ ! -f "$HOME/.nebius/config.yaml" ] && {
-          jq -r '."subject-credentials"."private-key"'  sa.json > private.pem
-          echo "::add-mask::$(jq -r '."subject-credentials"."kid"' sa.json)"
-          public_key_id=$(jq -r '."subject-credentials"."kid"' sa.json)
-          echo "::add-mask::$(jq -r '."subject-credentials"."iss"' sa.json)"
-          service_account_id=$(jq -r '."subject-credentials"."iss"' sa.json)
-          echo "::add-mask::tenant-e00en3r863f7me6wtd"
-          
-          nebius profile create --endpoint api.eu-north1.nebius.cloud \
-                                --profile nbs-github-user-sa \
-                                --parent-id tenant-e00en3r863f7me6wtd \
-                                --public-key-id "${public_key_id}" \
-                                --private-key-file private.pem \
-                                --service-account-id "${service_account_id}"
-          } || echo "Nebius profile already created"
-      env:
+    - name: set up nebius cli
+      id: get-runner
+      uses: ./.github/actions/nebius_cli
+      with:
         sa_json: ${{ secrets.NEW_NEBIUS_SA_JSON_CREDENTIALS }}
-    - name: Update VM name
-      id: update
-      run: |
-        set -x
-        nebius compute instance get --id $INSTANCE_ID --format json > instance.json
-        cat instance.json
-        OLD_INSTANCE_NAME=$(jq -r '.metadata.name' instance.json)
-        DATE=$(date +%s);
-        INSTANCE_NAME="running-${GITHUB_RUN_ID}-ydb-platform-nbs-${DATE}"
-        nebius compute instance update --id $INSTANCE_ID --name $INSTANCE_NAME
-        echo INSTANCE_NAME=$OLD_INSTANCE_NAME >> $GITHUB_OUTPUT
-      env:
-        INSTANCE_ID: ${{ runner.name }}
-    - name: List VMs
-      id: list
-      run: |
-        set -x
-        nebius compute instance list --parent-id $PARENT_ID  --format json | jq -r '.items[] | [.metadata.id, .metadata.name, .status.state] | @tsv' > running_vms.txt || touch running_vms.txt
-        cat running_vms.txt
-        cat running_vms.txt| grep RUNNING | grep $FILTER | grep $PROJECT_FILTER > running_vms_filtered.txt || touch running_vms_filtered.txt
-        cat running_vms_filtered.txt
-        wc -l running_vms.txt running_vms_filtered.txt
-        RUNNING_VMS_COUNT=$(wc -l running_vms_filtered.txt | awk '{print $1}')
-        NUMBER_VMS_TO_CREATE=$(($MAX_VMS_TO_CREATE - $RUNNING_VMS_COUNT))
-        DATE=$(date +%s);
-        echo RUNNER_NAME=$RUNNER_NAME
-        if [ $NUMBER_VMS_TO_CREATE -le 0 ]; then
-          echo "No VMs to create";
-          echo "[]" > vms_to_create.json;
-        else
-          for i in $(seq 1 $NUMBER_VMS_TO_CREATE); do
-            echo "standby-${GITHUB_RUN_ID}-ydb-platform-nbs-${DATE}-$i";
-          done | jq -R -s 'split("\n") | map(select(. != ""))' > vms_to_create.json
-        fi
-        cat vms_to_create.json
-        {
-          echo RUNNING_VMS_COUNT=$RUNNING_VMS_COUNT;
-          echo NUMBER_VMS_TO_CREATE=$NUMBER_VMS_TO_CREATE;
-          echo VMS_TO_CREATE=$(cat vms_to_create.json);
-          echo DATE=$DATE;
-          echo RUNNER_NAME=$RUNNER_NAME;
-        } >> $GITHUB_OUTPUT
-        sleep 60
-      env:
-        PARENT_ID: ${{ vars.NEBIUS_PARENT_ID }}
-        MAX_VMS_TO_CREATE: 3
-        FILTER: 'standby'
-        PROJECT_FILTER: 'ydb-platform-nbs'
-        RUNNER_NAME: ${{ runner.name }}
+        instance_id: ${{ runner.name }}  
+        set_new_instance_name: "yes"
+    - name: Calculate threads
+      id: calculate-threads
+      uses: ./.github/actions/nebius_threads_calculator
+      with:
+        vm_preset: ${{ steps.get-runner.outputs.VM_PRESET }}
+        tests_size: 'small,medium,large'
+  dummy:
+    name: Dummy workload [id=${{ needs.get.outputs.instance-id }} local_ip=${{ needs.get.outputs.runner_local_ipv4 }} ip=${{ needs.get.outputs.runner_ipv4 }}]
+    needs: 
+      - get
+    runs-on: [ self-hosted, "self-hosted", "${{ needs.get.outputs.label }}", "runner_${{ needs.get.outputs.runner_flavor }}" ]
+    steps:
+      - name: dummy workload
+        id: dummy
+        run: |
+          sleep 5
+  remove:
+    needs: 
+      - dummy
+      - get
+    runs-on: [ self-hosted, "self-hosted", "${{ needs.get.outputs.label }}", "runner_${{ needs.get.outputs.runner_flavor }}" ]
+    if: ${{ always() }}
+    steps:
     - name: Rename VM to old name
       id: rename
-      run: |
-        set -x
-        nebius compute instance update --id $INSTANCE_ID --name $INSTANCE_NAME
-      env:
-        INSTANCE_ID: ${{ runner.name }}
-        INSTANCE_NAME: ${{ steps.update.outputs.INSTANCE_NAME }}
+      uses: ./.github/actions/nebius_cli
+      with:
+        sa_json: ${{ secrets.NEW_NEBIUS_SA_JSON_CREDENTIALS }}
+        instance_id: ${{ runner.name }}  
+        set_new_instance_name: "yes"
+        new_instance_name: ${{ needs.get.outputs.old-instance-name }}

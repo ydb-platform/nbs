@@ -36,7 +36,7 @@ on:
           - small,medium,large
       test_type:
         type: choice
-        default: "unittest"
+        default: "unittest,clang_tidy,gtest,py3test,py2test,pytest,flake8,black,py2_flake8,go_test,gofmt"
         description: "type of tests to run"
         options:
           - unittest,clang_tidy,gtest
@@ -141,17 +141,18 @@ env:
 
 jobs:
   provide-runner:
-    name: Start self-hosted runner (${{ inputs.build_preset }})
+    name: Lock self-hosted runner (${{ inputs.build_preset }})
     timeout-minutes: 60
     if: always()
     runs-on: [ self-hosted, "self-hosted", "runner_heavy"]
     outputs:
       label: ${{ steps.get-runner.outputs.LABEL }}
       runner_flavor: ${{ steps.get-runner.outputs.RUNNER_FLAVOR }}
-      instance-id: ${{ runner.name }}
+      instance-id: ${{ steps.get-runner.outputs.INSTANCE_ID }}
+      vm_preset: ${{ steps.get-runner.outputs.VM_PRESET }}
       old-instance-name: ${{ steps.get-runner.outputs.OLD_INSTANCE_NAME }}
-      runner_ipv4: ${{ steps.get-runner.outputs.EXTERNAL_IPV4 }}
-      runner_local_ipv4: ${{ steps.get-runner.outputs.LOCAL_IPV4 }}
+      runner_ipv4: ${{ steps.get-runner.outputs.RUNNER_IPV4 }}
+      runner_local_ipv4: ${{ steps.get-runner.outputs.RUNNER_LOCAL_IPV4 }}
       build_threads: ${{ steps.calculate-threads.outputs.build_threads || '60' }}
       test_threads: ${{ steps.calculate-threads.outputs.test_threads || '32' }}
       link_threads: ${{ steps.calculate-threads.outputs.link_threads || '24' }}
@@ -179,62 +180,14 @@ jobs:
         with:
           submodules: false
           sparse-checkout: '.github'
-      - name: set up home
-        run: echo "HOME=/root" >> $GITHUB_ENV
-  
-      - name: set up path
-        run: echo "PATH=$PATH:$HOME/nebius-cloud/bin:$HOME/.nebius/bin" >> $GITHUB_ENV
-      - name: Set up Nebius CLI
-        run: |
-          set -x
-          [ ! -f "$HOME/.nebius/bin/nebius" ] && {
-            curl -sSL https://storage.eu-north1.nebius.cloud/cli/install.sh | bash
-            cat <<EOF > sa.json
-          ${sa_json}
-          EOF
-          } || echo "Nebius CLI already installed"
-          [ ! -f "$HOME/.nebius/config.yaml" ] && {
-            jq -r '."subject-credentials"."private-key"'  sa.json > private.pem
-            echo "::add-mask::$(jq -r '."subject-credentials"."kid"' sa.json)"
-            public_key_id=$(jq -r '."subject-credentials"."kid"' sa.json)
-            echo "::add-mask::$(jq -r '."subject-credentials"."iss"' sa.json)"
-            service_account_id=$(jq -r '."subject-credentials"."iss"' sa.json)
-            echo "::add-mask::tenant-e00en3r863f7me6wtd"
-            
-            nebius profile create --endpoint api.eu-north1.nebius.cloud \
-                                  --profile nbs-github-user-sa \
-                                  --parent-id tenant-e00en3r863f7me6wtd \
-                                  --public-key-id "${public_key_id}" \
-                                  --private-key-file private.pem \
-                                  --service-account-id "${service_account_id}"
-            } || echo "Nebius profile already created"
-        env:
-          sa_json: ${{ secrets.NEW_NEBIUS_SA_JSON_CREDENTIALS }}
-      - name: Update VM name and get runner settings
+
+      - name: set up nebius cli
         id: get-runner
-        run: |
-          set -x
-          nebius compute instance get --id $INSTANCE_ID --format json > instance.json
-          OLD_INSTANCE_NAME=$(jq -r '.metadata.name' instance.json)
-          LABEL=$(jq -r '.metadata.labels."runner-label"' instance.json)
-          RUNNER_FLAVOR=$(jq -r '.metadata.labels."runner-flavor"' instance.json)
-          EXTERNAL_IPV4=$(jq -r '.status.network_interfaces[0].ip_address.public_ip_address' instance.json | sed -e 's/\/32//g')
-          LOCAL_IPV4=$(jq -r '.status.network_interfaces[0].ip_address.address' instance.json | sed -e 's/\/32//g')
-          PRESET=$(jq -r '.spec.resources.preset' instance.json)
-          DATE=$(date +%s);
-          INSTANCE_NAME="running-${GITHUB_RUN_ID}-ydb-platform-nbs-${DATE}"
-          nebius compute instance update --id $INSTANCE_ID --name $INSTANCE_NAME
-          {
-            echo LABEL=$LABEL;
-            echo RUNNER_FLAVOR=$RUNNER_FLAVOR;
-            echo INSTANCE_ID=$INSTANCE_ID;
-            echo RUNNER_IPV4=$EXTERNAL_IPV4;
-            echo RUNNER_LOCAL_IPV4=$LOCAL_IPV4;
-            echo OLD_INSTANCE_NAME=$OLD_INSTANCE_NAME;
-            echo VM_PRESET=$PRESET;
-          } >> $GITHUB_OUTPUT
-        env:
-          INSTANCE_ID: ${{ runner.name }}
+        uses: ./.github/actions/nebius_cli
+        with:
+          sa_json: ${{ secrets.NEW_NEBIUS_SA_JSON_CREDENTIALS }}
+          instance_id: ${{ runner.name }}  
+          set_new_instance_name: "no"
 
 
       - name: Calculate threads
@@ -244,6 +197,18 @@ jobs:
         with:
           vm_preset: ${{ steps.get-runner.outputs.VM_PRESET }}
           tests_size: ${{ inputs.test_size }}
+      - name: debug
+        id: debug
+        shell: bash
+        run: |
+          echo "RUNNER_IPV4=${{ steps.get-runner.outputs.RUNNER_IPV4 }}"
+          echo "RUNNER_LOCAL_IPV4=${{ steps.get-runner.outputs.RUNNER_LOCAL_IPV4 }}"
+          echo "INSTANCE_ID=${{ steps.get-runner.outputs.INSTANCE_ID }}"
+          echo "RUNNER_FLAVOR=${{ steps.get-runner.outputs.RUNNER_FLAVOR }}"
+          echo "LABEL=${{ steps.get-runner.outputs.LABEL }}"
+          echo "OLD_INSTANCE_NAME=${{ steps.get-runner.outputs.OLD_INSTANCE_NAME }}"
+          echo "VM_PRESET=${{ steps.get-runner.outputs.VM_PRESET }}"
+          echo "use_network_cache=${{ github.event_name == 'workflow_dispatch' && 'yes'|| inputs.use_network_cache }}"
 
   build-and-test:
     name: Build and test NBS (${{ inputs.build_preset }}) [id=${{ needs.provide-runner.outputs.instance-id }} local_ip=${{ needs.provide-runner.outputs.runner_local_ipv4 }} ip=${{ needs.provide-runner.outputs.runner_ipv4 }}]
@@ -326,9 +291,9 @@ jobs:
           sparse-checkout: '.github'
       - name: Rename VM to old name
         id: rename
-        run: |
-          set -x
-          nebius compute instance update --id $INSTANCE_ID --name $INSTANCE_NAME
-        env:
-          INSTANCE_ID: ${{ runner.name }}
-          INSTANCE_NAME: ${{ needs.provide-runner.outputs.old-instance-name }}
+        uses: ./.github/actions/nebius_cli
+        with:
+          sa_json: ${{ secrets.NEW_NEBIUS_SA_JSON_CREDENTIALS }}
+          instance_id: ${{ runner.name }}  
+          set_new_instance_name: "no"
+          new_instance_name: ${{ needs.provide-runner.outputs.old-instance-name }}
