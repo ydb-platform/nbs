@@ -60,7 +60,11 @@ public:
     // And the migration was stopped.
     virtual void OnMigrationError(const NActors::TActorContext& ctx) = 0;
 
-    virtual NActors::TActorId ActorToBlockRangeAndDrain()
+    // Actor, to which we should send a BlockAndDrain request and wait for a
+    // response before copying the range during migration. After copying, we
+    // should send ReleaseRange to the same actor. If the ActorId is invalid,
+    // there is no need to send either of these messages.
+    virtual NActors::TActorId ActorToBlockAndDrainRange()
     {
         return {};
     }

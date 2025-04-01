@@ -454,11 +454,11 @@ public:
         return request;
     }
 
-    std::unique_ptr<NPartition::TEvPartition::TEvBlockRangeAndDrainRequest>
-    CreateBlockRangeAndDrainRequest(TBlockRange64 range)
+    std::unique_ptr<NPartition::TEvPartition::TEvBlockAndDrainRangeRequest>
+    CreateBlockAndDrainRangeRequest(TBlockRange64 range)
     {
         return std::make_unique<
-            NPartition::TEvPartition::TEvBlockRangeAndDrainRequest>(range);
+            NPartition::TEvPartition::TEvBlockAndDrainRangeRequest>(range);
     }
 
     void SendReleaseRange(TBlockRange64 range)
@@ -502,7 +502,7 @@ public:
     BLOCKSTORE_DECLARE_METHOD(ZeroBlocks, TEvService);
     BLOCKSTORE_DECLARE_METHOD(CheckRange, TEvVolume);
     BLOCKSTORE_DECLARE_METHOD(ChecksumBlocks, TEvNonreplPartitionPrivate);
-    BLOCKSTORE_DECLARE_METHOD(BlockRangeAndDrain, NPartition::TEvPartition);
+    BLOCKSTORE_DECLARE_METHOD(BlockAndDrainRange, NPartition::TEvPartition);
 
 #undef BLOCKSTORE_DECLARE_METHOD
 };

@@ -25,8 +25,8 @@ TCopyRangeActor::TCopyRangeActor(
         TActorId target,
         TString writerClientId,
         IBlockDigestGeneratorPtr blockDigestGenerator,
-        NActors::TActorId actorToBlockRangeAndDrain)
-    : TCopyRangeActorCommon(this, actorToBlockRangeAndDrain, range)
+        NActors::TActorId actorToBlockAndDrainRange)
+    : TCopyRangeActorCommon(this, actorToBlockAndDrainRange, range)
     , RequestInfo(std::move(requestInfo))
     , BlockSize(blockSize)
     , Source(source)

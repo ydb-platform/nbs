@@ -127,7 +127,7 @@ Y_UNIT_TEST_SUITE(TRequestsInProgressTest)
             EAllowedRequests::ReadWrite,
             blockSize};
 
-        auto blocksPerTrackingRange = 4_MB / 4_KB;
+        auto blocksPerTrackingRange = RangeTrackingAccuracy / 4_KB;
 
         {
             auto id1 = requestsInProgress.GenerateRequestId();
@@ -136,7 +136,7 @@ Y_UNIT_TEST_SUITE(TRequestsInProgressTest)
                 id1,
                 TBlockRange64::WithLength(0, 10));
 
-            UNIT_ASSERT(requestsInProgress.HasWriteRequestsInRange(
+            UNIT_ASSERT(requestsInProgress.HasWriteRequestInRange(
                 TBlockRange64::WithLength(0, blocksPerTrackingRange)));
 
             auto id2 = requestsInProgress.GenerateRequestId();
@@ -145,11 +145,11 @@ Y_UNIT_TEST_SUITE(TRequestsInProgressTest)
                 TBlockRange64::WithLength(10, 10));
             requestsInProgress.ExtractRequest(id1);
 
-            UNIT_ASSERT(requestsInProgress.HasWriteRequestsInRange(
+            UNIT_ASSERT(requestsInProgress.HasWriteRequestInRange(
                 TBlockRange64::WithLength(0, blocksPerTrackingRange)));
 
             requestsInProgress.ExtractRequest(id2);
-            UNIT_ASSERT(!requestsInProgress.HasWriteRequestsInRange(
+            UNIT_ASSERT(!requestsInProgress.HasWriteRequestInRange(
                 TBlockRange64::WithLength(0, blocksPerTrackingRange)));
         }
 
@@ -161,9 +161,9 @@ Y_UNIT_TEST_SUITE(TRequestsInProgressTest)
                 id1,
                 TBlockRange64::WithLength(blocksPerTrackingRange - 1, 2));
 
-            UNIT_ASSERT(requestsInProgress.HasWriteRequestsInRange(
+            UNIT_ASSERT(requestsInProgress.HasWriteRequestInRange(
                 TBlockRange64::WithLength(0, blocksPerTrackingRange)));
-            UNIT_ASSERT(requestsInProgress.HasWriteRequestsInRange(
+            UNIT_ASSERT(requestsInProgress.HasWriteRequestInRange(
                 TBlockRange64::WithLength(
                     blocksPerTrackingRange,
                     2 * blocksPerTrackingRange)));

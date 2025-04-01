@@ -15,30 +15,30 @@ using namespace NActors;
 void TCopyRangeActorCommon::Bootstrap(const NActors::TActorContext& ctx) {
     Become(&TThis::StateWork);
 
-    if (ActorToBlockRangeAndDrain) {
-        BlockRangeAndDrain(ctx);
+    if (ActorToBlockAndDrainRange) {
+        BlockAndDrainRange(ctx);
         return;
     }
 
     Owner->ReadyToCopy(ctx);
 }
 
-void TCopyRangeActorCommon::BlockRangeAndDrain(
+void TCopyRangeActorCommon::BlockAndDrainRange(
     const NActors::TActorContext& ctx)
 {
     NCloud::Send(
         ctx,
-        ActorToBlockRangeAndDrain,
+        ActorToBlockAndDrainRange,
         std::make_unique<
-            NPartition::TEvPartition::TEvBlockRangeAndDrainRequest>(Range));
+            NPartition::TEvPartition::TEvBlockAndDrainRangeRequest>(Range));
 }
 
 void TCopyRangeActorCommon::Done(const NActors::TActorContext& ctx, NProto::TError error)
 {
-    if (ActorToBlockRangeAndDrain) {
+    if (NeedToReleaseRange && ActorToBlockAndDrainRange) {
         NCloud::Send(
             ctx,
-            ActorToBlockRangeAndDrain,
+            ActorToBlockAndDrainRange,
             std::make_unique<NPartition::TEvPartition::TEvReleaseRange>(Range));
     }
 
@@ -54,11 +54,17 @@ void TCopyRangeActorCommon::HandlePoisonPill(
     Done(ctx, MakeTabletIsDeadError(E_REJECTED, __LOCATION__));
 }
 
-void TCopyRangeActorCommon::HandleBlockRangeAndDrain(
-    const NPartition::TEvPartition::TEvBlockRangeAndDrainResponse::TPtr& ev,
+void TCopyRangeActorCommon::HandleBlockAndDrainRange(
+    const NPartition::TEvPartition::TEvBlockAndDrainRangeResponse::TPtr& ev,
     const NActors::TActorContext& ctx)
 {
     Y_UNUSED(ev);
+    auto* msg = ev->Get();
+    if (HasError(msg->GetError())) {
+        Done(ctx, msg->GetError());
+        return;
+    }
+    NeedToReleaseRange = true;
     Owner->ReadyToCopy(ctx);
 }
 
@@ -67,8 +73,8 @@ STFUNC(TCopyRangeActorCommon::StateWork)
     switch (ev->GetTypeRewrite()) {
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
         HFunc(
-            NPartition::TEvPartition::TEvBlockRangeAndDrainResponse,
-            HandleBlockRangeAndDrain);
+            NPartition::TEvPartition::TEvBlockAndDrainRangeResponse,
+            HandleBlockAndDrainRange);
 
         default:
             if (!Owner->OnMessage(this->ActorContext(), ev)) {

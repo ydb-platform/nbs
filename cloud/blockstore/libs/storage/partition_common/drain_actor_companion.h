@@ -10,7 +10,7 @@ namespace NCloud::NBlockStore::NStorage {
 class TDrainActorCompanion
 {
     struct TDrainRangeInfo {
-        TRequestInfoPtr ReqInfo;
+        TRequestInfoPtr RequestInfo;
         TBlockRange64 RangeToDrain;
     };
     TVector<TDrainRangeInfo> DrainRangeRequests;
@@ -39,6 +39,11 @@ public:
     void ProcessDrainRequests(const NActors::TActorContext& ctx);
 
     void ProcessDrainRangeRequests(const NActors::TActorContext& ctx);
+
+    void CancelDrainRangeRequest(
+        const NActors::TActorContext& ctx,
+        TBlockRange64 range,
+        NActors::TActorId sender);
 };
 
 }  // namespace NCloud::NBlockStore::NStorage

@@ -116,7 +116,6 @@ void TMirrorPartitionActor::MirrorRequest(
         return;
     }
 
-
     const auto requestIdentityKey = TakeNextRequestIdentifier();
     if (GetScrubbingRange().Overlaps(range)) {
         if (ResyncRangeStarted) {

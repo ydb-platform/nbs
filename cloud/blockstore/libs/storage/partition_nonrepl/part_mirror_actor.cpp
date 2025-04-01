@@ -639,12 +639,12 @@ void TMirrorPartitionActor::HandleAddTagsResponse(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void TMirrorPartitionActor::HandleBlockRangeAndDrain(
-    const NPartition::TEvPartition::TEvBlockRangeAndDrainRequest::TPtr& ev,
+void TMirrorPartitionActor::HandleBlockAndDrainRange(
+    const NPartition::TEvPartition::TEvBlockAndDrainRangeRequest::TPtr& ev,
     const NActors::TActorContext& ctx)
 {
     auto* msg = ev->Get();
-    BlockedRanges.Add(msg->Range);
+    BlockedRanges.BlockRange(msg->Range);
 
     auto reqInfo = CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
 
@@ -661,7 +661,8 @@ void TMirrorPartitionActor::HandleReleaseRange(
     Y_UNUSED(ctx);
     auto* msg = ev->Get();
 
-    BlockedRanges.Rm(msg->Range);
+    BlockedRanges.ReleaseRange(msg->Range);
+    DrainActorCompanion.CancelDrainRangeRequest(ctx, msg->Range, ev->Sender);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -752,8 +753,8 @@ STFUNC(TMirrorPartitionActor::StateWork)
             HandleAddTagsResponse);
 
         HFunc(
-            NPartition::TEvPartition::TEvBlockRangeAndDrainRequest,
-            HandleBlockRangeAndDrain);
+            NPartition::TEvPartition::TEvBlockAndDrainRangeRequest,
+            HandleBlockAndDrainRange);
 
         HFunc(
             NPartition::TEvPartition::TEvReleaseRange,
@@ -807,7 +808,7 @@ STFUNC(TMirrorPartitionActor::StateZombie)
         IgnoreFunc(TEvService::TEvAddTagsResponse);
 
         IgnoreFunc(
-            NPartition::TEvPartition::TEvBlockRangeAndDrainRequest);
+            NPartition::TEvPartition::TEvBlockAndDrainRangeRequest);
 
         IgnoreFunc(NPartition::TEvPartition::TEvReleaseRange);
 

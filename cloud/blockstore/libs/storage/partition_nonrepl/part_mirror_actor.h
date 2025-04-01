@@ -95,7 +95,7 @@ private:
 
     class TRangeBlocker
     {
-        TRequestBoundsChecker RangeChecker;
+        TRequestBoundsTracker RangeChecker;
 
     public:
 
@@ -103,14 +103,14 @@ private:
             : RangeChecker(blockSize)
         {}
 
-        void Add(TBlockRange64 r)
+        void BlockRange(TBlockRange64 r)
         {
             RangeChecker.AddRequest(r);
         }
 
-        void Rm(TBlockRange64 r)
+        void ReleaseRange(TBlockRange64 r)
         {
-            RangeChecker.RmRequest(r);
+            RangeChecker.RemoveRequest(r);
         }
 
         bool IsRangeBlocked(TBlockRange64 r)
@@ -214,8 +214,8 @@ private:
         const TEvNonreplPartitionPrivate::TEvRemoveLaggingAgentRequest::TPtr& ev,
         const NActors::TActorContext& ctx);
 
-    void HandleBlockRangeAndDrain(
-        const NPartition::TEvPartition::TEvBlockRangeAndDrainRequest::TPtr& ev,
+    void HandleBlockAndDrainRange(
+        const NPartition::TEvPartition::TEvBlockAndDrainRangeRequest::TPtr& ev,
         const NActors::TActorContext& ctx);
 
     void HandleReleaseRange(

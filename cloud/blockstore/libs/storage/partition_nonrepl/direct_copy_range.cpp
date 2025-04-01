@@ -35,14 +35,14 @@ TDirectCopyRangeActor::TDirectCopyRangeActor(
         TActorId target,
         TString writerClientId,
         IBlockDigestGeneratorPtr blockDigestGenerator,
-        NActors::TActorId actorToBlockRangeAndDrain)
-    : TCopyRangeActorCommon(this, actorToBlockRangeAndDrain, range)
+        NActors::TActorId actorToBlockAndDrainRange)
+    : TCopyRangeActorCommon(this, actorToBlockAndDrainRange, range)
     , BlockSize(blockSize)
     , SourceActor(source)
     , TargetActor(target)
     , WriterClientId(std::move(writerClientId))
     , BlockDigestGenerator(std::move(blockDigestGenerator))
-    , ActorToBlockRangeAndDrain(actorToBlockRangeAndDrain)
+    , ActorToBlockAndDrainRange(actorToBlockAndDrainRange)
     , RequestInfo(std::move(requestInfo))
 {}
 
@@ -188,7 +188,7 @@ void TDirectCopyRangeActor::Fallback(const TActorContext& ctx)
         TargetActor,
         WriterClientId,
         BlockDigestGenerator,
-        ActorToBlockRangeAndDrain);
+        ActorToBlockAndDrainRange);
 
     Die(ctx);
 }

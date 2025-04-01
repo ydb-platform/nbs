@@ -45,7 +45,7 @@ public:
         NActors::TActorId target,
         TString writerClientId,
         IBlockDigestGeneratorPtr blockDigestGenerator,
-        NActors::TActorId actorToBlockRangeAndDrain);
+        NActors::TActorId actorToBlockAndDrainRange);
 
     // implements ICopyRangeOwner
     void ReadyToCopy(const NActors::TActorContext& ctx) override;

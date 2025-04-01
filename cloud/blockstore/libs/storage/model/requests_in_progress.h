@@ -1,5 +1,7 @@
 #pragma once
 
+#include "request_bounds_tracker.h"
+
 #include <cloud/blockstore/libs/common/block_range.h>
 
 #include <util/generic/hash.h>
@@ -27,81 +29,10 @@ class IRequestsInProgress
 {
 public:
     [[nodiscard]] virtual bool WriteRequestInProgress() const = 0;
-    [[nodiscard]] virtual bool HasWriteRequestsInRange(TBlockRange64 r) const = 0;
+    [[nodiscard]] virtual bool HasWriteRequestInRange(TBlockRange64 r) const = 0;
 };
 
 ///////////////////////////////////////////////////////////////////////////////
-
-class TRequestBoundsChecker
-{
-    struct TRangeInfo
-    {
-        ui64 ReqsCount = 0;
-    };
-
-    THashMap<ui64, TRangeInfo> RangesWithRequests;
-    const ui64 BlocksCountPerRange;
-
-public:
-    explicit TRequestBoundsChecker(ui64 blockSize)
-        : BlocksCountPerRange(blockSize ? 4_MB / blockSize : 0)
-    {}
-
-    void AddRequest(TBlockRange64 r)
-    {
-        CheckIsValidToUse();
-
-        auto startRange = r.Start / BlocksCountPerRange;
-        auto endRange = r.End / BlocksCountPerRange;
-        for (size_t i = startRange; i <= endRange; ++i) {
-            auto& rangeInfo = RangesWithRequests[i];
-            rangeInfo.ReqsCount += 1;
-        }
-    }
-
-    void RmRequest(TBlockRange64 r)
-    {
-        CheckIsValidToUse();
-
-        auto startRange = r.Start / BlocksCountPerRange;
-        auto endRange = r.End / BlocksCountPerRange;
-        for (size_t i = startRange; i <= endRange; ++i) {
-            auto it = RangesWithRequests.find(i);
-
-            Y_DEBUG_ABORT_UNLESS(it != RangesWithRequests.end());
-            if (it == RangesWithRequests.end()) {
-                continue;
-            }
-
-            auto& rangeInfo = it->second;
-            rangeInfo.ReqsCount -= 1;
-            if (rangeInfo.ReqsCount == 0) {
-                RangesWithRequests.erase(it);
-            }
-        }
-    }
-
-    bool OverlapsSomeRange(TBlockRange64 r) const
-    {
-        CheckIsValidToUse();
-
-        auto startRange = r.Start / BlocksCountPerRange;
-        auto endRange = r.End / BlocksCountPerRange;
-        for (size_t i = startRange; i <= endRange; ++i) {
-            auto it = RangesWithRequests.find(i);
-            if (it != RangesWithRequests.end()) {
-                return true;
-            }
-        }
-
-        return false;
-    }
-    private:
-
-    void CheckIsValidToUse() const {
-        Y_ABORT_UNLESS(BlocksCountPerRange != 0);
-    }
-};
 
 template <typename TKey, typename TValue = TEmptyType>
 class TRequestsInProgress: public IRequestsInProgress
@@ -118,7 +49,7 @@ public:
 private:
     EAllowedRequests AllowedRequests;
 
-    TRequestBoundsChecker BlockRangesForWriteRequestsInProgres;
+    std::optional<TRequestBoundsTracker> WriteRequestRangesTracker;
 
     TRequests RequestsInProgress;
     size_t WriteRequestCount = 0;
@@ -127,10 +58,13 @@ private:
 public:
     explicit TRequestsInProgress(
             EAllowedRequests allowedRequests,
-            std::optional<ui64> blocksize = std::nullopt)
+            std::optional<ui64> blockSize = std::nullopt)
         : AllowedRequests(allowedRequests)
-        , BlockRangesForWriteRequestsInProgres(blocksize.value_or(0))
-    {}
+    {
+        if (blockSize) {
+            WriteRequestRangesTracker.emplace(*blockSize);
+        }
+    }
 
     ~TRequestsInProgress() = default;
 
@@ -191,7 +125,7 @@ public:
                 .RequestRange = range});
         ++WriteRequestCount;
 
-        BlockRangesForWriteRequestsInProgres.AddRequest(range);
+        WriteRequestRangesTracker->AddRequest(range);
     }
 
     TKey AddWriteRequest(TValue value)
@@ -229,7 +163,7 @@ public:
             --WriteRequestCount;
         }
         if (it->second.RequestRange) {
-            BlockRangesForWriteRequestsInProgres.RmRequest(
+            WriteRequestRangesTracker->RemoveRequest(
                 *it->second.RequestRange);
         }
         TValue res = std::move(it->second.Value);
@@ -257,9 +191,9 @@ public:
         return WriteRequestCount != 0;
     }
 
-    [[nodiscard]] bool HasWriteRequestsInRange(TBlockRange64 r) const override
+    [[nodiscard]] bool HasWriteRequestInRange(TBlockRange64 r) const override
     {
-        return BlockRangesForWriteRequestsInProgres.OverlapsSomeRange(r);
+        return WriteRequestRangesTracker->OverlapsSomeRange(r);
     }
 };
 

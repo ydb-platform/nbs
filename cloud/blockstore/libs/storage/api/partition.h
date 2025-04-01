@@ -14,7 +14,7 @@ namespace NCloud::NBlockStore::NStorage::NPartition {
     xxx(WaitReady,              __VA_ARGS__)                                   \
     xxx(StatPartition,          __VA_ARGS__)                                   \
     xxx(Drain,                  __VA_ARGS__)                                   \
-    xxx(BlockRangeAndDrain,     __VA_ARGS__)                                   \
+    xxx(BlockAndDrainRange,     __VA_ARGS__)                                   \
 // BLOCKSTORE_PARTITION_REQUESTS
 
 // requests forwarded from service to partition
@@ -86,18 +86,18 @@ struct TEvPartition
     };
 
     //
-    // BlockRangeAndDrain
+    // BlockAndDrainRange
     //
 
-    struct TBlockRangeAndDrainRequest
+    struct TBlockAndDrainRangeRequest
     {
         TBlockRange64 Range;
-        explicit TBlockRangeAndDrainRequest(TBlockRange64 range)
+        explicit TBlockAndDrainRangeRequest(TBlockRange64 range)
             : Range(range)
         {}
     };
 
-    struct TBlockRangeAndDrainResponse
+    struct TBlockAndDrainRangeResponse
     {
     };
 
@@ -149,8 +149,8 @@ struct TEvPartition
         EvAddLaggingAgentRequest = EvBegin + 9,
         EvRemoveLaggingReplicaRequest = EvBegin + 10,
 
-        EvBlockRangeAndDrainRequest = EvBegin + 11,
-        EvBlockRangeAndDrainResponse = EvBegin + 12,
+        EvBlockAndDrainRangeRequest = EvBegin + 11,
+        EvBlockAndDrainRangeResponse = EvBegin + 12,
 
         EvReleaseRange = EvBegin + 13,
 

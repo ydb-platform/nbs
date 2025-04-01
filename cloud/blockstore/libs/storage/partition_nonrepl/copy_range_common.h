@@ -16,6 +16,7 @@ class ICopyRangeOwner
 {
 public:
     virtual void ReadyToCopy(const NActors::TActorContext& ctx) = 0;
+
     virtual bool OnMessage(
         const NActors::TActorContext& ctx,
         TAutoPtr<NActors::IEventHandle>& ev) = 0;
@@ -30,7 +31,8 @@ public:
 class TCopyRangeActorCommon: public NActors::TActorBootstrapped<TCopyRangeActorCommon>
 {
     ICopyRangeOwner* Owner;
-    const NActors::TActorId ActorToBlockRangeAndDrain;
+    const NActors::TActorId ActorToBlockAndDrainRange;
+    bool NeedToReleaseRange = false;
 
 protected:
     const TBlockRange64 Range;
@@ -38,17 +40,17 @@ protected:
 public:
     TCopyRangeActorCommon(
             ICopyRangeOwner* owner,
-            NActors::TActorId actorToBlockRangeAndDrain,
+            NActors::TActorId actorToBlockAndDrainRange,
             TBlockRange64 range)
         : Owner(owner)
-        , ActorToBlockRangeAndDrain(actorToBlockRangeAndDrain)
+        , ActorToBlockAndDrainRange(actorToBlockAndDrainRange)
         , Range(range)
     {}
 
     void Bootstrap(const NActors::TActorContext& ctx);
 
 private:
-    void BlockRangeAndDrain(const NActors::TActorContext& ctx);
+    void BlockAndDrainRange(const NActors::TActorContext& ctx);
 
 protected:
     void Done(const NActors::TActorContext& ctx, NProto::TError error);
@@ -58,8 +60,8 @@ private:
         const NActors::TEvents::TEvPoisonPill::TPtr& ev,
         const NActors::TActorContext& ctx);
 
-    void HandleBlockRangeAndDrain(
-        const NPartition::TEvPartition::TEvBlockRangeAndDrainResponse::TPtr& ev,
+    void HandleBlockAndDrainRange(
+        const NPartition::TEvPartition::TEvBlockAndDrainRangeResponse::TPtr& ev,
         const NActors::TActorContext& ctx);
 
     STFUNC(StateWork);
