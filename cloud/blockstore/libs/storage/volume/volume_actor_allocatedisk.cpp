@@ -636,6 +636,12 @@ void TVolumeActor::CompleteUpdateDevices(
         }
     }
 
+    // Hacky way to avoid race condition with "TTxVolume::TUpdateMigrationState"
+    // TODO(komarevtsev-d): Remove after proper fix in #3162.
+    if (!args.LiteReallocation) {
+        State->UpdateMigrationIndexInMeta(0);
+    }
+
     StopPartitions(ctx, {});
     SendVolumeConfigUpdated(ctx);
     StartPartitionsForUse(ctx);
