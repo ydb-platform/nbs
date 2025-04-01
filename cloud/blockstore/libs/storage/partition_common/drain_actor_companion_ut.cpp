@@ -117,6 +117,12 @@ private:
         drainCompanion.HandleDrain(ev, ctx);
     }
 
+    bool HasWriteRequestInRange(TBlockRange64 r) const override {
+        Y_UNUSED(r);
+        Y_ABORT_UNLESS(0);
+        return false;
+    }
+
     void HandleSetWriteCount(
         const TEvSetWriteInProgressCount::TPtr& ev,
         const TActorContext& ctx)

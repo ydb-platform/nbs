@@ -89,6 +89,10 @@ void TDirectCopyRangeActor::BeforeDie(
     const NActors::TActorContext& ctx,
     NProto::TError error)
 {
+    if (!NeedToReply) {
+        return;
+    }
+
     using EExecutionSide =
         TEvNonreplPartitionPrivate::TEvRangeMigrated::EExecutionSide;
 
@@ -190,7 +194,8 @@ void TDirectCopyRangeActor::Fallback(const TActorContext& ctx)
         BlockDigestGenerator,
         ActorToBlockAndDrainRange);
 
-    Die(ctx);
+    NeedToReply = false;
+    Done(ctx, {});
 }
 
 void TDirectCopyRangeActor::HandleGetDeviceForRange(

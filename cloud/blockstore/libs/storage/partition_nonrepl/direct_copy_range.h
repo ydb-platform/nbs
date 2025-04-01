@@ -45,6 +45,8 @@ private:
     TDeviceInfoResponse SourceInfo;
     TDeviceInfoResponse TargetInfo;
 
+    bool NeedToReply = true;
+
 public:
     TDirectCopyRangeActor(
         TRequestInfoPtr requestInfo,
