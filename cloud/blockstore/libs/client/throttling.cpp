@@ -526,6 +526,8 @@ private:
 
 ////////////////////////////////////////////////////////////////////////////////
 
+constexpr ui64 MaxReasonableQuotaValue = 1_TB;
+
 ui64 MinNonzero(ui64 l, ui64 r)
 {
     if (l == 0 || r == 0) {
@@ -544,8 +546,8 @@ template <typename... Args>
 ui64 GetMinLimit(Args... args)
 {
     auto limit = MinNonzero(args...);
-    if (limit > Max<ui32>()) {
-        limit = Max<ui32>();
+    if (limit > MaxReasonableQuotaValue) {
+        limit = MaxReasonableQuotaValue;
     }
     return limit;
 }
@@ -675,7 +677,7 @@ bool PreparePerformanceProfile(
         * (tc.GetNetworkThroughputPercentage() / 100.0);
 
     if (!networkBandwidth) {
-        networkBandwidth = Max<ui32>();
+        networkBandwidth = MaxReasonableQuotaValue;
     }
 
     ui64 maxIopsPerGuest = hostFraction * tc.GetMaxIopsPerHost();
