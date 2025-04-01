@@ -135,6 +135,10 @@ void TFileSystem::Open(
                 if (self->Config->GetGuestPageCacheDisabled()) {
                     fi.direct_io = 1;
                 }
+                if (response.GetKeepCache() &&
+                    self->Config->GetKeepCacheAllowed()) {
+                    fi.keep_cache = 1;
+                }
 
                 self->ReplyOpen(*callContext, response.GetError(), req, &fi);
             }

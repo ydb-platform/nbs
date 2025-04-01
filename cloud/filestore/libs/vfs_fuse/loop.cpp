@@ -959,6 +959,8 @@ private:
         config.SetExtendedAttributesDisabled(
             features.GetExtendedAttributesDisabled());
 
+        config.SetKeepCacheAllowed(features.GetKeepCacheAllowed());
+
         return std::make_shared<TFileSystemConfig>(config);
     }
 
