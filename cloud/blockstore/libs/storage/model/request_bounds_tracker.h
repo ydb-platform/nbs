@@ -23,49 +23,11 @@ public:
         : BlockCountPerRange(MigrationRangeSize / blockSize)
     {}
 
-    void AddRequest(TBlockRange64 r)
-    {
-        auto startRange = r.Start / BlockCountPerRange;
-        auto endRange = r.End / BlockCountPerRange;
-        for (size_t i = startRange; i <= endRange; ++i) {
-            auto& rangeInfo = RangesWithRequests[i];
-            rangeInfo.RequestCount += 1;
-        }
-    }
+    void AddRequest(TBlockRange64 r);
 
-    void RemoveRequest(TBlockRange64 r)
-    {
-        auto startRange = r.Start / BlockCountPerRange;
-        auto endRange = r.End / BlockCountPerRange;
-        for (size_t i = startRange; i <= endRange; ++i) {
-            auto it = RangesWithRequests.find(i);
+    void RemoveRequest(TBlockRange64 r);
 
-            Y_DEBUG_ABORT_UNLESS(it != RangesWithRequests.end());
-            if (it == RangesWithRequests.end()) {
-                continue;
-            }
-
-            auto& rangeInfo = it->second;
-            rangeInfo.RequestCount -= 1;
-            if (rangeInfo.RequestCount == 0) {
-                RangesWithRequests.erase(it);
-            }
-        }
-    }
-
-    [[nodiscard]] bool OverlapsSomeRange(TBlockRange64 r) const
-    {
-        auto startRange = r.Start / BlockCountPerRange;
-        auto endRange = r.End / BlockCountPerRange;
-        for (size_t i = startRange; i <= endRange; ++i) {
-            auto it = RangesWithRequests.find(i);
-            if (it != RangesWithRequests.end()) {
-                return true;
-            }
-        }
-
-        return false;
-    }
+    [[nodiscard]] bool OverlapsSomeRange(TBlockRange64 r) const;
 };
 
 }   // namespace NCloud::NBlockStore::NStorage

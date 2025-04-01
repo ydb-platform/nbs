@@ -127,7 +127,7 @@ Y_UNIT_TEST_SUITE(TRequestsInProgressTest)
             EAllowedRequests::ReadWrite,
             blockSize};
 
-        auto blocksPerTrackingRange = RangeTrackingAccuracy / 4_KB;
+        auto blocksPerTrackingRange = MigrationRangeSize / 4_KB;
 
         {
             auto id1 = requestsInProgress.GenerateRequestId();
