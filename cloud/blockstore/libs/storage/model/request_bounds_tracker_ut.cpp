@@ -13,7 +13,7 @@ Y_UNIT_TEST_SUITE(TRequestBoundsTrackerTest)
         auto blockSize = 4_KB;
         TRequestBoundsTracker requestsInProgress{blockSize};
 
-        auto blocksPerTrackingRange = RangeTrackingAccuracy / 4_KB;
+        auto blocksPerTrackingRange = MigrationRangeSize / 4_KB;
 
         requestsInProgress.AddRequest(TBlockRange64::WithLength(0, 10));
 
@@ -62,7 +62,7 @@ Y_UNIT_TEST_SUITE(TRequestBoundsTrackerTest)
         auto blockSize = 4_KB;
         TRequestBoundsTracker requestsInProgress{blockSize};
 
-        auto blocksPerTrackingRange = RangeTrackingAccuracy / 4_KB;
+        auto blocksPerTrackingRange = MigrationRangeSize / 4_KB;
 
         requestsInProgress.AddRequest(
             TBlockRange64::WithLength(blocksPerTrackingRange - 1, 2));

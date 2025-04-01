@@ -1,12 +1,12 @@
 #pragma once
 
+#include "common_constants.h"
+
 #include <cloud/blockstore/libs/common/block_range.h>
 
 #include <util/generic/hash.h>
 
 namespace NCloud::NBlockStore::NStorage {
-
-constexpr ui64 RangeTrackingAccuracy = 4_MB;
 
 class TRequestBoundsTracker
 {
@@ -20,7 +20,7 @@ class TRequestBoundsTracker
 
 public:
     explicit TRequestBoundsTracker(ui64 blockSize)
-        : BlockCountPerRange(RangeTrackingAccuracy / blockSize)
+        : BlockCountPerRange(MigrationRangeSize / blockSize)
     {}
 
     void AddRequest(TBlockRange64 r)

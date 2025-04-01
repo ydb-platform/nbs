@@ -41,7 +41,7 @@ TNonreplicatedPartitionMigrationCommonActor::
     , MaxIoDepth(maxIoDepth)
     , RWClientId(std::move(rwClientId))
     , ProcessingBlocks(blockCount, blockSize, initialMigrationIndex)
-    , NonZeroRangesMap(blockCount, blockSize, ProcessingRangeSize)
+    , NonZeroRangesMap(blockCount, blockSize, MigrationRangeSize)
     , StatActorId(statActorId)
     , PoisonPillHelper(this)
 {
@@ -72,7 +72,7 @@ TNonreplicatedPartitionMigrationCommonActor::
     , MaxIoDepth(maxIoDepth)
     , RWClientId(std::move(rwClientId))
     , ProcessingBlocks(blockCount, blockSize, std::move(migrationBlockMap))
-    , NonZeroRangesMap(blockCount, blockSize, ProcessingRangeSize)
+    , NonZeroRangesMap(blockCount, blockSize, MigrationRangeSize)
     , StatActorId(statActorId)
     , PoisonPillHelper(this)
 {
