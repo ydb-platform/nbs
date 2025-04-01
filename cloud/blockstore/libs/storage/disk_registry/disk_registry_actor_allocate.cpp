@@ -142,7 +142,7 @@ void TDiskRegistryActor::ExecuteAddDisk(
         // Update createEmptyDiskTask simultaneously if you change it.
         args.Error = MakeError(
             E_TRY_AGAIN,
-            "Can allocate local disk after secure erase.");
+            "Unable to allocate local disk: secure erase has not finished yet");
     }
 
     args.Devices = std::move(result.Devices);
