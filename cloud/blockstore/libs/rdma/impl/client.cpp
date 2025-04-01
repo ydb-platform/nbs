@@ -469,7 +469,7 @@ private:
     TSimpleList<TRequest> QueuedRequests;
     TActiveRequests ActiveRequests;
 
-    std::atomic_uint64_t ReqIdPool{0};
+    std::atomic<ui64> ReqIdPool{0};
 
 public:
     static TClientEndpoint* FromEvent(rdma_cm_event* event)
@@ -535,7 +535,7 @@ private:
     void RecvResponseCompleted(TRecvWr* recv, ibv_wc_status status);
     void AbortRequest(TRequestPtr req, ui32 err, const TString& msg) noexcept;
     void FreeRequest(TRequest* creq) noexcept;
-    uint64_t GetNewReqId() noexcept;
+    ui64 GetNewReqId() noexcept;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -838,6 +838,9 @@ bool TClientEndpoint::HandleInputRequests()
 
 void TClientEndpoint::HandleQueuedRequests()
 {
+    if (!CheckState(EEndpointState::Connected)) {
+        return;
+    }
     while (QueuedRequests) {
         auto* send = SendQueue.Pop();
         if (!send) {
@@ -888,14 +891,17 @@ bool TClientEndpoint::HandleCancelRequests()
 
     // We should filter input and queued requests from cancelled ones to not
     // lose cancel requests.
-    auto inputRequests = InputRequests.DequeueAll();
-    QueuedRequests.Append(std::move(inputRequests));
+    QueuedRequests.Append(InputRequests.DequeueAll());
 
     auto cancelledReqs = QueuedRequests.DequeueIf(
         [&](const TRequest& req)
         { return reqsToCancel.contains(req.ClientReqId); });
 
     cancelledReqs.Append(ActiveRequests.PopCancelledRequests(reqsToCancel));
+
+    if (cancelledReqs) {
+        ret = true;
+    }
 
     while (auto req = cancelledReqs.Dequeue()) {
         AbortRequest(std::move(req), E_CANCELLED, "request is cancelled");
@@ -1287,7 +1293,7 @@ void TClientEndpoint::FreeRequest(TRequest* req) noexcept
     }
 }
 
-uint64_t TClientEndpoint::GetNewReqId() noexcept
+ui64 TClientEndpoint::GetNewReqId() noexcept
 {
     return ReqIdPool.fetch_add(1);
 }

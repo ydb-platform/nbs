@@ -29,52 +29,43 @@ void DeleteList(T* node)
 ////////////////////////////////////////////////////////////////////////////////
 
 template <typename T>
-class TSimpleListIterator
+class TSimpleList
 {
-    T* Node = nullptr;
-
-public:
-    explicit TSimpleListIterator(T* node)
-        : Node(node)
-    {}
-
-    bool operator!=(const TSimpleListIterator& rhs) const
+    class TIterator
     {
-        return !(*this == rhs);
-    }
+        T* Node = nullptr;
 
-    bool operator==(const TSimpleListIterator& rhs) const
-    {
-        return Node == rhs.Node;
-    }
+    public:
+        explicit TIterator(T* node)
+            : Node(node)
+        {}
 
-    TSimpleListIterator<T>& operator++()
-    {
-        if (!Node) {
+        bool operator!=(const TIterator& rhs) const = default;
+
+        bool operator==(const TIterator& rhs) const = default;
+
+        TIterator& operator++()
+        {
+            if (!Node) {
+                return *this;
+            }
+
+            Node = Node->Next;
+
             return *this;
         }
 
-        Node = Node->Next;
+        T& operator*()
+        {
+            return *Node;
+        }
 
-        return *this;
-    }
+        T* operator->()
+        {
+            return Node;
+        }
+    };
 
-    T& operator*()
-    {
-        return *Node;
-    }
-
-    T* operator->()
-    {
-        return Node;
-    }
-};
-
-////////////////////////////////////////////////////////////////////////////////
-
-template <typename T>
-class TSimpleList
-{
 private:
     T* Head;
     T* Tail;
@@ -114,42 +105,30 @@ public:
     template <typename TPred>
     TSimpleList<T> DequeueIf(TPred c)
     {
-        TSimpleList<T> filteredValues;
+        TSimpleList<T> filtered;
+        TSimpleList<T> nonFiltered;
 
-        T* firstNotFilteredNode = nullptr;
-        T* lastNotFilteredNode = nullptr;
-        T* curNode = Head;
-
-        while (curNode) {
-            T* next = curNode->Next;
-            if (c(*curNode)) {
-                curNode->Next = nullptr;
-                filteredValues.Enqueue(std::unique_ptr<T>(curNode));
+        while (auto ptr = Dequeue()) {
+            if (c(*ptr)) {
+                filtered.Enqueue(std::move(ptr));
             } else {
-                if (lastNotFilteredNode) {
-                    lastNotFilteredNode->Next = curNode;
-                }
-                lastNotFilteredNode = curNode;
-                if (!firstNotFilteredNode) {
-                    firstNotFilteredNode = curNode;
-                }
+                nonFiltered.Enqueue(std::move(ptr));
             }
-            curNode = next;
         }
 
-        Head = firstNotFilteredNode;
-        Tail = lastNotFilteredNode;
-        return filteredValues;
+        Append(std::move(nonFiltered));
+
+        return filtered;
     }
 
     auto begin()
     {
-        return TSimpleListIterator<T>(Head);
+        return TIterator(Head);
     }
 
     auto end()
     {
-        return TSimpleListIterator<T>(nullptr);
+        return TIterator(nullptr);
     }
 
     void Enqueue(std::unique_ptr<T> node)
