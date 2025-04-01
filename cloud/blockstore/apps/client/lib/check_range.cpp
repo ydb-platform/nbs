@@ -11,6 +11,9 @@
 #include <library/cpp/json/json_reader.h>
 #include <library/cpp/protobuf/util/pb_io.h>
 
+#include <thread>
+#include <chrono>
+
 #include <util/folder/path.h>
 #include <util/stream/file.h>
 
@@ -21,6 +24,8 @@ namespace NCloud::NBlockStore::NClient {
 namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
+
+const int throttleDelayMs = 100;
 
 constexpr ui64 DefaultBlocksPerRequest = 1024;
 
@@ -225,6 +230,8 @@ protected:
             }
             isRetry = false;
             range = builder.Next();
+
+            std::this_thread::sleep_for(std::chrono::milliseconds(throttleDelayMs));
         }
 
         output << "Total requests sended: " << requestCount << Endl;
