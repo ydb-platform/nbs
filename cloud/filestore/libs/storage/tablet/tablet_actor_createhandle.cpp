@@ -387,6 +387,22 @@ void TIndexTabletActor::ExecuteTx_CreateHandle(
         args.Response.SetHandle(handle->GetHandle());
         auto* node = args.Response.MutableNodeAttr();
         ConvertNodeFromAttrs(*node, args.TargetNodeId, args.TargetNode->Attrs);
+
+        if (Config->GetKeepCacheAllowed() &&
+            !HasFlag(args.Flags, NProto::TCreateHandleRequest::E_WRITE))
+        {
+            // We set KeepCache to tell the client not to bother invalidating
+            // the caches upon opening a read-only handle
+            args.Response.SetKeepCache(
+                !session->HandlesStatsByNode.ShouldInvalidateCache(*node));
+        }
+
+        // We can remember the last time that the cache was invalidated by a
+        // user of a given session in order not to invalidate the cache the next
+        // time if the file was not modified
+        if (!args.Response.GetKeepCache()) {
+            session->HandlesStatsByNode.NotifyMtimeNoKeepCache(*node);
+        }
     } else {
         args.Response.SetShardFileSystemId(args.ShardId);
         args.Response.SetShardNodeName(args.ShardNodeName);
@@ -463,12 +479,8 @@ void TIndexTabletActor::CompleteTx_CreateHandle(
     if (!HasError(args.Error)) {
         CommitDupCacheEntry(args.SessionId, args.RequestId);
         response->Record = std::move(args.Response);
-
-        Metrics.CreateHandle.Update(
-            1,
-            0,
-            ctx.Now() - args.RequestInfo->StartedTs);
     }
+    Metrics.CreateHandle.Update(1, 0, ctx.Now() - args.RequestInfo->StartedTs);
 
     CompleteResponse<TEvService::TCreateHandleMethod>(
         response->Record,

@@ -312,6 +312,8 @@ public:
     bool GetExtendedAttributesDisabled() const;
 
     bool GetServerWriteBackCacheEnabled() const;
+
+    bool GetKeepCacheAllowed() const;
 };
 
 }   // namespace NCloud::NFileStore::NStorage

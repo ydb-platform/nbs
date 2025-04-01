@@ -558,6 +558,7 @@ TSessionHandle* TIndexTabletState::CreateHandle(
     auto handle = std::make_unique<TSessionHandle>(session, proto);
 
     session->Handles.PushBack(handle.get());
+    session->HandlesStatsByNode.RegisterHandle(proto);
     Impl->HandleById.emplace(handle->GetHandle(), handle.get());
     Impl->NodeRefsByHandle[proto.GetNodeId()]++;
 
@@ -596,6 +597,9 @@ void TIndexTabletState::RemoveHandle(TSessionHandle* handle)
 
     if (--(it->second) == 0) {
         Impl->NodeRefsByHandle.erase(it);
+    }
+    if (auto* session = handle->Session) {
+        session->HandlesStatsByNode.DeregisterHandle(*handle);
     }
 
     {

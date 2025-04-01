@@ -535,4 +535,10 @@ message TStorageConfig
 
     // Use SSL for dynamic node registration.
     optional bool NodeRegistrationUseSsl = 422;
+
+    // If set to true, in some cases the client is allowed not to invalidate the
+    // guest page cache associated with the inode. It is allowed only for
+    // handles to nodes that are not being edited and are already opened
+    // within a given session
+    optional bool KeepCacheAllowed = 423;
 }
