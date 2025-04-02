@@ -331,7 +331,7 @@ private:
         return input.GetStringRobust();
     }
 
-    TString ReadJsonFromFile(TBlockRange64 range)
+    TResultOrError<TString> ReadJsonFromFile(TBlockRange64 range)
     {
         TString fileName = GetFilename(range);
         TString result;
@@ -343,7 +343,9 @@ private:
 
             result = file.ReadAll();
         } catch (...) {
-            GetOutputStream() << "Can't read from file " << GetFilename(range);
+            GetOutputStream() << "Can't read from file " << fileName << " : "
+                              << CurrentExceptionMessage() << Endl;
+            return MakeError(E_ARGUMENT);
         }
 
         return result;
@@ -351,7 +353,10 @@ private:
 
     void CompareChecksums(const TString& response, TBlockRange64 range)
     {
-        auto data = ReadJsonFromFile(range);
+        auto [data, error] = ReadJsonFromFile(range);
+        if (HasError(error)) {
+            return;
+        }
 
         NJson::TJsonValue jsonFromFile;
         NJson::TJsonValue jsonFromRequest;
@@ -383,7 +388,7 @@ private:
 
         if (!jsonFromRequest["Checksums"].IsArray()) {
             GetOutputStream()
-                << "'Checksums' in request is not an arrays for range " << range
+                << "'Checksums' in request is not an array for range " << range
                 << Endl;
             return;
         }
