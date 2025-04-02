@@ -675,13 +675,12 @@ void TLaggingAgentsReplicaProxyActor::HandleAgentIsBackOnline(
 {
     const auto* msg = ev->Get();
 
-    Y_DEBUG_ABORT_UNLESS(AgentState.contains(msg->AgentId));
-    if (!AgentState.contains(msg->AgentId)) {
+    auto* state = AgentState.FindPtr(msg->AgentId);
+    Y_DEBUG_ABORT_UNLESS(state);
+    if (!state) {
         return;
     }
-
-    auto& state = AgentState[msg->AgentId];
-    switch (state.State) {
+    switch (state->State) {
         case EAgentState::Unavailable:
             break;
         case EAgentState::WaitingForDrain:
@@ -690,7 +689,7 @@ void TLaggingAgentsReplicaProxyActor::HandleAgentIsBackOnline(
             Y_DEBUG_ABORT_UNLESS(false);
             return;
     }
-    state.State = EAgentState::WaitingForDrain;
+    state->State = EAgentState::WaitingForDrain;
 
     LOG_INFO(
         ctx,
@@ -713,13 +712,13 @@ void TLaggingAgentsReplicaProxyActor::HandleAgentIsBackOnline(
         MirrorPartitionActorId,
         DrainRequestCounter);
 
-    Y_DEBUG_ABORT_UNLESS(!state.MigrationActorId);
-    Y_DEBUG_ABORT_UNLESS(state.AvailabilityMonitoringActorId);
+    Y_DEBUG_ABORT_UNLESS(!state->MigrationActorId);
+    Y_DEBUG_ABORT_UNLESS(state->AvailabilityMonitoringActorId);
 
-    DestroyChildActor(ctx, &state.AvailabilityMonitoringActorId);
+    DestroyChildActor(ctx, &state->AvailabilityMonitoringActorId);
 
     TCompressedBitmap cleanBlocksCopy(PartConfig->GetBlockCount());
-    cleanBlocksCopy.Update(*state.CleanBlocksMap, 0);
+    cleanBlocksCopy.Update(*state->CleanBlocksMap, 0);
 
     LOG_INFO(
         ctx,
@@ -731,7 +730,7 @@ void TLaggingAgentsReplicaProxyActor::HandleAgentIsBackOnline(
         PartConfig->GetBlockCount(),
         PartConfig->GetBlockCount() - cleanBlocksCopy.Count());
 
-    state.MigrationActorId = NCloud::Register(
+    state->MigrationActorId = NCloud::Register(
         ctx,
         std::make_unique<TLaggingAgentMigrationActor>(
             Config,
@@ -745,7 +744,7 @@ void TLaggingAgentsReplicaProxyActor::HandleAgentIsBackOnline(
             MirrorPartitionActorId,
             std::move(cleanBlocksCopy),
             msg->AgentId));
-    PoisonPillHelper.TakeOwnership(ctx, state.MigrationActorId);
+    PoisonPillHelper.TakeOwnership(ctx, state->MigrationActorId);
 }
 
 void TLaggingAgentsReplicaProxyActor::HandleLaggingAgentMigrationFinished(
@@ -800,11 +799,11 @@ void TLaggingAgentsReplicaProxyActor::HandleWaitForInFlightWritesResponse(
     const NPartition::TEvPartition::TEvWaitForInFlightWritesResponse::TPtr& ev,
     const NActors::TActorContext& ctx)
 {
-    if (!CurrentDrainingAgents.contains(ev->Cookie)) {
+    auto it = CurrentDrainingAgents.find(ev->Cookie);
+    if (it == CurrentDrainingAgents.end()) {
         return;
     }
 
-    auto it = CurrentDrainingAgents.find(ev->Cookie);
     TString agentId = std::move(it->second);
     CurrentDrainingAgents.erase(it);
 
@@ -832,13 +831,13 @@ void TLaggingAgentsReplicaProxyActor::HandleWaitForInFlightWritesResponse(
         return;
     }
 
-    Y_DEBUG_ABORT_UNLESS(AgentState.contains(agentId));
-    if (!AgentState.contains(agentId)) {
+    auto* state = AgentState.FindPtr(agentId);
+    Y_DEBUG_ABORT_UNLESS(state);
+    if (!state) {
         return;
     }
 
-    auto& state = AgentState[agentId];
-    switch (state.State) {
+    switch (state->State) {
         case EAgentState::Unavailable:
             return;
         case EAgentState::WaitingForDrain:
@@ -848,7 +847,7 @@ void TLaggingAgentsReplicaProxyActor::HandleWaitForInFlightWritesResponse(
             return;
     }
 
-    state.State = EAgentState::Resyncing;
+    state->State = EAgentState::Resyncing;
     LOG_DEBUG(
         ctx,
         TBlockStoreComponents::PARTITION_WORKER,
@@ -857,12 +856,12 @@ void TLaggingAgentsReplicaProxyActor::HandleWaitForInFlightWritesResponse(
         PartConfig->GetName().c_str(),
         agentId.Quote().c_str(),
         PartConfig->GetBlockCount(),
-        PartConfig->GetBlockCount() - state.CleanBlocksMap->Count());
+        PartConfig->GetBlockCount() - state->CleanBlocksMap->Count());
 
-    Y_ABORT_UNLESS(state.MigrationActorId);
+    Y_ABORT_UNLESS(state->MigrationActorId);
     NCloud::Send<TEvNonreplPartitionPrivate::TEvStartLaggingAgentMigration>(
         ctx,
-        state.MigrationActorId);
+        state->MigrationActorId);
 }
 
 void TLaggingAgentsReplicaProxyActor::HandleWriteBlocks(

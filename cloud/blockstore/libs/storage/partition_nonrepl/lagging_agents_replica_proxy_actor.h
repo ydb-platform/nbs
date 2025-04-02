@@ -62,6 +62,8 @@ private:
     THashMap<TString, TAgentState> AgentState;
 
     ui64 DrainRequestCounter = 0;
+    // To determine which agent has drained in-flight writes by cookie in the
+    // response.
     THashMap<ui64, TString> CurrentDrainingAgents;
 
     TPoisonPillHelper PoisonPillHelper;

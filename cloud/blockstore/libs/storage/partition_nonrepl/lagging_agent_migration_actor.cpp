@@ -86,7 +86,7 @@ void TLaggingAgentMigrationActor::HandleStartLaggingAgentMigration(
     const NActors::TActorContext& ctx)
 {
     Y_UNUSED(ev);
-    Y_ABORT_UNLESS(!IsMigrationAllowed());
+    Y_ABORT_IF(IsMigrationAllowed());
     StartWork(ctx);
 }
 

@@ -12,6 +12,8 @@
 
 namespace NCloud::NBlockStore::NStorage {
 
+using namespace NActors;
+
 LWTRACE_USING(BLOCKSTORE_STORAGE_PROVIDER);
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -31,7 +33,7 @@ TDrainActorCompanion::TDrainActorCompanion(
 
 void TDrainActorCompanion::HandleDrain(
     const NPartition::TEvPartition::TEvDrainRequest::TPtr& ev,
-    const NActors::TActorContext& ctx)
+    const TActorContext& ctx)
 {
     auto* msg = ev->Get();
 
@@ -70,7 +72,7 @@ void TDrainActorCompanion::HandleDrain(
 
 void TDrainActorCompanion::HandleWaitForInFlightWrites(
     const NPartition::TEvPartition::TEvWaitForInFlightWritesRequest::TPtr& ev,
-    const NActors::TActorContext& ctx)
+    const TActorContext& ctx)
 {
     auto* msg = ev->Get();
 
@@ -103,14 +105,13 @@ void TDrainActorCompanion::HandleWaitForInFlightWrites(
 ////////////////////////////////////////////////////////////////////////////////
 
 void TDrainActorCompanion::ProcessDrainRequests(
-    const NActors::TActorContext& ctx)
+    const TActorContext& ctx)
 {
     DoProcessDrainRequests(ctx);
     DoProcessWaitForInFlightWritesRequests(ctx);
 }
 
-void TDrainActorCompanion::DoProcessDrainRequests(
-    const NActors::TActorContext& ctx)
+void TDrainActorCompanion::DoProcessDrainRequests(const TActorContext& ctx)
 {
     if (DrainRequests.empty() || RequestsInProgress.WriteRequestInProgress()) {
         return;
@@ -139,7 +140,7 @@ void TDrainActorCompanion::DoProcessDrainRequests(
 }
 
 void TDrainActorCompanion::DoProcessWaitForInFlightWritesRequests(
-    const NActors::TActorContext& ctx)
+    const TActorContext& ctx)
 {
     if (!WaitForInFlightWritesRequest ||
         RequestsInProgress.IsWaitingForInFlightWrites())

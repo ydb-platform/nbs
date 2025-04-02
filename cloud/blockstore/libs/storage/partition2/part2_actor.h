@@ -247,11 +247,13 @@ private:
         return WriteAndZeroRequestsInProgress != 0;
     }
 
-    void WaitForInFlightWrites() override {
+    void WaitForInFlightWrites() override
+    {
         Y_ABORT("Unimplemented");
     }
 
-    bool IsWaitingForInFlightWrites() const override {
+    bool IsWaitingForInFlightWrites() const override
+    {
         Y_ABORT("Unimplemented");
     }
 
