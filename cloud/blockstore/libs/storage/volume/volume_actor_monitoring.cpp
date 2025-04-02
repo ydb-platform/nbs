@@ -886,10 +886,7 @@ void TVolumeActor::RenderLinks(IOutputStream& out) const
                             out << follower.Uuid;
                         }
                         TABLED () {
-                            if (follower.ScaleUnitId) {
-                                out << follower.ScaleUnitId << "/";
-                            }
-                            out << follower.FollowerDiskId;
+                            out << follower.GetDiskIdForPrint();
                         }
                         TABLED () {
                             out << ToString(follower.State);

@@ -116,7 +116,7 @@ inline TGuardedSgList GetSglist(const NProto::TWriteBlocksLocalRequest& request)
 
 template <typename TEvent>
 void ForwardMessageToActor(
-    TEvent& ev,
+    const TEvent& ev,
     const NActors::TActorContext& ctx,
     NActors::TActorId dstActor)
 {

@@ -380,6 +380,27 @@ Y_UNIT_TEST_SUITE(TMigrationCalculatorTest)
             timeoutCalculator.CalculateTimeout(
                 TBlockRange64::WithLength(1024 * 3, 1024)));
     }
+
+    Y_UNIT_TEST(ShouldWorkWithEmptyPartitionConfig)
+    {
+        TMigrationTimeoutCalculator timeoutCalculator(
+            16,
+            100500,
+            nullptr);
+
+        // Calculate timeout with inital bandwidth
+        UNIT_ASSERT_VALUES_EQUAL(
+            TDuration::Seconds(1) / 4,
+            timeoutCalculator.CalculateTimeout(
+                TBlockRange64::WithLength(0, 1024)));
+
+        // Calculate timeout with recommended bandwidth
+        timeoutCalculator.SetRecommendedBandwidth(40_MB);
+        UNIT_ASSERT_VALUES_EQUAL(
+            TDuration::Seconds(1) / 10,
+            timeoutCalculator.CalculateTimeout(
+                TBlockRange64::WithLength(1024 * 0, 1024)));
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage
