@@ -47,7 +47,9 @@ TDirectCopyRangeActor::TDirectCopyRangeActor(
     , RequestInfo(std::move(requestInfo))
 {}
 
-void TDirectCopyRangeActor::ReadyToCopy(const NActors::TActorContext& ctx, ui64 volumeRequestId)
+void TDirectCopyRangeActor::ReadyToCopy(
+    const NActors::TActorContext& ctx,
+    ui64 volumeRequestId)
 {
     TRequestScope timer(*RequestInfo);
 

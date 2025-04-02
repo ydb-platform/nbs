@@ -314,7 +314,8 @@ void TResyncRangeBlockByBlockActor::StartReadPhase(
     ReadBlocks(ctx);
 }
 
-void TResyncRangeBlockByBlockActor::GetVolumeRequestId(const NActors::TActorContext& ctx)
+void TResyncRangeBlockByBlockActor::GetVolumeRequestId(
+    const NActors::TActorContext& ctx)
 {
     NCloud::Send(
         ctx,

@@ -231,7 +231,8 @@ struct TTestEnv
         storageConfig.SetMaxTimedOutDeviceStateDuration(20'000);
         storageConfig.SetNonReplicatedMinRequestTimeoutSSD(1'000);
         storageConfig.SetNonReplicatedMaxRequestTimeoutSSD(5'000);
-        storageConfig.SetAssignIdToWriteAndZeroRequestsEnabled(enableVolumeRequestId);
+        storageConfig.SetAssignIdToWriteAndZeroRequestsEnabled(
+            enableVolumeRequestId);
         storageConfig.SetRejectLateRequestsAtDiskAgentEnabled(
             enableVolumeRequestId);
 
@@ -1759,16 +1760,16 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionResyncTest)
         }
     }
 
-    template<typename TEv>
+    template <typename TEv>
     ui64 GetVolumeRequestId(const TAutoPtr<IEventHandle>& event)
     {
-        auto* ev = static_cast<TEv*>(
-            event->GetBase());
+        auto* ev = static_cast<TEv*>(event->GetBase());
 
         return ev->Record.GetHeaders().GetVolumeRequestId();
     }
 
-    void DoShouldSendWriteRequestsWithCorrectVolumeRequestId(NProto::EResyncPolicy resyncPolicy)
+    void DoShouldSendWriteRequestsWithCorrectVolumeRequestId(
+        NProto::EResyncPolicy resyncPolicy)
     {
         TTestBasicRuntime runtime;
         TTestEnv env(
@@ -1807,12 +1808,15 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionResyncTest)
                         case TEvService::EvWriteBlocksRequest:
                             resyncWriteRequestCount += 1;
                             volumeRequestIds.emplace_back(
-                                GetVolumeRequestId<TEvService::TEvWriteBlocksRequest>(event));
+                                GetVolumeRequestId<
+                                    TEvService::TEvWriteBlocksRequest>(event));
                             break;
                         case TEvService::EvWriteBlocksLocalRequest:
                             resyncWriteRequestCount += 1;
                             volumeRequestIds.emplace_back(
-                                GetVolumeRequestId<TEvService::TEvWriteBlocksLocalRequest>(event));
+                                GetVolumeRequestId<
+                                    TEvService::TEvWriteBlocksLocalRequest>(
+                                    event));
                             break;
                         case TEvVolumePrivate::EvTakeVolumeRequestIdRequest:
                             stollenTakeVolumeRequestIdEvent.reset(
@@ -1855,16 +1859,17 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionResyncTest)
         }
     }
 
-    Y_UNIT_TEST(ShouldSendWriteRequestsWithCorrectVolumeRequestId) {
+    Y_UNIT_TEST(ShouldSendWriteRequestsWithCorrectVolumeRequestId)
+    {
         DoShouldSendWriteRequestsWithCorrectVolumeRequestId(
             NProto::EResyncPolicy::RESYNC_POLICY_MINOR_4MB);
     }
 
-    Y_UNIT_TEST(ShouldSendWriteRequestsWithCorrectVolumeRequestIdBlockByBlock) {
+    Y_UNIT_TEST(ShouldSendWriteRequestsWithCorrectVolumeRequestIdBlockByBlock)
+    {
         DoShouldSendWriteRequestsWithCorrectVolumeRequestId(
             NProto::EResyncPolicy::RESYNC_POLICY_MINOR_BLOCK_BY_BLOCK);
     }
-
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cloud/blockstore/libs/storage/volume/volume_events_private.h>
+
 #include <cloud/storage/core/libs/common/error.h>
 
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
@@ -37,8 +38,8 @@ class TCopyRangeActorCommon
 
 public:
     TCopyRangeActorCommon(
-            ICopyRangeOwner* owner,
-            NActors::TActorId volumeActorId)
+        ICopyRangeOwner* owner,
+        NActors::TActorId volumeActorId)
         : Owner(owner)
         , VolumeActorId(volumeActorId)
     {}

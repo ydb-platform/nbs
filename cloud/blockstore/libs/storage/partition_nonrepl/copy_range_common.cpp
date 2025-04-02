@@ -2,7 +2,6 @@
 
 #include <cloud/storage/core/libs/actors/helpers.h>
 
-
 #include <contrib/ydb/library/actors/core/hfunc.h>
 
 #include <utility>
@@ -13,7 +12,8 @@ using namespace NActors;
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void TCopyRangeActorCommon::Bootstrap(const NActors::TActorContext& ctx) {
+void TCopyRangeActorCommon::Bootstrap(const NActors::TActorContext& ctx)
+{
     Become(&TThis::StateWork);
 
     if (VolumeActorId) {
@@ -33,7 +33,9 @@ void TCopyRangeActorCommon::GetVolumeRequestId(
         std::make_unique<TEvVolumePrivate::TEvTakeVolumeRequestIdRequest>());
 }
 
-void TCopyRangeActorCommon::Done(const NActors::TActorContext& ctx, NProto::TError error)
+void TCopyRangeActorCommon::Done(
+    const NActors::TActorContext& ctx,
+    NProto::TError error)
 {
     Owner->BeforeDie(ctx, std::move(error));
 
@@ -42,7 +44,8 @@ void TCopyRangeActorCommon::Done(const NActors::TActorContext& ctx, NProto::TErr
 
 void TCopyRangeActorCommon::HandlePoisonPill(
     const NActors::TEvents::TEvPoisonPill::TPtr& ev,
-    const NActors::TActorContext& ctx) {
+    const NActors::TActorContext& ctx)
+{
     Y_UNUSED(ev);
     Done(ctx, MakeTabletIsDeadError(E_REJECTED, __LOCATION__));
 }
