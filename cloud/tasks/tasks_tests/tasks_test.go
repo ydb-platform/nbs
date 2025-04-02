@@ -1321,6 +1321,7 @@ func waitForValue(t *testing.T, ch chan (int), expectedValue int) {
 				expectedValue,
 			))
 		}
+
 		if value == expectedValue {
 			return
 		}
@@ -1350,6 +1351,9 @@ func TestHangingTasksMetrics(t *testing.T) {
 	taskID, err := scheduleHangingTask(reqCtx, s.scheduler)
 	require.NoError(t, err)
 
+	// When a value is set to a metric, this value is also sent to the
+	// corresponging channel (without blocking).
+	// The test reads values from these channels and validates them.
 	totalHangingTasksChannel := make(chan int, 100000)
 	hangingTasksChannel := make(chan int, 100000)
 
@@ -1387,6 +1391,7 @@ func TestHangingTasksMetrics(t *testing.T) {
 		},
 	)
 
+	// Must see value "1" when task becomes hanging.
 	waitForValue(t, totalHangingTasksChannel, 1)
 	waitForValue(t, hangingTasksChannel, 1)
 
@@ -1394,6 +1399,7 @@ func TestHangingTasksMetrics(t *testing.T) {
 	require.NoError(t, err)
 	_ = s.scheduler.WaitTaskEnded(ctx, taskID)
 
+	// Must see value "0" when task stops being hanging.
 	waitForValue(t, totalHangingTasksChannel, 0)
 	waitForValue(t, hangingTasksChannel, 0)
 
@@ -1460,6 +1466,9 @@ func TestListerMetricsCleanup(t *testing.T) {
 	taskID, err := scheduleHangingTask(reqCtx, s.scheduler)
 	require.NoError(t, err)
 
+	// When a value is set to a metric, this value is also sent to the
+	// corresponging channel (without blocking).
+	// The test reads values from these channels and validates them.
 	totalHangingTasksChannel := make(chan int, 100000)
 	hangingTasksChannel := make(chan int, 100000)
 	runningTasksChannel := make(chan int, 100000)
@@ -1515,6 +1524,7 @@ func TestListerMetricsCleanup(t *testing.T) {
 	)
 
 	waitForValue(t, runningTasksChannel, 1)
+	// Must see value "1" when task becomes hanging.
 	waitForValue(t, totalHangingTasksChannel, 1)
 	waitForValue(t, hangingTasksChannel, 1)
 
@@ -1522,6 +1532,7 @@ func TestListerMetricsCleanup(t *testing.T) {
 	err = db.Close(ctx)
 	require.NoError(t, err)
 
+	// When collectListerMetricsTask fails, it must clean up metrics.
 	waitForValue(t, runningTasksChannel, 0)
 	waitForValue(t, totalHangingTasksChannel, 0)
 	waitForValue(t, hangingTasksChannel, 0)
