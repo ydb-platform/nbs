@@ -179,11 +179,11 @@ public:
     }
 
     TSimpleList<TRequest> PopCancelledRequests(
-        const THashSet<ui64>& tagsToCancel)
+        const THashSet<ui64>& idsToCancel)
     {
         TSimpleList<TRequest> cancelledReqs;
         for (auto& [rdmaReqId, req]: Requests) {
-            if (tagsToCancel.contains(req->ClientReqId)) {
+            if (idsToCancel.contains(req->ClientReqId)) {
                 CancelledRequests.Put(rdmaReqId);
                 cancelledReqs.Enqueue(std::move(req));
             }
@@ -884,7 +884,6 @@ bool TClientEndpoint::HandleCancelRequests()
     }
     THashSet<ui64> reqsToCancel;
 
-    bool ret = false;
     for (const auto& reqId: requests) {
         reqsToCancel.emplace(reqId.ReqId);
     }
@@ -899,9 +898,7 @@ bool TClientEndpoint::HandleCancelRequests()
 
     cancelledReqs.Append(ActiveRequests.PopCancelledRequests(reqsToCancel));
 
-    if (cancelledReqs) {
-        ret = true;
-    }
+    const bool ret = !!cancelledReqs;
 
     while (auto req = cancelledReqs.Dequeue()) {
         AbortRequest(std::move(req), E_CANCELLED, "request is cancelled");

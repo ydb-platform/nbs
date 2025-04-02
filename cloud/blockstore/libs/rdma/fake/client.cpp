@@ -196,7 +196,8 @@ ui64 TClientEndpoint::SendRequest(
     return 0;
 }
 
-void TClientEndpoint::CancelRequest(ui64 reqId) {
+void TClientEndpoint::CancelRequest(ui64 reqId)
+{
     Y_UNUSED(reqId);
 }
 

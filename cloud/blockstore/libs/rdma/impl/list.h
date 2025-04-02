@@ -31,40 +31,8 @@ void DeleteList(T* node)
 template <typename T>
 class TSimpleList
 {
-    class TIterator
-    {
-        T* Node = nullptr;
-
-    public:
-        explicit TIterator(T* node)
-            : Node(node)
-        {}
-
-        bool operator!=(const TIterator& rhs) const = default;
-
-        bool operator==(const TIterator& rhs) const = default;
-
-        TIterator& operator++()
-        {
-            if (!Node) {
-                return *this;
-            }
-
-            Node = Node->Next;
-
-            return *this;
-        }
-
-        T& operator*()
-        {
-            return *Node;
-        }
-
-        T* operator->()
-        {
-            return Node;
-        }
-    };
+public:
+    class TIterator;
 
 private:
     T* Head;
@@ -157,6 +125,41 @@ private:
             Head = head;
             Tail = tail;
         }
+    }
+};
+
+template <typename T>
+class TSimpleList<T>::TIterator
+{
+private:
+    T* Node = nullptr;
+
+public:
+    explicit TIterator(T* node)
+        : Node(node)
+    {}
+
+    bool operator==(const TIterator& rhs) const = default;
+
+    TIterator& operator++()
+    {
+        if (!Node) {
+            return *this;
+        }
+
+        Node = Node->Next;
+
+        return *this;
+    }
+
+    T& operator*()
+    {
+        return *Node;
+    }
+
+    T* operator->()
+    {
+        return Node;
     }
 };
 
