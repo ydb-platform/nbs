@@ -108,7 +108,7 @@ Y_UNIT_TEST_SUITE(TSimpleListTest)
         }
 
         int i = 0;
-        for (auto& node : list1) {
+        for (auto& node: list1) {
             UNIT_ASSERT_VALUES_EQUAL(i, node.Value);
             ++i;
         }
