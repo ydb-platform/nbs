@@ -233,9 +233,10 @@ func TestCreateEmptyLocalDiskTaskTryAgainShouldNotIncrementRetriableErrorsCount(
 	}).Return(&nbs_client.ClientError{Code: nbs_client.E_TRY_AGAIN, Message: "Unable to allocate local disk: secure erase has not finished yet."})
 
 	err := task.Run(ctx, execCtx)
-	mock.AssertExpectationsForObjects(t, storage, nbsFactory, nbsClient, execCtx)
 
-	e := errors.NewEmptyRetriableError()
-	require.True(t, errors.As(err, &e))
-	require.True(t, e.IgnoreRetryLimit)
+	emptyRetriableError := errors.NewEmptyRetriableError()
+	require.True(t, errors.As(err, &emptyRetriableError))
+	require.True(t, emptyRetriableError.IgnoreRetryLimit)
+
+	mock.AssertExpectationsForObjects(t, storage, nbsFactory, nbsClient, execCtx)
 }
