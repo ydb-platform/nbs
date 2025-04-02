@@ -492,34 +492,31 @@ func (s *storageYDB) snapshotCreated(
 	state := states[0]
 
 	if state.status == snapshotStatusReady {
-		if state.checkpointID != checkpointID {
+		if state.checkpointID != checkpointID ||
+			state.size != snapshotSize ||
+			state.storageSize != snapshotStorageSize {
+
+			makeParamsString := func(
+				checkpointID string,
+				size uint64,
+				storageSize uint64,
+			) string {
+
+				return fmt.Sprintf(
+					"checkpoint id: %v, size: %v, storage size: %v",
+					checkpointID,
+					size,
+					storageSize,
+				)
+			}
+
 			return errors.NewNonRetriableErrorf(
-				"snapshot with id %v and checkpoint id %v can't be created, "+
-					"because snapshot with the same id and another "+
-					"checkpoint id %v already exists",
+				"snapshot with id %v and parameters (%v) can't be created, "+
+					"because snapshot with the same id and different parameters (%v) "+
+					"already exists",
 				snapshotID,
-				checkpointID,
-				state.checkpointID,
-			)
-		}
-		if state.size != snapshotSize {
-			return errors.NewNonRetriableErrorf(
-				"snapshot with id %v and size %v can't be created, "+
-					"because snapshot with the same id and another "+
-					"size %v already exists",
-				snapshotID,
-				snapshotSize,
-				state.size,
-			)
-		}
-		if state.storageSize != snapshotStorageSize {
-			return errors.NewNonRetriableErrorf(
-				"snapshot with id %v and storage size %v can't be created, "+
-					"because snapshot with the same id and another "+
-					"storage size %v already exists",
-				snapshotID,
-				snapshotStorageSize,
-				state.storageSize,
+				makeParamsString(checkpointID, snapshotSize, snapshotStorageSize),
+				makeParamsString(state.checkpointID, state.size, state.storageSize),
 			)
 		}
 

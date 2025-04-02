@@ -379,6 +379,7 @@ func TestImagesGetImage(t *testing.T) {
 	require.NotNil(t, actualImage)
 	requireImagesAreEqual(t, expectedImage, *actualImage)
 
+	// Checkpoint id differs.
 	err = storage.ImageCreated(
 		ctx,
 		imageID,
@@ -389,6 +390,8 @@ func TestImagesGetImage(t *testing.T) {
 	)
 	require.Error(t, err)
 	require.True(t, errors.Is(err, errors.NewEmptyNonRetriableError()))
+
+	// Image size differs.
 	err = storage.ImageCreated(
 		ctx,
 		imageID,
@@ -399,6 +402,8 @@ func TestImagesGetImage(t *testing.T) {
 	)
 	require.Error(t, err)
 	require.True(t, errors.Is(err, errors.NewEmptyNonRetriableError()))
+
+	// Image storage size differs.
 	err = storage.ImageCreated(
 		ctx,
 		imageID,

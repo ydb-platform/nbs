@@ -516,34 +516,31 @@ func (s *storageYDB) imageCreated(
 	state := states[0]
 
 	if state.status == imageStatusReady {
-		if state.checkpointID != checkpointID {
+		if state.checkpointID != checkpointID ||
+			state.size != imageSize ||
+			state.storageSize != imageStorageSize {
+
+			makeParamsString := func(
+				checkpointID string,
+				size uint64,
+				storageSize uint64,
+			) string {
+
+				return fmt.Sprintf(
+					"checkpoint id: %v, size: %v, storage size: %v",
+					checkpointID,
+					size,
+					storageSize,
+				)
+			}
+
 			return errors.NewNonRetriableErrorf(
-				"image with id %v and checkpoint id %v can't be created, "+
-					"because image with the same id and another "+
-					"checkpoint id %v already exists",
+				"image with id %v and parameters (%v) can't be created, "+
+					"because image with the same id and different parameters (%v) "+
+					"already exists",
 				imageID,
-				checkpointID,
-				state.checkpointID,
-			)
-		}
-		if state.size != imageSize {
-			return errors.NewNonRetriableErrorf(
-				"image with id %v and size %v can't be created, "+
-					"because image with the same id and another "+
-					"size %v already exists",
-				imageID,
-				imageSize,
-				state.size,
-			)
-		}
-		if state.storageSize != imageStorageSize {
-			return errors.NewNonRetriableErrorf(
-				"image with id %v and storage size %v can't be created, "+
-					"because image with the same id and another "+
-					"storage size %v already exists",
-				imageID,
-				imageStorageSize,
-				state.storageSize,
+				makeParamsString(checkpointID, imageSize, imageStorageSize),
+				makeParamsString(state.checkpointID, state.size, state.storageSize),
 			)
 		}
 

@@ -384,6 +384,7 @@ func TestSnapshotsGetSnapshot(t *testing.T) {
 	require.NotNil(t, actualSnapshot)
 	requireSnapshotsAreEqual(t, expectedSnapshot, *actualSnapshot)
 
+	// Checkpoint id differs.
 	err = storage.SnapshotCreated(
 		ctx,
 		snapshotID,
@@ -394,6 +395,8 @@ func TestSnapshotsGetSnapshot(t *testing.T) {
 	)
 	require.Error(t, err)
 	require.True(t, errors.Is(err, errors.NewEmptyNonRetriableError()))
+
+	// Snapshot size differs.
 	err = storage.SnapshotCreated(
 		ctx,
 		snapshotID,
@@ -404,6 +407,8 @@ func TestSnapshotsGetSnapshot(t *testing.T) {
 	)
 	require.Error(t, err)
 	require.True(t, errors.Is(err, errors.NewEmptyNonRetriableError()))
+
+	// Snapshot storage size differs.
 	err = storage.SnapshotCreated(
 		ctx,
 		snapshotID,
