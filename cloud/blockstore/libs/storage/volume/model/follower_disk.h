@@ -25,6 +25,7 @@ struct TFollowerDiskInfo
     EState State = EState::None;
     std::optional<ui64> MigrationBlockIndex;
 
+    TString GetDiskIdForPrint() const;
     bool operator==(const TFollowerDiskInfo& rhs) const;
 };
 
