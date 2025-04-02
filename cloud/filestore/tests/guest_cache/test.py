@@ -1,4 +1,5 @@
 import os
+import time
 
 from retrying import retry
 
@@ -43,6 +44,11 @@ def test():
     profile_tool_bin_path = common.binary_path(
         "cloud/filestore/tools/analytics/profile_tool/filestore-profile-tool"
     )
+
+    # Sleep for a while to ensure that the profile log is flushed
+    # before we start analyzing it
+    # The defalt value if ProfileLogTimeThreshold for tests is 100ms
+    time.sleep(2)
 
     result = profile.analyze_profile_log(
         profile_tool_bin_path, common.output_path("vhost-profile.log"), fs_name
