@@ -40,6 +40,8 @@ namespace {
     xxx(ExtendedAttributesDisabled, bool,       false                         )\
                                                                                \
     xxx(ServerWriteBackCacheEnabled,  bool,     false                         )\
+                                                                               \
+    xxx(GuestKeepCacheAllowed,        bool,     false                         )\
 // FILESTORE_FUSE_CONFIG
 
 #define FILESTORE_FILESYSTEM_DECLARE_CONFIG(name, type, value)                 \

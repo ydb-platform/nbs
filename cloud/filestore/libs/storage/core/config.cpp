@@ -253,6 +253,8 @@ using TAliases = NProto::TStorageConfig::TFilestoreAliases;
     xxx(ExtendedAttributesDisabled,                bool,     false            )\
                                                                                \
     xxx(ServerWriteBackCacheEnabled,    bool,      false                      )\
+                                                                               \
+    xxx(GuestKeepCacheAllowed,          bool,      false                      )\
 // FILESTORE_STORAGE_CONFIG
 
 #define FILESTORE_STORAGE_CONFIG_REF(xxx)                                      \

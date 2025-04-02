@@ -64,4 +64,7 @@ message TFileSystemConfig
 
     // Enable write-back cache on FUSE server
     optional bool ServerWriteBackCacheEnabled = 19;
+
+    // Allow to set keep_cache flag on file open if allowed by tablet
+    optional bool GuestKeepCacheAllowed = 20;
 }
