@@ -145,7 +145,7 @@ void TServiceActor::ForwardRequest(
             ctx,
             ev,
             E_BS_INVALID_SESSION,
-            "Invalid session (SessionId not match)");
+            "Invalid session (SessionId does not match)");
         return;
     }
 
