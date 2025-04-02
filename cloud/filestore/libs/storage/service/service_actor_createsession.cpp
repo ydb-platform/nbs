@@ -430,8 +430,8 @@ void TCreateSessionActor::HandleCreateSessionResponse(
 
     // Some of the features of the filestore are set not by the tablet but also
     // by the client-side config
-    FileStore.MutableFeatures()->SetKeepCacheAllowed(
-        Config->GetKeepCacheAllowed());
+    FileStore.MutableFeatures()->SetGuestKeepCacheAllowed(
+        Config->GetGuestKeepCacheAllowed());
 
     Notify(ctx, {}, false);
 

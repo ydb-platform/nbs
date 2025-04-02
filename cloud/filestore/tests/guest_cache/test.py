@@ -48,6 +48,6 @@ def test():
         profile_tool_bin_path, common.output_path("vhost-profile.log"), fs_name
     )
 
-    # With KeepCacheAllowed the second read will be cached and should neither be
+    # With GuestKeepCacheAllowed the second read will be cached and should neither be
     # sent by the kernel nor observed by the vhost
     assert result.get("ReadData", 0) == 1

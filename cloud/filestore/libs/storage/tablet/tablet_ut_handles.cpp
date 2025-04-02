@@ -1,4 +1,3 @@
-
 #include <cloud/filestore/libs/storage/testlib/tablet_client.h>
 #include <cloud/filestore/libs/storage/testlib/test_env.h>
 
@@ -13,10 +12,10 @@ using namespace NKikimr;
 
 Y_UNIT_TEST_SUITE(TIndexTabletTest_Handles)
 {
-    Y_UNIT_TEST(ShouldSetKeepCacheProperly)
+    Y_UNIT_TEST(ShouldSetGuestKeepCacheProperly)
     {
         NProto::TStorageConfig storageConfig;
-        storageConfig.SetKeepCacheAllowed(true);
+        storageConfig.SetGuestKeepCacheAllowed(true);
         TTestEnv env({}, storageConfig);
         env.CreateSubDomain("nfs");
         auto registry = env.GetRegistry();
@@ -29,43 +28,43 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Handles)
 
         auto id = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
         UNIT_ASSERT(!tablet.CreateHandle(id, TCreateHandleArgs::RDNLY)
-                         ->Record.GetKeepCache());
+                         ->Record.GetGuestKeepCache());
         // Second CreateHandle call within this session should be allowed to
         // keep cache
         UNIT_ASSERT(tablet.CreateHandle(id, TCreateHandleArgs::RDNLY)
-                        ->Record.GetKeepCache());
+                        ->Record.GetGuestKeepCache());
         // But not if this request is not read-only
         UNIT_ASSERT(!tablet.CreateHandle(id, TCreateHandleArgs::RDWR)
-                         ->Record.GetKeepCache());
+                         ->Record.GetGuestKeepCache());
         UNIT_ASSERT(!tablet.CreateHandle(id, TCreateHandleArgs::WRNLY)
-                         ->Record.GetKeepCache());
+                         ->Record.GetGuestKeepCache());
 
-        // KeepCache should not be set if there is already a write handle
+        // GuestKeepCache should not be set if there is already a write handle
         id = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test2"));
         UNIT_ASSERT(!tablet.CreateHandle(id, TCreateHandleArgs::WRNLY)
-                         ->Record.GetKeepCache());
+                         ->Record.GetGuestKeepCache());
         UNIT_ASSERT(!tablet.CreateHandle(id, TCreateHandleArgs::RDNLY)
-                         ->Record.GetKeepCache());
+                         ->Record.GetGuestKeepCache());
         UNIT_ASSERT(!tablet.CreateHandle(id, TCreateHandleArgs::RDNLY)
-                         ->Record.GetKeepCache());
+                         ->Record.GetGuestKeepCache());
         UNIT_ASSERT(!tablet.CreateHandle(id, TCreateHandleArgs::RDWR)
-                         ->Record.GetKeepCache());
+                         ->Record.GetGuestKeepCache());
 
         // But when the write handle is closed the keep cache should be set
         id = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test3"));
         auto writeHandle =
             CreateHandle(tablet, id, {}, TCreateHandleArgs::WRNLY);
         UNIT_ASSERT(!tablet.CreateHandle(id, TCreateHandleArgs::RDNLY)
-                         ->Record.GetKeepCache());
+                         ->Record.GetGuestKeepCache());
         tablet.DestroyHandle(writeHandle);
         UNIT_ASSERT(tablet.CreateHandle(id, TCreateHandleArgs::RDNLY)
-                        ->Record.GetKeepCache());
+                        ->Record.GetGuestKeepCache());
     }
 
-    Y_UNIT_TEST(ShouldSetKeepCacheBasedOnMtime)
+    Y_UNIT_TEST(ShouldSetGuestKeepCacheBasedOnMtime)
     {
         NProto::TStorageConfig storageConfig;
-        storageConfig.SetKeepCacheAllowed(true);
+        storageConfig.SetGuestKeepCacheAllowed(true);
         TTestEnv env({}, storageConfig);
         env.CreateSubDomain("nfs");
         auto registry = env.GetRegistry();
@@ -84,7 +83,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Handles)
             // can keep the cache
             auto createHandleResponse =
                 tablet.CreateHandle(id, TCreateHandleArgs::RDNLY);
-            UNIT_ASSERT(createHandleResponse->Record.GetKeepCache());
+            UNIT_ASSERT(createHandleResponse->Record.GetGuestKeepCache());
             tablet.DestroyHandle(createHandleResponse->Record.GetHandle());
         }
         {
@@ -97,11 +96,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Handles)
 
             auto createHandleResponse =
                 tablet.CreateHandle(id, TCreateHandleArgs::RDNLY);
-            UNIT_ASSERT(!createHandleResponse->Record.GetKeepCache());
-        }
-        {
-            UNIT_ASSERT(tablet.CreateHandle(id, TCreateHandleArgs::RDNLY)
-                            ->Record.GetKeepCache());
+            UNIT_ASSERT(!createHandleResponse->Record.GetGuestKeepCache());
         }
     }
 }

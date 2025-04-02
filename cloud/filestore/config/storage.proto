@@ -540,5 +540,5 @@ message TStorageConfig
     // guest page cache associated with the inode. It is allowed only for
     // handles to nodes that are not being edited and are already opened
     // within a given session
-    optional bool KeepCacheAllowed = 423;
+    optional bool GuestKeepCacheAllowed = 423;
 }

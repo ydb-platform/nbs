@@ -51,7 +51,7 @@ public:
 
     bool GetServerWriteBackCacheEnabled() const;
 
-    bool GetKeepCacheAllowed() const;
+    bool GetGuestKeepCacheAllowed() const;
 
     void Dump(IOutputStream& out) const;
     void DumpHtml(IOutputStream& out) const;

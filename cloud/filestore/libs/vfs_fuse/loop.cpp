@@ -959,7 +959,7 @@ private:
         config.SetExtendedAttributesDisabled(
             features.GetExtendedAttributesDisabled());
 
-        config.SetKeepCacheAllowed(features.GetKeepCacheAllowed());
+        config.SetGuestKeepCacheAllowed(features.GetGuestKeepCacheAllowed());
 
         return std::make_shared<TFileSystemConfig>(config);
     }

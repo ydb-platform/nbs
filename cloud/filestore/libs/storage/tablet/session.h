@@ -1,6 +1,8 @@
 #pragma once
 
 #include "public.h"
+
+#include "library/cpp/cache/cache.h"
 #include "subsessions.h"
 
 #include <cloud/filestore/libs/service/filestore.h>
@@ -43,8 +45,9 @@ private:
     // Number of write (both O_RDWR and O_WRONLY) handles to this node open in
     // this session
     i64 OpenWriteHandles = 0;
-    // Among all opens, what was the last visible mtime of the node
-    ui64 LastCacheInvalidationMtime = 0;
+    // Among all opens, what was the last visible mtime of the node when the
+    // guest-side invalidation occurred
+    ui64 LastGuestCacheInvalidationMtime = 0;
 
     void RegisterHandle(const NProto::TSessionHandle& handle)
     {
@@ -62,9 +65,9 @@ private:
         }
     }
 
-    void NotifyMtimeNoKeepCache(ui64 mtime)
+    void OnGuestCacheInvalidated(ui64 mtime)
     {
-        LastCacheInvalidationMtime = Max(LastCacheInvalidationMtime, mtime);
+        LastGuestCacheInvalidationMtime = mtime;
     }
 
     [[nodiscard]] bool Empty() const
@@ -98,7 +101,7 @@ public:
         }
     }
 
-    void NotifyMtimeNoKeepCache(const NProto::TNodeAttr& node)
+    void OnGuestCacheInvalidated(const NProto::TNodeAttr& node)
     {
         auto mtime = node.GetMTime();
         if (mtime == 0) {
@@ -107,7 +110,7 @@ public:
 
         auto it = Stats.find(node.GetId());
         if (it != Stats.end()) {
-            it->second.NotifyMtimeNoKeepCache(mtime);
+            it->second.OnGuestCacheInvalidated(mtime);
         }
     }
 
@@ -122,7 +125,7 @@ public:
             // node was modified
             if (it->second.OpenWriteHandles == 0 &&
                 it->second.OpenHandles > 1 &&
-                it->second.LastCacheInvalidationMtime >= node.GetMTime())
+                it->second.LastGuestCacheInvalidationMtime >= node.GetMTime())
             {
                 return false;
             }

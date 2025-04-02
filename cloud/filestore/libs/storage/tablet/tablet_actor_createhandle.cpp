@@ -388,20 +388,20 @@ void TIndexTabletActor::ExecuteTx_CreateHandle(
         auto* node = args.Response.MutableNodeAttr();
         ConvertNodeFromAttrs(*node, args.TargetNodeId, args.TargetNode->Attrs);
 
-        if (Config->GetKeepCacheAllowed() &&
+        if (Config->GetGuestKeepCacheAllowed() &&
             !HasFlag(args.Flags, NProto::TCreateHandleRequest::E_WRITE))
         {
-            // We set KeepCache to tell the client not to bother invalidating
-            // the caches upon opening a read-only handle
-            args.Response.SetKeepCache(
+            // We set the GuestKeepCache to tell the client not to bother
+            // invalidating the caches upon opening a read-only handle
+            args.Response.SetGuestKeepCache(
                 !session->HandlesStatsByNode.ShouldInvalidateCache(*node));
         }
 
         // We can remember the last time that the cache was invalidated by a
         // user of a given session in order not to invalidate the cache the next
         // time if the file was not modified
-        if (!args.Response.GetKeepCache()) {
-            session->HandlesStatsByNode.NotifyMtimeNoKeepCache(*node);
+        if (!args.Response.GetGuestKeepCache()) {
+            session->HandlesStatsByNode.OnGuestCacheInvalidated(*node);
         }
     } else {
         args.Response.SetShardFileSystemId(args.ShardId);

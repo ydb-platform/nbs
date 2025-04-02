@@ -82,9 +82,10 @@ message TCreateHandleResponse
     // Node name in the shard FS (under RootNode).
     string ShardNodeName = 5;
 
-    // If set to true, it is allowed for the client not to invalidate the cache
-    // associated with the inode
-    bool KeepCache = 6;
+    // If set to true, it is allowed for the guest (or any other client) not to
+    // invalidate caches associated with the inode. In the case of a Linux
+    // kernel this refers to the page cache
+    bool GuestKeepCache = 6;
 
     // Optional response headers.
     TResponseHeaders Headers = 1000;

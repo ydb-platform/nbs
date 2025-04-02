@@ -313,7 +313,7 @@ public:
 
     bool GetServerWriteBackCacheEnabled() const;
 
-    bool GetKeepCacheAllowed() const;
+    bool GetGuestKeepCacheAllowed() const;
 };
 
 }   // namespace NCloud::NFileStore::NStorage

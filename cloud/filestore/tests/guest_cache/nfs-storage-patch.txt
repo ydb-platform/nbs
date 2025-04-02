@@ -1,1 +1,1 @@
-KeepCacheAllowed: true
+GuestKeepCacheAllowed: true

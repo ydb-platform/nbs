@@ -41,7 +41,7 @@ namespace {
                                                                                \
     xxx(ServerWriteBackCacheEnabled,  bool,     false                         )\
                                                                                \
-    xxx(KeepCacheAllowed,           bool,       false                         )\
+    xxx(GuestKeepCacheAllowed,      bool,       false                         )\
 // FILESTORE_FUSE_CONFIG
 
 #define FILESTORE_FILESYSTEM_DECLARE_CONFIG(name, type, value)                 \
