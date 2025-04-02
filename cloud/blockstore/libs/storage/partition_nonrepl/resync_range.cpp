@@ -57,7 +57,8 @@ void TResyncRangeActor::Bootstrap(const TActorContext& ctx)
     ChecksumRangeActorCompanion.CalculateChecksums(ctx, Range);
 }
 
-void TResyncRangeActor::GetVolumeRequestId(const NActors::TActorContext& ctx) {
+void TResyncRangeActor::GetVolumeRequestId(const NActors::TActorContext& ctx)
+{
     NCloud::Send(
         ctx,
         VolumeActorId,
