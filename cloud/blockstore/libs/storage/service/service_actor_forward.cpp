@@ -120,20 +120,32 @@ void TServiceActor::ForwardRequest(
 
     auto volume = State.GetVolume(diskId);
     if (!volume) {
-        replyError(ctx, ev, E_BS_INVALID_SESSION, "Invalid session");
+        replyError(
+            ctx,
+            ev,
+            E_BS_INVALID_SESSION,
+            "Invalid session (volume not found)");
         return;
     }
 
     auto* clientInfo = volume->GetClientInfo(clientId);
     if (!clientInfo) {
-        replyError(ctx, ev, E_BS_INVALID_SESSION, "Invalid session");
+        replyError(
+            ctx,
+            ev,
+            E_BS_INVALID_SESSION,
+            "Invalid session (clientInfo not found)");
         return;
     }
 
     Y_ABORT_UNLESS(volume && clientInfo);
 
     if (volume->SessionId != sessionId) {
-        replyError(ctx, ev, E_BS_INVALID_SESSION, "Invalid session");
+        replyError(
+            ctx,
+            ev,
+            E_BS_INVALID_SESSION,
+            "Invalid session (SessionId not match)");
         return;
     }
 
@@ -147,7 +159,11 @@ void TServiceActor::ForwardRequest(
         if (volume->State == TVolumeInfo::INITIAL) {
             // Volume tablet is neither started nor starting: remount is
             // required to trigger volume tablet start
-            replyError(ctx, ev, E_BS_INVALID_SESSION, "Invalid session");
+            replyError(
+                ctx,
+                ev,
+                E_BS_INVALID_SESSION,
+                "Invalid session (State=INITIAL)");
             return;
         }
 
