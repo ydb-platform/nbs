@@ -15,7 +15,7 @@ TLaggingAgentMigrationActor::TLaggingAgentMigrationActor(
         TStorageConfigPtr config,
         TDiagnosticsConfigPtr diagnosticsConfig,
         TNonreplicatedPartitionConfigPtr partConfig,
-        NActors::TActorId parentActorId,
+        TActorId parentActorId,
         IProfileLogPtr profileLog,
         IBlockDigestGeneratorPtr blockDigestGenerator,
         TString rwClientId,

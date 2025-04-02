@@ -733,12 +733,13 @@ void TLaggingAgentsReplicaProxyActor::HandleLaggingAgentMigrationFinished(
     const NActors::TActorContext& ctx)
 {
     const auto* msg = ev->Get();
-    Y_DEBUG_ABORT_UNLESS(AgentState.contains(msg->AgentId));
-    if (!AgentState.contains(msg->AgentId)) {
+
+    auto it = AgentState.find(msg->AgentId);
+    Y_DEBUG_ABORT_UNLESS(it != AgentState.end());
+    if (it == AgentState.end()) {
         return;
     }
 
-    auto it = AgentState.find(msg->AgentId);
     auto& state = it->second;
     switch (state.State) {
         case EAgentState::Unavailable:
