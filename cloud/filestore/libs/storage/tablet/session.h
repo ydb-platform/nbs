@@ -2,7 +2,6 @@
 
 #include "public.h"
 
-#include "library/cpp/cache/cache.h"
 #include "subsessions.h"
 
 #include <cloud/filestore/libs/service/filestore.h>
@@ -57,7 +56,7 @@ private:
         }
     }
 
-    void DeregisterHandle(const NProto::TSessionHandle& handle)
+    void UnregisterHandle(const NProto::TSessionHandle& handle)
     {
         --OpenHandles;
         if (HasFlag(handle.GetFlags(), NProto::TCreateHandleRequest::E_WRITE)) {
@@ -75,10 +74,10 @@ private:
         return OpenHandles <= 0;
     }
 
-    friend class TSessionHandlesStats;
+    friend class TSessionHandleStats;
 };
 
-class TSessionHandlesStats
+class TSessionHandleStats
 {
 private:
     THashMap<ui64, TPerNodeHandleStats> Stats;
@@ -90,11 +89,11 @@ public:
         nodeStats.RegisterHandle(handle);
     }
 
-    void DeregisterHandle(const NProto::TSessionHandle& handle)
+    void UnregisterHandle(const NProto::TSessionHandle& handle)
     {
         auto it = Stats.find(handle.GetNodeId());
         if (it != Stats.end()) {
-            it->second.DeregisterHandle(handle);
+            it->second.UnregisterHandle(handle);
             if (it->second.Empty()) {
                 Stats.erase(it);
             }
@@ -114,7 +113,7 @@ public:
         }
     }
 
-    [[nodiscard]] bool ShouldInvalidateCache(
+    [[nodiscard]] bool IsAllowedToKeepCache(
         const NProto::TNodeAttr& node) const
     {
         auto it = Stats.find(node.GetId());
@@ -127,10 +126,10 @@ public:
                 it->second.OpenHandles > 1 &&
                 it->second.LastGuestCacheInvalidationMtime >= node.GetMTime())
             {
-                return false;
+                return true;
             }
         }
-        return true;
+        return false;
     }
 };
 
@@ -187,7 +186,7 @@ struct TSession
 {
     // TODO: change visibility of the stuff below to private
     TSessionHandleList Handles;
-    TSessionHandlesStats HandlesStatsByNode;
+    TSessionHandleStats HandleStatsByNode;
     TSessionLockList Locks;
 
     TInstant Deadline;

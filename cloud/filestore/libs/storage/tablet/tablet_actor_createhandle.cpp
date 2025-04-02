@@ -394,14 +394,14 @@ void TIndexTabletActor::ExecuteTx_CreateHandle(
             // We set the GuestKeepCache to tell the client not to bother
             // invalidating the caches upon opening a read-only handle
             args.Response.SetGuestKeepCache(
-                !session->HandlesStatsByNode.ShouldInvalidateCache(*node));
+                session->HandleStatsByNode.IsAllowedToKeepCache(*node));
         }
 
         // We can remember the last time that the cache was invalidated by a
         // user of a given session in order not to invalidate the cache the next
         // time if the file was not modified
         if (!args.Response.GetGuestKeepCache()) {
-            session->HandlesStatsByNode.OnGuestCacheInvalidated(*node);
+            session->HandleStatsByNode.OnGuestCacheInvalidated(*node);
         }
     } else {
         args.Response.SetShardFileSystemId(args.ShardId);
