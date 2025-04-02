@@ -333,12 +333,13 @@ func TestImagesGetImage(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, image.ID, created.ID)
 
-	image.CreateRequest = nil
+	expectedImage := image
+	expectedImage.CreateRequest = nil
 
 	actualImage, err = storage.GetImageMeta(ctx, imageID)
 	require.NoError(t, err)
 	require.NotNil(t, actualImage)
-	requireImagesAreEqual(t, image, *actualImage)
+	requireImagesAreEqual(t, expectedImage, *actualImage)
 	require.Equal(t, imageID, actualImage.ID)
 	require.Equal(t, "folder", actualImage.FolderID)
 
@@ -352,29 +353,65 @@ func TestImagesGetImage(t *testing.T) {
 	)
 	require.NoError(t, err)
 
-	image.Size = imageSize
-	image.StorageSize = imageStorageSize
-	image.CheckpointID = checkpointID
-	image.Ready = true
+	expectedImage.Size = imageSize
+	expectedImage.StorageSize = imageStorageSize
+	expectedImage.CheckpointID = checkpointID
+	expectedImage.Ready = true
 
 	actualImage, err = storage.GetImageMeta(ctx, imageID)
 	require.NoError(t, err)
 	require.NotNil(t, actualImage)
-	requireImagesAreEqual(t, image, *actualImage)
+	requireImagesAreEqual(t, expectedImage, *actualImage)
 
 	// Check idempotency.
 	err = storage.ImageCreated(
 		ctx,
 		imageID,
-		"foo", // checkpointID
+		checkpointID,
 		time.Now(),
-		42,  // imageSize
-		713, // imageStorageSize
+		imageSize,
+		imageStorageSize,
 	)
 	require.NoError(t, err)
 
 	actualImage, err = storage.GetImageMeta(ctx, imageID)
 	require.NoError(t, err)
 	require.NotNil(t, actualImage)
-	requireImagesAreEqual(t, image, *actualImage)
+	requireImagesAreEqual(t, expectedImage, *actualImage)
+
+	err = storage.ImageCreated(
+		ctx,
+		imageID,
+		"foo", // checkpointID
+		time.Now(),
+		imageSize,
+		imageStorageSize,
+	)
+	require.Error(t, err)
+	require.True(t, errors.Is(err, errors.NewEmptyNonRetriableError()))
+	err = storage.ImageCreated(
+		ctx,
+		imageID,
+		checkpointID,
+		time.Now(),
+		42, // imageSize
+		imageStorageSize,
+	)
+	require.Error(t, err)
+	require.True(t, errors.Is(err, errors.NewEmptyNonRetriableError()))
+	err = storage.ImageCreated(
+		ctx,
+		imageID,
+		checkpointID,
+		time.Now(),
+		imageSize,
+		713, // imageStorageSize
+	)
+	require.Error(t, err)
+	require.True(t, errors.Is(err, errors.NewEmptyNonRetriableError()))
+
+	actualImage, err = storage.GetImageMeta(ctx, imageID)
+	require.NoError(t, err)
+	require.NotNil(t, actualImage)
+	requireImagesAreEqual(t, expectedImage, *actualImage)
 }

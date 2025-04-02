@@ -492,6 +492,37 @@ func (s *storageYDB) snapshotCreated(
 	state := states[0]
 
 	if state.status == snapshotStatusReady {
+		if state.checkpointID != checkpointID {
+			return errors.NewNonRetriableErrorf(
+				"snapshot with id %v and checkpoint id %v can't be created, "+
+					"because snapshot with the same id and another "+
+					"checkpoint id %v already exists",
+				snapshotID,
+				checkpointID,
+				state.checkpointID,
+			)
+		}
+		if state.size != snapshotSize {
+			return errors.NewNonRetriableErrorf(
+				"snapshot with id %v and size %v can't be created, "+
+					"because snapshot with the same id and another "+
+					"size %v already exists",
+				snapshotID,
+				snapshotSize,
+				state.size,
+			)
+		}
+		if state.storageSize != snapshotStorageSize {
+			return errors.NewNonRetriableErrorf(
+				"snapshot with id %v and storage size %v can't be created, "+
+					"because snapshot with the same id and another "+
+					"storage size %v already exists",
+				snapshotID,
+				snapshotStorageSize,
+				state.storageSize,
+			)
+		}
+
 		// Nothing to do.
 		return tx.Commit(ctx)
 	}

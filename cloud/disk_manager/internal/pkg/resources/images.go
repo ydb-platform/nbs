@@ -516,6 +516,37 @@ func (s *storageYDB) imageCreated(
 	state := states[0]
 
 	if state.status == imageStatusReady {
+		if state.checkpointID != checkpointID {
+			return errors.NewNonRetriableErrorf(
+				"image with id %v and checkpoint id %v can't be created, "+
+					"because image with the same id and another "+
+					"checkpoint id %v already exists",
+				imageID,
+				checkpointID,
+				state.checkpointID,
+			)
+		}
+		if state.size != imageSize {
+			return errors.NewNonRetriableErrorf(
+				"image with id %v and size %v can't be created, "+
+					"because image with the same id and another "+
+					"size %v already exists",
+				imageID,
+				imageSize,
+				state.size,
+			)
+		}
+		if state.storageSize != imageStorageSize {
+			return errors.NewNonRetriableErrorf(
+				"image with id %v and storage size %v can't be created, "+
+					"because image with the same id and another "+
+					"storage size %v already exists",
+				imageID,
+				imageStorageSize,
+				state.storageSize,
+			)
+		}
+
 		// Nothing to do.
 		return tx.Commit(ctx)
 	}
