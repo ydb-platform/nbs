@@ -406,8 +406,8 @@ private:
             if (oldChecksums[i] != newChecksums[i]) {
                 GetOutputStream()
                     << "Checksums mismatch for " << (range.Start + i)
-                    << " block: old=" << oldChecksums[i]
-                    << ", new=" << newChecksums[i] << Endl;
+                    << " block: old =" << oldChecksums[i]
+                    << ", new =" << newChecksums[i] << Endl;
             }
         }
     }
