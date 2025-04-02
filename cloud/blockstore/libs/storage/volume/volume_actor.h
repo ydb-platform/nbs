@@ -1065,7 +1065,10 @@ private:
         NActors::TActorId nonreplicatedActorId,
         std::shared_ptr<TNonreplicatedPartitionConfig> srcConfig);
 
-    void RestartDiskRegistryBasedPartition(
+    // Restart partitions. If these were partition of DiskRegistry-based disk,
+    // then the onPartitionStopped callback will be called after the partition
+    // is stopped.
+    void RestartPartition(
         const NActors::TActorContext& ctx,
         TDiskRegistryBasedPartitionStoppedCallback onPartitionStopped);
     void StartPartitionsImpl(const NActors::TActorContext& ctx);
