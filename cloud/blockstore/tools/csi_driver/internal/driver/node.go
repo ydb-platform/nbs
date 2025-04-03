@@ -1399,7 +1399,7 @@ func (s *nodeService) NodeGetVolumeStats(
 
 	totalBytes := int64(stat.Blocks) * int64(stat.Bsize)
 	availableBytes := int64(stat.Bavail) * int64(stat.Bsize)
-	usedBytes := totalBytes - availableBytes
+	usedBytes := totalBytes - int64(stat.Bfree)*int64(stat.Bsize)
 
 	totalNodes := int64(stat.Files)
 	availableNodes := int64(stat.Ffree)
