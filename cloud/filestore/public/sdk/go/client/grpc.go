@@ -38,7 +38,7 @@ func (client *grpcClient) setupHeaders(ctx context.Context, req request) {
 
 	if val := ctx.Value(IdempotenceIDHeaderKey); val != nil {
 		if idempotenceID, ok := val.([]byte); ok {
-			headers.IdempotenceId = idempotenceId
+			headers.IdempotenceId = idempotenceID
 		}
 	}
 
@@ -315,7 +315,7 @@ func (client *grpcEndpointClient) setupHeaders(ctx context.Context, req request)
 
 	if val := ctx.Value(IdempotenceIDHeaderKey); val != nil {
 		if idempotenceID, ok := val.([]byte); ok {
-			headers.IdempotenceId = idempotenceId
+			headers.IdempotenceId = idempotenceID
 		}
 	}
 
@@ -336,7 +336,7 @@ func (client *grpcEndpointClient) setupHeaders(ctx context.Context, req request)
 
 	if val := ctx.Value(TraceIDHeaderKey); val != nil {
 		if traceID, ok := val.([]byte); ok {
-			headers.TraceId = traceId
+			headers.TraceId = traceID
 		}
 	}
 
