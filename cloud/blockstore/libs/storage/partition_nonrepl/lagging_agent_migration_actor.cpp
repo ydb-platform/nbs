@@ -38,7 +38,9 @@ TLaggingAgentMigrationActor::TLaggingAgentMigrationActor(
           // receive any stats and shouldn't send any either.
           TActorId(),   //  statActorId
           config->GetMaxMigrationIoDepth(),
-          partConfig->GetParentActorId())
+          config->GetAssignIdToWriteAndZeroRequestsEnabled()
+              ? partConfig->GetParentActorId()
+              : TActorId())
     , Config(std::move(config))
     , PartConfig(std::move(partConfig))
     , ParentActorId(parentActorId)
