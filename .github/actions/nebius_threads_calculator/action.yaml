@@ -62,23 +62,23 @@ runs:
                 build_threads=80
             ;;
             "64vcpu-256gb")
-                test_threads=14
+                test_threads=12
                 build_threads=64
             ;;
             "48vcpu-192gb")
-                test_threads=12
+                test_threads=10
                 build_threads=48
             ;;
             "32vcpu-128gb")
-                test_threads=10
+                test_threads=8
                 build_threads=32
             ;;
             "16vcpu-64gb")
-                test_threads=8
+                test_threads=6
                 build_threads=16
             ;;
             "8vcpu-32gb")
-                test_threads=4
+                test_threads=3
                 build_threads=8
             ;;
             "4vcpu-16gb")
@@ -125,15 +125,15 @@ runs:
                 build_threads=80
             ;;
             "64vcpu-256gb")
-                test_threads=20
+                test_threads=18
                 build_threads=64
             ;;
             "48vcpu-192gb")
-                test_threads=16
+                test_threads=14
                 build_threads=48
             ;;
             "32vcpu-128gb")
-                test_threads=12
+                test_threads=10
                 build_threads=32
             ;;
             "16vcpu-64gb")
