@@ -883,6 +883,8 @@ public:
         TIndexTabletDatabase& db,
         const TVector<TBlock>& blocks);
 
+    ui32 CalculateFreshBlocksBlobCount(ui32 maxBlocksInBlob) const;
+
     //
     // MixedBlocks
     //

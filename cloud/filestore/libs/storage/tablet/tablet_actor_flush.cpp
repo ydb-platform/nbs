@@ -229,7 +229,15 @@ void TIndexTabletActor::EnqueueFlushIfNeeded(const TActorContext& ctx)
 {
     auto freshBlocksDataSize = GetFreshBlocksCount() * GetBlockSize();
     if (freshBlocksDataSize < Config->GetFlushThreshold()) {
-        return;
+        if (Config->GetFlushBlobsCountThreshold() == 0) {
+            return;
+        }
+        auto maxBlocksInBlob =
+            CalculateMaxBlocksInBlob(Config->GetMaxBlobSize(), GetBlockSize());
+        auto blobsCount = CalculateFreshBlocksBlobCount(maxBlocksInBlob);
+        if (blobsCount < Config->GetFlushBlobsCountThreshold()) {
+            return;
+        }
     }
 
     if (FlushState.Enqueue()) {

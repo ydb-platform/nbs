@@ -477,6 +477,9 @@ void TIndexTabletState::LoadFreshBlocks(
             block.MinCommitId,
             block.MaxCommitId);
         TABLET_VERIFY(added);
+
+        auto rangeId = GetMixedRangeIndex(block.NodeId, block.BlockIndex);
+        Impl->FreshBlocksStats.IncrementBlocksCountInRange(rangeId);
     }
 }
 
@@ -518,6 +521,9 @@ void TIndexTabletState::WriteFreshBlock(
         commitId);
     TABLET_VERIFY(added);
 
+    auto rangeId = GetMixedRangeIndex(nodeId, blockIndex);
+    Impl->FreshBlocksStats.IncrementBlocksCountInRange(rangeId);
+
     db.WriteFreshBlock(nodeId, commitId, blockIndex, blockData);
 
     IncrementFreshBlocksCount(db);
@@ -554,10 +560,15 @@ void TIndexTabletState::DeleteFreshBlocks(
     const TVector<TBlock>& blocks)
 {
     for (const auto& block: blocks) {
-        Impl->FreshBlocks.RemoveBlock(
+        bool removed = Impl->FreshBlocks.RemoveBlock(
             block.NodeId,
             block.BlockIndex,
             block.MinCommitId);
+
+        if (removed) {
+            auto rangeId = GetMixedRangeIndex(block.NodeId, block.BlockIndex);
+            Impl->FreshBlocksStats.DecrementBlocksCountInRange(rangeId);
+        }
 
         db.DeleteFreshBlock(
             block.NodeId,
@@ -566,6 +577,11 @@ void TIndexTabletState::DeleteFreshBlocks(
     }
 
     DecrementFreshBlocksCount(db, blocks.size());
+}
+
+ui32 TIndexTabletState::CalculateFreshBlocksBlobCount(ui32 maxBlocksInBlob) const
+{
+    return Impl->FreshBlocksStats.CalculateBlobsCount(maxBlocksInBlob);
 }
 
 ////////////////////////////////////////////////////////////////////////////////

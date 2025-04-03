@@ -73,6 +73,7 @@ public:
     ui32 GetMaxBlobSize() const;
 
     ui32 GetFlushThreshold() const;
+    ui32 GetFlushBlobsCountThreshold() const;
     ui32 GetCleanupThreshold() const;
     ui32 GetCleanupThresholdAverage() const;
     bool GetCalculateCleanupScoreBasedOnUsedBlocksCount() const;

@@ -550,6 +550,93 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         tablet.DestroyHandle(handle);
     }
 
+    TABLET_TEST(ShouldFlushFreshBlocksWhenBlobsCountReachesThreshold)
+    {
+        const auto block = tabletConfig.BlockSize;
+        const ui32 nodeCount = 16;
+
+        // Flush will be triggered by the number of blobs
+        NProto::TStorageConfig storageConfig;
+        storageConfig.SetFlushBlobsCountThreshold(4);
+        storageConfig.SetMaxBlobSize(block * 2);
+        storageConfig.SetFlushThreshold(1_GB);
+        storageConfig.SetWriteBlobThreshold(1_GB);
+
+        TTestEnv env({}, std::move(storageConfig));
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(
+            env.GetRuntime(),
+            nodeIdx,
+            tabletId,
+            tabletConfig);
+        tablet.InitSession("client", "session");
+
+        // Scenario 1. Write data to the same range
+
+        auto id = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
+        auto handle = CreateHandle(tablet, id);
+
+        // 6 blocks => 3 blobs, no automatic FlushBlocks
+        tablet.WriteData(handle, 0, block * 6, 'a');
+        {
+            auto response = tablet.GetStorageStats();
+            const auto& stats = response->Record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(6, stats.GetFreshBlocksCount());
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedBlocksCount());
+        }
+
+        // +2 blocks => 4 blobs, FlushBlocks should've been triggered
+        tablet.WriteData(handle, block * 3, block * 2, 'a');
+        {
+            auto response = tablet.GetStorageStats();
+            const auto& stats = response->Record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetFreshBlocksCount());
+            UNIT_ASSERT_VALUES_EQUAL(8, stats.GetMixedBlocksCount());
+        }
+        tablet.DestroyHandle(handle);
+
+        // Scenario 2. Write data to different ranges
+
+        // Fill the range by empty nodes
+        for (ui32 i = 3; i < NodeGroupSize; i++) {
+            auto name = Sprintf("test-%u", i);
+            CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, name));
+        }
+
+        // Create 16 nodes in different ranges
+        std::array<ui64, nodeCount> ids;
+        for (ui32 i = 0; i < ids.size(); i++) {
+            auto name = Sprintf("test-%u-0", i);
+            ids[i] = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, name));
+            for (ui32 j = 1; j < NodeGroupSize; j++) {
+                auto name = Sprintf("test-%u-%u", i, j);
+                CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, name));
+            }
+            // Ensure that all of them go to different ranges
+            for (ui32 j = 0; j < i; j++) {
+                UNIT_ASSERT_VALUES_UNEQUAL(
+                    GetMixedRangeIndex(ids[i], 0),
+                    GetMixedRangeIndex(ids[j], 0));
+            }
+        }
+
+        // Write 1 block to each node
+        for (ui32 i = 1; i <= nodeCount; i++) {
+            auto handle = CreateHandle(tablet, ids[i - 1]);
+            tablet.WriteData(handle, 0, block, 'a');
+            tablet.DestroyHandle(handle);
+
+            auto response = tablet.GetStorageStats();
+            const auto& stats = response->Record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(i % 4, stats.GetFreshBlocksCount());
+            UNIT_ASSERT_VALUES_EQUAL(i - i % 4 + 8, stats.GetMixedBlocksCount());
+        }
+    }
+
     TABLET_TEST(ShouldWriteBlobForLargeWrite)
     {
         TTestEnv env;
