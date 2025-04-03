@@ -4,6 +4,11 @@ namespace NCloud::NBlockStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+TString TFollowerDiskInfo::GetDiskIdForPrint() const
+{
+    return ScaleUnitId ? (ScaleUnitId + "/" + FollowerDiskId) : FollowerDiskId;
+}
+
 bool TFollowerDiskInfo::operator==(
     const TFollowerDiskInfo& rhs) const = default;
 

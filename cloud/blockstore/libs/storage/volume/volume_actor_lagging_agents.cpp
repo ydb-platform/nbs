@@ -265,9 +265,12 @@ void TVolumeActor::HandleDeviceTimedOut(
     unavailableAgent.MutableDevices()->Assign(
         std::make_move_iterator(timedOutAgentDevices.begin()),
         std::make_move_iterator(timedOutAgentDevices.end()));
+    auto requestInfo =
+        CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
+    AddTransaction(*requestInfo);
     ExecuteTx<TAddLaggingAgent>(
         ctx,
-        CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext),
+        std::move(requestInfo),
         std::move(unavailableAgent));
 }
 
@@ -275,7 +278,7 @@ void TVolumeActor::HandleUpdateLaggingAgentMigrationState(
     const TEvVolumePrivate::TEvUpdateLaggingAgentMigrationState::TPtr& ev,
     const TActorContext& ctx)
 {
-    auto* msg = ev->Get();
+    const auto* msg = ev->Get();
     LOG_INFO(
         ctx,
         TBlockStoreComponents::VOLUME,
@@ -286,7 +289,7 @@ void TVolumeActor::HandleUpdateLaggingAgentMigrationState(
         msg->CleanBlockCount + msg->DirtyBlockCount);
 
     State->UpdateLaggingAgentMigrationState(
-        std::move(msg->AgentId),
+        msg->AgentId,
         msg->CleanBlockCount,
         msg->DirtyBlockCount);
 }
@@ -383,6 +386,7 @@ void TVolumeActor::CompleteAddLaggingAgent(
         std::make_unique<TEvNonreplPartitionPrivate::TEvAddLaggingAgentRequest>(
             args.Agent));
 
+    RemoveTransaction(*args.RequestInfo);
     auto response =
         std::make_unique<TEvVolumePrivate::TEvDeviceTimedOutResponse>();
     NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
@@ -421,6 +425,8 @@ void TVolumeActor::ExecuteRemoveLaggingAgent(
     TVolumeDatabase db(tx.DB);
     db.WriteMeta(State->GetMeta());
     args.RemovedLaggingAgent = std::move(*laggingAgent);
+    args.ShouldStartResync = !State->HasLaggingAgents() &&
+                             Config->GetResyncAfterLaggingAgentMigration();
 }
 
 void TVolumeActor::CompleteRemoveLaggingAgent(
@@ -431,6 +437,19 @@ void TVolumeActor::CompleteRemoveLaggingAgent(
         return;
     }
 
+    if (args.ShouldStartResync) {
+        State->SetReadWriteError(MakeError(
+            E_REJECTED,
+            "toggling resync after lagging agent migration"));
+        ExecuteTx<TToggleResync>(
+            ctx,
+            nullptr,   // requestInfo
+            true,      // resyncEnabled
+            true       // alertResyncChecksumMismatch
+        );
+    }
+
+    RemoveTransaction(*args.RequestInfo);
     NCloud::Send(
         ctx,
         State->GetDiskRegistryBasedPartitionActor(),

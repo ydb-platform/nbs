@@ -809,6 +809,63 @@ Y_UNIT_TEST_SUITE(TResyncRangeTest)
             }
         }
     }
+
+    Y_UNIT_TEST(ShouldNotMessReplicaWhenOnlyMinorErrorsHealed)
+    {
+        TTestBasicRuntime runtime;
+        TTestEnv env(runtime);
+
+        env.WriteReplica(0, 0, 1023, 'A');
+        env.WriteReplica(1, 0, 1023, 'A');
+        env.WriteReplica(2, 0, 1023, 'A');
+
+        // Add minor and major errors for replica #1 and #2.
+        env.WriteReplica(1, 0, 0, 'y');   // block 0 - major
+        env.WriteReplica(1, 1, 1, 'y');   // block 1 - minor
+        env.WriteReplica(2, 0, 0, 'z');   // block 0 - major
+        env.WriteReplica(2, 2, 2, 'z');   // block 2 - minor
+
+        auto response = env.ResyncRange(
+            0,
+            1023,
+            {0, 1, 2},
+            NProto::EResyncPolicy::RESYNC_POLICY_MINOR_BLOCK_BY_BLOCK);
+        UNIT_ASSERT(!HasError(response->GetError()));
+
+        // Check replica 0
+        {
+            auto blocks = env.ReadReplica(0, 0, 1023);
+            for (const auto& block: blocks) {
+                UNIT_ASSERT_VALUES_EQUAL(TString(DefaultBlockSize, 'A'), block);
+            }
+        }
+
+        // Check replica 1
+        {
+            auto blocks = env.ReadReplica(1, 0, 1023);
+            size_t blockIndx = 0;
+            for (const auto& block: blocks) {
+                const char expected = (blockIndx == 0) ? 'y' : 'A';
+                UNIT_ASSERT_VALUES_EQUAL(
+                    TString(DefaultBlockSize, expected),
+                    block);
+                ++blockIndx;
+            }
+        }
+
+        // Check replica 2
+        {
+            size_t blockIndx = 0;
+            auto blocks = env.ReadReplica(2, 0, 1023);
+            for (const auto& block: blocks) {
+                const char expected = (blockIndx == 0) ? 'z' : 'A';
+                UNIT_ASSERT_VALUES_EQUAL(
+                    TString(DefaultBlockSize, expected),
+                    block);
+                ++blockIndx;
+            }
+        }
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

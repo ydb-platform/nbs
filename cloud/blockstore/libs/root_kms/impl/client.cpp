@@ -77,7 +77,6 @@ public:
         }
 
         Request.set_key_id(keyId);
-        // `ciphertext` should be encoded with base64.
         Request.set_ciphertext(ciphertext);
     }
 

@@ -38,7 +38,9 @@ TDuration TMigrationTimeoutCalculator::CalculateTimeout(
     const double migrationFactorPerAgent =
         limitedBandwidthMiBs / ProcessingRangeSizeMiBs;
 
-    if (PartitionConfig->GetUseSimpleMigrationBandwidthLimiter()) {
+    if (!PartitionConfig ||
+        PartitionConfig->GetUseSimpleMigrationBandwidthLimiter())
+    {
         return TDuration::Seconds(1) / migrationFactorPerAgent;
     }
 
@@ -64,6 +66,9 @@ TDuration TMigrationTimeoutCalculator::CalculateTimeout(
 void TMigrationTimeoutCalculator::RegisterTrafficSource(
     const NActors::TActorContext& ctx)
 {
+    if (!PartitionConfig) {
+        return;
+    }
     auto request = std::make_unique<
         TEvStatsServicePrivate::TEvRegisterTrafficSourceRequest>();
     request->SourceId = PartitionConfig->GetName();

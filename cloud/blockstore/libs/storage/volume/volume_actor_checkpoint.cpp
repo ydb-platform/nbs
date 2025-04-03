@@ -1436,7 +1436,7 @@ void TVolumeActor::ExecuteCheckpointRequest(const TActorContext& ctx, ui64 reque
                 std::make_unique<TEvVolumePrivate::TEvExternalDrainDone>();
             NCloud::Send(ctx, actorId, std::move(event));
         };
-        RestartDiskRegistryBasedPartition(ctx, std::move(onPartitionStopped));
+        RestartPartition(ctx, std::move(onPartitionStopped));
     }
 }
 
@@ -1576,7 +1576,7 @@ void TVolumeActor::CompleteUpdateCheckpointRequest(
         !State->GetCheckpointStore().HasShadowActor(request.CheckpointId);
 
     if (needToCreateShadowActor) {
-        RestartDiskRegistryBasedPartition(ctx, {});
+        RestartPartition(ctx, {});
     }
 
     if (request.Type == ECheckpointType::Light) {

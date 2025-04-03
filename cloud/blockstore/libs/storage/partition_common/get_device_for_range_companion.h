@@ -21,14 +21,16 @@ class TGetDeviceForRangeCompanion
 public:
     enum class EAllowedOperation
     {
+        None,       // Reply with an error to all requests
         Read,       // Reply with an error to requests intended for writing
         ReadWrite   // Requests with any purpose are allowed
     };
 
 private:
-    const EAllowedOperation AllowedOperation;
     const TStorageConfigPtr Config;
     const TNonreplicatedPartitionConfigPtr PartConfig;
+
+    EAllowedOperation AllowedOperation;
     NActors::TActorId Delegate;
 
 public:
@@ -39,6 +41,7 @@ public:
         TStorageConfigPtr config,
         TNonreplicatedPartitionConfigPtr partConfig);
 
+    void SetAllowedOperation(EAllowedOperation allowedOperation);
     void SetDelegate(NActors::TActorId delegate);
 
     void HandleGetDeviceForRange(

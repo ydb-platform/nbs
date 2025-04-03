@@ -247,7 +247,8 @@ void TVolumeActor::SetupDiskRegistryBasedPartitions(const TActorContext& ctx)
                     GetRdmaClient(),
                     SelfId(),
                     State->GetMeta().GetResyncIndex(),
-                    resyncPolicy));
+                    resyncPolicy,
+                    State->GetMeta().GetAlertResyncChecksumMismatch()));
         } else {
             // mirrored disk (may be in migration state)
             nonreplicatedActorId = NCloud::Register(
@@ -307,7 +308,7 @@ NActors::TActorId TVolumeActor::WrapNonreplActorIfNeeded(
     return nonreplicatedActorId;
 }
 
-void TVolumeActor::RestartDiskRegistryBasedPartition(
+void TVolumeActor::RestartPartition(
     const TActorContext& ctx,
     TDiskRegistryBasedPartitionStoppedCallback onPartitionStopped)
 {

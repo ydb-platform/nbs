@@ -207,18 +207,32 @@ void TRequestActor<TMethod>::CompareChecksums(const TActorContext& ctx)
     for (ui32 i = 1; i < ResponseChecksums.size(); ++i) {
         const auto checksum = ResponseChecksums[i];
         if (firstChecksum != checksum) {
+            TSet<ui32> checksums(ResponseChecksums.begin(), ResponseChecksums.end());
+
+            TStringBuilder errorMessage;
+            if (ResponseChecksums.size() == 3) {
+                errorMessage << ((checksums.size() == 3) ? "Major " : "Minor ");
+            }
+
+            errorMessage << "checksum mismatch detected: ";
+
+            for (size_t i = 0; i < ResponseChecksums.size(); ++i) {
+                if (i != 0) {
+                    errorMessage << ", ";
+                }
+                errorMessage << "replica " << Partitions[i].ToString()
+                             << ": checksum " << ResponseChecksums[i];
+            }
+
             LOG_INFO(
                 ctx,
                 TBlockStoreComponents::PARTITION,
-                "[%s] Read range %s: checksum mismatch, %u (%s) != %u (%s)",
+                "[%s] Read range %s: %s",
                 DiskId.c_str(),
                 DescribeRange(Range).c_str(),
-                firstChecksum,
-                Partitions[0].ToString().c_str(),
-                checksum,
-                Partitions[i].ToString().c_str());
-            *Response.MutableError() =
-                MakeError(E_REJECTED, "Checksum mismatch detected");
+                errorMessage.c_str());
+
+            *Response.MutableError() = MakeError(E_REJECTED, errorMessage);
             ChecksumMismatchObserved = true;
             break;
         }

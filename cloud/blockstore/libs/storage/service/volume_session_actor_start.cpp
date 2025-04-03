@@ -201,7 +201,7 @@ void TStartVolumeActor::LockTablet(const TActorContext& ctx)
         return;
     }
 
-    LOG_DEBUG(ctx, TBlockStoreComponents::SERVICE,
+    LOG_INFO(ctx, TBlockStoreComponents::SERVICE,
         "[%lu] Acquiring tablet lock",
         VolumeTabletId);
 
@@ -234,7 +234,7 @@ void TStartVolumeActor::HandleLockTabletResponse(
         return;
     }
 
-    LOG_DEBUG(ctx, TBlockStoreComponents::SERVICE,
+    LOG_INFO(ctx, TBlockStoreComponents::SERVICE,
         "[%lu] Successfully acquired tablet lock",
         VolumeTabletId);
 
@@ -358,7 +358,7 @@ void TStartVolumeActor::BootExternal(const TActorContext& ctx)
         return;
     }
 
-    LOG_DEBUG(ctx, TBlockStoreComponents::SERVICE,
+    LOG_INFO(ctx, TBlockStoreComponents::SERVICE,
         "[%lu] Requesting external boot for tablet",
         VolumeTabletId);
 
@@ -392,7 +392,7 @@ void TStartVolumeActor::HandleBootExternalResponse(
         return;
     }
 
-    LOG_DEBUG(ctx, TBlockStoreComponents::SERVICE,
+    LOG_INFO(ctx, TBlockStoreComponents::SERVICE,
         "[%lu] Successfully confirmed external boot with generation %u",
         VolumeTabletId,
         msg->SuggestedGeneration);

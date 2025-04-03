@@ -76,8 +76,7 @@ Y_UNIT_TEST_SUITE(TRootKmsClientTest)
             UNIT_ASSERT_VALUES_EQUAL(KekId, key.GetKekId());
             UNIT_ASSERT_VALUES_UNEQUAL("", key.GetEncryptedDEK());
 
-            auto decrypt =
-                Client->Decrypt(KekId, Base64Encode(key.GetEncryptedDEK()));
+            auto decrypt = Client->Decrypt(KekId, key.GetEncryptedDEK());
 
             const auto& [decryptedDEK, decryptError] = decrypt.GetValueSync();
             UNIT_ASSERT_VALUES_EQUAL_C(

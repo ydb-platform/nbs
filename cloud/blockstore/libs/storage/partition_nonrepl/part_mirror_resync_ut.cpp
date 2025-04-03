@@ -360,7 +360,9 @@ struct TTestEnv
             nullptr,   // rdmaClient
             VolumeActorId,
             initialResyncIndex,
-            resyncPolicy);
+            resyncPolicy,
+            false   // critOnChecksumMismatch
+        );
 
         actor->SetRequestIdentityKey(RequestIdentityKey);
 

@@ -140,7 +140,7 @@ def test_multiple_errors():
     request_timeout = 2
     runtime = request_timeout * 2
     nbs_downtime = request_timeout + 1
-    numjobs = 512
+    numjobs = 256
 
     env, run = init(
         with_netlink=True,

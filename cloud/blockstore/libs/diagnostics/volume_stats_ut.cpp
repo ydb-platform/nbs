@@ -24,6 +24,10 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+const TString DefaultCloudId = "cloud_id";
+
+////////////////////////////////////////////////////////////////////////////////
+
 class TLabelKeeper
     : public NMonitoring::IMetricConsumer
 {
@@ -60,8 +64,6 @@ public:
     void OnSummaryDouble(TInstant, NMonitoring::ISummaryDoubleSnapshotPtr) override {}
 };
 
-const TString THE_CLOUD = "cloud_id";
-
 void Mount(
     IVolumeStatsPtr volumeStats,
     const TString& name,
@@ -73,7 +75,7 @@ void Mount(
     volume.SetDiskId(name);
     volume.SetStorageMediaKind(mediaKind);
     volume.SetBlockSize(DefaultBlockSize);
-    volume.SetCloudId(THE_CLOUD);
+    volume.SetCloudId(DefaultCloudId);
 
     volumeStats->MountVolume(volume, client, instance);
 }
@@ -108,7 +110,8 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
             return counters
                 ->GetSubgroup("host", "cluster")
                 ->GetSubgroup("volume", volume)
-                ->GetSubgroup("instance", instance);
+                ->GetSubgroup("instance", instance)
+                ->GetSubgroup("cloud", DefaultCloudId);
         };
 
         auto writeData = [](auto volume, auto type){
@@ -255,12 +258,14 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
         UNIT_ASSERT(counters
             ->GetSubgroup("host", "cluster")
             ->GetSubgroup("volume", "test1")
-            ->FindSubgroup("instance", "instance1"));
+            ->GetSubgroup("instance", "instance1")
+            ->FindSubgroup("cloud", DefaultCloudId));
 
         UNIT_ASSERT(counters
             ->GetSubgroup("host", "cluster")
             ->GetSubgroup("volume", "test2")
-            ->FindSubgroup("instance", "instance2"));
+            ->GetSubgroup("instance", "instance2")
+            ->FindSubgroup("cloud", DefaultCloudId));
 
         Timer->AdvanceTime(inactivityTimeout * 0.5);
         volumeStats->TrimVolumes();
@@ -275,17 +280,20 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
         UNIT_ASSERT(counters
             ->GetSubgroup("host", "cluster")
             ->GetSubgroup("volume", "test1")
-            ->FindSubgroup("instance", "instance1"));
+            ->GetSubgroup("instance", "instance1")
+            ->FindSubgroup("cloud", DefaultCloudId));
 
         UNIT_ASSERT(counters
             ->GetSubgroup("host", "cluster")
             ->GetSubgroup("volume", "test2")
-            ->FindSubgroup("instance", "instance2"));
+            ->GetSubgroup("instance", "instance2")
+            ->FindSubgroup("cloud", DefaultCloudId));
 
         UNIT_ASSERT(counters
             ->GetSubgroup("host", "cluster")
             ->GetSubgroup("volume", "test2")
-            ->FindSubgroup("instance", "instance1"));
+            ->GetSubgroup("instance", "instance1")
+            ->FindSubgroup("cloud", DefaultCloudId));
 
         Timer->AdvanceTime(inactivityTimeout * 0.6);
         volumeStats->TrimVolumes();
@@ -293,17 +301,20 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
         UNIT_ASSERT(!counters
             ->GetSubgroup("host", "cluster")
             ->GetSubgroup("volume", "test1")
-            ->FindSubgroup("instance", "instance1"));
+            ->GetSubgroup("instance", "instance1")
+            ->FindSubgroup("cloud", DefaultCloudId));
 
         UNIT_ASSERT(!counters
             ->GetSubgroup("host", "cluster")
             ->GetSubgroup("volume", "test2")
-            ->FindSubgroup("instance", "instance2"));
+            ->GetSubgroup("instance", "instance2")
+            ->FindSubgroup("cloud", DefaultCloudId));
 
         UNIT_ASSERT(counters
             ->GetSubgroup("host", "cluster")
             ->GetSubgroup("volume", "test2")
-            ->FindSubgroup("instance", "instance1"));
+            ->GetSubgroup("instance", "instance1")
+            ->FindSubgroup("cloud", DefaultCloudId));
     }
 
     Y_UNIT_TEST(ShouldTrackSilentErrorsPerVolume)
@@ -325,6 +336,7 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
                 ->GetSubgroup("host", "cluster")
                 ->GetSubgroup("volume", volume)
                 ->GetSubgroup("instance", instance)
+                ->GetSubgroup("cloud", DefaultCloudId)
                 ->GetSubgroup("request", "WriteBlocks");
 
             return std::make_pair(
@@ -420,7 +432,8 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
             auto volumeCounters = counters
                 ->GetSubgroup("host", "cluster")
                 ->GetSubgroup("volume", volume)
-                ->GetSubgroup("instance", instance);
+                ->GetSubgroup("instance", instance)
+                ->GetSubgroup("cloud", DefaultCloudId);
 
             return std::make_tuple(
                 volumeCounters
@@ -802,7 +815,7 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
 
     Y_UNIT_TEST(ShouldReportSufferMetricsWithStrictSLAFilter)
     {
-        DoTestShouldReportSufferMetrics({THE_CLOUD}, true);
+        DoTestShouldReportSufferMetrics({DefaultCloudId}, true);
     }
 
     Y_UNIT_TEST(ShouldCorrectlyCalculatePossiblePostponeTimeForVolume)
@@ -1106,7 +1119,8 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
         UNIT_ASSERT(counters
             ->GetSubgroup("host", "cluster")
             ->GetSubgroup("volume", "Disk-1")
-            ->FindSubgroup("instance", "Instance-1"));
+            ->GetSubgroup("instance", "Instance-1")
+            ->FindSubgroup("cloud", DefaultCloudId));
 
         {
             auto client1Info = volumeStats->GetVolumeInfo("Disk-1", "Client-2");
@@ -1130,7 +1144,8 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
         UNIT_ASSERT(counters
             ->GetSubgroup("host", "cluster")
             ->GetSubgroup("volume", "Disk-1")
-            ->FindSubgroup("instance", "Instance-1"));
+            ->GetSubgroup("instance", "Instance-1")
+            ->FindSubgroup("cloud", DefaultCloudId));
 
         Timer->AdvanceTime(inactivityTimeout * 1.1);
         volumeStats->TrimVolumes();
@@ -1138,7 +1153,8 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
         UNIT_ASSERT(!counters
             ->GetSubgroup("host", "cluster")
             ->GetSubgroup("volume", "Disk-1")
-            ->FindSubgroup("instance", "Instance-1"));
+            ->GetSubgroup("instance", "Instance-1")
+            ->FindSubgroup("cloud", DefaultCloudId));
 
         {
             auto client1Info = volumeStats->GetVolumeInfo("Disk-1", "Client-2");
