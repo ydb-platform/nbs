@@ -307,7 +307,7 @@ NActors::TActorId TVolumeActor::WrapNonreplActorIfNeeded(
     return nonreplicatedActorId;
 }
 
-void TVolumeActor::RestartDiskRegistryBasedPartition(
+void TVolumeActor::RestartPartition(
     const TActorContext& ctx,
     TDiskRegistryBasedPartitionStoppedCallback onPartitionStopped)
 {
