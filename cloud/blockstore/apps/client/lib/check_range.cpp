@@ -333,28 +333,21 @@ private:
 
     TResultOrError<TString> ReadJsonFromFile(TBlockRange64 range)
     {
-        TString fileName = GetFilename(range);
-        TString result;
-
-        try {
-            TIFStream file(
-                fileName,
-                EOpenModeFlag::OpenExisting | EOpenModeFlag::RdOnly);
-
-            result = file.ReadAll();
-        } catch (...) {
-            GetOutputStream() << "Can't read from file " << fileName << " : "
-                              << CurrentExceptionMessage() << Endl;
-            return MakeError(E_ARGUMENT);
-        }
-
-        return result;
+        return SafeExecute<TResultOrError<TString>>([&] {
+            TString fileName = GetFilename(range);
+            TIFStream file(fileName, EOpenModeFlag::OpenExisting | EOpenModeFlag::RdOnly);
+            return TResultOrError<TString>(file.ReadAll());
+        });
     }
 
     void CompareChecksums(const TString& response, TBlockRange64 range)
     {
+        auto filename = GetFilename(range);
         auto [data, error] = ReadJsonFromFile(range);
+
         if (HasError(error)) {
+            GetOutputStream() << "Can't read from file " << filename << " : "
+                              << error.GetMessage() << Endl;
             return;
         }
 
@@ -367,7 +360,7 @@ private:
 
         if (!NJson::ReadJsonTree(data, &jsonFromFile)) {
             GetOutputStream()
-                << "Error while parsing json from file " << GetFilename(range)
+                << "Error while parsing json from file " << filename
                 << " for range " << range << Endl;
             return;
         }
@@ -406,8 +399,8 @@ private:
             if (oldChecksums[i] != newChecksums[i]) {
                 GetOutputStream()
                     << "Checksums mismatch for " << (range.Start + i)
-                    << " block: old =" << oldChecksums[i]
-                    << ", new =" << newChecksums[i] << Endl;
+                    << " block: old = " << oldChecksums[i]
+                    << ", new = " << newChecksums[i] << Endl;
             }
         }
     }
