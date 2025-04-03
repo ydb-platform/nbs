@@ -734,7 +734,7 @@ message TLinkLeaderVolumeToFollowerResponse
     NCloud.NProto.TError Error = 1;
 
     // Uuid of created link.
-    string Uuid = 2;
+    string LinkUUID = 2;
 
     // Request traces.
     NCloud.NProto.TTraceInfo Trace = 3;

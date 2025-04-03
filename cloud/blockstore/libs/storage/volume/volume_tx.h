@@ -759,7 +759,7 @@ struct TTxVolume
     {
         const TRequestInfoPtr RequestInfo;
         const TString FollowerDiskId;
-        TString Uuid;
+        TString LinkUUID;
 
         TAddFollower(
                 TRequestInfoPtr requestInfo,
@@ -781,13 +781,13 @@ struct TTxVolume
     struct TRemoveFollower
     {
         const TRequestInfoPtr RequestInfo;
-        const TString Uuid;
+        const TString LinkUUID;
 
         TRemoveFollower(
                 TRequestInfoPtr requestInfo,
-                TString uuid)
+                TString linkUUID)
             : RequestInfo(std::move(requestInfo))
-            , Uuid(std::move(uuid))
+            , LinkUUID(std::move(linkUUID))
         {}
 
         void Clear()

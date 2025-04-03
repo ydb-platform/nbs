@@ -883,7 +883,7 @@ void TVolumeActor::RenderLinks(IOutputStream& out) const
                 for (const auto& follower: State->GetAllFollowers()) {
                     TABLER () {
                         TABLED () {
-                            out << follower.Uuid;
+                            out << follower.LinkUUID;
                         }
                         TABLED () {
                             out << follower.GetDiskIdForPrint();

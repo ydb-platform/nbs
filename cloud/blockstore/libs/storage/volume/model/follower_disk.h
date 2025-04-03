@@ -19,7 +19,7 @@ struct TFollowerDiskInfo
         Error = 3,
     };
 
-    TString Uuid;
+    TString LinkUUID;
     TString FollowerDiskId;
     TString ScaleUnitId;
     EState State = EState::None;

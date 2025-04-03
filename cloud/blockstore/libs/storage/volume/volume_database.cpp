@@ -711,7 +711,7 @@ void TVolumeDatabase::WriteFollower(const TFollowerDiskInfo& follower)
     using TTable = TVolumeSchema::FollowerDisks;
 
     Table<TTable>()
-        .Key(follower.Uuid)
+        .Key(follower.LinkUUID)
         .Update(
             NIceDb::TUpdate<TTable::FollowerDiskId>(follower.FollowerDiskId),
             NIceDb::TUpdate<TTable::ScaleUnitId>(follower.ScaleUnitId),
@@ -719,12 +719,12 @@ void TVolumeDatabase::WriteFollower(const TFollowerDiskInfo& follower)
 
     if (follower.MigratedBytes) {
         Table<TTable>()
-            .Key(follower.Uuid)
+            .Key(follower.LinkUUID)
             .Update(NIceDb::TUpdate<TTable::MigratedBytes>(
                 *follower.MigratedBytes));
     } else {
         Table<TTable>()
-            .Key(follower.Uuid)
+            .Key(follower.LinkUUID)
             .UpdateToNull<TTable::MigratedBytes>();
     }
 }
@@ -733,7 +733,7 @@ void TVolumeDatabase::DeleteFollower(const TFollowerDiskInfo& follower)
 {
     using TTable = TVolumeSchema::FollowerDisks;
 
-    Table<TTable>().Key(follower.Uuid).Delete();
+    Table<TTable>().Key(follower.LinkUUID).Delete();
 }
 
 bool TVolumeDatabase::ReadFollowers(
@@ -751,7 +751,7 @@ bool TVolumeDatabase::ReadFollowers(
 
     while (it.IsValid()) {
         followers.push_back(TFollowerDiskInfo{
-            .Uuid = it.GetValue<TTable::Uuid>(),
+            .LinkUUID = it.GetValue<TTable::Uuid>(),
             .FollowerDiskId = it.GetValue<TTable::FollowerDiskId>(),
             .ScaleUnitId = it.GetValue<TTable::ScaleUnitId>(),
             .State = static_cast<TFollowerDiskInfo::EState>(

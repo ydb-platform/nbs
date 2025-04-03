@@ -768,9 +768,9 @@ public:
     //
 
     void AddOrUpdateFollower(TFollowerDiskInfo follower);
-    void RemoveFollower(const TString& uuid);
+    void RemoveFollower(const TString& linkUUID);
     std::optional<TFollowerDiskInfo> FindFollowerByUuid(
-        const TString& uuid) const;
+        const TString& linkUUID) const;
     std::optional<TFollowerDiskInfo> FindFollowerByDiskId(
         const TString& diskId) const;
     const TFollowerDisks& GetAllFollowers() const

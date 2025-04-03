@@ -9614,7 +9614,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         {
             // Create link
             auto response = volume1.LinkLeaderVolumeToFollower("vol1", "vol2");
-            linkUuid = response->Record.GetUuid();
+            linkUuid = response->Record.GetLinkUUID();
 
             // Reboot tablet
             volume1.RebootTablet();

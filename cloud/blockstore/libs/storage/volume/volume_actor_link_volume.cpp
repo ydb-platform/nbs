@@ -15,7 +15,7 @@ bool TVolumeActor::PrepareAddFollower(
     Y_UNUSED(tx);
     Y_UNUSED(args);
 
-    args.Uuid = CreateGuidAsString();
+    args.LinkUUID = CreateGuidAsString();
     return true;
 }
 
@@ -37,7 +37,7 @@ void TVolumeActor::ExecuteAddFollower(
     TVolumeDatabase db(tx.DB);
 
     auto newFollower = TFollowerDiskInfo{
-        .Uuid = args.Uuid,
+        .LinkUUID = args.LinkUUID,
         .FollowerDiskId = args.FollowerDiskId,
         .ScaleUnitId = "",
         .MigratedBytes = std::nullopt};
@@ -53,7 +53,7 @@ void TVolumeActor::CompleteAddFollower(
     auto response =
         std::make_unique<TEvVolume::TEvLinkLeaderVolumeToFollowerResponse>(
             MakeError(S_OK));
-    response->Record.SetUuid(args.Uuid);
+    response->Record.SetLinkUUID(args.LinkUUID);
     NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
 
     RestartPartition(ctx, {});
@@ -78,9 +78,9 @@ void TVolumeActor::ExecuteRemoveFollower(
     ITransactionBase::TTransactionContext& tx,
     TTxVolume::TRemoveFollower& args)
 {
-    Y_DEBUG_ABORT_UNLESS(!args.Uuid.empty());
+    Y_DEBUG_ABORT_UNLESS(!args.LinkUUID.empty());
 
-    auto follower = State->FindFollowerByUuid(args.Uuid);
+    auto follower = State->FindFollowerByUuid(args.LinkUUID);
     Y_DEBUG_ABORT_UNLESS(follower);
 
     LOG_INFO(
@@ -92,7 +92,7 @@ void TVolumeActor::ExecuteRemoveFollower(
         follower->FollowerDiskId.c_str());
 
     TVolumeDatabase db(tx.DB);
-    State->RemoveFollower(args.Uuid);
+    State->RemoveFollower(args.LinkUUID);
     db.DeleteFollower(*follower);
 }
 
@@ -127,7 +127,7 @@ void TVolumeActor::ExecuteUpdateFollower(
     ITransactionBase::TTransactionContext& tx,
     TTxVolume::TUpdateFollower& args)
 {
-    auto current = State->FindFollowerByUuid(args.FollowerInfo.Uuid);
+    auto current = State->FindFollowerByUuid(args.FollowerInfo.LinkUUID);
     if (!current) {
         return;
     }
@@ -219,7 +219,7 @@ void TVolumeActor::HandleUnlinkLeaderVolumeFromFollower(
     ExecuteTx<TRemoveFollower>(
         ctx,
         CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext),
-        follower->Uuid);
+        follower->LinkUUID);
 }
 
 void TVolumeActor::HandleUpdateFollowerState(
@@ -265,13 +265,16 @@ void TVolumeActor::HandleUpdateFollowerState(
                 return;
             }
             newState = EState::Preparing;
-        } break;
+            break;
+        }
         case EReason::FillCompleted: {
             newState = EState::Ready;
-        } break;
+            break;
+        }
         case EReason::FillError: {
             newState = EState::Error;
-        } break;
+            break;
+        }
     }
     Y_DEBUG_ABORT_UNLESS(newState != EState::None);
 

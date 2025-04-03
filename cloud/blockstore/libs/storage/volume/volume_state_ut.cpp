@@ -1986,11 +1986,11 @@ Y_UNIT_TEST_SUITE(TVolumeStateTest)
         auto volumeState = CreateVolumeState();
 
         volumeState.AddOrUpdateFollower(
-            TFollowerDiskInfo{.Uuid = "x", .FollowerDiskId = "vol1"});
+            TFollowerDiskInfo{.LinkUUID = "x", .FollowerDiskId = "vol1"});
 
         const auto& followers = volumeState.GetAllFollowers();
         UNIT_ASSERT_VALUES_EQUAL(1, followers.size());
-        UNIT_ASSERT_VALUES_EQUAL("x", followers[0].Uuid);
+        UNIT_ASSERT_VALUES_EQUAL("x", followers[0].LinkUUID);
         UNIT_ASSERT_VALUES_EQUAL("vol1", followers[0].FollowerDiskId);
         UNIT_ASSERT_EQUAL(TFollowerDiskInfo::EState::None, followers[0].State);
         UNIT_ASSERT_EQUAL(
@@ -1998,7 +1998,7 @@ Y_UNIT_TEST_SUITE(TVolumeStateTest)
             followers[0].MigratedBytes);
 
         volumeState.AddOrUpdateFollower(TFollowerDiskInfo{
-            .Uuid = "x",
+            .LinkUUID = "x",
             .FollowerDiskId = "vol1",
             .State = TFollowerDiskInfo::EState::Preparing,
             .MigratedBytes = 100});
@@ -2009,15 +2009,15 @@ Y_UNIT_TEST_SUITE(TVolumeStateTest)
         UNIT_ASSERT_VALUES_EQUAL(100, *followers[0].MigratedBytes);
 
         volumeState.AddOrUpdateFollower(TFollowerDiskInfo{
-            .Uuid = "y",
+            .LinkUUID = "y",
             .FollowerDiskId = "vol2"});
         UNIT_ASSERT_VALUES_EQUAL(2, followers.size());
-        UNIT_ASSERT_VALUES_EQUAL("y", followers[1].Uuid);
+        UNIT_ASSERT_VALUES_EQUAL("y", followers[1].LinkUUID);
         UNIT_ASSERT_VALUES_EQUAL("vol2", followers[1].FollowerDiskId);
 
         volumeState.RemoveFollower("x");
         UNIT_ASSERT_VALUES_EQUAL(1, followers.size());
-        UNIT_ASSERT_VALUES_EQUAL("y", followers[0].Uuid);
+        UNIT_ASSERT_VALUES_EQUAL("y", followers[0].LinkUUID);
         UNIT_ASSERT_VALUES_EQUAL("vol2", followers[0].FollowerDiskId);
 
         volumeState.RemoveFollower("y");
