@@ -292,9 +292,11 @@ void TResyncRangeBlockByBlockActor::PrepareWriteBuffers(
 
     // Do writes only to replicas with fixed errors.
     ActorsToResync.clear();
-    for (size_t i = 0; i < Replicas.size(); ++i) {
-        if (healStat[i].FixedMinorErrorCount || healStat[i].FixedMajorErrorCount) {
-            ActorsToResync.push_back(i);
+    for (size_t replica = 0; replica < Replicas.size(); ++replica) {
+        if (healStat[replica].FixedMinorErrorCount ||
+            healStat[replica].FixedMajorErrorCount)
+        {
+            ActorsToResync.push_back(replica);
         }
     }
 }
@@ -341,8 +343,8 @@ void TResyncRangeBlockByBlockActor::WriteBlocks(const TActorContext& ctx)
         return;
     }
 
-    for (size_t i = 0; i < ActorsToResync.size(); ++i) {
-        WriteReplicaBlocks(ctx, ActorsToResync[i], std::move(ReadBuffers[i]));
+    for (auto replica: ActorsToResync) {
+        WriteReplicaBlocks(ctx, replica, std::move(ReadBuffers[replica]));
     }
 
     WriteStartTs = ctx.Now();
