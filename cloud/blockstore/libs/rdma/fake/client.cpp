@@ -10,6 +10,7 @@
 #include <cloud/blockstore/libs/storage/api/disk_registry.h>
 #include <cloud/blockstore/libs/storage/api/disk_registry_proxy.h>
 #include <cloud/blockstore/libs/storage/core/forward_helpers.h>
+
 #include <cloud/storage/core/libs/actors/helpers.h>
 #include <cloud/storage/core/libs/actors/public.h>
 #include <cloud/storage/core/libs/common/error.h>
@@ -120,8 +121,8 @@ public:
             ui32 responseSize)
         : NRdma::TClientRequest(std::move(handler), std::move(context))
         , RdmaActorId(rdmaActorId)
-        , RequestStorage(std::make_unique<char []>(requestSize))
-        , ResponseStorage(std::make_unique<char []>(responseSize))
+        , RequestStorage(std::make_unique<char[]>(requestSize))
+        , ResponseStorage(std::make_unique<char[]>(responseSize))
     {
         RequestBuffer = {RequestStorage.get(), requestSize};
         ResponseBuffer = {ResponseStorage.get(), responseSize};
@@ -144,15 +145,14 @@ void AbortRequest(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TClientEndpoint
-    : public NRdma::IClientEndpoint
+class TClientEndpoint: public NRdma::IClientEndpoint
 {
 private:
     const IActorSystemPtr ActorSystem;
     const TActorId RdmaActorId;
     const TString AgentId;
 
-    std::atomic_uint64_t ReqIdPool{0};
+    std::atomic<ui64> ReqIdPool{0};
 
 public:
     TClientEndpoint(
@@ -175,7 +175,8 @@ public:
 
     TFuture<void> Stop() override;
 
-    ui64 TakeNewReqId() {
+    ui64 TakeNewReqId()
+    {
         return ReqIdPool.fetch_add(1);
     }
 };
@@ -713,8 +714,7 @@ private:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TUpdateNodeIdActor final
-    : public TActorBootstrapped<TUpdateNodeIdActor>
+class TUpdateNodeIdActor final: public TActorBootstrapped<TUpdateNodeIdActor>
 {
 private:
     const TActorId Owner;
@@ -801,11 +801,10 @@ private:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TFakeRdmaClientActor
-    : public TActor<TFakeRdmaClientActor>
+class TFakeRdmaClientActor: public TActor<TFakeRdmaClientActor>
 {
-
-    struct TCancellationInfo {
+    struct TCancellationInfo
+    {
         THashMap<ui64, TActorId> ClientReqIdToActorId;
         THashMap<TActorId, ui64> ActorIdToClientReqId;
     };
@@ -1052,8 +1051,7 @@ private:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TFakeRdmaClient final
-    : public NRdma::IClient
+class TFakeRdmaClient final: public NRdma::IClient
 {
 private:
     IActorSystemPtr ActorSystem;
@@ -1094,9 +1092,7 @@ void TFakeRdmaClient::Start()
 
 void TFakeRdmaClient::Stop()
 {
-    ActorSystem->Send(
-        RdmaActorId,
-        std::make_unique<TEvents::TEvPoisonPill>());
+    ActorSystem->Send(RdmaActorId, std::make_unique<TEvents::TEvPoisonPill>());
 }
 
 auto TFakeRdmaClient::StartEndpoint(TString host, ui32 port)
