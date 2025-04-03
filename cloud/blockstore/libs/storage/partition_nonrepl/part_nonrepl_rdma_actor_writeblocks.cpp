@@ -62,7 +62,7 @@ public:
 
     NProto::TError ProcessSubResponse(
         const TDeviceRequestContext& dCtx,
-        TStringBuf buffer)
+        TStringBuf buffer) const
     {
         Y_UNUSED(dCtx);
         auto* serializer = TBlockStoreProtocol::Serializer();
@@ -77,11 +77,12 @@ public:
         if (HasError(concreteProto.GetError())) {
             return err;
         }
+
         return {};
     }
 
     std::unique_ptr<TEvNonreplPartitionPrivate::TEvWriteBlocksCompleted>
-    CreateCompletionEvent()
+    CreateCompletionEvent() const
     {
         auto completion = TBase::CreateCompletionEvent<
             TEvNonreplPartitionPrivate::TEvWriteBlocksCompleted>();
@@ -90,7 +91,7 @@ public:
         return completion;
     }
 
-    std::unique_ptr<IEventBase> CreateResponse(NProto::TError err)
+    std::unique_ptr<IEventBase> CreateResponse(NProto::TError err) const
     {
         if (ReplyLocal) {
             return std::make_unique<TEvService::TEvWriteBlocksLocalResponse>(
