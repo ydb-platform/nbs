@@ -74,7 +74,8 @@ auto UpdateStatsWithRequestResultedInRetriableError(
         ->GetSubgroup("component", "server_volume")
         ->GetSubgroup("host", "cluster")
         ->GetSubgroup("volume", "volume")
-        ->GetSubgroup("instance", "instance");
+        ->GetSubgroup("instance", "instance")
+        ->GetSubgroup("cloud", "cloud");
 }
 
 void CheckRetriableError(
@@ -151,6 +152,7 @@ Y_UNIT_TEST_SUITE(TServerStatsTest)
 
         NProto::TVolume volume;
         volume.SetDiskId("volume");
+        volume.SetCloudId("cloud");
         serverStats->MountVolume(volume, "client", "instance");
 
         TMetricRequest request {EBlockStoreRequest::WriteBlocks};
@@ -188,6 +190,7 @@ Y_UNIT_TEST_SUITE(TServerStatsTest)
             ->GetSubgroup("host", "cluster")
             ->GetSubgroup("volume", "volume")
             ->GetSubgroup("instance", "instance")
+            ->GetSubgroup("cloud", "cloud")
             ->GetSubgroup("request", "WriteBlocks")
             ->GetCounter("MaxTime")->Val());
     }
@@ -222,6 +225,7 @@ Y_UNIT_TEST_SUITE(TServerStatsTest)
         NProto::TVolume volume;
         volume.SetBlockSize(4096);
         volume.SetDiskId("volume");
+        volume.SetCloudId("cloud");
         serverStats->MountVolume(volume, "client", "instance");
 
         CheckRetriableError(serverStats, monitoring, false, 1);
@@ -257,6 +261,7 @@ Y_UNIT_TEST_SUITE(TServerStatsTest)
 
         NProto::TVolume volume;
         volume.SetDiskId("volume");
+        volume.SetCloudId("cloud");
         serverStats->MountVolume(volume, "client", "instance");
 
         TMetricRequest request {EBlockStoreRequest::WriteBlocks};
@@ -307,6 +312,7 @@ Y_UNIT_TEST_SUITE(TServerStatsTest)
             ->GetSubgroup("host", "cluster")
             ->GetSubgroup("volume", "volume")
             ->GetSubgroup("instance", "instance")
+            ->GetSubgroup("cloud", "cloud")
             ->GetSubgroup("request", "WriteBlocks")
             ->GetCounter("MaxTime")->Val());
     }
@@ -342,6 +348,7 @@ Y_UNIT_TEST_SUITE(TServerStatsTest)
         NProto::TVolume volume;
         volume.SetBlockSize(4096);
         volume.SetDiskId("volume");
+        volume.SetCloudId("cloud");
         volume.SetStorageMediaKind(mediaKind);
         serverStats->MountVolume(volume, "client", "instance");
 
