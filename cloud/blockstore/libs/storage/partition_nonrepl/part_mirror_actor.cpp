@@ -652,6 +652,13 @@ void TMirrorPartitionActor::HandleBlockAndDrainRange(
         ctx,
         std::move(reqInfo),
         msg->Range);
+
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::PARTITION,
+        "[%s] Range %s is blocked for writing requests, because of migration",
+        DiskId.c_str(),
+        DescribeRange(msg->Range));
 }
 
 void TMirrorPartitionActor::HandleReleaseRange(
@@ -663,6 +670,12 @@ void TMirrorPartitionActor::HandleReleaseRange(
 
     BlockedRanges.ReleaseRange(msg->Range);
     DrainActorCompanion.CancelDrainRangeRequest(ctx, msg->Range, ev->Sender);
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::PARTITION,
+        "[%s] Releasing range %s for writing requests",
+        DiskId.c_str(),
+        DescribeRange(msg->Range));
 }
 
 ////////////////////////////////////////////////////////////////////////////////
