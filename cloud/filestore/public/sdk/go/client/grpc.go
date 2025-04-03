@@ -58,8 +58,8 @@ func (client *grpcClient) setupHeaders(ctx context.Context, req request) {
 	headers.Timestamp = uint64(timestamp)
 
 	if val := ctx.Value(TraceIDHeaderKey); val != nil {
-		if traceId, ok := val.([]byte); ok {
-			headers.TraceId = traceId
+		if traceID, ok := val.([]byte); ok {
+			headers.TraceId = traceID
 		}
 	}
 
