@@ -892,8 +892,8 @@ void TVolumeActor::RenderLinks(IOutputStream& out) const
                             out << ToString(follower.State);
                         }
                         TABLED () {
-                            if (follower.MigrationBlockIndex) {
-                                out << *follower.MigrationBlockIndex;
+                            if (follower.MigratedBytes) {
+                                out << FormatByteSize(*follower.MigratedBytes);
                             }
                         }
                     }

@@ -1295,7 +1295,7 @@ Y_UNIT_TEST_SUITE(TVolumeDatabaseTest)
             .Uuid = "yyyyy",
             .FollowerDiskId = "volume_2",
             .State = TFollowerDiskInfo::EState::Preparing,
-            .MigrationBlockIndex = 100};
+            .MigratedBytes = 1_MB};
 
         executor.WriteTx(
             [&](TVolumeDatabase db)
@@ -1315,7 +1315,7 @@ Y_UNIT_TEST_SUITE(TVolumeDatabaseTest)
                 UNIT_ASSERT_EQUAL(follower2, readFollowers[1]);
             });
 
-        follower1.MigrationBlockIndex = 200;
+        follower1.MigratedBytes = 2_MB;
         follower1.State = TFollowerDiskInfo::EState::Ready;
 
         executor.WriteTx(
@@ -1350,7 +1350,7 @@ Y_UNIT_TEST_SUITE(TVolumeDatabaseTest)
                 UNIT_ASSERT_VALUES_EQUAL(1, readFollowers.size());
                 UNIT_ASSERT_EQUAL(follower2, readFollowers[0]);
             });
-        }
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

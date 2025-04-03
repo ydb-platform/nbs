@@ -733,8 +733,11 @@ message TLinkLeaderVolumeToFollowerResponse
     // Optional error, set only if error happened.
     NCloud.NProto.TError Error = 1;
 
+    // Uuid of created link.
+    string Uuid = 2;
+
     // Request traces.
-    NCloud.NProto.TTraceInfo Trace = 2;
+    NCloud.NProto.TTraceInfo Trace = 3;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

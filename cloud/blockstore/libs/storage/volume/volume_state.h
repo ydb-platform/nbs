@@ -380,6 +380,10 @@ public:
 
     void FillDeviceInfo(NProto::TVolume& volume) const;
 
+    NProto::EStorageMediaKind GetStorageMediaKind() const
+    {
+        return Config->GetStorageMediaKind();
+    }
     bool IsDiskRegistryMediaKind() const;
 
     bool HasPerformanceProfileModifications(const TStorageConfig& config) const;

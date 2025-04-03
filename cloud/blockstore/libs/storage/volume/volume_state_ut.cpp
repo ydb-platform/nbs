@@ -1995,18 +1995,18 @@ Y_UNIT_TEST_SUITE(TVolumeStateTest)
         UNIT_ASSERT_EQUAL(TFollowerDiskInfo::EState::None, followers[0].State);
         UNIT_ASSERT_EQUAL(
             std::nullopt,
-            followers[0].MigrationBlockIndex);
+            followers[0].MigratedBytes);
 
         volumeState.AddOrUpdateFollower(TFollowerDiskInfo{
             .Uuid = "x",
             .FollowerDiskId = "vol1",
             .State = TFollowerDiskInfo::EState::Preparing,
-            .MigrationBlockIndex = 100});
+            .MigratedBytes = 100});
         UNIT_ASSERT_VALUES_EQUAL(1, followers.size());
         UNIT_ASSERT_EQUAL(
             TFollowerDiskInfo::EState::Preparing,
             followers[0].State);
-        UNIT_ASSERT_VALUES_EQUAL(100, *followers[0].MigrationBlockIndex);
+        UNIT_ASSERT_VALUES_EQUAL(100, *followers[0].MigratedBytes);
 
         volumeState.AddOrUpdateFollower(TFollowerDiskInfo{
             .Uuid = "y",

@@ -717,15 +717,15 @@ void TVolumeDatabase::WriteFollower(const TFollowerDiskInfo& follower)
             NIceDb::TUpdate<TTable::ScaleUnitId>(follower.ScaleUnitId),
             NIceDb::TUpdate<TTable::State>(static_cast<ui32>(follower.State)));
 
-    if (follower.MigrationBlockIndex) {
+    if (follower.MigratedBytes) {
         Table<TTable>()
             .Key(follower.Uuid)
-            .Update(NIceDb::TUpdate<TTable::MigratedBlockCount>(
-                *follower.MigrationBlockIndex));
+            .Update(NIceDb::TUpdate<TTable::MigratedBytes>(
+                *follower.MigratedBytes));
     } else {
         Table<TTable>()
             .Key(follower.Uuid)
-            .UpdateToNull<TTable::MigratedBlockCount>();
+            .UpdateToNull<TTable::MigratedBytes>();
     }
 }
 
@@ -756,10 +756,9 @@ bool TVolumeDatabase::ReadFollowers(
             .ScaleUnitId = it.GetValue<TTable::ScaleUnitId>(),
             .State = static_cast<TFollowerDiskInfo::EState>(
                 it.GetValue<TTable::State>()),
-            .MigrationBlockIndex =
-                it.HaveValue<TTable::MigratedBlockCount>()
-                    ? it.GetValue<TTable::MigratedBlockCount>()
-                    : std::optional<ui64>()});
+            .MigratedBytes = it.HaveValue<TTable::MigratedBytes>()
+                                 ? it.GetValue<TTable::MigratedBytes>()
+                                 : std::optional<ui64>()});
         if (!it.Next()) {
             return false;   // not ready
         }
