@@ -115,7 +115,7 @@ public:
     }
 
     std::unique_ptr<TEvNonreplPartitionPrivate::TEvReadBlocksCompleted>
-    CreateCompletionEvent()
+    CreateCompletionEvent() const
     {
         const auto RequestBlockCount = GetRequestBlockCount();
         const bool allZeroes = VoidBlockCount == RequestBlockCount;
@@ -131,7 +131,7 @@ public:
     }
 
     std::unique_ptr<TEvService::TEvReadBlocksLocalResponse> CreateResponse(
-        NProto::TError err)
+        NProto::TError err) const
     {
         const bool allZeroes = VoidBlockCount == GetRequestBlockCount();
         auto response =

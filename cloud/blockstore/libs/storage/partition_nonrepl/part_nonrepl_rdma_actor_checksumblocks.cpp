@@ -99,7 +99,7 @@ public:
     }
 
     std::unique_ptr<TEvNonreplPartitionPrivate::TEvChecksumBlocksCompleted>
-    CreateCompletionEvent()
+    CreateCompletionEvent() const
     {
         auto completion = TBase::CreateCompletionEvent<
             TEvNonreplPartitionPrivate::TEvChecksumBlocksCompleted>();
@@ -110,7 +110,7 @@ public:
     }
 
     std::unique_ptr<TEvNonreplPartitionPrivate::TEvChecksumBlocksResponse>
-    CreateResponse(NProto::TError err)
+    CreateResponse(NProto::TError err) const
     {
         TBlockChecksum checksum;
         for (const auto& [_, partialChecksum]: Checksums) {

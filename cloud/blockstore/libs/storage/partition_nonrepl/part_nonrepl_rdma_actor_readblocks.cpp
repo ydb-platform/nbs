@@ -114,7 +114,7 @@ public:
     }
 
     std::unique_ptr<TEvNonreplPartitionPrivate::TEvReadBlocksCompleted>
-    CreateCompletionEvent()
+    CreateCompletionEvent() const
     {
         const ui32 blockCount = Response.GetBlocks().BuffersSize();
         const bool allZeroes = VoidBlockCount == blockCount;
