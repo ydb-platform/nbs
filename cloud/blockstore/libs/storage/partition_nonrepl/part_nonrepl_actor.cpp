@@ -433,7 +433,7 @@ void TNonreplicatedPartitionActor::OnRequestCompleted(
     switch (operation.Status) {
         case EStatus::Success: {
             for (ui32 deviceIndex: operation.DeviceIndices) {
-                OnRequestSuccess(deviceIndex, operation.ExecutionTime);
+                OnRequestSuccess(deviceIndex, operation.ExecutionTime, now);
             }
             break;
         }
@@ -451,10 +451,12 @@ void TNonreplicatedPartitionActor::OnRequestCompleted(
 
 void TNonreplicatedPartitionActor::OnRequestSuccess(
     ui32 deviceIndex,
-    TDuration executionTime)
+    TDuration executionTime,
+    TInstant now)
 {
     auto& stat = DeviceStats[deviceIndex];
     stat.FirstTimeoutTs = {};
+    stat.LastSuccessfulRequestTs = now - executionTime;
     stat.ResponseTimes.PushBack(executionTime);
     stat.DeviceStatus = EDeviceStatus::Ok;
     stat.BrokenTransitionTs = {};
@@ -467,8 +469,15 @@ void TNonreplicatedPartitionActor::OnRequestTimeout(
 {
     auto& stat = DeviceStats[deviceIndex];
 
+    const TInstant requestTs = now - executionTime;
+    // Requests timeouts can be delivered with delay. Ignore ones that were
+    // created before the last successful request.
+    if (stat.LastSuccessfulRequestTs > requestTs) {
+        return;
+    }
+
     if (!stat.FirstTimeoutTs) {
-        stat.FirstTimeoutTs = now - executionTime;
+        stat.FirstTimeoutTs = requestTs;
     }
 
     switch (stat.DeviceStatus) {
