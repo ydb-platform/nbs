@@ -45,14 +45,13 @@ struct TPartialChecksum
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TDeviceChecksumRequestHandler: public IRdmaDeviceRequestHandler
+class TDeviceChecksumRequestHandler
+    : public TRdmaDeviceRequestHandler<TDeviceChecksumRequestHandler>
 {
+    using TBase = TRdmaDeviceRequestHandler<TDeviceChecksumRequestHandler>;
+
 private:
-    TNonreplicatedPartitionConfigPtr PartConfig;
-    TRequestInfoPtr RequestInfo;
-    TAdaptiveLock Lock;
     TMap<ui64, TPartialChecksum> Checksums;
-    ui64 RequestId;
 
 public:
     TDeviceChecksumRequestHandler(
@@ -63,19 +62,20 @@ public:
             ui32 requestBlockCount,
             NActors::TActorId parentActorId,
             ui64 requestId)
-        : IRdmaDeviceRequestHandler(
-              requestCount,
+        : TRdmaDeviceRequestHandler(
               actorSystem,
+              std::move(partConfig),
+              std::move(requestInfo),
+              requestId,
               parentActorId,
-              requestBlockCount)
-        , PartConfig(std::move(partConfig))
-        , RequestInfo(std::move(requestInfo))
-        , RequestId(requestId)
+              requestBlockCount,
+              requestCount)
+
     {}
 
-    void ProcessResponseProto(
+    NProto::TError ProcessSubResponse(
         const TDeviceRequestContext& dCtx,
-        TStringBuf buffer) override
+        TStringBuf buffer)
     {
         const auto& dc =
             static_cast<const TDeviceChecksumRequestContext&>(dCtx);
@@ -83,77 +83,46 @@ public:
         auto [result, err] = serializer->Parse(buffer);
 
         if (HasError(err)) {
-            Error = std::move(err);
-            return;
+            return err;
         }
 
         const auto& concreteProto =
             static_cast<NProto::TChecksumDeviceBlocksResponse&>(*result.Proto);
         if (HasError(concreteProto.GetError())) {
-            Error = concreteProto.GetError();
-            return;
+            return concreteProto.GetError();
         }
 
         Checksums[dc.RangeStartIndex] = {
-            concreteProto.GetChecksum(),
-            dc.RangeSize};
+            .Value = concreteProto.GetChecksum(),
+            .Size = dc.RangeSize};
+        return {};
     }
 
-    void HandleResponse(
-        NRdma::TClientRequestPtr req,
-        ui32 status,
-        size_t responseBytes) override
+    std::unique_ptr<TEvNonreplPartitionPrivate::TEvChecksumBlocksCompleted>
+    CreateCompletionEvent()
     {
-        TRequestScope timer(*RequestInfo);
+        auto completion = TBase::CreateCompletionEvent<
+            TEvNonreplPartitionPrivate::TEvChecksumBlocksCompleted>();
 
-        auto guard = Guard(Lock);
+        auto& counters = *completion->Stats.MutableSysChecksumCounters();
+        counters.SetBlocksCount(GetRequestBlockCount());
+        return completion;
+    }
 
-        auto* dc =
-            static_cast<TDeviceChecksumRequestContext*>(req->Context.get());
-        auto buffer = req->ResponseBuffer.Head(responseBytes);
-
-        if (!ProcessResponse(*dc, status, buffer)) {
-            return;
-        }
-
-        // Got all device responses. Do processing.
-
-        ProcessError(*ActorSystem, *PartConfig, Error);
-
+    std::unique_ptr<TEvNonreplPartitionPrivate::TEvChecksumBlocksResponse>
+    CreateResponse(NProto::TError err)
+    {
         TBlockChecksum checksum;
         for (const auto& [_, partialChecksum]: Checksums) {
             checksum.Combine(partialChecksum.Value, partialChecksum.Size);
         }
 
-        auto response = std::make_unique<TResponse>(Error);
+        auto response = std::make_unique<
+            TEvNonreplPartitionPrivate::TEvChecksumBlocksResponse>(
+            std::move(err));
         response->Record.SetChecksum(checksum.GetValue());
-        auto event = std::make_unique<IEventHandle>(
-            RequestInfo->Sender,
-            TActorId(),
-            response.release(),
-            0,
-            RequestInfo->Cookie);
-        ActorSystem->Send(event.release());
 
-        timer.Finish();
-
-        using TCompletionEvent =
-        TEvNonreplPartitionPrivate::TEvChecksumBlocksCompleted;
-        auto completion = CreateCompletionEvent<TCompletionEvent>(
-            std::move(Error),
-            *RequestInfo);
-
-        auto& counters = *completion->Stats.MutableSysChecksumCounters();
-        counters.SetBlocksCount(RequestBlockCount);
-
-        auto completionEvent = std::make_unique<IEventHandle>(
-            ParentActorId,
-            TActorId(),
-            completion.release(),
-            0,
-            RequestId);
-
-        ActorSystem->Send(completionEvent.release());
+        return response;
     }
 };
 

@@ -20,38 +20,6 @@ using namespace NActors;
 
 LWTRACE_USING(BLOCKSTORE_STORAGE_PROVIDER);
 
-namespace {
-
-////////////////////////////////////////////////////////////////////////////////
-
-bool NeedToNotifyAboutDeviceRequestError(const NProto::TError& err)
-{
-    return err.GetCode() == E_RDMA_UNAVAILABLE || err.GetCode() == E_TIMEOUT;
-}
-
-}   // namespace
-
-////////////////////////////////////////////////////////////////////////////////
-
-bool IRdmaDeviceRequestHandler::ProcessResponse(
-    TDeviceRequestContext& dCtx,
-    ui32 status,
-    TStringBuf buffer)
-{
-    AllDevices.emplace_back(dCtx.DeviceIdx);
-
-    if (status == NRdma::RDMA_PROTO_OK) {
-        ProcessResponseProto(dCtx, buffer);
-    } else {
-        auto err = NRdma::ParseError(buffer);
-        if (NeedToNotifyAboutDeviceRequestError(err)) {
-            ErrDevices.emplace_back(dCtx.DeviceIdx);
-        }
-        Error = std::move(err);
-    }
-    return --ResponseCount == 0;
-}
-
 ////////////////////////////////////////////////////////////////////////////////
 
 TNonreplicatedPartitionRdmaActor::TNonreplicatedPartitionRdmaActor(

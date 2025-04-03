@@ -25,16 +25,13 @@ using TResponse = TEvService::TEvZeroBlocksResponse;
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TRdmaRequestContext: public IRdmaDeviceRequestHandler
+class TRdmaRequestZeroBlocksHandler
+    : public TRdmaDeviceRequestHandler<TRdmaRequestZeroBlocksHandler>
 {
-private:
-    TNonreplicatedPartitionConfigPtr PartConfig;
-    TRequestInfoPtr RequestInfo;
-    TAdaptiveLock Lock;
-    ui64 RequestId;
+    using TBase = TRdmaDeviceRequestHandler<TRdmaRequestZeroBlocksHandler>;
 
 public:
-    TRdmaRequestContext(
+    TRdmaRequestZeroBlocksHandler(
             TActorSystem* actorSystem,
             TNonreplicatedPartitionConfigPtr partConfig,
             TRequestInfoPtr requestInfo,
@@ -42,83 +39,49 @@ public:
             ui32 requestBlockCount,
             NActors::TActorId parentActorId,
             ui64 requestId)
-        : IRdmaDeviceRequestHandler(
-              requestCount,
+        : TRdmaDeviceRequestHandler(
               actorSystem,
+              std::move(partConfig),
+              std::move(requestInfo),
+              requestId,
               parentActorId,
-              requestBlockCount)
-        , PartConfig(std::move(partConfig))
-        , RequestInfo(std::move(requestInfo))
-        , RequestId(requestId)
+              requestBlockCount,
+              requestCount)
     {}
 
-    void ProcessResponseProto(
+    NProto::TError ProcessSubResponse(
         const TDeviceRequestContext& dCtx,
-        TStringBuf buffer) override
+        TStringBuf buffer)
     {
         Y_UNUSED(dCtx);
         auto* serializer = TBlockStoreProtocol::Serializer();
         auto [result, err] = serializer->Parse(buffer);
 
         if (HasError(err)) {
-            Error = std::move(err);
-            return;
+            return err;
         }
 
         const auto& concreteProto =
             static_cast<NProto::TZeroDeviceBlocksResponse&>(*result.Proto);
         if (HasError(concreteProto.GetError())) {
-            Error = concreteProto.GetError();
+            return err;
         }
+
+        return {};
     }
 
-    void HandleResponse(
-        NRdma::TClientRequestPtr req,
-        ui32 status,
-        size_t responseBytes) override
+    std::unique_ptr<TEvNonreplPartitionPrivate::TEvZeroBlocksCompleted>
+    CreateCompletionEvent()
     {
-        TRequestScope timer(*RequestInfo);
+        return TBase::CreateCompletionEvent<
+            TEvNonreplPartitionPrivate::TEvZeroBlocksCompleted>();
+    }
 
-        auto guard = Guard(Lock);
-
-        auto buffer = req->ResponseBuffer.Head(responseBytes);
-        auto* dCtx = static_cast<TDeviceRequestContext*>(req->Context.get());
-
-        if (!ProcessResponse(*dCtx, status, buffer)) {
-            return;
-        }
-
-        // Got all device responses. Do processing.
-
-        ProcessError(*ActorSystem, *PartConfig, Error);
-
-        auto response = std::make_unique<TResponse>(Error);
-        auto event = std::make_unique<IEventHandle>(
-            RequestInfo->Sender,
-            TActorId(),
-            response.release(),
-            0,
-            RequestInfo->Cookie);
-        ActorSystem->Send(event.release());
-
-        timer.Finish();
-
-        using TCompletionEvent =
-            TEvNonreplPartitionPrivate::TEvZeroBlocksCompleted;
-        auto completion = CreateCompletionEvent<TCompletionEvent>(
-            std::move(Error),
-            *RequestInfo);
-
-        auto& counters = *completion->Stats.MutableUserWriteCounters();
-        counters.SetBlocksCount(RequestBlockCount);
-
-        auto completionEvent = std::make_unique<IEventHandle>(
-            ParentActorId,
-            TActorId(),
-            completion.release(),
-            0,
-            RequestId);
-        ActorSystem->Send(completionEvent.release());
+    std::unique_ptr<TEvService::TEvZeroBlocksResponse> CreateResponse(
+        NProto::TError err)
+    {
+        return std::make_unique<TEvService::TEvZeroBlocksResponse>(
+            std::move(err));
     }
 };
 
@@ -163,7 +126,7 @@ void TNonreplicatedPartitionRdmaActor::HandleZeroBlocks(
 
     const auto requestId = RequestsInProgress.GenerateRequestId();
 
-    auto requestContext = std::make_shared<TRdmaRequestContext>(
+    auto requestContext = std::make_shared<TRdmaRequestZeroBlocksHandler>(
         ctx.ActorSystem(),
         PartConfig,
         requestInfo,
