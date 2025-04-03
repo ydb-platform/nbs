@@ -280,6 +280,7 @@ TLaggingAgentsReplicaProxyActor::TLaggingAgentsReplicaProxyActor(
         TStorageConfigPtr config,
         TDiagnosticsConfigPtr diagnosticsConfig,
         TNonreplicatedPartitionConfigPtr partConfig,
+        google::protobuf::RepeatedPtrField<NProto::TDeviceMigration> migrations,
         IProfileLogPtr profileLog,
         IBlockDigestGeneratorPtr blockDigestGenerator,
         TString rwClientId,
@@ -288,6 +289,7 @@ TLaggingAgentsReplicaProxyActor::TLaggingAgentsReplicaProxyActor(
     : Config(std::move(config))
     , DiagnosticsConfig(std::move(diagnosticsConfig))
     , PartConfig(std::move(partConfig))
+    , Migrations(std::move(migrations))
     , ProfileLog(std::move(profileLog))
     , BlockDigestGenerator(std::move(blockDigestGenerator))
     , RwClientId(std::move(rwClientId))
@@ -663,9 +665,10 @@ void TLaggingAgentsReplicaProxyActor::HandleAgentIsUnavailable(
         std::make_unique<TAgentAvailabilityMonitoringActor>(
             Config,
             PartConfig,
+            Migrations,
             NonreplPartitionActorId,
             SelfId(),
-            agentId));
+            state.LaggingAgent));
     PoisonPillHelper.TakeOwnership(ctx, state.AvailabilityMonitoringActorId);
 }
 

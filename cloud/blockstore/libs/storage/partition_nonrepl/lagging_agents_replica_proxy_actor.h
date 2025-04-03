@@ -39,6 +39,8 @@ private:
     const TStorageConfigPtr Config;
     const TDiagnosticsConfigPtr DiagnosticsConfig;
     const TNonreplicatedPartitionConfigPtr PartConfig;
+    const google::protobuf::RepeatedPtrField<NProto::TDeviceMigration>
+        Migrations;
     const IProfileLogPtr ProfileLog;
     const IBlockDigestGeneratorPtr BlockDigestGenerator;
     TString RwClientId;
@@ -81,6 +83,7 @@ public:
         TStorageConfigPtr config,
         TDiagnosticsConfigPtr diagnosticsConfig,
         TNonreplicatedPartitionConfigPtr partConfig,
+        google::protobuf::RepeatedPtrField<NProto::TDeviceMigration> migrations,
         IProfileLogPtr profileLog,
         IBlockDigestGeneratorPtr blockDigestGenerator,
         TString rwClientId,
