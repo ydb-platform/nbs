@@ -4,6 +4,7 @@
 
 #include "config.h"
 #include "part_nonrepl_events_private.h"
+#include "rdma_device_request_handler.h"
 
 #include <cloud/blockstore/libs/diagnostics/config.h>
 #include <cloud/blockstore/libs/rdma/iface/client.h>
@@ -28,70 +29,10 @@ namespace NCloud::NBlockStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TDeviceRequestContext: public NRdma::TNullContext
-{
-    ui32 DeviceIdx = 0;
-};
-
 struct TDeviceReadRequestContext: public TDeviceRequestContext
 {
     ui64 StartIndexOffset = 0;
     ui64 BlockCount = 0;
-};
-
-////////////////////////////////////////////////////////////////////////////////
-
-class IRdmaDeviceRequestHandler: public NRdma::IClientHandler
-{
-    ui32 ResponseCount;
-    TStackVec<ui32, 2> AllDevices;
-    TStackVec<ui32, 2> ErrDevices;
-
-protected:
-    NProto::TError Error;
-    NActors::TActorSystem* ActorSystem;
-    const NActors::TActorId ParentActorId;
-    const ui32 RequestBlockCount;
-
-public:
-    explicit IRdmaDeviceRequestHandler(
-            ui32 responseCount,
-            NActors::TActorSystem* actorSystem,
-            NActors::TActorId parentActorId,
-            ui32 requestBlockCount)
-        : ResponseCount(responseCount)
-        , ActorSystem(actorSystem)
-        , ParentActorId(parentActorId)
-        , RequestBlockCount(requestBlockCount)
-    {}
-
-    ~IRdmaDeviceRequestHandler() override = default;
-
-    virtual void ProcessResponseProto(
-        const TDeviceRequestContext& dCtx,
-        TStringBuf buffer) = 0;
-
-    // Returns true if all responses was received.
-    bool ProcessResponse(
-        TDeviceRequestContext& dCtx,
-        ui32 status,
-        TStringBuf buffer);
-
-    template <typename TCompletionEvent>
-    std::unique_ptr<TCompletionEvent> CreateCompletionEvent(
-        NProto::TError error,
-        const TRequestInfo& requestInfo)
-    {
-        auto completion = std::make_unique<TCompletionEvent>(std::move(error));
-
-        completion->DeviceIndices = AllDevices;
-        completion->ErrorDeviceIndices = ErrDevices;
-
-        completion->TotalCycles = requestInfo.GetTotalCycles();
-        completion->ExecCycles = requestInfo.GetExecCycles();
-
-        return completion;
-    }
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -108,8 +49,7 @@ private:
 
     // TODO implement DeviceStats and similar stuff
 
-    TRequestsInProgress<ui64> RequestsInProgress{
-        EAllowedRequests::ReadWrite};
+    TRequestsInProgress<ui64> RequestsInProgress{EAllowedRequests::ReadWrite};
     TDrainActorCompanion DrainActorCompanion{
         RequestsInProgress,
         PartConfig->GetName()};
@@ -129,7 +69,8 @@ private:
 
     TRequestInfoPtr Poisoner;
 
-    struct TTimedOutDeviceCtx {
+    struct TTimedOutDeviceCtx
+    {
         TInstant FirstErrorTs;
         bool VolumeWasNotified = false;
     };
