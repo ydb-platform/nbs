@@ -851,6 +851,87 @@ Y_UNIT_TEST_SUITE(TLaggingAgentVolumeTest)
             UNIT_ASSERT(!addLaggingAgentRequest.has_value());
         }
     }
+
+    Y_UNIT_TEST(ShouldStartResyncAfterLaggingMigration)
+    {
+        constexpr ui32 AgentCount = 3;
+        auto diskRegistryState = MakeIntrusive<TDiskRegistryState>();
+        diskRegistryState->Devices = MakeDeviceList(AgentCount, 3);
+        diskRegistryState->AllocateDiskReplicasOnDifferentNodes = true;
+        diskRegistryState->ReplicaCount = 2;
+        TVector<TDiskAgentStatePtr> agentStates;
+        for (ui32 i = 0; i < AgentCount; i++) {
+            agentStates.push_back(TDiskAgentStatePtr{});
+        }
+        NProto::TStorageServiceConfig storageServiceConfig;
+        storageServiceConfig.SetResyncAfterLaggingAgentMigration(true);
+        storageServiceConfig.SetLaggingDevicesForMirror3DisksEnabled(true);
+        auto runtime = PrepareTestActorRuntime(
+            std::move(storageServiceConfig),
+            diskRegistryState,
+            {},
+            {},
+            std::move(agentStates));
+
+        // Create mirror-3 volume with a size of 1 device.
+        TVolumeClient volume(*runtime);
+        const ui64 blockCount =
+            DefaultDeviceBlockCount * DefaultDeviceBlockSize / DefaultBlockSize;
+        volume.UpdateVolumeConfig(
+            0,
+            0,
+            0,
+            0,
+            false,
+            1,   // version
+            NCloud::NProto::STORAGE_MEDIA_SSD_MIRROR3,
+            blockCount);
+
+        volume.WaitReady();
+
+        bool resyncStarted = false;
+        runtime->SetEventFilter(
+            [&](TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& event)
+            {
+                switch (event->GetTypeRewrite()) {
+                    case TEvNonreplPartitionPrivate::EvAddLaggingAgentRequest:
+                    case TEvNonreplPartitionPrivate::
+                        EvRemoveLaggingAgentRequest:
+                        return true;
+
+                    case TEvStatsService::EvVolumeSelfCounters: {
+                        if (event->Recipient != MakeStorageStatsServiceId()) {
+                            break;
+                        }
+                        auto* msg =
+                            event
+                                ->Get<TEvStatsService::TEvVolumeSelfCounters>();
+                        resyncStarted = !!msg->VolumeSelfCounters->Simple
+                                              .ResyncStarted.Value;
+                    }
+                }
+                return false;
+            });
+
+        // Device in the first replica is timed out.
+        volume.DeviceTimedOut("uuid-2.0");
+
+        // Agent devices are now up-to-date.
+        volume.SendToPipe(
+            std::make_unique<
+                TEvVolumePrivate::TEvLaggingAgentMigrationFinished>("agent-2"));
+
+        // Resync should start.
+        runtime->DispatchEvents({}, TDuration::MilliSeconds(10));
+        runtime->AdvanceCurrentTime(TDuration::Seconds(15));
+        runtime->DispatchEvents(
+            {.CustomFinalCondition =
+                 [&]()
+             {
+                 return resyncStarted;
+             }},
+            TDuration::Seconds(1));
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

@@ -580,11 +580,16 @@ struct TTxVolume
     {
         const TRequestInfoPtr RequestInfo;
         const bool ResyncEnabled;
+        const bool AlertResyncChecksumMismatch;
         bool ResyncWasNeeded = false;
 
-        TToggleResync(TRequestInfoPtr requestInfo, bool resyncEnabled)
+        TToggleResync(
+                TRequestInfoPtr requestInfo,
+                bool resyncEnabled,
+                bool alertResyncChecksumMismatch)
             : RequestInfo(std::move(requestInfo))
             , ResyncEnabled(resyncEnabled)
+            , AlertResyncChecksumMismatch(alertResyncChecksumMismatch)
         {}
 
         void Clear()
@@ -738,6 +743,7 @@ struct TTxVolume
         const TString AgentId;
 
         NProto::TLaggingAgent RemovedLaggingAgent;
+        bool ShouldStartResync = false;
 
         TRemoveLaggingAgent(TRequestInfoPtr requestInfo, TString agentId)
             : RequestInfo(std::move(requestInfo))
