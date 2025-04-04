@@ -658,7 +658,7 @@ void TMirrorPartitionActor::HandleBlockAndDrainRange(
         TBlockStoreComponents::PARTITION,
         "[%s] Range %s is blocked for writing requests, because of migration",
         DiskId.c_str(),
-        DescribeRange(msg->Range));
+        DescribeRange(msg->Range).c_str());
 }
 
 void TMirrorPartitionActor::HandleReleaseRange(
@@ -675,7 +675,7 @@ void TMirrorPartitionActor::HandleReleaseRange(
         TBlockStoreComponents::PARTITION,
         "[%s] Releasing range %s for writing requests",
         DiskId.c_str(),
-        DescribeRange(msg->Range));
+        DescribeRange(msg->Range).c_str());
 }
 
 ////////////////////////////////////////////////////////////////////////////////
