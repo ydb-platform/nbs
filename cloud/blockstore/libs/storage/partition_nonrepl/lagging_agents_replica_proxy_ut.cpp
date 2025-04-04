@@ -184,7 +184,6 @@ struct TTestEnv
             std::make_shared<NFeatures::TFeaturesConfig>(
                 NCloud::NProto::TFeaturesConfig()));
 
-
         TNonreplicatedPartitionConfig::TNonreplicatedPartitionConfigInitParams
             params{
                 Devices,
