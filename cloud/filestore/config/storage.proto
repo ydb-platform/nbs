@@ -470,7 +470,7 @@ message TStorageConfig
     // config.
     optional bool AutomaticShardCreationEnabled = 405;
     // Affects shard count calculation if AutomaticShardCreationEnabled is on.
-    optional uint64 ShardAllocationUnit = 406;
+    optional uint64 ShardAllocationUnitBlocks = 406;
 
     // Enable write-back cache on guest (FUSE client)
     optional bool GuestWriteBackCacheEnabled = 407;
@@ -479,8 +479,8 @@ message TStorageConfig
     // attempts.
     optional bool AllowFileStoreDestroyWithOrphanSessions = 408;
 
-    // Automatically created shards will be of this size.
-    optional uint64 AutomaticallyCreatedShardSize = 409;
+    // Automatically created shards will have this number of blocks.
+    optional uint64 AutomaticallyCreatedShardBlocks = 409;
 
     // Forbids session creation (forces E_REJECTED) if filesystem shard count
     // calculated based on the filesystem's size is too small.
