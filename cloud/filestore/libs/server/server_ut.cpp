@@ -492,14 +492,16 @@ Y_UNIT_TEST_SUITE(TServerTest)
 
         auto response = future.GetValueSync();
         UNIT_ASSERT(HasError(response));
-        UNIT_ASSERT_EQUAL(E_IO, response.GetError().GetCode());
+        UNIT_ASSERT_VALUES_EQUAL(E_IO, response.GetError().GetCode());
         bootstrap.Stop();
 
-        auto counters = bootstrap.Counters
-            ->FindSubgroup("component", "server_ut")
-            ->FindSubgroup("request", "CreateNode");
-        UNIT_ASSERT_EQUAL(1, counters->GetCounter("Errors")->GetAtomic());
-        UNIT_ASSERT_EQUAL(1, counters->GetCounter("Errors/Fatal")->GetAtomic());
+        auto counters =
+            bootstrap.Counters->FindSubgroup("component", "server_ut")
+                ->FindSubgroup("request", "CreateNode");
+        UNIT_ASSERT_VALUES_EQUAL(1,
+                                 counters->GetCounter("Errors")->GetAtomic());
+        UNIT_ASSERT_VALUES_EQUAL(
+            1, counters->GetCounter("Errors/Fatal")->GetAtomic());
     }
 
     Y_UNIT_TEST(ShouldHandleAuthRequests)
