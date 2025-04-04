@@ -64,7 +64,7 @@ public:
         const auto& concreteProto =
             static_cast<NProto::TZeroDeviceBlocksResponse&>(*result.Proto);
         if (HasError(concreteProto.GetError())) {
-            return err;
+            return concreteProto.GetError();
         }
 
         return {};
@@ -73,8 +73,11 @@ public:
     std::unique_ptr<TEvNonreplPartitionPrivate::TEvZeroBlocksCompleted>
     CreateCompletionEvent() const
     {
-        return TBase::CreateCompletionEvent<
+        auto completion = TBase::CreateCompletionEvent<
             TEvNonreplPartitionPrivate::TEvZeroBlocksCompleted>();
+        auto& counters = *completion->Stats.MutableUserWriteCounters();
+        counters.SetBlocksCount(GetRequestBlockCount());
+        return completion;
     }
 
     std::unique_ptr<TEvService::TEvZeroBlocksResponse> CreateResponse(

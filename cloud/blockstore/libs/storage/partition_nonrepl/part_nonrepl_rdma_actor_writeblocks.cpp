@@ -75,7 +75,7 @@ public:
         const auto& concreteProto =
             static_cast<NProto::TWriteDeviceBlocksResponse&>(*result.Proto);
         if (HasError(concreteProto.GetError())) {
-            return err;
+            return concreteProto.GetError();
         }
 
         return {};
