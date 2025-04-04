@@ -3,6 +3,10 @@ name: Build and test
 on:
   workflow_call:
     inputs:
+      ref:
+        type: string
+        default: "main"
+        description: "Ref to build"
       build_target:
         type: string
         default: "cloud/blockstore/apps/,cloud/filestore/apps/,cloud/disk_manager/,cloud/tasks/,cloud/storage/"
@@ -123,6 +127,7 @@ jobs:
       if: github.event.pull_request.head.sha == ''
       with:
         submodules: true
+        ref: ${{ inputs.ref }}
 
     - name: Prepare s3cmd
       uses: ./.github/actions/s3cmd
