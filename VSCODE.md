@@ -26,6 +26,22 @@ The most important one is https://marketplace.visualstudio.com/items?itemName=ll
 Enable feature "Trim trailing whitespace" for user or workspace.
 Enable feature "Trim final newlines" for user or workspace.
 Enable feature "Insert final newline" for user or workspace.
+Enable Go-specific 80 column vertical ruler for user or workspace.
+
+You can add all of the above by adding the following code to your `settings.json`:
+```
+    "files.trimTrailingWhitespace": true,
+    "files.trimFinalNewlines": true,
+    "files.insertFinalNewline": true,
+    "[go]": {
+        "editor.rulers": [
+            {
+                "column": 80,
+                "color": "#ff0a0a"
+            }
+        ],
+    },
+```
 
 ### Git hooks
 
