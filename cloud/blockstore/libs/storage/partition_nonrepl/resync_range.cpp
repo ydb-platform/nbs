@@ -290,7 +290,7 @@ void TResyncRangeActor::HandleVolumeRequestId(
         return;
     }
 
-    VolumeRequestId = msg->ReqId;
+    VolumeRequestId = msg->VolumeRequestId;
     ReadBlocks(ctx, ResyncIndex);
 }
 
