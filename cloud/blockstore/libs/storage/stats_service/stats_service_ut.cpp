@@ -38,6 +38,7 @@ namespace {
 
 static const TString DefaultDiskId = "path_to_test_volume";
 static const TString DefaultCloudId = "test_cloud";
+static const TString DefaultFolderId = "test_cloud";
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -97,7 +98,8 @@ NMonitoring::TDynamicCounters::TCounterPtr GetCounterToCheck(
         ->GetSubgroup("component", "service_volume")
         ->GetSubgroup("host", "cluster")
         ->GetSubgroup("volume", DefaultDiskId)
-        ->GetSubgroup("cloud", DefaultCloudId);
+        ->GetSubgroup("cloud", DefaultCloudId)
+        ->GetSubgroup("folder", DefaultFolderId);
     return volumeCounters->GetCounter("MixedBytesCount");
 }
 
@@ -134,6 +136,7 @@ void RegisterVolume(
     NProto::TVolume volume;
     volume.SetDiskId(diskId);
     volume.SetCloudId(DefaultCloudId);
+    volume.SetFolderId(DefaultFolderId);
     volume.SetStorageMediaKind(kind);
     volume.SetIsSystem(isSystem);
     volume.SetPartitionsCount(1);
@@ -1125,6 +1128,7 @@ Y_UNIT_TEST_SUITE(TServiceVolumeStatsTest)
                 ->GetSubgroup("host", "cluster")
                 ->GetSubgroup("volume", "vol0")
                 ->GetSubgroup("cloud", DefaultCloudId)
+                ->GetSubgroup("folder", DefaultFolderId)
                 ->GetSubgroup("request", "ReadBlocks")
                 ->GetCounter("Count");
             UNIT_ASSERT_VALUES_EQUAL(42, actual);
@@ -1137,6 +1141,7 @@ Y_UNIT_TEST_SUITE(TServiceVolumeStatsTest)
                 ->GetSubgroup("host", "cluster")
                 ->GetSubgroup("volume", "vol0")
                 ->GetSubgroup("cloud", DefaultCloudId)
+                ->GetSubgroup("folder", DefaultFolderId)
                 ->GetSubgroup("request", "ReadBlocks")
                 ->GetCounter("RequestBytes");
             UNIT_ASSERT_VALUES_EQUAL(100500, actual);
