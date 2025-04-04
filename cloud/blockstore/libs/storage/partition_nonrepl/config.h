@@ -304,7 +304,7 @@ public:
 
     bool DevicesReadyForReading(
         const TBlockRange64 blockRange,
-        const THashSet<ui32>& excludeIndexes) const
+        const THashSet<TString>& excludeAgentIds) const
     {
         const bool result = VisitDeviceRequests(
             blockRange,
@@ -316,7 +316,7 @@ public:
                 Y_UNUSED(relativeRange);
 
                 return !Devices[i].GetDeviceUUID() ||
-                       excludeIndexes.contains(i) ||
+                       excludeAgentIds.contains(Devices[i].GetAgentId()) ||
                        FreshDeviceIds.contains(Devices[i].GetDeviceUUID()) ||
                        OutdatedDeviceIds.contains(Devices[i].GetDeviceUUID());
             });

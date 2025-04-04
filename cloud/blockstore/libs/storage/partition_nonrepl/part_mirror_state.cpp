@@ -222,25 +222,18 @@ bool TMirrorPartitionState::DevicesReadyForReading(
 {
     Y_ABORT_UNLESS(replicaIndex < ReplicaInfos.size());
     const auto& replicaInfo = ReplicaInfos[replicaIndex];
-    THashSet<ui32> laggingIndexes;
+    THashSet<TString> laggingAgents;
     for (const auto& [_, laggingAgent]: replicaInfo.LaggingAgents) {
-        for (const auto& laggingDevice: laggingAgent.GetDevices()) {
-            const auto [_, inserted] =
-                laggingIndexes.insert(laggingDevice.GetRowIndex());
-            STORAGE_CHECK_PRECONDITION_C(
-                inserted,
-                TStringBuilder()
-                    << "Two lagging devices can't have the same row index. "
-                       "Failed "
-                       "to insert deviceUUID: "
-                    << laggingDevice.GetDeviceUUID()
-                    << ", row index: " << laggingDevice.GetRowIndex()
-                    << ", blockRange: " << blockRange);
-        }
+        const auto [it, inserted] =
+            laggingAgents.insert(laggingAgent.GetAgentId());
+        STORAGE_CHECK_PRECONDITION_C(
+            inserted,
+            TStringBuilder() << "Duplicate lagging agent: "
+                             << laggingAgent.GetAgentId().Quote());
     }
     return replicaInfo.Config->DevicesReadyForReading(
         blockRange,
-        laggingIndexes);
+        laggingAgents);
 }
 
 void TMirrorPartitionState::AddLaggingAgent(NProto::TLaggingAgent laggingAgent)

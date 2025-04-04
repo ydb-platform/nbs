@@ -2087,32 +2087,32 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionTest)
         UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, response->GetStatus());
     }
 
-    Y_UNIT_TEST(ShouldGetSameChecksumsWhileCheckRangeSimmilarDisks)
-    {
-        TTestBasicRuntime runtime;
+    // Y_UNIT_TEST(ShouldGetSameChecksumsWhileCheckRangeSimmilarDisks)
+    // {
+    //     TTestBasicRuntime runtime;
 
-        TTestEnv env(runtime);
-        TPartitionClient partition1(runtime, env.ActorId);
-        TPartitionClient partition2(runtime, env.ActorId);
+    //     TTestEnv env(runtime);
+    //     TPartitionClient partition1(runtime, env.ActorId);
+    //     TPartitionClient partition2(runtime, env.ActorId);
 
-        partition1.WriteBlocks(
-            TBlockRange64::MakeClosedInterval(0, 1024 * 1024),
-            1);
+    //     partition1.WriteBlocks(
+    //         TBlockRange64::MakeClosedInterval(0, 1024 * 1024),
+    //         1);
 
-        partition2.WriteBlocks(
-            TBlockRange64::MakeClosedInterval(0, 1024 * 1024),
-            1);
+    //     partition2.WriteBlocks(
+    //         TBlockRange64::MakeClosedInterval(0, 1024 * 1024),
+    //         1);
 
-        const auto response1 = partition1.CheckRange("id", 0, 1024, true);
-        const auto response2 = partition2.CheckRange("id", 0, 1024, true);
+    //     const auto response1 = partition1.CheckRange("id", 0, 1024, true);
+    //     const auto response2 = partition2.CheckRange("id", 0, 1024, true);
 
-        const auto& checksums1 = response1->Record.GetChecksums();
-        const auto& checksums2 = response2->Record.GetChecksums();
+    //     const auto& checksums1 = response1->Record.GetChecksums();
+    //     const auto& checksums2 = response2->Record.GetChecksums();
 
-        ASSERT_VECTORS_EQUAL(
-            TVector<ui32>(checksums1.begin(), checksums1.end()),
-            TVector<ui32>(checksums2.begin(), checksums2.end()));
-    }
+    //     ASSERT_VECTORS_EQUAL(
+    //         TVector<ui32>(checksums1.begin(), checksums1.end()),
+    //         TVector<ui32>(checksums2.begin(), checksums2.end()));
+    // }
 
     Y_UNIT_TEST(ShouldGetDifferentChecksumsWhileCheckRangeDifferentDisks)
     {

@@ -2,8 +2,7 @@
 
 #include "public.h"
 
-#include "part_nonrepl_events_private.h"
-
+#include <cloud/blockstore/libs/storage/api/disk_agent.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
 
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
@@ -22,19 +21,22 @@ class TAgentAvailabilityMonitoringActor final
 private:
     const TStorageConfigPtr Config;
     const TNonreplicatedPartitionConfigPtr PartConfig;
+    const google::protobuf::RepeatedPtrField<NProto::TDeviceMigration>
+        Migrations;
     const NActors::TActorId NonreplPartitionActorId;
     const NActors::TActorId ParentActorId;
-    const TString AgentId;
+    const NProto::TLaggingAgent LaggingAgent;
 
-    ui64 ReadBlockIndex = 0;
+    ui32 LaggingAgentNodeId = 0;
 
 public:
     TAgentAvailabilityMonitoringActor(
         TStorageConfigPtr config,
         TNonreplicatedPartitionConfigPtr partConfig,
+        google::protobuf::RepeatedPtrField<NProto::TDeviceMigration> migrations,
         NActors::TActorId nonreplPartitionActorId,
         NActors::TActorId parentActorId,
-        TString agentId);
+        NProto::TLaggingAgent laggingAgent);
 
     ~TAgentAvailabilityMonitoringActor() override;
 
@@ -48,11 +50,11 @@ private:
     STFUNC(StateWork);
 
     void HandleChecksumBlocksUndelivery(
-        const TEvNonreplPartitionPrivate::TEvChecksumBlocksRequest::TPtr& ev,
+        const TEvDiskAgent::TEvChecksumDeviceBlocksRequest::TPtr& ev,
         const NActors::TActorContext& ctx);
 
     void HandleChecksumBlocksResponse(
-        const TEvNonreplPartitionPrivate::TEvChecksumBlocksResponse::TPtr& ev,
+        const TEvDiskAgent::TEvChecksumDeviceBlocksResponse::TPtr& ev,
         const NActors::TActorContext& ctx);
 
     void HandleWakeup(

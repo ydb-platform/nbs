@@ -90,4 +90,6 @@ message THeaders
     // Monotonously increasing request ID counter needed by the disk agent to
     // order write requests.
     uint64 VolumeRequestId = 13;
+
+    bool SkipWriteToMigrationTarget = 14;
 }

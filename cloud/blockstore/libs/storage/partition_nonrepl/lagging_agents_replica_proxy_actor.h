@@ -39,6 +39,8 @@ private:
     const TStorageConfigPtr Config;
     const TDiagnosticsConfigPtr DiagnosticsConfig;
     const TNonreplicatedPartitionConfigPtr PartConfig;
+    const google::protobuf::RepeatedPtrField<NProto::TDeviceMigration>
+        Migrations;
     const IProfileLogPtr ProfileLog;
     const IBlockDigestGeneratorPtr BlockDigestGenerator;
     TString RwClientId;
@@ -61,6 +63,12 @@ private:
     };
     THashMap<TString, TAgentState> AgentState;
 
+    struct TBlockRangeData {
+        TString LaggingAgentId;
+        bool IsTargetMigration = false;
+    };
+    TMap<ui64, TBlockRangeData> LaggingAgentIdByBlockRangeEnd;
+
     ui64 DrainRequestCounter = 0;
     // To determine which agent has drained in-flight writes by cookie in the
     // response.
@@ -81,6 +89,7 @@ public:
         TStorageConfigPtr config,
         TDiagnosticsConfigPtr diagnosticsConfig,
         TNonreplicatedPartitionConfigPtr partConfig,
+        google::protobuf::RepeatedPtrField<NProto::TDeviceMigration> migrations,
         IProfileLogPtr profileLog,
         IBlockDigestGeneratorPtr blockDigestGenerator,
         TString rwClientId,
@@ -110,9 +119,14 @@ private:
         const TVector<TDeviceRequest>& deviceRequests);
 
     [[nodiscard]] bool ShouldSplitWriteRequest(
-        const TVector<TDeviceRequest>& requests) const;
+        const TVector<TDeviceRequest>& deviceRequests) const;
     [[nodiscard]] NActors::TActorId GetRecipientActorId(
-        const TString& agentId) const;
+        const TBlockRange64& requestBlockRange) const;
+
+    [[nodiscard]] const TBlockRangeData& GetBlockRangeDataByBlockRange(
+        const TBlockRange64& requestBlockRange) const;
+
+    void RecalculateLaggingAgentIdByBlockRangeEnd();
 
     void MarkBlocksAsDirty(
         const NActors::TActorContext& ctx,
@@ -122,6 +136,10 @@ private:
     void DestroyChildActor(
         const NActors::TActorContext& ctx,
         NActors::TActorId* actorId);
+
+    void SetupRequestHeaders(
+        const TBlockRange64& requestBlockRange,
+        NProto::THeaders* headers);
 
     // IPoisonPillHelperOwner implementation:
     void Die(const NActors::TActorContext& ctx) override;
