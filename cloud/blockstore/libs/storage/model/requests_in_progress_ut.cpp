@@ -119,6 +119,43 @@ Y_UNIT_TEST_SUITE(TRequestsInProgressTest)
             UNIT_ASSERT_EQUAL(testItem.Value, item.Value);
         }
     }
+
+    Y_UNIT_TEST(ShouldWaitForInFlightWrites)
+    {
+        using TRequests = TRequestsInProgress<ui32, TString>;
+
+        TMap<ui32, TRequests::TRequest> testData{
+            {0, {"Read Request 1", false}},
+            {1, {"Write Request 1", true}},
+            {10, {"Read Request 2", false}},
+            {20, {"Write Request 2", true}},
+        };
+
+        // When there is no in-flight requests waiting does nothing.
+        TRequests requestsInProgress{EAllowedRequests::ReadWrite};
+        UNIT_ASSERT(!requestsInProgress.IsWaitingForInFlightWrites());
+        requestsInProgress.WaitForInFlightWrites();
+        UNIT_ASSERT(!requestsInProgress.IsWaitingForInFlightWrites());
+
+        for (const auto& item : testData) {
+            if (item.second.Write) {
+                requestsInProgress.AddWriteRequest(
+                    item.first, TString(item.second.Value));
+            } else {
+                requestsInProgress.AddReadRequest(
+                    item.first, TString(item.second.Value));
+            }
+        }
+
+        UNIT_ASSERT(!requestsInProgress.IsWaitingForInFlightWrites());
+        requestsInProgress.WaitForInFlightWrites();
+        UNIT_ASSERT(requestsInProgress.IsWaitingForInFlightWrites());
+
+        requestsInProgress.RemoveRequest(1);
+        UNIT_ASSERT(requestsInProgress.IsWaitingForInFlightWrites());
+        requestsInProgress.RemoveRequest(20);
+        UNIT_ASSERT(!requestsInProgress.IsWaitingForInFlightWrites());
+    }
 }
 
 }  // namespace NCloud::NBlockStore::NStorage::NPartition

@@ -59,7 +59,6 @@ void TLaggingAgentMigrationActor::OnBootstrap(const TActorContext& ctx)
             Config->GetMaxMigrationBandwidth(),
             Config->GetExpectedDiskAgentSize(),
             PartConfig));
-    StartWork(ctx);
 }
 
 bool TLaggingAgentMigrationActor::OnMessage(
@@ -67,8 +66,28 @@ bool TLaggingAgentMigrationActor::OnMessage(
     TAutoPtr<IEventHandle>& ev)
 {
     Y_UNUSED(ctx);
+    switch (ev->GetTypeRewrite()) {
+        HFunc(
+            TEvNonreplPartitionPrivate::TEvStartLaggingAgentMigration,
+            HandleStartLaggingAgentMigration);
+
+        default:
+            // Message processing by the base class is required.
+            return false;
+    }
+
+    // We get here if we have processed an incoming message. And its processing
+    // by the base class is not required.
+    return true;
+}
+
+void TLaggingAgentMigrationActor::HandleStartLaggingAgentMigration(
+    const TEvNonreplPartitionPrivate::TEvStartLaggingAgentMigration::TPtr& ev,
+    const NActors::TActorContext& ctx)
+{
     Y_UNUSED(ev);
-    return false;
+    Y_ABORT_IF(IsMigrationAllowed());
+    StartWork(ctx);
 }
 
 void TLaggingAgentMigrationActor::OnMigrationProgress(

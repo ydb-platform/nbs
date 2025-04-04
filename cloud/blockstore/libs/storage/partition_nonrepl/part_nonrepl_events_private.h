@@ -304,6 +304,10 @@ struct TEvNonreplPartitionPrivate
         {}
     };
 
+    struct TStartLaggingAgentMigration
+    {
+    };
+
     //
     // Events declaration
     //
@@ -332,6 +336,7 @@ struct TEvNonreplPartitionPrivate
         EvRemoveLaggingAgentRequest,
         EvAgentIsUnavailable,
         EvAgentIsBackOnline,
+        EvStartLaggingAgentMigration,
 
         BLOCKSTORE_PARTITION_NONREPL_REQUESTS_PRIVATE(BLOCKSTORE_DECLARE_EVENT_IDS)
 
@@ -412,6 +417,11 @@ struct TEvNonreplPartitionPrivate
     using TEvAgentIsBackOnline = TRequestEvent<
         TAgentIsBackOnline,
         EvAgentIsBackOnline
+    >;
+
+    using TEvStartLaggingAgentMigration = TRequestEvent<
+        TStartLaggingAgentMigration,
+        EvStartLaggingAgentMigration
     >;
 
     BLOCKSTORE_PARTITION_NONREPL_REQUESTS_PRIVATE(BLOCKSTORE_DECLARE_PROTO_EVENTS)
