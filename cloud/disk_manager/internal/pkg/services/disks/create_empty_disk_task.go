@@ -92,7 +92,7 @@ func (t *createEmptyDiskTask) Run(
 	})
 	if err != nil {
 		if nbs.IsLocalDiskAllocationTryAgainError(err, t.params.Kind) {
-			return errors.NewRetriableErrorWithIgnoreRetryLimit(err)
+			return errors.NewInterruptExecutionError()
 		}
 
 		return err
