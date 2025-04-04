@@ -1,0 +1,144 @@
+name: Select nebius runner
+description: Select nebius runner and display its parameters
+inputs:
+  parent_id:
+    required: true
+    description: "parent id"
+  new_instance_name:
+    required: false
+    description: "new instance name"
+  required_flavor:
+    required: false
+    default: "heavy"
+    description: "required flavor"
+outputs:
+  RUNNER_IPV4:
+    value: ${{ steps.result.outputs.RUNNER_IPV4 }}
+    description: "runner ipv4"
+  RUNNER_LOCAL_IPV4:
+    value: ${{ steps.result.outputs.RUNNER_LOCAL_IPV4 }}
+    description: "runner local ipv4"
+  INSTANCE_ID:
+    value: ${{ steps.result.outputs.INSTANCE_ID }}
+    description: "runner instance id"
+  RUNNER_FLAVOR:
+    value: ${{ steps.result.outputs.RUNNER_FLAVOR }}
+    description: "runner flavor"
+  LABEL:
+    value: ${{ steps.result.outputs.LABEL }}
+    description: "runner label"
+  OLD_INSTANCE_NAME:
+    value: ${{ steps.result.outputs.OLD_INSTANCE_NAME }}
+    description: "old instance name"
+  VM_PRESET:
+    value: ${{ steps.result.outputs.VM_PRESET }}
+    description: "vm preset"
+
+runs:
+  using: composite
+  steps:
+    - name: set up home
+      shell: bash
+      run: echo "HOME=/root" >> $GITHUB_ENV
+
+    - name: set up path
+      shell: bash
+      run: echo "PATH=$PATH:$HOME/nebius-cloud/bin:$HOME/.nebius/bin" >> $GITHUB_ENV
+
+    - name: Check Nebius CLI
+      shell: bash
+      run: |
+        set -x
+        [ ! -f "$HOME/.nebius/bin/nebius" ] && {
+          echo "Nebius CLI not installed"
+          exit 1
+        }
+    - name: Select nebius runner
+      shell: bash
+      id: select
+      run: |
+        set -x
+        nebius compute instance list --parent-id ${PARENT_ID} --format json |  jq --arg owner ${OWNER} --arg repo ${REPO} --arg flavor ${FLAVOR} -r '
+          .items[] |
+          select(.metadata.labels.repo == $repo) |
+          select(.metadata.labels.owner == $owner) |
+          select(.metadata.labels.idle == "true") |
+          select(.status.state == "RUNNING") |
+          select(.metadata.labels."runner-flavor" == $flavor) |
+          "\(.metadata.id) \(.metadata.labels."runner-label") \((.metadata.labels | to_entries | map("\(.key)=\(.value)") | join(",")))"' > instances.list || touch instances.list
+        // check if instances.list is empty
+        if [ -s instances.list ]; then
+          // select first instance
+          cat instances.list | head -n 1 | while read instance_id github_label instance_labels; do
+            echo "Selected id: $instance_id"
+            echo "Selected github label: $github_label"
+            echo "Selected instance_labels: $instance_labels"
+            {
+              echo "INSTANCE_ID=$instance_id"
+              echo "LABEL=$github_label"
+              echo "INSTANCE_LABELS=$instance_labels"
+            } | tee -a $GITHUB_OUTPUT
+          done
+        else
+          echo "No awailable instances found"
+          exit 1
+        fi
+
+      env:
+        PARENT_ID: ${{ inputs.parent_id }}
+        PROJECT_FILTER: ${{ format('{0}-{1}', github.repository_owner, github.event.repository.name) }}
+        OWNER: ${{ github.repository_owner }}
+        REPO: ${{ github.event.repository.name }}
+        FLAVOR: ${{ inputs.required_flavor }}
+
+    - name: Update VM name and get runner settings
+      shell: bash
+      if: ${{ inputs.instance_id != '' }}
+      id: result
+      run: |
+        set -x
+        // change label idle to false
+        LABELS=$(echo $INSTANCE_LABELS | sed -e 's/idle=true/idle=false/g')
+        // replace run= label with current run_id-run_attempt
+        LABELS=$(echo $LABELS | sed -e "s/run=[^,]*//g" -e 's/,,/,/'g -e "s/$/,run=${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}/g")
+        // update pr label with current pr number if it is PR request, remove pr label if it is not, need to account for possible double comma
+        // if pr label is not present, add it
+        // if pr label is present, update it
+        if [ "${PR_NUMBER}" == "no" ]; then
+          LABELS=$(echo $LABELS | sed -e 's/pr=[^,]*//g' -e 's/,,/,/'g)
+        else
+          LABELS=$(echo $LABELS | sed -e "s/pr=[^,]*//g" -e 's/,,/,/'g -e "s/$/,pr=${PR_NUMBER}/g")
+        fi
+        LABELS=$(echo $LABELS | sed -e 's/,,/,/g')
+        nebius compute instance get --id $INSTANCE_ID --labels $LABELS --format json > instance.json
+
+        OLD_INSTANCE_NAME=$(jq -r '.metadata.name' instance.json)
+        LABEL=$(jq -r '.metadata.labels."runner-label"' instance.json)
+        RUNNER_FLAVOR=$(jq -r '.metadata.labels."runner-flavor"' instance.json)
+        EXTERNAL_IPV4=$(jq -r '.status.network_interfaces[0].public_ip_address.address' instance.json | sed -e 's/\/32//g')
+        LOCAL_IPV4=$(jq -r '.status.network_interfaces[0].ip_address.address' instance.json | sed -e 's/\/32//g')
+        PRESET=$(jq -r '.spec.resources.preset' instance.json)
+        DATE=$(date +%s);
+
+        INSTANCE_NAME=$OLD_INSTANCE_NAME
+        [ -n "${NEW_INSTANCE_NAME}" ] && {
+          INSTANCE_NAME="running-${GITHUB_RUN_ID}-${PROJECT_FILTER}-${DATE}"
+          [ -n "${NEW_INSTANCE_NAME}" ] && INSTANCE_NAME="${NEW_INSTANCE_NAME}"
+          echo "New instance name: $INSTANCE_NAME"
+          nebius compute instance update --id $INSTANCE_ID --name $INSTANCE_NAME
+        } || echo "Instance name not changed"
+
+        {
+          echo LABEL=$LABEL;
+          echo RUNNER_FLAVOR=$RUNNER_FLAVOR;
+          echo INSTANCE_ID=$INSTANCE_ID;
+          echo RUNNER_IPV4=$EXTERNAL_IPV4;
+          echo RUNNER_LOCAL_IPV4=$LOCAL_IPV4;
+          echo OLD_INSTANCE_NAME=$OLD_INSTANCE_NAME;
+          echo VM_PRESET=$PRESET;
+        } >> $GITHUB_OUTPUT
+      env:
+        INSTANCE_ID: ${{ steps.select.outputs.INSTANCE_ID }}
+        INSTANCE_LABELS: ${{ steps.select.outputs.INSTANCE_LABELS }}
+        NEW_INSTANCE_NAME: ${{ inputs.instance_name }}
+        PR_NUMBER: ${{ github.event.pull_request.head.sha != '' &&  github.event.pull_request.number || 'no' }}

@@ -1,40 +1,9 @@
-name: Prepare nebius cli tool to display various parameters
-description: Install nebius cli and display vm IP
+name: Prepare nebius cli tool
+description: Install nebius cli
 inputs:
-  instance_id:
-    required: false
-    description: "runner instance-id"
   sa_json:
     required: true
     description: ""
-  set_new_instance_name:
-    required: false
-    description: "set new instance name"
-  new_instance_name:
-    required: false
-    description: "new instance name"
-outputs:
-  RUNNER_IPV4:
-    value: ${{ steps.result.outputs.RUNNER_IPV4 }}
-    description: "runner ipv4"
-  RUNNER_LOCAL_IPV4:
-    value: ${{ steps.result.outputs.RUNNER_LOCAL_IPV4 }}
-    description: "runner local ipv4"
-  INSTANCE_ID:
-    value: ${{ steps.result.outputs.INSTANCE_ID }}
-    description: "runner instance id"
-  RUNNER_FLAVOR:
-    value: ${{ steps.result.outputs.RUNNER_FLAVOR }}
-    description: "runner flavor"
-  LABEL:
-    value: ${{ steps.result.outputs.LABEL }}
-    description: "runner label"
-  OLD_INSTANCE_NAME:
-    value: ${{ steps.result.outputs.OLD_INSTANCE_NAME }}
-    description: "old instance name"
-  VM_PRESET:
-    value: ${{ steps.result.outputs.VM_PRESET }}
-    description: "vm preset"
 
 
 runs:
@@ -76,42 +45,4 @@ runs:
       env:
         sa_json: ${{ inputs.sa_json }}
 
-    - name: Update VM name and get runner settings
-      shell: bash
-      if: ${{ inputs.instance_id != '' }}
-      id: result
-      run: |
-        set -x
-        nebius compute instance get --id $INSTANCE_ID --format json > instance.json
-        
-        OLD_INSTANCE_NAME=$(jq -r '.metadata.name' instance.json)
-        LABEL=$(jq -r '.metadata.labels."runner-label"' instance.json)
-        RUNNER_FLAVOR=$(jq -r '.metadata.labels."runner-flavor"' instance.json)
-        EXTERNAL_IPV4=$(jq -r '.status.network_interfaces[0].public_ip_address.address' instance.json | sed -e 's/\/32//g')
-        LOCAL_IPV4=$(jq -r '.status.network_interfaces[0].ip_address.address' instance.json | sed -e 's/\/32//g')
-        PRESET=$(jq -r '.spec.resources.preset' instance.json)
-        DATE=$(date +%s);
-        
-        INSTANCE_NAME=$OLD_INSTANCE_NAME
-        [ "${SET_NEW_NAME}" == "yes" ] && {
-          INSTANCE_NAME="running-${GITHUB_RUN_ID}-${PROJECT_FILTER}-${DATE}"
-          [ -n "${NEW_INSTANCE_NAME}" ] && INSTANCE_NAME="${NEW_INSTANCE_NAME}"
-          echo "New instance name: $INSTANCE_NAME"
-          nebius compute instance update --id $INSTANCE_ID --name $INSTANCE_NAME
-        } || echo "Instance name not changed"
-        
-        {
-          echo LABEL=$LABEL;
-          echo RUNNER_FLAVOR=$RUNNER_FLAVOR;
-          echo INSTANCE_ID=$INSTANCE_ID;
-          echo RUNNER_IPV4=$EXTERNAL_IPV4;
-          echo RUNNER_LOCAL_IPV4=$LOCAL_IPV4;
-          echo OLD_INSTANCE_NAME=$OLD_INSTANCE_NAME;
-          echo VM_PRESET=$PRESET;
-        } >> $GITHUB_OUTPUT
-      env:
-        INSTANCE_ID: ${{ inputs.instance_id }}
-        PROJECT_FILTER: ${{ format('{0}-{1}', github.repository_owner, github.event.repository.name) }}
-        SET_NEW_NAME: ${{ inputs.set_new_instance_name }}
-        NEW_INSTANCE_NAME: ${{ inputs.new_instance_name }}
-
+   
