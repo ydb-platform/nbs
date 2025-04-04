@@ -393,6 +393,30 @@ TNonreplicatedPartitionMigrationCommonActor::GetDiagnosticsConfig() const
     return DiagnosticsConfig;
 }
 
+NActors::TActorId
+TNonreplicatedPartitionMigrationCommonActor::GetSrcActorId() const
+{
+    return SrcActorId;
+}
+
+NActors::TActorId
+TNonreplicatedPartitionMigrationCommonActor::GetDstActorId() const
+{
+    return DstActorId;
+}
+
+void TNonreplicatedPartitionMigrationCommonActor::SetTargetMigrationIsLagging(
+    bool lagging)
+{
+    TargetMigrationIsLagging = lagging;
+}
+
+bool TNonreplicatedPartitionMigrationCommonActor::GetTargetMigrationIsLagging()
+    const
+{
+    return TargetMigrationIsLagging;
+}
+
 TDuration
 TNonreplicatedPartitionMigrationCommonActor::CalculateMigrationTimeout(
     TBlockRange64 range) const

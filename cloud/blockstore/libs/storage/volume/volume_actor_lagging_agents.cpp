@@ -210,7 +210,8 @@ void TVolumeActor::HandleDeviceTimedOut(
             HaveCommonRows(timedOutAgentDevices, laggingAgent.GetDevices());
         if (intersects) {
             // TODO(komarevtsev-d): Allow source and target of the migration to
-            // lag at the same time.
+            // lag at the same time. "TLaggingAgentsReplicaProxyActor" does not
+            // support this yet.
             LOG_WARN(
                 ctx,
                 TBlockStoreComponents::VOLUME,
