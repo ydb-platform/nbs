@@ -80,6 +80,7 @@ func RegisterForExecution(
 
 	err = taskRegistry.RegisterForExecution("images.CreateImageFromDisk", func() tasks.Task {
 		return &createImageFromDiskTask{
+			config:            config,
 			performanceConfig: performanceConfig,
 			scheduler:         taskScheduler,
 			storage:           storage,
