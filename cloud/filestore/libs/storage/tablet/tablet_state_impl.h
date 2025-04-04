@@ -11,6 +11,7 @@
 #include <cloud/filestore/libs/storage/tablet/model/channels.h>
 #include <cloud/filestore/libs/storage/tablet/model/compaction_map.h>
 #include <cloud/filestore/libs/storage/tablet/model/fresh_blocks.h>
+#include <cloud/filestore/libs/storage/tablet/model/fresh_blocks_stats.h>
 #include <cloud/filestore/libs/storage/tablet/model/fresh_bytes.h>
 #include <cloud/filestore/libs/storage/tablet/model/garbage_queue.h>
 #include <cloud/filestore/libs/storage/tablet/model/large_blocks.h>
@@ -53,6 +54,7 @@ struct TIndexTabletState::TImpl
     TRangeLocks RangeLocks;
     TFreshBytes FreshBytes;
     TFreshBlocks FreshBlocks;
+    TFreshBlocksStats FreshBlocksStats;
     TMixedBlocks MixedBlocks;
     TLargeBlocks LargeBlocks;
     TCompactionMap CompactionMap;

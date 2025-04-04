@@ -1,4 +1,5 @@
 #include "fresh_blocks.h"
+#include "fresh_blocks_stats.h"
 
 #include <cloud/filestore/libs/storage/core/public.h>
 
@@ -171,6 +172,77 @@ Y_UNIT_TEST_SUITE(TFreshBlocksTest)
         UNIT_ASSERT_VALUES_EQUAL(block->BlockData, "y" + TString(DefaultBlockSize - 1, 0));
 
         UNIT_ASSERT(freshBlocks.FindBlock(nodeId + 2, blockIndex));
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+Y_UNIT_TEST_SUITE(TFreshBlocksStatsTest)
+{
+    Y_UNIT_TEST(ShouldCalculateBlobsCount)
+    {
+        TFreshBlocksStats stats;
+        UNIT_ASSERT_VALUES_EQUAL(stats.CalculateBlobsCount(0), 0);
+        UNIT_ASSERT_VALUES_EQUAL(stats.CalculateBlobsCount(1), 0);
+        UNIT_ASSERT_VALUES_EQUAL(stats.CalculateBlobsCount(2), 0);
+
+        // (1, 0)
+        stats.IncrementBlocksCountInRange(1);
+        UNIT_ASSERT_VALUES_EQUAL(stats.CalculateBlobsCount(0), 1);
+        UNIT_ASSERT_VALUES_EQUAL(stats.CalculateBlobsCount(1), 1);
+        UNIT_ASSERT_VALUES_EQUAL(stats.CalculateBlobsCount(2), 1);
+
+        // (2, 0)
+        stats.IncrementBlocksCountInRange(1);
+        UNIT_ASSERT_VALUES_EQUAL(stats.CalculateBlobsCount(0), 1);
+        UNIT_ASSERT_VALUES_EQUAL(stats.CalculateBlobsCount(1), 2);
+        UNIT_ASSERT_VALUES_EQUAL(stats.CalculateBlobsCount(2), 1);
+
+        // (3, 0)
+        stats.IncrementBlocksCountInRange(1);
+        UNIT_ASSERT_VALUES_EQUAL(stats.CalculateBlobsCount(0), 1);
+        UNIT_ASSERT_VALUES_EQUAL(stats.CalculateBlobsCount(1), 3);
+        UNIT_ASSERT_VALUES_EQUAL(stats.CalculateBlobsCount(2), 2);
+
+        // (3, 1)
+        stats.IncrementBlocksCountInRange(2);
+        UNIT_ASSERT_VALUES_EQUAL(stats.CalculateBlobsCount(0), 2);
+        UNIT_ASSERT_VALUES_EQUAL(stats.CalculateBlobsCount(1), 4);
+        UNIT_ASSERT_VALUES_EQUAL(stats.CalculateBlobsCount(2), 3);
+
+        // (2, 1)
+        stats.DecrementBlocksCountInRange(1);
+        UNIT_ASSERT_VALUES_EQUAL(stats.CalculateBlobsCount(0), 2);
+        UNIT_ASSERT_VALUES_EQUAL(stats.CalculateBlobsCount(1), 3);
+        UNIT_ASSERT_VALUES_EQUAL(stats.CalculateBlobsCount(2), 2);
+
+        // (1, 1)
+        stats.DecrementBlocksCountInRange(1);
+        UNIT_ASSERT_VALUES_EQUAL(stats.CalculateBlobsCount(0), 2);
+        UNIT_ASSERT_VALUES_EQUAL(stats.CalculateBlobsCount(1), 2);
+        UNIT_ASSERT_VALUES_EQUAL(stats.CalculateBlobsCount(2), 2);
+
+        // (0, 1)
+        stats.DecrementBlocksCountInRange(1);
+        UNIT_ASSERT_VALUES_EQUAL(stats.CalculateBlobsCount(0), 1);
+        UNIT_ASSERT_VALUES_EQUAL(stats.CalculateBlobsCount(1), 1);
+        UNIT_ASSERT_VALUES_EQUAL(stats.CalculateBlobsCount(2), 1);
+
+        // (0, 0)
+        stats.DecrementBlocksCountInRange(2);
+        UNIT_ASSERT_VALUES_EQUAL(stats.CalculateBlobsCount(0), 0);
+        UNIT_ASSERT_VALUES_EQUAL(stats.CalculateBlobsCount(1), 0);
+        UNIT_ASSERT_VALUES_EQUAL(stats.CalculateBlobsCount(2), 0);
+
+        // Write 2 blocks in 50 ranges
+        for (int i = 0; i < 50; i++) {
+            stats.IncrementBlocksCountInRange(i);
+            stats.IncrementBlocksCountInRange(i);
+        }
+        UNIT_ASSERT_VALUES_EQUAL(stats.CalculateBlobsCount(0), 50);
+        UNIT_ASSERT_VALUES_EQUAL(stats.CalculateBlobsCount(1), 100);
+        // The amount is based on estimation, not calculation
+        UNIT_ASSERT_VALUES_EQUAL(stats.CalculateBlobsCount(2), 75);
     }
 }
 
