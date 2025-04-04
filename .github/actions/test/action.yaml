@@ -206,6 +206,7 @@ runs:
         )
 
     - name: copying system files
+      if: ${{ !cancelled() }}
       shell: bash --noprofile --norc -eo pipefail -x {0}
       run: |
         sudo cp /var/log/kern.log "$LOG_DIR/kern.log" &&
@@ -241,6 +242,7 @@ runs:
 
     - name: dump VM artifacts
       shell: bash --noprofile --norc -eo pipefail -x {0}
+      if: ${{ !cancelled() }}
       run: |
         echo "::group::dump-vm-artifacts"
         # shellcheck disable=SC2024
