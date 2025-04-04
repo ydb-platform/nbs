@@ -476,6 +476,12 @@ public:
         const TString& leaderDiskId,
         const TString& followerDiskId);
 
+    std::unique_ptr<TEvVolumePrivate::TEvUpdateFollowerStateRequest>
+    CreateUpdateFollowerStateRequest(
+        TString followerUuid,
+        TEvVolumePrivate::TUpdateFollowerStateRequest::EReason reason,
+        std::optional<ui64> migratedBytes);
+
     void SendRemoteHttpInfo(
         const TString& params,
         HTTP_METHOD method);

@@ -591,6 +591,20 @@ TVolumeClient::CreateUnlinkLeaderVolumeFromFollowerRequest(
     return result;
 }
 
+std::unique_ptr<TEvVolumePrivate::TEvUpdateFollowerStateRequest>
+TVolumeClient::CreateUpdateFollowerStateRequest(
+    TString followerUuid,
+    TEvVolumePrivate::TUpdateFollowerStateRequest::EReason reason,
+    std::optional<ui64> migratedBytes)
+{
+    auto result =
+        std::make_unique<TEvVolumePrivate::TEvUpdateFollowerStateRequest>(
+            std::move(followerUuid),
+            reason,
+            migratedBytes);
+    return result;
+}
+
 void TVolumeClient::SendRemoteHttpInfo(
     const TString& params,
     HTTP_METHOD method)

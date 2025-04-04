@@ -45,6 +45,7 @@ namespace NCloud::NBlockStore::NStorage {
     xxx(RemoveLaggingAgent,             __VA_ARGS__)                           \
     xxx(AddFollower,                    __VA_ARGS__)                           \
     xxx(RemoveFollower,                 __VA_ARGS__)                           \
+    xxx(UpdateFollower,                 __VA_ARGS__)                           \
 // BLOCKSTORE_VOLUME_TRANSACTIONS
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -764,6 +765,7 @@ struct TTxVolume
     {
         const TRequestInfoPtr RequestInfo;
         const TString FollowerDiskId;
+        TString LinkUUID;
 
         TAddFollower(
                 TRequestInfoPtr requestInfo,
@@ -785,13 +787,13 @@ struct TTxVolume
     struct TRemoveFollower
     {
         const TRequestInfoPtr RequestInfo;
-        const TString Id;
+        const TString LinkUUID;
 
         TRemoveFollower(
                 TRequestInfoPtr requestInfo,
-                TString id)
+                TString linkUUID)
             : RequestInfo(std::move(requestInfo))
-            , Id(std::move(id))
+            , LinkUUID(std::move(linkUUID))
         {}
 
         void Clear()
@@ -800,6 +802,28 @@ struct TTxVolume
         }
     };
 
+
+    //
+    // UpdateFollower
+    //
+
+    struct TUpdateFollower
+    {
+        const TRequestInfoPtr RequestInfo;
+        const TFollowerDiskInfo FollowerInfo;
+
+        TUpdateFollower(
+                TRequestInfoPtr requestInfo,
+                TFollowerDiskInfo followerInfo)
+            : RequestInfo(std::move(requestInfo))
+            , FollowerInfo(std::move(followerInfo))
+        {}
+
+        void Clear()
+        {
+            // nothing to do
+        }
+    };
 };
 
 }   // namespace NCloud::NBlockStore::NStorage

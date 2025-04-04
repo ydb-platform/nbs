@@ -9610,9 +9610,11 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
             7 * 1024,   // block count per partition
             "vol2");
 
+        TString linkUuid;
         {
             // Create link
-            volume1.LinkLeaderVolumeToFollower("vol1", "vol2");
+            auto response = volume1.LinkLeaderVolumeToFollower("vol1", "vol2");
+            linkUuid = response->Record.GetLinkUUID();
 
             // Reboot tablet
             volume1.RebootTablet();
@@ -9621,8 +9623,46 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
             // Should get S_ALREADY since link persisted in local volume
             // database.
             volume1.SendLinkLeaderVolumeToFollowerRequest("vol1", "vol2");
-            auto response = volume1.RecvLinkLeaderVolumeToFollowerResponse();
+            response = volume1.RecvLinkLeaderVolumeToFollowerResponse();
             UNIT_ASSERT_VALUES_EQUAL(S_ALREADY, response->GetStatus());
+        }
+
+        {   // Update link state
+            using EReason =
+                TEvVolumePrivate::TUpdateFollowerStateRequest::EReason;
+            using EState = TFollowerDiskInfo::EState;
+
+            auto response = volume1.UpdateFollowerState(
+                linkUuid,
+                EReason::FillProgressUpdate,
+                1_MB);
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
+            UNIT_ASSERT_VALUES_EQUAL(EState::Preparing, response->NewState);
+            UNIT_ASSERT_VALUES_EQUAL(1_MB, response->MigratedBytes);
+
+            response = volume1.UpdateFollowerState(
+                linkUuid,
+                EReason::FillProgressUpdate,
+                2_MB);
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
+            UNIT_ASSERT_VALUES_EQUAL(EState::Preparing, response->NewState);
+            UNIT_ASSERT_VALUES_EQUAL(2_MB, response->MigratedBytes);
+
+            response = volume1.UpdateFollowerState(
+                linkUuid,
+                EReason::FillCompleted,
+                2_MB);
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
+            UNIT_ASSERT_VALUES_EQUAL(EState::Ready, response->NewState);
+            UNIT_ASSERT_VALUES_EQUAL(2_MB, response->MigratedBytes);
+
+            response = volume1.UpdateFollowerState(
+                linkUuid,
+                EReason::FillError,
+                2_MB);
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
+            UNIT_ASSERT_VALUES_EQUAL(EState::Error, response->NewState);
+            UNIT_ASSERT_VALUES_EQUAL(2_MB, response->MigratedBytes);
         }
 
         {
