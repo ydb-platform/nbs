@@ -730,13 +730,13 @@ Y_UNIT_TEST_SUITE(TLaggingAgentsReplicaProxyActorTest)
             [&](TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& event)
             {
                 switch (event->GetTypeRewrite()) {
-                    case TEvNonreplPartitionPrivate::EvChecksumBlocksRequest: {
-                        auto* msg = event->Get<TEvNonreplPartitionPrivate::
-                                                   TEvChecksumBlocksRequest>();
+                    case TEvDiskAgent::EvChecksumDeviceBlocksRequest: {
+                        auto* msg = event->Get<
+                            TEvDiskAgent::TEvChecksumDeviceBlocksRequest>();
                         auto clientId = msg->Record.GetHeaders().GetClientId();
                         if (clientId == CheckHealthClientId) {
                             UNIT_ASSERT_VALUES_EQUAL(
-                                env.ReplicaActors[0],
+                                MakeDiskAgentServiceId(runtime.GetNodeId(1)),
                                 event->Recipient);
                             seenHealthCheck = true;
                         }

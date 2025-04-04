@@ -140,7 +140,9 @@ void TSplitRequestSenderActor<TMethod>::SendRequests(
             request.DeviceUUID.c_str());
     }
 
-    Y_DEBUG_ABORT_UNLESS(Responses < Requests.size());
+    if (Responses == Requests.size()) {
+        Done(ctx);
+    }
 }
 
 template <typename TMethod>
@@ -371,7 +373,8 @@ void TLaggingAgentsReplicaProxyActor::ReadBlocks(
     const auto deviceRequests = PartConfig->ToDeviceRequests(blockRange);
     for (const auto& deviceRequest: deviceRequests) {
         const auto& agentId = deviceRequest.Device.GetAgentId();
-        const TActorId recipient = GetRecipientActorId(agentId);
+        const TActorId recipient =
+            GetRecipientActorId(deviceRequest.BlockRange);
         if (recipient != NonreplPartitionActorId) {
             TString message = TStringBuilder()
                               << "Desired recipient actor is not "
@@ -409,31 +412,15 @@ void TLaggingAgentsReplicaProxyActor::WriteBlocks(
         msg->Record.GetStartIndex(),
         requestBlockCount);
     auto deviceRequests = PartConfig->ToDeviceRequests(blockRange);
-    ui32 requestsToUnavailable = 0;
     for (const auto& deviceRequest: deviceRequests) {
-        const auto& agentId = deviceRequest.Device.GetAgentId();
-        if (AgentIsUnavailable(agentId)) {
-            requestsToUnavailable++;
-            MarkBlocksAsDirty(ctx, agentId, deviceRequest.BlockRange);
+        const auto& blockRangeData =
+            GetBlockRangeDataByBlockRange(deviceRequest.BlockRange);
+        if (AgentIsUnavailable(blockRangeData.LaggingAgentId)) {
+            MarkBlocksAsDirty(
+                ctx,
+                blockRangeData.LaggingAgentId,
+                deviceRequest.BlockRange);
         }
-    }
-
-    if (requestsToUnavailable == deviceRequests.size()) {
-        LOG_TRACE(
-            ctx,
-            TBlockStoreComponents::PARTITION_WORKER,
-            "[%s] %s request #%lu with range %s covers only lagging agents. "
-            "Dropping request",
-            PartConfig->GetName().c_str(),
-            TMethod::Name,
-            GetRequestId(msg->Record),
-            blockRange.Print().c_str());
-
-        NCloud::Reply(
-            ctx,
-            *ev,
-            std::make_unique<typename TMethod::TResponse>());
-        return;
     }
 
     auto requests = SplitRequest<TMethod>(ev, deviceRequests);
@@ -478,26 +465,28 @@ TVector<TSplitRequest> TLaggingAgentsReplicaProxyActor::SplitRequest(
     auto request = std::make_unique<typename TMethod::TRequest>();
     request->Record = std::move(msg->Record);
     request->CallContext = msg->CallContext;
+    SetupRequestHeaders(
+        deviceRequests[0].BlockRange,
+        request->Record.MutableHeaders());
 
     TVector<TSplitRequest> result;
     result.emplace_back(
         std::move(request),
         msg->CallContext,
-        GetRecipientActorId(deviceRequests[0].Device.GetAgentId()),
+        GetRecipientActorId(deviceRequests[0].BlockRange),
         deviceRequests[0].Device.GetDeviceUUID());
 
     return result;
 }
 
 bool TLaggingAgentsReplicaProxyActor::ShouldSplitWriteRequest(
-    const TVector<TDeviceRequest>& requests) const
+    const TVector<TDeviceRequest>& deviceRequests) const
 {
-    Y_DEBUG_ABORT_UNLESS(!requests.empty());
+    Y_DEBUG_ABORT_UNLESS(!deviceRequests.empty());
 
     THashSet<NActors::TActorId> recipientActors;
-    for (const auto& request: requests) {
-        recipientActors.insert(
-            GetRecipientActorId(request.Device.GetAgentId()));
+    for (const auto& deviceRequest: deviceRequests) {
+        recipientActors.insert(GetRecipientActorId(deviceRequest.BlockRange));
     }
     return recipientActors.size() > 1;
 }
@@ -520,12 +509,15 @@ TVector<TSplitRequest> TLaggingAgentsReplicaProxyActor::DoSplitRequest(
 
         request->Record.SetStartIndex(deviceRequest.BlockRange.Start);
         builder.BuildNextRequest(request->Record);
+        SetupRequestHeaders(
+            deviceRequest.BlockRange,
+            request->Record.MutableHeaders());
 
         auto forkedCallContext = request->CallContext;
         result.emplace_back(
             std::move(request),
             forkedCallContext,
-            GetRecipientActorId(deviceRequest.Device.GetAgentId()),
+            GetRecipientActorId(deviceRequest.BlockRange),
             deviceRequest.Device.GetDeviceUUID());
     }
 
@@ -552,6 +544,9 @@ TVector<TSplitRequest> TLaggingAgentsReplicaProxyActor::DoSplitRequest(
         request->Record.SetStartIndex(deviceRequest.BlockRange.Start);
         request->Record.BlocksCount = deviceRequest.BlockRange.Size();
         request->Record.BlockSize = msg->Record.BlockSize;
+        SetupRequestHeaders(
+            deviceRequest.BlockRange,
+            request->Record.MutableHeaders());
 
         Y_DEBUG_ABORT_UNLESS(src.HasNext());
         TSgList sglist = src.Next(deviceRequest.BlockRange.Size());
@@ -563,7 +558,7 @@ TVector<TSplitRequest> TLaggingAgentsReplicaProxyActor::DoSplitRequest(
         result.emplace_back(
             std::move(request),
             forkedCallContext,
-            GetRecipientActorId(deviceRequest.Device.GetAgentId()),
+            GetRecipientActorId(deviceRequest.BlockRange),
             deviceRequest.Device.GetDeviceUUID());
     }
 
@@ -581,21 +576,52 @@ TVector<TSplitRequest> TLaggingAgentsReplicaProxyActor::DoSplitRequest(
 
         request->Record.SetStartIndex(deviceRequest.BlockRange.Start);
         request->Record.SetBlocksCount(deviceRequest.BlockRange.Size());
+        SetupRequestHeaders(
+            deviceRequest.BlockRange,
+            request->Record.MutableHeaders());
 
         auto forkedCallContext = request->CallContext;
         result.emplace_back(
             std::move(request),
             forkedCallContext,
-            GetRecipientActorId(deviceRequest.Device.GetAgentId()),
+            GetRecipientActorId(deviceRequest.BlockRange),
             deviceRequest.Device.GetDeviceUUID());
     }
 
     return result;
 }
 
-NActors::TActorId TLaggingAgentsReplicaProxyActor::GetRecipientActorId(
-    const TString& agentId) const
+void TLaggingAgentsReplicaProxyActor::SetupRequestHeaders(
+    const TBlockRange64& requestBlockRange,
+    NProto::THeaders* headers)
 {
+    const auto itStart =
+        LaggingAgentIdByBlockRangeEnd.lower_bound(requestBlockRange.Start);
+    const auto itEnd =
+        LaggingAgentIdByBlockRangeEnd.lower_bound(requestBlockRange.End);
+    Y_ABORT_UNLESS(itStart != LaggingAgentIdByBlockRangeEnd.end());
+    Y_ABORT_UNLESS(itEnd != LaggingAgentIdByBlockRangeEnd.end());
+
+    if (!itStart->second.LaggingAgentId.empty() &&
+        !itEnd->second.LaggingAgentId.empty() &&
+        itStart->second.IsTargetMigration && itEnd->second.IsTargetMigration &&
+        AgentIsUnavailable(itStart->second.LaggingAgentId) &&
+        AgentIsUnavailable(itEnd->second.LaggingAgentId))
+    {
+        headers->SetSkipWriteToMigrationTarget(true);
+    }
+}
+
+NActors::TActorId TLaggingAgentsReplicaProxyActor::GetRecipientActorId(
+    const TBlockRange64& requestBlockRange) const
+{
+    const auto& blockRangeData =
+        GetBlockRangeDataByBlockRange(requestBlockRange);
+    const auto& agentId = blockRangeData.LaggingAgentId;
+    if (agentId.empty()) {
+        return NonreplPartitionActorId;
+    }
+
     const auto* agentState = AgentState.FindPtr(agentId);
     if (!agentState) {
         return NonreplPartitionActorId;
@@ -603,6 +629,9 @@ NActors::TActorId TLaggingAgentsReplicaProxyActor::GetRecipientActorId(
 
     switch (agentState->State) {
         case EAgentState::Unavailable:
+            if (blockRangeData.IsTargetMigration) {
+                return NonreplPartitionActorId;
+            }
             return {};
         case EAgentState::WaitingForDrain:
         case EAgentState::Resyncing:
@@ -610,6 +639,55 @@ NActors::TActorId TLaggingAgentsReplicaProxyActor::GetRecipientActorId(
             return agentState->MigrationActorId;
     }
     Y_ABORT("Unknown enum value: %u", static_cast<ui8>(agentState->State));
+}
+
+auto TLaggingAgentsReplicaProxyActor::GetBlockRangeDataByBlockRange(
+    const TBlockRange64& requestBlockRange) const -> const TBlockRangeData&
+{
+    const auto it =
+        LaggingAgentIdByBlockRangeEnd.lower_bound(requestBlockRange.End);
+    Y_ABORT_UNLESS(it != LaggingAgentIdByBlockRangeEnd.end());
+    Y_DEBUG_ABORT_UNLESS(
+        LaggingAgentIdByBlockRangeEnd.lower_bound(requestBlockRange.Start) ==
+        it);
+    return it->second;
+}
+
+void TLaggingAgentsReplicaProxyActor::RecalculateLaggingAgentIdByBlockRangeEnd()
+{
+    ui64 blockIndex = 0;
+    for (const auto& device: PartConfig->GetDevices()) {
+        blockIndex += device.GetBlocksCount();
+
+        if (AgentState.contains(device.GetAgentId())) {
+            LaggingAgentIdByBlockRangeEnd[blockIndex - 1] = {
+                .LaggingAgentId = device.GetAgentId(),
+                .IsTargetMigration = false};
+            // There can be only one lagging device per disk "row". So it is
+            // safe to continue here.
+            continue;
+        }
+
+        // Migration target can also be lagging.
+        const auto* migration = FindIfPtr(
+            Migrations,
+            [&](const NProto::TDeviceMigration& migration)
+            {
+                return migration.GetSourceDeviceId() == device.GetDeviceUUID();
+            });
+        if (migration) {
+            const auto& targetAgentId =
+                migration->GetTargetDevice().GetAgentId();
+            if (AgentState.contains(targetAgentId)) {
+                LaggingAgentIdByBlockRangeEnd[blockIndex - 1] = {
+                    .LaggingAgentId = device.GetDeviceUUID(),
+                    .IsTargetMigration = true};
+                continue;
+            }
+        }
+
+        LaggingAgentIdByBlockRangeEnd[blockIndex - 1] = {};
+    }
 }
 
 void TLaggingAgentsReplicaProxyActor::HandleAgentIsUnavailable(
@@ -641,6 +719,8 @@ void TLaggingAgentsReplicaProxyActor::HandleAgentIsUnavailable(
     auto& state = AgentState[agentId];
     state.State = EAgentState::Unavailable;
     state.LaggingAgent = msg->LaggingAgent;
+
+    RecalculateLaggingAgentIdByBlockRangeEnd();
 
     if (state.MigrationActorId) {
         Y_DEBUG_ABORT_UNLESS(state.CleanBlocksMap);
@@ -784,6 +864,7 @@ void TLaggingAgentsReplicaProxyActor::HandleLaggingAgentMigrationFinished(
     Y_DEBUG_ABORT_UNLESS(!state.AvailabilityMonitoringActorId);
     DestroyChildActor(ctx, &state.MigrationActorId);
     AgentState.erase(it);
+    RecalculateLaggingAgentIdByBlockRangeEnd();
 
     ctx.Send(std::make_unique<NActors::IEventHandle>(
         PartConfig->GetParentActorId(),
@@ -928,8 +1009,9 @@ void TLaggingAgentsReplicaProxyActor::HandlePoisonPill(
     const TActorContext& ctx)
 {
     Become(&TThis::StateZombie);
-    PoisonPillHelper.HandlePoisonPill(ev, ctx);
     AgentState.clear();
+    RecalculateLaggingAgentIdByBlockRangeEnd();
+    PoisonPillHelper.HandlePoisonPill(ev, ctx);
 }
 
 void TLaggingAgentsReplicaProxyActor::Die(const NActors::TActorContext& ctx)

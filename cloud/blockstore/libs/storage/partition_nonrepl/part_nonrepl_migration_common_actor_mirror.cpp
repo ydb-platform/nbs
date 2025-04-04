@@ -97,11 +97,15 @@ void TNonreplicatedPartitionMigrationCommonActor::MirrorRequest(
         }
     }
 
+    const bool skipWriteToDstActor =
+        msg->Record.GetHeaders().GetSkipWriteToMigrationTarget();
+    Y_DEBUG_ABORT_UNLESS(!skipWriteToDstActor || ActorOwner);
+
     NCloud::Register<TMigrationRequestActor<TMethod>>(
         ctx,
         CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext),
         ActorOwner ? SrcActorId : TActorId{},
-        DstActorId,
+        skipWriteToDstActor ? TActorId{} : DstActorId,
         std::move(msg->Record),
         DiskId,
         SelfId(),   // parentActorId

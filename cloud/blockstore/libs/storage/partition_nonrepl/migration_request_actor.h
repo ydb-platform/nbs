@@ -105,7 +105,7 @@ TMigrationRequestActor<TMethod>::TMigrationRequestActor(
     , ParentActorId(parentActorId)
     , NonreplicatedRequestCounter(nonreplicatedRequestCounter)
 {
-    Y_DEBUG_ABORT_UNLESS(FollowerPartition);
+    Y_DEBUG_ABORT_UNLESS(LeaderPartition || FollowerPartition);
 }
 
 template <typename TMethod>
@@ -121,14 +121,15 @@ void TMigrationRequestActor<TMethod>::Bootstrap(const NActors::TActorContext& ct
         TMethod::Name,
         RequestInfo->CallContext->RequestId);
 
-    PendingRequests = 1;
+    PendingRequests = (LeaderPartition ? 1 : 0) + (FollowerPartition ? 1 : 0);
 
     if (LeaderPartition) {
-        PendingRequests = 2;
         SendRequest(ctx, LeaderPartition, LeaderCookie);
     }
 
-    SendRequest(ctx, FollowerPartition, FollowerCookie);
+    if (FollowerPartition) {
+        SendRequest(ctx, FollowerPartition, FollowerCookie);
+    }
 }
 
 template <typename TMethod>
