@@ -666,8 +666,10 @@ bool TShadowDiskActor::OnMessage(
 
 void TShadowDiskActor::OnMigrationProgress(
     const NActors::TActorContext& ctx,
-    ui64 migrationIndex)
+    ui64 migrationIndex,
+    ui64 dirtyBlocksMigratedSinceLastReport)
 {
+    Y_UNUSED(dirtyBlocksMigratedSinceLastReport);
     using EReason = TEvVolumePrivate::TUpdateShadowDiskStateRequest::EReason;
 
     ProcessedBlockCount = migrationIndex;

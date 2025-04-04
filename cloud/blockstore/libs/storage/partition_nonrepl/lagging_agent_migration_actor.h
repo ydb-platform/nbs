@@ -25,6 +25,8 @@ private:
     const NActors::TActorId SourceActorId;
     const TString AgentId;
 
+    ui64 CleanBlocks = 0;
+
 public:
     TLaggingAgentMigrationActor(
         TStorageConfigPtr config,
@@ -48,7 +50,8 @@ private:
         TAutoPtr<NActors::IEventHandle>& ev) override;
     void OnMigrationProgress(
         const NActors::TActorContext& ctx,
-        ui64 migrationIndex) override;
+        ui64 migrationIndex,
+        ui64 dirtyBlocksMigratedSinceLastReport) override;
     void OnMigrationFinished(const NActors::TActorContext& ctx) override;
     void OnMigrationError(const NActors::TActorContext& ctx) override;
 };

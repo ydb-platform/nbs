@@ -42,6 +42,7 @@ TLaggingAgentMigrationActor::TLaggingAgentMigrationActor(
     , TargetActorId(targetActorId)
     , SourceActorId(sourceActorId)
     , AgentId(std::move(agentId))
+    , CleanBlocks(GetProcessedBlockCount())
 {}
 
 TLaggingAgentMigrationActor::~TLaggingAgentMigrationActor() = default;
@@ -71,16 +72,18 @@ bool TLaggingAgentMigrationActor::OnMessage(
 
 void TLaggingAgentMigrationActor::OnMigrationProgress(
     const TActorContext& ctx,
-    ui64 migrationIndex)
+    ui64 migrationIndex,
+    ui64 dirtyBlocksMigratedSinceLastReport)
 {
     Y_UNUSED(migrationIndex);
 
+    CleanBlocks += dirtyBlocksMigratedSinceLastReport;
     ctx.Send(
         PartConfig->GetParentActorId(),
         std::make_unique<TEvVolumePrivate::TEvUpdateLaggingAgentMigrationState>(
             AgentId,
-            GetProcessedBlockCount(),
-            GetBlockCountNeedToBeProcessed()));
+            CleanBlocks,
+            GetBlockCount() - CleanBlocks));
 }
 
 void TLaggingAgentMigrationActor::OnMigrationFinished(const TActorContext& ctx)
