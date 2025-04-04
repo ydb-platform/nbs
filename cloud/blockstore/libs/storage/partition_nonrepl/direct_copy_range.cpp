@@ -35,8 +35,9 @@ TDirectCopyRangeActor::TDirectCopyRangeActor(
         TActorId target,
         TString writerClientId,
         IBlockDigestGeneratorPtr blockDigestGenerator,
-        NActors::TActorId volumeActorId)
-    : TCopyRangeActorCommon(this, volumeActorId)
+        NActors::TActorId volumeActorId,
+        bool assignVolumeRequestId)
+    : TCopyRangeActorCommon(this, volumeActorId, assignVolumeRequestId)
     , BlockSize(blockSize)
     , Range(range)
     , SourceActor(source)
@@ -44,6 +45,7 @@ TDirectCopyRangeActor::TDirectCopyRangeActor(
     , WriterClientId(std::move(writerClientId))
     , BlockDigestGenerator(std::move(blockDigestGenerator))
     , VolumeActorId(volumeActorId)
+    , AssignVolumeRequestId(assignVolumeRequestId)
     , RequestInfo(std::move(requestInfo))
 {}
 
@@ -198,7 +200,8 @@ void TDirectCopyRangeActor::Fallback(const TActorContext& ctx)
         TargetActor,
         WriterClientId,
         BlockDigestGenerator,
-        VolumeActorId);
+        VolumeActorId,
+        AssignVolumeRequestId);
 
     NeedToReply = false;
     Done(ctx, {});

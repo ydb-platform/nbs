@@ -31,6 +31,7 @@ private:
     const IBlockDigestGeneratorPtr BlockDigestGenerator;
     const NProto::EResyncPolicy ResyncPolicy;
     const NActors::TActorId VolumeActorId;
+    const bool AssignVolumeRequestId;
 
     TVector<int> ActorsToResync;
     ui32 ResyncedCount = 0;
@@ -57,7 +58,8 @@ public:
         TString writerClientId,
         IBlockDigestGeneratorPtr blockDigestGenerator,
         NProto::EResyncPolicy resyncPolicy,
-        NActors::TActorId volumeActorId);
+        NActors::TActorId volumeActorId,
+        bool assignVolumeRequestId);
 
     void Bootstrap(const NActors::TActorContext& ctx);
 

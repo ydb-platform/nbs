@@ -161,7 +161,7 @@ struct TEvVolumePrivate
 
     struct TTakeVolumeRequestIdResponse
     {
-        ui64 ReqId = 0;
+        ui64 VolumeRequestId = 0;
     };
 
     //

@@ -35,6 +35,7 @@ private:
     const TString WriterClientId;
     const IBlockDigestGeneratorPtr BlockDigestGenerator;
     const NActors::TActorId VolumeActorId;
+    const bool AssignVolumeRequestId;
 
     TRequestInfoPtr RequestInfo;
     TInstant StartTs;
@@ -45,7 +46,7 @@ private:
 
     TDeviceInfoResponse SourceInfo;
     TDeviceInfoResponse TargetInfo;
-    ui64 VolumeRequestId;
+    ui64 VolumeRequestId = 0;
 
     bool NeedToReply = true;
 
@@ -58,7 +59,8 @@ public:
         NActors::TActorId target,
         TString writerClientId,
         IBlockDigestGeneratorPtr blockDigestGenerator,
-        NActors::TActorId volumeActorId);
+        NActors::TActorId volumeActorId,
+        bool assignVolumeRequestId);
 
     // implements ICopyRangeOwner
     void ReadyToCopy(

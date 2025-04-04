@@ -39,9 +39,7 @@ TNonreplicatedPartitionMigrationActor::TNonreplicatedPartitionMigrationActor(
           std::move(rwClientId),
           statActorId,
           config->GetMaxMigrationIoDepth(),
-          config->GetAssignIdToWriteAndZeroRequestsEnabled()
-              ? srcConfig->GetParentActorId()
-              : TActorId())
+          srcConfig->GetParentActorId())
     , SrcConfig(std::move(srcConfig))
     , Migrations(std::move(migrations))
     , RdmaClient(std::move(rdmaClient))

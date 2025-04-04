@@ -16,7 +16,7 @@ void TCopyRangeActorCommon::Bootstrap(const NActors::TActorContext& ctx)
 {
     Become(&TThis::StateWork);
 
-    if (VolumeActorId) {
+    if (AssignVolumeRequestId) {
         GetVolumeRequestId(ctx);
         return;
     }
@@ -61,7 +61,7 @@ void TCopyRangeActorCommon::HandleVolumeRequestId(
         return;
     }
 
-    Owner->ReadyToCopy(ctx, msg->ReqId);
+    Owner->ReadyToCopy(ctx, msg->VolumeRequestId);
 }
 
 STFUNC(TCopyRangeActorCommon::StateWork)

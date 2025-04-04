@@ -47,7 +47,8 @@ public:
         NActors::TActorId target,
         TString writerClientId,
         IBlockDigestGeneratorPtr blockDigestGenerator,
-        NActors::TActorId volumeActorId);
+        NActors::TActorId volumeActorId,
+        bool assignVolumeRequestId);
 
     // implements ICopyRangeOwner
     void ReadyToCopy(
