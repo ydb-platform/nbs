@@ -337,9 +337,14 @@ void TNonreplicatedPartitionMigrationCommonActor::
         const TActorContext& ctx,
         TBlockRange64 migratedRange)
 {
-    const ui64 nextCachedProgress =
-        ProcessingBlocks.GetLastReportedProcessingIndex().value_or(0) +
-        Config->GetMigrationIndexCachingInterval();
+    if (!ProcessingBlocks.GetReportInfo()) {
+        ProcessingBlocks.CalculateNextReportedProcessingIndex(
+            Config->GetMigrationIndexCachingInterval(),
+            Config->GetMigrationIndexCachingInterval());
+    }
+
+    auto reportInfo = *ProcessingBlocks.GetReportInfo();
+    const ui64 nextCachedProgress = reportInfo.NextIndexToReport;
 
     if (nextCachedProgress <= migratedRange.End + 1) {
         MigrationThresholdAchieved = true;
@@ -361,8 +366,15 @@ void TNonreplicatedPartitionMigrationCommonActor::
     }
 
     ProcessingBlocks.SetLastReportedProcessingIndex(nextCachedProgress);
-    MigrationOwner->OnMigrationProgress(ctx, nextCachedProgress);
+    MigrationOwner->OnMigrationProgress(
+        ctx,
+        nextCachedProgress,
+        reportInfo.BlocksToProcessCount);
     MigrationThresholdAchieved = false;
+
+    ProcessingBlocks.CalculateNextReportedProcessingIndex(
+        Config->GetMigrationIndexCachingInterval(),
+        Config->GetMigrationIndexCachingInterval());
 }
 
 void TNonreplicatedPartitionMigrationCommonActor::

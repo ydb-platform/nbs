@@ -48,6 +48,10 @@ constexpr ui32 AgentCount = DeviceCountPerReplica * ReplicaCount;
 
 ////////////////////////////////////////////////////////////////////////////////
 
+struct TStorageConfigParams {
+    ui64 MigrationIndexCachingInterval = 0;
+};
+
 struct TTestEnv
 {
     TTestBasicRuntime& Runtime;
@@ -100,7 +104,10 @@ struct TTestEnv
         return devices;
     }
 
-    explicit TTestEnv(TTestBasicRuntime& runtime, bool localRequests)
+    TTestEnv(
+        TTestBasicRuntime& runtime,
+        bool localRequests,
+        NProto::TStorageServiceConfig configBase = {})
         : TTestEnv(
               runtime,
               ReplicaDevices(runtime, 0),
@@ -112,19 +119,18 @@ struct TTestEnv
               localRequests,
               {},   // freshDeviceIds
               {},   // outdatedDeviceIds
-              {}    // configBase
-          )
+              std::move(configBase))
     {}
 
     TTestEnv(
-        TTestBasicRuntime& runtime,
-        TDevices devices,
-        TVector<TDevices> replicas,
-        TMigrations migrations,
-        bool localRequests,
-        THashSet<TString> freshDeviceIds,
-        THashSet<TString> outdatedDeviceIds,
-        NProto::TStorageServiceConfig configBase)
+            TTestBasicRuntime& runtime,
+            TDevices devices,
+            TVector<TDevices> replicas,
+            TMigrations migrations,
+            bool localRequests,
+            THashSet<TString> freshDeviceIds,
+            THashSet<TString> outdatedDeviceIds,
+            NProto::TStorageServiceConfig configBase)
         : Runtime(runtime)
         , Devices(std::move(devices))
         , Replicas(std::move(replicas))
@@ -177,6 +183,7 @@ struct TTestEnv
             std::move(storageConfig),
             std::make_shared<NFeatures::TFeaturesConfig>(
                 NCloud::NProto::TFeaturesConfig()));
+
 
         TNonreplicatedPartitionConfig::TNonreplicatedPartitionConfigInitParams
             params{
@@ -839,6 +846,66 @@ Y_UNIT_TEST_SUITE(TLaggingAgentsReplicaProxyActorTest)
     {
         MultipleLaggingAgentsOnOneReplica(false);
         MultipleLaggingAgentsOnOneReplica(true);
+    }
+
+    Y_UNIT_TEST(ShouldReportMigrationIndexOnlyAfterSufficientProgress)
+    {
+
+        NProto::TStorageServiceConfig cfg;
+        cfg.SetMigrationIndexCachingInterval(2048);
+
+        TTestBasicRuntime runtime(AgentCount);
+        TTestEnv env(runtime, false, std::move(cfg));
+        TPartitionClient client(runtime, env.MirrorPartActorId);
+
+        const auto fullDiskRange = TBlockRange64::WithLength(
+            0,
+            DeviceBlockCount * DeviceCountPerReplica);
+        env.WriteBlocksToPartition(fullDiskRange, 'A');
+
+        // Second row in the first column is lagging.
+        env.AddLaggingAgent(runtime.GetNodeId(1), 0);
+
+        for (size_t blockIndex = DeviceBlockCount;
+             blockIndex < 2 * DeviceBlockCount;
+             blockIndex += 1024)
+        {
+            auto range = TBlockRange64::WithLength(blockIndex, 512);
+            env.WriteBlocksToController(0, range, 'B');
+            env.WriteBlocksToReplica(1, range, 'B');
+            env.WriteBlocksToReplica(2, range, 'B');
+        }
+
+        ui64 lastCleanBlocksAmountReported = 0;
+        runtime.SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
+                switch (event->GetTypeRewrite()) {
+                    case TEvVolumePrivate::EvUpdateLaggingAgentMigrationState: {
+                        auto* ev = static_cast<
+                            TEvVolumePrivate::
+                                TEvUpdateLaggingAgentMigrationState*>(
+                            event->GetBase());
+
+                        if (lastCleanBlocksAmountReported) {
+                            UNIT_ASSERT(
+                                ev->CleanBlockCount -
+                                lastCleanBlocksAmountReported >
+                                    2048 ||
+                                !ev->DirtyBlockCount);
+                        }
+
+                        lastCleanBlocksAmountReported = ev->CleanBlockCount;
+
+                        return TTestActorRuntime::EEventAction::DROP;
+                    }
+                }
+                return TTestActorRuntime::DefaultObserverFunc(event);
+            });
+
+        // Wait for migration finish of the first row.
+        env.WaitForMigrationFinishEvent();
+        UNIT_ASSERT(lastCleanBlocksAmountReported);
     }
 }
 

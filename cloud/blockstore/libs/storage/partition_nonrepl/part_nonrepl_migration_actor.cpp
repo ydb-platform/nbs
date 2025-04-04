@@ -42,6 +42,7 @@ TNonreplicatedPartitionMigrationActor::TNonreplicatedPartitionMigrationActor(
     , SrcConfig(std::move(srcConfig))
     , Migrations(std::move(migrations))
     , RdmaClient(std::move(rdmaClient))
+    , BlocksNeedToProcess(GetBlockCountNeedToBeProcessed())
 {}
 
 void TNonreplicatedPartitionMigrationActor::OnBootstrap(
@@ -103,18 +104,21 @@ void TNonreplicatedPartitionMigrationActor::OnMigrationError(
 
 void TNonreplicatedPartitionMigrationActor::OnMigrationProgress(
     const NActors::TActorContext& ctx,
-    ui64 migrationIndex)
+    ui64 migrationIndex,
+    ui64 dirtyBlocksMigratedSinceLastReport)
 {
     if (UpdatingMigrationState || MigrationFinished) {
         return;
     }
+
+    BlocksNeedToProcess -= dirtyBlocksMigratedSinceLastReport;
 
     NCloud::Send(
         ctx,
         SrcConfig->GetParentActorId(),
         std::make_unique<TEvVolume::TEvUpdateMigrationState>(
             migrationIndex,
-            GetBlockCountNeedToBeProcessed()));
+            BlocksNeedToProcess));
 
     UpdatingMigrationState = true;
 }

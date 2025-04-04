@@ -22,7 +22,15 @@ private:
     ui64 BlockCount;
     ui32 BlockSize;
     std::unique_ptr<TCompressedBitmap> BlockMap;
-    std::optional<ui64> LastReportedProcessingIndex;
+
+    struct TInfoToReport {
+        ui64 LastReportedProcessingIndex = 0;
+        ui64 NextIndexToReport = 0;
+        ui64 BlocksToProcessCount = 0;
+    };
+
+    std::optional<TInfoToReport> ReportInfo;
+
     ui64 CurrentProcessingIndex = 0;
     ui64 NextProcessingIndex = 0;
 
@@ -53,13 +61,26 @@ public:
 
     std::optional<ui64> GetLastReportedProcessingIndex() const
     {
-        return LastReportedProcessingIndex;
+        if (ReportInfo) {
+            return ReportInfo->LastReportedProcessingIndex;
+        }
+        return std::nullopt;
     }
 
     void SetLastReportedProcessingIndex(ui64 i)
     {
-        LastReportedProcessingIndex = i;
+        if (!ReportInfo) {
+            ReportInfo.emplace();
+        }
+        ReportInfo->LastReportedProcessingIndex = i;
     }
+
+    [[nodiscard]] std::optional<TInfoToReport> GetReportInfo()
+    {
+        return ReportInfo;
+    }
+
+    void CalculateNextReportedProcessingIndex(ui64 minStep, ui64 threshold);
 
 private:
     ui64 CalculateNextProcessingIndex() const;

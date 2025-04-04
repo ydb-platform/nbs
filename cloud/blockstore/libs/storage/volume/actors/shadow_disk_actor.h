@@ -130,7 +130,8 @@ public:
         TAutoPtr<NActors::IEventHandle>& ev) override;
     void OnMigrationProgress(
         const NActors::TActorContext& ctx,
-        ui64 migrationIndex) override;
+        ui64 migrationIndex,
+        ui64 dirtyBlocksMigratedSinceLastReport) override;
     void OnMigrationFinished(const NActors::TActorContext& ctx) override;
     void OnMigrationError(const NActors::TActorContext& ctx) override;
 

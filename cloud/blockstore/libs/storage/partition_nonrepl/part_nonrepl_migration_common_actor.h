@@ -51,7 +51,8 @@ public:
     // size is determined by the settings.
     virtual void OnMigrationProgress(
         const NActors::TActorContext& ctx,
-        ui64 migrationIndex) = 0;
+        ui64 migrationIndex,
+        ui64 dirtyBlocksMigratedSinceLastReport) = 0;
 
     // Notifies that the data migration was completed successfully.
     virtual void OnMigrationFinished(const NActors::TActorContext& ctx) = 0;
@@ -207,6 +208,10 @@ public:
     // Called from the inheritor to get the number of blocks that were
     // processed.
     ui64 GetProcessedBlockCount() const;
+
+    ui64 GetBlockCount() const {
+        return BlockCount;
+    }
 
     // IPoisonPillHelperOwner implementation
     void Die(const NActors::TActorContext& ctx) override

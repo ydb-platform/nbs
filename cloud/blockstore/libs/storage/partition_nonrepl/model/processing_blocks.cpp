@@ -124,6 +124,32 @@ ui64 TProcessingBlocks::GetProcessedBlockCount() const
     return BlockCount;
 }
 
+void TProcessingBlocks::CalculateNextReportedProcessingIndex(
+    ui64 minStep,
+    ui64 threshold)
+{
+    if (!ReportInfo) {
+        ReportInfo.emplace();
+    }
+    auto& reportInfo = *ReportInfo;
+    auto cur = reportInfo.LastReportedProcessingIndex;
+    auto nextStep = Min(BlockCount, cur + minStep);
+
+    auto blocksToProcessCount =
+        (nextStep - cur) - BlockMap->Count(cur, nextStep);
+    while (nextStep != BlockCount && blocksToProcessCount < threshold) {
+        auto nextnextStep = Min(BlockCount, nextStep + (minStep));
+        auto addCount =
+            (nextnextStep - nextStep) - BlockMap->Count(nextStep, nextnextStep);
+
+        blocksToProcessCount += addCount;
+        nextStep = nextnextStep;
+    }
+
+    reportInfo.NextIndexToReport = nextStep;
+    reportInfo.BlocksToProcessCount = blocksToProcessCount;
+}
+
 ui64 TProcessingBlocks::CalculateNextProcessingIndex() const
 {
     return Min(
