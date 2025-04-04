@@ -52,10 +52,6 @@ inputs:
     required: false
     default: 'yes'
     description: 'Use network cache'
-  nebius:
-    required: false
-    default: 'no'
-    description: 'Use nebius'
   truncate_enabled:
     required: false
     default: 'yes'
@@ -223,10 +219,7 @@ runs:
       run: |
         echo "::group::muted-tests"
         cat .github/config/muted_ya.txt
-        cat .github/config/muted_ya_nebius.txt
         MUTED_CONFIG=".github/config/muted_ya.txt"
-        # shellcheck disable=SC2193
-        [ "${{ inputs.nebius }}" == "yes" ] && MUTED_CONFIG=".github/config/muted_ya_nebius.txt"
         echo "::endgroup::"
         echo "::group::postprocess-junit"
         sudo -E -H -u github .github/scripts/tests/transform-ya-junit.py -i \

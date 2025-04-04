@@ -21,4 +21,3 @@ jobs:
       download_ya_archive: false
       image_prefix: 'gh-2204-auto'
       workflow_run_id: ${{ github.event.workflow_run.id }}
-      nebius: ${{ vars.GLOBAL_RUN_ON_NEBIUS }}
