@@ -4,10 +4,10 @@ inputs:
   parent_id:
     required: true
     description: "parent id"
-  new_instance_name:
+  instance_name:
     required: false
     description: "new instance name"
-  required_flavor:
+  flavor:
     required: false
     default: "heavy"
     description: "required flavor"
@@ -21,6 +21,9 @@ outputs:
   INSTANCE_ID:
     value: ${{ steps.result.outputs.INSTANCE_ID }}
     description: "runner instance id"
+  INSTANCE_NAME:
+    value: ${{ steps.result.outputs.INSTANCE_NAME }}
+    description: "runner instance name"
   RUNNER_FLAVOR:
     value: ${{ steps.result.outputs.RUNNER_FLAVOR }}
     description: "runner flavor"
@@ -43,16 +46,20 @@ runs:
 
     - name: set up path
       shell: bash
-      run: echo "PATH=$PATH:$HOME/nebius-cloud/bin:$HOME/.nebius/bin" >> $GITHUB_ENV
+      run: echo "PATH=$PATH:$HOME/.nebius/bin" >> $GITHUB_ENV
 
     - name: Check Nebius CLI
       shell: bash
       run: |
         set -x
-        [ ! -f "$HOME/.nebius/bin/nebius" ] && {
+         [ ! -f "$HOME/.nebius/bin/nebius" ] && {
           echo "Nebius CLI not installed"
           exit 1
-        }
+        } || echo "Nebius CLI already installed"
+        [ ! -f "$HOME/.nebius/config.yaml" ] && {
+          echo "Nebius CLI not configured"
+          exit 1
+        } || echo "Nebius CLI already configured"
     - name: Select nebius runner
       shell: bash
       id: select
@@ -65,10 +72,10 @@ runs:
           select(.metadata.labels.idle == "true") |
           select(.status.state == "RUNNING") |
           select(.metadata.labels."runner-flavor" == $flavor) |
-          "\(.metadata.id) \(.metadata.labels."runner-label") \((.metadata.labels | to_entries | map("\(.key)=\(.value)") | join(",")))"' > instances.list || touch instances.list
-        // check if instances.list is empty
+          "\(.metadata.id) \(.metadata.labels."runner-label") \((.metadata.labels | to_entries | map("\(.key)=\(.value)") | join(",")))"' | tee -a instances.list || touch instances.list
+        # check if instances.list is empty
         if [ -s instances.list ]; then
-          // select first instance
+          # select first instance
           cat instances.list | head -n 1 | while read instance_id github_label instance_labels; do
             echo "Selected id: $instance_id"
             echo "Selected github label: $github_label"
@@ -89,28 +96,23 @@ runs:
         PROJECT_FILTER: ${{ format('{0}-{1}', github.repository_owner, github.event.repository.name) }}
         OWNER: ${{ github.repository_owner }}
         REPO: ${{ github.event.repository.name }}
-        FLAVOR: ${{ inputs.required_flavor }}
+        FLAVOR: ${{ inputs.flavor }}
 
     - name: Update VM name and get runner settings
       shell: bash
-      if: ${{ inputs.instance_id != '' }}
+      if: ${{ steps.select.outputs.INSTANCE_ID != '' }}
       id: result
       run: |
         set -x
-        // change label idle to false
         LABELS=$(echo $INSTANCE_LABELS | sed -e 's/idle=true/idle=false/g')
-        // replace run= label with current run_id-run_attempt
         LABELS=$(echo $LABELS | sed -e "s/run=[^,]*//g" -e 's/,,/,/'g -e "s/$/,run=${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}/g")
-        // update pr label with current pr number if it is PR request, remove pr label if it is not, need to account for possible double comma
-        // if pr label is not present, add it
-        // if pr label is present, update it
         if [ "${PR_NUMBER}" == "no" ]; then
           LABELS=$(echo $LABELS | sed -e 's/pr=[^,]*//g' -e 's/,,/,/'g)
         else
           LABELS=$(echo $LABELS | sed -e "s/pr=[^,]*//g" -e 's/,,/,/'g -e "s/$/,pr=${PR_NUMBER}/g")
         fi
         LABELS=$(echo $LABELS | sed -e 's/,,/,/g')
-        nebius compute instance get --id $INSTANCE_ID --labels $LABELS --format json > instance.json
+        nebius compute instance get --id $INSTANCE_ID --format json > instance.json
 
         OLD_INSTANCE_NAME=$(jq -r '.metadata.name' instance.json)
         LABEL=$(jq -r '.metadata.labels."runner-label"' instance.json)
@@ -122,16 +124,20 @@ runs:
 
         INSTANCE_NAME=$OLD_INSTANCE_NAME
         [ -n "${NEW_INSTANCE_NAME}" ] && {
-          INSTANCE_NAME="running-${GITHUB_RUN_ID}-${PROJECT_FILTER}-${DATE}"
-          [ -n "${NEW_INSTANCE_NAME}" ] && INSTANCE_NAME="${NEW_INSTANCE_NAME}"
+          echo "New instance name: $NEW_INSTANCE_NAME"
+          INSTANCE_NAME="${NEW_INSTANCE_NAME}"
           echo "New instance name: $INSTANCE_NAME"
-          nebius compute instance update --id $INSTANCE_ID --name $INSTANCE_NAME
-        } || echo "Instance name not changed"
+          nebius compute instance update --id $INSTANCE_ID --name $NEW_INSTANCE_NAME --labels $LABELS
+        } || {
+          echo "Instance name not changed"
+          nebius compute instance update --id $INSTANCE_ID --labels $LABELS
+        }
 
         {
           echo LABEL=$LABEL;
           echo RUNNER_FLAVOR=$RUNNER_FLAVOR;
           echo INSTANCE_ID=$INSTANCE_ID;
+          echo INSTANCE_NAME=$INSTANCE_NAME;
           echo RUNNER_IPV4=$EXTERNAL_IPV4;
           echo RUNNER_LOCAL_IPV4=$LOCAL_IPV4;
           echo OLD_INSTANCE_NAME=$OLD_INSTANCE_NAME;
@@ -141,4 +147,4 @@ runs:
         INSTANCE_ID: ${{ steps.select.outputs.INSTANCE_ID }}
         INSTANCE_LABELS: ${{ steps.select.outputs.INSTANCE_LABELS }}
         NEW_INSTANCE_NAME: ${{ inputs.instance_name }}
-        PR_NUMBER: ${{ github.event.pull_request.head.sha != '' &&  github.event.pull_request.number || 'no' }}
+        PR_NUMBER: ${{ github.event.pull_request.number &&  github.event.pull_request.number || 'no' }}

@@ -182,14 +182,18 @@ jobs:
           sparse-checkout: '.github'
 
       - name: set up nebius cli
-        id: get-runner
+        id: cli
         uses: ./.github/actions/nebius_cli
         with:
           sa_json: ${{ secrets.NEW_NEBIUS_SA_JSON_CREDENTIALS }}
-          instance_id: ${{ runner.name }}  
-          set_new_instance_name: "no"
-
-
+      - name: Select nebius runner
+        id: get-runner
+        uses: ./.github/actions/nebius_runner_select
+        with:
+          parent_id: ${{ vars.NEBIUS_PARENT_ID }}
+          instance_name: ${{ github.event.pull_request.number &&  format('running-pr-{0}-{1}-{2}', github.event.pull_request.number, github.run_id, github.run_attempt) ||  format('running-{0}-{1}-{2}', github.event.workflow, github.run_id, github.run_attempt) }}
+          flavor: "heavy"
+          
       - name: Calculate threads
         id: calculate-threads
         if: env.nebius == 'true' && always() || false
@@ -289,11 +293,14 @@ jobs:
         with:
           submodules: false
           sparse-checkout: '.github'
-      - name: Rename VM to old name
+      - name: Setup nebius cli
         id: rename
         uses: ./.github/actions/nebius_cli
         with:
           sa_json: ${{ secrets.NEW_NEBIUS_SA_JSON_CREDENTIALS }}
-          instance_id: ${{ runner.name }}  
-          set_new_instance_name: "no"
-          new_instance_name: ${{ needs.provide-runner.outputs.old-instance-name }}
+      - name: Release VM
+        id: release
+        uses: ./.github/actions/nebius_runner_release
+        with:
+          instance_id: ${{ needs.provide-runner.outputs.instance-id }}
+          instance_name: ${{ needs.provide-runner.outputs.old-instance-name }}

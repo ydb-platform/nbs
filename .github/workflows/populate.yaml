@@ -22,9 +22,12 @@ on:
         type: number
         required: true
         default: 1023
-      name_prefix:
-        description: 'Name prefix'
-        type: string
+      flavor:
+        description: 'Runner flavor'
+        type: choice
+        options:
+          - heavy
+          - light
         required: true
         default: 'heavy'
 
@@ -54,20 +57,23 @@ jobs:
       - name: List VMs and prepare removal (vms older than 24h) and creation lists
         id: list
         run: |
-          nebius compute instance list --parent-id $PARENT_ID  --format json | jq -r '.items[] | [.metadata.id, .metadata.name, .status.state] | @tsv' > running_vms.txt || touch running_vms.txt
-          cat running_vms.txt
-          cat running_vms.txt| grep RUNNING | grep $FILTER | grep $PROJECT_FILTER > running_vms_filtered.txt || touch running_vms_filtered.txt
-          cat running_vms_filtered.txt
-          wc -l running_vms.txt running_vms_filtered.txt
-          RUNNING_VMS_COUNT=$(wc -l running_vms_filtered.txt | awk '{print $1}')
+          nebius compute instance list --parent-id ${PARENT_ID} --format json |  jq --arg owner ${OWNER} --arg repo ${REPO} --arg flavor ${FLAVOR} -r '
+            .items[] |
+            select(.metadata.labels.repo == $repo) |
+            select(.metadata.labels.owner == $owner) |
+            select(.metadata.labels.idle == "true") |
+            select(.status.state == "RUNNING") |
+            select(.metadata.labels."runner-flavor" == $flavor) |
+          "\(.metadata.created_at) \(.metadata.id) \(.metadata.name) \(.status.state) \(.metadata.labels."runner-label") \((.metadata.labels | to_entries | map("\(.key)=\(.value)") | join(",")))"' > instances.list || touch instances.list
+
+          RUNNING_VMS_COUNT=$(wc -l instances.list | awk '{print $1}')
           VMS_TO_REMOVE='[]'
           echo $VMS_TO_REMOVE > vms_to_remove.json
           echo 0 > vms_count_to_remove
           VMS_COUNT_TO_REMOVE=0
           DATE=$(date +%s);
-          cat running_vms_filtered.txt | while read vm_id vm_name vm_state; do
+          while read vm_creation_date vm_id vm_name vm_state vm_runner_label vm_labels; do
             echo "Checking $vm_id"
-            vm_creation_date=$(nebius compute instance get --id $vm_id --format json | jq -r '.metadata.created_at')
             vm_creation_date_ts=$(date -u -d "$vm_creation_date" +%s)
             echo "VM $vm_id created at $vm_creation_date ($vm_creation_date_ts)"
             echo "VM $vm_id is $((DATE - vm_creation_date_ts)) seconds old"
@@ -76,10 +82,8 @@ jobs:
               VMS_TO_REMOVE=$(echo $VMS_TO_REMOVE | jq --arg vm_id $vm_id '. + [$vm_id]')
               VMS_COUNT_TO_REMOVE=$(($VMS_COUNT_TO_REMOVE + 1))
               echo $VMS_TO_REMOVE > vms_to_remove.json
-              echo $VMS_COUNT_TO_REMOVE > vms_count_to_remove
             fi
-          done
-          VMS_COUNT_TO_REMOVE=$(cat vms_count_to_remove)
+          done < instances.list
           echo "VMS_TO_REMOVE=$(cat vms_to_remove.json)"
           echo "VMS_COUNT_TO_REMOVE=$VMS_COUNT_TO_REMOVE"
           echo "MAX_VMS_TO_CREATE=$MAX_VMS_TO_CREATE"
@@ -91,22 +95,19 @@ jobs:
             echo "[]" > vms_to_create.json;
           else
             for i in $(seq 1 $NUMBER_VMS_TO_CREATE); do
-              echo "${FILTER}-${GITHUB_RUN_ID}-${PROJECT_FILTER}-${DATE}-$i";
+              echo "${FLAVOR}-${GITHUB_REPOSITORY_OWNER}-${{ github.event.repository.name }}-$i";
             done | jq -R -s 'split("\n") | map(select(. != ""))' > vms_to_create.json
           fi
-          echo VMS_TO_CREATE=$(cat vms_to_create.json)
           {
             echo RUNNING_VMS_COUNT=$RUNNING_VMS_COUNT;
-            echo NUMBER_VMS_TO_CREATE=$NUMBER_VMS_TO_CREATE;
             echo VMS_TO_CREATE=$(cat vms_to_create.json);
             echo VMS_TO_REMOVE=$(cat vms_to_remove.json);
             echo DATE=$DATE;
-          } >> $GITHUB_OUTPUT
+          } | tee -a $GITHUB_OUTPUT
         env:
           PARENT_ID: ${{ vars.NEBIUS_PARENT_ID }}
           MAX_VMS_TO_CREATE: ${{ github.event.inputs.max_vms_to_create }}
-          FILTER: ${{ github.event.inputs.name_prefix }}
-          PROJECT_FILTER: ${{ format('{0}-{1}', github.repository_owner, github.event.repository.name) }}
+          FLAVOR: ${{ github.event.inputs.flavor }}
           VMS_OLDER_THAN: ${{ github.event.inputs.vms_ttl }}
   remove_vms:
     needs: calculate_missing_vms
@@ -166,8 +167,8 @@ jobs:
           vm_disk_size: ${{ github.event.inputs.disk_size }}
           vm_subnet: ${{ vars.NEBIUS_SUBNET_ID }}
           vm_image: ${{ vars.NEBIUS_IMAGE_ID_2204 }}
-          vm_labels: ${{ format('run={0}-{1},repo={2},owner={3}', github.run_id, github.run_attempt, github.event.repository.name, github.repository_owner) }}
-          vm_flavor: ${{ inputs.name_prefix }}
+          vm_labels: ${{ format('run={0}-{1},repo={2},owner={3},idle=true', github.run_id, github.run_attempt, github.event.repository.name, github.repository_owner) }}
+          vm_flavor: ${{ inputs.flavor }}
           vm_user_passwd: ${{ secrets.VM_USER_PASSWD }}
           vm_allow_downgrade: 'no'
     

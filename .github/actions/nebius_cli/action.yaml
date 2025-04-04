@@ -15,7 +15,7 @@ runs:
   
     - name: set up path
       shell: bash
-      run: echo "PATH=$PATH:$HOME/nebius-cloud/bin:$HOME/.nebius/bin" >> $GITHUB_ENV
+      run: echo "PATH=$PATH:$HOME/.nebius/bin" >> $GITHUB_ENV
 
     - name: Set up Nebius CLI
       shell: bash
