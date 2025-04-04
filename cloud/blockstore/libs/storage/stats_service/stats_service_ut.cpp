@@ -38,7 +38,7 @@ namespace {
 
 static const TString DefaultDiskId = "path_to_test_volume";
 static const TString DefaultCloudId = "test_cloud";
-static const TString DefaultFolderId = "test_cloud";
+static const TString DefaultFolderId = "test_folder";
 
 ////////////////////////////////////////////////////////////////////////////////
 
