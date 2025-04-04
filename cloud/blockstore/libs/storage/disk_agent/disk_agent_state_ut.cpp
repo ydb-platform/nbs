@@ -1818,9 +1818,6 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
         // restart
         state = createState();
 
-        // reader-2 is broken
-        UNIT_ASSERT_EQUAL(1, *restoreError);
-
         {
             UNIT_ASSERT_EXCEPTION_SATISFIES(
                 write("writer-1", devices[0]),
@@ -1839,13 +1836,10 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
                 });
         }
 
+        // Should be ok because we delete only third device.
         {
-            UNIT_ASSERT_EXCEPTION_SATISFIES(
-                read("reader-2", devices[2]),
-                TServiceError,
-                [] (auto& e) {
-                    return e.GetCode() == E_BS_INVALID_SESSION;
-                });
+            auto error = read("reader-2", devices[2]).GetError();
+            UNIT_ASSERT_VALUES_EQUAL_C(S_OK, error.GetCode(), error);
         }
 
         {

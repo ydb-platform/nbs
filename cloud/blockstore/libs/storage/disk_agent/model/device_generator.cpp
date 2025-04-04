@@ -2,6 +2,7 @@
 
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
+#include <util/generic/hash_set.h>
 #include <util/string/printf.h>
 
 #include <library/cpp/digest/md5/md5.h>
@@ -78,6 +79,16 @@ TVector<NProto::TFileDeviceArgs> TDeviceGenerator::ExtractResult()
     tmp.swap(Result);
 
     return tmp;
+}
+
+void TDeviceGenerator::AddPossibleUUIDSForDevice(
+    const NProto::TStorageDiscoveryConfig::TPoolConfig& poolConfig,
+    ui32 maxDeviceNumber,
+    THashSet<TString>& setToAddUUIDs)
+{
+    for (ui32 i = 0; i < maxDeviceNumber; ++i) {
+        setToAddUUIDs.emplace(CreateDeviceId(i, poolConfig.GetHashSuffix()));
+    }
 }
 
 TString TDeviceGenerator::CreateDeviceId(

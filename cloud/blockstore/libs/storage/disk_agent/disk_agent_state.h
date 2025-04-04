@@ -24,6 +24,7 @@
 #include <library/cpp/threading/future/future.h>
 
 #include <util/generic/hash.h>
+#include <util/generic/hash_set.h>
 #include <util/generic/vector.h>
 
 namespace NCloud::NBlockStore::NStorage {
@@ -59,6 +60,8 @@ private:
 
     THashMap<TString, TDeviceState> Devices;
     TDeviceClientPtr DeviceClient;
+
+    THashSet<TString> DeviceUUIDsToIgnoreNotFoundError;
 
     ui32 InitErrorsCount = 0;
     bool PartiallySuspended = false;

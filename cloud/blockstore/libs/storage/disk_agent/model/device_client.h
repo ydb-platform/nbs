@@ -68,7 +68,8 @@ public:
         NProto::EVolumeAccessMode accessMode,
         ui64 mountSeqNumber,
         const TString& diskId,
-        ui32 volumeGeneration) const;
+        ui32 volumeGeneration,
+        TVector<TString>& unknownDevices) const;
 
     NCloud::NProto::TError ReleaseDevices(
         const TVector<TString>& uuids,
