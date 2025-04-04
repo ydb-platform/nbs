@@ -366,11 +366,11 @@ func RequireCheckpointsDoNotExist(
 	require.Empty(t, checkpoints)
 }
 
-func WaitForCheckpointDoesNotExist(
+func waitUntilCheckpointsMeetRequirements(
 	t *testing.T,
 	ctx context.Context,
 	diskID string,
-	checkpointID string,
+	checkRequirements func([]string) bool,
 ) {
 
 	nbsClient := NewNbsTestingClient(t, ctx, "zone-a")
@@ -381,15 +381,48 @@ func WaitForCheckpointDoesNotExist(
 		checkpoints, err := nbsClient.GetCheckpoints(ctx, diskID)
 		require.NoError(t, err)
 
-		if !slices.Contains(checkpoints, checkpointID) {
+		if checkRequirements(checkpoints) {
 			return
 		}
 
 		logging.Debug(
 			ctx,
-			"WaitForCheckpointDoesNotExist proceeding to next iteration",
+			"waitUntilCheckpointsMeetRequirements proceeding to next iteration",
 		)
 	}
+}
+
+func WaitForCheckpointDoesNotExist(
+	t *testing.T,
+	ctx context.Context,
+	diskID string,
+	checkpointID string,
+) {
+
+	waitUntilCheckpointsMeetRequirements(
+		t,
+		ctx,
+		diskID,
+		func(checkpoints []string) bool {
+			return !slices.Contains(checkpoints, checkpointID)
+		},
+	)
+}
+
+func WaitForNoCheckpointsExist(
+	t *testing.T,
+	ctx context.Context,
+	diskID string,
+) {
+
+	waitUntilCheckpointsMeetRequirements(
+		t,
+		ctx,
+		diskID,
+		func(checkpoints []string) bool {
+			return len(checkpoints) == 0
+		},
+	)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
