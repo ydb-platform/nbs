@@ -62,7 +62,7 @@ runs:
                 build_threads=80
             ;;
             "64vcpu-256gb")
-                test_threads=10
+                test_threads=8
                 build_threads=64
             ;;
             "48vcpu-192gb")
@@ -125,7 +125,7 @@ runs:
                 build_threads=80
             ;;
             "64vcpu-256gb")
-                test_threads=16
+                test_threads=14
                 build_threads=64
             ;;
             "48vcpu-192gb")
