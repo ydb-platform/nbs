@@ -152,10 +152,13 @@ void SendRandomRequest(ITestVhostDevice& device)
 {
     thread_local auto eng = CreateRandomEngine();
 
-    std::uniform_int_distribution<ui64> dist1(0, 1);
-    EBlockStoreRequest type = dist1(eng) == 0
-        ? EBlockStoreRequest::WriteBlocks
-        : EBlockStoreRequest::ReadBlocks;
+    std::uniform_int_distribution<ui64> dist1(0, 2);
+
+    auto request_type = dist1(eng);
+    EBlockStoreRequest type =
+        request_type == 0   ? EBlockStoreRequest::WriteBlocks
+        : request_type == 1 ? EBlockStoreRequest::ReadBlocks
+                            : EBlockStoreRequest::ZeroBlocks;
 
     std::uniform_int_distribution<ui64> dist2(0, 7999);
     ui64 from = dist2(eng) * 512;

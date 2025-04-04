@@ -138,6 +138,7 @@ public:
             ui32 blockSize,
             ui64 blocksCount,
             ui32 queuesCount,
+            bool enableDiscard,
             void* cookie,
             const TVhostCallbacks& callbacks)
         : VhdQueue(vhdQueue)
@@ -153,6 +154,9 @@ public:
         VhdBdevInfo.num_queues = queuesCount;
         VhdBdevInfo.map_cb = callbacks.MapMemory;
         VhdBdevInfo.unmap_cb = callbacks.UnmapMemory;
+        if (enableDiscard) {
+            VhdBdevInfo.features |= VHD_BDEV_F_WRITE_ZEROES;
+        }
     }
 
     ~TVhostDevice()
@@ -249,6 +253,7 @@ public:
         ui32 blockSize,
         ui64 blocksCount,
         ui32 queuesCount,
+        bool enableDiscard,
         void* cookie,
         const TVhostCallbacks& callbacks) override
     {
@@ -259,6 +264,7 @@ public:
             blockSize,
             blocksCount,
             queuesCount,
+            enableDiscard,
             cookie,
             callbacks);
     }
@@ -294,6 +300,9 @@ private:
                 break;
             case VHD_BDEV_WRITE:
                 type = EBlockStoreRequest::WriteBlocks;
+                break;
+            case VHD_BDEV_WRITE_ZEROES:
+                type = EBlockStoreRequest::ZeroBlocks;
                 break;
             default:
                 STORAGE_ERROR("Unexpected vhost request type: " <<
