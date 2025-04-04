@@ -35,13 +35,16 @@ class TCopyRangeActorCommon
 {
     ICopyRangeOwner* Owner;
     const NActors::TActorId VolumeActorId;
+    const bool AssignVolumeRequestId;
 
 public:
     TCopyRangeActorCommon(
-        ICopyRangeOwner* owner,
-        NActors::TActorId volumeActorId)
+            ICopyRangeOwner* owner,
+            NActors::TActorId volumeActorId,
+            bool assignVolumeRequestId)
         : Owner(owner)
         , VolumeActorId(volumeActorId)
+        , AssignVolumeRequestId(assignVolumeRequestId)
     {}
 
     void Bootstrap(const NActors::TActorContext& ctx);

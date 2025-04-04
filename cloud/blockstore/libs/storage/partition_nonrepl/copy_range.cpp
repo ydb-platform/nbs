@@ -25,8 +25,9 @@ TCopyRangeActor::TCopyRangeActor(
         TActorId target,
         TString writerClientId,
         IBlockDigestGeneratorPtr blockDigestGenerator,
-        NActors::TActorId volumeActorId)
-    : TCopyRangeActorCommon(this, volumeActorId)
+        NActors::TActorId volumeActorId,
+        bool assignVolumeRequestId)
+    : TCopyRangeActorCommon(this, volumeActorId, assignVolumeRequestId)
     , RequestInfo(std::move(requestInfo))
     , BlockSize(blockSize)
     , Range(range)
@@ -38,7 +39,9 @@ TCopyRangeActor::TCopyRangeActor(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void TCopyRangeActor::ReadyToCopy(const NActors::TActorContext& ctx, ui64 volumeRequestId)
+void TCopyRangeActor::ReadyToCopy(
+    const NActors::TActorContext& ctx,
+    ui64 volumeRequestId)
 {
     TRequestScope timer(*RequestInfo);
 

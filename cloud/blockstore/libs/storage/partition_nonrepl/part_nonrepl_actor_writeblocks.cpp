@@ -262,8 +262,7 @@ void TNonreplicatedPartitionActor::HandleWriteBlocks(
     }
 
     const bool assignVolumeRequestId =
-        Config->GetAssignIdToWriteAndZeroRequestsEnabled() &&
-        !msg->Record.GetHeaders().GetIsBackgroundRequest();
+        Config->GetAssignIdToWriteAndZeroRequestsEnabled();
 
     auto actorId = NCloud::Register<TDiskAgentWriteActor>(
         ctx,
@@ -378,8 +377,7 @@ void TNonreplicatedPartitionActor::HandleWriteBlocksLocal(
     msg->Record.Sglist.SetSgList({});
 
     const bool assignVolumeRequestId =
-        Config->GetAssignIdToWriteAndZeroRequestsEnabled() &&
-        !msg->Record.GetHeaders().GetIsBackgroundRequest();
+        Config->GetAssignIdToWriteAndZeroRequestsEnabled();
 
     auto actorId = NCloud::Register<TDiskAgentWriteActor>(
         ctx,

@@ -26,7 +26,8 @@ TResyncRangeActor::TResyncRangeActor(
         TString writerClientId,
         IBlockDigestGeneratorPtr blockDigestGenerator,
         NProto::EResyncPolicy resyncPolicy,
-        NActors::TActorId volumeActorId)
+        NActors::TActorId volumeActorId,
+        bool assignVolumeRequestId)
     : RequestInfo(std::move(requestInfo))
     , BlockSize(blockSize)
     , Range(range)
@@ -35,6 +36,7 @@ TResyncRangeActor::TResyncRangeActor(
     , BlockDigestGenerator(std::move(blockDigestGenerator))
     , ResyncPolicy(resyncPolicy)
     , VolumeActorId(volumeActorId)
+    , AssignVolumeRequestId(assignVolumeRequestId)
 {
     using EResyncPolicy = NProto::EResyncPolicy;
     Y_DEBUG_ABORT_UNLESS(
@@ -126,7 +128,7 @@ void TResyncRangeActor::CompareChecksums(const TActorContext& ctx)
         }
     }
 
-    if (VolumeActorId) {
+    if (AssignVolumeRequestId) {
         ResyncIndex = majorIdx;
         GetVolumeRequestId(ctx);
         return;

@@ -53,6 +53,7 @@ std::unique_ptr<NActors::IActor> MakeResyncRangeActor(
     IBlockDigestGeneratorPtr blockDigestGenerator,
     NProto::EResyncPolicy resyncPolicy,
     EBlockRangeChecksumStatus checksumStatus,
-    NActors::TActorId volumeActorId);
+    NActors::TActorId volumeActorId,
+    bool assignVolumeRequestId);
 
 }   // namespace NCloud::NBlockStore::NStorage

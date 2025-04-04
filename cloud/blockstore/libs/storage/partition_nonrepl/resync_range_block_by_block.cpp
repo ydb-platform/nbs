@@ -137,7 +137,8 @@ TResyncRangeBlockByBlockActor::TResyncRangeBlockByBlockActor(
         IBlockDigestGeneratorPtr blockDigestGenerator,
         NProto::EResyncPolicy resyncPolicy,
         bool performChecksumPreliminaryCheck,
-        NActors::TActorId volumeActorId)
+        NActors::TActorId volumeActorId,
+        bool assignVolumeRequestId)
     : RequestInfo(std::move(requestInfo))
     , BlockSize(blockSize)
     , Range(range)
@@ -147,6 +148,7 @@ TResyncRangeBlockByBlockActor::TResyncRangeBlockByBlockActor(
     , ResyncPolicy(resyncPolicy)
     , PerformChecksumPreliminaryCheck(performChecksumPreliminaryCheck)
     , VolumeActorId(volumeActorId)
+    , AssignVolumeRequestId(assignVolumeRequestId)
 {
     using EResyncPolicy = NProto::EResyncPolicy;
     Y_DEBUG_ABORT_UNLESS(
@@ -306,7 +308,7 @@ void TResyncRangeBlockByBlockActor::PrepareWriteBuffers(
 void TResyncRangeBlockByBlockActor::StartReadPhase(
     const NActors::TActorContext& ctx)
 {
-    if (VolumeActorId) {
+    if (AssignVolumeRequestId) {
         GetVolumeRequestId(ctx);
         return;
     }

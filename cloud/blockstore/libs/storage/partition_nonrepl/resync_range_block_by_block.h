@@ -32,6 +32,7 @@ private:
     const NProto::EResyncPolicy ResyncPolicy;
     const bool PerformChecksumPreliminaryCheck;
     const NActors::TActorId VolumeActorId;
+    const bool AssignVolumeRequestId;
 
     TVector<size_t> ActorsToResync;
     ui32 ResyncedCount = 0;
@@ -57,7 +58,8 @@ public:
         IBlockDigestGeneratorPtr blockDigestGenerator,
         NProto::EResyncPolicy resyncPolicy,
         bool performChecksumPreliminaryCheck,
-        NActors::TActorId volumeActorId);
+        NActors::TActorId volumeActorId,
+        bool assignVolumeRequestId);
 
     void Bootstrap(const NActors::TActorContext& ctx);
 

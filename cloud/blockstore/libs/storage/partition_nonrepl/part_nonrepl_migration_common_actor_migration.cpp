@@ -115,7 +115,8 @@ void TNonreplicatedPartitionMigrationCommonActor::MigrateRange(
             DstActorId,
             RWClientId,
             BlockDigestGenerator,
-            VolumeActorId);
+            VolumeActorId,
+            Config->GetAssignIdToWriteAndZeroRequestsEnabled());
     } else {
         NCloud::Register<TCopyRangeActor>(
             ctx,
@@ -129,7 +130,8 @@ void TNonreplicatedPartitionMigrationCommonActor::MigrateRange(
             DstActorId,
             RWClientId,
             BlockDigestGenerator,
-            VolumeActorId);
+            VolumeActorId,
+            Config->GetAssignIdToWriteAndZeroRequestsEnabled());
     }
 }
 

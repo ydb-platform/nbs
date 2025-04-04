@@ -185,9 +185,7 @@ void TNonreplicatedPartitionRdmaActor::HandleZeroBlocks(
 
     TVector<TDeviceRequestInfo> requests;
 
-    const bool assignVolumeRequestId =
-        AssignIdToWriteAndZeroRequestsEnabled &&
-        !msg->Record.GetHeaders().GetIsBackgroundRequest();
+    const bool assignVolumeRequestId = AssignIdToWriteAndZeroRequestsEnabled;
 
     for (auto& r: deviceRequests) {
         auto ep = AgentId2Endpoint[r.Device.GetAgentId()];

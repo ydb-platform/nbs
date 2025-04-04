@@ -219,8 +219,7 @@ void TNonreplicatedPartitionActor::HandleZeroBlocks(
     }
 
     const bool assignVolumeRequestId =
-        Config->GetAssignIdToWriteAndZeroRequestsEnabled() &&
-        !msg->Record.GetHeaders().GetIsBackgroundRequest();
+        Config->GetAssignIdToWriteAndZeroRequestsEnabled();
 
     auto actorId = NCloud::Register<TDiskAgentZeroActor>(
         ctx,

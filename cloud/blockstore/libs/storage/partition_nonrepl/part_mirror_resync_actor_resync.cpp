@@ -114,11 +114,6 @@ void TMirrorPartitionResyncActor::ResyncNextRange(const TActorContext& ctx)
         }
     }
 
-    auto volumeActorId =
-    Config->GetAssignIdToWriteAndZeroRequestsEnabled()
-        ? State.GetReplicaInfos()[0].Config->GetParentActorId()
-        : TActorId();
-
     auto resyncActor = MakeResyncRangeActor(
         std::move(requestInfo),
         PartConfig->GetBlockSize(),
@@ -128,7 +123,8 @@ void TMirrorPartitionResyncActor::ResyncNextRange(const TActorContext& ctx)
         BlockDigestGenerator,
         ResyncPolicy,
         EBlockRangeChecksumStatus::Unknown,
-        volumeActorId);
+        State.GetReplicaInfos()[0].Config->GetParentActorId(),
+        Config->GetAssignIdToWriteAndZeroRequestsEnabled());
     ctx.Register(resyncActor.release());
 }
 
