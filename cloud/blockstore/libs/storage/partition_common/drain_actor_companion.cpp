@@ -10,6 +10,8 @@
 #include <util/generic/string.h>
 #include <util/string/builder.h>
 
+#include <ranges>
+
 namespace NCloud::NBlockStore::NStorage {
 
 LWTRACE_USING(BLOCKSTORE_STORAGE_PROVIDER);
@@ -68,11 +70,21 @@ void TDrainActorCompanion::HandleDrain(
     ProcessDrainRequests(ctx);
 }
 
+void TDrainActorCompanion::AddDrainRangeRequest(
+    const NActors::TActorContext& ctx,
+    TRequestInfoPtr reqInfo,
+    TBlockRange64 range)
+{
+    DrainRangeRequests.emplace_back(std::move(reqInfo), range);
+    ProcessDrainRangeRequests(ctx);
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 void TDrainActorCompanion::ProcessDrainRequests(
     const NActors::TActorContext& ctx)
 {
+    ProcessDrainRangeRequests(ctx);
     if (RequestsInProgress.WriteRequestInProgress()) {
         return;
     }
@@ -97,6 +109,60 @@ void TDrainActorCompanion::ProcessDrainRequests(
     }
 
     DrainRequests.clear();
+}
+
+void TDrainActorCompanion::ProcessDrainRangeRequests(const NActors::TActorContext& ctx)
+{
+    TVector<ui64> reqsToErase;
+
+    for (size_t i = 0;  i < DrainRangeRequests.size(); ++i) {
+        auto& drainReq = DrainRangeRequests[i];
+
+        if(RequestsInProgress.HasWriteRequestInRange(drainReq.RangeToDrain)) {
+            continue;
+        }
+
+        NCloud::Reply(
+            ctx,
+            *drainReq.RequestInfo,
+            std::make_unique<
+                NPartition::TEvPartition::TEvBlockAndDrainRangeResponse>());
+        reqsToErase.emplace_back(i);
+    }
+    for (auto i : reqsToErase | std::views::reverse) {
+        std::swap(DrainRangeRequests.back(), DrainRangeRequests[i]);
+        DrainRangeRequests.pop_back();
+    }
+}
+
+void TDrainActorCompanion::CancelDrainRangeRequest(
+    const NActors::TActorContext& ctx,
+    TBlockRange64 range,
+    NActors::TActorId sender)
+{
+    TVector<ui64> reqsToErase;
+    for (size_t i = 0; i < DrainRangeRequests.size(); ++i) {
+        auto& drainReq = DrainRangeRequests[i];
+
+        if (DrainRangeRequests[i].RangeToDrain != range ||
+            DrainRangeRequests[i].RequestInfo->Sender != sender)
+        {
+            continue;
+        }
+
+        NCloud::Reply(
+            ctx,
+            *drainReq.RequestInfo,
+            std::make_unique<
+                NPartition::TEvPartition::TEvBlockAndDrainRangeResponse>(
+                MakeError(E_CANCELLED)));
+        reqsToErase.emplace_back(i);
+    }
+
+    for (auto i: reqsToErase | std::views::reverse) {
+        std::swap(DrainRangeRequests.back(), DrainRangeRequests[i]);
+        DrainRangeRequests.pop_back();
+    }
 }
 
 }  // namespace NCloud::NBlockStore::NStorage

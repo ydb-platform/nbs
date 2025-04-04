@@ -1,5 +1,9 @@
 #pragma once
 
+#include "request_bounds_tracker.h"
+
+#include <cloud/blockstore/libs/common/block_range.h>
+
 #include <util/generic/hash.h>
 
 namespace NCloud::NBlockStore::NStorage {
@@ -24,7 +28,8 @@ class TEmptyType
 class IRequestsInProgress
 {
 public:
-    virtual bool WriteRequestInProgress() const = 0;
+    [[nodiscard]] virtual bool WriteRequestInProgress() const = 0;
+    [[nodiscard]] virtual bool HasWriteRequestInRange(TBlockRange64 r) const = 0;
 };
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -37,19 +42,29 @@ public:
     {
         TValue Value;
         bool Write = false;
+        std::optional<TBlockRange64> RequestRange;
     };
     using TRequests = THashMap<TKey, TRequest>;
 
 private:
     EAllowedRequests AllowedRequests;
+
+    std::optional<TRequestBoundsTracker> WriteRequestRangesTracker;
+
     TRequests RequestsInProgress;
     size_t WriteRequestCount = 0;
     TKey RequestIdentityKeyCounter = {};
 
 public:
-    TRequestsInProgress(EAllowedRequests allowedRequests)
+    explicit TRequestsInProgress(
+            EAllowedRequests allowedRequests,
+            std::optional<ui64> blockSize = std::nullopt)
         : AllowedRequests(allowedRequests)
-    {}
+    {
+        if (blockSize) {
+            WriteRequestRangesTracker.emplace(*blockSize);
+        }
+    }
 
     ~TRequestsInProgress() = default;
 
@@ -69,7 +84,9 @@ public:
         Y_DEBUG_ABORT_UNLESS(
             AllowedRequests == EAllowedRequests::ReadOnly ||
             AllowedRequests == EAllowedRequests::ReadWrite);
-        RequestsInProgress.emplace(key, TRequest{std::move(value), false});
+        RequestsInProgress.emplace(
+            key,
+            TRequest{.Value = std::move(value), .Write = false});
     }
 
     TKey AddReadRequest(TValue value)
@@ -85,8 +102,30 @@ public:
         Y_DEBUG_ABORT_UNLESS(
             AllowedRequests == EAllowedRequests::WriteOnly ||
             AllowedRequests == EAllowedRequests::ReadWrite);
-        RequestsInProgress.emplace(key, TRequest{std::move(value), true});
+        RequestsInProgress.emplace(
+            key,
+            TRequest{.Value = std::move(value), .Write = true});
         ++WriteRequestCount;
+    }
+
+    void AddWriteRequestWithBlockRangeTracking(
+        const TKey& key,
+        TBlockRange64 range,
+        TValue value = {})
+    {
+        Y_DEBUG_ABORT_UNLESS(!RequestsInProgress.contains(key));
+        Y_DEBUG_ABORT_UNLESS(
+            AllowedRequests == EAllowedRequests::WriteOnly ||
+            AllowedRequests == EAllowedRequests::ReadWrite);
+        RequestsInProgress.emplace(
+            key,
+            TRequest{
+                .Value = std::move(value),
+                .Write = true,
+                .RequestRange = range});
+        ++WriteRequestCount;
+
+        WriteRequestRangesTracker->AddRequest(range);
     }
 
     TKey AddWriteRequest(TValue value)
@@ -123,6 +162,10 @@ public:
         if (it->second.Write) {
             --WriteRequestCount;
         }
+        if (it->second.RequestRange) {
+            WriteRequestRangesTracker->RemoveRequest(
+                *it->second.RequestRange);
+        }
         TValue res = std::move(it->second.Value);
         RequestsInProgress.erase(it);
         return res;
@@ -143,9 +186,14 @@ public:
         return GetRequestCount() == 0;
     }
 
-    bool WriteRequestInProgress() const override
+    [[nodiscard]] bool WriteRequestInProgress() const override
     {
         return WriteRequestCount != 0;
+    }
+
+    [[nodiscard]] bool HasWriteRequestInRange(TBlockRange64 r) const override
+    {
+        return WriteRequestRangesTracker->OverlapsSomeRange(r);
     }
 };
 

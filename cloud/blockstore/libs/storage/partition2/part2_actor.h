@@ -246,6 +246,12 @@ private:
         return WriteAndZeroRequestsInProgress != 0;
     }
 
+    bool HasWriteRequestInRange(TBlockRange64 r)  const override
+    {
+        Y_UNUSED(r);
+        Y_ABORT_UNLESS(0);
+    }
+
     template <typename TMethod>
     void HandleWriteBlocksRequest(
         const typename TMethod::TRequest::TPtr& ev,

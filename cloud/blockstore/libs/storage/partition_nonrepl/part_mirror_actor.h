@@ -69,7 +69,8 @@ private:
 
     THashSet<ui64> DirtyReadRequestIds;
     TRequestsInProgress<ui64, TRequestCtx> RequestsInProgress{
-        EAllowedRequests::ReadWrite};
+        EAllowedRequests::ReadWrite,
+        State.GetBlockSize()};
     TDrainActorCompanion DrainActorCompanion{
         RequestsInProgress,
         DiskId};
@@ -91,6 +92,34 @@ private:
     bool ResyncRangeStarted = false;
     ui32 ChecksumMismatches = 0;
     ui64 RequestIdentifierCounter = 0;
+
+    class TRangeBlocker
+    {
+        TRequestBoundsTracker RangeChecker;
+
+    public:
+
+        explicit TRangeBlocker(ui64 blockSize)
+            : RangeChecker(blockSize)
+        {}
+
+        void BlockRange(TBlockRange64 r)
+        {
+            RangeChecker.AddRequest(r);
+        }
+
+        void ReleaseRange(TBlockRange64 r)
+        {
+            RangeChecker.RemoveRequest(r);
+        }
+
+        bool IsRangeBlocked(TBlockRange64 r)
+        {
+            return RangeChecker.OverlapsSomeRange(r);
+        }
+    };
+
+    TRangeBlocker BlockedRanges{State.GetBlockSize()};
 
 public:
     TMirrorPartitionActor(
@@ -125,6 +154,8 @@ private:
     void StartResyncRange(const NActors::TActorContext& ctx, bool isMinor);
     void AddTagForBufferCopying(const NActors::TActorContext& ctx);
     ui64 TakeNextRequestIdentifier();
+
+    bool CheckRangeIsBlockedForWriting(TBlockRange64 checkingRange);
 
 private:
     STFUNC(StateWork);
@@ -181,6 +212,14 @@ private:
 
     void HandleRemoveLaggingAgent(
         const TEvNonreplPartitionPrivate::TEvRemoveLaggingAgentRequest::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleBlockAndDrainRange(
+        const NPartition::TEvPartition::TEvBlockAndDrainRangeRequest::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleReleaseRange(
+        const NPartition::TEvPartition::TEvReleaseRange::TPtr& ev,
         const NActors::TActorContext& ctx);
 
     void HandlePoisonPill(

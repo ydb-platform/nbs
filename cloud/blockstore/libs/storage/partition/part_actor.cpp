@@ -728,6 +728,15 @@ void TPartitionActor::HandleDrain(
     DrainActorCompanion.HandleDrain(ev, ctx);
 }
 
+void TPartitionActor::HandleBlockAndDrainRange(
+    const TEvPartition::TEvBlockAndDrainRangeRequest::TPtr& ev,
+    const NActors::TActorContext& ctx)
+{
+    Y_UNUSED(ev);
+    Y_UNUSED(ctx);
+    Y_DEBUG_ABORT_UNLESS(0);
+}
+
 bool TPartitionActor::HandleRequests(STFUNC_SIG)
 {
     switch (ev->GetTypeRewrite()) {
