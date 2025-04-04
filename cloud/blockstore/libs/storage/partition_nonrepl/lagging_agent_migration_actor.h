@@ -21,6 +21,7 @@ class TLaggingAgentMigrationActor final
 private:
     const TStorageConfigPtr Config;
     const TNonreplicatedPartitionConfigPtr PartConfig;
+    const NActors::TActorId ParentActorId;
     const NActors::TActorId TargetActorId;
     const NActors::TActorId SourceActorId;
     const TString AgentId;
@@ -30,6 +31,7 @@ public:
         TStorageConfigPtr config,
         TDiagnosticsConfigPtr diagnosticsConfig,
         TNonreplicatedPartitionConfigPtr partConfig,
+        NActors::TActorId parentActorId,
         IProfileLogPtr profileLog,
         IBlockDigestGeneratorPtr blockDigestGenerator,
         TString rwClientId,

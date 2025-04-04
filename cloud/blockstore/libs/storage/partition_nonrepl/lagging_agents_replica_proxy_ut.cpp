@@ -693,24 +693,41 @@ Y_UNIT_TEST_SUITE(TLaggingAgentsReplicaProxyActorTest)
 
         bool seenHealthCheck = false;
         bool seenMigrationReads = false;
+        ui32 seenMigrationFinish = 0;
+
+        bool shouldDropMigrationFinishedEvent = true;
         runtime.SetEventFilter(
             [&](TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& event)
             {
                 switch (event->GetTypeRewrite()) {
-                    case TEvService::EvReadBlocksRequest: {
-                        if (event->Recipient != env.ReplicaActors[0]) {
-                            break;
+                    case TEvNonreplPartitionPrivate::EvChecksumBlocksRequest: {
+                        auto* msg = event->Get<TEvNonreplPartitionPrivate::
+                                                   TEvChecksumBlocksRequest>();
+                        auto clientId = msg->Record.GetHeaders().GetClientId();
+                        if (clientId == CheckHealthClientId) {
+                            UNIT_ASSERT_VALUES_EQUAL(
+                                env.ReplicaActors[0],
+                                event->Recipient);
+                            seenHealthCheck = true;
                         }
+                        break;
+                    }
+                    case TEvService::EvReadBlocksRequest: {
                         auto* msg =
                             event->Get<TEvService::TEvReadBlocksRequest>();
                         auto clientId = msg->Record.GetHeaders().GetClientId();
-                        if (clientId == CheckHealthClientId) {
-                            seenHealthCheck = true;
-                        } else if (clientId == BackgroundOpsClientId) {
+                        if (clientId == BackgroundOpsClientId &&
+                            event->Recipient != env.ReplicaActors[0])
+                        {
                             UNIT_ASSERT(seenHealthCheck);
                             seenMigrationReads = true;
                         }
                         break;
+                    }
+                    case TEvVolumePrivate::EvLaggingAgentMigrationFinished: {
+                        UNIT_ASSERT(seenMigrationReads);
+                        seenMigrationFinish++;
+                        return shouldDropMigrationFinishedEvent;
                     }
                 }
                 return false;
@@ -718,10 +735,16 @@ Y_UNIT_TEST_SUITE(TLaggingAgentsReplicaProxyActorTest)
 
         // Health check should happen and notify the controller that the replica
         // is back online. Migration should start immediately after that.
-        env.WaitForMigrationFinishEvent();
+        runtime.DispatchEvents(
+            {.CustomFinalCondition = [&]()
+             {
+                 return seenMigrationFinish == 1;
+             }});
 
         // The agent is lagging again.
+        shouldDropMigrationFinishedEvent = false;
         seenHealthCheck = seenMigrationReads = false;
+        seenMigrationFinish = 0;
         env.AddLaggingAgent(runtime.GetNodeId(1), 0);
 
         // Mark second half as dirty.
@@ -735,8 +758,14 @@ Y_UNIT_TEST_SUITE(TLaggingAgentsReplicaProxyActorTest)
             TBlockRange64::WithLength(DeviceBlockCount, DeviceBlockCount);
         env.WriteBlocksToReplica(1, secondDevice, 'C');
 
-        // Wait for migration finish.
+        // Wait for migration finish. Waiting for two events here: one for the
+        // proxy and one for the volume.
         env.WaitForMigrationFinishEvent();
+        runtime.DispatchEvents(
+            {.CustomFinalCondition = [&]()
+             {
+                 return seenMigrationFinish == 2;
+             }});
 
         // Migration should migrate whole second device.
         env.ReadFromReplicaAndCheckContents(0, secondDevice, 'C');

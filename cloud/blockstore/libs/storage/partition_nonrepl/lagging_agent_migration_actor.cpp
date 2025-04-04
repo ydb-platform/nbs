@@ -15,6 +15,7 @@ TLaggingAgentMigrationActor::TLaggingAgentMigrationActor(
         TStorageConfigPtr config,
         TDiagnosticsConfigPtr diagnosticsConfig,
         TNonreplicatedPartitionConfigPtr partConfig,
+        TActorId parentActorId,
         IProfileLogPtr profileLog,
         IBlockDigestGeneratorPtr blockDigestGenerator,
         TString rwClientId,
@@ -39,6 +40,7 @@ TLaggingAgentMigrationActor::TLaggingAgentMigrationActor(
           config->GetMaxMigrationIoDepth())
     , Config(std::move(config))
     , PartConfig(std::move(partConfig))
+    , ParentActorId(parentActorId)
     , TargetActorId(targetActorId)
     , SourceActorId(sourceActorId)
     , AgentId(std::move(agentId))
@@ -86,7 +88,7 @@ void TLaggingAgentMigrationActor::OnMigrationProgress(
 void TLaggingAgentMigrationActor::OnMigrationFinished(const TActorContext& ctx)
 {
     ctx.Send(
-        PartConfig->GetParentActorId(),
+        ParentActorId,
         std::make_unique<TEvVolumePrivate::TEvLaggingAgentMigrationFinished>(
             AgentId));
 }
