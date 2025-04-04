@@ -334,20 +334,20 @@ private:
     TResultOrError<TString> ReadJsonFromFile(TBlockRange64 range)
     {
         return SafeExecute<TResultOrError<TString>>([&] {
-            TString fileName = GetFilename(range);
+            const TString& fileName = GetFilename(range);
             TIFStream file(fileName, EOpenModeFlag::OpenExisting | EOpenModeFlag::RdOnly);
-            return TResultOrError<TString>(file.ReadAll());
+            return file.ReadAll();
         });
     }
 
     void CompareChecksums(const TString& response, TBlockRange64 range)
     {
-        auto filename = GetFilename(range);
+        const TString& fileName = GetFilename(range);
         auto [data, error] = ReadJsonFromFile(range);
 
         if (HasError(error)) {
-            GetOutputStream() << "Can't read from file " << filename << " : "
-                              << error.GetMessage() << Endl;
+            GetOutputStream() << "Can't read from file " << fileName << " : "
+                              << FormatError(error) << Endl;
             return;
         }
 
@@ -360,7 +360,7 @@ private:
 
         if (!NJson::ReadJsonTree(data, &jsonFromFile)) {
             GetOutputStream()
-                << "Error while parsing json from file " << filename
+                << "Error while parsing json from file " << fileName
                 << " for range " << range << Endl;
             return;
         }
