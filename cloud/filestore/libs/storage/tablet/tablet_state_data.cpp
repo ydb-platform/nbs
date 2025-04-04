@@ -283,7 +283,7 @@ bool TIndexTabletState::HasActiveTruncateOp(ui64 nodeId) const
 bool TIndexTabletState::IsWriteAllowed(
     const TIndexTabletState::TBackpressureThresholds& thresholds,
     const TIndexTabletState::TBackpressureValues& values,
-    TString* message) const
+    TString* message)
 {
     if (values.Flush >= thresholds.Flush) {
         *message = TStringBuilder() << "freshBlocksDataSize: " << values.Flush;
