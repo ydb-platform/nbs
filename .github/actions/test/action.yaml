@@ -250,6 +250,7 @@ runs:
         sudo cp /var/log/atop/atop_* "$LOG_DIR/"
         sudo cp /var/log/syslog "$LOG_DIR/syslog.log"
         sudo ps aux > "$LOG_DIR/ps.log"
+        sudo chown -R github:github "$LOG_DIR/dmesg.log" "$LOG_DIR/atop_*" "$LOG_DIR/syslog.log" "$LOG_DIR/ps.log"
         echo "::endgroup::"
 
     - name: archive unitest reports (transformed)
