@@ -25,6 +25,7 @@ namespace {
 ////////////////////////////////////////////////////////////////////////////////
 
 const TString DefaultCloudId = "cloud_id";
+const TString DefaultFolderId = "folder_id";
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -76,6 +77,7 @@ void Mount(
     volume.SetStorageMediaKind(mediaKind);
     volume.SetBlockSize(DefaultBlockSize);
     volume.SetCloudId(DefaultCloudId);
+    volume.SetFolderId(DefaultFolderId);
 
     volumeStats->MountVolume(volume, client, instance);
 }
@@ -111,7 +113,8 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
                 ->GetSubgroup("host", "cluster")
                 ->GetSubgroup("volume", volume)
                 ->GetSubgroup("instance", instance)
-                ->GetSubgroup("cloud", DefaultCloudId);
+                ->GetSubgroup("cloud", DefaultCloudId)
+                ->GetSubgroup("folder", DefaultFolderId);
         };
 
         auto writeData = [](auto volume, auto type){
@@ -259,13 +262,15 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
             ->GetSubgroup("host", "cluster")
             ->GetSubgroup("volume", "test1")
             ->GetSubgroup("instance", "instance1")
-            ->FindSubgroup("cloud", DefaultCloudId));
+            ->GetSubgroup("cloud", DefaultCloudId)
+            ->FindSubgroup("folder", DefaultFolderId));
 
         UNIT_ASSERT(counters
             ->GetSubgroup("host", "cluster")
             ->GetSubgroup("volume", "test2")
             ->GetSubgroup("instance", "instance2")
-            ->FindSubgroup("cloud", DefaultCloudId));
+            ->GetSubgroup("cloud", DefaultCloudId)
+            ->FindSubgroup("folder", DefaultFolderId));
 
         Timer->AdvanceTime(inactivityTimeout * 0.5);
         volumeStats->TrimVolumes();
@@ -281,19 +286,22 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
             ->GetSubgroup("host", "cluster")
             ->GetSubgroup("volume", "test1")
             ->GetSubgroup("instance", "instance1")
-            ->FindSubgroup("cloud", DefaultCloudId));
+            ->GetSubgroup("cloud", DefaultCloudId)
+            ->FindSubgroup("folder", DefaultFolderId));
 
         UNIT_ASSERT(counters
             ->GetSubgroup("host", "cluster")
             ->GetSubgroup("volume", "test2")
             ->GetSubgroup("instance", "instance2")
-            ->FindSubgroup("cloud", DefaultCloudId));
+            ->GetSubgroup("cloud", DefaultCloudId)
+            ->FindSubgroup("folder", DefaultFolderId));
 
         UNIT_ASSERT(counters
             ->GetSubgroup("host", "cluster")
             ->GetSubgroup("volume", "test2")
             ->GetSubgroup("instance", "instance1")
-            ->FindSubgroup("cloud", DefaultCloudId));
+            ->GetSubgroup("cloud", DefaultCloudId)
+            ->FindSubgroup("folder", DefaultFolderId));
 
         Timer->AdvanceTime(inactivityTimeout * 0.6);
         volumeStats->TrimVolumes();
@@ -302,19 +310,22 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
             ->GetSubgroup("host", "cluster")
             ->GetSubgroup("volume", "test1")
             ->GetSubgroup("instance", "instance1")
-            ->FindSubgroup("cloud", DefaultCloudId));
+            ->GetSubgroup("cloud", DefaultCloudId)
+            ->FindSubgroup("folder", DefaultFolderId));
 
         UNIT_ASSERT(!counters
             ->GetSubgroup("host", "cluster")
             ->GetSubgroup("volume", "test2")
             ->GetSubgroup("instance", "instance2")
-            ->FindSubgroup("cloud", DefaultCloudId));
+            ->GetSubgroup("cloud", DefaultCloudId)
+            ->FindSubgroup("folder", DefaultFolderId));
 
         UNIT_ASSERT(counters
             ->GetSubgroup("host", "cluster")
             ->GetSubgroup("volume", "test2")
             ->GetSubgroup("instance", "instance1")
-            ->FindSubgroup("cloud", DefaultCloudId));
+            ->GetSubgroup("cloud", DefaultCloudId)
+            ->FindSubgroup("folder", DefaultFolderId));
     }
 
     Y_UNIT_TEST(ShouldTrackSilentErrorsPerVolume)
@@ -337,6 +348,7 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
                 ->GetSubgroup("volume", volume)
                 ->GetSubgroup("instance", instance)
                 ->GetSubgroup("cloud", DefaultCloudId)
+                ->GetSubgroup("folder", DefaultFolderId)
                 ->GetSubgroup("request", "WriteBlocks");
 
             return std::make_pair(
@@ -433,7 +445,8 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
                 ->GetSubgroup("host", "cluster")
                 ->GetSubgroup("volume", volume)
                 ->GetSubgroup("instance", instance)
-                ->GetSubgroup("cloud", DefaultCloudId);
+                ->GetSubgroup("cloud", DefaultCloudId)
+                ->GetSubgroup("folder", DefaultFolderId);
 
             return std::make_tuple(
                 volumeCounters
@@ -1120,7 +1133,8 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
             ->GetSubgroup("host", "cluster")
             ->GetSubgroup("volume", "Disk-1")
             ->GetSubgroup("instance", "Instance-1")
-            ->FindSubgroup("cloud", DefaultCloudId));
+            ->GetSubgroup("cloud", DefaultCloudId)
+            ->FindSubgroup("folder", DefaultFolderId));
 
         {
             auto client1Info = volumeStats->GetVolumeInfo("Disk-1", "Client-2");
@@ -1145,7 +1159,8 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
             ->GetSubgroup("host", "cluster")
             ->GetSubgroup("volume", "Disk-1")
             ->GetSubgroup("instance", "Instance-1")
-            ->FindSubgroup("cloud", DefaultCloudId));
+            ->GetSubgroup("cloud", DefaultCloudId)
+            ->FindSubgroup("folder", DefaultFolderId));
 
         Timer->AdvanceTime(inactivityTimeout * 1.1);
         volumeStats->TrimVolumes();
@@ -1154,7 +1169,8 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
             ->GetSubgroup("host", "cluster")
             ->GetSubgroup("volume", "Disk-1")
             ->GetSubgroup("instance", "Instance-1")
-            ->FindSubgroup("cloud", DefaultCloudId));
+            ->GetSubgroup("cloud", DefaultCloudId)
+            ->FindSubgroup("folder", DefaultFolderId));
 
         {
             auto client1Info = volumeStats->GetVolumeInfo("Disk-1", "Client-2");
