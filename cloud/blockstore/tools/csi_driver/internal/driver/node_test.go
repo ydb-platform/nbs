@@ -57,8 +57,7 @@ func doTestPublishUnpublishVolumeForKubevirt(t *testing.T, backend string, devic
 	localFsOverrides := make(LocalFilestoreOverrideMap)
 	if isLocalFsOverride {
 		localFsOverrides[diskId] = LocalFilestoreOverride{
-			FsId:           diskId,
-			LocalMountPath: "/tmp/mnt/local_mount",
+			FsId: diskId,
 		}
 	}
 
@@ -251,8 +250,7 @@ func doTestStagedPublishUnpublishVolumeForKubevirt(t *testing.T, backend string,
 	localFsOverrides := make(LocalFilestoreOverrideMap)
 	if isLocalFsOverride {
 		localFsOverrides[diskId] = LocalFilestoreOverride{
-			FsId:           diskId,
-			LocalMountPath: "/tmp/mnt/local_mount",
+			FsId: diskId,
 		}
 	}
 

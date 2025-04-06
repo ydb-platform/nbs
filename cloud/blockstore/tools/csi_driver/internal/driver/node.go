@@ -909,6 +909,66 @@ func (s *nodeService) nodePublishFileStoreAsVhostSocket(
 	return s.mountSocketDir(endpointDir, req)
 }
 
+func (s *nodeService) nodeStageFileStoreStartEndpoint(
+	ctx context.Context,
+	instanceId string,
+	filesystemId string,
+	endpointDir string) error {
+	if s.nfsClient == nil {
+		return fmt.Errorf("NFS client wasn't created")
+	}
+
+	_, err := s.nfsClient.StartEndpoint(ctx, &nfsapi.TStartEndpointRequest{
+		Endpoint: &nfsapi.TEndpointConfig{
+			SocketPath:       filepath.Join(endpointDir, nfsSocketName),
+			FileSystemId:     filesystemId,
+			ClientId:         fmt.Sprintf("%s-%s", s.clientId, instanceId),
+			VhostQueuesCount: 8,
+			Persistent:       true,
+		},
+	})
+	if err != nil {
+		if s.IsGrpcTimeoutError(err, true /* nfs */) {
+			s.nfsClient.StopEndpoint(ctx, &nfsapi.TStopEndpointRequest{
+				SocketPath: filepath.Join(endpointDir, nfsSocketName),
+			})
+		}
+
+		return fmt.Errorf("failed to start NFS endpoint: %w", err)
+	}
+	return nil
+}
+
+func (s *nodeService) nodeStageLocalFileStoreStartEndpoint(
+	ctx context.Context,
+	instanceId string,
+	filesystemId string,
+	endpointDir string) error {
+	if s.nfsLocalClient == nil {
+		return fmt.Errorf("NFS client wasn't created")
+	}
+
+	_, err := s.nfsLocalClient.StartEndpoint(ctx, &nfsapi.TStartEndpointRequest{
+		Endpoint: &nfsapi.TEndpointConfig{
+			SocketPath:       filepath.Join(endpointDir, nfsSocketName),
+			FileSystemId:     filesystemId,
+			ClientId:         fmt.Sprintf("%s-%s", s.clientId, instanceId),
+			VhostQueuesCount: 8,
+			Persistent:       true,
+		},
+	})
+	if err != nil {
+		if s.IsGrpcTimeoutError(err, true /* nfs */) {
+			s.nfsLocalClient.StopEndpoint(ctx, &nfsapi.TStopEndpointRequest{
+				SocketPath: filepath.Join(endpointDir, nfsSocketName),
+			})
+		}
+
+		return fmt.Errorf("failed to start NFS endpoint: %w", err)
+	}
+	return nil
+}
+
 func (s *nodeService) nodeStageFileStoreAsVhostSocket(
 	ctx context.Context,
 	instanceId string,
@@ -921,29 +981,15 @@ func (s *nodeService) nodeStageFileStoreAsVhostSocket(
 		return err
 	}
 
-	nfsClient := s.getNfsClient(filesystemId)
-
-	if nfsClient == nil {
-		return fmt.Errorf("NFS client wasn't created")
+	var err error
+	_, isLocalFsOverride := s.localFsOverrides[filesystemId]
+	if isLocalFsOverride {
+		err = s.nodeStageLocalFileStoreStartEndpoint(ctx, instanceId, filesystemId, endpointDir)
+	} else {
+		err = s.nodeStageFileStoreStartEndpoint(ctx, instanceId, filesystemId, endpointDir)
 	}
-
-	_, err := nfsClient.StartEndpoint(ctx, &nfsapi.TStartEndpointRequest{
-		Endpoint: &nfsapi.TEndpointConfig{
-			SocketPath:       filepath.Join(endpointDir, nfsSocketName),
-			FileSystemId:     filesystemId,
-			ClientId:         fmt.Sprintf("%s-%s", s.clientId, instanceId),
-			VhostQueuesCount: 8,
-			Persistent:       true,
-		},
-	})
 	if err != nil {
-		if s.IsGrpcTimeoutError(err, true /* nfs */) {
-			nfsClient.StopEndpoint(ctx, &nfsapi.TStopEndpointRequest{
-				SocketPath: filepath.Join(endpointDir, nfsSocketName),
-			})
-		}
-
-		return fmt.Errorf("failed to start NFS endpoint: %w", err)
+		return err
 	}
 
 	return s.createDummyImgFile(endpointDir)
@@ -1110,6 +1156,40 @@ func (s *nodeService) mountSocketDir(sourcePath string, req *csi.NodePublishVolu
 	return nil
 }
 
+func (s *nodeService) nodeUnstageFileStoreStopEndpoint(
+	ctx context.Context,
+	stageData *StageData) error {
+	if s.nfsClient == nil {
+		return fmt.Errorf("NFS client wasn't created")
+	}
+
+	_, err := s.nfsClient.StopEndpoint(ctx, &nfsapi.TStopEndpointRequest{
+		SocketPath: filepath.Join(stageData.RealStagePath, nfsSocketName),
+	})
+	if err != nil {
+		return fmt.Errorf("failed to stop nfs endpoint (%T): %w", s.nfsClient, err)
+	}
+
+	return nil
+}
+
+func (s *nodeService) nodeUnstageLocalFileStoreStopEndpoint(
+	ctx context.Context,
+	stageData *StageData) error {
+	if s.nfsLocalClient == nil {
+		return fmt.Errorf("NFS local client wasn't created")
+	}
+
+	_, err := s.nfsLocalClient.StopEndpoint(ctx, &nfsapi.TStopEndpointRequest{
+		SocketPath: filepath.Join(stageData.RealStagePath, nfsSocketName),
+	})
+	if err != nil {
+		return fmt.Errorf("failed to stop nfs endpoint (%T): %w", s.nfsLocalClient, err)
+	}
+
+	return nil
+}
+
 func (s *nodeService) nodeUnstageVhostSocket(
 	ctx context.Context,
 	nbsId string,
@@ -1126,17 +1206,15 @@ func (s *nodeService) nodeUnstageVhostSocket(
 			return fmt.Errorf("failed to stop nbs endpoint: %w", err)
 		}
 	} else if stageData.Backend == "nfs" {
-		nfsClient := s.getNfsClient(nbsId)
-
-		if nfsClient == nil {
-			return fmt.Errorf("NFS client wasn't created")
+		var err error
+		_, isLocalFsOverride := s.localFsOverrides[nbsId]
+		if isLocalFsOverride {
+			err = s.nodeUnstageLocalFileStoreStopEndpoint(ctx, stageData)
+		} else {
+			err = s.nodeUnstageFileStoreStopEndpoint(ctx, stageData)
 		}
-
-		_, err := nfsClient.StopEndpoint(ctx, &nfsapi.TStopEndpointRequest{
-			SocketPath: filepath.Join(stageData.RealStagePath, nfsSocketName),
-		})
 		if err != nil {
-			return fmt.Errorf("failed to stop nfs endpoint (%T): %w", nfsClient, err)
+			return err
 		}
 	}
 

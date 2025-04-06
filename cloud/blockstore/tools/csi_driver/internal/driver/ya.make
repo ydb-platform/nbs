@@ -3,6 +3,7 @@ GO_LIBRARY()
 SRCS(
     controller.go
     driver.go
+    external_storage.go
     identity.go
     node.go
     helper.go

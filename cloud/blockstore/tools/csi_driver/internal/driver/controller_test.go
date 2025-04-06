@@ -28,8 +28,7 @@ func doTestCreateDeleteVolume(t *testing.T, parameters map[string]string, isLoca
 	localFsOverrides := make(LocalFilestoreOverrideMap)
 	if isLocalFsOverride {
 		localFsOverrides[volumeID] = LocalFilestoreOverride{
-			FsId:           volumeID,
-			LocalMountPath: "/tmp/mnt/local_mount",
+			FsId: volumeID,
 		}
 	}
 
