@@ -25,11 +25,10 @@ func doTestCreateDeleteVolume(t *testing.T, parameters map[string]string, isLoca
 	var blockSize uint32 = 4096
 	var blockCount uint64 = 1024
 
-	localFsOverrides := make(LocalFilestoreOverrideMap)
+	localFsOverrides := make(ExternalFsOverrideMap)
 	if isLocalFsOverride {
-		localFsOverrides[volumeID] = LocalFilestoreOverride{
-			FsId:           volumeID,
-			LocalMountPath: "/tmp/mnt/local_mount",
+		localFsOverrides[volumeID] = ExternalFsConfig{
+			Id: volumeID,
 		}
 	}
 

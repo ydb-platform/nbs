@@ -33,7 +33,7 @@ var nbsServerControllerServiceCapabilities = []*csi.ControllerServiceCapability{
 type nbsServerControllerService struct {
 	csi.ControllerServer
 
-	localFsOverrides LocalFilestoreOverrideMap
+	externalFsOverrides ExternalFsOverrideMap
 
 	nbsClient      nbsclient.ClientIface
 	nfsClient      nfsclient.ClientIface
@@ -41,16 +41,16 @@ type nbsServerControllerService struct {
 }
 
 func newNBSServerControllerService(
-	fsOverrides LocalFilestoreOverrideMap,
+	fsOverrides ExternalFsOverrideMap,
 	nbsClient nbsclient.ClientIface,
 	nfsClient nfsclient.ClientIface,
 	nfsLocalClient nfsclient.ClientIface) csi.ControllerServer {
 
 	return &nbsServerControllerService{
-		localFsOverrides: fsOverrides,
-		nbsClient:        nbsClient,
-		nfsClient:        nfsClient,
-		nfsLocalClient:   nfsLocalClient,
+		externalFsOverrides: fsOverrides,
+		nbsClient:           nbsClient,
+		nfsClient:           nfsClient,
+		nfsLocalClient:      nfsLocalClient,
 	}
 }
 
@@ -149,7 +149,7 @@ func (c *nbsServerControllerService) createDisk(
 }
 
 func (c *nbsServerControllerService) getNfsClient(fileSystemId string) nfsclient.ClientIface {
-	_, ok := c.localFsOverrides[fileSystemId]
+	_, ok := c.externalFsOverrides[fileSystemId]
 	if !ok {
 		return c.nfsClient
 	}
