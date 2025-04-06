@@ -250,11 +250,21 @@ void TFileSystem::ReadLocal(
         if (remainingSize == 0) {
             break;
         }
+
         auto dataSize = std::min(remainingSize, iov[index].iov_len);
+        remainingSize -= dataSize;
+
+        if (!request->Buffers.empty()) {
+            auto& lastBuffer = request->Buffers.back();
+            if (lastBuffer.end() == iov[index].iov_base) {
+                lastBuffer = {lastBuffer.begin(), lastBuffer.size() + dataSize};
+                continue;
+            }
+        }
+
         request->Buffers.emplace_back(
             static_cast<char*>(iov[index].iov_base),
             dataSize);
-        remainingSize -= dataSize;
     }
 
     if (remainingSize != 0) {
@@ -417,6 +427,16 @@ void TFileSystem::WriteBufLocal(
         const auto *srcFuseBuf = &bufv->buf[index];
         if (srcFuseBuf->size == 0) {
             continue;
+        }
+
+        if (!request->Buffers.empty()) {
+            auto& lastBuffer = request->Buffers.back();
+            if (lastBuffer.end() == srcFuseBuf->mem) {
+                lastBuffer = {
+                    lastBuffer.begin(),
+                    lastBuffer.size() + srcFuseBuf->size};
+                continue;
+            }
         }
 
         request->Buffers.emplace_back(
