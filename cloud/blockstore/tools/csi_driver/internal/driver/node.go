@@ -118,12 +118,13 @@ type nodeService struct {
 	targetBlkPathRegexp *regexp.Regexp
 	localFsOverrides    LocalFilestoreOverrideMap
 
-	nbsClient      nbsclient.ClientIface
-	nfsClient      nfsclient.EndpointClientIface
-	nfsLocalClient nfsclient.EndpointClientIface
-	mounter        mounter.Interface
-	volumeOps      *sync.Map
-	mountOptions   []string
+	nbsClient               nbsclient.ClientIface
+	nfsClient               nfsclient.EndpointClientIface
+	nfsLocalClient          nfsclient.EndpointClientIface
+	nfsLocalFilestoreClient nfsclient.ClientIface
+	mounter                 mounter.Interface
+	volumeOps               *sync.Map
+	mountOptions            []string
 
 	useDiscardForYDBBasedDisks bool
 }
@@ -139,6 +140,7 @@ func newNodeService(
 	nbsClient nbsclient.ClientIface,
 	nfsClient nfsclient.EndpointClientIface,
 	nfsLocalClient nfsclient.EndpointClientIface,
+	nfsLocalFilestoreClient nfsclient.ClientIface,
 	mounter mounter.Interface,
 	mountOptions []string,
 	useDiscardForYDBBasedDisks bool) csi.NodeServer {
@@ -151,6 +153,7 @@ func newNodeService(
 		nbsClient:                  nbsClient,
 		nfsClient:                  nfsClient,
 		nfsLocalClient:             nfsLocalClient,
+		nfsLocalFilestoreClient:    nfsLocalFilestoreClient,
 		mounter:                    mounter,
 		targetFsPathRegexp:         regexp.MustCompile(targetFsPathPattern),
 		targetBlkPathRegexp:        regexp.MustCompile(targetBlkPathPattern),

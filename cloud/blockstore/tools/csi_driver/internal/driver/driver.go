@@ -223,6 +223,7 @@ func NewDriver(cfg Config) (*Driver, error) {
 			clients.nbsClient,
 			clients.nfsEndpointClient,
 			clients.nfsLocalEndpointClient,
+			clients.nfsLocalFilestoreClient,
 			mounter.NewMounter(),
 			strings.Split(cfg.MountOptions, ","),
 			cfg.UseDiscardForYDBBasedDisks))
