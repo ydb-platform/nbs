@@ -329,6 +329,7 @@ void TNonreplicatedPartitionMigrationCommonActor::HandleRangeMigrated(
     TimeoutCalculator->SetRecommendedBandwidth(msg->RecommendedBandwidth);
     NotifyMigrationProgressIfNeeded(ctx, msg->Range);
     NotifyMigrationFinishedIfNeeded(ctx);
+    MigrationOwner->OnRangeMigrated(ctx, msg->Range);
     ScheduleRangeMigration(ctx);
 }
 
