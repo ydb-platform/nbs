@@ -495,7 +495,7 @@ Y_UNIT_TEST_SUITE(TServerTest)
         UNIT_ASSERT_VALUES_EQUAL(E_IO, response.GetError().GetCode());
         bootstrap.Stop();
 
-        auto counters =bootstrap.Counters
+        auto counters = bootstrap.Counters
             ->FindSubgroup("component", "server_ut")
             ->FindSubgroup("request", "CreateNode");
         UNIT_ASSERT_VALUES_EQUAL(
