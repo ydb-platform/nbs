@@ -173,8 +173,7 @@ public:
             --WriteRequestCount;
         }
         if (it->second.RequestRange) {
-            WriteRequestRangesTracker->RemoveRequest(
-                *it->second.RequestRange);
+            WriteRequestRangesTracker->RemoveRequest(*it->second.RequestRange);
         }
         TValue res = std::move(it->second.Value);
         RequestsInProgress.erase(it);
@@ -221,4 +220,4 @@ public:
     }
 };
 
-}  // namespace NCloud::NBlockStore::NStorage
+}   // namespace NCloud::NBlockStore::NStorage

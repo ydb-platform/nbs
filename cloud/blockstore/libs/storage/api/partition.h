@@ -11,17 +11,17 @@ namespace NCloud::NBlockStore::NStorage::NPartition {
 ////////////////////////////////////////////////////////////////////////////////
 
 #define BLOCKSTORE_PARTITION_REQUESTS(xxx, ...)                                \
-    xxx(WaitReady, __VA_ARGS__)                                                \
-    xxx(StatPartition, __VA_ARGS__)                                            \
+    xxx(WaitReady,                                                 __VA_ARGS__)\
+    xxx(StatPartition,                                             __VA_ARGS__)\
     /* Waits until there are no more in-flight write requests. */              \
-    xxx(Drain, __VA_ARGS__)                                                    \
+    xxx(Drain,                                                     __VA_ARGS__)\
     /* Waits for current in-flight writes to finish and does not affect any    \
      * requests that come after. */                                            \
-    xxx(WaitForInFlightWrites, __VA_ARGS__)                                    \
+    xxx(WaitForInFlightWrites,                                     __VA_ARGS__)\
     /*Block range for writing requests. Wait for current in-flight writes      \
      * which overlap that range to finish and reply. You can release the range \
      * block by sending a TEvReleaseRange message.*/                           \
-    xxx(BlockAndDrainRange, __VA_ARGS__)                                       \
+    xxx(BlockAndDrainRange,                                        __VA_ARGS__)\
 // BLOCKSTORE_PARTITION_REQUESTS
 
 // requests forwarded from service to partition
