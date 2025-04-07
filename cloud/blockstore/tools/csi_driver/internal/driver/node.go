@@ -116,7 +116,7 @@ type nodeService struct {
 	socketsDir          string
 	targetFsPathRegexp  *regexp.Regexp
 	targetBlkPathRegexp *regexp.Regexp
-	localFsOverrides    LocalFilestoreOverrideMap
+	localFsOverrides    ExternalFsOverrideMap
 
 	nbsClient               nbsclient.ClientIface
 	nfsClient               nfsclient.EndpointClientIface
@@ -136,7 +136,7 @@ func newNodeService(
 	socketsDir string,
 	targetFsPathPattern string,
 	targetBlkPathPattern string,
-	localFsOverrides LocalFilestoreOverrideMap,
+	localFsOverrides ExternalFsOverrideMap,
 	nbsClient nbsclient.ClientIface,
 	nfsClient nfsclient.EndpointClientIface,
 	nfsLocalClient nfsclient.EndpointClientIface,

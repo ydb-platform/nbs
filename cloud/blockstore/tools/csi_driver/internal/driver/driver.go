@@ -156,7 +156,7 @@ func createClients(cfg Config) (*driverClients, error) {
 }
 
 func NewDriver(cfg Config) (*Driver, error) {
-	localFsOverrides, err := LoadLocalFilestoreOverrides(cfg.LocalFilestoreOverridePath)
+	localFsOverrides, err := LoadExternalFsOverrides(cfg.LocalFilestoreOverridePath)
 	if err != nil {
 		return nil, err
 	}

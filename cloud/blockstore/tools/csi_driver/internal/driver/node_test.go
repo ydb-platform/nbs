@@ -28,7 +28,7 @@ import (
 
 ////////////////////////////////////////////////////////////////////////////////
 
-func doTestPublishUnpublishVolumeForKubevirt(t *testing.T, backend string, deviceNameOpt *string, isLocalFsOverride bool) {
+func doTestPublishUnpublishVolumeForKubevirt(t *testing.T, backend string, deviceNameOpt *string, isExternalFsOverride bool) {
 	tempDir := t.TempDir()
 
 	nbsClient := mocks.NewNbsClientMock()
@@ -55,9 +55,9 @@ func doTestPublishUnpublishVolumeForKubevirt(t *testing.T, backend string, devic
 	nbsSocketPath := filepath.Join(sourcePath, "nbs.sock")
 	nfsSocketPath := filepath.Join(sourcePath, "nfs.sock")
 
-	localFsOverrides := make(LocalFilestoreOverrideMap)
-	if isLocalFsOverride {
-		localFsOverrides[diskId] = LocalFilestoreOverride{
+	externalFsOverrides := make(ExternalFsOverrideMap)
+	if isExternalFsOverride {
+		externalFsOverrides[diskId] = ExternalFsConfig{
 			FsId: diskId,
 		}
 	}
@@ -69,7 +69,7 @@ func doTestPublishUnpublishVolumeForKubevirt(t *testing.T, backend string, devic
 		socketsDir,
 		targetFsPathPattern,
 		"", // targetBlkPathPattern
-		localFsOverrides,
+		externalFsOverrides,
 		nbsClient,
 		nfsClient,
 		nfsLocalClient,
@@ -132,7 +132,7 @@ func doTestPublishUnpublishVolumeForKubevirt(t *testing.T, backend string, devic
 	}
 
 	expectedNfsClient := nfsClient
-	if isLocalFsOverride {
+	if isExternalFsOverride {
 		expectedNfsClient = nfsLocalClient
 	}
 
@@ -218,7 +218,7 @@ func TestPublishUnpublishLocalFilestoreForKubevirt(t *testing.T) {
 	doTestPublishUnpublishVolumeForKubevirt(t, "nfs", nil, true)
 }
 
-func doTestStagedPublishUnpublishVolumeForKubevirt(t *testing.T, backend string, deviceNameOpt *string, perInstanceVolumes bool, isLocalFsOverride bool) {
+func doTestStagedPublishUnpublishVolumeForKubevirt(t *testing.T, backend string, deviceNameOpt *string, perInstanceVolumes bool, isExternalFsOverride bool) {
 	tempDir := t.TempDir()
 
 	nbsClient := mocks.NewNbsClientMock()
@@ -250,9 +250,9 @@ func doTestStagedPublishUnpublishVolumeForKubevirt(t *testing.T, backend string,
 	nbsSocketPath := filepath.Join(sourcePath, "nbs.sock")
 	nfsSocketPath := filepath.Join(sourcePath, "nfs.sock")
 
-	localFsOverrides := make(LocalFilestoreOverrideMap)
-	if isLocalFsOverride {
-		localFsOverrides[diskId] = LocalFilestoreOverride{
+	externalFsOverrides := make(ExternalFsOverrideMap)
+	if isExternalFsOverride {
+		externalFsOverrides[diskId] = ExternalFsConfig{
 			FsId: diskId,
 		}
 	}
@@ -264,7 +264,7 @@ func doTestStagedPublishUnpublishVolumeForKubevirt(t *testing.T, backend string,
 		socketsDir,
 		targetFsPathPattern,
 		"", // targetBlkPathPattern
-		localFsOverrides,
+		externalFsOverrides,
 		nbsClient,
 		nfsClient,
 		nfsLocalClient,
@@ -319,7 +319,7 @@ func doTestStagedPublishUnpublishVolumeForKubevirt(t *testing.T, backend string,
 	}
 
 	expectedNfsClient := nfsClient
-	if isLocalFsOverride {
+	if isExternalFsOverride {
 		expectedNfsClient = nfsLocalClient
 	}
 
@@ -481,7 +481,7 @@ func TestPublishUnpublishDiskForInfrakuber(t *testing.T) {
 	sourcePath := filepath.Join(socketsDir, diskId)
 	socketPath := filepath.Join(socketsDir, diskId, "nbs.sock")
 	deprecatedSocketPath := filepath.Join(socketsDir, podId, diskId, "nbs.sock")
-	localFsOverrides := make(LocalFilestoreOverrideMap)
+	externalFsOverrides := make(ExternalFsOverrideMap)
 
 	nodeService := newNodeService(
 		nodeId,
@@ -490,7 +490,7 @@ func TestPublishUnpublishDiskForInfrakuber(t *testing.T) {
 		socketsDir,
 		targetFsPathPattern,
 		"", // targetBlkPathPattern
-		localFsOverrides,
+		externalFsOverrides,
 		nbsClient,
 		nil,
 		nil, // nfsLocalClient
@@ -639,7 +639,7 @@ func TestPublishUnpublishDeviceForInfrakuber(t *testing.T) {
 	sourcePath := filepath.Join(socketsDir, diskId)
 	socketPath := filepath.Join(socketsDir, diskId, "nbs.sock")
 	deprecatedSocketPath := filepath.Join(socketsDir, podId, diskId, "nbs.sock")
-	localFsOverrides := make(LocalFilestoreOverrideMap)
+	externalFsOverrides := make(ExternalFsOverrideMap)
 
 	nodeService := newNodeService(
 		nodeId,
@@ -648,7 +648,7 @@ func TestPublishUnpublishDeviceForInfrakuber(t *testing.T) {
 		socketsDir,
 		"", // targetFsPathPattern
 		targetBlkPathPattern,
-		localFsOverrides,
+		externalFsOverrides,
 		nbsClient,
 		nil,
 		nil, // nfsLocalClient
@@ -795,7 +795,7 @@ func TestGetVolumeStatCapabilitiesWithoutVmMode(t *testing.T) {
 	require.NoError(t, err)
 	err = os.MkdirAll(targetPath, info.Mode())
 	require.NoError(t, err)
-	localFsOverrides := make(LocalFilestoreOverrideMap)
+	externalFsOverrides := make(ExternalFsOverrideMap)
 
 	nodeService := newNodeService(
 		"testNodeId",
@@ -804,7 +804,7 @@ func TestGetVolumeStatCapabilitiesWithoutVmMode(t *testing.T) {
 		socketsDir,
 		targetFsPathPattern,
 		"",
-		localFsOverrides,
+		externalFsOverrides,
 		nbsClient,
 		nil,
 		nil, // nfsLocalClient
@@ -864,7 +864,7 @@ func TestGetVolumeStatCapabilitiesWithVmMode(t *testing.T) {
 	targetBlkPathPattern := filepath.Join(tempDir,
 		"volumeDevices/publish/([a-z0-9-]+)/([a-z0-9-]+)")
 	socketsDir := filepath.Join(tempDir, "sockets")
-	localFsOverrides := make(LocalFilestoreOverrideMap)
+	externalFsOverrides := make(ExternalFsOverrideMap)
 
 	nodeService := newNodeService(
 		"testNodeId",
@@ -873,7 +873,7 @@ func TestGetVolumeStatCapabilitiesWithVmMode(t *testing.T) {
 		socketsDir,
 		"",
 		targetBlkPathPattern,
-		localFsOverrides,
+		externalFsOverrides,
 		nbsClient,
 		nil,
 		nil, // nfsLocalClient
@@ -923,7 +923,7 @@ func TestPublishDeviceWithReadWriteManyModeIsNotSupportedWithNBS(t *testing.T) {
 	volumeContext := map[string]string{
 		backendVolumeContextKey: "nbs",
 	}
-	localFsOverrides := make(LocalFilestoreOverrideMap)
+	externalFsOverrides := make(ExternalFsOverrideMap)
 
 	nodeService := newNodeService(
 		"testNodeId",
@@ -932,7 +932,7 @@ func TestPublishDeviceWithReadWriteManyModeIsNotSupportedWithNBS(t *testing.T) {
 		socketsDir,
 		"",
 		targetBlkPathPattern,
-		localFsOverrides,
+		externalFsOverrides,
 		nbsClient,
 		nil,
 		nil, // nfsLocalClient
@@ -1016,7 +1016,7 @@ func TestGrpcTimeoutForIKubevirt(t *testing.T) {
 		socketsDir,
 		targetFsPathPattern,
 		"",
-		make(LocalFilestoreOverrideMap),
+		make(ExternalFsOverrideMap),
 		nbsClient,
 		nfsClient,
 		nfsLocalClient,
@@ -1105,7 +1105,7 @@ func TestGrpcTimeoutForInfrakuber(t *testing.T) {
 		socketsDir,
 		targetFsPathPattern,
 		"",
-		make(LocalFilestoreOverrideMap),
+		make(ExternalFsOverrideMap),
 		nbsClient,
 		nil,
 		nil, // nfsLocalClient

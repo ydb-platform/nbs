@@ -33,7 +33,7 @@ var nbsServerControllerServiceCapabilities = []*csi.ControllerServiceCapability{
 type nbsServerControllerService struct {
 	csi.ControllerServer
 
-	localFsOverrides LocalFilestoreOverrideMap
+	localFsOverrides ExternalFsOverrideMap
 
 	nbsClient      nbsclient.ClientIface
 	nfsClient      nfsclient.ClientIface
@@ -41,7 +41,7 @@ type nbsServerControllerService struct {
 }
 
 func newNBSServerControllerService(
-	fsOverrides LocalFilestoreOverrideMap,
+	fsOverrides ExternalFsOverrideMap,
 	nbsClient nbsclient.ClientIface,
 	nfsClient nfsclient.ClientIface,
 	nfsLocalClient nfsclient.ClientIface) csi.ControllerServer {
