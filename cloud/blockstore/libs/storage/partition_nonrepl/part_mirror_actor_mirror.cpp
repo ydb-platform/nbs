@@ -68,7 +68,7 @@ void TMirrorPartitionActor::HandleMirroredReadCompleted(
         if (ev->Get()->ChecksumMismatchObserved) {
             ReportMirroredDiskChecksumMismatchUponRead(
                 TStringBuilder()
-                << " disk: " << DiskId << ", range: "
+                << " disk: " << DiskId.Quote() << ", range: "
                 << (requestCtx ? requestCtx->BlockRange.Print() : ""));
         }
     } else {
