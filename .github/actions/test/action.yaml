@@ -186,7 +186,7 @@ runs:
           --cache-size 512G --do-not-output-stderrs -T \
           --stat --log-file "$LOG_DIR/ya_log.txt" --evlog-file "$LOG_DIR/ya_evlog.jsonl" \
           --canonization-backend=ydb-canondata.storage.yandexcloud.net \
-          --junit "$JUNIT_REPORT_XML" --output "$OUT_DIR" "${extra_params[@]}" || (
+          --junit "$JUNIT_REPORT_XML" --output "$OUT_DIR" "${extra_params[@]}" --nice 0 || (
             RC=$?
             if [ $RC -ne 0 ]; then
               echo "ya test returned $RC, check existence $JUNIT_REPORT_XML"
