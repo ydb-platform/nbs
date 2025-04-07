@@ -9,14 +9,6 @@ TDisjointRangeSet::~TDisjointRangeSet() = default;
 
 bool TDisjointRangeSet::TryInsert(TBlockRange64 range)
 {
-    if (!BlockSize.has_value()) {
-        BlockSize = range.Size();
-    }
-
-    if (range.Size() != *BlockSize) {
-        return false;
-    }
-
     auto it = EndToStart.lower_bound(range.Start);
     if (it != EndToStart.end()) {
         auto found = TBlockRange64::MakeClosedInterval(it->second, it->first);
