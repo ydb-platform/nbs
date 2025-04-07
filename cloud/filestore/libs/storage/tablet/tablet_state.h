@@ -795,10 +795,10 @@ public:
 
     using TBackpressureValues = TBackpressureThresholds;
 
-    bool IsWriteAllowed(
+    static bool IsWriteAllowed(
         const TBackpressureThresholds& thresholds,
         const TBackpressureValues& values,
-        TString* message) const;
+        TString* message);
 
     //
     // FreshBytes

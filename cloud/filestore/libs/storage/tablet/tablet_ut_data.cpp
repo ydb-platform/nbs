@@ -2563,6 +2563,20 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
             tabletConfig);
         tablet.InitSession("client", "session");
 
+        auto checkIsWriteAllowed = [&](bool expected)
+        {
+            TTestRegistryVisitor visitor;
+            tablet.SendRequest(tablet.CreateUpdateCounters());
+            env.GetRuntime().DispatchEvents({}, TDuration::Seconds(1));
+            env.GetRegistry()->Visit(TInstant::Zero(), visitor);
+            visitor.ValidateExpectedCounters({
+                {{{"sensor", "IsWriteAllowed"}, {"filesystem", "test"}},
+                 expected},
+            });
+        };
+
+        checkIsWriteAllowed(true);
+
         auto id = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
         ui64 handle = CreateHandle(tablet, id);
         tablet.WriteData(handle, 0, block, '0'); // 1 fresh block, 1 marker
@@ -2573,6 +2587,8 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         {
             auto response = tablet.RecvWriteDataResponse();
             UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, response->GetStatus());
+
+            checkIsWriteAllowed(false);
         }
 
         tablet.Flush();
