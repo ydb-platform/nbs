@@ -458,7 +458,7 @@ public:
         const TCheckpointId& checkpointId,
         TDiskId* shadowDiskId) const;
 
-    bool FilterDevicesAtUnavailableAgents(TDiskInfo& diskInfo) const;
+    bool FilterDevicesForAcquireRelease(TDiskInfo& diskInfo) const;
 
     NProto::TError StartAcquireDisk(
         const TString& diskId,
