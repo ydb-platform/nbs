@@ -75,7 +75,7 @@ public:
     ui32 GetFlushThreshold() const;
     ui32 GetCleanupThreshold() const;
     ui32 GetCleanupThresholdAverage() const;
-    ui32 GetCleanupCpuThrottlingThreshold() const;
+    ui32 GetCleanupCpuThrottlingThresholdPercentage() const;
     bool GetCalculateCleanupScoreBasedOnUsedBlocksCount() const;
     bool GetNewCleanupEnabled() const;
     ui32 GetCompactionThreshold() const;
