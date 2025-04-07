@@ -136,31 +136,6 @@ jobs:
         build_preset: ${{ inputs.build_preset }}
         install: false
 
-    - name: Set up swap
-      shell: bash
-      run: |
-        sudo swapoff -a
-        sudo fallocate -l 100G /swapfile
-        sudo chmod 600 /swapfile
-        sudo mkswap /swapfile
-        sudo swapon /swapfile
-        echo "/swapfile none swap sw 0 0" | sudo tee -a /etc/fstab
-        # configure swappiness to very low value
-        echo "vm.swappiness=5" | sudo tee -a /etc/sysctl.conf
-        sudo sysctl -p
-  
-    - name: Create background process that will adjust oom_score_adj for ya-bin processes
-      shell: bash
-      run: |
-        set -x
-        # set oom_score_adj to 0 for all other processes
-        while true; do
-          for pid in $(pgrep -f ya-bin); do
-            echo "-1000" | sudo tee /proc/$pid/oom_score_adj
-          done
-          sleep 60
-        done &
-
     - name: Build
       uses: ./.github/actions/build
       if: inputs.run_build
