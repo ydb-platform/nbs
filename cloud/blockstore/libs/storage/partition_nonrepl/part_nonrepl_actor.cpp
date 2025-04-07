@@ -37,7 +37,7 @@ TDuration TNonreplicatedPartitionActor::TDeviceStat::WorstRequestTime() const
 TDuration TNonreplicatedPartitionActor::TDeviceStat::GetTimedOutStateDuration(
     TInstant now) const
 {
-    return FirstTimeoutTs ? (now - FirstTimeoutTs) : TDuration();
+    return FirstTimedOutRequestStartTs ? (now - FirstTimedOutRequestStartTs) : TDuration();
 }
 
 bool TNonreplicatedPartitionActor::TDeviceStat::CooldownPassed(
@@ -455,8 +455,8 @@ void TNonreplicatedPartitionActor::OnRequestSuccess(
     TInstant now)
 {
     auto& stat = DeviceStats[deviceIndex];
-    stat.FirstTimeoutTs = {};
-    stat.LastSuccessfulRequestTs = now - executionTime;
+    stat.FirstTimedOutRequestStartTs = {};
+    stat.LastSuccessfulRequestStartTs = now - executionTime;
     stat.ResponseTimes.PushBack(executionTime);
     stat.DeviceStatus = EDeviceStatus::Ok;
     stat.BrokenTransitionTs = {};
@@ -469,15 +469,15 @@ void TNonreplicatedPartitionActor::OnRequestTimeout(
 {
     auto& stat = DeviceStats[deviceIndex];
 
-    const TInstant requestTs = now - executionTime;
-    // Requests timeouts can be delivered with delay. Ignore ones that were
-    // created before the last successful request.
-    if (stat.LastSuccessfulRequestTs > requestTs) {
+    const TInstant requestStartTs = now - executionTime;
+    // Request timeout can be delivered with delay. Ignore ones that were
+    // started before the last successful request.
+    if (requestStartTs < stat.LastSuccessfulRequestStartTs) {
         return;
     }
 
-    if (!stat.FirstTimeoutTs) {
-        stat.FirstTimeoutTs = requestTs;
+    if (!stat.FirstTimedOutRequestStartTs) {
+        stat.FirstTimedOutRequestStartTs = requestStartTs;
     }
 
     switch (stat.DeviceStatus) {
@@ -588,7 +588,7 @@ void TNonreplicatedPartitionActor::HandleAgentIsBackOnline(
             DeviceStats[i].DeviceStatus <= EDeviceStatus::Unavailable)
         {
             DeviceStats[i].DeviceStatus = EDeviceStatus::Ok;
-            DeviceStats[i].FirstTimeoutTs = {};
+            DeviceStats[i].FirstTimedOutRequestStartTs = {};
         }
     }
 }

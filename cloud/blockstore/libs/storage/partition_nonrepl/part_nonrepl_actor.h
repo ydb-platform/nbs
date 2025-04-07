@@ -65,10 +65,10 @@ private:
     struct TDeviceStat
     {
         // The start time of the first timed out request.
-        TInstant FirstTimeoutTs;
+        TInstant FirstTimedOutRequestStartTs;
 
         // The start time of the last successful request.
-        TInstant LastSuccessfulRequestTs;
+        TInstant LastSuccessfulRequestStartTs;
 
         // Execution times of the last 10 requests.
         TSimpleRingBuffer<TDuration> ResponseTimes{10};

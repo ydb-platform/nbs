@@ -2289,7 +2289,7 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionTest)
         }
     }
 
-    Y_UNIT_TEST(ShouldDiscardTimeoutsAfterSuccessfulRequest)
+    Y_UNIT_TEST(ShouldIgnoreTimeoutsAfterLastSuccessfulRequest)
     {
         TTestBasicRuntime runtime;
         TTestEnv env(
