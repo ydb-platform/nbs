@@ -255,6 +255,10 @@ using TAliases = NProto::TStorageConfig::TFilestoreAliases;
     xxx(ServerWriteBackCacheEnabled,    bool,      false                      )\
                                                                                \
     xxx(GuestKeepCacheAllowed,          bool,      false                      )\
+    xxx(GuestCachingType,                                                      \
+        NProto::EGuestCachingType,                                             \
+        NProto::GCT_SECOND_READ                                               )\
+    xxx(OpenHandlesStatsCapacity,       ui64,      0                          )\
 // FILESTORE_STORAGE_CONFIG
 
 #define FILESTORE_STORAGE_CONFIG_REF(xxx)                                      \
@@ -338,6 +342,13 @@ IOutputStream& operator <<(
     NProto::EBlobIndexOpsPriority biopp)
 {
     return out << EBlobIndexOpsPriority_Name(biopp);
+}
+
+IOutputStream& operator <<(
+    IOutputStream& out,
+    NProto::EGuestCachingType gct)
+{
+    return out << EGuestCachingType_Name(gct);
 }
 
 template <typename T>

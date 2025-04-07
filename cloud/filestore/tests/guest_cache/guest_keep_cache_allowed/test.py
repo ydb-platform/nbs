@@ -47,7 +47,7 @@ def test():
 
     # Sleep for a while to ensure that the profile log is flushed
     # before we start analyzing it
-    # The defalt value if ProfileLogTimeThreshold for tests is 100ms
+    # The default value of ProfileLogTimeThreshold for tests is 100ms
     time.sleep(2)
 
     result = profile.analyze_profile_log(

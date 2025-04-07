@@ -5,9 +5,12 @@
 #include "subsessions.h"
 
 #include <cloud/filestore/libs/service/filestore.h>
+#include <cloud/filestore/libs/storage/core/config.h>
 #include <cloud/filestore/libs/storage/tablet/protos/tablet.pb.h>
 
 #include <contrib/ydb/library/actors/core/actorid.h>
+
+#include <library/cpp/cache/cache.h>
 
 #include <util/datetime/base.h>
 #include <util/generic/deque.h>
@@ -81,10 +84,20 @@ class TSessionHandleStats
 {
 private:
     THashMap<ui64, TPerNodeHandleStats> Stats;
+    TLRUCache<ui64, TPerNodeHandleStats> OffloadedStats;
 
 public:
+    TSessionHandleStats(const size_t offloadedCacheSize)
+        : OffloadedStats(offloadedCacheSize)
+    {}
+
     void RegisterHandle(const NProto::TSessionHandle& handle)
     {
+        auto it = OffloadedStats.Find(handle.GetNodeId());
+        if (it != OffloadedStats.End()) {
+            Stats[handle.GetNodeId()] = *it;
+            OffloadedStats.Erase(it);
+        }
         auto& nodeStats = Stats[handle.GetNodeId()];
         nodeStats.RegisterHandle(handle);
     }
@@ -95,6 +108,7 @@ public:
         if (it != Stats.end()) {
             it->second.UnregisterHandle(handle);
             if (it->second.Empty()) {
+                OffloadedStats.Insert(it->first, it->second);
                 Stats.erase(it);
             }
         }
@@ -114,16 +128,18 @@ public:
     }
 
     [[nodiscard]] bool IsAllowedToKeepCache(
-        const NProto::TNodeAttr& node) const
+        const NProto::TNodeAttr& node,
+        bool isFirstReadAllowed) const
     {
         auto it = Stats.find(node.GetId());
         if (it != Stats.end()) {
-            // We can allow ourselves not to invalidate the cache if this is not
-            // the first handle to this node and it is not opened for writing
-            // and the last time that the cache was invalidated was after the
-            // node was modified
+            // We can allow ourselves not to invalidate the cache if it is not
+            // opened for writing and the last time that the cache was
+            // invalidated was after the node was modified. Also sometimes we
+            // can require this read handle to be not the first one opened, see
+            // isFirstReadAllowed variable
             if (it->second.OpenWriteHandles == 0 &&
-                it->second.OpenHandles > 1 &&
+                it->second.OpenHandles > (isFirstReadAllowed ? 0 : 1) &&
                 it->second.LastGuestCacheInvalidationMtime >= node.GetMTime())
             {
                 return true;
@@ -203,8 +219,11 @@ private:
     TDupCacheEntryMap DupCache;
 
 public:
-    explicit TSession(const NProto::TSession& proto)
+    explicit TSession(
+            const NProto::TSession& proto,
+            const NProto::TSessionOptions& sessionOptions)
         : NProto::TSession(proto)
+        , HandleStatsByNode(sessionOptions.GetOpenHandlesStatsCapacity())
         , SubSessions(GetMaxSeqNo(), GetMaxRwSeqNo())
     {}
 
@@ -350,6 +369,15 @@ public:
     ui64 GetSessionRwSeqNo() const
     {
         return SubSessions.GetMaxSeenRwSeqNo();
+    }
+
+    static NProto::TSessionOptions CreateSessionOptions(
+        const TStorageConfigPtr& config)
+    {
+        NProto::TSessionOptions options;
+        options.SetOpenHandlesStatsCapacity(
+            config->GetOpenHandlesStatsCapacity());
+        return options;
     }
 };
 

@@ -99,6 +99,55 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Handles)
             UNIT_ASSERT(!createHandleResponse->Record.GetGuestKeepCache());
         }
     }
+
+    Y_UNIT_TEST(ShouldSetGuestKeepCacheProperlyForOffloadedNodes)
+    {
+        NProto::TStorageConfig storageConfig;
+        storageConfig.SetGuestKeepCacheAllowed(true);
+        storageConfig.SetOpenHandlesStatsCapacity(2);
+        storageConfig.SetGuestCachingType(NProto::GCT_ANY_READ);
+        TTestEnv env({}, storageConfig);
+        env.CreateSubDomain("nfs");
+        auto registry = env.GetRegistry();
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
+        tablet.InitSession("client", "session");
+
+        // Open a file and close it twice. The second create handle should have
+        // GuestKeepCache set because its mtime has not changed since the last
+        // time we opened it
+
+        auto id = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
+        auto createHandleResponse =
+            tablet.CreateHandle(id, TCreateHandleArgs::RDNLY);
+        UNIT_ASSERT(!createHandleResponse->Record.GetGuestKeepCache());
+        tablet.DestroyHandle(createHandleResponse->Record.GetHandle());
+        // Create handle again, should have GuestKeepCache set
+        createHandleResponse =
+            tablet.CreateHandle(id, TCreateHandleArgs::RDNLY);
+        UNIT_ASSERT(createHandleResponse->Record.GetGuestKeepCache());
+        tablet.DestroyHandle(createHandleResponse->Record.GetHandle());
+
+        // Two more new nodes should evict the "test" file from the cache
+        for (int i = 0; i < 2; ++i) {
+            auto id = CreateNode(
+                tablet,
+                TCreateNodeArgs::File(RootNodeId, Sprintf("test%d", i)));
+            createHandleResponse =
+                tablet.CreateHandle(id, TCreateHandleArgs::RDNLY);
+            UNIT_ASSERT(!createHandleResponse->Record.GetGuestKeepCache());
+            tablet.DestroyHandle(createHandleResponse->Record.GetHandle());
+        }
+        // Create handle for the first file again, will not have the
+        // GuestKeepCache set because this node was evicted from the cache
+        createHandleResponse =
+            tablet.CreateHandle(id, TCreateHandleArgs::RDNLY);
+        UNIT_ASSERT(!createHandleResponse->Record.GetGuestKeepCache());
+        tablet.DestroyHandle(createHandleResponse->Record.GetHandle());
+    }
 }
 
 }   // namespace NCloud::NFileStore::NStorage
