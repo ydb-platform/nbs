@@ -36,7 +36,7 @@ using TAliases = NProto::TStorageConfig::TFilestoreAliases;
     xxx(FlushThreshold,                     ui32,   4_MB                      )\
     xxx(CleanupThreshold,                   ui32,   512                       )\
     xxx(CleanupThresholdAverage,            ui32,   64                        )\
-    xxx(CleanupCpuThrottlingThreshold,      ui32,   0                         )\
+    xxx(CleanupCpuThrottlingThresholdPercentage, ui32,   0                    )\
     xxx(CalculateCleanupScoreBasedOnUsedBlocksCount, bool,   false            )\
     xxx(NewCleanupEnabled,                  bool,   false                     )\
     xxx(CompactionThreshold,                ui32,   20                        )\

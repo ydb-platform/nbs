@@ -565,6 +565,6 @@ message TStorageConfig
     optional uint64 SessionHandleOffloadedStatsCapacity = 425;
 
     // Limit CPU consumption by Cleanup when a massive amount
-    // of deletion markers is to be cleaned up after changing settings.
-    optional uint32 CleanupCpuThrottlingThreshold = 426;
+    // of deletion markers is to be cleaned up after changing configuration.
+    optional uint32 CleanupCpuThrottlingThresholdPercentage = 426;
 }

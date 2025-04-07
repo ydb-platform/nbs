@@ -697,7 +697,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Throttling)
 
         // Enable automatic cleanup and configure throttling to consume 1% of CPU
         storageConfig.SetCleanupThresholdAverage(64);
-        storageConfig.SetCleanupCpuThrottlingThreshold(1);
+        storageConfig.SetCleanupCpuThrottlingThresholdPercentage(1);
         storageConfig.SetCalculateCleanupScoreBasedOnUsedBlocksCount(true);
         tablet.ChangeStorageConfig(storageConfig);
         tablet.RebootTablet();
@@ -714,8 +714,25 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Throttling)
             UNIT_ASSERT_GT(2 * blockCount - 1, deletionMarkersCount);
         }
 
+        // Spawn deletion markers
+        handle = CreateHandle(tablet, nodeId);
+        tablet.WriteData(handle, 0, fileSize, 'a');
+        tablet.DestroyHandle(handle);
+        tablet.SetNodeAttr(args);
+
+        // Cleanup is expected to trottle only when the amount of
+        // deletion markers is below the threshold (2 * blockCount - 1)
+        {
+            auto response = tablet.GetStorageStats();
+            const auto& stats = response->Record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(1, stats.GetUsedBlocksCount());
+            deletionMarkersCount = stats.GetDeletionMarkersCount();
+            UNIT_ASSERT_LT(0, deletionMarkersCount);
+            UNIT_ASSERT_GT(2 * blockCount - 1, deletionMarkersCount);
+        }
+
         // Advance time and trigger cleanup again by calling a user operation
-        tablet.AdvanceTime(TDuration::Seconds(1));
+        tablet.AdvanceTime(TDuration::Minutes(10s));
         tablet.SetNodeAttr(args);
 
         // Cleanup is expected to process a bit more blocks
@@ -741,7 +758,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Throttling)
 
         // Enable cleanup and configure throttling to consume 100% of CPU
         storageConfig.SetCleanupThresholdAverage(64);
-        storageConfig.SetCleanupCpuThrottlingThreshold(100);
+        storageConfig.SetCleanupCpuThrottlingThresholdPercentage(100);
         storageConfig.SetCalculateCleanupScoreBasedOnUsedBlocksCount(true);
         tablet.ChangeStorageConfig(storageConfig);
         tablet.RebootTablet();
