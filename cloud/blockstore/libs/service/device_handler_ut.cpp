@@ -964,7 +964,6 @@ Y_UNIT_TEST_SUITE(TDeviceHandlerTest)
         ui32 writeAttempts  = 0;
 
         auto buffer = TString(DefaultBlockSize, 'g');
-        TSgList sgList{{buffer.data(), buffer.size()}};
         storage->WriteBlocksLocalHandler =
             [&](TCallContextPtr ctx,
                 std::shared_ptr<NProto::TWriteBlocksLocalRequest> request)
@@ -990,16 +989,39 @@ Y_UNIT_TEST_SUITE(TDeviceHandlerTest)
             "AppCriticalEvents/MirroredDiskChecksumMismatchUponWrite",
             true);
 
-        auto future = deviceHandler->Write(
-            MakeIntrusive<TCallContext>(),
-            0,
-            blockSize,
-            TGuardedSgList(sgList));
+        {   // First write should raise critical event
+            TSgList sgList{{buffer.data(), buffer.size()}};
+            auto future = deviceHandler->Write(
+                MakeIntrusive<TCallContext>(),
+                0,
+                blockSize,
+                TGuardedSgList(sgList));
 
-        const auto& response = future.GetValue(TDuration::Seconds(5));
-        UNIT_ASSERT(!HasError(response));
-        UNIT_ASSERT_VALUES_EQUAL(2, writeAttempts);
-        UNIT_ASSERT_VALUES_EQUAL(1, mirroredDiskChecksumMismatchUponWrite->Val());
+            const auto& response = future.GetValue(TDuration::Seconds(5));
+            UNIT_ASSERT(!HasError(response));
+            UNIT_ASSERT_VALUES_EQUAL(2, writeAttempts);
+            UNIT_ASSERT_VALUES_EQUAL(
+                1,
+                mirroredDiskChecksumMismatchUponWrite->Val());
+        }
+
+        {   // Second write should't raise critical event
+            writeAttempts = 0;
+            buffer = TString(DefaultBlockSize, 'g');
+            TSgList sgList{{buffer.data(), buffer.size()}};
+            auto future = deviceHandler->Write(
+                MakeIntrusive<TCallContext>(),
+                0,
+                blockSize,
+                TGuardedSgList(sgList));
+
+            const auto& response = future.GetValue(TDuration::Seconds(5));
+            UNIT_ASSERT(!HasError(response));
+            UNIT_ASSERT_VALUES_EQUAL(2, writeAttempts);
+            UNIT_ASSERT_VALUES_EQUAL(
+                1,
+                mirroredDiskChecksumMismatchUponWrite->Val());
+        }
     }
 
     Y_UNIT_TEST(ShouldReportCriticalEventOnError)
