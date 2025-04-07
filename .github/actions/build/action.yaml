@@ -174,7 +174,7 @@ runs:
           echo "/home/github/.ya/tools/ not found"
         fi
         date
-        sudo -E -H -u github ./ya make -k -j${{ inputs.build_threads }} --build "${build_type}" --force-build-depends -T --stat  \
+        sudo -E -H -u github choom -n -1000 ./ya make -k -j${{ inputs.build_threads }} --build "${build_type}" --force-build-depends -T --stat  \
           --log-file "$TMP_DIR/ya_log.txt" --evlog-file "$TMP_DIR/ya_evlog.jsonl" \
           --dump-graph --dump-graph-to-file "$TMP_DIR/ya_graph.json" \
           --cache-size 512G --link-threads "${{ inputs.link_threads }}" \
