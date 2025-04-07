@@ -65,7 +65,10 @@ private:
     struct TDeviceStat
     {
         // The start time of the first timed out request.
-        TInstant FirstTimeoutTs;
+        TInstant FirstTimedOutRequestStartTs;
+
+        // The start time of the last successful request.
+        TInstant LastSuccessfulRequestStartTs;
 
         // Execution times of the last 10 requests.
         TSimpleRingBuffer<TDuration> ResponseTimes{10};
@@ -158,11 +161,10 @@ private:
     void OnRequestCompleted(
         const TEvNonreplPartitionPrivate::TOperationCompleted& operation,
         TInstant now);
-    void OnRequestSuccess(ui32 deviceIndex, TDuration executionTime);
-    void OnRequestTimeout(
-        ui32 deviceIndex,
-        TDuration executionTime,
-        TInstant now);
+    void
+    OnRequestSuccess(ui32 deviceIndex, TDuration executionTime, TInstant now);
+    void
+    OnRequestTimeout(ui32 deviceIndex, TDuration executionTime, TInstant now);
 
     void HandleUpdateCounters(
         const TEvNonreplPartitionPrivate::TEvUpdateCounters::TPtr& ev,
