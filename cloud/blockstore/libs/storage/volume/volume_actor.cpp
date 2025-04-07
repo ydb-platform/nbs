@@ -994,6 +994,10 @@ STFUNC(TVolumeActor::StateInit)
             HandleUpdateShadowDiskState);
 
         HFunc(
+            TEvVolumePrivate::TEvUpdateFollowerStateRequest,
+            HandleUpdateFollowerState);
+
+        HFunc(
             TEvDiskRegistryProxy::TEvGetDrTabletInfoResponse,
             HandleGetDrTabletInfoResponse);
 
@@ -1113,6 +1117,10 @@ STFUNC(TVolumeActor::StateWork)
             HandleUpdateShadowDiskState);
 
         HFunc(
+            TEvVolumePrivate::TEvUpdateFollowerStateRequest,
+            HandleUpdateFollowerState);
+
+        HFunc(
             TEvDiskRegistryProxy::TEvGetDrTabletInfoResponse,
             HandleGetDrTabletInfoResponse);
 
@@ -1162,6 +1170,7 @@ STFUNC(TVolumeActor::StateZombie)
         IgnoreFunc(TEvPartitionCommonPrivate::TEvLongRunningOperation);
 
         IgnoreFunc(TEvVolumePrivate::TEvUpdateShadowDiskStateRequest);
+        IgnoreFunc(TEvVolumePrivate::TEvUpdateFollowerStateRequest);
 
         IgnoreFunc(TEvDiskRegistryProxy::TEvGetDrTabletInfoResponse);
 

@@ -883,7 +883,7 @@ void TVolumeActor::RenderLinks(IOutputStream& out) const
                 for (const auto& follower: State->GetAllFollowers()) {
                     TABLER () {
                         TABLED () {
-                            out << follower.Uuid;
+                            out << follower.LinkUUID;
                         }
                         TABLED () {
                             out << follower.GetDiskIdForPrint();
@@ -892,8 +892,8 @@ void TVolumeActor::RenderLinks(IOutputStream& out) const
                             out << ToString(follower.State);
                         }
                         TABLED () {
-                            if (follower.MigrationBlockIndex) {
-                                out << *follower.MigrationBlockIndex;
+                            if (follower.MigratedBytes) {
+                                out << FormatByteSize(*follower.MigratedBytes);
                             }
                         }
                     }

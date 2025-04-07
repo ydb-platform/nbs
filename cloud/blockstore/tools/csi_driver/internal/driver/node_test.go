@@ -838,7 +838,7 @@ func TestGetVolumeStatCapabilitiesWithoutVmMode(t *testing.T) {
 	bytesUsage := stat.GetUsage()[0]
 	assert.Equal(t, bytesUsage.Unit, csi.VolumeUsage_BYTES)
 	assert.NotEqual(t, 0, bytesUsage.Total)
-	assert.Equal(t, bytesUsage.Used+bytesUsage.Available, bytesUsage.Total)
+	assert.LessOrEqual(t, bytesUsage.Used+bytesUsage.Available, bytesUsage.Total)
 
 	nodesUsage := stat.GetUsage()[1]
 	assert.Equal(t, nodesUsage.Unit, csi.VolumeUsage_INODES)

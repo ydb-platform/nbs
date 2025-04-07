@@ -2289,6 +2289,131 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionTest)
         }
     }
 
+    Y_UNIT_TEST(ShouldIgnoreTimeoutsAfterLastSuccessfulRequest)
+    {
+        TTestBasicRuntime runtime;
+        TTestEnv env(
+            runtime,
+            {.MediaKind =
+                 NProto::EStorageMediaKind::STORAGE_MEDIA_SSD_MIRROR3});
+
+        TPartitionClient client(runtime, env.ActorId);
+
+        std::optional<TString> timedOutDevice;
+        runtime.SetEventFilter(
+            [&](TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& event)
+            {
+                switch (event->GetTypeRewrite()) {
+                    case TEvDiskAgent::EvReadDeviceBlocksRequest:
+                    case TEvDiskAgent::EvWriteDeviceBlocksRequest:
+                    case TEvDiskAgent::EvZeroDeviceBlocksRequest:
+                    case TEvDiskAgent::EvChecksumDeviceBlocksRequest:
+                        return true;
+                }
+                return false;
+            });
+
+        // Send the first request. Device timeout timer will start from this
+        // moment.
+        {
+            client.SendReadBlocksRequest(TBlockRange64::WithLength(0, 1024));
+            runtime.DispatchEvents({}, TDuration::MilliSeconds(10));
+            runtime.AdvanceCurrentTime(TDuration::Seconds(1));
+
+            auto response = client.RecvReadBlocksResponse();
+            UNIT_ASSERT_VALUES_EQUAL(E_TIMEOUT, response->GetStatus());
+            UNIT_ASSERT(
+                response->GetErrorReason().Contains("request timed out"));
+            UNIT_ASSERT(!timedOutDevice.has_value());
+        }
+
+        // Send async IO requests. These will be dropped.
+        client.SendReadBlocksRequest(TBlockRange64::WithLength(0, 1024));
+        client.SendWriteBlocksRequest(TBlockRange64::WithLength(0, 1024), 1);
+        client.SendZeroBlocksRequest(TBlockRange64::WithLength(0, 1024));
+        runtime.DispatchEvents({}, TDuration::MilliSeconds(10));
+
+        // Enable disk agent.
+        auto diskAgentRequestInterceptor = runtime.SetEventFilter(
+            [&](TTestActorRuntimeBase&, TAutoPtr<IEventHandle>&)
+            { return false; });
+
+        // Do a successful read. Partition should store the timestamp of this
+        // request.
+        {
+            auto response =
+                client.ReadBlocks(TBlockRange64::WithLength(0, 1024));
+        }
+
+        runtime.AdvanceCurrentTime(TDuration::Seconds(1));
+        runtime.DispatchEvents({}, TDuration::MilliSeconds(10));
+
+        // Receive timeouts for previous IO requests. These should not update
+        // timeout timestamp.
+        auto readResponse = client.RecvReadBlocksResponse();
+        auto writeResponse = client.RecvWriteBlocksResponse();
+        auto zeroResponse = client.RecvZeroBlocksResponse();
+        UNIT_ASSERT_VALUES_EQUAL(E_TIMEOUT, readResponse->GetStatus());
+        UNIT_ASSERT_VALUES_EQUAL(E_TIMEOUT, writeResponse->GetStatus());
+        UNIT_ASSERT_VALUES_EQUAL(E_TIMEOUT, zeroResponse->GetStatus());
+
+        // Enable request interceptor again.
+        runtime.SetEventFilter(
+            [&](TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& event)
+            {
+                switch (event->GetTypeRewrite()) {
+                    case TEvDiskAgent::EvReadDeviceBlocksRequest:
+                    case TEvDiskAgent::EvWriteDeviceBlocksRequest:
+                    case TEvDiskAgent::EvZeroDeviceBlocksRequest:
+                    case TEvDiskAgent::EvChecksumDeviceBlocksRequest:
+                        return true;
+
+                    case TEvVolumePrivate::EvDeviceTimedOutRequest:
+                        const auto* msg = event->Get<
+                            TEvVolumePrivate::TEvDeviceTimedOutRequest>();
+                        UNIT_ASSERT_C(false, msg->DeviceUUID);
+                        return true;
+                }
+                return false;
+            });
+
+        runtime.AdvanceCurrentTime(TDuration::Seconds(3));
+
+        // Send async IO requests. These will be dropped.
+        client.SendReadBlocksRequest(TBlockRange64::WithLength(0, 1024));
+        client.SendWriteBlocksRequest(TBlockRange64::WithLength(2048, 1024), 1);
+        runtime.DispatchEvents({}, TDuration::MilliSeconds(10));
+        runtime.AdvanceCurrentTime(TDuration::Seconds(1));
+
+        // Make sure that request timeout is one second.
+        {
+            TAutoPtr<NActors::IEventHandle> handle;
+            runtime.GrabEdgeEventRethrow<TEvService::TEvReadBlocksResponse>(
+                handle,
+                TDuration::MilliSeconds(100));
+
+            UNIT_ASSERT(handle);
+            UNIT_ASSERT_VALUES_EQUAL(
+                E_TIMEOUT,
+                handle->Get<TEvService::TEvReadBlocksResponse>()
+                    ->GetError()
+                    .GetCode());
+        }
+        {
+            TAutoPtr<NActors::IEventHandle> handle;
+            runtime.GrabEdgeEventRethrow<TEvService::TEvWriteBlocksResponse>(
+                handle,
+                TDuration::MilliSeconds(100));
+
+            UNIT_ASSERT(handle);
+            UNIT_ASSERT_VALUES_EQUAL(
+                E_TIMEOUT,
+                handle->Get<TEvService::TEvWriteBlocksResponse>()
+                    ->GetError()
+                    .GetCode());
+        }
+    }
+
     Y_UNIT_TEST(ShouldHandleAgentBackOnline)
     {
         TTestBasicRuntime runtime;

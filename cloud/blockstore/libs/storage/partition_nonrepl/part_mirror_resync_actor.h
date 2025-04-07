@@ -223,6 +223,9 @@ private:
     BLOCKSTORE_IMPLEMENT_REQUEST(WriteBlocksLocal, TEvService);
     BLOCKSTORE_IMPLEMENT_REQUEST(ZeroBlocks, TEvService);
     BLOCKSTORE_IMPLEMENT_REQUEST(Drain, NPartition::TEvPartition);
+    BLOCKSTORE_IMPLEMENT_REQUEST(
+        WaitForInFlightWrites,
+        NPartition::TEvPartition);
 
     BLOCKSTORE_IMPLEMENT_REQUEST(DescribeBlocks, TEvVolume);
     BLOCKSTORE_IMPLEMENT_REQUEST(CompactRange, TEvVolume);

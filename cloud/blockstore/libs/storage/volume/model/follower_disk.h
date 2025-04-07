@@ -19,13 +19,14 @@ struct TFollowerDiskInfo
         Error = 3,
     };
 
-    TString Uuid;
+    TString LinkUUID;
     TString FollowerDiskId;
     TString ScaleUnitId;
     EState State = EState::None;
-    std::optional<ui64> MigrationBlockIndex;
+    std::optional<ui64> MigratedBytes;
 
     TString GetDiskIdForPrint() const;
+    TString Describe() const;
     bool operator==(const TFollowerDiskInfo& rhs) const;
 };
 

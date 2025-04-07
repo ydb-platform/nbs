@@ -875,7 +875,8 @@ private:
         auto countersGroup =
             volumeGroup
                 ->GetSubgroup("instance", realInstanceId.GetRealInstanceId())
-                ->GetSubgroup("cloud", volumeConfig.GetCloudId());
+                ->GetSubgroup("cloud", volumeConfig.GetCloudId())
+                ->GetSubgroup("folder", volumeConfig.GetFolderId());
         info->RequestCounters.Register(*countersGroup);
 
         NUserCounter::RegisterServerVolumeInstance(
