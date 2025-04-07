@@ -754,6 +754,7 @@ struct TTxVolume
         void Clear()
         {
             RemovedLaggingAgent.Clear();
+            ShouldStartResync = false;
         }
     };
 
