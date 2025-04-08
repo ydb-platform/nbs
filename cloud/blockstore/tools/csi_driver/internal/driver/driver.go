@@ -156,7 +156,7 @@ func createClients(cfg Config) (*driverClients, error) {
 }
 
 func NewDriver(cfg Config) (*Driver, error) {
-	localFsOverrides, err := LoadExternalFsOverrides(cfg.LocalFilestoreOverridePath)
+	externalFsOverrides, err := LoadExternalFsOverrides(cfg.LocalFilestoreOverridePath)
 	if err != nil {
 		return nil, err
 	}
@@ -205,7 +205,7 @@ func NewDriver(cfg Config) (*Driver, error) {
 	csi.RegisterControllerServer(
 		grpcServer,
 		newNBSServerControllerService(
-			localFsOverrides,
+			externalFsOverrides,
 			clients.nbsClient,
 			clients.nfsFilestoreClient,
 			clients.nfsLocalFilestoreClient))
@@ -219,7 +219,7 @@ func NewDriver(cfg Config) (*Driver, error) {
 			cfg.SocketsDir,
 			NodeFsTargetPathPattern,
 			NodeBlkTargetPathPattern,
-			localFsOverrides,
+			externalFsOverrides,
 			clients.nbsClient,
 			clients.nfsEndpointClient,
 			clients.nfsLocalEndpointClient,

@@ -116,7 +116,7 @@ type nodeService struct {
 	socketsDir          string
 	targetFsPathRegexp  *regexp.Regexp
 	targetBlkPathRegexp *regexp.Regexp
-	localFsOverrides    ExternalFsOverrideMap
+	externalFsOverrides ExternalFsOverrideMap
 
 	nbsClient               nbsclient.ClientIface
 	nfsClient               nfsclient.EndpointClientIface
@@ -136,7 +136,7 @@ func newNodeService(
 	socketsDir string,
 	targetFsPathPattern string,
 	targetBlkPathPattern string,
-	localFsOverrides ExternalFsOverrideMap,
+	externalFsOverrides ExternalFsOverrideMap,
 	nbsClient nbsclient.ClientIface,
 	nfsClient nfsclient.EndpointClientIface,
 	nfsLocalClient nfsclient.EndpointClientIface,
@@ -157,7 +157,7 @@ func newNodeService(
 		mounter:                    mounter,
 		targetFsPathRegexp:         regexp.MustCompile(targetFsPathPattern),
 		targetBlkPathRegexp:        regexp.MustCompile(targetBlkPathPattern),
-		localFsOverrides:           localFsOverrides,
+		externalFsOverrides:        externalFsOverrides,
 		volumeOps:                  new(sync.Map),
 		mountOptions:               mountOptions,
 		useDiscardForYDBBasedDisks: useDiscardForYDBBasedDisks,
@@ -861,7 +861,7 @@ func (s *nodeService) startNbsEndpointForNBD(
 }
 
 func (s *nodeService) getNfsClient(fileSystemId string) nfsclient.EndpointClientIface {
-	_, ok := s.localFsOverrides[fileSystemId]
+	_, ok := s.externalFsOverrides[fileSystemId]
 	if !ok {
 		return s.nfsClient
 	}
@@ -985,7 +985,7 @@ func (s *nodeService) nodeStageFileStoreAsVhostSocket(
 	}
 
 	var err error
-	_, isLocalFsOverride := s.localFsOverrides[filesystemId]
+	_, isLocalFsOverride := s.externalFsOverrides[filesystemId]
 	if isLocalFsOverride {
 		err = s.nodeStageLocalFileStoreStartEndpoint(ctx, instanceId, filesystemId, endpointDir)
 	} else {
@@ -1210,7 +1210,7 @@ func (s *nodeService) nodeUnstageVhostSocket(
 		}
 	} else if stageData.Backend == "nfs" {
 		var err error
-		_, isLocalFsOverride := s.localFsOverrides[nbsId]
+		_, isLocalFsOverride := s.externalFsOverrides[nbsId]
 		if isLocalFsOverride {
 			err = s.nodeUnstageLocalFileStoreStopEndpoint(ctx, stageData)
 		} else {
