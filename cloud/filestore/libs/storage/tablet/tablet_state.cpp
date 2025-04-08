@@ -123,8 +123,8 @@ void TIndexTabletState::LoadState(
     TabletStorageInfo.CopyFrom(tabletStorageInfo);
     // Changing thresholds in the config may result in massive amount of
     // deletion markers to be cleaned up. It may result in service degradation.
-    // Cleanup is expected to throttle when the amount of deletion markers is
-    // below the initial amount of deletion markers.
+    // Cleanup is expected to be throttled when the amount of deletion markers
+    // is below the initial amount of deletion markers.
     // The threshold is to be lowered after cleanup has finished.
     DeletionMarkersThrottlingThreshold = fileSystemStats.GetDeletionMarkersCount();
 
