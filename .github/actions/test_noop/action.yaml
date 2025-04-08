@@ -1,0 +1,82 @@
+name: Run tests (noop)
+description: Run tests (noop)
+inputs:
+  test_target:
+    required: false
+    description: "test target"
+  build_preset:
+    required: true
+    default: "relwithdebinfo"
+    description: "relwithdebinfo, release-asan, release-tsan, release-msan, release-ubsan"
+  test_size:
+    required: false
+    default: "small,medium,large"
+    description: "small or small-medium or all"
+  test_type:
+    required: false
+    default: "unittest,py3test,py2test,pytest"
+    description: "run test type"
+  test_threads:
+    required: false
+    default: "28"
+    description: "Test threads count"
+  link_threads:
+    required: false
+    default: "8"
+    description: "link threads count"
+  bazel_remote_uri:
+    required: false
+    description: "bazel-remote endpoint"
+  bazel_remote_username:
+    required: false
+    description: "bazel-remote username"
+  bazel_remote_password:
+    required: false
+    description: "bazel-remote password"
+  cache_update:
+    required: false
+    description: "Use cache for tests"
+  sync_to_s3:
+    required: false
+    default: "false"
+    description: "Sync failed tests folders to s3"
+  upload_ya_dir:
+    required: false
+    default: "no"
+    description: "Upload ya dir to s3"
+  clean_ya_dir:
+    required: false
+    default: "no"
+    description: "Clean ya dir"
+  use_network_cache:
+    required: false
+    default: "yes"
+    description: "Use network cache"
+  nebius:
+    required: false
+    default: "no"
+    description: "Use nebius"
+  truncate_enabled:
+    required: false
+    default: "yes"
+    description: "Truncate err files"
+
+runs:
+  using: composite
+  steps:
+    - name: Init
+      shell: bash --noprofile --norc -eo pipefail -x {0}
+      id: init
+      run: |
+        export TMP_DIR=/home/github/tmp
+        {
+          echo "TMP_DIR=$TMP_DIR"
+          echo "LOG_DIR=$TMP_DIR/logs"
+          echo "OUT_DIR=$TMP_DIR/out"
+          echo "ARTIFACTS_DIR=$TMP_DIR/artifacts"
+          echo "TESTS_DATA_DIR=$TMP_DIR/test_data"
+          echo "REPORTS_ARTIFACTS_DIR=$TMP_DIR/artifacts/test_reports"
+          echo "JUNIT_REPORT_XML=$TMP_DIR/junit.xml"
+          echo "JUNIT_REPORT_PARTS=$TMP_DIR/junit-split"
+          echo "SUMMARY_LINKS=$(mktemp -p /home/github)"
+        } >> $GITHUB_ENV

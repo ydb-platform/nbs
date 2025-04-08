@@ -1,0 +1,56 @@
+name: Build (noop)
+description: Build targets (noop)
+inputs:
+  build_target:
+    required: false
+    description: "build target"
+  build_preset:
+    required: true
+    default: "relwithdebinfo"
+    description: "relwithdebinfo, release-asan, release-tsan, release-msan, release-ubsan"
+  cache_update:
+    required: true
+    description: "bazel-remote upload results"
+    default: "false"
+  bazel_remote_uri:
+    required: false
+    description: "bazel-remote endpoint"
+  bazel_remote_username:
+    required: false
+    description: "bazel-remote username"
+  bazel_remote_password:
+    required: false
+    description: "bazel-remote password"
+  build_threads:
+    required: false
+    default: "60"
+    description: "build threads count"
+  link_threads:
+    required: false
+    default: "8"
+    description: "link threads count"
+  clean_ya_dir:
+    required: false
+    default: "no"
+    description: "clean ya dir"
+  use_network_cache:
+    required: false
+    default: "yes"
+    description: "use network cache"
+
+runs:
+  using: composite
+  steps:
+    - name: Init
+      id: init
+      shell: bash --noprofile --norc -eo pipefail -x {0}
+      run: |
+        export TMP_DIR=/home/github/tmp_build
+        echo "TMP_DIR=$TMP_DIR" >> $GITHUB_ENV
+        rm -rf $TMP_DIR && mkdir $TMP_DIR && chown -R github:github $TMP_DIR $GITHUB_WORKSPACE
+
+        # shellcheck disable=SC2193
+        if [ "${{ inputs.clean_ya_dir }}" == "yes" ] && [ -d /home/github/.ya/ ]; then
+          echo "Cleaning ya dir"
+          rm -rf /home/github/.ya/
+        fi
