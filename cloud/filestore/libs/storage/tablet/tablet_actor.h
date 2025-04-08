@@ -672,8 +672,6 @@ private:
     TCompactionInfo GetCompactionInfo() const;
     TCleanupInfo GetCleanupInfo() const;
     bool ShouldThrottleCleanup(const NActors::TActorContext& ctx) const;
-    void UpdateDeletionMarkersThrottlingThreshold(
-        const TCleanupInfo& cleanupInfo);
     bool IsCloseToBackpressureThresholds(TString* message) const;
 
     void HandleWakeup(

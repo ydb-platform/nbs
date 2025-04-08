@@ -566,5 +566,6 @@ message TStorageConfig
 
     // Limit CPU consumption by Cleanup when a massive amount
     // of deletion markers is to be cleaned up after changing configuration.
+    // (for example after changing cleanup threshold or other parameters)
     optional uint32 CleanupCpuThrottlingThresholdPercentage = 426;
 }
