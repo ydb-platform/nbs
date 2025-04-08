@@ -216,7 +216,7 @@ private:
                 return Rate(now, RequestBytes, PrevRequestBytes);
             }
 
-            double CPU(TInstant now) const
+            double AverageSecondsPerSecond(TInstant now) const
             {
                 return Rate(now, TimeSumUs, PrevTimeSumUs) * 1e-6;
             }

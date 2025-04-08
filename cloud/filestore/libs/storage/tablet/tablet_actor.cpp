@@ -601,7 +601,8 @@ bool TIndexTabletActor::ShouldThrottleCleanup(
     }
 
     const auto now = ctx.Now();
-    const double cleanupCpu = Metrics.Cleanup.CPU(now) * 100.0;
+    const double cleanupCpu =
+        Metrics.Cleanup.AverageSecondsPerSecond(now) * 100.0;
     return cleanupCpu > Config->GetCleanupCpuThrottlingThresholdPercentage();
 }
 

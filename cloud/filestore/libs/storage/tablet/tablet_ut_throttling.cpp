@@ -650,7 +650,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Throttling)
         UNIT_ASSERT(resp->Record.GetHeaders().GetThrottler().GetDelay() > 0);
     }
 
-    // The test is 4K only because for largers blocks the file size
+    // The test is 4K only because for larger blocks the file size
     // will be enormously higher
     TABLET_TEST_4K_ONLY(ShouldThrottleCleanupAfterTabletRestart)
     {
@@ -682,9 +682,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Throttling)
         tablet.WriteData(handle, 0, fileSize, 'a');
         tablet.DestroyHandle(handle);
 
-        TSetNodeAttrArgs args(nodeId);
-        args.SetFlag(NProto::TSetNodeAttrRequest::F_SET_ATTR_SIZE);
-        args.SetSize(block);
+        auto args = TSetNodeAttrArgs(nodeId).SetSize(block);
         tablet.SetNodeAttr(args);
 
         {
