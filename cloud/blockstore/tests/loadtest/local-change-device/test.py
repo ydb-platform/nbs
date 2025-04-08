@@ -204,7 +204,7 @@ def test_change_device():
         "--port", str(nbs.nbs_port),
         "--start-index", "{}".format(DEFAULT_BLOCK_COUNT_PER_DEVICE),
     ])
-    assert read_data == bytes(b'A' * DEFAULT_BLOCK_COUNT_PER_DEVICE)
+    assert read_data == bytes(b'A' * raw_device_data_size)
 
     # after change device MemoryDevice-1 should be in Error state
     result = call([
@@ -236,4 +236,4 @@ def test_change_device():
         "--port", str(nbs.nbs_port),
         "--start-index", "{}".format(DEFAULT_BLOCK_COUNT_PER_DEVICE),
     ])
-    assert read_data == bytes(b'A' * DEFAULT_BLOCK_COUNT_PER_DEVICE)
+    assert read_data == bytes(b'A' * raw_device_data_size)
