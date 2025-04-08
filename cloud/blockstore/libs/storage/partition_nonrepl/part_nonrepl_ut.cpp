@@ -1618,7 +1618,7 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionTest)
             UNIT_ASSERT_VALUES_EQUAL(101, interceptedVolumeRequestId);
 
             doWriteBlocks(true, 102);
-            UNIT_ASSERT_VALUES_EQUAL(0, interceptedVolumeRequestId);
+            UNIT_ASSERT_VALUES_EQUAL(102, interceptedVolumeRequestId);
         }
 
         {   // Check WriteBlocksLocal
@@ -1648,7 +1648,7 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionTest)
             UNIT_ASSERT_VALUES_EQUAL(101, interceptedVolumeRequestId);
 
             doWriteBlocksLocal(true, 102);
-            UNIT_ASSERT_VALUES_EQUAL(0, interceptedVolumeRequestId);
+            UNIT_ASSERT_VALUES_EQUAL(102, interceptedVolumeRequestId);
         }
 
         {   // Check ZeroBlocks
@@ -1675,7 +1675,7 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionTest)
             UNIT_ASSERT_VALUES_EQUAL(101, interceptedVolumeRequestId);
 
             doZeroBlocks(true, 102);
-            UNIT_ASSERT_VALUES_EQUAL(0, interceptedVolumeRequestId);
+            UNIT_ASSERT_VALUES_EQUAL(102, interceptedVolumeRequestId);
         }
     }
 
