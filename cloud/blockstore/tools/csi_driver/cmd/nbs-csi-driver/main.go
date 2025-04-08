@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"flag"
 	"log"
 
@@ -16,6 +17,8 @@ func main() {
 	flag.StringVar(&cfg.VendorVersion, "version", "devel", "Vendor version")
 	flag.StringVar(&cfg.Endpoint, "endpoint", "/csi/csi.sock", "CSI endpoint")
 	flag.StringVar(&cfg.NodeID, "node-id", "undefined", "Node ID")
+	flag.BoolVar(&cfg.CsiController, "--csi-controller", false, "Start csi driver as a controller")
+	flag.BoolVar(&cfg.CsiNode, "--csi-node", false, "Start csi driver as a node")
 	flag.BoolVar(&cfg.VMMode, "vm-mode", false, "Pass socket files to containers for VMs")
 	flag.UintVar(&cfg.MonPort, "mon-port", 8774, "Monitoring port")
 	flag.StringVar(&cfg.NbsHost, "nbs-host", "localhost", "NBS host")
@@ -40,6 +43,10 @@ func main() {
 	flag.Parse()
 
 	log.Printf("Run NBS CSI driver: %s:%s", cfg.DriverName, cfg.VendorVersion)
+
+	if !cfg.CsiController && !cfg.CsiNode {
+		panic(errors.New("CSI Driver role(controller or node) is not specified"))
+	}
 
 	srv, err := driver.NewDriver(cfg)
 	if err != nil {

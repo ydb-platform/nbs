@@ -48,6 +48,8 @@ type Config struct {
 	Endpoint                   string
 	NodeID                     string
 	VendorVersion              string
+	CsiController              bool
+	CsiNode                    bool
 	VMMode                     bool
 	MonPort                    uint
 	NbsHost                    string
@@ -235,30 +237,34 @@ func NewDriver(cfg Config) (*Driver, error) {
 		grpcServer,
 		newIdentityService(cfg.DriverName, cfg.VendorVersion))
 
-	csi.RegisterControllerServer(
-		grpcServer,
-		newNBSServerControllerService(
-			localFsOverrides,
-			clients.nbsClient,
-			clients.nfsFilestoreClient,
-			clients.nfsLocalFilestoreClient))
+	if cfg.CsiController {
+		csi.RegisterControllerServer(
+			grpcServer,
+			newNBSServerControllerService(
+				localFsOverrides,
+				clients.nbsClient,
+				clients.nfsFilestoreClient,
+				clients.nfsLocalFilestoreClient))
+	}
 
-	csi.RegisterNodeServer(
-		grpcServer,
-		newNodeService(
-			cfg.NodeID,
-			clients.nbsClientID,
-			cfg.VMMode,
-			cfg.SocketsDir,
-			NodeFsTargetPathPattern,
-			NodeBlkTargetPathPattern,
-			localFsOverrides,
-			clients.nbsClient,
-			clients.nfsEndpointClient,
-			clients.nfsLocalEndpointClient,
-			mounter.NewMounter(),
-			strings.Split(cfg.MountOptions, ","),
-			cfg.UseDiscardForYDBBasedDisks))
+	if cfg.CsiNode {
+		csi.RegisterNodeServer(
+			grpcServer,
+			newNodeService(
+				cfg.NodeID,
+				clients.nbsClientID,
+				cfg.VMMode,
+				cfg.SocketsDir,
+				NodeFsTargetPathPattern,
+				NodeBlkTargetPathPattern,
+				localFsOverrides,
+				clients.nbsClient,
+				clients.nfsEndpointClient,
+				clients.nfsLocalEndpointClient,
+				mounter.NewMounter(),
+				strings.Split(cfg.MountOptions, ","),
+				cfg.UseDiscardForYDBBasedDisks))
+	}
 
 	return &Driver{
 		grpcServer: grpcServer,
