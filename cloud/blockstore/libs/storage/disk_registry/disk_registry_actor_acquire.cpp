@@ -430,7 +430,7 @@ void TDiskRegistryActor::HandleAcquireDisk(
         return;
     }
 
-    State->FilterDevicesForAcquireRelease(diskInfo);
+    State->FilterDevicesForAcquire(diskInfo);
 
     TVector devices = std::move(diskInfo.Devices);
     for (auto& migration: diskInfo.Migrations) {

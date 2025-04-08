@@ -3463,7 +3463,7 @@ NProto::TError TDiskRegistryState::GetDiskInfo(
     return error;
 }
 
-bool TDiskRegistryState::FilterDevicesForAcquireRelease(TDiskInfo& diskInfo) const
+bool TDiskRegistryState::FilterDevicesForAcquire(TDiskInfo& diskInfo) const
 {
     auto predicate = [&](const auto& d)
     {
@@ -3475,6 +3475,23 @@ bool TDiskRegistryState::FilterDevicesForAcquireRelease(TDiskInfo& diskInfo) con
         auto brokenDevice = d.GetState() == NProto::DEVICE_STATE_ERROR;
 
         return agentUnavailable || brokenDevice;
+    };
+
+    EraseIf(diskInfo.Devices, predicate);
+    EraseIf(
+        diskInfo.Migrations,
+        [&](const auto& d) { return predicate(d.GetTargetDevice()); });
+
+    return diskInfo.Devices.size() || diskInfo.Migrations.size();
+}
+
+bool TDiskRegistryState::FilterDevicesForRelease(TDiskInfo& diskInfo) const
+{
+    auto predicate = [&](const auto& d)
+    {
+        const auto* agent = AgentList.FindAgent(d.GetAgentId());
+
+        return !agent || agent->GetState() == NProto::AGENT_STATE_UNAVAILABLE;
     };
 
     EraseIf(diskInfo.Devices, predicate);
