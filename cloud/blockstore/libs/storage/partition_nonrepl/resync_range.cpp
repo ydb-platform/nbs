@@ -129,7 +129,7 @@ void TResyncRangeActor::CompareChecksums(const TActorContext& ctx)
     }
 
     if (AssignVolumeRequestId) {
-        ResyncIndex = majorIdx;
+        MajorIndex = majorIdx;
         GetVolumeRequestId(ctx);
         return;
     }
@@ -291,7 +291,7 @@ void TResyncRangeActor::HandleVolumeRequestId(
     }
 
     VolumeRequestId = msg->VolumeRequestId;
-    ReadBlocks(ctx, ResyncIndex);
+    ReadBlocks(ctx, MajorIndex);
 }
 
 void TResyncRangeActor::HandleReadUndelivery(
