@@ -732,7 +732,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Throttling)
         }
 
         // Advance time and trigger cleanup again by calling a user operation
-        tablet.AdvanceTime(TDuration::Minutes(10s));
+        tablet.AdvanceTime(TDuration::Minutes(10));
         tablet.SetNodeAttr(args);
 
         // Cleanup is expected to process a bit more blocks

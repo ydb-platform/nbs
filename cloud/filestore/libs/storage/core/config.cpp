@@ -32,28 +32,28 @@ using TAliases = NProto::TStorageConfig::TFilestoreAliases;
     xxx(WriteBatchTimeout,             TDuration, TDuration::MilliSeconds(0)  )\
     xxx(WriteBlobThreshold,            ui32,      128_KB                      )\
                                                                                \
-    xxx(MaxBlobSize,                        ui32,   4_MB                      )\
-    xxx(FlushThreshold,                     ui32,   4_MB                      )\
-    xxx(CleanupThreshold,                   ui32,   512                       )\
-    xxx(CleanupThresholdAverage,            ui32,   64                        )\
-    xxx(CleanupCpuThrottlingThresholdPercentage, ui32,   0                    )\
-    xxx(CalculateCleanupScoreBasedOnUsedBlocksCount, bool,   false            )\
-    xxx(NewCleanupEnabled,                  bool,   false                     )\
-    xxx(CompactionThreshold,                ui32,   20                        )\
-    xxx(GarbageCompactionThreshold,         ui32,   100                       )\
-    xxx(CompactionThresholdAverage,         ui32,   4                         )\
-    xxx(GarbageCompactionThresholdAverage,  ui32,   10                        )\
-    xxx(CompactRangeGarbagePercentageThreshold, ui32,    0                    )\
-    xxx(CompactRangeAverageBlobSizeThreshold,   ui32,    0                    )\
-    xxx(GuestWriteBackCacheEnabled,         bool,   false                     )\
-    xxx(NewCompactionEnabled,               bool,   false                     )\
+    xxx(MaxBlobSize,                                    ui32,   4_MB          )\
+    xxx(FlushThreshold,                                 ui32,   4_MB          )\
+    xxx(CleanupThreshold,                               ui32,   512           )\
+    xxx(CleanupThresholdAverage,                        ui32,   64            )\
+    xxx(CleanupCpuThrottlingThresholdPercentage,        ui32,   0             )\
+    xxx(CalculateCleanupScoreBasedOnUsedBlocksCount,    bool,   false         )\
+    xxx(NewCleanupEnabled,                              bool,   false         )\
+    xxx(CompactionThreshold,                            ui32,   20            )\
+    xxx(GarbageCompactionThreshold,                     ui32,   100           )\
+    xxx(CompactionThresholdAverage,                     ui32,   4             )\
+    xxx(GarbageCompactionThresholdAverage,              ui32,   10            )\
+    xxx(CompactRangeGarbagePercentageThreshold,         ui32,   0             )\
+    xxx(CompactRangeAverageBlobSizeThreshold,           ui32,   0             )\
+    xxx(GuestWriteBackCacheEnabled,                     bool,   false         )\
+    xxx(NewCompactionEnabled,                           bool,   false         )\
     xxx(UseMixedBlocksInsteadOfAliveBlocksInCompaction, bool,   false         )\
-    xxx(CollectGarbageThreshold,            ui32,   4_MB                      )\
-    xxx(FlushBytesThreshold,                ui64,   4_MB                      )\
-    xxx(MaxDeleteGarbageBlobsPerTx,         ui32,   16384                     )\
-    xxx(LoadedCompactionRangesPerTx,        ui32,   10 * 1024 * 1024          )\
-    xxx(MaxBlocksPerTruncateTx,             ui32,   0 /*TODO: 32GiB/4KiB*/    )\
-    xxx(MaxTruncateTxInflight,              ui32,   10                        )\
+    xxx(CollectGarbageThreshold,                        ui32,   4_MB          )\
+    xxx(FlushBytesThreshold,                            ui64,   4_MB          )\
+    xxx(MaxDeleteGarbageBlobsPerTx,                     ui32,   16384         )\
+    xxx(LoadedCompactionRangesPerTx,                    ui32,   10_MB         )\
+    xxx(MaxBlocksPerTruncateTx, /*TODO: 32GiB/4KiB*/    ui32,   0             )\
+    xxx(MaxTruncateTxInflight,                          ui32,   10            )\
                                                                                \
     xxx(AutomaticShardCreationEnabled,                          bool,   false )\
     xxx(ShardAllocationUnit,                                    ui64,   4_TB  )\
