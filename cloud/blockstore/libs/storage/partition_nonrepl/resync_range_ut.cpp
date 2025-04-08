@@ -230,7 +230,8 @@ struct TTestEnv
             BlockDigestGenerator,
             resyncPolicy,
             EBlockRangeChecksumStatus::Unknown,
-            TActorId{});
+            VolumeActorId,
+            false);
 
         Runtime.Register(actor.release(), 0);
 
