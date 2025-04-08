@@ -174,6 +174,7 @@ def test_change_device():
     ])
     assert read_data == write_data
 
+    # after change device MemoryDevice-3 should be in Error state
     result = call([
         nbs_client_binary_path, "ExecuteAction",
         "--action", "ChangeDiskDevice",
@@ -184,17 +185,28 @@ def test_change_device():
     ])
     assert result == 0
 
-    read_data = check_output([
+    # reading from MemoryDevice-3 is not allowed because it is in Error state
+    read_md3_result = run([
         nbs_client_binary_path, "ReadBlocks",
         "--disk-id", "vol0",
-        "--blocks-count", "{}".format(DEFAULT_BLOCK_COUNT_PER_DEVICE * 2),
+        "--blocks-count", "{}".format(DEFAULT_BLOCK_COUNT_PER_DEVICE),
         "--host", "localhost",
         "--port", str(nbs.nbs_port),
     ])
-    test_data = bytes(raw_device_data_size) + bytes(b'A' * raw_device_data_size)
-    assert read_data != write_data
-    assert read_data == test_data
+    assert read_md3_result.returncode != 0
 
+    # with reading from MemoryDevice-2 is ok
+    read_data = check_output([
+        nbs_client_binary_path, "ReadBlocks",
+        "--disk-id", "vol0",
+        "--blocks-count", "{}".format(DEFAULT_BLOCK_COUNT_PER_DEVICE),
+        "--host", "localhost",
+        "--port", str(nbs.nbs_port),
+        "--start-index", "{}".format(DEFAULT_BLOCK_COUNT_PER_DEVICE),
+    ])
+    assert read_data == bytes(b'A' * DEFAULT_BLOCK_COUNT_PER_DEVICE)
+
+    # after change device MemoryDevice-1 should be in Error state
     result = call([
         nbs_client_binary_path, "ExecuteAction",
         "--action", "ChangeDiskDevice",
@@ -205,11 +217,23 @@ def test_change_device():
     ])
     assert result == 0
 
-    read_data = check_output([
+    # reading from MemoryDevice-1 is not allowed because it is in Error state
+    read_md1_result = run([
         nbs_client_binary_path, "ReadBlocks",
         "--disk-id", "vol0",
-        "--blocks-count", "{}".format(DEFAULT_BLOCK_COUNT_PER_DEVICE * 2),
+        "--blocks-count", "{}".format(DEFAULT_BLOCK_COUNT_PER_DEVICE),
         "--host", "localhost",
         "--port", str(nbs.nbs_port),
     ])
-    assert read_data == write_data
+    assert read_md1_result.returncode != 0
+
+    # with reading from MemoryDevice-2 is ok
+    read_data = check_output([
+        nbs_client_binary_path, "ReadBlocks",
+        "--disk-id", "vol0",
+        "--blocks-count", "{}".format(DEFAULT_BLOCK_COUNT_PER_DEVICE),
+        "--host", "localhost",
+        "--port", str(nbs.nbs_port),
+        "--start-index", "{}".format(DEFAULT_BLOCK_COUNT_PER_DEVICE),
+    ])
+    assert read_data == bytes(b'A' * DEFAULT_BLOCK_COUNT_PER_DEVICE)
