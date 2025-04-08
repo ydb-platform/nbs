@@ -45,7 +45,7 @@ private:
     TDuration WriteDuration;
     TVector<IProfileLog::TBlockInfo> AffectedBlockInfos;
     ui64 VolumeRequestId = 0;
-    int MajorIndex = 0;
+    int ReplicaIndexToReadFrom = 0;
 
     TChecksumRangeActorCompanion ChecksumRangeActorCompanion{Replicas};
 
