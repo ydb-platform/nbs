@@ -20,7 +20,7 @@ enum EBlobIndexOpsPriority
 enum EGuestCachingType
 {
     // No caching is allowed, every CreateHandle forces a guest page cache
-    //invalidation
+    // invalidation
     GCT_NONE = 0;
     // The second RDONLY open call will be allowed not to invalidate the guest
     // page cache if there are no other write handles and mtime of the file
@@ -558,10 +558,9 @@ message TStorageConfig
     // within a given session
     optional bool GuestKeepCacheAllowed = 423;
 
-    // This option is not used if GuestKeepCacheAllowed is set to false.
     optional EGuestCachingType GuestCachingType = 424;
 
     // In addition to the actively opened handles the tablet will also keep
     // in memory at most this number of the most recently used nodes
-    optional uint64 OpenHandlesStatsCapacity = 425;
+    optional uint64 SessionHandleOffloadedStatsCapacity = 425;
 }

@@ -120,8 +120,8 @@ message TCheckpoint
 message TSessionOptions
 {
     // Some sessions may hold additional stats regarding recently open handles.
-    // The size of this cache is limited by OpenHandlesStatsCapacity.
-    uint64 OpenHandlesStatsCapacity = 1;
+    // The size of this cache is limited by SessionHandleOffloadedStatsCapacity.
+    uint64 SessionHandleOffloadedStatsCapacity = 1;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -132,12 +132,11 @@ message TSession
     string ClientId = 2;
     string CheckpointId = 3;
     bytes SessionState = 5;
+    // unused = 4
     uint64 MaxSeqNo = 6;
     uint64 MaxRwSeqNo = 7;
     string OriginFqdn = 8;
     uint64 RecoveryTimestampUs = 9;
-
-    TSessionOptions Options = 4;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

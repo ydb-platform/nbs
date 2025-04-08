@@ -87,8 +87,8 @@ private:
     TLRUCache<ui64, TPerNodeHandleStats> OffloadedStats;
 
 public:
-    TSessionHandleStats(const size_t offloadedCacheSize)
-        : OffloadedStats(offloadedCacheSize)
+    explicit TSessionHandleStats(const size_t offloadedStatsCapacity)
+        : OffloadedStats(offloadedStatsCapacity)
     {}
 
     void RegisterHandle(const NProto::TSessionHandle& handle)
@@ -223,7 +223,8 @@ public:
             const NProto::TSession& proto,
             const NProto::TSessionOptions& sessionOptions)
         : NProto::TSession(proto)
-        , HandleStatsByNode(sessionOptions.GetOpenHandlesStatsCapacity())
+        , HandleStatsByNode(
+              sessionOptions.GetSessionHandleOffloadedStatsCapacity())
         , SubSessions(GetMaxSeqNo(), GetMaxRwSeqNo())
     {}
 
@@ -375,8 +376,8 @@ public:
         const TStorageConfigPtr& config)
     {
         NProto::TSessionOptions options;
-        options.SetOpenHandlesStatsCapacity(
-            config->GetOpenHandlesStatsCapacity());
+        options.SetSessionHandleOffloadedStatsCapacity(
+            config->GetSessionHandleOffloadedStatsCapacity());
         return options;
     }
 };

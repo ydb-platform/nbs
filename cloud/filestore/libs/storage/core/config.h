@@ -315,7 +315,7 @@ public:
 
     bool GetGuestKeepCacheAllowed() const;
     NProto::EGuestCachingType GetGuestCachingType() const;
-    ui64 GetOpenHandlesStatsCapacity() const;
+    ui64 GetSessionHandleOffloadedStatsCapacity() const;
 };
 
 }   // namespace NCloud::NFileStore::NStorage

@@ -254,11 +254,11 @@ using TAliases = NProto::TStorageConfig::TFilestoreAliases;
                                                                                \
     xxx(ServerWriteBackCacheEnabled,    bool,      false                      )\
                                                                                \
-    xxx(GuestKeepCacheAllowed,          bool,      false                      )\
+    xxx(GuestKeepCacheAllowed,                     bool,      false           )\
     xxx(GuestCachingType,                                                      \
         NProto::EGuestCachingType,                                             \
         NProto::GCT_SECOND_READ                                               )\
-    xxx(OpenHandlesStatsCapacity,       ui64,      0                          )\
+    xxx(SessionHandleOffloadedStatsCapacity,       ui64,      0               )\
 // FILESTORE_STORAGE_CONFIG
 
 #define FILESTORE_STORAGE_CONFIG_REF(xxx)                                      \

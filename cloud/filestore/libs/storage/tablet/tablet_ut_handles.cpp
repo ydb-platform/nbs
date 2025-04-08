@@ -104,7 +104,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Handles)
     {
         NProto::TStorageConfig storageConfig;
         storageConfig.SetGuestKeepCacheAllowed(true);
-        storageConfig.SetOpenHandlesStatsCapacity(2);
+        storageConfig.SetSessionHandleOffloadedStatsCapacity(2);
         storageConfig.SetGuestCachingType(NProto::GCT_ANY_READ);
         TTestEnv env({}, storageConfig);
         env.CreateSubDomain("nfs");
