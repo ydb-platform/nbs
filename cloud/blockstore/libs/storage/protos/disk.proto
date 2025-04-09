@@ -171,8 +171,6 @@ message TDeviceConfig
 
     // Physical offset in bytes.
     uint64 PhysicalOffset = 19;
-
-    optional bool IsLostDevice = 20;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -678,6 +676,9 @@ message TAllocateDiskResponse
 
     // Devices that had been lagging.
     repeated TLaggingDevice RemovedLaggingDevices = 9;
+
+    // Devices that had been lost by disk agent.
+    repeated string LostDevices = 10;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

@@ -1114,6 +1114,21 @@ auto TDiskRegistryState::RegisterAgent(
         .DevicesToDisableIO = std::move(devicesToDisableIO)};
 }
 
+TVector<TString> TDiskRegistryState::GetLostDevicesForDisk(
+    const TString& diskId)
+{
+    const auto& allLostDevices = AgentList.GetLostDevices();
+
+    TVector<TString> lostDevicesForDisk;
+    for (const auto& d: allLostDevices) {
+        if (DeviceList.FindDiskId(d) == diskId) {
+            lostDevicesForDisk.emplace_back(d);
+        }
+    }
+
+    return lostDevicesForDisk;
+}
+
 NProto::TError TDiskRegistryState::UnregisterAgent(
     TDiskRegistryDatabase& db,
     ui32 nodeId)

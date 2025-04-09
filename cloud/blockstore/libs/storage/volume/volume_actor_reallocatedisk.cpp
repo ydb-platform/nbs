@@ -2,6 +2,8 @@
 
 #include <cloud/blockstore/libs/storage/api/disk_registry_proxy.h>
 
+#include <ranges>
+
 namespace NCloud::NBlockStore::NStorage {
 
 using namespace NActors;
@@ -91,6 +93,7 @@ void TReallocateActor::HandleAllocateDiskResponse(
     const TActorContext& ctx)
 {
     auto* msg = ev->Get();
+    auto& record = msg->Record;
 
     if (HasError(msg->GetError())) {
         LOG_ERROR(ctx, TBlockStoreComponents::VOLUME,
@@ -128,12 +131,18 @@ void TReallocateActor::HandleAllocateDiskResponse(
             std::move(*removedLaggingDevice.MutableDeviceUUID()));
     }
 
+    TVector<TString> lostDevices;
+    std::ranges::move(
+        *record.MutableLostDevices(),
+        std::back_inserter(lostDevices));
+
     auto request = std::make_unique<TEvVolumePrivate::TEvUpdateDevicesRequest>(
         std::move(*msg->Record.MutableDevices()),
         std::move(*msg->Record.MutableMigrations()),
         std::move(replicas),
         std::move(freshDeviceIds),
         std::move(removedLaggingDevices),
+        std::move(lostDevices),
         msg->Record.GetIOMode(),
         TInstant::MicroSeconds(msg->Record.GetIOModeTs()),
         msg->Record.GetMuteIOErrors());

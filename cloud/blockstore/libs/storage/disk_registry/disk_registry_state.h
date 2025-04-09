@@ -887,6 +887,8 @@ public:
         const TString& poolName,
         const ui64 totalByteCount) const;
 
+    TVector<TString> GetLostDevicesForDisk(const TString& diskId);
+
 private:
     void ProcessConfig(const NProto::TDiskRegistryConfig& config);
     void ProcessDisks(TVector<NProto::TDiskConfig> disks);

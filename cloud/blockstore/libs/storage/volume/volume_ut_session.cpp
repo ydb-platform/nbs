@@ -494,14 +494,7 @@ Y_UNIT_TEST_SUITE(TVolumeSessionTest)
             devices.emplace_back(d.GetDeviceUUID());
         }
 
-        auto& disk = State->Disks.at("vol0");
-        for (auto& d: disk.Devices) {
-            if (d.GetDeviceUUID() == devices[0]) {
-                d.SetIsLostDevice(true);
-            } else {
-                d.SetIsLostDevice(false);
-            }
-        }
+        State->LostDevices.emplace_back(devices[0]);
 
         volume.ReallocateDisk();
         // reallocate disk will trigger pipes reset, so reestablish connection
@@ -542,9 +535,7 @@ Y_UNIT_TEST_SUITE(TVolumeSessionTest)
         }
         acquiredDevices.clear();
 
-        for (auto& d: disk.Devices) {
-            d.SetIsLostDevice(false);
-        }
+        State->LostDevices.clear();
 
         volume.ReallocateDisk();
         // reallocate disk will trigger pipes reset, so reestablish connection
