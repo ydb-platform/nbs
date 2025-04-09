@@ -54,7 +54,6 @@ void TCopyRangeActorCommon::HandleVolumeRequestId(
     const TEvVolumePrivate::TEvTakeVolumeRequestIdResponse::TPtr& ev,
     const NActors::TActorContext& ctx)
 {
-    Y_UNUSED(ev);
     auto* msg = ev->Get();
     if (HasError(msg->GetError())) {
         Done(ctx, msg->GetError());
