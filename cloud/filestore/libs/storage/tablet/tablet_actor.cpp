@@ -586,7 +586,8 @@ TCleanupInfo TIndexTabletActor::GetCleanupInfo() const
 }
 
 bool TIndexTabletActor::ShouldThrottleCleanup(
-    const NActors::TActorContext& ctx) const
+    const NActors::TActorContext& ctx,
+    const TCleanupInfo& cleanupInfo) const
 {
     if (Config->GetCleanupCpuThrottlingThresholdPercentage() == 0) {
         return false;
@@ -595,8 +596,17 @@ bool TIndexTabletActor::ShouldThrottleCleanup(
     const auto deletionMarkersCount =
         GetFileSystemStats().GetDeletionMarkersCount();
 
-    // Throttle cleanup only when the amount of deletion markers is below threshold
-    if (deletionMarkersCount >= GetDeletionMarkersThrottlingThreshold()) {
+    const auto rangeCompactionStats = GetCompactionStats(cleanupInfo.RangeId);
+
+    const auto deletionMarkersCountAfterCleanup =
+        rangeCompactionStats.DeletionsCount <= deletionMarkersCount
+        ? deletionMarkersCount - rangeCompactionStats.DeletionsCount
+        : 0;
+
+    // Cleanup is to be throttled only when the number of deletion markers after
+    // cleanup will drop below the minimal observed amount of deletion markers.
+    // https://github.com/ydb-platform/nbs/pull/3268
+    if (deletionMarkersCountAfterCleanup >= GetMinimalDeletionMarkersCount()) {
         return false;
     }
 

@@ -151,16 +151,6 @@ void TIndexTabletActor::CompleteTx_Cleanup(
         1,
         args.ProcessedDeletionMarkerCount * GetBlockSize(),
         ctx.Now() - args.RequestInfo->StartedTs);
-
-    const auto cleanupInfo = GetCleanupInfo();
-    if (!cleanupInfo.ShouldCleanup) {
-        // Update threshold to a lower value after cleanup has finished
-        const auto deletionMarkersCount =
-            GetFileSystemStats().GetDeletionMarkersCount();
-        if (deletionMarkersCount < GetDeletionMarkersThrottlingThreshold()) {
-            SetDeletionMarkersThrottlingThreshold(deletionMarkersCount);
-        }
-    }
 }
 
 }   // namespace NCloud::NFileStore::NStorage

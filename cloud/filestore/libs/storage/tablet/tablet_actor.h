@@ -671,7 +671,9 @@ private:
     ui32 ScaleCompactionThreshold(ui32 t) const;
     TCompactionInfo GetCompactionInfo() const;
     TCleanupInfo GetCleanupInfo() const;
-    bool ShouldThrottleCleanup(const NActors::TActorContext& ctx) const;
+    bool ShouldThrottleCleanup(
+        const NActors::TActorContext& ctx,
+        const TCleanupInfo& cleanupInfo) const;
     bool IsCloseToBackpressureThresholds(TString* message) const;
 
     void HandleWakeup(
