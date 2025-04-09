@@ -1050,6 +1050,12 @@ void TVolumeActor::RenderHtmlInfo(IOutputStream& out, TInstant now) const
         if (IsReliableDiskRegistryMediaKind(mediaKind)) {
             DIV_CLASS("row") {
                 DIV_CLASS("col-md-6") {
+                    RenderScrubbingStatus(out);
+                }
+            }
+
+            DIV_CLASS("row") {
+                DIV_CLASS("col-md-6") {
                     RenderResyncStatus(out);
                 }
             }
@@ -1585,6 +1591,85 @@ void TVolumeActor::RenderMigrationStatus(IOutputStream& out) const
                 }
             }
         }
+    }
+}
+
+void TVolumeActor::RenderScrubbingStatus(IOutputStream& out) const
+{
+    const auto& scrubbing = State->GetScrubbingInfo();
+    const auto totalBlocks = GetBlocksCount();
+    const auto blockSize = State->GetBlockSize();
+
+    auto outputRanges = [&](const TBlockRangeSet64& ranges)
+    {
+        for (auto range: ranges) {
+            out << range.Print();
+        }
+    };
+
+    HTML (out) {
+        TAG (TH3) {
+            TString statusText = "inactive";
+            TString cssClass = "label-default";
+
+            if (scrubbing.Running) {
+                statusText = "in progress";
+                cssClass = "label-success";
+            }
+
+            out << "ScrubbingStatus:";
+
+            SPAN_CLASS_STYLE ("label " + cssClass, "margin-left:10px") {
+                out << statusText;
+            }
+        }
+
+        if (!scrubbing.Running) {
+            return;
+        }
+
+        TABLE_SORTABLE_CLASS("table table-condensed") {
+            TABLEHEAD() {
+                TABLER() {
+                    TABLED() { out << "Scrubbing progress: "; }
+                    TABLED() {
+                        OutputProgress(
+                            scrubbing.CurrentRange.Start,
+                            totalBlocks,
+                            blockSize,
+                            totalBlocks - scrubbing.CurrentRange.Start,
+                            out);
+
+                        out << "<br>Full scan count: " << scrubbing.FullScanCount;
+                    }
+                }
+                TABLER() {
+                    TABLED () { out << "Minors: "; }
+                    TABLED () {
+                        outputRanges(scrubbing.Minors);
+                    }
+                }
+                TABLER() {
+                    TABLED () { out << "Majors: "; }
+                    TABLED () {
+                        outputRanges(scrubbing.Majors);
+                    }
+                }
+                TABLER() {
+                    TABLED () { out << "Fixed: "; }
+                    TABLED () {
+                        outputRanges(scrubbing.Fixed);
+                    }
+                }
+                TABLER() {
+                    TABLED () { out << "Fixed partial: "; }
+                    TABLED () {
+                        outputRanges(scrubbing.FixedPartial);
+                    }
+                }
+            }
+        }
+
     }
 }
 

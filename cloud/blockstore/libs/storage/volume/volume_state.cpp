@@ -988,6 +988,20 @@ std::optional<TFollowerDiskInfo> TVolumeState::FindFollowerByDiskId(
     return std::nullopt;
 }
 
+void TVolumeState::UpdateScrubberCounters(TScrubbingInfo counters)
+{
+    ScrubbingInfo.FullScanCount +=
+        ScrubbingInfo.CurrentRange.Start > counters.CurrentRange.Start ? 1 : 0;
+    ScrubbingInfo.Running = counters.Running;
+    ScrubbingInfo.CurrentRange = counters.CurrentRange;
+    ScrubbingInfo.Minors.insert(counters.Minors.begin(), counters.Minors.end());
+    ScrubbingInfo.Majors.insert(counters.Majors.begin(), counters.Majors.end());
+    ScrubbingInfo.Fixed.insert(counters.Fixed.begin(), counters.Fixed.end());
+    ScrubbingInfo.FixedPartial.insert(
+        counters.FixedPartial.begin(),
+        counters.FixedPartial.end());
+}
+
 bool TVolumeState::CanPreemptClient(
     const TString& oldClientId,
     TInstant referenceTimestamp,
