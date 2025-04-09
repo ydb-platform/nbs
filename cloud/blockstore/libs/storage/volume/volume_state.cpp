@@ -934,7 +934,7 @@ TVector<NProto::TDeviceConfig> TVolumeState::GetAllDevicesForAcquireRelease(
 
     auto addDeviceIfNeeded = [&](const auto& d)
     {
-        if (filterErrorDevices && d.GetIsLostDevice()) {
+        if (filterErrorDevices && d.HasIsLostDevice() && d.GetIsLostDevice()) {
             return;
         }
         resultDevices.emplace_back(d);
