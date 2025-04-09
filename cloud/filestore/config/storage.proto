@@ -541,4 +541,8 @@ message TStorageConfig
     // handles to nodes that are not being edited and are already opened
     // within a given session
     optional bool GuestKeepCacheAllowed = 423;
+
+    // The number of blobs in the fresh blocks table that triggers
+    // flushing.
+    optional uint32 FlushBlobsCountThreshold = 424;
 }

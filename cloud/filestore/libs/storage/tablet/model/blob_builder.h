@@ -16,7 +16,9 @@ namespace NCloud::NFileStore::NStorage {
 
 inline ui32 CalculateMaxBlocksInBlob(ui32 maxBlobSize, ui32 blockSize)
 {
-    return Min(MaxBlocksCount, maxBlobSize / blockSize);
+    return blockSize != 0
+        ? Min(MaxBlocksCount, maxBlobSize / blockSize)
+        : maxBlobSize;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
