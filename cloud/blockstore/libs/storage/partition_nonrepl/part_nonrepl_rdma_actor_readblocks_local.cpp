@@ -117,26 +117,26 @@ public:
     std::unique_ptr<TEvNonreplPartitionPrivate::TEvReadBlocksCompleted>
     CreateCompletionEvent() const
     {
-        const auto RequestBlockCount = GetRequestBlockCount();
-        const bool allZeroes = VoidBlockCount == RequestBlockCount;
+        const auto requestBlockCount = GetRequestBlockCount();
+        const bool allZeroes = VoidBlockCount == requestBlockCount;
 
         auto completion = TBase::CreateCompletionEvent<
             TEvNonreplPartitionPrivate::TEvReadBlocksCompleted>();
-        completion->NonVoidBlockCount = allZeroes ? 0 : RequestBlockCount;
-        completion->VoidBlockCount = allZeroes ? RequestBlockCount : 0;
+        completion->NonVoidBlockCount = allZeroes ? 0 : requestBlockCount;
+        completion->VoidBlockCount = allZeroes ? requestBlockCount : 0;
         auto& counters = *completion->Stats.MutableUserReadCounters();
-        counters.SetBlocksCount(RequestBlockCount);
+        counters.SetBlocksCount(requestBlockCount);
 
         return completion;
     }
 
     std::unique_ptr<TEvService::TEvReadBlocksLocalResponse> CreateResponse(
-        NProto::TError err) const
+        NProto::TError error) const
     {
         const bool allZeroes = VoidBlockCount == GetRequestBlockCount();
         auto response =
             std::make_unique<TEvService::TEvReadBlocksLocalResponse>(
-                std::move(err));
+                std::move(error));
         response->Record.SetAllZeroes(allZeroes);
 
         return response;

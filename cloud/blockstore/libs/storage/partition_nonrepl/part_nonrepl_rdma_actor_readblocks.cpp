@@ -131,12 +131,12 @@ public:
     }
 
     std::unique_ptr<TEvService::TEvReadBlocksResponse> CreateResponse(
-        NProto::TError err)
+        NProto::TError error)
     {
         const ui32 blockCount = Response.GetBlocks().BuffersSize();
         const bool allZeroes = VoidBlockCount == blockCount;
 
-        *Response.MutableError() = std::move(err);
+        *Response.MutableError() = std::move(error);
         auto response = std::make_unique<TEvService::TEvReadBlocksResponse>();
         response->Record = std::move(Response);
         response->Record.SetAllZeroes(allZeroes);

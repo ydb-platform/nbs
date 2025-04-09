@@ -54,24 +54,7 @@ private:
     TMap<ui64, TPartialChecksum> Checksums;
 
 public:
-    TDeviceChecksumRequestHandler(
-            TActorSystem* actorSystem,
-            TNonreplicatedPartitionConfigPtr partConfig,
-            TRequestInfoPtr requestInfo,
-            size_t requestCount,
-            ui32 requestBlockCount,
-            NActors::TActorId parentActorId,
-            ui64 requestId)
-        : TRdmaDeviceRequestHandler(
-              actorSystem,
-              std::move(partConfig),
-              std::move(requestInfo),
-              requestId,
-              parentActorId,
-              requestBlockCount,
-              requestCount)
-
-    {}
+    using TRdmaDeviceRequestHandler::TRdmaDeviceRequestHandler;
 
     NProto::TError ProcessSubResponse(
         const TDeviceRequestContext& dCtx,

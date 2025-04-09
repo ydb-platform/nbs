@@ -31,23 +31,7 @@ class TRdmaRequestZeroBlocksHandler
     using TBase = TRdmaDeviceRequestHandler<TRdmaRequestZeroBlocksHandler>;
 
 public:
-    TRdmaRequestZeroBlocksHandler(
-            TActorSystem* actorSystem,
-            TNonreplicatedPartitionConfigPtr partConfig,
-            TRequestInfoPtr requestInfo,
-            size_t requestCount,
-            ui32 requestBlockCount,
-            NActors::TActorId parentActorId,
-            ui64 requestId)
-        : TRdmaDeviceRequestHandler(
-              actorSystem,
-              std::move(partConfig),
-              std::move(requestInfo),
-              requestId,
-              parentActorId,
-              requestBlockCount,
-              requestCount)
-    {}
+    using TRdmaDeviceRequestHandler::TRdmaDeviceRequestHandler;
 
     NProto::TError ProcessSubResponse(
         const TDeviceRequestContext& dCtx,
@@ -81,10 +65,10 @@ public:
     }
 
     std::unique_ptr<TEvService::TEvZeroBlocksResponse> CreateResponse(
-        NProto::TError err) const
+        NProto::TError error) const
     {
         return std::make_unique<TEvService::TEvZeroBlocksResponse>(
-            std::move(err));
+            std::move(error));
     }
 };
 
