@@ -305,6 +305,8 @@ void TIndexTabletActor::ExecuteTx_CreateSession(
         args.SessionId.c_str(),
         seqNo);
 
+    auto sessionOptions = TSession::CreateSessionOptions(Config);
+
     CreateSession(
         db,
         clientId,
@@ -313,7 +315,8 @@ void TIndexTabletActor::ExecuteTx_CreateSession(
         originFqdn,
         seqNo,
         readOnly,
-        owner);
+        owner,
+        sessionOptions);
 }
 
 void TIndexTabletActor::CompleteTx_CreateSession(

@@ -598,7 +598,8 @@ public:
         const TVector<NProto::TSessionHandle>& handles,
         const TVector<NProto::TSessionLock>& locks,
         const TVector<NProto::TDupCacheEntry>& cacheEntries,
-        const TVector<NProto::TSessionHistoryEntry>& sessionsHistory);
+        const TVector<NProto::TSessionHistoryEntry>& sessionsHistory,
+        const NProto::TSessionOptions& sessionOptions);
 
     TSession* CreateSession(
         TIndexTabletDatabase& db,
@@ -608,7 +609,8 @@ public:
         const TString& originFqdn,
         ui64 seqNo,
         bool readOnly,
-        const NActors::TActorId& owner);
+        const NActors::TActorId& owner,
+        const NProto::TSessionOptions& sessionOptions);
 
     void RemoveSession(
         TIndexTabletDatabase& db,
@@ -649,13 +651,15 @@ public:
 private:
     TSession* CreateSession(
         const NProto::TSession& proto,
-        TInstant deadline);
+        TInstant deadline,
+        const NProto::TSessionOptions& sessionOptions);
 
     TSession* CreateSession(
         const NProto::TSession& proto,
         ui64 seqNo,
         bool readOnly,
-        const NActors::TActorId& owner);
+        const NActors::TActorId& owner,
+        const NProto::TSessionOptions& sessionOptions);
 
     void RemoveSession(TSession* session);
 
