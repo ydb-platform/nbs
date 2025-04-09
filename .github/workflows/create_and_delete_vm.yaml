@@ -85,8 +85,8 @@ jobs:
         if: ${{ github.event.pull_request.head.sha != '' && contains(github.event.pull_request.labels.*.name, 'rebase') }}
         shell: bash
         run: |
-          git config user.email "librarian@nebius.com"
-          git config user.name "Rebase Robotovich"
+          git config user.email "robot-nbs@nebius.com"
+          git config user.name "Robot NBS"
           git fetch origin ${{ github.event.pull_request.base.ref }}
           git rebase origin/${{ github.event.pull_request.base.ref }}
       - name: checkout
@@ -174,8 +174,8 @@ jobs:
         if: ${{ github.event.pull_request.head.sha != '' && contains(github.event.pull_request.labels.*.name, 'rebase') }}
         shell: bash
         run: |
-          git config user.email "librarian@nebius.com"
-          git config user.name "Rebase Robotovich"
+          git config user.email "robot-nbs@nebius.com"
+          git config user.name "Robot NBS"
           git fetch origin ${{ github.event.pull_request.base.ref }}
           git rebase origin/${{ github.event.pull_request.base.ref }}
       - name: checkout
