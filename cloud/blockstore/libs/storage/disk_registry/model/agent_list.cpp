@@ -315,7 +315,6 @@ void TAgentList::AddLostDevice(
         device.SetStateMessage("lost");
     }
 
-    device.SetIsLostDevice(true);
     LostDevices.emplace(device.GetDeviceUUID());
 
     agent.MutableDevices()->Add(std::move(device));
@@ -455,7 +454,6 @@ auto TAgentList::RegisterAgent(
             auto it = LostDevices.find(oldDevice.GetDeviceUUID());
             if (it != LostDevices.end()) {
                 lostDevicesEvent.emplace_back(newDevice.GetDeviceUUID());
-                newDevice.SetIsLostDevice(false);
                 LostDevices.erase(it);
             }
 
